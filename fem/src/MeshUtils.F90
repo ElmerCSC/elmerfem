@@ -3020,7 +3020,7 @@ CONTAINS
 
      INTEGER, POINTER :: EdgeDofs(:), FaceDofs(:)
      INTEGER :: i, j, k, k2, l, s, n, DGIndex, body_id, body_id0, eq_id, solver_id, el_id, &
-         mat_id
+         mat_id, right
      LOGICAL :: NeedEdges, Found, FoundDef0, FoundDef, FoundEq, GotIt, MeshDeps, &
          FoundEqDefs, FoundSolverDefs(Model % NumberOfSolvers), &
          FirstOrderElements, InheritDG, Hit, Stat, &
@@ -3344,54 +3344,23 @@ CONTAINS
        ! by using the construct "-quad_face b: ..." and
        ! "-tri_face b: ..."
        !
-       IF ( ASSOCIATED(Element % BoundaryInfo % Left) ) THEN
-         IF( Element % BoundaryInfo % Left % NDOFs == 0 ) THEN
-           Element % NDOFs = 0
+       DO right = 0, 1
+         IF(right == 0) THEN
+           Parent => Element % BoundaryInfo % Left
+         ELSE
+           Parent => Element % BoundaryInfo % Right
          END IF
+         IF(.NOT. ASSOCIATED(Parent)) CYCLE
 
-         j = Element % BoundaryInfo % Left % ElementIndex
+         IF( Parent % NDOFs == 0 ) Element % NDOFs = 0
+         j = Parent % ElementIndex
          Element % BDOFs = 0
 
          IF ( Element % TYPE % DIMENSION == 1 ) THEN
            IF(j<1 .OR. j>SIZE(EdgeDOFs)) THEN
-             IF(ASSOCIATED(Element % BoundaryInfo % Left % BoundaryInfo)) THEN
-               IF(ASSOCIATED(Element % BoundaryInfo % Left % BoundaryInfo % Left)) THEN
-                 j = Element % BoundaryInfo % Left % BoundaryInfo % Left % ElementIndex
-                 IF(j<1 .OR. j>SIZE(EdgeDOFs)) THEN
-                   k2 = k2 + 1
-                 ELSE
-                   Element % BDOFs = EdgeDOFs(j)
-                 END IF
-               ELSE
-                 k2 = k2 + 1
-               END IF
-             ELSE
-               k2 = k2 + 1
-             END IF            
-           ELSE
-             Element % BDOFs = EdgeDOFs(j)
-           END IF
-         ELSE
-           IF(j<1 .OR. j>SIZE(FaceDofs)) THEN
-             k2 = k2 + 1
-           ELSE
-             Element % BDOFs = FaceDOFs(j)
-           END IF
-           Element % BDOFs = MAX(Element % BDOFs, MAX(0,InDOFs(el_id+6,5)))
-         END IF
-       END IF
-
-       IF ( ASSOCIATED(Element % BoundaryInfo % Right) ) THEN
-         IF ( Element % BoundaryInfo % Right % NDOFs == 0 ) THEN
-           Element % NDOFs = 0
-         END IF
-
-         j = Element % BoundaryInfo % Right % ElementIndex
-         IF ( Element % TYPE % DIMENSION == 1 ) THEN
-           IF(j<1 .OR. j>SIZE(EdgeDOFs)) THEN
-             IF(ASSOCIATED(Element % BoundaryInfo % Right % BoundaryInfo)) THEN
-               IF(ASSOCIATED(Element % BoundaryInfo % Right % BoundaryInfo % Left)) THEN
-                 j = Element % BoundaryInfo % Right % BoundaryInfo % Left % ElementIndex
+             IF(ASSOCIATED(Parent % BoundaryInfo)) THEN
+               IF(ASSOCIATED(Parent % BoundaryInfo % Left)) THEN
+                 j = Parent % BoundaryInfo % Left % ElementIndex
                  IF(j<1 .OR. j>SIZE(EdgeDOFs)) THEN
                    k2 = k2 + 1
                  ELSE
@@ -3414,8 +3383,7 @@ CONTAINS
            END IF
            Element % BDOFs = MAX(Element % BDOFs, MAX(0,InDOFs(el_id+6,5)))
          END IF
-       END IF
-
+       END DO
        
        ! Optionally also set DG indexes for BCs
        ! It is easy for outside boundaries, but for internal boundaries
@@ -3763,6 +3731,7 @@ CONTAINS
      END IF
      
      ALLOCATE( fneigh(ParEnv % PEs), ineigh(ParEnv % PEs) )
+     fneigh = 0; ineigh = 0
      
      ! Mark the neighbouring entities
      IF(ASSOCIATED( ParEnv % IsNeighbour ) ) THEN
@@ -18991,7 +18960,6 @@ CONTAINS
           PRINT *,'x:',Mesh % Nodes % x(Element % NodeIndexes)
           PRINT *,'y:',Mesh % Nodes % y(Element % NodeIndexes)
           PRINT *,'z:',Mesh % Nodes % z(Element % NodeIndexes)
-
         END IF
       END DO
       
@@ -20750,23 +20718,18 @@ END SUBROUTINE FindNeighbourNodes
     TYPE(Element_t), POINTER :: Enew,Eold,Edge,Eptr,Eparent,Face,Faces(:)
     INTEGER, POINTER :: Child(:,:)
     INTEGER :: n1,n2,n3,EoldNodes(4),FaceNodes(4),EdgeNodes(2) ! Only linears so far
-    INTEGER :: FaceNumber,Edge1,Edge2,Edge3,Edge4,Node12,Node23,Node34,Node41,Node31
+    INTEGER :: FaceNumber,Edge1,Edge2,Edge3,Edge4,Node12,Node23,Node34,Node41,Node31,right,MaxSplit
     REAL(KIND=dp) :: dxyz(3,3),Dist(3),r,s,t,h1,h2
     TYPE(PElementDefs_t), POINTER :: PDefs
     INTEGER :: ierr, ParTmp(6), ParSizes(6)
     INTEGER, ALLOCATABLE :: FacePerm(:), BulkPerm(:)
-    LOGICAL :: Parallel
+    LOGICAL :: Parallel, DoAllocElem
+    CHARACTER(*), PARAMETER :: Caller="SplitMeshEqual"
+
 !------------------------------------------------------------------------------
     IF ( .NOT. ASSOCIATED( Mesh ) ) RETURN
 
-    CALL Info( 'SplitMeshEqual', 'Mesh splitting works for first order elements 303, 404, 504, (706) and 808.', Level = 6 )
-
-    DO i=1,Mesh % NumberOfBulkElements
-      SELECT CASE(Mesh % Elements(i) % TYPE % ElementCode/100)
-      CASE(6)
-        CALL Fatal('SplitMeshEqual','Pyramids not supported, sorry.')
-      END SELECT
-    END DO
+    CALL Info( Caller, 'Mesh splitting works for first order elements!', Level = 6 )
 
     NewMesh => AllocateMesh()
 
@@ -20777,19 +20740,19 @@ END SUBROUTINE FindNeighbourNodes
     EdgesPresent = ASSOCIATED(Mesh % Edges)
     IF(.NOT.EdgesPresent) CALL FindMeshEdges( Mesh )
 
-    CALL ResetTimer('SplitMeshEqual')
+    CALL ResetTimer(Caller)
 
-    CALL Info( 'SplitMeshEqual', '******** Old mesh ********', Level = 6 )
+    CALL Info( Caller, '******** Old mesh ********', Level = 6 )
     WRITE( Message, * ) 'Nodes             : ',Mesh % NumberOfNodes
-    CALL info( 'SplitMeshEqual', Message, Level=6 )
+    CALL info( Caller, Message, Level=6 )
     WRITE( Message, * ) 'Bulk elements     : ',Mesh % NumberOfBulkElements
-    CALL info( 'SplitMeshEqual', Message, Level=6 )
+    CALL info( Caller, Message, Level=6 )
     WRITE( Message, * ) 'Boundary elements : ',Mesh % NumberOfBoundaryElements
-    CALL info( 'SplitMeshEqual', Message, Level=6 )
+    CALL info( Caller, Message, Level=6 )
     WRITE( Message, * ) 'Edges             : ',Mesh % NumberOfEdges
-    CALL info( 'SplitMeshEqual', Message, Level=6 )
+    CALL info( Caller, Message, Level=6 )
     WRITE( Message, * ) 'Faces             : ',Mesh % NumberOfFaces
-    CALL info( 'SplitMeshEqual', Message, Level=6 )
+    CALL info( Caller, Message, Level=6 )
 !
 !   Update nodal coordinates:
 !   -------------------------
@@ -20809,7 +20772,7 @@ END SUBROUTINE FindNeighbourNodes
     END DO
     
     WRITE( Message, * ) 'Added nodes in the center of faces : ', FaceCnt
-    CALL Info( 'SplitMeshEqual', Message, Level=10 )
+    CALL Info( Caller, Message, Level=10 )
 !
 !   For quads and bricks, count centerpoints:
 !   -----------------------------------------
@@ -20824,7 +20787,7 @@ END SUBROUTINE FindNeighbourNodes
     END DO
     
     WRITE( Message, * ) 'Added nodes in the center of bulks : ', NodeIt
-    CALL Info( 'SplitMeshEqual', Message, Level=10 )
+    CALL Info( Caller, Message, Level=10 )
 !
 !   new mesh nodecoordinate arrays:
 !   -------------------------------
@@ -20877,7 +20840,7 @@ END SUBROUTINE FindNeighbourNodes
        END IF
     END DO
     
-    CALL Info('SplitMeshEqual','Added edge centers to the nodes list.', Level=10 )  
+    CALL Info(Caller,'Added edge centers to the nodes list.', Level=10 )  
 !
 !   add quad face centers for bricks and prisms(wedges):
 !   ----------------------------
@@ -20907,7 +20870,7 @@ END SUBROUTINE FindNeighbourNodes
        END IF
     END DO
     
-    CALL Info('SplitMeshEqual','Added face centers to the nodes list.', Level=10 )
+    CALL Info(Caller,'Added face centers to the nodes list.', Level=10 )
 !
 !   add centerpoint for quads & bricks:
 !   -----------------------------------
@@ -20981,35 +20944,43 @@ END SUBROUTINE FindNeighbourNodes
 !   First count new elements:
 !   -------------------------
     NewElCnt = 0
+    MaxSplit = 0
     DO i=1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
-       Eold => Mesh % Elements(i)
-       SELECT CASE( Eold % TYPE % ElementCode/100 )
+      Eold => Mesh % Elements(i)
+      SELECT CASE( Eold % TYPE % ElementCode/100 )
 
 !      Each element will be divided into 2**Dim new elements:
-!      ------------------------------------------------------
-       CASE(2)
-          NewElCnt = NewElCnt + 2 ! lines
-       CASE(3)
-          NewElCnt = NewElCnt + 4 ! trias
-       CASE(4)
-          NewElCnt = NewElCnt + 4 ! quads
-       CASE(5)
-          NewElCnt = NewElCnt + 8 ! tetras
-       CASE(7)
-          NewElCnt = NewElCnt + 8 ! prisms (wedges)
-       CASE(8)
-          NewElCnt = NewElCnt + 8 ! hexas
-       END SELECT
+        !      ------------------------------------------------------
+      CASE(1)
+        n = 1
+      CASE(2)
+        n = 2 ! lines
+      CASE(3)
+        n = 4 ! trias
+      CASE(4)
+        n = 4 ! quads
+      CASE(5)
+        n = 8 ! tetras
+      CASE(6)
+        n = 10 ! pyramids        
+      CASE(7)
+        n = 8 ! prisms (wedges)
+      CASE(8)
+        n = 8 ! hexas
+      END SELECT
+
+      MaxSplit = MAX(MaxSplit,n) 
+      NewElCnt = NewElCnt + n        
     END DO
 
     WRITE( Message, * ) 'Count of new elements : ', NewElCnt
-    CALL Info( 'SplitMeshEqual', Message, Level=10 )
+    CALL Info( Caller, Message, Level=10 )
 
     CALL AllocateVector( NewMesh % Elements, NewElCnt )
-    CALL Info('SplitMeshEqual','New mesh allocated.', Level=10 )
+    CALL Info(Caller,'New mesh allocated.', Level=10 )
 
-    CALL AllocateArray( Child, Mesh % NumberOfBulkElements, 8 )
-    CALL Info('SplitMeshEqual','Array for bulk elements allocated.', Level=10 )
+    CALL AllocateArray( Child, Mesh % NumberOfBulkElements, MaxSplit )
+    CALL Info(Caller,'Array for bulk elements allocated.', Level=10 )
     
     NewElCnt = 0
     NodeCnt = Mesh % NumberOfNodes
@@ -21032,55 +21003,35 @@ END SUBROUTINE FindNeighbourNodes
 !         Split triangle to four triangles from
 !         edge centerpoints:
 !         --------------------------------------
-!
-!         1st new element
-!         ---------------
-          NewElCnt = NewElCnt + 1
-          Child(i,1) = NewElCnt
-          Enew => NewMesh % Elements(NewElCnt)
-          Enew = Eold
-          Enew % ElementIndex = NewElCnt
-          CALL AllocateVector( ENew % NodeIndexes, 3)
-          Enew % NodeIndexes(1) = Eold % NodeIndexes(1)
-          Enew % NodeIndexes(2) = Eold % EdgeIndexes(1) + NodeCnt
-          Enew % NodeIndexes(3) = Eold % EdgeIndexes(3) + NodeCnt
-!
-!         2nd new element
-!         ---------------
-          NewElCnt = NewElCnt + 1
-          Child(i,2) = NewElCnt
-          Enew => NewMesh % Elements(NewElCnt)
-          Enew = Eold
-          Enew % ElementIndex = NewElCnt
-          CALL  AllocateVector( ENew % NodeIndexes, 3)
-          Enew % NodeIndexes(1) = Eold % EdgeIndexes(1) + NodeCnt
-          Enew % NodeIndexes(2) = Eold % NodeIndexes(2)
-          Enew % NodeIndexes(3) = Eold % EdgeIndexes(2) + NodeCnt
-!
-!         3rd new element
-!         ---------------
-          NewElCnt = NewElCnt + 1
-          Child(i,3) = NewElCnt
-          Enew => NewMesh % Elements(NewElCnt)
-          Enew = Eold
-          Enew % ElementIndex = NewElCnt
-          CALL  AllocateVector( ENew % NodeIndexes, 3)
-          Enew % NodeIndexes(1) = Eold % EdgeIndexes(1) + NodeCnt
-          Enew % NodeIndexes(2) = Eold % EdgeIndexes(2) + NodeCnt
-          Enew % NodeIndexes(3) = Eold % EdgeIndexes(3) + NodeCnt
-!
-!         4th new element
-!         ---------------
-          NewElCnt = NewElCnt + 1
-          Child(i,4) = NewElCnt
-          Enew => NewMesh % Elements(NewElCnt)
-          Enew = Eold
-          Enew % ElementIndex = NewElCnt
-          CALL  AllocateVector( ENew % NodeIndexes, 3)
-          Enew % NodeIndexes(1) = Eold % EdgeIndexes(2) + NodeCnt
-          Enew % NodeIndexes(2) = Eold % NodeIndexes(3)
-          Enew % NodeIndexes(3) = Eold % EdgeIndexes(3) + NodeCnt
 
+         DO k=1,4
+           NewElCnt = NewElCnt + 1
+           Child(i,k) = NewElCnt
+           Enew => NewMesh % Elements(NewElCnt)
+           Enew = Eold
+           Enew % ElementIndex = NewElCnt
+           CALL AllocateVector( ENew % NodeIndexes, 3)
+
+           ! k:th new element
+           IF(k==1) THEN
+             Enew % NodeIndexes(1) = Eold % NodeIndexes(1)
+             Enew % NodeIndexes(2) = Eold % EdgeIndexes(1) + NodeCnt
+             Enew % NodeIndexes(3) = Eold % EdgeIndexes(3) + NodeCnt
+           ELSE IF(k==2) THEN
+             Enew % NodeIndexes(1) = Eold % EdgeIndexes(1) + NodeCnt
+             Enew % NodeIndexes(2) = Eold % NodeIndexes(2)
+             Enew % NodeIndexes(3) = Eold % EdgeIndexes(2) + NodeCnt
+           ELSE IF(k==3) THEN
+             Enew % NodeIndexes(1) = Eold % EdgeIndexes(1) + NodeCnt
+             Enew % NodeIndexes(2) = Eold % EdgeIndexes(2) + NodeCnt
+             Enew % NodeIndexes(3) = Eold % EdgeIndexes(3) + NodeCnt
+           ELSE 
+             Enew % NodeIndexes(1) = Eold % EdgeIndexes(2) + NodeCnt
+             Enew % NodeIndexes(2) = Eold % NodeIndexes(3)
+             Enew % NodeIndexes(3) = Eold % EdgeIndexes(3) + NodeCnt
+           END IF
+         END DO
+             
        CASE(404)
 !
 !         Index to old quad centerpoint node in the
@@ -21092,59 +21043,37 @@ END SUBROUTINE FindNeighbourNodes
 !         centerpoints and centerpoint of the
 !         element:
 !         --------------------------------------
-!         1st new element
-!         ---------------
-          NewElCnt = NewElCnt + 1
-          Enew => NewMesh % Elements(NewElCnt)
-          Child(i,1) = NewElCnt
-          Enew = Eold
-          Enew % ElementIndex = NewElCnt
-          CALL  AllocateVector( ENew % NodeIndexes, 4)
-          Enew % NodeIndexes(1) = Eold % NodeIndexes(1)
-          Enew % NodeIndexes(2) = Eold % EdgeIndexes(1) + NodeCnt
-          Enew % NodeIndexes(3) = Node
-          Enew % NodeIndexes(4) = Eold % EdgeIndexes(4) + NodeCnt
-!
-!         2nd new element
-!         ---------------
-          NewElCnt = NewElCnt + 1
-          Enew => NewMesh % Elements(NewElCnt)
-          Child(i,2) = NewElCnt
-          Enew = Eold
-          Enew % ElementIndex = NewElCnt
-          CALL  AllocateVector( ENew % NodeIndexes, 4)
-          Enew % NodeIndexes(1) = Eold % EdgeIndexes(1) + NodeCnt
-          Enew % NodeIndexes(2) = Eold % NodeIndexes(2)
-          Enew % NodeIndexes(3) = Eold % EdgeIndexes(2) + NodeCnt
-          Enew % NodeIndexes(4) = Node
-!
-!         3rd new element
-!         ---------------
-          NewElCnt = NewElCnt + 1
-          Enew => NewMesh % Elements(NewElCnt)
-          Child(i,3) = NewElCnt
-          Enew = Eold
-          Enew % ElementIndex = NewElCnt
-          CALL  AllocateVector( ENew % NodeIndexes, 4)
-          Enew % NodeIndexes(1) = Node
-          Enew % NodeIndexes(2) = Eold % EdgeIndexes(2) + NodeCnt
-          Enew % NodeIndexes(3) = Eold % NodeIndexes(3)
-          Enew % NodeIndexes(4) = Eold % EdgeIndexes(3) + NodeCnt
-!
-!         4th new element
-!         ---------------
-          NewElCnt = NewElCnt + 1
-          Enew => NewMesh % Elements(NewElCnt)
-          Child(i,4) = NewElCnt 
-          Enew = Eold
-          Enew % ElementIndex = NewElCnt
-          CALL  AllocateVector( ENew % NodeIndexes, 4)
-          Enew % NodeIndexes(1) = Eold % EdgeIndexes(4) + NodeCnt
-          Enew % NodeIndexes(2) = Node
-          Enew % NodeIndexes(3) = Eold % EdgeIndexes(3) + NodeCnt
-          Enew % NodeIndexes(4) = Eold % NodeIndexes(4)
+          DO k=1,4
+            NewElCnt = NewElCnt + 1
+            Enew => NewMesh % Elements(NewElCnt)
+            Child(i,k) = NewElCnt
+            Enew = Eold
+            Enew % ElementIndex = NewElCnt
+            CALL  AllocateVector( ENew % NodeIndexes, 4)
 
-
+            IF(k==1) THEN
+              Enew % NodeIndexes(1) = Eold % NodeIndexes(1)
+              Enew % NodeIndexes(2) = Eold % EdgeIndexes(1) + NodeCnt
+              Enew % NodeIndexes(3) = Node
+              Enew % NodeIndexes(4) = Eold % EdgeIndexes(4) + NodeCnt
+            ELSE IF(k==2) THEN
+              Enew % NodeIndexes(1) = Eold % EdgeIndexes(1) + NodeCnt
+              Enew % NodeIndexes(2) = Eold % NodeIndexes(2)
+              Enew % NodeIndexes(3) = Eold % EdgeIndexes(2) + NodeCnt
+              Enew % NodeIndexes(4) = Node
+            ELSE IF(k==3) THEN
+              Enew % NodeIndexes(1) = Node
+              Enew % NodeIndexes(2) = Eold % EdgeIndexes(2) + NodeCnt
+              Enew % NodeIndexes(3) = Eold % NodeIndexes(3)
+              Enew % NodeIndexes(4) = Eold % EdgeIndexes(3) + NodeCnt
+            ELSE
+              Enew % NodeIndexes(1) = Eold % EdgeIndexes(4) + NodeCnt
+              Enew % NodeIndexes(2) = Node
+              Enew % NodeIndexes(3) = Eold % EdgeIndexes(3) + NodeCnt
+              Enew % NodeIndexes(4) = Eold % NodeIndexes(4)
+            END IF
+          END DO
+            
        CASE(504)
 !
 !         Split tetra to 8 new elements from
@@ -21403,139 +21332,162 @@ END SUBROUTINE FindNeighbourNodes
           END SELECT
 
 
+       CASE(605)
+!
+!         Split pyramid into 6 pyramids and 4 tetrahedrons
+!         --------------------------------------
+!
+!         k:th new element
+!         ---------------
+         DO k=1,10
+           NewElCnt = NewElCnt + 1
+           Enew => NewMesh % Elements(NewElCnt)
+           Child(i,k) = NewElCnt
+           Enew = Eold
+           Enew % ElementIndex = NewElCnt
+
+           IF(k<=6) THEN
+             ! Allocate pyramids
+             CALL  AllocateVector( ENew % NodeIndexes, 5)
+           ELSE
+             ! Allocate tetrahedrons
+             CALL  AllocateVector( ENew % NodeIndexes, 4)
+           END IF
+           
+           IF(k==1) THEN
+             Enew % NodeIndexes(1) = Eold % EdgeIndexes(4) + NodeCnt 
+             Enew % NodeIndexes(2) = Eold % NodeIndexes(1)
+             Enew % NodeIndexes(3) = Eold % EdgeIndexes(1) + NodeCnt 
+             Enew % NodeIndexes(4) = FacePerm(Eold % FaceIndexes(1))            
+             Enew % NodeIndexes(5) = Eold % EdgeIndexes(5) + NodeCnt
+           ELSE IF(k==2) THEN
+             Enew % NodeIndexes(1) = Eold % EdgeIndexes(1) + NodeCnt
+             Enew % NodeIndexes(2) = Eold % NodeIndexes(2)
+             Enew % NodeIndexes(3) = Eold % EdgeIndexes(2) + NodeCnt
+             Enew % NodeIndexes(4) = FacePerm(Eold % FaceIndexes(1))
+             Enew % NodeIndexes(5) = Eold % EdgeIndexes(6) + NodeCnt 
+           ELSE IF(k==3) THEN
+             Enew % NodeIndexes(1) = Eold % EdgeIndexes(2) + NodeCnt
+             Enew % NodeIndexes(2) = Eold % NodeIndexes(3)
+             Enew % NodeIndexes(3) = Eold % EdgeIndexes(3) + NodeCnt
+             Enew % NodeIndexes(4) = FacePerm(Eold % FaceIndexes(1))
+             Enew % NodeIndexes(5) = Eold % EdgeIndexes(7) + NodeCnt
+           ELSE IF(k==4) THEN             
+             Enew % NodeIndexes(1) = Eold % EdgeIndexes(3) + NodeCnt
+             Enew % NodeIndexes(2) = Eold % NodeIndexes(4)
+             Enew % NodeIndexes(3) = Eold % EdgeIndexes(4) + NodeCnt
+             Enew % NodeIndexes(4) = FacePerm(Eold % FaceIndexes(1))
+             Enew % NodeIndexes(5) = Eold % EdgeIndexes(8) + NodeCnt
+           ELSE IF(k==5) THEN
+             Enew % NodeIndexes(1) = Eold % EdgeIndexes(1) + NodeCnt
+             Enew % NodeIndexes(2) = Eold % EdgeIndexes(2) + NodeCnt
+             Enew % NodeIndexes(3) = Eold % EdgeIndexes(3) + NodeCnt
+             Enew % NodeIndexes(4) = Eold % EdgeIndexes(4) + NodeCnt
+             Enew % NodeIndexes(5) = FacePerm(Eold % FaceIndexes(1))
+           ELSE IF(k==6) THEN
+             Enew % NodeIndexes(1) = Eold % EdgeIndexes(1) + NodeCnt
+             Enew % NodeIndexes(2) = Eold % EdgeIndexes(2) + NodeCnt
+             Enew % NodeIndexes(3) = Eold % EdgeIndexes(3) + NodeCnt
+             Enew % NodeIndexes(4) = Eold % EdgeIndexes(4) + NodeCnt
+             Enew % NodeIndexes(5) = Eold % NodeIndexes(5)             
+           ELSE IF(k==7) THEN             
+             Enew % NodeIndexes(1) = Eold % EdgeIndexes(1) + NodeCnt 
+             Enew % NodeIndexes(2) = FacePerm(Eold % FaceIndexes(1))            
+             Enew % NodeIndexes(3) = Eold % EdgeIndexes(5) + NodeCnt 
+             Enew % NodeIndexes(4) = Eold % EdgeIndexes(6) + NodeCnt
+           ELSE IF(k==8) THEN
+             Enew % NodeIndexes(1) = Eold % EdgeIndexes(2) + NodeCnt 
+             Enew % NodeIndexes(2) = FacePerm(Eold % FaceIndexes(1))            
+             Enew % NodeIndexes(3) = Eold % EdgeIndexes(6) + NodeCnt 
+             Enew % NodeIndexes(4) = Eold % EdgeIndexes(7) + NodeCnt
+           ELSE IF(k==9) THEN
+             Enew % NodeIndexes(1) = Eold % EdgeIndexes(3) + NodeCnt 
+             Enew % NodeIndexes(2) = FacePerm(Eold % FaceIndexes(1))            
+             Enew % NodeIndexes(3) = Eold % EdgeIndexes(7) + NodeCnt 
+             Enew % NodeIndexes(4) = Eold % EdgeIndexes(8) + NodeCnt
+           ELSE IF(k==10) THEN
+             Enew % NodeIndexes(1) = Eold % EdgeIndexes(4) + NodeCnt 
+             Enew % NodeIndexes(2) = FacePerm(Eold % FaceIndexes(1))            
+             Enew % NodeIndexes(3) = Eold % EdgeIndexes(8) + NodeCnt 
+             Enew % NodeIndexes(4) = Eold % EdgeIndexes(5) + NodeCnt
+           END IF
+         END DO
+
+          
        CASE(706)
 !
 !         Split prism to 8 new prism from edge
 !         centerpoints:
 !         --------------------------------------
 !
-!         1st new element
+!         k:th new element
 !         ---------------
-          NewElCnt = NewElCnt + 1
-          Enew => NewMesh % Elements(NewElCnt)
-          Child(i,1) = NewElCnt
-          Enew = Eold
-          Enew % ElementIndex = NewElCnt
-          CALL  AllocateVector( ENew % NodeIndexes, 6)
-          Enew % NodeIndexes(1) = Eold % NodeIndexes(1)
-          Enew % NodeIndexes(2) = Eold % EdgeIndexes(1) + NodeCnt 
-          Enew % NodeIndexes(3) = Eold % EdgeIndexes(3) + NodeCnt 
-          Enew % NodeIndexes(4) = Eold % EdgeIndexes(7) + NodeCnt
-          Enew % NodeIndexes(5) = FacePerm(Eold % FaceIndexes(3))
-          Enew % NodeIndexes(6) = FacePerm(Eold % FaceIndexes(5))
+         DO k=1,8
+           NewElCnt = NewElCnt + 1
+           Enew => NewMesh % Elements(NewElCnt)
+           Child(i,k) = NewElCnt
+           Enew = Eold
+           Enew % ElementIndex = NewElCnt
+           CALL  AllocateVector( ENew % NodeIndexes, 6)
 
-!
-!         2nd new element
-!         ---------------
-          NewElCnt = NewElCnt + 1
-          Enew => NewMesh % Elements(NewElCnt)
-          Child(i,2) = NewElCnt
-          Enew = Eold
-          Enew % ElementIndex = NewElCnt
-          CALL AllocateVector( ENew % NodeIndexes, 6)
-          Enew % NodeIndexes(1) = Eold % EdgeIndexes(1) + NodeCnt
-          Enew % NodeIndexes(2) = Eold % NodeIndexes(2)
-          Enew % NodeIndexes(3) = Eold % EdgeIndexes(2) + NodeCnt
-          Enew % NodeIndexes(4) = FacePerm(Eold % FaceIndexes(3))
-          Enew % NodeIndexes(5) = Eold % EdgeIndexes(8) + NodeCnt 
-          Enew % NodeIndexes(6) = FacePerm(Eold % FaceIndexes(4))
-
-!
-!         3rd new element (near node 3)
-!         ---------------
-          NewElCnt = NewElCnt + 1
-          Enew => NewMesh % Elements(NewElCnt)
-          Child(i,3) = NewElCnt
-          Enew = Eold
-          Enew % ElementIndex = NewElCnt
-          CALL AllocateVector( ENew % NodeIndexes, 6)
-          Enew % NodeIndexes(1) = Eold % EdgeIndexes(3) + NodeCnt
-          Enew % NodeIndexes(2) = Eold % EdgeIndexes(2) + NodeCnt
-          Enew % NodeIndexes(3) = Eold % NodeIndexes(3)
-          Enew % NodeIndexes(4) = FacePerm(Eold % FaceIndexes(5))
-          Enew % NodeIndexes(5) = FacePerm(Eold % FaceIndexes(4))
-          Enew % NodeIndexes(6) = Eold % EdgeIndexes(9) + NodeCnt
-
-!
-!         4th new element (bottom center)
-!         ---------------
-          NewElCnt = NewElCnt + 1
-          Enew => NewMesh % Elements(NewElCnt)
-          Child(i,4) = NewElCnt 
-          Enew = Eold
-          Enew % ElementIndex = NewElCnt
-          CALL AllocateVector( ENew % NodeIndexes, 6)
-          Enew % NodeIndexes(1) = Eold % EdgeIndexes(1) + NodeCnt
-          Enew % NodeIndexes(2) = Eold % EdgeIndexes(2) + NodeCnt
-          Enew % NodeIndexes(3) = Eold % EdgeIndexes(3) + NodeCnt
-          Enew % NodeIndexes(4) = FacePerm(Eold % FaceIndexes(3))
-          Enew % NodeIndexes(5) = FacePerm(Eold % FaceIndexes(4))
-          Enew % NodeIndexes(6) = FacePerm(Eold % FaceIndexes(5))
-
-!
-!         5th new element
-!         ---------------
-          NewElCnt = NewElCnt + 1
-          Enew => NewMesh % Elements(NewElCnt)
-          Child(i,5) = NewElCnt 
-          Enew = Eold
-          Enew % ElementIndex = NewElCnt
-          CALL AllocateVector( ENew % NodeIndexes, 6)
-          Enew % NodeIndexes(1) = Eold % EdgeIndexes(7) + NodeCnt
-          Enew % NodeIndexes(2) = FacePerm(Eold % FaceIndexes(3))
-          Enew % NodeIndexes(3) = FacePerm(Eold % FaceIndexes(5))
-          Enew % NodeIndexes(4) = Eold % NodeIndexes(4)
-          Enew % NodeIndexes(5) = Eold % EdgeIndexes(4) + NodeCnt
-          Enew % NodeIndexes(6) = Eold % EdgeIndexes(6) + NodeCnt
-
-!
-!         6th new element
-!         ---------------
-          NewElCnt = NewElCnt + 1
-          Enew => NewMesh % Elements(NewElCnt)
-          Child(i,6) = NewElCnt 
-          Enew = Eold
-          Enew % ElementIndex = NewElCnt
-          CALL AllocateVector( ENew % NodeIndexes, 6)
-          Enew % NodeIndexes(1) = FacePerm(Eold % FaceIndexes(3))
-          Enew % NodeIndexes(2) = Eold % EdgeIndexes(8) + NodeCnt
-          Enew % NodeIndexes(3) = FacePerm(Eold % FaceIndexes(4))
-          Enew % NodeIndexes(4) = Eold % EdgeIndexes(4) + NodeCnt
-          Enew % NodeIndexes(5) = Eold % NodeIndexes(5)
-          Enew % NodeIndexes(6) = Eold % EdgeIndexes(5) + NodeCnt
-
-!
-!         7th new element
-!         ---------------
-          NewElCnt = NewElCnt + 1
-          Enew => NewMesh % Elements(NewElCnt)
-          Child(i,7) = NewElCnt 
-          Enew = Eold
-          Enew % ElementIndex = NewElCnt
-          CALL AllocateVector( ENew % NodeIndexes, 6)
-          Enew % NodeIndexes(1) = FacePerm(Eold % FaceIndexes(5))
-          Enew % NodeIndexes(2) = FacePerm(Eold % FaceIndexes(4))
-          Enew % NodeIndexes(3) = Eold % EdgeIndexes(9) + NodeCnt
-          Enew % NodeIndexes(4) = Eold % EdgeIndexes(6) + NodeCnt
-          Enew % NodeIndexes(5) = Eold % EdgeIndexes(5) + NodeCnt
-          Enew % NodeIndexes(6) = Eold % NodeIndexes(6)
-!
-!         8th new element (top half, center)
-!         ---------------
-          NewElCnt = NewElCnt + 1
-          Enew => NewMesh % Elements(NewElCnt)
-          Child(i,8) = NewElCnt
-          Enew = Eold
-          Enew % ElementIndex = NewElCnt
-          CALL AllocateVector( ENew % NodeIndexes, 6)
-          Enew % NodeIndexes(1) = FacePerm(Eold % FaceIndexes(3))
-          Enew % NodeIndexes(2) = FacePerm(Eold % FaceIndexes(4))
-          Enew % NodeIndexes(3) = FacePerm(Eold % FaceIndexes(5))
-          Enew % NodeIndexes(4) = Eold % EdgeIndexes(4) + NodeCnt
-          Enew % NodeIndexes(5) = Eold % EdgeIndexes(5) + NodeCnt
-          Enew % NodeIndexes(6) = Eold % EdgeIndexes(6) + NodeCnt
-
-
+           IF(k==1) THEN
+             Enew % NodeIndexes(1) = Eold % NodeIndexes(1)
+             Enew % NodeIndexes(2) = Eold % EdgeIndexes(1) + NodeCnt 
+             Enew % NodeIndexes(3) = Eold % EdgeIndexes(3) + NodeCnt 
+             Enew % NodeIndexes(4) = Eold % EdgeIndexes(7) + NodeCnt
+             Enew % NodeIndexes(5) = FacePerm(Eold % FaceIndexes(3))
+             Enew % NodeIndexes(6) = FacePerm(Eold % FaceIndexes(5))
+           ELSE IF(k==2) THEN
+             Enew % NodeIndexes(1) = Eold % EdgeIndexes(1) + NodeCnt
+             Enew % NodeIndexes(2) = Eold % NodeIndexes(2)
+             Enew % NodeIndexes(3) = Eold % EdgeIndexes(2) + NodeCnt
+             Enew % NodeIndexes(4) = FacePerm(Eold % FaceIndexes(3))
+             Enew % NodeIndexes(5) = Eold % EdgeIndexes(8) + NodeCnt 
+             Enew % NodeIndexes(6) = FacePerm(Eold % FaceIndexes(4))
+           ELSE IF(k==3) THEN
+             Enew % NodeIndexes(1) = Eold % EdgeIndexes(3) + NodeCnt
+             Enew % NodeIndexes(2) = Eold % EdgeIndexes(2) + NodeCnt
+             Enew % NodeIndexes(3) = Eold % NodeIndexes(3)
+             Enew % NodeIndexes(4) = FacePerm(Eold % FaceIndexes(5))
+             Enew % NodeIndexes(5) = FacePerm(Eold % FaceIndexes(4))
+             Enew % NodeIndexes(6) = Eold % EdgeIndexes(9) + NodeCnt
+           ELSE IF(k==4) THEN             
+             Enew % NodeIndexes(1) = Eold % EdgeIndexes(1) + NodeCnt
+             Enew % NodeIndexes(2) = Eold % EdgeIndexes(2) + NodeCnt
+             Enew % NodeIndexes(3) = Eold % EdgeIndexes(3) + NodeCnt
+             Enew % NodeIndexes(4) = FacePerm(Eold % FaceIndexes(3))
+             Enew % NodeIndexes(5) = FacePerm(Eold % FaceIndexes(4))
+             Enew % NodeIndexes(6) = FacePerm(Eold % FaceIndexes(5))
+           ELSE IF(k==5) THEN
+             Enew % NodeIndexes(1) = Eold % EdgeIndexes(7) + NodeCnt
+             Enew % NodeIndexes(2) = FacePerm(Eold % FaceIndexes(3))
+             Enew % NodeIndexes(3) = FacePerm(Eold % FaceIndexes(5))
+             Enew % NodeIndexes(4) = Eold % NodeIndexes(4)
+             Enew % NodeIndexes(5) = Eold % EdgeIndexes(4) + NodeCnt
+             Enew % NodeIndexes(6) = Eold % EdgeIndexes(6) + NodeCnt
+           ELSE IF(k==6) THEN
+             Enew % NodeIndexes(1) = FacePerm(Eold % FaceIndexes(3))
+             Enew % NodeIndexes(2) = Eold % EdgeIndexes(8) + NodeCnt
+             Enew % NodeIndexes(3) = FacePerm(Eold % FaceIndexes(4))
+             Enew % NodeIndexes(4) = Eold % EdgeIndexes(4) + NodeCnt
+             Enew % NodeIndexes(5) = Eold % NodeIndexes(5)
+             Enew % NodeIndexes(6) = Eold % EdgeIndexes(5) + NodeCnt
+           ELSE IF(k==7) THEN
+             Enew % NodeIndexes(1) = FacePerm(Eold % FaceIndexes(5))
+             Enew % NodeIndexes(2) = FacePerm(Eold % FaceIndexes(4))
+             Enew % NodeIndexes(3) = Eold % EdgeIndexes(9) + NodeCnt
+             Enew % NodeIndexes(4) = Eold % EdgeIndexes(6) + NodeCnt
+             Enew % NodeIndexes(5) = Eold % EdgeIndexes(5) + NodeCnt
+             Enew % NodeIndexes(6) = Eold % NodeIndexes(6)
+           ELSE IF(k==8) THEN
+             Enew % NodeIndexes(1) = FacePerm(Eold % FaceIndexes(3))
+             Enew % NodeIndexes(2) = FacePerm(Eold % FaceIndexes(4))
+             Enew % NodeIndexes(3) = FacePerm(Eold % FaceIndexes(5))
+             Enew % NodeIndexes(4) = Eold % EdgeIndexes(4) + NodeCnt
+             Enew % NodeIndexes(5) = Eold % EdgeIndexes(5) + NodeCnt
+             Enew % NodeIndexes(6) = Eold % EdgeIndexes(6) + NodeCnt
+           END IF
+         END DO
 
        CASE(808)
 !
@@ -21549,148 +21501,95 @@ END SUBROUTINE FindNeighbourNodes
 !         element:
 !         --------------------------------------
 !
-!         1st new element
+!         k:th new element
 !         ---------------
-          NewElCnt = NewElCnt + 1
-          Enew => NewMesh % Elements(NewElCnt)
-          Child(i,1) = NewElCnt
-          Enew = Eold
-          Enew % ElementIndex = NewElCnt
-          CALL  AllocateVector( ENew % NodeIndexes, 8)
-          Enew % NodeIndexes(1) = Eold % NodeIndexes(1)
-          Enew % NodeIndexes(2) = Eold % EdgeIndexes(1) + NodeCnt
-          Enew % NodeIndexes(3) = FacePerm(Eold % FaceIndexes(1))
-          Enew % NodeIndexes(4) = Eold % EdgeIndexes(4) + NodeCnt
-          Enew % NodeIndexes(5) = Eold % EdgeIndexes(9) + NodeCnt
-          Enew % NodeIndexes(6) = FacePerm(Eold % FaceIndexes(3))
-          Enew % NodeIndexes(7) = Node
-          Enew % NodeIndexes(8) = FacePerm(Eold % FaceIndexes(6))
-!
-!         2nd new element
-!         ---------------
-          NewElCnt = NewElCnt + 1
-          Enew => NewMesh % Elements(NewElCnt)
-          Child(i,2) = NewElCnt
-          Enew = Eold
-          Enew % ElementIndex = NewElCnt
-          CALL AllocateVector( ENew % NodeIndexes, 8 )
-          Enew % NodeIndexes(1) = Eold % EdgeIndexes(1) + NodeCnt
-          Enew % NodeIndexes(2) = Eold % NodeIndexes(2)
-          Enew % NodeIndexes(3) = Eold % EdgeIndexes(2) + NodeCnt
-          Enew % NodeIndexes(4) = FacePerm(Eold % FaceIndexes(1))
-          Enew % NodeIndexes(5) = FacePerm(Eold % FaceIndexes(3))
-          Enew % NodeIndexes(6) = Eold % EdgeIndexes(10)+ NodeCnt
-          Enew % NodeIndexes(7) = FacePerm(Eold % FaceIndexes(4))
-          Enew % NodeIndexes(8) = Node
-!
-!         3rd new element
-!         ---------------
-          NewElCnt = NewElCnt + 1
-          Enew => NewMesh % Elements(NewElCnt)
-          Child(i,3) = NewElCnt
-          Enew = Eold
-          Enew % ElementIndex = NewElCnt
-          CALL AllocateVector( ENew % NodeIndexes, 8 )
-          Enew % NodeIndexes(1) = Eold % EdgeIndexes(4) + NodeCnt
-          Enew % NodeIndexes(2) = FacePerm(Eold % FaceIndexes(1))
-          Enew % NodeIndexes(3) = Eold % EdgeIndexes(3) + NodeCnt
-          Enew % NodeIndexes(4) = Eold % NodeIndexes(4)
-          Enew % NodeIndexes(5) = FacePerm(Eold % FaceIndexes(6))
-          Enew % NodeIndexes(6) = Node
-          Enew % NodeIndexes(7) = FacePerm(Eold % FaceIndexes(5))
-          Enew % NodeIndexes(8) = Eold % EdgeIndexes(12)+ NodeCnt
-!
-!         4th new element
-!         ---------------
-          NewElCnt = NewElCnt + 1
-          Enew => NewMesh % Elements(NewElCnt)
-          Child(i,4) = NewElCnt 
-          Enew = Eold
-          Enew % ElementIndex = NewElCnt
-          CALL AllocateVector( ENew % NodeIndexes, 8 )
-          Enew % NodeIndexes(1) = FacePerm(Eold % FaceIndexes(1))
-          Enew % NodeIndexes(2) = Eold % EdgeIndexes(2) + NodeCnt
-          Enew % NodeIndexes(3) = Eold % NodeIndexes(3)
-          Enew % NodeIndexes(4) = Eold % EdgeIndexes(3) + NodeCnt
-          Enew % NodeIndexes(5) = Node
-          Enew % NodeIndexes(6) = FacePerm(Eold % FaceIndexes(4))
-          Enew % NodeIndexes(7) = Eold % EdgeIndexes(11)+ NodeCnt
-          Enew % NodeIndexes(8) = FacePerm(Eold % FaceIndexes(5))
-!
-!         5th new element
-!         ---------------
-          NewElCnt = NewElCnt + 1
-          Enew => NewMesh % Elements(NewElCnt)
-          Child(i,5) = NewElCnt 
-          Enew = Eold
-          Enew % ElementIndex = NewElCnt
-          CALL AllocateVector( ENew % NodeIndexes, 8 )
-          Enew % NodeIndexes(1) = Eold % EdgeIndexes(9) + NodeCnt
-          Enew % NodeIndexes(2) = FacePerm(Eold % FaceIndexes(3))
-          Enew % NodeIndexes(3) = Node
-          Enew % NodeIndexes(4) = FacePerm(Eold % FaceIndexes(6))
-          Enew % NodeIndexes(5) = Eold % NodeIndexes(5)
-          Enew % NodeIndexes(6) = Eold % EdgeIndexes(5) + NodeCnt
-          Enew % NodeIndexes(7) = FacePerm(Eold % FaceIndexes(2))
-          Enew % NodeIndexes(8) = Eold % EdgeIndexes(8) + NodeCnt
-!
-!         6th new element
-!         ---------------
-          NewElCnt = NewElCnt + 1
-          Enew => NewMesh % Elements(NewElCnt)
-          Child(i,6) = NewElCnt 
-          Enew = Eold
-          Enew % ElementIndex = NewElCnt
-          CALL AllocateVector( ENew % NodeIndexes, 8 )
-          Enew % NodeIndexes(1) = FacePerm(Eold % FaceIndexes(3))
-          Enew % NodeIndexes(2) = Eold % EdgeIndexes(10)+ NodeCnt
-          Enew % NodeIndexes(3) = FacePerm(Eold % FaceIndexes(4))
-          Enew % NodeIndexes(4) = Node
-          Enew % NodeIndexes(5) = Eold % EdgeIndexes(5) + NodeCnt
-          Enew % NodeIndexes(6) = Eold % NodeIndexes(6)
-          Enew % NodeIndexes(7) = Eold % EdgeIndexes(6) + NodeCnt
-          Enew % NodeIndexes(8) = FacePerm(Eold % FaceIndexes(2))
-!
-!         7th new element
-!         ---------------
-          NewElCnt = NewElCnt + 1
-          Enew => NewMesh % Elements(NewElCnt)
-          Child(i,7) = NewElCnt 
-          Enew = Eold
-          Enew % ElementIndex = NewElCnt
-          CALL AllocateVector( ENew % NodeIndexes, 8 )
-          Enew % NodeIndexes(1) = FacePerm(Eold % FaceIndexes(6))
-          Enew % NodeIndexes(2) = Node
-          Enew % NodeIndexes(3) = FacePerm(Eold % FaceIndexes(5))
-          Enew % NodeIndexes(4) = Eold % EdgeIndexes(12)+ NodeCnt
-          Enew % NodeIndexes(5) = Eold % EdgeIndexes(8) + NodeCnt
-          Enew % NodeIndexes(6) = FacePerm(Eold % FaceIndexes(2))
-          Enew % NodeIndexes(7) = Eold % EdgeIndexes(7) + NodeCnt
-          Enew % NodeIndexes(8) = Eold % NodeIndexes(8)
-!
-!         8th new element
-!         ---------------
-          NewElCnt = NewElCnt + 1
-          Enew => NewMesh % Elements(NewElCnt)
-          Child(i,8) = NewElCnt
-          Enew = Eold
-          Enew % ElementIndex = NewElCnt
-          CALL AllocateVector( ENew % NodeIndexes, 8 )
-          Enew % NodeIndexes(1) = Node
-          Enew % NodeIndexes(2) = FacePerm(Eold % FaceIndexes(4))
-          Enew % NodeIndexes(3) = Eold % EdgeIndexes(11)+ NodeCnt
-          Enew % NodeIndexes(4) = FacePerm(Eold % FaceIndexes(5))
-          Enew % NodeIndexes(5) = FacePerm(Eold % FaceIndexes(2))
-          Enew % NodeIndexes(6) = Eold % EdgeIndexes(6) + NodeCnt
-          Enew % NodeIndexes(7) = Eold % NodeIndexes(7)
-          Enew % NodeIndexes(8) = Eold % EdgeIndexes(7) + NodeCnt
+          DO k=1,8
+            NewElCnt = NewElCnt + 1
+            Enew => NewMesh % Elements(NewElCnt)
+            Child(i,k) = NewElCnt
+            Enew = Eold
+            Enew % ElementIndex = NewElCnt
+            CALL  AllocateVector( ENew % NodeIndexes, 8)
 
+            IF(k==1) THEN
+              Enew % NodeIndexes(1) = Eold % NodeIndexes(1)
+              Enew % NodeIndexes(2) = Eold % EdgeIndexes(1) + NodeCnt
+              Enew % NodeIndexes(3) = FacePerm(Eold % FaceIndexes(1))
+              Enew % NodeIndexes(4) = Eold % EdgeIndexes(4) + NodeCnt
+              Enew % NodeIndexes(5) = Eold % EdgeIndexes(9) + NodeCnt
+              Enew % NodeIndexes(6) = FacePerm(Eold % FaceIndexes(3))
+              Enew % NodeIndexes(7) = Node
+              Enew % NodeIndexes(8) = FacePerm(Eold % FaceIndexes(6))
+            ELSE IF(k==2) THEN
+              Enew % NodeIndexes(1) = Eold % EdgeIndexes(1) + NodeCnt
+              Enew % NodeIndexes(2) = Eold % NodeIndexes(2)
+              Enew % NodeIndexes(3) = Eold % EdgeIndexes(2) + NodeCnt
+              Enew % NodeIndexes(4) = FacePerm(Eold % FaceIndexes(1))
+              Enew % NodeIndexes(5) = FacePerm(Eold % FaceIndexes(3))
+              Enew % NodeIndexes(6) = Eold % EdgeIndexes(10)+ NodeCnt
+              Enew % NodeIndexes(7) = FacePerm(Eold % FaceIndexes(4))
+              Enew % NodeIndexes(8) = Node
+            ELSE IF(k==3) THEN
+              Enew % NodeIndexes(1) = Eold % EdgeIndexes(4) + NodeCnt
+              Enew % NodeIndexes(2) = FacePerm(Eold % FaceIndexes(1))
+              Enew % NodeIndexes(3) = Eold % EdgeIndexes(3) + NodeCnt
+              Enew % NodeIndexes(4) = Eold % NodeIndexes(4)
+              Enew % NodeIndexes(5) = FacePerm(Eold % FaceIndexes(6))
+              Enew % NodeIndexes(6) = Node
+              Enew % NodeIndexes(7) = FacePerm(Eold % FaceIndexes(5))
+              Enew % NodeIndexes(8) = Eold % EdgeIndexes(12)+ NodeCnt
+            ELSE IF(k==4) THEN
+              Enew % NodeIndexes(1) = FacePerm(Eold % FaceIndexes(1))
+              Enew % NodeIndexes(2) = Eold % EdgeIndexes(2) + NodeCnt
+              Enew % NodeIndexes(3) = Eold % NodeIndexes(3)
+              Enew % NodeIndexes(4) = Eold % EdgeIndexes(3) + NodeCnt
+              Enew % NodeIndexes(5) = Node
+              Enew % NodeIndexes(6) = FacePerm(Eold % FaceIndexes(4))
+              Enew % NodeIndexes(7) = Eold % EdgeIndexes(11)+ NodeCnt
+              Enew % NodeIndexes(8) = FacePerm(Eold % FaceIndexes(5))
+            ELSE IF(k==5) THEN
+              Enew % NodeIndexes(1) = Eold % EdgeIndexes(9) + NodeCnt
+              Enew % NodeIndexes(2) = FacePerm(Eold % FaceIndexes(3))
+              Enew % NodeIndexes(3) = Node
+              Enew % NodeIndexes(4) = FacePerm(Eold % FaceIndexes(6))
+              Enew % NodeIndexes(5) = Eold % NodeIndexes(5)
+              Enew % NodeIndexes(6) = Eold % EdgeIndexes(5) + NodeCnt
+              Enew % NodeIndexes(7) = FacePerm(Eold % FaceIndexes(2))
+              Enew % NodeIndexes(8) = Eold % EdgeIndexes(8) + NodeCnt
+            ELSE IF(k==6) THEN
+              Enew % NodeIndexes(1) = FacePerm(Eold % FaceIndexes(3))
+              Enew % NodeIndexes(2) = Eold % EdgeIndexes(10)+ NodeCnt
+              Enew % NodeIndexes(3) = FacePerm(Eold % FaceIndexes(4))
+              Enew % NodeIndexes(4) = Node
+              Enew % NodeIndexes(5) = Eold % EdgeIndexes(5) + NodeCnt
+              Enew % NodeIndexes(6) = Eold % NodeIndexes(6)
+              Enew % NodeIndexes(7) = Eold % EdgeIndexes(6) + NodeCnt
+              Enew % NodeIndexes(8) = FacePerm(Eold % FaceIndexes(2))
+            ELSE IF(k==7) THEN
+              Enew % NodeIndexes(1) = FacePerm(Eold % FaceIndexes(6))
+              Enew % NodeIndexes(2) = Node
+              Enew % NodeIndexes(3) = FacePerm(Eold % FaceIndexes(5))
+              Enew % NodeIndexes(4) = Eold % EdgeIndexes(12)+ NodeCnt
+              Enew % NodeIndexes(5) = Eold % EdgeIndexes(8) + NodeCnt
+              Enew % NodeIndexes(6) = FacePerm(Eold % FaceIndexes(2))
+              Enew % NodeIndexes(7) = Eold % EdgeIndexes(7) + NodeCnt
+              Enew % NodeIndexes(8) = Eold % NodeIndexes(8)
+            ELSE IF(k==8) THEN
+              Enew % NodeIndexes(1) = Node
+              Enew % NodeIndexes(2) = FacePerm(Eold % FaceIndexes(4))
+              Enew % NodeIndexes(3) = Eold % EdgeIndexes(11)+ NodeCnt
+              Enew % NodeIndexes(4) = FacePerm(Eold % FaceIndexes(5))
+              Enew % NodeIndexes(5) = FacePerm(Eold % FaceIndexes(2))
+              Enew % NodeIndexes(6) = Eold % EdgeIndexes(6) + NodeCnt
+              Enew % NodeIndexes(7) = Eold % NodeIndexes(7)
+              Enew % NodeIndexes(8) = Eold % EdgeIndexes(7) + NodeCnt
+            END IF
+          END DO
+            
        CASE DEFAULT
-          WRITE( Message,* ) 'Element type ', Eold % TYPE % ElementCode, &
-              ' not supported by the multigrid solver.'
-          CALL Fatal( 'SplitMeshEqual', Message )
+         CALL Fatal( Caller, 'Element type '//I2S(Eold % TYPE % ElementCode)//' not supported!')
        END SELECT
-    END DO
+     END DO
 
 !
 !   Update new mesh element counts:
@@ -21699,7 +21598,6 @@ END SUBROUTINE FindNeighbourNodes
 
 !
 !   Update boundary elements:
-!   NOTE: Internal boundaries not taken care of...:!!!!
 !   ---------------------------------------------------
     DO i=1,Mesh % NumberOfBoundaryElements
 
@@ -21708,162 +21606,188 @@ END SUBROUTINE FindNeighbourNodes
 !
 !      get parent of the boundary element:
 !      -----------------------------------
-       Eparent => Eold % BoundaryInfo % Left
-       IF ( .NOT.ASSOCIATED(Eparent) ) &
-          eParent => Eold % BoundaryInfo % Right
-       IF ( .NOT. ASSOCIATED( Eparent ) ) CYCLE
 
-       ParentId = Eparent % ElementIndex
+       DoAllocElem = .TRUE.
+       DO right = 0, 1
+         ! We cycle trough both potential parents.
+         ! Only for the first instance do we perform allocation and then turn "DoAllocElem" false.
+         IF(right == 0 ) THEN
+           Eparent => Eold % BoundaryInfo % Left
+         ELSE
+           Eparent => Eold % BoundaryInfo % Right
+         END IF
+         IF(.NOT. ASSOCIATED(Eparent)) THEN
+           IF(.NOT. Eold % TYPE % ElementCode < 200 .AND. right==0) THEN
+             CYCLE
+           END IF
+         END IF
+         IF(.NOT. ListGetLogical(CurrentModel % Simulation,'New SplitMeshEqual', Found ) ) THEN
+           IF(.NOT. DoAllocElem) CYCLE
+         END IF
 
-       SELECT CASE( Eold % TYPE % ElementCode / 100 )
-       CASE(2)
+         ParentId = -1
+         IF(ASSOCIATED(EParent)) THEN
+           ParentId = Eparent % ElementIndex
+           IF( Eparent % PartIndex /= ParEnv % myPE ) THEN
+             PRINT *,'SkipElem:',ParEnv % Mype, Eparent % ElementIndex
+             CYCLE
+           END IF
+         END IF
+
+           
+         SELECT CASE( Eold % TYPE % ElementCode / 100 )
+
+         CASE(1)
+
+           IF(.NOT. DoAllocElem) NewElCnt = NewElCnt - 1
+
+           
+           PRINT *,'right1:',NewElCnt
+           
+           NewElCnt = NewElCnt + 1
+           Enew => NewMesh % Elements(NewElCnt)
+           
+           IF(DoAllocElem) THEN
+             Enew = Eold
+             Enew % ElementIndex = NewElCnt
+             CALL AllocateVector( Enew % NodeIndexes, 2 )
+             
+             Enew % NodeIndexes(1) = Eold % NodeIndexes(1)
+             
+             ALLOCATE( Enew % BoundaryInfo )
+             Enew % BoundaryInfo = Eold % BoundaryInfo
+             NULLIFY( Enew % BoundaryInfo % Left )
+             NULLIFY( Enew % BoundaryInfo % Right )
+           END IF
+             
+!         Search the new mesh parent element among the
+!         children of the old mesh parent element:
+!         --------------------------------------------
+           IF( ASSOCIATED( Eparent ) ) THEN           
+             Found = .FALSE.
+             DO j=1,MaxSplit
+               IF(Child(ParentId,j)==0) CYCLE
+               Eptr => NewMesh % Elements( Child(ParentId,j) )
+               n = Eptr % TYPE % NumberOfNodes
+               Found =  ANY( Eptr % NodeIndexes(1:n) == Enew % NodeIndexes(1) )
+               IF ( Found ) EXIT
+             END DO
+             IF(DoAllocElem) THEN 
+               Enew % BoundaryInfo % Left => Eptr
+             ELSE
+               Enew % BoundaryInfo % Right => Eptr
+             END IF
+           END IF
+           
+         CASE(2)
 !
 !         Line segments:
 !         ==============
 !
-!         which edge of the parent element are we ?
-!         -----------------------------------------
-          Found = .FALSE.
-          DO Edge1=1,SIZE(Eparent % EdgeIndexes)
-            Edge => Mesh % Edges( Eparent % EdgeIndexes(Edge1) )
-            Found = ANY(Eold % NodeIndexes(1:2) == Edge % NodeIndexes(1) ) .AND. &
-                ANY(Eold % NodeIndexes(1:2) == Edge % NodeIndexes(2) )
-            IF(Found) EXIT
-          END DO
-          IF(.NOT. Found) THEN
-            CALL Fatal('SplitMeshEqual','Could not find parent edge with nodes: '//&
-                I2S(Eold % NodeIndexes(1))//' '//I2S(Eold % NodeIndexes(2)))
-          END IF
+!         which edge of the original parent element are we ?
+!         ---------------------------------------------------
+           Found = .FALSE.
+           DO Edge1=1,SIZE(Eparent % EdgeIndexes)
+             Edge => Mesh % Edges( Eparent % EdgeIndexes(Edge1) )
+             Found = ANY(Eold % NodeIndexes(1:2) == Edge % NodeIndexes(1) ) .AND. &
+                 ANY(Eold % NodeIndexes(1:2) == Edge % NodeIndexes(2) )
+             IF(Found) EXIT
+           END DO
+           IF(.NOT. Found) THEN
+             CALL Fatal(Caller,'Could not find parent edge with nodes: '//&
+                 I2S(Eold % NodeIndexes(1))//' '//I2S(Eold % NodeIndexes(2)))
+           END IF
           
-!
 !         index of the old edge centerpoint in the
 !         new mesh nodal arrays:
 !         ----------------------------------------
-          Node = Eparent % EdgeIndexes(Edge1) + Mesh % NumberOfNodes
+           Node = Eparent % EdgeIndexes(Edge1) + Mesh % NumberOfNodes
 !
 !         1st new element
 !         ---------------
-          NewElCnt = NewElCnt + 1
-          Enew => NewMesh % Elements(NewElCnt)
-          Enew = Eold
-          Enew % ElementIndex = NewElCnt
-          CALL AllocateVector( Enew % NodeIndexes, 2 )
-          Enew % NodeIndexes(1) = Eold % NodeIndexes(1)
-          Enew % NodeIndexes(2) = Node
-          ALLOCATE( Enew % BoundaryInfo )
-          Enew % BoundaryInfo = Eold % BoundaryInfo
-          NULLIFY( Enew % BoundaryInfo % Left )
-          NULLIFY( Enew % BoundaryInfo % Right )
-!
+           IF(.NOT. DoAllocElem) NewElCnt = NewElCnt - 2
+
+           DO k=1,2           
+             NewElCnt = NewElCnt + 1
+             Enew => NewMesh % Elements(NewElCnt)
+             
+             IF(DoAllocElem) THEN
+               Enew = Eold
+               Enew % ElementIndex = NewElCnt
+               CALL AllocateVector( Enew % NodeIndexes, 2 )
+
+               IF(k==1) THEN
+                 Enew % NodeIndexes(1) = Eold % NodeIndexes(1)
+                 Enew % NodeIndexes(2) = Node
+               ELSE
+                 Enew % NodeIndexes(1) = Node
+                 Enew % NodeIndexes(2) = Eold % NodeIndexes(2)                 
+               END IF
+               
+               ALLOCATE( Enew % BoundaryInfo )
+               Enew % BoundaryInfo = Eold % BoundaryInfo
+               NULLIFY( Enew % BoundaryInfo % Left )
+               NULLIFY( Enew % BoundaryInfo % Right )
+             END IF
+             
 !         Search the new mesh parent element among the
 !         children of the old mesh parent element:
 !         --------------------------------------------
 
-          Found = .FALSE.
-
-          n1 = 4 
-          IF( Eparent % TYPE % ElementCode > 500 ) n1 = 8
-          
-          DO j=1,n1
-            Eptr => NewMesh % Elements( Child(ParentId,j) )
-            n = Eptr % TYPE % NumberOfNodes
-
-            ! The parent is unique! Hence it is enough to find a parent with both matches.
-            Found =  ANY( Eptr % NodeIndexes(1:n) == Enew % NodeIndexes(1) ) .AND. &
-                ANY( Eptr % NodeIndexes(1:n) == Enew % NodeIndexes(2) )
-            IF ( Found ) EXIT
-          END DO
-
-
-          Enew % BoundaryInfo % Left => Eptr
-!
-!         2nd new element
-!         ---------------
-          NewElCnt = NewElCnt + 1
-          Enew => NewMesh % Elements(NewElCnt)
-          Enew = Eold
-          Enew % ElementIndex = NewElCnt
-          CALL AllocateVector( Enew % NodeIndexes, 2 )
-          Enew % NodeIndexes(1) = Node
-          Enew % NodeIndexes(2) = Eold % NodeIndexes(2)
-          ALLOCATE( Enew % BoundaryInfo )
-          Enew % BoundaryInfo = Eold % BoundaryInfo
-          NULLIFY( Enew % BoundaryInfo % Left )
-          NULLIFY( Enew % BoundaryInfo % Right )
-!
-!         Search the new mesh parent element among the
-!         children of the old mesh parent element:
-!         --------------------------------------------
-                    
-          DO j=1,n1
-             Eptr => NewMesh % Elements( Child(ParentId,j) )
-             n = Eptr % TYPE % NumberOfNodes
-             Found =  ANY( Eptr % NodeIndexes(1:n) == Enew % NodeIndexes(1) ) .AND. &
-                 ANY( Eptr % NodeIndexes(1:n) == Enew % NodeIndexes(2) )
-             IF ( Found ) EXIT
-          END DO
-          Enew % BoundaryInfo % Left => Eptr
-
-       CASE(3)
+             Found = .FALSE.                          
+             DO j=1,MaxSplit
+               IF(Child(ParentId,j)==0) CYCLE
+               Eptr => NewMesh % Elements( Child(ParentId,j) )
+               n = Eptr % TYPE % NumberOfNodes
+               
+               ! The parent is unique! Hence it is enough to find a parent with both matches.
+               Found =  ANY( Eptr % NodeIndexes(1:n) == Enew % NodeIndexes(1) ) .AND. &
+                   ANY( Eptr % NodeIndexes(1:n) == Enew % NodeIndexes(2) )
+               IF ( Found ) EXIT
+             END DO
+             
+             IF(DoAllocElem) THEN 
+               Enew % BoundaryInfo % Left => Eptr
+             ELSE
+               Enew % BoundaryInfo % Right => Eptr
+             END IF
+           END DO
+           
+        CASE(3)
 !
 !         Trias:
 !         ======
 !
 !         On which face of the parent element are we ?
 !         --------------------------------------------
-          EoldNodes(1:3) = Eold % NodeIndexes(1:3)
-          CALL sort( 3, EoldNodes )
-
           DO FaceNumber = 1, SIZE( Eparent % FaceIndexes )
-             Face => Mesh % Faces( Eparent % FaceIndexes(FaceNumber) )
-             FaceNodes(1:3) = Face % NodeIndexes(1:3)
-             CALL sort( 3, FaceNodes )
-
-             IF ( EoldNodes(1) == FaceNodes(1) .AND. &
-                  EoldNodes(2) == FaceNodes(2) .AND. &
-                  EoldNodes(3) == FaceNodes(3) ) EXIT
-
+            Face => Mesh % Faces( Eparent % FaceIndexes(FaceNumber) )
+            n1 = 0
+            DO n2 = 1, 3
+              IF( ANY(Face % NodeIndexes == Eold % NodeIndexes(n2)) ) n1 = n1+1
+            END DO
+            IF(n1 == 3) EXIT
           END DO
+          IF(n1 < 3) THEN
+            CALL Fatal(Caller,'Could not find face in parent element!')
+          END IF
+
 !
 !         Then, what are the edges on this face?
 !         --------------------------------------
-!
-!         First edge:
-!         -----------
-          EoldNodes(1) = MIN( Eold % NodeIndexes(1), Eold % NodeIndexes(2) )
-          EoldNodes(2) = MAX( Eold % NodeIndexes(1), Eold % NodeIndexes(2) )
-          DO Edge1 = 1,SIZE(Eparent % EdgeIndexes)
-             Edge => Mesh % Edges( Eparent % EdgeIndexes(Edge1) )
-             EdgeNodes(1) = MIN( Edge % NodeIndexes(1), Edge % NodeIndexes(2) )
-             EdgeNodes(2) = MAX( Edge % NodeIndexes(1), Edge % NodeIndexes(2) )
-             IF ( EoldNodes(1) == EdgeNodes(1) .AND. &
-                  EoldNodes(2) == EdgeNodes(2) ) EXIT
+          ! This is quite quite a bit simpler than the original. 
+          Edge1=0; Edge2=0; Edge3=0
+          DO n1 = 1,SIZE(Eparent % EdgeIndexes)
+            Edge => Mesh % Edges( Eparent % EdgeIndexes(n1) )
+            IF(ANY(Eold % NodeIndexes(1) == Edge % NodeIndexes(1:2)) .AND. &
+                ANY(Eold % NodeIndexes(2) == Edge % NodeIndexes(1:2)) ) Edge1 = n1
+            IF(ANY(Eold % NodeIndexes(2) == Edge % NodeIndexes(1:2)) .AND. &
+                ANY(Eold % NodeIndexes(3) == Edge % NodeIndexes(1:2)) ) Edge2 = n1
+            IF(ANY(Eold % NodeIndexes(3) == Edge % NodeIndexes(1:2)) .AND. &
+                ANY(Eold % NodeIndexes(1) == Edge % NodeIndexes(1:2)) ) Edge3 = n1
           END DO
-
-!         Second edge:
-!         ------------
-          EoldNodes(1) = MIN( Eold % NodeIndexes(2), Eold % NodeIndexes(3) )
-          EoldNodes(2) = MAX( Eold % NodeIndexes(2), Eold % NodeIndexes(3) )
-          DO Edge2 = 1,SIZE(Eparent % EdgeIndexes)
-             Edge => Mesh % Edges( Eparent % EdgeIndexes(Edge2) )
-             EdgeNodes(1) = MIN( Edge % NodeIndexes(1), Edge % NodeIndexes(2) )
-             EdgeNodes(2) = MAX( Edge % NodeIndexes(1), Edge % NodeIndexes(2) )
-             IF ( EoldNodes(1) == EdgeNodes(1) .AND. &
-                  EoldNodes(2) == EdgeNodes(2) ) EXIT
-          END DO
-
-!         Third edge:
-!         -----------
-          EoldNodes(1) = MIN( Eold % NodeIndexes(3), Eold % NodeIndexes(1) )
-          EoldNodes(2) = MAX( Eold % NodeIndexes(3), Eold % NodeIndexes(1) )
-          DO Edge3 = 1,SIZE(Eparent % EdgeIndexes)
-             Edge => Mesh % Edges( Eparent % EdgeIndexes(Edge3) )
-             EdgeNodes(1) = MIN( Edge % NodeIndexes(1), Edge % NodeIndexes(2) )
-             EdgeNodes(2) = MAX( Edge % NodeIndexes(1), Edge % NodeIndexes(2) )
-             IF ( EoldNodes(1) == EdgeNodes(1) .AND. &
-                  EoldNodes(2) == EdgeNodes(2) ) EXIT
-          END DO
-!
+          IF(ANY([Edge1,Edge2,Edge3] == 0)) CALL Fatal(Caller,'Could not find edge!')
+          
 !         index of the old face and edge centerpoints
 !         in the new mesh nodal arrays:
 !         ----------------------------------------
@@ -21873,196 +21797,100 @@ END SUBROUTINE FindNeighbourNodes
 !
 !         1st new element
 !         ---------------
-          NewElCnt = NewElCnt + 1
-          Enew => NewMesh % Elements(NewElCnt)
-          Enew = Eold
-          Enew % ElementIndex = NewElCnt
-          CALL AllocateVector( Enew % NodeIndexes, 3 )
-          Enew % NodeIndexes(1) = Eold % NodeIndexes(1)
-          Enew % NodeIndexes(2) = Node12
-          Enew % NodeIndexes(3) = Node31
-          ALLOCATE( Enew % BoundaryInfo )
-          Enew % BoundaryInfo = Eold % BoundaryInfo
-          NULLIFY( Enew % BoundaryInfo % Left )
-          NULLIFY( Enew % BoundaryInfo % Right )
-!
-!         Search the new mesh parent element among the
-!         children of the old mesh parent element:
-!         --------------------------------------------
-          DO j=1,8
-             Eptr => NewMesh % Elements( Child(ParentId,j) )
-             n = Eptr % TYPE % NumberOfNodes
-             n3 = 0 ! Count matches (metodo stupido)
-             DO n1 = 1,3
-               IF( ANY(Enew % NodeIndexes(n1) == Eptr % NodeIndexes(1:n)) ) n3 = n3+1
-             END DO
-             IF ( n3 > 2 ) EXIT
-          END DO
-          IF( n3 < 3 ) CALL Error( 'SplitMeshEqual', 'Parent element not found' )
-          Enew % BoundaryInfo % Left => Eptr
-!
-!         2nd new element
-!         ---------------
-          NewElCnt = NewElCnt + 1
-          Enew => NewMesh % Elements(NewElCnt)
-          Enew = Eold
-          Enew % ElementIndex = NewElCnt
-          CALL AllocateVector( Enew % NodeIndexes, 3 )
-          Enew % NodeIndexes(1) = Node12
-          Enew % NodeIndexes(2) = Eold % NodeIndexes(2)
-          Enew % NodeIndexes(3) = Node23
-          ALLOCATE( Enew % BoundaryInfo )
-          Enew % BoundaryInfo = Eold % BoundaryInfo
-          NULLIFY( Enew % BoundaryInfo % Left )
-          NULLIFY( Enew % BoundaryInfo % Right )
-!
-!         Search the new mesh parent element among the
-!         children of the old mesh parent element:
-!         --------------------------------------------
-          DO j=1,8
-             Eptr => NewMesh % Elements( Child(ParentId,j) )
-             n = Eptr % TYPE % NumberOfNodes
-             n3 = 0 ! Count matches (metodo stupido)
-             DO n1 = 1,3
-               IF( ANY( Enew % NodeIndexes(n1) == Eptr % NodeIndexes(1:n)) ) n3 = n3+1
-             END DO
-             IF ( n3 > 2 ) EXIT
-          END DO
-          IF( n3 < 3 ) CALL Error( 'SplitMeshEqual', 'Parent element not found' )
-          Enew % BoundaryInfo % Left => Eptr
-!
-!         3rd new element
-!         ---------------
-          NewElCnt = NewElCnt + 1
-          Enew => NewMesh % Elements(NewElCnt)
-          Enew = Eold
-          Enew % ElementIndex = NewElCnt
-          CALL AllocateVector( Enew % NodeIndexes, 3 )
-          Enew % NodeIndexes(1) = Node12
-          Enew % NodeIndexes(2) = Node23
-          Enew % NodeIndexes(3) = Node31
-          ALLOCATE( Enew % BoundaryInfo )
-          Enew % BoundaryInfo = Eold % BoundaryInfo
-          NULLIFY( Enew % BoundaryInfo % Left )
-          NULLIFY( Enew % BoundaryInfo % Right )
-!
-!         Search the new mesh parent element among the
-!         children of the old mesh parent element:
-!         --------------------------------------------
-          DO j=1,8
-             Eptr => NewMesh % Elements( Child(ParentId,j) )
-             n = Eptr % TYPE % NumberOfNodes
-             n3 = 0 ! Count matches (metodo stupido)
-             DO n1 = 1,3
-               IF( ANY(Enew % NodeIndexes(n1) == Eptr % NodeIndexes(1:n)) ) n3 = n3+1
-             END DO
-             IF ( n3 > 2 ) EXIT
-          END DO
-          IF( n3 < 3 ) CALL Error( 'SplitMeshEqual', 'Parent element not found' )
-          Enew % BoundaryInfo % Left => Eptr
-!
-!         4th new element
-!         ---------------
-          NewElCnt = NewElCnt + 1
-          Enew => NewMesh % Elements(NewElCnt)
-          Enew = Eold
-          Enew % ElementIndex = NewElCnt
-          CALL AllocateVector( Enew % NodeIndexes, 3 )
-          Enew % NodeIndexes(1) = Node31
-          Enew % NodeIndexes(2) = Node23
-          Enew % NodeIndexes(3) = Eold % NodeIndexes(3)
-          ALLOCATE( Enew % BoundaryInfo )
-          Enew % BoundaryInfo = Eold % BoundaryInfo
-          NULLIFY( Enew % BoundaryInfo % Left )
-          NULLIFY( Enew % BoundaryInfo % Right )
-!
-!         Search the new mesh parent element among the
-!         children of the old mesh parent element:
-!         --------------------------------------------
-          DO j=1,8
-             Eptr => NewMesh % Elements( Child(ParentId,j) )
-             n = Eptr % TYPE % NumberOfNodes
-             n3 = 0 ! Count matches (metodo stupido)
-             DO n1 = 1,3
-               IF( ANY(Enew % NodeIndexes(n1) == Eptr % NodeIndexes(1:n)) ) n3 = n3+1
-             END DO
-             IF ( n3 > 2 ) EXIT
-          END DO
-          IF( n3 < 3 ) CALL Error( 'SplitMeshEqual', 'Parent element not found' )
-          Enew % BoundaryInfo % Left => Eptr
+          IF(.NOT. DoAllocElem) THEN
+            NewElCnt = NewElCnt - 4
+          END IF
 
+          DO k=1,4
+            NewElCnt = NewElCnt + 1
+            Enew => NewMesh % Elements(NewElCnt)
+
+            IF(DoAllocElem) THEN
+              Enew = Eold
+              Enew % ElementIndex = NewElCnt
+              CALL AllocateVector( Enew % NodeIndexes, 3 )
+
+              ! Topology of k:th element
+              IF(k==1) THEN
+                Enew % NodeIndexes(1) = Eold % NodeIndexes(1)
+                Enew % NodeIndexes(2) = Node12
+                Enew % NodeIndexes(3) = Node31
+              ELSE IF(k==2) THEN
+                Enew % NodeIndexes(1) = Node12
+                Enew % NodeIndexes(2) = Eold % NodeIndexes(2)
+                Enew % NodeIndexes(3) = Node23                
+              ELSE IF(k==3) THEN
+                Enew % NodeIndexes(1) = Node12
+                Enew % NodeIndexes(2) = Node23
+                Enew % NodeIndexes(3) = Node31
+              ELSE
+                Enew % NodeIndexes(1) = Node31
+                Enew % NodeIndexes(2) = Node23
+                Enew % NodeIndexes(3) = Eold % NodeIndexes(3)                
+              END IF
+
+              ALLOCATE( Enew % BoundaryInfo )
+              Enew % BoundaryInfo = Eold % BoundaryInfo
+              NULLIFY( Enew % BoundaryInfo % Left )
+              NULLIFY( Enew % BoundaryInfo % Right )
+            END IF
+            
+            !         Search the new mesh parent element among the
+            !         children of the old mesh parent element:
+            !         --------------------------------------------
+            DO j=1,MaxSplit
+              IF(Child(ParentId,j)==0) CYCLE
+              Eptr => NewMesh % Elements( Child(ParentId,j) )
+              n = Eptr % TYPE % NumberOfNodes
+              n3 = 0 ! Count matches (metodo stupido)
+              DO n1 = 1,3
+                IF( ANY(Enew % NodeIndexes(n1) == Eptr % NodeIndexes(1:n)) ) n3 = n3+1
+              END DO
+              IF ( n3 == 3 ) EXIT
+            END DO
+            IF( n3 < 3 ) CALL Fatal( Caller, 'Parent element not found' )
+
+            IF(DoAllocElem) THEN 
+              Enew % BoundaryInfo % Left => Eptr
+            ELSE
+              Enew % BoundaryInfo % Right => Eptr
+            END IF
+          END DO
+                  
        CASE(4)
 !
 !         Quads:
 !         ======
 !
-!         On which face of the parent element are we ?
-!         --------------------------------------------
-          EoldNodes(1:4) = Eold % NodeIndexes(1:4)
-          CALL sort( 4, EoldNodes )
-
+!         On which face of the parent element are we? "FaceNumber" is what we get here. 
+!         -----------------------------------------------------------------------------
           DO FaceNumber = 1, SIZE( Eparent % FaceIndexes )
              Face => Mesh % Faces( Eparent % FaceIndexes(FaceNumber) )
-             FaceNodes(1:4) = Face % NodeIndexes(1:4)
-             CALL sort( 4, FaceNodes )
-
-             IF ( EoldNodes(1) == FaceNodes(1) .AND. &
-                  EoldNodes(2) == FaceNodes(2) .AND. &
-                  EoldNodes(3) == FaceNodes(3) .AND. &
-                  EoldNodes(4) == FaceNodes(4) ) EXIT
-
-          END DO
-
+             n1 = 0
+             DO n2 = 1, 4
+               IF( ANY(Face % NodeIndexes == Eold % NodeIndexes(n2)) ) n1 = n1+1
+             END DO
+             IF(n1 == 4) EXIT
+           END DO
+           IF(n1 < 4) THEN
+             CALL Fatal(Caller,'Could not find face in parent element!')
+           END IF
+             
 !         Then, what are the edges on this face?
 !         --------------------------------------
-!
-!         First edge:
-!         -----------
-          EoldNodes(1) = MIN( Eold % NodeIndexes(1), Eold % NodeIndexes(2) )
-          EoldNodes(2) = MAX( Eold % NodeIndexes(1), Eold % NodeIndexes(2) )
-          DO Edge1 = 1,SIZE(Eparent % EdgeIndexes)
-             Edge => Mesh % Edges( Eparent % EdgeIndexes(Edge1) )
-             EdgeNodes(1) = MIN( Edge % NodeIndexes(1), Edge % NodeIndexes(2) )
-             EdgeNodes(2) = MAX( Edge % NodeIndexes(1), Edge % NodeIndexes(2) )
-             IF ( EoldNodes(1) == EdgeNodes(1) .AND. &
-                  EoldNodes(2) == EdgeNodes(2) ) EXIT
+          Edge1=0; Edge2=0; Edge3=0; Edge4=0
+          DO n1 = 1,SIZE(Eparent % EdgeIndexes)
+            Edge => Mesh % Edges( Eparent % EdgeIndexes(n1) )
+            IF(ANY(Eold % NodeIndexes(1) == Edge % NodeIndexes(1:2)) .AND. &
+                ANY(Eold % NodeIndexes(2) == Edge % NodeIndexes(1:2)) ) Edge1 = n1
+            IF(ANY(Eold % NodeIndexes(2) == Edge % NodeIndexes(1:2)) .AND. &
+                ANY(Eold % NodeIndexes(3) == Edge % NodeIndexes(1:2)) ) Edge2 = n1
+            IF(ANY(Eold % NodeIndexes(3) == Edge % NodeIndexes(1:2)) .AND. &
+                ANY(Eold % NodeIndexes(4) == Edge % NodeIndexes(1:2)) ) Edge3 = n1
+            IF(ANY(Eold % NodeIndexes(4) == Edge % NodeIndexes(1:2)) .AND. &
+                ANY(Eold % NodeIndexes(1) == Edge % NodeIndexes(1:2)) ) Edge4 = n1
           END DO
-
-!         Second edge:
-!         ------------
-          EoldNodes(1) = MIN( Eold % NodeIndexes(2), Eold % NodeIndexes(3) )
-          EoldNodes(2) = MAX( Eold % NodeIndexes(2), Eold % NodeIndexes(3) )
-          DO Edge2 = 1,SIZE(Eparent % EdgeIndexes)
-             Edge => Mesh % Edges( Eparent % EdgeIndexes(Edge2) )
-             EdgeNodes(1) = MIN( Edge % NodeIndexes(1), Edge % NodeIndexes(2) )
-             EdgeNodes(2) = MAX( Edge % NodeIndexes(1), Edge % NodeIndexes(2) )
-             IF ( EoldNodes(1) == EdgeNodes(1) .AND. &
-                  EoldNodes(2) == EdgeNodes(2) ) EXIT
-          END DO
-
-!         Third edge:
-!         -----------
-          EoldNodes(1) = MIN( Eold % NodeIndexes(3), Eold % NodeIndexes(4) )
-          EoldNodes(2) = MAX( Eold % NodeIndexes(3), Eold % NodeIndexes(4) )
-          DO Edge3 = 1,SIZE(Eparent % EdgeIndexes)
-             Edge => Mesh % Edges( Eparent % EdgeIndexes(Edge3) )
-             EdgeNodes(1) = MIN( Edge % NodeIndexes(1), Edge % NodeIndexes(2) )
-             EdgeNodes(2) = MAX( Edge % NodeIndexes(1), Edge % NodeIndexes(2) )
-             IF ( EoldNodes(1) == EdgeNodes(1) .AND. &
-                  EoldNodes(2) == EdgeNodes(2) ) EXIT
-          END DO
-
-!         Fourth edge:
-!         -----------
-          EoldNodes(1) = MIN( Eold % NodeIndexes(4), Eold % NodeIndexes(1) )
-          EoldNodes(2) = MAX( Eold % NodeIndexes(4), Eold % NodeIndexes(1) )
-          DO Edge4 = 1,SIZE(Eparent % EdgeIndexes)
-             Edge => Mesh % Edges( Eparent % EdgeIndexes(Edge4) )
-             EdgeNodes(1) = MIN( Edge % NodeIndexes(1), Edge % NodeIndexes(2) )
-             EdgeNodes(2) = MAX( Edge % NodeIndexes(1), Edge % NodeIndexes(2) )
-             IF ( EoldNodes(1) == EdgeNodes(1) .AND. &
-                  EoldNodes(2) == EdgeNodes(2) ) EXIT
-          END DO
+          IF(ANY([Edge1,Edge2,Edge3,Edge4] == 0)) CALL Fatal(Caller,'Could not find edge!')
 !
 !         index of the old face and edge centerpoints
 !         in the new mesh nodal arrays:
@@ -22075,128 +21903,70 @@ END SUBROUTINE FindNeighbourNodes
 !
 !         1st new element
 !         ---------------
-          NewElCnt = NewElCnt + 1
-          Enew => NewMesh % Elements(NewElCnt)
-          Enew = Eold
-          Enew % ElementIndex = NewElCnt
-          CALL AllocateVector( Enew % NodeIndexes, 4 )
-          Enew % NodeIndexes(1) = Eold % NodeIndexes(1)
-          Enew % NodeIndexes(2) = Node12
-          Enew % NodeIndexes(3) = Node
-          Enew % NodeIndexes(4) = Node41
-          ALLOCATE( Enew % BoundaryInfo )
-          Enew % BoundaryInfo = Eold % BoundaryInfo
-          NULLIFY( Enew % BoundaryInfo % Left )
-          NULLIFY( Enew % BoundaryInfo % Right )
-!
+          IF(.NOT. DoAllocElem) NewElCnt = NewElCnt - 4
+
+          DO k=1,4          
+            NewElCnt = NewElCnt + 1
+            Enew => NewMesh % Elements(NewElCnt)
+
+            IF( DoAllocElem ) THEN
+              Enew = Eold
+              Enew % ElementIndex = NewElCnt
+              CALL AllocateVector( Enew % NodeIndexes, 4 )
+              IF(k==1) THEN
+                Enew % NodeIndexes(1) = Eold % NodeIndexes(1)
+                Enew % NodeIndexes(2) = Node12
+                Enew % NodeIndexes(3) = Node
+                Enew % NodeIndexes(4) = Node41
+              ELSE IF(k==2) THEN
+                Enew % NodeIndexes(1) = Node12
+                Enew % NodeIndexes(2) = Eold % NodeIndexes(2)
+                Enew % NodeIndexes(3) = Node23
+                Enew % NodeIndexes(4) = Node
+              ELSE IF(k==3) THEN
+                Enew % NodeIndexes(1) = Node41
+                Enew % NodeIndexes(2) = Node
+                Enew % NodeIndexes(3) = Node34
+                Enew % NodeIndexes(4) = Eold % NodeIndexes(4)
+              ELSE
+                Enew % NodeIndexes(1) = Node
+                Enew % NodeIndexes(2) = Node23
+                Enew % NodeIndexes(3) = Eold % NodeIndexes(3)
+                Enew % NodeIndexes(4) = Node34                
+              END IF                
+              ALLOCATE( Enew % BoundaryInfo )
+              Enew % BoundaryInfo = Eold % BoundaryInfo
+              NULLIFY( Enew % BoundaryInfo % Left )
+              NULLIFY( Enew % BoundaryInfo % Right )
+            END IF
+
+            
 !         Search the new mesh parent element among the
 !         children of the old mesh parent element:
 !         --------------------------------------------
-          DO j=1,8
-             Eptr => NewMesh % Elements( Child(ParentId,j) )
-             n = Eptr % TYPE % NumberOfNodes
-             n3 = 0 ! Count matches (metodo stupido)
-             DO n1 = 1,4
-               IF( ANY( Enew % NodeIndexes(n1) == Eptr % NodeIndexes(1:n) ) ) n3 = n3+1
-             END DO
-             IF ( n3 > 2 ) EXIT
+            DO j=1,MaxSplit
+              IF(Child(ParentId,j)==0) CYCLE
+              Eptr => NewMesh % Elements( Child(ParentId,j) )
+              n = Eptr % TYPE % NumberOfNodes
+              n3 = 0 ! Count matches (metodo stupido)
+              DO n1 = 1,4
+                IF( ANY( Enew % NodeIndexes(n1) == Eptr % NodeIndexes(1:n) ) ) n3 = n3+1
+              END DO
+              IF ( n3 > 2 ) EXIT
+            END DO
+            IF( n3 < 3 )  CALL Error( Caller, 'Parent element not found' )
+            
+            IF(DoAllocElem) THEN 
+              Enew % BoundaryInfo % Left => Eptr
+            ELSE
+              Enew % BoundaryInfo % Right => Eptr
+            END IF
           END DO
-          IF( n3 < 3 )  CALL Error( 'SplitMeshEqual', 'Parent element not found' )
-          Enew % BoundaryInfo % Left => Eptr
-!
-!         2nd new element
-!         ---------------
-          NewElCnt = NewElCnt + 1
-          Enew => NewMesh % Elements(NewElCnt)
-          Enew = Eold
-          Enew % ElementIndex = NewElCnt
-          CALL AllocateVector( Enew % NodeIndexes, 4 )
-          Enew % NodeIndexes(1) = Node12
-          Enew % NodeIndexes(2) = Eold % NodeIndexes(2)
-          Enew % NodeIndexes(3) = Node23
-          Enew % NodeIndexes(4) = Node
-          ALLOCATE( Enew % BoundaryInfo )
-          Enew % BoundaryInfo = Eold % BoundaryInfo
-          NULLIFY( Enew % BoundaryInfo % Left )
-          NULLIFY( Enew % BoundaryInfo % Right )
-!
-!         Search the new mesh parent element among the
-!         children of the old mesh parent element:
-!         --------------------------------------------
-          DO j=1,8
-             Eptr => NewMesh % Elements( Child(ParentId,j) )
-             n = Eptr % TYPE % NumberOfNodes
-             n3 = 0 ! Count matches (metodo stupido)
-             DO n1 = 1,4
-               IF( ANY(Enew % NodeIndexes(n1) == Eptr % NodeIndexes(1:n)) ) n3 = n3+1
-             END DO
-             IF ( n3 > 2 ) EXIT
-          END DO
-          IF( n3 < 3 ) CALL Error( 'SplitMeshEqual', 'Parent element not found' )
-          Enew % BoundaryInfo % Left => Eptr
-!
-!         3rd new element
-!         ---------------
-          NewElCnt = NewElCnt + 1
-          Enew => NewMesh % Elements(NewElCnt)
-          Enew = Eold
-          Enew % ElementIndex = NewElCnt
-          CALL AllocateVector( Enew % NodeIndexes, 4 )
-          Enew % NodeIndexes(1) = Node41
-          Enew % NodeIndexes(2) = Node
-          Enew % NodeIndexes(3) = Node34
-          Enew % NodeIndexes(4) = Eold % NodeIndexes(4)
-          ALLOCATE( Enew % BoundaryInfo )
-          Enew % BoundaryInfo = Eold % BoundaryInfo
-          NULLIFY( Enew % BoundaryInfo % Left )
-          NULLIFY( Enew % BoundaryInfo % Right )
-!
-!         Search the new mesh parent element among the
-!         children of the old mesh parent element:
-!         --------------------------------------------
-          DO j=1,8
-             Eptr => NewMesh % Elements( Child(ParentId,j) )
-             n = Eptr % TYPE % NumberOfNodes
-             n3 = 0 ! Count matches (metodo stupido)
-             DO n1 = 1,4
-               IF( ANY( Enew % NodeIndexes(n1) == Eptr % NodeIndexes(1:n)) ) n3 = n3+1
-             END DO
-             IF ( n3 > 2 ) EXIT
-          END DO
-          IF( n3 < 3 ) CALL Error( 'SplitMeshEqual', 'Parent element not found' )
-          Enew % BoundaryInfo % Left => Eptr
-!
-!         4th new element
-!         ---------------
-          NewElCnt = NewElCnt + 1
-          Enew => NewMesh % Elements(NewElCnt)
-          Enew = Eold
-          Enew % ElementIndex = NewElCnt
-          CALL AllocateVector( Enew % NodeIndexes, 4 )
-          Enew % NodeIndexes(1) = Node
-          Enew % NodeIndexes(2) = Node23
-          Enew % NodeIndexes(3) = Eold % NodeIndexes(3)
-          Enew % NodeIndexes(4) = Node34
-          ALLOCATE( Enew % BoundaryInfo )
-          Enew % BoundaryInfo = Eold % BoundaryInfo
-          NULLIFY( Enew % BoundaryInfo % Left )
-          NULLIFY( Enew % BoundaryInfo % Right )
-!
-!         Search the new mesh parent element among the
-!         children of the old mesh parent element:
-!         --------------------------------------------
-          DO j=1,8
-             Eptr => NewMesh % Elements( Child(ParentId,j) )
-             n = Eptr % TYPE % NumberOfNodes
-             n3 = 0 ! Count matches (metodo stupido)
-             DO n1 = 1,4
-               IF( ANY(Enew % NodeIndexes(n1) == Eptr % NodeIndexes(1:n)) ) n3 = n3+1
-             END DO
-             IF ( n3 > 2 ) EXIT
-          END DO
-          IF( n3 < 3 ) CALL Error( 'SplitMeshEqual', 'Parent element not found' )
-          Enew % BoundaryInfo % Left => Eptr
-       END SELECT
+          
+        END SELECT
+
+        DoAllocElem = .FALSE.
+      END DO
     END DO
 
 !
@@ -22245,13 +22015,13 @@ END SUBROUTINE FindNeighbourNodes
       Enew % BubbleIndexes => NULL()
     END DO
 
-    CALL Info( 'SplitMeshEqual', '******** New mesh ********', Level=6 )
+    CALL Info( Caller, '******** New mesh ********', Level=6 )
     WRITE( Message, * ) 'Nodes             : ',NewMesh % NumberOfNodes
-    CALL Info( 'SplitMeshEqual', Message, Level=6 )
+    CALL Info( Caller, Message, Level=6 )
     WRITE( Message, * ) 'Bulk elements     : ',NewMesh % NumberOfBulkElements
-    CALL Info( 'SplitMeshEqual', Message, Level=6 )
+    CALL Info( Caller, Message, Level=6 )
     WRITE( Message, * ) 'Boundary elements : ',NewMesh % NumberOfBoundaryElements
-    CALL Info( 'SplitMeshEqual', Message, Level=6 )
+    CALL Info( Caller, Message, Level=6 )
 
 
     ! Information of the new system size, also in parallel
@@ -22266,23 +22036,25 @@ END SUBROUTINE FindNeighbourNodes
     IF( .FALSE. .AND. Parallel ) THEN
       CALL MPI_ALLREDUCE(ParTmp,ParSizes,6,MPI_INTEGER,MPI_SUM,ELMER_COMM_WORLD,ierr)
 
-      CALL Info('SplitMeshEqual','Information on parallel mesh sizes')
+      CALL Info(Caller,'Information on parallel mesh sizes')
       WRITE ( Message,'(A,I0,A)') 'Initial mesh has ',ParSizes(1),' nodes'
-      CALL Info('SplitMeshEqual',Message)
+      CALL Info(Caller,Message)
       WRITE ( Message,'(A,I0,A)') 'Initial mesh has ',ParSizes(2),' bulk elements'
-      CALL Info('SplitMeshEqual',Message)
+      CALL Info(Caller,Message)
       WRITE ( Message,'(A,I0,A)') 'Initial mesh has ',ParSizes(3),' boundary elements'
-      CALL Info('SplitMeshEqual',Message)
+      CALL Info(Caller,Message)
       WRITE ( Message,'(A,I0,A)') 'New mesh has ',ParSizes(4),' nodes'
-      CALL Info('SplitMeshEqual',Message)
+      CALL Info(Caller,Message)
       WRITE ( Message,'(A,I0,A)') 'New mesh has ',ParSizes(5),' bulk elements'
-      CALL Info('SplitMeshEqual',Message)
+      CALL Info(Caller,Message)
       WRITE ( Message,'(A,I0,A)') 'New mesh has ',ParSizes(6),' boundary elements'
-      CALL Info('SplitMeshEqual',Message)
+      CALL Info(Caller,Message)
     END IF
 
 
-    CALL CheckTimer('SplitMeshEqual',Delete=.TRUE.)
+
+    
+    CALL CheckTimer(Caller,Delete=.TRUE.)
 
 !
 !   Update structures needed for parallel execution:
@@ -22296,11 +22068,11 @@ END SUBROUTINE FindNeighbourNodes
 !   ---------
     DEALLOCATE( Child )
     IF(.NOT.EdgesPresent) THEN
-      CALL Info('SplitMeshEqual','Releasing edges from the old mesh as they are not needed!',Level=20)
+      CALL Info(Caller,'Releasing edges from the old mesh as they are not needed!',Level=20)
       CALL ReleaseMeshEdgeTables( Mesh )
       CALL ReleaseMeshFaceTables( Mesh )
     ELSE
-      CALL Info('SplitMeshEqual','Generating edges in the new mesh as thet were present in the old!',Level=20)
+      CALL Info(Caller,'Generating edges in the new mesh as thet were present in the old!',Level=20)
       CALL FindMeshEdges( NewMesh )
     END IF
 
@@ -22396,36 +22168,41 @@ CONTAINS
           !----------------------------------------------------------
           DO i = 1,Mesh % NumberOfBoundaryElements
              BoundaryElement => Mesh % Elements( Mesh % NumberOfBulkElements + i )
-             Element => BoundaryElement % BoundaryInfo % Left
-             IF( .NOT.ASSOCIATED( Element ) ) &
-                  Element => BoundaryElement % BoundaryInfo % Right
-             IF( .NOT.ASSOCIATED( Element ) ) CYCLE
-             IF( .NOT.ASSOCIATED( Element % EdgeIndexes ) ) CYCLE
-             
-             ALLOCATE( list1( SIZE( BoundaryElement % NodeIndexes )))
-             list1 = BoundaryElement % NodeIndexes
-             CALL Sort( SIZE(list1), list1 )
-             
-             DO j = 1,Element % TYPE % NumberOfEdges
-                k = Element % EdgeIndexes(j)
-                Edge => Mesh % Edges(k)
-                IF( SIZE( Edge % NodeIndexes ) /= SIZE(list1) ) CYCLE
-                
-                ALLOCATE( list2( SIZE( Edge % NodeIndexes )))
-                list2 = Edge % NodeIndexes
-                CALL Sort( SIZE(list2), list2 )
 
-                Found = .TRUE.
-                DO l = 1,SIZE(list2)
+             DO right = 0, 1
+
+               IF( right == 0 ) THEN
+                 Element => BoundaryElement % BoundaryInfo % Left
+               ELSE
+                 Element => BoundaryElement % BoundaryInfo % Right
+               END IF                 
+               IF( .NOT.ASSOCIATED( Element ) ) CYCLE
+               IF( .NOT.ASSOCIATED( Element % EdgeIndexes ) ) CYCLE
+             
+               ALLOCATE( list1( SIZE( BoundaryElement % NodeIndexes )))
+               list1 = BoundaryElement % NodeIndexes
+               CALL Sort( SIZE(list1), list1 )
+
+               DO j = 1,Element % TYPE % NumberOfEdges
+                 k = Element % EdgeIndexes(j)
+                 Edge => Mesh % Edges(k)
+                 IF( SIZE( Edge % NodeIndexes ) /= SIZE(list1) ) CYCLE
+
+                 ALLOCATE( list2( SIZE( Edge % NodeIndexes )))
+                 list2 = Edge % NodeIndexes
+                 CALL Sort( SIZE(list2), list2 )
+
+                 Found = .TRUE.
+                 DO l = 1,SIZE(list2)
                    Found = Found .AND. ( list1(l)==list2(l) )
-                END DO
+                 END DO
 
-                DEALLOCATE(list2)
-                IF( Found ) InterfaceTag(k) = .FALSE.
+                 DEALLOCATE(list2)
+                 IF( Found ) InterfaceTag(k) = .FALSE.
+               END DO
+               DEALLOCATE(list1)
              END DO
-
-             DEALLOCATE(list1)
-          END DO
+           END DO
           
           ! Mark all new interface nodes and count interface edges:
           !--------------------------------------------------------
