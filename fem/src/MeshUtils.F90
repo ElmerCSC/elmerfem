@@ -21617,7 +21617,7 @@ END SUBROUTINE FindNeighbourNodes
            Eparent => Eold % BoundaryInfo % Right
          END IF
          IF(.NOT. ASSOCIATED(Eparent)) THEN
-           IF(.NOT. Eold % TYPE % ElementCode < 200 .AND. right==0) THEN
+           IF(.NOT. (Eold % TYPE % ElementCode < 200 .AND. right==0) ) THEN
              CYCLE
            END IF
          END IF
