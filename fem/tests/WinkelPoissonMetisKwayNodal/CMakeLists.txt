@@ -5,4 +5,4 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO winkel.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(WinkelPoissonMetisKwayNodal NPROCS 2 4 8 16 LABELS heateq)
+ADD_ELMER_TEST(WinkelPoissonMetisKwayNodal NPROCS 2 4 8 16 LABELS heateq meshlevels)
