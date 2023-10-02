@@ -1,6 +1,6 @@
 ! A reference case where a cantilever is subject to a constant pressure load f.
 !
-! For parameters EI/(GA) = eps we expect the deflection and the rotation at the 
+! For parameters EI/(GAL^2) = eps we expect the deflection and the rotation at the 
 ! free end to be w(L) = L^4 f (1 + 4 eps)/(8 EI) and theta(L) = L^3 f/(6 EI).
 ! Here the SaveScalars module is set to output the variable values at the end. 
 
