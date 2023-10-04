@@ -1391,7 +1391,6 @@
        CALL ListAddString(Params,'Output File Name',str(1:k-1),.FALSE.)
        CALL ListAddString(Params,'Exec Solver','after saving')
        CALL ListAddLogical(Params,'Save Geometry IDs',.TRUE.)
-       CALL ListAddLogical(Params,'Check Simulation Keywords',.TRUE.)
        CALL ListAddLogical(Params,'No Matrix',.TRUE.)
        CALL ListAddNewString(Params,'Variable','-global vtu_internal_dummy')
        

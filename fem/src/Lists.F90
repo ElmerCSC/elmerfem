@@ -3069,6 +3069,12 @@ CONTAINS
        ptrb % Name = name
        ptrb % Namelen = lentrim( name )
      END IF
+
+#ifdef DEVEL_LISTCOUNTER
+     IF( ASSOCIATED( ptr ) ) THEN
+       ptr % Counter = ptr % Counter + 1
+     END IF
+#endif
      
    END SUBROUTINE ListCopyItem
 
@@ -3076,11 +3082,12 @@ CONTAINS
 !> Checks two lists for a given keyword. If it is given then 
 !> copy it as it is to the 2nd list.
 !------------------------------------------------------------------------------
-   SUBROUTINE ListCompareAndCopy( list, listb, name, Found )
+   SUBROUTINE ListCompareAndCopy( list, listb, name, Found, remove )
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: list, listb
      CHARACTER(LEN=*) :: name
      LOGICAL :: Found
+     LOGICAL, OPTIONAL :: remove
 !------------------------------------------------------------------------------
      TYPE(ValueListEntry_t), POINTER :: ptr
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
@@ -3105,6 +3112,11 @@ CONTAINS
      CALL ListCopyItem( ptr, listb ) 
      Found = .TRUE.
 
+     IF( PRESENT(remove) ) THEN
+       IF( remove ) CALL ListRemove( list, name)
+     END IF
+
+     
    END SUBROUTINE ListCompareAndCopy
  
 
@@ -3141,7 +3153,7 @@ CONTAINS
        END IF
        ptr => ptr % Next
      END DO
-
+     
      IF( ncopy > 0 ) THEN
        CALL Info('ListCopyPrefixedKeywords',&
            'Copied '//I2S(ncopy)//' keywords with prefix: '//TRIM(prefix),Level=6)
