@@ -84,7 +84,7 @@ End
 
 Body Force 1
   Name = "BodyForce1"
-  Heat Source = 1.0
+!  Heat Source = 1.0
 End
 
 Boundary Condition 1
@@ -102,11 +102,13 @@ Boundary Condition 2
   Temperature Profile = Variable "Coordinate 1"
     Real MATC "0.75-0.25*tx"
 
-!  Temperature Constant = Logical True
+  External Temperature = 1.0
+  Heat Transfer Coefficient = 1.0e5
+
   Inside = Logical True
 End
 
-Solver 1 :: Reference Norm = 5.03109595E-01
+Solver 1 :: Reference Norm = 3.73147884E-01
 
 
 

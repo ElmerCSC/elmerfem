@@ -5490,6 +5490,9 @@ CONTAINS
             IF(GotMult) THEN
               CALL ListAddConstReal( ValueList,TRIM(DirName)//' Max Value', MaxMult )
             END IF
+            WRITE(Message,'(A,ES12.3)') TRIM(DirName)//' Max Value', MaxMult
+            CALL Info(Caller,Message,Level=15)
+
             NeedListMatrix = .TRUE.
           END IF
 
@@ -6050,7 +6053,7 @@ CONTAINS
           END IF
             
           CALL MoveRow( A, k, k0, 1.0_dp )
-          b(k0) = b(k0) + Coeff * b(k)
+          b(k0) = b(k0) + 1.0_dp * b(k)
 
           CALL AddToMatrixElement( A, k, k, 1.0_dp )
           CALL AddToMatrixElement( A, k, k0, -Coeff )
