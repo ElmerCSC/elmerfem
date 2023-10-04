@@ -86,6 +86,36 @@ END FUNCTION NormwiseBackwardError
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+!> The complex-valued version of the normwise relative backward error err =
+!> ||r||/(||A|| ||x|| + ||b||) where ||.|| is the supremum norm and A is
+!> assumed to be scaled such that its norm is the unity (setting Linear System
+!> Row Equilibration = Logical True). Here the residual r = b - Ax should 
+!> be known when calling this function.
+!------------------------------------------------------------------------------
+FUNCTION NormwiseBackwardError_Z( x,b,r,ipar,dpar ) RESULT(err)
+!------------------------------------------------------------------------------
+  USE ParallelUtils
+  IMPLICIT NONE
+  
+  DOUBLE COMPLEX :: x(*),b(*),r(*)
+  INTEGER :: ipar(*)
+  DOUBLE PRECISION :: dpar(*)
+  DOUBLE PRECISION :: err
+
+  INTEGER :: n
+  
+!  n = HUTI_NDIM
+  n = ipar(3)
+  
+  err = ParallelReduction(MAXVAL(ABS(r(1:n))),2) / &
+      (ParallelReduction(MAXVAL(ABS(x(1:n))),2)   + &
+      ParallelReduction(MAXVAL(ABS(b(1:n))),2))
+!------------------------------------------------------------------------------
+END FUNCTION NormwiseBackwardError_Z
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
 !> The normwise relative backward error err = ||b-Ax||/(||A|| ||x|| + ||b||) 
 !> where ||.|| is the supremum norm. The matrix norm of A is computed within
 !> this subroutine.
