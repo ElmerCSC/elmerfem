@@ -231,7 +231,7 @@ CONTAINS
       Var % PrimaryMesh => RefMesh
       IF( AdaptInit ) Hvalue = 0.0_dp
     ELSE
-      CALL AllocateVector( Hvalue, nn )
+      CALL AllocateVector( Hvalue, Solver % Matrix % NumberOfRows )
       CALL VariableAdd( RefMesh % Variables, RefMesh, Solver, &
           'Hvalue', 1, Hvalue, Output = AdaptiveOutput )       
       Var => VariableGet( RefMesh % Variables, 'Hvalue', ThisOnly=.TRUE. )      
@@ -872,8 +872,9 @@ CONTAINS
     REAL(KIND=dp) :: HValue(:)
     TYPE(Mesh_t), POINTER :: RefMesh
 
-    INTEGER :: i,j,k,n,minnei,maxnei
-    INTEGER, ALLOCATABLE :: Hcount(:)
+    INTEGER :: i,j,k,l,n,minnei,maxnei
+    INTEGER, POINTER :: p(:)
+    INTEGER, ALLOCATABLE :: Hcount(:), ip(:)
     TYPE(Matrix_t), POINTER :: A
 !------------------------------------------------------------------------------
   
@@ -883,18 +884,31 @@ CONTAINS
     Hcount = 0
     
     A => CurrentModel % Solver % Matrix
-    
+    p => CurrentModel % Solver % Variable % Perm
+
+    ALLOCATE(ip(A% NumberOfRows)); ip=0
+
+    DO i=1,RefMesh % NumberOfNodes
+      j = p(i)
+      IF(j<=0) CYCLE
+      ip(j) = i
+    END DO
+
     DO i=1,RefMesh % NumberOfNodes
       ! Deal only with interface nodes here
-      IF(A % ParallelInfo % GInterface(i)) THEN
+      j = p(i)
+      IF(A % ParallelInfo % GInterface(j)) THEN
         Hvalue(i) = 0.0_dp
         ! Go through all connected nodes
-        DO j=A % Rows(i),A % Rows(i+1)-1
-          k = A % Cols(j)
+        DO l=A % Rows(j),A % Rows(j+1)-1
+          k = A % Cols(l)
           
           ! Skip oneself and other interface nodes
-          IF(i==k) CYCLE          
           IF(A % ParallelInfo % GInterface(k)) CYCLE
+
+          k = ip(k)
+          IF(j==k) CYCLE          
+          IF(k>Refmesh % NumberOfNodes) CYCLE
           
           ! Add the observation
           Hvalue(i) = Hvalue(i) + Hvalue(k)
@@ -938,10 +952,13 @@ CONTAINS
       Hcount = -Hcount
 
       DO i=1,RefMesh % NumberOfNodes
-        IF(A % ParallelInfo % GInterface(i)) THEN
+        j = p(i)
+        IF(A % ParallelInfo % GInterface(j)) THEN
           IF(Hcount(i) == 0) THEN
-            DO j=A % Rows(i),A % Rows(i+1)-1
-              k = A % Cols(j)
+            DO l=A % Rows(j),A % Rows(j+1)-1
+              k = ip( A % Cols(l) )
+              IF( k>RefMesh % NumberOfNodes) CYCLE
+
               IF(i==k) CYCLE
               ! Use only nodes that were defined by averaging for the interface.
               IF(Hcount(k) < 0) THEN
@@ -1030,6 +1047,8 @@ CONTAINS
     
     CALL ComputeDesiredHvalue( RefMesh, ErrorLimit, HValue, NodalError, &
         hConvergence, minH, maxH, MaxChange, Coarsening ) 
+
+!   IF(ParEnv % PEs>1) CALL parallelsumvector(solver % matrix, hvalue)
     CALL ParallelAverageHvalue( RefMesh, HValue ) 
     
     Var => VariableGet( RefMesh % Variables, 'Hvalue', ThisOnly=.TRUE. )      
