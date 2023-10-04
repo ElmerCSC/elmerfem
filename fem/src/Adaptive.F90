@@ -907,8 +907,7 @@ CONTAINS
           IF(A % ParallelInfo % GInterface(k)) CYCLE
 
           k = ip(k)
-          IF(j==k) CYCLE          
-          IF(k>Refmesh % NumberOfNodes) CYCLE
+          IF(k<=0 .OR. i==k) CYCLE          
           
           ! Add the observation
           Hvalue(i) = Hvalue(i) + Hvalue(k)
@@ -957,7 +956,7 @@ CONTAINS
           IF(Hcount(i) == 0) THEN
             DO l=A % Rows(j),A % Rows(j+1)-1
               k = ip( A % Cols(l) )
-              IF( k>RefMesh % NumberOfNodes) CYCLE
+              IF( k<=0 ) CYCLE
 
               IF(i==k) CYCLE
               ! Use only nodes that were defined by averaging for the interface.
