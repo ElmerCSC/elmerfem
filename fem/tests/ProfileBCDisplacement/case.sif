@@ -1,0 +1,117 @@
+!---------------------------------------------------------------------
+! Solves an elasticity equation with given force when the displacement
+! profile is known but the amplitude is not.
+!
+! P.R. / 4.10.2023
+!--------------------------------------------------------------------
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "square"
+  Include Path ""
+  Results Directory "results"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+  Post File = "case.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equation1"
+  Active Solvers(1) = 1
+End
+
+
+
+Solver 1
+  Equation = "ElasticSolve"
+  Variable = -dofs 2 Displacement
+  Procedure = File "ElasticSolve" "ElasticSolver"
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "bicgstabl"
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-12
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 20
+
+  NonLinear System Max Iterations = 1
+  NonLinear System Convergence Tolerance = 1.0e-6
+
+  Calculate Boundary Fluxes = Logical True
+!  Calculate Stresses = True
+End  
+
+
+Solver 2
+  Exec Solver = never
+
+  Procedure = "SaveData" "SaveScalars"
+  Filename = f.dat
+  Variable 1 = Displacement 2
+  Operator 1 = boundary min
+  Operator 2 = boundary max
+End 
+
+
+Material 1
+  Name = "Material1"
+
+  Density = 1.0
+  Poisson Ratio = 0.3
+  Youngs Modulus = 1.0e3
+End
+
+Body Force 1
+  Name = "BodyForce1"
+  Heat Source = 1.0
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 2 
+
+! We have a nonuniform force profile.
+  Force 2 = Variable "Coordinate 1"
+    Real
+      0.0 0.0
+      0.4999 0.0
+      0.5001 50.0
+      1.0    50.0
+    End 
+
+! It is assumed that displacement 2 rotates around point (0,1)
+  Displacement 2 Profile = Variable "Coordinate 1"
+    Real MATC "tx"
+
+  Save Scalars = True
+End
+
+Solver 1 :: Reference Norm = 2.01203591E-02
+

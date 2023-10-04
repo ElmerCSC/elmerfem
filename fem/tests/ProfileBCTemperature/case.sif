@@ -1,9 +1,5 @@
 !---------------------------------------------------------------------
-! Solves a Poisson equation with floating potential (zero net charge).
-! This problem is like having an well conducting block barried in an
-! insulation without knowing its temperature. 
-!
-! This case provides a profile that gives amplitude for the field.
+! Solves a Poisson equation with a known profile but uknown amplitude.
 !
 ! P.R. / 20.9.2023
 !--------------------------------------------------------------------
@@ -103,10 +99,10 @@ Boundary Condition 2
 
 ! On the boundary this has range [0.25,0.5] and hence
 ! the final solution has ratio 2.0 for the max/min value on the bc. 
-  Temperature Amplitude = Variable "Coordinate 1"
+  Temperature Profile = Variable "Coordinate 1"
     Real MATC "0.75-0.25*tx"
 
-!  Temmperature Constant = Logical True
+!  Temperature Constant = Logical True
   Inside = Logical True
 End
 

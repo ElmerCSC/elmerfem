@@ -5362,7 +5362,7 @@ CONTAINS
       IF( l == 0 ) THEN
         DirName = TRIM(Name)//' Constant'
       ELSE
-        DirName = TRIM(Name)//' Amplitude'
+        DirName = TRIM(Name)//' Profile'
       END IF
 
       AnySingleBC = ListCheckPresentAnyBC( Model, DirName )
@@ -5515,7 +5515,7 @@ CONTAINS
             n = Element % TYPE % NumberOfNodes
             Indexes(1:n) = Element % NodeIndexes
 
-            IF(GotMult) Mult(1:n) = ListGetReal( ValueList,TRIM(Name)//' Amplitude',n,Indexes,UnfoundFatal=.TRUE.)
+            IF(GotMult) Mult(1:n) = ListGetReal( ValueList,TRIM(Name)//' Profile',n,Indexes,UnfoundFatal=.TRUE.)
 
             CALL SetLumpedRows(ind,n)
           END DO
