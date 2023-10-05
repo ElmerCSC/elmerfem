@@ -1271,9 +1271,11 @@ MODULE LumpingUtils
                 MATMUL(SOL(2,np+1:nd), WBasis(1:nd-np,:)))
           CASE( 3 )
             gradv = MATMUL(SOL(1:3,1:n),Basis(1:n))
-          CASE( 6 ) 
-            gradv = CMPLX( MATMUL(SOL(1:2:5,1:n),Basis(1:n)), &
-                MATMUL(SOL(2:2:6,1:n),Basis(1:n)) )
+          CASE( 6 )
+            DO i=1,3
+              gradv(i) = CMPLX( SUM(SOL(2*i-1,1:n)*Basis(1:n)), &
+                  SUM(SOL(2*i,1:n)*Basis(1:n)) )
+            END DO
           END SELECT
           
           Circ = Circ + s * SUM(gradv*EdgeVector)

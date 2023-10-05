@@ -1,9 +1,5 @@
 !---------------------------------------------------------------------
-! Solves a Poisson equation with floating potential (zero net charge).
-! This problem is like having an well conducting block barried in an
-! insulation without knowing its temperature. 
-!
-! This case provides a profile that gives amplitude for the field.
+! Solves a Poisson equation with a known profile but uknown amplitude.
 !
 ! P.R. / 20.9.2023
 !--------------------------------------------------------------------
@@ -88,7 +84,7 @@ End
 
 Body Force 1
   Name = "BodyForce1"
-  Heat Source = 1.0
+!  Heat Source = 1.0
 End
 
 Boundary Condition 1
@@ -103,14 +99,16 @@ Boundary Condition 2
 
 ! On the boundary this has range [0.25,0.5] and hence
 ! the final solution has ratio 2.0 for the max/min value on the bc. 
-  Temperature Amplitude = Variable "Coordinate 1"
+  Temperature Profile = Variable "Coordinate 1"
     Real MATC "0.75-0.25*tx"
 
-!  Temmperature Constant = Logical True
+  External Temperature = 1.0
+  Heat Transfer Coefficient = 1.0e5
+
   Inside = Logical True
 End
 
-Solver 1 :: Reference Norm = 4.99293733E-01
+Solver 1 :: Reference Norm = 3.73147884E-01
 
 
 
