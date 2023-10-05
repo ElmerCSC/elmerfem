@@ -112,7 +112,7 @@
 
          IF( InfoActive(20) ) THEN
            n = COUNT(.NOT. FoundNodes )
-           CALL Info('InterpolateMeshToMesh','Number of unfound nodes in serial: '//I2S(n))
+           IF(n>0) CALL Info('InterpolateMeshToMesh','Number of unfound nodes in serial: '//I2S(n))
          END IF
                     
          IF(PRESENT(UnfoundNodes)) UnfoundNodes = .NOT. FoundNodes
@@ -141,7 +141,7 @@
       n = COUNT(.NOT.FoundNodes); dn = n
 
       IF( InfoActive(20) ) THEN
-        CALL Info('InterpolateMeshToMesh','Number of unfound nodes in own partition: '//I2S(n))
+        IF(n>0) CALL Info('InterpolateMeshToMesh','Number of unfound nodes in own partition: '//I2S(n))
       END IF
       
       AL = .FALSE.
@@ -505,7 +505,7 @@
       END IF
 
       n = COUNT(.NOT. FoundNodes )           
-      CALL Info('InterpolateMeshToMesh',&
+      IF(n>0) CALL Info('InterpolateMeshToMesh',&
 	'Number of unfound nodes in all partitions: '//I2S(n),Level=6)
       
       IF(PRESENT(UnfoundNodes)) UnfoundNodes = .NOT. FoundNodes
