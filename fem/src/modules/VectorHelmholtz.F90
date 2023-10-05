@@ -206,8 +206,8 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   IF (HasPrecDampCoeff) MassProportional = GetLogical(SolverParams, 'Mass-proportional Damping', Found)
 
   IF(HasPrecDampCoeff) THEN
-    IF(ListGetString(SolverParams,'Linear System Solver',Found ) /= 'iterative') THEN
-      CALL Warn(Caller,'Damped preconditioning makes sence only for iterative methods, canceling!')
+    IF(ListGetString(SolverParams,'Linear System Solver',Found ) == 'direct') THEN
+      CALL Warn(Caller,'Damped preconditioning does not make sense for direct methods, canceling!')
       HasPrecDampCoeff = .FALSE.
     ELSE
       CALL Info(Caller,'Generating special precondining matrix',Level=12)

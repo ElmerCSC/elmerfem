@@ -14623,8 +14623,9 @@ END FUNCTION SearchNodeL
 !   If solving constraint modes analysis go there:
 !   ----------------------------------------------
     IF ( ConstraintModesAnalysis ) THEN      
+
       CALL SolveConstraintModesSystem( A, x, b , Solver )
-     
+      
       IF ( BackRotation ) CALL BackRotateNTSystem( x, Solver % Variable % Perm, DOFs )
       
       Norm = ComputeNorm(Solver,n,x)
@@ -15603,6 +15604,7 @@ SUBROUTINE StoreLumpedFluxes( Solver, NoModes, iMode, FluxesRow, FluxesRowIm, Fl
     Lumped % CMatrix = 0.0_dp
 
     IF( PRESENT(FluxesRowIm) ) THEN
+      CALL Info(Caller,'Storing lumped fluxes imaginary',Level=20)
       Lumped % IsComplex = .TRUE.
       ALLOCATE( Lumped % CMatrixIm( NoModes, NoModes ) )
       Lumped % CMatrixIm = 0.0_dp
@@ -16042,6 +16044,8 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
     EmWaveMode = ListGetLogical( Params,'Constraint Modes EM Wave', Found ) 
     CoilMode = ListGetLogical( Params,'Constraint Modes Coils',Found ) 
 
+    IF(EmWaveMode) IsComplex = .TRUE.
+    
     IF( EmWaveMode .OR. CoilMode ) THEN
       ComputeFluxes = .TRUE.
       RhsMode = .TRUE.
@@ -16049,6 +16053,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
     
     IF( ComputeFluxes .OR. ComputeLinkage ) THEN
       ALLOCATE( FluxesRow(NoModes) )
+
       IF( IsComplex ) ALLOCATE( FluxesRowIm(NoModes) ) 
         
       ALLOCATE( Fluxes( n ) )
@@ -16153,15 +16158,15 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
           CALL EMWaveFluxes()
         ELSE IF( ComputeFluxes ) THEN
           CALL ConstraintModesFluxes(EmWaveMode)
-        ELSE
+        ELSE IF( ComputeLinkage ) THEN
           CALL ConstraintModesLinkage()
         END IF          
-
+        
         ! Do parallel communication here at one sweep, not before!
         IF(.NOT. EMWaveMode ) THEN
           CALL CommunicateConstraintModesFluxes()
         END IF
-          
+        
         IF( IsComplex ) THEN
           CALL StoreLumpedFluxes(Solver, NoModes, NMode, FluxesRow, FluxesRowIm, FluxesRhs, FluxesRhsIm)
         ELSE
