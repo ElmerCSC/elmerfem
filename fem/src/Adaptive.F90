@@ -105,7 +105,7 @@ CONTAINS
     TYPE( Matrix_t ), POINTER :: NewMatrix
     INTEGER, POINTER :: Permutation(:)
     LOGICAL, POINTER       :: EdgeSplitted(:)
-    INTEGER, POINTER       :: Referenced(:)
+    INTEGER, POINTER       :: Referenced(:), Unitperm(:)
     TYPE( Element_t ), POINTER :: RefElement
     INTEGER :: i,j,k,n,nn,MarkedElements
     TYPE( Variable_t ), POINTER :: Var, Var1, NewVar
@@ -118,7 +118,7 @@ CONTAINS
     INTEGER :: MaxDepth, MinDepth, NLen
     CHARACTER(:), ALLOCATABLE :: Path, VarName
     REAL(KIND=dp), POINTER  :: Time(:), NodalError(:), PrevValues(:), &
-         Hvalue(:),PrevNodalError(:), PrevHValue(:), hConvergence(:), ptr(:), tt(:)
+         Hvalue(:), PrevNodalError(:), PrevHValue(:), hConvergence(:), ptr(:), tt(:)
     REAL(KIND=dp), POINTER  :: ErrorIndicator(:), eRef(:), hRef(:), Work(:)
     LOGICAL :: NoInterp, Parallel, AdaptiveOutput, AdaptInit
     TYPE(ValueList_t), POINTER :: Params
@@ -180,7 +180,7 @@ CONTAINS
     ! Interpolation is costly in parallel. Do it by default only in serial. 
     Parallel = ( ParEnv % PEs > 1 )
     NoInterp = ListGetLogical( Params,'Adaptive Interpolate',Found )
-    IF(.NOT. Found) NoInterp = Parallel 
+!   IF(.NOT. Found) NoInterp = Parallel 
     
     AdaptiveOutput = ListGetLogical( Params,'Adaptive Output',Found )
     
@@ -223,6 +223,8 @@ CONTAINS
 !   -----------------------------------------------------------
 
     NN = RefMesh % NumberOfNodes
+    CALL AllocateVector( Unitperm,  Solver % Matrix % NumberOfRows )
+    Unitperm = [(i, i=1,Solver % Matrix % NumberofRows)]
 
     Var => VariableGet( RefMesh % Variables, 'Hvalue', ThisOnly=.TRUE. )
 
@@ -233,7 +235,7 @@ CONTAINS
     ELSE
       CALL AllocateVector( Hvalue, Solver % Matrix % NumberOfRows )
       CALL VariableAdd( RefMesh % Variables, RefMesh, Solver, &
-          'Hvalue', 1, Hvalue, Output = AdaptiveOutput )       
+          'Hvalue', 1, Hvalue, Unitperm, Output = AdaptiveOutput )       
       Var => VariableGet( RefMesh % Variables, 'Hvalue', ThisOnly=.TRUE. )      
       IF(.NOT. ASSOCIATED(Var) ) THEN
         CALL Fatal(Caller,'Could not add variable Var?')
@@ -289,7 +291,7 @@ CONTAINS
       CALL AllocateVector( hConvergence, nn )
       hConvergence = 1.0d0
       CALL VariableAdd( RefMesh % Variables, RefMesh, Solver, &
-          'hConvergence', 1, hConvergence, Output=AdaptiveOutput )
+          'hConvergence', 1, hConvergence, Unitperm, Output=AdaptiveOutput )
       Var => VariableGet( RefMesh % Variables, 'hConvergence', ThisOnly=.TRUE. )
     END IF
 
@@ -307,7 +309,7 @@ CONTAINS
     ELSE
        CALL AllocateVector( NodalError, nn )
        CALL VariableAdd( RefMesh % Variables, RefMesh, Solver, &
-          VarName(1:NLen) // '.error', 1, NodalError )
+          VarName(1:NLen) // '.error', 1, NodalError, Unitperm )
     END IF
 
     Var => VariableGet( RefMesh % Variables, &
@@ -321,7 +323,7 @@ CONTAINS
       CALL AllocateVector( PrevNodalError, RefMesh % NumberOfNodes )
       PrevNodalError = 0.0d0
       CALL VariableAdd( RefMesh % Variables, RefMesh, Solver, &
-          VarName(1:NLen) // '.perror', 1, PrevNodalError, Output=AdaptiveOutput)
+          VarName(1:NLen) // '.perror', 1, PrevNodalError, Unitperm, Output=AdaptiveOutput)
     END IF
 
     NodalError = 0.0d0
@@ -377,7 +379,7 @@ CONTAINS
       CALL AllocateVector( eRef, nn )
       eRef(1:nn) = NodalError(1:nn)      
       CALL VariableAdd( RefMesh % Variables, RefMesh, Solver, &
-          VarName(1:NLen) // '.eRef',1,eRef, Output=AdaptiveOutput )
+          VarName(1:NLen) // '.eRef',1,eRef, Unitperm, Output=AdaptiveOutput )
     END IF
 !
 !   Mesh projection may alter the values somewhat!
@@ -397,7 +399,7 @@ CONTAINS
       CALL AllocateVector( hRef, nn )
       hRef(1:nn) = Hvalue(1:nn)
       CALL VariableAdd( RefMesh % Variables, RefMesh, Solver, &
-          'hRef', 1, hRef, Output=AdaptiveOutput)
+          'hRef', 1, hRef, Unitperm, Output=AdaptiveOutput)
     END IF
 !
 !   Mesh projection may alter the values somewhat!
@@ -883,8 +885,8 @@ CONTAINS
     ALLOCATE(Hcount(SIZE(Hvalue)))
     Hcount = 0
     
-    A => CurrentModel % Solver % Matrix
-    p => CurrentModel % Solver % Variable % Perm
+    A => Solver % Matrix
+    p => Solver % Variable % Perm
 
     ALLOCATE(ip(A% NumberOfRows)); ip=0
 
@@ -897,6 +899,7 @@ CONTAINS
     DO i=1,RefMesh % NumberOfNodes
       ! Deal only with interface nodes here
       j = p(i)
+      IF(j<=0) CYCLE
       IF(A % ParallelInfo % GInterface(j)) THEN
         Hvalue(i) = 0.0_dp
         ! Go through all connected nodes
@@ -917,8 +920,29 @@ CONTAINS
     END DO
     
     ! Perform parallel summation, only interface gets summed. 
-    CALL ParallelSumVector( A, Hvalue )
-    CALL ParallelSumVectorInt( A, Hcount ) 
+    BLOCK
+      INTEGER, ALLOCATABLE :: Xcount(:)
+      REAL(KIND=dp), ALLOCATABLE :: Xvalue(:)
+      ALLOCATE( Xcount(SIZE(Hcount)), XValue(SIZE(Hvalue)) )
+      Xcount = 0; Xvalue = 0
+
+      DO i=1,RefMesh % NumberOfNodes
+        j = p(i)
+        IF (j<=0) CYCLE
+        Xvalue(j) = HValue(i)
+        Xcount(j) = HCount(i)
+      END DO
+
+      CALL ParallelSumVector( A, Xvalue )
+      CALL ParallelSumVectorInt( A, Xcount ) 
+
+      DO i=1,RefMesh % NumberOfNodes
+        j = p(i)
+        IF (j<=0) CYCLE
+        Hvalue(i) = Xvalue(j)
+        Hcount(i) = Xcount(j)
+      END DO
+    END BLOCK
 
 
     maxnei = MAXVAL( Hcount )
@@ -934,7 +958,9 @@ CONTAINS
     ! Compute the average
     n = 0
     DO i=1,RefMesh % NumberOfNodes
-      IF(A % ParallelInfo % GInterface(i)) THEN
+      j = p(i)
+      IF (j<=0) CYCLE
+      IF(A % ParallelInfo % GInterface(j)) THEN
         IF( Hcount(i) == 0 ) THEN
           n = n+1
         ELSE          
@@ -952,6 +978,7 @@ CONTAINS
 
       DO i=1,RefMesh % NumberOfNodes
         j = p(i)
+        IF(j<=0) CYCLE
         IF(A % ParallelInfo % GInterface(j)) THEN
           IF(Hcount(i) == 0) THEN
             DO l=A % Rows(j),A % Rows(j+1)-1
@@ -977,7 +1004,9 @@ CONTAINS
       
       n = 0
       DO i=1,RefMesh % NumberOfNodes
-        IF(A % ParallelInfo % GInterface(i)) THEN
+        j = p(i)
+        IF (j<=0) CYCLE 
+        IF(A % ParallelInfo % GInterface(j)) THEN
           IF( Hcount(i) == 0 ) THEN
             n = n+1
           ELSE 
@@ -2274,9 +2303,15 @@ CONTAINS
 !
 !   Face jumps (3D):
 !   ----------------
+
     DO i = 1,RefMesh % NumberOfFaces
+!      IF( Parenv % PEs>1 ) THEN
+!        IF ( RefMesh % ParallelInfo % FaceInterface(i) ) CYCLE
+!      end if
+
        Edge => RefMesh % Faces(i)
        CurrentModel % CurrentElement => Edge
+
 
        IF ( .NOT. ASSOCIATED( Edge % BoundaryInfo ) ) CYCLE
 
@@ -2331,7 +2366,7 @@ CONTAINS
       Fnorm = ParallelReduction(Fnorm) 
     END IF
           
-    s = SQRT( s1 ) / SQRT( s2 )
+    s = SQRT(s1) / SQRT(s2)
     ErrorIndicator = SQRT( TempIndicator(1,:)/(2*s) + s*TempIndicator(2,:)/2 )
 
     IF ( Fnorm > AEPS ) THEN
