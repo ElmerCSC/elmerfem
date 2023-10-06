@@ -105,7 +105,7 @@ CONTAINS
     TYPE( Matrix_t ), POINTER :: NewMatrix
     INTEGER, POINTER :: Permutation(:)
     LOGICAL, POINTER       :: EdgeSplitted(:)
-    INTEGER, POINTER       :: Referenced(:), Unitperm(:)
+    INTEGER, POINTER       :: Referenced(:)
     TYPE( Element_t ), POINTER :: RefElement
     INTEGER :: i,j,k,n,nn,MarkedElements
     TYPE( Variable_t ), POINTER :: Var, Var1, NewVar
@@ -118,7 +118,7 @@ CONTAINS
     INTEGER :: MaxDepth, MinDepth, NLen
     CHARACTER(:), ALLOCATABLE :: Path, VarName
     REAL(KIND=dp), POINTER  :: Time(:), NodalError(:), PrevValues(:), &
-         Hvalue(:), PrevNodalError(:), PrevHValue(:), hConvergence(:), ptr(:), tt(:)
+         Hvalue(:), HValue1(:), PrevNodalError(:), PrevHValue(:), hConvergence(:), ptr(:), tt(:)
     REAL(KIND=dp), POINTER  :: ErrorIndicator(:), eRef(:), hRef(:), Work(:)
     LOGICAL :: NoInterp, Parallel, AdaptiveOutput, AdaptInit
     TYPE(ValueList_t), POINTER :: Params
@@ -195,6 +195,7 @@ CONTAINS
 
     MaxError = ComputeError( Model, ErrorIndicator, RefMesh, &
       Quant, Perm, InsideResidual, EdgeResidual, BoundaryResidual )
+
     WRITE( Message, * ) 'Error computation time (cpu-secs):               ',CPUTime()-t
     CALL Info( Caller, Message, Level = 6 )
 
@@ -207,7 +208,7 @@ CONTAINS
       n = ParallelReduction(n)
     END IF        
     ErrorEstimate =  SQRT( ErrorEstimate / n )
-    
+
     IF(ListGetLogical(Params,'Adaptive Error Histogram',Found ) ) THEN
       CALL ShowVectorHistogram(ErrorIndicator,SIZE(ErrorIndicator))
     END IF
@@ -223,8 +224,6 @@ CONTAINS
 !   -----------------------------------------------------------
 
     NN = RefMesh % NumberOfNodes
-    CALL AllocateVector( Unitperm,  Solver % Matrix % NumberOfRows )
-    Unitperm = [(i, i=1,Solver % Matrix % NumberofRows)]
 
     Var => VariableGet( RefMesh % Variables, 'Hvalue', ThisOnly=.TRUE. )
 
@@ -234,8 +233,10 @@ CONTAINS
       IF( AdaptInit ) Hvalue = 0.0_dp
     ELSE
       CALL AllocateVector( Hvalue, Solver % Matrix % NumberOfRows )
+
       CALL VariableAdd( RefMesh % Variables, RefMesh, Solver, &
-          'Hvalue', 1, Hvalue, Unitperm, Output = AdaptiveOutput )       
+          'Hvalue', 1, Hvalue, Output = AdaptiveOutput )       
+
       Var => VariableGet( RefMesh % Variables, 'Hvalue', ThisOnly=.TRUE. )      
       IF(.NOT. ASSOCIATED(Var) ) THEN
         CALL Fatal(Caller,'Could not add variable Var?')
@@ -291,7 +292,7 @@ CONTAINS
       CALL AllocateVector( hConvergence, nn )
       hConvergence = 1.0d0
       CALL VariableAdd( RefMesh % Variables, RefMesh, Solver, &
-          'hConvergence', 1, hConvergence, Unitperm, Output=AdaptiveOutput )
+          'hConvergence', 1, hConvergence, Output=AdaptiveOutput )
       Var => VariableGet( RefMesh % Variables, 'hConvergence', ThisOnly=.TRUE. )
     END IF
 
@@ -309,7 +310,7 @@ CONTAINS
     ELSE
        CALL AllocateVector( NodalError, nn )
        CALL VariableAdd( RefMesh % Variables, RefMesh, Solver, &
-          VarName(1:NLen) // '.error', 1, NodalError, Unitperm )
+          VarName(1:NLen) // '.error', 1, NodalError )
     END IF
 
     Var => VariableGet( RefMesh % Variables, &
@@ -323,7 +324,7 @@ CONTAINS
       CALL AllocateVector( PrevNodalError, RefMesh % NumberOfNodes )
       PrevNodalError = 0.0d0
       CALL VariableAdd( RefMesh % Variables, RefMesh, Solver, &
-          VarName(1:NLen) // '.perror', 1, PrevNodalError, Unitperm, Output=AdaptiveOutput)
+          VarName(1:NLen) // '.perror', 1, PrevNodalError, Output=AdaptiveOutput)
     END IF
 
     NodalError = 0.0d0
@@ -379,7 +380,7 @@ CONTAINS
       CALL AllocateVector( eRef, nn )
       eRef(1:nn) = NodalError(1:nn)      
       CALL VariableAdd( RefMesh % Variables, RefMesh, Solver, &
-          VarName(1:NLen) // '.eRef',1,eRef, Unitperm, Output=AdaptiveOutput )
+          VarName(1:NLen) // '.eRef',1,eRef, Output=AdaptiveOutput )
     END IF
 !
 !   Mesh projection may alter the values somewhat!
@@ -399,7 +400,7 @@ CONTAINS
       CALL AllocateVector( hRef, nn )
       hRef(1:nn) = Hvalue(1:nn)
       CALL VariableAdd( RefMesh % Variables, RefMesh, Solver, &
-          'hRef', 1, hRef, Unitperm, Output=AdaptiveOutput)
+          'hRef', 1, hRef, Output=AdaptiveOutput)
     END IF
 !
 !   Mesh projection may alter the values somewhat!
@@ -488,6 +489,7 @@ CONTAINS
       IF( ListGetLogical( Params,'Adaptive Remesh Use MMG', Found ) ) THEN
 #ifdef HAVE_MMG
         CALL Info(Caller,'Using MMG library for mesh refinement', Level=5)
+
         NewMesh => MMG_ReMesh( RefMesh, ErrorLimit/3, HValue, &
             NodalError, hConvergence, minH, maxH, MaxChangeFactor, Coarsening )         
 #else
@@ -667,8 +669,8 @@ CONTAINS
             ! Interpolate scalar variables using automatic internal interpolation 
             NewVar => VariableGet( NewMesh % Variables, Var % Name, .FALSE. )
             k = SIZE(NewVar % Values)
-            IF ( ASSOCIATED( NewVar % Perm ) ) THEN
-              k = COUNT( NewVar % Perm > 0 )
+            IF ( ASSOCIATED(NewVar % Perm) ) THEN
+              k = COUNT(NewVar % Perm > 0)
             END IF
             NewVar % Norm = SQRT(SUM(NewVar % Values**2)/k)
           END IF
