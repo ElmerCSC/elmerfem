@@ -1,0 +1,168 @@
+! This is a test case for checking the effects of curvature on capacitance
+! The faceted geometries do not have same capacitance as curved.
+! We may need to ensure curved shape at two accations
+! 1) When "Mesh Levels" > 1 we need to set the added boundary nodes to the curved boundary
+! 2) When "Element = p:$pn" where $pn>2 we must solve for a small linear problem to set the p-coordinates
+! ...
+! 3) "Increase element order" to obtain quadratic elements. This case does this!
+!
+! This case has also an analytic solution. Capacitance between two cocentric cylinders with radiuses a and b, b>a, is
+! C = 2*pi*L*eps_0 / (ln(b/a))
+! for convenience we define here eps_0 such that the capacitance becomes one.
+! As the finite element tries to minimize energy we should approach the capacitance from above.
+!
+!   Capacitance     Lagrange element order
+!   1.035931845756  1
+!   1.001402000415  2
+!
+! P.R. 6.10.23
+
+
+$pn=1
+$mn=1
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "cylinder_in_cylinder"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+
+  Post File = "case.vtu"
+  vtu: Constraint Modes Analysis = Logical True
+
+! Go from linear to quadratic!
+  Increase Element Order = Logical True
+
+  Mesh Levels = $mn
+End
+
+Constants
+$L=0.5
+$a=0.5
+$b=1.0
+! Note: this is funny choice because I wanted to see the comparison directly.
+! The eqution is linear so it does not matter by what we multiply it with.
+  Permittivity Of Vacuum = $ln(b/a)/(2*pi*L)
+End 
+
+Body 1
+  Name = "Inner"
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Name = "Outer"
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equations"
+  Active Solvers(1) = 1 
+End
+
+Solver 1
+  Equation = Electrostatics
+  Procedure = "StatElecSolveVec" "StatElecSolver"
+  Variable = Potential
+
+  Calculate Capacitance Matrix = True
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Consistent Norm = True
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabl
+  Linear System Max Iterations = 5000
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 10
+  Linear System Preconditioning = ILU0
+  Linear System Refactorize = False
+
+! Settings for multigrid method
+!  Capacitance Matrix Filename = cp_$pn$_$mn$.dat
+
+  Constraint Modes Matrix Results = Logical True
+  Vector Assembly = True
+
+! Element = p:$pn
+End
+
+Solver 2
+!  Exec Solver = never
+
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+
+  Expression 1 = Real $pn
+  Expression 2 = Real $mn
+
+  File Append = True
+  Filename = f.dat
+
+  Show Norm Index = 1
+  Parallel Reduce = True
+End
+
+Material 1
+  Name = "Material"
+  Density = 1
+  Relative Permittivity = 1
+End
+
+Boundary Condition 1
+  Name = "Ext"
+  Target Boundaries(4) = 8 9 10 11  
+  Potential = 0
+
+! This is known to be a circle boundary by construction.
+! Also "circle" and "sphere" are possible but so far untested.  
+  Follow Cylinder Boundary = Logical True
+! Optionally give the normal to make it easier to fit a cylinder.
+!  Cylinder Normal(3) = Real 0 0 1 
+End
+
+Boundary Condition 2
+  Name = "Int"
+  Target Boundaries(4) = 3 4 5 6 
+
+  Capacitance Body = 1
+
+  Follow Cylinder Boundary = Logical True
+!  Cylinder Normal(3) = Real 0 0 1 
+
+! This is a slower and less accurate (?) alternative
+!  Follow Function Boundary = Logical True
+!  Surface Function = Variable "dummy"
+!    Real MATC "tx(0)^2+tx(1)^2-0.5^2"
+End 
+
+Boundary Condition 3
+  Name = "Front"
+  Target Boundaries(2) = 1 2 
+End
+
+Boundary Condition 4
+  Name = "Back"
+  Target Boundaries(2) = 7 12 
+End
+
+
+Solver 1::Reference Norm = 6.25837594E-01
+Solver 2::Reference Norm = 1.00140200E+00
+
+
+!End Of File
