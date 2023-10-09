@@ -3002,7 +3002,7 @@ CONTAINS
    END IF
    
    IF( ListGetLogical( Vlist,'Inspect Mesh',Found ) ) THEN
-     CALL InspectMesh( Mesh ) 
+     CALL CheckMeshInfo( Mesh ) 
    END IF
 
    IF(ListGetLogical( Model % Simulation, 'Parallel Reduce Element Max Sizes', Found ) ) THEN
@@ -3965,64 +3965,6 @@ CONTAINS
  END SUBROUTINE SetMeshPartitionOffset
    
  
-
- SUBROUTINE InspectMesh(Mesh)
-   
-   TYPE(Mesh_t), POINTER :: Mesh
-   INTEGER :: i,j,mini,maxi
-   INTEGER, POINTER :: Indexes(:)
-   INTEGER, ALLOCATABLE :: ActiveCount(:)
-
-   PRINT *,'Inspecting mesh for ranges and correctness'
-
-   PRINT *,'No bulk elements:',Mesh % NumberOfBulkElements
-   PRINT *,'No boundary elements:',Mesh % NumberOfBoundaryElements
-   PRINT *,'No nodes:',Mesh % NumberOfNodes
-
-   PRINT *,'Range:'
-   PRINT *,'X:',MINVAL( Mesh % Nodes % x ), MAXVAL( Mesh % Nodes % x )
-   PRINT *,'Y:',MINVAL( Mesh % Nodes % y ), MAXVAL( Mesh % Nodes % y )
-   PRINT *,'Z:',MINVAL( Mesh % Nodes % z ), MAXVAL( Mesh % Nodes % z )
-
-   ALLOCATE( ActiveCount( Mesh % NumberOfNodes ) )
-
-   mini = HUGE(mini)
-   maxi = 0
-   ActiveCount = 0
-   DO i=1,Mesh % NumberOfBulkElements
-     Indexes => Mesh % Elements(i) % NodeIndexes
-     mini = MIN(mini, MINVAL( Indexes ) )
-     maxi = MAX(maxi, MAXVAL( Indexes ) )
-     ActiveCount(Indexes) = ActiveCount(Indexes) + 1
-   END DO
-   PRINT *,'Bulk index range: ',mini,maxi
-   PRINT *,'Bulk nodes:',COUNT(ActiveCount > 0 )
-   PRINT *,'Bulk index count: ',MINVAL(ActiveCount),MAXVAL(ActiveCount)
-
-   IF( Mesh % NumberOfBoundaryElements > 0 ) THEN
-     mini = HUGE(mini)
-     maxi = 0
-     ActiveCount = 0
-     DO i=Mesh % NumberOfBulkElements+1, &
-         Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements
-       Indexes => Mesh % Elements(i) % NodeIndexes
-       mini = MIN(mini, MINVAL( Indexes ) )
-       maxi = MAX(maxi, MAXVAL( Indexes ) )
-       ActiveCount(Indexes) = ActiveCount(Indexes) + 1
-     END DO
-     PRINT *,'Boundary index range: ',mini,maxi
-     PRINT *,'Boundary nodes: ',COUNT(ActiveCount > 0)
-     PRINT *,'Boundary index count: ',MINVAL(ActiveCount),MAXVAL(ActiveCount)
-   END IF
-     
-   DEALLOCATE( ActiveCount )
-
-   PRINT *,'Done inspecting mesh'
-
- END SUBROUTINE InspectMesh
-
-
-
 !------------------------------------------------------------------------------
   SUBROUTINE SetMeshEdgeFaceDOFs(Mesh,EdgeDOFs,FaceDOFs,inDOFs,NeedEdges)
 !------------------------------------------------------------------------------
@@ -4033,7 +3975,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     INTEGER :: i,j,el_id
     TYPE(Element_t), POINTER :: Element, Edge, Face
-    LOGICAL :: AssignEdges
+    LOGICAL :: AssignEdges, pAlloc
 !------------------------------------------------------------------------------
 
     CALL FindMeshEdges(Mesh)
@@ -4127,24 +4069,28 @@ CONTAINS
        Element => Mesh % Elements(i)
 
        ! Here set local number and copy attributes to this boundary element for left parent.
+       pAlloc = .FALSE.
        IF (ASSOCIATED(Element % BoundaryInfo % Left)) THEN
-          ! Local edges are only assigned for p elements
-          IF (ASSOCIATED(Element % BoundaryInfo % Left % PDefs)) THEN
-            CALL AllocatePDefinitions(Element)
-            Element % PDefs % isEdge = .TRUE.
-            CALL AssignLocalNumber(Element, Element % BoundaryInfo % Left, Mesh)
-            ! CYCLE
-          END IF
+         ! Local edges are only assigned for p elements
+         IF (ASSOCIATED(Element % BoundaryInfo % Left % PDefs)) THEN
+           pAlloc = .TRUE.
+           CALL AllocatePDefinitions(Element)
+           Element % PDefs % isEdge = .TRUE.
+           CALL AssignLocalNumber(Element, Element % BoundaryInfo % Left, Mesh)
+           ! CYCLE
+         END IF
        END IF
 
        ! Here set local number and copy attributes to this boundary element for right parent
        IF (ASSOCIATED(Element % BoundaryInfo % Right)) THEN
-          ! Local edges are only assigned for p elements
-          IF (ASSOCIATED(Element % BoundaryInfo % Right % PDefs)) THEN
+         ! Local edges are only assigned for p elements
+         IF (ASSOCIATED(Element % BoundaryInfo % Right % PDefs)) THEN
+           IF(.NOT. pAlloc) THEN
              CALL AllocatePDefinitions(Element)
              Element % PDefs % isEdge = .TRUE.
              CALL AssignLocalNumber(Element, Element % BoundaryInfo % Right, Mesh)
-          END IF
+           END IF
+         END IF
        END IF
 
        IF (AssignEdges) THEN
@@ -9227,7 +9173,9 @@ CONTAINS
       END IF
 
       IF( StrongLevelEdges .OR. StrongExtrudedEdges .OR. StrongConformingEdges ) THEN
-        IF( StrongConformingEdges ) THEN
+        IF(.NOT. ListGetLogical( BC,'Level Projector Edges Old',Found) ) THEN
+          CALL AddEdgeProjectorStrongGeneric()            
+        ELSE IF( StrongConformingEdges ) THEN
           CALL AddEdgeProjectorStrongConforming()
         ELSE         
           IF( ListGetLogical( BC,'Level Projector Edges Generic', Found ) ) THEN
@@ -18812,6 +18760,7 @@ CONTAINS
     INTEGER, ALLOCATABLE :: NodeHits(:), TypeHits(:)
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp) :: mins, maxs, s, s2
+    INTEGER :: Dbg(10)
     CHARACTER(*), PARAMETER :: Caller="CheckMeshInfo"   
 !------------------------------------------------------------------------------
 
@@ -18834,6 +18783,13 @@ CONTAINS
     CALL CheckMeshGeomSize()
     CALL CheckMeshSerendipity()
     CALL CheckMeshBodyRadius()
+    CALL CheckMeshEdges()
+    CALL CheckMeshFaces()
+    CALL CheckParallelInfo()
+    CALL CheckParallelEdgeInfo()
+    CALL CheckParallelFaceInfo()
+
+    nn = ParallelReduction(nn)
     
     CALL Info(Caller,'Finished checking mesh!')
 
@@ -18844,6 +18800,7 @@ CONTAINS
     SUBROUTINE CheckMeshBulkHits()
       TypeHits = 0
       NodeHits = 0
+      Dbg = 0
 
       DO t=1,na
         Element => Mesh % Elements(t)
@@ -18862,22 +18819,37 @@ CONTAINS
         END IF
         NodeHits(Element % NodeIndexes) = NodeHits(Element % NodeIndexes) + 1
       END DO
+
+      Dbg(1) = na
+      Dbg(2) = SUM(NodeHits) 
+      DO i=1,SIZE(NodeHits)
+        Dbg(3) = dbg(3) + i*NodeHits(i)
+      END DO
+
       DO i=1,27
         j = TypeHits(i)
-        IF(j>0) CALL Info(Caller,'Bulk elements with '//I2S(i)//' nodes: '//I2S(j))
+        IF(j>0) CALL Info(Caller,'Bulk elements with '//I2S(i)//' nodes: '//I2S(j))        
       END DO
       
       t=MAXVAL(NodeHits)
-      DO i=0,t
-        j = COUNT( NodeHits == i)
-        IF(j>0) PRINT *,'Bulk node hits '//I2S(i)//' count: ',j
-      END DO
-        
+      IF( InfoActive(25)) THEN
+        DO i=0,t
+          j = COUNT( NodeHits == i)
+          IF(j>0) PRINT *,'Bulk node hits '//I2S(i)//' count: ',j
+        END DO
+      END IF
+      dbg(4) = t      
+      Dbg(5) = COUNT(TypeHits>0)
+      WRITE(Message,*) 'Bulk Checksum: ',Dbg(1:5)
+      CALL Info(Caller,Message)      
+      
     END SUBROUTINE CheckMeshBulkHits
 
     SUBROUTINE CheckMeshBoundaryHits()
       TypeHits = 0
       NodeHits = 0
+      dbg = 0
+
       DO t=na+1,na+nb
         Element => Mesh % Elements(t)
         IF(.NOT. ASSOCIATED( Element % TYPE ) ) THEN
@@ -18908,11 +18880,23 @@ CONTAINS
       END DO
 
       t=MAXVAL(NodeHits)
-      DO i=0,t
-        j = COUNT( NodeHits == i)
-        IF(j>0) PRINT *,'Boundary node hits '//I2S(i)//' count: ',j
+      IF(InfoActive(25)) THEN
+        DO i=0,t
+          j = COUNT( NodeHits == i)
+          IF(j>0) PRINT *,'Boundary node hits '//I2S(i)//' count: ',j
+        END DO
+      END IF
+        
+      Dbg(1) = nb
+      Dbg(2) = SUM(NodeHits) 
+      DO i=1,SIZE(NodeHits)
+        Dbg(3) = dbg(3) + i*NodeHits(i)
       END DO
-
+      Dbg(4) = COUNT(TypeHits>0)
+      Dbg(5) = t
+      WRITE(Message,*) 'Boundary Checksum: ',Dbg(1:5)
+      CALL Info(Caller,Message)      
+     
     END SUBROUTINE CheckMeshBoundaryHits
 
 
@@ -18921,6 +18905,8 @@ CONTAINS
       TYPE(Element_t), POINTER :: Parent
 
       Misses = 0
+      dbg = 0
+      
       DO t=na+1,na+nb
         Element => Mesh % Elements(t)
         i = Element % TYPE % NumberOfNodes
@@ -18932,6 +18918,11 @@ CONTAINS
             Parent => Element % BoundaryInfo % Right
           END IF
           IF(.NOT. ASSOCIATED(Parent)) CYCLE
+
+          dbg(3) = dbg(3) + 1
+          dbg(4) = dbg(4) + Element % ElementIndex
+          dbg(5) = dbg(5) + Element % BoundaryInfo % Constraint
+
           k = 0
           DO i=1,Element % TYPE % NumberOfNodes
             IF( .NOT. ANY(Parent % NodeIndexes == Element % NodeIndexes(i) ) ) k=k+1
@@ -18939,20 +18930,32 @@ CONTAINS
           IF( k > 0 ) THEN
             Misses = Misses + 1
             IF( Misses <= 10 ) THEN
-              PRINT *,'No index in parent: ',t,Parent % ElementIndex, k
-              PRINT *,'bc elem:',Element % NodeIndexes
-              PRINT *,'bulk elem:',Parent % NodeIndexes 
+              PRINT *,'Indeces missing in parent: ',ParEnv % Mype, Element % ElementIndex,Parent % ElementIndex, &
+                  Element % TYPE % NumberOfNodes, k
+              PRINT *,'Element codes:',Element % TYPE % ElementCode, &
+                  Parent % TYPE % elementCode
+              PRINT *,'bc elem inds:',Element % NodeIndexes
+              PRINT *,'bulk elem inds:',Parent % NodeIndexes 
             END IF
           END IF
         END DO
       END DO
 
-      PRINT *,'Parent elements missing nodes:',Misses
+      IF(Misses>0) PRINT *,'Parent elements missing nodes:',ParEnv % Mype, Misses      
+      dbg(1) = nb
+      dbg(2) = Misses
+      
+      WRITE(Message,*) 'Parent Checksum: ',Dbg(1:5)
+      CALL Info(Caller,Message)
+
+      IF(Misses > 0) CALL Fatal(Caller,'We need all parent indeces!')
 
     END SUBROUTINE CheckParentIndeces
 
     
     SUBROUTINE CheckMeshGeomSize()
+
+      IF(.NOT. InfoActive(25)) RETURN
       
       PRINT *,'Coordinate x: ',MINVAL(Mesh % Nodes % x), MAXVAL(Mesh % Nodes % x)
       PRINT *,'Coordinate y: ',MINVAL(Mesh % Nodes % y), MAXVAL(Mesh % Nodes % y)
@@ -19065,6 +19068,8 @@ CONTAINS
       INTEGER, POINTER :: Indexes(:)
       INTEGER, ALLOCATABLE :: BodyHits(:)
       INTEGER :: nob
+
+      IF(.NOT. InfoActive(25)) RETURN
       
       nob = CurrentModel % NumberOfBodies
       ALLOCATE(RadRange(0:nob,2),BodyHits(0:nob))
@@ -19094,7 +19099,148 @@ CONTAINS
         PRINT *,'Radius range: ',i,RadRange(i,:)
       END DO
     END SUBROUTINE CheckMeshBodyRadius
-    
+
+
+    SUBROUTINE CheckMeshEdges()
+      INTEGER, POINTER :: Indexes(:)
+
+      IF(Mesh % NumberOfEdges == 0 ) RETURN      
+      dbg = 0
+      dbg(1) = Mesh % NumberOfEdges
+
+      DO t=1,Mesh % NumberOfEdges
+        Element => Mesh % Edges(t)
+        Indexes => Element % NodeIndexes          
+        dbg(2) = dbg(2) + SUM(Indexes)        
+        dbg(3) = dbg(3) + Element % ElementIndex
+        dbg(4) = dbg(4) + Element % GElementIndex        
+      END DO
+
+      WRITE(Message,*) 'Edges Checksum: ',Dbg(1:5)
+      CALL Info(Caller,Message)                  
+
+    END SUBROUTINE CheckMeshEdges
+
+    SUBROUTINE CheckMeshFaces()
+      INTEGER, POINTER :: Indexes(:)
+
+      IF(Mesh % NumberOfFaces == 0 ) RETURN      
+      dbg = 0
+      dbg(1) = Mesh % NumberOfFaces
+
+      DO t=1,Mesh % NumberOfFaces
+        Element => Mesh % Faces(t)
+        Indexes => Element % NodeIndexes          
+        dbg(2) = dbg(2) + SUM(Indexes)        
+        dbg(3) = dbg(3) + Element % ElementIndex
+        dbg(4) = dbg(4) + Element % GElementIndex        
+      END DO
+
+      WRITE(Message,*) 'Faces Checksum: ',Dbg(1:5)
+      CALL Info(Caller,Message)                  
+
+    END SUBROUTINE CheckMeshFaces
+
+
+    SUBROUTINE CheckParallelInfo()
+
+      IF( ParEnv % PEs == 1) RETURN
+      IF(.NOT. ASSOCIATED( Mesh % ParallelInfo % NeighbourList) ) RETURN
+      
+      dbg = 0
+      dbg(1) = SIZE(Mesh % ParallelInfo % NeighbourList)
+
+      dbg(2) = COUNT(Mesh % ParallelInfo % Ginterface)
+      DO i=1, SIZE(Mesh % ParallelInfo % Ginterface)        
+        IF( Mesh % ParallelInfo % Ginterface(i) ) dbg(3) = dbg(3) + i 
+      END DO
+      
+      DO i=1, SIZE(Mesh % ParallelInfo % NeighbourList)
+        IF(.NOT. ASSOCIATED(Mesh % ParallelInfo % NeighbourList(i) % Neighbours)) THEN
+          dbg(7) = dbg(7) + 1
+          CYCLE
+        END IF
+        j = SIZE(Mesh % ParallelInfo % NeighbourList(i) % Neighbours)
+        dbg(4) = dbg(4) + j
+        dbg(5) = dbg(5) + SUM(Mesh % ParallelInfo % NeighbourList(i) % Neighbours)
+        dbg(6) = dbg(6) + i*j
+      END DO
+
+      WRITE(Message,*) 'ParallelInfo Checksum: ',Dbg(1:7)
+      CALL Info(Caller,Message)                         
+
+     END SUBROUTINE CheckParallelInfo
+       
+    SUBROUTINE CheckParallelEdgeInfo()
+
+      IF( ParEnv % PEs == 1) RETURN
+      IF( Mesh % NumberOfEdges == 0) RETURN
+      IF(.NOT. ASSOCIATED(Mesh % ParallelInfo % EdgeNeighbourList)) RETURN
+      
+      dbg = 0      
+      dbg(1) = SIZE(Mesh % ParallelInfo % EdgeNeighbourList)
+
+      IF(ASSOCIATED(Mesh % ParallelInfo % EdgeInterface ) ) THEN
+        j = SIZE(Mesh % ParallelInfo % EdgeInterface )        
+        IF(j>1) THEN
+          dbg(2) = j
+          DO i=1, SIZE(Mesh % ParallelInfo % Edgeinterface)        
+            IF( Mesh % ParallelInfo % Edgeinterface(i) ) dbg(3) = dbg(3) + i 
+          END DO
+        END IF
+      END IF
+        
+      DO i=1, SIZE(Mesh % ParallelInfo % EdgeNeighbourList)
+        IF(.NOT. ASSOCIATED(Mesh % ParallelInfo % EdgeNeighbourList(i) % Neighbours)) THEN
+          dbg(7) = dbg(7) + 1
+          CYCLE
+        END IF
+        j = SIZE(Mesh % ParallelInfo % EdgeNeighbourList(i) % Neighbours)
+        dbg(4) = dbg(4) + j
+        dbg(5) = dbg(5) + SUM(Mesh % ParallelInfo % EdgeNeighbourList(i) % Neighbours)
+        dbg(6) = dbg(6) + i*j
+      END DO
+
+      WRITE(Message,*) 'ParallelEdges Checksum: ',Dbg(1:7)
+      CALL Info(Caller,Message)                         
+      
+    END SUBROUTINE CheckParallelEdgeInfo
+
+    SUBROUTINE CheckParallelFaceInfo()
+
+      IF( ParEnv % PEs == 1) RETURN
+      IF( Mesh % NumberOfFaces == 0) RETURN
+      IF(.NOT. ASSOCIATED(Mesh % ParallelInfo % FaceNeighbourList)) RETURN
+      
+      dbg = 0
+      dbg(1) = SIZE(Mesh % ParallelInfo % FaceNeighbourList)
+
+      IF( ASSOCIATED( Mesh % ParallelInfo % FaceInterface ) ) THEN
+        j = SIZE(Mesh % ParallelInfo % FaceInterface )
+        IF(j>1) THEN
+          dbg(2) = j
+          DO i=1, j
+            IF( Mesh % ParallelInfo % Faceinterface(i) ) dbg(3) = dbg(3) + i 
+          END DO
+        END IF
+      END IF
+
+      DO i=1, SIZE(Mesh % ParallelInfo % FaceNeighbourList)
+        IF(.NOT. ASSOCIATED(Mesh % ParallelInfo % FaceNeighbourList(i) % Neighbours)) THEN
+          dbg(7) = dbg(7) + 1
+          CYCLE
+        END IF
+        j = SIZE(Mesh % ParallelInfo % FaceNeighbourList(i) % Neighbours)
+        dbg(4) = dbg(4) + j
+        dbg(5) = dbg(5) + SUM(Mesh % ParallelInfo % FaceNeighbourList(i) % Neighbours)
+        dbg(6) = dbg(6) + i*j
+      END DO
+
+      WRITE(Message,*) 'ParallelFaces Checksum: ',Dbg(1:7)
+      CALL Info(Caller,Message)                         
+      
+    END SUBROUTINE CheckParallelFaceInfo
+           
 !------------------------------------------------------------------------------
   END SUBROUTINE CheckMeshInfo
 !------------------------------------------------------------------------------
@@ -22961,7 +23107,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     ! Local variables
 
-    INTEGER i,j,n,edgeNumber, numEdges, bMap(4)
+    INTEGER i,j,k,n,edgeNumber, numEdges, bMap(4)
     TYPE(Element_t), POINTER :: Edge
     LOGICAL :: EvalPE
 
@@ -22978,8 +23124,7 @@ CONTAINS
     CASE (3)   
        numEdges = Element % TYPE % NumberOfFaces
     CASE DEFAULT
-       WRITE (*,*) 'MeshUtils::AssignLocalNumber, Unsupported dimension:', Element % TYPE % DIMENSION
-       RETURN
+      CALL Fatal('AssignLocalNumber','Unsupported Element dim: '//I2S(Element % TYPE % DIMENSION))
     END SELECT
 
     ! For each edge or face in element try to find local number
@@ -23013,16 +23158,28 @@ CONTAINS
        ! If all nodes are on boundary, edge was found
        IF (n == EdgeElement % TYPE % NumberOfNodes) THEN
           IF(EvalPE) THEN
-              EdgeElement % PDefs % localNumber = edgeNumber
-              EdgeElement % PDefs % LocalParent => Element
+            EdgeElement % PDefs % localNumber = edgeNumber
+            EdgeElement % PDefs % LocalParent => Element
           END IF
 
           ! Change ordering of global nodes to match that of element
           bMap = getElementBoundaryMap( Element, edgeNumber )
           DO j=1,n
-          	EdgeElement % NodeIndexes(j) = Element % NodeIndexes(bMap(j))
-	  END DO
-
+            EdgeElement % NodeIndexes(j) = Element % NodeIndexes(bMap(j))
+          END DO
+          
+          k = 0
+          DO i=1, Edge % TYPE % NumberOfNodes
+            DO j=1, EdgeElement % TYPE % NumberOfNodes
+              IF (Edge % NodeIndexes(i) == EdgeElement % NodeIndexes(j)) k = k + 1
+            END DO
+          END DO
+          IF(k < n) THEN
+            WRITE(Message,*) 'Invalid indexes:',Element % TYPE % ElementCode, &
+                EdgeElement % TYPE % ElementCode, EvalPE, n,k,bmap(1:n)
+            CALL Fatal('AssignLocalNumber',Message)
+          END IF
+             
           ! Copy attributes of edge element to boundary element
           ! Misc attributes
           IF(EvalPE) THEN
@@ -26645,7 +26802,7 @@ CONTAINS
 
         IF( k == 1 ) THEN
           ! This is just low priority info on the averaging
-          IF( InfoActive(20) ) THEN
+          IF( InfoActive(25) ) THEN
             j = COUNT(BodyCount > 0) 
             IF( j > 0 ) THEN
               AveHits = 1.0_dp * SUM( BodyCount ) / j
