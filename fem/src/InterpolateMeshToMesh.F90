@@ -347,7 +347,9 @@
         nvars = 0
         DO WHILE(ASSOCIATED(Var))
           IF ( Var % DOFs==1 .AND. .NOT.Var % Secondary ) THEN
-            IF(Var % Name(1:10) /= 'coordinate' ) THEN
+            IF( SIZE(Var % Values) == Var % Dofs ) THEN
+              CONTINUE
+            ELSE IF(Var % Name(1:10) /= 'coordinate' ) THEN
               ALLOCATE(store(n)); store=0
               nvars = nvars+1
               CALL VariableAdd(nMesh % Variables,nMesh,Var % Solver, &
@@ -387,7 +389,9 @@
             nvars = 0
             DO WHILE(ASSOCIATED(Var))
               IF ( Var % DOFs==1  .AND. .NOT.Var % Secondary) THEN
-                IF(Var % Name(1:10) /= 'coordinate' ) THEN
+                IF( SIZE(Var % Values) == Var % Dofs ) THEN
+                  CONTINUE
+                ELSE IF(Var % Name(1:10) /= 'coordinate' ) THEN
                   Nvar => VariableGet( Nmesh % Variables,Var % Name,ThisOnly=.TRUE.)
                   nvars=nvars+1
                   vstore(k,nvars)=Nvar % Values(j)
@@ -462,7 +466,9 @@
         nvars=0
         DO WHILE(ASSOCIATED(Var))
           IF ( Var % DOFs==1 .AND. .NOT.Var % Secondary ) THEN
-            IF( Var % Name(1:10) /= 'coordinate' ) THEN
+            IF( SIZE(Var % Values) == Var % Dofs ) THEN
+              CONTINUE
+            ELSE IF( Var % Name(1:10) /= 'coordinate' ) THEN
               nvars=nvars+1
               CALL MPI_RECV( astore, n, MPI_DOUBLE_PRECISION, proc, &
                   2002+nvars, ELMER_COMM_WORLD, status, ierr )
@@ -951,7 +957,7 @@ END SUBROUTINE InterpolateMeshToMesh
              !  CYCLE
              !END IF
              
-             IF ( Var % DOFs == 1 .AND. Var % Name(1:10) /= 'coordinate') THEN
+             IF ( Var % DOFs == 1 .AND. Var % Name(1:10) /= 'coordinate' ) THEN
                
 !------------------------------------------------------------------------------
 !
