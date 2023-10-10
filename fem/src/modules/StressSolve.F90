@@ -1056,7 +1056,9 @@ CONTAINS
     LOGICAL :: AnyDamping, NeedMass, NeedDensity, AnyPre, AnyStress
     LOGICAL :: ConstantStiffnessMatrix
     REAL(KIND=dp) :: cmult
-    TYPE(ValueHandle_t), SAVE :: cmult_h    
+    CHARACTER(LEN=MAX_NAME_LEN) :: multname
+    TYPE(Variable_t), POINTER :: multvar
+
     
     AnyDamping = ListCheckPresentAnyMaterial( Model,"Damping" ) .OR. &
         ListCheckPrefixAnyMaterial( Model,"Rayleigh" )
@@ -1072,7 +1074,14 @@ CONTAINS
     ConstantStiffnessMatrix = ListGetLogical( Solver % Values,'Constant Stiffness Matrix', Found ) 
     IF( ConstantStiffnessMatrix ) THEN
       IF( NeedDensity ) CALL Fatal('StressSolve','"Constant Stiffness Matrix" applicable only for steady cases!')      
-      CALL ListInitElementKeyword( cmult_h,'Material','Stiffness Matrix Multiplier',DefRValue=1.0_dp)
+      multvar => NULL()
+      multname = ListGetString( Solver % Values,'Stiffness Matrix Multiplier Name',Found )
+      IF(Found ) THEN
+        multvar => VariableGet( Solver % Mesh % Variables, multname, UnfoundFatal = .TRUE.)
+        IF( multvar % TYPE /= Variable_on_elements ) THEN
+          CALL Fatal('StreeSolve','"Stiffness Matrix Multiplier Name" should be elemental field!')
+        END IF
+      END IF
     END IF
             
      CALL StartAdvanceOutput( 'StressSolve', 'Assembly:')
@@ -1359,8 +1368,12 @@ CONTAINS
 100    IF( ConstantStiffnessMatrix ) THEN
          IF(t==1) CALL ListAddConstRealArray(Solver % Values,&
              'Elemental Stiffness Matrix', dim*n, dim*n, STIFF )      
-         cmult = ListGetElementReal(cmult_h, Element=Element, Found=Found )
-         CALL DefaultUpdateEquations( cmult * STIFF, cmult * FORCE )
+         IF( ASSOCIATED( MultVar ) ) THEN
+           cmult = MultVar % Values(MultVar % Perm(Element % ElementIndex))
+           CALL DefaultUpdateEquations( cmult * STIFF, cmult * FORCE )
+         ELSE
+           CALL DefaultUpdateEquations( STIFF, FORCE )
+         END IF           
        ELSE IF ( ConstantBulkMatrixInUse ) THEN
          CALL DefaultUpdateForce( FORCE )
          IF ( HarmonicAnalysis ) THEN
