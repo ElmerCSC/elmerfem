@@ -4243,7 +4243,9 @@ CONTAINS
      END DO
      
      IF(.NOT. AlreadySet ) THEN
-       CALL Warn('ReadTargetNames','Could not map name to Body nor BC: '//name0(1:i2-i1+1) )
+       IF( ParEnv % MyPe == 0 ) THEN
+         CALL Warn('ReadTargetNames','Could not map name to Body nor BC: '//name0(1:i2-i1+1) )
+       END IF
      END IF
 
    END DO
@@ -9173,9 +9175,7 @@ CONTAINS
       END IF
 
       IF( StrongLevelEdges .OR. StrongExtrudedEdges .OR. StrongConformingEdges ) THEN
-        IF(.NOT. ListGetLogical( BC,'Level Projector Edges Old',Found) ) THEN
-          CALL AddEdgeProjectorStrongGeneric()            
-        ELSE IF( StrongConformingEdges ) THEN
+        IF( StrongConformingEdges ) THEN
           CALL AddEdgeProjectorStrongConforming()
         ELSE         
           IF( ListGetLogical( BC,'Level Projector Edges Generic', Found ) ) THEN
