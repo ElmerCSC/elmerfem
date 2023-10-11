@@ -469,8 +469,8 @@ CONTAINS
     INTEGER :: n, nd
     LOGICAL :: InitHandles
 !------------------------------------------------------------------------------
-    COMPLEX(KIND=dp) :: eps, muinv, L(3)
-    REAL(KIND=dp) :: DetJ, weight, Cond
+    COMPLEX(KIND=dp) :: eps, muinv, Cond, L(3)
+    REAL(KIND=dp) :: DetJ, weight
     COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:), MASS(:,:), Gauge(:,:), PREC(:,:)
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:)
     LOGICAL :: Stat, WithNDOFs
@@ -492,7 +492,7 @@ CONTAINS
 
     ! This InitHandles flag might be false on threaded 1st call
     IF( InitHandles ) THEN
-      CALL ListInitElementKeyword( CondCoeff_h,'Material','Electric Conductivity')
+      CALL ListInitElementKeyword( CondCoeff_h,'Material','Electric Conductivity',InitIm=.TRUE.)
       CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity',InitIm=.TRUE.)
       CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)
       CALL ListInitElementKeyword( CurrDens_h,'Body Force','Current Density', InitIm=.TRUE.,InitVec3D=.TRUE.)
@@ -547,7 +547,7 @@ CONTAINS
       END DO
 
       ! Conductivity may also be accounted for
-      Cond = ListGetElementReal( CondCoeff_h, Basis, Element, Found, GaussPoint = t )
+      Cond = ListGetElementComplex( CondCoeff_h, Basis, Element, Found, GaussPoint = t )
       IF( Found ) THEN
         DO p = 1,nd-np
           i = p+np
