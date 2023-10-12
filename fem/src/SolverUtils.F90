@@ -1112,7 +1112,7 @@ CONTAINS
        IF(PRESENT( Node ) ) THEN
          j = NrmVar % Perm(node)
          IF( j>0 ) THEN
-           Normal(1:dim) = SUM( Basis(1:n) * NrmVar % Values(dofs*(j-1)+1:dofs*(j-1)+dim) ) 
+           Normal(1:dim) = NrmVar % Values(dofs*(j-1)+1:dofs*(j-1)+dim) 
            uFound = .TRUE.
          END IF         
        ELSE IF( PRESENT( Basis ) ) THEN
@@ -1161,7 +1161,13 @@ CONTAINS
          PRINT *,'NormalVector:',dofs,Element % ElementIndex, Element % NodeIndexes, Normal(1:dim)
          PRINT *,'Called by solver:',Solver % SolverId, ASSOCIATED(NT), ASSOCIATED(NrmVar), &
              PRESENT(Node), PRESENT(Basis)
-         CALL Fatal('ConsistentNormalVector','NormalVector should have a norm close to one!')
+         IF(PRESENT(Node)) THEN
+           PRINT *,'Node:',Solver % Mesh % Nodes % x(node), Solver % Mesh % Nodes % y(node),&
+               Solver % Mesh % Nodes % z(node), Node, nrmVar % Perm(node)
+           PRINT *,'nrmVar:',SIZE(NrmVar % Values), Solver % Mesh % NumberOfNodes, &
+               COUNT(NrmVar % Perm > 0)           
+         END IF
+         CALL Warn('ConsistentNormalVector','NormalVector should have a norm close to one!')
        END IF
      END IF       
      
