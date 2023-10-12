@@ -158,7 +158,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   TYPE(Mesh_t), POINTER :: Mesh
   COMPLEX(KIND=dp) :: PrecDampCoeff
   LOGICAL :: PiolaVersion, EdgeBasis, LowFrequencyModel, LorenzCondition
-  LOGICAL :: UseGaussLaw
+  LOGICAL :: UseGaussLaw, ChargeConservation
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Solver_t), POINTER :: pSolver
   CHARACTER(*), PARAMETER :: Caller = 'VectorHelmholtzSolver'
@@ -231,6 +231,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   LowFrequencyModel = GetLogical(SolverParams, 'Low Frequency Model', Found)
   LorenzCondition = GetLogical(SolverParams, 'Lorenz Condition', Found)
   UseGaussLaw = GetLogical(SolverParams, 'Use Gauss Law', Found)
+  ChargeConservation = GetLogical(SolverParams, 'Apply Conservation of Charge', Found)
   
   ! Resolve internal non.linearities, if requested:
   ! ----------------------------------------------
@@ -473,7 +474,7 @@ CONTAINS
     REAL(KIND=dp) :: DetJ, weight
     COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:), MASS(:,:), Gauge(:,:), PREC(:,:)
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:)
-    LOGICAL :: Stat, WithNDOFs
+    LOGICAL :: Stat, WithNDOFs, ConductorBody
     LOGICAL :: AllocationsDone = .FALSE.
     INTEGER :: t, i, j, m, np, p, q, ndofs
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -548,7 +549,8 @@ CONTAINS
 
       ! Conductivity may also be accounted for
       Cond = ListGetElementComplex( CondCoeff_h, Basis, Element, Found, GaussPoint = t )
-      IF( Found ) THEN
+      ConductorBody = Found .AND. ABS(Cond) > AEPS
+      IF( ConductorBody ) THEN
         DO p = 1,nd-np
           i = p+np
           DO q = 1,nd-np
@@ -632,17 +634,31 @@ CONTAINS
           END DO
         ELSE
           IF (UseGaussLaw) THEN
-            ! Add -w^2 div D = -w^2 rho in a weak form when E = A - grad V:
-            DO i = 1,np
-              DO q = 1,nd-np
-                j = q+np
-                Gauge(i,j) = Gauge(i,j) + Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
-                Gauge(j,i) = Gauge(j,i) + Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
+            IF (ConductorBody .AND. ChargeConservation) THEN
+              ! Use an implied equation about the conservation of charge
+              DO i = 1,np
+                DO q = 1,nd-np
+                  j = q+np
+                  Gauge(i,j) = Gauge(i,j) - im * Omega * Cond * SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
+                  Gauge(j,i) = Gauge(j,i) + Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
+                END DO
+                DO j = 1,np
+                  Gauge(i,j) = Gauge(i,j) + im * Omega * Cond * SUM(dBasisdx(i,:) * dBasisdx(j,:)) * weight
+                END DO
               END DO
-              DO j = 1,np
-                Gauge(i,j) = Gauge(i,j) - Omega**2 * Eps * SUM(dBasisdx(i,:) * dBasisdx(j,:)) * weight
+            ELSE
+              ! Add -w^2 div D = -w^2 rho in a weak form when E = A - grad V:
+              DO i = 1,np
+                DO q = 1,nd-np
+                  j = q+np
+                  Gauge(i,j) = Gauge(i,j) + Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
+                  Gauge(j,i) = Gauge(j,i) + Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
+                END DO
+                DO j = 1,np
+                  Gauge(i,j) = Gauge(i,j) - Omega**2 * Eps * SUM(dBasisdx(i,:) * dBasisdx(j,:)) * weight
+                END DO
               END DO
-            END DO
+            END IF
           ELSE
             ! Here Gauss's law is not employed, only an additional gauge constraint is introduced
             DO i = 1,np
