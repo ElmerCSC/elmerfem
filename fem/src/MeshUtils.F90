@@ -20572,7 +20572,7 @@ END SUBROUTINE FindNeighbourNodes
 !------------------------------------------------------------------------------
      TYPE( Mesh_t ), POINTER :: Mesh
      TYPE( Solver_t ), TARGET :: Solver
-     LOGICAL, OPTIONAL :: NoInterp 
+     LOGICAL, OPTIONAL :: NoInterp
 !------------------------------------------------------------------------------
      INTEGER :: i,j,k,n,n1,n2,DOFs
      LOGICAL :: Found, OptimizeBandwidth, GlobalBubbles, IsTransient
@@ -20737,6 +20737,96 @@ END SUBROUTINE FindNeighbourNodes
 !------------------------------------------------------------------------------
   END SUBROUTINE UpdateSolverMesh
 !------------------------------------------------------------------------------
+
+
+
+  ! Create list of active elements for more speedy operation
+  !-------------------------------------------------------------
+  SUBROUTINE SetActiveElementsTable( Model, Solver, MaxDim, CreateInv )
+    TYPE(Model_t)  :: Model
+    TYPE(Solver_t) :: Solver
+    INTEGER, OPTIONAL :: MaxDim
+    LOGICAL, OPTIONAL :: CreateInv
+    
+    INTEGER :: i, n, Sweep, MeshDim 
+    TYPE(Element_t), POINTER :: Element
+    LOGICAL :: Found, HasFCT, Parallel
+    TYPE(Mesh_t), POINTER :: Mesh
+    CHARACTER(:), ALLOCATABLE :: EquationName
+    
+    IF( .NOT. ( Solver % Mesh % Changed .OR. Solver % NumberOfActiveElements <= 0 ) ) RETURN
+
+    IF( ASSOCIATED( Solver % ActiveElements ) ) THEN
+      DEALLOCATE( Solver % ActiveElements )
+    END IF
+    
+    EquationName = ListGetString( Solver % Values, 'Equation', Found)
+    IF( .NOT. Found ) THEN
+      CALL Fatal('SetActiveElementsTable','Equation not present!')
+    END IF
+
+    CALL Info('SetActiveElementsTable',&
+        'Creating active element table for: '//TRIM(EquationName),Level=12)
+
+    HasFCT = ListGetLogical( Solver % Values, 'Linear System FCT', Found )
+
+    Mesh => Solver % Mesh
+
+    MeshDim = 0 
+    Parallel = ( ParEnv % PEs > 1 ) .AND. ( .NOT. Mesh % SingleMesh ) 
+
+    
+    DO Sweep = 0, 1    
+      n = 0
+      DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
+        Element => Solver % Mesh % Elements(i)
+
+        IF( Parallel ) THEN
+          IF( .NOT.HasFCT .AND. Element % PartIndex /= ParEnv % myPE ) CYCLE
+        END IF
+          
+        IF ( CheckElementEquation( Model, Element, EquationName ) ) THEN
+          n = n + 1
+          IF( Sweep == 0 ) THEN
+            MeshDim = MAX( Element % TYPE % DIMENSION, MeshDim )
+          ELSE
+            Solver % ActiveElements(n) = i
+          END IF
+        END IF
+      END DO
+      
+      IF( Sweep == 0 ) THEN
+        Solver % NumberOfActiveElements = n
+        IF( n == 0 ) EXIT
+        ALLOCATE( Solver % ActiveElements( n ) )
+      END IF
+    END DO
+
+    IF( n == 0 ) THEN
+      CALL Info('SetActiveElementsTable','No active elements found',Level=12)    
+      RETURN
+    END IF
+                
+    IF( PRESENT( MaxDim ) ) MaxDim = MeshDim 
+
+    IF( PRESENT( CreateInv ) ) THEN
+      IF( CreateInv ) THEN
+        CALL Info('SetActiveElementsTable','Creating inverse table for elemental variable permutation',Level=20)
+        ALLOCATE( Solver % InvActiveElements( Mesh % NumberOfBulkElements &
+            + Mesh % NumberOFBoundaryElements ) )
+
+        Solver % InvActiveElements = 0
+        DO i=1,Solver % NumberOfActiveElements
+          Solver % InvActiveElements( Solver % ActiveElements(i) ) = i
+        END DO
+      END IF
+    END IF
+    
+    CALL Info('SetActiveElementsTable','Number of active elements found : '//I2S(n),Level=12)    
+    
+  END SUBROUTINE SetActiveElementsTable
+
+
 
   
 !------------------------------------------------------------------------------

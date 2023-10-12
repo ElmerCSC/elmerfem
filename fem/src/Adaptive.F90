@@ -707,6 +707,7 @@ CONTAINS
     !   -----------------------------------------
 
     CALL UpdateSolverMesh( Solver, NewMesh, NoInterp )
+    CALL SetActiveElementsTable( Model, Solver )
           
     CALL ParallelInitMatrix( Solver, Solver % Matrix )
 
