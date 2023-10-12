@@ -1090,24 +1090,24 @@ CONTAINS
        !IF(.NOT. GotIt) str = 'Normal Vector'         
        !NrmVar => VariableGet( Solver % Mesh % Variables, str, ThisOnly=.TRUE. ) 
 
-       NULLIFY(NT)
-
        IF( ASSOCIATED(NrmVar) ) THEN
          ! If we have given Normal variable use that!
          dofs = NrmVar % Dofs
-       ELSE       
-         ! If we have precomputed normal-tangential vector use that!
-         NT => Solver % NormalTangential      
-         IF( ASSOCIATED(NT) ) THEN
-           IF( NT % NormalTangentialNOFNodes == 0 ) NULLIFY(NT)
-         END IF
+       END IF       
+
+       ! If we have precomputed normal-tangential vector use that!
+       NULLIFY(NT)       
+       IF( ASSOCIATED(NT) ) THEN
+         IF( NT % NormalTangentialNOFNodes == 0 ) NULLIFY(NT)
        END IF
+
        dim = CoordinateSystemDimension()
        PrevSolver => Solver
      END IF
 
      ! Note that we need to have full hit, otherwise return .FALSE.
      ! and use elemental normal vector in the code. 
+     uFound = .FALSE.
      IF(dofs > 0) THEN
        IF(PRESENT( Node ) ) THEN
          j = NrmVar % Perm(node)
@@ -1130,13 +1130,16 @@ CONTAINS
        ELSE
          CALL Fatal('ConsistentNormalvector','Either Basis of Node is required!')
        END IF
-     ELSE IF(ASSOCIATED(NT) ) THEN
+     END IF
+       
+     ! We can also try to use the existing NT coordinate system associated normals.
+     IF(.NOT. uFound .AND. ASSOCIATED(NT) ) THEN
        IF(PRESENT( Node ) ) THEN
          j = NT % BoundaryReorder(node)
          IF( j>0 ) THEN
            Normal(1:dim) = NT % BoundaryNormals(j,1:dim)
            uFound = .TRUE.
-         END IF         
+         END IF
        ELSE IF( PRESENT( Basis ) ) THEN
          n = Element % TYPE % NumberOfNodes       
          m = COUNT( NT % BoundaryReorder(Element % NodeIndexes) > 0 )
@@ -1149,14 +1152,15 @@ CONTAINS
          END IF
        ELSE
          CALL Fatal('ConsistentNormalvector','Either Basis of Node is required!')
-       END IF
-         
+       END IF         
      END IF
 
      IF( uFound ) THEN
        NrmLen = SQRT(SUM(Normal**2))
        IF( ABS(1.0_dp-NrmLen) > 0.5_dp ) THEN         
          PRINT *,'NormalVector:',dofs,Element % ElementIndex, Element % NodeIndexes, Normal(1:dim)
+         PRINT *,'Called by solver:',Solver % SolverId, ASSOCIATED(NT), ASSOCIATED(NrmVar), &
+             PRESENT(Node), PRESENT(Basis)
          CALL Fatal('ConsistentNormalVector','NormalVector should have a norm close to one!')
        END IF
      END IF       
