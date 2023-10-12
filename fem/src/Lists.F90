@@ -2099,6 +2099,11 @@ CONTAINS
        ptr % Counter = ptr % Counter + 1
      END IF
 #endif
+#ifdef DEVEL_LISTUSAGE
+     IF( ASSOCIATED( ptr ) ) THEN
+       ptr % Counter = 1
+     END IF
+#endif
      
      IF ( PRESENT(Found) ) THEN
        Found = ASSOCIATED(ptr)
@@ -3073,6 +3078,11 @@ CONTAINS
 #ifdef DEVEL_LISTCOUNTER
      IF( ASSOCIATED( ptr ) ) THEN
        ptr % Counter = ptr % Counter + 1
+     END IF
+#endif
+#ifdef DEVEL_LISTUSAGE
+     IF( ASSOCIATED( ptr ) ) THEN
+       ptr % Counter = 1
      END IF
 #endif
      
@@ -10195,52 +10205,60 @@ END SUBROUTINE
 !-------------------------------------------------------------------------------
 
 
-#ifdef DEVEL_LISTCOUNTER
+#if defined DEVEL_LISTCOUNTER || defined DEVEL_LISTUSAGE
    
    !------------------------------------------------------------------------------
    !> Go through the lists and for each lists show call counts.
    !------------------------------------------------------------------------------
-   SUBROUTINE ReportListCounters( Model ) 
+   SUBROUTINE ReportListCounters( Model, ReportMode ) 
      TYPE(Model_t) :: Model
+     INTEGER :: ReportMode 
+     
      CHARACTER(LEN=MAX_NAME_LEN) :: dirname,filename
-
      INTEGER :: i, totcount, nelem, ReportUnit     
      LOGICAL :: Unused, GotFile
-     
-     CALL Info('ReportListCounters','Saving ListGet operations count per bulk elements')
 
+     IF(ReportMode == 1 ) THEN
+       ! Just initialize the lists from -1 to 0 such that only orginal keywords will be
+       ! reported in mode 2.
+       GOTO 100
+     END IF
+     
      filename = ListGetString( Model % Simulation,'List Counter File',GotFile )     
      IF(.NOT. GotFile ) filename = '../listcounter.dat'
-
+     
      ! We may toggle this to enable is disable automatic writing to file
      ! For example, when we want to collect data automatically from tests. 
      !GotFile = .TRUE.
-       
+     
      IF( GotFile ) THEN
+       CALL Info('ReportListCounters','Saving ListGet operations counts')
        ReportUnit = 10
        !IF( ParEnv % PEs > 1 ) THEN
        !  filename = TRIM(filename)//'.'//I2S(ParEnv % MyPe)
        !END IF         
        OPEN( 10,File=filename,STATUS='UNKNOWN',POSITION='APPEND' )
        CALL GETCWD(dirname)
-
+       
        ! These are only for reference if writing lot of data to same file
        WRITE( ReportUnit,'(A)') 'Working directory: '//TRIM(dirname)
        nelem = Model % Mesh % NumberOfBulkElements       
        WRITE( ReportUnit,'(T4,A)') 'Number of elements: '//I2S(nelem)
        WRITE( ReportUnit,'(T4,A)') 'Number of nodes: '//I2S(Model % Mesh % NumberOfNodes)       
      ELSE
-       IF( .NOT. InfoActive(12) ) RETURN
+       IF( .NOT. InfoActive(10) ) RETURN
        ! IF( ParEnv % MyPe /= 0) RETURN 
        ReportUnit = 6
      END IF
               
-     totcount = 0
-     
      ! In the first round write the unused keywords
      ! On the 2nd round write the keywords that 
      Unused = .TRUE.
-100  IF( Unused ) THEN
+     totcount = 0
+     
+100  IF( ReportMode == 1 ) THEN
+       CONTINUE
+     ELSE IF( Unused ) THEN
        WRITE( ReportUnit,'(T4,A)') 'Unused keywords:'       
      ELSE
        WRITE( ReportUnit,'(T4,A)') 'Used keywords:'              
@@ -10272,15 +10290,16 @@ END SUBROUTINE
      DO i=1,Model % NumberOfSolvers
        CALL ReportList('Solver '//I2S(i), Model % Solvers(i) % Values, Unused )
      END DO
-
-     IF( Unused ) THEN
-       Unused = .FALSE.
-       GOTO 100
+     
+     IF( ReportMode == 3 ) THEN
+       IF( Unused ) THEN
+         Unused = .FALSE.
+         GOTO 100
+       END IF
+       CALL Info('ReportListCounters','List operations total count:'//I2S(totcount))     
      END IF
-
+     
      IF( GotFile ) CLOSE(ReportUnit)
-         
-     CALL Info('ReportListCounters','List operations total count:'//I2S(totcount))     
 
    CONTAINS
 
@@ -10303,11 +10322,18 @@ END SUBROUTINE
          n = ptr % NameLen
          m = ptr % Counter 
 
-         IF( Unused .AND. m == 0 ) THEN
-           WRITE( ReportUnit,'(T8,A,T30,A)') TRIM(SectionName),ptr % Name(1:n)         
-         ELSE IF(.NOT. Unused .AND. m > 0 ) THEN
-           WRITE( ReportUnit,'(T8,A,T30,I0,T40,A)') TRIM(SectionName),m,ptr % Name(1:n)
-           totcount = totcount + m
+         IF(ReportMode == 1 ) THEN
+           ! Change existing keywords tag from 0 to -1
+           ptr % Counter = -1
+         ELSE IF(ReportMode == 2 .AND. m == -1 ) THEN
+           WRITE( ReportUnit,'(T8,A,T30,A)') TRIM(SectionName),ptr % Name(1:n)
+         ELSE IF( ReportMode == 3 ) THEN
+           IF( Unused .AND. m == 0 ) THEN
+             WRITE( ReportUnit,'(T8,A,T30,A)') TRIM(SectionName),ptr % Name(1:n)
+           ELSE IF(.NOT. Unused .AND. m > 0 ) THEN
+             WRITE( ReportUnit,'(T8,A,T30,I0,T40,A)') TRIM(SectionName),m,ptr % Name(1:n)
+             totcount = totcount + m
+           END IF
          END IF
          ptr => ptr % Next
        END DO

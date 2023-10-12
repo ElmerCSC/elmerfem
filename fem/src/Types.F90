@@ -414,6 +414,9 @@ MODULE Types
 #ifdef DEVEL_LISTCOUNTER 
      INTEGER :: Counter = 0
 #endif
+#ifdef DEVEL_LISTUSAGE
+     INTEGER :: Counter = 0
+#endif
 
      LOGICAL :: LuaFun = .FALSE.
      INTEGER :: partag = 0

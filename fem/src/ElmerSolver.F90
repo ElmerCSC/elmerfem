@@ -342,7 +342,7 @@
          OptimIters = 1 
        END IF
      END IF
-                
+     
 !------------------------------------------------------------------------------
 !    Read element definition file, and initialize element types
 !------------------------------------------------------------------------------
@@ -386,7 +386,7 @@
          
          CurrentModel => LoadModel(ModelName,.FALSE.,ParEnv % PEs,ParEnv % MyPE,MeshIndex)
          IF(.NOT.ASSOCIATED(CurrentModel)) EXIT
-         
+
          !----------------------------------------------------------------------------------
          ! Set namespace searching mode
          !----------------------------------------------------------------------------------
@@ -675,10 +675,15 @@
       
      CALL CompareToReferenceSolution( Finalize = .TRUE. )
 
+#ifdef DEVEL_LISTUSAGE
+     CALL Info('MAIN','Reporting unudes list entries for sif improvement!')
+     CALL Info('MAIN','If you do not want these lines undefine > DEVEL_LISTUSAGE < !')
+     CALL ReportListCounters( CurrentModel, 2 ) 
+#endif
 #ifdef DEVEL_LISTCOUNTER
      CALL Info('MAIN','Reporting list counters for code optimization purposes only!')
      CALL Info('MAIN','If you get these lines with production code undefine > DEVEL_LISTCOUNTER < !')
-     CALL ReportListCounters( CurrentModel )
+     CALL ReportListCounters( CurrentModel, 3 )
 #endif
           
 !------------------------------------------------------------------------------

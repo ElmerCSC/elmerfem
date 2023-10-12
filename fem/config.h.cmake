@@ -170,7 +170,9 @@
 
 /* Have these defined only for debugging or optimization purposes */
 /* #define DEVEL_LISTCOUNTER */
+#define DEVEL_LISTUSAGE
 /* #define DEVEL_KEYWORDMISSES */
+
 
 #cmakedefine HAVE_LUA
 
