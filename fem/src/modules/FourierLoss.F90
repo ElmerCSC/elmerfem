@@ -246,7 +246,7 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
   TYPE(ValueList_t),POINTER :: SolverParams
   CHARACTER(LEN=MAX_NAME_LEN) :: VarName, FourierName, VarString, Pref
   INTEGER :: dim, Nsize, FourierDofs, i, nlen, mlen, icomp
-  LOGICAL :: Found
+  LOGICAL :: Found, FlipActive
   INTEGER :: TimesVisited = 0
   INTEGER, POINTER :: FourierPerm(:), EPerm(:)
   REAL(KIND=dp) :: Norm, Omega
@@ -405,7 +405,12 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
   Nsize = SIZE( TargetField )
   tdofs = TargetVar % Dofs
   
-
+  
+  FlipActive = ( TargetVar % PeriodicFlipActive )
+  IF(FlipActive) THEN
+    CALL Info(Caller,'Assuming initial field to have conforming flips')
+  END IF
+  
   ! The target field is an AV solution 
   AvField = .FALSE.
   DirectField = ListGetLogical( SolverParams,'Target Variable Direct',Found)
@@ -1062,7 +1067,11 @@ CONTAINS
             CurlAtIp(3) = GradAtIp(2,1) - GradAtIp(1,2)
           ELSE ! dim == 2
             ElemField(1:nd) = Component( FourierPerm( Indeces(1:nd) ) )
-
+            IF(FlipActive) THEN
+              DO i=1,nd
+                IF( CurrentModel % Mesh % PeriodicFlip(Indeces(i)) ) ElemField(i) = -ElemField(i)
+              END DO
+            END IF           
             CurlAtIp(1) =  SUM( ElemField(1:nd) * dBasisdx(1:nd,2) )
             CurlAtIp(2) = -SUM( ElemField(1:nd) * dBasisdx(1:nd,1) )
             CurlAtIp(3) = 0.0_dp
