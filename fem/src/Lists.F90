@@ -10246,7 +10246,6 @@ END SUBROUTINE
        WRITE( ReportUnit,'(T4,A)') 'Number of elements: '//I2S(nelem)
        WRITE( ReportUnit,'(T4,A)') 'Number of nodes: '//I2S(Model % Mesh % NumberOfNodes)       
      ELSE
-       IF( .NOT. InfoActive(10) ) RETURN
        ! IF( ParEnv % MyPe /= 0) RETURN 
        ReportUnit = 6
      END IF
@@ -10326,7 +10325,12 @@ END SUBROUTINE
            ! Change existing keywords tag from 0 to -1
            ptr % Counter = -1
          ELSE IF(ReportMode == 2 .AND. m == -1 ) THEN
-           WRITE( ReportUnit,'(T8,A,T30,A)') TRIM(SectionName),ptr % Name(1:n)
+           ! Do not report "name" as it makes sense to have one. 
+           IF( ptr % Name == 'name' ) THEN
+             CONTINUE
+           ELSE
+             WRITE( ReportUnit,'(T8,A,T30,A)') TRIM(SectionName),ptr % Name(1:n)
+           END IF
          ELSE IF( ReportMode == 3 ) THEN
            IF( Unused .AND. m == 0 ) THEN
              WRITE( ReportUnit,'(T8,A,T30,A)') TRIM(SectionName),ptr % Name(1:n)

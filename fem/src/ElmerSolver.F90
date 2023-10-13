@@ -674,11 +674,13 @@
      END IF
       
      CALL CompareToReferenceSolution( Finalize = .TRUE. )
-
+     
 #ifdef DEVEL_LISTUSAGE
-     CALL Info('MAIN','Reporting unudes list entries for sif improvement!')
-     CALL Info('MAIN','If you do not want these lines undefine > DEVEL_LISTUSAGE < !')
-     CALL ReportListCounters( CurrentModel, 2 ) 
+     IF(InfoActive(6)) THEN
+       CALL Info('MAIN','Reporting unudes list entries for sif improvement!')
+       CALL Info('MAIN','If you do not want these lines undefine > DEVEL_LISTUSAGE < !')
+       CALL ReportListCounters( CurrentModel, 2 )
+     END IF
 #endif
 #ifdef DEVEL_LISTCOUNTER
      CALL Info('MAIN','Reporting list counters for code optimization purposes only!')
