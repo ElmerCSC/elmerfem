@@ -677,7 +677,7 @@
      
 #ifdef DEVEL_LISTUSAGE
      IF(InfoActive(6)) THEN
-       CALL Info('MAIN','Reporting unudes list entries for sif improvement!')
+       CALL Info('MAIN','Reporting unused list entries for sif improvement!')
        CALL Info('MAIN','If you do not want these lines undefine > DEVEL_LISTUSAGE < !')
        CALL ReportListCounters( CurrentModel, 2 )
      END IF
