@@ -10297,9 +10297,10 @@ END SUBROUTINE
        END IF
        CALL Info('ReportListCounters','List operations total count:'//I2S(totcount))     
      END IF
-     
-     IF( GotFile ) CLOSE(ReportUnit)
 
+     IF (ReportMode /= 1) THEN 
+       IF( GotFile ) CLOSE(ReportUnit)
+     END IF
    CONTAINS
 
      
