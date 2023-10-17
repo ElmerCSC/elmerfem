@@ -16994,7 +16994,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Elem_in, Elem_out
     TYPE(ParallelInfo_t), POINTER :: PI_in, PI_out
     INTEGER :: nnodes,gnodes,gelements,ierr,bcignored,cnt101
-    LOGICAL :: isParallel, Found, PreserveBaseline, Rotational, Rotate2Pi
+    LOGICAL :: isParallel, Found, PreserveBaseline, Rotational, Rotate2Pi, CollectExtrudedBCs
     REAL(KIND=dp)::w,MinCoord,MaxCoord,CurrCoord
     REAL(KIND=dp), POINTER :: ActiveCoord(:)
     REAL(KIND=dp), ALLOCATABLE :: Wtable(:)
@@ -17097,6 +17097,8 @@ CONTAINS
     MaxCoord = ListGetConstReal( CurrentModel % Simulation,'Extruded Max Coordinate',Found )
     IF(.NOT. Found) MaxCoord = 1.0_dp
 
+    CollectExtrudedBCs = ListGetLogical( CurrentModel % Simulation,'Extruded BCs Collect',Found )
+    
     Rotate2Pi = .FALSE.
     Rotational = ListGetLogical( CurrentModel % Simulation,'Extruded Mesh Rotational',Found )    
     IF( Rotational ) THEN
@@ -17476,7 +17478,12 @@ CONTAINS
                 Mesh_out % Elements((bclevel-1) * Mesh_in % NumberOfBulkElements+i)
           END IF
         END IF
-        bcind = bcoffset + (k-1)*max_body + Elem_in % BodyId
+
+        IF( CollectExtrudedBCs ) THEN
+          bcind = bcoffset + k
+        ELSE
+          bcind = bcoffset + (k-1)*max_body + Elem_in % BodyId
+        END IF
         IF(DoCount .AND. bcind <= 100) BcCounter(bcind) = BcCounter(bcind) + 1
         
         max_bid = MAX(max_bid,bcind )
@@ -17649,13 +17656,13 @@ CONTAINS
 !------------------------------------------------------------------------------
     CHARACTER(:), ALLOCATABLE :: ExtrudedMeshName
     INTEGER :: i,j,k,l,n,m,cnt,ind(8),bid,max_bid,l_n,max_body,bcid,&
-        ExtrudedCoord,dg_n,totalnumberofelements
+        ExtrudedCoord,dg_n,totalnumberofelements,lastbc
     INTEGER, POINTER :: pInds(:)
     TYPE(ParallelInfo_t), POINTER :: PI_in, PI_out
     TYPE(Element_t), POINTER :: Element
     INTEGER :: nnodes,gnodes,gelements,ierr,nlev,ilev,&
         nParMesh,nParExt,OrigPart,ElemCode,bodyid
-    LOGICAL :: isParallel, SingleIn, Found, TopBC, BotBC
+    LOGICAL :: isParallel, SingleIn, Found, TopBC, BotBC, CollectExtrudedBCs
     INTEGER,ALLOCATABLE :: ChildBCs(:)
     REAL(KIND=dp)::w,MinCoord,MaxCoord,CurrCoord,zmin,zmax
     REAL(KIND=dp), POINTER :: ActiveCoord(:)
@@ -17745,6 +17752,7 @@ CONTAINS
     MaxCoord = ListGetConstReal( CurrentModel % Simulation,'Extruded Max Coordinate',Found )
     IF(.NOT. Found) MaxCoord = 1.0_dp
 
+    CollectExtrudedBCs = ListGetLogical( CurrentModel % Simulation,'Extruded BCs Collect',Found )
      
     IF (isParallel) THEN
       PI_in  => Mesh_in % ParallelInfo
@@ -17973,9 +17981,9 @@ CONTAINS
       CALL MPI_ALLREDUCE(j,max_bid,1, &
           MPI_INTEGER,MPI_MAX,ELMER_COMM_WORLD,ierr)
     END IF
-    
-    WRITE( Message,'(A,I0)') 'First Extruded BC set to: ',max_bid+1
-    CALL Info(Caller,Message,Level=8)
+   
+    CALL Info(Caller,'First Extruded BC set to: '//I2S(max_bid+1),Level=6)
+    lastbc = max_bid+1
 
     max_body=0
     DO i=1,Mesh_in % NumberOfBulkElements
@@ -17987,8 +17995,11 @@ CONTAINS
           MPI_INTEGER,MPI_MAX,ELMER_COMM_WORLD,ierr)
     END IF
 
-    WRITE( Message,'(A,I0)') 'Number of new BCs for each layer: ',max_body
-    CALL Info(Caller,Message,Level=8)
+    IF( CollectExtrudedBCs ) THEN
+      CALL Info(Caller,'Number of new BCs for each layer: 1',Level=6)
+    ELSE
+      CALL Info(Caller,'Number of new BCs for each layer: '//I2S(max_body),Level=6)
+    END IF
 
     ALLOCATE(ChildBCs(2*max_body))
     ChildBCs = -1
@@ -18010,10 +18021,15 @@ CONTAINS
         Element % BoundaryInfo % Right => NULL()
 
         bodyid = Mesh_in % Elements(i) % BodyId                
-        bcid = max_bid + bodyid
+        IF( CollectExtrudedBCs ) THEN
+          bcid = max_bid + 1
+        ELSE
+          bcid = max_bid + bodyid
+        END IF
         Element % BoundaryInfo % Constraint = bcid
 
         ChildBCs(2*bodyid-1) = bcid 
+        lastbc = MAX(lastbc,bcid)
 
         Element % BodyId = 0
         IF( bcid <= CurrentModel % NumberOfBCs) THEN
@@ -18047,10 +18063,15 @@ CONTAINS
         Element % BoundaryInfo % Right => NULL()
         
         bodyid = Mesh_in % Elements(i) % BodyId                
-        bcid = max_bid + bodyid + max_body
+        IF( CollectExtrudedBCs ) THEN
+          bcid = max_bid + 2
+        ELSE
+          bcid = max_bid + bodyid + max_body
+        END IF
         Element % BoundaryInfo % Constraint = bcid
 
         ChildBCs(2*bodyid) = bcid 
+        lastbc = MAX(lastbc,bcid)
         
         Element % BodyId = 0
         IF( bcid<=CurrentModel % NumberOfBCs) THEN
@@ -18064,6 +18085,13 @@ CONTAINS
         Element % TYPE => Mesh_in % Elements(i) % TYPE
       END DO
     END IF
+
+    IF(.NOT. SingleIn .AND. isParallel) THEN
+      j=lastbc
+      CALL MPI_ALLREDUCE(j,lastbc,1, &
+          MPI_INTEGER,MPI_MAX,ELMER_COMM_WORLD,ierr)
+    END IF
+    CALL Info(Caller,'Last Extruded BC set to: '//I2S(lastbc),Level=6)
     
     IF( cnt /= totalnumberofelements ) THEN
       CALL Fatal(Caller,'Mismatch between allocated and set elements: '//&

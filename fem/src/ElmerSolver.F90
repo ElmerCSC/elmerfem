@@ -2899,8 +2899,12 @@
 
          
 !------------------------------------------------------------------------------
-         sTime(1) = sTime(1) + dt
-
+         IF(cum_Timestep == 1 .AND. ListGetLogical( CurrentModel % Simulation,'Timestep Start Zero',GotIt) ) THEN
+           CALL Info(Caller,'Not advancing the 1st timestep!')
+         ELSE
+           sTime(1) = sTime(1) + dt
+         END IF
+         
          IF( nPeriodic > 0 ) THEN
            IF( ParallelTime ) THEN
              timePeriod = nTimes * nPeriodic * dt                        
