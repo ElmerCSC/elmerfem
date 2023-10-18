@@ -11122,7 +11122,7 @@ END FUNCTION SearchNodeL
     IsBC = ASSOCIATED( Element % BoundaryInfo )
    
     InitDone = ASSOCIATED( pSolver, prevSolver ) .AND. &
-        ( prevVisited == pSolver % TimesVisited ) .AND. (.NOT. XOR(IsBC,PrevIsBC) )
+        ( prevVisited == pSolver % TimesVisited ) .AND. (.NOT. (IsBC .NEQV. PrevIsBC) )
     
     IF( .NOT. InitDone ) THEN
       PrevIsBC = IsBC 
@@ -21562,7 +21562,7 @@ CONTAINS
         END IF        
 
         ! Only consider external walls with just either parent in solid
-        IF( .NOT. XOR( Solid1, Solid2 ) ) CYCLE
+        IF( .NOT. ( Solid1 .NEQV. Solid2 ) ) CYCLE
         
         ! Check that the normal points outward of the solid
         IF( Solid1 ) THEN
@@ -23065,7 +23065,7 @@ CONTAINS
                  ! If we sum up to anti-periodic dof then use different sign
                  ! - except if the target is also antiperiodic.
                  IF( PerFlipActive ) THEN
-                   IF( XOR( PerFlip(col),PerFlip(k) ) ) Scale = -Scale
+                   IF(  PerFlip(col) .NEQV. PerFlip(k) ) Scale = -Scale
                  END IF
                  
                END IF
@@ -23285,7 +23285,7 @@ CONTAINS
                  ! If we sum up to anti-periodic dof then use different sign
                  ! - except if the target is also antiperiodic.
                  IF( PerFlipActive ) THEN
-                   IF( XOR( PerFlip(col),PerFlip(k) ) ) Scale = -Scale
+                   IF(  PerFlip(col) .NEQV. PerFlip(k) ) Scale = -Scale
                  END IF
                  
                END IF
@@ -23460,7 +23460,7 @@ CONTAINS
                    ! If we sum up to anti-periodic dof then use different sign
                    ! - except if the target is also antiperiodic.
                    IF( PerFlipActive ) THEN
-                     IF( XOR( PerFlip(col),PerFlip(k) ) ) Scale = -Scale
+                     IF( PerFlip(col) .NEQV. PerFlip(k) ) Scale = -Scale
                    END IF
 
                  END IF

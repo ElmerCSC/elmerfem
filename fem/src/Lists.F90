@@ -6066,7 +6066,7 @@ CONTAINS
          IF( FirstList ) THEN
            Handle % LValue = LValue
          ELSE
-           IF( XOR( Handle % LValue, LValue ) ) THEN
+           IF(  Handle % LValue .NEQV. LValue ) THEN
              Handle % ConstantEverywhere = .FALSE.
              EXIT
            END IF

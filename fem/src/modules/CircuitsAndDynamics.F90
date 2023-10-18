@@ -174,7 +174,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       END IF
     END DO
 
-    IF( XOR( Solver % Parallel, Asolver % Parallel ) ) THEN
+    IF( Solver % Parallel .NEQV. Asolver % Parallel  ) THEN
       CALL Warn(Caller,'Conflicting parallel status for circuit and A solver!')
       Solver % Parallel = .TRUE.
       ASolver % Parallel = .TRUE.
@@ -1358,7 +1358,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         //I2S(ASolver % SolverId),Level=6)
     Model % ASolver => ASolver 
 
-    IF( XOR( Solver % Parallel, Asolver % Parallel ) ) THEN
+    IF( Solver % Parallel .NEQV. Asolver % Parallel  ) THEN
       CALL Warn(Caller,'Conflicting parallel status for circuit and A solver!')
       Solver % Parallel = .TRUE.
       ASolver % Parallel = .TRUE.

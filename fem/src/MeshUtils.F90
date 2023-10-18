@@ -3747,7 +3747,7 @@ CONTAINS
      IF( ParEnv % PEs<=1 ) RETURN
    
      UseL = PRESENT(LTag)
-     IF(.NOT. XOR(UseL,PRESENT(Itag)) ) THEN
+     IF(.NOT. (UseL .NEQV. PRESENT(Itag)) ) THEN
        CALL Fatal('CommunicateParallelSystemTag','Give either logical or integer tag!')
      END IF
      CommI = -1
@@ -8262,7 +8262,7 @@ CONTAINS
         DO i=1,edofs
           j = Face % EdgeIndexes(i)
           cnts(1) = cnts(1) + 1
-          IF( XOR(PerFlip(ne0+j), XOR( AntiPer, swap(i)<0 )) ) cnts(2) = cnts(2) + 1
+          IF( PerFlip(ne0+j) .NEQV. ( AntiPer .NEQV. swap(i)<0 ) ) cnts(2) = cnts(2) + 1
           IF( PerPerm(ne0+j) /= ne0 + FaceM % EdgeIndexes(ABS(swap(i)))) cnts(3) = cnts(3) + 1
           !PRINT *,'CheckEdge:',PerFlip(ne0+j), XOR( AntiPer, swap(i)<0 ), &
           !    PerPerm(ne0+j), ne0 + FaceM % EdgeIndexes(ABS(swap(i)))          
@@ -8272,8 +8272,8 @@ CONTAINS
       END IF
 
       IF( fdofs == 2 ) THEN
-        PerFlip(nf0+2*eind-1) = XOR( AntiPer, swap(edofs+1)<0 )
-        PerFlip(nf0+2*eind-0) = XOR( AntiPer, swap(edofs+2)<0 )        
+        PerFlip(nf0+2*eind-1) = ( AntiPer .NEQV. swap(edofs+1)<0 )
+        PerFlip(nf0+2*eind-0) = ( AntiPer .NEQV. swap(edofs+2)<0 )        
         PerPerm(nf0+2*eind-1) = nf0 + 2*(eindm-1)+ABS(swap(edofs+1))
         PerPerm(nf0+2*eind-0) = nf0 + 2*(eindm-1)+ABS(swap(edofs+2))
       END IF
