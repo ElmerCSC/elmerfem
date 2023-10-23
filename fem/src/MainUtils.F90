@@ -3249,6 +3249,9 @@ CONTAINS
                IF( Solver % Variable % NonlinConverged < 0 )  THEN
                  TestConvergence = ListCheckPresent( Solver % Values,'Reference Norm' )
                END IF
+               IF(.NOT. TestConvergence) THEN
+                 TestConvergence = ListCheckPresent( Solver % Values,'Steady State Relaxation Factor')
+               END IF
              ELSE
                TestConvergence = ( i >= CoupledMinIter )
              END IF
