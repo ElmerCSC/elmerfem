@@ -100,9 +100,9 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
   INTEGER,POINTER :: PressurePerm(:), TemperaturePerm(:),PorosityPerm(:),SalinityPerm(:),&
        TemperatureDtPerm(:), DummyDtPerm(:),SalinityDtPerm(:),&
        StressInvPerm(:),DummyGWfluxPerm(:)
-  REAL(KIND=dp) :: Norm, meanfactor
+  REAL(KIND=dp) :: Norm, meanfactor, relax
   REAL(KIND=dp),POINTER :: Pressure(:), Temperature(:), Porosity(:), Salinity(:),&
-       TemperatureDt(:), DummyDt(:),SalinityDt(:),&
+       TemperatureDt(:), DummyDt(:),SalinityDt(:),Pressure0(:),&
        DummyGWflux(:),StressInv(:)
   LOGICAL :: Found, FirstTime=.TRUE., AllocationsDone=.FALSE.,&
        ConstantPorosity=.FALSE., NoSalinity=.FALSE.,GivenGWFlux,ElementWiseRockMaterial, DummyLog=.FALSE.,&
@@ -110,7 +110,7 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
        StressInvAllocationsDone=.FALSE.,StressInvDtAllocationsDone=.FALSE.,&
        HydroGeo=.FALSE.,ComputeDt=.FALSE.,FluxOutput=.FALSE.,&
        TemperatureTimeDerExists=.FALSE.,SalinityTimeDerExists=.FALSE., OffsetDensity=.FALSE., &
-       ComputeFreshwaterHead=.FALSE.
+       ComputeFreshwaterHead=.FALSE., LocalRelax
   CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: VariableBaseName(:)
   CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName='PermafrostGroundWaterFlow'
   !CHARACTER(LEN=MAX_NAME_LEN) :: TemperatureName, PorosityName, SalinityName, StressInvName, &
@@ -182,8 +182,7 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
   maxiter = ListGetInteger( Params, &
        'Nonlinear System Max Iterations',Found,minv=1)
   IF(.NOT. Found ) maxiter = 1
-
-
+  
   !FluxOutput = GetLogical(Params,'Groundwater Flux Output',Found)
   !StressInvName =  ListGetString(params,'Ground Stress Invariant Variable Name',ComputeDeformation)
   !DeformationName = ListGetString(params,'Ground Deformation Variable Name ',DeformationExists)
@@ -248,6 +247,12 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
       CALL INFO(SolverName,'Groundwater flow will be written to: Groundwater Flux {1..'&
           //I2S(DIM)//'}',Level=4)
     END IF
+  END IF
+
+  relax = ListGetCReal( Params,'Darcy Relaxation Factor',LocalRelax ) 
+  IF( LocalRelax ) THEN
+    ALLOCATE( Pressure0( SIZE(Pressure) ) )
+    Pressure0 = Pressure
   END IF
   
   ! Nonlinear iteration loop:
@@ -356,6 +361,10 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
 
   CALL DefaultFinish()
 
+  IF( LocalRelax ) THEN
+    Pressure = relax * Pressure + (1-relax) * Pressure0  
+    DEALLOCATE( Pressure0 )
+  END IF
        
   IF( ListGetLogical( Params,'Compute BC Flux',Found ) ) THEN
     CALL Info(Solvername,'Computing flux for Dirichlet BCs for salinity',Level=6)
@@ -378,6 +387,40 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
     BCFluxVar => VariableGet( Solver % Mesh % Variables,'BC Flux')
     CALL Ip2DgSwapper( Solver % Mesh, DummyGWFluxVar, BCFluxVar )
   END IF
+
+  BLOCK
+    TYPE(Variable_t), POINTER :: LoadsVar
+    REAL(KIND=dp) :: NegSum, PosSum, loadc
+    
+    LoadsVar => VariableGet( Solver % Mesh % Variables, TRIM(Solver % Variable % Name)//' Loads' )
+    IF( ASSOCIATED(LoadsVar) ) THEN
+
+      ! We need to recompute the loads after our own relaxation!
+      IF(LocalRelax) THEN
+        CALL CalculateLoads( Solver, Solver % Matrix, Pressure, 1, .TRUE., LoadsVar ) 
+      END IF
+
+      NegSum = SUM( LoadsVar % Values, LoadsVar % Values < 0.0_dp )
+      PosSum = SUM( LoadsVar % Values, LoadsVar % Values > 0.0_dp )      
+      NegSum = ParallelReduction(NegSum)
+      PosSum = ParallelReduction(PosSum)
+      loadc = ( PosSum + NegSum ) / (PosSum - NegSum) 
+      
+      IF(InfoActive(20)) THEN
+        PRINT *,'Negative LoasSum:',NegSum
+        PRINT *,'Positive LoadSum:',PosSum
+        PRINT *,'Disbalancd LoadSum:',loadc
+      END IF
+      
+      IF( ListGetLogical( Solver % Values,'Normalize Loads',Found ) ) THEN
+        WHERE( LoadsVar % Values > 0 )
+          LoadsVar % Values = (1-loadc) * LoadsVar % Values 
+        ELSEWHERE 
+          LoadsVar % Values = (1+loadc) * LoadsVar % Values 
+        ENDWHERE
+      END IF
+    END IF
+  END BLOCK
   
 
 CONTAINS
@@ -887,8 +930,7 @@ CONTAINS
     !REAL(KIND=dp) :: Flux(n), Coeff(n), Pressure(n), FluxAtIP, Weight
     REAL(KIND=dp) :: FluxAtIP, Weight
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,LoadAtIP,WeakPressure(nd), PressureCond(n)
-    REAL(KIND=dp) :: MASS(nd,nd),STIFF(nd,nd), FORCE(nd), LOAD(nd)
-    REAL(KIND=dp), PARAMETER :: C=1000.0_dp
+    REAL(KIND=dp) :: MASS(nd,nd),STIFF(nd,nd), FORCE(nd), LOAD(nd),C
     REAL(KIND=dp) :: GasConstant, N0, DeltaT, T0, p0, eps, Gravity(3) ! constants read only once
     REAL(KIND=dp) :: fluxgAtIP(3), rhogwAtIP, KgwAtIP(3,3), XiAtIP, mugwAtIP, MinKgw 
 
@@ -913,35 +955,33 @@ CONTAINS
     FluxCondition = .FALSE.
     Recharge = .FALSE.
 
-    ! just using WeakPressure as dummy destination to inquire whether we have a
-    ! Dirichlet condition and can stop composing weakly imposed conditions
-    WeakPressure(1:n) = GetReal( BoundaryCondition,TRIM(VarName), Found)
-    IF (Found) THEN
-      PressureCond(1:n) = 1.0_dp
+    ! If we have dirichlet condition active do not do anything here.
+    IF( ListCheckPresent( BoundaryCondition,TRIM(VarName) ) ) THEN
       PressureCond(1:n) = GetReal(BoundaryCondition, TRIM(VarName)//" Condition", Found)
-      IF (.NOT.(ANY(PressureCond <= 0.0_dp))) RETURN
+      IF(Found) THEN
+        IF (ALL(PressureCond(1:n) > 0.0_dp) ) RETURN
+      ELSE
+        RETURN
+      END IF
     END IF
     
-    WeakDirichletCond = .FALSE.
-
     WeakPressure(1:n) = GetReal( BoundaryCondition,'Imposed '// TRIM(VarName), WeakDirichletCond)
 
     IF(.NOT.ConstantsRead) THEN
       ConstantsRead = &
            ReadPermafrostConstants(Model, FunctionName, DIM, GasConstant, N0, DeltaT, T0, p0, eps, Gravity)
-      !PRINT *, "BCSolute: (Constantsread) ", GasConstant, N0, DeltaT, T0, p0, eps, Gravity, ConstantsRead
+      IF(InfoActive(30)) THEN
+        PRINT *, "BCSolute: (Constantsread) ", GasConstant, N0, DeltaT, T0, p0, eps, Gravity, ConstantsRead
+      END IF
     END IF
     
     IF (WeakDirichletCond) THEN
       CALL INFO(FunctionName,'Setting weak condition (ignoring recharge and flux)',Level=12)
-    ELSE IF (GetElementFamily(Element) < DIM) THEN      
-      FluxCondition = .FALSE.
+      C = ListGetCReal( BoundaryCondition,TRIM(VarName)//' Transfer coefficient',UnfoundFatal=.TRUE.) 
     ELSE
-      FluxCondition = .TRUE.
+      FluxCondition = (GetElementDim(Element) == DIM-1)       
     END IF
     
-    !PRINT *,FluxCondition
-
     IF (FluxCondition) THEN
       body_id = GetInteger(BoundaryCondition,'Permafrost Target Body', Found)
 
@@ -999,10 +1039,8 @@ CONTAINS
       END IF
 
       ConstVal = GetLogical(ParentMaterial,'Constant Permafrost Properties',Found)
-      MinKgw = GetConstReal( Material, &
-           'Hydraulic Conductivity Limit', Found)
-      IF (.NOT.Found .OR. (MinKgw <= 0.0_dp))  &
-           MinKgw = 1.0D-14
+      MinKgw = GetConstReal( Material,'Hydraulic Conductivity Limit', Found)
+      IF (.NOT.Found .OR. (MinKgw <= 0.0_dp)) MinKgw = 1.0D-14
       
       IF (ConstVal) &
            CALL INFO(FunctionName,'"Constant Permafrost Properties" set to true',Level=9)
@@ -1014,8 +1052,6 @@ CONTAINS
     LOAD = 0._dp
 
  
-    
-
     ! Numerical integration:
     !-----------------------
     IF (FluxCondition .OR. WeakDirichletCond) THEN ! spare us, if natural BC
@@ -1045,7 +1081,6 @@ CONTAINS
           rhogwAtIP =  rhow(CurrentSolventMaterial,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)! WE ASSUME FRESHWATER INFLOW!!!
           FluxAtIP = FluxAtIP*rhogwAtIP
         ELSE
-          FluxCondition = .FALSE.
           FluxAtIP = ListGetElementReal(GWFlux_h, Basis, Element, FluxCondition)
           IF (FluxCondition) PRINT *, 'Groundwater Flux',  FluxAtIP
         END IF
