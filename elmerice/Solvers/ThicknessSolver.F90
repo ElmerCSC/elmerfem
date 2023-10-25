@@ -933,7 +933,6 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
           bmbAtIP = SUM(Basis(1:nCoord)*BMB(1:nCoord))
           IF (SEM .AND. PartlyGroundedElement) THEN
              hh = MAX(SUM(Basis(1:nCoord)*NodalThick(1:nCoord)),MinH)
-!print*, "Rupert SSA",SIZE(Basis),SIZE(BMB),nCoord,IntegStuff%n
              SELECT CASE (MeltParam)
              CASE ('SEM1','sem1')
                 BMBatIP = SSAEffectiveBMB(Element,nCoord,Basis(1:nCoord),SEM,BMB(1:nCoord), &
