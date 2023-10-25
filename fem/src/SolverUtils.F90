@@ -14690,13 +14690,8 @@ END FUNCTION SearchNodeL
 !   Convert rhs & initial value to the scaled system:
 !   -------------------------------------------------
     IF ( ScaleSystem ) THEN
-      !ApplyRowEquilibration = ListGetLogical(Params,'Linear System Row Equilibration',GotIt)
-      !IF ( ApplyRowEquilibration ) THEN
-      !  CALL RowEquilibration(Solver, A, b, Parallel)
-      !ELSE
       CALL ScaleLinearSystem(Solver, A, b, x, &
           RhsScaling = (bnorm/=0._dp), ConstraintScaling=.TRUE. )
-      !END IF
     END IF
 
     ComputeChangeScaled = ListGetLogical(Params,&
@@ -14851,11 +14846,7 @@ END FUNCTION SearchNodeL
     END IF
 
     IF ( ScaleSystem ) THEN
-      !IF ( ApplyRowEquilibration ) THEN
-      !  CALL ReverseRowEquilibration( A, b )
-      !ELSE
-        CALL BackScaleLinearSystem( Solver, A, b, x, ConstraintScaling=.TRUE. )
-      !END IF
+      CALL BackScaleLinearSystem( Solver, A, b, x, ConstraintScaling=.TRUE. )
     END IF
 
 120 IF( AndersonAcc .AND. .NOT. AndersonScaled )  THEN
@@ -14875,7 +14866,8 @@ END FUNCTION SearchNodeL
       CalcLoads = ListGetLogical( Solver % Values,'Calculate Loads',GotIt )
       IF( .NOT. GotIt ) CalcLoads = .TRUE.
       IF( CalcLoads ) THEN
-        CALL Info('SolveLinearSystem','Calculating nodal loads',Level=6)
+        CALL Info('SolveLinearSystem','Calculating nodal loads for: '//&
+            GetVarName(Solver % Variable),Level=6)
         CALL CalculateLoads( Solver, Aaid, x, Dofs, .TRUE., NodalLoads ) 
       END IF
     END IF

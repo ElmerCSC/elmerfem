@@ -92,7 +92,7 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
   TYPE(ValueList_t), POINTER :: Params, Material
   TYPE(Variable_t), POINTER :: TemperatureVar,PressureVar,PorosityVar,SalinityVar,&
        TemperatureDtVar, DummyDtVar,SalinityDtVar,&
-       DummyGWfluxVar,StressInvVar
+       DummyGWfluxVar,StressInvVar, LoadsVar
   TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
   TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
   INTEGER :: i,j,k,l,n,nb, nd,t, DIM, ok, NumberOfRockRecords, Active,iter, maxiter, istat,StressInvDOFs
@@ -102,7 +102,7 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
        StressInvPerm(:),DummyGWfluxPerm(:)
   REAL(KIND=dp) :: Norm, meanfactor, relax
   REAL(KIND=dp),POINTER :: Pressure(:), Temperature(:), Porosity(:), Salinity(:),&
-       TemperatureDt(:), DummyDt(:),SalinityDt(:),Pressure0(:),&
+       TemperatureDt(:), DummyDt(:),SalinityDt(:),Loads0(:),GwFlux0(:), &
        DummyGWflux(:),StressInv(:)
   LOGICAL :: Found, FirstTime=.TRUE., AllocationsDone=.FALSE.,&
        ConstantPorosity=.FALSE., NoSalinity=.FALSE.,GivenGWFlux,ElementWiseRockMaterial, DummyLog=.FALSE.,&
@@ -249,10 +249,18 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
     END IF
   END IF
 
-  relax = ListGetCReal( Params,'Darcy Relaxation Factor',LocalRelax ) 
+  LoadsVar => VariableGet( Solver % Mesh % Variables, TRIM(Solver % Variable % Name)//' Loads' )
+
+  relax = ListGetCReal( Params,'Flux Relaxation Factor',LocalRelax ) 
   IF( LocalRelax ) THEN
-    ALLOCATE( Pressure0( SIZE(Pressure) ) )
-    Pressure0 = Pressure
+    IF(ASSOCIATED(LoadsVar)) THEN
+      ALLOCATE(Loads0(SIZE(LoadsVar % Values)))
+      Loads0 = LoadsVar % Values
+    END IF
+    IF(ASSOCIATED(DummyGwFluxVar)) THEN
+      ALLOCATE(GWFlux0(SIZE(DummyGWFluxVar % Values)))
+      GWFlux0 = DummyGWFluxVar % Values
+    END IF
   END IF
   
   ! Nonlinear iteration loop:
@@ -361,11 +369,6 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
 
   CALL DefaultFinish()
 
-  IF( LocalRelax ) THEN
-    Pressure = relax * Pressure + (1-relax) * Pressure0  
-    DEALLOCATE( Pressure0 )
-  END IF
-       
   IF( ListGetLogical( Params,'Compute BC Flux',Found ) ) THEN
     CALL Info(Solvername,'Computing flux for Dirichlet BCs for salinity',Level=6)
     DummyGWfluxVar => VariableGet( Solver % Mesh % Variables, 'Groundwater Flux')
@@ -388,18 +391,25 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
     CALL Ip2DgSwapper( Solver % Mesh, DummyGWFluxVar, BCFluxVar )
   END IF
 
+
+  
   BLOCK
-    TYPE(Variable_t), POINTER :: LoadsVar
     REAL(KIND=dp) :: NegSum, PosSum, loadc
-    
-    LoadsVar => VariableGet( Solver % Mesh % Variables, TRIM(Solver % Variable % Name)//' Loads' )
-    IF( ASSOCIATED(LoadsVar) ) THEN
 
-      ! We need to recompute the loads after our own relaxation!
-      IF(LocalRelax) THEN
-        CALL CalculateLoads( Solver, Solver % Matrix, Pressure, 1, .TRUE., LoadsVar ) 
+    IF( LocalRelax ) THEN
+      IF(ASSOCIATED(DummyGwFluxVar)) THEN
+        ALLOCATE(GWFlux0(SIZE(DummyGWFluxVar % Values)))
+        DummyGWFluxVar % Values = relax * DummyGWFluxVar % Values + (1-relax) * GWflux0
+        DEALLOCATE( GWflux0 )
       END IF
-
+      IF(ASSOCIATED(LoadsVar)) THEN
+        ALLOCATE(Loads0(SIZE(LoadsVar % Values)))
+        LoadsVar % Values = relax * LoadsVar % Values + (1-relax) * Loads0
+        DEALLOCATE( Loads0 )
+      END IF
+    END IF
+      
+    IF( ASSOCIATED(LoadsVar) ) THEN
       NegSum = SUM( LoadsVar % Values, LoadsVar % Values < 0.0_dp )
       PosSum = SUM( LoadsVar % Values, LoadsVar % Values > 0.0_dp )      
       NegSum = ParallelReduction(NegSum)
