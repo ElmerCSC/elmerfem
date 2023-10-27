@@ -486,7 +486,8 @@ CONTAINS
         INQUIRE(FILE=TRIM(tstr), EXIST=fexist)
      END IF
      IF (.NOT. fexist) THEN
-        CALL Fatal('InitializeElementDescriptions','elements.def not found')
+        WRITE (Message, *) TRIM(tstr), ' not found'
+        CALL Fatal('InitializeElementDescriptions', Message)
      END IF
 
       OPEN( 1,FILE=TRIM(tstr), STATUS='OLD' )

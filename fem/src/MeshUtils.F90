@@ -26488,8 +26488,10 @@ CONTAINS
         ! For each w\in adj(v) do
         DO w=vli, vti
           ! fc[colour[w]]<-v
-          !$OMP ATOMIC READ
+          !!!$OMP ATOMIC READ
+          !$OMP CRITICAL
           wcol = colours(Graph % ind(w))
+          !$OMP END CRITICAL
           IF (wcol /= 0) fc(wcol) = v
         END DO
 
@@ -26497,8 +26499,10 @@ CONTAINS
         ! c <- min\{i>0: fc[i]/=v \}
         DO i=1,dualmaxdeg+1
           IF (fc(i) /= v) THEN
-            !$OMP ATOMIC WRITE 
+            !!!!$OMP ATOMIC WRITE
+            !$OMP CRITICAL
             colours(v) = i
+            !$OMP END CRITICAL
             ! Maintain maximum colour
             nc = MAX(nc, i)
             EXIT
@@ -26596,6 +26600,7 @@ CONTAINS
     ! Set up colouring data structure
     Colouring % nc = nc
     CALL MOVE_ALLOC(colours, Colouring % colours)
+
   END SUBROUTINE ElmerGraphColour
 
   SUBROUTINE Colouring_Deallocate(Colours)
