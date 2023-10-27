@@ -253,6 +253,8 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
 
   relax = ListGetCReal( Params,'Flux Relaxation Factor',LocalRelax ) 
   IF( LocalRelax ) THEN
+    WRITE(A,ES12.3) 'Using flux relaxation factor: ',relax
+    CALL Info(SolverName,Message,Level=8)
     IF(ASSOCIATED(LoadsVar)) THEN
       ALLOCATE(Loads0(SIZE(LoadsVar % Values)))
       Loads0 = LoadsVar % Values
@@ -412,14 +414,16 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
     IF( ASSOCIATED(LoadsVar) ) THEN
       NegSum = SUM( LoadsVar % Values, LoadsVar % Values < 0.0_dp )
       PosSum = SUM( LoadsVar % Values, LoadsVar % Values > 0.0_dp )      
-      NegSum = ParallelReduction(NegSum)
-      PosSum = ParallelReduction(PosSum)
+      IF( ParEnv % PEs > 1 ) THEN
+        NegSum = ParallelReduction(NegSum)
+        PosSum = ParallelReduction(PosSum)
+      END IF
       loadc = ( PosSum + NegSum ) / (PosSum - NegSum) 
-      
-      IF(InfoActive(20)) THEN
-        PRINT *,'Negative LoasSum:',NegSum
-        PRINT *,'Positive LoadSum:',PosSum
-        PRINT *,'Disbalancd LoadSum:',loadc
+        
+      IF(InfoActive(10)) THEN
+        PRINT *,TRIM(LoadsVar % Name)//' negative sum:',NegSum
+        PRINT *,TRIM(LoadsVar % Name)//' positive sum:',PosSum
+        PRINT *,TRIM(LoadsVar % Name)//' disbalance:',loadc
       END IF
       
       IF( ListGetLogical( Solver % Values,'Normalize Loads',Found ) ) THEN
