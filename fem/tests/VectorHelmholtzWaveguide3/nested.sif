@@ -52,12 +52,12 @@ $ beta0 = sqrt(k0^2-kc^2)
 ! $ kc=31.4159265358979 
 
 Material 1
-  Relative Permittivity = Real 1
+  Relative Permittivity = 1.0
 End
 
 Equation 1
   Active Solvers(2) = 1 2
-  Angular Frequency = Real $w
+  Angular Frequency = $w
 End
 
 Solver 1
@@ -70,17 +70,17 @@ Solver 1
 
 !  Calculate Energy Norm = Logical True
 
-  Linear System Block Mode = Logical True
-  Block Nested System = Logical True
-  Block Preconditioner = Logical True
-  Block Scaling = Logical True
+  Linear System Block Mode = True
+  Block Nested System = True
+  Block Preconditioner = True
+  Block Scaling = True
   linear system abort not converged = false
 
 ! Specify the perturbation:
 !-----------------------------------------
-  Linear System Preconditioning Damp Coefficient = Real 0.0
-  Linear System Preconditioning Damp Coefficient im = Real -0.5
-  Mass-proportional Damping = Logical True
+  Linear System Preconditioning Damp Coefficient = 0.0
+  Linear System Preconditioning Damp Coefficient im = -0.5
+  Mass-proportional Damping = True
 
 ! Linear system solver for the outer loop:
 !-----------------------------------------
@@ -91,7 +91,7 @@ Solver 1
   Outer: Linear System GCR Restart =  100
   Outer: Linear System Residual Output =  1
   Outer: Linear System Max Iterations =  100
-  Outer: Linear System Pseudo Complex = logical True
+  Outer: Linear System Pseudo Complex = True
 
 ! Linear system solver for the inner solution:
 !---------------------------------------------
@@ -106,7 +106,7 @@ Solver 1
   block 11: Linear System Max Iterations = 100
   block 11: Linear System Iterative Method = GCR
   block 11: Linear System GCR Restart = 50
-!  block 11: BiCGstabl polynomial degree = Integer 4
+!  block 11: BiCGstabl polynomial degree = 4
   block 11: Linear System Normwise Backward Error = True
   block 11: Linear System Convergence Tolerance = $blocktol
 
