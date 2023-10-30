@@ -253,7 +253,7 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
 
   relax = ListGetCReal( Params,'Flux Relaxation Factor',LocalRelax ) 
   IF( LocalRelax ) THEN
-    WRITE(A,ES12.3) 'Using flux relaxation factor: ',relax
+    WRITE(Message,'(A,ES12.3)') 'Using flux relaxation factor: ',relax
     CALL Info(SolverName,Message,Level=8)
     IF(ASSOCIATED(LoadsVar)) THEN
       ALLOCATE(Loads0(SIZE(LoadsVar % Values)))
