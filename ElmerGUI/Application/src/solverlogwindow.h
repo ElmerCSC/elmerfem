@@ -48,6 +48,15 @@
 #include <QMainWindow>
 #include <QSyntaxHighlighter>
 
+#if WITH_QT6
+#include <QRegularExpression>
+#define REG_EXP_CLASS QRegularExpression
+#define OPTION_CASE_INSENSITIVE QRegularExpression::CaseInsensitiveOption
+#else 
+#define REG_EXP_CLASS QRegExp
+#define OPTION_CASE_INSENSITIVE Qt::CaseInsensitive
+#endif
+
 class QTextEdit;
 class QLineEdit;
 
@@ -64,13 +73,22 @@ protected:
 private:
     struct HighlightingRule
     {
-        QRegExp pattern;
+#if WITH_QT6
+        QRegularExpression pattern;
+#else
+        REG_EXP_CLASS pattern;
+#endif
         QTextCharFormat format;
     };
     QVector<HighlightingRule> highlightingRules;
 
-    QRegExp commentStartExpression;
-    QRegExp commentEndExpression;
+#if WITH_QT6
+    QRegularExpression commentStartExpression;
+    QRegularExpression commentEndExpression;
+#else
+    REG_EXP_CLASS commentStartExpression;
+    REG_EXP_CLASS commentEndExpression;
+#endif
 
     QTextCharFormat blockFormat;
     QTextCharFormat classFormat;

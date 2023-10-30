@@ -1015,7 +1015,7 @@ CONTAINS
 
     INTEGER :: MaxDGDOFs, MaxNDOFs, MaxEDOFs, MaxFDOFs, MaxBDOFs, MaxDOFsPerNode
     INTEGER :: i,j,k,l,NDeg,Nrows,nSize,n,m,DOFs,dim,MatrixFormat,istat,Maxdim, AllocStat, &
-        i1,i2,i3
+        i1,i2,i3,iostat
 
     LOGICAL :: Found, Stat, BandwidthOptimize, EigAnal, ComplexFlag, &
         MultigridActive, VariableOutput, GlobalBubbles, HarmonicAnal, MGAlgebraic, &
@@ -1119,9 +1119,7 @@ CONTAINS
       var_name = 'Temperature'
       proc_name = 'HeatSolve HeatSolver'
       
-      IF( .NOT. ListCheckPresent( SolverParams,'Radiation Solver') ) THEN
-        CALL ListAddLogical( SolverParams,'Radiation Solver',.TRUE.)
-      END IF
+      CALL ListAddNewLogical( SolverParams,'Radiation Solver',.TRUE.)
       !------------------------------------------------------------------------------
 
     CASE DEFAULT
@@ -1145,6 +1143,8 @@ CONTAINS
     proc_name = ListGetString( SolverParams, 'Procedure',IsProcedure)
     IF( IsProcedure ) THEN
       CALL Info('AddEquationBasics','Using procedure: '//TRIM(proc_name),Level=10)
+    ELSE
+      CALL Warn('AddEquationBasics','Solver '//I2S(Solver % SolverId)//' may require "Procedure" to operate!')
     END IF
 
 
@@ -1380,7 +1380,10 @@ CONTAINS
         DO WHILE( .TRUE. )
           i = INDEX( var_name(j+1:), ':' ) + j
           IF ( i<=j ) EXIT
-          READ( var_name(i+1:),'(i1)' ) k
+          READ( var_name(i+1:),'(i1)',IOSTAT=iostat) k
+          IF(iostat /= 0) THEN
+            CALL Fatal('AddEquationBasics','Could not read component count of variable!')
+          END IF
           DOFs = DOFs + k
           j = i + 1
         END DO
@@ -1408,7 +1411,10 @@ CONTAINS
           var_name = var_name(7:)
                
         ELSE IF ( SEQL(var_name, '-dofs ') ) THEN
-          READ( var_name(7:), * ) DOFs
+          READ( var_name(7:), *, IOSTAT=iostat) DOFs
+          IF(iostat /= 0) THEN
+            CALL Fatal('AddEquationBasics','Could not read number after -dofs of variable!')
+          END IF
           i = 7
           j = LEN_TRIM(var_name)
           DO WHILE( var_name(i:i) /= ' '  )
@@ -1741,7 +1747,10 @@ CONTAINS
         DO WHILE( .TRUE. )
           i = INDEX( var_name(j+1:), ':' ) + j
           IF ( i<=j ) EXIT
-          READ( var_name(i+1:),'(i1)' ) k
+          READ( var_name(i+1:),'(i1)',IOSTAT=iostat) k
+          IF(iostat /= 0) THEN
+            CALL Fatal('AddEquationBasics','Could not read component dofs for exported variable '//I2S(l))
+          END IF
           DOFs = DOFs + k
           j = i + 1
         END DO
@@ -1787,7 +1796,10 @@ CONTAINS
           var_name(1:LEN(var_name)-4) = var_name(5:)
                   
         ELSE IF ( SEQL(var_name, '-dofs ') ) THEN
-          READ( var_name(7:), * ) DOFs 
+          READ( var_name(7:), *, IOSTAT=iostat ) DOFs 
+          IF(iostat /= 0) THEN
+            CALL Fatal('AddEquationBasics','Could not -dofs parameter for exported variable '//I2S(l))
+          END IF
           j = LEN_TRIM( var_name )
           k = 7
           DO WHILE( var_name(k:k) /= ' '  )
@@ -3236,6 +3248,9 @@ CONTAINS
                ! This means that the nonlinear system norm has not been computed
                IF( Solver % Variable % NonlinConverged < 0 )  THEN
                  TestConvergence = ListCheckPresent( Solver % Values,'Reference Norm' )
+               END IF
+               IF(.NOT. TestConvergence) THEN
+                 TestConvergence = ListCheckPresent( Solver % Values,'Steady State Relaxation Factor')
                END IF
              ELSE
                TestConvergence = ( i >= CoupledMinIter )
@@ -4993,94 +5008,6 @@ CONTAINS
 
   END SUBROUTINE ExecSolverInSteps
 
-
-  ! Create list of active elements for more speedy operation
-  !-------------------------------------------------------------
-  SUBROUTINE SetActiveElementsTable( Model, Solver, MaxDim, CreateInv )
-    TYPE(Model_t)  :: Model
-    TYPE(Solver_t),POINTER :: Solver
-    INTEGER, OPTIONAL :: MaxDim
-    LOGICAL, OPTIONAL :: CreateInv
-    
-    INTEGER :: i, n, Sweep, MeshDim 
-    TYPE(Element_t), POINTER :: Element
-    LOGICAL :: Found, HasFCT, Parallel
-    TYPE(Mesh_t), POINTER :: Mesh
-    CHARACTER(:), ALLOCATABLE :: EquationName
-    
-    IF( .NOT. ( Solver % Mesh % Changed .OR. Solver % NumberOfActiveElements <= 0 ) ) RETURN
-
-    IF( ASSOCIATED( Solver % ActiveElements ) ) THEN
-      DEALLOCATE( Solver % ActiveElements )
-    END IF
-    
-    EquationName = ListGetString( Solver % Values, 'Equation', Found)
-    IF( .NOT. Found ) THEN
-      CALL Fatal('SetActiveElementsTable','Equation not present!')
-    END IF
-
-    CALL Info('SetActiveElementsTable',&
-        'Creating active element table for: '//TRIM(EquationName),Level=12)
-
-    HasFCT = ListGetLogical( Solver % Values, 'Linear System FCT', Found )
-
-    Mesh => Solver % Mesh
-
-    MeshDim = 0 
-    Parallel = ( ParEnv % PEs > 1 ) .AND. ( .NOT. Mesh % SingleMesh ) 
-
-    
-    DO Sweep = 0, 1    
-      n = 0
-      DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
-        Element => Solver % Mesh % Elements(i)
-
-        IF( Parallel ) THEN
-          IF( .NOT.HasFCT .AND. Element % PartIndex /= ParEnv % myPE ) CYCLE
-        END IF
-          
-        IF ( CheckElementEquation( Model, Element, EquationName ) ) THEN
-          n = n + 1
-          IF( Sweep == 0 ) THEN
-            MeshDim = MAX( Element % TYPE % DIMENSION, MeshDim )
-          ELSE
-            Solver % ActiveElements(n) = i
-          END IF
-        END IF
-      END DO
-      
-      IF( Sweep == 0 ) THEN
-        Solver % NumberOfActiveElements = n
-        IF( n == 0 ) EXIT
-        ALLOCATE( Solver % ActiveElements( n ) )
-      END IF
-    END DO
-
-    IF( n == 0 ) THEN
-      CALL Info('SetActiveElementsTable','No active elements found',Level=12)    
-      RETURN
-    END IF
-                
-    IF( PRESENT( MaxDim ) ) MaxDim = MeshDim 
-
-    IF( PRESENT( CreateInv ) ) THEN
-      IF( CreateInv ) THEN
-        CALL Info('SetActiveElementsTable','Creating inverse table for elemental variable permutation',Level=20)
-        ALLOCATE( Solver % InvActiveElements( Mesh % NumberOfBulkElements &
-            + Mesh % NumberOFBoundaryElements ) )
-
-        Solver % InvActiveElements = 0
-        DO i=1,Solver % NumberOfActiveElements
-          Solver % InvActiveElements( Solver % ActiveElements(i) ) = i
-        END DO
-      END IF
-    END IF
-    
-    CALL Info('SetActiveElementsTable','Number of active elements found : '//I2S(n),Level=12)    
-    
-  END SUBROUTINE SetActiveElementsTable
-
-
   
 !------------------------------------------------------------------------------
 !> This executes the original line of solvers (legacy solvers) where each solver 
@@ -5408,11 +5335,11 @@ END BLOCK
        END DO
        IF( .NOT. ASSOCIATED(pMesh,Mesh) .AND. ASSOCIATED(pMesh) ) THEN
          IF( .NOT. ListCheckPresent( Solver % Values,'Relative Mesh Level') ) THEN
-           CALL Warn('SolverActivate','By some logic the mesh is switched here to child mesh!!!')
+           CALL Info('SolverActivate','By some logic the mesh is switched here to child mesh!!!')
            CALL Info('SolverActivate','Changing Solver '//I2S(Solver % SolverId)//&
                ' mesh to be the '//TRIM(I2S(i))//'th Child mesh: '&
-               //TRIM(Mesh % Name),Level=7)
-           Solver % Mesh => Mesh
+               //TRIM(pMesh % Name),Level=7)
+           Solver % Mesh => pMesh
          END IF
        END IF
      END IF

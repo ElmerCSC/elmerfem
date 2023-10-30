@@ -414,6 +414,9 @@ MODULE Types
 #ifdef DEVEL_LISTCOUNTER 
      INTEGER :: Counter = 0
 #endif
+#ifdef DEVEL_LISTUSAGE
+     INTEGER :: Counter = 0
+#endif
 
      LOGICAL :: LuaFun = .FALSE.
      INTEGER :: partag = 0
@@ -427,6 +430,7 @@ MODULE Types
    
    TYPE VariableTable_t     
      TYPE(Variable_t), POINTER :: Variable => NULL()
+     TYPE(ValueListEntry_t), POINTER :: Keyword => NULL()
      REAL(KIND=dp) :: ParamValue
    END TYPE VariableTable_t
 
@@ -750,16 +754,16 @@ MODULE Types
 
    TYPE ParallelInfo_t
      INTEGER :: NumberOfIfDOFs
-     LOGICAL, POINTER               :: GInterface(:)
-     INTEGER, POINTER               :: GlobalDOFs(:)
-     TYPE(NeighbourList_t),POINTER  :: NeighbourList(:)
+     LOGICAL, POINTER               :: GInterface(:) => NULL()
+     INTEGER, POINTER               :: GlobalDOFs(:) => NULL()
+     TYPE(NeighbourList_t),POINTER  :: NeighbourList(:) => NULL()
      INTEGER, POINTER               :: Gorder(:) => NULL()
 
-     LOGICAL, POINTER               :: FaceInterface(:)
-     TYPE(NeighbourList_t),POINTER  :: FaceNeighbourList(:)
+     LOGICAL, POINTER               :: FaceInterface(:) => NULL()
+     TYPE(NeighbourList_t),POINTER  :: FaceNeighbourList(:) => NULL()
 
-     LOGICAL, POINTER               :: EdgeInterface(:)
-     TYPE(NeighbourList_t),POINTER  :: EdgeNeighbourList(:)
+     LOGICAL, POINTER               :: EdgeInterface(:) => NULL()
+     TYPE(NeighbourList_t),POINTER  :: EdgeNeighbourList(:) => NULL()
    END TYPE ParallelInfo_t
 
 !------------------------------------------------------------------------------
@@ -859,6 +863,7 @@ MODULE Types
      LOGICAL :: IsComplex = .FALSE.
      INTEGER :: CurrentRow = -1
      INTEGER :: NoModes = 0
+     INTEGER :: CntModes = 0
      REAL(KIND=dp), POINTER :: CMatrix(:,:) => NULL()
      REAL(KIND=dp), POINTER :: CMatrixIm(:,:) => NULL()                
      REAL(KIND=dp), POINTER :: Crhs(:) => NULL()

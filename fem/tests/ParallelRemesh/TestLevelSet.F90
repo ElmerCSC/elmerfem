@@ -52,8 +52,11 @@ SUBROUTINE TestLevelSet ( Model, Solver, dt, TransientSimulation )
    Mesh => Model % Mesh
    NNodes = Mesh % NumberOfNodes
 
-   TimeVar => VariableGet( Model % Mesh % Variables, 'Timestep' )
-
+   TimeVar => VariableGet( Model % Mesh % Variables, 'Timestep', ThisOnly=.TRUE.)
+   IF(.NOT. ASSOCIATED(TimeVar)) THEN
+     CALL Fatal('TestLevelSet','Could not find "timestep" variable!')
+   END IF
+   
    TargetX = TimeVar % Values(1) / 10
 
    LSetVar => Solver % Variable

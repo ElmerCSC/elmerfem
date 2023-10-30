@@ -11,11 +11,16 @@ Header
   Results Directory "results"
 End
 
-! This level is doing the lumping.
+! Run Control level is doing the lumping.
 ! Steady state iteration level is doing the adaptive meshing. 
 Run Control
-  Run Control Iterations = 4
+! Automatically set to number of constraint modes
+!  Run Control Iterations = 4
   Reset Adaptive Mesh = Logical True
+
+! This keyword automatically takes the control of the constraint modes
+! to the auter level. 
+  Constraint Modes Analysis = Logical True
 End 
 
 
@@ -63,10 +68,12 @@ Solver 1
   Constraint Modes Analysis = Logical True
   Constraint Modes Lumped = Logical True
   Constraint Modes Fluxes = Logical True
-  Constraint Modes Fluxes Symmetric = Logical True
-  Constraint Modes Fluxes Results = Logical True
-  Constraint Modes Fluxes Norm = Logical True
-  Run Control Constraint Modes = Logical True
+  Constraint Modes Matrix Symmetric = Logical True
+  Constraint Modes Matrix Results = Logical True
+  Constraint Modes Matrix Norm = Logical True
+
+! If we do not take the control in "Run Control" section we can give it here.
+! Run Control Constraint Modes = Logical True
 
   Steady State Convergence Tolerance = 1.0e-5
 
@@ -92,7 +99,7 @@ Solver 2
   Parallel Reduce = True
   Filename = f.dat
 
-  Show Norm Name = "res: potential constraint norm"
+  Show Norm Name = "res: potential lumped matrix norm"
 End
 
 

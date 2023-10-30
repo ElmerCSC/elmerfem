@@ -5008,9 +5008,9 @@ CONTAINS
     TYPE(Solver_t), POINTER :: PSolver
    
     INTEGER :: i,j,k,l,m,n,n2,k1,k2,iter,MaxIter = 100, DirectLimit, &
-        MinLevel, OrigSize=0, InvLevel, Sweeps
+        MinLevel, OrigSize=0, InvLevel, Sweeps, npar
     LOGICAL :: Condition, Found, Parallel, EliminateDir, CoarseSave, Liter
-    INTEGER, POINTER :: CF(:), InvCF(:), Iters(:)
+    INTEGER, POINTER :: CF(:), InvCF(:), Iters(:), ParCF(:)
     CHARACTER(:), ALLOCATABLE :: str,FileName,LowestSolver
     
     REAL(KIND=dp), ALLOCATABLE, TARGET :: Residual(:),  Solution2(:)
@@ -5028,11 +5028,6 @@ CONTAINS
 
     WRITE(Message,'(A,I2)') 'Starting level ',Level
     CALL Info('CMGSolve',Message,Level=10)
-
-    IF( ParEnv % PEs > 1 ) THEN
-      CALL Fatal('CMGSolve','This agglomeration multigrid is not parallel')
-    END IF
-
 
     Mesh => Solver % Mesh    
     Params => Solver % Values
@@ -5072,8 +5067,15 @@ CONTAINS
     !------------------------------------------------------------
     DirectLimit = ListGetInteger(Params,'MG Lowest Linear Solver Limit',GotIt) 
     IF(.NOT. GotIt) DirectLimit = 20
+    
+    npar = ParallelReduction(n) 
 
-    IF ( Level <= 1 .OR. n < DirectLimit) THEN
+    IF( ParEnv % PEs > 1 ) THEN
+      CALL Info('CMGSolve','Number of dofs in parallel: '//I2S(npar),Level=6)
+    END IF
+      
+    IF ( Level <= 1 .OR. npar < DirectLimit) THEN
+      CALL Info('CMGSolve','Solving for the lowest level: '//I2S(Level),Level=6)
 
       NewLinearSystem = .FALSE.
       IF(Level == 1 .AND. PRESENT(NewSystem)) NewSystem = .FALSE.
@@ -5190,12 +5192,77 @@ CONTAINS
       
       CALL ChooseClusterNodes(Matrix1, Solver, DOFs, EliminateDir, CF)      
 
-!      CALL CRS_InspectMatrix( Matrix1 ) 
+      IF( ParEnv % PEs > 1 ) THEN
+        BLOCK
+          INTEGER, POINTER :: MaxGDofs(:), CFPerm(:)
+          INTEGER :: n1, n2, j1, j2
+          TYPE (ParallelInfo_t), POINTER :: ParInfo
 
-      CALL CRS_ClusterMatrixCreate( Matrix1, CF, Matrix2, DOFs)       
+          n1 = SIZE(CF)
+          n2 = MAXVAL(CF)
 
-!      CALL CRS_InspectMatrix( Matrix2 ) 
+          ParInfo => Matrix1 % ParallelInfo
+          
+          !PRINT *,'Inintial CF range:',ParEnv % MyPe, MINVAL(CF), n2
+          
+          ! Find out the largest initial global index related to each cluster
+          ALLOCATE(MaxGDofs(n2))                    
+          MaxGDofs = 0
+          DO i=1,n1
+            j = CF(i)
+            IF(j>0) MaxGDofs(j) = MAX(MaxGDofs(j),ParInfo % GlobalDofs(i))            
+          END DO
+          
+          ! Set the largest initial global index related to the dof
+          ALLOCATE(ParCF(n1))
+          ParCF = 0
+          DO i=1,n1
+            j = CF(i)
+            IF(j>0) ParCF(i) = MaxGDofs(j)
+          END DO
+          DEALLOCATE(MaxGDofs)
 
+          ! and communicate it in parallel
+          CALL ParallelSumVectorInt( Matrix1, ParCF, 2 )
+          
+          ! Find out the largest initial global index related to the cluster
+          j1 = MINVAL(ParCF)
+          j2 = MAXVAL(ParCF)
+          ALLOCATE(CFPerm(j1:j2))
+          CFPerm = 0
+          k = 0
+          DO i=1,n1            
+            j = ParCF(i)
+            IF(CFPerm(j)==0) THEN
+              k = k + 1
+              CFPerm(j) = k
+            END IF
+          END DO
+         
+          ! Finally renumber the original clustering with parallel clustering
+          DO i=1,n1            
+            CF(i) = CFPerm(ParCF(i))
+          END DO
+          DEALLOCATE(CFPerm)
+
+          !PRINT *,'New CF range:',ParEnv % Mype, MINVAL(CF), MAXVAL(CF)
+        END BLOCK
+        CALL CRS_ClusterMatrixCreate( Matrix1, CF, Matrix2, DOFs)       
+
+
+        IF(.NOT. ASSOCIATED(Matrix2 % Diag)) THEN
+          ALLOCATE(Matrix2 % Diag(Matrix2 % NumberOfRows ))
+        END IF
+        CALL CRS_SortMatrix( Matrix2, .TRUE. ) 
+        
+        ! Finalize creation of parallel structures
+        Matrix2 % ParMatrix => ParInitMatrix( Matrix2, Matrix2 % ParallelInfo )        
+      ELSE              
+        !      CALL CRS_InspectMatrix( Matrix1 )         
+        CALL CRS_ClusterMatrixCreate( Matrix1, CF, Matrix2, DOFs)               
+        !      CALL CRS_InspectMatrix( Matrix2 ) 
+      END IF
+        
       TmpArray => ListGetConstRealArray(Params,'MG Cluster Alpha', gotIt )
       IF(gotIt) THEN
         Alpha = TmpArray(MIN(InvLevel,SIZE(TmpArray,1)),1)
@@ -5674,7 +5741,7 @@ CONTAINS
           IF(i == 0) CYCLE
 
           newrow = CF(i)  
-IF(newrow < prevnewrow ) PRINT *,'problem:',indi,i,newrow,prevnewrow        
+          IF(newrow < prevnewrow ) PRINT *,'problem:',indi,i,newrow,prevnewrow        
           IF(prevnewrow /= newrow) THEN
             DO j=1,NoRow
               Row(Ind(j)) = 0
@@ -5777,6 +5844,68 @@ IF(newrow < prevnewrow ) PRINT *,'problem:',indi,i,newrow,prevnewrow
         GOTO 10 
       END IF
 
+
+      IF( ParEnv % PEs > 1 .AND. ASSOCIATED(A % ParallelInfo) ) THEN
+        BLOCK
+          TYPE(ParallelInfo_t), POINTER :: ParInfoA, ParInfoB
+          INTEGER, POINTER :: MaxGDofs(:), NeighA(:), NeighB(:)
+          
+          ParInfoA => A % ParallelInfo 
+          ALLOCATE(B % ParallelInfo)
+          ParInfoB => B % ParallelInfo
+
+          k = B % NumberOfRows
+          ALLOCATE(ParInfoB % GlobalDofs(k), &
+              ParInfoB % GInterface(k), ParInfoB % NeighbourList(k) )
+
+          ParInfoB % GlobalDofs = 0
+          ParInfoB % Ginterface = .FALSE.
+          DO i=1,k
+            ParInfoB % NeighBourList(i) % Neighbours => NULL()
+          END DO
+
+          MaxGDofs => ParInfoB % GlobalDofs
+          DO i=1,A % NumberOfRows
+            j = CF(i)            
+            IF(j>0) THEN
+              MaxGDofs(j) = MAX(MaxGDofs(j),ParInfoA % GlobalDofs(i))            
+              IF(ParInfoA % Ginterface(i)) THEN                
+                ParInfoB % GInterface(j) = .TRUE.
+                NeighA => ParInfoA % NeighbourList(i) % Neighbours
+                IF(.NOT. ASSOCIATED(NeighA)) CYCLE
+                IF(SIZE(NeighA)==0) CYCLE
+
+                n = 0
+                NeighB => ParInfoB % NeighbourList(j) % Neighbours
+                IF(ASSOCIATED(NeighB)) n = SIZE(NeighB)                
+
+                IF(n == 0) THEN
+                  NULLIFY(NeighB)
+                  ALLOCATE(NeighB(SIZE(NeighA)))
+                  NeighB = NeighA 
+                  ParInfoB % NeighbourList(j) % Neighbours => NeighB
+                  NULLIFY(NeighB) 
+                ELSE
+                  n = SIZE(NeighB)
+                  DO k=1,SIZE(NeighA)
+                    l = NeighA(k)
+                    IF(.NOT. ANY(NeighB(1:n) == l) ) THEN
+                      NULLIFY(NeighB)
+                      ALLOCATE(NeighB(n+1))
+                      NeighB(1:n) = ParInfoB % NeighbourList(j) % Neighbours(1:n)
+                      n = n+1 
+                      NeighB(n) = l
+                      DEALLOCATE(ParInfoB % NeighbourList(j) % Neighbours)
+                      ParInfoB % NeighbourList(j) % Neighbours => NeighB
+                    END IF
+                  END DO
+                END IF
+              END IF
+            END IF
+          END DO
+        END BLOCK
+      END IF
+                       
       IF(.FALSE.) THEN
         PRINT *,'Created Matrix'
         DO i=1,NB

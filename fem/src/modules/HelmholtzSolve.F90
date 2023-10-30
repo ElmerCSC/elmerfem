@@ -260,13 +260,22 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
   CALL ListAddConstReal( Model % Simulation, 'res: Frequency', AngularFrequency /(2*PI) )
 
   
-  ! Check if a special preconditioner is applied:
-  !----------------------------------------------------------
+  ! Check if a special preconditioner is applied in an iterative strategy:
+  !-----------------------------------------------------------------------
   ShiftCoeff = GetCReal(SolverParams, 'Linear System Preconditioning Damp Coefficient', UsePrecShift)
   ShiftCoeff = CMPLX(REAL(ShiftCoeff), &
       GetCReal(SolverParams, 'Linear System Preconditioning Damp Coefficient Im', Found))
   UsePrecShift = UsePrecShift .OR. Found
 
+  IF(UsePrecShift) THEN
+    IF(ListGetString(SolverParams,'Linear System Solver',Found ) /= 'iterative') THEN
+      CALL Warn('HelmholtzSolver','Damped preconditioning makes sence only for iterative methods, canceling!')
+      UsePrecShift = .FALSE.
+    ELSE
+      CALL Info('HelmholtzSolver','Generating special precondining matrix',Level=12)
+    END IF
+  END IF
+ 
 
   ! Check whether the equation lives on a convection field
   !-------------------------------------------------------

@@ -67,7 +67,7 @@ SUBROUTINE VelocitySolver( Model,Solver,dt,TransientSimulation )
 
   INTEGER :: i, j, k, n, nb, nd, t, istat, dim, active, NonlinearIter, iter, &
        CurrentDoneTime = 0
-  REAL(KIND=dp) :: Norm, PrevNorm, RelC, NonlinearTol, NonLinError, RealTime, at0
+  REAL(KIND=dp) :: Norm, PrevNorm, RelC, NonlinearTol, NonLinError, at0
   
   INTEGER, ALLOCATABLE :: Indexes(:)
   

@@ -58,7 +58,7 @@ Solver 1
 
 ! In this case computes a symmetric capacitance matrix
   Constraint Modes Fluxes = Logical True
-  Constraint Modes Fluxes Symmetric = Logical True
+  Constraint Modes Matrix Symmetric = Logical True
 End
 
 Solver 2

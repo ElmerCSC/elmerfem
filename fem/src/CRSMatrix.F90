@@ -2649,17 +2649,18 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !>    Pics a block from matrix A to build matrix B. It is assumed that the 
 !> matrix is split into given number of equally sized blocks.
 !------------------------------------------------------------------------------
-  SUBROUTINE CRS_BlockMatrixPick(A,B,Blocks,Nrow,Ncol)
+  SUBROUTINE CRS_BlockMatrixPick(A,B,Blocks,Nrow,Ncol,PickPrec)
 !------------------------------------------------------------------------------
     TYPE(Matrix_t), INTENT(IN) :: A   !< Initial matrix
     TYPE(Matrix_t) :: B   !< Submatrix picked from the larger matrix
     INTEGER, INTENT(IN) :: Blocks     !< Number of blocks in the initial matrix
     INTEGER, INTENT(IN) :: Nrow       !< Row to be picked
     INTEGER, INTENT(IN) :: Ncol       !< Column to be picked
+    LOGICAL, INTENT(IN), OPTIONAL :: PickPrec
 !------------------------------------------------------------------------------    
-	INTEGER :: i,j,k,l,kb,n,Nrow0,Ncol0,nsub
+    INTEGER :: i,j,k,l,kb,n,Nrow0,Ncol0,nsub
     INTEGER :: lsub,isub,istat,modNcol
-    LOGICAL :: NewMatrix, Diagonal
+    LOGICAL :: NewMatrix, Diagonal, DoPrec
 
     IF(Blocks <= 1) THEN
       CALL Fatal('CRS_BlockMatrixPick','No applicable to just one block!')
@@ -2669,6 +2670,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     CALL Info('CRS_BlockMatrixPick','Picking block ('//I2S(Nrow)//&
         ','//I2S(Ncol)//') from matrix',Level=10)
 
+    DoPrec = .FALSE.
+    IF(PRESENT(PickPrec)) DoPrec = PickPrec .AND. ASSOCIATED(A % PrecValues)
+    
     
     N = A % NumberOfRows
     Nsub = N / Blocks
@@ -2702,6 +2706,11 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
       ALLOCATE(B % Rows(nsub+1),B % Cols(kb), B % Values(kb),STAT=istat )
       IF( istat /= 0 ) CALL Fatal('CRS_BlockMatrixPick','memory allocation error for matrix')
+
+      IF(DoPrec) THEN
+        ALLOCATE(B % PrecValues(kb),STAT=istat )
+        IF( istat /= 0 ) CALL Fatal('CRS_BlockMatrixPick','memory allocation error for precvalues')
+      END IF
     ELSE
       CALL Info('CRS_BlockMatrixPick','Using existing matrix structure',Level=12)
     END IF
@@ -2729,7 +2738,10 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
         l = A % Cols(k)
         IF( MOD( l, Blocks ) == modNcol ) THEN
           lsub = ( l - 1) / Blocks + 1
+
           B % Values(kb) = A % Values(k)
+          IF(DoPrec) B % PrecValues(kb) = A % PrecValues(k)
+          
           IF( NewMatrix ) THEN
             B % Cols(kb) = lsub
             IF( Diagonal .AND. isub == lsub ) B % Diag(isub) = kb
@@ -2910,17 +2922,18 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !> This subroutine enables the use of 
 !> nontrivial block decompositions. 
 !------------------------------------------------------------------------------
-  SUBROUTINE CRS_BlockMatrixPick2(A,B,BlockStruct,Nrow,Ncol)
+  SUBROUTINE CRS_BlockMatrixPick2(A,B,BlockStruct,Nrow,Ncol,PickPrec)
 !------------------------------------------------------------------------------
     TYPE(Matrix_t), INTENT(IN) :: A   !< Initial matrix
     TYPE(Matrix_t) :: B   !< Submatrix picked from the larger matrix
     INTEGER, POINTER :: BlockStruct(:)     !< Block decomposition structure of the initial matrix
     INTEGER, INTENT(IN) :: Nrow       !< Row to be picked
     INTEGER, INTENT(IN) :: Ncol       !< Column to be picked
+    LOGICAL, INTENT(IN), OPTIONAL :: PickPrec
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,l,kb,n,Nrow0,Ncol0,nsub,Mrow,Mcol,mr,mc,imsub,lmsub
     INTEGER :: lsub,isub,istat,modNcol,Blocks
-    LOGICAL :: NewMatrix, Allocated, Diagonal, Hit
+    LOGICAL :: NewMatrix, Allocated, Diagonal, Hit, DoPrec
     INTEGER, ALLOCATABLE :: Irow(:), Icol(:)
     
     Blocks = SIZE( BlockStruct )
@@ -2930,6 +2943,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       RETURN
     END IF
 
+    DoPrec = .FALSE.
+    IF(PRESENT(PickPrec)) DoPrec = PickPrec .AND. ASSOCIATED(A % PrecValues)
+    
     N = A % NumberOfRows
 
     Mrow = 0
@@ -2990,7 +3006,10 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
           IF( Hit ) THEN
             IF( Allocated ) THEN
               lmsub = Mcol * ( ( l - 1) / Blocks ) + mc
+
               B % Values(kb) = A % Values(k)
+              IF(DoPrec) B % PrecValues(kb) = A % PrecValues(k)
+
               IF( NewMatrix ) THEN
                 B % Cols(kb) = lmsub
                 IF( Diagonal ) THEN
@@ -3022,6 +3041,12 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
         IF( istat /= 0 ) CALL Fatal('CRS_BlockMatrixPick2','memory allocation error 2')      
       END IF
 
+      IF(DoPrec) THEN
+        ALLOCATE(B % PrecValues(kb-1),STAT=istat )
+        IF( istat /= 0 ) CALL Fatal('CRS_BlockMatrixPick2','memory allocation error 3')
+      END IF
+      
+      
       IF( A % COMPLEX ) THEN
         IF( MOD( Mrow, 2) == 0 .AND. MOD( Mcol, 2) == 0 ) THEN
           B % COMPLEX = .TRUE.

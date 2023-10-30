@@ -64,7 +64,8 @@ Solver 1
   Constraint Modes Analysis = Logical True
   Constraint Modes Lumped = Logical True
   Constraint Modes Fluxes = Logical True
-  Constraint Modes Fluxes Symmetric = Logical True
+  Constraint Modes Matrix Symmetric = Logical True
+  Constraint Modes Matrix Norm = Logical True
   Run Control Constraint Modes = Logical True
 
   Steady State Convergence Tolerance = 1.0e-5
@@ -77,6 +78,18 @@ Solver 1
 
 !  Adaptive Save Mesh = True
 End
+
+
+Solver 2
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Exec Solver = "after control"
+  Parallel Reduce = True
+  Filename = f.dat
+
+  Show Norm Name = "res: potential lumped matrix norm"
+End
+
 
 Material 1
   Relative Permittivity = 1
@@ -110,6 +123,10 @@ Boundary Condition 5
 End
 
 Solver 1 :: Reference Norm = 5.93452187E-01 
+Solver 1 :: Reference Norm Tolerance = 1.0e-4
+Solver 2 :: Reference Norm = 2.46246610E+01
+Solver 2 :: Reference Norm Tolerance = 1.0e-5
+
 
 
 !End Of File

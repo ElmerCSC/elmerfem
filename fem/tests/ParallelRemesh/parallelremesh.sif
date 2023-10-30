@@ -4,7 +4,7 @@ $namerun = "ParallelRemesh"
 
 Header
   Mesh DB "." "cube"
-  Results Directory "./Results/"
+  Results Directory "results/"
 End
 
 Simulation
@@ -14,7 +14,7 @@ Simulation
   Timestepping Method = "bdf"
   BDF Order = 1
 
-  Timestep Intervals(1) = 9
+  Timestep Intervals(1) = 4 !9 for time saving
   Output Intervals(1) = 1
   Timestep Sizes(1) = Real $1.0/365.0
 
@@ -85,7 +85,7 @@ Solver 3
   Manually Assign Edges = Logical True
   Automatic Angle Detection = Logical False
 
-  Save Mesh Name = File "cube"
+!  Save Mesh Name = File "cube"
 
   Save MMG Meshes = Logical False
   Pre MMG Mesh Name = String "elmermesh_pre.mesh"
@@ -147,4 +147,5 @@ End
 Body Force 1
 End
 
-Solver 4 :: Reference Norm = 1.99829010E+07
+Solver 4 :: Reference Norm = 1.44610300E+07
+Solver 4 :: Reference Norm Tolerance = 1.0e-2

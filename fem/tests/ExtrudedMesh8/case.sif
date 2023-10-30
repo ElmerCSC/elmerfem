@@ -1,0 +1,94 @@
+! Test for the simple mesh exctrusion within ElmerSolver
+! Test for additional midlayers that divide the mesh into layers.
+!
+! P.R. 11.8.2023
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Extruded Mesh Levels = 10
+  Extruded BC Layers(1) = Integer 5
+
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+
+  Post File   = "case.vtu"
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Equation = 1
+  Body Force = 1
+  Material = 1
+End
+
+
+
+Body Force 1 :: Heat Source = Real 1
+Equation 1 :: Active Solvers(1) = 1
+
+
+Material 1
+  Name = "Material1"
+  Density = 1
+  Heat Conductivity = 1
+End
+
+Material 2
+  Name = "Material1"
+  Density = 1
+  Heat Conductivity = 10
+End
+
+Solver 1
+  Equation = "Heat Equation"
+  Variable = "Temperature"
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStabl"
+  BiCgStabl Polynomial Degree = 4
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Preconditioning = "ILU0"
+  Linear System Residual Output = 1
+  Nonlinear System Max Iterations = 1
+End
+
+Boundary Condition 1
+  Name = "old down and up"
+  Target Boundaries(2) = 1 3
+  Temperature = Real 0
+! These becomes BCs (1,3) in extrusion
+End
+
+Boundary Condition 2
+  Name = "old right and left"
+  Target Boundaries(2) = 2 4
+! This becomes BCs (2,4) extrusion
+End
+
+
+! The system automatically creates the missing boundaries.
+! This is waiting here. Layers becomes BCs (5,6,7)
+Boundary Condition 6
+  Name = "BC6"
+  Heat Flux = 1.0
+End
+
+! Rest BCs are created automatically if not given just for visualization.
+
+Solver 1 :: Reference Norm = 2.60714640E-01
+
+
+
+

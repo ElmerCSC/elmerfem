@@ -277,7 +277,7 @@ CONTAINS
      IF( dofs == 1 ) THEN
        DO i=1,n
          DO j=1,n
-           IF( XOR(PerFlip(Indexes(i)),PerFlip(Indexes(j))) ) THEN
+           IF( PerFlip(Indexes(i)) .NEQV. PerFlip(Indexes(j)) ) THEN
              A(i,j) = -A(i,j)
            END IF
          END DO
@@ -285,7 +285,7 @@ CONTAINS
      ELSE
        DO i=1,n
          DO j=1,n
-           IF( XOR(PerFlip(Indexes(i)),PerFlip(Indexes(j))) ) THEN
+           IF( PerFlip(Indexes(i)) .NEQV. PerFlip(Indexes(j)) ) THEN
              DO k=1,dofs
                DO l=1,dofs
                  A(dofs*(i-1)+k,dofs*(j-1)+l) = -A(dofs*(i-1)+k,dofs*(j-1)+l)
@@ -1005,7 +1005,9 @@ BLOCK
         indSize = n 
       CASE (3)
         IF(.NOT. ( ASSOCIATED(Mesh % Faces) .AND. ASSOCIATED(Mesh % Edges) ) ) RETURN
-        
+        IF(.NOT. ASSOCIATED(Element % PDefs) ) RETURN        
+        IF(Element % PDefs % LocalNumber == 0 ) RETURN
+                
         ! Get boundary face
         Face => Mesh % Faces( Parent % FaceIndexes(Element % PDefs % localNumber) )
         

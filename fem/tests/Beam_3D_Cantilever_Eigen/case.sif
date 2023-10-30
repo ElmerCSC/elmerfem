@@ -1,0 +1,97 @@
+! A reference case where a cantilever is subject to a constant pressure load f.
+!
+! For parameters EI/(GA) = eps we expect the deflection and the rotation at the 
+! free end to be w(L) = L^4 f (1 + 4 eps)/(8 EI) and theta(L) = L^3 f/(6 EI).
+! Here the SaveScalars module is set to output the variable values at the end. 
+!
+! This modification for eigenmodes
+! P.R. 28.8.2023 (initial test case by M.M.)
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "beam1d"
+  Results Directory "results"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 3D
+  Simulation Type = Steady
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+
+  Post File = "timoshenko.vtu"
+  vtu: Eigen Analysis = Logical True
+End
+ 
+Body 1
+  Equation = 1 
+  Material = 1
+End
+
+Material 1
+ Youngs Modulus = Real 2.0e-1
+ Shear Modulus = Real 1.0
+ ! Youngs Modulus = Real 70.0e+9
+ ! Shear Modulus = Real 26.0e+9
+
+ ! Specify basis where the cross section parameters are expressed: 
+ Principal Direction 2(3) = Real 0.0 0.0 -1.0
+
+ ! Specify I_k:
+ Second Moment of Area 2 = Real 1.0
+ Second Moment of Area 3 = Real 1.0
+ ! Specify A:
+ Cross Section Area = Real 1.0
+ ! Specify J_T:
+ Torsional Constant = Real 1.0
+ ! The density is used only in transient cases:
+ Density = 2700.0
+End
+
+
+Equation 1 :: Active Solvers(1) = 1
+
+Solver 1
+  Equation = "Timoshenko Beam Equations"
+  Procedure = "BeamSolver3D" "TimoshenkoSolver"
+
+  Nonlinear System Max Iterations = 1
+
+  Linear System Scaling = False
+  Linear System Solver = "Direct"
+  Linear System Direct Method = "umfpack"
+
+  Eigen Analysis = True
+  Eigen System Values = 12
+  Eigen System Convergence Tolerance = Real 1.0e-6
+End
+
+! -------------------------------------------------------------------------
+! The following can be used to save the deflection and the rotation
+! at the end:
+! -------------------------------------------------------------------------
+Solver 2
+  Equation = "Save Scalars"
+
+  Procedure = "SaveData" "SaveScalars"
+  Filename = eigen.dat
+  Save Eigenvalues = True
+
+! Show the 1st eigenvalue as the reference norm
+  Show Norm Index = 1
+End
+
+Boundary Condition 1
+  Target Nodes(1) = 1
+  U 1 = Real 0.0
+  U 2 = Real 0.0
+  U 3 = Real 0.0
+  Theta 1 = Real 0.0
+  Theta 2 = Real 0.0
+  Theta 3 = Real 0.0
+End
+
+Solver 2 :: Reference Norm = 1.50048419E-04
+Solver 2 :: Reference Norm Tolerance = 1.0e-5

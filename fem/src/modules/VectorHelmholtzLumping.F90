@@ -20,8 +20,8 @@
    CHARACTER(LEN=MAX_NAME_LEN) :: Pname
    LOGICAL :: Found, stat, InitHandles
    TYPE(Mesh_t), POINTER :: Mesh
-   COMPLEX(KIND=dp), ALLOCATABLE :: IntPoynt(:,:), IntCurr(:,:), IntVolt(:,:)   
-   REAL(KIND=dp), ALLOCATABLE :: IntCenter(:,:), IntWeight(:)   
+   COMPLEX(KIND=dp), ALLOCATABLE :: IntPoynt(:,:), IntCurr(:,:), IntVolt(:,:), IntPot(:,:), IntEl(:,:)   
+   REAL(KIND=dp), ALLOCATABLE :: IntCenter(:,:), IntWeight(:), IntNorm(:)   
    INTEGER, ALLOCATABLE :: CenterNode(:)
    INTEGER, POINTER :: PotPerm(:)
    REAL(KIND=dp), POINTER :: PotVals(:)
@@ -31,7 +31,8 @@
    LOGICAL :: Visited = .FALSE.
    CHARACTER(*), PARAMETER :: Caller = 'VectorHelmholtzLumping'
 
-   SAVE IntCenter, IntWeight, IntCurr, IntVolt, IntPoynt, CenterNode, jMode, NoModes 
+   SAVE IntCenter, IntWeight, IntCurr, IntPot, IntVolt, IntPoynt, IntEl, IntNorm, &
+       CenterNode, jMode, NoModes 
 
    
 !-------------------------------------------------------------------------------------------
@@ -73,21 +74,25 @@
        j = ListGetInteger( Model % BCs(i) % Values,'Constraint Mode', Found )
        NoModes = MAX(NoModes, j)
      END DO
-     PRINT *,'NoModes:',NoModes
-     
-     ALLOCATE( IntPoynt(NoModes,NoModes), IntCurr(NoModes,NoModes), IntVolt(NoModes,NoModes), &
-         IntCenter(NoModes,3), IntWeight(NoModes), CenterNode(NoModes) )
+     ALLOCATE( IntPoynt(NoModes,NoModes), IntEl(NoModes,Nomodes), IntCurr(NoModes,NoModes), &
+         IntPot(NoModes,Nomodes), IntVolt(NoModes,NoModes), IntCenter(NoModes,3), &
+         IntWeight(NoModes), CenterNode(NoModes), IntNorm(NoModes) )
      IntPoynt = 0.0_dp
+     IntEl = 0.0_dp
      IntCurr = 0.0_dp
      IntVolt = 0.0_dp
-   END IF       
+     IntPot = 0.0_dp
+   END IF
    jMode = jMode + 1
 
    IF(jMode > NoModes ) THEN
      CALL Fatal(Caller,'The lumping was already called "NoModes" times!')
    END IF
+
+   potVar => VariableGet( Mesh % Variables,'Potential', ThisOnly = .TRUE.)
    
-   ! For now, in future add possibility to directly utilize Hcurl basis
+   ! One should be able to toggle between using nodal or edge basis.
+   ! The results are not quite the same but should hopefully be close.
    NodalMode = ListGetLogical(SolverParams,'Nodal Target Field',Found )   
    EdgeMode = .NOT. NodalMode
 
@@ -138,35 +143,61 @@
    InitHandles = .TRUE.
    IntCenter = 0.0_dp
    IntWeight = 0.0_dp
+   IntNorm = 0.0_dp
    
    DO t=1,Active
      Element => GetBoundaryElement(t)
      BC => GetBC()
      IF (.NOT. ASSOCIATED(BC) ) CYCLE
 
+     SELECT CASE(GetElementFamily())
+     CASE(1)
+       CYCLE
+     CASE(2)
+       k = GetBoundaryEdgeIndex(Element,1); Element => Mesh % Edges(k)
+     CASE(3,4)
+       k = GetBoundaryFaceIndex(Element)  ; Element => Mesh % Faces(k)
+     END SELECT
+     
      iMode = ListGetInteger( BC,'Constraint Mode',Found )
      IF( iMode == 0 ) CYCLE       
 
-     IF(.NOT. NodalMode) THEN
-       SELECT CASE(GetElementFamily())
-       CASE(1)
-         CYCLE
-       CASE(2)
-         k = GetBoundaryEdgeIndex(Element,1); Element => Mesh % Edges(k)
-       CASE(3,4)
-         k = GetBoundaryFaceIndex(Element)  ; Element => Mesh % Faces(k)
-       END SELECT
-     END IF
-     
      CALL LocalIntegBC(BC,Element,InitHandles )
    END DO
 
-   PRINT *,'Energy through port:',IntPoynt(jMode,:)
-   PRINT *,'Current through port:',IntCurr(jMode,:)
+   IF( ParEnv % PEs > 1 ) THEN
+     DO i=1,NoModes
+       IntPoynt(jMode,i) = ParallelReduction(IntPoynt(jMode,i))
+       IntEl(jMode,i) = ParallelReduction(IntEl(jMode,i))
+       IntCurr(jMode,i) = ParallelReduction(IntCurr(jMode,i))
+       IntWeight(i) = ParallelReduction(IntWeight(i))
+       IntNorm(i) = ParallelReduction(IntNorm(i))
+     END DO
+   END IF
 
+   PRINT *,'Elfield before norm through port:',IntEl(jMode,:)
+   PRINT *,'Elfield norm:',IntNorm(:)
+
+   ! Why sqrt(2) ? 
+   IntEl(jMode,:) = IntEl(jMode,:) / IntNorm(:)
+   IntEl(jMode,jMode) = IntEl(jMode,jMode) - 1.0_dp
+
+   PRINT *,'Elfield itse through port:',IntEl(jMode,:)
+   PRINT *,'Elfield area port:',IntWeight(jMode)
+   PRINT *,'Elfield Energy through port:',IntPoynt(jMode,:)
+   PRINT *,'Elfield Current through port:',IntCurr(jMode,:)
+   IF( ASSOCIATED(PotVar) ) THEN
+     IF( ParEnv % PEs > 1 ) THEN
+       DO i=1,NoModes
+         IntPot(jMode,i) = ParallelReduction(IntPot(jMode,i))
+       END DO
+     END IF
+     IntPot(jMode,:) = IntPot(jMode,:) / IntWeight(:)
+     PRINT *,'Average pot on port:',IntPot(jMode,:)
+   END IF
+   
    CALL CenterPortLoc()
    
-   potVar => VariableGet( Mesh % Variables,'Potential', ThisOnly = .TRUE.)
    IF( ASSOCIATED( potVar ) ) THEN
      CALL Info(Caller,'Computing voltage using "Potential" as path indicator')
      potVals => PotVar % Values
@@ -176,7 +207,7 @@
      CALL Info(Caller,'Cannot compute voltage as no "Potential" is present')
    END IF
      
-   IF( jMode == NoModes ) THEN
+   IF( jMode == NoModes .AND. ParEnv % MyPe == 0 ) THEN
      CALL Info(Caller,'Writing results on final visit!')
 
      OPEN (10, FILE="Poynt_re.dat")
@@ -188,7 +219,17 @@
      DO i=1,NoModes
        WRITE(10,*) AIMAG(IntPoynt(i,:))
      END DO
+     CLOSE(10)
+     OPEN (10, FILE="El_re.dat")
+     DO i=1,NoModes
+       WRITE(10,*) REAL(IntEl(i,:))
+     END DO
      CLOSE(10) 
+     OPEN (10, FILE="El_im.dat")
+     DO i=1,NoModes
+       WRITE(10,*) AIMAG(IntEl(i,:))
+     END DO
+     CLOSE(10)
      OPEN (10, FILE="Curr_re.dat")
      DO i=1,NoModes
        WRITE(10,*) REAL(IntCurr(i,:))
@@ -200,6 +241,16 @@
      END DO
      CLOSE(10) 
      IF( ASSOCIATED( PotVar ) ) THEN
+       OPEN (10, FILE="dPot_re.dat")
+       DO i=1,NoModes
+         WRITE(10,*) REAL(IntPot(i,:))
+       END DO
+       CLOSE(10) 
+       OPEN (10, FILE="dPot_im.dat")
+       DO i=1,NoModes
+         WRITE(10,*) AIMAG(IntPot(i,:))
+       END DO
+       CLOSE(10)
        OPEN (10, FILE="Volt_re.dat")
        DO i=1,NoModes
          WRITE(10,*) REAL(IntVolt(i,:))
@@ -219,51 +270,6 @@
    
 CONTAINS
 
-
-!------------------------------------------------------------------------------
-  SUBROUTINE FindParentUVW( Nodes, n, &
-      ParentNodes, Parent, U, V, W, Basis )
-!------------------------------------------------------------------------------
-    IMPLICIT NONE
-    TYPE( Nodes_t ) :: Nodes, ParentNodes
-    TYPE( Element_t ), POINTER :: Parent
-    INTEGER :: n
-    REAL( KIND=dp ) :: U, V, W, Basis(:)
-!------------------------------------------------------------------------------
-    INTEGER :: i, j, nParent, Check
-    REAL(KIND=dp) :: Dist, DistTolerance
-    REAL(KIND=dp) :: NodalParentU(n), &
-        NodalParentV(n), NodalParentW(n)
-!------------------------------------------------------------------------------
-    DistTolerance = 1.0d-12
-
-    nParent = Parent % Type % NumberOfNodes
-    
-    Check = 0
-    DO i = 1,n
-      DO j = 1,nParent
-        Dist = (Nodes % x(i) - ParentNodes % x(j))**2 & 
-            + (Nodes % y(i) - ParentNodes % y(j))**2 & 
-            + (Nodes % z(i) - ParentNodes % z(j))**2
-
-        IF( Dist < DistTolerance ) THEN
-          Check = Check+1
-          NodalParentU(i) = Parent % Type % NodeU(j)
-          NodalParentV(i) = Parent % Type % NodeV(j)
-          NodalParentW(i) = Parent % Type % NodeW(j)
-        END IF
-
-      END DO
-    END DO
-    IF( Check /= n ) CALL Fatal('FindParentUVW','Could not find all points in element!') 
-
-    U = SUM( Basis(1:n) * NodalParentU(1:n) )
-    V = SUM( Basis(1:n) * NodalParentV(1:n) )
-    W = SUM( Basis(1:n) * NodalParentW(1:n) )
-!------------------------------------------------------------------------------      
-  END SUBROUTINE FindParentUVW
-!------------------------------------------------------------------------------      
-
   
 !-----------------------------------------------------------------------------
   SUBROUTINE LocalIntegBC( BC, Element, InitHandles )
@@ -273,9 +279,9 @@ CONTAINS
     LOGICAL :: InitHandles
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp) :: B, Zs, L(3), muinv, TemGrad(3), BetaPar, jn, eps, &
-        e_ip(3), e_ip_norm, e_ip_tan(3), imu
-    REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:), e_local(:,:)
-    REAL(KIND=dp) :: weight, DetJ, Normal(3), cond, u, v, w
+        e_ip(3), e_ip_norm, e_ip_tan(3), f_ip_tan(3), imu, phi
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:), e_local(:,:), phi_local(:,:)
+    REAL(KIND=dp) :: weight, DetJ, Normal(3), cond, u, v, w, x, y, z
     LOGICAL :: Stat, Found
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, m, np, p, q, ndofs, n, nd   
@@ -284,15 +290,16 @@ CONTAINS
     TYPE(Element_t), POINTER :: Parent
     TYPE(ValueHandle_t), SAVE :: MagLoad_h, ElRobin_h, MuCoeff_h, Absorb_h, TemRe_h, TemIm_h
     TYPE(ValueHandle_t), SAVE :: TransferCoeff_h, ElCurrent_h, RelNu_h, CondCoeff_h, CurrDens_h, EpsCoeff_h
-    
-    SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, e_local
+     
+    SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, e_local, phi_local
 
+    ndofs = evar % dofs
     IF(.NOT. AllocationsDone ) THEN
-      m = 2*Mesh % MaxElementDOFs
-      ALLOCATE( WBasis(m,3), RotWBasis(m,3), Basis(m), dBasisdx(m,3), e_local(6,m) )      
+      m = Mesh % MaxElementDOFs
+      ALLOCATE( WBasis(m,3), RotWBasis(m,3), Basis(m), dBasisdx(m,3), e_local(ndofs,m), phi_local(2,m) )      
       AllocationsDone = .TRUE.
     END IF
-    
+ 
     IF( InitHandles ) THEN
       CALL ListInitElementKeyword( ElRobin_h,'Boundary Condition','Electric Robin Coefficient',InitIm=.TRUE.)
       CALL ListInitElementKeyword( MagLoad_h,'Boundary Condition','Magnetic Boundary Load', InitIm=.TRUE.,InitVec3D=.TRUE.)
@@ -309,23 +316,35 @@ CONTAINS
     END IF
 
     imu = CMPLX(0.0_dp, 1.0_dp)
-    
+
     n = Element % TYPE % NumberOfNodes
     CALL GetElementNodes( Nodes, Element )    
     Parent => GetBulkElementAtBoundary(Element)
     IF(.NOT. ASSOCIATED( Parent ) ) THEN
       CALL Fatal(Caller,'Model lumping requires parent element!')
     END IF
+
+    e_local = 0.0_dp
+
+    IF( ASSOCIATED( PotVar ) ) THEN        
+      phi_local = 0.0_dp
+      CALL GetVectorLocalSolution( phi_local, uelement = Element, uvariable = potvar )
+    END IF
     
     IF( NodalMode ) THEN
-      CALL GetVectorLocalSolution( e_local, uelement = Element, uvariable = evar )
+      CALL GetVectorLocalSolution( e_local, uelement = Element, uvariable = evar, Found=Found)
     ELSE
       CALL GetElementNodes( ParentNodes, Parent )    
-      CALL GetVectorLocalSolution( e_local, Pname, uSolver=pSolver )
-      np = n*pSolver % Def_Dofs(GetElementFamily(Parent),Parent % BodyId,1)
+      CALL GetVectorLocalSolution( e_local, UElement = Parent, Uvariable=eVar, &
+          uSolver=pSolver, Found=Found)
+      np = n * MAXVAL(Solver % Def_Dofs(GetElementFamily(Parent),:,1))
+      np = 0
       nd = GetElementNOFDOFs(Parent,uSolver=pSolver)
     END IF
-      
+    IF(.NOT. Found) THEN
+      CALL Fatal(Caller,'Could not find field data on boundary!?')
+    END IF
+            
     Normal = NormalVector(Element, Nodes, Check=.TRUE.)
     
     ! Numerical integration:
@@ -339,7 +358,7 @@ CONTAINS
     DO t=1,IP % n  
       
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-          IP % W(t), detJ, Basis )              
+          IP % W(t), detJ, Basis, dBasisdx )              
       weight = IP % s(t) * detJ
 
       B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
@@ -362,21 +381,36 @@ CONTAINS
 
       Cond = ListGetElementReal( CondCoeff_h, Basis, Parent, Found, GaussPoint = t )
 
-      Zs = B * muinv / (imu*Omega)
+      Zs = imu * Omega / (B * muinv)
       
       IntWeight(iMode) = IntWeight(iMode) + weight
-      IntCenter(iMode,1) = IntCenter(iMode,1) + weight * SUM(Basis(1:n) * Nodes % x(1:n)) 
-      IntCenter(iMode,2) = IntCenter(iMode,2) + weight * SUM(Basis(1:n) * Nodes % y(1:n)) 
-      IntCenter(iMode,3) = IntCenter(iMode,3) + weight * SUM(Basis(1:n) * Nodes % z(1:n))       
+      x = SUM(Basis(1:n) * Nodes % x(1:n)) 
+      y = SUM(Basis(1:n) * Nodes % y(1:n)) 
+      z = SUM(Basis(1:n) * Nodes % z(1:n)) 
+      
+      IntCenter(iMode,1) = IntCenter(iMode,1) + weight * x
+      IntCenter(iMode,2) = IntCenter(iMode,2) + weight * y
+      IntCenter(iMode,3) = IntCenter(iMode,3) + weight * z
+
+      L = ListGetElementComplex3D( MagLoad_h, Basis, Element, Found, GaussPoint = t )
+
+      TemGrad = CMPLX( ListGetElementRealGrad( TemRe_h,dBasisdx,Element,Found), &
+          ListGetElementRealGrad( TemIm_h,dBasisdx,Element,Found) )
+      L = L + TemGrad
+      
+      B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
+
+      L = L / (2*SQRT(2.0_dp)*B)
 
       IF( NodalMode ) THEN
         DO i=1,3
           e_ip(i) = CMPLX( SUM( Basis(1:n) * e_local(i,1:n) ), SUM( Basis(1:n) * e_local(i+3,1:n) ) )
         END DO
-      ELSE
+      ELSE        
         ! In order to get the normal component of the electric field we must operate on the
         ! parent element. The surface element only has tangential components. 
-        CALL FindParentUVW( Nodes, n, ParentNodes, Parent, U, V, W, Basis )
+        u = 0.0_dp; v = 0.0_dp; w = 0.0_dp
+        CALL FindParentUVW( Element, n, Parent, Parent % TYPE % NumberOfNodes, U, V, W, Basis )
         IF (GetElementFamily(Element) == 2) THEN
           stat = EdgeElementInfo(Parent, ParentNodes, u, v, w, detF = detJ, &
               Basis = Basis, EdgeBasis = Wbasis, RotBasis = RotWBasis, dBasisdx = dBasisdx, &
@@ -385,18 +419,30 @@ CONTAINS
           stat = ElementInfo( Parent, ParentNodes, u, v, w, detJ, Basis, dBasisdx, &
               EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver )
         END IF
-        e_ip = CMPLX(MATMUL(e_local(1,np+1:nd),WBasis(1:nd-np,:)), MATMUL(e_local(2,np+1:nd),WBasis(1:nd-np,:)))
+        e_ip(1:3) = CMPLX(MATMUL(e_local(1,np+1:nd),WBasis(1:nd-np,1:3)), MATMUL(e_local(2,np+1:nd),WBasis(1:nd-np,1:3)))       
       END IF
-
+            
       e_ip_norm = SUM(e_ip*Normal)
       e_ip_tan = e_ip - e_ip_norm * Normal
+
+      IntNorm(iMode) = IntNorm(iMode) + weight * ABS( SUM( L * CONJG(L) ) )
+      IntEl(jMode,iMode) = IntEl(jMode,iMode) + weight * SUM(e_ip_tan * CONJG(L) ) 
       
       IntPoynt(jMode,iMode) = IntPoynt(jMode,iMode) + weight * &
-          SQRT(SUM(e_ip_tan * CONJG(e_ip_tan) ) ) / Zs
+          0.5_dp * SUM(e_ip_tan * CONJG(e_ip_tan) ) / Zs
       IntCurr(jMode,iMode) = IntCurr(jMode,iMode) + weight * &
           ( imu * Omega * Eps + cond ) * e_ip_norm 
-    END DO
 
+      ! If potential is given compute the integral over the potential on the electrode to get
+      ! the avarage potential at the surface.
+      IF( ASSOCIATED( PotVar ) ) THEN        
+        CALL GetVectorLocalSolution( phi_local, uelement = Element, uvariable = potvar )
+        phi = CMPLX( SUM( Basis(1:n) * phi_local(1,1:n) ), SUM( Basis(1:n) * phi_local(2,1:n) ) )
+        IntPot(jMode,iMode) = IntPot(jMode,iMode) + weight * phi
+      END IF
+
+    END DO
+    
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalIntegBC
 !------------------------------------------------------------------------------
@@ -462,7 +508,6 @@ CONTAINS
     INTEGER :: iMode, nsteps, sgn, i, j, k, kmin, imin, i1, i2, j1, j2, l, lp, n0
     INTEGER, POINTER :: NodeIndexes(:)
     TYPE(Element_t), POINTER :: Edge
-
     
     ! Create a graph for node-to-edge connectivity
     !----------------------------------------------
@@ -484,10 +529,12 @@ CONTAINS
       nsteps = 0
       Circ = 0.0_dp
       
-      PRINT *,'Starting pot:',iMode, minpot
+      PRINT *,'Starting pot:',iMode, minpot, IntPot(jMode,iMode) 
       
       DO WHILE(.TRUE.)
         kmin = 0
+        ! Among the edges related to node "i" find the one that has the steepest
+        ! potential descent.
         DO j = NodeGraph % Rows(i),NodeGraph % Rows(i+1)-1
           k = NodeGraph % Cols(j)
           Edge => Mesh % Edges(k)
@@ -504,6 +551,8 @@ CONTAINS
             END IF
           END DO
         END DO
+
+        ! When no smaller potential is found we are done.
         IF( kmin == 0 ) EXIT
 
         nsteps = nsteps + 1
@@ -524,19 +573,17 @@ CONTAINS
         ! Integration length and direction
         s = SQRT(SUM(EdgeVector**2))
 
-        ! If we do the path integral in the wrong direction compared to definiotion of edge swith the sign
+        ! If we do the path integral in the wrong direction compared to definiotion of edge switch the sign
         sgn = 1
-        IF(i /= Edge % NodeIndexes(1) ) sgn = -sgn 
+        IF(i /= i1 ) sgn = -sgn 
 
         IF( NodalMode ) THEN
           j1 = eVar % Perm(i1)
           j2 = eVar % Perm(i2)          
           DO k=1,3
             gradv(k) = CMPLX(eVar % Values(6*(j1-1)+k) + eVar % Values(6*(j2-1)+k),&
-                eVar % Values(6*(j1-1)+3+k) + eVar % Values(6*(j2-1)+3+k) )
+                eVar % Values(6*(j1-1)+3+k) + eVar % Values(6*(j2-1)+3+k) ) / 2
           END DO
-          
-          gradv = gradv / 2
           Circ = Circ + sgn * SUM(gradv*EdgeVector)
         ELSE        
           ! Check the sign if the direction based on global edge direction rules
@@ -555,7 +602,6 @@ CONTAINS
       END DO
 
       PRINT *,'Path integral:',iMode, minpot, nsteps, Circ
-      
       IntVolt(jMode,iMode) = Circ
     END DO
 

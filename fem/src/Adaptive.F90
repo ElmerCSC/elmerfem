@@ -110,14 +110,15 @@ CONTAINS
     INTEGER :: i,j,k,n,nn,MarkedElements
     TYPE( Variable_t ), POINTER :: Var, Var1, NewVar
     REAL(KIND=dp) :: MaxError, ErrorLimit, minH, maxH, MaxChangeFactor, &
-        LocalIndicator,ErrorEstimate,t,TotalTime,RemeshTime,s,FinalRef
+        LocalIndicator,ErrorEstimate,t,TotalTime,RemeshTime,s,FinalRef,&
+        MaxScale,AveScale,OutFrac,MaxFrac
 
     LOGICAL :: BandwidthOptimize, Found, Coarsening, GlobalBubbles, &
         MeshNumbering, DoFinalRef
     INTEGER :: MaxDepth, MinDepth, NLen
     CHARACTER(:), ALLOCATABLE :: Path, VarName
     REAL(KIND=dp), POINTER  :: Time(:), NodalError(:), PrevValues(:), &
-         Hvalue(:),PrevNodalError(:), PrevHValue(:), hConvergence(:), ptr(:), tt(:)
+         Hvalue(:), HValue1(:), PrevNodalError(:), PrevHValue(:), hConvergence(:), ptr(:), tt(:)
     REAL(KIND=dp), POINTER  :: ErrorIndicator(:), eRef(:), hRef(:), Work(:)
     LOGICAL :: NoInterp, Parallel, AdaptiveOutput, AdaptInit
     TYPE(ValueList_t), POINTER :: Params
@@ -147,10 +148,16 @@ CONTAINS
     MinDepth = ListGetInteger( Params, 'Adaptive Min Depth', Found )
 
     MaxDepth = ListGetInteger( Params, 'Adaptive Max Depth', Found )
+    IF ( Found .AND. Refmesh % AdaptiveDepth > MaxDepth ) THEN
+      ! Setting this flag will override convergence for this equation on steady-state level.
+      Solver % Mesh % AdaptiveFinished = .TRUE.
+      CALL Info( Caller,'Max adaptive depth reached! Doing nothing!', Level = 5 )
+      RETURN
+    END IF
+
     IF( Found .AND. MinDepth > MaxDepth ) THEN
       CALL Warn(Caller,'"Adaptive Min Depth" greater than Max!' )
     END IF
-
     AdaptInit = ( RefMesh % AdaptiveDepth == 0 ) 
 
     IF( AdaptInit ) THEN
@@ -169,15 +176,11 @@ CONTAINS
       RefMesh % AdaptiveFinished = .FALSE.
     END IF
         
-    IF ( Found .AND. Refmesh % AdaptiveDepth > MaxDepth ) THEN
-       CALL Info( Caller,'Max adaptive depth reached!', Level = 6 )
-       GOTO 20
-    END IF
     
     ! Interpolation is costly in parallel. Do it by default only in serial. 
     Parallel = ( ParEnv % PEs > 1 )
     NoInterp = ListGetLogical( Params,'Adaptive Interpolate',Found )
-    IF(.NOT. Found) NoInterp = Parallel 
+!   IF(.NOT. Found) NoInterp = Parallel 
     
     AdaptiveOutput = ListGetLogical( Params,'Adaptive Output',Found )
     
@@ -192,18 +195,29 @@ CONTAINS
 
     MaxError = ComputeError( Model, ErrorIndicator, RefMesh, &
       Quant, Perm, InsideResidual, EdgeResidual, BoundaryResidual )
+
     WRITE( Message, * ) 'Error computation time (cpu-secs):               ',CPUTime()-t
     CALL Info( Caller, Message, Level = 6 )
 
 !   Global error estimate:
-!   ----------------------
-    ErrorEstimate =  SQRT( SUM( ErrorIndicator**2  ) )
+    !   ----------------------
+    ErrorEstimate = SUM( ErrorIndicator**2) 
+    n = SIZE(ErrorIndicator)
+    IF( Parallel ) THEN
+      ErrorEstimate = ParallelReduction(ErrorEstimate)
+      n = ParallelReduction(n)
+    END IF        
+    ErrorEstimate =  SQRT( ErrorEstimate / n )
+
+    IF(ListGetLogical(Params,'Adaptive Error Histogram',Found ) ) THEN
+      CALL ShowVectorHistogram(ErrorIndicator,SIZE(ErrorIndicator))
+    END IF
     
     WRITE( Message, * ) 'Max error      =                                 ',MaxError
     CALL Info( Caller, Message, Level = 6 )
     WRITE( Message, * ) 'Error estimate =                                 ',ErrorEstimate
     CALL Info( Caller, Message, Level = 6 )
-    WRITE(12,*) RefMesh % NumberOfBulkElements,ErrorEstimate,MaxError
+    !WRITE(12,*) RefMesh % NumberOfBulkElements,ErrorEstimate,MaxError
 
 !
 !   Add nodal average of the h-value to the mesh variable list:
@@ -218,9 +232,11 @@ CONTAINS
       Var % PrimaryMesh => RefMesh
       IF( AdaptInit ) Hvalue = 0.0_dp
     ELSE
-      CALL AllocateVector( Hvalue, nn )
+      CALL AllocateVector( Hvalue, Solver % Matrix % NumberOfRows )
+
       CALL VariableAdd( RefMesh % Variables, RefMesh, Solver, &
           'Hvalue', 1, Hvalue, Output = AdaptiveOutput )       
+
       Var => VariableGet( RefMesh % Variables, 'Hvalue', ThisOnly=.TRUE. )      
       IF(.NOT. ASSOCIATED(Var) ) THEN
         CALL Fatal(Caller,'Could not add variable Var?')
@@ -396,17 +412,42 @@ CONTAINS
     ErrorLimit = ListGetConstReal( Params,'Adaptive Error Limit', Found )
     IF ( .NOT.Found ) ErrorLimit = 0.5d0
 
-    IF ( MaxError < ErrorLimit .AND. RefMesh % AdaptiveDepth > MinDepth ) THEN ! ErrorEstimate < ErrorLimit ) THEN
-      FinalRef = ListGetConstReal( Params,'Adaptive Final Refinement', DoFinalRef ) 
-      IF(DoFinalRef ) THEN      
-        CALL Info( Caller, 'Performing one final refinement',Level=6)
-        ErrorLimit = FinalRef * ErrorLimit 
-      ELSE
-        CALL Info( Caller, 'Mesh convergence limit reached. Nothing to do!', Level=6 )
-        RefMesh % OUtputActive = .TRUE.      
-        RefMesh % Parent % OutputActive = .FALSE.      
-        RefMesh % AdaptiveFinished = .TRUE.
-        GOTO 10
+    MaxScale = ListGetConstReal( Params,'Adaptive Max Error Scale', Found )
+    IF(.NOT. Found) MaxScale = 1.0_dp
+
+    AveScale = ListGetConstReal( Params,'Adaptive Average Error Scale', Found )
+    IF(.NOT. Found) AveScale = 1.0_dp
+
+    MaxFrac = ListGetConstReal( Params,'Adaptive Max Outlier Fraction',Found ) 
+    IF( Found ) THEN
+      OutFrac = OutlierFraction(ErrorIndicator,SIZE(ErrorIndicator),ErrorLimit)     
+      WRITE( Message, * ) 'Outlier frac.  =                                 ',OutFrac
+      CALL Info( Caller, Message, Level = 6 )
+    ELSE
+      ! Just make values that are omitted
+      MaxFrac = 1.0_dp
+      OutFrac = 0.0_dp
+    END IF
+            
+    !PRINT *,'Check for convergece:'
+    !PRINT *,'MaxError:',MaxError, MaxScale* ErrorLimit, MaxError < MaxScale*ErrorLimit
+    !PRINT *,'AveError:',ErrorEstimate, AveScale* ErrorLimit, ErrorEstimate < AveScale*ErrorLimit
+    !PRINT *,'OutFrac:',OutFrac,MaxFrac, OutFrac < MaxFrac
+    !PRINT *,'Depth:',RefMesh % AdaptiveDepth, MinDepth
+    
+    IF( RefMesh % AdaptiveDepth > MinDepth ) THEN
+      IF ( MaxError < MaxScale * ErrorLimit .AND. ErrorEstimate < AveScale * ErrorLimit .AND. OutFrac < MaxFrac ) THEN
+        FinalRef = ListGetConstReal( Params,'Adaptive Final Refinement', DoFinalRef ) 
+        IF(DoFinalRef ) THEN      
+          CALL Info( Caller, 'Performing one final refinement',Level=6)
+          ErrorLimit = FinalRef * ErrorLimit 
+        ELSE
+          CALL Info( Caller, 'Mesh convergence limit reached. Nothing to do!', Level=6 )
+          RefMesh % OUtputActive = .TRUE.      
+          RefMesh % Parent % OutputActive = .FALSE.      
+          RefMesh % AdaptiveFinished = .TRUE.
+          GOTO 10
+        END IF
       END IF
     END IF
 
@@ -447,7 +488,8 @@ CONTAINS
       t = RealTime()
       IF( ListGetLogical( Params,'Adaptive Remesh Use MMG', Found ) ) THEN
 #ifdef HAVE_MMG
-        CALL Info(Caller,'Using MMG libary for mesh refinement',Level=5)
+        CALL Info(Caller,'Using MMG library for mesh refinement', Level=5)
+
         NewMesh => MMG_ReMesh( RefMesh, ErrorLimit/3, HValue, &
             NodalError, hConvergence, minH, maxH, MaxChangeFactor, Coarsening )         
 #else
@@ -516,16 +558,16 @@ CONTAINS
     IF( MeshNumbering ) THEN
       NewMesh % Name = TRIM( NewMesh % Name(1:NLen) ) // I2S(NewMesh % AdaptiveDepth)
     END IF
-      
-    Nlen = LEN_TRIM(OutputPath)
-    IF ( Nlen > 0 ) THEN
-      Path = OutputPath(1:Nlen) // '/' // TRIM(NewMesh % Name)
-    ELSE
-      Path = TRIM(NewMesh % Name)
-    END IF
-    CALL MakeDirectory( TRIM(path) // CHAR(0) )
+
+    IF ( ListGetLogical( Params, 'Adaptive Save Mesh', Found ) ) THEN 
+      Nlen = LEN_TRIM(OutputPath)
+      IF ( Nlen > 0 ) THEN
+        Path = OutputPath(1:Nlen) // '/' // TRIM(NewMesh % Name)
+      ELSE
+        Path = TRIM(NewMesh % Name)
+      END IF
+      CALL MakeDirectory( TRIM(path) // CHAR(0) )
     
-    IF ( ListGetLogical( Params, 'Adaptive Save Mesh', Found ) ) THEN
       IF( ParEnv % PEs > 1 ) THEN
         CALL WriteMeshToDisk2( Model, NewMesh, Path, ParEnv % MyPe )
       ELSE
@@ -627,8 +669,8 @@ CONTAINS
             ! Interpolate scalar variables using automatic internal interpolation 
             NewVar => VariableGet( NewMesh % Variables, Var % Name, .FALSE. )
             k = SIZE(NewVar % Values)
-            IF ( ASSOCIATED( NewVar % Perm ) ) THEN
-              k = COUNT( NewVar % Perm > 0 )
+            IF ( ASSOCIATED(NewVar % Perm) ) THEN
+              k = COUNT(NewVar % Perm > 0)
             END IF
             NewVar % Norm = SQRT(SUM(NewVar % Values**2)/k)
           END IF
@@ -665,6 +707,7 @@ CONTAINS
     !   -----------------------------------------
 
     CALL UpdateSolverMesh( Solver, NewMesh, NoInterp )
+    CALL SetActiveElementsTable( Model, Solver )
           
     CALL ParallelInitMatrix( Solver, Solver % Matrix )
 
@@ -717,8 +760,6 @@ CONTAINS
     CALL SetCurrentMesh( Model, RefMesh )
     DEALLOCATE( ErrorIndicator, PrevHvalue )
     
-20  CONTINUE
-
     WRITE( Message, * ) 'Mesh refine took in total (cpu-secs):           ', &
         CPUTIme() - TotalTime 
     CALL Info( Caller, Message, Level=6 )
@@ -732,6 +773,63 @@ CONTAINS
     
 CONTAINS
 
+  SUBROUTINE ShowVectorHistogram(x,n)
+    REAL(KIND=dp) :: x(:)
+    INTEGER :: n
+
+    REAL(KIND=dp) :: xmin,xmax,dx
+    INTEGER :: ncoh
+    INTEGER, ALLOCATABLE :: cohcnt(:)
+
+    ! Just for now do it only for 1st partition
+    ! Later make things parallel.
+    IF( ParEnv % MyPe /= 0) RETURN
+        
+    ncoh = 20
+    ALLOCATE(cohcnt(ncoh))
+    cohcnt = 0
+
+    ! Find extremum errors
+    xmin = MINVAL(x(1:n))
+    xmax = MAXVAL(x(1:n))
+    dx = ( xmax-xmin) / ncoh
+
+    ! Count each error cohort
+    DO i=1,n
+      j = CEILING( (x(i)-xmin)/dx )
+      j = MAX( 1, MIN( j, ncoh ) )
+      cohcnt(j) = cohcnt(j) + 1
+    END DO
+
+    PRINT *,'Histogram for vector:'
+    DO i=1,ncoh
+      IF( cohcnt(i) > 0 ) THEN
+        PRINT *,i,': ',cohcnt(i),' (',xmin+(i-1)*dx,' to ',xmin+i*dx,')'
+      END IF
+    END DO
+       
+  END SUBROUTINE ShowVectorHistogram
+
+
+  ! What fraction of value in x are above xlim? 
+  FUNCTION OutlierFraction(x,n,xlim) RESULT (f)
+    REAL(KIND=dp) :: x(:)
+    REAL(KIND=dp) :: xlim, f
+    INTEGER :: n
+    INTEGER :: np, nlim
+
+    np = n
+    nlim = COUNT(x(1:n) > xlim)
+
+    IF( Parallel ) THEN
+      np = ParallelReduction(np)
+      nlim = ParallelReduction(nlim)
+    END IF
+
+    f = 1.0_dp*nlim/n
+
+  END FUNCTION OutlierFraction
+
   
   SUBROUTINE ComputeDesiredHvalue( RefMesh, ErrorLimit, HValue, NodalError, &
       hConvergence, minH, maxH, MaxChange, Coarsening ) 
@@ -742,10 +840,13 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: RefMesh
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,n
-    REAL(KIND=dp) :: Lambda
+    REAL(KIND=dp) :: Lambda, hLimitScale
     INTEGER, ALLOCATABLE :: Hcount(:)
     TYPE(Matrix_t), POINTER :: A
 !------------------------------------------------------------------------------
+
+    hLimitScale = ListGetConstReal( Params,'Adaptive H Limit Scale', Found )
+    IF ( .NOT.Found ) hLimitScale = 1.0d0
 
     DO i=1,RefMesh % NumberOfNodes      
       IF ( NodalError(i) < 100*AEPS ) CYCLE 
@@ -763,7 +864,7 @@ CONTAINS
       IF ( maxH > 0 ) Lambda = MIN( Lambda, maxH )
       IF ( minH > 0 ) Lambda = MAX( Lambda, minH )
 
-      HValue(i) = Lambda        
+      HValue(i) = Lambda * hLimitScale
     END DO
   END SUBROUTINE ComputeDesiredHvalue
 
@@ -776,8 +877,9 @@ CONTAINS
     REAL(KIND=dp) :: HValue(:)
     TYPE(Mesh_t), POINTER :: RefMesh
 
-    INTEGER :: i,j,k,n,minnei,maxnei
-    INTEGER, ALLOCATABLE :: Hcount(:)
+    INTEGER :: i,j,k,l,n,minnei,maxnei
+    INTEGER, POINTER :: p(:)
+    INTEGER, ALLOCATABLE :: Hcount(:), ip(:)
     TYPE(Matrix_t), POINTER :: A
 !------------------------------------------------------------------------------
   
@@ -786,19 +888,32 @@ CONTAINS
     ALLOCATE(Hcount(SIZE(Hvalue)))
     Hcount = 0
     
-    A => CurrentModel % Solver % Matrix
-    
+    A => Solver % Matrix
+    p => Solver % Variable % Perm
+
+    ALLOCATE(ip(A% NumberOfRows)); ip=0
+
+    DO i=1,RefMesh % NumberOfNodes
+      j = p(i)
+      IF(j<=0) CYCLE
+      ip(j) = i
+    END DO
+
     DO i=1,RefMesh % NumberOfNodes
       ! Deal only with interface nodes here
-      IF(A % ParallelInfo % GInterface(i)) THEN
+      j = p(i)
+      IF(j<=0) CYCLE
+      IF(A % ParallelInfo % GInterface(j)) THEN
         Hvalue(i) = 0.0_dp
         ! Go through all connected nodes
-        DO j=A % Rows(i),A % Rows(i+1)-1
-          k = A % Cols(j)
+        DO l=A % Rows(j),A % Rows(j+1)-1
+          k = A % Cols(l)
           
           ! Skip oneself and other interface nodes
-          IF(i==k) CYCLE          
           IF(A % ParallelInfo % GInterface(k)) CYCLE
+
+          k = ip(k)
+          IF(k<=0 .OR. i==k) CYCLE          
           
           ! Add the observation
           Hvalue(i) = Hvalue(i) + Hvalue(k)
@@ -808,8 +923,29 @@ CONTAINS
     END DO
     
     ! Perform parallel summation, only interface gets summed. 
-    CALL ParallelSumVector( A, Hvalue )
-    CALL ParallelSumVectorInt( A, Hcount ) 
+    BLOCK
+      INTEGER, ALLOCATABLE :: Xcount(:)
+      REAL(KIND=dp), ALLOCATABLE :: Xvalue(:)
+      ALLOCATE( Xcount(SIZE(Hcount)), XValue(SIZE(Hvalue)) )
+      Xcount = 0; Xvalue = 0
+
+      DO i=1,RefMesh % NumberOfNodes
+        j = p(i)
+        IF (j<=0) CYCLE
+        Xvalue(j) = HValue(i)
+        Xcount(j) = HCount(i)
+      END DO
+
+      CALL ParallelSumVector( A, Xvalue )
+      CALL ParallelSumVectorInt( A, Xcount ) 
+
+      DO i=1,RefMesh % NumberOfNodes
+        j = p(i)
+        IF (j<=0) CYCLE
+        Hvalue(i) = Xvalue(j)
+        Hcount(i) = Xcount(j)
+      END DO
+    END BLOCK
 
 
     maxnei = MAXVAL( Hcount )
@@ -825,7 +961,9 @@ CONTAINS
     ! Compute the average
     n = 0
     DO i=1,RefMesh % NumberOfNodes
-      IF(A % ParallelInfo % GInterface(i)) THEN
+      j = p(i)
+      IF (j<=0) CYCLE
+      IF(A % ParallelInfo % GInterface(j)) THEN
         IF( Hcount(i) == 0 ) THEN
           n = n+1
         ELSE          
@@ -842,10 +980,14 @@ CONTAINS
       Hcount = -Hcount
 
       DO i=1,RefMesh % NumberOfNodes
-        IF(A % ParallelInfo % GInterface(i)) THEN
+        j = p(i)
+        IF(j<=0) CYCLE
+        IF(A % ParallelInfo % GInterface(j)) THEN
           IF(Hcount(i) == 0) THEN
-            DO j=A % Rows(i),A % Rows(i+1)-1
-              k = A % Cols(j)
+            DO l=A % Rows(j),A % Rows(j+1)-1
+              k = ip( A % Cols(l) )
+              IF( k<=0 ) CYCLE
+
               IF(i==k) CYCLE
               ! Use only nodes that were defined by averaging for the interface.
               IF(Hcount(k) < 0) THEN
@@ -865,7 +1007,9 @@ CONTAINS
       
       n = 0
       DO i=1,RefMesh % NumberOfNodes
-        IF(A % ParallelInfo % GInterface(i)) THEN
+        j = p(i)
+        IF (j<=0) CYCLE 
+        IF(A % ParallelInfo % GInterface(j)) THEN
           IF( Hcount(i) == 0 ) THEN
             n = n+1
           ELSE 
@@ -934,13 +1078,19 @@ CONTAINS
     
     CALL ComputeDesiredHvalue( RefMesh, ErrorLimit, HValue, NodalError, &
         hConvergence, minH, maxH, MaxChange, Coarsening ) 
+
+!   IF(ParEnv % PEs>1) CALL parallelsumvector(solver % matrix, hvalue)
     CALL ParallelAverageHvalue( RefMesh, HValue ) 
     
     Var => VariableGet( RefMesh % Variables, 'Hvalue', ThisOnly=.TRUE. )      
 
     IF( RefMesh % MeshDim == 2 ) THEN
-      CALL Info('MMG_Remesh','Calling serial remeshing routines in 2D',Level=10)
-      NewMesh => MMG2D_ReMesh( RefMesh, Var )
+      IF( ParEnv % PEs > 1 ) THEN
+        CALL Fatal('MMG_Remesh','2D remeshing not available in parallel!')
+      ELSE
+        CALL Info('MMG_Remesh','Calling serial remeshing routines in 2D',Level=10)
+        NewMesh => MMG2D_ReMesh( RefMesh, Var )
+      END IF
     ELSE
       IF( ParEnv % PEs > 1 ) THEN
         CALL Info('MMG_Remesh','Calling parallel remeshing routines in 3D',Level=10)
@@ -1748,9 +1898,10 @@ CONTAINS
 !   Update Gebhart factors, if present and the current solver
 !   is a heat equation solver:
 !   ------------------------------------------------------------
-    IF ( ListGetString( Solver % Values, 'Equation' ) == 'heat equation' ) &
-         CALL UpdateGebhartFactors( RefMesh, NewMesh, Children )
-
+    IF ( ListGetLogical( Solver % Values, 'Radiation Solver', Found ) ) THEN
+      CALL UpdateGebhartFactors( RefMesh, NewMesh, Children )
+    END IF
+      
     WRITE( Message, * ) 'Bndry element tables generation time (cpu-secs): ',CPUTime()-t
     CALL Info( 'SplitOneLevel', Message, Level=6 )
 
@@ -2063,7 +2214,7 @@ CONTAINS
   FUNCTION ComputeError( Model, ErrorIndicator, RefMesh,  &
        Quant, Perm, InsideResidual, EdgeResidual, BoundaryResidual ) RESULT(MaxError)
 !------------------------------------------------------------------------------
-USE crsmatrix
+    USE CRSMatrix
     IMPLICIT NONE
 
     TYPE(Mesh_t), POINTER :: RefMesh
@@ -2103,7 +2254,7 @@ USE crsmatrix
     TYPE(Element_t), POINTER :: Edge, Element
     INTEGER :: i, j, k, Parent
     REAL(KIND=dp), POINTER :: TempIndicator(:,:)
-    REAL(KIND=dp) :: LocalIndicator(2), Fnorm, LocalFnorm,s
+    REAL(KIND=dp) :: LocalIndicator(2), Fnorm, LocalFnorm,s,s1,s2
 !------------------------------------------------------------------------------
     CALL FindMeshEdges( RefMesh )
 
@@ -2155,9 +2306,15 @@ USE crsmatrix
 !
 !   Face jumps (3D):
 !   ----------------
+
     DO i = 1,RefMesh % NumberOfFaces
+!      IF( Parenv % PEs>1 ) THEN
+!        IF ( RefMesh % ParallelInfo % FaceInterface(i) ) CYCLE
+!      end if
+
        Edge => RefMesh % Faces(i)
        CurrentModel % CurrentElement => Edge
+
 
        IF ( .NOT. ASSOCIATED( Edge % BoundaryInfo ) ) CYCLE
 
@@ -2202,8 +2359,17 @@ USE crsmatrix
        END IF
     END DO
 
-!
-    s = SQRT( SUM(TempIndicator(2,:)) ) / SQRT( SUM(TempIndicator(1,:)) )
+
+    s1 = SUM(TempIndicator(2,:))
+    S2 = SUM(TempIndicator(1,:))
+    
+    IF(ParEnv % PEs > 1 ) THEN
+      s1 = ParallelReduction(s1)
+      s2 = ParallelReduction(s2)
+      Fnorm = ParallelReduction(Fnorm) 
+    END IF
+          
+    s = SQRT(s1) / SQRT(s2)
     ErrorIndicator = SQRT( TempIndicator(1,:)/(2*s) + s*TempIndicator(2,:)/2 )
 
     IF ( Fnorm > AEPS ) THEN
@@ -2211,6 +2377,10 @@ USE crsmatrix
     END IF
 
     MaxError = MAXVAL( ErrorIndicator )
+    IF( ParEnv % PEs > 1 ) THEN
+      MaxError = ParallelReduction(MaxError,2)
+    END IF
+        
     DEALLOCATE( TempIndicator )
 !------------------------------------------------------------------------------
   END FUNCTION ComputeError

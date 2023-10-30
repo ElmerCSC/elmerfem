@@ -83,15 +83,12 @@ SUBROUTINE ParallelRemesh( Model,Solver,dt,TransientSimulation )
   IF(.NOT. Found) CALL INFO(SolverName, "Option 'Rebalance' not found. DefValue is TRUE")
   ManAssignEdges = ListGetLogical(SolverParams, "Manually Assign Edges", Found, DefValue = .FALSE.)
   IF(.NOT. Found) CALL INFO(SolverName, "Option 'Manually Assign Edges' not found. Default is FALSE")
-  MeshDir = ListGetString(SolverParams,"Save Mesh Name", UnfoundFatal = .TRUE.)
-  ! Angle detection?
   Angle = ListGetLogical(SolverParams, "Automatic Angle Detection", Found, DefValue = .FALSE.)
   IF(.NOT. Found) CALL INFO(SolverName, "Automatic Angle Detection turned off")
 
   TimeVar => VariableGet( Model % Mesh % Variables, 'Timestep' )
   TimeReal = TimeVar % Values(1)
   Time = INT(TimeReal)
-  WRITE(MeshName, '(A,i0)') TRIM(MeshDir), time
 
   SaveMeshName = Mesh % Name
 
@@ -124,15 +121,20 @@ SUBROUTINE ParallelRemesh( Model,Solver,dt,TransientSimulation )
     FinalMesh => OutMesh
   END IF
 
+  MeshDir = ListGetString(SolverParams,"Save Mesh Name", Found ) 
+  IF(.NOT. Found) MeshDir = SaveMeshName
+
+  WRITE(MeshName, '(A,i0)') TRIM(MeshDir), time  
   OutMesh => NULL()
   FinalMesh % Name = TRIM(MeshName)
   FinalMesh % OutputActive = .TRUE.
   FinalMesh % Changed = .TRUE.
+  
 
   !MakeDirectory seems unable to create multi/level/directories
   !so create the top level first, then the lower
   IF(ParEnv % MyPe==0) CALL MakeDirectory(TRIM(MeshName) // CHAR(0))
-     
+
   parts = ParEnv % PEs
 
   tmp = TRIM(MeshName)//"/partitioning."
@@ -142,15 +144,14 @@ SUBROUTINE ParallelRemesh( Model,Solver,dt,TransientSimulation )
   MeshDir = TRIM(tmp)
 
   IF(ParEnv % MyPe==0) THEN
-     PRINT *, 'Save Mesh, creating directory: '//MeshDir
-     CALL MakeDirectory(TRIM(MeshDir) // CHAR(0))
+    PRINT *, 'Save Mesh, creating directory: '//MeshDir
+    CALL MakeDirectory(TRIM(MeshDir) // CHAR(0))
   END IF
   CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
   CALL WriteMeshToDisk2(Model, FinalMesh, MeshDir, ParEnv % MyPE)
-
+    
   CALL SwapMesh(Model, Mesh, FinalMesh % Name)
-
   Model % Mesh % Name = TRIM(SaveMeshName)
 
 #else

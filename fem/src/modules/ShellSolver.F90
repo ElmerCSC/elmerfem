@@ -132,7 +132,14 @@ SUBROUTINE ShellSolver_Init0(Model, Solver, dt, Transient)
   END IF
 
   CALL ListAddLogical( SolverPars,'Shell Solver',.TRUE.)
-  
+
+  IF( GetLogical( SolverPars, 'Stability Analysis', Found ) ) THEN
+    CALL Fatal('ShellSolver_Init0','"Stability Analysis" has not yet been coded for this solver!')
+  END IF
+  IF( GetLogical( SolverPars, 'Geometric Stiffness', Found ) ) THEN
+    CALL Fatal('ShellSolver_Init0','"Geometric Stiffness" has not yet been coded for this solver!')
+  END IF
+      
 !------------------------------------------------------------------------------
 END SUBROUTINE ShellSolver_Init0
 !------------------------------------------------------------------------------

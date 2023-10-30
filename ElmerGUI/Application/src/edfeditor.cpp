@@ -40,6 +40,17 @@
 
 #include <QtGui>
 #include <iostream>
+#include <QPushButton>
+#include <QMainWindow>
+#include <QMdiArea>
+#include <QMdiSubWindow>
+#include <QFileDialog>
+#include <QMessageBox>
+
+#if WITH_QT6
+#define QRegExp QRegularExpression
+#endif
+
 #include "edfeditor.h"
 //#include "MainWindow.h"
 
@@ -384,15 +395,26 @@ void EdfEditor::updateElement(QTreeWidgetItem *item, int column)
   QRegExp expression(pattern);
   QString qs = item->text(1).trimmed();
 
+#if WITH_QT6
+  QRegularExpressionMatch rem;
+  int index = qs.indexOf(expression, 0, &rem);
+#else
   int index = qs.indexOf(expression);
+#endif
 
   QString parsedString = "";
   if(index < 0)
     parsedString = qs;
 
   while(index >= 0) {
+#if WITH_QT6
+    QString currentMatch = rem.captured(0);	
+    int length = currentMatch.length();
+#else
     int length = expression.matchedLength();
     QString currentMatch = qs.mid(index, length);
+#endif
+
     QStringList currentList = currentMatch.split("=");
     QString name = currentList.at(0);
     QString value = currentList.at(1);
@@ -404,7 +426,13 @@ void EdfEditor::updateElement(QTreeWidgetItem *item, int column)
     parsedString.append(name + "=\"" + value + "\" ");
 
     element.setAttribute(name.trimmed(), value.trimmed());
+	
+#if WITH_QT6
+    index = qs.indexOf(expression, index + length, &rem);
+#else
     index = qs.indexOf(expression, index + length);
+#endif
+
   }
 
   // update display with parsed attributes

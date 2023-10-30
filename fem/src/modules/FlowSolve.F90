@@ -1056,6 +1056,8 @@
         Element => GetBoundaryElement(t)
         IF ( .NOT. ActiveBoundaryElement() ) CYCLE
 
+        IF( dim - GetElementDim(Element) > 1 ) CYCLE
+        
         n = GetElementNOFNodes()
 
         CALL GetElementNodes( ElementNodes )

@@ -205,7 +205,7 @@ private slots:
   void meshingTerminatedSlot(); // signal emitted by meshingThread
   void meshingFinishedSlot();   // signal emitted by meshingThread
 
-  void boundarySelectedSlot(list_t *); // signal emitted by glWidget
+  void boundarySelectedSlot(list_t *, Qt::KeyboardModifiers); // signal emitted by glWidget
   void doDivideSurfaceSlot(double);    // signal emitted by boundaryDivide
   void doDivideEdgeSlot(double);       // signal emitted by boundaryDivide
 

@@ -26,6 +26,9 @@
 ! *  Email:   rupertgladstone1972@gmail.com
 ! *  Web:     http://elmerice.elmerfem.org
 ! *
+! *  Modified July 2023 to incorporate ISMIP6 BMB parameterisation
+! *  (these comments are in need of updating...)
+! *
 ! *  Calculate sub ice shelf melting as a function of depth.  A number of 
 ! *  parameters may determine the melt function and are specified in the sif.
 ! *  
@@ -35,8 +38,10 @@
 ! *  Galton-Fenzi.
 ! *  bgf_scaled - same as bgf but scales down melt near grounding line based on 
 ! *  water column thickness
+! *  The above 2 are as in this paper: https://tc.copernicus.org/articles/11/319/2017/
 ! *  
-! *  bgf_scaled requires the following properties (in solver sif section):
+! *  ismip6 - see ismip6 wiki
+! *  https://www.climate-cryosphere.org/wiki/index.php?title=ISMIP6-Projections-Antarctica#Oceanic_forcing:_temperature.2C_salinity.2C_thermal_forcing_and_melt_rate_parameterization
 ! *  
 ! *  water column thickness (real) is the water column thickness (from ice base 
 ! *  to ocean floor).  
@@ -44,14 +49,10 @@
 ! *  water column thickness scaling (real) is an upper limit for the water column 
 ! *  thickness to scale the basal melt
 ! *  
-! *  TODO: implement other melt functions - Walker? MISMIP+?
 ! *  TODO: check for sea level defined in sif instead of assuming z=0 is sea level
-! *  TODO: use physical constants set in the sif rather than repeating them here
-! *  TODO: make omega a spatially varying field... or some way of defining basins...
 ! *  
 ! *  
-! *  
-! *  examples sif solver section:
+!  example sif solver section (old one from approx. 2015):
 !
 !Solver 3
 !  equation = SubShelfMeltCalculation
@@ -64,14 +65,31 @@
 !  grounding line melt = logical True
 !  omega = Real 0.6
 !  far field ocean temperature = Real 2.0
-!  water column scaling = Real 200.0
+!  water column scaling = logical true
+!  water column scaling factor = Real 200.0
 !  ice base scaling depth = Real 100.0
 !  ice base scaling offset = Real 40.0
 !  iceBaseScaling = logical True
-
 !End
+!
+! example sif solver section (newer one for ISMIP6; July 2023):
+!
+!Solver 4
+!   Exec Interval = 12 
+!   Equation = "Get Meltrate"
+!   Procedure = "SubShelfMelt" "SubShelfMelt"
+!   Variable = bmb 
+!   Variable DOFs = 1 
+!   melt function = string "ismip6"
+!   lower surface variable name = string "Zb"
+!   bedrock variable name = string "bedrock"
+!   grounded mask name = String "GroundedMask"
+!   grounding line melt = logical True 
+!   water column scaling = logical True
+!   water column scaling factor = real 75.0
+!End  
 
-SUBROUTINE SubShelfMelt (Model, Solver, dt, Transient)
+ SUBROUTINE SubShelfMelt (Model, Solver, dt, Transient)
 
   USE DefUtils
   
@@ -84,7 +102,9 @@ SUBROUTINE SubShelfMelt (Model, Solver, dt, Transient)
   LOGICAL :: Transient
 
   ! variables to be found in the elmer data structures
-  TYPE(Variable_t), POINTER :: z_iceBase, z_bedrock, groundedMask
+  TYPE(Variable_t), POINTER :: z_iceBase, z_bedrock, groundedMask, abmb_var, TimeVar
+  TYPE(Variable_t), POINTER :: TF_var, deltaTF_var 
+  INTEGER, POINTER :: TF_Perm(:), deltaTF_Perm(:), abmb_perm(:)
 
   ! parameters to be read in from this solvers section in the sif 
   CHARACTER(LEN=MAX_NAME_LEN) :: meltFunc         ! which melt function to be used
@@ -93,8 +113,12 @@ SUBROUTINE SubShelfMelt (Model, Solver, dt, Transient)
   CHARACTER(LEN=MAX_NAME_LEN) :: bedrockName      ! " "  (bedrock = bathymmetry under the ice shelf)
   REAL (KIND=dp)              :: omega            ! melt rate tuning parameter
   REAL (KIND=dp)              :: T_far            ! the far field ocean temperature
-  REAL (KIND=dp)              :: wct_sc           ! a scaling factor using wct (water column thickness) 
-  LOGICAL                     :: glMelt           ! determines whether melt occurs actually at the grounding line itself
+  LOGICAL                     :: glMelt, wct_sc
+  
+  REAL (KIND=dp)           :: anomFactor, preFactor
+  REAL (KIND=dp)           :: TF, DeltaTF, gamma0
+  REAL(KIND=dp), POINTER   :: abmb_vals(:), TF_vals(:), deltaTF_vals(:)
+  LOGICAL                  :: applyAnomaly
 
   ! an optional additional scaling factor using depth of base of ice shelf
   REAL (KIND=dp)              :: iceBaseOffset, iceBaseRef, iceBaseFactor
@@ -102,27 +126,14 @@ SUBROUTINE SubShelfMelt (Model, Solver, dt, Transient)
 
   ! truly local variables!
   TYPE(ValueList_t), POINTER :: SolverParams
-  REAL (KIND=dp) :: wct             ! water column thickness
+  REAL (KIND=dp) :: wct, wct_factor          ! water column thickness
   REAL (KIND=dp) :: meltScaling, meltRate 
-  REAL (KIND=dp) :: rhoi, L, rhow, cw, gammaT, c, cnst, secondstoyear, deltaT, T_freeze
+  REAL (KIND=dp) :: rhoi, Lf, rhoo, SWCp, gammaT, cc, cnst, secondstoyear, deltaT, T_freeze
   LOGICAL        :: found
-  INTEGER        :: i
-  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName = 'SubShelfMelt'
+  INTEGER        :: ii
+  CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName = 'SubShelfMelt'
 
   SolverParams => GetSolverParams()
-
-
-  ! Physical constants
-  rhoi = 916.0_dp
-  L = 3.34e5
-  rhow = 1025.0_dp
-  cw = 3148.0_dp
-  gammaT = 1.0e-4
-  c = 7.61e-4          ! Freezing temp change with depth (T_freeze decrease with zeta)
-  cnst = (rhow*cw*gammaT)/(rhoi*L)
-  secondstoyear = 60.0_dp * 60.0_dp * 24.0_dp * 365.25_dp
-  
-  ! read parameters from sif keywords
 
   meltFunc = GetString( SolverParams, 'melt function',  Found )
   IF (.NOT. Found) THEN
@@ -130,31 +141,6 @@ SUBROUTINE SubShelfMelt (Model, Solver, dt, Transient)
   ELSE
      WRITE(Message,'(A,A)') 'Melt function is ',meltFunc
      CALL INFO(SolverName, Message,Level=2)
-  END IF
-  
-  lowerSurfName = GetString( SolverParams, 'lower surface variable name',  Found )
-  IF (.NOT. Found) THEN
-     CALL FATAL(SolverName,'No keyword >lower surface variable name< found in SubShelfMelt solver')
-  END IF
-  
-  bedrockName = GetString( SolverParams, 'bedrock variable name',  Found )
-  IF (.NOT. Found) THEN
-     CALL FATAL(SolverName,'No keyword >bedrock variable name< found in SubShelfMelt solver')
-  END IF
-  
-  groundedMaskName = GetString( SolverParams, 'grounded mask name',  Found )
-  IF (.NOT. Found) THEN
-     CALL FATAL(SolverName,'No keyword >grounded mask name< found in SubShelfMelt solver')
-  END IF
-  
-  omega = GetConstReal( SolverParams, 'omega',  Found )
-  IF (.NOT. Found) THEN
-     CALL FATAL(SolverName,'No keyword >omega< found in SubShelfMelt solver')
-  END IF
-  
-  T_far = GetConstReal( SolverParams, 'far field ocean temperature',  Found )
-  IF (.NOT. Found) THEN
-     CALL FATAL(SolverName,'No keyword >far field ocean temperature< found in SubShelfMelt solver')
   END IF
 
   iceBaseScaling = GetLogical( SolverParams, 'ice base scaling',  Found )
@@ -178,17 +164,99 @@ SUBROUTINE SubShelfMelt (Model, Solver, dt, Transient)
      iceBaseScaling = .FALSE.
   END IF
 
-  wct_sc = GetConstReal( SolverParams, 'water column scaling',  Found )
-  IF (.NOT. Found) THEN
-     SELECT CASE (meltFunc)
-     CASE('bgf_scaled')
-        CALL FATAL(SolverName,'No keyword >water column scaling< found in SubShelfMelt solver')
-     CASE('bgf')
-     CASE DEFAULT
-        CALL FATAL(SolverName,'Melt function not recognised whilst reading water column scaling')
-     END SELECT
+  wct_sc = GetLogical( SolverParams, 'water column scaling',  Found )
+  IF (Found) THEN
+     wct_factor = GetConstReal( SolverParams, 'water column scaling factor',  Found )
+     IF (.NOT.Found) THEN
+        CALL FATAL(SolverName,'Water column scaling factor is required')
+     END IF
+  ELSE
+     CALL INFO(SolverName, 'Not using water column scaling', Level=4)
   END IF
 
+  rhoi =  GetConstReal( CurrentModel % Constants,'Ice Density',Found)
+  IF (.NOT.Found) CALL FATAL(Solvername,'Ice Density not found in Constants')
+  rhoo =  GetConstReal( CurrentModel % Constants,'SW Density',Found)
+  IF (.NOT.Found) CALL FATAL(Solvername,'SW Density not found in Constants')
+  Lf =  GetConstReal( CurrentModel % Constants,'Latent Heat',Found)
+  IF (.NOT.Found) CALL FATAL(Solvername,'Latent Heat not found in Constants')
+  SWCp =  GetConstReal( CurrentModel % Constants,'SW Cp',Found) ! specific heat of sea water
+  IF (.NOT.Found) CALL FATAL(Solvername,'SW Cp not found in Constants')
+  
+  SELECT CASE(meltFunc)
+  CASE('ISMIP6','ismip6')
+     gamma0 =  GetConstReal( CurrentModel % Constants,'gamma 0',Found)
+     IF (.NOT.Found) CALL FATAL(Solvername,'gamma 0 not found in Constants')
+     ! Note: this is specifically the InitMIP anomaly, see hard coded time dependency further down
+     applyAnomaly = GetLogical( SolverParams,'Apply Anomaly',Found)
+     
+     IF (applyAnomaly) THEN
+        abmb_var => VariableGet(Model %Mesh % Variables,"abmb")
+        IF (ASSOCIATED(abmb_var)) THEN
+           abmb_vals => abmb_var % Values
+           abmb_Perm => abmb_var % Perm
+           WRITE(Message,*) "Found >abmb<, applying InitMIP bmb anomaly"
+           CALL INFO(SolverName, Message, Level=3)
+        ELSE
+           applyAnomaly = .FALSE.
+           WRITE(Message,*) "No var >abmb<, not applying InitMIP bmb anomaly"
+           CALL INFO(SolverName, Message, Level=3)
+        END IF
+     END IF
+     
+     TF_var => VariableGet(Model %Mesh % Variables,"t_forcing")
+     IF (ASSOCIATED(TF_var)) THEN
+        TF_vals => TF_var % Values
+        TF_Perm => TF_var % Perm
+     ELSE
+        CALL FATAL(SolverName,'Cant find var t_forcing')
+     END IF
+    
+     deltaTF_var => VariableGet(Model %Mesh % Variables,"deltat_basin")
+     IF (ASSOCIATED(deltaTF_var)) THEN
+        deltaTF_vals => deltaTF_var % Values
+        deltaTF_Perm => deltaTF_var % Perm
+        CALL INFO(SolverName,'read var deltat_basin successfully')
+     ELSE
+        CALL FATAL(SolverName,'Cant find var deltat_basin:')
+     END IF
+     
+  CASE('bgf')  
+     ! some hard coded things specific to Rupert's old settings (as in 2017 TC paper)
+     gammaT = 1.0e-4
+     cc = 7.61e-4          ! Freezing temp change with depth (T_freeze decrease with zeta)
+     cnst = (rhoo*SWCp*gammaT)/(rhoi*Lf)
+     secondstoyear = 60.0_dp * 60.0_dp * 24.0_dp * 365.25_dp
+     ! and some user defined settings...
+     omega = GetConstReal( SolverParams, 'omega',  Found )
+     IF (.NOT. Found) THEN
+        CALL FATAL(SolverName,'No keyword >omega< found in SubShelfMelt solver')
+     END IF    
+     T_far = GetConstReal( SolverParams, 'far field ocean temperature',  Found )
+     IF (.NOT. Found) THEN
+        CALL FATAL(SolverName,'No keyword >far field ocean temperature< found in SubShelfMelt solver')
+     END IF
+  CASE DEFAULT
+     CALL FATAL(SolverName,'melt function not recognised')
+  END SELECT
+  
+  lowerSurfName = GetString( SolverParams, 'lower surface variable name',  Found )
+  IF (.NOT. Found) THEN
+     CALL FATAL(SolverName,'No keyword >lower surface variable name< found in SubShelfMelt solver')
+  END IF
+
+  IF (wct_sc) THEN
+     bedrockName = GetString( SolverParams, 'bedrock variable name',  Found )
+     IF (.NOT. Found) THEN
+        CALL FATAL(SolverName,'No keyword >bedrock variable name< found in SubShelfMelt solver')
+     END IF
+  END IF
+  
+  groundedMaskName = GetString( SolverParams, 'grounded mask name',  Found )
+  IF (.NOT. Found) THEN
+     CALL FATAL(SolverName,'No keyword >grounded mask name< found in SubShelfMelt solver')
+  END IF
+  
   glMelt = GetLogical( SolverParams, 'grounding line melt',  Found )
   IF (.NOT. Found) THEN
      CALL FATAL(SolverName,'No keyword >grounding line melt< found in SubShelfMelt solver')
@@ -199,9 +267,11 @@ SUBROUTINE SubShelfMelt (Model, Solver, dt, Transient)
   IF (.NOT. ASSOCIATED(z_iceBase)) THEN
      CALL FATAL(SolverName,'Failed to find ice base variable') !TODO: report variable name
   END IF
-  z_bedrock => VariableGet( Solver % Mesh % Variables, TRIM(bedrockName))
-  IF (.NOT. ASSOCIATED(z_bedrock)) THEN
-     CALL FATAL(SolverName,'Failed to find bedrock variable') !TODO: report variable name
+  IF (wct_sc) THEN
+     z_bedrock => VariableGet( Solver % Mesh % Variables, TRIM(bedrockName))
+     IF (.NOT. ASSOCIATED(z_bedrock)) THEN
+        CALL FATAL(SolverName,'Failed to find bedrock variable') !TODO: report variable name
+     END IF
   END IF
   groundedMask => VariableGet( Solver % Mesh % Variables, TRIM(groundedMaskName))
   IF (.NOT. ASSOCIATED(groundedMask)) THEN
@@ -219,19 +289,19 @@ SUBROUTINE SubShelfMelt (Model, Solver, dt, Transient)
   ! Melt will be calculated for the ungrounded portion of the lower surface.
   Solver%Variable%Values = 0.0_dp
 
-  DO i=1,Model % NumberOfNodes
+  DO ii=1,Model % NumberOfNodes
 
      ! the permutation is only non-zero for the body on which this solver is defined 
      ! (which should be the lower ice surface)
-     IF (Solver%Variable%Perm(i).LE.0) THEN
+     IF (Solver%Variable%Perm(ii).LE.0) THEN
         CYCLE
      END IF
 
      ! only apply melt under the floating shelf ...
-     IF (groundedMask%values(groundedMask%Perm(i)) .GT. 0) THEN
+     IF (groundedMask%values(groundedMask%Perm(ii)) .GT. 0) THEN
         CYCLE
         ! ...and at the grounding line if desired
-     ELSE IF (groundedMask%values(groundedMask%Perm(i)) .EQ. 0) THEN
+     ELSE IF (groundedMask%values(groundedMask%Perm(ii)) .EQ. 0) THEN
         IF (.NOT. glMelt) THEN
            CYCLE
         END IF
@@ -239,37 +309,45 @@ SUBROUTINE SubShelfMelt (Model, Solver, dt, Transient)
 
      ! calculate the sub shelf melt rate
      SELECT CASE (meltFunc)
-     CASE('bgf','bgf_scaled')
-        T_freeze =  -1.85_dp + c * z_iceBase%values(z_iceBase%Perm(i)) ! In situ freezing temperature
+
+     CASE('bgf')
+        T_freeze =  -1.85_dp + cc * z_iceBase%values(z_iceBase%Perm(ii)) ! In situ freezing temperature
         deltaT = T_freeze - T_far ! Thermal driving
         meltRate = cnst * Omega * deltaT * secondstoyear
+
+     CASE('ISMIP6','ismip6')
+        prefactor = (rhoo * SWCp/(rhoi * Lf))**2.0_dp
+        TF        = TF_vals(TF_Perm(ii))
+        deltaTF   = deltaTF_vals(deltaTF_Perm(ii))
+        meltrate  = gamma0 * prefactor * (MAX((TF + deltaTF),0.0_dp))**2.0_dp
+        
+        IF (applyAnomaly) THEN
+           meltrate = meltrate - anomFactor*abmb_vals(abmb_perm(ii))
+        END IF
+        
      CASE DEFAULT
         CALL FATAL(SolverName,'Melt function not recognised in SubShelfMelt calculation')
      END SELECT
-     
-     ! apply scaling if required (motivated by avoiding high melt near the grounding line)
-     SELECT CASE (meltFunc)
-     CASE('bgf')
-        meltScaling = 1.0_dp
-     CASE('bgf_scaled')
-        wct = z_iceBase%values(z_iceBase%Perm(i)) - z_bedrock%values(z_bedrock%Perm(i)) 
-        meltScaling = TANH((wct)/(wct_sc/exp(1.0_dp)))
-     CASE DEFAULT
-        CALL FATAL(SolverName,'Melt function not recognised in SubShelfMelt scaling')
-     END SELECT
 
-     ! an additional scaling term may also be applied to reduce melting of thin shelves near sea level
+     ! apply scaling if required (motivated by avoiding high melt near the grounding line)
+     IF (wct_sc) THEN
+        wct = z_iceBase%values(z_iceBase%Perm(ii)) - z_bedrock%values(z_bedrock%Perm(ii)) 
+        meltScaling = TANH((wct)/(wct_factor/exp(1.0_dp)))
+     ELSE
+        meltScaling = 1.0_dp
+     END IF
+     
+     ! additional scaling may also be applied to reduce melting of thin shelves near sea level
      IF (iceBaseScaling) THEN
         iceBaseFactor = MAX(0.0_dp, &
-             -TANH((z_iceBase%values(z_iceBase%Perm(i))+iceBaseOffset)*exp(1.0_dp)/iceBaseRef))
-
+             -TANH((z_iceBase%values(z_iceBase%Perm(ii))+iceBaseOffset)*exp(1.0_dp)/iceBaseRef))
      ELSE
         iceBaseFactor = 1.0_dp
      END IF
      meltScaling = meltScaling * iceBaseFactor
-
-     Solver%Variable%Values(Solver%Variable%Perm(i)) = - meltRate * meltScaling
-
+     
+     Solver%Variable%Values(Solver%Variable%Perm(ii)) = meltRate * meltScaling
+     
   END DO
-
-END SUBROUTINE SubShelfMelt
+  
+  END SUBROUTINE SubShelfMelt

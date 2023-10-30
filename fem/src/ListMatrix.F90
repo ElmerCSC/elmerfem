@@ -259,13 +259,13 @@ CONTAINS
       A % ListMatrix(i) % Degree = 0
 
       IF(A % Rows(i) == A % Rows(i+1)) THEN
-        A % ListMatrix(i) % Head => Null()
+        A % ListMatrix(i) % Head => NULL()
         CYCLE
       END IF
 
       ALLOCATE(A % ListMatrix(i) % Head)
       Clist => A % ListMatrix(i) % Head
-      Clist % Next => Null()
+      Clist % Next => NULL()
 
       DO j=A % Rows(i), A % Rows(i+1)-1
         IF(Trunc) THEN
@@ -279,7 +279,7 @@ CONTAINS
           END IF
           ALLOCATE(Clist % Next)
           Clist => Clist % Next
-          CList % Next => Null()
+          CList % Next => NULL()
         END IF
 
         CList % Val = A % Values(j)
@@ -335,11 +335,12 @@ CONTAINS
 !-------------------------------------------------------------------------------
      TYPE(ListMatrix_t), POINTER :: List(:)
      INTEGER :: k1,k2
-     TYPE(ListMatrixEntry_t), POINTER :: CList,Prev, Entry
+     TYPE(ListMatrixEntry_t), POINTER :: CList,Prev, Entry, Dummy
 !-------------------------------------------------------------------------------
 
      INTEGER :: i, istat
 
+     
      IF ( .NOT. ASSOCIATED(List) ) List=>List_AllocateMatrix(k1)
 
      IF ( k1>SIZE(List) ) THEN
@@ -350,7 +351,8 @@ CONTAINS
      Clist => List(k1) % Head
 
      IF ( .NOT. ASSOCIATED(Clist) ) THEN
-        Entry => List_GetMatrixEntry(k2, NULL())
+        Dummy => NULL()
+        Entry => List_GetMatrixEntry(k2, Dummy )
 
         List(k1) % Degree = 1
         List(k1) % Head => Entry
@@ -394,7 +396,7 @@ CONTAINS
      INTEGER, INTENT(IN) :: k1, nk2
      INTEGER, INTENT(IN) :: Ind(nk2)
 
-     TYPE(ListMatrixEntry_t), POINTER :: RowPtr, PrevPtr, Entry
+     TYPE(ListMatrixEntry_t), POINTER :: RowPtr, PrevPtr, Entry, Dummy
 !-------------------------------------------------------------------------------
      INTEGER :: i,k2,k2i,j, k,prevind
 
@@ -408,7 +410,8 @@ CONTAINS
      ! First element needs special treatment as it may modify 
      ! the list starting point
      IF (.NOT. ASSOCIATED(RowPtr)) THEN
-       Entry => List_GetMatrixEntry(Ind(1),NULL())
+       Dummy => NULL() 
+       Entry => List_GetMatrixEntry(Ind(1),Dummy)
        List(k1) % Degree = 1
        List(k1) % Head => Entry
        k2i = 2
@@ -469,7 +472,8 @@ CONTAINS
        if (k2 == prevind) cycle
        prevind = k2
 
-       Entry => List_GetMatrixEntry(k2,null())
+       Dummy => NULL()
+       Entry => List_GetMatrixEntry(k2,Dummy)
        PrevPtr % Next => Entry
        PrevPtr => PrevPtr % Next
        List(k1) % Degree = List(k1) % Degree + 1

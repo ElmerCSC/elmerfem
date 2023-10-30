@@ -57,7 +57,7 @@ Helpers :: ~Helpers()
 //                             Normalize
 //====================================================================
 
-void Helpers::normalize(qreal *a)
+void Helpers::normalize(QREAL_OR_FLOAT *a)
 {
   double b;
 
@@ -71,7 +71,7 @@ void Helpers::normalize(qreal *a)
 //                              Length
 //====================================================================
 
-qreal Helpers::vlen(qreal *a)
+QREAL_OR_FLOAT Helpers::vlen(QREAL_OR_FLOAT *a)
 {
   return sqrt(a[0]*a[0] + a[1]*a[1] + a[2]*a[2]);
 }
@@ -80,7 +80,7 @@ qreal Helpers::vlen(qreal *a)
 //                           Cross product
 //====================================================================
 
-void Helpers::crossProduct(qreal *a, qreal *b, qreal *c)
+void Helpers::crossProduct(QREAL_OR_FLOAT *a, QREAL_OR_FLOAT *b, QREAL_OR_FLOAT *c)
 {
   c[0] = a[1]*b[2] - a[2]*b[1];
   c[1] = a[2]*b[0] - a[0]*b[2];
@@ -90,7 +90,7 @@ void Helpers::crossProduct(qreal *a, qreal *b, qreal *c)
 //====================================================================
 //            Invert 4x4 matrix (for visualiztion only)
 //====================================================================
-void Helpers::invertMatrix(const qreal *a, qreal *inva)
+void Helpers::invertMatrix(const QREAL_OR_FLOAT *a, QREAL_OR_FLOAT *inva)
 {
   QMatrix4x4 matrix(a);
 

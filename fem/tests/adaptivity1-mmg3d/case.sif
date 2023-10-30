@@ -15,8 +15,8 @@ Simulation
   Max Output Level = 7
   Coordinate System = Cartesian 3D
   Simulation Type = Steady State
-  Steady State Max Iterations = 5
-  Steady State Min Iterations = 5
+  Steady State Max Iterations = 10
+  Steady State Min Iterations = 1
 
   Output Intervals = 1
 
@@ -110,7 +110,9 @@ Solver 1
   Linear System Residual Output = 20
   Linear System Precondition Recompute = 1
 
-  Steady State Convergence Tolerance = 1.0e-8
+  Nonlinear System Max Iterations = 1
+
+  Steady State Convergence Tolerance = 1.0e-6
   Optimize Bandwidth = False
 
   Adaptive Mesh Refinement = True
@@ -120,8 +122,8 @@ Solver 1
   Adaptive Remesh Use MMG = Logical True
   Adaptive Mesh Numbering = Logical False
 
-  Adaptive Max Depth = Integer 3
-  Adaptive Min Depth = Integer 10
+  Adaptive Max Depth = Integer 10
+  Adaptive Min Depth = Integer 2
   Adaptive Output = Logical True
 
   MMG Niter = Integer 1

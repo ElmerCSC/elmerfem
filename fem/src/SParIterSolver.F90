@@ -349,10 +349,13 @@ st = realtime()
   NULLIFY( SplittedMatrix % InsideMatrix % DampValues )
 
   NeedIlu = .FALSE.
-  Prec = ListGetString(CurrentModel % Solver % Values, &
-      'Linear System Preconditioning', Found )
-  IF(Found) NeedILU = SEQL(Prec,'vanka') 
-    
+  IF( ListGetString(CurrentModel % Solver % Values, &
+      'Linear System Solver', Found ) == 'iterative' ) THEN
+    Prec = ListGetString(CurrentModel % Solver % Values, &
+        'Linear System Preconditioning', Found ) 
+    IF(Found) NeedILU = SEQL(Prec,'vanka')
+  END IF
+  
   SplittedMatrix % InsideMatrix % Ordered = .FALSE.
   NULLIFY( SplittedMatrix % InsideMatrix % ILUValues )
 

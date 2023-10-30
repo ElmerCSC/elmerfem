@@ -693,7 +693,7 @@ CONTAINS
       INTEGER :: i, j, rr, r, u, xp, bp, z, zz, y0, yl, y, k, iwork(l-1), stat, Round, &
           IluOrder
       REAL(KIND=dp) :: alpha, beta, omega, rho0, rho1, sigma, ddot, varrho, hatgamma
-      LOGICAL rcmp, xpdt, GotIt, BackwardError, EarlyExit
+      LOGICAL rcmp, xpdt, GotIt, EarlyExit
       REAL(KIND=dp), ALLOCATABLE :: work(:,:)
       REAL(KIND=dp) :: rwork(l+1,3+2*(l+1))
       REAL(KIND=dp) :: tmpmtr(l-1,l-1), tmpvec(l-1)
@@ -1921,7 +1921,7 @@ CONTAINS
     INTEGER :: ndim, RestartN, i
     INTEGER :: Rounds, OutputInterval
     REAL(KIND=dp) :: MinTol, MaxTol, Residual
-    LOGICAL :: Converged, Diverged
+    LOGICAL :: Converged, Diverged, UseStopCFun
     
     ndim = HUTI_NDIM
     Rounds = HUTI_MAXIT
@@ -1929,7 +1929,8 @@ CONTAINS
     MaxTol = HUTI_MAXTOLERANCE
     OutputInterval = HUTI_DBUGLVL
     RestartN = HUTI_GCR_RESTART 
-
+    UseStopCFun = HUTI_STOPC == HUTI_USUPPLIED_STOPC
+    
     Converged = .FALSE.
     Diverged = .FALSE.
     
@@ -1990,8 +1991,12 @@ CONTAINS
       
       bnorm = normfun(n, b, 1)
       rnorm = normfun(n, r, 1)
-      
-      Residual = rnorm / bnorm
+
+      IF (UseStopCFun) THEN
+        Residual = stopcfun(x,b,r,ipar,dpar)
+      ELSE
+        Residual = rnorm / bnorm
+      END IF
       Converged = (Residual < MinTolerance) 
       Diverged = (Residual > MaxTolerance) .OR. (Residual /= Residual)    
       IF( Converged .OR. Diverged) RETURN
@@ -2046,10 +2051,17 @@ CONTAINS
          ! Check whether the convergence criterion is met 
          !--------------------------------------------------------------
          rnorm = normfun(n, r, 1)
-         Residual = rnorm / bnorm
-        
-         IF( MOD(k,OutputInterval) == 0) THEN
-           WRITE (*, '(A, I8, 3ES12.4,A)') '   gcrz:',k, residual, beta,'i'
+
+         IF (UseStopCFun) THEN
+           Residual = stopcfun(x,b,r,ipar,dpar)
+           IF( MOD(k,OutputInterval) == 0) THEN
+             WRITE (*, '(A, I6, 2E12.4)') '   gcr:',k, rnorm / bnorm, residual
+           END IF           
+         ELSE
+           Residual = rnorm / bnorm
+           IF( MOD(k,OutputInterval) == 0) THEN
+             WRITE (*, '(A, I8, 3ES12.4,A)') '   gcrz:',k, residual, beta,'i'
+           END IF
          END IF
         
          Converged = (Residual < MinTolerance)
@@ -2461,7 +2473,7 @@ CONTAINS
 !-----------------------------------------------------------------------------------
       INTEGER :: s  
       INTEGER :: n, MaxRounds, OutputInterval   
-      LOGICAL :: Converged, Diverged
+      LOGICAL :: Converged, Diverged, UseStopCFun
       TYPE(Matrix_t), POINTER :: A
       COMPLEX(KIND=dp) :: x(n), b(n)
       REAL(KIND=dp) :: Tol, MaxTol
@@ -2487,18 +2499,24 @@ CONTAINS
       REAL(kind=dp) :: normb, normr, errorind ! for tolerance check
       INTEGER :: i,j,k,l                      ! loop counters
 
+      UseStopCFun = HUTI_STOPC == HUTI_USUPPLIED_STOPC
+      
       U = 0.0d0
 
       ! Compute initial residual, set absolute tolerance
       normb = normfun(n,b,1)
       CALL matvecsubr( x, t, ipar )
       r = b - t
-      normr = normfun(n,r,1)
-
+      IF (UseStopCFun) THEN
+        errorind = stopcfun(x,b,r,ipar,dpar)
+      ELSE
+        normr = normfun(n,r,1)
+        errorind = normr / normb
+      END IF
+      
       !-------------------------------------------------------------------
       ! Check whether the initial guess satisfies the stopping criterion
       !--------------------------------------------------------------------
-      errorind = normr / normb
       Converged = (errorind < Tol)
       Diverged = (errorind > MaxTol) .OR. (errorind /= errorind)
 
@@ -2609,9 +2627,14 @@ CONTAINS
           END IF
 
           ! Check for convergence
-          normr = normfun(n,r,1)
+          IF (UseStopCFun) THEN
+            errorind = stopcfun(x,b,r,ipar,dpar)
+          ELSE
+            normr = normfun(n,r,1)
+            errorind = normr/normb
+          END IF
           iter = iter + 1
-          errorind = normr/normb
+          
           IF( MOD(iter,OutputInterval) == 0) THEN
             WRITE (*, '(I8, E11.4)') iter, errorind
           END IF
@@ -2661,9 +2684,14 @@ CONTAINS
         x = x + om*v 
 
         ! Check for convergence
-        normr =normfun(n,r,1)
+        IF (UseStopCFun) THEN
+          errorind = stopcfun(x,b,r,ipar,dpar)
+        ELSE
+          normr = normfun(n,r,1)
+          errorind = normr/normb
+        END IF
         iter = iter + 1
-        errorind = normr/normb
+
         IF( MOD(iter,OutputInterval) == 0) THEN
           WRITE (*, '(I8, E11.4)') iter, errorind
         END IF

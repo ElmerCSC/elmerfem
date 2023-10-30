@@ -70,7 +70,7 @@ Matc::Matc(QWidget *parent)
   QString elmerGuiHome = getenv("ELMERGUI_HOME");
   QString mcIniLoad = "source(\"" + elmerGuiHome.replace("\\", "/") + "/edf/mc.ini\")";
 
-#ifdef WITH_QT5
+#if WITH_QT5 || WITH_QT6
   mtc_domath( mcIniLoad.toLatin1().data() );
 #else
   mtc_domath( mcIniLoad.toAscii().data() );
@@ -291,7 +291,7 @@ QString Matc::domatc(VtkPost* vtkPost)
   QString cmd=ui.mcEdit->text().trimmed();
   ui.mcEdit->clear();
   
-#ifdef WITH_QT5
+#if WITH_QT5 || WITH_QT6
   ptr=mtc_domath(cmd.toLatin1().data());
 #else
   ptr=mtc_domath(cmd.toAscii().data());

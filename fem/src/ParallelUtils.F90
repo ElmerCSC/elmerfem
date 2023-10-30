@@ -47,7 +47,7 @@ MODULE ParallelUtils
      IMPLICIT NONE
 
      INTERFACE ParallelReduction
-       MODULE PROCEDURE ParallelReductionR, ParallelReductionI
+       MODULE PROCEDURE ParallelReductionR, ParallelReductionI, ParallelReductionZ
      END INTERFACE ParallelReduction
           
 CONTAINS
@@ -1317,7 +1317,7 @@ CONTAINS
         ELSE
           oper = 0
         END IF
-
+        
         IF (.NOT.ASSOCIATED(ParEnv % Active)) &
             CALL ParallelActive(.TRUE.)
         CALL SparActiveSUMInt(isum,oper)
@@ -1327,7 +1327,36 @@ CONTAINS
     END FUNCTION ParallelReductionI
 !-------------------------------------------------------------------------------
 
-    
+
+!------------------------------------------------------------------------------
+! Same as previous byt for complex values.    
+!-------------------------------------------------------------------------------
+    FUNCTION ParallelReductionZ(z,oper_arg) RESULT(zsum)
+!-------------------------------------------------------------------------------
+      COMPLEX(KIND=dp) :: z, zsum
+      INTEGER, OPTIONAL :: oper_arg
+!-------------------------------------------------------------------------------
+      INTEGER :: oper
+!-------------------------------------------------------------------------------
+      zsum = z
+#ifdef PARALLEL_FOR_REAL
+      IF ( ParEnv % PEs>1) THEN
+        oper = 0
+        IF (PRESENT(oper_arg)) THEN
+          oper=oper_arg
+        ELSE
+          oper = 0
+        END IF
+        
+        IF (.NOT.ASSOCIATED(ParEnv % Active)) &
+            CALL ParallelActive(.TRUE.)
+        CALL SparActiveSUMComplex(zsum,oper)
+      END IF
+#endif
+!-------------------------------------------------------------------------------
+    END FUNCTION ParallelReductionZ
+!-------------------------------------------------------------------------------
+
     
 !-------------------------------------------------------------------------------
     SUBROUTINE ParallelBarrier

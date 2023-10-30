@@ -82,7 +82,7 @@ Solver 1
 
   Calculate Capacitance Matrix = True
 
-!  Constraint Modes Fluxes Symmetric = False
+!  Constraint Modes Matrix Symmetric = False
 
 !  Optimize Bandwidth = True
 
@@ -104,7 +104,7 @@ Solver 1
 ! Settings for multigrid method
 !  Capacitance Matrix Filename = cp_$pn$_$mn$.dat
 
-  Constraint Modes Fluxes Results = Logical True
+  Constraint Modes Matrix Results = Logical True
 
 ! Mg parameters only active when $pn>2 and prec set to "multigrid"
   MG Method = p

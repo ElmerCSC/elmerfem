@@ -137,7 +137,10 @@
      Perm => Solver % Variable % Perm
 
      Svalues => A % Values
-
+     
+     ! If we have a block solver then we may be coming here with another dof count!
+     dofs = dofs * A % NumberOfRows / SIZE(Solver % Variable % Values) 
+     
      ALLOCATE(TotValues(SIZE(A % Values)))
      IF(ASSOCIATED(A % PrecValues)) THEN
        TotValues = A % PrecValues

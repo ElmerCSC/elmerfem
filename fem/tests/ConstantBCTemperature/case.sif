@@ -97,7 +97,7 @@ Boundary Condition 2
   Save Scalars = True
 End
 
-Solver 1 :: Reference Norm = Real 0.52492579
-RUN
+Solver 1 :: Reference Norm = 0.52492579
+
 
 

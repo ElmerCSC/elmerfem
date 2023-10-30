@@ -351,6 +351,7 @@ CONTAINS
 
     LOGICAL :: FirstTime = .TRUE.
     LOGICAL :: KeywordsLoaded = .FALSE.
+    LOGICAL :: SimulationRead = .FALSE.
     
     INTEGER :: nlen, BCcount, BodyCount, EqCount, MatCount, BfCount, &
         IcCount, SolverCount, LineCount, ComponentCount
@@ -568,7 +569,11 @@ CONTAINS
       
       IF( SEQL(Section,'run control') ) THEN
         ! "Run Control" section has been read but to a different Model structure
-        IF( .NOT. ScanOnly ) THEN
+        IF( ScanOnly ) THEN
+          IF( SimulationRead ) THEN
+            CALL Fatal(Caller,'"Run Control" should precede "Simulation" section!')
+          END IF
+        ELSE
           ArrayN = 1
           IF(.NOT.ASSOCIATED(Model % Control)) &
               Model % Control => ListAllocate()
@@ -584,7 +589,9 @@ CONTAINS
         END IF
         
       ELSE IF ( SEQL(Section, 'simulation') ) THEN        
-        IF ( .NOT. ScanOnly ) THEN
+        IF ( ScanOnly ) THEN
+          SimulationRead = .TRUE.
+        ELSE
           ArrayN = 1
           IF(.NOT.ASSOCIATED(Model % Simulation)) &
               Model % Simulation=>ListAllocate()
@@ -2626,6 +2633,11 @@ CONTAINS
     CALL LoadInputFile( Model,InFileUnit,ModelName,MeshDir,MeshName, .TRUE., .FALSE. )
     IF ( .NOT. OpenFile ) CLOSE( InFileUnit )
 
+#ifdef DEVEL_LISTUSAGE 
+    ! Switch original keywords from -1 to 0 if in this mode.
+    CALL ReportListCounters( Model, 1 )
+#endif
+             
     ! These are here to provide possibility to create tags for keywords
     ! using suffixes. The new way would be to use prefix -dist.
     ! The idea is to have a generic way to determine which keywords
@@ -2962,7 +2974,8 @@ CONTAINS
       END IF
 
       IF( MeshLevels > 1 ) THEN
-      !  CALL PrepareMesh( Model, NewMesh, ParEnv % PEs > 1 )        
+        ! This has been commented out, but is needed. There may be some issues in parallel still...
+        CALL PrepareMesh( Model, NewMesh, ParEnv % PEs > 1 )        
       END IF
     
       
@@ -3239,10 +3252,46 @@ CONTAINS
       Mesh => Mesh % Next      
     END DO
 
+
+    CALL TagRadiationSolver() 
+    
 !------------------------------------------------------------------------------
 
   CONTAINS
 
+    ! Set radiation solver tag to one heat equation.
+    !--------------------------------------------------
+    SUBROUTINE TagRadiationSolver()
+      TYPE(ValueList_t), POINTER :: Params
+
+      ! Radiation solver tag already exists?
+      IF( ListGetLogicalAnySolver( Model,'Radiation Solver') ) RETURN
+      
+      DO i=1,Model % NumberOfSolvers
+        Params => Model % Solvers(i) % Values
+        str = ListGetString( Params, 'Equation' )
+        IF ( TRIM(str) == 'heat equation' ) THEN
+          CALL Info('LoadModel','Defined radition solver by Equation name "heat equation"',Level=10) 
+          CALL ListAddLogical( Params,'Radiation Solver',.TRUE.)
+          RETURN
+        ENDIF
+      END DO
+      
+      DO i=1,Model % NumberOfSolvers
+        Params => Model % Solvers(i) % Values
+        str = ListGetString(Params, 'Procedure', Found)
+        IF(.NOT. Found) CYCLE
+        j = INDEX( str,'HeatSolver')
+        IF( j > 0 ) THEN
+          CALL Info('LoadModel','Defined radiation solver by Procedure containing "HeatSolver"',Level=10) 
+          CALL ListAddLogical( Params,'Radiation Solver',.TRUE.)
+          RETURN
+        END IF
+      END DO
+
+    END SUBROUTINE TagRadiationSolver
+
+    
 !------------------------------------------------------------------------------
 !> This subroutine is used to fill Def_Dofs array of the solver structure.
 !> Note that this subroutine makes no attempt to figure out the index of
@@ -5234,7 +5283,10 @@ CONTAINS
         NumberOfNodes, NumberOfElements, ind, nDOFs, MeshDim, Nzeros
     INTEGER, POINTER :: MaskPerm(:), MaskOrder(:)
 !------------------------------------------------------------------------------
-
+    
+    IF( INDEX( PostFile,'.vtu' ) /= 0 ) RETURN
+    !IF( INDEX( PostFile,'.ep' ) == 0 ) RETURN
+    
     IF( Model % Mesh % SavesDone == 0 ) THEN
       CALL Info('WritePostFile','Saving results in ElmerPost format to file '//TRIM(PostFile))
     END IF

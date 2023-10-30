@@ -489,8 +489,12 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   IF (.NOT. Found) THEN
     IF (.NOT. (SteadyGauge .OR. TransientGauge)) THEN
       IF( GetString(SolverParams,'Linear System Solver',Found)=='direct') THEN
-        CALL Info('WhitneyAVSolver','Defaulting to tree gauge when using direct solver')
-        TG = .TRUE.
+        IF( PiolaVersion ) THEN
+          CALL Fatal('WhitneyAVSolver','Direct solver (with tree gauge) is only possible with the lowest order edge basis!')
+        ELSE
+          CALL Info('WhitneyAVSolver','Defaulting to tree gauge when using direct solver')
+          TG = .TRUE.
+        END IF
       END IF
     END IF
   END IF
@@ -1192,11 +1196,13 @@ END BLOCK
   norm = DefaultSolve()
   Converged = Solver % Variable % NonlinConverged==1
 
-  IF( ListGetLogical( SolverParams,'Calculate Magnetic Norm',Found ) ) THEN
+  IF( ListGetLogical( SolverParams,'Calculate Magnetic Norm',Found ) .OR. &
+      ListGetLogical( SolverParams,'Use Magnetic Norm', Found ) ) THEN
     BLOCK
-      REAL(KIND=dp) :: binteg, bmin, bmax
+      REAL(KIND=dp) :: binteg, bmin, bmax, vinteg, bnorm
 
       binteg = 0.0_dp
+      vinteg = 0.0_dp
       bmin = HUGE( bmin )
       bmax = -HUGE( bmax ) 
 
@@ -1212,23 +1218,37 @@ END BLOCK
         nd = GetElementNOFDOFs() 
         nb = GetElementNOFBDOFs()
 
-        CALL AddLocalBNorm( Element, n, nd+nb, PiolaVersion, SecondOrder, binteg, bmin, bmax)
+        CALL AddLocalBNorm( Element, n, nd+nb, PiolaVersion, SecondOrder, binteg, vinteg, bmin, bmax)
       END DO
 
       IF( ParEnv % PEs > 1 ) THEN
         binteg = ParallelReduction( binteg )
+        vinteg = ParallelReduction( vinteg ) 
         bmin = ParallelReduction( bmin,1 )
         bmax = ParallelReduction( bmax,2 )      
       END IF
 
-      WRITE( Message,'(A,ES15.6)') 'Magnetic field norm:',binteg
-      CALL Info('WhitneyAVSolver', Message ) 
-
+      ! We used square to avoid taking root every time. 
+      bmin = SQRT(bmin)
+      bmax = SQRT(bmax)
+      bnorm = SQRT(binteg/vinteg)
+            
+      WRITE( Message,'(A,ES15.6)') 'Magnetic field norm:',bnorm
+      CALL Info('WhitneyAVSolver', Message, Level=4) 
+      
+      CALL ListAddConstReal( Model % Simulation,'res: magnetic norm',bnorm )
+      
       WRITE( Message,'(A,ES15.6)') 'Magnetic field minimum value:',bmin
       CALL Info('WhitneyAVSolver', Message, Level=8 ) 
 
       WRITE( Message,'(A,ES15.6)') 'Magnetic field maximum value:',bmax
       CALL Info('WhitneyAVSolver', Message, Level=8 ) 
+
+      IF( ListGetLogical( SolverParams,'Use Magnetic Norm',Found ) ) THEN
+        CALL Info('WhitneyAVSolver','Setting solver norm to magnetic norm!')
+        Solver % Variable % Norm = bnorm
+      END IF
+      
     END BLOCK
   END IF
     
@@ -3031,15 +3051,15 @@ END SUBROUTINE LocalConstraintMatrix
 
 !-----------------------------------------------------------------------------
   SUBROUTINE AddLocalBNorm( Element, n, nd, PiolaVersion, SecondOrder, &
-      BabsInteg, BabsMin, BabsMax )
+      BInteg, vinteg, BMin, BMax )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
     LOGICAL :: PiolaVersion, SecondOrder
-    REAL(KIND=dp) :: BabsInteg, BabsMin, BabsMax
+    REAL(KIND=dp) :: BInteg, vinteg, BMin, BMax
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Aloc(nd), B_ip(3), Babs
+    REAL(KIND=dp) :: Aloc(nd), B_ip(3), B2
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3),Basis(n),dBasisdx(n,3),DetJ
     LOGICAL :: Stat
     INTEGER :: t, i, j, np, EdgeBasisDegree
@@ -3075,11 +3095,12 @@ END SUBROUTINE LocalConstraintMatrix
       END IF
 
       B_ip = MATMUL( Aloc(np+1:nd), RotWBasis(1:nd-np,:) )
-      babs = SQRT(SUM(B_ip**2))
+      b2 = SUM(B_ip**2)
       
-      BabsMin = MIN( BabsMin, Babs )
-      BabsMax = MAX( BabsMax, Babs ) 
-      BabsInteg = BabsInteg + babs * detJ * IP % s(t)
+      BMin = MIN( BMin, b2 )
+      BMax = MAX( BMax, b2 ) 
+      BInteg = BInteg + b2 * detJ * IP % s(t)
+      vinteg = vinteg + detJ * IP % s(t)
     END DO
   END SUBROUTINE AddLocalBNorm
 !------------------------------------------------------------------------------

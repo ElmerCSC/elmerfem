@@ -5,4 +5,4 @@ CONFIGURE_FILE(case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO cylinder_in_cylinder.msh DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(CurvedBoundaryCylP LABELS cmodes)
+ADD_ELMER_TEST(CurvedBoundaryCylP LABELS cmodes lumping)

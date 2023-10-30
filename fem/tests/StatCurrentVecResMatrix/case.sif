@@ -43,9 +43,9 @@ Solver 1
 !  Constraint Modes Analysis = Logical True
 !  Constraint Modes Lumped = Logical True
 !  Constraint Modes Fluxes = Logical True
-!  Constraint Modes Fluxes Symmetric = Logical True
-!  Constraint Modes Fluxes Filename = File "ConductivityMatrix.dat"
-  Constraint Modes Fluxes Norm = Logical True
+!  Constraint Modes Matrix Symmetric = Logical True
+!  Constraint Modes Matrix Filename = File "ConductivityMatrix.dat"
+  Constraint Modes Matrix Norm = Logical True
 
 
   Linear System Solver = Iterative
@@ -63,7 +63,7 @@ Solver 2
   Equation = SaveScalars
   Procedure = "SaveData" "SaveScalars"
 
-  Show Norm Name = String "res: potential constraint norm" 
+  Show Norm Name = String "res: potential lumped matrix norm" 
   Filename = f.dat
 End 
 

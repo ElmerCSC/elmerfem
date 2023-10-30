@@ -191,6 +191,7 @@ CONTAINS
     EXTERNAL MultigridPrec
     EXTERNAL NormwiseBackwardError, ComponentwiseBackwardError
     EXTERNAL NormwiseBackwardErrorGeneralized
+    EXTERNAL NormwiseBackwardError_Z
     
     INTEGER(KIND=Addrint) :: dotProc, normProc, pcondProc, &
         pconddProc, mvProc, iterProc, StopcProc
@@ -407,7 +408,11 @@ CONTAINS
           IF (NormwiseStopC) THEN
              RowEquilibration = ListGetLogical(Params,'Linear System Row Equilibration',GotIt)
              IF (RowEquilibration) THEN
-                StopcProc = AddrFunc(NormwiseBackwardError)              
+               IF (ComplexSystem) THEN
+                 StopcProc = AddrFunc(NormwiseBackwardError_Z)
+               ELSE
+                 StopcProc = AddrFunc(NormwiseBackwardError)
+               END IF
              ELSE
                 StopcProc = AddrFunc(NormwiseBackwardErrorGeneralized)
              END IF

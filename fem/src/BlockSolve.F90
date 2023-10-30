@@ -585,8 +585,8 @@ CONTAINS
           END IF
           CALL Info('BlockPickMatrix','Picking simple block matrix ('&
               //I2S(RowVar)//','//I2S(ColVar)//')',Level=20)          
-          CALL CRS_BlockMatrixPick(SolverMatrix,Amat,NoVar,RowVar,ColVar)          
-            
+          CALL CRS_BlockMatrixPick(SolverMatrix,Amat,NoVar,RowVar,ColVar,RowVar == ColVar )          
+
           IF( EliminateZero ) THEN
             IF( Amat % NumberOfRows > 0 ) THEN
               SumAbsMat = SUM( ABS( Amat % Values ) )
@@ -1857,14 +1857,18 @@ CONTAINS
         IF( NoVar /= 2 .AND. NoVar /= 4 ) THEN
           CALL Fatal('BlockPrecMatrix','Assuming 2 or 4 blocks for the complex preconditioner!')
         END IF
-        
+
         CALL Info('BlockPrecMatrix','Creating preconditioning matrix from block sums',Level=8)       
         CALL CRS_CopyMatrixTopology( TotMatrix % Submatrix(RowVar,RowVar) % Mat, &
             TotMatrix % Submatrix(RowVar,RowVar) % PrecMat )   
-
-        Amat => TotMatrix % Submatrix(RowVar,RowVar) % PrecMat
-        AMat % Values = TotMatrix % Submatrix(RowVar,RowVar) % Mat % Values                
-        
+        Amat => TotMatrix % Submatrix(RowVar,RowVar) % PrecMat        
+        IF( ASSOCIATED( TotMatrix % Submatrix(RowVar,RowVar) % Mat % PrecValues ) ) THEN
+          AMat % Values = TotMatrix % Submatrix(RowVar,RowVar) % Mat % PrecValues                
+          DEALLOCATE( TotMatrix % Submatrix(RowVar,RowVar) % Mat % PrecValues )
+        ELSE
+          AMat % Values = TotMatrix % Submatrix(RowVar,RowVar) % Mat % Values                
+        END IF
+          
         IF( RowVar == 1 .OR. RowVar == 3 ) THEN
           ColVar = RowVar + 1
         ELSE
@@ -3003,6 +3007,16 @@ CONTAINS
           END DO
         END DO
 
+#if 0
+        ! This does not seem to be necessary but actually harmfull.
+        A => TotMatrix % SubMatrix(k,l) % PrecMat
+        IF( A % NumberOfRows == 0 ) CYCLE
+        DO i=1,n    
+          DO j=A % Rows(i),A % Rows(i+1)-1
+            A % Values(j) = A % Values(j) * Diag(i)
+          END DO
+        END DO
+#endif
       END DO
         
       IF( PRESENT( bext ) ) THEN
@@ -3077,6 +3091,8 @@ CONTAINS
 
     CALL Info('BlockMatrixPrec','Starting block matrix preconditioning',Level=8)
 
+    DoAMGXMV = ListGetLogical( SolverRef % Values, 'Block AMGX M-V', Found)
+    
     n = ipar(3)
     
     IF( InfoActive(25) ) THEN

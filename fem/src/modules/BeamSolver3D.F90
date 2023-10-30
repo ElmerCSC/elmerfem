@@ -104,14 +104,23 @@ SUBROUTINE TimoshenkoSolver(Model, Solver, dt, TransientSimulation)
   INTEGER :: K, Active, n, nb, nd
   INTEGER :: iter, maxiter
   REAL(KIND=dp) :: Norm
+  LOGICAL :: HarmonicAssembly, MassAssembly
+  TYPE(ValueList_t), POINTER :: Params
 !------------------------------------------------------------------------------
 
   CALL DefaultStart()
+
+  Params => GetSolverParams()
   
-  maxiter = ListGetInteger(GetSolverParams(), &
+  maxiter = ListGetInteger(Params, &
       'Nonlinear System Max Iterations', Found, minv=1)
   IF (.NOT. Found ) maxiter = 1
 
+  HarmonicAssembly = EigenOrHarmonicAnalysis() &
+      .OR. ListGetLogical( Params,'Harmonic Mode',Found ) 
+  MassAssembly = TransientSimulation .OR. HarmonicAssembly
+  
+  
   !--------------------------
   ! Nonlinear iteration loop:
   !--------------------------
@@ -131,7 +140,7 @@ SUBROUTINE TimoshenkoSolver(Model, Solver, dt, TransientSimulation)
       nb = GetElementNOFBDOFs()
 
       CALL BeamStiffnessMatrix(Element, n, nd+nb, nb, TransientSimulation, &
-          MassAssembly=TransientSimulation)      
+          MassAssembly=MassAssembly, HarmonicAssembly=HarmonicAssembly)      
     END DO
 
     CALL DefaultFinishBulkAssembly()
