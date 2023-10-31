@@ -15661,6 +15661,7 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
   CHARACTER(:), ALLOCATABLE :: MatrixFile
   CHARACTER(*), PARAMETER :: Caller = 'FinalizeLumpedMatrix'
   COMPLEX(KIND=dp) :: cx, cb
+  REAL(KIND=dp), ALLOCATABLE :: Checksum(:)
   TYPE(LumpedModel_t), POINTER :: Lumped
 
   CALL Info(Caller,'Finalizing lumped matrix',Level=8)
@@ -15706,28 +15707,43 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
 
   ! Normalize the S-parameter matrix
   IF(EmWaveMode) THEN    
-    CALL Info( Caller,'Lumped Matrix Before normalization', Level=5 )
-    DO i=1,NoModes
-      DO j=1,NoModes
-        IF( Symmetric .AND. j < i ) CYCLE
-        IF( IsComplex ) THEN
-          WRITE( Message, '(I3,I3,2ES17.9)' ) i,j,FluxesMatrix(i,j),FluxesMatrixIm(i,j)
-        ELSE
-          WRITE( Message, '(I3,I3,ES17.9)' ) i,j,FluxesMatrix(i,j)
-        END IF
-        CALL Info( Caller, Message, Level=5 )
-      END DO
-    END DO
+    ! Normalize by the source
 
-    DO i=1,NoModes
-      WRITE( Message, '(A,I3,1ES17.9)' ) 'Normalization',i,Lumped % crhs(i)
-      CALL Info( Caller, Message, Level=5 )
-    END DO
+    BLOCK
+      LOGICAL :: DoPoynt, FixIt
+
+      DoPoynt = ListGetLogical(Solver % Values,'Normalize by Poynting Vector',Found )     
+      FixIt =  ListGetLogical( Solver % Values,'Enforce Unity rowsum',Found )
+      IF(.NOT. Found ) FixIt = .TRUE.
       
-    DO i=1,NoModes
-      FluxesMatrix(i,:) = FluxesMatrix(i,:) / Lumped % Crhs(:)
-      FluxesMatrixIm(i,:) = FluxesMatrixIm(i,:) / Lumped % Crhs(:)
-    END DO
+      IF(.NOT. DoPoynt ) THEN
+        DO i=1,NoModes
+          DO j=1,NoModes         
+            nrm = 1.0_dp / ( SQRT(Lumped % Crhs(j) * Lumped % Crhs(i)) )                
+            WRITE( Message, '(A,I3,1ES17.9)' ) 'Normalization',10*i+j, nrm
+            CALL Info( Caller, Message, Level=30)
+            
+            FluxesMatrix(i,j) = FluxesMatrix(i,j) * nrm
+            FluxesMatrixIm(i,j) = FluxesMatrixIm(i,j) * nrm
+          END DO
+        END DO
+      END IF
+
+      IF( FixIt ) THEN
+        DO i=1,NoModes
+          nrm = 2*FluxesMatrix(i,i) / SUM(FluxesMatrix(i,:)**2 + FluxesMatrixIm(i,:)**2) 
+          FluxesMatrix(i,:) = FluxesMatrix(i,:) * nrm
+          FluxesMatrixIm(i,:) = FluxesMatrixIm(i,:) * nrm
+          
+          WRITE(Message,*) 'Fixing Multiplier '//I2S(i)//':',nrm
+          CALL Info( Caller, Message )          
+        END DO
+      END IF
+
+      DO i=1,NoModes
+        FluxesMatrix(i,i) = FluxesMatrix(i,i) - 1.0_dp
+      END DO
+    END BLOCK    
   END IF
   
   Symmetric = ListGetLogical( Solver % Values,&
@@ -15789,8 +15805,19 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
           WRITE (11,*) FluxesMatrixIm(i,:) 
         END DO
         CLOSE(11)
+        
+        ALLOCATE(CheckSum(NoModes))
+        OPEN( 11, FILE=TRIM(MatrixFile)//'_abs')
+        DO i=1,NoModes
+          WRITE (11,*) SQRT(FluxesMatrix(i,:)**2+FluxesMatrixIm(i,:)**2)           
+          CheckSum(i) = SUM(FluxesMatrix(i,:)**2+FluxesMatrixIm(i,:)**2) 
+        END DO
+        CLOSE(11)
       END IF
       CALL Info( Caller,'Constraint modes fluxes was saved to file '//TRIM(MatrixFile),Level=5)
+
+      WRITE(Message,*) 'Normalization checksum: ',CheckSum
+      CALL Info(Caller,Message) 
     END IF
   END IF
   
@@ -16239,8 +16266,12 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
       INTEGER, POINTER :: MasterEntities(:)
       REAL(KIND=dp), ALLOCATABLE :: RePoynt(:)
       COMPLEX(KIND=dp) :: Eint
-      REAL(KIND=dp) :: Anorm(4),Nrm
+      REAL(KIND=dp) :: Anorm,Nrm
       INTEGER :: i,j,k,n     
+      LOGICAL :: DoPoynt
+
+
+      DoPoynt = ListGetLogical(Solver % Values,'Normalize by Poynting Vector',Found ) 
       
       Mesh => Solver % Mesh
       AVar => Solver % Variable      
@@ -16269,32 +16300,40 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
             MasterEntities(n) = j
           END IF
         END DO       
-        Eint = BoundaryWaveFlux(CurrentModel, Mesh, MasterEntities, Avar, Anorm )        
 
-        ! Memorize the coefficient for normalization: <Ec,Ej>/<Ei,Ei>
-        Nrm = Anorm(1)
-        RePoynt(i) = Anorm(3)
-                
+        Eint = BoundaryWaveFlux(CurrentModel, Mesh, MasterEntities, Avar, Anorm, DoPoynt )
+          
+        ! Memorize the coefficient for normalization: <Ec,Ej>/<Ei,Ei>                
         IF(ParEnv % PEs > 1 ) THEN
-          Nrm = ParallelReduction(Nrm) 
           Eint = ParallelReduction(Eint)
         END IF
-        Eint = Eint / Nrm
 
         ! Real and imag part of: <Ec,Ej>
         FluxesRow(i) = REAL(Eint)
         FluxesRowIm(i) = AIMAG(Eint) 
 
-        !PRINT *,'ElField Flux:',NMode, i, Eint
+        ! Memorize rhs Poynting vector for normalization
+        IF(i==NMode) Nrm = Anorm
+        
+        !PRINT *,'ElField Flux:',NMode, i, Eint, Nrm
         DEALLOCATE(MasterEntities)        
       END DO
 
-      !RePoynt = RePoynt / MINVAL(RePoynt)
-      !PRINT *,'Port energies:',RePoynt
-      
+      IF(ParEnv % PEs > 1 ) THEN
+        Nrm = ParallelReduction(Nrm) 
+      END IF
+     
+      IF( DoPoynt ) THEN
+        !PRINT *,'DoPoynt normalization:',Nrm
+        FluxesRow = FluxesRow / Nrm
+        FluxesRowIm = FluxesRowIm / Nrm
+      ELSE
+        FluxesRhs = Nrm        
+      END IF
+        
       FluxesRow(1:NoModes) = FluxesRow(1:NoModes)
       FluxesRowIm(1:NoModes) = FluxesRowIm(1:NoModes) 
-      FluxesRow(NMode) = FluxesRow(NMode) - 1.0_dp
+      FluxesRow(NMode) = FluxesRow(NMode)
       
       Nrm = SQRT(SUM(FluxesRow**2)+SUM(FluxesRowIm**2))
       WRITE(Message,'(A,ES12.3)') 'Energy norm of Smatrix row '//I2S(NMode)//': ',Nrm
@@ -16385,7 +16424,15 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
           END IF
         END IF
       END DO
-      
+
+      IF( EmWaveMode ) THEN
+        IF(InfoActive(20)) THEN
+          PRINT *,'ConstrainModesFluxes:',FluxesRow
+          PRINT *,'ConstrainModesFluxesIm:',FluxesRowIm
+          PRINT *,'ConstrainModesFluxes:',FluxesRhs,FluxesRhsIm        
+        END IF
+      END IF
+        
     END SUBROUTINE ConstraintModesFluxes
 
    

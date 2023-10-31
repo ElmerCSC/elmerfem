@@ -1481,14 +1481,15 @@ MODULE LumpingUtils
 !------------------------------------------------------------------------------
 !> Given vector potential and current density compute the energy in the coil.
 !------------------------------------------------------------------------------
-  FUNCTION BoundaryWaveFlux(Model, Mesh, MasterEntities, Avar, Anorm ) RESULT ( Aint ) 
+  FUNCTION BoundaryWaveFlux(Model, Mesh, MasterEntities, Avar, Anorm, PoyntMode ) RESULT ( Aint ) 
 !------------------------------------------------------------------------------
     TYPE(Model_t) :: Model    
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER, POINTER :: MasterEntities(:) 
     TYPE(Variable_t), POINTER :: Avar
     COMPLEX(KIND=dp) :: Aint
-    REAL(KIND=dp) :: Anorm(4)
+    REAL(KIND=dp) :: Anorm
+    LOGICAL :: PoyntMode
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
@@ -1556,12 +1557,18 @@ MODULE LumpingUtils
       CALL LocalIntegBC(BC, Element, InitHandles)
     END DO
 
-    Aint = intel
-    Anorm(1) = intnorm
-    Anorm(2) = area
-    Anorm(3) = REAL(intPoynt)
-    Anorm(4) = AIMAG(intPoynt)
 
+    ! Magnitude of poynting vector squareroot, phase of electric field 
+    IF( PoyntMode ) THEN
+      Aint = intel * SQRT( REAL(IntPoynt) )  / ABS(intel)
+      Anorm = SQRT( REAL( intnorm ) )
+      !PRINT *,'PoyntMode',Aint,Anorm,intel
+    ELSE
+      Aint = intel
+      Anorm = REAL( intnorm ) 
+      !PRINT *,'ElMode',Intel, Anorm, intnorm
+    END IF
+          
     CALL Info(Caller,'Reduction operator finished',Level=12)
     
   CONTAINS
@@ -1582,7 +1589,7 @@ MODULE LumpingUtils
       INTEGER, POINTER, SAVE :: EdgeIndexes(:)
       LOGICAL :: Stat, Found
       TYPE(GaussIntegrationPoints_t) :: IP
-      INTEGER :: t, i, j, m, np, p, q, ndofs, n, nd   
+      INTEGER :: t, i, j, m, np, p, q, ndofs, n, nd
       LOGICAL :: AllocationsDone = .FALSE.
       TYPE(Element_t), POINTER :: Parent
       TYPE(ValueHandle_t), SAVE :: MagLoad_h, ElRobin_h, MuCoeff_h, Absorb_h, TemRe_h, TemIm_h
@@ -1699,17 +1706,20 @@ MODULE LumpingUtils
         
         Cond = ListGetElementReal( CondCoeff_h, Basis, Parent, Found, GaussPoint = t )
 
-        Zs = imu * Omega / (B * muinv)        
-        L = ListGetElementComplex3D( MagLoad_h, Basis, Element, Found, GaussPoint = t )
+        IF( ListGetLogical( Model % Simulation,'Z test', Found ) ) THEN        
+          Zs = imu * Omega / (B * muinv)        
+        ELSE
+          Zs = 1.0_dp / (SQRT(muinv*eps))
+        END IF
 
+        L = ListGetElementComplex3D( MagLoad_h, Basis, Element, Found, GaussPoint = t )
         TemGrad = CMPLX( ListGetElementRealGrad( TemRe_h,dBasisdx,Element,Found), &
             ListGetElementRealGrad( TemIm_h,dBasisdx,Element,Found) )
         L = L + TemGrad
 
         B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
-
-        L = L / (SQRT(2.0_dp)*2*B)
-
+        L = L / (2*B)
+                
         IF( EdgeBasis ) THEN
           ! In order to get the normal component of the electric field we must operate on the
           ! parent element. The surface element only has tangential components. 
@@ -1726,10 +1736,21 @@ MODULE LumpingUtils
         e_ip_norm = SUM(e_ip*Normal)
         e_ip_tan = e_ip - e_ip_norm * Normal
 
+        ! integral over Poynting vector: This gives the energy
+        IntPoynt = IntPoynt + weight * 0.5_dp * SUM(e_ip * CONJG(e_ip) ) / Zs        
+
+        ! integral over electric field: This gives the phase
         intel = intel + weight * SUM(e_ip_tan * CONJG(L) )         
-        area = area + weight
-        intnorm = intnorm + weight * ABS( SUM( L * CONJG(L) ) )
-        IntPoynt = IntPoynt + weight * 0.5_dp * SUM(e_ip_tan * CONJG(e_ip_tan) ) / Zs        
+
+        IF( PoyntMode ) THEN
+          ! Normalize Poynting vector
+          intnorm = intnorm + weight * 0.5_dp * ABS( SUM( L * CONJG(L) ) ) / Zs
+        ELSE
+          ! Normalize electric field
+          intnorm = intnorm + weight * ABS( SUM( L * CONJG(L) ) ) 
+        END IF
+       
+        area = area + weight        
       END DO
       
 !------------------------------------------------------------------------------
