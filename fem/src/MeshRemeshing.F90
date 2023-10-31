@@ -67,6 +67,8 @@ MMG5_DATA_PTR_T :: pmmgMesh
 #include "parmmg/libparmmgtypesf.h"
 #endif
 
+INTEGER, PARAMETER :: ElmerBCOffset = 1000
+
 CONTAINS
 
 !============================================
@@ -220,7 +222,7 @@ SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount, Solver)
     CASE(303)
       ntris = ntris + 1
       CALL MMG3D_Set_triangle(mmgMesh,  NodeRefs(1), NodeRefs(2), NodeRefs(3), &
-          Element % BoundaryInfo % Constraint, ntris, ierr)
+          Element % BoundaryInfo % Constraint+ElmerBCOffset, ntris, ierr)
     CASE(404)
       nquads = nquads + 1
       CALL MMG3D_Set_quadrilateral(mmgMesh,  NodeRefs(1), NodeRefs(2), NodeRefs(3), &
@@ -444,6 +446,13 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams, ReTrial )
     CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMG3D_IPARAM_nomove,1,ierr)
     IF ( ierr == 0 ) CALL Fatal(FuncName,&
          'Call to MMG3D_SET_IPARAMETER <No move> Failed')
+  END IF
+
+  ! [1/0], Preserve triangles at interface of 2 domains with same reference
+  IF( ListGetLogical(SolverParams,'MMG open body',Found) ) THEN
+    CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMG3D_IPARAM_opnbdy,1,ierr)
+    IF ( ierr == 0 ) CALL Fatal(FuncName,&
+         'Call to MMG3D_SET_IPARAMETER <opnbdy> Failed')
   END IF
 
   ! [1/0] Avoid/allow surface modifications
@@ -919,6 +928,10 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
          ref   , &
          required,ierr)
     IF ( ierr /= 1 ) CALL Fatal(FuncName,'Call to MMG3D_Get_triangle failed!')
+
+
+    ref = ref - ElmerBCOffset
+    IF(ref<0) ref = 0
 
     Allocate(Element % BoundaryInfo)
     Element % BoundaryInfo % Constraint = ref
@@ -2101,7 +2114,7 @@ SUBROUTINE Set_ParMMG_Mesh(Mesh, Parallel, EdgePairs, PairCount)
     CASE(303)
       ntris = ntris + 1
       CALL PMMG_Set_triangle(pmmgMesh,  NodeRefs(1), NodeRefs(2), NodeRefs(3), &
-           Element % BoundaryInfo % Constraint, ntris, ierr)
+           Element % BoundaryInfo % Constraint+ElmerBCOffset, ntris, ierr)
     CASE(404)
       nquads = nquads + 1
       CALL PMMG_Set_quadrilateral(pmmgMesh,  NodeRefs(1), NodeRefs(2), NodeRefs(3), &
@@ -2351,6 +2364,9 @@ SUBROUTINE Get_ParMMG_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
          required,ierr)
     IF ( ierr /= 1 ) CALL Fatal('ParMMGSolver',&
          'Call to  PMMG_Get_triangle failed!')
+
+    ref = ref - ElmerBCOffset
+    if ( ref < 0 ) ref=0
 
     Allocate(Element % BoundaryInfo)
     Element % BoundaryInfo % Constraint=ref
