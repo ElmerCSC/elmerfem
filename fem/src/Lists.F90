@@ -7395,7 +7395,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> This is just a wrapper for getting divergence of a 3D real vector.
+!> This is just a wrapper for getting divergence of a 3D real vector neatly.
 !------------------------------------------------------------------------------
    FUNCTION ListGetElementRealDiv( Handle,dBasisdx,Element,Found,Indexes) RESULT(Rdiv)
 !------------------------------------------------------------------------------
@@ -7405,10 +7405,11 @@ CONTAINS
      LOGICAL, OPTIONAL :: Found
      TYPE(Element_t), POINTER, OPTIONAL :: Element
      INTEGER, POINTER, OPTIONAL :: Indexes(:)
-     REAL(KIND=dp)  :: Rdiv(3)
+     REAL(KIND=dp)  :: Rdiv, Rdiv_comps(3)
 
-     LOGICAL :: Found1, Found2, Found3
+     LOGICAL :: Found1
 
+     IF(PRESENT(Found)) Found = .FALSE.
      Rdiv = 0.0_dp
      
      IF(.NOT. ASSOCIATED( Handle % Handle2 ) ) THEN
@@ -7417,14 +7418,17 @@ CONTAINS
 
      IF( Handle % NotPresentAnywhere .AND. Handle % Handle2 % NotPresentAnywhere &
          .AND.  Handle % Handle3 % NotPresentAnywhere ) THEN
-       IF(PRESENT(Found)) Found = .FALSE.
        RETURN
      END IF
 
-     Rdiv(1) = ListGetElementReal(Handle,dBasisdx(:,1),Element,Found1,Indexes)
-     Rdiv(2) = ListGetElementReal(Handle % Handle2,dBasisdx(:,2),Element,Found2,Indexes)
-     Rdiv(3) = ListGetElementReal(Handle % Handle3,dBasisdx(:,3),Element,Found3,Indexes)
-     IF( PRESENT( Found ) ) Found = Found1 .OR. Found2 .OR. Found3
+     Rdiv_comps(1) = ListGetElementReal(Handle,dBasisdx(:,1),Element,Found1,Indexes)
+     ! We can only take Div of a vector field if all components are present 
+     IF(.NOT. Found1) RETURN          
+     Rdiv_comps(2) = ListGetElementReal(Handle % Handle2,dBasisdx(:,2),Element,Found1,Indexes)
+     Rdiv_comps(3) = ListGetElementReal(Handle % Handle3,dBasisdx(:,3),Element,Found1,Indexes)
+
+     Rdiv = SUM(Rdiv_comps)
+     IF( PRESENT( Found ) ) Found = .TRUE.
      
    END FUNCTION ListGetElementRealDiv
 
