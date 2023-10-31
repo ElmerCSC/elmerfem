@@ -714,7 +714,7 @@ CONTAINS
     COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:)    
     COMPLEX(KIND=dp) :: B, L(3), muinv, TemGrad(3), BetaPar, jn, Cond, SurfImp
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:)
-    REAL(KIND=dp) :: th, DetJ, cfix
+    REAL(KIND=dp) :: th, DetJ
     LOGICAL :: Stat, Found, UpdateStiff, WithNdofs, ThinSheet, ConductorBC
     LOGICAL :: LineElement, DegenerateElement, Regularize
     LOGICAL :: AllocationsDone = .FALSE.
@@ -774,9 +774,6 @@ CONTAINS
       Regularize = UseGaussLaw .AND. ListGetElementLogical( ChargeConservation, Element, Found )
     END IF
 
-    cfix = ListGetCReal( Solver % Values,'TEM multiplier',Found )
-    IF(.NOT. Found) cfix = 1.0_dp
-    
     LineElement = GetElementFamily(Element) == 2
     DegenerateElement = (CoordinateSystemDimension() == 3) .AND. LineElement
     
@@ -850,7 +847,7 @@ CONTAINS
       
       TemGrad = CMPLX( ListGetElementRealGrad( TemRe_h,dBasisdx,Element,Found), &
           ListGetElementRealGrad( TemIm_h,dBasisdx,Element,Found) )
-      L = L + cfix * TemGrad
+      L = L + TemGrad
 
       IF (.NOT. WithNdofs) THEN
         IF (ABS(B) < AEPS .AND. ABS(DOT_PRODUCT(L,L)) < AEPS) CYCLE
