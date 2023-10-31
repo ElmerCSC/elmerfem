@@ -814,7 +814,8 @@ CONTAINS
         UpdateStiff = .TRUE.
         CYCLE
       END IF
-        
+
+      ConductorBC = .FALSE.
       IF (ThinSheet) THEN
         IF (ListGetElementLogical(GoodConductor, Element, Found)) &
             CALL Warn(Caller, 'Good Conductor BC neglected, given Layer Thickness used instead')
