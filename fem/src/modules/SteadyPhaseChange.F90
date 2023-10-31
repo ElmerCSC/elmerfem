@@ -81,7 +81,7 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
   
   INTEGER :: i,j,k,t,n,nn,pn,DIM,kl,kr,l, Trip_node, NoBNodes, istat, &
        NElems,ElementCode,Next,Vertex,ii,imin,NewtonAfterIter,Node, iter, LiquidInd, Visited = -1, &
-       SubroutineVisited = 0, NormalDirection, TangentDirection, CoordMini(3), CoordMaxi(3), &
+       SubroutineVisited = 0, NormalDir, TangentDirection, CoordMini(3), CoordMaxi(3), &
        Axis_node, LiquidBody, SolidBody, NoPhaseElements
   INTEGER, POINTER :: Indexes(:),TempPerm(:),SurfPerm(:),PhaseElements(:)
 
@@ -93,7 +93,7 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
   CHARACTER(LEN=MAX_NAME_LEN) :: VariableName, str
 
   SAVE FirstTime, Trip_node, NoBNodes, SubroutineVisited, prevpos0, &
-      PrevTemp, Newton, ccum, NormalDirection, TangentDirection, MeltPoint, &
+      PrevTemp, Newton, ccum, NormalDir, TangentDirection, MeltPoint, &
       ForceVector, FluxCorrect, NodeDone, Eps,  &
       Visited, Nodes, NodalTemp, Width, &
       TempDiff, AllocationsDone, &
@@ -254,7 +254,7 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
            j = i
         END IF
      END DO
-     NormalDirection = j
+     NormalDir = j
 
      ! Direction of maximum change
      j = 1
@@ -483,8 +483,8 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
           
           x1 = IsoSurf(i,TangentDirection)
           x2 = IsoSurf(i+1,TangentDirection)
-          y1 = IsoSurf(i,NormalDirection)
-          y2 = IsoSurf(i+1,NormalDirection)
+          y1 = IsoSurf(i,NormalDir)
+          y2 = IsoSurf(i+1,NormalDir)
           
           ! If node is in interval take the closest isotherm
           IF ( (xx > x1 - Eps) .AND. (xx < x2 + Eps)) THEN
@@ -515,8 +515,8 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
         i = imin
         x1 = IsoSurf(i,TangentDirection)
         x2 = IsoSurf(i+1,TangentDirection)
-        y1 = IsoSurf(i,NormalDirection)
-        y2 = IsoSurf(i+1,NormalDirection)
+        y1 = IsoSurf(i,NormalDir)
+        y2 = IsoSurf(i+1,NormalDir)
         
         ! There may be a problem if the boundary cannot be mapped on an isotherm
         IF (.NOT. stat) THEN

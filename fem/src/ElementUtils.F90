@@ -2357,6 +2357,30 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+!> Given one or two tangents return the normal direction.
+!> It is assumed that if one tangent is given the normal is in xy-plane otherwise
+!> in 3D. Note that the sign of normal vector is not unique.
+!------------------------------------------------------------------------------
+  FUNCTION NormalDirection( Tangent1,Tangent2 ) RESULT ( Normal ) 
+!------------------------------------------------------------------------------
+   REAL(KIND=dp) :: Normal(3),Tangent1(3)
+   REAL(KIND=dp), OPTIONAL :: Tangent2(3)
+!------------------------------------------------------------------------------
+   REAL(KIND=dp) :: t1(3),t2(3)
+!------------------------------------------------------------------------------
+
+   IF(PRESENT(Tangent2)) THEN
+     Normal = CrossProduct(Tangent1,Tangent2)
+   ELSE
+     Normal(1) = Tangent1(2)
+     Normal(2) = -Tangent1(1)
+   END IF
+   Normal = Normal/SQRT(SUM(Normal**2))       
+!------------------------------------------------------------------------------
+ END FUNCTION NormalDirection
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
 !>    Integrates a user-defined function over the specified bulk elements.
