@@ -712,7 +712,7 @@ CONTAINS
     LOGICAL :: InitHandles
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:)    
-    COMPLEX(KIND=dp) :: B, L(3), muinv, TemGrad(3), BetaPar, jn, Cond, SurfImp
+    COMPLEX(KIND=dp) :: B, L(3), muinv, TemGrad(3), BetaPar, jn, Cond, SurfImp, epsr, mur, imu
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:)
     REAL(KIND=dp) :: th, DetJ
     LOGICAL :: Stat, Found, UpdateStiff, WithNdofs, ThinSheet, ConductorBC
@@ -722,7 +722,7 @@ CONTAINS
     INTEGER :: t, i, j, m, np, p, q, ndofs
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(Element_t), POINTER :: Parent
-    TYPE(ValueHandle_t), SAVE :: MagLoad_h, ElRobin_h, MuCoeff_h, Absorb_h, TemRe_h, TemIm_h
+    TYPE(ValueHandle_t), SAVE :: MagLoad_h, ElRobin_h, MuCoeff_h, EpsCoeff_h, Absorb_h, TemRe_h, TemIm_h
     TYPE(ValueHandle_t), SAVE :: TransferCoeff_h, ElCurrent_h
     TYPE(ValueHandle_t), SAVE :: Thickness_h, RelNu_h, CondCoeff_h
     TYPE(ValueHandle_t), SAVE :: GoodConductor, ChargeConservation
@@ -745,6 +745,7 @@ CONTAINS
       CALL ListInitElementKeyword( TemRe_h,'Boundary Condition','TEM Potential')
       CALL ListInitElementKeyword( TemIm_h,'Boundary Condition','TEM Potential Im')
       CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)      
+      CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity',InitIm=.TRUE.)      
       CALL ListInitElementKeyword( TransferCoeff_h,'Boundary Condition','Electric Transfer Coefficient',InitIm=.TRUE.)
       CALL ListInitElementKeyword( ElCurrent_h,'Boundary Condition','Electric Current Density',InitIm=.TRUE.)
 
@@ -776,6 +777,8 @@ CONTAINS
 
     LineElement = GetElementFamily(Element) == 2
     DegenerateElement = (CoordinateSystemDimension() == 3) .AND. LineElement
+
+    imu = CMPLX(0.0_dp, 1.0_dp)
     
     UpdateStiff = .FALSE.
     DO t=1,IP % n  
@@ -815,6 +818,17 @@ CONTAINS
         CYCLE
       END IF
 
+      IF( ASSOCIATED( Parent ) ) THEN        
+        mur = ListGetElementComplex( MuCoeff_h, Basis, Parent, Found, GaussPoint = t )      
+        IF( .NOT. Found ) mur = 1.0_dp
+        epsr = ListGetElementComplex( EpsCoeff_h, Basis, Parent, Found, GaussPoint = t )
+        IF( .NOT. Found ) epsr = 1.0_dp
+      ELSE
+        epsr = 1.0_dp
+        mur = 1.0_dp
+      END IF      
+      muinv = mur * mu0inv
+      
       ConductorBC = .FALSE.
       IF (ThinSheet) THEN
         IF (ListGetElementLogical(GoodConductor, Element, Found)) &
@@ -823,7 +837,7 @@ CONTAINS
         B = th * Cond
       ELSE
         IF( ListGetElementLogical( Absorb_h, Element, Found ) ) THEN
-          B = CMPLX(0.0_dp, rob0 ) 
+          B = imu * rob0 * SQRT( epsr / mur ) 
         ELSE
           ConductorBC = ListGetElementLogical( GoodConductor, Element, Found )
           IF (ConductorBC) THEN
@@ -853,17 +867,6 @@ CONTAINS
         IF (ABS(B) < AEPS .AND. ABS(DOT_PRODUCT(L,L)) < AEPS) CYCLE
       END IF
       UpdateStiff = .TRUE.
-
-      IF( ASSOCIATED( Parent ) ) THEN        
-        muinv = ListGetElementComplex( MuCoeff_h, Basis, Parent, Found, GaussPoint = t )      
-        IF( Found ) THEN
-          muinv = muinv * mu0inv
-        ELSE
-          muinv = mu0inv
-        END IF
-      ELSE
-        muinv = mu0inv
-      END IF
 
       IF (ConductorBC .OR. ThinSheet) B = im * omega/muinv * B
       

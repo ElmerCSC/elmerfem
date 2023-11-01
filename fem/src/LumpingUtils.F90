@@ -1579,7 +1579,7 @@ MODULE LumpingUtils
       LOGICAL :: InitHandles
 !------------------------------------------------------------------------------
       COMPLEX(KIND=dp) :: B, Zs, L(3), muinv, TemGrad(3), BetaPar, jn, eps, &
-          e_ip(3), e_ip_norm, e_ip_tan(3), f_ip_tan(3), imu, phi, eps0, mu0inv
+          e_ip(3), e_ip_norm, e_ip_tan(3), f_ip_tan(3), imu, phi, eps0, mu0inv, epsr, mur
       REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:), e_local(:,:), phi_local(:,:)
       REAL(KIND=dp) :: weight, DetJ, Normal(3), cond, u, v, w, x, y, z, rob0
       TYPE(Nodes_t), SAVE :: ElementNodes, ParentNodes
@@ -1591,7 +1591,7 @@ MODULE LumpingUtils
       LOGICAL :: AllocationsDone = .FALSE.
       TYPE(Element_t), POINTER :: Parent
       TYPE(ValueHandle_t), SAVE :: MagLoad_h, ElRobin_h, MuCoeff_h, Absorb_h, TemRe_h, TemIm_h
-      TYPE(ValueHandle_t), SAVE :: TransferCoeff_h, ElCurrent_h, RelNu_h, CondCoeff_h, CurrDens_h, EpsCoeff_h
+      TYPE(ValueHandle_t), SAVE :: TransferCoeff_h, ElCurrent_h, CondCoeff_h, CurrDens_h, EpsCoeff_h
       INTEGER :: nactive
       
       SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, e_local, phi_local, mu0inv, eps0
@@ -1685,30 +1685,24 @@ MODULE LumpingUtils
             IP % W(t), detJ, Basis, dBasisdx )              
         weight = IP % s(t) * detJ
 
-        IF( ListGetElementLogical( Absorb_h, Element, Found ) ) THEN
-          B = CMPLX(0.0_dp, rob0 ) 
-        ELSE        
-          B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
-        END IF
-          
         ! Get material properties from parent element.
         !----------------------------------------------
-        muinv = ListGetElementComplex( MuCoeff_h, Basis, Parent, Found, GaussPoint = t )      
-        IF( Found ) THEN
-          muinv = muinv * mu0inv
-        ELSE
-          muinv = mu0inv
-        END IF
+        mur = ListGetElementComplex( MuCoeff_h, Basis, Parent, Found, GaussPoint = t )      
+        IF( .NOT. Found ) mur = 1.0_dp
+        muinv = mur * mu0inv
 
-        eps = ListGetElementComplex( EpsCoeff_h, Basis, Parent, Found, GaussPoint = t )      
-        IF( Found ) THEN
-          eps = eps * eps0
-        ELSE
-          eps = eps0
-        END IF
+        epsr = ListGetElementComplex( EpsCoeff_h, Basis, Parent, Found, GaussPoint = t )      
+        IF( .NOT. Found ) epsr = 1.0_dp
+        eps = epsr * eps0
         
         Cond = ListGetElementReal( CondCoeff_h, Basis, Parent, Found, GaussPoint = t )
         
+        IF( ListGetElementLogical( Absorb_h, Element, Found ) ) THEN
+          B = imu * rob0 * SQRT( epsr / mur ) 
+        ELSE        
+          B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
+        END IF
+                  
         !IF( ListGetLogical( Model % Simulation,'Z test', Found ) ) THEN        
         Zs = 1.0_dp / (SQRT(REAL(muinv*eps)))
         !ELSE
@@ -1720,7 +1714,6 @@ MODULE LumpingUtils
             ListGetElementRealGrad( TemIm_h,dBasisdx,Element,Found) )
         L = L + TemGrad
 
-        B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
         L = L / (2*B)
                 
         IF( EdgeBasis ) THEN

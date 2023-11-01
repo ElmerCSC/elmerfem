@@ -15713,7 +15713,6 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
       LOGICAL :: DoPoynt, FixIt      
       DoPoynt = ListGetLogical(Solver % Values,'Normalize by Poynting Vector',Found )     
       FixIt =  ListGetLogical( Solver % Values,'Enforce Unity rowsum',Found )
-      IF(.NOT. Found ) FixIt = .TRUE.
 
       IF( InfoActive(20) ) THEN        
         CALL Info( Caller,'Showing matrix before normalization!')
