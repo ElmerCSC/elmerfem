@@ -422,7 +422,7 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
   END IF
   IF(PRESENT(FixedElems)) THEN
     ALLOCATE(FixedElems(NTetras+NTris))
-    FixedNodes = .FALSE.
+    FixedElems = .FALSE.
   END IF
 
   IF(NPrisms /= 0) CALL Fatal("MMG3D", "Programming Error: MMG3D returns prisms")
@@ -1081,8 +1081,8 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
   CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMGPARAM_HgradReq,&
     -1.0_dp,ierr)
 
-  CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMGPARAM_nosizreq, &
-     1,ierr)
+  !CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMGPARAM_nosizreq, &
+  !   1,ierr)
 
   !Take care of fixed nodes/elements if requested
   IF(PRESENT(NodeFixed)) THEN
