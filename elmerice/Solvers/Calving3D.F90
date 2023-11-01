@@ -76,7 +76,7 @@
         MaxMeshDist, MeshEdgeMinLC, MeshEdgeMaxLC, MeshLCMinDist, MeshLCMaxDist,&
         Projection, CrevasseThreshold, search_eps, Norm, MinCalvingSize,&
         PauseVolumeThresh, BotZ, TopZ, prop, MaxBergVolume, dy, dz, dzdy, &
-        gradLimit, Displace, y_coord(2), ShiftTo, Time,&
+        gradLimit, Displace, y_coord(2), ShiftTo, Time, CrevPenetration, &
 #ifdef USE_ISO_C_BINDINGS
         rt0, rt
 #else
@@ -94,7 +94,7 @@
         MoveMeshDir,MoveMeshFullPath
    LOGICAL :: Found, Parallel, Boss, Debug, FirstTime = .TRUE., CalvingOccurs=.FALSE., &
         SaveParallelActive, InGroup, PauseSolvers, LeftToRight, MovedOne, ShiftSecond, &
-        MoveMesh=.FALSE.
+        MoveMesh=.FALSE., FullThickness
    LOGICAL, POINTER :: UnfoundNodes(:)=>NULL(), PWorkLogical(:)
    LOGICAL, ALLOCATABLE :: RemoveNode(:), IMOnFront(:), IMOnSide(:), &
         DeleteMe(:), IsCalvingNode(:), WorkLogical(:)
@@ -152,6 +152,12 @@
    MeshLCMaxDist = ListGetConstReal(Params, "Calving Mesh LC Max Dist",Found, UnfoundFatal=.TRUE.)
    MaxMeshDist = ListGetConstReal(Params, "Calving Search Distance",Found, UnfoundFatal=.TRUE.)
    CrevasseThreshold = ListGetConstReal(Params, "Crevasse Penetration Threshold", Found, UnfoundFatal=.TRUE.)
+
+   CrevPenetration = ListGetConstReal(Params, "Crevasse Penetration",Found, Default = 1.0_dp)
+   IF(.NOT. Found) CALL Info(SolverName, "No Crevasse Penetration specified so assuming full thickness")
+   FullThickness = CrevPenetration == 1.0_dp
+   PRINT*, 'CrevPenetration: ', CrevPenetration
+   IF(CrevPenetration > 1 .OR. CrevPenetration < 0) CALL FATAL(SolverName, "Crevasse Penetraion must be between 0-1")
 
    DistVar => VariableGet(Model % Variables, DistVarName, .TRUE., UnfoundFatal=.TRUE.)
    DistValues => DistVar % Values
@@ -843,6 +849,30 @@
     !--------------------------------------------------------------
 
     IF(Boss) THEN
+
+      IF(.NOT. FullThickness) THEN
+         ! save original ave_cindex
+         n = PlaneMesh % NumberOfNodes
+         ALLOCATE(WorkPerm(n), WorkReal(n))
+         WorkReal = CrevVar % Values(CrevVar % Perm)
+         WorkPerm = [(i,i=1,n)]
+         CALL VariableAdd(PlaneMesh % Variables, PlaneMesh, PCSolver, "ave_cindex_fullthickness", &
+         1, WorkReal, WorkPerm)
+         NULLIFY(WorkReal, WorkPerm)
+
+         CalvingLimit = 1.0_dp - CrevPenetration
+
+         !alter ave_cindix so relflect %crevasses indicated in sif
+         ! 0 full
+         DO i=1, n
+           IF(CrevVar % Values(CrevVar % Perm(i)) <= CalvingLimit) THEN
+             CrevVar % Values(CrevVar % Perm(i)) = 0.0_dp
+           ELSE
+             PrevValue = CrevVar % Values(CrevVar % Perm(i))
+             CrevVar % Values(CrevVar % Perm(i)) = PrevValue - CalvingLimit
+           END IF
+         END DO
+       END IF
 
        !Generate PlaneMesh perms to quickly get nodes on each boundary
        CALL MakePermUsingMask( Model, Solver, PlaneMesh, FrontMaskName, &
