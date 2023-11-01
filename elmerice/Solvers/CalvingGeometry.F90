@@ -1426,14 +1426,20 @@ CONTAINS
   ! input a polygon where polygon(1) = polygon(n) where n = SIZE(polygon)
   !----------------------------------------------------------------------------
 
-  FUNCTION PointInPolygon2D(Polygon, Point) RESULT(inside)
+  FUNCTION PointInPolygon2D(Polygon, Point, buffer) RESULT(inside)
     REAL(kind=dp) :: polygon(:,:)
     REAL(kind=dp), ALLOCATABLE :: ZPolygon(:,:)
-    REAL(kind=dp) :: left, point(2), ZPoint(2)
+    REAL(kind=dp) :: left, point(2), ZPoint(2), buf
+    REAL(kind=dp), OPTIONAL :: buffer
     INTEGER :: n, i, windingnumber
     LOGICAL :: inside
 
     IF(SIZE(polygon(:,1)) /= 2) CALL FATAL('PointInPolygon2D', 'Please provide a 2D array with x and y coords')
+    IF(PRESENT(buffer)) THEN
+      buf = buffer
+    ELSE
+      buf = 0.0_dp
+    END IF
 
     n=SIZE(polygon(1,:))
 
@@ -1448,14 +1454,14 @@ CONTAINS
       IF(ZPolygon(2,i) <= ZPoint(2)) THEN !start with y<=P.y
         IF(ZPolygon(2, i+1) > ZPoint(2)) THEN !upward crossing
           left=IsLeft(ZPolygon(:, i), ZPolygon(:, i+1), ZPoint(:))
-          IF(left > 0.0_dp) THEN !p is to left of intersect
+          IF(left > buf) THEN !p is to left of intersect
             windingnumber=windingnumber+1 !valid up intersect
           END IF
         END IF
       ELSE    !start at y> point y
         IF(ZPolygon(2, i+1) <= ZPoint(2)) THEN ! downward crossing
           Left = IsLeft(ZPolygon(:, i), ZPolygon(:, i+1), ZPoint(:))
-          IF(left < 0.0_dp) THEN ! p right of edge
+          IF(left < buf) THEN ! p right of edge
             windingnumber=windingnumber-1
           END IF
         END IF
@@ -1857,7 +1863,7 @@ CONTAINS
           WorkNodes % x(counter) = InNodes % x(i)
           WorkNodes % y(counter) = InNodes % y(i)
           WorkNodes % z(counter) = InNodes % z(i)
-          WorkNodeNums(counter) = NodeNums(i)
+          IF(PRESENT(NodeNums)) WorkNodeNums(counter) = NodeNums(i)
 
           counter = counter + 1
        END IF
@@ -1877,7 +1883,7 @@ CONTAINS
     InNodes % x = WorkNodes % x
     InNodes % y = WorkNodes % y
     InNodes % z = WorkNodes % z
-    NodeNums = WorkNodeNums
+    IF(PRESENT(NodeNums)) NodeNums = WorkNodeNums
 
     DEALLOCATE(WorkNodes % x, WorkNodes % y, WorkNodes % z)
     IF(PRESENT(NodeNums)) DEALLOCATE(WorkNodeNums)
@@ -2031,7 +2037,7 @@ CONTAINS
        Boss = .TRUE. !only one part in serial, so it's in charge of computation
     END IF
 
-    IF(Boss .AND. Debug) THEN
+    IF(Boss .AND. Debug .AND. PRESENT(EdgeMaskName)) THEN
       PRINT *, '================================================='
       PRINT *, ' Locating domain edge for ',TRIM(EdgeMaskName)
       PRINT *, '================================================='
@@ -8671,13 +8677,14 @@ CONTAINS
       counter = 0
       DO WHILE(LastNode /= FrontRight(1))
         Found = .FALSE.
+        IF(FirstTime) THEN
+          LastNode = FrontLeft(1)
+          GotNode(FrontLeft(1)) = .TRUE.
+          NodeList(1) = LastNode
+          counter = counter + 1
+        END IF
         DO i= NBulk+1, NBulk+NBdry
           IF(Mesh % Elements(i) % BoundaryInfo % constraint /= FrontBCtag) CYCLE
-          IF(FirstTime) THEN
-            LastNode = FrontLeft(1)
-            GotNode(FrontLeft(1)) = .TRUE.
-            NodeList(1) = LastNode
-          END IF
           NodeIndexes => Mesh % Elements(i) % NodeIndexes
           IF(.NOT. ANY(NodeIndexes == LastNode)) CYCLE
           DO j=1,Mesh % Elements(i) % TYPE % NumberOfNodes
@@ -8691,34 +8698,47 @@ CONTAINS
               EXIT
             END IF
           END DO
-        IF(Found) EXIT
+          IF(Found) EXIT
         END DO
+        IF(.NOT. Found) THEN
+          CALL WARN(SolverName, 'Unable to get terminus loop for this timestep')
+          EXIT
+        END IF
+        IF(ANY(FrontLeft(1:LCounter) == LastNode)) THEN
+          ! reset to first node as gone wrong way
+          ! GotNode should prvent us doing this again
+          PRINT*, 'gone wrong way...'
+          LastNode = NodeList(1)
+          counter = 1
+        END IF
         FirstTime=.FALSE.
       END DO
 
-      Filename = ListGetString(SolverParams,"Output Terminus File Name", Found)
-      IF(.NOT. Found) THEN
-        CALL WARN(SolverName, 'Output file name not given so using TerminusPosition.txt')
-        Filename = "TerminusPosition.txt"
+      IF(LastNode == FrontRight(1)) THEN ! loop success
+        Filename = ListGetString(SolverParams,"Output Terminus File Name", Found)
+        IF(.NOT. Found) THEN
+          CALL WARN(SolverName, 'Output file name not given so using TerminusPosition.txt')
+          Filename = "TerminusPosition.txt"
+        END IF
+
+        ! write to file
+        IF(FileCreated) THEN
+          OPEN( 37, FILE=filename, STATUS='UNKNOWN', ACCESS='APPEND')
+        ELSE
+          OPEN( 37, FILE=filename, STATUS='UNKNOWN')
+          WRITE(37, '(A)') "Terminus Position File"
+          WRITE(37, '(A)') "TimeStep, Time, NumberOfNodes"
+          WRITE(37, '(A)') "xx, yy"
+        END IF
+
+        !Write out the left and rightmost points
+        WRITE(37, *) 'NewTime:', GetTimestep(), GetTime(), counter
+        DO i=1, counter
+          WRITE(37, *) Mesh % Nodes % x(NodeList(i)), Mesh % Nodes % y(NodeList(i))
+        END DO
+
+        CLOSE(37)
       END IF
-
-      ! write to file
-      IF(FileCreated) THEN
-        OPEN( 37, FILE=filename, STATUS='UNKNOWN', ACCESS='APPEND')
-      ELSE
-        OPEN( 37, FILE=filename, STATUS='UNKNOWN')
-        WRITE(37, '(A)') "Terminus Position File"
-        WRITE(37, '(A)') "TimeStep, Time, NumberOfNodes"
-        WRITE(37, '(A)') "xx, yy"
-      END IF
-
-      !Write out the left and rightmost points
-      WRITE(37, *) 'NewTime:', GetTimestep(), GetTime(), counter
-      DO i=1, counter
-        WRITE(37, *) Mesh % Nodes % x(NodeList(i)), Mesh % Nodes % y(NodeList(i))
-      END DO
-
-      CLOSE(37)
     END IF
 
     FileCreated = .TRUE.
