@@ -246,6 +246,7 @@
    ALLOCATE(FrontToRight(NNodes), FrontToLeft(NNodes))
    FrontToRight = .FALSE.; FrontToLeft = .FALSE.
 
+   Advance = 0.0_dp
    IF(MoveBulk) THEN ! for a fully Lagrangian mesh
       DO i=1, Mesh % NumberOfNodes
         IF(InflowPerm(i) > 0) CYCLE
@@ -446,8 +447,9 @@
          ! a thin lateral boundary artificial mass change should be insignificant.
          xx = Solver % Mesh % Nodes % x(i)
          yy = Solver % Mesh % Nodes % y(i)
-         xt=xx+NodeVelo(1)*dt
-         yt=yy+NodeVelo(2)*dt
+         NodeVelo(1:2) = NodeVelo(1:2) - NodeMelt(1:2)
+         xt=xx+(NodeVelo(1))*dt
+         yt=yy+(NodeVelo(2))*dt
          IF (LeftPerm(i)>0 .OR. OnRails == 1) THEN
             Nrail= Nl
             ALLOCATE(xRail(Nrail), yRail(Nrail))
