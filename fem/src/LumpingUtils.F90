@@ -1557,18 +1557,16 @@ MODULE LumpingUtils
       CALL LocalIntegBC(BC, Element, InitHandles)
     END DO
 
-
     ! Magnitude of poynting vector squareroot, phase of electric field 
     IF( PoyntMode ) THEN
       Aint = intel * SQRT( REAL(IntPoynt) )  / ABS(intel)
       Anorm = SQRT( REAL( intnorm ) )
-      !PRINT *,'PoyntMode',Aint,Anorm,intel
+      !PRINT *,'intnorm:',intnorm, IntPoynt, Aint, Anorm
     ELSE
       Aint = intel
-      Anorm = REAL( intnorm ) 
-      !PRINT *,'ElMode',Intel, Anorm, intnorm
+      Anorm = intnorm 
     END IF
-          
+    
     CALL Info(Caller,'Reduction operator finished',Level=12)
     
   CONTAINS
@@ -1583,7 +1581,7 @@ MODULE LumpingUtils
       COMPLEX(KIND=dp) :: B, Zs, L(3), muinv, TemGrad(3), BetaPar, jn, eps, &
           e_ip(3), e_ip_norm, e_ip_tan(3), f_ip_tan(3), imu, phi, eps0, mu0inv
       REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:), e_local(:,:), phi_local(:,:)
-      REAL(KIND=dp) :: weight, DetJ, Normal(3), cond, u, v, w, x, y, z
+      REAL(KIND=dp) :: weight, DetJ, Normal(3), cond, u, v, w, x, y, z, rob0
       TYPE(Nodes_t), SAVE :: ElementNodes, ParentNodes
       INTEGER, POINTER :: NodeIndexes(:), pIndexes(:), ParentIndexes(:)
       INTEGER, POINTER, SAVE :: EdgeIndexes(:)
@@ -1596,7 +1594,7 @@ MODULE LumpingUtils
       TYPE(ValueHandle_t), SAVE :: TransferCoeff_h, ElCurrent_h, RelNu_h, CondCoeff_h, CurrDens_h, EpsCoeff_h
       INTEGER :: nactive
       
-      SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, e_local, phi_local
+      SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, e_local, phi_local, mu0inv, eps0
       
       ndofs = avar % dofs
       IF(.NOT. AllocationsDone ) THEN
@@ -1634,7 +1632,8 @@ MODULE LumpingUtils
       END IF
 
       imu = CMPLX(0.0_dp, 1.0_dp)
-
+      rob0 = Omega * SQRT( eps0 / mu0inv )
+      
       n = Element % TYPE % NumberOfNodes
       NodeIndexes => Element % NodeIndexes 
 
@@ -1686,8 +1685,12 @@ MODULE LumpingUtils
             IP % W(t), detJ, Basis, dBasisdx )              
         weight = IP % s(t) * detJ
 
-        B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
-        
+        IF( ListGetElementLogical( Absorb_h, Element, Found ) ) THEN
+          B = CMPLX(0.0_dp, rob0 ) 
+        ELSE        
+          B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
+        END IF
+          
         ! Get material properties from parent element.
         !----------------------------------------------
         muinv = ListGetElementComplex( MuCoeff_h, Basis, Parent, Found, GaussPoint = t )      
@@ -1705,12 +1708,12 @@ MODULE LumpingUtils
         END IF
         
         Cond = ListGetElementReal( CondCoeff_h, Basis, Parent, Found, GaussPoint = t )
-
-        IF( ListGetLogical( Model % Simulation,'Z test', Found ) ) THEN        
-          Zs = imu * Omega / (B * muinv)        
-        ELSE
-          Zs = 1.0_dp / (SQRT(muinv*eps))
-        END IF
+        
+        !IF( ListGetLogical( Model % Simulation,'Z test', Found ) ) THEN        
+        Zs = 1.0_dp / (SQRT(REAL(muinv*eps)))
+        !ELSE
+        !Zs = imu * Omega / (B * muinv)        
+        !END IF
 
         L = ListGetElementComplex3D( MagLoad_h, Basis, Element, Found, GaussPoint = t )
         TemGrad = CMPLX( ListGetElementRealGrad( TemRe_h,dBasisdx,Element,Found), &
@@ -1744,6 +1747,7 @@ MODULE LumpingUtils
 
         IF( PoyntMode ) THEN
           ! Normalize Poynting vector
+          !intnorm = intnorm + weight * 0.5_dp * ABS( SUM( e_ip * CONJG(L) ) ) / Zs
           intnorm = intnorm + weight * 0.5_dp * ABS( SUM( L * CONJG(L) ) ) / Zs
         ELSE
           ! Normalize electric field

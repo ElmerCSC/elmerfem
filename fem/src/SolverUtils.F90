@@ -15707,28 +15707,42 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
 
   ! Normalize the S-parameter matrix
   IF(EmWaveMode) THEN    
-    ! Normalize by the source
-
+    ! Normalize by the source    
     BLOCK
-      LOGICAL :: DoPoynt, FixIt
-
+      
+      LOGICAL :: DoPoynt, FixIt      
       DoPoynt = ListGetLogical(Solver % Values,'Normalize by Poynting Vector',Found )     
       FixIt =  ListGetLogical( Solver % Values,'Enforce Unity rowsum',Found )
       IF(.NOT. Found ) FixIt = .TRUE.
-      
-      IF(.NOT. DoPoynt ) THEN
+
+      IF( InfoActive(20) ) THEN        
+        CALL Info( Caller,'Showing matrix before normalization!')
         DO i=1,NoModes
-          DO j=1,NoModes         
-            nrm = 1.0_dp / ( SQRT(Lumped % Crhs(j) * Lumped % Crhs(i)) )                
-            WRITE( Message, '(A,I3,1ES17.9)' ) 'Normalization',10*i+j, nrm
-            CALL Info( Caller, Message, Level=30)
-            
-            FluxesMatrix(i,j) = FluxesMatrix(i,j) * nrm
-            FluxesMatrixIm(i,j) = FluxesMatrixIm(i,j) * nrm
+          DO j=1,NoModes
+            WRITE( Message, '(I3,I3,2ES17.9)' ) i,j,FluxesMatrix(i,j),FluxesMatrixIm(i,j)
+            CALL Info( Caller, Message )
           END DO
         END DO
-      END IF
-
+        DO i=1,NoModes
+          WRITE( Message,*) 'Normalization vector '//I2S(i)//':',Lumped % Crhs(i)
+          CALL Info( Caller, Message )
+        END DO
+      END IF      
+   
+      DO i=1,NoModes
+        IF( DoPoynt ) THEN
+          nrm = Lumped % Crhs(i) 
+          FluxesMatrix(i,:) = FluxesMatrix(i,:) / Nrm
+          FluxesMatrixIm(i,:) = FluxesMatrixIm(i,:) / Nrm
+        ELSE          
+          DO j=1,NoModes         
+            nrm = SQRT(Lumped % Crhs(j) * Lumped % Crhs(i))                               
+            FluxesMatrix(i,j) = FluxesMatrix(i,j) / nrm
+            FluxesMatrixIm(i,j) = FluxesMatrixIm(i,j) / nrm
+          END DO
+        END IF
+      END DO
+        
       IF( FixIt ) THEN
         DO i=1,NoModes
           nrm = 2*FluxesMatrix(i,i) / SUM(FluxesMatrix(i,:)**2 + FluxesMatrixIm(i,:)**2) 
@@ -15736,7 +15750,7 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
           FluxesMatrixIm(i,:) = FluxesMatrixIm(i,:) * nrm
           
           WRITE(Message,*) 'Fixing Multiplier '//I2S(i)//':',nrm
-          CALL Info( Caller, Message )          
+          CALL Info( Caller, Message, Level=6)          
         END DO
       END IF
 
@@ -16264,14 +16278,17 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
       TYPE(Variable_t), POINTER :: AVar
       TYPE(ValueList_t), POINTER :: Vlist
       INTEGER, POINTER :: MasterEntities(:)
-      REAL(KIND=dp), ALLOCATABLE :: RePoynt(:)
       COMPLEX(KIND=dp) :: Eint
       REAL(KIND=dp) :: Anorm,Nrm
-      INTEGER :: i,j,k,n     
+      INTEGER :: i,j,k,n,port,alloc     
       LOGICAL :: DoPoynt
 
-
       DoPoynt = ListGetLogical(Solver % Values,'Normalize by Poynting Vector',Found ) 
+      IF( DoPoynt ) THEN
+        CALL Info(Caller,'Using Poynting vector for lumping',Level=10)
+      ELSE
+        CALL Info(Caller,'Using <Ej,Ej> for lumping',Level=10)
+      END IF
       
       Mesh => Solver % Mesh
       AVar => Solver % Variable      
@@ -16281,25 +16298,20 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
       FluxesRhs = 1.0_dp 
       FluxesRhsIm = 0.0_dp
 
-      ALLOCATE(RePoynt(NoModes))
-      
-      DO i = 1, NoModes
-        n = 0
-        DO j=1,CurrentModel % NumberOfBCs        
-          Vlist => CurrentModel % BCs(j) % Values       
-          k = ListGetInteger( Vlist,'Constraint Mode', Found )
-          IF(k == i) n = n+1
+      DO port = 1, NoModes
+        DO alloc = 0, 1
+          n = 0
+          DO j=1,CurrentModel % NumberOfBCs        
+            Vlist => CurrentModel % BCs(j) % Values       
+            k = ListGetInteger( Vlist,'Constraint Mode', Found )
+            IF(k == port) THEN
+              n = n+1
+              IF(alloc == 1 ) MasterEntities(n) = j
+            END IF
+          END DO
+          IF(alloc == 1 ) EXIT
+          ALLOCATE(MasterEntities(n))
         END DO
-        ALLOCATE(MasterEntities(n))
-        n = 0
-        DO j=1,CurrentModel % NumberOfBCs        
-          Vlist => CurrentModel % BCs(j) % Values       
-          k = ListGetInteger( Vlist,'Constraint Mode', Found )
-          IF(k == i) THEN
-            n = n+1
-            MasterEntities(n) = j
-          END IF
-        END DO       
 
         Eint = BoundaryWaveFlux(CurrentModel, Mesh, MasterEntities, Avar, Anorm, DoPoynt )
           
@@ -16309,35 +16321,19 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
         END IF
 
         ! Real and imag part of: <Ec,Ej>
-        FluxesRow(i) = REAL(Eint)
-        FluxesRowIm(i) = AIMAG(Eint) 
+        FluxesRow(port) = REAL(Eint)
+        FluxesRowIm(port) = AIMAG(Eint) 
 
-        ! Memorize rhs Poynting vector for normalization
-        IF(i==NMode) Nrm = Anorm
-        
-        !PRINT *,'ElField Flux:',NMode, i, Eint, Nrm
-        DEALLOCATE(MasterEntities)        
+        ! Memorize diagonal entry <Ej,Ej*> for future normalization
+        IF(port==NMode) Nrm = Anorm
+
+        DEALLOCATE(MasterEntities)                
       END DO
 
       IF(ParEnv % PEs > 1 ) THEN
         Nrm = ParallelReduction(Nrm) 
       END IF
-     
-      IF( DoPoynt ) THEN
-        !PRINT *,'DoPoynt normalization:',Nrm
-        FluxesRow = FluxesRow / Nrm
-        FluxesRowIm = FluxesRowIm / Nrm
-      ELSE
-        FluxesRhs = Nrm        
-      END IF
-        
-      FluxesRow(1:NoModes) = FluxesRow(1:NoModes)
-      FluxesRowIm(1:NoModes) = FluxesRowIm(1:NoModes) 
-      FluxesRow(NMode) = FluxesRow(NMode)
-      
-      Nrm = SQRT(SUM(FluxesRow**2)+SUM(FluxesRowIm**2))
-      WRITE(Message,'(A,ES12.3)') 'Energy norm of Smatrix row '//I2S(NMode)//': ',Nrm
-      CALL Info(Caller,Message,Level=8)
+      FluxesRhs = Nrm      
       
     END SUBROUTINE EMWaveFluxes
 

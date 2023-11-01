@@ -84,7 +84,9 @@ Solver 1
   Constraint Modes Fluxes Results = Logical True
   ! Constraint Modes Fluxes Symmetric = Logical True
   Constraint Modes Fluxes Filename = File "SMatrix.dat"
-  !Normalize by Poynting Vector = Logical True
+
+!  Normalize by Poynting Vector = Logical True
+!  Enforce Unity Rowsum = Logical False
 End
 
 Solver 2
