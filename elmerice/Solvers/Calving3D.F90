@@ -47,7 +47,7 @@
 !-----------------------------------------------
    TYPE(ValueList_t), POINTER :: Params
    TYPE(Variable_t), POINTER :: CalvingVar, &
-        DistVar, CIndexVar, HeightVar, CrevVar, TimestepVar
+        DistVar, CIndexVar, HeightVar, CrevVar, TimestepVar, TimeVar
    TYPE(Solver_t), POINTER :: PCSolver => NULL(), &
         VTUOutputSolver => NULL(), IsoSolver => NULL()
    TYPE(Matrix_t), POINTER :: StiffMatrix
@@ -60,7 +60,7 @@
         stride, MaxNN, Next, NodesPerLevel, LeftTgt, RightTgt, &
         county, PMeshBCNums(3), DOFs, PathCount, ValidPathCount, active,&
         WriteNodeCount, MeshBC, GroupCount, GroupStart, GroupEnd, col, &
-        FrontLineCount, ShiftIdx
+        FrontLineCount, ShiftIdx, err
    INTEGER, PARAMETER :: GeoUnit = 11
    INTEGER, POINTER :: CalvingPerm(:), TopPerm(:)=>NULL(), BotPerm(:)=>NULL(), &
         LeftPerm(:)=>NULL(), RightPerm(:)=>NULL(), FrontPerm(:)=>NULL(), &
@@ -652,7 +652,7 @@
        !TODO, check existing number of bodies, write next, instead of '3'
 
        !-------------Write attractor etc--------------
-       WRITE(GeoUnit,'(A)') 'Field[1] = Attractor;'
+       WRITE(GeoUnit,'(A)') 'Field[1] = Distance;'
        WRITE(GeoUnit,'(A)') 'Field[1].NNodesByEdge = 100.0;'
        WRITE(GeoUnit,'(A)') 'Field[1].NodesList = {'
        DO i=1,SIZE(FrontNodeNums)-1
@@ -678,7 +678,8 @@
        !-----------system call gmsh------------------
        !'env -i' obscures all environment variables, so gmsh doesn't see any
        !MPI stuff and break down.
-       CALL EXECUTE_COMMAND_LINE( "env -i PATH=$PATH LD_LIBRARY_PATH=$LD_LIBRARY_PATH gmsh -2 "// filename, .TRUE., ierr )
+       CALL EXECUTE_COMMAND_LINE( "env -i PATH=$PATH LD_LIBRARY_PATH=$LD_LIBRARY_PATH gmsh -2 &
+            -format msh2 "// filename, .TRUE., ierr, err)
 
        IF(ierr > 1) THEN
          IF(ierr == 127) THEN
@@ -696,7 +697,7 @@
        !-----------system call ElmerGrid------------------
        WRITE(Message, '(A,A,A)') "ElmerGrid 14 2 ",TRIM(filename_root),".msh"
 
-       CALL EXECUTE_COMMAND_LINE( Message, .TRUE., ierr )
+       CALL EXECUTE_COMMAND_LINE( Message//achar(0), .TRUE., ierr, err )
        IF(ierr /= 0) THEN
           WRITE(Message, '(A,i0)') "Error executing ElmerGrid, error code: ",ierr
           CALL Fatal(SolverName,Message)
@@ -739,18 +740,18 @@
              TRIM(filename_root),INT(TimestepVar % Values(1))
 
         WRITE(Message,'(A,A)') "mkdir -p ",TRIM(MoveMeshFullPath)
-        CALL EXECUTE_COMMAND_LINE( Message, .TRUE., ierr )
+        CALL EXECUTE_COMMAND_LINE( Message, .TRUE., ierr, err )
 
         !Move the files
 
         WRITE(Message,'(A,A,A,A)') "mv ",TRIM(filename_root),"* ",&
              TRIM(MoveMeshFullPath)
-        CALL EXECUTE_COMMAND_LINE( Message, .TRUE., ierr )
+        CALL EXECUTE_COMMAND_LINE( Message, .TRUE., ierr , err)
 
       ELSE
         WRITE(Message,'(A,A,A,A,A,A)') "rm -r ",TRIM(filename)," ",&
              TRIM(filename_root),".msh ",TRIM(filename_root)
-        CALL EXECUTE_COMMAND_LINE( Message, .FALSE., ierr )
+        CALL EXECUTE_COMMAND_LINE( Message, .FALSE., ierr, err )
       END IF
     END IF
 
@@ -816,7 +817,6 @@
     CrevVar => VariableGet(PlaneMesh % Variables, "ave_cindex", .TRUE.)
     PCSolver % Variable => CrevVar
     PCSolver % Matrix % Perm => CrevVar % Perm
-
 
     !----------------------------------------------------
     ! Run Project Calving solver
@@ -1695,7 +1695,8 @@
        IF(Parallel) DEALLOCATE(disps, PFaceNodeCount)
 
     END IF
-
+    TimeVar => VariableGet(Model % Variables, 'Time', .TRUE.)
+    time = TimeVar % Values(1)
     CALL ListAddConstReal( Model % Simulation, 'CalvingTime', Time )
     IF(Parallel) CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
