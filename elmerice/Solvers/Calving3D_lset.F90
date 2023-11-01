@@ -143,6 +143,8 @@
       IF(Debug) PRINT *,'Front, Left, Right constraints: ',FrontConstraint,LeftConstraint,RightConstraint
    END IF !FirstTime
 
+   CalvingOccurs = .FALSE.
+
    Mesh => Model % Mesh
 
    ! addition of the lateral boundaries when calculating constrictions for crevasses
@@ -244,6 +246,8 @@
    PRINT *,ParEnv % MyPE,' front extent: ',front_extent
 
    PlaneMesh => CreateRectangularMesh(MeshParams)
+
+   CALL SetMeshMaxDOFs(PlaneMesh)
 
    PlaneMesh % Nodes % z = PlaneMesh % Nodes % y
    PlaneMesh % Nodes % y = PlaneMesh % Nodes % x
@@ -1562,7 +1566,7 @@
         END IF
 
         Debug = .FALSE.
-        CalvingValues = SignDistValues
+        CalvingValues(CalvingPerm) = SignDistValues(SignDistPerm)
         IF(MINVAL(SignDistValues) < - AEPS) CalvingOccurs = .TRUE.
 
 
@@ -1917,6 +1921,7 @@ CONTAINS
         END IF
         IF(a1(1)==a2(1) .AND. a1(2)==a2(2)) CYCLE
         CALL LineSegmLineIntersect (a1, a2, b1, b2, intersect, does_intersect )
+
         IF(.NOT. does_intersect) CYCLE
         tempdist = PointDist2D(b1,intersect)
         secdist = PointDist2D(b2, intersect)
@@ -1960,6 +1965,7 @@ CONTAINS
 
       crevdist = 0.0_dp
       IF(FoundIntersect) THEN
+        FoundIntersect = .FALSE.
         crevdist = HUGE(1.0_dp)
         DO j=CrevStart(NodeClosestCrev(i)), CrevEnd(NodeClosestCrev(i))-1
           a1 = (/CrevX(j), CrevY(j)/)
@@ -1970,10 +1976,11 @@ CONTAINS
           IF(tempdist < crevdist) THEN
             crevdist = tempdist
           END IF
+          FoundIntersect = .TRUE.
         END DO
       END IF
 
-      IF(MinDist < crevdist) THEN
+      IF(MinDist < crevdist .AND. FoundIntersect) THEN
         CALL WARN(FuncName, 'Removing lateral calving event as it would jam on lateral margins')
         RemoveCrev(NodeClosestCrev(i)) = .TRUE.
       END IF
