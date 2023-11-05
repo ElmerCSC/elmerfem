@@ -26,7 +26,7 @@
 /* --------------------------:  egmesh.c  :----------------------------
 
    This module includes subroutines that formulate the mesh into structures 
-   more usuful for the user. These are the functions that should be used for 
+   more useful for the user. These are the functions that should be used for
    assembling. The routines usually operate on structures FemType and 
    BoundaryType.
    */
@@ -1277,7 +1277,7 @@ static void MovePointArc(Real *lim,int points,Real *coords,
 void CreateKnots(struct GridType *grid,struct CellType *cell,
 		 struct FemType *data,int noknots,int info)
 /* Saves information concerning the knots to a special structure to avoid 
-   repetitous calculations. This should be used unless there is a sevire 
+   repetitious calculations. This should be used unless there is a severe
    lack of memory. GridType includes only rectangular 2D elements.
    */ 
 {
@@ -1632,7 +1632,7 @@ int CreateBoundary(struct CellType *cell,struct FemType *data,
 startpoint:
 
   /* Go through all elements which have a boundary with the given material, but 
-     are not themself of that material. First only calculate their amount, then
+     are not themselves of that material. First only calculate their amount, then
      allocate space and tabulate them. */ 
   nosides = 0;
 
@@ -2984,7 +2984,7 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
     }
 
 
-    /* And finally number the conflicting joinded bodies and BCs */
+    /* And finally number the conflicting joined bodies and BCs */
     for(i=1;i<=data2->noelements;i++) {
       mat = data2->material[i];
       if( mat < MAXBODIES ) {
@@ -3675,7 +3675,7 @@ static void ReorderAutomatic(struct FemType *data,int iterations,
   
 #if 0
   for(j=1;j<=noknots;j++) {
-    printf("neigbourds[%d]= ",j);
+    printf("neighbours[%d]= ",j);
     for(l=1;l<=maxnodes;l++) 
       printf("%d ",neighbours[j][l]);
     printf("\n");
@@ -4666,7 +4666,7 @@ int FindBulkBoundary(struct FemType *data,int mat1,int mat2,
   *noboundnodes = 0;
 
   if(mat1 < 1 && mat2 < 1) {
-    printf("FindBulkBoundaty: Either of the materials must be positive\n");
+    printf("FindBulkBoundary: Either of the materials must be positive\n");
     return(1);
   }
   else if(mat1 < 1) {
@@ -4736,7 +4736,7 @@ int FindBulkBoundary(struct FemType *data,int mat1,int mat2,
     for(i=1;i<=data->noknots;i++) {    
       anglesum[i] /= 2.0 * FM_PI;
       if(anglesum[i] > 0.99) visited[i] = 0;
-      if(anglesum[i] > 1.01) printf("FindBulkBoundary: surpricingly large angle %.3e in node %d\n",anglesum[i],i);
+      if(anglesum[i] > 1.01) printf("FindBulkBoundary: surprisingly large angle %.3e in node %d\n",anglesum[i],i);
       if(visited[i]) j++;
     }
     if(0) printf("There are %d boundary node candidates\n",j);
@@ -4876,7 +4876,7 @@ int FindBoundaryBoundary(struct FemType *data,struct BoundaryType *bound,int mat
   *noboundnodes = 0;
 
   if(mat1 < 1 && mat2 < 1) {
-    printf("FindBoundaryBoundaty: Either of the boundaries must be positive\n");
+    printf("FindBoundaryBoundary: Either of the boundaries must be positive\n");
     return(1);
   }
   else if(mat1 < 1) {
@@ -4955,7 +4955,7 @@ int FindBoundaryBoundary(struct FemType *data,struct BoundaryType *bound,int mat
     for(i=1;i<=data->noknots;i++) {
       anglesum[i] /= 2.0 * FM_PI;
       if(anglesum[i] > 0.99) visited[i] = 0;
-      if(anglesum[i] > 1.01) printf("FindBulkBoundary: surpricingly large angle %.3e in node %d\n",anglesum[i],i);
+      if(anglesum[i] > 1.01) printf("FindBulkBoundary: surprisingly large angle %.3e in node %d\n",anglesum[i],i);
     }
     free_Rvector(anglesum,1,data->noknots);
 
@@ -4976,7 +4976,7 @@ int FindBoundaryBoundary(struct FemType *data,struct BoundaryType *bound,int mat
     if(visited[i] == maxnodes || visited[i] < 0) visited[i] = 0;      
   }
 
-  /* Neighbour to anaything */
+  /* Neighbour to anything */
   if(mat2 == 0) {
     for(k=1;k<=data->noknots;k++) 
       if(visited[k]) 
@@ -6873,7 +6873,7 @@ void MergeBoundaries(struct FemType *data,struct BoundaryType *bound,int *double
     if(!i2) bound[j].created = FALSE;
   }
 
-  if(info) printf("Eliminated %d boundaries from orinal set of %d.\n",totsides-newsides,totsides);
+  if(info) printf("Eliminated %d boundaries from original set of %d.\n",totsides-newsides,totsides);
 		  
 }
 
@@ -6971,7 +6971,7 @@ void IsoparametricElements(struct FemType *data,struct BoundaryType *bound,
       }
     }
     else {
-      printf("IsoparamametricElements: Not implemented for elementtype %d\n",elemtype);
+      printf("IsoparametricElements: Not implemented for elementtype %d\n",elemtype);
     }
   }
   
@@ -7212,7 +7212,7 @@ void ElementsToBoundaryConditions(struct FemType *data,
 	elemtype = data->elementtypes[elemind2];
 	elemdim = GetElementDimension(elemtype);
 	
-	/* Owner element should have highger dimension */
+	/* Owner element should have higher dimension */
 	if(elemdim <= sideelemdim ) continue;
 
 	hit = 0;
@@ -7982,7 +7982,7 @@ int FindPeriodicParents(struct FemType *data,struct BoundaryType *bound,int info
       GetElementSide(parent,side,1,data,sideind,&sideelemtype);
       sidenodes = sideelemtype % 100;
 
-      /* Some node must be periodic target and ohers either target or mapped nodes */
+      /* Some node must be periodic target and others either target or mapped nodes */
       hits = hits2 = 0;      
       for(k=0;k<sidenodes;k++) {
         l = sideind[k];
@@ -8913,7 +8913,7 @@ omstart:
 	  }
 	  
 	  
-	  /* Eliminate the very difficult triplenodes */
+	  /* Eliminate the very difficult triple nodes */
 	  dolayer = FALSE;
 	  for(k=1;k<=endbcs;k++)
 	    if(ind2 == endnodes[k]) dolayer = k;

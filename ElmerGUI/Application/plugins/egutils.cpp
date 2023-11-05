@@ -67,7 +67,7 @@ int MemoryUsage()
 
 
 void nrerror(const char error_text[])
-/* standerd error handler */
+/* standard error handler */
 {
   fprintf(stderr,"run-time error...\n");
   fprintf(stderr,"%s\n",error_text);

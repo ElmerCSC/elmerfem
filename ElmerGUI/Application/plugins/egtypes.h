@@ -1,7 +1,7 @@
 /* femtypes.h */
 /* Defines the types used in the FEM model. */
 
-/* Definiotins used in allocating space for the structures. */
+/* Definitions used in allocating space for the structures. */
 #define DIM 2               /* dimension of the space */
 #define MAXDOFS 20          /* maximum number of variables, e.g. T,P */ 
 #define MAXCELLS 100        /* maximum number of subcells in given direction */
@@ -109,7 +109,7 @@ struct GridType {
   int rotate,rotateblocks,rotatecurve,rotatecartesian,mappings,
     reduceordermatmin,reduceordermatmax;
   Real curverad,curveangle,curvezet,polarradius;
-  Real x[MAXCELLS+1],     /* vertical lines in the goemetry */
+  Real x[MAXCELLS+1],     /* vertical lines in the geometry */
     y[MAXCELLS+1],        /* horizontal lines in the geometry */
     z[MAXCELLS+1],
     xexpand[MAXCELLS+1],  /* local expand ratio in the subcells */
@@ -156,7 +156,7 @@ struct CellType {
     ylinear,
     material,   /* material flag */
     xind, yind; /* Indexes of the cell */
-  int boundary[8], /* material indeces of neighbouring cells */
+  int boundary[8], /* material indices of neighbouring cells */
     neighbour[8];  /* number of neighbouring cells */
   Real xwidth,  /* size of the subcell */
     ywidth,
@@ -297,7 +297,7 @@ struct ElmergridType {
     center,
     scale,      /* scale the geometry */
     order,      /* reorder the nodes */
-    merge,      /* merge mesges */
+    merge,      /* merge meshes */
     translate,  /* translate the mesh */
     rotate,     /* rotate the mesh */
     clone[3],   /* clone the mesh the number of given times */
@@ -313,7 +313,7 @@ struct ElmergridType {
     metis_contig,  /* is Metis partitioning contiguous */
     metis_minconn,  /* is Metis partitioning contiguous */
     metis_seed,   /* seed for Metis partitioning routines */
-    metis_volcut, /* minimize edgecut (default) or total cummunication volume when true */
+    metis_volcut, /* minimize edgecut (default) or total communication volume when true */
     metis_ncuts,  /* Number of different partitionings that Metis will compute. */
     partopt,    /* free parameter for optimization */
     partoptim,  /* apply aggressive optimization to node sharing on bulk */
