@@ -131,6 +131,32 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
 END SUBROUTINE VectorHelmholtzSolver_Init0
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+SUBROUTINE VectorHelmholtzSolver_Init(Model,Solver,dt,Transient)
+!------------------------------------------------------------------------------
+  USE VectorHelmholtzUtils
+
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Model_t) :: Model
+  TYPE(Solver_t) :: Solver
+
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER :: SolverParams
+!------------------------------------------------------------------------------
+  SolverParams => GetSolverParams()
+  
+  ! A parallel run needs an early allocation of precvalues. Create a flag to
+  ! inform the function CreateMatrix.
+  IF (ListCheckPrefix(SolverParams, 'Linear System Preconditioning Damp Coefficient')) THEN
+    CALL ListAddNewLogical(SolverParams, 'Allocate Preconditioning Matrix', .TRUE.)
+  END IF
+
+!------------------------------------------------------------------------------
+END SUBROUTINE VectorHelmholtzSolver_Init
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 !> Solve the electric field E from the curl-curl equation 

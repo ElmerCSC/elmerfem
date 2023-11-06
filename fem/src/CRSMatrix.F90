@@ -3691,8 +3691,10 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     Rows   => A % Rows
     Cols   => A % Cols
     IF(ASSOCIATED(A % PrecValues)) THEN
+      CALL Info( 'CRS_ComplexIncompleteLU', 'Factorizing PrecValues', Level=20 )
       Values => A % PrecValues
     ELSE
+      CALL Info( 'CRS_ComplexIncompleteLU', 'Factorizing the primary matrix', Level=20 )
       Values => A % Values
     END IF
 
