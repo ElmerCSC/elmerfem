@@ -104,19 +104,20 @@ RECURSIVE SUBROUTINE ComputeDevStress( Model,Solver,dt,TransientSimulation )
   
   LOGICAL :: Isotropic, AllocationsDone = .FALSE.,  &
        Requal0
-  LOGICAL :: GotIt,  Cauchy = .FALSE.,UnFoundFatal=.TRUE.,OutOfPlaneFlow
+  LOGICAL :: GotIt, GotIt_CT, GotIt_TFV, OldKeyword,  Cauchy = .FALSE.,UnFoundFatal=.TRUE.,OutOfPlaneFlow
   
   REAL(KIND=dp), ALLOCATABLE:: LocalMassMatrix(:,:), &
        LocalStiffMatrix(:,:), LocalForce(:), &
        LocalP(:),  &
-       LocalVelo(:,:), LocalViscosity(:)
+       LocalVelo(:,:), LocalViscosity(:), &
+       RelativeT(:), ConstantT(:)
   
   INTEGER :: NumberOfBoundaryNodes, COMP
   INTEGER, POINTER :: BoundaryReorder(:)
   
   REAL(KIND=dp), POINTER :: BoundaryNormals(:,:), &
        BoundaryTangent1(:,:), BoundaryTangent2(:,:)
-  CHARACTER(LEN=MAX_NAME_LEN) :: FlowSolverName, StressSolverName
+  CHARACTER(LEN=MAX_NAME_LEN) :: FlowSolverName, StressSolverName, TempName
   
 #ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: at, at0
@@ -132,7 +133,8 @@ RECURSIVE SUBROUTINE ComputeDevStress( Model,Solver,dt,TransientSimulation )
        ElementNodes,  &
        AllocationsDone,  &
        old_body, &
-       LocalViscosity, Cauchy
+       LocalViscosity, Cauchy, &
+       OldKeyword, RelativeT, ConstantT
   
   SAVE LocalVelo, LocalP, dim
   
@@ -198,7 +200,9 @@ RECURSIVE SUBROUTINE ComputeDevStress( Model,Solver,dt,TransientSimulation )
              LocalMassMatrix,      &
              LocalStiffMatrix,     &
              LocalForce,           &
-             LocalViscosity )
+             LocalViscosity,       &
+             RelativeT,            &
+             ConstantT )
      END IF
 
      ALLOCATE( ElementNodes % x( N ), &
@@ -209,7 +213,8 @@ RECURSIVE SUBROUTINE ComputeDevStress( Model,Solver,dt,TransientSimulation )
           LocalMassMatrix( 2*STDOFs*N,2*STDOFs*N ),  &
           LocalStiffMatrix( 2*STDOFs*N,2*STDOFs*N ),  &
           LocalForce( 2*STDOFs*N ),  &
-          LocalViscosity(N), STAT=istat )
+          LocalViscosity(N), &
+          RelativeT(N), ConstantT(N), STAT=istat )
 
      IF ( istat /= 0 ) THEN
         CALL Fatal( 'ComputeDevStress', 'Memory allocation error.' )
@@ -272,6 +277,28 @@ RECURSIVE SUBROUTINE ComputeDevStress( Model,Solver,dt,TransientSimulation )
 
 
 !!!! Restricted to the Power Law case
+           !! Check for the presence of keywords related to the new vectorized Stokes solver
+           RelativeT(1:n) = ListGetReal( Material, 'Relative Temperature', n, NodeIndexes, GotIt )
+           IF (GotIt) THEN
+              OldKeyword = ListGetLogical( Material, 'Glen Allow Old Keywords', GotIt)
+              IF (.NOT.(GotIt .AND. OldKeyword)) THEN
+                 CALL FATAL('ComputeDevStressNS', 'When using ComputeDevStressNS with IncompressibleNSVec &
+                         >Glen Allow Old Keywords< must be set to True in Material')
+              END IF
+
+              ConstantT(1:n) = ListGetReal( Material, 'Constant Temperature', n, NodeIndexes, GotIt_CT )
+              TempName = GetString( Material, 'Temperature Field Variable', GotIt_TFV)
+              IF (.NOT.(GotIt_CT .OR. GotIt_TFV)) THEN
+                 CALL FATAL('ComputeDevStress', '>Constant Temperature< or >Temperature Field Variable< &
+                         must be prescribed in Material')
+              END IF
+
+              !!! In the case of constant T check for consistency between prescribed relative and constant T
+              IF (GotIt_CT .AND. (.NOT. all(abs(RelativeT(1:n) - ConstantT(1:n))<AEPS))) THEN
+                 CALL FATAL('ComputeDevStress', 'When considering constant temperature, >Constant Temperature< and >Relative &
+                 Temperature< must be consistent')
+              END IF
+           END IF
 
            Cauchy = ListGetLogical( Material , 'Cauchy', Gotit )
            IF (.NOT.Gotit) THEN
