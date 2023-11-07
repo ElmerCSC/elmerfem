@@ -3721,7 +3721,11 @@ CONTAINS
           ! ParallelInitSolve expects full vectors
           IF ( i /= j ) THEN
             IF(ASSOCIATED(A % ParMatrix)) CALL ParallelInitSolve(A,r,r,r)
-          ELSE 
+          ELSE
+            IF (ASSOCIATED(A % ParMatrix % SplittedMatrix % InsideMatrix % PrecValues)) THEN
+              IF (.NOT. ASSOCIATED(A % PrecValues)) & 
+                  NULLIFY(A % ParMatrix % SplittedMatrix % InsideMatrix % PrecValues)
+            END IF
             CALL ParallelInitSolve(A, TotMatrix % Subvector(i) % Var % Values, A % rhs, r )
             IF( ASSOCIATED(SolverMatrix)) THEN
               x(offset(i)+1:offset(i+1)) = TotMatrix % SubVector(i) % Var % Values        
