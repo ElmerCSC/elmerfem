@@ -661,7 +661,7 @@ SUBROUTINE StatElecSolver_post( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   TYPE(Element_t),POINTER :: Element
   INTEGER :: i, dofs, n, nb, nd, t, active
-  LOGICAL :: Found, InitHandles
+  LOGICAL :: Found, InitHandles = .TRUE.
   TYPE(Mesh_t), POINTER :: Mesh
   REAL(KIND=dp), ALLOCATABLE :: WeightVector(:),FORCE(:,:),MASS(:,:),&
       PotInteg(:),PotVol(:)
@@ -753,6 +753,7 @@ SUBROUTINE StatElecSolver_post( Model,Solver,dt,Transient )
   ALLOCATE( MASS(n,n), FORCE(8,n) ) ! 1+1+3+3 components for force
 
   CALL Info(Caller,'Calculating local field values',Level=12) 
+
   InitHandles = .TRUE.
   EnergyTot = 0.0_dp
   VolTot = 0.0_dp
@@ -765,6 +766,7 @@ SUBROUTINE StatElecSolver_post( Model,Solver,dt,Transient )
     CALL LocalPostAssembly( Element, n, InitHandles, MASS, FORCE )
     CALL LocalPostSolve( Element, n, MASS, FORCE )
   END DO
+
   
   IF( NeedScaling ) THEN
     CALL Info(Caller,'Scaling the field values with weights',Level=12)
@@ -775,7 +777,6 @@ SUBROUTINE StatElecSolver_post( Model,Solver,dt,Transient )
     CALl GlobalPostAve()
   END IF
 
-  
   IF( CalcAvePotential ) THEN
     BLOCK        
       REAL(KIND=dp), ALLOCATABLE:: PotTmp(:)
@@ -803,6 +804,7 @@ SUBROUTINE StatElecSolver_post( Model,Solver,dt,Transient )
   END IF
     
   CALL Info(Caller,'All done',Level=12)
+
   
 
 CONTAINS
@@ -973,6 +975,7 @@ CONTAINS
           pVar => PostVars(Vari) % Var
           IF( .NOT. ASSOCIATED( pVar ) ) CYCLE
           IF( PostVars(Vari) % FieldType /= FieldType ) CYCLE
+
           IF( m > pVar % Dofs ) CYCLE
           
           ! The nodal fields need not be solved for.
@@ -1015,7 +1018,6 @@ CONTAINS
    INTEGER :: dofs,i,j,Vari
    TYPE(Variable_t), POINTER :: pVar
    REAL(KIND=dp), ALLOCATABLE :: tmp(:)
-   LOGICAL :: DoneWeight = .FALSE.
    REAL(KIND=dp) :: PotDiff, Capacitance, ControlTarget, ControlScaling, val
    
    VolTot = ParallelReduction(VolTot)
@@ -1035,6 +1037,11 @@ CONTAINS
          'RES: Effective Capacitance', Capacitance )
    END IF
          
+   ! If we need to scale then also communicate the weight
+   IF (ParEnv % PEs>1 .AND. NeedScaling) THEN
+     CALL ParallelSumVector(Solver % Matrix, WeightVector )
+   END IF
+
    DO Vari = 1, 8
      pVar => PostVars(Vari) % Var
      IF( .NOT. ASSOCIATED( pVar ) ) CYCLE
@@ -1046,12 +1053,6 @@ CONTAINS
      dofs = pVar % Dofs
      
      IF ( ParEnv % PEs > 1) THEN
-       ! If we need to scale then also communicate the weight
-       IF( .NOT. DoneWeight ) THEN
-         CALL ParallelSumVector(Solver % Matrix, WeightVector )
-         DoneWeight = .TRUE.
-       END IF
-
        IF( dofs == 1 ) THEN
          CALL ParallelSumVector(Solver % Matrix, pVar % Values )
        ELSE
