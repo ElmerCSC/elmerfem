@@ -13353,6 +13353,9 @@ END FUNCTION SearchNodeL
         Diag(i) = tmp
         Diag(i+1) = tmp
       END DO
+      IF (Parallel) THEN
+        CALL ParallelSUMVector(A,Diag)
+      END IF
     ELSE
       IF (Parallel) THEN
  
