@@ -114,7 +114,7 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
 
 
 !Variables for m1qn3
-  external simul_rc,euclid,ctonbe,ctcabe
+  external simul_rc !,euclid,ctonbe,ctcabe
   character*3 normtype
   REAL(KIND=dp) :: dxmin,df1,epsrel
   real(kind=dp), allocatable :: dz(:),dzs(:)
@@ -158,6 +158,28 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
        REAL rzs(*)
        DOUBLE PRECISION u(n),v(n),dzs(*)
      END SUBROUTINE MeshUnweight_ctcab
+
+     SUBROUTINE euclid (n,x,y,ps,izs,rzs,dzs)
+       !------------------------------------------------------------------------------
+       INTEGER n,izs(*)
+       REAL rzs(*)
+       DOUBLE PRECISION x(n),y(n),ps,dzs(*)
+     END SUBROUTINE euclid
+            
+     SUBROUTINE ctonbe (n,u,v,izs,rzs,dzs)
+       !------------------------------------------------------------------------------
+       INTEGER n,izs(*)
+       REAL rzs(*)
+       DOUBLE PRECISION u(1),v(1),dzs(*)
+     END SUBROUTINE ctonbe
+
+     SUBROUTINE ctcabe (n,u,v,izs,rzs,dzs)
+       !------------------------------------------------------------------------------               
+       INTEGER n,izs(*)
+       REAL rzs(*)
+       DOUBLE PRECISION u(1),v(1),dzs(*)
+     END SUBROUTINE ctcabe
+
   END INTERFACE
   PROCEDURE (MeshUnweight), POINTER :: prosca => NULL()
   PROCEDURE (MeshUnweight_ctonb), POINTER :: ctonb => NULL(),ctcab => NULL()

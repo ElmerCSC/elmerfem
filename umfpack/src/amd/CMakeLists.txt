@@ -55,6 +55,8 @@ FOREACH(outfileName ${UMFPACK_AMD_CPP_SOURCES})
     OUTPUT ${outfileName}
     COMMAND ${CMAKE_C_COMPILER}
     ARGS ${UMFPACK_AMD_INCLUDES} ${flags} ${CMAKE_CURRENT_SOURCE_DIR}/${infileName} > ${outfileName}
+		COMMAND sed 
+    ARGS -i 's/__fsid_t/__fsid_t_/g' ${outfileName}
     DEPENDS ${infileName}
   )
 

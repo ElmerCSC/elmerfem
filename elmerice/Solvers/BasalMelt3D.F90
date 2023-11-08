@@ -324,7 +324,7 @@
           WRITE(FileUnit, '(A)') "Timestep, Time, Ungrounded Area, &
                &Total Basal Melt (m^3)"
         ELSE
-          OPEN( UNIT=FileUnit, File=OutfileName, STATUS='UNKNOWN', ACCESS='APPEND' )
+          OPEN( UNIT=FileUnit, File=OutfileName, STATUS='UNKNOWN', POSITION='APPEND' )
         END IF
 
         WRITE(FileUnit, '(I0,ES20.11,ES20.11,ES20.11)') &
