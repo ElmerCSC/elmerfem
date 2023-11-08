@@ -67,6 +67,7 @@ Solver 1
   Optimize Bandwidth = True
   Linear System Symmetric = False
   Procedure = "VectorHelmholtz" "VectorHelmholtzSolver"
+  Nonlinear System Consistent Norm = True
 
 !  Calculate Energy Norm = Logical True
 
@@ -87,6 +88,7 @@ Solver 1
   Outer: Linear System Solver = "Iterative"
   Outer: Linear System Convergence Tolerance = 1e-8
   Outer: Linear System Normwise Backward Error = True
+  Outer: Linear System Row Equilibration = True
   Outer: Linear System Iterative Method = gcr
   Outer: Linear System GCR Restart =  100
   Outer: Linear System Residual Output =  1

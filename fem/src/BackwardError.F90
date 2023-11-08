@@ -56,9 +56,10 @@ END FUNCTION NormwiseBackwardError2
 
 
 !------------------------------------------------------------------------------
-!> The normwise relative backward error err = ||b-Ax||/(||A|| ||x|| + ||b||) 
+!> The normwise relative backward error err = ||r||/(||A|| ||x|| + ||b||) 
 !> where ||.|| is the supremum norm and A is assumed to be scaled such that its 
 !> norm is the unity (setting Linear System Row Equilibration = Logical True).
+!> Here the residual r = b - Ax should be known when calling this function.
 !------------------------------------------------------------------------------
 FUNCTION NormwiseBackwardError( x,b,r,ipar,dpar ) RESULT(err)
 !------------------------------------------------------------------------------
@@ -66,18 +67,10 @@ FUNCTION NormwiseBackwardError( x,b,r,ipar,dpar ) RESULT(err)
 
   INTEGER :: ipar(*),n
   DOUBLE PRECISION :: x(HUTI_NDIM),b(HUTI_NDIM),r(HUTI_NDIM),dpar(*),err
-  DOUBLE PRECISION :: res(HUTI_NDIM)
 
   n = HUTI_NDIM
 
-  IF(ParEnv % PEs>1) THEN
-    CALL SParMatrixVector(x,res,ipar)
-  ELSE
-    CALL CRS_MatrixVectorMultiply(GlobalMatrix,x,res)
-  END IF
-  res = res - b(1:n)
-
-  err = ParallelReduction(MAXVAL(ABS(res(1:n))),2) / &
+  err = ParallelReduction(MAXVAL(ABS(r(1:n))),2) / &
       (ParallelReduction(MAXVAL(ABS(x(1:n))),2) + &
       ParallelReduction(MAXVAL(ABS(b(1:n))),2))
 
