@@ -1,4 +1,4 @@
-/*****************************************************************************/
+!/*****************************************************************************/
 ! *
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
@@ -939,12 +939,12 @@ CONTAINS
        Solver % Mesh % Nodes % y(k) =  Solver % Mesh % Nodes % y(k) + dy
     END DO
     
-END SUBROUTINE BoxMoveMesh
+  END SUBROUTINE BoxMoveMesh
 
 
 
 !------------------------------------------------------------------------------
-  END SUBROUTINE SteadyPhaseChange
+END SUBROUTINE SteadyPhaseChange
 !------------------------------------------------------------------------------
 
 
