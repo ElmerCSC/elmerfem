@@ -383,7 +383,7 @@ CONTAINS
 
     END SELECT
 
-    IF( ViscNewton ) THEN
+    IF( DoNewton ) THEN
       IF(GotRelax) ViscDerVec(1:ngp) = NewtonRelax * ViscDerVec(1:ngp)
     END IF
    
@@ -929,7 +929,7 @@ CONTAINS
 
     dofs = 2
     dim = 3
-
+    
     ! Numerical integration:
     !-----------------------
     IP = GaussPointsAdapt(Element)
@@ -1041,18 +1041,23 @@ CONTAINS
     pSolver => CurrentModel % Solver    
     Params => pSolver % Values
     VarXY => pSolver % Variable
-
+    Mesh => CurrentModel % Mesh
+    dofs = 0
+    
     str = ListGetString( Params,'Velocity Vector Name',Found )
     IF(.NOT. Found) str = ListGetString( Params,'Velocity Variable Name',Found )
-    IF(.NOT. Found) RETURN
-
-    Mesh => CurrentModel % Mesh
-    VarFull => VariableGet(Mesh % Variables, str, ThisOnly = .TRUE.)
-    IF(.NOT. ASSOCIATED(VarFull)) THEN
-      CALL Fatal('HydrostaticNSVec','Could not find full velocity variable: '//TRIM(str))
+    IF(Found) THEN
+      VarFull => VariableGet(Mesh % Variables, str, ThisOnly = .TRUE.)
+      IF(.NOT. ASSOCIATED(VarFull)) THEN
+        CALL Fatal('HydrostaticNSVec','Could not find full velocity variable: '//TRIM(str))
+      END IF
+      dofs = VarFull % dofs
+      IF(dofs < 3 .OR. dofs > 4 ) THEN
+        CALL Fatal('HydrostaticNSVec','We need 3 or 4 components for velocity field, not '//I2S(dofs))
+      END IF
+      VarFull % Values = 0.0_dp
     END IF
-    dofs = VarFull % dofs
-    
+      
     NULLIFY(VarP) 
     str = ListGetString( Params,'Pressure Variable Name',Found )
     IF( Found ) THEN
@@ -1071,6 +1076,8 @@ CONTAINS
     ! Pressure can be 1st component of pressure or last compenent of 'flow solution'
     pdof = 0
     IF(ASSOCIATED(VarP)) pdof = VarP % Dofs
+    IF(pdof == 0 .AND. dofs == 0 ) RETURN
+
     g = 1.0_dp
     PressureCorr = .FALSE.
     IF(pdof > 0) THEN
@@ -1083,19 +1090,15 @@ CONTAINS
       PressureCorr = ListGetLogical( Params,'Pressure Correction',Found ) 
     END IF
 
-    PRINT *,'dofs:',dofs,pdof,g,SIZE(VarFull % Values), SIZE(VarXY % Values), &
-        VarFull % Dofs, VarXY % Dofs
-    
-    ! Initialize full vector 
-    VarFull % Values = 0.0_dp
-    
     ! Copy the velocity componts x & y
-    DO i=1,Mesh % NumberOfNodes
-      j = VarFull % Perm(i)
-      k = VarXY % Perm(i)
-      VarFull % Values(dofs*(j-1)+1) = VarXY % Values(2*k-1)
-      VarFull % Values(dofs*(j-1)+2) = VarXY % Values(2*k)
-    END DO
+    IF( dofs > 0 ) THEN
+      DO i=1,Mesh % NumberOfNodes
+        j = VarFull % Perm(i)
+        k = VarXY % Perm(i)
+        VarFull % Values(dofs*(j-1)+1) = VarXY % Values(2*k-1)
+        VarFull % Values(dofs*(j-1)+2) = VarXY % Values(2*k)
+      END DO
+    END IF
       
     BaseVelo = .TRUE.
         
@@ -1163,7 +1166,7 @@ CONTAINS
       i1 = i      
             
       ! Nodes at the bedrock
-      IF(DownPointer(i) == i) THEN
+      IF(dofs > 0 .AND. DownPointer(i) == i) THEN
         ! Initailize values at the bedrock
         k1 = VarFull % Perm(i1)
         IF(k1>0) THEN
