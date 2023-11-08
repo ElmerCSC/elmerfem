@@ -2011,7 +2011,7 @@ CONTAINS
       END DO
 
       IF(Visited) THEN
-         OPEN( UNIT=FileUnit, FILE=filename, STATUS='UNKNOWN', ACCESS='APPEND')
+         OPEN( UNIT=FileUnit, FILE=filename, STATUS='UNKNOWN', POSITION='APPEND')
       ELSE
          OPEN( UNIT=FileUnit, FILE=filename, STATUS='UNKNOWN')
          WRITE(FileUnit, '(A,ES20.11,ES20.11,ES20.11)') "FrontOrientation: ",FrontOrientation
