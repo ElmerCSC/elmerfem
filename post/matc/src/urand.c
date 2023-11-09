@@ -55,7 +55,7 @@
 |FUNCTION NAME(...) params ...
 |
 $  usage of the function and type of the parameters
-?  explane the effects of the function
+?  explain the effects of the function
 =  return value and the type of value if not of type int
 @  globals effected directly by this routine
 !  current known bugs or limitations
