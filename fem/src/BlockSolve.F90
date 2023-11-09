@@ -4447,6 +4447,11 @@ CONTAINS
     END IF
 
     CALL ListPushNamespace('outer:')
+
+    IF (BlockScaling) THEN
+      ! This simplifies writing a consistent sif file:
+      CALL ListAddLogical(Solver % Values, 'Linear System Row Equilibration', .TRUE.)      
+    END IF
     
     ! The case with one block is mainly for testing and developing features
     ! related to nonlinearity and assembly.
