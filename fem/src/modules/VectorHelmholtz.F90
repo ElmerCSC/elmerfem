@@ -236,7 +236,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
       CALL Warn(Caller,'Damped preconditioning does not make sense for direct methods, canceling!')
       HasPrecDampCoeff = .FALSE.
     ELSE
-      CALL Info(Caller,'Generating special precondining matrix',Level=12)
+      CALL Info(Caller,'Generating special preconditioning matrix',Level=12)
     END IF
   END IF
     
@@ -633,22 +633,41 @@ CONTAINS
           ! generic functionality. In principle, the idea is to use the A-V representation
           ! together with a gauge constraint.
           !
+          IF (ConductorBody .AND. ChargeConservation) THEN
+            ! Use an implied equation about the conservation of charge
+            DO p = 1,n
+              i = (p-1)*ndofs + 1
+              DO q = 1,nd-np
+                j = q+np
+                Gauge(i,j) = Gauge(i,j) - im * Omega * Cond * SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
+                Gauge(j,i) = Gauge(j,i) + Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
+              END DO
+
+              DO q = 1,n
+                j = (q-1)*ndofs + 1
+                Gauge(i,j) = Gauge(i,j) + im * Omega * Cond * SUM(dBasisdx(i,:) * dBasisdx(j,:)) * weight
+              END DO
+            END DO
+          ELSE
+            DO p = 1,n
+              ! If two nodal DOFs per node, the first DOF is the scalar potential V related to
+              ! the A-V representation. We add -w^2 div D = -w^2 rho in a weak form when
+              ! E = A - grad V:
+              i = (p-1)*ndofs + 1
+              DO q = 1,nd-np
+                j = q+np
+                Gauge(i,j) = Gauge(i,j) + Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(p,:)) * weight
+                Gauge(j,i) = Gauge(j,i) + Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(p,:)) * weight
+              END DO
+
+              DO q = 1,n
+                j = (q-1)*ndofs + 1
+                Gauge(i,j) = Gauge(i,j) - Omega**2 * Eps * SUM(dBasisdx(q,:) * dBasisdx(p,:)) * weight
+              END DO
+            END DO
+          END IF
+          
           DO p = 1,n
-            ! If two nodal DOFs per node, the first DOF is the scalar potential V related to
-            ! the A-V representation. We add -w^2 div D = -w^2 rho in a weak form when
-            ! E = A - grad V:
-            i = (p-1)*ndofs + 1
-            DO q = 1,nd-np
-              j = q+np
-              Gauge(i,j) = Gauge(i,j) + Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(p,:)) * weight
-              Gauge(j,i) = Gauge(j,i) + Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(p,:)) * weight                
-            END DO
-
-            DO q = 1,n
-              j = (q-1)*ndofs + 1
-              Gauge(i,j) = Gauge(i,j) - Omega**2 * Eps * SUM(dBasisdx(q,:) * dBasisdx(p,:)) * weight
-            END DO
-
             ! The second DOF is related to the gauge condition div A =  0 (TO DO: Add
             ! Lorenz condition as an alternative)
             i = p*ndofs
