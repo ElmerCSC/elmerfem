@@ -659,7 +659,7 @@ void fil_com_init()
       "save( name, matrix[, ascii_flag] )\n\n"
       "Save matrix in file with name given as first parameter. If ascii_flag is\n"
       "given and is not zero the file will be in ascii format, otherwise matrix\n"
-      "is saved in double precsision binary format. In either case the first line\n"
+      "is saved in double precision binary format. In either case the first line\n"
       "of the file contains four digits (in ascii):\n\n"
       "ascii_flag 0 NROW(matrix) NCOL(matrix).\n"
       "\n"
