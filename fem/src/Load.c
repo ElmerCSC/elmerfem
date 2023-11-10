@@ -292,7 +292,7 @@ static void STDCALLBULL try_dlopen(char *LibName, void **Handle, char *errorBuf)
 /*--------------------------------------------------------------------------
   INTERNAL: Parses the search path and tries to open a solver.
             First search is done without any path prefixes.
-  Args: SearchPath - colon separated list of searhc paths
+  Args: SearchPath - colon separated list of search paths
         Library - name of the library file to be opened
         Handle - handle to the dl file, NULL if fails
         error_buf - string buffer for error messages
