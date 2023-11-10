@@ -79,7 +79,7 @@ typedef struct variable
 } VARIABLE;
 
 /*
-     shortcuts for accsessing structure MATRIX
+     shortcuts for accessing structure MATRIX
 */
 #define MATR(ptr)    (ptr)->me->data
 #define TYPE(ptr)    (ptr)->me->type
@@ -114,7 +114,7 @@ typedef struct command
 
 #define CMDFLAG_PW 1           /* element by element operation    */
 #define CMDFLAG_CE 2           /* command can be executed when 
-                                  preprosessing if constant
+                                  preprocessing if constant
                                   arguments.                      */
 
 /*******************************************************************
