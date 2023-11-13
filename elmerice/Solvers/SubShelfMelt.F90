@@ -361,7 +361,7 @@
         
      CASE ('linear','Linear')
         prefactor = z_iceBase%values(z_iceBase%Perm(ii))/depth_thresh
-        IF (prefactor.GT.1.0) prefactor = 1.0
+        IF (prefactor.LT.-1.0) prefactor = -1.0
         meltrate = bmb_min*(1.0-prefactor) + bmb_max*prefactor
         
      CASE DEFAULT
