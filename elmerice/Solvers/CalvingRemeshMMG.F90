@@ -96,7 +96,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
        RemeshOccurs,CheckFlowConvergence, NoNewNodes, RSuccess, Success,&
        SaveMMGMeshes, SaveMMGSols, PauseSolvers, PauseAfterCalving, FixNodesOnRails, &
        SolversPaused, NewIceberg, GotNodes(4), CalvingFileCreated=.FALSE., SuppressCalv,&
-       DistributedMesh
+       DistributedMesh,SaveTerminus
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, CalvingVarName, MeshName, SolName, &
        premmgls_meshfile, mmgls_meshfile, premmgls_solfile, mmgls_solfile,&
        RepartMethod, Filename
@@ -192,6 +192,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   END IF
   FixNodesOnRails = ListGetLogical(SolverParams,"Fix Nodes On Rails", Default=.TRUE.)
   SuppressCalv = ListGetLogical(SolverParams,"Suppress Calving", Default=.FALSE.)
+  SaveTerminus = ListGetLogical(SolverParams,"Save Terminus", Default=.TRUE.)
 
   IF(ParEnv % MyPE == 0) THEN
     PRINT *,ParEnv % MyPE,' hmin: ',hminarray
@@ -1105,7 +1106,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
      END IF
    END DO
 
-   CALL SaveTerminusPosition(Model, Solver, GatheredMesh, ImBoss)
+   IF(SaveTerminus) CALL SaveTerminusPosition(Model, Solver, GatheredMesh, ImBoss)
 
    !Call zoltan to determine redistribution of mesh
    ! then do the redistribution
