@@ -1822,10 +1822,6 @@ CONTAINS
         counter = counter + 1
         Nodeno_map(i) = counter
       END DO
-      DEALLOCATE(Mesh % ParallelInfo % GlobalDOFs)
-      Mesh % ParallelInfo % GlobalDOFs => work_pInt
-      work_pInt => NULL()
-    END IF
 
       !Update the element nodeindexes
       DO i=1,NBulk+NBdry
@@ -1854,10 +1850,6 @@ CONTAINS
         work_y(counter) = Nodes % y(i)
         work_z(counter) = Nodes % z(i)
       END DO
-      DEALLOCATE(Mesh % ParallelInfo % NeighbourList)
-      Mesh % ParallelInfo % NeighbourList => work_neighlist
-      work_neighlist => NULL()
-    END IF
 
       DEALLOCATE(Nodes % x, Nodes % y, Nodes % z)
       Nodes % x => work_x
