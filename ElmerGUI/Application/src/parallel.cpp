@@ -42,7 +42,7 @@
 #include <iostream>
 #include "parallel.h"
 
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
 #include <QtWidgets>
 #endif
 
@@ -65,6 +65,8 @@ Parallel::Parallel(QWidget *parent)
   defaultsButtonClicked();
 
   setWindowIcon(QIcon(":/icons/Mesh3D.png"));
+  
+  ui.okButton->setIcon(QIcon::fromTheme("dialog-accept"));
 }
 
 Parallel::~Parallel()

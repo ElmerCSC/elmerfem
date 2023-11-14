@@ -4,7 +4,7 @@
     * Requirements: 
     	* 1- An account to download data from nsidc (https://nsidc.org/nsidc/register) "
         * 2- curl and wget to download the data files"
-             (optionnally you will get the link to download teh files from your webbrowser)
+             (optionally you will get the link to download teh files from your webbrowser)
 	* 3- http://www.gdal.org/   to convert from .tif to netcdf and reproject
 	* 4- nco to manipulate netcdf files (http://nco.sourceforge.net/)"
 

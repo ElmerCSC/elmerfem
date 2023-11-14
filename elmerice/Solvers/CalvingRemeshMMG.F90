@@ -60,7 +60,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
   IMPLICIT NONE
 
-#include "mmg/mmg3d/libmmgtypesf.h"
+#include "mmg/common/libmmgtypesf.h"
 #ifndef MMGVERSION_H
 #define MMG_VERSION_LT(MAJOR,MINOR) 1
 #endif
@@ -727,7 +727,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
           gdofs = NewMeshR % ParallelInfo % GlobalDOFs(Element % NodeIndexes(1:NELNodes))
           DO j=1,GatheredMesh % NumberOfNodes
             IF(ANY(gdofs == GatheredMesh % ParallelInfo % GlobalDOFs(j)) .AND. &
-                 GatheredMesh % ParallelInfo % NodeInterface(j)) THEN
+                 GatheredMesh % ParallelInfo % GInterface(j)) THEN
               isolated = .FALSE.
               EXIT
             END IF
@@ -1084,7 +1084,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
    !Some checks on the new mesh
    !----------------------------
    DO i=1,GatheredMesh % NumberOfNodes
-     IF(GatheredMesh % ParallelInfo % NodeInterface(i)) THEN
+     IF(GatheredMesh % ParallelInfo % GInterface(i)) THEN
        IF(.NOT. ASSOCIATED(GatheredMesh % ParallelInfo % Neighbourlist(i) % Neighbours)) &
             CALL Fatal(SolverName, "Neighbourlist not associated!")
        IF(SIZE(GatheredMesh % ParallelInfo % Neighbourlist(i) % Neighbours) < 2) &

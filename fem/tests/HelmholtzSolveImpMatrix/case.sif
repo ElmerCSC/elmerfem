@@ -1,0 +1,141 @@
+! This includes steps towards computing impedance matrix using Helmholtz equation using
+! the constrained modes. This is not the real deal yet since the outlets should be free
+! and not closed. However, this is saved as intermediate step for the future
+!
+! P.R. 15.11.2018
+
+
+$ c = 340
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "cross" !channels"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+
+  Coordinate System = "Cartesian"
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+  vtu: Eigen Analysis = Logical True
+  Post File = "case.vtu"
+End
+
+Constants
+End
+
+Body 1
+  Name = "fluid"
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+
+Solver 1
+  Equation = "Helmholtz"
+  Variable = "Pressure"
+  Variable Dofs = 2
+
+  Frequency = 314.0
+
+  Procedure = "HelmholtzSolve" "HelmholtzSolver" 
+
+  Linear System Solver = Direct
+!Iterative
+  Linear System Direct Method = umfpack
+
+  Bubbles = False
+
+  Linear System Iterative Method = "BiCGStabl"
+  BiCgstabl Polynomial Degree = 2
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU2"
+  Linear System Residual Output = 20
+  Linear System Precondition Recompute = 1
+  Linear System Abort Not Converged = False
+
+  Steady State Convergence Tolerance = 1.0e-05
+
+  Nonlinear System Max Iterations = 1
+
+  Calculate Loads = True
+
+  Linear System Complex = True
+
+! The above makes all these keywords obsolete:
+  Constraint Modes Analysis = Logical True
+  Constraint Modes Lumped = Logical True
+  Constraint Modes Fluxes = Logical True
+  Constraint Modes Matrix Symmetric = Logical True
+  Constraint Modes Matrix Filename = File "ImpedanceMatrix.dat"
+End
+
+
+Material 1
+  Name = "Fluid"
+  Density = 1.224
+  Sound Speed = $ c
+End
+
+
+Boundary Condition 1
+  Name = "Walls"
+
+  Target Boundaries = 1
+End
+
+Boundary Condition 2
+  Name = "Pipe1"
+  Target Boundaries = 2
+
+!  Wave Flux 1 = 1.0
+!  Wave Flux 2 = 1.0
+!  Pressure 1 = 1.0
+!  Pressure 2 = 0.0
+
+  Plane Wave BC = True
+  Constraint Mode Pressure = Integer 1
+!  Wave Impedance 1 = Real $ c
+End
+
+Boundary Condition 3
+  Name = "Pipe2"
+  Target Boundaries = 3
+
+  Plane Wave BC = True
+  Constraint Mode Pressure = Integer 2
+!  Wave Impedance 1 = Real $ c
+End
+
+Boundary Condition 4
+  Name = "Pipe3"
+  Target Boundaries = 4
+
+  Plane Wave BC = True
+!  Wave Impedance 1 = Real $ c
+  Constraint Mode Pressure = Integer 3
+End
+
+Boundary Condition 5
+  Name = "Pipe4"
+  Target Boundaries = 5
+
+  Plane Wave BC = True
+!  Wave Impedance 1 = Real $ c
+  Constraint Mode Pressure = Integer 4
+End
+
+Solver 1 :: Reference Norm = 9.25640187E-01
+

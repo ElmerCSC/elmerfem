@@ -60,7 +60,7 @@ SUBROUTINE OpenFoam2ElmerFit( Model,Solver,dt,TransientSimulation )
   TYPE(Mesh_t), POINTER :: Mesh, OFMesh
   CHARACTER(LEN=MAX_NAME_LEN) :: FileName, DirName, BaseDir, OFfile
   INTEGER :: i, NoDir, IOStatus, PassiveCoord
-  LOGICAL :: Found, Visited = .FALSE., GotData
+  LOGICAL :: Found, Visited = .FALSE., GotData, CylSymm 
   REAL(KIND=dp) :: MinF, MaxF, MeanF, Coeff, Norm
   REAL(KIND=dp), POINTER :: RhsVector(:), WeightVector(:), OfField(:)
   TYPE(Matrix_t), POINTER :: Amat
@@ -97,10 +97,16 @@ SUBROUTINE OpenFoam2ElmerFit( Model,Solver,dt,TransientSimulation )
   ! dimensional reduction for the OpenFOAM mesh.
   !-------------------------------------------------------------------------
   PassiveCoord = ListGetInteger( Solver % Values,'Passive OpenFOAM Coordinate',Found )
-  IF( .NOT. Found .AND. Mesh % MeshDim < 3 ) THEN
-    CALL Warn('OpenFOAM2Elmer','Dimension of Elmer mesh is reduced, and OpenFOAM not?!')
-  END IF  
   
+  CylSymm = ( CurrentCoordinateSystem() == CylindricSymmetric &
+      .OR. CurrentCoordinateSystem() == AxisSymmetric )
+  
+  IF( Mesh % MeshDim < 3 ) THEN
+    IF( PassiveCoord == 0 .AND. .NOT. CylSymm ) THEN
+      CALL Warn('OpenFOAM2Elmer','Dimension of Elmer mesh is reduced, and OpenFOAM not?!')
+    END IF
+  END IF
+
   BaseDir = GetString( Params,'OpenFOAM Directory',Found)
   IF( Found ) THEN
     CALL Info('OpenFoam2ElmerFit','Using given > OpenFOAM Directory < : '//TRIM(BaseDir),Level=6)
@@ -114,7 +120,7 @@ SUBROUTINE OpenFoam2ElmerFit( Model,Solver,dt,TransientSimulation )
     CALL OpenFOAMBlocks()
   END IF
   NoDir = ParallelReduction(NoDir ) 
-  CALL Info('OpenFOAM2ElmerFit','Number of active OpenFOAM blocks: '//TRIM(I2S(NoDir)),Level=5)
+  CALL Info('OpenFOAM2ElmerFit','Number of active OpenFOAM blocks: '//I2S(NoDir),Level=5)
 
   
   CALL DefaultInitialize()  
@@ -123,9 +129,9 @@ SUBROUTINE OpenFoam2ElmerFit( Model,Solver,dt,TransientSimulation )
   DO i = 1, NoDir    
     IF( NoDir > 1 ) THEN
       CALL Info('OpenFOAM2ElmerFit','****************************',Level=8)
-      CALL Info('OpenFOAM2ElmerFit','Treating OpenFOAM block: '//TRIM(I2S(i)),Level=5)
+      CALL Info('OpenFOAM2ElmerFit','Treating OpenFOAM block: '//I2S(i),Level=5)
     END IF
-    DirName = ListGetString(Params,'OpenFOAM Mesh '//TRIM(I2S(i)),Found)
+    DirName = ListGetString(Params,'OpenFOAM Mesh '//I2S(i),Found)
     IF(.NOT. Found ) CALL Fatal('OpenFoam2ElmerFit','Could not find keyword: '//TRIM(DirName))
     
     FileName = TRIM(DirName)//'C'    
@@ -240,7 +246,7 @@ CONTAINS
       IF( FileExists ) THEN
         NoDir = NoDir + 1
         CALL Info('OpenFoam2ElmerFit','Using OpenFOAM centers in: '//TRIM(FileName),Level=10)
-        CALL ListAddString( Params, 'OpenFOAM Mesh '//TRIM(I2S(NoDir)), DirName, .FALSE.)
+        CALL ListAddString( Params, 'OpenFOAM Mesh '//I2S(NoDir), DirName, .FALSE.)
       ELSE
         CALL Info('OpenFoam2ElmerFit','No OpenFOAM center in: '//TRIM(DirName),Level=12)
       END IF
@@ -250,7 +256,7 @@ CONTAINS
     IF( NoDir == 0 ) THEN
       CALL Fatal('OpenFoam2ElmerFit','No OpenFOAM mesh blocks found!')
     ELSE
-      CALL Info('OpenFoam2ElmerFit','Number of OpenFOAM blocks: '//TRIM(I2S(NoDir)),Level=10)
+      CALL Info('OpenFoam2ElmerFit','Number of OpenFOAM blocks: '//I2S(NoDir),Level=10)
     END IF
     
   END SUBROUTINE OpenFOAMBlocks
@@ -290,7 +296,7 @@ CONTAINS
     DO Line = 1, 100
       READ( InFileUnit,'(A)',IOSTAT=IOStatus ) ReadStr
       IF( IOStatus /= 0 ) THEN
-        CALL Warn('OpenFoam2ElmerFit','End of file after '//TRIM(I2S(Line))//' lines')
+        CALL Warn('OpenFoam2ElmerFit','End of file after '//I2S(Line)//' lines')
         EXIT
       END IF
 
@@ -301,7 +307,7 @@ CONTAINS
     IF( j == 0 ) THEN
       CALL Warn('OpenFoam2ElmerFit','Could not find > internalField < in header!')
     ELSE
-      CALL Info('OpenFoam2ElmerFit','internalField found at line: '//TRIM(I2S(Line)),Level=7)    
+      CALL Info('OpenFoam2ElmerFit','internalField found at line: '//I2S(Line),Level=7)    
     END IF
 
     j = INDEX( ReadStr,'nonuniform',.TRUE.)
@@ -316,13 +322,13 @@ CONTAINS
       CALL Fatal('OpenFoam2ElmerFit','Could not read number of nodes!')
     END IF
     CALL Info('OpenFoam2ElmerFit','Number of OpenFOAM nodes: '&
-        //TRIM(I2S(NumberOfNodes)))
+        //I2S(NumberOfNodes))
 
     i = ListGetInteger(Params,'Number of cells',Found)
     IF( i > 0 .AND. i < NumberOfNodes ) THEN
       NumberOfNodes = i
       CALL Info('OpenFoam2ElmerFit','Limiting number of OpenFOAM nodes: '&
-          //TRIM(I2S(NumberOfNodes)))
+          //I2S(NumberOfNodes))
     END IF
 
     
@@ -343,23 +349,23 @@ CONTAINS
     DO i=1,n
       READ( InFileUnit,'(A)',IOSTAT=IOStatus ) ReadStr
       IF( IOStatus /= 0 ) THEN
-        CALL Fatal('OpenFoam2ElmerFit','Could not read coordinate line: '//TRIM(I2S(i)))
+        CALL Fatal('OpenFoam2ElmerFit','Could not read coordinate line: '//I2S(i))
       END IF
       
       j =  INDEX( ReadStr,'(',.TRUE.) 
       IF( j == 0 ) THEN
         CALL Fatal('OpenFoam2ElmerFit',&
-            'Expecting a parenthesis at the start of OpenFOAM line: '//TRIM(I2S(i)))
+            'Expecting a parenthesis at the start of OpenFOAM line: '//I2S(i))
       END IF
       k =  INDEX( ReadStr,')',.TRUE.) 
       IF( k == 0 ) THEN
         CALL Fatal('OpenFoam2ElmerFit',&
-            'Expecting a parenthesis at the end of OpenFOAM line: '//TRIM(I2S(i)))
+            'Expecting a parenthesis at the end of OpenFOAM line: '//I2S(i))
       END IF
       
       READ( ReadStr(j+1:k-1),*,IOSTAT=IOStatus ) x,y,z
       IF( IOStatus /= 0 ) THEN
-        CALL Fatal('OpenFoam2ElmerFit','Could not read coordinate values: '//TRIM(I2S(i)))
+        CALL Fatal('OpenFoam2ElmerFit','Could not read coordinate values: '//I2S(i))
       END IF
       Mesh % Nodes % x(i) = x
       Mesh % Nodes % y(i) = y
@@ -410,12 +416,12 @@ CONTAINS
     END IF
     
     nstep = ListGetInteger( Params,'OpenFOAM Timestep',Found ) 
-    IF(Found ) CALL Info('OpenFoam2ElmerFit','Replacing 0 with timestep '//TRIM(I2S(nstep)))
+    IF(Found ) CALL Info('OpenFoam2ElmerFit','Replacing 0 with timestep '//I2S(nstep))
 
     j = INDEX( FileName,'/0/')
     k = len_trim( FileName ) 
     
-    WRITE(TFileName,'(A)') FileName(1:j)//TRIM(I2S(nstep))//FileName(j+2:k-1)//TRIM(TSuffix)
+    WRITE(TFileName,'(A)') FileName(1:j)//I2S(nstep)//FileName(j+2:k-1)//TRIM(TSuffix)
     
     OPEN(InFileUnit,FILE = TFilename, STATUS='old', IOSTAT=IOstatus)
     IF( IOStatus /= 0 ) THEN
@@ -429,7 +435,7 @@ CONTAINS
     DO Line = 1, 100
       READ( InFileUnit,'(A)',IOSTAT=IOStatus ) ReadStr
       IF( IOStatus /= 0 ) THEN
-        CALL Warn('OpenFoam2ElmerFit','End of file after '//TRIM(I2S(Line))//' lines')
+        CALL Warn('OpenFoam2ElmerFit','End of file after '//I2S(Line)//' lines')
         GOTO 10
       END IF
 
@@ -447,7 +453,7 @@ CONTAINS
       CALL Warn('OpenFoam2ElmerFit','Could not find > internalField < in header!')
       GOTO 10
     ELSE
-      CALL Info('OpenFoam2ElmerFit','internalField found at line: '//TRIM(I2S(Line)),Level=7)    
+      CALL Info('OpenFoam2ElmerFit','internalField found at line: '//I2S(Line),Level=7)    
     END IF
 
     j = INDEX( ReadStr,'nonuniform',.TRUE.)
@@ -462,7 +468,7 @@ CONTAINS
       CALL Fatal('OpenFoam2ElmerFit','Could not read number of nodes!')
     END IF
     CALL Info('OpenFoam2ElmerFit','Number of OpenFOAM nodes: '&
-        //TRIM(I2S(n)),Level=10)
+        //I2S(n),Level=10)
     
     ! This is just empty left parenthesis
     READ( InFileUnit,'(A)',IOSTAT=IOStatus ) ReadStr
@@ -470,14 +476,14 @@ CONTAINS
     DO i=1,OFMesh % NumberOfNodes
       READ( InFileUnit,'(A)',IOSTAT=IOStatus ) ReadStr
       IF( IOStatus /= 0 ) THEN
-        CALL Fatal('OpenFoam2ElmerFit','Could not read coordinate line: '//TRIM(I2S(i)))
+        CALL Fatal('OpenFoam2ElmerFit','Could not read coordinate line: '//I2S(i))
       END IF
 
       READ( ReadStr,*,IOSTAT=IOStatus ) val
       OFField(i) = val
              
       IF( IOStatus /= 0 ) THEN
-        CALL Fatal('OpenFoam2ElmerFit','Could not read field values: '//TRIM(I2S(i)))
+        CALL Fatal('OpenFoam2ElmerFit','Could not read field values: '//I2S(i))
       END IF
     END DO
 
@@ -509,12 +515,20 @@ CONTAINS
 
     ElementIndex = 0 
     DO t = 1, OFMesh % NumberOfNodes
-      GlobalCoords(1) = OFMesh % Nodes % x(t)
-      GlobalCoords(2) = OFMesh % Nodes % y(t)
-      GlobalCoords(3) = OFMesh % Nodes % z(t)
-      
+      IF( CylSymm ) THEN
+        ! Project all data to to cylindrically symmetric 2D plane
+        GlobalCoords(1) = SQRT( OFMesh % Nodes % x(t)**2 + OFMesh % Nodes % y(t)**2 )
+        GlobalCoords(2) = OFMesh % Nodes % z(t)
+        GlobalCoords(3) = 0.0_dp
+      ELSE             
+        GlobalCoords(1) = OFMesh % Nodes % x(t)
+        GlobalCoords(2) = OFMesh % Nodes % y(t)
+        GlobalCoords(3) = OFMesh % Nodes % z(t)
+      END IF
+        
       val = OFField(t)
 
+      ! Find the element and local coordinates of the global data point
       CALL LocateParticleInMeshOctree( ElementIndex, GlobalCoords, LocalCoords )
       
       IF( ElementIndex == 0 ) CYCLE
@@ -529,7 +543,8 @@ CONTAINS
       w = LocalCoords(3)
       
       stat = ElementInfo( Element, ElementNodes, U, V, W, DetJ, Basis )
-      
+
+      ! Share the data to nodes using the basis functions for weighting
       DO i = 1,n
         j = Var % Perm( NodeIndexes(i) )
         

@@ -76,7 +76,7 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
 
   LOGICAL :: GotIt, GotIt2, GotIt3, stat, AllocationsDone = .FALSE., SubroutineVisited = .FALSE., &
       UseVelocity, Bubbles, ApplyLimiter, LinearModel, ManningModel, GotMinGap, &
-      OpenSide,GotExt,GotFlux, AnyBC, GotPseudoPressure, SurfAC
+      OpenSide,GotExt,GotFlux, GotVelo, AnyBC, GotPseudoPressure, SurfAC, Converged
   REAL(KIND=dp), POINTER :: Pressure(:)
   REAL(KIND=dp) :: Norm, ReferencePressure, HeatRatio, BulkModulus, &
       mfp0, Pres, Dens, ManningCoeff, GravityCoeff, MinGap, MinGradPres, &
@@ -84,7 +84,7 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:), TimeForce(:), &
       Viscosity(:), GapHeight(:), NormalVelocity(:), Velocity(:,:), &
       Admittance(:), Impedance(:), ElemPressure(:), PrevElemPressure(:),  &
-      ElemDensity(:),ElemArtif(:),ExtPres(:),FluxPres(:),CoeffPres(:), &
+      ElemDensity(:),ElemArtif(:),ExtPres(:),FluxPres(:),VeloPres(:),CoeffPres(:), &
       ElemPseudoPressure(:), PseudoPressure(:)
   TYPE(Variable_t), POINTER :: SensVar, SaveVar
 
@@ -93,7 +93,7 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
 
   SAVE ElementNodes, Viscosity, GapHeight, ElemArtif, ElemDensity, Velocity, NormalVelocity, &
       Admittance, FORCE, STIFF, MASS, TimeForce, ElemPressure, PrevElemPressure, &
-      AllocationsDone, ExtPres, FluxPres, CoeffPres, PseudoPressure, GotPseudoPressure, &
+      AllocationsDone, ExtPres, FluxPres, VeloPres, CoeffPres, PseudoPressure, GotPseudoPressure, &
       ElemPseudoPressure
 
 
@@ -135,6 +135,7 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
     
   AnyBC = ListGetLogicalAnyBC( Model,'Open Side') .OR. &
       ListCheckPresentAnyBC( Model,'Filmpressure Flux') .OR. &
+      ListCheckPresentAnyBC( Model,'Filmpressure Velocity') .OR. &
       ListCheckPresentAnyBC( Model,'Filmpressure Transfer Coefficient')
      
   MinGap = ListGetCReal( Params,'Min Gap Height',GotMinGap)
@@ -163,6 +164,7 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
         GapHeight(n),          &
         ExtPres(n), &
         FluxPres(n), &
+        VeloPres(n), &
         CoeffPres(n), &
         ElemArtif(n), &
         ElemDensity(n), &
@@ -218,6 +220,8 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
     WRITE(Message,'(A,T35,I5)') 'Reynolds iteration:',iter
     CALL Info(Caller,Message,Level=5)
 
+
+100 CONTINUE
     CALL DefaultInitialize()
 
 !    Do the bulk assembly:
@@ -235,6 +239,12 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()
 
+
+    ! Check stepsize for nonlinear iteration
+    !------------------------------------------------------------------------------
+    IF( DefaultLinesearch( Converged ) ) GOTO 100
+    IF( Converged ) EXIT
+    
 !    Solve the system and we are done:
 !    ---------------------------------
     Norm = DefaultSolve()
@@ -666,7 +676,7 @@ CONTAINS
         SLR = SLR + 0.5_dp * Density * SUM( dBasisdx(1:n,i) * Velocity(i,1:n) * GapHeight(1:n)) 
       END DO
       ! Implicit part: coefficient of the pressure gradient
-      SLL = -0.5_dp* DensityDer * Gap * Velo 
+      SLL = -0.5_dp* DensityDer * Gap * TangentVelo 
 
 !------------------------------------------------------------------------------
 !      The Reynolds equation
@@ -730,13 +740,14 @@ CONTAINS
       
       OpenSide = GetLogical(BC,'Open Side',gotIt) 
       FluxPres(1:n) = GetReal(BC,'Filmpressure Flux',GotFlux)
+      VeloPres(1:n) = GetReal(BC,'Filmpressure Velocity',GotVelo)
       CoeffPres(1:n) = GetReal(BC,'Filmpressure Transfer Coefficient',GotIt)
       ExtPres(1:n) = GetReal(BC,'External FilmPressure',GotExt)
-      IF(XOR(GotExt,GotIt)) THEN
+      IF(GotExt .NEQV. GotIt) THEN
         CALL Fatal(Caller,'Give neither or both keywords for Robin BC!')
       END IF
 
-      IF(.NOT. (OpenSide .OR. GotExt .OR. GotFlux) ) CYCLE
+      IF(.NOT. (OpenSide .OR. GotExt .OR. GotFlux .OR. GotVelo ) ) CYCLE
       
 !------------------------------------------------------------------------------
       n  = GetElementNOFNodes()
@@ -886,6 +897,9 @@ CONTAINS
       END IF
       IF( GotFlux ) THEN
         B = B - SUM( Basis(1:n) * FluxPres(1:n) ) 
+      END IF
+      IF( GotVelo ) THEN
+        B = B - Gap * SUM( Basis(1:n) * VeloPres(1:n) )
       END IF
       IF(OpenSide) THEN
         A = A - Damp * Gap * Density
@@ -1110,26 +1124,34 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
   CALL Info(Caller,'Primary variable name: '//TRIM( Solver % variable % Name) )
 
    
-  DO Mode = 0, 3  
+  DO Mode = 0, 4  
 
-    IF( Mode == 0 ) THEN
+    SELECT CASE( Mode )
+
+    CASE( 0 ) 
       IF( .NOT. ManningModel ) CYCLE
       VarResult => VariableGet( Solver % Mesh % Variables,TRIM(PressureName)//' Corrected')
-      IF(.NOT. ASSOCIATED(VarResult)) CYCLE
-    ELSE IF( Mode == 1 ) THEN
+      
+    CASE( 1 ) 
       VarResult => VariableGet( Solver % Mesh % Variables,TRIM(PressureName)//' Force')
-      IF(.NOT. ASSOCIATED(VarResult)) CYCLE
-    ELSE IF( Mode == 2 ) THEN
+
+    CASE( 2 ) 
       VarResult => VariableGet( Solver % Mesh % Variables,TRIM(PressureName)//' Flux')
-      IF(.NOT. ASSOCIATED(VarResult)) CYCLE
-    ELSE IF( Mode == 3 ) THEN
+
+    CASE( 3 ) 
+      VarResult => VariableGet( Solver % Mesh % Variables,TRIM(PressureName)//' Mean Velocity')
+
+    CASE( 4 ) 
       VarResult => VariableGet( Solver % Mesh % Variables,TRIM(PressureName)//' Heating')
-      IF(.NOT. ASSOCIATED(VarResult)) CYCLE
-    END IF
+
+    CASE DEFAULT
+      CALL Fatal(Caller,'Unknow Mode for operation:'//I2S(Mode))      
+    END SELECT
+    
+    IF(.NOT. ASSOCIATED(VarResult)) CYCLE
     Components = VarResult % Dofs
 
-    DO Component = 1, Components
-
+    DO Component = 1, Components      
       CALL DefaultInitialize()
 
       !    Do the bulk assembly:
@@ -1158,6 +1180,7 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
         !------------------------------------------------------------------------------
         !       Get velocities
         !------------------------------------------------------------------------------                
+        Velocity = 0.0_dp
         UseVelocity = .FALSE.
         GotIt = .FALSE.; GotIt2 = .FALSE.; GotIt3 = .FALSE.
         IF( ListCheckPrefix( Equation,'Surface Velocity') ) THEN
@@ -1234,8 +1257,7 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
               - GravityCoeff * ElemDensity(1:n) * ( BotHeight(1:n) + GapHeight(1:n) )  
           CYCLE
         END IF
-        
-      
+              
         STIFF = 0.0d0
         FORCE = 0.0d0
         
@@ -1244,10 +1266,8 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
       END DO
 
       IF( Mode == 0 ) CYCLE
-      !------------------------------------------------------------------------------
-      
+      !------------------------------------------------------------------------------      
       CALL DefaultFinishAssembly()
-
 
       ! There could be some beriodic BCs hence the BCs
       !-----------------------------------------------
@@ -1257,8 +1277,9 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
       ! Solve the system and we are done:
       !------------------------------------
       Norm = DefaultSolve()
-      
-      IF( Mode /= 3 ) THEN
+
+      ! All but heating are computeed on component at a time 
+      IF( Mode /= 4 ) THEN
         VarResult % Values(Component::Components) = Solver % Variable % Values
       END IF
     END DO
@@ -1272,13 +1293,13 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
         WRITE(Message,'(A,I1,A,T35,ES15.4)') 'Pressure force ',i,' (N):',Pforce(i)
         CALL Info(Caller,Message,Level=5)
         CALL ListAddConstReal( Model % Simulation,'res: Pressure force '&
-            //TRIM(I2S(i)),Pforce(i))
+            //I2S(i),Pforce(i))
       END DO
       DO i=1,3
         WRITE(Message,'(A,I1,A,T35,ES15.4)') 'Sliding force ',i,' (N):',Vforce(i)
         CALL Info(Caller,Message,Level=5)
         CALL ListAddConstReal( Model % Simulation,'res: Sliding force '&
-            //TRIM(I2S(i)),Vforce(i))
+            //I2S(i),Vforce(i))
       END DO
       TotForce = SQRT( SUM((Pforce + Vforce)**2) )
       WRITE(Message,'(A,T35,ES15.4)') 'Reynolds force (N): ',TotForce
@@ -1290,7 +1311,7 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
           WRITE(Message,'(A,I1,A,T35,ES15.4)') 'Reynolds moment ',i,' (Nm):',Moment(i)
           CALL Info(Caller,Message,Level=5)
           CALL ListAddConstReal( Model % Simulation,'res: Reynolds moment '&
-              //TRIM(I2S(i)),Moment(i))
+              //I2S(i),Moment(i))
         END DO
       END IF
 
@@ -1299,6 +1320,9 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
       CONTINUE
 
     ELSE IF( Mode == 3 ) THEN
+      CONTINUE
+
+    ELSE IF( Mode == 4 ) THEN
       HeatTotal = HeatPres + HeatSlide
       WRITE(Message,'(A,T35,ES15.4)') 'Pressure heating (W): ',HeatPres
       CALL Info(Caller,Message,Level=5)
@@ -1434,8 +1458,13 @@ CONTAINS
 !------------------------------------------------------------------------------
 
       TotPres = TotPres - AmbientPres
-      
-      IF( Mode == 1 ) THEN
+
+      Sslide = 0.0_dp
+      Spres = 0.0_dp
+
+      SELECT CASE( Mode )
+
+      CASE( 1 )
         ! Forces resulting from pressure and shear
         Spres = -TotPres * Normal( Component ) 
         IF( OpposingWall ) Spres = -Spres
@@ -1460,16 +1489,26 @@ CONTAINS
             Moment(2) = Moment(2) - Radius(1) * s * source
           END IF
         END IF
-        
-      ELSE IF( Mode == 2 ) THEN
-        ! Flux resulting from pressure gradient and sliding 
 
+      CASE( 2 )
+        ! Flux resulting from pressure gradient and sliding 
+        
         Spres = - (Gap**3 / (12 * Visc) ) * GradPres(Component)
         Sslide = Gap * TangentVelo(Component) / 2        
         ! add contribution of leaking
         
         source = Spres + Sslide 
-      ELSE      
+        
+      CASE( 3 ) 
+        ! Flux resulting from pressure gradient and sliding 
+
+        Spres = - (Gap**2 / (12 * Visc) ) * GradPres(Component)
+        Sslide = TangentVelo(Component) / 2        
+        ! add contribution of leaking
+        
+        source = Spres + Sslide 
+
+      CASE( 4 ) 
         ! heating effect of pressure gradient and sliding
         Spres = (Gap**3 / (12 * Visc) ) * SUM(GradPres *GradPres )
         Sslide = (Visc / Gap) * SUM(TangentVelo * TangentVelo )
@@ -1478,7 +1517,11 @@ CONTAINS
         
         HeatPres = HeatPres + s * Spres
         HeatSlide = HeatSlide + s * Sslide
-      END IF
+        
+      CASE DEFAULT
+        CALL Fatal(Caller,'Unknow mode: '//I2S(Mode))
+
+      END SELECT
       
       DO p=1,NBasis
         DO q=1,NBasis
@@ -1553,9 +1596,9 @@ CONTAINS
         dofs = 3
       END IF
       CALL Info(Caller,'Creating "'//TRIM(PressureName)//'" Force with '&
-          //TRIM(I2S(dofs))//' components',Level=12)
+          //I2S(dofs)//' components',Level=12)
       CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params), &
-          '-dofs '//TRIM(I2S(dofs))//' '//TRIM(PressureName)//' Force' )
+          '-dofs '//I2S(dofs)//' '//TRIM(PressureName)//' Force' )
     END IF
 
     ! The dofs of flux is fixed by default 3 since there can be leakage 
@@ -1570,9 +1613,23 @@ CONTAINS
         dofs = 3
       END IF
       CALL Info(Caller,'Creating "'//TRIM(PressureName)//' Flux" with '&
-          //TRIM(I2S(dofs))//' components',Level=12)
+          //I2S(dofs)//' components',Level=12)
       CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params), &
-          '-dofs '//TRIM(I2S(dofs))//' '//TRIM(PressureName)//' Flux' )
+          '-dofs '//I2S(dofs)//' '//TRIM(PressureName)//' Flux' )
+    END IF
+
+    Calculate = ListGetLogical(Params,'Calculate Mean Velocity',Found)
+    IF( Calculate ) THEN
+      GivenDim = ListGetInteger(Params,'Calculate Mean Velocity Dim',Found)
+      IF( Dim == 1 .OR. GivenDim == 2 ) THEN
+        dofs = 2
+      ELSE
+        dofs = 3
+      END IF
+      CALL Info(Caller,'Creating "'//TRIM(PressureName)//' mean velocity" with '&
+          //I2S(dofs)//' components',Level=12)
+      CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params), &
+          '-dofs '//I2S(dofs)//' '//TRIM(PressureName)//' Mean Velocity' )
     END IF
 
     CALL ListAddInteger( Params, 'Time derivative order', 0 )

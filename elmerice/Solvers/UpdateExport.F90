@@ -28,7 +28,7 @@
 ! *
 ! *  Original Date: 
 ! *****************************************************************************/
-! *  Solver used to update exported variables with definition gievn in body forces
+! *  Solver used to update exported variables with definition given in body forces
 ! ******************************************************************************
       SUBROUTINE UpdateExport_init( Model,Solver,dt,TransientSimulation )
       USE DefUtils
@@ -42,7 +42,11 @@
       CHARACTER(LEN=MAX_NAME_LEN) :: Name
       TYPE(ValueList_t), POINTER :: SolverParams
       LOGICAL :: GotIt
-  
+
+      CALL INFO("UpdateExport_init","-----------------------------",Level=3)
+      CALL INFO("UpdateExport_init"," Initialization ",Level=3)
+      CALL INFO("UpdateExport_init","-----------------------------",Level=3)
+      
       SolverParams => Solver % Values 
 
       Name = ListGetString( SolverParams, 'Equation',GotIt)
@@ -66,7 +70,11 @@
       TYPE(Solver_t):: Solver
       REAL(KIND=dp) :: dt
       LOGICAL :: TransientSimulation
-
+      
+      CALL INFO("UpdateExport","-----------------------------",Level=3)
+      CALL INFO("UpdateExport"," Update ",Level=3)
+      CALL INFO("UpdateExport","-----------------------------",Level=3)
+      
       call UpdateExportedVariables(Solver)
 
       END SUBROUTINE UpdateExport

@@ -64,6 +64,10 @@ ColorBar::ColorBar(QWidget *parent)
 
   setWindowTitle("Colorbar");
   setWindowIcon(QIcon(":/icons/Mesh3D.png"));
+
+  ui.cancelButton->setIcon(QIcon::fromTheme("dialog-error-round"));
+  ui.applyButton->setIcon(QIcon::fromTheme("view-refresh"));  
+  ui.okButton->setIcon(QIcon::fromTheme("dialog-accept"));
 }
 
 ColorBar::~ColorBar()
@@ -191,7 +195,7 @@ void ColorBar::draw(VtkPost* vtkPost)
   colorBarActor->GetTitleTextProperty()->SetColor(0, 0, 1);
   
   if(annotate) {
-#if WITH_QT5  
+#if WITH_QT5 || WITH_QT6  
     colorBarActor->SetTitle(fieldName.toLatin1().data());
 #else
     colorBarActor->SetTitle(fieldName.toAscii().data());

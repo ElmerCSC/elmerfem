@@ -45,7 +45,7 @@
 SUBROUTINE SaveLine_init( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
-
+  
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
@@ -55,21 +55,45 @@ SUBROUTINE SaveLine_init( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  INTEGER :: NormInd
+  INTEGER :: NormInd,i
   LOGICAL :: GotIt
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName
+  INTEGER, POINTER :: ASolvers(:)
+  LOGICAL :: ActiveSomewhere
 
-  ! If we want to show a pseudonorm add a variable for which the norm
-  ! is associated with.
-  NormInd = ListGetInteger( Solver % Values,'Show Norm Index',GotIt)
-  IF( NormInd > 0 ) THEN
-    SolverName = ListGetString( Solver % Values, 'Equation',GotIt)
+
+  ! Create Perm vector if the solver is not active everywhere.
+  ! This will affect how Polylines, Circle lines and Isocurves are
+  ! plotted. 
+  ActiveSomewhere = .FALSE.
+  DO i=1,CurrentModel % NumberOfEquations
+    ASolvers => ListGetIntegerArray( Model % Equations(i) % Values, &
+        'Active Solvers', GotIt )
+    IF( GotIt ) THEN
+      IF( ANY(ASolvers == Solver % SolverId) ) THEN
+        ActiveSomewhere = .TRUE.
+        EXIT
+      END IF
+    END IF
+  END DO
+
+  IF(ActiveSomewhere) THEN
     IF( .NOT. ListCheckPresent( Solver % Values,'Variable') ) THEN
-      CALL ListAddString( Solver % Values,'Variable',&
-          '-nooutput -global '//TRIM(SolverName)//'_var')
+      CALL Info('SaveLine_init','If you want to mask with Equation block give some "Variable"',Level=5)
     END IF
   END IF
-
+  
+  ! If we want to show a pseudonorm add a variable for which the norm
+  ! is associated with.
+  SolverName = ListGetString( Solver % Values, 'Equation',GotIt)
+  NormInd = ListGetInteger( Solver % Values,'Show Norm Index',GotIt)
+  IF( NormInd > 0 ) THEN
+    CALL ListAddNewString( Solver % Values,'Variable',&
+        '-nooutput -global '//TRIM(SolverName)//'_var')
+  END IF
+  
+  CALL ListAddNewLogical( Solver % Values,'No Matrix',.TRUE.)
+  
 END SUBROUTINE SaveLine_init
 
 
@@ -87,9 +111,10 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   USE ElementUtils
   USE SolverUtils
   USE MeshUtils
+  USE SaveUtils
   USE BandwidthOptimize
   USE DefUtils
-
+  
 
   IMPLICIT NONE
 !------------------------------------------------------------------------------
@@ -109,13 +134,14 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), ALLOCATABLE :: PointFluxes(:,:), PointWeight(:)
   LOGICAL :: Stat, GotIt, FileAppend, CalculateFlux, &
       SaveAxis(3), Inside, MovingMesh, IntersectEdge, OptimizeOrder, Found, GotVar, &
-      SkipBoundaryInfo, GotDivisions, EdgeBasis, DG
+      SkipBoundaryInfo, GotDivisions, EdgeBasis, DGVar, ElemVar, IpVar, MaskWithPerm
   INTEGER :: i,ii,j,k,ivar,l,n,m,t,DIM,mat_id, SaveThis, &
-      Side, SaveNodes=0, SaveNodes2, SaveNodes3, SaveNodes4, node, NoResults, &
+      Side, SaveNodes(4), node, NoResults, NoLabels, &
       LocalNodes, NoVar, No, axis, maxboundary, NoDims, MeshDim, NoLines, NoAxis, Line, &
       NoFaces, NoEigenValues, IntersectCoordinate, ElemCorners, ElemDim, istat, &
-      i1, i2, NoTests, NormInd, Comps, SaveSolverMeshIndex, LineInd, FoundNan 
-  INTEGER, POINTER :: NodeIndexes(:), SavePerm(:), InvPerm(:), BoundaryIndex(:), IsosurfPerm(:), NoDivisions(:)
+      i1, i2, NoTests, NormInd, Comps, SaveSolverMeshIndex, LineInd, FoundNan
+  INTEGER, POINTER :: NodeIndexes(:), SavePerm(:) => NULL(), InvPerm(:), &
+      BoundaryIndex(:), IsosurfPerm(:), NoDivisions(:)
   TYPE(Solver_t), POINTER :: ParSolver
   TYPE(Variable_t), POINTER :: Var, Var2, Var3, IsosurfVar
   TYPE(Mesh_t), POINTER :: Mesh
@@ -123,11 +149,12 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   TYPE(Nodes_t) :: ElementNodes, LineNodes
   TYPE(Element_t), POINTER   :: CurrentElement
   CHARACTER(LEN=MAX_NAME_LEN) :: SideFile, SideNamesFile, VarName, Name, CondName, &
-       TempName, MaskName, PrevMaskName, SideParFile, DateStr, OutputDirectory
+       TempName, MaskName, PrevMaskName, SideParFile, DateStr
   CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: ValueNames(:)
+  CHARACTER(:), ALLOCATABLE :: OutputDirectory
 
   LOGICAL, ALLOCATABLE :: LineTag(:)
-  LOGICAL :: cand, Parallel, InitializePerm, FileIsOpen, AVBasis
+  LOGICAL :: cand, Parallel, InitializePerm, FileIsOpen, AVBasis, DoEigen
   
   REAL(KIND=dp) :: R0(3),R1(3),dR(3),S0(3),S1(3),dS(3),LocalCoord(3),&
       MinCoord(3),MaxCoord(3),GlobalCoord(3),LineN(3),LineT1(3), &
@@ -135,6 +162,24 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   INTEGER :: imin,imax,nsize,LineUnit
   CHARACTER(*), PARAMETER :: Caller = 'SaveLine'
 
+  INTEGER :: NoData
+  REAL(KIND=dp), POINTER :: PosData(:) 
+  INTEGER, POINTER :: LabelData(:,:)
+  REAL(KIND=dp), POINTER :: ResultData(:,:)
+  
+  INTERFACE
+    SUBROUTINE Ip2DgFieldInElement( Mesh, Element, nip, fip, ndg, fdg )
+      USE Types
+      USE Integration
+      USE ElementDescription
+      IMPLICIT NONE
+      
+      TYPE(Mesh_t), POINTER :: Mesh
+      TYPE(Element_t), POINTER :: Element
+      INTEGER :: nip, ndg
+      REAL(KIND=dp) :: fip(:), fdg(:)
+    END SUBROUTINE Ip2DgFieldInElement
+  END INTERFACE
   
   SAVE SavePerm, PrevMaskName, SaveNodes
 
@@ -150,10 +195,18 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
 
   FileIsOpen = .FALSE.
   FoundNan = 0
+  NoData = 0
+  SaveNodes = 0
+  MaskWithPerm = .FALSE.
+  IF( ASSOCIATED( Solver % Variable ) ) THEN
+    MaskWithPerm = ASSOCIATED( Solver % Variable % Perm )
+  END IF
+  
+  NULLIFY( PosData, LabelData, ResultData ) 
   
   i = GetInteger( Params,'Save Solver Mesh Index',Found ) 
   IF( Found ) THEN
-    CALL Info(Caller,'Using mesh of solver '//TRIM(I2S(i)))
+    CALL Info(Caller,'Using mesh of solver '//I2S(i))
     Mesh => Model % Solvers(i) % Mesh
     Model % Mesh => Mesh
   ELSE
@@ -183,15 +236,18 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   MovingMesh = ListGetLogical(Params,'Moving Mesh',GotIt )
 
   IF( DIM == 3 ) THEN
-    IntersectEdge = ListGetLogical(Params,'Intersect Edge',GotIt )
+    IntersectEdge = ListGetLogical(Params,'Intersect Edge',GotIt )   
+    IF(.NOT. IntersectEdge ) THEN
+      IntersectCoordinate = ListGetInteger(Params,'Intersect Coordinate',IntersectEdge)
+    ELSE
+      IntersectCoordinate = ListGetInteger(Params,'Intersect Coordinate')
+    END IF
   ELSE
+    IntersectCoordinate = 0
     IntersectEdge = .FALSE.
   END IF
   IF(IntersectEdge) THEN
-    IntersectCoordinate = ListGetInteger(Params,'Intersect Coordinate')
     IntersectEpsilon = ListGetConstReal(Params,'Intersect Epsilon')
-  ELSE 
-    IntersectCoordinate = 0
   END IF
   DetEpsilon = ListGetConstReal(Params,'Det Epsilon',GotIt)
   IF(.NOT. GotIt) DetEpsilon = 1.0e-6  
@@ -209,7 +265,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   END IF
   
   LineInd = ListGetInteger( Params,'Line Marker',GotIt)
-  SaveNodes2 = 0;SaveNodes3 = 0; SaveNodes4 = 0
+  
   
 !----------------------------------------------
 ! Specify the number of entries for each node
@@ -219,50 +275,70 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   END IF
 
   AVBasis = .FALSE.
-  DG = .FALSE.
   NoVar = 0
   NoResults = 0
+  NoLabels = 0
   DO ivar = 1,99
     Var => VariableGetN( ivar, Comps )
     IF ( .NOT. ASSOCIATED( Var ) )  EXIT
     NoVar = ivar
 
-    IF( Var % TYPE == variable_on_nodes_on_elements ) THEN
-      DG = .TRUE.
-    END IF
-
+    DGvar = .FALSE.
+    IpVar = .FALSE. 
+    ElemVar = .FALSE.
+    EdgeBasis = .FALSE.
+    
     IF (ASSOCIATED (Var % EigenVectors)) THEN
       NoEigenValues = SIZE(Var % EigenValues) 
       NoResults = NoResults + Var % Dofs * NoEigenValues
     ELSE
-      EdgeBasis = .FALSE.
-      IF( ASSOCIATED( Var % Solver ) ) THEN
+      IF( Var % TYPE == variable_on_nodes_on_elements ) THEN
+        DGVar = .TRUE.
+      ELSE IF( Var % TYPE == variable_on_gauss_points ) THEN
+        IpVar = .TRUE.
+      ELSE IF( Var % TYPE == Variable_on_elements ) THEN
+        ElemVar = .TRUE.
+      ELSE IF( ASSOCIATED( Var % Solver ) .AND. ASSOCIATED( Var % Perm ) ) THEN
         EdgeBasis = GetLogical( Var % Solver % Values,'Hcurl Basis',Found )
-        IF( EdgeBasis .AND. ASSOCIATED( Var % Perm ) ) THEN
+        IF( EdgeBasis ) THEN          
+          EdgeBasis = ( SIZE( Var % Perm ) > Mesh % NumberOfNodes )
+        END IF
+        IF( EdgeBasis ) THEN
+          EdgeBasis = ( ANY( Var % Perm( Mesh % NumberOfNodes+1:) > 0 ) )
+        END IF
+        IF( EdgeBasis ) THEN
           IF( ANY( Var % Perm(1: Mesh % NumberOfNodes) > 0 ) ) AVBasis = .TRUE. 
         END IF
+        IF( EdgeBasis ) Var % TYPE = Variable_on_edges
       END IF
+
       IF( EdgeBasis ) THEN
-        CALL Info(Caller,'Variable '//TRIM(I2S(ivar))//' is treated as living in Hcurl',Level=7)
-        NoResults = NoResults + 3
-        IF( AVBasis ) NoResults = NoResults + 1
+        IF( AVBasis ) THEN
+          CALL Info(Caller,'Variable '//I2S(ivar)//' is treated as living in nodal+Hcurl: '//TRIM(Var % Name),Level=10)
+          NoResults = NoResults + 4
+        ELSE          
+          NoResults = NoResults + 3
+          CALL Info(Caller,'Variable '//I2S(ivar)//' is treated as living in Hcurl: '//TRIM(Var % Name),Level=10)
+        END IF
       ELSE
+        IF( DgVar ) THEN
+          CALL Info(Caller,'Variable '//I2S(ivar)//' is treated as living on DGBasis: '//TRIM(Var % Name),Level=10)
+        END IF
+        IF( IpVar ) THEN
+          CALL Info(Caller,'Variable '//I2S(ivar)//' is treated as living in IP points: '//TRIM(Var % Name),Level=10)
+        END IF
+        IF( ElemVar ) THEN
+          CALL Info(Caller,'Variable '//I2S(ivar)//' is treated as living on elements: '//TRIM(Var % Name),Level=10)
+        END IF
         NoResults = NoResults + MAX( Var % Dofs, Comps ) 
       END IF
     END IF
   END DO
   
-  IF( DG ) THEN
-    CALL Info(Caller,'Saving results assuming Discontinuous Galerkin variables',Level=7)
-  END IF
-  
   IF ( CalculateFlux ) NoResults = NoResults + 3
-  CALL Info(Caller,'Maximum number of fields for each node: '//TRIM(I2S(NoResults)),Level=18)
+  CALL Info(Caller,'Maximum number of fields for each node: '//I2S(NoResults),Level=18)
 
-  IF( NoVar == 0 .OR. NoResults == 0 ) THEN
-    CALL Warn(Caller,'No variables to save!')
-    RETURN
-  END IF
+  IF( NoVar == 0 .OR. NoResults == 0 ) GOTO 1
 
   ! Add coordnate values
   MaxBoundary = 0
@@ -273,7 +349,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
  
   SkipBoundaryInfo = ListGetLogical(Params,'Skip Boundary Info',GotIt)
 
-  ! Open just the directory for saving so tha it is create for sure!
+  ! Open just the directory for saving so that it is created for certain!
   !------------------------------------------------------------------------------
   CALL SolverOutputDirectory( Solver, SideFile, OutputDirectory )
   IF( Solver % TimesVisited == 0 ) THEN
@@ -284,37 +360,40 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   CALL SaveExistingLines()
 
+  ! Save data in the intersections isocurves and element edges.
+  !---------------------------------------------------------------------------
+  CALL SaveIsocurves()
+
   ! Save data in the intersections of line segments defined by two coordinates
   ! and element faces, or save any of the principal axis.
   !---------------------------------------------------------------------------
   CALL SavePolylines()
 
   CALL SaveCircleLines()
- 
-  ! Save data in the intersections isocurves and element edges.
-  !---------------------------------------------------------------------------
-  CALL SaveIsocurves()
-
+  
   ! Finally close the file for saving
   !----------------------------------------
-  CALL CloseLineFile()
-  
+1 CALL CloseLineFile()
+
   CALL SaveVariableNames()
 
   DEALLOCATE( ElementNodes % x, ElementNodes % y, ElementNodes % z, &
-      LineNodes % x, LineNodes % y, LineNodes % z, Basis, Values )
+      LineNodes % x, LineNodes % y, LineNodes % z, STAT=istat)
+  IF(istat /= 0) CALL Fatal(Caller,'Errors in deallocating some basis stuff!')
 
-
-  IF( NormInd > 0 ) THEN
+  IF( ALLOCATED(Values) ) DEALLOCATE(Values)
+  IF( ALLOcATED(Basis) ) DEALLOCATE(Basis)
+  
+  IF( NormInd > 0 ) THEN    
     Norm = ParallelReduction(Norm) 
     Solver % Variable % Values = Norm
     Solver % Variable % Norm = Norm
   END IF
-
+  
   IF(FoundNan > 0 ) THEN
-    CALL Warn(Caller,'Replaced '//TRIM(I2S(FoundNan))//' NaN entries with -1')
+    CALL Warn(Caller,'Replaced '//I2S(FoundNan)//' NaN entries with -1')
   END IF
-
+  
   CALL Info(Caller,'All done')
 
 CONTAINS
@@ -336,7 +415,7 @@ CONTAINS
     NULLIFY(Var)
     
     IF( i < 1 ) THEN
-      VarName = 'Coordinate '//TRIM(I2S(i+3))
+      VarName = 'Coordinate '//I2S(i+3)
       Found = .TRUE.
     ELSE
       WRITE (Name,'(A,I0)') 'Variable ',i
@@ -350,7 +429,7 @@ CONTAINS
     END IF
       
     IF( PRESENT( Component ) ) THEN
-      VarName = TRIM(VarName)//' '//TRIM(I2S(Component))
+      VarName = TRIM(VarName)//' '//I2S(Component)
     END IF
       
     Var => VariableGet( Mesh % Variables, VarName )
@@ -358,7 +437,7 @@ CONTAINS
       Var => VariableGet( Mesh % Variables, TRIM(VarName)//' 1' )
       IF( ASSOCIATED( Var ) ) THEN
         DO j=2,99
-          Var2 => VariableGet( Mesh % Variables, TRIM(VarName)//' '//TRIM(I2S(j)) )
+          Var2 => VariableGet( Mesh % Variables, TRIM(VarName)//' '//I2S(j) )
           IF(ASSOCIATED( Var2 ) ) THEN
             k = j
           ELSE
@@ -372,7 +451,7 @@ CONTAINS
 
     IF( PRESENT( NoComponents ) ) NoComponents = k
 
-    CALL Info('VariableGetN','Variable: '//TRIM(VarName)//': '//TRIM(I2S(k)),Level=31)
+    CALL Info('VariableGetN','Variable: '//TRIM(VarName)//': '//I2S(k),Level=31)
  
   END FUNCTION VariableGetN
 
@@ -383,14 +462,16 @@ CONTAINS
 !> are returned. 
 !---------------------------------------------------------------------------
   SUBROUTINE GlobalToLocalCoords(Element,Plane,n,Line,Eps, &
-      Inside,Weights,maxind)
+      Inside,Weights,maxind,linepos,LocalCoords)
 
     TYPE(Nodes_t) :: Plane, Line
     TYPE(Element_t), POINTER   :: Element
     INTEGER :: n, maxind
     REAL (KIND=dp) :: Eps,Weights(:)
     LOGICAL :: Inside
-
+    REAL(KIND=dp) :: linepos
+    REAL(KIND=dp) :: LocalCoords(3)
+    
     REAL (KIND=dp) :: A(3,3),A0(3,3),B(3),C(3),Eps2,detA,absA,ds
     INTEGER :: split, i, corners, visited=0
     REAL(KIND=dp) :: Basis(2*n),dBasisdx(2*n,3)
@@ -401,7 +482,8 @@ CONTAINS
 
     Inside = .FALSE.
     corners = MIN(n,4)
-
+    LocalCoords = 0.0_dp
+    
     Eps2 = SQRT(TINY(Eps2))    
 
     ! In 2D the intersection is between two lines
@@ -465,6 +547,9 @@ CONTAINS
         
         CALL InvertMatrix( A,3 )
         C(1:3) = MATMUL( A(1:3,1:3),B(1:3) )
+
+        ! position on the line
+        linepos = C(1)
         
         IF( ANY(C(1:3) < 0.0) .OR. ANY(C(1:3) > 1.0d0) ) CYCLE
         IF(C(2)+C(3) > 1.0d0) CYCLE
@@ -500,6 +585,10 @@ CONTAINS
       IF(Weights(MaxInd) < Weights(i)) MaxInd = i
     END DO
 
+    LocalCoords(1) = u
+    LocalCoords(2) = v
+    LocalCoords(3) = w
+    
   END SUBROUTINE GlobalToLocalCoords
   
 
@@ -508,13 +597,15 @@ CONTAINS
 !> As the previous but performs mapping to plane
 !---------------------------------------------------------------------------
   SUBROUTINE GlobalToLocalCoordsReduced(Element,Plane,n,Line,Eps, &
-      Inside,Weights,maxind)
+      Inside,Weights,maxind,linepos,LocalCoords)
 
     TYPE(Nodes_t) :: Plane, Line
     TYPE(Element_t), POINTER   :: Element
     INTEGER :: n, maxind
     REAL (KIND=dp) :: Eps,Weights(:)
     LOGICAL :: Inside
+    REAL(KIND=dp) :: linepos
+    REAL(KIND=dp) :: LocalCoords(3)
 
     REAL (KIND=dp) :: A(3,3),A0(3,3),B(3),C(3),Eps2,detA,absA,ds
     INTEGER :: split, i, corners, visited=0
@@ -525,7 +616,8 @@ CONTAINS
     visited = visited + 1
 
     corners = MIN(n,4)
-
+    LocalCoords = 0.0_dp
+    
     Eps2 = SQRT(TINY(Eps2))    
 
     IF( DIM /= 3 ) CALL Fatal(Caller,'GlobalToLocalReduced only for 3 dimensions!')
@@ -547,7 +639,7 @@ CONTAINS
       A(2,2) = Plane % y(1) - Plane % y(2)
     ELSE
       CALL Fatal('GlobalToLocalCoords','Impossible value for parameter IntersectCoordinate: '&
-          //TRIM(I2S(IntersectCoordinate)))
+          //I2S(IntersectCoordinate))
     END IF
     
     A0 = A
@@ -562,6 +654,7 @@ CONTAINS
     
     CALL InvertMatrix( A,2 )
     C(1:2) = MATMUL(A(1:2,1:2),B(1:2))
+    linepos = C(1)
     
     IF(ANY(C(1:2) < 0.0) .OR. ANY(C(1:2) > 1.0d0)) RETURN
     
@@ -590,25 +683,34 @@ CONTAINS
       IF(Weights(MaxInd) < Weights(i)) MaxInd = i
     END DO
 
+    LocalCoords(1) = u
+    LocalCoords(2) = v
+    LocalCoords(3) = w
+    
   END SUBROUTINE GlobalToLocalCoordsReduced
   
 
-  SUBROUTINE OpenLineFile() 
-
+  SUBROUTINE OpenLineFile(ParallelReduce) 
+    LOGICAL, OPTIONAL :: ParallelReduce    
+    LOGICAL :: Parallel
+    INTEGER :: iostat
+    
     IF(FileIsOpen) RETURN
     FileIsOpen = .TRUE.    
     
     SideFile = TRIM(OutputDirectory)// '/' //TRIM(SideFile)
+    
+    Parallel = ( ParEnv % PEs > 1 )
+    IF( Parallel ) THEN
+      IF( PRESENT( ParallelReduce ) ) Parallel = .NOT. ParallelReduce
+    END IF
 
-    IF( ParEnv % PEs > 1 ) THEN
-      SideParFile = TRIM(SideFile)//'.'//TRIM(I2S(ParEnv % MyPe))
+    IF( Parallel ) THEN
+      SideParFile = TRIM(SideFile)//'.'//I2S(ParEnv % MyPe)
     ELSE
       SideParFile = TRIM(SideFile)
     END IF
-
-    !SideParFile = AddFilenameParSuffix(SideFile,'dat',Parallel,ParEnv % MyPe,&
-    !    PeMax = ParEnv % PEs, PeSeparator = '_' ) 
-
+    
     IF(ListGetLogical(Params,'Filename Numbering',GotIt)) THEN
       IF( Parallel ) THEN
         CALL Warn(Caller,'Cannot number filenames in parallel with another number!')
@@ -622,34 +724,252 @@ CONTAINS
     FileAppend = ListGetLogical(Params,'File Append',GotIt )
 
     IF( Solver % TimesVisited > 0 .OR. FileAppend) THEN 
-      OPEN (NEWUNIT=LineUnit, FILE=SideParFile,POSITION='APPEND')
-    ELSE 
-      OPEN (NEWUNIT=LineUnit,FILE=SideParFile)
+      OPEN (NEWUNIT=LineUnit, FILE=SideParFile,POSITION='APPEND',iostat=iostat)
+    ELSE
+      OPEN (NEWUNIT=LineUnit,FILE=SideParFile,iostat=iostat)      
     END IF
-
+    IF( iostat /= 0 ) CALL Warn(Caller,'Problems closing line file: '//I2S(iostat))
 
   END SUBROUTINE OpenLineFile
 
   
   SUBROUTINE CloseLineFile()
-    IF(FileIsOpen) CLOSE(LineUnit)
+
+    INTEGER, POINTER :: NewOrder(:)
+    LOGICAL :: ParallelReduce 
+    INTEGER :: iostat
+    REAL(KIND=dp) :: dpos
+    
+    ParallelReduce = .FALSE.
+    IF( ParEnv % PEs > 1 ) THEN
+      ParallelReduce = ListGetLogical(Params,'Parallel Reduce',Found )
+    END IF
+        
+    IF( ParallelReduce ) THEN
+      BLOCK 
+        INTEGER :: SavePart, MaxSize, TotSize, NoPart
+        REAL(KIND=dp), POINTER :: tmpPosData(:), tmpResultData(:,:)
+        INTEGER, POINTER :: tmpLabelData(:,:),recsize(:)
+        INTEGER :: nold, nnew, offset
+        INTEGER :: ierr,status(MPI_STATUS_SIZE)
+
+        NULLIFY(tmpPosData,tmpResultData,tmpLabelData,recsize)
+        
+        NoPart = 0
+        IF( NoData > 0 ) NoPart = 1
+        NoPart = ParallelReduction(NoPart)
+        CALL Info(Caller,'Data available in number of partitions: '//I2S(NoPart))
+
+        MaxSize = ParallelReduction(NoData,2)
+        CALL Info(Caller,'Maximum number of lines in partition: '//I2S(MaxSize))
+
+        TotSize = ParallelReduction(NoData)
+        CALL Info(Caller,'Total number of lines in all partitions: '//I2S(TotSize))
+
+        k = -1
+        IF(MaxSize == NoData) k = ParEnv % MyPe
+        SavePart = ParallelReduction(k,2)
+        CALL Info(Caller,'Partition chosen for saving the data: '//I2S(SavePart))        
+        
+        ! Ok, we have data in several partitions. Bring it all to partition "SavePart". 
+        IF( NoPart > 1 ) THEN
+
+          ! Grow the data to facilate also parallel stuff.
+          ! We know that this partition has >0 data already and that there is data coming
+          ! from other partitions as well. 
+          IF( ParEnv % MyPe == SavePart ) THEN
+            nnew = TotSize
+            ALLOCATE(tmpPosData(nnew),tmpLabelData(nnew,NoLabels),&
+                tmpResultData(nnew,NoResults),STAT=istat)
+            IF( istat /= 0 ) THEN
+              CALL Fatal(Caller,'Problems allocating temporal workspace for parallel reduction')
+            END IF
+            tmpPosData = 0.0_dp
+            tmpLabelData = 0
+            tmpResultData = 0.0_dp
+            
+            tmpPosData(1:NoData) = PosData(1:NoData)              
+            tmpLabelData(1:NoData,1:NoLabels) = LabelData(1:NoData,1:NoLabels)
+            tmpResultData(1:NoData,1:NoResults) = ResultData(1:NoData,1:NoResults)
+
+            DEALLOCATE(PosData, ResultData, LabelData, STAT=istat)
+            IF(istat /= 0) CALL Fatal(Caller,'Problems deallocating some workspace')
+            
+            PosData => tmpPosData
+            ResultData => tmpResultData
+            LabelData => tmpLabelData            
+          END IF
+          
+          ! Sent data sizes:
+          !--------------------------
+          IF( ParEnv % Mype == SavePart ) THEN
+            ALLOCATE(RecSize(0:ParEnv % PEs-1))
+            RecSize = 0
+            DO i=0, ParEnv % PEs-1
+              IF( i == SavePart) CYCLE
+              CALL MPI_RECV( RecSize(i), 1, MPI_INTEGER, i, &
+                  1000, ELMER_COMM_WORLD, status, ierr )
+            END DO
+          ELSE            
+            CALL MPI_BSEND( NoData, 1, MPI_INTEGER, SavePart, &
+                1000, ELMER_COMM_WORLD, ierr )
+          END IF
+          CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
+
+          ! Sent actual data
+          !--------------------------
+          IF( ParEnv % Mype == SavePart ) THEN                                   
+            offset = NoData
+            !PRINT *,'Recieving with offset:',ParEnv % MyPe, offset
+            
+            DO i=0, ParEnv % PEs-1
+              IF( i == SavePart) CYCLE
+              j = RecSize(i)
+              IF(j==0) CYCLE
+              
+              NULLIFY(tmpPosData, tmpLabelData, tmpResultData)
+              ALLOCATE(tmpPosData(j),tmpLabelData(j,NoLabels),tmpResultData(j,NoResults),STAT=istat)              
+              IF( istat /= 0 ) THEN
+                CALL Fatal(Caller,'Problems allocating temporal workspace for parallel communication')
+              END IF              
+              
+              CALL MPI_RECV( tmpPosData, j, MPI_DOUBLE_PRECISION, i, &
+                  1001, ELMER_COMM_WORLD, status, ierr )
+              CALL MPI_RECV( tmpLabelData, j*NoLabels, MPI_INTEGER, i, &
+                  1002, ELMER_COMM_WORLD, status, ierr )
+              CALL MPI_RECV( tmpResultData, j*NoResults, MPI_DOUBLE_PRECISION, i, &
+                  1003, ELMER_COMM_WORLD, status, ierr )
+              
+              PosData(Offset+1:offset+j) = tmpPosData(1:j)              
+              LabelData(Offset+1:offset+j,1:NoLabels) = tmpLabelData(1:j,1:NoLabels)
+              ResultData(Offset+1:offset+j,1:NoResults) = tmpResultData(1:j,1:NoResults)
+              
+              DEALLOCATE(tmpPosData, tmpLabelData, tmpResultData,STAT=istat)
+              IF( istat /= 0 ) THEN
+                CALL Fatal(Caller,'Problems deallocating temporal workspace for parallel communication')
+              END IF              
+              offset = offset + j
+
+              !PRINT *,'offset:',offset
+            END DO
+          ELSE IF( NoData > 0 ) THEN
+            NULLIFY(tmpPosData, tmpLabelData, tmpResultData)
+            j = NoData
+            ! Most likely the current tables are too big. In order for successful parallel communication
+            ! the matrices must have exactly the same size!
+            ALLOCATE(tmpPosData(j),tmpLabelData(j,NoLabels),tmpResultData(j,NoResults),STAT=istat)              
+            IF( istat /= 0 ) THEN
+              CALL Fatal(Caller,'Problems allocating temporal workspace for parallel communication')
+            END IF
+            tmpPosData(1:j) = PosData(1:j)               
+            tmpLabelData(1:j,1:NoLabels) = LabelData(1:j,1:NoLabels)
+            tmpResultData(1:j,1:NoResults) = ResultData(1:j,1:NoResults)
+            
+            CALL MPI_BSEND( tmpPosData, j, MPI_DOUBLE_PRECISION, SavePart, &
+                1001, ELMER_COMM_WORLD, ierr )
+            CALL MPI_BSEND( tmpLabelData, j*NoLabels, MPI_INTEGER, SavePart, &
+                1002, ELMER_COMM_WORLD, ierr )
+            CALL MPI_BSEND( tmpResultData, j*NoResults, MPI_DOUBLE_PRECISION, SavePart, &
+                1003, ELMER_COMM_WORLD, ierr )
+            DEALLOCATE(tmpPosData, tmpLabelData, tmpResultData,STAT=istat)
+            IF( istat /= 0 ) THEN
+              CALL Fatal(Caller,'Problems deallocating temporal workspace for parallel communication')
+            END IF            
+          END IF
+
+          
+          CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
+           
+          IF( ParEnv % MyPe == SavePart ) THEN
+            DEALLOCATE(recsize,STAT=istat)              
+            IF(istat /= 0) THEN
+              CALL Fatal(Caller,'Problems deallocating recsize vector!')
+            END IF
+            NoData = TotSize
+          ELSE IF( NoData > 0 ) THEN
+            DEALLOCATE(PosData,LabelData,ResultData,STAT=istat)                            
+            IF(istat /= 0) THEN
+              CALL Fatal(Caller,'Problems deallocating some unneeded workspace')
+            END IF
+            NoData = 0
+          END IF
+        END IF
+      END BLOCK
+    END IF
+    
+    
+    IF( NoData > 0 ) THEN
+      ! If we have a meaning full position info:
+      NewOrder => NULL()
+      IF( PosData(NoData) > 0.0_dp ) THEN
+        ALLOCATE(NewOrder(NoData),STAT=istat)
+        IF(istat /= 0) CALL Fatal(Caller,'Problems allocating NewOrder vector!')
+        CALL Info(Caller,'Sorting and saving '//I2S(NoData)//' tabulated rows',Level=7)        
+        DO i=1,NoData
+          NewOrder(i) = i
+        END DO
+        CALL SortR( NoData,NewOrder,PosData)
+      END IF
+        
+      CALL OpenLineFile(ParallelReduce)
+                
+      DO i = 1, NoData
+        k = i
+        IF( ASSOCIATED( NewOrder ) ) THEN
+          ! Go from small coordinates to bigger...
+          k = NewOrder(NoData-i+1)
+        END IF
+        IF(i>1 .AND. PosData(i) > 0.0_dp ) THEN
+          dpos = ABS(PosData(i)-PosData(i-1))
+          IF( dpos < EPSILON(dpos) ) THEN 
+            !PRINT *,'skipping value',PosData(i),PosData(i-1)
+            CYCLE
+          END IF
+        END IF
+        DO j=1,NoLabels
+          WRITE(LineUnit,'(A)',ADVANCE='NO') I2S(LabelData(k,j))//' '
+        END DO
+        DO j=1,NoResults-1
+          WRITE(LineUnit,'(ES20.11E3)',ADVANCE='NO') ResultData(k,j)
+        END DO
+        WRITE(LineUnit,'(ES20.11E3)') ResultData(k,NoResults)
+      END DO
+      NoData = 0
+      
+      IF( ASSOCIATED(NewOrder) ) THEN
+        DEALLOCATE( NewOrder, STAT=istat )
+        IF(istat /= 0) CALL Fatal(Caller,'Problems deallocating NewOrder vector')
+      END IF
+      DEALLOCATE( PosData,LabelData,ResultData,STAT=istat)
+      IF(istat /= 0) CALL Fatal(Caller,'Problems deallocating some temporal workspace')
+    END IF
+    
+    IF(FileIsOpen) THEN
+      CLOSE(LineUnit,iostat=iostat)
+      IF( iostat /= 0 ) CALL Fatal(Caller,'Problems closing line file: '//I2S(iostat))
+    END IF
+      
   END SUBROUTINE CloseLineFile
 
 
   ! Write a line of data for a point in a known element.
   !----------------------------------------------------------------------
-  SUBROUTINE WriteFieldsAtElement( Element, Basis, BC_id, &
-      node_id, dgnode_id, UseNode, NodalFlux, LocalCoord, GlobalCoord )
+  SUBROUTINE WriteFieldsAtElement( Element, BC_id, &
+      node_id, dgnode_id, Basis, UseNode, NodalFlux, LocalCoord, &
+      GlobalCoord, linepos, ParNode )
 
-    TYPE(Element_t) :: Element
-    REAL(KIND=dp), TARGET :: Basis(:)
+    TYPE(Element_t), POINTER :: Element
+    REAL(KIND=dp), TARGET, OPTIONAL :: Basis(:)
     INTEGER :: bc_id, node_id, dgnode_id
+    
     LOGICAL, OPTIONAL :: UseNode 
     REAL(KIND=dp), OPTIONAL :: NodalFlux(3)
     REAL(KIND=dp), OPTIONAL :: LocalCoord(3)
     REAL(KIND=dp), OPTIONAL :: GlobalCoord(3)
+    REAL(KIND=dp), OPTIONAL :: linepos
+    LOGICAL, OPTIONAL :: ParNode
     
-    INTEGER :: i,j,k,l,ivar,ii,i1,i2
+    INTEGER :: i,j,k,l,ivar,ii,i1,i2,n0
     TYPE(Nodes_t) :: Nodes
     LOGICAL :: UseGivenNode, PiolaVersion, EdgeBasis
     INTEGER :: n, nd, np, EdgeBasisDegree, Labels(5)
@@ -657,21 +977,27 @@ CONTAINS
     REAL(KIND=dp), POINTER :: PtoBasis(:)
     REAL(KIND=dp), TARGET :: PointBasis(1)
     REAL(KIND=dp) :: u,v,w
-    INTEGER, TARGET :: NodeIndex(1), Indexes(54)
-    INTEGER :: n0
+    INTEGER, TARGET :: NodeIndex(1), Indexes(54), DGIndexes(27)
     REAL(KIND=dp) :: up,vp,wp
     REAL(KIND=dp), TARGET :: NodeBasis(54)
     REAL(KIND=dp) :: WBasis(54,3),RotWBasis(54,3), NodedBasisdx(54,3)
     REAL(KIND=dp) :: AveMult
-    LOGICAL :: pElem
+    REAL(KIND=dp), ALLOCATABLE, SAVE :: fdg(:), fip(:)
+    LOGICAL :: pElem, Tabulate
+    TYPE(Variable_t), POINTER :: pVar
     
     SAVE :: Nodes
 
+    DGIndexes = 0
     Indexes = 0
     n0 = 0
-
-    CALL OpenLineFile()
-      
+    
+    ! If we have position on the line then we can sort the entries.
+    Tabulate = .FALSE.
+    IF(PRESENT(linepos)) THEN
+      Tabulate = ( linepos > 0 ) .OR. Parallel
+    END IF
+    
     IF( .NOT. SkipBoundaryInfo ) THEN      
       Labels = 0
       IF( LineInd /= 0 ) THEN
@@ -686,38 +1012,28 @@ CONTAINS
 
       Labels(n0+1) = Solver % TimesVisited + 1
       Labels(n0+2) = bc_id
-      Labels(n0+3) = node_id      
+      k = node_id
+      IF(PRESENT(ParNode)) THEN
+        IF( ParEnv % PEs > 1 .AND. .NOT. Mesh % SingleMesh ) THEN
+          k = Mesh % ParallelInfo % GlobalDOFS(k)
+        END IF
+      END IF
+      Labels(n0+3) = k      
       n0 = n0 + 3
-
-      DO i=1,n0
-        WRITE(LineUnit,'(A)',ADVANCE='NO') TRIM(I2S(Labels(i)))//' '
-      END DO
       
       IF( NormInd > 0 .AND. NormInd <= n0 ) THEN
         Norm = Norm + 1.0_dp * Labels(NormInd )
       END IF
     END IF
-    
+
+    ! If we just got the closest node, not really the exact node, do not use it.
     UseGivenNode = .FALSE.
     IF( PRESENT( UseNode ) ) UseGivenNode = UseNode
-
-    IF( UseGivenNode ) THEN
-      n = 1
-      nd = n
-      NodeIndex(1) = node_id
-      PtoIndexes => NodeIndex
-      PointBasis(1) = 1.0_dp
-      PtoBasis => PointBasis
-    END IF
-
-    IF( .NOT. PRESENT( LocalCoord ) ) THEN      
-      EdgeBasis = .FALSE.
-      PiolaVersion = .FALSE.
-    END IF
-
+    
     No = 0
     Values = 0.0d0
 
+    ! The funny negative indexes refer to coordinates that are treated separately
     DO ivar = -2,NoVar
       Var => VariableGetN( ivar, comps ) 
       IF( comps >= 2 ) THEN
@@ -729,199 +1045,16 @@ CONTAINS
         Var3 => VariableGetN( ivar, component = 3 ) 
       ELSE
         Var3 => NULL()
-      END IF      
-      
-      EdgeBasis = .FALSE.
-      PiolaVersion = .FALSE.
-      pElem = .FALSE.
-      np = 0
-      
-      IF( PRESENT( LocalCoord ) ) THEN
-        
-        CALL GetElementNodes(Nodes, Element) 
-        PtoIndexes => Indexes
-
-        u = LocalCoord(1)
-        v = LocalCoord(2)
-        w = LocalCoord(3)
-
-        stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
-
-        ! Should we map (u,v,w) for piola reference element? 
-        
-        IF( ASSOCIATED( Var % Solver ) ) THEN
-          nd = GetElementDOFs( Indexes, Element, Var % Solver ) 
-          n = Element % TYPE % NumberOfNodes
-
-          IF(nd > n) pElem = isActivePElement(Element,Var % Solver) 
-                 
-          EdgeBasis = GetLogical(Var % Solver % Values,'Hcurl Basis', Found )            
-          IF( EdgeBasis ) THEN
-            IF( GetLogical(Var % Solver % Values, 'Quadratic Approximation', Found) ) THEN
-              PiolaVersion = .TRUE.
-            ELSE
-              PiolaVersion = GetLogical(Var % Solver % Values,'Use Piola Transform', Found )   
-            END IF
-            np = n * Var % Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
-          END IF
-        ELSE
-          nd = GetElementDOFs( Indexes, Element )
-          n = Element % Type % NumberOfNodes
-        END IF
-        
-        IF( EdgeBasis ) THEN
-          stat = ElementInfo( Element, Nodes, u, v, w, &
-              detJ, NodeBasis, NodedBasisdx,  EdgeBasis = WBasis, &
-              RotBasis = RotWBasis, USolver = Var % Solver)
-        ELSE          
-          IF( pElem ) THEN
-            ! The standard element of SaveLine is most likely standard nodal element.
-            ! In the user gives something else we may be trouble...
-            up=u; vp=v; wp=w
-            CALL ConvertToPReference(Element % Type % ElementCode,up,vp,wp)            
-            stat = ElementInfo( Element, Nodes, up, vp, wp, detJ, NodeBasis, &
-                USolver = Var % Solver )
-          ELSE
-            stat = ElementInfo( Element, Nodes, u, v, w, detJ, NodeBasis )
-          END IF
-
-          IF( Var % TYPE == Variable_on_nodes_on_elements ) THEN
-            PtoIndexes => Element % DgIndexes
-          ELSE IF( pElem ) THEN
-            pToIndexes => Indexes
-          ELSE
-            PtoIndexes => Element % NodeIndexes 
-          END IF           
-          PtoBasis => NodeBasis
-        END IF
-        
-      ELSE IF( .NOT. UseGivenNode ) THEN
-        PtoBasis => Basis
-        n = Element % TYPE % NumberOfNodes
-        nd = n
-        
-        IF( Var % TYPE == Variable_on_nodes_on_elements ) THEN
-          PtoIndexes => Element % DgIndexes
-        ELSE
-          PtoIndexes => Element % NodeIndexes 
-        END IF
-
-      ELSE
-        IF( Var % TYPE == Variable_on_nodes_on_elements ) THEN
-          NodeIndex(1) = dgnode_id
-        ELSE
-          NodeIndex(1) = node_id 
-        END IF       
       END IF
 
-            
-      IF( EdgeBasis ) THEN
-        DO j=1,3
-          No = No + 1
-          Values(No) = 0.0_dp
-          IF( ASSOCIATED( PtoIndexes ) ) THEN
-            DO k=1,nd-np
-              l = PtoIndexes(np+k)
-              IF ( ASSOCIATED(Var % Perm) ) l = Var % Perm(l)
-              IF(l > 0) Values(No) = Values(No) + WBasis(k,j) * Var % Values(l)
-            END DO
-          END IF
-        END DO
-        IF( AVBasis ) THEN
-          No = No + 1
-          Values(No) = 0.0_dp
-          DO k=1,n
-            l = PtoIndexes(k)
-            IF(l > 0) Values(No) = Values(No) + NodeBasis(k) * Var % Values(l)
-          END DO
-        END IF
-          
-      ELSE IF (ASSOCIATED (Var % EigenVectors)) THEN
-        IF( nd > SIZE( PtoIndexes ) ) THEN
-          CALL Warn(Caller,'nd exceeds size of index table!')
-          nd = SIZE( PToIndexes ) 
-        END IF
-
-        NoEigenValues = SIZE(Var % EigenValues) 
-        IF( ASSOCIATED( PtoIndexes ) ) THEN
-          DO j=1,NoEigenValues          
-            DO k=1,nd
-              l = PtoIndexes(k)
-              IF ( ASSOCIATED(Var % Perm) ) l = Var % Perm(l)
-              IF(l > 0) THEN 
-                DO ii=1,Var % DOFs
-                  Values(No+(j-1)*Var%Dofs+ii) = Values(No+(j-1)*Var%Dofs+ii) + &
-                      PtoBasis(k) * (Var % EigenVectors(j,Var%Dofs*(l-1)+ii))
-                END DO
-              END IF
-            END DO
-          END DO
-        END IF
-        No = No + Var % Dofs * NoEigenValues
-      ELSE                          
-        IF( Var % TYPE == Variable_on_elements ) THEN
-          l = Element % ElementIndex 
-          IF( SIZE( Var % Perm ) >= l ) THEN
-            l = Var % Perm(l)
-          END IF
-          IF( l > 0 ) THEN
-            DO ii=1,Var % Dofs
-              Values(No+ii) = Var % Values(Var%Dofs*(l-1)+ii)
-            END DO
-            IF( comps >= 2 ) THEN
-              Values(No+2) = Var % Values(l)
-            END IF
-            IF( comps >= 3 ) THEN
-              Values(No+3) = Var % Values(l)
-            END IF
-          END IF
-        ELSE IF ( Var % TYPE == Variable_on_gauss_points ) THEN
-          i1 = Var % Perm(Element % ElementIndex)
-          i2 = Var % Perm(Element % ElementIndex+1)-1
-          IF(i2>i1 ) THEN
-            AveMult = 1.0_dp/(i2-i1) 
-            i2 = i2-1
-            IF( Var % Dofs > 1 ) THEN
-              DO l=1,Var % Dofs
-                DO ii=i1,i2
-                  Values(No+l) = Values(No+l) + AveMult * Var % Values(Var%Dofs*(ii-1)+l)
-                END DO
-              END DO
-            ELSE
-              Values(No+1) = AveMult * SUM(Var % Values(i1:i2))
-              IF( comps >= 2 ) THEN
-                Values(No+2) = AveMult * SUM(Var2 % Values(i1:i2))
-              END IF
-              IF( comps >= 3 ) THEN
-                Values(No+3) = AveMult * SUM(Var3 % Values(i1:i2))
-              END IF
-            END IF
-          END IF
-
-        ELSE IF( ASSOCIATED( PtoIndexes ) ) THEN
-          DO k=1,nd
-            l = PtoIndexes(k)
-            IF(l==0) CYCLE
-            IF ( ASSOCIATED(Var % Perm) ) l = Var % Perm(l)
-            IF(l > 0) THEN
-              DO ii=1,Var % Dofs
-                Values(No+ii) = Values(No+ii) + PtoBasis(k) * &
-                    Var % Values(Var%Dofs*(l-1)+ii)
-              END DO
-              IF( comps >= 2 ) THEN
-                Values(No+2) = Values(No+2) + PtoBasis(k) * &
-                    Var2 % Values(l)
-              END IF
-              IF( comps >= 3 ) THEN
-                Values(No+3) = Values(No+3) + PtoBasis(k) * &
-                    Var3 % Values(l)
-              END IF                
-            END IF
-          END DO
-        END IF
-        
-        No = No + MAX( Var % Dofs, comps )
-     END IF
+      IF( UseGivenNode ) THEN
+        k = node_id; l = dgnode_id
+      ELSE
+        k = 0; l = 0
+      END IF
+      ! This is additive adding to "No" for each call!!
+      CALL EvaluateVariableAtGivenPoint(No,Values,Mesh,Var,Var2,Var3,Element,LocalCoord,&
+          Basis,k,l,GotEigen=DoEigen,GotEdge=EdgeBasis)
     END DO
     
     IF( CalculateFlux ) THEN
@@ -939,12 +1072,55 @@ CONTAINS
       END IF
     END DO
     
-    DO j=1,NoResults-1
-      WRITE(LineUnit,'(ES20.11E3)',ADVANCE='NO') Values(j)
-    END DO
-    WRITE(LineUnit,'(ES20.11E3)') Values(NoResults)
+    IF( Tabulate ) THEN
+      NoLabels = MAX(n0, NoLabels) 
+      NoData = NoData + 1
+      
+      BLOCK
+        REAL(KIND=dp), POINTER :: tmpPosData(:), tmpResultData(:,:)
+        INTEGER, POINTER :: tmpLabelData(:,:)
+        INTEGER :: nold, nnew
 
-    
+        nold = 0
+        IF(ASSOCIATED(PosData)) nold = SIZE(PosData)
+        
+        IF( NoData > nold ) THEN
+          nnew = MAX(100, 2*nold)
+          CALL Info(Caller,'Increasing temporal size from '//I2S(nold)//' to '//I2S(nnew),Level=7)
+          ALLOCATE(tmpPosData(nnew),tmpLabelData(nnew,NoLabels),tmpResultData(nnew,NoResults))
+          tmpPosData = 0.0_dp
+          tmpLabelData = 0
+          tmpResultData = 0.0_dp
+          
+          IF( nold > 0 ) THEN
+            tmpPosData = PosData
+            tmpResultData = ResultData
+            tmpLabelData = LabelData
+            DEALLOCATE(PosData, ResultData, LabelData,STAT=istat)
+            IF(istat /= 0) THEN
+              CALL Fatal(Caller,'Problems deallocating some too small workspace')
+            END IF 
+          END IF
+          PosData => tmpPosData
+          ResultData => tmpResultData
+          LabelData => tmpLabelData
+        END IF
+      END BLOCK
+        
+      PosData(NoData) = linepos
+      LabelData(NoData,1:NoLabels) = Labels(1:NoLabels) 
+      ResultData(NoData,1:NoResults) = Values(1:NoResults)
+    ELSE    
+      CALL OpenLineFile()      
+      DO i=1,n0
+        WRITE(LineUnit,'(A)',ADVANCE='NO') I2S(Labels(i))//' '
+      END DO
+      DO j=1,NoResults-1
+        WRITE(LineUnit,'(ES20.11E3)',ADVANCE='NO') Values(j)
+      END DO
+      WRITE(LineUnit,'(ES20.11E3)') Values(NoResults)
+    END IF
+          
     IF( NormInd > n0 ) THEN
       Norm = Norm + Values(NormInd-n0)
     END IF
@@ -1157,7 +1333,8 @@ CONTAINS
     REAL(KIND=dp) :: Coord(3), Coord0(3), Center(3)
     TYPE(ValueList_t), POINTER :: ValueList
     TYPE(Element_t), POINTER :: Parent
-    LOGICAL :: BreakLoop
+    LOGICAL :: BreakLoop, ParallelComm
+    REAL(KIND=dp) :: linepos 
     
     MaskName = ListGetString(Params,'Save Mask',GotIt) 
     IF(.NOT. GotIt) MaskName = 'Save Line'
@@ -1183,17 +1360,22 @@ CONTAINS
 
       BreakLoop = ListGetLogical(Params,'Break Line Loop',GotIt)
       IF(BreakLoop) OptimizeOrder = .TRUE.
-      
+
+      ParallelComm = Parallel
+      IF(Mesh % SingleMesh ) ParallelComm = .FALSE.
       CALL MakePermUsingMask( Model,Solver,Mesh,MaskName, &
-          OptimizeOrder, SavePerm, SaveNodes, &
-          RequireLogical = .TRUE., BreakLoop = BreakLoop )
+          OptimizeOrder, SavePerm, SaveNodes(1), &
+          RequireLogical = .TRUE., BreakLoop = BreakLoop, ParallelComm = ParallelComm )
       
-      IF( SaveNodes > 0 ) THEN
+      IF( SaveNodes(1) > 0 ) THEN
         IF( ListGetLogical( Params,'Calculate Weights',GotIt ) ) THEN
           CALL CalculateNodalWeights( Solver, .TRUE., SavePerm, TRIM(MaskName)//' Weights')
         END IF
-        CALL Info(Caller,'Number of nodes in specified boundary: '//TRIM(I2S(SaveNodes)))
+        CALL Info(Caller,'Number of nodes in specified boundary: '//I2S(SaveNodes(1)),Level=12)
       END IF
+    ELSE
+      SaveNodes(1) = 0
+      IF( ASSOCIATED( SavePerm ) ) SaveNodes(1) = MAXVAL( SavePerm ) 
     END IF
     PrevMaskName = MaskName
 
@@ -1201,10 +1383,10 @@ CONTAINS
     !------------------------------------------------------------------------------
     ! If nodes found, then go through the sides and compute the fluxes if requested 
     !------------------------------------------------------------------------------
-    IF( SaveNodes > 0 ) THEN
+    IF( SaveNodes(1) > 0 ) THEN
 
-      ALLOCATE( InvPerm(SaveNodes), BoundaryIndex(SaveNodes), STAT=istat )
-      IF( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error 3: '//TRIM(I2S(SaveNodes))) 
+      ALLOCATE( InvPerm(SaveNodes(1)), BoundaryIndex(SaveNodes(1)), STAT=istat )
+      IF( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error 3: '//I2S(SaveNodes(1))) 
       
       BoundaryIndex = 0
       InvPerm = 0
@@ -1221,7 +1403,7 @@ CONTAINS
       
       IF(CalculateFlux) THEN
         CALL Info(Caller,'Calculating nodal fluxes',Level=8)
-        ALLOCATE(PointFluxes(SaveNodes,3),PointWeight(SaveNodes), STAT=istat)    
+        ALLOCATE(PointFluxes(SaveNodes(1),3),PointWeight(SaveNodes(1)), STAT=istat)    
 
         IF( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error 4') 
 
@@ -1234,6 +1416,10 @@ CONTAINS
             Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements                        
                     
           CurrentElement => Mesh % Elements(t)
+          IF( ParEnv % PEs > 1 ) THEN
+            IF( CurrentElement % PartIndex /= ParEnv % MyPe ) CYCLE
+          END IF
+
           Model % CurrentElement => CurrentElement
           n = CurrentElement % TYPE % NumberOfNodes
           NodeIndexes => CurrentElement % NodeIndexes        
@@ -1270,18 +1456,23 @@ CONTAINS
         END DO
         
         ! Normalize flux by division with the integration weight
-        DO i = 1, SaveNodes
+        DO i = 1, SaveNodes(1)
           PointFluxes(i,1) = PointFluxes(i,1) / PointWeight(i)
           PointFluxes(i,2) = PointFluxes(i,2) / PointWeight(i)
           PointFluxes(i,3) = PointFluxes(i,3) / PointWeight(i)
         END DO
       END IF
-      
+
+      DgVar = ASSOCIATED( Mesh % Elements(1) % DGIndexes ) 
       
       ! Go through the elements and register the boundary index and fluxes if asked
       DO t = 1,  Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements        
         
         CurrentElement => Mesh % Elements(t)
+        IF( ParEnv % PEs > 1 ) THEN
+          IF( CurrentElement % PartIndex /= ParEnv % MyPe ) CYCLE
+        END IF
+
         Model % CurrentElement => CurrentElement
         n = CurrentElement % TYPE % NumberOfNodes
         NodeIndexes => CurrentElement % NodeIndexes        
@@ -1300,7 +1491,7 @@ CONTAINS
         
         IF( .NOT. ListCheckPresent( ValueList, MaskName ) ) CYCLE
                         
-        IF( DG ) THEN
+        IF( DGVar ) THEN
           ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
           ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
           ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
@@ -1326,7 +1517,7 @@ CONTAINS
                 END IF
               END DO
               IF(.NOT. Found) CALL Fatal(Caller,'Could not find DG node!')              
-            END IF            
+            END IF
                         
             Coord(1) = ElementNodes % x(i)
             Coord(2) = ElementNodes % y(i)
@@ -1334,19 +1525,24 @@ CONTAINS
 
             ! Shrink the element so that external sort work better!
             Coord0 = Coord
-            Coord = 0.999_dp * Coord + 0.001_dp * Center
+            Coord = Center + 0.9999*(Coord-Center)
 
             ! Do this dirty way such that DG nodes may be sorted
             Mesh % Nodes % x(node) = Coord(1) 
             Mesh % Nodes % y(node) = Coord(2) 
             IF( dim == 3 ) Mesh % Nodes % z(node) = Coord(3) 
-            
+
+            linepos = -1.0_dp
+            IF( ParEnv % PEs > 1 ) THEN
+            END IF
+
             IF( CalculateFlux ) THEN
-              CALL WriteFieldsAtElement( CurrentElement, Basis, k, node, &
-                  dgnode, UseNode = .TRUE., NodalFlux = PointFluxes(t,:) )
+              CALL WriteFieldsAtElement( CurrentElement, k, node, &
+                  dgnode, UseNode = .TRUE., NodalFlux = PointFluxes(t,:), &
+                  linepos = linepos, ParNode = Parallel )
             ELSE
-              CALL WriteFieldsAtElement( CurrentElement, Basis, k, node, &
-                  dgnode, UseNode = .TRUE. )
+              CALL WriteFieldsAtElement( CurrentElement, k, node, &
+                  dgnode, UseNode = .TRUE., linepos = linepos, ParNode = Parallel )
             END IF
             
             ! and revert 
@@ -1364,22 +1560,29 @@ CONTAINS
       
       ! Save the nodes if not in DG mode     
       !---------------------------------  
-      IF( .NOT. DG ) THEN
+      IF( .NOT. DGVar ) THEN
         dgnode = 0
-        DO t = 1, SaveNodes    
+        linepos = -1.0_dp
+        DO t = 1, SaveNodes(1)    
           node = InvPerm(t)
           IF( CalculateFlux ) THEN
-            CALL WriteFieldsAtElement( CurrentElement, Basis, BoundaryIndex(t), node, &
-                dgnode, UseNode = .TRUE., NodalFlux = PointFluxes(t,:) )
+            CALL WriteFieldsAtElement( CurrentElement, BoundaryIndex(t), node, &
+                dgnode, UseNode = .TRUE., NodalFlux = PointFluxes(t,:), &
+                linepos = linepos, ParNode = Parallel )
           ELSE
-            CALL WriteFieldsAtElement( CurrentElement, Basis, BoundaryIndex(t), node, &
-                dgnode, UseNode = .TRUE. )
+            CALL WriteFieldsAtElement( CurrentElement, BoundaryIndex(t), node, &
+                dgnode, UseNode = .TRUE., linepos = linepos, ParNode = Parallel )
           END IF
         END DO
       END IF        
       
-      DEALLOCATE(InvPerm, BoundaryIndex)
-      IF(CalculateFlux) DEALLOCATE(PointFluxes, PointWeight )
+      DEALLOCATE(InvPerm, BoundaryIndex,STAT=istat)
+      IF( istat /= 0 ) CALL Fatal(Caller,'Problems deallocating stuff on existing lines')
+            
+      IF(CalculateFlux) THEN
+        DEALLOCATE(PointFluxes, PointWeight, STAT=istat)
+        IF( istat /= 0 ) CALL Fatal(Caller,'Problems deallocating fluxes on existing lines')
+      END IF
     END IF
     
   END SUBROUTINE SaveExistingLines
@@ -1393,9 +1596,10 @@ CONTAINS
   SUBROUTINE SavePolyLines()
 
     TYPE(Solver_t), POINTER :: pSolver
-
-    pSolver => Solver
+    REAL(KIND=dp) :: linepos, tanprod(2), s, eps
     
+    pSolver => Solver
+    eps = 1.0e-5
     
     SaveAxis(1) = ListGetLogical(Params,'Save Axis',GotIt)
     IF(GotIt) THEN
@@ -1433,7 +1637,6 @@ CONTAINS
         END IF
       END IF
     END IF
-    
 
     IF( NoLines > 0  .OR. ANY(SaveAxis(1:DIM) ) ) THEN
       NoTests = 0
@@ -1463,7 +1666,7 @@ CONTAINS
       DO Line = 1,NoLines + NoAxis
 
         LineTag = .FALSE.
-
+        
         IF(Line <= NoLines) THEN
           LineNodes % x(1:2) = PointCoordinates(2*Line-1:2*Line,1) 
           LineNodes % y(1:2) = PointCoordinates(2*Line-1:2*Line,2) 
@@ -1506,7 +1709,8 @@ CONTAINS
           R1(3) = LineNodes % z(2) 
 
           dR = R1 - R0 
-          LineN = dR / SQRT( SUM( dR**2 ) )
+          s = SQRT( SUM(dR**2) )
+          LineN = dR / s
           CALL TangentDirections( LineN, LineT1, LineT2 ) 
 
           nsize = NoDivisions(Line)
@@ -1524,10 +1728,18 @@ CONTAINS
             END IF
 
             CurrentElement => Mesh % Elements(t)
-            n = CurrentElement % Type % NumberOfNodes
+            IF( ParEnv % PEs > 1 ) THEN
+              IF( CurrentElement % PartIndex /= ParEnv % MyPe ) CYCLE
+            END IF
+
+            n = CurrentElement % TYPE % NumberOfNodes
             m = GetElementCorners( CurrentElement )
             NodeIndexes => CurrentElement % NodeIndexes
 
+            IF( MaskWithPerm ) THEN
+              IF( ANY( Solver % Variable % Perm( NodeIndexes) == 0 ) ) CYCLE
+            END IF
+                        
             ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
             ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
             ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
@@ -1537,7 +1749,7 @@ CONTAINS
               S1(2) = ElementNodes % y(i)  
               S1(3) = ElementNodes % z(i)  
 
-              dS = ( S1 - R0 ) / SQRT( SUM( dR**2 ) )
+              dS = ( S1 - R0 ) / s
               LocalCoord(1) = SUM( dS * LineN )
               LocalCoord(2) = SUM( dS * LineT1 )
               LocalCoord(3) = SUM( dS * LineT2 )
@@ -1553,35 +1765,43 @@ CONTAINS
               END IF
             END DO
 
-            IF( MinCoord(2) * MaxCoord(2) > 0.0_dp ) CYCLE
-            IF( dim >= 3 .AND. .NOT. IntersectEdge ) THEN
-              IF( MinCoord(3) * MaxCoord(3) > 0.0_dp ) CYCLE
-            END IF
+            DO i=1,2
+              tanprod(i) = MinCoord(i+1) * MaxCoord(i+1)
+            END DO
 
+            IF( tanprod(1) > eps ) CYCLE
+            IF( dim == 3 .AND. .NOT. IntersectEdge ) THEN
+              IF( tanprod(2) > eps ) CYCLE
+            END IF
+            
             imin = MAX(0, CEILING( nsize * MinCoord(1) ) )
             imax = MIN(nsize, FLOOR( ( nsize * MaxCoord(1) ) ) )
-
-
+            
             DO i=imin,imax
               NoTests = NoTests + 1
 
               IF( LineTag(i) ) CYCLE
 
               GlobalCoord = R0 + i * dR / nsize
-
+              
               IF ( PointInElement( CurrentElement, ElementNodes, GlobalCoord, &
-                  LocalCoord, USolver = pSolver ) ) THEN
-                LineTag(i) = .TRUE.
+                  LocalCoord, USolver = pSolver, LocalEps = eps ) ) THEN
+                stat = ElementInfo( CurrentElement, ElementNodes, LocalCoord(1), &
+                LocalCoord(2), LocalCoord(3), detJ, Basis, USolver = pSolver )
 
-                SaveNodes2 = SaveNodes2 + 1
+                LineTag(i) = .TRUE.                
+                SaveNodes(2) = SaveNodes(2) + 1               
+                linepos = 1.0_dp*i/nsize + 2*(Line-1)
 
-                CALL WriteFieldsAtElement( CurrentElement, Basis, Line, i, 0, &
-                    LocalCoord = LocalCoord )
+                n = CurrentElement % type % numberofnodes
+                CALL WriteFieldsAtElement( CurrentElement, Line, i, 0, &
+                    Basis, LocalCoord = LocalCoord, linepos = linepos )
               END IF
             END DO
           END DO
         ELSE
-
+          ! If no divisions then go though existing faces and check for the
+          ! intersection of line & and each face. 
           DO t = 1,NoFaces        
             IF(DIM == 2 .OR. IntersectEdge) THEN
               CurrentElement => Mesh % Edges(t)
@@ -1602,10 +1822,10 @@ CONTAINS
 
             IF( IntersectCoordinate /= 0 ) THEN
               CALL GlobalToLocalCoordsReduced(CurrentElement,ElementNodes,n,LineNodes, &
-                  DetEpsilon,Inside,Basis,i)
+                  DetEpsilon,Inside,Basis,i,linepos,LocalCoord)
             ELSE
               CALL GlobalToLocalCoords(CurrentElement,ElementNodes,n,LineNodes, &
-                  DetEpsilon,Inside,Basis,i)
+                  DetEpsilon,Inside,Basis,i,linepos,LocalCoord)
             END IF
 
             IF(.NOT. Inside) CYCLE
@@ -1617,20 +1837,22 @@ CONTAINS
               LineTag(NodeIndexes(i)) = .TRUE.
             END IF
 
-            SaveNodes2 = SaveNodes2 + 1
+            SaveNodes(2) = SaveNodes(2) + 1
             
-            CALL WriteFieldsAtElement( CurrentElement, Basis, MaxBoundary, NodeIndexes(i), 0 )
+            linepos = linepos + 2*(Line-1)
+            CALL WriteFieldsAtElement( CurrentElement, MaxBoundary, &
+                NodeIndexes(i), 0, Basis, LocalCoord = LocalCoord, linepos = linepos )
           END DO
         END IF
       END DO
 
       IF( NoTests > 0 ) THEN
-        CALL Info(Caller,'Number of candidate nodes: '//TRIM(I2S(NoTests)),Level=8)
+        CALL Info(Caller,'Number of candidate nodes: '//I2S(NoTests),Level=8)
       END IF
 
-      CALL Info(Caller,'Number of nodes in specified lines: '//TRIM(I2S(SaveNodes2)))
-
-      DEALLOCATE( LineTag )
+      CALL Info(Caller,'Number of nodes in specified lines: '//I2S(SaveNodes(2)))
+      
+      IF(ALLOCATED(LineTag)) DEALLOCATE( LineTag )
     END IF
 
   END SUBROUTINE SavePolyLines
@@ -1646,8 +1868,6 @@ CONTAINS
     TYPE(Solver_t), POINTER :: pSolver
 
     pSolver => Solver
-
-
     
     PointCoordinates => ListGetConstRealArray(Params,'Circle Coordinates',gotIt)
     IF(.NOT. GotIt) RETURN
@@ -1657,7 +1877,7 @@ CONTAINS
     NoLines = SIZE(PointCoordinates,1) 
     NoDims = SIZE(PointCoordinates,2)
     IF( NoDims /= 7 ) THEN
-      CALL Fatal(Caller,'By construction the circle is defined by 7 values: '//TRIM(I2S(NoDims)))
+      CALL Fatal(Caller,'By construction the circle is defined by 7 values: '//I2S(NoDims))
     END IF
 
     NoDivisions => ListGetIntegerArray( Params,'Circle Divisions',GotIt)
@@ -1666,10 +1886,10 @@ CONTAINS
     END IF
     IF( SIZE( NoDivisions ) < NoLines ) THEN
       CALL Fatal(Caller,'Polyline divisions size too small: '&
-          //TRIM(I2S(SIZE(NoDivisions))))
+          //I2S(SIZE(NoDivisions)))
     END IF
 
-    CALL Info(Caller,'Saving data on given circles: '//TRIM(I2S(NoLines)),Level=7)
+    CALL Info(Caller,'Saving data on given circles: '//I2S(NoLines),Level=7)
 
     NoTests = 0
     
@@ -1679,7 +1899,7 @@ CONTAINS
 
     DO Line = 1,NoLines 
       
-      CALL Info(Caller,'Saving circle number: '//TRIM(I2S(Line)),Level=12)
+      CALL Info(Caller,'Saving circle number: '//I2S(Line),Level=12)
       MaxBoundary = MaxBoundary + 1
       LineTag = .FALSE.
       
@@ -1708,10 +1928,18 @@ CONTAINS
       
       DO t = 1, Mesh % NumberOfBulkElements 
         CurrentElement => Mesh % Elements(t)
+        IF( ParEnv % PEs > 1 ) THEN
+          IF( CurrentElement % PartIndex /= ParEnv % MyPe ) CYCLE
+        END IF
+
         n = CurrentElement % TYPE % NumberOfNodes
         m = GetElementCorners( CurrentElement )
         NodeIndexes => CurrentElement % NodeIndexes
 
+        IF( MaskWithPerm ) THEN
+          IF( ANY( Solver % Variable % Perm( NodeIndexes) == 0 ) ) CYCLE
+        END IF
+                
         ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
         ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
         ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
@@ -1789,29 +2017,29 @@ CONTAINS
                 LocalCoord(2), LocalCoord(3), detJ, Basis, USolver = pSolver )
 
             LineTag(ii) = .TRUE.
-            SaveNodes3 = SaveNodes3 + 1
-            CALL WriteFieldsAtElement( CurrentElement, Basis, Line, ii, &
-                0, LocalCoord = LocalCoord )
+            SaveNodes(3) = SaveNodes(3) + 1
+            CALL WriteFieldsAtElement( CurrentElement, Line, ii, &
+                0, Basis, LocalCoord = LocalCoord, linepos = 20 + 2*Line + 1.0_dp *ii / nsize )
           END IF
         END DO
       END DO
       
       i = COUNT( LineTag(1:nsize) ) 
       PRINT *,'Points with hits:',i
-      
-      
+            
       i = COUNT( .NOT. LineTag(1:nsize) ) 
       PRINT *,'Points with no hits:',i
     END DO
 
 
     IF( NoTests > 0 ) THEN
-      CALL Info(Caller,'Number of candidate nodes: '//TRIM(I2S(NoTests)),Level=8)
+      CALL Info(Caller,'Number of candidate nodes: '//I2S(NoTests),Level=8)
     END IF
     
-    CALL Info(Caller,'Number of nodes in specified circle: '//TRIM(I2S(SaveNodes3)))
+    CALL Info(Caller,'Number of nodes in specified circle: '//I2S(SaveNodes(3)))
     
-    DEALLOCATE( LineTag )
+    IF(ALLOCATED(LineTag)) DEALLOCATE( LineTag, STAT=istat)
+    IF(istat /= 0) CALL Fatal(Caller,'Could not deallocate LineTag')
 
   END SUBROUTINE SaveCircleLines
 
@@ -1901,6 +2129,10 @@ CONTAINS
 
         ! There is an intersection if the value
         IF( f1 * f2 >= 0.0_dp ) CYCLE 
+
+        IF( MaskWithPerm ) THEN
+          IF( ANY( Solver % Variable % Perm( NodeIndexes(1:2) ) == 0 ) ) CYCLE
+        END IF
         
         q = ABS( f2 ) / ( ABS(f1) + ABS(f2) )
 
@@ -1919,21 +2151,24 @@ CONTAINS
           IF( LineTag(k) ) CYCLE
           LineTag(k) = .TRUE.
         END IF
-        SaveNodes4 = SaveNodes4 + 1
+        SaveNodes(4) = SaveNodes(4) + 1
         
 
         No = 0
         Values = 0.0d0
-        
-        CALL WriteFieldsAtElement( CurrentElement, Basis, MaxBoundary, k, 0 )         
+
+        CALL WriteFieldsAtElement( CurrentElement, MaxBoundary, k, 0, Basis, linepos = -1.0_dp )         
       END DO
 
-      WRITE( Message, * ) 'Number of nodes in isocurves: ', SaveNodes4
+      WRITE( Message, * ) 'Number of nodes in isocurves: ', SaveNodes(4)
       CALL Info(Caller,Message)
          
     END DO
-    
-    DEALLOCATE( LineTag )    
+
+    IF(ALLOCATED(LineTag)) THEN
+      DEALLOCATE( LineTag, STAT=istat)
+      IF(istat /= 0) CALL Fatal(Caller,'Could not deallocate LineTag!')
+    END IF
     
   END SUBROUTINE SaveIsoCurves
 
@@ -1947,12 +2182,12 @@ CONTAINS
     !-----------------------------------------------------------------
     IF( Solver % TimesVisited == 0 .AND. NoResults > 0 .AND. &
         (.NOT. Parallel .OR. ParEnv % MyPe == 0 ) ) THEN
-      ALLOCATE( ValueNames(NoResults), STAT=istat )
+      ALLOCATE( ValueNames(NoResults+5), STAT=istat )
       IF( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for ValueNames') 
-
+      
       No = 0
       DO ivar = -2,NoVar
-        Var => VariableGetN( ivar, comps ) 
+        Var => VariableGetN( ivar, comps )
 
         IF (ASSOCIATED (Var % EigenVectors)) THEN
           NoEigenValues = SIZE(Var % EigenValues) 
@@ -1969,11 +2204,11 @@ CONTAINS
           END DO
           No = No + Var % Dofs * NoEigenValues
         ELSE 
-          EdgeBasis = .FALSE.
-          IF( ASSOCIATED( Var % Solver ) ) THEN
-            EdgeBasis = GetLogical( Var % Solver % Values,'Hcurl Basis',Found)         
-          END IF
-
+          DGVar = ( Var % TYPE == variable_on_nodes_on_elements )
+          IpVar = ( Var % TYPE == variable_on_gauss_points ) 
+          ElemVar = ( Var % TYPE == variable_on_elements ) 
+          EdgeBasis = ( Var % Type == variable_on_edges ) 
+          
           IF( EdgeBasis ) THEN
             ValueNames(No+1) = TRIM(Var % Name)//' {e} 1'
             ValueNames(No+2) = TRIM(Var % Name)//' {e} 2'
@@ -2026,7 +2261,7 @@ CONTAINS
       IF( GotIt ) THEN
         WRITE(NamesUnit,'(A)') TRIM(Message)
       END IF
-      WRITE(NamesUnit,'(A,A)') 'Variables in file: ',TRIM(SideFile)
+      WRITE(NamesUnit,'(A,A)') 'Metadata for SaveLine file: ',TRIM(SideFile)
 
       DateStr = GetVersion()
       WRITE( NamesUnit,'(A)') 'Elmer version: '//TRIM(DateStr)     
@@ -2048,10 +2283,10 @@ CONTAINS
       WRITE( NamesUnit,'(A,A)') 'File started at: ',TRIM(DateStr)
 
       WRITE(NamesUnit,'(A)') 'Number of data nodes for each step'
-      WRITE(NamesUnit,'(A)') '  bc nodes: '//TRIM(I2S(SaveNodes))
-      WRITE(NamesUnit,'(A)') '  polyline nodes: '//TRIM(I2S(SaveNodes2))
-      WRITE(NamesUnit,'(A)') '  circle nodes: '//TRIM(I2S(SaveNodes3))
-      WRITE(NamesUnit,'(A)') '  isocurve nodes: '//TRIM(I2S(SaveNodes4))
+      WRITE(NamesUnit,'(A)') '  bc nodes: '//I2S(SaveNodes(1))
+      WRITE(NamesUnit,'(A)') '  polyline nodes: '//I2S(SaveNodes(2))
+      WRITE(NamesUnit,'(A)') '  circle nodes: '//I2S(SaveNodes(3))
+      WRITE(NamesUnit,'(A)') '  isocurve nodes: '//I2S(SaveNodes(4))
 
       WRITE(NamesUnit,'(A)') 'Data on different columns'
       j = 0
@@ -2062,9 +2297,9 @@ CONTAINS
         END IF
         IF(TransientSimulation) THEN
           j = j+1
-          WRITE(NamesUnit,'(I3,": ",A)') j,'Time step'
+          WRITE(NamesUnit,'(I3,": ",A)') j,'Timestep'
         END IF
-        WRITE(NamesUnit,'(I3,": ",A)') 1+j,'Iteration step'
+        WRITE(NamesUnit,'(I3,": ",A)') 1+j,'Call count'
         WRITE(NamesUnit,'(I3,": ",A)') 2+j,'Boundary condition'
         WRITE(NamesUnit,'(I3,": ",A)') 3+j,'Node index'
         j = j + 3
@@ -2073,7 +2308,8 @@ CONTAINS
         WRITE(NamesUnit,'(I3,": ",A)') i+j,TRIM(ValueNames(i))
       END DO
       CLOSE(NamesUnit)
-      DEALLOCATE( ValueNames )
+      DEALLOCATE( ValueNames, STAT=istat)
+      IF(istat /= 0) CALL Fatal(Caller,'Could not deallocate ValueNames!')
     END IF
 
   END SUBROUTINE SaveVariableNames

@@ -21,6 +21,8 @@ Simulation
   Simulation Type = Steady state
   Steady State Max Iterations = 1
   Output Intervals = 1
+
+  Serendipity P Elements = False
 End
 
 
@@ -107,5 +109,5 @@ Boundary Condition 3
   Force 1 = 1.0e6
 End
 
-Solver 1 :: Reference Norm = 7.77911672E-03
-Solver 2 :: Reference Norm = 2.08322635E+08
+Solver 1 :: Reference Norm = 5.99181622E-03
+Solver 2 :: Reference Norm = 1.99648761E+08

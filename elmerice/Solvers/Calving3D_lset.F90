@@ -1433,7 +1433,7 @@
           !TODO - Ask Eef about this ---^
           NodeHolder = MATMUL(RotationMatrix, NodeHolder)
           y_coord(2) = NodeHolder(2)
-          LeftToRight = y_coord(2) > y_coord(1) ! TO DO check if this doesnt break for special cases
+          LeftToRight = y_coord(2) > y_coord(1) ! TODO check if this doesn't break for special cases
           IF(LeftToRight) THEN
              CrevX(CrevStart(i):CrevEnd(i))=CrevX(CrevEnd(i):CrevStart(i):-1)
              CrevY(CrevStart(i):CrevEnd(i))=CrevY(CrevEnd(i):CrevStart(i):-1)

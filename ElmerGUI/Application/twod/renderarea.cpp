@@ -49,6 +49,10 @@
 #include "renderarea.h"
 #include "curveeditor.h"
 
+#if WITH_QT6
+#define endl Qt::endl
+#endif
+
 using namespace std;
 
 RenderArea::RenderArea(QWidget *parent)
@@ -242,13 +246,21 @@ void RenderArea::paintEvent(QPaintEvent * /* event */)
 
 void RenderArea::wheelEvent(QWheelEvent *event)
 {
+#if WITH_QT6
+  double s = exp((double)(event->angleDelta().y())*0.001);
+#else
   double s = exp((double)(event->delta())*0.001);
+#endif
   double width = renderport.width();
   double height = renderport.height();
   renderport.setWidth(s*width);
   renderport.setHeight(s*height);
   renderport.translate(QPointF(0.5*(1-s)*width, 0.5*(1-s)*height));
+#if WITH_QT6
+  lastPos = event->position().toPoint();
+#else
   lastPos = event->pos();
+#endif
   update();
 }
 
@@ -261,8 +273,13 @@ void RenderArea::mousePressEvent(QMouseEvent *event)
     QPointF p = points.value(idx);
     QPointF q = mapToViewport(p);
 
+#if WITH_QT6
+    double d = (event->position().x() - q.x()) * (event->position().x() - q.x())
+             + (event->position().y() - q.y()) * (event->position().y() - q.y());
+#else
     double d = (event->x() - q.x()) * (event->x() - q.x())
              + (event->y() - q.y()) * (event->y() - q.y());
+#endif
     
     if(d <= (pointRadius * pointRadius)) {
       QString message = "Point " + QString::number(idx);
@@ -279,7 +296,11 @@ void RenderArea::mouseReleaseEvent(QMouseEvent *event)
 {
   selectedPoint = -1;
 
+#if WITH_QT6
+  lastPos = event->position().toPoint();
+#else
   lastPos = event->pos();
+#endif
 
   emit(statusMessage("Ready"));
 }
@@ -298,8 +319,12 @@ void RenderArea::mouseMoveEvent(QMouseEvent *event)
     
     // Move point:
     //------------
+#if WITH_QT6
+    p = event->position();
+#else
     p.setX(event->x());
     p.setY(event->y());
+#endif
     q = mapToRenderport(p);
     points.insert(selectedPoint, q);
     
@@ -317,8 +342,13 @@ void RenderArea::mouseMoveEvent(QMouseEvent *event)
     a = renderport.height();
     b = viewport.height();
     scale = a/b;
+#if WITH_QT6
+    dx = scale * (double(event->position().x()) - double(lastPos.x()));
+    dy = scale * (double(event->position().y()) - double(lastPos.y()));
+#else
     dx = scale * (double(event->pos().x()) - double(lastPos.x()));
     dy = scale * (double(event->pos().y()) - double(lastPos.y()));
+#endif
     p.setX(-dx);
     p.setY(dy);
 
@@ -537,7 +567,7 @@ void RenderArea::readSlot(QString fileName)
 	points.clear();
 	splines.clear();
 	bodies.clear();
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
 	cout << message.toLatin1().data() << endl;
 #else
 	cout << message.toAscii().data() << endl;
@@ -567,7 +597,7 @@ void RenderArea::readSlot(QString fileName)
 
   if(!correctVersion) {
     QString message = "Unsupported format (splinecurve2dv2 is required)";
-    #if WITH_QT5
+    #if WITH_QT5 || WITH_QT6
     cout << message.toLatin1().data() << endl;
     #else
     cout << message.toAscii().data() << endl;

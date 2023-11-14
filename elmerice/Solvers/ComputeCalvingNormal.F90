@@ -197,7 +197,7 @@ SUBROUTINE ComputeCalvingNormalSolver( Model, Solver, dt, TransientSimulation )
     PassIndices = 0
     DO i=1,Model % Mesh % NumberOfNodes
       IF(.NOT.Hit(i)) CYCLE !no normal computation
-      IF(.NOT. Mesh % ParallelInfo % NodeInterface(i)) CYCLE !no partition interface
+      IF(.NOT. Mesh % ParallelInfo % GInterface(i)) CYCLE !no partition interface
       Neighbours => Mesh % ParallelInfo % NeighbourList(i) % Neighbours
 
       DO j=1,SIZE(Neighbours)

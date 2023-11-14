@@ -24,6 +24,8 @@ Simulation
   Timestep Intervals = 20
   Output Intervals = 1
   Steady State Max Iterations = 1
+
+  Serendipity P Elements = False
 End
 
 Body 1
@@ -128,5 +130,5 @@ End
 
 ! The test norm for the case p=4 and the total load F=4
 !
-Solver 1 :: Reference Norm = Real 6.63270053E-01
+Solver 1 :: Reference Norm = Real 5.16395436E-01
 Solver 1 :: Reference Norm Tolerance = Real 1.0e-5

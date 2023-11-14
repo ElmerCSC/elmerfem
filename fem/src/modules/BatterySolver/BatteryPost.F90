@@ -95,7 +95,7 @@ SUBROUTINE BatteryPost( Model,Solver,dt,Transient )
 
     CsAveVar % Values(k) = cs_avg
 
-    ! The difference in the extrem outer and inner locations of the 1d sphere    
+    ! The difference in the extreme outer and inner locations of the 1d sphere    
     IF( ASSOCIATED( CsDiffVar ) ) THEN
       p1 = Cs1dVar % Values(jright)
       p2 = Cs1dVar % Values(jleft)
@@ -229,7 +229,7 @@ SUBROUTINE BatteryPost( Model,Solver,dt,Transient )
   StoichLimit = ListGetCReal( Params, 'Stoichiometric limit', Found)
   NUnderStoich = COUNT( CsVar % Values <= StoichLimit )
   IF ( Found .AND. NUnderStoich > 0 ) THEN
-    CALL Warn(Caller,'Discharge in '//TRIM(I2S(NUnderStoich))//&
+    CALL Warn(Caller,'Discharge in '//I2S(NUnderStoich)//&
         ' nodes has reached the stoichiometric limit!')  
   END IF
 
@@ -240,14 +240,14 @@ SUBROUTINE BatteryPost( Model,Solver,dt,Transient )
   IF( i > 0 ) THEN
     n = SIZE( CeVar % Values )
     CALL Warn(Caller,'Number of negative concentrations (out of '&
-        //TRIM(I2S(n))//') for Ce: '//TRIM(I2S(i)))
+        //I2S(n)//') for Ce: '//I2S(i))
   END IF
 
   i = COUNT( CsVar % Values < 0.0_dp )
   IF( i > 0 ) THEN
     n = SIZE( CsVar % Values )
     CALL Warn(Caller,'Number of negative concentrations (out of '&
-        //TRIM(I2S(n))//') for Cs: '//TRIM(I2S(i)))
+        //I2S(n)//') for Cs: '//I2S(i))
   END IF
 
   ! Solves the Cell Voltage

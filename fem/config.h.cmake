@@ -107,6 +107,8 @@
 #define _ELMER_LINEAR_REF(var) 
 #endif
 
+#cmakedefine HAVE_AMGX
+
 /* Define if you have a MUMPS library. */
 /* define HAVE_MUMPS */
 #cmakedefine HAVE_MUMPS
@@ -156,6 +158,10 @@
 /* Trilinos */
 #cmakedefine HAVE_TRILINOS
 
+/* MMG */
+#cmakedefine HAVE_MMG 
+#cmakedefine HAVE_PARMMG
+
 #define ELMER_LINKTYP ${ELMER_LINKTYP}
 #define ENABLE_DYNAMIC_LINKING 1
 
@@ -164,7 +170,9 @@
 
 /* Have these defined only for debugging or optimization purposes */
 /* #define DEVEL_LISTCOUNTER */
+#define DEVEL_LISTUSAGE
 /* #define DEVEL_KEYWORDMISSES */
+
 
 #cmakedefine HAVE_LUA
 

@@ -195,7 +195,7 @@ Solver 5
 
   Procedure = File "SaveData" "SaveScalars"
   Filename =  results.dat !"hydro_scalars_$Name".dat" !"
-  File Append = Logical True     ! For transient simualtion
+  File Append = Logical True     ! For transient simulation
 
   Variable 1 = String "Time"
   !Operator 2 = String "cpu time"

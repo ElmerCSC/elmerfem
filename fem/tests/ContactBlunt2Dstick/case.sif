@@ -72,6 +72,7 @@ Solver 1
   Linear System Residual Output = 10
   Linear System Max Iterations = 5000
   Linear System Iterative Method = GCR !Bicgstab
+  Linear System GCR Restart = 200
   Linear System Convergence Tolerance = 1.0e-5
 
   Calculate Stresses = Logical True
@@ -143,7 +144,10 @@ Boundary Condition 1
 
 
   Stick Contact = Logical True
-  Initial Contact Friction = Logical False
+  Transient System Initial Slip Contact = Logical True
+
+! obsolite
+! Initial Contact Friction = Logical False
 
 !  Contact Active Set Minimum = Integer 10
 !  Create Dual Projector = Logical True

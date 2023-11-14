@@ -37,6 +37,8 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <time.h>
+#include <unistd.h>
 #include <sys/types.h>
 
 
@@ -215,7 +217,7 @@ typedef struct function
 #define FUNCSIZE sizeof(FUNCTION)
 
 /*******************************************************************
-               MISC DEFINITONS FOR PARSER
+               MISC DEFINITIONS FOR PARSER
 *******************************************************************/
 
 typedef enum symbols {
@@ -471,6 +473,6 @@ extern void PrintOut( char *format, ... );
 #include "fnames.h"
 
 /*******************************************************************
-                  graphics package defitions
+                  graphics package definitions
 *******************************************************************/ 
 #include "gra.h"

@@ -200,7 +200,7 @@ CONTAINS
     END IF
     DO i=1,Model % NumberOfSolvers
       IF( ASSOCIATED( RhsSol % Solver, Model % Solvers(i) ) ) THEN
-        CALL Info(Caller,'Source will be projected to solver id: '//TRIM(I2S(i)),Level=8)
+        CALL Info(Caller,'Source will be projected to solver id: '//I2S(i),Level=8)
         GSolver => Model % Solvers(i)
         EXIT
       END IF
@@ -339,7 +339,7 @@ CONTAINS
         END IF
 
         IF(.NOT. Found ) THEN
-          CALL Info( Caller,'Point '//TRIM(I2s(i))//' was not found in any of the elements!',Level=15)
+          CALL Info( Caller,'Point '//I2s(i)//' was not found in any of the elements!',Level=15)
           NoFails = NoFails + 1
           CYCLE
         END IF
@@ -376,11 +376,11 @@ CONTAINS
     CALL Info(Caller,'Integration finished',Level=15)
     
     IF( NoFails == 0 ) THEN
-      CALL Info(Caller,'Found all nodes '//TRIM(I2S(NoFound))//&
+      CALL Info(Caller,'Found all nodes '//I2S(NoFound)//&
           ' in the target mesh',Level=6)
     ELSE
-      CALL Warn(Caller,'Points not found: '//TRIM(I2S(NoFails))//' (found '&
-          //TRIM(I2S(NoFound))//')')
+      CALL Warn(Caller,'Points not found: '//I2S(NoFails)//' (found '&
+          //I2S(NoFound)//')')
     END IF
 
         

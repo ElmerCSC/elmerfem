@@ -122,7 +122,7 @@ Boundary Condition 2
   Displacement 1 = -0.01
 
 ! Special subroutine is needed to take just the normal component 
-! of the reaction force and multiply it with friction coeffcient
+! of the reaction force and multiply it with friction coefficient
 !  Displacement 2 Load = Variable "time"
 !    Real Procedure "TangentForce" "TangentForce"
 

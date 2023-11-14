@@ -20,7 +20,7 @@ Simulation
   Post File = vectorhelmholtz.vtu
   Output Intervals(1) = 1
 
-  Mesh Levels = 1
+!  Mesh Levels = 2
 End
 
 Constants
@@ -70,7 +70,6 @@ Solver 1
   Linear System Residual Output = 1
   Calculate Energy Norm = Logical True
 
-
   ! linear system normwise backward error = logical true
   linear system complex = false
   Linear System Block Mode = Logical True
@@ -78,6 +77,10 @@ Solver 1
   ! matrix are ordered blockwise. 
   Block Split Complex = Logical True
 
+! Sum the off-diagonal to the block diagonal prec. multiplying with this value
+!  Prec Matrix Complex Coeff = Real 1.0
+
+!  Block Jacobi = Logical True
   Block Gauss-Seidel = Logical True
   Block Matrix Reuse = Logical False
   Block Preconditioner = Logical True
@@ -86,7 +89,7 @@ Solver 1
 ! Linear system solver for outer loop
 !-----------------------------------------
   Outer: Linear System Solver = "Iterative"
-  Outer: Linear System Convergence Tolerance = 1e-7
+  Outer: Linear System Convergence Tolerance = 1e-8
   Outer: Linear System Iterative Method = gcr
   Outer: Linear System GCR Restart =  250
   Outer: Linear System Residual Output =  1

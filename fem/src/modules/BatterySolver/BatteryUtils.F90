@@ -26,7 +26,7 @@
 ! * This module solves electrochemical reactions for two phase (solid+electrolyte)
 ! * battery. The model uses the Galerkin method for all equations. The robustness
 ! * of the code still could be improved. The continuous model itself follows very
-! * closely the references while the way how the discrete system is solved is alsmost
+! * closely the references while the way how the discrete system is solved is almost
 ! * completely different.
 ! *
 ! * If you're interested in continuing the work we would appreciate contacting
@@ -132,7 +132,7 @@ CONTAINS
     CALL CalculateAnodeWeight()
 
     ! Using some "inertia" in the flux helps in convergence.
-    ! We may either use natural intertia coming from time,
+    ! We may either use natural inertia coming from time,
     ! or just iteration coming from inertia. 
     IF( UseTimeAveFlux ) THEN      
       JLi0 => JliVar % PrevValues(:,1)    
@@ -493,7 +493,7 @@ CONTAINS
   END FUNCTION ButlerVolmer
 
 
-  ! Given homogenious flux J_Li convert it to flux for the solid phase spheres
+  ! Given homogeneous flux J_Li convert it to flux for the solid phase spheres
   ! The idea is that we can hide scaling of Jli such that what remains is
   ! rather standard PDE and BCs for (3.2) for Cs.
   !----------------------------------------------------------------------------
@@ -661,7 +661,7 @@ CONTAINS
     END IF
 
     CALL Info('ButlerVolmerUpdate','Solver index related to variable "phis" is: '&
-        //TRIM(I2S(i)),Level=10)       
+        //I2S(i),Level=10)       
     
     EtaFixed = ListGetLogical( Params,'Fixed Overpotential',Found )
     IF( EtaFixed ) THEN
@@ -791,7 +791,7 @@ CONTAINS
       !n = COUNT( JliVar % Values /= JliVar % Values ) 
       !IF( n > 0 ) THEN
       !  CALL Fatal('ButlerVolmerUpdate',&
-      !      'There are NaNs in the flux solution: '//TRIM(I2S(n)))
+      !      'There are NaNs in the flux solution: '//I2S(n))
       !END IF
 
       ! This is only performed if "Max Output Level" is 7 or more. 

@@ -124,6 +124,9 @@ Solver 2
   Fourier Integrate Cycles = Integer 1
 
 
+  Calculate Nodal Fields = True
+  Calculate Elemental Fields = True
+
 ! Linear solvers for the loss computation. This is a mass matrix so anything simple will do. 
   Linear System Solver = "direct" !Iterative"
   Linear System Preconditioning = ILU0
@@ -133,6 +136,13 @@ Solver 2
   Linear System Iterative Method = BiCGStabL
 End
 
+Solver 3
+  Exec Solver = after all
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Filename = g.dat
+  Show Norm Index = 1
+End
 
 
 
@@ -178,4 +188,6 @@ Boundary Condition 1
     Real MATC "2+cos(2*pi*tx)+0.5*cos(2*2*pi*tx)+0.25*cos(3*2*pi*tx)+0.4*sin(2*pi*tx)+0.2*sin(2*2*pi*tx)+0.1*sin(3*2*pi*tx)"
 End
 
+Solver 1 :: Reference Norm = 3.75000000E+00
 Solver 2 :: Reference Norm = 1.55412463E+01
+Solver 3 :: Reference Norm = 1.55412463E+01

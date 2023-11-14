@@ -1,0 +1,138 @@
+Header
+  Mesh DB "." "Step"
+  Include Path ""
+  Results Directory ""
+End
+
+
+Simulation
+!  Max Output Level = 5
+  Coordinate System =  Cartesian 2D
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+
+  Output Intervals = 1
+  Post File = "Step.vtu"
+! Output File = "Step.dat"
+End
+
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-8
+End
+
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+End
+
+
+Equation 1
+  Name = "Equation1"
+  Active Solvers(1) = 1
+End
+
+
+Solver 1
+  Equation = "Stokes"
+  Procedure = "Stokes" "StokesSolver"
+
+  Element = "p:2"  
+
+  Variable = RotSol
+  Variable Dofs = 3
+  Convective = Logical False
+
+  !-----------------------------------------------
+  ! Keywords related to the block preconditioning
+  !-----------------------------------------------
+  Block Preconditioning = Logical False
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Preconditioning = ILU0
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Residual Output = 1000
+End
+
+
+!Solver 2
+!  Equation = "Velocity Preconditioning"
+!  Procedure = "VelocityPrecond" "VelocityPrecond"
+!  Variable = -dofs 2 "VelocityCorrection"
+!  Variable Output = False
+!  Exec Solver = "before simulation"
+!  Linear System Solver = Iterative
+!  Linear System Iterative Method = BiCGStab
+!  Linear System Max Iterations = 1000
+!  Linear System Convergence Tolerance = 1.0e-4
+!  Linear System Preconditioning = ILU0
+!End
+
+
+!Solver 3
+!  Equation = "Divergence Projection"
+!  Procedure = "DivProjection" "DivProjection"
+!  Variable = -dofs 1 "DivField"
+!  Variable Output = False
+!  Exec Solver = "before simulation"
+!  Linear System Solver = Iterative
+!  Linear System Iterative Method = BiCGStab
+!  Linear System Max Iterations = 1000
+!  Linear System Convergence Tolerance = 1.0e-6
+!  Linear System Preconditioning = diagonal
+!End
+
+
+!Solver 4
+!  Equation = "Pressure Preconditioning"
+!  Procedure = "PressurePrecond" "PressurePrecond"
+!  Variable = -dofs 1 "PressureCorrection"
+!  Variable Output = False
+!  Exec Solver = "before simulation"
+!  Linear System Solver = iterative
+!  Linear System Iterative Method = CG
+!  Linear System Max Iterations = 1000
+!  Linear System Convergence Tolerance = 1.0e-4
+!  Linear System Preconditioning = ILU0
+!End
+
+
+
+Material 1
+  Name = "Material1"
+  Density = 1
+  Viscosity = 1
+End
+
+Boundary Condition 1
+  Name = "inflow"
+  Target Boundaries = 1
+
+  RotSol 1 = Variable Coordinate 2
+     Real MATC "(2-tx)*(tx-1)"
+  RotSol 2 = Real 0
+End
+
+Boundary Condition 2
+  Name = "outflow"
+  Target Boundaries = 2
+  Outflow Boundary = Logical True
+  RotSol 2 = Real 0
+End
+
+Boundary Condition 3
+  Name = "wall"
+  Target Boundaries = 3
+
+  RotSol 1 = Real 0
+  RotSol 2 = Real 0
+End
+
+Solver 1 :: Reference Norm = Real 1.2047758
+RUN

@@ -1,9 +1,4 @@
-! This test case computes the magnetic field induced by a cylindrical wire
-! The field outside the wire should be |B|=\mu*I/(2*pi*r).
-! If I=1 A and r=0.01 m then |B|=2.0e-4.
-! The computed result is 1.974e-4 i.e. error of around 1%.
-!
-! To the base case different is that electric potential is solved alongside
+! To the base case (mgdyn_steady_wire) different is that electric potential is solved alongside
 ! and no bodyforce is used, and this is also harmonic requiring additionally
 ! the frequency. 
 !
@@ -116,8 +111,8 @@ Solver 3
   Output File Name = wire
   Vtu format = Logical True
   Discontinuous Bodies = Logical True
-
-  Reference Sums(6) = Real 59 13 206250 2064 402220888 4.178146196
+!  Save Geometry IDs = Logical True
+  Reference Values(6) = Real 59 13 206250 2064 402220888 4.178146196
 End
 
 Solver 4
@@ -148,9 +143,9 @@ Solver 5
 
 ! Components of the complex voltage
   Variable 3 = AV Re
-  Operator 3 = boundary mean
+  Operator 3 = boundary int mean
   Variable 4 = AV Im
-  Operator 4 = boundary mean
+  Operator 4 = boundary int mean
 
 ! This is just to create a testable norm 
   Show norm index = 5
@@ -231,7 +226,7 @@ End
 
 Solver 1 :: Reference Norm = 4.62227582E-06
 Solver 3 :: Reference Norm = 1.0
-Solver 4 :: Reference Norm = 1.42295178E+03
+Solver 4 :: Reference Norm = 1.60160403E+03
 Solver 4 :: Reference Norm Tolerance = 1e-4
 Solver 5 :: Reference Norm = 1.51593518E-06
 Solver 5 :: Reference Norm Tolerance = 1e-4

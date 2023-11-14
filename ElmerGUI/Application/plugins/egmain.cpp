@@ -851,7 +851,7 @@ int main(int argc, char *argv[])
   static Real mergeeps;
   long ii;
 
-  if(info) printf("\nStarting program Elmergrid\n");
+  if(info) printf("\nStarting program Elmergrid, compiled on %s\n", __DATE__ );
   
   InitParameters(&eg);
   grids = (struct GridType*)malloc((size_t) (MAXCASES)*sizeof(struct GridType));     

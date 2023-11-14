@@ -1,0 +1,105 @@
+! Simple test case for implicit friction with StressSolver.
+!
+! P.R. 31.8.2022
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "cube"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Transient
+  Steady State Max Iterations = 1
+
+  Timestep Intervals = 5
+  Timestep Sizes = 0.2
+  Timestepping Method = implicit euler
+
+  Output Intervals = 1
+!  Post File = case.vtu
+
+!  Mesh Levels = 3
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+  Permittivity of Vacuum = 8.8542e-12
+  Boltzmann Constant = 1.3807e-23
+  Unit Charge = 1.602e-19
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Solver 1
+  Equation = Linear elasticity
+  Procedure = "StressSolve" "StressSolver"
+  Variable = -dofs 3 Displacement
+  Steady State Convergence Tolerance = 1.0e-8
+
+  Nonlinear System Max Iterations = 1
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = "BiCGStabl"
+  BiCgStabl Polynomial Degree = 4
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "BILU0"
+  Linear System Residual Output = 10
+  Linear System Precondition Recompute = 1
+
+  Element = p:2
+End
+
+
+Equation 1
+  Name = "Equation 1"
+  Active Solvers(1) = 1
+End
+
+Material 1
+  Name = "Ideal"
+  Youngs modulus = 1.0e3
+  Density = 1.0
+  Poisson ratio = 0.3
+End
+
+! Natural BCs at the sides
+Boundary Condition 1
+  Name = "Natural" 
+  Target Boundaries(4) = 1 2 3 4
+End 
+
+! Note that this large a displacement really makes the system nonlinear.
+Boundary Condition 2
+  Name = "Top"
+  Target Boundaries(1) = 6
+
+  Displacement 3 = Variable "time"
+    Real LUA "-0.2*tx[0]"
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
+End
+
+Boundary Condition 3
+  Name = "Bottom"
+  Target Boundaries(1) = 5
+  Displacement 3 = Real 0.0
+
+  Implicit Friction Coefficient = Real 0.3
+  Friction Direction(3) = Real 1.0 1.0 0.0
+End
+
+Solver 1 :: Reference Norm = 6.09456234E-02
+

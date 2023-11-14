@@ -174,7 +174,7 @@ Boundary Condition 3
    A re {e} = Real 0
    A im {e} = Real 0
 End
-Solver 3 :: Reference Norm = 3.80175357E-05
+Solver 3 :: Reference Norm = 3.80238394E-05
 Solver 3 :: Reference Norm Tolerance = 1e-03 
-Solver 4 :: Reference Norm = 3.40716288E+04
+Solver 4 :: Reference Norm = 3.39878576E+04
 Solver 4 :: Reference Norm Tolerance = 1e-03 

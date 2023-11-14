@@ -433,7 +433,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       LOGICAL :: FirstTime = .TRUE., stat
       REAL(KIND=dp), POINTER :: Hwrk(:,:,:)
-
+      INTEGER :: n1,n2,t1
       SAVE FirstTime, Hwrk
 !------------------------------------------------------------------------------
       IF ( FirstTime ) THEN
@@ -444,36 +444,32 @@ CONTAINS
       Tensor = 0.0d0
 
       CALL ListGetRealArray( Material, Name, Hwrk, n, NodeIndexes, stat )
-      IsScalar = SIZE(HWrk,1) == 1 .AND. SIZE(HWrk,2) == 1
+      n1 = MIN(SIZE(HWrk,1),3)
+      n2 = MIN(SIZE(Hwrk,2),3)
+      IsScalar = (n1==1 .AND. n2==1) 
 
       IF ( .NOT. stat ) RETURN
 
-
       IF ( IsScalar ) THEN
-        DO i=1,SIZE(Tensor,1)
+        t1 = SIZE(Tensor,1)
+        DO i=1,t1
           Tensor(i,i,1:n) = Hwrk(1,1,1:n)
         END DO
       ELSE
-        IF ( SIZE(Hwrk,1) == 1 ) THEN
-
-          DO i=1,MIN(3,SIZE(Hwrk,2))
+        IF ( n1 == 1 ) THEN
+          DO i=1,n2
             Tensor( i,i,1:n ) = Hwrk( 1,i,1:n )
           END DO
-
-        ELSE IF ( SIZE(Hwrk,2) == 1 ) THEN
-
-          DO i=1,MIN(3,SIZE(Hwrk,1))
+        ELSE IF ( n2 == 1 ) THEN
+          DO i=1,n1
             Tensor(i,i,1:n) = Hwrk(i,1,1:n)
           END DO
-
         ELSE
-
-          DO i=1,MIN(3,SIZE(Hwrk,1))
-            DO j=1,MIN(3,SIZE(Hwrk,2))
+          DO i=1,n1
+            DO j=1,n2
               Tensor( i,j,1:n ) = Hwrk(i,j,1:n)
             END DO
           END DO
-
         END IF
       END IF
 !------------------------------------------------------------------------------
@@ -493,7 +489,7 @@ CONTAINS
       LOGICAL :: FirstTime = .TRUE., stat
       REAL(KIND=dp), POINTER :: Hwrk(:,:,:)
       INTEGER :: i
-      
+      INTEGER :: n1,n2
       SAVE FirstTime, Hwrk
 !------------------------------------------------------------------------------
       IF ( FirstTime ) THEN
@@ -504,22 +500,20 @@ CONTAINS
       Tensor = 0.0d0
 
       CALL ListGetRealArray( Material, Name, Hwrk, n, NodeIndexes, stat )
-      IsScalar = SIZE(HWrk,1) == 1 .AND. SIZE(HWrk,2) == 1
+      n1 = MIN(SIZE(HWrk,1),3)
+      n2 = MIN(SIZE(HWrk,2),3)
+      IsScalar = (n1==1 .AND. n2==1)
 
       IF ( .NOT. stat ) RETURN
-
-      IF ( SIZE(Hwrk,1) == 1 ) THEN
-
-         DO i=1,MIN(3,SIZE(Hwrk,2))
+      
+      IF ( n1 == 1 ) THEN
+         DO i=1,n2
             Tensor( i,1:n ) = Hwrk( 1,i,1:n )
          END DO
-
       ELSE
-
-        DO i=1,MIN(3,SIZE(Hwrk,1))
+        DO i=1,n1
            Tensor( i,1:n ) = Hwrk( i,1,1:n )
         END DO
-
       END IF
 !------------------------------------------------------------------------------
     END SUBROUTINE InputVector
@@ -1082,7 +1076,7 @@ END SUBROUTINE DCRComplexSolver
 !------------------------------------------------------------------------------
       LOGICAL :: FirstTime = .TRUE., stat
       REAL(KIND=dp), POINTER :: Hwrk(:,:,:)
-
+      INTEGER :: n1,n2
       SAVE FirstTime, Hwrk
 !------------------------------------------------------------------------------
       IF ( FirstTime ) THEN
@@ -1093,22 +1087,20 @@ END SUBROUTINE DCRComplexSolver
       Tensor = 0.0d0
 
       CALL ListGetRealArray( Material, Name, Hwrk, n, NodeIndexes, stat )
-      IsScalar = SIZE(HWrk,1) == 1 .AND. SIZE(HWrk,2) == 1
+      n1 = MIN(SIZE(HWrk,1),3)
+      n2 = MIN(SIZE(HWrk,2),3)
+      IsScalar = (n1==1 .AND. n2==1)
 
       IF ( .NOT. stat ) RETURN
 
-      IF ( SIZE(Hwrk,1) == 1 ) THEN
-
-         DO i=1,MIN(3,SIZE(Hwrk,2))
+      IF ( n1==1 ) THEN
+         DO i=1,n2
             Tensor( i,1:n ) = Hwrk( 1,1,1:n )
          END DO
-
       ELSE
-
-        DO i=1,MIN(3,SIZE(Hwrk,1))
+        DO i=1,n1
            Tensor( i,1:n ) = Hwrk( i,1,1:n )
         END DO
-
       END IF
 !------------------------------------------------------------------------------
     END SUBROUTINE InputVector
@@ -1370,7 +1362,7 @@ END SUBROUTINE DCRComplexSolver
 !------------------------------------------------------------------------------
       LOGICAL :: FirstTime = .TRUE., stat
       REAL(KIND=dp), POINTER :: Hwrk(:,:,:)
-
+      INTEGER :: n1,n2
       SAVE FirstTime, Hwrk
 !------------------------------------------------------------------------------
       IF ( FirstTime ) THEN
@@ -1381,30 +1373,27 @@ END SUBROUTINE DCRComplexSolver
       Tensor = 0.0d0
 
       CALL ListGetRealArray( Material, Name, Hwrk, n, NodeIndexes, stat )
-      IsScalar = SIZE(HWrk,1) == 1 .AND. SIZE(HWrk,2) == 1
+
+      n1 = MIN(SIZE(HWrk,1),3)
+      n2 = MIN(SIZE(Hwrk,2),3)
+      IsScalar = (n1==1 .AND. n2==1)
 
       IF ( .NOT. stat ) RETURN
 
-      IF ( SIZE(Hwrk,1) == 1 ) THEN
-
-         DO i=1,MIN(3,SIZE(Hwrk,2))
+      IF ( n1 == 1 ) THEN
+         DO i=1,n2
             Tensor( i,i,1:n ) = Hwrk( 1,1,1:n )
          END DO
-
-      ELSE IF ( SIZE(Hwrk,2) == 1 ) THEN
-
-         DO i=1,MIN(3,SIZE(Hwrk,1))
+      ELSE IF ( n2 == 1 ) THEN
+         DO i=1,n1
             Tensor(i,i,1:n) = Hwrk(i,1,1:n)
          END DO
-
       ELSE
-
-        DO i=1,MIN(3,SIZE(Hwrk,1))
-           DO j=1,MIN(3,SIZE(Hwrk,2))
+        DO i=1,n1
+           DO j=1,n2
               Tensor( i,j,1:n ) = Hwrk(i,j,1:n)
            END DO
         END DO
-
       END IF
 !------------------------------------------------------------------------------
    END SUBROUTINE InputTensor
@@ -1422,7 +1411,7 @@ END SUBROUTINE DCRComplexSolver
 !------------------------------------------------------------------------------
       LOGICAL :: FirstTime = .TRUE., stat
       REAL(KIND=dp), POINTER :: Hwrk(:,:,:)
-
+      INTEGER :: n1,n2
       SAVE FirstTime, Hwrk
 !------------------------------------------------------------------------------
       IF ( FirstTime ) THEN
@@ -1433,22 +1422,20 @@ END SUBROUTINE DCRComplexSolver
       Tensor = 0.0d0
 
       CALL ListGetRealArray( Material, Name, Hwrk, n, NodeIndexes, stat )
-      IsScalar = SIZE(HWrk,1) == 1 .AND. SIZE(HWrk,2) == 1
+      n1 = MIN(SIZE(HWrk,1),3)
+      n2 = MIN(SIZE(Hwrk,2),3)
 
+      IsScalar = (n1==1 .AND. n2==1)
       IF ( .NOT. stat ) RETURN
 
-      IF ( SIZE(Hwrk,1) == 1 ) THEN
-
-         DO i=1,MIN(3,SIZE(Hwrk,2))
+      IF ( n1 == 1 ) THEN
+         DO i=1,n2
             Tensor( i,1:n ) = Hwrk( 1,1,1:n )
          END DO
-
       ELSE
-
-        DO i=1,MIN(3,SIZE(Hwrk,1))
+        DO i=1,n1
            Tensor( i,1:n ) = Hwrk( i,1,1:n )
         END DO
-
       END IF
 !------------------------------------------------------------------------------
     END SUBROUTINE InputVector
@@ -1720,7 +1707,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       LOGICAL :: FirstTime = .TRUE., stat
       REAL(KIND=dp), POINTER :: Hwrk(:,:,:)
-
+      INTEGER :: n1,n2
       SAVE FirstTime, Hwrk
 !------------------------------------------------------------------------------
       IF ( FirstTime ) THEN
@@ -1731,30 +1718,27 @@ CONTAINS
       Tensor = 0.0d0
 
       CALL ListGetRealArray( Material, Name, Hwrk, n, NodeIndexes, stat )
-      IsScalar = SIZE(HWrk,1) == 1 .AND. SIZE(HWrk,2) == 1
+
+      n1 = MIN(SIZE(HWrk,1),3)
+      n2 = MIN(SIZE(HWrk,2),3)
+      IsScalar = (n1==1 .AND. n2==1)
 
       IF ( .NOT. stat ) RETURN
-
-      IF ( SIZE(Hwrk,1) == 1 ) THEN
-
-         DO i=1,MIN(3,SIZE(Hwrk,2))
+     
+      IF ( n1 == 1 ) THEN
+         DO i=1,n2
             Tensor( i,i,1:n ) = Hwrk( 1,1,1:n )
          END DO
-
-      ELSE IF ( SIZE(Hwrk,2) == 1 ) THEN
-
-         DO i=1,MIN(3,SIZE(Hwrk,1))
+      ELSE IF ( n2 == 1 ) THEN
+         DO i=1,n1
             Tensor(i,i,1:n) = Hwrk(i,1,1:n)
          END DO
-
       ELSE
-
-        DO i=1,MIN(3,SIZE(Hwrk,1))
-           DO j=1,MIN(3,SIZE(Hwrk,2))
+        DO i=1,n1
+           DO j=1,n2
               Tensor( i,j,1:n ) = Hwrk(i,j,1:n)
            END DO
         END DO
-
       END IF
 !------------------------------------------------------------------------------
    END SUBROUTINE InputTensor
@@ -1772,7 +1756,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       LOGICAL :: FirstTime = .TRUE., stat
       REAL(KIND=dp), POINTER :: Hwrk(:,:,:)
-
+      INTEGER :: n1, n2
       SAVE FirstTime, Hwrk
 !------------------------------------------------------------------------------
       IF ( FirstTime ) THEN
@@ -1783,22 +1767,20 @@ CONTAINS
       Tensor = 0.0d0
 
       CALL ListGetRealArray( Material, Name, Hwrk, n, NodeIndexes, stat )
-      IsScalar = SIZE(HWrk,1) == 1 .AND. SIZE(HWrk,2) == 1
+      n1 = MIN(SIZE(HWrk,1),3)
+      n2 = MIN(SIZE(HWrk,2),3)
 
+      IsScalar = (n1 == 1 .AND. n2 == 1 ) 
       IF ( .NOT. stat ) RETURN
 
-      IF ( SIZE(Hwrk,1) == 1 ) THEN
-
-         DO i=1,MIN(3,SIZE(Hwrk,2))
+      IF ( n1 == 1 ) THEN
+         DO i=1,n2
             Tensor( i,1:n ) = Hwrk( 1,1,1:n )
          END DO
-
       ELSE
-
-        DO i=1,MIN(3,SIZE(Hwrk,1))
+        DO i=1,n1
            Tensor( i,1:n ) = Hwrk( i,1,1:n )
         END DO
-
       END IF
 !------------------------------------------------------------------------------
     END SUBROUTINE InputVector

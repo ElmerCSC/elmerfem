@@ -136,7 +136,7 @@
            END DO
         END DO
 
-        CALL Info('HelmholtzBEMSolver','Number of nodes on boundaries: '//TRIM(I2S(BoundaryNodes)))
+        CALL Info('HelmholtzBEMSolver','Number of nodes on boundaries: '//I2S(BoundaryNodes))
         
         N = Model % MaxElementNodes
  

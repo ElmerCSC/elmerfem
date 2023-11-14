@@ -52,7 +52,6 @@ Body 1
   Equation = 1
   Body Force = 1
   Material = 1
-  Initial Condition = 1
 End
 Body 2
   Name = "Free surface"
@@ -62,16 +61,7 @@ End
 !==============================================================================
 !--------------------------- INITIAL CONDITIONS -------------------------------
 !==============================================================================
-Initial Condition 1
-  Velocity 1 = 0.0
-  Velocity 2 = 0.0
-  !Velocity 1 = Variable Coordinate
-  !   Real MATC "5.0*tx(0)/abs(tx(0)+tx(1)+0.001)"
-  !Velocity 2 = Variable Coordinate
-  !   Real MATC "5.0*tx(1)/abs(tx(0)+tx(1)+0.001)"
-  Velocity 3 = 0.0
-  Pressure = 0.0
-End
+! none needed, as restart
 !==============================================================================
 !---------------- BODY FORCES ----------------------
 !==============================================================================
@@ -134,10 +124,7 @@ Solver 1
   Mesh Velocity Variable = String "dSdt"
   Mesh Update Variable = String "dS"
   Mesh Velocity First Zero = Logical True
-
   Minimum Height = Real $MINH
-  !Top Surface Variable Name = String "Zs Top"
-  !Bottom Surface Variable Name = String "Zs Bottom"
 End
 !==============================================================================
 ! /// Compute Normals ///

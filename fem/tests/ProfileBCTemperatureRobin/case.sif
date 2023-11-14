@@ -1,0 +1,114 @@
+!---------------------------------------------------------------------
+! Solves a Poisson equation with a known profile but uknown amplitude.
+!
+! P.R. / 20.9.2023
+!--------------------------------------------------------------------
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "squares"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+  Post File = "case.vtu"
+
+!  Mesh Levels = 4
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equation1"
+  Active Solvers(1) = 1
+End
+
+
+
+Solver 1
+  Equation = "HeatEquation"
+  Variable = "Temperature"
+  Procedure = File "HeatSolve" "HeatSolver"
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "bicgstab"
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Preconditioning = ILU2
+  Linear System Residual Output = 20
+
+  Calculate Boundary Fluxes = Logical True
+  Calculate Loads = True
+End  
+
+ 
+Solver 2
+  Equation = "SaveScalars"
+!  Exec Solver = never
+
+  Procedure = "SaveData" "SaveScalars"
+  Filename = f.dat
+  Mask Name 1 = "inside"
+  Variable 1 = Temperature
+  Operator 1 = boundary min
+  Variable 2 = Temperature
+  Operator 2 = boundary max
+End  
+
+
+Material 1
+  Name = "Material1"
+
+  Density = 1.0
+  Heat Conductivity = 1.0
+End
+
+Body Force 1
+  Name = "BodyForce1"
+!  Heat Source = 1.0
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+
+  Temperature = 0.0
+  Outside = Logical True
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 2 
+
+! On the boundary this has range [0.25,0.5] and hence
+! the final solution has ratio 2.0 for the max/min value on the bc. 
+  Temperature Profile = Variable "Coordinate 1"
+    Real MATC "0.75-0.25*tx"
+
+  External Temperature = 1.0
+  Heat Transfer Coefficient = 1.0e5
+
+  Inside = Logical True
+End
+
+Solver 1 :: Reference Norm = 3.73147884E-01
+
+
+

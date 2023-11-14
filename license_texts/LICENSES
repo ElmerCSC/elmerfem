@@ -19,7 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 The Elmer source files consist of the following modules (in alphabetical order): 
 
-buildtools - sripts used in building Elmer
+buildtools - scripts used in building Elmer
 ElmerGUI - the new graphical user interface of Elmer based on QT 
 ElmerGUIlogger - launcher for ElmerGUI based on QT
 eio - elmer I/O library used by ElmerSolver for some tasks

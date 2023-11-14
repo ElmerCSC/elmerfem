@@ -78,20 +78,23 @@ SUBROUTINE WaveSolver(Model, Solver, dt, TransientSimulation)
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER :: SolverPars
   TYPE(Element_t), POINTER :: Element
   REAL(KIND=dp) :: Norm, Pave
   INTEGER :: dim, maxiter, iter, n, nb, nd, t, active
   LOGICAL :: Found, InitHandles, NeedMass
 !------------------------------------------------------------------------------
 
-  CALL Info('WaveSolver','Solving the divergence pressure wave')
+  CALL Info('WaveSolver','Solving the compressional pressure wave')
   
+  SolverPars => GetSolverParams()
   dim = CoordinateSystemDimension()
-  maxiter = ListGetInteger(GetSolverParams(), &
+  maxiter = ListGetInteger(SolverPars, &
       'Nonlinear System Max Iterations', Found, minv=1)
   IF(.NOT. Found ) maxiter = 1
 
-  NeedMass = EigenOrHarmonicAnalysis() 
+  NeedMass = EigenOrHarmonicAnalysis() .OR. GetLogical(SolverPars, &
+      'Harmonic Mode', Found) .OR. GetLogical(SolverPars, 'Harmonic Analysis', Found)
   IF( NeedMass ) THEN
     CALL Info('WaveSolver','We have a harmonic or eigenmode system')
   END IF
@@ -235,7 +238,7 @@ CONTAINS
           ! The 2nd time derivative:
           ! ------------------------------
           MASS(p,q) = MASS(p,q) + Weight * &
-              1.0_dp/ c**2  * Basis(q) * Basis(p)
+              (1.0_dp/ c**2)  * Basis(q) * Basis(p)
 
         END DO
       END DO
@@ -244,10 +247,13 @@ CONTAINS
           FORCE(1:nd) = FORCE(1:nd) - Weight * LoadAtIP * Basis(1:nd)
     END DO
     
-    IF( TransientSimulation) THEN
-      CALL Default2ndOrderTime( MASS, DAMP, STIFF, FORCE )
-    ELSE IF( NeedMass ) THEN
-      CALL DefaultUpdateMass( MASS )
+    IF( TransientSimulation .OR. NeedMass ) THEN
+      IF ( TransientSimulation ) THEN
+        CALL Default2ndOrderTime( MASS, DAMP, STIFF, FORCE )
+      ELSE
+        CALL DefaultUpdateMass( MASS )
+        CALL DefaultUpdateDamp( DAMP )
+      END IF
     END IF
 
     ! Applying static condensation is a risky endeavour since the values of 
@@ -332,8 +338,13 @@ CONTAINS
 
     END DO
 
-    IF( TransientSimulation) THEN
-      CALL Default2ndOrderTime( MASS, DAMP, STIFF, FORCE )
+    IF( TransientSimulation .OR. NeedMass ) THEN
+      IF ( TransientSimulation ) THEN
+        CALL Default2ndOrderTime( MASS, DAMP, STIFF, FORCE )
+      ELSE
+        CALL DefaultUpdateMass( MASS )
+        CALL DefaultUpdateDamp( DAMP )
+      END IF
     END IF
 
     CALL DefaultUpdateEquations(STIFF,FORCE)

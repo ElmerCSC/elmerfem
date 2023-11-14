@@ -49,63 +49,61 @@
 !>  Solve the free surface in the phase change problem using a transient algorithm. 
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
-SUBROUTINE TransientPhaseChange( Model,Solver,dt,TransientSimulation )
+SUBROUTINE TransientPhaseChange( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE DefUtils
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Model_t)  :: Model
   TYPE(Solver_t), TARGET :: Solver
-  LOGICAL ::  TransientSimulation
+  LOGICAL ::  Transient
   REAL(KIND=dp) :: dt
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-  TYPE(Element_t), POINTER :: CurrentElement, Parent, Element
-  TYPE(Variable_t), POINTER :: SurfSol, TempSol, HelpSol, LoadsSol
+  TYPE(Element_t), POINTER :: CurrentElement, Element
+  TYPE(Variable_t), POINTER :: SurfSol, TempSol, HelpSol, LoadsSol, NrmSol
   TYPE(Nodes_t) :: Nodes
-  TYPE(GaussIntegrationPoints_t) :: IntegStuff  
   TYPE(Matrix_t),POINTER  :: StiffMatrix
   TYPE(ValueList_t), POINTER :: Material
   TYPE(Solver_t), POINTER :: PSolver 
   TYPE(ValueList_t), POINTER :: Params
 
-  REAL(KIND=dp) :: Normal(3), u, v, w, UPull, PrevUpull, &
-      Update, MaxUpdate, VelocityRelax, DispRelax, &
-      surf, xx, yy, r, detJ, Temp, NonlinearTol, &
-      d, HeatCond, s, CoordMin(3), CoordMax(3), RelativeChange, area, &
-      Norm, maxds, maxds0, ds, MaxLoad, MinLoad, &
-      pos0=0.0, prevpos0, Coeff, &
-      MeanSurface, SpeedUp, LoadsRelax
+  REAL(KIND=dp) :: u, v, w, UPull, PrevUpull, &
+      VelocityRelax, DispRelax, xx, yy, NonlinearTol, &
+      d, s, CoordMin(3), CoordMax(3), RelativeChange, &
+      Norm, ds, pos0=0.0, prevpos0, SpeedUp, LoadsRelax
   REAL(KIND=dp), POINTER :: Surface(:), PrevSurface(:), Temperature(:), ForceVector(:),  &
       x(:), y(:), z(:), Basis(:), dBasisdx(:,:), NodalTemp(:), &
       Conductivity(:), LatentHeat(:), Density(:), &
-      Normals(:), Weights(:), SurfaceVelo(:), PrevSurfaceVelo(:), &
+      Normals(:), SurfaceVelo(:), PrevSurfaceVelo(:), &
       CurrentLoads(:), PrevLoads(:)
 
   REAL(KIND=dp), ALLOCATABLE :: &          
       LocalStiffMatrix(:,:), LocalForceVector(:), LocalMassMatrix(:,:)  
-  INTEGER :: i,j,k,t,n,nn,nd,pn,DIM,kl,kr,l, bc, Trip_node, axis_node, NonlinearIter, istat, &
-       NElems,ElementCode,Next,Vertex,ii,imin,Node, iter, LiquidInd, Visited = -1, &
-       SubroutineVisited = 0, NormalDirection, CoordMini(3), CoordMaxi(3), CoupledIter, &
-       TimeStep, LoadsOrder
-  INTEGER, POINTER :: NodeIndexes(:),TempPerm(:),SurfPerm(:),NormalsPerm(:)
+  INTEGER :: i,j,k,t,n,nd,dim,Trip_node, axis_node, NonlinearIter, istat, &
+       ii,iter, Visited = -1, &
+       SubroutineVisited = 0, NormalDir, CoordMini(3), CoordMaxi(3), CoupledIter, &
+       TimeStep, LoadsOrder, LoadsSign
+  INTEGER, POINTER :: NodeIndexes(:),TempPerm(:),SurfPerm(:)
 
-  LOGICAL :: Stat, FirstTime = .TRUE., Debug, DoVelocityRelax, &
-      PullControl, PullVelocitySet = .FALSE., IsoSurfAllocated, AllocationsDone = .FALSE., &
-      UseLoads, AverageNormal, SurfaceVelocitySet = .FALSE., TriplePointFixed, &
+  LOGICAL :: Stat, FirstTime = .TRUE., DoVelocityRelax, &
+      PullControl, PullVelocitySet = .FALSE., AllocationsDone = .FALSE., &
+      UseLoads, AverageNormal, TriplePointFixed, &
       UseAverageLoads, UseFirstLoads
   LOGICAL, POINTER :: IsBoundaryNode(:)
   CHARACTER(LEN=MAX_NAME_LEN) :: VariableName, TemperatureName, str
   TYPE(ValueList_t), POINTER :: ValueList
-
+  TYPE(Variable_t), POINTER :: Var
+  TYPE(Mesh_t), POINTER :: Mesh
+  
   SAVE FirstTime, Trip_node, Axis_node,SubroutineVisited, prevpos0, &
-      PrevSurfaceVelo, NormalDirection, ForceVector, PullControl, &
+      PrevSurfaceVelo, NormalDir, ForceVector, PullControl, &
       Visited, Nodes, NodalTemp, Conductivity, LatentHeat, Density, &
       AllocationsDone, LocalStiffMatrix, LocalForceVector, LocalMassMatrix, &
       x, y, z, Basis, dBasisdx, norm, PullVelocitySet, &
-      Normals, Weights, NormalsPerm, AverageNormal, SurfaceVelo, &
-      SurfaceVelocitySet, CoordMax, CoordMin, CoordMaxi, CoordMini, UPull, &
+      Normals, AverageNormal, SurfaceVelo, &
+      CoordMax, CoordMin, CoordMaxi, CoordMini, UPull, &
       IsBoundaryNode, DoVelocityRelax, CurrentLoads, PrevLoads
   
 
@@ -115,7 +113,7 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,TransientSimulation )
   CALL Info('TransientPhaseChange','Using transient algorithm for surface update')          
   CALL Info('TransientPhaseChange','--------------------------------------------')
 
-  IF(.NOT. TransientSimulation ) THEN
+  IF(.NOT. Transient ) THEN
     CALL Fatal('TransientPhaseChange','This only makes sense in a transient setting')
   END IF
 
@@ -129,6 +127,7 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,TransientSimulation )
   Params => GetSolverParams()
 
   PSolver => Solver
+  Mesh => Solver % Mesh
   SurfSol  => Solver % Variable
   Surface  => SurfSol % Values
   PrevSurface => SurfSol % PrevValues(:,1)
@@ -140,7 +139,7 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,TransientSimulation )
   TemperatureName = ListGetString( Params, 'Phase Change Variable', Stat )
   IF(.NOT. Stat) TemperatureName = 'Temperature'
 
-  TempSol => VariableGet( Solver % Mesh % Variables, TRIM(TemperatureName) )
+  TempSol => VariableGet( Mesh % Variables, TRIM(TemperatureName) )
   TempPerm    => TempSol % Perm
   Temperature => TempSol % Values
   IF(.NOT. ASSOCIATED (Temperature) .OR. ALL(TempPerm <= 0) ) THEN
@@ -169,11 +168,11 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,TransientSimulation )
     CALL Info('TransientPhaseChange','Fixing triple point position',Level=7)
   END IF
 
-  HelpSol => VariableGet( Solver % Mesh % Variables, 'coupled iter')
-  CoupledIter = HelpSol % Values(1)
+  HelpSol => VariableGet( Mesh % Variables, 'coupled iter')
+  CoupledIter = NINT( HelpSol % Values(1) )
 
-  HelpSol => VariableGet( Solver % Mesh % Variables, 'timestep')
-  TimeStep = HelpSol % Values(1)
+  HelpSol => VariableGet( Mesh % Variables, 'timestep')
+  TimeStep = NINT( HelpSol % Values(1) ) 
 
 !---------------------------------------------------------------------------------
 ! The first time the main axis of the free surface is determined
@@ -208,7 +207,7 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,TransientSimulation )
     END DO
     
     ! Direction of minimum change is the normal direction if not given
-    NormalDirection = ListGetInteger( Params,'Normal Direction',Stat)
+    NormalDir = ListGetInteger( Params,'Normal Direction',Stat)
     IF(.NOT. Stat) THEN
       j = 1
       DO i=1,DIM
@@ -216,8 +215,8 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,TransientSimulation )
           j = i
         END IF
       END DO
-      NormalDirection = j
-      CALL Info('TransientPhaseChange','Normal coordinate set to: '//TRIM(I2S(j)),Level=7)
+      NormalDir = j
+      CALL Info('TransientPhaseChange','Normal coordinate set to: '//I2S(j),Level=7)
     END IF
     
     ALLOCATE(IsBoundaryNode(SIZE(Surface)))
@@ -225,14 +224,14 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,TransientSimulation )
 
     ! In 2D the extremum points must be edge points
     IF( DIM == 2 ) THEN
-      Trip_node = CoordMaxi(3 - NormalDirection)
-      Axis_node = CoordMini(3 - NormalDirection) 
+      Trip_node = CoordMaxi(3 - NormalDir)
+      Axis_node = CoordMini(3 - NormalDir) 
       IsBoundaryNode( SurfPerm(Trip_node) ) = .TRUE.
       IsBoundaryNode( SurfPerm(Axis_node) ) = .TRUE.
     END IF
 
     ! Otherwise select the points on edge using a flag
-    DO t = 1, Solver % Mesh % NumberOfBoundaryElements      
+    DO t = 1, Mesh % NumberOfBoundaryElements      
       CurrentElement => GetBoundaryElement(t) 
       n  = GetElementNOFNodes()
       NodeIndexes => CurrentElement % NodeIndexes
@@ -249,9 +248,9 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,TransientSimulation )
     END DO
 
     n = COUNT( IsBoundaryNode )
-    CALL Info('TransientPhaseChange','Number of boundary nodes: '//TRIM(I2S(n)),Level=7)
+    CALL Info('TransientPhaseChange','Number of boundary nodes: '//I2S(n),Level=7)
 
-    n = Solver % Mesh % MaxElementNodes  
+    n = Mesh % MaxElementNodes  
     ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n), &
         x(n), y(n), z(n), Basis(n), dBasisdx(n,3), NodalTemp(n), &
         Conductivity(n), LatentHeat(n), Density(n), &
@@ -264,25 +263,19 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,TransientSimulation )
     !---------------------------------------------------------------------------------
     VariableName = ListGetString( Params, 'Normal Variable', Stat )
     IF(Stat) THEN
-      HelpSol => VariableGet( Solver % Mesh % Variables, TRIM(VariableName), ThisOnly=.TRUE. )
+      NrmSol => VariableGet( Mesh % Variables, TRIM(VariableName), ThisOnly=.TRUE. )
     ELSE
-      HelpSol => VariableGet( Solver % Mesh % Variables, 'Normals',ThisOnly=.TRUE. )
+      NrmSol => VariableGet( Mesh % Variables, 'Normals',ThisOnly=.TRUE. )
     END IF
-    IF(ASSOCIATED(HelpSol)) THEN
-      Normals => HelpSol % Values
-      NormalsPerm => HelpSol % Perm
-      AverageNormal = .TRUE.
-      IF( NonlinearIter > 1 ) THEN
-        CALL Warn('TransientPhaseChange','With external normal field there is no nonlinearity to iterate!')
-      END IF
-    ELSE
-      AverageNormal = .FALSE.
+    AverageNormal = ASSOCIATED(NrmSol)
+    IF( AverageNormal .AND. NonlinearIter > 1 ) THEN
+      CALL Warn('TransientPhaseChange','With external normal field there is no nonlinearity to iterate!')
     END IF
 
     ! The field is computed in two stages, 1st the velocity and then the displacement
     ! Ensure that also the velocity is allocated for
     !--------------------------------------------------------------------------------
-    HelpSol => VariableGet( Solver % Mesh % Variables, &
+    HelpSol => VariableGet( Mesh % Variables, &
          TRIM(ComponentName(Solver % Variable))//' Velo')
     IF(.NOT. ASSOCIATED(HelpSol)) THEN
       CALL Fatal('TransientPhaseChange','Surface Velo field should exist!')
@@ -308,7 +301,7 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,TransientSimulation )
     CurrentElement => GetActiveElement(1)
     k = GetMaterialId()
     Material => Model % Materials(k) % Values
-    WRITE (str,'(A,I2)') 'Convection Velocity',NormalDirection
+    WRITE (str,'(A,I2)') 'Convection Velocity',NormalDir
     UPull = ListGetConstReal( Material, str, Stat )
     PullVelocitySet = .TRUE.
   END IF
@@ -316,15 +309,23 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,TransientSimulation )
   ! Loads may be provided externally by using the 'Calculate Loads' flag in heat eq.
   !----------------------------------------------------------------------------------
   UseLoads = ListGetLogical( Params,'Use Nodal Loads',Stat) 
-
+  UseFirstLoads = .FALSE.
+  
   IF(UseLoads) THEN
-    LoadsSol => VariableGet( Solver % Mesh % Variables,TRIM(TemperatureName)//' Loads')
+    LoadsSol => VariableGet( Mesh % Variables,TRIM(TemperatureName)//' Loads')
     IF(.NOT. ASSOCIATED(LoadsSol)) THEN
       CALL Fatal('TransientPhaseChange','Loads are requested to be used but missing!')
     ELSE
       CALL Info('TransientPhaseChange','Using nodal loads to determine phase change',Level=6)
     END IF
 
+    IF( ListGetLogical( Params,'Nodal Loads Negative',Stat ) ) THEN
+      CALL Info('TransientPhaseChange','Assigning negative sign to nodal loads!',Level=6)
+      LoadsSign = -1
+    ELSE
+      LoadsSign = 1
+    END IF
+    
     IF(.NOT. ASSOCIATED( PrevLoads ) ) THEN
       CALL Info('TransientPhaseChange','Allocating for previous loads',Level=12)
       ALLOCATE( PrevLoads( SIZE( Surface ) ) )
@@ -343,13 +344,13 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,TransientSimulation )
       END IF
     END IF
 
-    DO t=1,Solver % Mesh % NumberOfNodes
+    DO t=1,Mesh % NumberOfNodes
       i = SurfPerm(t)
       IF( i == 0) CYCLE
       j = LoadsSol % Perm(t)
       IF( j == 0 ) CYCLE
 
-      CurrentLoads(i) = LoadsSol % Values(j)
+      CurrentLoads(i) = LoadsSign * LoadsSol % Values(j)
     END DO
 
     IF( UseFirstLoads ) THEN
@@ -383,9 +384,9 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,TransientSimulation )
 
     ! First solve the velocity field
     CALL DefaultInitialize()
-    
+
     IF(UseLoads) THEN
-      DO t=1,Solver % Mesh % NumberOfNodes
+      DO t=1,Mesh % NumberOfNodes
         i = SurfPerm(t)
         IF( i <= 0) CYCLE
 
@@ -400,6 +401,7 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,TransientSimulation )
         END IF
       END DO
     END IF
+
 
     DO t = 1, Solver % NumberOfActiveElements         
       CurrentElement => GetActiveElement(t)
@@ -420,7 +422,7 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,TransientSimulation )
       
       CALL DefaultUpdateEquations( LocalStiffMatrix, LocalForceVector )
     END DO
-
+        
     CALL DefaultFinishBulkAssembly()
     CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
@@ -525,6 +527,12 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,TransientSimulation )
   IF(PullControl .OR. TriplePointFixed) THEN
     CALL ListAddConstReal(Model % Simulation,'res: Pull Position',pos0)       
     CALL ListAddConstReal( Model % Simulation,'res: Pull Velocity',UPull)
+    IF( PullControl ) THEN
+      Var => VariableGet( Mesh % Variables,'pull velocity')
+      Var % Values(1) = UPull
+      Var => VariableGet( Mesh % Variables,'pull position')
+      Var % Values(1) = pos0
+    END IF
   END IF
 
   FirstTime = .FALSE.
@@ -546,10 +554,10 @@ CONTAINS
     TYPE(Nodes_t) :: PNodes
     TYPE(Element_t), POINTER :: Parent      
     REAL(KIND=dp) :: Basis(3*n),dBasisdx(3*n,3), &
-        X,Y,Z,U,V,W,S,detJ, TGrad(3,3),Flux,pu,pv,pw,pull, LocalHeat, LocalDens, &
-        NodalTemp(3*n), xx(10),yy(10),zz(10),  NodalSurf(n), NodalNormal(3,n)
-    REAL(KIND=dp) :: Velo, Ny, Normal(3), StabFactor, StabCoeff, DerSurf, xcoord
-    LOGICAL :: Stat
+        U,V,W,S,detJ, TGrad(3,3),Flux,pu,pv,pw,LocalHeat, LocalDens, &
+        NodalTemp(3*n), xx(10),yy(10),zz(10),  NodalSurf(n)
+    REAL(KIND=dp) :: Normal(3), StabFactor, StabCoeff, xcoord
+    LOGICAL :: Stat, Found 
     INTEGER :: i,j,k,l,t,p,q, pn, NBasis
     TYPE(GaussIntegrationPoints_t) :: IntegStuff
  
@@ -563,18 +571,6 @@ CONTAINS
 
     NodalSurf(1:n) = Surface( SurfPerm(NodeIndexes) )
    
-    IF(AverageNormal) THEN
-      IF( DIM == 2 ) THEN
-        NodalNormal(1,1:n) = Normals(2*NormalsPerm(NodeIndexes(1:n))-1)
-        NodalNormal(2,1:n) = Normals(2*NormalsPerm(NodeIndexes(1:n)))
-        NodalNormal(3,1:n) = 0.0_dp
-      ELSE
-        NodalNormal(1,1:n) = Normals(3*NormalsPerm(NodeIndexes(1:n))-2)
-        NodalNormal(2,1:n) = Normals(3*NormalsPerm(NodeIndexes(1:n))-1)
-        NodalNormal(3,1:n) = Normals(3*NormalsPerm(NodeIndexes(1:n)))
-      END IF
-    END IF
-
     ALLOCATE( PNodes % x(10), PNodes % y(10), PNodes % z(10) )
 
 !      Numerical integration:
@@ -597,17 +593,19 @@ CONTAINS
       s = s * detJ
       xcoord = SUM( Nodes % x(1:n) * Basis(1:n) )
 
-
-! This is not really a physical equation and hence weighing with the radius is not necessary
-!      IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
-!        s = s * xcoord
-!      END IF
-      
+      ! This is not really a physical equation and hence weighing with the radius is not necessary
+      ! However, do it when using loads since the loads have the weights in!
+      IF( UseLoads ) THEN
+        IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
+          s = s * xcoord
+        END IF
+      END IF
+        
+      Found = .FALSE.
       IF(AverageNormal) THEN
-        Normal(1) = SUM( Basis(1:n) * NodalNormal(1,1:n))
-        Normal(2) = SUM( Basis(1:n) * NodalNormal(2,1:n))
-        Normal(3) = SUM( Basis(1:n) * NodalNormal(3,1:n))
-      ELSE
+        Normal = ConsistentNormalVector( CurrentModel % Solver, NrmSol, Element, Found, Basis = Basis )
+      END IF
+      IF(.NOT. Found) THEN
         Normal = NormalVector( Element, Nodes, u, v, .TRUE. )         
       END IF
 
@@ -619,7 +617,7 @@ CONTAINS
         ! do nothing, loads already inserted
 
       ELSE 
-        ! Compute the flux from normal derivaties
+        ! Compute the flux from normal derivatives
         TGrad = 0.0d0          
         l = 0
         DO i=1,2
@@ -665,9 +663,9 @@ CONTAINS
           pv = SUM( Basis(1:n) * yy(1:n) )
           pw = SUM( Basis(1:n) * zz(1:n) )
           
-          PNodes % x(1:pn) = Solver % Mesh % Nodes % x(Parent % NodeIndexes)
-          PNodes % y(1:pn) = Solver % Mesh % Nodes % y(Parent % NodeIndexes)
-          PNodes % z(1:pn) = Solver % Mesh % Nodes % z(Parent % NodeIndexes)
+          PNodes % x(1:pn) = Mesh % Nodes % x(Parent % NodeIndexes)
+          PNodes % y(1:pn) = Mesh % Nodes % y(Parent % NodeIndexes)
+          PNodes % z(1:pn) = Mesh % Nodes % z(Parent % NodeIndexes)
           
           stat = ElementInfo( Parent, PNodes, pu, pv, pw, detJ, Basis, dBasisdx )
           
@@ -686,13 +684,13 @@ CONTAINS
         
         DO q=1,nBasis
           StiffMatrix(p,q) = StiffMatrix(p,q) + s * Basis(p) * Basis(q) * &
-              Normal(NormalDirection) * LocalDens * LocalHeat            
+              Normal(NormalDir) * LocalDens * LocalHeat            
           
           ! Jump over the special nodes (when defined)
           IF( IsBoundaryNode( SurfPerm(NodeIndexes(p))) ) CYCLE
 
           DO i=1,DIM
-            IF( i == NormalDirection ) CYCLE
+            IF( i == NormalDir ) CYCLE
             StiffMatrix(p,q) = StiffMatrix(p,q) + &
                 s * StabCoeff * dBasisdx(q,i) * dBasisdx(p,i)
           END DO
@@ -702,7 +700,8 @@ CONTAINS
         IF(.NOT. UseLoads) THEN
           ForceVector(p) = ForceVector(p) - s * Basis(p) * Flux 
         END IF
-        
+
+               
       END DO
 
     END DO
@@ -726,10 +725,10 @@ CONTAINS
     
     ! internal variables:
     REAL(KIND=dp) :: Basis(3*nCoord),dBasisdx(3*nCoord,3), &
-        X,Y,Z,U,V,W,S,detJ,pull, NodalVelo(nCoord), xcoord, NodalNormal(3,nCoord)
+        U,V,W,S,detJ,NodalVelo(nCoord), xcoord
     REAL(KIND=dp) :: Velo, StabFactor, StabCoeff
     LOGICAL :: Stat
-    INTEGER :: i,j,k,l,t,p,q, n, pn
+    INTEGER :: i,j,k,l,t,p,q, n
     TYPE(GaussIntegrationPoints_t) :: IntegStuff
  
 !------------------------------------------------------------------------------
@@ -773,7 +772,7 @@ CONTAINS
           IF( IsBoundaryNode( SurfPerm(NodeIndexes(p))) ) CYCLE
 
           DO i=1,DIM
-            IF( NormalDirection == i ) CYCLE
+            IF( NormalDir == i ) CYCLE
             StiffMatrix(p,q) = StiffMatrix(p,q) + &
                 s * StabCoeff * dBasisdx(q,i) * dBasisdx(p,i)            
           END DO
@@ -795,19 +794,19 @@ CONTAINS
       INTEGER :: t,k,i,n
       LOGICAL :: PullBoundary
 
-      IF(NormalDirection /= 2) CALL Fatal('TransientPhaseChange',&
+      IF(NormalDir /= 2) CALL Fatal('TransientPhaseChange',&
           'FindPullBoundary implemented only for lateral boundaries!')
 
       PullBoundary = .FALSE.
-      Ybot = Solver % Mesh % Nodes % y(Trip_node)
-      Ymax = MAXVAL(Solver % Mesh % Nodes % y)
+      Ybot = Mesh % Nodes % y(Trip_node)
+      Ymax = MAXVAL(Mesh % Nodes % y)
       Ytop = Ymax
-      Xtrip = Solver % Mesh % Nodes % x(Trip_node)
+      Xtrip = Mesh % Nodes % x(Trip_node)
       
-      DO t = Solver % Mesh % NumberOfBulkElements + 1, &
-          Solver % Mesh % NumberOfBulkElements + Solver % Mesh % NumberOfBoundaryElements        
+      DO t = Mesh % NumberOfBulkElements + 1, &
+          Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements        
         
-        CurrentElement => Solver % Mesh % Elements(t)
+        CurrentElement => Mesh % Elements(t)
         Model % CurrentElement => CurrentElement
         n = CurrentElement % TYPE % NumberOfNodes
         NodeIndexes => CurrentElement % NodeIndexes
@@ -817,8 +816,8 @@ CONTAINS
           IF( ListGetLogical(Model % BCs(k) % Values,'Pull Boundary',stat ) ) THEN
             PullBoundary = .TRUE.
             DO i = 1,n
-              x = Solver % Mesh % Nodes % x(NodeIndexes(i))
-              y = Solver % Mesh % Nodes % y(NodeIndexes(i))
+              x = Mesh % Nodes % x(NodeIndexes(i))
+              y = Mesh % Nodes % y(NodeIndexes(i))
               IF(y > Ybot .AND. ABS(x-Xtrip) > 1.0e-6 * (Ymax-Ybot)) Ytop = y
             END DO
           END IF
@@ -841,14 +840,14 @@ CONTAINS
 !> Initialization for the primary solver: TransientPhaseChange.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
-SUBROUTINE TransientPhaseChange_Init( Model,Solver,dt,TransientSimulation)
+SUBROUTINE TransientPhaseChange_Init( Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
     USE DefUtils
     IMPLICIT NONE
 !------------------------------------------------------------------------------
     TYPE(Model_t)  :: Model
     TYPE(Solver_t), TARGET :: Solver
-    LOGICAL ::  TransientSimulation
+    LOGICAL ::  Transient
     REAL(KIND=dp) :: dt
 !------------------------------------------------------------------------------
     LOGICAL :: Found
@@ -859,11 +858,17 @@ SUBROUTINE TransientPhaseChange_Init( Model,Solver,dt,TransientSimulation)
 
     VariableName = GetString(Params,'Variable')
     CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-          '-nooutput '//TRIM(ComponentName(VariableName))//' Velo' )
+        '-nooutput '//TRIM(ComponentName(VariableName))//' Velo' )
 
     IF(.NOT. ListCheckPresent( Params,'Time Derivative Order') ) &
         CALL ListAddInteger( Params,'Time Derivative Order',1)
 
+    IF( ListGetLogical( Params,'Pull Rate Control',Found) ) THEN
+      CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
+          '-global pull velocity' )      
+      CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
+          '-global pull position' )      
+    END IF    
 
 !------------------------------------------------------------------------------
 END SUBROUTINE TransientPhaseChange_Init

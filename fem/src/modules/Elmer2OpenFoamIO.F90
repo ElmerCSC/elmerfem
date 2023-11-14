@@ -128,16 +128,16 @@ SUBROUTINE Elmer2OpenFoamWrite( Model,Solver,dt,TransientSimulation )
     CALL OpenFOAMBlocks()
   END IF
   NoDir = ParallelReduction(NoDir ) 
-  CALL Info('Elmer2OpenFOAMWrite','Number of active OpenFOAM blocks: '//TRIM(I2S(NoDir)),Level=5)
+  CALL Info('Elmer2OpenFOAMWrite','Number of active OpenFOAM blocks: '//I2S(NoDir),Level=5)
 
   
   DO i = 1, NoDir
     
     IF( ParEnv % MyPe == 0 ) THEN
       IF( NoDir > 1 ) THEN
-        CALL Info('Elmer2OpenFOAMWrite','Treating OpenFOAM block: '//TRIM(I2S(i)),Level=5)
+        CALL Info('Elmer2OpenFOAMWrite','Treating OpenFOAM block: '//I2S(i),Level=5)
       END IF
-      DirName = ListGetString(Params,'OpenFOAM Mesh '//TRIM(I2S(i)),Found)
+      DirName = ListGetString(Params,'OpenFOAM Mesh '//I2S(i),Found)
       IF(.NOT. Found ) CALL Fatal('Elmer2OpenFoamWrite','Could not find keyword: '//TRIM(DirName))
       
       FileName = TRIM(DirName)//'C'    
@@ -264,7 +264,7 @@ CONTAINS
       IF( FileExists ) THEN
         NoDir = NoDir + 1
         CALL Info('Elmer2OpenFoamWrite','Using OpenFOAM centers in: '//TRIM(FileName),Level=10)
-        CALL ListAddString( Params, 'OpenFOAM Mesh '//TRIM(I2S(NoDir)), DirName, .FALSE.)
+        CALL ListAddString( Params, 'OpenFOAM Mesh '//I2S(NoDir), DirName, .FALSE.)
       ELSE
         CALL Info('Elmer2OpenFoamWrite','No OpenFOAM center in: '//TRIM(DirName),Level=12)
       END IF
@@ -274,7 +274,7 @@ CONTAINS
     IF( NoDir == 0 ) THEN
       CALL Fatal('Elmer2OpenFoamWrite','No OpenFOAM mesh blocks found!')
     ELSE
-      CALL Info('Elmer2OpenFoamWrite','Number of OpenFOAM blocks: '//TRIM(I2S(NoDir)),Level=10)
+      CALL Info('Elmer2OpenFoamWrite','Number of OpenFOAM blocks: '//I2S(NoDir),Level=10)
     END IF
     
   END SUBROUTINE OpenFOAMBlocks
@@ -354,7 +354,7 @@ CONTAINS
     DO Line = 1, 100
       READ( InFileUnit,'(A)',IOSTAT=IOStatus ) ReadStr
       IF( IOStatus /= 0 ) THEN
-        CALL Warn('Elmer2OpenFoamWrite','End of file after '//TRIM(I2S(Line))//' lines')
+        CALL Warn('Elmer2OpenFoamWrite','End of file after '//I2S(Line)//' lines')
         EXIT
       END IF
 
@@ -370,7 +370,7 @@ CONTAINS
     IF( j == 0 ) THEN
       CALL Fatal('Elmer2OpenFoamWrite','Could not find > internalField < in header!')
     ELSE
-      CALL Info('Elmer2OpenFoamWrite','internalField found at line: '//TRIM(I2S(Line)),Level=10)    
+      CALL Info('Elmer2OpenFoamWrite','internalField found at line: '//I2S(Line),Level=10)    
     END IF
 
     InlineCoords = ( k > 0 ) 
@@ -386,13 +386,13 @@ CONTAINS
       CALL Fatal('Elmer2OpenFoamWrite','Could not read number of nodes!')
     END IF
     CALL Info('Elmer2OpenFoamWrite','Number of OpenFOAM nodes: '&
-        //TRIM(I2S(NumberOfNodes)),Level=10)
+        //I2S(NumberOfNodes),Level=10)
 
     i = ListGetInteger(Params,'Number of cells',Found)
     IF( i > 0 .AND. i < NumberOfNodes ) THEN
       NumberOfNodes = i
       CALL Info('Elmer2OpenFoamWrite','Limiting number of OpenFOAM nodes: '&
-          //TRIM(I2S(NumberOfNodes)),Level=7)
+          //I2S(NumberOfNodes),Level=7)
     END IF
 
 
@@ -419,7 +419,7 @@ CONTAINS
       ELSE      
         READ( InFileUnit,'(A)',IOSTAT=IOStatus ) ReadStr
         IF( IOStatus /= 0 ) THEN
-          CALL Fatal('Elmer2OpenFoamWrite','Could not read coordinate line: '//TRIM(I2S(i)))
+          CALL Fatal('Elmer2OpenFoamWrite','Could not read coordinate line: '//I2S(i))
         END IF
       END IF
 
@@ -433,16 +433,16 @@ CONTAINS
         
       IF( j == 0 ) THEN
         CALL Fatal('Elmer2OpenFoamWrite',&
-            'Expecting a parenthesis at the start of OpenFOAM line: '//TRIM(I2S(i)))
+            'Expecting a parenthesis at the start of OpenFOAM line: '//I2S(i))
       END IF
       IF( k == 0 ) THEN
         CALL Fatal('Elmer2OpenFoamWrite',&
-            'Expecting a parenthesis at the end of OpenFOAM line: '//TRIM(I2S(i)))
+            'Expecting a parenthesis at the end of OpenFOAM line: '//I2S(i))
       END IF
 
       READ( ReadStr(j+1:k-1),*,IOSTAT=IOStatus ) x,y,z
       IF( IOStatus /= 0 ) THEN
-        CALL Fatal('Elmer2OpenFoamWrite','Could not read coordinate values: '//TRIM(I2S(i)))
+        CALL Fatal('Elmer2OpenFoamWrite','Could not read coordinate values: '//I2S(i))
       END IF
       Mesh % Nodes % x(i) = x
       Mesh % Nodes % y(i) = y
@@ -521,7 +521,7 @@ CONTAINS
           
       WRITE(OutFileUnit,'(A)') &        
           'internalField   nonuniform List<scalar> '//NL//&
-          TRIM(I2S(Mesh % NumberOfNodes))           //NL//&
+          I2S(Mesh % NumberOfNodes)           //NL//&
           '(' 
     
       DO i=1,Mesh % NumberOfNodes
@@ -531,7 +531,7 @@ CONTAINS
           j = i
         END IF
         IF( j < 0 .OR. j > Mesh % NumberOfNodes ) THEN
-          CALL Fatal('Elmer2OpenFoamWrite','We have a troubling ENTRY: '//TRIM(I2S(i))//','//TRIM(I2S(j)))
+          CALL Fatal('Elmer2OpenFoamWrite','We have a troubling ENTRY: '//I2S(i)//','//I2S(j))
         END IF
         
         WRITE( OutFileUnit,*) Var % Values(j)

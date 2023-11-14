@@ -329,7 +329,7 @@ ElmerSolver Solver modules
   o SaveDependence: New auxiliary subroutine for saving functional forms in a 1D table.
 
 - SaveParticleData:
-  o Added Gsmh output for the particles.
+  o Added Gmsh output for the particles.
 
 - IsoSurfaceSolver:
   o New Solver for saving isolines or isosurfaces of given field as a mesh. 

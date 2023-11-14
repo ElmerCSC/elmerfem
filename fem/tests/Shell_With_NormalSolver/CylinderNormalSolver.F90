@@ -142,7 +142,7 @@ SUBROUTINE NormalSolver( Model,Solver,dt,Transient )
     Solver % Matrix % RHS => ForceVector(:,i)
 
     IF ( SetD ) THEN
-      Solver % Variable % Name = TRIM(VarName) // ' ' // TRIM(I2S(i))
+      Solver % Variable % Name = TRIM(VarName) // ' ' // I2S(i)
       Solver % Matrix % Values = Values
       CALL DefaultDirichletBCs()
       Solver % Variable % Name = Vname

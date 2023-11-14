@@ -87,10 +87,12 @@ Solver 1 :: Linear System Direct Method = UMFPack
 Boundary Condition 1 :: Wave Flux 1 = 2
 RUN
 
+! === NOTE: CG is not applicable, needs a Hermitian matrix
 
 Solver 1 :: Reference Norm = Real 0.641590967148E-01
 Solver 1 :: Linear System Solver = Iterative
-Solver 1 :: Linear System Iterative Method = CG
+Solver 1 :: Linear System Iterative Method = GCR
+Solver 1 :: Linear System GCR Restart = 100
 
 Boundary Condition 1 :: Wave Flux 1 = 5
 RUN

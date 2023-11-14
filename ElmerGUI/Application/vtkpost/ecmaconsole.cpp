@@ -42,7 +42,7 @@
 
 #include "ecmaconsole.h"
 
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
   #include <QtWidgets>
 #endif
 #include <QWidget>
@@ -55,6 +55,10 @@
 #include <QCompleter>
 #include <QStringListModel>
 #include <QScrollBar>
+
+#if WITH_QT6
+#include <QJSEngine>
+#endif
 
 #include <iostream>
 using namespace std;
@@ -214,7 +218,7 @@ void EcmaConsole::addNames(QString className, const QMetaObject* metaObject)
     QMetaMethod::MethodType methodType = method.methodType();
     if((access == QMetaMethod::Public) && (methodType == QMetaMethod::Slot)) {
 
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
       QString signature = method.methodSignature();
 #else
       QString signature = method.signature();
@@ -320,3 +324,18 @@ void EcmaConsole::insertCompletion(const QString& completion)
     setTextCursor(tc);
   }
 }
+
+#if WITH_QT6
+template<class... A> QJSValue EcmaConsole::print(A... args)
+{
+  QString result;
+
+  for(char* s : std::initializer_list<char*>{args...}) {
+      result.append(" ");
+    result.append(s);
+  }
+  append(result.trimmed());
+  
+  return QJSValue(QJSValue::UndefinedValue);
+}
+#endif

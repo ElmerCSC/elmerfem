@@ -907,7 +907,7 @@ contains
             wvec (ip, 5) = zero
         end do
 !
-!     Put the coefficents of THETA*Wcheck in PROD.
+!     Put the coefficients of THETA*Wcheck in PROD.
 !
         do jc = 1, 5
             nw = npt

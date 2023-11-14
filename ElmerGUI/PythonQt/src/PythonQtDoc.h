@@ -175,7 +175,7 @@ registered as well (and all intermediate parents).
  properties of the objects as if they where normal python properties.
 
  In addition to this, the wrapped objects support
- - className() - returns a string that reprents the classname of the QObject
+ - className() - returns a string that represents the classname of the QObject
  - help() - shows all properties, slots, enums, decorator slots and constructors
 of the object, in a printable form
  - connect(signal, function) - connect the signal of the given object to a

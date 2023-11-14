@@ -27,7 +27,7 @@
  *                                                                           *
  *****************************************************************************
  *                                                                           *
- *  Authors: Mikko Lyly, Juha Ruokolainen and Peter R�back                   *
+ *  Authors: Mikko Lyly, Juha Ruokolainen and Peter Råback                   *
  *  Email:   Juha.Ruokolainen@csc.fi                                         *
  *  Web:     http://www.csc.fi/elmer                                         *
  *  Address: CSC - IT Center for Science Ltd.                                 *
@@ -1062,7 +1062,7 @@ void Meshutils::findSurfaceElementEdges(mesh_t *mesh)
 //-----------------------------------------------------------------------------
 void Meshutils::findSharpPoints(mesh_t *mesh, double limit)
 {
-  qreal t0[3], t1[3];
+  QREAL_OR_FLOAT t0[3], t1[3];
 
   cout << "Limit: " << limit << " degrees" << endl;
   cout.flush();
@@ -1358,13 +1358,21 @@ int Meshutils::divideEdgeBySharpPoints(mesh_t *mesh)
 
 void Meshutils::sort_index(int n, double *a, int *b)
 {
+#if WITH_QT6
+  vector<QPair<double, int>> list;
+
+  for(int i = 0; i < n; i++)
+    list.push_back(qMakePair(a[i], b[i]));
+
+  sort(list.begin(), list.end());
+#else
   QList<QPair<double, int> > list;
 
   for(int i = 0; i < n; i++)
     list << qMakePair(a[i], b[i]);
 
   qSort(list);
-
+#endif
   for(int i = 0; i < n; i++) {
     a[i] = list[i].first;
     b[i] = list[i].second;
@@ -1569,7 +1577,7 @@ int Meshutils::divideSurfaceBySharpEdges(mesh_t *mesh)
 //-----------------------------------------------------------------------------
 void Meshutils::findSurfaceElementNormals(mesh_t *mesh)
 {
-  static qreal a[3], b[3], c[3];
+  static QREAL_OR_FLOAT a[3], b[3], c[3];
   double center_surface[3], center_element[3], center_difference[3];
   Helpers *helpers = new Helpers;
   int u, v, w, e0, e1, i0, i1, bigger;
@@ -1957,7 +1965,7 @@ void Meshutils::increaseElementOrder(mesh_t *mesh)
     delete [] hash;
   }
 
-  // Then redifine the mesh using the additional nodes
+  // Then redefine the mesh using the additional nodes
   int quadnodes = mesh->getNodes() + noedges;  
   node_t *quadnode = new node_t[quadnodes];
   

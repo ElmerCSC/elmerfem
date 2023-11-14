@@ -1,0 +1,125 @@
+!
+! A 2-D case for the electromagnetic wave solver in the frequency domain
+!
+
+Check Keywords "Warn"
+
+$ w=2*pi*(2.5e9)
+$ eps0=8.854187817e-12
+$ mu0=4e-7*pi
+
+Header
+  Mesh DB "." "rectangle"
+End
+
+Simulation
+  Max Output Level = 8
+  Coordinate System = "Cartesian"
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+End
+
+Constants
+!  Permittivity of Vacuum = $eps0
+!  Permeability of Vacuum = $mu0
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Material 1
+  Relative Permittivity = 1.0
+  Relative Permeability = 1.0
+End
+
+Equation 1
+  Active Solvers(3) = 1 2 3
+  Angular Frequency = Real $w
+End
+
+
+Solver 1
+  Equation = "Vectorial Helmholtz"
+
+  Procedure = "VectorHelmholtz" "VectorHelmholtzSolver"
+
+  Quadratic Approximation = False
+  Use Piola Transform = True
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = GCR
+  Linear System GCR Restart = 100
+  Linear System Preconditioning = ILU0
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Abort Not Converged = True
+  Linear System Residual Output = 5
+End
+
+Solver 2
+  Equation = "calcfields"
+
+  Procedure = "VectorHelmholtz" "VectorHelmholtzCalcFields"
+  Calculate Elemental Fields = True
+  Calculate Nodal Fields = True
+
+  Calculate Magnetic Field Strength = Logical True
+  Calculate Magnetic Flux Density = Logical True
+  Calculate Poynting vector = Logical True
+  Calculate Div of Poynting Vector = Logical True
+  Calculate Electric field = Logical True
+
+  Steady State Convergence Tolerance = 1
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = None
+  Linear System Residual Output = 10
+  Linear System Max Iterations = 1000
+  Linear System Iterative Method = CG
+  Linear System Convergence Tolerance = 1.0e-9
+!  Exec Solver = never
+End
+
+Solver 3
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = harmonic
+  Vtu Format = Logical True
+  Save Geometry Ids = Logical True
+
+!  Exec Solver = never
+End 
+
+Boundary Condition 1
+  Name = "Inlet"
+  Target Boundaries(1) = 3
+
+  E re {e} 1 = Real 1.0
+  E re {e} 2 = Real 0.0
+  E im {e} 1 = Real 0.0
+  E im {e} 2 = Real 0.0
+End
+
+Boundary Condition 2
+  Name = "Outlet"
+  Target Boundaries(1) = 1 
+  Electric Robin Coefficient = 0.0
+  Electric Robin Coefficient Im = $ w * sqrt(eps0 * mu0)
+End
+
+Boundary Condition 3
+  Name = "Sides"
+  Target Boundaries(2) = 2 4 
+  E re {e} 1 = Real 0.0
+  E re {e} 2 = Real 0.0
+  E im {e} 1 = Real 0.0
+  E im {e} 2 = Real 0.0
+End
+
+
+Solver 1 :: Reference Norm = 4.96977584E-03
+
+! For "Quadratic Approximation = True":
+!Solver 1 :: Reference Norm = 2.51644371E-03
+

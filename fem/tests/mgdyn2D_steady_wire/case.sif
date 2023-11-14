@@ -1,0 +1,141 @@
+! This test case computes the magnetic field induced by a cylindrical wire
+! The field outside the wire should be |B|=\mu*I/(2*pi*r).
+! If I=1 A and r=0.01 m then |B|=2.0e-4.
+!
+! 2D version of the initially 3D test case to ensure consistency.
+!
+! P.R. 29.7.2022
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "wire2d"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian"
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+  Output Intervals(1) = 1
+
+  Coordinate Scaling = 1.0e-3
+End
+
+Body 1
+  Name = "Wire"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Name = "Air"
+  Equation = 1
+  Material = 2
+End
+
+Material 1
+  Name = "Cu"
+  Relative Permittivity = 1
+  Relative Permeability = 1
+  Electric Conductivity = 58e6
+End
+
+Material 2
+  Name = "Air"
+  Relative Permittivity = 1.0
+  Relative Permeability = 1.0
+  Electric Conductivity = 0.0
+End 
+
+Equation 1
+  Active Solvers(2) = 1 2 
+End
+
+
+Solver 1
+  Equation = "MGDynamics2D"
+
+  Variable = "Az"
+  Procedure = "MagnetoDynamics2D" "MagnetoDynamics2D"
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = none
+  Linear System Residual Output = 10
+  Linear System Max Iterations = 1000
+  Linear System Iterative Method = BiCGStabl
+  Linear System Convergence Tolerance = 1.0e-8
+  BiCgStabl Polynomial Degree = 4
+End
+
+
+Solver 2
+  Equation = "MGDynamicsCalc"
+
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+  Linear System Symmetric = True
+
+  Potential Variable = String "Az"
+
+  Calculate Current Density = Logical True
+  Calculate Electric Field = Logical True
+  Calculate Magnetic Field Strength = Logical True
+  Calculate Joule Heating = True
+
+  Steady State Convergence Tolerance = 0
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = None
+  Linear System Residual Output = 0
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = CG
+  Linear System Convergence Tolerance = 1.0e-8
+
+  Calculate Nodal Fields = Logical False
+  Impose Body Force Potential = Logical True
+  Impose Body Force Current = Logical True
+
+  Discontinuous Bodies = True
+End
+
+
+Solver 3
+  Exec Solver = after all
+  Equation = "ResultOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = wire
+  Vtu format = Logical True
+  Discontinuous Bodies = Logical True
+
+  Reference Values(6) = Real 41 6 11214 1315 2577197.0 0.35106316188253328
+  Reference Norm = 1.0
+End
+
+Solver 4
+  Exec Solver = after all
+  Equation = "SaveLine"
+  Procedure = "SaveData" "SaveLine"
+  FileName = f.dat
+
+  Polyline Coordinates(2,3) = -5.0e-3 0.0 0.0 5.0e-3 0.0 0.0
+  Polyline Divisions(1) = 100
+End
+
+
+Body Force 1
+  Current Density = -distribute 1.0
+End
+
+
+Boundary Condition 1
+  Name = "AirSurface"
+  Target Boundaries(1) = 5
+
+  Az = Real 0.0
+End
+
+
+
+Solver 1 :: Reference Norm = 3.03173556E-07
+
+  

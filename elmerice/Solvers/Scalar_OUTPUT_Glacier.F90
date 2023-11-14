@@ -28,7 +28,7 @@
 ! *
 ! *  Original Date: 03-2018, 
 ! *  11-2020
-! *  O. Gagliardini (IGE) modified the initial version from Fabien to adpat it for Glacier
+! *  O. Gagliardini (IGE) modified the initial version from Fabien to adapt it for Glacier
 ! *****************************************************************************
 !!! Compute standard 1D variables:
 !   1: Time
@@ -160,11 +160,11 @@
         END IF
         DO i=11,12
            CALL MPI_ALLREDUCE(Val(i),ParVal(i),1,&
-                       MPI_DOUBLE_PRECISION,MPI_MIN,MPI_COMM_WORLD,ierr)
+                       MPI_DOUBLE_PRECISION,MPI_MIN,ELMER_COMM_WORLD,ierr)
         END DO
 
         CALL MPI_ALLREDUCE(Val(13),ParVal(13),1,&
-                               MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,ierr)
+                               MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
 
         Val(1:NVal)=ParVal(1:NVal)
       END IF

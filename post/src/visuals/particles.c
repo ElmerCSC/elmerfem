@@ -122,7 +122,7 @@ static double vis_particles_interpolate
         if ( !elmt->PointInside )
         {
             fprintf(
-               stderr, "WARINING: Particles not implemented for element type: [%s]. Element ingnored.\n",
+               stderr, "WARNING: Particles not implemented for element type: [%s]. Element ignored.\n",
                             elmt->ElementName
                 );
             continue;

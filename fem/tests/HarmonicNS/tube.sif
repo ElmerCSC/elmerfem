@@ -10,6 +10,8 @@ Simulation
   Steady State Max Iterations = Integer 1
   Steady State Min Iterations = Integer 1
 !  Post File = File "ref.ep" 
+
+  Serendipity P Elements = False
 End
 
 Constants

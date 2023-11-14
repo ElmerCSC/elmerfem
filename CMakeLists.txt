@@ -10,23 +10,6 @@
 # First public beta release 11th of October, 2013
 #
 
-if(APPLE)
-  # message("you need to have gcc-gfrotran installed using HomeBrew")
-  # set(CMAKE_C_COMPILER "/usr/bin/gcc")
-  # set(CMAKE_CXX_COMPILER "/usr/bin/g++")
-  set(CMAKE_C_COMPILER "/usr/local/bin/gcc-10")
-  set(CMAKE_CXX_COMPILER "/usr/local/bin/g++-10")
-  set(CMAKE_Fortran_COMPILER "/usr/local/bin/gfortran")
-  # set(BLA_VENDOR "OpenBLAS")
-  # option(HUNTER_ENABLED "Enable Hunter package manager support" OFF)
-  # set (CMAKE_GENERATOR "Unix Makefiles" CACHE INTERNAL "" FORCE)
-  # set(CMAKE_TRY_COMPILE_TARGET_TYPE "STATIC_LIBRARY")
-endif()
-
-
-
-
-
 IF(NOT CMAKE_BUILD_TYPE)
   SET(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Build type (Release, Debug, RelWithDebugInfo, MinSizeRel)")
 ENDIF()
@@ -34,21 +17,10 @@ ENDIF()
 PROJECT(Elmer Fortran C CXX)
 
 # CMAKE_VERSION seems to require this in minimum
-CMAKE_MINIMUM_REQUIRED(VERSION 3.0.2)
+CMAKE_MINIMUM_REQUIRED(VERSION 1.0.2)
 
 IF(APPLE)
   SET(CMAKE_MACOSX_RPATH 1) 
-    # on OSX FindOpenGL uses framework version of OpenGL, but we need X11 version
-    FIND_PATH(GLX_INCLUDE_DIR GL/glx.h
-      PATHS /opt/X11/include /usr/X11/include /usr/X11R6/include)
-    find_library(X11_GL_LIB GL
-      PATH /opt/X11/lib /usr/X11/lib /usr/X11R6/lib)
-# FIND_LIBRARY(OPENGL_gl_LIBRARY GL
-#        PATHS /opt/X11/lib /usr/X11/lib /usr/X11R6/lib)
-# FIND_LIBRARY(OPENGL_glu_LIBRARY GLU
-#        PATHS /opt/X11/lib /usr/X11/lib /usr/X11R6/lib)
-# LIST(APPEND LIBS ${OPENGL_gl_LIBRARY})
-INCLUDE_DIRECTORIES(${GLX_INCLUDE_DIR})
 ENDIF()
 
 #shamelessly borrowed from FreeCAD project: https://github.com/FreeCAD/FreeCAD/blob/master/cMake/FreeCAD_Helpers/SetupPython.cmake
@@ -104,6 +76,7 @@ SET(WITH_Mumps FALSE CACHE BOOL "Use Mumps sparse direct solver")
 SET(WITH_Hypre FALSE CACHE BOOL "Use Hypre linear algebra library")
 SET(WITH_ELMERGUI FALSE CACHE BOOL "Include ElmerGUI")
 SET(WITH_ElmerIce FALSE CACHE BOOL "Include ElmerIce")
+SET(WITH_XIOS FALSE CACHE BOOL "Include XIOS")
 SET(WITH_ELMERGUITESTER FALSE CACHE BOOL "Include ElmerGUI tester")
 SET(WITH_ELMERGUILOGGER FALSE CACHE BOOL "Include ElmerGUI logger")
 SET(ELMER_INSTALL_LIB_DIR "lib/elmersolver" CACHE PATH "Location of elmer shared libraries relative to prefix.")
@@ -113,6 +86,7 @@ SET(WITH_ELMERPOST FALSE CACHE BOOL "Include ElmerPost (DEPRECATED)")
 SET(WITH_CONTRIB FALSE CACHE BOOL "Include contributed solvers")
 
 SET(WITH_LUA FALSE CACHE BOOL "Include LUA extensions.")
+SET(WITH_MMG FALSE CACHE BOOL "Compile with MMG library.")
 
 SET(WITH_Zoltan FALSE CACHE BOOL "Link in Zoltan mesh repartitioning library.")
 
@@ -124,6 +98,11 @@ MARK_AS_ADVANCED(WITH_ELMERPOST)
 # if("${CMAKE_VERSION}" VERSION_GREATER 2.8.12)
 #   CMAKE_POLICY(SET CMP0022 OLD)
 # ENDIF()
+
+OPTION (USE_NEW_POLICY_CMP0057 "Option to enable new policy CMP0057" ON)
+IF (USE_NEW_POLICY_CMP0057)
+  CMAKE_POLICY(SET CMP0057 NEW)
+ENDIF()
 
 MARK_AS_ADVANCED(ELMER_INSTALL_LIB_DIR)
 
@@ -158,11 +137,11 @@ SET(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 STRING(TIMESTAMP ELMER_FEM_COMPILATIONDATE "%Y-%m-%d")
 SET(COMPILATIONDATE ${ELMER_FEM_COMPILATIONDATE})
 
-# Check that the gfortran version is >= 4.8
+# Check that the gfortran version is >= 7
 IF(${CMAKE_Fortran_COMPILER_ID} MATCHES "GNU")
   INCLUDE(testGFortranVersion)
   IF(NOT CMAKE_Fortran_COMPILER_GNU_VERSION_OK)
-    MESSAGE(FATAL_ERROR "GNU Fortran version is too old, should be at least 4.8")
+    MESSAGE(FATAL_ERROR "GNU Fortran major version is too old, should be at least 7")
   ENDIF()
 ENDIF()
 
@@ -215,8 +194,6 @@ IF(WITH_OpenMP)
     SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
   # endif()
 
- 
-  
   # Test compiler support for OpenMP 4.0 features used
   INCLUDE(testOpenMP40)
   IF(CMAKE_Fortran_COMPILER_SUPPORTS_OPENMP40)
@@ -238,7 +215,7 @@ IF("${CMAKE_Fortran_COMPILER_ID}" MATCHES "GNU")
 #    SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -std=legacy")
   ENDIF()
 ENDIF()
-  
+
 
 IF(WITH_MPI)
   # Advanced properties
@@ -257,6 +234,10 @@ IF(WITH_MPI)
   SET(CMAKE_CXX_REQUIRED_LIBRARIES ${MPI_CXX_LIBRARIES})
   SET(CMAKE_Fortran_REQUIRED_LIBRARIES ${MPI_Fortran_LIBRARIES})
 ENDIF(WITH_MPI)
+
+IF(WITH_AMGX)
+  FIND_PACKAGE(AMGX)
+ENDIF()
 
 # if(APPLE)
 #   # message(STATUS "Trying to find Accelerate library")
@@ -366,65 +347,152 @@ IF(WITH_Zoltan)
   FIND_PACKAGE(ParMetis)
 ENDIF(WITH_Zoltan)
 
+
+IF(WITH_NETCDF)
+  # ---------------------- #
+  # -- NETCDF libraries -- #
+  #----------------------- #
+  MESSAGE(STATUS "------------------------------------------------")
+  MESSAGE(STATUS "Elmer/Ice package: Looking for [NETCDF] & [NETCDF Fortran] libraries")
+  
+  
+  FIND_PACKAGE(NETCDF)
+  
+  IF(NETCDF_FOUND)
+  
+    SET(HAVE_NETCDF TRUE CACHE BOOL "Has NETCDF for Elmer/Ice Output" )
+    GET_FILENAME_COMPONENT(NETCDF_LIBDIR ${NETCDF_LIBRARY} DIRECTORY)
+    GET_FILENAME_COMPONENT(NETCDFF_LIBDIR ${NETCDFF_LIBRARY} DIRECTORY)
+  
+    MARK_AS_ADVANCED(HAVE_NETCDF)
+    INCLUDE_DIRECTORIES(${NETCDF_INCLUDE_DIR})
+    ADD_DEFINITIONS(-DHAVE_NETCDF)
+  
+    MESSAGE(STATUS "  NETCDF:           " "${NETCDF_FOUND}")
+    MESSAGE(STATUS "  NETCDF_INC:       " "${NETCDF_INCLUDE_DIR}")
+    MESSAGE(STATUS "  NETCDF_LIBS:     " "${NETCDF_LIBRARIES}")
+  ELSE()
+    MESSAGE(STATUS "Library not found: >NETCDF_FOUND< ")
+    MESSAGE(WARNING "  \n Missing: >NETCDF_INCLUDE_DIR< , >NETCDF_LIBRARY<,  >NETCDFF_LIBRARY< \n some functionalities will be disabled")
+  ENDIF(NETCDF_FOUND)
+  
+  IF(NETCDF_FOUND)
+    # ---------------------- #
+    # -- HDF5 libraries -- #
+    #----------------------- #
+    MESSAGE(STATUS "------------------------------------------------")
+    MESSAGE(STATUS "Elmer/Ice package: Looking for [HDF5] & [HDF5 Fortran] libraries")
+  
+    FIND_PACKAGE(PHDF5)
+    
+    IF(PHDF5_FOUND)
+    
+      SET(HAVE_HDF5 TRUE CACHE BOOL "Has HDF5 for Elmer/Ice Output" )
+      GET_FILENAME_COMPONENT(PHDF5_LIBDIR ${PHDF5_LIBRARY} DIRECTORY)
+      GET_FILENAME_COMPONENT(PHDF5HL_LIBDIR ${PHDF5HL_LIBRARY} DIRECTORY)
+    
+      MARK_AS_ADVANCED(HAVE_HDF5)
+      INCLUDE_DIRECTORIES(${PHDF5_INCLUDE_DIR})
+      ADD_DEFINITIONS(-DHAVE_HDF5)
+    
+      MESSAGE(STATUS "  HDF5:           " "${PHDF5_FOUND}")
+      MESSAGE(STATUS "  HDF5_INC:       " "${PHDF5_INCLUDE_DIR}")
+      MESSAGE(STATUS "  HDF5_LIBS:     " "${PHDF5_LIBRARIES}")
+    ELSE()
+      MESSAGE(STATUS "Library not found: >HDF5_FOUND< ")
+      MESSAGE(WARNING "  \n Missing: >HDF5_INCLUDE_DIR< , >HDF5_LIBRARY<,  >HDF5F_LIBRARY< \n some functionalities will be disabled")
+    ENDIF(PHDF5_FOUND)
+  ENDIF(NETCDF_FOUND)
+  
+ENDIF(WITH_NETCDF)
+
 # MMG Remeshing
-MESSAGE(STATUS "------------------------------------------------")
-MESSAGE(STATUS "Mesh adaptation 2D/3D looking for [Mmg] tools ")
+IF(WITH_MMG)
+  MESSAGE(STATUS "------------------------------------------------")
+  MESSAGE(STATUS "Mesh adaptation 2D/3D looking for [Mmg] tools ")
+  FIND_PACKAGE(MMG)
+  # INCLUDE("cmake/Modules/FindMMG.cmake")
+  # INCLUDE_DIRECTORIES(${MMG_INCLUDE_DIR})
+  # TARGET_LINK_LIBRARIES( ${YOUR_TARGET} ${MMG_LIBRARY})
+  IF(MMG_FOUND)
 
-FIND_PACKAGE(MMG)
-# INCLUDE("cmake/Modules/FindMMG.cmake")
-# INCLUDE_DIRECTORIES(${MMG_INCLUDE_DIR})
-# TARGET_LINK_LIBRARIES( ${YOUR_TARGET} ${MMG_LIBRARY})
+    SET(HAVE_MMG TRUE CACHE BOOL "Has Mmg tools for Elmer/Ice Mesh adaptation" )
+    GET_FILENAME_COMPONENT(MMG_LIBDIR ${MMG_LIBRARY} DIRECTORY)
 
+    MARK_AS_ADVANCED(HAVE_MMG)
+    MESSAGE(STATUS "  Mmg:           " "${MMG_FOUND}")
+    MESSAGE(STATUS "  Mmg_INC:       " "${MMG_INCLUDE_DIR}")
+    MESSAGE(STATUS "  Mmg_LIB:      " "${MMG_LIBRARY}")
+    MESSAGE(STATUS "  Mmg_LIBDIR:      " "${MMG_LIBDIR}")
+    MESSAGE(STATUS "Compile MMG2DSolver/MMG3DSolver")
+    ADD_DEFINITIONS(-DHAVE_MMG)
 
-IF(MMG_FOUND)
+    INCLUDE_DIRECTORIES(${MMG_INCLUDE_DIR})
+    MESSAGE(STATUS "------------------------------------------------")
 
-  SET(HAVE_MMG TRUE CACHE BOOL "Has Mmg tools for Elmer/Ice Mesh adaptation" )
-  GET_FILENAME_COMPONENT(MMG_LIBDIR ${MMG_LIBRARY} DIRECTORY)
+  ELSE()
+    MESSAGE(STATUS "  Library not found: >MMG_FOUND< ")
+    MESSAGE(STATUS "    Missing: >MMG_INCLUDE_DIR< , >MMG_LIBRARY<, to compile MMG3DSolver")
+  ENDIF(MMG_FOUND)
 
-  MARK_AS_ADVANCED(HAVE_MMG)
-  MESSAGE(STATUS "  Mmg:           " "${MMG_FOUND}")
-  MESSAGE(STATUS "  Mmg_INC:       " "${MMG_INCLUDE_DIR}")
-  MESSAGE(STATUS "  Mmg_LIB:      " "${MMG_LIBRARY}")
-  MESSAGE(STATUS "  Mmg_LIBDIR:      " "${MMG_LIBDIR}")
-  MESSAGE(STATUS "Compile MMG2DSolver/MMG3DSolver")
-  ADD_DEFINITIONS(-DHAVE_MMG)
-
-  INCLUDE_DIRECTORIES(${MMG_INCLUDE_DIR})
   MESSAGE(STATUS "------------------------------------------------")
 
+  IF (WITH_PARMMG) 
+    FIND_PACKAGE(PARMMG)
+    IF(PARMMG_FOUND)
+
+      SET(HAVE_PARMMG TRUE CACHE BOOL "Has ParMmg tools for Elmer/Ice Mesh adaptation" )
+      GET_FILENAME_COMPONENT(PARMMG_LIBDIR ${PARMMG_LIBRARY} DIRECTORY)
+      
+      MARK_AS_ADVANCED(HAVE_PARMMG)
+      MESSAGE(STATUS "  ParMmg:           " "${PARMMG_FOUND}")
+      MESSAGE(STATUS "  ParMmg_INC:       " "${PARMMG_INCLUDE_DIR}")
+      MESSAGE(STATUS "  ParMmg_LIB:      " "${PARMMG_LIBRARY}")
+      MESSAGE(STATUS "  ParMmg_LIBDIR:      " "${PARMMG_LIBDIR}")
+      #MESSAGE(STATUS "Compile MMG2DSolver/MMG3DSolver")
+      ADD_DEFINITIONS(-DHAVE_PARMMG)
+
+      INCLUDE_DIRECTORIES(${PARMMG_INCLUDE_DIR})
+      MESSAGE(STATUS "------------------------------------------------")
+    ELSE()
+      MESSAGE(STATUS "  Library not found: >PARMMG_FOUND< ")
+      MESSAGE(STATUS "    Missing: >PARMMG_INCLUDE_DIR< , >PARMMG_LIBRARY<, to compile PARMMGSolver")
+    ENDIF(PARMMG_FOUND)
+  ELSE()
+    SET(PARMMG_FOUND FALSE)
+    MESSAGE(STATUS "  Skipping ParMMG")
+  # INCLUDE("cmake/Modules/FindParMMG.cmake")
+  # INCLUDE_DIRECTORIES(${PARMMG_INCLUDE_DIR})
+  # TARGET_LINK_LIBRARIES( ${YOUR_TARGET} ${PARMMG_LIBRARY})
+  #  SET(HAVE_PARMMG FALSE)
+  ENDIF(WITH_PARMMG) 
 ELSE()
-  MESSAGE(STATUS "  Library not found: >MMG_FOUND< ")
-  MESSAGE(STATUS "    Missing: >MMG_INCLUDE_DIR< , >MMG_LIBRARY<, to compile MMG3DSolver")
-ENDIF(MMG_FOUND)
+  SET(HAVE_MMG FALSE)
+  SET(HAVE_PARMMG FALSE)
+ENDIF()
 
-MESSAGE(STATUS "------------------------------------------------")
-
-FIND_PACKAGE(PARMMG)
-# INCLUDE("cmake/Modules/FindParMMG.cmake")
-# INCLUDE_DIRECTORIES(${PARMMG_INCLUDE_DIR})
-# TARGET_LINK_LIBRARIES( ${YOUR_TARGET} ${PARMMG_LIBRARY})
-
-
-IF(PARMMG_FOUND)
-
-  SET(HAVE_PARMMG TRUE CACHE BOOL "Has ParMmg tools for Elmer/Ice Mesh adaptation" )
-  GET_FILENAME_COMPONENT(PARMMG_LIBDIR ${PARMMG_LIBRARY} DIRECTORY)
-
-  MARK_AS_ADVANCED(HAVE_PARMMG)
-  MESSAGE(STATUS "  ParMmg:           " "${PARMMG_FOUND}")
-  MESSAGE(STATUS "  ParMmg_INC:       " "${PARMMG_INCLUDE_DIR}")
-  MESSAGE(STATUS "  ParMmg_LIB:      " "${PARMMG_LIBRARY}")
-  MESSAGE(STATUS "  ParMmg_LIBDIR:      " "${PARMMG_LIBDIR}")
-  #MESSAGE(STATUS "Compile MMG2DSolver/MMG3DSolver")
-  ADD_DEFINITIONS(-DHAVE_PARMMG)
-
-  INCLUDE_DIRECTORIES(${PARMMG_INCLUDE_DIR})
+# XIOS
+IF (WITH_XIOS)
   MESSAGE(STATUS "------------------------------------------------")
+  MESSAGE(STATUS "  Looking for XIOS ")
 
-ELSE()
-  MESSAGE(STATUS "  Library not found: >PARMMG_FOUND< ")
-  MESSAGE(STATUS "    Missing: >PARMMG_INCLUDE_DIR< , >PARMMG_LIBRARY<, to compile PARMMGSolver")
-ENDIF(PARMMG_FOUND)
+  FIND_PACKAGE(XIOS)
+
+  IF(XIOS_FOUND)
+    SET(HAVE_XIOS TRUE)
+    MARK_AS_ADVANCED(HAVE_XIOS)
+    INCLUDE_DIRECTORIES(${XIOS_INCLUDE_DIR})
+    LINK_DIRECTORIES(${XIOS_LIBRARIES})
+    ADD_DEFINITIONS(-DHAVE_XIOS)
+    MESSAGE(STATUS "  XIOS:           " "${XIOS_FOUND}")
+    MESSAGE(STATUS "  XIOS_INC:       " "${XIOS_INCLUDE_DIR}")
+    MESSAGE(STATUS "  XIOS_LIB :      " "${XIOS_LIBRARIES}")
+  ELSE()
+    MESSAGE(STATUS "  XIOS not found ")
+  ENDIF()
+
+  MESSAGE(STATUS "------------------------------------------------")
+ENDIF()
 
 MESSAGE(STATUS "------------------------------------------------")
 
@@ -470,6 +538,14 @@ IF(FETI4I_FOUND)
   ADD_DEFINITIONS(-DHAVE_FETI4I)
 ENDIF()
 
+IF (AMGX_FOUND)
+  SET(HAVE_AMGX TRUE)
+  MARK_AS_ADVANCED(HAVE_AMGX)
+  INCLUDE_DIRECTORIES(${AMGX_INCLUDE_DIR})
+  LINK_DIRECTORIES(${CUDA_LIBDIR})
+ENDIF()
+
+  
 # Check if Fortran compiler supports procedure pointer
 INCLUDE(testProcedurePointer)
 IF(NOT CMAKE_Fortran_COMPILER_SUPPORTS_PROCEDUREPOINTER)

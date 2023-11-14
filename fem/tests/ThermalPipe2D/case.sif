@@ -1,4 +1,4 @@
-! Test case for a circular hole (represeting a pipe) going through 2D plane (representing the groud)
+! Test case for a circular hole (representing a pipe) going through 2D plane (representing the groud)
 
 Header
   CHECK KEYWORDS Warn

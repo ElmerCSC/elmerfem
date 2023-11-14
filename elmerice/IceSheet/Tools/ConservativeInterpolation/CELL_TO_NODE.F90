@@ -82,7 +82,7 @@
       EVarName = ListGetString(SolverParams,'Elemental Variable Name',UnFoundFatal=.TRUE.)
       NVarName = ListGetString(SolverParams,'Nodal Variable Name',UnFoundFatal=.TRUE.)
 
-! check if this is a paralell run
+! check if this is a parallel run
       Parallel=(ParEnv % PEs > 1)
 
 ! get variables

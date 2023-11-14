@@ -12,7 +12,7 @@ res=2000.0
 ## compile required USFs
 make -f $SRC_DIR/Makefile
 
-## gerenate synthetic noisy data
+## generate synthetic noisy data
 python3 $SRC_DIR/MakeObs.py
 
 ## run init

@@ -27,7 +27,7 @@
 ! *  Utilizes multithreading and vectorization features initially introduced by Mikko Byckling.
 ! *  Replaces partly the legacy solver FlowSolve which is not optimized.
 ! *
-! *  Authors: Mika Malinen, Juhani Kataja, Juha Ruokolainen, Peter Råback
+! *  Authors: Mika Malinen, Juhani Kataja, Juha Ruokolainen, Peter Råback, Thomas Zwinger
 ! *  Email:   elmeradm@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -112,7 +112,7 @@ CONTAINS
 
     ! Numerical integration:
     !-----------------------
-    IP = GaussPointsAdapt( Element, PReferenceElement = .TRUE. )
+    IP = GaussPointsAdapt(Element)
     ngp = IP % n
 
     ElemDim = Element % Type % Dimension
@@ -544,11 +544,13 @@ END BLOCK
           ViscNominal_h, ViscDiff_h, ViscTrans_h, ViscYasuda_h, ViscGlenExp_h, ViscGlenFactor_h, &
           ViscArrSet_h, ViscArr_h, ViscTLimit_h, ViscRate1_h, ViscRate2_h, ViscEne1_h, ViscEne2_h, &
           ViscTemp_h
-      REAL(KIND=dp), SAVE :: R
+      REAL(KIND=dp), SAVE :: R, NewtonRelax
       REAL(KIND=dp) :: c1, c2, c3, c4, Ehf, Tlimit, ArrheniusFactor, A1, A2, Q1, Q2, ViscCond
-      LOGICAL, SAVE :: ConstantVisc = .FALSE., Visited = .FALSE.
+      LOGICAL, SAVE :: ConstantVisc = .FALSE., Visited = .FALSE., GotRelax = .FALSE.
       REAL(KIND=dp), ALLOCATABLE, SAVE :: ss(:), s(:), ArrheniusFactorVec(:)
       REAL(KIND=dp), POINTER, SAVE :: ViscVec0(:), ViscVec(:), TempVec(:), EhfVec(:) 
+      TYPE(Variable_t), POINTER, SAVE :: ShearVar, ViscVar
+      LOGICAL, SAVE :: SaveShear, SaveVisc
       
 !$OMP THREADPRIVATE(ss,s,ViscVec0,ViscVec,ArrheniusFactorVec)
      
@@ -602,6 +604,30 @@ END BLOCK
           END IF
         END IF
 
+        ShearVar => VariableGet( CurrentModel % Mesh % Variables,'Shearrate',ThisOnly=.TRUE.)
+        SaveShear = ASSOCIATED(ShearVar)
+        IF(SaveShear) THEN
+          IF(ShearVar % TYPE == Variable_on_gauss_points ) THEN
+            CALL Info('EffectiveViscosityVec','Saving "Shearrate" on ip points!',Level=10)
+          ELSE IF( ShearVar % TYPE == Variable_on_elements ) THEN
+            CALL Info('EffectiveViscosityVec','Saving "Shearrate" on elements!',Level=10)
+          ELSE
+            CALL Fatal('EffectiveViscosityVec','"Shearrate" should be either ip or elemental field!')
+          END IF
+        END IF
+
+        ViscVar => VariableGet( CurrentModel % Mesh % Variables,'Viscosity',ThisOnly=.TRUE.)
+        SaveVisc = ASSOCIATED(ViscVar)        
+        IF(SaveVisc) THEN
+          IF(ViscVar % TYPE == Variable_on_gauss_points ) THEN
+            CALL Info('EffectiveViscosityVec','Saving "Viscosity" on ip points!',Level=10)
+          ELSE IF( ViscVar % TYPE == Variable_on_elements ) THEN
+            CALL Info('EffectiveViscosityVec','Saving "Viscosity" on elements!',Level=10)
+          ELSE
+            CALL Fatal('EffectiveViscosityVec','"Viscosity" should be either ip or elemental field!')
+          END IF
+        END IF
+        
         Visited = .TRUE.
       END IF
 
@@ -634,7 +660,7 @@ END BLOCK
       IF (.NOT. ALLOCATED(ss)) THEN
         ALLOCATE(ss(ngp),s(ngp),ViscVec(ngp),ArrheniusFactorVec(ngp),STAT=allocstat)
         IF (allocstat /= 0) THEN
-          CALL Fatal('IncompressibleNSSolver::LocalBulkMatrix','Local storage allocation failed')
+          CALL Fatal('EffectiveViscosityVec','Local storage allocation failed')
         END IF
       END IF
 
@@ -652,8 +678,19 @@ END BLOCK
       END DO
       ss(1:ngp) = 0.5_dp * ss(1:ngp)
 
-
-
+      IF(SaveShear) THEN
+        i = Element % ElementIndex
+        IF( ShearVar % TYPE == Variable_on_gauss_points ) THEN
+          j = ShearVar % Perm(i+1) - ShearVar % Perm(i)
+          IF(j /= ngp) THEN
+            CALL Fatal('EffectiveViscosityVec','Expected '//I2S(j)//' gauss point for "Shearrate" got '//I2S(ngp))
+          END IF
+          ShearVar % Values(ShearVar % Perm(i)+1:ShearVar % Perm(i+1)) = ss(1:ngp)
+        ELSE
+          ShearVar % Values(ShearVar % Perm(i)) = SUM(ss(1:ngp)) / ngp
+        END IF
+      END IF
+            
       
       SELECT CASE( ViscModel )       
 
@@ -833,7 +870,19 @@ END BLOCK
 
       END SELECT
 
-
+      IF(SaveVisc) THEN
+        i = Element % ElementIndex
+        IF( ViscVar % TYPE == Variable_on_gauss_points ) THEN
+          j = ViscVar % Perm(i+1) - ViscVar % Perm(i) 
+          IF(j /= ngp) THEN
+            CALL Fatal('EffectiveViscosityVec','Expected '//I2S(j)//' gauss point for "Viscosity" got '//I2S(ngp))
+          END IF
+          ViscVar % Values(ViscVar % Perm(i)+1:ViscVar % Perm(i+1)) = ViscVec(1:ngp)
+        ELSE
+          ViscVar % Values(ViscVar % Perm(i)) = SUM(ViscVec(1:ngp)) / ngp
+        END IF
+      END IF
+      
     END FUNCTION EffectiveViscosityVec
       
 
@@ -948,32 +997,36 @@ END BLOCK
 ! Assemble local finite element matrix for a single boundary element and glue
 ! it to the global matrix.
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalBoundaryMatrix( Element, n, nd, dim, InitHandles)
+  SUBROUTINE LocalBoundaryMatrix( Element, n, nd, dim, dt, SpecificLoad, InitHandles, Newton)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 
     TYPE(Element_t), POINTER, INTENT(IN) :: Element
     INTEGER, INTENT(IN) :: n, nd, dim
-    LOGICAL, INTENT(INOUT) :: InitHandles 
+    REAL(KIND=dp), INTENT(IN) :: dt
+    LOGICAL, INTENT(INOUT) :: SpecificLoad, InitHandles, Newton 
 !------------------------------------------------------------------------------    
     TYPE(GaussIntegrationPoints_t) :: IP
     REAL(KIND=dp), TARGET :: STIFF(nd*(dim+1),nd*(dim+1)), FORCE(nd*(dim+1))
     REAL(KIND=dp), ALLOCATABLE :: Basis(:)
-    CHARACTER(LEN=MAX_NAME_LEN) :: str
+    CHARACTER(LEN=MAX_NAME_LEN) :: str, FSSAFlag
     INTEGER :: c,i,j,k,l,p,q,t,ngp,norm_comp
     LOGICAL :: NormalTangential, HaveSlip, HaveForce, HavePres, HaveFrictionW, HaveFrictionU, &
-        HaveFriction, HaveNormal, FrictionNewton, FrictionNormal, Found, Stat
-    REAL(KIND=dp) :: ExtPressure, s, detJ, wut0, wexp, wcoeff, un, ut
+        HaveFriction, HaveNormal, FrictionNewton, FrictionNormal, Found, Stat, HaveFSSA, FoundLoad
+    REAL(KIND=dp) :: ExtPressure, s, detJ, FSSAtheta, wut0, wexp, wcoeff, un, ut, rho
     REAL(KIND=dp) :: SlipCoeff(3), SurfaceTraction(3), Normal(3), Tangent(3), Tangent2(3), &
-        Vect(3), Velo(3), ut_eps, TanFrictionCoeff, DummyVals(1)
+        Vect(3), Velo(3), ut_eps, TanFrictionCoeff, DummyVals(1), LoadVec(dim), FSSAaccum
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(ValueHandle_t), SAVE :: ExtPressure_h, SurfaceTraction_h, SlipCoeff_h, &
         NormalTangential_h, NormalTangentialVelo_h, WeertmanCoeff_h, WeertmanExp_h, &
-        FrictionNewtonEps_h, FrictionUt0_h, FrictionNormal_h, FrictionNewton_h, FrictionCoeff_h
-    TYPE(VariableHandle_t), SAVE :: Normal_v, Velo_v
+        FrictionNewtonEps_h, FrictionUt0_h, FrictionNormal_h, FrictionNewton_h, FrictionCoeff_h, &
+        FSSAtheta_h, Dens_h, Load_h(3), FSSAaccum_h
+    TYPE(VariableHandle_t), SAVE :: Velo_v
+    TYPE(Variable_t), POINTER, SAVE :: NrmSol
     TYPE(ValueList_t), POINTER :: BC    
+    REAL(KIND=dp) :: TanFder,JAC(nd*(dim+1),nd*(dim+1)),SOL(nd*(dim+1)),NodalSol(dim+1,nd)
     
-    SAVE Basis
+    SAVE Basis, HaveNormal
     
 !------------------------------------------------------------------------------
     
@@ -999,14 +1052,25 @@ END BLOCK
           'Normal-Tangential Velocity' )
       CALL ListInitElementKeyword( NormalTangential_h,'Boundary Condition',&
           'Normal-Tangential '//GetVarName(CurrentModel % Solver % Variable) )
-
+      CALL ListInitElementKeyword( FSSAtheta_h, 'Boundary Condition',&
+           'FSSA Theta')
       str = ListGetString( CurrentModel % Solver % Values,'Normal Vector Name',Found )
       IF(.NOT. Found) str = 'Normal Vector'
-      CALL ListInitElementVariable( Normal_v, str, Found=HaveNormal)
+      NrmSol => VariableGet( CurrentModel % Solver % Mesh % Variables, str, ThisOnly = .TRUE.) 
+
+      !CALL ListInitElementVariable( Normal_v, str, Found=HaveNormal)
+
       CALL ListInitElementVariable( Velo_v )
-      
+      CALL ListInitElementKeyword( Dens_h,'Material','Density')
+      DO i=1,dim 
+        CALL ListInitElementKeyword( Load_h(i),'Body Force','Flow Bodyforce '//I2S(i))
+      END DO
+      CALL ListInitElementKeyword( FSSAaccum_h,'Boundary Condition','FSSA Accumulation')
       InitHandles = .FALSE.
     END IF
+    
+    BC => GetBC()
+
     
     IF( ALLOCATED( Basis ) ) THEN
       IF( SIZE( Basis ) < nd ) THEN
@@ -1021,6 +1085,7 @@ END BLOCK
     
     CALL GetElementNodes( Nodes )
     STIFF = 0.0d0
+    JAC = 0.0d0
     FORCE = 0.0d0
     c = dim + 1
 
@@ -1036,10 +1101,15 @@ END BLOCK
 
     FrictionNewton = .FALSE.
     FrictionNormal = .FALSE.
+    norm_comp = 0
 
     ! There is no elemental routine for this.
     ! So whereas this breaks the beuty it does not cost too much.
-    BC => GetBC()     
+    FSSAFlag = GetString(BC, 'FSSA Flag', Found)
+    IF (.NOT.Found) THEN
+      WRITE (FSSAFlag,*) "none"
+    END IF
+    
     HaveFrictionW = ListCheckPresent( BC,'Weertman Friction Coefficient') 
     HaveFrictionU = ListCheckPresent( BC,'Friction Coefficient')
     HaveFriction = HaveFrictionU .OR. HaveFrictionW
@@ -1053,7 +1123,15 @@ END BLOCK
       wut0 = ListGetElementReal( FrictionUt0_h, Element = Element )
       FrictionNormal = ListGetElementLogical( FrictionNormal_h, Element ) 
     END IF
-        
+    FSSAtheta = ListGetElementReal( FSSAtheta_h,  Basis, Element, HaveFSSA, GaussPoint = t )
+    IF (HaveFSSA) THEN
+      IF (FSSAtheta == 0.0) HaveFSSA=.FALSE.
+      rho = ListGetElementRealParent( Dens_h, Basis, Element, Found )
+      IF (.NOT.Found) THEN
+        CALL WARN('IncompressibleNSSolver (FSSA)','"Density" in Parent element not found!')          
+        HaveFSSA = .FALSE.
+      END IF
+    END IF
     DO t=1,ngp      
 !------------------------------------------------------------------------------
 !    Basis function values & derivatives at the integration point
@@ -1073,18 +1151,35 @@ END BLOCK
       ! Slip coefficient
       !----------------------------------
       SlipCoeff = ListGetElementReal3D( SlipCoeff_h, Basis, Element, HaveSlip, GaussPoint = t )      
-            
+      ! FSSA Theta
+      !--------------------
+     
+
+      IF (HaveFSSA) THEN
+        ! Flow bodyforce if present
+        LoadVec = 0._dp
+        FoundLoad = .FALSE.
+        DO i=1,dim
+          LoadVec(i) = ListGetElementRealParent( Load_h(i), Basis, Element, Found )
+          FoundLoad = FoundLoad .OR. Found
+          IF( Found .AND. .NOT.SpecificLoad) THEN
+            LoadVec(i) = rho * LoadVec(i)
+          END IF
+        END DO
+        IF (.NOT.FoundLoad) THEN
+          CALL WARN('IncompressibleNSSolver (FSSA)','No component of "Flow Body Force" in Parent element not found!')
+          HaveFSSA = .FALSE.
+        END IF
+      END IF
+      
       ! Nothing to do, exit the routine
       !---------------------------------
-      IF(.NOT. (HaveForce .OR. HavePres .OR. HaveSlip .OR. HaveFriction )) RETURN
+      IF(.NOT. (HaveForce .OR. HavePres .OR. HaveSlip .OR. HaveFriction .OR. HaveFSSA)) RETURN
 
       ! Calculate normal vector only if needed
-      IF( HavePres .OR. NormalTangential .OR. HaveFriction  ) THEN
-        IF( HaveNormal ) THEN
-          Normal = ListGetElementVectorSolution( Normal_v, Basis, Element, GaussPoint = t)
-        ELSE
-          Normal = NormalVector( Element, Nodes, IP % u(t),IP %v(t),.TRUE. )
-        END IF
+      IF( HavePres .OR. NormalTangential .OR. HaveFriction  .OR. HaveFSSA ) THEN
+        Normal = ConsistentNormalVector( CurrentModel % Solver, NrmSol, Element, Found, Basis = Basis )
+        IF(.NOT. Found) Normal = NormalVector( Element, Nodes, IP % u(t), IP % v(t),.TRUE. )
       END IF
       
       !-----------------------------------------------------------------
@@ -1119,6 +1214,10 @@ END BLOCK
           wcoeff = ListGetElementReal( WeertmanCoeff_h, Basis, Element, GaussPoint = t )
           wexp = ListGetElementReal( WeertmanExp_h, Basis, Element, GaussPoint = t )
           TanFrictionCoeff = MIN(wcoeff * ut**(wexp-1.0_dp),1.0e20)
+          ! dTanFrictionCoeff/dut for Newton
+          TanFder=0._dp
+          IF ((ut > wut0).AND.(TanFrictionCoeff < 1.0e20)) &
+             TanFder = (wexp-1.0_dp) * wcoeff * ut**(wexp-2.0_dp) 
         ELSE
           ! Else, user defined friction law
           DummyVals(1) = ut          
@@ -1182,6 +1281,13 @@ END BLOCK
                     STIFF( (p-1)*c+j,(q-1)*c+k ) = &
                         STIFF( (p-1)*c+j,(q-1)*c+k ) + &
                         s * SlipCoeff(i) * Basis(q) * Basis(p) * Vect(j) * Vect(k)
+
+                    IF(HaveFrictionW.AND.Newton) THEN
+                      JAC((p-1)*c+j,(q-1)*c+k ) = &
+                         JAC((p-1)*c+j,(q-1)*c+k ) + &
+                         s * TanFder * Basis(q) * Basis(p) * Vect(j) * velo(k) * SUM(velo(1:dim)*Vect(1:dim))/ut
+                    END IF
+
                   END DO
                 END DO
               END DO
@@ -1195,6 +1301,16 @@ END BLOCK
                 STIFF( (p-1)*c+i,(q-1)*c+i ) = &
                     STIFF( (p-1)*c+i,(q-1)*c+i ) + &
                     s * SlipCoeff(i) * Basis(q) * Basis(p)
+
+               IF(HaveFrictionW.AND.Newton) THEN
+                 DO j=1,dim
+                  IF(j == norm_comp) CYCLE
+                  JAC((p-1)*c+i,(q-1)*c+j ) = &
+                     JAC((p-1)*c+i,(q-1)*c+j ) + &
+                        s * TanFder * Basis(q) * Basis(p) * velo(i) * velo(j) / ut
+                 END DO
+               END IF
+
               END DO
             END DO
           END DO
@@ -1203,7 +1319,8 @@ END BLOCK
 
            
       ! Assemble given forces to r.h.s.
-      IF( HaveForce .OR. HavePres ) THEN
+      IF( HaveForce .OR. HavePres .OR. HaveFSSA ) THEN
+        FSSAaccum = ListGetElementReal( FSSAaccum_h, Basis, Element, GaussPoint = t )        
         IF ( NormalTangential ) THEN
           DO i=1,dim
             SELECT CASE(i)
@@ -1219,6 +1336,7 @@ END BLOCK
               DO j=1,dim
                 l = (q-1)*c + j
                 FORCE(l) = FORCE(l) + s * Basis(q) * SurfaceTraction(i) * Vect(j)
+                IF (i==1) FORCE(l) = FORCE(l) + s * FSSAtheta * dt * FSSAaccum * Basis(q) * LoadVec(j) 
               END DO
             END DO
           END DO
@@ -1227,11 +1345,71 @@ END BLOCK
             DO q=1,nd
               k = (q-1)*c + i
               FORCE(k) = FORCE(k) + s * Basis(q) * SurfaceTraction(i)
+              FORCE(k) = FORCE(k) + s * FSSAtheta * dt *  FSSAaccum * Basis(q) * LoadVec(i)
             END DO
           END DO
         END IF
       END IF
+      
+      !FSSA stabilization: sum_i <u_i*n_i*v_z> * StabCoeff, i=1,..,dim
+      !---------------------------------------------------------------
+     
+      IF ( HaveFSSA ) THEN
+        SELECT CASE(FSSAFlag)
+          ! version 1,  approximation with normal pointing into z-direction
+        CASE ('normal')          
+          DO p=1,nd
+            DO q=1,nd
+              DO i=dim,dim
+                STIFF( (p-1)*c+dim,(q-1)*c+i ) = & 
+                     STIFF( (p-1)*c+dim,(q-1)*c+i )  &
+                     - s * FSSAtheta * dt * LoadVec(dim) * Basis(q) * Basis(p) * Normal(i)
+              END DO
+            END DO
+          END DO
+          ! version 2, transposed
+        CASE ('transposed')
+          DO p=1,nd
+            DO q=1,nd
+              DO i=1,dim
+                STIFF( (p-1)*c+i,(q-1)*c+dim ) = & 
+                     STIFF( (p-1)*c+i,(q-1)*c+dim )  &
+                     - s * FSSAtheta * dt * LoadVec(dim) * Basis(q) * Basis(p) * Normal(i)
+              END DO
+            END DO
+          END DO        
+        CASE ('full') ! full entry matrix FSSA
+          DO p=1,nd
+            DO q=1,nd
+              DO i=1,dim
+                DO j=1,dim
+                  STIFF( (p-1)*c+j,(q-1)*c+i ) = & 
+                     STIFF( (p-1)*c+j,(q-1)*c+i )  &
+                     - s * FSSAtheta * dt * LoadVec(j) * Basis(q) * Basis(p) * Normal(i)
+                !PRINT *, "K(",p,q,i,")=", s * FSSAtheta * Basis(q) * Basis(p) * Normal(i), STIFF( (p-1)*c+dim,(q-1)*c+i )
+                END DO
+              END DO
+            END DO
+          END DO          
+        CASE DEFAULT
+
+        END SELECT
+
+      END IF
     END DO
+
+
+    IF(HaveFrictionW.AND.Newton) THEN
+       CALL GetLocalSolution( NodalSol )
+       SOL=0._dp
+       DO i = 1, c
+         SOL(i::c) = NodalSol(i,1:nd)
+       END DO
+
+       STIFF=STIFF+JAC
+       FORCE=FORCE + MATMUL(JAC,SOL)
+
+    END IF
       
     CALL DefaultUpdateEquations( STIFF, FORCE )
         
@@ -1252,8 +1430,18 @@ SUBROUTINE IncompressibleNSSolver_Init0(Model, Solver, dt, Transient)
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------  
-  CALL ListAddNewString(GetSolverParams(),'Element', &
-    'p:1 -tri b:1 -tetra b:1 -quad b:3 -brick b:4 -prism b:4 -pyramid b:4')
+  LOGICAL :: Found, Serendipity
+
+  Serendipity = GetLogical( GetSimulation(), 'Serendipity P Elements', Found)
+  IF(.NOT.Found) Serendipity = .TRUE.
+  
+  IF(Serendipity) THEN
+    CALL ListAddNewString(GetSolverParams(),'Element', &
+      'p:1 -tri b:1 -tetra b:1 -quad b:3 -brick b:4 -prism b:4 -pyramid b:4')
+  ELSE
+    CALL ListAddNewString(GetSolverParams(),'Element', &
+      'p:1 -tri b:1 -tetra b:1 -quad b:4 -brick b:8 -prism b:4 -pyramid b:4')
+  END IF
 !------------------------------------------------------------------------------
 END SUBROUTINE IncompressibleNSSolver_Init0
 !------------------------------------------------------------------------------
@@ -1326,7 +1514,7 @@ SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, Transient)
   IF( ListGetLogical( Params,'Block Preconditioner',Found ) ) THEN
     CALL ListAddNewString( Params,'Block Matrix Schur Variable','schur')
   END IF
-    
+   
 !------------------------------------------------------------------------------ 
 END SUBROUTINE IncompressibleNSSolver_Init
 !------------------------------------------------------------------------------
@@ -1359,7 +1547,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
  
   REAL(KIND=dp) :: Norm
 
-  LOGICAL :: AllocationsDone = .FALSE., Found, StokesFlow, BlockPrec
+  LOGICAL :: AllocationsDone = .FALSE., Found, StokesFlow, BlockPrec, Converged
   LOGICAL :: GradPVersion, DivCurlForm, SpecificLoad, InitBCHandles
 
   TYPE(Solver_t), POINTER, SAVE :: SchurSolver => Null()
@@ -1412,7 +1600,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   Element => Mesh % Elements( Solver % ActiveElements(1) ) 
   IP = GaussPointsAdapt( Element, PReferenceElement = .TRUE. )
   CALL Info('IncompressibleNSSolver', &
-      'Number of 1st integration points: '//TRIM(I2S(IP % n)), Level=5)
+      'Number of 1st integration points: '//I2S(IP % n), Level=5)
   
   !-----------------------------------------------------------------------------
   ! Set the flags/parameters which define how the system is assembled: 
@@ -1449,6 +1637,8 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     CALL Info(Caller, Message, Level=4)
     CALL Info(Caller,'--------------------------------------------------------', Level=4)
 
+100 CONTINUE
+    
     Active = GetNOFActive()
     CALL DefaultInitialize()
     IF (ASSOCIATED(SchurSolver)) THEN
@@ -1464,7 +1654,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
       ! When the number of bubbles is obtained with the Update=.TRUE. flag,
       ! we need to call GetElementNOFBDOFs before calling GetElementNOFDOFs.
       !
-      nb = GetElementNOFBDOFs(Element, Update=.TRUE.)
+      nb = GetElementNOFBDOFs(Element)
       nd = GetElementNOFDOFs(Element)
       
       ! Get element local matrix and rhs vector:
@@ -1508,7 +1698,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
 
         ! Get element local matrix and rhs vector:
         !-----------------------------------------
-        CALL LocalBoundaryMatrix(Element, n, nd, dim, InitBCHandles )
+        CALL LocalBoundaryMatrix(Element, n, nd, dim, dt, SpecificLoad, InitBCHandles, Newton)
         InitBCHandles = .FALSE.
       END IF
     END DO
@@ -1522,6 +1712,11 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()
     IF(ASSOCIATED(SchurSolver)) CALL DefaultDirichletBCs(USolver=SchurSolver)
+
+    ! Check stepsize for nonlinear iteration
+    !------------------------------------------------------------------------------
+    IF( DefaultLinesearch( Converged ) ) GOTO 100
+    IF( Converged ) EXIT
     
     Norm = DefaultSolve()
 

@@ -484,8 +484,7 @@
 
      DirectionName = ListGetString(Solver %Values, 'Implicit Friction Direction Vector', ImplicitFrictionDirection)
      IF (ImplicitFrictionDirection) THEN
-       WRITE(Message,*) '"Implicit Friction Direction Vector" set to', TRIM(DirectionName)
-       CALL INFO('FlowSolve',Message)
+       CALL Info('FlowSolver','"Implicit Friction Direction Vector" set to: '//TRIM(DirectionName),Level=10)
      END IF
 
 !------------------------------------------------------------------------------
@@ -636,7 +635,7 @@
                  AngularVelocity = gWork(1:3,1)
                  Rotating = .TRUE.
                ELSE
-                 CALL Fatal('FlowSolve','Rotating coordinate implemented only for cartesian coodinates')
+                 CALL Fatal('FlowSolve','Rotating coordinate implemented only for cartesian coordinates')
                END IF
              ELSE
                AngularVelocity = 0.0_dp
@@ -1061,6 +1060,8 @@
         Element => GetBoundaryElement(t)
         IF ( .NOT. ActiveBoundaryElement() ) CYCLE
 
+        IF( dim - GetElementDim(Element) > 1 ) CYCLE
+        
         n = GetElementNOFNodes()
 
         CALL GetElementNodes( ElementNodes )
@@ -1251,11 +1252,11 @@
      
       !------------------------------------------------------------------------------
       !     Implicit Friction Boundaries
-       !------------------------------------------------------------------------------     
+      !------------------------------------------------------------------------------     
       IF (ImplicitFrictionDirection) THEN
         ! This is a matrix level routine for setting friction such that tangential
         ! traction is the normal traction multiplied by a coefficient.
-        CALL SetImplicitFriction(Model, Solver,'Implicit Friction Coefficient', DirectionName=TRIM(DirectionName)  )
+        CALL SetImplicitFriction(Model, Solver,'Implicit Friction Coefficient', DirectionName )
       ELSE
         CALL SetImplicitFriction(Model, Solver,'Implicit Friction Coefficient' )
       END IF

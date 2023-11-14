@@ -133,20 +133,62 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
   VarName = TRIM( Var3D % Name ) 
 
   IF( .NOT. Initialized ) THEN
+    ! Just check what type of elements we have 
+    NoActive = GetNOFActive()
+    DO t=1,NoActive
+      Element => GetActiveElement(t)
+      i = Element % TYPE % ElementCode
+      IF(t == 1) THEN
+        j = i
+      ELSE IF(i /= j) THEN
+        EXIT
+      END IF
+    END DO
+    IF( i /= j ) THEN
+      CALL Info(Caller,'There are at least elements of type: '//I2S(i)//' and '//I2S(j))
+    ELSE
+      CALL Info(Caller,'All elements are of type: '//I2S(i),Level=12)
+    END IF
+
+  
     CALL Info(Caller,'Initializing structured mesh and ODE structures',Level=6)
     CALL Info(Caller,'Solving for variable: '//TRIM(VarName),Level=6)
 
     CALL DetectExtrudedStructure( Mesh, PSolver, ExtVar = ExtVar, &
         BotNodePointer = BotPointer, UpNodePointer = UpPointer, &
-        NumberOfLayers = NumberOfLayers )
+        NumberOfLayers = NumberOfLayers, MaskVar = Var3D )
         
-    CALL Info(Caller,'Number of element layers: '//TRIM(I2S(NumberOfLayers)),Level=7)
+    CALL Info(Caller,'Number of element layers: '//I2S(NumberOfLayers),Level=7)
 
     MaskExist = ASSOCIATED( ExtVar % Perm ) 
+    IF( MaskExist ) THEN
+      CALL Info(Caller,'We have a mask of size:'//I2S(MAXVAL(ExtVar % Perm)),Level=7)
+    ELSE
+      CALL Info(Caller,'No mask associated to solver',Level=20)
+    END IF
+
     IF( MaskExist ) MaskPerm => ExtVar % Perm
     Coord => ExtVar % Values
 
+    IF(.NOT. ASSOCIATED(Coord) ) THEN
+      CALL Fatal(Caller,'Coord is not associated!')
+    END IF
+    
+    WRITE(Message,'(A,2ES12.3)') 'Extruded Coordinate Range:',MINVAL(Coord),MAXVAL(Coord)
+    CALL Info(Caller,Message,Level=8)
+       
+    dz = MAXVAL(Coord)-MINVAL(Coord)
+    IF( dz < EPSILON(dz) ) THEN
+      CALL Fatal(Caller,'We cannot march when dz is ~zero!')
+    END IF
+    
     AnyDG = ListGetLogicalAnySolver( Model,'Discontinuous Galerkin')
+
+    ! It is not trivial to know to which element a node belongs to.
+    ! This structure is needed when we want to know the DG field value of a given node.
+    ! Only if we also have "Discontinuous Bodies" within this active domain will this be
+    ! uniquely defined. 
+    !-----------------------------------------------------------------------------------
     IF( MaskExist .OR. AnyDG ) THEN
       CALL Info(Caller,'Creating inverse node parent look-up table',Level=7)
       ALLOCATE( ParentElem(Mesh % NumberOfNodes) )
@@ -175,7 +217,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
     IF( RequireBC ) THEN
       CALL MarkBCNodes( Mesh,BCNode,NoBCNodes)
       IF(NoBCNodes == 0 ) RequireBC = .FALSE.
-      CALL Info(Caller,'Number of BC nodes: '//TRIM(I2S(NoBCNodes)),Level=7)
+      CALL Info(Caller,'Number of BC nodes: '//I2S(NoBCNodes),Level=7)
     END IF
     
     ! Create the permutation using the bottom layer
@@ -216,7 +258,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
     n = BotNodes
     ALLOCATE( InvPerm(n), PrevInvPerm(n), SingleIndex(1) )
 
-    CALL Info(Caller,'Number of bottom nodes: '//TRIM(I2S(n)),Level=7)
+    CALL Info(Caller,'Number of bottom nodes: '//I2S(n),Level=7)
     
     ! Allocate some vectors to study convergence 
     ALLOCATE( xvec(n), fvec(n), rvec(n), cvec(n), f0vec(n), r0vec(n), &
@@ -230,7 +272,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
   n = BotNodes
   
   ! We just use one parameter to define the timestepping.
-  ! This defines how the coeffcients are to be evaluated. 
+  ! This defines how the coefficients are to be evaluated. 
   Beta = ListGetCReal( Params,'Newmark Beta',Found )
   IF(.NOT. Found ) THEN
     ! Default timestepping is impicit euler
@@ -294,7 +336,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
         PRINT *,'Suggested timesteps:',dt,dth
         CALL Fatal(Caller,'Timesteps are not matching')        
       ELSE
-        CALL Info(Caller,'Number of marching steps for each timestep: '//TRIM(I2S(dtn)),Level=5)
+        CALL Info(Caller,'Number of marching steps for each timestep: '//I2S(dtn),Level=5)
       END IF
     END IF
   END IF
@@ -308,7 +350,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
   
   DO layer=0,NumberOfLayers
 
-    CALL Info(Caller,'Solving for layer: '//TRIM(I2S(layer)),Level=8)
+    CALL Info(Caller,'Solving for layer: '//I2S(layer),Level=8)
     
     ! First layer is determined by the initial conditions (=boundary conditions)
     IF( layer == 0 ) THEN
@@ -318,6 +360,10 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
           InvPerm(j) = i
         END IF
       END DO
+
+      IF( ANY(InvPerm == 0 ) ) THEN
+        CALL Fatal(Caller,'Number of nodes has InvPerm undefined: '//I2S(COUNT(InvPerm==0)))
+      END IF
       
       IF( ParabolicModel ) THEN
         xvec(1:n) = 0.5_dp * Var3D % Values(Var3D % Perm(InvPerm))**2 
@@ -341,14 +387,18 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
     ELSE
       InvPerm = UpPointer(PrevInvPerm)
     END IF
-        
+
+    IF( InvPerm(1) == PrevInvPerm(1) ) THEN
+      CALL Fatal(Caller,'InvPerm is the same on different layers: '//I2S(InvPerm(1)))
+    END IF
+    
     ! xi is the value of x at the previous iterate of this layer
     IF( ParabolicModel ) THEN
       xivec(1:n) = 0.5_dp * Var3D % Values(Var3D % Perm(InvPerm))**2 
     ELSE
       xivec(1:n) = Var3D % Values(Var3D % Perm(InvPerm))       
     END IF
-      
+    
     ! This sets the timestep assuming that all nodes are extruded equally.
     ! Hence this only applied to cartesian drawing. 
     IF( MaskExist ) THEN
@@ -357,9 +407,12 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
       dz = Coord(InvPerm(1)) - Coord(PrevInvPerm(1))
     END IF
     dtime = dz / velo
-    
-    IF(.TRUE.) THEN
 
+    WRITE(Message,'(A,2ES12.3)') 'Layer thickness and timestep: ',dz,dtime
+    CALL Info(Caller,Message,Level=12)
+
+    IF(dtime < EPSILON(dtime) ) THEN
+      CALL Fatal(Caller,'Cannot march if timestep is ~zero')
     END IF
     
     ! We may have iteration if the ODE is nonlinear.
@@ -367,12 +420,12 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
     DO iter = 1, MaxIter 
 
       IF( MaxIter > 1 ) THEN
-        CALL Info(Caller,'Nonlinear iteration: '//TRIM(I2S(iter)),Level=20)
+        CALL Info(Caller,'Nonlinear iteration: '//I2S(iter),Level=20)
         xivec = xvec
       END IF
             
       CALL GetCoefficients(Beta)
-           
+      
       ! We don't really need any linear solver for this as there is no coupling among dofs.      
       IF( HaveC ) THEN
         xvec = x0vec + dtime * fvec / cvec
@@ -387,7 +440,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
       ! For the 1st iteration the error corresponds to the error with respect to previous solution.
       ! For 2nd etc. iteration the error is of the nonlinear iteration. 
       Change = SQRT(SUM(dxvec*dxvec))/Norm
-
+      
       ! This must be in the loop since we may have dependence on some field value
       ! that has changed!
       IF( ParabolicModel ) THEN
@@ -433,7 +486,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
 
   IF( dti < dtn ) THEN
     dti = dti + 1
-    CALL Info(Caller,'Taking marching step: '//TRIM(I2S(dti)))
+    CALL Info(Caller,'Taking marching step: '//I2S(dti))
     GOTO 1
   END IF
   
@@ -522,10 +575,9 @@ CONTAINS
     !PRINT *,'fvec',fvec(1:n)
     !PRINT *,'rvec',rvec(1:n)
     !PRINT *,'cvec',cvec(1:n)
-
     
     ! When using different integration we may need to access the
-    ! value of cofficients at previous mesh layer.
+    ! value of coefficients at previous mesh layer.
     IF( PRESENT( Set0 ) ) THEN
       IF( Set0 ) THEN
         IF( HaveF ) f0vec = fvec

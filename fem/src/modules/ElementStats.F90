@@ -362,7 +362,7 @@ CONTAINS
       EdgePairs(1:2*NoEdgePairs) = (/1,4,7,8,2,5,8,9,3,6,9,7/)
       
     CASE(8) ! hexas
-      EdgePairs = 12
+      NoEdgePairs = 12
       EdgePairs(1:2*NoEdgePairs) = &
           (/1,3,2,4,5,7,6,8,1,5,9,10,2,6,10,11,3,7,11,12,4,8,12,9/)      
 

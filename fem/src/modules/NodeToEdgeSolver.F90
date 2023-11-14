@@ -103,7 +103,7 @@ SUBROUTINE ExtrudedRestart( Model,Solver,dt,Transient)
     ! Target mesh solver is explicitly given
     TargetMesh => CurrentModel % Solvers(SolverInd) % Mesh
     IF( .NOT. ASSOCIATED( TargetMesh ) ) THEN
-      CALL Fatal(Caller,'No mesh associated to Solver: '//TRIM(I2S(SolverInd)))
+      CALL Fatal(Caller,'No mesh associated to Solver: '//I2S(SolverInd))
     END IF
   ELSE  
     ! Otherwise use the 1st mesh that is not this old data mesh
@@ -119,7 +119,7 @@ SUBROUTINE ExtrudedRestart( Model,Solver,dt,Transient)
     END IF
   END IF
 
-  CALL Info(Caller,'Using target mesh from Solver index: '//TRIM(I2S(SolverInd)),Level=8)
+  CALL Info(Caller,'Using target mesh from Solver index: '//I2S(SolverInd),Level=8)
   CALL Info(Caller,'Target mesh name is: '//TRIM(TargetMesh % Name),Level=8)   
 
   pSolver => Model % Solvers(SolverInd)
@@ -130,7 +130,7 @@ SUBROUTINE ExtrudedRestart( Model,Solver,dt,Transient)
     IF( .NOT. ListCheckPresent( Params, Name ) ) EXIT
     NoVar = i
   END DO
-  CALL Info(Caller,'Number of variables to be mapped: '//TRIM(I2S(NoVar)),Level=8)   
+  CALL Info(Caller,'Number of variables to be mapped: '//I2S(NoVar),Level=8)   
  
   m = TargetMesh % NumberOfNodes
   IF( ASSOCIATED( pSolver % Variable ) ) THEN
@@ -138,7 +138,7 @@ SUBROUTINE ExtrudedRestart( Model,Solver,dt,Transient)
   END IF
 
   layers = TargetMesh % NumberOfNodes / ThisMesh % NumberOfNodes
-  CALL Info(Caller,'Number of layers to be mapped: '//TRIM(I2S(layers)),Level=8)
+  CALL Info(Caller,'Number of layers to be mapped: '//I2S(layers),Level=8)
   
   
   DO i = 1,NoVar
@@ -236,7 +236,7 @@ SUBROUTINE ExtrudedRestart( Model,Solver,dt,Transient)
 
   END DO
     
-  CALL Info(Caller,'Transferred '//TRIM(I2S(NoVar))//' variables from 2d to 3d mesh!',Level=7)
+  CALL Info(Caller,'Transferred '//I2S(NoVar)//' variables from 2d to 3d mesh!',Level=7)
 
 END SUBROUTINE ExtrudedRestart
 
@@ -317,10 +317,10 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
 
   LOGICAL :: Found
   LOGICAL :: PiolaVersion, SecondOrder
-  LOGICAL :: ConstantBulkMatrix, ReadySystemMatrix
+  LOGICAL :: ConstantBulkMatrix, ReadySystemMatrix, IsComplex, IsIm
   TYPE(Variable_t), POINTER :: NodalVar, EdgeVar, ThisVar
   
-  INTEGER :: dim, dofs, i, j, k, l, n, nd, t
+  INTEGER :: dim, dofs, i, j, k, l, n, nd, t, imoffset
   INTEGER :: istat, active, ActiveComp
   INTEGER, POINTER :: NodeIndexes(:)  
   REAL(KIND=dp), ALLOCATABLE :: Stiff(:,:), Force(:), Anodal(:,:)
@@ -336,7 +336,6 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
   dim = CoordinateSystemDimension()
   Params => GetSolverParams()
   Mesh => GetMesh()
-
   
   ! Check if accelerated assembly is desired:
   ConstantBulkMatrix = GetLogical(Params, 'Constant Bulk Matrix', Found)
@@ -356,20 +355,36 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
   Name = GetString(Params, 'Nodal Variable', Found)
   IF (.NOT. Found ) Name = 'az'
   NodalVar => VariableGet( Mesh % Variables, Name )
-  IF(.NOT. ASSOCIATED(NodalVar) ) THEN
+  IF(ASSOCIATED(NodalVar) ) THEN
+    CALL Info(Caller,'Using nodal variable for projection: '//TRIM(Name),Level=10)
+  ELSE
     CALL Fatal(Caller,'Nodal variable not associated: '//TRIM(Name))
   END IF
-  
+
   dofs = NodalVar % Dofs
-  IF( dofs == 1 ) THEN
+  IsComplex = ( dofs == 6 )
+  IsIm = .FALSE.
+  imoffset = 0
+    
+  IF( dofs < dim ) THEN
     ActiveComp = ListGetInteger( Params,'Active Coordinate',Found )
     IF(.NOT. Found) THEN      
       ActiveComp = dim
-      CALL Info(Caller,'Assuming active coordinate to be: '//TRIM(I2S(ActiveComp)),Level=10)
+      CALL Info(Caller,'Assuming active coordinate to be: '//I2S(ActiveComp),Level=10)
     END IF
   ELSE
     ActiveComp = 0
   END IF
+
+  ! Find the variable which is projected:
+  !---------------------------------------------------------
+  Name = GetString(Params, 'Edge Variable', Found)
+  IF (.NOT. Found ) Name = 'av'    
+  EdgeVar => VariableGet( Mesh % Variables, Name ) 
+  IF(.NOT. ASSOCIATED( EdgeVar ) ) THEN
+    CALL Warn(Caller,'Could not find target variable for projection!')
+  END IF
+  
   IF( InfoActive(20) ) THEN
     CALL VectorValuesRange(NodalVar % Values,SIZE(NodalVar % Values),TRIM(NodalVar % Name))       
   END IF
@@ -392,7 +407,9 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
 
   n = Mesh % MaxElementDOFs
   ALLOCATE( Force(n), Stiff(n,n), Anodal(3,n), STAT=istat )
-  
+
+1 CALL DefaultInitialize(Solver, ReadySystemMatrix)
+    
   DO t=1,active
     Element => GetActiveElement(t)
     
@@ -406,9 +423,9 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
         Anodal(ActiveComp,1:n) = NodalVar % Values( NodalVar % Perm(NodeIndexes(1:n)) )
       END WHERE
     ELSE
-      DO i=1,dofs
+      DO i=1,dim
         WHERE(NodalVar % Perm(NodeIndexes(1:n)) > 0 )
-          Anodal(i,1:n) = NodalVar % Values( dofs*(NodalVar % Perm(NodeIndexes(1:n))-1)+i )
+          Anodal(i,1:n) = NodalVar % Values( dofs*(NodalVar % Perm(NodeIndexes(1:n))-1)+i+imoffset )
         END WHERE
       END DO
     END IF
@@ -457,16 +474,9 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
   END IF
 
   ! Finally, redefine the potential variable:
-  ! Find the variable which is projected:
   !---------------------------------------------------------
-  Name = GetString(Params, 'Edge Variable', Found)
-  IF (.NOT. Found ) Name = 'av'  
-
-  
-  EdgeVar => VariableGet( Mesh % Variables, Name ) 
   IF(ASSOCIATED( EdgeVar ) ) THEN
     n = SIZE(Solver % Variable % Perm)
-
     IF (n /=  SIZE(EdgeVar % Perm)) THEN
       CALL Fatal(Caller, 'The variable and potential permutations differ')  
     END IF
@@ -476,20 +486,31 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
       IF (j < 1) CYCLE
       k = EdgeVar % Perm(i)
       IF (k < 1) CALL Fatal(Caller, &
-          'The variable and potential permutations are nonmatching?')
-
+          'The variable and potential permutations are non-matching?')
+      IF(IsComplex ) THEN
+        k = 2*k
+        IF(.NOT. IsIm) k = k-1
+      END IF
       EdgeVar % Values(k) = Solver % Variable % Values(j)
     END DO
-  ELSE
-    CALL Warn(Caller,'Could not find target variable for projection!')
   END IF
 
-  IF( InfoActive(20) ) THEN
-    CALL VectorValuesRange(EdgeVar % Values,SIZE(EdgeVar % Values),TRIM(EdgeVar % Name))       
+  ! If we are projecting a complex field then redo for the imaginary component
+  IF( IsComplex .AND. .NOT. IsIm ) THEN
+    CALL Info(Caller,'Now doing the imaginary component')
+    IsIm = .TRUE.
+    imoffset = dofs / 2
+    ReadySystemMatrix = ConstantBulkMatrix
+    GOTO 1    
+  END IF
+
+  IF( ASSOCIATED( EdgeVar ) ) THEN
+    IF( InfoActive(20) ) THEN
+      CALL VectorValuesRange(EdgeVar % Values,SIZE(EdgeVar % Values),TRIM(EdgeVar % Name))       
+    END IF
   END IF
   
   CALL Info(Caller,'Finished projection to edge basis!')
-
   
 CONTAINS
 

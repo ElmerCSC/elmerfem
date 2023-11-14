@@ -110,9 +110,9 @@ public:
 
   void parseCmdLine();
 
-  QVariant settings_value(const QString &key,
-                          const QVariant &defaultValue = QVariant()) const;
-  void settings_setValue(const QString &key, const QVariant &value);
+  static QVariant settings_value(const QString &key,
+                          const QVariant &defaultValue = QVariant());
+  static void settings_setValue(const QString &key, const QVariant &value);
   void saveAndRun(bool generateSif);
   void showContextMenu(QPoint);
 
@@ -197,6 +197,7 @@ private slots:
   void killresultsSlot();           // Solver -> Kill post process
   void compileSolverSlot();         // Solver -> Compile...
   void showaboutSlot();             // Help -> About...
+  void getStartedSlot();            // Help -> Get Started...
   void generateAndSaveAndRunSlot();
 
   // other private slots:
@@ -204,7 +205,7 @@ private slots:
   void meshingTerminatedSlot(); // signal emitted by meshingThread
   void meshingFinishedSlot();   // signal emitted by meshingThread
 
-  void boundarySelectedSlot(list_t *); // signal emitted by glWidget
+  void boundarySelectedSlot(list_t *, Qt::KeyboardModifiers); // signal emitted by glWidget
   void doDivideSurfaceSlot(double);    // signal emitted by boundaryDivide
   void doDivideEdgeSlot(double);       // signal emitted by boundaryDivide
 
@@ -420,6 +421,7 @@ private:
   QAction *paraviewAct;               // Solver -> Launch Paraview
   QAction *compileSolverAct;          // Solver -> Compile...
   QAction *aboutAct;                  // Help -> About...
+  QAction *getStartedAct;             // Help -> Get Started...
   QAction *generateAndSaveAndRunAct;
   QAction *runPostProcessorAct;  
   QAction *selectElmerPostAct;

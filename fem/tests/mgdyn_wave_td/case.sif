@@ -1,0 +1,108 @@
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "channel"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+
+  Simulation Type = Transient
+
+  Timestepping Method = Generalized-alpha
+  Generalized-alpha Rinf = Real 0.75
+
+  Timestep Sizes = $ 4*pi/100
+  Timestep Intervals = 10
+
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+  Post File   = "case.ep"
+! Output File = "case.dat"
+End
+
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Initial Condition 1
+  a {e} = real 0
+  a {e} 3 = real 1
+End
+
+Material 1 
+  Reluctivity = 1
+  Permittivity = 1
+  Electric Conductivity = 0
+End
+
+Body Force 1 :: Source = Real 0
+Equation 1 :: Active Solvers(2) = 1 2
+
+Solver 1
+  Equation = "emwave"
+
+  Variable = "a"
+  Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+
+  Electrodynamics Model = Logical True
+  Linear system Solver = Iterative
+  Linear SYstem Iterative Method = GCR
+  Linear System Residual Output = 100
+  Linear System Max Iterations = 1000
+  Linear System Convergence TOLERANCE = 1e-9
+
+  Steady State Convergence Tolerance = 1e-09
+End
+
+Solver 2
+  Equation = "emwave calc"
+
+  Potential Variable = "a"
+  Procedure = "MagnetoDynamics" "MagnetodynamicsCalcFields"
+
+  Calculate Nodal Fields = True
+  Calculate Electric Field = Logical True
+  Calculate Magnetic Vector Potential = Logical True
+
+  Linear system Solver = Iterative
+  Linear SYstem Iterative Method = CG
+  Linear System Residual Output = 100
+  Linear System Max Iterations = 1000
+  Linear System Convergence TOLERANCE = 1e-6
+
+  Steady State Convergence Tolerance = 1e-09
+End
+
+Boundary Condition 1
+  Target Boundaries(1) =1 
+ 
+  a = real 0
+
+  a {e} = real 0
+  a {e} 3 = variable time
+    Real MATC "cos(tx)"
+End
+ 
+Boundary Condition 2
+  Target Boundaries(1) = 2
+  a = real 0
+End
+
+Boundary Condition 3
+  Target Boundaries(2) = 3 4
+  a = real 0
+End
+
+Boundary Condition 4
+  Target Boundaries(2) = 5 6
+  a = real 0.0
+  a {e} = real 0
+End
+
+Solver 1 :: Reference Norm = Real 1.09099967E-01
+RUN

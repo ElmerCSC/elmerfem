@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='UTF-8'?>
+﻿<?xml version='1.0' encoding='UTF-8'?>
 <!DOCTYPE edf>
 <edf version="1.0" >
    <PDE Name="Mesh Deformation" >
@@ -155,13 +155,13 @@
       <Material>
          <Parameter Widget="Label" > <Name> Properties </Name> </Parameter>
          <Parameter Widget="Edit" >
-            <Name>Elastic modulus</Name>
+            <Name>Mesh Elastic modulus</Name>
             <SifName>Mesh Elastic Modulus</SifName>
             <Whatis> The scalar elastic modulus must be given with this keyword.  Note that this value is fictional, and may be chosen freely to influence mesh quality.</Whatis>
          </Parameter>
 
          <Parameter Widget="Edit" >
-            <Name>Poisson ratio</Name>
+            <Name>Mesh Poisson ratio</Name>
             <SifName>Mesh Poisson ratio</SifName>
             <Whatis>  Poisson ratio must be given with this keyword.  Note that this value is fictional, and may be chosen freely to influence mesh quality.</Whatis>
          </Parameter>

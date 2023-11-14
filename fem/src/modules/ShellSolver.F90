@@ -118,21 +118,28 @@ SUBROUTINE ShellSolver_Init0(Model, Solver, dt, Transient)
     i=1
     DO WHILE(.TRUE.)
       IF ( .NOT.ListCheckPresent(SolverPars, &
-          "Exported Variable "//TRIM(i2s(i))) ) EXIT
+          "Exported Variable "//i2s(i)) ) EXIT
       i = i + 1
     END DO
-    CALL ListAddString(SolverPars, "Exported Variable "//TRIM(i2s(i)), &
+    CALL ListAddString(SolverPars, "Exported Variable "//i2s(i), &
         "Principal Coordinate Dir1[Principal Coordinate Dir1:3]")  
     i = i + 1
-    CALL ListAddString(SolverPars, "Exported Variable "//TRIM(i2s(i)), &
+    CALL ListAddString(SolverPars, "Exported Variable "//i2s(i), &
         "Principal Coordinate Dir2[Principal Coordinate Dir2:3]")
     i = i + 1
-    CALL ListAddString(SolverPars, "Exported Variable "//TRIM(i2s(i)), &
+    CALL ListAddString(SolverPars, "Exported Variable "//i2s(i), &
         "Principal Coordinate Dir3[Principal Coordinate Dir3:3]")  
   END IF
 
   CALL ListAddLogical( SolverPars,'Shell Solver',.TRUE.)
-  
+
+  IF( GetLogical( SolverPars, 'Stability Analysis', Found ) ) THEN
+    CALL Fatal('ShellSolver_Init0','"Stability Analysis" has not yet been coded for this solver!')
+  END IF
+  IF( GetLogical( SolverPars, 'Geometric Stiffness', Found ) ) THEN
+    CALL Fatal('ShellSolver_Init0','"Geometric Stiffness" has not yet been coded for this solver!')
+  END IF
+      
 !------------------------------------------------------------------------------
 END SUBROUTINE ShellSolver_Init0
 !------------------------------------------------------------------------------
@@ -1068,22 +1075,26 @@ CONTAINS
             IF (SIZE(DirectorValues) < 3*n) CALL Fatal('ReadSurfaceDirector', &
                 'Elemental director data is not associated with all nodes')
  
-            WRITE(FormatString(1:1),'(A1)') '('
-            IF (3*n < 10) THEN
-              WRITE(FormatString(2:2),'(A1)') TRIM(I2S(3*n))
-              i0 = 2
-            ELSE
-              WRITE(FormatString(2:3),'(A2)') TRIM(I2S(3*n))
-              i0 = 3
-            END IF
-            WRITE(FormatString(i0+1:i0+1),'(A1)') '('
-            WRITE(FormatString(i0+2:i0+10),'(A9)') '2x,E22.15'
-            WRITE(FormatString(i0+11:i0+12),'(A2)') '))'
+            !WRITE(FormatString(1:1),'(A1)') '('
+            !IF (3*n < 10) THEN
+            !  WRITE(FormatString(2:2),'(A1)') I2S(3*n)
+            !  i0 = 2
+            !ELSE
+            !  WRITE(FormatString(2:3),'(A2)') I2S(3*n)
+            !  i0 = 3
+            !END IF
+            !WRITE(FormatString(i0+1:i0+1),'(A1)') '('
+            !WRITE(FormatString(i0+2:i0+10),'(A9)') '2x,E22.15'
+            !WRITE(FormatString(i0+11:i0+12),'(A2)') '))'
 
-            WRITE(10,'(A8,I0)') 'element:', ActiveElements(k)
-            WRITE(10,'(A9)',ADVANCE='NO') 'director:'
-            WRITE(10,FormatString(1:i0+12)) DirectorValues(1:3*n)
-            WRITE(10,'(A3)') 'end'
+            !WRITE(10,'(A8,I0)') 'element:', ActiveElements(k)
+            !WRITE(10,'(A9)',ADVANCE='NO') 'director:'
+            !WRITE(10,FormatString(1:i0+12)) DirectorValues(1:3*n)
+            !WRITE(10,'(A3)') 'end'
+
+            WRITE(FormatString,'(A)') '(A,I0,A,'//I2S(3*n)//'E22.15,A)'
+            WRITE(10,FormatString) 'element: ',ActiveElements(k),' director: ', &
+                DirectorValues(1:3*n),' end'            
           ELSE
             CALL Fatal('ReadSurfaceDirector', 'Elemental director data is not associated')
           END IF
@@ -3528,8 +3539,11 @@ CONTAINS
 !------------------------------------------------------------------------------
     IF (m /= 6) CALL Fatal('ShellLocalMatrix', 'Wrong number of unknown fields')
     Pversion = IsActivePElement(BGElement)
-    IF (PVersion .AND. BGElement % PDefs % P > 1) CALL Fatal('ShellLocalMatrix', &
-        'Set Cartesian Formulation = True to use p-elements with p > 1')
+
+    IF (PVersion )THEN
+        IF(BGElement % PDefs % P > 1) CALL Fatal('ShellLocalMatrix', &
+         'Set Cartesian Formulation = True to use p-elements with p > 1')
+    END IF
     Family = GetElementFamily(BGElement)
 
     ! ------------------------------------------------------------------------------
@@ -6926,7 +6940,7 @@ END SUBROUTINE RetrieveLocalFrame
 ! dimensions; see the subroutine SurfaceBasis which defines the chart.
 !
 ! TO DO: Consider moving the subroutine SurfaceBasis elsewhere so that it can be
-!        replaced easily by a user-supplied subroutine wihout modifying this file. 
+!        replaced easily by a user-supplied subroutine without modifying this file. 
 !------------------------------------------------------------------------------
   SUBROUTINE ShellLocalMatrixCartesian(BGElement, n, nd, m, LocalSol, LargeDeflection, &
       NonlinearBending, MassAssembly, HarmonicAssembly, RHSForce, SkipBlending, &

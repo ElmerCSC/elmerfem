@@ -1,0 +1,9 @@
+INCLUDE(test_macros)
+INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
+
+CONFIGURE_FILE( Step.sif Step.sif COPYONLY)
+
+file(COPY ELMERSOLVER_STARTINFO Step.grd  DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+ADD_ELMER_TEST(SD_Step_stokes_block)
+ADD_ELMER_LABEL(SD_Step_stokes_block quick serendipity)

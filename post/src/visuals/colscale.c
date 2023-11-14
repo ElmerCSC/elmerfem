@@ -49,7 +49,7 @@
 
 /******************************************************************************
  * 
- * Parameter sructure definitios for colscale visual class
+ * Parameter structure definitions for colscale visual class
  *
  ******************************************************************************/
 
@@ -78,7 +78,7 @@ typedef struct colscale_s
  *
  *         Output:  graphics
  *   
- *   Return value:  if mouse interaction is going on, and time used exeeds
+ *   Return value:  if mouse interaction is going on, and time used exceeds
  *                  given value (TooLong1,2) FALSE, otherwise TRUE
  *
  ******************************************************************************/

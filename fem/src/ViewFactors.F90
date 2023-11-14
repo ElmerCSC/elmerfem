@@ -131,8 +131,9 @@
      
      LOGICAL :: CylindricSymmetry,GotIt, Found, Radiation, LeftEmis, RightEmis
 
-     CHARACTER(LEN=MAX_NAME_LEN) :: eq,RadiationFlag, &
-           ViewFactorsFile,OutputName,ModelName,LMessage, TempString
+     CHARACTER(:), ALLOCATABLE :: eq, RadiationFlag, ViewFactorsFile, OutputName, &
+                  LMessage, TempString
+     CHARACTER(LEN=MAX_NAME_LEN) :: ModelName
 
      TYPE(Element_t), POINTER :: RadElements(:)
      INTEGER :: RadiationBody, MaxRadiationBody, Nrays
@@ -171,7 +172,8 @@
        READ(1,'(a)') ModelName
        CLOSE(1)
      END IF
-
+     CALL Info(Caller,'Computing view factors as defined in file: '//TRIM(ModelName),Level=5)
+     
      Model => LoadModel( ModelName,.FALSE.,1,0 )
 
      CurrentModel => Model
@@ -180,8 +182,7 @@
      DO i=1,Model % NumberOfSolvers
        Solver => Model % Solvers(i)
        Radiation = ListGetLogical( Solver % Values, 'Radiation Solver', Found )
-       eq = ListGetString( Solver % Values, 'Equation' )
-       IF ( Radiation .OR. TRIM(eq) == 'heat equation' ) THEN
+       IF ( Radiation ) THEN
          Mesh => Solver % Mesh
          Model % Solver => Solver
          EXIT
@@ -218,7 +219,7 @@
 
          IF(.NOT. Found ) CYCLE
 
-         CALL Info(Caller,'Duplicating mesh in coordinate direction: '//TRIM(I2S((i+1)/2)))
+         CALL Info(Caller,'Duplicating mesh in coordinate direction: '//I2S((i+1)/2))
          
          CALL MirrorMesh(Mesh, i, Plane)
        END DO
@@ -226,7 +227,7 @@
 
      CALL SetCurrentMesh( Model,Mesh )
 
-     CALL Info( Caller,'Number of nodes in mesh: '//TRIM(I2S(Mesh % NumberOfNodes)),Level=7)
+     CALL Info( Caller,'Number of nodes in mesh: '//I2S(Mesh % NumberOfNodes),Level=7)
 
 !------------------------------------------------------------------------------
 !    Figure out requested coordinate system
@@ -312,9 +313,8 @@
 
      RadiationBody = 0
      DO RadiationBody = 1, MaxRadiationBody
-       WRITE( LMessage,'(A,I2)') 'Computing view factors for radiation body',RadiationBody
+       LMessage = 'Computing view factors for radiation body'//I2S(RadiationBody)
        CALL Info(Caller,LMessage,Level=3)
-    
 !------------------------------------------------------------------------------
 !    Here we start...
 !------------------------------------------------------------------------------
@@ -358,7 +358,7 @@
          END IF
        END IF
        
-       CALL Info(Caller,'Number of surfaces participating in radiation: '//TRIM(I2S(N)))
+       CALL Info(Caller,'Number of surfaces participating in radiation: '//I2S(N))
        
        IF ( CylindricSymmetry ) THEN
          ALLOCATE( Surfaces(2*N), Factors(N*N), STAT=istat )
@@ -464,7 +464,8 @@
          
          IF ( RadBody>0 .AND. (RadBody /= RightBody .AND. RadBody /= LeftBody) ) THEN
            CALL Error( Caller, 'Inconsistent direction information (Radiation Target Body)' )
-           WRITE( LMessage, * ) 'Radiation Target: ', RadBody, ' Left, Right: ', LeftBody, RightBody
+           LMessage = 'Radiation Target: '//I2S(RadBody)//' Left, Right: '//&
+                        I2S(LeftBody)//I2S(RightBody)
            CALL Fatal( Caller, LMessage )
          END IF
          
@@ -564,7 +565,7 @@
            END SELECT
            IF(.NOT.Found) CYCLE
 
-           CALL Info(Caller,'Symmetry reduction in coordinate direction: '//TRIM(I2S((l+1)/2)))
+           CALL Info(Caller,'Symmetry reduction in coordinate direction: '//I2S((l+1)/2))
            
            k = 0
            DO i=1,n/2
@@ -620,7 +621,7 @@
        WRITE( Message,'(A,ES12.3)') 'Maximum row sum: ',Fmax
        CALL Info( Caller, Message )
        IF(nprob>0) CALL info( Caller, 'Number of rowsums below 0.5 is: '&
-           //TRIM(I2S(nprob))//' (out of '//TRIM(I2S(n))//')')
+           //I2S(nprob)//' (out of '//I2S(n)//')')
        
        at0 = CPUTime()
 
@@ -669,7 +670,7 @@
        IF ( .NOT.GotIt ) ViewFactorsFile = 'ViewFactors.dat'
        IF(RadiationBody > 1) THEN
          TempString = ViewFactorsFile
-         WRITE(ViewFactorsFile, '(A,I1)') TRIM(TempString),RadiationBody
+         ViewFactorsFile = TRIM(TempString)//I2S(RadiationBody)
        END IF
        
        IF ( LEN_TRIM(Model % Mesh % Name) > 0 ) THEN
@@ -828,7 +829,7 @@
             cum = SUM( RHS*RHS/Areas ) / n
             
             WRITE (Message,'(A,ES12.3)') &
-                'Normalization iteration '//TRIM(I2S(it))//': ',cum
+                'Normalization iteration '//I2S(it)//': ',cum
             CALL Info( Caller,Message, Level=3 )
             
             IF ( cum <= eps ) EXIT

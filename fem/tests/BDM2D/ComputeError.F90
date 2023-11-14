@@ -150,7 +150,7 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: i, p, t
     LOGICAL :: Stat
-    REAL(KIND=dp) :: FaceBasis(nd-nb,3), DivFaceBasis(nd-nb), Basis(n)
+    REAL(KIND=dp) :: FaceBasis(nd,3), DivFaceBasis(nd), Basis(nd)
     REAL(KIND=dp) :: uq, vq, wq, sq
     REAL(KIND=dp) :: xq, yq, zq, DetJ, sol, gradsol(dim), fluxsol(dim)
 

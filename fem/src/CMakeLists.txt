@@ -27,26 +27,26 @@ SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
   MaterialModels.F90 DirectSolve.F90 IterSolve.F90
   IterativeMethods.F90 TimeIntegrate.F90 Types.F90 SolveBand.F90
   ElementUtils.F90 Radiation.F90 fft.c Load.c Differentials.F90
-  FreeSurface.F90 Maxwell.F90 MaxwellAxiS.F90 MaxwellGeneral.F90
+  FreeSurface.F90 
   Walls.F90 SolverUtils.F90 SolveSBand.F90 CPUTime.c Interpolation.F90
   MainUtils.F90 Adaptive.F90 EigenSolve.F90 HashTable.F90
   MeshUtils.F90 SaveUtils.F90 SParIterGlobals.F90 SParIterComm.F90
   SParIterPrecond.F90 SParIterSolver.F90 Messages.F90 Multigrid.F90
   Smoothers.F90 ClusteringMethods.F90 ParallelUtils.F90
   ParallelEigenSolve.F90 solve_cmplx.F90 solve_real.F90 MGPrec.F90
-  DefUtils.F90 MeshPartition.F90 MeshRemeshing.F90 LUDecomposition.F90 
+  DefUtils.F90 MeshPartition.F90 MeshRemeshing.F90
   RadiationFactors.F90 f_stubs.c
-  ExchangeCorrelations.F90 SolveHypre.c SolverActivate_x.F90
-  SolveTrilinos.cxx SolveSuperLU.c iso_varying_string.F90
+  ExchangeCorrelations.F90 SolveHypre.c amgx.c SolverActivate_x.F90
+  SolveTrilinos.cxx SolveSuperLU.c
   umf4_f77wrapper.c VankaCreate.F90 ParticleUtils.F90 Feti.F90
   cholmod.c InterpolateMeshToMesh.F90 InterpVarToVar.F90
   LinearForms.F90 H1Basis.F90 CircuitUtils.F90 BackwardError.F90
-  ElmerSolver.F90 MagnetoDynamicsUtils.F90 ComponentUtils.F90 
+  ElmerSolver.F90 MagnetoDynamicsUtils.F90 LumpingUtils.F90 
   ZirkaHysteresis.F90 SolidMechanicsUtils.F90 MatrixAssembly.F90 
-  OptimizationUtils.F90)
+  OptimizationUtils.F90 MeshGenerate.F90)
 
-SET_PROPERTY(SOURCE MaxwellAxiS.F90 PROPERTY
-	COMPILE_DEFINITIONS FULL_INDUCTION)
+#SET_PROPERTY(SOURCE MaxwellAxiS.F90 PROPERTY
+#	COMPILE_DEFINITIONS FULL_INDUCTION)
 
 IF(WITH_EXTOPTIM)
   LIST(APPEND solverlib_SOURCES minpack.F90 minpack_kinds.F90
@@ -61,6 +61,8 @@ IF(WITH_LUA)
     PATTERN lua-scripts/*.lua)
   FILE(GLOB DEFAULT_LUA_SCRIPTS "lua-scripts/*.lua")
   FILE(COPY ${DEFAULT_LUA_SCRIPTS} DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/share/elmersolver/lua-scripts/)
+ELSE()
+  LIST(APPEND solverlib_SOURCES Lua.F90)
 ENDIF()
 
 IF(HAVE_FETI4I)
@@ -166,7 +168,7 @@ IF(HAVE_PARMMG)
   SET(ELMERLIB_RPATH_STRING "${ELMERLIB_RPATH_STRING}:${PARMMG_LIBDIR}")
   #TODO - add to RPath
 ENDIF()
-
+  
 IF(HAVE_ZOLTAN)
   TARGET_LINK_LIBRARIES(elmersolver ${ZOLTAN_LIBRARY})
   ADD_DEPENDENCIES(elmersolver ${ZOLTAN_LIBRARY})
@@ -177,7 +179,7 @@ ENDIF()
 # ElmerSolver libraries 
 SET(ELMERSOLVER_LIBRARIES matc umfpack 
                           amd fhuti binio arpack
-                          ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} 
+                          ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES} 
                           ${CMAKE_DL_LIBS})
 
 IF(WITH_LUA)
@@ -219,8 +221,19 @@ IF(WITH_MPI)
     LIST(APPEND ELMERSOLVER_LIBRARIES ${Hypre_LIBRARIES})
   ENDIF()
 
+  IF(NETCDF_LIBRARIES)
+    LIST(APPEND ELMERSOLVER_LIBRARIES ${NETCDF_LIBRARIES})
+    IF(PHDF5_LIBRARIES)
+      LIST(APPEND ELMERSOLVER_LIBRARIES ${PHDF5_LIBRARIES})
+    ENDIF()
+  ENDIF()
+
   IF(FETI4I_LIBRARIES)
     LIST(APPEND ELMERSOLVER_LIBRARIES ${FETI4I_LIBRARIES})
+  ENDIF()
+
+  IF(XIOS_LIBRARIES)
+    LIST(APPEND ELMERSOLVER_LIBRARIES ${XIOS_LIBRARIES})
   ENDIF()
    
   # Executable
@@ -265,6 +278,10 @@ IF(WITH_MPI)
   SET(SERIAL_SOLVER_FILEPATH "${CMAKE_INSTALL_PREFIX}/bin/ElmerSolver")
   SET(MPI_SOLVER_FILEPATH "${CMAKE_INSTALL_PREFIX}/bin/${ELMERSOLVER_OUTPUT_NAME}")
 ENDIF()
+
+IF(WITH_AMGX)
+  TARGET_LINK_LIBRARIES(elmersolver "${AMGX_LIBRARY};${CUDA_LIBRARIES}")
+ENDIF()  
 
 IF(WITH_Trilinos)
   TARGET_LINK_LIBRARIES(elmersolver "${Trilinos_LIBRARIES};${ML_LIBRARIES};${Epetra_LIBRARIES};${Teuchos_LIBRARIES}")

@@ -1,0 +1,145 @@
+Header
+  Mesh DB "." "Step"
+  Include Path ""
+  Results Directory ""
+End
+
+
+Simulation
+  Max Output Level = 5
+  Coordinate System =  Cartesian 2D
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+
+  Output Intervals = 1
+  Post File = "case.vtu"
+End
+
+
+Constants
+End
+
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+  initial condition = 1
+End
+
+initial condition 1
+ velocity 1 = 0
+ velocity 2 = 0
+end
+
+
+Equation 1
+  Name = "Equation1"
+  Active Solvers(1) = 1
+  NS Convect = False
+End
+
+
+Solver 1
+  Equation = "NS-Vec"
+
+  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+
+  Linear System Solver = "Block"
+  Block Gauss-Seidel = Logical True
+  Block Matrix Reuse = Logical False
+  Block Scaling = Logical False
+  Block Preconditioner = Logical True
+! Default is [1 2 3 4]
+! Block Structure(4) = Integer 1 1 1 2
+!  Block Order(4) = Integer 1 2 3 4
+
+! Linear System Scaling = False
+! Linear system solver for outer loop
+!-----------------------------------------
+  Outer: Linear System Solver = "Iterative"
+  Outer: Linear System Iterative Method = GCR
+  Outer: Linear System GCR Restart =  250
+  Outer: Linear System Residual Output = 1
+  Outer: Linear System Max Iterations =  500
+  Outer: Linear System Abort Not Converged = False
+  Outer: Linear System Convergence Tolerance = 1e-04
+  $blocktol = 0.01
+
+  block 11: Linear System Convergence Tolerance = $blocktol
+  block 11: Linear System Solver = "iterative"
+  block 11: Linear System Scaling = false
+  block 11: Linear System Preconditioning = ilu
+  block 11: Linear System Residual Output = 100
+  block 11: Linear System Max Iterations = 1000
+  block 11: Linear System Iterative Method = idrs
+  block 11: Calculate Loads = Logical False
+
+  block 22: Linear System Convergence Tolerance = $blocktol
+  block 22: Linear System Solver = "iterative"
+  block 22: Linear System Scaling = false
+  block 22: Linear System Preconditioning = ilu
+  block 22: Linear System Residual Output = 100
+  block 22: Linear System Max Iterations = 1000
+  block 22: Linear System Iterative Method = idrs
+  block 22: Calculate Loads = Logical False
+  
+  block 33: Linear System Convergence Tolerance = $blocktol
+  block 33: Linear System Solver = "iterative"
+  block 33: Linear System Scaling = false
+  block 33: Linear System Preconditioning = ilu
+  block 33: Linear System Residual Output = 100
+  block 33: Linear System Max Iterations = 1000
+  block 33: Linear System Iterative Method = idrs
+  block 33: Calculate Loads = Logical False
+
+  Steady State Convergence Tolerance = 1.0e-5
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-3
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Newton After Iterations = 3
+
+! Note: Stabilization terms for equal-order interpolation have not been implemented.
+! The only way to get a stable solution is to apply bubbles or p2-p1 approximation.
+!       
+  Element = "p:1 -quad b:3"
+!  Stabilization Method = String Stabilized   !Note: this keyword is not supported
+  GradP Discretization = Logical False
+  Div-Curl Form = Logical False
+End
+
+
+Material 1
+  Name = "Material1"
+  Density = 1
+  Viscosity = 1e3
+End
+
+Boundary Condition 1
+  Name = "inflow"
+  Target Boundaries = 1
+
+  Velocity 1 = Variable Coordinate 2
+     Real MATC "(2-tx)*(tx-1)"
+  Velocity 2 = 0
+End
+
+Boundary Condition 2
+  Name = "outflow"
+  Target Boundaries = 2
+
+!  Pressure = 0
+  Velocity 2 = 0
+End
+
+Boundary Condition 3
+  Name = "wall"
+  Target Boundaries = 3
+
+  Velocity 1 = 0
+  Velocity 2 = 0
+End
+ 
+Solver 1 :: Reference Norm = 7.55491505E-02

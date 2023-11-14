@@ -10,6 +10,7 @@ Simulation
   Simulation Type = Steady
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
+  Serendipity P Elements = False
 End
 
 Body 1

@@ -68,6 +68,7 @@ Solver 3
    Calculate Magnetic Vector Potential = False
    Calculate Magnetic Flux Density = True
    Calculate Magnetic Field Strength = Logical True
+   Calculate Relative Permeability = Logical True
    Separate Magnetic Energy = True
    Steady State Convergence Tolerance = 0
    Linear System Solver = "Iterative"
@@ -122,8 +123,13 @@ Material 2
   Name = "Iron"
   Electric Conductivity = 0.0
 
-  H-B Curve(31,2) = Real
-   INCLUDE HB
+!  H-B Curve(31,2) = Real
+!   INCLUDE HB
+
+  h-b curve = Variable "dummy"
+    Real
+      include HB
+    End 
 End
 
 Material 3
@@ -204,7 +210,7 @@ Body Force 1
   Current Density 3 = Equals Volume current 3
 End
 
-Solver 3 :: Reference Norm = Real 17.869450
+Solver 3 :: Reference Norm = Real 150.847866
 Solver 5 :: reference norm = real 2.204993E-05
 RUN
 !End Of File

@@ -27,7 +27,7 @@
  *                                                                           *
  *****************************************************************************
  *                                                                           *
- *  Authors: Mikko Lyly, Juha Ruokolainen and Peter R�back                   *
+ *  Authors: Mikko Lyly, Juha Ruokolainen and Peter Råback                   *
  *  Email:   Juha.Ruokolainen@csc.fi                                         *
  *  Web:     http://www.csc.fi/elmer                                         *
  *  Address: CSC - IT Center for Science Ltd.                                 *
@@ -38,7 +38,7 @@
  *                                                                           *
  *****************************************************************************/
 
-#ifdef WITH_QT5
+#if WITH_QT5 || WITH_QT6
 #include <QtWidgets>
 #else
 #include <QtGui>
@@ -195,16 +195,16 @@ QSize CadView::minimumSizeHint() const { return QSize(64, 64); }
 QSize CadView::sizeHint() const { return QSize(720, 576); }
 
 void CadView::createActions() {
-  exitAct = new QAction(QIcon(""), tr("&Quit"), this);
+  exitAct = new QAction(QIcon::fromTheme("emblem-unreadable"), tr("&Quit"), this);
   exitAct->setShortcut(tr("Ctrl+Q"));
   connect(exitAct, SIGNAL(triggered()), this, SLOT(closeSlot()));
 
-  cadPreferencesAct = new QAction(QIcon(""), tr("Preferences..."), this);
+  cadPreferencesAct = new QAction(QIcon::fromTheme("preferences-system"), tr("Preferences..."), this);
   cadPreferencesAct->setShortcut(tr("Ctrl+P"));
   connect(cadPreferencesAct, SIGNAL(triggered()), this,
           SLOT(cadPreferencesSlot()));
 
-  reloadAct = new QAction(QIcon(""), tr("Reload geometry"), this);
+  reloadAct = new QAction(QIcon::fromTheme("view-refresh"), tr("Reload geometry"), this);
   reloadAct->setShortcut(tr("Ctrl+R"));
   connect(reloadAct, SIGNAL(triggered()), this, SLOT(reloadSlot()));
 }
@@ -361,9 +361,6 @@ bool CadView::readFile(QString fileName) {
 
     const gp_Trsf &Transformation = Location.Transformation();
 
-    const Poly_Array1OfTriangle &Triangles = Triangulation->Triangles();
-    const TColgp_Array1OfPnt &Nodes = Triangulation->Nodes();
-
     int nofTriangles = Triangulation->NbTriangles();
     int nofNodes = Triangulation->NbNodes();
 
@@ -384,6 +381,40 @@ bool CadView::readFile(QString fileName) {
     vtkTriangle *triangle = vtkTriangle::New();
     partGrid->Allocate(nofTriangles, nofTriangles);
 
+#if OCC_VERSION_HEX >= 0x070600
+    for (int i = 1; i <= nofTriangles; i++) {
+      Triangulation->Triangle(i).Get(n0, n1, n2);
+
+      if (Face.Orientation() != TopAbs_FORWARD) {
+        int tmp = n2;
+        n2 = n1;
+        n1 = tmp;
+      }
+
+      triangle->GetPointIds()->SetId(0, n0 - 1);
+      triangle->GetPointIds()->SetId(1, n1 - 1);
+      triangle->GetPointIds()->SetId(2, n2 - 1);
+
+      partGrid->InsertNextCell(triangle->GetCellType(),
+                               triangle->GetPointIds());
+    }
+
+    double x[3];
+    vtkPoints *partPoints = vtkPoints::New();
+
+    for (int i = 1; i <= nofNodes; i++) {
+      gp_XYZ XYZ = Triangulation->Node(i).Coord();
+
+      Transformation.Transforms(XYZ);
+      x[0] = XYZ.X();
+      x[1] = XYZ.Y();
+      x[2] = XYZ.Z();
+      partPoints->InsertPoint(i - 1, x);
+    }
+#else	
+    const Poly_Array1OfTriangle &Triangles = Triangulation->Triangles();
+    const TColgp_Array1OfPnt &Nodes = Triangulation->Nodes();
+
     for (int i = Triangles.Lower(); i <= Triangles.Upper(); i++) {
       Triangles(i).Get(n0, n1, n2);
 
@@ -400,19 +431,23 @@ bool CadView::readFile(QString fileName) {
       partGrid->InsertNextCell(triangle->GetCellType(),
                                triangle->GetPointIds());
     }
-
-    double x[3];
+	
+	double x[3];
     vtkPoints *partPoints = vtkPoints::New();
+
     for (int i = Nodes.Lower(); i <= Nodes.Upper(); i++) {
       gp_XYZ XYZ = Nodes(i).Coord();
+
       Transformation.Transforms(XYZ);
       x[0] = XYZ.X();
       x[1] = XYZ.Y();
       x[2] = XYZ.Z();
       partPoints->InsertPoint(i - Nodes.Lower(), x);
     }
+#endif
 
     partGrid->SetPoints(partPoints);
+
 
     // Draw part:
     //-----------

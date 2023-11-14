@@ -1,0 +1,119 @@
+! This is a copy of StatElecSolveMMG3D for the vectorised solver
+! p elements of order 2 are used
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "cubes_inside_cube"
+  Results Directory "results"
+End
+
+! This level is doing the lumping.
+! Steady state iteration level is doing the adaptive meshing. 
+Run Control
+  Run Control Iterations = 4
+  Reset Adaptive Mesh = Logical True
+End 
+
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = Cartesian 3D 
+  Simulation Type = Steady State
+  Steady State Min Iterations = 3
+  Steady State Max Iterations = 20
+  Post File = "case.vtu"
+End
+
+Constants
+!  Permittivity Of Vacuum = 8.8542e-12
+!  This one is changed to one to allow easier verification
+  Permittivity Of Vacuum = 1.0
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+!  Calculate Electric Energy = True
+End
+
+Solver 1
+  Equation = StatElecSolver
+  Variable = Potential
+  Procedure = "StatElecSolveVec" "StatElecSolver"
+  Vector Assembly = True
+  Element = p:2
+!  Calculate Electric Field = False
+!  Calculate Electric Flux = False
+!  Calculate Capacitance Matrix = True
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabl
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 20
+  Nonlinear System Max Iterations = 1
+
+!-------------------------------------------------
+  Constraint Modes Analysis = Logical True
+  Constraint Modes Lumped = Logical True
+  Constraint Modes Fluxes = Logical True
+  Constraint Modes Matrix Symmetric = Logical True
+  Run Control Constraint Modes = Logical True
+
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Adaptive Mesh Refinement = True
+  Adaptive Remesh = True
+  Adaptive Error Limit = 0.01
+  Adaptive Remesh Use MMG = Logical True
+  Adaptive Mesh Numbering = Logical False
+
+! Keyword ensures that the adaptive algo does not start to toggle around
+! the solution. 
+  Adaptive H Limit Scale = Real 0.75
+
+!  Adaptive Save Mesh = True
+End
+
+Material 1
+  Relative Permittivity = 1
+End
+
+Boundary Condition 1
+  Target Boundaries(4) = 2 3 4 5 
+!  Constraint Mode Potential = Integer 0
+  Potential = 0
+End
+
+Boundary Condition 2
+  Target Boundaries(4) = 6 7 8 9
+  Constraint Mode Potential = Integer 1
+End
+
+Boundary Condition 3
+  Target Boundaries(4) = 10 11 12 13
+  Constraint Mode Potential = Integer 2
+  Potential = 1 
+End
+
+Boundary Condition 4
+  Target Boundaries(4) = 14 15 16 17 
+  Constraint Mode Potential = Integer 3
+End
+
+Boundary Condition 5
+  Target Boundaries(4) = 18 19 20 21 
+  Constraint Mode Potential = Integer 4
+End
+
+Solver 1 :: Reference Norm = 2.35030606E-01
+
+
+!End Of File
+

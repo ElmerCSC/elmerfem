@@ -23,12 +23,13 @@ Simulation
 
   Timestepping Method = Implicit Euler
   Timestep Sizes = 3.0e-2
-  Timestep Intervals = 3
-!  Timestep Intervals = 100
-  Output Intervals = 0
 
-!  Post File   = "data.ep"
-!  Output File = "data.result"
+! Add more timesteps for full analysis
+  Timestep Intervals = 3 !100
+  Output Intervals = 1
+
+! Uncomment output file for visualization
+  Post File = "data.vtu"
 End
 
 Constants
@@ -100,6 +101,8 @@ Solver 2
   Nonlinear System Relaxation Factor = 1.0
   Nonlinear System Newton After Iterations = 0
   Nonlinear System Newton After Tolerance  = 1.0e-2
+
+  Calculate Loads = True
 
   Steady State Convergence Tolerance = 1.0e-4
   Stabilize = Logical True
@@ -254,5 +257,6 @@ Boundary Condition 6
   Target Boundaries = 6
 End
 
-Solver 3 :: Reference Norm = Real 0.96975646
-RUN
+Solver 1 :: Reference Norm = 6.29652734E-02
+Solver 2 :: Reference Norm = 5.90355718E-01
+Solver 3 :: Reference Norm = 9.69756455E-01

@@ -27,7 +27,7 @@
  *                                                                           *
  *****************************************************************************
  *                                                                           *
- *  Authors: Mikko Lyly, Juha Ruokolainen and Peter R�back                   *
+ *  Authors: Mikko Lyly, Juha Ruokolainen and Peter Råback                   *
  *  Email:   Juha.Ruokolainen@csc.fi                                         *
  *  Web:     http://www.csc.fi/elmer                                         *
  *  Address: CSC - IT Center for Science Ltd.                                *
@@ -43,7 +43,7 @@
 #include <QtGui>
 #include <iostream>
 
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
 #include <QPrintDialog>
 #include <QPrinter>
 #include <QtWidgets>
@@ -89,21 +89,15 @@ SolverLogHighlighter::SolverLogHighlighter(int type, QTextDocument *parent)
   HighlightingRule rule;
 
   keywordFormat.setForeground(cKeyword);
-  rule.pattern = QRegExp("^(.*)\\bWARNING\\b(.*)$", Qt::CaseInsensitive);
+  rule.pattern = REG_EXP_CLASS("^(.*)\\bWARNING\\b(.*)$", OPTION_CASE_INSENSITIVE );
   rule.format = keywordFormat;
   highlightingRules.append(rule);
 
   suffixFormat.setForeground(cSuffix);
-  rule.pattern = QRegExp("^(.*)\\bERROR\\b(.*)$", Qt::CaseInsensitive);
+  rule.pattern = REG_EXP_CLASS("^(.*)\\bERROR\\b(.*)$", OPTION_CASE_INSENSITIVE );
   rule.format = suffixFormat;
   highlightingRules.append(rule);
-
-  commentFormat.setForeground(cComment);
-  rule.pattern =
-      QRegExp("^(.*) Elmer Solver: ALL DONE (.*)$", Qt::CaseSensitive);
-  rule.format = commentFormat;
-  highlightingRules.append(rule);
-
+  
   commentFormat.setForeground(cComment);
   QStringList patterns;
   patterns << "^(.*) Elmer Solver: ALL DONE (.*)$"
@@ -111,7 +105,7 @@ SolverLogHighlighter::SolverLogHighlighter(int type, QTextDocument *parent)
            << "^(.*)SOLVER TOTAL TIME(.*)$"
            << "^(.*)ELMER SOLVER FINISHED AT:(.*)$";
   foreach (const QString &pattern, patterns) {
-    rule.pattern = QRegExp(pattern, Qt::CaseInsensitive);
+    rule.pattern = REG_EXP_CLASS(pattern, OPTION_CASE_INSENSITIVE );
     rule.format = commentFormat;
     highlightingRules.append(rule);
   }
@@ -120,7 +114,7 @@ SolverLogHighlighter::SolverLogHighlighter(int type, QTextDocument *parent)
   patterns.clear();
   patterns << "^(.*)\\b(\\S)*.ep\\b(.*)$";
   foreach (const QString &pattern, patterns) {
-    rule.pattern = QRegExp(pattern, Qt::CaseInsensitive);
+    rule.pattern = REG_EXP_CLASS(pattern, OPTION_CASE_INSENSITIVE );
     rule.format = valueFormat;
     highlightingRules.append(rule);
   }
@@ -128,12 +122,23 @@ SolverLogHighlighter::SolverLogHighlighter(int type, QTextDocument *parent)
 
 void SolverLogHighlighter::highlightBlock(const QString &text) {
   foreach (const HighlightingRule &rule, highlightingRules) {
-    QRegExp expression(rule.pattern);
+    REG_EXP_CLASS expression(rule.pattern);
+#if WITH_QT6
+	QRegularExpressionMatch rem;
+    int index = text.indexOf(expression, 0, &rem);
+#else
     int index = expression.indexIn(text);
+#endif
     while (index >= 0) {
+#if WITH_QT6
+      int length = rem.captured(0).length();
+      setFormat(index, length, rule.format);
+      index = text.indexOf(expression, index + length, &rem);
+#else
       int length = expression.matchedLength();
       setFormat(index, length, rule.format);
       index = expression.indexIn(text, index + length);
+#endif	
     }
   }
 }
@@ -200,51 +205,51 @@ QSize SolverLogWindow::minimumSizeHint() const { return QSize(64, 64); }
 QSize SolverLogWindow::sizeHint() const { return QSize(640, 640); }
 
 void SolverLogWindow::createActions() {
-  newAct = new QAction(QIcon(":/icons/document-new.png"), tr("&New"), this);
+  newAct = new QAction(QIcon::fromTheme("document-new"), tr("&New"), this);
   newAct->setShortcut(tr("Ctrl+N"));
   newAct->setStatusTip(tr("New text document"));
   connect(newAct, SIGNAL(triggered()), this, SLOT(newSlot()));
 
   openAct =
-      new QAction(QIcon(":/icons/document-open.png"), tr("&Open..."), this);
+      new QAction(QIcon::fromTheme("document-open"), tr("&Open..."), this);
   openAct->setShortcut(tr("Ctrl+O"));
   openAct->setStatusTip(tr("Open text file"));
   connect(openAct, SIGNAL(triggered()), this, SLOT(openSlot()));
 
   saveAct =
-      new QAction(QIcon(":/icons/document-save.png"), tr("&Save as..."), this);
+      new QAction(QIcon::fromTheme("document-save-as"), tr("&Save as..."), this);
   saveAct->setShortcut(tr("Ctrl+S"));
   saveAct->setStatusTip(tr("Save text file"));
   connect(saveAct, SIGNAL(triggered()), this, SLOT(saveSlot()));
 
   printAct =
-      new QAction(QIcon(":/icons/document-print.png"), tr("&Print..."), this);
+      new QAction(QIcon::fromTheme("document-print"), tr("&Print..."), this);
   printAct->setShortcut(tr("Ctrl+P"));
   printAct->setStatusTip(tr("Print document"));
   connect(printAct, SIGNAL(triggered()), this, SLOT(printSlot()));
 
   exitAct =
-      new QAction(QIcon(":/icons/application-exit.png"), tr("&Quit"), this);
+      new QAction(QIcon::fromTheme("emblem-unreadable"), tr("&Quit"), this);
   exitAct->setShortcut(tr("Ctrl+Q"));
   exitAct->setStatusTip(tr("Quit editor"));
   connect(exitAct, SIGNAL(triggered()), this, SLOT(close()));
 
-  cutAct = new QAction(QIcon(":/icons/edit-cut.png"), tr("Cu&t"), this);
+  cutAct = new QAction(QIcon::fromTheme("edit-cut"), tr("Cu&t"), this);
   cutAct->setShortcut(tr("Ctrl+X"));
   cutAct->setStatusTip(tr("Cut the current selection to clipboard"));
   connect(cutAct, SIGNAL(triggered()), this->textEdit, SLOT(cut()));
 
-  copyAct = new QAction(QIcon(":/icons/edit-copy.png"), tr("&Copy"), this);
+  copyAct = new QAction(QIcon::fromTheme("edit-copy"), tr("&Copy"), this);
   copyAct->setShortcut(tr("Ctrl+C"));
   copyAct->setStatusTip(tr("Copy the current selection to clipboard"));
   connect(copyAct, SIGNAL(triggered()), this->textEdit, SLOT(copy()));
 
-  pasteAct = new QAction(QIcon(":/icons/edit-paste.png"), tr("&Paste"), this);
+  pasteAct = new QAction(QIcon::fromTheme("edit-paste"), tr("&Paste"), this);
   pasteAct->setShortcut(tr("Ctrl+V"));
   pasteAct->setStatusTip(tr("Paste clipboard into the current selection"));
   connect(pasteAct, SIGNAL(triggered()), this->textEdit, SLOT(paste()));
 
-  findAct = new QAction(QIcon(":/icons/edit-find.png"), tr("&Find"), this);
+  findAct = new QAction(QIcon::fromTheme("edit-find"), tr("&Find"), this);
   findAct->setShortcut(tr("Ctrl+F"));
   findAct->setStatusTip(tr("Find text in document"));
   connect(findAct, SIGNAL(triggered()), this, SLOT(findSlot()));

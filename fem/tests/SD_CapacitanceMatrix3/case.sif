@@ -1,0 +1,149 @@
+! Vectorized version of StatElecSolve where computation of capacitance
+! matrix is done using the old keywords and constraint modes library
+! functionality.
+!
+! P.R. 16.8.2022
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "plates"
+End
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+
+!  Mesh Levels = 2
+End
+
+Constants
+!  Permittivity Of Vacuum = 8.8542e-12
+!  This one is changed to one to allow easier verification
+  Permittivity Of Vacuum = 1.0
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body Force 1
+  Calc This = Logical True
+End 
+
+Equation 1
+  Active Solvers(2) = 1 2
+  Calculate Electric Energy = True
+End
+
+Solver 1
+  Equation = Stat Elec Solver
+  Variable = Potential
+  Procedure = "StatElecSolveVec" "StatElecSolver"
+
+  Linear System Solver = Iterative
+!  Linear System Direct Method = mumps
+
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 10
+
+!  Linear System Scaling = False
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Consistent Norm = True
+
+  Calculate Capacitance Matrix = True
+  Fix Constraint Modes p = Logical True
+
+!  Constraint Modes Analysis = Logical True
+!  Constraint Modes Lumped = Logical True
+!  Constraint Modes Fluxes = Logical True
+!  Constraint Modes Matrix Symmetric = Logical True
+
+  Element = p:2
+End
+
+Solver 2
+  Exec Solver = never
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = case
+  Vtu Format = Logical True
+
+! This enforces the constraints to be written to individual files 
+  Constraint Modes Analysis = Logical True
+End
+
+
+Solver 3
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Filename = f.dat
+  Show Norm = True
+  Show Norm Index = 1
+
+  Variable 1 = Potential
+  Coefficient 1 = "Relative Permittivity"
+  Operator 1 = "diffusive energy"
+  Mask Name 1 = "calc this"
+
+  Parallel Reduce = True
+End
+
+
+
+Material 1
+  Relative Permittivity = 1
+End
+
+Boundary Condition 1
+  Target Boundaries = 1
+
+  Potential = 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries = 2
+
+!  Constraint Mode Potential = Integer 1
+  Capacitance Body = 1
+End
+
+Boundary Condition 3
+  Target Boundaries = 3
+  
+!  Constraint Mode Potential = Integer 2
+  Capacitance Body = 2
+End
+
+Boundary Condition 4
+  Target Boundaries = 4
+
+!  Constraint Mode Potential = Integer 3
+  Capacitance Body = 3
+End
+
+Boundary Condition 5
+  Target Boundaries = 5
+
+!  Constraint Mode Potential = Integer 4
+  Capacitance Body = 4
+End
+
+Boundary Condition 6
+  Target Boundaries = 6
+
+!  Constraint Mode Potential = Integer 5
+  Capacitance Body = 5
+End
+
+Solver 1 :: Reference Norm = 1.57909356E-01
+Solver 3 :: Reference Norm = 5.09226094E+00
+

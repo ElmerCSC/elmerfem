@@ -1,0 +1,8 @@
+! ----- names for bodies -----
+$ vacuum = 1
+$ L1 = 2
+$ L2 = 3
+! ----- names for boundaries -----
+$ symmetry = 1
+$ outer_boundary = 2
+$ bnry6 = 3

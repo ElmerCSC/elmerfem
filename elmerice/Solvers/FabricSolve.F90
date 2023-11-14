@@ -1105,35 +1105,6 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-    SUBROUTINE FindParentUVW( Edge, nEdge, Parent, nParent, U, V, W, Basis )
-!------------------------------------------------------------------------------
-      IMPLICIT NONE
-      TYPE(Element_t), POINTER :: Edge, Parent
-      INTEGER :: nEdge, nParent
-      REAL( KIND=dp ) :: U, V, W, Basis(:)
-!------------------------------------------------------------------------------
-      INTEGER :: i, j,l
-      REAL(KIND=dp) :: NodalParentU(nEdge),NodalParentV(nEdge),NodalParentW(nEdge)
-!------------------------------------------------------------------------------
-      DO i = 1,nEdge
-        DO j = 1,nParent
-          IF ( Edge % NodeIndexes(i) == Parent % NodeIndexes(j) ) THEN
-            NodalParentU(i) = Parent % Type % NodeU(j)
-            NodalParentV(i) = Parent % Type % NodeV(j)
-            NodalParentW(i) = Parent % Type % NodeW(j)
-            EXIT
-          END IF
-        END DO
-      END DO
-      U = SUM( Basis(1:nEdge) * NodalParentU(1:nEdge) )
-      V = SUM( Basis(1:nEdge) * NodalParentV(1:nEdge) )
-      W = SUM( Basis(1:nEdge) * NodalParentW(1:nEdge) )
-!------------------------------------------------------------------------------      
-    END SUBROUTINE FindParentUVW
-!------------------------------------------------------------------------------      
-
-
-!------------------------------------------------------------------------------
     SUBROUTINE LocalJumps( STIFF,Edge,n,LeftParent,n1,RightParent,n2,Velo,MeshVelo )
 !------------------------------------------------------------------------------
       REAL(KIND=dp) :: STIFF(:,:), Velo(:,:),MeshVelo(:,:)
