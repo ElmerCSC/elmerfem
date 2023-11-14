@@ -77,6 +77,7 @@
         Projection, CrevasseThreshold, search_eps, Norm, MinCalvingSize,&
         PauseVolumeThresh, BotZ, TopZ, prop, MaxBergVolume, dy, dz, dzdy, &
         gradLimit, Displace, y_coord(2), ShiftTo, Time, CrevPenetration, &
+        CalvingLimit, PrevValue,&
 #ifdef USE_ISO_C_BINDINGS
         rt0, rt
 #else
