@@ -27,9 +27,11 @@
 ! *
 ! ****************************************************************************/
 
+!> \ingroup ElmerLib
+!> \{
+
 MODULE MeshRemeshing
 
-USE DefUtils
 USE Types
 USE Lists
 USE Messages
@@ -2868,7 +2870,6 @@ END SUBROUTINE DistributedRemeshParMMG
     ELSE
       NewMesh % Name = TRIM(OutPutFileName)
     END IF
-  END DO
 
     nt0 = 0; np0 = 0; na0 = 0
     Combine = ListGetLogical( Solver % Values,'Keep unmeshed regions',Found )
@@ -3082,7 +3083,7 @@ END SUBROUTINE DistributedRemeshParMMG
       IF ( ier /= 1 ) CALL Fatal(FuncName,'Call to  MMG2D_Get_TRIFROMEDGE failed!')      
       Element % BoundaryInfo % Left => NewMesh % Elements(parent)
     END DO
-  END IF
+
 
     kk=NewMesh % NumberOfBulkElements+na
     IF( na0 > 0 ) THEN
@@ -3147,8 +3148,7 @@ BLOCK
            ElementDef = "n:1"
         END IF
       END IF
-    END DO
-  END IF
+
 
       ElementDef0 = ElementDef
       DO WHILE(.TRUE.)
@@ -3352,8 +3352,6 @@ CONTAINS
         
   END SUBROUTINE Set_MMG2D_Sol
 
-  !! GET THE NEW MESH
-  CALL GET_ParMMG_MESH(OutMesh,Parallel)
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   SUBROUTINE Set_MMG2D_Mesh(Mesh,Solver)
@@ -3513,7 +3511,6 @@ CONTAINS
     
   END SUBROUTINE SET_MMG2D_MESH
 
-END SUBROUTINE DistributedRemeshParMMG
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   SUBROUTINE SET_MMG2D_Parameters(SolverParams)

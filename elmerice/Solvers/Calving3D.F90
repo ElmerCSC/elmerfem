@@ -154,7 +154,7 @@
    MaxMeshDist = ListGetConstReal(Params, "Calving Search Distance",Found, UnfoundFatal=.TRUE.)
    CrevasseThreshold = ListGetConstReal(Params, "Crevasse Penetration Threshold", Found, UnfoundFatal=.TRUE.)
 
-   CrevPenetration = ListGetConstReal(Params, "Crevasse Penetration",Found, Default = 1.0_dp)
+   CrevPenetration = ListGetConstReal(Params, "Crevasse Penetration",Found, DefValue = 1.0_dp)
    IF(.NOT. Found) CALL Info(SolverName, "No Crevasse Penetration specified so assuming full thickness")
    FullThickness = CrevPenetration == 1.0_dp
    PRINT*, 'CrevPenetration: ', CrevPenetration

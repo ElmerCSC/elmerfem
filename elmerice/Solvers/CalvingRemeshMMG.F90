@@ -163,8 +163,8 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   ALLOCATE(hminarray(MaxLsetIter))
   hminarray = WorkArray(:,1)
   NULLIFY(WorkArray)
-  hmax = ListGetConstReal(SolverParams, "Mesh Hmax",  Default=4000.0_dp)
-  hgrad = ListGetConstReal(SolverParams,"Mesh Hgrad", Default=0.5_dp)
+  hmax = ListGetConstReal(SolverParams, "Mesh Hmax",  DefValue=4000.0_dp)
+  hgrad = ListGetConstReal(SolverParams,"Mesh Hgrad", DefValue=0.5_dp)
   WorkArray => ListGetConstRealArray(SolverParams, "Mesh Hausd", Found)
   IF(.NOT. Found) CALL FATAL(SolverName, 'Provide hausd input array to be iterated through: "Mesh Hausd"')
   IF(MaxLsetIter /= SIZE(WorkArray(:,1))) CALL FATAL(SolverName, 'The number of hmin options &
@@ -172,12 +172,12 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   ALLOCATE(hausdarray(MaxLsetIter))
   hausdarray = WorkArray(:,1)
   NULLIFY(WorkArray)
-  remesh_thresh = ListGetConstReal(SolverParams,"Remeshing Distance", Default=1000.0_dp)
-  LsetMinQuality = ListGetConstReal(SolverParams,"Mesh Min Quality", Default=0.00001_dp)
-  RmcValue = ListGetConstReal(SolverParams,"Mesh Rmc Value", Default=1e-15_dp)
-  CalvingVarName = ListGetString(SolverParams,"Calving Variable Name", Default="Calving Lset")
-  SaveMMGMeshes = ListGetLogical(SolverParams,"Save MMGLS Meshes", Default=.FALSE.)
-  SaveMMGSols = ListGetLogical(SolverParams,"Save MMGLS Sols", Default=.FALSE.)
+  remesh_thresh = ListGetConstReal(SolverParams,"Remeshing Distance", DefValue=1000.0_dp)
+  LsetMinQuality = ListGetConstReal(SolverParams,"Mesh Min Quality", DefValue=0.00001_dp)
+  RmcValue = ListGetConstReal(SolverParams,"Mesh Rmc Value", DefValue=1e-15_dp)
+  CalvingVarName = ListGetString(SolverParams,"Calving Variable Name", DefValue="Calving Lset")
+  SaveMMGMeshes = ListGetLogical(SolverParams,"Save MMGLS Meshes", DefValue=.FALSE.)
+  SaveMMGSols = ListGetLogical(SolverParams,"Save MMGLS Sols", DefValue=.FALSE.)
   IF(SaveMMGMeshes) THEN
     premmgls_meshfile = ListGetString(SolverParams, "Pre MMGLS Mesh Name", UnfoundFatal = .TRUE.)
     mmgls_meshfile = ListGetString(SolverParams, "MMGLS Output Mesh Name", UnfoundFatal = .TRUE.)
@@ -192,9 +192,9 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
           & assuming True")
      PauseAfterCalving = .TRUE.
   END IF
-  FixNodesOnRails = ListGetLogical(SolverParams,"Fix Nodes On Rails", Default=.TRUE.)
-  SuppressCalv = ListGetLogical(SolverParams,"Suppress Calving", Default=.FALSE.)
-  SaveTerminus = ListGetLogical(SolverParams,"Save Terminus", Default=.TRUE.)
+  FixNodesOnRails = ListGetLogical(SolverParams,"Fix Nodes On Rails", DefValue=.TRUE.)
+  SuppressCalv = ListGetLogical(SolverParams,"Suppress Calving", DefValue=.FALSE.)
+  SaveTerminus = ListGetLogical(SolverParams,"Save Terminus", DefValue=.TRUE.)
 
   IF(ParEnv % MyPE == 0) THEN
     PRINT *,ParEnv % MyPE,' hmin: ',hminarray
@@ -1062,7 +1062,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
           DEALLOCATE(GatheredMesh % Repartition)
           GatheredMesh % Repartition => NULL()
       END IF
-      SolversPaused = ListGetLogical(Model % Simulation, 'Calving Pause Solvers', Default=.FALSE.)
+      SolversPaused = ListGetLogical(Model % Simulation, 'Calving Pause Solvers', DefValue=.FALSE.)
       !remove mesh update
       IF(.NOT. SolversPaused) THEN
         CALL ResetMeshUpdate(Model, Solver)

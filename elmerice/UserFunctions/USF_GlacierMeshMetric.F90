@@ -73,16 +73,16 @@ SUBROUTINE GlacierMeshMetricAniso(Model, nodenumber, y, TargetLength)
     Mesh => Model % Mesh
     Material => GetMaterial(Mesh % Elements(1)) !TODO, this is not generalised
 
-    lc_maxdist = ListGetConstReal(Material, "GlacierMeshMetric Max Distance",  Default=2000.0_dp)
-    lc_mindist = ListGetConstReal(Material, "GlacierMeshMetric Min Distance",  Default=200.0_dp)
-    lc_max = ListGetConstReal(Material, "GlacierMeshMetric Max LC",  Default=500.0_dp)
-    lc_min = ListGetConstReal(Material, "GlacierMeshMetric Min LC",  Default=75.0_dp)
-    ExtrudeLayers = ListGetLogical(Material,"GlacierMeshMetric Vertical From Layers", Default=.FALSE.)
+    lc_maxdist = ListGetConstReal(Material, "GlacierMeshMetric Max Distance",  DefValue=2000.0_dp)
+    lc_mindist = ListGetConstReal(Material, "GlacierMeshMetric Min Distance",  DefValue=200.0_dp)
+    lc_max = ListGetConstReal(Material, "GlacierMeshMetric Max LC",  DefValue=500.0_dp)
+    lc_min = ListGetConstReal(Material, "GlacierMeshMetric Min LC",  DefValue=75.0_dp)
+    ExtrudeLayers = ListGetLogical(Material,"GlacierMeshMetric Vertical From Layers", DefValue=.FALSE.)
     IF(ExtrudeLayers) THEN
       layers = ListGetInteger(Material, "GlacierMeshMetric Vertical Layers", Found=Found)
       IF(.NOT. Found) CALL FATAL('GlacierMeshMetric', 'Vertical requested by layers but number of layers not given')
     ELSE
-      dz = ListGetConstReal(Material, "GlacierMeshMetric Vertical LC",  Default=50.0_dp)
+      dz = ListGetConstReal(Material, "GlacierMeshMetric Vertical LC",  DefValue=50.0_dp)
     END IF
   END IF
 

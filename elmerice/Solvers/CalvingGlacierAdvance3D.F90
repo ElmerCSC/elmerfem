@@ -200,10 +200,10 @@
      VeloFactor = 1.0_dp
    END IF
 
-   buffer = ListGetConstReal(Params, "Rail Buffer", Found, Default=0.1_dp)
+   buffer = ListGetConstReal(Params, "Rail Buffer", Found, DefValue=0.1_dp)
    IF(.NOT. Found) CALL Info(SolverName, "No Rail Buffer set using default 0.1")
 
-   MoveBulk = ListGetLogical(Params,"MoveBulk", Found, Default=.FALSE.)
+   MoveBulk = ListGetLogical(Params,"MoveBulk", Found, DefValue=.FALSE.)
    IF(.NOT. Found) CALL Info(SolverName, "Not moving bulk as default")
 
    !Get the front line

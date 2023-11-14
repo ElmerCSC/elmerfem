@@ -149,11 +149,11 @@
 
    ! addition of the lateral boundaries when calculating constrictions for crevasses
    ! on the lateral boundaries
-   LatCalvMargins = ListGetLogical(Params,"Lateral Calving Margins", Default=.TRUE.)
+   LatCalvMargins = ListGetLogical(Params,"Lateral Calving Margins", DefValue=.TRUE.)
 
    MaxMeshDist = ListGetConstReal(Params, "Calving Search Distance",Found, UnfoundFatal=.TRUE.)
 
-   CrevPenetration = ListGetConstReal(Params, "Crevasse Penetration",Found, Default = 1.0_dp)
+   CrevPenetration = ListGetConstReal(Params, "Crevasse Penetration",Found, DefValue = 1.0_dp)
    IF(.NOT. Found) CALL Info(SolverName, "No Crevasse Penetration specified so assuming full thickness")
    FullThickness = CrevPenetration == 1.0_dp
    PRINT*, 'CrevPenetration: ', CrevPenetration
@@ -230,7 +230,7 @@
    ! to pass for Grid Min X, etc
    ! Use MaxMeshDist...
 
-   gridmesh_dx = ListGetConstReal(Params, "PlaneMesh Grid Size",Found, Default=20.0_dp)
+   gridmesh_dx = ListGetConstReal(Params, "PlaneMesh Grid Size",Found, DefValue=20.0_dp)
    IF(.NOT. Found) CALL WARN(SolverName, "No PlaneMesh Grid Size set in sif so setting to 20")
    buffer = gridmesh_dx * 4
 
@@ -2278,16 +2278,16 @@ CONTAINS
       END IF
 
       !Get rid of ParallelInfo % NodeInterface
-      IF(ASSOCIATED(Mesh % ParallelInfo % NodeInterface)) THEN
+      IF(ASSOCIATED(Mesh % ParallelInfo % GInterface)) THEN
         ALLOCATE(work_logical(NewNNodes))
         counter = 0
         DO i=1,NNodes
           IF(RmNode(i)) CYCLE
           counter = counter + 1
-          work_logical(counter) = Mesh % ParallelInfo % NodeInterface(i)
+          work_logical(counter) = Mesh % ParallelInfo % GInterface(i)
         END DO
-        DEALLOCATE(Mesh % ParallelInfo % NodeInterface)
-        Mesh % ParallelInfo % NodeInterface => work_logical
+        DEALLOCATE(Mesh % ParallelInfo % GInterface)
+        Mesh % ParallelInfo % GInterface => work_logical
         work_logical => NULL()
       END IF
     END IF
@@ -2330,16 +2330,6 @@ CONTAINS
 
       IF ( i > NBulk ) THEN
         IF ( ASSOCIATED( Mesh % Elements(i) % BoundaryInfo ) ) THEN
-          IF (ASSOCIATED(Mesh % Elements(i) % BoundaryInfo % GebhardtFactors)) THEN
-            IF ( ASSOCIATED( Mesh % Elements(i) % BoundaryInfo % &
-                 GebhardtFactors % Elements ) ) THEN
-              DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % &
-                   GebhardtFactors % Elements )
-              DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % &
-                   GebhardtFactors % Factors )
-            END IF
-            DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % GebhardtFactors )
-          END IF
           DEALLOCATE( Mesh % Elements(i) % BoundaryInfo )
         END IF
       END IF

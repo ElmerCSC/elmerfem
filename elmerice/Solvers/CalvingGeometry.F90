@@ -5881,7 +5881,7 @@ CONTAINS
 
     IF(ANY(reducecorners)) THEN
 
-      Adv_EqName = ListGetString(SolverParams,"Front Advance Solver", Default="Front Advance")
+      Adv_EqName = ListGetString(SolverParams,"Front Advance Solver", DefValue="Front Advance")
       ! Locate CalvingAdvance Solver
       Found = .FALSE.
       DO i=1,Model % NumberOfSolvers
@@ -5894,7 +5894,7 @@ CONTAINS
       IF(.NOT. Found) CALL FATAL(SolverName, "Advance Solver Equation not given")
       AdvParams => AdvSolver % Values
 
-      buffer = ListGetConstReal(AdvParams, "Rail Buffer", Found, Default=0.1_dp)
+      buffer = ListGetConstReal(AdvParams, "Rail Buffer", Found, DefValue=0.1_dp)
       IF(.NOT. Found) CALL Info(SolverName, "No Rail Buffer set using default 0.1")
 
       LeftRailFName = ListGetString(AdvParams, "Left Rail File Name", Found)
@@ -7382,7 +7382,7 @@ CONTAINS
 
     Mesh => Model % Mesh
 
-    Adv_EqName = ListGetString(SolverParams,"Front Advance Solver", Default="Front Advance")
+    Adv_EqName = ListGetString(SolverParams,"Front Advance Solver", DefValue="Front Advance")
     ! Locate CalvingAdvance Solver
     Found = .FALSE.
     DO i=1,Model % NumberOfSolvers
@@ -7395,7 +7395,7 @@ CONTAINS
     IF(.NOT. Found) CALL FATAL(FuncName, "'Front Advance Solver' not given")
     AdvParams => AdvSolver % Values
 
-    buffer = ListGetConstReal(AdvParams, "Rail Buffer", Found, Default=0.1_dp)
+    buffer = ListGetConstReal(AdvParams, "Rail Buffer", Found, DefValue=0.1_dp)
     IF(.NOT. Found) CALL Info(FuncName, "No Rail Buffer set using default 0.1")
 
     LeftRailFName = ListGetString(AdvParams, "Left Rail File Name", Found)
@@ -8493,7 +8493,7 @@ CONTAINS
 
       IF(ANY(reducecorners)) THEN
 
-        Adv_EqName = ListGetString(SolverParams,"Front Advance Solver", Default="Front Advance")
+        Adv_EqName = ListGetString(SolverParams,"Front Advance Solver", DefValue="Front Advance")
         ! Locate CalvingAdvance Solver
         Found = .FALSE.
         DO i=1,Model % NumberOfSolvers
@@ -8506,7 +8506,7 @@ CONTAINS
         IF(.NOT. Found) CALL FATAL(SolverName, "Advance Solver Equation not given")
         AdvParams => AdvSolver % Values
 
-        buffer = ListGetConstReal(AdvParams, "Rail Buffer", Found, Default=0.1_dp)
+        buffer = ListGetConstReal(AdvParams, "Rail Buffer", Found, DefValue=0.1_dp)
         IF(.NOT. Found) CALL Info(SolverName, "No Rail Buffer set using default 0.1")
 
         LeftRailFName = ListGetString(AdvParams, "Left Rail File Name", Found)
