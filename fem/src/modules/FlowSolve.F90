@@ -94,7 +94,7 @@
      REAL(KIND=dp) :: RelativeChange,UNorm,Gravity(3),AngularVelocity(3), &
        Tdiff,s,Relaxation,NewtonTol,NewtonUBound,NonlinearTol, &
        ReferencePressure=0.0, SpecificHeatRatio, &
-       PseudoCompressibilityScale=1.0, FreeSTol, res
+       PseudoCompressibilityScale=1.0, FreeSTol, res, MaxNorm
 
      INTEGER :: NSDOFs,NewtonIter,NewtonMaxIter,NonlinearIter,FreeSIter
 
@@ -477,6 +477,10 @@
      FreeSIter = ListGetInteger( Solver % Values, &
         'Free Surface After Iterations', GotIt, minv=0 )
      IF ( .NOT. GotIt ) FreeSIter = 0
+
+     MaxNorm = ListGetConstReal( Solver % Values, &
+        'Nonlinear System Max Norm Return', GotIt, minv=0.0d0 )
+     IF ( .NOT. GotIt ) MaxNorm = HUGE(1.0_dp)
 
      DirectionName = ListGetString(Solver %Values, 'Implicit Friction Direction Vector', ImplicitFrictionDirection)
      IF (ImplicitFrictionDirection) THEN
@@ -1311,6 +1315,10 @@
       END IF
         
       IF ( RelativeChange < NonLinearTol .AND. Iter<NonlinearIter ) EXIT
+      IF ( Solver % Variable % Norm > MaxNorm) THEN
+         CALL Warn('FlowSolve', 'Exiting as norm above return value. Remesh!')
+         EXIT
+      END IF
 
 !------------------------------------------------------------------------------
 !     If free surfaces in model, this will move the nodal points

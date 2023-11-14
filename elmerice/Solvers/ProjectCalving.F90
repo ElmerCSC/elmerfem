@@ -61,15 +61,15 @@ SUBROUTINE ProjectCalving( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-
+  TYPE(Solver_t), POINTER :: PermSolver
   TYPE(Element_t), POINTER :: Element, FaceElement
   TYPE(Element_t), TARGET :: TriangleElement
   TYPE(Nodes_t) :: Nodes, LineNodes, FaceNodes, ElementNodes
   TYPE(Variable_t), POINTER :: Variable2D, Var, StressVar, PwVar, FlowVar, &
-       SurfCrevVar, BasalCrevVar, HitCountVar
+       SurfCrevVar, BasalCrevVar, HitCountVar, Crev3DVar, ElevVar
   TYPE(ValueList_t), POINTER :: Params, Material
   TYPE(Mesh_t), POINTER :: Mesh2D, Mesh3D, Mesh
-  REAL(KIND=dp), POINTER :: StressValues(:), PwValues(:)
+  REAL(KIND=dp), POINTER :: StressValues(:), PwValues(:), Crev3DValues(:), ElevValues(:)
   REAL(KIND=dp), POINTER :: Basis(:)
   REAL(KIND=dp), POINTER :: PlaneX(:), PlaneY(:), PlaneZ(:)
   REAL(KIND=dp), POINTER :: VolumeX(:), VolumeY(:), VolumeZ(:)
@@ -82,12 +82,12 @@ SUBROUTINE ProjectCalving( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp) :: scale, eps, x1,x2,y1,y2,z1,z2,r1,r2
   REAL(KIND=dp) :: up,vp,wp,cp,cf,MaxRelativeRadius,detJ
   REAL(KIND=dp) :: LocalPoint(3), LocalCoords(3), RhoWS, RhoWF, g, &
-       SeaLevel, LocalM(3,3),EigValues(3),EI(3),dumy,dumy2,work(27)
+       SeaLevel, LocalM(3,3),EigValues(3),EI(3),dumy,dumy2,work(27), PW, PW_base
   REAL(KIND=dp), POINTER :: MinHeight3D(:), MaxHeight3D(:), MinWidth3D(:), MaxWidth3D(:)
-  REAL(KIND=dp), POINTER :: IntValues(:,:), IntBasis(:,:), IntExtent(:),EigenStress(:)
+  REAL(KIND=dp), POINTER :: IntValues(:,:), IntBasis(:,:), IntExtent(:),EigenStress(:),WorkReal(:)
   INTEGER :: MaxInt, NoInt
   INTEGER, POINTER :: Perm2D(:), Perm3D(:), PlanePerm(:), VolumePerm(:), &
-       StressPerm(:), PwPerm(:)
+       StressPerm(:), PwPerm(:), Crev3DPerm(:), ElevPerm(:), WorkPerm(:)
   INTEGER :: i,j,k,k2,l,n,t,lnode,node, StressDOFs
   INTEGER :: PlaneNodes, VolumeElements, DOFs_2D, DOFs_3D, corners, face, Intersections
   INTEGER :: Loops(8), inds(3)
@@ -95,9 +95,9 @@ SUBROUTINE ProjectCalving( Model,Solver,dt,TransientSimulation )
   INTEGER, POINTER :: IntOrder(:)
 
   CHARACTER(LEN=MAX_NAME_LEN) :: ConvertFromName, ConvertFromVar, Name, Str, &
-       SolverName, StressVarName, PwVarName, FlowVarName
+       SolverName, StressVarName, PwVarName, FlowVarName, Perm_EqName
   LOGICAL :: AllocationsDone = .FALSE., stat, GotIt, Found, &
-       PwFromVar, Cauchy, SurfModel, BasalModel, CountHits
+       PwFromVar, Cauchy, SurfModel, BasalModel, CountHits, SaveCrevasseVariables
 
   INTEGER :: pe, myNodes, myStart, peNodes, peNodesn, peStart, peEnd, &
           totcount, curr, ierr, status(MPI_STATUS_SIZE), nn
@@ -250,6 +250,38 @@ SUBROUTINE ProjectCalving( Model,Solver,dt,TransientSimulation )
          &'Basal Crevasse Model' set to false...")
   END IF
 
+  SaveCrevasseVariables = ListGetLogical(Params, "Save Crevasse Field", Found)
+  IF(.NOT. Found) SaveCrevasseVariables = .FALSE.
+
+  IF(SaveCrevasseVariables) THEN
+    CALL INFO(SolverName, "Saving binary crevasse field on 3D mesh")
+    IF(SaveCrevasseVariables) THEN
+      ! Locate ProjectCalving Solver
+      Perm_EqName = ListGetString(Params,"Crevasse Field Perm Equation Name",Found)
+      IF(.NOT. Found) CALL FATAL(SolverName, "Need to provide solver that uses 3D mesh for permutation and mesh to mesh interp, &
+        use 'Crevasse Field Perm Equation Name'. e.g. use remesh equation.")
+      DO i=1,Model % NumberOfSolvers
+         IF(GetString(Model % Solvers(i) % Values, 'Equation') == Perm_EqName) THEN
+            PermSolver => Model % Solvers(i)
+            EXIT
+         END IF
+      END DO
+
+      ALLOCATE(WorkReal(Mesh3d % NumberOfNodes))
+      WorkReal = 0.0_dp
+      IF(.NOT. ASSOCIATED(PermSolver % Variable % Perm)) THEN
+        WRITE(Message,'(A,A,A)') 'suggested solver:',Perm_EqName, 'has no variable or perm'
+        CALL FATAL(SolverName, Message)
+      END IF
+      CALL VariableAdd(Mesh3d % Variables, Mesh, PermSolver, &
+           "Crevasse field", 1, WorkReal, PermSolver % Variable % Perm) ! TO DO check this is correct perm
+      NULLIFY(WorkReal)
+
+    END IF
+  ELSE
+    CALL INFO(SolverName, "Not saving binary crevasse field on 3D mesh only on PlaneMesh")
+  END IF
+
   !Compute max eigenstress for all nodes
   !assumption here that stress is computed at every node...
 
@@ -300,6 +332,48 @@ SUBROUTINE ProjectCalving( Model,Solver,dt,TransientSimulation )
         ValueTable3D(2) % Values => PwValues
         ValueTable3D(2) % Perm => PwPerm
      END IF
+  END IF
+
+  IF(SaveCrevasseVariables) THEN
+    Crev3DVar => VariableGet( Mesh3D % Variables, "Crevasse field", .TRUE. )
+    IF(.NOT. ASSOCIATED(StressVar)) THEN
+       CALL Fatal(SolverName, "Couldn't find crevasse field variable")
+    ELSE
+       Crev3DValues => Crev3DVar % Values
+       Crev3DPerm => Crev3DVar % Perm
+    END IF
+
+    ElevVar => VariableGet( Mesh3D % Variables, "Elevation", .TRUE. )
+    IF(.NOT. ASSOCIATED(StressVar)) THEN
+       CALL Fatal(SolverName, "Couldn't find elevation variable")
+    ELSE
+       ElevValues => ElevVar % Values
+       ElevPerm => ElevVar % Perm
+    END IF
+
+    DO i=1, Mesh3D % NumberOfNodes
+
+      IF(PwFromVar) THEN
+        PW = PwValues(PwPerm(i))
+      ELSE
+        PW_base = -1.0 * (Mesh3D % Nodes % z(i) - ElevValues(ElevPerm(i)) - SeaLevel) * g * RhoWS
+        PW = PW_base - (ElevValues(ElevPerm(i)) * g * RhoWF)
+      END IF
+
+      IF(Mesh3D % Nodes % z(i) < SeaLevel) THEN
+        IF(EigenStress(StressPerm(i)) + PW > 0) THEN
+          Crev3DValues(Crev3DPerm(i)) = 1.0_dp
+        ELSE
+          Crev3DValues(Crev3DPerm(i)) = 0.0_dp
+        END IF ! if not value already = 0
+      ELSE
+        IF(EigenStress(StressPerm(i)) > 0) THEN
+          Crev3DValues(Crev3DPerm(i)) = 1.0_dp
+        ELSE
+          Crev3DValues(Crev3DPerm(i)) = 0.0_dp
+        END IF ! if not value already = 0
+      END IF
+    END DO
   END IF
 
   SurfCrevVar => VariableGet( Mesh2D % Variables, "surf_cindex", .TRUE., UnfoundFatal=.TRUE.)
@@ -419,7 +493,7 @@ SUBROUTINE ProjectCalving( Model,Solver,dt,TransientSimulation )
   !
   ! allocate space for 3d face intersections / 2d point:
   ! ----------------------------------------------------
-  MaxInt =  100
+  MaxInt =  10
   ALLOCATE( PointStore(PlaneNodes) )
   DO i=1,PlaneNodes
     ALLOCATE( PointStore(i) % IntValues(DOFs_3D,MaxInt), &

@@ -2571,8 +2571,6 @@
               
        timestep = 0
        DO WHILE(timestep /= Timesteps(interval))
-
-         Timestep = Timestep + 1
          
          cum_Timestep = cum_Timestep + 1
          sStep(1) = cum_Timestep
@@ -3135,6 +3133,7 @@
                     'defined for transient and scanning simulations' )
             END IF
          END IF
+         Timestep = Timestep + 1
 
          stepcount = 0
          DO i = 1, TimeIntervals
@@ -3317,9 +3316,9 @@
 !------------------------------------------------------------------------------
   SUBROUTINE SaveCurrent( CurrentStep )
 !------------------------------------------------------------------------------
-    INTEGER :: i, j,k,l,n,m,q,CurrentStep,nlen
-    TYPE(Variable_t), POINTER :: Var
-    LOGICAL :: EigAnal, GotIt, BinaryOutput, SaveAll, OutputActive
+    INTEGER :: i, j,k,l,n,m,q,CurrentStep,nlen, Time
+    TYPE(Variable_t), POINTER :: Var, TimeVar
+    LOGICAL :: EigAnal, GotIt, BinaryOutput, SaveAll, OutputActive, EveryTime
     TYPE(ValueList_t), POINTER :: vList
     TYPE(Solver_t), POINTER :: pSolver
     
@@ -3360,6 +3359,20 @@
         IF( i > 0 ) THEN
           CALL Warn('SaveCurrent','> Output File < for restart should not include directory: '&
               //TRIM(OutputFile))
+        END IF
+
+        EveryTime = ListGetLogical( vList,'Output File Each Timestep',GotIt)
+        IF(.NOT. Gotit) EveryTime = .FALSE.
+        IF(EveryTime) THEN
+          TimeVar => VariableGet( CurrentModel % Variables, 'Timestep' )
+          Time = INT(TimeVar % Values(1))
+
+          i=LEN(TRIM(OutputFile)) + 1
+          OutputFile(i:i) = '.'
+          OutputFile(i+1:i+LEN(i2s(Time))) = TRIM(i2s(Time))
+
+          ! set saves to zero. This will insure new save file even if remeshing fails
+          Mesh % SavesDone = 0
         END IF
 
         !IF ( ParEnv % PEs > 1 ) THEN
