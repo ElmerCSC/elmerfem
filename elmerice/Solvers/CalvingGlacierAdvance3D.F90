@@ -57,7 +57,7 @@
 ! TO DO clean all unused variables
    INTEGER :: i, j,jmin, k, m, n, DOFs, TotalNodes,&
         FaceNodeCount, DummyInt,  hits, ierr, FrontLineCount, county,&
-        ShiftIdx, ShiftToIdx, NoTangledGroups, PivotIdx, CornerIdx, &
+        ShiftIdx, ShiftToIdx, PivotIdx, CornerIdx, &
         SecondIdx, FirstTangleIdx, LastTangleIdx, Nl, Nr, Naux, ok, Nrail,&
         NNodes, NBulk, NBdry, counter, LeftBCtag, RightBCtag, FrontBCtag,&
         OnRails
@@ -65,7 +65,7 @@
         FrontNodeNums(:)=>NULL(),LeftPerm(:)=>NULL(), RightPerm(:)=>NULL(), &
         NodeIndexes(:),InflowPerm(:)=>NULL()
    INTEGER, ALLOCATABLE :: FrontLocalNodeNumbers(:), &
-        NodeNumbers(:), TangledGroup(:), TangledPivotIdx(:), UpdatedDirection(:)
+        NodeNumbers(:), UpdatedDirection(:)
    REAL(KIND=dp) :: NodeVelo(3), NodeMelt(3), NodeNormal(3), RailDir(2),&
         MeltRate, Displace(3), y_coord(2), epsShift, LongRangeLimit, MaxDisplacement, &
         EpsTangle,thisEps,Shift, thisY,xx,yy,TempDist,MinDist,xt,yt,t, &
@@ -73,14 +73,14 @@
         buffer, VeloFactor
    REAL(KIND=dp), POINTER :: Advance(:)
    REAL(KIND=dp), ALLOCATABLE :: Rot_y_coords(:,:), Rot_z_coords(:,:), &
-        TangledShiftTo(:), xL(:),yL(:),xR(:),yR(:),xRail(:),yRail(:)
+        xL(:),yL(:),xR(:),yR(:),xRail(:),yRail(:)
    LOGICAL :: Found, Debug, Parallel, Boss, ShiftLeft, LeftToRight, MovedOne, ShiftSecond, &
         Protrusion, SqueezeLeft, SqueezeRight, FirstTime=.TRUE., intersect_flag, FrontMelting, &
         MovePastRailNode, HitsRails, Reverse, ThisBC, MoveBulk
    LOGICAL, ALLOCATABLE :: DangerZone(:), WorkLogical(:), &
-        Tangled(:), DontMove(:), FrontToRight(:), FrontToLeft(:)
+        DontMove(:), FrontToRight(:), FrontToLeft(:)
    CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, VeloVarName, MeltVarName, &
-        NormalVarName, FrontMaskName, TopMaskName, TangledVarName, &
+        NormalVarName, FrontMaskName, TopMaskName, &
         LeftMaskName, RightMaskName, LeftRailFName, RightRailFName,&
         InflowMaskName
    INTEGER,parameter :: io=20  
@@ -183,10 +183,6 @@
      FrontMelting = .TRUE.
      MeltVar => VariableGet(Mesh % Variables, MeltVarName, .TRUE., UnfoundFatal=.TRUE.)
    END IF
-
-   TangledVarName = "Tangled"
-   TangledVar => VariableGet(Mesh % Variables, TangledVarName, .TRUE., UnfoundFatal=.TRUE.)
-   TangledVar % Values = 0.0_dp
 
    !Get front normal vector
    NormalVarName = ListGetString(Params, "Normal Vector Variable Name", UnfoundFatal=.TRUE.)
