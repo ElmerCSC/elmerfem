@@ -17421,9 +17421,9 @@ CONTAINS
       ALLOCATE(rhsadd(SIZE(betaVar % Values)))
       rhsadd = 0.0_dp
       CALL MatrixVectorMultiply( A2, betaVar % Values, rhsadd )
+      rhsAdd = -InvAlpha * rhsAdd 
     END IF
-    rhsAdd = -InvAlpha * rhsAdd 
-    
+      
     DO i=1,SIZE(perm)
       j = perm(i)
       IF(j==0) CYCLE
