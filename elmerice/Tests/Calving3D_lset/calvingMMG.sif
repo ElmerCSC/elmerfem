@@ -61,6 +61,7 @@ Simulation
   Output Intervals = 1
   Output File = "$namerun".result" !"
   Output Coordinates = Logical True
+  Output File Each Timestep = Logical True
 
   ! Extruded Mesh Levels = Integer 10
   ! Remesh Extruded Mesh Levels = Integer 10
@@ -247,6 +248,7 @@ Solver 4
   Nonlinear System Newton Max Tolerance = Real 1.0e-2
   Nonlinear System Newton Max Iterations = Integer 15 !Give up newton
   Nonlinear System Reset Newton = Logical True
+  Nonlinear System Max Norm Return = Real 1.0E6
 
   Steady State Convergence Tolerance = Real 1.0e-12
 
