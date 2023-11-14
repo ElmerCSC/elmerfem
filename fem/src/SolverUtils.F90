@@ -17303,6 +17303,186 @@ SUBROUTINE SolveHarmonicSystem( G, Solver )
 !------------------------------------------------------------------------------
 !> Just toggles the initial system to harmonic one and back
 !------------------------------------------------------------------------------
+SUBROUTINE MergeSlaveSolvers( Solver, PreSolve )
+!------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver
+  LOGICAL :: PreSolve
+  !------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER :: Params
+  TYPE(Solver_t), POINTER :: Solver2
+  TYPE(Matrix_t), POINTER :: A1, A2, A
+  TYPE(Variable_t), POINTER :: betaVar
+  REAL(KIND=dp), POINTER :: vals1(:), vals2(:), vals(:)
+  REAL(KIND=dp) :: alpha, invAlpha
+  INTEGER :: i,j,k,n,dofs1,dofs2
+  INTEGER, POINTER :: SlaveSolverIndexes(:)
+  INTEGER, POINTER :: perm1(:), perm2(:), perm(:)
+  CHARACTER(:), ALLOCATABLE :: str
+  LOGICAL :: Found
+
+  SAVE :: A1, perm1, dofs1, vals1, &
+      A2, perm2, dofs2, vals2, A, perm, vals, &
+      alpha, invAlpha, betaVar
+
+  CALL Info('MergeSlaveSolvers','Monolithic treatment of solvers')
+  
+  IF( .NOT. ASSOCIATED( Solver % Variable ) ) THEN
+    CALL Fatal('MergeSlaveSolvers','Not applicable without a variable')
+    RETURN    
+  END IF
+  IF( .NOT. ASSOCIATED( Solver % Matrix ) ) THEN
+    CALL Fatal('MergeSlaveSolvers','Not applicable without a matrix')
+    RETURN    
+  END IF
+  
+  Params => Solver % Values  
+  SlaveSolverIndexes => ListGetIntegerArray( Params,'Slave Solvers',Found )
+  IF(.NOT. Found ) RETURN
+  
+  IF(SIZE(SlaveSolverIndexes) > 1 ) THEN
+    CALL Warn('MergeSlaveSolvers','Cannot current only deal with one slave solver!')   
+  END IF
+  i = SlaveSolverIndexes(1)
+
+  IF(PreSolve) THEN
+    A1 => Solver % Matrix
+    perm1 => Solver % Variable % Perm
+    dofs1 = Solver % Variable % Dofs
+    vals1 => Solver % Variable % Values
+
+    Solver2 => CurrentModel % Solvers(i)
+    A2 => Solver2 % Matrix
+    perm2 => Solver2 % Variable % Perm
+    dofs2 = Solver2 % Variable % Dofs
+    vals2 => Solver2 % Variable % Values
+
+    IF(dofs1 /= 1 .OR. dofs2 /= 1 ) THEN
+      CALL Fatal('MergeSlaveSolver','Enabled for 1 dof only: '//I2S(dofs1)//','//I2S(dofs2))
+    END IF
+
+    alpha = ListGetCReal( Params,'Slave Field Scaling',Found)
+    IF(.NOT. Found) alpha = 1.0_dp
+    invAlpha = 1.0_dp / alpha
+
+    betaVar => NULL()
+    str = ListGetString( Params,'Slave Field Offset Variable',Found )
+    IF( Found ) THEN
+      betaVar => VariableGet(Solver % Mesh % Variables,str)
+      IF(.NOT. ASSOCIATED(betaVar)) THEN
+        CALL Fatal('MergeSlaveSolver','Could not find offset variable: '//TRIM(str))
+      END IF
+      IF(ANY(betaVar % Perm /= perm2 ) ) THEN
+        CALL Fatal('MergeSlaveSolver','The offset field should have same permutation!')
+      END IF      
+    END IF
+      
+    A => AllocateMatrix()
+    CALL CRS_MergeMatrix(A1, A2, C = A, PermA = perm1, PermB = perm2, PermC = perm) 
+
+    ALLOCATE( A % Diag(A % NumberOfRows) )
+    A % diag = 0
+    CALL CRS_SortMatrix( A, .TRUE. )
+    
+    Solver % Matrix => A
+    Solver % Variable % Perm => Perm
+
+    ALLOCATE( vals( A % NumberOfRows) )
+    Solver % Variable % Values => vals
+
+    CALL MergeRhsAndSolutions()
+  ELSE
+    CALL UnmergeSolutions()
+
+    
+    Solver % Matrix => A1
+    Solver % Variable % Values => vals1
+    Solver % Variable % Perm => perm1
+
+    DEALLOCATE(vals)
+    DEALLOCATE(perm)
+    CALL FreeMatrix(A)
+  END IF
+
+CONTAINS
+
+  SUBROUTINE MergeRhsAndSolutions()
+
+    INTEGER :: i,j,j1,j2
+    REAL(KIND=dp), ALLOCATABLE :: rhsadd(:)
+    REAL(KIND=dp) :: c1,x2
+       
+    CALL Info('MergeSlaveSolvers','Merging rhs and initial guess for monolithic solution!',Level=10)
+    
+    IF(.NOT. ASSOCIATED(A % rhs)) THEN
+      ALLOCATE(A % rhs(A % NumberOfRows))
+    END IF
+
+    IF(ASSOCIATED(betaVar)) THEN
+      ALLOCATE(rhsadd(SIZE(betaVar % Values)))
+      rhsadd = 0.0_dp
+      CALL MatrixVectorMultiply( A2, betaVar % Values, rhsadd )
+    END IF
+    rhsAdd = -InvAlpha * rhsAdd 
+    
+    DO i=1,SIZE(perm)
+      j = perm(i)
+      IF(j==0) CYCLE
+
+      j1 = perm1(i)
+      j2 = perm2(i)
+
+      IF(j1>0) A % rhs(j) = A1 % rhs(j1) 
+      IF(j2>0) THEN
+        A % rhs(j) = A % rhs(j) + InvAlpha * A2 % rhs(j2) 
+        IF(ASSOCIATED(betaVar)) A % rhs(j) = A % rhs(j) + rhsAdd(j2)
+      END IF
+
+      vals(j) = 0.0_dp
+      c1 = 0.0_dp      
+      IF(j1>0) THEN
+        c1 = 1.0_dp
+        vals(j) = vals1(j1) 
+      END IF      
+      IF(j2>0) THEN
+        x2 = vals2(j2)
+        IF(ASSOCIATED(betaVar)) x2 = x2 - betaVar % Values(j2)
+        vals(j) = (vals(j) + InvAlpha * x2)/(c1+1.0_dp) 
+      END IF
+    END DO    
+    
+  END SUBROUTINE MergeRhsAndSolutions
+
+  
+  SUBROUTINE UnmergeSolutions()
+
+    INTEGER :: i,j,j1,j2
+
+    CALL Info('MergeSlaveSolvers','Unmerging the solution back to composite solvers!',Level=10)
+    
+    DO i=1,SIZE(perm)
+      j = perm(i)
+      IF(j==0) CYCLE
+      j1 = perm1(i)
+      j2 = perm2(i)
+      IF(j1>0) vals1(j1) = vals(j)
+      IF(j2>0) THEN
+        vals2(j2) = Alpha * vals(j)
+      END IF
+    END DO
+
+    ! The permutation has been checked for these
+    IF(ASSOCIATED(BetaVar)) vals2 = vals2 + betaVar % Values
+
+    
+  END SUBROUTINE UnmergeSolutions
+    
+END SUBROUTINE MergeSlaveSolvers
+
+ 
+
+!------------------------------------------------------------------------------
+!> Just toggles the initial system to harmonic one and back
+!------------------------------------------------------------------------------
 SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
