@@ -335,7 +335,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   INTEGER, POINTER :: Perm(:)
   INTEGER, ALLOCATABLE :: FluxMap(:)
   LOGICAL, ALLOCATABLE, SAVE :: TreeEdges(:)
-  LOGICAL :: Stat, EigenAnalysis, TG, DoneAssembly=.FALSE., &
+  LOGICAL :: Stat, TG, DoneAssembly=.FALSE., &
          SkipAssembly, ConstantSystem, ConstantBulk, JFix, JFixSolve, FoundRelax, &
          PiolaVersion, SecondOrder, LFact, LFactFound, EdgeBasis, &
          HasTensorReluctivity

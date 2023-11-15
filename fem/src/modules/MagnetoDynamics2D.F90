@@ -840,15 +840,13 @@ CONTAINS
     IF (ASSOCIATED(CompParams)) THEN
       CoilType = GetString(CompParams, 'Coil Type', Found)
       IF (Found) THEN
+        CoilBody = .TRUE.
         SELECT CASE (CoilType)
         CASE ('stranded')
-          CoilBody = .TRUE.
           StrandedCoil = .TRUE.
         CASE ('massive')
-          CoilBody = .TRUE.
           LondonEquations = ListGetLogical(CompParams, 'London Equations', LondonEquations)
         CASE ('foil winding')
-          CoilBody = .TRUE.
 !          CALL GetElementRotM(Element, RotM, n)
         CASE DEFAULT
           CALL Fatal (Caller, 'Non existent Coil Type Chosen!')
@@ -2374,9 +2372,9 @@ CONTAINS
     IF (ASSOCIATED(CompParams)) THEN
       CoilType = GetString(CompParams, 'Coil Type', Found)
       IF (Found) THEN
+        CoilBody = .TRUE.
         SELECT CASE (CoilType)
         CASE ('stranded')
-          CoilBody = .TRUE.
           StrandedCoil = .TRUE.
           StrandedHomogenization = GetLogical(CompParams, 'Homogenization Model', Found)
 
@@ -2394,10 +2392,8 @@ CONTAINS
           END IF
 
         CASE ('massive')
-          CoilBody = .TRUE.
           LondonEquations = ListGetLogical(CompParams, 'London Equations', LondonEquations)
         CASE ('foil winding')
-          CoilBody = .TRUE.
   !         CALL GetElementRotM(Element, RotM, n)
           InPlaneProximity = GetLogical(CompParams, 'Foil In Plane Proximity', Found)
           IF (InPlaneProximity) THEN
@@ -3271,10 +3267,10 @@ CONTAINS
       
       IF (ASSOCIATED(CompParams)) THEN    
         CoilType = GetString(CompParams, 'Coil Type', Found)
+        IF (Found) CoilBody = .TRUE.
         
         SELECT CASE (CoilType)
         CASE ('stranded')
-          CoilBody = .TRUE.
           StrandedCoil = .TRUE.
           
           IvarId = GetInteger (CompParams, 'Circuit Current Variable Id', Found)
@@ -3307,13 +3303,11 @@ CONTAINS
           END IF
  
         CASE ('massive')
-          CoilBody = .TRUE.
 
           VvarId = GetInteger (CompParams, 'Circuit Voltage Variable Id', Found)
           IF (.NOT. Found) CALL Fatal (Caller, 'Circuit Voltage Variable Id not found!')
 
         CASE ('foil winding')
-          CoilBody = .TRUE.
           CALL GetLocalSolution(alpha,'Alpha')
 
           VvarId = GetInteger (CompParams, 'Circuit Voltage Variable Id', Found)

@@ -9201,7 +9201,7 @@ CONTAINS
       END IF      
     END IF
 
-    ! And the the rest
+    ! And the rest
     !-------------------------------------------------------------
     IF( SomethingUndone ) THEN      
       IF( MeshDim == 2 ) THEN

@@ -4994,7 +4994,7 @@ CONTAINS
             IF ( PRESENT(FoundTStep) ) FoundTStep = TimeStep
          ELSE
             CALL Warn( Caller,&
-                 'Did not find the the requested timestep in the positions file;' )
+                 'Did not find the requested timestep in the positions file;' )
             CALL Warn( Caller,'using the last found one instead.')
             Offset2 = -TimeStepSize + VarNr*8
             CALL BinFSeek( PosUnit, Offset2 , BIN_SEEK_END )

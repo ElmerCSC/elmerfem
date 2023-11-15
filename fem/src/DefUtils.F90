@@ -3341,7 +3341,7 @@ CONTAINS
 
 
 
-!> Performs pre-steps related to the the active solver
+!> Performs pre-steps related to the active solver
 !------------------------------------------------------------------------------
   RECURSIVE SUBROUTINE DefaultStart( USolver )
 !------------------------------------------------------------------------------
@@ -3382,7 +3382,7 @@ CONTAINS
 
 
   
-!> Performs finalizing steps related to the the active solver
+!> Performs finalizing steps related to the active solver
 !------------------------------------------------------------------------------
   RECURSIVE SUBROUTINE DefaultFinish( USolver )
 !------------------------------------------------------------------------------

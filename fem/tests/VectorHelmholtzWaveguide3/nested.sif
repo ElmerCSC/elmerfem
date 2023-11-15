@@ -1,5 +1,5 @@
 !
-! This differs from the the primary case VectorHelmholtzWaveguide in using
+! This differs from the primary case VectorHelmholtzWaveguide in using
 ! hexahedral elements and applying a nested iteration in the solution of 
 ! the linear system. The inner iteration depends on solving perturbed systems
 ! which should be easier to solve than the primary problem. This sif file is

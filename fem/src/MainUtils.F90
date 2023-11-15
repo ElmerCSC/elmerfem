@@ -5175,7 +5175,7 @@ BLOCK
            M => M % Parent
          END DO
 
-         ! Here set the the default partitions active. 
+         ! Here set the default partitions active. 
          IF( ParEnv % MyPe >= MinOutputPE .AND. &
              ParEnv % MyPe <= MaxOutputPE ) THEN 
            OutputPE = ParEnv % MyPE
