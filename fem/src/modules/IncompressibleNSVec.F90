@@ -601,6 +601,9 @@ END BLOCK
             END IF
             R = GetConstReal( CurrentModel % Constants,'Gas Constant',Found)
             IF (.NOT.Found) R = 8.314_dp
+
+            NewtonRelax = ListGetCReal( CurrentModel % Solver % Values,&
+                'Viscosity Newton Relaxation Factor',GotRelax )
           END IF
         END IF
 
@@ -869,6 +872,11 @@ END BLOCK
         CALL Fatal('EffectiveViscosityVec','Unknown material model')
 
       END SELECT
+
+      IF( ViscNewton ) THEN
+        IF(GotRelax) ViscDerVec(1:ngp) = NewtonRelax * ViscDerVec(1:ngp)
+      END IF
+      
 
       IF(SaveVisc) THEN
         i = Element % ElementIndex
