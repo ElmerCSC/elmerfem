@@ -279,8 +279,9 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
        END DO
      END IF
   END DO
-  
-  IF ( ParEnv % PEs>1 ) CALL ParallelSumVector( Solver % Matrix, VariableValues, 1 )
+  IF ( ParEnv % PEs>1 .AND. ANY(Permutation> 0) ) THEN
+    CALL ParallelSumVector( Solver % Matrix, VariableValues, 1 )
+  END IF
  
   CALL INFO( SolverName , 'Done')
  
