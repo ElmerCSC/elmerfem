@@ -2123,7 +2123,8 @@ CONTAINS
     INTEGER, ALLOCATABLE :: Nodeno_map(:),EIdx_map(:)
     INTEGER, POINTER :: NodeIndexes(:), work_pInt(:),WorkPerm(:)=>NULL()
     LOGICAL, POINTER :: RmElement(:),work_logical(:)
-    CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="CutMesh", VarName
+    CHARACTER(*), PARAMETER :: FuncName="CutMesh"
+    CHARACTER(LEN=MAX_NAME_LEN) :: VarName
     NNodes = Mesh % NumberOfNodes
     NBulk = Mesh % NumberOfBulkElements
     NBdry = Mesh % NumberOfBoundaryElements
@@ -2212,10 +2213,14 @@ CONTAINS
       !update perms
       Var => Variables
       DO WHILE(ASSOCIATED(Var))
-        IF((SIZE(Var % Values) == Var % DOFs) .OR. &    !-global
-          (Var % Name(1:10)=='coordinate')) THEN
+        IF(SIZE(Var % Values) == Var % DOFs) THEN
           Var => Var % Next
           CYCLE
+        ELSE IF(LEN(Var % Name) > 10) THEN
+          IF(Var % Name(1:10)=='coordinate') THEN
+            Var => Var % Next
+            CYCLE
+          END IF
         END IF
 
         ALLOCATE(WorkPerm(NewNNodes))

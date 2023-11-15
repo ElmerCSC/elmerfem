@@ -148,20 +148,22 @@ Material 1
   Min Zs Bottom = Variable Coordinate 1, Coordinate 2
     Real Procedure "./"$bed_func" ""initbedrock"
 
-  RemeshMMG3D Hmin (5) = Real 50.0 40.0 30.0 25.0 20.0
-  RemeshMMG3D Hmax = Real 500.0 !500.0
-  RemeshMMG3D Hgrad = Real 2.5
-  RemeshMMG3D Hausd (5) = Real 50.0 40.0 30.0 25.0 20.0
+  MMG Hmin (5) = Real 50.0 40.0 30.0 25.0 20.0
+  MMG Hmax = Real 500.0 !500.0
+  MMG Hgrad = Real 2.5
+  MMG Hausd (5) = Real 50.0 40.0 30.0 25.0 20.0
   ! elem quality out of 1
-  RemeshMMG3D Min Quality = Real 0.0001
-  RemeshMMG3D Anisotropic = Logical True
-  RemeshMMG3D Target Length(3) = Variable Coordinate 1
+  MMG Min Quality = Real 0.0001
+  MMG Anisotropic = Logical True
+  MMG Target Length(3) = Variable Coordinate 1
     Real Procedure "ElmerIceUSF" "GlacierMeshMetricAniso"
-  Save RemeshMMG3D Meshes = Logical False
-  Save RemeshMMG3D Sols = Logical False
+  Save MMG Meshes = Logical False
+  Save MMG Sols = Logical False
   ! don't add extensions
-  Pre RemeshMMG3D Mesh Name = File "mmgadvancefix/preremesh_"
-  RemeshMMG3D Output Mesh Name = File "mmgadvancefix/remesh_"
+  Pre MMG Mesh Name = File "mmgadvancefix/preremesh_"
+  MMG Output Mesh Name = File "mmgadvancefix/remesh_"
+  MMG Multiple Inputs = Logical True
+  MMG Max Remesh Iterations = Integer 5
 
   GlacierMeshMetric Max Distance = Real 2000.0
   GlacierMeshMetric Min Distance = Real 200.0
@@ -765,6 +767,8 @@ Boundary Condition 1
   !Not physically important, internal to Remeshing (required Init Dirich = F)
   Remesh Update 3 = Variable Coordinate 3, FrontExtent
     Real MATC "tx(1) - tx(0)"
+  
+  ComputeNormal = Logical True
 End
 
 Boundary Condition 2

@@ -4009,10 +4009,14 @@ CONTAINS
 
       IF((SIZE(Var % Values) == Var % DOFs) .OR. & !-global
            (Var % DOFs > 1) .OR. &                    !-multi-dof
-           (Var % Name(1:10)=='coordinate') .OR. &    !-coord var
            Var % Secondary) THEN                      !-secondary
         Var => Var % Next
         CYCLE
+      ELSE IF(LEN(Var % Name) >= 10) THEN
+        IF(Var % Name(1:10)=='coordinate') THEN    !-coord var
+          Var => Var % Next
+          CYCLE
+        END IF
       ELSE
         HeightName = TRIM(Var % Name)
         EXIT
@@ -4913,10 +4917,14 @@ CONTAINS
           MaskCount = MaskCount + 1
           IF((SIZE(Var % Values) == Var % DOFs) .OR. &    !-global
               (Var % DOFs > 1) .OR. &                    !-multi-dof
-              (Var % Name(1:10)=='coordinate') .OR. &    !-coord var
               Var % Secondary) THEN                      !-secondary
-                Var => Var % Next
+            Var => Var % Next
             CYCLE
+          ELSE IF(LEN(Var % Name) >= 10) THEN
+            IF(Var % Name(1:10)=='coordinate') THEN    !-coord var
+              Var => Var % Next
+              CYCLE
+            END IF
           END IF
           IF(Var % Perm(SuppNodes(i)) <= 0 .OR. &
               (Var % Perm(NodeNumber) <= 0)) THEN      !-not fully defined here
@@ -4965,10 +4973,14 @@ CONTAINS
         MaskCount = MaskCount + 1
         IF((SIZE(Var % Values) == Var % DOFs) .OR. & !-global
             (Var % DOFs > 1) .OR. &                    !-multi-dof
-            (Var % Name(1:10)=='coordinate') .OR. &    !-coord var
             Var % Secondary) THEN                      !-secondary
           Var => Var % Next
           CYCLE
+        ELSE IF(LEN(Var % Name) >= 10) THEN
+          IF(Var % Name(1:10)=='coordinate') THEN    !-coord var
+            Var => Var % Next
+            CYCLE
+          END IF
         END IF
         IF(Var % Perm(NodeNumber) <= 0) THEN      !-not fully defined here
           Var => Var % Next
@@ -5208,10 +5220,14 @@ CONTAINS
           MaskCount = MaskCount + 1
           IF((SIZE(Var % Values) == Var % DOFs) .OR. &    !-global
               (Var % DOFs > 1) .OR. &                    !-multi-dof
-              (Var % Name(1:10)=='coordinate') .OR. &    !-coord var
               Var % Secondary) THEN                      !-secondary
                 Var => Var % Next
             CYCLE
+          ELSE IF(LEN(Var % Name) >= 10) THEN
+            IF(Var % Name(1:10)=='coordinate') THEN    !-coord var
+              Var => Var % Next
+              CYCLE
+            END IF
           END IF
           IF(Var % Perm(SuppNodes(i)) <= 0 .OR. &
               (Var % Perm(NodeNumber) <= 0)) THEN      !-not fully defined here
@@ -5355,10 +5371,14 @@ CONTAINS
 
         IF((SIZE(Var % Values) == Var % DOFs) .OR. & !-global
             (Var % DOFs > 1) .OR. &                    !-multi-dof
-            (Var % Name(1:10)=='coordinate') .OR. &    !-coord var
             Var % Secondary) THEN                      !-secondary
           Var => Var % Next
           CYCLE
+        ELSE IF(LEN(Var % Name) >= 10) THEN
+          IF(Var % Name(1:10)=='coordinate') THEN    !-coord var
+            Var => Var % Next
+            CYCLE
+          END IF
         END IF
         IF(Var % Perm(NodeNumber) <= 0) THEN      !-not fully defined here
           Var => Var % Next
@@ -8662,6 +8682,8 @@ CONTAINS
         ELSE
           FrontRight(1) = AllCorners(Corner(1))
         END IF
+
+        DEALLOCATE(xRail, yRail, AllCorners, jmin, InFront, MinDists, Corner)
       END DO
 
       DO i=1,Model % NumberOfBCs

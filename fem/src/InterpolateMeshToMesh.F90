@@ -537,7 +537,9 @@ CONTAINS
     IF( Var % Dofs > 1 ) IsLegit = .FALSE.
     !IF( Var % Secondary ) IsLegit = .FALSE.
     ! Coordinates are special and should not be interpolated. 
-    IF( Var % Name(1:10) == 'coordinate' ) IsLegit = .FALSE.
+    IF(LEN(Var % Name) >= 10) THEN
+      IF( Var % Name(1:10) == 'coordinate' ) IsLegit = .FALSE.
+    END IF
     ! This is global variable for which the type has not been properly set.
     IF(.NOT. ASSOCIATED(Var % Perm) .AND. SIZE(Var % Values) == 1 ) IsLegit = .FALSE.
     
@@ -1280,7 +1282,9 @@ CONTAINS
     IsLegit = ( Var % TYPE == Variable_on_nodes_on_elements .OR. Var % Type == Variable_on_nodes ) 
     IF( Var % Dofs > 1 ) IsLegit = .FALSE.
     !IF( Var % Secondary ) IsLegit = .FALSE.
-    IF( Var % Name(1:10) == 'coordinate' ) IsLegit = .FALSE.
+    IF(LEN(Var % Name) >= 10) THEN
+      IF( Var % Name(1:10) == 'coordinate' ) IsLegit = .FALSE.
+    END IF
     IF(.NOT. ASSOCIATED(Var % Perm) .AND. SIZE(Var % Values) == 1 ) IsLegit = .FALSE.
     
   END FUNCTION LegitInterpVar

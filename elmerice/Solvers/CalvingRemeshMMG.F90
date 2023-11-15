@@ -120,7 +120,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
 #if MMG_VERSION_LT(5,6)
   PRINT*, SolverName, ': Starting MMG'
-#elif MMG_VERSION_LT(5,7)
+#elif MMG_VERSION_LT(5,8)
   PRINT*, SolverName, ': Starting MMG'
 #else
   CALL FATAL(SolverName, 'Calving code only works with MMG 5.5')
@@ -678,7 +678,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
         !STOP MMG5_STRONGFAILURE
       ENDIF
 
-      CALL Get_MMG3D_Mesh(NewMeshR, .TRUE., new_fixed_node, new_fixed_elem)
+      CALL Get_MMG3D_Mesh(NewMeshR, .TRUE., new_fixed_node, new_fixed_elem, Calving=.TRUE.)
 
       NewMeshR % Name = Mesh % Name
 
@@ -1304,13 +1304,13 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
     PRINT *, 'TO DO: replace with MMG stuff, hausdorff?'
     ! Use RemeshMMG3D Hmin in Material or Mesh Hmin in RemeshSolver
     ! should remesh without calving/cutting as well, so take RemeshMMG3D
-    !SaveMeshHmin = ListGetConstReal(FuncParams, "RemeshMMG3D Hmin", Found, UnfoundFatal=.TRUE.)
-    SaveMeshHmax = ListGetConstReal(FuncParams, "RemeshMMG3D Hmax", Found, UnfoundFatal=.TRUE.)
-    !SaveMeshHausd = ListGetConstReal(FuncParams, "RemeshMMG3D Hausd", Found, UnfoundFatal=.TRUE.)
-    SaveMeshHgrad = ListGetConstReal(FuncParams, "RemeshMMG3D Hgrad", Found, UnfoundFatal=.TRUE.)
+    !SaveMeshHmin = ListGetConstReal(FuncParams, "MMG Hmin", Found, UnfoundFatal=.TRUE.)
+    SaveMeshHmax = ListGetConstReal(FuncParams, "MMG Hmax", Found, UnfoundFatal=.TRUE.)
+    !SaveMeshHausd = ListGetConstReal(FuncParams, "MMG Hausd", Found, UnfoundFatal=.TRUE.)
+    SaveMeshHgrad = ListGetConstReal(FuncParams, "MMG Hgrad", Found, UnfoundFatal=.TRUE.)
     SaveMeshDist = ListGetConstReal(RemeshSolver % Values, "Remeshing Distance", Found, UnfoundFatal=.TRUE.)
 
-    WorkArray => ListGetConstRealArray(FuncParams, "RemeshMMG3D Hmin", Found)
+    WorkArray => ListGetConstRealArray(FuncParams, "MMG Hmin", Found)
     IF(.NOT. Found) CALL FATAL(SolverName, 'Provide hmin input array to be iterated through: "Mesh Hmin"')
     MaxRemeshIter= SIZE(WorkArray(:,1))
 
@@ -1319,7 +1319,7 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
     ALLOCATE(SaveMeshHminArray(MaxRemeshIter, 1), NewMeshHminArray(MaxRemeshIter,1))
     SaveMeshHminArray = WorkArray
     NULLIFY(WorkArray)
-    WorkArray => ListGetConstRealArray(FuncParams, "RemeshMMG3D Hausd", Found)
+    WorkArray => ListGetConstRealArray(FuncParams, "MMG Hausd", Found)
     IF(.NOT. Found) CALL FATAL(SolverName, 'Provide hmin input array to be iterated through: "Mesh Hausd"')
     IF(MaxRemeshIter /= SIZE(WorkArray(:,1))) CALL FATAL(SolverName, 'The number of hmin options &
             must equal the number of hausd options')
@@ -1472,12 +1472,12 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
        NewMeshHGrad = NewMeshHGrad/MeshChange
 
        CALL Info(SolverName,"NS failed twice, fiddling with the mesh... ")
-       CALL Info(SolverName,"Temporarily slightly change RemeshMMG3D params ")
-       CALL ListAddConstRealArray(FuncParams, "RemeshMMG3D Hmin", MaxRemeshIter, 1, NewMeshHminArray)
-       !CALL ListAddConstReal(FuncParams, "RemeshMMG3D Hmax", SaveMeshHmax*1.1_dp)
-       CALL ListAddConstReal(FuncParams, "RemeshMMG3D Hgrad", NewMeshHGrad) !default 1.3
+       CALL Info(SolverName,"Temporarily slightly change MMG params ")
+       CALL ListAddConstRealArray(FuncParams, "MMG Hmin", MaxRemeshIter, 1, NewMeshHminArray)
+       !CALL ListAddConstReal(FuncParams, "MMG Hmax", SaveMeshHmax*1.1_dp)
+       CALL ListAddConstReal(FuncParams, "MMG Hgrad", NewMeshHGrad) !default 1.3
        CALL ListAddConstReal(RemeshSolver % Values, "Remeshing Distance", NewMeshDist)
-       CALL ListAddConstRealArray(FuncParams, "RemeshMMG3D Hausd", MaxRemeshiter, 1, NewMeshHausdArray)
+       CALL ListAddConstRealArray(FuncParams, "MMG Hausd", MaxRemeshiter, 1, NewMeshHausdArray)
        CALL ListAddInteger( FlowVar % Solver % Values, "Nonlinear System Max Iterations", SaveNLIter)
        IF(GotSaveMetric) CALL ListAddConstReal(FuncParams, "GlacierMeshMetric Min LC", NewMetric)
       NewMesh = .TRUE.
@@ -1523,11 +1523,11 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
     CALL ListAddConstReal(FlowVar % Solver % Values, &
          "Nonlinear System Relaxation Factor", SaveRelax)
     CALL ListAddInteger( FlowVar % Solver % Values, "Nonlinear System Max Iterations", SaveNLIter)
-    CALL ListAddConstRealArray(FuncParams, "RemeshMMG3D Hmin", MaxRemeshIter, 1, SaveMeshHminArray)
-    !CALL ListAddConstReal(FuncParams, "RemeshMMG3D Hmax", SaveMeshHmax)
+    CALL ListAddConstRealArray(FuncParams, "MMG Hmin", MaxRemeshIter, 1, SaveMeshHminArray)
+    !CALL ListAddConstReal(FuncParams, "MMG Hmax", SaveMeshHmax)
     CALL ListAddConstReal(RemeshSolver % Values, "Remeshing Distance", SaveMeshDist)
-    CALL ListAddConstReal(FuncParams, "RemeshMMG3D Hgrad", SaveMeshHgrad)
-    CALL ListAddConstRealArray(FuncParams, "RemeshMMG3D Hausd", MaxRemeshIter, 1, SaveMeshHausdArray)
+    CALL ListAddConstReal(FuncParams, "MMG Hgrad", SaveMeshHgrad)
+    CALL ListAddConstRealArray(FuncParams, "MMG Hausd", MaxRemeshIter, 1, SaveMeshHausdArray)
     IF(GotSaveMetric) CALL ListAddConstReal(FuncParams, "GlacierMeshMetric Min LC", SaveMetric)
 
   END IF

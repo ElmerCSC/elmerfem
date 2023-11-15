@@ -344,12 +344,15 @@ CONTAINS
              !Is the variable valid?
              IF((SIZE(OldVar % Values) == OldVar % DOFs) .OR. & !-global
                   (OldVar % DOFs > 1) .OR. &                    !-multi-dof
-                  (OldVar % Name(1:10)=='coordinate') .OR. &    !-coord var
                   (OldVar % Name == HeightName) .OR. &          !-already got
                   OldVar % Secondary) THEN                      !-secondary
-
                 OldVar => OldVar % Next
                 CYCLE
+             ELSE IF(LEN(OldVar % Name) >= 10) THEN
+                IF(OldVar % Name(1:10)=='coordinate') THEN    !-coord var
+                  OldVar => OldVar % Next
+                  CYCLE
+                END IF
              END IF
 
              nvars = nvars + 1
@@ -427,12 +430,16 @@ CONTAINS
 
                    IF((SIZE(OldVar % Values) == OldVar % DOFs) .OR. & !-global
                         (OldVar % DOFs > 1) .OR. &                    !-multi-dof
-                        (OldVar % Name(1:10)=='coordinate') .OR. &    !-coord var
                         (OldVar % Name == HeightName) .OR. &          !-already got
                         OldVar % Secondary) THEN                      !-secondary
 
                       OldVar => OldVar % Next
                       CYCLE
+                   ELSE IF(LEN(OldVar % Name) >= 10) THEN
+                      IF(OldVar % Name(1:10)=='coordinate') THEN    !-coord var
+                        OldVar => OldVar % Next
+                        CYCLE
+                      END IF
                    END IF
                    nVar => VariableGet( Nmesh % Variables,OldVar % Name,ThisOnly=.TRUE.)
                    nvars = nvars+1
@@ -555,12 +562,16 @@ CONTAINS
           DO WHILE(ASSOCIATED(OldVar))
              IF((SIZE(OldVar % Values) == OldVar % DOFs) .OR. & !-global
                   (OldVar % DOFs > 1) .OR. &                    !-multi-dof
-                  (OldVar % Name(1:10)=='coordinate') .OR. &    !-coord var
                   (OldVar % Name == HeightName) .OR. &          !-already got
                   OldVar % Secondary) THEN                      !-secondary
 
                 OldVar => OldVar % Next
                 CYCLE
+             ELSE IF(LEN(OldVar % Name) >= 10) THEN
+                IF(OldVar % Name(1:10)=='coordinate') THEN    !-coord var
+                  OldVar => OldVar % Next
+                  CYCLE
+                END IF
              END IF
 
              nvars = nvars + 1
@@ -882,12 +893,16 @@ CONTAINS
 
              IF((SIZE(OldVar % Values) == OldVar % DOFs) .OR. & !-global
                   (OldVar % DOFs > 1) .OR. &                    !-multi-dof
-                  (OldVar % Name(1:10)=='coordinate') .OR. &    !-coord var
                   (OldVar % Name == HeightName) .OR. &          !-already got
                   OldVar % Secondary) THEN                      !-secondary
 
                 OldVar => OldVar % Next
                 CYCLE
+             ELSE IF(LEN(OldVar % Name) >= 10) THEN
+                IF(OldVar % Name(1:10)=='coordinate') THEN    !-coord var
+                  OldVar => OldVar % Next
+                  CYCLE
+                END IF
              END IF
 
              !For variables which don't have a perm for some reason
@@ -1104,18 +1119,21 @@ CONTAINS
           MaskCount = MaskCount + 1
           IF((SIZE(Var % Values) == Var % DOFs) .OR. &    !-global
               (Var % DOFs > 1) .OR. &                    !-multi-dof
-              (Var % Name(1:10)=='coordinate') .OR. &    !-coord var
               (Var % Name == HeightName) .OR. &          !-already got
               Var % Secondary) THEN                      !-secondary
                 Var => Var % Next
             CYCLE
+          ELSE IF(LEN(Var % Name) >= 10) THEN
+            IF(Var % Name(1:10)=='coordinate') THEN    !-coord var
+              Var => Var % Next
+              CYCLE
+            END IF
           END IF
           IF(Var % Perm(SuppNodes(i)) <= 0 .OR. &
               (Var % Perm(NodeNumber) <= 0)) THEN      !-not fully defined here
             Var => Var % Next
             CYCLE
           END IF
-
           SuppNodeMask(i, MaskCount) = .TRUE.
           InterpedValue(MaskCount) = interpedvalue(MaskCount) + &
           weight * Var % Values(Var % Perm(SuppNodes(i)))
@@ -1160,11 +1178,15 @@ CONTAINS
         MaskCount = MaskCount + 1
         IF((SIZE(Var % Values) == Var % DOFs) .OR. & !-global
             (Var % DOFs > 1) .OR. &                    !-multi-dof
-            (Var % Name(1:10)=='coordinate') .OR. &    !-coord var
             (Var % Name == HeightName) .OR. &          !-already got
             Var % Secondary) THEN                      !-secondary
           Var => Var % Next
           CYCLE
+        ELSE IF(LEN(Var % Name) >= 10) THEN
+          IF(Var % Name(1:10)=='coordinate') THEN    !-coord var
+            Var => Var % Next
+            CYCLE
+          END IF
         END IF
         IF(Var % Perm(NodeNumber) <= 0) THEN      !-not fully defined here
           Var => Var % Next
@@ -1461,11 +1483,15 @@ CONTAINS
           MaskCount = MaskCount + 1
           IF((SIZE(Var % Values) == Var % DOFs) .OR. &    !-global
               (Var % DOFs > 1) .OR. &                    !-multi-dof
-              (Var % Name(1:10)=='coordinate') .OR. &    !-coord var
               (Var % Name == HeightName) .OR. &          !-already got
               Var % Secondary) THEN                      !-secondary
                 Var => Var % Next
-            CYCLE
+                CYCLE
+          ELSE IF(LEN(Var % Name) >= 10) THEN
+            IF(Var % Name(1:10)=='coordinate') THEN    !-coord var
+              Var => Var % Next
+              CYCLE
+            END IF
           END IF
           IF(Var % Perm(SuppNodes(i)) <= 0 .OR. &
               (Var % Perm(NodeNumber) <= 0)) THEN      !-not fully defined here
@@ -1613,11 +1639,15 @@ CONTAINS
         !Is the variable valid?
         IF((SIZE(Var % Values) == Var % DOFs) .OR. & !-global
             (Var % DOFs > 1) .OR. &                    !-multi-dof
-            (Var % Name(1:10)=='coordinate') .OR. &    !-coord var
             (Var % Name == HeightName) .OR. &          !-already got
             Var % Secondary) THEN                      !-secondary
           Var => Var % Next
           CYCLE
+        ELSE IF(LEN(Var % Name) >= 10) THEN
+          IF(Var % Name(1:10)=='coordinate') THEN    !-coord var
+            Var => Var % Next
+            CYCLE
+          END IF
         END IF
         IF(Var % Perm(NodeNumber) <= 0) THEN      !-not fully defined here
           Var => Var % Next
