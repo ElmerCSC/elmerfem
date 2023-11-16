@@ -1474,10 +1474,10 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,&
     END IF
   END IF
     
-  body_offset = CurrentModel % NumberOfBCs + CurrentModel % NumberOfBodies + 1
-  body_offset = 0 
-
   nBCs = CurrentModel % NumberOfBCs
+  body_offset = nBCs + CurrentModel % NumberOfBodies + 1
+! body_offset = 0 
+
   IF( body_offset > 0 ) THEN
     DO i=1,InMesh % NumberOfBulkElements
       InMesh % Elements(i) % BodyID = InMesh % Elements(i) % BodyID + body_offset
@@ -1492,8 +1492,7 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,&
     IF( mmgloops > 1 ) THEN
       !! Redoing adaptive mesh, release the previous mmg mesh
       CALL MMG3D_Free_all(MMG5_ARG_start, &
-          MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &
-          MMG5_ARG_end)      
+          MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, MMG5_ARG_end)      
     END IF
         
     ! Enable external depende on "mmg loop"
@@ -1654,6 +1653,9 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,&
   ! Reset the BodyIDs (see above)
   IF( body_offset > 0 ) THEN 
     OutMesh % Elements(1:Nbulk) % BodyID = OutMesh % Elements(1:Nbulk) % BodyID - body_offset
+
+    i=InMesh % NumberOfBulkElements
+    InMesh % Elements(1:i) % BodyID = InMesh % Elements(1:i) % BodyID - body_offset
   END IF
     
   ! And delete the unneeded BC elems
@@ -1668,6 +1670,9 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,&
     END DO
     CALL CutMesh(OutMesh, RmElem=RmElement)
   END IF
+
+  RETURN
+
     
 20 CONTINUE
 
@@ -2612,7 +2617,7 @@ SUBROUTINE DistributedRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,&
   END IF
     
   nBCs = CurrentModel % NumberOfBCs
-  body_offset = CurrentModel % NumberOfBCs + CurrentModel % NumberOfBodies + 1
+  body_offset = nBCs + CurrentModel % NumberOfBodies + 1
 ! body_offset = 0
   
   IF( body_offset > 0 ) THEN
@@ -2778,6 +2783,8 @@ SUBROUTINE DistributedRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,&
   !Reset the BodyIDs (see above)
   IF( body_offset > 0 ) THEN
     OutMesh % Elements(1:Nbulk) % BodyID = OutMesh % Elements(1:NBulk) % BodyID - body_offset
+    i=InMesh % NumberOfBulkElements
+    InMesh % Elements(1:i) % BodyID = InMesh % Elements(1:i) % BodyID - body_offset
   END IF
 
   !And delete the unneeded BC elems
