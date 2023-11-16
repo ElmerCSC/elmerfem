@@ -2613,7 +2613,7 @@ SUBROUTINE DistributedRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,&
     
   nBCs = CurrentModel % NumberOfBCs
   body_offset = CurrentModel % NumberOfBCs + CurrentModel % NumberOfBodies + 1
-  body_offset = 0
+! body_offset = 0
   
   IF( body_offset > 0 ) THEN
     i=InMesh % NumberOfBulkElements
