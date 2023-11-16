@@ -1703,8 +1703,9 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
         n  = GetElementNOFNodes()
         nd = GetElementNOFDOFs()
 
-        IF ( GetElementFamily() == 1 ) CYCLE
-
+        ! Skip 101 elements in 2D, and additionally 202's in 3D.
+        IF ( GetElementFamily() < dim ) CYCLE        
+        
         ! Get element local matrix and rhs vector:
         !-----------------------------------------
         CALL LocalBoundaryMatrix(Element, n, nd, dim, dt, SpecificLoad, InitBCHandles, Newton)

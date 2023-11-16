@@ -2571,7 +2571,8 @@ CONTAINS
          IF(ASSOCIATED(Parent)) BodyId = Parent % BodyId
        END IF
        IF (BodyId==0) THEN
-         CALL Warn('ElementBasisDegree', 'Element has no body index, assuming the index 1')
+         CALL Warn('ElementBasisDegree', 'Element '//I2S(Element % ElementIndex)//' of type '//&
+             I2S(Element % TYPE % ElementCode)//' has 0 BodyId, assuming index 1')
          BodyId = 1
        END IF
 
@@ -3194,7 +3195,8 @@ CONTAINS
         IF(ASSOCIATED(Parent)) BodyId = Parent % BodyId
       END IF
       IF (BodyId==0) THEN
-        CALL Warn('ElementInfo', 'Element has no body index, assuming the index 1')
+        CALL Warn('ElementBasisDegree', 'Element '//I2S(Element % ElementIndex)//' of type '//&
+            I2S(Element % TYPE % ElementCode)//' has 0 BodyId, assuming index 1')
         BodyId = 1
       END IF
 
@@ -4458,7 +4460,8 @@ CONTAINS
      END IF
 
      IF (BodyId==0) THEN
-       CALL Warn('ElementBasisDegree', 'Element has no body index, assuming the index 1')
+       CALL Warn('ElementBasisDegree', 'Element '//I2S(Element % ElementIndex)//' of type '//&
+           I2S(Element % TYPE % ElementCode)//' has 0 BodyId, assuming index 1')
        BodyId = 1
      END IF
 
