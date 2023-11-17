@@ -13745,7 +13745,7 @@ CONTAINS
   !------------------------------------------------------------------------------
  
 
-  ! Computes the center of a the mesh or given set of bodies.
+  ! Computes the center of a mesh or given set of bodies.
   !----------------------------------------------------------------------------  
   SUBROUTINE ComputeEntityCenter(Mesh, Center, TargetBodies, TargetBCs)
     TYPE(Mesh_t), POINTER :: Mesh
@@ -13831,7 +13831,7 @@ CONTAINS
   END SUBROUTINE ComputeEntityCenter
 
 
-  ! Computes the normal of inertia of a the mesh or given set of bodies.
+  ! Computes the normal of inertia of a mesh or given set of bodies.
   !----------------------------------------------------------------------------  
   SUBROUTINE ComputeEntityInertiaNormal(Mesh, Center, INormal, TargetBodies, TargetBCs)
     TYPE(Mesh_t), POINTER :: Mesh

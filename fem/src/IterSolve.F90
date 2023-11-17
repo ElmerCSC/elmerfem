@@ -43,7 +43,7 @@
 
 
 !------------------------------------------------------------------------------
-!> Module containing a the control for iterative solvers for linear systems
+!> Module containing control of the iterative solvers for linear systems
 !> that come with the Elmer suite.
 !------------------------------------------------------------------------------
 MODULE IterSolve
