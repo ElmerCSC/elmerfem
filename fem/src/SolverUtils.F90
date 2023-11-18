@@ -1075,7 +1075,7 @@ CONTAINS
      TYPE(NormalTangential_t), POINTER :: NT => NULL()
      INTEGER :: NrmPerm(27),dofs,dim,i,j,m,n
      LOGICAL :: GotIt, uFound
-     REAL(KIND=dp) :: NrmLen
+     REAL(KIND=dp) :: NrmLen, NormalTest(3)
      
      SAVE PrevSolver, NT, dofs, dim
      
@@ -1113,11 +1113,22 @@ CONTAINS
          j = NrmVar % Perm(node)
          IF( j>0 ) THEN
            Normal(1:dim) = NrmVar % Values(dofs*(j-1)+1:dofs*(j-1)+dim) 
-           uFound = .TRUE.
+           ! Some legacy ways to compute normal vector do not compute the vector even though
+           ! the permutation is positive. This tries to deal with that kind of issue.
+           NrmLen = SQRT(SUM(Normal(1:dim)**2))
+           uFound = (NrmLen > 0.5_dp)
          END IF         
        ELSE IF( PRESENT( Basis ) ) THEN
          n = Element % TYPE % NumberOfNodes
-         m = COUNT( NrmVar % Perm(Element % NodeIndexes) > 0 )
+         m = 0
+         DO i=1,n
+           j = NrmVar % Perm(Element % NodeIndexes(i))
+           IF(j>0) THEN
+             NormalTest(1:dim) = NrmVar % Values(dofs*(j-1)+1:dofs*(j-1)+dim) 
+             NrmLen = SQRT(SUM(NormalTest(1:dim)**2))
+             IF( NrmLen > 0.5_dp ) m = m+1
+           END IF
+         END DO
          IF( m == n ) THEN
            NrmPerm(1:n) = NrmVar % Perm( Element % NodeIndexes) - 1
            Normal(1) = SUM( Basis(1:n) * NrmVar % Values(dofs*NrmPerm(1:n)+1) ) 
