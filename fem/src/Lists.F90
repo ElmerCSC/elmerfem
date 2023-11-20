@@ -9772,7 +9772,12 @@ CONTAINS
               Var1 => VariableGet(Variables,TRIM(str(1:j-2))//' 1',ThisOnly)		
               IF( ASSOCIATED( Var1 ) ) THEN
                 Var1 => VariableGet(Variables,TRIM(str(1:j-2))//' '//I2S(4),ThisOnly)		
-                Set = ASSOCIATED( Var1 )
+                IF( ASSOCIATED( Var1 ) ) THEN
+                  Set = .TRUE.
+                ELSE IF( Comp == 2 .AND. dim == 3 ) THEN
+                  Var1 => VariableGet(Variables,TRIM(str(1:j-2))//' '//I2S(dim),ThisOnly)		
+                  Set = .NOT. ASSOCIATED( Var1 )
+                END IF
               END IF
             END IF
           END IF
