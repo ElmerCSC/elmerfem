@@ -9765,18 +9765,21 @@ CONTAINS
                 IsVector = .NOT. ASSOCIATED(Var1)
               END IF
               
-            ELSE IF( Comp <= 3 ) THEN  ! component 2 or 3
+            ELSE IF( Comp == 2 .OR. Comp == 3 ) THEN 
               ! Associated to the previous case, cycle the other components of the vector
               ! and cycle them if they are part of the vector that will be detected above.
- 
+
+              ! 2D: 2 or 3 components
+              ! 3D: 3 components
               Var1 => VariableGet(Variables,TRIM(str(1:j-2))//' 1',ThisOnly)		
               IF( ASSOCIATED( Var1 ) ) THEN
                 Var1 => VariableGet(Variables,TRIM(str(1:j-2))//' '//I2S(4),ThisOnly)		
-                IF( ASSOCIATED( Var1 ) ) THEN
-                  Set = .TRUE.
-                ELSE IF( Comp == 2 .AND. dim == 3 ) THEN
-                  Var1 => VariableGet(Variables,TRIM(str(1:j-2))//' '//I2S(dim),ThisOnly)		
-                  Set = .NOT. ASSOCIATED( Var1 )
+                Set = ASSOCIATED( Var1 )
+                IF( .NOT. Set ) THEN
+                  IF( Comp == 2 .AND. dim == 3 ) THEN
+                    Var1 => VariableGet(Variables,TRIM(str(1:j-2))//' '//I2S(dim),ThisOnly)		
+                    Set = .NOT. ASSOCIATED( Var1 )
+                  END IF
                 END IF
               END IF
             END IF
