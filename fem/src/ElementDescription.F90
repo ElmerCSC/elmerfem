@@ -13159,8 +13159,13 @@ END SUBROUTINE PickActiveFace
     nz => BoundaryNodes % z   
 
     elemDim = Boundary % TYPE % DIMENSION
-    meshDim = CurrentModel % Mesh % MeshDim
-    
+
+    IF(ASSOCIATED( CurrentModel % Mesh ) ) THEN
+      meshDim = CurrentModel % Mesh % MeshDim
+    ELSE
+      meshDim = CurrentModel % dimension
+    END IF
+      
     SELECT CASE ( elemDim )
 
     CASE ( 0 ) 
