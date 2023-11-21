@@ -19576,9 +19576,10 @@ CONTAINS
     
     Masked = PRESENT(BulkMask)
     
-    DO i=1,SIZE(Mesh % Elements)
+    DO i=1,Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements
        Element => Mesh % Elements(i)
-       IF(Element % Type % ElementCode < 200 ) CYCLE
+       IF(.NOT.ASSOCIATED(Element)) CYCLE
+       IF(Element % Type % ElementCode < 200) CYCLE
 
        IF(Masked) THEN
          j = i
@@ -19617,7 +19618,7 @@ CONTAINS
 
     Edges => NULL()
     NofEdges = 0
-1   DO i=1,SIZE(Mesh % Elements)
+1   DO i=1,Mesh % NumberOfBulkELements+Mesh % NumberOfBoundaryElements
 
        Element => Mesh % Elements(i)
 
