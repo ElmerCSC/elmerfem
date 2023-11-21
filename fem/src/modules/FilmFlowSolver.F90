@@ -142,8 +142,8 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   LOGICAL :: AllocationsDone = .FALSE., Newton = .FALSE., Found, Convect, CSymmetry
   TYPE(Element_t),POINTER :: Element
-  INTEGER :: i,j,k,n, nb, nd, t, istat, dim, mdim, BDOFs=1,Active,iter,maxiter
-  REAL(KIND=dp) :: Norm = 0, PrevNorm, RelC, mingap
+  INTEGER :: i,n, nb, nd, t, istat, dim, mdim, BDOFs=1,Active,iter,maxiter
+  REAL(KIND=dp) :: Norm = 0, mingap
   TYPE(ValueList_t), POINTER :: Params, BodyForce, Material, BC
   TYPE(Mesh_t), POINTER :: Mesh
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), LOAD(:,:), &
@@ -198,7 +198,7 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
     CALL Info(Caller,'Dimension of coordinate system: '//I2S(dim))
 
     n = (mdim+1)*(Mesh % MaxElementDOFs+BDOFs)  ! just big enough for elemental arrays
-    ALLOCATE( FORCE(n), LOAD(n,4), STIFF(n,n), MASS(n,n), &
+    ALLOCATE( FORCE(n), LOAD(n,mdim+1), STIFF(n,n), MASS(n,n), &
         rho(n), ac(n), gap(n), mu(n), NormalVelo(n), Pres(n), Velocity(mdim+1,n), STAT=istat )
     Velocity = 0.0_dp
     IF ( istat /= 0 ) THEN
@@ -209,6 +209,8 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
       CALL Info(Caller,'"Gradp Discretization" is set True',Level=10)
     END IF     
     IF( GotAC ) THEN
+      CALL Info(Caller,'Using artificial compressibility for FSI emulation!') 
+
       pVar => VariableGet( Mesh % Variables,'FilmPressure')
       IF ( .NOT. ASSOCIATED(pVar) ) THEN
         CALL Fatal( Caller, 'Could not find required field "FilmPressure"!')
@@ -246,7 +248,7 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
       nd = GetElementNOFDOFs()
       nb = GetElementNOFBDOFs()
 
-      !IF(t==1) PRINT *,'Element:',Element % TYPE % ElementCode, n, nd, nb
+      IF(t==1) PRINT *,'Element:',Element % TYPE % ElementCode, n, nd, nb
       
       ! Volume forces:
       !---------------
@@ -254,8 +256,8 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
       LOAD = 0.0d0
       IF ( ASSOCIATED(BodyForce) ) THEN
         Load(1:n,1) = GetReal( BodyForce, 'Flow Bodyforce 1', Found )
-        Load(1:n,2) = GetReal( BodyForce, 'Flow Bodyforce 2', Found )
-        Load(1:n,3) = GetReal( BodyForce, 'Flow Bodyforce 3', Found )
+        IF(mdim==2) Load(1:n,2) = GetReal( BodyForce, 'Flow Bodyforce 2', Found )
+        Load(1:n,mdim+1) = GetReal( BodyForce, 'Normal Velocity', Found )
       END IF
 
       ! Material parameters:
@@ -358,13 +360,13 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(ntot),dBasisdx(ntot,3), &
-        DetJ,LoadAtIP(dim+1),Velo(dim), VeloGrad(dim,dim), gapGrad(dim),meangap
+        DetJ,LoadAtIP(mdim+1),Velo(dim), VeloGrad(dim,dim), gapGrad(dim),meangap
     REAL(KIND=dp), POINTER :: A(:,:), F(:),M(:,:)
     LOGICAL :: Stat
     INTEGER :: t, i, j, k, l, p, q, geomc
     TYPE(GaussIntegrationPoints_t) :: IP
 
-    REAL(KIND=dp) :: mu = 1.0d0, rho = 1.0d0, normalvelo, pres, gap, ac, s, s0, s1, c
+    REAL(KIND=dp) :: mu = 1.0d0, rho = 1.0d0, normalvelo, pres, gap, ac, s, s0, s1
 
     TYPE(Nodes_t) :: Nodes
     SAVE Nodes
@@ -438,6 +440,7 @@ CONTAINS
        IF ( Convect .AND. Newton ) THEN
          LoadAtIp(1:mdim) = LoadAtIp(1:mdim) + rho * MATMUL(VeloGrad,Velo)
        END IF
+       LoadAtIp(mdim+1) = rho * geomc * LoadAtIp(mdim+1)
 
        ! To my understanding we want to include the gap height to weight
        IF( Csymmetry ) THEN
@@ -486,7 +489,7 @@ CONTAINS
              ! Note that here the gap height must be included in the continuity equation
              IF( GradP ) THEN
                A(i,mdim+1) = A(i,mdim+1) + s * dBasisdx(q,i) * Basis(p)
-               A(mdim+1,i) = A(mdim+1,i) - s * rho * Basis(q) * dBasisdx(p,i)               
+               A(mdim+1,i) = A(mdim+1,i) - s * gap * rho * Basis(q) * dBasisdx(p,i)               
              ELSE
                A(i,mdim+1) = A(i,mdim+1) - s * Basis(q) * dBasisdx(p,i)
                A(mdim+1,i) = A(mdim+1,i) + s * gap * rho * dBasisdx(q,i) * Basis(p) & 
@@ -500,15 +503,16 @@ CONTAINS
              END IF
 
              ! This is the flow into the domain from side
-             A(mdim+1,i) = A(mdim+1,i) + geomc * s * NormalVelo * rho * Basis(q) * Basis(p)
-               
-             ! This is the artificial compressibility for FSI coupling
-             IF(GotAC) A(mdim+1,mdim+1) = ac * s * rho * Basis(q) * Basis(p)              
+             !A(mdim+1,i) = A(mdim+1,i) + geomc * s * NormalVelo * rho * Basis(q) * Basis(p)
            END DO
+             
+           ! This is the artificial compressibility for FSI coupling
+           IF(GotAC) A(mdim+1,mdim+1) = ac * s * rho * Basis(q) * Basis(p)              
+           
          END DO
          i = (mdim+1) * (p-1) + 1
          F => FORCE(i:i+mdim)
-
+         
          F = F + s * LoadAtIP * Basis(p) 
          IF( GotAC ) F = F + ac * s * rho * Basis(p) * Pres
        END DO
@@ -541,11 +545,11 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Load(dim+1)
-    REAL(KIND=dp), POINTER :: A(:,:),F(:),M(:,:)
+    REAL(KIND=dp), POINTER :: F(:),M(:,:)
     LOGICAL :: Stat
-    INTEGER :: t, i, j, k, l, p, q, geomc
+    INTEGER :: t, i, j, k, p, q, geomc
     TYPE(GaussIntegrationPoints_t) :: IP
-    REAL(KIND=dp) :: mu = 1.0d0, rho = 1.0d0, normalvelo, pres, gap, ac, s, c
+    REAL(KIND=dp) :: mu = 1.0d0, rho = 1.0d0, normalvelo, gap, ac, s
     TYPE(Nodes_t) :: Nodes
     SAVE Nodes
 !------------------------------------------------------------------------------
