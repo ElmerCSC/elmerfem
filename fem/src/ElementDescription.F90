@@ -13150,22 +13150,25 @@ END SUBROUTINE PickActiveFace
     REAL(KIND=dp) :: Tangent1(3), Tangent2(3)
     TYPE(Nodes_t) :: ParentNodes
     TYPE(Element_t), POINTER :: pParent
-    INTEGER :: n
+    INTEGER :: n, meshDim, elemDim
     
 !------------------------------------------------------------------------------
 
     nx => BoundaryNodes % x
     ny => BoundaryNodes % y
-    nz => BoundaryNodes % z
+    nz => BoundaryNodes % z   
+
+    elemDim = Boundary % TYPE % DIMENSION
+    meshDim = CurrentModel % Mesh % MeshDim
     
-    SELECT CASE ( Boundary % TYPE % DIMENSION )
+    SELECT CASE ( elemDim )
 
     CASE ( 0 ) 
       Normal(1) = 1.0_dp
       Normal(2:3) = 0.0_dp
 
     CASE ( 1 )
-      IF( CurrentModel % Mesh % MeshDim == 3 ) THEN
+      IF( meshDim == 3 ) THEN
         ! We have 1D element but 3D mesh
         ! Define the normal in the plane defined by the 2D parent element.
         IF( PRESENT( u0 ) ) THEN
@@ -13262,7 +13265,8 @@ END SUBROUTINE PickActiveFace
       Normal(3) = (dxdu * dydv - dxdv * dydu) * detA
     
     CASE DEFAULT
-      CALL Fatal('NormalVector','Invalid dimension for determining normal!')
+      CALL Fatal('NormalVector','No normal for '&
+          //I2S(Boundary % TYPE % ElementCode)//' in '//I2S(meshDim)//'dim mesh!')
       
     END SELECT
 
