@@ -97,6 +97,49 @@
 /* integer type: int or long */
 /* -------------------------------------------------------------------------- */
 
+void umfpack_di_defaults(double Control []);
+void umfpack_di_free_numeric(void **Numeric);
+void umfpack_di_free_symbolic(void **Symbolic);
+int umfpack_di_numeric(   
+    const int Ap [],
+    const int Ai [],
+    const double Ax [],
+    void *Symbolic,
+    void **Numeric,
+    const double Control [], 
+    double Info []);
+void umfpack_di_report_control(const double Control []);
+void umfpack_di_report_info(const double Control [], const double Info []);
+int umfpack_di_save_numeric(void *Numeric, char *filename);
+int umfpack_di_save_symbolic(void *Symbolic, char *filename);
+int umfpack_di_load_numeric(void **Numeric, char *filename);
+int umfpack_di_load_symbolic(void **Symbolic, char *filename);
+int umfpack_di_scale(double X [ ], const double B [ ], void *Numeric);
+int umfpack_di_solve(   
+    int sys,
+    const int Ap [ ],
+    const int Ai [ ],
+    const double Ax [ ],
+    double X [ ],
+    const double B [ ],
+    void *Numeric,
+    const double Control [],
+    double Info []);
+int umfpack_di_symbolic(
+    int n_row,
+    int n_col,
+    const int Ap [ ],
+    const int Ai [ ],
+    const double Ax [ ],
+    void **Symbolic,
+    const double Control [],
+    double Info []);
+
+
+
+
+
+
 #define Int int
 #define UMFPACK_defaults	 umfpack_di_defaults
 #define UMFPACK_free_numeric	 umfpack_di_free_numeric
@@ -231,6 +274,44 @@ void STDCALLBULL FC_FUNC(umf4fsym,UMF4FSYM) (void **Symbolic)
 #undef UMFPACK_scale
 #undef UMFPACK_solve
 #undef UMFPACK_symbolic
+
+void umfpack_dl_defaults(double Control []);
+void umfpack_dl_free_numeric(void **Numeric);
+void umfpack_dl_free_symbolic(void **Symbolic);
+long umfpack_dl_numeric(   
+    const long Ap [],
+    const long Ai [],
+    const double Ax [],
+    void *Symbolic,
+    void **Numeric,
+    const double Control [], 
+    double Info []);
+void umfpack_dl_report_control(const double Control []);
+void umfpack_dl_report_info(const double Control [], const double Info []);
+long umfpack_dl_save_numeric(void *Numeric, char *filename);
+long umfpack_dl_save_symbolic(void *Symbolic, char *filename);
+long umfpack_dl_load_numeric(void **Numeric, char *filename);
+long umfpack_dl_load_symbolic(void **Symbolic, char *filename);
+long umfpack_dl_scale(double X [ ], const double B [ ], void *Numeric);
+long umfpack_dl_solve(   
+    long sys,
+    const long Ap [ ],
+    const long Ai [ ],
+    const double Ax [ ],
+    double X [ ],
+    const double B [ ],
+    void *Numeric,
+    const double Control [],
+    double Info []);
+long umfpack_dl_symbolic(
+    long n_row,
+    long n_col,
+    const long Ap [ ],
+    const long Ai [ ],
+    const double Ax [ ],
+    void **Symbolic,
+    const double Control [],
+    double Info []);
 
 #define Int long
 #define UMFPACK_defaults	 umfpack_dl_defaults
