@@ -13807,8 +13807,8 @@ END FUNCTION SearchNodeL
             IF ( Aaid% ParMatrix % ParallelInfo % &
                 NeighbourList(2*(i-1)+1) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
           END IF
-          Energy    = Energy    + x(2*(i-1)+1) * TempVector(2*(i-1)+1) - x(2*(i-1)+2) * TempVector(2*(i-1)+2)
-          Energy_im = Energy_im + x(2*(i-1)+1) * TempVector(2*(i-1)+2) + x(2*(i-1)+2) * TempVector(2*(i-1)+1) 
+          Energy    = Energy    + x(2*(i-1)+1) * TempVector(2*(i-1)+1) + x(2*(i-1)+2) * TempVector(2*(i-1)+2)
+          Energy_im = Energy_im + x(2*(i-1)+1) * TempVector(2*(i-1)+2) - x(2*(i-1)+2) * TempVector(2*(i-1)+1) 
         END DO
         Energy    = ParallelReduction(Energy)
         Energy_im = ParallelReduction(Energy_im)
@@ -13822,7 +13822,7 @@ END FUNCTION SearchNodeL
         WRITE( Message,'(A,A,A)') 'res: ',GetVarname(Solver % Variable),' Energy Norm im'
         CALL ListAddConstReal( CurrentModel % Simulation, Message, Energy_im )
 
-        WRITE( Message, * ) 'Energy Norm: ', Energy, Energy_im
+        WRITE( Message, * ) 'Energy Norm (Energy Functional): ', Energy, Energy_im
         CALL Info( 'CalculateLoads', Message, Level=5)
       ELSE 
         DO i=1,Aaid % NumberOfRows
@@ -13838,7 +13838,7 @@ END FUNCTION SearchNodeL
         WRITE( Message,'(A,A,A)') 'res: ',GetVarname(Solver % Variable),' Energy Norm'
         CALL ListAddConstReal( CurrentModel % Simulation, Message, Energy )
 
-        WRITE( Message, * ) 'Energy Norm: ', Energy
+        WRITE( Message, * ) '(The square of) Energy Norm: ', Energy
         CALL Info( 'CalculateLoads', Message, Level=5)
       END IF
     END IF
