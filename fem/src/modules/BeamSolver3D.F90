@@ -78,6 +78,7 @@ SUBROUTINE TimoshenkoSolver_Init0(Model, Solver, dt, Transient)
 
   CALL ListAddNewLogical(SolverPars, 'Bubbles in Global System', .FALSE.)
   CALL ListAddNewLogical(SolverPars, 'Use Global Mass Matrix',.TRUE.)
+  CALL ListAddNewInteger(SolverPars, 'Time derivative order', 2 )
   
   CALL ListAddNewLogical(SolverPars,'Beam Solver',.TRUE.)
 !------------------------------------------------------------------------------
