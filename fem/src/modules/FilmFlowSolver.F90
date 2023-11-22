@@ -122,6 +122,9 @@ SUBROUTINE FilmFlowSolver_init(Model, Solver, dt, Transient)
   ! It makes sense to eliminate the bubbles to save memory and time
   CALL ListAddNewLogical(Params, 'Bubbles in Global System', .FALSE.)
 
+  ! It makes sense to eliminate the bubbles to save memory and time
+  CALL ListAddNewLogical(Params, 'Global Mass Matrix', .TRUE.)
+
 !------------------------------------------------------------------------------ 
 END SUBROUTINE FilmFlowSolver_Init
 !------------------------------------------------------------------------------
@@ -147,15 +150,16 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
   TYPE(ValueList_t), POINTER :: Params, BodyForce, Material, BC
   TYPE(Mesh_t), POINTER :: Mesh
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), LOAD(:,:), &
-      FORCE(:), rho(:), gap(:), mu(:), ac(:), NormalVelo(:), Pres(:), Velocity(:,:), MASS(:,:),&
+      FORCE(:), rho(:), gap(:), mu(:), ac(:), Pres(:), Velocity(:,:), MASS(:,:),&
       PseudoPressure(:)  
   LOGICAL :: GradP, LateralStrain, GotAc, SurfAc
   TYPE(Variable_t), POINTER :: pVar
   INTEGER :: GapDirection
   REAL(KIND=dp) :: GapFactor
   CHARACTER(*), PARAMETER :: Caller = 'FilmFlowSolver'
- 
-  SAVE STIFF, MASS, LOAD, FORCE, rho, ac, gap, mu, NormalVelo, Pres, Velocity, &
+  LOGICAL :: Debug
+  
+  SAVE STIFF, MASS, LOAD, FORCE, rho, ac, gap, mu, Pres, Velocity, &
       PseudoPressure, AllocationsDone, pVar, GotAc, SurfAC
 !------------------------------------------------------------------------------
 
@@ -184,7 +188,13 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
       CALL Warn(Caller,'"Gap Addition Factor" greater to unity does not make sense!')
     END IF
   END IF
-    
+
+
+!  PRINT *,'Variable:',SIZE(SOlver % Variable % Values), &
+!      MAXVAL(Solver % Variable % Perm), Solver % Matrix % NumberOfRows, &
+!      SIZE(Solver % Matrix % Cols)
+  
+  
   CSymmetry = ListGetLogical( Params,'Axi Symmetric',Found )
   IF(.NOT. Found ) THEN 
     CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
@@ -199,12 +209,11 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
 
     n = (mdim+1)*(Mesh % MaxElementDOFs+BDOFs)  ! just big enough for elemental arrays
     ALLOCATE( FORCE(n), LOAD(n,mdim+1), STIFF(n,n), MASS(n,n), &
-        rho(n), ac(n), gap(n), mu(n), NormalVelo(n), Pres(n), Velocity(mdim+1,n), STAT=istat )
+        rho(n), ac(n), gap(n), mu(n), Pres(n), Velocity(mdim+1,n), STAT=istat )
     Velocity = 0.0_dp
     IF ( istat /= 0 ) THEN
       CALL Fatal( Caller, 'Memory allocation error.' )
     END IF
-    AllocationsDone = .TRUE.
     IF( GradP ) THEN
       CALL Info(Caller,'"Gradp Discretization" is set True',Level=10)
     END IF     
@@ -220,9 +229,13 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
 
       SurfAc = ListGetLogical( Params,'Surface Compressibility',Found )
     END IF
+    AllocationsDone = .TRUE.
   END IF
 
   IF(GotAc) THEN  
+    IF ( .NOT. ASSOCIATED(pVar) ) THEN
+      CALL Fatal( Caller, 'Could not find required field "FilmPressure"!')
+    END IF
     PseudoPressure = pVar % Values
     WRITE(Message,'(A,T25,E15.4)') 'PseudoPressure mean: ',&
         SUM(PseudoPressure)/SIZE(PseudoPressure)
@@ -248,7 +261,9 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
       nd = GetElementNOFDOFs()
       nb = GetElementNOFBDOFs()
 
-      IF(t==1) PRINT *,'Element:',Element % TYPE % ElementCode, n, nd, nb
+      Debug = (t==0)
+
+      IF(debug) PRINT *,'Element:',Element % TYPE % ElementCode, n, nd, nb
       
       ! Volume forces:
       !---------------
@@ -275,19 +290,31 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
         ac(1:n) = GetReal( Material,'Artificial Compressibility',Found )
         Pres(1:n) = PseudoPressure(pVar % Perm(Element % NodeIndexes))
       END IF
-
-      NormalVelo(1:n) = GetReal( Material,'Normal Velocity',Found )
             
       ! Get previous elementwise velocity iterate:
       ! Note: pressure is the dim+1 component here!
       !-------------------------------------------
       IF ( Convect ) CALL GetVectorLocalSolution( Velocity )
-      
+
       ! Get element local matrix and rhs vector:
       !-----------------------------------------
       CALL LocalBulkMatrix(  MASS, STIFF, FORCE, LOAD, rho, gap, mu, &
-          ac, NormalVelo, Velocity, Pres, Element, n, nd, nd+nb, &
+          ac, Velocity, Pres, Element, n, nd, nd+nb, &
           dim, mdim )
+
+      IF( debug ) THEN
+        PRINT *,'BulkElem:',n,nd,nd+nb,dim,mdim
+        PRINT *,'Load',Load(1:n,1:mdim+1)
+        PRINT *,'rho:',rho(1:n)
+        PRINT *,'gap:',gap(1:n)
+        PRINT *,'mu:',mu(1:n)
+        PRINT *,'ac:',ac(1:n)
+        PRINT *,'pres:',pres
+        PRINT *,'STIFF:',MAXVAL(STIFF),SUM(STIFF)
+        PRINT *,'FORCE:',MAXVAL(FORCE),SUM(FORCE)
+      END IF
+
+
       IF ( nb>0 ) THEN
         CALL LCondensate( nd, nb, mdim, STIFF, FORCE )
       END IF
@@ -296,16 +323,23 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
         CALL Default1stOrderTime( MASS, STIFF, FORCE )
       END IF
 
+      IF( debug ) THEN
+        PRINT *,'STIFF2:',MAXVAL(STIFF),SUM(STIFF)
+        PRINT *,'FORCE2:',MAXVAL(FORCE),SUM(FORCE)
+      END IF
+
+      
       ! Update global matrix and rhs vector from local matrix & vector:
       !----------------------------------------------------------------
       CALL DefaultUpdateEquations( STIFF, FORCE )
     END DO
     CALL DefaultFinishBulkAssembly()
 
-    
     DO t=1, Solver % Mesh % NumberOfBoundaryElements
       Element => GetBoundaryElement(t)
       IF ( .NOT. ActiveBoundaryElement() ) CYCLE
+
+      debug = ( t == 0 )
       
       n = GetElementNOFNodes()      
       BC => GetBC()
@@ -320,12 +354,22 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
       END WHERE
 
       DO i=1,mdim
-        Load(i,1:n) = GetReal( BC, 'Pressure '//I2S(i), Found ) 
+        Load(1:n,i) = GetReal( BC, 'Pressure '//I2S(i), Found ) 
       END DO
-      Load(mdim+1,1:n) = GetReal( BC, 'Mass Flux', Found )
+      Load(1:n,mdim+1) = GetReal( BC, 'Mass Flux', Found )
       
       CALL LocalBoundaryMatrix(  MASS, STIFF, FORCE, Load, rho, gap, mu, &
           Element, n, dim, mdim )
+
+      IF(debug ) THEN
+        PRINT *,'BCElem:',n,nd,nd+nb,dim,mdim
+        PRINT *,'Load',Load(1:n,1:mdim+1)
+        PRINT *,'rho:',rho(1:n)
+        PRINT *,'gap:',gap(1:n)
+        PRINT *,'mu:',mu(1:n)
+        PRINT *,'STIFF:',MAXVAL(STIFF),SUM(STIFF)
+        PRINT *,'STIFF:',MAXVAL(FORCE),SUM(FORCE)
+      END IF
 
       CALL DefaultUpdateEquations( STIFF, FORCE )
     END DO
@@ -342,6 +386,14 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
 
   CALL DefaultFinish()
 
+  BLOCK
+    REAL(KIND=dp), POINTER :: Comp(:)
+    DO i=1, Solver % Variable % dofs
+      Comp => Solver % Variable % Values(i::Solver % Variable % Dofs)      
+      PRINT *,'SolRange:',i,MINVAL(Comp),MAXVAL(Comp),SUM(Comp)/SIZE(Comp)
+    END DO
+  END BLOCK
+  
   CALL Info(Caller,'All done',Level=12)
 
   
@@ -350,11 +402,11 @@ CONTAINS
 
 !------------------------------------------------------------------------------
   SUBROUTINE LocalBulkMatrix(  MASS, STIFF, FORCE, LOAD, Nodalrho, NodalGap, &
-      Nodalmu, NodalAC, NodalNormalVelo, NodalVelo, NodalPres, Element, n, nd, &
+      Nodalmu, NodalAC, NodalVelo, NodalPres, Element, n, nd, &
       ntot, dim, mdim )
 !------------------------------------------------------------------------------
     REAL(KIND=dp), TARGET :: MASS(:,:), STIFF(:,:), FORCE(:), LOAD(:,:)
-    REAL(KIND=dp) :: Nodalmu(:), NodalNormalVelo(:), NodalAC(:), Nodalrho(:), &
+    REAL(KIND=dp) :: Nodalmu(:), NodalAC(:), Nodalrho(:), &
         NodalGap(:), NodalPres(:), NodalVelo(:,:)
     INTEGER :: dim, mdim, n, nd, ntot
     TYPE(Element_t), POINTER :: Element
@@ -366,7 +418,7 @@ CONTAINS
     INTEGER :: t, i, j, k, l, p, q, geomc
     TYPE(GaussIntegrationPoints_t) :: IP
 
-    REAL(KIND=dp) :: mu = 1.0d0, rho = 1.0d0, normalvelo, pres, gap, ac, s, s0, s1
+    REAL(KIND=dp) :: mu = 1.0d0, rho = 1.0d0, pres, gap, ac, s, s0, s1
 
     TYPE(Nodes_t) :: Nodes
     SAVE Nodes
@@ -393,10 +445,19 @@ CONTAINS
 
     gapGrad = 0.0_dp
     meangap = SUM( NodalGap(1:n) ) / n
-       
+
+    ! To my understanding we want to include the gap height to weight
+    IF( Csymmetry ) THEN
+      !         s = s * (meangap**2)
+      geomc = 2
+    ELSE
+      !         s = s * meangap
+      geomc = 1
+    END IF
+           
     ! Numerical integration:
     !-----------------------
-    IP = GaussPoints( Element )
+    IP = GaussPointsAdapt( Element )
     DO t=1,IP % n
        ! Basis function values & derivatives at the integration point:
        !--------------------------------------------------------------
@@ -421,8 +482,6 @@ CONTAINS
          gapGrad(i) = SUM( NodalGap(1:nd) * dBasisdx(1:nd,i) )
        END DO
        
-       normalVelo = SUM( Basis(1:n) * NodalNormalVelo(1:n) )
-       
        ! Previous velocity at the integration point:
        !--------------------------------------------
        Velo = MATMUL( NodalVelo(1:mdim,1:nd), Basis(1:nd) )
@@ -430,6 +489,7 @@ CONTAINS
 
        IF( GotAC ) THEN
          Pres = SUM( NodalPres(1:n) * Basis(1:n) )
+         !Pres = SUM( NodalPres(1:n) ) / n
          ac = SUM( NodalAC(1:n) * Basis(1:n) ) / dt
          IF(SurfAc) ac = ac / gap
        END IF
@@ -440,17 +500,10 @@ CONTAINS
        IF ( Convect .AND. Newton ) THEN
          LoadAtIp(1:mdim) = LoadAtIp(1:mdim) + rho * MATMUL(VeloGrad,Velo)
        END IF
-       LoadAtIp(mdim+1) = rho * geomc * LoadAtIp(mdim+1)
+       LoadAtIp(mdim+1) = rho * geomc * LoadAtIp(mdim+1) / gap
 
-       ! To my understanding we want to include the gap height to weight
-       IF( Csymmetry ) THEN
-!         s = s * (meangap**2)
-         geomc = 2
-       ELSE
-!         s = s * meangap
-         geomc = 1
-       END IF
-       
+       IF(debug) PRINT *,'dbg1:',t,mu,rho,gap,gapGrad,geomc,LoadAtIp
+
        ! Finally, the elemental matrix & vector:
        !----------------------------------------       
        DO p=1,ntot
@@ -493,7 +546,7 @@ CONTAINS
              ELSE
                A(i,mdim+1) = A(i,mdim+1) - s * Basis(q) * dBasisdx(p,i)
                A(mdim+1,i) = A(mdim+1,i) + s * gap * rho * dBasisdx(q,i) * Basis(p) & 
-                   + geomc * s * rho * Basis(q) * gapGrad(i) * Basis(p)
+                   + s * rho * Basis(q) * gapGrad(i) * Basis(p)
 !                   + 1.0*(geomc*s/gap) * rho * Basis(q) * gapGrad(i) * Basis(p)
 
                !A(i,dim+1) = A(i,dim+1) - s * Basis(q) * dBasisdx(p,i)
@@ -506,7 +559,11 @@ CONTAINS
              !A(mdim+1,i) = A(mdim+1,i) + geomc * s * NormalVelo * rho * Basis(q) * Basis(p)
            END DO
              
-           ! This is the artificial compressibility for FSI coupling
+           ! This is the implicit term in artificial compressibility for FSI coupling
+           ! applied to thin film flow. 
+           ! Div(u) + (c/dt)*p^(m) = (c/dt)*p^(m-1)
+           ! See Raback et al., CFD Eccomas 2001.
+           ! "FLUID-STRUCTURE INTERACTION BOUNDARY CONDITIONS BY ARTIFICIAL COMPRESSIBILITY".
            IF(GotAC) A(mdim+1,mdim+1) = ac * s * rho * Basis(q) * Basis(p)              
            
          END DO
@@ -514,13 +571,16 @@ CONTAINS
          F => FORCE(i:i+mdim)
          
          F = F + s * LoadAtIP * Basis(p) 
-         IF( GotAC ) F = F + ac * s * rho * Basis(p) * Pres
+
+         ! This is the explit term in artificial compressibility for FSI coupling
+         IF( GotAC ) F(mdim+1) = F(mdim+1) + ac * s * rho * Basis(p) * Pres
        END DO
     END DO
 
    ! for p2/p1 elements set Dirichlet constraint for unused dofs,
    ! EliminateDirichlet will get rid of these:
    !-------------------------------------------------------------
+#if 1
     DO p = n+1,ntot
       i = (mdim+1) * p
       FORCE(i)   = 0.0d0
@@ -530,6 +590,7 @@ CONTAINS
       STIFF(:,i) = 0.0d0
       STIFF(i,i) = 1.0d0
     END DO
+#endif
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalBulkMatrix
 !------------------------------------------------------------------------------
@@ -544,21 +605,29 @@ CONTAINS
     INTEGER :: dim, mdim, n, nd, ntot
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Load(dim+1)
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Load(mdim+1)
     REAL(KIND=dp), POINTER :: F(:),M(:,:)
     LOGICAL :: Stat
     INTEGER :: t, i, j, k, p, q, geomc
     TYPE(GaussIntegrationPoints_t) :: IP
-    REAL(KIND=dp) :: mu = 1.0d0, rho = 1.0d0, normalvelo, gap, ac, s
+    REAL(KIND=dp) :: mu = 1.0d0, rho = 1.0d0, gap, ac, s
     TYPE(Nodes_t) :: Nodes
     SAVE Nodes
 !------------------------------------------------------------------------------
 
+    
     CALL GetElementNodes( Nodes )
     STIFF = 0.0d0
     MASS  = 0.0d0
     FORCE = 0.0d0
-
+    
+    ! To my understanding we want to include the gap height to weight
+    IF( Csymmetry ) THEN
+      geomc = 2
+    ELSE
+      geomc = 1
+    END IF
+    
     ! Numerical integration:
     !-----------------------
     IP = GaussPoints( Element )
@@ -580,13 +649,6 @@ CONTAINS
          Load(i) = SUM( Basis(1:n) * NodalLoad(i,1:n) ) 
        END DO
          
-       ! To my understanding we want to include the gap height to weight
-       IF( Csymmetry ) THEN
-         geomc = 2
-       ELSE
-         geomc = 1
-       END IF
-       
        ! Finally, the elemental matrix & vector:
        !----------------------------------------       
        DO p=1,n
