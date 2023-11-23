@@ -17693,9 +17693,6 @@ CONTAINS
       CALL AppendMissingBCs(CurrentModel,j)
     END IF
 
-    !Active for debugging
-    !CALL CheckMeshInfo( Mesh_out )
-    
     CALL PrepareMesh( CurrentModel, Mesh_out, isParallel )
     
     ExtrudedMeshName = ListGetString(CurrentModel % Simulation,'Extruded Mesh Name',Found)
