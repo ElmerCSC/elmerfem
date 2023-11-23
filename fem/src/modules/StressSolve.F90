@@ -1414,6 +1414,12 @@ CONTAINS
        Element => GetBoundaryElement(t)
        IF ( .NOT. ActiveBoundaryElement() ) CYCLE
        
+       i = GetElementDim(Element)
+       IF( i >= Mesh % MeshDim ) THEN
+         CALL Warn('StressSolve','Invalid dimension '//I2S(i)//' for BC element '//I2S(t))
+         CYCLE
+       END IF
+       
        n = GetElementNOFNodes()
        ntot = GetElementNOFDOFs()
 
