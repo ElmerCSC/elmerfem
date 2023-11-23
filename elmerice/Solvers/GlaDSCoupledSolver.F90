@@ -102,11 +102,12 @@
      LOGICAL :: Found, FluxBC, Channels, Storage, FirstTime = .TRUE., &
           AllocationsDone = .FALSE.,  SubroutineVisited = .FALSE., &
           meltChannels = .TRUE., NeglectH = .TRUE., Calving = .FALSE., &
-          CycleElement=.FALSE., MABool = .FALSE., MHBool = .FALSE., LimitEffPres=.FALSE.
+          CycleElement=.FALSE., MABool = .FALSE., MaxHBool = .FALSE., LimitEffPres=.FALSE., &
+          MinHBool=.FALSE.
      LOGICAL, ALLOCATABLE ::  IsGhostNode(:), NoChannel(:), NodalNoChannel(:)
 
      REAL(KIND=dp) :: NonlinearTol, dt, CumulativeTime, RelativeChange, &
-          Norm, PrevNorm, S, C, Qc, MaxArea, MaxH
+          Norm, PrevNorm, S, C, Qc, MaxArea, MaxH, MinH
      REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), &
        STIFF(:,:), LOAD(:), SheetConductivity(:), ChannelConductivity(:),&
        FORCE(:),  C1(:), CT(:), OldValues(:), Refq(:)
@@ -430,9 +431,13 @@
      IF (.NOT.Found) LimitEffPres= .FALSE.
      
      MaxH  = GetConstReal( SolverParams, &
-          'Max Sheet Thickness',    MHBool )
-     IF ((.NOT. MHBool)) CALL WARN(SolverName,'No max sheet thickness specified.&
+          'Max Sheet Thickness',    MaxHBool )
+     IF ((.NOT. MaxHBool)) CALL WARN(SolverName,'No max sheet thickness specified.&
           Sheet may grow very large')
+
+     MinH  = GetConstReal( SolverParams, &
+          'Min Sheet Thickness',    MinHBool )
+  
 
      IF (Channels) THEN
         meltChannels = GetLogical( SolverParams,'Activate Melt From Channels', Found )
@@ -1180,13 +1185,20 @@
                 NULLIFY(WorkVar, WorkVar2)
                 IF(CycleElement) CYCLE
               END IF
-              IF(MHBool) THEN
+
+              IF(MaxHBool) THEN
                 IF (ThickSolution(k)>MaxH) THEN
-                  ThickSolution(k) = 0.0
-                  ThickPrev(k,1) = 0.0
+                  ThickSolution(k) = MaxH
+                  !ThickPrev(k,1) = 0.0
                 END IF
               END IF
 
+              IF(MinHBool) THEN
+                IF (ThickSolution(k)<MinH) THEN
+                  ThickSolution(k) = MinH
+                END IF
+              END IF
+              
               SELECT CASE(methodSheet)
               CASE('implicit') 
                  IF (ThickSolution(k) > hr2(j)) THEN
