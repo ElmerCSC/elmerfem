@@ -744,6 +744,10 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    ! Do have impedance BCs? 
    LayerBC = (ListCheckPresentAnyBC(Model, 'Layer Electric Conductivity') .AND. vdofs==2) 
+   IF(LayerBC .AND. dim == 2) THEN
+     CALL Warn('MagnetoDynamicsCalcFields','Layer model not yet implemented for 2D!')
+     LayerBC = .FALSE.
+   END IF
    jh_k = 0
    
    ! Do we have a real or complex valued primary field?
