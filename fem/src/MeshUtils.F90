@@ -2523,9 +2523,6 @@ CONTAINS
    CALL PrepareMesh(Model,Mesh,Parallel,Def_Dofs,mySolver)      
    CALL Info(Caller,'Preparing mesh done',Level=8)
 
-   IF( ListGetLogical( Vlist,'Check Mesh',Found ) ) THEN
-     CALL CheckMeshInfo( Mesh )
-   END IF
 
    
  CONTAINS
@@ -3001,15 +2998,15 @@ CONTAINS
      CALL InspectQuadraticMesh( Mesh ) 
    END IF
    
-   IF( ListGetLogical( Vlist,'Inspect Mesh',Found ) ) THEN
-     CALL CheckMeshInfo( Mesh ) 
-   END IF
-
    IF(ListGetLogical( Model % Simulation, 'Parallel Reduce Element Max Sizes', Found ) ) THEN
      Mesh % MaxElementDOFs  = ParallelReduction( Mesh % MaxElementDOFs,2  ) 
      Mesh % MaxElementNodes = ParallelReduction( Mesh % MaxElementNodes,2 ) 
    END IF
 
+   IF( ListGetLogical( Vlist,'Inspect Mesh',Found ) .OR. &
+       ListGetLogical( Vlist,'Check Mesh',Found ) ) THEN
+     CALL CheckMeshInfo( Mesh ) 
+   END IF
 
  CONTAINS
      
