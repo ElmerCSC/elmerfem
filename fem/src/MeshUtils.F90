@@ -18914,7 +18914,7 @@ CONTAINS
     CALL Info(Caller,'Number of boundary elements: '//I2S(nb))
     CALL Info(Caller,'Number of nodes: '//I2S(nn))
 
-    ALLOCATE(TypeHits(27))
+    ALLOCATE(TypeHits(827))
     ALLOCATE(NodeHits(nn))
     
     CALL CheckMeshBulkHits()
@@ -18947,7 +18947,7 @@ CONTAINS
         IF(.NOT. ASSOCIATED( Element % TYPE ) ) THEN
           CALL Fatal(Caller,'Element type not associated for bulk elem: '//I2S(t))
         END IF
-        i = Element % TYPE % NumberOfNodes
+        i = Element % TYPE % ElementCode
         TypeHits(i) = TypeHits(i)+1
         IF(ANY(Element % NodeIndexes < 1 ) ) THEN
           PRINT *,'NodeIndexes:', Element % NodeIndexes 
@@ -18966,9 +18966,9 @@ CONTAINS
         Dbg(3) = dbg(3) + i*NodeHits(i)
       END DO
 
-      DO i=1,27
+      DO i=1,SIZE(TypeHits)
         j = TypeHits(i)
-        IF(j>0) CALL Info(Caller,'Bulk elements with '//I2S(i)//' nodes: '//I2S(j))        
+        IF(j>0) CALL Info(Caller,'Bulk element type '//I2S(i)//' count: '//I2S(j))        
       END DO
       
       t=MAXVAL(NodeHits)
@@ -18985,6 +18985,7 @@ CONTAINS
       
     END SUBROUTINE CheckMeshBulkHits
 
+
     SUBROUTINE CheckMeshBoundaryHits()
       TypeHits = 0
       NodeHits = 0
@@ -18995,7 +18996,7 @@ CONTAINS
         IF(.NOT. ASSOCIATED( Element % TYPE ) ) THEN
           CALL Fatal(Caller,'Element type not associated for bc elem: '//I2S(t-na))
         END IF
-        i = Element % TYPE % NumberOfNodes
+        i = Element % TYPE % ElementCode
         TypeHits(i) = TypeHits(i)+1
         IF(ANY(Element % NodeIndexes < 1 ) ) THEN
           PRINT *,'NodeIndexes:', Element % NodeIndexes 
@@ -19014,9 +19015,9 @@ CONTAINS
           END IF
         END IF
       END DO
-      DO i=1,27
+      DO i=1,SIZE(TypeHits)
         j = TypeHits(i)
-        IF(j>0) CALL Info(Caller,'Boundary elements with '//I2S(i)//' nodes: '//I2S(j))
+        IF(j>0) CALL Info(Caller,'Boundary element type '//I2S(i)//' count: '//I2S(j))        
       END DO
 
       t=MAXVAL(NodeHits)
