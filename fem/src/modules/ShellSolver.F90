@@ -81,7 +81,7 @@ SUBROUTINE ShellSolver_Init0(Model, Solver, dt, Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: SolverPars
-  LOGICAL :: SavePrincipalAxes, Found, Eigenanalysis
+  LOGICAL :: SavePrincipalAxes, Found, RotateDOFs, Eigenanalysis
   INTEGER  :: i
 !------------------------------------------------------------------------------
   SolverPars => GetSolverParams()
@@ -90,10 +90,15 @@ SUBROUTINE ShellSolver_Init0(Model, Solver, dt, Transient)
   CALL ListAddLogical(SolverPars, 'Bubbles in Global System', .TRUE.)
   CALL ListAddLogical(SolverPars, 'Initialize Dirichlet Conditions', .FALSE.)
 
-  CALL ListAddNewString(SolverPars, 'Variable', 'Deflection[U:3 DNU:3]')
-
-  ! Only created if the system is harmonic
-  CALL ListAddNewString(SolverPars, 'Imaginary Variable', 'Deflection[U im:3 DNU im:3]')
+  RotateDOFs = GetLogical(SolverPars, 'Rotate DOFs', Found)
+  IF (RotateDOFs) THEN
+    CALL ListAddNewString(SolverPars, 'Variable', 'Deflection[U:3 Theta:3]')
+    CALL ListAddNewString(SolverPars, 'Imaginary Variable', 'Deflection[U im:3 Theta im:3]')
+  ELSE
+    CALL ListAddNewString(SolverPars, 'Variable', 'Deflection[U:3 DNU:3]')
+    ! Only created if the system is harmonic
+    CALL ListAddNewString(SolverPars, 'Imaginary Variable', 'Deflection[U im:3 DNU im:3]')
+  END IF
 
   Eigenanalysis = GetLogical(SolverPars, 'Eigen Analysis', Found)
   IF (Eigenanalysis) THEN
@@ -3512,7 +3517,7 @@ CONTAINS
 
     REAL(KIND=dp) :: StrainVec(6), StressVec(6)
     REAL(KIND=dp) :: PrevSolVec(m*nd), PrevField(13)
-    REAL(KIND=dp) :: QBlock(3,3), Q(m*nd,m*nd), TMat(m*nd,m*nd), RotMat(3,3)
+    REAL(KIND=dp) :: QBlock(3,3), Q(m*nd,m*nd), RotMat(3,3)
     REAL(KIND=dp) :: CMat(4,4), GMat(2,2)
     REAL(KIND=dp) :: A11, A22, SqrtDetA, A1, A2, B11, B22
     REAL(KIND=dp) :: C111, C112, C221, C222, C211, C212
@@ -3694,7 +3699,6 @@ CONTAINS
     END DO
 
     Q = 0.0d0
-    TMat = 0.0d0
     DO j=1,nd
       ! ------------------------------------------------------------------------
       ! The following transformation is designed for the Lagrange element DOFs.
@@ -3720,7 +3724,7 @@ CONTAINS
       ! -Du[d] = d x theta + <theta,d>d. The tangent plane components are
       ! then more intuitive when thinking in terms of moments.
       ! 
-      IF (RotateDOFs) THEN
+      IF (RotateDOFs .OR. DrillingDOFs) THEN
         ! 
         ! Create a matrix RotMat such that d x v = RotMat * v
         !
@@ -3732,6 +3736,8 @@ CONTAINS
         RotMat(1,3) = abasis3(2)
         RotMat(2,3) = -abasis3(1)
 
+        ! Transformation from the Cartesian components of theta to
+        ! the local representation in terms of the local surface basis
         DO k=1,3
           Q(i0+4,i0+3+k) = DOT_PRODUCT(RotMat(:,k), abasis1(:))
           Q(i0+5,i0+3+k) = DOT_PRODUCT(RotMat(:,k), abasis2(:))
@@ -3740,31 +3746,8 @@ CONTAINS
       ELSE
         Q(i0+4:i0+6,i0+4:i0+6) =  QBlock(1:3,1:3)
       END IF
-
-      IF (DrillingDOFs) THEN
-        !
-        ! TMat is a transformation matrix for expressing the components of
-        ! beta vector as rotated components a theta vector according to
-        ! the relation beta = d x theta
-        !
-        TMat(i0+1,i0+1) = 1.0d0
-        TMat(i0+2,i0+2) = 1.0d0
-        TMat(i0+3,i0+3) = 1.0d0
-        TMat(i0+4,i0+5) = -1.0d0
-        TMat(i0+5,i0+4) = 1.0d0
-        TMat(i0+6,i0+6) = 1.0d0
-      ELSE
-        TMat(i0+1,i0+1) = 1.0d0
-        TMat(i0+2,i0+2) = 1.0d0
-        TMat(i0+3,i0+3) = 1.0d0
-        TMat(i0+4,i0+4) = 1.0d0
-        TMat(i0+5,i0+5) = 1.0d0
-        TMat(i0+6,i0+6) = 1.0d0
-      END IF
-
     END DO    
     PrevSolVec(1:DOFs) = MATMUL(Q(1:DOFs,1:DOFs),PrevSolVec(1:DOFs))
-    PrevSolVec(1:DOFs) = MATMUL(TMat(1:DOFs,1:DOFs),PrevSolVec(1:DOFs))
 
     ! ------------------------------------------------------------------------
     ! Finally, integrate local element matrices:
@@ -4680,19 +4663,14 @@ CONTAINS
     !-------------------------------------------------------
     ! Transform to the global DOFs:
     !-------------------------------------------------------
-    Stiff(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(TMat(1:DOFs,1:DOFs)),MATMUL(Stiff(1:DOFs,1:DOFs),TMat(1:DOFs,1:DOFs)))
     Stiff(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),MATMUL(Stiff(1:DOFs,1:DOFs),Q(1:DOFs,1:DOFs)))
-
-    Force(1:DOFs) = MATMUL(TRANSPOSE(TMat(1:DOFs,1:DOFs)),Force(1:DOFs))
     Force(1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),Force(1:DOFs))
 
     IF (LargeDeflection) THEN
-      ! RHSForce(1:DOFs) = MATMUL(TRANSPOSE(TMat(1:DOFs,1:DOFs)),RHSForce(1:DOFs))
       RHSForce(1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),RHSForce(1:DOFs))
     END IF
 
     IF ( MassAssembly ) THEN
-      Mass(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(TMat(1:DOFs,1:DOFs)),MATMUL(Mass(1:DOFs,1:DOFs),TMat(1:DOFs,1:DOFs)))
       Mass(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),MATMUL(Mass(1:DOFs,1:DOFs),Q(1:DOFs,1:DOFs)))
       Damp(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),MATMUL(Damp(1:DOFs,1:DOFs),Q(1:DOFs,1:DOFs)))
 
