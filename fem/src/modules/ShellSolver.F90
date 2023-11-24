@@ -656,13 +656,14 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
         LocalSol = 0.0d0
       END IF
 
-      IF (DrillingDOFs) THEN
-        CALL Warn('ShellSolver', 'Drilling DOFs does not yet support beam sections')
-        CYCLE
-      END IF
+!      IF (DrillingDOFs) THEN
+!        CALL Warn('ShellSolver', 'Drilling DOFs does not yet support beam sections')
+!        CYCLE
+!      END IF
 
       CALL BeamStiffnessMatrix(BGElement, n, nd+nb, nb, TransientSimulation, MassAssembly, &
-          HarmonicAssembly, LargeDeflection, LocalSol, LocalRHSForce, .TRUE.)
+          HarmonicAssembly, LargeDeflection, LocalSol, LocalRHSForce, .TRUE., &
+          ApplyRotation = .NOT.RotateDOFs, DrillingDOFs = DrillingDOFs) 
 
       IF (LargeDeflection .AND. NonlinIter == 1) THEN
         ! ---------------------------------------------------------------------------
