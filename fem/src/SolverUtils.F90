@@ -4451,17 +4451,20 @@ CONTAINS
     END IF
       
     IF( Parallel ) THEN
-      s(1) = ParallelReduction( s(1),1 ) 
-      s(2) = ParallelReduction( s(2),2 ) 
-      s(3) = ParallelReduction( s(3) )
       np = ParallelReduction( np )
+      IF( np > 0 ) THEN
+        s(1) = ParallelReduction( s(1),1 ) 
+        s(2) = ParallelReduction( s(2),2 ) 
+        s(3) = ParallelReduction( s(3) )
+      END IF
     END IF
 
     IF( np == 0 ) THEN
       WRITE(Message,*) 'Size of vector is zero: '//TRIM(str)
       CALL Info('VectorValuesRange',Message)              
     ELSE
-      WRITE(Message,*) '[min,max,sum] for '//TRIM(str)//':', s
+      s(3) = s(3) / np
+      WRITE(Message,*) '[min,max,ave] for '//TRIM(str)//':', s
       CALL Info('VectorValuesRange',Message)
     END IF
         
