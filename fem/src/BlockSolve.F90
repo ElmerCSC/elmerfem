@@ -3084,7 +3084,7 @@ CONTAINS
     REAL(KIND=dp) :: nrm
     LOGICAL :: GotOrder, BlockGS, Found, NS, ScaleSystem, DoSum, &
         IsComplex, BlockScaling, DoDiagScaling, DoPrecScaling, UsePrecMat, Trans, &
-        Isolated, NoNestedScaling, DoAMGXmv
+        Isolated, NoNestedScaling, DoAMGXmv, CalcLoads
     CHARACTER(:), ALLOCATABLE :: str
     INTEGER(KIND=AddrInt) :: AddrFunc
     EXTERNAL :: AddrFunc
@@ -3300,7 +3300,10 @@ CONTAINS
         CALL AMGXSolver( A, x, btmp, ASolver )
         IF( ScaleSystem ) CALL BackScaleLinearSystem(ASolver,A,btmp,x)
       ELSE
+        CalcLoads = ListGetLogical( ASolver % Values, 'Calculate Loads', Found )
+        CALL ListAddLogical( ASolver % Values, 'Calculate Loads', .FALSE.)
         CALL SolveLinearSystem( A, btmp, x, Var % Norm, Var % DOFs, ASolver )
+        IF (CalcLoads) CALL ListAddLogical( ASolver % Values, 'Calculate Loads', .TRUE.)        
       END IF
 
       ! If this was a special preconditioning matrix then update the solution in the scaled system. 
@@ -3721,7 +3724,11 @@ CONTAINS
           ! ParallelInitSolve expects full vectors
           IF ( i /= j ) THEN
             IF(ASSOCIATED(A % ParMatrix)) CALL ParallelInitSolve(A,r,r,r)
-          ELSE 
+          ELSE
+            IF (ASSOCIATED(A % ParMatrix % SplittedMatrix % InsideMatrix % PrecValues)) THEN
+              IF (.NOT. ASSOCIATED(A % PrecValues)) & 
+                  NULLIFY(A % ParMatrix % SplittedMatrix % InsideMatrix % PrecValues)
+            END IF
             CALL ParallelInitSolve(A, TotMatrix % Subvector(i) % Var % Values, A % rhs, r )
             IF( ASSOCIATED(SolverMatrix)) THEN
               x(offset(i)+1:offset(i+1)) = TotMatrix % SubVector(i) % Var % Values        
@@ -4443,6 +4450,11 @@ CONTAINS
     END IF
 
     CALL ListPushNamespace('outer:')
+
+    IF (BlockScaling) THEN
+      ! This simplifies writing a consistent sif file:
+      CALL ListAddLogical(Solver % Values, 'Linear System Row Equilibration', .TRUE.)      
+    END IF
     
     ! The case with one block is mainly for testing and developing features
     ! related to nonlinearity and assembly.

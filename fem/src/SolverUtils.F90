@@ -1075,7 +1075,7 @@ CONTAINS
      TYPE(NormalTangential_t), POINTER :: NT => NULL()
      INTEGER :: NrmPerm(27),dofs,dim,i,j,m,n
      LOGICAL :: GotIt, uFound
-     REAL(KIND=dp) :: NrmLen
+     REAL(KIND=dp) :: NrmLen, NormalTest(3)
      
      SAVE PrevSolver, NT, dofs, dim
      
@@ -1113,11 +1113,22 @@ CONTAINS
          j = NrmVar % Perm(node)
          IF( j>0 ) THEN
            Normal(1:dim) = NrmVar % Values(dofs*(j-1)+1:dofs*(j-1)+dim) 
-           uFound = .TRUE.
+           ! Some legacy ways to compute normal vector do not compute the vector even though
+           ! the permutation is positive. This tries to deal with that kind of issue.
+           NrmLen = SQRT(SUM(Normal(1:dim)**2))
+           uFound = (NrmLen > 0.5_dp)
          END IF         
        ELSE IF( PRESENT( Basis ) ) THEN
          n = Element % TYPE % NumberOfNodes
-         m = COUNT( NrmVar % Perm(Element % NodeIndexes) > 0 )
+         m = 0
+         DO i=1,n
+           j = NrmVar % Perm(Element % NodeIndexes(i))
+           IF(j>0) THEN
+             NormalTest(1:dim) = NrmVar % Values(dofs*(j-1)+1:dofs*(j-1)+dim) 
+             NrmLen = SQRT(SUM(NormalTest(1:dim)**2))
+             IF( NrmLen > 0.5_dp ) m = m+1
+           END IF
+         END DO
          IF( m == n ) THEN
            NrmPerm(1:n) = NrmVar % Perm( Element % NodeIndexes) - 1
            Normal(1) = SUM( Basis(1:n) * NrmVar % Values(dofs*NrmPerm(1:n)+1) ) 
@@ -4440,17 +4451,20 @@ CONTAINS
     END IF
       
     IF( Parallel ) THEN
-      s(1) = ParallelReduction( s(1),1 ) 
-      s(2) = ParallelReduction( s(2),2 ) 
-      s(3) = ParallelReduction( s(3) )
       np = ParallelReduction( np )
+      IF( np > 0 ) THEN
+        s(1) = ParallelReduction( s(1),1 ) 
+        s(2) = ParallelReduction( s(2),2 ) 
+        s(3) = ParallelReduction( s(3) )
+      END IF
     END IF
 
     IF( np == 0 ) THEN
       WRITE(Message,*) 'Size of vector is zero: '//TRIM(str)
       CALL Info('VectorValuesRange',Message)              
     ELSE
-      WRITE(Message,*) '[min,max,sum] for '//TRIM(str)//':', s
+      s(3) = s(3) / np
+      WRITE(Message,*) '[min,max,ave] for '//TRIM(str)//':', s
       CALL Info('VectorValuesRange',Message)
     END IF
         
@@ -13353,6 +13367,9 @@ END FUNCTION SearchNodeL
         Diag(i) = tmp
         Diag(i+1) = tmp
       END DO
+      IF (Parallel) THEN
+        CALL ParallelSUMVector(A,Diag)
+      END IF
     ELSE
       IF (Parallel) THEN
  
@@ -13793,8 +13810,8 @@ END FUNCTION SearchNodeL
             IF ( Aaid% ParMatrix % ParallelInfo % &
                 NeighbourList(2*(i-1)+1) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
           END IF
-          Energy    = Energy    + x(2*(i-1)+1) * TempVector(2*(i-1)+1) - x(2*(i-1)+2) * TempVector(2*(i-1)+2)
-          Energy_im = Energy_im + x(2*(i-1)+1) * TempVector(2*(i-1)+2) + x(2*(i-1)+2) * TempVector(2*(i-1)+1) 
+          Energy    = Energy    + x(2*(i-1)+1) * TempVector(2*(i-1)+1) + x(2*(i-1)+2) * TempVector(2*(i-1)+2)
+          Energy_im = Energy_im + x(2*(i-1)+1) * TempVector(2*(i-1)+2) - x(2*(i-1)+2) * TempVector(2*(i-1)+1) 
         END DO
         Energy    = ParallelReduction(Energy)
         Energy_im = ParallelReduction(Energy_im)
@@ -13808,7 +13825,7 @@ END FUNCTION SearchNodeL
         WRITE( Message,'(A,A,A)') 'res: ',GetVarname(Solver % Variable),' Energy Norm im'
         CALL ListAddConstReal( CurrentModel % Simulation, Message, Energy_im )
 
-        WRITE( Message, * ) 'Energy Norm: ', Energy, Energy_im
+        WRITE( Message, * ) 'Energy Norm (Energy Functional): ', Energy, Energy_im
         CALL Info( 'CalculateLoads', Message, Level=5)
       ELSE 
         DO i=1,Aaid % NumberOfRows
@@ -13824,7 +13841,7 @@ END FUNCTION SearchNodeL
         WRITE( Message,'(A,A,A)') 'res: ',GetVarname(Solver % Variable),' Energy Norm'
         CALL ListAddConstReal( CurrentModel % Simulation, Message, Energy )
 
-        WRITE( Message, * ) 'Energy Norm: ', Energy
+        WRITE( Message, * ) '(The square of) Energy Norm: ', Energy
         CALL Info( 'CalculateLoads', Message, Level=5)
       END IF
     END IF
@@ -16793,8 +16810,8 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
     INTEGER :: i,j,k,l,n,m,t,bf_id,dofs,nsize,i1,i2,NoGauss
     REAL(KIND=dp), POINTER :: Values(:), Solution(:), LocalSol(:), LocalCond(:)
     INTEGER, POINTER :: Indexes(:), VarIndexes(:), Perm(:)
-    LOGICAL :: Found, Conditional, GotIt, Stat, StateVariable, AllocationsDone = .FALSE.
-    LOGICAL, POINTER :: ActivePart(:),ActiveCond(:)
+    LOGICAL :: Found, Conditional, GotIt, Stat, StateVariable, DoIt, AllocationsDone = .FALSE.
+    LOGICAL, POINTER :: ActivePart(:),ActiveCond(:),ActivePartBC(:),ActiveCondBC(:)
     TYPE(Variable_t), POINTER :: ExpVariable
     TYPE(ValueList_t), POINTER :: ValueList
     TYPE(Element_t),POINTER :: Element  
@@ -16839,6 +16856,9 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
         m = CurrentModel % NumberOFBodyForces
         ALLOCATE( ActivePart(m), ActiveCond(m) )
 
+        m = CurrentModel % NumberOFBCs
+        ALLOCATE( ActivePartBC(m), ActiveCondBC(m) )
+
         m = Mesh % MaxElementDOFs
         ALLOCATE( LocalSol(m), LocalCond(m))
 
@@ -16878,7 +16898,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
 
       CALL Info(Caller,'Updating field variable with dofs: '//I2S(DOFs),Level=12)
 
-
+      
       DO j=1,DOFs
 
 100     Values => ExpVariable % Values
@@ -16896,6 +16916,8 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
         !------------------------------------------------------------------------------      
         ActivePart = .FALSE.
         ActiveCond = .FALSE.
+        ActivePartBC = .FALSE.
+        ActiveCondBC = .FALSE.
 
         DO bf_id=1,CurrentModel % NumberOFBodyForces
           ActivePart(bf_id) = ListCheckPresent( &
@@ -16903,11 +16925,16 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
           ActiveCond(bf_id) = ListCheckPresent( &
               CurrentModel % BodyForces(bf_id) % Values,CondName )      
         END DO
+        DO bf_id=1,CurrentModel % NumberOFBCs
+          ActivePartBC(bf_id) = ListCheckPresent( &
+              CurrentModel % BCs(bf_id) % Values,TmpName ) 
+          ActiveCondBC(bf_id) = ListCheckPresent( &
+              CurrentModel % BCs(bf_id) % Values,CondName )      
+        END DO
 
-        IF ( .NOT. ANY( ActivePart ) ) CYCLE
-
-        CALL Info(Caller,'Found a proper definition in body forces',Level=8)
-
+        m = COUNT(ActivePart) + COUNT(ActivePartBC)
+        IF (m == 0) CYCLE
+        CALL Info(Caller,'Exported Variable '//I2S(l)//' defined in '//I2S(m)//' sections',Level=8)
 
         IF( ExpVariable % TYPE == Variable_on_gauss_points ) THEN 
           ! Initialize handle when doing values on Gauss points!
@@ -16917,18 +16944,35 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
         DO t = 1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
 
           Element => Mesh % Elements(t) 
-          IF( Element % BodyId <= 0 ) CYCLE
-          bf_id = ListGetInteger( CurrentModel % Bodies(Element % BodyId) % Values,&
-              'Body Force',GotIt)
 
-          IF(.NOT. GotIt) CYCLE
-          IF(.NOT. ActivePart(bf_id)) CYCLE
-          Conditional = ActiveCond(bf_id)
+          DoIt = .FALSE.
+          IF( Element % BodyId > 0 ) THEN
+            bf_id = ListGetInteger( CurrentModel % Bodies(Element % BodyId) % Values,'Body Force',GotIt)
+            IF( bf_id > 0 ) THEN
+              ValueList => CurrentModel % BodyForces(bf_id) % Values          
+              DoIt = ActivePart(bf_id)
+              IF(DoIt) Conditional = ActiveCond(bf_id)
+            END IF
+          END IF
+          IF( .NOT. DoIt .AND. t > Mesh % NumberOfBulkElements ) THEN
+            ! If we don't have an active "body force" section check still the boundary section.
+            IF(ASSOCIATED( Element % BoundaryInfo ) ) THEN
+              DO bf_id=1,CurrentModel % NumberOfBCs
+                IF ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(bf_id) % Tag ) EXIT
+              END DO
+              IF ( bf_id <= CurrentModel % NumberOfBCs ) THEN            
+                ValueList => CurrentModel % BCs(bf_id) % Values                         
+                DoIt = ActivePartBC(bf_id)
+                IF(DoIt) Conditional = ActiveCondBC(bf_id)
+              END IF
+            END IF
+          END IF
 
+          IF(.NOT. DoIt) CYCLE
+          
           CurrentModel % CurrentElement => Element
           m = Element % TYPE % NumberOfNodes
           Indexes => Element % NodeIndexes
-          ValueList => CurrentModel % BodyForces(bf_id) % Values
 
           IF( ExpVariable % TYPE == Variable_on_gauss_points ) THEN 
 
@@ -17055,8 +17099,8 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
     END DO
 
     IF( AllocationsDone ) THEN
-      DEALLOCATE(ActivePart, ActiveCond, LocalSol, LocalCond, Basis, &
-          Nodes % x, Nodes % y, Nodes % z )
+      DEALLOCATE(ActivePart, ActiveCond, ActivePartBC, ActiveCondBC, &
+          LocalSol, LocalCond, Basis, Nodes % x, Nodes % y, Nodes % z )
     END IF
       
   END SUBROUTINE UpdateExportedVariables
@@ -17296,6 +17340,186 @@ SUBROUTINE SolveHarmonicSystem( G, Solver )
 !------------------------------------------------------------------------------
 
 
+
+!------------------------------------------------------------------------------
+!> Just toggles the initial system to harmonic one and back
+!------------------------------------------------------------------------------
+SUBROUTINE MergeSlaveSolvers( Solver, PreSolve )
+!------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver
+  LOGICAL :: PreSolve
+  !------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER :: Params
+  TYPE(Solver_t), POINTER :: Solver2
+  TYPE(Matrix_t), POINTER :: A1, A2, A
+  TYPE(Variable_t), POINTER :: betaVar
+  REAL(KIND=dp), POINTER :: vals1(:), vals2(:), vals(:)
+  REAL(KIND=dp) :: alpha, invAlpha
+  INTEGER :: i,j,k,n,dofs1,dofs2
+  INTEGER, POINTER :: SlaveSolverIndexes(:)
+  INTEGER, POINTER :: perm1(:), perm2(:), perm(:)
+  CHARACTER(:), ALLOCATABLE :: str
+  LOGICAL :: Found
+
+  SAVE :: A1, perm1, dofs1, vals1, &
+      A2, perm2, dofs2, vals2, A, perm, vals, &
+      alpha, invAlpha, betaVar
+
+  CALL Info('MergeSlaveSolvers','Monolithic treatment of solvers')
+  
+  IF( .NOT. ASSOCIATED( Solver % Variable ) ) THEN
+    CALL Fatal('MergeSlaveSolvers','Not applicable without a variable')
+    RETURN    
+  END IF
+  IF( .NOT. ASSOCIATED( Solver % Matrix ) ) THEN
+    CALL Fatal('MergeSlaveSolvers','Not applicable without a matrix')
+    RETURN    
+  END IF
+  
+  Params => Solver % Values  
+  SlaveSolverIndexes => ListGetIntegerArray( Params,'Slave Solvers',Found )
+  IF(.NOT. Found ) RETURN
+  
+  IF(SIZE(SlaveSolverIndexes) > 1 ) THEN
+    CALL Warn('MergeSlaveSolvers','Cannot current only deal with one slave solver!')   
+  END IF
+  i = SlaveSolverIndexes(1)
+
+  IF(PreSolve) THEN
+    A1 => Solver % Matrix
+    perm1 => Solver % Variable % Perm
+    dofs1 = Solver % Variable % Dofs
+    vals1 => Solver % Variable % Values
+
+    Solver2 => CurrentModel % Solvers(i)
+    A2 => Solver2 % Matrix
+    perm2 => Solver2 % Variable % Perm
+    dofs2 = Solver2 % Variable % Dofs
+    vals2 => Solver2 % Variable % Values
+
+    IF(dofs1 /= 1 .OR. dofs2 /= 1 ) THEN
+      CALL Fatal('MergeSlaveSolver','Enabled for 1 dof only: '//I2S(dofs1)//','//I2S(dofs2))
+    END IF
+
+    alpha = ListGetCReal( Params,'Slave Field Scaling',Found)
+    IF(.NOT. Found) alpha = 1.0_dp
+    invAlpha = 1.0_dp / alpha
+
+    betaVar => NULL()
+    str = ListGetString( Params,'Slave Field Offset Variable',Found )
+    IF( Found ) THEN
+      betaVar => VariableGet(Solver % Mesh % Variables,str)
+      IF(.NOT. ASSOCIATED(betaVar)) THEN
+        CALL Fatal('MergeSlaveSolver','Could not find offset variable: '//TRIM(str))
+      END IF
+      IF(ANY(betaVar % Perm /= perm2 ) ) THEN
+        CALL Fatal('MergeSlaveSolver','The offset field should have same permutation!')
+      END IF      
+    END IF
+      
+    A => AllocateMatrix()
+    CALL CRS_MergeMatrix(A1, A2, C = A, PermA = perm1, PermB = perm2, PermC = perm) 
+
+    ALLOCATE( A % Diag(A % NumberOfRows) )
+    A % diag = 0
+    CALL CRS_SortMatrix( A, .TRUE. )
+    
+    Solver % Matrix => A
+    Solver % Variable % Perm => Perm
+
+    ALLOCATE( vals( A % NumberOfRows) )
+    Solver % Variable % Values => vals
+
+    CALL MergeRhsAndSolutions()
+  ELSE
+    CALL UnmergeSolutions()
+
+    
+    Solver % Matrix => A1
+    Solver % Variable % Values => vals1
+    Solver % Variable % Perm => perm1
+
+    DEALLOCATE(vals)
+    DEALLOCATE(perm)
+    CALL FreeMatrix(A)
+  END IF
+
+CONTAINS
+
+  SUBROUTINE MergeRhsAndSolutions()
+
+    INTEGER :: i,j,j1,j2
+    REAL(KIND=dp), ALLOCATABLE :: rhsadd(:)
+    REAL(KIND=dp) :: c1,x2
+       
+    CALL Info('MergeSlaveSolvers','Merging rhs and initial guess for monolithic solution!',Level=10)
+    
+    IF(.NOT. ASSOCIATED(A % rhs)) THEN
+      ALLOCATE(A % rhs(A % NumberOfRows))
+    END IF
+
+    IF(ASSOCIATED(betaVar)) THEN
+      ALLOCATE(rhsadd(SIZE(betaVar % Values)))
+      rhsadd = 0.0_dp
+      CALL MatrixVectorMultiply( A2, betaVar % Values, rhsadd )
+      rhsAdd = -InvAlpha * rhsAdd 
+    END IF
+      
+    DO i=1,SIZE(perm)
+      j = perm(i)
+      IF(j==0) CYCLE
+
+      j1 = perm1(i)
+      j2 = perm2(i)
+
+      IF(j1>0) A % rhs(j) = A1 % rhs(j1) 
+      IF(j2>0) THEN
+        A % rhs(j) = A % rhs(j) + InvAlpha * A2 % rhs(j2) 
+        IF(ASSOCIATED(betaVar)) A % rhs(j) = A % rhs(j) + rhsAdd(j2)
+      END IF
+
+      vals(j) = 0.0_dp
+      c1 = 0.0_dp      
+      IF(j1>0) THEN
+        c1 = 1.0_dp
+        vals(j) = vals1(j1) 
+      END IF      
+      IF(j2>0) THEN
+        x2 = vals2(j2)
+        IF(ASSOCIATED(betaVar)) x2 = x2 - betaVar % Values(j2)
+        vals(j) = (vals(j) + InvAlpha * x2)/(c1+1.0_dp) 
+      END IF
+    END DO    
+    
+  END SUBROUTINE MergeRhsAndSolutions
+
+  
+  SUBROUTINE UnmergeSolutions()
+
+    INTEGER :: i,j,j1,j2
+
+    CALL Info('MergeSlaveSolvers','Unmerging the solution back to composite solvers!',Level=10)
+    
+    DO i=1,SIZE(perm)
+      j = perm(i)
+      IF(j==0) CYCLE
+      j1 = perm1(i)
+      j2 = perm2(i)
+      IF(j1>0) vals1(j1) = vals(j)
+      IF(j2>0) THEN
+        vals2(j2) = Alpha * vals(j)
+      END IF
+    END DO
+
+    ! The permutation has been checked for these
+    IF(ASSOCIATED(BetaVar)) vals2 = vals2 + betaVar % Values
+
+    
+  END SUBROUTINE UnmergeSolutions
+    
+END SUBROUTINE MergeSlaveSolvers
+
+ 
 
 !------------------------------------------------------------------------------
 !> Just toggles the initial system to harmonic one and back

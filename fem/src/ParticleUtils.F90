@@ -6170,7 +6170,7 @@ RETURN
 
 
 !--------------------------------------------------------------------------
-!> Set a the timestep for the particles.
+!> Set a timestep for the particles.
 !> Depending on the definitions the timestep may be the same for all 
 !> particles, or may be defined independently for each particle.
 !-------------------------------------------------------------------------

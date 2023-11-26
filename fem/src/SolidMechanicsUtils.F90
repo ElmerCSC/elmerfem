@@ -54,7 +54,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE BeamStiffnessMatrix(Element, n, nd, nb, TransientSimulation, &
       MassAssembly, HarmonicAssembly, LargeDeflection, LocalSol, RHSForce, &
-      CombineWithShell)
+      CombineWithShell, ApplyRotation, DrillingDOFs)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t), POINTER, INTENT(IN) :: Element
@@ -66,13 +66,15 @@ CONTAINS
     REAL(KIND=dp), OPTIONAL, INTENT(IN) :: LocalSol(:,:) ! The previous solution iterate
     REAL(KIND=dp), OPTIONAL, INTENT(OUT) :: RHSForce(:)  ! Local RHS vector corresponding to external loads
     LOGICAL, OPTIONAL, INTENT(IN) :: CombineWithShell    ! Set .TRUE. if the caller is the shell solver 
-!------------------------------------------------------------------------------
+    LOGICAL, OPTIONAL, INTENT(IN) :: ApplyRotation    ! Rotate DOFs in the context of shell analysis
+    LOGICAL, OPTIONAL, INTENT(IN) :: DrillingDOFs     ! Assume drilling DOFs in the context of shell analysis
+    !------------------------------------------------------------------------------
     TYPE(ValueList_t), POINTER :: BodyForce, Material
     TYPE(Nodes_t) :: Nodes, LocalNodes
     TYPE(GaussIntegrationPoints_t) :: IP
 
     LOGICAL :: Found, Stat
-    LOGICAL :: NonlinAssembly
+    LOGICAL :: NonlinAssembly, RotationNeeded, FullMoment
 
     INTEGER :: DOFs
     INTEGER :: i, t, p, q
@@ -355,40 +357,57 @@ CONTAINS
     
     IF (PRESENT(CombineWithShell)) THEN
       IF (CombineWithShell) THEN
-        !
-        ! Switch to rotation variables which conform with the rotated moments - M x d:
-        !
-        R = 0.0d0
-        DO i=1,nd-nb
-          i0 = (i-1)*DOFs
-          R(i0+1,i0+1) = 1.0d0
-          R(i0+2,i0+2) = 1.0d0
-          R(i0+3,i0+3) = 1.0d0
-          R(i0+4,i0+5) = 1.0d0
-          R(i0+5,i0+4) = -1.0d0
-          R(i0+6,i0+6) = 1.0d0
-        END DO
-        DOFs = (nd-nb)*DOFs
-        Stiff(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(R(1:DOFs,1:DOFs)), &
-            MATMUL(Stiff(1:DOFs,1:DOFs),R(1:DOFs,1:DOFs)))
-        Force(1:DOFs) = MATMUL(TRANSPOSE(R(1:DOFs,1:DOFs)),Force(1:DOFs))
+        IF (PRESENT(ApplyRotation)) THEN
+          RotationNeeded = ApplyRotation
+        ELSE
+          RotationNeeded = .TRUE.
+        END IF
 
-        IF (MassAssembly) &
-            Mass(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(R(1:DOFs,1:DOFs)), &
-            MATMUL(Mass(1:DOFs,1:DOFs),R(1:DOFs,1:DOFs)))    
+        IF (PRESENT(DrillingDOFs)) THEN
+          FullMoment = DrillingDOFs
+          IF (DrillingDOFs) RotationNeeded = .FALSE.
+        ELSE
+          FullMoment = .FALSE.
+        END IF
 
+        IF (RotationNeeded) THEN
+          !
+          ! Switch to rotation variables which conform with the rotated moments - M x d:
+          !
+          R = 0.0d0
+          DO i=1,nd-nb
+            i0 = (i-1)*DOFs
+            R(i0+1,i0+1) = 1.0d0
+            R(i0+2,i0+2) = 1.0d0
+            R(i0+3,i0+3) = 1.0d0
+            R(i0+4,i0+5) = 1.0d0
+            R(i0+5,i0+4) = -1.0d0
+            R(i0+6,i0+6) = 1.0d0
+          END DO
+          DOFs = (nd-nb)*DOFs
+          Stiff(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(R(1:DOFs,1:DOFs)), &
+              MATMUL(Stiff(1:DOFs,1:DOFs),R(1:DOFs,1:DOFs)))
+          Force(1:DOFs) = MATMUL(TRANSPOSE(R(1:DOFs,1:DOFs)),Force(1:DOFs))
+
+          IF (MassAssembly) &
+              Mass(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(R(1:DOFs,1:DOFs)), &
+              MATMUL(Mass(1:DOFs,1:DOFs),R(1:DOFs,1:DOFs)))    
+        END IF
+        
         !
         ! The moment around the director is not compatible with the shell model.
         ! Remove its contribution:
         !
-        DO p=1,nd-nb
-          Stiff(6*p,:) = 0.0d0
-          Stiff(:,6*p) = 0.0d0
-          Stiff(6*p,6*p) = 0.0d0
-          Force(6*p) = 0.0d0
-          Mass(6*p,:) = 0.0d0
-          Mass(:,6*p) = 0.0d0
-        END DO
+        IF (.NOT. FullMoment) THEN
+          DO p=1,nd-nb
+            Stiff(6*p,:) = 0.0d0
+            Stiff(:,6*p) = 0.0d0
+            Stiff(6*p,6*p) = 0.0d0
+            Force(6*p) = 0.0d0
+            Mass(6*p,:) = 0.0d0
+            Mass(:,6*p) = 0.0d0
+          END DO
+        END IF
       END IF
     END IF
 

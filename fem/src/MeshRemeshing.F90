@@ -2447,7 +2447,7 @@ SUBROUTINE Get_ParMMG_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
     IF(ASSOCIATED(NodeNeigh)) THEN
       counter = SIZE(NodeNeigh)
 
-      ! Choose the owner to be the the smallest partition index
+      ! Choose the owner to be the smallest partition index
       imin = 1
       DO i=2,counter
         IF( NodeNeigh(i) < NodeNeigh(imin) ) THEN

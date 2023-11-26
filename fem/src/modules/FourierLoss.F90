@@ -1057,7 +1057,7 @@ CONTAINS
     END DO
       
     ! Output of the losses on screen    
-    ! First the component losses, the the body losses
+    ! First the component losses, then the body losses
     DO k=1,NComp
       CALL Info(Caller,'Wavewise Fourier loss for component: '//I2S(k),Level=6)
       

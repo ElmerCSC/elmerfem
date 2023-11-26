@@ -51,6 +51,10 @@ SUBROUTINE HelmholtzSolver_init( Model,Solver,dt,TransientSimulation )
   Params => GetSolverParams()
   CALL ListAddNewLogical( Params,'Linear System Complex',.TRUE.)
 
+  IF (ListCheckPrefix(Params, 'Linear System Preconditioning Damp Coefficient')) THEN
+    CALL ListAddNewLogical(Params, 'Allocate Preconditioning Matrix', .TRUE.)
+  END IF
+  
 END SUBROUTINE HelmholtzSolver_init
   
   

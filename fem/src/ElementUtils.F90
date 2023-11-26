@@ -126,6 +126,7 @@ CONTAINS
      IF ( ASSOCIATED( Matrix % Values ) )      DEALLOCATE( Matrix % Values )
      IF ( ASSOCIATED( Matrix % MassValues ) )  DEALLOCATE( Matrix % MassValues )
      IF ( ASSOCIATED( Matrix % DampValues ) )  DEALLOCATE( Matrix % DampValues )
+     IF ( ASSOCIATED( Matrix % PrecValues ) )  DEALLOCATE( Matrix % PrecValues )
      IF ( ASSOCIATED( Matrix % BulkValues ) )  DEALLOCATE( Matrix % BulkValues )
      IF ( ASSOCIATED( Matrix % BulkRHS   ) )   DEALLOCATE( Matrix % BulkRHS )
 
@@ -179,6 +180,7 @@ CONTAINS
            IF(ALLOCATED(m % ILUValues)) DEALLOCATE(m % ILUValues)
            IF(ALLOCATED(m % MassValues)) DEALLOCATE(m % MassValues)
            IF(ALLOCATED(m % DampValues)) DEALLOCATE(m % DampValues)
+           IF(ALLOCATED(m % PrecValues)) DEALLOCATE(m % PrecValues)
          END IF
        END DO
        DEALLOCATE(s % IfMatrix)
@@ -195,6 +197,7 @@ CONTAINS
            IF(ALLOCATED(m % ILUValues)) DEALLOCATE(m % ILUValues)
            IF(ALLOCATED(m % MassValues)) DEALLOCATE(m % MassValues)
            IF(ALLOCATED(m % DampValues)) DEALLOCATE(m % DampValues)
+           IF(ALLOCATED(m % PrecValues)) DEALLOCATE(m % PrecValues)
          END IF
        END DO
        DEALLOCATE(s % NbsIfMatrix)
@@ -2014,7 +2017,14 @@ CONTAINS
      END IF
      
      NULLIFY( Matrix % MassValues, Matrix % DampValues, Matrix % Force, Matrix % RHS_im )
-!------------------------------------------------------------------------------
+
+     IF (ListGetLogical(Solver % Values, 'Allocate Preconditioning Matrix', GotIt)) THEN
+       CALL Info(Caller, 'Allocating for separate preconditioning matrix!', Level=20)
+       ALLOCATE(Matrix % PrecValues(SIZE(Matrix % Values)) )
+       Matrix % PrecValues = 0.0d0
+     END IF
+
+     !------------------------------------------------------------------------------
      Matrix % Solver => Solver
      Matrix % DGMatrix = DG
      Matrix % Subband = DOFs * n

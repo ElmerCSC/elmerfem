@@ -462,7 +462,7 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
         END IF
         Update = SurfaceMove(k) * ( MeltPoint - TTemp ) / dTdz
       ELSE           
-        ! Find the the contour element that has the x-coordinate in closest to the that of the
+        ! Find the contour element that has the x-coordinate in closest to that of the
         ! free surface
         
         Eps = 1.0d-6 * ( xmax - xmin )

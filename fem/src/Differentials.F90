@@ -680,7 +680,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     END DO
 !------------------------------------------------------------------------------
-!   Finally, compute average of the the curls at nodes
+!   Finally, compute the average of the curls at nodes
 !------------------------------------------------------------------------------
     DO i=1,CurrentModel % NumberOfNodes
       IF ( Visited(i) > 0 ) THEN
