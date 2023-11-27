@@ -122,7 +122,7 @@ SUBROUTINE FilmFlowSolver_init(Model, Solver, dt, Transient)
   ! It makes sense to eliminate the bubbles to save memory and time
   CALL ListAddNewLogical(Params, 'Bubbles in Global System', .FALSE.)
 
-  ! It makes sense to eliminate the bubbles to save memory and time
+  ! Use global mass matrix in time integration
   CALL ListAddNewLogical(Params, 'Global Mass Matrix', .TRUE.)
 
 !------------------------------------------------------------------------------ 
@@ -568,7 +568,7 @@ CONTAINS
            ! Div(u) + (c/dt)*p^(m) = (c/dt)*p^(m-1)
            ! See Raback et al., CFD Eccomas 2001.
            ! "FLUID-STRUCTURE INTERACTION BOUNDARY CONDITIONS BY ARTIFICIAL COMPRESSIBILITY".
-           IF(GotAC) A(mdim+1,mdim+1) = ac * s * rho * Basis(q) * Basis(p)              
+           IF(GotAC) A(mdim+1,mdim+1) = A(mdim+1,mdim+1) + ac * s * rho * Basis(q) * Basis(p)              
          END DO
          
          i = (mdim+1) * (p-1) + 1
