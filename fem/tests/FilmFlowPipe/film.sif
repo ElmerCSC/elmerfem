@@ -19,7 +19,7 @@ End
 
 Simulation
   Max Output Level = 7
-  Coordinate System = "Cartesian" !Axi Symmetric"  ! axi symmetric is not a metric, it is just a parameter
+  Coordinate System = ""Axi Symmetric"  ! axi symmetric is not a metric, it is just a parameter
   Simulation Type = Steady State
   Steady State Max Iterations = 1
 

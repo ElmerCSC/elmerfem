@@ -199,8 +199,8 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
     CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
         CurrentCoordinateSystem() == CylindricSymmetric ) 
   END IF
-    
-  !Allocate some permanent storage, this is done first time only:
+
+  ! Allocate some permanent storage, this is done first time only:
   !--------------------------------------------------------------
   IF ( .NOT. AllocationsDone ) THEN
     CALL Info(Caller,'Dimension of Navier-Stokes equation: '//I2S(mdim))
@@ -561,7 +561,7 @@ CONTAINS
              ELSE
                A(i,mdim+1) = A(i,mdim+1) - s * Basis(q) * dBasisdx(p,i)
                A(mdim+1,i) = A(mdim+1,i) + s * gap * rho * dBasisdx(q,i) * Basis(p) & 
-                   + s * rho * Basis(q) * gapGrad(i) * Basis(p)
+                   + geomc * s * rho * Basis(q) * gapGrad(i) * Basis(p)
              END IF
            END DO
              
@@ -580,7 +580,7 @@ CONTAINS
          IF( GotAC ) F(mdim+1) = F(mdim+1) + ac * s * rho * Basis(p) * Pres         
 
          ! We compute together the forced and induced flow. 
-         F(mdim+1) = F(mdim+1) + s * rho * Basis(p) * ( LoadAtIp(mdim+1) - LoadAtIp(mdim+2) )
+         F(mdim+1) = F(mdim+1) + geomc * s * rho * Basis(p) * ( LoadAtIp(mdim+1) - LoadAtIp(mdim+2) )
        END DO
 
        ! These are just recorded in order to study the total forced
