@@ -81,7 +81,7 @@ public slots:
   void SetMinThresholdVal(double);                  // set threshold min
   void SetMaxThresholdVal(double);                  // set threshold max
   void UseThreshold(bool);                          // use threshold
-  void KeepThresholdLimits(bool);                   // keep thrshld limits
+  void KeepThresholdLimits(bool);                   // keep threshold limits
 
 signals:
   void drawVectorSignal();

@@ -170,7 +170,7 @@ void Instructions()
   printf("-scale real[3]       : scale the coordinates with vector real[3]\n");
   printf("-translate real[3]   : translate the nodes with vector real[3]\n");
   printf("-rotate real[3]      : rotate around the main axis with angles real[3]\n");
-  printf("-clone int[3]        : make ideantilcal copies of the mesh\n");
+  printf("-clone int[3]        : make identical copies of the mesh\n");
   printf("-clonesize real[3]   : the size of the mesh to be cloned if larger to the original\n");
   printf("-mirror int[3]       : copy the mesh around the origin in coordinate directions\n");
   printf("-cloneinds           : when performing cloning should cloned entities be given new indexes\n");
@@ -230,7 +230,7 @@ void Instructions()
   printf("-periodic int[3]     : periodic coordinate directions for parallel & conforming meshes\n");
   printf("-partoptim           : apply aggressive optimization to node sharing\n");
   printf("-partnobcoptim       : do not apply optimization to bc ownership sharing\n");
-  printf("-partbw              : minimize the bandwidth of partition-partion couplings\n");
+  printf("-partbw              : minimize the bandwidth of partition-partition couplings\n");
   printf("-parthypre           : number the nodes continuously partitionwise\n");
   printf("-partzbc             : partition connected BCs separately to partitions in Z-direction\n");
   printf("-partrbc             : partition connected BCs separately to partitions in R-direction\n");
@@ -696,12 +696,12 @@ void SetElementDivision(struct GridType *grid,Real relh,int info)
 /* Given the densities and ratios in each cell finds the 
    optimum way to divide the mesh into elements. 
    The procedure is the following:
-   For each subcell set the minimum number of elements 
+   For each subcell set the minimum number of elements
    then add one element at a time till the number of 
    elements is the desired one. The added element
    is always set to the subcell having the sparsest mesh.
    Also numbers the cells taking into consideration only 
-   materials that have indeces in interval [firstmat,lastmat]. 
+   materials that have indices in interval [firstmat,lastmat].
    */
 {
   int i,j,nx,ny,nxmax = 0,nymax = 0;
@@ -2291,7 +2291,7 @@ static int GetCommand(char *line1,char *line2,FILE *io)
       smallerror("Check your output line length!\n");
     }
   }
-  else { /* rguments are on the next line */
+  else { /* Arguments are on the next line */
   newline2:
     charend = fgets(line2,MAXLINESIZE,io);
     isend = (charend == NULL);
@@ -3359,7 +3359,7 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,int info)
     
     else if(strstr(command,"NUMBERING")) {
       for(i=0;i<MAXLINESIZE;i++) params[i] = toupper(params[i]);
-      if(strstr(params,"HORIZONATAL")) (*grid)[k].numbering = NUMBER_XY;
+      if(strstr(params,"HORIZONTAL")) (*grid)[k].numbering = NUMBER_XY;
       if(strstr(params,"VERTICAL")) (*grid)[k].numbering = NUMBER_YX;
     }
     
@@ -3770,7 +3770,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
     }
     else if(strcmp(argv[arg],"-parttol") == 0) {
       if(arg+1 >= argc) {
-	printf("Give a tolerance for gemetric partition algorithms\n");
+	printf("Give a tolerance for geometric partition algorithms\n");
 	return(3);
       }
       else {

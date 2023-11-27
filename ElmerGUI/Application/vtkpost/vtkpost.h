@@ -138,7 +138,7 @@ public:
   vtkUnstructuredGrid* GetSurfaceGrid();
   vtkUnstructuredGrid* GetVolumeGrid();
 
-  // These three hashes are to draw feature edge for each group seperately.
+  // These three hashes are to draw feature edge for each group separately.
   // To do so, one group uses three grids(volume, surface,line) 
   QHash<QString, vtkUnstructuredGrid*>* GetLineGridHash();
   QHash<QString, vtkUnstructuredGrid*>* GetSurfaceGridHash();

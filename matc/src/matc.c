@@ -55,7 +55,7 @@
 |FUNCTION NAME(...) params ...
 |
 $  usage of the function and type of the parameters
-?  explane the effects of the function
+?  explain the effects of the function
 =  return value and the type of value if not of type int
 @  globals effected directly by this routine
 !  current known bugs or limitations
@@ -315,7 +315,7 @@ char *doread()
 |  Memory allocated during the lifetime of this function is 
 |  collected to a list represented by the global VARIABLE
 |  ALLOCLIST *alloc_list. If function error() is called, this
-|  list is used to deallocte memory. Normally (well I certainly 
+|  list is used to deallocate memory. Normally (well I certainly
 |  hope so) functions which allocate memory deallocate it themselves.
 |
 |  Program stays in this function until an end of file -condition
@@ -405,10 +405,10 @@ int dogets(buff, prompt) char *buff; char *prompt;
 |     MATC> 
 |        - normal prompt                      (PMODE_MAIN)
 |     ....> 
-|        - begin end- block is beign defined  (PMODE_BLOCK)
+|        - begin end- block is being defined  (PMODE_BLOCK)
 |     ####>                                   (PMODE_CONT)
 |        - user has given a #-sign as a last character of 
-|          previous line, this line will be catenated with it
+|          previous line, this line will be concatenated with it
 |
 |  If current comment character is found from input stream, the
 |  line after this character is discarded. Likewise if current
@@ -506,7 +506,7 @@ void com_init(word, flag_pw, flag_ce, sub, minp, maxp, help_text )
 |           by element using function *(*sub)().
 |      int flag_ce
 |         - flag telling if the command can be executed when
-|           preprosessing if constant arguments
+|           preprocessing if constant arguments
 |      double *(*sub)()
 |         - function to be executed when this command is given
 |      int minp, maxp

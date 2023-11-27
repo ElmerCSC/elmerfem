@@ -1305,7 +1305,7 @@ int ObjectBrowser::boundaryListToBodyIndex(list_t *l) {
     MAX_BULK_INDEX++;
     if (MAX_BULK_INDEX == 0) {
       cout << "Error in body selection: "
-              "There are no legal body indiced from which to choose"
+              "There are no legal body indices from which to choose"
            << endl;
       cout.flush();
       goto body_selection_finished;
