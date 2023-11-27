@@ -320,18 +320,20 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
     CALL DefaultFinishBulkAssembly()
 
 
-    BLOCK
-      REAL(KIND=dp) :: sorig, sfsi, coeff
-      sorig = SUM(FsiRhs(1,:))
-      sfsi = SUM(FsiRhs(2,:))
-      coeff = 1.0_dp
-      IF(sfsi /= 0.0) coeff = sorig / sfsi            
-      IF(sfsi < sorig) coeff = 1.0_dp
+    IF( GotAC ) THEN
+      BLOCK
+        REAL(KIND=dp) :: sorig, sfsi, coeff
+        sorig = SUM(FsiRhs(1,:))
+        sfsi = SUM(FsiRhs(2,:))
+        coeff = 1.0_dp
+        IF(sfsi /= 0.0) coeff = sorig / sfsi            
+        IF(sfsi < sorig) coeff = 1.0_dp
 
-      ! Just report incoming and outgoing total fluxes
-      PRINT *,'RHSComp:',sorig,sfsi,coeff
-    END BLOCK
-        
+        ! Just report incoming and outgoing total fluxes
+        PRINT *,'RHSComp:',sorig,sfsi,coeff
+      END BLOCK
+    END IF
+      
     DO t=1, Solver % Mesh % NumberOfBoundaryElements
       Element => GetBoundaryElement(t)
       IF ( .NOT. ActiveBoundaryElement() ) CYCLE
@@ -583,13 +585,15 @@ CONTAINS
 
        ! These are just recorded in order to study the total forced
        ! and induced (by FSI coupling) fluxes. 
-       FsiRhs(1,ThisVar % Perm(Element % NodeIndexes)) = &
-           FsiRhs(1,ThisVar % Perm(Element % NodeIndexes))  + &
-           s * rho * LoadAtIp(mdim+1) * Basis(1:n)             
-
-       FsiRhs(2,ThisVar % Perm(Element % NodeIndexes)) = &
-           FsiRhs(2,ThisVar % Perm(Element % NodeIndexes))  + &
-           s * rho * LoadAtIp(mdim+2) * Basis(1:n)             
+       IF(GotAC) THEN
+         FsiRhs(1,ThisVar % Perm(Element % NodeIndexes)) = &
+             FsiRhs(1,ThisVar % Perm(Element % NodeIndexes))  + &
+             s * rho * LoadAtIp(mdim+1) * Basis(1:n)             
+         
+         FsiRhs(2,ThisVar % Perm(Element % NodeIndexes)) = &
+             FsiRhs(2,ThisVar % Perm(Element % NodeIndexes))  + &
+             s * rho * LoadAtIp(mdim+2) * Basis(1:n)             
+       END IF
      END DO
      
    ! for p2/p1 elements set Dirichlet constraint for unused dofs,
