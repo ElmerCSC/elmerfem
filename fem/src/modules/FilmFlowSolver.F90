@@ -579,8 +579,11 @@ CONTAINS
          ! This is the explit term in artificial compressibility for FSI coupling
          IF( GotAC ) F(mdim+1) = F(mdim+1) + ac * s * rho * Basis(p) * Pres         
 
-         ! We compute together the forced and induced flow. 
-         F(mdim+1) = F(mdim+1) + geomc * s * rho * Basis(p) * ( LoadAtIp(mdim+1) - LoadAtIp(mdim+2) )
+         ! Body force for velocity components and pressure
+         F(1:mdim+1) = F(1:mdim+1) + s * rho * Basis(p) * LoadAtIp(1:mdim+1)
+
+         ! Additional body force from FSI velocity
+         F(mdim+1) = F(mdim+1) - s * rho * Basis(p) * LoadAtIp(mdim+2) 
        END DO
 
        ! These are just recorded in order to study the total forced
