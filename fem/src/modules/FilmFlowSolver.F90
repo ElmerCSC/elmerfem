@@ -122,7 +122,7 @@ SUBROUTINE FilmFlowSolver_init(Model, Solver, dt, Transient)
   ! It makes sense to eliminate the bubbles to save memory and time
   CALL ListAddNewLogical(Params, 'Bubbles in Global System', .FALSE.)
 
-  ! It makes sense to eliminate the bubbles to save memory and time
+  ! Use global mass matrix in time integration
   CALL ListAddNewLogical(Params, 'Global Mass Matrix', .TRUE.)
 
 !------------------------------------------------------------------------------ 
@@ -199,8 +199,8 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
     CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
         CurrentCoordinateSystem() == CylindricSymmetric ) 
   END IF
-    
-  !Allocate some permanent storage, this is done first time only:
+
+  ! Allocate some permanent storage, this is done first time only:
   !--------------------------------------------------------------
   IF ( .NOT. AllocationsDone ) THEN
     CALL Info(Caller,'Dimension of Navier-Stokes equation: '//I2S(mdim))
@@ -320,18 +320,20 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
     CALL DefaultFinishBulkAssembly()
 
 
-    BLOCK
-      REAL(KIND=dp) :: sorig, sfsi, coeff
-      sorig = SUM(FsiRhs(1,:))
-      sfsi = SUM(FsiRhs(2,:))
-      coeff = 1.0_dp
-      IF(sfsi /= 0.0) coeff = sorig / sfsi            
-      IF(sfsi < sorig) coeff = 1.0_dp
+    IF( GotAC ) THEN
+      BLOCK
+        REAL(KIND=dp) :: sorig, sfsi, coeff
+        sorig = SUM(FsiRhs(1,:))
+        sfsi = SUM(FsiRhs(2,:))
+        coeff = 1.0_dp
+        IF(sfsi /= 0.0) coeff = sorig / sfsi            
+        IF(sfsi < sorig) coeff = 1.0_dp
 
-      ! Just report incoming and outgoing total fluxes
-      PRINT *,'RHSComp:',sorig,sfsi,coeff
-    END BLOCK
-        
+        ! Just report incoming and outgoing total fluxes
+        PRINT *,'RHSComp:',sorig,sfsi,coeff
+      END BLOCK
+    END IF
+      
     DO t=1, Solver % Mesh % NumberOfBoundaryElements
       Element => GetBoundaryElement(t)
       IF ( .NOT. ActiveBoundaryElement() ) CYCLE
@@ -559,7 +561,7 @@ CONTAINS
              ELSE
                A(i,mdim+1) = A(i,mdim+1) - s * Basis(q) * dBasisdx(p,i)
                A(mdim+1,i) = A(mdim+1,i) + s * gap * rho * dBasisdx(q,i) * Basis(p) & 
-                   + s * rho * Basis(q) * gapGrad(i) * Basis(p)
+                   + geomc * s * rho * Basis(q) * gapGrad(i) * Basis(p)
              END IF
            END DO
              
@@ -568,7 +570,7 @@ CONTAINS
            ! Div(u) + (c/dt)*p^(m) = (c/dt)*p^(m-1)
            ! See Raback et al., CFD Eccomas 2001.
            ! "FLUID-STRUCTURE INTERACTION BOUNDARY CONDITIONS BY ARTIFICIAL COMPRESSIBILITY".
-           IF(GotAC) A(mdim+1,mdim+1) = ac * s * rho * Basis(q) * Basis(p)              
+           IF(GotAC) A(mdim+1,mdim+1) = A(mdim+1,mdim+1) + ac * s * rho * Basis(q) * Basis(p)              
          END DO
          
          i = (mdim+1) * (p-1) + 1
@@ -578,18 +580,20 @@ CONTAINS
          IF( GotAC ) F(mdim+1) = F(mdim+1) + ac * s * rho * Basis(p) * Pres         
 
          ! We compute together the forced and induced flow. 
-         F(mdim+1) = F(mdim+1) + s * rho * Basis(p) * ( LoadAtIp(mdim+1) - LoadAtIp(mdim+2) )
+         F(mdim+1) = F(mdim+1) + geomc * s * rho * Basis(p) * ( LoadAtIp(mdim+1) - LoadAtIp(mdim+2) )
        END DO
 
        ! These are just recorded in order to study the total forced
        ! and induced (by FSI coupling) fluxes. 
-       FsiRhs(1,ThisVar % Perm(Element % NodeIndexes)) = &
-           FsiRhs(1,ThisVar % Perm(Element % NodeIndexes))  + &
-           s * rho * LoadAtIp(mdim+1) * Basis(1:n)             
-
-       FsiRhs(2,ThisVar % Perm(Element % NodeIndexes)) = &
-           FsiRhs(2,ThisVar % Perm(Element % NodeIndexes))  + &
-           s * rho * LoadAtIp(mdim+2) * Basis(1:n)             
+       IF(GotAC) THEN
+         FsiRhs(1,ThisVar % Perm(Element % NodeIndexes)) = &
+             FsiRhs(1,ThisVar % Perm(Element % NodeIndexes))  + &
+             s * rho * LoadAtIp(mdim+1) * Basis(1:n)             
+         
+         FsiRhs(2,ThisVar % Perm(Element % NodeIndexes)) = &
+             FsiRhs(2,ThisVar % Perm(Element % NodeIndexes))  + &
+             s * rho * LoadAtIp(mdim+2) * Basis(1:n)             
+       END IF
      END DO
      
    ! for p2/p1 elements set Dirichlet constraint for unused dofs,

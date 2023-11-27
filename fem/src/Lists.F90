@@ -7489,7 +7489,8 @@ CONTAINS
      INTEGER :: i,j,k,k1,l,l0,l1,lsize,n,bodyid,id,node,gp
      TYPE(Element_t), POINTER :: PElement
      TYPE(ValueList_t), POINTER :: List
-     LOGICAL :: AllGlobal, SomeAtIp, SomeAtNodes, ListSame, ListFound, GotIt, IntFound
+     LOGICAL :: AllGlobal, SomeAtIp, SomeAtNodes, ListSame, ListFound, &
+         GotIt, IntFound, SizeSame
 !------------------------------------------------------------------------------
 
      IF( Handle % nValuesVec < ngp ) THEN
@@ -7500,10 +7501,15 @@ CONTAINS
        Handle % nValuesVec = ngp       
 
        IF( Handle % ConstantEverywhere ) THEN
-         Handle % ValuesVec(1:ngp) = Handle % Rvalue
+         Handle % ValuesVec = Handle % Rvalue
        ELSE
-         Handle % ValuesVec(1:ngp) = Handle % DefRValue        
+         Handle % ValuesVec = Handle % DefRValue        
        END IF
+       ! If size is increased we need to ensure that even constants will be rechecked. 
+       Handle % ListId = -1
+       SizeSame = .FALSE.
+     ELSE
+       SizeSame = .TRUE.
      END IF
 
      ! The results are always returned from the Handle % Values
@@ -7532,10 +7538,10 @@ CONTAINS
      ! Find the correct list to look the keyword in.
      ! Bulk and boundary elements are treated separately.
      List => ElementHandleList( PElement, Handle, ListSame, ListFound ) 
-
+     
      ! If the provided list is the same as last time, also the keyword will
      ! be sitting at the same place, otherwise find it in the new list
-     IF( ListSame ) THEN
+     IF( ListSame .AND. SizeSame ) THEN
        IF( PRESENT( Found ) ) Found = Handle % Found       
        IF( .NOT. Handle % Found ) RETURN
        IF( Handle % GlobalInList ) THEN
@@ -7553,7 +7559,7 @@ CONTAINS
          IF( Handle % UnfoundFatal ) THEN
            CALL Fatal('ListGetElementRealVec','Could not find required keyword in list: '//TRIM(Handle % Name))
          END IF
-         Handle % ValuesVec(1:ngp) = Handle % DefRValue
+         Handle % ValuesVec = Handle % DefRValue
          RETURN
        END IF
          
@@ -7769,7 +7775,7 @@ CONTAINS
                '] not used consistently.')
          END IF
          F(1) = ptr % Coeff * ptr % Fvalues(1,1,1)
-         RValues(1:ngp) = F(1)
+         RValues = F(1)
 
 
        CASE( LIST_TYPE_VARIABLE_SCALAR )
@@ -7800,7 +7806,7 @@ CONTAINS
          END DO
          
          IF( Handle % GlobalInList ) THEN
-           Handle % ValuesVec(1:ngp) = F(1)
+           Handle % ValuesVec = F(1)
          ELSE
            Handle % ValuesVec(1:ngp) = MATMUL( BasisVec(1:ngp,1:n), F(1:n) )
          END IF
@@ -7810,7 +7816,7 @@ CONTAINS
        CASE( LIST_TYPE_CONSTANT_SCALAR_STR )
 
          TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
-         Handle % ValuesVec(1:ngp) = ptr % Coeff * GetMatcReal(ptr % Cvalue,1,Tvar % Values,'st')
+         Handle % ValuesVec = ptr % Coeff * GetMatcReal(ptr % Cvalue,1,Tvar % Values,'st')
 
        CASE( LIST_TYPE_VARIABLE_SCALAR_STR )
 
@@ -7831,7 +7837,7 @@ CONTAINS
          END DO
 
          IF( Handle % GlobalInList ) THEN
-           Handle % ValuesVec(1:ngp) = F(1)
+           Handle % ValuesVec = F(1)
          ELSE
            Handle % ValuesVec(1:ngp) = MATMUL( BasisVec(1:ngp,1:n), F(1:n) )
          END IF
