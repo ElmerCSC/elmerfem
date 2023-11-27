@@ -40,7 +40,7 @@ Solver 1
   Variable DOFs = 6
 
   Drilling DOFs = True
-!  Drilling Stabilization Parameter = 1.0e-6
+  Drilling Stabilization Parameter = 0.5
 
   Large Deflection = False
   Displace Mesh = False

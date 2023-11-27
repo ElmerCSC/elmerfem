@@ -656,11 +656,6 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
         LocalSol = 0.0d0
       END IF
 
-!      IF (DrillingDOFs) THEN
-!        CALL Warn('ShellSolver', 'Drilling DOFs does not yet support beam sections')
-!        CYCLE
-!      END IF
-
       CALL BeamStiffnessMatrix(BGElement, n, nd+nb, nb, TransientSimulation, MassAssembly, &
           HarmonicAssembly, LargeDeflection, LocalSol, LocalRHSForce, .TRUE., &
           ApplyRotation = .NOT.RotateDOFs, DrillingDOFs = DrillingDOFs) 
@@ -4046,8 +4041,8 @@ CONTAINS
         !----------------------------------------------------------------------
         BM(4,6:DOFs:m) = Basis(1:nd)
         DO p=1,nd
-          BM(4,(p-1)*m+2) = -0.5d0 * (dBasis(p,1) - 2.0d0 * C212 * Basis(p))
-          BM(4,(p-1)*m+1) = 0.5d0 * (dBasis(p,2) - 2.0d0 * C211 * Basis(p))
+          BM(4,(p-1)*m+2) = -0.5d0 * dBasis(p,1)
+          BM(4,(p-1)*m+1) = 0.5d0 * dBasis(p,2)
         END DO
       ELSE
         !----------------------------------------------------------------------
@@ -5683,7 +5678,7 @@ END SUBROUTINE RetrieveLocalFrame
     CMat(3,3) = CMat(3,3)/(A1**2 * A2**2)
 
     IF (WithDrillingDOFs) THEN
-      CMat(4,4) = StabConst * E/(1.0d0 + nu)
+      CMat(4,4) = StabConst * 2.0d0*E/(1.0d0 + nu)
     ELSE
       ! The row corresponding to the normal stress: A deviation from the state of
       ! vanishing normal stress produces deformation energy as described by
