@@ -744,10 +744,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    ! Do have impedance BCs? 
    LayerBC = (ListCheckPresentAnyBC(Model, 'Layer Electric Conductivity') .AND. vdofs==2) 
-   IF(LayerBC .AND. dim == 2) THEN
-     CALL Warn('MagnetoDynamicsCalcFields','Layer model not yet implemented for 2D!')
-     LayerBC = .FALSE.
-   END IF
    jh_k = 0
    
    ! Do we have a real or complex valued primary field?
@@ -2071,17 +2067,19 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        Element => GetBoundaryElement(i)
        BC => GetBC()
        IF (.NOT. ASSOCIATED(BC)) CYCLE
-       
-       SELECT CASE(GetElementFamily())
-       CASE(1)
-         CYCLE
-       CASE(2)
-         k = GetBoundaryEdgeIndex(Element,1)
-         Element => Mesh % Edges(k)
-       CASE(3,4)
-         k = GetBoundaryFaceIndex(Element)
-         Element => Mesh % Faces(k)
-       END SELECT
+
+       IF( dim == 3 ) THEN
+         SELECT CASE(GetElementFamily())
+         CASE(1)
+           CYCLE
+         CASE(2)
+           k = GetBoundaryEdgeIndex(Element,1)
+           Element => Mesh % Edges(k)
+         CASE(3,4)
+           k = GetBoundaryFaceIndex(Element)
+           Element => Mesh % Faces(k)
+         END SELECT
+       END IF
        IF (.NOT. ActiveBoundaryElement(Element)) CYCLE
        
        C_ip = ListGetCReal(BC, 'Layer Electric Conductivity', Found)
@@ -2109,14 +2107,16 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        END IF
 
        DO j=1,IP % n
-         IF ( PiolaVersion ) THEN
+         IF( dim == 2 ) THEN
+           stat = ElementInfo(Element, Nodes, IP % U(j), IP % V(j), IP % W(j), &
+               detJ, Basis, dBasisdx)           
+         ELSE IF ( PiolaVersion ) THEN
            stat = EdgeElementInfo(Element, Nodes, IP % U(j), IP % V(j), IP % W(j), &
                DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, dBasisdx = dBasisdx, &
                BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
          ELSE
            stat = ElementInfo(Element, Nodes, IP % U(j), IP % V(j), IP % W(j), &
-               detJ, Basis, dBasisdx)
-           
+               detJ, Basis, dBasisdx)           
            CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
          END IF
          
@@ -2124,8 +2124,15 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          Zs = CMPLX(1.0_dp, 1.0_dp, KIND=dp) / (C_ip*val)
          
          IF (.NOT. CircuitDrivenBC) THEN
-           E(1,:) = Omega * MATMUL(SOL(2,np+1:nd), WBasis(1:nd-np,:)) - MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
-           E(2,:) = -Omega * MATMUL(SOL(1,np+1:nd), WBasis(1:nd-np,:)) - MATMUL(SOL(2,1:np), dBasisdx(1:np,:))
+           IF( dim == 2 ) THEN
+             E(1,1:2) = 0.0_dp
+             E(2,1:2) = 0.0_dp
+             E(1,3) = Omega*SUM(SOL(2,1:nd) * Basis(1:nd))
+             E(2,3) = -Omega*SUM(SOL(1,1:nd) * Basis(1:nd))
+           ELSE
+             E(1,:) = Omega * MATMUL(SOL(2,np+1:nd), WBasis(1:nd-np,:)) - MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
+             E(2,:) = -Omega * MATMUL(SOL(1,np+1:nd), WBasis(1:nd-np,:)) - MATMUL(SOL(2,1:np), dBasisdx(1:np,:))
+           END IF
          ELSE
            ! we assume 3D massive coil here
            E(1,:) = Omega * MATMUL(SOL(2,np+1:nd), WBasis(1:nd-np,:))
@@ -2171,17 +2178,19 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
        END DO
 
-       !DO l=1,Dofs
        IF (NodalFields .AND. jh_k>0) THEN
          l = jh_k
-         CALL UpdateGlobalForce( GForce(:,l), &
-             Force(1:eq_n,l), eq_n, 1, Solver % Variable % Perm(Indexes(1:eq_n)), UElement=Element)
+         IF(dim==2) THEN
+           CALL UpdateGlobalForce( GForce(:,l), &
+               Force(1:eq_n,l), eq_n, 1, Solver % Variable % Perm(Element % NodeIndexes), UElement=Element)
+         ELSE
+           CALL UpdateGlobalForce( GForce(:,l), &
+               Force(1:eq_n,l), eq_n, 1, Solver % Variable % Perm(Indexes(1:eq_n)), UElement=Element)
+         END IF
        END IF
-       !END DO       
      END DO
-
    END IF
-
+   
    DoAve = GetLogical(SolverParams,'Average Within Materials',Found)
       
    ! Assembly of the face terms:
@@ -2288,8 +2297,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            END IF
          END IF
        END DO
-       PRINT *,'Total Coil Energy:',SUM(CoilEnergy)
-       
+       PRINT *,'Total Coil Energy:',SUM(CoilEnergy)       
      END BLOCK
    END IF
    
@@ -2337,8 +2345,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
        END IF
 
-       IF( ListGetLogical( CompParams,'Calculate Magnetic Torque', Found ) ) THEN
-         
+       IF( ListGetLogical( CompParams,'Calculate Magnetic Torque', Found ) ) THEN         
          CALL ComponentNodalForceReduction(Model, Mesh, CompParams, EL_NF, &
            Torque = val, SetPerm = SetPerm )
 

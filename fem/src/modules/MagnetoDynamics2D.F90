@@ -2783,7 +2783,7 @@ CONTAINS
       DO p=1,nd
         DO q=1,nd
           STIFF(p,q) = STIFF(p,q) + IP % s(t) * DetJ * &
-              ( -imu * omega * invZs ) * Basis(p) * Basis(q)
+              ( imu * omega * invZs ) * Basis(p) * Basis(q)
         END DO
       END DO
               
