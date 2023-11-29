@@ -263,7 +263,7 @@ CONTAINS
 
       IF (MassAssembly) THEN
         rho = SUM(Basis(1:n) * Density(1:n))
-        MOI = rho/E * sqrt(E_diag(2)**2 + E_diag(3)**2)
+        MOI = rho/E * (E_diag(2) + E_diag(3))
         Mass_per_Length = rho * A
       END IF
 
