@@ -241,9 +241,9 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
        END IF
     END DO
 !$omp end parallel do
-    
-    CALL DefaultFinishBulkAssembly()
 
+    CALL DefaultFinishBulkAssembly()
+    
     Active = GetNOFBoundaryElements()
 !$omp parallel do private(Element, n, nd, BC,Found, t)
     DO t=1,active
@@ -263,6 +263,7 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
     END DO
 !$omp end parallel do
 
+    CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
     
     CALL SetMagneticFluxDensityBC()
@@ -1196,7 +1197,6 @@ CONTAINS
           END IF
 
           IF(.NOT. Found ) THEN
-            PRINT *,'Element:',Element % ElementIndex, t
             CALL Fatal(Caller,'Could not define reluctivity in any way in Body: '&
                 //I2S(Element % BodyId))
           END IF
@@ -1677,6 +1677,7 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
       CALL LocalMatrix(Element, n, nd)
     END DO
 !$omp end parallel do
+    CALL DefaultFinishBulkAssembly()
 
     Active = GetNOFBoundaryElements()
 !$omp parallel do private(Element, n, nd, BC, Found)
@@ -1698,6 +1699,7 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
     END DO
 !$omp end parallel do
 
+    CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
     
     CALL SetMagneticFluxDensityBC()
@@ -1728,7 +1730,7 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
    
   CALL DefaultFinish()
   
-  ! Perform restart if continuing to transient real-valued combination. 
+  ! Perform restart if continuing to transient real-values combination. 
   IF( DoRestart ) THEN
     LVar => Model % Solvers(TransientSolverInd) % Variable 
     IF( ASSOCIATED( LVar ) ) THEN         

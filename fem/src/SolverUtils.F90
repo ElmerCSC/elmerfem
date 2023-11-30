@@ -22878,7 +22878,7 @@ CONTAINS
        Proj % ProjectorType = PROJECTOR_TYPE_ROBIN
        CALL Info(Caller,'Creating Robin flux constraint matrix for boundary: '//I2S(BCind),Level=6)
      ELSE
-       CALL Info(Caller,'Udating Robin flux constraint matrix for boundary: '//I2S(BCind),Level=6)
+       CALL Info(Caller,'Updating Robin flux constraint matrix for boundary: '//I2S(BCind),Level=6)
        Proj % Values = 0.0_dp
      END IF
 
@@ -22926,6 +22926,11 @@ CONTAINS
        n = A % NumberOfRows
        dofs = Var % dofs
 
+       IF(.NOT. ASSOCIATED(A % BulkValues)) THEN
+         CALL Fatal(Caller,'BulkValues are needed to aveluate Robin terms!')
+       END IF
+
+       
        ! Mark the dofs of the matrix that are on the boundary.
        ! ActiveDof table will directly refer to the indexes of the matrix.
        ALLOCATE(ActiveDof(n))
@@ -23256,6 +23261,7 @@ CONTAINS
 
            IF( IntegralBC ) THEN
              SetVal(i) = ListGetCReal( BC,'Integral BC '//TRIM(str),SetDof )
+             IF(ThisIsRobin) SetDof = .TRUE.
            ELSE
              SetDof = ListGetLogical( BC,'Mortar BC '//TRIM(str),Found )
            END IF
@@ -23304,7 +23310,7 @@ CONTAINS
              SumThis .AND. .NOT. (ASSOCIATED( MortarBC % Diag ) .OR. HaveMortarDiag ) )
        END IF
          
-       IF( Dofs == 1 ) THEN         
+       IF( Dofs == 1 .OR. ThisIsRobin ) THEN         
 
          IF( .NOT. ActiveComponents(1) ) THEN
            CALL Info(Caller,'Skipping component: '//I2S(1),Level=12)
