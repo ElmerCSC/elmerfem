@@ -121,6 +121,9 @@ Solver 3
 !  Procedure = "PhaseChangeSolve" "PhaseChangeSolve"
   Procedure = "TransientPhaseChange" "TransientPhaseChange"
 
+  Linear System Solver = "Direct"
+  Linear System Direct Method = "umfpack"
+
   Nonlinear System Relaxation Factor = 1.0
   Nonlinear System Newton After Iterations = 10
 ! Lumped Newton After Iterations = Integer 10
