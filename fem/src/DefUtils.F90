@@ -3501,6 +3501,9 @@ CONTAINS
     IF( ListGetLogical( Params,'Harmonic Mode',Found ) ) THEN
       CALL ChangeToHarmonicSystem( Solver )
     END IF
+
+    ! Generate projector that allows enforcing of total flux when using Robin BC's
+    CALL GenerateRobinProjectors( CurrentModel, Solver )
     
     ! Combine the individual projectors into one massive projector
     CALL GenerateConstraintMatrix( CurrentModel, Solver )
