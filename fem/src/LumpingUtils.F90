@@ -1496,7 +1496,7 @@ MODULE LumpingUtils
     TYPE(Element_t), POINTER :: Element
     INTEGER :: t, i, j, k, l, n, np, nd, EdgeBasisDegree, t1, t2, bc_id
     LOGICAL :: Found, InitHandles
-    LOGICAL :: Stat, PiolaVersion, EdgeBasis
+    LOGICAL :: Stat, PiolaVersion, EdgeBasis, UseScalarPot
     TYPE(ValueList_t), POINTER :: BC
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     REAL(KIND=dp) :: area, omega
@@ -1525,6 +1525,8 @@ MODULE LumpingUtils
     t2 = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
     
     EdgeBasis = .FALSE.
+    UseScalarPot = .FALSE.
+
     IF(avar % dofs <= 2) THEN
       EdgeBasis = .TRUE.
       EdgeBasisDegree = 1
@@ -1534,8 +1536,9 @@ MODULE LumpingUtils
       ELSE
         PiolaVersion = ListGetLogical(avar % solver % Values,'Piola Version',Found)
       END IF
+      UseScalarPot = ListGetLogical(avar % solver % values, 'Use Gauss Law', Found)
     END IF
-
+    
     Aint = 0.0_dp
     area = 0.0_dp
 
@@ -1723,6 +1726,12 @@ MODULE LumpingUtils
           stat = ElementInfo( Parent, ParentNodes, u, v, w, detJ, Basis, dBasisdx, &
               EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = avar % Solver )
           e_ip(1:3) = CMPLX(MATMUL(e_local(1,np+1:nd),WBasis(1:nd-np,1:3)), MATMUL(e_local(2,np+1:nd),WBasis(1:nd-np,1:3)))       
+          IF (UseScalarPot) THEN
+            DO i=1,3
+              e_ip(i) = e_ip(i) - &
+                  CMPLX(SUM(e_local(1,1:np)*dBasisdx(1:n,i)), SUM(e_local(2,1:np)*dBasisdx(1:n,i)))
+            END DO
+          END IF
         ELSE
           DO i=1,3
             e_ip(i) = CMPLX( SUM( Basis(1:n) * e_local(i,1:n) ), SUM( Basis(1:n) * e_local(i+3,1:n) ) )
