@@ -175,10 +175,9 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
     LOGICAL :: SRDecomposition
     SRDecomposition = GetLogical( SolverParams, 'Source-Reaction Decomposition', Found )
     IF (Found .AND. SRDecomposition) THEN
-      CALL ListAddNewString( SolverParams,'Exported Variable 1','Source Potential')
-      CALL ListAddNewString( SolverParams,'Exported Variable 2','-dg Source Vector Potential E [Source Vector Potential E:3]')
-      CALL ListAddNewString( SolverParams,'Exported Variable 3', &
-        '-dg Source Magnetic Flux Density E [Source Magnetic Flux Density E:3]')
+      CALL ListAddNewString( SolverParams,'Exported Variable 1','-ip -dofs 3 Src Vector Potential')
+      CALL ListAddNewString( SolverParams,'Exported Variable 2','-ip -dofs 3 Src Magnetic Flux Density')
+      !CALL ListAddNewString( SolverParams,'Exported Variable 1','Src Potential')
     END IF
   END BLOCK
  
@@ -537,9 +536,20 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
        END IF
 
        BsVar => VariableGet(Solver % Mesh % Variables, &
-         'source magnetic flux density e [source magnetic flux density e:3]', ThisOnly=.TRUE., UnFoundFatal=.TRUE.)
+         'src magnetic flux density', ThisOnly=.TRUE., UnFoundFatal=.TRUE.)
+       IF(ASSOCIATED(BsVar)) THEN
+         IF(BsVar % TYPE /= Variable_on_gauss_points) THEN
+           CALL Fatal('WhitneyAVSolver','BsVar should be an IP variable!')
+         END IF
+       END IF
        AsVar => VariableGet(Solver % Mesh % Variables, &
-         'source vector potential e [source vector potential e:3]', ThisOnly=.TRUE., UnFoundFatal=.TRUE.)
+         'src vector potential', ThisOnly=.TRUE., UnFoundFatal=.TRUE.)
+       IF(ASSOCIATED(AsVar)) THEN
+         IF(AsVar % TYPE /= Variable_on_gauss_points) THEN
+           CALL Fatal('WhitneyAVSolver','AsVar should be an IP variable!')
+         END IF
+       END IF
+
      END IF
 
      IF(ALLOCATED(FORCE)) THEN
@@ -881,7 +891,7 @@ CONTAINS
        CALL LocalMatrix( MASS, DAMP, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
          Tcoef, Acoef, LaminateStack, LaminateStackModel, &
          LamThick, LamCond, CoilBody, CoilType, RotM, ConstraintActive, &
-         Element, n, nd+nb, PiolaVersion, SecondOrder)
+         Element, n, nd+nb, PiolaVersion, SecondOrder, t==1)
        
      ! Update global matrix and rhs vector from local matrix & vector:
      !---------------------------------------------------------------
@@ -1848,7 +1858,7 @@ END SUBROUTINE LocalConstraintMatrix
   SUBROUTINE LocalMatrix( MASS, DAMP, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
             Tcoef, Acoef, LaminateStack, LaminateStackModel, &
             LamThick, LamCond, CoilBody, CoilType, RotM, ConstraintActive, &
-            Element, n, nd, PiolaVersion, SecondOrder)
+            Element, n, nd, PiolaVersion, SecondOrder, InitHandles)
 !------------------------------------------------------------------------------
     USE LinearAlgebra
     IMPLICIT NONE
@@ -1861,6 +1871,7 @@ END SUBROUTINE LocalConstraintMatrix
     TYPE(Element_t), POINTER :: Element
     INTEGER :: n, nd
     LOGICAL :: PiolaVersion, SecondOrder
+    LOGICAL :: InitHandles
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Aloc(nd), JAC(nd,nd), mu, muder, B_ip(3), Babs
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), C(3,3), &
@@ -1876,9 +1887,16 @@ END SUBROUTINE LocalConstraintMatrix
     INTEGER :: t, i, j, k, p, q, np, EdgeBasisDegree, mudim
     TYPE(GaussIntegrationPoints_t) :: IP
 
+    TYPE(ValueHandle_t), SAVE :: SourceVecPot_h 
+    
     TYPE(Nodes_t), SAVE :: Nodes
     
 !------------------------------------------------------------------------------
+    IF( InitHandles ) THEN
+      CALL ListInitElementKeyword( SourceVecPot_h,'Body Force','Source Vector Potential',InitVec3D=.TRUE.)
+    END IF
+
+
     IF (SecondOrder) THEN
        EdgeBasisDegree = 2
     ELSE
@@ -1922,77 +1940,87 @@ END SUBROUTINE LocalConstraintMatrix
     !Numerical integration:
     !----------------------
     IP = GaussPointsAdapt(Element, Solver, EdgeBasis=.TRUE. )
-!    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
-!        EdgeBasisDegree=EdgeBasisDegree )
+    !IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+    !    EdgeBasisDegree=EdgeBasisDegree )
 
+    !IP = GaussPoints( Element, RelOrder = 1, PReferenceElement = .TRUE. )
+    
+    
     np = n*Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
     IF (SRDecomposition) THEN
-      SRDA = 0._dp
-      SRDV = 0._dp
-      CALL GetRealVector( BodyForce, SRDA(1:3,1:n), 'Source Vector Potential', Found )
-      SRDV(1:n) = GetReal( BodyForce, 'Source Potential', Found )
+      !SRDA = 0._dp
+      !SRDV = 0._dp
+      !CALL GetRealVector( BodyForce, SRDA(1:3,1:n), 'Source Vector Potential', Found )
+      !SRDV(1:n) = GetReal( BodyForce, 'Source Potential', Found )
 
+      IF( Element % ElementIndex == 1 ) THEN
+        PRINT *,'IP:',Ip % n, np, n, nd, nd-np
+      END IF
+
+      
       BLOCK
         REAL(KIND=dp) :: SRDAatIp(3)
+        REAL(KIND=dp) :: Bs_dofs(3), AMass(nd-np,nd-np), Aforce(nd-np)
         REAL(KIND=dp) :: Weight
-        INTEGER :: ind(n)
+        INTEGER :: i
+        LOGICAL :: errorneous 
+        
+        aFORCE = 0.0_dp
+        aMASS  = 0.0_dp
+               
+        DO t=1,IP % n
+          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+              IP % W(t), detJ, Basis, dBasisdx, EdgeBasis = WBasis, &
+              RotBasis = RotWBasis, USolver = pSolver )
 
-        ind(1:np) = AsVar % Perm(Element % DGIndexes(1:np))
+          ! This gets the material parameters on IPs in an optimal way.
+          SRDAatIp(1:3) = ListGetElementReal3D( SourceVecPot_h, Basis, Element, Found, GaussPoint = t)                 
 
-        FORCE = 0.0_dp
-        MASS  = 0.0_dp
+          IF(ASSOCIATED(AsVar)) THEN
+            DO k = 1,AsVar % DOFs
+              i = AsVar % Dofs * ( AsVar % Perm(Element % ElementIndex) + t -1 ) + k
+              AsVar % Values(i) = SRDAatIp(k)
+            END DO
+          END IF
+            
+          Weight = detJ*IP % s(t)
+
+          DO p=1,nd-np
+            aFORCE(p) = aFORCE(p) + Weight * SUM(SRDAatIp(1:3)*WBasis(p,:))
+            DO q=1,nd-np
+              aMASS(p,q) = aMASS(p,q) + Weight * SUM(WBasis(q,:)*WBasis(p,:))
+            END DO
+          END DO
+
+          IF( Element % ElementIndex == 1 ) THEN
+            PRINT *,'Weight:',t,detJ, IP % s(t)
+            PRINT *,'Wbasis1:',WBasis(1:nd-dp,1)
+            PRINT *,'Wbasis2:',WBasis(1:nd-dp,2)            
+            PRINT *,'Wbasis3:',WBasis(1:nd-dp,3)
+            PRINT *,'Src1:',SUM(SRDAatIp(1)*WBasis(:,1))
+            PRINT *,'Src2:',SUM(SRDAatIp(2)*WBasis(:,1))
+            PRINT *,'Src3:',SUM(SRDAatIp(3)*WBasis(:,1))
+          END IF
+        END DO
+
+        CALL LuSolve(nd-np,aMASS,aFORCE)
+        Asloc(1:nd-np) = aFORCE(1:nd-np)
         
         DO t=1,IP % n
           stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
               IP % W(t), detJ, Basis, dBasisdx, EdgeBasis = WBasis, &
               RotBasis = RotWBasis, USolver = pSolver )
-
-          SRDAatIp(1:3) = MATMUL( SRDA(1:3,1:n), Basis(1:n) )
-
-          DO k = 1,AsVar % DOFs
-            AsVar % Values( AsVar % DOFs*(ind(t)-1)+k) = SRDAatIp(k)
-          END DO
-
-          Weight = detJ*IP % s(t)
-
-          DO p=1,nd-np
-            FORCE(p) = FORCE(p) + Weight * SUM(SRDAatIp(1:3)*WBasis(p,:))
-            DO q=1,nd-np
-              MASS(p,q) = MASS(p,q) + Weight * SUM(WBasis(q,:)*WBasis(p,:))
+         
+          Bs_dofs(1:3) = MATMUL( Asloc(1:nd-np), RotWBasis(1:nd-np,:) )
+          
+          IF(ASSOCIATED(BsVar)) THEN
+            DO k = 1,BsVar % DOFs
+              i = BsVar % Dofs * ( BsVar % Perm(Element % ElementIndex) + t -1 ) + k
+              BsVar % Values(i) = Bs_dofs(k)
             END DO
-          END DO
-
+          END IF                   
         END DO
-        CALL LuSolve(nd-np,MASS(1:6,1:6),FORCE(1:6)) 
-        Asloc(1:nd-np)=FORCE(1:nd-np)
-
-        FORCE = 0.0_dp
-        MASS  = 0.0_dp
-      END BLOCK
-      
-
-      BLOCK
-        REAL(KIND=dp) :: Bs_dofs(n,3)
-        INTEGER :: ind(n)
-
-        ind(1:np) = BsVar % Perm(Element % DGIndexes(1:np))
-
-        DO t=1,IP % n
-          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-              IP % W(t), detJ, Basis, dBasisdx, EdgeBasis = WBasis, &
-              RotBasis = RotWBasis, USolver = pSolver )
-
-          Bs_dofs(t, 1:3) = MATMUL( Asloc(1:nd-np), RotWBasis(1:nd-np,:) )
-          DO k = 1,BsVar % DOFs
-            BsVar % Values( BsVar % DOFs*(ind(t)-1)+k) = Bs_dofs(t, k)
-          END DO
-        END DO
-
-!        DO j = 1,n
-!          DO k = 1,BsVar % DOFs
-!            BsVar % Values( BsVar % DOFs*(ind(j)-1)+k) = Bs_dofs(j, k)
-!          END DO
-!        END DO
+        
       END BLOCK
 
     END IF

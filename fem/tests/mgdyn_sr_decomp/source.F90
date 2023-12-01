@@ -62,3 +62,44 @@ FUNCTION SourceFunY(Model, n, t) RESULT(f)
   angle = atan2(yq, xq)
   f = sin(angle) * a_phi(angle, r_loop, xq, zq, I_loop)
 END FUNCTION SourceFunY
+
+FUNCTION SourceFunX2(Model, n, t) RESULT(f)
+  USE DefUtils
+  USE loop_source
+  IMPLICIT None
+  TYPE(Model_t) :: Model
+  INTEGER :: n
+  REAL(KIND=dp) :: t(3), f
+
+  TYPE(Mesh_t), POINTER :: Mesh
+  REAL(KIND=dp) :: xq, yq, zq, angle
+
+  Mesh => Model % Mesh
+  xq = t(1)
+  yq = t(2)
+  zq = t(3)
+  
+  angle = atan2(yq, xq)
+  f = cos(angle) * a_phi(angle, r_loop, xq, zq, I_loop)
+END FUNCTION SourceFunX2
+
+FUNCTION SourceFunY2(Model, n, t) RESULT(f)
+  USE DefUtils
+  USE loop_source
+  IMPLICIT None
+  TYPE(Model_t) :: Model
+  INTEGER :: n
+  REAL(KIND=dp) :: t(3), f
+
+  TYPE(Mesh_t), POINTER :: Mesh
+  REAL(KIND=dp) :: xq, yq, zq, angle
+
+  Mesh => Model % Mesh
+  xq = t(1)
+  yq = t(2)
+  zq = t(3)
+
+  angle = atan2(yq, xq)
+  f = SIN(angle) * a_phi(angle, r_loop, xq, zq, I_loop)
+
+END FUNCTION SourceFunY2
