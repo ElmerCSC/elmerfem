@@ -4573,7 +4573,6 @@ CONTAINS
          SomeAtIp = .TRUE.
          VarTable(count) % Variable => NULL()
          VarTable(count) % ParamValue = -1.0_dp
-         
        ELSE IF ( str(l0:l1) == 'coordinate' ) THEN
          VarTable(count+1) % Variable => VariableGet( CurrentModel % Variables,"coordinate 1")
          VarTable(count+2) % Variable => VariableGet( CurrentModel % Variables,"coordinate 2")
@@ -4581,8 +4580,8 @@ CONTAINS
          count = count + 3 
          SomeAtNodes = .TRUE.
          AllGlobal = .FALSE.
-
        ELSE 
+         Found = .FALSE.
          Var => VariableGet( CurrentModel % Variables,TRIM(str(l0:l1)) )                          
          count = count + 1         
          IF ( ASSOCIATED( Var ) ) THEN
@@ -4592,8 +4591,28 @@ CONTAINS
              SomeAtIp = .TRUE.
            ELSE
              SomeAtNodes = .TRUE.
-           END IF           
-         ELSE
+           END IF
+           Found = .TRUE.
+         ELSE IF(l1-l0 > 5) THEN
+           IF(str(l0:l0+4) == 'prev ') THEN
+             Var => VariableGet( CurrentModel % Variables,TRIM(str(l0+5:l1)) )                          
+             IF( ASSOCIATED( Var ) ) THEN
+               VarTable(count) % Variable => Var
+               VarTable(count) % tstep = -1
+               IF( SIZE( Var % Values ) > Var % Dofs ) AllGlobal = .FALSE.           
+               IF( Var % TYPE == Variable_on_gauss_points ) THEN
+                 SomeAtIp = .TRUE.
+               ELSE
+                 SomeAtNodes = .TRUE.
+               END IF
+               Found = .TRUE.
+             END IF
+           END IF
+         END IF
+
+         ! Ok, the string was not a variable name maybe it is a pure number
+         ! or another keytword.
+         IF(.NOT. Found) THEN
            IF( VERIFY( str(l0:l1),'-.0123456789eE') == 0 ) THEN
              !PRINT *,'We do have a number:',Val
              READ(str(l0:l1),*) Val
@@ -4643,7 +4662,7 @@ CONTAINS
      REAL(KIND=dp) :: T(:)
 !------------------------------------------------------------------------------
      TYPE(Element_t), POINTER :: Element
-     INTEGER :: i,j,k,n,k1,l,varsize,vari,vari0,dti
+     INTEGER :: i,j,k,n,k1,l,varsize,vari,vari0,tstep0,dti
      TYPE(Variable_t), POINTER :: Var
      LOGICAL :: Failed
      REAL(KIND=dp), POINTER :: Values(:)
@@ -4655,13 +4674,15 @@ CONTAINS
      IF(PRESENT(intvarcount)) vari0 = IntVarCount
      count = vari0
 
-     dti = 0
-     IF(PRESENT(tstep)) dti = -tstep
+     tstep0 = 0
+     IF(PRESENT(tstep)) tstep0 = tstep
      
      DO Vari = vari0+1, VarCount
        
        Var => VarTable(Vari) % Variable
-
+       ! If we are asked keyword on previous timestep, then previous for that is 2nd previous...
+       dti = -(tstep0 + VarTable(Vari) % tstep)
+       
        IF(.NOT. ASSOCIATED( Var ) ) THEN
          count = count + 1
          IF(ASSOCIATED( VarTable(Vari) % Keyword ) ) THEN
@@ -4744,7 +4765,6 @@ CONTAINS
                    Values => Var % PrevValues(:,dti)
              END IF
            END IF
-
            DO l=1,Var % DOFs
              count = count + 1
              T(count) = Values(Var % Dofs*(k1-1)+l)
@@ -4912,7 +4932,7 @@ CONTAINS
      INTEGER, OPTIONAL :: tstep
 !------------------------------------------------------------------------------
      TYPE(Element_t), POINTER :: Element
-     INTEGER :: i,j,k,n,k1,l,varsize,vari,vari0,dti
+     INTEGER :: i,j,k,n,k1,l,varsize,vari,vari0,dti,tstep0
      TYPE(Variable_t), POINTER :: Var
      LOGICAL :: Failed
      REAL(KIND=dp), POINTER :: Values(:)
@@ -4924,10 +4944,11 @@ CONTAINS
      END IF
      count = vari0
 
-     dti = 0
-     IF( PRESENT(tstep) ) dti = -tstep
-
-     DO Vari = vari0+1, VarCount 
+     tstep0 = 0
+     IF(PRESENT(tstep)) tstep0 = tstep
+     
+     DO Vari = vari0+1, VarCount
+       
        Var => VarTable(Vari) % Variable
 
        IF(.NOT. ASSOCIATED( Var ) ) THEN
@@ -4936,6 +4957,7 @@ CONTAINS
          CYCLE
        END IF
        
+       dti = -(tstep0 + VarTable(Vari) % tstep)
        Varsize = SIZE( Var % Values ) / Var % Dofs 
 
        k1 = 0
