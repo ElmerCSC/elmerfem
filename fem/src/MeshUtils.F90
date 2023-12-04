@@ -15834,8 +15834,11 @@ CONTAINS
       IntInvPerm => InvPerm 
     ELSE
       IntInvPerm => Projector % InvPerm
+      IF(ASSOCIATED(intInvPerm)) THEN
+        IF(ALL(IntInvPerm==0)) NULLIFY(intInvPerm)
+      END IF
     END IF
-
+   
     GlobalInds = .FALSE.
     IF(ParEnv % PEs == 1 ) THEN
       FileName = TRIM(Prefix)//'.dat'
@@ -15845,6 +15848,8 @@ CONTAINS
       IF( PRESENT( Parallel ) ) GlobalInds = Parallel
     END IF
 
+    CALL Info(Caller,'Saving projector to file: '//TRIM(FileName),Level=20)
+    
     IF( GlobalInds ) THEN
       NULLIFY( GlobalDofs ) 
       IF( ASSOCIATED( CurrentModel % Solver % Matrix ) ) THEN
@@ -15855,7 +15860,7 @@ CONTAINS
         GlobalDofs => CurrentModel % Mesh % ParallelInfo % GlobalDofs
       END IF
     END IF
-
+    
     zerocnt = 0
     nonzerocnt = 0
     OPEN(1,FILE=FileName,STATUS='Unknown')    
@@ -15910,7 +15915,7 @@ CONTAINS
     END DO
     CLOSE(1)     
 
-    IF( zerocnt > 0 ) THEN      
+    IF( ASSOCIATED(IntInvPerm) .AND. zerocnt > 0 ) THEN      
       CALL Warn('SaveProjector','Invperm zero count is '&
           //I2S(zerocnt)//' (vs. nonzero '//I2S(nonzerocnt)//')')
     END IF

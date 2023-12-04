@@ -4463,8 +4463,9 @@ CONTAINS
       WRITE(Message,*) 'Size of vector is zero: '//TRIM(str)
       CALL Info('VectorValuesRange',Message)              
     ELSE
-      s(3) = s(3) / np
-      WRITE(Message,*) '[min,max,ave] for '//TRIM(str)//':', s
+      !s(3) = s(3) / np
+      !WRITE(Message,*) '[min,max,ave] for '//TRIM(str)//':', s
+      WRITE(Message,*) '[min,max,sum] for '//TRIM(str)//':', s
       CALL Info('VectorValuesRange',Message)
     END IF
         
@@ -17901,7 +17902,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
   REAL(KIND=dp) :: scl, rowsum, Relax, val
   LOGICAL :: Found, ExportMultiplier, NotExplicit, Refactorize, EnforceDirichlet, EliminateDiscont, &
               NonEmptyRow, ComplexSystem, ConstraintScaling, UseTranspose, EliminateConstraints, &
-              SkipConstraints
+              SkipConstraints, UseComplex
   SAVE MultiplierValues, SolverPointer
 
   TYPE(ListMatrix_t), POINTER :: cList
@@ -18078,6 +18079,10 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
 
   UseTranspose = ListGetLogical( Solver % Values, 'Use Transpose values', Found)
 
+  ! If the constraint matrix is complex then its transpose should be complex conjugate
+  ! for the rows related to Lagrange multipliers. 
+  UseComplex = ListGetLogical( Solver % Values,'linear system complex',Found ) 
+  
   CALL Info(Caller,'Number of Rows / Nonzeros in original matrix: '&
       //I2S(StiffMatrix % NumberOfRows)//' / '//I2S(SIZE(StiffMatrix % Values)),Level=22) 
   
@@ -18160,6 +18165,17 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
             ELSE
               val = RestMatrix % Values(j)
             END IF
+
+            ! If the system is complex we should for consistency take complex conjugate of the
+            ! entries related to the lagrange multipliers. 
+#if 1 
+            IF( UseComplex ) THEN
+              IF( RestMatrix % Cols(j) > StiffMatrix % NumberOfRows ) THEN
+                IF(MODULO(i,2) + MODULO(RestMatrix % Cols(j),2) == 1 ) val = -val
+              END IF
+            END IF
+#endif
+            
             CALL AddToMatrixElement( CollectionMatrix, k, RestMatrix % Cols(j), val ) 
             NonEmptyRow = NonEmptyRow .OR. val /= 0
           ELSE
@@ -18698,7 +18714,12 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
   CollectionMatrix % Comm = StiffMatrix % Comm
 
   CALL Info(Caller,'Now going for the coupled linear system',Level=10)
-  
+
+  IF( InfoActive( 30 ) ) THEN
+    CALL VectorValuesRange(CollectionMatrix % Values,SIZE(CollectionMatrix % Values),'A')       
+    CALL VectorValuesRange(CollectionMatrix % rhs,SIZE(CollectionMatrix % rhs),'b')       
+  END IF
+    
   CALL SolveLinearSystem( CollectionMatrix, CollectionVector, &
       CollectionSolution, Norm, DOFs, Solver, StiffMatrix )
     
@@ -19693,10 +19714,11 @@ CONTAINS
   
 
 !------------------------------------------------------------------------------
-  SUBROUTINE SaveLinearSystem( Solver, Ain )
+  SUBROUTINE SaveLinearSystem( Solver, Ain, LinSysName )
 !------------------------------------------------------------------------------
     TYPE( Solver_t ) :: Solver
     TYPE(Matrix_t), POINTER, OPTIONAL :: Ain
+    CHARACTER(LEN=*), OPTIONAL :: LinSysName          
 !------------------------------------------------------------------------------    
     TYPE(Matrix_t), POINTER :: A
     TYPE(ValueList_t), POINTER :: Params
@@ -19733,9 +19755,13 @@ CONTAINS
 
     SaveDamp = ListGetLogical( Params,'Linear System Save Damp',Found)   
 
-    dumpprefix = ListGetString( Params, 'Linear System Save Prefix', Found)
-    IF(.NOT. Found ) dumpprefix = 'linsys'
-
+    IF( PRESENT( LinSysName ) ) THEN
+      dumpprefix = TRIM(LinSysName) 
+    ELSE
+      dumpprefix = ListGetString( Params, 'Linear System Save Prefix', Found)
+      IF(.NOT. Found ) dumpprefix = 'linsys'
+    END IF
+          
     dumpfile = TRIM(dumpprefix)//'_a.dat'
     IF(Parallel) dumpfile = TRIM(dumpfile)//'.'//I2S(ParEnv % myPE)
     CALL Info(Caller,'Saving matrix to: '//TRIM(dumpfile),Level=5)
@@ -23002,7 +23028,7 @@ CONTAINS
      INTEGER, ALLOCATABLE :: PrevInvPerm(:)
      TYPE(Variable_t), POINTER :: Var
      CHARACTER(:), ALLOCATABLE :: Str,MultName
-     
+     REAL(KIND=dp), ALLOCATABLE :: rsum(:)
      
      ! Should we genarete the matrix
      NeedToGenerate = Solver % MortarBCsChanged
@@ -23134,7 +23160,7 @@ CONTAINS
      AllocationsDone = .FALSE.
      arows = Solver % Matrix % NumberOfRows
      
-     ALLOCATE( ActiveComponents(dofs), SetDefined(dofs) ) 
+     ALLOCATE( ActiveComponents(dofs), SetDefined(dofs), rsum(dofs) ) 
      
      IF( SumProjectors ) THEN
        ALLOCATE( SumPerm( dofs * permsize ) )
@@ -23227,11 +23253,6 @@ CONTAINS
 
          IF( .NOT. ASSOCIATED( Atmp ) ) CYCLE
 
-         IF(.NOT. AllocationsDone ) THEN
-           CALL Info(Caller,'Adding projector for BC: '//I2S(bc_ind),Level=8)
-           CALL Info(Caller,'Adding projector rows: '//I2S(Atmp % NumberOfRows),Level=12)
-         END IF
-           
          BC => Model % BCs(bc_ind) % Values         
          IF( AnyPriority ) THEN
            Priority = ListGetInteger( BC,'Projector Priority',Found)
@@ -23247,6 +23268,17 @@ CONTAINS
              CALL Fatal(Caller,'InvPerm is required for geometric projector!')
            END IF
          END IF
+
+         IF(.NOT. AllocationsDone ) THEN
+           IF( ThisIsRobin ) THEN
+             CALL Info(Caller,'Adding flux constraint for BC: '//I2S(bc_ind),Level=8)
+           ELSE IF( IntegralBC ) THEN
+             CALL Info(Caller,'Adding integral constraint for BC: '//I2S(bc_ind),Level=8)
+           ELSE             
+             CALL Info(Caller,'Adding mortar projector for BC: '//I2S(bc_ind),Level=8)
+           END IF
+           CALL Info(Caller,'Adding projector rows: '//I2S(Atmp % NumberOfRows),Level=12)
+         END IF           
          
          ! Enable that the user can for vector valued cases either set some 
          ! or skip some field components. 
@@ -23309,9 +23341,11 @@ CONTAINS
          ComplexSumRow = ( dofs == 2 .AND. ComplexMatrix .AND. .NOT. CreateSelf .AND. &
              SumThis .AND. .NOT. (ASSOCIATED( MortarBC % Diag ) .OR. HaveMortarDiag ) )
        END IF
-         
-       IF( Dofs == 1 .OR. ThisIsRobin ) THEN         
 
+       ! We deal with the Robin Flux cBC's here even though they would be associated 
+       ! to vector or complex valued field. 
+       IF( Dofs == 1 .OR. ThisIsRobin ) THEN         
+         
          IF( .NOT. ActiveComponents(1) ) THEN
            CALL Info(Caller,'Skipping component: '//I2S(1),Level=12)
            CYCLE
@@ -23422,6 +23456,7 @@ CONTAINS
            END IF
            
            wsum = 0.0_dp
+           rsum = 0.0_dp
            
            valsum = 0.0_dp
            DO l=Atmp % Rows(i),Atmp % Rows(i+1)-1             
@@ -23462,6 +23497,9 @@ CONTAINS
                    ELSE
                      Scale = MortarBC % MasterScale
                    END IF
+                 ELSE IF( ThisIsRobin ) THEN
+                   j = MODULO(col-1,dofs)+1
+                   rsum(j) = rsum(j) + val
                  ELSE
                    wsum = wsum + val
                  END IF
@@ -23520,8 +23558,20 @@ CONTAINS
                  MortarDiag = MortarBC % Diag(i)
                  LumpedDiag = MortarBC % LumpedDiag
                END IF
-              
-               IF( LumpedDiag ) THEN
+
+               IF( ThisIsRobin ) THEN
+                 val = ListGetCReal( Solver % Values,'Mortar scl',Found ) 
+                 IF(.NOT. found) val = 1.0_dp
+
+                 DO j=1,dofs
+                   k2 = k2 + 1
+                   IF( AllocationsDone ) THEN
+                     Btmp % Cols(k2) = j + arows                      
+                     Btmp % Values(k2) = Btmp % Values(k2) - 0.5_dp * val * MortarDiag * rsum(j)
+                   END IF                     
+                 END DO
+               
+               ELSE IF( LumpedDiag ) THEN
                  k2 = k2 + 1
                  IF( AllocationsDone ) THEN
                    Btmp % Cols(k2) = row + arows 
