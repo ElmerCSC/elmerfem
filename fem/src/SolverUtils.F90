@@ -8404,8 +8404,6 @@ CONTAINS
            k = SearchNode( A % ParallelInfo, r_e(j), Order=A % ParallelInfo % Gorder )
            IF ( k>0 ) THEN
              IF(.NOT. A % ConstrainedDOF(k)) THEN
-!               CALL ZeroRow(A, k )
-!               A % Values(A % Diag(k)) = 1._dp
                A % Dvalues(k) = g_e(j)
                A % ConstrainedDOF(k) = .TRUE.
              END IF
@@ -17897,12 +17895,12 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
   REAL(KIND=dp), POINTER  :: MultiplierValues(:), pSol(:)
   REAL(KIND=dp), ALLOCATABLE, TARGET :: CollectionSolution(:), TotValues(:)
   INTEGER :: NumberOfRows, NumberOfValues, MultiplierDOFs, istat, NoEmptyRows 
-  INTEGER :: i, j, k, l, m, n, p,q, ix, Loop
+  INTEGER :: i, j, k, l, m, n, p,q, ix, Loop, colj
   TYPE(Variable_t), POINTER :: MultVar
   REAL(KIND=dp) :: scl, rowsum, Relax, val
   LOGICAL :: Found, ExportMultiplier, NotExplicit, Refactorize, EnforceDirichlet, EliminateDiscont, &
               NonEmptyRow, ComplexSystem, ConstraintScaling, UseTranspose, EliminateConstraints, &
-              SkipConstraints, UseComplex
+              SkipConstraints
   SAVE MultiplierValues, SolverPointer
 
   TYPE(ListMatrix_t), POINTER :: cList
@@ -17976,8 +17974,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
   IF(ASSOCIATED(AddMatrix)) NumberOfRows = MAX(NumberOfRows,AddMatrix % NumberOfRows)
   EliminateConstraints = ListGetLogical( Solver % Values, 'Eliminate Linear Constraints', Found)
   IF(ASSOCIATED(RestMatrix)) THEN
-    IF(.NOT.EliminateConstraints) &
-      NumberOfRows = NumberOFRows + RestMatrix % NumberOfRows
+    IF(.NOT.EliminateConstraints) NumberOfRows = NumberOFRows + RestMatrix % NumberOfRows
   END IF
 
   ALLOCATE( CollectionMatrix % RHS( NumberOfRows ), &
@@ -17988,18 +17985,14 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
   CollectionVector = 0.0_dp
   CollectionSolution = 0.0_dp
 
-  ComplexSystem = StiffMatrix % COMPLEX
-  ComplexSystem = ComplexSystem .OR. ListGetLogical( Solver % Values, &
-           'Linear System Complex', Found )
+  ComplexSystem = StiffMatrix % COMPLEX .OR. &
+      ListGetLogical( Solver % Values,'Linear System Complex', Found )
   
 !------------------------------------------------------------------------------
 ! If multiplier should be exported,  allocate memory and export the variable.
 !------------------------------------------------------------------------------
 
   ExportMultiplier = ListGetLogical( Solver % Values, 'Export Lagrange Multiplier', Found )
-  IF ( .NOT. Found ) ExportMultiplier = .FALSE.
-
-
   IF ( ExportMultiplier ) THEN
      MultiplierName = ListGetString( Solver % Values, 'Lagrange Multiplier Name', Found )
      IF ( .NOT. Found ) THEN
@@ -18008,11 +18001,9 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
        ELSE
          MultiplierName = 'LagrangeMultiplier'
        END IF       
-       CALL Info( Caller, &
-           'Lagrange Multiplier Name set to: '//TRIM(MultiplierName), Level=12 )
+       CALL Info( Caller,'Lagrange Multiplier Name set to: '//TRIM(MultiplierName), Level=12 )
      ELSE
-       CALL Info( Caller, &
-           'Lagrange Multiplier Name given to: '//TRIM(MultiplierName), Level=12 )       
+       CALL Info( Caller,'Lagrange Multiplier Name given to: '//TRIM(MultiplierName), Level=12 )       
      END IF
 
      MultVar => VariableGet(Solver % Mesh % Variables, MultiplierName)
@@ -18078,10 +18069,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
   EnforceDirichlet = EnforceDirichlet .AND. ALLOCATED(StiffMatrix % ConstrainedDOF)
 
   UseTranspose = ListGetLogical( Solver % Values, 'Use Transpose values', Found)
-
-  ! If the constraint matrix is complex then its transpose should be complex conjugate
-  ! for the rows related to Lagrange multipliers. 
-  UseComplex = ListGetLogical( Solver % Values,'linear system complex',Found ) 
   
   CALL Info(Caller,'Number of Rows / Nonzeros in original matrix: '&
       //I2S(StiffMatrix % NumberOfRows)//' / '//I2S(SIZE(StiffMatrix % Values)),Level=22) 
@@ -18140,24 +18127,29 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
         END IF
 
         DO j=RestMatrix % Rows(i+1)-1,RestMatrix % Rows(i),-1
-          Found = .TRUE.
+          ! Skip non-positive column indexes, why should there be any? 
+          colj = RestMatrix % Cols(j)
+          IF( colj <= 0 ) CYCLE
 
-          ! Skip non-positive column indexes
-          IF( RestMatrix % Cols(j) <= 0 ) CYCLE
+          ! Complex system requires that we have exact 2x2 block structure. Don't spoil that.
           IF ( .NOT. ComplexSystem ) THEN
             IF( ABS(RestMatrix % Values(j)) < EPSILON(1._dp)*rowsum ) CYCLE
           END IF
 
-          IF (EnforceDirichlet .AND. RestMatrix % Cols(j) <= StiffMatrix % NumberOfRows) &
-                  Found = .NOT.StiffMatrix % ConstrainedDOF(RestMatrix % Cols(j))
-
+          ! If we have Dirichlet condition set for the matrix use that directly and do not add
+          ! stuff to the row that would spoil the condition. 
+          Found = .TRUE.
+          IF (EnforceDirichlet .AND. colj <= StiffMatrix % NumberOfRows) THEN
+            Found = .NOT. StiffMatrix % ConstrainedDOF(colj)
+          END IF
+            
           IF(Found) THEN
             IF (ASSOCIATED(RestMatrix % TValues)) THEN
               val = RestMatrix % TValues(j)
             ELSE
               val = RestMatrix % Values(j)
             END IF              
-            CALL AddToMatrixElement( CollectionMatrix, RestMatrix % Cols(j), k, val ) 
+            CALL AddToMatrixElement( CollectionMatrix, colj, k, val ) 
 
             ! Add the Transpose part
             IF (UseTranspose .AND. ASSOCIATED(RestMatrix % TValues)) THEN
@@ -18166,32 +18158,21 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
               val = RestMatrix % Values(j)
             END IF
 
-            ! If the system is complex we should for consistency take complex conjugate of the
-            ! entries related to the lagrange multipliers. 
-#if 1 
-            IF( UseComplex ) THEN
-              IF( RestMatrix % Cols(j) > StiffMatrix % NumberOfRows ) THEN
-                IF(MODULO(i,2) + MODULO(RestMatrix % Cols(j),2) == 1 ) val = -val
-              END IF
+            ! Only add the transpose when it is associated to the unknowns of the initial matrix.
+            ! Otherwise the entries related to largrange multipliers would be multiplied by factor 2!
+            IF( colj <= StiffMatrix % NumberOfRows ) THEN            
+              CALL AddToMatrixElement( CollectionMatrix, k, colj, val ) 
+              NonEmptyRow = NonEmptyRow .OR. val /= 0
             END IF
-#endif
-            
-            CALL AddToMatrixElement( CollectionMatrix, k, RestMatrix % Cols(j), val ) 
-            NonEmptyRow = NonEmptyRow .OR. val /= 0
           ELSE
             IF (UseTranspose .AND. ASSOCIATED(RestMatrix % TValues)) THEN
               val = RestMatrix % TValues(j)
             ELSE 
               val = RestMatrix % Values(j)
             END IF
-            CollectionVector(k) = CollectionVector(k) - &
-                val * ForceVector(RestMatrix % Cols(j)) / &
-                StiffMatrix % Values(StiffMatrix % Diag(RestMatrix % Cols(j)))
-!            CALL AddToMatrixElement( CollectionMatrix, &
-!                 k, RestMatrix % Cols(j), val )
-!            NonEmptyRow = NonEmptyRow .OR. val /= 0
+            ! Use the value of the Dirichlet condition from "Dvalues"
+            CollectionVector(k) = CollectionVector(k) - val * StiffMatrix % DValues(colj)  
           END IF
-
         END DO
       END IF
  
@@ -18230,10 +18211,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
     END DO
 
     IF( NoEmptyRows > 0 ) THEN
-      CALL Info(Caller,&
-          'Constraint Matrix has '//I2S(NoEmptyRows)// &
-          ' empty rows out of '//I2S(RestMatrix % NumberOfRows), &
-	  Level=6 )
+      CALL Info(Caller,'Constraint Matrix has '//I2S(NoEmptyRows)// &
+          ' empty rows out of '//I2S(RestMatrix % NumberOfRows),Level=6 )
     END IF
 
     CALL Info(Caller,'Finished Adding ConstraintMatrix',Level=12)
@@ -18251,9 +18230,10 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
     DO i=AddMatrix % NumberOfRows,1,-1
 
       Found = .TRUE.
-      IF (EnforceDirichlet .AND. i<=StiffMatrix % NumberOFRows) &
-         Found = .NOT.StiffMatrix % ConstrainedDOF(i)
-
+      IF (EnforceDirichlet .AND. i<=StiffMatrix % NumberOFRows) THEN
+        Found = .NOT.StiffMatrix % ConstrainedDOF(i)
+      END IF
+        
       IF(Found) THEN
         Found = .FALSE.
         DO j=AddMatrix % Rows(i+1)-1,AddMatrix % Rows(i),-1
@@ -18442,7 +18422,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
           END DO
         END DO
 
-
         DO m=1,Xmat % NumberOfRows
           i = UseIPerm(m)
           DO j=Xmat % Rows(m), Xmat % Rows(m+1)-1
@@ -18479,7 +18458,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
 
     ! Eliminate Lagrange Coefficients:
     ! --------------------------------
-
     CALL Info(Caller,'Eliminating Largrange Coefficients',Level=15)
 
     DO m=1,Tmat % NumberOfRows
@@ -18505,11 +18483,10 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
           END IF
         ELSE
           k = UseIPerm(k-n)
-          ! multiplied by 1/2 in GenerateConstraintMatrix()
           IF (EliminateDiscont) THEN
-            scl = -2*DiagDiag(m) / UseDiag(m)
+            scl = -DiagDiag(m) / UseDiag(m)
           ELSE
-            scl = -2*Tvals(j) / UseDiag(m)
+            scl = -Tvals(j) / UseDiag(m)
           END IF
         END IF
 
@@ -18553,7 +18530,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
           END DO
         END DO
       ELSE
-
         CALL List_ToCRSMatrix(CollectionMatrix)
         Tmat => AllocateMatrix()
         Tmat % Format = MATRIX_LIST
@@ -18762,7 +18738,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
     DEALLOCATE( TrueDof )
   END IF
     
-
   
 !------------------------------------------------------------------------------
 ! Separate the solution from CollectionSolution
@@ -23567,7 +23542,7 @@ CONTAINS
                    k2 = k2 + 1
                    IF( AllocationsDone ) THEN
                      Btmp % Cols(k2) = j + arows                      
-                     Btmp % Values(k2) = Btmp % Values(k2) - 0.5_dp * val * MortarDiag * rsum(j)
+                     Btmp % Values(k2) = Btmp % Values(k2) - val * MortarDiag * rsum(j)
                    END IF                     
                  END DO
                
@@ -23575,11 +23550,7 @@ CONTAINS
                  k2 = k2 + 1
                  IF( AllocationsDone ) THEN
                    Btmp % Cols(k2) = row + arows 
-                   ! The factor 0.5 comes from the fact that the 
-                   ! contribution is summed twice, 2nd time as transpose
-                   ! For Nodal projector the entry is 1/(weight*coeff)
-                   ! For Galerkin projector the is weight/coeff 
-                   Btmp % Values(k2) = Btmp % Values(k2) - 0.5_dp * MortarDiag * wsum
+                   Btmp % Values(k2) = Btmp % Values(k2) - MortarDiag * wsum
                  ELSE
                    IF( SumThis) SumCount(row) = SumCount(row) + 1
                  END IF
@@ -23621,7 +23592,7 @@ CONTAINS
                      END IF
                      
                      Btmp % Cols(k2) = l2 + arows + rowoffset
-                     Btmp % Values(k2) = Btmp % Values(k2) - 0.5_dp * val * MortarDiag
+                     Btmp % Values(k2) = Btmp % Values(k2) - val * MortarDiag
                    ELSE
                      IF( SumThis) SumCount(row) = SumCount(row) + 1
                    END IF
@@ -23993,7 +23964,7 @@ CONTAINS
                    k2 = k2 + 1
                    IF( AllocationsDone ) THEN
                      Btmp % Cols(k2) = row + arows
-                     Btmp % Values(k2) = -0.5_dp * wsum * MortarDiag
+                     Btmp % Values(k2) = -wsum * MortarDiag
                    END IF
                  ELSE
                    DO k=Atmp % Rows(i),Atmp % Rows(i+1)-1                 
@@ -24015,7 +23986,7 @@ CONTAINS
                      k2 = k2 + 1
                      IF( AllocationsDone ) THEN                   
                        Btmp % Cols(k2) = Dofs*(MortarBC % Perm( col )-1)+j + arows + rowoffset
-                       Btmp % Values(k2) = -0.5_dp * Atmp % Values(k) * MortarDiag
+                       Btmp % Values(k2) = -Atmp % Values(k) * MortarDiag
                      END IF
                    END DO
                  END IF
