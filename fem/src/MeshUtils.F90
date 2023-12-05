@@ -22918,15 +22918,23 @@ CONTAINS
     REAL(KIND=dp) :: eps, dist
     INTEGER, POINTER :: Indexes0(:)
     INTEGER, ALLOCATABLE :: Indexes1(:)
-    INTEGER :: t,i,j,n,n0,n1,nb,cnt(2)
+    INTEGER :: t,t0,i,j,n,n0,n1,na,nb,cnt(2)
     TYPE(Element_t), POINTER :: Element
+    INTEGER, POINTER :: SimilarElement(:)
+    LOGICAL :: Similar
+    CHARACTER(:), ALLOCATABLE :: str    
     
     n = Mesh % MaxElementNodes
     ALLOCATE(r0(n,3),r1(n,3),Indexes1(n))
 
     cnt = [1,0]
-    nb = Mesh % NumberOfBulkElements
-    DO t=1,nb
+    na = Mesh % NumberOfBulkElements
+    nb = Mesh % NumberOfBoundaryElements
+
+    ALLOCATE(SimilarElement(na+nb))
+    SimilarElement = 0
+    
+    DO t=1,na+nb
       Element => Mesh % Elements(t)
       Indexes0 => Element % NodeIndexes
       n = Element % Type % NumberOfNodes
@@ -22944,9 +22952,13 @@ CONTAINS
       IF(t==1) THEN
         r0 = r1
         n0 = n
+        t0 = t
         eps = 1.0e-6 * SUM(ABS(r0))/n0
         CYCLE
-      ELSE IF(n == n0) THEN
+      END IF
+
+      Similar = .FALSE.
+      IF(n == n0) THEN
         n1 = 0
         DO i=1,n
           DO j=1,n
@@ -22958,22 +22970,40 @@ CONTAINS
           END DO
         END DO        
         IF(n1 == n) THEN
+          Similar = .TRUE.
           cnt(1) = cnt(1) + 1
           IF(ANY(Indexes0(1:n) /= Indexes1(1:n))) THEN
             cnt(2) = cnt(2) + 1
             Indexes0(1:n) = Indexes1(1:n)
           END IF
+          SimilarElement(t) = t0
         END IF
+      END IF
+
+      ! Create new refrence!
+      IF(.NOT. Similar) THEN
+        r0 = r1
+        n0 = n
+        t0 = t
+      END IF
+
+      IF( t == na .OR. t == na + nb ) THEN
+        IF( t == na ) THEN
+          str = 'bulk'
+          n = na
+        ELSE
+          str = 'boundary'
+          n = nb
+        END IF
+        CALL Info('SetEqualElementIndeces','Number of Similar '//TRIM(str)//' elements '&
+            //I2S(cnt(1))//' (out of '//I2S(n)//')')
+        CALL Info('SetEqualElementIndeces','Number of altered '//TRIM(str)//' elements')
+        cnt = 0
       END IF
     END DO
 
-    IF( cnt(1) == nb ) THEN
-      CALL Info('SetEqualElementIndeces','All elements are similar!')
-    ELSE
-      CALL Info('SetEqualElementIndeces','Number of similar elements is '//I2S(cnt(1))//' (out of '//I2S(nb)//')')
-    END IF
-    CALL Info('SetEqualElementIndeces','Altered order in '//I2S(cnt(2))//' elements',Level=8) 
-          
+    DEALLOCATE( SimilarElement ) 
+    
   END SUBROUTINE SetEqualElementIndeces
     
   
