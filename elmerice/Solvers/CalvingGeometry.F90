@@ -4785,7 +4785,7 @@ CONTAINS
            !always finds correct translation from DOFs to process nodenumber since
            !all arrays in ascending order
            IF(ANY(UnfoundDOFS == FinalDOFs(i))) THEN
-              PRINT *,ParEnv % MyPE,'Didnt find shared point: ', UnfoundIndex(nodecount), &
+              PRINT *,ParEnv % MyPE,'Didnt find shared 3D point: ', UnfoundIndex(nodecount), &
               ' x:', NewMesh % Nodes % x(Unfoundindex(nodecount)),&
               ' y:', NewMesh % Nodes % y(Unfoundindex(nodecount)),&
               ' z:', NewMesh % Nodes % z(Unfoundindex(nodecount)), &
@@ -4799,7 +4799,7 @@ CONTAINS
            !nodenumber = UnfoundIndex(nodecount) since different on each process
            !always finds correct translation from DOFs to process nodenumber since
            !all arrays in ascending order
-           PRINT *,ParEnv % MyPE,'Didnt find point: ', UnfoundIndex(nodecount), &
+           PRINT *,ParEnv % MyPE,'Didnt find 3D point: ', UnfoundIndex(nodecount), &
            ' x:', NewMesh % Nodes % x(Unfoundindex(nodecount)),&
            ' y:', NewMesh % Nodes % y(Unfoundindex(nodecount)),&
            ' z:', NewMesh % Nodes % z(Unfoundindex(nodecount)), &
@@ -4826,10 +4826,11 @@ CONTAINS
     TYPE(Variable_t), POINTER :: Var
     TYPE(Element_t),POINTER :: Element
     LOGICAL :: Parallel, Debug, HasNeighbours
-    LOGICAL, ALLOCATABLE :: ValidNode(:), SuppNodeMask(:,:), WorkMask(:,:)
+    LOGICAL, ALLOCATABLE :: ValidNode(:), SuppNodeMask(:,:), SuppNodePMask(:,:)
     REAL(KIND=dp) :: Point(3), SuppPoint(3), weight, Exponent, distance
-    REAL(KIND=dp), ALLOCATABLE :: interpedValue(:),SuppNodeWeights(:),WorkArray(:), SumWeights(:)
-    INTEGER :: i,j,n,idx,NoNeighbours,NoSuppNodes, MaskCount
+    REAL(KIND=dp), ALLOCATABLE :: interpedValue(:),SuppNodeWeights(:),SumWeights(:),&
+        InterpedPValue(:), PSumWeights(:)
+    INTEGER :: i,j,n,idx,NoNeighbours,NoSuppNodes, MaskCount, PMaskCount
     INTEGER, ALLOCATABLE :: WorkInt(:), SuppNodes(:)
     INTEGER, POINTER :: Neighbours(:)
     Debug = .TRUE.
@@ -4886,13 +4887,28 @@ CONTAINS
     IF(Debug) PRINT *,ParEnv % MyPE,'Debug, seeking nn: ',NodeNumber,' found ',&
         NoSuppNodes,' supporting nodes.'
 
+    ! calculate maskcount and pmaskcount
+    IF(PRESENT(Variables)) THEN
+      MaskCount = 0 ! zero since no variables already
+      PMaskCount = 0
+      Var => Variables
+      DO WHILE(ASSOCIATED(Var))
+        MaskCount = MaskCount + 1
+        IF(ASSOCIATED(Var % PrevValues)) &
+          PMaskCount = PMaskCount + SIZE(Var % PrevValues,2)
+
+        Var => Var % Next
+      END DO
+    END IF
+
     !create suppnode mask and get node values
     ! get node weights too
-    ALLOCATE(SuppNodeMask(NoSuppNodes, 1000))
-    ALLOCATE(InterpedValue(1000))
-    ALLOCATE(SuppNodeWeights(NoSuppNodes))
-    SuppNodeMask = .FALSE.
-    interpedValue = 0.0_dp
+    ALLOCATE(SuppNodeMask(NoSuppNodes, MaskCount), &
+        SuppNodePMask(NoSuppNodes, PMaskCount), &
+        InterpedValue(MaskCount), InterpedPValue(PMaskCount), &
+        SuppNodeWeights(NoSuppNodes))
+    SuppNodeMask = .FALSE.; SuppNodePMask = .FALSE.
+    interpedValue = 0.0_dp; InterpedPValue = 0.0_dp
     DO i=1, NoSuppNodes
       ! SuppNodes for interp
       SuppPoint(1) = Mesh % Nodes % x(SuppNodes(i))
@@ -4908,13 +4924,14 @@ CONTAINS
       weight = distance**(-exponent)
       SuppNodeWeights(i) = weight
 
-      SuppNodeMask(i, 1) = .TRUE.
-
       IF(PRESENT(Variables)) THEN
         MaskCount = 0 ! zero since no variables already
+        PMaskCount = 0
         Var => Variables
         DO WHILE(ASSOCIATED(Var))
           MaskCount = MaskCount + 1
+          IF(ASSOCIATED(Var % PrevValues)) &
+            PMaskCount = PMaskCount + SIZE(Var % PrevValues,2)
           IF((SIZE(Var % Values) == Var % DOFs) .OR. &    !-global
               (Var % DOFs > 1) .OR. &                    !-multi-dof
               Var % Secondary) THEN                      !-secondary
@@ -4936,41 +4953,47 @@ CONTAINS
           InterpedValue(MaskCount) = interpedvalue(MaskCount) + &
           weight * Var % Values(Var % Perm(SuppNodes(i)))
 
+          !PrevValues
+          IF(ASSOCIATED(Var % PrevValues)) THEN
+            SuppNodePMask(i, PMaskCount) = .TRUE.
+            DO j=1, SIZE(Var % PrevValues, 2)
+              n = PMaskCount + j - SIZE(Var % PrevValues, 2)
+              InterpedPValue(n) = InterpedPValue(n) +&
+                weight * Var % PrevValues(Var % Perm(SuppNodes(i)), j)
+            END DO
+          END IF
+
           Var => Var % Next
         END DO
       END IF
     END DO
 
-    !crop supppnode mask and interpedvalue
-    ALLOCATE(WorkMask(NoSuppNodes, MaskCount), WorkArray(MaskCount))
-    WorkMask = SuppNodeMask(:,1:MaskCount)
-    WorkArray = InterpedValue(1:MaskCount)
-    DEALLOCATE(SuppNodeMask, InterpedValue)
-    ALLOCATE(SuppNodeMask(NoSuppNodes, MaskCount), InterpedValue(MaskCount))
-    SuppNodeMask = WorkMask
-    InterpedValue = WorkArray
-    DEALLOCATE(WorkMask, WorkArray)
-
     !Calculate weights
-    ALLOCATE(SumWeights(MaskCount))
-    SumWeights = 0.0_dp
+    ALLOCATE(SumWeights(MaskCount), PSumWeights(PMaskCount))
+    SumWeights = 0.0_dp; PSumWeights = 0.0_dp
     DO i=1, NoSuppNodes
       DO j=1, MaskCount
         !var exists on that node
-        IF(SuppNodeMask(i,j)) THEN
+        IF(SuppNodeMask(i,j)) &
           SumWeights(j) = SumWeights(j) + SuppNodeWeights(i)
-        END IF
+      END DO
+      DO j=1, PMaskCount
+        IF(SuppNodePMask(i,j)) &
+          PSumWeights(j) = PSumWeights(j) + SuppNodeWeights(i)
       END DO
     END DO
 
     interpedValue = interpedValue/SumWeights
+    InterpedPValue = InterpedPValue/PSumWeights
 
-    ! no neighbours
     IF(PRESENT(Variables)) THEN
       MaskCount = 0
+      PMaskCount = 0
       Var => Variables
       DO WHILE(ASSOCIATED(Var))
         MaskCount = MaskCount + 1
+        IF(ASSOCIATED(Var % PrevValues)) &
+          PMaskCount = PMaskCount + SIZE(Var % PrevValues,2)
         IF((SIZE(Var % Values) == Var % DOFs) .OR. & !-global
             (Var % DOFs > 1) .OR. &                    !-multi-dof
             Var % Secondary) THEN                      !-secondary
@@ -4990,6 +5013,18 @@ CONTAINS
         !if any suppnode had variable
         IF(ANY(SuppNodeMask(:,MaskCount))) THEN
           Var % Values(Var % Perm(NodeNumber)) = interpedValue(MaskCount)
+        END IF
+
+        IF(ASSOCIATED(Var % PrevValues)) THEN
+          DO j=1, SIZE(Var % PrevValues,2)
+            n = PMaskCount + j - SIZE(Var % PrevValues, 2)
+            IF(ANY(SuppNodePMask(:,n))) THEN ! defined at suppnodes
+              Var % PrevValues(Var % Perm(NodeNumber),j) = InterpedPValue(n)
+            ELSE
+              CALL WARN('InterpolateUnfoundPoint3D', 'PrevValues not found on Supp Nodes but defined on node so setting to zero')
+              Var % PrevValues(Var % Perm(NodeNumber),j) = 0.0_dp
+            END IF
+          END DO
         END IF
 
         Var => Var % Next
@@ -5012,14 +5047,15 @@ CONTAINS
     TYPE(Variable_t), POINTER :: Var
     TYPE(Element_t),POINTER :: Element
     LOGICAL :: Parallel, Debug, HasNeighbours
-    LOGICAL, ALLOCATABLE :: ValidNode(:), SuppNodeMask(:,:), WorkMask(:,:), PartSuppNodeMask(:,:,:), &
-         UseProc(:)
+    LOGICAL, ALLOCATABLE :: ValidNode(:), SuppNodeMask(:,:), PartSuppNodeMask(:,:,:), &
+         UseProc(:), SuppNodePMask(:,:), PartSuppNodePMask(:,:,:)
     REAL(KIND=dp) :: Point(3), SuppPoint(3), weight, Exponent, distance
     REAL(KIND=dp), ALLOCATABLE :: interpedValue(:), PartInterpedValues(:,:), &
-         SuppNodeWeights(:), PartSuppNodeWeights(:,:), WorkArray(:), SumWeights(:),&
-         FinalInterpedValues(:)
+         SuppNodeWeights(:), PartSuppNodeWeights(:,:), SumWeights(:),&
+         FinalInterpedValues(:), InterpedPValue(:), PartInterpedPValues(:,:), &
+         FinalInterpedPValues(:), PSumWeights(:)
     INTEGER :: i,j,k,n,idx,NoNeighbours,NoSuppNodes,NoUsedNeighbours,&
-         proc,status(MPI_STATUS_SIZE), counter, ierr, MaskCount
+         proc,status(MPI_STATUS_SIZE), counter, ierr, MaskCount, PMaskCount
     INTEGER, ALLOCATABLE :: NeighbourParts(:), WorkInt(:), SuppNodes(:), PartNoSuppNodes(:), WorkInt2(:), &
          GDOFs(:), PartGDOFs(:), GDOFLoc(:)
     INTEGER, POINTER :: Neighbours(:)
@@ -5189,13 +5225,28 @@ CONTAINS
       NoUsedNeighbours = COUNT(UseProc(2:NoNeighbours+1))
     END IF
 
+    ! calculate maskcount and pmaskcount
+    IF(PRESENT(Variables)) THEN
+      MaskCount = 0 ! zero since no variables already
+      PMaskCount = 0
+      Var => Variables
+      DO WHILE(ASSOCIATED(Var))
+        MaskCount = MaskCount + 1
+        IF(ASSOCIATED(Var % PrevValues)) &
+          PMaskCount = PMaskCount + SIZE(Var % PrevValues,2)
+
+        Var => Var % Next
+      END DO
+    END IF
+
     !create suppnode mask and get node values
     ! get node weights too
-    ALLOCATE(SuppNodeMask(NoSuppNodes, 1000))
-    ALLOCATE(InterpedValue(1000))
-    ALLOCATE(SuppNodeWeights(NoSuppNodes))
-    SuppNodeMask = .FALSE.
-    interpedValue = 0.0_dp
+    ALLOCATE(SuppNodeMask(NoSuppNodes, MaskCount), &
+        SuppNodePMask(NoSuppNodes, PMaskCount), &
+        InterpedValue(MaskCount), InterpedPValue(PMaskCount), &
+        SuppNodeWeights(NoSuppNodes))
+    SuppNodeMask = .FALSE.; SuppNodePMask = .FALSE.
+    interpedValue = 0.0_dp; InterpedPValue = 0.0_dp
     DO i=1, NoSuppNodes
       ! SuppNodes for interp
       SuppPoint(1) = Mesh % Nodes % x(SuppNodes(i))
@@ -5211,17 +5262,18 @@ CONTAINS
       weight = distance**(-exponent)
       SuppNodeWeights(i) = weight
 
-      SuppNodeMask(i, 1) = .TRUE.
-
       IF(PRESENT(Variables)) THEN
-        MaskCount = 0 ! since we start with no variables
+        MaskCount = 0 ! zero since no variables already
+        PMaskCount = 0
         Var => Variables
         DO WHILE(ASSOCIATED(Var))
           MaskCount = MaskCount + 1
+          IF(ASSOCIATED(Var % PrevValues)) &
+            PMaskCount = PMaskCount + SIZE(Var % PrevValues,2)
           IF((SIZE(Var % Values) == Var % DOFs) .OR. &    !-global
               (Var % DOFs > 1) .OR. &                    !-multi-dof
               Var % Secondary) THEN                      !-secondary
-                Var => Var % Next
+            Var => Var % Next
             CYCLE
           ELSE IF(LEN(Var % Name) >= 10) THEN
             IF(Var % Name(1:10)=='coordinate') THEN    !-coord var
@@ -5236,35 +5288,23 @@ CONTAINS
           END IF
 
           SuppNodeMask(i, MaskCount) = .TRUE.
-          InterpedValue(MaskCount) = InterpedValue(MaskCount) + &
+          InterpedValue(MaskCount) = interpedvalue(MaskCount) + &
           weight * Var % Values(Var % Perm(SuppNodes(i)))
+
+          !PrevValues
+          IF(ASSOCIATED(Var % PrevValues)) THEN
+            SuppNodePMask(i, PMaskCount) = .TRUE.
+            DO j=1, SIZE(Var % PrevValues, 2)
+              n = PMaskCount + j - SIZE(Var % PrevValues, 2)
+              InterpedPValue(n) = InterpedPValue(n) +&
+                weight * Var % PrevValues(Var % Perm(SuppNodes(i)), j)
+            END DO
+          END IF
 
           Var => Var % Next
         END DO
       END IF
     END DO
-
-    ! one proc could have no suppnodes so need to calculate maskcount
-    IF(NoSuppNodes == 0) THEN
-      IF(PRESENT(Variables)) THEN
-        MaskCount = 0 ! since start with no variables
-        Var => Variables
-        DO WHILE(ASSOCIATED(Var))
-          MaskCount = MaskCount + 1
-          Var => Var % Next
-        END DO
-      END IF
-    END IF
-
-    !crop supppnode mask and interpedvalue
-    ALLOCATE(WorkMask(NoSuppNodes, MaskCount), WorkArray(MaskCount))
-    WorkMask = SuppNodeMask(:,1:MaskCount)
-    WorkArray = InterpedValue(1:MaskCount)
-    DEALLOCATE(SuppNodeMask, InterpedValue)
-    ALLOCATE(SuppNodeMask(NoSuppNodes, MaskCount), InterpedValue(MaskCount))
-    SuppNodeMask = WorkMask
-    InterpedValue = WorkArray
-    DEALLOCATE(WorkMask, WorkArray)
 
     ! all parallel communication changed to use NoUsedNeighbours so neighbouring procs
     ! of those with zero suppnodes (no info) do not over allocate (eg allocate nans)
@@ -5287,6 +5327,25 @@ CONTAINS
       END If
     END DO
 
+    !share SuppNodePMask for prevvalues
+    ALLOCATE(PartSuppNodePMask(NoUsedNeighbours+1, 25, PMaskCount))
+    PartSuppNodePMask = .FALSE.
+    PartSuppNodePMask(1,:NoSuppNodes,:) = SuppNodePMask
+    counter=0
+    DO i=1, NoNeighbours
+      proc = NeighbourParts(i)
+      IF(UseProc(1)) THEN ! if this proc has supp nodes send
+        CALL MPI_BSEND( SuppNodePMask, NoSuppNodes*PMaskCount, MPI_LOGICAL, proc, &
+          4011, ELMER_COMM_WORLD,ierr )
+      END IF
+      IF(UseProc(i+1)) THEN !neighouring proc has supp nodes
+        counter=counter+1
+        CALL MPI_RECV( PartSuppNodePMask(counter+1,:PartNoSuppNodes(i+1),: ) , &
+          PartNoSuppNodes(i+1)*PMaskCount, MPI_LOGICAL, proc, &
+          4011, ELMER_COMM_WORLD, status, ierr )
+      END If
+    END DO
+
     !share interped value
     ALLOCATE(PartInterpedValues(NoUsedNeighbours+1, MaskCount))
     PartInterpedValues(1,1:MaskCount) = InterpedValue
@@ -5301,6 +5360,23 @@ CONTAINS
         counter=counter+1
         CALL MPI_RECV( PartInterpedValues(counter+1,:), MaskCount, MPI_DOUBLE_PRECISION, proc, &
           4002, ELMER_COMM_WORLD, status, ierr )
+      END IF
+    END DO
+
+    !share interped prevvalue
+    ALLOCATE(PartInterpedPValues(NoUsedNeighbours+1, PMaskCount))
+    PartInterpedPValues(1,1:PMaskCount) = InterpedPValue
+    counter=0
+    DO i=1, NoNeighbours
+      proc = NeighbourParts(i)
+      IF(UseProc(1)) THEN ! if this proc has supp nodes send
+        CALL MPI_BSEND( InterpedPValue, PMaskCount, MPI_DOUBLE_PRECISION, proc, &
+          4012, ELMER_COMM_WORLD,ierr )
+      END IF
+      IF(UseProc(i+1)) THEN !neighouring prco has supp nodes
+        counter=counter+1
+        CALL MPI_RECV( PartInterpedPValues(counter+1,:), PMaskCount, MPI_DOUBLE_PRECISION, proc, &
+          4012, ELMER_COMM_WORLD, status, ierr )
       END IF
     END DO
 
@@ -5324,11 +5400,12 @@ CONTAINS
     END DO
 
     !calculate interped values
-    ALLOCATE(FinalInterpedValues(MaskCount))
-    FinalInterpedValues = 0.0_dp
+    ALLOCATE(FinalInterpedValues(MaskCount), FinalInterpedPValues(PMaskCount))
+    FinalInterpedValues = 0.0_dp; FinalInterpedPValues = 0.0_dp
     ! add up interpedvalues
     DO i=1, NoUsedNeighbours+1
       FinalInterpedValues = FinalInterpedValues + PartInterpedValues(i, :)
+      FinalInterpedPValues = FinalInterpedPValues + PartInterpedPValues(i, :)
     END DO
 
     ! convert PartNoSuppNodes to only used procs
@@ -5345,8 +5422,8 @@ CONTAINS
     DEALLOCATE(WorkInt)
 
     ! calculate weight for each var
-    ALLOCATE(SumWeights(MaskCount))
-    SumWeights = 0.0_dp
+    ALLOCATE(SumWeights(MaskCount), PSumWeights(PMaskCount))
+    SumWeights = 0.0_dp; PSumWeights = 0.0_dp
     DO i=1, NoUsedNeighbours+1
       ! loop through procs suppnodes
       DO j=1, PartNoSuppNodes(i)
@@ -5356,18 +5433,27 @@ CONTAINS
             SumWeights(k) = SumWeights(k) + PartSuppNodeWeights(i,j)
           END IF
         END DO
+        DO k=1, PMaskCount
+          !var exists on that node
+          IF(PartSuppNodePMask(i,j,k)) THEN
+            PSumWeights(k) = PSumWeights(k) + PartSuppNodeWeights(i,j)
+          END IF
+        END DO
       END DO
     END DO
 
     !interpedvalue/sumweights
     FinalInterpedValues = FinalInterpedValues/sumweights
+    FinalInterpedPValues = FinalInterpedPValues/PSumWeights
 
     !return values
     IF(PRESENT(Variables)) THEN
-      MaskCount = 0
+      MaskCount = 0; PMaskCount = 0
       Var => Variables
       DO WHILE(ASSOCIATED(Var))
         MaskCount = MaskCount + 1
+        IF(ASSOCIATED(Var % PrevValues)) &
+          PMaskCount = PMaskCount + SIZE(Var % PrevValues,2)
 
         IF((SIZE(Var % Values) == Var % DOFs) .OR. & !-global
             (Var % DOFs > 1) .OR. &                    !-multi-dof
@@ -5388,6 +5474,19 @@ CONTAINS
         !if any suppnode from any proc has var
         IF(ANY(PartSuppNodeMask(:,:,MaskCount))) THEN
           Var % Values(Var % Perm(NodeNumber)) = FinalInterpedValues(MaskCount)
+        END IF
+
+        IF(ASSOCIATED(Var % PrevValues)) THEN
+          DO j=1, SIZE(Var % PrevValues,2)
+            n = PMaskCount + j - SIZE(Var % PrevValues, 2)
+            IF(ANY(PartSuppNodePMask(:,:,n))) THEN ! defined at suppnodes
+              Var % PrevValues(Var % Perm(NodeNumber),j) = FinalInterpedPValues(n)
+            ELSE
+              CALL WARN('InterpolateUnfoundSharedPoint3D', &
+                'PrevValues not found on Supp Nodes but defined on node so setting to zero')
+              Var % PrevValues(Var % Perm(NodeNumber),j) = 0.0_dp
+            END IF
+          END DO
         END IF
 
         Var => Var % Next
