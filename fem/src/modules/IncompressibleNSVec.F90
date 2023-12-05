@@ -588,14 +588,21 @@ END BLOCK
             CALL ListInitElementKeyword( ViscEne2_h,'Material','Activation Energy 2',DefRValue=139.0d03)       
             CALL ListInitElementKeyword( ViscTemp_h,'Material','Relative Temperature')            
 
-            IF (.NOT.ListCheckPresentAnyMaterial( CurrentModel,'Glen Allow Old Keywords')) THEN
-              IF( ListCheckPresentAnyMaterial( CurrentModel,'Constant Temperature') ) THEN
+            IF( ListCheckPresentAnyMaterial( CurrentModel,'Constant Temperature') ) THEN                
+              IF( ListCheckPresentAnyMaterial( CurrentModel,'Relative Temperature') ) THEN                
+                CALL Warn('EffectiveViscosityVec','We ignore >Constant Temperature< and use >Relative Temperature<')
+              ELSE
                 CALL Fatal('EffectiveViscosityVec','Replace >Constant Temperature< with >Relative Temperature<')
               END IF
-              IF( ListCheckPresentAnyMaterial( CurrentModel,'Temperature Field Variable') ) THEN
-                CALL Fatal('EffectiveViscosityVec','Replace >Temperature Field Variable< with >Relative Temperature<')
+            END IF
+            IF( ListCheckPresentAnyMaterial( CurrentModel,'Temperature Field Variable') ) THEN
+              IF( ListCheckPresentAnyMaterial( CurrentModel,'Relative Temperature') ) THEN                
+                CALL Warn('EffectiveViscosityVec','We ignore >Temperature Field Variable< and use >Relative Temperature<')
+              ELSE
+                CALL Fatal('EffectiveViscosityVec','Replace >Temperature Field Variable< with >Relative Temperature = Equals ...<')
               END IF
             END IF
+            
             IF( ListCheckPresentAnyMaterial( CurrentModel,'Glen Enhancement Factor Function')  ) THEN
               CALL Fatal('EffectiveViscosityVec','No Glen function API yet!')
             END IF
@@ -1470,6 +1477,7 @@ SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, Transient)
   TYPE(ValueList_t), POINTER :: Params 
   LOGICAL :: Found
   INTEGER :: dim
+  CHARACTER(:), ALLOCATABLE :: str
   CHARACTER(*), PARAMETER :: Caller = 'IncompressibleNSSolver_init'
 !------------------------------------------------------------------------------ 
   Params => GetSolverParams() 
@@ -1523,7 +1531,19 @@ SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, Transient)
   IF( ListGetLogical( Params,'Block Preconditioner',Found ) ) THEN
     CALL ListAddNewString( Params,'Block Matrix Schur Variable','schur')
   END IF
-   
+
+  ! Backward compatibility with old FlowSolver
+  str = GetString( Params, 'Flow Model', Found )
+  IF( Found ) THEN
+    SELECT CASE(str)
+    CASE('no convection')
+      CALL Warn(Caller,'Option "Flow Model = no convection" not used in this Solver!')
+    CASE('stokes')
+      CALL ListAddNewLogical( Params,'Stokes Flow',.TRUE.)
+    CASE DEFAULT
+    END SELECT
+  END IF
+    
 !------------------------------------------------------------------------------ 
 END SUBROUTINE IncompressibleNSSolver_Init
 !------------------------------------------------------------------------------
