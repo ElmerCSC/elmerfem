@@ -2973,7 +2973,11 @@ CONTAINS
      CALL SetMeshDimension( Mesh )
    END IF
    Model % DIMENSION = MAX( Model % DIMENSION, Mesh % MaxDim ) 
-     
+
+   IF( ListGetLogical( Vlist,'Constant Stencil', Found ) ) THEN
+     CALL SetEqualElementIndeces( Mesh )
+   END IF
+      
    CALL CreateIntersectionBCs(Model,Mesh)
 
    IF( ListGetLogical( Vlist,'Increase Element Order',Found ) ) THEN
@@ -22900,7 +22904,79 @@ CONTAINS
   END FUNCTION SplitMeshEqual
 !------------------------------------------------------------------------------
 
+  
+!------------------------------------------------------------------------------
+!> Sometimes we are lucky and the mesh includes similar elements that are
+!> different only by their center point. If we then ensure that their local
+!> numbering is the same we may use same finite element basis vectors for them.
+!------------------------------------------------------------------------------
+  SUBROUTINE SetEqualElementIndeces( Mesh )
+!------------------------------------------------------------------------------
+    TYPE(Mesh_t), POINTER :: Mesh
+!------------------------------------------------------------------------------
+    REAL(KIND=dp), ALLOCATABLE :: r0(:,:), r1(:,:)
+    REAL(KIND=dp) :: eps, dist
+    INTEGER, POINTER :: Indexes0(:)
+    INTEGER, ALLOCATABLE :: Indexes1(:)
+    INTEGER :: t,i,j,n,n0,n1,nb,cnt(2)
+    TYPE(Element_t), POINTER :: Element
+    
+    n = Mesh % MaxElementNodes
+    ALLOCATE(r0(n,3),r1(n,3),Indexes1(n))
 
+    cnt = [1,0]
+    nb = Mesh % NumberOfBulkElements
+    DO t=1,nb
+      Element => Mesh % Elements(t)
+      Indexes0 => Element % NodeIndexes
+      n = Element % Type % NumberOfNodes
+
+      r1(1:n,1) = Mesh % Nodes % x(Indexes0)
+      r1(1:n,2) = Mesh % Nodes % y(Indexes0)
+      r1(1:n,3) = Mesh % Nodes % z(Indexes0)
+
+      ! Compute distances from element center. 
+      DO i=1,3
+        r1(1:n,i) = r1(1:n,i) - SUM(r1(1:n,i))/n
+      END DO
+
+      ! Memorize the reference element. 
+      IF(t==1) THEN
+        r0 = r1
+        n0 = n
+        eps = 1.0e-6 * SUM(ABS(r0))/n0
+        CYCLE
+      ELSE IF(n == n0) THEN
+        n1 = 0
+        DO i=1,n
+          DO j=1,n
+            dist = SQRT(SUM((r1(j,:)-r0(i,:))**2))
+            IF(dist < eps) THEN
+              n1 = n1 + 1
+              Indexes1(i) = Indexes0(j)
+            END IF
+          END DO
+        END DO        
+        IF(n1 == n) THEN
+          cnt(1) = cnt(1) + 1
+          IF(ANY(Indexes0(1:n) /= Indexes1(1:n))) THEN
+            cnt(2) = cnt(2) + 1
+            Indexes0(1:n) = Indexes1(1:n)
+          END IF
+        END IF
+      END IF
+    END DO
+
+    IF( cnt(1) == nb ) THEN
+      CALL Info('SetEqualElementIndeces','All elements are similar!')
+    ELSE
+      CALL Info('SetEqualElementIndeces','Number of similar elements is '//I2S(cnt(1))//' (out of '//I2S(nb)//')')
+    END IF
+    CALL Info('SetEqualElementIndeces','Altered order in '//I2S(cnt(2))//' elements',Level=8) 
+          
+  END SUBROUTINE SetEqualElementIndeces
+    
+  
 !------------------------------------------------------------------------------
   SUBROUTINE ReleaseMesh( Mesh )
 !------------------------------------------------------------------------------
