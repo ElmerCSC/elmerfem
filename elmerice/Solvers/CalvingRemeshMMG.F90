@@ -70,7 +70,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
   !--------------------------------------
-  TYPE(Variable_t), POINTER :: CalvingVar,DistanceVar
+  TYPE(Variable_t), POINTER :: CalvingVar,DistanceVar,mmgVar
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Mesh_t),POINTER :: Mesh,GatheredMesh,NewMeshR,NewMeshRR,FinalMesh,ParMetisMesh
   TYPE(Element_t),POINTER :: Element, ParentElem
@@ -129,6 +129,14 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   TimeVar => VariableGet( Model % Mesh % Variables, 'Timestep' )
   TimeReal = TimeVar % Values(1)
   Time = INT(TimeReal)
+
+  ! create mmg variable as this is added to one proc in remeshing changes following merge Nov/23
+  mmgVar => VariableGet( Model % Mesh % Variables,'MMG Loop', ThisOnly = .TRUE.)
+  IF(.NOT. ASSOCIATED(mmgVar) ) THEN
+    CALL VariableAddVector( Model % Mesh % Variables,Model % Mesh,&
+        Name='MMG Loop',Global=.TRUE.)
+    mmgVar => VariableGet( Model % Mesh % Variables,'MMG Loop' )
+  END IF
 
   !for first time step calculate mesh volume
   IF(Time == 1) THEN
