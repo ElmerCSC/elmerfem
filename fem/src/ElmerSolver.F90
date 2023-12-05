@@ -3283,7 +3283,7 @@
            CALL SaveToPost(0)
            k = MOD( Timestep-1, OutputIntervals(Interval) )
 
-           IF ( k == 0 .OR. SteadyStateReached ) THEN            
+           IF ( k == 0 .OR. SteadyStateReached ) THEN
              DO i=1,nSolvers
                Solver => CurrentModel % Solvers(i)
                IF ( Solver % PROCEDURE == 0 ) CYCLE
@@ -3601,7 +3601,7 @@
           TimeVar => VariableGet( CurrentModel % Variables, 'Timestep' )
           Time = INT(TimeVar % Values(1))
 
-          OutputFile = OutputFile // '.' // i2s(ParEnv % MyPE)
+          OutputFile = OutputFile // '.' // i2s(Time)
 
           ! set saves to zero. This will insure new save file even if remeshing fails
           Mesh % SavesDone = 0
