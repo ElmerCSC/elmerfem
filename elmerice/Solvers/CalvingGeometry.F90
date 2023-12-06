@@ -3795,9 +3795,6 @@ CONTAINS
                         (BottomMaskPerm <= 0) .AND. &
                         UnfoundNodes
 
-    ! could improve improve by only required procs entering this
-    CALL InterpAdvanceUnfoundNodes(OldMesh, NewMesh, BulkUnfoundNodes)
-
     !---------------------------------------------------------
     ! For top, bottom and calving front BC, do reduced dim 
     ! interpolation to avoid epsilon problems
@@ -3807,6 +3804,10 @@ CONTAINS
          "Top Surface Mask",globaleps=globaleps,localeps=localeps)
     CALL InterpMaskedBCReduced(Model, Solver, OldMesh, NewMesh, OldMesh % Variables, &
          "Bottom Surface Mask",globaleps=globaleps,localeps=localeps)
+
+    ! could improve by only required procs entering this
+    ! need this after surface interps otherwise surface nodes with inserts nans into the system
+    CALL InterpAdvanceUnfoundNodes(OldMesh, NewMesh, BulkUnfoundNodes)
 
     ! removed as 2d interp on calving front no longer valid since calving front is
     ! not projectable
