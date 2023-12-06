@@ -125,7 +125,7 @@ static void pickEventHandler(vtkObject* caller, unsigned long eid,
     // Toggle color:
     //--------------
     if (color[0] < 0.5) {
-      cout << "Secected face: ";
+      cout << "Selected face: ";
       p->SetColor(1, 0, 0);
     } else {
       cout << "Unselected face: ";

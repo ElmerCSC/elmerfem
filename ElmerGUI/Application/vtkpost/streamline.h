@@ -74,7 +74,7 @@ public slots:
   void SetStepLength(double);                       // step length
   void SetThreads(int);                             // nof threads
   void SetIntegStepLength(double);                  // integ. step length
-  void UseSurfaceMesh(bool);                        // use forface mesh
+  void UseSurfaceMesh(bool);                        // use for face mesh
   void UseVolumeMesh(bool);                         // use volume mesh
   void IntegrateForwards(bool);                     // integrate forwards
   void IntegrateBackwards(bool);                    // integrate backwards

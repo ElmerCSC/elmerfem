@@ -3341,7 +3341,7 @@ CONTAINS
 
 
 
-!> Performs pre-steps related to the the active solver
+!> Performs pre-steps related to the active solver
 !------------------------------------------------------------------------------
   RECURSIVE SUBROUTINE DefaultStart( USolver )
 !------------------------------------------------------------------------------
@@ -3382,7 +3382,7 @@ CONTAINS
 
 
   
-!> Performs finalizing steps related to the the active solver
+!> Performs finalizing steps related to the active solver
 !------------------------------------------------------------------------------
   RECURSIVE SUBROUTINE DefaultFinish( USolver )
 !------------------------------------------------------------------------------
@@ -3501,6 +3501,9 @@ CONTAINS
     IF( ListGetLogical( Params,'Harmonic Mode',Found ) ) THEN
       CALL ChangeToHarmonicSystem( Solver )
     END IF
+
+    ! Generate projector that allows enforcing of total flux when using Robin BC's
+    CALL GenerateRobinProjectors( CurrentModel, Solver )
     
     ! Combine the individual projectors into one massive projector
     CALL GenerateConstraintMatrix( CurrentModel, Solver )

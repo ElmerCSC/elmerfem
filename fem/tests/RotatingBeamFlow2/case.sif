@@ -75,6 +75,14 @@ Solver 1
   Cumulative Displacements = Logical False
   Translate Before Rotate = Logical True
 
+  Linear System Solver = Iterative
+  Linear System Iterative Method = Bicgstabl
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Preconditioning = ILU1
+  Linear System Abort Not Converged = True
+  Linear System Residual Output = 50
+
   Variable = "MeshRelax"
 End
 

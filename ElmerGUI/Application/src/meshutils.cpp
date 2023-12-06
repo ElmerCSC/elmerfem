@@ -1905,7 +1905,7 @@ void Meshutils::increaseElementOrder(mesh_t *mesh)
     int family = e->getCode() / 100;
     int edges = familyedges[family];
 
-    // Skip undtermined and nonlinear element 
+    // Skip undetermined and nonlinear element
     if((e->getNodes() < 2) || (e->getNodes() > familylinnodes[family])) continue;
 
     for(int f=0; f<edges; f++) {

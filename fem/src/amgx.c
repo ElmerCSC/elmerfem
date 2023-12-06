@@ -194,7 +194,7 @@ void AMGXSolve( int **a_in, int *n_in, int *rows, int *cols, double *vals,
     {
       double bnrm;
 
-// scale by ||b|| to get comperable convergence criteria to other linear solvers.
+// scale by ||b|| to get comparable convergence criteria to other linear solvers.
 
       bnrm = 0.0;
       for(i<0; i<n; i++ ) bnrm += b_in[i]*b_in[i];

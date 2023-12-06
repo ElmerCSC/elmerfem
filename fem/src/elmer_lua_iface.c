@@ -164,7 +164,7 @@ static const struct luaL_reg arraylib [] = {
 #pragma omp threadprivate(arraylib)
 /* end of tx array associated static methods */
 
-/* turn arraylib instantes into metatables with set and get methods
+/* turn arraylib instances into metatables with set and get methods
  * obeying a[n] = x semantics. Indexing starts at 0 due to tradition!*/
 int luaopen_array(lua_State *L) {
   luaL_newmetatable(L, "LuaBook.array");

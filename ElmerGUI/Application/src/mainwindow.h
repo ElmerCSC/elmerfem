@@ -162,7 +162,7 @@ private slots:
   void selectAllSurfacesSlot();         // View -> Select all surfaces
   void selectAllEdgesSlot();            // View -> Select all edges
   void selectDefinedEdgesSlot();        // View -> Select defined edges
-  void showSurfaceNumbersSlot();    // View -> Show numbering -> surface nmbring
+  void showSurfaceNumbersSlot();    // View -> Show numbering -> surface numbering
   void showEdgeNumbersSlot();       // View -> Show numbering -> edge numbering
   void showNodeNumbersSlot();       // View -> Show numbering -> node numbering
   void showBoundaryIndexSlot();     // View -> Show numbering -> boundary index
@@ -252,7 +252,7 @@ private slots:
   void dynamicEditorNameChange(QString);
 
   void editNumericalMethods(int, int); // signal emitted by dynamic editor
-  void showMaterialLibrary(int, int);  // signal emitted by dynamic edirtor
+  void showMaterialLibrary(int, int);  // signal emitted by dynamic editor
   void materialBodyChanged(int);
   void initialBodyChanged(int);
   void forceBodyChanged(int);

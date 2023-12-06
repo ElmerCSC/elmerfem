@@ -2163,7 +2163,7 @@ CONTAINS
 	    
     !------------------------------------------------------------------------------
     ! Create the variable needed for the computation of nodal loads and
-    ! residual: r=b-Ax. The difference here is at what stage the A and b are stored.     
+    ! residual: r=b-Ax. The difference here is at what stage A and b are stored.     
     !------------------------------------------------------------------------------
     DO k=1,2
       IF(k==1) THEN
@@ -5175,7 +5175,7 @@ BLOCK
            M => M % Parent
          END DO
 
-         ! Here set the the default partitions active. 
+         ! Here set the default partitions active. 
          IF( ParEnv % MyPe >= MinOutputPE .AND. &
              ParEnv % MyPe <= MaxOutputPE ) THEN 
            OutputPE = ParEnv % MyPE

@@ -576,7 +576,7 @@ void MainWindow::createActions() {
   // Edit -> Generate sif
   generateSifAct = new QAction(QIcon(""), tr("&Generate"), this);
   generateSifAct->setShortcut(tr("Ctrl+G"));
-  generateSifAct->setStatusTip(tr("Genarete solver input file"));
+  generateSifAct->setStatusTip(tr("Generate solver input file"));
   connect(generateSifAct, SIGNAL(triggered()), this, SLOT(generateSifSlot()));
 
   // Edit -> Solver input file...
@@ -735,7 +735,7 @@ void MainWindow::createActions() {
           SLOT(showNodeNumbersSlot()));
   showNodeNumbersAct->setCheckable(true);
 
-  // View -> Show boundray index
+  // View -> Show boundary index
   showBoundaryIndexAct = new QAction(QIcon(), tr("Boundary index"), this);
   showBoundaryIndexAct->setStatusTip(tr("Show boundary index"));
   connect(showBoundaryIndexAct, SIGNAL(triggered()), this,
@@ -6727,7 +6727,7 @@ void MainWindow::meshUnifierFinishedSlot(int exitCode) {
 
   logMessage("MeshUnifier ready");
 
-  // Prepare for post processing parallel reults:
+  // Prepare for post processing parallel results:
   //----------------------------------------------
   QString postName = generalSetup->ui.postFileEdit->text().trimmed();
 
@@ -7867,7 +7867,7 @@ void MainWindow::saveSettings() {
 
   settings_setValue("defaultDir/project", saveDirName);
   
-  // Commented aout as restoring defaultEdfDir is not so useful
+  // Commented out as restoring defaultEdfDir is not so useful
   // settings_setValue("defaultDir/edfEditor", edfEditor->defaultEdfDir());  
 
   // Color settings

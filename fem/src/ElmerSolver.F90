@@ -3001,17 +3001,32 @@
                maxtime = ListGetConstReal( CurrentModel % Simulation,'Real Time Max',GotIt)
                IF( GotIt ) THEN
                  WRITE( Message,'(A,F8.3)') 'Fraction of real time left: ',&
-                     1.0_dp-RealTime() / maxtime
+                     1.0_dp-(RealTime()-RT0)/ maxtime
                END IF
 
+               ! This gives elapsed time in same format as estimated time
+               timeleft = (newtime-RT0)
+               IF( timeleft > 1 ) THEN
+                 IF (timeleft >= 10 * 3600) THEN 
+                   WRITE( Message,'(A)') 'Elapsed time: '//I2S(NINT(timeleft/3600))//' hours'
+                 ELSE IF (timeleft >= 3600) THEN   
+                   WRITE( Message,'(A,F5.1,A)') 'Elapsed time:',timeleft/3600,' hours'
+                 ELSE IF(timeleft >= 60) THEN 
+                   WRITE( Message,'(A,F5.1,A)') 'Elapsed time:',timeleft/60,' minutes'
+                 ELSE                         
+                   WRITE( Message,'(A,F5.1,A)') 'Elapsed time:',timeleft,' seconds'
+                 END IF
+                 CALL Info( 'MAIN', Message, Level=6 )
+               END IF
+               
                ! Compute estimated time left in seconds
                timeleft = (stepcount-(cum_Timestep-1))*(newtime-prevtime)
                
                ! No sense to show too short estimated times
                IF( timeleft > 1 ) THEN
-                 IF (timeleft >= 24 * 3600) THEN ! >24 hours
+                 IF (timeleft >= 10 * 3600) THEN ! >10 hours
                    WRITE( Message,'(A)') 'Estimated time left: '//I2S(NINT(timeleft/3600))//' hours'
-                 ELSE IF (timeleft >= 3600) THEN   ! 1 to 20 hours
+                 ELSE IF (timeleft >= 3600) THEN   ! >1 hours
                    WRITE( Message,'(A,F5.1,A)') 'Estimated time left:',timeleft/3600,' hours'
                  ELSE IF(timeleft >= 60) THEN ! 1 to 60 minutes
                    WRITE( Message,'(A,F5.1,A)') 'Estimated time left:',timeleft/60,' minutes'

@@ -492,7 +492,7 @@ static void InpComment(char *cmd)
 int LoadAbaqusInput(struct FemType *data,struct BoundaryType *bound,
 		    char *prefix,int info)
 /* Load the grid from a format that can be read by ABAQUS 
-   program designed for sructural mechanics. The commands
+   program designed for structural mechanics. The commands
    understood are only those that IDEAS creates when saving
    results in ABAQUS format.
    */
@@ -1020,7 +1020,7 @@ omstart:
   
   /* ABAQUS format does not expect that all numbers are used
      when numbering the elements. Therefore the nodes must
-     be renumberred from 1 to noknots. */
+     be renumbered from 1 to noknots. */
 
   if(noknots != maxknot) {
     int errcount,okcount;
@@ -1193,7 +1193,7 @@ static int ReadAbaqusField(FILE *in,char *buffer,int *argtype,int *argno)
 
 int LoadAbaqusOutput(struct FemType *data,char *prefix,int info)
 /* Load the grid from a format that can be read by ABAQUS 
-   program designed for sructural mechanics. 
+   program designed for structural mechanics.
    */
 {
   int knotno,elemno,elset,secno;
@@ -2047,7 +2047,7 @@ int LoadAnsysInput(struct FemType *data,struct BoundaryType *bound,
   for(i=0;GETLINE;i++);
 
   noansystypes = i-1;
-  printf("There seems to be %d elementytypes in file %s.\n",noansystypes,filename);
+  printf("There seems to be %d element types in file %s.\n",noansystypes,filename);
   
   ansysdim = Ivector(1,noansystypes);
   ansysnodes = Ivector(1,noansystypes);
@@ -2384,7 +2384,7 @@ int LoadAnsysInput(struct FemType *data,struct BoundaryType *bound,
   free_Ivector(boundindx,1,boundarynodes);
   free_Ivector(nodeindx,1,boundarynodes);
 
-  if(info) printf("Ansys mesh loaded succefully\n");
+  if(info) printf("Ansys mesh loaded successfully\n");
 
   return(0);
 }
@@ -5366,7 +5366,7 @@ omstart:
 
     if(strstr(line,"TYPES")) {
       if(!strstr(line,"ALL=TET04")) {
-	printf("Only all tets implemnted at the monment!\n");
+	printf("Only all tets implemented at the moment!\n");
 	return(1);
       }
       elemtype0 = 504;
@@ -6873,7 +6873,7 @@ int LoadFluxMesh3D(struct FemType *data,struct BoundaryType *bound,
 	next_int(&cp);              //2 internal element type description
 	next_int(&cp);              //3 internal element type description
 	matind = next_int(&cp);     //4 number of the belonging region
-	dimplusone = next_int(&cp); //5 dimensiality 4-3D 3-2D
+	dimplusone = next_int(&cp); //5 dimensionality 4-3D 3-2D
 	next_int(&cp);              //6 zero here always
 	next_int(&cp);              //7 internal element type description
 	nonodes = next_int(&cp);    //8 number of nodes

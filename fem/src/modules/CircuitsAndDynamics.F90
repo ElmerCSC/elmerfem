@@ -590,7 +590,7 @@ CONTAINS
       ! There has been somewhat different philosophies in how to create the scalar and vector fields
       ! that span the current densities. This is an effort to enable the components to all use
       ! the current density computed by the CoilSolver without writing any additional keywords to the
-      ! component sections. The idea is that the the circuit then only has current densities defined
+      ! component sections. The idea is that the circuit then only has current densities defined
       ! by the CoilSolver. If this is not desired then also no such keywords should be used in the Solver
       ! section of this module. 
       !------------------------------------------------------------------------------------------------

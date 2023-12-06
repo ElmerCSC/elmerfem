@@ -88,7 +88,7 @@ void Helpers::crossProduct(QREAL_OR_FLOAT *a, QREAL_OR_FLOAT *b, QREAL_OR_FLOAT 
 }
 
 //====================================================================
-//            Invert 4x4 matrix (for visualiztion only)
+//            Invert 4x4 matrix (for visualization only)
 //====================================================================
 void Helpers::invertMatrix(const QREAL_OR_FLOAT *a, QREAL_OR_FLOAT *inva)
 {

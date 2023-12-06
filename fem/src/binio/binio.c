@@ -54,7 +54,7 @@ static struct unit_t units[MAX_UNITS] = {{ 0 }};
 
 
 /* Return 'L' if host is little endian, 'B' if big endian.  Or perhaps I got it
- * wrong and it's the other way aound -- doesn't matter as long as we are self
+ * wrong and it's the other way around -- doesn't matter as long as we are self
  * consistent.  */
 
 static char endianess()

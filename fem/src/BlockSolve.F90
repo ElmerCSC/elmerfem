@@ -3084,7 +3084,7 @@ CONTAINS
     REAL(KIND=dp) :: nrm
     LOGICAL :: GotOrder, BlockGS, Found, NS, ScaleSystem, DoSum, &
         IsComplex, BlockScaling, DoDiagScaling, DoPrecScaling, UsePrecMat, Trans, &
-        Isolated, NoNestedScaling, DoAMGXmv
+        Isolated, NoNestedScaling, DoAMGXmv, CalcLoads
     CHARACTER(:), ALLOCATABLE :: str
     INTEGER(KIND=AddrInt) :: AddrFunc
     EXTERNAL :: AddrFunc
@@ -3300,7 +3300,10 @@ CONTAINS
         CALL AMGXSolver( A, x, btmp, ASolver )
         IF( ScaleSystem ) CALL BackScaleLinearSystem(ASolver,A,btmp,x)
       ELSE
+        CalcLoads = ListGetLogical( ASolver % Values, 'Calculate Loads', Found )
+        CALL ListAddLogical( ASolver % Values, 'Calculate Loads', .FALSE.)
         CALL SolveLinearSystem( A, btmp, x, Var % Norm, Var % DOFs, ASolver )
+        IF (CalcLoads) CALL ListAddLogical( ASolver % Values, 'Calculate Loads', .TRUE.)        
       END IF
 
       ! If this was a special preconditioning matrix then update the solution in the scaled system. 

@@ -54,7 +54,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE BeamStiffnessMatrix(Element, n, nd, nb, TransientSimulation, &
       MassAssembly, HarmonicAssembly, LargeDeflection, LocalSol, RHSForce, &
-      CombineWithShell, ApplyRotation)
+      CombineWithShell, ApplyRotation, DrillingDOFs)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t), POINTER, INTENT(IN) :: Element
@@ -67,20 +67,22 @@ CONTAINS
     REAL(KIND=dp), OPTIONAL, INTENT(OUT) :: RHSForce(:)  ! Local RHS vector corresponding to external loads
     LOGICAL, OPTIONAL, INTENT(IN) :: CombineWithShell    ! Set .TRUE. if the caller is the shell solver 
     LOGICAL, OPTIONAL, INTENT(IN) :: ApplyRotation    ! Rotate DOFs in the context of shell analysis
+    LOGICAL, OPTIONAL, INTENT(IN) :: DrillingDOFs     ! Assume drilling DOFs in the context of shell analysis
     !------------------------------------------------------------------------------
     TYPE(ValueList_t), POINTER :: BodyForce, Material
     TYPE(Nodes_t) :: Nodes, LocalNodes
     TYPE(GaussIntegrationPoints_t) :: IP
 
     LOGICAL :: Found, Stat
-    LOGICAL :: NonlinAssembly, RotationNeeded
-
+    LOGICAL :: NonlinAssembly, RotationNeeded, FullMoment
+    LOGICAL :: DampingBetaWarning = .FALSE.
+    
     INTEGER :: DOFs
     INTEGER :: i, t, p, q
     INTEGER :: i0, p0, q0
 
     REAL(KIND=dp), POINTER :: ArrayPtr(:,:) => NULL()
-    REAL(KIND=dp), POINTER :: StiffBlock(:,:), MassBlock(:,:)
+    REAL(KIND=dp), POINTER :: StiffBlock(:,:), MassBlock(:,:), DampBlock(:,:)
     REAL(KIND=dp), DIMENSION(3), PARAMETER :: ZBasis = (/ 0.0d0, 0.0d0, 0.1d1 /)
 
     REAL(KIND=dp), TARGET :: Mass(6*nd,6*nd), Stiff(6*nd,6*nd), Damp(6*nd,6*nd)
@@ -90,17 +92,17 @@ CONTAINS
     REAL(KIND=dp) :: Youngs_Modulus(n), Shear_Modulus(n), Area(n), Density(n)
     REAL(KIND=dp) :: Torsional_Constant(n) 
     REAL(KIND=dp) :: Area_Moment_2(n), Area_Moment_3(n)
-    REAL(KIND=dp) :: Mass_Inertia_Moment(n) 
+    REAL(KIND=dp) :: Mass_Inertia_Moment(n), Damping(n), RayleighBeta(n)
     REAL(KIND=dp) :: Load(3,n), f(3)
     REAL(KIND=dp) :: PrevSolVec(6*nd)
-    REAL(KIND=dp) :: E, A, G, rho
+    REAL(KIND=dp) :: E, A, G, rho, DampCoef
     REAL(KIND=dp) :: EA, GA, MOI, Mass_per_Length 
     REAL(KIND=dp) :: E_diag(3)
 
     REAL(KIND=dp) :: p1(3), p2(3), e1(3), e2(3), e3(3)
     REAL(KIND=dp) :: L, Norm
 
-    SAVE Nodes, LocalNodes
+    SAVE Nodes, LocalNodes, DampingBetaWarning
 !------------------------------------------------------------------------------
     IF (n > 2) CALL Fatal('BeamStiffnessMatrix', &
         'Only 2-node background meshes supported currently')
@@ -159,6 +161,12 @@ CONTAINS
       
     IF (MassAssembly) THEN
       Density(1:n) = GetReal(Material, 'Density', Found)
+      Damping(1:n) = GetReal(Material, 'Rayleigh Damping Alpha', Found)
+      RayleighBeta = GetReal(Material, 'Rayleigh Damping Beta', Found)
+      IF (Found .AND. .NOT.DampingBetaWarning) THEN
+        CALL Warn('BeamStiffnessMatrix', 'Only mass-proportional damping, neglecting Rayleigh Damping Beta = ...')
+        DampingBetaWarning = .TRUE.
+      END IF
     END IF
 
     !
@@ -262,8 +270,9 @@ CONTAINS
 
       IF (MassAssembly) THEN
         rho = SUM(Basis(1:n) * Density(1:n))
-        MOI = rho/E * sqrt(E_diag(2)**2 + E_diag(3)**2)
+        MOI = rho/E * (E_diag(2) + E_diag(3))
         Mass_per_Length = rho * A
+        DampCoef = SUM(Damping(1:n) * Basis(1:n))
       END IF
 
       GA = G*A
@@ -279,6 +288,7 @@ CONTAINS
           q0 = (q-1)*DOFs
           StiffBlock => Stiff(p0+1:p0+DOFs,q0+1:q0+DOFs)
           MassBlock => Mass(p0+1:p0+DOFs,q0+1:q0+DOFs)
+          DampBlock => Damp(p0+1:p0+DOFs,q0+1:q0+DOFs)
           !
           ! (Du',v'):
           !
@@ -296,6 +306,13 @@ CONTAINS
                 Mass_per_Length * Basis(q) * Basis(p) * Weight
             MassBlock(3,3) = MassBlock(3,3) + &
                 Mass_per_Length * Basis(q) * Basis(p) * Weight
+            
+            DampBlock(1,1) = DampBlock(1,1) + &
+                DampCoef * Mass_per_Length * Basis(q) * Basis(p) * Weight
+            DampBlock(2,2) = DampBlock(2,2) + &
+                DampCoef * Mass_per_Length * Basis(q) * Basis(p) * Weight
+            DampBlock(3,3) = DampBlock(3,3) + &
+                DampCoef * Mass_per_Length * Basis(q) * Basis(p) * Weight
           END IF
 
           IF (q > n) CYCLE
@@ -362,6 +379,13 @@ CONTAINS
           RotationNeeded = .TRUE.
         END IF
 
+        IF (PRESENT(DrillingDOFs)) THEN
+          FullMoment = DrillingDOFs
+          IF (DrillingDOFs) RotationNeeded = .FALSE.
+        ELSE
+          FullMoment = .FALSE.
+        END IF
+
         IF (RotationNeeded) THEN
           !
           ! Switch to rotation variables which conform with the rotated moments - M x d:
@@ -390,14 +414,16 @@ CONTAINS
         ! The moment around the director is not compatible with the shell model.
         ! Remove its contribution:
         !
-        DO p=1,nd-nb
-          Stiff(6*p,:) = 0.0d0
-          Stiff(:,6*p) = 0.0d0
-          Stiff(6*p,6*p) = 0.0d0
-          Force(6*p) = 0.0d0
-          Mass(6*p,:) = 0.0d0
-          Mass(:,6*p) = 0.0d0
-        END DO
+        IF (.NOT. FullMoment) THEN
+          DO p=1,nd-nb
+            Stiff(6*p,:) = 0.0d0
+            Stiff(:,6*p) = 0.0d0
+            Stiff(6*p,6*p) = 0.0d0
+            Force(6*p) = 0.0d0
+            Mass(6*p,:) = 0.0d0
+            Mass(:,6*p) = 0.0d0
+          END DO
+        END IF
       END IF
     END IF
 

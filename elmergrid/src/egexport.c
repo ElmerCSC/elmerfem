@@ -42,7 +42,7 @@
 
 int SaveAbaqusInput(struct FemType *data,char *prefix,int info)
 /* Saves the grid in a format that can be read by ABAQUS 
-   program designed for sructural mechanics. 
+   program designed for structural mechanics.
    The elementtype is set to be that of thermal conduction. 
    */
 {

@@ -582,7 +582,7 @@ void VtkPost::createActions()
   // View menu:
   //------------
   drawAxesAct = new QAction(QIcon(""), tr("Coordinate axes"), this);
-  drawAxesAct->setStatusTip("Draw cordinate axes");
+  drawAxesAct->setStatusTip("Draw coordinate axes");
   drawAxesAct->setCheckable(true);
   drawAxesAct->setChecked(false);
   connect(drawAxesAct, SIGNAL(triggered()), this, SLOT(drawAxesSlot()));
@@ -677,7 +677,7 @@ void VtkPost::createActions()
 #endif
 
   regenerateGridsAct = new QAction(QIcon(""), tr("Regenerate all..."), this);
-  regenerateGridsAct->setStatusTip("Regerate all meshes");
+  regenerateGridsAct->setStatusTip("Regenerate all meshes");
   connect(regenerateGridsAct, SIGNAL(triggered()), this, SLOT(regenerateGridsSlot()));
 
   timeStepAct = new QAction(QIcon(""), tr("Time step control"), this);
@@ -2373,7 +2373,7 @@ void VtkPost::drawMeshEdgeSlot()
 
 
 // The new drawFeatureEdgesSlot()which draws one group by one FeatureEdge instance
-// using the specified vtkUnstructuredGrid to darw bondary of two groups.
+// using the specified vtkUnstructuredGrid to draw boundary of two groups.
 //
 // Draw feature edges:
 //----------------------------------------------------------------------
