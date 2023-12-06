@@ -900,8 +900,9 @@ Boundary Condition 5
   ! Budd Ocean Density = Real $RhoWS
   ! Budd Floatation = Logical True
 
-  ComputeNormal Condition = Variable GroundedMask
-    Real MATC "tx + 0.5"
+  ComputeNormal = Logical True
+  !ComputeNormal Condition = Variable GroundedMask
+  !  Real MATC "tx + 0.5"
   External Pressure = Variable Coordinate 3 !dummy
      Real Procedure "ElmerIceUSF" "SeaPressure"
   Slip Coefficient 1 = Variable Coordinate 3
