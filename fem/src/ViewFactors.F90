@@ -662,10 +662,16 @@
          CALL Warn(Caller,'Rowsum of view factors should not be larger than one!')
        END IF
        IF( FMin < 0.999 ) THEN
-         CALL Warn(Caller,'Rowsum of view factors should not be smaller than one!')
+         ! For open BCs the view factor sum may be much less than one, otherwise not.
+         IF(.NOT. ListCheckPresentAnyBC( Model,'Radiation Boundary Open') ) THEN          
+           CALL Warn(Caller,'Rowsum of view factors should not be smaller than one!')
+         END IF
        END IF
 
-
+       IF(InfoActive(7)) THEN
+         CALL ViewFactorsLumping()
+       END IF
+         
        ViewFactorsFile = GetString( GetSimulation(),'View Factors',GotIt)
        IF ( .NOT.GotIt ) ViewFactorsFile = 'ViewFactors.dat'
        IF(RadiationBody > 1) THEN
@@ -744,7 +750,88 @@
      CALL FLUSH(6)
 
    CONTAINS
-   
+
+
+     ! Provide useful information on the boundary-to-boundary view factors that is
+     ! obtained as the area-weigted average of elemental view factor sums.
+     !-----------------------------------------------------------------------------
+     SUBROUTINE ViewFactorsLumping()
+
+       INTEGER :: i,j,k,m,MaxRadBC,bc_id
+       INTEGER, ALLOCATABLE :: BCNumbering(:), VFPerm(:)
+       REAL(KIND=dp), ALLOCATABLE :: LumpedVF(:,:), Areas(:), LumpedAreas(:)
+
+       CALL Info(Caller,'Printing some lumped information of view factors')
+       
+       ALLOCATE(BCNumbering(Model % NumberOfBCs),VFPerm(N),Areas(N))
+       BCNumbering = 0
+       VFPerm = 0
+       Areas = 0.0_dp
+              
+       DO i=1,N
+         Element => RadElements(i)
+         Areas(i) = ElementArea( Mesh, Element, Element % TYPE % NumberOfNodes)
+         bc_id = GetBCId( Element ) 
+         IF(bc_id < 0 .OR. bc_id > Model % NumberOfBCs) THEN
+           CALL Warn(Caller,'BC index out of bounds: '//I2S(bc_id))
+           CYCLE
+         END IF
+         BCNumbering(bc_id) = BCNumbering(bc_id) + 1
+         VFPerm(i) = bc_id
+       END DO
+
+       j = 0
+       DO i=1,Model % NumberOfBCs
+         m = BCNumbering(i)
+         IF(m>0) THEN
+           j = j+1
+           BCNumbering(i) = j
+           CALL Info(Caller,'BC '//I2S(i)//' with '//I2S(m)//' elems perm: '//I2S(j))
+         END IF         
+       END DO
+       MaxRadBC = j
+
+       DO i=1,N
+         VFPerm(i) = BCNumbering(VFPerm(i))
+       END DO
+       
+       ALLOCATE(LumpedVF(MaxRadBC,MaxRadBC),LumpedAreas(MaxRadBC))
+       LumpedVF = 0.0_dp
+       LumpedAreas = 0.0_dp
+       
+       DO i=1,N
+         IF(VFPerm(i) > 0) THEN
+           LumpedAreas(VFPerm(i)) = LumpedAreas(VFPerm(i)) + Areas(i)
+         END IF
+       END DO
+         
+       CALL Info(Caller,'Lumped areas:')
+       WRITE(Message,*) LumpedAreas(:)
+       CALL Info(Caller, Message ) 
+       
+       DO i=1,N
+         DO j=1,N
+           k = (i-1)*N+j
+           LumpedVF(VFPerm(i),VFPerm(j)) = LumpedVF(VFPerm(i),VFPerm(j)) + Areas(i) * Factors(k)
+         END DO
+       END DO
+       DO i=1,MaxRadBC
+         DO j=1,MaxRadBC
+           LumpedVF(i,j) = LumpedVF(i,j) / LumpedAreas(i)
+         END DO
+       END DO
+
+       CALL Info(Caller,'Lumped View Factor Matrix:')
+       DO i=1,MaxRadBC 
+         WRITE(Message,*) LumpedVF(i,:)
+         CALL Info(Caller, Message ) 
+       END DO
+       
+     END SUBROUTINE ViewFactorsLumping
+
+
+
+     
 !> View factors are normalized in order to improve the numberical accuracy. With 
 !> normalization it is ensured that all boundary elements see exactly half 
 !> space. 
