@@ -230,8 +230,8 @@ private:
   
   QPoint lastPos;
   
-  /* lastPressPos decleard below is used to identify whether to show contextmenu or
-   not when releaseing right mouse button*/
+  /* lastPressPos declared below is used to identify whether to show contextmenu or
+   not when releasing right mouse button*/
   QPoint lastPressPos;
   
   GLuint generateSurfaceList(int, QColor);

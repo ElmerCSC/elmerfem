@@ -16,6 +16,8 @@ where *epsilon* is directly evaluated from the velocity field and *p* is the iso
 
 This solver doesn't work for the GOLF anisotropic ([AIFlow Solver](./AIFlowSolve.md)) and the snow/firn ([Porous Solver](./PorousSolve.md)) rheologies. Nevertheless, these two solvers have intrinsic functions that allow direct computation of the stress.
 
+2023-11-14: Using the new Vectorized Stokes solver IncompressibleNSvec, the ComputeDevStress solver will not work as the Constant Temperature in the Material has been changed to Relative Temperature. You can either set back to the old keywords setting Glen Allow Old Keywords to True in the Material section. An other solution is to use the effective viscosity and strain-rate computed internaly in the vectorized Stokes solver (variables Viscosity and Shearrate should be exported using either -ip or -lm).  
+
 ## SIF contents
 The required keywords in the SIF file for this solver are:
 

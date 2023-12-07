@@ -4573,7 +4573,6 @@ CONTAINS
          SomeAtIp = .TRUE.
          VarTable(count) % Variable => NULL()
          VarTable(count) % ParamValue = -1.0_dp
-         
        ELSE IF ( str(l0:l1) == 'coordinate' ) THEN
          VarTable(count+1) % Variable => VariableGet( CurrentModel % Variables,"coordinate 1")
          VarTable(count+2) % Variable => VariableGet( CurrentModel % Variables,"coordinate 2")
@@ -4581,8 +4580,8 @@ CONTAINS
          count = count + 3 
          SomeAtNodes = .TRUE.
          AllGlobal = .FALSE.
-
        ELSE 
+         Found = .FALSE.
          Var => VariableGet( CurrentModel % Variables,TRIM(str(l0:l1)) )                          
          count = count + 1         
          IF ( ASSOCIATED( Var ) ) THEN
@@ -4592,8 +4591,28 @@ CONTAINS
              SomeAtIp = .TRUE.
            ELSE
              SomeAtNodes = .TRUE.
-           END IF           
-         ELSE
+           END IF
+           Found = .TRUE.
+         ELSE IF(l1-l0 > 5) THEN
+           IF(str(l0:l0+4) == 'prev ') THEN
+             Var => VariableGet( CurrentModel % Variables,TRIM(str(l0+5:l1)) )                          
+             IF( ASSOCIATED( Var ) ) THEN
+               VarTable(count) % Variable => Var
+               VarTable(count) % tstep = -1
+               IF( SIZE( Var % Values ) > Var % Dofs ) AllGlobal = .FALSE.           
+               IF( Var % TYPE == Variable_on_gauss_points ) THEN
+                 SomeAtIp = .TRUE.
+               ELSE
+                 SomeAtNodes = .TRUE.
+               END IF
+               Found = .TRUE.
+             END IF
+           END IF
+         END IF
+
+         ! Ok, the string was not a variable name maybe it is a pure number
+         ! or another keytword.
+         IF(.NOT. Found) THEN
            IF( VERIFY( str(l0:l1),'-.0123456789eE') == 0 ) THEN
              !PRINT *,'We do have a number:',Val
              READ(str(l0:l1),*) Val
@@ -4643,7 +4662,7 @@ CONTAINS
      REAL(KIND=dp) :: T(:)
 !------------------------------------------------------------------------------
      TYPE(Element_t), POINTER :: Element
-     INTEGER :: i,j,k,n,k1,l,varsize,vari,vari0,dti
+     INTEGER :: i,j,k,n,k1,l,varsize,vari,vari0,tstep0,dti
      TYPE(Variable_t), POINTER :: Var
      LOGICAL :: Failed
      REAL(KIND=dp), POINTER :: Values(:)
@@ -4655,13 +4674,15 @@ CONTAINS
      IF(PRESENT(intvarcount)) vari0 = IntVarCount
      count = vari0
 
-     dti = 0
-     IF(PRESENT(tstep)) dti = -tstep
+     tstep0 = 0
+     IF(PRESENT(tstep)) tstep0 = tstep
      
      DO Vari = vari0+1, VarCount
        
        Var => VarTable(Vari) % Variable
-
+       ! If we are asked keyword on previous timestep, then previous for that is 2nd previous...
+       dti = -(tstep0 + VarTable(Vari) % tstep)
+       
        IF(.NOT. ASSOCIATED( Var ) ) THEN
          count = count + 1
          IF(ASSOCIATED( VarTable(Vari) % Keyword ) ) THEN
@@ -4744,7 +4765,6 @@ CONTAINS
                    Values => Var % PrevValues(:,dti)
              END IF
            END IF
-
            DO l=1,Var % DOFs
              count = count + 1
              T(count) = Values(Var % Dofs*(k1-1)+l)
@@ -4912,7 +4932,7 @@ CONTAINS
      INTEGER, OPTIONAL :: tstep
 !------------------------------------------------------------------------------
      TYPE(Element_t), POINTER :: Element
-     INTEGER :: i,j,k,n,k1,l,varsize,vari,vari0,dti
+     INTEGER :: i,j,k,n,k1,l,varsize,vari,vari0,dti,tstep0
      TYPE(Variable_t), POINTER :: Var
      LOGICAL :: Failed
      REAL(KIND=dp), POINTER :: Values(:)
@@ -4924,10 +4944,11 @@ CONTAINS
      END IF
      count = vari0
 
-     dti = 0
-     IF( PRESENT(tstep) ) dti = -tstep
-
-     DO Vari = vari0+1, VarCount 
+     tstep0 = 0
+     IF(PRESENT(tstep)) tstep0 = tstep
+     
+     DO Vari = vari0+1, VarCount
+       
        Var => VarTable(Vari) % Variable
 
        IF(.NOT. ASSOCIATED( Var ) ) THEN
@@ -4936,6 +4957,7 @@ CONTAINS
          CYCLE
        END IF
        
+       dti = -(tstep0 + VarTable(Vari) % tstep)
        Varsize = SIZE( Var % Values ) / Var % Dofs 
 
        k1 = 0
@@ -7395,7 +7417,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> This is just a wrapper for getting divergence of a 3D real vector.
+!> This is just a wrapper for getting divergence of a 3D real vector neatly.
 !------------------------------------------------------------------------------
    FUNCTION ListGetElementRealDiv( Handle,dBasisdx,Element,Found,Indexes) RESULT(Rdiv)
 !------------------------------------------------------------------------------
@@ -7405,10 +7427,11 @@ CONTAINS
      LOGICAL, OPTIONAL :: Found
      TYPE(Element_t), POINTER, OPTIONAL :: Element
      INTEGER, POINTER, OPTIONAL :: Indexes(:)
-     REAL(KIND=dp)  :: Rdiv(3)
+     REAL(KIND=dp)  :: Rdiv, Rdiv_comps(3)
 
-     LOGICAL :: Found1, Found2, Found3
+     LOGICAL :: Found1
 
+     IF(PRESENT(Found)) Found = .FALSE.
      Rdiv = 0.0_dp
      
      IF(.NOT. ASSOCIATED( Handle % Handle2 ) ) THEN
@@ -7417,14 +7440,17 @@ CONTAINS
 
      IF( Handle % NotPresentAnywhere .AND. Handle % Handle2 % NotPresentAnywhere &
          .AND.  Handle % Handle3 % NotPresentAnywhere ) THEN
-       IF(PRESENT(Found)) Found = .FALSE.
        RETURN
      END IF
 
-     Rdiv(1) = ListGetElementReal(Handle,dBasisdx(:,1),Element,Found1,Indexes)
-     Rdiv(2) = ListGetElementReal(Handle % Handle2,dBasisdx(:,2),Element,Found2,Indexes)
-     Rdiv(3) = ListGetElementReal(Handle % Handle3,dBasisdx(:,3),Element,Found3,Indexes)
-     IF( PRESENT( Found ) ) Found = Found1 .OR. Found2 .OR. Found3
+     Rdiv_comps(1) = ListGetElementReal(Handle,dBasisdx(:,1),Element,Found1,Indexes)
+     ! We can only take Div of a vector field if all components are present 
+     IF(.NOT. Found1) RETURN          
+     Rdiv_comps(2) = ListGetElementReal(Handle % Handle2,dBasisdx(:,2),Element,Found1,Indexes)
+     Rdiv_comps(3) = ListGetElementReal(Handle % Handle3,dBasisdx(:,3),Element,Found1,Indexes)
+
+     Rdiv = SUM(Rdiv_comps)
+     IF( PRESENT( Found ) ) Found = .TRUE.
      
    END FUNCTION ListGetElementRealDiv
 
@@ -7485,7 +7511,8 @@ CONTAINS
      INTEGER :: i,j,k,k1,l,l0,l1,lsize,n,bodyid,id,node,gp
      TYPE(Element_t), POINTER :: PElement
      TYPE(ValueList_t), POINTER :: List
-     LOGICAL :: AllGlobal, SomeAtIp, SomeAtNodes, ListSame, ListFound, GotIt, IntFound
+     LOGICAL :: AllGlobal, SomeAtIp, SomeAtNodes, ListSame, ListFound, &
+         GotIt, IntFound, SizeSame
 !------------------------------------------------------------------------------
 
      IF( Handle % nValuesVec < ngp ) THEN
@@ -7496,10 +7523,15 @@ CONTAINS
        Handle % nValuesVec = ngp       
 
        IF( Handle % ConstantEverywhere ) THEN
-         Handle % ValuesVec(1:ngp) = Handle % Rvalue
+         Handle % ValuesVec = Handle % Rvalue
        ELSE
-         Handle % ValuesVec(1:ngp) = Handle % DefRValue        
+         Handle % ValuesVec = Handle % DefRValue        
        END IF
+       ! If size is increased we need to ensure that even constants will be rechecked. 
+       Handle % ListId = -1
+       SizeSame = .FALSE.
+     ELSE
+       SizeSame = .TRUE.
      END IF
 
      ! The results are always returned from the Handle % Values
@@ -7528,10 +7560,10 @@ CONTAINS
      ! Find the correct list to look the keyword in.
      ! Bulk and boundary elements are treated separately.
      List => ElementHandleList( PElement, Handle, ListSame, ListFound ) 
-
+     
      ! If the provided list is the same as last time, also the keyword will
      ! be sitting at the same place, otherwise find it in the new list
-     IF( ListSame ) THEN
+     IF( ListSame .AND. SizeSame ) THEN
        IF( PRESENT( Found ) ) Found = Handle % Found       
        IF( .NOT. Handle % Found ) RETURN
        IF( Handle % GlobalInList ) THEN
@@ -7549,7 +7581,7 @@ CONTAINS
          IF( Handle % UnfoundFatal ) THEN
            CALL Fatal('ListGetElementRealVec','Could not find required keyword in list: '//TRIM(Handle % Name))
          END IF
-         Handle % ValuesVec(1:ngp) = Handle % DefRValue
+         Handle % ValuesVec = Handle % DefRValue
          RETURN
        END IF
          
@@ -7765,7 +7797,7 @@ CONTAINS
                '] not used consistently.')
          END IF
          F(1) = ptr % Coeff * ptr % Fvalues(1,1,1)
-         RValues(1:ngp) = F(1)
+         RValues = F(1)
 
 
        CASE( LIST_TYPE_VARIABLE_SCALAR )
@@ -7796,7 +7828,7 @@ CONTAINS
          END DO
          
          IF( Handle % GlobalInList ) THEN
-           Handle % ValuesVec(1:ngp) = F(1)
+           Handle % ValuesVec = F(1)
          ELSE
            Handle % ValuesVec(1:ngp) = MATMUL( BasisVec(1:ngp,1:n), F(1:n) )
          END IF
@@ -7806,7 +7838,7 @@ CONTAINS
        CASE( LIST_TYPE_CONSTANT_SCALAR_STR )
 
          TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
-         Handle % ValuesVec(1:ngp) = ptr % Coeff * GetMatcReal(ptr % Cvalue,1,Tvar % Values,'st')
+         Handle % ValuesVec = ptr % Coeff * GetMatcReal(ptr % Cvalue,1,Tvar % Values,'st')
 
        CASE( LIST_TYPE_VARIABLE_SCALAR_STR )
 
@@ -7827,7 +7859,7 @@ CONTAINS
          END DO
 
          IF( Handle % GlobalInList ) THEN
-           Handle % ValuesVec(1:ngp) = F(1)
+           Handle % ValuesVec = F(1)
          ELSE
            Handle % ValuesVec(1:ngp) = MATMUL( BasisVec(1:ngp,1:n), F(1:n) )
          END IF
@@ -9761,14 +9793,22 @@ CONTAINS
                 IsVector = .NOT. ASSOCIATED(Var1)
               END IF
               
-            ELSE IF( Comp <= 3 ) THEN  ! component 2 or 3
+            ELSE IF( Comp == 2 .OR. Comp == 3 ) THEN 
               ! Associated to the previous case, cycle the other components of the vector
               ! and cycle them if they are part of the vector that will be detected above.
- 
+
+              ! 2D: 2 or 3 components
+              ! 3D: 3 components
               Var1 => VariableGet(Variables,TRIM(str(1:j-2))//' 1',ThisOnly)		
               IF( ASSOCIATED( Var1 ) ) THEN
                 Var1 => VariableGet(Variables,TRIM(str(1:j-2))//' '//I2S(4),ThisOnly)		
                 Set = ASSOCIATED( Var1 )
+                IF( .NOT. Set ) THEN
+                  IF( Comp == 2 .AND. dim == 3 ) THEN
+                    Var1 => VariableGet(Variables,TRIM(str(1:j-2))//' '//I2S(dim),ThisOnly)		
+                    Set = .NOT. ASSOCIATED( Var1 )
+                  END IF
+                END IF
               END IF
             END IF
           END IF

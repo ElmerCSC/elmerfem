@@ -739,7 +739,7 @@ void GLWidget::mouseMoveEvent(QMouseEvent *event)
   ((event->buttons() & Qt::LeftButton) && (event->buttons() & Qt::MidButton))
 #endif
         ||
-    event->buttons() == Qt::RightButton  // added for easy scalng
+    event->buttons() == Qt::RightButton  // added for easy scaling
        ) {
 
     // Scale:
@@ -800,7 +800,7 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
     return;
   
   /*
-  To avoid segmentation fault in MSYS2 emvironment, compass, numbers and indexes are hidden. 
+  To avoid segmentation fault in MSYS2 environment, compass, numbers and indexes are hidden.
   These will be restored at the end of this function. Do not return before restoring these.
   */
   bool prevStateDrawCoordinates = stateDrawCoordinates;
@@ -1025,7 +1025,7 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
       MAX_BULK_INDEX++;
       if(MAX_BULK_INDEX == 0) {
 	cout << "Error in body selection: "
-	  "There are no legal body indiced from which to choose" << endl;
+	  "There are no legal body indices from which to choose" << endl;
 	cout.flush();
 	goto body_selection_finished;
       }
@@ -1230,7 +1230,7 @@ GLuint GLWidget::makeLists()
   // - A list of sharp edges will always be drawn (even if it is empty)
   //---------------------------------------------------------------------------
   
-  // Simultaneously, populate hash for mapping body & boundary incides:
+  // Simultaneously, populate hash for mapping body & boundary indices:
   //--------------------------------------------------------------------
   boundaryMap.clear();
   bodyMap.clear();
@@ -2072,7 +2072,7 @@ void GLWidget::indexColors(int *c, int i)
 void GLWidget::setMeshVisibility(bool stateDrawSurfaceMesh, bool stateDrawVolumeMesh, bool stateDrawSharpEdges){
 /*
   This function is used in mouseDoubleClickEvent(mouseEvent event) to avoid segmentation fault observed Linux
-  emvironment with old hardware.
+  environment with old hardware.
 */
 
   mesh_t *mesh = getMesh();

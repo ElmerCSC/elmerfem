@@ -71,7 +71,7 @@ FeatureEdge::~FeatureEdge()
 }
 
 /*
-// The original draw() function which draws all the groups by one FeasureEdge instance
+// The original draw() function which draws all the groups by one FeatureEdge instance
 // using one vtkUnstructuredGrid. This ends up with boundary of two groups not drawn. 
 void FeatureEdge::draw(VtkPost* vtkPost, Preferences* preferences)
 { 

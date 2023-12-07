@@ -3341,7 +3341,7 @@ CONTAINS
 
 
 
-!> Performs pre-steps related to the the active solver
+!> Performs pre-steps related to the active solver
 !------------------------------------------------------------------------------
   RECURSIVE SUBROUTINE DefaultStart( USolver )
 !------------------------------------------------------------------------------
@@ -3382,7 +3382,7 @@ CONTAINS
 
 
   
-!> Performs finalizing steps related to the the active solver
+!> Performs finalizing steps related to the active solver
 !------------------------------------------------------------------------------
   RECURSIVE SUBROUTINE DefaultFinish( USolver )
 !------------------------------------------------------------------------------
@@ -3457,7 +3457,8 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: Ctmp
     CHARACTER(:), ALLOCATABLE :: linsolver, precond, dumpfile, saveslot
     INTEGER :: NameSpaceI, Count, MaxCount, i
-    LOGICAL :: LinearSystemTrialing, SourceControl, NonlinearControl
+    LOGICAL :: LinearSystemTrialing, SourceControl, NonlinearControl, &
+        MonolithicSlave
     REAL(KIND=dp) :: s(3)
     
     CALL Info('DefaultSolve','Solving linear system with default routines',Level=10)
@@ -3492,10 +3493,17 @@ CONTAINS
         CALL ListAddLogical(Params,'Back Rotate N-T Solution',BackRotNT)
     END IF
 
-    
+    MonolithicSlave = ListGetLogical(Params,'Monolithic Slave',Found )
+    IF( MonolithicSlave ) THEN      
+      CALL MergeSlaveSolvers( Solver, PreSolve = .TRUE.)
+    END IF
+           
     IF( ListGetLogical( Params,'Harmonic Mode',Found ) ) THEN
       CALL ChangeToHarmonicSystem( Solver )
     END IF
+
+    ! Generate projector that allows enforcing of total flux when using Robin BC's
+    CALL GenerateRobinProjectors( CurrentModel, Solver )
     
     ! Combine the individual projectors into one massive projector
     CALL GenerateConstraintMatrix( CurrentModel, Solver )
@@ -3580,6 +3588,10 @@ CONTAINS
       CALL FCT_Correction( Solver )
     END IF
 
+    IF( MonolithicSlave ) THEN      
+      CALL MergeSlaveSolvers( Solver, PreSolve = .FALSE.)
+    END IF
+    
     ! Backchange the linear system 
     IF( ListGetLogical( Params,'Harmonic Mode',Found ) ) THEN
       CALL ChangeToHarmonicSystem( Solver, .TRUE. )

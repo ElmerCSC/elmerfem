@@ -1,0 +1,242 @@
+! FSI test case combining film flow with 3D elasticity.
+! For true use increase timesteps and coupled system iterations. 
+! P.R. 28.11.2023 
+
+#rhoi=1000.0
+#rhow=1000.0
+#nu = 1.0
+#h0 = 0.1
+#gravity=0*9.81
+#k0=1.0e5
+
+echo on
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "thin" !rect"
+  Include Path ""
+  Results Directory "results"
+End
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = Cartesian
+
+  Simulation Type = "Transient"
+  Timestepping Method = "implicit euler"
+  BDF Order = 1
+  Timestep Intervals = 1  ! 100
+  Timestep Sizes = 1.0
+  Output Intervals = 1
+
+  Steady State Max Iterations = 3 ! 30
+!  Post File = fsi.vtu  
+!  vtu: save bulk only = logical true
+!  vtu: exec solver = String "always"
+
+  Serendipity P Elements = True
+
+  Dirty Finish = Logical True
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+End
+
+Body 1
+  Name = "Ice"
+  Target Bodies(1) = 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Target Bodies(1) = 2
+  Equation = 2
+  Material = 2   
+  Body Force = 2
+  Initial Condition = 1
+End 
+
+Initial Condition 1
+  Name = "Guess"
+
+  VeloProf = Variable "Coordinate 1"
+    Real
+      0.0 0.0
+      200.0 0.0
+      250.0 1.0
+      300.0 1.0
+      350.0 0.0
+      1000.0 0.0
+    End 
+End 
+
+
+$frelax = 1.0
+$erelax = 0.5
+
+Solver 1
+  Equation = "FilmFlow"
+  Model Dimension = Integer 2
+  Procedure = "FilmFlowSolver" "FilmFlowSolver"
+  Optimize Bandwidth = False
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Relaxation Factor = $frelax
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = idrs
+  Idrs Parameter = 4
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU2
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 1
+
+  Steady State Convergence Tolerance = 1.0e-3
+
+  Number of Integration Points = 16
+
+  Min Gap Height = Real #h0
+  Lateral Strain = Logical True
+!  Use Gap Average = Logical True
+!  Convect = Logical True
+!  GradP Discretization = True
+
+  Update Exported Variables = True
+  Exported Variable 1 = Gap Height
+  Exported Variable 2 = Normal Velocity 
+  Exported Variable 3 = VeloProf 
+End
+
+
+Solver 2
+  Equation = Linear elasticity
+  Procedure = "StressSolve" "StressSolver"
+  Variable = -dofs 3 Disp
+  Displace Mesh = False
+  Calculate Velocity = Logical True
+
+  Steady State Convergence Tolerance = 1.0e-3
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Relaxation Factor = $erelax
+
+  Linear System Solver = Direct 
+  Linear System Direct Method = umfpack
+
+  Steady State Convergence Tolerance = 1.0e-4
+
+  Bubbles In global system = false
+  Time Derivative Order = 1
+
+!  Apply Limiter = True
+!  Apply Conforming BCs = True
+End
+
+Equation 1
+  Name = "ElastEq"
+  Active Solvers(1) = 2
+End
+
+Equation 2
+  Name = "FilmEq"
+  Active Solvers(1) = 1
+End
+
+Material 1
+  Name = "Ice"
+  Youngs modulus = 1.0e9 ! 1e9
+  Density = #rhoi
+  Poisson ratio = $2.0/3.0
+End
+
+Material 2
+  Name = "Water"
+  Density = #rhow
+  Viscosity = #nu
+
+  Artificial Compressibility = #1.5/k0
+
+  Gap Height = Variable "Disp 3"
+    Real LUA "tx[0]+h0"
+End
+
+
+Body Force 1
+  Stress Bodyforce 3 = #-gravity*rhoi
+End
+
+Body Force 2
+  Normal Velocity = Equals "VeloProf"
+  Fsi Velocity = Equals "Disp Velocity 3"
+
+  Gap Height = Variable "Disp 3"
+    Real LUA "tx[0]+h0"
+
+! Additional force in direction of the strip
+  Flow Bodyforce 1 = Real 1.0
+End
+
+
+Boundary Condition 1
+  Name = Front
+  Target Boundaries(1) = 1
+  Disp 2 = Real 0.0
+  FilmVelocity 2 = 0.0
+End
+
+Boundary Condition 2
+  Name = Right 
+  Target Boundaries(1) = 2
+!  Conforming BC = 4  
+  Disp 1 = Real 0.0
+  Disp 2 = Real 0.0
+  Disp 3 = Real 0.0
+
+  FilmVelocity 1 = 0.0
+!  FilmPressure = 0.0
+End
+
+Boundary Condition 3
+  Name = Back
+  Target Boundaries(1) = 3
+  Disp 2 = Real 0.0
+  FilmVelocity 2 = 0.0
+End
+
+Boundary Condition 4
+  Name = Left 
+  Target Boundaries(1) = 4
+  Disp 1 = Real 0.0
+  Disp 2 = Real 0.0
+  Disp 3 = Real 0.0
+
+  FilmVelocity 1 = 0.0
+!  FilmPressure = 0.0
+End
+
+
+Boundary Condition 5
+  Name = Contact
+  Target Boundaries(1) = 5
+!Disp 3 Lower Limit = Real 0.0
+!  Disp 2 = Real 0.0
+
+$coeff = 1.0e-3
+!Normal Force = Opposes "FilmPressure"
+  Force 3 = Equals "FilmPressure"
+  Body Id = 2
+End
+
+
+Boundary Condition 6  
+  Name = Top
+  Target Boundaries(1) = 6
+  Spring 3 = #k0
+End
+
+Solver 1 :: Reference Norm = 2.28884446E-01
+Solver 2 :: Reference Norm = 1.40346989E-01

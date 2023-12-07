@@ -1,0 +1,144 @@
+!--------------------------------------------------------------------
+! A test case for solving two equations together as a monolithic system
+! that were originally separate. Uses Slave Solver machinery,
+!
+! Study the test case 'DirichletNeumannSlave' to compare the strategy
+! to a loosely coupled iteration.
+!
+! Peter Råback / 14.11.2023
+!--------------------------------------------------------------------
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "internal_slope"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = "Cartesian"
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+
+  Output Intervals = 0
+  Post File = "case.vtu"
+End
+
+Body 1
+  Name = "Lower"
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Name = "Upper"
+  Equation = 2
+  Material = 2
+  Initial Condition = 1
+End
+
+Initial Condition 1
+  Tjump = Real 1.0
+End 
+
+
+Equation 1
+  Name = "LowerHeat"
+  Active Solvers(1) = 2
+End
+
+Equation 2
+  Name = "UpperHeat"
+  Active Solvers(1) = 1
+End
+
+
+Solver 1
+! This solver is never called in its real slot. 
+! It is only called as a slave to the other solver.
+  Exec Solver = never
+
+  Equation = "HeatB"
+  Variable = "TempB"
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = "umfpack"
+
+  Steady State Convergence Tolerance = 1.0e-05
+
+  Nonlinear System Max Iterations = 1
+
+  Optimize Bandwidth = False
+
+! Jump between the two fields. 
+  Exported Variable 1 = tjump
+End
+
+
+Solver 2
+  Equation = "HeatA"
+  Variable = "TempA"
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Linear System Solver = "iterative"
+  Linear System Direct Method = "umfpack"
+
+  Linear System Iterative Method = idrs
+  Linear System Max Iterations = 1000
+  Linear System Scaling = False
+  Optimize Bandwidth = False
+  Linear System Preconditioning = ILU0
+  Linear System Convergence Tolerance = 1.0e-10
+
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Max Iterations = 1
+
+! This calls the other solver before all assembly steps. 
+  Slave Solvers = 1 
+
+  Monolithic Slave = Logical True
+   
+!  Slave Field Scaling = Real 2.0
+!  Slave Field Offset Variable = String "tjump"
+End
+
+
+Material 1
+  Name = "LowerMat"
+  Density = 1.0
+  Heat Conductivity = 1.0
+End
+
+Material 2
+  Name = "UpperMat"
+  Density = 1.0
+  Heat Conductivity = 1.0
+End
+
+Boundary Condition 1
+  Name = "Bottom"
+  Target Boundaries = 1
+
+  TempA = Real 0.0
+End
+
+Boundary Condition 2
+  Name = "Top"
+  Target Boundaries = 2
+
+  TempB = Equals "Coordinate 2"
+End
+
+Boundary Condition 3
+  Name = "Interface"
+  Target Boundaries = 3
+
+! No interface condition is needed since the solvers are merged into one!  
+End
+
+Solver 2 :: Reference Norm = Real 0.62281193251726608
+!End Of File

@@ -120,6 +120,7 @@ SUBROUTINE FourierLossSolver_init( Model,Solver,dt,Transient )
   ElementalField = ListGetLogical( SolverParams, 'Calculate Elemental Fields', Found2 )
   IF(.NOT. (Found .OR. Found2) ) THEN
     ElementalField = .TRUE.
+    CALL ListAddLogical( SolverParams,'Calculate Elemental Fields',ElementalField )
     CALL Info(Caller,'Computing elemental fields only by default when neither given!')
   END IF
   
@@ -454,7 +455,7 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
   at2 = RealTime()
   WRITE( Message,'(A,ES12.3)') 'Assembly time: ',at2-at1
   CALL Info( Caller, Message, Level=5 )
-  
+
   !------------------------------------------------------------------------------     
   IF( NodalField ) THEN
     CALL ListAddLogical( SolverParams,'Linear System Compute Change',.FALSE.) 
@@ -477,12 +478,16 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
   ! Print and save the lumped results
   !-------------------------------------------------------------------------------
   CALL CommunicateLosess()
+
+  ! Let's use the total loss as a norm if no global linear system was solved.
+  IF(.NOT. NodalField ) THEN
+    Solver % Variable % Values = TotalLoss 
+  END IF
   
   ! We need to perform the DFT also for the missing part
   !----------------------------------------------------------------------
   EndCycle = .TRUE.
   CALL LocalFourierTransform( EndCycle ) 
-  
 
 CONTAINS 
 
@@ -1057,7 +1062,7 @@ CONTAINS
     END DO
       
     ! Output of the losses on screen    
-    ! First the component losses, the the body losses
+    ! First the component losses, then the body losses
     DO k=1,NComp
       CALL Info(Caller,'Wavewise Fourier loss for component: '//I2S(k),Level=6)
       

@@ -323,7 +323,7 @@ void C3D_Free_El_Tree(head) struct el_tree *head;
 
 int C3D_Convex_Test(x, y) int x[], y[];
 /***********************************************************************
-|  Test four-node ploygon 
+|  Test four-node polygon
 |  Only internal use
 ^**********************************************************************/
 {

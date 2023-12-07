@@ -14,7 +14,7 @@
 !> 
 !> At time of writing, this document contains notes and equations pertinent to
 !> the conversion of coefficients:
-!> https://photos.app.goo.gl/HRnwnKtqUJ5NeT7TA
+!> https://www.overleaf.com/read/jrkgjfqztgty
 !> 
 !> The following "Conversion mode" options are available (see above document
 !> for more info):
@@ -84,7 +84,7 @@ SUBROUTINE Weertman2CoulombSolver( Model,Solver,dt,TransientSimulation )
        tangentialvelocity(3), tangentialvelocitysquared, normal(3), velo(3), MinAs
   REAL(KIND=dp), POINTER     :: CoulombParam(:), lwcValues(:), AsValues(:), EPvalues(:), &
        FlowValues(:), CValues(:), NormalValues(:)
-  LOGICAL                    :: GotIt
+  LOGICAL                    :: GotIt, UseNormal
   CHARACTER(LEN=MAX_NAME_LEN):: FlowSolverName, Cname, Asname, CoulombVarName, LWCname
   CHARACTER(LEN=MAX_NAME_LEN):: ConversionMode
 
@@ -139,13 +139,18 @@ SUBROUTINE Weertman2CoulombSolver( Model,Solver,dt,TransientSimulation )
   END IF
   EPperm => EPvar % Perm
   EPvalues => EPvar % Values
-  !
-  NormalVar =>  VariableGet(Model % Variables,'Normal Vector',UnFoundFatal=.TRUE.)
-  IF (.NOT.ASSOCIATED(NormalVar)) &
-       CALL FATAL("Weertman2Coulomb",'Variable "Normal Vector" not found')
-  NormalPerm => NormalVar % Perm
-  NormalValues => NormalVar % Values
-
+  
+  UseNormal = GetLogical( Model % Solver % Values , 'Use Normal', GotIt )    
+  IF (.NOT.Gotit) UseNormal = .TRUE.
+  
+  IF (UseNormal) THEN
+     NormalVar =>  VariableGet(Model % Variables,'Normal Vector',UnFoundFatal=.TRUE.)
+     IF (.NOT.ASSOCIATED(NormalVar)) &
+          CALL FATAL("Weertman2Coulomb",'Variable "Normal Vector" not found')
+     NormalPerm => NormalVar % Perm
+     NormalValues => NormalVar % Values
+  END IF
+  
   !--------------------------------------------------------------------------------------------
   ! Solver params (constants) for use in the conversion
   ConversionMode = GetString(SolverParams, "Conversion mode", GotIt)
@@ -171,7 +176,7 @@ SUBROUTINE Weertman2CoulombSolver( Model,Solver,dt,TransientSimulation )
      !
   END IF
      
-  FlowSolverName = GetString( Model % Solver % Values , 'Flow Solver Name', GotIt )    
+  FlowSolverName = GetString( Model % Solver % Values , 'Flow Variable Name', GotIt )    
   IF (.NOT.Gotit) FlowSolverName = 'Flow Solution'
   FlowVariable => VariableGet( Model % Variables, FlowSolverName, UnFoundFatal=.True.)
   IF (.NOT.ASSOCIATED(FlowVariable)) &
@@ -187,16 +192,26 @@ SUBROUTINE Weertman2CoulombSolver( Model,Solver,dt,TransientSimulation )
 
      velo = 0.0_dp
      DO ii=1, DIM     
-        normal(ii) = -NormalValues(DIM*(NormalPerm(nn)-1) + ii)      
-        velo(ii) = FlowValues( (DIM+1)*(FlowPerm(nn)-1) + ii )
+        IF (UseNormal) THEN
+           normal(ii) = -NormalValues(DIM*(NormalPerm(nn)-1) + ii)      
+           velo(ii) = FlowValues( (DIM+1)*(FlowPerm(nn)-1) + ii )
+        ELSE
+           velo(ii) = FlowValues( (DIM)*(FlowPerm(nn)-1) + ii )
+        END IF
      END DO
-     normalvelocity = SUM(normal(1:DIM)*velo(1:DIM))*normal
-     tangentialvelocity = velo - normalvelocity
+
+     
+     IF (UseNormal) THEN
+        normalvelocity = SUM(normal(1:DIM)*velo(1:DIM))*normal
+        tangentialvelocity = velo - normalvelocity
+     ELSE
+        tangentialvelocity = velo
+     END IF
      tangentialvelocitysquared = SUM(tangentialvelocity(1:DIM)*tangentialvelocity(1:DIM))
      
      SELECT CASE(ConversionMode)
 
-     CASE("Threshold")
+     CASE("Threshold","threshold")
         CValues(CPerm(nn))   = defaultC
         AsValues(AsPerm(nn))  = defaultAs
 
@@ -215,7 +230,7 @@ SUBROUTINE Weertman2CoulombSolver( Model,Solver,dt,TransientSimulation )
            CoulombParam(CoulombPerm(nn)) = -1.0
         END IF
 
-     CASE("Smooth")
+     CASE("Smooth","smooth")
 
         ! As = u_b^(1-n).beta^-n
         ! (assuming n = 3)

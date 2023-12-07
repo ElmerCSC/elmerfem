@@ -211,7 +211,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 ! Local variables
 !------------------------------------------------------------------------------
   LOGICAL :: AllocationsDone = .FALSE., Found, L1
-  LOGICAL :: Stat, EigenAnalysis, TG, Jfix, JfixSolve, LaminateStack, CoilBody, EdgeBasis,LFact,LFactFound
+  LOGICAL :: Stat, TG, Jfix, JfixSolve, LaminateStack, CoilBody, EdgeBasis,LFact,LFactFound
   LOGICAL :: PiolaVersion, SecondOrder, GotHbCurveVar, HasTensorReluctivity
   LOGICAL :: ExtNewton, StrandedHomogenization
   LOGICAL, ALLOCATABLE, SAVE :: TreeEdges(:)
@@ -1522,7 +1522,7 @@ END BLOCK
        ! Compute element stiffness matrix and force vector:
        ! --------------------------------------------------
 
-       ! If we calculate a coil, user can request that the the nodal degrees of freedom are not used
+       ! If we calculate a coil, user can request that the nodal degrees of freedom are not used
        ! --------------------------------------------------------------------------------------------
        NONCOIL_CONDUCTOR: IF (ConstraintActive .AND. (SUM(ABS(C)) > AEPS .OR. ElectroDynamics) ) THEN
           !
@@ -1935,7 +1935,7 @@ END BLOCK
               ! Compute the conductivity term <C grad V x n,grad v x n> for stiffness 
               ! matrix (without anisotropy taken into account)
               ! -------------------------------------------
-              STIFF(p,q) = STIFF(p,q) + sheetThickness * C * SUM(dBasisdx(q,:) * dBasisdx(p,:))*detJ*IP % s(t)
+              STIFF(p,q) = STIFF(p,q) + sheetThickness * C * SUM(dBasisdx(q,:) * dBasisdx(i,:))*detJ*IP % s(t)
             END DO
             DO j=1,nd-np
               q = j+np

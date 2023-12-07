@@ -588,19 +588,29 @@ END BLOCK
             CALL ListInitElementKeyword( ViscEne2_h,'Material','Activation Energy 2',DefRValue=139.0d03)       
             CALL ListInitElementKeyword( ViscTemp_h,'Material','Relative Temperature')            
 
-            IF (.NOT.ListCheckPresentAnyMaterial( CurrentModel,'Glen Allow Old Keywords')) THEN
-              IF( ListCheckPresentAnyMaterial( CurrentModel,'Constant Temperature') ) THEN
+            IF( ListCheckPresentAnyMaterial( CurrentModel,'Constant Temperature') ) THEN                
+              IF( ListCheckPresentAnyMaterial( CurrentModel,'Relative Temperature') ) THEN                
+                CALL Warn('EffectiveViscosityVec','We ignore >Constant Temperature< and use >Relative Temperature<')
+              ELSE
                 CALL Fatal('EffectiveViscosityVec','Replace >Constant Temperature< with >Relative Temperature<')
               END IF
-              IF( ListCheckPresentAnyMaterial( CurrentModel,'Temperature Field Variable') ) THEN
-                CALL Fatal('EffectiveViscosityVec','Replace >Temperature Field Variable< with >Relative Temperature<')
+            END IF
+            IF( ListCheckPresentAnyMaterial( CurrentModel,'Temperature Field Variable') ) THEN
+              IF( ListCheckPresentAnyMaterial( CurrentModel,'Relative Temperature') ) THEN                
+                CALL Warn('EffectiveViscosityVec','We ignore >Temperature Field Variable< and use >Relative Temperature<')
+              ELSE
+                CALL Fatal('EffectiveViscosityVec','Replace >Temperature Field Variable< with >Relative Temperature = Equals ...<')
               END IF
             END IF
+            
             IF( ListCheckPresentAnyMaterial( CurrentModel,'Glen Enhancement Factor Function')  ) THEN
               CALL Fatal('EffectiveViscosityVec','No Glen function API yet!')
             END IF
             R = GetConstReal( CurrentModel % Constants,'Gas Constant',Found)
             IF (.NOT.Found) R = 8.314_dp
+
+            NewtonRelax = ListGetCReal( CurrentModel % Solver % Values,&
+                'Viscosity Newton Relaxation Factor',GotRelax )
           END IF
         END IF
 
@@ -870,6 +880,11 @@ END BLOCK
 
       END SELECT
 
+      IF( ViscNewton ) THEN
+        IF(GotRelax) ViscDerVec(1:ngp) = NewtonRelax * ViscDerVec(1:ngp)
+      END IF
+      
+
       IF(SaveVisc) THEN
         i = Element % ElementIndex
         IF( ViscVar % TYPE == Variable_on_gauss_points ) THEN
@@ -1012,21 +1027,23 @@ END BLOCK
     CHARACTER(LEN=MAX_NAME_LEN) :: str, FSSAFlag
     INTEGER :: c,i,j,k,l,p,q,t,ngp,norm_comp
     LOGICAL :: NormalTangential, HaveSlip, HaveForce, HavePres, HaveFrictionW, HaveFrictionU, &
-        HaveFriction, HaveNormal, FrictionNewton, FrictionNormal, Found, Stat, HaveFSSA, FoundLoad
+        HaveFriction, HaveNormal, FrictionNormal, Found, Stat, HaveFSSA, &
+        FoundLoad, GotRelax
     REAL(KIND=dp) :: ExtPressure, s, detJ, FSSAtheta, wut0, wexp, wcoeff, un, ut, rho
     REAL(KIND=dp) :: SlipCoeff(3), SurfaceTraction(3), Normal(3), Tangent(3), Tangent2(3), &
-        Vect(3), Velo(3), ut_eps, TanFrictionCoeff, DummyVals(1), LoadVec(dim), FSSAaccum
+        Vect(3), Velo(3), ut_eps, TanFrictionCoeff, DummyVals(1), LoadVec(dim), FSSAaccum, &
+        NewtonRelax 
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(ValueHandle_t), SAVE :: ExtPressure_h, SurfaceTraction_h, SlipCoeff_h, &
         NormalTangential_h, NormalTangentialVelo_h, WeertmanCoeff_h, WeertmanExp_h, &
-        FrictionNewtonEps_h, FrictionUt0_h, FrictionNormal_h, FrictionNewton_h, FrictionCoeff_h, &
+        FrictionUt0_h, FrictionNormal_h, FrictionCoeff_h, &
         FSSAtheta_h, Dens_h, Load_h(3), FSSAaccum_h
     TYPE(VariableHandle_t), SAVE :: Velo_v
     TYPE(Variable_t), POINTER, SAVE :: NrmSol
     TYPE(ValueList_t), POINTER :: BC    
     REAL(KIND=dp) :: TanFder,JAC(nd*(dim+1),nd*(dim+1)),SOL(nd*(dim+1)),NodalSol(dim+1,nd)
     
-    SAVE Basis, HaveNormal
+    SAVE Basis, HaveNormal, GotRelax, NewtonRelax, ut_eps
     
 !------------------------------------------------------------------------------
     
@@ -1041,8 +1058,6 @@ END BLOCK
       CALL ListInitElementKeyword( FrictionCoeff_h,'Boundary Condition','Friction Coefficient',&
           EvaluateAtIp=.TRUE., DummyCount=1)     
       CALL ListInitElementKeyword( FrictionNormal_h,'Boundary Condition','Friction Normal Velocity Zero')     
-      CALL ListInitElementKeyword( FrictionNewtonEps_h,'Boundary Condition','Friction Newton Epsilon')     
-      CALL ListInitElementKeyword( FrictionNewton_h,'Boundary Condition','Friction Newton Linearization')
       CALL ListInitElementKeyword( FrictionUt0_h,'Boundary Condition','Friction Linear Velocity')
       
       CALL ListInitElementKeyword( WeertmanCoeff_h,'Boundary Condition','Weertman Friction Coefficient')
@@ -1066,6 +1081,14 @@ END BLOCK
         CALL ListInitElementKeyword( Load_h(i),'Body Force','Flow Bodyforce '//I2S(i))
       END DO
       CALL ListInitElementKeyword( FSSAaccum_h,'Boundary Condition','FSSA Accumulation')
+
+      NewtonRelax = ListGetCReal( CurrentModel % Solver % Values,&
+          'Friction Newton Relaxation Factor',GotRelax )
+      IF(.NOT. GotRelax) NewtonRelax = 1.0_dp
+
+      ut_eps = ListGetCReal( CurrentModel % Solver % Values,'Friction Newton Epsilon', Found )
+      IF(.NOT. Found ) ut_eps = 1.0e-8
+      
       InitHandles = .FALSE.
     END IF
     
@@ -1099,7 +1122,6 @@ END BLOCK
       NormalTangential = ListGetElementLogical( NormalTangential_h, Element, Found )
     END IF
 
-    FrictionNewton = .FALSE.
     FrictionNormal = .FALSE.
     norm_comp = 0
 
@@ -1115,11 +1137,6 @@ END BLOCK
     HaveFriction = HaveFrictionU .OR. HaveFrictionW
     
     IF( HaveFriction ) THEN
-      FrictionNewton = ListGetElementLogical(FrictionNewton_h, Element ) 
-      IF( FrictionNewton ) THEN
-        ut_eps = ListGetElementReal( FrictionNewtonEps_h, Element = Element, Found = Found )
-        IF(.NOT. Found ) ut_eps = 1.0e-8
-      END IF
       wut0 = ListGetElementReal( FrictionUt0_h, Element = Element )
       FrictionNormal = ListGetElementLogical( FrictionNormal_h, Element ) 
     END IF
@@ -1283,9 +1300,8 @@ END BLOCK
                         s * SlipCoeff(i) * Basis(q) * Basis(p) * Vect(j) * Vect(k)
 
                     IF(HaveFrictionW.AND.Newton) THEN
-                      JAC((p-1)*c+j,(q-1)*c+k ) = &
-                         JAC((p-1)*c+j,(q-1)*c+k ) + &
-                         s * TanFder * Basis(q) * Basis(p) * Vect(j) * velo(k) * SUM(velo(1:dim)*Vect(1:dim))/ut
+                      JAC((p-1)*c+j,(q-1)*c+k ) = JAC((p-1)*c+j,(q-1)*c+k ) + &
+                          s * TanFder * Basis(q) * Basis(p) * Vect(j) * velo(k) * SUM(velo(1:dim)*Vect(1:dim))/ut
                     END IF
 
                   END DO
@@ -1305,8 +1321,7 @@ END BLOCK
                IF(HaveFrictionW.AND.Newton) THEN
                  DO j=1,dim
                   IF(j == norm_comp) CYCLE
-                  JAC((p-1)*c+i,(q-1)*c+j ) = &
-                     JAC((p-1)*c+i,(q-1)*c+j ) + &
+                  JAC((p-1)*c+i,(q-1)*c+j ) = JAC((p-1)*c+i,(q-1)*c+j ) + &
                         s * TanFder * Basis(q) * Basis(p) * velo(i) * velo(j) / ut
                  END DO
                END IF
@@ -1362,8 +1377,8 @@ END BLOCK
             DO q=1,nd
               DO i=dim,dim
                 STIFF( (p-1)*c+dim,(q-1)*c+i ) = & 
-                     STIFF( (p-1)*c+dim,(q-1)*c+i )  &
-                     - s * FSSAtheta * dt * LoadVec(dim) * Basis(q) * Basis(p) * Normal(i)
+                    STIFF( (p-1)*c+dim,(q-1)*c+i )  &
+                    - s * FSSAtheta * dt * LoadVec(dim) * Basis(q) * Basis(p) * Normal(i)
               END DO
             END DO
           END DO
@@ -1406,9 +1421,10 @@ END BLOCK
          SOL(i::c) = NodalSol(i,1:nd)
        END DO
 
+       IF(GotRelax) JAC = NewtonRelax * JAC
+       
        STIFF=STIFF+JAC
        FORCE=FORCE + MATMUL(JAC,SOL)
-
     END IF
       
     CALL DefaultUpdateEquations( STIFF, FORCE )
@@ -1461,6 +1477,7 @@ SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, Transient)
   TYPE(ValueList_t), POINTER :: Params 
   LOGICAL :: Found
   INTEGER :: dim
+  CHARACTER(:), ALLOCATABLE :: str
   CHARACTER(*), PARAMETER :: Caller = 'IncompressibleNSSolver_init'
 !------------------------------------------------------------------------------ 
   Params => GetSolverParams() 
@@ -1514,7 +1531,19 @@ SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, Transient)
   IF( ListGetLogical( Params,'Block Preconditioner',Found ) ) THEN
     CALL ListAddNewString( Params,'Block Matrix Schur Variable','schur')
   END IF
-   
+
+  ! Backward compatibility with old FlowSolver
+  str = GetString( Params, 'Flow Model', Found )
+  IF( Found ) THEN
+    SELECT CASE(str)
+    CASE('no convection')
+      CALL Warn(Caller,'Option "Flow Model = no convection" not used in this Solver!')
+    CASE('stokes')
+      CALL ListAddNewLogical( Params,'Stokes Flow',.TRUE.)
+    CASE DEFAULT
+    END SELECT
+  END IF
+    
 !------------------------------------------------------------------------------ 
 END SUBROUTINE IncompressibleNSSolver_Init
 !------------------------------------------------------------------------------
@@ -1694,8 +1723,9 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
         n  = GetElementNOFNodes()
         nd = GetElementNOFDOFs()
 
-        IF ( GetElementFamily() == 1 ) CYCLE
-
+        ! Skip 101 elements in 2D, and additionally 202's in 3D.
+        IF ( GetElementFamily() < dim ) CYCLE        
+        
         ! Get element local matrix and rhs vector:
         !-----------------------------------------
         CALL LocalBoundaryMatrix(Element, n, nd, dim, dt, SpecificLoad, InitBCHandles, Newton)

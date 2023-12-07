@@ -84,10 +84,27 @@
 !   lower surface variable name = string "Zb"
 !   bedrock variable name = string "bedrock"
 !   grounded mask name = String "GroundedMask"
-!   grounding line melt = logical True 
+!   grounding line melt = logical False
 !   water column scaling = logical True
 !   water column scaling factor = real 75.0
 !End  
+!
+! Here's an example for the "no curtain" setup (added November 2023):
+!
+!Solver #
+!  Exec Solver = "before timestep"
+!  Equation = "Shelf melt"
+!  Procedure = "SubShelfMelt" "SubShelfMelt"
+!  Variable = bmb 
+!  Variable DOFs = 1 
+!  melt function = string "linear"
+!  minimum bmb = real 0.0
+!  maximum bmb = real 25.0
+!  depth threshold = real 700.0
+!  lower surface variable name = string "Zb"
+!  grounded mask name = String "GroundedMask"
+!  grounding line melt = logical False
+!End
 
  SUBROUTINE SubShelfMelt (Model, Solver, dt, Transient)
 
@@ -127,7 +144,7 @@
   ! truly local variables!
   TYPE(ValueList_t), POINTER :: SolverParams
   REAL (KIND=dp) :: wct, wct_factor          ! water column thickness
-  REAL (KIND=dp) :: meltScaling, meltRate 
+  REAL (KIND=dp) :: meltScaling, meltRate, bmb_min, bmb_max, depth_thresh 
   REAL (KIND=dp) :: rhoi, Lf, rhoo, SWCp, gammaT, cc, cnst, secondstoyear, deltaT, T_freeze
   LOGICAL        :: found
   INTEGER        :: ii
@@ -236,8 +253,25 @@
      IF (.NOT. Found) THEN
         CALL FATAL(SolverName,'No keyword >far field ocean temperature< found in SubShelfMelt solver')
      END IF
+
+  CASE ('linear','Linear')
+     
+     bmb_min      = GetConstReal( SolverParams, 'minimum bmb',  Found )
+     IF (.NOT. Found) THEN
+        CALL FATAL(SolverName,'No keyword >minimum bmb< found in SubShelfMelt solver')
+     END IF
+     bmb_max      = GetConstReal( SolverParams, 'maximum bmb',  Found )
+     IF (.NOT. Found) THEN
+        CALL FATAL(SolverName,'No keyword >maximum bmb< found in SubShelfMelt solver')
+     END IF
+     depth_thresh = GetConstReal( SolverParams, 'depth threshold',  Found )
+     IF (.NOT. Found) THEN
+        CALL FATAL(SolverName,'No keyword >depth threshold< found in SubShelfMelt solver')
+     END IF
+     
   CASE DEFAULT
      CALL FATAL(SolverName,'melt function not recognised')
+     
   END SELECT
   
   lowerSurfName = GetString( SolverParams, 'lower surface variable name',  Found )
@@ -324,6 +358,11 @@
         IF (applyAnomaly) THEN
            meltrate = meltrate - anomFactor*abmb_vals(abmb_perm(ii))
         END IF
+        
+     CASE ('linear','Linear')
+        prefactor = z_iceBase%values(z_iceBase%Perm(ii))/depth_thresh
+        IF (prefactor.LT.-1.0) prefactor = -1.0
+        meltrate = bmb_min*(1.0-prefactor) + bmb_max*prefactor
         
      CASE DEFAULT
         CALL FATAL(SolverName,'Melt function not recognised in SubShelfMelt calculation')

@@ -2084,7 +2084,7 @@ INTEGER::inside
                     IF ( NeedPrec ) &
                        CurrIf % PrecValues(l) = CurrIf % PrecValues(l) + &
                             SourceMatrix % PrecValues(j)
-                    IF ( NeedPrec ) &
+                    IF ( NeedMass ) &
                        CurrIf % MassValues(l) = CurrIf % MassValues(l) + &
                             SourceMatrix % MassValues(j)
                     IF ( NeedDamp ) &

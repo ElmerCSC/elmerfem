@@ -149,8 +149,8 @@ Boundary Condition 4
 End
 
 
-! Conforming maps make the linear sysmtem smaller as it identifies
-! the nodes/edges to the the boundray.
+! Conforming maps make the linear system smaller as it identifies
+! the nodes/edges to the boundary.
 
 Boundary Condition 5
   Name = "MaxX"

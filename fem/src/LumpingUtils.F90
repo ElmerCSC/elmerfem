@@ -1481,21 +1481,22 @@ MODULE LumpingUtils
 !------------------------------------------------------------------------------
 !> Given vector potential and current density compute the energy in the coil.
 !------------------------------------------------------------------------------
-  FUNCTION BoundaryWaveFlux(Model, Mesh, MasterEntities, Avar, Anorm ) RESULT ( Aint ) 
+  FUNCTION BoundaryWaveFlux(Model, Mesh, MasterEntities, Avar, Anorm, PoyntMode ) RESULT ( Aint ) 
 !------------------------------------------------------------------------------
     TYPE(Model_t) :: Model    
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER, POINTER :: MasterEntities(:) 
     TYPE(Variable_t), POINTER :: Avar
     COMPLEX(KIND=dp) :: Aint
-    REAL(KIND=dp) :: Anorm(4)
+    REAL(KIND=dp) :: Anorm
+    LOGICAL :: PoyntMode
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: Element
     INTEGER :: t, i, j, k, l, n, np, nd, EdgeBasisDegree, t1, t2, bc_id
     LOGICAL :: Found, InitHandles
-    LOGICAL :: Stat, PiolaVersion, EdgeBasis
+    LOGICAL :: Stat, PiolaVersion, EdgeBasis, UseScalarPot
     TYPE(ValueList_t), POINTER :: BC
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     REAL(KIND=dp) :: area, omega
@@ -1524,6 +1525,8 @@ MODULE LumpingUtils
     t2 = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
     
     EdgeBasis = .FALSE.
+    UseScalarPot = .FALSE.
+
     IF(avar % dofs <= 2) THEN
       EdgeBasis = .TRUE.
       EdgeBasisDegree = 1
@@ -1533,8 +1536,9 @@ MODULE LumpingUtils
       ELSE
         PiolaVersion = ListGetLogical(avar % solver % Values,'Piola Version',Found)
       END IF
+      UseScalarPot = ListGetLogical(avar % solver % values, 'Use Gauss Law', Found)
     END IF
-
+    
     Aint = 0.0_dp
     area = 0.0_dp
 
@@ -1556,12 +1560,16 @@ MODULE LumpingUtils
       CALL LocalIntegBC(BC, Element, InitHandles)
     END DO
 
-    Aint = intel
-    Anorm(1) = intnorm
-    Anorm(2) = area
-    Anorm(3) = REAL(intPoynt)
-    Anorm(4) = AIMAG(intPoynt)
-
+    ! Magnitude of poynting vector squareroot, phase of electric field 
+    IF( PoyntMode ) THEN
+      Aint = intel * SQRT( REAL(IntPoynt) )  / ABS(intel)
+      Anorm = SQRT( REAL( intnorm ) )
+      !PRINT *,'intnorm:',intnorm, IntPoynt, Aint, Anorm
+    ELSE
+      Aint = intel
+      Anorm = intnorm 
+    END IF
+    
     CALL Info(Caller,'Reduction operator finished',Level=12)
     
   CONTAINS
@@ -1574,22 +1582,22 @@ MODULE LumpingUtils
       LOGICAL :: InitHandles
 !------------------------------------------------------------------------------
       COMPLEX(KIND=dp) :: B, Zs, L(3), muinv, TemGrad(3), BetaPar, jn, eps, &
-          e_ip(3), e_ip_norm, e_ip_tan(3), f_ip_tan(3), imu, phi, eps0, mu0inv
+          e_ip(3), e_ip_norm, e_ip_tan(3), f_ip_tan(3), imu, phi, eps0, mu0inv, epsr, mur
       REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:), e_local(:,:), phi_local(:,:)
-      REAL(KIND=dp) :: weight, DetJ, Normal(3), cond, u, v, w, x, y, z
+      REAL(KIND=dp) :: weight, DetJ, Normal(3), cond, u, v, w, x, y, z, rob0
       TYPE(Nodes_t), SAVE :: ElementNodes, ParentNodes
       INTEGER, POINTER :: NodeIndexes(:), pIndexes(:), ParentIndexes(:)
       INTEGER, POINTER, SAVE :: EdgeIndexes(:)
       LOGICAL :: Stat, Found
       TYPE(GaussIntegrationPoints_t) :: IP
-      INTEGER :: t, i, j, m, np, p, q, ndofs, n, nd   
+      INTEGER :: t, i, j, m, np, p, q, ndofs, n, nd
       LOGICAL :: AllocationsDone = .FALSE.
       TYPE(Element_t), POINTER :: Parent
       TYPE(ValueHandle_t), SAVE :: MagLoad_h, ElRobin_h, MuCoeff_h, Absorb_h, TemRe_h, TemIm_h
-      TYPE(ValueHandle_t), SAVE :: TransferCoeff_h, ElCurrent_h, RelNu_h, CondCoeff_h, CurrDens_h, EpsCoeff_h
+      TYPE(ValueHandle_t), SAVE :: TransferCoeff_h, ElCurrent_h, CondCoeff_h, CurrDens_h, EpsCoeff_h
       INTEGER :: nactive
       
-      SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, e_local, phi_local
+      SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, e_local, phi_local, mu0inv, eps0
       
       ndofs = avar % dofs
       IF(.NOT. AllocationsDone ) THEN
@@ -1627,7 +1635,8 @@ MODULE LumpingUtils
       END IF
 
       imu = CMPLX(0.0_dp, 1.0_dp)
-
+      rob0 = Omega * SQRT( eps0 / mu0inv )
+      
       n = Element % TYPE % NumberOfNodes
       NodeIndexes => Element % NodeIndexes 
 
@@ -1679,37 +1688,37 @@ MODULE LumpingUtils
             IP % W(t), detJ, Basis, dBasisdx )              
         weight = IP % s(t) * detJ
 
-        B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
-        
         ! Get material properties from parent element.
         !----------------------------------------------
-        muinv = ListGetElementComplex( MuCoeff_h, Basis, Parent, Found, GaussPoint = t )      
-        IF( Found ) THEN
-          muinv = muinv * mu0inv
-        ELSE
-          muinv = mu0inv
-        END IF
+        mur = ListGetElementComplex( MuCoeff_h, Basis, Parent, Found, GaussPoint = t )      
+        IF( .NOT. Found ) mur = 1.0_dp
+        muinv = mur * mu0inv
 
-        eps = ListGetElementComplex( EpsCoeff_h, Basis, Parent, Found, GaussPoint = t )      
-        IF( Found ) THEN
-          eps = eps * eps0
-        ELSE
-          eps = eps0
-        END IF
+        epsr = ListGetElementComplex( EpsCoeff_h, Basis, Parent, Found, GaussPoint = t )      
+        IF( .NOT. Found ) epsr = 1.0_dp
+        eps = epsr * eps0
         
         Cond = ListGetElementReal( CondCoeff_h, Basis, Parent, Found, GaussPoint = t )
+        
+        IF( ListGetElementLogical( Absorb_h, Element, Found ) ) THEN
+          B = imu * rob0 * SQRT( epsr / mur ) 
+        ELSE        
+          B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
+        END IF
+                  
+        !IF( ListGetLogical( Model % Simulation,'Z test', Found ) ) THEN        
+        Zs = 1.0_dp / (SQRT(REAL(muinv*eps)))
+        !ELSE
+        !Zs = imu * Omega / (B * muinv)        
+        !END IF
 
-        Zs = imu * Omega / (B * muinv)        
         L = ListGetElementComplex3D( MagLoad_h, Basis, Element, Found, GaussPoint = t )
-
         TemGrad = CMPLX( ListGetElementRealGrad( TemRe_h,dBasisdx,Element,Found), &
             ListGetElementRealGrad( TemIm_h,dBasisdx,Element,Found) )
         L = L + TemGrad
 
-        B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
-
-        L = L / (SQRT(2.0_dp)*2*B)
-
+        L = L / (2*B)
+                
         IF( EdgeBasis ) THEN
           ! In order to get the normal component of the electric field we must operate on the
           ! parent element. The surface element only has tangential components. 
@@ -1717,6 +1726,12 @@ MODULE LumpingUtils
           stat = ElementInfo( Parent, ParentNodes, u, v, w, detJ, Basis, dBasisdx, &
               EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = avar % Solver )
           e_ip(1:3) = CMPLX(MATMUL(e_local(1,np+1:nd),WBasis(1:nd-np,1:3)), MATMUL(e_local(2,np+1:nd),WBasis(1:nd-np,1:3)))       
+          IF (UseScalarPot) THEN
+            DO i=1,3
+              e_ip(i) = e_ip(i) - &
+                  CMPLX(SUM(e_local(1,1:np)*dBasisdx(1:n,i)), SUM(e_local(2,1:np)*dBasisdx(1:n,i)))
+            END DO
+          END IF
         ELSE
           DO i=1,3
             e_ip(i) = CMPLX( SUM( Basis(1:n) * e_local(i,1:n) ), SUM( Basis(1:n) * e_local(i+3,1:n) ) )
@@ -1726,10 +1741,22 @@ MODULE LumpingUtils
         e_ip_norm = SUM(e_ip*Normal)
         e_ip_tan = e_ip - e_ip_norm * Normal
 
+        ! integral over Poynting vector: This gives the energy
+        IntPoynt = IntPoynt + weight * 0.5_dp * SUM(e_ip * CONJG(e_ip) ) / Zs        
+
+        ! integral over electric field: This gives the phase
         intel = intel + weight * SUM(e_ip_tan * CONJG(L) )         
-        area = area + weight
-        intnorm = intnorm + weight * ABS( SUM( L * CONJG(L) ) )
-        IntPoynt = IntPoynt + weight * 0.5_dp * SUM(e_ip_tan * CONJG(e_ip_tan) ) / Zs        
+
+        IF( PoyntMode ) THEN
+          ! Normalize Poynting vector
+          !intnorm = intnorm + weight * 0.5_dp * ABS( SUM( e_ip * CONJG(L) ) ) / Zs
+          intnorm = intnorm + weight * 0.5_dp * ABS( SUM( L * CONJG(L) ) ) / Zs
+        ELSE
+          ! Normalize electric field
+          intnorm = intnorm + weight * ABS( SUM( L * CONJG(L) ) ) 
+        END IF
+       
+        area = area + weight        
       END DO
       
 !------------------------------------------------------------------------------

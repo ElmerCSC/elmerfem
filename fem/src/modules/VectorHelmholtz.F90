@@ -131,6 +131,32 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
 END SUBROUTINE VectorHelmholtzSolver_Init0
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+SUBROUTINE VectorHelmholtzSolver_Init(Model,Solver,dt,Transient)
+!------------------------------------------------------------------------------
+  USE VectorHelmholtzUtils
+
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Model_t) :: Model
+  TYPE(Solver_t) :: Solver
+
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER :: SolverParams
+!------------------------------------------------------------------------------
+  SolverParams => GetSolverParams()
+  
+  ! A parallel run needs an early allocation of precvalues. Create a flag to
+  ! inform the function CreateMatrix.
+  IF (ListCheckPrefix(SolverParams, 'Linear System Preconditioning Damp Coefficient')) THEN
+    CALL ListAddNewLogical(SolverParams, 'Allocate Preconditioning Matrix', .TRUE.)
+  END IF
+
+!------------------------------------------------------------------------------
+END SUBROUTINE VectorHelmholtzSolver_Init
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 !> Solve the electric field E from the curl-curl equation 
@@ -210,7 +236,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
       CALL Warn(Caller,'Damped preconditioning does not make sense for direct methods, canceling!')
       HasPrecDampCoeff = .FALSE.
     ELSE
-      CALL Info(Caller,'Generating special precondining matrix',Level=12)
+      CALL Info(Caller,'Generating special preconditioning matrix',Level=12)
     END IF
   END IF
     
@@ -233,7 +259,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   UseGaussLaw = GetLogical(SolverParams, 'Use Gauss Law', Found)
   ChargeConservation = GetLogical(SolverParams, 'Apply Conservation of Charge', Found)
   
-  ! Resolve internal non.linearities, if requested:
+  ! Resolve internal nonlinearities, if requested:
   ! ----------------------------------------------
   NoIterationsMax = GetInteger( SolverParams, &
       'Nonlinear System Max Iterations',Found)
@@ -607,22 +633,41 @@ CONTAINS
           ! generic functionality. In principle, the idea is to use the A-V representation
           ! together with a gauge constraint.
           !
+          IF (ConductorBody .AND. ChargeConservation) THEN
+            ! Use an implied equation about the conservation of charge
+            DO p = 1,n
+              i = (p-1)*ndofs + 1
+              DO q = 1,nd-np
+                j = q+np
+                Gauge(i,j) = Gauge(i,j) - im * Omega * Cond * SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
+                Gauge(j,i) = Gauge(j,i) + Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
+              END DO
+
+              DO q = 1,n
+                j = (q-1)*ndofs + 1
+                Gauge(i,j) = Gauge(i,j) + im * Omega * Cond * SUM(dBasisdx(i,:) * dBasisdx(j,:)) * weight
+              END DO
+            END DO
+          ELSE
+            DO p = 1,n
+              ! If two nodal DOFs per node, the first DOF is the scalar potential V related to
+              ! the A-V representation. We add -w^2 div D = -w^2 rho in a weak form when
+              ! E = A - grad V:
+              i = (p-1)*ndofs + 1
+              DO q = 1,nd-np
+                j = q+np
+                Gauge(i,j) = Gauge(i,j) + Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(p,:)) * weight
+                Gauge(j,i) = Gauge(j,i) + Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(p,:)) * weight
+              END DO
+
+              DO q = 1,n
+                j = (q-1)*ndofs + 1
+                Gauge(i,j) = Gauge(i,j) - Omega**2 * Eps * SUM(dBasisdx(q,:) * dBasisdx(p,:)) * weight
+              END DO
+            END DO
+          END IF
+          
           DO p = 1,n
-            ! If two nodal DOFs per node, the first DOF is the scalar potential V related to
-            ! the A-V representation. We add -w^2 div D = -w^2 rho in a weak form when
-            ! E = A - grad V:
-            i = (p-1)*ndofs + 1
-            DO q = 1,nd-np
-              j = q+np
-              Gauge(i,j) = Gauge(i,j) + Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(p,:)) * weight
-              Gauge(j,i) = Gauge(j,i) + Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(p,:)) * weight                
-            END DO
-
-            DO q = 1,n
-              j = (q-1)*ndofs + 1
-              Gauge(i,j) = Gauge(i,j) - Omega**2 * Eps * SUM(dBasisdx(q,:) * dBasisdx(p,:)) * weight
-            END DO
-
             ! The second DOF is related to the gauge condition div A =  0 (TO DO: Add
             ! Lorenz condition as an alternative)
             i = p*ndofs
@@ -712,7 +757,7 @@ CONTAINS
     LOGICAL :: InitHandles
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:)    
-    COMPLEX(KIND=dp) :: B, L(3), muinv, TemGrad(3), BetaPar, jn, Cond, SurfImp
+    COMPLEX(KIND=dp) :: B, L(3), muinv, TemGrad(3), BetaPar, jn, Cond, SurfImp, epsr, mur, imu
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:)
     REAL(KIND=dp) :: th, DetJ
     LOGICAL :: Stat, Found, UpdateStiff, WithNdofs, ThinSheet, ConductorBC
@@ -722,7 +767,7 @@ CONTAINS
     INTEGER :: t, i, j, m, np, p, q, ndofs
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(Element_t), POINTER :: Parent
-    TYPE(ValueHandle_t), SAVE :: MagLoad_h, ElRobin_h, MuCoeff_h, Absorb_h, TemRe_h, TemIm_h
+    TYPE(ValueHandle_t), SAVE :: MagLoad_h, ElRobin_h, MuCoeff_h, EpsCoeff_h, Absorb_h, TemRe_h, TemIm_h
     TYPE(ValueHandle_t), SAVE :: TransferCoeff_h, ElCurrent_h
     TYPE(ValueHandle_t), SAVE :: Thickness_h, RelNu_h, CondCoeff_h
     TYPE(ValueHandle_t), SAVE :: GoodConductor, ChargeConservation
@@ -745,6 +790,7 @@ CONTAINS
       CALL ListInitElementKeyword( TemRe_h,'Boundary Condition','TEM Potential')
       CALL ListInitElementKeyword( TemIm_h,'Boundary Condition','TEM Potential Im')
       CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)      
+      CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity',InitIm=.TRUE.)      
       CALL ListInitElementKeyword( TransferCoeff_h,'Boundary Condition','Electric Transfer Coefficient',InitIm=.TRUE.)
       CALL ListInitElementKeyword( ElCurrent_h,'Boundary Condition','Electric Current Density',InitIm=.TRUE.)
 
@@ -773,9 +819,11 @@ CONTAINS
     IF (WithNdofs) THEN
       Regularize = UseGaussLaw .AND. ListGetElementLogical( ChargeConservation, Element, Found )
     END IF
-    
+
     LineElement = GetElementFamily(Element) == 2
     DegenerateElement = (CoordinateSystemDimension() == 3) .AND. LineElement
+
+    imu = CMPLX(0.0_dp, 1.0_dp)
     
     UpdateStiff = .FALSE.
     DO t=1,IP % n  
@@ -814,7 +862,19 @@ CONTAINS
         UpdateStiff = .TRUE.
         CYCLE
       END IF
-        
+
+      IF( ASSOCIATED( Parent ) ) THEN        
+        mur = ListGetElementComplex( MuCoeff_h, Basis, Parent, Found, GaussPoint = t )      
+        IF( .NOT. Found ) mur = 1.0_dp
+        epsr = ListGetElementComplex( EpsCoeff_h, Basis, Parent, Found, GaussPoint = t )
+        IF( .NOT. Found ) epsr = 1.0_dp
+      ELSE
+        epsr = 1.0_dp
+        mur = 1.0_dp
+      END IF      
+      muinv = mur * mu0inv
+      
+      ConductorBC = .FALSE.
       IF (ThinSheet) THEN
         IF (ListGetElementLogical(GoodConductor, Element, Found)) &
             CALL Warn(Caller, 'Good Conductor BC neglected, given Layer Thickness used instead')
@@ -822,7 +882,7 @@ CONTAINS
         B = th * Cond
       ELSE
         IF( ListGetElementLogical( Absorb_h, Element, Found ) ) THEN
-          B = CMPLX(0.0_dp, rob0 ) 
+          B = imu * rob0 * SQRT( epsr / mur ) 
         ELSE
           ConductorBC = ListGetElementLogical( GoodConductor, Element, Found )
           IF (ConductorBC) THEN
@@ -842,6 +902,8 @@ CONTAINS
       END IF
       L = ListGetElementComplex3D( MagLoad_h, Basis, Element, Found, GaussPoint = t )
 
+      
+      
       TemGrad = CMPLX( ListGetElementRealGrad( TemRe_h,dBasisdx,Element,Found), &
           ListGetElementRealGrad( TemIm_h,dBasisdx,Element,Found) )
       L = L + TemGrad
@@ -850,17 +912,6 @@ CONTAINS
         IF (ABS(B) < AEPS .AND. ABS(DOT_PRODUCT(L,L)) < AEPS) CYCLE
       END IF
       UpdateStiff = .TRUE.
-
-      IF( ASSOCIATED( Parent ) ) THEN        
-        muinv = ListGetElementComplex( MuCoeff_h, Basis, Parent, Found, GaussPoint = t )      
-        IF( Found ) THEN
-          muinv = muinv * mu0inv
-        ELSE
-          muinv = mu0inv
-        END IF
-      ELSE
-        muinv = mu0inv
-      END IF
 
       IF (ConductorBC .OR. ThinSheet) B = im * omega/muinv * B
       

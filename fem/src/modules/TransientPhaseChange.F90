@@ -83,7 +83,7 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,Transient )
       LocalStiffMatrix(:,:), LocalForceVector(:), LocalMassMatrix(:,:)  
   INTEGER :: i,j,k,t,n,nd,dim,Trip_node, axis_node, NonlinearIter, istat, &
        ii,iter, Visited = -1, &
-       SubroutineVisited = 0, NormalDirection, CoordMini(3), CoordMaxi(3), CoupledIter, &
+       SubroutineVisited = 0, NormalDir, CoordMini(3), CoordMaxi(3), CoupledIter, &
        TimeStep, LoadsOrder, LoadsSign
   INTEGER, POINTER :: NodeIndexes(:),TempPerm(:),SurfPerm(:)
 
@@ -98,7 +98,7 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,Transient )
   TYPE(Mesh_t), POINTER :: Mesh
   
   SAVE FirstTime, Trip_node, Axis_node,SubroutineVisited, prevpos0, &
-      PrevSurfaceVelo, NormalDirection, ForceVector, PullControl, &
+      PrevSurfaceVelo, NormalDir, ForceVector, PullControl, &
       Visited, Nodes, NodalTemp, Conductivity, LatentHeat, Density, &
       AllocationsDone, LocalStiffMatrix, LocalForceVector, LocalMassMatrix, &
       x, y, z, Basis, dBasisdx, norm, PullVelocitySet, &
@@ -207,7 +207,7 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,Transient )
     END DO
     
     ! Direction of minimum change is the normal direction if not given
-    NormalDirection = ListGetInteger( Params,'Normal Direction',Stat)
+    NormalDir = ListGetInteger( Params,'Normal Direction',Stat)
     IF(.NOT. Stat) THEN
       j = 1
       DO i=1,DIM
@@ -215,7 +215,7 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,Transient )
           j = i
         END IF
       END DO
-      NormalDirection = j
+      NormalDir = j
       CALL Info('TransientPhaseChange','Normal coordinate set to: '//I2S(j),Level=7)
     END IF
     
@@ -224,8 +224,8 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,Transient )
 
     ! In 2D the extremum points must be edge points
     IF( DIM == 2 ) THEN
-      Trip_node = CoordMaxi(3 - NormalDirection)
-      Axis_node = CoordMini(3 - NormalDirection) 
+      Trip_node = CoordMaxi(3 - NormalDir)
+      Axis_node = CoordMini(3 - NormalDir) 
       IsBoundaryNode( SurfPerm(Trip_node) ) = .TRUE.
       IsBoundaryNode( SurfPerm(Axis_node) ) = .TRUE.
     END IF
@@ -301,7 +301,7 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,Transient )
     CurrentElement => GetActiveElement(1)
     k = GetMaterialId()
     Material => Model % Materials(k) % Values
-    WRITE (str,'(A,I2)') 'Convection Velocity',NormalDirection
+    WRITE (str,'(A,I2)') 'Convection Velocity',NormalDir
     UPull = ListGetConstReal( Material, str, Stat )
     PullVelocitySet = .TRUE.
   END IF
@@ -684,13 +684,13 @@ CONTAINS
         
         DO q=1,nBasis
           StiffMatrix(p,q) = StiffMatrix(p,q) + s * Basis(p) * Basis(q) * &
-              Normal(NormalDirection) * LocalDens * LocalHeat            
+              Normal(NormalDir) * LocalDens * LocalHeat            
           
           ! Jump over the special nodes (when defined)
           IF( IsBoundaryNode( SurfPerm(NodeIndexes(p))) ) CYCLE
 
           DO i=1,DIM
-            IF( i == NormalDirection ) CYCLE
+            IF( i == NormalDir ) CYCLE
             StiffMatrix(p,q) = StiffMatrix(p,q) + &
                 s * StabCoeff * dBasisdx(q,i) * dBasisdx(p,i)
           END DO
@@ -772,7 +772,7 @@ CONTAINS
           IF( IsBoundaryNode( SurfPerm(NodeIndexes(p))) ) CYCLE
 
           DO i=1,DIM
-            IF( NormalDirection == i ) CYCLE
+            IF( NormalDir == i ) CYCLE
             StiffMatrix(p,q) = StiffMatrix(p,q) + &
                 s * StabCoeff * dBasisdx(q,i) * dBasisdx(p,i)            
           END DO
@@ -794,7 +794,7 @@ CONTAINS
       INTEGER :: t,k,i,n
       LOGICAL :: PullBoundary
 
-      IF(NormalDirection /= 2) CALL Fatal('TransientPhaseChange',&
+      IF(NormalDir /= 2) CALL Fatal('TransientPhaseChange',&
           'FindPullBoundary implemented only for lateral boundaries!')
 
       PullBoundary = .FALSE.

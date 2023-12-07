@@ -255,7 +255,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
      INTEGER, POINTER :: TempPerm(:),DisplPerm(:),StressPerm(:),&
           DisplacementVelPerm(:), NodeIndexes(:)
 
-     LOGICAL :: GotForceBC,Found,RayleighDamping, NormalSpring
+     LOGICAL :: Found,RayleighDamping, NormalSpring
      LOGICAL :: PlaneStress, CalcStress, CalcStressAll, &
         CalcPrincipalAll, CalcPrincipalAngle, CalculateStrains, &
         CalcPrincipalStrain, CalcVelocities, Isotropic(2) = .TRUE.
@@ -1414,6 +1414,17 @@ CONTAINS
        Element => GetBoundaryElement(t)
        IF ( .NOT. ActiveBoundaryElement() ) CYCLE
        
+       i = GetElementDim(Element)
+       IF( i >= Mesh % MeshDim ) THEN
+         CALL Warn('StressSolve','Invalid dimension '//I2S(i)//' for BC element '//I2S(t))
+         CYCLE
+       END IF
+       IF( i < Mesh % MeshDim - 1) THEN
+         ! Note this might not be always what you want!
+         CALL Info('StressSolve','Skipping lower dimensional element!',Level=30)
+         CYCLE
+       END IF
+       
        n = GetElementNOFNodes()
        ntot = GetElementNOFDOFs()
 
@@ -1427,20 +1438,27 @@ CONTAINS
           DampCoeff   = 0.0d0
           SpringCoeff = 0.0d0
 
+          IF( HarmonicAnalysis ) THEN
+            LOAD_im=0._dp
+            Beta_im=0._dp
+          END IF
+
           ! Force in given direction BC: \tau\cdot n = F:
           !----------------------------------------------
-          GotForceBC = .FALSE.
-          LOAD(1,1:n) = GetReal( BC, 'Force 1',Found )
-          LOAD(2,1:n) = GetReal( BC, 'Force 2',Found )
-          LOAD(3,1:n) = GetReal( BC, 'Force 3',Found )
-          Beta(1:n) =  GetReal( BC, 'Normal Force',Found )
+          IF(ListCheckPrefix( BC,'Force') ) THEN
+            LOAD(1,1:n) = GetReal( BC, 'Force 1',Found )
+            LOAD(2,1:n) = GetReal( BC, 'Force 2',Found )
+            LOAD(3,1:n) = GetReal( BC, 'Force 3',Found )
 
-          LOAD_im=0._dp
-          Beta_im=0._dp
+            IF ( HarmonicAnalysis ) THEN
+              LOAD_im(1,1:n) = GetReal( BC, 'Force 1 im',Found )
+              LOAD_im(2,1:n) = GetReal( BC, 'Force 2 im',Found )
+              LOAD_im(3,1:n) = GetReal( BC, 'Force 3 im',Found )
+            END IF
+          END IF
+            
+          Beta(1:n) =  GetReal( BC, 'Normal Force',Found )
           IF ( HarmonicAnalysis ) THEN
-            LOAD_im(1,1:n) = GetReal( BC, 'Force 1 im',Found )
-            LOAD_im(2,1:n) = GetReal( BC, 'Force 2 im',Found )
-            LOAD_im(3,1:n) = GetReal( BC, 'Force 3 im',Found )
             Beta_im(1:n) =  GetReal( BC, 'Normal Force im',Found )
           END IF
 
@@ -1462,19 +1480,21 @@ CONTAINS
           END IF
 
           DampCoeff(1:n) =  GetReal( BC, 'Damping', Found )
-          SpringCoeff(1:n,1,1) =  GetReal( BC, 'Spring', NormalSpring )
-          IF ( .NOT. NormalSpring ) THEN
-            DO i=1,dim
-              SpringCoeff(1:n,i,i) = GetReal( BC, ComponentName('Spring',i), Found)
-            END DO
 
-            DO i=1,dim
-              DO j=1,dim
-                IF (ListCheckPresent(BC,'Spring '//i2s(i)//i2s(j) )) &
-                  SpringCoeff(1:n,i,j)=GetReal( BC, 'Spring '//i2s(i)//i2s(j), Found)
+          IF( ListCheckPrefix( BC,'Spring' ) ) THEN         
+            SpringCoeff(1:n,1,1) =  GetReal( BC, 'Spring', NormalSpring )
+            IF ( .NOT. NormalSpring ) THEN
+              DO i=1,dim
+                SpringCoeff(1:n,i,i) = GetReal( BC, ComponentName('Spring',i), Found)
+                IF(Found) CYCLE
+                DO j=1,dim
+                  IF (ListCheckPresent(BC,'Spring '//i2s(i)//i2s(j) )) &
+                      SpringCoeff(1:n,i,j)=GetReal( BC, 'Spring '//i2s(i)//i2s(j), Found)
+                END DO
               END DO
-            END DO
+            END IF
           END IF
+            
           ContactLimit(1:n) =  GetReal( BC, 'Contact Limit', Found )
 
           IF(ModelLumping .AND. .NOT. FixDisplacement) THEN
