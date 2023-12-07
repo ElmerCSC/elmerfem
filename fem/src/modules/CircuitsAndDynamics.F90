@@ -1703,10 +1703,11 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       CASE ('stranded')
         StrandedHomogenization = GetLogical(CompParams, 'Homogenization Model', Found)
         IF ( StrandedHomogenization ) THEN 
-          sigma_33 = 0._dp
-          sigmaim_33 = 0._dp
           sigma_33 = GetReal(CompParams, 'sigma 33', Found)
+          IF ( .NOT. Found ) sigma_33 = 0._dp
           sigmaim_33 = GetReal(CompParams, 'sigma 33 im', FoundIm)
+          IF ( .NOT. FoundIm ) sigmaim_33 = 0._dp
+          IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model sigma 33 not found!')
           IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('AddComponentEquationsAndCouplings', &
               'Homogenization Model Sigma 33 not found!')
           Tcoef = CMPLX(0._dp, 0._dp, KIND=dp)
