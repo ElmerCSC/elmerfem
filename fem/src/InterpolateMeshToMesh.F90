@@ -303,8 +303,14 @@
       Var => OldVariables
       nvars = 0
       DO WHILE(ASSOCIATED(Var))
-         nvars = nvars + 1
-         Var => Var % Next
+        IF(LegitInterpVar(Var)) THEN         
+          nvars = nvars + 1
+          IF ( ASSOCIATED(Var % PrevValues) ) THEN
+            j = SIZE(Var % PrevValues,2)
+            nvars = nvars+j
+          END IF
+        END IF
+        Var => Var % Next
       END DO
 
       maxrecv = 0
@@ -346,20 +352,16 @@
         Var => OldVariables
         nvars = 0
         DO WHILE(ASSOCIATED(Var))
-          IF ( Var % DOFs==1 .AND. .NOT.Var % Secondary ) THEN
-            IF( SIZE(Var % Values) == Var % Dofs ) THEN
-              CONTINUE
-            ELSE IF(Var % Name(1:10) /= 'coordinate' ) THEN
-              ALLOCATE(store(n)); store=0
-              nvars = nvars+1
-              CALL VariableAdd(nMesh % Variables,nMesh,Var % Solver, &
-                       Var % Name,1,store,nperm )
-              IF ( ASSOCIATED(Var % PrevValues) ) THEN
-                j = SIZE(Var % PrevValues,2)
-                nvars = nvars+j
-                Nvar => VariableGet( Nmesh % Variables,Var % Name,ThisOnly=.TRUE.)
-                ALLOCATE(Nvar % PrevValues(n,j))
-              END IF
+          IF(LegitInterpVar(Var)) THEN         
+            ALLOCATE(store(n)); store=0
+            nvars = nvars+1
+            CALL VariableAdd(nMesh % Variables,nMesh,Var % Solver, &
+                Var % Name,1,store,nperm )
+            IF ( ASSOCIATED(Var % PrevValues) ) THEN
+              j = SIZE(Var % PrevValues,2)
+              nvars = nvars+j
+              Nvar => VariableGet( Nmesh % Variables,Var % Name,ThisOnly=.TRUE.)
+              ALLOCATE(Nvar % PrevValues(n,j))
             END IF
           END IF
           Var => Var % Next
@@ -388,19 +390,15 @@
             Var => OldVariables
             nvars = 0
             DO WHILE(ASSOCIATED(Var))
-              IF ( Var % DOFs==1  .AND. .NOT.Var % Secondary) THEN
-                IF( SIZE(Var % Values) == Var % Dofs ) THEN
-                  CONTINUE
-                ELSE IF(Var % Name(1:10) /= 'coordinate' ) THEN
-                  Nvar => VariableGet( Nmesh % Variables,Var % Name,ThisOnly=.TRUE.)
-                  nvars=nvars+1
-                  vstore(k,nvars)=Nvar % Values(j)
-                  IF ( ASSOCIATED(Var % PrevValues) ) THEN
-                    DO l=1,SIZE(Var % PrevValues,2)
-                      nvars = nvars+1
-                      vstore(k,nvars)=Nvar % PrevValues(j,l)
-                    END DO
-                  END IF
+              IF(LegitInterpVar(Var)) THEN
+                Nvar => VariableGet( Nmesh % Variables,Var % Name,ThisOnly=.TRUE.)
+                nvars=nvars+1
+                vstore(k,nvars)=Nvar % Values(j)
+                IF ( ASSOCIATED(Var % PrevValues) ) THEN
+                  DO l=1,SIZE(Var % PrevValues,2)
+                    nvars = nvars+1
+                    vstore(k,nvars)=Nvar % PrevValues(j,l)
+                  END DO
                 END IF
               END IF
               Var => Var % Next
@@ -465,10 +463,7 @@
         Var => OldVariables
         nvars=0
         DO WHILE(ASSOCIATED(Var))
-          IF ( Var % DOFs==1 .AND. .NOT.Var % Secondary ) THEN
-            IF( SIZE(Var % Values) == Var % Dofs ) THEN
-              CONTINUE
-            ELSE IF( Var % Name(1:10) /= 'coordinate' ) THEN
+          IF(LegitInterpVar(Var)) THEN
               nvars=nvars+1
               CALL MPI_RECV( astore, n, MPI_DOUBLE_PRECISION, proc, &
                   2002+nvars, ELMER_COMM_WORLD, status, ierr )
@@ -506,7 +501,6 @@
                   END IF
                 END DO
               END IF
-            END IF
           END IF
           Var => Var % Next
         END DO
@@ -531,6 +525,25 @@
       
 CONTAINS
 
+  ! Collect here all the historical ways how a variable might be not good for interpolation.
+  !-----------------------------------------------------------------------------------------
+  FUNCTION LegitInterpVar(Var) RESULT ( IsLegit )
+    TYPE(Variable_t), POINTER :: Var
+    LOGICAL :: IsLegit
+
+    ! Only nodal and discontinuous galerkin fields can be interpolated as for now. 
+    IsLegit = ( Var % TYPE == Variable_on_nodes_on_elements .OR. Var % Type == Variable_on_nodes ) 
+    ! Even for vectors the interpolation is done for each scalar component. 
+    IF( Var % Dofs > 1 ) IsLegit = .FALSE.
+    !IF( Var % Secondary ) IsLegit = .FALSE.
+    ! Coordinates are special and should not be interpolated. 
+    IF( Var % Name(1:10) == 'coordinate' ) IsLegit = .FALSE.
+    ! This is global variable for which the type has not been properly set.
+    IF(.NOT. ASSOCIATED(Var % Perm) .AND. SIZE(Var % Values) == 1 ) IsLegit = .FALSE.
+    
+  END FUNCTION LegitInterpVar
+
+  
 !------------------------------------------------------------------------------
    FUNCTION AllocateMesh() RESULT(Mesh)
 !------------------------------------------------------------------------------
@@ -947,17 +960,7 @@ END SUBROUTINE InterpolateMeshToMesh
           Var => OldVariables
           DO WHILE( ASSOCIATED( Var ) )
 
-             IF( SIZE( Var % Values ) == Var % DOFs ) THEN
-               Var => Var % Next
-               CYCLE
-             END IF          
-
-             !IF( Var % Secondary ) THEN
-             !  Var => Var % Next
-             !  CYCLE
-             !END IF
-             
-             IF ( Var % DOFs == 1 .AND. Var % Name(1:10) /= 'coordinate' ) THEN
+            IF(LegitInterpVar(Var)) THEN                         
                
 !------------------------------------------------------------------------------
 !
@@ -969,8 +972,9 @@ END SUBROUTINE InterpolateMeshToMesh
                    Var => Var % Next
                    CYCLE
                 END IF
-                OldSol => VariableGet( OldMesh % Variables, Var % Name, .TRUE. )
-
+                
+                OldSol => VariableGet( OldMesh % Variables, Var % Name, .TRUE. )                
+                
                 ! Check that the node was found in the old mesh:
                 ! ----------------------------------------------
                 IF ( ASSOCIATED (Element) ) THEN
@@ -1030,7 +1034,7 @@ END SUBROUTINE InterpolateMeshToMesh
                 END IF
 
 !------------------------------------------------------------------------------
-             END IF
+              END IF
              Var => Var % Next
            END DO
 !------------------------------------------------------------------------------
@@ -1269,6 +1273,19 @@ END SUBROUTINE InterpolateMeshToMesh
 
 CONTAINS
 
+  FUNCTION LegitInterpVar(Var) RESULT ( IsLegit )
+    TYPE(Variable_t), POINTER :: Var
+    LOGICAL :: IsLegit
+        
+    IsLegit = ( Var % TYPE == Variable_on_nodes_on_elements .OR. Var % Type == Variable_on_nodes ) 
+    IF( Var % Dofs > 1 ) IsLegit = .FALSE.
+    !IF( Var % Secondary ) IsLegit = .FALSE.
+    IF( Var % Name(1:10) == 'coordinate' ) IsLegit = .FALSE.
+    IF(.NOT. ASSOCIATED(Var % Perm) .AND. SIZE(Var % Values) == 1 ) IsLegit = .FALSE.
+    
+  END FUNCTION LegitInterpVar
+
+  
 
   ! Create a representative dg index to be used for interpolation.
   ! This is cheating since it does not work in general. It does work
@@ -1344,19 +1361,7 @@ CONTAINS
 !------------------------------------------------------------------------------
         Var => OldVariables
         DO WHILE( ASSOCIATED(Var) )
-           IF( SIZE( Var % Values ) == Var % DOFs ) THEN   
-             Var => Var % Next
-             CYCLE
-           END IF 
-
-           IF( Var % Secondary ) THEN
-             Var => Var % Next
-             CYCLE
-           END IF 
-
-           IF ( Var % DOFs == 1 .AND. &
-             Var % Name(1:10) /= 'coordinate') THEN
-
+          IF(LegitInterpVar(Var)) THEN
               OldSol => VariableGet( OldMesh % Variables, Var % Name, .TRUE. )
               NewSol => VariableGet( NewMesh % Variables, Var % Name, .TRUE. )
               IF ( .NOT. (ASSOCIATED (NewSol) ) ) THEN
@@ -1377,7 +1382,8 @@ CONTAINS
               END IF
            END IF
            Var => Var % Next
-        END DO
+         END DO         
+         
 !------------------------------------------------------------------------------
      END SUBROUTINE ApplyProjector
 !------------------------------------------------------------------------------

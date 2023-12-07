@@ -1090,29 +1090,29 @@ CONTAINS
        !IF(.NOT. GotIt) str = 'Normal Vector'         
        !NrmVar => VariableGet( Solver % Mesh % Variables, str, ThisOnly=.TRUE. ) 
 
-       NULLIFY(NT)
-
        IF( ASSOCIATED(NrmVar) ) THEN
          ! If we have given Normal variable use that!
          dofs = NrmVar % Dofs
-       ELSE       
-         ! If we have precomputed normal-tangential vector use that!
-         NT => Solver % NormalTangential      
-         IF( ASSOCIATED(NT) ) THEN
-           IF( NT % NormalTangentialNOFNodes == 0 ) NULLIFY(NT)
-         END IF
+       END IF       
+
+       ! If we have precomputed normal-tangential vector use that!
+       NULLIFY(NT)       
+       IF( ASSOCIATED(NT) ) THEN
+         IF( NT % NormalTangentialNOFNodes == 0 ) NULLIFY(NT)
        END IF
+
        dim = CoordinateSystemDimension()
        PrevSolver => Solver
      END IF
 
      ! Note that we need to have full hit, otherwise return .FALSE.
      ! and use elemental normal vector in the code. 
+     uFound = .FALSE.
      IF(dofs > 0) THEN
        IF(PRESENT( Node ) ) THEN
          j = NrmVar % Perm(node)
          IF( j>0 ) THEN
-           Normal(1:dim) = SUM( Basis(1:n) * NrmVar % Values(dofs*(j-1)+1:dofs*(j-1)+dim) ) 
+           Normal(1:dim) = NrmVar % Values(dofs*(j-1)+1:dofs*(j-1)+dim) 
            uFound = .TRUE.
          END IF         
        ELSE IF( PRESENT( Basis ) ) THEN
@@ -1130,13 +1130,16 @@ CONTAINS
        ELSE
          CALL Fatal('ConsistentNormalvector','Either Basis of Node is required!')
        END IF
-     ELSE IF(ASSOCIATED(NT) ) THEN
+     END IF
+       
+     ! We can also try to use the existing NT coordinate system associated normals.
+     IF(.NOT. uFound .AND. ASSOCIATED(NT) ) THEN
        IF(PRESENT( Node ) ) THEN
          j = NT % BoundaryReorder(node)
          IF( j>0 ) THEN
            Normal(1:dim) = NT % BoundaryNormals(j,1:dim)
            uFound = .TRUE.
-         END IF         
+         END IF
        ELSE IF( PRESENT( Basis ) ) THEN
          n = Element % TYPE % NumberOfNodes       
          m = COUNT( NT % BoundaryReorder(Element % NodeIndexes) > 0 )
@@ -1149,15 +1152,22 @@ CONTAINS
          END IF
        ELSE
          CALL Fatal('ConsistentNormalvector','Either Basis of Node is required!')
-       END IF
-         
+       END IF         
      END IF
 
      IF( uFound ) THEN
        NrmLen = SQRT(SUM(Normal**2))
        IF( ABS(1.0_dp-NrmLen) > 0.5_dp ) THEN         
          PRINT *,'NormalVector:',dofs,Element % ElementIndex, Element % NodeIndexes, Normal(1:dim)
-         CALL Fatal('ConsistentNormalVector','NormalVector should have a norm close to one!')
+         PRINT *,'Called by solver:',Solver % SolverId, ASSOCIATED(NT), ASSOCIATED(NrmVar), &
+             PRESENT(Node), PRESENT(Basis)
+         IF(PRESENT(Node)) THEN
+           PRINT *,'Node:',Solver % Mesh % Nodes % x(node), Solver % Mesh % Nodes % y(node),&
+               Solver % Mesh % Nodes % z(node), Node, nrmVar % Perm(node)
+           PRINT *,'nrmVar:',SIZE(NrmVar % Values), Solver % Mesh % NumberOfNodes, &
+               COUNT(NrmVar % Perm > 0)           
+         END IF
+         CALL Warn('ConsistentNormalVector','NormalVector should have a norm close to one!')
        END IF
      END IF       
      
@@ -11112,7 +11122,7 @@ END FUNCTION SearchNodeL
     IsBC = ASSOCIATED( Element % BoundaryInfo )
    
     InitDone = ASSOCIATED( pSolver, prevSolver ) .AND. &
-        ( prevVisited == pSolver % TimesVisited ) .AND. (.NOT. XOR(IsBC,PrevIsBC) )
+        ( prevVisited == pSolver % TimesVisited ) .AND. (.NOT. (IsBC .NEQV. PrevIsBC) )
     
     IF( .NOT. InitDone ) THEN
       PrevIsBC = IsBC 
@@ -14680,13 +14690,8 @@ END FUNCTION SearchNodeL
 !   Convert rhs & initial value to the scaled system:
 !   -------------------------------------------------
     IF ( ScaleSystem ) THEN
-      !ApplyRowEquilibration = ListGetLogical(Params,'Linear System Row Equilibration',GotIt)
-      !IF ( ApplyRowEquilibration ) THEN
-      !  CALL RowEquilibration(Solver, A, b, Parallel)
-      !ELSE
       CALL ScaleLinearSystem(Solver, A, b, x, &
           RhsScaling = (bnorm/=0._dp), ConstraintScaling=.TRUE. )
-      !END IF
     END IF
 
     ComputeChangeScaled = ListGetLogical(Params,&
@@ -14841,11 +14846,7 @@ END FUNCTION SearchNodeL
     END IF
 
     IF ( ScaleSystem ) THEN
-      !IF ( ApplyRowEquilibration ) THEN
-      !  CALL ReverseRowEquilibration( A, b )
-      !ELSE
-        CALL BackScaleLinearSystem( Solver, A, b, x, ConstraintScaling=.TRUE. )
-      !END IF
+      CALL BackScaleLinearSystem( Solver, A, b, x, ConstraintScaling=.TRUE. )
     END IF
 
 120 IF( AndersonAcc .AND. .NOT. AndersonScaled )  THEN
@@ -14865,7 +14866,8 @@ END FUNCTION SearchNodeL
       CalcLoads = ListGetLogical( Solver % Values,'Calculate Loads',GotIt )
       IF( .NOT. GotIt ) CalcLoads = .TRUE.
       IF( CalcLoads ) THEN
-        CALL Info('SolveLinearSystem','Calculating nodal loads',Level=6)
+        CALL Info('SolveLinearSystem','Calculating nodal loads for: '//&
+            GetVarName(Solver % Variable),Level=6)
         CALL CalculateLoads( Solver, Aaid, x, Dofs, .TRUE., NodalLoads ) 
       END IF
     END IF
@@ -21552,7 +21554,7 @@ CONTAINS
         END IF        
 
         ! Only consider external walls with just either parent in solid
-        IF( .NOT. XOR( Solid1, Solid2 ) ) CYCLE
+        IF( .NOT. ( Solid1 .NEQV. Solid2 ) ) CYCLE
         
         ! Check that the normal points outward of the solid
         IF( Solid1 ) THEN
@@ -23055,7 +23057,7 @@ CONTAINS
                  ! If we sum up to anti-periodic dof then use different sign
                  ! - except if the target is also antiperiodic.
                  IF( PerFlipActive ) THEN
-                   IF( XOR( PerFlip(col),PerFlip(k) ) ) Scale = -Scale
+                   IF(  PerFlip(col) .NEQV. PerFlip(k) ) Scale = -Scale
                  END IF
                  
                END IF
@@ -23275,7 +23277,7 @@ CONTAINS
                  ! If we sum up to anti-periodic dof then use different sign
                  ! - except if the target is also antiperiodic.
                  IF( PerFlipActive ) THEN
-                   IF( XOR( PerFlip(col),PerFlip(k) ) ) Scale = -Scale
+                   IF(  PerFlip(col) .NEQV. PerFlip(k) ) Scale = -Scale
                  END IF
                  
                END IF
@@ -23450,7 +23452,7 @@ CONTAINS
                    ! If we sum up to anti-periodic dof then use different sign
                    ! - except if the target is also antiperiodic.
                    IF( PerFlipActive ) THEN
-                     IF( XOR( PerFlip(col),PerFlip(k) ) ) Scale = -Scale
+                     IF( PerFlip(col) .NEQV. PerFlip(k) ) Scale = -Scale
                    END IF
 
                  END IF

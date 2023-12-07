@@ -1946,19 +1946,19 @@ CONTAINS
           t = 0
           SELECT CASE(n)
           CASE(1)
-            t = t + x(1)  * -(-(1-u) + u*w*s)/4
-            t = t + x(1)  * -(-(1-v) + v*w*s)/4
+            t = t + x(1)  *  ((1-u) - u*w*s)/4
+            t = t + x(1)  *  ((1-v) - v*w*s)/4
             t = t + x(1)  *  (-u-v-1)*(1+w*s)/4
           CASE(2)
             t = t + x(2)  *  (-(1+u) - u*w*s)/4
-            t = t + x(2)  * -( (1-v) - v*w*s)/4
+            t = t + x(2)  *  ( -(1-v) + v*w*s)/4
             t = t + x(2)  *  ( u-v-1)*(-1-w*s)/4
           CASE(3)
             t = t + x(3)  *  ( (1+u) + u*w*s)/4
             t = t + x(3)  *  ( (1+v) + v*w*s)/4
             t = t + x(3)  *  ( u+v-1)*(1+w*s)/4
           CASE(4)
-            t = t + x(4)  * -( (1-u) - u*w*s)/4
+            t = t + x(4)  *  ( -(1-u) + u*w*s)/4
             t = t + x(4)  *  (-(1+v) - v*w*s)/4
             t = t + x(4)  *  (-u+v-1)*(-1-w*s)/4
           CASE(5)

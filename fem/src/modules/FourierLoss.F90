@@ -45,7 +45,7 @@
 !> Initialization for the primary solver: FourierLoss
 !------------------------------------------------------------------------------
 !------------------------------------------------------------------------------
-SUBROUTINE FourierLossSolver_init0( Model,Solver,dt,Transient )
+SUBROUTINE FourierLossSolver_init( Model,Solver,dt,Transient )
   !------------------------------------------------------------------------------
 
   USE DefUtils
@@ -59,13 +59,11 @@ SUBROUTINE FourierLossSolver_init0( Model,Solver,dt,Transient )
   !------------------------------------------------------------------------------
   !    Local variables
   !------------------------------------------------------------------------------
-  TYPE(ValueList_t),POINTER :: SolverParams, DGSolverParams
-  LOGICAL :: Found
+  TYPE(ValueList_t),POINTER :: SolverParams
+  LOGICAL :: Found, Found2
   CHARACTER(LEN=MAX_NAME_LEN) :: VarName
   INTEGER :: i,j,k,n,m,mysolver,soln
-  TYPE(Solver_t), POINTER :: Solvers(:), PSolver
-  INTEGER, POINTER :: Active(:)
-  LOGICAL :: ElementalField
+  LOGICAL :: ElementalField, NodalField
   LOGICAL :: OldKeywordStyle, SeparateComponents, NodalLosses
   CHARACTER(LEN=MAX_NAME_LEN) :: Pref
   INTEGER :: Ncomp
@@ -74,6 +72,22 @@ SUBROUTINE FourierLossSolver_init0( Model,Solver,dt,Transient )
   
   SolverParams => GetSolverParams()
 
+  OldKeywordStyle = ListCheckPresentAnyMaterial( Model,'Harmonic Loss Linear Coefficient') .OR. &
+      ListCheckPresentAnyMaterial( Model,'Harmonic Loss Quadratic Coefficient') 
+  IF( OldKeywordStyle ) THEN
+    IF(ParEnv % MyPe == 0 ) THEN
+      PRINT *,'You are using old keywords'
+      PRINT *,'Obsolite: "Harmonic Loss Linear Coefficient"'
+      PRINT *,'Obsolite: "Harmonic Loss Quadratic Coefficient"'
+      PRINT *,'Obsolite: "Harmonic Loss Linear Frequency Exponent"'
+      PRINT *,'Obsolite: "Harmonic Loss Quadratic Frequency Exponent"'
+      PRINT *,'Obsolite: "Harmonic Loss Linear Exponent"'
+      PRINT *,'Obsolite: "Harmonic Loss Quadratic Exponent"'
+      PRINT *,'etc. see the documentation.'
+    END IF
+    CALL Fatal(Caller,'The keyword format is obsolite. Make the fixes and continue!')
+  END IF
+  
   Pref = ListGetString( SolverParams,'Scalars Prefix',Found )
   IF(.NOT. Found) Pref = 'res:'
   
@@ -81,141 +95,63 @@ SUBROUTINE FourierLossSolver_init0( Model,Solver,dt,Transient )
   IF(.NOT. Found ) THEN
     CALL Fatal(Caller,'Give > Target Variable < !')
   END IF
-
-
-  OldKeywordStyle = ListCheckPresentAnyMaterial( Model,'Harmonic Loss Linear Coefficient')
-  IF( OldKeywordStyle ) THEN
-    NComp = 2
-  ELSE
-    Ncomp = 0
-    DO i=1,10
-      IF( ListCheckPresentAnyMaterial( Model,'Harmonic Loss Coefficient '//I2S(i) ) ) THEN
-        Ncomp = i
-      ELSE
-        EXIT
-      END IF
-    END DO
-  END IF
+      
+  Ncomp = 0
+  DO i=1,10
+    IF( ListCheckPresentAnyMaterial( Model,'Harmonic Loss Coefficient '//I2S(i) ) ) THEN
+      Ncomp = i
+    ELSE
+      EXIT
+    END IF
+  END DO
 
   ! Add the loss so that it would appear from the start if saving data by
   ! SaveScalars to some external file etc. 
   !-----------------------------------------------------------------------
-  IF( OldKeywordStyle ) THEN
-    CALL ListAddConstReal( Model % Simulation,TRIM(Pref)//' fourier loss',0.0_dp )
-    CALL ListAddConstReal( Model % Simulation,TRIM(Pref)//' fourier loss quadratic',0.0_dp )
-  ELSE
-    CALL ListAddConstReal( Model % Simulation,TRIM(Pref)//' fourier loss total',0.0_dp )
-    DO i=1, Ncomp
-      CALL ListAddConstReal( Model % Simulation,TRIM(Pref)//' fourier loss '//I2S(i),0.0_dp )       
-    END DO
+  CALL ListAddConstReal( Model % Simulation,TRIM(Pref)//' fourier loss total',0.0_dp )
+  DO i=1, Ncomp
+    CALL ListAddConstReal( Model % Simulation,TRIM(Pref)//' fourier loss '//I2S(i),0.0_dp )       
+  END DO
+
+  ! This is usually not needed so just allocate a dummy. 
+  CALL ListAddNewString( SolverParams,'Variable','-nooutput FourierTmp' )
+  
+  NodalField = ListGetLogical( SolverParams, 'Calculate Nodal Fields', Found)
+  ElementalField = ListGetLogical( SolverParams, 'Calculate Elemental Fields', Found2 )
+  IF(.NOT. (Found .OR. Found2) ) THEN
+    ElementalField = .TRUE.
+    CALL Info(Caller,'Computing elemental fields only by default when neither given!')
   END IF
-    
-  IF( OldKeywordStyle ) THEN
-    CALL ListAddNewString( SolverParams,'Variable','Fourier Loss Linear' )
-    CALL ListAddNewString( SolverParams,'Exported Variable 1','Fourier Loss Quadratic' )
-  ELSE
-    SeparateComponents = ListGetLogical( SolverParams,'Separate Loss Components',Found )
+  
+  SeparateComponents = ListGetLogical( SolverParams,'Separate Loss Components',Found )
+
+  IF( NodalField ) THEN
     IF( SeparateComponents ) THEN
-      CALL Info(Caller,'Creating separate fields for each loss component',Level=10)
-      CALL ListAddNewString( SolverParams,'Variable','Fourier Loss 1' )
-      DO i=2, NComp
-        CALL ListAddNewString( SolverParams,'Exported Variable '//I2S(i-1),&
-            'Fourier Loss '//I2S(i) )
-      END DO
+      CALL ListAddString( SolverParams,NextFreeKeyword('Exported Variable ',SolverParams), &
+          'Fourier Loss[Fourier Loss:'//I2S(Ncomp)//']' )
     ELSE
-      CALL Info(Caller,'Creating one field for total losses',Level=10)
-      CALL ListAddNewString( SolverParams,'Variable','Fourier Loss' )
+      CALL ListAddString( SolverParams,NextFreeKeyword('Exported Variable ',SolverParams), &
+          'Fourier Loss' )
     END IF
   END IF
 
+  IF( ElementalField ) THEN
+    IF( SeparateComponents ) THEN
+      CALL ListAddString( SolverParams,NextFreeKeyword('Exported Variable ',SolverParams), &
+          '-dg Fourier Loss e[Fourier Loss e:'//I2S(Ncomp)//']' )
+    ELSE
+      CALL ListAddString( SolverParams,NextFreeKeyword('Exported Variable ',SolverParams), &
+          '-dg Fourier Loss e' )
+    END IF
+  END IF
 
   NodalLosses = ListGetLogical( SolverParams,'Calculate Nodal Losses',Found )
   IF( NodalLosses ) THEN
     CALL ListAddString( SolverParams, &
         NextFreeKeyword('Exported Variable', SolverParams),'Nodal Fourier Loss')
-  END IF
-
+  END IF    
   
-  ! We are really solving using DG so no need for funny initialization
-  IF (GetLogical(SolverParams,'Discontinuous Galerkin',Found)) RETURN
-
-  ! If elemental fields are not requested don't compute them
-  ElementalField = GetLogical( SolverParams, 'Calculate Elemental Fields', Found)
-  IF(.NOT. ElementalField) RETURN
-
-  ! Ok, Dirty way of adding DG field for postprocessing
-  ! Add a new solver with exactly the same active locations as the current one.
-  CALL Info(Caller,'Creating new solver for the DG fields on-the-fly!',Level=8)
-
-  PSolver => Solver
-  DO mysolver=1,Model % NumberOfSolvers
-    IF ( ASSOCIATED(PSolver,Model % Solvers(mysolver)) ) EXIT
-  END DO
-  n = Model % NumberOfSolvers
-  DO i=1,Model % NumberOFEquations
-    Active => ListGetIntegerArray(Model % Equations(i) % Values, &
-        'Active Solvers', Found)
-    m = SIZE(Active)
-    IF ( ANY(Active==mysolver) ) &
-        CALL ListAddIntegerArray( Model % Equations(i) % Values,  &
-        'Active Solvers', m+1, [Active, n+1] )
-  END DO
-
-  ! Create DG solver structures on-the-fly without actually solving the matrix equations. 
-  ALLOCATE(Solvers(n+1))
-  Solvers(1:n) = Model % Solvers
-
-  Solvers(n+1) % Values => ListAllocate()
-  DGSolverParams => Solvers(n+1) % Values
-  CALL ListAddLogical( DGSolverParams, 'Discontinuous Galerkin', .TRUE. )
-  Solvers(n+1) % DG = .TRUE.
-  Solvers(n+1) % PROCEDURE = 0
-  Solvers(n+1) % ActiveElements => NULL()
-  DEALLOCATE(Model % Solvers)
-  Model % Solvers => Solvers
-  Model % NumberOfSolvers = n+1
-
-  ! The fields are only allocated for, not solved for
-  CALL ListAddString( DGSolverParams, 'Exec Solver', 'never' )
-  CALL ListAddLogical( DGSolverParams, 'No Matrix',.TRUE.)
-  CALL ListAddLogical( DGSolverParams, 'Optimize Bandwidth',.FALSE.)
-  CALL ListAddString( DGSolverParams, 'Equation', 'FourierLoss_Dummy' )
-  CALL ListAddString( DGSolverParams, 'Procedure', &
-      'FourierLoss FourierLossSolver_Dummy',.FALSE. )
-  
-  IF( OldKeywordStyle ) THEN
-    CALL ListAddString( DGSolverParams, 'Variable', 'Fourier Loss Linear e' )
-    CALL ListAddString( DGSolverParams, 'Exported Variable 1','Fourier Loss Quadratic e')
-  ELSE
-    IF( SeparateComponents ) THEN
-      CALL ListAddString( DGSolverParams,'Variable','Fourier Loss 1e' )
-      DO i=2, NComp
-        CALL ListAddString( DGSolverParams,'Exported Variable '//I2S(i-1),&
-            'Fourier Loss '//I2S(i)//'e' )
-      END DO
-    ELSE
-      CALL ListAddString( DGSolverParams,'Variable','Fourier Loss e' )
-    END IF
-  END IF
-
-END SUBROUTINE FourierLossSolver_init0
-
-
-
-!------------------------------------------------------------------------------
-SUBROUTINE FourierLossSolver_Dummy(Model,Solver,dt,Transient)
-  !------------------------------------------------------------------------------
-  USE DefUtils
-
-  IMPLICIT NONE
-  !------------------------------------------------------------------------------
-  TYPE(Solver_t) :: Solver
-  TYPE(Model_t) :: Model
-  REAL(KIND=dp) :: dt
-  LOGICAL :: Transient
-  !------------------------------------------------------------------------------
-END SUBROUTINE FourierLossSolver_Dummy
-!------------------------------------------------------------------------------
+END SUBROUTINE FourierLossSolver_init
 
 
 
@@ -246,7 +182,7 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
   TYPE(ValueList_t),POINTER :: SolverParams
   CHARACTER(LEN=MAX_NAME_LEN) :: VarName, FourierName, VarString, Pref
   INTEGER :: dim, Nsize, FourierDofs, i, nlen, mlen, icomp
-  LOGICAL :: Found
+  LOGICAL :: Found, FlipActive
   INTEGER :: TimesVisited = 0
   INTEGER, POINTER :: FourierPerm(:), EPerm(:)
   REAL(KIND=dp) :: Norm, Omega
@@ -259,9 +195,9 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
   REAL(KIND=dp), ALLOCATABLE, TARGET :: OtherRhs(:,:)
   REAL(KIND=dp) :: TotalLoss
   LOGICAL :: EndCycle, FourierOutput, SimpsonsRule, ExactIntegration, &
-      ElementalField, AvField, DirectField
+      ElementalField, NodalField, AvField, DirectField
   TYPE(Solver_t), POINTER :: TargetSolverPtr
-  LOGICAL :: OldKeywordStyle, SeparateComponents, SumComponents, NodalLosses
+  LOGICAL :: SeparateComponents, SumComponents, NodalLosses
   INTEGER :: Ncomp, NVar, tdofs
   TYPE(VarPointer_t), ALLOCATABLE :: CompVars(:), CompVarsE(:), FourierVars(:)
   CHARACTER(*), PARAMETER :: Caller = 'FourierLossSolver'
@@ -285,33 +221,20 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
   IF(.NOT. Found) Pref = 'res:'
   
   Ncomp = 0
-  OldKeywordStyle = ListCheckPresentAnyMaterial( Model,'Harmonic Loss Linear Coefficient')
-  IF( OldKeywordStyle ) THEN
-    CALL Warn(Caller,'Using old keyword style which may become obsolete!')
-    NComp = 2
-  ELSE
-    Ncomp = 0
-    DO i=1,10
-      IF( ListCheckPresentAnyMaterial( Model,'Harmonic Loss Coefficient '//I2S(i) ) ) THEN
-        Ncomp = i
-      ELSE
-        EXIT
-      END IF
-    END DO
-  END IF
-  
+  DO i=1,10
+    IF( ListCheckPresentAnyMaterial( Model,'Harmonic Loss Coefficient '//I2S(i) ) ) THEN
+      Ncomp = i
+    ELSE
+      EXIT
+    END IF
+  END DO  
   IF( Ncomp == 0 ) THEN
     CALL Fatal(Caller,'Some material must have > Harmonic Loss Coefficient i <')
   END IF
   CALL Info(Caller,'Considering number of components: '//I2S(Ncomp),Level=5)
   
-  IF( OldKeywordStyle ) THEN
-    SeparateComponents = .TRUE.
-  ELSE
-    SeparateComponents = ListGetLogical( SolverParams,'Separate Loss Components',Found )
-  END IF 
+  SeparateComponents = ListGetLogical( SolverParams,'Separate Loss Components',Found )
   SumComponents = .NOT. SeparateComponents 
-
   
   IF( SumComponents ) THEN
     Nvar = 1
@@ -322,59 +245,47 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
   IF(.NOT. ALLOCATED( CompLoss) ) ALLOCATE( CompLoss(Ncomp) )
   CompLoss = 0.0_dp
   
-  
   ! Get the fields for the nodal results
   !------------------------------------------------------------------  
-  IF(.NOT. ALLOCATED( CompVars ) ) ALLOCATE( CompVars(Nvar) )   
-  CompVars(1) % Var => Solver % Variable
-  IF( OldKeywordStyle ) THEN
-    CompVars(2) % Var => VariableGet( Solver % Mesh % Variables,&
-        'Fourier Loss Quadratic' )
-  ELSE
-    DO icomp = 2, Nvar
-      CompVars(icomp) % Var => VariableGet( Solver % Mesh % Variables,&
-          'Fourier Loss '//I2S(icomp) )
+  NodalField = GetLogical( SolverParams, 'Calculate Nodal Fields', Found)
+  IF( NodalField ) THEN
+    IF(.NOT. ALLOCATED( CompVars ) ) ALLOCATE( CompVars(Nvar) )   
+    IF( Nvar == 1 ) THEN
+      CompVars(1) % Var => VariableGet( Solver % Mesh % Variables,&
+          'Fourier Loss' )                
+    ELSE
+      DO icomp = 1, Nvar
+        CompVars(icomp) % Var => VariableGet( Solver % Mesh % Variables,&
+            'Fourier Loss '//I2S(icomp) )        
+      END DO
+    END IF
+    DO icomp = 1, NVar
+      IF(.NOT. ASSOCIATED( CompVars(icomp) % Var ) )THEN
+        CALL Fatal(Caller,'Variable for component does not exist: '//I2S(icomp))
+      END IF
     END DO
   END IF
-
-  DO icomp = 1, NVar
-    IF(.NOT. ASSOCIATED( CompVars(icomp) % Var ) )THEN
-      CALL Fatal(Caller,'Variable for component does not exist: '//I2S(icomp))
-    END IF
-  END DO
-    
-
   
   ! Check for Elemental (Discontinuous Galerkin) Field 
   !------------------------------------------------------------------
   ElementalField = GetLogical( SolverParams, 'Calculate Elemental Fields', Found)
   IF( ElementalField ) THEN
-    IF(.NOT. ALLOCATED( CompVarsE ) ) ALLOCATE( CompVarsE(Nvar) )
-    
-    IF( OldKeywordStyle ) THEN
+    IF(.NOT. ALLOCATED( CompVarsE ) ) ALLOCATE( CompVarsE(Nvar) )    
+    IF( Nvar == 1 ) THEN
       CompVarsE(1) % Var => VariableGet( Solver % Mesh % Variables,&
-          'Fourier Loss Linear e' )
-      CompVarsE(2) % Var => VariableGet( Solver % Mesh % Variables,&
-          'Fourier Loss Quadratic e' )
+          'Fourier Loss e' )                
     ELSE
-      IF( Nvar == 1 ) THEN
-          CompVarsE(1) % Var => VariableGet( Solver % Mesh % Variables,&
-              'Fourier Loss e' )                
-      ELSE
-        DO icomp = 1, Nvar
-          CompVarsE(icomp) % Var => VariableGet( Solver % Mesh % Variables,&
-              'Fourier Loss '//I2S(icomp)//'e' )        
-        END DO
-      END IF
+      DO icomp = 1, Nvar
+        CompVarsE(icomp) % Var => VariableGet( Solver % Mesh % Variables,&
+            'Fourier Loss e '//I2S(icomp) )        
+      END DO
     END IF
-
     DO icomp = 1, NVar
       IF(.NOT. ASSOCIATED( CompVarsE(icomp) % Var ) )THEN
         CALL Fatal(Caller,'Variable e for component does not exist: '//I2S(icomp))
       END IF
     END DO
   END IF
-
 
   ! Check whether we want to compute nodal loss directly (in terms of J per node)
   !------------------------------------------------------------------------------
@@ -384,9 +295,6 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
 
   ! Check that we have something to compute
   !------------------------------------------------------------------------------
-  IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) THEN
-    CALL Fatal(Caller,'Solver has no matrix associated')
-  END IF
   IF ( COUNT( Solver % Variable % Perm > 0 ) <= 0 ) RETURN  
 
   ! Fetch the target field, e.g. magnetic vector potential
@@ -404,8 +312,12 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
   PrevTargetField => TargetVar % PrevValues(:,:)
   Nsize = SIZE( TargetField )
   tdofs = TargetVar % Dofs
+    
+  FlipActive = ( TargetVar % PeriodicFlipActive )
+  IF(FlipActive) THEN
+    CALL Info(Caller,'Assuming initial field to have conforming flips')
+  END IF
   
-
   ! The target field is an AV solution 
   AvField = .FALSE.
   DirectField = ListGetLogical( SolverParams,'Target Variable Direct',Found)
@@ -434,7 +346,6 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
     END IF
   END IF
     
-
   !--------------------------------------------------------------------
   ! Generate also a pointer to the target variable solver
   !-------------------------------------------------------------------
@@ -529,6 +440,7 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
   IF( .NOT. EndCycle ) RETURN
 
   CALL DefaultInitialize()
+
   IF( NVar > 1 ) THEN
     CALL Info(Caller,'Allocating multiple r.h.s. vectors',Level=12)
     IF(.NOT. ALLOCATED( OtherRhs ) ) THEN
@@ -536,33 +448,27 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
     END IF
     OtherRhs = 0.0_dp
   END IF
-
+  
   CALL BulkAssembly( Ncomp )
-
-  ! These three are probably not needed for this solver of limited features
-  ! They are left here for possible future needs.
-  ! CALL DefaultFinishBulkAssembly()
-  ! CALL DefaultFinishAssembly()
-  ! CALL DefaultDirichletBCs()      
 
   at2 = RealTime()
   WRITE( Message,'(A,ES12.3)') 'Assembly time: ',at2-at1
   CALL Info( Caller, Message, Level=5 )
   
   !------------------------------------------------------------------------------     
-  IF( SeparateComponents ) THEN
-    ! Solver other components first, so that the values are saved to Solver % Var % Values
+  IF( NodalField ) THEN
+    CALL ListAddLogical( SolverParams,'Linear System Compute Change',.FALSE.) 
     SaveRhs => Solver % Matrix % Rhs   
-    DO icomp=2, Ncomp
-      Solver % Matrix % Rhs => OtherRhs(:,icomp-1)
+    DO icomp=1, Nvar
+      IF(icomp > 1 ) THEN
+        Solver % Matrix % Rhs => OtherRhs(:,icomp-1)
+      END IF
       Norm = DefaultSolve()
       CompVars(icomp) % Var % Values = LossVar % Values
     END DO
     Solver % Matrix % Rhs => SaveRhs    
     IF(Nvar > 1) DEALLOCATE( OtherRhs ) 
   END IF
-  
-  Norm = DefaultSolve()
   
   at3 = RealTime()
   WRITE( Message,'(A,ES12.3)') 'Solution time: ',at3-at2
@@ -880,49 +786,33 @@ CONTAINS
     ELSE
       ALLOCATE( ElemField(n), Indeces(n) )
     END IF
-
       
     Freq = Omega / (2*PI)
 
     DG = GetLogical(SolverParams,'Discontinuous Galerkin',Found )
-
     
-    IF( OldKeywordStyle ) THEN
-      FreqPower(1) = GetCReal( SolverParams,'Harmonic Loss Linear Frequency Exponent',Found )
-      IF(.NOT. Found ) FreqPower(1) = 1.0_dp
-     
-      FreqPower(2) = GetCReal( SolverParams,'Harmonic Loss Quadratic Frequency Exponent',Found )
-      IF(.NOT. Found ) FreqPower(2) = 2.0_dp
+    WrkArray => ListGetConstRealArray( SolverParams,'Harmonic Loss Frequency Exponent',Found )
+    IF( Found ) THEN 
+      IF( SIZE( WrkArray,1 ) < Ncomp ) THEN
+        CALL Fatal(Caller,'> Harmonic Loss Frequency Exponent < too small')
+      END IF
+      FreqPower(1:Ncomp) = WrkArray(1:Ncomp,1)
+    ELSE       
+      DO icomp = 1, Ncomp
+        FreqPower(icomp) = GetCReal( SolverParams,'Harmonic Loss Frequency Exponent '//I2S(icomp) )
+      END DO
+    END IF
 
-      FieldPower(1) = GetCReal( SolverParams,'Harmonic Loss Linear Exponent',Found ) 
-      IF(.NOT. Found ) FieldPower(1) = 2.0_dp
-
-      FieldPower(2) = GetCReal( SolverParams,'Harmonic Loss Quadratic Exponent',Found ) 
-      IF( .NOT. Found ) FieldPower(2) = 2.0_dp      
+    WrkArray => ListGetConstRealArray( SolverParams,'Harmonic Loss Field Exponent',Found )
+    IF( Found ) THEN
+      IF( SIZE( WrkArray,1 ) < Ncomp ) THEN
+        CALL Fatal(Caller,'> Harmonic Loss Field Exponent < too small')
+      END IF
+      FieldPower(1:Ncomp) = WrkArray(1:Ncomp,1)        
     ELSE
-      WrkArray => ListGetConstRealArray( SolverParams,'Harmonic Loss Frequency Exponent',Found )
-      IF( Found ) THEN 
-        IF( SIZE( WrkArray,1 ) < Ncomp ) THEN
-          CALL Fatal(Caller,'> Harmonic Loss Frequency Exponent < too small')
-        END IF
-        FreqPower(1:Ncomp) = WrkArray(1:Ncomp,1)
-      ELSE       
-        DO icomp = 1, Ncomp
-          FreqPower(icomp) = GetCReal( SolverParams,'Harmonic Loss Frequency Exponent '//I2S(icomp) )
-        END DO
-      END IF
-        
-      WrkArray => ListGetConstRealArray( SolverParams,'Harmonic Loss Field Exponent',Found )
-      IF( Found ) THEN
-        IF( SIZE( WrkArray,1 ) < Ncomp ) THEN
-          CALL Fatal(Caller,'> Harmonic Loss Field Exponent < too small')
-        END IF
-        FieldPower(1:Ncomp) = WrkArray(1:Ncomp,1)        
-      ELSE
-        DO icomp = 1, Ncomp
-          FieldPower(icomp) = GetCReal( SolverParams,'Harmonic Loss Field Exponent '//I2S(icomp) )
-        END DO
-      END IF
+      DO icomp = 1, Ncomp
+        FieldPower(icomp) = GetCReal( SolverParams,'Harmonic Loss Field Exponent '//I2S(icomp) )
+      END DO
     END IF
 
     ! Sum over the loss for each frequency, each body, and for the combined effect
@@ -1004,19 +894,13 @@ CONTAINS
 
           ! currently the loss coefficient may depend only of frequency
           ! and on the material section
-          IF( OldKeywordStyle ) THEN
-            LossCoeff(1) = ListGetFun( Material,'Harmonic Loss Linear Coefficient',FourierFreq, Found)   
-            LossCoeff(2) = ListGetFun( Material,'Harmonic Loss Quadratic Coefficient',FourierFreq, Found2 )   
-            IF(.NOT. (Found .OR. Found2 ) ) CYCLE            
-          ELSE
-            Found2 = .FALSE.
-            DO icomp = 1, Ncomp
-              LossCoeff(icomp) = ListGetFun( Material,&
-                  'Harmonic Loss Coefficient '//I2S(icomp),FourierFreq, Found)      
-              IF( Found ) Found2 = .TRUE.
-            END DO
-            IF(.NOT. Found2 ) CYCLE
-          END IF
+          Found2 = .FALSE.
+          DO icomp = 1, Ncomp
+            LossCoeff(icomp) = ListGetFun( Material,&
+                'Harmonic Loss Coefficient '//I2S(icomp),FourierFreq, Found)      
+            IF( Found ) Found2 = .TRUE.
+          END DO
+          IF(.NOT. Found2 ) CYCLE
 
           ! For even j we have cosine series, for odd sine series
           Component => FourierVars(j) % Var % Values
@@ -1062,7 +946,11 @@ CONTAINS
             CurlAtIp(3) = GradAtIp(2,1) - GradAtIp(1,2)
           ELSE ! dim == 2
             ElemField(1:nd) = Component( FourierPerm( Indeces(1:nd) ) )
-
+            IF(FlipActive) THEN
+              DO i=1,nd
+                IF( CurrentModel % Mesh % PeriodicFlip(Indeces(i)) ) ElemField(i) = -ElemField(i)
+              END DO
+            END IF           
             CurlAtIp(1) =  SUM( ElemField(1:nd) * dBasisdx(1:nd,2) )
             CurlAtIp(2) = -SUM( ElemField(1:nd) * dBasisdx(1:nd,1) )
             CurlAtIp(3) = 0.0_dp
@@ -1123,18 +1011,7 @@ CONTAINS
       END IF
   
     END DO
-
-    
-    ! Assembly of the face terms when using DG:
-    !------------------------------------------------------------------
-    IF ( DG ) THEN
-      IF (GetLogical(SolverParams,'Average Within Materials',Found)) THEN
-        dgFORCE = 0.0d0
-        CALL AddLocalFaceTerms( STIFF, dgFORCE )
-      END IF
-    END IF
-
-    
+       
     ! If we want to save the nodal losses directly do that now
     !--------------------------------------------------------------------
     IF( NodalLosses ) THEN
@@ -1147,9 +1024,7 @@ CONTAINS
     DEALLOCATE( STIFF, FORCE, dgForce, Pivot, Basis, dBasisdx, Indeces, ElemField )
     IF (AVField) THEN
       DEALLOCATE( WBasis, RotWBasis )
-    END IF
-
-    
+    END IF    
     
   END SUBROUTINE BulkAssembly
 
@@ -1176,28 +1051,15 @@ CONTAINS
     TotalLoss = SUM( CompLoss )
 
     
-    IF( OldKeywordStyle ) THEN
-      CALL ListAddConstReal( Model % Simulation,TRIM(Pref)//' fourier loss linear',CompLoss(1) )
-      CALL ListAddConstReal( Model % Simulation,TRIM(Pref)//' fourier loss quadratic',CompLoss(2) )
-    ELSE
-      CALL ListAddConstReal( Model % Simulation,TRIM(Pref)//' fourier loss total',TotalLoss )
-      DO k=1,Ncomp
-        CALL ListAddConstReal( Model % Simulation,TRIM(Pref)//' fourier loss '//I2S(k),CompLoss(k) )
-      END DO
-    END IF
+    CALL ListAddConstReal( Model % Simulation,TRIM(Pref)//' fourier loss total',TotalLoss )
+    DO k=1,Ncomp
+      CALL ListAddConstReal( Model % Simulation,TRIM(Pref)//' fourier loss '//I2S(k),CompLoss(k) )
+    END DO
       
     ! Output of the losses on screen    
     ! First the component losses, the the body losses
     DO k=1,NComp
-      IF( OldKeywordStyle ) THEN
-        IF( k == 1 ) THEN
-          CALL Info(Caller,'Fourier loss linear by components',Level=6)
-        ELSE
-          CALL Info(Caller,'Fourier loss quadratic by components',Level=6)
-        END IF
-      ELSE
-        CALL Info(Caller,'Wavewise Fourier loss for component: '//I2S(k),Level=6)
-      END IF
+      CALL Info(Caller,'Wavewise Fourier loss for component: '//I2S(k),Level=6)
       
       DO j=1,FourierDofs 
         IF( j == 1 ) THEN
@@ -1215,16 +1077,8 @@ CONTAINS
         END IF
       END DO
     
-      IF( OldKeywordStyle ) THEN
-        IF( k == 1 ) THEN
-          CALL Info(Caller,'Fourier loss linear by bodies',Level=6)
-        ELSE
-          CALL Info(Caller,'Fourier loss quadratic by bodies',Level=6)
-        END IF
-      ELSE
-        CALL Info(Caller,'Bodywise Fourier loss for component: '//I2S(k),Level=6)
-      END IF
-
+      CALL Info(Caller,'Bodywise Fourier loss for component: '//I2S(k),Level=6)
+      
       DO j=1,Model % NumberOfBodies
         IF( BodyLoss(k,j) < TINY( CompLoss(k) ) ) CYCLE
         WRITE( Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyLoss(k,j)
@@ -1277,109 +1131,7 @@ CONTAINS
   !------------------------------------------------------------------------------
 
 
-  !------------------------------------------------------------------------------
-  SUBROUTINE AddLocalFaceTerms(STIFF,FORCE)
-    !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: STIFF(:,:), FORCE(:)
-
-    TYPE(Element_t),POINTER :: P1,P2,Face,Faces(:)
-    INTEGER ::t,n,n1,n2,NumberOfFaces,dim
-
-    dim = CoordinateSystemDimension()
-
-    IF (dim==2) THEN
-      Faces => Solver % Mesh % Edges
-      NumberOfFaces = Solver % Mesh % NumberOfEdges
-    ELSE
-      Faces => Solver % Mesh % Faces
-      NumberOfFaces = Solver % Mesh % NumberOfFaces
-    END IF
-
-    DO t=1,NumberOfFaces
-      Face => Faces(t)
-      IF ( .NOT. ActiveBoundaryElement(Face) ) CYCLE
-
-      P1 => Face % BoundaryInfo % Left
-      P2 => Face % BoundaryInfo % Right
-      IF ( ASSOCIATED(P2) .AND. ASSOCIATED(P1) ) THEN
-        IF(.NOT.ASSOCIATED(GetMaterial(P1),GetMaterial(P2))) CYCLE
-
-        n  = GetElementNOFNodes(Face)
-        n1 = GetElementNOFNodes(P1)
-        n2 = GetElementNOFNodes(P2)
-
-        CALL LocalJumps( STIFF,Face,n,P1,n1,P2,n2)
-        CALL DefaultUpdateEquations( STIFF, FORCE, Face )
-      END IF
-    END DO
-    !------------------------------------------------------------------------------
-  END SUBROUTINE AddLocalFaceTerms
-  !------------------------------------------------------------------------------
-
-
-  !------------------------------------------------------------------------------
-  SUBROUTINE LocalJumps( STIFF,Face,n,P1,n1,P2,n2)
-    !------------------------------------------------------------------------------
-    IMPLICIT NONE
-    REAL(KIND=dp) :: STIFF(:,:)
-    INTEGER :: n,n1,n2
-    TYPE(Element_t), POINTER :: Face, P1, P2
-    !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: FaceBasis(n), P1Basis(n1), P2Basis(n2)
-    REAL(KIND=dp) :: Jump(n1+n2), detJ, U, V, W, S
-    LOGICAL :: Stat
-    INTEGER :: i, j, p, q, t, nFace, nParent
-    TYPE(GaussIntegrationPoints_t) :: IntegStuff
-
-    TYPE(Nodes_t) :: FaceNodes, P1Nodes, P2Nodes
-    SAVE FaceNodes, P1Nodes, P2Nodes
-    !------------------------------------------------------------------------------
-    STIFF = 0._dp
-
-    CALL GetElementNodes(FaceNodes, Face)
-    CALL GetElementNodes(P1Nodes, P1)
-    CALL GetElementNodes(P2Nodes, P2)
-    !------------------------------------------------------------------------------
-    !     Numerical integration over the edge
-    !------------------------------------------------------------------------------
-    IntegStuff = GaussPoints( Face )
-
-    DO t=1,IntegStuff % n
-      U = IntegStuff % u(t)
-      V = IntegStuff % v(t)
-      W = IntegStuff % w(t)
-      S = IntegStuff % s(t)
-
-      ! Basis function values & derivatives at the integration point:
-      !--------------------------------------------------------------
-      stat = ElementInfo(Face, FaceNodes, U, V, W, detJ, FaceBasis)
-
-      S = S * detJ
-
-      ! Find basis functions for the parent elements:
-      ! ---------------------------------------------
-      CALL GetParentUVW(Face, n, P1, n1, U, V, W, FaceBasis)
-      stat = ElementInfo(P1, P1Nodes, U, V, W, detJ, P1Basis)
-
-      CALL GetParentUVW(Face, n, P2, n2, U, V, W, FaceBasis)
-      stat = ElementInfo(P2, P2Nodes, U, V, W, detJ, P2Basis)
-
-      ! Integrate jump terms:
-      ! ---------------------
-      Jump(1:n1) = P1Basis(1:n1)
-      Jump(n1+1:n1+n2) = -P2Basis(1:n2)
-
-      DO p=1,n1+n2
-        DO q=1,n1+n2
-          STIFF(p,q) = STIFF(p,q) + s * Jump(q)*Jump(p)
-        END DO
-      END DO
-    END DO
-    !------------------------------------------------------------------------------
-  END SUBROUTINE LocalJumps
-  !------------------------------------------------------------------------------
-
-  !------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
 END SUBROUTINE FourierLossSolver
 !------------------------------------------------------------------------------
 

@@ -303,8 +303,6 @@ MODULE SSAMaterialModels
      Material => GetMaterial(Element)     
      MeltParam = ListGetString(Material, 'SSA Melt Param',Found, UnFoundFatal=.TRUE.)
 
-!print*, "Rupert SSA",SIZE(Basis),SIZE(BMB),nn
-     
      BMBatIP=SUM(Basis(1:nn)*BMB(1:nn))
      
      SELECT CASE(MeltParam)

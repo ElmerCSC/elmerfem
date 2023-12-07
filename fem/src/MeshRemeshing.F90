@@ -387,7 +387,7 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams, ReTrial )
   IF (Found) THEN
     CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMG3D_IPARAM_verbose,Verbosity,ierr)
     IF ( ierr == 0 ) CALL Fatal(FuncName,&
-        'Call to MMG3D_SET_IPARAMETER Failed')
+        'Call to MMG3D_SET_IPARAMETER <verbose> Failed')
   END IF
 
   ! [val] Set the maximal memory size to n MBytes.
@@ -395,7 +395,7 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams, ReTrial )
   IF (Found) THEN
     CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMG3D_IPARAM_mem,MemIncrease,ierr)
     IF ( ierr == 0 ) CALL Fatal(FuncName,&
-        'Call to MMG3D_SET_IPARAMETER Failed')
+        'Call to MMG3D_SET_IPARAMETER <mem> Failed')
   END IF
 
   ! [0/1] Turn on the debug mode.
@@ -404,7 +404,7 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams, ReTrial )
   IF (DebugMode) THEN
     CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMG3D_IPARAM_debug,1,ierr)
     IF ( ierr == 0 ) CALL Fatal(FuncName,&
-        'Call to MMG3D_SET_IPARAMETER Failed')
+        'Call to MMG3D_SET_IPARAMETER <debug> Failed')
   END IF
 
 !!! OTHER PARAMETERS: NOT ALL TESTED
@@ -437,7 +437,7 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams, ReTrial )
   IF (NoSwap) THEN
     CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMG3D_IPARAM_noswap,1,ierr)
     IF ( ierr == 0 ) CALL Fatal(FuncName,&
-         'Call to MMG3D_SET_IPARAMETER <No swap>Failed')
+         'Call to MMG3D_SET_IPARAMETER <No swap> Failed')
   END IF
 
   ! [1/0] Avoid/allow point relocation
@@ -455,13 +455,13 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams, ReTrial )
          'Call to MMG3D_SET_IPARAMETER <opnbdy> Failed')
   END IF
 
-  ! [1/0] Avoid/allow surface modifications
   NoSurf = ListGetLogical(SolverParams,'MMG No surf',Found)
   IF (NoSurf) THEN
     CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMG3D_IPARAM_nosurf,0,ierr)
     IF ( ierr == 0 ) CALL Fatal(FuncName,&
          'Call to MMG3D_SET_IPARAMETER <No surf> Failed')
   END IF
+  
 !!!
 #else
      CALL Fatal('Set_MMG3D_Parameters',&

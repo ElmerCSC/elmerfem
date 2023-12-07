@@ -907,10 +907,8 @@
                   FORCE=0.0_dp
                   MASS=0.0_dp
 
-                  Storage = .False.
                   Storage =  GetLogical(BC,'Moulin Storage', Found)
                   IF (Storage) THEN
-                    MoulinArea = 0.0_dp
                     MoulinArea(1:N) = ListGetReal( BC, 'Moulin Area',  N, Element % NodeIndexes, Found, &
                          UnfoundFatal = .TRUE. )
                     ! MASS is a scalar here
@@ -918,7 +916,6 @@
                   END IF
 
                   ! Is there surface input
-                  MoulinFlux = 0.0_dp
                   MoulinFlux(1:N) = ListGetReal( BC, 'Moulin Flux',  N, Element % NodeIndexes, Found, &
                          UnfoundFatal = .TRUE. )
                   FORCE(1) = MoulinFlux(1)
@@ -953,7 +950,6 @@
                   MASS=0.0_dp
 
                   LOAD=0.0_dp
-                  FluxBC = .FALSE.
                   FluxBC =  GetLogical(BC,TRIM(Solver % Variable % Name) // ' Flux BC', Found)
 
                   IF (FluxBC) THEN

@@ -1333,7 +1333,7 @@ CONTAINS
     REAL(KIND=dp) :: Coord(3), Coord0(3), Center(3)
     TYPE(ValueList_t), POINTER :: ValueList
     TYPE(Element_t), POINTER :: Parent
-    LOGICAL :: BreakLoop
+    LOGICAL :: BreakLoop, ParallelComm
     REAL(KIND=dp) :: linepos 
     
     MaskName = ListGetString(Params,'Save Mask',GotIt) 
@@ -1360,10 +1360,12 @@ CONTAINS
 
       BreakLoop = ListGetLogical(Params,'Break Line Loop',GotIt)
       IF(BreakLoop) OptimizeOrder = .TRUE.
-      
+
+      ParallelComm = Parallel
+      IF(Mesh % SingleMesh ) ParallelComm = .FALSE.
       CALL MakePermUsingMask( Model,Solver,Mesh,MaskName, &
           OptimizeOrder, SavePerm, SaveNodes(1), &
-          RequireLogical = .TRUE., BreakLoop = BreakLoop )
+          RequireLogical = .TRUE., BreakLoop = BreakLoop, ParallelComm = ParallelComm )
       
       IF( SaveNodes(1) > 0 ) THEN
         IF( ListGetLogical( Params,'Calculate Weights',GotIt ) ) THEN

@@ -2473,7 +2473,7 @@ CONTAINS
 !-----------------------------------------------------------------------------------
       INTEGER :: s  
       INTEGER :: n, MaxRounds, OutputInterval   
-      LOGICAL :: Converged, Diverged
+      LOGICAL :: Converged, Diverged, UseStopCFun
       TYPE(Matrix_t), POINTER :: A
       COMPLEX(KIND=dp) :: x(n), b(n)
       REAL(KIND=dp) :: Tol, MaxTol
@@ -2499,18 +2499,24 @@ CONTAINS
       REAL(kind=dp) :: normb, normr, errorind ! for tolerance check
       INTEGER :: i,j,k,l                      ! loop counters
 
+      UseStopCFun = HUTI_STOPC == HUTI_USUPPLIED_STOPC
+      
       U = 0.0d0
 
       ! Compute initial residual, set absolute tolerance
       normb = normfun(n,b,1)
       CALL matvecsubr( x, t, ipar )
       r = b - t
-      normr = normfun(n,r,1)
-
+      IF (UseStopCFun) THEN
+        errorind = stopcfun(x,b,r,ipar,dpar)
+      ELSE
+        normr = normfun(n,r,1)
+        errorind = normr / normb
+      END IF
+      
       !-------------------------------------------------------------------
       ! Check whether the initial guess satisfies the stopping criterion
       !--------------------------------------------------------------------
-      errorind = normr / normb
       Converged = (errorind < Tol)
       Diverged = (errorind > MaxTol) .OR. (errorind /= errorind)
 
@@ -2621,9 +2627,14 @@ CONTAINS
           END IF
 
           ! Check for convergence
-          normr = normfun(n,r,1)
+          IF (UseStopCFun) THEN
+            errorind = stopcfun(x,b,r,ipar,dpar)
+          ELSE
+            normr = normfun(n,r,1)
+            errorind = normr/normb
+          END IF
           iter = iter + 1
-          errorind = normr/normb
+          
           IF( MOD(iter,OutputInterval) == 0) THEN
             WRITE (*, '(I8, E11.4)') iter, errorind
           END IF
@@ -2673,9 +2684,14 @@ CONTAINS
         x = x + om*v 
 
         ! Check for convergence
-        normr =normfun(n,r,1)
+        IF (UseStopCFun) THEN
+          errorind = stopcfun(x,b,r,ipar,dpar)
+        ELSE
+          normr = normfun(n,r,1)
+          errorind = normr/normb
+        END IF
         iter = iter + 1
-        errorind = normr/normb
+
         IF( MOD(iter,OutputInterval) == 0) THEN
           WRITE (*, '(I8, E11.4)') iter, errorind
         END IF

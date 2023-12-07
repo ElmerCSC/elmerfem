@@ -2633,6 +2633,11 @@ CONTAINS
     CALL LoadInputFile( Model,InFileUnit,ModelName,MeshDir,MeshName, .TRUE., .FALSE. )
     IF ( .NOT. OpenFile ) CLOSE( InFileUnit )
 
+#ifdef DEVEL_LISTUSAGE 
+    ! Switch original keywords from -1 to 0 if in this mode.
+    CALL ReportListCounters( Model, 1 )
+#endif
+             
     ! These are here to provide possibility to create tags for keywords
     ! using suffixes. The new way would be to use prefix -dist.
     ! The idea is to have a generic way to determine which keywords

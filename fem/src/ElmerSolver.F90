@@ -342,7 +342,7 @@
          OptimIters = 1 
        END IF
      END IF
-                
+     
 !------------------------------------------------------------------------------
 !    Read element definition file, and initialize element types
 !------------------------------------------------------------------------------
@@ -386,7 +386,7 @@
          
          CurrentModel => LoadModel(ModelName,.FALSE.,ParEnv % PEs,ParEnv % MyPE,MeshIndex)
          IF(.NOT.ASSOCIATED(CurrentModel)) EXIT
-         
+
          !----------------------------------------------------------------------------------
          ! Set namespace searching mode
          !----------------------------------------------------------------------------------
@@ -674,11 +674,18 @@
      END IF
       
      CALL CompareToReferenceSolution( Finalize = .TRUE. )
-
+     
+#ifdef DEVEL_LISTUSAGE
+     IF(InfoActive(6)) THEN
+       CALL Info('MAIN','Reporting unused list entries for sif improvement!')
+       CALL Info('MAIN','If you do not want these lines undefine > DEVEL_LISTUSAGE < !')
+       CALL ReportListCounters( CurrentModel, 2 )
+     END IF
+#endif
 #ifdef DEVEL_LISTCOUNTER
      CALL Info('MAIN','Reporting list counters for code optimization purposes only!')
      CALL Info('MAIN','If you get these lines with production code undefine > DEVEL_LISTCOUNTER < !')
-     CALL ReportListCounters( CurrentModel )
+     CALL ReportListCounters( CurrentModel, 3 )
 #endif
           
 !------------------------------------------------------------------------------
@@ -2728,13 +2735,15 @@
        END IF
 
        BLOCK
-         REAL :: z_min, z_max
+         REAL :: z_min, z_max, z_mid
          z_min = ListGetConstReal(CurrentModel % Simulation,'Extruded Min Coordinate',GotIt)
          z_max = ListGetConstReal(CurrentModel % Simulation,'Extruded Max Coordinate',GotIt)
+         
          IF( GotIt .AND. nSlices > 1) THEN
+           z_mid = 0.5_dp * ( z_min + z_max ) 
            CALL Info(Caller,'Moving parallel slices in z-direction!',Level=6)
            i = CurrentModel % Mesh % NumberOfNodes 
-           CurrentModel % Mesh % Nodes % z(1:i) = z_min + (z_max-z_min) * sSliceRatio(1)  
+           CurrentModel % Mesh % Nodes % z(1:i) = z_mid + (z_max-z_min) * sSliceRatio(1)  
          END IF
        END BLOCK
      END IF
@@ -2890,8 +2899,12 @@
 
          
 !------------------------------------------------------------------------------
-         sTime(1) = sTime(1) + dt
-
+         IF(cum_Timestep == 1 .AND. ListGetLogical( CurrentModel % Simulation,'Timestep Start Zero',GotIt) ) THEN
+           CALL Info(Caller,'Not advancing the 1st timestep!')
+         ELSE
+           sTime(1) = sTime(1) + dt
+         END IF
+         
          IF( nPeriodic > 0 ) THEN
            IF( ParallelTime ) THEN
              timePeriod = nTimes * nPeriodic * dt                        
