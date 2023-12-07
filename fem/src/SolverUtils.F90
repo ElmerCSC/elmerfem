@@ -22833,21 +22833,29 @@ CONTAINS
 
      TYPE(Solver_t), POINTER :: PSolver
      INTEGER :: i
-     LOGICAL :: Found
+     LOGICAL :: Found, GotSome 
      CHARACTER(*), PARAMETER :: Caller="GenerateRobinProjector"
 
      
      IF(.NOT. ListGetLogical( Solver % Values,'Apply Integral BCs',Found) ) RETURN
 
-     PSolver => Solver         
+     PSolver => Solver
+     GotSome = .FALSE.
      DO i=1,Model % NumberOFBCs
        IF(ListGetLogical( Model % BCs(i) % Values,'Flux Integral BC',Found ) ) THEN
          CALL Info(Caller,'Generating flux integral conditions for BC: '//I2S(i))
          CALL RobinProjector(Model,PSolver, i ) 
-         Solver % MortarBCsChanged = .TRUE.
+         GotSome = .TRUE.
        END IF
      END DO
 
+     Solver % MortarBCsChanged = GotSome 
+
+     ! We may want to export the lagrange multiplier as it has a physical meaning. 
+     IF( GotSome ) THEN
+       CALL ListAddNewLogical(Solver % Values,'Export Lagrange Multiplier',.TRUE.) 
+     END IF
+            
    END SUBROUTINE GenerateRobinProjectors
 
 
@@ -22906,7 +22914,7 @@ CONTAINS
      IF(.NOT. ASSOCIATED(MortarBC % Diag ) ) THEN      
        dofs = Solver % Variable % Dofs
        ALLOCATE(MortarBC % Diag(dofs))
-       MortarBC % Diag = -1.0_dp
+       MortarBC % Diag = 1.0_dp
      END IF
 
      
@@ -22955,7 +22963,8 @@ CONTAINS
            DO k=A % Rows(j),A % Rows(j+1)-1
              IF(.NOT. ActiveDof(A % Cols(k))) CYCLE
              dval = A % Values(k) - A % BulkValues(k)
-             CALL AddToMatrixElement(Proj, idof, A % Cols(k), dval )
+             ! We use the negative sign so that we get desired sign for the lagrange multiplier!
+             CALL AddToMatrixElement(Proj, idof, A % Cols(k), -dval )
            END DO
          END DO
        END DO       
@@ -23535,14 +23544,11 @@ CONTAINS
                END IF
 
                IF( ThisIsRobin ) THEN
-                 val = ListGetCReal( Solver % Values,'Mortar scl',Found ) 
-                 IF(.NOT. found) val = 1.0_dp
-
                  DO j=1,dofs
                    k2 = k2 + 1
                    IF( AllocationsDone ) THEN
                      Btmp % Cols(k2) = j + arows                      
-                     Btmp % Values(k2) = Btmp % Values(k2) - val * MortarDiag * rsum(j)
+                     Btmp % Values(k2) = Btmp % Values(k2) - MortarDiag * rsum(j)
                    END IF                     
                  END DO
                
