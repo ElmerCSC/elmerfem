@@ -42,21 +42,23 @@
 
   Further to the options above that are defined in the solver some options are defined in the Materials. They are related to the second step of remeshing and are listed below.
 
-  - RemeshMMG3D Hausd(n) = Real 50.0 40.0 ... specify the Hausdorff distance for the second step of remeshing. See algorithm document for info on multiple values.
-  - RemeshMMG3D HMin(n) = Real 50.0 40.0 ... specify the the minimum element edge size for the second step of remeshing.
-  - RemeshMMG3D Hmax = Real 500.0 specify the maximum element edge size for the second step of remeshing.
-  - RemeshMMG3D Hgrad = Real 2.5 specify the gradation value from the second step of remeshing.
-  - RemeshMMG3D Min Quality = Real 0.00001 specify the minimum acceptable element quality for the second step of remeshing. See algorithm document for more details (Acceptable values 0-1).
-  - RemeshMMG3D Anisotropic = Logical True. Select whether remeshing is anisotropic.
-  - RemeshMMG3D Target Length(3) = ... Define the mesh metric. Three input values if anisotropic, one if isotropic. The user function GlacierMeshMetricAniso can be used for this and shown in the example below.
-  - Save MMGLS Meshes = Logical False. Save the Mmg .mesh mesh file prior and after the first step of remeshing. Useful for debugging.
-  - Save MMGLS Sol = Logical False. Save the Mmg metric file.
+  - MMG Hausd(n) = Real 50.0 40.0 ... specify the Hausdorff distance for the second step of remeshing. See algorithm document for info on multiple values.
+  - MMG HMin(n) = Real 50.0 40.0 ... specify the the minimum element edge size for the second step of remeshing.
+  - MMG Multiple Inputs = Logical True allows the mutliple values of Hmin and Hausd to be specified as above. Required for calving.
+  - MMG Max Remesh Iterations = Integer 5 specify the remeshing iterations e.g. the size of Hmin and Hausd array.
+  - MMG Hmax = Real 500.0 specify the maximum element edge size for the second step of remeshing.
+  - MMG Hgrad = Real 2.5 specify the gradation value from the second step of remeshing.
+  - MMG Min Quality = Real 0.00001 specify the minimum acceptable element quality for the second step of remeshing. See algorithm document for more details (Acceptable values 0-1).
+  - MMG Anisotropic = Logical True. Select whether remeshing is anisotropic.
+  - MMG Target Length(3) = ... Define the mesh metric. Three input values if anisotropic, one if isotropic. The user function GlacierMeshMetricAniso can be used for this and shown in the example below.
+  - Save MMG Meshes = Logical False. Save the Mmg .mesh mesh file prior and after the first step of remeshing. Useful for debugging.
+  - Save MMG Sol = Logical False. Save the Mmg metric file.
   - If either the Mmg mesh or metric is being saved then the following is required.
-  -- Pre MMGLS Mesh Name = File "outputmesh". Output mesh name prior to remeshing. Note no extension as the extension plus timestep will be automatically added.
-  -- MMGLS Out Mesh Name = File "postremesh". Output mesh name post remeshing.
+  -- Pre MMG Mesh Name = File "outputmesh". Output mesh name prior to remeshing. Note no extension as the extension plus timestep will be automatically added.
+  -- MMG Out Mesh Name = File "postremesh". Output mesh name post remeshing.
   
 ## General Description
-This solver takes a level set or signed distance variable where the zero contour indicates the new terminus and physically implements it by producing a new mesh. An overview of how the calving 3D solvers fit together is described in Calving.md. Further details of the new calving algorithm can be found [here](./locationodmethodsdoi).
+This solver takes a level set or signed distance variable where the zero contour indicates the new terminus and physically implements it by producing a new mesh. An overview of how the calving 3D solvers fit together is described in Calving.md. Further details of the new calving algorithm can be found [here](https://zenodo.org/records/10182710).
 
 ### Requirements {}
 Elmer needs to be compiled with Mmg. This can be done by downloading and compiling Mmg (version 5.5.4 or greater) then adding -DMMG_INCLUDE_DIR="/include/file/locations/" and -DMMG_LIBRARY="/library/location/libmmg.so" to your Elmer installation script.
@@ -120,25 +122,27 @@ Solver n
 End
 
 Material 1
-  RemeshMMG3D Hmin (5) = Real 100.0 40.0 30.0 25.0 20.0
-  RemeshMMG3D Hmax = Real 500.0 !500.0
-  RemeshMMG3D Hgrad = Real 2.5
-  RemeshMMG3D Hausd (5) = Real 50.0 40.0 30.0 25.0 20.0
+  MMG Hmin (5) = Real 50.0 40.0 30.0 25.0 20.0
+  MMG Hmax = Real 500.0 !500.0
+  MMG Hgrad = Real 2.5
+  MMG Hausd (5) = Real 50.0 40.0 30.0 25.0 20.0
   ! elem quality out of 1
-  RemeshMMG3D Min Quality = Real 0.0001
-  RemeshMMG3D Anisotropic = Logical True
-  RemeshMMG3D Target Length(3) = Variable Coordinate 1
+  MMG Min Quality = Real 0.0001
+  MMG Anisotropic = Logical True
+  MMG Target Length(3) = Variable Coordinate 1
     Real Procedure "ElmerIceUSF" "GlacierMeshMetricAniso"
-  Save RemeshMMG3D Meshes = Logical False
-  Save RemeshMMG3D Sols = Logical False
+  Save MMG Meshes = Logical False
+  Save MMG Sols = Logical False
   ! don't add extensions
-  Pre RemeshMMG3D Mesh Name = File "mmgadvancefix/preremesh_"
-  RemeshMMG3D Output Mesh Name = File "mmgadvancefix/remesh_"
+  Pre MMG Mesh Name = File "mmgadvancefix/preremesh_"
+  MMG Output Mesh Name = File "mmgadvancefix/remesh_"
+  MMG Multiple Inputs = Logical True
+  MMG Max Remesh Iterations = Integer 5
 
   GlacierMeshMetric Max Distance = Real 2000.0
   GlacierMeshMetric Min Distance = Real 200.0
   GlacierMeshMetric Max LC = Real 500.0
-  GlacierMeshMetric Min LC = Real 100.0
+  GlacierMeshMetric Min LC = Real 50.0
   GlacierMeshMetric Vertical LC = Real 50.0
 End
 
@@ -149,5 +153,5 @@ An example using the full calving algorithm can be found here [ELMER_TRUNK]/elme
 
 ## References
 Iain Wheel PhD thesis - DOI: https://doi.org/10.17630/sta/611.
-Full calving algorithm detailed [here](./locationodmethodsdoi).
+Full calving algorithm detailed [here](https://zenodo.org/records/10182710).
 

@@ -19,7 +19,7 @@ Keywords in the solver:
 - Front Advance Solver = String "Front Advance". Point to the FrontAdvance solver. This is required so the fjord margins can be accounted for.
   
 ## General Description
-This solver produces a level set or signed distance variable where the zero contour indicates the new terminus using the crevasse depth calving law. An overview of how the calving 3D solvers fit together is described in Calving.md. Further details of the new calving algorithm can be found [here](./locationodmethodsdoi).
+This solver produces a level set or signed distance variable where the zero contour indicates the new terminus using the crevasse depth calving law. An overview of how the calving 3D solvers fit together is described in Calving.md. Further details of the new calving algorithm can be found [here](https://zenodo.org/records/10182710).
 
 ### Additional subsection 1 {e.g. Geographical Restriction}
 Requires two auxiliary solvers as outlined in the example below. ProjectCalving and Calving Isosurface. Additionally, to save the 2D crevasse mesh a extra call of the result output solver is required.
@@ -98,4 +98,4 @@ An example using the full calving algorithm can be found here [ELMER_TRUNK]/elme
 
 ## References
 Iain Wheel PhD thesis - DOI: https://doi.org/10.17630/sta/611.
-Full calving algorithm detailed [here](./locationodmethodsdoi).
+Full calving algorithm detailed [here](https://zenodo.org/records/10182710).

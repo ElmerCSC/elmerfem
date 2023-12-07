@@ -18,7 +18,7 @@
 - Rail Buffer = Real 0.1. The acceptable error that lateral nodes can deviate from the rails.
   
 ## General Description
-This solver predicts the terminus advance based of the velocity field, a set of fjord rails and a melt field. The details of how this fits into the calving algorithm can be found [here](./locationodmethodsdoi).
+This solver predicts the terminus advance based of the velocity field, a set of fjord rails and a melt field. The details of how this fits into the calving algorithm can be found [here](https://zenodo.org/records/10182710).
 
 ## Known Bugs and Limitations
 Can cause minor artifical mass change. See calving algorithm document for more details.
@@ -99,4 +99,4 @@ An example using the full calving algorithm can be found here [ELMER_TRUNK]/elme
 
 ## References
 Iain Wheel PhD thesis - DOI: https://doi.org/10.17630/sta/611.
-Full calving algorithm detailed [here](./locationodmethodsdoi).
+Full calving algorithm detailed [here](https://zenodo.org/records/10182710).
