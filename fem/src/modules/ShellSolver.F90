@@ -80,15 +80,16 @@ SUBROUTINE ShellSolver_Init0(Model, Solver, dt, Transient)
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
-  TYPE(ValueList_t), POINTER :: SolverPars
+  TYPE(ValueList_t), POINTER :: SolverPars, Simulation
   LOGICAL :: SavePrincipalAxes, Found, RotateDOFs, Eigenanalysis
   INTEGER  :: i
 !------------------------------------------------------------------------------
   SolverPars => GetSolverParams()
+  Simulation => GetSimulation()
 
   CALL ListAddNewInteger(SolverPars, 'Variable DOFs', 6)
   CALL ListAddLogical(SolverPars, 'Bubbles in Global System', .TRUE.)
-  CALL ListAddLogical(SolverPars, 'Initialize Dirichlet Conditions', .FALSE.)
+  CALL ListAddLogical(Simulation, 'Initialize Dirichlet Conditions', .FALSE.)
 
   RotateDOFs = GetLogical(SolverPars, 'Rotate DOFs', Found)
   IF (RotateDOFs) THEN
