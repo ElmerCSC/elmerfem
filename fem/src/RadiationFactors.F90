@@ -1071,7 +1071,7 @@
        END DO
        
        IF(SomeEmissivity0) THEN
-         CALL Info('TabulateEmissivity','We used constant emissivity for some elemenets!',Level=6)
+         CALL Info('TabulateEmissivity','We used constant emissivity for some elements!',Level=6)
          IF(.NOT. UpdateGebhartFactors ) THEN
            CALL Warn('TabulateEmissivity','Gebhart factors should be updated for non-constant emissivities!')
          END IF

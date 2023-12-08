@@ -74,12 +74,13 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t) :: IP
 
     LOGICAL :: Found, Stat
-    LOGICAL :: NonlinAssembly, RotationNeeded, FullMoment
+    LOGICAL :: NonlinAssembly, RotationNeeded
     LOGICAL :: DampingBetaWarning = .FALSE.
     
     INTEGER :: DOFs
     INTEGER :: i, t, p, q
     INTEGER :: i0, p0, q0
+    INTEGER :: MomentFreeAxis
 
     REAL(KIND=dp), POINTER :: ArrayPtr(:,:) => NULL()
     REAL(KIND=dp), POINTER :: StiffBlock(:,:), MassBlock(:,:), DampBlock(:,:)
@@ -146,21 +147,28 @@ CONTAINS
 
     Material => GetMaterial()
     Youngs_Modulus(1:n) = GetReal(Material, 'Youngs Modulus', Found)
+    IF (.NOT. Found) CALL Fatal('BeamStiffnessMatrix', 'Youngs Modulus needed')
     Shear_Modulus(1:n) = GetReal(Material, 'Shear Modulus', Found)
+    IF (.NOT. Found) CALL Fatal('BeamStiffnessMatrix', 'Shear Modulus needed')
     Area(1:n) = GetReal(Material, 'Cross Section Area', Found)
+    IF (.NOT. Found) CALL Fatal('BeamStiffnessMatrix', 'Cross Section Area needed')
     Torsional_Constant(1:n) = GetReal(Material, 'Torsional Constant', Found)
+    IF (.NOT. Found) CALL Fatal('BeamStiffnessMatrix', 'Torsional Constant needed')
 
-    ! If we don't give the moment of area component-wise it is assumed to be the same
+    ! If we don't give the moment of area component-wise, it is assumed to be the same
     Area_Moment_2(1:n) = GetReal(Material, 'Second Moment of Area', Found)
     IF( Found ) THEN
       Area_Moment_3(1:n) = Area_Moment_2(1:n)
     ELSE
       Area_Moment_2(1:n) = GetReal(Material, 'Second Moment of Area 2', Found)
+      IF (.NOT. Found) CALL Fatal('BeamStiffnessMatrix', 'Second Moment of Area 2 needed')
       Area_Moment_3(1:n) = GetReal(Material, 'Second Moment of Area 3', Found)
+      IF (.NOT. Found) CALL Fatal('BeamStiffnessMatrix', 'Second Moment of Area 3 needed')
     END IF
       
     IF (MassAssembly) THEN
       Density(1:n) = GetReal(Material, 'Density', Found)
+      IF (.NOT. Found) CALL Fatal('BeamStiffnessMatrix', 'Density needed')
       Damping(1:n) = GetReal(Material, 'Rayleigh Damping Alpha', Found)
       RayleighBeta = GetReal(Material, 'Rayleigh Damping Beta', Found)
       IF (Found .AND. .NOT.DampingBetaWarning) THEN
@@ -207,6 +215,10 @@ CONTAINS
         e2 = 1.0_dp/Norm * e2     
         e3 = CrossProduct(e1, e2)
       ELSE
+        IF (ANY( ABS(Area_Moment_3(1:n) - Area_Moment_2(1:n)) > 5.0_dp * AEPS )) THEN
+          CALL Fatal('BeamStiffnessMatrix', &
+              'The default principal directions need the same moments of area')
+        END IF
         !e2 = -ZBasis
         !e3 = CrossProduct(e1, e2)
         CALL TangentDirections( e1, e2, e3 ) 
@@ -380,12 +392,9 @@ CONTAINS
         END IF
 
         IF (PRESENT(DrillingDOFs)) THEN
-          FullMoment = DrillingDOFs
           IF (DrillingDOFs) RotationNeeded = .FALSE.
-        ELSE
-          FullMoment = .FALSE.
         END IF
-
+        
         IF (RotationNeeded) THEN
           !
           ! Switch to rotation variables which conform with the rotated moments - M x d:
@@ -414,16 +423,25 @@ CONTAINS
         ! The moment around the director is not compatible with the shell model.
         ! Remove its contribution:
         !
-        IF (.NOT. FullMoment) THEN
-          DO p=1,nd-nb
-            Stiff(6*p,:) = 0.0d0
-            Stiff(:,6*p) = 0.0d0
-            Stiff(6*p,6*p) = 0.0d0
-            Force(6*p) = 0.0d0
-            Mass(6*p,:) = 0.0d0
-            Mass(:,6*p) = 0.0d0
-          END DO
-        END IF
+        MomentFreeAxis = GetInteger(Material, 'Moment-free Axis', Found)
+        IF (.NOT. Found) MomentFreeAxis = 3
+          
+        DO p=1,nd-nb
+          i = (p-1)*DOFs + 3 + MomentFreeAxis
+          Stiff(i,:) = 0.0d0
+          Stiff(:,i) = 0.0d0
+          !
+          ! If the beam axis lies on the mid-surface, assembling a zero
+          ! diagonal entry would be consistent. However, if the beam continues
+          ! outside the mid-surface, a row of zeroes can cause troubles.
+          ! As a remedy, we now give a minimal rigidity against a moment load.
+          ! TO DO: Develop a more consistent strategy to handle this trouble
+          !
+          Stiff(i,i) = 1.0d1 * AEPS
+          Force(i) = 0.0d0
+          Mass(i,:) = 0.0d0
+          Mass(:,i) = 0.0d0
+        END DO
       END IF
     END IF
 

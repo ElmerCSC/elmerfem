@@ -122,6 +122,12 @@ SUBROUTINE TimoshenkoSolver(Model, Solver, dt, TransientSimulation)
 
   CALL DefaultStart()
 
+  IF (.NOT. ListCheckPresentAnyMaterial(Model, 'Principal Direction 2') .AND. &
+      .NOT. ListCheckPresentAnyMaterial(Model, 'Director')) THEN
+    CALL Warn('TimoshenkoSolver', &
+        'Principal axes unspecified, assuming a circular cross section')
+  END IF
+  
   Params => GetSolverParams()
   
   maxiter = ListGetInteger(Params, &
