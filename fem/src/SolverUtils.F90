@@ -15567,7 +15567,7 @@ SUBROUTINE SolveEigenSystem( StiffMatrix, NOFEigen, &
     COMPLEX(KIND=dp), POINTER :: dvecs(:,:), evecs(:,:)
     REAL(KIND=dp), POINTER :: p(:)
     INTEGER :: i,j,k,n
-    TYPE(Matrix_t), POINTER :: A,B
+    TYPE(Matrix_t), POINTER :: A
     LOGICAL :: Damped, Direct, Found
     !------------------------------------------------------------------------------
     n = StiffMatrix % NumberOfRows
@@ -15579,7 +15579,7 @@ SUBROUTINE SolveEigenSystem( StiffMatrix, NOFEigen, &
     Direct = ListGetString( Solver % Values, 'Linear System Solver', Found) == 'direct'
 
     IF( Damped .AND. Direct ) THEN
-      B => GenerateStateEquationSystem(Solver,A,n)
+      A => GenerateStateEquationSystem(Solver,A,n)
       ALLOCATE(EVecs(NOFEigen,n)); EVecs=0
       CALL ListAddLogical( Solver % Values,'Eigen System Damped', .FALSE. )
     END IF
@@ -15692,7 +15692,6 @@ SUBROUTINE SolveEigenSystem( StiffMatrix, NOFEigen, &
          END DO
          B % Parmatrix => ParInitMatrix(B, B % ParallelInfo)
        END IF
-       A => B
        n = 2*n
      END FUNCTION GenerateStateEquationSystem
     
