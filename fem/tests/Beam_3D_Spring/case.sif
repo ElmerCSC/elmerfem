@@ -50,6 +50,7 @@ Solver 1
   Nonlinear System Max Iterations = 1
   Linear System Solver = "Direct"
   Linear System Direct Method = umfpack
+  Displace Mesh = True
 End
 
 
