@@ -15549,6 +15549,7 @@ END FUNCTION SearchNodeL
 END SUBROUTINE SolveSystem
 !------------------------------------------------------------------------------
 
+
 !------------------------------------------------------------------------------
 !> Solve a linear eigen system.
 !------------------------------------------------------------------------------
@@ -15557,36 +15558,143 @@ SUBROUTINE SolveEigenSystem( StiffMatrix, NOFEigen, &
 !------------------------------------------------------------------------------
     USE EigenSolve
 !------------------------------------------------------------------------------
-    COMPLEX(KIND=dp) :: EigenValues(:),EigenVectors(:,:)
+    COMPLEX(KIND=dp), TARGET :: EigenValues(:),EigenVectors(:,:)
     REAL(KIND=dp) :: Norm
     TYPE(Matrix_t), POINTER :: StiffMatrix
     INTEGER :: NOFEigen
     TYPE(Solver_t) :: Solver
     !------------------------------------------------------------------------------
-    INTEGER :: n
+    COMPLEX(KIND=dp), POINTER :: dvecs(:,:), evecs(:,:)
+    REAL(KIND=dp), POINTER :: p(:)
+    INTEGER :: i,j,k,n
+    TYPE(Matrix_t), POINTER :: A,B
+    LOGICAL :: Damped, Direct, Found
     !------------------------------------------------------------------------------
     n = StiffMatrix % NumberOfRows
+    EVecs => EigenVectors
 
-    IF ( .NOT. StiffMatrix % COMPLEX ) THEN
+    A => StiffMatrix
+
+    Damped = ListGetLogical( Solver % Values, 'Eigen System Damped', Found)
+    Direct = ListGetString( Solver % Values, 'Linear System Solver', Found) == 'direct'
+
+    IF( Damped .AND. Direct ) THEN
+      B => GenerateStateEquationSystem(Solver,A,n)
+      ALLOCATE(EVecs(NOFEigen,n)); EVecs=0
+      CALL ListAddLogical( Solver % Values,'Eigen System Damped', .FALSE. )
+    END IF
+
+    IF ( .NOT. A % Complex ) THEN
       CALL Info('SolveEigenSystem','Solving real valued eigen system of size: '//I2S(n),Level=8)
+
       IF ( ParEnv % PEs <= 1 ) THEN
-        CALL ArpackEigenSolve( Solver, StiffMatrix, n, NOFEigen, &
-            EigenValues, EigenVectors )
+        CALL ArpackEigenSolve( Solver, A, n, NOFEigen, EigenValues, evecs )
       ELSE
-        CALL ParallelArpackEigenSolve( Solver, StiffMatrix, n, NOFEigen, &
-            EigenValues, EigenVectors )
+        CALL ParallelArpackEigenSolve( Solver, A, n, NOFEigen, EigenValues, evecs )
       END IF
     ELSE
-
       CALL Info('SolveEigenSystem','Solving complex valued eigen system of size: '//I2S(n/2),Level=8)
       IF ( ParEnv % PEs <= 1 ) THEN
-        CALL ArpackEigenSolveComplex( Solver, StiffMatrix, n/2, &
-            NOFEigen, EigenValues, EigenVectors )
+        CALL ArpackEigenSolveComplex( Solver, A, n/2, NOFEigen, EigenValues, evecs )
       ELSE
-        CALL ParallelArpackEigenSolveComplex( Solver, StiffMatrix, n/2, NOFEigen, &
-            EigenValues, EigenVectors )
+        CALL ParallelArpackEigenSolveComplex( Solver, A, n/2, NOFEigen, EigenValues, EVecs )
       END IF
     END IF
+
+    IF (Damped.AND.Direct) THEN
+      n = n/2
+      DO i=1,NOFEigen
+        DO j=1,n
+          EigenVectors(i,j) = EVecs(i,j+n)
+        END DO
+      END DO
+      DEALLOCATE(EVecs)
+      CALL ListAddLogical( Solver % Values,'Eigen System Damped', .TRUE. )
+    END IF
+
+ CONTAINS
+
+     FUNCTION GenerateStateEquationSystem(Solver,A,n) RESULT(B)
+
+       TYPE(Matrix_t), POINTER :: A,B
+       TYPE(Solver_t):: Solver
+
+       INTEGER :: i,j,k,l,n, max_gdofs
+
+! Make the system matrices for the damped eigensystem
+
+!      (M 0)           lambda *  ( C K)
+!      (0 M) [y x]^T =           (-M 0) [y x]^T
+
+       B => AllocateMatrix()
+       B % Format = MATRIX_CRS
+       B % Complex = A % Complex
+
+       B % NumberOfRows = 2*n
+       l = 4*SIZE(A % Cols)
+       ALLOCATE(B % Cols(l), B % Rows(2*n+1), B % Values(l), B % MassValues(l))
+       B % Values = 0; B % MassValues = 0
+
+       B % Rows(1) = 1
+       l = 0
+       DO i=1,n
+         DO k=A % Rows(i), A % Rows(i+1)-1
+           l = l + 1
+           B % Cols(l) = A % Cols(k)
+           B % Values(l) = A % DampValues(k)
+           B % MassValues(l) = A % MassValues(k)
+         END DO
+         DO k=A % Rows(i), A % Rows(i+1)-1
+           l = l + 1
+           B % Cols(l) = A % Cols(k)+n
+           B % Values(l) = A % Values(k)
+         END DO
+         B % Rows(i+1) = l+1
+       END DO
+
+       DO i=1,n
+         DO k=A % Rows(i), A % Rows(i+1)-1
+           l = l + 1
+           B % Cols(l) = A % Cols(k)
+           B % Values(l) = -A % MassValues(k)
+         END DO
+ 
+         DO k=A % Rows(i), A % Rows(i+1)-1
+           l = l + 1
+           B % Cols(l) = A % Cols(k)+n
+           B % MassValues(l) = A % MassValues(k)
+         END DO
+         B % Rows(n+i+1) = l+1
+       END DO
+
+       IF(ParEnv % PEs>1) THEN
+         IF(.NOT.ASSOCIATED(A % ParMatrix)) CALL ParallelInitMatrix(Solver,A)
+
+         ALLOCATE(B % ParallelInfo)
+         ALLOCATE(B % Perm(2*n))
+         ALLOCATE(B % ParallelInfo % GInterface(2*n))
+         ALLOCATE(B % ParallelInfo % GlobalDOFs(2*n))
+         ALLOCATE(B % ParallelInfo % NeighbourList(2*n))
+ 
+         max_gdofs = ParallelReduction( MAXVAL(A % ParallelInfo % GlobalDOFs), 2 )
+         DO i=1,n
+           B % ParallelInfo % NeighbourList(i) % Neighbours => A % ParallelInfo % NeighbourList(i) % Neighbours
+           B % ParallelInfo % NeighbourList(i+n) % Neighbours => A % ParallelInfo % NeighbourList(i) % Neighbours
+
+           B % ParallelInfo % Ginterface(i) = A % ParallelInfo % GInterface(i)
+           B % ParallelInfo % Ginterface(i+n) = A % ParallelInfo % GInterface(i)
+
+           B % ParallelInfo % GlobalDOFs(i) = A % ParallelInfo % GlobalDOFs(i)
+           B % ParallelInfo % GlobalDOFs(i+n) = A % ParallelInfo % GlobalDOFs(i)+max_gdofs
+
+           B % Perm(i) = A % Perm(i)
+           B % Perm(i+n) = A % Perm(i)+n
+         END DO
+         B % Parmatrix => ParInitMatrix(B, B % ParallelInfo)
+       END IF
+       A => B
+       n = 2*n
+     END FUNCTION GenerateStateEquationSystem
     
 !------------------------------------------------------------------------------
 END SUBROUTINE SolveEigenSystem
