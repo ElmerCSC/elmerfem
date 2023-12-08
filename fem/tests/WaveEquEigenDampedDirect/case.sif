@@ -1,0 +1,90 @@
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Coordinate System = "Cartesian"
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+
+  Max Output Level = 5
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Initial Condition 1
+  Potential Velocity = Real 1
+End
+
+Material 1
+  Name = "Ideal"
+  Sound Speed = 1.0
+  Density = 1.0
+  Sound Damping = 0.01
+End 
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Solver 1
+  Equation = "WaveEq"
+
+  Variable = "Potential"
+  Variable DOFs = 1
+!  Procedure = "WaveEq" "WaveSolver"
+  Procedure = "WaveSolver" "WaveSolver"
+
+  Steady State Convergence Tolerance = 1e-09
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = Umfpack
+
+  Eigen System Select = smallest imag part
+
+! For visualization purposes make amplitude one for all
+!  Eigen System Normalize To Unity = Logical True
+
+  Eigen Analysis = True
+  Eigen System Damped = True
+  Eigen System Values = 10
+  Eigen System Convergence Tolerance = 0
+End
+
+Solver 2
+!  Exec Solver = never
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = case
+  Vtu Format = Logical True
+  Single Precision = Logical True 
+
+  Eigen Analysis = True
+End
+
+
+Solver 3
+  Equation = "SaveScalars"
+!  Filename = f.dat
+
+  Procedure = "SaveData" "SaveScalars"
+  Save EigenValues = True
+
+! Compare the norm of the 10th eigenvalue
+  Show Norm Index = 10 
+End
+
+
+Boundary Condition 1
+  Target Boundaries(4) = 1 2 3 4
+  Potential = Real 0
+!  Potential Velocity = Real 0
+End
+
+Solver 3 :: Reference Norm = 4.949379333969E-001
