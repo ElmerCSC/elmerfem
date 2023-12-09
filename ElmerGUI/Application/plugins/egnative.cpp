@@ -696,7 +696,7 @@ void SetElementDivision(struct GridType *grid,Real relh,int info)
 /* Given the densities and ratios in each cell finds the 
    optimum way to divide the mesh into elements. 
    The procedure is the following:
-   For each subcell set the minimum number of elements 
+   For each subcell set the minimum number of elements
    then add one element at a time till the number of 
    elements is the desired one. The added element
    is always set to the subcell having the sparsest mesh.
@@ -3701,13 +3701,11 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
       eg->silent = TRUE;
       info = FALSE;
     }
-
-    if(strcmp(argv[arg],"-verbose") == 0) {
+    else if(strcmp(argv[arg],"-verbose") == 0) {
       eg->silent = FALSE;
       info = TRUE;
-    }
-    
-    if(strcmp(argv[arg],"-in") ==0 ) {
+    }   
+    else if(strcmp(argv[arg],"-in") ==0 ) {
       if(arg+1 >= argc) {
 	printf("The secondary input file name is required as a parameter\n");
 	return(1);
@@ -3718,8 +3716,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	eg->nofilesin++;
       }
     }
-
-    if(strcmp(argv[arg],"-out") == 0) {
+    else if(strcmp(argv[arg],"-out") == 0) {
       if(arg+1 >= argc) {
 	printf("The output name is required as a parameter\n");
 	return(2);
@@ -3728,13 +3725,10 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	strcpy(eg->filesout[0],argv[arg+1]);
       }
     }
-
- 
-    if(strcmp(argv[arg],"-decimals") == 0) {
+    else if(strcmp(argv[arg],"-decimals") == 0) {
       eg->decimals = atoi(argv[arg+1]);
     }
-
-    if(strcmp(argv[arg],"-triangles") ==0) {
+    else if(strcmp(argv[arg],"-triangles") ==0) {
       eg->triangles = TRUE;
       printf("The rectangles will be split to triangles.\n");
       if(arg+1 < argc) {
@@ -3743,8 +3737,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	}
       }
     }
-
-    if(strcmp(argv[arg],"-merge") == 0) {
+    else if(strcmp(argv[arg],"-merge") == 0) {
       if(arg+1 >= argc) {
 	printf("Give a parameter for critical distance.\n");
 	return(3);
@@ -3754,8 +3747,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	eg->cmerge = atof(argv[arg+1]);
       }
     }
-
-    if(strcmp(argv[arg],"-relh") == 0) {
+    else if(strcmp(argv[arg],"-relh") == 0) {
       if(arg+1 >= argc) {
 	printf("Give a relative mesh density related to the specifications\n");
 	return(3);
@@ -3764,8 +3756,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	eg->relh = atof(argv[arg+1]);
       }
     }
-
-    if(strcmp(argv[arg],"-order") == 0) {
+    else if(strcmp(argv[arg],"-order") == 0) {
       if(arg+dim >= argc) {
 	printf("Give %d parameters for the order vector.\n",dim);
  	return(4);
@@ -3777,8 +3768,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	if(dim==3) eg->corder[2] = atof(argv[arg+3]);
       }
     }
-
-    if(strcmp(argv[arg],"-parttol") == 0) {
+    else if(strcmp(argv[arg],"-parttol") == 0) {
       if(arg+1 >= argc) {
 	printf("Give a tolerance for geometric partition algorithms\n");
 	return(3);
@@ -3787,40 +3777,38 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	eg->parttol = atof(argv[arg+1]);
       }
     }
-
-    if(strcmp(argv[arg],"-autoorder") == 0) {
+    else if(strcmp(argv[arg],"-autoorder") == 0) {
       eg->order = 2;
     }
-
-    if(strcmp(argv[arg],"-halo") == 0) {
+    else if(strcmp(argv[arg],"-halo") == 0) {
       eg->parthalo[1] = TRUE;
     }
-    if(strcmp(argv[arg],"-halobc") == 0) {
+    else if(strcmp(argv[arg],"-halobc") == 0) {
       eg->parthalo[2] = TRUE;
     }
-    if(strcmp(argv[arg],"-halodb") == 0) {
+    else if(strcmp(argv[arg],"-halodb") == 0) {
       eg->parthalo[1] = TRUE;
       eg->parthalo[2] = TRUE;            
     }   
-    if(strcmp(argv[arg],"-haloz") == 0) {
+    else if(strcmp(argv[arg],"-haloz") == 0) {
       eg->parthalo[3] = TRUE;
     }
-    if(strcmp(argv[arg],"-halor") == 0) {
+    else if(strcmp(argv[arg],"-halor") == 0) {
       eg->parthalo[3] = TRUE;
     }
-    if(strcmp(argv[arg],"-halogreedy") == 0) {
+    else if(strcmp(argv[arg],"-halogreedy") == 0) {
       eg->parthalo[4] = TRUE;
     }    
-    if(strcmp(argv[arg],"-indirect") == 0) {
+    else if(strcmp(argv[arg],"-indirect") == 0) {
       eg->partitionindirect = TRUE;
     }
-    if(strcmp(argv[arg],"-metisorder") == 0) {
+    else if(strcmp(argv[arg],"-metisorder") == 0) {
       eg->order = 3;
     }    
-    if(strcmp(argv[arg],"-centralize") == 0) {
+    else if(strcmp(argv[arg],"-centralize") == 0) {
       eg->center = TRUE;
     }
-    if(strcmp(argv[arg],"-scale") == 0) {
+    else if(strcmp(argv[arg],"-scale") == 0) {
       if(arg+dim >= argc) {
 	printf("Give %d parameters for the scaling.\n",dim);
  	return(5);
@@ -3832,8 +3820,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	if(dim==3) eg->cscale[2] = atof(argv[arg+3]);
       }
     }
-
-    if(strcmp(argv[arg],"-translate") == 0) {
+    else if(strcmp(argv[arg],"-translate") == 0) {
       if(arg+dim >= argc) {
 	printf("Give %d parameters for the translate vector.\n",dim);
 	return(6);
@@ -3845,8 +3832,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	if(dim==3) eg->ctranslate[2] = atof(argv[arg+3]);
       }
     }
-
-    if(strcmp(argv[arg],"-saveinterval") == 0) {
+    else if(strcmp(argv[arg],"-saveinterval") == 0) {
       if(arg+dim >= argc) {
 	printf("Give min, max and step for the interval.\n");
 	return(7);
@@ -3857,8 +3843,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	eg->saveinterval[2] = atoi(argv[arg+3]);
       }
     }
-
-    if(strcmp(argv[arg],"-rotate") == 0 || strcmp(argv[arg],"-rotate") == 0) {
+    else if(strcmp(argv[arg],"-rotate") == 0 || strcmp(argv[arg],"-rotate") == 0) {
       if(arg+dim >= argc) {
 	printf("Give three parameters for the rotation angles.\n");
 	return(8);
@@ -3870,8 +3855,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	eg->crotate[2] = atof(argv[arg+3]);
       }
     }
-
-    if(strcmp(argv[arg],"-clone") == 0) {
+    else if(strcmp(argv[arg],"-clone") == 0) {
       if(arg+dim >= argc) {
 	printf("Give the number of clones in each %d directions.\n",dim);
  	return(9);
@@ -3882,7 +3866,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	if(dim == 3) eg->clone[2] = atoi(argv[arg+3]);
       }
     }
-    if(strcmp(argv[arg],"-clonesize") == 0) {
+    else if(strcmp(argv[arg],"-clonesize") == 0) {
       if(arg+dim >= argc) {
 	printf("Give the clone size in each %d directions.\n",dim);
  	return(10);
@@ -3893,10 +3877,10 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	if(dim == 3) eg->clonesize[2] = atof(argv[arg+3]);
       }
     }
-    if(strcmp(argv[arg],"-cloneinds") == 0) {
+    else if(strcmp(argv[arg],"-cloneinds") == 0) {
       eg->cloneinds = TRUE;
     }
-    if(strcmp(argv[arg],"-mirror") == 0) {
+    else if(strcmp(argv[arg],"-mirror") == 0) {
       if(arg+dim >= argc) {
 	printf("Give the symmetry of the coordinate directions, eg. 1 1 0\n");
       }
@@ -3906,7 +3890,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	if(dim == 3) eg->mirror[2] = atoi(argv[arg+3]);
       }
     }
-    if(strcmp(argv[arg],"-mirrorbc") == 0) {
+    else if(strcmp(argv[arg],"-mirrorbc") == 0) {
       if(arg+1 >= argc) {
 	printf("Give the number of symmetry BC.\n");
  	return(11);
@@ -3915,43 +3899,36 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	eg->mirrorbc = atoi(argv[arg+1]);
       }
     }
-
-    if(strcmp(argv[arg],"-unite") == 0) {
+    else if(strcmp(argv[arg],"-unite") == 0) {
       eg->unitemeshes = TRUE;
       printf("The meshes will be united.\n");
     }   
-    if(strcmp(argv[arg],"-unitenooverlap") == 0) {
+    else if(strcmp(argv[arg],"-unitenooverlap") == 0) {
       eg->unitemeshes = TRUE;
       eg->unitenooverlap = TRUE;
       printf("The meshes will be united without overlap in BCs or bodies.\n");
     }   
-
-    if(strcmp(argv[arg],"-nonames") == 0) {
+    else if(strcmp(argv[arg],"-nonames") == 0) {
       eg->usenames = FALSE;
       printf("Names will be omitted even if they would exist\n");
     }   
-
-    if(strcmp(argv[arg],"-multidim") == 0) {
+    else if(strcmp(argv[arg],"-multidim") == 0) {
       eg->multidim = TRUE;
       printf("Lower dimensional entities may be bulk too!\n");
     }   
-
-    if(strcmp(argv[arg],"-removelowdim") == 0) {
+    else if(strcmp(argv[arg],"-removelowdim") == 0) {
       eg->removelowdim = TRUE;
       printf("Lower dimensional boundaries will be removed\n");
     }   
-
-    if(strcmp(argv[arg],"-removeintbcs") == 0) {
+    else if(strcmp(argv[arg],"-removeintbcs") == 0) {
       eg->removeintbcs = TRUE;
       printf("Lower dimensional boundaries will be removed\n");
     }   
-
-    if(strcmp(argv[arg],"-removeunused") == 0) {
+    else if(strcmp(argv[arg],"-removeunused") == 0) {
       eg->removeunused = TRUE;
       printf("Nodes that do not appear in any element will be removed\n");
     }   
-
-    if(strcmp(argv[arg],"-autoclean") == 0) {
+    else if(strcmp(argv[arg],"-autoclean") == 0) {
       eg->removelowdim = TRUE;
       eg->bulkorder = TRUE;
       eg->boundorder = TRUE;
@@ -3960,8 +3937,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
       printf("Materials and boundaries will be renumbered\n");
       printf("Nodes that do not appear in any element will be removed\n");
     }   
-
-    if(strcmp(argv[arg],"-polar") == 0) {
+    else if(strcmp(argv[arg],"-polar") == 0) {
       eg->polar = TRUE;
       printf("Making transformation to polar coordinates.\n");
       if(arg+1 >= argc) {
@@ -3972,13 +3948,11 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	eg->polarradius = atoi(argv[arg+1]);
       }
     }
-
-    if(strcmp(argv[arg],"-cylinder") == 0) {
+    else if(strcmp(argv[arg],"-cylinder") == 0) {
       eg->cylinder = TRUE;
       printf("Making transformation from cylindrical to cartesian coordinates.\n");
     }
-
-    if(strcmp(argv[arg],"-reduce") == 0) {
+    else if(strcmp(argv[arg],"-reduce") == 0) {
       if(arg+2 >= argc) {
 	printf("Give two material for the interval.\n");
  	return(12);
@@ -3989,16 +3963,16 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	eg->reducemat2 = atoi(argv[arg+2]);
       }
     }
-    if(strcmp(argv[arg],"-increase") == 0) {
+    else if(strcmp(argv[arg],"-increase") == 0) {
       eg->increase = TRUE;
     }
-    if(strcmp(argv[arg],"-bulkorder") == 0) {
+    else if(strcmp(argv[arg],"-bulkorder") == 0) {
       eg->bulkorder = TRUE;
     }
-    if(strcmp(argv[arg],"-boundorder") == 0) {
+    else if(strcmp(argv[arg],"-boundorder") == 0) {
       eg->boundorder = TRUE;
     }
-    if(strcmp(argv[arg],"-partition") == 0  ||
+    else if(strcmp(argv[arg],"-partition") == 0  ||
        strcmp(argv[arg],"-partcell") == 0  || 
        strcmp(argv[arg],"-partcyl") == 0 ) {
       if(arg+dim >= argc) {
@@ -4030,7 +4004,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	       eg->partitions);
       }
     }
-    if(strcmp(argv[arg],"-partorder") == 0) {
+    else if(strcmp(argv[arg],"-partorder") == 0) {
       if(arg+dim >= argc) {
 	printf("Give %d parameters for the order vector.\n",dim);
  	return(14);
@@ -4042,28 +4016,27 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	if(dim==3) eg->partcorder[2] = atof(argv[arg+3]);
       }
     }
-    if(strcmp(argv[arg],"-partoptim") == 0) {
+    else if(strcmp(argv[arg],"-partoptim") == 0) {
       eg->partoptim = TRUE;
       printf("Aggressive optimization will be applied to node sharing.\n");
     }
-    if(strcmp(argv[arg],"-partnobcoptim") == 0) {
+    else if(strcmp(argv[arg],"-partnobcoptim") == 0) {
       eg->partbcoptim = FALSE;
       printf("Aggressive optimization will not be applied to parent element sharing.\n");
     }
-    if(strcmp(argv[arg],"-partbw") == 0) {
+    else if(strcmp(argv[arg],"-partbw") == 0) {
       eg->partbw = TRUE;
       printf("Bandwidth will be optimized for partitions.\n");
     }
-    if(strcmp(argv[arg],"-parthypre") == 0) {
+    else if(strcmp(argv[arg],"-parthypre") == 0) {
       eg->parthypre = TRUE;
       printf("Numbering of partitions will be made continuous.\n");
     }
-    if(strcmp(argv[arg],"-partdual") == 0) {
+    else if(strcmp(argv[arg],"-partdual") == 0) {
       eg->partdual = TRUE;
       printf("Using dual (elemental) graph in partitioning.\n");
     }
-
-    if(strcmp(argv[arg],"-metis") == 0 ||
+    else if(strcmp(argv[arg],"-metis") == 0 ||
        strcmp(argv[arg],"-metisrec") == 0 ||
        strcmp(argv[arg],"-metiskway") == 0 ) {
 #if USE_METIS
@@ -4085,9 +4058,8 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 #else
       printf("This version of ElmerGrid was compiled without Metis library!\n");
 #endif     
-    }
-    
-    if(strcmp(argv[arg],"-metisseed") == 0 ) {
+    }    
+    else if(strcmp(argv[arg],"-metisseed") == 0 ) {
       if(arg+1 >= argc) {
 	printf("The random number seed is required as parameter for -metisseed!\n");
 	return(15);
@@ -4097,8 +4069,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	printf("Seed for Metis partitioning routines: %d\n",eg->metis_seed);
       }
     }
-
-    if(strcmp(argv[arg],"-metisncuts") == 0 ) {
+    else if(strcmp(argv[arg],"-metisncuts") == 0 ) {
       if(arg+1 >= argc) {
 	printf("The number of parameters is required as parameter for -metisncuts!\n");
 	return(15);
@@ -4107,9 +4078,8 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	eg->metis_ncuts = atoi(argv[arg+1]);
 	printf("Number of competing partitions to generate : %d\n",eg->metis_ncuts);
       }
-    }
-    
-    if(strcmp(argv[arg],"-partjoin") == 0) {
+    }   
+    else if(strcmp(argv[arg],"-partjoin") == 0) {
       if(arg+1 >= argc) {
 	printf("The number of partitions is required as a parameter!\n");
 	return(15);
@@ -4119,8 +4089,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	printf("The results will joined using %d partitions.\n",eg->partjoin);
       }
     }
-
-    if(strcmp(argv[arg],"-partconnect") == 0 || strcmp(argv[arg],"-partzbc") == 0 ) {
+    else if(strcmp(argv[arg],"-partconnect") == 0 || strcmp(argv[arg],"-partzbc") == 0 ) {
       if(arg+1 >= argc) {
 	printf("The number of 1D partitions is required as a parameter!\n");
 	return(15);
@@ -4130,8 +4099,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	printf("The connected BCs will be partitioned to %d partitions in Z.\n",eg->partbcz);
       }
     }
-
-    if(strcmp(argv[arg],"-partrbc") == 0 ) {
+    else if(strcmp(argv[arg],"-partrbc") == 0 ) {
       if(arg+1 >= argc) {
 	printf("The number of 1D partitions is required as a parameter!\n");
 	return(15);
@@ -4141,8 +4109,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	printf("The connected BCs will be partitioned to %d partitions in R.\n",eg->partbcr);
       }
     }
-
-    if(strcmp(argv[arg],"-partlayers") == 0) {
+    else if(strcmp(argv[arg],"-partlayers") == 0) {
       if(arg+1 >= argc) {
 	printf("The number of layers to be extended is required as a parameter\n");
 	return(15);
@@ -4152,18 +4119,16 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	printf("The boundary partitioning will be extended by %d layers.\n",eg->partbclayers);
       }
     }
-
-    if(strcmp(argv[arg],"-metiscontig") == 0 ) {
+    else if(strcmp(argv[arg],"-metiscontig") == 0 ) {
       eg->metis_contig = TRUE;
     }
-    if(strcmp(argv[arg],"-metisvol") == 0 ) {
+    else if(strcmp(argv[arg],"-metisvol") == 0 ) {
       eg->metis_volcut = TRUE;
     }
-    if(strcmp(argv[arg],"-metisminconn") == 0 ) {
+    else if(strcmp(argv[arg],"-metisminconn") == 0 ) {
       eg->metis_minconn = TRUE;
-    }
-    
-    if(strcmp(argv[arg],"-metisconnect") == 0 || strcmp(argv[arg],"-metisbc") == 0 ) {
+    }    
+    else if(strcmp(argv[arg],"-metisconnect") == 0 || strcmp(argv[arg],"-metisbc") == 0 ) {
       if(arg+1 >= argc) {
 	printf("The number of Metis partitions is required as a parameter\n");
 	return(15);
@@ -4173,8 +4138,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	printf("The connected BCs will be partitioned to %d partitions by Metis.\n",eg->partbcmetis);
       }
     }
-
-    if(strcmp(argv[arg],"-periodic") == 0) {
+    else if(strcmp(argv[arg],"-periodic") == 0) {
       if(arg+dim >= argc) {
 	printf("Give the periodic coordinate directions (e.g. 1 1 0)\n");
  	return(16);
@@ -4185,8 +4149,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	if(dim == 3) eg->periodicdim[2] = atoi(argv[arg+3]);
       }
     }
-
-    if(strcmp(argv[arg],"-discont") == 0) {
+    else if(strcmp(argv[arg],"-discont") == 0) {
       if(arg+1 >= argc) {
 	printf("Give the discontinuous boundary conditions.\n");
  	return(17);
@@ -4196,8 +4159,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	eg->discont++;
       }
     }
-
-    if(strcmp(argv[arg],"-connect") == 0) {
+    else if(strcmp(argv[arg],"-connect") == 0) {
       if(arg+1 >= argc) {
 	printf("Give the connected boundary conditions.\n");
  	return(10);
@@ -4211,51 +4173,47 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	}
       }
     } 
-
-    if(strcmp(argv[arg],"-connectall") == 0) {
+    else if(strcmp(argv[arg],"-connectall") == 0) {
       eg->connectboundsnosets += 1;
       eg->connectbounds[eg->connect] = -1;
       eg->connectboundsset[eg->connect] = eg->connectboundsnosets;
       eg->connect++;
     }
-
-    if(strcmp(argv[arg],"-connectint") == 0) {
+    else if(strcmp(argv[arg],"-connectint") == 0) {
       eg->connectboundsnosets += 1;
       eg->connectbounds[eg->connect] = -2;
       eg->connectboundsset[eg->connect] = eg->connectboundsnosets;
       eg->connect++;
     }
-
-    if(strcmp(argv[arg],"-connectfree") == 0) {
+    else if(strcmp(argv[arg],"-connectfree") == 0) {
       eg->connectboundsnosets += 1;
       eg->connectbounds[eg->connect] = -3;
       eg->connectboundsset[eg->connect] = eg->connectboundsnosets;
       eg->connect++;
     }
- 
-    if(strcmp(argv[arg],"-boundbound") == 0) {
+    else if(strcmp(argv[arg],"-boundbound") == 0) {
       for(i=arg+1;i<=arg+3 && i<argc; i++) {
 	eg->boundbound[3*eg->boundbounds+i-(1+arg)] = atoi(argv[i]);
 	if((i-arg)%3 == 0) eg->boundbounds++;
       }
     } 
-    if(strcmp(argv[arg],"-bulkbound") == 0) {
+    else if(strcmp(argv[arg],"-bulkbound") == 0) {
       for(i=arg+1;i<=arg+3 && i<argc; i++) {
 	eg->bulkbound[3*eg->bulkbounds+i-(1+arg)] = atoi(argv[i]);
 	if((i-arg)%3 == 0) eg->bulkbounds++;
       }
     } 
-    if(strcmp(argv[arg],"-boundtype") == 0) {
+    else if(strcmp(argv[arg],"-boundtype") == 0) {
       for(i=arg+1;i<argc && strncmp(argv[i],"-",1); i++) 
 	eg->sidemap[3*eg->sidemappings+i-1-arg] = atoi(argv[i]);
       eg->sidemappings++;
     } 
-    if(strcmp(argv[arg],"-bulktype") == 0) {
+    else if(strcmp(argv[arg],"-bulktype") == 0) {
       for(i=arg+1;i<argc && strncmp(argv[i],"-",1); i++) 
 	eg->bulkmap[3*eg->bulkmappings+i-1-arg] = atoi(argv[i]);
       eg->bulkmappings++;
     } 
-    if(strcmp(argv[arg],"-coordinatemap") == 0) {
+    else if(strcmp(argv[arg],"-coordinatemap") == 0) {
       if( arg+3 >= argc ) {
 	printf("Give three parameters for the index permutation\n");
 	return(18);
@@ -4265,7 +4223,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	  eg->coordinatemap[i] = atoi(argv[arg+1+i]);
       }
     } 
-    if(strcmp(argv[arg],"-layer") == 0) {
+    else if(strcmp(argv[arg],"-layer") == 0) {
       if(arg+4 >= argc) {
 	printf("Give four parameters for the layer: boundary, elements, thickness, ratio.\n");
 	return(18);
@@ -4282,9 +4240,8 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	eg->layerparents[eg->layers] = 0;
 	eg->layers++;
       }
-    }
-    
-    if(strcmp(argv[arg],"-layermove") == 0) {
+    }   
+    else if(strcmp(argv[arg],"-layermove") == 0) {
       if(arg+1 >= argc) {
 	printf("Give maximum number of Jacobi filters.\n");
  	return(20);
@@ -4293,10 +4250,9 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	eg->layermove = atoi(argv[arg+1]);
       }
     }
-
     /* This uses a very dirty trick where the variables related to argument -layer are used 
        with a negative indexing */ 
-    if(strcmp(argv[arg],"-divlayer") == 0) {
+    else if(strcmp(argv[arg],"-divlayer") == 0) {
       if(arg+4 >= argc) {
 	printf("Give four parameters for the layer: boundary, elements, relative thickness, ratio.\n");
 	return(21);
@@ -4314,37 +4270,34 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	eg->layers--;
       }
     }
-
-    if(strcmp(argv[arg],"-3d") == 0) {
+    else if(strcmp(argv[arg],"-3d") == 0) {
       eg->dim = dim = 3;
     }
-    if(strcmp(argv[arg],"-2d") == 0) {
+    else if(strcmp(argv[arg],"-2d") == 0) {
       eg->dim = dim = 2;
     }
-    if(strcmp(argv[arg],"-1d") == 0) {
+    else if(strcmp(argv[arg],"-1d") == 0) {
       eg->dim = dim = 1;
     }
-
-    if(strcmp(argv[arg],"-isoparam") == 0) {
+    else if(strcmp(argv[arg],"-isoparam") == 0) {
       eg->isoparam = TRUE;
     }
-    if(strcmp(argv[arg],"-nobound") == 0) {
+    else if(strcmp(argv[arg],"-nobound") == 0) {
       eg->saveboundaries = FALSE;
     }
-    if(strcmp(argv[arg],"-vtuone") == 0) {
+    else if(strcmp(argv[arg],"-vtuone") == 0) {
       eg->vtuone = TRUE;
     }
-    if(strcmp(argv[arg],"-nosave") == 0) {
+    else if(strcmp(argv[arg],"-nosave") == 0) {
       eg->nosave = TRUE;
     }
-    if(strcmp(argv[arg],"-nooverwrite") == 0) {
+    else if(strcmp(argv[arg],"-nooverwrite") == 0) {
       eg->nooverwrite = TRUE;
     }
-    if(strcmp(argv[arg],"-timer") == 0) {
+    else if(strcmp(argv[arg],"-timer") == 0) {
       eg->timeron = TRUE;
     }
-
-    if(strcmp(argv[arg],"-infofile") == 0) {
+    else if(strcmp(argv[arg],"-infofile") == 0) {
       eg->timeron = TRUE;
       if(arg+1 >= argc) {
 	printf("The output name is required as a parameter\n");
@@ -4353,36 +4306,37 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
       else {
 	strcpy(eg->infofile,argv[arg+1]);
       }
-    }
-    
-
+    }    
     /* The following keywords are not actively used */
-
-    if(strcmp(argv[arg],"-bcoffset") == 0) {
+    else if(strcmp(argv[arg],"-bcoffset") == 0) {
       eg->bcoffset = atoi(argv[arg+1]);
     }
-    if(strcmp(argv[arg],"-noelements") == 0) {
+    else if(strcmp(argv[arg],"-noelements") == 0) {
       eg->elements3d = atoi(argv[arg+1]);
     }
-    if(strcmp(argv[arg],"-nonodes") == 0) {
+    else if(strcmp(argv[arg],"-nonodes") == 0) {
       eg->nodes3d = atoi(argv[arg+1]);
     }
-
-    if(strcmp(argv[arg],"-sidefind") == 0) {
+    else if(strcmp(argv[arg],"-sidefind") == 0) {
       eg->findsides = 0;
       for(i=arg+1;i<argc && strncmp(argv[i],"-",1); i++) {
 	eg->sidebulk[i-1-arg] = atoi(argv[i]);
 	eg->findsides++;
       }
     } 
-    if(strcmp(argv[arg],"-findbound") == 0) {
+    else if(strcmp(argv[arg],"-findbound") == 0) {
       eg->findsides = 0;
       for(i=arg+1;i+1<argc && strncmp(argv[i],"-",1); i += 2) {
 	eg->sidebulk[i-1-arg] = atoi(argv[i]);
 	eg->sidebulk[i-arg] = atoi(argv[i+1]);
 	eg->findsides++;
       }
-    } 
+    }
+    else if(strcmp(argv[arg],"-") == 0 ) {
+      printf("Unknown in-line argument: %s\n",argv[arg]);
+      bigerror("Cannot deal with argument, aborting!");
+    }
+    
   }
 
   {
@@ -5527,7 +5481,7 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
 
   fail = chdir(directoryname);
   if(fail) {
-#ifdef __MINGW32__
+#ifdef MINGW32
     fail = mkdir(directoryname);
 #else
     fail = mkdir(directoryname,0750);
