@@ -268,8 +268,8 @@ static int Getline(char *line1,FILE *io)
   int i,isend;
   char line0[MAXLINESIZE],*charend,*matcpntr,*matcpntr0;
 
-  for(i=0;i<MAXLINESIZE;i++) 
-    line0[i] = ' ';
+  for(i=0;i<MAXLINESIZE;i++)
+    line0[i] = 0x00;
 
  newline:
 
@@ -302,11 +302,7 @@ static int Getline(char *line1,FILE *io)
   for(i=0;i<MAXLINESIZE;i++) 
     line1[i] = toupper(line0[i]);
 
-  if(iodebug) {
-    printf("line: ");
-    for(i=0;i<40;i++) printf("%c",line1[i]);
-    printf("\n");
-  }
+  if(iodebug) printf("line: %s\n",line1);
 
   return(0);
 }
@@ -2230,7 +2226,7 @@ static int GetCommand(char *line1,char *line2,FILE *io)
  newline:
 
   for(i=0;i<MAXLINESIZE;i++) 
-    line2[i] = line1[i] = line0[i] = ' ';
+    line2[i] = line1[i] = line0[i] = 0x00;
 
   charend = fgets(line0,MAXLINESIZE,io);
   isend = (charend == NULL);
@@ -2327,11 +2323,8 @@ static int GetCommand(char *line1,char *line2,FILE *io)
   }
 
   if(iodebug) {
-    printf("command: ");
-    for(i=0;i<40;i++) printf("%c",line1[i]);
-    printf("\nparams: ");
-    for(i=0;i<40;i++) printf("%c",line2[i]);
-    printf("\n");
+    printf("command: %s\n",line1);
+    printf("params:  %s\n",line2);
   }
   
   return(0);
