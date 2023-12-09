@@ -281,6 +281,17 @@ static int Getline(char *line1,FILE *io)
   if(line0[0] == '#' || line0[0] == '%' || line0[0] == '!') goto newline;
   if(!matcactive && line0[0] == '*') goto newline;
 
+  if(!matcactive && strchr(line0,'$') ) {
+    #if USE_MATC
+      printf("\n a $ found and MATC has been compiled but not activated,\n");
+      printf("either remove the $ or add 'MATC = True' to grd input file.\n");
+    #else
+      printf("\n a $ found and MATC has not been compiled into ElmerGrid,\n");
+      printf("either remove the $ or compile ElmerGrid with MATC\n");
+    #endif // USE_MATC
+      bigerror("Error: $ found in command and MATC is not active");
+  }
+
 #if USE_MATC
   if(matcactive) {
     matcpntr0 = strchr(line0,'$');
@@ -2225,7 +2236,7 @@ static int GetCommand(char *line1,char *line2,FILE *io)
 
  newline:
 
-  for(i=0;i<MAXLINESIZE;i++) 
+  for(i=0;i<MAXLINESIZE;i++)
     line2[i] = line1[i] = line0[i] = 0x00;
 
   charend = fgets(line0,MAXLINESIZE,io);
@@ -2237,6 +2248,17 @@ static int GetCommand(char *line1,char *line2,FILE *io)
 
   if(line0[0] == '#' || line0[0] == '%' || line0[0] == '!' || line0[0] == '\n') goto newline;
   if(!matcactive && line0[0] == '*') goto newline;
+
+  if(!matcactive && strchr(line0,'$') ) {
+    #if USE_MATC
+      printf("\n a $ found and MATC has been compiled but not activated,\n");
+      printf("either remove the $ or add 'MATC = True' to grd input file.\n");
+    #else
+      printf("\n a $ found and MATC has not been compiled into ElmerGrid,\n");
+      printf("either remove the $ or compile ElmerGrid with MATC\n");
+    #endif // USE_MATC
+      bigerror("Error: $ found in command and MATC is not active");
+  }
 
 #if USE_MATC
   if(matcactive) {
@@ -2306,6 +2328,17 @@ static int GetCommand(char *line1,char *line2,FILE *io)
       printf("There is a risk that somethings was missed in line:\n");
       printf("%s\n",line2);
       smallerror("Check your output line length!\n");
+    }
+
+    if(!matcactive && strchr(line0,'$') ) {
+      #if USE_MATC
+        printf("\n a $ found and MATC has been compiled but not activated,\n");
+        printf("either remove the $ or add 'MATC = True' to grd input file.\n");
+      #else
+        printf("\n a $ found and MATC has not been compiled into ElmerGrid,\n");
+        printf("either remove the $ or compile ElmerGrid with MATC\n");
+      #endif // USE_MATC
+        bigerror("Error: $ found in command and MATC is not active");
     }
 
 #if USE_MATC
@@ -3091,7 +3124,8 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,int info)
 	printf("MATC language activated with 12 digit accuracy.\n");	
 #else
         matcactive = FALSE;
-        printf("Unable to activate matc as it is not even compiled.\n");
+        printf("Unable to enable MATC, as it is not even compiled.\n");
+        bigerror("Unable to enable MATC, as it is not even compiled.");
 #endif 
       }
     }
