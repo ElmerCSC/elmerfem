@@ -77,6 +77,9 @@ using namespace std;
 // Construct main window...
 //-----------------------------------------------------------------------------
 MainWindow::MainWindow() {
+
+  cout << "Welcome to ElmerGUI, compiled on " __DATE__ << endl;
+
 #ifdef __APPLE__
   // find "Home directory":
   char executablePath[MAXPATHLENGTH] = {0};
