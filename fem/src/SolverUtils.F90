@@ -9706,9 +9706,13 @@ END FUNCTION SearchNodeL
            Var % PrevValues(:,i) = Var % PrevValues(:,i-1)
          END DO
 
-         Var % Values = (1+eFact)*Var % Values-eFact*Var % PrevValues(:,1)
-         Var % PrevValues(:,1) = (Var % Values+eFact*Var % PrevValues(:,1))/(1+eFact)
-
+         IF( ExtrapolateInTime ) THEN
+           Var % Values = (1+eFact)*Var % Values-eFact*Var % PrevValues(:,1)
+           Var % PrevValues(:,1) = (Var % Values+eFact*Var % PrevValues(:,1))/(1+eFact)
+         ELSE
+           Var % PrevValues(:,1) = Var % Values
+         END IF
+           
          Solver % Matrix % Force(:,2) = Solver % Matrix % Force(:,1)
          
        CASE(2)
@@ -9723,8 +9727,12 @@ END FUNCTION SearchNodeL
          Var % PrevValues(:,i) = Var % PrevValues(:,i-1)
        END DO
 
-       Var % Values = (1+eFact)*Var % Values - eFact*Var % PrevValues(:,1)
-       Var % PrevValues(:,1) = (Var % Values+eFact*Var % PrevValues(:,1))/(1+eFact)
+       IF( ExtrapolateInTime ) THEN
+         Var % Values = (1+eFact)*Var % Values - eFact*Var % PrevValues(:,1)
+         Var % PrevValues(:,1) = (Var % Values+eFact*Var % PrevValues(:,1))/(1+eFact)
+       ELSE
+         Var % PrevValues(:,1) = Var % Values
+       END IF
      END IF
 
 
