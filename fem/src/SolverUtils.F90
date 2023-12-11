@@ -9663,13 +9663,14 @@ END FUNCTION SearchNodeL
      ndofs = Solver % Matrix % NumberOfRows
      Var => Solver % Variable
 
+     eFact = 0.0_dp
      ExtrapolateInTime = ListGetLogical(CurrentModel % Simulation, &
               'Timestep extrapolation', GotIt  )
-
-     eFact = ListGetCReal(CurrentModel % Simulation, &
-               'Timestep extrapolation factor', GotIt )
-     IF(.NOT.GotIt) THEN
-       IF(ExtrapolateInTime) eFact = 1._dp
+     IF( ExtrapolateInTime ) THEN
+       eFact = ListGetCReal(CurrentModel % Simulation, &
+           'Timestep extrapolation factor', GotIt )
+       IF(.NOT.GotIt) eFact = 1._dp
+       ALLOCATE(NewVals(SIZE(Var % Values)))
      END IF
 
      IF ( Solver % TimeOrder>1 .OR. method/='bdf') THEN
@@ -9707,8 +9708,9 @@ END FUNCTION SearchNodeL
          END DO
 
          IF( ExtrapolateInTime ) THEN
-           Var % Values = (1+eFact)*Var % Values-eFact*Var % PrevValues(:,1)
-           Var % PrevValues(:,1) = (Var % Values+eFact*Var % PrevValues(:,1))/(1+eFact)
+           NewVals = (1+eFact)*Var % Values-eFact*Var % PrevValues(:,1)
+           Var % PrevValues(:,1) = Var % Values 
+           Var % Values = NewVals
          ELSE
            Var % PrevValues(:,1) = Var % Values
          END IF
@@ -9728,14 +9730,16 @@ END FUNCTION SearchNodeL
        END DO
 
        IF( ExtrapolateInTime ) THEN
-         Var % Values = (1+eFact)*Var % Values - eFact*Var % PrevValues(:,1)
-         Var % PrevValues(:,1) = (Var % Values+eFact*Var % PrevValues(:,1))/(1+eFact)
+         NewVals = (1+eFact)*Var % Values-eFact*Var % PrevValues(:,1)
+         Var % PrevValues(:,1) = Var % Values 
+         Var % Values = NewVals
        ELSE
          Var % PrevValues(:,1) = Var % Values
        END IF
      END IF
 
-
+     IF( ExtrapolateInTime ) DEALLOCATE(NewVals) 
+    
      IF( ListGetLogical( Solver % Values,'Nonlinear Timestepping', GotIt ) ) THEN
        IF( Solver % DoneTime > 1 ) THEN
          A => Solver % Matrix
