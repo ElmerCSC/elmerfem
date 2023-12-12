@@ -1,8 +1,3 @@
-# message(FATAL_ERROR "Operating System: ${CMAKE_HOST_SYSTEM_NAME}")
-
-
-
-
 #
 # CMake configuration script for Elmer
 #
@@ -15,6 +10,8 @@
 # First public beta release 11th of October, 2013
 #
 
+<<<<<<< HEAD
+=======
 
 
 if(APPLE)
@@ -30,65 +27,46 @@ endif()
 
 set(CMAKE_LEGACY_CYGWIN_WIN32 0)
 # if(MSYS)
-if(${CMAKE_HOST_SYSTEM_NAME} STREQUAL "MSYS")
-  CMAKE_POLICY(SET CMP0057 NEW)
-  cmake_policy(SET CMP0017 NEW)
-  # set(CMAKE_C_COMPILER "/mingw64/bin/gcc")
-  # set(CMAKE_CXX_COMPILER "/mingw64/bin/g++")
-  # set(CMAKE_Fortran_COMPILER "/mingw64/bin/gfortran")
-  SET(CMAKE_C_COMPILER "/c/tools/msys64/mingw64/bin/gcc.exe")
-  SET(CMAKE_CXX_COMPILER "/c/tools/msys64/mingw64/bin/g++.exe")
-  SET(CMAKE_Fortran_COMPILER "/c/tools/msys64/mingw64/bin/gfortran.exe")
-
-  set(CMAKE_LINKER "/c/tools/msys64/mingw64/bin/ld.exe")
-
-  # SET(BLAS_LIBRARIES "/c/tools/msys64/mingw64/lib/libopenblas_64.a")
-  # SET(LAPACK_LIBRARIES "/c/tools/msys64/mingw64/lib/libopenblas_64.a")
-
-  # set (CMAKE_GENERATOR "MSYS Makefiles" CACHE INTERNAL "" FORCE)
-  # set(CMAKE_MAKE_PROGRAM /mingw64/bin/mingw32-make CACHE INTERNAL "")
-  # set(CMAKE_MAKE_PROGRAM /mingw64/bin/mingw32-make CACHE FILEPATH "" FORCE)
+#   set(CMAKE_C_COMPILER "/mingw64/bin/gcc")
+#   set(CMAKE_CXX_COMPILER "/mingw64/bin/g++")
+#   set(CMAKE_Fortran_COMPILER "/mingw64/bin/gfortran")
+#   # set (CMAKE_GENERATOR "MSYS Makefiles" CACHE INTERNAL "" FORCE)
+#   # set(CMAKE_MAKE_PROGRAM /mingw64/bin/mingw32-make CACHE INTERNAL "")
+#   # set(CMAKE_MAKE_PROGRAM /mingw64/bin/mingw32-make CACHE FILEPATH "" FORCE)
 # endif(MSYS)
-endif()
 
 
+
+
+
+>>>>>>> ae0f1e5861dfa52de10723837df2edb9483532cf
 IF(NOT CMAKE_BUILD_TYPE)
   SET(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Build type (Release, Debug, RelWithDebugInfo, MinSizeRel)")
 ENDIF()
 
 # Explicitly set the compilers to use GCC and GFortran from MSYS2/MinGW-w64
 # Check if the OS is Windows
-# IF(WIN32)
-#   # message( FATAL_ERROR "Windows detected" )
-#     # Set the full paths to the compilers in the specified directory
-#     SET(CMAKE_C_COMPILER "C:/tools/msys64/mingw64/bin/gcc.exe")
-#     SET(CMAKE_CXX_COMPILER "C:/tools/msys64/mingw64/bin/g++.exe")
-#     SET(CMAKE_Fortran_COMPILER "C:/tools/msys64/mingw64/bin/gfortran.exe")
+IF(WIN32)
+    # Set the full paths to the compilers in the specified directory
+    SET(CMAKE_C_COMPILER "C:/tools/msys64/mingw64/bin/gcc.exe")
+    SET(CMAKE_CXX_COMPILER "C:/tools/msys64/mingw64/bin/g++.exe")
+    SET(CMAKE_Fortran_COMPILER "C:/tools/msys64/mingw64/bin/gfortran.exe")
 
-#     # Set the full path to the make program in the specified directory
-#     SET(CMAKE_MAKE_PROGRAM "C:/tools/msys64/mingw64/bin/mingw32-make.exe")
+    # Set the full path to the make program in the specified directory
+    SET(CMAKE_MAKE_PROGRAM "C:/tools/msys64/mingw64/bin/mingw32-make.exe")
 
-#     SET(BLAS_LIBRARIES C:/tools/msys64/mingw64/lib/libopenblas_64.a)
-#     SET(LAPACK_LIBRARIES C:/tools/msys64/mingw64/lib/libopenblas_64.a)
-#     SET(CMAKE_LIBRARY_PATH ${CMAKE_LIBRARY_PATH} "C:/tools/msys64/mingw64/lib")
-#     SET(CMAKE_INCLUDE_PATH ${CMAKE_INCLUDE_PATH} "C:/tools/msys64/mingw64/include")
-# ELSE()
-#   # message( FATAL_ERROR "Windows not detected")
-#   # message(FATAL_ERROR "Operating System: ${CMAKE_SYSTEM_NAME}")
-#   # message(FATAL_ERROR "Operating System: ${CMAKE_HOST_SYSTEM_NAME}")
-# ENDIF()
+    SET(BLAS_LIBRARIES C:/tools/msys64/mingw64/lib/libopenblas_64.a)
+    SET(LAPACK_LIBRARIES C:/tools/msys64/mingw64/lib/libopenblas_64.a)
+    SET(CMAKE_LIBRARY_PATH ${CMAKE_LIBRARY_PATH} "C:/tools/msys64/mingw64/lib")
+    SET(CMAKE_INCLUDE_PATH ${CMAKE_INCLUDE_PATH} "C:/tools/msys64/mingw64/include")
 
+ENDIF()
+
+
+PROJECT(Elmer Fortran C CXX)
 
 # CMAKE_VERSION seems to require this in minimum
 CMAKE_MINIMUM_REQUIRED(VERSION 1.0.2)
-
-PROJECT(Elmer Fortran C CXX)
-# PROJECT(Elmer)
-# message(FATAL_ERROR "Current CMAKE_MODULE_PATH: ${CMAKE_MODULE_PATH}")
-
-# if(${CMAKE_HOST_SYSTEM_NAME} STREQUAL "MSYS")
-#   TARGET_LINK_LIBRARIES(${YOUR_TARGET} ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
-# endif()
 
 IF(APPLE)
   SET(CMAKE_MACOSX_RPATH 1) 
@@ -357,20 +335,6 @@ cmake_policy(SET CMP0075 NEW)
   ELSE()
     IF (NOT BLAS_LIBRARIES OR NOT LAPACK_LIBRARIES)
       find_package(BLAS REQUIRED)
-      if (BLAS_FOUND)
-          message(STATUS "BLAS found: ${BLAS_LIBRARIES}")
-      else()
-          message(STATUS "BLAS not found. Manually setting the path.")
-          set(BLAS_LIBRARIES "/c/tools/msys64/mingw64/lib/libopenblas_64.a")
-      endif()
-
-      find_package(LAPACK REQUIRED)
-      if (LAPACK_FOUND)
-          message(STATUS "LAPACK found: ${LAPACK_LIBRARIES}")
-      else()
-          message(STATUS "LAPACK not found. Manually setting the path.")
-          set(LAPACK_LIBRARIES "/c/tools/msys64/mingw64/lib/libopenblas_64.a")
-      endif()
       # If BLAS/LAPACK not explicitly set, attempt to find MKL BLAS/LAPACK
       # FIND_PACKAGE(MKL QUIET)
       # IF (MKL_BLAS_LIBRARIES_FOUND AND MKL_LAPACK_LIBRARIES_FOUND)
@@ -586,8 +550,8 @@ ENDIF()
 MESSAGE(STATUS "------------------------------------------------")
 
 # MPI and LAPACK
-# FIND_PACKAGE(BLAS REQUIRED)
-# FIND_PACKAGE(LAPACK REQUIRED)
+FIND_PACKAGE(BLAS REQUIRED)
+FIND_PACKAGE(LAPACK REQUIRED)
 
 # message(${BLAS_LIBRARIES})
 # message(STATUS "BLAS_LIBRARIES=${BLAS_LIBRARIES}")

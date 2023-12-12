@@ -4,9 +4,9 @@
 #include "coreGeometry.h"
 #include <algorithm>
 
-#ifdef _NO_STD_MINMAX
-	#include "minmaxpatch.h"
-#endif
+// #ifdef _NO_STD_MINMAX
+// 	#include "minmaxpatch.h"
+// #endif
 
 //#define ORIGINAL
 

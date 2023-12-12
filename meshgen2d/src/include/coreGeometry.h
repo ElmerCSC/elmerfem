@@ -5,9 +5,9 @@
 #include <algorithm>
 
 #include "../../config.h"
-#if defined(_NO_STD_MINMAX) || defined(WIN32)
-	#include "minmaxpatch.h"
-#endif
+// #if defined(_NO_STD_MINMAX) || defined(WIN32)
+// 	#include "minmaxpatch.h"
+// #endif
 
 inline
 int inCircle(double x[4], double y[4])

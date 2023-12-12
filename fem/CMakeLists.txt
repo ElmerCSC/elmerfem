@@ -17,7 +17,7 @@ FUNCTION(FORTRANIZE infile outfile)
 ENDFUNCTION(FORTRANIZE infile outfile)
 
 #TODO: is this proper way of choosing shared library API?
-IF(WIN32)
+IF(WIN32 OR MSYS)
   UNSET(HAVE_DLOPEN_API)
   SET(HAVE_LOADLIBRARY_API TRUE)
 ELSEIF(UNIX)
