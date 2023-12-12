@@ -9667,10 +9667,8 @@ END FUNCTION SearchNodeL
      ExtrapolateInTime = ListGetLogical(CurrentModel % Simulation, &
               'Timestep extrapolation', GotIt  )
      IF( ExtrapolateInTime ) THEN
-       eFact = ListGetCReal(CurrentModel % Simulation, &
-           'Timestep extrapolation factor', GotIt )
+       eFact = ListGetCReal(CurrentModel % Simulation, 'Timestep extrapolation factor', GotIt )
        IF(.NOT.GotIt) eFact = 1._dp
-       ALLOCATE(NewVals(SIZE(Var % Values)))
      END IF
 
      IF ( Solver % TimeOrder>1 .OR. method/='bdf') THEN
@@ -9738,8 +9736,6 @@ END FUNCTION SearchNodeL
        END IF
      END IF
 
-     IF( ExtrapolateInTime ) DEALLOCATE(NewVals) 
-    
      IF( ListGetLogical( Solver % Values,'Nonlinear Timestepping', GotIt ) ) THEN
        IF( Solver % DoneTime > 1 ) THEN
          A => Solver % Matrix
