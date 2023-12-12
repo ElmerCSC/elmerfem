@@ -2698,7 +2698,7 @@ CONTAINS
     INTEGER :: i,p,q,t
     TYPE(GaussIntegrationPoints_t) :: IP
     COMPLEX(KIND=dp) :: STIFF(nd,nd), FORCE(nd)
-    REAL(KIND=dp) :: R(n), R_ip, Coord(3),Normal(3),mu,u,v,&
+    REAL(KIND=dp) :: R(n), R_ip, Coord(3),Normal(3),mu,u,v,x,&
         AirGapLength(nd), AirGapMu(nd), AirGapL
 
     TYPE(ValueList_t), POINTER :: Material
@@ -2728,6 +2728,11 @@ CONTAINS
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
               IP % W(t), detJ, Basis, dBasisdx )
 
+      IF( CSymmetry ) THEN
+        x = SUM( Basis(1:n) * Nodes % x(1:n) )
+        detJ = detJ * x
+      END IF
+      
       mu = 4*pi*1d-7*SUM(Basis(1:n)*AirGapMu(1:n))
       AirGapL = SUM(Basis(1:n)*AirGapLength(1:n))
 
@@ -2747,7 +2752,7 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: BC
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ
+    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,x
     LOGICAL :: Stat, Found
     INTEGER :: i,p,q,t
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -2776,6 +2781,11 @@ CONTAINS
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
               IP % W(t), detJ, Basis, dBasisdx )
 
+      IF( CSymmetry ) THEN
+        x = SUM( Basis(1:n) * Nodes % x(1:n) )
+        detJ = detJ * x
+      END IF
+      
       muAtIP = muVacuum*SUM(Basis(1:n)*Mu(1:n))
       condAtIp = SUM(Basis(1:n)*SkinCond(1:n))
 
