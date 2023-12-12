@@ -373,6 +373,7 @@ CONTAINS
                 j = SIZE(OldVar % PrevValues,2)
                 nvars = nvars+j
                 ALLOCATE(nVar % PrevValues(n,j))
+                nVar % PrevValues = 0._dp
              END IF
 
              OldVar => OldVar % Next

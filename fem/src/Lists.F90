@@ -1501,6 +1501,7 @@ CONTAINS
          NULLIFY( Var % PrevValues )
          IF ( ASSOCIATED( PVar % PrevValues ) ) THEN
             ALLOCATE( Var % PrevValues( DOFs, SIZE(PVar % PrevValues,2) ) )
+            Var % PrevValues = 0._dp
          END IF
 
          IF ( PVar % Name(1:PVar % NameLen) == 'flow solution' ) THEN

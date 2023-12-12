@@ -362,6 +362,7 @@
               nvars = nvars+j
               Nvar => VariableGet( Nmesh % Variables,Var % Name,ThisOnly=.TRUE.)
               ALLOCATE(Nvar % PrevValues(n,j))
+              Nvar % PrevValues = 0._dp
             END IF
           END IF
           Var => Var % Next
