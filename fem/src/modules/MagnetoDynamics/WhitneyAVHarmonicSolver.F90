@@ -1288,6 +1288,7 @@ END BLOCK
     REAL(KIND=dp) :: LocalLamThick, skind, babs, muder, AlocR(2,nd)
     REAL(KIND=dp) :: nu_11(nd), nuim_11(nd), nu_22(nd), nuim_22(nd)
     REAL(KIND=dp) :: nu_val, nuim_val
+    REAL(KIND=dp) :: sigma_33(nd), sigmaim_33(nd)
 
     COMPLEX(KIND=dp) :: mu, C(3,3), L(3), G(3), M(3), JfixPot(n), Nu(3,3)
     COMPLEX(KIND=dp) :: LocalLamCond, JAC(nd,nd), B_ip(3), Aloc(nd), &
@@ -1365,11 +1366,16 @@ END BLOCK
           nu_11 = GetReal(CompParams, 'nu 11', Found)
           nuim_11 = GetReal(CompParams, 'nu 11 im', FoundIm)
           IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 11 not found!')
+
           nu_22 = 0._dp
           nuim_22 = 0._dp
           nu_22 = GetReal(CompParams, 'nu 22', Found)
           nuim_22 = GetReal(CompParams, 'nu 22 im', FoundIm)
-          IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 22 not found!')
+          IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 11 not found!')
+
+          ! Sigma 33 is not needed in because it does not exist in stranded coil
+          ! Its contribution is taken into account in the circuit module if explicit coil resistance is not used!
+
           UseRotM = .TRUE.
         END IF
       ELSE IF( CoilType == 'foil winding') THEN

@@ -1,4 +1,4 @@
-! A beam case with some geometric appeal: spring
+! A beam case with some geometric appeal: A coil spring
 !
 ! To make the mesh:
 ! ElmerGrid 1 2 spring.grd
@@ -27,17 +27,17 @@ Body 1
 End
 
 Material 1
- Youngs Modulus = Real 0.2
- Shear Modulus = Real 1.0
+ Youngs Modulus = Real 200e+9
+ Shear Modulus = Real 79e+9
 
  ! Specify I_k:
- Second Moment of Area = Real 1.0
+ Second Moment of Area = Real 4.9087e-10
  ! Specify A:
- Cross Section Area = Real 1.0
+ Cross Section Area = Real 7.8540e-05
  ! Specify J_T:
- Torsional Constant = Real 1.0
+ Torsional Constant = Real 9.8175e-10
  ! The density is used only in transient cases:
- Density = 2700.0
+ Density = 7800.0
 End
 
 
@@ -48,9 +48,18 @@ Solver 1
   Procedure = "BeamSolver3D" "TimoshenkoSolver"
 
   Nonlinear System Max Iterations = 1
-  Linear System Solver = "Direct"
-  Linear System Direct Method = umfpack
+!  Linear System Solver = "Direct"
+!  Linear System Direct Method = umfpack
   Displace Mesh = True
+  Linear system solver = iterative
+  Linear system iterative method = GCR
+  Linear system GCR restart = 100
+  Linear system preconditioning = ILUT
+  Linear System ILUT Tolerance = 5.0e-7
+  Linear System Max Iterations = 5000
+  Linear System Convergence Tolerance = 1e-13
+  Linear System Row Equilibration = True
+  Linear System Normwise Backward Error = True
 End
 
 
@@ -59,6 +68,9 @@ Boundary Condition 1
   U 1 = Real 0.0
   U 2 = Real 0.0
   U 3 = Real 0.0
+  Theta 1 = Real 0.0
+  Theta 2 = Real 0.0
+  Theta 3 = Real 0.0
 End
 
 Boundary Condition 2
@@ -69,5 +81,4 @@ Boundary Condition 2
 End
 
 
-Solver 1 :: Reference Norm = 2.67079205E-01
-
+Solver 1 :: Reference Norm = 2.17493792E-01

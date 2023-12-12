@@ -336,6 +336,17 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
       END IF
     END IF
 
+    IF ( GetLogical( SolverParams, 'Calculate Homogenization Loss', Found ) ) THEN
+      IF( RealField ) THEN
+        CALL Warn('MagnetoDynamicsCalcFields',&
+            'Homogenization loss computation only available for complex systems!')
+      ELSE
+        i = i + 1
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
+            "Proximity Loss" )
+      END IF
+    END IF
+
     IF ( Transient .OR. .NOT. RealField .OR. LorentzConductivity) THEN
       IF ( GetLogical( SolverParams, 'Calculate Electric Field', Found ) ) THEN
         i = i + 1
@@ -507,6 +518,17 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
       END IF
     END IF
 
+    IF ( GetLogical( SolverParams, 'Calculate Homogenization Loss', Found ) ) THEN
+      IF( RealField ) THEN
+        CALL Warn('MagnetoDynamicsCalcFields',&
+            'Homogenization loss computation only available for complex systems!')
+      ELSE
+        i = i + 1
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
+            "-dg Proximity Loss E" )
+      END IF
+    END IF
+
     IF ( Transient .OR. ComplexField .OR. LorentzConductivity ) THEN
       IF ( GetLogical( SolverParams, 'Calculate Electric Field', Found ) ) THEN
         i = i + 1
@@ -600,7 +622,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    COMPLEX(KIND=dp) :: CST(3,3)
    COMPLEX(KIND=dp) :: CMat_ip(3,3)  
    COMPLEX(KIND=dp) :: imag_value, Zs
-   COMPLEX(KIND=dp), ALLOCATABLE :: Tcoef(:,:,:)
+   COMPLEX(KIND=dp), ALLOCATABLE :: Tcoef(:,:,:), Nu_el(:,:,:)
    COMPLEX(KIND=dp), POINTER, SAVE :: Reluct_Z(:,:,:) => NULL()
    COMPLEX(KIND=dp) :: R_ip_Z, Nu(3,3)
 
@@ -608,10 +630,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    INTEGER, PARAMETER :: ind2(6) = [1,2,3,2,3,3]
 
    TYPE(Variable_t), POINTER :: Var, MFD, MFS, CD, SCD, EF, MST, ESP, &
-                                JH, NJH, VP, FWP, MPerm, JXB, ML, ML2, LagrangeVar, NF
+                                JH, NJH, VP, FWP, MPerm, JXB, ML, ML2, &
+                                LagrangeVar, NF, PL
+                                
    TYPE(Variable_t), POINTER :: EL_MFD, EL_MFS, EL_CD, EL_EF, &
                                 EL_MST, EL_JH, EL_VP, EL_FWP, EL_MPerm, EL_JXB, EL_ML, EL_ML2, &
-                                EL_NF
+                                EL_NF, EL_SL, EL_PL
 
    INTEGER :: Active,i,j,k,l,m,n,nd,np,p,q,DOFs,vDOFs,dim,BodyId,&
               VvarDofs,VvarId,IvarId,Reindex,Imindex,EdgeBasisDegree,eq_n, Indexes(100)
@@ -621,7 +645,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    TYPE(ValueList_t), POINTER :: Material, BC, BodyForce, BodyParams, SolverParams, PrevMaterial
 
-   LOGICAL :: Found, FoundMagnetization, stat, LossEstimation, &
+   LOGICAL :: Found, FoundIm, FoundMagnetization, stat, LossEstimation, HomogenizationLoss, &
               CalcFluxLogical, CoilBody, PreComputedElectricPot, ImposeCircuitCurrent, &
               ItoJCoeffFound, ImposeBodyForceCurrent, HasVelocity, HasAngularVelocity, &
               HasLorenzVelocity, HaveAirGap, UseElementalNF, HasTensorReluctivity, &
@@ -799,6 +823,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    JXB => NULL(); EL_JXB => NULL();
    ML  => NULL(); EL_ML => NULL();
    ML2 => NULL(); EL_ML2 => NULL();
+   PL => NULL(); EL_PL => NULL();
    NF => NULL(); EL_NF => NULL();
    NJH => NULL()
    
@@ -837,6 +862,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      EL_ML => VariableGet( Mesh % Variables, 'Harmonic Loss Linear E')
      ML2 => VariableGet( Mesh % Variables, 'Harmonic Loss Quadratic')
      EL_ML2 => VariableGet( Mesh % Variables, 'Harmonic Loss Quadratic E')
+     PL => VariableGet( Mesh % Variables, 'Proximity Loss')
+     EL_PL => VariableGet( Mesh % Variables, 'Proximity Loss E')
    END IF
 
    JXB => VariableGet( Mesh % Variables, 'JxB')
@@ -860,13 +887,14 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    IF ( ASSOCIATED(JH) .OR. ASSOCIATED(EL_JH) .OR. ASSOCIATED(NJH)) DOFs=DOFs+1   
    IF ( ASSOCIATED(ML) .OR. ASSOCIATED(EL_ML) ) DOFs=DOFs+1
    IF ( ASSOCIATED(ML2) .OR. ASSOCIATED(EL_ML2) ) DOFs=DOFs+1   
+   IF ( ASSOCIATED(PL) .OR. ASSOCIATED(EL_PL) ) DOFs=DOFs+1   
    IF ( ASSOCIATED(NF) .OR. ASSOCIATED(EL_NF) ) DOFs=DOFs+fdim
 
 
    CALL Info('MagnetoDynamicsCalcFields',&
        'Number of components to compute: '//I2S(DOFs),Level=8)
 
-   MaxFields = 14  !  
+   MaxFields = 15  !  
 
    NodalFieldPointers(1) % Field => MFD
    NodalFieldPointers(2) % Field => MFS
@@ -882,6 +910,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    NodalFieldPointers(12) % Field => JH
    NodalFieldPointers(13) % Field => ML
    NodalFieldPointers(14) % Field => ML2
+   NodalFieldPointers(15) % Field => PL
    
    ElementalFieldPointers(1) % Field => EL_MFD
    ElementalFieldPointers(2) % Field => EL_MFS
@@ -896,7 +925,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    ElementalFieldPointers(11) % Field => EL_JH
    ElementalFieldPointers(12) % Field => EL_ML
    ElementalFieldPointers(13) % Field => EL_ML2
-   ElementalFieldPointers(14) % Field => Null()
+   ElementalFieldPointers(14) % Field => EL_PL
+   ElementalFieldPointers(15) % Field => Null()
 
    NodalFields = .FALSE.; ElementalFields = .FALSE.
    DO i=1,MaxFields
@@ -958,6 +988,10 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
       ALLOCATE( BodyLoss(3,Model % NumberOfBodies) )
       BodyLoss = 0.0_dp
    END IF
+
+   HomogenizationLoss = ASSOCIATED(PL) .OR. ASSOCIATED(EL_PL)
+
+   IF (HomogenizationLoss) ALLOCATE( Nu_el(3,3,n) )
 
    VtuStyle = .FALSE.
    cdofs = 1
@@ -1166,6 +1200,43 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          N_j = GetConstReal (CompParams, 'Stranded Coil N_j', Found)
          IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Stranded Coil N_j not found!')
 
+         IF (HomogenizationLoss) THEN
+           BLOCK
+             REAL(KIND=dp) :: nu_11(n), nuim_11(n), nu_22(n), nuim_22(n)
+             REAL(KIND=dp) :: sigma_33(n), sigmaim_33(n)
+
+             nu_11 = 0._dp
+             nuim_11 = 0._dp
+             nu_11 = GetReal(CompParams, 'nu 11', Found)
+             nuim_11 = GetReal(CompParams, 'nu 11 im', FoundIm)
+             IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 11 not found!')
+             nu_22 = 0._dp
+             nuim_22 = 0._dp
+             nu_22 = GetReal(CompParams, 'nu 22', Found)
+             nuim_22 = GetReal(CompParams, 'nu 22 im', FoundIm)
+             IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 22 not found!')
+             Nu_el = CMPLX(0.0d0, 0.0d0, kind=dp)
+             Nu_el(1,1,1:n) = nu_11(1:n) + im * nuim_11(1:n)
+             Nu_el(2,2,1:n) = nu_22(1:n) + im * nuim_22(1:n)
+
+             sigma_33 = GetReal(CompParams, 'sigma 33', Found)
+             IF ( .NOT. Found ) sigma_33 = 0._dp
+             sigmaim_33 = GetReal(CompParams, 'sigma 33 im', FoundIm)
+             IF ( .NOT. FoundIm ) sigmaim_33 = 0._dp
+             IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model sigma 33 not found!')
+
+             Tcoef = 0._dp
+             Tcoef(1,1,1:n) = sigma_33(1:n) + im * sigmaim_33(1:n) ! stranded uses only sigma 33
+             Tcoef(2,2,1:n) = Tcoef(1,1,1:n)
+             Tcoef(3,3,1:n) = Tcoef(1,1,1:n)
+             IF (dim == 3) THEN
+               CALL GetElementRotM(Element, RotM, n)
+               DO k = 1,n
+                 Nu_el(1:3,1:3,k) = MATMUL(MATMUL(RotM(1:3,1:3,k), Nu_el(1:3,1:3,k)), TRANSPOSE(RotM(1:3,1:3,k)))
+               END DO
+             END IF
+           END BLOCK
+         END IF
          !nofturns = GetConstReal(CompParams, 'Number of Turns', Found)
          !IF (.NOT. Found) CALL Fatal('MagnetoDynamicsCalcFields','Stranded Coil: Number of Turns not found!')
        CASE ('massive')
@@ -1603,6 +1674,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
              GaussPoint = j, Rdim=mudim, Rtensor=MuTensor, DummyVals = B(1,:) )             
          Nu(1:3,1:3) = muTensor(1:3,1:3)                           
          w_dens = 0.5*SUM(B(1,:)*MATMUL(REAL(Nu), B(1,:)))
+       ELSE IF (HomogenizationLoss .AND. CoilType == 'stranded') THEN
+         DO k=1,3
+           DO l=1,3
+             Nu(k,l) = SUM( Nu_el(k,l,1:n) * Basis(1:n) )
+           END DO
+         END DO
        ELSE
          IF (HasTensorReluctivity) THEN
            IF (SIZE(Reluct_Z,2) == 1) THEN
@@ -1965,6 +2042,24 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            END IF
          END IF
 
+         IF ( HomogenizationLoss .AND. CoilType == 'stranded') THEN
+           ! homogenization loss should be real part of im omega b . conj(h)/2
+           BLOCK
+             COMPLEX(KIND=dp) :: Bloc(3)=0._dp
+             COMPLEX(KIND=dp) :: Hloc(3)=0._dp
+
+             Bloc = B(1, 1:3) + im * B(2, 1:3)
+             Hloc = MATMUL(Nu(1:3, 1:3), Bloc)
+             Coeff = s * Basis(p) * REAL(im * Omega * SUM(Bloc * CONJG(Hloc))/2._dp)
+           END BLOCK
+
+           IF ( ASSOCIATED(PL) .OR. ASSOCIATED(EL_PL) ) THEN
+             FORCE(p,k+1) = FORCE(p,k+1) + Coeff
+             k = k + 1
+           END IF
+
+         END IF
+
          IF ( ASSOCIATED(MST).OR.ASSOCIATED(EL_MST)) THEN
            IF ( Vdofs==1 ) THEN
              DO l=1,3
@@ -2051,6 +2146,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        CALL LocalSol(EL_JH,   1, n, eq_n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_ML,   1, n, eq_n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_ML2,  1, n, eq_n, MASS, FORCE, pivot, Dofs)
+       CALL LocalSol(EL_PL,  1, n, eq_n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_MST,  6*vdofs, n, eq_n, MASS, FORCE, pivot, Dofs)
 
        ! This is a nodal quantity
@@ -2230,6 +2326,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
      CALL GlobalSol(ML ,  1      , Gforce, Dofs, EL_ML)
      CALL GlobalSol(ML2,  1      , Gforce, Dofs, EL_ML2)
+     CALL GlobalSol(PL ,  1      , Gforce, Dofs, EL_PL)
      CALL GlobalSol(MST,  6*vdofs, Gforce, Dofs, EL_MST)
 
      IF (ASSOCIATED(NF)) THEN
@@ -3183,6 +3280,8 @@ CONTAINS
     END DO ! Boundary elements
     
     DEALLOCATE( LeftFORCE, RightFORCE, RightMap, LeftMap, AirGapForce )
+
+    IF (HomogenizationLoss) DEALLOCATE (Nu_el)
 !-------------------------------------------------------------------
   END SUBROUTINE CalcBoundaryModels
 !-------------------------------------------------------------------
