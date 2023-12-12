@@ -679,7 +679,7 @@ CONTAINS
               ELSE IF ( PCondType == PRECOND_ILUT ) THEN
                 Condition = CRS_ComplexILUT( A,ILUT_TOL )
               END IF
-            ELSE IF (ILUn>=0) THEN
+            ELSE IF (ILUn>=0 .OR. PCondType == PRECOND_ILUT) THEN
               SELECT CASE(PCondType)
               CASE(PRECOND_ILUn, PRECOND_Circuit)
                 NullEdges = ListGetLogical(Params, 'Edge Basis', GotIt)
