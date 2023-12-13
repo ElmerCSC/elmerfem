@@ -981,7 +981,7 @@
 
 
      SUBROUTINE TabulateEmissivity()
-       REAL(KIND=dp) :: Transmittivity
+       REAL(KIND=dp) :: Transmissivity
        LOGICAL :: Found, ThisConstant, SomeEmissivity0
        INTEGER :: i,j,k,n
        TYPE(ValueList_t), POINTER :: BC
@@ -1062,11 +1062,11 @@
            n = Element % TYPE % NumberOfNodes          
            CurrentModel % CurrentElement => Element
            Emissivity(i) = SUM( ListGetReal( Vlist,'Emissivity',n,Element % NodeIndexes) ) / n
-           Transmittivity= SUM( ListGetReal( Vlist,'Transmittivity',n,Element % NodeIndexes, Found) ) / n
+           Transmissivity= SUM( ListGetReal( Vlist,'Transmissivity',n,Element % NodeIndexes, Found) ) / n
            IF(.NOT. Found ) Absorptivity(i) = Emissivity(i)
            Absorptivity(i) = SUM( ListGetReal( Vlist,'Absorptivity',n,Element % NodeIndexes, Found) ) / n
            IF(.NOT. Found ) Absorptivity(i) = Emissivity(i)
-           Reflectivity(i) = 1.0_dp - Absorptivity(i) - Transmittivity
+           Reflectivity(i) = 1.0_dp - Absorptivity(i) - Transmissivity
          END IF
        END DO
        

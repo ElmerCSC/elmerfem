@@ -3660,7 +3660,16 @@ CONTAINS
         END IF
       END DO
     END BLOCK
-      
+
+    DO i=1,Model % NumberOfBCs
+      List => Model % BCs(i) % Values
+      CALL ListObsoliteFatal( List,'Transmittivity','Transmissivity') 
+    END DO
+    DO i=1,Model % NumberOfMaterials
+      List => Model % Materials(i) % Values
+      CALL ListObsoliteFatal( List,'Transmittivity','Transmissivity') 
+    END DO
+          
 
   END SUBROUTINE CompleteModelKeywords
   
