@@ -607,7 +607,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    COMPLEX(KIND=dp), ALLOCATABLE :: R_Z(:), PR(:)
 !------------------------------------------------------------------------------
    REAL(KIND=dp) :: s,u,v,w, Norm
-   REAL(KIND=dp) :: B(2,3), E(2,3), JatIP(2,3), VP_ip(2,3), JXBatIP(2,3), CC_J(2,3), HdotB
+   REAL(KIND=dp) :: B(2,3), E(2,3), JatIP(2,3), VP_ip(2,3), JXBatIP(2,3), CC_J(2,3), HdotB, LMSol(2)
    REAL(KIND=dp) :: ldetJ,detJ, C_ip, ST(3,3), Omega, ThinLinePower, Power, Energy(3), w_dens
    REAL(KIND=dp) :: localThickness
    REAL(KIND=dp) :: Freq, FreqPower, FieldPower, LossCoeff, ValAtIP
@@ -625,7 +625,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    COMPLEX(KIND=dp), ALLOCATABLE :: Tcoef(:,:,:), Nu_el(:,:,:)
    COMPLEX(KIND=dp), POINTER, SAVE :: Reluct_Z(:,:,:) => NULL()
    COMPLEX(KIND=dp) :: R_ip_Z, Nu(3,3)
-
+   
    INTEGER, PARAMETER :: ind1(6) = [1,2,3,1,2,1]
    INTEGER, PARAMETER :: ind2(6) = [1,2,3,2,3,3]
 
@@ -641,7 +641,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
               VvarDofs,VvarId,IvarId,Reindex,Imindex,EdgeBasisDegree,eq_n, Indexes(100)
 
    TYPE(Solver_t), POINTER :: pSolver, ElPotSolver
-   CHARACTER(LEN=MAX_NAME_LEN) :: Pname, CoilType, ElectricPotName, LossFile, CurrPathPotName
+   CHARACTER(LEN=MAX_NAME_LEN) :: Pname, CoilType, ElectricPotName, LossFile, CurrPathPotName, str
 
    TYPE(ValueList_t), POINTER :: Material, BC, BodyForce, BodyParams, SolverParams, PrevMaterial
 
@@ -757,7 +757,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    IF (PiolaVersion) &
        CALL Info('MagnetoDynamicsCalcFields', &
        'Using Piola transformed finite elements',Level=5)
-
+      
    ElectricPotName = GetString(SolverParams, 'Precomputed Electric Potential', PrecomputedElectricPot)
    IF (PrecomputedElectricPot) THEN
      DO i=1, Model % NumberOfSolvers
@@ -769,7 +769,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    ! Do have impedance BCs? 
    LayerBC = (ListCheckPresentAnyBC(Model, 'Layer Electric Conductivity') .AND. vdofs==2) 
    jh_k = 0
-   
+
    ! Do we have a real or complex valued primary field?
    RealField = ( vDofs == 1 ) 
 
@@ -787,8 +787,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        ListCheckPrefixAnyBodyForce(Model, "Lorentz Velocity")
 
    Mesh => GetMesh()
-   LagrangeVar => VariableGet( Solver % Mesh % Variables,'LagrangeMultiplier', ThisOnly=.TRUE.)
 
+   LagrangeVar => NULL()
+   str = LagrangeMultiplierName( pSolver )
+   LagrangeVar => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE.)
+   
    MFD => VariableGet( Mesh % Variables, 'Magnetic Flux Density' )
    EL_MFD => VariableGet( Mesh % Variables, 'Magnetic Flux Density E' )
 
@@ -1461,7 +1464,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                wvec = wvec/SQRT(SUM(wvec**2._dp)) !Why were we doing this? 04132021 -ettaka
              END IF
            END SELECT
-
 
            IF(CMat_ip(3,3) /= 0._dp ) THEN
              imag_value = LagrangeVar % Values(IvarId) + im * LagrangeVar % Values(IvarId+1)
@@ -2183,6 +2185,17 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
        mu_r = ListGetCReal(BC, 'Layer Relative Permeability', Found)
        IF (.NOT. Found) mu_r = 1.0_dp
+
+       LMsol = 0.0_dp
+       IF( ASSOCIATED( LagrangeVar ) ) THEN
+         IF( ListGetLogical( BC,'Flux Integral BC', Found ) ) THEN
+           k = GetBCId( Element ) 
+           IF( ASSOCIATED( pSolver % MortarBCs ) ) THEN
+             k = pSolver % MortarBCs(k) % rowoffset
+             LMSol(1:2) = LagrangeVar % Values(k+1:k+2)
+           END IF
+         END IF
+       END IF
        
        n = GetElementNOFNodes(Element)     
        nd = GetElementNOFDOFs(uElement=Element, uSolver=pSolver)
@@ -2223,8 +2236,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            IF( dim == 2 ) THEN
              E(1,1:2) = 0.0_dp
              E(2,1:2) = 0.0_dp
-             E(1,3) = Omega*SUM(SOL(2,1:nd) * Basis(1:nd))
-             E(2,3) = -Omega*SUM(SOL(1,1:nd) * Basis(1:nd))
+             E(1,3) = Omega * (SUM(SOL(2,1:nd) * Basis(1:nd)) - LMsol(2))
+             E(2,3) = -Omega * (SUM(SOL(1,1:nd) * Basis(1:nd)) - LMsol(1))
            ELSE
              E(1,:) = Omega * MATMUL(SOL(2,np+1:nd), WBasis(1:nd-np,:)) - MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
              E(2,:) = -Omega * MATMUL(SOL(1,np+1:nd), WBasis(1:nd-np,:)) - MATMUL(SOL(2,1:np), dBasisdx(1:np,:))
