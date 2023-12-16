@@ -276,9 +276,9 @@
            ! get element information
            Element => GetBoundaryElement(t)
            !IF ( .NOT.ActiveBoundaryElement() ) CYCLE
-           IF ((ParEnv % PEs > 1) .AND. &
-            (ParEnv % myPe /= Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1))) CYCLE
-
+           IF (ParEnv % PEs > 1) THEN
+              IF (ParEnv % myPe /= Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
+           END IF
            n = GetElementNOFNodes()
            IF ( GetElementFamily() == 1 ) CYCLE
    
