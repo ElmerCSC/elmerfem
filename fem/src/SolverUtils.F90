@@ -5104,11 +5104,14 @@ CONTAINS
         
         IF (ListGetLogical(ValueList,PassCondName,GotIt)) THEN
           IF (.NOT.CheckPassiveElement(Element)) CYCLE
+
           DO j=1,n
             k=Indexes(j)
             IF (k<=0) CYCLE
+
             k=Perm(k)
             IF (k<=0) CYCLE
+
             s=0._dp
             DO l=1,NDOFs
               m=NDOFs*(k-1)+l
@@ -5349,24 +5352,33 @@ CONTAINS
       DO i=1,Solver % NumberOfActiveElements
         Element => Mesh % Elements(Solver % ActiveElements(i))
         IF (CheckPassiveElement(Element)) THEN
-          n = mGetElementDOFs(Indexes,UElement=Element)
-          DO j=1,n
-            k=Indexes(j)
+          nd = mGetElementDOFs(Indexes,UElement=Element)
+          n  = Element % Type % NumberOfNodes
+          DO j=1,nd
+            k = Indexes(j)
             IF (k<=0) CYCLE
 
             k=Perm(k)
             IF (k<=0) CYCLE
 
-            IF(PassPerm(Indexes(j))==1) CYCLE
+            IF(Indexes(j)<=SIZE(PassPerm)) THEN
+              IF(PassPerm(Indexes(j))==1) CYCLE
+            END IF
 
-            s=0._dp
+!           s=0._dp
+!           DO l=1,NDOFs
+!             m=NDOFs*(k-1)+l
+!             s=s+ABS(A % Values(A % Diag(m)))
+!           END DO
+!           IF (s>EPSILON(s)) CYCLE
+
+
             DO l=1,NDOFs
+              s=0._dp
               m=NDOFs*(k-1)+l
               s=s+ABS(A % Values(A % Diag(m)))
-            END DO
-            IF (s>EPSILON(s)) CYCLE
+              IF (s>EPSILON(s)) CYCLE
 
-            DO l=1,NDOFs
               m = NDOFs*(k-1)+l
               IF(A % ConstrainedDOF(m)) CYCLE
               CALL SetSinglePoint(k,l,Solver % Variable % Values(m),.FALSE.)
