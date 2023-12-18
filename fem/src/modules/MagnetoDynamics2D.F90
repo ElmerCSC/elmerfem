@@ -1738,13 +1738,16 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
       LVar % PrevValues(:,1) = LVar % Values
     END IF
 
-    Lvar => VariableGet( Mesh % Variables,'LagrangeMultiplier')
+    sname = LagrangeMultiplierName( Solver )
+    Lvar => VariableGet( Mesh % Variables, sname, ThisOnly = .TRUE. )
     IF ( ASSOCIATED(Lvar) ) THEN
       CALL Info(Caller,&
           'Size of Lagrange Multiplier: '//I2S(SIZE(LVar % Values)),Level=8)
       DO i=1,SIZE( LVar % Values ) / 2
         Lvar % Values(i) = Lvar % Values(2*(i-1)+1)
       END DO
+    ELSE
+      CALL Info(Caller,'Could not find Lagrange Multiplier for restart: '//TRIM(sname))
     END IF
     CALL Info(Caller,'Harmonic solution provided as initial guess for transient system!')
     RestartDone = .TRUE.
@@ -3182,7 +3185,7 @@ CONTAINS
     COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
     REAL(KIND=dp) :: localV(2), coilthickness, localAlpha, N_j
     TYPE(ValueList_t), POINTER :: CompParams
-    CHARACTER(LEN=MAX_NAME_LEN) :: CoilType, bodyNumber, XYNumber
+    CHARACTER(LEN=MAX_NAME_LEN) :: CoilType, bodyNumber, XYNumber, str
     LOGICAL :: CoilBody, EddyLoss
     COMPLEX(KIND=dp) :: imag_value, imag_value2
     INTEGER :: IvarId, ReIndex, ImIndex, VvarDofs, VvarId
@@ -3216,7 +3219,11 @@ CONTAINS
     ALLOCATE( STIFF(n,n), FORCE(Totdofs,n) )
     ALLOCATE( POT(2,n), Basis(n), dBasisdx(n,3), alpha(n) )
     ALLOCATE( Cond(n), mu(n), sigma_33(n), sigmaim_33(n), CoreLossUDF(n)) 
-    LagrangeVar => VariableGet( Solver % Mesh % Variables,'LagrangeMultiplier')
+    
+
+    str = LagrangeMultiplierName( Azsol % Solver )
+    LagrangeVar => VariableGet( Solver % Mesh % Variables, str, ThisOnly = .TRUE.)
+
     ModelDepth = GetCircuitModelDepth()
 
     IF( JouleHeating ) THEN

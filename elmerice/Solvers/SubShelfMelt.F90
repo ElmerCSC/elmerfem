@@ -193,10 +193,10 @@
 
   rhoi =  GetConstReal( CurrentModel % Constants,'Ice Density',Found)
   IF (.NOT.Found) CALL FATAL(Solvername,'Ice Density not found in Constants')
-  rhoo =  GetConstReal( CurrentModel % Constants,'SW Density',Found)
-  IF (.NOT.Found) CALL FATAL(Solvername,'SW Density not found in Constants')
-  Lf =  GetConstReal( CurrentModel % Constants,'Latent Heat',Found)
-  IF (.NOT.Found) CALL FATAL(Solvername,'Latent Heat not found in Constants')
+  rhoo =  GetConstReal( CurrentModel % Constants,'Ocean Water Density',Found)
+  IF (.NOT.Found) CALL FATAL(Solvername,'Ocean Water Density not found in Constants')
+  Lf =  GetConstReal( CurrentModel % Constants,'Latent Heat SI',Found)
+  IF (.NOT.Found) CALL FATAL(Solvername,'Latent Heat SI not found in Constants')
   SWCp =  GetConstReal( CurrentModel % Constants,'SW Cp',Found) ! specific heat of sea water
   IF (.NOT.Found) CALL FATAL(Solvername,'SW Cp not found in Constants')
   

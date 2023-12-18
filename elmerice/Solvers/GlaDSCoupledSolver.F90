@@ -276,9 +276,9 @@
            ! get element information
            Element => GetBoundaryElement(t)
            !IF ( .NOT.ActiveBoundaryElement() ) CYCLE
-           IF ((ParEnv % PEs > 1) .AND. &
-            (ParEnv % myPe /= Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1))) CYCLE
-
+           IF (ParEnv % PEs > 1) THEN
+              IF (ParEnv % myPe /= Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
+           END IF
            n = GetElementNOFNodes()
            IF ( GetElementFamily() == 1 ) CYCLE
    
@@ -301,13 +301,23 @@
         FirstTime = .FALSE.
         Constants => GetConstants()
 
-        WaterDensity = ListGetConstReal( Constants, 'Water Density', UnFoundFatal=.TRUE. )
+        WaterDensity = ListGetConstReal( Constants, 'Fresh Water Density', Found )
+        IF (.NOT. Found) THEN           
+           WaterDensity = ListGetConstReal( Constants, 'Water Density', Found )
+           IF (Found) THEN
+              WRITE(Message,'(A)') 'Constant name >Water Density< has been &
+                   replaced with >Fresh Water Density< due to naming conflict'
+              CALL WARN(SolverName, Message )
+           END IF
+           CALL FATAL(SolverName, 'Constant >Fresh Water Density< not found')
+        END IF
+        
         gravity = ListGetConstReal( Constants, 'Gravity Norm', UnFoundFatal=.TRUE. )
         Lw = ListGetConstReal( Constants, 'Latent Heat', UnFoundFatal=.TRUE. ) 
 
         ChannelAreaName = GetString( Constants, &
             'Channel Area Variable Name', Found )
-        IF(.NOT.Found) THEN        
+        IF(.NOT.Found) THEN
            CALL WARN(SolverName,'Keyword >Channel Area Variable Name< not found in section Constants')
            CALL WARN(SolverName,'Taking default value >Channel Area<')
            WRITE(ChannelAreaName,'(A)') 'Channel Area'

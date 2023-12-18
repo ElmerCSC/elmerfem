@@ -218,11 +218,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     CALL Circuits_MatrixInit()
     ALLOCATE(Crt(Model % Circuit_tot_n))
 
-    MultName = ListGetString( Solver % Values, 'Lagrange Multiplier Name', Found )
-    IF ( .NOT. Found ) THEN
-      MultName = 'LagrangeMultiplier'
-      CALL Info(Caller,'Defaulting name of Lagrange multiplier to: '//TRIM(MultName),Level=8)
-    END IF      
+    MultName = LagrangeMultiplierName(ASolver)
   END IF
   
   ! If we have angle given explicitly, do not compute it 
@@ -2565,7 +2561,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
   REAL (KIND=dp), ALLOCATABLE, SAVE :: Az0(:)
   REAL (KIND=dp), POINTER :: Acorr(:)
   CHARACTER(*), PARAMETER :: Caller = 'CircuitsOutput'
-  CHARACTER(LEN=MAX_NAME_LEN), SAVE :: CktPrefix
+  CHARACTER(LEN=MAX_NAME_LEN), SAVE :: CktPrefix, sname
   LOGICAL :: Parallel
 !------------------------------------------------------------------------------  
       
@@ -2657,7 +2653,9 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
   ALLOCATE(crt(circuit_tot_n), crtt(circuit_tot_n))
    crt = 0._dp
    crtt = 0._dp
-   LagrangeVar => VariableGet( Solver % Mesh % Variables,'LagrangeMultiplier')
+
+   sname = LagrangeMultiplierName( ASolver )
+   LagrangeVar => VariableGet( ASolver % Mesh % Variables,sname)
    IF(ASSOCIATED(LagrangeVar)) THEN
      CALL Info(Caller,'Initializing Lagrange multipliers of size: '&
          //I2S(SIZE(LagrangeVar % Values)),Level=8)
