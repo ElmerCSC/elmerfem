@@ -510,7 +510,6 @@ END FUNCTION isComponentName
             CVar % isVvar = .TRUE.
             CVar % Component % vvar => CVar
           ELSE
-            CompInd = CompInd - 1
             Cvar % Component => Null()
             CVar % isIvar = .FALSE.
             CVar % isVvar = .FALSE.
