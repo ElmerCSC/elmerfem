@@ -16,7 +16,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 25
+  Max Output Level = 7
   Coordinate System = "Cartesian"
 
   Simulation Type = "Steady State"
@@ -60,7 +60,6 @@ Solver 1
 
 ! This is needed to set the Robin integral constraints
   Apply Integral BCs = True
-  Export Lagrange Multiplier = True
 End  
 
 Solver 2
@@ -73,11 +72,10 @@ Solver 2
   Operator 2 = boundary max
   Variable 3 = Temperature Loads
   Operator 3 = "boundary sum"
-  Variable 4 = LagrangeMultiplier 
+  Variable 4 = Lagrange Multiplier HeatEquation
 
-! We ensure the operation of the feature by checking the total
-! flux into the smaller square. It should vanish in absolute terms. 
-  Show Norm Index = 3
+! Value of Lagrange Multiplier will be checked for in the test.
+  Show Norm Index = 4
 End 
 
 
@@ -104,19 +102,15 @@ Boundary Condition 2
 
   Heat Transfer Coefficient = 1.0
 
-! This is the value we are looking for such that total flux vanishes. 
+! This is the value we are looking for such that total flux vanishes
+! and also the value of Lagrange Multiplier.
 !  External Temperature = 7.858732394942E-001
 
   Flux Integral BC = Logical True
-!  Integral BC Temperature = Real 1.0
-!Temperature Constant = Logical True
   Save Scalars = True
 End
 
 Solver 1 :: Reference Norm = 5.49159842E-01
-Solver 2 :: Reference Norm = 0.0
-! Comparing to zero use absolute norm!
-Solver 2 :: Reference Norm Absolute = Logical True
-
+Solver 2 :: Reference Norm = 7.858732394942E-001
 
 
