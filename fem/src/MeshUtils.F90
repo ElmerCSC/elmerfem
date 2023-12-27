@@ -19437,6 +19437,12 @@ CONTAINS
 
      SELECT CASE( MaxElemDim )
 
+     CASE(1)
+       IF ( .NOT.ASSOCIATED( Mesh % Edges ) ) THEN
+         CALL Info('FindMeshEdges','Determining edges in 1D mesh',Level=8)
+         CALL FindMeshEdges2D( Mesh )
+       END IF
+
      CASE(2)
        IF ( .NOT.ASSOCIATED( Mesh % Edges ) ) THEN
          CALL Info('FindMeshEdges','Determining edges in 2D mesh',Level=8)
@@ -19574,8 +19580,10 @@ CONTAINS
     
     Masked = PRESENT(BulkMask)
     
-    DO i=1,SIZE(Mesh % Elements)
+    DO i=1,Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements
        Element => Mesh % Elements(i)
+       IF(.NOT.ASSOCIATED(Element)) CYCLE
+       IF(Element % Type % ElementCode < 200) CYCLE
 
        IF(Masked) THEN
          j = i
@@ -19614,7 +19622,7 @@ CONTAINS
 
     Edges => NULL()
     NofEdges = 0
-1   DO i=1,SIZE(Mesh % Elements)
+1   DO i=1,Mesh % NumberOfBulkELements+Mesh % NumberOfBoundaryElements
 
        Element => Mesh % Elements(i)
 
@@ -19711,7 +19719,7 @@ CONTAINS
            END IF
                       
            IF(.NOT. ASSOCIATED(Edges(Edge) % TYPE ) ) THEN
-             Degree = Element % TYPE % BasisFunctionDegree             
+             Degree = MAX( Element % TYPE % BasisFunctionDegree, 1)
 
              Edges(Edge) % ElementIndex = Edge
              CALL AllocateVector( Edges(Edge) % NodeIndexes, Degree+1)
@@ -19722,7 +19730,9 @@ CONTAINS
              Edges(Edge) % TYPE => GetElementType( 201+Degree, .FALSE. )
 
              Edges(Edge) % NodeIndexes(1) = Element % NodeIndexes(k)
-             IF ( k < n ) THEN
+             IF( n==1 ) THEN
+               Edges(Edge) % NodeIndexes(2) = Element % NodeIndexes(2)
+             ELSE IF ( k < n ) THEN
                Edges(Edge) % NodeIndexes(2) = Element % NodeIndexes(k+1)
              ELSE
                Edges(Edge) % NodeIndexes(2) = Element % NodeIndexes(1)
@@ -20972,7 +20982,6 @@ END SUBROUTINE FindNeighbourNodes
 
 
 
-  
 !------------------------------------------------------------------------------
 !> Split a mesh equally to smaller pieces by performing a uniform split.
 !> Also known as mesh multiplication. A 2D element splits into 4 elements of
@@ -21125,7 +21134,7 @@ END SUBROUTINE FindNeighbourNodes
     DO i=1,Mesh % NumberOfFaces
        Face => Mesh % Faces(i)
        k = Face % TYPE % NumberOfNodes
-       IF( k == 4 ) THEN
+       IF( k==4 ) THEN
           j = j + 1
           IF (PRESENT(h)) THEN
             n=Mesh % NumberOfNodes
@@ -21146,6 +21155,7 @@ END SUBROUTINE FindNeighbourNodes
           END IF
        END IF
     END DO
+
     
     CALL Info('SplitMeshEqual','Added face centers to the nodes list.', Level=10 )
 !
@@ -21227,6 +21237,8 @@ END SUBROUTINE FindNeighbourNodes
 
 !      Each element will be divided into 2**Dim new elements:
 !      ------------------------------------------------------
+       CASE(1)
+          NewElCnt = NewElCnt + 1 ! lines
        CASE(2)
           NewElCnt = NewElCnt + 2 ! lines
        CASE(3)
@@ -21256,7 +21268,7 @@ END SUBROUTINE FindNeighbourNodes
     EdgeCnt = Mesh % NumberOfEdges
 
 !
-!   Index to old quad/hexa centerpoint node in the new mesh nodal arrays:
+!   Index to old edge/quad/hexa centerpoint node in the new mesh nodal arrays:
 !   ---------------------------------------------------------------------
     Node = NodeCnt + EdgeCnt + FaceCnt
 !
@@ -21267,6 +21279,48 @@ END SUBROUTINE FindNeighbourNodes
        Eold => Mesh % Elements(i)
 
        SELECT CASE( Eold % TYPE % ElementCode )
+       CASE(101)
+!
+!         Copy point element
+!         ------------------
+!
+!         1st new element
+!         ---------------
+          NewElCnt = NewElCnt + 1
+          Child(i,1) = NewElCnt
+          Enew => NewMesh % Elements(NewElCnt)
+          Enew = Eold
+          Enew % ElementIndex = NewElCnt
+          CALL AllocateVector( ENew % NodeIndexes, 1)
+          Enew % NodeIndexes(1) = Eold % NodeIndexes(1)
+
+       CASE(202)
+!
+!         Split edge to two edges
+!         ------------------------
+!
+!         1st new element
+!         ---------------
+          NewElCnt = NewElCnt + 1
+          Child(i,1) = NewElCnt
+          Enew => NewMesh % Elements(NewElCnt)
+          Enew = Eold
+          Enew % ElementIndex = NewElCnt
+          CALL AllocateVector( ENew % NodeIndexes, 2)
+          Enew % NodeIndexes(1) = Eold % NodeIndexes(1)
+          Enew % NodeIndexes(2) = Eold % EdgeIndexes(1) + NodeCnt
+!
+!         2nd new element
+!         ---------------
+          NewElCnt = NewElCnt + 1
+          Child(i,2) = NewElCnt
+          Enew => NewMesh % Elements(NewElCnt)
+          Enew = Eold
+          Enew % ElementIndex = NewElCnt
+          CALL  AllocateVector( ENew % NodeIndexes, 2)
+          Enew % NodeIndexes(1) = Eold % EdgeIndexes(1) + NodeCnt
+          Enew % NodeIndexes(2) = Eold % NodeIndexes(2)
+
        CASE(303)
 !
 !         Split triangle to four triangles from
@@ -21956,6 +22010,34 @@ END SUBROUTINE FindNeighbourNodes
        ParentId = Eparent % ElementIndex
 
        SELECT CASE( Eold % TYPE % ElementCode / 100 )
+       CASE(1)
+!
+!         1st new element
+!         ---------------
+          NewElCnt = NewElCnt + 1
+          Enew => NewMesh % Elements(NewElCnt)
+          Enew = Eold
+          Enew % ElementIndex = NewElCnt
+          CALL AllocateVector( Enew % NodeIndexes, 1 )
+          Enew % NodeIndexes(1) = Eold % NodeIndexes(1)
+          ALLOCATE( Enew % BoundaryInfo )
+          Enew % BoundaryInfo = Eold % BoundaryInfo
+          NULLIFY( Enew % BoundaryInfo % Left )
+          NULLIFY( Enew % BoundaryInfo % Right )
+          DO j=NewElCnt-1,1,-1
+            Eold => NewMesh % Elements(j)
+            IF(Eold % Type % ElementCode/100==2) THEN
+              IF(ANY(Eold % NodeIndexes==Enew % NodeIndexes(1))) THEN
+                IF(.NOT.ASSOCIATED(Enew % BoundaryInfo % Left)) THEN
+                  Enew % BoundaryInfo % Left => Eold
+                ELSE
+                  Enew % BoundaryInfo % Right => Eold
+                  EXIT
+                END IF
+              END IF
+            END IF
+          END DO
+
        CASE(2)
 !
 !         Line segments:
@@ -21974,7 +22056,7 @@ END SUBROUTINE FindNeighbourNodes
             CALL Fatal('SplitMeshEqual','Could not find parent edge with nodes: '//&
                 I2S(Eold % NodeIndexes(1))//' '//I2S(Eold % NodeIndexes(2)))
           END IF
-          
+
 !
 !         index of the old edge centerpoint in the
 !         new mesh nodal arrays:
@@ -22903,6 +22985,7 @@ CONTAINS
     END SUBROUTINE UpdateParallelMesh
   END FUNCTION SplitMeshEqual
 !------------------------------------------------------------------------------
+
 
   
 !------------------------------------------------------------------------------

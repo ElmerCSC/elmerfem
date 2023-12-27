@@ -63,7 +63,7 @@ SUBROUTINE IsosurfaceSolver( Model,Solver,dt,Transient )
              WedgeToTetraMap(3,4), BrickToTetraMap(5,4), &
              TriangleToTriangleMap(1,3), QuadToTriangleMap(2,3)
   INTEGER, POINTER :: Map(:,:), Indexes(:)
-  INTEGER :: NoOrigElements,calls=0,ierr
+  INTEGER :: NoOrigElements,NoOrigBoundaryElements,calls=0,ierr
 
   TYPE(Variable_t), POINTER :: LevelVariable
   LOGICAL :: MovingMesh, Found
@@ -341,7 +341,10 @@ SUBROUTINE IsosurfaceSolver( Model,Solver,dt,Transient )
   CALL Info('IsosurfaceSolver','Creating mesh edges',Level=9)
   IF (.NOT.ASSOCIATED(Mesh % Edges)) THEN
     IF( dim == 2 ) THEN
+      NoOrigBoundaryElements = Mesh % NumberOfBoundaryElements
+      Mesh % NumberOfBoundaryElements = 0
       CALL FindMeshEdges2D(Mesh)
+      Mesh % NumberOfBoundaryElements = NoOrigBoundaryElements
     ELSE
       CALL FindMeshEdges3D(Mesh)
     END IF
