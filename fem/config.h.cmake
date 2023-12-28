@@ -159,8 +159,10 @@
 #cmakedefine HAVE_TRILINOS
 
 /* MMG */
+#if 0
 #cmakedefine HAVE_MMG 
 #cmakedefine HAVE_PARMMG
+#endif
 
 #define ELMER_LINKTYP ${ELMER_LINKTYP}
 #define ENABLE_DYNAMIC_LINKING 1
