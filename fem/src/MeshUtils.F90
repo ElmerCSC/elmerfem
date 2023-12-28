@@ -29770,7 +29770,7 @@ CONTAINS
         CALL Fatal(Caller,'Cannot use z-rules for 2D mesh!')
       END IF
       
-      CALL Info(Caller,'Trying to tag elements to boundary: '//I2S(bc_ind))
+      CALL Info(Caller,'Trying to tag elements to boundary: '//I2S(bc_ind),Level=20)
       BCsTagged = 0
       
       eps = ListGetCReal(BC,'Boundary Levelset Epsilon',Found )
@@ -29780,7 +29780,7 @@ CONTAINS
 
       IF(Parallel) BCsTagged = ParallelReduction(BCsTagged)
       
-      CALL Info(Caller,'Number of boundary elements tagged to '&
+      CALL Info(Caller,'Number of boundary elements "'//TRIM(RuleStr)//'" tagged to '&
           //I2S(bc_ind)//' is: '//I2S(BCsTagged),Level=7)
     END DO
 
