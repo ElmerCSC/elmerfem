@@ -22988,10 +22988,9 @@ CONTAINS
        END IF
      END DO
 
-     Solver % MortarBCsChanged = GotSome 
-
-     ! We may want to export the lagrange multiplier as it has a physical meaning. 
      IF( GotSome ) THEN
+       Solver % MortarBCsChanged = .TRUE.
+       ! We may want to export the lagrange multiplier as it has a physical meaning. 
        CALL ListAddNewLogical(Solver % Values,'Export Lagrange Multiplier',.TRUE.) 
      END IF
             
