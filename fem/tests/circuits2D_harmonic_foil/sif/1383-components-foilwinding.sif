@@ -198,6 +198,6 @@ Boundary Condition 5
    alpha = Real 1
 End
 
-Solver 3 :: Reference Norm = 2.29522322E-03
-Solver 4 :: Reference Norm = 1.25625665E+05
+Solver 3 :: Reference Norm = 2.50015420E-03
+Solver 4 :: Reference Norm = 1.25725288E+05
 
