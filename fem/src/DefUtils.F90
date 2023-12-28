@@ -3231,12 +3231,20 @@ CONTAINS
      iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
      iter = NINT(iterV % Values(1))
 
+     
      DO j=1,SIZE(SlaveSolverIndexes)
        k = SlaveSolverIndexes(j)
        SlaveSolver => CurrentModel % Solvers(k)
 
        CALL Info('DefaultSlaveSolvers','Calling slave solver: '//I2S(k),Level=8)
-       
+
+       IF( ListGetLogical( Solver % Values,'Monolithic Slave',Found )  ) THEN
+         IF(.NOT. ListCheckPresent( SlaveSolver % Values,'Linear System Solver Disabled') ) THEN
+           CALL Info('DefaultSlaveSolvers','Disabling linear system solver for slave: '//I2S(k),Level=6)
+           CALL ListAddLogical(SlaveSolver % Values,'Linear System Solver Disabled',.TRUE.)
+         END IF
+       END IF
+         
        IF(ParEnv % PEs>1) THEN
          SParEnv = ParEnv
 
