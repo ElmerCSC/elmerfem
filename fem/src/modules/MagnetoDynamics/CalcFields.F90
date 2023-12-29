@@ -791,7 +791,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    LagrangeVar => NULL()
    str = LagrangeMultiplierName( pSolver )
    LagrangeVar => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE.)
-   
+
    MFD => VariableGet( Mesh % Variables, 'Magnetic Flux Density' )
    EL_MFD => VariableGet( Mesh % Variables, 'Magnetic Flux Density E' )
 
@@ -2236,8 +2236,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            IF( dim == 2 ) THEN
              E(1,1:2) = 0.0_dp
              E(2,1:2) = 0.0_dp
-             E(1,3) = Omega * (SUM(SOL(2,1:nd) * Basis(1:nd)) - LMsol(2))
-             E(2,3) = -Omega * (SUM(SOL(1,1:nd) * Basis(1:nd)) - LMsol(1))
+             E(1,3) = Omega * SUM(SOL(2,1:nd) * Basis(1:nd))
+             E(2,3) = -Omega * SUM(SOL(1,1:nd) * Basis(1:nd)) 
            ELSE
              E(1,:) = Omega * MATMUL(SOL(2,np+1:nd), WBasis(1:nd-np,:)) - MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
              E(2,:) = -Omega * MATMUL(SOL(1,np+1:nd), WBasis(1:nd-np,:)) - MATMUL(SOL(2,1:np), dBasisdx(1:np,:))
@@ -2281,6 +2281,14 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                  s * val * c_ip * Basis(p) * ( E(1,1:3) + E(2,1:3) ) / 2
              SCD % Values(6*k-2:6*k-0) = SCD % Values(6*k-2:6*k-0) + &
                  s * val * c_ip * Basis(p) * ( -E(1,1:3) + E(2,1:3) ) / 2
+             IF(dim==2) THEN
+               ! Include the effect of constraint for surface current density.
+               ! Currently only 2D model implemented where the effect goes into z-component only.
+               SCD % Values(6*k-3) = SCD % Values(6*k-3) + &
+                   s * val * c_ip * Basis(p) * Omega * ( LMSol(1) + LMSol(2) ) / 2
+               SCD % Values(6*k) = SCD % Values(6*k) + &
+                   s * val * c_ip * Basis(p) * Omega * ( -LMSol(1) + LMSol(2) ) / 2               
+             END IF
              SurfWeight(k) = SurfWeight(k) + s*Basis(p)
            END DO
          END IF
