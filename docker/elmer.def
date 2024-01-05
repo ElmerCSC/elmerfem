@@ -1,0 +1,101 @@
+BootStrap: docker
+From: debian:12
+
+%environment
+   export LC_ALL=C
+   export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/elmer/lib
+   export PATH=/opt/elmer/bin:$PATH
+   export ELMER_HOME=/opt/elmer
+   export ELMER_LIB=/opt/elmer/lib
+
+%post
+   # Install only what is asked
+   export APT_OPTIONS="-y --no-install-recommends"
+   apt $APT_OPTIONS update
+
+   # Install build tools
+   apt $APT_OPTIONS install build-essential gfortran cmake g++ python3 
+   # Install download tools
+   apt $APT_OPTIONS install git wget
+   # Install general set of requirements
+   apt $APT_OPTIONS install zlib1g zlib1g-dev libxml2 libxml2-dev python3-scipy python3-pip python3-numpy python3-setuptools
+
+   # Install parallel processing libraries
+   apt $APT_OPTIONS install libopenmpi-dev python3-mpi4py openmpi-bin
+   # Install required scientific libraries
+   apt $APT_OPTIONS install libopenblas64-openmp-dev liblapack64-dev libnetcdff-dev netcdf-bin libcgns-dev libhdf5-openmpi-dev libscotchparmetis-dev libptscotch-dev libmumps64-ptscotch-dev petsc64-dev libhypre64-dev trilinos-all-dev libsuitesparse-dev libumfpack5 libparpack2-dev metis libmetis-dev
+   # Install graphical libraries
+   apt $APT_OPTIONS install libqwt-qt5-dev libqt5opengl5-dev qtscript5-dev libqt5svg5-dev 
+   # Install extra tools
+   apt $APT_OPTIONS install lua5.3
+   # Install general tools
+   apt $APT_OPTIONS install vim less
+
+   #################################################
+   # Start build
+   #################################################
+
+   export BASE_PREFIX=/opt/elmer
+   
+   mkdir -p $BASE_PREFIX
+
+   cd $HOME
+
+   ## Build MMG
+   git clone --depth=1 https://github.com/MmgTools/mmg
+   cd mmg
+   mkdir build
+   cd build
+   # Fix -fPIC behaviour
+   export CFLAGS=-fPIC
+   export CXXFLAGS=-fPIC
+   cmake -DUSE_SCOTCH=ON \
+   -DLIBMMG3D_SHARED=ON \
+   ..
+
+   make -j14
+   make install -j14
+   # Clean flags
+   export CFLAGS=""
+   export CXXFLAGS=""
+   
+   ## Build ElmerFEM
+
+   cd $HOME
+   # Clone
+   git clone https://github.com/ElmerCSC/elmerfem.git --depth=1
+
+   # Configure step
+   mkdir build
+   cd build
+   cmake -Wno-dev \
+   -DWITH_QT5=TRUE -DWITH_ELMERGUI=TRUE -DWITH_QWT=TRUE \
+   -DWITH_ElmerIce=TRUE \
+   -DWITH_MPI=TRUE \
+   -DWITH_OpenMP=TRUE \
+   -DParMetis_INCLUDE_DIR=/usr/include/parmetis \
+   -DWITH_Mumps=TRUE \
+   -DMumps_LIBRARIES=/usr/lib/x86_64-linux-gnu/libmumps_common_64.so \
+   -DWITH_Hypre=TRUE \
+   -DHypre_INCLUDE_DIR=/usr/include/hypre64 \
+   -DHypre_LIBRARIES=/usr/lib/x86_64-linux-gnu/libHYPRE64.so \
+   -DWITH_Trilinos=TRUE \
+   -DWITH_MATC=TRUE \
+   -DWITH_LUA=TRUE \
+   -DWITH_MMG=TRUE \
+   -DCMAKE_INSTALL_PREFIX="$BASE_PREFIX" \
+   -DCMAKE_BUILD_TYPE=Release \
+   ../elmerfem
+
+   # Build and Install
+   make -j14
+   make -j14 install
+
+%runscript
+   /opt/elmer/bin/ElmerGUI
+
+%labels
+   Author Fernando Oleo Blanco
+
+%help
+   This file was created with the help of http://www.elmerfem.org/forum/viewtopic.php?p=28018#p28018
