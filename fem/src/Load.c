@@ -581,6 +581,7 @@ void mtc_init(FILE *,FILE *, FILE *);
 /*--------------------------------------------------------------------------
   This routine will call matc and return matc variable array values
   -------------------------------------------------------------------------*/
+void var_copy_transpose(char *name,double *values,int nrows,int ncols);
 #ifdef USE_ISO_C_BINDINGS
 void STDCALLBULL matc_get_array(char *name, double *values, int *nrows, int *ncols )
 #else

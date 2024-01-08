@@ -297,7 +297,7 @@ MODULE LoadMod
             CHARACTER :: library(*), fname(*)
             ! TYPE(C_FUNPTR) :: ptr
             INTEGER(KIND=AddrInt) :: ptr
-            TYPE(C_FUNPTR) :: cptr
+            TYPE(C_PTR) :: cptr
 
             INTERFACE
                 FUNCTION loadfunction_c(quiet, abort_not_found, library, fname ) RESULT(cptr) &
@@ -307,7 +307,7 @@ MODULE LoadMod
                     INTEGER(C_INT) :: abort_not_found
                     CHARACTER(C_CHAR) :: library(*), fname(*)
                     ! INTEGER(CAddrInt) :: fptr
-                    TYPE(C_FUNPTR) :: cptr
+                    TYPE(C_PTR) :: cptr
                 END FUNCTION loadfunction_c
             END INTERFACE
 

@@ -26,6 +26,7 @@
 #include <signal.h>
 #include <string.h>
 #include "../config.h"
+#include <omp.h>
 
 #ifdef USE_READLINE
 # ifdef HAVE_READLINE_READLINE_H
