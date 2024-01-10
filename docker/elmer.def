@@ -7,6 +7,7 @@ From: debian:12
    export PATH=/opt/elmer/bin:$PATH
    export ELMER_HOME=/opt/elmer
    export ELMER_LIB=/opt/elmer/lib
+   export NCPU=$(nproc)
 
 %post
    # Install only what is asked
@@ -14,7 +15,7 @@ From: debian:12
    apt $APT_OPTIONS update
 
    # Install build tools
-   apt $APT_OPTIONS install build-essential gfortran cmake g++ python3 
+   apt $APT_OPTIONS install build-essential gfortran cmake g++ python3
    # Install download tools
    apt $APT_OPTIONS install git wget
    # Install general set of requirements
@@ -25,7 +26,7 @@ From: debian:12
    # Install required scientific libraries
    apt $APT_OPTIONS install libopenblas64-openmp-dev liblapack64-dev libnetcdff-dev netcdf-bin libcgns-dev libhdf5-openmpi-dev libscotchparmetis-dev libptscotch-dev libmumps64-ptscotch-dev petsc64-dev libhypre64-dev trilinos-all-dev libsuitesparse-dev libumfpack5 libparpack2-dev metis libmetis-dev
    # Install graphical libraries
-   apt $APT_OPTIONS install libqwt-qt5-dev libqt5opengl5-dev qtscript5-dev libqt5svg5-dev 
+   apt $APT_OPTIONS install libqwt-qt5-dev libqt5opengl5-dev qtscript5-dev libqt5svg5-dev
    # Install extra tools
    apt $APT_OPTIONS install lua5.3
    # Install general tools
@@ -36,7 +37,7 @@ From: debian:12
    #################################################
 
    export BASE_PREFIX=/opt/elmer
-   
+
    mkdir -p $BASE_PREFIX
 
    cd $HOME
@@ -53,12 +54,12 @@ From: debian:12
    -DLIBMMG3D_SHARED=ON \
    ..
 
-   make -j14
-   make install -j14
+   make -j$NCPU
+   make install -j$NCPU
    # Clean flags
    export CFLAGS=""
    export CXXFLAGS=""
-   
+
    ## Build ElmerFEM
 
    cd $HOME
@@ -83,13 +84,16 @@ From: debian:12
    -DWITH_MATC=TRUE \
    -DWITH_LUA=TRUE \
    -DWITH_MMG=TRUE \
+   -DEXTERNAL_UMFPACK=TRUE \
+   -DUMFPACK_LIBRARIES="-L/usr/lib/x86_64-linux-gnu/libumfpack.so -lumfpack -lamd -lcholmod -lsuitesparseconfig -lccolamd -lcamd -lbtf" \
+   -DUMFPACK_INCLUDE_DIR="/usr/include/suitesparse" \
    -DCMAKE_INSTALL_PREFIX="$BASE_PREFIX" \
    -DCMAKE_BUILD_TYPE=Release \
    ../elmerfem
 
    # Build and Install
-   make -j14
-   make -j14 install
+   make -j$NCPU
+   make -j$NCPU install
 
 %runscript
    /opt/elmer/bin/ElmerGUI
