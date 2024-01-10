@@ -6,6 +6,7 @@
 #  Phil Weir, NUMA Engineering Services, Ltd.
 #  Mikko Byckling, CSC - IT Center for Science Ltd.
 #  Juhani Kataja, CSC - IT Center for Science Ltd.
+#  Thomas Zwinger, CSC - IT Center for Science Ltd.
 #
 # First public beta release 11th of October, 2013
 #
@@ -612,7 +613,13 @@ IF(WITH_ElmerIce)
   ADD_SUBDIRECTORY(elmerice)
 ENDIF(WITH_ElmerIce)
 
-ADD_SUBDIRECTORY(umfpack)
+IF (EXTERNAL_UMFPACK)
+    MESSAGE(STATUS "Using external UMFPACK instead of built-in")
+    FIND_PACKAGE(UMFPACK REQUIRED)    
+ELSE()
+  MESSAGE(STATUS "Using built-in UMFPACK")
+  ADD_SUBDIRECTORY(umfpack)
+ENDIF()
 ADD_SUBDIRECTORY(fhutiter)
 ADD_SUBDIRECTORY(meshgen2d)
 ADD_SUBDIRECTORY(fem)
@@ -650,6 +657,14 @@ ENDIF(CMAKE_BUILD_TYPE)
 MESSAGE(STATUS "------------------------------------------------")
 MESSAGE(STATUS "  BLAS library:   " "${BLAS_LIBRARIES}")
 MESSAGE(STATUS "  LAPACK library: " "${LAPACK_LIBRARIES}")
+MESSAGE(STATUS "------------------------------------------------")
+IF(UMFPACK_FOUND)
+  MESSAGE(STATUS " UMFPACK library: " "${UMFPACK_LIBRARIES}")
+  MESSAGE(STATUS " UMFPACK headers: " "${UMFPACK_INCLUDE_DIR}")
+  MARK_AS_ADVANCED(HAVE_UMFPACK)
+ELSE()
+   MESSAGE(STATUS " UMFPACK library: Using internal Elmer library")
+ENDIF()
 MESSAGE(STATUS "------------------------------------------------")
 MESSAGE(STATUS "  Fortran compiler:        " "${CMAKE_Fortran_COMPILER}")
 MESSAGE(STATUS "  Fortran flags:           " "${CMAKE_Fortran_FLAGS} ${CMAKE_Fortran_FLAGS_${CMAKE_BUILD_TYPE_UPCASE}}")
