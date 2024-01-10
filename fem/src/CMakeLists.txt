@@ -176,11 +176,22 @@ IF(HAVE_ZOLTAN)
   # SET(ELMERLIB_RPATH_STRING "${ELMERLIB_RPATH_STRING}/:${ZOLTAN_LIBDIR}")
 ENDIF()
 
-# ElmerSolver libraries 
-SET(ELMERSOLVER_LIBRARIES matc umfpack 
+# ElmerSolver libraries
+IF(UMFPACK_FOUND)
+  SET(ELMERSOLVER_LIBRARIES matc fhuti binio arpack
+                          ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES}
+			  ${UMFPACK_LIBRARIES}
+                          ${CMAKE_DL_LIBS})
+			
+  INCLUDE_DIRECTORIES(${UMFPACK_INCLUDE_DIR})
+  #LIST(APPEND ELMERSOLVER_LIBRARIES ${UMFPACK_LIBRARIES})
+  #TARGET_LINK_LIBRARIES(elmersolver "${UMFPACK_LIBRARIES}")
+ELSE()
+  SET(ELMERSOLVER_LIBRARIES matc umfpack 
                           amd fhuti binio arpack
                           ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES} 
                           ${CMAKE_DL_LIBS})
+ENDIF()
 
 IF(WITH_LUA)
   LIST(APPEND ELMERSOLVER_LIBRARIES ${LUA_LIBRARIES})
@@ -382,3 +393,5 @@ IF(WITH_MPI)
     \${CMAKE_INSTALL_PREFIX}/bin/ElmerSolver.exe)")
   ENDIF()
 ENDIF()
+
+
