@@ -456,10 +456,15 @@ CONTAINS
 
     IF ( BigMode ) THEN
       ALLOCATE( LRows(SIZE(Rows)), LCols(SIZE(Cols)) )
-      DO i=1,n
+
+      DO i=1,n+1
         LRows(i) = Rows(i)-1
+      END DO
+
+      DO i=1,SIZE(Cols)
         LCols(i) = Cols(i)-1
       END DO
+
       ln = n ! TODO: Kludge: ln is AddrInt and n is regular INTEGER
       CALL umf4_l_def( Control )
       CALL umf4_l_sym( ln,ln, LRows, LCols, Values, Symbolic, Control, iInfo )
@@ -470,8 +475,8 @@ CONTAINS
       CALL umf4sym( n,n, Rows, Cols, Values, Symbolic, Control, iInfo )
     END IF
 
-    IF (iinfo(1)<0) THEN
-      PRINT *, 'Error occurred in umf4sym: ', iinfo(1)
+    IF (iInfo(1)<0) THEN
+      PRINT *, 'Error occurred in umf4sym: ', iInfo(1)
       STOP EXIT_ERROR
     END IF
 
