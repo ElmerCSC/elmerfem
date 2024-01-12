@@ -108,6 +108,7 @@ cholmod STDCALLBULL *FC_FUNC_(spqr_ffactorize,SPQR_FFACTORIZE)(int *n,int *rows,
   handle->a.x=vals;
   handle->a.p=pp;
   handle->a.i=ii;
+  handle->a.itype=CHOLMOD_LONG;
   handle->a.packed=1;
   handle->a.sorted=1;
   handle->a.stype= 0;
