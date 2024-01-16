@@ -196,6 +196,35 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
   !$omp               CapBodyIndex, Charges, CapMatrix, Pwrk, Pz_w, &
   !$omp               Basis, dBasisdx, PiezoMaterial)
   
+  INTERFACE
+    FUNCTION ElectricBoundaryResidual( Model,Edge,Mesh,Quant,Perm,Gnorm ) RESULT(Indicator)
+      USE Types
+      TYPE(Element_t), POINTER :: Edge
+      TYPE(Model_t) :: Model
+      TYPE(Mesh_t), POINTER :: Mesh
+      REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
+      INTEGER :: Perm(:)
+    END FUNCTION ElectricBoundaryResidual
+    
+    FUNCTION ElectricEdgeResidual( Model,Edge,Mesh,Quant,Perm ) RESULT(Indicator)
+      USE Types
+      TYPE(Element_t), POINTER :: Edge
+      TYPE(Model_t) :: Model
+      TYPE(Mesh_t), POINTER :: Mesh
+      REAL(KIND=dp) :: Quant(:), Indicator(2)
+      INTEGER :: Perm(:)
+    END FUNCTION ElectricEdgeResidual
+    
+    FUNCTION ElectricInsideResidual( Model,Element,Mesh,Quant,Perm, Fnorm ) RESULT(Indicator)
+      USE Types
+      TYPE(Element_t), POINTER :: Element
+      TYPE(Model_t) :: Model
+      TYPE(Mesh_t), POINTER :: Mesh
+      REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
+      INTEGER :: Perm(:)
+    END FUNCTION ElectricInsideResidual
+  END INTERFACE
+  
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
@@ -518,6 +547,24 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
      END IF
    END IF
    
+
+   IF ( ListGetLogical( Params, 'Adaptive Mesh Refinement', GotIt ) ) &
+       CALL RefineMesh( Model, Solver, Potential, PotentialPerm, &
+       ElectricInsideResidual, ElectricEdgeResidual, ElectricBoundaryResidual )
+   
+   CALL InvalidateVariable( Model % Meshes, Solver % Mesh, 'Potential')
+
+   IF ( CalculateField ) THEN
+     CALL InvalidateVariable( Model % Meshes, Solver % Mesh, 'Electric Field')
+   END IF
+   
+   IF ( CalculateFlux ) THEN
+     CALL InvalidateVariable( Model % Meshes, Solver % Mesh, 'Electric Flux')
+   END IF
+   
+   IF ( CalculateEnergy ) THEN
+     CALL InvalidateVariable( Model % Meshes, Solver % Mesh, 'Electric Energy Density')
+   END IF
 
    CALL DefaultFinish()
 
@@ -1458,7 +1505,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  FUNCTION StatElecSolver_Boundary_Residual( Model, Edge, Mesh, Quant, Perm, Gnorm ) &
+  FUNCTION ElectricBoundaryResidual( Model, Edge, Mesh, Quant, Perm, Gnorm ) &
        RESULT( Indicator )
 !------------------------------------------------------------------------------
      USE DefUtils
@@ -1703,13 +1750,13 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
      DEALLOCATE( EdgeBasis, Basis, dBasisdx, Flux, x, y, z, &
              NodalPermittivity, Potential )
 !------------------------------------------------------------------------------
-  END FUNCTION StatElecSolver_Boundary_Residual
+  END FUNCTION ElectricBoundaryResidual
 !------------------------------------------------------------------------------
 
 
 
 !------------------------------------------------------------------------------
-  FUNCTION StatElecSolver_Edge_Residual( Model, Edge, Mesh, Quant, Perm ) RESULT( Indicator )
+  FUNCTION ElectricEdgeResidual( Model, Edge, Mesh, Quant, Perm ) RESULT( Indicator )
 !------------------------------------------------------------------------------
      USE DefUtils
      IMPLICIT NONE
@@ -1921,12 +1968,12 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
      DEALLOCATE( x, y, z, NodalPermittivity, EdgeBasis, Basis, &
                 dBasisdx, Potential )
 !------------------------------------------------------------------------------
-  END FUNCTION StatElecSolver_Edge_Residual
+  END FUNCTION ElectricEdgeResidual
 !------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
-   FUNCTION StatElecSolver_Inside_Residual( Model, Element, Mesh, &
+   FUNCTION ElectricInsideResidual( Model, Element, Mesh, &
         Quant, Perm, Fnorm ) RESULT( Indicator )
 !------------------------------------------------------------------------------
      USE DefUtils
@@ -2146,6 +2193,6 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
      DEALLOCATE( Nodes % x, Nodes % y, Nodes % z, NodalPermittivity, &
         Basis, dBasisdx, ddBasisddx, PrevPot, NodalSource, Potential )
 !------------------------------------------------------------------------------
-  END FUNCTION StatElecSolver_Inside_Residual
+  END FUNCTION ElectricInsideResidual
 !------------------------------------------------------------------------------
 
