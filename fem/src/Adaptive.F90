@@ -511,7 +511,7 @@ CONTAINS
           NodalError, hValue, hConvergence, minH, maxH, MaxChangeFactor )
     END IF
 
-!   Hvalue(1:nn) = PrevHValue(1:nn)
+    Hvalue(1:nn) = PrevHValue(1:nn)
 !   NodalError = PrevNodalError
 
     IF ( .NOT.ASSOCIATED( NewMesh ) ) THEN
