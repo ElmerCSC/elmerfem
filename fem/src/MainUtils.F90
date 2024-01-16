@@ -5277,6 +5277,7 @@ END BLOCK
        END IF
      END BLOCK
 
+#ifdef LIBRARY_ADAPTIVITY
      ! Do adaptive meshing, whether to do this before or after "_post" is a matter  of taste i guess
      BLOCK 
        USE, INTRINSIC :: ISO_C_BINDING
@@ -5339,6 +5340,7 @@ END BLOCK
          END IF
        END IF
      END BLOCK
+#endif
 
 
      ! Compute all dependent fields, components and derivatives related to the primary solver.

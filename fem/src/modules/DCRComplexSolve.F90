@@ -89,6 +89,34 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
        Bvector, BscalarReal, BscalarImag
    REAL(KIND=dp) :: at,at0,totat,st,totst,t1
 !------------------------------------------------------------------------------
+     INTERFACE
+        FUNCTION DCRBoundaryResidual( Model,Edge,Mesh,Quant,Perm,Gnorm ) RESULT(Indicator)
+          USE Types
+          TYPE(Element_t), POINTER :: Edge
+          TYPE(Model_t) :: Model
+          TYPE(Mesh_t), POINTER :: Mesh
+          REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
+          INTEGER :: Perm(:)
+        END FUNCTION DCRBoundaryResidual
+
+        FUNCTION DCREdgeResidual( Model,Edge,Mesh,Quant,Perm ) RESULT(Indicator)
+          USE Types
+          TYPE(Element_t), POINTER :: Edge
+          TYPE(Model_t) :: Model
+          TYPE(Mesh_t), POINTER :: Mesh
+          REAL(KIND=dp) :: Quant(:), Indicator(2)
+          INTEGER :: Perm(:)
+        END FUNCTION DCREdgeResidual
+
+        FUNCTION DCRInsideResidual( Model,Element,Mesh,Quant,Perm, Fnorm ) RESULT(Indicator)
+          USE Types
+          TYPE(Element_t), POINTER :: Element
+          TYPE(Model_t) :: Model
+          TYPE(Mesh_t), POINTER :: Mesh
+          REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
+          INTEGER :: Perm(:)
+        END FUNCTION DCRInsideResidual
+     END INTERFACE
 
 !------------------------------------------------------------------------------
 ! Get variables needed for solution
@@ -388,6 +416,9 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   END DO ! of nonlinear iteration
 !------------------------------------------------------------------------------
+   IF ( ListGetLogical( Solver % Values, 'Adaptive Mesh Refinement', GotIt ) ) &
+      CALL RefineMesh( Model,Solver,Pressure,PressurePerm, &
+            DCRInsideResidual, DCREdgeResidual, DCRBoundaryResidual )
 
 CONTAINS
 
@@ -748,8 +779,7 @@ END SUBROUTINE DCRComplexSolver
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  FUNCTION DCRComplexSolver_boundary_residual( Model, Edge, Mesh, &
-         Quant, Perm,Gnorm ) RESULT( Indicator )
+  FUNCTION DCRBoundaryResidual( Model, Edge, Mesh, Quant, Perm,Gnorm ) RESULT( Indicator )
 !------------------------------------------------------------------------------
      USE DefUtils
      IMPLICIT NONE
@@ -1075,12 +1105,12 @@ END SUBROUTINE DCRComplexSolver
 !------------------------------------------------------------------------------
     END SUBROUTINE InputVector
 !------------------------------------------------------------------------------
-   END FUNCTION DCRComplexSolver_boundary_residual
+   END FUNCTION DCRBoundaryResidual
 !------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
-  FUNCTION DCRComplexSolver_edge_residual( Model, Edge, Mesh, Quant, Perm ) RESULT( Indicator )
+  FUNCTION DCREdgeResidual( Model, Edge, Mesh, Quant, Perm ) RESULT( Indicator )
 !------------------------------------------------------------------------------
      USE DefUtils
      IMPLICIT NONE
@@ -1412,12 +1442,12 @@ END SUBROUTINE DCRComplexSolver
 !------------------------------------------------------------------------------
 
 
-   END FUNCTION DCRComplexSolver_edge_residual
+   END FUNCTION DCREdgeResidual
 !------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
-   FUNCTION DCRComplexSolver_Inside_Residual( Model, Element, Mesh, &
+   FUNCTION DCRInsideResidual( Model, Element, Mesh, &
         Quant, Perm, Fnorm ) RESULT( Indicator )
 !------------------------------------------------------------------------------
      USE DefUtils
@@ -1757,7 +1787,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   END FUNCTION DCRComplexSolver_Inside_Residual
+   END FUNCTION DCRInsideResidual
 !------------------------------------------------------------------------------
 
 

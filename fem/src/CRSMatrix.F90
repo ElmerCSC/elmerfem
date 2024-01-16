@@ -135,18 +135,23 @@ CONTAINS
  
     INTEGER :: i
 
-    LOGICAL :: isMass, isDamp, EigenAnalysis, HarmonicAnalysis, Found
+    LOGICAL :: isMass, isDamp, EigenAnalysis, DampedAnalysis, HarmonicAnalysis, Found
 
     EigenAnalysis=.FALSE.; HarmonicAnalysis=.FALSE.
     IF(ASSOCIATED(A % Solver)) THEN
        EigenAnalysis = A % Solver % NOFEigenValues > 0 .AND. &
            ListGetLogical( A % Solver % Values, 'Eigen Analysis',Found)
 
+       DampedAnalysis =  EigenAnalysis .AND. &
+           ListGetLogical( A % Solver % Values, 'Eigen System Damped', Found )
+
        HarmonicAnalysis = A % Solver % NOFEigenValues>0 .AND. &
           ListGetLogical( A % Solver % Values, 'Harmonic Analysis',Found)
+
     END IF
 
-    isMass = (EigenAnalysis.OR.HarmonicAnalysis).AND.ASSOCIATED(A % MassValues)
+    isMass = .NOT.DampedAnalysis .AND. &
+            (EigenAnalysis.OR.HarmonicAnalysis).AND.ASSOCIATED(A % MassValues)
     IF ( isMass ) &
       isMass = isMass .AND. SIZE(A % MassValues) == SIZE(A % Values)
 

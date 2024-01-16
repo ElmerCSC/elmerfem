@@ -340,9 +340,11 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
 
   CALL DefaultFinish()
 
-! IF (ListGetLogical(Solver % Values, 'Adaptive Mesh Refinement', Found)) &
-!   CALL RefineMesh(Model, Solver, Solver % Variable % Values, Solver % Variable % Perm, &
-!                   ElectricInsideResidual, ElectricEdgeResidual, ElectricBoundaryResidual)
+#ifndef LIBRARY_ADAPTIVITY
+  IF (ListGetLogical(Solver % Values, 'Adaptive Mesh Refinement', Found)) &
+    CALL RefineMesh(Model, Solver, Solver % Variable % Values, Solver % Variable % Perm, &
+                    ElectricInsideResidual, ElectricEdgeResidual, ElectricBoundaryResidual)
+#endif
 
 CONTAINS
 
