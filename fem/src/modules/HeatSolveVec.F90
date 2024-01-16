@@ -168,6 +168,35 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   CHARACTER(LEN=MAX_NAME_LEN) :: EqName
   CHARACTER(*), PARAMETER :: Caller = 'HeatSolver'
 
+     INTERFACE
+        FUNCTION HeatBoundaryResidual( Model,Edge,Mesh,Quant,Perm,Gnorm ) RESULT(Indicator)
+          USE Types
+          TYPE(Element_t), POINTER :: Edge
+          TYPE(Model_t) :: Model
+          TYPE(Mesh_t), POINTER :: Mesh
+          REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
+          INTEGER :: Perm(:)
+        END FUNCTION HeatBoundaryResidual
+
+        FUNCTION HeatEdgeResidual( Model,Edge,Mesh,Quant,Perm ) RESULT(Indicator)
+          USE Types
+          TYPE(Element_t), POINTER :: Edge
+          TYPE(Model_t) :: Model
+          TYPE(Mesh_t), POINTER :: Mesh
+          REAL(KIND=dp) :: Quant(:), Indicator(2)
+          INTEGER :: Perm(:)
+        END FUNCTION HeatEdgeResidual
+
+        FUNCTION HeatInsideResidual( Model,Element,Mesh,Quant,Perm, Fnorm ) RESULT(Indicator)
+          USE Types
+          TYPE(Element_t), POINTER :: Element
+          TYPE(Model_t) :: Model
+          TYPE(Mesh_t), POINTER :: Mesh
+          REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
+          INTEGER :: Perm(:)
+        END FUNCTION HeatInsideResidual
+     END INTERFACE
+  
   IF (.NOT. ASSOCIATED(Solver % Matrix)) RETURN
 
   CALL Info(Caller,'------------------------------------------------')
@@ -406,6 +435,9 @@ END BLOCK
   CALL DefaultFinish()
   CALL CalculateRadiosityFields(Pre=.FALSE.)
 
+ IF ( ListGetLogical( Solver % Values, 'Adaptive Mesh Refinement', Found ) ) &
+    CALL RefineMesh( Model,Solver,Temperature,TempPerm, &
+         HeatInsideResidual, HeatEdgeResidual, HeatBoundaryResidual )
 
 CONTAINS 
   
@@ -1929,7 +1961,7 @@ END SUBROUTINE HeatSolver
 
 
 !------------------------------------------------------------------------------
-  FUNCTION HeatSolver_Boundary_Residual( Model, Edge, Mesh, Quant, Perm,Gnorm ) RESULT( Indicator )
+  FUNCTION HeatBoundaryResidual( Model, Edge, Mesh, Quant, Perm,Gnorm ) RESULT( Indicator )
 !------------------------------------------------------------------------------
      USE DefUtils
      USE Radiation
@@ -2222,13 +2254,13 @@ END SUBROUTINE HeatSolver
 !    Gnorm = EdgeLength * Gnorm
      Indicator = EdgeLength * ResidualNorm
 !------------------------------------------------------------------------------
-  END FUNCTION HeatSolver_Boundary_Residual
+  END FUNCTION HeatBoundaryResidual
 !------------------------------------------------------------------------------
 
 
 
 !------------------------------------------------------------------------------
-  FUNCTION HeatSolver_Edge_Residual(Model,Edge,Mesh,Quant,Perm) RESULT( Indicator )
+  FUNCTION HeatEdgeResidual(Model,Edge,Mesh,Quant,Perm) RESULT( Indicator )
 !------------------------------------------------------------------------------
      USE DefUtils
      IMPLICIT NONE
@@ -2419,12 +2451,12 @@ END SUBROUTINE HeatSolver
      IF (dim==3) EdgeLength = SQRT(EdgeLength)
      Indicator = EdgeLength * ResidualNorm
 !------------------------------------------------------------------------------
-  END FUNCTION HeatSolver_Edge_Residual
+  END FUNCTION HeatEdgeResidual
 !------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
-   FUNCTION HeatSolver_Inside_Residual( Model, Element, Mesh, &
+   FUNCTION HeatInsideResidual( Model, Element, Mesh, &
         Quant, Perm, Fnorm ) RESULT( Indicator )
 !------------------------------------------------------------------------------
      USE DefUtils
@@ -2755,5 +2787,5 @@ END SUBROUTINE HeatSolver
 !    Fnorm = Element % hk**2 * Fnorm
      Indicator = Element % hK**2 * ResidualNorm
 !------------------------------------------------------------------------------
-  END FUNCTION HeatSolver_Inside_Residual
+  END FUNCTION HeatInsideResidual
 !------------------------------------------------------------------------------
