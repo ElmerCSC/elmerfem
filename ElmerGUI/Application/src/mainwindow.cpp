@@ -5106,6 +5106,7 @@ void MainWindow::showVtkPostSlot() {
     unifyingCommand.replace(QString("%ep"), postNameSplitted.at(0).trimmed());
     unifyingCommand.replace(QString("%n"), QString::number(nofProcessors));
 
+    solverLogWindow->getTextEdit()->append("Executing: " + unifyingCommand);
     logMessage("Executing: " + unifyingCommand);
 
     meshUnifier->start(unifyingCommand);
@@ -6602,6 +6603,7 @@ void MainWindow::runsolverSlot() {
       partitioningCommand.replace(QString("%n"),
                                   QString::number(nofProcessors));
 
+      solverLogWindow->getTextEdit()->append("Executing: " + partitioningCommand);
       logMessage("Executing: " + partitioningCommand);
 
       meshSplitter->start(partitioningCommand);
@@ -6671,14 +6673,15 @@ void MainWindow::meshSplitterFinishedSlot(int exitCode) {
 
   QString parallelCmd = parallelExec + " " + parallelArgs;
 
+  solverLogWindow->getTextEdit()->append("Executing: " + parallelCmd);
   logMessage("Executing: " + parallelCmd);
 
   solver->start(parallelCmd);
   killsolverAct->setEnabled(true);
 
   if (!solver->waitForStarted()) {
-    solverLogWindow->getTextEdit()->append("Unable to start parallel solver");
-    logMessage("Unable to start parallel solver");
+    solverLogWindow->getTextEdit()->append("Failed to start MPI executable");
+    logMessage("Failed to start MPI executable");
     return;
   }
 
@@ -7039,6 +7042,7 @@ void MainWindow::resultsSlot() {
     unifyingCommand.replace(QString("%ep"), postNameSplitted.at(0).trimmed());
     unifyingCommand.replace(QString("%n"), QString::number(nofProcessors));
 
+    solverLogWindow->getTextEdit()->append("Executing: " + unifyingCommand);
     logMessage("Executing: " + unifyingCommand);
 
     meshUnifier->start(unifyingCommand);
