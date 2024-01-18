@@ -233,7 +233,12 @@ CONTAINS
     Params => Solver % Values
 
     IsComplex = ListGetLogical( Params,'Linear System Complex',Found)
-
+    IF( IsComplex ) THEN
+      CALL Info(Caller,'Assuming block matrix to be complex!',Level=8)
+    ELSE
+      CALL Info(Caller,'Assuming block matrix to be real!',Level=20)
+    END IF
+    
     BlockMatrix => Solver % BlockMatrix
     IF (ASSOCIATED(BlockMatrix)) THEN
       CALL Info(Caller,'Using existing block matrix',Level=10)
@@ -256,6 +261,7 @@ CONTAINS
         CALL Fatal(Caller,'Incompatible values in > Block Structure < given!')          
       END IF
       NoVar = MAXVAL( BlockStruct )
+      CALL Info(Caller,'Using given block structure of size: '//I2S(SIZE( BlockStruct)),Level=8)
       BlockMatrix % BlockStruct => BlockStruct
 
       ALLOCATE( BlockMatrix % InvBlockStruct(NoVar) )
@@ -270,6 +276,7 @@ CONTAINS
         END IF
       END DO        
     ELSE
+      CALL Info(Caller,'Inheriting blocks from variable dofs',Level=8)
       NoVar = BlockDofs
     END IF    
 

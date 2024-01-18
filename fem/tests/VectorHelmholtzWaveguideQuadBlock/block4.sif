@@ -1,0 +1,52 @@
+  Linear System Symmetric = False
+  Linear system Complex = False
+  Linear System Block Mode = True
+
+  Block Gauss-Seidel = True
+  Block Quadratic Hcurl System = Logical True
+  Block Matrix Reuse = False
+  Block Preconditioner = True
+
+! True + True seems to provide best speed-up
+  Block Scaling = True
+
+! Linear system solver for outer loop
+!-----------------------------------------
+  Outer: Linear System Solver = "Iterative"
+  Outer: Linear System Convergence Tolerance = 1e-6
+  Outer: Linear System Iterative Method = gcr
+  Outer: Linear System Max Iterations = 50 
+  Outer: Linear System Residual Output = 1
+  Outer: Linear System GCR Restart = 50
+  Outer: Linear System Abort Not Converged = False
+  Outer: Linear System Pseudo Complex = True
+
+  $blocktol = 0.01
+
+  block 11: Linear System Solver = "direct"
+  block 11: Linear System direct method = "mumps"
+  block 11: Linear System Complex = False
+
+  block 22: Linear System Solver = "direct"
+  block 22: Linear System direct method = "mumps"
+  block 22: Linear System Complex = False
+
+  block 33: Linear System Solver = "direct"
+  block 33: Linear System direct method = "mumps"
+  block 33: Linear System Complex = False
+
+  block 44: Linear System Solver = "direct"
+  block 44: Linear System direct method = "mumps"
+  block 44: Linear System Complex = False
+
+  Block Complex System = Logical True
+  Block Split Complex = Logical False
+
+!  Prec Matrix Complex Coeff 1 = Real 1.0
+!  Prec Matrix Complex Coeff 2 = Real 1.0
+!  Prec Matrix Complex Coeff 3 = Real 1.0
+!  Prec Matrix Complex Coeff 4 = Real 1.0
+
+  Block Order(4) = Integer 1 3 2 4
+
+
