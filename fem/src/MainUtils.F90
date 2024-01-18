@@ -5256,6 +5256,7 @@ END BLOCK
        CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
      END IF
 
+
      ! Special slot for post-processing solvers
      ! This makes it convenient to separate the solution and postprocessing.
      ! This solver must use the same structures as the primary solver.
@@ -5265,6 +5266,7 @@ END BLOCK
      BLOCK 
        CHARACTER(LEN=MAX_NAME_LEN) :: ProcName
        LOGICAL :: PostActive
+
        PostActive = ListGetLogical( Solver % Values,'PostSolver Active',Found )
        IF( PostActive ) THEN
          ProcName = ListGetString( Solver % Values,'Procedure', Found )
@@ -5274,6 +5276,72 @@ END BLOCK
          END IF
        END IF
      END BLOCK
+
+#ifdef LIBRARY_ADAPTIVITY
+     ! Do adaptive meshing, whether to do this before or after "_post" is a matter  of taste i guess
+     BLOCK 
+       USE, INTRINSIC :: ISO_C_BINDING
+
+       CHARACTER(LEN=MAX_NAME_LEN) :: ProcName
+       LOGICAL :: AdaptiveActive
+       TYPE(Variable_t), POINTER :: Var
+       INTEGER(KIND=AddrInt) :: IResidual, EResidual, BResidual
+
+
+       INTERFACE
+         FUNCTION BoundaryResidual( Model,Edge,Mesh,Quant,Perm,Gnorm ) RESULT(Indicator)
+           USE Types
+           TYPE(Element_t), POINTER :: Edge
+           TYPE(Model_t) :: Model
+           TYPE(Mesh_t), POINTER :: Mesh
+           REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
+           INTEGER :: Perm(:)
+         END FUNCTION BoundaryResidual
+
+
+         FUNCTION EdgeResidual( Model,Edge,Mesh,Quant,Perm ) RESULT(Indicator)
+            USE Types
+            TYPE(Element_t), POINTER :: Edge
+            TYPE(Model_t) :: Model
+            TYPE(Mesh_t), POINTER :: Mesh
+            REAL(KIND=dp) :: Quant(:), Indicator(2)
+            INTEGER :: Perm(:)
+         END FUNCTION EdgeResidual
+
+
+         FUNCTION InsideResidual( Model,Element,Mesh,Quant,Perm,Fnorm ) RESULT(Indicator)
+            USE Types
+            TYPE(Element_t), POINTER :: Element
+            TYPE(Model_t) :: Model
+            TYPE(Mesh_t), POINTER :: Mesh
+            REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
+            INTEGER :: Perm(:)
+         END FUNCTION InsideResidual
+       END INTERFACE
+
+       PROCEDURE(InsideResidual), POINTER :: InsidePtr
+       PROCEDURE(EdgeResidual), POINTER :: EdgePtr
+       PROCEDURE(BoundaryResidual), POINTER :: BoundaryPtr
+
+       POINTER( Eresidual, Edgeptr )
+       POINTER( Iresidual, Insideptr )
+       POINTER( Bresidual, BoundaryPtr )
+
+       AdaptiveActive = ListGetLogical( Solver % Values,'Adaptive Mesh Refinement',Found )
+
+       IF( AdaptiveActive ) THEN
+         ProcName = ListGetString( Solver % Values,'Procedure', Found )
+         IResidual = GetProcAddr( TRIM(ProcName)//'_inside_residual', abort=.FALSE. )
+         EResidual   = GetProcAddr( TRIM(ProcName)//'_edge_residual', abort=.FALSE. )
+         BResidual   = GetProcAddr( TRIM(ProcName)//'_boundary_residual', abort=.FALSE. )
+         IF( IResidual/=0 .AND. EResidual /= 0 .AND. BResidual /= 0 ) THEN
+           Var => Solver % Variable
+           CALL RefineMesh( Model, Solver, Var % Values, Var % Perm, InsidePtr, EdgePtr, BoundaryPtr )
+         END IF
+       END IF
+     END BLOCK
+#endif
+
 
      ! Compute all dependent fields, components and derivatives related to the primary solver.
      !-----------------------------------------------------------------------   

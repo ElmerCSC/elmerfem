@@ -340,6 +340,9 @@ CONTAINS
     WHERE( Referenced(1:nn) > 0 )
        NodalError(1:nn) = NodalError(1:nn) / Referenced(1:nn)
     END WHERE
+
+!   CALL ParallelAverageHvalue(  RefMesh, NodalError )
+
 !
 !   Smooth error, if requested:
 !   ---------------------------
@@ -1079,7 +1082,6 @@ CONTAINS
     CALL ComputeDesiredHvalue( RefMesh, ErrorLimit, HValue, NodalError, &
         hConvergence, minH, maxH, MaxChange, Coarsening ) 
 
-!   IF(ParEnv % PEs>1) CALL parallelsumvector(solver % matrix, hvalue)
     CALL ParallelAverageHvalue( RefMesh, HValue ) 
     
     Var => VariableGet( RefMesh % Variables, 'Hvalue', ThisOnly=.TRUE. )      
@@ -2258,6 +2260,11 @@ CONTAINS
 !------------------------------------------------------------------------------
     CALL FindMeshEdges( RefMesh )
 
+    IF(Parenv % PEs>1 ) THEN
+      CALL SParEdgeNumbering(RefMesh,.TRUE.)
+      CALL SParFaceNumbering(RefMesh,.TRUE.)
+    END IF
+
     Fnorm = 0.0d0
     ErrorIndicator = 0.0d0
 
@@ -2308,13 +2315,12 @@ CONTAINS
 !   ----------------
 
     DO i = 1,RefMesh % NumberOfFaces
-!      IF( Parenv % PEs>1 ) THEN
-!        IF ( RefMesh % ParallelInfo % FaceInterface(i) ) CYCLE
-!      end if
+       IF( Parenv % PEs>1 ) THEN
+         IF ( RefMesh % ParallelInfo % FaceInterface(i) ) CYCLE
+       END IF
 
        Edge => RefMesh % Faces(i)
        CurrentModel % CurrentElement => Edge
-
 
        IF ( .NOT. ASSOCIATED( Edge % BoundaryInfo ) ) CYCLE
 

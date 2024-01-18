@@ -16446,8 +16446,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
       TYPE(Variable_t), POINTER :: AVar
       TYPE(ValueList_t), POINTER :: Vlist
       INTEGER, POINTER :: MasterEntities(:)
-      COMPLEX(KIND=dp) :: Eint
-      REAL(KIND=dp) :: Anorm,Nrm
+      COMPLEX(KIND=dp) :: OutFlux,InFlux,PortFlux
       INTEGER :: i,j,k,n,port,alloc     
       LOGICAL :: DoPoynt
 
@@ -16481,27 +16480,22 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
           ALLOCATE(MasterEntities(n))
         END DO
 
-        Eint = BoundaryWaveFlux(CurrentModel, Mesh, MasterEntities, Avar, Anorm, DoPoynt )
+        OutFlux = BoundaryWaveFlux(CurrentModel, Mesh, MasterEntities, Avar, &
+            PortFlux, DoPoynt, port==NMode )
           
         ! Memorize the coefficient for normalization: <Ec,Ej>/<Ei,Ei>                
-        IF(ParEnv % PEs > 1 ) THEN
-          Eint = ParallelReduction(Eint)
-        END IF
-
         ! Real and imag part of: <Ec,Ej>
-        FluxesRow(port) = REAL(Eint)
-        FluxesRowIm(port) = AIMAG(Eint) 
+        FluxesRow(port) = REAL(OutFlux)
+        FluxesRowIm(port) = AIMAG(OutFlux) 
 
         ! Memorize diagonal entry <Ej,Ej*> for future normalization
-        IF(port==NMode) Nrm = Anorm
+        IF(port==NMode) InFlux = PortFlux
 
         DEALLOCATE(MasterEntities)                
       END DO
 
-      IF(ParEnv % PEs > 1 ) THEN
-        Nrm = ParallelReduction(Nrm) 
-      END IF
-      FluxesRhs = Nrm      
+      FluxesRhs = REAL(InFlux)      
+      FluxesRhsIm = AIMAG(InFlux)
       
     END SUBROUTINE EMWaveFluxes
 
