@@ -73,9 +73,11 @@ Solver 1
 !  Variable = E[E re:1 E im:1]
   Use Piola Transform = Logical True
   Quadratic Approximation = True
-  Optimize Bandwidth = True
+!  Optimize Bandwidth = False
   Procedure = "VectorHelmholtz" "VectorHelmholtzSolver"
 
+! Tentative idea only:
+!  include pmult.sif 
   include block.sif
 
   Linear System Timing = Logical True

@@ -77,36 +77,38 @@ CONTAINS
        TYPE(ValueList_t), POINTER :: Params
        CHARACTER(:), ALLOCATABLE :: MGMethod
 
-       IF( Level == Solver % MultigridLevel ) THEN 
-         CALL Info('MultiGridSolve','*********************************',Level=10)
-         WRITE( Message,'(A,I0)') 'Performing multigrid solution cycle: ',&
-             Matrix1 % NumberOfRows
-         CALL Info('MultiGridSolve',Message,Level=10 )
-       END IF
-
        Params => Solver % Values
        MGMethod = ListGetString( Params,'MG Method',Found) 
-       IF( Found ) THEN
-         Pelement = ( MGmethod == 'p' )  
-         Cluster = ( MGmethod == 'cluster' ) 
-         Algebraic = ( MGmethod == 'algebraic' ) 
-         Geometric = ( MGmethod == 'geometric' )  
-       ELSE
-         Algebraic = ListGetLogical( Params, 'MG Algebraic', Found ) 
-         Cluster = ListGetLogical( Params, 'MG Cluster', Found )
-         PElement = ListGetLogical( Params, 'MG PElement', Found )
-         Geometric = ListGetLogical( Params, 'MG Geometric', Found )
+       IF(.NOT. Found ) THEN
+         IF( ListGetLogical( Params, 'MG Algebraic', Found ) ) THEN
+           MGMethod = 'algebraic'
+         ELSE IF( ListGetLogical( Params, 'MG Cluster', Found ) ) THEN
+           MGMethod = 'cluster'
+         ELSE IF( ListGetLogical( Params, 'MG PElement', Found ) ) THEN
+           MGMethod = 'p'
+         ELSE
+           MGMethod = 'geometric'
+         END IF
        END IF
 
-       IF ( Algebraic ) THEN
-         CALL AMGSolve( Matrix1, Solution, ForceVector, DOFs, Solver, Level, NewSystem )
-       ELSE IF( Cluster ) THEN
-         CALL CMGSolve( Matrix1, Solution, ForceVector, DOFs, Solver, Level, NewSystem )
-       ELSE IF( Pelement ) THEN
-         CALL PMGSolve( Matrix1, Solution, ForceVector, DOFs, Solver, Level, NewSystem )
-       ELSE
-         CALL GMGSolve( Matrix1, Solution, ForceVector, DOFs, Solver, Level, NewSystem )
+       IF( Level == Solver % MultigridLevel ) THEN 
+         CALL Info('MultiGridSolve','*********************************',Level=5)
+         CALL Info('MultiGridSolve','Performing multigrid solution: '//TRIM(MgMethod))
        END IF
+
+       SELECT CASE( MGMethod )
+       CASE('algebraic')
+         CALL AMGSolve( Matrix1, Solution, ForceVector, DOFs, Solver, Level, NewSystem )
+       CASE('cluster')
+         CALL CMGSolve( Matrix1, Solution, ForceVector, DOFs, Solver, Level, NewSystem )
+       CASE('p')
+         CALL PMGSolve( Matrix1, Solution, ForceVector, DOFs, Solver, Level, NewSystem )
+       CASE('geometric')
+         CALL GMGSolve( Matrix1, Solution, ForceVector, DOFs, Solver, Level, NewSystem )
+       CASE DEFAULT
+         CALL Fatal('MultiGridSolve','Unknown "MG Method" given: '//TRIM(MGMethod))
+       END SELECT
+
 !------------------------------------------------------------------------------
     END SUBROUTINE MultiGridSolve
 !------------------------------------------------------------------------------
@@ -882,7 +884,7 @@ CONTAINS
        TYPE(Matrix_t), POINTER :: Matrix2, PMatrix, SaveMatrix
        TYPE(Solver_t), POINTER :: PSolver             
 
-       INTEGER :: i,j,k,l,m,n,n2,k1,k2,iter,MaxIter = 100, RDOF, CDOF,ndofs
+       INTEGER :: i,j,j2,k,l,m,n,n2,k1,k2,iter,MaxIter = 100, RDOF, CDOF,ndofs
        LOGICAL :: Condition, Found, Parallel, Project,Transient, EdgeBasis
        CHARACTER(:), ALLOCATABLE :: Path,str,mgname, LowestSolver
 
@@ -1040,27 +1042,56 @@ CONTAINS
            n2 = Solver % Mesh % MaxElementDOFs
            ALLOCATE(Degree(n), Indexes(n2), Deg(n2))
 
+#define hcurlfix 1
+
+#if hcurlfix
+           ! This seems to work, the original code not!
+           IF( EdgeBasis ) THEN
+             ! Default degree is 2 
+             Degree = 2
+             DO i=1,Solver % Mesh % NumberOfNodes
+               ! Set all nodes to 1st degree
+               j = i
+               j2 = Permutation(j)
+               IF(j2>0) THEN
+                 DO k=1,DOFs                                  
+                   Degree(DOFs*(j2-1)+k) = 1                   
+                 END DO
+               END IF
+             END DO
+             DO i=1,Solver % Mesh % NumberOfEdges
+               ! Set one dof per each edge to 1st degree
+               j = Solver % Mesh % NumberOfNodes + 2*i-1
+               j2 = Permutation(j)
+               IF(j2>0) THEN
+                 DO k=1,DOFs                                  
+                   Degree(DOFs*(j2-1)+k) = 1                   
+                 END DO
+               END IF
+             END DO
+           END IF
+#endif
+           
            DO i=1,Solver % NumberOfActiveElements
              Element => Solver % Mesh % Elements(Solver % ActiveElements(i))
 
              n = mGetElementDOFs( Indexes, Element ) 
              IF(EdgeBasis) THEN
-               l = Solver % Mesh % MaxNDOFs * Element % Type % NumberOfNodes
-               DO j=l+1,l+2*Element % Type % NumberOfEdges,2
-                 DO k=1,DOFs
+#ifndef hcurlfix
+               ! This has some issues!
+               l = Solver % Mesh % MaxNDOFs * Element % TYPE % NumberOfNodes               
+               DO k=1,DOFs               
+                 DO j=l+1,l+2*Element % TYPE % NumberOfEdges,2
                    Degree(DOFs*(Permutation(Indexes(j))-1)+k) = 1
                  END DO
-               END DO
-               DO j=l+2,l+2*Element % Type % NumberOfEdges,2
-                 DO k=1,DOFs
+                 DO j=l+2,l+2*Element % TYPE % NumberOfEdges,2
+                   Degree(DOFs*(Permutation(Indexes(j))-1)+k) = 2
+                 END DO
+                 DO j=l+2*Element % TYPE % NumberOfEdges+1,n
                    Degree(DOFs*(Permutation(Indexes(j))-1)+k) = 2
                  END DO
                END DO
-               DO j=l+2*Element % Type % NumberOfEdges+1,n
-                 DO k=1,DOFs
-                   Degree(DOFs*(Permutation(Indexes(j))-1)+k) = 2
-                 END DO
-               END DO
+#endif
              ELSE
                CALL ElementBasisDegree(Element, Deg)
                DO j=1,n
@@ -1071,7 +1102,21 @@ CONTAINS
              END IF
            END DO
            DEALLOCATE(Indexes,Deg)
-            
+
+           IF( EdgeBasis ) THEN
+             ! for debugging edge p-strategy
+#if 0
+             PRINT *,'edges:',Solver % Mesh % NumberOfEdges
+             PRINT *,'elems:',Solver % Mesh % NumberOfBulkElements
+             PRINT *,'max perm:',MAXVAL(Permutation)
+             PRINT *,'dofs:',dofs
+             DO i=0,2
+               j = COUNT(Degree==i)
+               IF(j>0) PRINT *,'Degree Count:',i,j,j/Dofs
+             END DO
+#endif
+           END IF
+             
            PatLevel => ListGetIntegerArray( Params,'MG P at Level',Found)
            IF(.NOT.Found) THEN
              ALLOCATE(PatLevel(Level-1))
