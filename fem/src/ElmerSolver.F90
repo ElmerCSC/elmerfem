@@ -387,6 +387,7 @@
          CurrentModel => LoadModel(ModelName,.FALSE.,ParEnv % PEs,ParEnv % MyPE,MeshIndex)
          IF(.NOT.ASSOCIATED(CurrentModel)) EXIT
 
+         
          !----------------------------------------------------------------------------------
          ! Set namespace searching mode
          !----------------------------------------------------------------------------------
@@ -472,6 +473,7 @@
 ! Support easily saving scalars to a file activated by "Scalars File" keyword.
 !-----------------------------------------------------------------------------
        CALL AddSaveScalarsHack()
+
 
 !------------------------------------------------------------------------------
 !      Add coordinates such that if there is a solver that is run on creation
@@ -1646,6 +1648,7 @@
        CALL VariableAdd( Mesh % Variables, Mesh, &
                Name='coupled iter', DOFs=1, Values=steadyIt )
 
+
        IF( ListCheckPrefix( CurrentModel % Simulation,'Periodic Time') .OR. &
            ListCheckPresent( CurrentModel % Simulation,'Time Period') ) THEN
          ! For periodic systems we may do several cycles.
@@ -2775,9 +2778,10 @@
        END IF
 
        RealTimestep = 1
-              
-       DO timestep = 1,Timesteps(interval)
-         
+
+       timestep = 1
+       DO WHILE(timestep <= Timesteps(interval))
+
          cum_Timestep = cum_Timestep + 1
          sStep(1) = cum_Timestep
 
@@ -3294,7 +3298,7 @@
            CALL SaveToPost(0)
            k = MOD( Timestep-1, OutputIntervals(Interval) )
 
-           IF ( k == 0 .OR. SteadyStateReached ) THEN            
+           IF ( k == 0 .OR. SteadyStateReached ) THEN
              DO i=1,nSolvers
                Solver => CurrentModel % Solvers(i)
                IF ( Solver % PROCEDURE == 0 ) CYCLE
@@ -3349,7 +3353,24 @@
          IF ( SteadyStateReached .AND. .NOT. (Transient .OR. Scanning) ) THEN
             IF ( Timestep >= CoupledMinIter ) EXIT
          END IF
-         
+
+         ! if extra steps have been added need to check if the loop needs extended
+         ! (used for calving algorithm)
+         IF(Transient) THEN
+            Timesteps => ListGetIntegerArray( CurrentModel % Simulation, &
+            'Timestep Intervals', GotIt )
+            IF ( .NOT.GotIt ) THEN
+                CALL Fatal('ElmerSolver', 'Keyword > Timestep Intervals < MUST be ' //  &
+                    'defined for transient and scanning simulations' )
+            END IF
+         END IF
+         Timestep = Timestep + 1
+
+         stepcount = 0
+         DO i = 1, TimeIntervals
+            stepcount = stepcount + Timesteps(i)
+         END DO
+
 !------------------------------------------------------------------------------
        END DO ! timestep within an iterval
 !------------------------------------------------------------------------------
@@ -3546,9 +3567,9 @@
 !------------------------------------------------------------------------------
   SUBROUTINE SaveCurrent( CurrentStep )
 !------------------------------------------------------------------------------
-    INTEGER :: i, j,k,l,n,m,q,CurrentStep,nlen
-    TYPE(Variable_t), POINTER :: Var
-    LOGICAL :: EigAnal, GotIt, BinaryOutput, SaveAll, OutputActive
+    INTEGER :: i, j,k,l,n,m,q,CurrentStep,nlen,Time
+    TYPE(Variable_t), POINTER :: Var, TimeVar
+    LOGICAL :: EigAnal, GotIt, BinaryOutput, SaveAll, OutputActive, EveryTime
     TYPE(ValueList_t), POINTER :: vList
     TYPE(Solver_t), POINTER :: pSolver
     
@@ -3589,6 +3610,19 @@
         IF( i > 0 ) THEN
           CALL Warn('SaveCurrent','> Output File < for restart should not include directory: '&
               //TRIM(OutputFile))
+        END IF
+
+        ! This was added for needs of calving where remeshing is applied and can go wrong but
+        ! we want to study the results. 
+        EveryTime = ListGetLogical( vList,'Output File Each Timestep',GotIt)
+        IF(EveryTime) THEN
+          TimeVar => VariableGet( CurrentModel % Variables, 'Timestep' )
+          Time = INT(TimeVar % Values(1))
+
+          OutputFile = OutputFile // '.' // i2s(Time)
+
+          ! set saves to zero. This will insure new save file even if remeshing fails
+          Mesh % SavesDone = 0
         END IF
 
         !IF ( ParEnv % PEs > 1 ) THEN
@@ -3678,8 +3712,9 @@
     TYPE(Variable_t), POINTER :: Var
     LOGICAL :: EigAnal = .FALSE., Found
     INTEGER :: i, j,k,l,n,q,CurrentStep,nlen,nlen2,timesteps,SavedEigenValues
+    CHARACTER(LEN=MAX_NAME_LEN) :: Simul, SaveWhich
+    CHARACTER(MAX_NAME_LEN) :: OutputDirectory
     TYPE(Solver_t), POINTER :: pSolver
-    CHARACTER(:), ALLOCATABLE :: Simul, SaveWhich
     
     Simul = ListGetString( CurrentModel % Simulation,'Simulation Type' )
 

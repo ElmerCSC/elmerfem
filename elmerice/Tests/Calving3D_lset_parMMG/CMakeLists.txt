@@ -1,12 +1,12 @@
-IF(HAVE_MMG AND HAVE_ZOLTAN)
+IF(HAVE_PARMMG AND HAVE_ZOLTAN)
   INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/../test_macros.cmake)
 
-  CONFIGURE_FILE(calvingMMG.sif calvingMMG.sif COPYONLY)
+  CONFIGURE_FILE(calvingParMMG.sif calvingParMMG.sif COPYONLY)
   CONFIGURE_FILE(LeftRail.xy LeftRail.xy COPYONLY)
   CONFIGURE_FILE(RightRail.xy RightRail.xy COPYONLY)
 
-  ADD_ELMERICETEST_MODULE(Calving3D_lset bedrockfunction_3d ./PROG/bedrockfunction_3D.F90)
-  ADD_ELMERICETEST_MODULE(Calving3D_lset DummySolver ./PROG/DummySolver.F90)
+  ADD_ELMERICETEST_MODULE(Calving3D_lset_parMMG bedrockfunction_3d ./PROG/bedrockfunction_3D.F90)
+  ADD_ELMERICETEST_MODULE(Calving3D_lset_parMMG DummySolver ./PROG/DummySolver.F90)
 
   FILE(COPY ELMERSOLVER_STARTINFO PlanMesh.msh PROG DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
@@ -14,7 +14,7 @@ IF(HAVE_MMG AND HAVE_ZOLTAN)
   FILE(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/Results/isoline")
   FILE(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/Results/calving_plane")
 
-  ADD_ELMERICE_TEST(Calving3D_lset)
-  ADD_ELMERICE_LABEL(Calving3D_lset slow)
+  ADD_ELMERICE_TEST(Calving3D_lset_parMMG)
+  ADD_ELMERICE_LABEL(Calving3D_lset_parMMG slow)
 
 ENDIF()

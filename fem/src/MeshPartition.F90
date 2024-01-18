@@ -105,7 +105,7 @@ CONTAINS
     TYPE(Graph_t) :: LocalGraph
     REAL(KIND=dp) :: t1,t2, ImbalanceTol, ZTolChange
     INTEGER :: i,j,k,l,m,n,ierr,NNodes,NBulk,Ngraph,counter,DIM,&
-         max_elemno,NoPart, ZMinElems
+         max_elemno,NoPart, ZMinElems,OutputLevel
     INTEGER, ALLOCATABLE :: ElemAdj(:), ElemStart(:), ElemAdjProc(:), ParElemAdj(:), ParElemStart(:),&
          ParElemIdx(:),ParElemAdjProc(:),sharecount(:),&
          ParElemMap(:)
@@ -113,7 +113,7 @@ CONTAINS
     LOGICAL :: UsePerm, Success, GotParMetis, DistributedMesh
     LOGICAL, ALLOCATABLE :: PartSuccess(:), PartGotNodes(:)
     
-    CHARACTER(MAX_NAME_LEN) :: ImbTolStr
+    CHARACTER(MAX_NAME_LEN) :: ImbTolStr,Method, Approach, ParMetisLib, ZoltanLib, GraphPackage
     CHARACTER(*), PARAMETER :: FuncName="Zoltan_Interface"
 
     !Zoltan things
@@ -171,7 +171,7 @@ CONTAINS
       IF(.NOT. Found) NoPart = ParEnv % PEs
     END IF
 
-    CALL Info(FuncName,'Partitioning with Zoltan to '//I2S(NoPart)//' partitions',Level=6)
+    CALL Info(FuncName,'Partitioning with Zoltan to '//TRIM(I2S(NoPart))//' partitions',Level=6)
     
     IF( PRESENT( SerialMode ) ) THEN
       Serial = SerialMode
@@ -191,15 +191,60 @@ CONTAINS
     NBulk = Mesh % NumberOfBulkElements
     Ngraph = Nbulk
     DIM = CoordinateSystemDimension()
-
-    IF (.NOT. Serial) THEN
+    
+    IF(.NOT. Serial) THEN
       ALLOCATE(PartGotNodes(ParEnv % PEs))
       CALL MPI_ALLGATHER(NNodes > 0, 1, MPI_LOGICAL, PartGotNodes, &
           1, MPI_LOGICAL, ELMER_COMM_WORLD, ierr)
+
       DistributedMesh = ALL(PartGotNodes)
-    ELSE
-      DistributedMesh = .FALSE.
     END IF
+
+    Method = ListGetString(Model % Solver % Values,"Repartition Method", Found)
+    IF(.NOT. Found) THEN
+      CALL Info(FuncName, "Not Found 'Repartition Method' so assuming 'Zoltan'")
+      Method = 'Zoltan'
+    END IF
+    Approach = ListGetString(Model % Solver % Values,"Repartition Approach", Found)
+    IF(.NOT. Found) THEN
+      CALL Info(FuncName, "Not Found 'Repartition Approach' so assuming 'repartition'")
+      Approach = 'repartition'
+    END IF
+    OutputLevel = ListGetInteger(Model % Solver % Values,"Repartition Output Level", Found)
+    IF(.NOT. Found) THEN
+      CALL Info(FuncName, "Not Found 'Repartition Output Level' so assuming '0'")
+      OutputLevel = 0
+    END IF
+
+    IF(Serial) THEN
+      Approach = 'partition'
+      Method = 'zoltan'
+      CALL Info(FuncName, 'used in serial so using Zoltan partition')
+    END IF
+
+    SELECT CASE( Method )
+    CASE( 'parmetis' )
+      IF(.NOT. GotParMetis) CALL FATAL(FuncName, "ParMetis repartitioning selected but not installed")
+      IF(.NOT. DistributedMesh) CALL FATAL(FuncName, "ParMetis requires fully distributed mesh with nodes on each partition")
+      ParMetisLib = ListGetString(Model % Solver % Values,"Repartition ParMetis Library", Found)
+      IF(.NOT. Found) THEN
+        CALL Info(FuncName, "Not Found 'Repartition ParMetis Library' so assuming 'adaptiverepart'")
+        ParMetisLib = 'adaptiverepart'
+      END IF
+    CASE( 'zoltan' )
+      ZoltanLib = ListGetString(Model % Solver % Values,"Repartition Zoltan Library", Found)
+      IF(.NOT. Found) THEN
+        CALL Info(FuncName, "Not Found 'Repartition Zoltan Library' so assuming 'graph'")
+        ZoltanLib = 'graph'
+      END IF
+      GraphPackage = ListGetString(Model % Solver % Values,"Repartition Zoltan Graph Package", Found)
+      IF(.NOT. Found) THEN
+        CALL Info(FuncName, "Not Found 'Repartition Zoltan Graph Package' so assuming 'phg'")
+        GraphPackage = 'phg'
+      END IF
+    CASE DEFAULT
+      CALL Fatal(FuncName,"Repartition method selected invalid")
+    END SELECT
 
 10  CONTINUE
 
@@ -250,31 +295,28 @@ CONTAINS
       zz_obj => Zoltan_Create(ELMER_COMM_WORLD)
     END IF
 
-    ! Set default values for keywords, if not given
-    IF(Debug) THEN
-      CALL ListAddNewString( PartParams,"zoltan: debug_level","5")
-    ELSE
-      CALL ListAddNewString( PartParams,"zoltan: debug_level","0")
-    END IF
+    CALL ListAddNewString( PartParams,"zoltan: debug_level",I2S(OutputLevel))
 
-    IF(GotParMetis .AND. DistributedMesh) THEN
-      CALL Info(FuncName, 'Using ParMetis for rebalancing')
+    SELECT CASE( Method )
+    CASE( 'parmetis' )
       CALL ListAddNewString( PartParams,"zoltan: lb_method","graph")
-      CALL ListAddNewString( PartParams,"zoltan: graph_package","parmetis")
-      CALL ListAddNewString( PartParams,"zoltan: lb_approach","repartition")
-      CALL ListAddNewString( PartParams,"zoltan: parmetis_method","adaptiverepart")
-    ELSE
-      CALL Info(FuncName, 'Not got ParMetis so using Zoltan phg for rebalancing')
-      CALL ListAddNewString( PartParams,"zoltan: lb_method","graph")
-      CALL ListAddNewString( PartParams,"zoltan: graph_package","phg")
+      CALL ListAddNewString( PartParams,"zoltan: graph_package",TRIM(Method))
+      CALL ListAddNewString( PartParams,"zoltan: lb_approach",TRIM(Approach))
+      CALL ListAddNewString( PartParams,"zoltan: parmetis_method",TRIM(ParMetisLib))
+    CASE( 'zoltan' )
+      CALL ListAddNewString( PartParams,"zoltan: lb_method",TRIM(ZoltanLib))
+      CALL ListAddNewString( PartParams,"zoltan: graph_package",TRIM(GraphPackage))
+      CALL ListAddNewString( PartParams,"zoltan: lb_approach",TRIM(Approach))
       CALL ListAddNewString( PartParams,"zoltan: num_gid_entries","1")
       CALL ListAddNewString( PartParams,"zoltan: num_lid_entries","1")
       CALL ListAddNewString( PartParams,"zoltan: obj_weight_dim","0")
       CALL ListAddNewString( PartParams,"zoltan: edge_weight_dim","0")
       CALL ListAddNewString( PartParams,"zoltan: check_graph","0")
       CALL ListAddNewString( PartParams,"zoltan: phg_multilevel","1")
-      IF(Debug) CALL ListAddNewString( PartParams,"zoltan: phg_output_level","2")
-    END IF
+      IF(OutputLevel > 4) CALL ListAddNewString( PartParams,"zoltan: phg_output_level","2")
+    CASE DEFAULT
+      CALL Fatal(FuncName,"Programming error...")
+    END SELECT
 
     !CALL ListAddNewString( PartParams,"zoltan: imbalance_tol","1.1") !Max load imbalance (default 10%)
     WRITE(ImbTolStr, '(F20.10)') ImbalanceTol
@@ -282,12 +324,10 @@ CONTAINS
 
     ! The settings for serial vs. parallel operation differ slightly
     IF( Serial ) THEN
-      CALL ListAddNewString( PartParams,"zoltan: return_lists","export part")    
-      CALL ListAddNewString( PartParams,"zoltan: lb_approach","partition")  
-      CALL ListAddNewString( PartParams,"zoltan: num_global_parts",I2S(NoPart))  
+      CALL ListAddNewString( PartParams,"zoltan: return_lists","export part")
+      CALL ListAddNewString( PartParams,"zoltan: num_global_parts",TRIM(I2S(NoPart)))  
     ELSE
       CALL ListAddNewString( PartParams,"zoltan: return_lists","all")    !TODO - we only use export list
-      CALL ListAddNewString( PartParams,"zoltan: lb_approach","repartition")  !repartition/refine <- faster
     END IF
       
     ! Pass keyword with prefix 'zoltan:' from the value list to zoltan

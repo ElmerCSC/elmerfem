@@ -27,6 +27,9 @@
 ! *
 ! ****************************************************************************/
 
+!> \ingroup ElmerLib
+!> \{
+
 MODULE MeshRemeshing
 
 USE Types
@@ -55,6 +58,8 @@ INTEGER :: MMGPARAM_debug = MMG3D_IPARAM_debug
 INTEGER :: MMGPARAM_rmc = MMG3D_DPARAM_rmc
 INTEGER :: MMGPARAM_nosurf = MMG3D_IPARAM_nosurf
 INTEGER :: MMGPARAM_aniso = MMG3D_IPARAM_anisosize
+INTEGER :: MMGPARAM_hgradreq = MMG3D_DPARAM_hgradreq
+INTEGER :: MMGPARAM_nosizreq = MMG3D_IPARAM_nosizreq
 MMG5_DATA_PTR_T :: mmgMesh
 MMG5_DATA_PTR_T :: mmgSol
 MMG5_DATA_PTR_T :: mmgMet
@@ -104,8 +109,6 @@ SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount, Solver)
   IF(Parallel) CALL Assert(ASSOCIATED(Mesh % ParallelInfo % GlobalDOFs), FuncName,&
       "Parallel sim but no ParallelInfo % GlobalDOFs")
   
-  IF(PRESENT(PairCount)) NEdges= PairCount
-  
   IF( PRESENT( Solver ) ) THEN
     CALL Info(FuncName,'Setting only the active part of mesh')
     EquationName = ListGetString( Solver % Values, 'Equation', Found)                 
@@ -125,6 +128,7 @@ SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount, Solver)
   ntris = 0
   nquads = 0
   nedges = 0
+  IF(PRESENT(PairCount)) NEdges= PairCount
 
   DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
     Element => Mesh % Elements(i)
@@ -181,7 +185,6 @@ SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount, Solver)
       j = Perm(i)
       IF(j==0) CYCLE
     END IF
-      
     ! ref = GDOF + 10 to avoid an input ref of 10 being confused
     ! with mmg output ref of 10 which occurs on some new nodes
     ! GDOF = ref - 10
@@ -318,14 +321,14 @@ END SUBROUTINE Check_Parameters_Obsolite
   
   
 
-SUBROUTINE Set_MMG3D_Parameters(SolverParams, ReTrial )
+SUBROUTINE Set_MMG3D_Parameters(SolverParams, ReTrial)
 
   TYPE(ValueList_t), POINTER :: SolverParams
   LOGICAL, OPTIONAL :: ReTrial
   
 #ifdef HAVE_MMG
   REAL(KIND=dp) :: Pval
-  LOGICAL :: AngleDetect
+  LOGICAL :: NoAngleDetect
   INTEGER :: verbosity,MeMIncrease,Bucket,GMshOption,ierr
   REAL(KIND=dp) :: Hmin, Hmax, HSiz
   LOGICAL :: DebugMode,NoInsert,NoSwap,NoMove,NoSurf
@@ -361,9 +364,9 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams, ReTrial )
   END IF
 
   ! Control global Hausdorff distance (on all the boundary surfaces of the mesh)
-  ! MMG3D_DPARAM_hausd default est 0.01 semble bien trop petit;
-  !  il semble qu'il faille mettre une taille > taille des elements.
-  Pval = ListGetCReal( SolverParams, 'mmg hausd', Found)
+  ! adaptive hausd used in 3D calving 
+  Pval = ListGetCReal( SolverParams,'adaptive hausd', Found ) 
+  IF(.NOT. FOund) Pval = ListGetCReal( SolverParams, 'mmg hausd', Found)
   IF (Found) THEN
     CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMG3D_DPARAM_hausd,Pval,ierr)
     IF ( ierr == 0 ) CALL Fatal(FuncName,'Call to MMG3D_SET_DPARAMETER <hausd> Failed')
@@ -407,21 +410,27 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams, ReTrial )
         'Call to MMG3D_SET_IPARAMETER <debug> Failed')
   END IF
 
-!!! OTHER PARAMETERS: NOT ALL TESTED
-  Pval = ListGetCReal( SolverParams, 'mmg Angle detection',Found)
-  IF (Found) THEN
-    CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMG3D_DPARAM_angleDetection,&
-         Pval,ierr)
-    IF ( ierr == 0 ) CALL Fatal(FuncName,&
-        'Call to MMG3D_SET_DPARAMETER <Angle detection> Failed')
-  ENDIF
-
-  ! !< [1/0], Avoid/allow surface modifications */ 
-  AngleDetect = ListGetLogical(SolverParams,'mmg No Angle detection',Found)
-  IF (AngleDetect) THEN
-    CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMG3D_IPARAM_angle,1,ierr)
+  ! !< [1/0], Avoid/allow automatic angle detection */
+  NoAngleDetect = ListGetLogical(SolverParams,'mmg No Angle detection',Found)
+  IF (NoAngleDetect) THEN
+    CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMG3D_IPARAM_angle,0,ierr)
     IF ( ierr == 0 ) CALL Fatal(FuncName,&
         'Call to MMG3D_SET_IPARAMETER <No Angle detection> Failed')
+  ELSE
+    !This is the default!
+    !CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMG3D_IPARAM_angle,1,ierr)
+    !IF ( ierr == 0 ) CALL Fatal(FuncName,&
+    !    'Call to MMG3D_SET_IPARAMETER <No Angle detection> Failed')
+    !!! mmg angle detection angle
+    Pval = ListGetCReal( SolverParams, 'mmg Angle detection',Found)
+    IF (Found) THEN
+      CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMG3D_DPARAM_angleDetection,&
+          Pval,ierr)
+      IF ( ierr == 0 ) CALL Fatal(FuncName,&
+          'Call to MMG3D_SET_DPARAMETER <Angle detection> Failed')
+    ELSE
+      CALL WARN(FuncName, "Using mmg default value for automatic angle detection")
+    ENDIF
   END IF
 
   ! [1/0] Avoid/allow point insertion
@@ -456,12 +465,21 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams, ReTrial )
   END IF
 
   NoSurf = ListGetLogical(SolverParams,'MMG No surf',Found)
+  IF(.NOT. Found) NoSurf = .TRUE.
   IF (NoSurf) THEN
     CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMG3D_IPARAM_nosurf,0,ierr)
     IF ( ierr == 0 ) CALL Fatal(FuncName,&
          'Call to MMG3D_SET_IPARAMETER <No surf> Failed')
   END IF
   
+  Pval = ListGetCReal( SolverParams, 'MMG HgradReq',Found)
+  IF( Found ) THEN
+    CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMGPARAM_HgradReq,&
+        Pval,ierr)
+    IF ( ierr == 0 ) CALL Fatal(FuncName,&
+        'Call to MMG3D_SET_DPARAMETER <Angle detection> Failed')
+  END IF
+    
 !!!
 #else
      CALL Fatal('Set_MMG3D_Parameters',&
@@ -477,7 +495,7 @@ SUBROUTINE Set_PMMG_Parameters(SolverParams, ReTrial )
   
 #ifdef HAVE_PARMMG
   REAL(KIND=dp) :: Pval
-  LOGICAL :: AngleDetect
+  LOGICAL :: NoAngleDetect
   INTEGER :: verbosity,MeMIncrease,Bucket,GMshOption,ierr,niter
   REAL(KIND=dp) :: Hmin, Hmax, HSiz
   LOGICAL :: DebugMode,NoInsert,NoSwap,NoMove,NoSurf
@@ -516,7 +534,8 @@ SUBROUTINE Set_PMMG_Parameters(SolverParams, ReTrial )
   ! Control global Hausdorff distance (on all the boundary surfaces of the mesh)
   ! MMG3D_DPARAM_hausd default est 0.01 semble bien trop petit;
   !  il semble qu'il faille mettre une taille > taille des elements.
-  Pval = ListGetCReal( SolverParams, 'mmg hausd', Found)
+  Pval = ListGetCReal( SolverParams,'adaptive hausd', Found ) 
+  IF(.NOT. FOund) Pval = ListGetCReal( SolverParams, 'mmg hausd', Found)
   IF (Found) THEN
     CALL PMMG_SET_DPARAMETER(pmmgMesh,PMMGPARAM_hausd,Pval,ierr)
     IF ( ierr == 0 ) CALL Fatal(FuncName, &
@@ -531,7 +550,7 @@ SUBROUTINE Set_PMMG_Parameters(SolverParams, ReTrial )
          'Call to MMG3D_SET_DPARAMETER <hgrad> Failed')
   END IF
 
-  Pval = ListGetConstReal( SolverParams, 'mmg hgradreq', Found, minv=2.0_dp, maxv=4.0_dp)
+  Pval = ListGetConstReal( SolverParams, 'mmg hgradreq', Found, minv=1.3_dp, maxv=4.0_dp)
   IF (Found) THEN
     CALL PMMG_SET_DPARAMETER(pmmgMesh,PMMGPARAM_hgradreq,Pval,ierr)
     IF ( ierr == 0 ) CALL Fatal(FuncName, &
@@ -542,7 +561,7 @@ SUBROUTINE Set_PMMG_Parameters(SolverParams, ReTrial )
   
   ! If this is a ReTrial then we only change some real valued keywords!
   IF( PRESENT( ReTrial ) ) THEN
-    !IF( ReTrial ) RETURN
+    IF( ReTrial ) RETURN
   END IF
     
 !!! PARAMS: generic options (debug, mem, verbosity)
@@ -581,9 +600,9 @@ SUBROUTINE Set_PMMG_Parameters(SolverParams, ReTrial )
   ENDIF
 
   ! !< [1/0], Avoid/allow surface modifications */ 
-  AngleDetect = ListGetLogical(SolverParams,'mmg No Angle detection',Found)
-  IF (AngleDetect) THEN
-    CALL PMMG_SET_IPARAMETER(pmmgMesh,PMMGPARAM_angle,1,ierr)
+  NoAngleDetect = ListGetLogical(SolverParams,'mmg No Angle detection',Found)
+  IF (NoAngleDetect) THEN
+    CALL PMMG_SET_IPARAMETER(pmmgMesh,PMMGPARAM_angle,0,ierr)
     IF ( ierr == 0 ) CALL Fatal(FuncName, &
          'Call to MMG3D_SET_IPARAMETER <No Angle detection> Failed')
   END IF
@@ -635,12 +654,13 @@ SUBROUTINE Set_PMMG_Parameters(SolverParams, ReTrial )
 END SUBROUTINE Set_PMMG_Parameters
    
 
-SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
+SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel, FixedNodes, FixedElems, Calving)
 
   !------------------------------------------------------------------------------
   TYPE(Mesh_t), POINTER :: NewMesh
   LOGICAL :: Parallel
   LOGICAL, OPTIONAL, ALLOCATABLE :: FixedNodes(:), FixedElems(:)
+  LOGICAL, OPTIONAL :: Calving
   !------------------------------------------------------------------------------
 
 #ifdef HAVE_MMG
@@ -768,10 +788,9 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
     ALLOCATE( NewMesh % InvPerm( NewMesh % NumberOfBulkElements ) )
     NewMesh % InvPerm = 0    
   END IF
-
   
-  PRINT *,'Mesh Counts',NewMesh % NumberOfNodes,NewMesh % NumberOfBulkElements,&
-      NewMesh % NumberOfBoundaryElements 
+  !PRINT *,'Mesh Counts',NewMesh % NumberOfNodes,NewMesh % NumberOfBulkElements,&
+  !    NewMesh % NumberOfBoundaryElements 
   
   IF(PRESENT(FixedNodes)) THEN
     ALLOCATE(FixedNodes(NVerts+np0))
@@ -876,6 +895,7 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
     MinIndex = MIN( MinIndex, MINVAL( NodeIndexes(1:4) ) )
     MaxIndex = MAX( MaxIndex, MAXVAL( NodeIndexes(1:4) ) )
   END DO
+  IF (DEBUG) PRINT *,'MMG3D_Get_tets DONE'
 
   IF( Combine ) THEN
     nt0 = 0
@@ -912,6 +932,7 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
   kk = NewMesh % NumberOfBulkElements
   DO ii=1,NTris
     kk = kk + 1
+
     Element => NewMesh % Elements(kk)
 
     Element % TYPE => GetElementType( 303 )
@@ -982,7 +1003,9 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
              
 ! CALL SetMeshMaxDOFs(NewMesh)
 
-  CALL Finalize_MMG_Mesh(NewMesh)
+  ! this throws up lots of warning in 3D calving
+  ! since calving uses multiple inputs turning off during merge (15/11/23)
+  IF(.NOT. Calving) CALL Finalize_MMG_Mesh(NewMesh)
 
   
 #else
@@ -1362,14 +1385,15 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,&
   TYPE(Variable_t), POINTER :: TimeVar, MMGVar
   TYPE(Element_t), POINTER :: Element
   REAL(KIND=dp), ALLOCATABLE :: TargetLength(:,:), Metric(:,:)
-  REAL(KIND=dp), POINTER :: WorkReal(:,:,:) => NULL()
+  REAL(KIND=dp), POINTER :: WorkReal(:,:,:) => NULL(), hminarray(:,:) => NULL(),&
+       hausdarray(:,:) => NULL()
   REAL(KIND=dp) :: hsiz(3),hmin,hmax,hgrad,hausd,RemeshMinQuality,Quality
   INTEGER :: i,j,MetricDim,NNodes,NBulk,NBdry,ierr,SolType,body_offset,&
        nBCs,NodeNum(1), MaxRemeshIter, mmgloops, &
        NVerts, NTetras, NPrisms, NTris, NQuads, NEdges, Counter, Time
   INTEGER, ALLOCATABLE :: TetraQuality(:)
   LOGICAL :: Debug, Parallel, AnisoFlag, Found, SaveMMGMeshes, SaveMMGSols, &
-      UseHvar, UseTargetLength
+      UseHvar, UseTargetLength, MultipleInputs
   LOGICAL, ALLOCATABLE :: RmElement(:)
   CHARACTER(:), ALLOCATABLE :: FuncName, MeshName, SolName, &
         premmg_meshfile, mmg_meshfile, premmg_solfile, mmg_solfile
@@ -1405,18 +1429,24 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,&
   
   MaxRemeshIter = ListGetInteger( FuncParams,'MMG Remesh Max Iterations', Found )
   IF(.NOT. Found ) MaxRemeshIter = 10
+  MultipleInputs = ListGetLogical( FuncParams,'MMG Multiple Inputs', Found )
+  IF(.NOT. Found) MultipleInputs = .FALSE.
+  IF(MultipleInputs) THEN
+    hminarray => ListGetConstRealArray(FuncParams, "MMG Hmin", Found)
+    hausdarray => ListGetConstRealArray(FuncParams, "MMG Hausd", Found)
+  END IF
    
   RemeshMinQuality = ListGetConstReal(FuncParams, "MMG Min Quality", Found, DefValue=0.0001_dp)
   
-  SaveMMGMeshes = ListGetLogical(FuncParams,"Save RemeshMMG3D Meshes", Found)
+  SaveMMGMeshes = ListGetLogical(FuncParams,"Save MMG Meshes", Found)
   IF(SaveMMGMeshes) THEN
-    premmg_meshfile = ListGetString(FuncParams, "Pre RemeshMMG3D Mesh Name", UnfoundFatal = .TRUE.)
+    premmg_meshfile = ListGetString(FuncParams, "Pre MMG Mesh Name", UnfoundFatal = .TRUE.)
     mmg_meshfile = ListGetString(FuncParams, "MMG Output Mesh Name", UnfoundFatal = .TRUE.)
   END IF
   
-  SaveMMGSols = ListGetLogical(FuncParams,"Save RemeshMMG3D Sols", Found)
+  SaveMMGSols = ListGetLogical(FuncParams,"Save MMG Sols", Found)
   IF(SaveMMGSols) THEN
-    premmg_solfile = ListGetString(FuncParams, "Pre RemeshMMG3D Sol Name", UnfoundFatal = .TRUE.)
+    premmg_solfile = ListGetString(FuncParams, "Pre MMG Sol Name", UnfoundFatal = .TRUE.)
     mmg_solfile = ListGetString(FuncParams, "MMG Output Sol Name", UnfoundFatal = .TRUE.)
   END IF
 
@@ -1476,8 +1506,14 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,&
     
   nBCs = CurrentModel % NumberOfBCs
   body_offset = nBCs + CurrentModel % NumberOfBodies + 1
-! body_offset = 0 
 
+  ! The feature where some of the elements are conserved and some are remeshed
+  ! does not really like the offset. Instead of fixing it we here only avoid the
+  ! problem...
+  IF( ListGetLogical( FuncParams,'Keep Unmeshed regions',Found ) ) THEN
+    body_offset = 0
+  END IF
+  
   IF( body_offset > 0 ) THEN
     DO i=1,InMesh % NumberOfBulkElements
       InMesh % Elements(i) % BodyID = InMesh % Elements(i) % BodyID + body_offset
@@ -1503,6 +1539,11 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,&
     CALL MMG3D_Init_mesh(MMG5_ARG_start, &
         MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &
         MMG5_ARG_end)
+
+    IF(MultipleInputs) THEN
+      CALL ListAddConstReal(FuncParams, 'adaptive min h', hminarray(mmgloops, 1))
+      CALL ListAddConstReal(FuncParams, 'adaptive hausd', hausdarray(mmgloops, 1))
+    END IF
            
     ! If this is retrial then get only selected parameters again that may depend on the variable "MMG Loop".
     CALL Set_MMG3D_Parameters(FuncParams, mmgloops > 1 )
@@ -1640,7 +1681,7 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,&
   
 
   ! Transfer the new mesh into Elmer mesh format
-  CALL GET_MMG3D_MESH(OutMesh,Parallel)
+  CALL GET_MMG3D_MESH(OutMesh,Parallel, Calving=MultipleInputs)
 
   ! Release the mesh from mmg mesh format
   CALL MMG3D_Free_all(MMG5_ARG_start, &
@@ -1659,7 +1700,10 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,&
   END IF
     
   ! And delete the unneeded BC elems
-  IF(.FALSE.) THEN
+  ! Important not for calving. mmg adds boundary nodes to upstream user defined boundary.
+  ! these need to be removed
+  ! this is a temp fix as calving algo has mutliple inputs
+  IF(MultipleInputs) THEN
     ALLOCATE(RmElement(NBulk+NBdry))
     RmElement = .FALSE.
     DO i=NBulk+1,NBulk+NBdry
@@ -1752,21 +1796,7 @@ SUBROUTINE SequentialRemeshParMMG(Model, InMesh,OutMesh,Boss,EdgePairs,PairCount
   !hausd, hmin, hmax, hgrad, anisoflag, the metric
   !Scalar, vector, tensor metric?
 
-  !WorkArray => ListGetConstRealArray(FuncParams, "MMG Hmin", Found)
-  !IF(.NOT. Found) CALL Fatal(FuncName, 'Provide hmin input array to be iterated through: "Mesh Hmin"')
-  !MaxRemeshIter= SIZE(WorkArray(:,1))
-  !ALLOCATE(hminarray(MaxRemeshIter))
-  !hminarray = WorkArray(:,1)
-  !NULLIFY(WorkArray)
-  !hmax = ListGetConstReal(FuncParams, "MMG Hmax",  DefValue=4000.0_dp)
-  !hgrad = ListGetConstReal(FuncParams,"MMG Hgrad", DefValue=0.5_dp)
-  !WorkArray => ListGetConstRealArray(FuncParams, "MMG Hausd", Found)
-  !IF(.NOT. Found) CALL Fatal(FuncName, 'Provide hmin input array to be iterated through: "Mesh Hausd"')
-  !IF(MaxRemeshIter /= SIZE(WorkArray(:,1))) CALL Fatal(FuncName, 'The number of hmin options &
-  !          must equal the number of hausd options')
-  !ALLOCATE(hausdarray(MaxRemeshIter))
-  !hausdarray = WorkArray(:,1)
-  !NULLIFY(WorkArray)
+
   RemeshMinQuality = ListGetConstReal(FuncParams, "MMG Min Quality",Found, DefValue=0.0001_dp)
   AnisoFlag = ListGetLogical(FuncParams, "MMG Anisotropic", DefValue=.TRUE.)
 
@@ -1789,6 +1819,7 @@ SUBROUTINE SequentialRemeshParMMG(Model, InMesh,OutMesh,Boss,EdgePairs,PairCount
     NBdry = InMesh % NumberOfBoundaryElements
 
     IF(AnisoFlag) THEN
+
       WorkMesh => Model % Mesh
       Model % Mesh => InMesh
 
@@ -1804,17 +1835,21 @@ SUBROUTINE SequentialRemeshParMMG(Model, InMesh,OutMesh,Boss,EdgePairs,PairCount
         Metric(i,1) = 1.0 / (WorkReal(1,1,1)**2.0)
         Metric(i,4) = 1.0 / (WorkReal(2,1,1)**2.0)
         Metric(i,6) = 1.0 / (WorkReal(3,1,1)**2.0)
+
       END DO
 
       Model % Mesh => WorkMesh
       WorkMesh => NULL()
+
     ELSE
+
       SolType = MMG5_Scalar
       ALLOCATE(Metric(NNodes, 1))
       DO i=1,NNodes
         NodeNum = i
         Metric(i,:) = ListGetReal(FuncParams,"MMG Target Length", 1, NodeNum, UnfoundFatal=.TRUE.)
       END DO
+
     END IF
 
     body_offset = CurrentModel % NumberOfBCs + CurrentModel % NumberOfBodies + 1
@@ -2007,7 +2042,7 @@ SUBROUTINE SequentialRemeshParMMG(Model, InMesh,OutMesh,Boss,EdgePairs,PairCount
       InMesh % Elements(1:i) % BodyID = InMesh % Elements(1:i) % BodyID - body_offset
     END IF
   END IF
-  
+
 #else
   CALL Fatal(FuncName, "Remeshing utility PMMG has not been installed")
 #endif
@@ -2148,7 +2183,7 @@ SUBROUTINE Set_ParMMG_Mesh(Mesh, Parallel, EdgePairs, PairCount)
     END DO
     CALL Info(FuncName,'ParMMG - Set edge elements done')
   END IF
-    
+ 
   ! use nodes to set mpi comms
   CALL PMMG_SET_IPARAMETER(pmmgMesh,PMMGPARAM_APImode, 1, ierr)
 
@@ -2166,10 +2201,9 @@ SUBROUTINE Set_ParMMG_Mesh(Mesh, Parallel, EdgePairs, PairCount)
     END DO
   END DO
 
-    
   NoNeighbours = COUNT(IsNeighbour)
   NeighbourList = PACK( (/ (i, i=1, ParEnv % PEs) /), IsNeighbour)
-  
+
   ALLOCATE(NSharedNodes(NoNeighbours))
   NSharedNodes = 0
   DO i=1, Mesh % NumberOfNodes
@@ -3093,6 +3127,7 @@ END SUBROUTINE DistributedRemeshParMMG
       Element % BoundaryInfo % Left => NewMesh % Elements(parent)
     END DO
 
+
     kk=NewMesh % NumberOfBulkElements+na
     IF( na0 > 0 ) THEN
       na0 = 0
@@ -3156,6 +3191,7 @@ BLOCK
            ElementDef = "n:1"
         END IF
       END IF
+
 
       ElementDef0 = ElementDef
       DO WHILE(.TRUE.)
@@ -3527,7 +3563,7 @@ CONTAINS
 #ifdef HAVE_MMG   
     REAL(KIND=dp) :: hsiz,Pval
     INTEGER :: ier
-    LOGICAL :: AngleDetect
+    LOGICAL :: NoAngleDetect
     INTEGER :: verbosity,MeMIncrease,Bucket,GMSHoption     
     LOGICAL :: DebugMode,NoInsert,NoSwap,NoMove,NoSurf
     LOGICAL :: Found, Stat

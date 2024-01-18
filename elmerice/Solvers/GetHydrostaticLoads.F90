@@ -73,7 +73,7 @@ SUBROUTINE GetHydrostaticLoads( Model,Solver,dt,TransientSimulation )
   TYPE(Nodes_t), SAVE :: Nodes
   TYPE(GaussIntegrationPoints_t) :: IP
 
-  LOGICAL :: AllocationsDone = .FALSE., GotIt, stat
+  LOGICAL :: AllocationsDone = .FALSE., GotIt, stat, Active
 
   INTEGER :: i, j, n, m, t, p, Nn, istat, DIM, jdim
   INTEGER, POINTER :: Permutation(:)
@@ -98,6 +98,8 @@ SUBROUTINE GetHydrostaticLoads( Model,Solver,dt,TransientSimulation )
        CALL FATAL(SolverName,"Variable not associated")
   Permutation  => PointerToVariable % Perm
   VariableValues => PointerToVariable % Values
+
+  Active = ANY(Permutation > 0)
 
   !--------------------------------------------------------------
   !Allocate some permanent storage, this is done first time only:
@@ -183,20 +185,25 @@ SUBROUTINE GetHydrostaticLoads( Model,Solver,dt,TransientSimulation )
 
   END DO
 
-  DO jdim=1, DIM
-     IF (DIM > 1) THEN
+  IF(Active .NEQV. ASSOCIATED(Solver % Matrix)) CALL Fatal(SolverName, &
+       "Inconsistency between allocation of matrix and number of active nodes")
+
+  IF(Active) THEN
+    DO jdim=1, DIM
+      IF (DIM > 1) THEN
         VarName=ComponentNameStr( Solver % Variable % Name, jdim )
-     ELSE
+      ELSE
         VarName=GetVarName(Solver % Variable)
-     ENDIF
-     IF (jdim .eq. 1 ) THEN
+      ENDIF
+      IF (jdim .eq. 1 ) THEN
         IF ( ParEnv % PEs >1 ) CALL ParallelSumVector( Solver % Matrix, VariableValues)
-     END IF
-!------------------------------------------------------------------------------
-!     Update Periodic Nodes 
-!------------------------------------------------------------------------------
-     CALL UpdatePeriodicNodes(Model, Solver, VarName, PointerToVariable, jdim)
-  ENDDO 
+      END IF
+      !------------------------------------------------------------------------------
+      !     Update Periodic Nodes
+      !------------------------------------------------------------------------------
+      CALL UpdatePeriodicNodes(Model, Solver, VarName, PointerToVariable, jdim)
+    ENDDO
+  END IF
 
   CALL INFO(SolverName, 'End', level=3)
 

@@ -162,7 +162,7 @@
 #cmakedefine HAVE_TRILINOS
 
 /* MMG */
-#if 0
+#if 1
 #cmakedefine HAVE_MMG 
 #cmakedefine HAVE_PARMMG
 #endif

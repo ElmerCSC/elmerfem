@@ -75,6 +75,7 @@ Solver 1
   Adaptive Error Limit = 0.01
   Adaptive Remesh Use MMG = Logical True
   Adaptive Mesh Numbering = Logical False
+  Repartition Method = String "Zoltan"
 
 !  Adaptive Save Mesh = True
 End

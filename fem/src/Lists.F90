@@ -1787,19 +1787,20 @@ CONTAINS
        ptr  => List % Head
        Prev => ptr
        DO WHILE( ASSOCIATED(ptr) )
-         IF ( ptr % NameLen == k .AND. ptr % Name(1:k) == str(1:k) ) THEN
-            IF ( ASSOCIATED(ptr,List % Head) ) THEN
+         IF ( ptr % NameLen == k) THEN
+           IF(ptr % Name(1:k) == str(1:k) ) THEN
+             IF ( ASSOCIATED(ptr,List % Head) ) THEN
                List % Head => ptr % Next
                Prev => List % Head
-            ELSE
+             ELSE
                Prev % Next => ptr % Next
-            END IF
-            CALL ListDelete(ptr)
-            EXIT
-         ELSE
-           Prev => ptr
-           ptr  => ptr % Next 
+             END IF
+             CALL ListDelete(ptr)
+             EXIT
+           END IF
          END IF
+         Prev => ptr
+         ptr  => ptr % Next 
        END DO
      END IF
 !------------------------------------------------------------------------------

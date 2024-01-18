@@ -31,7 +31,8 @@
 
 !Remesh the calving model using MMG3D - runs in parallel but remeshing is serial!
 !Takes a level set which defines a calving event (or multiple calving events). Level
-! set is negative inside a calving event, and positive in the remaining domain.
+! set is negative inside a calving event, and positive in the remaining domain. This
+! hasn't actually been implemented yet, we use a test function.
 
 ! Strategy:
 !----------------
@@ -51,64 +52,51 @@
 
 ! - Continue simulation
 
-SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
+SUBROUTINE CalvingRemeshParMMG( Model, Solver, dt, Transient )
 
-  USE MeshUtils
-  USE CalvingGeometry
-  USE MeshPartition
-  USE MeshRemeshing
+    USE MeshUtils
+    USE CalvingGeometry
+    USE MeshPartition
+    USE MeshRemeshing
 
-  IMPLICIT NONE
+    IMPLICIT NONE
 
-#include "mmg/common/libmmgtypesf.h"
-#ifndef MMGVERSION_H
-#define MMG_VERSION_LT(MAJOR,MINOR) 1
-#endif
+#include "parmmg/libparmmgtypesf.h"
 
   TYPE(Model_t) :: Model
   TYPE(Solver_t), TARGET :: Solver
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
   !--------------------------------------
-  TYPE(Variable_t), POINTER :: CalvingVar,DistanceVar,mmgVar
-  TYPE(ValueList_t), POINTER :: SolverParams
-  TYPE(Mesh_t),POINTER :: Mesh,GatheredMesh,NewMeshR,NewMeshRR,FinalMesh,ParMetisMesh
+  TYPE(Variable_t), POINTER :: CalvingVar,DistanceVar
+  TYPE(ValueList_t), POINTER :: SolverParams, MeshParams
+  TYPE(Mesh_t),POINTER :: Mesh,GatheredMesh,NewMeshR,NewMeshRR,FinalMesh, DistributedMesh
   TYPE(Element_t),POINTER :: Element, ParentElem
   INTEGER :: i,j,k,NNodes,GNBulk, GNBdry, GNNode, NBulk, Nbdry, ierr, &
        my_cboss,MyPE, PEs,CCount, counter, GlNode_min, GlNode_max,adjList(4),&
        front_BC_ID, front_body_id, my_calv_front,calv_front, ncalv_parts, &
        group_calve, comm_calve, group_world,ecode, NElNodes, target_bodyid,gdofs(4), &
-       PairCount,RPairCount, NCalvNodes, croot, nonCalvBoss,&
-       NVerts, NTetras, NPrisms, NTris, NQuads, NEdges
+       PairCount,RPairCount, NCalvNodes, croot, nonCalvBoss, RNNodes, RNElems
   INTEGER, POINTER :: NodeIndexes(:), geom_id
   INTEGER, ALLOCATABLE :: Prnode_count(:), cgroup_membs(:),disps(:), &
        PGDOFs_send(:),pcalv_front(:),GtoLNN(:),EdgePairs(:,:),REdgePairs(:,:), ElNodes(:),&
-       Nodes(:), IslandCounts(:), pNCalvNodes(:,:), TetraQuality(:)
-  REAL(KIND=dp) :: test_thresh, test_point(3), remesh_thresh, hmin, hmax, hgrad, hausd, &
-       newdist, Quality, PauseVolumeThresh, MaxBergVolume, RmcValue
+       Nodes(:), IslandCounts(:), pNCalvNodes(:,:)
+  REAL(KIND=dp) :: test_thresh, test_point(3), remesh_thresh, hmin, hmax, hgrad, hausd, newdist
   REAL(KIND=dp), ALLOCATABLE :: test_dist(:), test_lset(:), Ptest_lset(:), Gtest_lset(:), &
-       target_length(:,:), Ptest_dist(:), Gtest_dist(:), hminarray(:), hausdarray(:)
-  REAL(KIND=dp), POINTER :: WorkArray(:,:) => NULL()
+       target_length(:,:), Ptest_dist(:), Gtest_dist(:)
   LOGICAL, ALLOCATABLE :: calved_node(:), remeshed_node(:), fixed_node(:), fixed_elem(:), &
        elem_send(:), RmElem(:), RmNode(:),new_fixed_node(:), new_fixed_elem(:), FoundNode(:,:), &
-       UsedElem(:), NewNodes(:), RmIslandNode(:), RmIslandElem(:), PartGotNodes(:)
+       UsedElem(:), NewNodes(:), RmIslandNode(:), RmIslandElem(:)
   LOGICAL :: ImBoss, Found, Isolated, Debug,DoAniso,NSFail,CalvingOccurs,&
-       RemeshOccurs,CheckFlowConvergence, NoNewNodes, RSuccess, Success,&
-       SaveMMGMeshes, SaveMMGSols, PauseSolvers, PauseAfterCalving, FixNodesOnRails, &
-       SolversPaused, NewIceberg, GotNodes(4), CalvingFileCreated=.FALSE., SuppressCalv,&
-       DistributedMesh,SaveTerminus
-  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, CalvingVarName, MeshName, SolName, &
-       premmgls_meshfile, mmgls_meshfile, premmgls_solfile, mmgls_solfile,&
-       RepartMethod, Filename
+       RemeshOccurs,CheckFlowConvergence, HasNeighbour, Distributed
+  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, CalvingVarName
   TYPE(Variable_t), POINTER :: TimeVar
-  INTEGER :: Time, remeshtimestep, proc, idx, island, node, MaxLSetIter, mmgloops
-  REAL(KIND=dp) :: TimeReal, PreCalveVolume, PostCalveVolume, CalveVolume, LsetMinQuality
-
-  SAVE :: WorkArray, CalvingFileCreated
+  INTEGER :: Time, remeshtimestep, proc, idx, island, node
+  REAL(KIND=dp) :: TimeReal, PreCalveVolume, PostCalveVolume, CalveVolume
 
   SolverParams => GetSolverParams()
-  SolverName = "CalvingRemeshMMG"
-  Debug=.FALSE.
+  SolverName = "CalvingRemeshParMMG"
+  Debug=.TRUE.
   Mesh => Model % Mesh
   NNodes = Mesh % NumberOfNodes
   NBulk = Mesh % NumberOfBulkElements
@@ -118,25 +106,9 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   MyPe = ParEnv % MyPE
   PEs = ParEnv % PEs
 
-#if MMG_VERSION_LT(5,6)
-  PRINT*, SolverName, ': Starting MMG'
-#elif MMG_VERSION_LT(5,8)
-  PRINT*, SolverName, ': Starting MMG'
-#else
-  CALL FATAL(SolverName, 'Calving code only works with MMG 5.5')
-#endif
-
   TimeVar => VariableGet( Model % Mesh % Variables, 'Timestep' )
   TimeReal = TimeVar % Values(1)
   Time = INT(TimeReal)
-
-  ! create mmg variable as this is added to one proc in remeshing changes following merge Nov/23
-  mmgVar => VariableGet( Model % Mesh % Variables,'MMG Loop', ThisOnly = .TRUE.)
-  IF(.NOT. ASSOCIATED(mmgVar) ) THEN
-    CALL VariableAddVector( Model % Mesh % Variables,Model % Mesh,&
-        Name='MMG Loop',Global=.TRUE.)
-    mmgVar => VariableGet( Model % Mesh % Variables,'MMG Loop' )
-  END IF
 
   !for first time step calculate mesh volume
   IF(Time == 1) THEN
@@ -157,80 +129,43 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   !Get main Body ID
   target_bodyid = Mesh % Elements(1) % BodyID
   IF(target_bodyid /= 1) CALL Warn(SolverName, "Body ID is not 1, this case might not be well handled")
-  !For testing - set a calving levelset function to mimic calving events
-  !-------------------
 
   !TODO - unhardcode (detect?) this
   front_BC_id = 1
   front_body_id =  ListGetInteger( &
        Model % BCs(front_bc_id) % Values, 'Body Id', Found, 1, Model % NumberOfBodies )
 
-  WorkArray => ListGetConstRealArray(SolverParams, "Mesh Hmin", Found)
-  IF(.NOT. Found) CALL FATAL(SolverName, 'Provide hmin input array to be iterated through: "Mesh Hmin"')
-  MaxLsetIter= SIZE(WorkArray(:,1))
-  ALLOCATE(hminarray(MaxLsetIter))
-  hminarray = WorkArray(:,1)
-  NULLIFY(WorkArray)
+  hmin = ListGetConstReal(SolverParams, "Mesh Hmin",  DefValue=20.0_dp)
   hmax = ListGetConstReal(SolverParams, "Mesh Hmax",  DefValue=4000.0_dp)
   hgrad = ListGetConstReal(SolverParams,"Mesh Hgrad", DefValue=0.5_dp)
-  WorkArray => ListGetConstRealArray(SolverParams, "Mesh Hausd", Found)
-  IF(.NOT. Found) CALL FATAL(SolverName, 'Provide hausd input array to be iterated through: "Mesh Hausd"')
-  IF(MaxLsetIter /= SIZE(WorkArray(:,1))) CALL FATAL(SolverName, 'The number of hmin options &
-          must equal the number of hausd options')
-  ALLOCATE(hausdarray(MaxLsetIter))
-  hausdarray = WorkArray(:,1)
-  NULLIFY(WorkArray)
+  hausd = ListGetConstReal(SolverParams, "Mesh Hausd",DefValue=20.0_dp)
   remesh_thresh = ListGetConstReal(SolverParams,"Remeshing Distance", DefValue=1000.0_dp)
-  LsetMinQuality = ListGetConstReal(SolverParams,"Mesh Min Quality", DefValue=0.00001_dp)
-  RmcValue = ListGetConstReal(SolverParams,"Mesh Rmc Value", DefValue=1e-15_dp)
   CalvingVarName = ListGetString(SolverParams,"Calving Variable Name", DefValue="Calving Lset")
-  SaveMMGMeshes = ListGetLogical(SolverParams,"Save MMGLS Meshes", DefValue=.FALSE.)
-  SaveMMGSols = ListGetLogical(SolverParams,"Save MMGLS Sols", DefValue=.FALSE.)
-  IF(SaveMMGMeshes) THEN
-    premmgls_meshfile = ListGetString(SolverParams, "Pre MMGLS Mesh Name", UnfoundFatal = .TRUE.)
-    mmgls_meshfile = ListGetString(SolverParams, "MMGLS Output Mesh Name", UnfoundFatal = .TRUE.)
-  END IF
-  IF(SaveMMGSols) THEN
-    premmgls_solfile = ListGetString(SolverParams, "Pre MMGLS Sol Name", UnfoundFatal = .TRUE.)
-    mmgls_solfile = ListGetString(SolverParams, "MMGLS Output Sol Name", UnfoundFatal = .TRUE.)
-  END IF
-  PauseAfterCalving = ListGetLogical(SolverParams, "Pause After Calving Event", Found)
-  IF(.NOT. Found) THEN
-     CALL Info(SolverName, "Can't find 'Pause After Calving Event' logical in Solver section, &
-          & assuming True")
-     PauseAfterCalving = .TRUE.
-  END IF
-  FixNodesOnRails = ListGetLogical(SolverParams,"Fix Nodes On Rails", DefValue=.TRUE.)
-  SuppressCalv = ListGetLogical(SolverParams,"Suppress Calving", DefValue=.FALSE.)
-  SaveTerminus = ListGetLogical(SolverParams,"Save Terminus", DefValue=.TRUE.)
-
-  ! calving algo passes through 202 elems to mmg
-  i = ListGetInteger( Model % Bodies(Mesh % Elements(1) % BodyId) % Values, 'Material')
-  CALL ListAddLogical(Model % Materials(i) % Values,'mmg No Angle Detection',.TRUE.)
+  remeshtimestep = ListGetInteger(SolverParams,"Remesh TimeStep", DefValue=2)
 
   IF(ParEnv % MyPE == 0) THEN
-    PRINT *,ParEnv % MyPE,' hmin: ',hminarray
+    PRINT *,ParEnv % MyPE,' hmin: ',hmin
     PRINT *,ParEnv % MyPE,' hmax: ',hmax
     PRINT *,ParEnv % MyPE,' hgrad: ',hgrad
-    PRINT *,ParEnv % MyPE,' hausd: ',hausdarray
+    PRINT *,ParEnv % MyPE,' hausd: ',hausd
     PRINT *,ParEnv % MyPE,' remeshing distance: ',remesh_thresh
-    PRINT *,ParEnv % MyPE,' Max Levelset Iterations ', MaxLsetIter
+    PRINT *,ParEnv % MyPE,' remeshing every ', remeshtimestep
   END IF
 
   !If FlowSolver failed to converge (usually a result of weird mesh), large unphysical
   !calving events can be predicted. So, turn off CalvingOccurs, and ensure a remesh
   !Also undo this iterations mesh update
   NSFail = ListGetLogical(Model % Simulation, "Flow Solution Failed",CheckFlowConvergence)
-  CalvingOccurs = ListGetLogical( Model % Simulation, 'CalvingOccurs', Found )
-  RemeshOccurs=.TRUE.
   IF(CheckFlowConvergence) THEN
     IF(NSFail) THEN
       CalvingOccurs = .FALSE.
       RemeshOccurs = .TRUE.
       CALL Info(SolverName, "Remeshing but not calving because NS failed to converge.")
     END IF
+  ELSE
+     CalvingOccurs=.TRUE.
+     RemeshOccurs=.TRUE.
   END IF
-  IF(SuppressCalv) CalvingOccurs = .FALSE.
 
   ALLOCATE(remeshed_node(NNodes),&
        fixed_node(NNodes))
@@ -367,7 +302,8 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   IF(My_Calv_Front>0) THEN
 
     ! assume currently only one calving front
-    my_cboss = MINLOC(pNCalvNodes(1,:), 1, MASK=pNCalvNodes(1,:)==MAXVAL(pNCalvNodes(1,:)))-1
+    !my_cboss = MINLOC(pNCalvNodes(1,:), 1, MASK=pNCalvNodes(1,:)==MAXVAL(pNCalvNodes(1,:)))-1
+    my_cboss = 0
     nonCalvBoss = MINLOC(pNCalvNodes(1,:), 1, MASK=pNCalvNodes(1,:)==MINVAL(pNCalvNodes(1,:)))-1
     IF(Debug) PRINT *,MyPe,' debug calving boss: ',my_cboss
     ImBoss = MyPE == my_cboss
@@ -379,7 +315,6 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   ELSE
     ! only used if cboss has non calving nodes
     nonCalvBoss = MINLOC(pNCalvNodes(1,:), 1, MASK=pNCalvNodes(1,:)==MINVAL(pNCalvNodes(1,:)))-1
-    my_cboss = MINLOC(pNCalvNodes(1,:), 1, MASK=pNCalvNodes(1,:)==MAXVAL(pNCalvNodes(1,:)))-1
     ImBoss = .FALSE.
   END IF
 
@@ -409,11 +344,6 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
   GatheredMesh => RedistributeMesh(Model, Mesh, .TRUE., .FALSE.)
   !Confirmed that boundary info is for Zoltan at this point
-
-  IF(ASSOCIATED(Mesh % Repartition)) THEN
-    DEALLOCATE(Mesh % Repartition)
-    Mesh % Repartition => NULL()
-  END IF
 
   IF(Debug) THEN
     PRINT *,ParEnv % MyPE,' gatheredmesh % nonodes: ',GatheredMesh % NumberOfNodes
@@ -451,7 +381,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
                                 gtest_lset(GNNode))
       fixed_node = .FALSE.
       fixed_elem = .FALSE.
-      IF(CalvingOccurs) gtest_lset = remesh_thresh + 500.0 !Ensure any far (unshared) nodes are fixed
+      gtest_lset = remesh_thresh + 500.0 !Ensure any far (unshared) nodes are fixed
 
       !Compute the global to local map
       DO i=1,GNNode
@@ -521,30 +451,18 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   !Nominated partition does the remeshing
   IF(ImBoss) THEN
     IF (CalvingOccurs) THEN
-
-      CALL MeshVolume(GatheredMesh, .FALSE., PreCalveVolume)
-
-      CALL GetCalvingEdgeNodes(GatheredMesh, .FALSE., EdgePairs, PairCount)
-
-      mmgloops = 0
-
-10 CONTINUE
-
-      mmgloops=mmgloops+1
-      hmin = hminarray(mmgloops)
-      hausd = hausdarray(mmgloops)
-
-      WRITE(Message, '(A,F10.5,A,F10.5)') 'Applying levelset with Hmin ',Hmin, ' and Hausd ', Hausd
-      CALL INFO(SolverName, Message)
       !Initialise MMG datastructures
       mmgMesh = 0
       mmgLs  = 0
       mmgMet  = 0
 
+      CALL MeshVolume(GatheredMesh, .FALSE., PreCalveVolume)
+
       CALL MMG3D_Init_mesh(MMG5_ARG_start, &
           MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppLs,mmgLs, &
           MMG5_ARG_end)
 
+      CALL GetCalvingEdgeNodes(GatheredMesh, .FALSE., EdgePairs, PairCount)
       !  now Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
       CALL Set_MMG3D_Mesh(GatheredMesh, .TRUE., EdgePairs, PairCount)
 
@@ -585,10 +503,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
            hgrad,ierr)
 
       CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgLs,MMGPARAM_rmc,&
-           RmcValue,ierr)
-
-      CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMGPARAM_nosizreq,&
-           1,ierr)
+           0.0001_dp,ierr)
 
       !Feed in the level set distance
       CALL MMG3D_SET_SOLSIZE(mmgMesh, mmgLs, MMG5_Vertex, GNNode ,MMG5_Scalar, ierr)
@@ -623,14 +538,9 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       !> 4) (not mandatory): check if the number of given entities match with mesh size
       CALL MMG3D_Chk_meshData(mmgMesh,mmgLs,ierr)
       IF ( ierr /= 1 ) CALL EXIT(105)
-      IF(SaveMMGMeshes) THEN
-        WRITE(MeshName, '(A,i0,A)') TRIM(premmgls_meshfile), time, '.mesh'
-        CALL MMG3D_SaveMesh(mmgMesh,MeshName,LEN(TRIM(MeshName)),ierr)
-      END IF
-      IF(SaveMMGSols) THEN
-        WRITE(SolName, '(A,i0,A)') TRIM(premmgls_solfile), time, '.sol'
-        CALL MMG3D_SaveSol(mmgMesh, mmgLs,SolName,LEN(TRIM(SolName)),ierr)
-      END IF
+
+      CALL MMG3D_SaveMesh(mmgMesh,"test_prels.mesh",LEN(TRIM("test_prels.mesh")),ierr)
+      CALL MMG3D_SaveSol(mmgMesh, mmgLs,"test_prels.sol",LEN(TRIM("test_prels.sol")),ierr)
       !> ------------------------------ STEP  II --------------------------
       !! remesh function
       ! mmg5.5 not using isosurface discretization. More robust to remesh seperately
@@ -639,58 +549,14 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
       IF ( ierr == MMG5_STRONGFAILURE ) THEN
         PRINT*,"BAD ENDING OF MMG3DLS: UNABLE TO SAVE MESH", Time
-        !! Release mmg mesh
-        CALL MMG3D_Free_all(MMG5_ARG_start, &
-            MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &
-            MMG5_ARG_end)
-        WRITE(Message, '(A,F10.5,A,F10.5)') 'Levelset failed with Hmin ',Hmin, ' and Hausd ', Hausd
-        CALL WARN(SolverName, Message)
-        IF(mmgloops==MaxLsetIter) THEN
-          Success=.FALSE.
-          CalvingOccurs = .FALSE.
-          GO TO 20
-        ELSE
-          GO TO 10
-        END IF
       ELSE IF ( ierr == MMG5_LOWFAILURE ) THEN
-        PRINT*,"LOW ENDING OF MMG3DLS", time
-      ENDIF
-      IF(SaveMMGMeshes) THEN
-        WRITE(MeshName, '(A,i0,A)') TRIM(mmgls_meshfile), time, '.mesh'
-        CALL MMG3D_SaveMesh(mmgMesh,MeshName,LEN(TRIM(MeshName)),ierr)
-      END IF
-      IF(SaveMMGSols) THEN
-        WRITE(SolName, '(A,i0,A)') TRIM(mmgls_solfile), time, '.sol'
-        CALL MMG3D_SaveSol(mmgMesh, mmgLs,SolName,LEN(TRIM(SolName)),ierr)
-      END IF
-
-      CALL MMG3D_Get_meshSize(mmgMesh,NVerts,NTetras,NPrisms,NTris,NQuads,NEdges,ierr)
-
-      counter=0
-      Do i=1, NTetras
-        CALL MMG3D_Get_TetrahedronQuality(mmgMesh, mmgSol, i, Quality)
-        IF(Quality == 0) CALL WARN(SolverName, 'Levelset could not determine elem quality')
-        IF(Quality <= LsetMinQuality) counter = counter+1
-      END DO
-      IF ( Counter > 0 ) THEN
-        PRINT*,"Bad elements detected - reruning levelset"
-        !! Release mmg mesh
-        CALL MMG3D_Free_all(MMG5_ARG_start, &
-            MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &
-            MMG5_ARG_end)
-          WRITE(Message, '(A,F10.5,A,F10.5)') 'Levelset failed with Hmin ',Hmin, ' and Hausd ', Hausd
-        CALL WARN(SolverName, Message)
-        IF(mmgloops==MaxLsetIter) THEN
-          Success=.FALSE.
-          CalvingOccurs = .FALSE.
-          GO TO 20
-        ELSE
-          GO TO 10
-        END IF
-        !STOP MMG5_STRONGFAILURE
+        PRINT*,"BAD ENDING OF MMG3DLS", time
       ENDIF
 
-      CALL Get_MMG3D_Mesh(NewMeshR, .TRUE., new_fixed_node, new_fixed_elem, Calving=.TRUE.)
+      CALL MMG3D_SaveMesh(mmgMesh,"test_ls.mesh",LEN(TRIM("test_ls.mesh")),ierr)
+      CALL MMG3D_SaveSol(mmgMesh, mmgLs,"test_ls.sol",LEN(TRIM("test_ls.sol")),ierr)
+
+      CALL Get_MMG3D_Mesh(NewMeshR, .TRUE., new_fixed_node, new_fixed_elem)
 
       NewMeshR % Name = Mesh % Name
 
@@ -827,8 +693,6 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
         CALL Assert((geom_id > 0) .AND. (geom_id <= Model % NumberOfBCs),&
              SolverName,"Unexpected BC element body id!")
 
-        Element % BodyId  = ListGetInteger( &
-             Model % BCs(geom_id) % Values, 'Body Id', Found, 1, Model % NumberOfBodies )
       END DO
      
 
@@ -853,10 +717,6 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
         END DO
       END IF
 
-      !output calving stats to file and find maxbergvolume
-      CALL CalvingStatsMMG(SolverParams, NewMeshR, RmNode, RmElem, &
-          CalvingFileCreated, MaxBergVolume)
-
       !Chop out the flagged elems and nodes
       CALL CutMesh(NewMeshR, RmNode, RmElem)
 
@@ -869,30 +729,46 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       !main icebody
       !limit here of 10 possible mesh 'islands'
       ALLOCATE(FoundNode(10, NNodes), ElNodes(4), &
-              UsedElem(NBulk))
+              UsedElem(NBulk), NewNodes(NBulk))
       FoundNode = .FALSE.! count of nodes found
       UsedElem = .FALSE. !count of elems used
+      NewNodes=.FALSE. !count of new elems in last sweep
       island=0 ! count of different mesh islands
-      NoNewNodes=.TRUE. ! whether node has neighour
+      HasNeighbour=.FALSE. ! whether node has neighour
       DO WHILE(COUNT(FoundNode) < NNodes)
-        IF(NoNewNodes) THEN
+        ! if last sweep has found no new neighbour nodes then move onto new island
+        IF(.NOT. HasNeighbour) THEN
           island = island + 1
-          NewIceberg = .TRUE.
+          IF(Island > 10) CALL FATAL(SolverName, 'More than 10 icebergs left after levelset')
+          !find first unfound node
+          Inner: DO i=1, NNodes
+            IF(ANY(FoundNode(:, i))) CYCLE
+            NewNodes(i) = .TRUE.
+            FoundNode(island, i) = .TRUE.
+            EXIT Inner
+          END DO Inner
         END IF
-        NoNewNodes = .TRUE.
-        DO i=1, NBulk
-          IF(UsedElem(i)) CYCLE
-          Element => NewMeshR % Elements(i)
-          ElNodes = Element % NodeIndexes
-          ! if there are not any matching nodes and its not a new iceberg
-          DO j=1, 4
-            GotNodes(j) = ANY(FoundNode(:, ElNodes(j)))
+        HasNeighbour=.FALSE.
+        nodes=PACK((/ (i,i=1,SIZE(NewNodes)) /), NewNodes .eqv. .TRUE.)
+        NewNodes=.FALSE.
+        DO i=1, Nbulk
+          IF(UsedElem(i)) CYCLE !already used elem
+          DO j=1, SIZE(Nodes)
+            node=Nodes(j)
+            Element => NewMeshR % Elements(i)
+            ElNodes = Element % NodeIndexes
+            IF(.NOT. ANY(ElNodes==node)) CYCLE ! doesn't contain node
+            UsedElem(i) = .TRUE. ! got nodes from elem
+            DO k=1,SIZE(ElNodes)
+              idx = Element % NodeIndexes(k)
+              IF(idx == Node) CYCLE ! this nodes
+              IF(FoundNode(island,idx)) CYCLE ! already got
+              FoundNode(island, idx) = .TRUE.
+              counter = counter + 1
+              HasNeighbour = .TRUE.
+              NewNodes(idx) = .TRUE.
+            END DO
           END DO
-          IF(ALL(.NOT. GotNodes) .AND. .NOT. NewIceberg) CYCLE
-          NewIceberg = .FALSE.
-          UsedElem(i) = .TRUE.
-          FoundNode(island, ElNodes) = .TRUE.
-          NoNewNodes = .FALSE.
         END DO
       END DO
 
@@ -955,10 +831,6 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
     END IF ! CalvingOccurs
 
-20    CONTINUE
-
-      DEALLOCATE(hminarray, hausdarray)
-
       DoAniso = .TRUE.
       IF(DoAniso .AND. CalvingOccurs) THEN
 
@@ -983,10 +855,10 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
         !Anisotropic mesh improvement following calving cut:
         !TODO - unhardcode! Also this doesn't work very well yet.
-        !ALLOCATE(target_length(NewMeshR % NumberOfNodes,3))
-        !target_length(:,1) = 300.0
-        !target_length(:,2) = 300.0
-        !target_length(:,3) = 50.0
+        ALLOCATE(target_length(NewMeshR % NumberOfNodes,3))
+        target_length(:,1) = 300.0
+        target_length(:,2) = 300.0
+        target_length(:,3) = 50.0
 
         !Parameters for anisotropic remeshing are set in the Materials section, or can &
         !optionally be passed as a valuelist here. They have prefix RemeshMMG3D
@@ -1000,51 +872,109 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
         CalveVolume = PreCalveVolume - PostCalveVolume
 
-        PRINT*, 'CalveVolume', CalveVolume, 'MaxBergVolume', MaxBergVolume
+        PRINT*, 'CalveVolume', CalveVolume
+      END IF
+    END IF
 
-        CALL GetCalvingEdgeNodes(NewMeshR, .FALSE., REdgePairs, RPairCount)
-        !  now Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
-        CALL RemeshMMG3D(Model, NewMeshR, NewMeshRR,REdgePairs, RPairCount,&
-            NodeFixed=new_fixed_node, ElemFixed=new_fixed_elem, Success=RSuccess)
-        IF(.NOT. RSuccess) THEN
-          CALL WARN(SolverName, 'Remeshing failed - no calving at this timestep')
-          GO TO 30 ! remeshing failed so no calving at this timestep
-        END IF
-        CALL ReleaseMesh(NewMeshR)
-        NewMeshR => NewMeshRR
-        NewMeshRR => NULL()
+    CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
-        !Update parallel info from old mesh nodes (shared node neighbours)
-        CALL MapNewParallelInfo(GatheredMesh, NewMeshR)
+    Distributed = .TRUE.
+    IF(DoAniso .AND. .NOT. Distributed) THEN
+      ! remeshing but no calving
+      IF(ImBoss .AND. .NOT. CalvingOccurs) NewMeshR => GatheredMesh
 
-      ELSE IF (DoAniso) THEN
-         ! remeshing but no calving
-        CALL GetCalvingEdgeNodes(GatheredMesh, .FALSE., REdgePairs, RPairCount)
-        !  now Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
-        CALL RemeshMMG3D(Model, GatheredMesh, NewMeshR,REdgePairs, RPairCount,&
-            NodeFixed=fixed_node, ElemFixed=fixed_elem, Success=RSuccess)
-                !Update parallel info from old mesh nodes (shared node neighbours)
-        IF(.NOT. RSuccess) THEN
-          CALL WARN(SolverName, 'Remeshing failed - no calving at this timestep')
-          GO TO 30 ! remeshing failed so no calving at this timestep
-        END IF
-        CALL MapNewParallelInfo(GatheredMesh, NewMeshR)
+      !remeshing for calvign and no calving
+      IF(ImBoss) CALL GetCalvingEdgeNodes(NewMeshR, .FALSE., REdgePairs, RPairCount)
+            !  now Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
+      MeshParams => GetMaterial(Model % Mesh % Elements(1))
+      CALL SequentialRemeshParMMG(Model, NewMeshR, NewMeshRR, ImBoss, REdgePairs, &
+                RPairCount,new_fixed_node,new_fixed_elem, MeshParams)
+      IF(ImBoss) THEN
+            CALL ReleaseMesh(NewMeshR)
+            NewMeshR => NewMeshRR
+            NewMeshRR => NULL()
 
-      ELSE ! Not DoAniso
+          !Update parallel info from old mesh nodes (shared node neighbours)
+          CALL MapNewParallelInfo(GatheredMesh, NewMeshR)
+          CALL ReleaseMesh(GatheredMesh)
+          ! CALL ReleaseMesh(NewMeshR)
+          GatheredMesh => NewMeshR
+          NewMeshR => NULL()
+          NewMeshRR => NULL()
+      END IF
+    END IF
 
-        !Update parallel info from old mesh nodes (shared node neighbours)
-        IF (CalvingOccurs) CALL MapNewParallelInfo(GatheredMesh, NewMeshR)
-
+    IF(DoAniso .AND. Distributed) THEN
+      ! remeshing but no calving
+      IF(ImBoss .AND. .NOT. CalvingOccurs) THEN
+        NewMeshR => GatheredMesh
+      !ELSE IF (ImBoss .AND. CalvingOccurs) THEN
+        !CALL MapNewParallelInfo(GatheredMesh, NewMeshR)
+        !DO i=1, NewMeshR % NumberOfNodes
+          !PRINT*, 'boss', i, NewMeshR % ParallelInfo % GlobalDOFs(i)
+          !NewMeshR % ParallelInfo % GlobalDOFs
+        !END DO
       END IF
 
+      IF(.NOT. ImBoss) THEN
+        NewMeshR => AllocateMesh( 0, 0, 0, InitParallel = .TRUE.)
+        ALLOCATE( NewMeshR % ParallelInfo % GlobalDofs( 0 ))
+        !NewMeshR % ParallelInfo % GlobalDofs = 0
+      END IF
+
+      !IF(.NOT. ImBoss) PRINT*, ParEnv % MyPE, 'meshcheck', NewMeshR % ParallelInfo % GlobalDOFs
+      !Now each partition has GatheredMesh, we need to renegotiate globalDOFs
+      !CALL RenumberGDOFs(Mesh, NewMeshR)
+
+      !and global element numbers
+      !CALL RenumberGElems(NewMeshR)
+
+
+      ! share fixed nodes
+      ! assumption here is globaldofs == nodenumber
+      !
+
+      IF (ImBoss) THEN
+        RNNodes = NewMeshR % NumberOfNodes
+        RNElems = NewMeshR % NumberOfBulkElements + NewMeshR % NumberOfBoundaryElements
+
+        DO i=1, RNNodes
+          NewMeshR % ParallelInfo % GlobalDOFs(i) = i
+        END DO
+        DO i=1, RNElems
+          NewMeshR % Elements(i) % GElementIndex = i
+        END DO
+      END IF
+      CALL MPI_BCAST(RNNodes, 1, MPI_INTEGER, my_cboss, ELMER_COMM_WORLD, ierr)
+      CALL MPI_BCAST(RNElems, 1, MPI_INTEGER, my_cboss, ELMER_COMM_WORLD, ierr)
+      IF(.NOT. ImBoss) ALLOCATE(new_fixed_node(RNNodes), new_fixed_elem(RNElems))
+      CALL MPI_BCAST(new_fixed_node,RNNodes,MPI_LOGICAL, my_cboss, ELMER_COMM_WORLD, ierr)
+      CALL MPI_BCAST(new_fixed_elem,RNElems, MPI_LOGICAL, my_cboss, ELMER_COMM_WORLD, ierr)
+
+      CALL Zoltan_Interface( Model, NewMeshR, StartImbalanceTol=1.1_dp, TolChange=0.02_dp, MinElems=10 )
+
+      DistributedMesh => RedistributeMesh(Model, NewMeshR, .TRUE., .FALSE.)
+      CALL ReleaseMesh(NewMeshR)
+
+      !remeshing for calvign and no calving
+      !not sure if this works in parallel
+      CALL GetCalvingEdgeNodes(DistributedMesh, .FALSE., REdgePairs, RPairCount)
+      !  now Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
+      MeshParams => GetMaterial(Model % Mesh % Elements(1))
+      CALL DistributedRemeshParMMG(Model, DistributedMesh, NewMeshRR, REdgePairs, &
+                RPairCount,new_fixed_node,new_fixed_elem, MeshParams)
+      CALL ReleaseMesh(NewMeshR)
+      NewMeshR => NewMeshRR
+      NewMeshRR => NULL()
+
+      !Update parallel info from old mesh nodes (shared node neighbours)
+      CALL MapNewParallelInfo(GatheredMesh, NewMeshR)
       CALL ReleaseMesh(GatheredMesh)
       ! CALL ReleaseMesh(NewMeshR)
       GatheredMesh => NewMeshR
       NewMeshR => NULL()
       NewMeshRR => NULL()
-   END IF ! ImBoss
-
-30 CONTINUE
+    END IF
 
    !Wait for all partitions to finish
    IF(My_Calv_Front>0) THEN
@@ -1053,39 +983,6 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
      CALL MPI_GROUP_FREE(group_world,ierr)
    END IF
    CALL MPI_BARRIER(ELMER_COMM_WORLD,ierr)
-
-   CALL MPI_BCAST(CalvingFileCreated, 1, MPI_LOGICAL, my_cboss, ELMER_COMM_WORLD, ierr)
-   CALL MPI_BCAST(RSuccess, 1, MPI_LOGICAL, my_cboss, ELMER_COMM_WORLD, ierr)
-   IF(.NOT. RSuccess) THEN
-      IF(ImBoss .AND. CalvingFileCreated) THEN
-        Filename = ListGetString(SolverParams,"Calving Stats File Name", Found)
-        IF(.NOT. Found) THEN
-          CALL WARN('CalvingStat', 'Output file name not given so using CalvingStats.txt')
-          Filename = "CalvingStats.txt"
-        END IF
-        OPEN( 36, FILE=filename, STATUS='UNKNOWN', ACCESS='APPEND')
-        WRITE(36, '(A,i0)') 'Remeshing failed: ', GetTimestep()
-        CLOSE(36)
-      END IF
-
-      CALL ReleaseMesh(GatheredMesh)
-      ! Release GatheredMesh % Redistribution
-      IF(ASSOCIATED(GatheredMesh % Repartition)) THEN
-          DEALLOCATE(GatheredMesh % Repartition)
-          GatheredMesh % Repartition => NULL()
-      END IF
-      SolversPaused = ListGetLogical(Model % Simulation, 'Calving Pause Solvers', DefValue=.FALSE.)
-      !remove mesh update
-      IF(.NOT. SolversPaused) THEN
-        CALL ResetMeshUpdate(Model, Solver)
-      ELSE ! solvers paused so mesh must have changed since last free surface
-        Mesh % MeshTag = Mesh % MeshTag + 1
-      END IF
-
-      ! make sure solvers are unpaused so front advances
-      CALL PauseCalvingSolvers(Model, SolverParams, .FALSE.)
-      RETURN
-   END IF
 
    !Now each partition has GatheredMesh, we need to renegotiate globalDOFs
    CALL RenumberGDOFs(Mesh, GatheredMesh)
@@ -1122,62 +1019,9 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
      END IF
    END DO
 
-   IF(SaveTerminus) CALL SaveTerminusPosition(Model, Solver, GatheredMesh, ImBoss)
-
    !Call zoltan to determine redistribution of mesh
    ! then do the redistribution
    !-------------------------------
-
-   RepartMethod = ListGetString(Model % Solver % Values,"Repartition Method", Found)
-   SELECT CASE( RepartMethod )
-   CASE( 'parmetis' ) ! bit of a hack here. Parmetis requires fully distributed mesh so ensure all parts have one element
-      ALLOCATE(PartGotNodes(ParEnv % PEs))
-      CALL MPI_ALLGATHER(GatheredMesh % NumberOfNodes > 0, 1, MPI_LOGICAL, PartGotNodes, &
-          1, MPI_LOGICAL, ELMER_COMM_WORLD, ierr)
-
-      DistributedMesh = ALL(PartGotNodes)
-
-      IF(.NOT. ASSOCIATED(GatheredMesh % Repartition)) THEN
-        ALLOCATE(GatheredMesh % Repartition(GatheredMesh % NumberOfBulkElements+&
-                GatheredMesh % NumberOfBoundaryElements), STAT=ierr)
-        IF(ierr /= 0) PRINT *,ParEnv % MyPE,' could not allocate Mesh % Repartition'
-      END IF
-
-      GatheredMesh % Repartition = ParEnv % MyPE + 1
-      IF(ImBoss) THEN
-        counter=0
-        DO i=1,ParEnv % PEs
-          IF(PartGotNodes(i)) CYCLE ! got nodes
-          counter=counter+1
-          IF(counter > GatheredMesh % NumberOfNodes) &
-            CALL FATAL(SolverName, 'CalvBoss does not have enough elems to share for ParMetis repartitioning')
-          GatheredMesh % Repartition(counter) = i
-          DO j=GatheredMesh % NumberOfBulkElements+1, GatheredMesh % NumberOfBulkElements+&
-            GatheredMesh % NumberOfBoundaryElements
-            Element => GatheredMesh % Elements(j)
-            ParentElem => Element % BoundaryInfo % Left
-            IF(.NOT. ASSOCIATED(ParentElem)) THEN
-              ParentElem => Element % BoundaryInfo % Right
-            END IF
-            CALL Assert(ASSOCIATED(ParentElem),SolverName,"Boundary element has no parent!")
-            IF(ParentElem % ElementIndex == counter) THEN
-              GatheredMesh % Repartition(j) = i
-            END IF
-          END DO
-        END DO
-      END IF
-
-      ParMetisMesh => RedistributeMesh(Model, GatheredMesh, .TRUE., .FALSE.)
-
-      IF(ASSOCIATED(ParMetisMesh % Repartition)) THEN
-        DEALLOCATE(ParMetisMesh % Repartition)
-        ParMetisMesh % Repartition => NULL()
-      END IF
-
-      CALL ReleaseMesh(GatheredMesh)
-      GatheredMesh => ParMetisMesh
-      ParMetisMesh => NULL()
-   END SELECT
 
    CALL Zoltan_Interface( Model, GatheredMesh, StartImbalanceTol=1.1_dp, TolChange=0.02_dp, MinElems=10 )
 
@@ -1195,10 +1039,6 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
    !After SwitchMesh because we need GroundedMask
    CALL EnforceGroundedMask(Model, Mesh)
 
-   CALL CheckBaseFreeSurface(Model, Mesh, 0.01_dp)
-
-   IF(FixNodesOnRails) CALL EnforceLateralMargins(Model, Solver % Values)
-
    !Calculate mesh volume
    CALL MeshVolume(Model % Mesh, .TRUE., PostCalveVolume)
    IF(MyPe == 0) PRINT*, 'Post calve volume: ', PostCalveVolume, ' after timestep', Time
@@ -1209,385 +1049,83 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
    !Release the old mesh
    CALL ReleaseMesh(GatheredMesh)
 
-   ! Release GatheredMesh % Redistribution
-   IF(ASSOCIATED(GatheredMesh % Repartition)) THEN
-      DEALLOCATE(GatheredMesh % Repartition)
-      GatheredMesh % Repartition => NULL()
-   END IF
-
    !remove mesh update
    CALL ResetMeshUpdate(Model, Solver)
 
-   !pause solvers?
-   IF(PauseAfterCalving) THEN
-    IF(ImBoss) THEN
-        PauseVolumeThresh = ListGetConstReal(SolverParams, "Pause Solvers Minimum Iceberg Volume", Found)
-        IF(.NOT. Found) THEN
-          CALL WARN(SolverName, "'Pause Solvers Minimum Iceberg Volume' not provided do assuming is 0")
-          PauseVolumeThresh = 0.0_dp
-        END IF
+END SUBROUTINE CalvingRemeshParMMG
 
-        PauseSolvers = MaxBergVolume > PauseVolumeThresh .AND. RSuccess
-    END IF
+! test routine for parallel remeshing of a distributed mesh
+SUBROUTINE ParMMGRemeshing ( Model, Solver, dt, TransientSimulation )
 
-    CALL MPI_BCAST(PauseSolvers, 1, MPI_LOGICAL, my_cboss, ELMER_COMM_WORLD, ierr)
-
-    CALL PauseCalvingSolvers(Model, SolverParams, PauseSolvers)
-  END IF
-
-END SUBROUTINE CalvingRemeshMMG
-
-SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
-
+  USE MeshUtils
   USE CalvingGeometry
+  USE MeshPartition
+  USE MeshRemeshing
 
   IMPLICIT NONE
 
+!-----------------------------------------------
   TYPE(Model_t) :: Model
-  TYPE(Solver_t) :: Solver
+  TYPE(Solver_t), TARGET :: Solver
   REAL(KIND=dp) :: dt
-  LOGICAL :: Transient
-  !-------------------------------------
-  TYPE(Mesh_t), POINTER :: Mesh
-  TYPE(Solver_t) :: RemeshSolver
-  TYPE(Variable_t), POINTER :: FlowVar, TimeVar
-  TYPE(ValueList_t), POINTER :: Params, FuncParams
-  LOGICAL :: Parallel, Found, CheckFlowDiverge=.TRUE., CheckFlowMax, FirstTime=.TRUE.,&
-       NSDiverge, NSFail, NSTooFast, ChangeMesh, NewMesh, CalvingOccurs, GotSaveMetric,&
-       CalvingPauseSolvers, PNSFail=.FALSE.
-  REAL(KIND=dp) :: SaveNewtonTol, MaxNSDiverge, MaxNSValue, FirstMaxNSValue, FlowMax,&
-       SaveFlowMax, Mag, NSChange, SaveDt, SaveRelax,SaveMeshHmin,SaveMeshHmax,&
-       SaveMeshHgrad,SaveMeshHausd, SaveMetric, MeshChange, NewMetric, NewMeshDist,&
-       SaveMeshDist, NewMeshHGrad
-  REAL(KIND=dp), ALLOCATABLE :: SaveMeshHausdArray(:,:), SaveMeshHminArray(:,:), &
-       NewMeshHausdArray(:,:), NewMeshHminArray(:,:)
-  REAL(KIND=dp), POINTER :: TimestepSizes(:,:), WorkArray(:,:)
-  INTEGER :: i,j,SaveNewtonIter,Num, ierr, FailCount, TimeIntervals, SaveSSiter,&
-       MaxRemeshIter,SaveNLIter,CurrentNLIter,NewMeshCount
-  CHARACTER(MAX_NAME_LEN) :: FlowVarName, SolverName, EqName, RemeshEqName
+  LOGICAL :: TransientSimulation
+!-----------------------------------------------
+  TYPE(Mesh_t), POINTER :: Mesh, OutMesh, FinalMesh
+  TYPE(ValueList_t), POINTER :: SolverParams
+  REAL(kind=dp), POINTER :: WorkReal(:)
+  INTEGER, POINTER :: WorkPerm(:)
+  INTEGER, ALLOCATABLE :: EdgePairs(:,:)
+  LOGICAL :: Parallel
+  INTEGER :: i,j,k,n, PairCount
+  !------------------------------------------------
+  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName = "ParMMGRemeshing"
 
-  SAVE ::SaveNewtonTol, SaveNewtonIter, SaveFlowMax, FirstTime, FailCount,&
-       SaveRelax,SaveMeshHminArray,SaveMeshHmax,SaveMeshHausdArray,SaveMeshHgrad, &
-       SaveSSiter, MaxRemeshIter, SaveNLIter, NewMesh, NewMeshCount,&
-       SaveMetric, GotSaveMetric, MeshChange, NewMeshHausdArray, NewMeshHminArray,&
-       NewMetric, SaveMeshDist, NewMeshDist, NewMeshHGrad, PNSFail
+#ifdef HAVE_PARMMG
 
-  Mesh => Solver % Mesh
-  SolverName = 'CheckFlowConvergenceMMG'
-  Params => Solver % Values
-  Parallel = (ParEnv % PEs > 1)
-  FuncParams => GetMaterial(Mesh % Elements(1)) !TODO, this is not generalised
-  FlowVarName = ListGetString(Params,'Flow Solver Name',Found)
-  IF(.NOT. Found) FlowVarName = "Flow Solution"
-  FlowVar => VariableGet(Mesh % Variables, FlowVarName, .TRUE., UnfoundFatal=.TRUE.)
-
-  RemeshEqName = ListGetString(Params,'Remesh Equation Name',Found)
-  IF(.NOT. Found) RemeshEqName = "remesh"
-
-  !Get a handle to the remesh solver
-  Found = .FALSE.
-  DO j=1,Model % NumberOfSolvers
-    IF(ListGetString(Model % Solvers(j) % Values, "Equation") == RemeshEqName) THEN
-      RemeshSolver = Model % Solvers(j)
-      Found = .TRUE.
-      EXIT
-    END IF
-  END DO
-  IF(.NOT. Found) CALL Fatal(SolverName, "Failed to get handle to Remesh Solver.")
-
-  IF(FirstTime) THEN
-
-    FailCount = 0
-    NewMeshCount = 0
-
-    SaveNewtonTol = ListGetConstReal(FlowVar % Solver % Values, &
-         "Nonlinear System Newton After Tolerance", Found)
-    IF(.NOT. Found) SaveNewtonTol = 1.0E-3
-    SaveNewtonIter = ListGetInteger(FlowVar % Solver % Values, &
-         "Nonlinear System Newton After Iterations", Found)
-    IF(.NOT. Found) SaveNewtonIter = 15
-    SaveNLIter = ListGetInteger(FlowVar % Solver % Values, &
-         "Nonlinear System Max Iterations", Found)
-    IF(.NOT. Found) SaveNewtonIter = 50
-
-    SaveRelax = ListGetConstReal(FlowVar % Solver % Values, &
-         "Nonlinear System Relaxation Factor", Found)
-    IF(.NOT. Found) SaveRelax = 1.0
-    PRINT *, 'TO DO: replace with MMG stuff, hausdorff?'
-    ! Use RemeshMMG3D Hmin in Material or Mesh Hmin in RemeshSolver
-    ! should remesh without calving/cutting as well, so take RemeshMMG3D
-    !SaveMeshHmin = ListGetConstReal(FuncParams, "MMG Hmin", Found, UnfoundFatal=.TRUE.)
-    SaveMeshHmax = ListGetConstReal(FuncParams, "MMG Hmax", Found, UnfoundFatal=.TRUE.)
-    !SaveMeshHausd = ListGetConstReal(FuncParams, "MMG Hausd", Found, UnfoundFatal=.TRUE.)
-    SaveMeshHgrad = ListGetConstReal(FuncParams, "MMG Hgrad", Found, UnfoundFatal=.TRUE.)
-    SaveMeshDist = ListGetConstReal(RemeshSolver % Values, "Remeshing Distance", Found, UnfoundFatal=.TRUE.)
-
-    WorkArray => ListGetConstRealArray(FuncParams, "MMG Hmin", Found)
-    IF(.NOT. Found) CALL FATAL(SolverName, 'Provide hmin input array to be iterated through: "Mesh Hmin"')
-    MaxRemeshIter= SIZE(WorkArray(:,1))
-
-    PRINT*, 'workarraysize', SIZE(WorkArray(1,:)), SIZE(WorkArray(:,1))
-
-    ALLOCATE(SaveMeshHminArray(MaxRemeshIter, 1), NewMeshHminArray(MaxRemeshIter,1))
-    SaveMeshHminArray = WorkArray
-    NULLIFY(WorkArray)
-    WorkArray => ListGetConstRealArray(FuncParams, "MMG Hausd", Found)
-    IF(.NOT. Found) CALL FATAL(SolverName, 'Provide hmin input array to be iterated through: "Mesh Hausd"')
-    IF(MaxRemeshIter /= SIZE(WorkArray(:,1))) CALL FATAL(SolverName, 'The number of hmin options &
-            must equal the number of hausd options')
-    ALLOCATE(SaveMeshHausdArray(MaxRemeshIter,1), NewMeshHausdArray(MaxRemeshIter,1))
-    SaveMeshHausdArray = WorkArray
-    NULLIFY(WorkArray)
-
-    SaveMetric = ListGetConstReal( FuncParams, 'GlacierMeshMetric Min LC', GotSaveMetric)
-
-    MeshChange = ListGetConstReal( Params, 'Mesh Change Percentage', Found)
-    IF(.NOT. Found) THEN
-      MeshChange = 10.0_dp
-      CALL WARN(SolverName, "Not found Mesh Percentage Change so assuming 10%")
-    END IF
-    MeshChange = (MeshChange/100.0_dp)+1
-
-    SaveSSiter = ListGetInteger(Model % Simulation, "Steady State Max Iterations", Found)
-    IF(.NOT. Found) SaveSSiter = 1
-
-    TimestepSizes => ListGetConstRealArray( CurrentModel % Simulation, &
-         'Timestep Sizes', Found, UnfoundFatal=.TRUE.)
-    IF(SIZE(TimestepSizes,1) > 1) CALL Fatal(SolverName,&
-         "Calving solver requires a single constant 'Timestep Sizes'")
-    SaveDt = TimestepSizes(1,1)
-
-    NewMeshHminArray = SaveMeshHminArray
-    NewMeshHausdArray = SaveMeshHausdArray
-    NewMetric = SaveMetric
-    NewMeshDist = SaveMeshDist
-    NewMeshHGrad = SaveMeshHgrad
+  IF(ParEnv % PEs > 1) THEN
+      Parallel = .TRUE.
   ELSE
-    SaveDt = ListGetCReal( CurrentModel % Simulation,'Timestep Size' )
+      CALL FATAL(Solvername, 'Needs to be run in parallel')
   END IF
 
-  ! since "Calving solver requires a single constant 'Timestep Sizes'"
-  TimeIntervals = ListGetInteger(Model % Simulation, "Timestep Intervals", UnfoundFatal = .TRUE.)
+  Mesh => Model % Mesh
+  SolverParams => GetSolverParams()
 
-  !Get current simulation time
-  TimeVar => VariableGet(Model % Variables, 'Time', .TRUE.)
+  n = Mesh % NumberOfNodes
+  ALLOCATE(WorkPerm(n), WorkReal(n))
+  WorkReal = 0.0_dp
+  WorkPerm = [(i,i=1,n)]
+  CALL VariableAdd(Mesh % Variables, Mesh, Solver, "dummy", &
+        1, WorkReal, WorkPerm)
+  NULLIFY(WorkReal,WorkPerm)
 
-  MaxNSDiverge = ListGetConstReal(Params, "Maximum Flow Solution Divergence", CheckFlowDiverge)
-  MaxNSValue = ListGetConstReal(Params, "Maximum Velocity Magnitude", CheckFlowMax)
-  FirstMaxNSValue = ListGetConstReal(Params, "First Time Max Expected Velocity", Found)
-  IF(.NOT. Found .AND. CheckFlowDiverge) THEN
-    CALL Info(SolverName, "'First Time Max Expected Velocity' not found, setting to 1.0E4")
-    FirstMaxNSValue = 1.0E4
-  END IF
+  CALL GetCalvingEdgeNodes(Mesh, .FALSE., EdgePairs, PairCount)
 
-  !====================================================!
-  !---------------- DO THINGS! ------------------------!
-  !====================================================!
+  CALL DistributedRemeshParMMG(Model, Mesh,OutMesh, EdgePairs, PairCount,Params=SolverParams)
 
-  NSFail=.FALSE.
-  NSDiverge=.FALSE.
-  NSTooFast=.FALSE.
+  !Now each partition has GatheredMesh, we need to renegotiate globalDOFs
+  CALL RenumberGDOFs(Mesh, OutMesh)
 
-  !In addition to checking for absolute failure (% NonlinConverged = 0), we can check
-  !for suspiciously large shift in the max variable value (this usually indicates a problem)
-  !and we can also check for unphysically large velocity values
-  IF(CheckFlowDiverge .OR. CheckFlowMax) THEN
+  !and global element numbers
+  CALL RenumberGElems(OutMesh)
 
-    FlowMax = 0.0_dp
-    DO i=1,Mesh % NumberOfNodes
-      Mag = 0.0_dp
+  CALL Zoltan_Interface( Model, OutMesh, StartImbalanceTol=1.1_dp, TolChange=0.02_dp, MinElems=10 )
 
-      DO j=1,FlowVar % DOFs-1
-        Mag = Mag + (FlowVar % Values( (FlowVar % Perm(i)-1)*FlowVar % DOFs + j ) ** 2.0_dp)
-      END DO
-      Mag = Mag ** 0.5_dp
-      FlowMax = MAX(FlowMax, Mag)
-    END DO
+  FinalMesh => RedistributeMesh(Model, OutMesh, .TRUE., .FALSE.)
 
-    CALL MPI_AllReduce(MPI_IN_PLACE, FlowMax, 1, MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD, ierr)
-  END IF
+  FinalMesh % Name = TRIM(Mesh % Name)
+  FinalMesh % OutputActive = .TRUE.
+  FinalMesh % Changed = .TRUE.
 
-  IF(CheckFlowDiverge) THEN
-    !First time, there's no previous velocity against which to check divergence.
-    !This is somewhat messy because of the separate 'Maximum Velocity Magnitude'
-    IF(FirstTime) SaveFlowMax = MIN(FlowMax,FirstMaxNSValue)
+  !Actually switch the model's mesh
+  ! also releases old mesh
+  CALL SwitchMesh(Model, Solver, Mesh, FinalMesh)
 
-    NSChange = FlowMax / SaveFlowMax
-    IF(ParEnv % MyPE == 0) PRINT *,'Debug, Flow Max (old/new): ',SaveFlowMax, FlowMax,' NSChange: ',NSChange
+  CALL ReleaseMesh(OutMesh)
+  !CALL ReleaseMesh(Mesh)
 
-    IF(NSChange > MaxNSDiverge) THEN
-      NSDiverge = .TRUE.
-      CALL Info(SolverName,"Large change in maximum velocity suggests dodgy&
-           &Navier-Stokes solution.")
-    END IF
-    IF(.NOT. NSDiverge) SaveFlowMax = FlowMax
-  END IF
+#else
+  CALL FATAL(SolverName, 'ParMMG needs to be installed to use this solver!')
+#endif
 
-  IF(CheckFlowMax) THEN
-    IF(FlowMax > MaxNSValue) THEN
-      NSTooFast = .TRUE.
-      CALL Info(SolverName,"Large maximum velocity suggests dodgy&
-           &Navier-Stokes solution.")
-    END IF
-  END IF
-
-  NSFail = FlowVar % NonlinConverged < 1 .OR. NSDiverge .OR. NSTooFast
-  ! Joe note: I commented out Eef's testing here during merge:
-  ! PRINT *, 'temporarily set NSFail=True for testing'
-  ! NSFail=.TRUE.
-  IF(ParEnv % MyPE == 0) PRINT*, 'Debug', FlowVar % NonlinConverged, NSDiverge, NSTooFast
-  IF(NSFail) THEN
-    CALL Info(SolverName, "Skipping solvers except Remesh because NS failed to converge.")
-
-    FailCount = FailCount + 1
-    IF(ParEnv % MyPE == 0) PRINT *, 'FailCount=',FailCount
-    ! Joe note: I commented out Eef's testing here during merge:
-    ! PRINT *, 'Temporarily set failcount to 2, to force remeshing!'
-    ! FailCount=2
-    IF(NewMeshCount > 3) THEN
-       CALL Fatal(SolverName, "Don't seem to be able to recover from NS failure, giving up...")
-    END IF
-
-    !Set the clock back one second less than a timestep size.
-    !This means next time we are effectively redoing the same timestep
-    !but without any solvers which are dependent on (t > told) to reallocate
-    TimeVar % Values(1) = TimeVar % Values(1) - SaveDt + (1.0/(365.25 * 24 * 60 * 60.0_dp))
-
-    CALL ListAddConstReal(FlowVar % Solver % Values, &
-         "Nonlinear System Newton After Tolerance", 0.0_dp)
-    CALL ListAddInteger( FlowVar % Solver % Values, &
-         "Nonlinear System Newton After Iterations", 10000)
-
-    IF(failcount > 1) ChangeMesh = .TRUE.
-    IF(.NOT. NSDiverge .AND. .NOT. NSTooFast) THEN
-      !ie fails from nonconvergence but flow looks ok
-      CurrentNLIter = ListGetInteger(FlowVar % Solver % Values, &
-          "Nonlinear System Max Iterations", Found)
-      IF(CurrentNLIter >= SaveNLIter*4) THEN !clearly not going to converge
-        CALL ListAddInteger( FlowVar % Solver % Values, &
-        "Nonlinear System Max Iterations", SaveNLIter)
-        !ChangeMesh = .FALSE.
-      ELSE
-        CALL ListAddInteger( FlowVar % Solver % Values, &
-            "Nonlinear System Max Iterations", CurrentNLIter*2)
-        !ChangeMesh = .FALSE.
-      END IF
-    END IF
-
-    !If this is the second failure in a row, fiddle with the mesh
-    !PRINT *, 'TO DO, optimize MMG parameters, need to change remesh distance as well?'
-    IF(ChangeMesh) THEN
-       NewMeshHminArray = NewMeshHminArray/MeshChange
-       NewMeshHausdArray = NewMeshHausdArray/MeshChange
-       NewMetric = NewMetric/MeshChange
-       NewMeshDist = NewMeshDist*MeshChange
-       NewMeshHGrad = NewMeshHGrad/MeshChange
-
-       CALL Info(SolverName,"NS failed twice, fiddling with the mesh... ")
-       CALL Info(SolverName,"Temporarily slightly change MMG params ")
-       CALL ListAddConstRealArray(FuncParams, "MMG Hmin", MaxRemeshIter, 1, NewMeshHminArray)
-       !CALL ListAddConstReal(FuncParams, "MMG Hmax", SaveMeshHmax*1.1_dp)
-       CALL ListAddConstReal(FuncParams, "MMG Hgrad", NewMeshHGrad) !default 1.3
-       CALL ListAddConstReal(RemeshSolver % Values, "Remeshing Distance", NewMeshDist)
-       CALL ListAddConstRealArray(FuncParams, "MMG Hausd", MaxRemeshiter, 1, NewMeshHausdArray)
-       CALL ListAddInteger( FlowVar % Solver % Values, "Nonlinear System Max Iterations", SaveNLIter)
-       IF(GotSaveMetric) CALL ListAddConstReal(FuncParams, "GlacierMeshMetric Min LC", NewMetric)
-      NewMesh = .TRUE.
-      NewMeshCount = NewMeshCount + 1
-    ELSE
-      NewMesh = .FALSE.
-    END IF
-
-    IF( .NOT. (NSTooFast .OR. NSDiverge)) THEN
-      !---Not quite converging---!
-
-      CALL ListAddConstReal(FlowVar % Solver % Values, &
-           "Nonlinear System Relaxation Factor", 0.9_dp)
-
-    ELSE
-      !---Solution blowing up----!
-
-      !Set var values to zero so it doesn't mess up viscosity next time
-      FlowVar % Values = 0.0_dp
-
-      !TODO: What else? different linear method? more relaxation?
-    END IF
-
-    !prevent calving on next time step
-    CalvingOccurs = .FALSE.
-    CALL SParIterAllReduceOR(CalvingOccurs)
-    CALL ListAddLogical( Model % Simulation, 'CalvingOccurs', CalvingOccurs )
-  ELSE
-! set original values back
-    FailCount = 0
-    NewMeshCount = 0
-
-    NewMeshHminArray = SaveMeshHminArray
-    NewMeshHausdArray = SaveMeshHausdArray
-    NewMetric = SaveMetric
-    NewMeshDist = SaveMeshDist
-    NewMeshHGrad = SaveMeshHgrad
-
-    CALL ListAddConstReal(FlowVar % Solver % Values, &
-         "Nonlinear System Newton After Tolerance", SaveNewtonTol)
-    CALL ListAddInteger( FlowVar % Solver % Values, &
-         "Nonlinear System Newton After Iterations", SaveNewtonIter)
-    CALL ListAddConstReal(FlowVar % Solver % Values, &
-         "Nonlinear System Relaxation Factor", SaveRelax)
-    CALL ListAddInteger( FlowVar % Solver % Values, "Nonlinear System Max Iterations", SaveNLIter)
-    CALL ListAddConstRealArray(FuncParams, "MMG Hmin", MaxRemeshIter, 1, SaveMeshHminArray)
-    !CALL ListAddConstReal(FuncParams, "MMG Hmax", SaveMeshHmax)
-    CALL ListAddConstReal(RemeshSolver % Values, "Remeshing Distance", SaveMeshDist)
-    CALL ListAddConstReal(FuncParams, "MMG Hgrad", SaveMeshHgrad)
-    CALL ListAddConstRealArray(FuncParams, "MMG Hausd", MaxRemeshIter, 1, SaveMeshHausdArray)
-    IF(GotSaveMetric) CALL ListAddConstReal(FuncParams, "GlacierMeshMetric Min LC", SaveMetric)
-
-  END IF
-
-  !Set a simulation switch to be picked up by Remesher
-  CALL ListAddLogical( Model % Simulation, 'Flow Solution Failed', NSFail )
-
-  CalvingPauseSolvers = ListGetLogical( Model % Simulation, 'Calving Pause Solvers', Found )
-  IF(.NOT. Found) THEN
-    CALL INFO(SolverName, 'Cannot find Calving Pause Solvers so assuming calving has not pasued time.')
-    CalvingPauseSolvers = .TRUE.
-  END IF
-  IF(.NOT. CalvingPauseSolvers .OR. FirstTime .OR. NSFail .OR. PNSFail) THEN
-    !Switch off solvers
-    DO Num = 1,999
-      WRITE(Message,'(A,I0)') 'Switch Off Equation ',Num
-      EqName = ListGetString( Params, Message, Found)
-      IF( .NOT. Found) EXIT
-
-      Found = .FALSE.
-      DO j=1,Model % NumberOfSolvers
-        IF(ListGetString(Model % Solvers(j) % Values, "Equation") == EqName) THEN
-          Found = .TRUE.
-          !Turn off (or on) the solver
-          !If NS failed to converge, (switch) off = .true.
-          CALL SwitchSolverExec(Model % Solvers(j), NSFail)
-          EXIT
-        END IF
-      END DO
-
-      IF(.NOT. Found) THEN
-        WRITE (Message,'(A,A,A)') "Failed to find Equation Name: ",EqName,&
-            " to switch off after calving."
-        CALL Fatal(SolverName,Message)
-      END IF
-    END DO
-  END IF
-
-  IF(NSFail) THEN
-    !CALL ListAddConstReal( Model % Simulation, 'Timestep Size', PseudoSSdt)
-    !CALL ListAddInteger( Model % Simulation, 'Steady State Max Iterations', 1)
-    CALL ListAddInteger( Model % Simulation, 'Timestep Intervals', TimeIntervals + 1)
-  ELSE
-    !CALL ListAddConstReal( Model % Simulation, 'Timestep Size', SaveDt)
-    CALL ListAddInteger( Model % Simulation, 'Steady State Max Iterations', SaveSSiter)
-  END IF
-
-  FirstTime = .FALSE.
-  PNSFail = NSFail
-
-END SUBROUTINE CheckFlowConvergenceMMG
+END SUBROUTINE ParMMGRemeshing

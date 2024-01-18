@@ -350,6 +350,7 @@ IF(WITH_Zoltan)
 
     MESSAGE(STATUS "------------------------------------------------")
   ENDIF()
+  FIND_PACKAGE(ParMetis)
 ENDIF(WITH_Zoltan)
 
 

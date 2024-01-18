@@ -1675,6 +1675,17 @@ CONTAINS
           END DO
         END IF
 
+        ! Optionally save the limiters as a field. This is allocated here so that
+        ! if it used as a dependent variable it is allocated before being used.
+        IF( ListGetLogical( SolverParams,'Apply Limiter', Found ) ) THEN
+          IF( ListGetLogical( SolverParams,'Save Limiter',Found ) ) THEN      
+            CALL Info('AddEqutionBasics','Adding "contact active" field for '//var_name(1:n))
+            CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver,&
+                var_name(1:n) //' Contact Active', dofs = Solver % Variable % Dofs, &
+                Perm = Solver % Variable % Perm )
+          END IF
+        END IF
+                    
         IF (ASSOCIATED(Solver % Matrix)) Solver % Matrix % Comm = ELMER_COMM_WORLD
 
         IF ( DG ) THEN
@@ -1684,7 +1695,6 @@ CONTAINS
         IF( ListGetLogical(SolverParams,'Hcurl Basis',Found ) ) THEN
           Solver % Variable % Type = Variable_on_edges
         END IF
-
         
       END IF
       !------------------------------------------------------------------------------

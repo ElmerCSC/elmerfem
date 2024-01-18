@@ -61,7 +61,6 @@ Simulation
   Output Intervals = 1
   Output File = "$namerun".result" !"
   Output Coordinates = Logical True
-  Output File Each Timestep = Logical True
 
   ! Extruded Mesh Levels = Integer 10
   ! Remesh Extruded Mesh Levels = Integer 10
@@ -148,22 +147,13 @@ Material 1
   Min Zs Bottom = Variable Coordinate 1, Coordinate 2
     Real Procedure "./"$bed_func" ""initbedrock"
 
-  MMG Hmin (5) = Real 50.0 40.0 30.0 25.0 20.0
-  MMG Hmax = Real 500.0 !500.0
-  MMG Hgrad = Real 2.5
-  MMG Hausd (5) = Real 50.0 40.0 30.0 25.0 20.0
-  ! elem quality out of 1
-  MMG Min Quality = Real 0.0001
-  MMG Anisotropic = Logical True
-  MMG Target Length(3) = Variable Coordinate 1
+  RemeshMMG3D Hmin = Real 50.0
+  RemeshMMG3D Hmax = Real 500.0
+  RemeshMMG3D Hgrad = Real 2.5
+  RemeshMMG3D Hausd = Real 50.0
+  RemeshMMG3D Anisotropic = Logical True
+  RemeshMMG3D Target Length(3) = Variable Coordinate 1
     Real Procedure "ElmerIceUSF" "GlacierMeshMetricAniso"
-  Save MMG Meshes = Logical False
-  Save MMG Sols = Logical False
-  ! don't add extensions
-  Pre MMG Mesh Name = File "mmgadvancefix/preremesh_"
-  MMG Output Mesh Name = File "mmgadvancefix/remesh_"
-  MMG Multiple Inputs = Logical True
-  MMG Max Remesh Iterations = Integer 5
 
   GlacierMeshMetric Max Distance = Real 2000.0
   GlacierMeshMetric Min Distance = Real 200.0
@@ -250,7 +240,6 @@ Solver 4
   Nonlinear System Newton Max Tolerance = Real 1.0e-2
   Nonlinear System Newton Max Iterations = Integer 15 !Give up newton
   Nonlinear System Reset Newton = Logical True
-  Nonlinear System Max Norm Return = Real 1.0E6
 
   Steady State Convergence Tolerance = Real 1.0e-12
 
@@ -262,17 +251,16 @@ End
 
 Solver 5
   Equation = String "Check NS"
-  Procedure = File "ElmerIceSolvers" "CheckFlowConvergenceMMG"
-  !Exec Solver = "Never"
+  Procedure = File "ElmerIceSolvers" "CheckFlowConvergence"
+  Exec Solver = "Never"
   Flow Solver Name = String "Flow Solution"
-  Maximum Flow Solution Divergence = Real 2.0
+  Maximum Flow Solution Divergence = Real 1.3
   Maximum Velocity Magnitude = Real 1.0E6
   First Time Max Expected Velocity = Real 8.0E4
-  Mesh Change Percentage = Real 15.0
 
   !list of solvers to skip this time if NS fails to converge
   Switch Off Equation 1 = String "StressSolver"
-  Switch Off Equation 2 = String "3D Calving Lset"
+  Switch Off Equation 2 = String "3D Calving"
   Switch Off Equation 3 = String "Free Surface Top"
   Switch Off Equation 4 = String "Free Surface Bottom"
   Switch Off Equation 5 = String "Front Advance"
@@ -334,13 +322,15 @@ Solver 19
   Calving Search Distance = Real 3000.0
   PlaneMesh Grid Size = Real 40.0
 
+  Calving Append Name = String "$namerun"" !"
+
   Lateral Calving Margins = Logical True
 
   Crevasse Penetration = Real 1.00
 
   Project Calving Equation Name = String "CalvingProjection"
   Isosurface Equation Name = String "Calving Isosurface"
-  Front Advance Solver = String "Front Advance"
+  Remesh Equation Name = String "Remesh"
 End
 
 Solver 8
@@ -479,10 +469,16 @@ Solver 12
   Flow Solution Variable Name = String "Flow Solution"
   Ignore Velocity = Logical False !Permits frontal melt only
 
+  !regions exceeding this gradient will be modified/checked
+  Front Gradient Threshold = Real 5.0
+  Front Projectability Epsilon = Real 1.0
+  Column Max Longitudinal Range = Real 350.0
+  Maximum Node Displacement = Real 1.0E4
+
   Left Rail Number Nodes = Integer 12
   Right Rail Number Nodes = Integer 12
 
-  Rail Buffer = Real 0.1
+  Exported Variable 1 = "Tangled"
 End
 
 Solver 13
@@ -503,7 +499,7 @@ Solver 13
   Linear System Abort Not Converged = False
   Nonlinear System Max Iterations = 1
   Nonlinear System Convergence Tolerance = 1.0e-06
-  First Time Non-Zero = Logical True
+  First TIme Non-Zero = Logical True
 End
 
 
@@ -511,7 +507,7 @@ Solver 16
   Equation = "Vertical Mesh Update"
   ! usually, the solver is executed only after the thermo-mechanical
   ! problem has obtained a solution on the time-level
-  Exec Solver = "After Timestep"
+  Exec Solver = "After TimeStep"
   Procedure =  File "MeshSolve1" "MeshSolver"
   Solver Timing = Logical True
 
@@ -576,53 +572,15 @@ End
 
 Solver 21
    Equation = "Remesh"
-   Procedure = "ElmerIceSolvers" "CalvingRemeshMMG"
-   Exec Solver = "After timestep"
+   Procedure = "ElmerIceSolvers" "CalvingRemeshParMMG"
+   Exec Solver = "After Timestep"
    Solver Timing = Logical True
 
-   Mesh Hausd (10) = Real 15.0 15.0 15.0 15.0 10.0 5.0 4.0 3.0 2.0 1.0
-   Mesh Hmin (10) = Real 50.0 40.0 30.0 20.0 10.0 5.0 4.0 3.0 2.0 1.0
+   Mesh Hausd = Real 15.0
+   Mesh Hmin = Real 30.0
    Mesh Hmax = Real 500.0
-   Mesh Hgrad = Real 2.5 ! needs to be very low for discretize an isovalue
-   ! elem quality is out of 1
-   Mesh Min Quality = Real 0.000001
-   Remeshing Distance = Real 1500.0
-   Mesh Rmc Value = Real 1e-15
-
-   Front Advance Solver = String "Front Advance"
-   !enforces lateral margins default = true
-   Fix Nodes On Rails = Logical True
-
-   Save MMGLS Meshes = Logical False
-   Save MMGLS Sols = Logical False
-   ! don't add extensions
-   Pre MMGLS Mesh Name = File "mmgadvancefix/prels_"
-   MMGLS Output Mesh Name = File "mmgadvancefix/ls_"
-
-   Mesh Update Variable 1 = String "Vertical Mesh Update"
-   Mesh Update Variable 2 = String "Longitudinal Mesh Update"
-   FreeSurface Variable 1 = String "Zs Top"
-   FreeSurface Variable 2 = String "Zs Bottom"
-
-   Switch Off Equation 1 = String "Front Advance"
-
-   !now total calve volume
-   Pause Solvers Minimum Iceberg Volume = Real 1.0E7
-   Calving Pause Max Steps = Integer 05
-   !this is calving pause timestep
-   Pseudo SS dt = Real 1e-10
-
-   Calving Stats File Name = File "$namerun"_calvingstats.txt"
-   Save Terminus = Logical True
-   Output Terminus File Name = File "$namerun"_terminusposition.txt"
-   !Suppress Calving = Logical True
-
-   Repartition Method = String "ParMetis"
-   Repartition Approach = String "Partition"
-   Repartition ParMetis Library = String "PartKway"
-   Repartition Output Level = Integer 0
-   Repartition Zoltan Library = String "graph"
-   Repartition Zoltan Graph Package = String "phg"
+   Mesh Hgrad = Real 0.5
+   Remeshing Distance = Real 1000.0
 End
 
 Solver 22
@@ -717,7 +675,6 @@ Equation 1 !Main body
    Active Solvers (19) = 1 2 3 4 5 6 7 8 20 10 13 21 16 22 23 26 19 27 28
    Convection = Computed
    Flow Solution Name = String "Flow Solution"
-   Mesh Update = Logical True
 End
 
 Equation 2 !Bed
@@ -767,8 +724,6 @@ Boundary Condition 1
   !Not physically important, internal to Remeshing (required Init Dirich = F)
   Remesh Update 3 = Variable Coordinate 3, FrontExtent
     Real MATC "tx(1) - tx(0)"
-  
-  ComputeNormal = Logical True
 End
 
 Boundary Condition 2
@@ -806,8 +761,8 @@ Boundary Condition 3
   Mass Consistent Normals = Logical True
 
   Velocity 1 = Real 0.0
-  !Velocity 2 = Real 0.0
-  !Velocity 3 = Real 0.0
+  ! Velocity 2 = Real 0.0
+  ! Velocity 3 = Real 0.0
   Slip Coefficient 2 = Variable Coordinate 2
     Real MATC "if(tx<1000){0.0}else{100*tx}"
   Slip Coefficient 3 = Variable Coordinate 2
@@ -834,8 +789,8 @@ Boundary Condition 4
   Mass Consistent Normals = Logical True
 
   Velocity 1 = Real 0.0
-  !Velocity 2 = Real 0.0
-  !Velocity 3 = Real 0.0
+  ! Velocity 2 = Real 0.0
+  ! Velocity 3 = Real 0.0
   Slip Coefficient 2 = Variable Coordinate 2
     Real MATC "if(tx<1000){0.0}else{100*tx}"
   Slip Coefficient 3 = Variable Coordinate 2
@@ -900,9 +855,8 @@ Boundary Condition 5
   ! Budd Ocean Density = Real $RhoWS
   ! Budd Floatation = Logical True
 
-  ComputeNormal = Logical True
-  !ComputeNormal Condition = Variable GroundedMask
-  !  Real MATC "tx + 0.5"
+  ComputeNormal Condition = Variable GroundedMask
+    Real MATC "tx + 0.5"
   External Pressure = Variable Coordinate 3 !dummy
      Real Procedure "ElmerIceUSF" "SeaPressure"
   Slip Coefficient 1 = Variable Coordinate 3
@@ -957,18 +911,6 @@ Body Force 1
 
   Remesh Update 1 = Real 0.0
   Remesh Update 2 = Real 0.0
-
-  Longitudinal Mesh Update 1 = Real 0.0
-  Longitudinal Mesh Update 2 = Real 0.0
-  Longitudinal Mesh Update 3 = Real 0.0
-
-  Longitudinal Mesh Update 1 Condition = Variable Distance
-    Real MATC "tx-1500"
-  Longitudinal Mesh Update 2 Condition = Variable Distance
-    Real MATC "tx-1500"
-  Longitudinal Mesh Update 3 Condition = Variable Distance
-    Real MATC "tx-1500"
-
 End
 
 Body Force 2
@@ -1009,3 +951,6 @@ End
 
 Solver 28 :: Reference Norm = Real 1
 Solver 28 :: Reference Norm Tolerance = Real 1E-05
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=1,EPS=1E-05\n" );
