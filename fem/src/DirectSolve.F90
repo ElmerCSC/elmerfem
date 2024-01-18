@@ -551,9 +551,9 @@ CONTAINS
        INTEGER(KIND=AddrInt) :: chol
      END SUBROUTINE cholmod_ffree
 
-     FUNCTION cholmod_ffactorize(n,rows,cols,vals) RESULT(chol) BIND(c,NAME="cholmod_ffactorize")
+     FUNCTION cholmod_ffactorize(n,rows,cols,vals,cmplx) RESULT(chol) BIND(c,NAME="cholmod_ffactorize")
         USE Types
-        INTEGER :: n, Rows(*), Cols(*)
+        INTEGER :: n, cmplx, Rows(*), Cols(*)
         REAL(KIND=dp) :: Vals(*)
         INTEGER(KIND=dp) :: chol
      END FUNCTION cholmod_ffactorize
@@ -567,7 +567,7 @@ CONTAINS
   END INTERFACE
 
   LOGICAL :: Factorize, FreeFactorize, Found
-
+  INTEGER :: i
   REAL(KIND=dp), POINTER CONTIG :: Vals(:)
   INTEGER, POINTER CONTIG :: Rows(:), Cols(:), Diag(:)
 
@@ -597,7 +597,9 @@ CONTAINS
     Vals => A % Values
 
     Rows=Rows-1; Cols=Cols-1 ! c numbering
-    A % Cholmod=cholmod_ffactorize(A % NumberOfRows, Rows, Cols, Vals)
+    i=0
+    IF(A % Complex) i=1
+    A % Cholmod=cholmod_ffactorize(A % NumberOfRows, Rows, Cols, Vals, i)
     Rows=Rows+1; Cols=Cols+1 ! fortran numbering
   END IF
 

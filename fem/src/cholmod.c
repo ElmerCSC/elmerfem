@@ -14,43 +14,70 @@ typedef struct {
 } cholmod;
 
 
-cholmod STDCALLBULL *FC_FUNC_(cholmod_ffactorize,CHOLMOD_FFACTORIZE)(int *n,int *rows,int *cols,double *vals)
+cholmod STDCALLBULL *FC_FUNC_(cholmod_ffactorize,CHOLMOD_FFACTORIZE)(int *n,int *rows,int *cols,double *vals, int *cmplx)
 {
   static double *y;
-  int i,j,nz,ok,*p,*q;
   int64_t *rr, *ri;
-  double *xx,*bx;
+  double *xx,*bx,*rvals,*ivals;
+  int i,j,k,l,m,nz,ok,*p,*q,ii;
 
   cholmod *handle;
 
   handle = (cholmod *)calloc(sizeof(cholmod),1);
 
   cholmod_l_start(&handle->c);
-  handle->a.nrow=*n;
-  handle->a.ncol=*n;
 
-#if 0
-  handle->a.p=rows;
-  handle->a.i=cols;
-#else
-  rr = (int64_t *)malloc(sizeof(int64_t)*(*n+1));
-  ri = (int64_t *)malloc(sizeof(int64_t)*rows[*n]);
+  m = *n;
+  if ( *cmplx ) m/=2;
 
-  for(i=0; i<*n+1; i++ ) rr[i]=rows[i];
-  for(i=0; i<rows[*n]; i++ ) ri[i]=cols[i];
+  handle->a.nrow = m;
+  handle->a.ncol = m;
 
-  handle->a.p=rr;
-  handle->a.i=ri;
-#endif
+  if(*cmplx) {
+    rr = (int64_t *)malloc(sizeof(int64_t)*(m+1));
+    ri = (int64_t *)malloc(sizeof(int64_t)*rows[*n]/4);
 
-  handle->a.x=vals;
-  handle->a.packed=1;
-  handle->a.sorted=1;
-  handle->a.stype=-1;
-  handle->a.nzmax=rows[*n];
-  handle->a.xtype=CHOLMOD_REAL;
+    rvals = (double *)malloc(sizeof(double)*rows[*n]/2);
 
-  handle->l=cholmod_l_analyze(&handle->a,&handle->c);
+    j = 0; l=0;
+    for(i=0; i<*n; i+=2 )
+    {
+      rr[j] = l;
+      j++;
+
+      for(k=rows[i]; k<rows[i+1]; k+=2)
+      {
+         rvals[2*l] = vals[k];
+         rvals[2*l+1] = -vals[k+1];
+         ri[l]  = cols[k]/2;
+         l++;
+      }
+    }
+
+    rr[m]=l;
+    handle->a.stype = -1;
+    handle->a.x = rvals;
+    handle->a.xtype=CHOLMOD_COMPLEX;
+  } else {
+    rr = (int64_t *)malloc(sizeof(int64_t)*(*n+1));
+    ri = (int64_t *)malloc(sizeof(int64_t)*rows[*n]);
+
+    for(i=0; i<*n+1; i++ ) rr[i]=rows[i];
+    for(i=0; i<rows[*n]; i++ ) ri[i]=cols[i];
+
+    handle->a.stype = -1;
+    handle->a.x=vals;
+    handle->a.xtype=CHOLMOD_REAL;
+  }
+
+  handle->a.p = rr;
+  handle->a.i = ri;
+  handle->a.nzmax=rr[m];
+
+  handle->a.packed = 1;
+  handle->a.sorted = 1;
+
+  handle->l = cholmod_l_analyze(&handle->a,&handle->c);
   cholmod_l_factorize(&handle->a,handle->l,&handle->c);
 
   return handle;
@@ -59,16 +86,19 @@ cholmod STDCALLBULL *FC_FUNC_(cholmod_ffactorize,CHOLMOD_FFACTORIZE)(int *n,int 
 void STDCALLBULL FC_FUNC_(cholmod_fsolve,CHOLMOD_FSOLVE)(cholmod **handle,int *n,double *x, double *b)
 {
   double *xx,*bb;
-  int i;
+  int i, nn;
   cholmod_dense *dx, *db;
+
+  nn = *n;
 
   db = cholmod_l_zeros((*handle)->a.nrow, 1, (*handle)->a.xtype, &(*handle)->c);
   bb=db->x;
-  for(i=0;i<*n;i++) bb[i]=b[i];
+  for(i=0;i<nn;i++) bb[i]=b[i];
 
-  dx=cholmod_l_solve(CHOLMOD_A,(*handle)->l,db,&(*handle)->c);
+  dx = cholmod_l_solve(CHOLMOD_A,(*handle)->l,db,&(*handle)->c);
+
   xx=dx->x;
-  for(i=0;i<*n;i++) x[i]=xx[i];
+  for(i=0;i<nn;i++) x[i]=xx[i];
 
   cholmod_l_free_dense(&dx, &(*handle)->c);
   cholmod_l_free_dense(&db, &(*handle)->c);

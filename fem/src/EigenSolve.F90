@@ -282,7 +282,7 @@ CONTAINS
               'Linear System Direct Method', stat )
           
           SELECT CASE( DirectMethod )
-          CASE('umfpack', 'big umfpack', 'mumps', 'superlu', 'pardiso')
+          CASE('umfpack', 'big umfpack', 'mumps', 'superlu', 'pardiso', 'cholmod')
           CASE DEFAULT
             Stat = CRS_ILUT(Matrix, 0.0d0)
           END SELECT
@@ -915,7 +915,7 @@ END SUBROUTINE CheckResiduals
            'Linear System Direct Method', stat )
 
          SELECT CASE( DirectMethod )
-         CASE('umfpack', 'big umfpack','mumps', 'superlu', 'pardiso' )
+         CASE('umfpack', 'big umfpack','mumps', 'superlu', 'pardiso', 'cholmod' )
          CASE DEFAULT
             Stat = CRS_ILUT(Matrix, 0.0d0)
          END SELECT
@@ -1309,7 +1309,7 @@ END SUBROUTINE CheckResiduals
               'Linear System Direct Method', stat )
           
           SELECT CASE( DirectMethod )
-          CASE('umfpack', 'big umfpack', 'mumps', 'superlu', 'pardiso')
+          CASE('umfpack', 'big umfpack', 'mumps', 'superlu', 'pardiso', 'cholmod')
           CASE DEFAULT
             Stat = CRS_ComplexILUT(Matrix, 0._dp)
           END SELECT
