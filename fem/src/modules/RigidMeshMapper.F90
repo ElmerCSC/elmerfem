@@ -70,8 +70,9 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
       RotorBodies(:), IntArray(:) => NULL()
   REAL(KIND=dp) :: x0(4), x1(4), RotMatrix(4,4),TrsMatrix(4,4),SclMatrix(4,4), &
       TrfMatrix(4,4),Identity(4,4), Origin(4),Angles(3),Scaling(3),alpha, Coord(3), &
-      dCoord(3), Norm, dx(3), zmin, zmax, RotorSkew
-  REAL(KIND=dp) :: at0,at1,at2,Coeff,Source,relax(1),MaxDeform,AngleCoeff, RotorRad
+      dCoord(3), Norm, dx(3), zmin, zmax
+  REAL(KIND=dp) :: RotorSkew, StatorSkew
+  REAL(KIND=dp) :: at0,at1,at2,Coeff,Source,relax(1),MaxDeform,AngleCoeff, RotorRad, RotorAngle
   REAL(KIND=dp), POINTER :: Xorig(:),Yorig(:),Zorig(:),Xnew(:),Ynew(:),Znew(:),&
       RelaxField(:),VeloVal(:), PArray(:,:) => NULL()
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:)
@@ -80,9 +81,9 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
   LOGICAL :: Found,GotMatrix,GotRotate,GotTranslate,GotScale,Visited=.FALSE.,&
       UseOriginalMesh, Cumulative, GotRelaxField=.FALSE., &
       CalculateVelocity,TranslateBeforeRotate, StoreOriginalMesh, &
-      RotorMode, DoIt, GotSkew
+      RotorMode, DoIt, GotSkew, GotRotorAngle
   LOGICAL :: AnyMeshMatrix,AnyMeshRotate,AnyMeshTranslate,AnyMeshScale,&
-      AnyMeshOrigin, AnyRelax, ConstantMap, GotMap
+      AnyMeshOrigin, AnyRelax, ConstantMap, GotMap, IsRotor
   LOGICAL, POINTER :: NodeDone(:)
   LOGICAL, ALLOCATABLE, SAVE :: RotorElement(:)
   TYPE(Element_t), POINTER :: Element
@@ -111,7 +112,7 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
   ELSE
     AngleCoeff = PI / 180.0_dp
   END IF
-  
+
   RotorMode = ListGetLogical( SolverParams,'Rotor Mode',Found )
   IF( RotorMode ) THEN
     RotorBodies => ListGetIntegerArray( SolverParams,'Rotor Bodies',Found )
@@ -122,6 +123,7 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
       END IF
     END IF
   END IF
+  RotorAngle = ListGetCReal( CurrentModel % Simulation,'Rotor Angle',GotRotorAngle )
   
   ! If using original mesh as a reference mesh it must be saved,
   ! otherwise the analytic mapping does not require two meshes
@@ -154,6 +156,8 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
 
   IF( RotorMode .AND. .NOT. Visited ) THEN
     RotorSkew = AngleCoeff * ListGetCReal(CurrentModel % Simulation,'Rotor Skew',GotSkew )
+    StatorSkew = AngleCoeff * ListGetCReal(CurrentModel % Simulation,'Stator Skew',Found )
+    GotSkew = GotSkew .OR. Found
     IF( GotSkew ) THEN
       zmax = ListGetCReal( CurrentModel % Simulation,'Extruded Max Coordinate',Found ) 
       IF(.NOT. Found) THEN
@@ -169,17 +173,17 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
       Element => Mesh % Elements(elem)
       n = GetElementNOFNodes(Element)
       
-      CALL GetElementNodes( Nodes )
+      CALL GetElementNodes( Nodes, Element )
       Coord(1) = SUM(Nodes % x(1:n)) / n
       Coord(2) = SUM(Nodes % y(1:n)) / n
       Coord(3) = SUM(Nodes % z(1:n)) / n
       IF(ASSOCIATED(RotorBodies)) THEN
-        IF( ALL( RotorBodies /= Element % BodyId ) ) CYCLE
+        IsRotor = ANY( RotorBodies == Element % BodyId ) 
       ELSE
-        IF(Coord(1)**2+Coord(2)**2 > RotorRad**2) CYCLE
+        IsRotor = (Coord(1)**2+Coord(2)**2 < RotorRad**2) 
       END IF
       
-      RotorElement(elem) = .TRUE.
+      RotorElement(elem) = IsRotor
 
       IF(GotSkew) THEN
         DO Node=1,n
@@ -191,7 +195,11 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
             Coord(3) = Zorig(NodeI)
 
             ! Skew is not constant, perform it for each node 1st if requested. 
-            alpha = ((coord(3)-zmin)/(zmax-zmin)-0.5_dp) * RotorSkew 
+            IF( IsRotor ) THEN
+              alpha = ((coord(3)-zmin)/(zmax-zmin)-0.5_dp) * RotorSkew 
+            ELSE
+              alpha = ((coord(3)-zmin)/(zmax-zmin)-0.5_dp) * StatorSkew 
+            END IF               
             Xorig(NodeI) = Coord(1)*COS(alpha) - Coord(2)*SIN(alpha)
             Yorig(Nodei) = Coord(1)*SIN(alpha) + Coord(2)*COS(alpha)        
             NodeDone(NodeI) = .TRUE.
@@ -435,6 +443,12 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
           Angles = AngleCoeff * Angles
         END IF
 
+        IF( GotRotorAngle ) THEN
+          GotRotate = .TRUE.
+          Angles(3) = AngleCoeff * RotorAngle
+        END IF
+                    
+               
         ! Scaling:
         !---------
         GotScale = .FALSE.
@@ -642,7 +656,7 @@ CONTAINS
     TYPE(Nodes_t) :: Nodes
     SAVE Nodes
 !------------------------------------------------------------------------------
-    CALL GetElementNodes( Nodes )
+    CALL GetElementNodes( Nodes, Element )
     STIFF = 0.0d0
     FORCE = 0.0d0
     
