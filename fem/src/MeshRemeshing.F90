@@ -950,6 +950,8 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel, FixedNodes, FixedElems, Calving)
          required,ierr)
     IF ( ierr /= 1 ) CALL Fatal(FuncName,'Call to MMG3D_Get_triangle failed!')
 
+    ! using mmgls new boundary (zero contour) is set to 10 by mmg
+    IF(Calving .AND. ref == 10) ref = ref + ElmerBCOffset
 
     ref = ref - ElmerBCOffset
     IF(ref<0) ref = 0
@@ -1395,9 +1397,9 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,&
   LOGICAL :: Debug, Parallel, AnisoFlag, Found, SaveMMGMeshes, SaveMMGSols, &
       UseHvar, UseTargetLength, MultipleInputs
   LOGICAL, ALLOCATABLE :: RmElement(:)
-  CHARACTER(:), ALLOCATABLE :: FuncName, MeshName, SolName, &
+  CHARACTER(:), ALLOCATABLE :: FuncName, &
         premmg_meshfile, mmg_meshfile, premmg_solfile, mmg_solfile
-
+  CHARACTER(MAX_NAME_LEN) :: MeshName, SolName
   SAVE :: WorkReal
 
 #ifdef HAVE_MMG
@@ -1700,7 +1702,7 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,&
   END IF
     
   ! And delete the unneeded BC elems
-  ! Important not for calving. mmg adds boundary nodes to upstream user defined boundary.
+  ! Important note for calving. mmg adds boundary nodes to upstream user defined boundary.
   ! these need to be removed
   ! this is a temp fix as calving algo has mutliple inputs
   IF(MultipleInputs) THEN
