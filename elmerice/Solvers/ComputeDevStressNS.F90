@@ -108,10 +108,7 @@ RECURSIVE SUBROUTINE ComputeDevStress( Model,Solver,dt,TransientSimulation )
        LocalStiffMatrix(:,:), LocalForce(:), &
        LocalP(:),  &
        LocalVelo(:,:), LocalViscosity(:), &
-<<<<<<< Updated upstream
-=======
        LocalFluidity(:), LocalDensity(:), &
->>>>>>> Stashed changes
        RelativeT(:), ConstantT(:)
   
   INTEGER :: NumberOfBoundaryNodes, COMP
@@ -119,11 +116,7 @@ RECURSIVE SUBROUTINE ComputeDevStress( Model,Solver,dt,TransientSimulation )
   
   REAL(KIND=dp), POINTER :: BoundaryNormals(:,:), &
        BoundaryTangent1(:,:), BoundaryTangent2(:,:)
-<<<<<<< Updated upstream
-  CHARACTER(LEN=MAX_NAME_LEN) :: FlowSolverName, StressSolverName, TempName
-=======
   CHARACTER(LEN=MAX_NAME_LEN) :: FlowSolverName, StressSolverName, TempName, DensityName
->>>>>>> Stashed changes
   
 #ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: at, at0
@@ -138,13 +131,8 @@ RECURSIVE SUBROUTINE ComputeDevStress( Model,Solver,dt,TransientSimulation )
   SAVE LocalMassMatrix, LocalStiffMatrix, LocalForce, &
        ElementNodes,  &
        AllocationsDone,  &
-<<<<<<< Updated upstream
-       old_body, &
-       LocalViscosity, Cauchy, &
-=======
        LocalViscosity, Cauchy, &
        LocalFluidity, LocalDensity, &
->>>>>>> Stashed changes
        OldKeyword, RelativeT, ConstantT
   
   SAVE LocalVelo, LocalP, dim
@@ -255,11 +243,8 @@ RECURSIVE SUBROUTINE ComputeDevStress( Model,Solver,dt,TransientSimulation )
              LocalStiffMatrix,     &
              LocalForce,           &
              LocalViscosity,       &
-<<<<<<< Updated upstream
-=======
              LocalFluidity,        &
              LocalDensity,         &
->>>>>>> Stashed changes
              RelativeT,            &
              ConstantT )
      END IF
@@ -273,10 +258,7 @@ RECURSIVE SUBROUTINE ComputeDevStress( Model,Solver,dt,TransientSimulation )
           LocalStiffMatrix( 2*STDOFs*N,2*STDOFs*N ),  &
           LocalForce( 2*STDOFs*N ),  &
           LocalViscosity(N), &
-<<<<<<< Updated upstream
-=======
           LocalFluidity(N), LocalDensity(N), &
->>>>>>> Stashed changes
           RelativeT(N), ConstantT(N), STAT=istat )
 
      IF ( istat /= 0 ) THEN
@@ -336,34 +318,6 @@ RECURSIVE SUBROUTINE ComputeDevStress( Model,Solver,dt,TransientSimulation )
 
 !------------------------------------------------------------------------------
 !    Read in material constants from Material section
-<<<<<<< Updated upstream
-!------------------------------------------------------------------------------
-
-
-!!!! Restricted to the Power Law case
-           !! Check for the presence of keywords related to the new vectorized Stokes solver
-           RelativeT(1:n) = ListGetReal( Material, 'Relative Temperature', n, NodeIndexes, GotIt )
-           IF (GotIt) THEN
-              OldKeyword = ListGetLogical( Material, 'Glen Allow Old Keywords', GotIt)
-              IF (.NOT.(GotIt .AND. OldKeyword)) THEN
-                 CALL FATAL('ComputeDevStressNS', 'When using ComputeDevStressNS with IncompressibleNSVec &
-                         >Glen Allow Old Keywords< must be set to True in Material')
-              END IF
-
-              ConstantT(1:n) = ListGetReal( Material, 'Constant Temperature', n, NodeIndexes, GotIt_CT )
-              TempName = GetString( Material, 'Temperature Field Variable', GotIt_TFV)
-              IF (.NOT.(GotIt_CT .OR. GotIt_TFV)) THEN
-                 CALL FATAL('ComputeDevStress', '>Constant Temperature< or >Temperature Field Variable< &
-                         must be prescribed in Material')
-              END IF
-
-              !!! In the case of constant T check for consistency between prescribed relative and constant T
-              IF (GotIt_CT .AND. (.NOT. all(abs(RelativeT(1:n) - ConstantT(1:n))<AEPS))) THEN
-                 CALL FATAL('ComputeDevStress', 'When considering constant temperature, >Constant Temperature< and >Relative &
-                 Temperature< must be consistent')
-              END IF
-           END IF
-=======
 !------------------------------------------------------------------------------           
            !!!! When the Flow Solver is Stokes:
            IF (iSolverName == 1) THEN       
@@ -413,7 +367,6 @@ RECURSIVE SUBROUTINE ComputeDevStress( Model,Solver,dt,TransientSimulation )
 !-------------------------------------------------------------------------------------
 !Independently of Flow Solver, get nodal velo, nodal pressure and cauchy stress option
 !-------------------------------------------------------------------------------------
->>>>>>> Stashed changes
 
 ! Do we want to return Cauchy or deviatoric stresses ? Deviatoric by default
 	   Cauchy = ListGetLogical( Material , 'Cauchy', Gotit )
