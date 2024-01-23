@@ -757,7 +757,8 @@ CONTAINS
       Radius = SUM( Nodes % x(1:n) * Basis(1:n) )
       CSymmetry = CurrentCoordinateSystem() == AxisSymmetric
       IF ( CSymmetry ) s = s * Radius
-        
+
+      LGrad = 0.0_dp      
       LGrad(1:dim,1:dim) = MATMUL( NodalVelo(1:dim,1:nd), dBasisdx(1:nd,1:dim) )
       SR = 0.5 * ( LGrad + TRANSPOSE(LGrad) )
       IF ( CSymmetry ) THEN
