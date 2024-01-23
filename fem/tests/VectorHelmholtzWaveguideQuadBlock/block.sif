@@ -15,7 +15,7 @@
   Outer: Linear System Solver = "Iterative"
   Outer: Linear System Convergence Tolerance = 1e-6
   Outer: Linear System Iterative Method = gcr
-  Outer: Linear System Max Iterations = 50 
+  Outer: Linear System Max Iterations = 200 
   Outer: Linear System Residual Output = 1
   Outer: Linear System GCR Restart = 50
   Outer: Linear System Abort Not Converged = False
@@ -41,5 +41,15 @@
   block 22: Linear System direct method = "mumps"
   block 22: Linear System Complex = True
   block 22: Linear System Scaling = False
+
+
+! This is tentative keyword that does not really benefit.
+! We split the equation into 3x3 blocks (lin edge, quad edge, face) 
+!  Block Quadratic Hcurl Faces = Logical True
+
+!  block 33: Linear System Solver = "direct"
+!  block 33: Linear System direct method = "mumps"
+!  block 33: Linear System Complex = True
+!  block 33: Linear System Scaling = False
 
   Linear System Timing = Logical True

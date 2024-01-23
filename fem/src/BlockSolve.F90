@@ -1390,7 +1390,14 @@ CONTAINS
         Dtag(k) = 1
       END IF
     END DO
-          
+
+    IF(NoVar == 3) THEN
+      DO j = n0 + 2*Mesh % NumberOfEdges + 1, SIZE(Solver % Variable % Perm)
+        k = Solver % Variable % Perm(j)
+        IF(k>0) Dtag(k) = 3
+      END DO     
+    END IF
+    
     ! Number linear and quadratic-only dofs separately
     Dperm = 0
     ndir = 0
@@ -4313,6 +4320,7 @@ CONTAINS
       SkipVar = .TRUE.
     ELSE IF( BlockAV .OR. BlockNodal .OR. BlockHorVer .OR. BlockHcurl ) THEN
       BlockDofs = 2
+      IF( ListGetLogical( Params,'Block Quadratic Hcurl Faces',Found ) ) BlockDofs = 3
       IF(BlockComplex) BlockDofs = 2 * BlockDofs 
       SkipVar = .TRUE.
     ELSE IF( BlockCart ) THEN
