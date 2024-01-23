@@ -28,6 +28,10 @@
 ! *             02101 Espoo, Finland                        
 ! *                                                         
 ! *    Original Date: 08 Jun 1997                           
+! *    Modification Date: January 2024                        
+! *    Last Modification by Julien Brondex (IGE) to make the operations related
+! *    to rheology in a separated module (PorousMaterialModels.F90) in order to
+! *    avoid code duplication.                           
 ! *
 ! *****************************************************************************/
 !>  Solver for (primarily thermal) Porous material flow
@@ -89,7 +93,7 @@
      TYPE(Element_t),POINTER :: CurrentElement
 
      REAL(KIND=dp) :: RelativeChange, UNorm, PrevUNorm, Gravity(3), &
-         Normal(3), NonlinearTol, s, Wn(2), MinSRInvariant
+         Normal(3), NonlinearTol, s
          
 
      REAL(KIND=dp)  :: NodalStresses(3,3), Stress(3,3), &
@@ -133,7 +137,6 @@
                 NormalTangential=.FALSE.
 
      INTEGER :: body_id,bf_id
-     INTEGER :: old_body = -1
      LOGICAL :: AllocationsDone = .FALSE., FreeSurface, &
                 Requal0
            
@@ -156,7 +159,7 @@
 
      SAVE LocalMassMatrix, LocalStiffMatrix, LoadVector, &
        LocalForce, ElementNodes, Beta, LocalFluidity, &
-       NodalPorous, LocalDensity, Wn, MinSRInvariant, old_body, &
+       NodalPorous, LocalDensity, &
        AllocationsDone
 
      SAVE RefD, RefS, RefSpin, LocalVelo, SlipCoeff, dim 
@@ -336,12 +339,6 @@
 !------------------------------------------------------------------------------
 !    Read in material constants from Material section
 !------------------------------------------------------------------------------
-         body_id = CurrentElement % BodyId
-         IF (body_id /= old_body) Then 
-            old_body = body_id
-            Call  GetMaterialDefs()
-         END IF
-
          LocalFluidity(1:n) = GetReal( Material, &
                          'Fluidity Parameter',  GotIt )
          IF(.NOT.GotIt) THEN
@@ -382,7 +379,7 @@
          CALL LocalMatrix( LocalMassMatrix, LocalStiffMatrix, &
               LocalForce, LoadVector, LocalDensity, LocalVelo, &
               LocalFluidity, CurrentElement, n, nd, nd+nb, &
-              ElementNodes, Wn, MinSRInvariant)
+              ElementNodes )
 
 !------------------------------------------------------------------------------
 !        Condensate in case of bubbles elements       
@@ -547,11 +544,6 @@
 !------------------------------------------------------------------------------
 !    Read in material constants from Material section
 !------------------------------------------------------------------------------
-        IF (body_id /= old_body) Then 
-              old_body = body_id
-              Call  GetMaterialDefs()
-        END IF
-
         LocalFluidity(1:n) = GetReal( Material, &
                       'Fluidity Parameter',  GotIt )
         IF (.NOT.GotIt) THEN
@@ -588,8 +580,7 @@
         CALL LocalSD(NodalStresses, NodalStrainRate, NodalSpin, & 
                  LocalVelo, LocalFluidity,  &
                 LocalDensity, CSymmetry, Basis, dBasisdx, &
-                CurrentElement, n, ElementNodes, dim, Wn, &
-                MinSRInvariant)
+                CurrentElement, n, ElementNodes, dim)
                 
 
         IF (Requal0) NodalSpin = 0.0_dp 
@@ -680,58 +671,28 @@
       
 CONTAINS
 
-      SUBROUTINE GetMaterialDefs()
-
-      Wn(2) = GetConstReal( Material , 'Powerlaw Exponent', GotIt )
-      IF (.NOT.GotIt) THEN
-         WRITE(Message,'(A)') 'Variable  Powerlaw Exponent not found. &
-                                    & Setting to 1.0'
-         CALL INFO('PorousSolve', Message, Level = 20)
-         Wn(2) = 1.0
-      ELSE
-         WRITE(Message,'(A,F10.4)') 'Powerlaw Exponent = ',   Wn(2)
-         CALL INFO('PorousSolve', Message, Level = 20)
-      END IF
-
-! Get the Minimum value of the Effective Strain rate 
-      MinSRInvariant = 100.0*AEPS
-      IF ( Wn(2) > 1.0 ) THEN
-        MinSRInvariant =  &
-             GetConstReal( Material, 'Min Second Invariant', GotIt )
-        IF (.NOT.GotIt) THEN
-          WRITE(Message,'(A)') 'Variable Min Second Invariant not &
-                    &found. Setting to 100.0*AEPS )'
-          CALL INFO('PorousSolve', Message, Level = 20)
-        ELSE
-          WRITE(Message,'(A,E14.8)') 'Min Second Invariant = ', MinSRInvariant
-          CALL INFO('PorousSolve', Message, Level = 20)
-        END IF
-      END IF
-
-!------------------------------------------------------------------------------
-      END SUBROUTINE GetMaterialDefs
-!------------------------------------------------------------------------------
-
 !------------------------------------------------------------------------------
       SUBROUTINE LocalMatrix( MassMatrix, StiffMatrix, ForceVector, &
               LoadVector, NodalDensity, NodalVelo,  &
-              NodalFluidity, Element, n, nd, ntot, Nodes, Wn, MinSRInvariant)
+              NodalFluidity, Element, n, nd, ntot, Nodes )
 !------------------------------------------------------------------------------
+     
+     USE PorousMaterialModels
 
      REAL(KIND=dp) :: StiffMatrix(:,:), MassMatrix(:,:)
      REAL(KIND=dp) :: LoadVector(:,:), NodalVelo(:,:)
-     REAL(KIND=dp) :: Wn(2), MinSRInvariant
+     REAL(KIND=dp) :: mu(2)
      REAL(KIND=dp), DIMENSION(:) :: ForceVector, NodalDensity,  &
                     NodalFluidity
      TYPE(Nodes_t) :: Nodes
-     TYPE(Element_t) :: Element
+     TYPE(Element_t), POINTER :: Element
      INTEGER :: n, nd, ntot
 !------------------------------------------------------------------------------
 !
      REAL(KIND=dp) :: Basis(2*ntot)
      REAL(KIND=dp) :: dBasisdx(2*ntot,3),detJ
 
-     REAL(KIND=dp) :: Force(3), density, fa, fb 
+     REAL(KIND=dp) :: Force(3), Density, Fluidity
 
      REAL(KIND=dp), DIMENSION(4,4) :: A,M
      REAL(KIND=dp) :: Load(3)
@@ -743,7 +704,6 @@ CONTAINS
   
      REAL(KIND=dp) :: Em, eta, Kcp
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
-     REAL(KIND=dp) :: ParameterA, ParameterB
      INTEGER :: N_Integ
 
      REAL(KIND=dp), DIMENSION(:), POINTER :: U_Integ,V_Integ,W_Integ,S_Integ
@@ -794,68 +754,39 @@ CONTAINS
          Force(i) = SUM( LoadVector(i,1:n)*Basis(1:n))
       END DO
 
-
       Radius = SUM( Nodes % x(1:n) * Basis(1:n) )
-!
+      CSymmetry = CurrentCoordinateSystem() == AxisSymmetric
+      IF ( CSymmetry ) s = s * Radius
+        
+      LGrad(1:dim,1:dim) = MATMUL( NodalVelo(1:dim,1:nd), dBasisdx(1:nd,1:dim) )
+      SR = 0.5 * ( LGrad + TRANSPOSE(LGrad) )
+      IF ( CSymmetry ) THEN
+         SR(1,3) = 0.0_dp
+         SR(2,3) = 0.0_dp
+         SR(3,1) = 0.0_dp
+         SR(3,2) = 0.0_dp
+         SR(3,3) = 0.0_dp
+         IF ( Radius > 10*AEPS ) THEN
+            SR(3,3) = SUM( Nodalvelo(1,1:nd) * Basis(1:nd) ) /Radius
+         END IF
+      END IF
+      Em = SR(1,1)+SR(2,2)+SR(3,3)
+      DO i = 1, 3
+         SR(i,i) = SR(i,i) - Em/3.0 !Deviatoric SR
+      END DO
+
 !    variables at the integration point
 !    Interpolate density first and the evaluate parameters
 !    Density is the Relative Density
       Density = SUM( NodalDensity(1:n)*Basis(1:n) )
-      fa = ParameterA(Density)
-      fb = ParameterB(Density)
-
-
-      Wn(1) = SUM( NodalFluidity(1:n)*Basis(1:n) )
-
-      CSymmetry = CurrentCoordinateSystem() == AxisSymmetric
-      IF ( CSymmetry ) s = s * Radius
-
+!    Get Fluidity at IP
+      Fluidity = SUM( NodalFluidity(1:n)*Basis(1:n) )
 !
-! Case non-linear calculate E_D^2 = gamma_e^2/fa + E_m^2/fb
-! ----------------------------------------------------------
-      ss = 1.0_dp
-      LGrad = 0.0_dp
-      IF ( Wn(2) > 1.0 ) THEN
-        LGrad(1:dim,1:dim) = MATMUL( NodalVelo(1:dim,1:nd), dBasisdx(1:nd,1:dim) )
-        SR = 0.5 * ( LGrad + TRANSPOSE(LGrad) )
-      
-        IF ( CSymmetry ) THEN
-          SR(1,3) = 0.0_dp
-          SR(2,3) = 0.0_dp
-          SR(3,1) = 0.0_dp
-          SR(3,2) = 0.0_dp
-          SR(3,3) = 0.0_dp
-          IF ( Radius > 10*AEPS ) THEN
-            SR(3,3) = SUM( Nodalvelo(1,1:nd) * Basis(1:nd) ) /Radius
-          END IF
-        END IF
-
-        Em = SR(1,1)+SR(2,2)+SR(3,3)
-        DO i = 1, 3
-          SR(i,i) = SR(i,i) - Em/3.0
-        END DO
-
-        ss = 0.0_dp
-        DO i = 1, 3
-          DO j = 1, 3
-            ss = ss + SR(i,j)**2
-          END DO
-        END DO
-        ss = 2.0*ss / fa
-        IF ( fb > 1.0e-8 ) ss = ss + Em**2 / fb
-
-        nn =(1.0 - Wn(2))/Wn(2)
-
-        ss = SQRT(ss)
-        IF (ss < MinSRInvariant ) ss = MinSRInvariant
-        ss =  ss**nn 
-      END IF
-!
-! Bulk effective viscosity and Compressibility parameter Kcp 
-!     
-      eta =  ss / (fa * Wn( 1 )**( 1.0 / Wn( 2 ) ) ) 
-      Kcp = fb * Wn( 1 )**( 1.0 / Wn( 2 ) ) / ss 
-
+! Bulk effective viscosity eta and Compressibility parameter Kcp at IP
+!    
+      mu = PorousEffectiveViscosity( Fluidity, Density, SR, Em, Element, Nodes, n, nd, u, v, w, LocalIP=t ) ! mu =[eta, Kcp]
+      eta = mu(1)
+      Kcp = mu(2)
 !
 !    Loop over basis functions (of both unknowns and weights)
 !
@@ -1056,12 +987,13 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE LocalSD( Stress, StrainRate, Spin, &
         NodalVelo, NodalFluidity, Nodaldensity,  &
-        CSymmetry, Basis, dBasisdx, Element, n,  Nodes, dim,  Wn, &
-        MinSRInvariant)
+        CSymmetry, Basis, dBasisdx, Element, n,  Nodes, dim )
        
 !------------------------------------------------------------------------------
 !    Subroutine to compute the nodal Strain-Rate, Stress, ...
 !------------------------------------------------------------------------------
+     USE PorousMaterialModels
+
      LOGICAL ::  CSymmetry 
      INTEGER :: n, dim
      REAL(KIND=dp) :: Stress(:,:), StrainRate(:,:), Spin(:,:)
@@ -1071,15 +1003,14 @@ CONTAINS
      REAL(KIND=dp) :: detJ
      REAL(KIND=dp) :: NodalDensity(:)
      REAL(KIND=dp) :: u, v, w      
-     REAL(KIND=dp) :: Wn(2),  D(6), MinSRInvariant
+     REAL(KIND=dp) :: mu(2),  D(6), eta
      LOGICAL :: Isotropic
-     REAL(KIND=dp) :: ParameterA, ParameterB
      TYPE(Nodes_t) :: Nodes
-     TYPE(Element_t) :: Element
+     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
      LOGICAL :: stat
      INTEGER :: i,j,k,p,q
-     REAL(KIND=dp) :: LGrad(3,3), Radius, Density, fa, fb 
+     REAL(KIND=dp) :: LGrad(3,3), Radius, Density, Fluidity 
      REAL(KIND=dp) :: DSR(3,3),  Em 
      Real(kind=dp) :: ss, nn
 !------------------------------------------------------------------------------
@@ -1087,18 +1018,9 @@ CONTAINS
       Stress = 0.0
       StrainRate = 0.0
       Spin = 0.0
-
-!
-      Density = SUM( NodalDensity(1:n)*Basis(1:n) )
-      fa = ParameterA(Density)
-      fb = ParameterB(Density)
-
-      Wn(1) = SUM( NodalFluidity(1:n)*Basis(1:n) )
-      
 !
 !    Compute strainRate : 
 !    -------------------
-
       LGrad = 0.0_dp
       LGrad(1:dim,1:dim) = MATMUL( NodalVelo(1:dim,1:n), dBasisdx(1:n,1:dim) )
         
@@ -1116,32 +1038,19 @@ CONTAINS
         END IF
       END IF
       Em = StrainRate(1,1)+StrainRate(2,2)+StrainRate(3,3)
+      
+      ! Compute deviatoric Strain Rate
       DSR = StrainRate
-!
-! Case non-linear calculate E_D^2 = gamma_e^2/fa + E_m^2/fb
-! ----------------------------------------------------------
-      ss = 1.0_dp
-      IF ( Wn(2) > 1.0 ) THEN
-
-        DO i = 1, 3
+      DO i = 1, 3
           DSR(i,i) = DSR(i,i) - Em/3.0
-        END DO
+      END DO
 
-        ss = 0.0_dp
-        DO i = 1, 3
-          DO j = 1, 3
-            ss = ss + DSR(i,j)**2
-          END DO
-        END DO
-        ss = 2.0*ss / fa
-        IF ( fb > 1.0e-8 ) ss = ss + Em**2 / fb
-
-        nn =(1.0 - Wn(2))/Wn(2)
-
-        ss = SQRT(ss)
-        IF (ss < MinSRInvariant ) ss = MinSRInvariant
-        ss =  ss**nn 
-      END IF 
+! Get Effective viscosity at current point
+      Density = SUM( NodalDensity(1:n)*Basis(1:n) )
+      Fluidity = SUM( NodalFluidity(1:n)*Basis(1:n) )
+      
+      mu = PorousEffectiveViscosity( Fluidity, Density, DSR, Em, Element, Nodes, n, n, u, v, w ) !!mu = [eta, Kcp]
+      eta = mu(1)
 
 !
 !    Compute Spin : 
@@ -1151,7 +1060,7 @@ CONTAINS
 !
 !    Compute deviatoric stresses: 
 !    ----------------------------
-        Stress = 2.0 * ss * DSR / (fa * Wn( 1 )**(1.0 / Wn( 2 ) ) ) 
+        Stress = 2.0 * eta * DSR 
 !------------------------------------------------------------------------------
       END SUBROUTINE LocalSD      
 !------------------------------------------------------------------------------
