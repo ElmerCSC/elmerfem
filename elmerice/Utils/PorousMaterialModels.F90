@@ -171,7 +171,7 @@ MODULE PorousMaterialModels
         ss = 0.0_dp !Initialize ss
         DO i = 1, 3
            DO j = 1, 3
-              ss = ss + SR(i,j)**2 ! 2*Gamma_e^2 = e_ij e_ij
+              ss = ss + SR(i,j)**2 ! Gamma_e^2/2 = e_ij e_ij
            END DO
         END DO
         ss = 2.0*ss / fa !Gamma_e^2/fa
