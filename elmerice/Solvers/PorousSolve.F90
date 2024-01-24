@@ -647,19 +647,19 @@
 
         IF (ASSOCIATED(StrainRateVar)) THEN
               WHERE(RefD > 0.)
-                SRVAlues = SRValues / RefD
+                SRValues = SRValues / RefD
               END WHERE
         END IF
         
         IF (ASSOCIATED(DevStressVar)) THEN
            WHERE(RefS > 0.)
-                DSVAlues = DSValues / RefS
+                DSValues = DSValues / RefS
            END WHERE
         END IF
 
         IF (ASSOCIATED(SpinVar)) THEN
             WHERE(RefSpin > 0.)
-                SpinVAlues = SpinValues / RefSpin
+                SpinValues = SpinValues / RefSpin
             END WHERE
         END IF
         
