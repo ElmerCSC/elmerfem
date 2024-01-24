@@ -1321,10 +1321,11 @@ CONTAINS
   !-------------------------------------------------------------------------------------
   !> Picks linear parts of a quadratic Hcurl matrix.
   !-------------------------------------------------------------------------------------
-  SUBROUTINE BlockPickMatrixHcurl( Solver, NoVar )
+  SUBROUTINE BlockPickMatrixHcurl( Solver, NoVar, DoCmplx )
 
     TYPE(Solver_t) :: Solver
     INTEGER :: Novar
+    LOGICAL :: DoCmplx
 
     INTEGER::i,j,k,n,m,n0,dofs,nn,t,ic,kc
     TYPE(Matrix_t), POINTER :: A,B
@@ -1332,7 +1333,6 @@ CONTAINS
     INTEGER, POINTER :: QuadIndexes(:), LinIndexes(:)
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Element_t), POINTER :: Element, Edge
-    LOGICAL :: DoCmplx
     
     n = 28 ! currently just large enough
     ALLOCATE( QuadIndexes(n), LinIndexes(n) )
@@ -1345,8 +1345,6 @@ CONTAINS
     A => Solver % Matrix
     dofs = Solver % Variable % Dofs
 
-    DoCmplx = (NoVar == 4)
-    
     m = A % NumberOfRows    
     n = m
     IF(.NOT. DoCmplx) n = n / dofs
@@ -1392,10 +1390,16 @@ CONTAINS
     END DO
 
     IF(NoVar == 3) THEN
-      DO j = n0 + 2*Mesh % NumberOfEdges + 1, SIZE(Solver % Variable % Perm)
-        k = Solver % Variable % Perm(j)
-        IF(k>0) Dtag(k) = 3
-      END DO     
+      IF( DoCmplx ) THEN
+        WHERE( Dtag > 1 )
+          Dtag = Dtag - 1
+        END WHERE
+      ELSE
+        DO j = n0 + 2*Mesh % NumberOfEdges + 1, SIZE(Solver % Variable % Perm)
+          k = Solver % Variable % Perm(j)
+          IF(k>0) Dtag(k) = 3
+        END DO
+      END IF
     END IF
     
     ! Number linear and quadratic-only dofs separately
@@ -4321,7 +4325,10 @@ CONTAINS
     ELSE IF( BlockAV .OR. BlockNodal .OR. BlockHorVer .OR. BlockHcurl ) THEN
       BlockDofs = 2
       IF( ListGetLogical( Params,'Block Quadratic Hcurl Faces',Found ) ) BlockDofs = 3
-      IF(BlockComplex) BlockDofs = 2 * BlockDofs 
+      IF(BlockComplex) THEN
+        BlockDofs = 2 * BlockDofs 
+        IF( ListGetLogical( Params,'Block Quadratic Hcurl semicomplex',Found ) ) BlockDofs = 3
+      END IF
       SkipVar = .TRUE.
     ELSE IF( BlockCart ) THEN
       BlockDofs = 3
@@ -4373,7 +4380,8 @@ CONTAINS
       ELSE IF( BlockAV ) THEN
         CALL BlockPickMatrixAV( Solver, VarDofs )
       ELSE IF( BlockHcurl ) THEN
-        CALL BlockPickMatrixHcurl( Solver, VarDofs )
+        CALL BlockPickMatrixHcurl( Solver, VarDofs, BlockComplex )
+        IF(VarDofs == 3 ) BlockComplex = .FALSE.
       ELSE IF( BlockHorVer .OR. BlockCart ) THEN
         CALL BlockPickMatrixHorVer( Solver, VarDofs, BlockCart )       
       ELSE IF( BlockNodal ) THEN

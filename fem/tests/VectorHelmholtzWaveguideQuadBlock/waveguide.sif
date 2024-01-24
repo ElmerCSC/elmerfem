@@ -28,7 +28,7 @@ Simulation
 
   Output Intervals(1) = 1
 
-  Mesh Levels = 1
+!  Mesh Levels = 2
 End
 
 Constants
@@ -76,6 +76,10 @@ Solver 1
 !  Optimize Bandwidth = False
   Procedure = "VectorHelmholtz" "VectorHelmholtzSolver"
 
+
+!  Linear System Solver = "direct"
+!  Linear System direct method = "mumps"
+
 ! 1) split lin/quad block
 include block.sif
 
@@ -87,7 +91,7 @@ include block.sif
 !  include pmult.sif
 
 ! 4) Re/Im split
-!  include reim.sif
+!include reim.sif
 
   Linear System Timing = Logical True
   Calculate Energy Norm = Logical True
@@ -110,6 +114,8 @@ Solver 3
   Equation = "SaveScalars"
   Procedure = "SaveData" "SaveScalars"
   FileName = "block.dat"
+
+!  Operator 1 = cpu memory
 
   Show Norm Index = 1
 End
