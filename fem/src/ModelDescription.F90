@@ -1162,8 +1162,9 @@ CONTAINS
       END DO
             
       ! If automatic numbering is used map the names to numbers
+      ! Also otherwise, this may be handy sometimes.
       !------------------------------------------------------------
-      IF( .NOT. Numbering ) THEN
+      !IF( .NOT. Numbering ) THEN
         DO i = 1, Model % NumberOfBodies
           IF( .NOT. ListCheckPresent( Model % Bodies(i) % Values,'Material') ) THEN
             name = ListGetString( Model % Bodies(i) % Values,'Material Name', Found )
@@ -1246,9 +1247,9 @@ CONTAINS
           END IF
                
         END DO ! number of bodies
-      END IF
+      !END IF
 
-
+        
       ! Make sanity check that all Material, Body Force and Equation is associated to some
       ! body. This is not detrimental so a warning suffices.
       !-----------------------------------------------------------------------------------
