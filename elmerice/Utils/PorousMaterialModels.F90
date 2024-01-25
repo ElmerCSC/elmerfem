@@ -61,7 +61,7 @@ MODULE PorousMaterialModels
       IMPLICIT NONE
       REAL(KIND=dp) :: a, D, DD     
 
-      IF (D > 1.0_dp - AEPS) THEN
+      IF (D > 0.99_dp ) THEN
          a = 1.0_dp           
 
       ELSE IF (D <= 0.81) THEN
@@ -86,7 +86,7 @@ MODULE PorousMaterialModels
       IMPLICIT NONE
       REAL(KIND=dp) :: b, D, DD 
 
-      IF (D > 1.0_dp - AEPS) THEN
+      IF (D > 0.99_dp) THEN
          b = 0.0_dp           
 
       ELSE IF (D <= 0.81) THEN
