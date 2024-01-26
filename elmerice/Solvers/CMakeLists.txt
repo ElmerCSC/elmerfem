@@ -16,7 +16,7 @@ SET(CMAKE_Fortran_MODULE_DIRECTORY
 SET(ElmerIce_SRC ElmerIceUtils.F90 AIFlowSolve_nlD2.F90 AIFlowSolve_nlS2.F90 
     CaffeSolver.F90 ComputeDevStress.F90 ComputeEigenValues.F90 
     ComputeNormal.F90 ComputeStrainRate.F90 DeformationalHeat.F90 
-    EPLSolver.F90 fAandfB_in.F90 FabricSolve.F90 Flowdepth.F90 
+    EPLSolver.F90 FabricSolve.F90 Flowdepth.F90 
     ForceToStress.F90 GetHydrostaticLoads.F90  GolfLaw.F90 
     GroundedSolver.F90  IntegratedVelocity.F90  IDSSolver.F90 
     PorousSolve.F90  pointwise.F90  SIASolver.F90  SSASolver.F90  
