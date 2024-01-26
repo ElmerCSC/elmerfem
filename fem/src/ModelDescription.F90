@@ -1680,6 +1680,10 @@ CONTAINS
         N2   = 1
         SizeGiven = .FALSE.
         SizeUnknown = .FALSE.
+
+        ! Optional parameter tag
+        partag = 0
+        disttag = .FALSE.
         
         DO WHILE( ReadAndTrim(InFileUnit,str,echo,string_literal) ) 
           
@@ -1694,10 +1698,6 @@ CONTAINS
               str = TRIM(TypeString) // ' ' // TRIM(str)
             END IF
           END IF
-
-          ! Optional parameter tag
-          partag = 0
-          disttag = .FALSE.
           
 20        CONTINUE
 
@@ -2024,10 +2024,12 @@ CONTAINS
                CALL Info(Caller,'Adding parameter tag '&
                    //I2S(partag)//' to keyword: '//TRIM(Name),Level=7)
                IF(.NOT. ScanOnly ) CALL ListParTagKeyword( List, Name, partag ) 
+               partag = 0
              END IF
              ! Add tag so we know to divide this keyword by the entity integral 
              IF( disttag ) THEN               
                IF(.NOT. ScanOnly ) CALL ListDistTagKeyword( List, Name )
+               disttag = .FALSE.
              END IF             
                           
              EXIT

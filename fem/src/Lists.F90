@@ -2884,7 +2884,7 @@ CONTAINS
     
     IF( Found ) THEN
       CALL Info('ListSetParameters',&
-          'Altered number of parameters: '//I2S(cnt),Level=6)
+          'Scaled number of parameters: '//I2S(cnt),Level=6)
     ELSE
       CALL Warn('ListSetParameters','No parameters were altered!')
     END IF
@@ -5316,6 +5316,7 @@ CONTAINS
        RETURN
      END IF
 
+     
      SELECT CASE(ptr % TYPE)
 
      CASE( LIST_TYPE_CONSTANT_SCALAR )
