@@ -16773,8 +16773,17 @@ CONTAINS
       n = Mesh % NumberOfNodes + Mesh % NumberOfEdges
       IF(NeedFaces) n = n + 2 * Mesh % NumberOfFaces + 3 * Mesh % NumberOfBulkElements
 
+      IF( ASSOCIATED( Mesh % PeriodicPerm ) ) THEN
+        IF( SIZE( Mesh % PeriodicPerm ) /= n ) THEN
+          CALL Info('GeneratePeriodicProjectors','Deallocating wrong size conforming data!',Level=20)
+          DEALLOCATE( Mesh % PeriodicPerm )
+          DEALLOCATE( Mesh % PeriodicFlip )
+        END IF
+      END IF
+        
+      
       IF(.NOT. ASSOCIATED( Mesh % PeriodicPerm ) ) THEN
-        CALL Info('GeneratePeriodicProjectors','Allocating for conforming data!')
+        CALL Info('GeneratePeriodicProjectors','Allocating for conforming data!',Level=20)
         ALLOCATE( Mesh % PeriodicPerm(n) )
         ALLOCATE( Mesh % PeriodicFlip(n) )
       END IF      
