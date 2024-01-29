@@ -15,6 +15,7 @@ As optional output variables, strain-rate, deviatoric stress and spin can be cal
 More details about the snow/firn law can be found here: [poroussolver.pdf](./poroussolver.pdf).
 
 2024-01-23: The [ComputeDevStress](./ComputeDevStress.md) solver is now compatible with the Porous Solver. Using the latter is usually preferable than computing deviatoric stress directly in the Porous Solver. A New module PorousMaterialModels has been added in the Utils directory. It computes the effective viscosity and compressibility parameter to avoid code duplication (transparent for the user).
+Note that for pure ice, functions a(D) and b(D) must be set to 1 and 0, respectively. In the previous solver version, the test to apply these limit values was: if $D \geq 1$. This was prone to give outlier values of stresses at some nodes. The test has therefore been replaced by: if $D > 0.99\_DP$. This can very slightly affect the obtained solution field. The reference norm of the DGsolver test has been adapted accordingly. 
 
 ## SIF contents
 The required keywords in the SIF file for the Porous Solver are:
