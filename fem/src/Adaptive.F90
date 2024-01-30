@@ -224,7 +224,6 @@ CONTAINS
 !   -----------------------------------------------------------
 
     NN = RefMesh % NumberOfNodes
-
     Var => VariableGet( RefMesh % Variables, 'Hvalue', ThisOnly=.TRUE. )
 
     IF ( ASSOCIATED( Var ) ) THEN
@@ -232,7 +231,7 @@ CONTAINS
       Var % PrimaryMesh => RefMesh
       IF( AdaptInit ) Hvalue = 0.0_dp
     ELSE
-      CALL AllocateVector( Hvalue, Solver % Matrix % NumberOfRows )
+      CALL AllocateVector( Hvalue, nn )
 
       CALL VariableAdd( RefMesh % Variables, RefMesh, Solver, &
           'Hvalue', 1, Hvalue, Output = AdaptiveOutput )       
@@ -279,6 +278,7 @@ CONTAINS
     WHERE( Referenced(1:nn) > 0 )
       Hvalue(1:nn) = Hvalue(1:nn) / Referenced(1:nn)
     END WHERE
+    CALL ParallelAverageHvalue(  RefMesh, hValue )
     
 !   Add estimate of the convergence with respecto to h:
 !  ----------------------------------------------------
@@ -340,8 +340,7 @@ CONTAINS
     WHERE( Referenced(1:nn) > 0 )
        NodalError(1:nn) = NodalError(1:nn) / Referenced(1:nn)
     END WHERE
-
-!   CALL ParallelAverageHvalue(  RefMesh, NodalError )
+    CALL ParallelAverageHvalue(  RefMesh, NodalError )
 
 !
 !   Smooth error, if requested:
@@ -398,7 +397,7 @@ CONTAINS
     IF ( ASSOCIATED( Var ) ) THEN
       hRef => Var % Values
       Var % PrimaryMesh => RefMesh
-      IF( AdaptInit ) hRef(1:nn) = HValue(1:nn)
+      IF( AdaptInit ) hRef(1:nn) = Hvalue(1:nn)
     ELSE
       CALL AllocateVector( hRef, nn )
       hRef(1:nn) = Hvalue(1:nn)
@@ -474,8 +473,10 @@ CONTAINS
       PrevNodalError(1:nn) = PrevNodalError(1:nn) + &
          LOG( HValue(1:nn) / hRef(1:nn) ) * LOG( NodalError(1:nn) / eRef(1:nn) )
     END WHERE
+    CALL ParallelAverageHvalue(  RefMesh, PrevNodalError )
 
     PrevHvalue(1:nn) = PrevHvalue(1:nn) + LOG( HValue(1:nn) / hRef(1:nn) )**2
+    CALL ParallelAverageHvalue(  RefMesh, PrevHvalue )
 
     IF ( RefMesh % AdaptiveDepth > 0 ) THEN
        WHERE( PrevHValue(1:nn) > 0 )
@@ -484,6 +485,7 @@ CONTAINS
           hConvergence(1:nn)  = 0.25d0
        END WHERE
     END IF
+    CALL ParallelAverageHvalue(  RefMesh, hConvergence )
 
 !   Generate the new mesh:
 !   ----------------------
@@ -511,7 +513,7 @@ CONTAINS
           NodalError, hValue, hConvergence, minH, maxH, MaxChangeFactor )
     END IF
 
-    Hvalue(1:nn) = PrevHValue(1:nn)
+!   Hvalue(1:nn) = PrevHValue(1:nn)
 !   NodalError = PrevNodalError
 
     IF ( .NOT.ASSOCIATED( NewMesh ) ) THEN
@@ -929,7 +931,7 @@ CONTAINS
     BLOCK
       INTEGER, ALLOCATABLE :: Xcount(:)
       REAL(KIND=dp), ALLOCATABLE :: Xvalue(:)
-      ALLOCATE( Xcount(SIZE(Hcount)), XValue(SIZE(Hvalue)) )
+      ALLOCATE( Xcount(A % NumberOfRows), XValue(A % NumberOfRows) )
       Xcount = 0; Xvalue = 0
 
       DO i=1,RefMesh % NumberOfNodes
@@ -1005,8 +1007,33 @@ CONTAINS
       ! This is a trick to get the already computed nodes to be properly re-everaged
       WHERE(Hcount<0) Hcount = 1 
       
-      CALL ParallelSumVector( A, Hvalue )
-      CALL ParallelSumVectorInt( A, Hcount ) 
+      ! Perform parallel summation, only interface gets summed. 
+      BLOCK
+        INTEGER, ALLOCATABLE :: Xcount(:)
+        REAL(KIND=dp), ALLOCATABLE :: Xvalue(:)
+        ALLOCATE( Xcount(A % NumberOfRows), XValue(A % NumberOfRows) )
+        Xcount = 0; Xvalue = 0
+
+        DO i=1,RefMesh % NumberOfNodes
+          j = p(i)
+          IF (j<=0) CYCLE
+          Xvalue(j) = HValue(i)
+          Xcount(j) = HCount(i)
+        END DO
+
+        CALL ParallelSumVector( A, Xvalue )
+        CALL ParallelSumVectorInt( A, Xcount ) 
+
+        DO i=1,RefMesh % NumberOfNodes
+          j = p(i)
+          IF (j<=0) CYCLE
+          Hvalue(i) = Xvalue(j)
+          Hcount(i) = Xcount(j)
+        END DO
+      END BLOCK
+
+!     CALL ParallelSumVector( A, Hvalue )
+!     CALL ParallelSumVectorInt( A, Hcount ) 
       
       n = 0
       DO i=1,RefMesh % NumberOfNodes
@@ -1079,10 +1106,10 @@ CONTAINS
 #endif
 
     
-    CALL ComputeDesiredHvalue( RefMesh, ErrorLimit, HValue, NodalError, &
+    CALL ComputeDesiredHvalue( RefMesh, ErrorLimit, Hvalue, NodalError, &
         hConvergence, minH, maxH, MaxChange, Coarsening ) 
 
-    CALL ParallelAverageHvalue( RefMesh, HValue ) 
+    CALL ParallelAverageHvalue( RefMesh, Hvalue ) 
     
     Var => VariableGet( RefMesh % Variables, 'Hvalue', ThisOnly=.TRUE. )      
 
@@ -1096,9 +1123,11 @@ CONTAINS
     ELSE
       IF( ParEnv % PEs > 1 ) THEN
         CALL Info('MMG_Remesh','Calling parallel remeshing routines in 3D',Level=10)
+
         CALL DistributedRemeshParMMG(Model, RefMesh, TmpMesh,&
             Params = Solver % Values, HVar = Var )
         CALL RenumberGElems(TmpMesh)
+
         Rebalance = ListGetLogical(Model % Solver % Values, "Adaptive Rebalance", Found, DefValue = .TRUE.)
         IF(Rebalance) THEN
           CALL Zoltan_Interface( Model, TmpMesh, StartImbalanceTol=1.1_dp, TolChange=0.02_dp, MinElems=10 )          
