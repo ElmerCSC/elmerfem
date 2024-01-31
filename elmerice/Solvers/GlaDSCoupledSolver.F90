@@ -2417,3 +2417,366 @@ RECURSIVE SUBROUTINE GlaDSsheetThickDummy( Model,Solver,Timestep,TransientSimula
      RETURN 
 END SUBROUTINE GlaDSsheetThickDummy
 !------------------------------------------------------------------------------
+
+! ******************************************************************************
+! *
+! *  Authors: Rupert Gladstone
+! *  Email:   RupertGladstone972@gmail.com
+! *  Web: 
+! *
+! *  Original Date: 
+! *   2022/03/06
+! *****************************************************************************
+!> Solver GlaDS_GLflux
+!> 
+!> Take GlaDS standard output and a grounded mask and calculate the total
+!> subglacial outflow across the grounding line on grounding line nodes.
+!> 
+!> The grounded mask is assumed to exist and to have the following properties:
+!>  Variable name is GroundedMask
+!>  GroundedMask==1 only on fully grounded nodes
+!>  GroundedMask==0 only on grounding line nodes
+!> 
+!> GlaDS variable names can be given as follows (default to these values if
+!> not prescribed):
+!>  subglac sheet thickness variable = String "Sheet Thickness"
+!>  subglac sheet discharge variable = String "Sheet Discharge"
+!>  subglac channel flux variable = String "Channel Flux"
+!> 
+!> In any case, the above variables need to exist!
+!> 
+!> Limitations:
+!> Note that the code currently calculates the flux at the GL based on the 
+!> assumption that the subglacial water is always flowing from grounded to ocean 
+!> nodes.  If there is inflow from ocean to the subglacial system the cross-GL
+!> flux will be overestimated. This could be verified for the channel flux by
+!> checking the hydraulic potential at both ends of the edges that are included 
+!> in the calculation.  If the grounded node has a higher value than the GL 
+!> node then the flow is from grounded to ocean. 
+!> Checking that sheet discharge is flowing from grounded to ocean nodes is 
+!> more awkward because we'd need to calculate the direction of the normal to 
+!> the grounding line.
+!> 
+SUBROUTINE GlaDS_GLflux( Model,Solver,dt,TransientSimulation )
+
+  USE DefUtils
+  USE SolverUtils
+  IMPLICIT NONE
+
+  ! intent in
+  TYPE(Model_t)  :: Model
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp)  :: dt
+  LOGICAL        :: TransientSimulation
+
+  ! local variables
+  TYPE(ValueList_t), POINTER :: SolverParams
+
+  TYPE(Element_t), POINTER   :: Edge
+  TYPE(Variable_t), POINTER  :: gmVar, channelVar, sheetThickVar, sheetDisVar
+  LOGICAL                    :: GotIt, ValidEdge
+  CHARACTER(LEN=MAX_NAME_LEN):: channelVarName, sheetThickVarName, sheetDisVarName, SolverName
+  REAL(KIND=dp), POINTER     :: gmVals(:), channelVals(:), sheetThickVals(:), sheetDisVals(:)
+  REAL(KIND=dp), POINTER     :: GLfluxVals(:)
+  REAL(KIND=dp)              :: volFluxSheet, volFluxChannel, sheetDisMag
+  INTEGER, POINTER           :: gmPerm(:), channelPerm(:), sheetThickPerm(:), sheetDisPerm(:)
+  INTEGER, POINTER           :: GLfluxPerm(:)
+  INTEGER                    :: nn, ee, numNodes
+
+  TYPE(Variable_t), POINTER  :: cglfVar, sglfVar
+  REAL(KIND=dp), POINTER     :: cglfVals(:), sglfVals(:)
+  INTEGER, POINTER           :: cglfPerm(:), sglfPerm(:)
+
+
+  SolverName = "GlaDS_GLflux"
+
+  CALL Info(SolverName,'Starting subglacial outflow calculation',Level=4)
+
+  SolverParams => GetSolverParams()
+  
+  !--------------------------------------------------------------------------------------------
+  ! The solver variable will contain the total subglacial outflow on nodes.
+  ! Units (assuming Elmer/Ice defaults) m^3/a
+  GLfluxVals => Solver % Variable % Values
+  GLfluxPerm => Solver % Variable % Perm
+
+  !--------------------------------------------------------------------------------------------
+  ! Variables containing the GlaDS sheet thickness and discharge and channel flux
+
+  channelVarName = GetString( SolverParams , 'subglac channel flux variable', GotIt )
+  IF (.NOT.GotIt) THEN
+     CALL Info(SolverName,'>subglac channel flux variable< not found, assuming >Channel Flux<',Level=4)
+     channelVarName = "Channel Flux"
+  END IF
+  channelVar =>  VariableGet(Model % mesh % Variables,TRIM(channelVarName),UnFoundFatal=.TRUE.)
+  IF (.NOT.ASSOCIATED(channelVar)) &
+       CALL FATAL(SolverName,"Variable "//TRIM(channelVarName)//" not found")
+  channelPerm => channelVar % Perm
+  channelVals => channelVar % Values
+  
+  sheetThickVarName = GetString( SolverParams , 'subglac sheet thickness variable', GotIt )
+  IF (.NOT.GotIt) THEN
+     CALL Info(SolverName,'>subglac sheet thickness variable< not found, assuming >sheet thickness<',Level=4)
+     sheetThickVarName = "Sheet thickness"
+  END IF
+  sheetThickVar =>  VariableGet(Model % mesh % Variables,TRIM(sheetThickVarName),UnFoundFatal=.TRUE.)
+  IF (.NOT.ASSOCIATED(sheetThickVar)) &
+       CALL FATAL(SolverName,"Variable "//TRIM(sheetThickVarName)//" not found")
+  sheetThickPerm => sheetThickVar % Perm
+  sheetThickVals => sheetThickVar % Values
+
+  sheetDisVarName = GetString( SolverParams , 'subglac sheet discharge variable', GotIt )
+  IF (.NOT.GotIt) THEN
+     CALL Info(SolverName,'>subglac sheet discharge variable< not found, assuming >sheet discharge<',Level=4)
+     sheetDisVarName = "sheet discharge"
+  END IF
+  sheetDisVar =>  VariableGet(Model % mesh % Variables,TRIM(sheetDisVarName),UnFoundFatal=.TRUE.)
+  IF (.NOT.ASSOCIATED(sheetDisVar)) &
+       CALL FATAL(SolverName,"Variable "//TRIM(sheetDisVarName)//" not found")
+  sheetDisPerm => sheetDisVar % Perm
+  sheetDisVals => sheetDisVar % Values
+
+  ! grounded mask name is hard coded
+  gmVar =>  VariableGet(Model % mesh % Variables,TRIM("GroundedMask"),UnFoundFatal=.TRUE.)
+  IF (.NOT.ASSOCIATED(gmVar)) &
+       CALL FATAL(SolverName,"Variable >GroundedMask< not found")
+  gmPerm => gmVar % Perm
+  gmVals => gmVar % Values
+
+  ! The two variables that will contain the sheet and channel fluxes on the GL are also
+  ! hard coded (well, their names anyway).
+  sglfVar =>  VariableGet(Model % mesh % Variables,TRIM("Sheet GL flux"),UnFoundFatal=.TRUE.)
+  IF (.NOT.ASSOCIATED(sglfVar)) &
+       CALL FATAL(SolverName,"Variable >Sheet GL flux< not found")
+  sglfPerm => sglfVar % Perm
+  sglfVals => sglfVar % Values
+  cglfVar =>  VariableGet(Model % mesh % Variables,TRIM("Channel GL flux"),UnFoundFatal=.TRUE.)
+  IF (.NOT.ASSOCIATED(cglfVar)) &
+       CALL FATAL(SolverName,"Variable >Channel GL flux< not found")
+  cglfPerm => cglfVar % Perm
+  cglfVals => cglfVar % Values
+  
+  ! Loop over all nodes
+  numNodes = Solver % Mesh % Nodes % NumberOfNodes
+  DO nn = 1, numNodes
+
+     ! We're interested in nodes where the grounded mask is both defined (non-zero permutation)
+     ! and has value set to zero (the grounding line).
+     IF (gmPerm(nn).le.0) CYCLE
+     IF (gmVals(gmPerm(nn)).eq.0) THEN
+
+        ! Sheet discharge multiplied by sheet thickness gives the volume flux from the sheet.
+        ! We're hard conding the assumption that the sheet discharge is always a 2D vector,
+        ! which should be safe so long as we always run GlaDS in 2D.
+        sheetDisMag = ( sheetDisVals( 2*(sheetDisPerm(nn)-1)+1 )**2.0 +      &
+                        sheetDisVals( 2*(sheetDisPerm(nn)-1)+2 )**2.0  )**0.5
+        volFluxSheet = sheetThickVals(sheetThickPerm(nn)) * sheetDisMag
+        
+        volFluxChannel = 0.0
+
+        ! work out channel flux.
+        ! loop over all edges...
+        DO ee=1, Solver % Mesh % NumberOfEdges 
+           Edge => Solver % Mesh % Edges(ee)
+           IF (.NOT.ASSOCIATED(Edge)) CYCLE
+           ! ...ignoring edges not entirely on the lower surface...
+           IF (ANY(gmPerm(Edge % NodeIndexes(1:2)).EQ.0)) CYCLE
+           ! ... and check whether the edge contains the current node. If so, check whether the
+           ! other node is grounded. If yes, the edge is valid for calculating GL flux.
+           ValidEdge = .FALSE.
+           IF (Edge % NodeIndexes(1).EQ.nn) THEN
+             IF (gmVals(gmPerm(Edge % NodeIndexes(2))).EQ.1) ValidEdge = .TRUE.
+           ELSEIF (Edge % NodeIndexes(2).EQ.nn) THEN
+              IF (gmVals(gmPerm(Edge % NodeIndexes(1))).EQ.1) ValidEdge = .TRUE.
+           END IF
+           ! Sum channel flux over valid edges
+           IF (ValidEdge) THEN
+              IF (Solver % Mesh % ParallelInfo % EdgeInterface(ee)) THEN 
+                 ! halve value for edges at partition boundaries because these will be 
+                 ! counted twice 
+                 volFluxChannel = volFluxChannel + 0.5*channelVals(channelPerm(numNodes+ee))
+              ELSE
+                 volFluxChannel = volFluxChannel + channelVals(channelPerm(numNodes+ee))
+              END IF
+           END IF
+        END DO
+        
+        cglfVals(cglfPerm(nn)) = volFluxChannel
+        sglfVals(sglfPerm(nn)) = volFluxSheet
+
+     END IF
+
+  END DO
+
+  ! Sum nodal values for nodes that exist on multiple partitions
+  CALL ParallelSumVector(Solver % Matrix, cglfVals)
+
+  DO nn = 1, numNodes
+     IF (gmPerm(nn).le.0) CYCLE
+!     IF (gmVals(gmPerm(nn)).eq.0) GLfluxVals(GLfluxPerm(nn)) = volFluxSheet + volFluxChannel
+     IF (gmVals(gmPerm(nn)).eq.0) GLfluxVals(GLfluxPerm(nn)) =  & 
+          cglfVals(cglfPerm(nn)) + sglfVals(sglfPerm(nn))
+  END DO
+  
+  NULLIFY(SolverParams)
+  NULLIFY(GLfluxVals)
+  NULLIFY(GLfluxPerm)
+  NULLIFY(gmVals)
+  NULLIFY(gmPerm)
+  NULLIFY(sheetDisVals)
+  NULLIFY(sheetDisPerm)
+  NULLIFY(sheetThickVals)
+  NULLIFY(sheetThickPerm)
+  NULLIFY(channelVals)
+  NULLIFY(channelPerm)
+
+END SUBROUTINE GlaDS_GLflux
+
+! Different ways of calculating a grounded melt rate to pass to GlaDS as a
+! volume source.
+!
+! Notes when using this with a 3D Stokes setup:
+! 
+! Convert a nodal heat to a melt rate at the lower surface of an ice body.  
+! Uses nodal weights (area weighting) to convert the nodal heat to heat per 
+! unit area, then convert this to a melt rate.  This solver should run on the 
+! lower surface only. The calculated melt rate is in m/a water equivalent (so 
+! if you want to use this as a normal velocity condition on the lower surface 
+! of the ice body you need to use rho_i to convert to m/a ice equivalent).
+!
+! Note that the nodal heat could be the residual from the temperate ice solver
+! or it could come from the friction load (though this ignores GHF and heat
+! conducted into the ice, which may approximately balance each other out...).
+!
+! [Edit: CalculateNodalWeights gives partition boundary artefacts, but the 
+!  forcetostress solver seems to produce weights without these artefacts]
+!
+! Example .sif parameters:
+! 
+! Constants:
+!  Latent Heat = 334000.0 ! Joules per kg
+!
+! solver params:
+!  variable = GroundedMeltRate
+!  Mode = "NodalHeat"
+!  heat variable name = String "Friction Load"
+!  Weights variable name = String "Friction heating boundary weights"
+!
+!
+!  Notes when using this with a 2D SSA setup:
+!
+!  Assuming we don't have nodal heat, we can calculate a friction heat if we
+!  know about the sliding law and the relevant parameters
+
+  Grounded Melt = Variable ssavelocity 1, ssavelocity 2, beta
+     Real lua "((tx[0]^2.0+tx[1]^2.0)*10.0^tx[2])/(rhoi*Lf)"
+
+       SSA Mean Density = Real #rhoi
+
+
+! Which law are we using (linear, weertman , coulomb or regularised coulomb)
+  SSA Friction Law = String "coulomb"
+  SSA Friction Parameter = Variable "Coulomb As"
+    Real Lua "tx[0]^(-1/3)"
+  SSA Friction Maximum Value = Equals "Coulomb C"
+  SSA Friction Post-Peak = Real 1.0
+  SSA Friction Exponent = Real #1.0/n
+
+
+RECURSIVE SUBROUTINE GroundedMelt( Model,Solver,Timestep,TransientSimulation )
+
+  USE DefUtils
+  
+  IMPLICIT NONE
+  !------------------------------------------------------------------------------
+  !    External variables
+  !------------------------------------------------------------------------------
+  TYPE(Model_t)          :: Model
+  TYPE(Solver_t), TARGET :: Solver
+  LOGICAL                :: TransientSimulation
+  REAL(KIND=dp)          :: Timestep
+
+  !------------------------------------------------------------------------------
+  !    Local variables
+  !------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER  :: SolverParams
+  TYPE(Variable_t), POINTER   :: MeltVar, WeightsVar, HeatVar, GHFVar
+  LOGICAL, SAVE               :: FirstTime = .TRUE., UseGHF = .FALSE.
+  LOGICAL                     :: Found
+  CHARACTER(LEN=MAX_NAME_LEN) :: MyName = 'GroundedMelt solver', HeatVarName, WeightsVarName, GHFvarName
+  REAL(KIND=dp),PARAMETER     :: rho = 1000.0_dp ! density of pure water
+  REAL(KIND=dp),PARAMETER     :: threshold = 0.001_dp ! threshold friction melt rate for including GHF in melt calc
+  REAL(KIND=dp), POINTER      :: WtVals(:), HeatVals(:), MeltVals(:), GHFVals(:)
+  REAL(KIND=dp)               :: LatHeat, GHFscaleFactor
+  INTEGER, POINTER            :: WtPerm(:), HeatPerm(:), MeltPerm(:), GHFPerm(:)
+  INTEGER                     :: nn
+
+  !  IF (FirstTime) THEN
+  !     CALL CalculateNodalWeights(Solver, .FALSE., VarName='Weights')
+  !     CALL CalculateNodalWeights(Solver, .FALSE.)
+  !     CALL CalculateNodalWeights(Solver, .TRUE.)
+  !     FirstTime = .FALSE.
+  !  END IF
+  
+  SolverParams => GetSolverParams()
+
+  GHFvarName = GetString(SolverParams,'GHF variable name', Found)
+  IF (Found) THEN
+     UseGHF = .TRUE.
+     GHFscaleFactor = GetConstReal( Model % Constants, 'GHF scale factor', Found)
+     IF(.NOT.Found) GHFscaleFactor = 1.0
+  ELSE
+     UseGHF = .FALSE.
+  END IF
+
+  LatHeat = GetConstReal( Model % Constants, 'Latent Heat', Found)
+  IF(.NOT.Found) CALL Fatal(MyName, '>Latent Heat< not found in constants')
+  
+  HeatVarName = GetString(SolverParams,'heat variable name', Found)
+  IF(.NOT.Found) CALL Fatal(MyName, '>Heat variable name< not found in solver params')
+  WeightsVarName = GetString(SolverParams,'Weights variable name', Found)
+  IF(.NOT.Found) CALL Fatal(MyName, '>Weights variable name< not found in solver params')
+     
+  IF (UseGHF) THEN
+     GHFVar     => VariableGet(Model % Variables, GHFvarName, ThisOnly = .TRUE., UnfoundFatal = .TRUE.)
+     GHFVals    => GHFVar%Values 
+     GHFPerm    => GHFVar%Perm
+  END IF
+
+  HeatVar    => VariableGet(Model % Variables, HeatVarName, ThisOnly = .TRUE., UnfoundFatal = .TRUE.)
+  HeatVals   => HeatVar%Values 
+  HeatPerm   => HeatVar%Perm
+
+  WeightsVar => VariableGet(Model % Variables, WeightsVarName, ThisOnly = .TRUE., UnfoundFatal = .TRUE.)
+  WtVals     => WeightsVar%Values 
+  WtPerm     => WeightsVar%Perm
+
+  MeltVar    => Solver%Variable
+  MeltVals   => MeltVar%Values 
+  MeltPerm   => MeltVar%Perm
+  
+  LoopAllNodes: DO nn=1,Solver % Mesh % NumberOfNodes
+
+     !
+     ! MeltRate = Heat / (area * density * latent_heat)
+     !
+     ! Heat is Mega Joules per year.
+     ! We multiply by 10^6 to convert from Mega Joules to Joules.
+     !
+     IF (MeltPerm(nn).GT.0) THEN
+        MeltVals(MeltPerm(nn)) = ABS( 1.0e6 * HeatVals(HeatPerm(nn)) ) / ( WtVals(WtPerm(nn)) * rho * LatHeat )
+        IF (UseGHF) THEN
+           ! Scaled GHF is in Mega Joules per m^2 per year.
+           MeltVals(MeltPerm(nn)) = MeltVals(MeltPerm(nn)) + &
+                ( GHFVals(GHFPerm(nn))*GHFscaleFactor*1.0e6 ) / ( rho*LatHeat )
+        END IF
+     END IF
+
+  END DO LoopAllNodes
+  
+  NULLIFY(HeatVar, HeatVals, HeatPerm, WeightsVar, WtVals, WtPerm, MeltVar, MeltVals, MeltPerm)
+  IF (UseGHF) THEN
+     NULLIFY(GHFVar, GHFVals, GHFPerm)
+  END IF
+  
+END SUBROUTINE GroundedMelt
