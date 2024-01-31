@@ -91,7 +91,7 @@
              CAPerm(:), CFPerm(:), SHPerm(:)
 
      INTEGER, SAVE :: MaskMode ! which mask(s) to use, detrmined by UseGM and UseGC 
-     INTEGER, PARAMETER, SAVE :: NoMask = 0, GMonly = 1, GConly = 2, GMandGC = 3
+     INTEGER, PARAMETER :: NoMask = 0, GMonly = 1, GConly = 2, GMandGC = 3
      
      REAL(KIND=dp), POINTER :: HydPot(:), HydPotPrev(:,:), ForceVector(:)
      REAL(KIND=dp), POINTER :: ThickSolution(:), ThickPrev(:,:), VSolution(:), WSolution(:), &
@@ -107,7 +107,8 @@
           AllocationsDone = .FALSE.,  SubroutineVisited = .FALSE., &
           meltChannels = .TRUE., NeglectH = .TRUE., Calving = .FALSE., &
           CycleElement=.FALSE., MABool = .FALSE., MaxHBool = .FALSE., LimitEffPres=.FALSE., &
-          MinHBool=.FALSE., UseGM=.FALSE., UseGC=.FALSE.
+          MinHBool=.FALSE.
+     LOGICAL, SAVE :: UseGM, UseGC, ZeroSheetAtGL, ZeroSheetWithHP
      LOGICAL, ALLOCATABLE ::  IsGhostNode(:), NoChannel(:), NodalNoChannel(:)
 
      REAL(KIND=dp) :: NonlinearTol, dt, CumulativeTime, RelativeChange, &
@@ -348,6 +349,54 @@
         !doing calving and hydrology and consequently having many meshes
         Calving = ListGetLogical(Model % Simulation, 'Calving', Found)
         IF(.NOT.Found) Calving = .FALSE.
+
+        ! Default behaviour relating to marine ice sheets and unglaciated grounded areas is to set the
+        ! following switches to false. The defaults change to true when using Samuel Cook's "Calving" 
+        ! (set in simulation seciton of sif).  The defaults will be overwritten for each of the switches
+        ! that are specified in the solver section of the sif.
+       
+        UseGM = GetLogical( SolverParams,'Use GroundedMask', Found )
+        IF (.NOT. Found) THEN
+           IF (Calving) THEN              
+              UseGM = .TRUE.
+           ELSE
+              UseGM = .FALSE.
+           END IF
+        END IF
+        
+        UseGC = GetLogical( SolverParams,'Use GMcheck', Found )
+        IF (.NOT. Found) THEN
+           IF (Calving) THEN              
+              UseGC = .TRUE.
+           ELSE
+              UseGC = .FALSE.
+           END IF
+        END IF
+
+        ZeroSheetAtGL = GetLogical( SolverParams,'Zero Sheet At GL', Found )
+        IF (.NOT. Found) THEN
+           IF (Calving) THEN              
+              ZeroSheetAtGL = .TRUE.
+           ELSE
+              ZeroSheetAtGL = .FALSE.
+           END IF
+        END IF
+
+        ZeroSheetWithHP = GetLogical( SolverParams,'Zero Sheet With HP', Found )
+        IF (.NOT. Found) THEN
+           IF (Calving) THEN              
+              ZeroSheetWithHP = .TRUE.
+           ELSE
+              ZeroSheetWithHP = .FALSE.
+           END IF
+        END IF
+         
+        ! set mask mode based on above switches
+        MaskMode = NoMask
+        If (UseGM) MaskMode = GMonly
+        If (UseGC) MaskMode = GConly
+        If (UseGM.AND.UseGC) MaskMode = GMandGC
+        
         IfCalving: IF(Calving) THEN
           DO i=1,Model % NumberOfSolvers
             IF(Model % Solvers(i) % Variable % Name == ChannelAreaName) THEN 
