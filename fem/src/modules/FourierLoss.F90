@@ -754,6 +754,40 @@ CONTAINS
   END SUBROUTINE LocalFourierTransform
 
 
+  SUBROUTINE GetLossExponents(vList,FreqPower,FieldPower)
+    TYPE(ValueList_t),POINTER :: vList
+    REAL(KIND=dp) :: FreqPower(:), FieldPower(:)
+
+    REAL(KIND=dp), POINTER :: WrkArray(:,:)
+    INTEGER :: icomp
+        
+    WrkArray => ListGetConstRealArray( vList,'Harmonic Loss Frequency Exponent',Found )
+    IF( Found ) THEN 
+      IF( SIZE( WrkArray,1 ) < Ncomp ) THEN
+        CALL Fatal(Caller,'> Harmonic Loss Frequency Exponent < too small')
+      END IF
+      FreqPower(1:Ncomp) = WrkArray(1:Ncomp,1)
+    ELSE       
+      DO icomp = 1, Ncomp
+        FreqPower(icomp) = GetCReal( vList,'Harmonic Loss Frequency Exponent '//I2S(icomp) )
+      END DO
+    END IF
+
+    WrkArray => ListGetConstRealArray( vList,'Harmonic Loss Field Exponent',Found )
+    IF( Found ) THEN
+      IF( SIZE( WrkArray,1 ) < Ncomp ) THEN
+        CALL Fatal(Caller,'> Harmonic Loss Field Exponent < too small')
+      END IF
+      FieldPower(1:Ncomp) = WrkArray(1:Ncomp,1)        
+    ELSE
+      DO icomp = 1, Ncomp
+        FieldPower(icomp) = GetCReal( vList,'Harmonic Loss Field Exponent '//I2S(icomp) )
+      END DO
+    END IF
+    
+  END SUBROUTINE GetLossExponents
+  
+
   !------------------------------------------------------------------------------
   ! Assembly the mass matrix and r.h.s. for computing the losses using the 
   ! Galerkin method.
@@ -776,7 +810,7 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:)
     REAL(KIND=dp), ALLOCATABLE :: WBasis(:,:), RotWBasis(:,:)
     INTEGER, ALLOCATABLE :: Indeces(:), Pivot(:)
-    LOGICAL :: DG, Erroneous
+    LOGICAL :: DG, Erroneous, MaterialExponents
     
     SAVE Nodes
     
@@ -795,31 +829,13 @@ CONTAINS
     Freq = Omega / (2*PI)
 
     DG = GetLogical(SolverParams,'Discontinuous Galerkin',Found )
-    
-    WrkArray => ListGetConstRealArray( SolverParams,'Harmonic Loss Frequency Exponent',Found )
-    IF( Found ) THEN 
-      IF( SIZE( WrkArray,1 ) < Ncomp ) THEN
-        CALL Fatal(Caller,'> Harmonic Loss Frequency Exponent < too small')
-      END IF
-      FreqPower(1:Ncomp) = WrkArray(1:Ncomp,1)
-    ELSE       
-      DO icomp = 1, Ncomp
-        FreqPower(icomp) = GetCReal( SolverParams,'Harmonic Loss Frequency Exponent '//I2S(icomp) )
-      END DO
-    END IF
 
-    WrkArray => ListGetConstRealArray( SolverParams,'Harmonic Loss Field Exponent',Found )
-    IF( Found ) THEN
-      IF( SIZE( WrkArray,1 ) < Ncomp ) THEN
-        CALL Fatal(Caller,'> Harmonic Loss Field Exponent < too small')
-      END IF
-      FieldPower(1:Ncomp) = WrkArray(1:Ncomp,1)        
-    ELSE
-      DO icomp = 1, Ncomp
-        FieldPower(icomp) = GetCReal( SolverParams,'Harmonic Loss Field Exponent '//I2S(icomp) )
-      END DO
-    END IF
+    MaterialExponents = GetLogical( SolverParams,'Use Material Loss Exponents', Found ) 
 
+    IF(.NOT. MaterialExponents) THEN
+      CALL GetLossExponents(SolverParams,FreqPower,FieldPower)
+    END IF
+      
     ! Sum over the loss for each frequency, each body, and for the combined effect
     SeriesLoss = 0.0_dp
     BodyLoss = 0.0_dp
@@ -855,7 +871,10 @@ CONTAINS
       BodyId = Element % BodyId
       Material => GetMaterial()
 
-      
+      IF(MaterialExponents) THEN
+        CALL GetLossExponents(Material,FreqPower,FieldPower)
+      END IF
+
       DO t=1,IntegStuff % n
         IF( DirectField ) THEN
           ! For direct field we don't need the curl i.e. no dBasisdx needed
