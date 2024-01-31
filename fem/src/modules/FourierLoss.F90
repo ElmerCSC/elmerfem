@@ -830,8 +830,8 @@ CONTAINS
 
     DG = GetLogical(SolverParams,'Discontinuous Galerkin',Found )
 
-    MaterialExponents = GetLogical( SolverParams,'Use Material Loss Exponents', Found ) 
-
+    
+    MaterialExponents = ListCheckPrefixAnyMaterial( Model,'Harmonic Loss Frequency Exponent') 
     IF(.NOT. MaterialExponents) THEN
       CALL GetLossExponents(SolverParams,FreqPower,FieldPower)
     END IF

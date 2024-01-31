@@ -962,7 +962,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        .OR. ASSOCIATED( ML2 ) .OR. ASSOCIATED( EL_ML2 ) 
 
    IF (LossEstimation) THEN
-     MaterialExponents = GetLogical( SolverParams,'Use Material Loss Exponents', Found ) 
+     MaterialExponents = ListCheckPrefixAnyMaterial( Model,'Harmonic Loss Linear Frequency Exponent') 
      IF(.NOT. MaterialExponents) THEN
        CALL GetLossExponents(SolverParams,FreqPower,FieldPower)
      END IF
