@@ -72,7 +72,8 @@
      TYPE(Nodes_t) :: ElementNodes, EdgeNodes
      TYPE(Element_t), POINTER :: Element, Edge, Face, Bulk
      TYPE(ValueList_t), POINTER :: Equation, Material, SolverParams, BodyForce, BC, Constants
-     TYPE(Variable_t), POINTER :: ChannelAreaVar, ChannelFluxVar, SheetThicknessVar, GMcheckVar, GroundedMaskVar
+     TYPE(Variable_t), POINTER :: ChannelAreaVar, ChannelFluxVar, SheetThicknessVar, &
+          GMcheckVar, GroundedMaskVar, HydPotVar
      TYPE(Mesh_t), POINTER :: Mesh 
      
      INTEGER :: i, j, k, l, m, n, t, iter, body_id, eq_id, material_id, &
@@ -89,6 +90,9 @@
              qPerm(:), hstorePerm(:), QcPerm(:), QmPerm(:),&
              CAPerm(:), CFPerm(:), SHPerm(:)
 
+     INTEGER, SAVE :: MaskMode ! which mask(s) to use, detrmined by UseGM and UseGC 
+     INTEGER, PARAMETER, SAVE :: NoMask = 0, GMonly = 1, GConly = 2, GMandGC = 3
+     
      REAL(KIND=dp), POINTER :: HydPot(:), HydPotPrev(:,:), ForceVector(:)
      REAL(KIND=dp), POINTER :: ThickSolution(:), ThickPrev(:,:), VSolution(:), WSolution(:), &
             NSolution(:), PwSolution(:), AreaSolution(:), AreaPrev(:,:), ZbSolution(:), &
@@ -103,7 +107,7 @@
           AllocationsDone = .FALSE.,  SubroutineVisited = .FALSE., &
           meltChannels = .TRUE., NeglectH = .TRUE., Calving = .FALSE., &
           CycleElement=.FALSE., MABool = .FALSE., MaxHBool = .FALSE., LimitEffPres=.FALSE., &
-          MinHBool=.FALSE.
+          MinHBool=.FALSE., UseGM=.FALSE., UseGC=.FALSE.
      LOGICAL, ALLOCATABLE ::  IsGhostNode(:), NoChannel(:), NodalNoChannel(:)
 
      REAL(KIND=dp) :: NonlinearTol, dt, CumulativeTime, RelativeChange, &
@@ -297,7 +301,7 @@
 !------------------------------------------------------------------------------
 !    Read physical and numerical constants and initialize 
 !------------------------------------------------------------------------------
-     FirstTime: IF (FirstTime) THEN
+     IfFirstTime: IF (FirstTime) THEN
         FirstTime = .FALSE.
         Constants => GetConstants()
 
@@ -344,7 +348,7 @@
         !doing calving and hydrology and consequently having many meshes
         Calving = ListGetLogical(Model % Simulation, 'Calving', Found)
         IF(.NOT.Found) Calving = .FALSE.
-        Calving: IF(Calving) THEN
+        IfCalving: IF(Calving) THEN
           DO i=1,Model % NumberOfSolvers
             IF(Model % Solvers(i) % Variable % Name == ChannelAreaName) THEN 
               ChannelSolver = i
@@ -401,7 +405,7 @@
           !Necessary to ensure initial condition value reflected in PrevValues
           SheetThicknessVar % PrevValues(:,1) = SheetThicknessVar % Values
           NULLIFY(SheetThicknessVar)
-        END IF Calving
+        END IF IfCalving
 
         ! TODO : implement higher order BDF method
         BDForder = GetInteger(GetSimulation(),'BDF Order', Found)
@@ -410,7 +414,7 @@
            WRITE(Message,'(a)') 'Only working for BDF = 1' 
            CALL FATAL(SolverName, Message)
         END IF
-     END IF FirstTime
+     END IF IfFirstTime
 
      SolverParams => GetSolverParams()
 
@@ -1047,7 +1051,7 @@
 !------------------------------------------------------------------------------
 !       Update the Sheet Thickness                 
 !------------------------------------------------------------------------------
-           DO t=1,Solver % NumberOfActiveElements
+           Elements: DO t=1,Solver % NumberOfActiveElements
               Element => GetActiveElement(t,Solver)
               IF (ParEnv % myPe  /=  Element % partIndex) CYCLE
 
@@ -1088,7 +1092,6 @@
                     IF(GMcheckVar % Values(GMcheckVar % Perm(Element % NodeIndexes(i)))>0.0) THEN
                       !IF(GroundedMaskVar % Values(GroundedMaskVar % Perm(Element % NodeIndexes(i)))<0.0) THEN
                         CycleElement = .TRUE.
-
                         WSolution(WPerm(Element % NodeIndexes(i))) = 0.0
                         Vvar(Element % NodeIndexes(i)) = 0.0
                         NSolution(NPerm(Element % NodeIndexes(i))) = 0.0
@@ -1096,13 +1099,12 @@
                         hstoreSolution(hstorePerm(Element % NodeIndexes(i))) = 0.0
                       !END IF
                     END IF
-                  END DO
+                  END DO 
                 END IF
                 IF(ASSOCIATED(GroundedMaskVar) .AND. .NOT. ASSOCIATED(GMcheckVar)) THEN
                   DO i=1, N
                     IF(GroundedMaskVar % Values(GroundedMaskVar % Perm(Element % NodeIndexes(i)))<0.0) THEN 
                       CycleElement = .TRUE.
-
                       WSolution(WPerm(Element % NodeIndexes(i))) = 0.0
                       Vvar(Element % NodeIndexes(i)) = 0.0
                       NSolution(NPerm(Element % NodeIndexes(i))) = 0.0
@@ -1112,8 +1114,10 @@
                   END DO
                 END IF
                 NULLIFY(GMcheckVar, GroundedMaskVar)
-                IF(CycleElement) CYCLE
-              END IF              
+                IF (CycleElement) THEN
+                  CYCLE
+                END IF
+              END IF 
 
               CALL GetParametersSheet( Element, Material, N, SheetConductivity, alphas, &
                   betas, Ev, ub, Snn, lr, hr, Ar, ng ) 
@@ -1162,7 +1166,7 @@
                  IF (ASSOCIATED(PwSol)) PwSolution(PwPerm(j)) = pw
                  IF (ASSOCIATED(hstoreSol)) hstoreSolution(hstorePerm(j)) = he
               END DO
-           END DO     !  Bulk elements
+           END DO Elements     !  Bulk elements
            ! Loop over all nodes to update ThickSolution
            DO j = 1, Mesh % NumberOfNodes
               k = ThickPerm(j)
@@ -1177,26 +1181,24 @@
                 IF(ASSOCIATED(GMcheckVar)) THEN
                   IF(GMcheckVar % Values(k)>0.0) THEN !.AND. GroundedMaskVar % Values(k)<0.0) THEN
                       CycleElement = .TRUE.
-                      ThickSolution(k) = 0.0
-                      ThickPrev(k,1) = 0.0
                   END IF
                 END IF
                 IF(ASSOCIATED(GroundedMaskVar) .AND. .NOT. ASSOCIATED(GMcheckVar)) THEN
                   IF(GroundedMaskVar % Values(k)<0.0) THEN 
                     CycleElement = .TRUE.
-                    ThickSolution(k) = 0.0
-                    ThickPrev(k,1) = 0.0
                   END IF
                 END IF
-                GMcheckVar => VariableGet(Mesh % Variables, "hydraulic potential", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
-                IF(GMcheckVar % Values(k)==0.0) THEN
-                  ThickSolution(k) = 0.0
-                  ThickPrev(k,1) = 0.0
+                HydPotVar => VariableGet(Mesh % Variables, "hydraulic potential", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
+                IF(HydPotVar % Values(k)==0.0) THEN
                   CycleElement = .TRUE.
                 END IF
-                NULLIFY(GMcheckVar, GroundedMaskVar)
-                IF(CycleElement) CYCLE
-              END IF
+                NULLIFY(GMcheckVar, GroundedMaskVar, HydPotVar)
+                IF(CycleElement) THEN
+                  ThickSolution(k) = 0.0
+                  ThickPrev(k,1) = 0.0
+                  CYCLE
+                END IF
+              END IF 
 
               IF(MaxHBool) THEN
                 IF (ThickSolution(k)>MaxH) THEN
@@ -1247,7 +1249,7 @@
         PrevNorm = ChannelAreaNorm()
         
         DO iter = 1, NonlinearIter
-              DO t=1, Mesh % NumberOfEdges 
+              Edges: DO t=1, Mesh % NumberOfEdges 
                  Edge => Mesh % Edges(t)
                  IF (.NOT.ASSOCIATED(Edge)) CYCLE
                  IF (ParEnv % PEs > 1) THEN
@@ -1269,8 +1271,6 @@
                        IF(GMcheckVar % Values(GMcheckVar % Perm(Edge % NodeIndexes(i)))>0.0) THEN
                          !IF(GroundedMaskVar % Values(GroundedMaskVar % Perm(Edge % NodeIndexes(i)))<0.0) THEN
                            CycleElement = .TRUE.
-                           AreaSolution(AreaPerm(M+t)) = 0.0
-                           QcSolution(QcPerm(M+t)) = 0.0
                          !END IF
                        END IF
                      END DO
@@ -1279,14 +1279,16 @@
                      DO i=1,n
                        IF(GroundedMaskVar % Values(GroundedMaskVar % Perm(Edge % NodeIndexes(i)))<0.0) THEN 
                          CycleElement = .TRUE.
-                         AreaSolution(AreaPerm(M+t)) = 0.0
-                         QcSolution(QcPerm(M+t)) = 0.0
                        END IF
                      END DO
                    END IF
                    NULLIFY(GMcheckVar, GroundedMaskVar)
-                   IF(CycleElement) CYCLE
-                 END IF              
+                   IF(CycleElement) THEN
+                     CYCLE
+                     AreaSolution(AreaPerm(M+t)) = 0.0
+                     QcSolution(QcPerm(M+t)) = 0.0
+                   END IF
+                 END IF 
 
                  EdgeNodes % x(1:n) = Mesh % Nodes % x(Edge % NodeIndexes(1:n))
                  EdgeNodes % y(1:n) = Mesh % Nodes % y(Edge % NodeIndexes(1:n))
@@ -1407,8 +1409,8 @@
                     IF ( QcPerm(M+t) <= 0 ) CYCLE
                     QcSolution(QcPerm(M+t)) = Qc
                  END IF
-              END DO
-
+              END DO Edges
+              
            Norm = ChannelAreaNorm()              
            t = Mesh % NumberOfEdges 
 
@@ -2669,20 +2671,20 @@ END SUBROUTINE GlaDS_GLflux
 !
 !  Assuming we don't have nodal heat, we can calculate a friction heat if we
 !  know about the sliding law and the relevant parameters
-
-  Grounded Melt = Variable ssavelocity 1, ssavelocity 2, beta
-     Real lua "((tx[0]^2.0+tx[1]^2.0)*10.0^tx[2])/(rhoi*Lf)"
-
-       SSA Mean Density = Real #rhoi
-
-
+!
+!  Grounded Melt = Variable ssavelocity 1, ssavelocity 2, beta
+!     Real lua "((tx[0]^2.0+tx[1]^2.0)*10.0^tx[2])/(rhoi*Lf)"
+!
+!       SSA Mean Density = Real #rhoi
+!
+!
 ! Which law are we using (linear, weertman , coulomb or regularised coulomb)
-  SSA Friction Law = String "coulomb"
-  SSA Friction Parameter = Variable "Coulomb As"
-    Real Lua "tx[0]^(-1/3)"
-  SSA Friction Maximum Value = Equals "Coulomb C"
-  SSA Friction Post-Peak = Real 1.0
-  SSA Friction Exponent = Real #1.0/n
+!  SSA Friction Law = String "coulomb"
+!  SSA Friction Parameter = Variable "Coulomb As"
+!    Real Lua "tx[0]^(-1/3)"
+!  SSA Friction Maximum Value = Equals "Coulomb C"
+!  SSA Friction Post-Peak = Real 1.0
+!  SSA Friction Exponent = Real #1.0/n
 
 
 RECURSIVE SUBROUTINE GroundedMelt( Model,Solver,Timestep,TransientSimulation )
