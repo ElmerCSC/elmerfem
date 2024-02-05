@@ -90,9 +90,6 @@
              qPerm(:), hstorePerm(:), QcPerm(:), QmPerm(:),&
              CAPerm(:), CFPerm(:), SHPerm(:)
 
-     INTEGER, SAVE :: MaskMode ! which mask(s) to use, detrmined by UseGM and UseGC 
-     INTEGER, PARAMETER :: NoMask = 0, GMonly = 1, GConly = 2, GMandGC = 3
-     
      REAL(KIND=dp), POINTER :: HydPot(:), HydPotPrev(:,:), ForceVector(:)
      REAL(KIND=dp), POINTER :: ThickSolution(:), ThickPrev(:,:), VSolution(:), WSolution(:), &
             NSolution(:), PwSolution(:), AreaSolution(:), AreaPrev(:,:), ZbSolution(:), &
@@ -107,10 +104,16 @@
           AllocationsDone = .FALSE.,  SubroutineVisited = .FALSE., &
           meltChannels = .TRUE., NeglectH = .TRUE., Calving = .FALSE., &
           CycleElement=.FALSE., MABool = .FALSE., MaxHBool = .FALSE., LimitEffPres=.FALSE., &
-          MinHBool=.FALSE.
+          MinHBool=.FALSE., CycleNode=.FALSE.
      LOGICAL, SAVE :: UseGM, UseGC, ZeroSheetAtGL, ZeroSheetWithHP
      LOGICAL, ALLOCATABLE ::  IsGhostNode(:), NoChannel(:), NodalNoChannel(:)
 
+     ! For use in masking GlaDS floating shelves.  "MASK_HP" is for situations where
+     ! Hydraulic potential should be set to zero but not the sheet thickness.  This is
+     ! to allow non zero sheet outflow across the grounding line.
+     INTEGER :: MaskStatus
+     INTEGER, PARAMETER :: MASK_ALL = 0, MASK_NONE = 1, MASK_HP = 2
+     
      REAL(KIND=dp) :: NonlinearTol, dt, CumulativeTime, RelativeChange, &
           Norm, PrevNorm, S, C, Qc, MaxArea, MaxH, MinH
      REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), &
@@ -345,58 +348,48 @@
            WRITE(ZbName,'(A)') 'Zb'
         END IF
 
-        !CHANGE - to get Channel variables added to this solver mesh if
-        !doing calving and hydrology and consequently having many meshes
+        ! To get Channel variables added to this solver mesh if doing
+        ! calving and hydrology and consequently having many meshes
         Calving = ListGetLogical(Model % Simulation, 'Calving', Found)
         IF(.NOT.Found) Calving = .FALSE.
 
         ! Default behaviour relating to marine ice sheets and unglaciated grounded areas is to set the
         ! following switches to false. The defaults change to true when using Samuel Cook's "Calving" 
         ! (set in simulation seciton of sif).  The defaults will be overwritten for each of the switches
-        ! that are specified in the solver section of the sif.
-       
+        ! that are specified in the solver section of the sif.       
         UseGM = GetLogical( SolverParams,'Use GroundedMask', Found )
         IF (.NOT. Found) THEN
-           IF (Calving) THEN              
-              UseGM = .TRUE.
-           ELSE
-              UseGM = .FALSE.
-           END IF
+          IF (Calving) THEN              
+            UseGM = .TRUE.
+          ELSE
+            UseGM = .FALSE.
+          END IF
         END IF
-        
         UseGC = GetLogical( SolverParams,'Use GMcheck', Found )
         IF (.NOT. Found) THEN
-           IF (Calving) THEN              
-              UseGC = .TRUE.
-           ELSE
-              UseGC = .FALSE.
-           END IF
+          IF (Calving) THEN              
+            UseGC = .TRUE.
+          ELSE
+            UseGC = .FALSE.
+          END IF
         END IF
-
         ZeroSheetAtGL = GetLogical( SolverParams,'Zero Sheet At GL', Found )
         IF (.NOT. Found) THEN
-           IF (Calving) THEN              
-              ZeroSheetAtGL = .TRUE.
-           ELSE
-              ZeroSheetAtGL = .FALSE.
-           END IF
+          IF (Calving) THEN              
+            ZeroSheetAtGL = .TRUE.
+          ELSE
+            ZeroSheetAtGL = .FALSE.
+          END IF
         END IF
-
         ZeroSheetWithHP = GetLogical( SolverParams,'Zero Sheet With HP', Found )
         IF (.NOT. Found) THEN
-           IF (Calving) THEN              
-              ZeroSheetWithHP = .TRUE.
-           ELSE
-              ZeroSheetWithHP = .FALSE.
-           END IF
+          IF (Calving) THEN              
+            ZeroSheetWithHP = .TRUE.
+          ELSE
+            ZeroSheetWithHP = .FALSE.
+          END IF
         END IF
-         
-        ! set mask mode based on above switches
-        MaskMode = NoMask
-        If (UseGM) MaskMode = GMonly
-        If (UseGC) MaskMode = GConly
-        If (UseGM.AND.UseGC) MaskMode = GMandGC
-        
+
         IfCalving: IF(Calving) THEN
           DO i=1,Model % NumberOfSolvers
             IF(Model % Solvers(i) % Variable % Name == ChannelAreaName) THEN 
@@ -1129,44 +1122,33 @@
               N = GetElementNOFNodes(Element)
               CALL GetElementNodes( ElementNodes )
 
-              !CHANGE
-              !If calving, cycle elements with ungrounded nodes and zero all
-              !hydrology variables
-              IF(Calving) THEN
+              
+              IF (UseGM.OR.UseGC) THEN
+                ! Cycle elements with ungrounded nodes and zero all hydrology variables
                 CycleElement = .FALSE.
-                GMcheckVar => VariableGet(Mesh % Variables, "gmcheck", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
-                GroundedMaskVar => VariableGet(Mesh % Variables, "groundedmask", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
-                IF(ASSOCIATED(GMcheckVar)) THEN
-                  DO i=1, N
-                    IF(GMcheckVar % Values(GMcheckVar % Perm(Element % NodeIndexes(i)))>0.0) THEN
-                      !IF(GroundedMaskVar % Values(GroundedMaskVar % Perm(Element % NodeIndexes(i)))<0.0) THEN
-                        CycleElement = .TRUE.
-                        WSolution(WPerm(Element % NodeIndexes(i))) = 0.0
-                        Vvar(Element % NodeIndexes(i)) = 0.0
-                        NSolution(NPerm(Element % NodeIndexes(i))) = 0.0
-                        !PwSolution(PwPerm(Element % NodeIndexes(i))) = 0.0
-                        hstoreSolution(hstorePerm(Element % NodeIndexes(i))) = 0.0
-                      !END IF
-                    END IF
-                  END DO 
-                END IF
-                IF(ASSOCIATED(GroundedMaskVar) .AND. .NOT. ASSOCIATED(GMcheckVar)) THEN
-                  DO i=1, N
-                    IF(GroundedMaskVar % Values(GroundedMaskVar % Perm(Element % NodeIndexes(i)))<0.0) THEN 
-                      CycleElement = .TRUE.
-                      WSolution(WPerm(Element % NodeIndexes(i))) = 0.0
-                      Vvar(Element % NodeIndexes(i)) = 0.0
-                      NSolution(NPerm(Element % NodeIndexes(i))) = 0.0
-                      !PwSolution(PwPerm(Element % NodeIndexes(i))) = 0.0
-                      hstoreSolution(hstorePerm(Element % NodeIndexes(i))) = 0.0
-                    END IF
-                  END DO
-                END IF
+
+                DO i=1, N
+                  MaskStatus = ProcessMasks(UseGM, UseGC, ZeroSheetAtGL, Element % NodeIndexes(i))
+                  SELECT CASE (MaskStatus)
+                  CASE (MASK_ALL)
+                    CycleElement = .TRUE.
+                    WSolution(WPerm(Element % NodeIndexes(i))) = 0.0
+                    Vvar(Element % NodeIndexes(i)) = 0.0
+                    NSolution(NPerm(Element % NodeIndexes(i))) = 0.0
+                    hstoreSolution(hstorePerm(Element % NodeIndexes(i))) = 0.0
+                  CASE (MASK_HP)
+                    NSolution(NPerm(Element % NodeIndexes(i))) = 0.0
+                  CASE (MASK_NONE)
+                  CASE DEFAULT
+                    WRITE(Message,'(A)') "MaskStatus not recognised"
+                    CALL FATAL( SolverName, Message)
+                  END SELECT
+                END DO
                 NULLIFY(GMcheckVar, GroundedMaskVar)
                 IF (CycleElement) THEN
                   CYCLE
                 END IF
-              END IF 
+              END IF
 
               CALL GetParametersSheet( Element, Material, N, SheetConductivity, alphas, &
                   betas, Ev, ub, Snn, lr, hr, Ar, ng ) 
@@ -1198,13 +1180,11 @@
                  ublr(j) = ub(i)/lr(i)
                  hr2(j) = hr(i)
 
-                 !CHANGE
                  !To stop it working out values for non-ice covered parts of a
                  !hydromesh in a coupled calving-hydro simulation
-                 IF(Calving) THEN
+                 IF ( ZeroSheetWithHP ) THEN
                    IF(Snn(i)==0.0) THEN
                      Np = 0.0
-                     !pw = 0.0
                      he = 0.0
                    END IF
                  END IF 
@@ -1216,39 +1196,38 @@
                  IF (ASSOCIATED(hstoreSol)) hstoreSolution(hstorePerm(j)) = he
               END DO
            END DO Elements     !  Bulk elements
+
            ! Loop over all nodes to update ThickSolution
            DO j = 1, Mesh % NumberOfNodes
               k = ThickPerm(j)
               IF (k==0) CYCLE
-              !CHANGE
-              !If calving, cycle elements with ungrounded nodes and zero all
-              !hydrology variables
-              IF(Calving) THEN
-                CycleElement = .FALSE.
-                GMcheckVar => VariableGet(Mesh % Variables, "gmcheck", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
-                GroundedMaskVar => VariableGet(Mesh % Variables, "groundedmask", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
-                IF(ASSOCIATED(GMcheckVar)) THEN
-                  IF(GMcheckVar % Values(k)>0.0) THEN !.AND. GroundedMaskVar % Values(k)<0.0) THEN
-                      CycleElement = .TRUE.
-                  END IF
-                END IF
-                IF(ASSOCIATED(GroundedMaskVar) .AND. .NOT. ASSOCIATED(GMcheckVar)) THEN
-                  IF(GroundedMaskVar % Values(k)<0.0) THEN 
-                    CycleElement = .TRUE.
-                  END IF
-                END IF
-                HydPotVar => VariableGet(Mesh % Variables, "hydraulic potential", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
-                IF(HydPotVar % Values(k)==0.0) THEN
-                  CycleElement = .TRUE.
-                END IF
-                NULLIFY(GMcheckVar, GroundedMaskVar, HydPotVar)
-                IF(CycleElement) THEN
-                  ThickSolution(k) = 0.0
-                  ThickPrev(k,1) = 0.0
-                  CYCLE
-                END IF
-              END IF 
 
+              CycleNode = .FALSE.
+              IF (UseGM.OR.UseGC) THEN
+                ! Cycle ungrounded nodes and zero hydrology variables
+                MaskStatus = ProcessMasks(UseGM, UseGC, ZeroSheetAtGL, k)
+                SELECT CASE (MaskStatus)
+                CASE (MASK_ALL)
+                  CycleNode = .TRUE.
+                CASE (MASK_HP, MASK_NONE)
+                CASE DEFAULT
+                  WRITE(Message,'(A)') "MaskStatus not recognised"
+                  CALL FATAL( SolverName, Message)
+                END SELECT
+              END IF
+              IF (ZeroSheetWithHP) THEN
+                HydPotVar => VariableGet(Mesh % Variables, "hydraulic potential", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
+                IF(HydPotVar % Values(k).EQ.0.0) THEN
+                  CycleNode = .TRUE.
+                END IF
+                NULLIFY(HydPotVar)
+              END IF
+              IF (CycleNode) THEN
+                ThickSolution(k) = 0.0
+                ThickPrev(k,1) = 0.0
+                CYCLE
+              END IF
+              
               IF(MaxHBool) THEN
                 IF (ThickSolution(k)>MaxH) THEN
                   ThickSolution(k) = MaxH
@@ -1308,37 +1287,27 @@
                  IF (ANY(HydPotPerm(Edge % NodeIndexes(1:n))==0)) CYCLE
                  IF (ALL(NoChannel(Edge % NodeIndexes(1:n)))) CYCLE
 
-                 !CHANGE
-                 !If calving, cycle elements with ungrounded nodes and zero all
-                 !hydrology variables
-                 IF(Calving) THEN
+                 IF (UseGM.OR.UseGC) THEN
+                   ! Cycle ungrounded nodes and zero hydrology variables
                    CycleElement = .FALSE.
-                   GMcheckVar => VariableGet(Mesh % Variables, "gmcheck", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
-                   GroundedMaskVar => VariableGet(Mesh % Variables, "groundedmask", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
-                   IF(ASSOCIATED(GMcheckVar)) THEN
-                     DO i=1, n
-                       IF(GMcheckVar % Values(GMcheckVar % Perm(Edge % NodeIndexes(i)))>0.0) THEN
-                         !IF(GroundedMaskVar % Values(GroundedMaskVar % Perm(Edge % NodeIndexes(i)))<0.0) THEN
-                           CycleElement = .TRUE.
-                         !END IF
-                       END IF
-                     END DO
-                   END IF
-                   IF(ASSOCIATED(GroundedMaskVar) .AND. .NOT. ASSOCIATED(GMcheckVar)) THEN
-                     DO i=1,n
-                       IF(GroundedMaskVar % Values(GroundedMaskVar % Perm(Edge % NodeIndexes(i)))<0.0) THEN 
-                         CycleElement = .TRUE.
-                       END IF
-                     END DO
-                   END IF
-                   NULLIFY(GMcheckVar, GroundedMaskVar)
+                   DO i=1, n
+                     MaskStatus = ProcessMasks(UseGM, UseGC, ZeroSheetAtGL, Edge % NodeIndexes(i))
+                     SELECT CASE (MaskStatus)
+                     CASE (MASK_ALL)
+                       CycleElement = .TRUE.
+                     CASE (MASK_HP, MASK_NONE)
+                     CASE DEFAULT
+                       WRITE(Message,'(A)') "MaskStatus not recognised"
+                       CALL FATAL( SolverName, Message)
+                     END SELECT
+                   END DO
                    IF(CycleElement) THEN
-                     CYCLE
                      AreaSolution(AreaPerm(M+t)) = 0.0
                      QcSolution(QcPerm(M+t)) = 0.0
+                     CYCLE
                    END IF
-                 END IF 
-
+                 END IF
+                
                  EdgeNodes % x(1:n) = Mesh % Nodes % x(Edge % NodeIndexes(1:n))
                  EdgeNodes % y(1:n) = Mesh % Nodes % y(Edge % NodeIndexes(1:n))
                  EdgeNodes % z(1:n) = Mesh % Nodes % z(Edge % NodeIndexes(1:n))
@@ -1549,43 +1518,28 @@
 
          n = GetElementNOFNodes(Element)
          CALL GetElementNodes( ElementNodes )
-         !If calving, cycle elements with ungrounded nodes and zero all
-         !hydrology variables
-         IF(Calving) THEN
+
+         IF (UseGM.OR.UseGC) THEN
+           ! Cycle ungrounded nodes and zero hydrology variables
            CycleElement = .FALSE.
-           GMcheckVar => VariableGet(Mesh % Variables, "gmcheck", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
-           GroundedMaskVar => VariableGet(Mesh % Variables, "groundedmask", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
-           IF(ASSOCIATED(GMcheckVar)) THEN
-             DO i=1, n
-               IF(GMcheckVar % Values(GMcheckVar % Perm(Element % NodeIndexes(i)))>0.0) THEN
-                 !IF(GroundedMaskVar % Values(GroundedMaskVar % Perm(Element % NodeIndexes(i)))<0.0) THEN
-                   CycleElement = .TRUE.
-                   DO j=1,dimSheet
-                     k = dimSheet*(qPerm(Element % NodeIndexes(i))-1)+j
-                     qSolution(k) = 0.0
-                     Refq(k) = 0.0
-                   END DO
-                   EXIT
-                 !END IF
-               END IF
-             END DO
-           END IF
-           IF(ASSOCIATED(GroundedMaskVar) .AND. .NOT. ASSOCIATED(GMcheckVar)) THEN
-             DO i=1,n
-               IF(GroundedMaskVar % Values(GroundedMaskVar % Perm(Element % NodeIndexes(i)))<0.0) THEN 
-                 CycleElement = .TRUE.
-                 DO j=1,dimSheet
-                   k = dimSheet*(qPerm(Element % NodeIndexes(i))-1)+j
-                   qSolution(k) = 0.0
-                   Refq(k) = 0.0
-                 END DO
-                 EXIT
-               END IF
-             END DO
-           END IF
-           NULLIFY(GMcheckVar, GroundedMaskVar)
+           DO i=1, n
+             MaskStatus = ProcessMasks(UseGM, UseGC, ZeroSheetAtGL, Element % NodeIndexes(i))
+             SELECT CASE (MaskStatus)
+             CASE (MASK_ALL)
+               CycleElement = .TRUE.
+               DO j=1,dimSheet
+                 k = dimSheet*(qPerm(Element % NodeIndexes(i))-1)+j
+                 qSolution(k) = 0.0
+                 Refq(k) = 0.0
+               END DO
+             CASE (MASK_HP, MASK_NONE)
+             CASE DEFAULT
+               WRITE(Message,'(A)') "MaskStatus not recognised"
+               CALL FATAL( SolverName, Message)
+             END SELECT
+           END DO
            IF(CycleElement) CYCLE
-         END IF             
+         END IF
  
          ! we need the SheetConductivity, alphas, betas
          CALL GetParametersSheet( Element, Material, n, SheetConductivity, alphas, &
@@ -1634,6 +1588,68 @@
 
 CONTAINS    
 
+  ! Use the grounded mask and or grounded mask check to decide how to mask the current node.
+  ! The following table summarises actions as a function of mask values.
+  ! 
+  ! GM    GC    Status                Action
+  !-------------------------------------------------
+  ! -1    0     Floating (not shelf); don't mask
+  ! -1    1     FLoating (shelf);     mask
+  !  0    0     GL (not shelf);       don't mask
+  !  0    1     GL (shelf);           partial mask
+  !  1    0     Grounded;             don't mask
+  !  1    1     Grounded (shelf);     Fatal (mask inconsistency)
+  !
+  !----------------------------------------------------------------------------------------------------------
+  FUNCTION ProcessMasks(UseGM, UseGC, ZeroSheetAtGL, ii) RESULT( MaskStatus_local )
+
+    LOGICAL, INTENT(IN)  :: UseGM, UseGC, ZeroSheetAtGL
+    INTEGER, INTENT(IN)  :: ii ! node index
+
+    INTEGER :: MaskStatus_local
+
+    MaskStatus_local = MASK_NONE
+    
+    IF (UseGM) THEN
+      GroundedMaskVar => VariableGet(Mesh % Variables, "groundedmask", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
+    END IF
+
+    IF (UseGC) THEN
+      GMcheckVar => VariableGet(Mesh % Variables, "gmcheck", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
+      IF (GMcheckVar % Values(GMcheckVar % Perm(ii)).GT.0.0) THEN
+        IF (UseGM) THEN
+          IF (GroundedMaskVar % Values(GroundedMaskVar % Perm(ii)).LT.0.0) THEN 
+            MaskStatus_local = MASK_ALL
+          ELSEIF (GroundedMaskVar % Values(GroundedMaskVar % Perm(ii)).EQ.0.0) THEN
+            IF (ZeroSheetAtGL) THEN
+              MaskStatus_local = MASK_HP
+            ELSE
+              MaskStatus_local = MASK_ALL
+            END IF
+          END IF
+        END IF
+      END IF
+    ELSE
+      IF (UseGM) THEN
+        IF (GroundedMaskVar % Values(GroundedMaskVar % Perm(ii)).LT.0.0) THEN 
+          MaskStatus_local = MASK_ALL
+        ELSEIF (GroundedMaskVar % Values(GroundedMaskVar % Perm(ii)).EQ.0.0) THEN
+          IF (ZeroSheetAtGL) THEN
+            MaskStatus_local = MASK_HP
+          ELSE
+            MaskStatus_local = MASK_ALL
+          END IF
+        END IF
+      ELSE
+        WRITE(Message,'(A)') "Function ProcessMasks should not be called when no mask is specified"
+        CALL FATAL( SolverName, Message)
+      END IF
+    END IF
+    NULLIFY(GMcheckVar, GroundedMaskVar)
+  
+  END FUNCTION ProcessMasks
+
+  
   ! Compute consistent channel norm only considering the edges that also have hydrology defined on the nodes.
   ! In parallel only consider the edges in the partition where it is active.
   !----------------------------------------------------------------------------------------------------------
