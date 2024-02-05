@@ -357,6 +357,7 @@
         ! following switches to false. The defaults change to true when using Samuel Cook's "Calving" 
         ! (set in simulation seciton of sif).  The defaults will be overwritten for each of the switches
         ! that are specified in the solver section of the sif.       
+        SolverParams => GetSolverParams()
         UseGM = GetLogical( SolverParams,'Use GroundedMask', Found )
         IF (.NOT. Found) THEN
           IF (Calving) THEN              
