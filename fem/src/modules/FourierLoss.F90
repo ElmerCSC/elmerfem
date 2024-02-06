@@ -1110,8 +1110,17 @@ CONTAINS
           END DO
           WRITE( 10,'(ES15.6)') BodyLoss(Ncomp,j)            
         END DO
-        CALL Info(Caller, &
-            'Fourier losses for bodies was saved to file: '//TRIM(LossesFile),Level=6 )
+        CALL Info(Caller,'Fourier losses for bodies was saved to file: '//TRIM(LossesFile),Level=6 )
+        CLOSE(10)
+      END IF
+
+      LossesFile = ListGetString(SolverParams,'Series Loss Filename',Found )
+      IF( Found ) THEN
+        OPEN (10, FILE=LossesFile)
+        DO j=1,FourierDofs/2
+          WRITE( 10,'(2ES15.6)') SUM(SeriesLoss(1:Ncomp,2*j-1)), SUM(SeriesLoss(1:Ncomp,2*j))
+        END DO
+        CALL Info(Caller,'Series losses for bodies was saved to file: '//TRIM(LossesFile),Level=6 )
         CLOSE(10)
       END IF
     END IF
