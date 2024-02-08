@@ -1561,7 +1561,7 @@ MODULE LumpingUtils
       IF( ALL( MasterEntities /= bc_id ) ) CYCLE
       BC => Model % BCs(bc_id) % Values
       
-      IF(EdgeBasis ) THEN
+      IF(EdgeBasis .AND. Element % Type % ElementCode > 300 ) THEN
         k = FindBoundaryFaceIndex(Mesh,Element)
         Element => Mesh % Faces(k)        
       END IF      
@@ -1587,12 +1587,15 @@ MODULE LumpingUtils
       vol = vol / area
       Zimp = 1.0_dp / trans
 
-      !PRINT *,'LumpedCurr:',vol,curr,port_curr,trans,Zimp*curr,PortBC
+      PRINT *,'LumpedCurr:',vol,curr,port_curr
+      PRINT *,'Zimp:',trans,Zimp,curr,PortBC
       
       OutFlux = (vol + Zimp * curr) / (2*SQRT(REAL(Zimp)))
       InFlux = (vol - CONJG(Zimp) * port_curr  ) / (2*SQRT(REAL(Zimp)))      
-      !OutFlux = curr 
-      !InFlux = port_curr 
+
+      ! For now use just the average voltages
+      OutFlux = vol !curr 
+      InFlux = 1.0 !port_curr 
     ELSE
       intel = ParallelReduction(intel)
       intnorm = ParallelReduction(intnorm)      
@@ -1810,9 +1813,9 @@ MODULE LumpingUtils
       TYPE(GaussIntegrationPoints_t) :: IP
       INTEGER :: t, i, j, m, np, p, q, ndofs, n, nd
       LOGICAL :: AllocationsDone = .FALSE.
-      TYPE(Element_t), POINTER :: Parent
+      TYPE(Element_t), POINTER :: Parent, MatElement
       TYPE(ValueHandle_t), SAVE :: MuCoeff_h, EpsCoeff_h, CondCoeff_h
-      TYPE(ValueHandle_t), SAVE :: TransferCoeff_h, ElCurrent_h 
+      TYPE(ValueHandle_t), SAVE :: TransferCoeff_h, ElCurrent_h, BCMat_h
       
       SAVE AllocationsDone, Basis, dBasisdx, v_local, mu0inv, eps0
       
@@ -1834,6 +1837,8 @@ MODULE LumpingUtils
         
         CALL ListInitElementKeyword( TransferCoeff_h,'Boundary Condition','Electric Transfer Coefficient',InitIm=.TRUE.)
         CALL ListInitElementKeyword( ElCurrent_h,'Boundary Condition','Electric Current Density',InitIm=.TRUE.)
+
+        CALL ListInitElementKeyword( BCMat_h,'Boundary Condition','Material')
 
         Found = .FALSE.
         IF( ASSOCIATED( Model % Constants ) ) THEN
@@ -1863,6 +1868,14 @@ MODULE LumpingUtils
         CALL Fatal(Caller,'Model lumping requires parent element!')
       END IF
 
+      ! If we have material also define in the BC section then use it
+      i = ListGetElementInteger( BCMat_h, Element, Found )
+      IF( i > 0 ) THEN
+        MatElement => Element
+      ELSE
+        MatElement => Parent
+      END IF
+              
       nd = n
       IP = GaussPoints( Element )          
       pIndexes => NodeIndexes
@@ -1882,15 +1895,15 @@ MODULE LumpingUtils
 
         ! Get material properties from parent element.
         !----------------------------------------------
-        mur = ListGetElementComplex( MuCoeff_h, Basis, Parent, Found, GaussPoint = t )      
+        mur = ListGetElementComplex( MuCoeff_h, Basis, MatElement, Found, GaussPoint = t )      
         IF( .NOT. Found ) mur = 1.0_dp
         muinv = mur * mu0inv
 
-        epsr = ListGetElementComplex( EpsCoeff_h, Basis, Parent, Found, GaussPoint = t )      
+        epsr = ListGetElementComplex( EpsCoeff_h, Basis, MatElement, Found, GaussPoint = t )      
         IF( .NOT. Found ) epsr = 1.0_dp
         eps = epsr * eps0
-        
-        cond_ip = ListGetElementReal( CondCoeff_h, Basis, Parent, Found, GaussPoint = t )        
+
+        cond_ip = ListGetElementReal( CondCoeff_h, Basis, MatElement, Found, GaussPoint = t )        
         tc_ip = ListGetElementComplex( TransferCoeff_h, Basis, Element, Found, GaussPoint = t )
         cd_ip = ListGetElementComplex( ElCurrent_h, Basis, Element, Found, GaussPoint = t )
 
