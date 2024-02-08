@@ -75,6 +75,7 @@ CONTAINS
 
     LOGICAL :: Found, Stat
     LOGICAL :: NonlinAssembly, RotationNeeded
+    LOGICAL :: ApplyOffset
     LOGICAL :: DampingBetaWarning = .FALSE.
     
     INTEGER :: DOFs
@@ -93,6 +94,7 @@ CONTAINS
     REAL(KIND=dp) :: Youngs_Modulus(n), Shear_Modulus(n), Area(n), Density(n)
     REAL(KIND=dp) :: Torsional_Constant(n) 
     REAL(KIND=dp) :: Area_Moment_2(n), Area_Moment_3(n)
+    REAL(KIND=dp) :: Offset_2, Offset_3
     REAL(KIND=dp) :: Mass_Inertia_Moment(n), Damping(n), RayleighBeta(n)
     REAL(KIND=dp) :: Load(3,n), f(3)
     REAL(KIND=dp) :: PrevSolVec(6*nd)
@@ -385,6 +387,34 @@ CONTAINS
     
     IF (PRESENT(CombineWithShell)) THEN
       IF (CombineWithShell) THEN
+
+        Offset_3 = GetConstReal(Material, 'Beam Axis Offset 3', ApplyOffset)
+        Offset_2 = GetConstReal(Material, 'Beam Axis Offset 2', Found)
+        ApplyOffset = Found .OR. ApplyOffset
+        IF (ApplyOffset) THEN
+          R = 0.0d0
+          DO i=1,nd-nb
+            i0 = (i-1)*DOFs
+            R(i0+1,i0+1) = 1.0d0
+            R(i0+1,i0+5) = Offset_3
+            R(i0+1,i0+6) = -Offset_2
+            R(i0+2,i0+2) = 1.0d0
+            R(i0+3,i0+3) = 1.0d0
+            R(i0+4,i0+4) = 1.0d0
+            R(i0+5,i0+5) = 1.0d0
+            R(i0+6,i0+6) = 1.0d0
+          END DO
+          DOFs = (nd-nb)*DOFs
+          Stiff(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(R(1:DOFs,1:DOFs)), &
+              MATMUL(Stiff(1:DOFs,1:DOFs),R(1:DOFs,1:DOFs)))
+          Force(1:DOFs) = MATMUL(TRANSPOSE(R(1:DOFs,1:DOFs)),Force(1:DOFs))
+
+          IF (MassAssembly) &
+              Mass(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(R(1:DOFs,1:DOFs)), &
+              MATMUL(Mass(1:DOFs,1:DOFs),R(1:DOFs,1:DOFs)))
+          DOFs = 6
+        END IF
+        
         IF (PRESENT(ApplyRotation)) THEN
           RotationNeeded = ApplyRotation
         ELSE
@@ -416,9 +446,10 @@ CONTAINS
 
           IF (MassAssembly) &
               Mass(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(R(1:DOFs,1:DOFs)), &
-              MATMUL(Mass(1:DOFs,1:DOFs),R(1:DOFs,1:DOFs)))    
+              MATMUL(Mass(1:DOFs,1:DOFs),R(1:DOFs,1:DOFs)))
+          DOFs = 6
         END IF
-        
+
         !
         ! The moment around the director is not compatible with the shell model.
         ! Remove its contribution:
