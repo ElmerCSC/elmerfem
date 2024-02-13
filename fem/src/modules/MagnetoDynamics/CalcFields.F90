@@ -694,7 +694,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp), POINTER :: muTensor(:,:)
    LOGICAL :: HasReluctivityFunction, HBIntegProblem, MaterialExponents
    REAL(KIND=dp) :: rdummy
-   INTEGER :: mudim, ElementalMode, cdofs
+   INTEGER :: mudim, ElementalMode, cdofs, LossN
 
    TYPE VariableArray_t
      TYPE(Variable_t), POINTER :: Field => Null()
@@ -965,10 +965,13 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      OldLossKeywords = ListCheckPrefixAnyMaterial( Model,'Harmonic Loss Linear Frequency Exponent') 
      MaterialExponents = ListCheckPrefixAnyMaterial( Model,'Harmonic Loss Frequency Exponent') 
      MaterialExponents = MaterialExponents .OR. OldLossKeywords
-              
+
+     ! Fixed for now. FourierLoss solver more generic here. 
+     LossN = 2 
+          
      IF(.NOT. MaterialExponents) THEN
        OldLossKeywords = ListCheckPresent(SolverParams,'Harmonic Linear Frequency Exponent')
-       CALL GetLossExponents(SolverParams,FreqPower,FieldPower,2,OldLossKeywords)
+       CALL GetLossExponents(SolverParams,FreqPower,FieldPower,LossN,OldLossKeywords)
      END IF
 
      IF( OldLossKeywords ) THEN
@@ -980,9 +983,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        IF(.NOT. ListCheckPresentAnyMaterial( Model,'Harmonic Loss Quadratic Coefficient') ) THEN
          CALL Warn('MagnetoDynamicsCalcFields',&
              'Harmonic loss requires > Harmonic Loss Quadratic Coefficient < in material section!')
-       END IF
+       END IF       
      END IF
-       
+
      ComponentLoss = 0.0_dp
      ALLOCATE( BodyLoss(3,Model % NumberOfBodies) )
      BodyLoss = 0.0_dp
@@ -2014,7 +2017,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
              LossCoeff(1) = ListGetFun( Material,'Harmonic Loss Linear Coefficient',Freq,Found ) 
              LossCoeff(2) = ListGetFun( Material,'Harmonic Loss Quadratic Coefficient',Freq,Found ) 
            ELSE
-             DO l=1,2               
+             DO l=1,LossN               
                LossCoeff(l) = ListGetFun( Material,&
                    'Harmonic Loss Coefficient '//I2S(l),Freq, Found)      
              END DO
@@ -2022,7 +2025,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
              
            IF(MaterialExponents) THEN
-             CALL GetLossExponents(Material,FreqPower,FieldPower,2,OldLossKeywords)
+             CALL GetLossExponents(Material,FreqPower,FieldPower,LossN,OldLossKeywords)
            END IF
            
            ! No losses to add if loss coefficient is not given
