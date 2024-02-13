@@ -702,7 +702,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    TYPE(VariableArray_t) :: NodalFieldPointers(32), ElementalFieldPointers(32)
    TYPE(Variable_t), POINTER :: FieldVariable
-   LOGICAL :: EigenAnalysis, VtuStyle
+   LOGICAL :: EigenAnalysis, VtuStyle, OldLossKeywords
    INTEGER :: Field, FieldsToCompute, NOFEigen, MaxFields
 
 !-------------------------------------------------------------------------------------------
@@ -962,11 +962,27 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        .OR. ASSOCIATED( ML2 ) .OR. ASSOCIATED( EL_ML2 ) 
 
    IF (LossEstimation) THEN
-     MaterialExponents = ListCheckPrefixAnyMaterial( Model,'Harmonic Loss Linear Frequency Exponent') 
+     OldLossKeywords = ListCheckPrefixAnyMaterial( Model,'Harmonic Loss Linear Frequency Exponent') 
+     MaterialExponents = ListCheckPrefixAnyMaterial( Model,'Harmonic Loss Frequency Exponent') 
+     MaterialExponents = MaterialExponents .OR. OldLossKeywords
+              
      IF(.NOT. MaterialExponents) THEN
-       CALL GetLossExponents(SolverParams,FreqPower,FieldPower)
+       OldLossKeywords = ListCheckPresent(SolverParams,'Harmonic Linear Frequency Exponent')
+       CALL GetLossExponents(SolverParams,FreqPower,FieldPower,2,OldLossKeywords)
      END IF
-     
+
+     IF( OldLossKeywords ) THEN
+       IF(.NOT. ListCheckPresentAnyMaterial( Model,'Harmonic Loss Linear Coefficient') ) THEN
+         CALL Warn('MagnetoDynamicsCalcFields',&
+             'Harmonic loss requires > Harmonic Loss Linear Coefficient < in material section!')
+       END IF
+
+       IF(.NOT. ListCheckPresentAnyMaterial( Model,'Harmonic Loss Quadratic Coefficient') ) THEN
+         CALL Warn('MagnetoDynamicsCalcFields',&
+             'Harmonic loss requires > Harmonic Loss Quadratic Coefficient < in material section!')
+       END IF
+     END IF
+       
      ComponentLoss = 0.0_dp
      ALLOCATE( BodyLoss(3,Model % NumberOfBodies) )
      BodyLoss = 0.0_dp
@@ -1994,15 +2010,23 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          ! Compute a loss estimate for cos and sin modes:
          !-------------------------------------------------
          IF (LossEstimation) THEN
-           LossCoeff(1) = ListGetFun( Material,'Harmonic Loss Linear Coefficient',Freq,Found ) 
-           LossCoeff(2) = ListGetFun( Material,'Harmonic Loss Quadratic Coefficient',Freq,Found ) 
-           
+           IF( OldLossKeywords ) THEN
+             LossCoeff(1) = ListGetFun( Material,'Harmonic Loss Linear Coefficient',Freq,Found ) 
+             LossCoeff(2) = ListGetFun( Material,'Harmonic Loss Quadratic Coefficient',Freq,Found ) 
+           ELSE
+             DO l=1,2               
+               LossCoeff(l) = ListGetFun( Material,&
+                   'Harmonic Loss Coefficient '//I2S(l),Freq, Found)      
+             END DO
+           END IF
+
+             
            IF(MaterialExponents) THEN
-             CALL GetLossExponents(Material,FreqPower,FieldPower)
+             CALL GetLossExponents(Material,FreqPower,FieldPower,2,OldLossKeywords)
            END IF
            
            ! No losses to add if loss coefficient is not given
-           IF( Found .OR. MaterialsExponents ) THEN
+           IF( Found .OR. MaterialExponents ) THEN
              ElemLoss = 0.0_dp
              DO l=1,2
                ValAtIP = SUM( B(l,1:3) ** 2 )
@@ -2988,42 +3012,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
 CONTAINS
 
-
-  SUBROUTINE GetLossExponents(vList,FreqPower,FieldPower)
-    TYPE(ValueList_t),POINTER :: vList
-    REAL(KIND=dp) :: FreqPower(:), FieldPower(:)
-
-    REAL(KIND=dp), POINTER :: WrkArray(:,:)
-    INTEGER :: icomp
-
-
-    FreqPower(1) = GetCReal( vList,'Harmonic Loss Linear Frequency Exponent',Found )
-    IF( .NOT. Found ) FreqPower(1) = 1.0_dp
-
-    FreqPower(2) = GetCReal( vList,'Harmonic Loss Quadratic Frequency Exponent',Found )
-    IF( .NOT. Found ) FreqPower(2) = 2.0_dp
-
-    FieldPower(1) = GetCReal( vList,'Harmonic Loss Linear Exponent',Found ) 
-    IF( .NOT. Found ) FieldPower(1) = 2.0_dp
-    FieldPower(1) = FieldPower(1) / 2.0_dp
-
-    FieldPower(2) = GetCReal( vList,'Harmonic Loss Quadratic Exponent',Found ) 
-    IF( .NOT. Found ) FieldPower(2) = 2.0_dp
-    FieldPower(2) = FieldPower(2) / 2.0_dp
-
-    IF(.NOT. ListCheckPresentAnyMaterial( Model,'Harmonic Loss Linear Coefficient') ) THEN
-      CALL Warn('MagnetoDynamicsCalcFields',&
-          'Harmonic loss requires > Harmonic Loss Linear Coefficient < in material section!')
-    END IF
-
-    IF(.NOT. ListCheckPresentAnyMaterial( Model,'Harmonic Loss Quadratic Coefficient') ) THEN
-      CALL Warn('MagnetoDynamicsCalcFields',&
-          'Harmonic loss requires > Harmonic Loss Quadratic Coefficient < in material section!')
-    END IF
-
-  END SUBROUTINE GetLossExponents
-
-    
   
 !-------------------------------------------------------------------
   SUBROUTINE SumElementalVariable(Var, Values, BodyId, uAdditive)

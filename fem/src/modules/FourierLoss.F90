@@ -166,7 +166,8 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
   !------------------------------------------------------------------------------
 
   USE DefUtils
-
+  USE MagnetoDynamicsUtils
+  
   IMPLICIT NONE
   !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver  !< Linear & nonlinear equation solver options
@@ -754,40 +755,6 @@ CONTAINS
   END SUBROUTINE LocalFourierTransform
 
 
-  SUBROUTINE GetLossExponents(vList,FreqPower,FieldPower)
-    TYPE(ValueList_t),POINTER :: vList
-    REAL(KIND=dp) :: FreqPower(:), FieldPower(:)
-
-    REAL(KIND=dp), POINTER :: WrkArray(:,:)
-    INTEGER :: icomp
-        
-    WrkArray => ListGetConstRealArray( vList,'Harmonic Loss Frequency Exponent',Found )
-    IF( Found ) THEN 
-      IF( SIZE( WrkArray,1 ) < Ncomp ) THEN
-        CALL Fatal(Caller,'> Harmonic Loss Frequency Exponent < too small')
-      END IF
-      FreqPower(1:Ncomp) = WrkArray(1:Ncomp,1)
-    ELSE       
-      DO icomp = 1, Ncomp
-        FreqPower(icomp) = GetCReal( vList,'Harmonic Loss Frequency Exponent '//I2S(icomp) )
-      END DO
-    END IF
-
-    WrkArray => ListGetConstRealArray( vList,'Harmonic Loss Field Exponent',Found )
-    IF( Found ) THEN
-      IF( SIZE( WrkArray,1 ) < Ncomp ) THEN
-        CALL Fatal(Caller,'> Harmonic Loss Field Exponent < too small')
-      END IF
-      FieldPower(1:Ncomp) = WrkArray(1:Ncomp,1)        
-    ELSE
-      DO icomp = 1, Ncomp
-        FieldPower(icomp) = GetCReal( vList,'Harmonic Loss Field Exponent '//I2S(icomp) )
-      END DO
-    END IF
-    
-  END SUBROUTINE GetLossExponents
-  
-
   !------------------------------------------------------------------------------
   ! Assembly the mass matrix and r.h.s. for computing the losses using the 
   ! Galerkin method.
@@ -833,7 +800,7 @@ CONTAINS
     
     MaterialExponents = ListCheckPrefixAnyMaterial( Model,'Harmonic Loss Frequency Exponent') 
     IF(.NOT. MaterialExponents) THEN
-      CALL GetLossExponents(SolverParams,FreqPower,FieldPower)
+      CALL GetLossExponents(SolverParams,FreqPower,FieldPower,Ncomp)
     END IF
       
     ! Sum over the loss for each frequency, each body, and for the combined effect
@@ -872,7 +839,7 @@ CONTAINS
       Material => GetMaterial()
 
       IF(MaterialExponents) THEN
-        CALL GetLossExponents(Material,FreqPower,FieldPower)
+        CALL GetLossExponents(Material,FreqPower,FieldPower,Ncomp)
       END IF
 
       DO t=1,IntegStuff % n
