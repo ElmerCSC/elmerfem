@@ -78,7 +78,7 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: SolverParams
-  LOGICAL :: Found, SecondOrder, PiolaVersion, WithNDOFs
+  LOGICAL :: Found, SecondOrder, PiolaVersion, SecondFamily, WithNDOFs
 
   SolverParams => GetSolverParams()  
 
@@ -90,7 +90,8 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
   
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
     SecondOrder = GetLogical( SolverParams, 'Quadratic Approximation', Found )
-    IF( SecondOrder ) THEN
+    SecondFamily = GetLogical( SolverParams, 'Second Kind Basis', Found )
+    IF( SecondOrder .OR. SecondFamily) THEN
       PiolaVersion = .TRUE.
     ELSE
       PiolaVersion = GetLogical(SolverParams, 'Use Piola Transform', Found )   
@@ -100,8 +101,12 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
       IF ( SecondOrder ) THEN
         CALL ListAddString( SolverParams, "Element", &
             "n:1 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )
-      ELSE IF ( PiolaVersion ) THEN    
-        CALL ListAddString( SolverParams, "Element", "n:1 e:1 -quad b:2 -brick b:3 -quad_face b:2" )
+      ELSE IF ( PiolaVersion ) THEN
+        IF (SecondFamily) THEN
+          CALL ListAddString( SolverParams, "Element", "n:1 e:2" )
+        ELSE
+          CALL ListAddString( SolverParams, "Element", "n:1 e:1 -quad b:2 -brick b:3 -quad_face b:2" )
+        END IF
       ELSE
         CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
       END IF      
@@ -109,8 +114,12 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
       IF( SecondOrder ) THEN
         CALL ListAddString( SolverParams, "Element", &
             "n:0 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )
-      ELSE IF ( PiolaVersion ) THEN    
-        CALL ListAddString( SolverParams, "Element", "n:0 e:1 -quad b:2 -brick b:3 -quad_face b:2" )
+      ELSE IF ( PiolaVersion ) THEN
+        IF (SecondFamily) THEN
+          CALL ListAddString( SolverParams, "Element", "n:0 e:2" )
+        ELSE
+          CALL ListAddString( SolverParams, "Element", "n:0 e:1 -quad b:2 -brick b:3 -quad_face b:2" )
+        END IF
       ELSE
         CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
       END IF
@@ -183,7 +192,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   INTEGER :: i, NoIterationsMax, EdgeBasisDegree
   TYPE(Mesh_t), POINTER :: Mesh
   COMPLEX(KIND=dp) :: PrecDampCoeff
-  LOGICAL :: PiolaVersion, EdgeBasis, LowFrequencyModel, LorenzCondition
+  LOGICAL :: PiolaVersion, SecondFamily, EdgeBasis, LowFrequencyModel, LorenzCondition
   LOGICAL :: UseGaussLaw, ChargeConservation
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Solver_t), POINTER :: pSolver
@@ -200,7 +209,12 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
     PiolaVersion = .TRUE.
     EdgeBasisDegree = 2
   ELSE
-    PiolaVersion = GetLogical( SolverParams,'Use Piola Transform', Found )
+    SecondFamily = GetLogical( SolverParams, 'Second Kind Basis', Found )
+    IF (SecondFamily) THEN
+      PiolaVersion = .TRUE.
+    ELSE
+      PiolaVersion = GetLogical( SolverParams, 'Use Piola Transform', Found )
+    END IF
     EdgeBasisDegree = 1
   END IF
 
@@ -544,7 +558,8 @@ CONTAINS
     
     ! Numerical integration:
     !----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+        EdgeBasisDegree = EdgeBasisDegree)
 
     DO t=1,IP % n
 
@@ -810,7 +825,8 @@ CONTAINS
 
     ! Numerical integration:
     !-----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+        EdgeBasisDegree=EdgeBasisDegree )
 
     ndofs = MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     np = n * ndofs
@@ -1296,7 +1312,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    TYPE(Variable_t), POINTER :: EL_MFD, EL_MFS, EL_EF, EL_PV, EL_DIVPV, EL_EW
                               
    INTEGER :: i,j,k,l,n,nd,np,p,q,fields,efields,nfields,vDOFs,ndofs
-   INTEGER :: soln
+   INTEGER :: soln, EdgeBasisDegree
 
    TYPE(Solver_t), POINTER :: pSolver
    REAL(KIND=dp), POINTER :: xx(:), bb(:), TempVector(:), TempRHS(:)
@@ -1316,7 +1332,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    TYPE(Mesh_t), POINTER :: Mesh
    REAL(KIND=dp), ALLOCATABLE, TARGET :: Gforce(:,:), MASS(:,:), FORCE(:,:) 
 
-   LOGICAL :: PiolaVersion, ElementalFields, NodalFields
+   LOGICAL :: PiolaVersion, SecondFamily, ElementalFields, NodalFields
    LOGICAL :: UseGaussLaw, LorenzCondition
    TYPE(ValueList_t), POINTER :: SolverParams 
    TYPE(ValueHandle_t), SAVE :: EpsCoeff_h, CurrDens_h, MuCoeff_h
@@ -1356,9 +1372,16 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    END IF
 
    IF( GetLogical( pSolver % Values,'Quadratic Approximation', Found ) ) THEN
+     EdgeBasisDegree = 2
      PiolaVersion = .TRUE.
    ELSE
-     PiolaVersion = GetLogical( pSolver % Values,'Use Piola Transform', Found )
+     EdgeBasisDegree = 1 
+     SecondFamily = GetLogical(pSolver % Values, 'Second Kind Basis', Found )
+     IF (SecondFamily) THEN
+       PiolaVersion = .TRUE.
+     ELSE
+       PiolaVersion = GetLogical(pSolver % Values,'Use Piola Transform', Found )
+     END IF
    END IF
     
    IF (PiolaVersion) CALL Info(Caller,'Using Piola transformed finite elements',Level=5)
@@ -1462,7 +1485,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
            NeighbourList(2*(i-1)+1) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
        END IF
        hdotE_r = hdotE_r + xx(2*(i-1)+1) * Tempvector(2*(i-1)+1) - xx(2*(i-1)+2) * Tempvector(2*(i-1)+2)
-       hdotE_i = hdotE_i + xx(2*(i-1)+1) * Tempvector(2*(i-1)+2) + xx(2*(i-1)+2) * Tempvector(2*(i-1)+1) 
+       hdotE_i = hdotE_i + xx(2*(i-1)+1) * Tempvector(2*(i-1)+2) + xx(2*(i-1)+2) * Tempvector(2*(i-1)+1)
      END DO
 
      hdotE_r = ParallelReduction(hdotE_r)
@@ -1604,7 +1627,8 @@ CONTAINS
 
     ! Calculate nodal fields:
     ! -----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+        EdgeBasisDegree = EdgeBasisDegree)
 
     MASS  = 0._dp
     FORCE = 0._dp
@@ -1712,7 +1736,8 @@ CONTAINS
 
     ! Calculate nodal fields:
     ! -----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+        EdgeBasisDegree = EdgeBasisDegree)
 
     MASS  = 0._dp
     FORCE = 0._dp
