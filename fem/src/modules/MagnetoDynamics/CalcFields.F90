@@ -2002,7 +2002,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            END IF
            
            ! No losses to add if loss coefficient is not given
-           IF( Found ) THEN
+           IF( Found .OR. MaterialsExponents ) THEN
              ElemLoss = 0.0_dp
              DO l=1,2
                ValAtIP = SUM( B(l,1:3) ** 2 )
