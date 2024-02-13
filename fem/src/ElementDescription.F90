@@ -3082,8 +3082,9 @@ CONTAINS
      TYPE(Element_t), POINTER :: Parent, Edge, Face
      INTEGER :: EdgeBasisDegree
      LOGICAL :: PerformPiolaTransform, Found, DesignedBubbles, SerendipityPBasis
+     LOGICAL :: SecondFamily
      
-     SAVE PrevSolver, EdgeBasisDegree, PerformPiolaTransform
+     SAVE PrevSolver, EdgeBasisDegree, PerformPiolaTransform, SecondFamily
 !------------------------------------------------------------------------------
 
      IF( PRESENT( USolver ) ) THEN
@@ -3098,15 +3099,22 @@ CONTAINS
          IF( ListGetLogical(pSolver % Values,'Quadratic Approximation', Found ) ) THEN
            EdgeBasisDegree = 2
            PerformPiolaTransform = .TRUE.
+           SecondFamily = .FALSE.
          ELSE
            EdgeBasisDegree = 1
-           PerformPiolaTransform = ListGetLogical(pSolver % Values,'Use Piola Transform', Found )
+           SecondFamily = ListGetLogical(pSolver % Values,'Second Kind Basis', Found )
+           IF (SecondFamily) THEN
+             PerformPiolaTransform = .TRUE.
+           ELSE
+             PerformPiolaTransform = ListGetLogical(pSolver % Values,'Use Piola Transform', Found )
+           END IF
          END IF
        END IF
        IF( PerformPiolaTransform ) THEN       
          stat = EdgeElementInfo(Element,Nodes,u,v,w,detF=Detj,Basis=Basis, &
              EdgeBasis=EdgeBasis,RotBasis=RotBasis,dBasisdx=dBasisdx,&
-             BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = PerformPiolaTransform )
+             SecondFamily = SecondFamily, BasisDegree = EdgeBasisDegree, &
+             ApplyPiolaTransform = PerformPiolaTransform )
        ELSE
          ! Is this really necessary to call in case no piola version? 
          stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis, dBasisdx )
@@ -8196,7 +8204,7 @@ END SUBROUTINE PickActiveFace
                EdgeBasis(19,:) = D1 * WorkBasis(I1,:)
                CurlBasis(19,:) = D1 * WorkCurlBasis(I1,:)
                EdgeBasis(20,:) = D2 * WorkBasis(I2,:)
-               CurlBasis(20,:) = D2 * WorkCurlBasis(I2,:)                  
+               CurlBasis(20,:) = D2 * WorkCurlBasis(I2,:)
              END IF
            END IF
            
