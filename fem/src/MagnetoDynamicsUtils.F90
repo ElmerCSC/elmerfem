@@ -566,6 +566,69 @@
   END SUBROUTINE GetPermittivityC
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+!> This gets keywords for a loss model that is needed by FourierLossSolver and
+!> MagnetoDynamicsCalcFields. There is an old and new format. 
+!------------------------------------------------------------------------------
+  SUBROUTINE GetLossExponents(vList,FreqPower,FieldPower,Ncomp,OldKeywords)
+!------------------------------------------------------------------------------
+    TYPE(ValueList_t),POINTER :: vList
+    REAL(KIND=dp) :: FreqPower(:), FieldPower(:)
+    INTEGER :: Ncomp
+    LOGICAL, OPTIONAL :: OldKeywords
+    
+    REAL(KIND=dp), POINTER :: WrkArray(:,:)
+    LOGICAL :: Found
+    INTEGER :: icomp
+    CHARACTER(*), PARAMETER :: Caller = 'GetLossExponents'
+
+    IF( PRESENT(OldKeywords) ) THEN
+      IF( OldKeywords ) THEN      
+        FreqPower(1) = GetCReal( vList,'Harmonic Loss Linear Frequency Exponent',Found )
+        IF( .NOT. Found ) FreqPower(1) = 1.0_dp
+        
+        FreqPower(2) = GetCReal( vList,'Harmonic Loss Quadratic Frequency Exponent',Found )
+        IF( .NOT. Found ) FreqPower(2) = 2.0_dp
+        
+        FieldPower(1) = GetCReal( vList,'Harmonic Loss Linear Exponent',Found ) 
+        IF( .NOT. Found ) FieldPower(1) = 2.0_dp
+        FieldPower(1) = FieldPower(1) / 2.0_dp
+        
+        FieldPower(2) = GetCReal( vList,'Harmonic Loss Quadratic Exponent',Found ) 
+        IF( .NOT. Found ) FieldPower(2) = 2.0_dp
+        FieldPower(2) = FieldPower(2) / 2.0_dp    
+        RETURN
+      END IF
+    END IF
+    
+    WrkArray => ListGetConstRealArray( vList,'Harmonic Loss Frequency Exponent',Found )    
+    IF( Found ) THEN 
+      IF( SIZE( WrkArray,1 ) < Ncomp ) THEN
+        CALL Fatal(Caller,'> Harmonic Loss Frequency Exponent < too small')
+      END IF
+      FreqPower(1:Ncomp) = WrkArray(1:Ncomp,1)
+    ELSE       
+      DO icomp = 1, Ncomp
+        FreqPower(icomp) = GetCReal( vList,'Harmonic Loss Frequency Exponent '//I2S(icomp) )
+      END DO
+    END IF
+
+    WrkArray => ListGetConstRealArray( vList,'Harmonic Loss Field Exponent',Found )
+    IF( Found ) THEN
+      IF( SIZE( WrkArray,1 ) < Ncomp ) THEN
+        CALL Fatal(Caller,'> Harmonic Loss Field Exponent < too small')
+      END IF
+      FieldPower(1:Ncomp) = WrkArray(1:Ncomp,1)        
+    ELSE
+      DO icomp = 1, Ncomp
+        FieldPower(icomp) = GetCReal( vList,'Harmonic Loss Field Exponent '//I2S(icomp) )
+      END DO
+    END IF    
+    
+  END SUBROUTINE GetLossExponents
+
+  
 !------------------------------------------------------------------------------
  END MODULE MGDynMaterialUtils
 !------------------------------------------------------------------------------

@@ -610,10 +610,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp) :: B(2,3), E(2,3), JatIP(2,3), VP_ip(2,3), JXBatIP(2,3), CC_J(2,3), HdotB, LMSol(2)
    REAL(KIND=dp) :: ldetJ,detJ, C_ip, ST(3,3), Omega, ThinLinePower, Power, Energy(3), w_dens
    REAL(KIND=dp) :: localThickness
-   REAL(KIND=dp) :: Freq, FreqPower, FieldPower, LossCoeff, ValAtIP
-   REAL(KIND=dp) :: Freq2, FreqPower2, FieldPower2, LossCoeff2
+   REAL(KIND=dp) :: Freq, FreqPower(2), FieldPower(2), LossCoeff(2), ElemLoss(2), ValAtIP
    REAL(KIND=dp) :: ComponentLoss(2,2), rot_velo(3), angular_velo(3)
-   REAL(KIND=dp) :: Coeff, Coeff2, TotalLoss(3), LumpedForce(3), localAlpha, localV(2), nofturns, coilthickness
+   REAL(KIND=dp) :: Coeff, TotalLoss(3), LumpedForce(3), localAlpha, localV(2), nofturns, coilthickness
    REAL(KIND=dp) :: Flux(2), AverageFluxDensity(2), Area, N_j, wvec(3), PosCoord(3), TorqueDeprecated(3)
    REAL(KIND=dp) :: R_ip, mu_r
    REAL(KIND=dp), SAVE :: mu0 = 1.2566370614359173e-6_dp
@@ -693,9 +692,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL, ALLOCATABLE :: SurfWeight(:)
    TYPE(ValueHandle_t), SAVE :: mu_h
    REAL(KIND=dp), POINTER :: muTensor(:,:)
-   LOGICAL :: HasReluctivityFunction, HBIntegProblem 
+   LOGICAL :: HasReluctivityFunction, HBIntegProblem, MaterialExponents
    REAL(KIND=dp) :: rdummy
-   INTEGER :: mudim, ElementalMode, cdofs
+   INTEGER :: mudim, ElementalMode, cdofs, LossN
 
    TYPE VariableArray_t
      TYPE(Variable_t), POINTER :: Field => Null()
@@ -703,7 +702,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    TYPE(VariableArray_t) :: NodalFieldPointers(32), ElementalFieldPointers(32)
    TYPE(Variable_t), POINTER :: FieldVariable
-   LOGICAL :: EigenAnalysis, VtuStyle
+   LOGICAL :: EigenAnalysis, VtuStyle, OldLossKeywords
    INTEGER :: Field, FieldsToCompute, NOFEigen, MaxFields
 
 !-------------------------------------------------------------------------------------------
@@ -963,33 +962,35 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        .OR. ASSOCIATED( ML2 ) .OR. ASSOCIATED( EL_ML2 ) 
 
    IF (LossEstimation) THEN
-      FreqPower = GetCReal( SolverParams,'Harmonic Loss Linear Frequency Exponent',Found )
-      IF( .NOT. Found ) FreqPower = 1.0_dp
+     OldLossKeywords = ListCheckPrefixAnyMaterial( Model,'Harmonic Loss Linear Frequency Exponent') 
+     MaterialExponents = ListCheckPrefixAnyMaterial( Model,'Harmonic Loss Frequency Exponent') 
+     MaterialExponents = MaterialExponents .OR. OldLossKeywords
 
-      FreqPower2 = GetCReal( SolverParams,'Harmonic Loss Quadratic Frequency Exponent',Found )
-      IF( .NOT. Found ) FreqPower2 = 2.0_dp
+     ! Fixed for now. FourierLoss solver more generic here. 
+     LossN = 2 
+          
+     IF(.NOT. MaterialExponents) THEN
+       OldLossKeywords = ListCheckPresent(SolverParams,'Harmonic Loss Linear Frequency Exponent')
+       CALL GetLossExponents(SolverParams,FreqPower,FieldPower,LossN,OldLossKeywords)
+     END IF
 
-      FieldPower = GetCReal( SolverParams,'Harmonic Loss Linear Exponent',Found ) 
-      IF( .NOT. Found ) FieldPower = 2.0_dp
-      FieldPower = FieldPower / 2.0_dp
+     IF( OldLossKeywords ) THEN
+       IF(.NOT. ListCheckPresentAnyMaterial( Model,'Harmonic Loss Linear Coefficient') ) THEN
+         CALL Warn('MagnetoDynamicsCalcFields',&
+             'Harmonic loss requires > Harmonic Loss Linear Coefficient < in material section!')
+       END IF
 
-      FieldPower2 = GetCReal( SolverParams,'Harmonic Loss Quadratic Exponent',Found ) 
-      IF( .NOT. Found ) FieldPower2 = 2.0_dp
-      FieldPower2 = FieldPower2 / 2.0_dp
+       IF(.NOT. ListCheckPresentAnyMaterial( Model,'Harmonic Loss Quadratic Coefficient') ) THEN
+         CALL Warn('MagnetoDynamicsCalcFields',&
+             'Harmonic loss requires > Harmonic Loss Quadratic Coefficient < in material section!')
+       END IF       
 
-      IF(.NOT. ListCheckPresentAnyMaterial( Model,'Harmonic Loss Linear Coefficient') ) THEN
-        CALL Warn('MagnetoDynamicsCalcFields',&
-            'Harmonic loss requires > Harmonic Loss Linear Coefficient < in material section!')
-      END IF
-
-      IF(.NOT. ListCheckPresentAnyMaterial( Model,'Harmonic Loss Quadratic Coefficient') ) THEN
-        CALL Warn('MagnetoDynamicsCalcFields',&
-            'Harmonic loss requires > Harmonic Loss Quadratic Coefficient < in material section!')
-      END IF
-
-      ComponentLoss = 0.0_dp
-      ALLOCATE( BodyLoss(3,Model % NumberOfBodies) )
-      BodyLoss = 0.0_dp
+       CALL Info('MagnetoDynamicsCalcFields','Consider using more generic keywords for loss computation!')
+     END IF
+     
+     ComponentLoss = 0.0_dp
+     ALLOCATE( BodyLoss(3,Model % NumberOfBodies) )
+     BodyLoss = 0.0_dp
    END IF
 
    HomogenizationLoss = ASSOCIATED(PL) .OR. ASSOCIATED(EL_PL)
@@ -2014,32 +2015,41 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          ! Compute a loss estimate for cos and sin modes:
          !-------------------------------------------------
          IF (LossEstimation) THEN
-           LossCoeff = ListGetFun( Material,'Harmonic Loss Linear Coefficient',Freq,Found ) 
-           LossCoeff2 = ListGetFun( Material,'Harmonic Loss Quadratic Coefficient',Freq,Found ) 
+           IF( OldLossKeywords ) THEN
+             LossCoeff(1) = ListGetFun( Material,'Harmonic Loss Linear Coefficient',Freq,Found ) 
+             LossCoeff(2) = ListGetFun( Material,'Harmonic Loss Quadratic Coefficient',Freq,Found ) 
+           ELSE
+             DO l=1,LossN               
+               LossCoeff(l) = ListGetFun( Material,&
+                   'Harmonic Loss Coefficient '//I2S(l),Freq, Found)      
+             END DO
+           END IF
+
+             
+           IF(MaterialExponents) THEN
+             CALL GetLossExponents(Material,FreqPower,FieldPower,LossN,OldLossKeywords)
+           END IF
+           
            ! No losses to add if loss coefficient is not given
-           IF( Found ) THEN
-             Coeff = 0.0_dp
-             Coeff2 = 0.0_dp
+           IF( Found .OR. MaterialExponents ) THEN
+             ElemLoss = 0.0_dp
              DO l=1,2
                ValAtIP = SUM( B(l,1:3) ** 2 )
-               Coeff = Coeff + s * Basis(p) * LossCoeff * ( Freq ** FreqPower ) * ( ValAtIp ** FieldPower )
-               Coeff2 = Coeff2 + s * Basis(p) * LossCoeff2 * ( Freq ** FreqPower2 ) * ( ValAtIp ** FieldPower2 )
-               ComponentLoss(1,l) = ComponentLoss(1,l) + Coeff
-               BodyLoss(1,BodyId) = BodyLoss(1,BodyId) + Coeff 
-               ComponentLoss(2,l) = ComponentLoss(2,l) + Coeff2
-               BodyLoss(2,BodyId) = BodyLoss(2,BodyId) + Coeff2
+               ElemLoss(1) = ElemLoss(1) + s * Basis(p) * LossCoeff(1) * ( Freq ** FreqPower(1) ) * ( ValAtIp ** FieldPower(1) )
+               ElemLoss(2) = ElemLoss(2) + s * Basis(p) * LossCoeff(2) * ( Freq ** FreqPower(2) ) * ( ValAtIp ** FieldPower(2) )
+               ComponentLoss(:,l) = ComponentLoss(:,l) + ElemLoss
+               BodyLoss(:,BodyId) = BodyLoss(:,BodyId) + ElemLoss
              END DO
            ELSE
-             Coeff = 0.0_dp
-             Coeff2 = 0.0_dp
+             ElemLoss = 0.0_dp
            END IF
 
            IF ( ASSOCIATED(ML) .OR. ASSOCIATED(EL_ML) ) THEN
-             FORCE(p,k+1) = FORCE(p,k+1) + Coeff
+             FORCE(p,k+1) = FORCE(p,k+1) + ElemLoss(1)
              k = k + 1
            END IF
            IF ( ASSOCIATED(ML2) .OR. ASSOCIATED(EL_ML2) ) THEN
-             FORCE(p,k+1) = FORCE(p,k+1) + Coeff2
+             FORCE(p,k+1) = FORCE(p,k+1) + ElemLoss(2)
              k = k + 1
            END IF
          END IF
@@ -3007,6 +3017,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
 CONTAINS
 
+  
 !-------------------------------------------------------------------
   SUBROUTINE SumElementalVariable(Var, Values, BodyId, uAdditive)
 !-------------------------------------------------------------------
