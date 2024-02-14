@@ -970,7 +970,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      LossN = 2 
           
      IF(.NOT. MaterialExponents) THEN
-       OldLossKeywords = ListCheckPresent(SolverParams,'Harmonic Linear Frequency Exponent')
+       OldLossKeywords = ListCheckPresent(SolverParams,'Harmonic Loss Linear Frequency Exponent')
        CALL GetLossExponents(SolverParams,FreqPower,FieldPower,LossN,OldLossKeywords)
      END IF
 
@@ -984,8 +984,10 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          CALL Warn('MagnetoDynamicsCalcFields',&
              'Harmonic loss requires > Harmonic Loss Quadratic Coefficient < in material section!')
        END IF       
-     END IF
 
+       CALL Info('MagnetoDynamicsCalcFields','Consider using more generic keywords for loss computation!')
+     END IF
+     
      ComponentLoss = 0.0_dp
      ALLOCATE( BodyLoss(3,Model % NumberOfBodies) )
      BodyLoss = 0.0_dp
