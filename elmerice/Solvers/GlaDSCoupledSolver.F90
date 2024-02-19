@@ -1206,7 +1206,7 @@
               CycleNode = .FALSE.
               IF (UseGM.OR.UseGC) THEN
                 ! Cycle ungrounded nodes and zero hydrology variables
-                MaskStatus = ProcessMasks(UseGM, UseGC, ZeroSheetAtGL, k)
+                MaskStatus = ProcessMasks(UseGM, UseGC, ZeroSheetAtGL, j)
                 SELECT CASE (MaskStatus)
                 CASE (MASK_ALL)
                   CycleNode = .TRUE.
@@ -1218,7 +1218,7 @@
               END IF
               IF (ZeroSheetWithHP) THEN
                 HydPotVar => VariableGet(Mesh % Variables, "hydraulic potential", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
-                IF(HydPotVar % Values(k).EQ.0.0) THEN
+                IF(HydPotVar % Values( HydPotVar % perm(j) ).EQ.0.0) THEN
                   CycleNode = .TRUE.
                 END IF
                 NULLIFY(HydPotVar)
@@ -1308,7 +1308,7 @@
                      CYCLE
                    END IF
                  END IF
-                
+                 
                  EdgeNodes % x(1:n) = Mesh % Nodes % x(Edge % NodeIndexes(1:n))
                  EdgeNodes % y(1:n) = Mesh % Nodes % y(Edge % NodeIndexes(1:n))
                  EdgeNodes % z(1:n) = Mesh % Nodes % z(Edge % NodeIndexes(1:n))
