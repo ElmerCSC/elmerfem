@@ -25519,19 +25519,19 @@ CONTAINS
   !> The linear search only makes sense for a small number of points. 
   !> Users include saving routines of pointwise information. 
   !-----------------------------------------------------------------
-  FUNCTION ClosestNodeInMesh(Mesh,Coord,MinDist) RESULT ( NodeIndx )
+  FUNCTION ClosestNodeInMesh(Mesh,Coord,MinDist,DoParallel) RESULT ( NodeIndx )
     TYPE(Mesh_t) :: Mesh
     REAL(KIND=dp) :: Coord(3)
     REAL(KIND=dp), OPTIONAL :: MinDist
+    LOGICAL, OPTIONAL :: DoParallel
     INTEGER :: NodeIndx
 
-    REAL(KIND=dp) :: Dist2,MinDist2,NodeCoord(3)
+    REAL(KIND=dp) :: Dist2,MinDist2,ParDist2, NodeCoord(3)
     INTEGER :: i
 
     MinDist2 = HUGE( MinDist2 ) 
 
-    DO i=1,Mesh % NumberOfNodes
-      
+    DO i=1,Mesh % NumberOfNodes      
       NodeCoord(1) = Mesh % Nodes % x(i)
       NodeCoord(2) = Mesh % Nodes % y(i)
       NodeCoord(3) = Mesh % Nodes % z(i)
@@ -25543,6 +25543,16 @@ CONTAINS
       END IF
     END DO
     
+    ! In parallel only return a hit in the correct partition.
+    IF(PRESENT(DoParallel)) THEN
+      IF( DoParallel ) THEN
+        ParDist2 = ParallelReduction(MinDist2,1)
+        IF(ABS(ParDist2-MinDist2) > 1.0e-20 ) THEN
+          NodeIndx = 0
+        END IF
+      END IF
+    END IF
+      
     IF( PRESENT( MinDist ) ) MinDist = SQRT( MinDist2 ) 
 
   END FUNCTION ClosestNodeInMesh
