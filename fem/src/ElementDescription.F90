@@ -8920,6 +8920,11 @@ END SUBROUTINE PickActiveFace
                CurlBasis(21:27:2,:) = sqrt(fs1) * CurlBasis(21:27:2,:)
                EdgeBasis(22:28:2,:) = sqrt(fs2) * EdgeBasis(22:28:2,:)
                CurlBasis(22:28:2,:) = sqrt(fs2) * CurlBasis(22:28:2,:)                 
+
+               EdgeBasis(29:30,:) = sqrt(506.9d0) * EdgeBasis(29:30,:)
+               CurlBasis(29:30,:) = sqrt(506.9d0) * CurlBasis(29:30,:)
+               EdgeBasis(31,:) = sqrt(167.8d0) * EdgeBasis(31,:)
+               CurlBasis(31,:) = sqrt(167.8d0) * CurlBasis(31,:)
              END IF
              
            ELSE
@@ -9565,6 +9570,11 @@ END SUBROUTINE PickActiveFace
              CurlBasis(36,2) = EdgeBasis(36,1)/h3 * dh3
              CurlBasis(36,3) = (Sqrt(3.0d0) - 3.0d0*Sqrt(3.0d0)*u - 3.0d0*v)/12.0d0 * h3
 
+             IF (ScaleFaceBasis) THEN
+               EdgeBasis(35:36,1:2) = sqrt(150.0d0) * EdgeBasis(35:36,1:2)
+               CurlBasis(35:36,1:3) = sqrt(150.0d0) * CurlBasis(35:36,1:3)
+             END IF
+             
            ELSE
              !--------------------------------------------------------------
              ! The lowest-order element from the optimal family. The optimal
