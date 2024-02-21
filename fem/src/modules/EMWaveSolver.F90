@@ -66,7 +66,7 @@ SUBROUTINE EMWaveSolver_Init0(Model,Solver,dt,Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: SolverParams
-  LOGICAL :: Found, SecondOrder, PiolaVersion
+  LOGICAL :: Found, SecondOrder, SecondKind, PiolaVersion
   REAL(KIND=dp) :: mu0, eps0
   INTEGER :: mat_id
   TYPE(ValueList_t), POINTER  :: List
@@ -78,10 +78,13 @@ SUBROUTINE EMWaveSolver_Init0(Model,Solver,dt,Transient)
       PiolaVersion = .TRUE.
     ELSE
       PiolaVersion = GetLogical(SolverParams, 'Use Piola Transform', Found )   
+      SecondKind = GetLogical(SolverParams, 'Second Kind Basis', Found ) 
     END IF    
     IF( SecondOrder ) THEN
       CALL ListAddString( SolverParams, "Element", &
           "n:0 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )           
+    ELSE IF (SecondKind) THEN    
+      CALL ListAddString( SolverParams, "Element", "n:0 e:2" )
     ELSE IF (PiolaVersion) THEN    
       CALL ListAddString( SolverParams, "Element", "n:0 e:1 -quad b:2 -brick b:3 -quad_face b:2" )
     ELSE
@@ -163,19 +166,11 @@ SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
   CALL Info('EMWaveSolver','Solving electromagnetic waves in time',Level=5)
 
   SolverParams => GetSolverParams()
+  
+  CALL EdgeElementStyle(SolverParams, PiolaVersion, BasisDegree = EdgeBasisDegree ) 
 
-  SecondOrder = GetLogical( SolverParams, 'Quadratic Approximation', Found )  
-  IF( SecondOrder ) THEN
-    PiolaVersion = .TRUE.
-    EdgeBasisDegree = 2
-  ELSE
-    PiolaVersion = GetLogical( SolverParams,'Use Piola Transform', Found )
-    EdgeBasisDegree = 1
-  END IF
-
-  IF (CoordinateSystemDimension() == 2) THEN
-    IF (.NOT. PiolaVersion) &
-        CALL Fatal('EMWaveSolver', 'A 2D model needs Use Piola Transform = True')
+  IF (CoordinateSystemDimension() == 2 .AND. .NOT. PiolaVersion) THEN
+    CALL Fatal('EMWaveSolver', 'A 2D model needs Use Piola Transform = True')
   END IF
 
   dofs = Solver % Variable % Dofs
@@ -763,12 +758,7 @@ END SUBROUTINE EMWaveCalcFields_Init
    END IF
    dofs = 3
    
-   SecondOrder = GetLogical( pSolver % Values, 'Quadratic Approximation', Found )  
-   IF( SecondOrder ) THEN
-     PiolaVersion = .TRUE.
-   ELSE
-     PiolaVersion = GetLogical( pSolver % Values,'Use Piola Transform', Found ) 
-   END IF
+   CALL EdgeElementStyle(pSolver % Values, PiolaVersion )
    IF (PiolaVersion) CALL Info('EMWaveCalcFields', &
        'Using Piola transformed finite elements', Level=5)
 
