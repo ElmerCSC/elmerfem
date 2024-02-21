@@ -86,7 +86,6 @@ SUBROUTINE HelmholtzProjector(Model, Solver, dt, TransientSimulation)
   LOGICAL :: Found
   LOGICAL :: PiolaVersion, SecondOrder
   LOGICAL :: ConstantBulkMatrix, ReadySystemMatrix
-!  LOGICAL :: SecondFamily
 
   INTEGER :: dim, PotDOFs
   INTEGER :: i, n, n_pot, nd_pot, t
@@ -147,18 +146,10 @@ SUBROUTINE HelmholtzProjector(Model, Solver, dt, TransientSimulation)
   ! Find some parameters to inherit the vector FE basis as defined in 
   ! the primary solver:
   !
-  SecondOrder = GetLogical(SolverPtr % Values, 'Quadratic Approximation', Found)  
-
-  IF (SecondOrder) THEN
-    PiolaVersion = .TRUE.
-  ELSE
-    PiolaVersion = GetLogical(SolverPtr % Values, 'Use Piola Transform', Found) 
-  END IF
-
+  
+  CALL EdgeElementStyle(SolverPtr % Values, PiolaVersion, QuadraticApproximation = SecondOrder )
   IF (PiolaVersion) CALL Info('HelmholtzProjector', &
       'Using Piola-transformed finite elements', Level=5)
-
-!  SecondFamily = GetLogical(SolverPtr % Values, 'Second Kind Basis', Found)
 
   !-----------------------
   ! System assembly:
@@ -257,24 +248,14 @@ CONTAINS
       IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
     END IF
 
+    IF( dim == 2 .AND. .NOT. PiolaVersion) THEN
+      CALL Fatal('HelmholtzProjector', '"Use Piola Transform = True" needed in 2D')
+    END IF
+    
     DO t=1,IP % n
-
-      u = IP % U(t)
-      v = IP % V(t)
-      w = IP % W(t)
-
-      IF (PiolaVersion) THEN
-        stat = EdgeElementInfo(Element, Nodes, u, v, w, DetF=DetJ, &
-            Basis=Basis, EdgeBasis=WBasis, dBasisdx=DBasis, &
-            BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-      ELSE
-        stat = ElementInfo(Element, Nodes, u, v, w, detJ, Basis, DBasis)
-        IF( dim == 3 ) THEN
-          CALL GetEdgeBasis(Element, WBasis, CurlWBasis, Basis, DBasis)
-        ELSE
-          CALL Fatal('HelmholtzProjector', 'Use Piola Transform = True needed in 2D')
-        END IF
-      END IF
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis, DBasis, EdgeBasis = WBasis, &
+          RotBasis = CurlWBasis, USolver = SolverPtr ) 
 
       A(1,1:dim) = MATMUL(PotSol(1,n_pot+1:nd_pot), WBasis(1:nd_pot-n_pot,1:dim))
       s = detJ * IP % s(t)
@@ -376,7 +357,6 @@ SUBROUTINE RemoveKernelComponent(Model, Solver, dt, TransientSimulation)
   LOGICAL :: Found
   LOGICAL :: PiolaVersion, SecondOrder
   LOGICAL :: ConstantBulkMatrix, ReadySystemMatrix
-!  LOGICAL :: SecondFamily
 
   INTEGER :: dim, PotDOFs
   INTEGER :: i, j, k, n, nd, n_pot, nd_pot, t
@@ -458,18 +438,11 @@ SUBROUTINE RemoveKernelComponent(Model, Solver, dt, TransientSimulation)
   !
   ! Find some parameters to inherit the vector FE basis as defined in the primary solver:
   !
-  SecondOrder = GetLogical(SolverPtr % Values, 'Quadratic Approximation', Found)  
-
-  IF (SecondOrder) THEN
-    PiolaVersion = .TRUE.
-  ELSE
-    PiolaVersion = GetLogical(SolverPtr % Values, 'Use Piola Transform', Found) 
-  END IF
+  
+  CALL EdgeElementStyle(SolverPtr % Values, PiolaVersion, QuadraticApproximation = SecondOrder )
 
   IF (PiolaVersion) CALL Info('RemoveKernelComponent', &
       'Using Piola-transformed finite elements', Level=5)
-
-!  SecondFamily = GetLogical(SolverPtr % Values, 'Second Kind Basis', Found)
 
   !-----------------------
   ! System assembly:
@@ -564,7 +537,7 @@ CONTAINS
 
     INTEGER :: i, j, p, q, t, EdgeBasisDegree 
 
-    REAL(KIND=dp) :: u, v, w, s, DetJ
+    REAL(KIND=dp) :: s, DetJ
     REAL(KIND=dp) :: Basis(n), DBasis(n,3) 
     REAL(KIND=dp) :: WBasis(nd,3), CurlWBasis(nd,3)
     REAL(KIND=dp) :: A(3)
@@ -576,33 +549,22 @@ CONTAINS
 
     IF (SecondOrder) THEN
       EdgeBasisDegree = 2  
-      IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
-          EdgeBasisDegree=EdgeBasisDegree)
     ELSE
       EdgeBasisDegree = 1
-      IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    END IF
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+        EdgeBasisDegree=EdgeBasisDegree)
+
+    IF( dim == 2 .AND. .NOT. PiolaVersion) THEN
+      CALL Fatal('RemoveKernelComponent', '"Use Piola Transform = True" needed in 2D')
     END IF
 
-
+    
     DO t=1,IP % n
-
-      u = IP % U(t)
-      v = IP % V(t)
-      w = IP % W(t)
-
-      IF (PiolaVersion) THEN
-        stat = EdgeElementInfo(Element, Nodes, u, v, w, DetF=DetJ, &
-            Basis=Basis, EdgeBasis=WBasis, dBasisdx=DBasis, &
-            BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-      ELSE
-        stat = ElementInfo(Element, Nodes, u, v, w, detJ, Basis, DBasis)
-        IF( dim == 3 ) THEN
-          CALL GetEdgeBasis(Element, WBasis, CurlWBasis, Basis, DBasis)
-        ELSE
-          CALL Fatal('RemoveKernelComponent', 'Use Piola Transform = True needed in 2D')
-        END IF
-      END IF
-
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis, DBasis, EdgeBasis = WBasis, &
+          RotBasis = CurlWBasis, USolver = SolverPtr ) 
+      
       s = detJ * IP % s(t)
 
       A = 0.0d0

@@ -220,12 +220,7 @@ CONTAINS
       IF(.NOT. ASSOCIATED(FixSol) ) THEN
         CALL Warn(Caller,'Could not find variable: '//TRIM(GlobalRhsName)//' fix')
       END IF
-      PiolaT = GetLogical( GSolver % Values,'Use Piola Transform',Found)
-      IF( GetLogical( GSolver % Values,'Quadratic Approximation',Found) ) THEN
-        EdgeBasisDegree = 2
-      ELSE
-        EdgeBasisDegree = 1
-      END IF
+      CALL EdgeElementStyle(GSolver % Values, PiolaT, BasisDegree = EdgeBasisDegree ) 
     ELSE
       CALL Fatal(Caller,'Currently we assume edge basis!')
     END IF

@@ -764,7 +764,7 @@ CONTAINS
     INTEGER :: ncomp
     
     INTEGER :: elem,i,j,k,p,q,n,nd,nt,t,BodyId,nsum
-    TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
+    TYPE(GaussIntegrationPoints_t), TARGET :: IP
     TYPE(Nodes_t) :: Nodes
     TYPE(Element_t), POINTER :: Element, TargetElement
     REAL(KIND=dp) :: weight,coeff,coeff2,detJ,GradAtIp(3,3),CurlAtIP(3),ValAtIp
@@ -831,7 +831,7 @@ CONTAINS
 
       ! Integrate over local element:
       ! -----------------------------
-      IntegStuff = GaussPoints( Element )
+      IP = GaussPoints( Element )
       STIFF  = 0.0_dp
       FORCE  = 0.0_dp
 
@@ -842,27 +842,17 @@ CONTAINS
         CALL GetLossExponents(Material,FreqPower,FieldPower,Ncomp)
       END IF
 
-      DO t=1,IntegStuff % n
+      DO t=1,IP % n
         IF( DirectField ) THEN
           ! For direct field we don't need the curl i.e. no dBasisdx needed
-          Found = ElementInfo( Element, Nodes, IntegStuff % u(t), &
-              IntegStuff % v(t), IntegStuff % w(t), detJ, Basis )
+          Found = ElementInfo( Element, Nodes, IP % u(t), &
+              IP % v(t), IP % w(t), detJ, Basis )
         ELSE
-          Found = ElementInfo( Element, Nodes, IntegStuff % u(t), &
-              IntegStuff % v(t), IntegStuff % w(t), detJ, Basis, dBasisdx )
-        END IF
-          
-        !---------------------------------------------------------------------
-        ! Get edge basis functions if needed. Given that only linear edge
-        ! interpolation functions are available currently, the following should 
-        ! work. If higher-order versions become available, we then need to add 
-        ! an argument which specifies the approximation degree.  
-        !---------------------------------------------------------------------
-        IF (AVField) THEN
-          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx) 
-        END IF
-
-        Weight = IntegStuff % s(t) * detJ
+          Found = ElementInfo( Element, Nodes, IP % u(t), IP % V(t), &
+              IP % W(t), detJ, Basis, dBasisdx, EdgeBasis = WBasis, &
+              RotBasis = RotWBasis, USolver = TargetSolverPtr )           
+        END IF        
+        Weight = IP % s(t) * detJ
 
         ! As there are so many components it does not really pay of much to save
         ! the matrix. The r.h.s. will always be more laboursome to assembly.
