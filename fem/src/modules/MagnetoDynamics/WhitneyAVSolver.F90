@@ -92,15 +92,8 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
   LagrangeGauge = GetLogical(SolverParams, 'Use Lagrange Gauge', Found)
   
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
-    PiolaVersion = GetLogical(SolverParams, &
-        'Use Piola Transform', Found )   
-    SecondOrder = GetLogical(SolverParams, 'Quadratic Approximation', Found)
-    SecondFamily = GetLogical(SolverParams, 'Second Kind Basis', Found)
-    IF (.NOT. PiolaVersion .AND. ( SecondOrder .OR. SecondFamily) ) THEN
-      CALL Warn("WhitneyAVSolver_Init0", "Setting Use Piola Transform = True.")
-      PiolaVersion = .TRUE.
-      CALL ListAddLogical( SolverParams, 'Use Piola Transform', .TRUE. )
-    END IF
+    ! We use one place where all the edge element keywords are defined and checked.
+    CALL EdgeElementStyle(SolverParams, PiolaVersion, SecondFamily, SecondOrder, Check = .TRUE. )
 
     IF (PiolaVersion) Paramlist = Paramlist + b_Piola
     IF (SecondOrder) Paramlist = Paramlist + b_Secondorder
@@ -108,7 +101,6 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
     IF (StaticConductivity) Paramlist = Paramlist + b_StaticCond
     IF (Transient .OR. ElectroDynamics) Paramlist = Paramlist + b_Transient
     IF (SecondFamily) ParamList = ParamList + b_SecondFamily
-
     
     SELECT CASE (Paramlist)
     CASE (b_Piola + b_Transient + b_Secondorder, &
@@ -3426,19 +3418,11 @@ SUBROUTINE RemoveKernelComponentT_Init0(Model, Solver, dt, Transient)
   CALL ListAddString( SolverParams, 'Potential Variable', AVName )
 
   IF (.NOT. ListCheckPresent(SolverParams, "Element")) THEN
-    PiolaVersion = ListGetLogical(Model % Solvers(i) % Values, 'Use Piola Transform', Found)
-    SecondOrder = ListGetLogical(Model % Solvers(i) % Values, 'Quadratic Approximation', Found)
-    SecondKind = ListGetLogical(Model % Solvers(i) % Values, 'Second Kind Basis', Found)
+    CALL EdgeElementStyle(Model % Solvers(i) % Values, PiolaVersion, SecondKind, SecondOrder )
     
-    CALL ListAddLogical(SolverParams, 'Use Piola Transform', PiolaVersion )
-    CALL ListAddLogical(SolverParams, 'Quadratic Approximation', SecondOrder )
-
-    IF (.NOT. PiolaVersion .AND. SecondOrder) THEN
-      CALL Warn("RemoveKernelComponent_Init0", &
-           "Quadratic Approximation requested without Use Piola Transform " &
-           //"Setting Use Piola Transform = True.")
-      PiolaVersion = .TRUE.
-    END IF
+    IF(PiolaVersion) CALL ListAddLogical(SolverParams, 'Use Piola Transform', PiolaVersion )
+    IF(SecondOrder) CALL ListAddLogical(SolverParams, 'Quadratic Approximation', SecondOrder )
+    IF(SecondKind) CALL ListAddLogical(SolverParams, 'Second Kind Basis', SecondKind )
 
     IF (SecondOrder) THEN
       CALL ListAddString(SolverParams, "Element", &

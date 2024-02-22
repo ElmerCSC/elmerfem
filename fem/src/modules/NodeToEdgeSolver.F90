@@ -255,37 +255,26 @@ SUBROUTINE NodeToEdgeField_Init0(Model, Solver, dt, Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: Params
-  LOGICAL :: Found, PiolaVersion, SecondOrder
+  LOGICAL :: Found, PiolaVersion, SecondOrder, SecondKind
 !------------------------------------------------------------------------------
   Params => GetSolverParams()
   CALL ListAddLogical(Params, 'Linear System Refactorize', .FALSE.)
 
   IF (.NOT. ListCheckPresent(Params, "Element")) THEN
-    !
-    ! Automatization is not perfect due to the early phase when this 
-    ! routine is called; 'Use Piola Transform' and 'Quadratic Approximation'
-    ! must be repeated in two solver sections.
-    !
-    PiolaVersion = GetLogical(Params, 'Use Piola Transform', Found)   
-    SecondOrder = GetLogical(Params, 'Quadratic Approximation', Found)
-    IF (.NOT. PiolaVersion .AND. SecondOrder) THEN
-      CALL Warn("NodeToEdgeField_Init0", &
-           "Quadratic Approximation requested without Use Piola Transform " &
-           //"Setting Use Piola Transform = True.")
-      PiolaVersion = .TRUE.
-      CALL ListAddLogical(Params, 'Use Piola Transform', .TRUE.)
-    END IF
+    ! We use one place where all the edge element keywords are defined and checked.
+    CALL EdgeElementStyle(Params, PiolaVersion, SecondKind, SecondOrder, Check = .TRUE. )
 
     IF (SecondOrder) THEN
       CALL ListAddString(Params, "Element", &
           "n:0 e:2 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2")
+    ELSE IF(SecondKind) THEN
+      CALL ListAddString(Params, "Element", &
+          "n:0 e:2")
+    ELSE IF (PiolaVersion) THEN
+      CALL ListAddString(Params, "Element", &
+          "n:0 e:1 -brick b:3 -quad_face b:2")
     ELSE
-      IF (PiolaVersion) THEN
-        CALL ListAddString(Params, "Element", &
-            "n:0 e:1 -brick b:3 -quad_face b:2")
-      ELSE
-        CALL ListAddString( Params, "Element", "n:0 e:1")
-      END IF
+      CALL ListAddString( Params, "Element", "n:0 e:1")
     END IF
   END IF
 !------------------------------------------------------------------------------

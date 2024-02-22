@@ -49,7 +49,7 @@ SUBROUTINE WhitneyAVHarmonicSolver_Init0(Model,Solver,dt,Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: SolverParams
-  LOGICAL :: Found, PiolaVersion, SecondOrder
+  LOGICAL :: Found, PiolaVersion, SecondOrder, SecondFamily
   CHARACTER(:), ALLOCATABLE :: ElemType
 
   TYPE(Solver_t), POINTER :: Solvers(:)
@@ -59,19 +59,15 @@ SUBROUTINE WhitneyAVHarmonicSolver_Init0(Model,Solver,dt,Transient)
   
   SolverParams => GetSolverParams()
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
-    SecondOrder = GetLogical(SolverParams, 'Quadratic Approximation', Found)
-    IF( SecondOrder ) THEN
-      PiolaVersion = .TRUE.
-    ELSE
-      PiolaVersion = GetLogical(SolverParams, 'Use Piola Transform', Found )
-    END IF
+    ! We use one place where all the edge element keywords are defined and checked.
+    CALL EdgeElementStyle(SolverParams, PiolaVersion, SecondFamily, SecondOrder, Check = .TRUE. )
 
-    IF (PiolaVersion) THEN          
-      IF (SecondOrder) THEN
-        ElemType = "n:1 e:2 -brick b:6 -prism b:2 -pyramid b:3 -quad_face b:4 -tri_face b:2" 
-      ELSE
-        ElemType = "n:1 e:1 -brick b:3 -quad_face b:2" 
-      END IF
+    IF (SecondOrder) THEN
+      ElemType = "n:1 e:2 -brick b:6 -prism b:2 -pyramid b:3 -quad_face b:4 -tri_face b:2" 
+    ELSE IF( SecondFamily ) THEN
+      ElemType = "n:1 e:2"
+    ELSE IF( PiolaVersion ) THEN
+      ElemType = "n:1 e:1 -brick b:3 -quad_face b:2" 
     ELSE
       ElemType = "n:1 e:1"
     END IF
@@ -2817,7 +2813,7 @@ SUBROUTINE RemoveKernelComponent_Init0(Model, Solver, dt, Transient)
   TYPE(ValueList_t), POINTER :: SolverParams
   INTEGER :: i,j
   CHARACTER(LEN=MAX_NAME_LEN) :: Avname
-  LOGICAL :: Found, PiolaVersion, SecondOrder
+  LOGICAL :: Found, PiolaVersion, SecondOrder, SecondFamily
 !------------------------------------------------------------------------------
   SolverParams => GetSolverParams()
   CALL ListAddLogical(SolverParams, 'Linear System Refactorize', .FALSE.)
@@ -2847,28 +2843,19 @@ SUBROUTINE RemoveKernelComponent_Init0(Model, Solver, dt, Transient)
   IF(j>0) AVname = AVname(1:j-1)
   CALL ListAddString( GetSolverParams(), 'Potential Variable', AVName )
 
-  IF (.NOT. ListCheckPresent(SolverParams, "Element")) THEN
-    PiolaVersion = ListGetLogical(Model % Solvers(i) % Values, 'Use Piola Transform', Found)
-    SecondOrder = ListGetLogical(Model % Solvers(i) % Values, 'Quadratic Approximation', Found)
-
-    IF (.NOT. PiolaVersion .AND. SecondOrder) THEN
-      CALL Warn("RemoveKernelComponent_Init0", &
-           "Quadratic Approximation requested without Use Piola Transform " &
-           //"Setting Use Piola Transform = True.")
-      PiolaVersion = .TRUE.
-      CALL ListAddLogical(SolverParams, 'Use Piola Transform', .TRUE.)
-    END IF
+  IF (.NOT. ListCheckPresent(SolverParams, "Element")) THEN   
+    CALL EdgeElementStyle(Model % Solvers(i) % Values, PiolaVersion, SecondFamily, SecondOrder )
 
     IF (SecondOrder) THEN
       CALL ListAddString(SolverParams, "Element", &
           "n:0 e:2 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2")
+    ELSE IF (SecondFamily) THEN
+      CALL ListAddString(SolverParams, "Element", "n:0 e:2")
+    ELSE IF (PiolaVersion) THEN
+      CALL ListAddString(SolverParams, "Element", &
+          "n:0 e:1 -brick b:3 -quad_face b:2")
     ELSE
-      IF (PiolaVersion) THEN
-        CALL ListAddString(SolverParams, "Element", &
-            "n:0 e:1 -brick b:3 -quad_face b:2")
-      ELSE
-        CALL ListAddString( SolverParams, "Element", "n:0 e:1")
-      END IF
+      CALL ListAddString( SolverParams, "Element", "n:0 e:1")
     END IF
   END IF
 

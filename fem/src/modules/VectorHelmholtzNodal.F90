@@ -177,7 +177,8 @@ SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
   IF( SecondOrder ) THEN
     PiolaVersion = .TRUE.
   ELSE
-    PiolaVersion = ListGetLogicalAnySolver(Model, 'Use Piola Transform' )
+    PiolaVersion = ListGetLogicalAnySolver(Model, 'Use Piola Transform' ) .OR. &
+        ListGetLogicalAnySOlver(Model,"Second Kind Basis")    
   END IF
 
   PrecUse = ListGetLogical( Params,'Preconditioning Solver',Found ) 

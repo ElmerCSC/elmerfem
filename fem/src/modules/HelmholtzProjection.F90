@@ -292,37 +292,25 @@ SUBROUTINE RemoveKernelComponent_Init0(Model, Solver, dt, Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: SolverParams
-  LOGICAL :: Found, PiolaVersion, SecondOrder
+  LOGICAL :: Found, PiolaVersion, SecondOrder, SecondKind
 !------------------------------------------------------------------------------
   SolverParams => GetSolverParams()
   CALL ListAddLogical(SolverParams, 'Linear System Refactorize', .FALSE.)
 
   IF (.NOT. ListCheckPresent(SolverParams, "Element")) THEN
-    !
-    ! Automatization is not perfect due to the early phase when this 
-    ! routine is called; 'Use Piola Transform' and 'Quadratic Approximation'
-    ! must be repeated in two solver sections.
-    !
-    PiolaVersion = GetLogical(SolverParams, 'Use Piola Transform', Found)   
-    SecondOrder = GetLogical(SolverParams, 'Quadratic Approximation', Found)
-    IF (.NOT. PiolaVersion .AND. SecondOrder) THEN
-      CALL Warn("RemoveKernelComponent_Init0", &
-           "Quadratic Approximation requested without Use Piola Transform " &
-           //"Setting Use Piola Transform = True.")
-      PiolaVersion = .TRUE.
-      CALL ListAddLogical(SolverParams, 'Use Piola Transform', .TRUE.)
-    END IF
+    ! We use one place where all the edge element keywords are defined and checked.
+    CALL EdgeElementStyle(SolverParams, PiolaVersion, SecondKind, SecondOrder, Check = .TRUE. )
 
     IF (SecondOrder) THEN
       CALL ListAddString(SolverParams, "Element", &
           "n:0 e:2 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2")
+    ELSE IF (SecondKind) THEN
+      CALL ListAddString(SolverParams, "Element","n:0 e:2")
+    ELSE IF (PiolaVersion) THEN
+      CALL ListAddString(SolverParams, "Element", &
+          "n:0 e:1 -brick b:3 -quad_face b:2")
     ELSE
-      IF (PiolaVersion) THEN
-        CALL ListAddString(SolverParams, "Element", &
-            "n:0 e:1 -brick b:3 -quad_face b:2")
-      ELSE
-        CALL ListAddString( SolverParams, "Element", "n:0 e:1")
-      END IF
+      CALL ListAddString( SolverParams, "Element", "n:0 e:1")
     END IF
   END IF
 !------------------------------------------------------------------------------
