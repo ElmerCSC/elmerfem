@@ -127,14 +127,9 @@
      ! Inherit the solution basis from the primary solver
      vDOFs = Evar % DOFs
      IF( vDofs /= 2 ) CALL Fatal(Caller,'Primary field should have two components!')
-     IF( GetLogical( pSolver % Values,'Quadratic Approximation', Found ) ) THEN
-       PiolaVersion = .TRUE.
-       EdgeBasisDegree = 2
-     ELSE
-       PiolaVersion = GetLogical( pSolver % Values,'Use Piola Transform', Found )
-       EdgeBasisDegree = 1
-     END IF
-     IF (PiolaVersion) CALL Info(Caller,'Using Piola transformed finite elements',Level=5)
+
+     CALL EdgeElementStyle(pSolver % Values, PiolaVersion, BasisDegree = EdgeBasisDegree ) 
+     IF (PiolaVersion) CALL Info(Caller,'Using Piola transformed finite elements',Level=8)
    END IF
   
    

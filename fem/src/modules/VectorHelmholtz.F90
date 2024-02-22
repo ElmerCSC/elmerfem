@@ -89,24 +89,17 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
   END IF
   
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
-    SecondOrder = GetLogical( SolverParams, 'Quadratic Approximation', Found )
-    SecondFamily = GetLogical( SolverParams, 'Second Kind Basis', Found )
-    IF( SecondOrder .OR. SecondFamily) THEN
-      PiolaVersion = .TRUE.
-    ELSE
-      PiolaVersion = GetLogical(SolverParams, 'Use Piola Transform', Found )   
-    END IF
+    ! We use one place where all the edge element keywords are defined and checked.
+    CALL EdgeElementStyle(SolverParams, PiolaVersion, SecondFamily, SecondOrder, Check = .TRUE. )
     
     IF (WithNDOFs) THEN
       IF ( SecondOrder ) THEN
         CALL ListAddString( SolverParams, "Element", &
             "n:1 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )
-      ELSE IF ( PiolaVersion ) THEN
-        IF (SecondFamily) THEN
-          CALL ListAddString( SolverParams, "Element", "n:1 e:2" )
-        ELSE
-          CALL ListAddString( SolverParams, "Element", "n:1 e:1 -quad b:2 -brick b:3 -quad_face b:2" )
-        END IF
+      ELSE IF( SecondFamily ) THEN
+        CALL ListAddString( SolverParams, "Element", "n:1 e:2" )
+      ELSE IF( PiolaVersion ) THEN
+        CALL ListAddString( SolverParams, "Element", "n:1 e:1 -quad b:2 -brick b:3 -quad_face b:2" )
       ELSE
         CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
       END IF      
@@ -114,12 +107,10 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
       IF( SecondOrder ) THEN
         CALL ListAddString( SolverParams, "Element", &
             "n:0 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )
-      ELSE IF ( PiolaVersion ) THEN
-        IF (SecondFamily) THEN
-          CALL ListAddString( SolverParams, "Element", "n:0 e:2" )
-        ELSE
-          CALL ListAddString( SolverParams, "Element", "n:0 e:1 -quad b:2 -brick b:3 -quad_face b:2" )
-        END IF
+      ELSE IF (SecondFamily) THEN
+        CALL ListAddString( SolverParams, "Element", "n:0 e:2" )
+      ELSE IF( PiolaVersion ) THEN
+        CALL ListAddString( SolverParams, "Element", "n:0 e:1 -quad b:2 -brick b:3 -quad_face b:2" )
       ELSE
         CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
       END IF

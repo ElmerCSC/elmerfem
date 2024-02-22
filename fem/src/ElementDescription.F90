@@ -3031,13 +3031,15 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-   SUBROUTINE EdgeElementStyle(VList, PiolaVersion, SecondFamily, QuadraticApproximation, BasisDegree ) 
+   SUBROUTINE EdgeElementStyle(VList, PiolaVersion, SecondFamily, QuadraticApproximation, &
+       BasisDegree, Check ) 
 
      TYPE(ValueList_t), POINTER :: VList
      LOGICAL :: PiolaVersion
      LOGICAL, OPTIONAL :: SecondFamily
      LOGICAL, OPTIONAL :: QuadraticApproximation
-     INTEGER, OPTIONAL :: BasisDegree 
+     INTEGER, OPTIONAL :: BasisDegree
+     LOGICAL, OPTIONAL :: Check
      
      LOGICAL :: Found, Quadratic, Second 
      
@@ -3066,6 +3068,30 @@ CONTAINS
      IF(PRESENT(QuadraticApproximation)) THEN
        QuadraticApproximation = Quadratic
      END IF
+
+     ! When initializing the consistancy of the keywords may be checked.
+     ! Also always add the Piola flag since it determines the type of IP's.
+     IF( PRESENT(Check)) THEN
+       IF(Check) THEN
+         IF(PiolaVersion) THEN
+           IF(.NOT. ListCheckPresent(Vlist,'Use Piola Transform')) THEN
+             IF(Quadratic) THEN
+               CALL Info('EdgeElementStyle','"Quadratic Approximation" requested without Piola. ' &
+                   //'Setting "Use Piola Transform = True"')
+             ELSE IF( Second ) THEN
+               CALL Info('EdgeElementStyle','"Second Kind Basis" requested without Piola. ' &
+                   //'Setting "Use Piola Transform = True"')
+             END IF
+             CALL ListAddLogical(Vlist,'Use Piola Transform',.TRUE.)
+           END IF
+         END IF
+         IF(Quadratic) THEN
+           IF( ListGetLogical(Vlist,'Second Kind Basis', Found ) ) THEN
+             CALL Warn('EdgeElementStyle','"Second Kind Basis" not available as quadratic!')
+           END IF
+         END IF
+       END IF
+     END IF    
      
    END SUBROUTINE EdgeElementStyle
 

@@ -1184,14 +1184,6 @@ MODULE LumpingUtils
         Params => avar % Solver % Values
 
         CALL EdgeElementStyle(avar % Solver % Values, PiolaVersion, BasisDegree = EdgeBasisDegree ) 
-
-        !IF( ListGetLogical(Params,'Quadratic Approximation',Found )) THEN
-        !  EdgeBasisDegree = 2
-        !  PiolaVersion = .TRUE.
-        !ELSE
-        !  PiolaVersion = ListGetLogical(Params,'Piola Version',Found) &              
-        !      .OR. ListGetLogical(avar % solver % Values,'Second Kind Basis',Found)
-        !END IF
       END IF      
       
       DO t=1, Mesh % NumberOfFaces
@@ -1350,18 +1342,8 @@ MODULE LumpingUtils
 
     EdgeBasis = .FALSE.
     IF(avar % dofs <= 2) THEN
-      EdgeBasis = .TRUE.
-      
+      EdgeBasis = .TRUE.      
       CALL EdgeElementStyle(avar % Solver % Values, PiolaVersion, BasisDegree = EdgeBasisDegree ) 
-
-      !EdgeBasisDegree = 1
-      !IF( ListGetLogical(avar % Solver % Values,'Quadratic Approximation',Found )) THEN
-      !  EdgeBasisDegree = 2
-      !  PiolaVersion = .TRUE.
-      !ELSE
-      !  PiolaVersion = ListGetLogical(avar % solver % Values,'Piola Version',Found) &
-      !      .OR. ListGetLogical(avar % solver % Values,'Second Kind Basis',Found)            
-      !END IF
     END IF
 
     AIint = 0.0_dp

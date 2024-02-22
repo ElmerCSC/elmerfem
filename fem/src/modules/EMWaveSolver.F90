@@ -73,13 +73,7 @@ SUBROUTINE EMWaveSolver_Init0(Model,Solver,dt,Transient)
   
   SolverParams => GetSolverParams()  
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
-    SecondOrder = GetLogical( SolverParams, 'Quadratic Approximation', Found )  
-    IF( SecondOrder ) THEN
-      PiolaVersion = .TRUE.
-    ELSE
-      PiolaVersion = GetLogical(SolverParams, 'Use Piola Transform', Found )   
-      SecondKind = GetLogical(SolverParams, 'Second Kind Basis', Found ) 
-    END IF    
+    CALL EdgeElementStyle(SolverParams, PiolaVersion, SecondKind, SecondOrder, Check = .TRUE. )
     IF( SecondOrder ) THEN
       CALL ListAddString( SolverParams, "Element", &
           "n:0 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )           
