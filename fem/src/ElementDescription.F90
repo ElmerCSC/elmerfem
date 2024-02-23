@@ -3069,7 +3069,7 @@ CONTAINS
        QuadraticApproximation = Quadratic
      END IF
 
-     ! When initializing the consistancy of the keywords may be checked.
+     ! When initializing the consistency of the keywords may be checked.
      ! Also always add the Piola flag since it determines the type of IP's.
      IF( PRESENT(Check)) THEN
        IF(Check) THEN
