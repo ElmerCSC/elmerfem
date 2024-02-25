@@ -324,7 +324,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
        LocalTemperature(:),ElasticModulus(:,:,:),PoissonRatio(:), Density(:), &
        Damping(:), HeatExpansionCoeff(:,:,:),Alpha(:,:),Beta(:), &
        ReferenceTemperature(:),BoundaryDispl(:),LocalDisplacement(:,:), PrevSOL(:), &
-       PrevLocalDisplacement(:,:), SpringCoeff(:,:,:), LocalExternalForce(:)
+       PrevLocalDisplacement(:,:), SpringCoeff(:,:,:), LocalExternalForce(:), &
+       DisplacementRot(:), LocalForceSaved(:)
          
   REAL(KIND=dp) :: UNorm, TransformMatrix(3,3), Tdiff, Normal(3), s, UnitNorm, DragCoeff
   REAL(KIND=dp) :: Norm, NonlinTol, NonlinRes0, NonlinRes, time 
@@ -676,6 +677,9 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   END IF
 
   ALLOCATE( PrevSOL(SIZE(Displacement)) )
+  ALLOCATE(DisplacementRot(SIZE(Displacement)))
+  ALLOCATE(LocalForceSaved(STDOFs*N))
+
   PrevSOL = Displacement
   IF (UseUMAT) THEN
     IF (.NOT. ASSOCIATED(StiffMatrix % BulkRHS)) &
@@ -1167,7 +1171,9 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
              ! ---------------------------------------------------------------------------
              ValuesSaved => StiffMatrix % RHS
              StiffMatrix % RHS => StiffMatrix % BulkRHS
+             LocalForceSaved = LocalForce
              CALL DefaultUpdateForce(LocalForce)
+             LocalForce = LocalForceSaved
              Solver % Matrix % RHS => ValuesSaved
            END IF
 
@@ -1204,10 +1210,13 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
        ! the Dirichlet BCs for the complete field. Modify BCs so that the right BC
        ! is obtained for the solution increment.
        ! ---------------------------------------------------------------------------------
+       DisplacementRot = Displacement
+       CALL RotateNTSystemAll(DisplacementRot, StressPerm, STDOFs)
+       
        IF (ALLOCATED(StiffMatrix % ConstrainedDOF)) THEN
          DO i=1,StiffMatrix % NumberOfRows
            IF (StiffMatrix % ConstrainedDOF(i)) THEN
-             StiffMatrix % DValues(i) = StiffMatrix % DValues(i) - Displacement(i)
+             StiffMatrix % DValues(i) = StiffMatrix % DValues(i) - DisplacementRot(i)
            END IF
          END DO
          CALL EnforceDirichletConditions(Solver, StiffMatrix, ForceVector)
@@ -1369,6 +1378,9 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   END IF
 
   DEALLOCATE( PrevSOL )
+  DEALLOCATE(DisplacementRot)
+  DEALLOCATE(LocalForceSaved)
+
 
   CALL DefaultFinish()
   
