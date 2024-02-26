@@ -1591,24 +1591,16 @@ END BLOCK
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+           IP % W(t), detJ, Basis, dBasisdx )
+      CALL GetParentUVW(Element,GetElementNOFNodes(Element),Parent,n,uu,v,w,Basis)
+      
       IF (PiolaVersion) THEN
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-                  IP % W(t), detJ, Basis, dBasisdx )
-
-        CALL GetParentUVW(Element,GetElementNOFNodes(Element),Parent,n,uu,v,w,Basis)
- 
         stat = EdgeElementInfo( Parent, PNodes, uu, v, w, &
               DetF = PDetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-
       ELSE
-
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-                  IP % W(t), detJ, Basis, dBasisdx )
-
-        CALL GetParentUVW(Element,GetElementNOFNodes(Element),Parent,n,uu,v,w,Basis)
         stat = ElementInfo( Parent, PNodes, uu,v,w, pdetJ, Basis, dBasisdx )
-
         CALL GetEdgeBasis(Parent,WBasis,RotWBasis,Basis,dBasisdx)
       END IF
 
@@ -2390,7 +2382,7 @@ END SUBROUTINE LocalConstraintMatrix
 
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
           IP % W(t), detJ, Basis, dBasisdx, EdgeBasis = WBasis, &
-          USolver = pSolver )
+          RotBasis = RotWBasis, USolver = pSolver )
       
        B  = SUM(Basis(1:n) * Bcoef(1:n))
        L  = MATMUL(LOAD(1:3,1:n), Basis(1:n))
@@ -3231,7 +3223,10 @@ SUBROUTINE HelmholtzProjectorT(Model, Solver, dt, TransientSimulation)
     END IF
   END DO
 
-  IF (.NOT. Found ) THEN
+  IF (Found ) THEN
+    CALL Info('HelmholtzProjector', 'Solver inherits potential '&
+         //TRIM(PotName)//' from solver: '//I2S(i),Level=7)
+  ELSE
     CALL Fatal('HelmholtzProjector', 'Solver associated with potential variable > '&
         //TRIM(PotName)//' < not found!')
   END IF

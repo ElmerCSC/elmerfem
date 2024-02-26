@@ -1153,24 +1153,16 @@ END BLOCK
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
-      IF (PiolaVersion) THEN
-
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                   IP % W(t), detJ, Basis, dBasisdx )
 
-        CALL GetParentUVW(Element,GetElementNOFNodes(Element),Parent,n,uu,v,w,Basis)
- 
+      CALL GetParentUVW(Element,GetElementNOFNodes(Element),Parent,n,uu,v,w,Basis)
+      IF (PiolaVersion) THEN 
         stat = EdgeElementInfo( Parent, PNodes, uu, v, w, &
               DetF = PDetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
       ELSE
-
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-                  IP % W(t), detJ, Basis, dBasisdx )
-
-        CALL GetParentUVW(Element,GetElementNOFNodes(Element),Parent,n,uu,v,w,Basis)
         stat = ElementInfo( Parent, PNodes, uu,v,w, pdetJ, Basis, dBasisdx )
-
         CALL GetEdgeBasis(Parent,WBasis,RotWBasis,Basis,dBasisdx)
       END IF
 
@@ -2617,7 +2609,7 @@ SUBROUTINE HelmholtzProjector(Model, Solver, dt, TransientSimulation)
 
     ALLOCATE( FORCE(2,n), STIFF(n,n), PotSol(2,n), STAT=istat )
     IF ( istat /= 0 ) THEN
-      CALL Fatal( 'HelmholtzProjector', 'Memory allocation error.' )
+      CALL Fatal( 'HelmholtzProjectorZ', 'Memory allocation error.' )
     END IF
     AllocationsDone = .TRUE.
   END IF
@@ -2636,8 +2628,11 @@ SUBROUTINE HelmholtzProjector(Model, Solver, dt, TransientSimulation)
     END IF
   END DO
 
-  IF (.NOT. Found ) THEN
-    CALL Fatal('HelmholtzProjector', 'Solver associated with potential variable > '&
+  IF (Found ) THEN
+    CALL Info('HelmholtzProjectorZ', 'Solver inherits potential '&
+         //TRIM(PotName)//' from solver: '//I2S(i),Level=7)
+  ELSE
+    CALL Fatal('HelmholtzProjectorZ', 'Solver associated with potential variable > '&
         //TRIM(PotName)//' < not found!')
   END IF
 
@@ -2646,7 +2641,7 @@ SUBROUTINE HelmholtzProjector(Model, Solver, dt, TransientSimulation)
   ! the primary solver:
   !
   CALL EdgeElementStyle(SolverPtr % Values, PiolaVersion, QuadraticApproximation = SecondOrder )
-  IF (PiolaVersion) CALL Info('HelmholtzProjector', &
+  IF (PiolaVersion) CALL Info('HelmholtzProjectorZ', &
       'Using Piola-transformed finite elements', Level=5)
 
   n = Solver % Matrix % NumberOfRows
@@ -2719,7 +2714,7 @@ SUBROUTINE HelmholtzProjector(Model, Solver, dt, TransientSimulation)
 
     k = SolverPtr % Variable % Perm(i)
     IF (k == 0) THEN
-      CALL Fatal('HelmholtzProjector', &
+      CALL Fatal('HelmholtzProjectorZ', &
         'The variable and potential permutations are nonmatching?')
     END IF
 
@@ -2767,8 +2762,8 @@ CONTAINS
     END IF       
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
         EdgeBasisDegree=EdgeBasisDegree)
-    IF( dim == 3 .AND. .NOT. PiolaVersion ) THEN
-      CALL Fatal('HelmholtzProjector', '"Use Piola Transform = True" needed in 2D')
+    IF( dim == 2 .AND. .NOT. PiolaVersion ) THEN
+      CALL Fatal('HelmholtzProjectorZ', '"Use Piola Transform = True" needed in 2D')
     END IF
         
     DO t=1,IP % n
