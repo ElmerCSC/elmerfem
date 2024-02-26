@@ -53,7 +53,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
   INTEGER, POINTER :: Active(:)
   INTEGER :: mysolver,i,j,k,l,n,m,vDOFs, soln,pIndex
   TYPE(ValueList_t), POINTER :: SolverParams, DGSolverParams
-  TYPE(Solver_t), POINTER :: Solvers(:), PSolver
+  TYPE(Solver_t), POINTER :: Solvers(:)
 
   ! This is really using DG so we don't need to make any dirty tricks to create DG fields
   ! as is done in this initialization. 
@@ -744,7 +744,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    CALL EdgeElementStyle(pSolver % Values, PiolaVersion, BasisDegree = EdgeBasisDegree ) 
    IF (PiolaVersion) &
        CALL Info('MagnetoDynamicsCalcFields', &
-       'Using Piola transformed finite elements',Level=5)
+       'Using Piola transformed finite elements',Level=7)
       
    ElectricPotName = GetString(SolverParams, 'Precomputed Electric Potential', PrecomputedElectricPot)
    IF (PrecomputedElectricPot) THEN
@@ -1299,7 +1299,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      
      ! Calculate nodal fields:
      ! -----------------------
-     pRef = dim==3 .AND. PiolaVersion .OR. isPelement(element)
+     pRef = ( dim==3 .AND. PiolaVersion ) .OR. isPelement(element)
      IF( ElementalMode >= 3 ) THEN
        IF( ElementalMode == 3 ) THEN
          IP = CornerGaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=pRef)
@@ -2411,7 +2411,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    
     
    IF( UseElementalNF ) THEN
-
+      CALL Info('MagnetoDynamicsCalcFields','Doing elemental nodal force stuff!',Level=20)
+            
      ! Collect nodal forces from airgaps
      CALL CalcBoundaryModels()
 
@@ -2457,7 +2458,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          CALL ListAddConstReal( CompParams,'res: magnetic torque', val )
        END IF
      END DO
-   ELSE 
+  ELSE
+      CALL Info('MagnetoDynamicsCalcFields','Doing nodal nodal force stuff!',Level=20)
+     
      DO j=1,Model % NumberOfComponents
        CompParams => Model % Components(j) % Values
 
@@ -3182,11 +3185,11 @@ CONTAINS
       LeftFORCE = 0.0_dp
       RightFORCE = 0.0_dp
 
-      IP = GaussPoints(BElement, EdgeBasis=dim==3, PReferenceElement=PiolaVersion, &
+      IP = GaussPoints(BElement, EdgeBasis=(dim==3), PReferenceElement=PiolaVersion, &
           EdgeBasisDegree=EdgeBasisDegree)
       
       DO j = 1,IP % n
-        stat = ElementInfo( Element, Nodes, IP % U(j), IP % V(j), &
+        stat = ElementInfo( BElement, Nodes, IP % U(j), IP % V(j), &
             IP % W(j), detJ, Basis, dBasisdx, &
             EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
 
