@@ -55,6 +55,8 @@ SUBROUTINE HelmholtzProjector_Init(Model, Solver, dt, Transient)
   SolverParams => GetSolverParams()
   CALL ListAddLogical(SolverParams, 'Linear System Refactorize', .FALSE.)
 
+
+  
 !------------------------------------------------------------------------------
 END SUBROUTINE HelmholtzProjector_Init
 !------------------------------------------------------------------------------
@@ -110,7 +112,7 @@ SUBROUTINE HelmholtzProjector(Model, Solver, dt, TransientSimulation)
     n = Mesh % MaxElementDOFs
     ALLOCATE( Force(n), Stiff(n,n), PotSol(1,n), STAT=istat )
     IF ( istat /= 0 ) THEN
-      CALL Fatal( 'HelmholtzProjector', 'Memory allocation error.' )
+      CALL Fatal( 'HelmholtzProjection', 'Memory allocation error.' )
     END IF
     AllocationsDone = .TRUE.
   END IF
@@ -134,13 +136,16 @@ SUBROUTINE HelmholtzProjector(Model, Solver, dt, TransientSimulation)
     END IF
   END DO
 
-  IF (.NOT. Found ) THEN
-    CALL Fatal('HelmholtzProjector', 'Solver associated with potential variable > '&
+  IF(Found) THEN
+    CALL Info('HelmholtzProjection', 'Solver inherits potential '&
+         //TRIM(PotName)//' from solver: '//I2S(i),Level=7)
+  ELSE
+    CALL Fatal('HelmholtzProjection', 'Solver associated with potential variable > '&
         //TRIM(PotName)//' < not found!')
   END IF
-
+  
   PotDOFs = SolverPtr % Variable % DOFs
-  IF (PotDOFs > 1) CALL Fatal('HelmholtzProjector', 'A real-valued potential expected')
+  IF (PotDOFs > 1) CALL Fatal('HelmholtzProjection', 'A real-valued potential expected')
 
   !
   ! Find some parameters to inherit the vector FE basis as defined in 
@@ -148,7 +153,7 @@ SUBROUTINE HelmholtzProjector(Model, Solver, dt, TransientSimulation)
   !
   
   CALL EdgeElementStyle(SolverPtr % Values, PiolaVersion, QuadraticApproximation = SecondOrder )
-  IF (PiolaVersion) CALL Info('HelmholtzProjector', &
+  IF (PiolaVersion) CALL Info('HelmholtzProjection', &
       'Using Piola-transformed finite elements', Level=5)
 
   !-----------------------
@@ -249,7 +254,7 @@ CONTAINS
     END IF
 
     IF( dim == 2 .AND. .NOT. PiolaVersion) THEN
-      CALL Fatal('HelmholtzProjector', '"Use Piola Transform = True" needed in 2D')
+      CALL Fatal('HelmholtzProjection', '"Use Piola Transform = True" needed in 2D')
     END IF
     
     DO t=1,IP % n
