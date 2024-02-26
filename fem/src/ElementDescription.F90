@@ -3031,6 +3031,71 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+   SUBROUTINE EdgeElementStyle(VList, PiolaVersion, SecondFamily, QuadraticApproximation, &
+       BasisDegree, Check ) 
+
+     TYPE(ValueList_t), POINTER :: VList
+     LOGICAL :: PiolaVersion
+     LOGICAL, OPTIONAL :: SecondFamily
+     LOGICAL, OPTIONAL :: QuadraticApproximation
+     INTEGER, OPTIONAL :: BasisDegree
+     LOGICAL, OPTIONAL :: Check
+     
+     LOGICAL :: Found, Quadratic, Second 
+     
+     Quadratic = ListGetLogical(VList,'Quadratic Approximation', Found )      
+     IF( Quadratic ) THEN
+       Second = .FALSE.
+       PiolaVersion = .TRUE.
+     ELSE       
+       Second = ListGetLogical(Vlist,'Second Kind Basis', Found )
+       IF(Second) THEN
+         PiolaVersion = .TRUE.
+       ELSE    
+         PiolaVersion = ListGetLogical(Vlist,'Use Piola Transform', Found )
+       END IF
+     END IF
+
+     IF(PRESENT(SecondFamily)) THEN
+       SecondFamily = Second
+     END IF
+     
+     IF(PRESENT(BasisDegree)) THEN
+       BasisDegree = 1
+       IF(Quadratic) BasisDegree = 2
+     END IF
+
+     IF(PRESENT(QuadraticApproximation)) THEN
+       QuadraticApproximation = Quadratic
+     END IF
+
+     ! When initializing the consistency of the keywords may be checked.
+     ! Also always add the Piola flag since it determines the type of IP's.
+     IF( PRESENT(Check)) THEN
+       IF(Check) THEN
+         IF(PiolaVersion) THEN
+           IF(.NOT. ListCheckPresent(Vlist,'Use Piola Transform')) THEN
+             IF(Quadratic) THEN
+               CALL Info('EdgeElementStyle','"Quadratic Approximation" requested without Piola. ' &
+                   //'Setting "Use Piola Transform = True"')
+             ELSE IF( Second ) THEN
+               CALL Info('EdgeElementStyle','"Second Kind Basis" requested without Piola. ' &
+                   //'Setting "Use Piola Transform = True"')
+             END IF
+             CALL ListAddLogical(Vlist,'Use Piola Transform',.TRUE.)
+           END IF
+         END IF
+         IF(Quadratic) THEN
+           IF( ListGetLogical(Vlist,'Second Kind Basis', Found ) ) THEN
+             CALL Warn('EdgeElementStyle','"Second Kind Basis" not available as quadratic!')
+           END IF
+         END IF
+       END IF
+     END IF    
+     
+   END SUBROUTINE EdgeElementStyle
+
+   
 !------------------------------------------------------------------------------
 !>  Return the referential description b(f(p)) of the basis function b(x),
 !>  with f mapping points p on a reference element to points x on a physical
@@ -3095,20 +3160,9 @@ CONTAINS
      
      IF(PRESENT(EdgeBasis)) THEN       
        IF( .NOT. ASSOCIATED( PrevSolver, PSolver ) ) THEN
-         PrevSolver => pSolver          
-         IF( ListGetLogical(pSolver % Values,'Quadratic Approximation', Found ) ) THEN
-           EdgeBasisDegree = 2
-           PerformPiolaTransform = .TRUE.
-           SecondFamily = .FALSE.
-         ELSE
-           EdgeBasisDegree = 1
-           SecondFamily = ListGetLogical(pSolver % Values,'Second Kind Basis', Found )
-           IF (SecondFamily) THEN
-             PerformPiolaTransform = .TRUE.
-           ELSE
-             PerformPiolaTransform = ListGetLogical(pSolver % Values,'Use Piola Transform', Found )
-           END IF
-         END IF
+         PrevSolver => pSolver                  
+         CALL EdgeElementStyle(pSolver % Values, PerformPiolaTransform, SecondFamily, &
+             BasisDegree = EdgeBasisDegree )
        END IF
        IF( PerformPiolaTransform ) THEN       
          stat = EdgeElementInfo(Element,Nodes,u,v,w,detF=Detj,Basis=Basis, &
@@ -3116,7 +3170,6 @@ CONTAINS
              SecondFamily = SecondFamily, BasisDegree = EdgeBasisDegree, &
              ApplyPiolaTransform = PerformPiolaTransform )
        ELSE
-         ! Is this really necessary to call in case no piola version? 
          stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis, dBasisdx )
          CALL GetEdgeBasis(Element,EdgeBasis,RotBasis,Basis,dBasisdx)         
        END IF
@@ -10716,8 +10769,8 @@ END SUBROUTINE PickActiveFace
      END FUNCTION EdgeElementInfo
 !------------------------------------------------------------------------------
 
-
-
+     
+     
 !----------------------------------------------------------------------------
      SUBROUTINE TriangleFaceDofsOrdering(I1,I2,D1,D2,Ind)       
 !-----------------------------------------------------------------------------

@@ -255,37 +255,26 @@ SUBROUTINE NodeToEdgeField_Init0(Model, Solver, dt, Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: Params
-  LOGICAL :: Found, PiolaVersion, SecondOrder
+  LOGICAL :: Found, PiolaVersion, SecondOrder, SecondKind
 !------------------------------------------------------------------------------
   Params => GetSolverParams()
   CALL ListAddLogical(Params, 'Linear System Refactorize', .FALSE.)
 
   IF (.NOT. ListCheckPresent(Params, "Element")) THEN
-    !
-    ! Automatization is not perfect due to the early phase when this 
-    ! routine is called; 'Use Piola Transform' and 'Quadratic Approximation'
-    ! must be repeated in two solver sections.
-    !
-    PiolaVersion = GetLogical(Params, 'Use Piola Transform', Found)   
-    SecondOrder = GetLogical(Params, 'Quadratic Approximation', Found)
-    IF (.NOT. PiolaVersion .AND. SecondOrder) THEN
-      CALL Warn("NodeToEdgeField_Init0", &
-           "Quadratic Approximation requested without Use Piola Transform " &
-           //"Setting Use Piola Transform = True.")
-      PiolaVersion = .TRUE.
-      CALL ListAddLogical(Params, 'Use Piola Transform', .TRUE.)
-    END IF
+    ! We use one place where all the edge element keywords are defined and checked.
+    CALL EdgeElementStyle(Params, PiolaVersion, SecondKind, SecondOrder, Check = .TRUE. )
 
     IF (SecondOrder) THEN
       CALL ListAddString(Params, "Element", &
           "n:0 e:2 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2")
+    ELSE IF(SecondKind) THEN
+      CALL ListAddString(Params, "Element", &
+          "n:0 e:2")
+    ELSE IF (PiolaVersion) THEN
+      CALL ListAddString(Params, "Element", &
+          "n:0 e:1 -brick b:3 -quad_face b:2")
     ELSE
-      IF (PiolaVersion) THEN
-        CALL ListAddString(Params, "Element", &
-            "n:0 e:1 -brick b:3 -quad_face b:2")
-      ELSE
-        CALL ListAddString( Params, "Element", "n:0 e:1")
-      END IF
+      CALL ListAddString( Params, "Element", "n:0 e:1")
     END IF
   END IF
 !------------------------------------------------------------------------------
@@ -305,7 +294,7 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
-  TYPE(Solver_t) :: Solver
+  TYPE(Solver_t), TARGET :: Solver
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
@@ -316,16 +305,16 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
   TYPE(Element_t), POINTER :: Element
 
   LOGICAL :: Found
-  LOGICAL :: PiolaVersion, SecondOrder
+  LOGICAL :: PiolaVersion
   LOGICAL :: ConstantBulkMatrix, ReadySystemMatrix, IsComplex, IsIm
   TYPE(Variable_t), POINTER :: NodalVar, EdgeVar, ThisVar
   
   INTEGER :: dim, dofs, i, j, k, l, n, nd, t, imoffset
-  INTEGER :: istat, active, ActiveComp
+  INTEGER :: istat, active, ActiveComp, EdgeBasisDegree
   INTEGER, POINTER :: NodeIndexes(:)  
   REAL(KIND=dp), ALLOCATABLE :: Stiff(:,:), Force(:), Anodal(:,:)
   REAL(KIND=dp) :: Norm
-
+  TYPE(Solver_t), POINTER :: pSolver  
   CHARACTER(LEN=MAX_NAME_LEN) :: Name
   CHARACTER(*), PARAMETER :: Caller = 'NodeToEdgeField'
 
@@ -336,6 +325,7 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
   dim = CoordinateSystemDimension()
   Params => GetSolverParams()
   Mesh => GetMesh()
+  pSolver => Solver
   
   ! Check if accelerated assembly is desired:
   ConstantBulkMatrix = GetLogical(Params, 'Constant Bulk Matrix', Found)
@@ -391,12 +381,7 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
   
   ! These should be consistent with the primary solver!!
   !-------------------------------------------------------------------------------------
-  SecondOrder = GetLogical(Params, 'Quadratic Approximation', Found)  
-  IF (SecondOrder) THEN
-    PiolaVersion = .TRUE.
-  ELSE
-    PiolaVersion = GetLogical(Params, 'Use Piola Transform', Found) 
-  END IF
+  CALL EdgeElementStyle(Params, PiolaVersion, BasisDegree = EdgeBasisDegree ) 
   IF (PiolaVersion) CALL Info(Caller,'Using Piola-transformed finite elements', Level=5)
 
   !-----------------------
@@ -442,7 +427,7 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
     ! Get element local matrix and rhs vector:
     !----------------------------------------
     CALL LocalMatrix(Stiff, Force, Element, n, nd, dim, PiolaVersion, &
-        SecondOrder, Anodal, ReadySystemMatrix)
+        EdgeBasisDegree, Anodal, ReadySystemMatrix)
     
     ! Update global matrix and rhs vector from local matrix & vector:
     !---------------------------------------------------------------
@@ -516,12 +501,13 @@ CONTAINS
 
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrix(Stiff, Force, Element, n, nd, dim, PiolaVersion, &
-      SecondOrder, Anodal, ReadySystemMatrix)
+      EdgeBasisDegree, Anodal, ReadySystemMatrix)
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Stiff(:,:), Force(:)
     TYPE(Element_t), POINTER :: Element
     INTEGER :: n, nd, dim
-    LOGICAL :: PiolaVersion, SecondOrder
+    LOGICAL :: PiolaVersion
+    INTEGER :: EdgeBasisDegree
     REAL(KIND=dp) :: Anodal(:,:)
     LOGICAL :: ReadySystemMatrix  ! A flag to suppress the integration of Stiff
 !------------------------------------------------------------------------------
@@ -530,9 +516,9 @@ CONTAINS
 
     LOGICAL :: Stat
 
-    INTEGER :: i, j, p, q, t, EdgeBasisDegree 
+    INTEGER :: i, j, p, q, t
 
-    REAL(KIND=dp) :: u, v, w, s, DetJ
+    REAL(KIND=dp) :: s, DetJ
     REAL(KIND=dp) :: Basis(n), DBasis(n,3) 
     REAL(KIND=dp) :: WBasis(nd,3), CurlWBasis(nd,3)
     REAL(KIND=dp) :: Aip(3)
@@ -542,35 +528,16 @@ CONTAINS
     Stiff = 0.0d0
     Force = 0.0d0
 
-    IF (SecondOrder) THEN
-      EdgeBasisDegree = 2  
-      IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
-          EdgeBasisDegree=EdgeBasisDegree)
-    ELSE
-      EdgeBasisDegree = 1
-      IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+        EdgeBasisDegree=EdgeBasisDegree)
+    IF( dim == 2 .AND. .NOT. PiolaVersion ) THEN
+      CALL Fatal(Caller, '"Use Piola Transform = True" needed in 2D')
     END IF
 
-
     DO t=1,IP % n
-
-      u = IP % U(t)
-      v = IP % V(t)
-      w = IP % W(t)
-
-      IF (PiolaVersion) THEN
-        stat = EdgeElementInfo(Element, Nodes, u, v, w, DetF=DetJ, &
-            Basis=Basis, EdgeBasis=WBasis, dBasisdx=DBasis, &
-            BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-      ELSE
-        stat = ElementInfo(Element, Nodes, u, v, w, detJ, Basis, DBasis)
-        IF( dim == 3 ) THEN
-          CALL GetEdgeBasis(Element, WBasis, CurlWBasis, Basis, DBasis)
-        ELSE
-          CALL Fatal(Caller, 'Use Piola Transform = True needed in 2D')
-        END IF
-      END IF
-
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis, DBasis, EdgeBasis = WBasis, &
+          RotBasis = CurlWBasis, USolver = pSolver )             
       s = detJ * IP % s(t)
 
       Aip = 0.0d0

@@ -1182,13 +1182,8 @@ MODULE LumpingUtils
       IF(avar % dofs <= 2) THEN
         EdgeBasis = .TRUE.
         Params => avar % Solver % Values
-        EdgeBasisDegree = 1
-        IF( ListGetLogical(Params,'Quadratic Approximation',Found )) THEN
-          EdgeBasisDegree = 2
-          PiolaVersion = .TRUE.
-        ELSE
-          PiolaVersion = ListGetLogical(Params,'Piola Version',Found)
-        END IF
+
+        CALL EdgeElementStyle(avar % Solver % Values, PiolaVersion, BasisDegree = EdgeBasisDegree ) 
       END IF      
       
       DO t=1, Mesh % NumberOfFaces
@@ -1250,15 +1245,20 @@ MODULE LumpingUtils
           IF(.NOT. EdgeBasis) THEN
             stat = ElementInfo( Element,ElementNodes,&
                 IP % U(l),IP % V(l),IP % W(l), DetJ, Basis )             
-          ELSE IF ( PiolaVersion ) THEN
-            stat = EdgeElementInfo(Element, ElementNodes, IP % U(l), IP % V(l), IP % W(l), &
-                DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, dBasisdx = dBasisdx, &
-                BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-          ELSE
-            stat = ElementInfo(Element, ElementNodes, IP % U(l), IP % V(l), IP % W(l), &
-                detJ, Basis, dBasisdx)           
-            CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+          ELSE 
+            stat = ElementInfo( Element, ElementNodes, IP % U(l), IP % V(l), &
+                IP % W(l), detJ, Basis, dBasisdx, EdgeBasis = WBasis, &
+                RotBasis = RotWBasis, USolver = avar % Solver )
           END IF
+
+          !   stat = EdgeElementInfo(Element, ElementNodes, IP % U(l), IP % V(l), IP % W(l), &
+          !       DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, dBasisdx = dBasisdx, &
+          !       BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+          ! ELSE
+          !   stat = ElementInfo(Element, ElementNodes, IP % U(l), IP % V(l), IP % W(l), &
+          !       detJ, Basis, dBasisdx)           
+          !   CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+          ! END IF
           
           s = DetJ * IP % s(l)            
           Area = Area + S
@@ -1342,14 +1342,8 @@ MODULE LumpingUtils
 
     EdgeBasis = .FALSE.
     IF(avar % dofs <= 2) THEN
-      EdgeBasis = .TRUE.
-      EdgeBasisDegree = 1
-      IF( ListGetLogical(avar % Solver % Values,'Quadratic Approximation',Found )) THEN
-        EdgeBasisDegree = 2
-        PiolaVersion = .TRUE.
-      ELSE
-        PiolaVersion = ListGetLogical(avar % solver % Values,'Piola Version',Found)
-      END IF
+      EdgeBasis = .TRUE.      
+      CALL EdgeElementStyle(avar % Solver % Values, PiolaVersion, BasisDegree = EdgeBasisDegree ) 
     END IF
 
     AIint = 0.0_dp
@@ -1436,15 +1430,20 @@ MODULE LumpingUtils
         IF(.NOT. EdgeBasis) THEN
           stat = ElementInfo( Element,ElementNodes,&
               IP % U(l),IP % V(l),IP % W(l), DetJ, Basis )             
-        ELSE IF ( PiolaVersion ) THEN
-          stat = EdgeElementInfo(Element, ElementNodes, IP % U(l), IP % V(l), IP % W(l), &
-              DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, dBasisdx = dBasisdx, &
-              BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-        ELSE
-          stat = ElementInfo(Element, ElementNodes, IP % U(l), IP % V(l), IP % W(l), &
-              detJ, Basis, dBasisdx)           
-          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+        ELSE 
+          stat = ElementInfo( Element, ElementNodes, IP % U(l), IP % V(l), &
+              IP % W(l), detJ, Basis, dBasisdx, EdgeBasis = WBasis, &
+              RotBasis = RotWBasis, USolver = avar % Solver )
         END IF
+
+        !stat = EdgeElementInfo(Element, ElementNodes, IP % U(l), IP % V(l), IP % W(l), &
+        !      DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, dBasisdx = dBasisdx, &
+        !      BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+        !ELSE
+        !  stat = ElementInfo(Element, ElementNodes, IP % U(l), IP % V(l), IP % W(l), &
+        !      detJ, Basis, dBasisdx)           
+        !  CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+        !END IF
 
         s = DetJ * IP % s(l)            
 
@@ -1537,13 +1536,7 @@ MODULE LumpingUtils
 
     IF(avar % dofs <= 2) THEN
       EdgeBasis = .TRUE.
-      EdgeBasisDegree = 1
-      IF( ListGetLogical(avar % Solver % Values,'Quadratic Approximation',Found )) THEN
-        EdgeBasisDegree = 2
-        PiolaVersion = .TRUE.
-      ELSE
-        PiolaVersion = ListGetLogical(avar % solver % Values,'Piola Version',Found)
-      END IF
+      CALL EdgeElementStyle(avar % Solver % Values, PiolaVersion, BasisDegree = EdgeBasisDegree ) 
       UseGaussLaw = ListGetLogical(avar % solver % values, 'Use Gauss Law', Found)
     END IF
     
