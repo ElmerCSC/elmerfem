@@ -192,7 +192,7 @@
         BB(:,proc+1) = myBB
       END DO
 
-      CALL CheckBuffer((n*(3 * 2)) + 2) !3 x double precision coord, 2 x count
+      CALL CheckBuffer(Parenv % PEs*(n*(3 * 2 + 2)+MPI_BSEND_OVERHEAD)) !3 x double precision coord, 2 x count
 
       IF ( n==0 ) THEN
         ! We have found all nodes, nothing to do except sent the info to others!
@@ -272,8 +272,8 @@
         END DO
         DEALLOCATE(nodes_x,nodes_y,nodes_z,BB)
       END IF
-       
 
+       
       ! receive points from others:
       ! ----------------------------
       ALLOCATE(ProcRecv(Parenv % Pes))
