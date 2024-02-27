@@ -585,6 +585,7 @@
 
     IF( PRESENT(OldKeywords) ) THEN
       IF( OldKeywords ) THEN      
+        CALL Info('GetLossExponents','Using old keyword format',Level=20)
         FreqPower(1) = GetCReal( vList,'Harmonic Loss Linear Frequency Exponent',Found )
         IF( .NOT. Found ) FreqPower(1) = 1.0_dp
         
@@ -599,9 +600,11 @@
         IF( .NOT. Found ) FieldPower(2) = 2.0_dp
         FieldPower(2) = FieldPower(2) / 2.0_dp    
         RETURN
+      ELSE
+        CALL Info('GetLossExponents','Using new keyword format',Level=20)    
       END IF
     END IF
-    
+      
     WrkArray => ListGetConstRealArray( vList,'Harmonic Loss Frequency Exponent',Found )    
     IF( Found ) THEN 
       IF( SIZE( WrkArray,1 ) < Ncomp ) THEN
