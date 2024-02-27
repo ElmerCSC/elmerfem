@@ -199,7 +199,7 @@ CONTAINS
 
     ! Return the effective viscosity. Currently only non-newtonian models supported.
     muvec => EffectiveViscosityVec( ngp, BasisVec, dBasisdxVec, Element, NodalSol, &
-              muDerVec0, Newton,  InitHandles )        
+              muDerVec0, Newton,  InitHandles, DetJVec )        
 
     ! Rho 
     rhovec(1:ngp) = rho
@@ -528,7 +528,7 @@ END BLOCK
 
 
     FUNCTION EffectiveViscosityVec( ngp, BasisVec, dBasisdxVec, Element, NodalSol, &
-        ViscDerVec, ViscNewton, InitHandles ) RESULT ( EffViscVec ) 
+        ViscDerVec, ViscNewton, InitHandles, DetJVec ) RESULT ( EffViscVec ) 
 
       INTEGER :: ngp
       REAL(KIND=dp) :: BasisVec(:,:), dBasisdxVec(:,:,:)
@@ -537,7 +537,8 @@ END BLOCK
       REAL(KIND=dp), ALLOCATABLE :: ViscDerVec(:)
       LOGICAL :: InitHandles , ViscNewton
       REAL(KIND=dp), POINTER  :: EffViscVec(:)
-
+      REAL(KIND=dp), ALLOCATABLE :: DetJVec(:)
+      
       LOGICAL :: Found     
       CHARACTER(LEN=MAX_NAME_LEN) :: ViscModel
       TYPE(ValueHandle_t), SAVE :: Visc_h, ViscModel_h, ViscExp_h, ViscCritical_h, &
@@ -549,13 +550,14 @@ END BLOCK
       LOGICAL, SAVE :: ConstantVisc = .FALSE., Visited = .FALSE., GotRelax = .FALSE.
       REAL(KIND=dp), ALLOCATABLE, SAVE :: ss(:), s(:), ArrheniusFactorVec(:)
       REAL(KIND=dp), POINTER, SAVE :: ViscVec0(:), ViscVec(:), TempVec(:), EhfVec(:) 
-      TYPE(Variable_t), POINTER, SAVE :: ShearVar, ViscVar
-      LOGICAL, SAVE :: SaveShear, SaveVisc
-      
+      TYPE(Variable_t), POINTER, SAVE :: ShearVar, ViscVar, WeightVar
+      LOGICAL, SAVE :: SaveShear, SaveVisc, SaveWeight
+      CHARACTER(*), PARAMETER :: Caller = 'EffectiveViscosityVec'
+     
 !$OMP THREADPRIVATE(ss,s,ViscVec0,ViscVec,ArrheniusFactorVec)
      
       IF(InitHandles ) THEN
-        CALL Info('EffectiveViscosityVec','Initializing handles for viscosity models',Level=8)
+        CALL Info(Caller,'Initializing handles for viscosity models',Level=8)
 
         CALL ListInitElementKeyword( Visc_h,'Material','Viscosity')      
         CALL ListInitElementKeyword( ViscModel_h,'Material','Viscosity Model')      
@@ -590,21 +592,21 @@ END BLOCK
 
             IF( ListCheckPresentAnyMaterial( CurrentModel,'Constant Temperature') ) THEN                
               IF( ListCheckPresentAnyMaterial( CurrentModel,'Relative Temperature') ) THEN                
-                CALL Warn('EffectiveViscosityVec','We ignore >Constant Temperature< and use >Relative Temperature<')
+                CALL Warn(Caller,'We ignore >Constant Temperature< and use >Relative Temperature<')
               ELSE
-                CALL Fatal('EffectiveViscosityVec','Replace >Constant Temperature< with >Relative Temperature<')
+                CALL Fatal(Caller,'Replace >Constant Temperature< with >Relative Temperature<')
               END IF
             END IF
             IF( ListCheckPresentAnyMaterial( CurrentModel,'Temperature Field Variable') ) THEN
               IF( ListCheckPresentAnyMaterial( CurrentModel,'Relative Temperature') ) THEN                
-                CALL Warn('EffectiveViscosityVec','We ignore >Temperature Field Variable< and use >Relative Temperature<')
+                CALL Warn(Caller,'We ignore >Temperature Field Variable< and use >Relative Temperature<')
               ELSE
-                CALL Fatal('EffectiveViscosityVec','Replace >Temperature Field Variable< with >Relative Temperature = Equals ...<')
+                CALL Fatal(Caller,'Replace >Temperature Field Variable< with >Relative Temperature = Equals ...<')
               END IF
             END IF
             
             IF( ListCheckPresentAnyMaterial( CurrentModel,'Glen Enhancement Factor Function')  ) THEN
-              CALL Fatal('EffectiveViscosityVec','No Glen function API yet!')
+              CALL Fatal(Caller,'No Glen function API yet!')
             END IF
             R = GetConstReal( CurrentModel % Constants,'Gas Constant',Found)
             IF (.NOT.Found) R = 8.314_dp
@@ -616,28 +618,49 @@ END BLOCK
 
         ShearVar => VariableGet( CurrentModel % Mesh % Variables,'Shearrate',ThisOnly=.TRUE.)
         SaveShear = ASSOCIATED(ShearVar)
+        Found = .FALSE.
         IF(SaveShear) THEN
           IF(ShearVar % TYPE == Variable_on_gauss_points ) THEN
-            CALL Info('EffectiveViscosityVec','Saving "Shearrate" on ip points!',Level=10)
+            CALL Info(Caller,'Saving "Shearrate" on ip points!',Level=10)
           ELSE IF( ShearVar % TYPE == Variable_on_elements ) THEN
-            CALL Info('EffectiveViscosityVec','Saving "Shearrate" on elements!',Level=10)
+            CALL Info(Caller,'Saving "Shearrate" on elements!',Level=10)
+          ELSE IF( ShearVar % TYPE == Variable_on_nodes ) THEN
+            CALL Info(Caller,'Saving "Shearrate" on nodes!',Level=10)
+            Found = .TRUE.
           ELSE
-            CALL Fatal('EffectiveViscosityVec','"Shearrate" should be either ip or elemental field!')
+            CALL Fatal(Caller,'Invalid field type for "Shearrate"!')
           END IF
+          ShearVar % Values = 0.0_dp
         END IF
 
         ViscVar => VariableGet( CurrentModel % Mesh % Variables,'Viscosity',ThisOnly=.TRUE.)
         SaveVisc = ASSOCIATED(ViscVar)        
         IF(SaveVisc) THEN
           IF(ViscVar % TYPE == Variable_on_gauss_points ) THEN
-            CALL Info('EffectiveViscosityVec','Saving "Viscosity" on ip points!',Level=10)
+            CALL Info(Caller,'Saving "Viscosity" on ip points!',Level=10)
           ELSE IF( ViscVar % TYPE == Variable_on_elements ) THEN
-            CALL Info('EffectiveViscosityVec','Saving "Viscosity" on elements!',Level=10)
+            CALL Info(Caller,'Saving "Viscosity" on elements!',Level=10)
+          ELSE IF( ViscVar % TYPE == Variable_on_nodes ) THEN
+            CALL Info(Caller,'Saving "Viscosity" on nodes!',Level=10)
+            Found = .TRUE.
           ELSE
-            CALL Fatal('EffectiveViscosityVec','"Viscosity" should be either ip or elemental field!')
+            CALL Fatal(Caller,'Invalid field type for "Shearrate"!')
           END IF
+          ViscVar % Values = 0.0_dp
         END IF
-        
+
+        SaveWeight = .FALSE.
+        IF( Found ) THEN
+          WeightVar => VariableGet( CurrentModel % Mesh % Variables,'Viscosity Weight',ThisOnly=.TRUE.)
+          IF( ASSOCIATED( WeightVar ) ) THEN
+            IF( WeightVar % TYPE /= Variable_on_nodes ) THEN
+              CALL Fatal(Caller,'Invalid field type for "Viscosity Weight"!')
+            END IF
+            SaveWeight = .TRUE.
+            WeightVar % Values = 0.0_dp
+          END IF
+        END IF        
+          
         Visited = .TRUE.
       END IF
 
@@ -670,7 +693,7 @@ END BLOCK
       IF (.NOT. ALLOCATED(ss)) THEN
         ALLOCATE(ss(ngp),s(ngp),ViscVec(ngp),ArrheniusFactorVec(ngp),STAT=allocstat)
         IF (allocstat /= 0) THEN
-          CALL Fatal('EffectiveViscosityVec','Local storage allocation failed')
+          CALL Fatal(Caller,'Local storage allocation failed')
         END IF
       END IF
 
@@ -689,15 +712,23 @@ END BLOCK
       ss(1:ngp) = 0.5_dp * ss(1:ngp)
 
       IF(SaveShear) THEN
-        i = Element % ElementIndex
-        IF( ShearVar % TYPE == Variable_on_gauss_points ) THEN
-          j = ShearVar % Perm(i+1) - ShearVar % Perm(i)
-          IF(j /= ngp) THEN
-            CALL Fatal('EffectiveViscosityVec','Expected '//I2S(j)//' gauss point for "Shearrate" got '//I2S(ngp))
-          END IF
-          ShearVar % Values(ShearVar % Perm(i)+1:ShearVar % Perm(i+1)) = ss(1:ngp)
+        IF( ShearVar % TYPE == Variable_on_nodes ) THEN
+          DO i=1,n
+            ShearVar % Values(ShearVar % Perm(Element % NodeIndexes(i))) = &
+                ShearVar % Values(ShearVar % Perm(Element % NodeIndexes(i))) + &
+                SUM(BasisVec(1:ngp,i)*ss(1:ngp)*DetJVec(1:ngp))
+          END DO
         ELSE
-          ShearVar % Values(ShearVar % Perm(i)) = SUM(ss(1:ngp)) / ngp
+          i = Element % ElementIndex
+          IF( ShearVar % TYPE == Variable_on_gauss_points ) THEN
+            j = ShearVar % Perm(i+1) - ShearVar % Perm(i)
+            IF(j /= ngp) THEN
+              CALL Fatal(Caller,'Expected '//I2S(j)//' gauss point for "Shearrate" got '//I2S(ngp))
+            END IF
+            ShearVar % Values(ShearVar % Perm(i)+1:ShearVar % Perm(i+1)) = ss(1:ngp)
+          ELSE IF( ShearVar % TYPE == Variable_on_elements ) THEN
+            ShearVar % Values(ShearVar % Perm(i)) = SUM(ss(1:ngp)) / ngp
+          END IF
         END IF
       END IF
             
@@ -765,8 +796,7 @@ END BLOCK
               ArrheniusFactor = A2 * EXP( -Q2/(R * (273.15_dp + Temp)))
             ELSE
               ArrheniusFactor = A2 * EXP( -Q2/(R * (273.15_dp)))
-              CALL Info('EffectiveViscosityVec',&
-                  'Positive Temperature detected in Glen - limiting to zero!', Level = 12)
+              CALL Info(Caller,'Positive Temperature detected in Glen - limiting to zero!', Level = 12)
             END IF
 
             Ehf = ListGetElementReal( ViscGlenFactor_h,BasisVec(i,:),Element=Element,&
@@ -876,7 +906,7 @@ END BLOCK
         END IF
 
       CASE DEFAULT 
-        CALL Fatal('EffectiveViscosityVec','Unknown material model')
+        CALL Fatal(Caller,'Unknown material model')
 
       END SELECT
 
@@ -884,18 +914,35 @@ END BLOCK
         IF(GotRelax) ViscDerVec(1:ngp) = NewtonRelax * ViscDerVec(1:ngp)
       END IF
       
-
+      ! If requested, save viscosity field (on nodes, ip points or elements). 
       IF(SaveVisc) THEN
-        i = Element % ElementIndex
-        IF( ViscVar % TYPE == Variable_on_gauss_points ) THEN
-          j = ViscVar % Perm(i+1) - ViscVar % Perm(i) 
-          IF(j /= ngp) THEN
-            CALL Fatal('EffectiveViscosityVec','Expected '//I2S(j)//' gauss point for "Viscosity" got '//I2S(ngp))
-          END IF
-          ViscVar % Values(ViscVar % Perm(i)+1:ViscVar % Perm(i+1)) = ViscVec(1:ngp)
+        IF( ViscVar % TYPE == Variable_on_nodes ) THEN
+          DO i=1,n
+            ViscVar % Values(ViscVar % Perm(Element % NodeIndexes(i))) = &
+                ViscVar % Values(ViscVar % Perm(Element % NodeIndexes(i))) + &
+                SUM(BasisVec(1:ngp,i)*ViscVec(1:ngp)*detJVec(1:ngp))
+          END DO
         ELSE
-          ViscVar % Values(ViscVar % Perm(i)) = SUM(ViscVec(1:ngp)) / ngp
+          i = Element % ElementIndex
+          IF( ViscVar % TYPE == Variable_on_gauss_points ) THEN
+            j = ViscVar % Perm(i+1) - ViscVar % Perm(i) 
+            IF(j /= ngp) THEN
+              CALL Fatal(Caller,'Expected '//I2S(j)//' gauss point for "Viscosity" got '//I2S(ngp))
+            END IF
+            ViscVar % Values(ViscVar % Perm(i)+1:ViscVar % Perm(i+1)) = ViscVec(1:ngp)
+          ELSE
+            ViscVar % Values(ViscVar % Perm(i)) = SUM(ViscVec(1:ngp)) / ngp
+          END IF
         END IF
+      END IF
+
+      ! If requested, save normalization weight associated to viscosity (and shearrate).
+      IF(SaveWeight) THEN
+        DO i=1,n
+          WeightVar % Values(WeightVar % Perm(Element % NodeIndexes(i))) = &
+              WeightVar % Values(WeightVar % Perm(Element % NodeIndexes(i))) + &
+              SUM(BasisVec(1:ngp,i)*detJVec(1:ngp))
+        END DO
       END IF
       
     END FUNCTION EffectiveViscosityVec
@@ -1042,6 +1089,8 @@ END BLOCK
     TYPE(Variable_t), POINTER, SAVE :: NrmSol
     TYPE(ValueList_t), POINTER :: BC    
     REAL(KIND=dp) :: TanFder,JAC(nd*(dim+1),nd*(dim+1)),SOL(nd*(dim+1)),NodalSol(dim+1,nd)
+    TYPE(Variable_t), POINTER, SAVE :: SlipCoeffVar, SlipSpeedVar, SlipWeightVar
+    LOGICAL, SAVE :: SaveSlipSpeed, SaveSlipCoeff, SaveSlipWeight
     
     SAVE Basis, HaveNormal, GotRelax, NewtonRelax, ut_eps
     
@@ -1089,12 +1138,25 @@ END BLOCK
       ut_eps = ListGetCReal( CurrentModel % Solver % Values,'Friction Newton Epsilon', Found )
       IF(.NOT. Found ) ut_eps = 1.0e-8
       
+      SlipCoeffVar => VariableGet( CurrentModel % Mesh % Variables,'Slip Coefficient',ThisOnly=.TRUE.)
+      SaveSlipCoeff = ASSOCIATED(SlipCoeffVar)
+      IF(SaveSlipCoeff) SlipCoeffVar % Values = 0.0_dp
+
+      SaveSlipSpeed = .FALSE.
+      IF( SaveSlipCoeff ) THEN
+        SlipSpeedVar => VariableGet( CurrentModel % Mesh % Variables,'Slip Speed',ThisOnly=.TRUE.)
+        SaveSlipSpeed = ASSOCIATED(SlipSpeedVar)
+        IF(SaveSlipSpeed) SlipSpeedVar % Values = 0.0_dp
+        
+        SlipWeightVar => VariableGet( CurrentModel % Mesh % Variables,'Slip Weight',ThisOnly=.TRUE.)
+        SaveSlipWeight = ASSOCIATED(SlipWeightVar)
+        IF(SaveSlipWeight) SlipWeightVar % Values = 0.0_dp        
+      END IF
+        
       InitHandles = .FALSE.
     END IF
     
     BC => GetBC()
-
-    
     IF( ALLOCATED( Basis ) ) THEN
       IF( SIZE( Basis ) < nd ) THEN
         DEALLOCATE( Basis ) 
@@ -1200,7 +1262,7 @@ END BLOCK
       END IF
       
       !-----------------------------------------------------------------
-      IF( HaveFriction ) THEN
+      IF( HaveFriction .AND. .NOT. HaveSlip ) THEN
         IF( HaveSlip ) THEN
           CALL Fatal('IncompressibleNSVec','You cannot combine different friction models!')
         END IF
@@ -1246,8 +1308,34 @@ END BLOCK
           SlipCoeff(norm_comp) = 0.0_dp
         END IF
         HaveSlip = .TRUE.
+        
+        IF(SaveSlipSpeed) THEN
+          DO i=1,n
+            j = SlipSpeedVar % Perm(Element % NodeIndexes(i))
+            IF(j>0) THEN
+              SlipSpeedVar % Values(j) = SlipSpeedVar % Values(j) + &
+                  Basis(i) * IP % s(t) * ut
+            END IF
+          END DO
+        END IF
       END IF
-      
+
+      IF(SaveSlipCoeff) THEN
+        DO i=1,n
+          j = SlipCoeffVar % Perm(Element % NodeIndexes(i))
+          IF(j>0) THEN
+            SlipCoeffVar % Values(j) = SlipCoeffVar % Values(j) + &
+                Basis(i) * IP % s(t) * SQRT(SUM(SlipCoeff(1:dim)**2))
+          END IF
+        END DO
+        IF(SaveSlipWeight) THEN
+          DO i=1,n
+            j = SlipWeightVar % Perm(Element % NodeIndexes(i))
+            IF(j>0) SlipWeightVar % Values(j) = SlipWeightVar % Values(j) + Basis(i) * IP % s(t)
+          END DO
+        END IF
+      END IF
+                  
       !IF(t==1) THEN
       !  PRINT *,'Normal:',Normal,un,ut,norm_comp
       !  PRINT *,'wexp:',wexp,wcoeff,wut0,HaveFrictionW,HaveFrictionU,HaveSlip
@@ -1290,6 +1378,7 @@ END BLOCK
             CASE(3)
               Vect = Tangent2
             END SELECT
+
             
             DO p=1,nd
               DO q=1,nd               
@@ -1543,7 +1632,19 @@ SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, Transient)
     CASE DEFAULT
     END SELECT
   END IF
-    
+
+  IF( GetLogical( Params,'Save Viscosity', Found ) ) THEN
+    CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'Viscosity')
+    CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'Shearrate')
+    CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'Viscosity Weight')
+  END IF
+
+  IF( GetLogical( Params,'Save Slip', Found ) ) THEN
+    CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'Slip Coefficient')
+    CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'Slip Speed')
+    CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'Slip Weight')
+  END IF
+  
 !------------------------------------------------------------------------------ 
 END SUBROUTINE IncompressibleNSSolver_Init
 !------------------------------------------------------------------------------
@@ -1753,6 +1854,33 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     IF ( Solver % Variable % NonlinConverged == 1 ) EXIT
   END DO
 
+  BLOCK
+    TYPE(Variable_t), POINTER, SAVE :: pVar, wVar
+    REAL(KIND=dp) :: minw
+    minw = 1.0e-20
+    DO i=1,4
+      SELECT CASE(i)
+      CASE( 1 ) 
+        wVar => VariableGet( CurrentModel % Mesh % Variables,'Slip Weight',ThisOnly=.TRUE.)
+        pVar => VariableGet( CurrentModel % Mesh % Variables,'Slip Coefficient',ThisOnly=.TRUE.)
+      CASE( 2 ) 
+        pVar => VariableGet( CurrentModel % Mesh % Variables,'Slip Speed',ThisOnly=.TRUE.)
+      CASE( 3 )         
+        wVar => VariableGet( CurrentModel % Mesh % Variables,'Viscosity Weight',ThisOnly=.TRUE.)
+        pVar => VariableGet( CurrentModel % Mesh % Variables,'Viscosity',ThisOnly=.TRUE.)
+      CASE( 4 ) 
+        pVar => VariableGet( CurrentModel % Mesh % Variables,'Strainrate',ThisOnly=.TRUE.)
+      END SELECT
+      IF(ASSOCIATED(wVar) .AND. ASSOCIATED(pVar) ) THEN     
+        CALL Info('IncompressibleNSSolver','Normalizing field number: '//I2S(i),Level=15)
+        WHERE(wVar % Values > minw )
+          pVar % Values = pVar % Values / wVar % Values
+        END WHERE
+      END IF
+    END DO
+  END BLOCK
+
+  
   CALL DefaultFinish()
   
   CALL Info( Caller,'All done',Level=10)
