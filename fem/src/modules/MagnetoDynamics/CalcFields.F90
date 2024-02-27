@@ -959,7 +959,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      LossN = 2 
           
      IF(.NOT. MaterialExponents) THEN
-       OldLossKeywords = ListCheckPresent(SolverParams,'Harmonic Loss Linear Frequency Exponent')
+       OldLossKeywords = .NOT. ListCheckPresent(SolverParams,'Harmonic Loss Frequency Exponent')
        CALL GetLossExponents(SolverParams,FreqPower,FieldPower,LossN,OldLossKeywords)
      END IF
 
