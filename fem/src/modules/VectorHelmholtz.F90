@@ -89,24 +89,17 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
   END IF
   
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
-    SecondOrder = GetLogical( SolverParams, 'Quadratic Approximation', Found )
-    SecondFamily = GetLogical( SolverParams, 'Second Kind Basis', Found )
-    IF( SecondOrder .OR. SecondFamily) THEN
-      PiolaVersion = .TRUE.
-    ELSE
-      PiolaVersion = GetLogical(SolverParams, 'Use Piola Transform', Found )   
-    END IF
+    ! We use one place where all the edge element keywords are defined and checked.
+    CALL EdgeElementStyle(SolverParams, PiolaVersion, SecondFamily, SecondOrder, Check = .TRUE. )
     
     IF (WithNDOFs) THEN
       IF ( SecondOrder ) THEN
         CALL ListAddString( SolverParams, "Element", &
             "n:1 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )
-      ELSE IF ( PiolaVersion ) THEN
-        IF (SecondFamily) THEN
-          CALL ListAddString( SolverParams, "Element", "n:1 e:2" )
-        ELSE
-          CALL ListAddString( SolverParams, "Element", "n:1 e:1 -quad b:2 -brick b:3 -quad_face b:2" )
-        END IF
+      ELSE IF( SecondFamily ) THEN
+        CALL ListAddString( SolverParams, "Element", "n:1 e:2" )
+      ELSE IF( PiolaVersion ) THEN
+        CALL ListAddString( SolverParams, "Element", "n:1 e:1 -quad b:2 -brick b:3 -quad_face b:2" )
       ELSE
         CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
       END IF      
@@ -114,12 +107,10 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
       IF( SecondOrder ) THEN
         CALL ListAddString( SolverParams, "Element", &
             "n:0 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )
-      ELSE IF ( PiolaVersion ) THEN
-        IF (SecondFamily) THEN
-          CALL ListAddString( SolverParams, "Element", "n:0 e:2" )
-        ELSE
-          CALL ListAddString( SolverParams, "Element", "n:0 e:1 -quad b:2 -brick b:3 -quad_face b:2" )
-        END IF
+      ELSE IF (SecondFamily) THEN
+        CALL ListAddString( SolverParams, "Element", "n:0 e:2" )
+      ELSE IF( PiolaVersion ) THEN
+        CALL ListAddString( SolverParams, "Element", "n:0 e:1 -quad b:2 -brick b:3 -quad_face b:2" )
       ELSE
         CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
       END IF
@@ -192,7 +183,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   INTEGER :: i, NoIterationsMax, EdgeBasisDegree
   TYPE(Mesh_t), POINTER :: Mesh
   COMPLEX(KIND=dp) :: PrecDampCoeff
-  LOGICAL :: PiolaVersion, SecondFamily, EdgeBasis, LowFrequencyModel, LorenzCondition
+  LOGICAL :: PiolaVersion, EdgeBasis, LowFrequencyModel, LorenzCondition
   LOGICAL :: UseGaussLaw, ChargeConservation
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Solver_t), POINTER :: pSolver
@@ -204,23 +195,10 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   CALL Info(Caller,'Solving harmonic electromagnetic wave equation!',Level=5 )
 
   SolverParams => GetSolverParams()  
+  CALL EdgeElementStyle(Solver % Values, PiolaVersion, BasisDegree = EdgeBasisDegree ) 
 
-  IF( GetLogical( SolverParams,'Quadratic Approximation', Found ) ) THEN
-    PiolaVersion = .TRUE.
-    EdgeBasisDegree = 2
-  ELSE
-    SecondFamily = GetLogical( SolverParams, 'Second Kind Basis', Found )
-    IF (SecondFamily) THEN
-      PiolaVersion = .TRUE.
-    ELSE
-      PiolaVersion = GetLogical( SolverParams, 'Use Piola Transform', Found )
-    END IF
-    EdgeBasisDegree = 1
-  END IF
-
-  IF (CoordinateSystemDimension() == 2) THEN
-    IF (.NOT. PiolaVersion) &
-        CALL Fatal(Caller, 'A 2D model needs Use Piola Transform = True')
+  IF(CoordinateSystemDimension() == 2 .AND. .NOT. PiolaVersion ) THEN
+    CALL Fatal(Caller, 'A 2D model needs "Use Piola Transform = True"')
   END IF
     
   ! Allocate some permanent storage, this is done first time only:
@@ -1332,7 +1310,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    TYPE(Mesh_t), POINTER :: Mesh
    REAL(KIND=dp), ALLOCATABLE, TARGET :: Gforce(:,:), MASS(:,:), FORCE(:,:) 
 
-   LOGICAL :: PiolaVersion, SecondFamily, ElementalFields, NodalFields
+   LOGICAL :: PiolaVersion, ElementalFields, NodalFields
    LOGICAL :: UseGaussLaw, LorenzCondition
    TYPE(ValueList_t), POINTER :: SolverParams 
    TYPE(ValueHandle_t), SAVE :: EpsCoeff_h, CurrDens_h, MuCoeff_h
@@ -1371,19 +1349,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
      CALL Fatal(Caller,'Primary variable should have 2 dofs: '//I2S(vDofs))
    END IF
 
-   IF( GetLogical( pSolver % Values,'Quadratic Approximation', Found ) ) THEN
-     EdgeBasisDegree = 2
-     PiolaVersion = .TRUE.
-   ELSE
-     EdgeBasisDegree = 1 
-     SecondFamily = GetLogical(pSolver % Values, 'Second Kind Basis', Found )
-     IF (SecondFamily) THEN
-       PiolaVersion = .TRUE.
-     ELSE
-       PiolaVersion = GetLogical(pSolver % Values,'Use Piola Transform', Found )
-     END IF
-   END IF
-    
+   CALL EdgeElementStyle(pSolver % Values, PiolaVersion, BasisDegree = EdgeBasisDegree ) 
    IF (PiolaVersion) CALL Info(Caller,'Using Piola transformed finite elements',Level=5)
 
    UseGaussLaw = GetLogical(pSolver % Values, 'Use Gauss Law', Found)

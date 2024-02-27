@@ -80,6 +80,6 @@ Solver 1
 !  Linear System Save and Stop = Logical True
 End
 
-Solver 1 :: Reference Norm = Real 4.00615662E-02
+Solver 1 :: Reference Norm = Real 2.36476915E-02
 Solver 1 :: Reference Norm Tolerance = Real 1.0E-6
 

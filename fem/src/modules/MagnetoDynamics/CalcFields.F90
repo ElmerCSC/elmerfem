@@ -53,7 +53,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
   INTEGER, POINTER :: Active(:)
   INTEGER :: mysolver,i,j,k,l,n,m,vDOFs, soln,pIndex
   TYPE(ValueList_t), POINTER :: SolverParams, DGSolverParams
-  TYPE(Solver_t), POINTER :: Solvers(:), PSolver
+  TYPE(Solver_t), POINTER :: Solvers(:)
 
   ! This is really using DG so we don't need to make any dirty tricks to create DG fields
   ! as is done in this initialization. 
@@ -606,7 +606,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    COMPLEX(KIND=dp), ALLOCATABLE :: Magnetization(:,:), BodyForceCurrDens(:,:)
    COMPLEX(KIND=dp), ALLOCATABLE :: R_Z(:), PR(:)
 !------------------------------------------------------------------------------
-   REAL(KIND=dp) :: s,u,v,w, Norm
+   REAL(KIND=dp) :: s,Norm 
    REAL(KIND=dp) :: B(2,3), E(2,3), JatIP(2,3), VP_ip(2,3), JXBatIP(2,3), CC_J(2,3), HdotB, LMSol(2)
    REAL(KIND=dp) :: ldetJ,detJ, C_ip, ST(3,3), Omega, ThinLinePower, Power, Energy(3), w_dens
    REAL(KIND=dp) :: localThickness
@@ -649,7 +649,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
               ItoJCoeffFound, ImposeBodyForceCurrent, HasVelocity, HasAngularVelocity, &
               HasLorenzVelocity, HaveAirGap, UseElementalNF, HasTensorReluctivity, &
               ImposeBodyForcePotential, JouleHeatingFromCurrent, HasZirka, DoAve
-   LOGICAL :: PiolaVersion, ElementalFields, NodalFields, RealField, SecondOrder, pRef
+   LOGICAL :: PiolaVersion, ElementalFields, NodalFields, RealField, pRef
    LOGICAL :: CSymmetry, HasHBCurve, LorentzConductivity, HasThinLines=.FALSE., NewMaterial
    
    TYPE(GaussIntegrationPoints_t) :: IP
@@ -740,22 +740,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    ! Inherit the solution basis from the primary solver
    vDOFs = pSolver % Variable % DOFs
-   SecondOrder = GetLogical( pSolver % Values, 'Quadratic Approximation', Found )  
-   IF (SecondOrder) THEN
-     EdgeBasisDegree = 2
-   ELSE
-     EdgeBasisDegree = 1
-   END IF
-
-   IF( SecondOrder ) THEN
-     PiolaVersion = .TRUE.
-   ELSE
-     PiolaVersion = GetLogical( pSolver % Values,'Use Piola Transform', Found ) 
-   END IF
-
+   
+   CALL EdgeElementStyle(pSolver % Values, PiolaVersion, BasisDegree = EdgeBasisDegree ) 
    IF (PiolaVersion) &
        CALL Info('MagnetoDynamicsCalcFields', &
-       'Using Piola transformed finite elements',Level=5)
+       'Using Piola transformed finite elements',Level=7)
       
    ElectricPotName = GetString(SolverParams, 'Precomputed Electric Potential', PrecomputedElectricPot)
    IF (PrecomputedElectricPot) THEN
@@ -1310,17 +1299,15 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      
      ! Calculate nodal fields:
      ! -----------------------
-     pRef = dim==3 .AND. PiolaVersion .OR. isPelement(element)
+     pRef = ( dim==3 .AND. PiolaVersion ) .OR. isPelement(element)
      IF( ElementalMode >= 3 ) THEN
        IF( ElementalMode == 3 ) THEN
          IP = CornerGaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=pRef)
        ELSE
          IP = CenterGaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=pRef)
        END IF
-     ELSE IF (SecondOrder) THEN
+     ELSE 
        IP = GaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=pRef, EdgeBasisDegree=EdgeBasisDegree)
-     ELSE
-       IP = GaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=pRef)
      END IF
 
      MASS  = 0._dp
@@ -1333,21 +1320,14 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      end if
 
      DO j = 1,IP % n
-       u = IP % U(j)
-       v = IP % V(j)
-       w = IP % W(j)
-
-       IF (PiolaVersion) THEN
-          stat = EdgeElementInfo( Element, Nodes, u, v, w, DetF=DetJ, Basis=Basis, &
-               EdgeBasis=WBasis, RotBasis=RotWBasis, dBasisdx=dBasisdx, &
-               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+       IF(dim == 2 ) THEN
+         stat = ElementInfo(Element,Nodes,IP % u(j),IP % v(j),IP % w(j),&
+             detJ,Basis,dBasisdx,USolver=pSolver)
        ELSE
-          stat = ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx,USolver=pSolver)
-          IF( dim == 3 ) THEN
-            CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
-          END IF
-       END IF
-
+         stat = ElementInfo( Element, Nodes, IP % U(j), IP % V(j), IP % W(j), &
+             detJ, Basis, dBasisdx, &
+             EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
+       END IF         
        s = IP % s(j) * detJ
 
        grads_coeff = -1._dp/GetCircuitModelDepth()
@@ -2229,14 +2209,10 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          IF( dim == 2 ) THEN
            stat = ElementInfo(Element, Nodes, IP % U(j), IP % V(j), IP % W(j), &
                detJ, Basis, dBasisdx)           
-         ELSE IF ( PiolaVersion ) THEN
-           stat = EdgeElementInfo(Element, Nodes, IP % U(j), IP % V(j), IP % W(j), &
-               DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, dBasisdx = dBasisdx, &
-               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-         ELSE
-           stat = ElementInfo(Element, Nodes, IP % U(j), IP % V(j), IP % W(j), &
-               detJ, Basis, dBasisdx)           
-           CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+         ELSE 
+           stat = ElementInfo( Element, Nodes, IP % U(j), IP % V(j), &
+               IP % W(j), detJ, Basis, dBasisdx, &
+               EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
          END IF
          
          val = SQRT(2.0_dp/(C_ip * Omega * 4.0d0 * PI * 1d-7 * mu_r)) ! The layer thickness
@@ -2435,7 +2411,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    
     
    IF( UseElementalNF ) THEN
-
+      CALL Info('MagnetoDynamicsCalcFields','Doing elemental nodal force stuff!',Level=20)
+            
      ! Collect nodal forces from airgaps
      CALL CalcBoundaryModels()
 
@@ -2481,7 +2458,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          CALL ListAddConstReal( CompParams,'res: magnetic torque', val )
        END IF
      END DO
-   ELSE 
+  ELSE
+      CALL Info('MagnetoDynamicsCalcFields','Doing nodal nodal force stuff!',Level=20)
+     
      DO j=1,Model % NumberOfComponents
        CompParams => Model % Components(j) % Values
 
@@ -3109,7 +3088,7 @@ CONTAINS
       NF_ip_l(27,3), NF_ip_r(27,3), xcoord
     TYPE(Element_t), POINTER :: LeftParent, RightParent, BElement
     TYPE(Nodes_t), SAVE :: LPNodes, RPNodes
-    REAL(KIND=dp) :: F(3,3)
+!    REAL(KIND=dp) :: F(3,3)
     INTEGER :: n_lp, n_rp, LeftBodyID, RightBodyID
     REAL(KIND=dp), ALLOCATABLE :: LeftFORCE(:,:), RightFORCE(:,:), &
       AirGapForce(:,:), ForceValues(:)
@@ -3206,24 +3185,13 @@ CONTAINS
       LeftFORCE = 0.0_dp
       RightFORCE = 0.0_dp
 
-      IF (SecondOrder) THEN
-        IP = GaussPoints(BElement, EdgeBasis=dim==3, PReferenceElement=PiolaVersion, EdgeBasisDegree=EdgeBasisDegree)
-      ELSE
-        IP = GaussPoints(BElement, EdgeBasis=dim==3, PReferenceElement=PiolaVersion)
-      END IF
-
+      IP = GaussPoints(BElement, EdgeBasis=(dim==3), PReferenceElement=PiolaVersion, &
+          EdgeBasisDegree=EdgeBasisDegree)
       
       DO j = 1,IP % n
-        IF ( PiolaVersion ) THEN
-          stat = EdgeElementInfo( BElement, Nodes, IP % U(j), IP % V(j), IP % W(j), &
-            F = F, DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
-            dBasisdx=dBasisdx, BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-        ELSE
-          stat = ElementInfo( BElement, Nodes, IP % U(j), IP % V(j), &
-            IP % W(j), detJ, Basis, dBasisdx )
-
-          CALL GetEdgeBasis(BElement, WBasis, RotWBasis, Basis, dBasisdx)
-        END IF
+        stat = ElementInfo( BElement, Nodes, IP % U(j), IP % V(j), &
+            IP % W(j), detJ, Basis, dBasisdx, &
+            EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
 
         R_ip = SUM( Basis(1:n)/(mu0*AirGapMu(1:n)) )
         GapLength_ip = SUM( Basis(1:n)*GapLength(1:n) )
@@ -3825,12 +3793,11 @@ CONTAINS
 
        DO j=1,IP % n
          stat = ElementInfo( Element, Nodes, IP % U(j), IP % V(j), &
-                  IP % W(j), detJ, Basis, dBasisdx )
-         CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
-         Normal = NormalVector( Element, Nodes, IP % U(j), IP % V(j), .TRUE. )
-
+             IP % W(j), detJ, Basis, dBasisdx, &
+             EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
+                  
+         Normal = NormalVector( Element, Nodes, IP % U(j), IP % V(j), .TRUE. )         
          s = IP % s(j) * detJ
-
 
          DO k=1, vDOFs
            B(k,:) = MATMUL( SOL(k, np+1:nd), RotWBasis(1:nd-np,:) )
