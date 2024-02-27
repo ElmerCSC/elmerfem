@@ -53,7 +53,7 @@ CONTAINS
   ! by the postprocessing when estimating pressure.
   !----------------------------------------------------------------------------------
   FUNCTION EffectiveViscosityVec( ngp, ntot, BasisVec, dBasisdxVec, Element, NodalVelo, &
-      InitHandles, ViscNewton, ViscDerVec ) RESULT ( EffViscVec ) 
+      InitHandles, ViscNewton, ViscDerVec, DetJVec ) RESULT ( EffViscVec ) 
 
     IMPLICIT NONE 
     
@@ -62,11 +62,12 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp) :: NodalVelo(:,:)
     LOGICAL :: InitHandles
-    REAL(KIND=dp), ALLOCATABLE, OPTIONAL :: ViscDerVec(:)
     LOGICAL, OPTIONAL :: ViscNewton
+    REAL(KIND=dp), ALLOCATABLE, OPTIONAL :: ViscDerVec(:)
     REAL(KIND=dp), POINTER  :: EffViscVec(:)
+    REAL(KIND=dp), OPTIONAL, ALLOCATABLE :: DetJVec(:)
 
-    INTEGER :: allocstat,i,j,k,dim,dofs
+    INTEGER :: allocstat,i,j,k,dim,dofs,n
     LOGICAL :: Found     
     CHARACTER(LEN=MAX_NAME_LEN) :: ViscModel
     TYPE(ValueHandle_t), SAVE :: Visc_h, ViscModel_h, ViscExp_h, ViscCritical_h, &
@@ -78,8 +79,8 @@ CONTAINS
     LOGICAL, SAVE :: ConstantVisc = .FALSE., Visited = .FALSE., DoNewton, GotRelax = .FALSE.
     REAL(KIND=dp), ALLOCATABLE, SAVE :: ss(:), s(:), ArrheniusFactorVec(:)
     REAL(KIND=dp), POINTER, SAVE :: ViscVec0(:), ViscVec(:), TempVec(:), EhfVec(:) 
-    TYPE(Variable_t), POINTER, SAVE :: ShearVar, ViscVar
-    LOGICAL, SAVE :: SaveShear, SaveVisc
+    TYPE(Variable_t), POINTER, SAVE :: ShearVar, ViscVar, WeightVar
+    LOGICAL, SAVE :: SaveShear, SaveVisc, SaveWeight
     CHARACTER(*), PARAMETER :: Caller = 'EffectiveViscosityVec'
 
     !$OMP THREADPRIVATE(ss,s,ViscVec0,ViscVec,ArrheniusFactorVec)
@@ -91,7 +92,7 @@ CONTAINS
     IF(DoNewton .AND. .NOT. PRESENT(ViscDerVec)) THEN
       CALL Fatal(Caller,'Newton linearization requires "ViscDerVec"')
     END IF
-
+    n = Element % Type % NumberOfNodes
     
     IF(InitHandles ) THEN
       CALL Info(Caller,'Initializing handles for viscosity models',Level=8)
@@ -147,28 +148,53 @@ CONTAINS
       ELSE
         CALL Info(Caller,'Using constant viscosity!')
       END IF
-
-      ShearVar => VariableGet( CurrentModel % Mesh % Variables,'Shearrate',ThisOnly=.TRUE.)
-      SaveShear = ASSOCIATED(ShearVar)
+      
+      SaveShear = .FALSE.
+      SaveVisc = .FALSE.
+      IF( PRESENT( DetJVec ) ) THEN
+        ShearVar => VariableGet( CurrentModel % Mesh % Variables,'Shearrate',ThisOnly=.TRUE.)
+        SaveShear = ASSOCIATED(ShearVar)
+        ViscVar => VariableGet( CurrentModel % Mesh % Variables,'Viscosity',ThisOnly=.TRUE.)
+        SaveVisc = ASSOCIATED(ViscVar)        
+      END IF
+      Found = .FALSE.
       IF(SaveShear) THEN
         IF(ShearVar % TYPE == Variable_on_gauss_points ) THEN
           CALL Info(Caller,'Saving "Shearrate" on ip points!',Level=10)
         ELSE IF( ShearVar % TYPE == Variable_on_elements ) THEN
           CALL Info(Caller,'Saving "Shearrate" on elements!',Level=10)
+        ELSE IF( ShearVar % TYPE == Variable_on_nodes ) THEN
+          CALL Info(Caller,'Saving "Shearrate" on nodes!',Level=10)
+          Found = .TRUE.
         ELSE
-          CALL Fatal(Caller,'"Shearrate" should be either ip or elemental field!')
+          CALL Fatal(Caller,'Invalid field type for "Shearrate"!')
         END IF
+        ShearVar % Values = 0.0_dp
       END IF
 
-      ViscVar => VariableGet( CurrentModel % Mesh % Variables,'Viscosity',ThisOnly=.TRUE.)
-      SaveVisc = ASSOCIATED(ViscVar)        
       IF(SaveVisc) THEN
         IF(ViscVar % TYPE == Variable_on_gauss_points ) THEN
           CALL Info(Caller,'Saving "Viscosity" on ip points!',Level=10)
         ELSE IF( ViscVar % TYPE == Variable_on_elements ) THEN
           CALL Info(Caller,'Saving "Viscosity" on elements!',Level=10)
+        ELSE IF( ViscVar % TYPE == Variable_on_nodes ) THEN
+          CALL Info(Caller,'Saving "Viscosity" on nodes!',Level=10)
+          Found = .TRUE.
         ELSE
-          CALL Fatal(Caller,'"Viscosity" should be either ip or elemental field!')
+          CALL Fatal(Caller,'Invalid field type for "Shearrate"!')
+        END IF
+        ViscVar % Values = 0.0_dp
+      END IF
+
+      SaveWeight = .FALSE.
+      IF( Found ) THEN
+        WeightVar => VariableGet( CurrentModel % Mesh % Variables,'Viscosity Weight',ThisOnly=.TRUE.)
+        IF( ASSOCIATED( WeightVar ) ) THEN
+          IF( WeightVar % TYPE /= Variable_on_nodes ) THEN
+            CALL Fatal(Caller,'Invalid field type for "Viscosity Weight"!')
+          END IF
+          SaveWeight = .TRUE.
+          WeightVar % Values = 0.0_dp
         END IF
       END IF
 
@@ -224,15 +250,23 @@ CONTAINS
     !      ss(1:ngp) = 0.5_dp * ss(1:ngp)
 
     IF(SaveShear) THEN
-      i = Element % ElementIndex
-      IF( ShearVar % TYPE == Variable_on_gauss_points ) THEN
-        j = ShearVar % Perm(i+1) - ShearVar % Perm(i)
-        IF(j /= ngp) THEN
-          CALL Fatal(Caller,'Expected '//I2S(j)//' gauss point for "Shearrate" got '//I2S(ngp))
-        END IF
-        ShearVar % Values(ShearVar % Perm(i)+1:ShearVar % Perm(i+1)) = ss(1:ngp)
+      IF( ShearVar % TYPE == Variable_on_nodes ) THEN
+        DO i=1,n
+          ShearVar % Values(ShearVar % Perm(Element % NodeIndexes(i))) = &
+              ShearVar % Values(ShearVar % Perm(Element % NodeIndexes(i))) + &
+              SUM(BasisVec(1:ngp,i)*ss(1:ngp)*DetJVec(1:ngp))
+        END DO
       ELSE
-        ShearVar % Values(ShearVar % Perm(i)) = SUM(ss(1:ngp)) / ngp
+        i = Element % ElementIndex
+        IF( ShearVar % TYPE == Variable_on_gauss_points ) THEN
+          j = ShearVar % Perm(i+1) - ShearVar % Perm(i)
+          IF(j /= ngp) THEN
+            CALL Fatal(Caller,'Expected '//I2S(j)//' gauss point for "Shearrate" got '//I2S(ngp))
+          END IF
+          ShearVar % Values(ShearVar % Perm(i)+1:ShearVar % Perm(i+1)) = ss(1:ngp)
+        ELSE IF( ShearVar % TYPE == Variable_on_elements ) THEN
+          ShearVar % Values(ShearVar % Perm(i)) = SUM(ss(1:ngp)) / ngp
+        END IF
       END IF
     END IF
 
@@ -386,18 +420,36 @@ CONTAINS
     IF( DoNewton ) THEN
       IF(GotRelax) ViscDerVec(1:ngp) = NewtonRelax * ViscDerVec(1:ngp)
     END IF
-   
+    
+    ! If requested, save viscosity field (on nodes, ip points or elements). 
     IF(SaveVisc) THEN
-      i = Element % ElementIndex
-      IF( ViscVar % TYPE == Variable_on_gauss_points ) THEN
-        j = ViscVar % Perm(i+1) - ViscVar % Perm(i) 
-        IF(j /= ngp) THEN
-          CALL Fatal(Caller,'Expected '//I2S(j)//' gauss point for "Viscosity" got '//I2S(ngp))
-        END IF
-        ViscVar % Values(ViscVar % Perm(i)+1:ViscVar % Perm(i+1)) = ViscVec(1:ngp)
+      IF( ViscVar % TYPE == Variable_on_nodes ) THEN
+        DO i=1,n
+          ViscVar % Values(ViscVar % Perm(Element % NodeIndexes(i))) = &
+              ViscVar % Values(ViscVar % Perm(Element % NodeIndexes(i))) + &
+              SUM(BasisVec(1:ngp,i)*ViscVec(1:ngp)*detJVec(1:ngp))
+        END DO
       ELSE
-        ViscVar % Values(ViscVar % Perm(i)) = SUM(ViscVec(1:ngp)) / ngp
+        i = Element % ElementIndex
+        IF( ViscVar % TYPE == Variable_on_gauss_points ) THEN
+          j = ViscVar % Perm(i+1) - ViscVar % Perm(i) 
+          IF(j /= ngp) THEN
+            CALL Fatal(Caller,'Expected '//I2S(j)//' gauss point for "Viscosity" got '//I2S(ngp))
+          END IF
+          ViscVar % Values(ViscVar % Perm(i)+1:ViscVar % Perm(i+1)) = ViscVec(1:ngp)
+        ELSE
+          ViscVar % Values(ViscVar % Perm(i)) = SUM(ViscVec(1:ngp)) / ngp
+        END IF
       END IF
+    END IF
+
+    ! If requested, save normalization weight associated to viscosity (and shearrate).
+    IF(SaveWeight) THEN
+      DO i=1,n
+        WeightVar % Values(WeightVar % Perm(Element % NodeIndexes(i))) = &
+            WeightVar % Values(WeightVar % Perm(Element % NodeIndexes(i))) + &
+            SUM(BasisVec(1:ngp,i)*detJVec(1:ngp))
+      END DO
     END IF
 
   END FUNCTION EffectiveViscosityVec
@@ -526,7 +578,7 @@ CONTAINS
 
     ! Return the effective viscosity. Currently only non-newtonian models supported.
     muvec => EffectiveViscosityVec( ngp, ntot, BasisVec, dBasisdxVec, Element, NodalVelo, &
-        InitHandles, Newton, muDerVec0 )
+        InitHandles, Newton, muDerVec0, DetJVec )
     
     ! Rho 
     rhovec(1:ngp) = rho
@@ -682,7 +734,10 @@ CONTAINS
     TYPE(Variable_t), POINTER, SAVE :: NrmSol, HeightVar
     TYPE(ValueList_t), POINTER :: BC    
     REAL(KIND=dp) :: TanFder,JAC(nd*2,nd*2),SOL(nd*2),NodalSol(2,nd)
+    TYPE(Variable_t), POINTER, SAVE :: SlipCoeffVar, SlipSpeedVar, SlipWeightVar
+    LOGICAL, SAVE :: SaveSlipSpeed, SaveSlipCoeff, SaveSlipWeight
 
+    
     SAVE Basis, dBasisdx
 
     !------------------------------------------------------------------------------
@@ -711,6 +766,21 @@ CONTAINS
       CALL ListInitElementVariable( Velo_v )
 
       HeightVar => VariableGet( CurrentModel % Mesh % Variables,'height') 
+
+      SlipCoeffVar => VariableGet( CurrentModel % Mesh % Variables,'Slip Coefficient',ThisOnly=.TRUE.)
+      SaveSlipCoeff = ASSOCIATED(SlipCoeffVar)
+      IF(SaveSlipCoeff) SlipCoeffVar % Values = 0.0_dp
+
+      SaveSlipSpeed = .FALSE.
+      IF( SaveSlipCoeff ) THEN
+        SlipSpeedVar => VariableGet( CurrentModel % Mesh % Variables,'Slip Speed',ThisOnly=.TRUE.)
+        SaveSlipSpeed = ASSOCIATED(SlipSpeedVar)
+        IF(SaveSlipSpeed) SlipSpeedVar % Values = 0.0_dp
+        
+        SlipWeightVar => VariableGet( CurrentModel % Mesh % Variables,'Slip Weight',ThisOnly=.TRUE.)
+        SaveSlipWeight = ASSOCIATED(SlipWeightVar)
+        IF(SaveSlipWeight) SlipWeightVar % Values = 0.0_dp        
+      END IF
       
       InitHandles = .FALSE.
     END IF
@@ -725,21 +795,18 @@ CONTAINS
       ALLOCATE( Basis(nd), dBasisdx(nd,3) )
     END IF
 
-
     CALL GetElementNodes( Nodes )
     STIFF = 0.0d0
     JAC = 0.0d0
     FORCE = 0.0d0
     dofs = 2
-    c = dofs
-
-    
+    c = dofs    
     
     ! Numerical integration:
     !-----------------------
     IP = GaussPoints( Element )
     ngp = IP % n
-
+    
     FrictionNewton = .FALSE.
 
     ! There is no elemental routine for this.
@@ -794,7 +861,7 @@ CONTAINS
       END IF
 
       !-----------------------------------------------------------------
-      IF( HaveFriction ) THEN
+      IF( HaveFriction .AND. .NOT. HaveSlip ) THEN
         IF( HaveSlip ) THEN
           CALL Fatal('IncompressibleNSVec','You cannot combine different friction models!')
         END IF
@@ -802,7 +869,7 @@ CONTAINS
         ! Velocity at integration point for nonlinear friction laws
         Velo = ListGetElementVectorSolution( Velo_v, Basis, Element, dofs = dofs )
 
-        ! For hyrdostatic model it is assumed that friction is walsy in (x,y) plane.
+        ! For hyrdostatic model it is assumed that friction is always in (x,y) plane.
         ut = MAX(wut0, SQRT(SUM(Velo(1:dofs)**2)))
 
         IF( HaveFrictionW ) THEN
@@ -822,8 +889,34 @@ CONTAINS
         END IF
         SlipCoeff = TanFrictionCoeff
         HaveSlip = .TRUE.
+
+        IF(SaveSlipSpeed) THEN
+          DO i=1,n
+            j = SlipSpeedVar % Perm(Element % NodeIndexes(i))
+            IF(j>0) THEN
+              SlipSpeedVar % Values(j) = SlipSpeedVar % Values(j) + &
+                  Basis(i) * IP % s(t) * ut
+            END IF
+          END DO
+        END IF
       END IF
 
+      IF(SaveSlipCoeff) THEN
+        DO i=1,n
+          j = SlipCoeffVar % Perm(Element % NodeIndexes(i))
+          IF(j>0) THEN
+            SlipCoeffVar % Values(j) = SlipCoeffVar % Values(j) + &
+                Basis(i) * IP % s(t) * SQRT(SUM(SlipCoeff(1:dim)**2))
+          END IF
+        END DO
+        IF(SaveSlipWeight) THEN
+          DO i=1,n
+            j = SlipWeightVar % Perm(Element % NodeIndexes(i))
+            IF(j>0) SlipWeightVar % Values(j) = SlipWeightVar % Values(j) + Basis(i) * IP % s(t)
+          END DO
+        END IF
+      END IF
+                        
       ! Project external pressure to the normal direction
       ! Current 3rd component is neglected!
       IF( HavePres ) THEN
@@ -843,8 +936,7 @@ CONTAINS
 
               IF(HaveFrictionW .AND. Newton) THEN
                 DO j=1,dofs
-                  JAC((p-1)*c+i,(q-1)*c+j ) = &
-                      JAC((p-1)*c+i,(q-1)*c+j ) + &
+                  JAC((p-1)*c+i,(q-1)*c+j ) = JAC((p-1)*c+i,(q-1)*c+j ) + &
                       s * TanFder * Basis(q) * Basis(p) * velo(i) * velo(j) / ut
                 END DO
               END IF
@@ -1290,6 +1382,39 @@ END MODULE HydrostaticNSUtils
 
 
 !------------------------------------------------------------------------------
+SUBROUTINE IncompressibleNSSolver_Init0(Model, Solver, dt, Transient)
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Model_t) :: Model
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------  
+  LOGICAL :: Found, Serendipity
+
+  Serendipity = GetLogical( GetSimulation(), 'Serendipity P Elements', Found)
+  IF(.NOT.Found) Serendipity = .TRUE.
+#if 0 
+  IF(Serendipity) THEN
+    CALL ListAddNewString(GetSolverParams(),'Element', &
+      'p:1 -tri b:1 -tetra b:1 -quad b:3 -brick b:4 -prism b:4 -pyramid b:4')
+  ELSE
+    CALL ListAddNewString(GetSolverParams(),'Element', &
+      'p:1 -tri b:1 -tetra b:1 -quad b:4 -brick b:8 -prism b:4 -pyramid b:4')
+  END IF
+#else
+  CALL ListAddNewString(GetSolverParams(),'Element','p:1')
+#endif
+  
+!------------------------------------------------------------------------------
+END SUBROUTINE IncompressibleNSSolver_Init0
+!------------------------------------------------------------------------------
+
+
+
+!------------------------------------------------------------------------------
 SUBROUTINE HydrostaticNSSolver_init(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
@@ -1330,6 +1455,18 @@ SUBROUTINE HydrostaticNSSolver_init(Model, Solver, dt, Transient)
   
   ! It makes sense to eliminate the bubbles to save memory and time
   CALL ListAddNewLogical(Params, 'Bubbles in Global System', .FALSE.)
+
+  IF( GetLogical( Params,'Save Viscosity', Found ) ) THEN
+    CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'Viscosity')
+    CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'Shearrate')
+    CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'Viscosity Weight')
+  END IF
+
+  IF( GetLogical( Params,'Save Slip', Found ) ) THEN
+    CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'Slip Coefficient')
+    CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'Slip Speed')
+    CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'Slip Weight')
+  END IF
   
 !------------------------------------------------------------------------------ 
 END SUBROUTINE HydrostaticNSSolver_Init
@@ -1492,6 +1629,32 @@ SUBROUTINE HydrostaticNSSolver(Model, Solver, dt, Transient)
 
   CALL DefaultFinish()
 
+  BLOCK
+    TYPE(Variable_t), POINTER, SAVE :: pVar, wVar
+    REAL(KIND=dp) :: minw
+    minw = 1.0e-20
+    DO i=1,4
+      SELECT CASE(i)
+      CASE( 1 ) 
+        wVar => VariableGet( CurrentModel % Mesh % Variables,'Slip Weight',ThisOnly=.TRUE.)
+        pVar => VariableGet( CurrentModel % Mesh % Variables,'Slip Coefficient',ThisOnly=.TRUE.)
+      CASE( 2 ) 
+        pVar => VariableGet( CurrentModel % Mesh % Variables,'Slip Speed',ThisOnly=.TRUE.)
+      CASE( 3 )         
+        wVar => VariableGet( CurrentModel % Mesh % Variables,'Viscosity Weight',ThisOnly=.TRUE.)
+        pVar => VariableGet( CurrentModel % Mesh % Variables,'Viscosity',ThisOnly=.TRUE.)
+      CASE( 4 ) 
+        pVar => VariableGet( CurrentModel % Mesh % Variables,'Strainrate',ThisOnly=.TRUE.)
+      END SELECT
+      IF(ASSOCIATED(wVar) .AND. ASSOCIATED(pVar) ) THEN     
+        CALL Info('IncompressibleNSSolver','Normalizing field number: '//I2S(i),Level=15)
+        WHERE(wVar % Values > minw )
+          pVar % Values = pVar % Values / wVar % Values
+        END WHERE
+      END IF
+    END DO
+  END BLOCK
+  
   ! Compute all the other fields that can be computed from the solution.
   CALL PopulateDerivedFields()
   
