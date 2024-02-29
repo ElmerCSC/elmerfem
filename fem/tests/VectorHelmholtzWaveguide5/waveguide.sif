@@ -80,7 +80,6 @@ Solver 1
 ! Sum the off-diagonal to the block diagonal prec. multiplying with this value
 !  Prec Matrix Complex Coeff = Real 1.0
 
-!  Block Jacobi = Logical True
   Block Gauss-Seidel = Logical True
   Block Matrix Reuse = Logical False
   Block Preconditioner = Logical True
