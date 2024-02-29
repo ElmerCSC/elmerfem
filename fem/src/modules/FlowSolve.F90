@@ -282,11 +282,10 @@
      ForceVector => StiffMatrix % RHS
      UNorm = Solver % Variable % Norm
 
+
      ! Enable keyword used also in IncompressibleNSVec and HydrostaticNSVec
      IF(ListGetLogical(Solver % Values,'Constant-Viscosity Start',GotIt )) THEN
-       IF(AllocationsDone) THEN
-         CALL ListAddConstReal( Solver % Values,'Newtonian Viscosity Condition',-1.0_dp)
-       ELSE
+       IF(.NOT. AllocationsDone) THEN
          CALL ListAddConstReal( Solver % Values,'Newtonian Viscosity Condition',1.0_dp)
        END IF
      END IF
@@ -1288,6 +1287,11 @@
 
       Unorm = DefaultSolve()
 
+      ! If we have constant viscosity start then remove it already after first solution.
+      IF(ListGetLogical(Solver % Values,'Constant-Viscosity Start',GotIt )) THEN
+        CALL ListRemove( Solver % Values,'Newtonian Viscosity Condition')
+      END IF
+      
       st = CPUTIme()-st
       totat = totat + at
       totst = totst + st
