@@ -4245,7 +4245,7 @@ CONTAINS
     TYPE(Solver_t), POINTER :: PSolver
     TYPE(Variable_t), POINTER :: Var
     INTEGER :: i,j,k,l,n,nd,NonLinIter,tests,NoTests,iter
-    LOGICAL :: GotIt, GotIt2, BlockPrec, BlockGS, BlockJacobi, BlockAV, &
+    LOGICAL :: GotIt, GotIt2, BlockPrec, BlockAV, &
         BlockHdiv, BlockHcurl, BlockHorVer, BlockCart, BlockNodal, BlockDomain, &
         BlockDummy, BlockComplex 
     INTEGER :: ColVar, RowVar, NoVar, BlockDofs, VarDofs
@@ -4293,10 +4293,6 @@ CONTAINS
     BlockMonolithic = ListGetLogical( Params,'Block Monolithic',GotIt)
     
     BlockScaling = ListGetLogical( Params,'Block Scaling',GotIt)
-    
-    ! Block iteration style: jacobi vs. gauss-seidel
-    BlockGS = ListGetLogical( Params,'Block Gauss-Seidel',GotIt)    
-    BlockJacobi = ListGetLogical( Params,'Block Jacobi',GotIt)
 
     ! Different strategies on how to split the initial monolithic matrix into blocks
     BlockAV = ListGetLogical( Params,'Block A-V System', GotIt)
