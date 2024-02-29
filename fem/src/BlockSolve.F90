@@ -1376,8 +1376,7 @@ CONTAINS
     n0 = Mesh % NumberOfNodes    
     DO i=1, Mesh % NumberOfEdges
       ! This corresponds to the lowest-order DOF over an edge
-      j = n0 + dofs*(i-1) + 1
-      ! j = n0 + 2*i-1
+      j = n0 + 2*i-1
       k = Solver % Variable % Perm(j)
       IF(k==0) CYCLE
       IF( DoCmplx ) THEN
