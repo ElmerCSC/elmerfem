@@ -100,6 +100,11 @@ End
 Solver 2
   Equation = "AIFlow"
   Variable = AIFlow
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = "UMFPACK"
+
+
   Variable DOFs = 3                        !3 for 2D (u,v,p) -- 4 for 3D (u,v,w,p)
   
   Exported Variable 1 = Temperature        !Define Temperature Mandatory!!
