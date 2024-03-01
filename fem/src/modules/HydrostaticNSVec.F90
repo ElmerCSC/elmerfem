@@ -74,7 +74,7 @@ CONTAINS
         ViscNominal_h, ViscDiff_h, ViscTrans_h, ViscYasuda_h, ViscGlenExp_h, ViscGlenFactor_h, &
         ViscArrSet_h, ViscArr_h, ViscTLimit_h, ViscRate1_h, ViscRate2_h, ViscEne1_h, ViscEne2_h, &
         ViscTemp_h
-    REAL(KIND=dp), SAVE :: R, vgrad(2,3), NewtonRelax
+    REAL(KIND=dp) :: R, vgrad(2,3), NewtonRelax
     REAL(KIND=dp) :: c1, c2, c3, c4, Tlimit, ArrheniusFactor, A1, A2, Q1, Q2, ViscCond
     LOGICAL, SAVE :: ConstantVisc = .FALSE., Visited = .FALSE., DoNewton, GotRelax = .FALSE.
     REAL(KIND=dp), ALLOCATABLE, SAVE :: ss(:), s(:), ArrheniusFactorVec(:)
@@ -83,6 +83,8 @@ CONTAINS
     LOGICAL, SAVE :: SaveShear, SaveVisc, SaveWeight
     CHARACTER(*), PARAMETER :: Caller = 'EffectiveViscosityVec'
 
+    SAVE NewtonRelax, R
+    
     !$OMP THREADPRIVATE(ss,s,ViscVec0,ViscVec,ArrheniusFactorVec)
 
     dim = 3
@@ -130,12 +132,16 @@ CONTAINS
 
           IF (.NOT.ListCheckPresentAnyMaterial( CurrentModel,'Glen Allow Old Keywords')) THEN
             IF( ListCheckPresentAnyMaterial( CurrentModel,'Constant Temperature') ) THEN
-              CALL Fatal(Caller,'Replace >Constant Temperature< with >Relative Temperature<')
-            END IF
-            IF( ListCheckPresentAnyMaterial( CurrentModel,'Temperature Field Variable') ) THEN
-              CALL Fatal(Caller,'Replace >Temperature Field Variable< with >Relative Temperature<')
+              CALL Warn(Caller,'Replace >Constant Temperature< with >Relative Temperature<')
+            END IF            
+            IF( ListCheckPresentAnyMaterial( CurrentModel,'Temperature Field Variable') ) THEN             
+              CALL Warn(Caller,'Replace >Temperature Field Variable< with >Relative Temperature = Equals ...<')
             END IF
           END IF
+          IF( ViscTemp_h % NotPresentAnywhere ) THEN
+            CALL Fatal(Caller,'>Relative Temperature< not given for viscosity model "glen"')
+          END IF
+
           IF( ListCheckPresentAnyMaterial( CurrentModel,'Glen Enhancement Factor Function')  ) THEN
             CALL Fatal(Caller,'No Glen function API yet!')
           END IF
@@ -144,6 +150,7 @@ CONTAINS
 
           NewtonRelax = ListGetCReal( CurrentModel % Solver % Values,&
               'Viscosity Newton Relaxation Factor',GotRelax )
+          IF(.NOT. GotRelax) NewtonRelax = 1.0_dp
         END IF
       ELSE
         CALL Info(Caller,'Using constant viscosity!')
@@ -420,7 +427,7 @@ CONTAINS
     IF( DoNewton ) THEN
       IF(GotRelax) ViscDerVec(1:ngp) = NewtonRelax * ViscDerVec(1:ngp)
     END IF
-    
+
     ! If requested, save viscosity field (on nodes, ip points or elements). 
     IF(SaveVisc) THEN
       IF( ViscVar % TYPE == Variable_on_nodes ) THEN
@@ -536,7 +543,7 @@ CONTAINS
       ALLOCATE(BasisVec(ngp,ntot), dBasisdxVec(ngp,ntot,3), DetJVec(ngp), &
           rhoVec(ngp), LoadAtIpVec(ngp,2), &
           weight_1(ngp), weight_2(ngp), weight_4(ngp), tauVec(ngp), &
-          ForcePart(ntot), GradVec(ngp,2,2), GradHeight(ngp,dim), &
+          ForcePart(ntot), GradVec(ngp,3,3), GradHeight(ngp,dim), &
           STAT=allocstat)
       IF (allocstat /= 0) THEN
         CALL Fatal('HydrostaticNSSolver::LocalBulkMatrix','Local storage allocation failed')
@@ -606,28 +613,32 @@ CONTAINS
     END DO
 
     IF ( Newton ) THEN
-      DO i = 1,dofs
-        DO j = 1,dofs
-          DO k = 1, ngp
-            GradVec(k, i, j) = SUM(dBasisdxVec(k,1:ntot,j)*NodalVelo(i,1:ntot))
+      IF (ANY(muDerVec0(1:ngp)/=0)) THEN
+        ! Note that it is quite delicate whether to use dim or dofs in the looping.
+        ! We need to create du_x/dz and du_y/dz but don't have u_z at our disposal.
+        DO i = 1,dim
+          DO j = 1,dim
+            IF(i<=dofs) THEN
+              GradVec(1:ngp, i, j) = MATMUL(dBasisdxVec(1:ngp,1:ntot,j),NodalVelo(i,1:ntot))
+            ELSE
+              GradVec(1:ngp, i, j) = 0.0_dp
+            END IF
           END DO
         END DO
-      END DO
-      
-      IF (ANY(muDerVec0(1:ngp)/=0)) THEN
-        DO i = 1,dofs
-          DO j = 1,dofs
+        
+        DO i = 1,dim
+          DO j = 1,dim
             StrainRateVec(1:ngp,i,j) = ( GradVec(1:ngp,i,j) + GradVec(1:ngp,j,i) ) / 2
           END DO
         END DO
-
-        muDerVec0(1:ngp) = muderVec0(1:ngp)*detJVec(1:ngp)*8
+        
         DO i=1,dofs
           DO q = 1,ntot
-            g(1:ngp,q,i) = SUM(StrainRateVec(1:ngp,i,:)*dBasisdxvec(1:ngp,q,1:dim),2)
+            g(1:ngp,q,i) = SUM(StrainRateVec(1:ngp,i,1:dim)*dBasisdxvec(1:ngp,q,1:dim),2)
           END DO
         END DO
-
+        
+        muDerVec0(1:ngp) = muderVec0(1:ngp)*detJVec(1:ngp)*8
         DO i=1,dofs
           DO j=1,dofs
             CALL LinearForms_udotv(ngp,ntot,dim,g(:,:,j),g(:,:,i),mudervec0,jacord(:,:,j,i))
@@ -707,14 +718,14 @@ CONTAINS
   ! Assemble local finite element matrix for a single boundary element and glue
   ! it to the global matrix.
   !------------------------------------------------------------------------------
-  SUBROUTINE LocalBoundaryMatrix( Element, n, nd, dim, InitHandles, Newton)
+  SUBROUTINE LocalBoundaryMatrix( Element, n, nd, dim, InitHandles, FrictionNewton)
     !------------------------------------------------------------------------------
     IMPLICIT NONE
 
     TYPE(Element_t), POINTER, INTENT(IN) :: Element
     INTEGER, INTENT(IN) :: n, nd, dim
     LOGICAL, INTENT(INOUT) :: InitHandles 
-    LOGICAL :: Newton
+    LOGICAL :: FrictionNewton
     !------------------------------------------------------------------------------    
     TYPE(GaussIntegrationPoints_t) :: IP
     REAL(KIND=dp), TARGET :: STIFF(nd*2,nd*2), FORCE(nd*2),NodalHeight(nd)
@@ -722,24 +733,23 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     INTEGER :: c,i,j,k,l,p,q,t,ngp,dofs
     LOGICAL :: HaveSlip, HaveForce, HavePres, HaveFrictionW, HaveFrictionU, &
-        HaveFriction, FrictionNewton, Found, Stat
+        HaveFriction, Found, Stat, GotRelax
     REAL(KIND=dp) :: ExtPressure, s, detJ, wut0, wexp, wcoeff, ut
     REAL(KIND=dp) :: SlipCoeff(3), SurfaceTraction(3), Normal(3), &
-        Velo(3), ut_eps, TanFrictionCoeff, DummyVals(1)
+        Velo(3), TanFrictionCoeff, DummyVals(1)
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(ValueHandle_t), SAVE :: ExtPressure_h, SurfaceTraction_h, SlipCoeff_h, &
-        WeertmanCoeff_h, WeertmanExp_h, &
-        FrictionNewtonEps_h, FrictionUt0_h, FrictionNewton_h, FrictionCoeff_h
+        WeertmanCoeff_h, WeertmanExp_h, FrictionUt0_h, FrictionCoeff_h
     TYPE(VariableHandle_t), SAVE :: Velo_v
     TYPE(Variable_t), POINTER, SAVE :: NrmSol, HeightVar
     TYPE(ValueList_t), POINTER :: BC    
-    REAL(KIND=dp) :: TanFder,JAC(nd*2,nd*2),SOL(nd*2),NodalSol(2,nd)
+    REAL(KIND=dp) :: TanFder,JAC(nd*2,nd*2),SOL(nd*2),NodalSol(2,nd),NewtonRelax
     TYPE(Variable_t), POINTER, SAVE :: SlipCoeffVar, SlipSpeedVar, SlipWeightVar
     LOGICAL, SAVE :: SaveSlipSpeed, SaveSlipCoeff, SaveSlipWeight
 
     
-    SAVE Basis, dBasisdx
-
+    SAVE Basis, dBasisdx, NewtonRelax, GotRelax
+    
     !------------------------------------------------------------------------------
 
     IF( InitHandles ) THEN   
@@ -752,13 +762,18 @@ CONTAINS
 
       CALL ListInitElementKeyword( FrictionCoeff_h,'Boundary Condition','Friction Coefficient',&
           EvaluateAtIp=.TRUE., DummyCount=1)     
-      CALL ListInitElementKeyword( FrictionNewtonEps_h,'Boundary Condition','Friction Newton Epsilon')     
-      CALL ListInitElementKeyword( FrictionNewton_h,'Boundary Condition','Friction Newton Linearization')
       CALL ListInitElementKeyword( FrictionUt0_h,'Boundary Condition','Friction Linear Velocity')
-
+      IF(FrictionUt0_h % NotPresentAnywhere) THEN
+        CALL ListInitElementKeyword( FrictionUt0_h,'Boundary Condition','Weertman Linear Velocity')
+      END IF  
+    
       CALL ListInitElementKeyword( WeertmanCoeff_h,'Boundary Condition','Weertman Friction Coefficient')
       CALL ListInitElementKeyword( WeertmanExp_h,'Boundary Condition','Weertman Exponent')
 
+      NewtonRelax = ListGetCReal( CurrentModel % Solver % Values,&
+          'Friction Newton Relaxation Factor',GotRelax )
+      IF(.NOT. GotRelax) NewtonRelax = 1.0_dp    
+      
       str = ListGetString( CurrentModel % Solver % Values,'Normal Vector Name',Found )
       IF(.NOT. Found) str = 'Normal Vector'
       NrmSol => VariableGet( CurrentModel % Solver % Mesh % Variables, str, ThisOnly = .TRUE.) 
@@ -807,8 +822,6 @@ CONTAINS
     IP = GaussPoints( Element )
     ngp = IP % n
     
-    FrictionNewton = .FALSE.
-
     ! There is no elemental routine for this.
     ! So whereas this breaks the beauty it does not cost too much.
     BC => GetBC()     
@@ -817,11 +830,6 @@ CONTAINS
     HaveFriction = HaveFrictionU .OR. HaveFrictionW
 
     IF( HaveFriction ) THEN
-      FrictionNewton = ListGetElementLogical(FrictionNewton_h, Element ) 
-      IF( FrictionNewton ) THEN
-        ut_eps = ListGetElementReal( FrictionNewtonEps_h, Element = Element, Found = Found )
-        IF(.NOT. Found ) ut_eps = 1.0e-8
-      END IF
       wut0 = ListGetElementReal( FrictionUt0_h, Element = Element )
     END IF
 
@@ -906,7 +914,7 @@ CONTAINS
           j = SlipCoeffVar % Perm(Element % NodeIndexes(i))
           IF(j>0) THEN
             SlipCoeffVar % Values(j) = SlipCoeffVar % Values(j) + &
-                Basis(i) * IP % s(t) * SQRT(SUM(SlipCoeff(1:dim)**2))
+                Basis(i) * IP % s(t) * MAXVAL(SlipCoeff(1:dim))
           END IF
         END DO
         IF(SaveSlipWeight) THEN
@@ -934,7 +942,7 @@ CONTAINS
                   STIFF( (p-1)*c+i,(q-1)*c+i ) + &
                   s * SlipCoeff(i) * Basis(q) * Basis(p)
 
-              IF(HaveFrictionW .AND. Newton) THEN
+              IF(HaveFrictionW .AND. FrictionNewton) THEN
                 DO j=1,dofs
                   JAC((p-1)*c+i,(q-1)*c+j ) = JAC((p-1)*c+i,(q-1)*c+j ) + &
                       s * TanFder * Basis(q) * Basis(p) * velo(i) * velo(j) / ut
@@ -970,12 +978,15 @@ CONTAINS
       END IF
     END DO
 
-    IF(HaveFrictionW .AND. Newton) THEN
+    IF(HaveFrictionW .AND. FrictionNewton) THEN
       CALL GetLocalSolution( NodalSol )
       SOL=0._dp
       DO i = 1, c
         SOL(i::c) = NodalSol(i,1:nd)
       END DO
+
+      IF(GotRelax) JAC = NewtonRelax * JAC
+
       STIFF=STIFF+JAC
       FORCE=FORCE + MATMUL(JAC,SOL)
     END IF
@@ -1115,13 +1126,13 @@ CONTAINS
 
     IMPLICIT NONE
 
-    TYPE(Variable_t), POINTER :: VarXY, VarFull, VarDuz, VarP
+    TYPE(Variable_t), POINTER :: VarXY, VarFull, VarDuz, VarP, VarVx, VarVy
     CHARACTER(LEN=MAX_NAME_LEN):: str
     TYPE(ValueList_t), POINTER :: Params, Material
     TYPE(Mesh_t), POINTER :: Mesh
     LOGICAL :: Found, PressureCorr, BaseVelo
     REAL(KIND=dp), POINTER :: duz(:), wuz(:), dpr(:), ub(:)
-    INTEGER :: i,j,k,j1,j2,i1,i2,k1,k2,t,n,nd,nb,active, dofs, pdof
+    INTEGER :: i,j,k,j1,j2,i1,i2,k1,k2,t,n,nd,nb,active, dofs, pdof, zdof
     TYPE(Element_t), POINTER :: Element
     TYPE(Solver_t), POINTER :: pSolver
     REAL(KIND=dp) :: dz, rho, g, Nrm(3)
@@ -1130,6 +1141,8 @@ CONTAINS
     
     SAVE :: duz, wuz, dpr, ub
 
+    CALL Info('HydrostaticNSVec','Populating derived fields: vertial velocity and pressure')
+    
     pSolver => CurrentModel % Solver    
     Params => pSolver % Values
     VarXY => pSolver % Variable
@@ -1138,16 +1151,36 @@ CONTAINS
     
     str = ListGetString( Params,'Velocity Vector Name',Found )
     IF(.NOT. Found) str = ListGetString( Params,'Velocity Variable Name',Found )
+
+    IF(.NOT. Found) str = 'Flow Solution'
+    Found = .TRUE.
+    
     IF(Found) THEN
       VarFull => VariableGet(Mesh % Variables, str, ThisOnly = .TRUE.)
-      IF(.NOT. ASSOCIATED(VarFull)) THEN
-        CALL Fatal('HydrostaticNSVec','Could not find full velocity variable: '//TRIM(str))
+      IF(ASSOCIATED(VarFull)) THEN
+        dofs = VarFull % dofs
+        IF(dofs < 3 .OR. dofs > 4 ) THEN
+          CALL Fatal('HydrostaticNSVec','We need 3 or 4 components for velocity field, not '//I2S(dofs))
+        END IF
+        zdof = 3
+      ELSE
+        VarVx => VariableGet(Mesh % Variables, TRIM(str)//' 1', ThisOnly = .TRUE.)
+        VarVy => VariableGet(Mesh % Variables, TRIM(str)//' 2', ThisOnly = .TRUE.)
+        VarFull => VariableGet(Mesh % Variables, TRIM(str)//' 3', ThisOnly = .TRUE.)
+        i = 0
+        IF(ASSOCIATED(VarVx)) i=i+1
+        IF(ASSOCIATED(VarVy)) i=i+1
+        IF(ASSOCIATED(VarFull)) i=i+1
+        IF(i==3) THEN                
+          CALL Info('HydrostaticNSVec','Setting velocity for each component separately',Level=10)
+          dofs = 1          
+        ELSE
+          CALL Fatal('HydrostaticNSVec','Could not find full velocity variable: '//TRIM(str))
+        END IF
+        zdof = 1
       END IF
-      dofs = VarFull % dofs
-      IF(dofs < 3 .OR. dofs > 4 ) THEN
-        CALL Fatal('HydrostaticNSVec','We need 3 or 4 components for velocity field, not '//I2S(dofs))
-      END IF
-      VarFull % Values = 0.0_dp
+      VarFull % Values = 0.0_dp      
+      PRINT *,'DOfs:',Dofs      
     END IF
       
     NULLIFY(VarP) 
@@ -1187,8 +1220,13 @@ CONTAINS
       DO i=1,Mesh % NumberOfNodes
         j = VarFull % Perm(i)
         k = VarXY % Perm(i)
-        VarFull % Values(dofs*(j-1)+1) = VarXY % Values(2*k-1)
-        VarFull % Values(dofs*(j-1)+2) = VarXY % Values(2*k)
+        IF(dofs == 1 ) THEN
+          VarVx % Values(j) = VarXY % Values(2*k-1)
+          VarVy % Values(j) = VarXY % Values(2*k)          
+        ELSE
+          VarFull % Values(dofs*(j-1)+1) = VarXY % Values(2*k-1)
+          VarFull % Values(dofs*(j-1)+2) = VarXY % Values(2*k)
+        END IF
       END DO
     END IF
       
@@ -1262,7 +1300,7 @@ CONTAINS
         ! Initailize values at the bedrock
         k1 = VarFull % Perm(i1)
         IF(k1>0) THEN
-          VarFull % Values(dofs*(k1-1)+3) = 1.0_dp * ub(k1) 
+          VarFull % Values(dofs*(k1-1)+zdof) = 1.0_dp * ub(k1) 
         END IF
           
         DO WHILE(.TRUE.)
@@ -1278,7 +1316,7 @@ CONTAINS
           IF(k1>0 .AND. k2>0) THEN
             ! Integrate for the z-velocity
             dz = Mesh % Nodes % z(i2) - Mesh % Nodes % z(i1)
-            VarFull % Values(dofs*(k2-1)+3) = VarFull % Values(dofs*(k1-1)+3) + &
+            VarFull % Values(dofs*(k2-1)+zdof) = VarFull % Values(dofs*(k1-1)+zdof) + &
                 dz * ( duz(j1) + duz(j2) ) / 2.0_dp
           END IF
           i1 = i2
@@ -1396,17 +1434,8 @@ SUBROUTINE IncompressibleNSSolver_Init0(Model, Solver, dt, Transient)
 
   Serendipity = GetLogical( GetSimulation(), 'Serendipity P Elements', Found)
   IF(.NOT.Found) Serendipity = .TRUE.
-#if 0 
-  IF(Serendipity) THEN
-    CALL ListAddNewString(GetSolverParams(),'Element', &
-      'p:1 -tri b:1 -tetra b:1 -quad b:3 -brick b:4 -prism b:4 -pyramid b:4')
-  ELSE
-    CALL ListAddNewString(GetSolverParams(),'Element', &
-      'p:1 -tri b:1 -tetra b:1 -quad b:4 -brick b:8 -prism b:4 -pyramid b:4')
-  END IF
-#else
+
   CALL ListAddNewString(GetSolverParams(),'Element','p:1')
-#endif
   
 !------------------------------------------------------------------------------
 END SUBROUTINE IncompressibleNSSolver_Init0
@@ -1441,6 +1470,12 @@ SUBROUTINE HydrostaticNSSolver_init(Model, Solver, dt, Transient)
   IF( ListCheckPresentAnyBC( Model, 'Pressure 3' ) ) THEN
     CALL Fatal( Caller,'Use >Surface Traction 3< instead of >Pressure 3<')
   END IF
+
+  IF( ListCheckPresentAnyBC( Model, 'Slip Coefficient 2' ) ) THEN
+    IF( .NOT. ListCheckPresentAnyBC( Model, 'Slip Coefficient 1' ) ) THEN
+      CALL Fatal(Caller,'This solver expects "Slip Coefficient i" for i={1,2}')   
+    END IF
+  END IF
   
   dim = CoordinateSystemDimension()
   IF( dim /= 3 ) THEN
@@ -1459,13 +1494,13 @@ SUBROUTINE HydrostaticNSSolver_init(Model, Solver, dt, Transient)
   IF( GetLogical( Params,'Save Viscosity', Found ) ) THEN
     CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'Viscosity')
     CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'Shearrate')
-    CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'Viscosity Weight')
+    CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'-nooutput Viscosity Weight')
   END IF
 
   IF( GetLogical( Params,'Save Slip', Found ) ) THEN
     CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'Slip Coefficient')
     CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'Slip Speed')
-    CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'Slip Weight')
+    CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'-nooutput Slip Weight')
   END IF
   
 !------------------------------------------------------------------------------ 
