@@ -2005,7 +2005,7 @@ SUBROUTINE SequentialRemeshParMMG(Model, InMesh,OutMesh,Boss,EdgePairs,PairCount
 
     !! GET THE NEW MESH
     CALL Info(FuncName,'Recovering mesh',Level=20)
-    CALL GET_ParMMG_MESH(OutMesh,Parallel)
+    CALL GET_ParMMG_MESH(OutMesh,Parallel,Calving=.FALSE.)
   END IF
 
   CALL Info(FuncName,'Releasing mesh',Level=20)
@@ -2809,7 +2809,7 @@ SUBROUTINE DistributedRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,&
   CALL PMMG_Get_meshSize(pmmgMesh,NVerts,NTetras,NPrisms,NTris,NQuads,NEdges,ierr)
 
   !! GET THE NEW MESH
-  CALL GET_ParMMG_MESH(OutMesh,Parallel,Calving)
+  CALL GET_ParMMG_MESH(OutMesh,Parallel,Calving=.FALSE.)
 
   !! Release mmg mesh
   CALL PMMG_Free_all ( PMMG_ARG_start,     &
