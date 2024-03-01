@@ -4,7 +4,6 @@
 
   Block Gauss-Seidel = True
   Block Quadratic Hcurl System = Logical True
-  Block Matrix Reuse = False
   Block Preconditioner = True
 
 ! True + True seems to provide best speed-up
