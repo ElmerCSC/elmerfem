@@ -2266,11 +2266,12 @@ SUBROUTINE Set_ParMMG_Mesh(Mesh, Parallel, EdgePairs, PairCount)
 END SUBROUTINE Set_ParMMG_Mesh
 
 
-SUBROUTINE Get_ParMMG_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
+SUBROUTINE Get_ParMMG_Mesh(NewMesh, Parallel, FixedNodes, FixedElems, Calving)
 
   !------------------------------------------------------------------------------
   TYPE(Mesh_t), POINTER :: NewMesh
   LOGICAL :: Parallel
+  LOGICAL :: Calving
   LOGICAL, OPTIONAL, ALLOCATABLE :: FixedNodes(:), FixedElems(:)
   !------------------------------------------------------------------------------
 
@@ -2524,6 +2525,8 @@ SUBROUTINE Get_ParMMG_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
   CALL Info(FuncName,'Before comm barrier',Level=20)
   
   CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
+
+  CALL Finalize_MMG_Mesh(NewMesh)
 
 #else
      CALL Fatal('Get_ParMMG_Mesh',&
@@ -2806,7 +2809,7 @@ SUBROUTINE DistributedRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,&
   CALL PMMG_Get_meshSize(pmmgMesh,NVerts,NTetras,NPrisms,NTris,NQuads,NEdges,ierr)
 
   !! GET THE NEW MESH
-  CALL GET_ParMMG_MESH(OutMesh,Parallel)
+  CALL GET_ParMMG_MESH(OutMesh,Parallel,Calving)
 
   !! Release mmg mesh
   CALL PMMG_Free_all ( PMMG_ARG_start,     &
