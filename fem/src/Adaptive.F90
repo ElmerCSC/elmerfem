@@ -111,7 +111,7 @@ CONTAINS
     TYPE( Variable_t ), POINTER :: Var, Var1, NewVar
     REAL(KIND=dp) :: MaxError, ErrorLimit, minH, maxH, MaxChangeFactor, &
         LocalIndicator,ErrorEstimate,t,TotalTime,RemeshTime,s,FinalRef,&
-        MaxScale,AveScale,OutFrac,MaxFrac
+        MaxScale,AveScale,OutFrac,MaxFrac, NodalMaxError, mError
 
     LOGICAL :: BandwidthOptimize, Found, Coarsening, GlobalBubbles, &
         MeshNumbering, DoFinalRef
@@ -199,7 +199,7 @@ CONTAINS
     WRITE( Message, * ) 'Error computation time (cpu-secs):               ',CPUTime()-t
     CALL Info( Caller, Message, Level = 6 )
 
-!   Global error estimate:
+    !   Global error estimate:
     !   ----------------------
     ErrorEstimate = SUM( ErrorIndicator**2) 
     n = SIZE(ErrorIndicator)
@@ -340,7 +340,14 @@ CONTAINS
     WHERE( Referenced(1:nn) > 0 )
        NodalError(1:nn) = NodalError(1:nn) / Referenced(1:nn)
     END WHERE
-    CALL ParallelAverageHvalue(  RefMesh, NodalError )
+
+    IF (ParEnv % PEs>1) THEN
+      CALL ParallelAverageHvalue(  RefMesh, NodalError )
+
+      NodalMaxError = ParallelReduction( MAXVAL(NodalError),2 )
+      WRITE( Message, * ) 'Nodal Max error      =                           ',NodalMaxError
+      CALL Info( Caller, Message, Level = 6 )
+    END IF
 
 !
 !   Smooth error, if requested:
@@ -438,7 +445,10 @@ CONTAINS
     !PRINT *,'Depth:',RefMesh % AdaptiveDepth, MinDepth
     
     IF( RefMesh % AdaptiveDepth > MinDepth ) THEN
-      IF ( MaxError < MaxScale * ErrorLimit .AND. ErrorEstimate < AveScale * ErrorLimit .AND. OutFrac < MaxFrac ) THEN
+      mError = MaxError
+      IF(ListGetLogical(Params, 'Adaptive Use Nodal Error As Limit', Found)) mError = NodalMaxError
+
+      IF ( mError < MaxScale * ErrorLimit .AND. ErrorEstimate < AveScale * ErrorLimit .AND. OutFrac < MaxFrac ) THEN
         FinalRef = ListGetConstReal( Params,'Adaptive Final Refinement', DoFinalRef ) 
         IF(DoFinalRef ) THEN      
           CALL Info( Caller, 'Performing one final refinement',Level=6)
@@ -494,6 +504,7 @@ CONTAINS
       IF( ListGetLogical( Params,'Adaptive Remesh Use MMG', Found ) ) THEN
 #ifdef HAVE_MMG
         CALL Info(Caller,'Using MMG library for mesh refinement', Level=5)
+
 
         NewMesh => MMG_ReMesh( RefMesh, ErrorLimit/3, HValue, &
             NodalError, hConvergence, minH, maxH, MaxChangeFactor, Coarsening )         
@@ -595,7 +606,6 @@ CONTAINS
     CALL SetCurrentMesh( Model, NewMesh )
 
     CALL Info(Caller,'Interpolate vectors from old mesh to new mesh!',Level=7)    
-    Var => RefMesh % Variables
     DO WHILE( ASSOCIATED( Var ) )
       ! This cycles global variable such as time etc. 
       IF( SIZE( Var % Values ) == Var % DOFs ) THEN
@@ -1104,7 +1114,6 @@ CONTAINS
       CALL VectorValuesRange(Hvalue,SIZE(Hvalue),'Ave Test')             
     END IF
 #endif
-
     
     CALL ComputeDesiredHvalue( RefMesh, ErrorLimit, Hvalue, NodalError, &
         hConvergence, minH, maxH, MaxChange, Coarsening ) 
@@ -1124,8 +1133,47 @@ CONTAINS
       IF( ParEnv % PEs > 1 ) THEN
         CALL Info('MMG_Remesh','Calling parallel remeshing routines in 3D',Level=10)
 
+BLOCK
+        REAL(KIND=dp) :: xmax, xmin, ymax, ymin, zmax, zmin, cscale
+        LOGICAL :: ScaleCoord
+
+        ScaleCoord = ListGetLogical(Params, 'Adaptive Scale Coordinates for MMG', Found)
+
+        IF(ScaleCoord) THEN
+          xmin = ParallelReduction( MINVAL(refmesh % nodes % x), 1)
+          xmax = ParallelReduction( MAXVAL(refmesh % nodes % x), 2)
+
+          ymin = ParallelReduction( MINVAL(refmesh % nodes % y), 1)
+          ymax = ParallelReduction( MAXVAL(refmesh % nodes % y), 2)
+
+          zmin = ParallelReduction( MINVAL(refmesh % nodes % z), 1)
+          zmax = ParallelReduction( MAXVAL(refmesh % nodes % z), 2)
+
+          cscale = 10 * MAX( xmax - xmin, MAX( ymax - ymin, zmax - zmin)  )
+
+          refmesh % nodes % x = cscale * refmesh % nodes % x
+          refmesh % nodes % y = cscale * refmesh % nodes % y
+          refmesh % nodes % z = cscale * refmesh % nodes % z
+          var % values = cscale * var % values
+        END IF
+
         CALL DistributedRemeshParMMG(Model, RefMesh, TmpMesh,&
             Params = Solver % Values, HVar = Var )
+
+        IF( ScaleCoord ) THEN
+          cscale = 1._dp / cscale
+
+          tmpmesh % nodes % x = cscale * tmpmesh % nodes % x
+          tmpmesh % nodes % y = cscale * tmpmesh % nodes % y
+          tmpmesh % nodes % z = cscale * tmpmesh % nodes % z
+
+          refmesh % nodes % x = cscale * refmesh % nodes % x
+          refmesh % nodes % y = cscale * refmesh % nodes % y
+          refmesh % nodes % z = cscale * refmesh % nodes % z
+          var % values = cscale * var % values
+        END IF
+END BLOCK
+
         CALL RenumberGElems(TmpMesh)
 
         Rebalance = ListGetLogical(Model % Solver % Values, "Adaptive Rebalance", Found, DefValue = .TRUE.)
@@ -2282,23 +2330,18 @@ CONTAINS
        END FUNCTION InsideResidual
     END INTERFACE
 !------------------------------------------------------------------------------
-    TYPE(Element_t), POINTER :: Edge, Element
+    TYPE(Element_t), POINTER :: Edge, Face, Boundary, Element
     INTEGER :: i, j, k, Parent
     REAL(KIND=dp), POINTER :: TempIndicator(:,:)
     REAL(KIND=dp) :: LocalIndicator(2), Fnorm, LocalFnorm,s,s1,s2
 !------------------------------------------------------------------------------
     CALL FindMeshEdges( RefMesh )
 
-    IF(Parenv % PEs>1 ) THEN
-      CALL SParEdgeNumbering(RefMesh,.TRUE.)
-      CALL SParFaceNumbering(RefMesh,.TRUE.)
-    END IF
-
-    Fnorm = 0.0d0
-    ErrorIndicator = 0.0d0
+    Fnorm = 0.0_dp
+    ErrorIndicator = 0.0_dp
 
     CALL AllocateArray(TempIndicator,2,SIZE(ErrorIndicator))
-    TempIndicator = 0.0d0
+    TempIndicator = 0.0_dp
 !
 !   Bulk equation residuals:
 !   ------------------------
@@ -2344,22 +2387,18 @@ CONTAINS
 !   ----------------
 
     DO i = 1,RefMesh % NumberOfFaces
-       IF( Parenv % PEs>1 ) THEN
-         IF ( RefMesh % ParallelInfo % FaceInterface(i) ) CYCLE
-       END IF
+       Face => RefMesh % Faces(i)
+       CurrentModel % CurrentElement => Face
 
-       Edge => RefMesh % Faces(i)
-       CurrentModel % CurrentElement => Edge
+       IF ( .NOT. ASSOCIATED( Face % BoundaryInfo ) ) CYCLE
 
-       IF ( .NOT. ASSOCIATED( Edge % BoundaryInfo ) ) CYCLE
+       IF ( ASSOCIATED( Face % BoundaryInfo % Right ) ) THEN
+          LocalIndicator = EdgeResidual( Model, Face, RefMesh, Quant, Perm )
 
-       IF ( ASSOCIATED( Edge % BoundaryInfo % Right ) ) THEN
-          LocalIndicator = EdgeResidual( Model, Edge, RefMesh, Quant, Perm )
-
-          Parent = Edge % BoundaryInfo % Left % ElementIndex
+          Parent = Face % BoundaryInfo % Left % ElementIndex
           TempIndicator( :,Parent ) = TempIndicator( :,Parent ) + LocalIndicator
           
-          Parent = Edge % BoundaryInfo % Right % ElementIndex
+          Parent = Face % BoundaryInfo % Right % ElementIndex
           TempIndicator( :,Parent ) = TempIndicator( :,Parent ) + LocalIndicator
        END IF
     END DO
@@ -2371,24 +2410,24 @@ CONTAINS
     DO i = RefMesh % NumberOfBulkElements + 1,  &
            RefMesh % NumberOfBulkElements + RefMesh % NumberOfBoundaryElements
 
-       Edge => RefMesh % Elements(i)
-       CurrentModel % CurrentElement => Edge
+       Boundary => RefMesh % Elements(i)
+       CurrentModel % CurrentElement => Boundary
 
-       IF ( Edge % TYPE % ElementCode == 101 ) CYCLE
+       IF ( Boundary % Type % ElementCode == 101 ) CYCLE
 
-       LocalIndicator = BoundaryResidual( Model, Edge, &
+       LocalIndicator = BoundaryResidual( Model, Boundary, &
              RefMesh, Quant, Perm, LocalFnorm )
 
        Fnorm = Fnorm + LocalFnorm
 
-       IF ( ASSOCIATED( Edge % BoundaryInfo % Left) ) THEN
-         Parent = Edge % BoundaryInfo % Left % ElementIndex
+       IF ( ASSOCIATED( Boundary % BoundaryInfo % Left) ) THEN
+         Parent = Boundary % BoundaryInfo % Left % ElementIndex
          IF ( Parent > 0 ) TempIndicator( :,Parent ) = &
               TempIndicator( :,Parent ) + LocalIndicator
        END IF
           
-       IF ( ASSOCIATED( Edge % BoundaryInfo % RIght) ) THEN
-         Parent = Edge % BoundaryInfo % Right % ElementIndex
+       IF ( ASSOCIATED( Boundary % BoundaryInfo % RIght) ) THEN
+         Parent = Boundary % BoundaryInfo % Right % ElementIndex
          IF ( Parent > 0 ) TempIndicator( :,Parent ) = &
               TempIndicator( :,Parent ) + LocalIndicator
        END IF
@@ -2408,13 +2447,11 @@ CONTAINS
     ErrorIndicator = SQRT( TempIndicator(1,:)/(2*s) + s*TempIndicator(2,:)/2 )
 
     IF ( Fnorm > AEPS ) THEN
-       ErrorIndicator = ErrorIndicator / SQRT( Fnorm )
+       ErrorIndicator = ErrorIndicator / SQRT(Fnorm)
     END IF
 
     MaxError = MAXVAL( ErrorIndicator )
-    IF( ParEnv % PEs > 1 ) THEN
-      MaxError = ParallelReduction(MaxError,2)
-    END IF
+    IF(ParEnv % PEs>1) MaxError = ParallelReduction(MaxError,2)
         
     DEALLOCATE( TempIndicator )
 !------------------------------------------------------------------------------
