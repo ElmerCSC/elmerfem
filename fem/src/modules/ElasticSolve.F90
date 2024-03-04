@@ -677,8 +677,10 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   END IF
 
   ALLOCATE( PrevSOL(SIZE(Displacement)) )
-  ALLOCATE(DisplacementRot(SIZE(Displacement)))
-  ALLOCATE(LocalForceSaved(STDOFs*N))
+  IF (UseUMAT) THEN  
+    ALLOCATE(DisplacementRot(SIZE(Displacement)))
+    ALLOCATE(LocalForceSaved(SIZE(LocalForce)))
+  END IF
 
   PrevSOL = Displacement
   IF (UseUMAT) THEN
@@ -1378,9 +1380,10 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   END IF
 
   DEALLOCATE( PrevSOL )
-  DEALLOCATE(DisplacementRot)
-  DEALLOCATE(LocalForceSaved)
-
+  IF (UseUmat) THEN
+    DEALLOCATE(DisplacementRot)
+    DEALLOCATE(LocalForceSaved)
+  END IF
 
   CALL DefaultFinish()
   
