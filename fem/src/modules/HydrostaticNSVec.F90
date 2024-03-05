@@ -1420,7 +1420,7 @@ END MODULE HydrostaticNSUtils
 
 
 !------------------------------------------------------------------------------
-SUBROUTINE IncompressibleNSSolver_Init0(Model, Solver, dt, Transient)
+SUBROUTINE HydrostaticNSSolver_Init0(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
   IMPLICIT NONE
@@ -1438,7 +1438,7 @@ SUBROUTINE IncompressibleNSSolver_Init0(Model, Solver, dt, Transient)
   CALL ListAddNewString(GetSolverParams(),'Element','p:1')
   
 !------------------------------------------------------------------------------
-END SUBROUTINE IncompressibleNSSolver_Init0
+END SUBROUTINE HydrostaticNSSolver_Init0
 !------------------------------------------------------------------------------
 
 
