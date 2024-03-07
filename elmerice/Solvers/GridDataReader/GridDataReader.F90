@@ -360,7 +360,7 @@ MODULE NetCDFInterface
        CALL Info(Caller,'Reading full variable array from NETCDF file',level=5)
         IF (nTime.GT.0) THEN
           WRITE (Message, '(A,I0,x,I0)') 'Reading Time Indexes: ',TI,TI+nTime-1
-          CALL Info(Caller,Message,level=3)
+          CALL Info(Caller,Message)
        END IF
        IF (ALLOCATED(VarValues)) deallocate(VarValues)
        IF (DimSize(3) == 0) THEN
@@ -661,7 +661,7 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
   CoordName = ListGetString( Params,'Elmer Coordinate 3',Found)
   IF (Found) THEN
     ElmerCoord3 => VariableGet(Mesh%Variables,TRIM(CoordName),UnFoundFatal=.TRUE.)
-    CALL Info(Caller,'Using "'//TRIM(CoordName)//'" as r3d coordinate',Level=20)
+    CALL Info(Caller,'Using "'//TRIM(CoordName)//'" as 3rd coordinate',Level=20)
   ENDIF
 
   NoInterpolation = ListGetLogical(Params,'Get Cell Value',Found)
