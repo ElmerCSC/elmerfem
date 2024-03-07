@@ -42,6 +42,9 @@
 #define FEATUREEDGE_H
 
 #include <QWidget>
+#include <vtkUnstructuredGrid.h>
+#include <vtkRenderer.h>
+#include <vtkActor.h>
 #include "ui_featureedge.h"
 
 class VtkPost;
@@ -57,14 +60,17 @@ public:
 
   Ui::featureEdgeDialog ui;
 
-  void draw(VtkPost*, Preferences*);
+  //void draw(VtkPost*, Preferences*);
+  void removeActorFrom(vtkRenderer*);
+  void addActorTo(vtkRenderer*);
+  void draw(VtkPost*, Preferences*, vtkUnstructuredGrid*);
 
 signals:
 
 private slots:
 
 private:
-
+  vtkActor* actor;
 };
 
 #endif // FEATUREEDGE_H

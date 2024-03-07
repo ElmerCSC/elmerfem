@@ -218,25 +218,16 @@ SUBROUTINE StokesSolver_Init0(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   SolverParams => GetSolverParams()
 
-  IF ( .NOT. ListCheckPresent(SolverParams, 'Bubbles in Global System') ) &
-      CALL ListAddLogical(SolverParams, 'Bubbles in Global System', .FALSE.)  
-
-  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Solver') ) &
-      CALL ListAddString(SolverParams, 'Linear System Solver', 'Iterative')
-  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Iterative Method') ) &
-      CALL ListAddString(SolverParams, 'Linear System Iterative Method', 'GCR')
-  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System GCR Restart') ) &
-      CALL ListAddInteger(SolverParams, 'Linear System GCR Restart', 50)
-  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Max Iterations') ) &
-      CALL ListAddInteger(SolverParams, 'Linear System Max Iterations', 200)
-  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Row Equilibration') ) &
-      CALL ListAddLogical(SolverParams, 'Linear System Row Equilibration', .TRUE.)
-  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Convergence Tolerance') ) &
-      CALL ListAddConstReal(SolverParams, 'Linear System Convergence Tolerance', 1.0d-6)
-  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Base Tolerance') ) &
-      CALL ListAddConstReal(SolverParams, 'Linear System Base Tolerance', 1.0d-3)
-  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Relative Tolerance') ) &
-      CALL ListAddConstReal(SolverParams, 'Linear System Relative Tolerance', 1.0d-2)
+  ! Set default values when not given. 
+  CALL ListAddNewLogical(SolverParams, 'Bubbles in Global System', .FALSE.)    
+  CALL ListAddNewString(SolverParams, 'Linear System Solver', 'Iterative')
+  CALL ListAddNewString(SolverParams, 'Linear System Iterative Method', 'GCR')
+  CALL ListAddNewInteger(SolverParams, 'Linear System GCR Restart', 50)
+  CALL ListAddNewInteger(SolverParams, 'Linear System Max Iterations', 200)
+  CALL ListAddNewLogical(SolverParams, 'Linear System Row Equilibration', .TRUE.)
+  CALL ListAddNewConstReal(SolverParams, 'Linear System Convergence Tolerance', 1.0d-6)
+  CALL ListAddNewConstReal(SolverParams, 'Linear System Base Tolerance', 1.0d-3)
+  CALL ListAddNewConstReal(SolverParams, 'Linear System Relative Tolerance', 1.0d-2)
 
 !------------------------------------------------------------------------------
 END SUBROUTINE StokesSolver_Init0

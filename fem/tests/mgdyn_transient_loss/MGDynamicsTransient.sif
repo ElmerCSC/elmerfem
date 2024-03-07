@@ -115,6 +115,9 @@ Solver 3
   Target Variable = String "P"
   Fourier Loss Filename = File "Loss.dat"
 
+  Calculate Elemental Fields = True
+  Calculate Nodal Fields = False
+
   Linear System Symmetric = True
   Steady State Convergence Tolerance = 0
   Linear System Solver = "Iterative"
@@ -164,8 +167,6 @@ Solver 1 :: Reference Norm = 4.78587574E-04
 Solver 1 :: Reference Norm Tolerance = 1e-4
 Solver 2 :: Reference Norm = 4.45458059E-04
 Solver 2 :: Reference Norm Tolerance = 1e-4
-
-! Is there an error?
-Solver 3 :: Reference Norm = 2.70924162E-01
-Solver 3 :: Reference Norm Tolerance = 1e-3
+Solver 3 :: Reference Norm = 2.69120758E-01
+Solver 3 :: Reference Norm Tolerance = 1e-4
 

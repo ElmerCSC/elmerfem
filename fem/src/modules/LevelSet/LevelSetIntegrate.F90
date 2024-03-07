@@ -40,20 +40,16 @@
 !>  computed at Gaussian integration points.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
-   SUBROUTINE LevelSetIntegrate( Model,Solver,Timestep,TransientSimulation )
+   SUBROUTINE LevelSetIntegrate( Model,Solver,Timestep,Transient )
 !------------------------------------------------------------------------------
      USE DefUtils
-     USE SolverUtils
-     USE MaterialModels
-     USE Integration
-
      IMPLICIT NONE
 !------------------------------------------------------------------------------
  
      TYPE(Model_t), TARGET :: Model
      TYPE(Solver_t) :: Solver
      REAL(KIND=dp) :: Timestep
-     LOGICAL :: TransientSimulation
+     LOGICAL :: Transient
  
 !------------------------------------------------------------------------------
 !    Local variables
@@ -95,11 +91,13 @@
        CALL Warn('LevelSetIntegrate','Surface variable does not exist')
      END IF
 
+#if 0 
      IF ( ALL( SurfPerm == 0) ) THEN
        CALL Warn('LevelSetIntegrate','Nothing to compute')
        RETURN
      END IF
- 
+#endif
+     
      dim = CoordinateSystemDimension()
  
 !------------------------------------------------------------------------------
@@ -157,9 +155,17 @@
        CALL HeavisideIntegrate( NodalSurf, CurrentElement, n, ElementNodes, &
            Alpha, TotVolume, TotArea, Moment)      
      END DO
+
+     IF( ParEnv % PEs > 1 ) THEN
+       DO t=1,3
+         Moment(t) = ParallelReduction(Moment(t))
+       END DO
+       TotVolume = ParallelReduction(TotVolume)
+       TotArea = ParallelReduction(TotArea)
+     END IF
      
      Moment = Moment / TotVolume
-          
+     
      IF(dim == 3) THEN
        WRITE(Message,'(a,ES12.3)') 'Center 3',Moment(3)
        CALL Info( 'LevelSetIntegrate',Message, Level=4 )
@@ -214,6 +220,14 @@
 
      Visited = .TRUE.
 
+     ! Provide norm for testing!
+     IF( ASSOCIATED( Solver % Variable ) ) THEN
+       IF( SIZE( Solver % Variable % Values ) ==  1 ) THEN
+         Solver % Variable % Norm = SQRT(SUM(Moment**2))
+         Solver % Variable % Values = Solver % Variable % Norm
+       END IF
+     END IF
+     
 
 !------------------------------------------------------------------------------
 
@@ -310,6 +324,7 @@
        IF(dim == 3) Moment(3) = Moment(3) + s * Heavi * z       
 
      END DO
+
      
 !------------------------------------------------------------------------------
    END SUBROUTINE HeavisideIntegrate
@@ -317,3 +332,24 @@
 
  END SUBROUTINE LevelSetIntegrate
 !------------------------------------------------------------------------------
+
+ 
+!------------------------------------------------------------------------------
+ SUBROUTINE LevelSetIntegrate_init( Model,Solver,Timestep,Transient )
+!------------------------------------------------------------------------------
+   USE DefUtils
+   IMPLICIT NONE
+!------------------------------------------------------------------------------ 
+   TYPE(Model_t), TARGET :: Model
+   TYPE(Solver_t) :: Solver
+   REAL(KIND=dp) :: Timestep
+   LOGICAL :: Transient
+!------------------------------------------------------------------------------
+   TYPE(ValueList_t), POINTER :: Params
+
+   Params => GetSolverParams()
+   CALL ListAddNewString(Params,'Variable','-nooutput LevelsetIntegVar')
+   
+ END SUBROUTINE LevelSetIntegrate_init
+!------------------------------------------------------------------------------
+   

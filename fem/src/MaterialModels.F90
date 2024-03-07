@@ -206,7 +206,7 @@ this ise not in USE
      INTEGER :: i,j,k
      LOGICAL :: stat,GotIt,UseEUsrf=.FALSE.
 
-     CHARACTER(LEN=MAX_NAME_LEN) :: ViscosityFlag, TemperatureName, EnhcmntFactFlag
+     CHARACTER(:), ALLOCATABLE :: ViscosityFlag, TemperatureName, EnhcmntFactFlag
      TYPE(ValueList_t), POINTER :: Material
      REAL(KIND=dp) :: x, y, z, c1n(n), c2n(n), c3n(n), c4n(n), &
           c1, c2, c3, c4, c5, c6, c7, Temp, NodalTemperature(n), Tlimit, TempCoeff, &
@@ -220,7 +220,7 @@ this ise not in USE
      TYPE(Variable_t), POINTER :: Var
      REAL(KIND=dp) :: dist,F2,F3
      REAL(KIND=dp) :: KE_K, KE_E, KE_Z, CT, TimeScale,Clip, Cmu, Vals(n)
-     CHARACTER(LEN=MAX_NAME_LEN) :: str
+     CHARACTER(:), ALLOCATABLE :: str
      LOGICAL :: SetArrheniusFactor=.FALSE.
 
      !------------------------------------------------------------------------------
@@ -279,7 +279,7 @@ this ise not in USE
            IF(.NOT.GotIt) THEN !we have to find a temperature field
 
               TemperatureName = GetString(Material, 'Temperature Field Variable', GotIt)
-              IF (.NOT.GotIt) WRITE(TemperatureName,'(A)') 'Temperature'
+              IF (.NOT.GotIt) TemperatureName = 'Temperature'
               TempSol => VariableGet( CurrentModel % Variables,TRIM(TemperatureName))
               IF ( ASSOCIATED( TempSol) ) THEN
                  TempPerm    => TempSol % Perm
@@ -636,7 +636,7 @@ this ise not in USE
      REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3)
      LOGICAL :: stat,GotIt
      INTEGER :: i
-     CHARACTER(LEN=MAX_NAME_LEN) :: ConductivityFlag
+     CHARACTER(:), ALLOCATABLE :: ConductivityFlag
      TYPE(ValueList_t), POINTER :: Material
      REAL(KIND=dp) :: x, y, z, c1n(n), Temp(1), dTempdx(3,1), Pr_t, c_p,&
                       mu, Tmu, DetJ
@@ -645,7 +645,7 @@ this ise not in USE
      TYPE(Variable_t), POINTER :: TempSol 
 
      INTEGER(KIND=AddrInt) :: Fnc
-     CHARACTER(LEN=MAX_NAME_LEN) :: str
+     CHARACTER(:), ALLOCATABLE :: str
 !------------------------------------------------------------------------------
      PCond = Conductivity
 

@@ -68,7 +68,8 @@ SUBROUTINE TimoshenkoSolver_Init0(Model, Solver, dt, Transient)
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
-  TYPE(ValueList_t), POINTER :: SolverPars
+  TYPE(ValueList_t), POINTER :: SolverPars, Simulation
+  LOGICAL :: Found, MeshDisplacementActive
 !------------------------------------------------------------------------------
   SolverPars => GetSolverParams()
 
@@ -76,8 +77,19 @@ SUBROUTINE TimoshenkoSolver_Init0(Model, Solver, dt, Transient)
   CALL ListAddNewString(SolverPars, 'Variable', 'Deflection[U:3 Theta:3]')
   CALL ListAddNewString(SolverPars, 'Element', 'p:1 b:1')
 
-  CALL ListAddLogical(SolverPars, 'Bubbles in Global System', .FALSE.)
+  CALL ListAddNewLogical(SolverPars, 'Bubbles in Global System', .FALSE.)
+  CALL ListAddNewLogical(SolverPars, 'Use Global Mass Matrix',.TRUE.)
+  IF (Transient) THEN
+    CALL ListAddInteger(SolverPars, 'Time derivative order', 2)
+    CALL ListAddNewString(SolverPars, 'Timestepping Method', 'Bossak')
+  END IF
 
+  MeshDisplacementActive = GetLogical(SolverPars, 'Displace Mesh', Found)
+  IF (MeshDisplacementActive) THEN
+    Simulation => GetSimulation()
+    CALL ListAddLogical(Simulation, 'Initialize Dirichlet Conditions', .FALSE.) 
+  END IF
+  
   CALL ListAddNewLogical(SolverPars,'Beam Solver',.TRUE.)
 !------------------------------------------------------------------------------
 END SUBROUTINE TimoshenkoSolver_Init0
@@ -99,17 +111,40 @@ SUBROUTINE TimoshenkoSolver(Model, Solver, dt, TransientSimulation)
 ! Local variables
 !------------------------------------------------------------------------------
   TYPE(Element_t), POINTER :: Element
+  TYPE(Mesh_t), POINTER :: Mesh
   LOGICAL :: Found
   INTEGER :: K, Active, n, nb, nd
   INTEGER :: iter, maxiter
   REAL(KIND=dp) :: Norm
+  LOGICAL :: HarmonicAssembly, MassAssembly, MeshDisplacementActive
+  TYPE(ValueList_t), POINTER :: Params
 !------------------------------------------------------------------------------
 
   CALL DefaultStart()
+
+  IF (.NOT. ListCheckPresentAnyMaterial(Model, 'Principal Direction 2') .AND. &
+      .NOT. ListCheckPresentAnyMaterial(Model, 'Director')) THEN
+    CALL Warn('TimoshenkoSolver', &
+        'Principal axes unspecified, assuming a circular cross section')
+  END IF
   
-  maxiter = ListGetInteger(GetSolverParams(), &
+  Params => GetSolverParams()
+  
+  maxiter = ListGetInteger(Params, &
       'Nonlinear System Max Iterations', Found, minv=1)
   IF (.NOT. Found ) maxiter = 1
+
+  HarmonicAssembly = EigenOrHarmonicAnalysis() &
+      .OR. ListGetLogical( Params,'Harmonic Mode',Found ) 
+  MassAssembly = TransientSimulation .OR. HarmonicAssembly
+
+  MeshDisplacementActive = GetLogical(Params, 'Displace Mesh', Found)
+  IF (MeshDisplacementActive) THEN
+    Mesh => GetMesh()
+    CALL Info('TimoshenkoSolver', 'Returning the mesh to its reference position', Level=4)     
+    CALL DisplaceMesh(Mesh, Solver % Variable % Values, -1, Solver % Variable % Perm, &
+        6, .FALSE., 3)      
+  END IF
 
   !--------------------------
   ! Nonlinear iteration loop:
@@ -130,7 +165,7 @@ SUBROUTINE TimoshenkoSolver(Model, Solver, dt, TransientSimulation)
       nb = GetElementNOFBDOFs()
 
       CALL BeamStiffnessMatrix(Element, n, nd+nb, nb, TransientSimulation, &
-          MassAssembly=TransientSimulation)
+          MassAssembly=MassAssembly, HarmonicAssembly=HarmonicAssembly)      
     END DO
 
     CALL DefaultFinishBulkAssembly()
@@ -149,6 +184,11 @@ SUBROUTINE TimoshenkoSolver(Model, Solver, dt, TransientSimulation)
 
   CALL DefaultFinish()
 
+  IF (MeshDisplacementActive) THEN
+    CALL Info('TimoshenkoSolver', 'Displacing the mesh with computed displacement field', Level=4)
+    CALL DisplaceMesh(Mesh, Solver % Variable % Values, 1, Solver % Variable % Perm, &
+        6, .FALSE., 3)
+  END IF
 !------------------------------------------------------------------------------
 END SUBROUTINE TimoshenkoSolver
 !------------------------------------------------------------------------------

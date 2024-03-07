@@ -90,7 +90,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
     SolverParams => GetSolverParams()
 
     dim = CoordinateSystemDimension()   
-    CALL ListAddNewString( SolverParams, 'Variable', '-dofs '//TRIM(I2S(dim))//' Displacement' )
+    CALL ListAddNewString( SolverParams, 'Variable', '-dofs '//I2S(dim)//' Displacement' )
 
     MaxwellMaterial = ListGetLogicalAnyMaterial(Model, 'Maxwell material')
     IF (.NOT.MaxwellMaterial) THEN
@@ -109,7 +109,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
 
       CALL ListAddString( SolverParams, &
           NextFreeKeyword('Exported Variable ',SolverParams), &
-          '-dofs '//TRIM(i2s(dim**2))//' -ip ve_stress' )
+          '-dofs '//i2s(dim**2)//' -ip ve_stress' )
 
       i = GetInteger( SolverParams, 'Nonlinear System Min Iterations', Found )
       CALL ListAddInteger( SolverParams, 'Nonlinear System Min Iterations', MAX(i,2) )
@@ -185,7 +185,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
     IF (CalcVelocities) THEN
       CALL ListAddString( SolverParams,&
             NextFreeKeyword('Exported Variable ',SolverParams), &
-            '-dofs '//TRIM(I2S(dim))//' Displacement Velocity')
+            '-dofs '//I2S(dim)//' Displacement Velocity')
     END IF
     
     CALL ListAddLogical( SolverParams, 'stress: Linear System Save', .FALSE. )
@@ -255,7 +255,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
      INTEGER, POINTER :: TempPerm(:),DisplPerm(:),StressPerm(:),&
           DisplacementVelPerm(:), NodeIndexes(:)
 
-     LOGICAL :: GotForceBC,Found,RayleighDamping, NormalSpring
+     LOGICAL :: Found,RayleighDamping, NormalSpring
      LOGICAL :: PlaneStress, CalcStress, CalcStressAll, &
         CalcPrincipalAll, CalcPrincipalAngle, CalculateStrains, &
         CalcPrincipalStrain, CalcVelocities, Isotropic(2) = .TRUE.
@@ -667,7 +667,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
        at0 = RealTime()
 
        IF( MaxIter > 1 ) THEN
-         CALL Info( 'StressSolve','Displacement iteration: '//TRIM(I2S(iter)),Level=4)
+         CALL Info( 'StressSolve','Displacement iteration: '//I2S(iter),Level=4)
        END IF
        CALL Info( 'StressSolve', 'Starting assembly...',Level=5 )
 !------------------------------------------------------------------------------
@@ -1053,17 +1053,37 @@ CONTAINS
   SUBROUTINE BulkAssembly()
 !------------------------------------------------------------------------------
     INTEGER :: RelIntegOrder, NoActive 
+    LOGICAL :: AnyDamping, NeedMass, NeedDensity, AnyPre, AnyStress
+    LOGICAL :: ConstantStiffnessMatrix
+    REAL(KIND=dp) :: cmult
+    CHARACTER(LEN=MAX_NAME_LEN) :: multname
+    TYPE(Variable_t), POINTER :: multvar
 
-    LOGICAL :: AnyDamping, NeedMass
-
+    
     AnyDamping = ListCheckPresentAnyMaterial( Model,"Damping" ) .OR. &
         ListCheckPrefixAnyMaterial( Model,"Rayleigh" )
     Damping = 0.0_dp
     RayleighDamping = .FALSE.
 
-    
-    NeedMass = .NOT.QuasiStationary
-    
+    NeedDensity = Transient .OR. EigenOrHarmonicAnalysis()    
+    NeedMass = .NOT. QuasiStationary
+
+    AnyPre = ListCheckPrefixAnyMaterial( Model, 'Pre' ) 
+    AnyStress = ListCheckPrefixAnyBodyForce( Model,'Stress')
+
+    ConstantStiffnessMatrix = ListGetLogical( Solver % Values,'Constant Stiffness Matrix', Found ) 
+    IF( ConstantStiffnessMatrix ) THEN
+      IF( NeedDensity ) CALL Fatal('StressSolve','"Constant Stiffness Matrix" applicable only for steady cases!')      
+      multvar => NULL()
+      multname = ListGetString( Solver % Values,'Stiffness Matrix Multiplier Name',Found )
+      IF(Found ) THEN
+        multvar => VariableGet( Solver % Mesh % Variables, multname, UnfoundFatal = .TRUE.)
+        IF( multvar % TYPE /= Variable_on_elements ) THEN
+          CALL Fatal('StreeSolve','"Stiffness Matrix Multiplier Name" should be elemental field!')
+        END IF
+      END IF
+    END IF
+            
      CALL StartAdvanceOutput( 'StressSolve', 'Assembly:')
      body_id = -1
 
@@ -1078,34 +1098,35 @@ CONTAINS
 !------------------------------------------------------------------------------
 
        Element => GetActiveElement(t)
+
+       ! We assumes that all element have the same stiffness matrix
+       ! and only assembly one of them! This assumes same shape, material parameters and
+       ! node ordering. Only the 1st needs to be assembled.
+       IF( t > 1 .AND. ConstantStiffnessMatrix ) GOTO 100
+       
        n = GetElementNOFNOdes()
        ntot = GetElementNOFDOFs()
 
        NodeIndexes => Element % NodeIndexes
        CALL GetElementNodes( ElementNodes )
 
-       Equation => GetEquation()
-       PlaneStress = GetLogical( Equation, 'Plane Stress',Found )
-       TemperatureName = ListGetString( Equation,'Temperature Name', Found)
-       IF (.NOT.Found) &
-            WRITE (TemperatureName,'(A)') 'Temperature' 
-       
-       Material => GetMaterial()
+       IF( Element % BodyId /= body_id ) THEN
+         Equation => GetEquation()
+         Material => GetMaterial()
 
-       ! inquire if material parameters shall be replaced by handles
-       EvaluateAtIP(1)= &
-            GetLogical( Material, 'Youngs Modulus at IP',Found)
-       EvaluateAtIP(2)= &
-            GetLogical( Material, 'Heat Expansion Coefficient IP',Found)
-       EvaluateAtIP(3) = &
-            GetLogical( Material, 'Poisson Ratio at IP',Found)
- 
-       
+         PlaneStress = GetLogical( Equation, 'Plane Stress',Found )
+         TemperatureName = ListGetString( Equation,'Temperature Name', Found)
+         IF (.NOT.Found) TemperatureName = 'Temperature'          
+
+         ! inquire if material parameters shall be replaced by handles
+         EvaluateAtIP(1) = GetLogical( Material, 'Youngs Modulus at IP',Found)
+         EvaluateAtIP(2) = GetLogical( Material, 'Heat Expansion Coefficient IP',Found)
+         EvaluateAtIP(3) = GetLogical( Material, 'Poisson Ratio at IP',Found) 
+       END IF
+         
        Density(1:n) = GetReal( Material, 'Density', Found )
-       
-       IF ( .NOT. Found )  THEN
-         IF ( Transient .OR. EigenOrHarmonicAnalysis() ) &
-            CALL Fatal( 'StressSolve', 'No value for density found.' )
+       IF( NeedDensity .AND. .NOT. Found ) THEN
+         CALL Fatal('StressSolve','Transient and harmonic analysis needs "Density"')
        END IF
 
        IF( AnyDamping ) THEN
@@ -1121,7 +1142,6 @@ CONTAINS
        END IF
 
        IF  (EvaluateAtIP(2)) THEN
-
          HeatExpansionCoeff = 0.0_dp
          Isotropic(2) = .TRUE. ! we assume isotropy for function, at the moment
          !CALL ListInitElementKeyword(BetaIP_h,'Material','Heat Expansion Coefficient')
@@ -1130,8 +1150,6 @@ CONTAINS
               'Heat Expansion Coefficient', Material, n, NodeIndexes, GotHeatExp )
        END IF
 
-        EvaluateAtIP(1)= &
-            GetLogical( Material, 'Youngs Modulus at IP',Found)
        IF  (EvaluateAtIP(1)) THEN
          ElasticModulus = 0.0_dp
          Isotropic(1) = .TRUE. ! we assume isotropy for function, at the moment
@@ -1156,18 +1174,20 @@ CONTAINS
          LocalTemperature(1:ntot) = 0.0_dp
        END IF
 
-       IF ( .NOT. ConstantBulkMatrixInUse ) THEN
+       IF (.NOT. ConstantBulkMatrixInUse ) THEN
          PreStress = 0.0d0
          PreStrain = 0.0d0
-         CALL ListGetRealArray( Material, 'Pre Stress', Work, n, NodeIndexes, Found )
-         IF ( Found ) THEN
-            k = SIZE(Work,1)
-            PreStress(1:k,1:n) = Work(1:k,1,1:n)
-         END IF
-         CALL ListGetRealArray( Material, 'Pre Strain', Work, n, NodeIndexes, Found )
-         IF ( Found ) THEN
-            k = SIZE(Work,1)
-            PreStrain(1:k,1:n) = Work(1:k,1,1:n)
+         IF( AnyPre ) THEN
+           CALL ListGetRealArray( Material, 'Pre Stress', Work, n, NodeIndexes, Found )
+           IF ( Found ) THEN
+             k = SIZE(Work,1)
+             PreStress(1:k,1:n) = Work(1:k,1,1:n)
+           END IF
+           CALL ListGetRealArray( Material, 'Pre Strain', Work, n, NodeIndexes, Found )
+           IF ( Found ) THEN
+             k = SIZE(Work,1)
+             PreStrain(1:k,1:n) = Work(1:k,1,1:n)
+           END IF
          END IF
        END IF
 
@@ -1218,37 +1238,38 @@ CONTAINS
        StressLoad = 0.0d0
        StrainLoad = 0.0d0
        IF ( ASSOCIATED( BodyForce ) ) THEN
-         EvaluateLoadAtIP= &
-              GetLogical( BodyForce, 'Stress Bodyforce at IP',Found)
+         IF( AnyStress ) THEN
+           EvaluateLoadAtIP= &
+               GetLogical( BodyForce, 'Stress Bodyforce at IP',Found)
 
-         IF (.NOT.EvaluateLoadAtIP) THEN         
-           LOAD(1,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 1', Found )
-           LOAD(2,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 2', Found )
-           LOAD(3,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 3', Found )
-           LOAD(4,1:n)  = GetReal( BodyForce, 'Stress Pressure', Found )
+           IF (.NOT.EvaluateLoadAtIP) THEN         
+             LOAD(1,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 1', Found )
+             LOAD(2,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 2', Found )
+             LOAD(3,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 3', Found )
+             LOAD(4,1:n)  = GetReal( BodyForce, 'Stress Pressure', Found )
 
-           IF ( HarmonicAnalysis ) THEN
-             LOAD_im(1,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 1 im', Found )
-             LOAD_im(2,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 2 im', Found )
-             LOAD_im(3,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 3 im', Found )
-             LOAD_im(4,1:n)  = GetReal( BodyForce, 'Stress Pressure im', Found )
+             IF ( HarmonicAnalysis ) THEN
+               LOAD_im(1,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 1 im', Found )
+               LOAD_im(2,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 2 im', Found )
+               LOAD_im(3,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 3 im', Found )
+               LOAD_im(4,1:n)  = GetReal( BodyForce, 'Stress Pressure im', Found )
+             END IF
            END IF
-         END IF
 
-
-         IF( ListCheckPrefix( BodyForce,'Stress Load' ) ) THEN         
-           CALL ListGetRealArray( BodyForce, 'Stress Load', Work, n, NodeIndexes, Found )
-           IF ( Found ) THEN
-             k = SIZE(Work,1)
-             StressLoad(1:k,1:n) = Work(1:k,1,1:n)
-           END IF
-           IF(.NOT. Found ) THEN
-             StressLoad(1,1:n) = GetReal( BodyForce,'Stress Load 1', Found ) 
-             StressLoad(2,1:n) = GetReal( BodyForce,'Stress Load 2', Found ) 
-             StressLoad(3,1:n) = GetReal( BodyForce,'Stress Load 3', Found ) 
-             StressLoad(4,1:n) = GetReal( BodyForce,'Stress Load 4', Found ) 
-             StressLoad(5,1:n) = GetReal( BodyForce,'Stress Load 5', Found ) 
-             StressLoad(6,1:n) = GetReal( BodyForce,'Stress Load 6', Found ) 
+           IF( ListCheckPrefix( BodyForce,'Stress Load' ) ) THEN         
+             CALL ListGetRealArray( BodyForce, 'Stress Load', Work, n, NodeIndexes, Found )
+             IF ( Found ) THEN
+               k = SIZE(Work,1)
+               StressLoad(1:k,1:n) = Work(1:k,1,1:n)
+             END IF
+             IF(.NOT. Found ) THEN
+               StressLoad(1,1:n) = GetReal( BodyForce,'Stress Load 1', Found ) 
+               StressLoad(2,1:n) = GetReal( BodyForce,'Stress Load 2', Found ) 
+               StressLoad(3,1:n) = GetReal( BodyForce,'Stress Load 3', Found ) 
+               StressLoad(4,1:n) = GetReal( BodyForce,'Stress Load 4', Found ) 
+               StressLoad(5,1:n) = GetReal( BodyForce,'Stress Load 5', Found ) 
+               StressLoad(6,1:n) = GetReal( BodyForce,'Stress Load 6', Found ) 
+             END IF
            END IF
          END IF
 
@@ -1344,7 +1365,16 @@ CONTAINS
 !------------------------------------------------------------------------------
 !      Update global matrices from local matrices 
 !------------------------------------------------------------------------------
-       IF ( ConstantBulkMatrixInUse ) THEN
+100    IF( ConstantStiffnessMatrix ) THEN
+         IF(t==1) CALL ListAddConstRealArray(Solver % Values,&
+             'Elemental Stiffness Matrix', dim*n, dim*n, STIFF )      
+         IF( ASSOCIATED( MultVar ) ) THEN
+           cmult = MultVar % Values(MultVar % Perm(Element % ElementIndex))
+           CALL DefaultUpdateEquations( cmult * STIFF, cmult * FORCE )
+         ELSE
+           CALL DefaultUpdateEquations( STIFF, FORCE )
+         END IF           
+       ELSE IF ( ConstantBulkMatrixInUse ) THEN
          CALL DefaultUpdateForce( FORCE )
          IF ( HarmonicAnalysis ) THEN
            SaveRHS => Solver % Matrix % RHS
@@ -1384,6 +1414,17 @@ CONTAINS
        Element => GetBoundaryElement(t)
        IF ( .NOT. ActiveBoundaryElement() ) CYCLE
        
+       i = GetElementDim(Element)
+       IF( i >= Mesh % MeshDim ) THEN
+         CALL Warn('StressSolve','Invalid dimension '//I2S(i)//' for BC element '//I2S(t))
+         CYCLE
+       END IF
+       IF( i < Mesh % MeshDim - 1) THEN
+         ! Note this might not be always what you want!
+         CALL Info('StressSolve','Skipping lower dimensional element!',Level=30)
+         CYCLE
+       END IF
+       
        n = GetElementNOFNodes()
        ntot = GetElementNOFDOFs()
 
@@ -1397,20 +1438,27 @@ CONTAINS
           DampCoeff   = 0.0d0
           SpringCoeff = 0.0d0
 
+          IF( HarmonicAnalysis ) THEN
+            LOAD_im=0._dp
+            Beta_im=0._dp
+          END IF
+
           ! Force in given direction BC: \tau\cdot n = F:
           !----------------------------------------------
-          GotForceBC = .FALSE.
-          LOAD(1,1:n) = GetReal( BC, 'Force 1',Found )
-          LOAD(2,1:n) = GetReal( BC, 'Force 2',Found )
-          LOAD(3,1:n) = GetReal( BC, 'Force 3',Found )
-          Beta(1:n) =  GetReal( BC, 'Normal Force',Found )
+          IF(ListCheckPrefix( BC,'Force') ) THEN
+            LOAD(1,1:n) = GetReal( BC, 'Force 1',Found )
+            LOAD(2,1:n) = GetReal( BC, 'Force 2',Found )
+            LOAD(3,1:n) = GetReal( BC, 'Force 3',Found )
 
-          LOAD_im=0._dp
-          Beta_im=0._dp
+            IF ( HarmonicAnalysis ) THEN
+              LOAD_im(1,1:n) = GetReal( BC, 'Force 1 im',Found )
+              LOAD_im(2,1:n) = GetReal( BC, 'Force 2 im',Found )
+              LOAD_im(3,1:n) = GetReal( BC, 'Force 3 im',Found )
+            END IF
+          END IF
+            
+          Beta(1:n) =  GetReal( BC, 'Normal Force',Found )
           IF ( HarmonicAnalysis ) THEN
-            LOAD_im(1,1:n) = GetReal( BC, 'Force 1 im',Found )
-            LOAD_im(2,1:n) = GetReal( BC, 'Force 2 im',Found )
-            LOAD_im(3,1:n) = GetReal( BC, 'Force 3 im',Found )
             Beta_im(1:n) =  GetReal( BC, 'Normal Force im',Found )
           END IF
 
@@ -1432,19 +1480,21 @@ CONTAINS
           END IF
 
           DampCoeff(1:n) =  GetReal( BC, 'Damping', Found )
-          SpringCoeff(1:n,1,1) =  GetReal( BC, 'Spring', NormalSpring )
-          IF ( .NOT. NormalSpring ) THEN
-            DO i=1,dim
-              SpringCoeff(1:n,i,i) = GetReal( BC, ComponentName('Spring',i), Found)
-            END DO
 
-            DO i=1,dim
-              DO j=1,dim
-                IF (ListCheckPresent(BC,'Spring '//TRIM(i2s(i))//i2s(j) )) &
-                  SpringCoeff(1:n,i,j)=GetReal( BC, 'Spring '//TRIM(i2s(i))//i2s(j), Found)
+          IF( ListCheckPrefix( BC,'Spring' ) ) THEN         
+            SpringCoeff(1:n,1,1) =  GetReal( BC, 'Spring', NormalSpring )
+            IF ( .NOT. NormalSpring ) THEN
+              DO i=1,dim
+                SpringCoeff(1:n,i,i) = GetReal( BC, ComponentName('Spring',i), Found)
+                IF(Found) CYCLE
+                DO j=1,dim
+                  IF (ListCheckPresent(BC,'Spring '//i2s(i)//i2s(j) )) &
+                      SpringCoeff(1:n,i,j)=GetReal( BC, 'Spring '//i2s(i)//i2s(j), Found)
+                END DO
               END DO
-            END DO
+            END IF
           END IF
+            
           ContactLimit(1:n) =  GetReal( BC, 'Contact Limit', Found )
 
           IF(ModelLumping .AND. .NOT. FixDisplacement) THEN
@@ -1509,7 +1559,7 @@ CONTAINS
      INTEGER :: i,j,k,l,n
      REAL(KIND=dp) :: FORCE(1)
      REAL(KIND=dp), POINTER :: SaveValues(:) => NULL()
-     REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:),MASS(:,:),DAMP(:,:),X(:),V(:),A(:)
+     REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:),MASS(:,:),DAMP(:,:),X(:),V(:),A(:), A2(:)
      SAVE STIFF, MASS, DAMP, X, V, A
 
      IF ( .NOT.ASSOCIATED(Solver % Variable % Values, SaveValues) ) THEN
@@ -1519,7 +1569,7 @@ CONTAINS
         DO i=1,Solver % Matrix % NumberOfRows
           n = MAX( n,Solver % Matrix % Rows(i+1)-Solver % Matrix % Rows(i) )
         END DO
-        ALLOCATE( STIFF(1,n),MASS(1,n),DAMP(1,n),V(n),X(n),A(n) )
+        ALLOCATE( STIFF(1,n),MASS(1,n),DAMP(1,n),V(n),X(n),A(n),A2(n) )
 
         SaveValues => Solver % Variable % Values
      END IF
@@ -1535,10 +1585,11 @@ CONTAINS
          X(n) = Solver % Variable % PrevValues(Solver % Matrix % Cols(j),3)
          V(n) = Solver % Variable % PrevValues(Solver % Matrix % Cols(j),4)
          A(n) = Solver % Variable % PrevValues(Solver % Matrix % Cols(j),5)
+         A2(n) = Solver % Variable % PrevValues(Solver % Matrix % Cols(j),7)
        END DO
        FORCE(1) = Solver % Matrix % RHS(i)
        Solver % Matrix % Force(i,1) = FORCE(1)
-       CALL Bossak2ndOrder( n,dt,MASS,DAMP,STIFF,FORCE,X,V,A,Solver % Alpha )
+       CALL Time2ndOrder( n,dt,MASS,DAMP,STIFF,FORCE,X,V,A,A2,Solver % Alpha, Solver % Beta )
        n = 0
        DO j=Solver % Matrix % Rows(i),Solver % Matrix % Rows(i+1)-1
          n = n + 1

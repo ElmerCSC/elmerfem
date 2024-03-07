@@ -1,0 +1,125 @@
+! Test case for nonnewtoanin model with vectorized bulk assembly.
+! Note that this is not quite the same case as the unvectorized version.
+! The real reference is ref.sif
+!
+! P.R. 3.10.2019
+
+$ pext = 1.0
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "square"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+  Post File = case.vtu
+End
+
+Constants
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Body 1"
+  Equation = 1
+  Material = 1
+End
+
+
+Solver 1
+  Equation = Navier-Stokes
+
+  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Convergence Tolerance = 1.0e-6
+  Nonlinear System Max Iterations = 30
+
+! activates also the newtonian linearization of viscosity
+! For some reason it does not improve things? 
+
+  Nonlinear System Newton After Iterations = 100
+  Nonlinear System Relaxation Factor = 1.0
+  Nonlinear System Newton After Tolerance = 0.0
+
+! This is set True by default both in FlowSolve and this solver
+!  Relative Pressure Relaxation = Logical True
+
+  Linear System Scaling = False
+
+  Relative Integration Order = 1
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BicgstabL
+  BiCGStabl polynomial degree = 4
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Residual Output = 10
+  Linear System Preconditioning = ILU2
+
+  Stokes Flow = Logical True
+  GradP Discretization = Logical False
+  Div-Curl Discretization = Logical False
+End
+
+
+Equation 1 :: Active Solvers=1
+
+Material 1
+  Density = 1.0
+  Viscosity = 1.0
+
+! If this is more than zero the newtonian fluid prevails
+!  Newtonian Viscosity Condition = Variable "nonlin iter"
+!    Real 
+!      1.0 1.0
+!      2.0 -1.0
+!    End 
+
+! shear thinning power law fluid
+  Viscosity Model = String "power law"
+  Viscosity Exponent = 0.3
+  Critical Shear Rate = Real 1.0e-8
+  Nominal Shear Rate = Real 1.0
+End
+
+
+Boundary Condition 1
+  Target Boundaries(1) = 2
+  Name = "Right"
+  Velocity 2 = 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 4
+  Name = "Left"
+  Velocity 2 = 0.0
+  External Pressure = Real $pext
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 1 
+  Name = "Bottom"
+  Velocity 1 = 0.0
+  Velocity 2 = 0.0
+End
+
+Boundary Condition 4
+  Target Boundaries(1) = 3
+  Name = "Top"
+  Velocity 1 = 0.0
+  Velocity 2 = 0.0
+End
+
+
+!Solver 1 :: Reference Norm = 6.06798943E-03
+Solver 1 :: Reference Norm = 6.06595642E-03

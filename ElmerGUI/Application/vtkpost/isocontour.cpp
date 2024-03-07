@@ -39,6 +39,7 @@
  *****************************************************************************/
 
 #include <QtGui>
+#include <QColorDialog>
 #include <iostream>
 #include "epmesh.h"
 #include "vtkpost.h"
@@ -73,6 +74,13 @@ IsoContour::IsoContour(QWidget *parent)
   connect(ui.keepColorLimits, SIGNAL(stateChanged(int)), this, SLOT(keepColorLimitsSlot(int)));
 
   setWindowIcon(QIcon(":/icons/Mesh3D.png"));
+
+  ui.cancelButton->setIcon(QIcon::fromTheme("dialog-error-round"));
+  ui.applyButton->setIcon(QIcon::fromTheme("view-refresh"));  
+  ui.okButton->setIcon(QIcon::fromTheme("dialog-accept"));
+  
+  setNullColor(Qt::blue);
+  connect(ui.nullColorButton, SIGNAL(clicked()), this, SLOT(nullColorButtonClicked()));
 }
 
 IsoContour::~IsoContour()
@@ -138,6 +146,23 @@ void IsoContour::colorSelectionChanged(int newIndex)
     ui.colorMinEdit->setText(QString::number(sf->minVal));
     ui.colorMaxEdit->setText(QString::number(sf->maxVal));
   }
+  if(ui.colorCombo->currentIndex() == 0 ){ // i.e. Null field
+    ui.nullColorLabel->show();
+    ui.nullColorButton->show();
+	ui.colorMinEdit->setEnabled(false);
+	ui.colorMaxEdit->setEnabled(false);
+	ui.colorMinLabel->setEnabled(false);
+	ui.colorMaxLabel->setEnabled(false);
+	ui.keepColorLimits->setEnabled(false);
+  }else{
+    ui.nullColorLabel->hide();
+    ui.nullColorButton->hide();
+	ui.colorMinEdit->setEnabled(true);
+	ui.colorMaxEdit->setEnabled(true);
+	ui.colorMinLabel->setEnabled(true);
+	ui.colorMaxLabel->setEnabled(true);
+	ui.keepColorLimits->setEnabled(true);
+  }
 }
 
 void IsoContour::keepContourLimitsSlot(int state)
@@ -175,10 +200,17 @@ void IsoContour::draw(VtkPost* vtkPost, TimeStep* timeStep)
   QStringList contourList = contourListText.split(";");
   int contourValues = contourList.count();
 
+#if WITH_QT6
+  vector<double> contourValue;
+  for(int i = 0; i < contourValues; i++)
+    contourValue.push_back(contourList.at(i).toDouble());  
+  sort(contourValue.begin(), contourValue.end());
+#else
   QVector<double> contourValue(contourValues);
   for(int i = 0; i < contourValues; i++)
     contourValue[i] = contourList.at(i).toDouble();  
   qSort(contourValue);
+#endif
 
   bool useListValues = false;
   if(!contourListText.isEmpty())
@@ -280,9 +312,25 @@ void IsoContour::draw(VtkPost* vtkPost, TimeStep* timeStep)
   mapper->SelectColorArray("IsoContourColor");
   mapper->SetScalarModeToUsePointFieldData();
   mapper->SetScalarRange(colorMinVal, colorMaxVal);
+  mapper->InterpolateScalarsBeforeMappingOn();
   //mapper->SetLookupTable(vtkPost->GetCurrentLut());
   mapper->SetLookupTable(vtkPost->GetLut("Isocontour"));
   // mapper->ImmediateModeRenderingOn();
+  if(ui.colorCombo->currentIndex() == 0 ){ // i.e. Null field
+  	mapper->SetScalarRange(0, 1);
+    double h = nullColor.hueF();
+    double s = nullColor.saturationF();
+    double v = nullColor.valueF();
+    int nColor =128;
+    vtkLookupTable* nullLut = vtkLookupTable::New();
+    nullLut->SetHueRange(h, h);
+    nullLut->SetSaturationRange(s, s);
+    nullLut->SetValueRange(v, v);
+    nullLut->SetNumberOfColors(nColor);
+    nullLut->Build();
+    mapper->SetLookupTable(nullLut); 	 
+	nullLut->Delete();
+  }
 
   // Actor & renderer:
   //-------------------
@@ -398,4 +446,19 @@ void IsoContour::SetTubeQuality(int n)
 void IsoContour::SetTubeRadius(int n)
 {
   ui.tubeRadius->setValue(n);
+}
+
+void IsoContour::nullColorButtonClicked()
+{
+  setNullColor(QColorDialog::getColor(nullColor));
+}
+
+void IsoContour::setNullColor(QColor color){
+  if(!color.isValid()) return;
+	  
+  nullColor = color;
+
+  QPalette plt(ui.nullColorLabel->palette());
+  plt.setColor(QPalette::WindowText, nullColor);
+  ui.nullColorLabel->setPalette(plt);
 }

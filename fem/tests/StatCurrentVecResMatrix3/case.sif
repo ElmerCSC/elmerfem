@@ -1,0 +1,144 @@
+! Test for the vectorized StatCurrent solver
+! Includes some matrix computation using constrained modes.
+!
+! Variation of the primary in that the we apply 0/1 rhs body force and
+! register the rection terms that are line integrals over the bodies.
+! This is a little like flux linkage but does not really make sense
+! physically in this context. However, the test provides a consistency
+! test for the machinery. 
+!
+! P.R. 25.1.2023
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "plates"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+
+  vtu: Eigen Analysis = Logical True
+  Post File = "case.vtu"
+End
+
+Constants
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Equation = 1
+  Material = 1
+  Body Force = 1 
+End
+
+Body 3
+  Equation = 1
+  Material = 1
+  Body Force = 2
+End
+
+Body 4
+  Equation = 1
+  Material = 1
+  Body Force = 3 
+End
+
+Body 5
+  Equation = 1
+  Material = 1
+  Body Force = 4
+End
+
+Body 6
+  Equation = 1
+  Material = 1
+  Body Force = 5
+End
+
+Equation 1
+  Active Solvers(1) = 1 
+End
+
+Solver 1
+  Equation = StatCurrent
+  Variable = Potential
+  Procedure = "StatCurrentSolveVec" "StatCurrentSolver"
+
+!  Calculate Conductivity Matrix = Logical True
+
+! These are needed for the bulk system still 
+  Constraint Modes Analysis = Logical True
+  Constraint Modes Lumped = Logical True
+  Constraint Modes Linkage = Logical True
+  Constraint Modes Matrix Symmetric = True
+  Constraint Modes Matrix Filename = "ConductivityMatrix.dat"
+  Constraint Modes Matrix Norm = True
+  Constraint Modes Rhs = Logical True
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 200
+  Linear System Convergence Tolerance = 1.0e-07
+  Linear System Preconditioning = ILU1
+  Linear System ILUT Tolerance = 1.0e-03
+
+  Nonlinear System Max Iterations = 1
+End
+
+! This solver is just to provide the Nrm for the test
+Solver 2
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+
+  Show Norm Name = String "res: potential lumped matrix norm" 
+  Filename = f.dat
+End 
+
+
+Material 1
+  Electric Conductivity = 1.0
+End
+
+Body Force 1
+  Name = "BF1"
+  Constraint Mode Potential = Integer 1
+End
+
+Body Force 2
+  Name = "BF2"
+  Constraint Mode Potential = Integer 2
+End
+
+Body Force 3
+  Name = "BF3"
+  Constraint Mode Potential = Integer 3
+End
+
+Body Force 4
+  Name = "BF4"
+  Constraint Mode Potential = Integer 4 
+End
+
+Body Force 5
+  Name = "BF5"
+  Constraint Mode Potential = Integer 5
+End
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Potential = 0.0
+End
+
+Solver 1 :: Reference Norm = 1.58650580E-01
+Solver 2 :: Reference Norm = 3.20961487E+01
+
+!End Of File
+

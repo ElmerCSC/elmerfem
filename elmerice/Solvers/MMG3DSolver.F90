@@ -6,7 +6,7 @@ SUBROUTINE OptimizeMesh_MMG3D(Model,Solver,dt,TransientSimulation)
 
   IMPLICIT NONE
 #ifdef HAVE_MMG
-#include "mmg/mmg3d/libmmgtypesf.h"
+#include "mmg/common/libmmgtypesf.h"
 #endif
 
   TYPE(Model_t) :: Model

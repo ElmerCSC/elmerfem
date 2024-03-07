@@ -1460,7 +1460,7 @@ int PartitionConnectedElementsStraight(struct FemType *data,struct BoundaryType 
   
   if(info) printf("Number of constrained boundary elements = %d\n",bcelem);   
   if(info) printf("Number of constrained bulk elements = %d\n",totpartelems);   
-  if(info) printf("Successfully made connected elements to a partiotion\n");
+  if(info) printf("Successfully made connected elements to a partition\n");
 
   return(0);
 }
@@ -1919,7 +1919,7 @@ int PartitionConnectedElementsMetis(struct FemType *data,struct BoundaryType *bo
 
       if(0) printf("kl = %d %d %d %d %d\n",k,l,bcelem,npart[bcelem]+1,elemconnect[k]);
       
-      /* Have the additition here since npart has indexes [0,nn-1]. */
+      /* Have the addition here since npart has indexes [0,nn-1]. */
       if(k) {
 	elemconnect[k] = npart[bcelem]+1;
 	totpartelems += 1;
@@ -1992,7 +1992,7 @@ int ExtendBoundaryPartitioning(struct FemType *data,struct BoundaryType *bound,
   printf("Initial partitioning has %d to %d elements in partition\n",minpartelems,maxpartelems);
 
 
-  /* Counter to find the deminating element */
+  /* Counter to find the dominating element */
   for(i=1;i<=nparts;i++)
     partelems[i] = 0;
   
@@ -3836,7 +3836,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 
   partitions = data->nopartitions;
   if(!partitions) {
-    printf("Tried to save partiotioned format without partitions!\n");
+    printf("Tried to save partitioned format without partitions!\n");
     bigerror("No Elmer mesh files saved!");
   }
 
@@ -4986,7 +4986,7 @@ int ReorderElementsMetis(struct FemType *data,int info)
   data->z = newz;
 
 
-  if(info) printf("Chanching the element topology\n");
+  if(info) printf("Changing the element topology\n");
 
   newtopology = Imatrix(1,noelements,0,data->maxnodes-1);
 

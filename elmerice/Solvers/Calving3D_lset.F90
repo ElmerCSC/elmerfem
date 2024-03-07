@@ -47,69 +47,61 @@
    LOGICAL :: TransientSimulation
 !-----------------------------------------------
    TYPE(ValueList_t), POINTER :: Params, MeshParams => NULL()
-   TYPE(Variable_t), POINTER :: CalvingVar, &  ! TO DO rm many unused variables here
-        DistVar, CIndexVar, HeightVar, CrevVar, TimestepVar,SignDistVar, HitCountVar, &
-        IsolineIDVar
+   TYPE(Variable_t), POINTER :: CalvingVar, DistVar, CrevVar, &
+        SignDistVar, HitCountVar, IsolineIDVar, MeshCrossVar
    TYPE(Solver_t), POINTER :: PCSolver => NULL(), &
         VTUOutputSolver => NULL(), IsoSolver => NULL()
-   TYPE(Matrix_t), POINTER :: StiffMatrix
    TYPE(Mesh_t), POINTER :: Mesh, PlaneMesh, IsoMesh, WorkMesh, WorkMesh2
    TYPE(Element_t), POINTER :: Element, WorkElements(:),IceElement
-   TYPE(Nodes_t), TARGET :: WorkNodes, FaceNodesT, LeftNodes, RightNodes, FrontNodes
-   TYPE(Nodes_t), POINTER :: WriteNodes
-   INTEGER :: i,j,jmin,k,n,counter, dim, dummyint, TotalNodes, NoNodes, &
-        comm, ierr, Me, PEs, FaceNodeCount, start, fin, &
-        DOFs, PathCount, ValidPathCount, active,&
-        WriteNodeCount, MeshBC, col, LeftConstraint, RightConstraint, FrontConstraint,&
-        FrontLineCount, ShiftIdx,NoCrevNodes, NoPaths, IMBdryCount
-   INTEGER, PARAMETER :: GeoUnit = 11
+   TYPE(Nodes_t), TARGET :: FaceNodesT
+   INTEGER :: i,j,jmin,k,n,dim, dummyint, NoNodes, ierr, PEs, &
+        FaceNodeCount, DOFs, PathCount, LeftConstraint, RightConstraint, &
+        FrontConstraint, NoCrevNodes, NoPaths, IMBdryCount, &
+        node, nodecounter, CurrentNodePosition, StartNode, &
+        directions, Counter, ClosestCrev, NumEdgeNodes, UnFoundLoops, EdgeLength,&
+        status(MPI_STATUS_SIZE), NUnfoundConstraint
    INTEGER, POINTER :: CalvingPerm(:), TopPerm(:)=>NULL(), BotPerm(:)=>NULL(), &
-        LeftPerm(:)=>NULL(), RightPerm(:)=>NULL(), FrontPerm(:)=>NULL(), &
-        NodeNums(:), FrontNodeNums(:), &
-        LeftNodeNums(:), FaceNodeNums(:)=>NULL(), DistPerm(:), &
-        CIndexPerm(:), BList(:), WorkPerm(:), InterpDim(:),&
-        OrderPerm(:), SignDistPerm(:), NodeIndexes(:),IceNodeIndexes(:),&
+        LeftPerm(:)=>NULL(), RightPerm(:)=>NULL(), FrontPerm(:)=>NULL(), InflowPerm(:)=>NULL(),&
+        FrontNodeNums(:), FaceNodeNums(:)=>NULL(), DistPerm(:), WorkPerm(:), &
+        SignDistPerm(:), NodeIndexes(:),IceNodeIndexes(:),&
         EdgeMap(:,:)
-   INTEGER, ALLOCATABLE :: MyFaceNodeNums(:), PFaceNodeCount(:),&
-        disps(:), WritePoints(:), CrevEnd(:),CrevStart(:),IMBdryConstraint(:),&
-        IMBdryENums(:)
-   REAL(KIND=dp) :: FrontOrientation(3), MaxHolder, &
-        RotationMatrix(3,3), UnRotationMatrix(3,3), NodeHolder(3), &
-        MaxMeshDist, MeshEdgeMinLC, MeshEdgeMaxLC, MeshLCMinDist, MeshLCMaxDist,&
-        Projection, CrevasseThreshold, search_eps, Norm, MinCalvingSize,&
-        PauseVolumeThresh, BotZ, TopZ, prop, MaxBergVolume, dy, dz, dzdy, dxdy,&
-        Displace, y_coord(2), ShiftTo, TempDist,MinDist, xl,xr,yl, yr, xx,yy,&
-        angle,angle0,a1(2),a2(2),b1(2),b2(2),a2a1(2),isect(2), &
+   INTEGER, ALLOCATABLE :: CrevEnd(:),CrevStart(:),IMBdryConstraint(:),IMBdryENums(:),&
+         PolyStart(:), PolyEnd(:), EdgeLine(:,:), EdgeCount(:), Nodes(:), StartNodes(:,:),&
+         WorkInt(:), WorkInt2D(:,:), PartCount(:), ElemsToAdd(:), PartElemsToAdd(:), &
+         EdgeLineNodes(:), NodePositions(:), FrontToLateralConstraint(:), UnfoundConstraints(:)
+   REAL(KIND=dp) :: FrontOrientation(3), &
+        RotationMatrix(3,3), UnRotationMatrix(3,3), NodeHolder(3), MaxMeshDist,&
+        y_coord(2), TempDist,MinDist, xl,xr,yl, yr, xx,yy,&
+        angle,angle0,a1(2),a2(2),b1(2),b2(2),a2a1(2),isect(2),front_extent(4), &
+        buffer, gridmesh_dx, FrontLeft(2), FrontRight(2), ElemEdge(2,5), &
+        CalvingLimit, CrevPenetration, PrevValue, PartMinDist, &
 #ifdef USE_ISO_C_BINDINGS
         rt0, rt
 #else
         rt0, rt, RealTime
 #endif
 
-   REAL(KIND=dp), POINTER :: DistValues(:), SignDistValues(:), CIndexValues(:), &
-        WorkReal(:), CalvingValues(:), ForceVector(:)
-   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:), HeightDirich(:), &
-        Rot_y_coords(:,:), Rot_z_coords(:,:), CrevX(:),CrevY(:),IMBdryNodes(:,:)
+   REAL(KIND=dp), POINTER :: DistValues(:), SignDistValues(:), WorkReal(:), &
+        CalvingValues(:)
+   REAL(KIND=dp), ALLOCATABLE :: CrevX(:),CrevY(:),IMBdryNodes(:,:), Polygon(:,:), PathPoly(:,:), &
+        EdgeX(:), EdgeY(:), EdgePoly(:,:), CrevOrient(:,:)
    CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, DistVarname, &
-        CIndexVarName, filename_root, filename,MaskName,&
-        FrontMaskName,TopMaskName,BotMaskName,LeftMaskName,RightMaskName, &
-        MeshDir, PC_EqName, Iso_EqName, VTUSolverName, NameSuffix,&
-        MoveMeshDir,MoveMeshFullPath
+        FrontMaskName,TopMaskName,BotMaskName,LeftMaskName,RightMaskName,InflowMaskName, &
+        PC_EqName, Iso_EqName, VTUSolverName, EqName
    LOGICAL :: Found, Parallel, Boss, Debug, FirstTime = .TRUE., CalvingOccurs=.FALSE., &
-        SaveParallelActive, PauseSolvers, LeftToRight, MovedOne, ShiftSecond, &
-        MoveMesh=.FALSE.
-   LOGICAL, POINTER :: UnfoundNodes(:)=>NULL(), PWorkLogical(:)
-   LOGICAL, ALLOCATABLE :: RemoveNode(:), IMOnFront(:), IMOnSide(:), IMOnMargin(:), &
-        IMOnLeft(:), IMOnRight(:),&
-        IMElemOnMargin(:), DeleteMe(:), IsCalvingNode(:), WorkLogical(:), PlaneEdgeElem(:)
+        SaveParallelActive, LeftToRight, inside, Complete,&
+        LatCalvMargins, FullThickness, UnfoundConstraint
+   LOGICAL, ALLOCATABLE :: RemoveNode(:), IMNOnFront(:), IMOnMargin(:), &
+        IMNOnLeft(:), IMNOnRight(:), IMElmONFront(:), IMElmOnLeft(:), IMElmOnRight(:), FoundNode(:), &
+        IMElemOnMargin(:), DeleteMe(:), IsCalvingNode(:), PlaneEdgeElem(:), EdgeNode(:), UsedElem(:), &
+        CrevLR(:), DeleteNode(:), DeleteElement(:)
 
-   TYPE(CrevassePath_t), POINTER :: CrevassePaths, CurrentPath, ClosestPath
+   TYPE(CrevassePath_t), POINTER :: CrevassePaths, CurrentPath
 
    SAVE :: FirstTime, SolverName, Params, Parallel, Boss, dim, Debug, &
-        DistVarName, CIndexVarName, PC_EqName, Iso_EqName, &
-        MinCalvingSize, PauseVolumeThresh, MoveMesh,LeftConstraint, &
+        DistVarName, PC_EqName, Iso_EqName, LeftConstraint, &
         RightConstraint, FrontConstraint,TopMaskName, BotMaskName, &
-        LeftMaskName, RightMaskName, FrontMaskName
+        LeftMaskName, RightMaskName, FrontMaskName, InflowMaskName
 
 !---------------Get Variables and Parameters for Solution-----------
 
@@ -127,6 +119,7 @@
       LeftMaskName = "Left Sidewall Mask"
       RightMaskName = "Right Sidewall Mask"
       FrontMaskName = "Calving Front Mask"
+      InflowMaskName = "Inflow Mask"
 
       dim = CoordinateSystemDimension()
       IF(dim /= 3) CALL Fatal(SolverName, "Solver only works in 3D!")
@@ -134,21 +127,8 @@
       DistVarName = ListGetString(Params,"Distance Variable Name", Found)
       IF(.NOT. Found) DistVarName = "Distance"
 
-      CIndexVarName = ListGetString(Params,"CIndex Variable Name", Found)
-      IF(.NOT. Found) CIndexVarName = "CIndex"
-
       PC_EqName = ListGetString(Params,"Project Calving Equation Name",Found, UnfoundFatal=.TRUE.)
       Iso_EqName = ListGetString(Params,"Isosurface Equation Name",Found, UnfoundFatal=.TRUE.)
-
-      MinCalvingSize = ListGetConstReal(Params, "Minimum Calving Event Size", Found)
-      IF(.NOT. Found) THEN
-         MinCalvingSize = 0.0_dp
-         CALL Warn(SolverName,"No 'Minimum Calving Event Size' given, simulation may run slowly&
-              & due to remeshing after tiny events!")
-      END IF
-
-      PauseVolumeThresh = ListGetConstReal(Params, "Pause Solvers Minimum Iceberg Volume", Found)
-      IF(.NOT. Found) PauseVolumeThresh = 0.0_dp
 
       !Get the boundary constraint of the left, right & front boundaries
       LeftConstraint = 0; RightConstraint = 0; FrontConstraint = 0
@@ -163,24 +143,25 @@
       IF(Debug) PRINT *,'Front, Left, Right constraints: ',FrontConstraint,LeftConstraint,RightConstraint
    END IF !FirstTime
 
+   CalvingOccurs = .FALSE.
+
    Mesh => Model % Mesh
 
-   !TODO, could take default value
-   MeshEdgeMinLC = ListGetConstReal(Params, "Calving Mesh Min LC",Found, UnfoundFatal=.TRUE.)
-   MeshEdgeMaxLC = ListGetConstReal(Params, "Calving Mesh Max LC",Found, UnfoundFatal=.TRUE.)
-   MeshLCMinDist = ListGetConstReal(Params, "Calving Mesh LC Min Dist",Found, UnfoundFatal=.TRUE.)
-   MeshLCMaxDist = ListGetConstReal(Params, "Calving Mesh LC Max Dist",Found, UnfoundFatal=.TRUE.)
+   ! addition of the lateral boundaries when calculating constrictions for crevasses
+   ! on the lateral boundaries
+   LatCalvMargins = ListGetLogical(Params,"Lateral Calving Margins", DefValue=.TRUE.)
+
    MaxMeshDist = ListGetConstReal(Params, "Calving Search Distance",Found, UnfoundFatal=.TRUE.)
-   CrevasseThreshold = ListGetConstReal(Params, "Crevasse Penetration Threshold", Found, &
-        UnfoundFatal=.TRUE.)
+
+   CrevPenetration = ListGetConstReal(Params, "Crevasse Penetration",Found, DefValue = 1.0_dp)
+   IF(.NOT. Found) CALL Info(SolverName, "No Crevasse Penetration specified so assuming full thickness")
+   FullThickness = CrevPenetration == 1.0_dp
+   PRINT*, 'CrevPenetration: ', CrevPenetration
+   IF(CrevPenetration > 1 .OR. CrevPenetration < 0) CALL FATAL(SolverName, "Crevasse Penetraion must be between 0-1")
 
    DistVar => VariableGet(Model % Variables, DistVarName, .TRUE., UnfoundFatal=.TRUE.)
    DistValues => DistVar % Values
    DistPerm => DistVar % Perm
-
-   CIndexVar => VariableGet(Model % Variables, CIndexVarName, .TRUE., UnfoundFatal=.TRUE.)
-   CIndexValues => CIndexVar % Values
-   CIndexPerm => CIndexVar % Perm
 
    !This solver's variable - holds the levelset value for
    ! CalvingRemeshMMG - negative where calving occurs
@@ -196,7 +177,7 @@
 
    NoNodes = Mesh % NumberOfNodes
    ALLOCATE( TopPerm(NoNodes), BotPerm(NoNodes), LeftPerm(NoNodes),&
-        RightPerm(NoNodes), FrontPerm(NoNodes))
+        RightPerm(NoNodes), FrontPerm(NoNodes), InflowPerm(NoNodes))
 
    !Generate perms to quickly get nodes on each boundary
    CALL MakePermUsingMask( Model, Solver, Mesh, TopMaskName, &
@@ -209,20 +190,22 @@
         .FALSE., RightPerm, dummyint)
    CALL MakePermUsingMask( Model, Solver, Mesh, FrontMaskName, &
         .FALSE., FrontPerm, FaceNodeCount)
+   CALL MakePermUsingMask( Model, Solver, Mesh, InflowMaskName, &
+        .FALSE., InflowPerm, dummyint)
 
    !Get the orientation of the calving front, compute rotation matrix
    FrontOrientation = GetFrontOrientation(Model)
    RotationMatrix = ComputeRotationMatrix(FrontOrientation)
    UnRotationMatrix = TRANSPOSE(RotationMatrix)
 
-   NameSuffix = ListGetString(Params, "Calving Append Name", Found, UnfoundFatal=.TRUE.)
-   MoveMeshDir = ListGetString(Params, "Calving Move Mesh Dir", Found)
-   IF(Found) THEN
-     CALL Info(SolverName, "Moving temporary mesh files after done")
-     MoveMesh = .TRUE.
-   END IF
 
-   WRITE(filename_root,'(A,A)') "Calving_temp",TRIM(NameSuffix)
+   DO i=1, Mesh % NumberOfNodes
+      IF(InflowPerm(i) > 0) THEN
+        IF(ABS(DistValues(DistPerm(i)) * FrontOrientation(2)) <= MaxMeshDist) &
+          CALL FATAL(SolverName, "Reduce Calving Search Distance as parts of the inflow &
+            boundary have a lower distance.")
+      END IF
+   END DO
 
    rt = RealTime() - rt0
    IF(ParEnv % MyPE == 0) &
@@ -245,17 +228,35 @@
 
    !TODO here - rotate the main mesh, or determine the rotated extent
    ! to pass for Grid Min X, etc
+   ! Use MaxMeshDist...
 
-    CALL ListAddConstReal(MeshParams,"Grid Mesh Min X",-100.0_dp)
-    CALL ListAddConstReal(MeshParams,"Grid Mesh Max X",5100.0_dp)
-    CALL ListAddConstReal(MeshParams,"Grid Mesh Min Y",-100.0_dp)
-    CALL ListAddConstReal(MeshParams,"Grid Mesh Max Y",2000.0_dp)
-    CALL ListAddConstReal(MeshParams,"Grid Mesh dx",20.0_dp)
+   gridmesh_dx = ListGetConstReal(Params, "PlaneMesh Grid Size",Found, DefValue=20.0_dp)
+   IF(.NOT. Found) CALL WARN(SolverName, "No PlaneMesh Grid Size set in sif so setting to 20")
+   buffer = gridmesh_dx * 4
 
-    PlaneMesh => CreateRectangularMesh(MeshParams)
-    PlaneMesh % Name = "calving_plane"
-    PlaneMesh % OutputActive = .TRUE.
-    PlaneMesh % Changed = .TRUE.
+   front_extent = GetFrontExtent(Mesh, RotationMatrix, DistVar, MaxMeshDist, buffer)
+
+   CALL ListAddConstReal(MeshParams,"Grid Mesh Min X",front_extent(1))
+   CALL ListAddConstReal(MeshParams,"Grid Mesh Max X",front_extent(2))
+   CALL ListAddConstReal(MeshParams,"Grid Mesh Min Y",front_extent(3))
+   CALL ListAddConstReal(MeshParams,"Grid Mesh Max Y",front_extent(4))
+   CALL ListAddConstReal(MeshParams,"Grid Mesh dx",gridmesh_dx)
+
+
+   PRINT *,ParEnv % MyPE,' front extent: ',front_extent
+
+   PlaneMesh => CreateRectangularMesh(MeshParams)
+
+   CALL SetMeshMaxDOFs(PlaneMesh)
+
+   PlaneMesh % Nodes % z = PlaneMesh % Nodes % y
+   PlaneMesh % Nodes % y = PlaneMesh % Nodes % x
+   PlaneMesh % Nodes % x = 0.0
+   CALL RotateMesh(PlaneMesh, UnrotationMatrix)
+
+   PlaneMesh % Name = "calving_plane"
+   PlaneMesh % OutputActive = .TRUE.
+   PlaneMesh % Changed = .TRUE.
 
     ! CALL WriteMeshToDisk2(Model, PlaneMesh, ".")
 
@@ -328,13 +329,19 @@
     WorkReal = 0.0_dp
     CALL VariableAdd(PlaneMesh % Variables, PlaneMesh, PCSolver, "hitcount", &
          1, WorkReal, WorkPerm)
+    NULLIFY(WorkReal)
+
+    !Variable for edge of Solver % Mesh for polygon creation for levelset sign
+    ALLOCATE(WorkReal(n))
+    WorkReal = 0.0_dp
+    CALL VariableAdd(PlaneMesh % Variables, PlaneMesh, PCSolver, "meshcrossover", &
+         1, WorkReal, WorkPerm)
     NULLIFY(WorkReal, WorkPerm)
 
     !Solver variable - crevasse penetration in range 0-1
     CrevVar => VariableGet(PlaneMesh % Variables, "ave_cindex", .TRUE.)
     PCSolver % Variable => CrevVar
     PCSolver % Matrix % Perm => CrevVar % Perm
-
 
     !----------------------------------------------------
     ! Run Project Calving solver
@@ -364,21 +371,26 @@
 
       HitCountVar => VariableGet(PlaneMesh % Variables, "hitcount", .TRUE.,UnfoundFatal=.TRUE.)
       IsolineIdVar => VariableGet(PlaneMesh % Variables, "isoline id", .TRUE.,UnfoundFatal=.TRUE.)
+      MeshCrossVar => VariableGet(PlaneMesh % Variables, "meshcrossover", .TRUE.,UnfoundFatal=.TRUE.)
 
+      ! meshcrossover - 2 = glacier hit, 1 = edge, first node outside glacier domain, 0=outside glacier domain
+      MeshCrossVar % Values = 2.0
       !Set PlaneMesh exterior nodes to ave_cindex = 1 (no calving)
       !                             and IsolineID = 1 (exterior)
       DO i=1,PlaneMesh % NumberOfNodes
         IF(HitCountVar % Values(HitCountVar % Perm(i)) <= 0.0_dp) THEN
           CrevVar % Values(CrevVar % Perm(i)) = 1.0
           IsolineIDVar % Values(IsolineIDVar % Perm(i)) = 1.0
+          MeshCrossVar % Values(MeshCrossVar % Perm(i)) = 0.0
         END IF
       END DO
 
       !PlaneMesh nodes in elements which cross the 3D domain boundary
       !get ave_cindex = 0 (to enable CrevassePaths/isolines to reach the edge)
       !Also mark elements which cross the edge of the 3D domain (TODO - not used!)
-      ALLOCATE(PlaneEdgeElem(PlaneMesh % NumberOfBulkElements))
+      ALLOCATE(PlaneEdgeElem(PlaneMesh % NumberOfBulkElements), EdgeNode(PlaneMesh % NumberOfNodes))
       PlaneEdgeElem = .FALSE.
+      EdgeNode = .FALSE.
 
       DO i=1, PlaneMesh % NumberOfBulkElements
         NodeIndexes => PlaneMesh % Elements(i) % NodeIndexes
@@ -392,13 +404,467 @@
 
           !Mark nodes just outside the edge to CrevVar = 0.0
           DO j=1,n
-            IF(HitCountVar % Values(HitCountVar % Perm(NodeIndexes(j))) <= 0.0_dp) &
+            IF(HitCountVar % Values(HitCountVar % Perm(NodeIndexes(j))) <= 0.0_dp) THEN
                  CrevVar % Values(CrevVar % Perm(NodeIndexes(j))) = 0.0
+                 MeshCrossVar % Values(MeshCrossVar % Perm(NodeIndexes(j))) = 1.0
+                 EdgeNode(NodeIndexes(j)) = .TRUE.
+            END IF
           END DO
 
         END IF
       END DO
-      PRINT *,'Debug - PlaneEdgeElem: ',COUNT(PlaneEdgeElem)
+      PRINT *,'Debug - PlaneEdgeElem: ',COUNT(PlaneEdgeElem), 'EdgeNode: ', COUNT(EdgeNode)
+
+      ! get planmesh edgenodes in a line- nodes just outside the solver%mesh domain-
+      ! for calving lset sign. These nodes used to make calving polygon
+      !! Elem 404 Structure
+      !  4____1
+      !  |    |
+      !  |____|
+      !  3    2
+      ! following code assumes this structure in order to find edge nodes in order
+      ! create edgeline so we can stitch this with crevasses
+
+      ALLOCATE(UsedElem(PlaneMesh % NumberOfBulkElements), StartNodes(2, 5), NodePositions(3))
+      UsedElem=.FALSE.
+      StartNodes=0
+      DO startnode=1, PlaneMesh % NumberOfNodes
+        IF(.NOT. EdgeNode(startnode)) CYCLE
+        !StartNode = !random start point
+        directions=0
+
+        ! find how many starting directions
+        DO i=1, PlaneMesh % NumberOfBulkElements
+          IF(.NOT. PlaneEdgeElem(i)) CYCLE
+          NodeIndexes => PlaneMesh % Elements(i) % NodeIndexes
+          n = PlaneMesh % Elements(i) % TYPE % NumberOfNodes
+          IF(.NOT. ANY(NodeIndexes(1:n)==startnode)) CYCLE
+          NodePositions=0
+          nodecounter=0
+          DO j=1,n
+            IF(.NOT. EdgeNode(NodeIndexes(j))) CYCLE ! not a edge node
+            IF(NodeIndexes(j) == startnode) THEN
+              CurrentNodePosition = j
+              CYCLE ! this node
+            END IF
+            nodecounter=nodecounter+1
+            NodePositions(nodecounter)=j
+          END DO
+
+          ! assign nodes found so we can create edgeline in two directions
+          IF(nodecounter == 0) THEN
+            CYCLE !only contains startnode
+          ELSE IF(nodecounter == 1) THEN
+            directions=directions+1
+            StartNodes(directions, 1) = NodeIndexes(NodePositions(1))
+          ELSE IF(nodecounter == 2) THEN
+            IF(NodePositions(2)-NodePositions(1) == 2) THEN
+              directions=directions+2
+              StartNodes(1, 1)=NodeIndexes(NodePositions(1))
+              StartNodes(2, 1)=NodeIndexes(NodePositions(2))
+            ELSE
+              directions=directions+1
+              IF(ABS(NodePositions(1)-CurrentNodePosition) /= 2) THEN ! closest node
+                StartNodes(directions, 1)=NodeIndexes(NodePositions(1))
+                StartNodes(directions, 2)=NodeIndexes(NodePositions(2))
+              ELSE
+                StartNodes(directions, 1)=NodeIndexes(NodePositions(2))
+                StartNodes(directions, 2)=NodeIndexes(NodePositions(1))
+              END IF
+            END IF
+          END IF
+          UsedElem(i)=.TRUE.
+        END DO
+
+        NumEdgeNodes = COUNT(EdgeNode)
+        ! add startnodes to edgeline
+        ALLOCATE(Edgeline(directions, NumEdgeNodes), nodes(directions), &
+                EdgeCount(directions), FoundNode(directions))
+        EdgeCount = 0
+        EdgeLine = 0
+        DO i=1, directions
+          EdgeCount(i) = COUNT(StartNodes(i,:) /= 0)
+          IF(i==1) THEN ! for initial startnode
+            EdgeCount(i) = EdgeCount(i) + 1
+            EdgeLine(i, 1) = startnode
+            EdgeLine(i, 2:EdgeCount(i)) = PACK(StartNodes(i,:), StartNodes(i,:) /= 0)
+          ELSE
+            EdgeLine(i, 1:EdgeCount(i)) = PACK(StartNodes(i,:), StartNodes(i,:) /= 0)
+          END IF
+
+          nodes(i) = EdgeLine(i, EdgeCount(i))
+        END DO
+
+        ! loop through starting with startnodes to find remaining edgenodes
+        ! in order
+        UnFoundLoops = 0
+        Complete = .FALSE.
+        DO WHILE(.NOT. Complete)
+          FoundNode=.FALSE.
+          DO i=1, PlaneMesh % NumberOfBulkElements
+            IF(.NOT. PlaneEdgeElem(i)) CYCLE
+            IF(UsedElem(i)) CYCLE ! already used elem
+            NodeIndexes => PlaneMesh % Elements(i) % NodeIndexes
+            n = PlaneMesh % Elements(i) % TYPE % NumberOfNodes
+            DO j=1, directions
+              node = Nodes(j)
+              IF(.NOT. ANY(NodeIndexes(1:n)==node)) CYCLE
+              nodecounter=0
+              NodePositions=0
+              DO k=1,n
+                IF(.NOT. EdgeNode(NodeIndexes(k))) CYCLE ! not a edge node
+                IF(NodeIndexes(k) == node) THEN
+                  CurrentNodePosition = k
+                  CYCLE ! this node
+                END IF
+                nodecounter=nodecounter+1
+                NodePositions(nodecounter) = k
+              END DO
+              IF(nodecounter == 1) THEN
+                IF(ABS(CurrentNodePosition - NodePositions(1)) == 2) CYCLE ! nodes not connected
+                IF(ANY(EdgeLine(j, :) == NodeIndexes(NodePositions(1)))) THEN
+                  ! increase capactiy by one
+                  ALLOCATE(WorkInt2D(directions, NumEdgeNodes))
+                  WorkInt2D = EdgeLine
+                  DEALLOCATE(EdgeLine)
+                  NumEdgeNodes=NumEdgeNodes+1
+                  ALLOCATE(EdgeLine(directions, NumEdgeNodes))
+                  EdgeLine=0
+                  EdgeLine(:,1:NumEdgeNodes-1) = WorkInt2D
+                  DEALLOCATE(WorkInt2D)
+                END IF
+                EdgeCount(j) = EdgeCount(j) + 1
+                EdgeLine(j, EdgeCount(j)) = NodeIndexes(NodePositions(1))
+              ELSE IF(nodecounter == 2) THEN
+                counter=0
+                DO k=1, nodecounter
+                  IF(ANY(EdgeLine(j, :) == NodeIndexes(NodePositions(k)))) THEN
+                    ! increase capactiy by one
+                    ALLOCATE(WorkInt2D(directions, NumEdgeNodes))
+                    WorkInt2D = EdgeLine
+                    DEALLOCATE(EdgeLine)
+                    NumEdgeNodes=NumEdgeNodes+1
+                    ALLOCATE(EdgeLine(directions, NumEdgeNodes))
+                    EdgeLine=0
+                    EdgeLine(:,1:NumEdgeNodes-1) = WorkInt2D
+                    DEALLOCATE(WorkInt2D)
+                  END IF
+                  IF(ABS(CurrentNodePosition - NodePositions(k)) /= 2) THEN ! first node
+                    EdgeLine(j, EdgeCount(j) + 1 + Counter) = NodeIndexes(NodePositions(k))
+                  ELSE ! second node
+                    EdgeLine(j, EdgeCount(j) + 1 + Counter) = NodeIndexes(NodePositions(k))
+                  END IF
+                  counter=counter+1
+                END DO
+                EdgeCount(j) = EdgeCount(j) + Counter
+              ELSE IF(nodecounter == 3) THEN
+                CALL FATAL('PlaneMesh', '4 edge nodes in one element!')
+              END IF
+              Nodes(j)=Edgeline(j, EdgeCount(j))
+              IF(nodecounter>0) THEN
+                UsedElem(i)=.TRUE.
+                FoundNode(j)=.TRUE.
+              END IF
+            END DO
+          END DO
+          IF(.NOT. ANY(FoundNode)) THEN
+            DO i=1, directions
+              IF(FoundNode(i)) CYCLE
+              Nodes(i)=Edgeline(i, EdgeCount(i)-1)
+            END DO
+            UnFoundLoops=UnFoundLoops+1
+          ELSE
+            UnFoundLoops=0
+          END IF
+          IF(UnFoundLoops == 2) THEN
+            ! if can't find all edge nodes
+            ! check if unfound node lies in poly of edgeline
+            ALLOCATE(EdgePoly(2, SUM(EdgeCount)+1))
+            nodecounter=0
+            IF(directions > 1) THEN
+              DO i=EdgeCount(2),1, -1 ! backwards iteration
+                nodecounter=nodecounter+1
+                EdgePoly(1,nodecounter) = PlaneMesh % Nodes % x(EdgeLine(2, i))
+                EdgePoly(2,nodecounter) = PlaneMesh % Nodes % y(EdgeLine(2, i))
+              END DO
+            END IF
+            DO i=1, EdgeCount(1)
+              nodecounter=nodecounter+1
+              EdgePoly(1,nodecounter) = PlaneMesh % Nodes % x(EdgeLine(1, i))
+              EdgePoly(2,nodecounter) = PlaneMesh % Nodes % y(EdgeLine(1, i))
+            END DO
+            EdgePoly(1, SUM(EdgeCount)+1) = EdgePoly(1,1)
+            EdgePoly(2, SUM(EdgeCount)+1) = EdgePoly(2,1)
+
+            counter=0
+            DO i=1, PlaneMesh % NumberOfNodes
+              inside=.FALSE.
+              IF(.NOT. EdgeNode(i)) CYCLE
+              IF(ANY(EdgeLine == i)) CYCLE
+              xx = PlaneMesh % Nodes % x(i)
+              yy = PlaneMesh % Nodes % y(i)
+              inside = PointInPolygon2D(EdgePoly, (/xx, yy/))
+              IF(inside) counter=counter+1
+            END DO
+            IF(NumEdgeNodes == SUM(EdgeCount) + counter) Complete = .TRUE.
+            DEALLOCATE(EdgePoly)
+          END IF
+          IF(NumEdgeNodes == SUM(EdgeCount)) Complete = .TRUE.
+          IF(UnFoundLoops == 10) CALL FATAL('Calving_lset', 'Cannot find all edge nodes')
+        END DO
+        EXIT ! initial loop only to get random start point
+      END DO
+      DEALLOCATE(UsedElem, NodePositions)
+
+      EdgeLength = SUM(EdgeCount)
+      ! translate edge nodes into x and y and join both strings
+      ALLOCATE(EdgeX(EdgeLength), EdgeY(EdgeLength), EdgeLineNodes(EdgeLength))
+      nodecounter=0
+      IF(directions > 1) THEN
+        DO i=EdgeCount(2),1, -1 ! backwards iteration
+          nodecounter=nodecounter+1
+          EdgeX(nodecounter) = PlaneMesh % Nodes % x(EdgeLine(2, i))
+          EdgeY(nodecounter) = PlaneMesh % Nodes % y(EdgeLine(2, i))
+          EdgeLineNodes(nodecounter) = EdgeLine(2,i)
+        END DO
+      END IF
+      DO i=1, EdgeCount(1)
+        nodecounter=nodecounter+1
+        EdgeX(nodecounter) = PlaneMesh % Nodes % x(EdgeLine(1, i))
+        EdgeY(nodecounter) = PlaneMesh % Nodes % y(EdgeLine(1, i))
+        EdgeLineNodes(nodecounter) = EdgeLine(1,i)
+      END DO
+
+      ! see if all mesh nodes lie with edgeline if not adjust
+      ALLOCATE(EdgePoly(2, EdgeLength+1))
+      EdgePoly(1,1:EdgeLength) = EdgeX
+      EdgePoly(1,EdgeLength+1) = EdgeX(1)
+      EdgePoly(2,1:EdgeLength) = EdgeY
+      EdgePoly(2,EdgeLength+1) = EdgeY(1)
+      ! end of finding planmesh edge
+    END IF ! BOSS
+
+    CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
+    CALL MPI_BCAST(EdgeLength, 1, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
+    IF(.NOT. Boss) ALLOCATE(EdgePoly(2,EdgeLength+1))
+    CALL MPI_BCAST(EdgePoly, (EdgeLength+1)*2, MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
+
+    ! check all nodes lie within edgeline
+    ALLOCATE(ElemsToAdd(Mesh % NumberOfNodes))
+    counter=0; ElemsToAdd = 0
+    DO i=1, Mesh % NumberOfNodes
+      IF(DistValues(DistPerm(i)) > MaxMeshDist/2) CYCLE
+      inside = PointInPolygon2D(EdgePoly, (/Mesh % Nodes % x(i), Mesh % Nodes % y(i)/))
+      IF(.NOT. inside) THEN
+        DO j=1, PlaneMesh % NumberOfBulkElements
+          NodeIndexes => PlaneMesh % Elements(j) % NodeIndexes
+          DO k=1,4
+            ElemEdge(1,k) = PlaneMesh % Nodes % x(NodeIndexes(k))
+            ElemEdge(2,k) = PlaneMesh % Nodes % y(NodeIndexes(k))
+          END DO
+          ElemEdge(1,5) = PlaneMesh % Nodes % x(NodeIndexes(1))
+          ElemEdge(2,5) = PlaneMesh % Nodes % y(NodeIndexes(1))
+          inside = PointInPolygon2D(ElemEdge, (/Mesh % Nodes % x(i), Mesh % Nodes % y(i)/))
+          IF(inside) THEN
+            IF(ANY(ElemsToAdd == j)) CYCLE
+            counter=counter+1
+            ElemsToAdd(counter) = j
+          END IF
+        END DO
+      END IF
+    END DO
+
+    ALLOCATE(PartCount(ParEnv % PEs))
+    PartCount=0
+    CALL MPI_GATHER(counter, 1, MPI_INTEGER, PartCount, 1, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
+
+    IF(.NOT. Boss .AND. Counter > 0) THEN
+      CALL MPI_BSEND(ElemsToAdd, counter, MPI_INTEGER, 0, &
+          8000, ELMER_COMM_WORLD, ierr)
+    END IF
+    IF(Boss.AND. SUM(PartCount) > 0) THEN
+      ALLOCATE(PartElemsToAdd(SUM(PartCount)))
+      IF(counter > 0) PartElemsToAdd(1:Counter) = ElemsToAdd(1:counter)
+      DO i=2, ParEnv % PEs ! boss is zero
+        IF(PartCount(i) == 0) CYCLE
+        PRINT*, i-1, counter, PartCount(i)
+        CALL MPI_RECV(PartElemsToAdd(counter+1:counter+PartCount(i)), PartCount(i), &
+            MPI_INTEGER, i-1, 8000, ELMER_COMM_WORLD, status, ierr)
+        counter=counter+PartCount(i)
+      END DO
+
+    END IF
+
+    IF(Boss .AND. SUM(PartCount) > 0) THEN
+      !remove duplicates
+      ALLOCATE(WorkInt(SUM(PartCount)), RemoveNode(SUM(PartCount)))
+      WorkInt = PartElemsToAdd
+      RemoveNode = .FALSE.
+      DO i=1,SUM(PartCount)
+        IF(RemoveNode(i)) CYCLE
+        DO j=1,SUM(PartCount)
+          IF(i==j) CYCLE
+          IF(WorkInt(i) == WorkInt(j)) RemoveNode(j) = .TRUE.
+        END DO
+      END DO
+      DEALLOCATE(PartElemsToAdd)
+      PartElemsToAdd = PACK(WorkInt, .NOT. RemoveNode)
+      DEALLOCATE(WorkInt, RemoveNode)
+
+      !if nodes lie outwith edgeline expand edgeline
+      ALLOCATE(UsedElem(SIZE(PartElemsToAdd)), NodePositions(4))
+      UsedElem=.FALSE.
+      DO WHILE(.NOT. ALL(UsedElem))
+        DO i=1, SIZE(PartElemsToAdd)
+          IF(UsedElem(i)) CYCLE
+          NodeIndexes => PlaneMesh % Elements(PartElemsToAdd(i)) % NodeIndexes
+          counter=0
+          DO j=1,4
+            IF(ANY(EdgeLineNodes == NodeIndexes(j))) counter=counter+1
+          END DO
+          IF(counter == 1) THEN
+            ! add three missing nodes in order
+            DO j=1,EdgeLength
+              IF(ANY(NodeIndexes == EdgeLineNodes(j))) THEN ! found first node
+                DO k=1,4
+                  IF(NodeIndexes(k) == EdgeLineNodes(j)) NodePositions(1) = k
+                END DO
+                ALLOCATE(WorkInt(EdgeLength+4))
+                WorkInt(1:j) = EdgeLineNodes(1:j)
+                DO k=1,4 ! 4 as need to add original node back in at end
+                  n = NodePositions(1) + k
+                  IF(n > 4) n = n - 4
+                  WorkInt(j+k) = NodeIndexes(n)
+                END DO
+                WorkInt(j+5:EdgeLength+4) = EdgeLineNodes(j+1:EdgeLength)
+                DEALLOCATE(EdgeLineNodes)
+                EdgeLength = EdgeLength + 4
+                ALLOCATE(EdgeLineNodes(EdgeLength))
+                EdgeLineNodes = WorkInt
+                DEALLOCATE(WorkInt)
+                EXIT
+              END IF
+            END DO
+          ELSE IF(Counter == 2) THEN
+            ! add two missing nodes in order
+            DO j=1,EdgeLength
+              IF(ANY(NodeIndexes == EdgeLineNodes(j))) THEN ! found first node
+                DO k=1,4
+                  IF(NodeIndexes(k) == EdgeLineNodes(j)) NodePositions(1) = k
+                  IF(NodeIndexes(k) == EdgeLineNodes(j+1)) NodePositions(2) = k
+                END DO
+                IF(NodePositions(1) == NodePositions(2)) CYCLE
+                IF(ABS(NodePositions(1) - NodePositions(2)) == 2) &
+                  CALL FATAL('Calving3D_lset', 'Error building edgeline')
+                ! add in other nodes
+                ALLOCATE(WorkInt(EdgeLength+2))
+                WorkInt(1:j) = EdgeLineNodes(1:j)
+                ! first node is opposite NodePostiions(1)
+                DO k=1,4
+                  IF(ANY(NodePositions(1:2) == k)) CYCLE
+                  IF(ABS(k-NodePositions(1)) /= 2) WorkInt(j+1) = NodeIndexes(k)
+                  IF(ABS(k-NodePositions(2)) /= 2) WorkInt(j+2) = NodeIndexes(k)
+                END DO
+                WorkInt(j+3:EdgeLength+2) = EdgeLineNodes(j+1:EdgeLength)
+                DEALLOCATE(EdgeLineNodes)
+                EdgeLength = EdgeLength + 2
+                ALLOCATE(EdgeLineNodes(EdgeLength))
+                EdgeLineNodes = WorkInt
+                DEALLOCATE(WorkInt)
+                EXIT
+              END IF
+            END DO
+          ELSE IF(counter == 3) THEN !swap middle node for unsed node
+            DO j=1,EdgeLength
+              IF(ANY(NodeIndexes == EdgeLineNodes(j))) THEN ! found first node
+                IF(ANY(EdgeLineNodes(j+1:j+2) == EdgeLineNodes(j))) CYCLE ! loops back on itself
+                IF(.NOT. ANY(NodeIndexes == EdgeLineNodes(j+1))) CYCLE ! moves out of element
+                IF(.NOT. ANY(NodeIndexes == EdgeLineNodes(j+2))) CYCLE ! moves out of element
+                DO k=1,4
+                  IF(NodeIndexes(k) == EdgeLineNodes(j)) NodePositions(1) = k
+                  IF(NodeIndexes(k) == EdgeLineNodes(j+1)) NodePositions(2) = k
+                  IF(ANY(EdgeLineNodes(j:j+2) == NodeIndexes(k))) CYCLE
+                  NodePositions(4) = k
+                END DO
+                ! swap node 2 with 4
+                EdgeLineNodes(j+1) = NodeIndexes(NodePositions(4))
+                EXIT
+              END IF
+            END DO
+          ELSE IF(counter == 4) THEN ! remove two middle nodes
+            DO j=1,EdgeLength
+              IF(ANY(NodeIndexes == EdgeLineNodes(j))) THEN ! found first node
+                IF(ANY(EdgeLineNodes(j+1:j+3) == EdgeLineNodes(j))) CYCLE ! loops back on itself
+                IF(ANY(EdgeLineNodes(j+2:j+3) == EdgeLineNodes(j+1))) CYCLE ! loops back on itself
+                IF(EdgeLineNodes(j+2) == EdgeLineNodes(j+3)) CYCLE ! loops back on itself
+                IF(.NOT. ANY(NodeIndexes == EdgeLineNodes(j+1))) CYCLE ! moves out of element
+                IF(.NOT. ANY(NodeIndexes == EdgeLineNodes(j+2))) CYCLE ! moves out of element
+                IF(.NOT. ANY(NodeIndexes == EdgeLineNodes(j+3))) CYCLE ! moves out of element
+                DO k=1,4
+                  IF(NodeIndexes(k) == EdgeLineNodes(j)) NodePositions(1) = k
+                  IF(NodeIndexes(k) == EdgeLineNodes(j+3)) NodePositions(4) = k
+                END DO
+                IF(ABS(NodePositions(1) - NodePositions(4)) == 2) &
+                  CALL FATAL('Calving3D_lset', 'Error building edgeine')
+                ALLOCATE(WorkInt(EdgeLength-2))
+                WorkInt(1:j) = EdgeLineNodes(1:j)
+                WorkInt(j+1:) = EdgeLineNodes(j+3:)
+                DEALLOCATE(EdgeLineNodes)
+                EdgeLength = EdgeLength - 2
+                ALLOCATE(EdgeLineNodes(EdgeLength))
+                EdgeLineNodes = WorkInt
+                DEALLOCATE(WorkInt)
+                EXIT
+              END IF
+            END DO
+          END IF
+          UsedElem(i)=.TRUE.
+          IF(counter == 0) CALL WARN(SolverName, 'Element to be added not connected')
+        END DO
+      END DO
+      ! update edge line
+      DEALLOCATE(EdgeX, EdgeY)
+      ALLOCATE(EdgeX(EdgeLength), EdgeY(EdgeLength))
+      DO i=1, EdgeLength
+        EdgeX(i) = PlaneMesh % Nodes % x(EdgeLineNodes(i))
+        EdgeY(i) = PlaneMesh % Nodes % y(EdgeLineNodes(i))
+      END DO
+    END IF
+
+    IF(Debug .AND. Boss) THEN
+      PRINT*, 'EdgeLine ----'
+      DO i=1, EdgeLength
+        PRINT*, EdgeX(i), ',', EdgeY(i), ','
+      END DO
+    END IF
+
+    IF(Boss) THEN
+
+        IF(.NOT. FullThickness) THEN
+          ! save original ave_cindex
+          n = PlaneMesh % NumberOfNodes
+          ALLOCATE(WorkPerm(n), WorkReal(n))
+          WorkReal = CrevVar % Values(CrevVar % Perm)
+          WorkPerm = [(i,i=1,n)]
+          CALL VariableAdd(PlaneMesh % Variables, PlaneMesh, PCSolver, "ave_cindex_fullthickness", &
+          1, WorkReal, WorkPerm)
+          NULLIFY(WorkReal, WorkPerm)
+
+          CalvingLimit = 1.0_dp - CrevPenetration
+
+          !alter ave_cindix so relflect %crevasses indicated in sif
+          ! 0 full
+          DO i=1, n
+            IF(CrevVar % Values(CrevVar % Perm(i)) <= CalvingLimit) THEN
+              CrevVar % Values(CrevVar % Perm(i)) = 0.0_dp
+            ELSE
+              PrevValue = CrevVar % Values(CrevVar % Perm(i))
+              CrevVar % Values(CrevVar % Perm(i)) = PrevValue - CalvingLimit
+            END IF
+          END DO
+        END IF
+
+
 
        ! Locate Isosurface Solver
        DO i=1,Model % NumberOfSolvers
@@ -435,6 +901,23 @@
        WorkMesh2 % Next => NULL() !break the list
        PlaneMesh % Next => IsoMesh !add to planemesh
 
+       ALLOCATE(DeleteNode(PlaneMesh % NumberOfNodes), DeleteElement(PlaneMesh % NumberOfBulkElements))
+       DeleteNode = .FALSE.; DeleteElement = .FALSE.
+       !remove unwanted elements
+       DO i=1, PlaneMesh % NumberOfNodes
+         IF(CrevVar % Values(CrevVar % Perm(i)) /= CrevPenetration) CYCLE !all nodes outside should equal 1
+         inside = PointInPolygon2D(EdgePoly, (/PlaneMesh % Nodes % x(i), PlaneMesh % Nodes % y(i)/))
+         IF(inside) CYCLE
+         DeleteNode(i) = .TRUE.
+       END DO
+
+       DO i=1, PlaneMesh % NumberOfBulkElements
+         IF(ANY(DeleteNode(PlaneMesh % Elements(i) % NodeIndexes))) &
+           DeleteElement(i) = .TRUE.
+       END DO
+
+       CALL CutPlaneMesh(PlaneMesh, DeleteNode, DeleteElement)
+
        !-------------------------------------------------
        !
        ! Compare rotated isomesh to current calving front
@@ -453,15 +936,12 @@
        ! Isomesh.
        !-------------------------------------------------
 
-       ALLOCATE(IMOnFront(IsoMesh % NumberOfNodes), &
-            IMOnLeft(IsoMesh % NumberOfNodes),&
-            IMOnRight(IsoMesh % NumberOfNodes),&
-            IMOnSide(IsoMesh % NumberOfNodes),&
+       ALLOCATE(IMNOnFront(IsoMesh % NumberOfNodes), &
+            IMNOnLeft(IsoMesh % NumberOfNodes),&
+            IMNOnRight(IsoMesh % NumberOfNodes),&
             IMOnMargin(IsoMesh % NumberOfNodes))
-       IMOnFront=.FALSE.; IMOnSide=.FALSE.; IMOnMargin=.FALSE.
-       IMOnLeft=.FALSE.; IMOnRight=.FALSE.
-
-       ! search_eps = EPSILON(PlaneMesh % Nodes % x(1))
+       IMNOnFront=.FALSE.; IMOnMargin=.FALSE.
+       IMNOnLeft=.FALSE.; IMNOnRight=.FALSE.
 
        IsolineIdVar => VariableGet(IsoMesh % Variables, "isoline id", .TRUE.,UnfoundFatal=.TRUE.)
        DO i=1, IsoMesh % NumberOfNodes
@@ -491,9 +971,13 @@
          END DO
          IF(k==1) ALLOCATE(IMBdryNodes(IMBdryCount,4),IMBdryENums(IMBdryCount))
        END DO
+
      END IF
 
      IF(Parallel) CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
+     ! check front boundary is connected returns FrontToLateralConstraint which
+     ! reassigns unconnected elems to nearest lateral margin in IMBdryConstraints
+     CALL CheckFrontBoundary(Model, FrontConstraint, RightConstraint, LeftConstraint, FrontToLateralConstraint)
 
      !Pass isoline boundary elements to all partitions to get info
      !about which boundary they cross
@@ -503,6 +987,7 @@
 
      CALL MPI_BCAST(IMBdryNodes,IMBdryCount*4, MPI_DOUBLE_PRECISION,&
           0, ELMER_COMM_WORLD, ierr)
+
      ALLOCATE(IMBdryConstraint(IMBdryCount))
      IMBdryConstraint = 0
 
@@ -544,7 +1029,6 @@
            b2(1) = Mesh % Nodes % x(IceNodeIndexes(EdgeMap(k,2)))
            b2(2) = Mesh % Nodes % y(IceNodeIndexes(EdgeMap(k,2)))
 
-           !TODO - here - need efficient algorithm to find intersection
            CALL LineSegmentsIntersect ( a1, a2, b1, b2, isect, Found)
 
            IF(Found) THEN
@@ -557,7 +1041,11 @@
              EXIT
            END IF
          END DO
-         IF(Found) EXIT
+         ! when lateral margin advances it doesn't follow the z axis so we want to determine
+         ! the further point the lateral margins have advanced
+         IF(Found .AND. FrontToLateralConstraint(j) /= 0) &
+            IMBdryConstraint(i) = FrontToLateralConstraint(j)
+         IF(Found .AND. IMBdryConstraint(i) /= FrontConstraint) EXIT
        END DO
      END DO
 
@@ -570,29 +1058,91 @@
             MPI_MAX, 0, ELMER_COMM_WORLD, ierr)
      END IF
 
+     CALL GetFrontCorners(Model, Solver, FrontLeft, FrontRight)
+
      IF(Boss) THEN
 
+       UnfoundConstraint = .FALSE.
        IF(ANY(IMBdryConstraint == 0)) THEN
          PRINT *,'Debug constraints: ', IMBdryConstraint
-         CALL Fatal(SolverName,"Failed to identify boundary constraint for all isomesh edge elements")
+         CALL WARN(SolverName,"Failed to identify boundary constraint for all isomesh edge elements")
+         UnfoundConstraints = PACK((/ (i,i=1,IMBdryCount) /),IMBdryConstraint == 0)
+         UnfoundConstraint = .TRUE.
        END IF
+     END IF
 
-       DO i=1,IMBdryCount
-         k = IMBdryENums(i)
-         IF(IMBdryConstraint(i) == FrontConstraint) IMOnFront(k) = .TRUE.
-         IF(IMBdryConstraint(i) == LeftConstraint) IMOnLeft(k) = .TRUE.
-         IF(IMBdryConstraint(i) == RightConstraint) IMOnRight(k) = .TRUE.
+     CALL MPI_BCAST(UnfoundConstraint, 1, MPI_LOGICAL, 0, ELMER_COMM_WORLD, ierr)
+
+     IF(UnfoundConstraint) THEN
+       CALL INFO(SolverName, "Unfound boundary constraints so searching for nearest boundary element")
+
+       IF(Boss) NUnfoundConstraint = SIZE(UnfoundConstraints)
+       CALL MPI_BCAST(NUnfoundConstraint, 1, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
+       IF(.NOT. Boss) ALLOCATE(UnfoundConstraints(NUnfoundConstraint))
+       CALL MPI_BCAST(UnfoundConstraints, NUnfoundConstraint, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
+
+       DO node=1, NUnfoundConstraint
+
+         MinDist = HUGE(1.0_dp)
+         i = UnfoundConstraints(node)
+
+         a1(1) = IMBdryNodes(i,1)
+         a1(2) = IMBdryNodes(i,2)
+         a2(1) = IMBdryNodes(i,3)
+         a2(2) = IMBdryNodes(i,4)
+
+         !Slightly extend the length of the element to account for floating point
+         !precision issues:
+         a2a1 = (a2 - a1) * 0.1
+         a1 = a1 - a2a1
+         a2 = a2 + a2a1
+
+         DO j=Mesh % NumberOfBulkElements + 1, Mesh % NumberOfBulkElements + &
+              Mesh % NumberOfBoundaryElements
+
+           IceElement => Mesh % Elements(j)
+           IF(IceElement % BoundaryInfo % Constraint /= FrontConstraint .AND. &
+                IceElement % BoundaryInfo % Constraint /= LeftConstraint .AND. &
+                IceElement % BoundaryInfo % Constraint /= RightConstraint) CYCLE
+
+           IceNodeIndexes => IceElement  % NodeIndexes
+
+           n = IceElement % TYPE % NumberOfNodes
+
+           DO k=1,n
+             b1(1) = Mesh % Nodes % x(IceNodeIndexes(k))
+             b1(2) = Mesh % Nodes % y(IceNodeIndexes(k))
+
+             tempdist = PointLineSegmDist2D ( a1, a2, b1)
+
+             IF(TempDist < MinDist) THEN
+               MinDist = TempDist
+               jmin = j
+             END IF
+           END DO
+         END DO
+
+         CALL MPI_AllReduce(MinDist, PartMinDist, 1, MPI_DOUBLE_PRECISION, &
+            MPI_MIN, ELMER_COMM_WORLD, ierr)
+
+         IF(MinDist == PartMinDist) THEN
+            IMBdryConstraint(i) = Mesh % Elements(jmin) % BoundaryInfo % Constraint
+            PRINT*, ParEnv % MyPE, 'Assigning constraint', IMBdryConstraint(i), &
+               'based off mindist:', PartMinDist
+         END IF
        END DO
 
-       IF(Debug) THEN
-          PRINT *, 'debug, count IMOnFront: ', COUNT(IMOnFront)
-          PRINT *, 'debug, count IMOnSide: ', COUNT(IMOnSide)
-          PRINT *, 'debug, count IMOnMargin: ', COUNT(IMOnMargin)
-          PRINT *, 'debug, isomesh bulkelements,', IsoMesh % NumberOfBulkElements
-          PRINT *, 'debug, isomesh boundaryelements,', IsoMesh % NumberOfBoundaryElements
-          PRINT *, 'debug, size isomesh elements: ', SIZE(IsoMesh % Elements)
+       IF(Boss) THEN
+         CALL MPI_Reduce(MPI_IN_PLACE, IMBdryConstraint, IMBdryCount, MPI_INTEGER, &
+              MPI_MAX, 0, ELMER_COMM_WORLD, ierr)
+       ELSE
+         CALL MPI_Reduce(IMBdryConstraint, IMBdryConstraint, IMBdryCount, MPI_INTEGER, &
+              MPI_MAX, 0, ELMER_COMM_WORLD, ierr)
        END IF
+     END IF
 
+
+     IF(Boss) THEN
        !-----------------------------------------------------------------
        ! Cycle elements, deleting any which lie wholly on a margin
        !-----------------------------------------------------------------
@@ -630,6 +1180,55 @@
        IsoMesh % NumberOfBulkElements = SIZE(WorkElements)
        NULLIFY(WorkElements)
 
+       Counter=0
+       DO i=1,IsoMesh % NumberOfBulkElements
+          NodeIndexes => Isomesh % Elements(i) % NodeIndexes
+          IF(IMOnMargin(NodeIndexes(1)) .EQV. IMOnMargin(NodeIndexes(2))) CYCLE
+          counter = counter + 1
+          IMBdryENums(Counter) = i
+       END DO
+       IF(counter /= IMBdryCount) THEN
+          IMBdryCount = Counter
+          ALLOCATE(WorkInt(IMBdryCount))
+          WorkInt = IMBdryENums(1:IMBdryCount)
+          DEALLOCATE(IMBdryENums)
+          ALLOCATE(IMBdryENums(IMBdryCount))
+          IMBdryENums = WorkInt
+          DEALLOCATE(WorkInt)
+       END IF
+
+       ALLOCATE(IMElmOnFront(IsoMesh % NumberOfBulkElements), &
+       IMElmOnLeft(IsoMesh % NumberOfBulkElements),&
+       IMElmOnRight(IsoMesh % NumberOfBulkElements))
+       IMElmOnFront=.FALSE.; IMElmOnLeft=.FALSE.; IMElmOnRight=.FALSE.
+
+       ! remember IMOnMargin - nodes, IMBdryConstrain - Elems
+       DO i=1,IMBdryCount
+         k = IMBdryENums(i)
+         PRINT*, i, k, IMBdryConstraint(i)
+         IF(k==0) CALL FATAL(SolverName, 'IMBdryConstraint = zero')
+         IF(IMBdryConstraint(i) == FrontConstraint) IMElmOnFront(k) = .TRUE.
+         IF(IMBdryConstraint(i) == LeftConstraint) IMElmOnLeft(k) = .TRUE.
+         IF(IMBdryConstraint(i) == RightConstraint) IMElmOnRight(k) = .TRUE.
+         NodeIndexes => Isomesh % Elements(k) % NodeIndexes
+         DO j=1,2
+          IF(.NOT. IMOnMargin(NodeIndexes(j))) CYCLE
+          IF(IMBdryConstraint(i) == FrontConstraint) IMNOnFront(NodeIndexes(j)) = .TRUE.
+          IF(IMBdryConstraint(i) == LeftConstraint) IMNOnLeft(NodeIndexes(j)) = .TRUE.
+          IF(IMBdryConstraint(i) == RightConstraint) IMNOnRight(NodeIndexes(j)) = .TRUE.
+         END DO
+       END DO
+
+       IF(Debug) THEN
+          PRINT *, 'debug, count IMNOnFront: ', COUNT(IMNOnFront), 'IMElmOnFront', COUNT(IMElmOnFront)
+          PRINT *, 'debug, count IMNOnLeft: ', COUNT(IMNOnLeft), 'IMElmOnLeft', COUNT(IMElmOnLeft)
+          PRINT *, 'debug, count IMNOnRight: ', COUNT(IMNOnRight), 'IMElmOnRight', COUNT(IMElmOnRight)
+          PRINT *, 'debug, count IMOnMargin: ', COUNT(IMOnMargin)
+          PRINT *, 'debug, isomesh bulkelements,', IsoMesh % NumberOfBulkElements
+          PRINT *, 'debug, isomesh boundaryelements,', IsoMesh % NumberOfBoundaryElements
+          PRINT *, 'debug, size isomesh elements: ', SIZE(IsoMesh % Elements)
+       END IF
+
        !Find chains which make contact with front twice
        !===============================================
        ! NOTES:
@@ -639,11 +1238,57 @@
        ! Also, we have deleted unnecessary elements, but their nodes
        ! remain, but this also isn't a problem as InterpVarToVar
        ! cycles elements, not nodes.
-
        CALL FindCrevassePaths(IsoMesh, IMOnMargin, CrevassePaths, PathCount)
-       CALL CheckCrevasseNodes(IsoMesh, CrevassePaths)
-       !TODO - pull from MMigrate? - need to check logic here
-       ! CALL ValidateCrevassePaths(IsoMesh, CrevassePaths, FrontOrientation, PathCount)
+       CALL CheckCrevasseNodes(IsoMesh, CrevassePaths, IMNOnLeft, IMNOnRight)
+       !CALL ValidateCrevassePaths(IsoMesh, CrevassePaths, FrontOrientation, PathCount,&
+       !     IMOnLeft, IMOnRight, .FALSE.)
+       IF(Debug) THEN
+          PRINT*, 'Debug: Crevs PreChecks'
+          counter=0
+          CurrentPath => CrevassePaths
+          DO WHILE(ASSOCIATED(CurrentPath))
+              counter=counter+1
+              PRINT*, counter, ',',counter+CurrentPath % NumberOfNodes-1, ','
+              counter=counter+CurrentPath % NumberOfNodes-1
+              CurrentPath => CurrentPath % Next
+          END DO
+          CurrentPath => CrevassePaths
+          DO WHILE(ASSOCIATED(CurrentPath))
+              DO i=1, CurrentPath % NumberOfNodes
+                PRINT*, IsoMesh % Nodes % x(CurrentPath % NodeNumbers(i)),',',&
+                  IsoMesh % Nodes % y(CurrentPath % NodeNumbers(i)), ','
+              END DO
+              CurrentPath => CurrentPath % Next
+          END DO
+       END IF
+
+       ! do not remove crevs inside each other as the bigger crev may be severely constricted
+       CALL RemoveInvalidCrevs(IsoMesh, CrevassePaths, EdgeX, EdgeY, .FALSE., .FALSE., &
+                      IMNOnleft, IMNOnRight, IMNOnFront, gridmesh_dx)
+       CALL ValidateNPCrevassePaths(IsoMesh, CrevassePaths, IMNOnLeft, IMNOnRight, &
+                      FrontLeft, FrontRight, EdgeX, EdgeY, LatCalvMargins, gridmesh_dx)
+       ! this call to remove crevs within other crevs
+       CALL RemoveInvalidCrevs(IsoMesh, CrevassePaths, EdgeX, EdgeY, .TRUE., .TRUE., GridSize=gridmesh_dx)
+
+       IF(Debug) THEN
+          PRINT*, 'Debug: Crevs PostChecks'
+          counter=0
+          CurrentPath => CrevassePaths
+          DO WHILE(ASSOCIATED(CurrentPath))
+              counter=counter+1
+              PRINT*, counter, ',',counter+CurrentPath % NumberOfNodes-1, ','
+              counter=counter+CurrentPath % NumberOfNodes-1
+              CurrentPath => CurrentPath % Next
+          END DO
+          CurrentPath => CrevassePaths
+          DO WHILE(ASSOCIATED(CurrentPath))
+              DO i=1, CurrentPath % NumberOfNodes
+                PRINT*, IsoMesh % Nodes % x(CurrentPath % NodeNumbers(i)),',',&
+                  IsoMesh % Nodes % y(CurrentPath % NodeNumbers(i)), ','
+              END DO
+              CurrentPath => CurrentPath % Next
+          END DO
+       END IF
 
        IF(Debug) THEN
           PRINT *,'Crevasse Path Count: ', PathCount
@@ -702,6 +1347,7 @@
             IsoMesh % Nodes % z(0))
     END IF !Boss
 
+
     ! calculate signed distance here
     ALLOCATE(WorkReal(NoNodes))
     WorkReal = 0.0_dp
@@ -725,6 +1371,7 @@
           CurrentPath => CrevassePaths
           NoCrevNodes=0 ! Number of Crevasse nodes
           NoPaths=0
+
           DO WHILE(ASSOCIATED(CurrentPath))
              NoPaths=NoPaths+1
              NoCrevNodes=NoCrevNodes+CurrentPath % NumberOfNodes
@@ -734,7 +1381,18 @@
           IF(NoPaths > 0) THEN
 
             ALLOCATE(CrevX(NoCrevNodes),CrevY(NoCrevNodes),&
-                 CrevEnd(NoPaths),CrevStart(NoPaths))
+                 CrevEnd(NoPaths),CrevStart(NoPaths),CrevOrient(NoPaths,2),&
+                 CrevLR(NoPaths))
+
+            j=0
+            CurrentPath => CrevassePaths
+            DO WHILE(ASSOCIATED(CurrentPath))
+              j=j+1
+              CrevOrient(j,:) = CurrentPath % Orientation
+              CrevLR(j) = CurrentPath % LeftToRight
+              CurrentPath => CurrentPath % Next
+            END DO
+
             CurrentPath => CrevassePaths
             j=1;k=1
             n=CurrentPath % ID ! first ID may not be 1..
@@ -788,76 +1446,170 @@
      CALL MPI_BCAST(NoCrevNodes,1,MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
      CALL MPI_BCAST(NoPaths,1,MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
      IF (.NOT. Boss) ALLOCATE(CrevX(NoCrevNodes),CrevY(NoCrevNodes),&
-          CrevEnd(NoPaths),CrevStart(NoPaths))! (because already created on boss)
+          CrevEnd(NoPaths),CrevStart(NoPaths), CrevOrient(NoPaths,2),&
+          CrevLR(NoPaths))! (because already created on boss)
      CALL MPI_BCAST(CrevX,NoCrevNodes,MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
      CALL MPI_BCAST(CrevY,NoCrevNodes,MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
      CALL MPI_BCAST(CrevEnd,NoPaths,MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
      CALL MPI_BCAST(CrevStart,NoPaths,MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
-     !above IF(Parallel) but that's assumed implicitly
-     !make sure that code works for empty isomesh as well!!
+     CALL MPI_BCAST(CrevOrient,NoPaths*2,MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
+     CALL MPI_BCAST(CrevLR,NoPaths,MPI_LOGICAL, 0, ELMER_COMM_WORLD, ierr)
 
-     ALLOCATE(IsCalvingNode(Mesh % NumberOfNodes))
-     IsCalvingNode=.FALSE.
+     ! if there are no crevasses no need to calculate signed distance
+     IF(NoCrevNodes == 0) THEN
+        CalvingOccurs = .FALSE.
 
-     IF (NoPaths > 0 ) THEN
-       DO i=1,Solver % Mesh % NumberOfNodes
-         IF (Debug) PRINT *, 'For node i', i,' out of ',Solver % Mesh % NumberOfNodes
-         xx = Solver % Mesh % Nodes % x(i)
-         yy = Solver % Mesh % Nodes % y(i)
-         MinDist = MAXVAL(DistValues) ! NOTE dependency on Dist here
+        CALL SParIterAllReduceOR(CalvingOccurs)
+        CALL ListAddLogical( Model % Simulation, 'CalvingOccurs', CalvingOccurs )
 
-         ! TO DO; brute force here, checking all crevasse segments, better to find closest crev first
-         DO j=1, NoPaths
-           DO k=CrevStart(j), CrevEnd(j)-1
-             xl=CrevX(k);yl=CrevY(k)
-             xr=CrevX(k+1);yr=CrevY(k+1)
-             TempDist=PointLineSegmDist2D( (/xl,yl/),(/xr,yr/), (/xx,yy/))
-             IF(TempDist <= (ABS(MinDist)+AEPS) ) THEN ! as in ComputeDistanceWithDirection
-               angle = (xr-xl)*(yy-yl)-(xx-xl)*(yr-yl) ! angle to get sign of distance function
-               ! In case distance is equal, favor segment with clear angles
-               ! angle0 doesn't need to be initialized as TempDist < (ABS(MinDist) - AEPS) holds
-               ! at some point, angle only important if TempDist ~= MinDist
-               IF( (TempDist < (ABS(MinDist) - AEPS)) .OR. (ABS(angle) > ABS(angle0)) ) THEN
-                 IF( angle < 0.0) THEN ! TO DO possibly direction(i) * angle if not always same
-                   MinDist = -TempDist
-                   IsCalvingNode(i) = .TRUE.
-                 ELSE
-                   MinDist = TempDist
-                 END IF
-                 angle0 = angle
-                 jmin=k ! TO DO rm jmin? not necessary anymore
-               END IF
-             END IF
-           END DO
-         END DO
+        !EqName = ListGetString( Params, "Remesh Equation Name", Found, UnfoundFatal = .TRUE.)
+        !DO j=1,Model % NumberOfSolvers
+        !  IF(ListGetString(Model % Solvers(j) % Values, "Equation") == EqName) THEN
+        !    Found = .TRUE.
+            !Turn off (or on) the solver
+            !If CalvingOccurs, (switch) off = .true.
+        !    CALL SwitchSolverExec(Model % Solvers(j), .NOT. CalvingOccurs)
+        !    IF(.NOT. CalvingOccurs) CALL ResetMeshUpdate(Model, Model % Solvers(j))
 
-         SignDistValues(SignDistPerm(i)) =  MinDist
-         IF(Debug)     PRINT *, 'Shortest distance to closest segment in crevassepath ',MinDist
-         IF(Debug)     PRINT *, 'jmin is ',jmin
-       END DO
-     END IF
+            ! if remeshing if skipped need to ensure calving solvers are not paused
+        !    IF(.NOT. CalvingOccurs) CALL PauseCalvingSolvers(Model, Model % Solvers(j) % Values, .FALSE.)
 
-     Debug = .FALSE.
-     CalvingValues = SignDistValues
-     IF(MINVAL(SignDistValues) < - AEPS) CalvingOccurs = .TRUE.
+        !    EXIT
+        !  END IF
+        !END DO
+        CALL WARN(SolverName, 'No crevasses so not calculating signed distance')
+        !RETURN
+     ELSE
+        !above IF(Parallel) but that's assumed implicitly
+        !make sure that code works for empty isomesh as well!!
+
+        ! get calving polygons
+        IF(Boss) THEN
+          CALL GetCalvingPolygons(IsoMesh, CrevassePaths, EdgeX, EdgeY, Polygon, PolyStart, PolyEnd, gridmesh_dx)
+          IF(Debug) THEN
+            PRINT*, 'Calving Polygons ----'
+            DO i=1, SIZE(PolyStart)
+              PRINT*, PolyStart(i), ',', PolyEnd(i), ','
+            END DO
+            DO i=1, SIZE(Polygon(1,:))
+              PRINT*, Polygon(1,i), ',', Polygon(2,i), ','
+            END DO
+          END IF
+          ! release crevasse paths
+          IF(ASSOCIATED(CrevassePaths)) CALL ReleaseCrevassePaths(CrevassePaths)
+        END IF
+
+        ! send bdrynode info to all procs
+        CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
+        IF(Boss) counter=SIZE(Polygon(1,:))
+        CALL MPI_BCAST(counter, 1, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
+        IF(.NOT. Boss) ALLOCATE(Polygon(2, counter), PolyStart(NoPaths), &
+                              PolyEnd(NoPaths))
+        CALL MPI_BCAST(Polygon, Counter*2, MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
+        CALL MPI_BCAST(PolyEnd, NoPaths, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
+        CALL MPI_BCAST(PolyStart, NoPaths, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
+
+        CALL CheckLateralCalving(Mesh, Params, FrontPerm, CrevX,CrevY,CrevStart,CrevEnd, CrevOrient,&
+          CrevLR, Polygon, PolyStart, PolyEnd)
+        NoPaths = SIZE(CrevStart)
+
+        ALLOCATE(IsCalvingNode(Mesh % NumberOfNodes))
+        IsCalvingNode=.FALSE.
+
+        IF (NoPaths > 0 ) THEN
+          DO i=1,Solver % Mesh % NumberOfNodes
+            IF (Debug) PRINT *, ParEnv % MyPE, 'For node i', i,' out of ',Solver % Mesh % NumberOfNodes
+            xx = Solver % Mesh % Nodes % x(i)
+            yy = Solver % Mesh % Nodes % y(i)
+            MinDist = HUGE(1.0_dp)
+
+            inside=.FALSE.
+            ClosestCrev=0
+            DO j=1, NoPaths
+              ALLOCATE(PathPoly(2, PolyEnd(j)-PolyStart(j)+1))
+              PathPoly = Polygon(:, PolyStart(j):PolyEnd(j))
+              inside = PointInPolygon2D(PathPoly, (/xx, yy/))
+              DEALLOCATE(PathPoly)
+              IF(inside) THEN
+                ClosestCrev = j
+                EXIT
+              END IF
+            END DO
+
+            ! TO DO; brute force here, checking all crevasse segments, better to find closest crev first
+            DO j=1, NoPaths
+              IF(inside .AND. j/=ClosestCrev) CYCLE
+              DO k=CrevStart(j), CrevEnd(j)-1
+                xl=CrevX(k);yl=CrevY(k)
+                xr=CrevX(k+1);yr=CrevY(k+1)
+                TempDist=PointLineSegmDist2D( (/xl,yl/),(/xr,yr/), (/xx,yy/))
+                IF(TempDist <= (ABS(MinDist)+AEPS) ) THEN ! as in ComputeDistanceWithDirection
+                  ! updated so no longer based off an angle. This caused problems when the front was
+                  ! no longer projectable. Instead the node is marked to calve if it is inside the calving polygon.
+                  ! PointInPolygon2D based of the winding number algorithm
+                  IF(j==ClosestCrev) THEN ! inside calved area
+                    IsCalvingNode(i) = .TRUE.
+                    MinDist = -TempDist
+                  ELSE
+                    MinDist = TempDist
+                  END IF
+                  jmin=k ! TO DO rm jmin? not necessary anymore
+                END IF
+              END DO
+            END DO
+            SignDistValues(SignDistPerm(i)) =  MinDist
+            IF(Debug)     PRINT *, ParEnv % MyPE, i, 'Shortest distance to closest segment in crevassepath ',MinDist
+            IF(Debug)     PRINT *, ParEnv % MyPE, i, 'jmin is ',jmin
+          END DO
+        ELSE
+            SignDistValues = 0.0_dp
+        END IF
+
+        Debug = .FALSE.
+        CalvingValues(CalvingPerm) = SignDistValues(SignDistPerm)
+        IF(MINVAL(SignDistValues) < - AEPS) CalvingOccurs = .TRUE.
 
 
-     ! TO DO check in each partition whether calving sizes are sufficient and whether calving occurs by
-     !  IF( integrate negative part of signdistance < -MinCalvingSize) CalvingOccurs = .TRUE.
-     ! IsCalvingNode = (SignDistValues < 0 ) if they have same perm, but not actually used?    
-    ! then parallel reduce with MPI_LOR on 'CalvingOccurs'
-    ! NOTE; what happens if calving event is divided over 2 partitions with insignificant in each
-    ! but significant in total? should something be done to avoid that they're filtered out?
-    !Pass CalvingOccurs to all processes, add to simulation
-    CALL SParIterAllReduceOR(CalvingOccurs)
-    CALL ListAddLogical( Model % Simulation, 'CalvingOccurs', CalvingOccurs )
-    
-    IF(CalvingOccurs) THEN
-       CALL Info( SolverName, 'Calving Event',Level=1)
-    ELSE
-       !If only insignificant calving events occur, reset everything
-       CalvingValues = 0.0_dp
-       IsCalvingNode = .FALSE.
+        ! TO DO check in each partition whether calving sizes are sufficient and whether calving occurs by
+        !  IF( integrate negative part of signdistance < -MinCalvingSize) CalvingOccurs = .TRUE.
+        ! IsCalvingNode = (SignDistValues < 0 ) if they have same perm, but not actually used?    
+        ! then parallel reduce with MPI_LOR on 'CalvingOccurs'
+        ! NOTE; what happens if calving event is divided over 2 partitions with insignificant in each
+        ! but significant in total? should something be done to avoid that they're filtered out?
+        !Pass CalvingOccurs to all processes, add to simulation
+        CALL SParIterAllReduceOR(CalvingOccurs)
+        CALL ListAddLogical( Model % Simulation, 'CalvingOccurs', CalvingOccurs )
+        
+        IF(CalvingOccurs) THEN
+          CALL Info( SolverName, 'Calving Event',Level=1)
+        ELSE
+          !If only insignificant calving events occur, reset everything
+          !CalvingValues = 0.0_dp
+          IsCalvingNode = .FALSE.
+        END IF
+
+        !if calving doesn't occur then no need to run remeshing solver
+        !EqName = ListGetString( Params, "Remesh Equation Name", Found, UnfoundFatal = .TRUE.)
+        !DO j=1,Model % NumberOfSolvers
+        !  IF(ListGetString(Model % Solvers(j) % Values, "Equation") == EqName) THEN
+        !    Found = .TRUE.
+            !Turn off (or on) the solver
+            !If CalvingOccurs, (switch) off = .true.
+        !    CALL SwitchSolverExec(Model % Solvers(j), .NOT. CalvingOccurs)
+        !    IF(.NOT. CalvingOccurs) CALL ResetMeshUpdate(Model, Model % Solvers(j))
+
+            ! if remeshing if skipped need to ensure calving solvers are not paused
+        !    IF(.NOT. CalvingOccurs) CALL PauseCalvingSolvers(Model, Model % Solvers(j) % Values, .FALSE.)
+
+        !    EXIT
+        !  END IF
+        !END DO
+
+        !IF(.NOT. Found) THEN
+        !  WRITE (Message,'(A,A,A)') "Failed to find Equation Name: ",EqName,&
+        !      " to switch off after calving."
+        !  CALL Fatal(SolverName,Message)
+        !END IF
     END IF
 
     ! because isomesh has no bulk?
@@ -916,24 +1668,6 @@
          PRINT *, 'Time taken up to finish up: ', rt
     rt0 = RealTime()
 
-    !Output some information
-    !CALL CalvingStats(MaxBergVolume)
-    ! IF(MaxBergVolume > PauseVolumeThresh) THEN
-    !   PauseSolvers = .TRUE.
-    ! ELSE
-    !   PauseSolvers = .FALSE.
-    ! END IF
-
-    PRINT *,'not calculating maxbergvolume now, depends on columns!'
-
-    CALL SParIterAllReduceOR(PauseSolvers) !Really this should just be Boss sending to all
-    CALL ListAddLogical( Model % Simulation, 'Calving Pause Solvers', PauseSolvers )
-    IF(Debug) PRINT *,ParEnv % MyPE, ' Calving3D, pause solvers: ', PauseSolvers
-
-    rt = RealTime() - rt0
-    IF(ParEnv % MyPE == 0) &
-         PRINT *, 'Time taken up to output calving stats: ', rt
-    rt0 = RealTime()
     !-----------------------------------------------------------
     ! Tidy up and deallocate
     !-----------------------------------------------------------
@@ -944,481 +1678,745 @@
     PCSolver % Matrix % Perm => NULL()
     CALL FreeMatrix(PCSolver % Matrix)
     CALL ReleaseMesh(PlaneMesh)
+    ! isomesh doesn't seem to released as part of planemesh
+    CALL ReleaseMesh(IsoMesh)
 
-    DEALLOCATE(TopPerm, BotPerm, LeftPerm, RightPerm, FrontPerm)
+    DEALLOCATE(TopPerm, BotPerm, LeftPerm, RightPerm, FrontPerm, InflowPerm)
 
     IF(Parallel) CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
 CONTAINS
 
- !Subroutine to print iceberg information to a file, to be processed in python.
- !Also calculates the size of the largest iceberg and returns it
- SUBROUTINE CalvingStats(MaxBergVol)
-   IMPLICIT NONE
+  !Returns extent: min_x, max_x, min_y, max_y of front in rotated coord system
+  FUNCTION GetFrontExtent(Mesh, RotationMatrix, DistVar, SearchDist, Buffer) RESULT(Extent)
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Variable_t), POINTER :: DistVar
+    REAL(KIND=dp) :: SearchDist, RotationMatrix(3,3), Extent(4), Buffer
+    !------------------------------
+    REAL(KIND=dp) :: NodeHolder(3)
+    INTEGER :: i,ierr
 
-   TYPE(Nodes_t) :: ElementNodes
-   TYPE(Element_t), POINTER :: CalvingElements(:), Element
-   TYPE(GaussIntegrationPoints_t) :: IntegStuff
+    !Get the min,max x and y in rotated coords:
+    extent(1) = HUGE(extent(1))
+    extent(2) = -HUGE(extent(1))
+    extent(3) = HUGE(extent(1))
+    extent(4) = -HUGE(extent(1))
 
-   INTEGER :: i,j,k,county, sendcount, status(MPI_STATUS_SIZE), NoIcebergs,n,&
-        col, row, elemcorners(4), countcalve, ElemBergID, start, fin,LeftIndex, RightIndex
-   INTEGER, ALLOCATABLE :: disps(:), FNColumns(:), FNRows(:), FNColumnOrder(:),&
-        WorkInt(:), IDVector(:)
-   INTEGER, POINTER :: IcebergID(:), NodeIndexes(:)
-   INTEGER, PARAMETER :: FileUnit = 57
-   REAL(KIND=dp), ALLOCATABLE :: AllCalvingValues(:), MyOrderedCalvingValues(:), &
-        WorkReal(:), CalvingMagnitude(:)
-   REAL(KIND=dp) :: LeftMost, RightMost, s, U, V, W, Basis(Mesh % MaxElementNodes), &
-        SqrtElementMetric, MaxBergVol, BergVolume, ElemVolume
-   LOGICAL, POINTER :: NodesAreNeighbours(:,:), CalvingNeighbours(:,:), BergBoundaryNode(:,:)
-   LOGICAL :: Visited = .FALSE., IcebergCondition(4), Debug, stat
-   CHARACTER(MAX_NAME_LEN) :: FileName
+    DO i=1,Mesh % NumberOfNodes
 
-   SAVE :: Visited
+      IF(DistVar % Values(DistVar % Perm(i)) > SearchDist) CYCLE
 
-   Debug = .FALSE.
-   MaxBergVol = 0.0_dp
+      NodeHolder(1) = Mesh % Nodes % x(i)
+      NodeHolder(2) = Mesh % Nodes % y(i)
+      NodeHolder(3) = Mesh % Nodes % z(i)
+      NodeHolder = MATMUL(RotationMatrix, NodeHolder)
 
-   !Boss has:
-   !   FaceNodesT   -  which is all the frontal nodes
-   !   FaceNodeNums -  global front node numbers from all parts
-   !   FNColumns    -  info about the structure of the mesh
-   !   NodesPerLevel, ExtrudedLevels
+      extent(1) = MIN(extent(1), NodeHolder(2))
+      extent(2) = MAX(extent(2), NodeHolder(2))
+      extent(3) = MIN(extent(3), NodeHolder(3))
+      extent(4) = MAX(extent(4), NodeHolder(3))
 
-   !BUT, doesn't have info about neighbours...
-   !although this could be ascertained from FrontNodeNums, which are in order
-! TO DO fix for unstructured
-   IF(Boss) THEN
+    END DO
 
-      FileName = TRIM(NameSuffix)//"_IcebergStats.txt"
+    CALL MPI_AllReduce(MPI_IN_PLACE, extent(1), 1, MPI_DOUBLE_PRECISION, MPI_MIN, ELMER_COMM_WORLD, ierr)
+    CALL MPI_AllReduce(MPI_IN_PLACE, extent(2), 1, MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD, ierr)
+    CALL MPI_AllReduce(MPI_IN_PLACE, extent(3), 1, MPI_DOUBLE_PRECISION, MPI_MIN, ELMER_COMM_WORLD, ierr)
+    CALL MPI_AllReduce(MPI_IN_PLACE, extent(4), 1, MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD, ierr)
 
-      ALLOCATE(WorkReal(SUM(PFaceNodeCount)*DOFs),&
-           AllCalvingValues(FaceNodesT % NumberOfNodes * DOFs),&
-           FNRows(FaceNodesT % NumberOfNodes),&
-           FNColumns(FaceNodesT % NumberOfNodes),&
-          ! FNColumnOrder(NodesPerLevel),&
-           NodesAreNeighbours(FaceNodesT % NumberOfNodes, FaceNodesT % NumberOfNodes),&
-           CalvingNeighbours(FaceNodesT % NumberOfNodes, FaceNodesT % NumberOfNodes),&
-           WorkInt(SIZE(FrontNodeNums)),&
-           IDvector(FaceNodesT % NumberOfNodes),&
-           disps(ParEnv % PEs), STAT=ierr)
+    extent(1) = extent(1) - buffer
+    extent(2) = extent(2) + buffer
+    extent(3) = extent(3) - buffer
+    extent(4) = extent(4) + buffer
+  END FUNCTION GetFrontExtent
 
-      IDvector = [(i,i=1,FaceNodesT % NumberOfNodes)]
+  !subroutine to check if lateral calving would be evacuated or would jam on fjord walls
+  SUBROUTINE CheckLateralCalving(Mesh, SolverParams, FrontPerm, CrevX,CrevY,CrevStart,CrevEnd, CrevOrient,&
+              CrevLR, Polygon, PolyStart, PolyEnd)
 
-      disps(1) = 0
-      DO i=2,ParEnv % PEs
-         disps(i) = disps(i-1) + (PFaceNodeCount(i-1)*DOFs)
+    IMPLICIT NONE
+
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Valuelist_t), POINTER :: SolverParams
+    INTEGER, POINTER :: FrontPerm(:)
+    REAL(KIND=dp),ALLOCATABLE :: CrevX(:),CrevY(:),CrevOrient(:,:),Polygon(:,:)
+    INTEGER, ALLOCATABLE :: CrevStart(:),CrevEnd(:),PolyStart(:),PolyEnd(:)
+    LOGICAL, ALLOCATABLE :: CrevLR(:)
+    !--------------------------------------------------------------------------------------
+    TYPE(Solver_t), POINTER :: AdvSolver
+    TYPE(Valuelist_t), POINTER :: AdvParams
+    TYPE(Variable_t), POINTER :: SignDistVar
+    INTEGER, POINTER :: SignDistPerm(:)
+    REAL(KIND=dp), POINTER :: SignDistValues(:)
+    INTEGER :: i,j,NoPaths,ClosestCrev,Naux,Nl,Nr,ok,RemovePoints
+    REAL(KIND=dp) :: xx,yy,MinDist,a1(2),a2(2),b1(2),b2(2),Orientation(2),intersect(2), crevdist,&
+      TempDist, SecDist
+    INTEGER, ALLOCATABLE :: NodeClosestCrev(:), WorkInt(:)
+    REAL(KIND=dp), ALLOCATABLE :: PathPoly(:,:),xL(:),yL(:),xR(:),yR(:),WorkReal(:),WorkReal2(:,:)
+    LOGICAL :: inside,does_intersect,FoundIntersect
+    LOGICAL, ALLOCATABLE :: RemoveCrev(:), WorkLogical(:)
+    CHARACTER(MAX_NAME_LEN) :: FuncName="CheckLateralCalving", Adv_EqName, LeftRailFName, RightRailFName
+    INTEGER, PARAMETER :: io=20
+
+    SignDistVar => VariableGet(Mesh % Variables, "SignedDistance", .TRUE.)
+    SignDistValues => SignDistVar % Values
+    SignDistPerm => SignDistVar % Perm
+
+    NoPaths = SIZE(CrevStart)
+
+    ALLOCATE(NodeClosestCrev(Mesh % NumberOfNodes))
+
+    DO i=1, Mesh % NumberOfNodes
+
+      IF(FrontPerm(i) == 0) CYCLE
+
+      xx = Solver % Mesh % Nodes % x(i)
+      yy = Solver % Mesh % Nodes % y(i)
+      MinDist = HUGE(1.0_dp)
+
+      inside=.FALSE.
+      ClosestCrev=0
+      DO j=1, NoPaths
+        ALLOCATE(PathPoly(2, PolyEnd(j)-PolyStart(j)+1))
+        PathPoly = Polygon(:, PolyStart(j):PolyEnd(j))
+        inside = PointInPolygon2D(PathPoly, (/xx, yy/))
+        DEALLOCATE(PathPoly)
+        IF(inside) THEN
+          ClosestCrev = j
+          NodeClosestCrev(i) = j
+          EXIT
+        END IF
       END DO
 
-
-      !FrontNodeNums (from GetDomainEdge) are ordered, and thus so are the columns
-   !   WorkInt = MOD(FrontNodeNums, NodesPerLevel)
-   !   DO i=1, SIZE(WorkInt)
-       !  FNColumnOrder(WorkInt(i)) = i
-    !  END DO
-
-     FNRows = (FaceNodeNums - 1) 
-   !   FNColumns = MOD(FaceNodeNums, NodesPerLevel)
-      NodesAreNeighbours = .FALSE.
-
-      DO i=1,FaceNodesT % NumberOfNodes
-         DO j=1,FaceNodesT % NumberOfNodes
-            IF(i==j) CYCLE
-            IF( ABS(FNColumnOrder(FNColumns(j)) - FNColumnOrder(FNColumns(i))) > 1) CYCLE
-            IF( ABS(FNRows(j) - FNRows(i)) > 1) CYCLE
-            !Neighbour must be in either same column or row... i.e. no diag neighbours
-            IF( (FNRows(j) /= FNRows(i)) .AND. &
-                 (FNColumnOrder(FNColumns(j)) /= FNColumnOrder(FNColumns(i)))) CYCLE
-            NodesAreNeighbours(i,j) = .TRUE.
-         END DO
-      END DO
-
-      IF(Debug) PRINT *,'Debug CalvingStats, FaceNodes: ',FaceNodesT % NumberOfNodes,&
-           ' neighbourships: ', COUNT(NodesAreNeighbours)
-   END IF
-
-   ALLOCATE(MyOrderedCalvingValues(COUNT(CalvingPerm>0)*DOFs), STAT=ierr)
-   MyOrderedCalvingValues = 0.0_dp
-
-   !Order the calving values to match front node numbers
-   county = 0
-   DO i=1,NoNodes
-      IF(CalvingPerm(i) <= 0) CYCLE
-
-      county = county + 1
-
-      MyOrderedCalvingValues((county*DOFs)-2) = CalvingValues((CalvingPerm(i)*DOFs)-2)
-      MyOrderedCalvingValues((county*DOFs)-1) = CalvingValues((CalvingPerm(i)*DOFs)-1)
-      MyOrderedCalvingValues(county*DOFs) = CalvingValues(CalvingPerm(i)*DOFs)
-   END DO
-
-   !Gather calving var values
-   sendcount = COUNT(CalvingPerm>0)*DOFs
-   IF(Debug) PRINT *,ParEnv % MyPE,'send count: ',sendcount
-
-   IF(sendcount > 0) THEN
-      CALL MPI_BSEND(MyOrderedCalvingValues,sendcount, MPI_DOUBLE_PRECISION,0,&
-           1000+ParEnv % MyPE, ELMER_COMM_WORLD, ierr)
-   END IF
-
-   IF(BOSS) THEN
-      IF(Debug) PRINT *,'Debug, size workreal:',SIZE(WorkReal)
-      DO i=1,ParEnv % PEs
-         IF(PFaceNodeCount(i) <= 0) CYCLE
-
-         start = 1+disps(i)
-         fin = (disps(i)+PFaceNodeCount(i)*DOFs)
-         IF(Debug) PRINT *,'Debug, ',i,' start, end',start, fin
-
-         CALL MPI_RECV(WorkReal(start:fin), &
-              PFaceNodeCount(i)*DOFs, MPI_DOUBLE_PRECISION, i-1, &
-              1000+i-1, ELMER_COMM_WORLD, status, ierr)
-      END DO
-   END IF
-
-   CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
-
-   IF(Boss) THEN
-      !Remove duplicates, using previously computed duplicate positions
-      county = 0
-      DO i=1,SIZE(RemoveNode)
-         IF(RemoveNode(i)) CYCLE
-         county = county+1
-         AllCalvingValues((county*DOFs)-2) = WorkReal((i*DOFs)-2)
-         AllCalvingValues((county*DOFs)-1) = WorkReal((i*DOFs)-1)
-         AllCalvingValues((county*DOFs)) = WorkReal((i*DOFs))
-      END DO
-
-      IF(Debug) THEN
-         PRINT *,'Debug, AllCalvingValues: '
-         DO i=1,FaceNodesT % NumberOfNodes
-            PRINT *, 'Node: ',i, 'x,y,z: ',AllCalvingValues((i*3)-2), &
-                 AllCalvingValues((i*3)-1), AllCalvingValues(i*3)
-         END DO
-      END IF
-
-      CalvingNeighbours = NodesAreNeighbours
-      DO i=1,SIZE(CalvingNeighbours,1)
-         k = i * DOFs
-         IF(ALL(AllCalvingValues(k-2:k) == 0.0_dp)) THEN
-            CalvingNeighbours(i,:) = .FALSE.
-            CalvingNeighbours(:,i) = .FALSE.
-         END IF
-      END DO
-
-      !Mark connected calving neighbours with a unique iceberg ID
-      ALLOCATE(IcebergID(FaceNodesT % NumberOfNodes))
-      IcebergID = 0
-
-      NoIcebergs = 0
-      DO i=1,FaceNodesT % NumberOfNodes
-         k = i * DOFs
-         !pretty sure no perm between CalvingValues and NodesAreNeighbours
-         IF(ALL(AllCalvingValues(k-2:k) == 0.0_dp)) CYCLE
-         IF(IcebergID(i) > 0) CYCLE !Got already
-
-         !new group
-         NoIcebergs = NoIcebergs + 1
-         IcebergID(i) = NoIcebergs
-         CALL MarkNeighbours(i, CalvingNeighbours, IcebergID, NoIcebergs)
-
-      END DO
-
-      !Now cycle icebergs
-      DEALLOCATE(WorkInt)
-      ALLOCATE(BergBoundaryNode(NoIcebergs, FaceNodesT % NumberOfNodes))
-      BergBoundaryNode = .FALSE.
-
-      !Cycle icebergs, cycle nodes in iceberg, mark all neighbours (edges of iceberg)
-      DO i=1,NoIcebergs
-         ALLOCATE(WorkInt(COUNT(IcebergID == i)))
-         WorkInt = PACK(IDVector, (IcebergID == i))
-
-         DO j=1,SIZE(WorkInt)
-            DO k=1,SIZE(NodesAreNeighbours,1)
-               IF(.NOT. NodesAreNeighbours(WorkInt(j),k)) CYCLE
-
-               !Not a boundary node
-               IF(IcebergID(k) /= 0) THEN
-                  IF(IcebergID(k) /= i) CALL Fatal("CalvingStats",&
-                       "This shouldn't happen - two adjacent nodes in different icebergs...")
-                  CYCLE
-               END IF
-
-               BergBoundaryNode(i,k) = .TRUE.
-            END DO
-         END DO
-         DEALLOCATE(WorkInt)
-      END DO
-
-      !------------------------------------------
-      ! Scan along/down front, constructing calving elements
-      !
-      ! Strategy: cycle front nodes, looking for a calving element which
-      !           has node i as a top left corner. NB, it needn't necessarily
-      !           be a calving node itself, so long as three of the 4 are...
-      !
-      ! elem corners go (tl, tr, bl, br)
-      !------------------------------------------
-      ALLOCATE(CalvingElements(FaceNodesT % NumberOfNodes)) !<- excessive, but meh
-      county = 0
-
-      DO i=1,FaceNodesT % NumberOfNodes
-         !NB use NodesAreNeighbours instead of CalvingNeighbours, check both
-         elemcorners = 0
-         elemcorners(1) = i
-         col = FNColumnOrder(FNColumns(i)) !<-- pay attention
-         row = FNRows(i)
-
-         !gather 3 other nodes
-         DO j=1,FaceNodesT % NumberOfNodes
-            !note, this doesn't guarantee left, or right,
-            !but as long as consistent, doesn't matter
-!            IF(.NOT. NodesAreNeighbours(i,j)) CYCLE
-            SELECT CASE(FNColumnOrder(FNColumns(j)) - col)
-            CASE(1)
-               !Next column
-               SELECT CASE(row - FNRows(j))
-               CASE(1)
-                  !Next Row
-                  elemcorners(4) = j
-               CASE(0)
-                  !Same Row
-                  elemcorners(2) = j
-               CASE DEFAULT
-                  CYCLE
-               END SELECT
-            CASE(0)
-
-               !Same column
-               SELECT CASE(row - FNRows(j))
-               CASE(1)
-                  !Next row
-                  elemcorners(3) = j
-               CASE(0)
-                  !Same row
-                  !same node!!
-                  CYCLE
-               CASE DEFAULT
-                  CYCLE
-               END SELECT
-            CASE DEFAULT
-               CYCLE
-            END SELECT
-         END DO
-
-         IF(ANY(ElemCorners == 0)) CYCLE !edge of domain
-
-         ElemBergID = MAXVAL(IcebergID(elemcorners))
-
-         IF(ElemBergID == 0) CYCLE
-
-         IcebergCondition = (IcebergID(elemcorners) == ElemBergID) &
-              .OR. BergBoundaryNode(ElemBergID,elemcorners)
-
-         countcalve = COUNT(IcebergCondition)
-
-         IF( countcalve < 3) CYCLE
-
-         county = county + 1
-         ALLOCATE(CalvingElements(county) % NodeIndexes(countcalve))
-         CalvingElements(county) % TYPE => GetElementType(countcalve*100+countcalve, .FALSE.)
-         CalvingElements(county) % BodyID = ElemBergID
-
-         countcalve = 0
-         DO j=1,4
-            IF(IcebergCondition(j)) THEN
-               countcalve = countcalve+1
-               CalvingElements(county) % NodeIndexes(countcalve) = elemcorners(j)
+      ! TO DO; brute force here, checking all crevasse segments, better to find closest crev first
+      DO j=1, NoPaths
+        IF(inside .AND. j/=ClosestCrev) CYCLE
+        DO k=CrevStart(j), CrevEnd(j)-1
+          a1(1)=CrevX(k);a1(2)=CrevY(k)
+          a2(1)=CrevX(k+1);a2(2)=CrevY(k+1)
+          TempDist=PointLineSegmDist2D( a1,a2, (/xx,yy/))
+          IF(TempDist <= (ABS(MinDist)+AEPS) ) THEN ! as in ComputeDistanceWithDirection
+            ! updated so no longer based off an angle. This caused problems when the front was
+            ! no longer projectable. Instead the node is marked to calve if it is inside the calving polygon.
+            ! PointInPolygon2D based of the winding number algorithm
+            IF(j==ClosestCrev) THEN ! inside calved area
+              MinDist = -TempDist
+            ELSE
+              MinDist = TempDist
             END IF
-         END DO
-
-      END DO
-
-      !------------------------------------------
-      ! Write info to file
-      !------------------------------------------
-
-      !Find left and rightmost nodes for info
-      LeftMost = HUGE(0.0_dp)
-      RightMost = -HUGE(0.0_dp) !??
-
-      DO i=1,FaceNodesT % NumberOfNodes
-         Nodeholder(1) = FaceNodesT % x(i)
-         Nodeholder(2) = FaceNodesT % y(i)
-         Nodeholder(3) = FaceNodesT % z(i)
-         Nodeholder = MATMUL(RotationMatrix, NodeHolder)
-
-         IF(Nodeholder(2) < LeftMost) THEN
-            LeftIndex = i
-            LeftMost = NodeHolder(2)
-         END IF
-
-         IF(Nodeholder(2) > RightMost) THEN
-            RightIndex = i
-            RightMost = NodeHolder(2)
-         END IF
-      END DO
-
-      IF(Visited) THEN
-         OPEN( UNIT=FileUnit, FILE=filename, STATUS='UNKNOWN', ACCESS='APPEND')
-      ELSE
-         OPEN( UNIT=FileUnit, FILE=filename, STATUS='UNKNOWN')
-         WRITE(FileUnit, '(A,ES20.11,ES20.11,ES20.11)') "FrontOrientation: ",FrontOrientation
-      END IF
-
-      !Write out the left and rightmost points
-      WRITE(FileUnit, '(A,i0,ES30.21)') 'Time: ',GetTimestep(),GetTime()
-      WRITE(FileUnit, '(A,ES20.11,ES20.11)') 'Left (xy): ',&
-           FaceNodesT % x(LeftIndex),&
-           FaceNodesT % y(LeftIndex)
-
-      WRITE(FileUnit, '(A,ES20.11,ES20.11)') 'Right (xy): ',&
-           FaceNodesT % x(RightIndex),&
-           FaceNodesT % y(RightIndex)
-
-      !Write the iceberg count
-      WRITE(FileUnit, '(A,i0)') 'Icebergs: ',NoIcebergs
-
-      !TODO, write element count
-      !  would need to modify Icebergs.py too
-      DO i=1,NoIcebergs
-         county = 0
-         !count elements
-
-         WRITE(FileUnit, '(A,i0)') 'Iceberg ',i
-         WRITE(FileUnit, '(i0,A,i0)') COUNT(BergBoundaryNode(i,:))," ", COUNT(IceBergID == i)
-         WRITE(FileUnit, '(A)') "Boundary nodes"
-         DO j=1,FaceNodesT % NumberOfNodes
-            IF(BergBoundaryNode(i,j)) THEN
-
-               county = county + 1
-               WRITE(FileUnit,'(i0,A,i0,ES20.11,ES20.11,ES20.11,ES20.11,ES20.11,ES20.11)') &
-                    county," ",j,&
-                    FaceNodesT % x(j), FaceNodesT % y(j), FaceNodesT % z(j),&
-                    0.0_dp, 0.0_dp, 0.0_dp
-
-            END IF
-         END DO
-
-         WRITE(FileUnit, '(A)') "Calving nodes"
-         DO j=1,FaceNodesT % NumberOfNodes
-            IF(IcebergID(j) == i) THEN
-               county = county + 1
-               k = j*DOFs
-               WRITE(FileUnit,'(i0,A,i0,ES20.11,ES20.11,ES20.11,ES20.11,ES20.11,ES20.11)')&
-                    county," ",j,&
-               FaceNodesT % x(j),&
-               FaceNodesT % y(j),&
-               FaceNodesT % z(j),&
-               AllCalvingValues(k-2), &
-               AllCalvingValues(k-1), &
-               AllCalvingValues(k)
-            END IF
-         END DO
-
-         WRITE(FileUnit, '(A)') "Elements"
-         DO j=1,SIZE(CalvingElements)
-            IF(CalvingElements(j) % BodyID /= i) CYCLE
-            DO k=1,CalvingElements(j) % TYPE % NumberOfNodes
-               WRITE(FileUnit,'(i0,A)', ADVANCE="NO") CalvingElements(j) % NodeIndexes(k),'  '
-            END DO
-            WRITE(FileUnit,'(A)') ''
-         END DO
-
-      END DO
-
-      CLOSE(FileUnit)
-
-      !------------------------------------------
-      ! Compute berg volumes. Largest berg size determines
-      ! whether the pause the timestep.
-      !------------------------------------------
-      n = Mesh % MaxElementNodes
-      ALLOCATE(ElementNodes % x(n),&
-           ElementNodes % y(n),&
-           ElementNodes % z(n),&
-           CalvingMagnitude(FaceNodesT % NumberOfNodes))
-
-      DO i=1,SIZE(CalvingMagnitude)
-        k = i*DOFs
-        CalvingMagnitude(i) = ((AllCalvingValues(k-2) ** 2) + &
-             (AllCalvingValues(k-1) ** 2) + &
-             (AllCalvingValues(k) ** 2)) ** 0.5
-      END DO
-
-      MaxBergVol = 0.0_dp
-      DO i=1,NoIcebergs
-        BergVolume = 0.0_dp
-
-        DO j=1,SIZE(CalvingElements)
-          Element => CalvingElements(j)
-
-          IF(Element % BodyID /= i) CYCLE
-
-          n = Element % TYPE % NumberOfNodes
-          NodeIndexes => Element % NodeIndexes
-
-          ElementNodes % x(1:n) = FaceNodesT % x(NodeIndexes(1:n))
-          ElementNodes % y(1:n) = FaceNodesT % y(NodeIndexes(1:n))
-          ElementNodes % z(1:n) = FaceNodesT % z(NodeIndexes(1:n))
-
-          IntegStuff = GaussPoints( Element )
-
-          ElemVolume = 0.0_dp
-          DO k=1,IntegStuff % n
-
-            U = IntegStuff % u(k)
-            V = IntegStuff % v(k)
-            W = IntegStuff % w(k)
-
-            stat = ElementInfo( Element,ElementNodes,U,V,W,SqrtElementMetric, &
-                 Basis )
-
-            !assume cartesian here
-            s = SqrtElementMetric * IntegStuff % s(k)
-
-            ElemVolume = ElemVolume + s * SUM(CalvingMagnitude(NodeIndexes(1:n)) * Basis(1:n))
-          END DO
-
-          BergVolume = BergVolume + ElemVolume
+            jmin=k ! TO DO rm jmin? not necessary anymore
+          END IF
         END DO
-        IF(Debug) PRINT *,'Berg ',i,' volume: ', BergVolume
-        MaxBergVol = MAX(BergVolume, MaxBergVol)
       END DO
-      IF(Debug) PRINT *,'Max berg volume: ',MaxBergVol
+
+      !hold in dist values temporarily
+      SignDistValues(SignDistPerm(i)) =  MinDist
+    END DO
+
+    Adv_EqName = ListGetString(SolverParams,"Front Advance Solver", UnfoundFatal=.TRUE.)
+    ! Locate CalvingAdvance Solver
+    DO i=1,Model % NumberOfSolvers
+      IF(GetString(Model % Solvers(i) % Values, 'Equation') == Adv_EqName) THEN
+         AdvSolver => Model % Solvers(i)
+         EXIT
+      END IF
+    END DO
+    AdvParams => AdvSolver % Values
+
+    LeftRailFName = ListGetString(AdvParams, "Left Rail File Name", Found)
+    IF(.NOT. Found) THEN
+      CALL Info(FuncName, "Left Rail File Name not found, assuming './LeftRail.xy'")
+      LeftRailFName = "LeftRail.xy"
+    END IF
+    Nl = ListGetInteger(AdvParams, "Left Rail Number Nodes", Found)
+    IF(.NOT.Found) THEN
+      WRITE(Message,'(A,A)') 'Left Rail Number Nodes not found'
+      CALL FATAL(FuncName, Message)
+    END IF
+    !TO DO only do these things if firsttime=true?
+    OPEN(unit = io, file = TRIM(LeftRailFName), status = 'old',iostat = ok)
+    IF (ok /= 0) THEN
+      WRITE(message,'(A,A)') 'Unable to open file ',TRIM(LeftRailFName)
+      CALL FATAL(Trim(FuncName),Trim(message))
+    END IF
+    ALLOCATE(xL(Nl), yL(Nl))
+
+    ! read data
+    DO i = 1, Nl
+      READ(io,*,iostat = ok, end=200) xL(i), yL(i)
+    END DO
+200   Naux = Nl - i
+    IF (Naux > 0) THEN
+      WRITE(Message,'(I0,A,I0,A,A)') Naux,' out of ',Nl,' datasets in file ', TRIM(LeftRailFName)
+      CALL INFO(Trim(FuncName),Trim(message))
+    END IF
+    CLOSE(io)
+    RightRailFName = ListGetString(AdvParams, "Right Rail File Name", Found)
+    IF(.NOT. Found) THEN
+      CALL Info(FuncName, "Right Rail File Name not found, assuming './RightRail.xy'")
+      RightRailFName = "RightRail.xy"
     END IF
 
+    Nr = ListGetInteger(AdvParams, "Right Rail Number Nodes", Found)
+    IF(.NOT.Found) THEN
+      WRITE(Message,'(A,A)') 'Right Rail Number Nodes not found'
+      CALL FATAL(FuncName, Message)
+    END IF
+    !TO DO only do these things if firsttime=true?
+    OPEN(unit = io, file = TRIM(RightRailFName), status = 'old',iostat = ok)
 
-    Visited = .TRUE.
-    DEALLOCATE(MyOrderedCalvingValues)
-    IF(Boss) THEN
-      DEALLOCATE(WorkReal,&
-           AllCalvingValues, &
-           FNRows,&
-           FNColumns,&
-           FNColumnOrder,&
-           NodesAreNeighbours,&
-           CalvingNeighbours,&
-           disps,&
-           BergBoundaryNode,&
-           IDVector,&
-           IcebergID,&
-           ElementNodes % x,&
-           ElementNodes % y,&
-           ElementNodes % z,&
-           CalvingMagnitude&
-           )
+    IF (ok /= 0) THEN
+      WRITE(Message,'(A,A)') 'Unable to open file ',TRIM(RightRailFName)
+      CALL FATAL(Trim(FuncName),Trim(message))
+    END IF
+    ALLOCATE(xR(Nr), yR(Nr))
 
-      !Cycle and deallocate element % Nodeindexes, and elements
-      DO i=1,SIZE(CalvingElements)
-        IF(ASSOCIATED(CalvingElements(i) % NodeIndexes)) &
-             DEALLOCATE(CalvingElements(i) % NodeIndexes)
+    ! read data
+    DO i = 1, Nr
+       READ(io,*,iostat = ok, end=100) xR(i), yR(i)
+    END DO
+100   Naux = Nr - i
+    IF (Naux > 0) THEN
+      WRITE(message,'(I0,A,I0,A,A)') Naux,' out of ',Nl,' datasets in file ', TRIM(RightRailFName)
+      CALL INFO(Trim(FuncName),Trim(message))
+    END IF
+    CLOSE(io)
+
+    ALLOCATE(RemoveCrev(NoPaths))
+    RemoveCrev = .FALSE.
+    DO i=1, Mesh % NumberOfNodes
+
+      IF(FrontPerm(i) == 0) CYCLE
+      IF(SignDistValues(SignDistPerm(i)) >= 0) CYCLE
+      IF(RemoveCrev(NodeClosestCrev(i))) CYCLE
+
+      b1(1) = Solver % Mesh % Nodes % x(i)
+      b1(2) = Solver % Mesh % Nodes % y(i)
+      MinDist = HUGE(1.0_dp)
+
+      Orientation = CrevOrient(NodeClosestCrev(i),:)
+
+      IF(CrevLR(NodeClosestCrev(i))) THEN
+        b2 = b1 - 10*Orientation
+      ELSE
+        b2 = b1 + 10*Orientation
+      END IF
+
+      FoundIntersect = .FALSE.
+      DO j=1, Nl-1
+        a1 = (/xL(j), yL(j)/)
+        a2 = (/xL(j+1), yL(j+1)/)
+        IF(PointInPolygon2D(Polygon(:, PolyStart(NodeClosestCrev(i)):PolyEnd(NodeClosestCrev(i))),a1)) THEN
+          DO k=CrevStart(NodeClosestCrev(i)), CrevEnd(NodeClosestCrev(i))-1
+            CALL LineSegmentsIntersect (a1, a2, (/CrevX(k), CrevY(k)/), (/CrevX(k+1), CrevY(k+1)/),&
+                           intersect, does_intersect )
+            IF(does_intersect) a1 = intersect
+          END DO
+        END IF
+        IF(PointInPolygon2D(Polygon(:, PolyStart(NodeClosestCrev(i)):PolyEnd(NodeClosestCrev(i))),a2)) THEN
+          DO k=CrevStart(NodeClosestCrev(i)), CrevEnd(NodeClosestCrev(i))-1
+            CALL LineSegmentsIntersect (a1, a2, (/CrevX(k), CrevY(k)/), (/CrevX(k+1), CrevY(k+1)/),&
+                           intersect, does_intersect )
+            IF(does_intersect) a2 = intersect
+          END DO
+        END IF
+        IF(a1(1)==a2(1) .AND. a1(2)==a2(2)) CYCLE
+        CALL LineSegmLineIntersect (a1, a2, b1, b2, intersect, does_intersect )
+
+        IF(.NOT. does_intersect) CYCLE
+        tempdist = PointDist2D(b1,intersect)
+        secdist = PointDist2D(b2, intersect)
+        IF(secdist > tempdist) CYCLE
+        IF(tempdist < mindist) THEN
+          mindist = tempdist
+          FoundIntersect = .TRUE.
+        END IF
       END DO
-      DEALLOCATE(CalvingElements)
+
+      IF(.NOT. FoundIntersect) THEN
+        DO j=1, Nr-1
+          a1 = (/xR(j), yR(j)/)
+          a2 = (/xR(j+1), yR(j+1)/)
+          IF(PointInPolygon2D(Polygon(:, PolyStart(NodeClosestCrev(i)):PolyEnd(NodeClosestCrev(i))),a1)) THEN
+            DO k=CrevStart(NodeClosestCrev(i)), CrevEnd(NodeClosestCrev(i))-1
+              CALL LineSegmentsIntersect (a1, a2, (/CrevX(k), CrevY(k)/), (/CrevX(k+1), CrevY(k+1)/),&
+                             intersect, does_intersect )
+              IF(does_intersect) a1 = intersect
+            END DO
+          END IF
+          IF(PointInPolygon2D(Polygon(:, PolyStart(NodeClosestCrev(i)):PolyEnd(NodeClosestCrev(i))),a2)) THEN
+            DO k=CrevStart(NodeClosestCrev(i)), CrevEnd(NodeClosestCrev(i))-1
+              CALL LineSegmentsIntersect (a1, a2, (/CrevX(k), CrevY(k)/), (/CrevX(k+1), CrevY(k+1)/),&
+                             intersect, does_intersect )
+              IF(does_intersect) a2 = intersect
+            END DO
+          END IF
+          IF(a1(1)==a2(1) .AND. a1(2)==a2(2)) CYCLE
+          CALL LineSegmLineIntersect (a1, a2, b1, b2, intersect, does_intersect )
+          IF(.NOT. does_intersect) CYCLE
+          tempdist = PointDist2D(b1,intersect)
+          secdist = PointDist2D(b2, intersect)
+          IF(secdist > tempdist) CYCLE
+          IF(tempdist < mindist) THEN
+            mindist = tempdist
+            FoundIntersect = .TRUE.
+          END IF
+        END DO
+      END IF
+
+      crevdist = 0.0_dp
+      IF(FoundIntersect) THEN
+        FoundIntersect = .FALSE.
+        crevdist = HUGE(1.0_dp)
+        DO j=CrevStart(NodeClosestCrev(i)), CrevEnd(NodeClosestCrev(i))-1
+          a1 = (/CrevX(j), CrevY(j)/)
+          a2 = (/CrevX(j+1), CrevY(j+1)/)
+          CALL LineSegmLineIntersect (a1, a2, b1, b2, intersect, does_intersect )
+          IF(.NOT. does_intersect) CYCLE
+          tempdist = PointDist2D(b1,intersect)
+          IF(tempdist < crevdist) THEN
+            crevdist = tempdist
+          END IF
+          FoundIntersect = .TRUE.
+        END DO
+      END IF
+
+      IF(MinDist < crevdist .AND. FoundIntersect) THEN
+        CALL WARN(FuncName, 'Removing lateral calving event as it would jam on lateral margins')
+        RemoveCrev(NodeClosestCrev(i)) = .TRUE.
+      END IF
+    END DO
+
+    CALL MPI_AllReduce(MPI_IN_PLACE, RemoveCrev, NoPaths, MPI_LOGICAL, MPI_LOR, ELMER_COMM_WORLD, ierr)
+
+    DO WHILE(ANY(RemoveCrev))
+      DO i=1, NoPaths
+        IF(.NOT. RemoveCrev(i)) CYCLE
+        !CrevX,CrevY,CrevStart,CrevEnd, CrevOrient,&
+        !Polygon, PolyStart, PolyEnd)
+
+        !change crevasse allocations
+        RemovePoints = CrevEnd(i) - CrevStart(i) + 1
+        ALLOCATE(WorkReal(CrevEnd(NoPaths) - RemovePoints))
+        ! alter crevx
+        IF(i > 1) THEN
+          WorkReal(1:CrevEnd(i-1)) = CrevX(1:CrevEnd(i-1))
+          IF(i < NoPaths) WorkReal(CrevEnd(i-1)+1:) = CrevX(CrevStart(i+1):)
+        ELSE IF (i < NoPaths) THEN
+          WorkReal(1:) = CrevX(CrevStart(i+1):)
+        END IF
+        DEALLOCATE(CrevX)
+        ALLOCATE(CrevX((CrevEnd(NoPaths) - RemovePoints)))
+        CrevX = WorkReal
+        ! alter crevy
+        IF(i > 1) THEN
+          WorkReal(1:CrevEnd(i-1)) = CrevY(1:CrevEnd(i-1))
+          IF(i < NoPaths) WorkReal(CrevEnd(i-1)+1:) = CrevY(CrevStart(i+1):)
+        ELSE IF (i < NoPaths) THEN
+          WorkReal(1:) = CrevY(CrevStart(i+1):)
+        END IF
+        DEALLOCATE(CrevY)
+        ALLOCATE(CrevY((CrevEnd(NoPaths) - RemovePoints)))
+        CrevY = WorkReal
+        DEALLOCATE(WorkReal)
+
+        ALLOCATE(WorkInt(NoPaths-1))
+        !alter crevstart
+        IF(i > 1) THEN
+          WorkInt(1:i-1) = CrevStart(1:i-1)
+          IF(i < NoPaths) WorkInt(i:) = CrevStart(i+1:) - RemovePoints
+        ELSE IF (i < NoPaths) THEN
+          WorkInt = CrevStart(i+1:) - RemovePoints
+        END IF
+        DEALLOCATE(CrevStart)
+        ALLOCATE(CrevStart(NoPaths-1))
+        CrevStart = WorkInt
+        !alter crevend
+        IF(i > 1) THEN
+          WorkInt(1:i-1) = CrevEnd(1:i-1)
+          IF(i < NoPaths) WorkInt(i:) = CrevEnd(i+1:) - RemovePoints
+        ELSE IF (i < NoPaths) THEN
+          WorkInt = CrevEnd(i+1:) - RemovePoints
+        END IF
+        DEALLOCATE(CrevEnd)
+        ALLOCATE(CrevEnd(NoPaths-1))
+        CrevEnd = WorkInt
+
+        !now polygons
+        RemovePoints = PolyEnd(i) - PolyStart(i) + 1
+        ALLOCATE(WorkReal2(2, PolyEnd(NoPaths) - RemovePoints))
+        IF(i > 1) THEN
+          WorkReal2(:,1:PolyEnd(i-1)) = Polygon(:,1:PolyEnd(i-1))
+          IF(i < NoPaths) WorkReal2(:,PolyEnd(i-1)+1:) = Polygon(:,PolyStart(i+1):)
+        ELSE IF (i < NoPaths) THEN
+          WorkReal2(:,1:) = Polygon(:,PolyStart(i+1):)
+        END IF
+        DEALLOCATE(Polygon)
+        ALLOCATE(Polygon(2,PolyEnd(NoPaths) - RemovePoints))
+        Polygon = WorkReal2
+        DEALLOCATE(WorkReal2)
+
+        !alter polystart
+        IF(i > 1) THEN
+          WorkInt(1:i-1) = PolyStart(1:i-1)
+          IF(i < NoPaths) WorkInt(i:) = PolyStart(i+1:) - RemovePoints
+        ELSE IF (i < NoPaths) THEN
+          WorkInt = PolyStart(i+1:) - RemovePoints
+        END IF
+        DEALLOCATE(PolyStart)
+        ALLOCATE(PolyStart(NoPaths-1))
+        PolyStart = WorkInt
+        !alter polyend
+        IF(i > 1) THEN
+          WorkInt(1:i-1) = PolyEnd(1:i-1)
+          IF(i < NoPaths) WorkInt(i:) = PolyEnd(i+1:) - RemovePoints
+        ELSE IF (i < NoPaths) THEN
+          WorkInt = PolyEnd(i+1:) - RemovePoints
+        END IF
+        DEALLOCATE(PolyEnd)
+        ALLOCATE(PolyEnd(NoPaths-1))
+        PolyEnd = WorkInt
+        DEALLOCATE(WorkInt)
+
+        !finally remove crev marker
+        ALLOCATE(WorkLogical(NoPaths-1))
+        IF(i > 1) THEN
+          WorkLogical(1:i-1) = RemoveCrev(1:i-1)
+          IF(i < NoPaths) WorkLogical(i:) = RemoveCrev(i+1:)
+        ELSE IF (i < NoPaths) THEN
+          WorkLogical = RemoveCrev(i+1:)
+        END IF
+        DEALLOCATE(RemoveCrev)
+        ALLOCATE(RemoveCrev(NoPaths-1))
+        RemoveCrev = WorkLogical
+        DEALLOCATE(WorkLogical)
+
+        EXIT
+      END DO
+
+      NoPaths = SIZE(RemoveCrev)
+    END DO
+
+  END SUBROUTINE CheckLateralCalving
+
+  !Cleanly removes elements & nodes from a mesh based on mask
+  !Any element containing a removed node (RmNode) will be deleted
+  !May optionally specify which elements to remove
+  !If only RmElem is provided, no nodes are removed
+  !(should this be changed? i.e. detect orphaned nodes?)
+  SUBROUTINE CutPlaneMesh(Mesh, RmNode, RmElem)
+
+    IMPLICIT NONE
+
+    TYPE(Mesh_t), POINTER :: Mesh
+    LOGICAL, OPTIONAL :: RmNode(:)
+    LOGICAL, OPTIONAL, TARGET :: RmElem(:)
+    !--------------------------------
+    TYPE(Element_t), POINTER :: Element, Work_Elements(:)
+    TYPE(Variable_t), POINTER :: Variables, Var
+    TYPE(Nodes_t), POINTER :: Nodes
+    TYPE(NeighbourList_t), POINTER :: work_neighlist(:)
+    REAL(KIND=dp), ALLOCATABLE :: work_xyz(:,:)
+    REAL(KIND=dp), POINTER CONTIG :: work_x(:),work_y(:), work_z(:)
+    REAL(KIND=dp), POINTER :: WorkReal(:)=>NULL(), ptr(:)
+    INTEGER :: i,j,counter,NNodes,NBulk, NBdry,NewNNodes, NewNElems, NewNBulk,&
+         NewNbdry, ElNNodes
+    INTEGER, ALLOCATABLE :: Nodeno_map(:),EIdx_map(:)
+    INTEGER, POINTER :: NodeIndexes(:), work_pInt(:),WorkPerm(:)=>NULL()
+    LOGICAL, POINTER :: RmElement(:),work_logical(:)
+    CHARACTER(*), PARAMETER :: FuncName="CutMesh"
+    CHARACTER(LEN=MAX_NAME_LEN) :: VarName
+    NNodes = Mesh % NumberOfNodes
+    NBulk = Mesh % NumberOfBulkElements
+    NBdry = Mesh % NumberOfBoundaryElements
+    Variables => Mesh % Variables
+
+    IF(.NOT. (PRESENT(RmElem) .OR. PRESENT(RmNode))) &
+         CALL Fatal(FuncName,"Need to provide at least one of RmElem, RmNode!")
+
+    IF(PRESENT(RmElem)) THEN
+      RmElement => RmElem
+    ELSE
+      !Mark elements containing deleted nodes for deletion
+      ALLOCATE(RmElement(NBulk + Nbdry))
+      RmElement = .FALSE.
+      DO i=1,NBulk + NBdry
+        Element => Mesh % Elements(i)
+        NodeIndexes => Element % NodeIndexes
+        ElNNodes = Element % TYPE % NumberOfNodes
+        IF(ANY(RmNode(NodeIndexes(1:ElNNodes)))) RmElement(i) = .TRUE.
+        !Get rid of orphans
+        IF(i > NBulk) THEN
+          IF(ASSOCIATED(Element % BoundaryInfo)) THEN
+            !If the main body element is removed, remove this BC elem
+            IF(ASSOCIATED(Element % BoundaryInfo % Left)) THEN
+              j = Element % BoundaryInfo % Left % ElementIndex
+              IF(RmElement(j)) RmElement(i) = .TRUE.
+            END IF
+            !Point % Right => NULL() if % Right element is removed
+            IF(ASSOCIATED(Element % BoundaryInfo % Right)) THEN
+              j = Element % BoundaryInfo % Right % ElementIndex
+              IF(RmElement(j)) Element % BoundaryInfo % Right => NULL()
+            END IF
+          END IF
+        END IF
+      END DO
     END IF
 
-  END SUBROUTINE CalvingStats
+    IF(PRESENT(RmNode)) THEN
+      !Removing nodes implies shifting element nodeindexes
+      !Map pre -> post deletion node nums
+      ALLOCATE(Nodeno_map(NNodes))
+      Nodeno_map = 0
+      counter = 0
+      DO i=1,NNodes
+        IF(RmNode(i)) CYCLE
+        counter = counter + 1
+        Nodeno_map(i) = counter
+      END DO
 
-  
+      !Update the element nodeindexes
+      DO i=1,NBulk+NBdry
+        Element => Mesh % Elements(i)
+        IF(RmElement(i)) CYCLE
+        DO j=1,Element % TYPE % NumberOfNodes
+          Element % NodeIndexes(j) = Nodeno_map(Element % NodeIndexes(j))
+          IF(Element % NodeIndexes(j) == 0) CALL Fatal(FuncName, &
+              "Programming error: mapped nodeno = 0")
+        END DO
+      END DO
+
+      !Clear out deleted nodes
+      Nodes => Mesh % Nodes
+      NewNNodes = COUNT(.NOT. RmNode)
+
+      ALLOCATE(work_x(NewNNodes),&
+          work_y(NewNNodes),&
+          work_z(NewNNodes))
+
+      counter = 0
+      DO i=1,NNodes
+        IF(RmNode(i)) CYCLE
+        counter = counter + 1
+        work_x(counter) = Nodes % x(i)
+        work_y(counter) = Nodes % y(i)
+        work_z(counter) = Nodes % z(i)
+      END DO
+
+      DEALLOCATE(Nodes % x, Nodes % y, Nodes % z)
+      Nodes % x => work_x
+      Nodes % y => work_y
+      Nodes % z => work_z
+
+      Nodes % NumberOfNodes = NewNNodes
+      Mesh % NumberOfNodes = NewNNodes
+
+      !update perms
+      Var => Variables
+      DO WHILE(ASSOCIATED(Var))
+        IF(SIZE(Var % Values) == Var % DOFs) THEN
+          Var => Var % Next
+          CYCLE
+        ELSE IF(LEN(Var % Name) > 10) THEN
+          IF(Var % Name(1:10)=='coordinate') THEN
+            Var => Var % Next
+            CYCLE
+          END IF
+        END IF
+
+        ALLOCATE(WorkPerm(NewNNodes))
+        WorkPerm = [(i,i=1,NewNNodes)]
+        IF(.NOT. ASSOCIATED(WorkReal)) ALLOCATE(WorkReal(NewNNodes))
+
+        VarName = Var % Name
+
+        counter = 0
+        DO i=1,NNodes
+          IF(RmNode(i)) CYCLE
+          counter = counter + 1
+          WorkReal(counter) = Var % Values(Var % Perm(i))
+        END DO
+
+        ptr => Var % Values(i::Var % DOFs)
+
+        !DEALLOCATE(Var % Perm)
+        IF ( ASSOCIATED( Var % Values ) ) &
+           DEALLOCATE( Var % Values )
+
+        Var % Perm => WorkPerm
+        Var % Values => WorkReal
+        NULLIFY(WorkPerm, WorkReal)
+        Var => Var % Next
+      END DO
+
+      !Clear out ParallelInfo
+      IF(ASSOCIATED(Mesh % ParallelInfo % GlobalDOFs)) THEN
+        ALLOCATE(work_pInt(NewNNodes))
+        counter = 0
+        DO i=1,NNodes
+          IF(RmNode(i)) CYCLE
+          counter = counter + 1
+          work_pInt(counter) = Mesh % ParallelInfo % GlobalDOFs(i)
+        END DO
+        DEALLOCATE(Mesh % ParallelInfo % GlobalDOFs)
+        Mesh % ParallelInfo % GlobalDOFs => work_pInt
+        work_pInt => NULL()
+      END IF
+
+      !Get rid of NeighbourList
+      IF(ASSOCIATED(Mesh % ParallelInfo % NeighbourList)) THEN
+        ALLOCATE(work_neighlist(NewNNodes))
+        DO i=1,NNodes
+          IF(.NOT. RmNode(i)) CYCLE
+          IF(ASSOCIATED( Mesh % ParallelInfo % NeighbourList(i) % Neighbours ) ) &
+              DEALLOCATE( Mesh % ParallelInfo % NeighbourList(i) % Neighbours )
+        END DO
+
+        counter = 0
+        DO i=1,NNodes
+          IF(RmNode(i)) CYCLE
+          counter = counter + 1
+          work_neighlist(counter) % Neighbours => Mesh % ParallelInfo % NeighbourList(i) % Neighbours
+        END DO
+        DEALLOCATE(Mesh % ParallelInfo % NeighbourList)
+        Mesh % ParallelInfo % NeighbourList => work_neighlist
+        work_neighlist => NULL()
+      END IF
+
+      !Get rid of ParallelInfo % NodeInterface
+      IF(ASSOCIATED(Mesh % ParallelInfo % GInterface)) THEN
+        ALLOCATE(work_logical(NewNNodes))
+        counter = 0
+        DO i=1,NNodes
+          IF(RmNode(i)) CYCLE
+          counter = counter + 1
+          work_logical(counter) = Mesh % ParallelInfo % GInterface(i)
+        END DO
+        DEALLOCATE(Mesh % ParallelInfo % GInterface)
+        Mesh % ParallelInfo % GInterface => work_logical
+        work_logical => NULL()
+      END IF
+    END IF
+
+    !TODO - Mesh % Edges - see ReleaseMeshEdgeTables
+    IF ( ASSOCIATED( Mesh % Edges ) ) THEN
+      CALL Fatal(FuncName,"Clearing out Mesh % Edges not yet implemented.")
+    END IF
+
+    !TODO - Mesh % Faces - see ReleaseMeshFaceTables
+    IF ( ASSOCIATED( Mesh % Faces ) ) THEN
+      CALL Fatal(FuncName,"Clearing out Mesh % Faces not yet implemented.")
+    END IF
+
+    !TODO - Mesh % ViewFactors -  see ReleaseMeshFactorTables
+    IF (ASSOCIATED(Mesh % ViewFactors) ) THEN
+      CALL Fatal(FuncName,"Clearing out Mesh % ViewFactors not yet implemented.")
+    END IF
+
+    !TODO - Mesh % Projector - see FreeMatrix in ReleaseMesh
+    IF (ASSOCIATED(Mesh % Projector) ) THEN
+      CALL Fatal(FuncName,"Clearing out Mesh % Projector not yet implemented.")
+    END IF
+
+    !TODO - Mesh % RootQuadrant - see FreeQuadrantTree
+    IF( ASSOCIATED( Mesh % RootQuadrant ) ) THEN
+      CALL Fatal(FuncName,"Clearing out Mesh % RootQuadrant not yet implemented.")
+    END IF
+
+    NewNElems = COUNT(.NOT. RmElement)
+
+
+    !Clear out deleted elements structures - taken from ReleaseMesh
+    DO i=1,NBulk+NBdry
+      IF(.NOT. RmElement(i)) CYCLE
+
+      !          Boundaryinfo structure for boundary elements
+      !          ---------------------------------------------
+      IF ( Mesh % Elements(i) % Copy ) CYCLE
+
+      IF ( i > NBulk ) THEN
+        IF ( ASSOCIATED( Mesh % Elements(i) % BoundaryInfo ) ) THEN
+          DEALLOCATE( Mesh % Elements(i) % BoundaryInfo )
+        END IF
+      END IF
+
+      IF ( ASSOCIATED( Mesh % Elements(i) % NodeIndexes ) ) &
+           DEALLOCATE( Mesh % Elements(i) % NodeIndexes )
+      Mesh % Elements(i) % NodeIndexes => NULL()
+
+      IF ( ASSOCIATED( Mesh % Elements(i) % EdgeIndexes ) ) &
+           DEALLOCATE( Mesh % Elements(i) % EdgeIndexes )
+      Mesh % Elements(i) % EdgeIndexes => NULL()
+
+      IF ( ASSOCIATED( Mesh % Elements(i) % FaceIndexes ) ) &
+           DEALLOCATE( Mesh % Elements(i) % FaceIndexes )
+      Mesh % Elements(i) % FaceIndexes => NULL()
+
+      IF ( ASSOCIATED( Mesh % Elements(i) % DGIndexes ) ) &
+           DEALLOCATE( Mesh % Elements(i) % DGIndexes )
+      Mesh % Elements(i) % DGIndexes => NULL()
+
+      IF ( ASSOCIATED( Mesh % Elements(i) % BubbleIndexes ) ) &
+           DEALLOCATE( Mesh % Elements(i) % BubbleIndexes )
+      Mesh % Elements(i) % BubbleIndexes => NULL()
+
+      ! This creates problems later on!!!
+      !IF ( ASSOCIATED( Mesh % Elements(i) % PDefs ) ) &
+      !   DEALLOCATE( Mesh % Elements(i) % PDefs )
+
+      Mesh % Elements(i) % PDefs => NULL()
+    END DO
+
+    !Construct a map of old element indexes => new element indexes
+    ALLOCATE(EIdx_map(NBdry+NBulk))
+    EIdx_map = 0
+    counter = 0
+    DO i=1,NBulk+NBdry
+      IF(RmElement(i)) CYCLE
+      counter = counter + 1
+      IF(Mesh % Elements(i) % ElementIndex /= i) CALL Warn(FuncName,&
+           "Assumption Elements(i) % ElementIndex == i not valid! Expect memory corruption...")
+      EIdx_map(Mesh % Elements(i) % ElementIndex) = counter
+    END DO
+
+    !Repoint elements
+    ALLOCATE(work_elements(NewNElems))
+    counter = 0
+    DO i=1,Nbulk+NBdry
+      IF(RmElement(i)) CYCLE
+      counter = counter + 1
+
+      Element => Mesh % Elements(i)
+      work_elements(counter) = Element
+
+      !Repoint BoundaryInfo % Left, % Right
+      IF(i > NBdry) THEN
+        IF(ASSOCIATED(Element % BoundaryInfo)) THEN
+          IF(ASSOCIATED(Element % BoundaryInfo % Left)) THEN
+            j = Element % BoundaryInfo % Left % ElementIndex
+            work_elements(counter) % BoundaryInfo % Left => work_elements(EIdx_map(j))
+          END IF
+          IF(ASSOCIATED(Element % BoundaryInfo % Right)) THEN
+            j = Element % BoundaryInfo % Right % ElementIndex
+            work_elements(counter) % BoundaryInfo % Right => work_elements(EIdx_map(j))
+          END IF
+        END IF
+      END IF
+    END DO
+
+    !Update ElementIndexes
+    DO i=1,NewNElems
+      work_elements(i) % ElementIndex = i
+    END DO
+
+    DEALLOCATE(Mesh % Elements)
+    Mesh % Elements => work_elements
+    work_elements => NULL()
+
+    Mesh % NumberOfBulkElements = COUNT(.NOT. RmElement(1:nbulk))
+    Mesh % NumberOfBoundaryElements = COUNT(.NOT. RmElement(nbulk+1:nbulk+nbdry))
+
+    IF(.NOT. PRESENT(RmElem)) DEALLOCATE(RmElement)
+
+  END SUBROUTINE CutPlaneMesh
+
 END SUBROUTINE Find_Calving3D_LSet

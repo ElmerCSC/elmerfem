@@ -1,6 +1,6 @@
 ! A reference case where a cantilever is subject to a constant pressure load f.
 !
-! For parameters EI/(GA) = eps we expect the deflection and the rotation at the 
+! For parameters EI/(GAL^2) = eps we expect the deflection and the rotation at the 
 ! free end to be w(L) = L^4 f (1 + 4 eps)/(8 EI) and theta(L) = L^3 f/(6 EI).
 ! Here the SaveScalars module is set to output the variable values at the end. 
 
@@ -95,6 +95,16 @@ Boundary Condition 1
   Theta 1 = Real 0.0
   Theta 2 = Real 0.0
   Theta 3 = Real 0.0
+End
+
+! This shows how one could set force to the other end:
+! f=(1.0 2.0 3.0) 
+Boundary Condition 2
+  Target Nodes(1) = 2
+!  Target Boundaries(1) = 2
+!  U 1 Load = Real 1.0
+!  U 2 Load = Real 2.0
+!  U 3 Load = Real 3.0
 End
 
 Solver 1 :: Reference Norm = Real 3.88782384E-03

@@ -44,16 +44,15 @@
 
 MODULE ModelDescription
 
-    USE LoadMod
     USE MeshUtils
-    USE ElementDescription
+    USE LoadMod
     USE BinIO
     USE Messages
+    USE ElementDescription
  
     IMPLICIT NONE
 
-
-    CHARACTER(LEN=1024) :: IncludePath = ' ', OutputPath = ' ', SimulationId = ' '
+    CHARACTER(LEN=1024) :: IncludePath = ' ', OutputPath = ' ', SimulationId=' '
 
     INTEGER, PARAMETER :: PosUnit = 32, OutputUnit = 31, RestartUnit = 30,&
                           PostFileUnit = 29, InFileUnit = 28
@@ -190,7 +189,7 @@ CONTAINS
         IF( MinOutputPE == MaxOutputPE ) THEN
           InfoFileName = 'InfoFile.txt'
         ELSE
-          InfoFileName = 'InfoFile.txt.'//TRIM(I2S(ParEnv % MyPe))                 
+          InfoFileName = 'InfoFile.txt.'//I2S(ParEnv % MyPe)                 
         END IF
         InfoOutUnit = InfoToFileUnit
         OPEN(InfoOutUnit,FILE=InfoFileName,STATUS='Unknown')
@@ -210,8 +209,8 @@ CONTAINS
      CHARACTER(LEN=*) :: FileName
      CHARACTER(LEN=*) :: MeshDir,MeshName
 !------------------------------------------------------------------------------
-     CHARACTER(LEN=MAX_STRING_LEN) :: FName
      INTEGER :: k,k0,k1,l,iostat
+     CHARACTER(:), ALLOCATABLE :: FName
 !------------------------------------------------------------------------------
 
      CALL Info('LoadIncludeFile','Loading include file: '//TRIM(FileName),Level=8)
@@ -225,8 +224,7 @@ CONTAINS
          END DO 
 
          IF ( k >= k0 ) THEN
-           WRITE( FName, '(a,a,a)' ) IncludePath(k0:k), '/', &
-              TRIM( FileName )
+           FName = IncludePath(k0:k)//'/'//TRIM(FileName)
            OPEN( InFileUnit, FILE=TRIM(FName), STATUS='OLD',ERR=10 )
            CALL LoadInputFile( Model, InFileUnit, FName, &
                  MeshDir, MeshName, .FALSE., ScanOnly )
@@ -288,8 +286,8 @@ CONTAINS
     LOGICAL, OPTIONAL :: RewindFile
 
     INTEGER :: pos, posn
-    CHARACTER(LEN=MAX_NAME_LEN) :: MeshDir, MeshName
     INTEGER :: iostat
+    CHARACTER(LEN=MAX_NAME_LEN) :: MeshDir, MeshName
     
     IF( PRESENT( RewindFile ) ) THEN
       IF( RewindFile ) THEN
@@ -353,6 +351,7 @@ CONTAINS
 
     LOGICAL :: FirstTime = .TRUE.
     LOGICAL :: KeywordsLoaded = .FALSE.
+    LOGICAL :: SimulationRead = .FALSE.
     
     INTEGER :: nlen, BCcount, BodyCount, EqCount, MatCount, BfCount, &
         IcCount, SolverCount, LineCount, ComponentCount
@@ -472,11 +471,21 @@ CONTAINS
           IF ( k<=nlen ) THEN
              MeshName(i:i) = '/'
              i = i + 1
+#if 1
+             ! This is a dummy fix for the problem that no white spaces
+             ! were allowed in the mesh name.
+             DO WHILE( k <= nlen )
+               MeshName(i:i) = Name(k:k)
+               k = k + 1
+               i = i + 1
+             END DO
+#else             
              DO WHILE( Name(k:k) /= ' ' )
                MeshName(i:i) = Name(k:k)
                k = k + 1
                i = i + 1
              END DO
+#endif
           ELSE
              MeshDir = "." // CHAR(0)
           END IF
@@ -560,7 +569,11 @@ CONTAINS
       
       IF( SEQL(Section,'run control') ) THEN
         ! "Run Control" section has been read but to a different Model structure
-        IF( .NOT. ScanOnly ) THEN
+        IF( ScanOnly ) THEN
+          IF( SimulationRead ) THEN
+            CALL Fatal(Caller,'"Run Control" should precede "Simulation" section!')
+          END IF
+        ELSE
           ArrayN = 1
           IF(.NOT.ASSOCIATED(Model % Control)) &
               Model % Control => ListAllocate()
@@ -576,7 +589,9 @@ CONTAINS
         END IF
         
       ELSE IF ( SEQL(Section, 'simulation') ) THEN        
-        IF ( .NOT. ScanOnly ) THEN
+        IF ( ScanOnly ) THEN
+          SimulationRead = .TRUE.
+        ELSE
           ArrayN = 1
           IF(.NOT.ASSOCIATED(Model % Simulation)) &
               Model % Simulation=>ListAllocate()
@@ -589,13 +604,13 @@ CONTAINS
         IF( iostat /= 0 ) THEN
           IF( Numbering ) THEN
             CALL Fatal(Caller,'Problem reading section '&
-                //TRIM(I2S(LineCount))//': '//TRIM(Section))
+                //I2S(LineCount)//': '//TRIM(Section))
           END IF
           BCcount = BCcount + 1
           ArrayN = BCcount 
           IF( ScanOnly ) THEN
             CALL Info(Caller,'Giving an empty > Boundary Condition < index next value: &
-                '//TRIM(I2S(ArrayN)),Level=4)
+                '//I2S(ArrayN),Level=4)
           END IF
         ELSE
           BcCount = MAX( BcCount, ArrayN )
@@ -625,8 +640,8 @@ CONTAINS
           END DO
           
           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfBCs ) THEN
-            WRITE( Message, * ) 'Boundary Condition section number ('//TRIM(I2S(Arrayn))// &
-                ') exceeds number of BCs ('//TRIM(I2S(Model % NumberOfBCs))//')'
+            WRITE( Message, * ) 'Boundary Condition section number ('//I2S(Arrayn)// &
+                ') exceeds number of BCs ('//I2S(Model % NumberOfBCs)//')'
             CALL Fatal( Caller, Message )
           END IF
           Model % BCs(ArrayN) % Tag = ArrayN
@@ -651,7 +666,7 @@ CONTAINS
           READ( Section(9:),*,iostat=iostat ) Arrayn
           IF( iostat /= 0 ) THEN
             CALL Fatal(Caller,'Problem reading section '&
-                //TRIM(I2S(LineCount))//': '//TRIM(Section))
+                //I2S(LineCount)//': '//TRIM(Section))
           END IF
 
           BoundaryIndex = BoundaryIndex + 1
@@ -671,13 +686,13 @@ CONTAINS
         IF( iostat /= 0 ) THEN
           IF( Numbering ) THEN               
             CALL Fatal(Caller,'Problem reading section '&
-                //TRIM(I2S(LineCount))//': '//TRIM(Section))
+                //I2S(LineCount)//': '//TRIM(Section))
           END IF
           IcCount = IcCount + 1
           ArrayN = IcCount 
           IF( ScanOnly ) THEN
             CALL Info(Caller,'Giving an empty > Initial Condition < index next value: &
-                '//TRIM(I2S(ArrayN)),Level=4)
+                '//I2S(ArrayN),Level=4)
           END IF
         ELSE
           IcCount = MAX( IcCount, ArrayN ) 
@@ -723,13 +738,13 @@ CONTAINS
         IF( iostat /= 0 ) THEN
           IF( Numbering ) THEN               
             CALL Fatal(Caller,'Problem reading section '&
-                //TRIM(I2S(LineCount))//': '//TRIM(Section))
+                //I2S(LineCount)//': '//TRIM(Section))
           END IF
           MatCount = MatCount + 1
           ArrayN = MatCount 
           IF( ScanOnly ) THEN
             CALL Info(Caller,'Giving an empty > Material < index next value: &
-                '//TRIM(I2S(ArrayN)),Level=4)
+                '//I2S(ArrayN),Level=4)
           END IF
         ELSE
           MatCount = MAX( MatCount, ArrayN ) 
@@ -770,13 +785,13 @@ CONTAINS
         IF( iostat /= 0 ) THEN
           IF( Numbering ) THEN               
             CALL Fatal(Caller,'Problem reading section '&
-                //TRIM(I2S(LineCount))//': '//TRIM(Section))
+                //I2S(LineCount)//': '//TRIM(Section))
           END IF
           BfCount = BfCount + 1
           ArrayN = BfCount 
           IF( ScanOnly ) THEN
             CALL Info(Caller,'Giving an empty > Body Force < index next value: &
-                '//TRIM(I2S(ArrayN)),Level=4)
+                '//I2S(ArrayN),Level=4)
           END IF
         ELSE
           BfCount = MAX( ArrayN, BfCount ) 
@@ -818,13 +833,13 @@ CONTAINS
         IF( iostat /= 0 ) THEN
           IF( Numbering ) THEN               
             CALL Fatal(Caller,'Problem reading section '&
-                //TRIM(I2S(LineCount))//': '//TRIM(Section))
+                //I2S(LineCount)//': '//TRIM(Section))
           END IF
           EqCount = EqCount + 1
           ArrayN = EqCount 
           IF( ScanOnly ) THEN
             CALL Info(Caller,'Giving an empty > Equation < index next value: &
-                '//TRIM(I2S(ArrayN)),Level=4)
+                '//I2S(ArrayN),Level=4)
           END IF
         ELSE
           EqCount = MAX( EqCount, ArrayN )
@@ -868,13 +883,13 @@ CONTAINS
         IF( iostat /= 0 ) THEN
           IF( Numbering ) THEN               
             CALL Fatal(Caller,'Problem reading section '&
-                //TRIM(I2S(LineCount))//': '//TRIM(Section))
+                //I2S(LineCount)//': '//TRIM(Section))
           END IF
           BodyCount = BodyCount + 1
           ArrayN = BodyCount 
           IF( ScanOnly ) THEN
             CALL Info(Caller,'Giving an empty > Body < index next value: &
-                '//TRIM(I2S(ArrayN)),Level=4)
+                '//I2S(ArrayN),Level=4)
           END IF
         ELSE
           BodyCount = MAX( BodyCount, ArrayN ) 
@@ -917,13 +932,13 @@ CONTAINS
         IF( iostat /= 0 ) THEN
           IF( Numbering ) THEN
             CALL Fatal(Caller,'Problem reading section '&
-                //TRIM(I2S(LineCount))//': '//TRIM(Section))
+                //I2S(LineCount)//': '//TRIM(Section))
           END IF
           ComponentCount = ComponentCount + 1
           ArrayN = ComponentCount 
           IF( ScanOnly ) THEN
             CALL Info(Caller,'Giving an empty > Component < index next value: &
-                '//TRIM(I2S(ArrayN)),Level=4)
+                '//I2S(ArrayN),Level=4)
           END IF
         ELSE
           ComponentCount = MAX( ComponentCount, ArrayN )
@@ -965,13 +980,13 @@ CONTAINS
         IF( iostat /= 0 ) THEN
           IF( Numbering ) THEN
             CALL Fatal(Caller,'Problem reading section '&
-                //TRIM(I2S(LineCount))//': '//TRIM(Section))
+                //I2S(LineCount)//': '//TRIM(Section))
           END IF
           SolverCount = SolverCount + 1
           ArrayN = SolverCount
           IF( ScanOnly ) THEN
             CALL Info(Caller,'Giving an empty > Solver < index next value: &
-                '//TRIM(I2S(ArrayN)),Level=4)
+                '//I2S(ArrayN),Level=4)
           END IF
         ELSE
           SolverCount = MAX( SolverCount, ArrayN )
@@ -1046,7 +1061,7 @@ CONTAINS
       IF( Model % NumberOfBCs == 0 ) THEN
         CALL Warn(Caller,'There are no BCs in the system!')
       ELSE
-        CALL Info(Caller,'Number of BCs: '//TRIM(I2S(Model % NumberOfBCs)),Level=12)
+        CALL Info(Caller,'Number of BCs: '//I2S(Model % NumberOfBCs),Level=12)
       END IF
       DO i = 1, Model % NumberOFBCs
         IF( ListEmpty(Model % BCs(i) % Values) ) THEN
@@ -1056,7 +1071,7 @@ CONTAINS
       END DO
 
       CALL Info(Caller,'Number of Body Forces: '&
-          //TRIM(I2S(Model % NumberOfBodyForces)),Level=12)
+          //I2S(Model % NumberOfBodyForces),Level=12)
       DO i = 1, Model % NumberOfBodyForces
         IF( ListEmpty(Model % BodyForces(i) % Values) ) THEN
           WRITE( Message,'(A,I0)') 'Entry missing for: Body Force ',i
@@ -1065,7 +1080,7 @@ CONTAINS
       END DO
 
       CALL Info(Caller,'Number of Initial Conditions: '&
-          //TRIM(I2S(Model % NumberOfICs)),Level=12)
+          //I2S(Model % NumberOfICs),Level=12)
       DO i = 1, Model % NumberOfICs
         IF( ListEmpty(Model % ICs(i) % Values) ) THEN
           WRITE( Message,'(A,I0)') 'Entry missing for: Initial Condition ',i
@@ -1074,7 +1089,7 @@ CONTAINS
       END DO
 
       CALL Info(Caller,'Number of Materials: '&
-          //TRIM(I2S(Model % NumberOfMaterials)),Level=12)      
+          //I2S(Model % NumberOfMaterials),Level=12)      
       DO i = 1, Model % NumberOfMaterials         
         IF( ListEmpty(Model % Materials(i) % Values) ) THEN
           WRITE( Message,'(A,I0)') 'Entry missing for: Material ',i
@@ -1086,7 +1101,7 @@ CONTAINS
         CALL Warn(Caller,'There are no Equations in the system!')
       ELSE
         CALL Info(Caller,'Number of Equations: '&
-            //TRIM(I2S(Model % NumberOfEquations)),Level=12)
+            //I2S(Model % NumberOfEquations),Level=12)
       END IF
       DO i = 1, Model % NumberOFEquations 
         IF( ListEmpty(Model % Equations(i) % Values) ) THEN
@@ -1099,7 +1114,7 @@ CONTAINS
         CALL Fatal(Caller,'There are no Solvers in the system!')
       ELSE
         CALL Info(Caller,'Number of Solvers: '&
-            //TRIM(I2S(Model % NumberOfSolvers)),Level=12)
+            //I2S(Model % NumberOfSolvers),Level=12)
       END IF
       DO i = 1, Model % NumberOfSolvers         
         IF( ListEmpty(Model % Solvers(i) % Values) ) THEN
@@ -1112,7 +1127,7 @@ CONTAINS
         CALL Warn(Caller,'There are no Bodies in the system!')
       ELSE
         CALL Info(Caller,'Number of Bodies: '&
-            //TRIM(I2S(Model % NumberOfBodies)),Level=12)
+            //I2S(Model % NumberOfBodies),Level=12)
       END IF     
       DO i = 1, Model % NumberOfBodies
         IF( ListEmpty(Model % Bodies(i) % Values) ) THEN
@@ -1120,13 +1135,13 @@ CONTAINS
           CALL Fatal(Caller,Message)
         END IF
         IF( ListCheckIsArray( Model % Bodies(i) % Values,'Equation', Found) ) THEN
-          CALL Fatal(Caller,'Keyword "Equation" in body '//TRIM(I2S(i))//' must have single value')
+          CALL Fatal(Caller,'Keyword "Equation" in body '//I2S(i)//' must have single value')
         END IF
         IF( ListCheckIsArray( Model % Bodies(i) % Values,'Body Force', Found) ) THEN
-          CALL Fatal(Caller,'Keyword "Body Force" in body '//TRIM(I2S(i))//' must have single value')
+          CALL Fatal(Caller,'Keyword "Body Force" in body '//I2S(i)//' must have single value')
         END IF
         IF( ListCheckIsArray( Model % Bodies(i) % Values,'Material', Found) ) THEN
-          CALL Fatal(Caller,'Keyword "Material" in body '//TRIM(I2S(i))//' must have single value')
+          CALL Fatal(Caller,'Keyword "Material" in body '//I2S(i)//' must have single value')
         END IF
       END DO
 
@@ -1139,16 +1154,17 @@ CONTAINS
         str = ListGetString( Model % Solvers(i) % Values,'Equation',Found )
         IF(.NOT. Found ) CYCLE
         DO j = i+1, Model % NumberOfSolvers
-          IF( TRIM(str) == TRIM( ListGetString( Model % Solvers(j) % Values,'Equation',Found ))) THEN
-            CALL Fatal(Caller,'Solvers '//TRIM(I2S(i))//' and '//TRIM(I2S(j))//&
+          IF( str == ListGetString( Model % Solvers(j) % Values,'Equation',Found)) THEN
+            CALL Fatal(Caller,'Solvers '//I2S(i)//' and '//I2S(j)//&
                 ' have the same Equation name!')
           END IF
         END DO
       END DO
             
       ! If automatic numbering is used map the names to numbers
+      ! Also otherwise, this may be handy sometimes.
       !------------------------------------------------------------
-      IF( .NOT. Numbering ) THEN
+      !IF( .NOT. Numbering ) THEN
         DO i = 1, Model % NumberOfBodies
           IF( .NOT. ListCheckPresent( Model % Bodies(i) % Values,'Material') ) THEN
             name = ListGetString( Model % Bodies(i) % Values,'Material Name', Found )
@@ -1159,7 +1175,7 @@ CONTAINS
               IF(.NOT. Found ) CYCLE
               IF( str == name ) THEN
                 CALL ListAddInteger( Model % Bodies(i) % Values,'Material',j)
-                CALL Info(Caller,'Giving material > '//TRIM(Name)//' < index: '//TRIM(I2S(j)),Level=5)
+                CALL Info(Caller,'Giving material > '//TRIM(Name)//' < index: '//I2S(j),Level=5)
                 FoundName = .TRUE.
                 EXIT
               END IF
@@ -1179,7 +1195,7 @@ CONTAINS
               IF(.NOT. Found ) CYCLE
               IF( str == name ) THEN
                 CALL ListAddInteger( Model % Bodies(i) % Values,'Equation',j)
-                CALL Info(Caller,'Giving equation > '//TRIM(Name)//' < index: '//TRIM(I2S(j)),Level=5)
+                CALL Info(Caller,'Giving equation > '//TRIM(Name)//' < index: '//I2S(j),Level=5)
                 FoundName = .TRUE.
                 EXIT
               END IF
@@ -1199,7 +1215,7 @@ CONTAINS
               IF(.NOT. Found ) CYCLE
               IF( str == name ) THEN
                 CALL ListAddInteger( Model % Bodies(i) % Values,'Body Force',j)
-                CALL Info(Caller,'Giving body force > '//TRIM(Name)//' < index: '//TRIM(I2S(j)),Level=5)
+                CALL Info(Caller,'Giving body force > '//TRIM(Name)//' < index: '//I2S(j),Level=5)
                 FoundName = .TRUE.
                 EXIT
               END IF
@@ -1219,7 +1235,7 @@ CONTAINS
               IF(.NOT. Found ) CYCLE
               IF( str == name ) THEN
                 CALL ListAddInteger( Model % Bodies(i) % Values,'Initial Condition',j)
-                CALL Info(Caller,'Giving initial condition > '//TRIM(Name)//' < index: '//TRIM(I2S(j)),Level=5)
+                CALL Info(Caller,'Giving initial condition > '//TRIM(Name)//' < index: '//I2S(j),Level=5)
                 FoundName = .TRUE.
                 EXIT
               END IF
@@ -1231,9 +1247,9 @@ CONTAINS
           END IF
                
         END DO ! number of bodies
-      END IF
+      !END IF
 
-
+        
       ! Make sanity check that all Material, Body Force and Equation is associated to some
       ! body. This is not detrimental so a warning suffices.
       !-----------------------------------------------------------------------------------
@@ -1250,7 +1266,7 @@ CONTAINS
         END DO
         DO i = 1,Model % NumberOfMaterials
           IF( .NOT. EntryUsed(i) ) THEN
-            CALL Warn(Caller,'> Material '// TRIM(I2S(i)) //' < not used in any Body!')
+            CALL Warn(Caller,'> Material '// I2S(i) //' < not used in any Body!')
           END IF
         END DO
       END IF
@@ -1263,7 +1279,7 @@ CONTAINS
         END DO
         DO i = 1,Model % NumberOfBodyForces
           IF( .NOT. EntryUsed(i) ) THEN
-            CALL Warn(Caller,'> Body Force '// TRIM(I2S(i)) //' < not used in any Body!')
+            CALL Warn(Caller,'> Body Force '// I2S(i) //' < not used in any Body!')
           END IF
         END DO
       END IF
@@ -1276,7 +1292,7 @@ CONTAINS
         END DO
         DO i = 1,Model % NumberOfEquations
           IF( .NOT. EntryUsed(i) ) THEN
-            CALL Warn(Caller,'> Equation '// TRIM(I2S(i)) //' < not used in any Body!')
+            CALL Warn(Caller,'> Equation '// I2S(i) //' < not used in any Body!')
           END IF
         END DO
       END IF
@@ -1352,10 +1368,9 @@ CONTAINS
        INTEGER :: i,j, k,n, istat
        TYPE(HashTable_t), POINTER, SAVE :: Hash =>NULL()
        TYPE(HashValue_t), POINTER :: Val
-       LOGICAL :: FirstTime = .TRUE.,lstat, fexist
+       LOGICAL :: FirstTime = .TRUE.,lstat, fexist, ReTry
        CHARACTER(LEN=:), ALLOCATABLE :: str
        CHARACTER(LEN=MAX_STRING_LEN) :: str1
-!       EXTERNAL ENVIR
 
        IF ( PRESENT( ReturnType ) ) ReturnType = .FALSE.
 
@@ -1496,6 +1511,7 @@ CONTAINS
           str =  'component: '
         END IF
 
+        ! If we have namespace then remove that
         i= INDEX(Name,':') + 1
         IF (Name(i:i)==' ') i=i+1
         str = TRIM(str) // Name(i:LEN_TRIM(Name))
@@ -1506,11 +1522,47 @@ CONTAINS
        IF ( ASSOCIATED( Val ) ) THEN
           IF ( PRESENT( ReturnType ) ) THEN
              ReturnType = .TRUE.
-             TYPE = Val % TYPE
+             TYPE = TRIM(Val % TYPE)
           END IF
           IF  ( HashEqualKeys( Val % TYPE, TYPE ) ) RETURN
        END IF
 
+       ! Ok, we didn't find the keyword. Test whether it ends to 1, 2 or 3 integers
+       ! preceeded with empty space. The replace the integers with "1" and try to find
+       ! the type again. This reduced the keywords needed to be listed in SOLVER.KEYWORDS.
+       j = LEN_TRIM(str)
+       IF(j>2) THEN
+         Retry = .FALSE.
+         IF(str(j-1:j-1) == ' ' .AND. VERIFY( str(j:j),' 123456789') == 0 ) THEN
+           str(j:j) = '1'
+           ReTry = .TRUE.
+         ELSE IF(j>3 .AND. str(j-2:j-2) == ' ' .AND. VERIFY( str(j-1:j),' 0123456789') == 0 ) THEN
+           str(j:j) = ' '
+           j = j-1
+           str(j:j) = '1'
+           ReTry = .TRUE.
+         ELSE IF(j>4 .AND. str(j-3:j-3) == ' ' .AND. VERIFY( str(j-2:j),' 0123456789') == 0 ) THEN
+           str(j-1:j) = '  '
+           j = j-2
+           str(j:j) = '1'
+           ReTry = .TRUE.
+         END IF
+         IF( ReTry ) THEN
+           Val => HashValue( Hash, str )
+           IF ( ASSOCIATED( Val ) ) THEN
+             IF ( PRESENT( ReturnType ) ) THEN
+               ReturnType = .TRUE.
+               TYPE = TRIM(Val % TYPE)
+             END IF
+             IF  ( HashEqualKeys( Val % TYPE, TYPE ) ) THEN
+               CALL info('CheckKeyword','Found keyword type assuming suffix 1 for: '//TRIM(Name),Level=20)
+               RETURN
+             END IF
+           END IF
+         END IF
+       END IF
+       
+       
        IF ( PRESENT( ReturnType ) ) ReturnType = .FALSE.
 
        IF ( .NOT.ASSOCIATED(Val) .AND. (CheckAbort <= 2 .OR. FreeNames) ) THEN
@@ -1584,14 +1636,14 @@ CONTAINS
       INTEGER, ALLOCATABLE  :: IValues(:)
       REAL(KIND=dp), ALLOCATABLE :: Atx(:,:,:), ATt(:)
 
-      CHARACTER(LEN=:), ALLOCATABLE :: Name,str, Depname
-      CHARACTER(LEN=MAX_NAME_LEN) :: TypeString,Keyword
+      CHARACTER(LEN=:), ALLOCATABLE :: Name,str, Depname,Keyword
+      CHARACTER(LEN=MAX_NAME_LEN) :: TypeString
       LOGICAL :: ReturnType, ScanOnly, String_literal,  SizeGiven, SizeUnknown, &
-          Cubic, AllInt, Monotone, Stat
+          Cubic, AllInt, Monotone, Stat, Harmonic
 
       INTEGER(KIND=AddrInt) :: Proc
 
-      INTEGER :: i,j,j0,k,l,n,slen, str_beg, str_end, n1,n2, TYPE, &
+      INTEGER :: i,j,j0,k,k2,l,n,slen,str_beg, str_end, n1,n2, TYPE, &
           abuflen=0, maxbuflen=0, partag, iostat
       LOGICAL :: disttag
       
@@ -1628,6 +1680,10 @@ CONTAINS
         N2   = 1
         SizeGiven = .FALSE.
         SizeUnknown = .FALSE.
+
+        ! Optional parameter tag
+        partag = 0
+        disttag = .FALSE.
         
         DO WHILE( ReadAndTrim(InFileUnit,str,echo,string_literal) ) 
           
@@ -1642,10 +1698,6 @@ CONTAINS
               str = TRIM(TypeString) // ' ' // TRIM(str)
             END IF
           END IF
-
-          ! Optional parameter tag
-          partag = 0
-          disttag = .FALSE.
           
 20        CONTINUE
 
@@ -1772,47 +1824,76 @@ CONTAINS
                SELECT CASE( TYPE )
                CASE( LIST_TYPE_CONSTANT_SCALAR )
                  
-                  k = 0
-                  DO i=1,N1
-                     DO j=1,N2
-                        DO WHILE( k <= slen )
-                           k = k + 1
-                           IF ( str(k:k) == ' ' ) EXIT
-                        END DO
-
-                        DO WHILE( k <= slen )
-                          k = k + 1
-                             IF ( str(k:k) /= ' ' ) EXIT
-                        END DO
-
-                        IF ( k > slen ) THEN
-                          IF( SizeUnknown ) THEN
-                            N1 = i-1
-                            GOTO 11
-                          END IF                                                                     
-                          Stat = ReadAndTrim( InFileUnit,str,Echo) 
-                          IF(.NOT. Stat) CALL SyntaxError( Section,Name,str )
-                          k = 1
-                          slen = LEN_TRIM(str)
-                        END IF
-
-                        IF (.NOT.ScanOnly ) THEN
-                          READ( str(k:),*,iostat=iostat ) ATx(i,j,1)
-                          IF( iostat /= 0 ) THEN
-                            CALL Fatal(Caller,'Problem reading real keyword: '//TRIM(Name)//': '//str(k:)) 
-                          END IF
-                        END IF
+                 k = 0
+                 DO i=1,N1
+                   DO j=1,N2
+                     DO WHILE( k <= slen )
+                       k = k + 1
+                       IF ( str(k:k) == ' ' ) EXIT
                      END DO
-                  END DO
- 
-11                IF ( .NOT. ScanOnly ) THEN
-                    IF ( SizeGiven ) THEN
-                      CALL ListAddConstRealArray( List,Name,n1,n2, ATx(1:n1,1:n2,1) )
-                    ELSE
-                      CALL ListAddConstReal( List,Name,ATx(1,1,1) )
-                    END IF
-                  END IF
-  
+
+                     DO WHILE( k <= slen )
+                       k = k + 1
+                       IF ( str(k:k) /= ' ' ) EXIT
+                     END DO
+
+                     IF ( k > slen ) THEN
+                       IF( SizeUnknown ) THEN
+                         N1 = i-1
+                         GOTO 11
+                       END IF
+                       Stat = ReadAndTrim( InFileUnit,str,Echo) 
+                       IF(.NOT. Stat) CALL SyntaxError( Section,Name,str )
+
+                       k = 1
+                       slen = LEN_TRIM(str)
+                     END IF
+
+                     ! Find first empty space at "k2"
+                     k2 = k
+                     DO WHILE( k2 < slen )
+                       k2 = k2 + 1
+                       IF(str(k2:k2) == ' ') EXIT
+                     END DO
+                     IF(str(k2:k2)==' ') k2 = k2-1
+
+                     IF( ScanOnly ) THEN
+                       IF(VERIFY(str(k:k2),'-+0123456789eEdD.') /= 0) THEN
+                         CALL Fatal(Caller,'Invalid characters for real '//I2S(i)//' for keyword "'//TRIM(Name)//'": '//str(k:k2)) 
+                       END IF
+                     ELSE                                 
+                       READ( str(k:k2),*,iostat=iostat ) ATx(i,j,1)
+                       IF( iostat /= 0 ) THEN
+                         CALL Fatal(Caller,'Problem reading '&
+                             //I2S((i-1)*N2+j)//'th real keyword "'//TRIM(Name)//'": "'//str(k:k2)) 
+                       END IF
+                     END IF
+                   END DO
+                 END DO
+                
+                 IF(k2 < slen ) THEN
+                   ! Determine the 1st trailing non-white space character
+                   k2 = k2+1
+                   DO WHILE( k2 < slen )
+                     IF ( str(k2:k2) /= ' ') EXIT
+                     k2 = k2 + 1
+                   END DO
+                   IF( k2 < slen ) THEN                  
+                     IF(str(k2:slen) /= 'end') THEN
+                       CALL Fatal(Caller,'Mismatch of declared and given dimension for keyword "'&
+                            //TRIM(Name)//'". Ignored input: '//str(k2:slen))
+                     END IF
+                   END IF
+                 END IF
+                  
+11               IF ( .NOT. ScanOnly ) THEN
+                   IF ( SizeGiven ) THEN
+                     CALL ListAddConstRealArray( List,Name,n1,n2, ATx(1:n1,1:n2,1) )
+                   ELSE
+                     CALL ListAddConstReal( List,Name,ATx(1,1,1) )
+                   END IF
+                 END IF
+                 
                CASE( LIST_TYPE_VARIABLE_SCALAR )
 
                  IF (ScanOnly) THEN
@@ -1821,6 +1902,9 @@ CONTAINS
                    IF (ALLOCATED(ATt) ) DEALLOCATE(ATt,ATx)
                    ALLOCATE( ATt(MaxBufLen), ATx(n1,n2,MaxBufLen) )
                  END IF
+
+                 Harmonic = SEQL(str(str_beg:),'harmonic')
+                 IF(Harmonic) str_beg = str_beg+9
                  
                  ! Enable both "cubic monotone" and "monotone cubic"
                  Cubic = SEQL(str(str_beg:),'cubic')
@@ -1871,23 +1955,50 @@ CONTAINS
                            N1 = i-1
                            GOTO 12
                          END IF
-                                                                       
+
                          Stat = ReadAndTrim( InFileUnit,str,Echo) 
                          IF(.NOT. Stat) CALL SyntaxError( Section,Name,str )
-                         
+
                          k = 1
                          slen = LEN_TRIM(str)
                        END IF
 
-                       IF ( .NOT. ScanOnly ) THEN
-                         READ( str(k:),*,iostat=iostat ) ATx(i,j,n)
+                       ! Find first empty space at "k2"
+                       k2 = k 
+                       DO WHILE( k2 <= slen )
+                         k2 = k2 + 1
+                         IF ( str(k2:k2) == ' ') EXIT
+                       END DO
+                       k2 = k2-1
+
+                       IF ( ScanOnly ) THEN
+                         IF(VERIFY(str(k:k2),'-+0123456789eEdD.') /= 0) THEN
+                           CALL Fatal(Caller,'Invalid characters for real '//I2S(i)//' for keyword "'//TRIM(Name)//'": '//str(k:k2)) 
+                         END IF
+                       ELSE
+                         READ( str(k:k2),*,iostat=iostat ) ATx(i,j,n)
                          IF( iostat /= 0 ) THEN
-                           CALL Fatal(Caller,'Problem reading real keyword: '//TRIM(Name)//': '//str(k:)) 
+                           CALL Fatal(Caller,'Problem reading real keyword "'//TRIM(Name)//'": '//str(k:k2)) 
                          END IF
                        END IF
 
                      END DO
                    END DO
+                   
+                   IF(k2 < slen ) THEN
+                     k2 = k2+1
+                     DO WHILE( k2 < slen )
+                       IF ( str(k2:k2) /= ' ') EXIT
+                       k2 = k2 + 1
+                     END DO
+                     IF( k2 < slen ) THEN
+                       IF(str(k2:slen) /= 'end') THEN
+                         CALL Fatal(Caller,'Mismatch of declared and given dimension for keyword "'&
+                              //TRIM(Name)//'". Ignored input: '//str(k2:slen))
+                       END IF
+                     END IF
+                   END IF
+                   
                  END DO
 
 
@@ -1901,7 +2012,7 @@ CONTAINS
                               n1,n2,ATx(1:n1,1:n2,1:n) )
                    ELSE
                      CALL ListAddDepReal( List,Name,Depname,n,ATt(1:n), &
-                         ATx(1,1,1:n),CubicTable=Cubic, Monotone=monotone )
+                         ATx(1,1,1:n),CubicTable=Cubic, Monotone=monotone, Harmonic=harmonic )
                    END IF
                  END IF
                  MaxBufLen = MAX(MaxBuflen, Abuflen)
@@ -1911,12 +2022,14 @@ CONTAINS
              ! Add tag so we know how to make variation to this keyword
              IF( partag > 0 ) THEN
                CALL Info(Caller,'Adding parameter tag '&
-                   //TRIM(I2S(partag))//' to keyword: '//TRIM(Name),Level=7)
+                   //I2S(partag)//' to keyword: '//TRIM(Name),Level=7)
                IF(.NOT. ScanOnly ) CALL ListParTagKeyword( List, Name, partag ) 
+               partag = 0
              END IF
              ! Add tag so we know to divide this keyword by the entity integral 
              IF( disttag ) THEN               
                IF(.NOT. ScanOnly ) CALL ListDistTagKeyword( List, Name )
+               disttag = .FALSE.
              END IF             
                           
              EXIT
@@ -1961,14 +2074,16 @@ CONTAINS
                      ALLOCATE(IValues(n1))
                    END IF
                  END IF
-                 
+
                  k = 0
                  DO i=1,N1
+                   ! Find first empty space at "k"
                    DO WHILE( k <= slen )
-                      k = k + 1
-                      IF ( str(k:k) == ' ') EXIT
+                     k = k + 1
+                     IF ( str(k:k) == ' ') EXIT
                    END DO
 
+                   ! Find first non-empty space at "k"
                    DO WHILE( k <= slen )
                      k = k + 1
                      IF ( str(k:k) /= ' ') EXIT
@@ -1981,26 +2096,81 @@ CONTAINS
                      END IF
                      Stat = ReadAndTrim(InFileUnit,str,Echo)
                      IF ( .NOT. Stat) CALL SyntaxError( Section,Name,str )
+
                      k = 1
                      slen = LEN_TRIM(str)
                    END IF
 
-                   IF ( .NOT. ScanOnly ) THEN
-                     READ( str(k:),*,iostat=iostat ) IValues(i)
+                   ! Find first empty space at "k2"
+                   k2 = k 
+                   DO WHILE( k2 <= slen )
+                     k2 = k2 + 1
+                     IF ( str(k2:k2) == ' ') EXIT
+                   END DO
+                   k2 = k2-1
+
+                   IF( ScanOnly ) THEN
+                     IF(VERIFY(str(k:k2),'-+0123456789') /= 0) THEN
+                       CALL Fatal(Caller,'Non-numeric characters for integer '&
+                           //I2S(i)//' for keyword "'//TRIM(Name)//'": '//str(k:k2))
+                     END IF
+                   ELSE             
+                     READ( str(k:k2),*,iostat=iostat ) IValues(i)
                      IF( iostat /= 0 ) THEN
-                       CALL Fatal(Caller,'Problem reading integer keyword: '//TRIM(Name)//': '//str(k:)) 
+                       CALL Fatal(Caller,'Problem reading integer '//I2S(i)//' for keyword "'//TRIM(Name)//'": '//str(k:k2)) 
                      END IF
                    END IF
-
                  END DO
-                 IF ( .NOT. ScanOnly ) CALL ListAddIntegerArray( &
-                              List,Name,N1,IValues )
-               ELSE IF (.NOT.ScanOnly) THEN
-                 READ( str(str_beg:),*,iostat=iostat ) k 
-                 IF( iostat /= 0 ) THEN
-                   CALL Fatal(Caller,'Problem reading integer keyword: '//TRIM(Name)//': '//str(str_beg:)) 
+                 
+                 IF(k2 < slen ) THEN
+                   k2 = k2+1
+                   DO WHILE( k2 < slen )
+                     IF ( str(k2:k2) /= ' ') EXIT
+                     k2 = k2 + 1
+                   END DO
+                   IF( k2 < slen ) THEN                  
+                     IF(str(k2:slen) /= 'end') THEN
+                       CALL Fatal(Caller,'Mismatch between declared and given dimension for integer keyword "'&
+                            //TRIM(Name)//'". Ignored input: '//str(k2:slen))
+                     END IF
+                   END IF
                  END IF                 
-                 CALL ListAddInteger( List,Name,k )
+
+                 IF ( .NOT. ScanOnly ) CALL ListAddIntegerArray( List,Name,N1,IValues )
+               ELSE
+                 k = str_beg
+
+                 ! Find first empty space at "k2"
+                 k2 = k 
+                 DO WHILE( k2 <= slen )
+                   k2 = k2 + 1
+                   IF ( str(k2:k2) == ' ') EXIT
+                 END DO
+                 k2 = k2-1
+                                 
+                 IF (ScanOnly) THEN
+                   IF(VERIFY(str(k:k2),'-+0123456789') /= 0) THEN
+                     CALL Fatal(Caller,'Non-numeric characters for integer for keyword "'&
+                         //TRIM(Name)//'": '//str(k:k2))
+                   END IF
+                   k2 = k2+1
+                   DO WHILE( k2 < slen )
+                     IF ( str(k2:k2) /= ' ') EXIT
+                     k2 = k2 + 1
+                   END DO
+                   IF( k2 < slen ) THEN
+                     IF(str(k2:slen) /= 'end') THEN
+                       CALL Fatal(Caller,'Mismatch between declared and given dimension for integer keyword "'&
+                            //TRIM(Name)//'". Ignored input: '//str(k2:slen))
+                     END IF
+                   END IF
+                 ELSE
+                   READ( str(k:k2),*,iostat=iostat ) i 
+                   IF( iostat /= 0 ) THEN
+                     CALL Fatal(Caller,'Problem reading integer keyword "'//TRIM(Name)//'": '//str(k:)) 
+                   END IF
+                   CALL ListAddInteger( List,Name,i )
+                 END IF
                END IF
              END IF
              EXIT
@@ -2174,12 +2344,12 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> Loads the Gebhardt factors needed in the radiation heat transfer.
+!> Loads the Gebhart factors needed in the radiation heat transfer.
 !> This may be done externally only when the emissivities are constant.
-!> Hence there is a internal computation of Gebhardt factors that is highly optimized.
+!> Hence there is a internal computation of Gebhart factors that is highly optimized.
 !> \deprecated
 !------------------------------------------------------------------------------
-  SUBROUTINE LoadGebhardtFactors( Mesh,FileName )
+  SUBROUTINE LoadGebhartFactors( Mesh,FileName )
 !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh
     CHARACTER(LEN=*) FileName
@@ -2188,7 +2358,7 @@ CONTAINS
     INTEGER, ALLOCATABLE :: Mapping(:)
     INTEGER :: i,j,k,l,n,m,p
     REAL(KIND=dp) :: s
-    CHARACTER(LEN=MAX_STRING_LEN) :: FName
+    CHARACTER(:), ALLOCATABLE :: FName
     TYPE(Element_t), POINTER :: elm,celm
 
 !------------------------------------------------------------------------------
@@ -2200,7 +2370,7 @@ CONTAINS
     END IF
     OPEN( 1,file = TRIM(FName),err=10 )
 
-    CALL Info( 'LoadGebhardtFactors', 'Start', Level=5 )
+    CALL Info( 'LoadGebhartFactors', 'Start', Level=5 )
 
     READ(1,*) n
     ALLOCATE( mapping(n) )
@@ -2215,23 +2385,23 @@ CONTAINS
         k = mapping(k)
         l = mapping(l)
         IF ( .NOT.ASSOCIATED( &
-          mesh % elements(k) % boundaryinfo % gebhardtfactors) ) THEN
-          ALLOCATE( mesh % elements(k) % boundaryinfo % gebhardtfactors )
+          mesh % elements(k) % boundaryinfo % RadiationFactors) ) THEN
+          ALLOCATE( mesh % elements(k) % boundaryinfo % RadiationFactors )
           ALLOCATE(  &
-          mesh % elements(k) % boundaryinfo % gebhardtfactors % factors(m), &
-          mesh % elements(k) % boundaryinfo % gebhardtfactors % elements(m) )
-          mesh % elements(k) % boundaryinfo % gebhardtfactors % numberoffactors = m
-        ELSE IF ( mesh % elements(k) % boundaryinfo % gebhardtfactors % numberoffactors/=m ) THEN
+          mesh % elements(k) % boundaryinfo % RadiationFactors % factors(m), &
+          mesh % elements(k) % boundaryinfo % RadiationFactors % elements(m) )
+          mesh % elements(k) % boundaryinfo % RadiationFactors % numberoffactors = m
+        ELSE IF ( mesh % elements(k) % boundaryinfo % RadiationFactors % numberoffactors/=m ) THEN
           DEALLOCATE(  &
-          mesh % elements(k) % boundaryinfo % gebhardtfactors % factors, &
-          mesh % elements(k) % boundaryinfo % gebhardtfactors % elements )
+          mesh % elements(k) % boundaryinfo % RadiationFactors % factors, &
+          mesh % elements(k) % boundaryinfo % RadiationFactors % elements )
           ALLOCATE(  &
-          mesh % elements(k) % boundaryinfo % gebhardtfactors % factors(m), &
-          mesh % elements(k) % boundaryinfo % gebhardtfactors % elements(m) )
-          mesh % elements(k) % boundaryinfo % gebhardtfactors % numberoffactors = m
+          mesh % elements(k) % boundaryinfo % RadiationFactors % factors(m), &
+          mesh % elements(k) % boundaryinfo % RadiationFactors % elements(m) )
+          mesh % elements(k) % boundaryinfo % RadiationFactors % numberoffactors = m
         END IF
-        mesh % elements(k) % boundaryinfo % gebhardtfactors % numberofimplicitfactors = &
-            mesh % elements(k) % boundaryinfo % gebhardtfactors % numberoffactors
+        mesh % elements(k) % boundaryinfo % RadiationFactors % numberofimplicitfactors = &
+            mesh % elements(k) % boundaryinfo % RadiationFactors % numberoffactors
       END DO
     END DO
 
@@ -2249,24 +2419,24 @@ CONTAINS
         READ(1,*) k,l,s
         k = mapping(k)
         l = mapping(l)
-        mesh % elements(k) % boundaryinfo % gebhardtfactors % elements(j) = l
-        mesh % elements(k) % boundaryinfo % gebhardtfactors % factors(j)  = s
+        mesh % elements(k) % boundaryinfo % RadiationFactors % elements(j) = l
+        mesh % elements(k) % boundaryinfo % RadiationFactors % factors(j)  = s
       END DO
     END DO
 
     DEALLOCATE(mapping)
     CLOSE(1)
 
-    CALL Info( 'LoadGebhardtFactors', '...Done', Level=5 )
+    CALL Info( 'LoadGebhartFactors', '...Done', Level=5 )
 
     RETURN
 
 10  CONTINUE
 
-    WRITE( Message, * ) 'Can not open file for GebhardtFactors: ',TRIM(FileName)
-    CALL Fatal( 'LoadGebhardtFactors', Message )
+    WRITE( Message, * ) 'Can not open file for GebhartFactors: ',TRIM(FileName)
+    CALL Fatal( 'LoadGebhartFactors', Message )
 
-  END SUBROUTINE LoadGebhardtFactors
+  END SUBROUTINE LoadGebhartFactors
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
@@ -2279,8 +2449,8 @@ CONTAINS
      LOGICAL :: Found
      TYPE(Mesh_t), POINTER :: Mesh
      REAL(KIND=dp) :: x,y,z
-     CHARACTER(LEN=MAX_NAME_LEN) :: csys
      INTEGER :: Mesh_dim, Model_dim
+     CHARACTER(:), ALLOCATABLE :: csys
      
      csys = ListGetString( Model % Simulation, 'Coordinate System', Found )
      IF ( .NOT. Found ) Csys = 'cartesian'
@@ -2359,7 +2529,7 @@ CONTAINS
     TYPE(Model_t), POINTER :: Model
 !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh,Mesh1,NewMesh,OldMesh,SerialMesh
-    INTEGER :: i,j,k,s,nlen,eqn,MeshKeep,MeshLevels,nprocs,ModuloMesh
+    INTEGER :: i,j,k,s,nlen,eqn,MeshKeep,MeshLevels,nprocs,ModuloMesh,iostat
     LOGICAL :: GotIt,GotMesh,found,OneMeshName, OpenFile, Transient
     LOGICAL :: stat, single, MeshGrading
     TYPE(Solver_t), POINTER :: Solver
@@ -2367,13 +2537,13 @@ CONTAINS
     INTEGER, TARGET :: Def_Dofs(10,6)
     REAL(KIND=dp) :: MeshPower
     REAL(KIND=dp), POINTER :: h(:)
-    CHARACTER(LEN=MAX_NAME_LEN) :: Name,ElementDef,ElementDef0
     CHARACTER(LEN=MAX_NAME_LEN) :: MeshDir,MeshName
+    CHARACTER(:), ALLOCATABLE :: Name, ElementDef, str
+    LOGICAL :: Parallel
     TYPE(valuelist_t), POINTER :: lst
     INTEGER, ALLOCATABLE :: EdgeDOFs(:),FaceDOFs(:)
-    LOGICAL :: Parallel
 
-    CHARACTER(LEN=MAX_NAME_LEN) :: MeshNames(MAX_MESHES)
+    CHARACTER(LEN=MAX_NAME_LEN) :: MeshNames(MAX_MESHES), ElementDef0
     INTEGER :: MeshCount, MeshI
     LOGICAL, ALLOCATABLE :: MeshSolvers(:,:)
 !------------------------------------------------------------------------------
@@ -2457,12 +2627,20 @@ CONTAINS
 #endif
 
     INQUIRE( Unit=InFileUnit, OPENED=OpenFile )
-    IF ( .NOT. OpenFile ) OPEN( Unit=InFileUnit, File=Modelname, STATUS='OLD' )
+    IF ( .NOT. OpenFile ) THEN
+      OPEN( Unit=InFileUnit, File=Modelname, STATUS='OLD',IOSTAT=iostat)
+      IF(iostat /= 0) CALL Fatal('LoadModel','Failed to open Model file: '//TRIM(Modelname))
+    END IF
     CALL LoadInputFile( Model,InFileUnit,ModelName,MeshDir,MeshName, .TRUE., .TRUE. )
     REWIND( InFileUnit )
     CALL LoadInputFile( Model,InFileUnit,ModelName,MeshDir,MeshName, .TRUE., .FALSE. )
     IF ( .NOT. OpenFile ) CLOSE( InFileUnit )
 
+#ifdef DEVEL_LISTUSAGE 
+    ! Switch original keywords from -1 to 0 if in this mode.
+    CALL ReportListCounters( Model, 1 )
+#endif
+             
     ! These are here to provide possibility to create tags for keywords
     ! using suffixes. The new way would be to use prefix -dist.
     ! The idea is to have a generic way to determine which keywords
@@ -2479,6 +2657,26 @@ CONTAINS
 
     Def_Dofs = -1; Def_Dofs(:,1)=1
 
+    ! Some *_Init0 solvers increase the count Model % NumberOfSolvers on the fly.
+    ! Therefore we need to execute these solvers first, so that the allocation
+    ! size of the array MeshSolvers can be known.
+    i = 1
+    DO WHILE(i<=Model % NumberOfSolvers)
+
+      Solver => Model % Solvers(i)
+      Model % Solver => Solver
+      
+      Name = ListGetString( Solver % Values, 'Procedure', Found )
+      IF ( Found ) THEN
+        InitProc = GetProcAddr( TRIM(Name)//'_Init0', abort=.FALSE. )
+        IF ( InitProc /= 0 ) THEN
+          CALL ExecSolver( InitProc, Model, Solver, &
+                  Solver % dt, Transient )
+        END IF
+      END IF
+      i = i + 1
+    END DO
+
     ALLOCATE(MeshSolvers(MAX_MESHES, Model % NumberOfSolvers))
     MeshSolvers = .FALSE.
 
@@ -2488,18 +2686,6 @@ CONTAINS
 
       Solver => Model % Solvers(i)
       Model % Solver => Solver
-
-      Name = ListGetString( Solver % Values, 'Procedure', Found )
-      IF ( Found ) THEN
-        InitProc = GetProcAddr( TRIM(Name)//'_Init0', abort=.FALSE. )
-        IF ( InitProc /= 0 ) THEN
-          CALL ExecSolver( InitProc, Model, Solver, &
-                  Solver % dt, Transient )
-
-          Solver => Model % Solvers(i)
-          Model % Solver => Solver
-        END IF
-      END IF
 
       Name = ListGetString(Solver % Values, 'Mesh',GotMesh)
       IF(GotMesh) THEN
@@ -2543,7 +2729,7 @@ CONTAINS
       ! Note that the element sets associated with the indices 9 and 10 are only used to check
       ! the number of facewise bubbles in 3D, so in this case only the entries Def_Dofs(9,:,5)
       ! and Def_Dofs(10,:,5) affect the execution. In addition, currently the case 
-      ! Solver % Def_Dofs(:,:,1) > 1 leads to an error.
+      ! Solver % Def_Dofs(:,:,1) > 1 has additional limitations.
       !
       ! This function also uses a local variable Def_Dofs(:,:) which is similar to
       ! Solver % Def_Dofs(:,:,:) but it uses reduced indexing by omitting bodywise dependencies. 
@@ -2608,7 +2794,7 @@ CONTAINS
     !--------------------------------------------------------
     Name = ListGetString( Model % Simulation, 'Mesh', GotIt )
     IF(PRESENT(MeshIndex)) THEN
-      IF ( MeshIndex>0 )Name = TRIM(Name)//TRIM(I2S(MeshIndex))
+      IF ( MeshIndex>0 )Name = TRIM(Name)//I2S(MeshIndex)
     END IF
 
     OneMeshName = .FALSE.
@@ -2642,7 +2828,7 @@ CONTAINS
       MeshName(i:i) = CHAR(0)
     ELSE
       IF(PRESENT(MeshIndex)) THEN
-        IF(MeshIndex>0) MeshName = MeshName(1:LEN_TRIM(MeshName)-1) // TRIM(I2S(MeshIndex))//CHAR(0)
+        IF(MeshIndex>0) MeshName = MeshName(1:LEN_TRIM(MeshName)-1) // I2S(MeshIndex)//CHAR(0)
       END IF
     END IF
 
@@ -2720,13 +2906,13 @@ CONTAINS
 
       IF( MeshLevels > 1 ) THEN
         CALL Info('LoadModel','Creating hierarchy of meshes by mesh multiplication: '&
-            //TRIM(I2S(MeshLevels)))
+            //I2S(MeshLevels))
       END IF
       MeshKeep = ListGetInteger( Model % Simulation, 'Mesh keep',  GotIt )
       IF ( .NOT. GotIt ) MeshKeep = MeshLevels
 
       IF( MeshLevels > 1 ) THEN
-        CALL Info('LoadMesh','Keeping number of meshes: '//TRIM(I2S(MeshKeep)),Level=8)
+        CALL Info('LoadModel','Keeping number of meshes: '//I2S(MeshKeep),Level=8)
       END IF
       
       MeshPower   = ListGetConstReal( Model % Simulation, 'Mesh Grading Power',GotIt)
@@ -2791,7 +2977,8 @@ CONTAINS
       END IF
 
       IF( MeshLevels > 1 ) THEN
-      !  CALL PrepareMesh( Model, NewMesh, ParEnv % PEs > 1 )        
+        ! This has been commented out, but is needed. There may be some issues in parallel still...
+        CALL PrepareMesh( Model, NewMesh, ParEnv % PEs > 1 )        
       END IF
     
       
@@ -2837,7 +3024,7 @@ CONTAINS
       END DO
 
       IF(PRESENT(MeshIndex)) THEN
-        IF ( MeshIndex>0 )Name = TRIM(Name)//TRIM(I2S(MeshIndex))
+        IF ( MeshIndex>0 )Name = TRIM(Name)//I2S(MeshIndex)
       END IF
 
       IF( GotIt ) THEN
@@ -2847,7 +3034,8 @@ CONTAINS
         single = .FALSE.     
         IF ( SEQL(Name, '-single ') ) THEN
           single=.TRUE.          
-          Name=Name(9:)
+          str = Name(9:)
+          Name = str
           IF( ParEnv % PEs > 1 ) THEN
             CALL Info('LoadModel','Whole mesh will be read for each partition!',Level=7)
           END IF
@@ -2858,13 +3046,14 @@ CONTAINS
           READ( Name(7:), * ) nprocs
           IF( ParEnv % PEs > 1 ) THEN
             CALL Info('LoadModel','This mesh is only active at partitions: '&
-                //TRIM(I2S(nprocs)),Level=7)
+                //I2S(nprocs),Level=7)
           END IF 
           i = 7
           DO WHILE(Name(i:i)/=' ')
            i=i+1
           END DO
-          Name=Name(i+1:)
+          str = Name(i+1:) ! allocatable string bug in some gcc-versions
+          Name = str       !                 ....
         END IF
 
         OneMeshName = .FALSE.
@@ -2938,6 +3127,7 @@ CONTAINS
         END IF
 
         Def_Dofs = -1
+        Def_Dofs(:,1) = 1
         DO k=1,Model % NumberOfSolvers
           IF(MeshSolvers(MeshI,k)) THEN
             DO i=1,6
@@ -3047,7 +3237,7 @@ CONTAINS
         ELSE
           Model % Meshes => Solver % Mesh
         END IF
-      END IF
+      END IF  ! "Mesh" given for Solver
     END DO
 
     CALL SetCoordinateSystem( Model )
@@ -3065,10 +3255,46 @@ CONTAINS
       Mesh => Mesh % Next      
     END DO
 
+
+    CALL TagRadiationSolver() 
+    
 !------------------------------------------------------------------------------
 
   CONTAINS
 
+    ! Set radiation solver tag to one heat equation.
+    !--------------------------------------------------
+    SUBROUTINE TagRadiationSolver()
+      TYPE(ValueList_t), POINTER :: Params
+
+      ! Radiation solver tag already exists?
+      IF( ListGetLogicalAnySolver( Model,'Radiation Solver') ) RETURN
+      
+      DO i=1,Model % NumberOfSolvers
+        Params => Model % Solvers(i) % Values
+        str = ListGetString( Params, 'Equation' )
+        IF ( TRIM(str) == 'heat equation' ) THEN
+          CALL Info('LoadModel','Defined radition solver by Equation name "heat equation"',Level=10) 
+          CALL ListAddLogical( Params,'Radiation Solver',.TRUE.)
+          RETURN
+        ENDIF
+      END DO
+      
+      DO i=1,Model % NumberOfSolvers
+        Params => Model % Solvers(i) % Values
+        str = ListGetString(Params, 'Procedure', Found)
+        IF(.NOT. Found) CYCLE
+        j = INDEX( str,'HeatSolver')
+        IF( j > 0 ) THEN
+          CALL Info('LoadModel','Defined radiation solver by Procedure containing "HeatSolver"',Level=10) 
+          CALL ListAddLogical( Params,'Radiation Solver',.TRUE.)
+          RETURN
+        END IF
+      END DO
+
+    END SUBROUTINE TagRadiationSolver
+
+    
 !------------------------------------------------------------------------------
 !> This subroutine is used to fill Def_Dofs array of the solver structure.
 !> Note that this subroutine makes no attempt to figure out the index of
@@ -3196,9 +3422,9 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: List, ListB
     INTEGER :: i,j,k,n,nb
     LOGICAL :: Found, Flag, DoIt, DoItB
-    CHARACTER(LEN=MAX_NAME_LEN) :: Name, NameB
     REAL(KIND=dp) :: Tol = 1.0e-8
     INTEGER, POINTER :: TmpInts(:)
+    CHARACTER(:), ALLOCATABLE :: Name, NameB
     
     CALL Info('CompleteModelKeywords','Completing keywords for mortars and mechanics!',Level=12)
 
@@ -3243,7 +3469,7 @@ CONTAINS
           IF( nb /= n ) CYCLE          
           IF( Name(1:n) == NameB(1:n) ) THEN
             CALL Info('CompleteModelKeywords','Adding > Mortar BC = '&
-                //TRIM(I2S(i))//' < to boundary '//TRIM(I2S(j)),Level=5)
+                //I2S(i)//' < to boundary '//I2S(j),Level=5)
             CALL ListAddInteger( ListB,'Mortar BC',i )
             EXIT
           END IF
@@ -3270,7 +3496,7 @@ CONTAINS
           IF( nb /= n ) CYCLE
           IF( Name(1:n) == NameB(1:n) ) THEN
             CALL Info('CompleteModelKeywords','Adding > Contact BC = '&
-                //TRIM(I2S(i))//' < to boundary '//TRIM(I2S(j)),Level=5)
+                //I2S(i)//' < to boundary '//I2S(j),Level=5)
             CALL ListAddInteger( ListB,'Contact BC',i )
             EXIT
           END IF
@@ -3292,19 +3518,19 @@ CONTAINS
 
       CALL ListCompareAndCopy( List, ListB,'Mass Consistent Normals',Found )
       IF( Found ) CALL Info('CompleteModelKeywords',&
-          'Added > Mass Consistent Normals < to master BC '//TRIM(I2S(j)),Level=10)
+          'Added > Mass Consistent Normals < to master BC '//I2S(j),Level=10)
 
       CALL ListCompareAndCopy( List, ListB,'Rotational Normals',Found )
       IF( Found ) CALL Info('CompleteModelKeywords',&
-          'Added > Rotational Normals < to master BC '//TRIM(I2S(j)),Level=10)
+          'Added > Rotational Normals < to master BC '//I2S(j),Level=10)
 
       CALL ListCompareAndCopy( List, ListB,'Normal-Tangential Displacement',Found )
       IF( Found ) CALL Info('CompleteModelKeywords',&
-          'Added > Normal-Tangential Displacement < to master BC '//TRIM(I2S(j)),Level=10)
+          'Added > Normal-Tangential Displacement < to master BC '//I2S(j),Level=10)
 
       CALL ListCompareAndCopy( List, ListB,'Normal-Tangential Velocity',Found )
       IF( Found ) CALL Info('CompleteModelKeywords',&
-          'Added > Normal-Tangential Velocity < to master BC '//TRIM(I2S(j)),Level=10)
+          'Added > Normal-Tangential Velocity < to master BC '//I2S(j),Level=10)
     END DO
 
 
@@ -3321,11 +3547,11 @@ CONTAINS
         ! Ok, we need to set automated coupling
         IF( DoIt ) THEN
           CALL Info('CompleteModelKeywords','Setting automated structural coupling!')
-          CALL Info('CompleteModelKeywords','Leading structure solver has index: '//TRIM(I2S(i)),Level=6)
+          CALL Info('CompleteModelKeywords','Leading structure solver has index: '//I2S(i),Level=6)
           CALL ListAddLogical( List,'Structure-Structure Coupling',.TRUE.)
         ELSE
           CALL Info('CompleteModelKeywords','Setting automated fsi coupling!')
-          CALL Info('CompleteModelKeywords','Fluid solver has index: '//TRIM(I2S(i)),Level=6)
+          CALL Info('CompleteModelKeywords','Fluid solver has index: '//I2S(i),Level=6)
           CALL ListAddLogical( List,'Fluid-Structure Coupling',.TRUE.)
         END IF
           
@@ -3347,7 +3573,7 @@ CONTAINS
         ELSE
           CALL Fatal('CompleteModelKeywords','Cannot find the structure solver!')
         END IF
-        CALL Info('CompleteModelKeywords','Slave structure solver has index: '//TRIM(I2S(j)),Level=6)
+        CALL Info('CompleteModelKeywords','Slave structure solver has index: '//I2S(j),Level=6)
 
         NULLIFY( TmpInts )
         ALLOCATE( TmpInts(2) )
@@ -3420,11 +3646,11 @@ CONTAINS
           IF( BCMode ) THEN
             CALL ListAddIntegerArray( List,'Master Boundaries',j,MasterIndexes)
             CALL Info('CompleteModelKeywords',&
-                'Created "Master Boundaries" for '//TRIM(Name)//' of size '//TRIM(I2S(j)),Level=6)
+                'Created "Master Boundaries" for '//TRIM(Name)//' of size '//I2S(j),Level=6)
           ELSE
             CALL ListAddIntegerArray( List,'Master Bodies',j,MasterIndexes)         
             CALL Info('CompleteModelKeywords',&
-                'Created "Master Bodies" for '//TRIM(Name)//' of size '//TRIM(I2S(j)),Level=6)
+                'Created "Master Bodies" for '//TRIM(Name)//' of size '//I2S(j),Level=6)
           END IF
         ELSE
           IF( BCMode ) THEN
@@ -3437,7 +3663,16 @@ CONTAINS
         END IF
       END DO
     END BLOCK
-      
+
+    DO i=1,Model % NumberOfBCs
+      List => Model % BCs(i) % Values
+      CALL ListObsoliteFatal( List,'Transmittivity','Transmissivity') 
+    END DO
+    DO i=1,Model % NumberOfMaterials
+      List => Model % Materials(i) % Values
+      CALL ListObsoliteFatal( List,'Transmittivity','Transmissivity') 
+    END DO
+          
 
   END SUBROUTINE CompleteModelKeywords
   
@@ -3462,7 +3697,6 @@ CONTAINS
     TYPE(Element_t), POINTER :: CurrentElement
     INTEGER :: i,j,k,k2,DOFs, dates(8), n, PermSize,IsVector,SavesDone,FileCycle,FileInd
     TYPE(Variable_t), POINTER :: Var
-    CHARACTER(LEN=MAX_NAME_LEN) :: FName, PosName, DateStr, EqName, VarName
     LOGICAL :: SaveCoordinates, MoveBoundary, GotIt, SaveThis, &
         SaveGlobal, OutputVariableList, SaveIp, ThisIp, InitFile 
     INTEGER, POINTER :: PrevPerm(:) 
@@ -3471,6 +3705,7 @@ CONTAINS
     LOGICAL :: Found
     CHARACTER(1) :: E
     TYPE(ValueList_t), POINTER :: ResList
+    CHARACTER(:), ALLOCATABLE :: FName, PosName, DateStr, EqName, VarName
     CHARACTER(*), PARAMETER :: Caller = 'SaveResult'
    
     SAVE SaveCoordinates
@@ -3515,11 +3750,11 @@ CONTAINS
 #endif
     
     IF( FileCycle > 0 ) THEN
-      Fname = TRIM(Fname)//'_'//TRIM(I2S(FileInd))//'nc'
+      Fname = TRIM(Fname)//'_'//I2S(FileInd)//'nc'
     END IF
 
     IF( ParEnv % PEs > 1 ) THEN
-      Fname = TRIM(Fname)//'.'//TRIM(i2s(ParEnv % MyPE))
+      Fname = TRIM(Fname)//'.'//i2s(ParEnv % MyPE)
     END IF        
     PosName = TRIM(FName) // ".pos"
 
@@ -3602,6 +3837,7 @@ CONTAINS
               VarName = ListGetString( ResList,'Output Variable '//I2S(j), Found )
               IF( .NOT. Found ) EXIT
               k2 = LEN_TRIM(VarName)
+	      IF (len(Var % Name) < k2) CYCLE
               IF( VarName(1:k2) == Var % Name(1:k2) ) THEN
                 SaveThis = .TRUE.
                 ! This makes it possible to request saving of vectors
@@ -3787,11 +4023,13 @@ CONTAINS
          ELSE
 
            SameAsPrev = .FALSE.
-           IF ( ASSOCIATED( CurrPerm, PrevPerm ) ) THEN
-             SameAsPrev = .TRUE.
-           ELSE IF ( ASSOCIATED( PrevPerm ) ) THEN
-             IF ( SIZE(CurrPerm) == SIZE(PrevPerm) ) THEN
-               IF ( ALL( CurrPerm == PrevPerm ) ) SameAsPrev = .TRUE.
+           IF( ASSOCIATED(PrevPerm) ) THEN
+             IF ( ASSOCIATED( CurrPerm, PrevPerm ) ) THEN
+               SameAsPrev = .TRUE.
+             ELSE
+               IF ( SIZE(CurrPerm) == SIZE(PrevPerm) ) THEN
+                 IF ( ALL( CurrPerm == PrevPerm ) ) SameAsPrev = .TRUE.
+               END IF
              END IF
            END IF
 
@@ -3813,7 +4051,7 @@ CONTAINS
              n = COUNT( CurrPerm > 0 )
 
              CALL Info(Caller,'Writing Perm of size '&
-                 //TRIM(I2S(SIZE(CurrPerm)))//' with '//TRIM(I2S(n))//' nonzeros',Level=20)
+                 //I2S(SIZE(CurrPerm))//' with '//I2S(n)//' nonzeros',Level=20)
 
              IF ( Binary ) THEN
                PrevPermPos = BinFTell( OutputUnit )
@@ -3954,9 +4192,9 @@ CONTAINS
     INTEGER, OPTIONAL :: SolverId
 !------------------------------------------------------------------------------
     TYPE(Variable_t),POINTER :: Var, Comp
-    CHARACTER(LEN=MAX_NAME_LEN) :: Name,VarName,VarName2,NewName,FullName,PosName
-    CHARACTER(LEN=:), ALLOCATABLE :: Row
-    CHARACTER(LEN=MAX_STRING_LEN) :: FName,Trash
+    CHARACTER(:), ALLOCATABLE :: Name,VarName,VarName2,NewName,FullName,PosName
+    CHARACTER(LEN=:), ALLOCATABLE :: Row, RestartFileL, FName
+    CHARACTER(LEN=MAX_STRING_LEN) :: Trash
     INTEGER ::i,j,k,k2,n,nt,Node,DOFs,SavedCount,Timestep,NSDOFs,nlen
     INTEGER :: nNodes, Stat, FieldSize, PermSize, FieldSize2, PermSize2
     INTEGER, SAVE :: FmtVersion, DofCount, TotalDofs
@@ -3990,7 +4228,7 @@ CONTAINS
     CALL Info( Caller,' ', Level = 4)
     CALL Info( Caller,'--------------------------------------------', Level= 4 )
     CALL Info( Caller,'Restart for mesh name: '//TRIM(Mesh % Name), Level = 8 )
-    CALL Info( Caller,'Restart for number of nodes: '//TRIM(I2S(Mesh % NumberOfNodes)), Level = 8 )    
+    CALL Info( Caller,'Restart for number of nodes: '//I2S(Mesh % NumberOfNodes), Level = 8 )    
     IF( ASSOCIATED( Mesh % Child ) ) THEN
       CALL Info(Caller,'Skipping restart for child mesh',Level=4)
       RETURN
@@ -4004,9 +4242,10 @@ CONTAINS
     END IF
 
     j = ListGetInteger( ResList,'Restart File Cycle',Found )
+    RestartFileL = RestartFile
     IF( Found ) THEN
       IF( j == 0 ) THEN
-        FName = RestartFile
+        FName = RestartFileL
 #if 0
         IF ( .NOT. FileNameQualified(RestartFile) .AND. INDEX(RestartFile,'/') == 0 .AND. &
             LEN_TRIM(OutputPath)>0 ) THEN
@@ -4019,12 +4258,12 @@ CONTAINS
         READ( RestartUnit, '(A)', IOSTAT=iostat ) Row
         READ( RestartUnit, *, IOSTAT=iostat ) j                
         CLOSE( RestartUnit)
-        CALL Info(Caller,'Using latest saved data for restart: '//TRIM(I2S(j)),Level=6)
+        CALL Info(Caller,'Using latest saved data for restart: '//I2S(j),Level=6)
       END IF
-      RestartFile = TRIM(RestartFile)//'_'//TRIM(I2S(j))//'nc'
+      RestartFileL = RestartFileL//'_'//I2S(j)//'nc'
     END IF
-    
-    CALL Info( Caller,'Reading data from file: '//TRIM(RestartFile), Level = 4 )
+
+    CALL Info( Caller,'Reading data from file: '//TRIM(RestartFileL), Level = 4 )
     
     ! If we want to skip some of the variables we need to have a list 
     ! of their sizes still. This is particularly true with variables that 
@@ -4037,10 +4276,10 @@ CONTAINS
     END DO
     j = j - 1    
     IF( j > 0 ) THEN
-      CALL Info(Caller,'Number of variable to read is: '//TRIM(I2S(j)),Level=10)
+      CALL Info(Caller,'Number of variable to read is: '//I2S(j),Level=10)
       IF( ALLOCATED( ListVariableFound ) ) DEALLOCATE( ListVariableFound ) 
       ALLOCATE( ListVariableFound(j) )
-      CALL Info(Caller,'Reading only '//TRIM(I2S(j))//' variables given by: "Restart Variable i"',Level=10)
+      CALL Info(Caller,'Reading only '//I2S(j)//' variables given by: "Restart Variable i"',Level=10)
     ELSE
       CALL Info(Caller,'Reading all variables (if not wanted use "Restart Variable i" )',Level=10)      
     END IF
@@ -4056,17 +4295,17 @@ CONTAINS
     IF ( PRESENT( EOF ) ) EOF = .FALSE.
     IF ( Cont .AND. RestartFileOpen ) GOTO 30
 
-    FName = RestartFile
+    FName = RestartFileL
     ! By convention let us use the "Mesh DB" rather than "Results Directory" for restart.    
 #if 0    
-    IF ( .NOT. FileNameQualified(RestartFile) .AND. INDEX(RestartFile,'/') == 0 ) THEN
+    IF ( .NOT. FileNameQualified(RestartFileL) .AND. INDEX(RestartFileL,'/') == 0 ) THEN
       n = LEN_TRIM(OutputPath)
       IF( n==0 ) THEN
         CONTINUE
       ELSE IF( n==1 .AND. OutputPath(1:1) == '.') THEN
         CONTINUE
       ELSE
-        FName = TRIM(OutputPath) // '/' // TRIM(RestartFile)
+        FName = TRIM(OutputPath) // '/' // TRIM(RestartFileL)
       END IF
     END IF
 #endif
@@ -4087,8 +4326,8 @@ CONTAINS
       CALL Error( Caller,'' )
       CALL Fatal( Caller,'=======================================' )
     ELSE IF( FileCount < ParEnv % PEs ) THEN
-      CALL Info(Caller,'Succefully opened '//TRIM(I2S(FileCount))//&
-          ' restart files out of '//TRIM(I2S(ParEnv % PEs)),Level=6)
+      CALL Info(Caller,'Succefully opened '//I2S(FileCount)//&
+          ' restart files out of '//I2S(ParEnv % PEs),Level=6)
       IF( ListGetLogical( ResList,'Restart Error Continue',Found ) ) THEN
         ! This partition does not have a mesh
         IF( iostat /= 0 ) RETURN 
@@ -4139,9 +4378,9 @@ CONTAINS
     END IF
     
     IF( Binary ) THEN
-      CALL Info( Caller,'Reading binary restart file version '//TRIM(I2S(FmtVersion)), Level = 4)
+      CALL Info( Caller,'Reading binary restart file version '//I2S(FmtVersion), Level = 4)
     ELSE
-      CALL Info( Caller,'Reading ascii restart file version '//TRIM(I2S(FmtVersion)), Level = 4)
+      CALL Info( Caller,'Reading ascii restart file version '//I2S(FmtVersion), Level = 4)
     END IF
 
     IF( FmtVersion < 3 .AND. ListVariableCount > 0 ) THEN      
@@ -4162,7 +4401,7 @@ CONTAINS
       END IF
     END DO
     REWIND( RestartUnit )    
-    CALL Info(Caller,'Total number of dofs in restart file: '//TRIM(I2S(TotalDofs)), Level = 5)
+    CALL Info(Caller,'Total number of dofs in restart file: '//I2S(TotalDofs), Level = 5)
 
     ! Components are:
     ! FieldSize, PermSize, Load?, SolverId
@@ -4269,8 +4508,8 @@ CONTAINS
           CALL Fatal(Caller,'Error reading size information: '//TRIM(Row(j+1:nlen)))
         END IF
 
-        CALL Info(Caller,'Size of the field to load: '//TRIM(I2S(FieldSize)),Level=20)
-        CALL Info(Caller,'Size of the permutation vector to load: '//TRIM(I2S(PermSize)),Level=20)
+        CALL Info(Caller,'Size of the field to load: '//I2S(FieldSize),Level=20)
+        CALL Info(Caller,'Size of the permutation vector to load: '//I2S(PermSize),Level=20)
         
         ! Read the name of the solver and associate it to existing solver
         !----------------------------------------------------------------
@@ -4290,7 +4529,7 @@ CONTAINS
         END DO
 
         IF( Found ) THEN
-          CALL Info(Caller,'Associated variable to solver using Eq: '//TRIM(I2S(i)),Level=20)
+          CALL Info(Caller,'Associated variable to solver using Eq: '//I2S(i),Level=20)
         ELSE IF( PermSize > 0 ) THEN
           IF( PRESENT( SolverId ) ) THEN
             i = SolverId
@@ -4301,7 +4540,7 @@ CONTAINS
               IF( .NOT. ListCheckPresent( CurrentModel % Solvers(i) % Values,'Mesh') ) EXIT
             END DO
           END IF
-          CALL Info(Caller,'Associated variable to solver using Mesh: '//TRIM(I2S(i)),Level=20)
+          CALL Info(Caller,'Associated variable to solver using Mesh: '//I2S(i),Level=20)
           Solver => CurrentModel % Solvers(i)
         END IF
       END IF
@@ -4314,7 +4553,7 @@ CONTAINS
         FileVariableInfo(DofCount,2) = PermSize
       END IF
         
-      k = LEN_TRIM( VarName )
+      k = LEN_TRIM(VarName)
       IF( k == 0 ) THEN
         CALL Warn(Caller,'Could not deduce variable name!')
         CYCLE 
@@ -4327,17 +4566,17 @@ CONTAINS
       ! If list is give check that variable is on the list.
       !---------------------------------------------------------------------------
       IF( ListVariableCount > 0  ) THEN
-        LoadThis = .FALSE.
         DO j=1,ListVariableCount
+          LoadThis = .FALSE.
           VarName2 = ListGetString( ResList,'Restart Variable '//I2S(j), Found )
           IF( .NOT. Found ) EXIT
           k2 = LEN_TRIM(VarName2)
 
-          IF( VarName2(1:k2) == VarName(1:k2) ) THEN
+          IF( VarName2(1:k2) == VarName(1:MIN(k,k2)) ) THEN
             LoadThis = .TRUE.
             ! This makes it possible to request loading of vectors
             ! so that also all the corresponding scalar components (1,2,3,...) are saved. 
-            IF( k > k2 ) LoadThis = ( VERIFY( VarName(k2+1:k),' 0123456789') == 0 )             
+            IF( k>k2 ) LoadThis = ( VERIFY( VarName(k2+1:k),' 0123456789') == 0 )             
             IF( LoadThis ) THEN
               ListVariableFound(j) = .TRUE.
               EXIT
@@ -4345,6 +4584,7 @@ CONTAINS
           END IF
         END DO        
         IF(.NOT. LoadThis ) CYCLE
+
 
         NewName = ListGetString( ResList,'Target Variable '//I2S(j), Found ) 
         IF( Found ) THEN
@@ -4367,26 +4607,26 @@ CONTAINS
 
         IF( Dofs /= Var % Dofs ) THEN
           CALL Fatal(Caller,'Fields have different number of components ('&
-              //TRIM(I2S(Dofs))//' vs. '//TRIM(I2S(Var % Dofs))//'): '//TRIM(VarName))
+              //I2S(Dofs)//' vs. '//I2S(Var % Dofs)//'): '//TRIM(VarName))
         END IF
 
         IF( FieldSize /= SIZE( Var % Values ) ) THEN
           CALL Warn(Caller,'Fields are of different size ('&
-              //TRIM(I2S(FieldSize))//' vs. '//TRIM(I2S(SIZE(Var % Values)))//'): '//TRIM(VarName))
+              //I2S(FieldSize)//' vs. '//I2S(SIZE(Var % Values))//'): '//TRIM(VarName))
         ELSE
-          CALL Info(Caller,'Fields sizes '//TRIM(I2S(FieldSize))//' match for: '//TRIM(VarName),Level=20)         
+          CALL Info(Caller,'Fields sizes '//I2S(FieldSize)//' match for: '//TRIM(VarName),Level=20)         
         END IF
         
         IF(ASSOCIATED(Var % Perm)) THEN
           IF( PermSize /= SIZE( Var % Perm ) ) THEN
             CALL Warn(Caller,'Permutations are of different size ('&
-                //TRIM(I2S(PermSize))//' vs. '//TRIM(I2S(SIZE(Var % Perm)))//'): '//TRIM(VarName))
+                //I2S(PermSize)//' vs. '//I2S(SIZE(Var % Perm))//'): '//TRIM(VarName))
           ELSE
-            CALL Info(Caller,'Permutation sizes '//TRIM(I2S(PermSize))//' match for: '//TRIM(VarName),Level=20)
+            CALL Info(Caller,'Permutation sizes '//I2S(PermSize)//' match for: '//TRIM(VarName),Level=20)
           END IF
         ELSE IF(PermSize > 0) THEN
           CALL Warn(Caller,'Existing variable defined without perm: '&
-              //TRIM(VarName)//' but size in restart file is: '//TRIM(I2S(PermSize)))
+              //TRIM(VarName)//' but size in restart file is: '//I2S(PermSize))
         END IF
       ELSE IF( CreateVariables ) THEN
         CALL Info(Caller,'Creating variable: '//TRIM(NewName),Level=6)
@@ -4576,7 +4816,7 @@ CONTAINS
           ELSE
             n = FieldSize
           END IF
-          CALL Info(Caller,'Size of load loop is '//TRIM(I2S(n)),Level=15)
+          CALL Info(Caller,'Size of load loop is '//I2S(n),Level=15)
 
           ! If we are renaming the variable also then do it
           j = FileVariableInfo(i,4) 
@@ -4705,7 +4945,7 @@ CONTAINS
 
     DO j=1,ListVariableCount
       IF( .NOT. ListVariableFound(j) ) THEN
-        CALL Warn(Caller,'Could not find restart variable: '//TRIM(I2S(j)))
+        CALL Warn(Caller,'Could not find restart variable: '//I2S(j))
       END IF
     END DO
     
@@ -4766,7 +5006,7 @@ CONTAINS
             IF ( PRESENT(FoundTStep) ) FoundTStep = TimeStep
          ELSE
             CALL Warn( Caller,&
-                 'Did not find the the requested timestep in the positions file;' )
+                 'Did not find the requested timestep in the positions file;' )
             CALL Warn( Caller,'using the last found one instead.')
             Offset2 = -TimeStepSize + VarNr*8
             CALL BinFSeek( PosUnit, Offset2 , BIN_SEEK_END )
@@ -4844,8 +5084,8 @@ CONTAINS
       INTEGER, ALLOCATABLE :: Perm(:)
       LOGICAL :: GotPerm
       INTEGER :: nPerm, nPositive, i, j, k
-      CHARACTER(MAX_NAME_LEN) :: Row
       INTEGER(Int8_k) :: Pos
+      CHARACTER(MAX_NAME_LEN) :: Row
 
       GotPerm = .FALSE.
       IF ( Binary ) THEN
@@ -4892,7 +5132,7 @@ CONTAINS
         END IF
       END IF
       IF( .NOT. ALLOCATED( Perm ) ) THEN
-        CALL Info(Caller,'Allocating permutation vector of size: '//TRIM(I2S(nPerm)),Level=15)
+        CALL Info(Caller,'Allocating permutation vector of size: '//I2S(nPerm),Level=15)
         ALLOCATE( Perm(nPerm) )
       END IF
       Perm = 0
@@ -4965,7 +5205,7 @@ CONTAINS
      CHARACTER(LEN=*) :: Name
      TYPE(Mesh_t),  POINTER :: TopMesh,PrimaryMesh
      !------------------------------------------------------------------------------
-     CHARACTER(LEN=MAX_NAME_LEN) :: tmpname
+     CHARACTER(:), ALLOCATABLE :: tmpname
      INTEGER :: i
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(Variable_t), POINTER :: Var,Var1
@@ -5045,8 +5285,8 @@ CONTAINS
     TYPE(Element_t), POINTER :: CurrentElement
     TYPE(Variable_t), POINTER :: Var,Var1,Displacement,MeshUpdate,MaskVar
 
-    CHARACTER(LEN=:), ALLOCATABLE :: Row
-    CHARACTER(MAX_NAME_LEN) :: Str, DateStr
+    CHARACTER(MAX_NAME_LEN) :: Str
+    CHARACTER(LEN=:), ALLOCATABLE :: Row, DateStr
 
     LOGICAL :: gotIt, SaveCoordinates, MoveBoundary, MeshMoved, MaskExists
 
@@ -5055,7 +5295,10 @@ CONTAINS
         NumberOfNodes, NumberOfElements, ind, nDOFs, MeshDim, Nzeros
     INTEGER, POINTER :: MaskPerm(:), MaskOrder(:)
 !------------------------------------------------------------------------------
-
+    
+    IF( INDEX( PostFile,'.vtu' ) /= 0 ) RETURN
+    !IF( INDEX( PostFile,'.ep' ) == 0 ) RETURN
+    
     IF( Model % Mesh % SavesDone == 0 ) THEN
       CALL Info('WritePostFile','Saving results in ElmerPost format to file '//TRIM(PostFile))
     END IF
@@ -5889,7 +6132,7 @@ SUBROUTINE GetNodalElementSize(Model,expo,noweight,h)
   Solver % Variable=>VariableGet(Mesh % Variables,'nodal h',ThisOnly=.TRUE.)
 
   IF ( ParEnv % PEs>1 ) THEN
-    IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % NodeInterface) ) THEN
+    IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % GInterface) ) THEN
       ParEnv % ActiveComm = ELMER_COMM_WORLD
 
       ALLOCATE(ParEnv % Active(ParEnv % PEs))
@@ -6136,7 +6379,7 @@ END SUBROUTINE GetNodalElementSize
 
    CALL Info('FreeModel','Freeing solvers',Level=15)  
    DO i=1,Model % NumberOfSolvers
-     CALL Info('FreeModel','Solver: '//TRIM(I2S(i)),Level=20)
+     CALL Info('FreeModel','Solver: '//I2S(i),Level=20)
      CALL FreeSolver(Model % Solvers(i))
    END DO
    DEALLOCATE(Model % Solvers)
@@ -6191,14 +6434,12 @@ END SUBROUTINE GetNodalElementSize
    CHARACTER(LEN=MAX_STRING_LEN) :: cmd, tmp_str, tcmd, ttmp_str
 
    DO i=1,NoParam
-     WRITE( cmd, * ) 'rpar('//TRIM(i2s(i-1))//')=', Param(i)
-     j = LEN_TRIM(cmd)
+     WRITE( cmd, * ) 'rpar('//i2s(i-1)//')=', Param(i)
      !$OMP PARALLEL DEFAULT(NONE) &
      !$OMP SHARED(cmd, tmp_str, j ) &
      !$OMP PRIVATE(tcmd, ttmp_str, tj)
-     tj = j
      tcmd = cmd               
-     CALL matc( tcmd, ttmp_str, tj )
+     tj = matc(tcmd, ttmp_str)
      !$OMP END PARALLEL
    END DO
 
@@ -6241,14 +6482,12 @@ END SUBROUTINE GetNodalElementSize
    CHARACTER(LEN=MAX_STRING_LEN) :: cmd, tmp_str, tcmd, ttmp_str
 
    DO i=1,NoParam
-     WRITE( cmd, * ) 'ipar('//TRIM(i2s(i-1))//')=', Param(i)
-     j = LEN_TRIM(cmd)
+     WRITE( cmd, * ) 'ipar('//i2s(i-1)//')=', Param(i)
      !$OMP PARALLEL DEFAULT(NONE) &
      !$OMP SHARED(cmd, tmp_str, j ) &
      !$OMP PRIVATE(tcmd, ttmp_str, tj)
-     tj = j
      tcmd = cmd               
-     CALL matc( tcmd, ttmp_str, tj )
+     tj = matc(tcmd, ttmp_str)
      !$OMP END PARALLEL
    END DO
 

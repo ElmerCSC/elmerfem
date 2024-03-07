@@ -78,7 +78,7 @@ int main(int argc, char *argv[])
 
   showmem = TRUE;
 
-  printf("\nStarting program Elmergrid\n");
+  printf("\nStarting program Elmergrid, compiled on %s\n", __DATE__ );
 
   InitParameters(&eg);
 
@@ -539,7 +539,7 @@ int main(int argc, char *argv[])
 	    DestroyKnots(&data[k]);
 	    free(cell[k]);
 	    
-	    if(info) printf("Iteration %d of elements number targiting %d in 2D\n",
+	    if(info) printf("Iteration %d of elements number targeting %d in 2D\n",
 			    elementsredone,grids[k].wantedelems);
 	    goto redoelements;
 	  }

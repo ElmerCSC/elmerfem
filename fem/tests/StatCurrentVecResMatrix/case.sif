@@ -43,8 +43,10 @@ Solver 1
 !  Constraint Modes Analysis = Logical True
 !  Constraint Modes Lumped = Logical True
 !  Constraint Modes Fluxes = Logical True
-!  Constraint Modes Fluxes Symmetric = Logical True
-!  Constraint Modes Fluxes Filename = File "ConductivityMatrix.dat"
+!  Constraint Modes Matrix Symmetric = Logical True
+!  Constraint Modes Matrix Filename = File "ConductivityMatrix.dat"
+  Constraint Modes Matrix Norm = Logical True
+
 
   Linear System Solver = Iterative
   Linear System Iterative Method = BiCGStab
@@ -55,6 +57,16 @@ Solver 1
 
   Nonlinear System Max Iterations = 1
 End
+
+! This solver is just to provide the Nrm for the test
+Solver 2
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+
+  Show Norm Name = String "res: potential lumped matrix norm" 
+  Filename = f.dat
+End 
+
 
 Material 1
   Electric Conductivity = 1.0
@@ -90,7 +102,9 @@ Boundary Condition 6
   Conductivity Body = Integer 5
 End
 
-Solver 1 :: Reference Norm = Real 0.27012653
+Solver 1 :: Reference Norm = 0.27012653
+Solver 2 :: Reference Norm = 5.08829854E+01
+
 
 !End Of File
 

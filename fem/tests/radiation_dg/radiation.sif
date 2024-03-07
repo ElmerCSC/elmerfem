@@ -87,7 +87,7 @@ Solver 1
   Nonlinear System Newton After Iterations = 1
   Nonlinear System Newton After Tolerance = 0.1
   Nonlinear System Max Iterations = 50
-  NonLinear System Convergence Tolerance = 1.0e-6
+  NonLinear System Convergence Tolerance = 1.0e-7
   Nonlinear System Relaxation Factor = 0.5
 
   Viewfactor Binary Output = Logical True
@@ -117,4 +117,4 @@ Boundary Condition 3
   Temperature = 100.0
 End
 
-Solver 1 :: Reference Norm = 1.92523232E+02
+Solver 1 :: Reference Norm = 1.92466790E+02

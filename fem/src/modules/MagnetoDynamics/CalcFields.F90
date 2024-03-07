@@ -53,7 +53,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
   INTEGER, POINTER :: Active(:)
   INTEGER :: mysolver,i,j,k,l,n,m,vDOFs, soln,pIndex
   TYPE(ValueList_t), POINTER :: SolverParams, DGSolverParams
-  TYPE(Solver_t), POINTER :: Solvers(:), PSolver
+  TYPE(Solver_t), POINTER :: Solvers(:)
 
   ! This is really using DG so we don't need to make any dirty tricks to create DG fields
   ! as is done in this initialization. 
@@ -141,9 +141,13 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
     CALL Info('MagnetoDynamicsCalcFields_Init0','The target solver seems to be complex valued',Level=12)
   END IF
 
+  IF( GetLogical(Model % Solvers(pIndex) % Values, 'Eigen Analysis', Found) ) THEN
+    CALL ListAddNewLogical( SolverParams,'Eigen Analysis',.TRUE.)
+  END IF
+  
   CALL ListAddNewLogical( SolverParams, 'Target Variable Real Field', RealField )   
   CALL Info('MagnetoDynamicsCalcFields_Init0','Target Variable Solver Index: '&
-    //TRIM(I2S(pIndex)),Level=12)
+    //I2S(pIndex),Level=12)
   CALL ListAddNewInteger( SolverParams, 'Target Variable Solver Index', pIndex ) 
   
 !------------------------------------------------------------------------------
@@ -168,7 +172,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
 
   INTEGER  :: i, dim, fdim
   LOGICAL :: Found, FluxFound, NodalFields, ElementalFields, &
-      RealField, ComplexField, LorentzConductivity, DoIt
+      RealField, ComplexField, LorentzConductivity, DoIt, VtuStyle
   TYPE(ValueList_t), POINTER :: EQ, SolverParams
 
   LorentzConductivity = ListCheckPrefixAnyBodyForce(Model, "Angular Velocity") .or. &
@@ -183,10 +187,18 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
   
   ! Inherit this from the _init0 solver. Hence we know it must exist!
   RealField = ListGetLogical( SolverParams,'Target Variable Real Field') 
-  ComplexField = .NOT. RealField
-  
+
+  ! We have some challenges in plotting eigenvalues for vtu if the fields are of size
+  ! 6 and have real and imaginary parts living separately. 
+  VtuStyle = ListGetLogical( SolverParams,'Vtu Style', Found )
+  IF(VtuStyle) RealField = .TRUE.
+
+  ComplexField = .NOT. RealField  
+   
   CALL ListAddString( SolverParams, 'Variable', '-nooutput hr_dummy' )
- 
+
+  !CALL ListAddNewLogical( SolverParams,'Skip Compute Nonlinear Change',.TRUE.)
+  
   CALL ListAddLogical( SolverParams, 'Linear System refactorize', .FALSE.)
 
   ! add these in the beginning, so that SaveData sees these existing, even
@@ -226,7 +238,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
   
   i=1
   DO WHILE(.TRUE.)
-    IF ( .NOT. ListCheckPresent(SolverParams,"Exported Variable "//TRIM(i2s(i))) ) EXIT
+    IF ( .NOT. ListCheckPresent(SolverParams,"Exported Variable "//i2s(i)) ) EXIT
     i = i + 1
   END DO
   i = i - 1
@@ -239,22 +251,22 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
       i = i + 1
 
       IF ( RealField ) THEN
-        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-            "Magnetic Flux Density[Magnetic Flux Density:"//TRIM(I2S(fdim))//"]" )
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
+            "Magnetic Flux Density[Magnetic Flux Density:"//I2S(fdim)//"]" )
       ELSE
-        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-            "Magnetic Flux Density[Magnetic Flux Density re:"//TRIM(I2S(fdim))//&
-            " Magnetic Flux Density im:"//TRIM(I2S(fdim))//"]" )
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
+            "Magnetic Flux Density[Magnetic Flux Density re:"//I2S(fdim)//&
+            " Magnetic Flux Density im:"//I2S(fdim)//"]" )
       END IF
     END IF
       
     IF (GetLogical(SolverParams,'Calculate Magnetic Vector Potential',Found)) THEN
       i = i + 1
       IF ( RealField ) THEN
-        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
             "Magnetic Vector Potential[Magnetic Vector Potential:3]" )
       ELSE
-        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
             "Magnetic Vector Potential[Magnetic Vector Potential re:3 Magnetic Vector Potential im:3]")
       END IF
     END IF
@@ -262,22 +274,22 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
     IF (GetLogical(SolverParams,'Calculate Magnetic Field Strength',Found)) THEN
       i = i + 1
       IF ( RealField ) THEN
-        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-            "Magnetic Field Strength[Magnetic Field Strength:"//TRIM(I2S(fdim))//"]" )
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
+            "Magnetic Field Strength[Magnetic Field Strength:"//I2S(fdim)//"]" )
       ELSE
-        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-            "Magnetic Field Strength[Magnetic Field Strength re:"//TRIM(I2S(fdim))//&
-            " Magnetic Field Strength im:"//TRIM(I2S(fdim))//"]")
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
+            "Magnetic Field Strength[Magnetic Field Strength re:"//I2S(fdim)//&
+            " Magnetic Field Strength im:"//I2S(fdim)//"]")
       END IF
     END IF
 
     IF (GetLogical(SolverParams,'Calculate JxB',Found)) THEN
       i = i + 1
       IF ( RealField ) THEN
-        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
             "JxB[JxB:3]" )
       ELSE
-        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
             "JxB[JxB re:3 JxB im:3]")
       END IF
     END IF
@@ -285,10 +297,10 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
     IF ( GetLogical( SolverParams, 'Calculate Maxwell Stress', Found ) ) THEN
       i = i + 1
       IF ( RealField ) THEN
-        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
             "Maxwell Stress[Maxwell Stress:6]" )
       ELSE
-        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
             "Maxwell Stress[Maxwell Stress re:6 Maxwell Stress im:6]" )
       END IF
     END IF
@@ -296,17 +308,17 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
     IF ( GetLogical( SolverParams, 'Calculate Current Density', Found ) ) THEN
       i = i + 1
       IF ( RealField ) THEN
-        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
             "Current Density[Current Density:3]" )
       ELSE
-        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
             "Current Density[Current Density re:3 Current Density im:3]" )
       END IF      
     END IF
 
     IF ( GetLogical( SolverParams, 'Calculate Joule Heating', Found ) ) THEN
       i = i + 1
-      CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+      CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
           "Joule Heating" )
     END IF
 
@@ -316,11 +328,22 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
             'Harmonic loss computation only available for complex systems!')
       ELSE
         i = i + 1
-        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
             "Harmonic Loss Linear" )
         i = i + 1
-        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
             "Harmonic Loss Quadratic" )
+      END IF
+    END IF
+
+    IF ( GetLogical( SolverParams, 'Calculate Homogenization Loss', Found ) ) THEN
+      IF( RealField ) THEN
+        CALL Warn('MagnetoDynamicsCalcFields',&
+            'Homogenization loss computation only available for complex systems!')
+      ELSE
+        i = i + 1
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
+            "Proximity Loss" )
       END IF
     END IF
 
@@ -328,10 +351,10 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
       IF ( GetLogical( SolverParams, 'Calculate Electric Field', Found ) ) THEN
         i = i + 1
         IF ( RealField ) THEN
-          CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+          CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
               "Electric Field[Electric Field:3]" )
         ELSE
-          CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+          CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
               "Electric Field[Electric Field re:3 Electric Field im:3]" )
         END IF
       END IF
@@ -339,10 +362,10 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
       IF ( GetLogical( SolverParams, 'Calculate Winding Voltage', Found ) ) THEN
         i = i + 1
         IF ( RealField ) THEN
-          CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+          CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
               "Winding Voltage" )
         ELSE
-          CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+          CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
               "Winding Voltage[Winding Voltage re:1 Winding Voltage im:1]" )
         END IF
       END IF
@@ -351,11 +374,19 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
     IF ( GetLogical( SolverParams, 'Calculate Relative Permeability', Found ) ) THEN
       i = i + 1
       IF ( RealField ) THEN
-        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
             "Relative Permeability" )
       ELSE
-        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
             "Relative Permeability[Relative Permeability re:1 Relative Permeability im:1]" )
+      END IF
+    END IF
+
+    IF ( GetLogical( SolverParams, 'Calculate Electric Scalar Potential', Found ) ) THEN
+      IF ( RealField ) THEN
+        i = i + 1
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
+            "Electric Scalar Potential" )
       END IF
     END IF
   END IF    
@@ -364,10 +395,10 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
     IF( ListCheckPresentAnyBC( Model,'Layer Electric Conductivity') ) THEN 
       i = i + 1
       IF ( RealField ) THEN
-        !CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+        !CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
         !    "Surface Current[Surface Current:3]" )
       ELSE
-        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
             "Surface Current[Surface Current re:3 Surface Current im:3]" )
       END IF
     END IF
@@ -375,7 +406,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
 
   IF ( GetLogical( SolverParams, 'Calculate Nodal Heating', Found ) ) THEN
     i = i + 1
-    CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+    CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
         "Nodal Joule Heating" )
   END IF
     
@@ -383,8 +414,8 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
       ListGetLogicalAnyComponent(Model,'Calculate Magnetic Torque') .OR. &
       GetLogical(SolverParams, 'Calculate Nodal Forces', Found) ) THEN
     i = i + 1
-    CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-        "Nodal Force[Nodal Force:"//TRIM(I2S(fdim))//"]" )
+    CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
+        "Nodal Force[Nodal Force:"//I2S(fdim)//"]" )
   END IF
     
   ! If we have DG for the standard fields they are already elemental...
@@ -402,22 +433,22 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
     IF( DoIt ) THEN
       i = i + 1
       IF ( RealField ) THEN
-        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-            "-dg Magnetic Flux Density E[Magnetic Flux Density E:"//TRIM(I2S(fdim))//"]" )
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
+            "-dg Magnetic Flux Density E[Magnetic Flux Density E:"//I2S(fdim)//"]" )
       ELSE
-        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-            "-dg Magnetic Flux Density E[Magnetic Flux Density re E:"//TRIM(I2S(fdim))//&
-            " Magnetic Flux Density im E:"//TRIM(I2S(fdim))//"]" )
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
+            "-dg Magnetic Flux Density E[Magnetic Flux Density re E:"//I2S(fdim)//&
+            " Magnetic Flux Density im E:"//I2S(fdim)//"]" )
       END IF
     END IF
       
     IF (GetLogical(SolverParams,'Calculate Magnetic Vector Potential',Found)) THEN
       i = i + 1
       IF ( RealField ) THEN
-        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
             "-dg Magnetic Vector Potential E[Magnetic Vector Potential E:3]" )
       ELSE
-        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
             "-dg Magnetic Vector Potential E[Magnetic Vector Potential re E:3 Magnetic Vector Potential im E:3]" )
       END IF
     END IF
@@ -425,22 +456,22 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
     IF (GetLogical(SolverParams,'Calculate Magnetic Field Strength',Found)) THEN
       i = i + 1
       IF ( RealField ) THEN
-        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-            "-dg Magnetic Field Strength E[Magnetic Field Strength E:"//TRIM(I2S(fdim))//"]" )
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
+            "-dg Magnetic Field Strength E[Magnetic Field Strength E:"//I2S(fdim)//"]" )
       ELSE
-        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-            "-dg Magnetic Field Strength E[Magnetic Field Strength re E:"//TRIM(I2S(fdim))//&
-            " Magnetic Field Strength im E:"//TRIM(I2S(fdim))//"]" )
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
+            "-dg Magnetic Field Strength E[Magnetic Field Strength re E:"//I2S(fdim)//&
+            " Magnetic Field Strength im E:"//I2S(fdim)//"]" )
       END IF
     END IF
 
     IF (GetLogical(SolverParams,'Calculate JxB',Found)) THEN
       i = i + 1
       IF ( RealField ) THEN
-        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
             "-dg JxB E[JxB E:3]" )
       ELSE
-        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
             "-dg JxB E[JxB re E:3 JxB im E:3]" )
       END IF
     END IF
@@ -448,10 +479,10 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
     IF ( GetLogical( SolverParams, 'Calculate Maxwell Stress', Found ) ) THEN
       i = i + 1
       IF ( RealField ) THEN
-        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
             "-dg Maxwell Stress E[Maxwell Stress E:6]" )
       ELSE
-        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
             "-dg Maxwell Stress E[Maxwell Stress re E:6 Maxwell Stress im E:6]" )
       END IF
     END IF
@@ -459,17 +490,17 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
     IF ( GetLogical( SolverParams, 'Calculate Current Density', Found ) ) THEN
       i = i + 1
       IF ( RealField ) THEN
-        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
             "-dg Current Density E[Current Density E:3]" )
       ELSE
-        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
             "-dg Current Density E[Current Density re E:3 Current Density im E:3]" )
       END IF
     END IF
 
     IF ( GetLogical( SolverParams, 'Calculate Joule Heating', Found ) ) THEN
       i = i + 1
-      CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+      CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
           "-dg Joule Heating E" )
     END IF
 
@@ -479,11 +510,22 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
             'Harmonic loss computation only available for complex systems!')
       ELSE
         i = i + 1
-        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
             "-dg Harmonic Loss Linear E" )
         i = i + 1
-        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
             "-dg Harmonic Loss Quadratic E" )
+      END IF
+    END IF
+
+    IF ( GetLogical( SolverParams, 'Calculate Homogenization Loss', Found ) ) THEN
+      IF( RealField ) THEN
+        CALL Warn('MagnetoDynamicsCalcFields',&
+            'Homogenization loss computation only available for complex systems!')
+      ELSE
+        i = i + 1
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
+            "-dg Proximity Loss E" )
       END IF
     END IF
 
@@ -491,10 +533,10 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
       IF ( GetLogical( SolverParams, 'Calculate Electric Field', Found ) ) THEN
         i = i + 1
         IF ( RealField ) THEN
-          CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+          CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
               "-dg Electric Field E[Electric Field E:3]" )
         ELSE
-          CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+          CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
               "-dg Electric Field E[Electric Field re E:3 Electric Field im E:3]" )
         END IF
       END IF
@@ -502,10 +544,10 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
       IF ( GetLogical( SolverParams, 'Calculate Winding Voltage', Found ) ) THEN
         i = i + 1
         IF ( RealField ) THEN
-          CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+          CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
               "-dg Winding Voltage E" )
         ELSE
-          CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+          CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
               "-dg Winding Voltage E[Winding Voltage re E:1 Winding Voltage im E:1]" )
         END IF
       END IF
@@ -515,10 +557,10 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
     IF ( GetLogical( SolverParams, 'Calculate Relative Permeability', Found ) ) THEN
       i = i + 1
       IF ( RealField ) THEN
-        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
             "-dg Relative Permeability E" )
       ELSE
-        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
             "-dg Relative Permeability E[Relative Permeability re E:1 Relative Permeability im E:1]" )
       END IF
     END IF
@@ -528,8 +570,8 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
         GetLogical( SolverParams,'Calculate Nodal Forces', Found)
     IF( DoIt ) THEN
       i = i + 1
-      CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-          "-dg Nodal Force E[Nodal Force E:"//TRIM(I2S(fdim))//"]" )
+      CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
+          "-dg Nodal Force E[Nodal Force E:"//I2S(fdim)//"]" )
     END IF
   END IF
     
@@ -551,66 +593,63 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    
    IMPLICIT NONE
 !------------------------------------------------------------------------------
-   TYPE(Solver_t) :: Solver
+   TYPE(Solver_t), TARGET :: Solver
    TYPE(Model_t) :: Model
    REAL(KIND=dp) :: dt
    LOGICAL :: Transient
 !------------------------------------------------------------------------------
-!  The following arrays have hard-coded sizes which may need to be altered if
-!  new finite elements are added. Current defaults are 54 edge finite element 
-!  DOFs and 27 nodal DOFs at maximum (obtained for the second-order brick over
-!  a background element of type 827):
+   REAL(KIND=dp), ALLOCATABLE :: WBasis(:,:), RotWBasis(:,:), Basis(:), lBasis(:), &
+                dBasisdx(:,:)
+   REAL(KIND=dp), ALLOCATABLE :: SOL(:,:), PSOL(:), ElPotSol(:,:), C(:)
+   REAL(KIND=dp), ALLOCATABLE :: Wbase(:), alpha(:), NF_ip(:,:)
+   REAL(KIND=dp), ALLOCATABLE :: omega_velo(:,:), lorentz_velo(:,:)
+   COMPLEX(KIND=dp), ALLOCATABLE :: Magnetization(:,:), BodyForceCurrDens(:,:)
+   COMPLEX(KIND=dp), ALLOCATABLE :: R_Z(:), PR(:)
 !------------------------------------------------------------------------------
-   REAL(KIND=dp) :: WBasis(54,3), RotWBasis(54,3), Basis(27), dBasisdx(27,3)
-   REAL(KIND=dp) :: SOL(2,81), PSOL(81), ElPotSol(1,27), C(27)
-   REAL(KIND=dp) :: Wbase(27), alpha(27), NF_ip(27,3)
-   REAL(KIND=dp) :: PR(27), omega_velo(3,27), lorentz_velo(3,27)
-   COMPLEX(KIND=dp) :: Magnetization(3,27), BodyForceCurrDens(3,27)
-   COMPLEX(KIND=dp) :: R_Z(27)
-!------------------------------------------------------------------------------
-   REAL(KIND=dp) :: s,u,v,w, Norm
-   REAL(KIND=dp) :: B(2,3), E(2,3), JatIP(2,3), VP_ip(2,3), JXBatIP(2,3), CC_J(2,3), HdotB
-   REAL(KIND=dp) :: detJ, C_ip, PR_ip, ST(3,3), Omega, ThinLinePower, Power, Energy(3), w_dens
+   REAL(KIND=dp) :: s,Norm 
+   REAL(KIND=dp) :: B(2,3), E(2,3), JatIP(2,3), VP_ip(2,3), JXBatIP(2,3), CC_J(2,3), HdotB, LMSol(2)
+   REAL(KIND=dp) :: ldetJ,detJ, C_ip, ST(3,3), Omega, ThinLinePower, Power, Energy(3), w_dens
    REAL(KIND=dp) :: localThickness
-   REAL(KIND=dp) :: Freq, FreqPower, FieldPower, LossCoeff, ValAtIP
-   REAL(KIND=dp) :: Freq2, FreqPower2, FieldPower2, LossCoeff2
+   REAL(KIND=dp) :: Freq, FreqPower(2), FieldPower(2), LossCoeff(2), ElemLoss(2), ValAtIP
    REAL(KIND=dp) :: ComponentLoss(2,2), rot_velo(3), angular_velo(3)
-   REAL(KIND=dp) :: Coeff, Coeff2, TotalLoss(3), LumpedForce(3), localAlpha, localV(2), nofturns, coilthickness
+   REAL(KIND=dp) :: Coeff, TotalLoss(3), LumpedForce(3), localAlpha, localV(2), nofturns, coilthickness
    REAL(KIND=dp) :: Flux(2), AverageFluxDensity(2), Area, N_j, wvec(3), PosCoord(3), TorqueDeprecated(3)
    REAL(KIND=dp) :: R_ip, mu_r
    REAL(KIND=dp), SAVE :: mu0 = 1.2566370614359173e-6_dp
 
-   COMPLEX(KIND=dp) :: MG_ip(3), BodyForceCurrDens_ip(3)
+   COMPLEX(KIND=dp) :: MG_ip(3), BodyForceCurrDens_ip(3), PR_ip
    COMPLEX(KIND=dp) :: CST(3,3)
    COMPLEX(KIND=dp) :: CMat_ip(3,3)  
    COMPLEX(KIND=dp) :: imag_value, Zs
-   COMPLEX(KIND=dp), ALLOCATABLE :: Tcoef(:,:,:)
+   COMPLEX(KIND=dp), ALLOCATABLE :: Tcoef(:,:,:), Nu_el(:,:,:)
    COMPLEX(KIND=dp), POINTER, SAVE :: Reluct_Z(:,:,:) => NULL()
    COMPLEX(KIND=dp) :: R_ip_Z, Nu(3,3)
-
+   
    INTEGER, PARAMETER :: ind1(6) = [1,2,3,1,2,1]
    INTEGER, PARAMETER :: ind2(6) = [1,2,3,2,3,3]
 
-   TYPE(Variable_t), POINTER :: Var, MFD, MFS, CD, SCD, EF, MST, &
-                                JH, NJH, VP, FWP, MPerm, JXB, ML, ML2, LagrangeVar, NF
+   TYPE(Variable_t), POINTER :: Var, MFD, MFS, CD, SCD, EF, MST, ESP, &
+                                JH, NJH, VP, FWP, MPerm, JXB, ML, ML2, &
+                                LagrangeVar, NF, PL
+                                
    TYPE(Variable_t), POINTER :: EL_MFD, EL_MFS, EL_CD, EL_EF, &
                                 EL_MST, EL_JH, EL_VP, EL_FWP, EL_MPerm, EL_JXB, EL_ML, EL_ML2, &
-                                EL_NF
+                                EL_NF, EL_SL, EL_PL
 
    INTEGER :: Active,i,j,k,l,m,n,nd,np,p,q,DOFs,vDOFs,dim,BodyId,&
-              VvarDofs,VvarId,IvarId,Reindex,Imindex,EdgeBasisDegree
+              VvarDofs,VvarId,IvarId,Reindex,Imindex,EdgeBasisDegree,eq_n, Indexes(100)
 
    TYPE(Solver_t), POINTER :: pSolver, ElPotSolver
-   CHARACTER(LEN=MAX_NAME_LEN) :: Pname, CoilType, ElectricPotName, LossFile, CurrPathPotName
+   CHARACTER(LEN=MAX_NAME_LEN) :: Pname, CoilType, ElectricPotName, LossFile, CurrPathPotName, str
 
    TYPE(ValueList_t), POINTER :: Material, BC, BodyForce, BodyParams, SolverParams, PrevMaterial
 
-   LOGICAL :: Found, FoundMagnetization, stat, LossEstimation, &
+   LOGICAL :: Found, FoundIm, FoundMagnetization, stat, LossEstimation, HomogenizationLoss, &
               CalcFluxLogical, CoilBody, PreComputedElectricPot, ImposeCircuitCurrent, &
               ItoJCoeffFound, ImposeBodyForceCurrent, HasVelocity, HasAngularVelocity, &
               HasLorenzVelocity, HaveAirGap, UseElementalNF, HasTensorReluctivity, &
-              ImposeBodyForcePotential, JouleHeatingFromCurrent, HasZirka
-   LOGICAL :: PiolaVersion, ElementalFields, NodalFields, RealField, SecondOrder
+              ImposeBodyForcePotential, JouleHeatingFromCurrent, HasZirka, DoAve
+   LOGICAL :: PiolaVersion, ElementalFields, NodalFields, RealField, pRef
    LOGICAL :: CSymmetry, HasHBCurve, LorentzConductivity, HasThinLines=.FALSE., NewMaterial
    
    TYPE(GaussIntegrationPoints_t) :: IP
@@ -642,22 +681,32 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp) :: SaveNorm
    INTEGER :: NormIndex, fdim
    LOGICAL, SAVE :: ConstantMassMatrixInUse = .FALSE.
-   LOGICAL :: Parallel
+   LOGICAL :: Parallel, Erroneous
    LOGICAL :: CoilUseWvec, WvecInitHandle=.TRUE.
    CHARACTER(LEN=MAX_NAME_LEN) :: CoilWVecVarname
    TYPE(VariableHandle_t), SAVE :: Wvec_h
    INTEGER, POINTER, SAVE :: SetPerm(:) => NULL()
-   LOGICAL :: LayerBC
+   LOGICAL :: LayerBC, CircuitDrivenBC
    REAL(KIND=dp) :: SurfPower
-   INTEGER :: jh_k
+   INTEGER :: jh_k, ComponentId
    REAL, ALLOCATABLE :: SurfWeight(:)
    TYPE(ValueHandle_t), SAVE :: mu_h
    REAL(KIND=dp), POINTER :: muTensor(:,:)
-   LOGICAL :: HasReluctivityFunction
+   LOGICAL :: HasReluctivityFunction, HBIntegProblem, MaterialExponents
    REAL(KIND=dp) :: rdummy
-   INTEGER :: mudim
-   
+   INTEGER :: mudim, ElementalMode, cdofs, LossN
+
+   TYPE VariableArray_t
+     TYPE(Variable_t), POINTER :: Field => Null()
+   END TYPE VariableArray_t
+
+   TYPE(VariableArray_t) :: NodalFieldPointers(32), ElementalFieldPointers(32)
+   TYPE(Variable_t), POINTER :: FieldVariable
+   LOGICAL :: EigenAnalysis, VtuStyle, OldLossKeywords
+   INTEGER :: Field, FieldsToCompute, NOFEigen, MaxFields
+
 !-------------------------------------------------------------------------------------------
+
    IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
    
    CALL Info('MagnetoDynamicsCalcFields','------------------------------',Level=6)
@@ -671,6 +720,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    fdim = 3   
    IF( ListGetLogical( SolverParams,'2D result fields',Found ) ) fdim = dim
 
+   ElementalMode = ListGetInteger( SolverParams,'Calculate Elemental Mode',Found )
+   
   ! This is a hack to be able to control the norm that is tested for
    NormIndex = GetInteger(SolverParams,'Show Norm Index',Found ) 
    SaveNorm = 0.0_dp
@@ -689,23 +740,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    ! Inherit the solution basis from the primary solver
    vDOFs = pSolver % Variable % DOFs
-   SecondOrder = GetLogical( pSolver % Values, 'Quadratic Approximation', Found )  
-   IF (SecondOrder) THEN
-     EdgeBasisDegree = 2
-   ELSE
-     EdgeBasisDegree = 1
-   END IF
-
-   IF( SecondOrder ) THEN
-     PiolaVersion = .TRUE.
-   ELSE
-     PiolaVersion = GetLogical( pSolver % Values,'Use Piola Transform', Found ) 
-   END IF
-
+   
+   CALL EdgeElementStyle(pSolver % Values, PiolaVersion, BasisDegree = EdgeBasisDegree ) 
    IF (PiolaVersion) &
        CALL Info('MagnetoDynamicsCalcFields', &
-       'Using Piola transformed finite elements',Level=5)
-
+       'Using Piola transformed finite elements',Level=7)
+      
    ElectricPotName = GetString(SolverParams, 'Precomputed Electric Potential', PrecomputedElectricPot)
    IF (PrecomputedElectricPot) THEN
      DO i=1, Model % NumberOfSolvers
@@ -717,7 +757,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    ! Do have impedance BCs? 
    LayerBC = (ListCheckPresentAnyBC(Model, 'Layer Electric Conductivity') .AND. vdofs==2) 
    jh_k = 0
-   
+
    ! Do we have a real or complex valued primary field?
    RealField = ( vDofs == 1 ) 
 
@@ -728,14 +768,17 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      CALL ListInitElementKeyword( mu_h,'Material','Reluctivity Function',&
          EvaluateAtIp=.TRUE.,DummyCount=3)
    END IF
-   
+   HbIntegProblem = .FALSE.
 
    
    LorentzConductivity = ListCheckPrefixAnyBodyForce(Model, "Angular Velocity") .or. &
        ListCheckPrefixAnyBodyForce(Model, "Lorentz Velocity")
 
    Mesh => GetMesh()
-   LagrangeVar => VariableGet( Solver % Mesh % Variables,'LagrangeMultiplier', ThisOnly=.TRUE.)
+
+   LagrangeVar => NULL()
+   str = LagrangeMultiplierName( pSolver )
+   LagrangeVar => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE.)
 
    MFD => VariableGet( Mesh % Variables, 'Magnetic Flux Density' )
    EL_MFD => VariableGet( Mesh % Variables, 'Magnetic Flux Density E' )
@@ -745,6 +788,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    VP => VariableGet( Mesh % Variables, 'Magnetic Vector Potential')
    EL_VP => VariableGet( Mesh % Variables, 'Magnetic Vector Potential E')
+
+   ESP => VariableGet( Mesh % Variables, 'Electric Scalar Potential')
    
    IF( .NOT. PreComputedElectricPot ) THEN
      ImposeBodyForcePotential = GetLogical(SolverParams, 'Impose Body Force Potential', Found)
@@ -769,6 +814,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    JXB => NULL(); EL_JXB => NULL();
    ML  => NULL(); EL_ML => NULL();
    ML2 => NULL(); EL_ML2 => NULL();
+   PL => NULL(); EL_PL => NULL();
    NF => NULL(); EL_NF => NULL();
    NJH => NULL()
    
@@ -807,6 +853,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      EL_ML => VariableGet( Mesh % Variables, 'Harmonic Loss Linear E')
      ML2 => VariableGet( Mesh % Variables, 'Harmonic Loss Quadratic')
      EL_ML2 => VariableGet( Mesh % Variables, 'Harmonic Loss Quadratic E')
+     PL => VariableGet( Mesh % Variables, 'Proximity Loss')
+     EL_PL => VariableGet( Mesh % Variables, 'Proximity Loss E')
    END IF
 
    JXB => VariableGet( Mesh % Variables, 'JxB')
@@ -830,85 +878,161 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    IF ( ASSOCIATED(JH) .OR. ASSOCIATED(EL_JH) .OR. ASSOCIATED(NJH)) DOFs=DOFs+1   
    IF ( ASSOCIATED(ML) .OR. ASSOCIATED(EL_ML) ) DOFs=DOFs+1
    IF ( ASSOCIATED(ML2) .OR. ASSOCIATED(EL_ML2) ) DOFs=DOFs+1   
+   IF ( ASSOCIATED(PL) .OR. ASSOCIATED(EL_PL) ) DOFs=DOFs+1   
    IF ( ASSOCIATED(NF) .OR. ASSOCIATED(EL_NF) ) DOFs=DOFs+fdim
 
+
    CALL Info('MagnetoDynamicsCalcFields',&
-       'Number of components to compute: '//TRIM(I2S(DOFs)),Level=8)
-         
-   NodalFields = &
-       ASSOCIATED(MFD) .OR. &
-       ASSOCIATED(MFS) .OR. &
-       ASSOCIATED(VP) .OR. &
-       ASSOCIATED(CD) .OR. &
-       ASSOCIATED(FWP) .OR. &
-       ASSOCIATED(MPerm) .OR. &
-       ASSOCIATED(EF) .OR. &
-       ASSOCIATED(JXB) .OR. &
-       ASSOCIATED(MST) .OR. &
-       ASSOCIATED(NF) .OR. ASSOCIATED(NJH) .OR. &
-       ASSOCIATED(JH) .OR. &
-       ASSOCIATED(ML) .OR. &
-       ASSOCIATED(ML2) 
+       'Number of components to compute: '//I2S(DOFs),Level=8)
+
+   MaxFields = 15  !  
+
+   NodalFieldPointers(1) % Field => MFD
+   NodalFieldPointers(2) % Field => MFS
+   NodalFieldPointers(3) % Field => VP
+   NodalFieldPointers(4) % Field => CD
+   NodalFieldPointers(5) % Field => FWP
+   NodalFieldPointers(6) % Field => MPerm
+   NodalFieldPointers(7) % Field => EF
+   NodalFieldPointers(8) % Field => JXB
+   NodalFieldPointers(9) % Field => MST
+   NodalFieldPointers(10) % Field => NF
+   NodalFieldPointers(11) % Field => NJH
+   NodalFieldPointers(12) % Field => JH
+   NodalFieldPointers(13) % Field => ML
+   NodalFieldPointers(14) % Field => ML2
+   NodalFieldPointers(15) % Field => PL
    
-   ElementalFields = &
-       ASSOCIATED(EL_MFD) .OR. &
-       ASSOCIATED(EL_MFS) .OR. &
-       ASSOCIATED(EL_VP) .OR. &
-       ASSOCIATED(EL_CD)  .OR. &
-       ASSOCIATED(EL_FWP) .OR. & 
-       ASSOCIATED(EL_MPerm) .OR. & 
-       ASSOCIATED(EL_EF)  .OR. &
-       ASSOCIATED(EL_JXB) .OR. &
-       ASSOCIATED(EL_MST) .OR. & 
-       ASSOCIATED(EL_NF) .OR. & 
-       ASSOCIATED(EL_JH) .OR. & 
-       ASSOCIATED(EL_ML)  .OR. &
-       ASSOCIATED(EL_ML2) 
+   ElementalFieldPointers(1) % Field => EL_MFD
+   ElementalFieldPointers(2) % Field => EL_MFS
+   ElementalFieldPointers(3) % Field => EL_VP
+   ElementalFieldPointers(4) % Field => EL_CD
+   ElementalFieldPointers(5) % Field => EL_FWP
+   ElementalFieldPointers(6) % Field => EL_MPerm
+   ElementalFieldPointers(7) % Field => EL_EF
+   ElementalFieldPointers(8) % Field => EL_JXB
+   ElementalFieldPointers(9) % Field => EL_MST
+   ElementalFieldPointers(10) % Field => EL_NF
+   ElementalFieldPointers(11) % Field => EL_JH
+   ElementalFieldPointers(12) % Field => EL_ML
+   ElementalFieldPointers(13) % Field => EL_ML2
+   ElementalFieldPointers(14) % Field => EL_PL
+   ElementalFieldPointers(15) % Field => Null()
+
+   NodalFields = .FALSE.; ElementalFields = .FALSE.
+   DO i=1,MaxFields
+     NodalFields = NodalFields .OR. ASSOCIATED(NodalFieldPointers(i) % Field)
+     ElementalFields = ElementalFields .OR. ASSOCIATED(ElementalFieldPointers(i) % Field)
+   END DO
    
    IF(NodalFields ) THEN
      ALLOCATE(GForce(SIZE(Solver % Matrix % RHS),DOFs)); Gforce=0._dp
    END IF
    
    n = Mesh % MaxElementDOFs
+   ALLOCATE( MASS(2*n,2*n), FORCE(n,DOFs), Tcoef(3,3,n), RotM(3,3,n), Pivot(n))
 
-   ALLOCATE( MASS(n,n), FORCE(n,DOFs), Tcoef(3,3,n), RotM(3,3,n), Pivot(n))
-
+!------------------------------------------------------------------------------
+   ALLOCATE( WBasis(n,3), RotWBasis(n,3), Basis(n), dBasisdx(n,3), lBasis(n) )
+   ALLOCATE( SOL(2,n), PSOL(n), ElPotSol(1,n), C(n) )
+   ALLOCATE( Wbase(n), alpha(n), NF_ip(n,3) )
+   ALLOCATE( PR(n), omega_velo(3,n), lorentz_velo(3,n) )
+   ALLOCATE( Magnetization(3,n), BodyForceCurrDens(3,n), R_Z(n) )
+!------------------------------------------------------------------------------
    SOL = 0._dp; PSOL=0._dp
+
+   IF ( ASSOCIATED(ESP) ) THEN
+     ESP  % Values(ESP % Perm) = pSolver % Variable % Values( &
+         pSolver % Variable % Perm(1:Mesh % NumberOfNodes))
+   END IF
 
    LossEstimation = GetLogical(SolverParams,'Loss Estimation',Found) &
        .OR. ASSOCIATED( ML ) .OR. ASSOCIATED( EL_ML ) &
        .OR. ASSOCIATED( ML2 ) .OR. ASSOCIATED( EL_ML2 ) 
 
    IF (LossEstimation) THEN
-      FreqPower = GetCReal( SolverParams,'Harmonic Loss Linear Frequency Exponent',Found )
-      IF( .NOT. Found ) FreqPower = 1.0_dp
+     OldLossKeywords = ListCheckPrefixAnyMaterial( Model,'Harmonic Loss Linear Frequency Exponent') 
+     MaterialExponents = ListCheckPrefixAnyMaterial( Model,'Harmonic Loss Frequency Exponent') 
+     MaterialExponents = MaterialExponents .OR. OldLossKeywords
 
-      FreqPower2 = GetCReal( SolverParams,'Harmonic Loss Quadratic Frequency Exponent',Found )
-      IF( .NOT. Found ) FreqPower2 = 2.0_dp
+     ! Fixed for now. FourierLoss solver more generic here. 
+     LossN = 2 
+          
+     IF(.NOT. MaterialExponents) THEN
+       OldLossKeywords = .NOT. ListCheckPresent(SolverParams,'Harmonic Loss Frequency Exponent')
+       CALL GetLossExponents(SolverParams,FreqPower,FieldPower,LossN,OldLossKeywords)
+     END IF
 
-      FieldPower = GetCReal( SolverParams,'Harmonic Loss Linear Exponent',Found ) 
-      IF( .NOT. Found ) FieldPower = 2.0_dp
-      FieldPower = FieldPower / 2.0_dp
+     IF( OldLossKeywords ) THEN
+       IF(.NOT. ListCheckPresentAnyMaterial( Model,'Harmonic Loss Linear Coefficient') ) THEN
+         CALL Warn('MagnetoDynamicsCalcFields',&
+             'Harmonic loss requires > Harmonic Loss Linear Coefficient < in material section!')
+       END IF
 
-      FieldPower2 = GetCReal( SolverParams,'Harmonic Loss Quadratic Exponent',Found ) 
-      IF( .NOT. Found ) FieldPower2 = 2.0_dp
-      FieldPower2 = FieldPower2 / 2.0_dp
+       IF(.NOT. ListCheckPresentAnyMaterial( Model,'Harmonic Loss Quadratic Coefficient') ) THEN
+         CALL Warn('MagnetoDynamicsCalcFields',&
+             'Harmonic loss requires > Harmonic Loss Quadratic Coefficient < in material section!')
+       END IF       
 
-      IF(.NOT. ListCheckPresentAnyMaterial( Model,'Harmonic Loss Linear Coefficient') ) THEN
-        CALL Warn('MagnetoDynamicsCalcFields',&
-            'Harmonic loss requires > Harmonic Loss Linear Coefficient < in material section!')
-      END IF
-
-      IF(.NOT. ListCheckPresentAnyMaterial( Model,'Harmonic Loss Quadratic Coefficient') ) THEN
-        CALL Warn('MagnetoDynamicsCalcFields',&
-            'Harmonic loss requires > Harmonic Loss Quadratic Coefficient < in material section!')
-      END IF
-
-      ComponentLoss = 0.0_dp
-      ALLOCATE( BodyLoss(3,Model % NumberOfBodies) )
-      BodyLoss = 0.0_dp
+       CALL Info('MagnetoDynamicsCalcFields','Consider using more generic keywords for loss computation!')
+     END IF
+     
+     ComponentLoss = 0.0_dp
+     ALLOCATE( BodyLoss(3,Model % NumberOfBodies) )
+     BodyLoss = 0.0_dp
    END IF
 
+   HomogenizationLoss = ASSOCIATED(PL) .OR. ASSOCIATED(EL_PL)
+
+   IF (HomogenizationLoss) ALLOCATE( Nu_el(3,3,n) )
+
+   VtuStyle = .FALSE.
+   cdofs = 1
+   EigenAnalysis = GetLogical( pSolver % Values, 'Eigen Analysis', Found )
+   IF(EigenAnalysis) THEN
+     CALL Info('MagnetoDynamicsCalcFields','Ensure space for eigen analysis',Level=10)
+     VtuStyle = ListGetLogical( SolverParams,'Vtu Style', Found )
+     IF(VtuStyle) cdofs=2     
+     NOFeigen = SIZE(pSolver % Variable % EigenValues)
+     DO i=1,MaxFields
+
+       FieldVariable => NodalFieldPointers(i) % Field
+       IF(ASSOCIATED(FieldVariable)) THEN
+
+         ALLOCATE( FieldVariable % EigenValues(NOFEigen) )
+         FieldVariable % EigenValues = pSolver % Variable % EigenValues
+
+         n = cdofs*SIZE(FieldVariable % Values)/2         
+         ALLOCATE( FieldVariable % EigenVectors(NOFEigen,n) )
+         FieldVariable % EigenVectors = 0
+       END IF
+
+       FieldVariable => ElementalFieldPointers(i) % Field
+       IF(ASSOCIATED(FieldVariable)) THEN
+
+         ALLOCATE( FieldVariable % EigenValues(NOFEigen) )
+         FieldVariable % EigenValues = pSolver % Variable % EigenValues
+
+         n = cdofs*SIZE(FieldVariable % Values)/2
+         ALLOCATE( FieldVariable % EigenVectors(NOFEigen,n) )
+         FieldVariable % EigenVectors = 0
+       END IF
+     END DO
+     FieldsToCompute = NofEigen
+   ELSE
+     FieldsToCompute = 1
+   END IF
+
+   COMPUTE_FIELDS: DO Field=1,FieldsToCompute
+
+   IF ( NodalFields ) GForce = 0._dp
+
+   IF(EigenAnalysis) THEN
+     DO i=1,pSolver % Matrix % NumberOfRows/2
+       pSolver % Variable % Values(2*i-1) = REAL(pSolver % Variable % EigenVectors(Field,i))
+       pSolver % Variable % Values(2*i) = AIMAG(pSolver % Variable % EigenVectors(Field,i))
+     END DO
+   END IF
 
    C = 0._dp; PR=0._dp
    Magnetization = 0._dp
@@ -922,7 +1046,15 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    
    DO i = 1, GetNOFActive()
      Element => GetActiveElement(i)
+
      n = GetElementNOFNodes()
+     IF(dim==2) THEN
+       eq_n = GetElementDOFs(Indexes)
+     ELSE
+       eq_n = n
+       Indexes(1:n) = Element % NodeIndexes
+     END IF
+
      np = n*pSolver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
      nd = GetElementNOFDOFs(uSolver=pSolver)
 
@@ -931,7 +1063,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        ALLOCATE(Tcoef(3,3,n))
      END IF
      
-     CALL GetElementNodes( Nodes )
+     CALL GetElementNodes( Nodes, USolver=pSolver )
 
      ! If potential is not available we have to use given current directly to estimate Joule losses
      JouleHeatingFromCurrent = ( np == 0 .AND. &
@@ -971,14 +1103,16 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      END IF
        
      IF ( Transient ) THEN
-       CALL GetScalarLocalSolution(PSOL,Pname,uSolver=pSolver,Tstep=-1)
-       PSOL(1:nd)=(SOL(1,1:nd)-PSOL(1:nd))/dt
+       CALL GetLocalSolution(PSOL,Pname,uSolver=pSolver,Tstep=-1)
+       IF (pSolver % TimeOrder==1) THEN
+         PSOL(1:nd) = (SOL(1,1:nd)-PSOL(1:nd)) / dt
+       END IF
      END IF
 
      Omega = GetAngularFrequency(pSOlver % Values,Found,Element)
      IF( .NOT. ( RealField .OR. Found ) ) THEN
-       CALL Fatal('MagnetoDynamicsCalcFields',&
-           '(Angular) Frequency must be given for complex fields!')
+!      CALL Fatal('MagnetoDynamicsCalcFields',&
+!          '(Angular) Frequency must be given for complex fields!')
      END IF
      Freq = Omega / (2*PI)
      
@@ -1059,6 +1193,43 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          N_j = GetConstReal (CompParams, 'Stranded Coil N_j', Found)
          IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Stranded Coil N_j not found!')
 
+         IF (HomogenizationLoss) THEN
+           BLOCK
+             REAL(KIND=dp) :: nu_11(n), nuim_11(n), nu_22(n), nuim_22(n)
+             REAL(KIND=dp) :: sigma_33(n), sigmaim_33(n)
+
+             nu_11 = 0._dp
+             nuim_11 = 0._dp
+             nu_11 = GetReal(CompParams, 'nu 11', Found)
+             nuim_11 = GetReal(CompParams, 'nu 11 im', FoundIm)
+             IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 11 not found!')
+             nu_22 = 0._dp
+             nuim_22 = 0._dp
+             nu_22 = GetReal(CompParams, 'nu 22', Found)
+             nuim_22 = GetReal(CompParams, 'nu 22 im', FoundIm)
+             IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 22 not found!')
+             Nu_el = CMPLX(0.0d0, 0.0d0, kind=dp)
+             Nu_el(1,1,1:n) = nu_11(1:n) + im * nuim_11(1:n)
+             Nu_el(2,2,1:n) = nu_22(1:n) + im * nuim_22(1:n)
+
+             sigma_33 = GetReal(CompParams, 'sigma 33', Found)
+             IF ( .NOT. Found ) sigma_33 = 0._dp
+             sigmaim_33 = GetReal(CompParams, 'sigma 33 im', FoundIm)
+             IF ( .NOT. FoundIm ) sigmaim_33 = 0._dp
+             IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model sigma 33 not found!')
+
+             Tcoef = 0._dp
+             Tcoef(1,1,1:n) = sigma_33(1:n) + im * sigmaim_33(1:n) ! stranded uses only sigma 33
+             Tcoef(2,2,1:n) = Tcoef(1,1,1:n)
+             Tcoef(3,3,1:n) = Tcoef(1,1,1:n)
+             IF (dim == 3) THEN
+               CALL GetElementRotM(Element, RotM, n)
+               DO k = 1,n
+                 Nu_el(1:3,1:3,k) = MATMUL(MATMUL(RotM(1:3,1:3,k), Nu_el(1:3,1:3,k)), TRANSPOSE(RotM(1:3,1:3,k)))
+               END DO
+             END IF
+           END BLOCK
+         END IF
          !nofturns = GetConstReal(CompParams, 'Number of Turns', Found)
          !IF (.NOT. Found) CALL Fatal('MagnetoDynamicsCalcFields','Stranded Coil: Number of Turns not found!')
        CASE ('massive')
@@ -1126,13 +1297,17 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        HasVelocity = HasAngularVelocity .OR. HasLorenzVelocity
      END IF
      
-
      ! Calculate nodal fields:
      ! -----------------------
-     IF (SecondOrder) THEN
-        IP = GaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=PiolaVersion, EdgeBasisDegree=EdgeBasisDegree)
-     ELSE
-        IP = GaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=PiolaVersion)
+     pRef = ( dim==3 .AND. PiolaVersion ) .OR. isPelement(element)
+     IF( ElementalMode >= 3 ) THEN
+       IF( ElementalMode == 3 ) THEN
+         IP = CornerGaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=pRef)
+       ELSE
+         IP = CenterGaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=pRef)
+       END IF
+     ELSE 
+       IP = GaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=pRef, EdgeBasisDegree=EdgeBasisDegree)
      END IF
 
      MASS  = 0._dp
@@ -1145,21 +1320,14 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      end if
 
      DO j = 1,IP % n
-       u = IP % U(j)
-       v = IP % V(j)
-       w = IP % W(j)
-
-       IF (PiolaVersion) THEN
-          stat = EdgeElementInfo( Element, Nodes, u, v, w, DetF=DetJ, Basis=Basis, &
-               EdgeBasis=WBasis, RotBasis=RotWBasis, dBasisdx=dBasisdx, &
-               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+       IF(dim == 2 ) THEN
+         stat = ElementInfo(Element,Nodes,IP % u(j),IP % v(j),IP % w(j),&
+             detJ,Basis,dBasisdx,USolver=pSolver)
        ELSE
-          stat=ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx)
-          IF( dim == 3 ) THEN
-            CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
-          END IF
-       END IF
-
+         stat = ElementInfo( Element, Nodes, IP % U(j), IP % V(j), IP % W(j), &
+             detJ, Basis, dBasisdx, &
+             EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
+       END IF         
        s = IP % s(j) * detJ
 
        grads_coeff = -1._dp/GetCircuitModelDepth()
@@ -1177,8 +1345,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
             ! -------------------------------------------------------------------------
             IF ( CSymmetry ) THEN
               B(k,1) = -SUM( SOL(k,1:nd) * dBasisdx(1:nd,2) )
-              B(k,2) = SUM( SOL(k,1:nd) * dBasisdx(1:nd,1) ) &
-                       + SUM( SOL(k,1:nd) * Basis(1:nd) ) / xcoord
+              B(k,2) =  SUM( SOL(k,1:nd) * dBasisdx(1:nd,1) ) &
+                         + SUM( SOL(k,1:nd) * Basis(1:nd) ) / xcoord
               B(k,3) = 0._dp
             ELSE
               B(k,1) =  SUM( SOL(k,1:nd) * dBasisdx(1:nd,2) )
@@ -1214,9 +1382,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            angular_velo(3) = SUM(basis(1:n)*omega_velo(3,1:n))
            DO k=1,n
              rot_velo(1:3) = rot_velo(1:3) + CrossProduct(omega_velo(1:3,k), [ &
-                 basis(k) * Nodes % x(k), &
-                 basis(k) * Nodes % y(k), &
-                 basis(k) * Nodes % z(k)])
+                 Basis(k) * Nodes % x(k), &
+                 Basis(k) * Nodes % y(k), &
+                 Basis(k) * Nodes % z(k)])
            END DO
          END IF
          IF( HasLorenzVelocity ) THEN
@@ -1252,7 +1420,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
              E(1,3) =  Omega*SUM(SOL(2,1:nd) * Basis(1:nd))
              E(2,3) = -Omega*SUM(SOL(1,1:nd) * Basis(1:nd))
            CASE(3)
-             E(1,:) = Omega*MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:))
+             E(1,:) =  Omega*MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:))
              E(2,:) = -Omega*MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:))
            END SELECT
          ELSE
@@ -1277,7 +1445,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                wvec = wvec/SQRT(SUM(wvec**2._dp)) !Why were we doing this? 04132021 -ettaka
              END IF
            END SELECT
-
 
            IF(CMat_ip(3,3) /= 0._dp ) THEN
              imag_value = LagrangeVar % Values(IvarId) + im * LagrangeVar % Values(IvarId+1)
@@ -1339,8 +1506,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
              !
            CASE(3)
              ! -Grad(V)
-             E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
-             E(2,:) = E(2,:)-MATMUL(SOL(2,1:np), dBasisdx(1:np,:))
+             E(1,:) = E(1,:) - MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
+             E(2,:) = E(2,:) - MATMUL(SOL(2,1:np), dBasisdx(1:np,:))
 
              IF (HasVelocity) THEN
                !
@@ -1363,22 +1530,18 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          END SELECT
          
        ELSE   ! Real case (transient case)
+         E(1,:) = 0._dp
          IF (CoilType /= 'stranded') THEN 
            SELECT CASE(dim)
            CASE(2)
-             E(1,1) = 0._dp
-             E(1,2) = 0._dp
              E(1,3) = -SUM(PSOL(1:nd) * Basis(1:nd))
            CASE(3)
              E(1,:) = -MATMUL(PSOL(np+1:nd), Wbasis(1:nd-np,:))
            END SELECT
-         ELSE
-           E(1,:) = 0._dp
          END IF
          localV=0._dp
 
          SELECT CASE (CoilType)
-
          CASE ('stranded')
            SELECT CASE(dim)
            CASE(2)
@@ -1439,7 +1602,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
              !
            CASE(3)
              IF (Transient) THEN
-               E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
+               E(1,:) = E(1,:) - MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
              END IF
 
              IF (np > 0 .AND. .NOT. Transient) THEN
@@ -1477,12 +1640,15 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          END IF
          Babs = MAX(Babs, 1.d-8)
          
-         R_ip = ListGetFun( Material,'h-b curve', x=babs) / Babs
+         R_ip = ListGetFun(Material,'h-b curve', x=babs) / Babs
+
          BLOCK
            TYPE(ValueListEntry_t), POINTER :: ptr
            ptr => ListFind( Material,'h-b curve')
-           w_dens = IntegrateCurve(ptr % TValues,ptr % FValues(1,1,:),ptr % CubicCoeff,0._dp,Babs)
+           w_dens = IntegrateCurve(ptr % TValues,ptr % FValues(1,1,:),ptr % CubicCoeff,0._dp,Babs,Found=Found)
+           IF(.NOT. Found ) HbIntegProblem = .TRUE.
          END BLOCK
+
          DO k=1,3
            Nu(k,k) = CMPLX(R_ip, 0.0d0, kind=dp)
          END DO
@@ -1491,6 +1657,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
              GaussPoint = j, Rdim=mudim, Rtensor=MuTensor, DummyVals = B(1,:) )             
          Nu(1:3,1:3) = muTensor(1:3,1:3)                           
          w_dens = 0.5*SUM(B(1,:)*MATMUL(REAL(Nu), B(1,:)))
+       ELSE IF (HomogenizationLoss .AND. CoilType == 'stranded') THEN
+         DO k=1,3
+           DO l=1,3
+             Nu(k,l) = SUM( Nu_el(k,l,1:n) * Basis(1:n) )
+           END DO
+         END DO
        ELSE
          IF (HasTensorReluctivity) THEN
            IF (SIZE(Reluct_Z,2) == 1) THEN
@@ -1542,7 +1714,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
              VP_ip(l,2) = 0._dp
              VP_ip(l,3) = SUM(SOL(l,1:nd) * Basis(1:nd))
            CASE(3)
-             VP_ip(l,:)=MATMUL(SOL(l,np+1:nd),WBasis(1:nd-np,:))
+             VP_ip(l,:) = MATMUL(SOL(l,np+1:nd),WBasis(1:nd-np,:))
            END SELECT
          END DO
        END IF
@@ -1573,20 +1745,20 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            END DO
          END IF
        END IF
-
-       Energy(1) = Energy(1) + s*0.5*PR_ip*SUM(E**2)
+       
+       Energy(1) = Energy(1) + s*0.5*ABS(PR_ip)*SUM(E**2)
        Energy(2) = Energy(2) + s*w_dens
        Energy(3) = Energy(3) + (HdotB - w_dens) * s
 
        IF (ElementalFields .OR. .NOT. ConstantMassMatrixInUse) THEN
-         DO p=1,n
-           DO q=1,n
+         DO p=1,eq_n
+           DO q=1,eq_n
              MASS(p,q)=MASS(p,q)+s*Basis(p)*Basis(q)
            END DO
          END DO
        END IF
 
-       DO p=1,n
+       DO p=1,eq_n
          k = 0
          
          IF( ASSOCIATED(MFD) .OR. ASSOCIATED(EL_MFD) ) THEN
@@ -1602,7 +1774,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            !IF(.NOT. HasZirka) then
            IF (RealField) THEN
              FORCE(p,k+1:k+fdim) = FORCE(p,k+1:k+fdim) + &
-                 s * (MATMUL(REAL(Nu(1:fdim,1:fdim)), B(1,1:fdim)) - REAL(MG_ip(1:fdim))) * Basis(p)
+                 s * (MATMUL(REAL(Nu(1:fdim,1:fdim)), B(1,1:fdim)) - REAL(MG_ip(1:fdim))) * Basis(p) 
              k = k+fdim
            ELSE
              FORCE(p,k+1:k+fdim) = FORCE(p,k+1:k+fdim) + s * ( &
@@ -1619,15 +1791,17 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            !FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)-s*(REAL(MG_ip))*Basis(p)
            !END IF
          END IF
+
          IF ( ASSOCIATED(VP).OR.ASSOCIATED(EL_VP)) THEN
            DO l=1,vDOFs
              FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*VP_ip(l,:)*Basis(p)
              k = k+3
            END DO
          END IF
+
          IF ( ASSOCIATED(EF).OR.ASSOCIATED(EL_EF)) THEN
            DO l=1,vDOFs
-             FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*E(l,:)*Basis(p)
+             FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3) + s*E(l,:)*Basis(p)
              k = k+3
            END DO
          END IF
@@ -1821,43 +1995,70 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          ! Compute a loss estimate for cos and sin modes:
          !-------------------------------------------------
          IF (LossEstimation) THEN
-           LossCoeff = ListGetFun( Material,'Harmonic Loss Linear Coefficient',Freq,Found ) 
-           LossCoeff2 = ListGetFun( Material,'Harmonic Loss Quadratic Coefficient',Freq,Found ) 
+           IF( OldLossKeywords ) THEN
+             LossCoeff(1) = ListGetFun( Material,'Harmonic Loss Linear Coefficient',Freq,Found ) 
+             LossCoeff(2) = ListGetFun( Material,'Harmonic Loss Quadratic Coefficient',Freq,Found ) 
+           ELSE
+             DO l=1,LossN               
+               LossCoeff(l) = ListGetFun( Material,&
+                   'Harmonic Loss Coefficient '//I2S(l),Freq, Found)      
+             END DO
+           END IF
+
+             
+           IF(MaterialExponents) THEN
+             CALL GetLossExponents(Material,FreqPower,FieldPower,LossN,OldLossKeywords)
+           END IF
+           
            ! No losses to add if loss coefficient is not given
-           IF( Found ) THEN
-             Coeff = 0.0_dp
-             Coeff2 = 0.0_dp
+           IF( Found .OR. MaterialExponents ) THEN
+             ElemLoss = 0.0_dp
              DO l=1,2
                ValAtIP = SUM( B(l,1:3) ** 2 )
-               Coeff = Coeff + s * Basis(p) * LossCoeff * ( Freq ** FreqPower ) * ( ValAtIp ** FieldPower )
-               Coeff2 = Coeff2 + s * Basis(p) * LossCoeff2 * ( Freq ** FreqPower2 ) * ( ValAtIp ** FieldPower2 )
-               ComponentLoss(1,l) = ComponentLoss(1,l) + Coeff
-               BodyLoss(1,BodyId) = BodyLoss(1,BodyId) + Coeff 
-               ComponentLoss(2,l) = ComponentLoss(2,l) + Coeff2
-               BodyLoss(2,BodyId) = BodyLoss(2,BodyId) + Coeff2
+               ElemLoss(1) = ElemLoss(1) + s * Basis(p) * LossCoeff(1) * ( Freq ** FreqPower(1) ) * ( ValAtIp ** FieldPower(1) )
+               ElemLoss(2) = ElemLoss(2) + s * Basis(p) * LossCoeff(2) * ( Freq ** FreqPower(2) ) * ( ValAtIp ** FieldPower(2) )
+               ComponentLoss(:,l) = ComponentLoss(:,l) + ElemLoss
+               BodyLoss(:,BodyId) = BodyLoss(:,BodyId) + ElemLoss
              END DO
            ELSE
-             Coeff = 0.0_dp
-             Coeff2 = 0.0_dp
+             ElemLoss = 0.0_dp
            END IF
 
            IF ( ASSOCIATED(ML) .OR. ASSOCIATED(EL_ML) ) THEN
-             FORCE(p,k+1) = FORCE(p,k+1) + Coeff
+             FORCE(p,k+1) = FORCE(p,k+1) + ElemLoss(1)
              k = k + 1
            END IF
            IF ( ASSOCIATED(ML2) .OR. ASSOCIATED(EL_ML2) ) THEN
-             FORCE(p,k+1) = FORCE(p,k+1) + Coeff2
+             FORCE(p,k+1) = FORCE(p,k+1) + ElemLoss(2)
              k = k + 1
            END IF
+         END IF
+
+         IF ( HomogenizationLoss .AND. CoilType == 'stranded') THEN
+           ! homogenization loss should be real part of im omega b . conj(h)/2
+           BLOCK
+             COMPLEX(KIND=dp) :: Bloc(3)=0._dp
+             COMPLEX(KIND=dp) :: Hloc(3)=0._dp
+
+             Bloc = B(1, 1:3) + im * B(2, 1:3)
+             Hloc = MATMUL(Nu(1:3, 1:3), Bloc)
+             Coeff = s * Basis(p) * REAL(im * Omega * SUM(Bloc * CONJG(Hloc))/2._dp)
+           END BLOCK
+
+           IF ( ASSOCIATED(PL) .OR. ASSOCIATED(EL_PL) ) THEN
+             FORCE(p,k+1) = FORCE(p,k+1) + Coeff
+             k = k + 1
+           END IF
+
          END IF
 
          IF ( ASSOCIATED(MST).OR.ASSOCIATED(EL_MST)) THEN
            IF ( Vdofs==1 ) THEN
              DO l=1,3
                DO m=l,3
-                 ST(l,m)=PR_ip*E(1,l)*E(1,m)+R_ip*B(1,l)*B(1,m)
+                 ST(l,m)=REAL(PR_ip)*E(1,l)*E(1,m)+R_ip*B(1,l)*B(1,m)
                END DO
-               ST(l,l)=ST(l,l)-(PR_ip*SUM(E(1,:)**2)+R_ip*SUM(B(1,:)**2))/2
+               ST(l,l)=ST(l,l)-(REAL(PR_ip)*SUM(E(1,:)**2)+R_ip*SUM(B(1,:)**2))/2
              END DO
              DO l=1,6
                FORCE(p,k+l)=FORCE(p,k+l) + s*ST(ind1(l),ind2(l))*Basis(p)
@@ -1897,7 +2098,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        END DO ! p
      END DO ! j
 
-
      IF(NodalFields) THEN
        IF(.NOT. ConstantMassMatrixInUse ) THEN
          CALL DefaultUpdateEquations( MASS,Force(:,1))
@@ -1912,22 +2112,37 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
      IF(ElementalFields) THEN
        dofs = 0
-       CALL LUdecomp(MASS,n,pivot)
-       CALL LocalSol(EL_MFD,  fdim*vdofs, n, MASS, FORCE, pivot, Dofs)
-       CALL LocalSol(EL_MFS,  fdim*vdofs, n, MASS, FORCE, pivot, Dofs)
-       CALL LocalSol(EL_VP,   3*vdofs, n, MASS, FORCE, pivot, Dofs)
-       CALL LocalSol(EL_EF,   3*vdofs, n, MASS, FORCE, pivot, Dofs)
-       CALL LocalSol(EL_CD,   3*vdofs, n, MASS, FORCE, pivot, Dofs)
-       CALL LocalSol(EL_JXB,  3*vdofs, n, MASS, FORCE, pivot, Dofs)
-       CALL LocalSol(EL_FWP,  1*vdofs, n, MASS, FORCE, pivot, Dofs)
-       CALL LocalSol(EL_MPerm,  1*vdofs, n, MASS, FORCE, pivot, Dofs)
-       CALL LocalSol(EL_JH,   1, n, MASS, FORCE, pivot, Dofs)
-       CALL LocalSol(EL_ML,   1, n, MASS, FORCE, pivot, Dofs)
-       CALL LocalSol(EL_ML2,  1, n, MASS, FORCE, pivot, Dofs)
-       CALL LocalSol(EL_MST,  6*vdofs, n, MASS, FORCE, pivot, Dofs)
+       
+       IF( ElementalMode == 1 ) THEN
+         ! Perform classical mass lumping
+         DO k=1,eq_n
+           s = SUM(MASS(k,1:eq_n))
+           MASS(k,1:eq_n) = 0.0_dp
+           MASS(k,k) = s
+         END DO
+       END IF
+
+       IF( ElementalMode /= 2 .AND. ElementalMode /= 4) THEN
+         CALL LUdecomp(MASS,eq_n,pivot,Erroneous)
+         IF (Erroneous) CALL Fatal('MagnetoDynamicsCalcFields', 'LU-decomposition fails')
+       END IF
+
+       CALL LocalSol(EL_MFD,  fdim*vdofs, n, eq_n, MASS, FORCE, pivot, Dofs)
+       CALL LocalSol(EL_MFS,  fdim*vdofs, n, eq_n, MASS, FORCE, pivot, Dofs)
+       CALL LocalSol(EL_VP,   3*vdofs, n, eq_n, MASS, FORCE, pivot, Dofs)
+       CALL LocalSol(EL_EF,   3*vdofs, n, eq_n, MASS, FORCE, pivot, Dofs)
+       CALL LocalSol(EL_CD,   3*vdofs, n, eq_n, MASS, FORCE, pivot, Dofs)
+       CALL LocalSol(EL_JXB,  3*vdofs, n, eq_n, MASS, FORCE, pivot, Dofs)
+       CALL LocalSol(EL_FWP,  1*vdofs, n, eq_n, MASS, FORCE, pivot, Dofs)
+       CALL LocalSol(EL_MPerm,  1*vdofs, n, eq_n, MASS, FORCE, pivot, Dofs)
+       CALL LocalSol(EL_JH,   1, n, eq_n, MASS, FORCE, pivot, Dofs)
+       CALL LocalSol(EL_ML,   1, n, eq_n, MASS, FORCE, pivot, Dofs)
+       CALL LocalSol(EL_ML2,  1, n, eq_n, MASS, FORCE, pivot, Dofs)
+       CALL LocalSol(EL_PL,  1, n, eq_n, MASS, FORCE, pivot, Dofs)
+       CALL LocalSol(EL_MST,  6*vdofs, n, eq_n, MASS, FORCE, pivot, Dofs)
 
        ! This is a nodal quantity
-       CALL LocalCopy(EL_NF, fdim, n, FORCE, Dofs)
+       CALL LocalCopy(EL_NF, fdim, eq_n, FORCE, Dofs)
      END IF
    END DO   
 
@@ -1940,17 +2155,19 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        Element => GetBoundaryElement(i)
        BC => GetBC()
        IF (.NOT. ASSOCIATED(BC)) CYCLE
-       
-       SELECT CASE(GetElementFamily())
-       CASE(1)
-         CYCLE
-       CASE(2)
-         k = GetBoundaryEdgeIndex(Element,1)
-         Element => Mesh % Edges(k)
-       CASE(3,4)
-         k = GetBoundaryFaceIndex(Element)
-         Element => Mesh % Faces(k)
-       END SELECT
+
+       IF( dim == 3 ) THEN
+         SELECT CASE(GetElementFamily())
+         CASE(1)
+           CYCLE
+         CASE(2)
+           k = GetBoundaryEdgeIndex(Element,1)
+           Element => Mesh % Edges(k)
+         CASE(3,4)
+           k = GetBoundaryFaceIndex(Element)
+           Element => Mesh % Faces(k)
+         END SELECT
+       END IF
        IF (.NOT. ActiveBoundaryElement(Element)) CYCLE
        
        C_ip = ListGetCReal(BC, 'Layer Electric Conductivity', Found)
@@ -1958,6 +2175,17 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
        mu_r = ListGetCReal(BC, 'Layer Relative Permeability', Found)
        IF (.NOT. Found) mu_r = 1.0_dp
+
+       LMsol = 0.0_dp
+       IF( ASSOCIATED( LagrangeVar ) ) THEN
+         IF( ListGetLogical( BC,'Flux Integral BC', Found ) ) THEN
+           k = GetBCId( Element ) 
+           IF( ASSOCIATED( pSolver % MortarBCs ) ) THEN
+             k = pSolver % MortarBCs(k) % rowoffset
+             LMSol(1:2) = LagrangeVar % Values(k+1:k+2)
+           END IF
+         END IF
+       END IF
        
        n = GetElementNOFNodes(Element)     
        nd = GetElementNOFDOFs(uElement=Element, uSolver=pSolver)
@@ -1970,23 +2198,51 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            EdgeBasisDegree=EdgeBasisDegree)
        FORCE = 0.0_dp
        
+       ComponentId=GetInteger( BC, 'Component', CircuitDrivenBC)
+       IF (CircuitDrivenBC) THEN
+         CompParams => GetComponentParams( Element )
+         VvarId = GetInteger (CompParams, 'Circuit Voltage Variable Id', Found)
+         IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Circuit Voltage Variable Id not found!')
+       END IF
+
        DO j=1,IP % n
-         IF ( PiolaVersion ) THEN
-           stat = EdgeElementInfo(Element, Nodes, IP % U(j), IP % V(j), IP % W(j), &
-               DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, dBasisdx = dBasisdx, &
-               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-         ELSE
+         IF( dim == 2 ) THEN
            stat = ElementInfo(Element, Nodes, IP % U(j), IP % V(j), IP % W(j), &
-               detJ, Basis, dBasisdx)
-           
-           CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+               detJ, Basis, dBasisdx)           
+         ELSE 
+           stat = ElementInfo( Element, Nodes, IP % U(j), IP % V(j), &
+               IP % W(j), detJ, Basis, dBasisdx, &
+               EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
          END IF
          
          val = SQRT(2.0_dp/(C_ip * Omega * 4.0d0 * PI * 1d-7 * mu_r)) ! The layer thickness
          Zs = CMPLX(1.0_dp, 1.0_dp, KIND=dp) / (C_ip*val)
          
-         E(1,:) = Omega * MATMUL(SOL(2,np+1:nd), WBasis(1:nd-np,:)) - MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
-         E(2,:) = -Omega * MATMUL(SOL(1,np+1:nd), WBasis(1:nd-np,:)) - MATMUL(SOL(2,1:np), dBasisdx(1:np,:))
+         IF (.NOT. CircuitDrivenBC) THEN
+           IF( dim == 2 ) THEN
+             E(1,1:2) = 0.0_dp
+             E(2,1:2) = 0.0_dp
+             E(1,3) = Omega * SUM(SOL(2,1:nd) * Basis(1:nd))
+             E(2,3) = -Omega * SUM(SOL(1,1:nd) * Basis(1:nd)) 
+             
+             ! Include the effect of constraint for surface current density.
+             ! Currently only 2D model implemented where the effect goes into z-component only.
+             E(1,3) = E(1,3) + Omega * LMSol(1)
+             E(2,3) = E(2,3) + Omega * LMSol(2)
+           ELSE
+             E(1,:) = Omega * MATMUL(SOL(2,np+1:nd), WBasis(1:nd-np,:)) - MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
+             E(2,:) = -Omega * MATMUL(SOL(1,np+1:nd), WBasis(1:nd-np,:)) - MATMUL(SOL(2,1:np), dBasisdx(1:np,:))
+           END IF
+         ELSE
+           ! we assume 3D massive coil here
+           E(1,:) = Omega * MATMUL(SOL(2,np+1:nd), WBasis(1:nd-np,:))
+           E(2,:) = -Omega * MATMUL(SOL(1,np+1:nd), WBasis(1:nd-np,:))
+
+           localV(1) = localV(1) + LagrangeVar % Values(VvarId) * CircEqVoltageFactor
+           localV(2) = localV(2) + LagrangeVar % Values(VvarId+1) * CircEqVoltageFactor
+           E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+           E(2,:) = E(2,:)-localV(2) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+         END IF
          
          s = IP % s(j) * detJ
          IF( CSymmetry ) THEN
@@ -1998,10 +2254,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          ! the surface impedance from the power density P_S = 1/2 Real(1/Zs) E.conjugate(E)
          Coeff = HarmPowerCoeff * REAL(1.0_dp/Zs) * &
              (SUM(E(1,:)**2) + SUM(E(2,:)**2)) * s 
-
-         ! The total power required to maintain the current in the layer when the current density is
-         ! assumed to be constant through the layer thickness:
-         !SurfPower = SurfPower + HarmPowerCoeff * C_ip * (SUM(E(1,:)**2) + SUM(E(2,:)**2)) * val * detJ * IP % s(j)
          
          SurfPower = SurfPower + Coeff
 
@@ -2012,7 +2264,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            END DO
          END IF
 
-         ! and current density
+         ! and surface current density (here SCD should give the tangential trace H x n)
          IF( ASSOCIATED( SCD ) ) THEN
            DO p=1,n
              k = SCD % Perm(Element % NodeIndexes(p))
@@ -2026,31 +2278,38 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
        END DO
 
-       !DO l=1,Dofs
        IF (NodalFields .AND. jh_k>0) THEN
          l = jh_k
-         CALL UpdateGlobalForce( GForce(:,l), &
-             Force(1:n,l), n, 1, Solver % Variable % Perm(Element % NodeIndexes(1:n)), UElement=Element)
+         IF(dim==2) THEN
+           CALL UpdateGlobalForce( GForce(:,l), &
+               Force(1:eq_n,l), eq_n, 1, Solver % Variable % Perm(Element % NodeIndexes), UElement=Element)
+         ELSE
+           CALL UpdateGlobalForce( GForce(:,l), &
+               Force(1:eq_n,l), eq_n, 1, Solver % Variable % Perm(Indexes(1:eq_n)), UElement=Element)
+         END IF
        END IF
-       !END DO       
      END DO
-
    END IF
    
-   
+   DoAve = GetLogical(SolverParams,'Average Within Materials',Found)
+      
    ! Assembly of the face terms:
    !----------------------------
    IF(.NOT. ConstantMassMatrixInUse ) THEN
      IF (GetLogical(SolverParams,'Discontinuous Galerkin',Found)) THEN
-       IF (GetLogical(SolverParams,'Average Within Materials',Found)) THEN
+       IF (DoAve) THEN
          FORCE = 0.0_dp
          CALL AddLocalFaceTerms( MASS, FORCE(:,1) )
        END IF
      END IF
    END IF
    
-   IF(NodalFields) THEN
-     Fsave => Solver % Matrix % RHS
+   IF(NodalFields .OR. DoAve ) THEN
+     FSave => NULL()
+     IF( ASSOCIATED( Solver % Matrix ) ) THEN
+       Fsave => Solver % Matrix % RHS
+     END IF
+
      DOFs = 0
      CALL GlobalSol(MFD,  fdim*vdofs, Gforce, Dofs, EL_MFD)
      CALL GlobalSol(MFS,  fdim*vdofs, Gforce, Dofs, EL_MFS)
@@ -2071,14 +2330,16 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
      CALL GlobalSol(ML ,  1      , Gforce, Dofs, EL_ML)
      CALL GlobalSol(ML2,  1      , Gforce, Dofs, EL_ML2)
+     CALL GlobalSol(PL ,  1      , Gforce, Dofs, EL_PL)
      CALL GlobalSol(MST,  6*vdofs, Gforce, Dofs, EL_MST)
+
      IF (ASSOCIATED(NF)) THEN
        DO i=1,fdim
          dofs = dofs + 1
          NF % Values(i::fdim) = Gforce(:,dofs)
        END DO
      END IF
-     Solver % Matrix % RHS => Fsave
+     IF(ASSOCIATED(FSave)) Solver % Matrix % RHS => Fsave
    END IF
    
    ! surface current density uses the loads
@@ -2091,6 +2352,56 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    END IF
       
 
+   IF( ListCheckPresentAnyComponent( Model, 'Flux linkage' ) ) THEN
+     DO j=1,Model % NumberOfComponents
+       CompParams => Model % Components(j) % Values       
+       IF ( ListGetLogical( CompParams,'Flux linkage', Found ) ) THEN         
+         s = ComponentStokesTheorem(Model, Mesh, CompParams, pSolver % Variable,.FALSE. )
+         PRINT *,'Flux linkage:',j,s
+         IF( ASSOCIATED(VP) ) THEN
+           s = ComponentStokesTheorem(Model, Mesh, CompParams, VP,.FALSE. )
+           PRINT *,'Flux linkage nodal:',j,s
+         END IF
+         s = ComponentStokesTheorem(Model, Mesh, CompParams, pSolver % Variable,.TRUE. )
+         PRINT *,'Flux linkage averaged:',j,s
+         IF( ASSOCIATED(VP) ) THEN
+           s = ComponentStokesTheorem(Model, Mesh, CompParams, VP,.TRUE. )
+           PRINT *,'Flux linkage nodal avereaged:',j,s
+         END IF
+       END IF       
+     END DO
+   END IF
+
+   IF( ListCheckPresentAnyComponent( Model, 'Coil Energy' ) ) THEN          
+     BLOCK 
+       TYPE(Variable_t), POINTER :: CoilCurr
+       REAL(KIND=dp), ALLOCATABLE :: CoilEnergy(:)
+       INTEGER, POINTER :: MasterEntities(:)
+            
+       CoilCurr => VariableGet( Mesh % Variables,'CoilCurrent e',ThisOnly=.TRUE.)
+       IF(.NOT. ASSOCIATED(CoilCurr)) THEN
+         CoilCurr => VariableGet( Mesh % Variables,'CoilCurrent',ThisOnly=.TRUE.)
+       END IF
+
+       ALLOCATE(CoilEnergy(Model % NumberOfComponents))
+       CoilEnergy = 0.0_dp
+       
+       DO j=1,Model % NumberOfComponents
+         CompParams => Model % Components(j) % Values       
+         IF ( ListGetLogical( CompParams,'Coil Energy', Found ) ) THEN         
+           MasterEntities => ListGetIntegerArray( CompParams,'Master Bodies',Found )
+           CoilEnergy(j) =  0.5_dp * ComponentCoilEnergy(Model, Mesh, MasterEntities, pSolver % Variable, CoilCurr )            
+           PRINT *,'Coil Energy:',j,CoilEnergy(j)
+           IF( ASSOCIATED(VP) ) THEN
+             CoilEnergy(j) = 0.5_dp * ComponentCoilEnergy(Model, Mesh, MasterEntities, VP, CoilCurr) 
+             PRINT *,'Coil Energy nodal A:',j,CoilEnergy(j)
+           END IF
+         END IF
+       END DO
+       PRINT *,'Total Coil Energy:',SUM(CoilEnergy)       
+     END BLOCK
+   END IF
+   
    ! Lump componentwise forces and torques. 
    ! Prefer DG nodal force variable if air gap is present
 
@@ -2100,7 +2411,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    
     
    IF( UseElementalNF ) THEN
-
+      CALL Info('MagnetoDynamicsCalcFields','Doing elemental nodal force stuff!',Level=20)
+            
      ! Collect nodal forces from airgaps
      CALL CalcBoundaryModels()
 
@@ -2130,13 +2442,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          CALL Info('MagnetoDynamicsCalcFields',Message,Level=6)           
 
          DO i=1,fdim
-           CALL ListAddConstReal( CompParams,'res: magnetic force '//TRIM(I2S(i)), LumpedForce(i) )
+           CALL ListAddConstReal( CompParams,'res: magnetic force '//I2S(i), LumpedForce(i) )
          END DO
 
        END IF
 
-       IF( ListGetLogical( CompParams,'Calculate Magnetic Torque', Found ) ) THEN
-         
+       IF( ListGetLogical( CompParams,'Calculate Magnetic Torque', Found ) ) THEN         
          CALL ComponentNodalForceReduction(Model, Mesh, CompParams, EL_NF, &
            Torque = val, SetPerm = SetPerm )
 
@@ -2147,7 +2458,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          CALL ListAddConstReal( CompParams,'res: magnetic torque', val )
        END IF
      END DO
-   ELSE 
+  ELSE
+      CALL Info('MagnetoDynamicsCalcFields','Doing nodal nodal force stuff!',Level=20)
+     
      DO j=1,Model % NumberOfComponents
        CompParams => Model % Components(j) % Values
 
@@ -2160,7 +2473,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          CALL Info('MagnetoDynamicsCalcFields',Message,Level=6)           
 
          DO i=1,fdim
-           CALL ListAddConstReal( CompParams,'res: magnetic force '//TRIM(I2S(i)), LumpedForce(i) )
+           CALL ListAddConstReal( CompParams,'res: magnetic force '//I2S(i), LumpedForce(i) )
          END DO
 
        END IF
@@ -2210,6 +2523,10 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        END DO
      END IF
    END IF
+
+   IF( HbIntegProblem ) THEN
+     CALL Warn('MagnetoDynamicsCalcFields','Could not integrate over H-B curve for magnetic energy!')
+   END IF
    
    WRITE(Message,'(A,ES15.6)') 'Eddy current power: ', Power
    CALL Info( 'MagnetoDynamicsCalcFields', Message )
@@ -2237,8 +2554,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      CALL ListAddConstReal(Model % Simulation,'res: ElectroMagnetic Field Energy',SUM(Energy(1:2)))
    END IF
    
-   IF(ALLOCATED(Gforce)) DEALLOCATE(Gforce)
-   DEALLOCATE( MASS, FORCE, Tcoef, RotM )
    
    IF (LossEstimation) THEN
      CALL ListAddConstReal( Model % Simulation,'res: harmonic loss linear',TotalLoss(1) )
@@ -2322,9 +2637,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      CALL NodalTorque(Torque, TorqueGroups)
      DO i=1,SIZE(TorqueGroups)
        j = TorqueGroups(i)
-       WRITE (Message,'(A)') 'res: Group '//TRIM(I2S(j))//' torque'
+       WRITE (Message,'(A)') 'res: Group '//I2S(j)//' torque'
        CALL ListAddConstReal(Model % Simulation, TRIM(Message), Torque(i))
-       WRITE (Message,'(A,F0.8)') 'Torque Group '//TRIM(I2S(j))//' torque:', Torque(i)
+       WRITE (Message,'(A,F0.8)') 'Torque Group '//I2S(j)//' torque:', Torque(i)
        CALL Info( 'MagnetoDynamicsCalcFields', Message)
      END DO
 
@@ -2427,8 +2742,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
   END IF
 
   
-
-  
   HasThinLines = ListCheckPresentAnyBC(Model,'Thin Line Crossection Area')
   IF(HasThinLines) THEN
     ThinLinePower = 0._dp
@@ -2437,7 +2750,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
     DO i=1,Active
        Element => GetBoundaryElement(i)
        BC=>GetBC()
-
+       IF (.NOT. ASSOCIATED(BC) ) CYCLE
+       
        ThinLineCrossect = GetReal( BC, 'Thin Line Crossection Area', Found)
 
        IF (Found) THEN
@@ -2448,7 +2762,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          CYCLE
        END IF
 
-       IF (.NOT. ASSOCIATED(BC) ) CYCLE
        SELECT CASE(GetElementFamily())
        CASE(1)
          CYCLE
@@ -2509,9 +2822,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          ELSE
            !da/dt part
            E(1,:) = Omega*MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:))
-           !grad V part
            E(2,:) = -Omega*MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:))
-           
+
+           !grad V part
            E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
            E(2,:) = E(2,:)-MATMUL(SOL(2,1:np), dBasisdx(1:np,:))
            CALL Warn('CalcFields', 'Power loss not implemented for harmonic case')
@@ -2556,6 +2869,15 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
       BC => GetBC()
       IF (.NOT. ASSOCIATED(BC)) CYCLE
 
+      SheetThickness = GetConstReal( BC, 'Thin Sheet Thickness', Found)
+      IF (Found) THEN
+        ! Technically, there is no skin but why create yet another conductivity variable?
+        ThinLineCond = GetConstReal(BC, 'Thin Sheet Electric Conductivity', Found)
+        IF (.NOT. Found) ThinLineCond = 1.0_dp ! if not found default to "air" property
+      ELSE
+        CYCLE
+      END IF
+      
       SELECT CASE(GetElementFamily())
       CASE(1)
         CYCLE
@@ -2568,22 +2890,15 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
       END SELECT
       IF (.NOT. ActiveBoundaryElement(Element)) CYCLE
 
-      SheetThickness = GetConstReal( BC, 'Thin Sheet Thickness', Found)
-      IF (Found) THEN
-        ! Technically, there is no skin but why create yet another conductivity variable?
-        ThinLineCond = GetConstReal(BC, 'Thin Sheet Electric Conductivity', Found)
-        IF (.NOT. Found) ThinLineCond = 1.0_dp ! if not found default to "air" property
-      ELSE
-        CYCLE
-      END IF
-
       Model % CurrentElement => Element
+
       nd = GetElementNOFDOFs(Element)
       n  = GetElementNOFNodes(Element)
       CALL GetElementNodes(Nodes, Element)
-      CALL GetVectorLocalSolution(SOL, Pname, uElement=Element, uSolver=pSolver)
+
+      CALL GetLocalSolution(SOL, Pname, uElement=Element, uSolver=pSolver)
       IF (Transient) THEN 
-        CALL GetScalarLocalSolution(PSOL,Pname,uSolver=pSolver,Tstep=-1)
+        CALL GetLocalSolution(PSOL,Pname,uSolver=pSolver,Tstep=-1)
         PSOL(1:nd)=(SOL(1,1:nd)-PSOL(1:nd))/dt
       END IF
 
@@ -2616,9 +2931,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          ELSE
            !da/dt part
            E(1,:) = Omega*MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:))
-           !grad V part
            E(2,:) = -Omega*MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:))
-           
+
+           !grad V part
            E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
            E(2,:) = E(2,:)-MATMUL(SOL(2,1:np), dBasisdx(1:np,:))
            ! Now Power = J.conjugate(E), with the possible imaginary component neglected.         
@@ -2642,6 +2957,32 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
     CALL ListAddConstReal(Model % Simulation, 'res: Thin sheet current power', Power)
 
   END IF
+
+  IF (EigenAnalysis .AND. .NOT. VtuStyle ) THEN
+    ! The primary variable with size 6 is problematic for Vtu output.
+    ! Hence we operate directly on the eigenvectors if eigenmodes are active.
+    DO i=1,MaxFields
+      FieldVariable => NodalFieldPointers(i) % Field
+      IF (ASSOCIATED(FieldVariable)) THEN
+        n = SIZE(FieldVariable % Values)
+        DO j=1,n/2
+          FieldVariable % EigenVectors(field,j) = CMPLX( &
+              FieldVariable % Values(2*j-1), FieldVariable % Values(2*j), KIND=dp )
+        END DO
+      END IF
+
+      FieldVariable => ElementalFieldPointers(i) % Field
+      IF (ASSOCIATED(FieldVariable)) THEN
+        n = SIZE(FieldVariable % Values)
+        DO j=1,n/2
+          FieldVariable % EigenVectors(field,j) = CMPLX( &
+              FieldVariable % Values(2*j-1), FieldVariable % Values(2*j), KIND=dp )
+        END DO
+      END IF
+    END DO
+  END IF
+
+  END DO COMPUTE_FIELDS
   
   IF( NormIndex > 0 ) THEN
     WRITE(Message,*) 'Reverting norm to: ', SaveNorm
@@ -2649,15 +2990,13 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
     Solver % Variable % Norm = SaveNorm
   END IF
 
-
   IF(.NOT. ConstantMassMatrixInUse ) THEN
     ConstantMassMatrixInUse = ListGetLogical( SolverParams,'Constant Mass Matrix',Found )    
   END IF
 
-  
-  
 CONTAINS
 
+  
 !-------------------------------------------------------------------
   SUBROUTINE SumElementalVariable(Var, Values, BodyId, uAdditive)
 !-------------------------------------------------------------------
@@ -2749,7 +3088,7 @@ CONTAINS
       NF_ip_l(27,3), NF_ip_r(27,3), xcoord
     TYPE(Element_t), POINTER :: LeftParent, RightParent, BElement
     TYPE(Nodes_t), SAVE :: LPNodes, RPNodes
-    REAL(KIND=dp) :: F(3,3)
+!    REAL(KIND=dp) :: F(3,3)
     INTEGER :: n_lp, n_rp, LeftBodyID, RightBodyID
     REAL(KIND=dp), ALLOCATABLE :: LeftFORCE(:,:), RightFORCE(:,:), &
       AirGapForce(:,:), ForceValues(:)
@@ -2846,24 +3185,13 @@ CONTAINS
       LeftFORCE = 0.0_dp
       RightFORCE = 0.0_dp
 
-      IF (SecondOrder) THEN
-        IP = GaussPoints(BElement, EdgeBasis=dim==3, PReferenceElement=PiolaVersion, EdgeBasisDegree=EdgeBasisDegree)
-      ELSE
-        IP = GaussPoints(BElement, EdgeBasis=dim==3, PReferenceElement=PiolaVersion)
-      END IF
-
+      IP = GaussPoints(BElement, EdgeBasis=(dim==3), PReferenceElement=PiolaVersion, &
+          EdgeBasisDegree=EdgeBasisDegree)
       
       DO j = 1,IP % n
-        IF ( PiolaVersion ) THEN
-          stat = EdgeElementInfo( BElement, Nodes, IP % U(j), IP % V(j), IP % W(j), &
-            F = F, DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
-            dBasisdx=dBasisdx, BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-        ELSE
-          stat = ElementInfo( BElement, Nodes, IP % U(j), IP % V(j), &
-            IP % W(j), detJ, Basis, dBasisdx )
-
-          CALL GetEdgeBasis(BElement, WBasis, RotWBasis, Basis, dBasisdx)
-        END IF
+        stat = ElementInfo( BElement, Nodes, IP % U(j), IP % V(j), &
+            IP % W(j), detJ, Basis, dBasisdx, &
+            EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
 
         R_ip = SUM( Basis(1:n)/(mu0*AirGapMu(1:n)) )
         GapLength_ip = SUM( Basis(1:n)*GapLength(1:n) )
@@ -2908,7 +3236,11 @@ CONTAINS
               B(k,3) = 0._dp
             END IF
           CASE(3)
-            B(k,:) = normal*sum( SOL(k,np+1:nd)* RotWBasis(1:nd-np,3) )
+            IF (PiolaVersion) THEN
+              B(k,:) = normal*SUM( SOL(k,np+1:nd) * RotWBasis(1:nd-np,3) )
+            ELSE
+              B(k,:) = normal*SUM(Normal(1:3) * MATMUL( SOL(k,np+1:nd), RotWBasis(1:nd-np,1:3) ))
+            END IF
           END SELECT
         END DO
 
@@ -2945,6 +3277,8 @@ CONTAINS
     END DO ! Boundary elements
     
     DEALLOCATE( LeftFORCE, RightFORCE, RightMap, LeftMap, AirGapForce )
+
+    IF (HomogenizationLoss) DEALLOCATE (Nu_el)
 !-------------------------------------------------------------------
   END SUBROUTINE CalcBoundaryModels
 !-------------------------------------------------------------------
@@ -3096,7 +3430,7 @@ CONTAINS
        nrm = sqrt(sum(axes(k,:)*axes(k,:))) 
        IF (nrm == 0._dp) THEN
          CALL Warn('MagnetoDynamicsCalcFields',&
-             'Axis for the torque group '//TRIM(I2S(k))//' is a zero vector')
+             'Axis for the torque group '//I2S(k)//' is a zero vector')
          CYCLE
        END IF
        axes(k,:) = axes(k,:) / nrm
@@ -3169,23 +3503,47 @@ CONTAINS
 !------------------------------------------------------------------------------
    INTEGER :: i
 !------------------------------------------------------------------------------
-   IF(.NOT. ASSOCIATED(var)) THEN
-     IF(PRESENT(EL_Var)) THEN
-       IF(ASSOCIATED(El_Var)) dofs = dofs+m
+   COMPLEX(KIND=dp), POINTER :: EigVec(:)
+   INTEGER :: ic
+!------------------------------------------------------------------------------
+
+   IF(PRESENT(EL_Var)) THEN
+     IF(ASSOCIATED(El_Var)) THEN
+       El_Var % DgAveraged = .FALSE.
+       IF( DoAve ) THEN
+         CALL Info('MagnetoDynamicsCalcFields','Averaging for field: '//TRIM(El_Var % Name),Level=10)
+         CALL CalculateBodyAverage(Mesh, El_Var, .FALSE.)              
+       END IF
+       IF(.NOT. (ASSOCIATED(var) .AND. NodalFields) ) THEN
+         dofs = dofs+m
+         RETURN
+       END IF
      END IF
-     RETURN
    END IF
-   
-   CALL Info('MagnetoDynamicsCalcFields','Solving for field: '//TRIM(Var % Name),Level=6)
-   
+
+   IF(.NOT. ASSOCIATED(Var) ) RETURN
+
+   IF(VtuStyle) EigVec => Var % EigenVectors(Field,:)
+        
+   CALL Info('MagnetoDynamicsCalcFields','Solving for field: '//TRIM(Var % Name),Level=6)   
    DO i=1,m
      dofs = dofs+1
 
      Solver % Matrix % RHS => b(:,dofs)
      Solver % Variable % Values=0
      Norm = DefaultSolve()
-     var % Values(i::m) = Solver % Variable % Values
 
+     IF(VtuStyle) THEN
+       ic=(i+1)/2
+       IF(MODULO(i,2)==1) THEN
+         EigVec(ic::m/2) = Solver % Variable % Values
+       ELSE
+         EigVec(ic::m/2) = CMPLX( REAL(EigVec(ic::m/2)), Solver % Variable % Values )
+       END IF
+     ELSE
+       var % Values(i::m) = Solver % Variable % Values
+     END IF
+       
      IF( NormIndex == dofs ) SaveNorm = Norm
   END DO
 !------------------------------------------------------------------------------
@@ -3194,30 +3552,49 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
- SUBROUTINE LocalSol(Var, m, n, A, b, pivot, dofs )
+ SUBROUTINE LocalSol(Var, m, n, nd, A, b, pivot, dofs )
 !------------------------------------------------------------------------------
    IMPLICIT NONE
    TYPE(Variable_t), POINTER :: Var
-   INTEGER :: pivot(:), m,n,dofs
    REAL(KIND=dp) :: b(:,:), A(:,:)
+   INTEGER :: pivot(:), m,n,nd,dofs
 !------------------------------------------------------------------------------
    INTEGER :: ind(n), i
-   REAL(KIND=dp) :: x(n)
+   REAL(KIND=dp) :: x(nd),s
+   COMPLEX(KIND=dp), POINTER :: EigVec(:)
+   INTEGER :: ic
 !------------------------------------------------------------------------------
    IF(.NOT. ASSOCIATED(var)) RETURN
 
    ind(1:n) = Var % Perm(Element % DGIndexes(1:n))
-
    IF( ANY( ind(1:n) <= 0 ) ) RETURN
 
    ind(1:n) = Var % DOFs * (ind(1:n)-1)
- 
+   IF(VtuStyle) EigVec => Var % EigenVectors(Field,:)
+
    DO i=1,m
       dofs = dofs+1
       
-      x = b(1:n,dofs)
-      CALL LUSolve(n,MASS,x,pivot)
-      Var % Values(ind(1:n)+i) = x(1:n)
+      IF( ElementalMode == 2 .OR. ElementalMode == 4 ) THEN
+        ! Perform total lumping 
+        s = SUM(MASS(1:nd,1:nd))
+        x(1:nd) = SUM(b(1:nd,dofs)) / s
+      ELSE
+        x(1:nd) = b(1:nd,dofs)
+        CALL LUSolve(nd,MASS,x,pivot)
+      END IF
+
+      IF( VtuStyle ) THEN
+        ic = (i+1)/2
+          
+        IF(MODULO(i,2)==1) THEN
+          EigVec(ind(1:n)+ic) = x(1:n)
+        ELSE
+          EigVec(ind(1:n)+ic) = CMPLX( REAL(EigVec(ind(1:n)+ic)), x(1:n) )
+        END IF
+      ELSE      
+        Var % Values(ind(1:n)+i) = x(1:n)
+      END IF
    END DO
 !------------------------------------------------------------------------------
  END SUBROUTINE LocalSol
@@ -3416,12 +3793,11 @@ CONTAINS
 
        DO j=1,IP % n
          stat = ElementInfo( Element, Nodes, IP % U(j), IP % V(j), &
-                  IP % W(j), detJ, Basis, dBasisdx )
-         CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
-         Normal = NormalVector( Element, Nodes, IP % U(j), IP % V(j), .TRUE. )
-
+             IP % W(j), detJ, Basis, dBasisdx, &
+             EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
+                  
+         Normal = NormalVector( Element, Nodes, IP % U(j), IP % V(j), .TRUE. )         
          s = IP % s(j) * detJ
-
 
          DO k=1, vDOFs
            B(k,:) = MATMUL( SOL(k, np+1:nd), RotWBasis(1:nd-np,:) )

@@ -27,7 +27,7 @@
  *                                                                           *
  *****************************************************************************
  *                                                                           *
- *  Authors: Mikko Lyly, Juha Ruokolainen and Peter R�back                   *
+ *  Authors: Mikko Lyly, Juha Ruokolainen and Peter Råback                   *
  *  Email:   Juha.Ruokolainen@csc.fi                                         *
  *  Web:     http://www.csc.fi/elmer                                         *
  *  Address: CSC - IT Center for Science Ltd.                                 *
@@ -157,8 +157,13 @@ bool list_t::isVisible(void) const
 
 // Construct glWidget...
 //-----------------------------------------------------------------------------
+#if WITH_QT6
+GLWidget::GLWidget(QWidget *parent)
+  : QOpenGLWidget(parent)
+#else
 GLWidget::GLWidget(QWidget *parent)
   : QGLWidget(parent)
+#endif
 {
   backgroundColor = Qt::white;
   surfaceColor = Qt::cyan;
@@ -194,10 +199,6 @@ GLWidget::GLWidget(QWidget *parent)
 
   helpers = new Helpers;
   meshutils = new Meshutils;
-
-  ctrlPressed = false;
-  shiftPressed = false;
-  altPressed = false;
 
   // Coordinate axis:
   quadric_axis = gluNewQuadric();
@@ -268,6 +269,11 @@ bool GLWidget::hasMesh(void) const
 void GLWidget::initializeGL()
 {
   cout << "Initialize GL" << endl;
+  
+#if WITH_QT6
+  initializeOpenGLFunctions();
+#endif
+
   cout << "Vendor: " << glGetString(GL_VENDOR) << endl;
   cout << "Renderer: " << glGetString(GL_RENDERER) << endl;
   cout << "Version: " << glGetString(GL_VERSION) << endl;
@@ -313,7 +319,11 @@ void GLWidget::initializeGL()
 
   glEnable(GL_NORMALIZE);
 
+#if WITH_QT6
+  glClearColor( backgroundColor.redF(), backgroundColor.greenF(), backgroundColor.blueF(), backgroundColor.alphaF());
+#else
   qglClearColor(backgroundColor);
+#endif
 
   glEnable(GL_TEXTURE_2D);
 }
@@ -324,6 +334,9 @@ void GLWidget::initializeGL()
 //-----------------------------------------------------------------------------
 void GLWidget::paintGL()
 {
+#if WITH_QT6
+  glClearColor( backgroundColor.redF(), backgroundColor.greenF(), backgroundColor.blueF(), backgroundColor.alphaF());
+#endif
   float xabs[3], xrel[3];
 
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -641,15 +654,6 @@ void GLWidget::focusInEvent(QFocusEvent *event)
 //-----------------------------------------------------------------------------
 void GLWidget::keyPressEvent(QKeyEvent *event)
 {
-  if(event->key() == Qt::Key_Control)
-    ctrlPressed = true;
-
-  if(event->key() == Qt::Key_Shift)
-    shiftPressed = true;
-
-  if((event->key() == Qt::Key_Alt) || (event->key() == Qt::Key_AltGr))
-    altPressed = true;
-
   if(event->key() == Qt::Key_Escape)
     emit(escPressed());
 }
@@ -659,14 +663,6 @@ void GLWidget::keyPressEvent(QKeyEvent *event)
 //-----------------------------------------------------------------------------
 void GLWidget::keyReleaseEvent(QKeyEvent *event)
 {
-  if(event->key() == Qt::Key_Control)
-    ctrlPressed = false;
-
-  if(event->key() == Qt::Key_Shift)
-    shiftPressed = false;
-
-  if(event->key() == Qt::Key_Alt)
-    altPressed = false;
 }
 
 
@@ -685,7 +681,11 @@ void GLWidget::mousePressEvent(QMouseEvent *event)
 void GLWidget::mouseReleaseEvent(QMouseEvent *event)
 {
   if(event->button() == Qt::RightButton & event->pos() == lastPressPos){
+#if WITH_QT6
+    ((MainWindow*)parent())->showContextMenu(event->globalPosition().toPoint());
+#else
     ((MainWindow*)parent())->showContextMenu(event->globalPos());
+#endif	
   }
 }
 
@@ -693,10 +693,19 @@ void GLWidget::mouseReleaseEvent(QMouseEvent *event)
 //-----------------------------------------------------------------------------
 void GLWidget::wheelEvent(QWheelEvent *event)
 {
+#if WITH_QT6
+  makeCurrent();
+  double s = exp((double)(event->angleDelta().y())*0.001);
+#else
   double s = exp((double)(event->delta())*0.001);
+#endif
   glScaled(s, s, s);
   updateGL();
+#if WITH_QT6  
+  lastPos = event->position().toPoint();
+#else
   lastPos = event->pos();
+#endif
   getMatrix();
 }
 
@@ -706,18 +715,31 @@ void GLWidget::wheelEvent(QWheelEvent *event)
 //-----------------------------------------------------------------------------
 void GLWidget::mouseMoveEvent(QMouseEvent *event)
 {
+#if WITH_QT6
+  makeCurrent();
+#endif
+
   GLint viewport[4];
   glGetIntegerv(GL_VIEWPORT, viewport);
 
+#if WITH_QT6
+  int dx = event->position().x() - lastPos.x();
+  int dy = event->position().y() - lastPos.y();
+#else
   int dx = event->x() - lastPos.x();
   int dy = event->y() - lastPos.y();
+#endif
 
   dy = -dy;
   
   if (
+#if WITH_QT6
+  ((event->buttons() & Qt::LeftButton) && (event->buttons() & Qt::MiddleButton))
+#else
   ((event->buttons() & Qt::LeftButton) && (event->buttons() & Qt::MidButton))
+#endif
         ||
-    event->buttons() == Qt::RightButton  // added for easy scalng
+    event->buttons() == Qt::RightButton  // added for easy scaling
        ) {
 
     // Scale:
@@ -740,7 +762,12 @@ void GLWidget::mouseMoveEvent(QMouseEvent *event)
     updateGL();
 
   } else if (
+#if WITH_QT6
+  (event->buttons() == Qt::MiddleButton)
+#else
   (event->buttons() == Qt::MidButton)
+#endif
+  
   ||
   (event->buttons() ==  (Qt::LeftButton | Qt::RightButton)) // added for 2 button mouse
     ){
@@ -766,11 +793,14 @@ void GLWidget::mouseMoveEvent(QMouseEvent *event)
 //-----------------------------------------------------------------------------
 void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
 {
+#if WITH_QT6
+  makeCurrent();
+#endif
   if(getLists() == 0) 
     return;
   
   /*
-  To avoid segmentation fault in MSYS2 emvironment, compass, numbers and indexes are hidden. 
+  To avoid segmentation fault in MSYS2 environment, compass, numbers and indexes are hidden.
   These will be restored at the end of this function. Do not return before restoring these.
   */
   bool prevStateDrawCoordinates = stateDrawCoordinates;
@@ -798,6 +828,9 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
   GLint i, j;
 
   updateGL();
+#if WITH_QT6
+  makeCurrent();
+#endif
   
   glSelectBuffer(bufferSize, buffer);
   glRenderMode(GL_SELECT);
@@ -808,9 +841,14 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
   glGetIntegerv(GL_VIEWPORT, viewport);
   glGetDoublev(GL_PROJECTION_MATRIX, projection);
   glLoadIdentity();
-  
+
+#if WITH_QT6
+  GLdouble x = event->position().x();
+  GLdouble y = (double)viewport[3]-event->position().y()-1;
+#else
   GLdouble x = event->x();
   GLdouble y = (double)viewport[3]-event->y()-1;
+#endif  
   
   GLdouble deltaX = 3.0;
   GLdouble deltaY = 3.0;
@@ -821,12 +859,14 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
   glMatrixMode(GL_MODELVIEW);
 
 
-
   /*This is to avoid segmentation fault in Linux with old hardware*/
   setMeshVisibility(false, false, false);
   
+#if WITH_QT6
+  paintGL();
+#else
   updateGL();
-  // paintGL();
+#endif
 
   /*Again, this is to avoid segmentation fault in Linux with old hardware and to suppress blinking*/
   setMeshVisibility(stateDrawSurfaceMesh, stateDrawVolumeMesh, stateDrawSharpEdges); 
@@ -873,7 +913,7 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
     list_t *l = getList(nearest);
 
     // skip sharp edge lists
-    if(l->getType() == SHARPEDGELIST) {
+   if(l->getType() == SHARPEDGELIST) {
 
 	  /* 
 	  Restoration of view settings. These were adjusted at the beginning of this function.
@@ -895,7 +935,7 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
       l = getList(l->getParent());
 
     // if not ctrl pressed, rebuild all selected lists except this one:
-    if(!ctrlPressed) {
+    if(!(event->modifiers() & Qt::ControlModifier)) {
       for(i = 0; i < getLists(); i++) {
 	list_t *l2 = getList(i);
 	if(l2->isSelected() && (l2->getIndex() != l->getIndex())) {
@@ -953,7 +993,7 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
     // body selection:
     //----------------
     currentlySelectedBody = -1;
-    if(shiftPressed || bodyEditActive) {
+    if( (event->modifiers() & Qt::ShiftModifier) || bodyEditActive) {
 
       // determine the max bulk index
       int MAX_BULK_INDEX = -1;
@@ -985,7 +1025,7 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
       MAX_BULK_INDEX++;
       if(MAX_BULK_INDEX == 0) {
 	cout << "Error in body selection: "
-	  "There are no legal body indiced from which to choose" << endl;
+	  "There are no legal body indices from which to choose" << endl;
 	cout.flush();
 	goto body_selection_finished;
       }
@@ -1057,7 +1097,7 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
   body_selection_finished:
     
     // Emit result to mainwindow:
-    emit(signalBoundarySelected(l));
+    emit(signalBoundarySelected(l, event->modifiers()));
 
   } else {
 
@@ -1065,7 +1105,7 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
     dummylist.setNature(-1);
     dummylist.setType(-1);
     dummylist.setIndex(-1);
-    emit(signalBoundarySelected(&dummylist));
+    emit(signalBoundarySelected(&dummylist, event->modifiers()));
 
   }
 
@@ -1099,6 +1139,9 @@ void GLWidget::getMatrix()
 //-----------------------------------------------------------------------------
 void GLWidget::rebuildLists()
 {
+#if WITH_QT6
+  makeCurrent();
+#endif
   double *bb = mesh->boundingBox();
   
   drawTranslate[0] = bb[6]; // x-center
@@ -1164,6 +1207,10 @@ void GLWidget::rebuildEdgeLists()
 //-----------------------------------------------------------------------------
 GLuint GLWidget::makeLists()
 {
+#if WITH_QT6
+  makeCurrent();
+#endif
+
   int i;
   list_t *l;
 
@@ -1183,7 +1230,7 @@ GLuint GLWidget::makeLists()
   // - A list of sharp edges will always be drawn (even if it is empty)
   //---------------------------------------------------------------------------
   
-  // Simultaneously, populate hash for mapping body & boundary incides:
+  // Simultaneously, populate hash for mapping body & boundary indices:
   //--------------------------------------------------------------------
   boundaryMap.clear();
   bodyMap.clear();
@@ -1893,6 +1940,9 @@ void GLWidget::drawCoordinates()
 
 bool GLWidget::toggleCoordinates()
 {
+#if WITH_QT6
+  makeCurrent();
+#endif
   stateDrawCoordinates = !stateDrawCoordinates;
   updateGL();
   return stateDrawCoordinates;
@@ -1905,16 +1955,21 @@ void GLWidget::drawBgImage()
   GLint viewport[4];
 
   if(!bgTexture) {
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
     cout << "Bind texture " << string(bgImageFileName.toLatin1()) << "... ";
+	QOpenGLTexture texture(QImage(bgImageFileName).mirrored());
+	bgSizeX = texture.width();
+    bgSizeY = texture.height();
+    bgTexture = texture.textureId();
+    cout << "done" << endl;
 #else
     cout << "Bind texture " << string(bgImageFileName.toAscii()) << "... ";
-#endif
     QPixmap pixmap(bgImageFileName);
     bgSizeX = pixmap.width();
     bgSizeY = pixmap.height();
     bgTexture = bindTexture(pixmap, GL_TEXTURE_2D);
     cout << "done" << endl;
+#endif
   }
   
   if(!bgTexture) {
@@ -2017,7 +2072,7 @@ void GLWidget::indexColors(int *c, int i)
 void GLWidget::setMeshVisibility(bool stateDrawSurfaceMesh, bool stateDrawVolumeMesh, bool stateDrawSharpEdges){
 /*
   This function is used in mouseDoubleClickEvent(mouseEvent event) to avoid segmentation fault observed Linux
-  emvironment with old hardware.
+  environment with old hardware.
 */
 
   mesh_t *mesh = getMesh();
@@ -2102,3 +2157,84 @@ This is a public function to be called from ObjectBrowser.
 //cout << "selected: " << selected << endl;  
   return selected;
 }
+
+#if WITH_QT6
+void GLWidget::updateGL()
+{
+	update();
+}
+
+
+
+/*
+ Reference http://stackoverflow.com/questions/28216001/how-to-render-text-with-qopenglwidget/33674071#33674071
+*/
+void GLWidget::renderText(double x, double y, double z, const QString & str, const QFont & font/* = QFont()*/, int listBase /*= 2000*/)
+{
+	int width = this->width();
+    int height = this->height();
+
+    GLdouble model[4][4], proj[4][4];
+    GLint view[4];
+    glGetDoublev(GL_MODELVIEW_MATRIX, &model[0][0]);
+    glGetDoublev(GL_PROJECTION_MATRIX, &proj[0][0]);
+    glGetIntegerv(GL_VIEWPORT, &view[0]);
+    GLdouble textPosX = 0, textPosY = 0, textPosZ = 0;
+
+    project(x, y, z, 
+                &model[0][0], &proj[0][0], &view[0],
+                &textPosX, &textPosY, &textPosZ);
+
+    textPosY = height - textPosY; // y is inverted
+
+    QPainter painter(this);
+    painter.setPen(Qt::black);
+    painter.setFont(font);
+    painter.setRenderHints(QPainter::Antialiasing | QPainter::TextAntialiasing);
+    painter.drawText(textPosX, textPosY, str); // z = pointT4.z + distOverOp / 4
+    painter.end();
+}
+
+inline GLint GLWidget::project(GLdouble objx, GLdouble objy, GLdouble objz,
+    const GLdouble model[16], const GLdouble proj[16],
+    const GLint viewport[4],
+    GLdouble * winx, GLdouble * winy, GLdouble * winz)
+{
+    GLdouble in[4], out[4];
+
+    in[0] = objx;
+    in[1] = objy;
+    in[2] = objz;
+    in[3] = 1.0;
+    transformPoint(out, model, in);
+    transformPoint(in, proj, out);
+
+    if (in[3] == 0.0)
+        return GL_FALSE;
+
+    in[0] /= in[3];
+    in[1] /= in[3];
+    in[2] /= in[3];
+
+    *winx = viewport[0] + (1 + in[0]) * viewport[2] / 2;
+    *winy = viewport[1] + (1 + in[1]) * viewport[3] / 2;
+
+    *winz = (1 + in[2]) / 2;
+    return GL_TRUE;
+}
+
+inline void GLWidget::transformPoint(GLdouble out[4], const GLdouble m[16], const GLdouble in[4])
+{
+#define M(row,col)  m[col*4+row]
+    out[0] =
+        M(0, 0) * in[0] + M(0, 1) * in[1] + M(0, 2) * in[2] + M(0, 3) * in[3];
+    out[1] =
+        M(1, 0) * in[0] + M(1, 1) * in[1] + M(1, 2) * in[2] + M(1, 3) * in[3];
+    out[2] =
+        M(2, 0) * in[0] + M(2, 1) * in[1] + M(2, 2) * in[2] + M(2, 3) * in[3];
+    out[3] =
+        M(3, 0) * in[0] + M(3, 1) * in[1] + M(3, 2) * in[2] + M(3, 3) * in[3];
+#undef M
+}
+
+#endif

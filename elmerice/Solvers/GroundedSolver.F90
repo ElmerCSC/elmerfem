@@ -80,7 +80,7 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Nodes_t), SAVE :: Nodes
 
   LOGICAL :: AllocationsDone = .FALSE., GotIt, stat,UnFoundFatal=.TRUE.,&
-             AllGrounded = .FALSE., useLSvar = .FALSE.
+             AllGrounded = .FALSE., useLSvar = .FALSE., Active
 
   INTEGER :: i, mn, n, t, Nn, istat, DIM, MSum, ZSum, bedrockSource
   INTEGER, POINTER :: Permutation(:), bedrockPerm(:), LSvarPerm(:)
@@ -102,6 +102,8 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
   PointerToVariable => Solver % Variable
   Permutation  => PointerToVariable % Perm
   VariableValues => PointerToVariable % Values
+
+  Active = ANY(Permutation > 0)
 
   CALL INFO(SolverName, 'Computing grounded mask from geometry', level=3)
 
@@ -280,7 +282,7 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
      END IF
   END DO
   
-  IF ( ParEnv % PEs>1 ) CALL ParallelSumVector( Solver % Matrix, VariableValues, 1 )
+  IF ( ParEnv % PEs>1 .AND. Active) CALL ParallelSumVector( Solver % Matrix, VariableValues, 1 )
  
   CALL INFO( SolverName , 'Done')
  

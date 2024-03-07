@@ -107,7 +107,7 @@ Solver 3
   Vtu format = Logical True
   Discontinuous Bodies = Logical True
 
-  Reference Sums(6) = Real 41 6 11214 1315 2577197.0 0.35106316188253328
+  Reference Values(6) = Real 41 6 11214 1315 2577197.0 0.35106316188253328
   Reference Norm = 1.0
 End
 

@@ -1,0 +1,153 @@
+! A test case for the electromagnetic wave solver.
+! This one solves eigenmodes compared to the base case.
+!
+! P.R. 25.8.2018
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "shoebox_hexas"
+End
+
+Simulation
+  Max Output Level = 5
+
+  Coordinate System = "Cartesian"
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+
+  Output Intervals(1) = 1
+
+! Increase for prettier pictures
+!  Mesh Levels = 2
+End
+
+! We are looking for a numerically simple case...
+Constants
+  Permittivity of Vacuum = 1.0
+  Permeability of Vacuum = 1.0
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Material 1
+  Relative Permittivity = 1.0
+  Relative Permeability = 1.0
+  Electric Conductivity = 1.0e1
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+
+Solver 1
+  Equation = "VectorWave"
+  Variable = E
+
+  Procedure = "EMWaveSolver" "EMWaveSolver"
+
+!  Quadratic Approximation = Logical True
+
+  Linear System Solver = String "Direct" ! "iterative"
+  Linear System Direct Method = "umfpack"
+
+! Eliminated for now...
+!  Linear System Iterative Method = String "bicgstabl"
+!  BiCGstabl polynomial degree = Integer 5
+!  Linear System Preconditioning = String "ILUT"
+!  Linear System ILUT Tolerance = Real 1e-7
+!  Linear System Max Iterations = 5000
+!  Linear System Convergence Tolerance = 1.0e-8
+!  Linear System Abort Not Converged = True
+!  Linear System Residual Output = 50
+
+
+! Only global matrices work for constant bulk matrix currently. 
+! Constant bulk matrix saves ~20% for the test problem.
+  Use Global Mass Matrix = True
+
+  Eigen Analysis = True
+  Eigen System Values = 10
+  Eigen System Convergence Tolerance = Real 1.0e-8
+  Eigen System Select = smallest magnitude
+!  Eigen System Shift = Real 1.0e-3
+
+! This is a very sensitive parameter. Decreasing it too much
+! will reviel tons of zero eigenmodes...
+  Eigen System Shift = Real 4.0e3
+  Eigen System Complex = Logical True
+
+! Optionally we could compute energy norm
+!  Calculate Loads = Logical True
+!  Calculate Energy Norm = Logical True
+
+!  Optimize Bandwidth = False
+End
+
+Solver 2
+  Equation = "calcfields"
+
+  Procedure = "EMWaveSolver" "EMWaveCalcFields"
+  Linear System Symmetric = False
+
+  Calculate Elemental Fields = False
+  Calculate Nodal Fields = True
+
+  Steady State Convergence Tolerance = 1
+  Linear System Solver = "direct" !Iterative"
+  Linear System Direct Method = umfpack
+
+!  Linear System Preconditioning = None
+!  Linear System Residual Output = 10
+!  Linear System Max Iterations = 1000
+!  Linear System Iterative Method = CG
+!  Linear System Convergence Tolerance = 1.0e-9
+
+! For eigenmodes this means the complex part!
+  Calculate Electric field derivatives = Logical True
+
+  Exec Solver = "before saving"
+End
+
+Solver 3
+  Equation = "save scalars"
+  Procedure = "SaveData" "SaveScalars"
+
+  Save Eigenfrequencies = Logical True
+  Filename = f.dat
+
+  Exec Solver = "after saving"
+  Show Norm Index = 1
+End 
+
+
+Solver 4
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = case
+  Vtu Format = Logical True
+!  Save Geometry Ids = Logical True
+  Save Bulk Only = Logical True
+
+! Treat eigenmodes as timesteps
+  Eigen Analysis = True
+  ! Choose between 're', 'im', 'abs' and 'complex'
+  Eigen Vector Component = String "complex"
+
+  Exec Solver = after saving
+End 
+
+Boundary Condition 1
+  Name = "AllSides"
+  Target Boundaries(6) = 1 2 3 4 5 6 
+  E {e} = Real 0
+End
+
+!This relates to the last eigenvalue and is very unstable
+!Solver 2 :: Reference Norm = 1.39450176E+01
+! This is the 1st eigenvalue and is stable!
+Solver 3 :: Reference Norm = 5.60973688E+00

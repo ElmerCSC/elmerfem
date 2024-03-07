@@ -34,12 +34,12 @@ $ kc=31.4159265358979
 $ w=2*pi*(2.5e9)
 $ mu0=4e-7*pi
 
-Initial Condition 1
+!Initial Condition 1
   ! Pre = Variable coordinate
   ! Real MATC "rand(1)"
-  Eref_re 2 = Variable coordinate 1, coordinate 3
-  Real MATC "-1.66782047593233*sin(tx(0)*pi*10)*(sin(beta0*tx(1)) - sin(-beta0*tx(1) + 2 * beta0*0.2))"
-End
+  ! Eref_re 2 = Variable coordinate 1, coordinate 3
+  !  Real MATC "-1.66782047593233*sin(tx(0)*pi*10)*(sin(beta0*tx(1)) - sin(-beta0*tx(1) + 2 * beta0*0.2))"
+!End
 
 Material 1
   Relative Permittivity = Real 1
@@ -69,7 +69,9 @@ Solver 1
   !BiCGstabl polynomial degree = Integer 2
   
   Linear System Preconditioning Damp Coefficient = Real 0.0
-  Linear System Preconditioning Damp Coefficient im = Real 1
+  Linear System Preconditioning Damp Coefficient im = Real -1.0
+  Mass-proportional Damping = True
+
   !Linear System Preconditioning = String "boomerAMG"
   !Linear System Preconditioning = String "parasails"
   Linear System Preconditioning = String "vanka"
@@ -119,17 +121,12 @@ End
 
 Boundary Condition 1
   Target Boundaries(1) = 5 !1
-  !E re {e} 2 = Variable Coordinate 1
-  !Real MATC "10*tx"
 
   Electric Robin Coefficient im = Real $ beta0
-  !E re {e} 2 = Real 1
 
   Magnetic Boundary Load 2 = Variable Coordinate 1
-    Real MATC "-2*beta0*k0/kc*sin(pi*tx/100e-3)"
-  !Real MATC "-139.87*sin(pi*tx/100e-3)"
-  !Real MATC "-1.1131e8*sin(pi*tx/100e-3)"
-  !Real MATC "-2/mu0*beta0*k0/kc*sin(pi*tx/100e-3)"
+    Real MATC "-2*beta0*k0/kc*sin(kc*tx)"
+
 End
 
 Boundary Condition 2

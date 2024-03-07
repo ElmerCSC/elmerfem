@@ -1,0 +1,134 @@
+! This is a copy of StatElecSolveMMG2D for the vectorised solver
+! p elements of order 2 are used
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "squares_inside_square"
+  Results Directory "results"
+End
+
+! This level is doing the lumping.
+! Steady state iteration level is doing the adaptive meshing. 
+Run Control
+  Run Control Iterations = 4
+  Reset Adaptive Mesh = Logical True
+End 
+
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = Cartesian 2D 
+  Simulation Type = Steady State
+  Steady State Max Iterations = 50
+  Post File = "case.vtu"
+End
+
+Constants
+!  Permittivity Of Vacuum = 8.8542e-12
+!  This one is changed to one to allow easier verification
+  Permittivity Of Vacuum = 1.0
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+!  Calculate Electric Energy = True
+End
+
+Solver 1
+  Equation = Electro Statics
+  Variable = Potential
+  Procedure = "StatElecSolveVec" "StatElecSolver"
+  Vector Assembly = True
+  Element = p:2
+!  Calculate Electric Field = False
+!  Calculate Electric Flux = False
+!  Calculate Capacitance Matrix = True
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabl
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 20
+  Nonlinear System Max Iterations = 1
+
+!-------------------------------------------------
+  Constraint Modes Analysis = Logical True
+  Constraint Modes Lumped = Logical True
+  Constraint Modes Fluxes = Logical True
+  Constraint Modes Matrix Symmetric = Logical True
+  Constraint Modes Matrix Results = Logical True
+  Constraint Modes Matrix Norm = Logical True
+  Run Control Constraint Modes = Logical True
+
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Adaptive Mesh Refinement = True
+  Adaptive Remesh = True
+  Adaptive Error Limit = 0.005
+  Adaptive Remesh Use MMG = Logical True
+  Adaptive Mesh Numbering = False
+
+! Perform minimum amount of adaptive rounds + one more fine one
+!  Adaptive Min Depth = 5
+!  Adaptive Final Refinement = 0.2
+
+! Just for debugging
+!  Adaptive Save Mesh = True
+End
+
+
+Solver 2
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Exec Solver = "after control"
+  Parallel Reduce = True
+  Filename = f.dat
+
+  Show Norm Name = "res: potential lumped matrix norm"
+End
+
+
+Material 1
+  Relative Permittivity = 1
+End
+
+Boundary Condition 1
+  Target Boundaries(4) = 1 2 3 4
+!  Constraint Mode Potential = Integer 0
+  Potential = 0
+End
+
+Boundary Condition 2
+  Target Boundaries(4) = 5 6 7 8 
+  Constraint Mode Potential = Integer 1
+End
+
+Boundary Condition 3
+  Target Boundaries(4) = 9 10 11 12
+  Constraint Mode Potential = Integer 2
+  Potential = 1 
+End
+
+Boundary Condition 4
+  Target Boundaries(4) = 13 14 15 16
+  Constraint Mode Potential = Integer 3
+End
+
+Boundary Condition 5
+  Target Boundaries(4) = 17 18 19 20
+  Constraint Mode Potential = Integer 4
+End
+
+Solver 1 :: Reference Norm = 3.12990372E-01
+Solver 2 :: Reference Norm = 2.44403429E+01
+
+
+!End Of File
+

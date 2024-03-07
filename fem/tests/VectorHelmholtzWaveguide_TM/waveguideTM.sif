@@ -1,0 +1,172 @@
+!
+! A wave guide model for a transverse magnetic (TM) solution
+!
+! The case is defined such that the time-harmonic solution is expected to be of
+! the form
+!
+! E = (cos(k_1 x), 0, -ik_1/k_3 sin(k_1 x)) E_0 exp[-i(w t - k_3 z)] 
+!
+! The case script of this file uses the parameters k_1 = kc and k_3 = beta0.
+!
+
+Check Keywords "Warn"
+
+Header
+Mesh DB "." "shoebox_tets"
+End
+
+Simulation
+  Max Output Level = 5
+
+  Coordinate System = "Cartesian"
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+
+  !Post File = vectorhelmholtz.vtu
+  Output Intervals(1) = 1
+End
+
+Constants
+!Permeability of Vacuum = Real 1
+!Permittivity of Vacuum = Real 1
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+$ mu0 = 4e-7*pi
+$ eps0 = 8.854187817e-12
+$ c = 1/sqrt(mu0*eps0)
+$ n = 1
+$ a = 0.1   ! The distance of parallel planes
+$ w = 2*pi*(2.5e9)
+$ k0 = w/c
+$ kc = n*pi/a
+$ beta0 = sqrt(k0^2-kc^2)
+
+! The above parameters give the following numerical values: 
+!
+! $ k0=52.3961255469564
+! $ beta0=41.9332032192090 
+! $ kc=31.4159265358979 
+
+Material 1
+  Relative Permittivity = Real 1
+  !Relative Permittivity im = Real 0
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+  Angular Frequency = Real $w
+End
+
+Solver 1
+  Equation = "VectorHelmholtz"
+  Use Piola Transform = Logical True
+  Procedure = "VectorHelmholtz" "VectorHelmholtzSolver"
+
+  Linear System Symmetric = False
+  Linear System Scaling = True
+
+  !Linear System Use Hypre = Logical True
+  !Linear System Use Trilinos = Logical True
+  !Linear System Use Mumps = Logical True
+
+  Linear System Solver = String "Iterative"
+  !Linear System Solver = String "Direct"
+  Linear System Iterative Method = String "bicgstabl"
+  BiCGstabl polynomial degree = Integer 4
+  
+  Linear System Preconditioning Damp Coefficient = Real 0.0
+  Linear System Preconditioning Damp Coefficient im = Real -1
+  Mass-proportional Damping = True
+  !Linear System Preconditioning = String "boomerAMG"
+  !Linear System Preconditioning = String "parasails"
+  !Linear System Preconditioning = String "vanka"
+  !Linear System Preconditioning = String "None"
+  !Linear System Preconditioning = String "diagonal"
+  Linear System Preconditioning = String "ILU0"
+  Linear System ILUT Tolerance = Real 3e-3
+  Linear System Max Iterations = Integer 4000
+  Linear System Convergence Tolerance = 1.0e-7
+
+  linear system abort not converged = false
+
+  Steady State Convergence Tolerance = 1e-09
+  Linear System Residual Output = 10
+  Calculate Loads = Logical True
+  Calculate Energy Norm = Logical True
+End
+
+Solver 2
+  Equation = "calcfields"
+
+  Procedure = "VectorHelmholtz" "VectorHelmholtzCalcFields"
+
+  Calculate Elemental Fields = Logical True
+  Calculate Magnetic Field Strength = Logical True
+  Calculate Magnetic Flux Density = Logical True
+  Calculate Poynting vector = Logical True
+  !Calculate Div of Poynting Vector = Logical True
+  Calculate Electric field = Logical True
+  Calculate Energy Functional = Logical True
+
+  Steady State Convergence Tolerance = 1
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = None
+  Linear System Residual Output = 10
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = CG
+  Linear System Convergence Tolerance = 1.0e-9
+End
+
+Solver 3
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+  FileName = "scalar_values.dat"
+End
+
+Solver 4
+!  Exec Solver = never
+  !Equation = VtuOutput
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = TM
+  Vtu Format = Logical True
+  !GMSH Format = Logical True
+  !Single Precision = Logical True
+  !Save Bulk Only = True
+End 
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  Electric Robin Coefficient Im = Real $ k0*k0/beta0
+  Magnetic Boundary Load Im 1 = Variable Coordinate 1
+    Real MATC "2*k0*k0/beta0*cos(kc*tx)"
+End
+
+Boundary Condition 2
+  Target Boundaries(2) = 2 4	
+  E re {e} = Real 0
+  E im {e} = Real 0
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 6
+  !
+  ! An absorbing BC for the TM case:
+  !  
+  Electric Robin Coefficient im = Real $ k0*k0/beta0  
+End
+
+
+! + the do-nothing BC on the boundaries 2 and 5 to set n x curl E = 0 
+
+
+Solver 1 :: Reference Norm = 3.86725348E-03
+Solver 1 :: Reference Norm Tolerance = 1e-3
+Solver 2 :: Reference Norm = 3.83939406E-05
+Solver 2 :: Reference Norm Tolerance = 1e-3

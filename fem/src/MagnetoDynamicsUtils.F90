@@ -28,6 +28,10 @@
  USE DefUtils
  IMPLICIT NONE
 
+ INTERFACE GetPermittivity
+   MODULE PROCEDURE GetPermittivityR, GetPermittivityC
+ END INTERFACE
+
  CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION GetElectricConductivityTensor(Element, n, Part, &
@@ -39,7 +43,7 @@
     INTEGER :: n, i, j
     TYPE(Valuelist_t), POINTER :: Material
     REAL(KIND=dp) :: Tcoef(3,3,n)
-    CHARACTER(LEN=MAX_NAME_LEN):: CoilType
+    CHARACTER(LEN=*):: CoilType
     CHARACTER(LEN=2) :: Part
     LOGICAL :: Found
     LOGICAL :: CoilBody
@@ -104,7 +108,7 @@
     TYPE(Element_t), POINTER :: Element
     INTEGER :: n, i, j
     LOGICAL :: CoilBody
-    CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
+    CHARACTER(LEN=*) :: CoilType
     
     TCoef=0._dp
     TCoefRe=0._dp
@@ -481,6 +485,153 @@
  END SUBROUTINE GetElementRotM
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+ SUBROUTINE GetPermittivityR(Material,Acoef,n)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(ValueList_t), POINTER :: Material
+    INTEGER :: n
+    REAL(KIND=dp) :: Acoef(:)
+!------------------------------------------------------------------------------
+    LOGICAL :: Found, FirstTime = .TRUE., Warned = .FALSE.
+    REAL(KIND=dp) :: Pvacuum
+    SAVE FirstTime, Warned, Pvacuum
+!------------------------------------------------------------------------------
+
+    IF ( FirstTime ) THEN
+      Pvacuum = GetConstReal( CurrentModel % Constants, &
+              'Permittivity of Vacuum', Found )
+      IF (.NOT. Found) Pvacuum = 8.854187817d-12
+      FirstTime = .FALSE.
+    END IF
+
+    Acoef(1:n) = GetReal( Material, 'Relative Permittivity', Found )
+    IF ( Found ) THEN
+      Acoef(1:n) = Pvacuum * Acoef(1:n)
+    ELSE
+      Acoef(1:n) = GetReal( Material, 'Permittivity', Found )
+    END IF
+
+    IF( .NOT. Found ) THEN
+      IF(.NOT. Warned ) THEN
+        CALL Warn('GetPermittivity','Permittivity not defined in material, defaulting to that of vacuum')
+        Warned = .TRUE.
+      END IF
+      Acoef(1:n) = Pvacuum
+    END IF
+!------------------------------------------------------------------------------
+  END SUBROUTINE GetPermittivityR
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+ SUBROUTINE GetPermittivityC(Material,Acoef,n)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(ValueList_t), POINTER :: Material
+    INTEGER :: n
+    COMPLEX(KIND=dp) :: Acoef(:)
+!------------------------------------------------------------------------------
+    LOGICAL :: Found, Found_im, FirstTime = .TRUE., Warned = .FALSE.
+    REAL(KIND=dp) :: Pvacuum
+    SAVE FirstTime, Warned, Pvacuum
+    REAL(KIND=dp), PARAMETER :: im  = (0._dp, 1._dp)
+!------------------------------------------------------------------------------
+
+    IF ( FirstTime ) THEN
+      Pvacuum = GetConstReal( CurrentModel % Constants, &
+              'Permittivity of Vacuum', Found )
+      IF (.NOT. Found) Pvacuum = 8.854187817d-12
+      FirstTime = .FALSE.
+    END IF
+
+    Acoef(1:n) = GetReal( Material, 'Relative Permittivity', Found )
+    IF ( Found ) THEN
+      Acoef(1:n) = Pvacuum * Acoef(1:n)
+      Acoef(1:n) = Acoef(1:n) + im * Pvacuum * & 
+              GetReal(Material,'Relative Permittivity  im', Found_im )
+    ELSE
+      Acoef(1:n) = GetReal( Material, 'Permittivity', Found )
+      Acoef(1:n) = Acoef(1:n) + im * &
+                 GetReal(Material,'Permittivity  im', Found_im )
+    END IF
+
+    IF( .NOT. Found ) THEN
+      IF(.NOT. Warned ) THEN
+        CALL Warn('GetPermittivity','Permittivity not defined in material, defaulting to that of vacuum')
+        Warned = .TRUE.
+      END IF
+      Acoef(1:n) = Pvacuum
+    END IF
+!------------------------------------------------------------------------------
+  END SUBROUTINE GetPermittivityC
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> This gets keywords for a loss model that is needed by FourierLossSolver and
+!> MagnetoDynamicsCalcFields. There is an old and new format. 
+!------------------------------------------------------------------------------
+  SUBROUTINE GetLossExponents(vList,FreqPower,FieldPower,Ncomp,OldKeywords)
+!------------------------------------------------------------------------------
+    TYPE(ValueList_t),POINTER :: vList
+    REAL(KIND=dp) :: FreqPower(:), FieldPower(:)
+    INTEGER :: Ncomp
+    LOGICAL, OPTIONAL :: OldKeywords
+    
+    REAL(KIND=dp), POINTER :: WrkArray(:,:)
+    LOGICAL :: Found
+    INTEGER :: icomp
+    CHARACTER(*), PARAMETER :: Caller = 'GetLossExponents'
+
+    IF( PRESENT(OldKeywords) ) THEN
+      IF( OldKeywords ) THEN      
+        CALL Info('GetLossExponents','Using old keyword format',Level=20)
+        FreqPower(1) = GetCReal( vList,'Harmonic Loss Linear Frequency Exponent',Found )
+        IF( .NOT. Found ) FreqPower(1) = 1.0_dp
+        
+        FreqPower(2) = GetCReal( vList,'Harmonic Loss Quadratic Frequency Exponent',Found )
+        IF( .NOT. Found ) FreqPower(2) = 2.0_dp
+        
+        FieldPower(1) = GetCReal( vList,'Harmonic Loss Linear Exponent',Found ) 
+        IF( .NOT. Found ) FieldPower(1) = 2.0_dp
+        FieldPower(1) = FieldPower(1) / 2.0_dp
+        
+        FieldPower(2) = GetCReal( vList,'Harmonic Loss Quadratic Exponent',Found ) 
+        IF( .NOT. Found ) FieldPower(2) = 2.0_dp
+        FieldPower(2) = FieldPower(2) / 2.0_dp    
+        RETURN
+      ELSE
+        CALL Info('GetLossExponents','Using new keyword format',Level=20)    
+      END IF
+    END IF
+      
+    WrkArray => ListGetConstRealArray( vList,'Harmonic Loss Frequency Exponent',Found )    
+    IF( Found ) THEN 
+      IF( SIZE( WrkArray,1 ) < Ncomp ) THEN
+        CALL Fatal(Caller,'> Harmonic Loss Frequency Exponent < too small')
+      END IF
+      FreqPower(1:Ncomp) = WrkArray(1:Ncomp,1)
+    ELSE       
+      DO icomp = 1, Ncomp
+        FreqPower(icomp) = GetCReal( vList,'Harmonic Loss Frequency Exponent '//I2S(icomp) )
+      END DO
+    END IF
+
+    WrkArray => ListGetConstRealArray( vList,'Harmonic Loss Field Exponent',Found )
+    IF( Found ) THEN
+      IF( SIZE( WrkArray,1 ) < Ncomp ) THEN
+        CALL Fatal(Caller,'> Harmonic Loss Field Exponent < too small')
+      END IF
+      FieldPower(1:Ncomp) = WrkArray(1:Ncomp,1)        
+    ELSE
+      DO icomp = 1, Ncomp
+        FieldPower(icomp) = GetCReal( vList,'Harmonic Loss Field Exponent '//I2S(icomp) )
+      END DO
+    END IF    
+    
+  END SUBROUTINE GetLossExponents
+
+  
 !------------------------------------------------------------------------------
  END MODULE MGDynMaterialUtils
 !------------------------------------------------------------------------------

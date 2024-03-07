@@ -1,0 +1,118 @@
+! This is test case for integration rules for wedge elements.
+! The test includes
+! triple product rules: 27, 64
+! double product rules: 6,8,12,18,21,28,44,64
+! non-product rules: 4,5,7,10,11,14,15,16,24
+!
+! P.R. 13.11.2019
+
+Check Keywords "Warn"
+
+Header :: Mesh DB "." "cube"
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+!  Post File   = "case.vtu"
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Material 1
+!  Convection Velocity 1 = 0
+!  Convection Velocity 2 = 0
+  diffusion coefficient = 1.0
+!  convection coefficient = 0.0
+!  time derivative coefficient = 0.0
+End
+
+Body Force 1
+  Field Source = Real 0
+End 
+
+Equation 1 :: Active Solvers(1) = 1
+
+Solver 1
+  Equation = "ModelPDE"
+  Variable = "Field"
+  Procedure = "ModelPDE" "AdvDiffSolver"
+  Element = "p:2"
+  Linear System Solver = Direct
+  Steady State Convergence Tolerance = 1e-9
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+!  Field = 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 2
+  Field = 0.0
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 3
+  Field Flux = 1.0
+End
+
+
+
+!Solver 1 :: Reference Norm = 6.45497224E-01
+Solver 1 :: Reference Norm = 3.47804172E-01 ! p:2
+!Solver 1 :: Reference Norm = 2.65997588E-01 ! p:3
+RUN
+
+! Test other rules. Following combinations should be ok:
+! laplace, 1st order: consistent
+! 1,2,3,4,5,6,7,8,10,11,12,14,15,16,18,21,24,27,28,44,64
+! p:2
+! 4-> ok
+! p:3
+! 5, 7, 10-> ok
+
+Solver 1 :: Number of Integration Points = Integer 64
+RUN
+Solver 1 :: Number of Integration Points = Integer 44
+RUN
+Solver 1 :: Number of Integration Points = Integer 28
+RUN
+Solver 1 :: Number of Integration Points = Integer 27
+RUN
+Solver 1 :: Number of Integration Points = Integer 24
+RUN
+Solver 1 :: Number of Integration Points = Integer 21
+RUN
+Solver 1 :: Number of Integration Points = Integer 18
+RUN
+Solver 1 :: Number of Integration Points = Integer 16
+RUN
+Solver 1 :: Number of Integration Points = Integer 15
+RUN
+Solver 1 :: Number of Integration Points = Integer 14
+RUN
+Solver 1 :: Number of Integration Points = Integer 12
+RUN
+Solver 1 :: Number of Integration Points = Integer 11
+RUN
+Solver 1 :: Number of Integration Points = Integer 10
+RUN
+Solver 1 :: Number of Integration Points = Integer 8
+RUN
+Solver 1 :: Number of Integration Points = Integer 7
+RUN
+Solver 1 :: Number of Integration Points = Integer 6
+RUN
+Solver 1 :: Number of Integration Points = Integer 5
+RUN
+Solver 1 :: Number of Integration Points = Integer 44
+RUN
+!Solver 1 :: Number of Integration Points = Integer 3
+!RUN

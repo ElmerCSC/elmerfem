@@ -1,0 +1,21 @@
+{
+    "config_version": 2, 
+    "solver": {
+        "max_iters": 4000, 
+        "preconditioner": {
+            "scope": "precond", 
+            "max_iters": 1, 
+            "solver": "MULTICOLOR_DILU"
+        }, 
+        "use_scalar_norm": 1, 
+        "solver": "FGMRES",
+        "print_solve_stats": 1, 
+        "obtain_timings": 1, 
+        "subspace_dim_s": 1, 
+        "monitor_residual": 1, 
+        "convergence": "ABSOLUTE", 
+        "scope": "main", 
+        "tolerance": 1e-06, 
+        "norm": "L2"
+    }
+}

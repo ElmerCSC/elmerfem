@@ -74,7 +74,8 @@ MODULE IterativeMethods
   
   USE Types
   USE CRSMatrix  
-
+  USE SParIterComm
+  
   IMPLICIT NONE
   
   INTEGER :: nc
@@ -85,12 +86,12 @@ MODULE IterativeMethods
 CONTAINS
   
 
-  ! When treating a complex system with iterative solver norm, matrix-vector product are
-  ! similar in real valued and complex valued systems. However, the inner product is different.
-  ! For pseudo complex systems this routine generates also the complex part of the product.
+  ! When treating a complex system with iterative solver, norm and matrix-vector product are
+  ! similar for real-valued and complex-valued systems. However, the inner product is different.
+  ! For pseudo-complex systems this routine generates also the complex part of the product.
   ! This may have a favourable effect on convergence.
   !
-  ! This routine has same API as the fully real valued system but every second call returns
+  ! This routine has same API as the fully real-valued system but every second call returns
   ! the missing complex part.
   !
   ! This routine assumes that in x and y the values follow each other. 
@@ -116,7 +117,12 @@ CONTAINS
       
       a = SUM( x(1:ndim) * y(1:ndim) )
       b = SUM( x(1:ndim:2) * y(2:ndim:2) - x(2:ndim:2) * y(1:ndim:2) )
-      
+
+      IF (ParEnv % PEs > 1) THEN
+        CALL SParActiveSUM(a,0)
+        CALL SParActiveSUM(b,0)
+      END IF
+
       d = a 
       callcount = callcount + 1
     ELSE
@@ -148,6 +154,11 @@ CONTAINS
     IF( callcount == 0 ) THEN    
       a = SUM( x(1:ndim) * y(1:ndim) )
       b = SUM( x(1:ndim/2) * y(ndim/2+1:ndim) - x(ndim/2+1:ndim) * y(1:ndim/2) )
+
+      IF (ParEnv % PEs > 1) THEN
+        CALL SParActiveSUM(a,0)
+        CALL SParActiveSUM(b,0)
+      END IF
       
       d = a 
       callcount = callcount + 1
@@ -693,8 +704,7 @@ CONTAINS
       INTEGER :: i, j, rr, r, u, xp, bp, z, zz, y0, yl, y, k, iwork(l-1), stat, Round, &
           IluOrder
       REAL(KIND=dp) :: alpha, beta, omega, rho0, rho1, sigma, ddot, varrho, hatgamma
-      LOGICAL rcmp, xpdt, GotIt, BackwardError, EarlyExit
-      CHARACTER(LEN=MAX_NAME_LEN) :: str
+      LOGICAL rcmp, xpdt, GotIt, EarlyExit
       REAL(KIND=dp), ALLOCATABLE :: work(:,:)
       REAL(KIND=dp) :: rwork(l+1,3+2*(l+1))
       REAL(KIND=dp) :: tmpmtr(l-1,l-1), tmpvec(l-1)
@@ -1264,14 +1274,14 @@ CONTAINS
         
       ALLOCATE( R(n), T1(n), T2(n), STAT=allocstat )
       IF( allocstat /= 0 ) THEN
-        CALL Fatal('GCR','Failed to allocate memory of size: '//TRIM(I2S(n)))
+        CALL Fatal('GCR','Failed to allocate memory of size: '//I2S(n))
       END IF
 
       IF ( m > 1 ) THEN
         ALLOCATE( S(n,m-1), V(n,m-1), STAT=allocstat )
         IF( allocstat /= 0 ) THEN
           CALL Fatal('GCR','Failed to allocate memory of size: '&
-              //TRIM(I2S(n))//' x '//TRIM(I2S(m)))
+              //I2S(n)//' x '//I2S(m-1))
         END IF
         
          V(1:n,1:m-1) = 0.0d0	
@@ -1294,8 +1304,8 @@ CONTAINS
       IF( Converged .OR. Diverged) RETURN
       
       DO k=1,Rounds
-        !----------------------------------------------
-	 ! Check for restarting
+         !----------------------------------------------
+         ! Check for restarting
          !----------------------------------------------
          IF ( MOD(k,m)==0 ) THEN
             j = m
@@ -1425,7 +1435,7 @@ CONTAINS
 
            IF( InfoActive(20) ) THEN
              ksum = ksum + k
-             CALL Info('IterMethod_GCR','Total number of GCR iterations: '//TRIM(I2S(ksum)))           
+             CALL Info('IterMethod_GCR','Total number of GCR iterations: '//I2S(ksum))           
            END IF
            
          END IF
@@ -1922,7 +1932,7 @@ CONTAINS
     INTEGER :: ndim, RestartN, i
     INTEGER :: Rounds, OutputInterval
     REAL(KIND=dp) :: MinTol, MaxTol, Residual
-    LOGICAL :: Converged, Diverged
+    LOGICAL :: Converged, Diverged, UseStopCFun
     
     ndim = HUTI_NDIM
     Rounds = HUTI_MAXIT
@@ -1930,7 +1940,8 @@ CONTAINS
     MaxTol = HUTI_MAXTOLERANCE
     OutputInterval = HUTI_DBUGLVL
     RestartN = HUTI_GCR_RESTART 
-
+    UseStopCFun = HUTI_STOPC == HUTI_USUPPLIED_STOPC
+    
     Converged = .FALSE.
     Diverged = .FALSE.
     
@@ -1973,7 +1984,7 @@ CONTAINS
       COMPLEX(KIND=dp), ALLOCATABLE :: S(:,:), V(:,:), T1(:), T2(:)
 
 !------------------------------------------------------------------------------
-      INTEGER :: i,j,k
+      INTEGER :: i,j,k,allocstat
       COMPLEX(KIND=dp) :: beta
       REAL(KIND=dp) :: alpha, trueresnorm, normerr
       COMPLEX(KIND=dp) :: trueres(n)
@@ -1981,7 +1992,11 @@ CONTAINS
             
       ALLOCATE( R(n), T1(n), T2(n) )
       IF ( m > 1 ) THEN
-         ALLOCATE( S(n,m-1), V(n,m-1) )
+         ALLOCATE( S(n,m-1), V(n,m-1), STAT=allocstat )
+         IF ( allocstat /= 0 ) THEN
+           CALL Fatal('GCR_Z','Failed to allocate memory of size: '&
+               //I2S(n)//' x '//I2S(m-1))
+         END IF
          V(1:n,1:m-1) = CMPLX( 0.0d0, 0.0d0, kind=dp)
          S(1:n,1:m-1) = CMPLX( 0.0d0, 0.0d0, kind=dp)
       END IF	
@@ -1991,8 +2006,12 @@ CONTAINS
       
       bnorm = normfun(n, b, 1)
       rnorm = normfun(n, r, 1)
-      
-      Residual = rnorm / bnorm
+
+      IF (UseStopCFun) THEN
+        Residual = stopcfun(x,b,r,ipar,dpar)
+      ELSE
+        Residual = rnorm / bnorm
+      END IF
       Converged = (Residual < MinTolerance) 
       Diverged = (Residual > MaxTolerance) .OR. (Residual /= Residual)    
       IF( Converged .OR. Diverged) RETURN
@@ -2047,10 +2066,17 @@ CONTAINS
          ! Check whether the convergence criterion is met 
          !--------------------------------------------------------------
          rnorm = normfun(n, r, 1)
-         Residual = rnorm / bnorm
-        
-         IF( MOD(k,OutputInterval) == 0) THEN
-           WRITE (*, '(A, I8, 3ES12.4,A)') '   gcrz:',k, residual, beta,'i'
+
+         IF (UseStopCFun) THEN
+           Residual = stopcfun(x,b,r,ipar,dpar)
+           IF( MOD(k,OutputInterval) == 0) THEN
+             WRITE (*, '(A, I6, 2E12.4)') '   gcr:',k, rnorm / bnorm, residual
+           END IF           
+         ELSE
+           Residual = rnorm / bnorm
+           IF( MOD(k,OutputInterval) == 0) THEN
+             WRITE (*, '(A, I8, 3ES12.4,A)') '   gcrz:',k, residual, beta,'i'
+           END IF
          END IF
         
          Converged = (Residual < MinTolerance)
@@ -2462,7 +2488,7 @@ CONTAINS
 !-----------------------------------------------------------------------------------
       INTEGER :: s  
       INTEGER :: n, MaxRounds, OutputInterval   
-      LOGICAL :: Converged, Diverged
+      LOGICAL :: Converged, Diverged, UseStopCFun
       TYPE(Matrix_t), POINTER :: A
       COMPLEX(KIND=dp) :: x(n), b(n)
       REAL(KIND=dp) :: Tol, MaxTol
@@ -2488,18 +2514,24 @@ CONTAINS
       REAL(kind=dp) :: normb, normr, errorind ! for tolerance check
       INTEGER :: i,j,k,l                      ! loop counters
 
+      UseStopCFun = HUTI_STOPC == HUTI_USUPPLIED_STOPC
+      
       U = 0.0d0
 
       ! Compute initial residual, set absolute tolerance
       normb = normfun(n,b,1)
       CALL matvecsubr( x, t, ipar )
       r = b - t
-      normr = normfun(n,r,1)
-
+      IF (UseStopCFun) THEN
+        errorind = stopcfun(x,b,r,ipar,dpar)
+      ELSE
+        normr = normfun(n,r,1)
+        errorind = normr / normb
+      END IF
+      
       !-------------------------------------------------------------------
       ! Check whether the initial guess satisfies the stopping criterion
       !--------------------------------------------------------------------
-      errorind = normr / normb
       Converged = (errorind < Tol)
       Diverged = (errorind > MaxTol) .OR. (errorind /= errorind)
 
@@ -2610,9 +2642,14 @@ CONTAINS
           END IF
 
           ! Check for convergence
-          normr = normfun(n,r,1)
+          IF (UseStopCFun) THEN
+            errorind = stopcfun(x,b,r,ipar,dpar)
+          ELSE
+            normr = normfun(n,r,1)
+            errorind = normr/normb
+          END IF
           iter = iter + 1
-          errorind = normr/normb
+          
           IF( MOD(iter,OutputInterval) == 0) THEN
             WRITE (*, '(I8, E11.4)') iter, errorind
           END IF
@@ -2662,9 +2699,14 @@ CONTAINS
         x = x + om*v 
 
         ! Check for convergence
-        normr =normfun(n,r,1)
+        IF (UseStopCFun) THEN
+          errorind = stopcfun(x,b,r,ipar,dpar)
+        ELSE
+          normr = normfun(n,r,1)
+          errorind = normr/normb
+        END IF
         iter = iter + 1
-        errorind = normr/normb
+
         IF( MOD(iter,OutputInterval) == 0) THEN
           WRITE (*, '(I8, E11.4)') iter, errorind
         END IF

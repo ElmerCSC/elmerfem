@@ -1,6 +1,10 @@
 ! 
 ! A sif file to test a surface impedance BC
-! 
+!
+! Here the electric conductivity is given only on a boundary and
+! the equations for the scalar potential are thus assembled over
+! this surface. The tangential trace of H thus makes a jump and
+! allows for the generation of surface current.
 
 Check Keywords "Warn"
 
@@ -216,7 +220,7 @@ Boundary Condition 6
 End
 
 
-Solver 1 :: Reference Norm = 4.76856984E-04
+Solver 1 :: Reference Norm = 4.84256816E-04
 Solver 1 :: Reference Norm Tolerance = 1e-4
-Solver 5 :: Reference Norm = 7.22540817E-04
+Solver 5 :: Reference Norm = 7.22553635E-04
 Solver 5 :: Reference Norm Tolerance = 1e-4

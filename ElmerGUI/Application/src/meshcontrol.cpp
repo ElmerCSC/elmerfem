@@ -74,6 +74,9 @@ MeshControl::MeshControl(QWidget *parent)
   connect(ui.elementCodesStringEdit, SIGNAL(textChanged(const QString&)), this, SLOT(defineElementCodesString(const QString&)));
 
   //  defaultControls(); // Note - already called from mainwindow.cpp
+
+  this->setWindowIcon(QIcon::fromTheme("configure"));
+  ui.closeButton->setIcon(QIcon::fromTheme("dialog-accept"));
 }
 
 MeshControl::~MeshControl()
@@ -150,7 +153,7 @@ void MeshControl::defaultControls()
   bool tq_isnum=0;
   QString tetlib_options = "nnJApVq";
   if (tq_ind > 0) args.at(tq_ind + 1).toFloat(&tq_isnum);
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
   if (tq_ind > 0 && !tq_isnum) cout << "Ignoring -tq option: " << args.at(tq_ind + 1).toLatin1().data() << endl;
 #else
   if (tq_ind > 0 && !tq_isnum) cout << "Ignoring -tq option: " << args.at(tq_ind + 1).toAscii().data() << endl;

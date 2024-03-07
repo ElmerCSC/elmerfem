@@ -537,11 +537,11 @@ CONTAINS
     IF( MaskExists ) THEN
       nsize = SIZE( MaskActive ) 
       nmask = COUNT( MaskActive ) 
-      CALL Info(Caller,'Applying division to masked element: '//TRIM(I2S(nmask)),Level=8)
+      CALL Info(Caller,'Applying division to masked element: '//I2S(nmask),Level=8)
     ELSE
       nsize = Mesh % NumberOfBulkElements 
       nmask = nsize
-      CALL Info(Caller,'Applying division to all bulk elements: '//TRIM(I2S(nsize)),Level=8)
+      CALL Info(Caller,'Applying division to all bulk elements: '//I2S(nsize),Level=8)
     END IF
      
     IF( .NOT. ASSOCIATED( Params ) ) THEN
@@ -568,7 +568,7 @@ CONTAINS
       END DO
 
       i = COUNT( NodeMask ) 
-      CALL Info(Caller,'Masked elements include nodes: '//TRIM(I2S(i)),Level=8)
+      CALL Info(Caller,'Masked elements include nodes: '//I2S(i),Level=8)
       
       ! Define the masked bounding box
       BoundingBox(1) = MINVAL( Mesh % Nodes % x, NodeMask )
@@ -676,9 +676,9 @@ CONTAINS
     END DO
     devpart = devpart / n
 
-    CALL Info(Caller,'Number of partitions: '//TRIM(I2S(n)),Level=8)
-    CALL Info(Caller,'Min elements in cluster: '//TRIM(I2S(minpart)),Level=8)
-    CALL Info(Caller,'Max elements in cluster: '//TRIM(I2S(maxpart)),Level=8)
+    CALL Info(Caller,'Number of partitions: '//I2S(n),Level=8)
+    CALL Info(Caller,'Min elements in cluster: '//I2S(minpart),Level=8)
+    CALL Info(Caller,'Max elements in cluster: '//I2S(maxpart),Level=8)
 
     WRITE(Message,'(A,F10.2)') 'Average elements in cluster:',avepart
     CALL Info(Caller,Message,Level=8)    
@@ -728,7 +728,6 @@ CONTAINS
 !> a version that assumes that the initial mesh was created using extrusion and 
 !> this extrusion may be taken back in clustering.
 !------------------------------------------------------------------------------
-
   SUBROUTINE ChooseClusterNodes(Amat, Solver, Components, EliminateDir, CF)
 
     USE MeshUtils    
@@ -748,7 +747,7 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER, POINTER :: MaskPerm(:)
     LOGICAL, POINTER :: MaskActive(:)
-    CHARACTER(LEN=MAX_NAME_LEN) :: ClusterMethod 
+    CHARACTER(:), ALLOCATABLE :: ClusterMethod 
 
     ClusterMethod = ListGetString( Solver % Values,'MG Cluster Method',GotIt)
     IF(.NOT. GotIt ) ClusterMethod = 'default'
@@ -772,8 +771,6 @@ CONTAINS
       CALL ClusterNodesByDirection(Solver % Values,Mesh,CF,MaskActive)
 
       IF( ASSOCIATED( MaskPerm ) ) DEALLOCATE( MaskActive ) 
-
-       PRINT *,'CF:',SIZE(CF),MINVAL(CF),MAXVAL(CF)
     
     CASE( 'unextrude' )
       CALL Info('ChooseClusterNodes','Using dimensional reduction of extruded meshes for clustering')
@@ -849,19 +846,14 @@ CONTAINS
       nodesize = matsize / Components
       ALLOCATE( Bonds(SIZE(Amat % Cols)), Passive(nodesize),Fixed(nodesize), CF(nodesize) )
 
+      ! For parallel cases we cluster only the "own" dofs and communicate the clustering
+      ! afterwards. The not own dofs are skipped.
       Passive = .FALSE.
       CALL SetParallelPassive()
 
       CALL CMGBonds(Amat, Bonds, Passive, Fixed, Components,Component1)      
 
       CALL CMGClusterForm(Amat, Bonds, Passive, Fixed, Components, Component1, CF)
-
-      IF( ParEnv % PEs > 1 ) THEN
-        CALL Fatal('ChooseClusterNodes','Implement parallel stuff')
-        ! Things to implement here:
-        ! 1) Global numbering for CF
-        ! 2) ParallelInfo for algebraic systems
-      END IF
 
       DEALLOCATE(Bonds, Fixed)
 
@@ -887,7 +879,7 @@ CONTAINS
       ! while for Meshes in equals the number of nodes. Here the former is used.
       DO i=1,nodesize
         j = Components*(i-1) + Component1
-        IF( Amat % ParallelInfo % NodeInterface(j) ) CYCLE        
+        IF( Amat % ParallelInfo % GInterface(j) ) CYCLE        
         IF( Amat % ParallelInfo % NeighbourList(j) % Neighbours(1) /= ParEnv % Mype ) &
             Passive(i) = .TRUE.
       END DO     
@@ -1103,7 +1095,7 @@ CONTAINS
         END IF
       END DO
       CALL Info('ClusterExtrudedEdges',&
-          'Number of reduced dofs: '//TRIM(I2S(k))//' vs. '//TRIM(I2S(nsize)),Level=9)
+          'Number of reduced dofs: '//I2S(k)//' vs. '//I2S(nsize),Level=9)
 
       WRITE(Message,'(A,F10.3)') 'Coarse dofs reduction factor',1.0_dp *  nsize / k 
       CALL Info('ClusterExtrudedEdges', Message, Level=7)

@@ -1,0 +1,111 @@
+! 
+! Simple block forumalated 2d linear elasticity bending problem.
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "square"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+  Output Intervals = 1
+
+!  Post File = "case.ep"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+End
+
+
+Equation 1
+  Name = "Both"
+  Active Variables(2) = Integer 1 2
+End
+
+
+Solver 1
+  Block Solver = Logical True
+  Equation = "lin.elast"
+
+  Element = "p:2"
+
+  Variable 1 = U
+  Variable 2 = V
+
+  Steady State Convergence Tolerance = 1.0e-05
+
+  Nonlinear System Relaxation Factor = Real 1.0
+  Nonlinear System Max Iterations = Integer 2
+  Nonlinear System Max Stepsize Tests = Integer 5
+  Nonlinear System Convergence Tolerance = Real 1.0e-6
+  Nonlinear System Convergence Measure = String solution
+
+! This doesn't really work for coupled systems most often
+!  Nonlinear System Linesearch = Logical True
+!  Nonlinear System Linesearch Linear = Logical True
+
+  Linear System Solver =  "iterative"
+  Linear System Direct Method = Umfpack
+  Linear System Refactorize = False
+  Linear System Convergence Tolerance = 1e-2
+  Linear System Iterative Method = CG
+  Linear System Max Iterations = 500
+  Linear System Symmetric = True
+  Linear System Residual Output = 0
+  Linear System Timing = True
+: Linear System Preconditioning = Ilu2
+
+  Block Preconditioner = Logical True
+
+!  Linear System Block Method = "other"
+  Outer: Linear System Solver = "Iterative"
+  Outer: Linear System Convergence Tolerance = 1e-7
+  Outer: Linear System Iterative Method = GCR
+  Outer: Linear System Symmetric = True
+  Outer: Linear System GCR Restart = 25
+  Outer: Linear System Residual Output = 1
+  Outer: Linear System Max Iterations = 500
+
+! The block is checked internally to allow nontrivial coefficients
+  Bulk Assembly Procedure 11 = File "./BlockLinElast" "BulkAssembly"
+  Bulk Assembly Procedure 12 = File "./BlockLinElast" "BulkAssembly"
+  Bulk Assembly Procedure 21 = File "./BlockLinElast" "BulkAssembly"
+  Bulk Assembly Procedure 22 = File "./BlockLinElast" "BulkAssembly"
+End  
+
+Material 1
+  Name = "Material1"
+
+  Youngs modulus = 1
+  Poisson Ratio  = 0.35
+
+  Block 11: Source = Real  0.0
+  Block 22: Source = Real -1.0
+End
+
+
+Boundary Condition 1
+  Target Boundaries(2) = 1 2
+  U = Real 0
+  V = Real 0
+End
+
+
+Solver 1 :: Reference Norm = Real 0.70851516
+RUN

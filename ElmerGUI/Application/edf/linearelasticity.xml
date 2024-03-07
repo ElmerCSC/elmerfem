@@ -319,16 +319,16 @@ stress. </Whatis>
          <Parameter Widget="CheckBox">
            <Name> Rayleigh Damping </Name>
            <Whatis> Damping proportional to linear combination of stiffness and mass. </Whatis>
-           <Activate> /Linear elasticity/Material/Rayleigh alpha </Activate>
-           <Activate> /Linear elasticity/Material/Rayleigh beta </Activate>
+           <Activate> /Linear elasticity/Material/Rayleigh Damping Alpha </Activate>
+           <Activate> /Linear elasticity/Material/Rayleigh Damping Beta </Activate>
          </Parameter>
 
          <Parameter Widget="Edit" Enabled="False">
-           <Name> Rayleigh alpha </Name>
+           <Name> Rayleigh Damping Alpha </Name>
          </Parameter>
 
          <Parameter Widget="Edit" Enabled="False">
-           <Name> Rayleigh beta </Name>
+           <Name> Rayleigh Damping Beta </Name>
          </Parameter>
 
           <Parameter Widget="Edit">

@@ -49,25 +49,25 @@ SUBROUTINE WhitneyAVHarmonicSolver_Init0(Model,Solver,dt,Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: SolverParams
-  LOGICAL :: Found, PiolaVersion, SecondOrder
-  CHARACTER(LEN=MAX_NAME_LEN):: ElemType
+  LOGICAL :: Found, PiolaVersion, SecondOrder, SecondFamily
+  CHARACTER(:), ALLOCATABLE :: ElemType
 
+  TYPE(Solver_t), POINTER :: Solvers(:)
+  INTEGER :: i,j,k,n
+  CHARACTER(:), ALLOCATABLE :: eq
+  INTEGER, POINTER :: ActiveSolvers(:)
   
   SolverParams => GetSolverParams()
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
-    SecondOrder = GetLogical(SolverParams, 'Quadratic Approximation', Found)
-    IF( SecondOrder ) THEN
-      PiolaVersion = .TRUE.
-    ELSE
-      PiolaVersion = GetLogical(SolverParams, 'Use Piola Transform', Found )
-    END IF
+    ! We use one place where all the edge element keywords are defined and checked.
+    CALL EdgeElementStyle(SolverParams, PiolaVersion, SecondFamily, SecondOrder, Check = .TRUE. )
 
-    IF (PiolaVersion) THEN          
-      IF (SecondOrder) THEN
-        ElemType = "n:1 e:2 -brick b:6 -prism b:2 -pyramid b:3 -quad_face b:4 -tri_face b:2" 
-      ELSE
-        ElemType = "n:1 e:1 -brick b:3 -quad_face b:2" 
-      END IF
+    IF (SecondOrder) THEN
+      ElemType = "n:1 e:2 -brick b:6 -prism b:2 -pyramid b:3 -quad_face b:4 -tri_face b:2" 
+    ELSE IF( SecondFamily ) THEN
+      ElemType = "n:1 e:2"
+    ELSE IF( PiolaVersion ) THEN
+      ElemType = "n:1 e:1 -brick b:3 -quad_face b:2" 
     ELSE
       ElemType = "n:1 e:1"
     END IF
@@ -82,15 +82,7 @@ SUBROUTINE WhitneyAVHarmonicSolver_Init0(Model,Solver,dt,Transient)
 
   CALL ListAddNewString( SolverParams,'Variable','AV[AV re:1 AV im:1]')
 
-
   IF(ListGetLogical(SolverParams, 'Helmholtz Projection', Found)) THEN
-
-BLOCK
-TYPE(Solver_t), POINTER :: Solvers(:)
-INTEGER :: i,j,k,n
-CHARACTER(LEN=MAX_NAME_LEN) :: eq
-INTEGER, POINTER :: ActiveSolvers(:)
-
     Solvers => Model % Solvers
     n = Model % NumberOfSolvers
     Model % NumberOfSolvers = n+2
@@ -144,7 +136,6 @@ INTEGER, POINTER :: ActiveSolvers(:)
         END IF
       END IF
     END DO
-END BLOCK
   END IF
 
     
@@ -208,7 +199,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 
   IMPLICIT NONE
 !------------------------------------------------------------------------------
-  TYPE(Solver_t) :: Solver
+  TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
@@ -216,7 +207,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 ! Local variables
 !------------------------------------------------------------------------------
   LOGICAL :: AllocationsDone = .FALSE., Found, L1
-  LOGICAL :: Stat, EigenAnalysis, TG, Jfix, JfixSolve, LaminateStack, CoilBody, EdgeBasis,LFact,LFactFound
+  LOGICAL :: Stat, TG, Jfix, JfixSolve, LaminateStack, CoilBody, EdgeBasis,LFact,LFactFound
   LOGICAL :: PiolaVersion, SecondOrder, GotHbCurveVar, HasTensorReluctivity
   LOGICAL :: ExtNewton, StrandedHomogenization
   LOGICAL, ALLOCATABLE, SAVE :: TreeEdges(:)
@@ -228,7 +219,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   INTEGER, ALLOCATABLE :: FluxMap(:)
 
   COMPLEX(kind=dp) :: Aval
-  COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:), JFixFORCE(:),JFixVec(:,:)
+  COMPLEX(KIND=dp), ALLOCATABLE :: MASS(:,:), STIFF(:,:), FORCE(:), JFixFORCE(:),JFixVec(:,:)
   COMPLEX(KIND=dp), ALLOCATABLE :: LOAD(:,:), Acoef(:), Tcoef(:,:,:)
   COMPLEX(KIND=dp), ALLOCATABLE :: LamCond(:)
   COMPLEX(KIND=dp), POINTER :: Acoef_t(:,:,:) => NULL()
@@ -250,26 +241,29 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   TYPE(ValueList_t), POINTER :: CompParams
 
   CHARACTER(LEN=MAX_NAME_LEN):: CoilCurrentName
-  LOGICAL :: UseCoilCurrent, ElemCurrent
   TYPE(Variable_t), POINTER :: CoilCurrentVar
   REAL(KIND=dp) :: CurrAmp
+  LOGICAL :: UseCoilCurrent, ElemCurrent, ElectroDynamics, EigenSystem
+  TYPE(Solver_t), POINTER :: pSolver 
+
   
-  SAVE STIFF, LOAD, MASS, FORCE, Tcoef, JFixVec, JFixFORCE, &
-       Acoef, Acoef_t, Cwrk, Cwrk_im, LamCond, &
-       LamThick, AllocationsDone, RotM, &
-       GapLength, MuParameter, SkinCond
+  SAVE MASS, STIFF, LOAD, FORCE, Tcoef, JFixVec, JFixFORCE, Acoef, Acoef_t, &
+     Cwrk, Cwrk_im, LamCond, LamThick, AllocationsDone, RotM, GapLength, MuParameter, SkinCond
 !------------------------------------------------------------------------------
   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
 
+  CALL Info('WhitneyAVHarmonicSolver','',Level=6 )
+  CALL Info('WhitneyAVHarmonicSolver','------------------------------------------------',Level=6 )
+  CALL Info('WhitneyAVHarmonicSolver','Solving harmonic AV equations with edge elements',Level=5 )
+   
   SolverParams => GetSolverParams()
+  pSolver => Solver
   
-  SecondOrder = GetLogical( SolverParams, 'Quadratic Approximation', Found )
-  IF( SecondOrder ) THEN
-    PiolaVersion = .TRUE.
-  ELSE
-    PiolaVersion = GetLogical( SolverParams, 'Use Piola Transform', Found )
-  END IF
+  EigenSystem = GetLogical( SolverParams, 'Eigen Analysis', Found )
+  ElectroDynamics = GetLogical( SolverParams, 'Electrodynamics Model', Found )
 
+  CALL EdgeElementStyle(SolverParams, PiolaVersion, QuadraticApproximation = SecondOrder )
+  
   IF (PiolaVersion) THEN
     CALL Info('WhitneyAVHarmonicSolver', &
         'Using Piola Transformed element basis functions',Level=4)
@@ -284,10 +278,11 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
       CoilCurrentName = 'CoilCurrent'
     ELSE
       UseCoilCurrent = GetLogical(SolverParams,'Use Elemental CoilCurrent',Found )
-      IF(Found) CoilCurrentName = 'CoilCurrent e'
+      IF(UseCoilCurrent) CoilCurrentName = 'CoilCurrent e'
     END IF
   END IF
   ElemCurrent = .FALSE.
+
   IF( UseCoilCurrent ) THEN
     CoilCurrentVar => VariableGet(Solver % Mesh % Variables, CoilCurrentName )
     IF( ASSOCIATED( CoilCurrentVar ) ) THEN
@@ -317,8 +312,8 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
          'Variable is not properly defined for time harmonic AV solver, Use: Variable = A[A re:1 A im:1]')
 
      N = Mesh % MaxElementDOFs  ! just big enough
-     ALLOCATE( FORCE(N), LOAD(7,N), ReLOAD(3,N), STIFF(N,N), &
-          MASS(N,N), JFixVec(3,N),JFixFORCE(n), Tcoef(3,3,N), RotM(3,3,N), &
+     ALLOCATE( FORCE(N), LOAD(7,N), ReLOAD(3,N), STIFF(N,N), MASS(n,n), &
+          JFixVec(3,N),JFixFORCE(n), Tcoef(3,3,N), RotM(3,3,N), &
           GapLength(N), MuParameter(N), SkinCond(N), Acoef(N), LamCond(N), &
           LamThick(N), STAT=istat )
      IF ( istat /= 0 ) THEN
@@ -332,7 +327,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   END IF
   
   Omega = GetAngularFrequency(Found=Found)
-  IF(.NOT. Found ) THEN
+  IF(.NOT. Found .AND. .NOT. EigenSystem ) THEN
     CALL Fatal('WhitneyHarmonicAVSolver','Harmonic solution requires frequency!')
   END IF
     
@@ -418,14 +413,15 @@ CONTAINS
     LOGICAL :: Converged
 !---------------------------------------------------------------------------------------------
     REAL(KIND=dp) :: Norm, PrevNorm, TOL
-    INTEGER :: i,j,k,n,nd,t
+    INTEGER :: i,j,k,n,nd,t,ComponentId
     REAL(KIND=dp), ALLOCATABLE :: Diag(:)
-    LOGICAL  :: FoundMagnetization, Found, ConstraintActive
+    LOGICAL  :: FoundMagnetization, Found, ConstraintActive, GotCoil, CircuitDrivenBC
 !---------------------------------------------------------------------------------------------
     ! System assembly:
     !-----------------
     CALL DefaultInitialize()
     Active = GetNOFActive()
+
     DO t=1,active
        Element => GetActiveElement(t)
        n  = GetElementNOFNodes() ! vertices
@@ -442,16 +438,17 @@ CONTAINS
 
        ! If the coil current field is elemental it is discontinuous and need not be limited
        ! to the body force. For nodal ones we don't have the same luxury.
+       GotCoil = .FALSE.
        IF( UseCoilCurrent ) THEN
          IF( ElemCurrent .OR. ASSOCIATED(BodyForce) ) THEN
-           CALL GetVectorLocalSolution( ReLoad,UElement=Element,UVariable=CoilCurrentVar)       
+           CALL GetVectorLocalSolution( ReLoad,UElement=Element,UVariable=CoilCurrentVar,Found=GotCoil)       
            LOAD(1:3,1:n) = ReLoad(1:3,1:n)
          END IF
        END IF
               
        IF ( ASSOCIATED(BodyForce) ) THEN
          ! If not already given by CoilCurrent, request for current density
-         IF( .NOT. UseCoilCurrent ) THEN           
+         IF( .NOT. GotCoil ) THEN           
            CALL GetComplexVector( BodyForce, Load(1:3,1:n), 'Current Density', Found )
          END IF
 
@@ -565,6 +562,7 @@ CONTAINS
        !Update global matrix and rhs vector from local matrix & vector:
        !---------------------------------------------------------------
        CALL DefaultUpdateEquations( STIFF, FORCE )
+       IF (EigenSystem) CALL DefaultUpdateMass(MASS)
        
        ! Memorize stuff for the fixing potential
        ! 1) Divergence of the source term
@@ -645,13 +643,14 @@ CONTAINS
        IF (Found) THEN
          MuParameter=GetConstReal( BC, 'Air Gap Relative Permeability', Found)
          IF (.NOT. Found) MuParameter = 1.0_dp ! if not found default to "air" property
-         CALL LocalMatrixAirGapBC(STIFF,FORCE,LOAD,GapLength,MuParameter,Element,n,nd )
+         CALL LocalMatrixAirGapBC(MASS,STIFF,FORCE,LOAD,GapLength,MuParameter,Element,n,nd )
        ELSE
          SkinCond = GetConstReal( BC, 'Layer Electric Conductivity', Found)
          IF (ANY(ABS(SkinCond(1:n)) > AEPS)) THEN
-           MuParameter=GetConstReal( BC, 'Layer Relative Permeability', Found)
+           MuParameter = GetConstReal( BC, 'Layer Relative Permeability', Found)
+           ComponentId=GetInteger( BC, 'Component', CircuitDrivenBC)
            IF (.NOT. Found) MuParameter = 1.0_dp ! if not found default to "air" property           
-           CALL LocalMatrixSkinBC(STIFF,FORCE,SkinCond,MuParameter,Element,n,nd)
+           CALL LocalMatrixSkinBC(MASS,STIFF,FORCE,SkinCond,MuParameter,Element,CircuitDrivenBC,n,nd)
          ELSE         
            GapLength = GetConstReal( BC, 'Thin Sheet Thickness', Found)
            IF (Found) THEN
@@ -660,17 +659,17 @@ CONTAINS
              ! Technically, there is no skin but why create yet another conductivity variable?
              SkinCond = GetConstReal( BC, 'Thin Sheet Electric Conductivity', Found)
              IF (.NOT. Found) SkinCond = 1.0_dp ! if not found default to "air" property
-             CALL LocalMatrixThinSheet( STIFF, FORCE, LOAD, GapLength, MuParameter, &
+             CALL LocalMatrixThinSheet( MASS, STIFF, FORCE, LOAD, GapLength, MuParameter, &
                                             SkinCond, Element, n, nd )
            ELSE
-             CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd )
+             CALL LocalMatrixBC(MASS,STIFF,FORCE,LOAD,Acoef,Element,n,nd )
            END IF
          END IF
        END IF
-       
-       CALL DefaultUpdateEquations(STIFF,FORCE,Element)
-    END DO
 
+       CALL DefaultUpdateEquations(STIFF,FORCE,Element)
+       IF(EigenSystem) CALL DefaultUpdateMass(MASS,Element)
+    END DO
 
     CALL DefaultFinishAssembly()
 
@@ -719,7 +718,7 @@ BLOCK
       IF(ParEnv % PEs>1) THEN
         ! Assuming here that this is an internal boundary, if all elements nodes are
         ! interface nodes. Not foolproof i guess, but quite safe (?)
-        IF (ALL(Solver % Mesh % ParallelInfo % NodeInterface(Element % NodeIndexes))) CYCLE
+        IF (ALL(Solver % Mesh % ParallelInfo % GInterface(Element % NodeIndexes))) CYCLE
       END IF
  
       Parent => Element % BoundaryInfo % Left
@@ -767,7 +766,7 @@ END BLOCK
          CALL GaugeTree(Solver,Mesh,TreeEdges,FluxCount,FluxMap,Transient)
 
       WRITE(Message,*) 'Volume tree edges: ', &
-          TRIM(i2s(COUNT(TreeEdges))),     &
+          i2s(COUNT(TreeEdges)),     &
           ' of total: ',Mesh % NumberOfEdges
       CALL Info('WhitneyAVHarmonicSolver: ', Message, Level=5)
 
@@ -914,11 +913,11 @@ END BLOCK
      DO i=1,nbf
        IF(a(i)>0) THEN
          CALL ListAddConstReal(Model % Simulation,'res: Potential re / bodyforce ' &
-             //TRIM(i2s(i)),REAL(u(i))/a(i))
+             //i2s(i),REAL(u(i))/a(i))
          CALL ListAddConstReal(Model % Simulation,'res: Potential im / bodyforce ' &
-             //TRIM(i2s(i)),AIMAG(u(i))/a(i))
+             //i2s(i),AIMAG(u(i))/a(i))
          CALL ListAddConstReal(Model % Simulation,'res: area / bodyforce ' &
-             //TRIM(i2s(i)),a(i))
+             //i2s(i),a(i))
        END IF
      END DO
    END IF
@@ -1041,15 +1040,9 @@ END BLOCK
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
-      IF (PiolaVersion) THEN
-         stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
-             DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
-             BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-      ELSE
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-                  IP % W(t), detJ, Basis, dBasisdx )
-        CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
-      END IF
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis, dBasisdx, EdgeBasis = WBasis, &
+          RotBasis = RotWBasis, USolver = pSolver )
 
       x = SUM(Nodes % x(1:n)*Basis(1:n))
       y = SUM(Nodes % y(1:n)*Basis(1:n))
@@ -1105,16 +1098,10 @@ END BLOCK
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
-      IF (PiolaVersion) THEN
-        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
-             DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
-             BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-      ELSE
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-                  IP % W(t), detJ, Basis, dBasisdx )
-        CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
-      END IF
-
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis, dBasisdx, EdgeBasis = WBasis, &
+          RotBasis = RotWBasis, USolver = pSolver )
+      
       x = SUM(Nodes % x(1:n)*Basis(1:n))
       y = SUM(Nodes % y(1:n)*Basis(1:n))
       r = SQRT(x**2+y**2)
@@ -1166,24 +1153,16 @@ END BLOCK
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
-      IF (PiolaVersion) THEN
-
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                   IP % W(t), detJ, Basis, dBasisdx )
 
-        CALL GetParentUVW(Element,GetElementNOFNodes(Element),Parent,n,uu,v,w,Basis)
- 
+      CALL GetParentUVW(Element,GetElementNOFNodes(Element),Parent,n,uu,v,w,Basis)
+      IF (PiolaVersion) THEN 
         stat = EdgeElementInfo( Parent, PNodes, uu, v, w, &
               DetF = PDetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
       ELSE
-
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-                  IP % W(t), detJ, Basis, dBasisdx )
-
-        CALL GetParentUVW(Element,GetElementNOFNodes(Element),Parent,n,uu,v,w,Basis)
         stat = ElementInfo( Parent, PNodes, uu,v,w, pdetJ, Basis, dBasisdx )
-
         CALL GetEdgeBasis(Parent,WBasis,RotWBasis,Basis,dBasisdx)
       END IF
 
@@ -1239,16 +1218,10 @@ END BLOCK
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
-      IF (PiolaVersion) THEN
-        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
-             DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, dBasisdx = dBasisdx, &
-             BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)     
-      ELSE
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-                  IP % W(t), detJ, Basis, dBasisdx )
-        CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
-      END IF
-
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis, dBasisdx, EdgeBasis = WBasis, &
+          RotBasis = RotWBasis, USolver = pSolver )
+     
       IF(WBaseFound) W = MATMUL(Wpot(1:n),dBasisdx(1:n,:))
 
       A = A + IP % s(t) * detJ
@@ -1266,7 +1239,7 @@ END BLOCK
       Element, n, nd, PiolaVersion, SecondOrder )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:), JFixFORCE(:), JFixVec(:,:)
+    COMPLEX(KIND=dp) :: MASS(:,:), STIFF(:,:), FORCE(:), JFixFORCE(:), JFixVec(:,:)
     COMPLEX(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), LamCond(:)
     REAL(KIND=dp) :: LamThick(:)
     LOGICAL :: LaminateStack, CoilBody, ConstraintActive
@@ -1283,10 +1256,11 @@ END BLOCK
     REAL(KIND=dp) :: LocalLamThick, skind, babs, muder, AlocR(2,nd)
     REAL(KIND=dp) :: nu_11(nd), nuim_11(nd), nu_22(nd), nuim_22(nd)
     REAL(KIND=dp) :: nu_val, nuim_val
+    REAL(KIND=dp) :: sigma_33(nd), sigmaim_33(nd)
 
     COMPLEX(KIND=dp) :: mu, C(3,3), L(3), G(3), M(3), JfixPot(n), Nu(3,3)
     COMPLEX(KIND=dp) :: LocalLamCond, JAC(nd,nd), B_ip(3), Aloc(nd), &
-                        CVelo(3), CVeloSum
+          CVelo(3), CVeloSum, Permittivity(nd), P_ip, DAMP(nd,nd)
 
     LOGICAL :: Stat, Newton, HBCurve, &
                HasVelocity, HasLorenzVelocity, HasAngularVelocity
@@ -1306,9 +1280,10 @@ END BLOCK
 
     CALL GetElementNodes( Nodes )
 
+    MASS  = 0.0_dp
+    DAMP  = 0.0_dp
     STIFF = 0.0_dp
     FORCE = 0.0_dp
-    MASS  = 0.0_dp
 
     IF( Jfix ) THEN
       IF( JfixSolve ) THEN
@@ -1330,6 +1305,7 @@ END BLOCK
       HasVelocity = HasAngularVelocity .OR. HasLorenzVelocity
     END IF
     
+    CALL GetPermittivity(GetMaterial(), Permittivity, n)
     HBCurve = ListCheckPresent(Material,'H-B Curve')
 
     IF(HBCurve) THEN
@@ -1358,11 +1334,16 @@ END BLOCK
           nu_11 = GetReal(CompParams, 'nu 11', Found)
           nuim_11 = GetReal(CompParams, 'nu 11 im', FoundIm)
           IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 11 not found!')
+
           nu_22 = 0._dp
           nuim_22 = 0._dp
           nu_22 = GetReal(CompParams, 'nu 22', Found)
           nuim_22 = GetReal(CompParams, 'nu 22 im', FoundIm)
-          IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 22 not found!')
+          IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 11 not found!')
+
+          ! Sigma 33 is not needed in because it does not exist in stranded coil
+          ! Its contribution is taken into account in the circuit module if explicit coil resistance is not used!
+
           UseRotM = .TRUE.
         END IF
       ELSE IF( CoilType == 'foil winding') THEN
@@ -1378,19 +1359,10 @@ END BLOCK
     np = n*Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
     
     DO t=1,IP % n
-       IF (PiolaVersion) THEN
-          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-               IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
-               RotBasis = RotWBasis, dBasisdx = dBasisdx, &
-               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-       ELSE
-          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-               IP % W(t), detJ, Basis, dBasisdx )
-
-          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
-       END IF
-
-
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis, dBasisdx, EdgeBasis = WBasis, &
+          RotBasis = RotWBasis, USolver = pSolver )
+      
        ! Compute convection type term coming from rotation
        ! -------------------------------------------------
        IF(HasVelocity) THEN
@@ -1418,6 +1390,8 @@ END BLOCK
            C(i,j) = SUM( Tcoef(i,j,1:n) * Basis(1:n) )
          END DO
        END DO
+
+       P_ip = SUM( Permittivity(1:n) * Basis(1:n) )
 
        ! Transform the conductivity tensor (in case of a foil winding):
        ! --------------------------------------------------------------       
@@ -1513,9 +1487,9 @@ END BLOCK
        ! Compute element stiffness matrix and force vector:
        ! --------------------------------------------------
 
-       ! If we calculate a coil, user can request that the the nodal degrees of freedom are not used
+       ! If we calculate a coil, user can request that the nodal degrees of freedom are not used
        ! --------------------------------------------------------------------------------------------
-       NONCOIL_CONDUCTOR: IF (ConstraintActive .AND. SUM(ABS(C)) > AEPS ) THEN
+       NONCOIL_CONDUCTOR: IF (ConstraintActive .AND. (SUM(ABS(C)) > AEPS .OR. ElectroDynamics) ) THEN
           !
           ! The constraint equation: -div(C*(j*omega*A+grad(V)))=0
           ! --------------------------------------------------------
@@ -1526,7 +1500,10 @@ END BLOCK
               ! Compute the conductivity term <C grad V,grad v> for stiffness 
               ! matrix (anisotropy taken into account)
               ! -------------------------------------------
-                STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(q,:)) * dBasisdx(p,:))*detJ*IP % s(t)
+              IF(ElectroDynamics) THEN             
+                DAMP(p,q) = DAMP(p,q) + P_ip*SUM(dBasisdx(q,:)*dBasisdx(p,:))*detJ*IP % s(t)
+              END IF
+              STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(q,:)) * dBasisdx(p,:))*detJ*IP % s(t)
             END DO
             DO j=1,nd-np
               q = j+np
@@ -1534,13 +1511,22 @@ END BLOCK
               ! Compute the conductivity term <j * omega * C A,grad v> for 
               ! stiffness matrix (anisotropy taken into account)
               ! -------------------------------------------
-              STIFF(p,q) = STIFF(p,q) + im * Omega * &
+              DAMP(p,q) = DAMP(p,q) + &
                   SUM(MATMUL(C,Wbasis(j,:))*dBasisdx(i,:))*detJ*IP % s(t)
+
+              IF(ElectroDynamics) THEN             
+                MASS(p,q) = MASS(p,q) + P_ip*SUM(WBasis(j,:)*dBasisdx(i,:))*detJ*IP % s(t)
+              END IF
 
               ! Compute the conductivity term <C grad V, eta> for 
               ! stiffness matrix (anisotropy taken into account)
               ! ------------------------------------------------
               STIFF(q,p) = STIFF(q,p) + SUM(MATMUL(C, dBasisdx(i,:))*WBasis(j,:))*detJ*IP % s(t)
+
+              IF(ElectroDynamics) THEN             
+                DAMP(q,p) = DAMP(q,p) + &
+                       P_ip * SUM( WBasis(j,:)*dBasisdx(i,:) )*detJ*IP % s(t)
+              END IF
             END DO
           END DO
        END IF NONCOIL_CONDUCTOR
@@ -1591,8 +1577,13 @@ END BLOCK
            ! Compute the conductivity term <j * omega * C A,eta> 
            ! for stiffness matrix (anisotropy taken into account)
            ! ----------------------------------------------------
-           IF (CoilType /= 'stranded') STIFF(p,q) = STIFF(p,q) + im*Omega* &
-                        SUM(MATMUL(C, WBasis(j,:))*WBasis(i,:))*detJ*IP % s(t)
+           IF (CoilType /= 'stranded') DAMP(p,q) = DAMP(p,q) + &
+                SUM(MATMUL(C, WBasis(j,:))*WBasis(i,:))*detJ*IP % s(t)
+
+           IF(ElectroDynamics ) THEN
+             MASS(p,q) = MASS(p,q) + &
+                P_ip*SUM(WBasis(j,:)*WBasis(i,:))*detJ*IP % s(t)
+           END IF
          END DO
        END DO
 
@@ -1601,6 +1592,13 @@ END BLOCK
     IF ( Newton ) THEN
       STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + JAC
       FORCE(1:nd) = FORCE(1:nd) + MATMUL(JAC,Aloc)
+    END IF
+
+    IF(EigenSystem) THEN
+      MASS(1:nd,1:nd) = MASS(1:nd,1:nd) + im*DAMP(1:nd,1:nd)
+    ELSE
+      STIFF(1:nd,1:nd) = -Omega**2 * MASS(1:nd,1:nd) + &
+        im*Omega*DAMP(1:nd,1:nd) + STIFF(1:nd,1:nd)
     END IF
 
 !------------------------------------------------------------------------------
@@ -1648,16 +1646,9 @@ END BLOCK
     
     np = n*Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
     DO t=1,IP % n
-      IF (PiolaVersion) THEN
-        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-            IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
-            RotBasis = RotWBasis, dBasisdx = dBasisdx, &
-            BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-      ELSE
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-            IP % W(t), detJ, Basis, dBasisdx )        
-        CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
-      END IF
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis, dBasisdx, EdgeBasis = WBasis, &
+          RotBasis = RotWBasis, USolver = pSolver )
       
       L = MATMUL(JfixPot(1:n), dBasisdx(1:n,:))
       DO i = 1,nd-np
@@ -1676,18 +1667,18 @@ END BLOCK
  
   
 !-----------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixBC(  STIFF, FORCE, LOAD, Bcoef, Element, n, nd )
+  SUBROUTINE LocalMatrixBC(  MASS, STIFF, FORCE, LOAD, Bcoef, Element, n, nd )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     COMPLEX(KIND=dp) :: LOAD(:,:), Bcoef(:)
-    COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:)
+    COMPLEX(KIND=dp) :: MASS(:,:), STIFF(:,:), FORCE(:)
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element, Parent, Edge
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ
     COMPLEX(KIND=dp) :: B, F, TC, L(3)
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
-    LOGICAL :: Stat
+    LOGICAL :: Stat, LineElem
     INTEGER, POINTER :: EdgeMap(:,:)
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, k, ii,jj, np, p, q, EdgeBasisDegree
@@ -1702,26 +1693,33 @@ END BLOCK
 
     CALL GetElementNodes( Nodes )
 
+    MASS  = 0.0_dp
     STIFF = 0.0_dp
     FORCE = 0.0_dp
-    MASS  = 0.0_dp
 
+    ! We may have line elements that define BC for the conductive layers, for example.
+    ! However, line elements do not have all the features of edge elements. Only
+    ! certains BCs are possible. 
+    LineElem = ( Element % TYPE % ElementCode / 100 <= 2 ) 
+        
     ! Numerical integration:
     !-----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
-         EdgeBasisDegree=EdgeBasisDegree)
-
+    IF( LineElem ) THEN
+      IP = GaussPoints(Element)
+    ELSE
+      IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+          EdgeBasisDegree=EdgeBasisDegree)
+    END IF
+      
     np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     DO t=1,IP % n
-       IF ( PiolaVersion ) THEN
-          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-               IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
-               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-       ELSE       
-          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-               IP % W(t), detJ, Basis, dBasisdx )
-
-          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+       IF( LineElem ) THEN        
+         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+             IP % W(t), detJ, Basis, dBasisdx )        
+       ELSE 
+         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+             IP % W(t), detJ, Basis, dBasisdx, &
+             EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
        END IF
 
        B  = SUM(Basis(1:n) * Bcoef(1:n))
@@ -1729,6 +1727,7 @@ END BLOCK
 
        F  = SUM(LOAD(4,1:n)*Basis(1:n)) !* (-im/Omega)
        TC = SUM(LOAD(5,1:n)*Basis(1:n)) !* (-im/Omega)
+
 
        ! Compute element stiffness matrix and force vector:
        !---------------------------------------------------
@@ -1740,6 +1739,9 @@ END BLOCK
          END DO
        END DO
 
+       ! We cannot do the following for line elements
+       IF( LineElem ) CYCLE
+       
        DO i = 1,nd-np
          p = i+np
          FORCE(p) = FORCE(p) - SUM(L*Wbasis(i,:))*detJ*IP%s(t)
@@ -1755,15 +1757,15 @@ END BLOCK
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixAirGapBC(  STIFF, FORCE, LOAD, GapLength, AirGapMu, Element, n, nd )
+  SUBROUTINE LocalMatrixAirGapBC(MASS, STIFF, FORCE, LOAD, GapLength, AirGapMu, Element, n, nd )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     COMPLEX(KIND=dp) :: LOAD(:,:)
-    COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:)
+    COMPLEX(KIND=dp) :: MASS(:,:), STIFF(:,:), FORCE(:)
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element, Parent, Edge
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Normal(3)
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), localGapLength, muAir, muVacuum
     REAL(KIND=dp) :: GapLength(:), AirGapMu(:)
     LOGICAL :: Stat
@@ -1778,9 +1780,9 @@ END BLOCK
     EdgeBasisDegree = 1
     IF (SecondOrder) EdgeBasisDegree = 2
 
+    MASS  = 0.0_dp
     STIFF = 0.0_dp
     FORCE = 0.0_dp
-    MASS  = 0.0_dp
 
     muVacuum = 4 * PI * 1d-7
 
@@ -1791,17 +1793,11 @@ END BLOCK
 
     np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     DO t=1,IP % n
-       IF ( PiolaVersion ) THEN
-          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
-               DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
-               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-       ELSE
-          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-               IP % W(t), detJ, Basis, dBasisdx )
-
-          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
-       END IF
-
+      
+       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+           IP % W(t), detJ, Basis, dBasisdx, &
+           EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
+     
        localGapLength  = SUM(Basis(1:n) * GapLength(1:n))
        muAir  = SUM(Basis(1:n) * AirGapMu(1:n))
  
@@ -1819,19 +1815,21 @@ END BLOCK
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixThinSheet(  STIFF, FORCE, LOAD, Thickness, Permeability, &
+  SUBROUTINE LocalMatrixThinSheet(MASS, STIFF, FORCE, LOAD, Thickness, Permeability, &
                                           Conductivity, Element, n, nd )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     COMPLEX(KIND=dp) :: LOAD(:,:)
-    COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:)
+    COMPLEX(KIND=dp) :: MASS(:,:), STIFF(:,:), FORCE(:)
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element, Parent, Edge
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Normal(3)
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
     REAL(KIND=dp) :: Thickness(:), Permeability(:), Conductivity(:)
     REAL(KIND=dp) :: sheetThickness, mu, muVacuum, C
+
+    COMPLEX(KIND=dp) :: DAMP(nd,nd)
     
     LOGICAL :: Stat
     INTEGER, POINTER :: EdgeMap(:,:)
@@ -1845,9 +1843,10 @@ END BLOCK
     EdgeBasisDegree = 1
     IF (SecondOrder) EdgeBasisDegree = 2
 
+    MASS  = 0.0_dp
+    DAMP  = 0.0_dp
     STIFF = 0.0_dp
     FORCE = 0.0_dp
-    MASS  = 0.0_dp
 
     muVacuum = 4 * PI * 1d-7
 
@@ -1858,22 +1857,15 @@ END BLOCK
 
     np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     DO t=1,IP % n
-       IF ( PiolaVersion ) THEN
-          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
-               DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
-               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-       ELSE
-          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-               IP % W(t), detJ, Basis, dBasisdx )
-
-          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
-       END IF
-
+       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+           IP % W(t), detJ, Basis, dBasisdx, &
+           EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
+       
        sheetThickness  = SUM(Basis(1:n) * Thickness(1:n))
        mu  = SUM(Basis(1:n) * Permeability(1:n))
        C  = SUM(Basis(1:n) * Conductivity(1:n))
 
-       CONDUCTOR: IF ( C > AEPS ) THEN
+       CONDUCTOR: IF ( ABS(C) > AEPS ) THEN
           !
           ! The constraint equation: -div(C*(j*omega*A+grad(V)))=0
           ! --------------------------------------------------------
@@ -1881,50 +1873,54 @@ END BLOCK
             p = i
             DO q=1,np
 
-              ! Compute the conductivity term <C grad V,grad v> for stiffness 
-              ! matrix (anisotropy taken into account)
+              ! Compute the conductivity term <C grad V x n,grad v x n> for stiffness 
+              ! matrix (without anisotropy taken into account)
               ! -------------------------------------------
-                STIFF(p,q) = STIFF(p,q) + sheetThickness * C * SUM(dBasisdx(q,:) * dBasisdx(p,:))*detJ*IP % s(t)
+              STIFF(p,q) = STIFF(p,q) + sheetThickness * C * SUM(dBasisdx(q,:) * dBasisdx(i,:))*detJ*IP % s(t)
             END DO
             DO j=1,nd-np
               q = j+np
               
-              ! Compute the conductivity term <j * omega * C A,grad v> for 
-              ! stiffness matrix (anisotropy taken into account)
+              ! Compute the conductivity term <j * omega * C A x n,grad v x n> for 
+              ! stiffness matrix (without anisotropy taken into account)
               ! -------------------------------------------
-              STIFF(p,q) = STIFF(p,q) + im * Omega * &
+              DAMP(p,q) = DAMP(p,q) + &
                   sheetThickness * C*SUM(Wbasis(j,:)*dBasisdx(i,:))*detJ*IP % s(t)
 
-              ! Compute the conductivity term <C grad V, eta> for 
-              ! stiffness matrix (anisotropy taken into account)
+              ! Compute the conductivity term <C grad V x n, eta x n> for 
+              ! stiffness matrix (without anisotropy taken into account)
               ! ------------------------------------------------
               STIFF(q,p) = STIFF(q,p) + sheetThickness * C*SUM(dBasisdx(i,:)*WBasis(j,:))*detJ*IP % s(t)
             END DO
           END DO
        END IF CONDUCTOR
 
-       ! j*omega*C*A + curl(1/mu*curl(A)) + C*grad(V) = 
-       !        J + curl(M) - C*grad(P'):
-       ! ----------------------------------------------------
        DO i = 1,nd-np
          p = i+np
-       !  FORCE(p) = FORCE(p) + (SUM(L*WBasis(i,:)) + &
-       !     SUM(M*RotWBasis(i,:)))*detJ*IP%s(t) 
-
          DO j = 1,nd-np
            q = j+np
+           ! Magnetic energy term due to the magnetic flux density 
+           ! ----------------------------------------------------
            STIFF(p,q) = STIFF(p,q) + sheetThickness / (mu*muVacuum) * &
               SUM(RotWBasis(i,:)*RotWBasis(j,:))*detJ*IP%s(t)
 
-           ! Compute the conductivity term <j * omega * C A,eta> 
-           ! for stiffness matrix (anisotropy taken into account)
+           ! Compute the conductivity term <j * omega * C A x n,eta x n> 
+           ! for stiffness matrix (without anisotropy taken into account)
            ! ----------------------------------------------------
-           STIFF(p,q) = STIFF(p,q) + sheetThickness * im*Omega* &
-              C * SUM(WBasis(j,:)*WBasis(i,:))*detJ*IP % s(t)
+           IF (ABS(C) > AEPS) THEN
+             DAMP(p,q) = DAMP(p,q) + sheetThickness * &
+                 C * SUM(WBasis(j,:)*WBasis(i,:))*detJ*IP % s(t)
+           END IF
          END DO
        END DO
-
     END DO
+
+    IF(EigenSystem) THEN 
+      MASS(1:nd,1:nd) = MASS(1:nd,1:nd) + im*DAMP(1:nd,1:nd)
+    ELSE
+      STIFF(1:nd,1:nd) = -omega**2 * MASS(1:nd,1:nd) + &
+        im*Omega*DAMP(1:nd,1:nd) + STIFF(1:nd,1:nd)
+    END IF
 
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixThinSheet
@@ -1932,20 +1928,22 @@ END BLOCK
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixSkinBC( STIFF, FORCE, SkinCond, SkinMu, Element, n, nd )
+  SUBROUTINE LocalMatrixSkinBC( MASS, STIFF, FORCE, SkinCond, SkinMu, &
+                 Element, CircuitDrivenBC, n, nd )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:)
+    COMPLEX(KIND=dp) :: MASS(:,:), STIFF(:,:), FORCE(:)
     REAL(KIND=dp) :: SkinCond(:), SkinMu(:)
     TYPE(Element_t), POINTER :: Element
+    LOGICAL :: CircuitDrivenBC
     INTEGER :: n, nd
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(n), dBasisdx(n,3), DetJ
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), cond, mu, muVacuum, delta
     LOGICAL :: Stat
     TYPE(GaussIntegrationPoints_t) :: IP
+    COMPLEX(KIND=dp) :: invZs, DAMP(nd,nd)
     INTEGER :: t, i, j, np, p, q, EdgeBasisDegree
-    COMPLEX(KIND=dp) :: imu, invZs
     
     TYPE(Nodes_t), SAVE :: Nodes
 !------------------------------------------------------------------------------
@@ -1954,11 +1952,12 @@ END BLOCK
     EdgeBasisDegree = 1
     IF (SecondOrder) EdgeBasisDegree = 2
 
+    MASS  = 0.0_dp
+    DAMP  = 0.0_dp
     STIFF = 0.0_dp
     FORCE = 0.0_dp
 
     muVacuum = 4 * PI * 1d-7
-    imu = CMPLX(0.0_dp, 1.0_dp, KIND=dp) 
     
     ! Numerical integration:
     !-----------------------
@@ -1968,21 +1967,14 @@ END BLOCK
     np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
 
     DO t=1,IP % n
-      IF ( PiolaVersion ) THEN
-        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
-            DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, dBasisdx = dBasisdx, &
-            BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-      ELSE
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-            IP % W(t), detJ, Basis, dBasisdx )
-
-        CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
-      END IF
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis, dBasisdx, &
+          EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
 
       cond = SUM(Basis(1:n) * SkinCond(1:n))
       mu  = muVacuum * SUM(Basis(1:n) * SkinMu(1:n))
       delta = SQRT( 2.0_dp/(cond*omega*mu))      
-      invZs = (cond*delta)/(1.0_dp+imu)
+      invZs = (cond*delta)/(1.0_dp+im)
       !PRINT *,'skin:',cond,delta,omega,invZs
       !PRINT *,'elem:',Element % NodeIndexes
 
@@ -1998,42 +1990,49 @@ END BLOCK
           ! the edge basis functions returned by the function EdgeElementInfo are automatically 
           ! tangential and hence the normal doesn't appear in the expression.
           !
-          STIFF(p,q) = STIFF(p,q) + imu * Omega * invZs * &
+          DAMP(p,q) = DAMP(p,q) + invZs * &
               SUM(WBasis(i,:) * WBasis(j,:)) * detJ * IP % s(t)
         END DO
 
-        DO q = 1,np
-          !
-          ! The term 1/Z < grad V x n, v x n> : 
-          ! Some tensor calculation shows that the component form of this term is analogous to 
-          ! the case < A x n, v x n>. 
-          !
-          STIFF(p,q) = STIFF(p,q) + invZs * &
-              SUM(WBasis(i,:) * dBasisdx(q,:)) * detJ * IP % s(t)
-        END DO
+        IF (.NOT. CircuitDrivenBC) THEN
+          DO q = 1,np
+            !
+            ! The term 1/Z < grad V x n, v x n> : 
+            ! Some tensor calculation shows that the component form of this term is analogous to 
+            ! the case < A x n, v x n>. 
+            !
+            STIFF(p,q) = STIFF(p,q) + invZs * &
+                        SUM(WBasis(i,:) * dBasisdx(q,:)) * detJ * IP % s(t)
+          END DO
+        END IF
+
       END DO
 
       !
       ! The contributions from applying Ohm's law to the tangential surface current 
-      ! which is assumed to be constant over the skin depth: NOTE that a non-vanishing 
-      ! surface current cannot yet be prescribed on the one-dimensional boundary of the skin
-      ! surface via giving a current BC (the conducting skin must be either insulated over its
-      ! boundary or constrained by a Dirichlet condition for the scalar potential).
       !
-      DO p = 1,np
-        DO q = 1,np
-          STIFF(p,q) = STIFF(p,q) + delta * cond * &
-              SUM(dBasisdx(p,:) * dBasisdx(q,:)) * detJ * IP % s(t)
-        END DO
+        IF (.NOT. CircuitDrivenBC) THEN
+          DO p = 1,np
+            DO q = 1,np
+              STIFF(p,q) = STIFF(p,q) + invZs * &
+                  SUM(dBasisdx(p,:) * dBasisdx(q,:)) * detJ * IP % s(t)
+            END DO
 
-        DO j = 1,nd-np
-          q = j+np
-          STIFF(p,q) = STIFF(p,q) + delta * cond * imu * Omega * &
-              SUM(dBasisdx(p,:) * WBasis(j,:)) * detJ * IP % s(t)
-        END DO
-      END DO
-
+            DO j = 1,nd-np
+              q = j+np
+              DAMP(p,q) = DAMP(p,q) + invZs * &
+                SUM(dBasisdx(p,:) * WBasis(j,:)) * detJ * IP % s(t)
+            END DO
+          END DO
+        END IF
     END DO
+
+    IF(EigenSystem) THEN 
+      MASS(1:nd,1:nd) = MASS(1:nd,1:nd) + im*DAMP(1:nd,1:nd)
+    ELSE
+      STIFF(1:nd,1:nd) = -omega**2 * MASS(1:nd,1:nd) + &
+        im*Omega*DAMP(1:nd,1:nd) + STIFF(1:nd,1:nd)
+    END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixSkinBC
 !------------------------------------------------------------------------------
@@ -2176,8 +2175,8 @@ END BLOCK
     CALL GaugeTreeFluxBC(Solver,Mesh,TreeEdges,BasicCycles,FluxCount,FluxMap)
 
     WRITE(Message,*) 'Boundary tree edges: ', &
-      TRIM(i2s(COUNT(TreeEdges(FluxMap)))),   &
-             ' of total: ',TRIM(i2s(FluxCount))
+      i2s(COUNT(TreeEdges(FluxMap))),   &
+             ' of total: ',i2s(FluxCount)
     CALL Info('WhitneyAVHarmonicSolver: ', Message, Level=5)
 
     ! Get (B,n) for BC faces:
@@ -2610,7 +2609,7 @@ SUBROUTINE HelmholtzProjector(Model, Solver, dt, TransientSimulation)
 
     ALLOCATE( FORCE(2,n), STIFF(n,n), PotSol(2,n), STAT=istat )
     IF ( istat /= 0 ) THEN
-      CALL Fatal( 'HelmholtzProjector', 'Memory allocation error.' )
+      CALL Fatal( 'HelmholtzProjectorZ', 'Memory allocation error.' )
     END IF
     AllocationsDone = .TRUE.
   END IF
@@ -2629,8 +2628,11 @@ SUBROUTINE HelmholtzProjector(Model, Solver, dt, TransientSimulation)
     END IF
   END DO
 
-  IF (.NOT. Found ) THEN
-    CALL Fatal('HelmholtzProjector', 'Solver associated with potential variable > '&
+  IF (Found ) THEN
+    CALL Info('HelmholtzProjectorZ', 'Solver inherits potential '&
+         //TRIM(PotName)//' from solver: '//I2S(i),Level=7)
+  ELSE
+    CALL Fatal('HelmholtzProjectorZ', 'Solver associated with potential variable > '&
         //TRIM(PotName)//' < not found!')
   END IF
 
@@ -2638,15 +2640,8 @@ SUBROUTINE HelmholtzProjector(Model, Solver, dt, TransientSimulation)
   ! Find some parameters to inherit the vector FE basis as defined in 
   ! the primary solver:
   !
-  SecondOrder = GetLogical(SolverPtr % Values, 'Quadratic Approximation', Found)  
-
-  IF (SecondOrder) THEN
-    PiolaVersion = .TRUE.
-  ELSE
-    PiolaVersion = GetLogical(SolverPtr % Values, 'Use Piola Transform', Found) 
-  END IF
-
-  IF (PiolaVersion) CALL Info('HelmholtzProjector', &
+  CALL EdgeElementStyle(SolverPtr % Values, PiolaVersion, QuadraticApproximation = SecondOrder )
+  IF (PiolaVersion) CALL Info('HelmholtzProjectorZ', &
       'Using Piola-transformed finite elements', Level=5)
 
   n = Solver % Matrix % NumberOfRows
@@ -2719,7 +2714,7 @@ SUBROUTINE HelmholtzProjector(Model, Solver, dt, TransientSimulation)
 
     k = SolverPtr % Variable % Perm(i)
     IF (k == 0) THEN
-      CALL Fatal('HelmholtzProjector', &
+      CALL Fatal('HelmholtzProjectorZ', &
         'The variable and potential permutations are nonmatching?')
     END IF
 
@@ -2761,32 +2756,20 @@ CONTAINS
     FORCE = 0.0_dp
 
     IF (SecondOrder) THEN
-      EdgeBasisDegree = 2  
-      IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
-          EdgeBasisDegree=EdgeBasisDegree)
-    ELSE
+      EdgeBasisDegree = 2
+    ELSE 
       EdgeBasisDegree = 1
-      IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    END IF       
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+        EdgeBasisDegree=EdgeBasisDegree)
+    IF( dim == 2 .AND. .NOT. PiolaVersion ) THEN
+      CALL Fatal('HelmholtzProjectorZ', '"Use Piola Transform = True" needed in 2D')
     END IF
-
+        
     DO t=1,IP % n
-
-      u = IP % U(t)
-      v = IP % V(t)
-      w = IP % W(t)
-
-      IF (PiolaVersion) THEN
-        stat = EdgeElementInfo(Element, Nodes, u, v, w, DetF=DetJ, &
-            Basis=Basis, EdgeBasis=WBasis, dBasisdx=dBasisdx, &
-            BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-      ELSE
-        stat = ElementInfo(Element, Nodes, u, v, w, detJ, Basis, dBasisdx)
-        IF( dim == 3 ) THEN
-          CALL GetEdgeBasis(Element, WBasis, CurlWBasis, Basis, dBasisdx)
-        ELSE
-          CALL Fatal('HelmholtzProjector', 'Use Piola Transform = True needed in 2D')
-        END IF
-      END IF
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis, dBasisdx, &
+          EdgeBasis = Wbasis, RotBasis = CurlWBasis, USolver = SolverPtr ) 
       s = detJ * IP % s(t)
 
       A = MATMUL(PotSol(:,n_pot+1:nd_pot), WBasis(1:nd_pot-n_pot,:))
@@ -2825,7 +2808,7 @@ SUBROUTINE RemoveKernelComponent_Init0(Model, Solver, dt, Transient)
   TYPE(ValueList_t), POINTER :: SolverParams
   INTEGER :: i,j
   CHARACTER(LEN=MAX_NAME_LEN) :: Avname
-  LOGICAL :: Found, PiolaVersion, SecondOrder
+  LOGICAL :: Found, PiolaVersion, SecondOrder, SecondFamily
 !------------------------------------------------------------------------------
   SolverParams => GetSolverParams()
   CALL ListAddLogical(SolverParams, 'Linear System Refactorize', .FALSE.)
@@ -2855,28 +2838,19 @@ SUBROUTINE RemoveKernelComponent_Init0(Model, Solver, dt, Transient)
   IF(j>0) AVname = AVname(1:j-1)
   CALL ListAddString( GetSolverParams(), 'Potential Variable', AVName )
 
-  IF (.NOT. ListCheckPresent(SolverParams, "Element")) THEN
-    PiolaVersion = ListGetLogical(Model % Solvers(i) % Values, 'Use Piola Transform', Found)
-    SecondOrder = ListGetLogical(Model % Solvers(i) % Values, 'Quadratic Approximation', Found)
-
-    IF (.NOT. PiolaVersion .AND. SecondOrder) THEN
-      CALL Warn("RemoveKernelComponent_Init0", &
-           "Quadratic Approximation requested without Use Piola Transform " &
-           //"Setting Use Piola Transform = True.")
-      PiolaVersion = .TRUE.
-      CALL ListAddLogical(SolverParams, 'Use Piola Transform', .TRUE.)
-    END IF
+  IF (.NOT. ListCheckPresent(SolverParams, "Element")) THEN   
+    CALL EdgeElementStyle(Model % Solvers(i) % Values, PiolaVersion, SecondFamily, SecondOrder )
 
     IF (SecondOrder) THEN
       CALL ListAddString(SolverParams, "Element", &
           "n:0 e:2 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2")
+    ELSE IF (SecondFamily) THEN
+      CALL ListAddString(SolverParams, "Element", "n:0 e:2")
+    ELSE IF (PiolaVersion) THEN
+      CALL ListAddString(SolverParams, "Element", &
+          "n:0 e:1 -brick b:3 -quad_face b:2")
     ELSE
-      IF (PiolaVersion) THEN
-        CALL ListAddString(SolverParams, "Element", &
-            "n:0 e:1 -brick b:3 -quad_face b:2")
-      ELSE
-        CALL ListAddString( SolverParams, "Element", "n:0 e:1")
-      END IF
+      CALL ListAddString( SolverParams, "Element", "n:0 e:1")
     END IF
   END IF
 
@@ -3003,13 +2977,7 @@ SUBROUTINE RemoveKernelComponent(Model, Solver, dt, TransientSimulation)
   !
   ! Find some parameters to inherit the vector FE basis as defined in the primary solver:
   !
-  SecondOrder = GetLogical(SolverPtr % Values, 'Quadratic Approximation', Found)  
-
-  IF (SecondOrder) THEN
-    PiolaVersion = .TRUE.
-  ELSE
-    PiolaVersion = GetLogical(SolverPtr % Values, 'Use Piola Transform', Found) 
-  END IF
+  CALL EdgeElementStyle(SolverPtr % Values, PiolaVersion, QuadraticApproximation = SecondOrder )
 
   IF (PiolaVersion) CALL Info('RemoveKernelComponent', &
       'Using Piola-transformed finite elements', Level=5)
@@ -3115,7 +3083,7 @@ CONTAINS
     INTEGER :: i, j, p, q, t, EdgeBasisDegree 
 
     REAL(KIND=dp) :: Basis(n), dBasisdx(n,3), A(2,3)
-    REAL(KIND=dp) :: u, v, w, s, DetJ
+    REAL(KIND=dp) :: s, DetJ
     REAL(KIND=dp) :: WBasis(nd,3), CurlWBasis(nd,3)
 !------------------------------------------------------------------------------
     CALL GetElementNodes(Nodes)
@@ -3124,31 +3092,22 @@ CONTAINS
     FORCE = 0.0_dp
 
     IF (SecondOrder) THEN
-      EdgeBasisDegree = 2  
-      IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
-          EdgeBasisDegree=EdgeBasisDegree)
-    ELSE
+      EdgeBasisDegree = 2
+    ELSE 
       EdgeBasisDegree = 1
-      IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    END IF      
+
+    IF (dim==2 .AND. .NOT. PiolaVersion) THEN
+      CALL Fatal('RemoveKernelComponent', '"Use Piola Transform = True" needed in 2D')
     END IF
 
-    DO t=1,IP % n
-      u = IP % U(t)
-      v = IP % V(t)
-      w = IP % W(t)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+        EdgeBasisDegree=EdgeBasisDegree)
 
-      IF (PiolaVersion) THEN
-        stat = EdgeElementInfo(Element, Nodes, u, v, w, DetF=DetJ, &
-            Basis=Basis, EdgeBasis=WBasis, dBasisdx=dBasisdx, &
-            BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-      ELSE
-        stat = ElementInfo(Element, Nodes, u, v, w, detJ, Basis, dBasisdx)
-        IF( dim == 3 ) THEN
-          CALL GetEdgeBasis(Element, WBasis, CurlWBasis, Basis, dBasisdx)
-        ELSE
-          CALL Fatal('RemoveKernelComponent', 'Use Piola Transform = True needed in 2D')
-        END IF
-      END IF
+    DO t=1,IP % n      
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis, dBasisdx, &
+          EdgeBasis = Wbasis, RotBasis = CurlWBasis, USolver = SolverPtr )
 
       s = detJ * IP % s(t)
       DO p=1,nd

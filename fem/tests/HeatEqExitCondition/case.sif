@@ -1,0 +1,109 @@
+! Test case demostrates how to terminate simulation when a condition
+! becomes true. There is some tweaking going on as we have to create
+! a global variable and make it to have the value of max temperature.
+!
+! P.R. 6.10.2023
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "square"
+  Include Path ""
+  Results Directory "results"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian 2D"
+  Steady State Max Iterations = 1
+  Simulation Type = Transient
+  Timestepping Method = BDF
+  BDF Order = 2
+  Timestep Sizes(1) = 0.1 
+  Timestep Intervals(1) = 100
+  Output Intervals(1) = 1
+  Post File = "case.vtu"
+
+! This becomes positive (=True) when max temperature goes beyond 5.0 deg.
+! Without the condition we continue till timesteps are exhausted. 
+  Exit Condition = Variable "tmax"
+    Real MATC "tx-5.0"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equation"
+  Active Solvers = 1 
+End
+
+Solver 1
+  Equation = "heat"
+  Variable = "Temperature"
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = "umfpack"
+  Steady State Convergence Tolerance = 1.0e-05
+
+  Stabilize = True
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 10
+  Nonlinear System Relaxation Factor = 1.0
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+
+  Optimize Bandwidth = FALSE
+End
+
+
+Solver 2 
+  Equation = "save scalars"
+  Procedure = "SaveData" "SaveScalars"
+  Variable 1 = Temperature
+  Operator 1 = int mean
+  Variable 2 = Temperature
+  Operator 2 = max
+  Variable 3 = Time
+  Filename = f.dat
+
+! Create a global variable
+  Exported Variable 1 = -global "tmax"
+
+! Make the result of operator 2 to be variable "tmax"
+  Target Variable 2 = tmax
+
+! Set the value of operator 2 to be the norm for consistency tests.
+  Show Norm Index = 2
+End 
+
+
+Material 1
+  Name = "Ideal"
+  Density = 1.0
+  Heat Conductivity = 1.0
+  Heat Capacity = 10.0
+End
+
+Body Force 1
+  Name = "Heating"
+  Heat Source = 100.0
+End
+
+Boundary Condition 1
+  Name = "Cold"
+  Target Boundaries = 1 
+  Temperature = 0.0
+End
+
+Solver 1 :: Reference Norm = 2.84013743E+00
+Solver 2 :: Reference Norm = 5.33680134E+00

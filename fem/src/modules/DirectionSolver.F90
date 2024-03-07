@@ -109,14 +109,14 @@ SUBROUTINE DirectionSolver_Init0(Model,Solver,dt,Transient)
 
   i = 1
   DO WHILE(.TRUE.)
-    IF(ListCheckPresent(SolverParams, "Exported Variable "//TRIM(i2s(i)))) THEN
+    IF(ListCheckPresent(SolverParams, "Exported Variable "//i2s(i))) THEN
       i=i+1
     ELSE
       EXIT
     END IF
   END DO
 
-  CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+  CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
         TRIM(varname)//" Direction" )
 
   DEALLOCATE(Model % Solvers)
@@ -205,7 +205,7 @@ SUBROUTINE DirectionSolver( Model,Solver,dt,TransientSimulation )
   END IF
   NofNameSpaces = Model%numberofbodies 
   DO ns_iter=1,NofNameSpaces 
-   Namespace='body '//TRIM(i2s(ns_iter))//':'
+   Namespace='body '//i2s(ns_iter)//':'
    VNWithNS = TRIM(Namespace)//' '//TRIM(varname)
    IF (ListCheckPresentAnyBC(Model,VNWithNS)) CALL ListSetNameSpace(Namespace)
    !System assembly:

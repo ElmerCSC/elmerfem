@@ -1,0 +1,120 @@
+!----------------------------------------------------------------------------
+! This is a test case for testing out FilmFlowSolver for 1D channel flow.
+! The channel has a variable height. The velocity presents the average
+! flow velocity. With the same average models the 1D and 2D models should
+! produce close to the same pressure drop (computed by SaveScalars). 
+!
+! P.R. 27.10.22
+!-----------------------------------------------------------------------------
+include params.sif
+$ h1 = h0+dh
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "line"
+  Include Path ""
+  Results Directory "results"
+End
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+
+  Output Intervals = 0
+  Post File = film.vtu
+  
+!  Set Dirichlet BCs by BC Numbering = True
+!  Initialize Dirichlet Conditions = False
+!  Coordinate Mapping(3) = 2 1 3
+End
+
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Body 1"
+  Equation = 1
+  Material = 1
+End
+
+Solver 1
+  Equation = Navier-Stokes-1D
+
+! For 1D models the only velocity component is called "FilmSpeed"
+  Model Dimension = Integer 1
+  Procedure = "FilmFlowSolver" "FilmFlowSolver"
+
+!  Bubbles in Global System  = True
+!  GradP Discretization = True
+
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Convergence Tolerance = 1.0e-6
+  Nonlinear System Max Iterations = 30
+
+! activates also the newtonian linearization of viscosity
+  Nonlinear System Newton After Iterations = 5
+  Nonlinear System Relaxation Factor = 1
+  Nonlinear System Newton After Tolerance = 1.0e-3
+
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+
+!  Calculate Loads = True
+End
+
+
+Solver 2
+  Equation = "SaveMaterial"
+  Procedure = File "SaveData" "SaveMaterials"
+  Parameter 1 = String "Gap Height"
+End
+
+
+Solver 3
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+
+  Operator 1 = range
+  Variable 1 = FilmPressure
+  Operator 2 = boundary max
+  Variable 2 = FilmSpeed
+
+  Expression 1 = Real $h0
+  Expression 2 = Real $dh
+  
+  Filename = "film.dat"
+  File Append = Logical $appnd$
+
+  Show Norm Index = 1
+End
+
+Equation 1 :: Active Solvers = 1
+
+Material 1
+  Density = $rho
+  Viscosity = $nu
+  Gap Height = Variable "Coordinate 1"
+    Real
+      0.0 $h0
+      5.0 $h1
+    End
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  Name = "Left"
+  FilmSpeed = Real $v0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 2
+  Name = "Right"
+  Save Scalars = True
+End
+
+
+Solver 1 :: Reference Norm = 1.18674225E+00
+Solver 3 :: Reference Norm = 3.57499988E+02
+

@@ -1,0 +1,158 @@
+!---------------------------------------------------------------------------------------------
+! In this example particles are falling one second under the influence of unity gravity field.
+! When  the particles are falling they may perform path integrals where the source term is given.
+! Optionally the source term may depend on the integral value itself when the dymmy argument is
+! activated. The particles could, for example, integrate over damage or similar. 
+!---------------------------------------------------------------------------------------------
+
+Check Keywords Warn
+
+$rcell = 0.05
+
+Header
+  Mesh DB "." "square"
+End
+ 
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 
+  Simulation Type = transient
+  Steady State Max Iterations = 1
+  Timestep Intervals = 10
+  Output Intervals = 1
+  Timestep Sizes = 0.1
+End
+
+Constants
+  Permittivity Of Vacuum = 1.0
+  Gravity(4) = 0 -1 0 1
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+
+Equation 1
+  Active Solvers(3) = 1 2 3
+End
+
+Body Force 1 
+! The user can experiment here how different quantities i.e.
+! here the x-coordinate is integrated over the path. 
+  Particle Distance Integral Source = Variable "dummy, Coordinate 1"
+    Real MATC "1.0+tx(1)"
+  Particle Time Integral Source = Variable "dummy, Coordinate 1"
+    Real MATC "2.0+tx(1)"
+End 
+
+Initial Condition 1
+  ! Initial conditions for the integrals
+  Particle Time Integral = Real 1.0
+  Particle Distance Integral = Real 1.0
+End
+
+
+Solver 1
+  Equation = ParticleDynamics
+  Procedure = "ParticleDynamics" "ParticleDynamics"
+
+  !Number of Particles = Integer $ nopart
+  Coordinate Initialization Method = String "box uniform cubic"
+  Particle Cell Radius = Real $rcell
+  Initial Velocity(1,2) = Real 0.0 0.0
+
+  Simulation Timestep Sizes = Logical True
+  Max Timestep Intervals = Integer 10
+  Time Order = Integer 2
+
+  Particle Gravity = Logical True
+  Particle Mass = Real 1.0
+  Box Particle Periodic = Logical True
+
+!  Particle Accurate At Face = Logical True
+  Particle Accurate Always = Logical True
+
+  Particle To Field = Logical True
+!  Particle To Field Mode = String "kinetic energy"
+  Field 1 = "weight"
+  Field 2 = "kinetic energy"
+  Field 3 = "particle time integral"
+  Field 4 = "particle distance integral"
+
+! do not cumulate the particles
+  Particle To Field Reset = Logical True
+
+
+! The 1st argument is the source itself!
+  Particle Integral Dummy Argument = Logical True
+
+!  Statistical Info = Logical True
+!  Particle Info = Logical True
+End 
+
+
+Solver 2
+!  Exec Solver = never
+  Equation = String "FitData"
+  Procedure = File "DataToFieldSolver" "DataToFieldSolver"
+  Variable = Fitted Field
+
+! Basically solve: w*x = f
+  Target Variable = String "Particle time integral"
+  Weight Variable = String "Particle Weight"
+  Normalize by Given Weight = Logical True
+
+! The idea here is that the weight has constant sum and hence the
+! "reaction term" coefficient does not depend on amount of data. 
+  Set Constant Weight Sum = Logical True
+
+! When we don't have anough data this is used to interpolate between 
+  Diffusion Coefficient = Real 1.0e-3
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabL
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 20
+
+!  Continue BC With Boundary Assembly = Logical True
+End
+
+
+Solver 3
+!  Exec Solver = never
+  Equation = "ResultOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = "fields-b" 
+  Output Format = "vtu"
+End
+
+Solver 4
+!  Exec Solver = never
+  Equation = String "ParticleOutput"
+  Procedure = File "SaveGridData" "ParticleOutputSolver"
+  Filename Prefix = String "particles" 
+  Output Format = String "vtu"
+End
+
+
+
+Material 1
+  Name = "Ideal"
+End
+
+Boundary Condition 1
+  Name = BCs
+  Target Boundaries(4) = 1 2 3 4
+
+! natural BC is ok here!
+  FitData Continue = Logical True  
+End
+
+Solver 1 :: Reference Norm = 1.00000000E+00
+Solver 2 :: Reference Norm = 3.23528060E+00
+

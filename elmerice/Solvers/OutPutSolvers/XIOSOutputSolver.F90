@@ -15,8 +15,6 @@
         SolverParams => GetSolverParams()
 
         CALL ListAddNewLogical( SolverParams,'Optimize Bandwidth',.FALSE.)
-        ! current limitations only bulk 
-        CALL ListAddNewLogical( SolverParams,'Save Bulk Only',.TRUE.)
         ! need to skip halo
         CALL ListAddNewLogical( SolverParams,'Skip Halo Elements',.TRUE.)
 
@@ -63,6 +61,7 @@
 
       CHARACTER(*), PARAMETER :: Caller = 'XIOSOutputSolver'
 
+      TYPE(Element_t), POINTER :: Element
       INTEGER, SAVE :: nTime = 0
       INTEGER,SAVE :: ElemFirst, ElemLast
       INTEGER, ALLOCATABLE, TARGET,SAVE :: NodePerm(:),InvNodePerm(:), InvDgPerm(:), DgPerm(:)
@@ -75,10 +74,12 @@
       LOGICAL,SAVE :: NoPermutation
       INTEGER :: i,ii,M,t,n
       LOGICAL :: ierr
+      LOGICAL :: BoundarySolver
 
 
       TYPE(Mesh_t), POINTER :: Mesh
       TYPE(ValueList_t),POINTER :: Params
+      TYPE(ValueList_t), POINTER :: BC
       LOGICAL :: GotIt
       LOGICAL :: Parallel
       INTEGER :: GroupId
@@ -86,12 +87,13 @@
       REAL(KIND=dp) :: SimTime
 
       LOGICAL :: SaveLinear=.TRUE. ! save only corners
-      INTEGER :: MaxElementNodes  ! // MaxNumNodesPerFace
+      INTEGER,SAVE :: MaxElementNodes  ! // MaxNumNodesPerFace
       INTEGER,PARAMETER :: Connect_Fill=-1
       LOGICAL :: ok
 
       CHARACTER(LEN=MAX_NAME_LEN) :: strg_var
       TYPE(xios_duration) :: dtime,time_units
+      TYPE(xios_duration) :: sync_freq,out_freq
       TYPE(xios_context) :: ctx_hdl
       TYPE(xios_date) :: date_origin,ref_date
       TYPE(xios_date),SAVE :: date1,date2
@@ -109,13 +111,6 @@
 
       Params => GetSolverParams()
       Mesh => Model % Mesh
-      ! Comment: Can we get the Mas number of corners instead of nodes?
-      ! we should loop over saved elements....??
-      MaxElementNodes = Model % MaxElementNodes
-
-
-      IF (Mesh % MeshDim.NE.2) &
-        CALL FATAL(Caller,"Mesh dim should be 2 for now...")
 
       PEs = ParEnv % PEs
       Part = ParEnv % MyPE
@@ -132,6 +127,28 @@
       IF ( nTime == 1 ) THEN
         SkipEdges=ListGetLogical( Params,'Skip Edges',GotIt)
         IF (SkipEdges) SaveEdges=.FALSE.
+
+        BoundarySolver = ( Solver % ActiveElements(1) > Model % Mesh % NumberOfBulkElements )
+        IF (BoundarySolver) THEN
+           !------------------------------------------------------------------------------
+           ! set params to activate saving on the current boundary
+           !------------------------------------------------------------------------------
+           CALL ListAddNewLogical( Params,'Save Boundaries Only',.TRUE.)
+           CALL ListAddNewString( Params,'Mask Name','MaskXIOS')
+           BC => GetBC(Model%Mesh%Elements(Solver % ActiveElements(1)))
+           IF (.NOT.ASSOCIATED(BC)) &
+              CALL FATAL(Caller,"First element not associated to a BC")
+           CALL ListAddNewLogical( BC,'MaskXIOS',.TRUE.)
+
+           ! skip edges if working on a boundary....
+           SaveEdges=.FALSE.
+        ELSE
+           CALL ListAddNewLogical( Params,'Save Bulk Only',.TRUE.)
+           IF (Mesh % MeshDim.NE.2) &
+              CALL FATAL(Caller,"Saving bulk values works only for 2D meshes")
+        ENDIF
+
+
 
         IF (SaveEdges) THEN
           !! Get the edges
@@ -169,6 +186,21 @@
         CALL GenerateSavePermutation(Mesh,.FALSE.,.FALSE.,0,SaveLinear,ActiveElem,NumberOfGeomNodes,&
                NoPermutation,NumberOfDofNodes,DgPerm,InvDgPerm,NodePerm,InvNodePerm)
 
+        !------------------------------------------------------------------------------
+        ! Get Max ElementNodes from the active elements
+        !------------------------------------------------------------------------------
+        MaxElementNodes=0
+        DO ii = ElemFirst, ElemLast
+          IF( .NOT. ActiveElem(ii) ) CYCLE
+          Element => Model % Elements(ii)
+          IF (SaveLinear) THEN
+            n = GetElementCorners( Element )
+          ELSE
+            n = GetElementNOFNodes(Element)
+          END IF
+          IF (n.GT.MaxElementNodes) &
+            MaxElementNodes=n
+        END DO
         !------------------------------------------------------------------------------
         ! Parallel case we will exclude nodes not owned by partition...
         !------------------------------------------------------------------------------
@@ -211,10 +243,6 @@
         ! The partition is active for saving if there are any nodes
         ! to write. There can be no elements nor dofs without nodes.
         CALL ParallelActive( NumberOfDofNodes > 0 )
-
-        IF( ElemLast > Mesh % NumberOfBulkElements ) &
-          CALL FATAL(Caller, &
-                "Saving boundary elements not supported yet....")
 
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         ! XIOS context definition
@@ -267,7 +295,22 @@
         END IF
 
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        !! 
+        !! set out_freq and sync_freq to the top file_definition
+        !! if they are provided
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        strg_var=ListGetString(Params,"output frequency",GotIt)
+        IF (GotIt) THEN
+                out_freq=xios_duration_convert_from_string(TRIM(strg_var))
+                CALL xios_set_filegroup_attr("file_definition",output_freq=out_freq)
+        END IF
+        strg_var=ListGetString(Params,"sync frequency",GotIt)
+        IF (GotIt) THEN
+                sync_freq=xios_duration_convert_from_string(TRIM(strg_var))
+                CALL xios_set_filegroup_attr("file_definition",sync_freq=sync_freq)
+        END IF
+
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        !! Update File names suffix
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         strg_var=ListGetString(Params,"file names suffix",GotIt)
         IF (GotIt) call UpdateFileSuffix(TRIM(strg_var))
@@ -435,7 +478,7 @@
           END IF
 
           Vari=Vari+1
-          WRITE(Txt,'(A,I0)') 'Scalar Variable ',Vari
+          WRITE(Txt,'(A,I0)') 'Scalar Field ',Vari
           FieldName = GetString( Params,TRIM(Txt),ScalarsExist)
         END DO
 
@@ -512,15 +555,18 @@
 
         INTEGER :: i,ii,t,n,k
         INTEGER :: M
+        INTEGER :: imin
         INTEGER,DIMENSION(:),ALLOCATABLE :: Vertice
         INTEGER,DIMENSION(:),ALLOCATABLE :: GIndexes
         INTEGER,DIMENSION(:),ALLOCATABLE :: EdgeIndexes
         INTEGER, DIMENSION(:),ALLOCATABLE :: PartECount
         INTEGER :: begin
+        INTEGER :: ProjCoord
 
         INTEGER :: ierr
         INTEGER :: TotalCount,nv
         LOGICAL :: FieldActive,ok
+        LOGICAL :: DoProj
 
         ALLOCATE(Vertice(NumberOfActiveNodes),Node_x(NumberOfActiveNodes),Node_y(NumberOfActiveNodes))
         ALLOCATE(cell_area(NumberOfElements),Indexes(MaxElementNodes,NumberOfElements),GIndexes(NumberOfElements))
@@ -560,6 +606,13 @@
           NodeLat(n) = lat
 
         END DO
+
+        imin=MINVAL(Vertice)
+        IF (Parallel) THEN
+                CALL MPI_ALLREDUCE(imin,nv,1,MPI_INTEGER,MPI_MIN,ELMER_COMM_WORLD,ierr)
+                imin=nv
+        ENDIF
+        IF (imin.GT.1) Vertice=Vertice-imin+1
 
         ! Edges
         IF (SaveEdges) THEN
@@ -605,6 +658,7 @@
         END IF
 
         ! Elements
+        ProjCoord = ListGetInteger(Solver % Values,"projection coordinate",DoProj)
         cell_area=0._dp
         t=0
         DO i = ElemFirst, ElemLast
@@ -625,10 +679,12 @@
           ENDIF
 
           NodeIndexes => Element % NodeIndexes
-          IF(IsClockwise( Mesh%Nodes%x(NodeIndexes(1:n)),Mesh%Nodes%y(NodeIndexes(1:n)),n)) THEN
-            CALL FATAL(Caller, &
-                  "Clock wise ordering ... implement reordering!")
-          END IF
+
+          !! Clockwise ordering do not seems to be an issue for XIOS
+          !IF(IsClockwise( Mesh%Nodes%x(NodeIndexes(1:n)),Mesh%Nodes%y(NodeIndexes(1:n)),n)) THEN
+          !  CALL FATAL(Caller, &
+          !        "Clock wise ordering ... implement reordering!")
+          !END IF
 
           IF( NoPermutation ) THEN
             Indexes(1:n,t) = NodeIndexes(1:n)
@@ -652,6 +708,20 @@
           END DO
 
           CALL GetElementNodes( ElementNodes, Element )
+          IF (DoProj) THEN
+             SELECT CASE (ProjCoord)
+                CASE (1)
+                        ElementNodes % x(:)=0._dp
+                CASE (2)
+                        ElementNodes % y(:)=0._dp
+                CASE (3)
+                        ElementNodes % z(:)=0._dp
+                CASE DEFAULT
+                        CALL FATAL(Caller, &
+                            "Wrong projection coordinate"//I2S(ProjCoord))
+
+             END SELECT
+          END IF
 
           IntegStuff = GaussPoints( Element )
           Do k=1,IntegStuff % n
@@ -665,8 +735,16 @@
 
          END DO
 
+         ! it seems that GIndex is not updated by the extrusion so it
+         ! keeps the initial table........... should be ok then...
+
          IF (Parallel) THEN
            CALL MPI_ALLREDUCE(NumberOfElements,TotalCount,1,MPI_INTEGER,MPI_SUM,ELMER_COMM_WORLD,ierr)
+           CALL MPI_ALLREDUCE(MAXVAL(GIndexes),nv,1,MPI_INTEGER,MPI_MAX,ELMER_COMM_WORLD,ierr)
+           !! in principle we should have all the elements...
+           IF (TotalCount.NE.nv) THEN
+             CALL FATAL(Caller, "Pb with number of elements?? ")
+           ENDIF
 
            CALL xios_set_domain_attr("cells",ni_glo=TotalCount, &
                 ni=NumberOfElements,i_Index=GIndexes-1,&
@@ -786,6 +864,7 @@
         CHARACTER(LEN=1024) :: Txt,GlobalFieldName
         INTEGER :: Vari
         LOGICAL ::ScalarsExist
+        LOGICAL :: FieldActive
 
         GlobalFieldName = GetString( Params,'Global Variable 1',ScalarsExist)
         Vari=1
@@ -796,7 +875,13 @@
           IF ((Var%TYPE .NE. Variable_global).AND.(SIZE(Var % Values).NE.Var % DOFs)) &
             CALL FATAL(Caller,"Variable was supposed to be global")
 
-          CALL xios_send_field(TRIM(Var%Name), Var % Values(1))
+          FieldActive=xios_field_is_active(TRIM(Var%Name),.TRUE.)
+          WRITE( Message,'(A,A,L2)') 'Xios request : ',TRIM(Var%Name),FieldActive
+          CALL Info(Caller,Message,Level=Olevel)
+
+          IF (FieldActive) THEN
+            CALL xios_send_field(TRIM(Var%Name), Var % Values(1))
+          ENDIF
 
           Vari=Vari+1
           WRITE(Txt,'(A,I0)') 'Global Variable ',Vari
@@ -806,7 +891,7 @@
       END SUBROUTINE SendGlobalVariables
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!!!!!!!! Send srequested scalar variables...
+!!!!!!!! Send requested scalar variables...
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
       SUBROUTINE SendVariables()
         IMPLICIT NONE

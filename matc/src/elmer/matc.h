@@ -37,6 +37,8 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <time.h>
+#include <unistd.h>
 #include <sys/types.h>
 
 
@@ -158,7 +160,7 @@ typedef struct variable
 } VARIABLE;
 
 /*
-     shortcuts for accsessing structure MATRIX
+     shortcuts for accessing structure MATRIX
 */
 #define MATR(ptr)    (ptr)->this->data
 #define TYPE(ptr)    (ptr)->this->type
@@ -193,7 +195,7 @@ typedef struct command
 
 #define CMDFLAG_PW 1           /* element by element operation    */
 #define CMDFLAG_CE 2           /* command can be executed when 
-                                  preprosessing if constant
+                                  preprocessing if constant
                                   arguments.                      */
 
 /*******************************************************************
@@ -307,7 +309,7 @@ typedef struct tree {
 } TREE;
 
 /*
-    shortcuts for accsessing above structures
+    shortcuts for accessing above structures
 */
 #define SDATA(ptr) (ptr)->tentry.entrydata.s_data
 #define DDATA(ptr) (ptr)->tentry.entrydata.d_data

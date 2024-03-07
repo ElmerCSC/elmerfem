@@ -1203,7 +1203,7 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
 
   IF( maxfdofs > idof ) THEN
     idof = idof + 1
-    CALL Info('GridDataReader','Continuing to read timestep: '//TRIM(I2S(idof)))
+    CALL Info('GridDataReader','Continuing to read timestep: '//I2S(idof))
     GOTO 100
   END IF
 

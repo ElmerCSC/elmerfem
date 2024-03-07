@@ -98,8 +98,11 @@ class MeshPoint;
 class MeshEdge;
 class Matc;
 class EcmaConsole;
+#if WITH_QT6
+class QJSEngine;
+#else
 class QScriptEngine;
-
+#endif
 class VtkPost : public QMainWindow
 {
   Q_OBJECT
@@ -134,6 +137,15 @@ public:
   vtkUnstructuredGrid* GetLineGrid();
   vtkUnstructuredGrid* GetSurfaceGrid();
   vtkUnstructuredGrid* GetVolumeGrid();
+
+  // These three hashes are to draw feature edge for each group separately.
+  // To do so, one group uses three grids(volume, surface,line) 
+  QHash<QString, vtkUnstructuredGrid*>* GetLineGridHash();
+  QHash<QString, vtkUnstructuredGrid*>* GetSurfaceGridHash();
+  QHash<QString, vtkUnstructuredGrid*>* GetVolumeGridHash();
+  // and one group uses one FeatureEdge to draw its edge
+  QVector<FeatureEdge*> featureEdgeVector;
+  
   vtkPlane* GetClipPlane();
   vtkImplicitPlaneWidget* GetPlaneWidget();
 //  vtkLookupTable* GetCurrentLut();
@@ -171,6 +183,7 @@ public:
   void SetCurrentStreamLineName(QString);
   void SetCurrentStreamLineColorName(QString);
   int NofNodes();
+  void hideAll();
 
 signals:
   void canProceedWithNextSignal(vtkRenderWindow*);
@@ -361,9 +374,6 @@ private:
   QAction *savePictureAct;
   QAction *savePovrayAct;
   QAction *preferencesAct;
-  QAction *drawMeshPointAct;
-  QAction *drawMeshEdgeAct;
-  QAction *drawFeatureEdgesAct;
   QAction *drawSurfaceAct;
   QAction *drawVectorAct;
   QAction *drawIsoContourAct;
@@ -397,6 +407,7 @@ private:
 
   EpMesh* epMesh;
   QString postFileName;
+  QString lastPostFileName;
   bool postFileRead;
   int scalarFields;
   ScalarField* scalarField;
@@ -405,6 +416,9 @@ private:
   void getPostLineStream(QTextStream*);
 
   QHash<QString, QAction*> groupActionHash;
+  QHash<QString, vtkUnstructuredGrid*> volumeGridHash;
+  QHash<QString, vtkUnstructuredGrid*> surfaceGridHash;
+  QHash<QString, vtkUnstructuredGrid*> lineGridHash;
 
 #if VTK_MAJOR_VERSION >= 8
   QVTKOpenGLNativeWidget* qvtkWidget;
@@ -492,7 +506,11 @@ private:
   // ECMAScript
   QAction* showECMAScriptConsoleAct;
   EcmaConsole* ecmaConsole;
+#if WITH_QT6
+  QJSEngine* engine;
+#else
   QScriptEngine* engine;
+#endif
 };
 
 #endif // VTKPOST_H

@@ -46,7 +46,7 @@
 !-------------------------------------------------------------------------------
 
 MODULE PElementMaps
-  USE Types
+  Use GeneralUtils
 
   IMPLICIT NONE
 
@@ -192,7 +192,7 @@ CONTAINS
 
     FUNCTION getBrickFaceEdgeMap(face, localNode) RESULT(localEdge)
       IMPLICIT NONE
-      CHARACTER(LEN=MAX_NAME_LEN) :: msg
+      CHARACTER(:), ALLOCATABLE :: msg
 
       ! Parameters 
       INTEGER, INTENT(IN) :: face, localNode
@@ -204,8 +204,8 @@ CONTAINS
       localEdge = BrickFaceEdgeMap(face,localNode)
 
       IF (localEdge == 0) THEN
-         WRITE (msg,'(A,I2,I3)') 'Unknown combination node for (face,node)', face,localNode 
-         CALL Fatal('getBrickFaceEdgeMap', msg)
+         msg = 'Unknown combination node for (face,node)'//I2S(face)//I2S(localNode)
+         CALL Fatal('PElementMaps::getBrickFaceEdgeMap', msg)
       END IF
     END FUNCTION getBrickFaceEdgeMap
 
@@ -761,7 +761,7 @@ CONTAINS
 !>     Based on element face polynomial degree p, return degrees of freedom for
 !>     given face. 
 !------------------------------------------------------------------------------
-  FUNCTION getFaceDOFs( Element, p, faceNumber ) RESULT(faceDOFs)
+  FUNCTION getFaceDOFs(Element, p, faceNumber, Face ) RESULT(faceDOFs)
 !------------------------------------------------------------------------------
 !
 !  ARGUMENTS:
@@ -783,43 +783,67 @@ CONTAINS
     IMPLICIT NONE
     
     TYPE(Element_t) :: Element
+    TYPE(Element_t), OPTIONAL :: Face
     INTEGER, INTENT(IN) :: p
     INTEGER, INTENT(IN), OPTIONAL :: faceNumber
     INTEGER :: faceDOFs
+    LOGICAL :: SerendipityPBasis
 
     ! This function is not defined for non p elements
     IF (.NOT. ASSOCIATED(Element % PDefs) ) THEN
        faceDOFs = 0
        RETURN
     END IF
+    SerendipityPBasis = Element % PDefs % Serendipity
 
     faceDOFs = 0
+    IF(p<=1) RETURN
+
     SELECT CASE(Element % TYPE % ElementCode / 100)
+    ! Triangle
+    CASE (3)
+       faceDOFs = (p-1)*(p-2)/2
+    ! Quad
+    CASE (4)
+       IF ( SerendipityPBasis ) THEN
+         faceDOFs = (p-2)*(p-3)/2
+       ELSE
+         faceDOFs = (p-1)**2 ! (p-1)*p/2
+       END IF
     ! Tetrahedron
     CASE (5)
-       IF (p >= 3) faceDOFs = (p-1)*(p-2)/2
+       faceDOFs = (p-1)*(p-2)/2
     ! Pyramid
     CASE (6)
        SELECT CASE(faceNumber)
-          CASE (1)
-             IF (p >= 4) faceDOFs = (p-2)*(p-3)/2
-          CASE (2:5)
-             IF (p >= 3) faceDOFs = (p-1)*(p-2)/2
+        CASE (1)
+          faceDOFs = (p-1)**2 ! (p-1)*p/2
+        CASE (2:5)
+          faceDOFs = (p-1)*(p-2)/2
        END SELECT
     ! Wedge
     CASE (7)
        SELECT CASE(faceNumber)
        CASE (1,2)
-          IF (p >= 3) faceDOFs = (p-1)*(p-2)/2
+          faceDOFs = (p-1)*(p-2)/2
        CASE (3:5)
-          IF (p >= 4) faceDOFs = (p-2)*(p-3)/2
+          IF(SerendipityPBasis) THEN
+            faceDOFs = (p-2)*(p-3)/2
+          ELSE
+            faceDOFs = (p-1)**2 ! (p-1)*p/2
+          END IF
        END SELECT
     ! Brick   
     CASE (8)
-       IF (p >= 4) faceDOFs = (p-2)*(p-3)/2
+       IF(SerendipityPBasis) THEN
+         faceDOFs = (p-2)*(p-3)/2
+       ELSE
+         faceDOFs = (p-1)**2 ! (p-1)*p/2
+       END IF
     CASE DEFAULT
-       CALL Warn('MeshUtils::getFaceDOFs','Unsupported p element type')
-       faceDOFs = p
+      WRITE(Message,'(A,I0)') 'Unsupported p element type: ',Element % TYPE % ElementCode
+      CALL Warn('PElementMaps::getFaceDOFs',Message)
+      faceDOFs = p
     END SELECT
 
     faceDOFs = MAX(0, faceDOFs)
@@ -852,7 +876,8 @@ CONTAINS
     
     TYPE(Element_t) :: Element
     INTEGER, INTENT(IN) :: p
-    INTEGER :: bubbleDOFs
+    INTEGER :: bubbleDOFs, i
+    LOGICAL :: SerendipityPBasis
     
     ! This function is not defined for non p elements
     IF (.NOT. ASSOCIATED(Element % PDefs) ) THEN
@@ -860,32 +885,48 @@ CONTAINS
        RETURN
     END IF
 
+    SerendipityPBasis = Element % PDefs % Serendipity
+
     ! Select by element type
     bubbleDOFs = 0
+    IF(p<=1) RETURN
+
     SELECT CASE (Element % TYPE % ElementCode / 100)
     ! Line 
     CASE (2)
-      IF (p >= 2) bubbleDOFs = p - 1
+      BubbleDOFs = p-1
     ! Triangle
     CASE (3)
-      IF (p >= 3) bubbleDOFs = (p-1)*(p-2)/2
+      BubbleDOFs = (p-2)*(p-1)/2
     ! Quad
     CASE (4)
-       IF (p >= 4) bubbleDOFs = (p-2)*(p-3)/2
+      IF(SerendipityPBasis) THEN
+        BubbleDOFs = (p-2)*(p-3)/2
+      ELSE
+        BubbleDOFs = (p-1)**2 ! (p-1)*p/2
+      END IF
     ! Tetrahedron
     CASE (5)
-       IF (p >= 4) bubbleDOFs = (p-1)*(p-2)*(p-3)/6
+      BubbleDOFs = (p-3)*(p-2)*(p-1)/6
     ! Pyramid
     CASE (6)
-       IF (p >= 4) bubbleDOFs = (p-1)*(p-2)*(p-3)/6
-    ! Wedge
+       BubbleDOFs = (p-2)*(p-1)*p/6
+    ! Prism
     CASE (7)
-       IF (p >= 5) bubbleDOFs = (p-2)*(p-3)*(p-4)/6
-    ! Brick
+      IF(SerendipityPBasis) THEN
+        bubbleDOFs = (p-2)*(p-3)*(p-4)/6
+      ELSE
+        BubbleDOFs = (p-1)**2*(p-2)/2
+      END IF
+    ! Hexa
     CASE (8)
-       IF (p >= 6) bubbleDOFs = (p-3)*(p-4)*(p-5)/6
+      IF(SerendipityPBasis) THEN
+        bubbleDOFs = (p-3)*(p-4)*(p-5)/6
+      ELSE
+        BubbleDOFs = (p-1)**3
+      END IF
     CASE DEFAULT
-       CALL Warn('MeshUtils::getBubbleDOFs','Unsupported p element type')
+       CALL Warn('PElementMaps::getBubbleDOFs','Unsupported p element type')
        bubbleDOFs = p
     END SELECT
 
@@ -896,7 +937,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> Checks if given element is a p element active in a particular solver.   
+!> Checks if given element is a p-element active in a particular solver.   
 !------------------------------------------------------------------------------
   FUNCTION isActivePElement(Element,USolver) RESULT(retVal)
 !------------------------------------------------------------------------------
@@ -904,9 +945,9 @@ CONTAINS
 
     TYPE(Element_t), INTENT(IN) :: Element
     TYPE(Solver_t), POINTER, OPTIONAL :: USolver
+    LOGICAL :: retVal
 
     INTEGER :: m
-    LOGICAL :: retVal
     TYPE(Solver_t), POINTER :: pSolver
         
     retVal = isPelement(Element)
@@ -917,7 +958,7 @@ CONTAINS
     IF( PRESENT( USolver ) ) THEN
       pSolver => USolver
     ELSE
-      pSOlver => CurrentModel % Solver
+      pSolver => CurrentModel % Solver
     END IF
     
     IF(ASSOCIATED(pSolver))THEN
@@ -933,7 +974,8 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> Checks if given element is a p element active in a particular solver.   
+!> Checks whether given solver has active p-element definitions (for some
+!> element type and for some body)
 !------------------------------------------------------------------------------
   FUNCTION isActivePSolver(Solver) RESULT(retVal)
 !------------------------------------------------------------------------------
@@ -956,7 +998,7 @@ CONTAINS
   
 
 !------------------------------------------------------------------------------
-!> Checks if given element is a p element.   
+!> Checks whether given element has p-element information associated  
 !------------------------------------------------------------------------------
     FUNCTION isPElement( Element ) RESULT(retVal)
 !------------------------------------------------------------------------------
@@ -1138,6 +1180,29 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+  FUNCTION getEffectiveBubbleP(Element,set_p,bdofs) RESULT(p)
+!------------------------------------------------------------------------------
+     IMPLICIT NONE
+
+     INTEGER :: p, bdofs, set_p
+     TYPE(Element_t) :: Element
+
+     INTEGER :: curr_nb, nb
+
+     p = set_p
+     curr_nb = GetBubbleDOFs(Element,p)
+     nb = MAX( curr_nb, bdofs )
+
+     DO WHILE(curr_nb < nb)
+       p = p + 1
+       curr_nb = GetBubbleDOFs(Element,p)
+     END DO
+!------------------------------------------------------------------------------
+  END FUNCTION getEffectiveBubbleP
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
 !> Get the number of Gauss points for P-elements.
 !------------------------------------------------------------------------------
     FUNCTION getNumberOfGaussPoints( Element, Mesh ) RESULT(ngp)
@@ -1147,10 +1212,10 @@ CONTAINS
       TYPE(Element_t) :: Element
       INTEGER :: ngp
 !------------------------------------------------------------------------------
-      INTEGER :: edgeP, faceP, bubbleP, TrueBubbleP, nb, maxp
+      INTEGER :: edgeP, faceP, bubbleP, TrueBubbleP, maxp
 
       IF (.NOT. ASSOCIATED(Element % PDefs)) THEN
-         CALL Warn('PElementBase::getNumberOfGaussPoints','Element not p element')
+         CALL Warn('PElementMaps::getNumberOfGaussPoints','Element not p element')
          ngp = 0
          RETURN
       END IF
@@ -1169,54 +1234,20 @@ CONTAINS
       END IF
       
       ! Element bubble p
-      bubbleP = 0
-      TrueBubbleP = 0
-      IF (Element % BDOFs > 0) THEN
-         bubbleP = Element % PDefs % P
-         
-         SELECT CASE( Element % TYPE % ElementCode / 100 )
-         CASE(3)
-             nb = MAX( GetBubbleDOFs( Element, bubbleP ), Element % BDOFs )
-             bubbleP = CEILING( ( 3.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 - AEPS)
-
-         CASE(4)
-             nb = MAX( GetBubbleDOFs( Element, bubbleP ), Element % BDOFs )
-             TrueBubbleP = CEILING( ( 5.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 - AEPS )
-             bubbleP = TrueBubbleP - 2
-
-         CASE(5)
-             nb = MAX( GetBubbleDOFs(Element, bubbleP ), Element % BDOFs )
-             bubbleP = CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0 / &
-                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2 - AEPS)
-
-         CASE(6)
-             nb = MAX( GetBubbleDOFs(Element, bubbleP ), Element % BDOFs )
-             bubbleP = CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0 / &
-                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2 - AEPS) - 1
-
-         CASE(7)
-             nb = MAX( GetBubbleDOFs( Element, bubbleP ), Element % BDOFs )
-             bubbleP = CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0 / &
-                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+3 - AEPS) - 2
-
-         CASE(8)
-             nb = MAX( GetBubbleDOFs(Element, bubbleP ), Element % BDOFs )
-             bubbleP = CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0 / &
-                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+4 - AEPS) - 4
-         END SELECT
-      END IF
+      bubbleP = getEffectiveBubbleP(Element,Element % PDefs % P,Element % bdofs)
+      TrueBubbleP = bubbleP
 
       ! Special quadrature may be available: 
-      IF (Element % TYPE % ElementCode / 100 == 4) THEN
+      IF (Element % PDefs % Serendipity .AND. Element % TYPE % ElementCode / 100 == 4) THEN
         ! The true polynomial degree is as follows
-        maxp = MAX(1, edgeP, faceP, TrueBubbleP)
+        !maxp = MAX(1, edgeP, faceP, TrueBubbleP)
         ! but this would replace the true bubble degree by a tampered value:
-        !maxp = MAX(1, edgeP, faceP, BubbleP)
+        maxp = MAX(1, edgeP, faceP, BubbleP)
 
         ! Economic quadratures cannot be used if an explicit bubble augmentation is used
         ! with lower-order finite elements:
-        IF ( .NOT.(Element % PDefs % P < 4 .AND. Element % BDOFs>0) ) THEN
-          IF (maxp > 1 .AND. maxp <= 8) THEN
+        IF ( .NOT.(Element % PDefs % P<4 .AND. Element % BDOFs>0) ) THEN
+          IF (maxp > 1 .AND. maxp <= 7) THEN
             !PRINT *, 'SETTING SPECIAL NGP'
             !PRINT *, 'MAXP=',MAXP
             SELECT CASE(maxp)
@@ -1227,12 +1258,10 @@ CONTAINS
             CASE(4)
               ngp = 20
             CASE(5)
-              ngp = 25
-            CASE(6)
               ngp = 36
-            CASE(7)
+            CASE(6)
               ngp = 45
-            CASE(8)
+            CASE(7)
               ngp = 60
             END SELECT
             RETURN
@@ -1262,7 +1291,7 @@ CONTAINS
       INTEGER :: edgeP, i
 
       IF (.NOT. ASSOCIATED(Element % PDefs)) THEN
-         CALL Warn('PElementBase::getEdgeP','Element not p element')
+         CALL Warn('PElementMaps::getEdgeP','Element not p element')
          edgeP = 0
          RETURN
       END IF
@@ -1292,7 +1321,7 @@ CONTAINS
       TYPE(Mesh_t) :: Mesh
       
       IF (.NOT. ASSOCIATED(Element % PDefs)) THEN
-         CALL Warn('PElementBase::getFaceP','Element not p element')
+         CALL Warn('PElementMaps::getFaceP','Element not p element')
          faceP = 0
          RETURN
       END IF
@@ -1339,7 +1368,7 @@ CONTAINS
       END IF
 
       ! An economic quadrature may be available: 
-      IF (Face % TYPE % ElementCode / 100 == 4) THEN
+      IF (Face % Pdefs % Serendipity .AND. Face % TYPE % ElementCode / 100 == 4) THEN
         !IF ( .NOT.(maxp < 4 .AND. Face % BDOFs>0) ) THEN
         IF (maxp > 1 .AND. maxp <= 8) THEN
           SELECT CASE(maxp)

@@ -1,0 +1,215 @@
+! A sif file to test a surface impedance BC
+! Here 1D Neumann conditions (a given surface current) are applied and
+! produce the same results as the base case.
+!
+! P.R. 7.10.2022 (some fixes by M.M. Jun 7, 2023)
+
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "wire"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian"
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+  Output Intervals(1) = 1
+
+  Coordinate Scaling = 1.0e-3
+
+  $w=1.0e6
+  Angular Frequency = Real $w
+End
+
+Body 1
+  Name = "Wire"
+  Material = 1
+End
+
+Body 2
+  Name = "Air"
+  Equation = 1
+  Material = 2
+End
+
+
+Material 1
+  Name = "Cu"
+  Permittivity = 0
+  Relative Permeability = 1
+  Electric Conductivity = 0.0
+End
+
+Material 2
+  Name = "Air"
+  Permittivity = 0  
+!  Relative Permittivity = 1.0
+  Relative Permeability = 1.0
+  Electric Conductivity = 0.0
+End 
+
+Equation 1
+  Active Solvers(3) = 1 2 3
+End
+
+
+Solver 1
+  Equation = "MGDynamics"
+
+  Variable = "AV[AV re:1 AV im:1]"
+  Procedure = "MagnetoDynamics" "WhitneyAVHarmonicSolver"
+
+  Use Piola Transform = true
+
+  Linear System Symmetric = True
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = none
+  Linear System Residual Output = 50
+  Linear System Max Iterations = 1000
+  Linear System Iterative Method = BiCGStabl
+  Linear System Convergence Tolerance = 1.0e-8
+  BicgStabl Polynomial Degree = 4
+End
+ 
+
+Solver 2
+  Equation = "MGDynamicsCalc"
+
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+  Linear System Symmetric = True
+
+  Potential Variable = String "AV"
+
+  Calculate Magnetic Vector Potential = True
+  Calculate Current Density = Logical True
+  Calculate Electric Field = Logical True
+  Calculate Magnetic Field Strength = Logical True
+  Calculate Joule Heating = True
+
+  Calculate Nodal Heating = True
+  Calculate Nodal Current = Logical True
+
+  Steady State Convergence Tolerance = 0
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = None
+  Linear System Residual Output = 0
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = CG
+  Linear System Convergence Tolerance = 1.0e-8
+
+  Calculate Nodal Fields = Logical False
+  Impose Body Force Potential = Logical True
+  Impose Body Force Current = Logical True
+
+  Discontinuous Bodies = True
+  calculate harmonic peak power = logical True
+End
+
+
+Solver 3
+  Exec Solver = after all
+  Equation = "ResultOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = neumann
+  Vtu format = Logical True
+  Discontinuous Bodies = Logical True
+  Save Geometry IDs = Logical True
+End
+
+
+Solver 4
+  Exec Solver = after all
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+
+  Filename = g.dat
+  Show Norm Index = 5
+
+  Variable 1 = Surface Current re 3
+  Operator 1 = "boundary int mean"
+  Variable 2 = Surface Current im 3
+  Operator 2 = "boundary int mean"
+End
+
+
+Boundary Condition 1
+  !
+  ! Impedance BC
+  !
+  Name = "WireSurface"
+  Target Boundaries(1) = 2
+  Layer Electric Conductivity = Real 58e6
+  Layer Relative Permeability = Real 1
+
+  Save Scalars = Logical True
+End
+
+
+Boundary Condition 2
+  Name = "AirStart"
+  Target Boundaries(1) = 4
+
+  AV re {e} 1 = Real 0.0
+  AV re {e} 2 = Real 0.0
+  AV re {e} 3 = Real 0.0
+
+  AV im {e} 1 = Real 0.0
+  AV im {e} 2 = Real 0.0
+  AV im {e} 3 = Real 0.0
+
+! As there is no wire ends we need to use the air ends to set the
+! electric scalar potential. 
+  AV re = Real 0.0
+  AV im = Real 0.0
+End
+
+
+Boundary Condition 3
+  Name = "AirSurface"
+  Target Boundaries(1) = 5
+
+  AV re {e} 1 = Real 0.0
+  AV re {e} 2 = Real 0.0
+  AV re {e} 3 = Real 0.0
+
+  AV im {e} 1 = Real 0.0
+  AV im {e} 2 = Real 0.0
+  AV im {e} 3 = Real 0.0
+
+End
+
+Boundary Condition 4
+  Name = "AirEnd"
+  Target Boundaries(1) = 6 
+
+  AV re {e} 1 = Real 0.0
+  AV re {e} 2 = Real 0.0
+  AV re {e} 3 = Real 0.0
+
+  AV im {e} 1 = Real 0.0
+  AV im {e} 2 = Real 0.0
+  AV im {e} 3 = Real 0.0
+
+! These are the BCs of the base case
+!  AV re = Real 5.542e-5
+!  AV im = Real 0.0
+End
+
+Boundary Condition 5
+  Name = "1D"
+  Intersection BC(2) = 1 4
+! We give the skin current as computed in the base case.
+! Note that the outward flux has the negative sign.
+  Electric Current Density = 0.126136
+  Electric Current Density Im = -2.60297
+End 
+
+
+
+Solver 1 :: Reference Norm = 1.36299260E-06
+Solver 1 :: Reference Norm Tolerance = 1e-5
+Solver 4 :: Reference Norm = 4.43466404E-08
+Solver 4 :: Reference Norm Tolerance = 1e-3

@@ -81,7 +81,7 @@ public slots:
   void SetMinThresholdVal(double);                  // set threshold min
   void SetMaxThresholdVal(double);                  // set threshold max
   void UseThreshold(bool);                          // use threshold
-  void KeepThresholdLimits(bool);                   // keep thrshld limits
+  void KeepThresholdLimits(bool);                   // keep threshold limits
 
 signals:
   void drawVectorSignal();
@@ -95,11 +95,13 @@ private slots:
   void thresholdSelectionChanged(int);
   void keepLimitsSlot(int);
   void keepThresholdLimitsSlot(int);
+  void nullColorButtonClicked();
 
 private:
   ScalarField *scalarField;
   int scalarFields;
-
+  QColor nullColor;
+  void setNullColor(QColor);
 };
 
 #endif // VECTOR_H

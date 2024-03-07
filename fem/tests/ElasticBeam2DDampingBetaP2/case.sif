@@ -31,6 +31,7 @@ Simulation
   Output Intervals = 5
   vtu: Save Bulk Only = Logical True
 !  Post File = "case.vtu"
+  Serendipity P Elements = False
 End
 
 Body 1
@@ -125,6 +126,6 @@ End
 !Solver 2 :: Reference Norm = 1.67609359E-01 ! 1.65986821E-01
 
 ! With damping, beta = 1.0                  ! Nodal quadratic
-Solver 1 :: Reference Norm = 5.84014184E-02 ! 5.77674335E-02
-Solver 2 :: Reference Norm = 5.82410658E-02 ! 5.76088557E-02
+Solver 1 :: Reference Norm = 5.84790919E-02 ! 5.77674335E-02
+Solver 2 :: Reference Norm = 5.83186321E-02 ! 5.76088557E-02
 

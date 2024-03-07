@@ -236,15 +236,15 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
     END IF
   END DO
   
-  CALL Info(Caller,'Maximum number of state variables in UMAT: '//TRIM(I2S(Nstate)),Level=7)
+  CALL Info(Caller,'Maximum number of state variables in UMAT: '//I2S(Nstate),Level=7)
   
   ! Create variables for some state variables of a user-defined material model (UMAT):
   ! Note that Elmer does not like length of zero for the variables.
   IF( NState > 0 ) THEN
     IF (OutputStateVars) THEN
-      str = '-dofs '//TRIM(I2S(NState))//' -ip UmatState'
+      str = '-dofs '//I2S(NState)//' -ip UmatState'
     ELSE
-      str = '-nooutput -dofs '//TRIM(I2S(NState))//' -ip UmatState'
+      str = '-nooutput -dofs '//I2S(NState)//' -ip UmatState'
     END IF
     CALL ListAddString(SolverParams, NextFreeKeyword('Exported Variable ', SolverParams), str )
   END IF
@@ -324,7 +324,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
        LocalTemperature(:),ElasticModulus(:,:,:),PoissonRatio(:), Density(:), &
        Damping(:), HeatExpansionCoeff(:,:,:),Alpha(:,:),Beta(:), &
        ReferenceTemperature(:),BoundaryDispl(:),LocalDisplacement(:,:), PrevSOL(:), &
-       PrevLocalDisplacement(:,:), SpringCoeff(:,:,:), LocalExternalForce(:)
+       PrevLocalDisplacement(:,:), SpringCoeff(:,:,:), LocalExternalForce(:), &
+       DisplacementRot(:), LocalForceSaved(:)
          
   REAL(KIND=dp) :: UNorm, TransformMatrix(3,3), Tdiff, Normal(3), s, UnitNorm, DragCoeff
   REAL(KIND=dp) :: Norm, NonlinTol, NonlinRes0, NonlinRes, time 
@@ -574,7 +575,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
        IF( ASSOCIATED( UmatStateVar ) ) THEN
          MaxStateV = UmatStateVar % Dofs
          CALL Info(Caller,'Maximum number of state variables in UMAT: '&
-             //TRIM(I2S(MaxStateV)),Level=7)
+             //I2S(MaxStateV),Level=7)
          UmatState => UmatStateVar % Values         
          ALLOCATE( UmatState0( SIZE( UmatState ) ) )          
          UmatState = 0.0_dp         
@@ -676,6 +677,11 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   END IF
 
   ALLOCATE( PrevSOL(SIZE(Displacement)) )
+  IF (UseUMAT) THEN  
+    ALLOCATE(DisplacementRot(SIZE(Displacement)))
+    ALLOCATE(LocalForceSaved(SIZE(LocalForce)))
+  END IF
+
   PrevSOL = Displacement
   IF (UseUMAT) THEN
     IF (.NOT. ASSOCIATED(StiffMatrix % BulkRHS)) &
@@ -736,7 +742,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
      CALL Info( Caller, ' ', Level=7 )
      CALL Info( Caller,'-------------------------------------', Level=5 )
-     CALL Info( Caller,'ELASTICITY ITERATION '//TRIM(I2S(iter)),Level=4)
+     CALL Info( Caller,'ELASTICITY ITERATION '//I2S(iter),Level=4)
      CALL Info( Caller,'-------------------------------------', Level=5 )
      CALL Info( Caller, ' ', Level=7 )
      CALL Info( Caller, 'Starting assembly...', Level=7 )
@@ -1044,8 +1050,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
                END DO
                DO i=1,dim
                  DO j=1,dim
-                   IF (ListCheckPresent(BC,'Spring '//TRIM(i2s(i))//i2s(j) )) &
-                       SpringCoeff(1:n,i,j)=GetReal( BC, 'Spring '//TRIM(i2s(i))//i2s(j), GotIt)
+                   IF (ListCheckPresent(BC,'Spring '//i2s(i)//i2s(j) )) &
+                       SpringCoeff(1:n,i,j)=GetReal( BC, 'Spring '//i2s(i)//i2s(j), GotIt)
                  END DO
                END DO
              END IF
@@ -1167,7 +1173,9 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
              ! ---------------------------------------------------------------------------
              ValuesSaved => StiffMatrix % RHS
              StiffMatrix % RHS => StiffMatrix % BulkRHS
+             LocalForceSaved = LocalForce
              CALL DefaultUpdateForce(LocalForce)
+             LocalForce = LocalForceSaved
              Solver % Matrix % RHS => ValuesSaved
            END IF
 
@@ -1204,10 +1212,13 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
        ! the Dirichlet BCs for the complete field. Modify BCs so that the right BC
        ! is obtained for the solution increment.
        ! ---------------------------------------------------------------------------------
+       DisplacementRot = Displacement
+       CALL RotateNTSystemAll(DisplacementRot, StressPerm, STDOFs)
+       
        IF (ALLOCATED(StiffMatrix % ConstrainedDOF)) THEN
          DO i=1,StiffMatrix % NumberOfRows
            IF (StiffMatrix % ConstrainedDOF(i)) THEN
-             StiffMatrix % DValues(i) = StiffMatrix % DValues(i) - Displacement(i)
+             StiffMatrix % DValues(i) = StiffMatrix % DValues(i) - DisplacementRot(i)
            END IF
          END DO
          CALL EnforceDirichletConditions(Solver, StiffMatrix, ForceVector)
@@ -1276,7 +1287,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
          NonlinRes = SQRT(SUM(StiffMatrix % RHS(:)**2)) / NonlinRes0
        END IF
        WRITE(Message,'(A,ES12.3)') 'Residual for nonlinear iterate '&
-           //TRIM(I2S(Iter-1))//': ',NonLinRes
+           //I2S(Iter-1)//': ',NonLinRes
        CALL Info('ElasticitySolver', Message, Level=5)        
 
        IF (NonlinRes < NonlinTol .AND. (iter-1) >= MinNonlinearIter) THEN
@@ -1369,6 +1380,10 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   END IF
 
   DEALLOCATE( PrevSOL )
+  IF (UseUmat) THEN
+    DEALLOCATE(DisplacementRot)
+    DEALLOCATE(LocalForceSaved)
+  END IF
 
   CALL DefaultFinish()
   

@@ -60,6 +60,14 @@ SolverParameterEditor::SolverParameterEditor(QWidget *parent)
   connect(ui.useBoomerAMG, SIGNAL(stateChanged(int)), this, SLOT(boomerAMGStateChanged(int)));
 
   hypreStateChanged(0);
+  
+  ui.applyButton->setIcon(QIcon::fromTheme("dialog-accept"));
+
+  whatsThisButton = new QPushButton(tr("Whatis"));
+  whatsThisButton->setIcon(QIcon::fromTheme("text-questionmark"));
+  connect(whatsThisButton, SIGNAL(clicked()), this, SLOT(whatsThisButtonClicked()));
+  whatsThisButton->setWhatsThis("Press this button, then click the widget to be explained.");
+  ui.buttonLayout->addWidget(whatsThisButton);  
 }
 
 SolverParameterEditor::~SolverParameterEditor()
@@ -106,4 +114,9 @@ void SolverParameterEditor::boomerAMGStateChanged(int)
   } else {
     ui.parasailsGroup->setEnabled(true);
   }
+}
+
+void SolverParameterEditor::whatsThisButtonClicked()
+{
+  QWhatsThis::enterWhatsThisMode();
 }

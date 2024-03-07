@@ -19,9 +19,8 @@ End
 Solver 1 ! avsolver
   Equation = "mgdyn"
   Procedure = "MagnetoDynamics" "WhitneyAVSolver"
-  Use Piola Transform = logical true
+  Use Piola Transform = True
   variable = string "av"
-  use piola Transform = true
   quadratic approximation = logical $ quadratic
 
   Linear System Solver = Iterative
@@ -45,8 +44,6 @@ Solver 2 ! postprocess
   Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
   Linear System Symmetric = True
   Potential Variable = String "AV"
-  use piola Transform = true
-  quadratic approximation = logical $ quadratic
 
 !  Calculate Current Density = Logical True
 !  Calculate Electric Field = Logical True

@@ -339,44 +339,6 @@ CONTAINS
   END SUBROUTINE GetReluctivityTensorC
 !-------------------------------------------------------------------------------
 
-!------------------------------------------------------------------------------
- SUBROUTINE GetPermittivity(Material,Acoef,n)
-!------------------------------------------------------------------------------
-    IMPLICIT NONE
-    TYPE(ValueList_t), POINTER :: Material
-    INTEGER :: n
-    REAL(KIND=dp) :: Acoef(:)
-!------------------------------------------------------------------------------
-    LOGICAL :: Found, FirstTime = .TRUE., Warned = .FALSE.
-    REAL(KIND=dp) :: Pvacuum
-    SAVE FirstTime, Warned, Pvacuum
-!------------------------------------------------------------------------------
-
-    IF ( FirstTime ) THEN
-      Pvacuum = GetConstReal( CurrentModel % Constants, &
-              'Permittivity of Vacuum', Found )
-      IF (.NOT. Found) Pvacuum = 8.854187817d-12
-      FirstTime = .FALSE.
-    END IF
-
-    Acoef(1:n) = GetReal( Material, 'Relative Permittivity', Found )
-    IF ( Found ) THEN
-      Acoef(1:n) = Pvacuum * Acoef(1:n)
-    ELSE
-      Acoef(1:n) = GetReal( Material, 'Permittivity', Found )
-    END IF
-
-    IF( .NOT. Found ) THEN
-      IF(.NOT. Warned ) THEN
-        CALL Warn('GetPermittivity','Permittivity not defined in material, defaulting to that of vacuum')
-        Warned = .TRUE.
-      END IF
-      Acoef(1:n) = Pvacuum
-    END IF
-!------------------------------------------------------------------------------
-  END SUBROUTINE GetPermittivity
-!------------------------------------------------------------------------------
-
   !-------------------------------------------------------------------------------
   !> Packs rows associated with edge dofs from constraint matrix and
   !> adds ColOffset to column indices of (1,1) block.
@@ -507,7 +469,7 @@ CONTAINS
                r_e(Mesh % NUmberOfNodes) )
      ii = 0
      DO i=1,Mesh % NumberOfNodes
-       IF(.NOT.CondReg(i) .AND. Mesh % ParallelInfo % NodeInterface(i) ) THEN
+       IF(.NOT.CondReg(i) .AND. Mesh % ParallelInfo % GInterface(i) ) THEN
           DO j=1,SIZE(Mesh % ParallelInfo % Neighbourlist(i) % Neighbours)
             k = Mesh % ParallelInfo % Neighbourlist(i) % Neighbours(j)
             IF ( k== ParEnv % MyPE ) CYCLE
@@ -630,7 +592,7 @@ CONTAINS
 
       ii = 0
       DO i=1,Mesh % NumberOfNodes
-        IF ( Done(i) .AND. Mesh % ParallelInfo % NodeInterface(i) ) THEN
+        IF ( Done(i) .AND. Mesh % ParallelInfo % GInterface(i) ) THEN
           DO j=1,SIZE(Mesh % ParallelInfo % Neighbourlist(i) % Neighbours)
             k = Mesh % ParallelInfo % Neighbourlist(i) % Neighbours(j)
             IF ( k>ParEnv % myPE ) THEN
@@ -762,12 +724,12 @@ CONTAINS
     END DO     
     
     snodes = ParallelReduction(snodes) 
-    CALL Info('MarkOuterNodes','Total number of surface nodes: '//TRIM(I2S(snodes)),Level=6)
+    CALL Info('MarkOuterNodes','Total number of surface nodes: '//I2S(snodes),Level=6)
 
     IF( EnsureBC ) THEN
       IF( snodes0 > snodes ) THEN
         CALL Info('MarkOuterNodes','Removed number of surface nodes not at BCs: '&
-            //TRIM(I2S(snodes0-snodes)),Level=6)
+            //I2S(snodes0-snodes),Level=6)
       END IF
     END IF
 

@@ -152,7 +152,7 @@ End
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 Equation 1
-  Active Solvers(2) = 1  2 3
+  Active Solvers(2) = 1 2 
   NS Convect = Logical False
 End
 

@@ -1,0 +1,191 @@
+!----------------------------------------------------------------------------
+! This is a test case for remeshing after rigid mesh mapper.
+!
+! P.R. 7.3.2023
+!-------------------------------------------------------------------------
+
+$dangle=2.0
+$steps=90
+$vrelax=2.0
+
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "BlockInBlock"
+  Include Path ""
+  Results Directory "results"
+End
+ 
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Scanning
+
+  Timestep Intervals = 5 ! $steps
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+  Post File = case.vtu
+
+  Initialize Dirichlet Conditions = False
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+  Permittivity of Vacuum = 8.8542e-12
+  Boltzmann Constant = 1.3807e-23
+  Unit Charge = 1.602e-19
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Beam"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Target Bodies(1) = 2
+  Name = "Box"
+  Equation = 2
+  Material = 1
+
+! The rigid mesh mapper is multiplied by the "mesh relax" parameter if available. 
+  Body Force = 1
+End
+
+Body Force 1
+  Name = "Rotate"
+  ! This is cumulative, each timestep has same angle
+  Mesh Rotate 3 = $dangle
+End
+
+
+! Rotate the rotor & compute the mesh velocity for ALE
+Solver 1
+  Exec Solver = Before Timestep
+  Equation = MeshDeform
+  Procedure = "RigidMeshMapper" "RigidMeshMapper"
+  Cumulative Displacements = Logical True
+  Translate Before Rotate = Logical True
+
+  Variable = "MeshRelax"
+
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+
+!  Linear System Iterative Method = Bicgstabl
+!  Linear System Max Iterations = 500
+!  Linear System Convergence Tolerance = 1.0e-10
+!  Linear System Preconditioning = ILU1
+!  Linear System Abort Not Converged = True
+!  Linear System Residual Output = 50
+
+  MMG Remesh = Logical True
+  MMG hmin = Real 0.05
+  MMG hmax = Real 0.15
+  MMG hsiz = Real 0.1
+!  mmg angle detection = Real 30.0
+  mmg No surf = Logical True
+  mmg no move = Logical True
+
+! Output directory remains the same...
+  Remesh Mesh Numbering = Logical False
+
+! For debugging:
+!  mmg debug mode = Logical True
+!  mmg verbosity = Integer 100
+
+! Perform every n:th call, if given
+!  remesh interval = integer 3
+
+! This is a new feature:
+! The MMG is applied only in the region where this solver is active.
+! The other regions remain as is and are combined with the remeshed region.
+! Intended use of the feature is, for example, air gap between stator & rotor. 
+  Keep Unmeshed regions = Logical True
+  Remesh Active Regions = Logical True
+
+!  Skip Interpolation = Logical True
+End
+
+
+! Solve the heat equation in the deformed mesh.
+Solver 2
+  Equation = Heat
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = Temperature
+
+  Nonlinear System Max Iterations = 1
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = Bicgstabl
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Preconditioning = ILU1
+  Linear System Abort Not Converged = True
+  Linear System Residual Output = 50
+End
+
+
+Equation 1
+  Name = "Deform"
+
+! One may toggle this resulting the mesh being remeshed everywhere. 
+!  Active Solvers(1) = 1
+End
+
+Equation 2
+  Name = "Mesh Deform & Flow"
+  Active Solvers(2) = 1 2
+End
+
+
+Material 1
+  Name = "Ideal"
+  Density = 1.0
+  Heat Conductivity = 1
+End
+
+
+Boundary Condition 1
+  Target Boundaries(4) = 1 2 3 4
+  Name = "BeamSides"
+  Moving Boundary = True
+  Temperature = 1.0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 5
+  Name = "BoxTop"
+  Temperature = 0.0
+  Fixed Boundary = True
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 6
+  Name = "BoxRight"
+  Temperature = 0.0
+  Fixed Boundary = True
+End
+
+Boundary Condition 4
+  Target Boundaries(1) = 7
+  Name = "BoxBottom"
+  Temperature = 0.0
+  Fixed Boundary = True
+End
+
+Boundary Condition 5
+  Target Boundaries(1) = 8
+  Name = "BoxLeft"
+  Temperature = 0.0
+  Fixed Boundary = True
+End
+
+! After 5 steps.
+Solver 1 :: Reference Norm = 4.86146194E-01
+Solver 2 :: Reference Norm = 4.86366596E-01
+

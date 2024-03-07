@@ -164,48 +164,6 @@
    CONTAINS
 
 !------------------------------------------------------------------------------
-    SUBROUTINE FindParentUVW( Nodes, n, &
-         ParentNodes, nParent, U, V, W, Basis )
-!------------------------------------------------------------------------------
-      IMPLICIT NONE
-      TYPE( Nodes_t ) :: Nodes, ParentNodes
-      INTEGER :: n, nParent
-      REAL( KIND=dp ) :: U, V, W, Basis(:)
-!------------------------------------------------------------------------------
-      INTEGER :: i, j, Check
-      REAL(KIND=dp) :: Dist, DistTolerance
-      REAL(KIND=dp) :: NodalParentU(n), &
-           NodalParentV(n), NodalParentW(n)
-!------------------------------------------------------------------------------
-      DistTolerance = 1.0d-12
-
-      Check = 0
-      DO i = 1,n
-         DO j = 1,nParent
-            Dist = (Nodes % x(i) - ParentNodes % x(j))**2 & 
-                 + (Nodes % y(i) - ParentNodes % y(j))**2 & 
-                 + (Nodes % z(i) - ParentNodes % z(j))**2
-
-            IF( Dist < DistTolerance ) THEN
-               Check = Check+1
-               NodalParentU(i) = RightParent % Type % NodeU(j)
-               NodalParentV(i) = RightParent % Type % NodeV(j)
-               NodalParentW(i) = RightParent % Type % NodeW(j)
-            END IF
-
-         END DO
-      END DO
-      IF( Check /= n ) STOP 'Error' 
-
-      U = SUM( Basis(1:n) * NodalParentU(1:n) )
-      V = SUM( Basis(1:n) * NodalParentV(1:n) )
-      W = SUM( Basis(1:n) * NodalParentW(1:n) )
-!------------------------------------------------------------------------------      
-    END SUBROUTINE FindParentUVW
-!------------------------------------------------------------------------------      
-
-
-!------------------------------------------------------------------------------
      SUBROUTINE LocalJumps( STIFF,Elm,n,LeftParent,nl,RightParent,nr,gamma )
 !------------------------------------------------------------------------------
        REAL(KIND=dp) :: STIFF(:,:), gamma
@@ -267,14 +225,12 @@
 
 !        Find basis functions for the parent elements:
 !        ----------------------------------------------
-         CALL FindParentUVW( Nodes, n, LeftParentNodes, &
-              nl, U, V, W, Basis )
+         CALL FindParentUVW( Elm, n, LeftParent, nl, U, V, W, Basis )
 
          stat = ElementInfo( LeftParent, LeftParentNodes, &
               U, V, W, SqrtElementMetric, LeftBasis, LeftdBasisdx )
 
-         CALL FindParentUVW( Nodes, n, RightParentNodes, &
-              nr, U, V, W, Basis )
+         CALL FindParentUVW( Elm, n, RightParent, nr, U, V, W, Basis )
 
          stat = ElementInfo( RightParent, RightParentNodes, &
               U, V, W, SqrtElementMetric, RightBasis, RightdBasisdx )
@@ -369,14 +325,12 @@
 
 !        Find basis functions for the parent elements:
 !        ----------------------------------------------
-         CALL FindParentUVW( Nodes, n, LeftParentNodes, &
-              nl, U, V, W, Basis )
+         CALL FindParentUVW( Elm, n, LeftParent, nl, U, V, W, Basis )
 
          stat = ElementInfo( LeftParent, LeftParentNodes, &
               U, V, W, SqrtElementMetric, LeftBasis, LeftdBasisdx )
 
-         CALL FindParentUVW( Nodes, n, RightParentNodes, &
-              nr, U, V, W, Basis )
+         CALL FindParentUVW( Elm, n, RightParent, nr, U, V, W, Basis )
 
          stat = ElementInfo( RightParent, RightParentNodes, &
               U, V, W, SqrtElementMetric, RightBasis, RightdBasisdx )

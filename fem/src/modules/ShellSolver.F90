@@ -80,20 +80,26 @@ SUBROUTINE ShellSolver_Init0(Model, Solver, dt, Transient)
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
-  TYPE(ValueList_t), POINTER :: SolverPars
-  LOGICAL :: SavePrincipalAxes, Found, Eigenanalysis
+  TYPE(ValueList_t), POINTER :: SolverPars, Simulation
+  LOGICAL :: SavePrincipalAxes, Found, RotateDOFs, Eigenanalysis
   INTEGER  :: i
 !------------------------------------------------------------------------------
   SolverPars => GetSolverParams()
+  Simulation => GetSimulation()
 
   CALL ListAddNewInteger(SolverPars, 'Variable DOFs', 6)
   CALL ListAddLogical(SolverPars, 'Bubbles in Global System', .TRUE.)
-  CALL ListAddLogical(SolverPars, 'Initialize Dirichlet Conditions', .FALSE.)
+  CALL ListAddLogical(Simulation, 'Initialize Dirichlet Conditions', .FALSE.)
 
-  CALL ListAddNewString(SolverPars, 'Variable', 'Deflection[U:3 DNU:3]')
-
-  ! Only created if the system is harmonic
-  CALL ListAddNewString(SolverPars, 'Imaginary Variable', 'Deflection[U im:3 DNU im:3]')
+  RotateDOFs = GetLogical(SolverPars, 'Rotate DOFs', Found)
+  IF (RotateDOFs) THEN
+    CALL ListAddNewString(SolverPars, 'Variable', 'Deflection[U:3 Theta:3]')
+    CALL ListAddNewString(SolverPars, 'Imaginary Variable', 'Deflection[U im:3 Theta im:3]')
+  ELSE
+    CALL ListAddNewString(SolverPars, 'Variable', 'Deflection[U:3 DNU:3]')
+    ! Only created if the system is harmonic
+    CALL ListAddNewString(SolverPars, 'Imaginary Variable', 'Deflection[U im:3 DNU im:3]')
+  END IF
 
   Eigenanalysis = GetLogical(SolverPars, 'Eigen Analysis', Found)
   IF (Eigenanalysis) THEN
@@ -118,21 +124,28 @@ SUBROUTINE ShellSolver_Init0(Model, Solver, dt, Transient)
     i=1
     DO WHILE(.TRUE.)
       IF ( .NOT.ListCheckPresent(SolverPars, &
-          "Exported Variable "//TRIM(i2s(i))) ) EXIT
+          "Exported Variable "//i2s(i)) ) EXIT
       i = i + 1
     END DO
-    CALL ListAddString(SolverPars, "Exported Variable "//TRIM(i2s(i)), &
+    CALL ListAddString(SolverPars, "Exported Variable "//i2s(i), &
         "Principal Coordinate Dir1[Principal Coordinate Dir1:3]")  
     i = i + 1
-    CALL ListAddString(SolverPars, "Exported Variable "//TRIM(i2s(i)), &
+    CALL ListAddString(SolverPars, "Exported Variable "//i2s(i), &
         "Principal Coordinate Dir2[Principal Coordinate Dir2:3]")
     i = i + 1
-    CALL ListAddString(SolverPars, "Exported Variable "//TRIM(i2s(i)), &
+    CALL ListAddString(SolverPars, "Exported Variable "//i2s(i), &
         "Principal Coordinate Dir3[Principal Coordinate Dir3:3]")  
   END IF
 
   CALL ListAddLogical( SolverPars,'Shell Solver',.TRUE.)
-  
+
+  IF( GetLogical( SolverPars, 'Stability Analysis', Found ) ) THEN
+    CALL Fatal('ShellSolver_Init0','"Stability Analysis" has not yet been coded for this solver!')
+  END IF
+  IF( GetLogical( SolverPars, 'Geometric Stiffness', Found ) ) THEN
+    CALL Fatal('ShellSolver_Init0','"Geometric Stiffness" has not yet been coded for this solver!')
+  END IF
+      
 !------------------------------------------------------------------------------
 END SUBROUTINE ShellSolver_Init0
 !------------------------------------------------------------------------------
@@ -644,13 +657,9 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
         LocalSol = 0.0d0
       END IF
 
-      IF (DrillingDOFs) THEN
-        CALL Warn('ShellSolver', 'Drilling DOFs does not yet support beam sections')
-        CYCLE
-      END IF
-
       CALL BeamStiffnessMatrix(BGElement, n, nd+nb, nb, TransientSimulation, MassAssembly, &
-          HarmonicAssembly, LargeDeflection, LocalSol, LocalRHSForce, .TRUE.)
+          HarmonicAssembly, LargeDeflection, LocalSol, LocalRHSForce, .TRUE., &
+          ApplyRotation = .NOT.RotateDOFs, DrillingDOFs = DrillingDOFs) 
 
       IF (LargeDeflection .AND. NonlinIter == 1) THEN
         ! ---------------------------------------------------------------------------
@@ -1070,10 +1079,10 @@ CONTAINS
  
             !WRITE(FormatString(1:1),'(A1)') '('
             !IF (3*n < 10) THEN
-            !  WRITE(FormatString(2:2),'(A1)') TRIM(I2S(3*n))
+            !  WRITE(FormatString(2:2),'(A1)') I2S(3*n)
             !  i0 = 2
             !ELSE
-            !  WRITE(FormatString(2:3),'(A2)') TRIM(I2S(3*n))
+            !  WRITE(FormatString(2:3),'(A2)') I2S(3*n)
             !  i0 = 3
             !END IF
             !WRITE(FormatString(i0+1:i0+1),'(A1)') '('
@@ -1085,7 +1094,7 @@ CONTAINS
             !WRITE(10,FormatString(1:i0+12)) DirectorValues(1:3*n)
             !WRITE(10,'(A3)') 'end'
 
-            WRITE(FormatString,'(A)') '(A,I0,A,'//TRIM(I2S(3*n))//'E22.15,A)'
+            WRITE(FormatString,'(A)') '(A,I0,A,'//I2S(3*n)//'E22.15,A)'
             WRITE(10,FormatString) 'element: ',ActiveElements(k),' director: ', &
                 DirectorValues(1:3*n),' end'            
           ELSE
@@ -3505,7 +3514,7 @@ CONTAINS
 
     REAL(KIND=dp) :: StrainVec(6), StressVec(6)
     REAL(KIND=dp) :: PrevSolVec(m*nd), PrevField(13)
-    REAL(KIND=dp) :: QBlock(3,3), Q(m*nd,m*nd), TMat(m*nd,m*nd), RotMat(3,3)
+    REAL(KIND=dp) :: QBlock(3,3), Q(m*nd,m*nd), RotMat(3,3)
     REAL(KIND=dp) :: CMat(4,4), GMat(2,2)
     REAL(KIND=dp) :: A11, A22, SqrtDetA, A1, A2, B11, B22
     REAL(KIND=dp) :: C111, C112, C221, C222, C211, C212
@@ -3532,8 +3541,11 @@ CONTAINS
 !------------------------------------------------------------------------------
     IF (m /= 6) CALL Fatal('ShellLocalMatrix', 'Wrong number of unknown fields')
     Pversion = IsActivePElement(BGElement)
-    IF (PVersion .AND. BGElement % PDefs % P > 1) CALL Fatal('ShellLocalMatrix', &
-        'Set Cartesian Formulation = True to use p-elements with p > 1')
+
+    IF (PVersion )THEN
+        IF(BGElement % PDefs % P > 1) CALL Fatal('ShellLocalMatrix', &
+         'Set Cartesian Formulation = True to use p-elements with p > 1')
+    END IF
     Family = GetElementFamily(BGElement)
 
     ! ------------------------------------------------------------------------------
@@ -3684,7 +3696,6 @@ CONTAINS
     END DO
 
     Q = 0.0d0
-    TMat = 0.0d0
     DO j=1,nd
       ! ------------------------------------------------------------------------
       ! The following transformation is designed for the Lagrange element DOFs.
@@ -3710,7 +3721,7 @@ CONTAINS
       ! -Du[d] = d x theta + <theta,d>d. The tangent plane components are
       ! then more intuitive when thinking in terms of moments.
       ! 
-      IF (RotateDOFs) THEN
+      IF (RotateDOFs .OR. DrillingDOFs) THEN
         ! 
         ! Create a matrix RotMat such that d x v = RotMat * v
         !
@@ -3722,6 +3733,8 @@ CONTAINS
         RotMat(1,3) = abasis3(2)
         RotMat(2,3) = -abasis3(1)
 
+        ! Transformation from the Cartesian components of theta to
+        ! the local representation in terms of the local surface basis
         DO k=1,3
           Q(i0+4,i0+3+k) = DOT_PRODUCT(RotMat(:,k), abasis1(:))
           Q(i0+5,i0+3+k) = DOT_PRODUCT(RotMat(:,k), abasis2(:))
@@ -3730,31 +3743,8 @@ CONTAINS
       ELSE
         Q(i0+4:i0+6,i0+4:i0+6) =  QBlock(1:3,1:3)
       END IF
-
-      IF (DrillingDOFs) THEN
-        !
-        ! TMat is a transformation matrix for expressing the components of
-        ! beta vector as rotated components a theta vector according to
-        ! the relation beta = d x theta
-        !
-        TMat(i0+1,i0+1) = 1.0d0
-        TMat(i0+2,i0+2) = 1.0d0
-        TMat(i0+3,i0+3) = 1.0d0
-        TMat(i0+4,i0+5) = -1.0d0
-        TMat(i0+5,i0+4) = 1.0d0
-        TMat(i0+6,i0+6) = 1.0d0
-      ELSE
-        TMat(i0+1,i0+1) = 1.0d0
-        TMat(i0+2,i0+2) = 1.0d0
-        TMat(i0+3,i0+3) = 1.0d0
-        TMat(i0+4,i0+4) = 1.0d0
-        TMat(i0+5,i0+5) = 1.0d0
-        TMat(i0+6,i0+6) = 1.0d0
-      END IF
-
     END DO    
     PrevSolVec(1:DOFs) = MATMUL(Q(1:DOFs,1:DOFs),PrevSolVec(1:DOFs))
-    PrevSolVec(1:DOFs) = MATMUL(TMat(1:DOFs,1:DOFs),PrevSolVec(1:DOFs))
 
     ! ------------------------------------------------------------------------
     ! Finally, integrate local element matrices:
@@ -4052,8 +4042,8 @@ CONTAINS
         !----------------------------------------------------------------------
         BM(4,6:DOFs:m) = Basis(1:nd)
         DO p=1,nd
-          BM(4,(p-1)*m+2) = -0.5d0 * (dBasis(p,1) - 2.0d0 * C212 * Basis(p))
-          BM(4,(p-1)*m+1) = 0.5d0 * (dBasis(p,2) - 2.0d0 * C211 * Basis(p))
+          BM(4,(p-1)*m+2) = -0.5d0 * dBasis(p,1)
+          BM(4,(p-1)*m+1) = 0.5d0 * dBasis(p,2)
         END DO
       ELSE
         !----------------------------------------------------------------------
@@ -4670,19 +4660,14 @@ CONTAINS
     !-------------------------------------------------------
     ! Transform to the global DOFs:
     !-------------------------------------------------------
-    Stiff(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(TMat(1:DOFs,1:DOFs)),MATMUL(Stiff(1:DOFs,1:DOFs),TMat(1:DOFs,1:DOFs)))
     Stiff(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),MATMUL(Stiff(1:DOFs,1:DOFs),Q(1:DOFs,1:DOFs)))
-
-    Force(1:DOFs) = MATMUL(TRANSPOSE(TMat(1:DOFs,1:DOFs)),Force(1:DOFs))
     Force(1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),Force(1:DOFs))
 
     IF (LargeDeflection) THEN
-      ! RHSForce(1:DOFs) = MATMUL(TRANSPOSE(TMat(1:DOFs,1:DOFs)),RHSForce(1:DOFs))
       RHSForce(1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),RHSForce(1:DOFs))
     END IF
 
     IF ( MassAssembly ) THEN
-      Mass(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(TMat(1:DOFs,1:DOFs)),MATMUL(Mass(1:DOFs,1:DOFs),TMat(1:DOFs,1:DOFs)))
       Mass(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),MATMUL(Mass(1:DOFs,1:DOFs),Q(1:DOFs,1:DOFs)))
       Damp(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),MATMUL(Damp(1:DOFs,1:DOFs),Q(1:DOFs,1:DOFs)))
 
@@ -5694,7 +5679,7 @@ END SUBROUTINE RetrieveLocalFrame
     CMat(3,3) = CMat(3,3)/(A1**2 * A2**2)
 
     IF (WithDrillingDOFs) THEN
-      CMat(4,4) = StabConst * E/(1.0d0 + nu)
+      CMat(4,4) = StabConst * 2.0d0*E/(1.0d0 + nu)
     ELSE
       ! The row corresponding to the normal stress: A deviation from the state of
       ! vanishing normal stress produces deformation energy as described by

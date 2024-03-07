@@ -199,7 +199,7 @@ Boundary Condition 4
 End
 
 
-Solver 1 :: Reference Norm = 3.54044845E-06
+Solver 1 :: Reference Norm = 3.56543459E-06
 Solver 1 :: Reference Norm Tolerance = 1e-5
-Solver 4 :: Reference Norm = 4.445897435804E-008
+Solver 4 :: Reference Norm = 4.43446777E-08
 Solver 4 :: Reference Norm Tolerance = 1e-3

@@ -50,6 +50,8 @@ CadPreferences::CadPreferences(QWidget *parent)
   ui.setupUi(this);
 
   connect(ui.applyButton, SIGNAL(clicked()), this, SLOT(close()));
+  
+  ui.applyButton->setIcon(QIcon::fromTheme("dialog-accept"));
 }
 
 CadPreferences::~CadPreferences()

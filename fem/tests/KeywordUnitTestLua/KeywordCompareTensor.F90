@@ -173,8 +173,8 @@ SUBROUTINE KeywordCompare( Model,Solver,dt,TransientSimulation )
   OldCOunter = 0.0_dp
   DO key = 1, 4 ! use handles {{{ 
     call set_keyword_names()
-    ! KeywordName_lua = 'Float Value '//TRIM(I2S(key))
-    ! KeywordName_matc = 'Float Value '//TRIM(I2S(key+4))
+    ! KeywordName_lua = 'Float Value '//I2S(key)
+    ! KeywordName_matc = 'Float Value '//I2S(key+4)
     PRINT *,'Testing keywords using handles: '//TRIM(KeywordName_lua) // ' and ' // trim(KeywordName_matc)
 
     CALL ListInitElementKeyword( RealValLua_h,'Material',KeywordName_lua )

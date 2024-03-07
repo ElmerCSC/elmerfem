@@ -103,7 +103,7 @@ SUBROUTINE ExtrudedRestart( Model,Solver,dt,Transient)
     ! Target mesh solver is explicitly given
     TargetMesh => CurrentModel % Solvers(SolverInd) % Mesh
     IF( .NOT. ASSOCIATED( TargetMesh ) ) THEN
-      CALL Fatal(Caller,'No mesh associated to Solver: '//TRIM(I2S(SolverInd)))
+      CALL Fatal(Caller,'No mesh associated to Solver: '//I2S(SolverInd))
     END IF
   ELSE  
     ! Otherwise use the 1st mesh that is not this old data mesh
@@ -119,7 +119,7 @@ SUBROUTINE ExtrudedRestart( Model,Solver,dt,Transient)
     END IF
   END IF
 
-  CALL Info(Caller,'Using target mesh from Solver index: '//TRIM(I2S(SolverInd)),Level=8)
+  CALL Info(Caller,'Using target mesh from Solver index: '//I2S(SolverInd),Level=8)
   CALL Info(Caller,'Target mesh name is: '//TRIM(TargetMesh % Name),Level=8)   
 
   pSolver => Model % Solvers(SolverInd)
@@ -130,7 +130,7 @@ SUBROUTINE ExtrudedRestart( Model,Solver,dt,Transient)
     IF( .NOT. ListCheckPresent( Params, Name ) ) EXIT
     NoVar = i
   END DO
-  CALL Info(Caller,'Number of variables to be mapped: '//TRIM(I2S(NoVar)),Level=8)   
+  CALL Info(Caller,'Number of variables to be mapped: '//I2S(NoVar),Level=8)   
  
   m = TargetMesh % NumberOfNodes
   IF( ASSOCIATED( pSolver % Variable ) ) THEN
@@ -138,7 +138,7 @@ SUBROUTINE ExtrudedRestart( Model,Solver,dt,Transient)
   END IF
 
   layers = TargetMesh % NumberOfNodes / ThisMesh % NumberOfNodes
-  CALL Info(Caller,'Number of layers to be mapped: '//TRIM(I2S(layers)),Level=8)
+  CALL Info(Caller,'Number of layers to be mapped: '//I2S(layers),Level=8)
   
   
   DO i = 1,NoVar
@@ -236,7 +236,7 @@ SUBROUTINE ExtrudedRestart( Model,Solver,dt,Transient)
 
   END DO
     
-  CALL Info(Caller,'Transferred '//TRIM(I2S(NoVar))//' variables from 2d to 3d mesh!',Level=7)
+  CALL Info(Caller,'Transferred '//I2S(NoVar)//' variables from 2d to 3d mesh!',Level=7)
 
 END SUBROUTINE ExtrudedRestart
 
@@ -255,37 +255,26 @@ SUBROUTINE NodeToEdgeField_Init0(Model, Solver, dt, Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: Params
-  LOGICAL :: Found, PiolaVersion, SecondOrder
+  LOGICAL :: Found, PiolaVersion, SecondOrder, SecondKind
 !------------------------------------------------------------------------------
   Params => GetSolverParams()
   CALL ListAddLogical(Params, 'Linear System Refactorize', .FALSE.)
 
   IF (.NOT. ListCheckPresent(Params, "Element")) THEN
-    !
-    ! Automatization is not perfect due to the early phase when this 
-    ! routine is called; 'Use Piola Transform' and 'Quadratic Approximation'
-    ! must be repeated in two solver sections.
-    !
-    PiolaVersion = GetLogical(Params, 'Use Piola Transform', Found)   
-    SecondOrder = GetLogical(Params, 'Quadratic Approximation', Found)
-    IF (.NOT. PiolaVersion .AND. SecondOrder) THEN
-      CALL Warn("NodeToEdgeField_Init0", &
-           "Quadratic Approximation requested without Use Piola Transform " &
-           //"Setting Use Piola Transform = True.")
-      PiolaVersion = .TRUE.
-      CALL ListAddLogical(Params, 'Use Piola Transform', .TRUE.)
-    END IF
+    ! We use one place where all the edge element keywords are defined and checked.
+    CALL EdgeElementStyle(Params, PiolaVersion, SecondKind, SecondOrder, Check = .TRUE. )
 
     IF (SecondOrder) THEN
       CALL ListAddString(Params, "Element", &
           "n:0 e:2 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2")
+    ELSE IF(SecondKind) THEN
+      CALL ListAddString(Params, "Element", &
+          "n:0 e:2")
+    ELSE IF (PiolaVersion) THEN
+      CALL ListAddString(Params, "Element", &
+          "n:0 e:1 -brick b:3 -quad_face b:2")
     ELSE
-      IF (PiolaVersion) THEN
-        CALL ListAddString(Params, "Element", &
-            "n:0 e:1 -brick b:3 -quad_face b:2")
-      ELSE
-        CALL ListAddString( Params, "Element", "n:0 e:1")
-      END IF
+      CALL ListAddString( Params, "Element", "n:0 e:1")
     END IF
   END IF
 !------------------------------------------------------------------------------
@@ -305,7 +294,7 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
-  TYPE(Solver_t) :: Solver
+  TYPE(Solver_t), TARGET :: Solver
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
@@ -316,16 +305,16 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
   TYPE(Element_t), POINTER :: Element
 
   LOGICAL :: Found
-  LOGICAL :: PiolaVersion, SecondOrder
-  LOGICAL :: ConstantBulkMatrix, ReadySystemMatrix
+  LOGICAL :: PiolaVersion
+  LOGICAL :: ConstantBulkMatrix, ReadySystemMatrix, IsComplex, IsIm
   TYPE(Variable_t), POINTER :: NodalVar, EdgeVar, ThisVar
   
-  INTEGER :: dim, dofs, i, j, k, l, n, nd, t
-  INTEGER :: istat, active, ActiveComp
+  INTEGER :: dim, dofs, i, j, k, l, n, nd, t, imoffset
+  INTEGER :: istat, active, ActiveComp, EdgeBasisDegree
   INTEGER, POINTER :: NodeIndexes(:)  
   REAL(KIND=dp), ALLOCATABLE :: Stiff(:,:), Force(:), Anodal(:,:)
   REAL(KIND=dp) :: Norm
-
+  TYPE(Solver_t), POINTER :: pSolver  
   CHARACTER(LEN=MAX_NAME_LEN) :: Name
   CHARACTER(*), PARAMETER :: Caller = 'NodeToEdgeField'
 
@@ -336,7 +325,7 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
   dim = CoordinateSystemDimension()
   Params => GetSolverParams()
   Mesh => GetMesh()
-
+  pSolver => Solver
   
   ! Check if accelerated assembly is desired:
   ConstantBulkMatrix = GetLogical(Params, 'Constant Bulk Matrix', Found)
@@ -356,32 +345,43 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
   Name = GetString(Params, 'Nodal Variable', Found)
   IF (.NOT. Found ) Name = 'az'
   NodalVar => VariableGet( Mesh % Variables, Name )
-  IF(.NOT. ASSOCIATED(NodalVar) ) THEN
+  IF(ASSOCIATED(NodalVar) ) THEN
+    CALL Info(Caller,'Using nodal variable for projection: '//TRIM(Name),Level=10)
+  ELSE
     CALL Fatal(Caller,'Nodal variable not associated: '//TRIM(Name))
   END IF
-  
+
   dofs = NodalVar % Dofs
-  IF( dofs == 1 ) THEN
+  IsComplex = ( dofs == 6 )
+  IsIm = .FALSE.
+  imoffset = 0
+    
+  IF( dofs < dim ) THEN
     ActiveComp = ListGetInteger( Params,'Active Coordinate',Found )
     IF(.NOT. Found) THEN      
       ActiveComp = dim
-      CALL Info(Caller,'Assuming active coordinate to be: '//TRIM(I2S(ActiveComp)),Level=10)
+      CALL Info(Caller,'Assuming active coordinate to be: '//I2S(ActiveComp),Level=10)
     END IF
   ELSE
     ActiveComp = 0
   END IF
+
+  ! Find the variable which is projected:
+  !---------------------------------------------------------
+  Name = GetString(Params, 'Edge Variable', Found)
+  IF (.NOT. Found ) Name = 'av'    
+  EdgeVar => VariableGet( Mesh % Variables, Name ) 
+  IF(.NOT. ASSOCIATED( EdgeVar ) ) THEN
+    CALL Warn(Caller,'Could not find target variable for projection!')
+  END IF
+  
   IF( InfoActive(20) ) THEN
     CALL VectorValuesRange(NodalVar % Values,SIZE(NodalVar % Values),TRIM(NodalVar % Name))       
   END IF
   
   ! These should be consistent with the primary solver!!
   !-------------------------------------------------------------------------------------
-  SecondOrder = GetLogical(Params, 'Quadratic Approximation', Found)  
-  IF (SecondOrder) THEN
-    PiolaVersion = .TRUE.
-  ELSE
-    PiolaVersion = GetLogical(Params, 'Use Piola Transform', Found) 
-  END IF
+  CALL EdgeElementStyle(Params, PiolaVersion, BasisDegree = EdgeBasisDegree ) 
   IF (PiolaVersion) CALL Info(Caller,'Using Piola-transformed finite elements', Level=5)
 
   !-----------------------
@@ -392,7 +392,9 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
 
   n = Mesh % MaxElementDOFs
   ALLOCATE( Force(n), Stiff(n,n), Anodal(3,n), STAT=istat )
-  
+
+1 CALL DefaultInitialize(Solver, ReadySystemMatrix)
+    
   DO t=1,active
     Element => GetActiveElement(t)
     
@@ -406,9 +408,9 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
         Anodal(ActiveComp,1:n) = NodalVar % Values( NodalVar % Perm(NodeIndexes(1:n)) )
       END WHERE
     ELSE
-      DO i=1,dofs
+      DO i=1,dim
         WHERE(NodalVar % Perm(NodeIndexes(1:n)) > 0 )
-          Anodal(i,1:n) = NodalVar % Values( dofs*(NodalVar % Perm(NodeIndexes(1:n))-1)+i )
+          Anodal(i,1:n) = NodalVar % Values( dofs*(NodalVar % Perm(NodeIndexes(1:n))-1)+i+imoffset )
         END WHERE
       END DO
     END IF
@@ -425,7 +427,7 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
     ! Get element local matrix and rhs vector:
     !----------------------------------------
     CALL LocalMatrix(Stiff, Force, Element, n, nd, dim, PiolaVersion, &
-        SecondOrder, Anodal, ReadySystemMatrix)
+        EdgeBasisDegree, Anodal, ReadySystemMatrix)
     
     ! Update global matrix and rhs vector from local matrix & vector:
     !---------------------------------------------------------------
@@ -457,16 +459,9 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
   END IF
 
   ! Finally, redefine the potential variable:
-  ! Find the variable which is projected:
   !---------------------------------------------------------
-  Name = GetString(Params, 'Edge Variable', Found)
-  IF (.NOT. Found ) Name = 'av'  
-
-  
-  EdgeVar => VariableGet( Mesh % Variables, Name ) 
   IF(ASSOCIATED( EdgeVar ) ) THEN
     n = SIZE(Solver % Variable % Perm)
-
     IF (n /=  SIZE(EdgeVar % Perm)) THEN
       CALL Fatal(Caller, 'The variable and potential permutations differ')  
     END IF
@@ -476,31 +471,43 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
       IF (j < 1) CYCLE
       k = EdgeVar % Perm(i)
       IF (k < 1) CALL Fatal(Caller, &
-          'The variable and potential permutations are nonmatching?')
-
+          'The variable and potential permutations are non-matching?')
+      IF(IsComplex ) THEN
+        k = 2*k
+        IF(.NOT. IsIm) k = k-1
+      END IF
       EdgeVar % Values(k) = Solver % Variable % Values(j)
     END DO
-  ELSE
-    CALL Warn(Caller,'Could not find target variable for projection!')
   END IF
 
-  IF( InfoActive(20) ) THEN
-    CALL VectorValuesRange(EdgeVar % Values,SIZE(EdgeVar % Values),TRIM(EdgeVar % Name))       
+  ! If we are projecting a complex field then redo for the imaginary component
+  IF( IsComplex .AND. .NOT. IsIm ) THEN
+    CALL Info(Caller,'Now doing the imaginary component')
+    IsIm = .TRUE.
+    imoffset = dofs / 2
+    ReadySystemMatrix = ConstantBulkMatrix
+    GOTO 1    
+  END IF
+
+  IF( ASSOCIATED( EdgeVar ) ) THEN
+    IF( InfoActive(20) ) THEN
+      CALL VectorValuesRange(EdgeVar % Values,SIZE(EdgeVar % Values),TRIM(EdgeVar % Name))       
+    END IF
   END IF
   
   CALL Info(Caller,'Finished projection to edge basis!')
-
   
 CONTAINS
 
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrix(Stiff, Force, Element, n, nd, dim, PiolaVersion, &
-      SecondOrder, Anodal, ReadySystemMatrix)
+      EdgeBasisDegree, Anodal, ReadySystemMatrix)
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Stiff(:,:), Force(:)
     TYPE(Element_t), POINTER :: Element
     INTEGER :: n, nd, dim
-    LOGICAL :: PiolaVersion, SecondOrder
+    LOGICAL :: PiolaVersion
+    INTEGER :: EdgeBasisDegree
     REAL(KIND=dp) :: Anodal(:,:)
     LOGICAL :: ReadySystemMatrix  ! A flag to suppress the integration of Stiff
 !------------------------------------------------------------------------------
@@ -509,9 +516,9 @@ CONTAINS
 
     LOGICAL :: Stat
 
-    INTEGER :: i, j, p, q, t, EdgeBasisDegree 
+    INTEGER :: i, j, p, q, t
 
-    REAL(KIND=dp) :: u, v, w, s, DetJ
+    REAL(KIND=dp) :: s, DetJ
     REAL(KIND=dp) :: Basis(n), DBasis(n,3) 
     REAL(KIND=dp) :: WBasis(nd,3), CurlWBasis(nd,3)
     REAL(KIND=dp) :: Aip(3)
@@ -521,35 +528,16 @@ CONTAINS
     Stiff = 0.0d0
     Force = 0.0d0
 
-    IF (SecondOrder) THEN
-      EdgeBasisDegree = 2  
-      IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
-          EdgeBasisDegree=EdgeBasisDegree)
-    ELSE
-      EdgeBasisDegree = 1
-      IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+        EdgeBasisDegree=EdgeBasisDegree)
+    IF( dim == 2 .AND. .NOT. PiolaVersion ) THEN
+      CALL Fatal(Caller, '"Use Piola Transform = True" needed in 2D')
     END IF
 
-
     DO t=1,IP % n
-
-      u = IP % U(t)
-      v = IP % V(t)
-      w = IP % W(t)
-
-      IF (PiolaVersion) THEN
-        stat = EdgeElementInfo(Element, Nodes, u, v, w, DetF=DetJ, &
-            Basis=Basis, EdgeBasis=WBasis, dBasisdx=DBasis, &
-            BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-      ELSE
-        stat = ElementInfo(Element, Nodes, u, v, w, detJ, Basis, DBasis)
-        IF( dim == 3 ) THEN
-          CALL GetEdgeBasis(Element, WBasis, CurlWBasis, Basis, DBasis)
-        ELSE
-          CALL Fatal(Caller, 'Use Piola Transform = True needed in 2D')
-        END IF
-      END IF
-
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis, DBasis, EdgeBasis = WBasis, &
+          RotBasis = CurlWBasis, USolver = pSolver )             
       s = detJ * IP % s(t)
 
       Aip = 0.0d0

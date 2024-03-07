@@ -59,14 +59,14 @@ SUBROUTINE ScannedFieldSolver_Init( Model,Solver,dt,TransientSimulation )
   i=1
   DO WHILE(.TRUE.)
     IF ( .NOT.ListCheckPresent(SolverParams, &
-          "Exported Variable "//TRIM(i2s(i))) ) EXIT
+          "Exported Variable "//i2s(i)) ) EXIT
     i = i + 1
   END DO
 
   NofFields = 1
   DO WHILE(.TRUE.)
     IF ( .NOT.ListCheckPresent(SolverParams, &
-          "Field Name "//TRIM(i2s(NofFields))) ) EXIT
+          "Field Name "//i2s(NofFields)) ) EXIT
     NofFields = NofFields + 1
   END DO
   NofFields = NofFields - 1
@@ -83,16 +83,16 @@ SUBROUTINE ScannedFieldSolver_Init( Model,Solver,dt,TransientSimulation )
   CALL ListAddInteger(SolverParams, 'Scan Max', ScanMax)
 
   DO FieldInt = 1, NofFields
-    FieldName = GetString(SolverParams,'Field Name '//TRIM(i2s(FieldInt)),Found) 
-    IF (.NOT. Found) CALL Fatal('ScannedFieldSolver_Init','Field Name '//TRIM(i2s(FieldInt))//' not found.')
+    FieldName = GetString(SolverParams,'Field Name '//i2s(FieldInt),Found) 
+    IF (.NOT. Found) CALL Fatal('ScannedFieldSolver_Init','Field Name '//i2s(FieldInt)//' not found.')
 
     DO ScanInt = 1, ScanMax 
-      CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-        'Scan '//TRIM(i2s(ScanInt))//" "//TRIM(FieldName))
+      CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
+        'Scan '//i2s(ScanInt)//" "//TRIM(FieldName))
       i=i+1
     END DO
 
-    CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+    CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
       '-nooutput '//TRIM(FieldName)//' Dummy')
     i=i+1
  
@@ -146,7 +146,7 @@ SUBROUTINE ScannedFieldSolver( Model,Solver,dt,TransientSimulation )
     IF ( istat /= 0 ) CALL Fatal('ScannedFieldSolver','Memory allocation error')
     
     DO FieldInt = 1, NofFields
-      FieldNames(FieldInt) = ListGetString(GetSolverParams(), 'Field Name '//TRIM(i2s(FieldInt)))
+      FieldNames(FieldInt) = ListGetString(GetSolverParams(), 'Field Name '//i2s(FieldInt))
       FieldVars(FieldInt) % Var => VariableGet( Mesh % Variables, FieldNames(FieldInt))
       IF(.NOT. ASSOCIATED(FieldVars(FieldInt) % Var)) THEN
         CALL Fatal('ScannedFieldSolver',TRIM(FieldNames(FieldInt))//' not associated!')
@@ -169,7 +169,7 @@ SUBROUTINE ScannedFieldSolver( Model,Solver,dt,TransientSimulation )
   DO FieldInt = 1, NofFields
     FieldVar => FieldVars(FieldInt) % Var 
     CALL Info('ScannedFieldSolver','Field '//TRIM(FieldNames(FieldInt))//'.',Level=5)
-    ScanFieldName = 'scan '//TRIM(i2s(ScanInt))//" "//TRIM(FieldNames(FieldInt))
+    ScanFieldName = 'scan '//i2s(ScanInt)//" "//TRIM(FieldNames(FieldInt))
     ScanFieldVar => VariableGet( Mesh % Variables, ScanFieldName)
     IF(.NOT. ASSOCIATED(ScanFieldVar)) THEN
       CALL Fatal('ScannedFieldSolver', TRIM(ScanFieldName)//' not associated!')

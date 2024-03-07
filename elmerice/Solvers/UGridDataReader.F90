@@ -79,6 +79,8 @@
       TYPE(Element_t), POINTER :: Element
       INTEGER :: i,k
       INTEGER :: NN,nf
+      INTEGER, POINTER :: Perm(:)
+      LOGICAL, SAVE :: PermAllocated=.FALSE.
       CHARACTER (len=MAX_STRING_LEN) :: FName
       CHARACTER (len=MAX_NAME_LEN) :: VarName,TVarName,T2VarName
       CHARACTER (len=MAX_NAME_LEN) :: Txt
@@ -90,7 +92,7 @@
       INTEGER :: dimids(2) 
       REAL(KIND=dp), ALLOCATABLE :: Values(:)
       REAL(KIND=dp) :: Time
-      INTEGER :: TimeIndex,TimePoint
+      INTEGER :: TimeIndex,TimePoint,TimeOffset
       INTEGER :: EIndex,NIndex,VarIndex
       LOGICAL :: Parallel,Found,VarExist
       INTEGER, SAVE :: VisitedTimes=0
@@ -137,9 +139,9 @@
          ! Target mesh solver is explicitly given
          TargetMesh => CurrentModel % Solvers(i) % Mesh
          IF( ASSOCIATED( TargetMesh ) ) THEN
-           CALL Info(SolverName,'Using target mesh as the mesh of Solver '//TRIM(I2S(i)),Level=8)
+           CALL Info(SolverName,'Using target mesh as the mesh of Solver '//I2S(i),Level=8)
          ELSE
-          CALL Fatal(SolverName,'Target Mesh for Solver not associated: '//TRIM(I2S(i)))
+          CALL Fatal(SolverName,'Target Mesh for Solver not associated: '//I2S(i))
          END IF
         ELSE
           ! Otherwise use the 1st mesh that is not this old data mesh
@@ -166,7 +168,12 @@
       ! get time index
       VisitedTimes = VisitedTimes + 1
       IF( ListGetLogical( SolverParams, "Is Time Counter", Found ) ) THEN
-        TimePoint = VisitedTimes
+        TimeOffset=ListGetInteger( SolverParams, "Time Counter start", Found )
+        IF (Found) THEN
+          TimePoint = VisitedTimes + TimeOffset - 1
+        ELSE
+          TimePoint = VisitedTimes
+        ENDIF
       ELSE
         TimePoint = ListGetInteger( SolverParams, "Time Index", Found )
         IF (.NOT.Found) THEN
@@ -263,7 +270,22 @@
         TVarName = ListGetString(SolverParams,TRIM(Txt),Found)
         IF (.NOT.Found) TVarName=TRIM(VarName)
 
-        Var => VariableGet( ThisMesh % Variables,TRIM(TVarName),UnFoundFatal=.TRUE.)
+        Var => VariableGet( ThisMesh % Variables,TRIM(TVarName),ThisOnly=.TRUE.)
+        ! Var not found assumed it is on nodes!!
+        IF(.NOT. ASSOCIATED(Var) ) THEN
+          CALL Warn(SolverName, &
+                TRIM(TVarName) // " not found on solver mesh, asssume nodal variable")
+          IF (.NOT.PermAllocated) THEN
+             ALLOCATE( Perm( ThisMesh % NumberOfNodes ) )
+             DO i =1, ThisMesh % NumberOfNodes
+               Perm(i) = i
+             END DO
+             PermAllocated=.TRUE.
+          END IF
+          CALL VariableAddVector( ThisMesh % Variables, ThisMesh, Solver, &
+              TVarName, dofs = 1, Perm = Perm )
+          Var => VariableGet( ThisMesh % Variables, TVarName, ThisOnly = .TRUE. )
+        END IF
         VarType=Var % TYPE
 
         ! special cases.... time do not seems to be a global variable by
@@ -314,8 +336,15 @@
                k=i
              ENDIF
              IF (k==0) CYCLE
-             IF (i.GT.nvals) &
-                CALL FATAL(SolverName,"Too many nodes "//TRIM(VarName))
+             !IF NIndex>nvals assume the mesh is structured
+             ! and nodenumbering is  by layers
+             IF (NIndex.GT.nvals) THEN
+                     NIndex=MOD(NIndex,nvals)
+                     IF (NIndex.EQ.0) NIndex=nvals
+             ENDIF
+             IF ((NIndex.GT.nvals).OR.(NIndex.LT.1)) &
+                CALL FATAL(SolverName,"Wrong NIndex for "//TRIM(VarName)//" "//I2S(NIndex))
+
              Var%Values(k)=Values(NIndex)
            END DO
 
@@ -331,13 +360,6 @@
 
         IF (DoInterp.AND.(VarType.EQ.Variable_on_nodes)) THEN
 
-           ! Rename variable in this mesh with the name in the target mesh
-	   ! to do the interpolation
-	   WRITE(Txt,'(A,I0)') 'Target Mesh Variable ',VarIndex
-           T2VarName = ListGetString(SolverParams,TRIM(Txt),Found)
-           IF (.NOT.Found) T2VarName=TRIM(VarName)
-           Var % NameLen = StringToLowerCase( Var % Name,T2VarName)
-
           CALL InterpolateMeshToMesh( ThisMesh, &
                   TargetMesh, Var, TargetMesh % Variables,&
                   UnfoundNodes=UnfoundNodes)
@@ -351,9 +373,9 @@
           nf = COUNT(UnfoundNodes)
           IF (nf.GT.0) THEN
             IF (UnFoundNodesFatal) THEN
-              CALL FATAL(SolverName,"There is unfound nodes : "//TRIM(I2S(nf)))
+              CALL FATAL(SolverName,"There is unfound nodes : "//I2S(nf))
             ELSE
-              CALL WARN(SolverName,TRIM(TVarName)//"; there is "//TRIM(I2S(nf))//" unfound nodes; get closest node in input mesh")
+              CALL WARN(SolverName,TRIM(TVarName)//"; there is "//I2S(nf)//" unfound nodes; get closest node in input mesh")
               IF (Parallel) &
                 CALL FATAL(SolverName,"dealing with unfound nodes only for serial meshes; add -single ")
 

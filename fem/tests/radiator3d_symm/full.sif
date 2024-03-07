@@ -69,7 +69,7 @@ Solver 1
 !  Viewfactor Symmetry x = Logical True
   Viewfactor Binary Output = Logical True
 
-  Gebhardt Factors Solver Iterative = False
+  Gebhart Factors Solver Iterative = False
   radiation: Linear System Symmetric = True
   radiation: Linear System Positive Definite = Logical True
   radiation: Linear System Direct Method = umfpack

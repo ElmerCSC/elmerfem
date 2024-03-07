@@ -50,7 +50,7 @@ SUBROUTINE StatElecSolver_Init( Model,Solver,dt,TransientSimulation)
 !------------------------------------------------------------------------------
     LOGICAL :: Found, Calculate, CalculateCapMatrix
     TYPE(ValueList_t), POINTER :: Params
-    CHARACTER(LEN=MAX_NAME_LEN) :: VariableName
+    CHARACTER(LEN=MAX_NAME_LEN) :: str
     INTEGER :: i,dim
 
     Params => GetSolverParams()
@@ -63,15 +63,20 @@ SUBROUTINE StatElecSolver_Init( Model,Solver,dt,TransientSimulation)
     Calculate = ListGetLogical(Params,'Calculate Electric Field',Found)
     IF( Calculate ) THEN
       CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-          '-dofs '//TRIM(I2S(dim))//' electric field' )
+          '-dofs '//I2S(dim)//' electric field' )
     END IF
     
     Calculate = ListGetLogical(Params,'Calculate Electric Flux',Found)
     IF( Calculate ) THEN
       CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-          '-dofs '//TRIM(I2S(dim))//' electric flux' )
+          '-dofs '//I2S(dim)//' electric flux' )
     END IF
 
+    str = ListGetString(Params,'Element',Found )
+    IF( Found ) THEN
+      IF(str(1:2) == 'p:') CALL Fatal('StatElecSolver_init','No support for p-elements in solver!')
+    END IF
+        
     ! If computation of capacitance matrix is requested then compute 
     ! set the flag for load computation also.
     !------------------------------------------------------------------
@@ -378,7 +383,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
      CALL DefaultInitialize()
   
      IF ( NonlinearIter > 1 ) THEN
-       CALL Info( Caller,'Electrostatic iteration: '//TRIM(I2S(iter)) , Level=5 )
+       CALL Info( Caller,'Electrostatic iteration: '//I2S(iter) , Level=5 )
      END IF
      CALL Info( Caller, 'Starting Assembly...', Level=7 )
 
@@ -570,18 +575,25 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 
 !------------------------------------------------------------------------------
      SUBROUTINE BulkAssembly()
+
+       INTEGER :: Nelem
+
+       Nelem = GetNOFActive()
+       
+       Var => VariableGet( Model % Variables, 'Displacement' )
+
        !------------------------------------------------------------------------------
        !$omp parallel shared(Solver, Model, dim, at0, &
-       !$omp                 PermittivityOfVacuum, Message) &
+       !$omp                 PermittivityOfVacuum, Message, nElem, Var) &
        !$omp          private(t, CurrentElement, i, j, k, n, ntot, NodeIndexes, &
-       !$omp                  bf_id, gotIt, Var, TID) default(none)
+       !$omp                  bf_id, gotIt, TID) default(none)
 
        TID = 1
        !$ TID = omp_get_thread_num()+1
 
        !$omp do 
-       DO t = 1,GetNOFActive()
-
+       DO t = 1,Nelem
+         
          !------------------------------------------------------------------------------
          !        Check if this element belongs to a body where potential
          !        should be calculated
@@ -611,6 +623,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
          k = ListGetInteger( Model % Bodies(CurrentElement % BodyId) % &
                Values, 'Material', minv=1, maxv=Model % NumberOfMaterials )
 
+         
          !------------------------------------------------------------------------------
          !      Read permittivity values (might be a tensor)
          !------------------------------------------------------------------------------
@@ -644,14 +657,18 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
          !      Read piezo material coefficients if applicable
          !------------------------------------------------------------------------------
          IF ( PiezoMaterial ) THEN
+           IF (.NOT.ASSOCIATED(Var)) CALL Fatal(Caller, 'No displacements' )
+
            PiezoCoeff = 0.0_dp
            CALL GetRealArray( Model % Materials(k) % Values, Pz_w, &
                  'Piezo Material Coefficients', gotIt, CurrentElement )
+
            IF ( .NOT. GotIt )  CALL Fatal( Caller, &
                  'No > Piezo Material Coefficients < defined!' )        
-           DO i=1, Dim
-             DO j=1, 2*Dim
-               PiezoCoeff( i,j,1:n ) = Pz_w(i,j,1:n)
+
+           DO i=1, dim
+             DO j=1, 2*dim
+               PiezoCoeff(i,j,1:n) = Pz_w(i,j,1:n)
              END DO
            END DO
 
@@ -659,17 +676,12 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
            !      Read also the local displacement
            !------------------------------------------------------------------------------         
            Displacement = 0.0_dp
-           NULLIFY (Var)
-           Var => VariableGet( Model % Variables, 'Displacement' )
-           IF ( .NOT. ASSOCIATED( Var ) )  THEN
-             CALL Fatal(Caller, 'No displacements' )
-           END IF
            DO i = 1, Var % DOFs
              Displacement(1:n,i) = &
-                   Var % Values( Var % DOFs * ( Var % Perm( NodeIndexes ) - 1 ) + i )
+                   Var % Values(Var % DOFs*(Var % Perm(NodeIndexes )-1)+i)
            END DO
          END IF
-
+         
          !------------------------------------------------------------------------------
          !      Get element local matrix, and rhs vector
          !------------------------------------------------------------------------------
@@ -695,8 +707,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
        END DO
        !$omp end do
        !$omp end parallel
-
-       !------------------------------------------------------------------------------
+     !------------------------------------------------------------------------------
      END SUBROUTINE BulkAssembly
      !------------------------------------------------------------------------------
 
@@ -1612,8 +1623,12 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 !
 !       Check if dirichlet BC given:
 !       ----------------------------
-        s = ListGetConstReal( Model % BCs(j) % Values, &
-              ComponentName(Model % Solver % Variable), Dirichlet )
+        Dirichlet = ListCheckPresent( Model % BCs(j) % Values, &
+            ComponentName(Model % Solver % Variable) )
+        IF(.NOT. Dirichlet ) THEN
+          Dirichlet = ListCheckPrefix( Model % BCs(j) % Values, &
+              'Constraint Mode')
+        END IF
 
 !       Get various flux bc options:
 !       ----------------------------

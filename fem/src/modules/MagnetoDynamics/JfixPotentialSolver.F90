@@ -252,7 +252,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
     IF( n == 0 ) THEN
       CALL Warn('JfixPotentialSolver','No Dirichlet conditions used to define Jfix level!')
     ELSE
-      CALL Info('JfixPotentialSolver','Number of dirichlet nodes: '//TRIM(I2S(n)),Level=7)
+      CALL Info('JfixPotentialSolver','Number of dirichlet nodes: '//I2S(n),Level=7)
     END IF
     
     CALL Info('JfixPotentialSolver','Solving for Jfix',Level=10)
@@ -537,7 +537,7 @@ CONTAINS
     IF( JfixNeu .OR. JfixStatCurr .OR. JfixHybrid ) THEN
       IF( ParEnv % PEs > 1 ) THEN
         CALL Info('JfixPotentialSolver','Communicating zero source terms',Level=10)      
-        CALL CommunicateLinearSystemTag(A,JfixRhsZero)
+        CALL CommunicateParallelSystemTag(A % ParallelInfo,JfixRhsZero)
       END IF
                 
       DO j=1,Mesh % NumberOfNodes

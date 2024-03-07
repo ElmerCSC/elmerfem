@@ -42,6 +42,9 @@
 !> \{
 
 
+
+
+
 !------------------------------------------------------------------------------
 !> Routine for saving material parameters as fields.
 ! Written by Thomas Zwinger 
@@ -69,7 +72,7 @@ SUBROUTINE SaveMaterials( Model,Solver,dt,TransientSimulation )
   TYPE(ValueList_t), POINTER :: ValueList, Params
   TYPE(Variable_t), POINTER :: Var
   INTEGER :: NoParams, DIM, ParamNo, istat, LocalNodes, &
-       n, j, i, elementNumber, FieldNodes, BodyForceParams
+       n, j, i, elementNumber, FieldNodes, BodyForceParams, Indexes(27)
   INTEGER, POINTER :: NodeIndexes(:), FieldPerm(:)=>NULL()
   REAL(KIND=dp), POINTER :: Field(:)
   REAL(KIND=dp), ALLOCATABLE :: LocalParam(:)
@@ -79,7 +82,6 @@ SUBROUTINE SaveMaterials( Model,Solver,dt,TransientSimulation )
 
   SAVE PrevNodes 
   
-
   CALL Info('SaveMaterials','Creating selected material parameters as fields')
 
   !-------------------------------------------
@@ -214,7 +216,15 @@ SUBROUTINE SaveMaterials( Model,Solver,dt,TransientSimulation )
       n = GetElementNOFNodes(CurrentElement)
       NodeIndexes => CurrentElement % NodeIndexes           
       
-      IF( .NOT. ALL(FieldPerm(NodeIndexes) > 0) ) CYCLE
+      IF( Var % TYPE == Variable_on_nodes ) THEN
+        Indexes(1:n) = NodeIndexes(1:n)
+      ELSE IF( Var % Type == Variable_on_nodes_on_elements ) THEN
+        IF(.NOT. ASSOCIATED(CurrentElement % DgIndexes) ) CYCLE
+        Indexes(1:n) = CurrentElement % DgIndexes(1:n)
+      ELSE
+        CALL Fatal('SaveMaterials','Only implemented for nodal and dg fields: '//TRIM(ParamName(ParamNo)))
+      END IF
+      IF( .NOT. ALL(FieldPerm(Indexes(1:n)) > 0) ) CYCLE
       
       Model % CurrentElement => CurrentElement
 
@@ -228,7 +238,7 @@ SUBROUTINE SaveMaterials( Model,Solver,dt,TransientSimulation )
           n, NodeIndexes, GotIt)
       IF(.NOT. GotIt) CYCLE
       
-      Field(FieldPerm(NodeIndexes(1:n))) = LocalParam(1:n)      
+      Field(FieldPerm(Indexes(1:n))) = LocalParam(1:n)      
     END DO
   END DO
 

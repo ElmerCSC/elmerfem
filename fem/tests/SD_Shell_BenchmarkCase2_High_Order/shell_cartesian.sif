@@ -1,0 +1,155 @@
+! ------------------------------------------------------------------------------
+!
+! Solve nonlinear shell equations in the case of a cylindrical benchmark 
+! problem with bending-dominated asymptotic behaviour in the linear regime. 
+! The linearized problem has been described in Pitkäranta et al. Shell 
+! deformation states and the finite element method: a benchmark study of 
+! cylindrical shells. Computer Methods in Applied Mechanics and Engineering 
+! 1995. 128:81-121. As opposed to the reference, here the shell
+! problem is treated as nonlinear, but the shell is subject to a small load 
+! so that nonlinear effects are not yet significant.
+!
+! Here the problem is solved by using a high-order discretization over a 2-D
+! domain. This option needs a special command "Skip Surface Reconstruction = 
+! True" so that instead of using a physical surface mesh the surface 
+! parametrization is described by the subroutine SurfaceBasis within the solver
+! code ShellSolver.F90. Working without a physical surface mesh is limited to
+! some special geometries which allow a parametrization by lines of curvature
+! coordinates. There are other tests for general shell modelling based on
+! physical surface meshes.
+!
+! ------------------------------------------------------------------------------
+
+$ t = 1.0e-2
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "testmesh"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Cylindrical Body = Logical True
+End
+
+Material 1
+ Poisson Ratio = Real $1.0/3.0
+ Youngs Modulus = Real 7.0e+10
+ Shell Thickness = Real $t
+End
+
+Body Force 1 
+  !
+  ! The solver code has a hard-coded load that is equivalent to the following
+  ! specification in order to avoid FE errors from presenting the load.
+  !
+  Normal Pressure = Variable Coordinate
+     Real MATC "t^3 * 1.0e+5 * cos(2.0*tx(0))"
+End
+
+Equation 1 :: Active Solvers(2) = 1 2
+
+Solver 1
+  Equation = "Shell equation"
+
+  Variable = "U"
+  Variable DOFs = 6
+  Procedure = "ShellSolver" "ShellSolver"
+
+  Element = "p:8"
+  Skip Surface Reconstruction = True
+  Benchmark Problem = Logical True
+
+  Large Deflection = True
+  Displace Mesh = False
+  Nonlinear System Max Iterations = 200
+  Nonlinear System Convergence Tolerance = 1e-7
+
+!  Linear System Solver = "Iterative"
+  Linear System Solver = Direct
+  Linear System Preconditioning = ILU2
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1e-7
+  Linear System Iterative Method = GCR
+  Linear System GCR Restart = 100
+  Linear System Abort Not Converged = False
+  Steady State Convergence Tolerance = 1e-09
+End
+
+Solver 2
+  Equation = "save line"
+  Procedure = "SaveData" "SaveLine"
+
+! Save an axial profile of the p-solution:
+  Polyline Coordinates(2,2) = 0.0 0.0 0.0 1.0
+  Polyline Divisions(1) = 400
+
+  Filename = g.dat
+End
+
+! ----------------------------------------------------------------
+! Use high-order Lagrange interpolation to visualize the solution
+! ----------------------------------------------------------------
+Solver 3
+!  Exec Solver = never
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = case
+  Vtu Format = Logical True
+!  Ascii Output = True
+  Lagrange Element Degree = Integer 8
+End
+
+
+! Symmetry at y2 = 0:
+! --------------------
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  U 2 = Real 0
+  U 5 = Real 0
+  U 8 = Real 0
+End
+
+! Symmetry at y1 = pi/2:
+! --------------------
+Boundary Condition 2
+  Target Boundaries(1) = 2
+  U 3 = Real 0
+  U 6 = Real 0
+  U 9 = Real 0
+End
+
+! Free end at y2 = L:
+! --------------------
+Boundary Condition 3
+  Target Boundaries(1) = 3
+!  U 1 = Real 0
+!  U 2 = Real 0
+!  U 3 = Real 0
+!  U 4 = Real 0
+!  U 5 = Real 0 
+!  U 6 = Real 0
+End
+
+! Symmetry at y1 = 0:
+! --------------------
+Boundary Condition 4
+  Target Boundaries(1) = 4
+  U 1 = Real 0
+  U 4 = Real 0
+  U 7 = Real 0
+End
+
+Solver 1 :: Reference Norm = Real 1.91349896E-07
+Solver 1 :: Reference Norm Tolerance = Real 1.0E-5

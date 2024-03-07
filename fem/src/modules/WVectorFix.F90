@@ -241,7 +241,7 @@ CONTAINS
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),NodalPot(nd),DetJ,Weight,Tcoef(nd)
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd,3),x(nd),C
     INTEGER :: pivot(nd)
-    LOGICAL :: Stat,Found
+    LOGICAL :: Stat,Found,Erroneous
     INTEGER :: i,j,k,t,p,q
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
@@ -282,7 +282,8 @@ CONTAINS
     END DO
 
 
-    CALL LUdecomp(STIFF,n,pivot)
+    CALL LUdecomp(STIFF,n,pivot,Erroneous)
+    IF (Erroneous) CALL Fatal('WVectorFix', 'LU-decomposition fails')
     ! Fixing for each coordinate direction
     DO k=1,3
       x = FORCE(1:n,k)

@@ -54,7 +54,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE BeamStiffnessMatrix(Element, n, nd, nb, TransientSimulation, &
       MassAssembly, HarmonicAssembly, LargeDeflection, LocalSol, RHSForce, &
-      CombineWithShell)
+      CombineWithShell, ApplyRotation, DrillingDOFs)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t), POINTER, INTENT(IN) :: Element
@@ -66,20 +66,25 @@ CONTAINS
     REAL(KIND=dp), OPTIONAL, INTENT(IN) :: LocalSol(:,:) ! The previous solution iterate
     REAL(KIND=dp), OPTIONAL, INTENT(OUT) :: RHSForce(:)  ! Local RHS vector corresponding to external loads
     LOGICAL, OPTIONAL, INTENT(IN) :: CombineWithShell    ! Set .TRUE. if the caller is the shell solver 
-!------------------------------------------------------------------------------
+    LOGICAL, OPTIONAL, INTENT(IN) :: ApplyRotation    ! Rotate DOFs in the context of shell analysis
+    LOGICAL, OPTIONAL, INTENT(IN) :: DrillingDOFs     ! Assume drilling DOFs in the context of shell analysis
+    !------------------------------------------------------------------------------
     TYPE(ValueList_t), POINTER :: BodyForce, Material
     TYPE(Nodes_t) :: Nodes, LocalNodes
     TYPE(GaussIntegrationPoints_t) :: IP
 
     LOGICAL :: Found, Stat
-    LOGICAL :: NonlinAssembly
-
+    LOGICAL :: NonlinAssembly, RotationNeeded
+    LOGICAL :: ApplyOffset
+    LOGICAL :: DampingBetaWarning = .FALSE.
+    
     INTEGER :: DOFs
     INTEGER :: i, t, p, q
     INTEGER :: i0, p0, q0
+    INTEGER :: MomentFreeAxis
 
     REAL(KIND=dp), POINTER :: ArrayPtr(:,:) => NULL()
-    REAL(KIND=dp), POINTER :: StiffBlock(:,:), MassBlock(:,:)
+    REAL(KIND=dp), POINTER :: StiffBlock(:,:), MassBlock(:,:), DampBlock(:,:)
     REAL(KIND=dp), DIMENSION(3), PARAMETER :: ZBasis = (/ 0.0d0, 0.0d0, 0.1d1 /)
 
     REAL(KIND=dp), TARGET :: Mass(6*nd,6*nd), Stiff(6*nd,6*nd), Damp(6*nd,6*nd)
@@ -89,17 +94,18 @@ CONTAINS
     REAL(KIND=dp) :: Youngs_Modulus(n), Shear_Modulus(n), Area(n), Density(n)
     REAL(KIND=dp) :: Torsional_Constant(n) 
     REAL(KIND=dp) :: Area_Moment_2(n), Area_Moment_3(n)
-    REAL(KIND=dp) :: Mass_Inertia_Moment(n) 
+    REAL(KIND=dp) :: Offset_2, Offset_3
+    REAL(KIND=dp) :: Mass_Inertia_Moment(n), Damping(n), RayleighBeta(n)
     REAL(KIND=dp) :: Load(3,n), f(3)
     REAL(KIND=dp) :: PrevSolVec(6*nd)
-    REAL(KIND=dp) :: E, A, G, rho
+    REAL(KIND=dp) :: E, A, G, rho, DampCoef
     REAL(KIND=dp) :: EA, GA, MOI, Mass_per_Length 
     REAL(KIND=dp) :: E_diag(3)
 
     REAL(KIND=dp) :: p1(3), p2(3), e1(3), e2(3), e3(3)
     REAL(KIND=dp) :: L, Norm
 
-    SAVE Nodes, LocalNodes
+    SAVE Nodes, LocalNodes, DampingBetaWarning
 !------------------------------------------------------------------------------
     IF (n > 2) CALL Fatal('BeamStiffnessMatrix', &
         'Only 2-node background meshes supported currently')
@@ -143,21 +149,34 @@ CONTAINS
 
     Material => GetMaterial()
     Youngs_Modulus(1:n) = GetReal(Material, 'Youngs Modulus', Found)
+    IF (.NOT. Found) CALL Fatal('BeamStiffnessMatrix', 'Youngs Modulus needed')
     Shear_Modulus(1:n) = GetReal(Material, 'Shear Modulus', Found)
+    IF (.NOT. Found) CALL Fatal('BeamStiffnessMatrix', 'Shear Modulus needed')
     Area(1:n) = GetReal(Material, 'Cross Section Area', Found)
+    IF (.NOT. Found) CALL Fatal('BeamStiffnessMatrix', 'Cross Section Area needed')
     Torsional_Constant(1:n) = GetReal(Material, 'Torsional Constant', Found)
+    IF (.NOT. Found) CALL Fatal('BeamStiffnessMatrix', 'Torsional Constant needed')
 
-    ! If we don't give the moment of area component-wise it is assumed to be the same
+    ! If we don't give the moment of area component-wise, it is assumed to be the same
     Area_Moment_2(1:n) = GetReal(Material, 'Second Moment of Area', Found)
     IF( Found ) THEN
       Area_Moment_3(1:n) = Area_Moment_2(1:n)
     ELSE
       Area_Moment_2(1:n) = GetReal(Material, 'Second Moment of Area 2', Found)
+      IF (.NOT. Found) CALL Fatal('BeamStiffnessMatrix', 'Second Moment of Area 2 needed')
       Area_Moment_3(1:n) = GetReal(Material, 'Second Moment of Area 3', Found)
+      IF (.NOT. Found) CALL Fatal('BeamStiffnessMatrix', 'Second Moment of Area 3 needed')
     END IF
       
     IF (MassAssembly) THEN
       Density(1:n) = GetReal(Material, 'Density', Found)
+      IF (.NOT. Found) CALL Fatal('BeamStiffnessMatrix', 'Density needed')
+      Damping(1:n) = GetReal(Material, 'Rayleigh Damping Alpha', Found)
+      RayleighBeta = GetReal(Material, 'Rayleigh Damping Beta', Found)
+      IF (Found .AND. .NOT.DampingBetaWarning) THEN
+        CALL Warn('BeamStiffnessMatrix', 'Only mass-proportional damping, neglecting Rayleigh Damping Beta = ...')
+        DampingBetaWarning = .TRUE.
+      END IF
     END IF
 
     !
@@ -198,6 +217,10 @@ CONTAINS
         e2 = 1.0_dp/Norm * e2     
         e3 = CrossProduct(e1, e2)
       ELSE
+        IF (ANY( ABS(Area_Moment_3(1:n) - Area_Moment_2(1:n)) > 5.0_dp * AEPS )) THEN
+          CALL Fatal('BeamStiffnessMatrix', &
+              'The default principal directions need the same moments of area')
+        END IF
         !e2 = -ZBasis
         !e3 = CrossProduct(e1, e2)
         CALL TangentDirections( e1, e2, e3 ) 
@@ -261,8 +284,9 @@ CONTAINS
 
       IF (MassAssembly) THEN
         rho = SUM(Basis(1:n) * Density(1:n))
-        MOI = rho/E * sqrt(E_diag(2)**2 + E_diag(3)**2)
+        MOI = rho/E * (E_diag(2) + E_diag(3))
         Mass_per_Length = rho * A
+        DampCoef = SUM(Damping(1:n) * Basis(1:n))
       END IF
 
       GA = G*A
@@ -278,6 +302,7 @@ CONTAINS
           q0 = (q-1)*DOFs
           StiffBlock => Stiff(p0+1:p0+DOFs,q0+1:q0+DOFs)
           MassBlock => Mass(p0+1:p0+DOFs,q0+1:q0+DOFs)
+          DampBlock => Damp(p0+1:p0+DOFs,q0+1:q0+DOFs)
           !
           ! (Du',v'):
           !
@@ -295,6 +320,13 @@ CONTAINS
                 Mass_per_Length * Basis(q) * Basis(p) * Weight
             MassBlock(3,3) = MassBlock(3,3) + &
                 Mass_per_Length * Basis(q) * Basis(p) * Weight
+            
+            DampBlock(1,1) = DampBlock(1,1) + &
+                DampCoef * Mass_per_Length * Basis(q) * Basis(p) * Weight
+            DampBlock(2,2) = DampBlock(2,2) + &
+                DampCoef * Mass_per_Length * Basis(q) * Basis(p) * Weight
+            DampBlock(3,3) = DampBlock(3,3) + &
+                DampCoef * Mass_per_Length * Basis(q) * Basis(p) * Weight
           END IF
 
           IF (q > n) CYCLE
@@ -355,39 +387,91 @@ CONTAINS
     
     IF (PRESENT(CombineWithShell)) THEN
       IF (CombineWithShell) THEN
-        !
-        ! Switch to rotation variables which conform with the rotated moments - M x d:
-        !
-        R = 0.0d0
-        DO i=1,nd-nb
-          i0 = (i-1)*DOFs
-          R(i0+1,i0+1) = 1.0d0
-          R(i0+2,i0+2) = 1.0d0
-          R(i0+3,i0+3) = 1.0d0
-          R(i0+4,i0+5) = 1.0d0
-          R(i0+5,i0+4) = -1.0d0
-          R(i0+6,i0+6) = 1.0d0
-        END DO
-        DOFs = (nd-nb)*DOFs
-        Stiff(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(R(1:DOFs,1:DOFs)), &
-            MATMUL(Stiff(1:DOFs,1:DOFs),R(1:DOFs,1:DOFs)))
-        Force(1:DOFs) = MATMUL(TRANSPOSE(R(1:DOFs,1:DOFs)),Force(1:DOFs))
 
-        IF (MassAssembly) &
-            Mass(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(R(1:DOFs,1:DOFs)), &
-            MATMUL(Mass(1:DOFs,1:DOFs),R(1:DOFs,1:DOFs)))    
+        Offset_3 = GetConstReal(Material, 'Beam Axis Offset 3', ApplyOffset)
+        Offset_2 = GetConstReal(Material, 'Beam Axis Offset 2', Found)
+        ApplyOffset = Found .OR. ApplyOffset
+        IF (ApplyOffset) THEN
+          R = 0.0d0
+          DO i=1,nd-nb
+            i0 = (i-1)*DOFs
+            R(i0+1,i0+1) = 1.0d0
+            R(i0+1,i0+5) = Offset_3
+            R(i0+1,i0+6) = -Offset_2
+            R(i0+2,i0+2) = 1.0d0
+            R(i0+3,i0+3) = 1.0d0
+            R(i0+4,i0+4) = 1.0d0
+            R(i0+5,i0+5) = 1.0d0
+            R(i0+6,i0+6) = 1.0d0
+          END DO
+          DOFs = (nd-nb)*DOFs
+          Stiff(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(R(1:DOFs,1:DOFs)), &
+              MATMUL(Stiff(1:DOFs,1:DOFs),R(1:DOFs,1:DOFs)))
+          Force(1:DOFs) = MATMUL(TRANSPOSE(R(1:DOFs,1:DOFs)),Force(1:DOFs))
+
+          IF (MassAssembly) &
+              Mass(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(R(1:DOFs,1:DOFs)), &
+              MATMUL(Mass(1:DOFs,1:DOFs),R(1:DOFs,1:DOFs)))
+          DOFs = 6
+        END IF
+        
+        IF (PRESENT(ApplyRotation)) THEN
+          RotationNeeded = ApplyRotation
+        ELSE
+          RotationNeeded = .TRUE.
+        END IF
+
+        IF (PRESENT(DrillingDOFs)) THEN
+          IF (DrillingDOFs) RotationNeeded = .FALSE.
+        END IF
+        
+        IF (RotationNeeded) THEN
+          !
+          ! Switch to rotation variables which conform with the rotated moments - M x d:
+          !
+          R = 0.0d0
+          DO i=1,nd-nb
+            i0 = (i-1)*DOFs
+            R(i0+1,i0+1) = 1.0d0
+            R(i0+2,i0+2) = 1.0d0
+            R(i0+3,i0+3) = 1.0d0
+            R(i0+4,i0+5) = 1.0d0
+            R(i0+5,i0+4) = -1.0d0
+            R(i0+6,i0+6) = 1.0d0
+          END DO
+          DOFs = (nd-nb)*DOFs
+          Stiff(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(R(1:DOFs,1:DOFs)), &
+              MATMUL(Stiff(1:DOFs,1:DOFs),R(1:DOFs,1:DOFs)))
+          Force(1:DOFs) = MATMUL(TRANSPOSE(R(1:DOFs,1:DOFs)),Force(1:DOFs))
+
+          IF (MassAssembly) &
+              Mass(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(R(1:DOFs,1:DOFs)), &
+              MATMUL(Mass(1:DOFs,1:DOFs),R(1:DOFs,1:DOFs)))
+          DOFs = 6
+        END IF
 
         !
         ! The moment around the director is not compatible with the shell model.
         ! Remove its contribution:
         !
+        MomentFreeAxis = GetInteger(Material, 'Moment-free Axis', Found)
+        IF (.NOT. Found) MomentFreeAxis = 3
+          
         DO p=1,nd-nb
-          Stiff(6*p,:) = 0.0d0
-          Stiff(:,6*p) = 0.0d0
-          Stiff(6*p,6*p) = 0.0d0
-          Force(6*p) = 0.0d0
-          Mass(6*p,:) = 0.0d0
-          Mass(:,6*p) = 0.0d0
+          i = (p-1)*DOFs + 3 + MomentFreeAxis
+          Stiff(i,:) = 0.0d0
+          Stiff(:,i) = 0.0d0
+          !
+          ! If the beam axis lies on the mid-surface, assembling a zero
+          ! diagonal entry would be consistent. However, if the beam continues
+          ! outside the mid-surface, a row of zeroes can cause troubles.
+          ! As a remedy, we now give a minimal rigidity against a moment load.
+          ! TO DO: Develop a more consistent strategy to handle this trouble
+          !
+          Stiff(i,i) = 1.0d1 * AEPS
+          Force(i) = 0.0d0
+          Mass(i,:) = 0.0d0
+          Mass(:,i) = 0.0d0
         END DO
       END IF
     END IF
@@ -616,7 +700,7 @@ CONTAINS
       h = MAX(l21,l32,l43,l14)
       Kappa = (Thickness**2)/(Thickness**2 + alpha*(h**2))
     CASE DEFAULT
-      CALL Fatal('ShearCorrectionFactor','Illegal number of nodes for Smitc elements: '//TRIM(I2S(n)))
+      CALL Fatal('ShearCorrectionFactor','Illegal number of nodes for Smitc elements: '//I2S(n))
     END SELECT
 !------------------------------------------------------------------------------
   END SUBROUTINE ShearCorrectionFactor

@@ -1,0 +1,353 @@
+!---LUA BEGIN
+! year_s=365.25*24*3600
+! pa_to_mpa=1.0E-6
+! rho=910*year_s^(-2.0)*pa_to_mpa
+! gravity=9.8*year_s^(2.0)
+! time_step=20
+! theta=1.0
+! m=3.0
+! mw=3.0
+! ub=6.0
+! hmin=11.0
+! assert(loadfile('./perlin.lua'))()
+!---LUA END
+
+
+$name="Stokes_prognostic_ELA300_SMB"
+! normal, transposed, full (applies if not given)
+$fssaflag="full"
+
+!echo on
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "mesh2D"
+  Include Path ""
+  Results Directory ""
+End
+
+
+
+Simulation
+  Max Output Level = 4
+  Coordinate System = "Cartesian 2D"
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = "Transient"
+  Steady State Max Iterations = 1
+  Timestepping Method = "BDF"
+  BDF Order = 1 
+  Timestep Sizes = #time_step
+  Timestep Intervals = #400/time_step
+  Output Intervals = 1
+  !Output File = $name$"_"$fssaflag$"_"#time_step#"_mw"#mw".result"
+  Post File = $name$"_"$fssaflag$"_theta"#theta#"_dt"#time_step#"_mw"#mw#".vtu"
+  Initialize Dirichlet Conditions = Logical False
+End
+
+Constants
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Glacier"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Body 2
+  Name = "Surface"
+  Body Force = 2
+  Equation = 2
+  Material = 2
+  Initial Condition = 2
+End
+
+Equation 1
+  Name = "Equation1"
+  Convection = "computed"
+  Flow Solution Name = String "Flow Solution"
+  Active Solvers(4) = 1 2 4 5
+End
+
+Equation 2
+  Name = "Equation2"
+  Convection = "computed" !!! CHANGE TO THIS ONE TO GET REASONABLE RESULTS
+  !Convection = "none"
+  Active Solvers(1) = 3
+  Flow Solution Name = String "Flow Solution"
+End
+
+Initial Condition 1
+  Velocity 1 = 0.0
+  Velocity 2 = 0.0
+  Pressure = 0.0
+  Zs = Variable Coordinate 1
+    Real
+      include "surf.dat"
+    End  
+  RefZs = Variable Coordinate 1
+    Real
+      include "surf.dat"
+    End  
+  Mesh Velocity = Real 0.0
+  !Mesh Velocity 2 = Real 0.0
+  Height = Variable Coordinate 2
+    Real Lua "tx[0] * 10.0"
+  Depth =  Variable Coordinate 2
+    Real Lua "10.0 - (tx[0] * 10.0)"
+End
+
+Initial Condition 2
+  Zs = Variable Coordinate 1
+   Real
+     include "surf.dat"
+   End  
+  RefZs = Variable Coordinate 1
+    Real
+      include "surf.dat"
+    End  
+End
+
+Solver 1
+  Equation = "HeightDepth"
+  Exec Solver = "Before Timestep"
+  Procedure = "StructuredProjectToPlane" "StructuredProjectToPlane"
+  Active Coordinate = Integer 2
+  Operator 1 = depth
+  Operator 2 = height
+End
+
+Solver 2
+!  Exec Solver = "Never" # uncommenting would switch this off
+  !Element = "p:2"
+  Equation = "Stokes-Vec"
+  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+  Div-Curl Discretization = Logical False
+
+  Optimize Bandwidth = Logical True
+  Stokes Flow = Logical True
+  Stabilization Method = "Stabilized"
+  !Stabilization Method = String "P1/P2"
+
+  Linear System Abort Not Converged = Logical False
+  ! Iterative approach:
+  !---------------------
+  Linear System Solver = Iterative
+
+  Linear System Iterative Method = "GCR"
+  Linear System GCR Restart = 200
+!  Linear System Convergence Tolerance = 1.0E-08
+! Solving for residual allows us to use sloppier tolerances
+! This seems to faster strategy.
+  Linear System Residual Mode = True
+  Linear System Convergence Tolerance = 1.0E-08 
+  Linear System Max Iterations = 500
+  Linear System Abort Not Converged = False
+  Linear System Preconditioning = "ILU1"
+  Linear System Residual Output = 10
+
+  ! Direct approach (as alternative to above):
+  !-------------------------------------------
+  !Linear System Solver = Direct
+  !Linear System Direct Method = $directmethod ! Parallel: MUMPS, Serial: UMFPACK
+
+  !Non-linear iteration settings:
+  !------------------------------ 
+  Nonlinear System Max Iterations = 100
+  Nonlinear System Convergence Tolerance  = 1.0e-5
+  Nonlinear System Newton After Iterations = 10
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Consistent Norm = True
+   Nonlinear System Relaxation Factor = #2.0/3.0
+  !Nonlinear System Reset Newton = Logical True
+
+  ! Convergence on timelevel (not required here)
+  !---------------------------------------------
+  Steady State Convergence Tolerance = Real 1.0e-3
+
+  !Relative Integration Order = -1
+  !Number of Integration Points = Integer 25 ! 21, 28, 44, 64, ...
+   ! 1st iteration viscosity is constant
+  Constant-Viscosity Start = Logical True
+
+! Some timing info
+  Boundary Assembly Timing = Logical True
+  Bulk Assembly Timing = Logical True
+  Solver Timing = Logical True
+  Linear System Timing = Logical True
+  Exported Variable 1 = -dofs 1 "Mesh Velocity"
+  Exported Variable 2 = -dofs 1 "Mesh Update"
+
+  !Nonlinear System Relaxation Factor = 0.75
+End
+
+Solver 3
+   Exec Solver = always
+   Equation = "Free Surface"
+   Variable = String "Zs"
+   Variable DOFs =  1
+   ! needed for evaluating the contact pressure
+   Exported Variable 1 = -dofs 1 "Zs Residual"
+   ! needed for storing the initial shape (needed for updates)
+   Exported Variable 2 = -dofs 1 "RefZs"
+   Procedure = "FreeSurfaceSolver" "FreeSurfaceSolver"
+  ! This would take the contrained points out of solution
+  ! Use in serial run, only
+ !  Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
+   Linear System Solver = Iterative
+   Linear System Max Iterations = 1500
+   Linear System Iterative Method = BiCGStab
+   Linear System Preconditioning = ILU0
+   Linear System Convergence Tolerance = Real 1.0e-7
+   Linear System Abort Not Converged = False
+   Linear System Residual Output = 1
+   Nonlinear System Max Iterations = 100
+   Nonlinear System Convergence Tolerance  = 1.0e-6
+   Nonlinear System Relaxation Factor = 0.60
+   Steady State Convergence Tolerance = 1.0e-03
+   Stabilization Method = Bubbles
+   ! Apply contact problem    
+   Apply Dirichlet = Logical True
+
+! How much the free surface is relaxed
+!  Relaxation Factor = Real 0.90      
+ 
+End
+Solver 4
+  Exec Solver = "before timestep"
+
+  Equation = "MapCoordinate"
+  Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
+
+  Variable = -nooutput dummyvar
+
+  Active Coordinate = Integer 2 ! the mesh-update is y-direction
+
+! For time being this is currently externally allocated
+  Mesh Velocity Variable = String "Mesh Velocity"
+
+! The 1st value is special as the mesh velocity could be unrelistically high
+  Mesh Velocity First Zero = Logical True
+
+!  Top Surface Variable = String "Zs"
+
+  Dot Product Tolerance = Real 0.01
+
+End
+
+Solver 5
+  Equation = String "StressSolver"
+  Procedure =  File "ElmerIceSolvers" "ComputeDevStress"
+  ! this is just a dummy, hence no output is needed
+  !-----------------------------------------------------------------------
+  Variable = -nooutput "Sij"
+  Variable DOFs = 1
+  ! the name of the variable containing the flow solution (U,V,W,Pressure)
+  !-----------------------------------------------------------------------
+  Flow Solver Name = String "Flow Solution"
+  ! no default value anymore for "Stress Variable Name"
+  Stress Variable Name = String "cauchystress"
+  !-----------------------------------------------------------------------
+  Exported Variable 1 = "cauchystress" ! [Sxx, Syy, Szz, Sxy] in 2D
+                                 ! [Sxx, Syy, Szz, Sxy, Syz, Szx] in 3D
+  Exported Variable 1 DOFs = 4   ! 4 in 2D, 6 in 3D
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Max Iterations = 300
+  Linear System Convergence Tolerance = 1.0E-09
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU0"
+  Linear System Residual Output = 1
+End
+
+Material 1
+  Name = "ice"
+  Density = Real #rho
+  !----------------
+  ! vicosity stuff (linear)
+  !----------------
+  Viscosity = Real $1.0E13*(31556926.0)^(-1.0)*1.0E-06
+  
+!  Critical Shear Rate = Real 1.0e-10
+  !--------------------
+  ! vicosity stuff Glen
+  !--------------------
+  Viscosity Model = String "Glen"
+  ! Viscosity has to be set to a dummy value
+  ! to avoid warning output from Elmer
+  Viscosity = Real 1.0 
+  Glen Exponent = Real 3.0
+  Critical Shear Rate = Real 1.0e-10
+  ! the temperature to switch between the 
+  ! two regimes in the flow law
+  Limit Temperature = Real -10.0
+  ! In case there is no temperature variable (which applies here)
+  !Relative Temperature = Real -3.0
+  Set Arrhenius Factor = Logical True
+  Arrhenius Factor = Real 100.0
+
+  Cauchy = Logical True
+End
+
+Material 2
+  Min Zs = Variable RefZs
+    Real Lua "tx[0] - 0.000001"
+  Max Zs = Variable RefZs
+    Real Lua "tx[0] + 600.0"
+End
+
+Body Force 1
+  Name = "BodyForce1"
+  Flow BodyForce 1 = Real 0.0                          
+  Flow BodyForce 2 = Real #-gravity  !gravity in MPa - a - m
+  ! This would set passive soluton (ommiting assembly) for non-glaciated parts
+  Flow Solution Passive = Variable depth, height
+       Real Lua "((tx[0] + tx[1]) < 10.0)"
+End
+
+Body Force 2
+  Name = "Climate"
+  Zs Accumulation Flux 1 = Real 0.0e0
+  Zs Accumulation Flux 2 = Variable Coordinate 1
+    Real Lua "accum(tx[0])" 
+End
+
+Boundary Condition 1
+  Name = "bedrock"
+  Target Boundaries = 4
+  Compute Normals = Logical True
+  Bottom Surface = Variable Coordinate 1
+    Real
+       include "bedrock.dat"
+    End
+  Normal-Tangential Velocity = True  
+  Velocity 1 = Real 0.0e0
+  Flow Force BC = logical True
+  ! matching linear sliding velocity for given stress:
+  Weertman Friction Coefficient  =  Variable Coordinate 1, cauchystress 4, Height, Depth
+      Real Lua "slidingcoeff(tx[0],tx[1],tx[2],tx[3])"
+  ! fixed target velocity ub: 
+  !Weertman Friction Coefficient  =  Variable Coordinate 1
+  !    Real Lua "slidingcoeffv(tx[0])"   
+  Weertman Exponent = Real #mw
+  Weertman Linear Velcoity = Real 0.0001
+
+End
+
+Boundary Condition 2
+  Name = "sides"
+  Target Boundaries(2) = 1 3
+  Velocity 1 = Real 0.0e0
+End
+
+Boundary Condition 3
+  Name = "surface"
+  Top Surface = Equals "Zs"
+  Target Boundaries = 2
+  Body ID = 2 !!! THIS IS ESSENTIAL: the body the free surface solver is being run on
+  FSSA Theta = Real #theta
+  FSSA Flag = String $fssaflag
+End
+Solver 2 :: Reference Norm = Real 3.6129786
+Solver 2 :: Reference Norm Tolerance = Real 1E-06

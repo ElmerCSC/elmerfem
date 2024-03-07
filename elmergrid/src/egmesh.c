@@ -26,7 +26,7 @@
 /* --------------------------:  egmesh.c  :----------------------------
 
    This module includes subroutines that formulate the mesh into structures 
-   more usuful for the user. These are the functions that should be used for 
+   more useful for the user. These are the functions that should be used for
    assembling. The routines usually operate on structures FemType and 
    BoundaryType.
    */
@@ -911,17 +911,12 @@ void InitializeKnots(struct FemType *data)
     strcpy(data->dofname[i],""); 
   }
 
-#if 0
-  /* Currently allocated dynamically! */
   for(i=0;i<MAXBODIES;i++) {
-    strcpy(data->bodyname[i],""); 
-    sprintf(data->bodyname[i],"body%d",i);
+    data->bodyname[i] = NULL;
   }
   for(i=0;i<MAXBCS;i++) {
-    strcpy(data->boundaryname[i],""); 
-    sprintf(data->boundaryname[i],"bc%d",i);
+    data->boundaryname[i] = NULL;
   }
-#endif
 }
 
 
@@ -1282,7 +1277,7 @@ static void MovePointArc(Real *lim,int points,Real *coords,
 void CreateKnots(struct GridType *grid,struct CellType *cell,
 		 struct FemType *data,int noknots,int info)
 /* Saves information concerning the knots to a special structure to avoid 
-   repetitous calculations. This should be used unless there is a sevire 
+   repetitious calculations. This should be used unless there is a severe
    lack of memory. GridType includes only rectangular 2D elements.
    */ 
 {
@@ -1637,7 +1632,7 @@ int CreateBoundary(struct CellType *cell,struct FemType *data,
 startpoint:
 
   /* Go through all elements which have a boundary with the given material, but 
-     are not themself of that material. First only calculate their amount, then
+     are not themselves of that material. First only calculate their amount, then
      allocate space and tabulate them. */ 
   nosides = 0;
 
@@ -2989,7 +2984,7 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
     }
 
 
-    /* And finally number the conflicting joinded bodies and BCs */
+    /* And finally number the conflicting joined bodies and BCs */
     for(i=1;i<=data2->noelements;i++) {
       mat = data2->material[i];
       if( mat < MAXBODIES ) {
@@ -3680,7 +3675,7 @@ static void ReorderAutomatic(struct FemType *data,int iterations,
   
 #if 0
   for(j=1;j<=noknots;j++) {
-    printf("neigbourds[%d]= ",j);
+    printf("neighbours[%d]= ",j);
     for(l=1;l<=maxnodes;l++) 
       printf("%d ",neighbours[j][l]);
     printf("\n");
@@ -4007,7 +4002,7 @@ void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
   int i,j,k,doinit,isordered;
   int minbc=0,maxbc=0,**mapbc;
   int elemdim=0,elemtype=0,sideind[MAXNODESD1];
-  int bctype;
+  int bctype,havename,isname;
 
   if(renumber) {
     if(0) printf("Renumbering boundary types\n");
@@ -4057,21 +4052,43 @@ void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
     j = 0;
     /* Give the larger dimension always a smaller BC type */
     isordered = TRUE;
-    for(elemdim=2;elemdim>=0;elemdim--) {
-      for(i=minbc;i<=maxbc;i++) {
-	if(!mapbc[i][elemdim]) continue;
-	j++;
-	if(i == j) {
-	  printf("boundary index unaltered %d in %d %dD elements\n",i,mapbc[i][elemdim],elemdim); 
+    for(isname=1;isname>=0;isname--) {      
+      for(elemdim=2;elemdim>=0;elemdim--) {
+	for(i=minbc;i<=maxbc;i++) {
+	  if(!mapbc[i][elemdim]) continue;
+
+	  /* Give index 1st to the named entities, then to unnamed. */
+	  havename = FALSE;
+	  if(data->boundarynamesexist) {
+	    if(i<MAXBCS) { 
+	      if(data->boundaryname[i]) havename = TRUE;
+	    }
+	  }
+	  if(havename != isname) break;
+
+	  j++;
+	  if(i == j) {
+	    if( isname ) {
+	      printf("BC index unaltered %d in %d %dD elements of %s\n",i,mapbc[i][elemdim],elemdim,data->boundaryname[i]); 
+	    }
+	    else {	      
+	      printf("BC index unaltered %d in %d %dD elements\n",i,mapbc[i][elemdim],elemdim);
+	    }
+	  }
+	  else {
+	    isordered = FALSE;
+	    if( isname ) {
+	      printf("BC index changed %d -> %d in %d %dD elements of %s\n",i,j,mapbc[i][elemdim],elemdim,data->boundaryname[i]);
+	    }
+	    else {
+	      printf("BC index changed %d -> %d in %d %dD elements\n",i,j,mapbc[i][elemdim],elemdim);
+	    }
+	  }
+	  mapbc[i][elemdim] = j;
 	}
-	else {
-	  isordered = FALSE;
-	  printf("boundary index changed %d -> %d in %d %dD elements\n",i,j,mapbc[i][elemdim],elemdim); 
-	}
-	mapbc[i][elemdim] = j;
       }
     }
-
+      
     if(0) {
       for(i=minbc;i<=maxbc;i++) 
 	for(j=0;j<=2;j++)
@@ -4096,19 +4113,36 @@ void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
       if(data->boundarynamesexist) {
 	char *boundaryname0[MAXBCS];
 
+	for(j=0;j<MAXBODIES;j++)
+	  boundaryname0[j] = NULL;
+	
 	/* We need some temporal place is name mapping might not be unique */
 	for(j=minbc;j<=MIN(maxbc,MAXBODIES-1);j++) {
-	  if(data->boundaryname[j]) {
-	    if(data->boundaryname[j]) boundaryname0[j] = Cvector(0,MAXNAMESIZE);	    
-	    strcpy(boundaryname0[j],data->boundaryname[j]);
+	  k = 0;
+	  for(elemdim=2;elemdim>=0;elemdim--) {	    
+	    k = mapbc[j][elemdim];
+	    if(k) break;
+	  }
+	  if(k) {
+	    if(data->boundaryname[j]) {
+	      boundaryname0[j] = Cvector(0,MAXNAMESIZE);	    
+	      strcpy(boundaryname0[j],data->boundaryname[j]);
+	      free_Cvector(data->boundaryname[j],0,MAXNAMESIZE);
+	      data->boundaryname[j] = NULL;
+	    }
 	  }
 	}
 	
 	for(j=minbc;j<=MIN(maxbc,MAXBODIES-1);j++) {
-	  for(elemdim=2;elemdim>=0;elemdim--) {	    
+	  k = 0;
+	  for(elemdim=2;elemdim>=0;elemdim--) {	    	   	    
 	    k = mapbc[j][elemdim];
-	    if(k) {
-	      if(!data->boundaryname[k]) data->boundaryname[k] = Cvector(0,MAXNAMESIZE);
+	    if(k) break;
+	  }
+	  if(k) {
+	    if(boundaryname0[j]) {
+	      if(!data->boundaryname[k]) 
+		data->boundaryname[k] = Cvector(0,MAXNAMESIZE);
 	      strcpy(data->boundaryname[k],boundaryname0[j]);
 	    }
 	  }
@@ -4231,7 +4265,7 @@ int RemoveLowerDimensionalBoundaries(struct FemType *data,struct BoundaryType *b
 
   /* Nothing to remove if the bulk mesh has 1D elements */
   if(minelemdim < 2) return(2);
-
+  
   oldnosides = 0;
   newnosides = 0;
   for(j=0;j < MAXBOUNDARIES;j++) {
@@ -4265,7 +4299,7 @@ int RemoveLowerDimensionalBoundaries(struct FemType *data,struct BoundaryType *b
     bound[j].nosides = nosides;
     newnosides += nosides;
   }
-
+  
   if(info) printf("Removed %d (out of %d) less than %dD boundary elements\n",
 		  oldnosides-newnosides,oldnosides,minelemdim-1);
   return(0);
@@ -4632,7 +4666,7 @@ int FindBulkBoundary(struct FemType *data,int mat1,int mat2,
   *noboundnodes = 0;
 
   if(mat1 < 1 && mat2 < 1) {
-    printf("FindBulkBoundaty: Either of the materials must be positive\n");
+    printf("FindBulkBoundary: Either of the materials must be positive\n");
     return(1);
   }
   else if(mat1 < 1) {
@@ -4702,7 +4736,7 @@ int FindBulkBoundary(struct FemType *data,int mat1,int mat2,
     for(i=1;i<=data->noknots;i++) {    
       anglesum[i] /= 2.0 * FM_PI;
       if(anglesum[i] > 0.99) visited[i] = 0;
-      if(anglesum[i] > 1.01) printf("FindBulkBoundary: surpricingly large angle %.3e in node %d\n",anglesum[i],i);
+      if(anglesum[i] > 1.01) printf("FindBulkBoundary: surprisingly large angle %.3e in node %d\n",anglesum[i],i);
       if(visited[i]) j++;
     }
     if(0) printf("There are %d boundary node candidates\n",j);
@@ -4842,7 +4876,7 @@ int FindBoundaryBoundary(struct FemType *data,struct BoundaryType *bound,int mat
   *noboundnodes = 0;
 
   if(mat1 < 1 && mat2 < 1) {
-    printf("FindBoundaryBoundaty: Either of the boundaries must be positive\n");
+    printf("FindBoundaryBoundary: Either of the boundaries must be positive\n");
     return(1);
   }
   else if(mat1 < 1) {
@@ -4921,7 +4955,7 @@ int FindBoundaryBoundary(struct FemType *data,struct BoundaryType *bound,int mat
     for(i=1;i<=data->noknots;i++) {
       anglesum[i] /= 2.0 * FM_PI;
       if(anglesum[i] > 0.99) visited[i] = 0;
-      if(anglesum[i] > 1.01) printf("FindBulkBoundary: surpricingly large angle %.3e in node %d\n",anglesum[i],i);
+      if(anglesum[i] > 1.01) printf("FindBulkBoundary: surprisingly large angle %.3e in node %d\n",anglesum[i],i);
     }
     free_Rvector(anglesum,1,data->noknots);
 
@@ -4942,7 +4976,7 @@ int FindBoundaryBoundary(struct FemType *data,struct BoundaryType *bound,int mat
     if(visited[i] == maxnodes || visited[i] < 0) visited[i] = 0;      
   }
 
-  /* Neighbour to anaything */
+  /* Neighbour to anything */
   if(mat2 == 0) {
     for(k=1;k<=data->noknots;k++) 
       if(visited[k]) 
@@ -6839,7 +6873,7 @@ void MergeBoundaries(struct FemType *data,struct BoundaryType *bound,int *double
     if(!i2) bound[j].created = FALSE;
   }
 
-  if(info) printf("Eliminated %d boundaries from orinal set of %d.\n",totsides-newsides,totsides);
+  if(info) printf("Eliminated %d boundaries from original set of %d.\n",totsides-newsides,totsides);
 		  
 }
 
@@ -6937,7 +6971,7 @@ void IsoparametricElements(struct FemType *data,struct BoundaryType *bound,
       }
     }
     else {
-      printf("IsoparamametricElements: Not implemented for elementtype %d\n",elemtype);
+      printf("IsoparametricElements: Not implemented for elementtype %d\n",elemtype);
     }
   }
   
@@ -6955,7 +6989,7 @@ void ElementsToBoundaryConditions(struct FemType *data,
   int *moveelement=NULL,*parentorder=NULL,*possible=NULL,**invtopo=NULL;
   int noelements,maxpossible,noknots,maxelemsides,twiceelem,sideelemdim,minelemdim,maxelemdim;
   int debug,unmoved,removed,elemhits,loopdim,lowdimbulk;
-  int notfound,*notfounds=NULL;
+  int notfound,*notfounds=NULL,movenames;
 
 
   if(info) {
@@ -6970,6 +7004,14 @@ void ElementsToBoundaryConditions(struct FemType *data,
 
   noelements = data->noelements;
   noknots = data->noknots;
+  
+  movenames = (data->bodynamesexist && !data->boundarynamesexist);
+  if(data->bodynamesexist && info) {
+    if(movenames)
+      printf("Moving boundarynames together with elements\n");
+    else
+      printf("Assuming that boundaries names are already Ok!\n");
+  }
 
   maxelemtype = GetMaxElementType(data);
   if(info) printf("Leading bulk elementtype is %d\n",maxelemtype);
@@ -7077,7 +7119,7 @@ void ElementsToBoundaryConditions(struct FemType *data,
   for(i=1;i<=noelements;i++) {
     moveelement[i] = FALSE;
     sideelemdim = GetElementDimension(data->elementtypes[i]);
-
+    
     /* Lower dimensional elements are candidates to become BC elements */
     moveelement[i] = maxelemdim - sideelemdim;
     if(moveelement[i]) sideelements++;
@@ -7170,7 +7212,7 @@ void ElementsToBoundaryConditions(struct FemType *data,
 	elemtype = data->elementtypes[elemind2];
 	elemdim = GetElementDimension(elemtype);
 	
-	/* Owner element should have highger dimension */
+	/* Owner element should have higher dimension */
 	if(elemdim <= sideelemdim ) continue;
 
 	hit = 0;
@@ -7245,14 +7287,19 @@ void ElementsToBoundaryConditions(struct FemType *data,
 	    if((sideind[0]-sideind[1])*(sideind2[0]-sideind2[1])<0) 	      
 	      bound->normal[sideelem] = -1;
 	  }		
-	  if(data->bodynamesexist) {
+	  if(movenames) {
 	    data->boundarynamesexist = TRUE;
 	    if(material < MAXBODIES && material < MAXBOUNDARIES) {
-	      if(!data->boundaryname[material]) data->boundaryname[material] = Cvector(0,MAXNAMESIZE);
-	      if(data->bodyname[material]) 
-		strcpy(data->boundaryname[material],data->bodyname[material]);
-	      else
-		sprintf(data->boundaryname[material],"body%d",material);
+	      if(!data->boundaryname[material]) {
+		data->boundaryname[material] = Cvector(0,MAXNAMESIZE);
+		if(data->bodyname[material]) {
+		  strcpy(data->boundaryname[material],data->bodyname[material]);
+		  free_Cvector(data->bodyname[material],0,MAXNAMESIZE);
+		  data->bodyname[material] = NULL;
+		}
+		else
+		  sprintf(data->boundaryname[material],"body%d",material);
+	      }
 	    }
 	    if(!strncmp(data->boundaryname[material],"body",4)) {
 	      strncpy(data->boundaryname[material],"bnry",4);
@@ -7935,7 +7982,7 @@ int FindPeriodicParents(struct FemType *data,struct BoundaryType *bound,int info
       GetElementSide(parent,side,1,data,sideind,&sideelemtype);
       sidenodes = sideelemtype % 100;
 
-      /* Some node must be periodic target and ohers either target or mapped nodes */
+      /* Some node must be periodic target and others either target or mapped nodes */
       hits = hits2 = 0;      
       for(k=0;k<sidenodes;k++) {
         l = sideind[k];
@@ -8866,7 +8913,7 @@ omstart:
 	  }
 	  
 	  
-	  /* Eliminate the very difficult triplenodes */
+	  /* Eliminate the very difficult triple nodes */
 	  dolayer = FALSE;
 	  for(k=1;k<=endbcs;k++)
 	    if(ind2 == endnodes[k]) dolayer = k;
@@ -9108,7 +9155,7 @@ int CreateBoundaryLayerDivide(struct FemType *data,struct BoundaryType *bound,
 
 
   /* Go through all the boundaries with boundary layer definitions and compute 
-     the numbder of nodes at the surface. */
+     the number of nodes at the surface. */
 
   maxbc = 0;
   qlayer = 0.0;

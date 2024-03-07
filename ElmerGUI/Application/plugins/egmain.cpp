@@ -85,7 +85,7 @@ int info=TRUE,nogrids=0,nomeshes=0,activemesh=0;
 #if EXE_MODE
 static int PartitionMesh(int nofile) 
 {
-  /* Partititioning related stuff */
+  /* Partitioning related stuff */
 
   int noopt = 0;
 
@@ -422,7 +422,7 @@ static int ImportMeshDefinition(int inmethod,int nofile,char *filename,int *nogr
     visited = TRUE;
   }
 
-  /* Native format of ElmerGrid gets specieal treatment */
+  /* Native format of ElmerGrid gets special treatment */
   switch (inmethod) {
     
   case 1: 
@@ -851,7 +851,7 @@ int main(int argc, char *argv[])
   static Real mergeeps;
   long ii;
 
-  if(info) printf("\nStarting program Elmergrid\n");
+  if(info) printf("\nStarting program Elmergrid, compiled on %s\n", __DATE__ );
   
   InitParameters(&eg);
   grids = (struct GridType*)malloc((size_t) (MAXCASES)*sizeof(struct GridType));     
@@ -900,7 +900,7 @@ int main(int argc, char *argv[])
   if(info) printf("\nElmergrid creating and manipulating meshes:\n");
   ManipulateMeshDefinition(inmethod,outmethod,relh);
 
-  /* Partititioning related stuff */
+  /* Partitioning related stuff */
   for(k=0;k<nomeshes;k++) 
     PartitionMesh(nofile); 
 

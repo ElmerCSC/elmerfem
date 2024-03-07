@@ -27,7 +27,7 @@
  *                                                                           *
  *****************************************************************************
  *                                                                           *
- *  Authors: Mikko Lyly, Juha Ruokolainen and Peter R�back                   *
+ *  Authors: Mikko Lyly, Juha Ruokolainen and Peter Råback                   *
  *  Email:   Juha.Ruokolainen@csc.fi                                         *
  *  Web:     http://www.csc.fi/elmer                                         *
  *  Address: CSC - IT Center for Science Ltd.                                *
@@ -92,6 +92,25 @@ MainWindow::MainWindow() {
 #else
   homePath = "";
 #endif
+
+
+// Set icon theme path
+#ifdef __APPLE__DONTGO_HERE_TODO
+  QString themePath = this->homePath + "/icons";
+#else
+  QString themePath =
+      QCoreApplication::applicationDirPath() + "/../share/ElmerGUI/icons";
+
+  QString elmerGuiHome = QString(getenv("ELMERGUI_HOME"));
+
+  if (!elmerGuiHome.isEmpty())
+    themePath = elmerGuiHome + "/icons";
+
+  themePath.replace('\\', '/');
+#endif
+  QIcon::setThemeSearchPaths(QStringList(themePath));
+  QIcon::setThemeName("TangoElmerGUI");
+
 
   // load ini file:
   egIni = new EgIni(this);
@@ -183,8 +202,8 @@ MainWindow::MainWindow() {
           SLOT(menuBarTriggeredSlot(QAction *)));
 
   // glWidget emits (list_t*) when a boundary is selected by double clicking:
-  connect(glWidget, SIGNAL(signalBoundarySelected(list_t *)), this,
-          SLOT(boundarySelectedSlot(list_t *)));
+  connect(glWidget, SIGNAL(signalBoundarySelected(list_t *, Qt::KeyboardModifiers)), this,
+          SLOT(boundarySelectedSlot(list_t *, Qt::KeyboardModifiers)));
 
   // glWidget emits (void) when esc has been pressed:
   connect(glWidget, SIGNAL(escPressed()), this, SLOT(viewNormalModeSlot()));
@@ -394,25 +413,25 @@ void MainWindow::menuBarTriggeredSlot(QAction *act) {
 void MainWindow::createActions() {
   // File -> Open file
   openAct =
-      new QAction(QIcon(":/icons/document-open.png"), tr("&Open..."), this);
+      new QAction(QIcon::fromTheme("document-open"), tr("&Open..."), this);
   openAct->setShortcut(tr("Ctrl+O"));
   openAct->setStatusTip(tr("Open geometry input file"));
   connect(openAct, SIGNAL(triggered()), this, SLOT(openSlot()));
 
   // File -> Load mesh...
-  loadAct = new QAction(QIcon(":/icons/document-open-folder.png"),
+  loadAct = new QAction(QIcon::fromTheme("folder"),
                         tr("&Load mesh..."), this);
   loadAct->setStatusTip(tr("Load Elmer mesh files"));
   connect(loadAct, SIGNAL(triggered()), this, SLOT(loadSlot()));
 
   // File -> Load project...
-  loadProjectAct = new QAction(QIcon(":/icons/document-import.png"),
+  loadProjectAct = new QAction(QIcon::fromTheme("project-load"),
                                tr("Load &project..."), this);
   loadProjectAct->setStatusTip(tr("Load previously saved project"));
   connect(loadProjectAct, SIGNAL(triggered()), this, SLOT(loadProjectSlot()));
 
   // File -> New project...
-  newProjectAct = new QAction(QIcon(":/icons/document-new.png"),
+  newProjectAct = new QAction(QIcon::fromTheme("project-new"),
                               tr("&New project..."), this);
   newProjectAct->setStatusTip(tr("Create a new project"));
   connect(newProjectAct, SIGNAL(triggered()), this, SLOT(newProjectSlot()));
@@ -449,7 +468,7 @@ void MainWindow::createActions() {
   connect(recentProject9Act, SIGNAL(triggered()), this,
           SLOT(loadRecentProject9Slot()));
   // File -> Definitions...
-  editDefinitionsAct = new QAction(QIcon(":/icons/games-config-custom.png"),
+  editDefinitionsAct = new QAction(QIcon::fromTheme("preferences-system"),
                                    tr("&Definitions..."), this);
   editDefinitionsAct->setStatusTip(
       tr("Load and edit Elmer sif definitions file"));
@@ -458,25 +477,25 @@ void MainWindow::createActions() {
 
   // File -> Save...
   saveAct =
-      new QAction(QIcon(":/icons/document-save.png"), tr("&Save..."), this);
+      new QAction(QIcon::fromTheme("document-save"), tr("&Save..."), this);
   saveAct->setShortcut(tr("Ctrl+S"));
   saveAct->setStatusTip(tr("Save Elmer mesh and sif-files"));
   connect(saveAct, SIGNAL(triggered()), this, SLOT(saveSlot()));
 
   // File -> Save as...
-  saveAsAct = new QAction(QIcon(":/icons/document-save-as.png"),
+  saveAsAct = new QAction(QIcon::fromTheme("document-save-as"),
                           tr("&Save as..."), this);
   saveAsAct->setStatusTip(tr("Save Elmer mesh and sif-files"));
   connect(saveAsAct, SIGNAL(triggered()), this, SLOT(saveAsSlot()));
 
   // File -> Save project
-  saveProjectAct = new QAction(QIcon(":/icons/document-export.png"),
+  saveProjectAct = new QAction(QIcon::fromTheme("project-save"),
                                tr("&Save project"), this);
   saveProjectAct->setStatusTip(tr("Save current project"));
   connect(saveProjectAct, SIGNAL(triggered()), this, SLOT(saveProjectSlot()));
 
   // File -> Save project as...
-  saveProjectAsAct = new QAction(QIcon(":/icons/edit-copy.png"),
+  saveProjectAsAct = new QAction(QIcon::fromTheme("project-save-as"),
                                  tr("&Save project as..."), this);
   saveProjectAsAct->setStatusTip(
       tr("Save current project by specifying directory"));
@@ -484,20 +503,20 @@ void MainWindow::createActions() {
           SLOT(saveProjectAsSlot()));
 
   // File -> Save picture as...
-  savePictureAct = new QAction(QIcon(":/icons/view-preview.png"),
+  savePictureAct = new QAction(QIcon::fromTheme("image-x-generic"),
                                tr("&Save picture as..."), this);
   savePictureAct->setStatusTip(tr("Save picture in file"));
   connect(savePictureAct, SIGNAL(triggered()), this, SLOT(savePictureSlot()));
 
   // File -> Exit
   exitAct =
-      new QAction(QIcon(":/icons/application-exit.png"), tr("E&xit"), this);
+      new QAction(QIcon::fromTheme("emblem-unreadable"), tr("E&xit"), this);
   exitAct->setShortcut(tr("Ctrl+Q"));
   exitAct->setStatusTip(tr("Exit"));
   connect(exitAct, SIGNAL(triggered()), this, SLOT(closeMainWindowSlot()));
 
   // Model -> Setup...
-  modelSetupAct = new QAction(QIcon(), tr("Setup..."), this);
+  modelSetupAct = new QAction(QIcon::fromTheme("applications-system"), tr("Setup..."), this);
   modelSetupAct->setStatusTip(tr("Setup simulation environment"));
   connect(modelSetupAct, SIGNAL(triggered()), this, SLOT(modelSetupSlot()));
 
@@ -557,11 +576,11 @@ void MainWindow::createActions() {
   // Edit -> Generate sif
   generateSifAct = new QAction(QIcon(""), tr("&Generate"), this);
   generateSifAct->setShortcut(tr("Ctrl+G"));
-  generateSifAct->setStatusTip(tr("Genarete solver input file"));
+  generateSifAct->setStatusTip(tr("Generate solver input file"));
   connect(generateSifAct, SIGNAL(triggered()), this, SLOT(generateSifSlot()));
 
   // Edit -> Solver input file...
-  showsifAct = new QAction(QIcon(":/icons/document-properties.png"),
+  showsifAct = new QAction(QIcon::fromTheme("text-x-generic-with-pencil"),
                            tr("&Edit..."), this);
   showsifAct->setShortcut(tr("Ctrl+S"));
   showsifAct->setStatusTip(tr("Edit solver input file"));
@@ -569,19 +588,19 @@ void MainWindow::createActions() {
 
   // Mesh -> Control
   meshcontrolAct =
-      new QAction(QIcon(":/icons/configure.png"), tr("&Configure..."), this);
+      new QAction(QIcon::fromTheme("configure"), tr("&Configure..."), this);
   meshcontrolAct->setShortcut(tr("Ctrl+C"));
   meshcontrolAct->setStatusTip(tr("Configure mesh generators"));
   connect(meshcontrolAct, SIGNAL(triggered()), this, SLOT(meshcontrolSlot()));
 
   // Mesh -> Remesh
-  remeshAct = new QAction(QIcon(":/icons/edit-redo.png"), tr("&Remesh"), this);
+  remeshAct = new QAction(QIcon::fromTheme("edit-redo"), tr("&Remesh"), this);
   remeshAct->setShortcut(tr("Ctrl+R"));
   remeshAct->setStatusTip(tr("Remesh"));
   connect(remeshAct, SIGNAL(triggered()), this, SLOT(remeshSlot()));
 
   // Mesh -> Kill generator
-  stopMeshingAct = new QAction(QIcon(":/icons/window-close.png"),
+  stopMeshingAct = new QAction(QIcon::fromTheme("dialog-error-round"),
                                tr("&Terminate meshing"), this);
   stopMeshingAct->setStatusTip(tr("Terminate mesh generator"));
   connect(stopMeshingAct, SIGNAL(triggered()), this, SLOT(stopMeshingSlot()));
@@ -613,14 +632,14 @@ void MainWindow::createActions() {
   connect(edgeUnifyAct, SIGNAL(triggered()), this, SLOT(edgeUnifySlot()));
 
   // Mesh -> Clean up
-  cleanHangingSharpEdgesAct = new QAction(QIcon(""), tr("Clean up"), this);
+  cleanHangingSharpEdgesAct = new QAction(QIcon::fromTheme("edit-clear"), tr("Clean up"), this);
   cleanHangingSharpEdgesAct->setStatusTip(
       tr("Removes hanging/orphan sharp edges (for visualization)"));
   connect(cleanHangingSharpEdgesAct, SIGNAL(triggered()), this,
           SLOT(cleanHangingSharpEdgesSlot()));
 
   // View -> Full screen
-  viewFullScreenAct = new QAction(QIcon(), tr("Full screen"), this);
+  viewFullScreenAct = new QAction(QIcon::fromTheme("view-fullscreen"), tr("Full screen"), this);
   viewFullScreenAct->setShortcut(tr("Ctrl+L"));
   viewFullScreenAct->setStatusTip(tr("Full screen mode"));
   connect(viewFullScreenAct, SIGNAL(triggered()), this,
@@ -716,7 +735,7 @@ void MainWindow::createActions() {
           SLOT(showNodeNumbersSlot()));
   showNodeNumbersAct->setCheckable(true);
 
-  // View -> Show boundray index
+  // View -> Show boundary index
   showBoundaryIndexAct = new QAction(QIcon(), tr("Boundary index"), this);
   showBoundaryIndexAct->setStatusTip(tr("Show boundary index"));
   connect(showBoundaryIndexAct, SIGNAL(triggered()), this,
@@ -855,7 +874,7 @@ void MainWindow::createActions() {
 
   // Solver -> Kill solver
   killsolverAct =
-      new QAction(QIcon(":/icons/window-close.png"), tr("Kill solver"), this);
+      new QAction(QIcon::fromTheme("dialog-error-round"), tr("Kill solver"), this);
   killsolverAct->setStatusTip(tr("Kill ElmerSolver"));
   connect(killsolverAct, SIGNAL(triggered()), this, SLOT(killsolverSlot()));
   killsolverAct->setEnabled(false);
@@ -874,14 +893,14 @@ void MainWindow::createActions() {
   connect(resultsAct, SIGNAL(triggered()), this, SLOT(resultsSlot()));
 
   // Solver -> Kill post process
-  killresultsAct = new QAction(QIcon(":/icons/window-close.png"),
+  killresultsAct = new QAction(QIcon::fromTheme("dialog-error-round"),
                                tr("Kill ElmerPost"), this);
   killresultsAct->setStatusTip(tr("Kill ElmerPost"));
   connect(killresultsAct, SIGNAL(triggered()), this, SLOT(killresultsSlot()));
   killresultsAct->setEnabled(false);
 
   // Solver -> Show Vtk postprocessor
-  showVtkPostAct = new QAction(QIcon(), tr("Start ElmerVTK"), this);
+  showVtkPostAct = new QAction(QIcon(":/icons/Mesh3D.png"), tr("Start ElmerVTK"), this);
   showVtkPostAct->setStatusTip(tr("Invokes VTK based ElmerGUI postprocessor"));
   connect(showVtkPostAct, SIGNAL(triggered()), this, SLOT(showVtkPostSlot()));
 
@@ -899,12 +918,17 @@ void MainWindow::createActions() {
           SLOT(compileSolverSlot()));
 
   // Help -> About
-  aboutAct = new QAction(QIcon(":/icons/help-about.png"), tr("About..."), this);
+  aboutAct = new QAction(QIcon::fromTheme("emblem-notice"), tr("About..."), this);
   aboutAct->setStatusTip(tr("Information about the program"));
   connect(aboutAct, SIGNAL(triggered()), this, SLOT(showaboutSlot()));
 
+  // Help -> Get started
+  getStartedAct = new QAction(QIcon(""), tr("Get started..."), this);
+  getStartedAct->setStatusTip(tr("Information to get started"));
+  connect(getStartedAct, SIGNAL(triggered()), this, SLOT(getStartedSlot()));
+  
   generateAndSaveAndRunAct =
-      new QAction(QIcon(":/icons/arrow-right-double.png"),
+      new QAction(QIcon::fromTheme("doubletriangle-right"),
                   tr("&Generate, save and run"), this);
   generateAndSaveAndRunAct->setStatusTip(
       tr("Generate and save sif, save project, then run solver"));
@@ -1118,6 +1142,7 @@ void MainWindow::createMenus() {
 
   // Help menu
   helpMenu = menuBar()->addMenu(tr("&Help"));
+  helpMenu->addAction(getStartedAct);  
   helpMenu->addAction(aboutAct);
 
   // Sys tray menu:
@@ -1339,11 +1364,7 @@ void MainWindow::newProjectSlot() {
 #endif
 
 #ifdef EG_VTK
-    settings_setValue("vtkPost/geometry", vtkPost->saveGeometry());
-    delete vtkPost;
-    vtkPost = new VtkPost(this);
-    vtkPostMeshUnifierRunning = false;
-    vtkPost->restoreGeometry(settings_value("vtkPost/geometry").toByteArray());
+    vtkPost->hideAll();    
 #endif
 
 #ifdef EG_OCC
@@ -1405,7 +1426,7 @@ void MainWindow::newProjectSlot() {
     for (int i = 0; i < dlg.ui.listWidget_selectedSolvers->count(); i++) {
       message = "Load " + extraDirPath + "/" +
                 dlg.ui.listWidget_selectedSolvers->item(i)->text() + "... ";
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
       cout << string(message.toLatin1());
       cout.flush();
 #else
@@ -1436,7 +1457,7 @@ void MainWindow::parseCmdLine() {
     QFileInfo fileInfo(fileName);
 
     if (!fileInfo.exists()) {
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
       cout << "Input file \"" << fileName.toLatin1().data()
            << "\" does not exist" << endl;
 #else
@@ -1448,7 +1469,7 @@ void MainWindow::parseCmdLine() {
     }
 
     if (fileName.left(1) != "-") {
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
       cout << "Reading input file " << fileName.toLatin1().data() << endl;
 #else
       cout << "Reading input file " << fileName.toAscii().data() << endl;
@@ -1518,7 +1539,7 @@ void MainWindow::readInputFile(QString fileName) {
   QString baseName = fi.baseName();
   QString fileSuffix = fi.suffix();
   QString baseFileName = absolutePath + "/" + baseName;
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
   sprintf(cs, "%s", baseFileName.toLatin1().data());
 #else
   sprintf(cs, "%s", baseFileName.toAscii().data());
@@ -1637,7 +1658,7 @@ void MainWindow::readInputFile(QString fileName) {
     activeGenerator = GEN_ELMERGRID;
     cout << "Selected elmergrid" << endl;
 
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
     int errstat = elmergridAPI->loadElmerMeshStructure(
         (const char *)(fileName.toLatin1()));
 #else
@@ -1762,7 +1783,7 @@ void MainWindow::loadElmerMesh(QString dirName) {
 
   glWidget->newMesh();
 
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
   bool success = glWidget->getMesh()->load(dirName.toLatin1().data());
 #else
   bool success = glWidget->getMesh()->load(dirName.toAscii().data());
@@ -2598,6 +2619,10 @@ void MainWindow::loadProject(QString projectDirName) {
 
   progressBar->hide();
   progressLabel->hide();
+
+#ifdef EG_VTK
+  vtkPost->hideAll();
+#endif
 }
 
 // Helper function for load project
@@ -2637,9 +2662,9 @@ void MainWindow::loadProjectContents(QDomElement projectElement,
     de->setupTabs(elmerDefs, Mname, index);
     de->nameEdit->setText(itemName);
     de->applyButton->setText("Update");
-    de->applyButton->setIcon(QIcon(":/icons/dialog-ok-apply.png"));
+    de->applyButton->setIcon(QIcon::fromTheme("view-refresh"));
     de->discardButton->setText("Remove");
-    de->discardButton->setIcon(QIcon(":/icons/list-remove.png"));
+    de->discardButton->setIcon(QIcon::fromTheme("list-remove"));
 
     const QString &tmpName = itemName;
     QAction *act = new QAction(tmpName, this);
@@ -2649,7 +2674,8 @@ void MainWindow::loadProjectContents(QDomElement projectElement,
               SLOT(pdeEditorFinishedSlot(int, int)));
       de->spareButton->setText("Edit Solver Settings");
       de->spareButton->show();
-      de->spareButton->setIcon(QIcon(":/icons/tools-wizard.png"));
+      de->spareButton->setIcon(QIcon::fromTheme("preferences-system"));
+      de->spareButton->setWhatsThis(tr("Open solver setting window"));
       connect(de, SIGNAL(dynamicEditorSpareButtonClicked(int, int)), this,
               SLOT(editNumericalMethods(int, int)));
       equationMenu->addAction(act);
@@ -2660,7 +2686,8 @@ void MainWindow::loadProjectContents(QDomElement projectElement,
               SLOT(matEditorFinishedSlot(int, int)));
       de->spareButton->setText("Material library");
       de->spareButton->show();
-      de->spareButton->setIcon(QIcon(":/icons/tools-wizard.png"));
+      de->spareButton->setIcon(QIcon::fromTheme("book-cover-A-Z"));
+      de->spareButton->setWhatsThis(tr("Open material library"));
       connect(de, SIGNAL(dynamicEditorSpareButtonClicked(int, int)), this,
               SLOT(showMaterialLibrary(int, int)));
       materialMenu->addAction(act);
@@ -2719,7 +2746,7 @@ void MainWindow::saveElmerMesh(QString dirName) {
 
   // Save mesh files:
   //------------------
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
   glWidget->getMesh()->save(dirName.toLatin1().data());
 #else
   glWidget->getMesh()->save(dirName.toAscii().data());
@@ -2745,7 +2772,9 @@ void MainWindow::saveElmerMesh(QString dirName) {
   file.open(QIODevice::WriteOnly);
   QTextStream startinfo(&file);
 
-#if WITH_QT5
+#if WITH_QT6
+  startinfo << sifName.toLatin1() << Qt::endl << "1" << Qt::endl;
+#elif WITH_QT5
   startinfo << sifName.toLatin1() << endl << "1" << endl;
 #else
   startinfo << sifName.toAscii() << endl << "1" << endl;
@@ -2782,7 +2811,11 @@ void MainWindow::savePictureSlot() {
 
   grabTimeLine->stop();
   grabTimeLine->setDuration(delay);
+#if WITH_QT6
+  grabTimeLine->setEasingCurve(QEasingCurve(QEasingCurve::Linear));  
+#else
   grabTimeLine->setCurveShape(QTimeLine::LinearCurve);
+#endif
   grabTimeLine->setDirection(QTimeLine::Backward);
   grabTimeLine->setFrameRange(0, 10);
   progressLabel->setText("Delay screen shot");
@@ -2812,9 +2845,13 @@ void MainWindow::grabFrameSlot() {
   glWidget->updateGL();
   glReadBuffer(GL_BACK);
 
+#if WITH_QT6
+  QImage image(glWidget->grabFramebuffer());
+#else
   QImage image(glWidget->grabFrameBuffer(withAlpha));
+#endif
 
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
   bool success(image.save(pictureFileName, suffix.toLatin1(), imageQuality));
 #else
   bool success(image.save(pictureFileName, suffix.toAscii(), imageQuality));
@@ -2998,9 +3035,9 @@ void MainWindow::addEquationSlot() {
   pe->setupTabs(elmerDefs, "Equation", current);
 
   pe->applyButton->setText("Add");
-  pe->applyButton->setIcon(QIcon(":/icons/list-add.png"));
+  pe->applyButton->setIcon(QIcon::fromTheme("list-add"));
   pe->discardButton->setText("Cancel");
-  pe->discardButton->setIcon(QIcon(":/icons/dialog-close.png"));
+  pe->discardButton->setIcon(QIcon::fromTheme("dialog-error-round"));
   pe->show();
 
   connect(pe, SIGNAL(dynamicEditorReady(int, int)), this,
@@ -3009,7 +3046,8 @@ void MainWindow::addEquationSlot() {
   // Use "spareButton" to invoke solver parameter editor:
   pe->spareButton->setText("Edit Solver Settings");
   pe->spareButton->show();
-  pe->spareButton->setIcon(QIcon(":/icons/tools-wizard.png"));
+  pe->spareButton->setIcon(QIcon::fromTheme("preferences-system"));
+  pe->spareButton->setWhatsThis(tr("Open solver setting window"));
   connect(pe, SIGNAL(dynamicEditorSpareButtonClicked(int, int)), this,
           SLOT(editNumericalMethods(int, int)));
 
@@ -3163,9 +3201,9 @@ void MainWindow::equationSelectedSlot(QAction *act) {
     DynamicEditor *pe = equationEditor[i];
     if (pe->menuAction == act) {
       pe->applyButton->setText("Update");
-      pe->applyButton->setIcon(QIcon(":/icons/dialog-ok-apply.png"));
+      pe->applyButton->setIcon(QIcon::fromTheme("view-refresh"));
       pe->discardButton->setText("Remove");
-      pe->discardButton->setIcon(QIcon(":/icons/list-remove.png"));
+      pe->discardButton->setIcon(QIcon::fromTheme("list-remove"));
       createBodyCheckBoxes(BODY_EQUATION, pe);
       pe->show();
       pe->raise();
@@ -3205,9 +3243,9 @@ void MainWindow::addMaterialSlot() {
 
   pe->setupTabs(elmerDefs, "Material", current);
   pe->applyButton->setText("Add");
-  pe->applyButton->setIcon(QIcon(":/icons/list-add.png"));
+  pe->applyButton->setIcon(QIcon::fromTheme("list-add"));
   pe->discardButton->setText("Cancel");
-  pe->discardButton->setIcon(QIcon(":/icons/dialog-close.png"));
+  pe->discardButton->setIcon(QIcon::fromTheme("dialog-error-round"));
 
   connect(pe, SIGNAL(dynamicEditorReady(int, int)), this,
           SLOT(matEditorFinishedSlot(int, int)));
@@ -3215,7 +3253,8 @@ void MainWindow::addMaterialSlot() {
   // Use "spareButton" to invoke material library:
   pe->spareButton->setText("Material library");
   pe->spareButton->show();
-  pe->spareButton->setIcon(QIcon(":/icons/tools-wizard.png"));
+  pe->spareButton->setIcon(QIcon::fromTheme("book-cover-A-Z"));
+  pe->spareButton->setWhatsThis(tr("Open material library"));
   connect(pe, SIGNAL(dynamicEditorSpareButtonClicked(int, int)), this,
           SLOT(showMaterialLibrary(int, int)));
 
@@ -3310,9 +3349,9 @@ void MainWindow::materialSelectedSlot(QAction *act) {
 
     if (pe->menuAction == act) {
       pe->applyButton->setText("Update");
-      pe->applyButton->setIcon(QIcon(":/icons/dialog-ok-apply.png"));
+      pe->applyButton->setIcon(QIcon::fromTheme("view-refresh"));
       pe->discardButton->setText("Remove");
-      pe->discardButton->setIcon(QIcon(":/icons/list-remove.png"));
+      pe->discardButton->setIcon(QIcon::fromTheme("list-remove"));
       createBodyCheckBoxes(BODY_MATERIAL, pe);
       pe->show();
       pe->raise();
@@ -3354,9 +3393,9 @@ void MainWindow::addBodyForceSlot() {
   pe->setupTabs(elmerDefs, "BodyForce", current);
 
   pe->applyButton->setText("Add");
-  pe->applyButton->setIcon(QIcon(":/icons/list-add.png"));
+  pe->applyButton->setIcon(QIcon::fromTheme("list-add"));
   pe->discardButton->setText("Cancel");
-  pe->discardButton->setIcon(QIcon(":/icons/dialog-close.png"));
+  pe->discardButton->setIcon(QIcon::fromTheme("dialog-error-round"));
 
   connect(pe, SIGNAL(dynamicEditorReady(int, int)), this,
           SLOT(bodyForceEditorFinishedSlot(int, int)));
@@ -3440,9 +3479,9 @@ void MainWindow::bodyForceSelectedSlot(QAction *act) {
     DynamicEditor *pe = bodyForceEditor[i];
     if (pe->menuAction == act) {
       pe->applyButton->setText("Update");
-      pe->applyButton->setIcon(QIcon(":/icons/dialog-ok-apply.png"));
+      pe->applyButton->setIcon(QIcon::fromTheme("view-refresh"));
       pe->discardButton->setText("Remove");
-      pe->discardButton->setIcon(QIcon(":/icons/list-remove.png"));
+      pe->discardButton->setIcon(QIcon::fromTheme("list-remove"));
       createBodyCheckBoxes(BODY_FORCE, pe);
       pe->show();
       pe->raise();
@@ -3485,9 +3524,9 @@ void MainWindow::addInitialConditionSlot() {
   pe->setupTabs(elmerDefs, "InitialCondition", current);
 
   pe->applyButton->setText("Add");
-  pe->applyButton->setIcon(QIcon(":/icons/list-add.png"));
+  pe->applyButton->setIcon(QIcon::fromTheme("list-add"));
   pe->discardButton->setText("Cancel");
-  pe->discardButton->setIcon(QIcon(":/icons/dialog-close.png"));
+  pe->discardButton->setIcon(QIcon::fromTheme("dialog-error-round"));
 
   connect(pe, SIGNAL(dynamicEditorReady(int, int)), this,
           SLOT(initialConditionEditorFinishedSlot(int, int)));
@@ -3571,9 +3610,9 @@ void MainWindow::initialConditionSelectedSlot(QAction *act) {
     DynamicEditor *pe = initialConditionEditor[i];
     if (pe->menuAction == act) {
       pe->applyButton->setText("Update");
-      pe->applyButton->setIcon(QIcon(":/icons/dialog-ok-apply.png"));
+      pe->applyButton->setIcon(QIcon::fromTheme("view-refresh"));
       pe->discardButton->setText("Remove");
-      pe->discardButton->setIcon(QIcon(":/icons/list-remove.png"));
+      pe->discardButton->setIcon(QIcon::fromTheme("list-remove"));
       createBodyCheckBoxes(BODY_INITIAL, pe);
       pe->show();
       pe->raise();
@@ -3695,9 +3734,9 @@ void MainWindow::addBoundaryConditionSlot() {
   pe->setupTabs(elmerDefs, "BoundaryCondition", current);
 
   pe->applyButton->setText("Add");
-  pe->applyButton->setIcon(QIcon(":/icons/list-add.png"));
+  pe->applyButton->setIcon(QIcon::fromTheme("list-add"));
   pe->discardButton->setText("Cancel");
-  pe->discardButton->setIcon(QIcon(":/icons/dialog-close.png"));
+  pe->discardButton->setIcon(QIcon::fromTheme("dialog-error-round"));
   pe->show();
 
   connect(pe, SIGNAL(dynamicEditorReady(int, int)), this,
@@ -3783,9 +3822,9 @@ void MainWindow::boundaryConditionSelectedSlot(QAction *act) {
     DynamicEditor *pe = boundaryConditionEditor[i];
     if (pe->menuAction == act) {
       pe->applyButton->setText("Update");
-      pe->applyButton->setIcon(QIcon(":/icons/dialog-ok-apply.png"));
+      pe->applyButton->setIcon(QIcon::fromTheme("view-refresh"));
       pe->discardButton->setText("Remove");
-      pe->discardButton->setIcon(QIcon(":/icons/list-remove.png"));
+      pe->discardButton->setIcon(QIcon::fromTheme("list-remove"));
       createBoundaryCheckBoxes(pe);
       pe->show();
       pe->raise();
@@ -3903,7 +3942,7 @@ void MainWindow::modelSummarySlot() {
   delete[] elementtypes;
 
   te->append("BOUNDING BOX");
-  QString coordnames = "XYZ";
+  QString coordnames[3] = {"X","Y","Z"};
   for (int j = 0; j < 3; j++) {
     double mincoord, maxcoord, coord;
     mincoord = maxcoord = mesh->getNode(0)->getX(j);
@@ -4928,7 +4967,13 @@ void MainWindow::colorizeBodySlot() {
 //-----------------------------------------------------------------------------
 void MainWindow::backgroundColorSlot() {
   QColor newColor = QColorDialog::getColor(glWidget->backgroundColor, this);
+  if(!newColor.isValid()) return;
+
+#if WITH_QT6
+  glClearColor(newColor.redF(), newColor.greenF(), newColor.redF(), newColor.alphaF());
+#else
   glWidget->qglClearColor(newColor);
+#endif
   glWidget->backgroundColor = newColor;
 }
 
@@ -4941,6 +4986,7 @@ void MainWindow::surfaceColorSlot() {
   }
 
   QColor newColor = QColorDialog::getColor(glWidget->surfaceColor, this);
+  if(!newColor.isValid()) return;
   glWidget->surfaceColor = newColor;
   glWidget->rebuildLists();
 }
@@ -4954,6 +5000,7 @@ void MainWindow::edgeColorSlot() {
   }
 
   QColor newColor = QColorDialog::getColor(glWidget->edgeColor, this);
+  if(!newColor.isValid()) return;
   glWidget->edgeColor = newColor;
   glWidget->rebuildLists();
 }
@@ -4967,6 +5014,7 @@ void MainWindow::surfaceMeshColorSlot() {
   }
 
   QColor newColor = QColorDialog::getColor(glWidget->surfaceMeshColor, this);
+  if(!newColor.isValid()) return;
   glWidget->surfaceMeshColor = newColor;
   glWidget->rebuildLists();
 }
@@ -4980,6 +5028,7 @@ void MainWindow::sharpEdgeColorSlot() {
   }
 
   QColor newColor = QColorDialog::getColor(glWidget->sharpEdgeColor, this);
+  if(!newColor.isValid()) return;
   glWidget->sharpEdgeColor = newColor;
   glWidget->rebuildLists();
 }
@@ -4993,6 +5042,7 @@ void MainWindow::selectionColorSlot() {
   }
 
   QColor newColor = QColorDialog::getColor(glWidget->selectionColor, this);
+  if(!newColor.isValid()) return;
   glWidget->selectionColor = newColor;
   glWidget->rebuildLists();
 }
@@ -5013,6 +5063,12 @@ void MainWindow::showTwodViewSlot() { twodView->show(); }
 //-----------------------------------------------------------------------------
 void MainWindow::showVtkPostSlot() {
 #ifdef EG_VTK
+
+  if (glWidget->getMesh() == NULL) {
+    vtkPost->show();
+	return;
+  }
+  
   QString postFileName =
       saveDirName + "/" + generalSetup->ui.postFileEdit->text().trimmed();
   // Parallel solution:
@@ -5206,7 +5262,7 @@ void MainWindow::remeshSlot() {
     glWidget->newMesh();
     mesh_t *mesh = glWidget->getMesh();
 
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
     elmergridAPI->createElmerMeshStructure(
         mesh, meshControl->elmerGridControlString.toLatin1());
 #else
@@ -5275,7 +5331,7 @@ void MainWindow::remeshSlot() {
     nglib::Ng_Init();
 
     char backgroundmesh[1024];
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
     sprintf(backgroundmesh, "%s",
             meshControl->nglibBackgroundmesh.toLatin1().data());
 #else
@@ -5302,7 +5358,7 @@ void MainWindow::remeshSlot() {
 
         // STL: regenerate structures for nglib:
         //--------------------------------------
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
         nggeom = nglib::Ng_STL_LoadGeometry(stlFileName.toLatin1().data(), 0);
 #else
         nggeom = nglib::Ng_STL_LoadGeometry(stlFileName.toAscii().data(), 0);
@@ -5353,7 +5409,7 @@ void MainWindow::remeshSlot() {
 
         ngmesh = nglib::Ng_NewMesh();
 
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
         nggeom2d = nglib::Ng_LoadGeometry_2D(in2dFileName.toLatin1().data());
 #else
         nggeom2d = nglib::Ng_LoadGeometry_2D(in2dFileName.toAscii().data());
@@ -6058,7 +6114,7 @@ void MainWindow::generateSifSlot() {
 
 // Boundary selected by double clicking (signaled by glWidget::select):
 //-----------------------------------------------------------------------------
-void MainWindow::boundarySelectedSlot(list_t *l) {
+void MainWindow::boundarySelectedSlot(list_t *l, Qt::KeyboardModifiers modifiers) {
   QString qs;
 
   if (l->getIndex() < 0) {
@@ -6090,10 +6146,7 @@ void MainWindow::boundarySelectedSlot(list_t *l) {
 
   // Open bc property sheet for selected boundary:
   //-----------------------------------------------
-  if (l->isSelected() && (glWidget->altPressed || bcEditActive)) {
-    glWidget->ctrlPressed = false;
-    glWidget->shiftPressed = false;
-    glWidget->altPressed = false;
+  if (l->isSelected() && ((modifiers & Qt::AltModifier) || bcEditActive)) {
 
     if (l->getNature() != PDE_BOUNDARY) {
       /*Ignore when double clicking a body of 2D geometry under boundary
@@ -6122,16 +6175,16 @@ void MainWindow::boundarySelectedSlot(list_t *l) {
       // boundaryEdit->ui.discardButton->setText("Remove");
       boundaryEdit->ui.discardButton->setText("Cancel");
       boundaryEdit->ui.applyButton->setIcon(
-          QIcon(":/icons/dialog-ok-apply.png"));
-      // boundaryEdit->ui.discardButton->setIcon(QIcon(":/icons/list-remove.png"));
+          QIcon::fromTheme("view-refresh"));
+      // boundaryEdit->ui.discardButton->setIcon(QIcon::fromTheme("list-remove"));
       boundaryEdit->ui.discardButton->setIcon(
-          QIcon(":/icons/dialog-close.png"));
+          QIcon::fromTheme("dialog-error-round"));
     } else {
       boundaryEdit->ui.applyButton->setText("Add");
       boundaryEdit->ui.discardButton->setText("Cancel");
-      boundaryEdit->ui.applyButton->setIcon(QIcon(":/icons/list-add.png"));
+      boundaryEdit->ui.applyButton->setIcon(QIcon::fromTheme("list-add"));
       boundaryEdit->ui.discardButton->setIcon(
-          QIcon(":/icons/dialog-close.png"));
+          QIcon::fromTheme("dialog-error-round"));
     }
 
     boundaryEdit->setWindowTitle("Properties for boundary " +
@@ -6145,7 +6198,7 @@ void MainWindow::boundarySelectedSlot(list_t *l) {
 
   // boundary as a body treatment
   // ----------------------------
-  if (l->isSelected() && glWidget->ctrlPressed) {
+  if (l->isSelected() && (modifiers & Qt::ControlModifier)) {
 
     // renumbering:
     int n = glWidget->boundaryMap.value(l->getIndex());
@@ -6165,9 +6218,6 @@ void MainWindow::boundarySelectedSlot(list_t *l) {
     bodyEdit = boundaryEdit->bodyProperties;
 
     if (bodyEdit) {
-      glWidget->ctrlPressed = false;
-      glWidget->shiftPressed = false;
-      glWidget->altPressed = false;
 
       bodyEdit->setWindowTitle("Properties for body " +
                                QString::number(current));
@@ -6183,11 +6233,7 @@ void MainWindow::boundarySelectedSlot(list_t *l) {
   // Open body property sheet for selected body:
   //---------------------------------------------
   if ((glWidget->currentlySelectedBody >= 0) &&
-      (glWidget->shiftPressed || bodyEditActive)) {
-
-    glWidget->ctrlPressed = false;
-    glWidget->shiftPressed = false;
-    glWidget->altPressed = false;
+      ( (modifiers & Qt::ShiftModifier) || bodyEditActive)) {
 
     current = glWidget->currentlySelectedBody;
 
@@ -6220,14 +6266,14 @@ void MainWindow::boundarySelectedSlot(list_t *l) {
       bodyEdit->ui.applyButton->setText("Update");
       // bodyEdit->ui.discardButton->setText("Remove");
       bodyEdit->ui.discardButton->setText("Cancel");
-      bodyEdit->ui.applyButton->setIcon(QIcon(":/icons/dialog-ok-apply.png"));
-      // bodyEdit->ui.discardButton->setIcon(QIcon(":/icons/list-remove.png"));
-      bodyEdit->ui.discardButton->setIcon(QIcon(":/icons/dialog-close.png"));
+      bodyEdit->ui.applyButton->setIcon(QIcon::fromTheme("view-refresh"));
+      // bodyEdit->ui.discardButton->setIcon(QIcon::fromTheme("list-remove"));
+      bodyEdit->ui.discardButton->setIcon(QIcon::fromTheme("dialog-error-round"));
     } else {
       bodyEdit->ui.applyButton->setText("Add");
       bodyEdit->ui.discardButton->setText("Cancel");
-      bodyEdit->ui.applyButton->setIcon(QIcon(":/icons/list-add.png"));
-      bodyEdit->ui.discardButton->setIcon(QIcon(":/icons/dialog-close.png"));
+      bodyEdit->ui.applyButton->setIcon(QIcon::fromTheme("list-add"));
+      bodyEdit->ui.discardButton->setIcon(QIcon::fromTheme("dialog-error-round"));
     }
 
     bodyEdit->show();
@@ -6681,7 +6727,7 @@ void MainWindow::meshUnifierFinishedSlot(int exitCode) {
 
   logMessage("MeshUnifier ready");
 
-  // Prepare for post processing parallel reults:
+  // Prepare for post processing parallel results:
   //----------------------------------------------
   QString postName = generalSetup->ui.postFileEdit->text().trimmed();
 
@@ -7212,30 +7258,35 @@ void MainWindow::showaboutSlot() {
          "three dimensional modeling with Elmer "
          "finite element software. The program "
          "uses elmergrid, nglib, and optionally tetlib, "
-         "as finite element mesh generators:</P>"
+         "as finite element mesh generators:<BR>"
          "<A HREF='https://www.csc.fi/elmer/'>https://www.csc.fi/elmer/</A><BR>"
          "<A HREF='https://ngsolve.org/'>https://ngsolve.org/</A><BR>"
-         "<A HREF='https://www.berlios.de/software/tetgen/'>https://www.berlios.de/software/tetgen/</A>"
+         "<A HREF='https://www.berlios.de/software/tetgen/'>https://www.berlios.de/software/tetgen/</A></P>"
          "<P>ElmerGUI uses the Qt Cross-Platform "
-         "Application Framework by The Qt Company:</P>"
-         "<A HREF='https://www.qt.io/'>https://www.qt.io/</A>"
+         "Application Framework by The Qt Company:<BR>"
+         "<A HREF='https://www.qt.io/'>https://www.qt.io/</A></P>"
 #ifdef EG_VTK
          "<P>This version of ElmerGUI contains a built-in "
          "postprocessor based on the Visualization Toolkit "
-         "(VTK):</P>"
-         "<A HREF='https://vtk.org/'>https://vtk.org/</A>"
+         "(VTK):<BR>"
+         "<A HREF='https://vtk.org/'>https://vtk.org/</A></P>"
 #endif
 
 #ifdef EG_PARAVIEW
          "<P>This version of ElmerGUI has been linked "
-         "against ParaView visualization software.</P>"
-         "<A HREF='https://www.paraview.org/'>https://www.paraview.org</A>"
+         "against ParaView visualization software.<BR>"
+         "<A HREF='https://www.paraview.org/'>https://www.paraview.org</A></P>"
 #endif
 
 #ifdef EG_OCC
          "<P>This version of ElmerGUI has been compiled with "
-         "the OpenCascade solids modeling library:</P>"
-         "<A HREF='https://www.opencascade.org/'>https://www.opencascade.org/</A>"
+         "the OpenCascade solids modeling library:<BR>"
+         "<A HREF='https://www.opencascade.org/'>https://www.opencascade.org/</P>"
+#endif
+
+#ifdef EG_QWT
+         "<P>This version of ElmerGUI is based in part on the work of the Qwt project.<BR>"
+         "<A HREF='http://qwt.sf.net'>http://qwt.sf.net</A></P>"
 #endif
 
 #ifdef MPICH2
@@ -7244,19 +7295,70 @@ void MainWindow::showaboutSlot() {
          "national laboratory. In order to use the parallel "
          "solver, the MPICH2 runtime environment should be "
          "installed and configured on your system. For more "
-         "details, see:<P>"
-         "<A HREF='https://www.mpich.org/'>https://www.mpich.org/</A>"
+         "details, see:<BR>"
+         "<A HREF='https://www.mpich.org/'>https://www.mpich.org/</A></P>"
 #endif
   ));
   msgBox.setInformativeText(
       tr("<P>The GPL-licensed source code of ElmerGUI is available "
-         "from the git repository</P>"
-         "<A HREF='https://github.com/ElmerCSC/elmerfem/'>https://github.com/ElmerCSC/elmerfem/</A>"
-         "<P>Written by Mikko Lyly, Juha Ruokolainen, Saeki Takayuki, "
-         "Peter Raback and Sampo Sillanpaa 2008-2020</P>"));
+         "from the git repository<BR>"
+         "<A HREF='https://github.com/ElmerCSC/elmerfem/'>https://github.com/ElmerCSC/elmerfem/</A></P>"
+         "<P>Written by Mikko Lyly, Saeki Takayuki, Juha Ruokolainen, "
+         "Peter Råback and Sampo Sillanpaa 2008-2023</P>"
+         "<P>Compiled on " __DATE__ "</P>"));
   msgBox.exec();
 }
 
+void MainWindow::getStartedSlot() {
+  QMessageBox msgBox(this);
+  msgBox.setTextFormat(Qt::RichText);
+  QIcon icon(windowIcon());
+  msgBox.setIconPixmap( icon.pixmap(32));
+  msgBox.setWindowTitle(tr("Get started with Elmer"));
+  msgBox.setText(tr(
+	"<P>"
+	"GetStartedElmer.pdf contains instructions for Windows users, "
+	"along with useful information for Linux users."
+	"</P>"
+	"<A HREF='//www.nic.funet.fi/index/elmer/doc/GetStartedElmer.pdf'>GetStartedElmer.pdf</A>"
+	"<P>"
+	"Download the full set of Elmer documentation from:"
+	"</P>"
+	"<A HREF='//www.nic.funet.fi/index/elmer/doc/'>//www.nic.funet.fi/index/elmer/doc/</A>"
+	"<P>"
+	"Be sure to review ElmerSolverManual.pdf and ElmerModelsManual.pdf<BR><BR>"
+	"Youtube has videos about Elmer and Elmer Webinars"
+	"</P>"
+	"<A HREF='//www.youtube.com/@elmerfem'>Elmer Youtube Webinars and videos</A>"
+	"<P>"
+	"The Elmer users forum can be found at:"
+	"</P>"
+	"<A HREF='//http://www.elmerfem.org/forum/'>//http://www.elmerfem.org/forum/</A>"
+	"<P>"
+	"After having reviewed some of the above documents, and "
+	"trying out a few of the tutorials, feel free to post questions on "
+	"the forum.  To help get answers in a timely fashion, be sure to "
+	"post a minimal working example, including a sif file and "
+	"geometry file.  ElmerGUI project folders can be archived into zip "
+	"files or gz files.  The forum allows up to 3 attachments per "
+	"post and up to 1 Megabyte per post.<BR><BR>"
+	"Context Sensitive Help<BR><BR>"
+	"Some of the ElmerGUI menu items have context sensitive help text.  "
+	"Look for the button labeled 'Whatis'.  Clicking on the 'Whatis' button "
+	"will turn the cursor into either a red 'not' symbol or a small "
+	"question mark.  Move the cursor around the window and if context "
+	"help text is available for a data entry box, then the cursor will "
+	"change from a red 'not' symbol into the small question mark.  Single "
+	"click the left mouse button inside the data entry box to display the help text.<BR>"
+	"If the 'Whatis' button is not present in a menu window, then Qt also "
+	"offers an alternate method, where after clicking into a data "
+	"entry box, press 'shift F1'.  If help text is available, then it will be displayed."
+	"</P>"
+  ));
+  msgBox.exec();
+}
+ 
+ 
 //*****************************************************************************
 //
 //                           Auxiliary non-menu items
@@ -7266,7 +7368,7 @@ void MainWindow::showaboutSlot() {
 // Log message...
 //-----------------------------------------------------------------------------
 void MainWindow::logMessage(QString message) {
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
   cout << string(message.toLatin1()) << endl;
 #else
   cout << string(message.toAscii()) << endl;
@@ -7396,7 +7498,7 @@ void MainWindow::loadDefinitions() {
 
   // Load general definitions file:
   //--------------------------------
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
   cout << "Load " << string(generalDefs.toLatin1()) << "... ";
 #else
   cout << "Load " << string(generalDefs.toAscii()) << "... ";
@@ -7479,7 +7581,7 @@ void MainWindow::loadDefinitions() {
 
     if ((fileSuffix == "xml") && (fileName != generalDefs)) {
 
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
       cout << "Load " << string(fileName.toLatin1()) << "... ";
 #else
       cout << "Load " << string(fileName.toAscii()) << "... ";
@@ -7765,7 +7867,7 @@ void MainWindow::saveSettings() {
 
   settings_setValue("defaultDir/project", saveDirName);
   
-  // Commented aout as restoring defaultEdfDir is not so useful
+  // Commented out as restoring defaultEdfDir is not so useful
   // settings_setValue("defaultDir/edfEditor", edfEditor->defaultEdfDir());  
 
   // Color settings
@@ -7924,7 +8026,7 @@ bool MainWindow::loadExtraSolver(QString solverName) {
 
                 message =
                     "Load " + extraDirPath + "/" + fileNameList.at(i) + "... ";
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
                 cout << string(message.toLatin1());
                 cout.flush();
 #else
@@ -8022,7 +8124,7 @@ void MainWindow::checkAndLoadExtraSolvers(QFile *file) {
 }
 
 QVariant MainWindow::settings_value(const QString &key,
-                                    const QVariant &defaultValue) const {
+                                    const QVariant &defaultValue) {
   QString oldElmerGuiIniFilePath =
       QCoreApplication::applicationDirPath() + "/ElmerGUI.ini";
   QString elmerGuiIniFilePath = QDir::homePath() + "/.elmergui";

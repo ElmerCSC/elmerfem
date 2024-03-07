@@ -201,8 +201,8 @@ void STDCALLBULL FC_FUNC(solvehypre,SOLVEHYPRE)
    st = realtime_();
 
 
-/*    fprintf(stdout,"HYRPE INT: %d %d  %d %d %d \n", hypre_intpara[0], hypre_intpara[1], hypre_intpara[2], hypre_intpara[3], hypre_intpara[4]);  */
-/*    fprintf(stdout,"HYRPE DP: %d %d %d %d %d \n", hypre_dppara[0], hypre_dppara[1], hypre_dppara[2], hypre_dppara[3], hypre_dppara[4]);  */
+/*    fprintf(stdout,"HYPRE INT: %d %d  %d %d %d \n", hypre_intpara[0], hypre_intpara[1], hypre_intpara[2], hypre_intpara[3], hypre_intpara[4]);  */
+/*    fprintf(stdout,"HYPRE DP: %d %d %d %d %d \n", hypre_dppara[0], hypre_dppara[1], hypre_dppara[2], hypre_dppara[3], hypre_dppara[4]);  */
    /* Choose a solver and solve the system */
    /* NB.: hypremethod = 0 ... BiCGStab + ILUn
                          1 ... BiCGStab + ParaSails
@@ -332,7 +332,7 @@ void STDCALLBULL FC_FUNC(solvehypre,SOLVEHYPRE)
       HYPRE_BoomerAMGSetPrintLevel(solver, 3);  
       HYPRE_BoomerAMGSetRelaxType(solver, hypre_intpara[0]);   /* G-S/Jacobi hybrid relaxation */
       HYPRE_BoomerAMGSetCoarsenType(solver, hypre_intpara[1]);  /* coarsening type */
-      HYPRE_BoomerAMGSetNumSweeps(solver, hypre_intpara[2]);   /* Sweeeps on each level */
+      HYPRE_BoomerAMGSetNumSweeps(solver, hypre_intpara[2]);   /* Sweeps on each level */
       HYPRE_BoomerAMGSetMaxLevels(solver, hypre_intpara[3]); /* levels of coarsening */
       HYPRE_BoomerAMGSetInterpType(solver, hypre_intpara[4]);  /* interpolation type */
       HYPRE_BoomerAMGSetSmoothType(solver, hypre_intpara[5]);  /* smoother type */
@@ -1196,6 +1196,9 @@ void STDCALLBULL FC_FUNC(solvehypreams,SOLVEHYPREAMS)
    MPI_Comm comm=MPI_Comm_f2c(*fcomm);
    
    st  = realtime_();
+  /* which process number am I? */
+   MPI_Comm_rank(comm, &myid);
+
    /* How many rows do I have? */
    local_size = *nrows;
    local_nodes = *nnodes;
@@ -1210,7 +1213,6 @@ void STDCALLBULL FC_FUNC(solvehypreams,SOLVEHYPREAMS)
       }
    }
 
-
    nlower=1000000000;
    nupper=0;
    for( i=0; i<local_nodes; i++ )
@@ -1221,21 +1223,16 @@ void STDCALLBULL FC_FUNC(solvehypreams,SOLVEHYPREAMS)
       }
    }
 
-  /* which process number am I? */
-   MPI_Comm_rank(comm, &myid);
    /* Create the matrix.
       Note that this is a square matrix, so we indicate the row partition
       size twice (since number of rows = number of cols) */
    HYPRE_IJMatrixCreate(comm, ilower, iupper, ilower, iupper, &A);
-   HYPRE_IJMatrixCreate(comm, ilower, iupper, nlower, nupper, &G);
 
    /* Choose a parallel csr format storage (see the User's Manual) */
    HYPRE_IJMatrixSetObjectType(A, HYPRE_PARCSR);
-   HYPRE_IJMatrixSetObjectType(G, HYPRE_PARCSR);
 
    /* Initialize before setting coefficients */
    HYPRE_IJMatrixInitialize(A);
-   HYPRE_IJMatrixInitialize(G);
 
    /* Now go through my local rows and set the matrix entries.
       Note that here we are setting one row at a time, though
@@ -1261,19 +1258,27 @@ void STDCALLBULL FC_FUNC(solvehypreams,SOLVEHYPREAMS)
       }
         free( rcols );
    }
+   /* Assemble after setting the coefficients */
+   HYPRE_IJMatrixAssemble(A);
+   /* Get the parcsr matrix object to use */
+   HYPRE_IJMatrixGetObject(A, (void**) &parcsr_A);
 
+   HYPRE_IJMatrixCreate(comm, ilower, iupper, nlower, nupper, &G);
+   HYPRE_IJMatrixSetObjectType(G, HYPRE_PARCSR);
+   HYPRE_IJMatrixInitialize(G);
    {
       int nnz,irow,i,j,k,*rcols,csize=32;
 
       rcols = (int *)malloc( csize*sizeof(int) );
       for (i = 0; i < local_size; i++)
       {
-         nnz = grows[i+1]-grows[i];
+         if( !owner[i] ) continue;
+         nnz = grows[i+1] - grows[i];
          if ( nnz>csize ) {
            rcols = (int *)realloc( rcols, nnz*sizeof(int) );
            csize = nnz;
          }
-         irow=globaldofs[i];
+         irow = globaldofs[i];
          for( k=0,j=grows[i]; j<grows[i+1]; j++,k++)
          {
            rcols[k] = globalnodes[gcols[j-1]-1];
@@ -1283,12 +1288,7 @@ void STDCALLBULL FC_FUNC(solvehypreams,SOLVEHYPREAMS)
       free( rcols );
    }
 
-   /* Assemble after setting the coefficients */
-   HYPRE_IJMatrixAssemble(A);
    HYPRE_IJMatrixAssemble(G);
-
-   /* Get the parcsr matrix object to use */
-   HYPRE_IJMatrixGetObject(A, (void**) &parcsr_A);
    HYPRE_IJMatrixGetObject(G, (void**) &parcsr_G);
 
    /* Create the rhs and solution */
@@ -1366,8 +1366,8 @@ void STDCALLBULL FC_FUNC(solvehypreams,SOLVEHYPREAMS)
    HYPRE_AMSCreate(&precond); 
    HYPRE_AMSSetMaxIter(precond,1);
    HYPRE_AMSSetDiscreteGradient(precond,parcsr_G);
-// HYPRE_AMSSetCoordinateVectors(precond,par_xx,par_yy,par_zz);
    HYPRE_AMSSetEdgeConstantVectors(precond,par_xx,par_yy,par_zz);
+// HYPRE_AMSSetCoordinateVectors(precond,par_xx,par_yy,par_zz);
 
    HYPRE_AMSSetCycleType(precond, hypre_intpara[6]);// 1-8
    HYPRE_AMSSetSmoothingOptions(precond, hypre_intpara[5], hypre_intpara[2], 1.0, 1.0);

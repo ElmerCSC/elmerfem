@@ -46,27 +46,27 @@ End
 ! 1st test mass matrices
 Solver 1 :: Reference Norm = 169.70370 ! 808
 RUN
-Solver 1 :: Reference Norm = 4.4968636 ! 706
+Solver 1 :: Reference Norm = 4.92997451 ! 706
 RUN
-Solver 1 :: Reference Norm = 4.9997899 ! 605
+Solver 1 :: Reference Norm = 12.4423654 ! 605
 RUN
-Solver 1 :: Reference Norm = 0.21353204 ! 504
+Solver 1 :: Reference Norm = 0.466451900 ! 504
 RUN
 Solver 1 :: Reference Norm = 36.222222 ! 404
 RUN
-Solver 1 :: Reference Norm = 0.77493758 ! 303
+Solver 1 :: Reference Norm = 0.948700613 ! 303
 RUN
 ! Then test the stiffness matrix
 Solver 1 :: Reference Norm = 2203.5556 ! 808
 RUN
-Solver 1 :: Reference Norm = 150.07378 ! 706
+Solver 1 :: Reference Norm = 207.850234 ! 706
 RUN
-Solver 1 :: Reference Norm = 169.72231 ! 605
+Solver 1 :: Reference Norm = 328.938977 ! 605
 RUN
-Solver 1 :: Reference Norm = 24.101762 ! 504
+Solver 1 :: Reference Norm = 52.4925237 ! 504
 RUN
 Solver 1 :: Reference Norm = 338.66667 ! 404
 RUN
-Solver 1 :: Reference Norm = 33.106953 ! 303
+Solver 1 :: Reference Norm = 51.7128198 ! 303
 RUN
 

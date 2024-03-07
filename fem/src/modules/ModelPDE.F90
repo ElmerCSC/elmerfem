@@ -144,14 +144,14 @@ CONTAINS
     Velo = 0._dp
     DO i=1,dim
       Velo(i,1:n)=GetReal(Material,&
-          'convection velocity '//TRIM(I2S(i)),Found)
+          'convection velocity '//I2S(i),Found)
     END DO
 
     ! Numerical integration:
     !-----------------------
     IP = GaussPointsAdapt( Element )
     IF( Element % ElementIndex == 1 ) THEN
-      CALL Info('AdvDiffSolver','Integration points in 1st element: '//TRIM(I2S(IP % n)),Level=8)
+      CALL Info('AdvDiffSolver','Integration points in 1st element: '//I2S(IP % n),Level=8)
     END IF
 
 

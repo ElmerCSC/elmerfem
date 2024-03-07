@@ -59,6 +59,7 @@ Solver 1
   Linear System Preconditioning = "ILU2"
   Linear System Residual Output = 1
   Linear System Precondition Recompute = 1
+  Linear System Preconditioning Damp Coefficient Im = 1.0
 
   Steady State Convergence Tolerance = 1.0e-05
 

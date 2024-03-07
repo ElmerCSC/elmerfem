@@ -170,7 +170,7 @@ void Instructions()
   printf("-scale real[3]       : scale the coordinates with vector real[3]\n");
   printf("-translate real[3]   : translate the nodes with vector real[3]\n");
   printf("-rotate real[3]      : rotate around the main axis with angles real[3]\n");
-  printf("-clone int[3]        : make ideantilcal copies of the mesh\n");
+  printf("-clone int[3]        : make identical copies of the mesh\n");
   printf("-clonesize real[3]   : the size of the mesh to be cloned if larger to the original\n");
   printf("-mirror int[3]       : copy the mesh around the origin in coordinate directions\n");
   printf("-cloneinds           : when performing cloning should cloned entities be given new indexes\n");
@@ -216,7 +216,10 @@ void Instructions()
   printf("-metiskway int       : mesh will be partitioned with Metis using graph Kway routine\n");
   printf("-metisrec int        : mesh will be partitioned with Metis using graph Recursive routine\n");
   printf("-metiscontig         : enforce that the metis partitions are contiguous\n");
+  printf("-metisvol            : minimize total communication volume in Metis\n");
+  printf("-metisminconn        : minimize the maximum connectivity count in Metis\n");
   printf("-metisseed int       : random number generator seed for Metis algorithms\n");
+  printf("-metisncuts int      : number of competing partitions to generate\n");
 #endif
   printf("-partdual            : use the dual graph in partition method (when available)\n");
   printf("-halo                : create halo for the partitioning for DG\n");
@@ -227,7 +230,7 @@ void Instructions()
   printf("-periodic int[3]     : periodic coordinate directions for parallel & conforming meshes\n");
   printf("-partoptim           : apply aggressive optimization to node sharing\n");
   printf("-partnobcoptim       : do not apply optimization to bc ownership sharing\n");
-  printf("-partbw              : minimize the bandwidth of partition-partion couplings\n");
+  printf("-partbw              : minimize the bandwidth of partition-partition couplings\n");
   printf("-parthypre           : number the nodes continuously partitionwise\n");
   printf("-partzbc             : partition connected BCs separately to partitions in Z-direction\n");
   printf("-partrbc             : partition connected BCs separately to partitions in R-direction\n");
@@ -698,7 +701,7 @@ void SetElementDivision(struct GridType *grid,Real relh,int info)
    elements is the desired one. The added element
    is always set to the subcell having the sparsest mesh.
    Also numbers the cells taking into consideration only 
-   materials that have indeces in interval [firstmat,lastmat]. 
+   materials that have indices in interval [firstmat,lastmat].
    */
 {
   int i,j,nx,ny,nxmax = 0,nymax = 0;
@@ -2288,7 +2291,7 @@ static int GetCommand(char *line1,char *line2,FILE *io)
       smallerror("Check your output line length!\n");
     }
   }
-  else { /* rguments are on the next line */
+  else { /* Arguments are on the next line */
   newline2:
     charend = fgets(line2,MAXLINESIZE,io);
     isend = (charend == NULL);
@@ -3356,7 +3359,7 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,int info)
     
     else if(strstr(command,"NUMBERING")) {
       for(i=0;i<MAXLINESIZE;i++) params[i] = toupper(params[i]);
-      if(strstr(params,"HORIZONATAL")) (*grid)[k].numbering = NUMBER_XY;
+      if(strstr(params,"HORIZONTAL")) (*grid)[k].numbering = NUMBER_XY;
       if(strstr(params,"VERTICAL")) (*grid)[k].numbering = NUMBER_YX;
     }
     
@@ -3576,8 +3579,10 @@ void InitParameters(struct ElmergridType *eg)
   eg->elements3d = 0;
   eg->nodes3d = 0;
   eg->metis = 0;
-  eg->metiscontig = FALSE;
-  eg->metisseed = 0;
+  eg->metis_contig = FALSE;
+  eg->metis_volcut = FALSE;
+  eg->metis_seed = 0;
+  eg->metis_ncuts = 1;
   eg->partopt = 0;
   eg->partoptim = FALSE;
   eg->partbcoptim = TRUE;
@@ -3775,7 +3780,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 
     if(strcmp(argv[arg],"-parttol") == 0) {
       if(arg+1 >= argc) {
-	printf("Give a tolerance for gemetric partition algorithms\n");
+	printf("Give a tolerance for geometric partition algorithms\n");
 	return(3);
       }
       else {
@@ -4088,8 +4093,19 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	return(15);
       }
       else {
-	eg->metisseed = atoi(argv[arg+1]);
-	printf("Seed for Metis partitioning routines: %d\n",eg->metisseed);
+	eg->metis_seed = atoi(argv[arg+1]);
+	printf("Seed for Metis partitioning routines: %d\n",eg->metis_seed);
+      }
+    }
+
+    if(strcmp(argv[arg],"-metisncuts") == 0 ) {
+      if(arg+1 >= argc) {
+	printf("The number of parameters is required as parameter for -metisncuts!\n");
+	return(15);
+      }
+      else {
+	eg->metis_ncuts = atoi(argv[arg+1]);
+	printf("Number of competing partitions to generate : %d\n",eg->metis_ncuts);
       }
     }
     
@@ -4138,7 +4154,13 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
     }
 
     if(strcmp(argv[arg],"-metiscontig") == 0 ) {
-      eg->metiscontig = TRUE;
+      eg->metis_contig = TRUE;
+    }
+    if(strcmp(argv[arg],"-metisvol") == 0 ) {
+      eg->metis_volcut = TRUE;
+    }
+    if(strcmp(argv[arg],"-metisminconn") == 0 ) {
+      eg->metis_minconn = TRUE;
     }
     
     if(strcmp(argv[arg],"-metisconnect") == 0 || strcmp(argv[arg],"-metisbc") == 0 ) {
@@ -4869,7 +4891,7 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
 
 end:
   printf("Read commands from a file\n");
-
+  fclose(in);
   return(0);
 }
 
@@ -5472,7 +5494,7 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
    in Elmer calculations. 
    */
 {
-  int noknots,noelements,material,sumsides,elemtype,fail,cdstat;
+  int noknots,noelements,material,sumsides,elemtype,fail,cdstat,bcdim;
   int sideelemtype,conelemtype,nodesd1,nodesd2,newtype;
   int i,j,k,l,bulktypes[MAXELEMENTTYPE+1],sidetypes[MAXELEMENTTYPE+1];
   int alltypes[MAXELEMENTTYPE+1],tottypes;
@@ -5505,7 +5527,7 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
 
   fail = chdir(directoryname);
   if(fail) {
-#if ( defined(MINGW32) || defined(WIN32) ) 
+#ifdef __MINGW32__
     fail = mkdir(directoryname);
 #else
     fail = mkdir(directoryname,0750);
@@ -5591,9 +5613,13 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
       fprintf(out,"%d %d %d %d ",
 	      sumsides,bound[j].types[i],bound[j].parent[i],bound[j].parent2[i]);
       fprintf(out,"%d",sideelemtype);
-      
-      if(bound[j].types[i] < MAXBCS) usedbc[bound[j].types[i]] += 1;
 
+      k = bound[j].types[i];
+      if(k < MAXBCS) {	
+	bcdim = GetElementDimension(sideelemtype);
+	usedbc[k] = MAX(usedbc[k],bcdim+1);
+      }
+	
       sidetypes[sideelemtype] += 1;
       nodesd1 = sideelemtype%100;
       for(l=0;l<nodesd1;l++)
@@ -5654,12 +5680,20 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
     }     
     if(data->boundarynamesexist) {
       fprintf(out,"! ----- names for boundaries -----\n");
-      for(i=1;i<MAXBCS;i++) 
+      for(i=1;i<MAXBCS;i++) 	
 	if(usedbc[i]) {
-	  if(data->boundaryname[i])
+	  bcdim = usedbc[i]-1;
+	  if(data->boundaryname[i]) 
 	    fprintf(out,"$ %s = %d\n",data->boundaryname[i],i);
-	  else
-	    fprintf(out,"$ bc%d = %d\n",i,i);	    	    
+	  else if(bcdim == 2) { 
+	    fprintf(out,"$ surf_bc%d = %d\n",i,i);
+	  }
+	  else if(bcdim == 1) {
+	    fprintf(out,"$ line_bc%d = %d\n",i,i);
+	  }
+	  else if(bcdim == 0) {
+	    fprintf(out,"$ node_bc%d = %d\n",i,i);
+	  }
 	}
     }
     fclose(out);

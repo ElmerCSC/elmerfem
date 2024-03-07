@@ -62,10 +62,10 @@ DynLineEdit::~DynLineEdit()
 DynamicEditor::DynamicEditor(QWidget *parent)
   : QWidget(parent)
 {
-  newIcon = QIcon(":/icons/document-new.png");
-  addIcon = QIcon(":/icons/list-add.png");
-  okIcon = QIcon(":/icons/dialog-ok-apply.png");
-  removeIcon = QIcon(":/icons/list-remove.png");
+  newIcon = QIcon::fromTheme("document-new");
+  addIcon = QIcon::fromTheme("list-add");
+  okIcon = QIcon::fromTheme("dialog-accept");
+  removeIcon = QIcon::fromTheme("dialog-error-round");
   setWindowFlags(Qt::Window);
 
   menuAction = NULL;
@@ -186,7 +186,7 @@ void DynamicEditor::setupTabs(QDomDocument *elmerDefs, const QString &Section, i
           } 
           combo->setCurrentIndex(active);
           // connect(combo, SIGNAL(activated(QString)), this, SLOT(comboSlot(QString)));
-	  connect(combo, SIGNAL(currentIndexChanged(QString)), this, SLOT(comboSlot(QString)));
+	  connect(combo, SIGNAL(currentTextChanged(const QString)), this, SLOT(comboSlot(QString)));
 
         } else if ( widget_type == "CheckBox" ) {
           QCheckBox *l = new QCheckBox;
@@ -209,6 +209,7 @@ void DynamicEditor::setupTabs(QDomDocument *elmerDefs, const QString &Section, i
 
         if ( h.widget ) {
           h.widget->setWhatsThis(whatis);
+//          h.widget->setToolTip(whatis); // This is to show whatis just by hovering mouse cursor
           h.widget->setStatusTip(statusTip);
           h.widget->setProperty( "dom address",fullName);
           h.elem = param;
@@ -279,15 +280,20 @@ void DynamicEditor::setupTabs(QDomDocument *elmerDefs, const QString &Section, i
 
   nameEdit  = new QLineEdit;
   nameEdit->setText(Section + " " + QString::number(ID+1));
-
   applyButton = new QPushButton(tr("&Add"));
   applyButton->setIcon(addIcon);
   connect(applyButton, SIGNAL(clicked()), this, SLOT(applyButtonClicked()));
+  nameEdit->setWhatsThis("Name of this " + Section);
   
   discardButton = new QPushButton(tr("&Remove"));
   discardButton->setIcon(removeIcon);
   connect(discardButton, SIGNAL(clicked()), this, SLOT(discardButtonClicked()));
 
+  whatsThisButton = new QPushButton(tr("Whatis"));
+  whatsThisButton->setIcon(QIcon::fromTheme("text-questionmark"));
+  connect(whatsThisButton, SIGNAL(clicked()), this, SLOT(whatsThisButtonClicked()));
+  whatsThisButton->setWhatsThis("Press this button, then click the widget to be explained.");
+  
   okButton = new QPushButton(tr("&OK"));
   okButton->setIcon(okIcon);
   connect(okButton, SIGNAL(clicked()), this, SLOT(okButtonClicked()));
@@ -305,6 +311,7 @@ void DynamicEditor::setupTabs(QDomDocument *elmerDefs, const QString &Section, i
   buttonLayout->addWidget(applyButton);
   buttonLayout->addWidget(okButton);
   buttonLayout->addWidget(discardButton);
+  buttonLayout->addWidget(whatsThisButton);
 
   QHBoxLayout *spareButtonLayout = new QHBoxLayout;
   spareButton = new QPushButton(tr("SpareButton"));;
@@ -335,7 +342,7 @@ void DynLineEdit::editSlot()
 {
   QLineEdit *q =  lineEdit;
   QString s = q->text();
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
   cout << string(s.toLatin1()) << endl;
 #else
   cout << string(s.toAscii()) << endl;
@@ -538,6 +545,7 @@ void DynamicEditor::applyButtonClicked()
   touched = true;
 
   emit(dynamicEditorReady(MAT_APPLY, ID));
+  
 }
 
 
@@ -574,6 +582,12 @@ void DynamicEditor::newButtonClicked()
   touched = false;
 
   emit(dynamicEditorReady(MAT_NEW, ID));
+}
+
+//----------------------------------------------------------------------------
+void DynamicEditor::whatsThisButtonClicked()
+{
+  QWhatsThis::enterWhatsThisMode();
 }
 
 //----------------------------------------------------------------------------
@@ -703,7 +717,7 @@ void DynamicEditor::populateHash(QDomElement *item)
     }
     
     if(!match_found) {
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
       cout << "Error: Unable to set menu entry: key: " << key.toLatin1().data() << endl;
 #else
       cout << "Error: Unable to set menu entry: key: " << key.toAscii().data() << endl;

@@ -1,0 +1,107 @@
+! Simple test case showing how to have dependence on previous values
+! (as opposed to current values) in keyword dependence.
+!
+! P.R. 1.12.2023
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "square"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian 2D"
+
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+  Simulation Type = Transient
+  Timestepping Method = "implicit euler"
+
+  Timestep Sizes = 0.1
+  Timestep Intervals = 50
+
+  Output Intervals = 1 
+!  Post File = "case.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equation1"
+  Active Solvers = 1 
+End
+
+Solver 1
+  Equation = "heat"
+  Variable = "Temperature"
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = "umfpack"
+  Steady State Convergence Tolerance = 1.0e-05
+
+  Stabilize = False
+  Nonlinear System Convergence Tolerance = 1.0e-6
+  Nonlinear System Max Iterations = 10
+  Nonlinear System Relaxation Factor = 1.0
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+End
+
+
+! This is for comparing the velocity evolution with the
+! two material functions.
+Solver 2 
+  Exec Solver = always
+  Equation = "save scalars"
+  Procedure = "SaveData" "SaveScalars"
+  Variable 1 = Time
+  Variable 2 = Temperature
+  Operator 2 = int mean
+  Operator 3 = max
+  Filename = f.dat
+
+  Show Norm Index = 3
+End 
+
+
+Material 1
+  Name = "Material1"
+  Density = 1.0
+
+! This is the beef of this test case:
+! We can choose the dependence to be from previous timestep eliminating
+! the need for nonlinear iteration. 
+! Heat Conductivity = Variable "temperature"
+!    Real LUA "1.0/(1+tx[0])"
+  Heat Conductivity = Variable "prev temperature"
+    Real LUA "1.0/(1+tx[0])"
+  Heat Capacity = 10.0
+End
+
+Body Force 1
+  Name = "BodyForce1"
+  Heat Source = 100.0
+End
+
+Boundary Condition 1
+  Name = "Constraint1"
+  Target Boundaries = 1 
+  Temperature = 0.0
+End
+
+Solver 1 :: Reference Norm = 1.64385659E+01
+Solver 2 :: Reference Norm = 4.46408888E+01

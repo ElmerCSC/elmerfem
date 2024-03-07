@@ -1,4 +1,5 @@
 # Inverse methods test cases
+- Modification date : 28/02/2023
 
 This test cases for the adjoint inverse methods have been updated 
 in April 2020 from the material presented for the 
@@ -23,7 +24,8 @@ TEST CASES USING THE SSA SOLVER:
 
 
 TEST CASES USING THE STOKES SOLVER:
-   - MacAyeal_Stokes: Optimisation of the basal friction coefficient based on a synthetic test case.
+   - MacAyeal_Stokes: Optimisation of the basal friction coefficient based on a synthetic test case.  
+   - StokesWeertman: non-linear weertman friction law with the vectorised incompressible Stokes solver
 
 TEST CASES FOR THE THICKNESS SOLVER:
    - MassConservation: Validation of the adjoint of the steady state thickness solver; i.e. the mass conservation method.

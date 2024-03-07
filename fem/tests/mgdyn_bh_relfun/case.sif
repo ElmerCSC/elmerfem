@@ -1,5 +1,5 @@
 ! This is the test case based on the "mgdyn_bh" case such that
-! an unisotropic viscosity function is used. In the function we
+! an anisotropic viscosity function is used. In the function we
 ! call the standard H-B curve and the results are agreeable with
 ! the base case. Also the "nu" field is saved on IP points and
 ! projected to a DG field.

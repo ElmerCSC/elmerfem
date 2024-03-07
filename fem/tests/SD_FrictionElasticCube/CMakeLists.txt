@@ -1,0 +1,10 @@
+IF(WITH_LUA)
+  INCLUDE(test_macros)
+  INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
+
+  CONFIGURE_FILE( case.sif case.sif COPYONLY)
+
+  file(COPY ELMERSOLVER_STARTINFO cube.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+  ADD_ELMER_TEST(SD_FrictionElasticCube LABELS quick lua serendipity)
+ENDIF(WITH_LUA)

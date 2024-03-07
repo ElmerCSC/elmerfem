@@ -79,7 +79,7 @@ public slots:
   void SetMaxColorVal(double);                      // set color max
   void KeepColorLimits(bool);                       // keep color limits
   void ComputeNormals(bool);                        // shade model
-  void UseClipPlane(bool);                          // set clpping on/off
+  void UseClipPlane(bool);                          // set clipping on/off
   void SetFeatureAngle(int);                        // set feature angle
   void SetOpacity(int);                             // set opacity
 
@@ -91,11 +91,13 @@ private slots:
   void colorSelectionChanged(int);
   void keepContourLimitsSlot(int);
   void keepColorLimitsSlot(int);
+  void nullColorButtonClicked();
 
 private:
   ScalarField *scalarField;
   int scalarFields;
-
+  QColor nullColor;
+  void setNullColor(QColor);
 };
 
 #endif // ISOSURFACE_H

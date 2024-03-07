@@ -4,6 +4,53 @@ SET(WITH_ScatteredDataInterpolator FALSE CACHE BOOL "Include ElmerIce ScatteredD
 MARK_AS_ADVANCED(WITH_ScatteredDataInterpolator)
 
 # ---------------------- #
+# -- NetCDF libraries -- #
+#----------------------- #
+MESSAGE(STATUS "------------------------------------------------")
+MESSAGE(STATUS "Elmer/Ice package: Looking for [NetCDF] & [NetCDF Fortran] libraries")
+
+FIND_PACKAGE(NetCDF)
+
+IF(NetCDF_FOUND)
+
+  SET(HAVE_NETCDF TRUE)
+  MARK_AS_ADVANCED(HAVE_NETCDF)
+  INCLUDE_DIRECTORIES(${NetCDF_INCLUDE_DIR})
+  ADD_DEFINITIONS(-DHAVE_NETCDF)
+
+  MESSAGE(STATUS "  NetCDF:           " "${NetCDF_FOUND}")
+  MESSAGE(STATUS "  NetCDF_INC:       " "${NetCDF_INCLUDE_DIR}")
+  MESSAGE(STATUS "  NetCDF_LIBS:     " "${NetCDF_LIBRARIES}")
+ELSE()
+  MESSAGE(STATUS "Library not found: >NetCDF_FOUND< ")
+  MESSAGE(WARNING "  \n Missing: >NetCDF_INCLUDE_DIR< , >NetCDF_LIBRARY<,  >NetCDFF_LIBRARY< \n some functionalities will be disabled")
+ENDIF(NetCDF_FOUND)
+
+# ---------------------- #
+# -- HDF5 libraries -- #
+#----------------------- #
+MESSAGE(STATUS "------------------------------------------------")
+MESSAGE(STATUS "Elmer/Ice package: Looking for [HDF5] & [HDF5 Fortran] libraries")
+
+FIND_PACKAGE(PHDF5)
+
+IF(PHDF5_FOUND)
+
+  SET(HAVE_HDF5 TRUE)
+  MARK_AS_ADVANCED(HAVE_HDF5)
+  INCLUDE_DIRECTORIES(${PHDF5_INCLUDE_DIR})
+  ADD_DEFINITIONS(-DHAVE_HDF5)
+
+  MESSAGE(STATUS "  HDF5:           " "${PHDF5_FOUND}")
+  MESSAGE(STATUS "  HDF5_INC:       " "${PHDF5_INCLUDE_DIR}")
+  MESSAGE(STATUS "  HDF5_LIBS:     " "${PHDF5_LIBRARIES}")
+ELSE()
+  MESSAGE(STATUS "Library not found: >HDF5_FOUND< ")
+  MESSAGE(WARNING "  \n Missing: >HDF5_INCLUDE_DIR< , >HDF5_LIBRARY<,  >HDF5F_LIBRARY< \n some functionalities will be disabled")
+ENDIF(PHDF5_FOUND)
+
+
+# ---------------------- #
 # -- LOOK FOR MMG     -- #
 #----------------------- #
 IF(HAVE_MMG)
@@ -46,13 +93,23 @@ SET(ElmerIce_SRC ElmerIceUtils.F90 AIFlowSolve_nlD2.F90 AIFlowSolve_nlS2.F90
     CalvingFrontAdvance3D.F90 Emergence.F90 SSAmask.F90 
     GlaDSCoupledSolver.F90 GlaDSchannelSolver.F90 Flotation.F90
     BasalMelt3D.F90 CalvingHydroInterp.F90 HydroRestart.F90 
-    GMValid.F90 Scalar_OUTPUT_Glacier.F90 IcyMaskSolver.F90)
+    GMValid.F90 Scalar_OUTPUT_Glacier.F90 IcyMaskSolver.F90
+    Weertman2Coulomb.F90)
+
+SET(ElmerIce_SRC ${ElmerIce_SRC} ./Covarianceutils/CovarianceUtils.F90 ./Covarianceutils/BackgroundErrorCostSolver.F90 ./Covarianceutils/CovarianceVectorMultiplySolver.F90 ./Covarianceutils/GaussianSimulationSolver.F90)
+
 IF(HAVE_ODEPack)
   SET(ElmerIce_SRC ${ElmerIce_SRC} PlumeSolver.F90 )
 ENDIF()
 
 IF(HAVE_MMG)
   SET(ElmerIce_SRC ${ElmerIce_SRC} CalvingRemeshMMG.F90 ) #MMG3DSolver.F90 <- defunct?
+ENDIF()
+
+### add ParMMG??
+
+IF(HAVE_PARMMG)
+  SET(ElmerIce_SRC ${ElmerIce_SRC} CalvingRemeshparMMG.F90 )
 ENDIF()
 
 IF(HAVE_XIOS)
@@ -105,6 +162,13 @@ ENDIF()
 #   TARGET_LINK_LIBRARIES(ElmerIceSolvers ${MMG_LIBRARY})
 #   TARGET_LINK_LIBRARIES(ElmerIceSolvers ElmerIce_MeshAdapt3D)
 # ENDIF()
+
+IF(HAVE_PROJ)
+  INCLUDE_DIRECTORIES(${PROJ_INCLUDE_DIR})
+  INCLUDE_DIRECTORIES(${FORTRANGIS_INCLUDE_DIR})
+  TARGET_LINK_LIBRARIES(ElmerIceSolvers ${PROJ_LIBRARY})
+  TARGET_LINK_LIBRARIES(ElmerIceSolvers ${FORTRANGIS_LIBRARY})
+ENDIF()
 
 INSTALL(TARGETS ElmerIceSolvers LIBRARY DESTINATION "share/elmersolver/lib"
 	    RUNTIME DESTINATION "share/elmersolver/lib")

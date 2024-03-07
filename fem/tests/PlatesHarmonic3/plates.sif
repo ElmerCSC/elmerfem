@@ -90,13 +90,18 @@ Solver 1
 
 ! Linear system solver for blocks
 !-----------------------------------------
-  Block: Linear System Solver = iterative
-  Block: Linear System Iterative Method = bicgstab
-  Block: Linear System Convergence Tolerance = 1.0e-03
-  Block: Linear System Max Iterations = 1000
-  Block: Linear System Preconditioning = ILU2
-  Block: Linear System Residual Output = integer 20
-
+  Block 11: Linear System Solver = direct 
+  Block 11: Linear System Iterative Method = umfpack
+  Block 22: Linear System Solver = direct 
+  Block 22: Linear System Iterative Method = umfpack
+  Block 33: Linear System Solver = direct 
+  Block 33: Linear System Iterative Method = umfpack
+  Block 44: Linear System Solver = direct 
+  Block 44: Linear System Iterative Method = umfpack
+  Block 55: Linear System Solver = direct 
+  Block 55: Linear System Iterative Method = umfpack
+  Block 66: Linear System Solver = direct 
+  Block 66: Linear System Iterative Method = umfpack
 End
 
 

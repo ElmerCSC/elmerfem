@@ -76,7 +76,7 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
 
   LOGICAL :: GotIt, GotIt2, GotIt3, stat, AllocationsDone = .FALSE., SubroutineVisited = .FALSE., &
       UseVelocity, Bubbles, ApplyLimiter, LinearModel, ManningModel, GotMinGap, &
-      OpenSide,GotExt,GotFlux, GotVelo, AnyBC, GotPseudoPressure, SurfAC
+      OpenSide,GotExt,GotFlux, GotVelo, AnyBC, GotPseudoPressure, SurfAC, Converged
   REAL(KIND=dp), POINTER :: Pressure(:)
   REAL(KIND=dp) :: Norm, ReferencePressure, HeatRatio, BulkModulus, &
       mfp0, Pres, Dens, ManningCoeff, GravityCoeff, MinGap, MinGradPres, &
@@ -220,6 +220,8 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
     WRITE(Message,'(A,T35,I5)') 'Reynolds iteration:',iter
     CALL Info(Caller,Message,Level=5)
 
+
+100 CONTINUE
     CALL DefaultInitialize()
 
 !    Do the bulk assembly:
@@ -237,6 +239,12 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()
 
+
+    ! Check stepsize for nonlinear iteration
+    !------------------------------------------------------------------------------
+    IF( DefaultLinesearch( Converged ) ) GOTO 100
+    IF( Converged ) EXIT
+    
 !    Solve the system and we are done:
 !    ---------------------------------
     Norm = DefaultSolve()
@@ -735,7 +743,7 @@ CONTAINS
       VeloPres(1:n) = GetReal(BC,'Filmpressure Velocity',GotVelo)
       CoeffPres(1:n) = GetReal(BC,'Filmpressure Transfer Coefficient',GotIt)
       ExtPres(1:n) = GetReal(BC,'External FilmPressure',GotExt)
-      IF(XOR(GotExt,GotIt)) THEN
+      IF(GotExt .NEQV. GotIt) THEN
         CALL Fatal(Caller,'Give neither or both keywords for Robin BC!')
       END IF
 
@@ -1137,7 +1145,7 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
       VarResult => VariableGet( Solver % Mesh % Variables,TRIM(PressureName)//' Heating')
 
     CASE DEFAULT
-      CALL Fatal(Caller,'Unknow Mode for operation:'//TRIM(I2S(Mode)))      
+      CALL Fatal(Caller,'Unknow Mode for operation:'//I2S(Mode))      
     END SELECT
     
     IF(.NOT. ASSOCIATED(VarResult)) CYCLE
@@ -1285,13 +1293,13 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
         WRITE(Message,'(A,I1,A,T35,ES15.4)') 'Pressure force ',i,' (N):',Pforce(i)
         CALL Info(Caller,Message,Level=5)
         CALL ListAddConstReal( Model % Simulation,'res: Pressure force '&
-            //TRIM(I2S(i)),Pforce(i))
+            //I2S(i),Pforce(i))
       END DO
       DO i=1,3
         WRITE(Message,'(A,I1,A,T35,ES15.4)') 'Sliding force ',i,' (N):',Vforce(i)
         CALL Info(Caller,Message,Level=5)
         CALL ListAddConstReal( Model % Simulation,'res: Sliding force '&
-            //TRIM(I2S(i)),Vforce(i))
+            //I2S(i),Vforce(i))
       END DO
       TotForce = SQRT( SUM((Pforce + Vforce)**2) )
       WRITE(Message,'(A,T35,ES15.4)') 'Reynolds force (N): ',TotForce
@@ -1303,7 +1311,7 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
           WRITE(Message,'(A,I1,A,T35,ES15.4)') 'Reynolds moment ',i,' (Nm):',Moment(i)
           CALL Info(Caller,Message,Level=5)
           CALL ListAddConstReal( Model % Simulation,'res: Reynolds moment '&
-              //TRIM(I2S(i)),Moment(i))
+              //I2S(i),Moment(i))
         END DO
       END IF
 
@@ -1511,7 +1519,7 @@ CONTAINS
         HeatSlide = HeatSlide + s * Sslide
         
       CASE DEFAULT
-        CALL Fatal(Caller,'Unknow mode: '//TRIM(I2S(Mode)))
+        CALL Fatal(Caller,'Unknow mode: '//I2S(Mode))
 
       END SELECT
       
@@ -1588,9 +1596,9 @@ CONTAINS
         dofs = 3
       END IF
       CALL Info(Caller,'Creating "'//TRIM(PressureName)//'" Force with '&
-          //TRIM(I2S(dofs))//' components',Level=12)
+          //I2S(dofs)//' components',Level=12)
       CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params), &
-          '-dofs '//TRIM(I2S(dofs))//' '//TRIM(PressureName)//' Force' )
+          '-dofs '//I2S(dofs)//' '//TRIM(PressureName)//' Force' )
     END IF
 
     ! The dofs of flux is fixed by default 3 since there can be leakage 
@@ -1605,9 +1613,9 @@ CONTAINS
         dofs = 3
       END IF
       CALL Info(Caller,'Creating "'//TRIM(PressureName)//' Flux" with '&
-          //TRIM(I2S(dofs))//' components',Level=12)
+          //I2S(dofs)//' components',Level=12)
       CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params), &
-          '-dofs '//TRIM(I2S(dofs))//' '//TRIM(PressureName)//' Flux' )
+          '-dofs '//I2S(dofs)//' '//TRIM(PressureName)//' Flux' )
     END IF
 
     Calculate = ListGetLogical(Params,'Calculate Mean Velocity',Found)
@@ -1619,9 +1627,9 @@ CONTAINS
         dofs = 3
       END IF
       CALL Info(Caller,'Creating "'//TRIM(PressureName)//' mean velocity" with '&
-          //TRIM(I2S(dofs))//' components',Level=12)
+          //I2S(dofs)//' components',Level=12)
       CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params), &
-          '-dofs '//TRIM(I2S(dofs))//' '//TRIM(PressureName)//' Mean Velocity' )
+          '-dofs '//I2S(dofs)//' '//TRIM(PressureName)//' Mean Velocity' )
     END IF
 
     CALL ListAddInteger( Params, 'Time derivative order', 0 )

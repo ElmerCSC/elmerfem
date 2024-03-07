@@ -67,7 +67,7 @@ int MemoryUsage()
 
 
 void nrerror(const char error_text[])
-/* standerd error handler */
+/* standard error handler */
 {
   fprintf(stderr,"run-time error...\n");
   fprintf(stderr,"%s\n",error_text);
@@ -485,18 +485,17 @@ void timer_show()
 
 void bigerror(const char error_text[])
 {
-  fprintf(stderr,"The program encountered a major error...\n");
-  fprintf(stderr,"%s\n",error_text);
-  fprintf(stderr,"...now exiting to system...\n");
+  fprintf(stderr,"***** ERROR: We cannot continue with this! *****\n");
+  fprintf(stderr,"***** %s\n",error_text);
+  fprintf(stderr,"***** ...now exiting to system!\n");
   exit(1);
 }
 
 
 void smallerror(const char error_text[])
 {
-  fprintf(stderr,"The program encountered a minor error...\n");
-  fprintf(stderr,"%s\n",error_text);
-  fprintf(stderr,"...we'll try to continue...\n");
+  fprintf(stderr,"***** WARNING: This should not happen but we try to continue! *****\n");
+  fprintf(stderr,"***** %s\n",error_text);
 }
 
 

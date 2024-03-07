@@ -20,7 +20,7 @@ Simulation 1
    Steady State Max Iterations = 1
    BDF Order = 1
    Output Intervals = 1
-   Angular Frequency = $ 2*pi*10000
+   Angular Frequency = 376.991118431
 End
 Solver 1
    Exec Solver = Before all
@@ -104,6 +104,8 @@ Solver 7
    Potential Variable = String "A"
    Calculate Current Density = Logical True
    Loss Estimation = Logical True
+   Calculate Homogenization Loss = Logical True
+   Calculate Joule Heating = Logical True
    Steady State Convergence Tolerance = 0
    Linear System Solver = "Iterative"
    Linear System Preconditioning = None
@@ -117,7 +119,7 @@ Solver 8
    Exec Solver = After timestep
    Equation = "ResultOutput"
    Procedure = "ResultOutputSolve" "ResultOutputSolver"
-   Output File Name = 2241-results2
+   Output File Name = 2241-results
    Vtu format = Logical True
    Save Geometry Ids = Logical True
 End

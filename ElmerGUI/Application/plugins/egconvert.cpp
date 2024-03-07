@@ -492,7 +492,7 @@ static void InpComment(char *cmd)
 int LoadAbaqusInput(struct FemType *data,struct BoundaryType *bound,
 		    char *prefix,int info)
 /* Load the grid from a format that can be read by ABAQUS 
-   program designed for sructural mechanics. The commands
+   program designed for structural mechanics. The commands
    understood are only those that IDEAS creates when saving
    results in ABAQUS format.
    */
@@ -1020,7 +1020,7 @@ omstart:
   
   /* ABAQUS format does not expect that all numbers are used
      when numbering the elements. Therefore the nodes must
-     be renumberred from 1 to noknots. */
+     be renumbered from 1 to noknots. */
 
   if(noknots != maxknot) {
     int errcount,okcount;
@@ -1193,7 +1193,7 @@ static int ReadAbaqusField(FILE *in,char *buffer,int *argtype,int *argno)
 
 int LoadAbaqusOutput(struct FemType *data,char *prefix,int info)
 /* Load the grid from a format that can be read by ABAQUS 
-   program designed for sructural mechanics. 
+   program designed for structural mechanics.
    */
 {
   int knotno,elemno,elset,secno;
@@ -2047,7 +2047,7 @@ int LoadAnsysInput(struct FemType *data,struct BoundaryType *bound,
   for(i=0;GETLINE;i++);
 
   noansystypes = i-1;
-  printf("There seems to be %d elementytypes in file %s.\n",noansystypes,filename);
+  printf("There seems to be %d element types in file %s.\n",noansystypes,filename);
   
   ansysdim = Ivector(1,noansystypes);
   ansysnodes = Ivector(1,noansystypes);
@@ -2384,7 +2384,7 @@ int LoadAnsysInput(struct FemType *data,struct BoundaryType *bound,
   free_Ivector(boundindx,1,boundarynodes);
   free_Ivector(nodeindx,1,boundarynodes);
 
-  if(info) printf("Ansys mesh loaded succefully\n");
+  if(info) printf("Ansys mesh loaded successfully\n");
 
   return(0);
 }
@@ -2651,8 +2651,8 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
    */
 {
   int noknots,noelements,maxnodes,elematts,nodeatts,dim;
-  int elementtype,bcmarkers,sideelemtype;
-  int i,j,k,*boundnodes;
+  int elementtype,bcmarkers,sideelemtype,offset,bcinds;
+  int i,ii,j,k,jmin,jmax,kmin,kmax,*boundnodes;
   FILE *in;
   char *cp,line[MAXLINESIZE],elemfile[MAXFILESIZE],nodefile[MAXFILESIZE], 
     polyfile[MAXLINESIZE];
@@ -2697,7 +2697,8 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
   data->noelements = noelements;
   data->noknots = noknots;
   elementtype = 300 + maxnodes;
-
+  bcinds = FALSE;
+  
   if(info) printf("Allocating for %d knots and %d elements.\n",noknots,noelements);
   AllocateKnots(data);
 
@@ -2705,13 +2706,19 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
   for(i=1;i<=noknots;i++) 
     boundnodes[i] = 0;
 
+  k = 0;
+  jmax = 0;
+  jmin = noknots;
   in = fopen(nodefile,"r");
   GETLINE;
   for(i=1; i <= noknots; i++) {
     GETLINE;
     cp = line;
     j = next_int(&cp);
-    if(j != i) printf("LoadTriangleInput: nodes i=%d j=%d\n",i,j);
+    if(j != i) k++;
+    jmax = MAX(jmax,j);
+    jmin = MIN(jmin,j);
+    
     data->x[i] = next_real(&cp);
     data->y[i] = next_real(&cp);
     for(j=0;j<nodeatts;j++) {
@@ -2721,7 +2728,23 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
       boundnodes[i] = next_int(&cp);
   }
   fclose(in);
-
+  if(info) {
+    printf("LoadTriangleInput: Node index different from order index for %d nodes\n",k);
+    printf("LoadTriangleInput: Node index ranged was [%d %d]\n",jmin,jmax);
+  }
+    
+  offset = 0;
+  if(jmin==0) {
+    printf("LoadTriangleInput: Using offset 1 to because of C-type indexing!\n");
+    offset = 1;
+  }
+    
+  
+  k = 0;
+  jmax = 0;
+  jmin = noelements;
+  kmax = 0;
+  kmin = noknots;
   in = fopen(elemfile,"r");
   GETLINE;
   for(i=1; i <= noelements; i++) {
@@ -2729,7 +2752,9 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
     cp = line;
     data->elementtypes[i] = elementtype;
     j = next_int(&cp);
-    if(j != i) printf("LoadTriangleInput: elem i=%d j=%d\n",i,j);
+    if(j != i) k++;
+    jmin = MIN(jmin,j);
+    jmax = MAX(jmax,j);
     for(j=0;j<3;j++)
       data->topology[i][j] = next_int(&cp);
     if(maxnodes == 6) {
@@ -2737,18 +2762,28 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
       data->topology[i][5] = next_int(&cp);
       data->topology[i][3] = next_int(&cp);
     }
+    if(offset) {
+      for(j=0;j<maxnodes;j++) data->topology[i][j] = data->topology[i][j]+offset;
+    }
+    for(j=0;j<maxnodes;j++) kmax = MAX(kmax,data->topology[i][j]);
+    for(j=0;j<maxnodes;j++) kmin = MIN(kmin,data->topology[i][j]);
     data->material[i] = 1;
   }
   fclose(in);
-
-
-  sprintf(polyfile,"%s.poly",prefix);
+  if(info) {
+    printf("LoadTriangleInput: Element index different from order index for %d nodes\n",k);
+    printf("LoadTriangleInput: Element index ranged was [%d %d]\n",jmin,jmax);
+    printf("LoadTriangleInput: Node indexes in elements range [%d %d] (with offset)\n",kmin,kmax);
+  }
+    
+  
+  sprintf(polyfile,"%s.edge",prefix);
   if ((in = fopen(polyfile,"r")) == NULL) {
     printf("LoadTriangleInput: The opening of the poly file %s failed!\n",polyfile);
     return(1);
   }
   else 
-    printf("Loading nodes from file %s\n",polyfile);
+    printf("Loading boundaries from file %s\n",polyfile);
 
   {
     int bcelems,markers,ind1,ind2,bctype,j2,k2,hit;
@@ -2759,42 +2794,41 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
     hit = FALSE;
 
     GETLINE;
-    GETLINE;
     sscanf(line,"%d %d",&bcelems,&markers);
-
+    
+    if(bcelems == 0) goto finish;
+    
+    if(info) printf("Allocating for %d boundary elements.\n",bcelems);
+    
     CreateInverseTopology(data,info);
     invrow = data->invtopo.rows;
     invcol = data->invtopo.cols;
-
+    
     AllocateBoundary(bound,bcelems);
 
-    for(i=1;i<=bcelems;i++) {
-      
+    jmin = noknots;
+    jmax = 0;
+
+    i = 0;
+    for(ii=1;ii<=bcelems;ii++) {            
       GETLINE;
       if(markers)
 	sscanf(line,"%d %d %d %d",&j,&ind1,&ind2,&bctype);
       else 
 	sscanf(line,"%d %d %d",&j,&ind1,&ind2);
-     
-      /* find an element which owns both the nodes */
-#if 0
-      for(j=1;j<=data->maxinvtopo;j++) {
-	hit = FALSE;
-	k = data->invtopo[j][ind1];
-	if(!k) break;
 
-	for(j2=1;j2<=data->maxinvtopo;j2++) { 
-	  k2 = data->invtopo[j2][ind2];
-	  if(!k2) break;
-	  if(k == k2) {
-	    hit = TRUE;
-	    elemind = k;
-	    break;
-	  }
-	}
-	if(hit) break;
-      }
-#else
+      if(!bctype) continue;
+      i += 1;
+
+      bctype = abs(bctype);
+      
+      ind1 += offset;
+      ind2 += offset;
+
+      jmin = MIN(jmin,MIN(ind1,ind2));
+      jmax = MAX(jmax,MAX(ind1,ind2));
+      
+      /* find an element which owns both the nodes */
       for(j=invrow[ind1-1];j<invrow[ind1];j++) {
 	k = invcol[j]+1;
 	hit = FALSE;
@@ -2809,31 +2843,48 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
 	}
 	if(hit) break;
       }
-#endif
-
-
-      if(!hit) return(1);
-
-
+   
       /* Find the correct side of the triangular element */
-      for(side=0;side<elemsides;side++) {
-	GetElementSide(elemind,side,1,data,&sideind[0],&sideelemtype);
-	
-	hit = FALSE;
-	if(sideind[0] == ind1 && sideind[1] == ind2) hit = TRUE;
-	if(sideind[0] == ind2 && sideind[1] == ind1) hit = TRUE;
-
-	if(hit) {
-	  bound->parent[i] = elemind;
-	  bound->side[i] = side;
-	  bound->parent2[i] = 0;
-	  bound->side2[i] = 0;
-	  bound->types[i] = bctype;
+      if(hit) {
+	k = 0;
+	for(side=0;side<elemsides;side++) {
+	  GetElementSide(elemind,side,1,data,&sideind[0],&sideelemtype);
+	  
+	  hit = FALSE;
+	  if(sideind[0] == ind1 && sideind[1] == ind2) hit = TRUE;
+	  if(sideind[0] == ind2 && sideind[1] == ind1) hit = TRUE;
+	  
+	  if(hit) break;
 	}
       }
-    }
-  } 
+	
+      if(hit) {
+	bound->parent[i] = elemind;
+	bound->side[i] = side;
+      } else {
+	bound->parent[i] = 0;
+	bound->side[i] = 0;
+	if(!bcinds) {
+	  bound->topology = Imatrix(1,bcelems,0,1);
+	  bcinds = TRUE;
+	}
+	bound->topology[i][0] = ind1;
+	bound->topology[i][1] = ind2;
+      }
+      bound->parent2[i] = 0;
+      bound->side2[i] = 0;
+      bound->types[i] = bctype;
+      k++;
 
+      if(0) printf("LoadTriangleInput: %d boundary elements found correctly out of %d\n",k,elemsides);
+
+    }
+    bound->nosides = i;
+    printf("LoadTriangleInput: Node indexes in boundary range [%d %d] (with offset)\n",jmin,jmax);
+
+  }
+
+ finish:
   printf("Successfully read the mesh from the Triangle input file.\n");
 
   return(0);
@@ -4219,7 +4270,7 @@ omstart:
 	if(!allocated)
 	  maxtag[tagdim] = 0;
 	else if( maxtag[tagdim] > 0 )
-	  printf("Maximum original tag for %d %dDIM entities is %d\n",numEnt,tagdim,maxtag[tagdim]);
+	  printf("Tag range for %d %dDIM entities is [%d %d]\n",numEnt,tagdim,0,maxtag[tagdim]);
 
 	if(numEnt > 0 && !allocated) {
 	  printf("Reading %d entities in %dD\n",numEnt,tagdim);
@@ -4241,6 +4292,7 @@ omstart:
 	  for(j=1;j<=6;j++) rdum = next_real(&cp);
 	  nophys = next_int(&cp);
 
+	  phystag = 0;
 	  if( nophys > 0 ) phystag = next_int(&cp);
 	  
 	  if(allocated) tagmap[tagdim][tag] = phystag;
@@ -4525,8 +4577,9 @@ static int LoadGmshInput41(struct FemType *data,struct BoundaryType *bound,
   int elemind[MAXNODESD2],elementtype;
   int i,j,k,l,allocated,*revindx=NULL,maxindx;
   int elemno, gmshtype, tagphys=0, tagpart, elemnodes,maxelemtype;
-  int tagmat,verno;
-  int physvolexist, physsurfexist,**tagmap,tagsize,maxtag[4];
+  int tagmat,verno,meshdim,tagdim;
+  int physvolexist, physsurfexist,**tagmap,tagsize;
+  int maxtag[4],mintag[4],maxreadtag[4],minreadtag[4],maxphystag[4],minphystag[4],tagoffset[4],phystagoffset[4];
   FILE *in;
   const char manifoldname[4][10] = {"point", "line", "surface", "volume"};
   char *cp,line[MAXLINESIZE],longline[LONGLINESIZE];
@@ -4539,16 +4592,24 @@ static int LoadGmshInput41(struct FemType *data,struct BoundaryType *bound,
 
   allocated = FALSE;
   dim = data->dim;
+  meshdim = 0;
   maxnodes = 0;
   maxindx = 0;
   maxelemtype = 0;
   physvolexist = FALSE;
   physsurfexist = FALSE;
   usetaggeom = TRUE; /* The default */
-  for(i=0;i<4;i++) maxtag[i] = 0;
-
+  for(i=0;i<4;i++)  {    
+    maxtag[i] = mintag[i] = -1;
+    minreadtag[i] = maxreadtag[i] = -1;
+    maxphystag[i] = minphystag[i] = -1;
+    tagoffset[i] = phystagoffset[i] = 0;
+  }
+    
 omstart:
-
+  
+  if(allocated) printf("Leading element dimension is %d\n",meshdim);
+  
   for(;;) {
     if(Getrow(line,in,FALSE)) goto end;
     if(strstr(line,"$End")) continue;
@@ -4618,7 +4679,7 @@ omstart:
 	  if(allocated) {
 	    data->x[k+i] = next_real(&cp);
 	    data->y[k+i] = next_real(&cp);
-	    if(dim > 2) data->z[k+i] = next_real(&cp);
+	    data->z[k+i] = next_real(&cp);
 	  }
 	}
 	k += numNodes;	
@@ -4632,7 +4693,7 @@ omstart:
 
     else if(strstr(line,"$Entities")) {
       int numPoints, numCurves, numSurfaces, numVolumes, numEnt;
-      int tag,tagdim,nophys,phystag;
+      int tag,nophys,phystag;
       int nobound, idum;
       Real rdum;
 
@@ -4647,7 +4708,7 @@ omstart:
 
       if(allocated) {
 	tagsize = 0;
-	for(tagdim=0;tagdim<=3;tagdim++)
+	for(tagdim=0;tagdim<=meshdim;tagdim++)
 	  tagsize = MAX( tagsize, maxtag[tagdim]);
 	if(info) printf("Allocating lookup table for tags of size %d\n",tagsize);
 	if( tagsize > 0 ) {
@@ -4668,39 +4729,85 @@ omstart:
 	  numEnt = numSurfaces;
 	else if( tagdim == 3 )
 	  numEnt = numVolumes;
-	
-	if(!allocated)
-	  maxtag[tagdim] = 0;
-	else if( maxtag[tagdim] > 0 )
-	  printf("Maximum original tag for %d %dDIM entities is %d\n",numEnt,tagdim,maxtag[tagdim]);
-
+		
+	if(allocated && numEnt > 0 ) {
+	  if( maxtag[tagdim] > 0 ) {
+	    if( mintag[tagdim] == -1 ) mintag[tagdim] = maxtag[tagdim];
+	    if( minphystag[tagdim] == -1) minphystag[tagdim] = maxphystag[tagdim];
+	    printf("Defined %d %dDIM entities with geometric tag range [%d %d]\n",
+		   numEnt,tagdim,mintag[tagdim],maxtag[tagdim]);
+	    if( maxphystag[tagdim] > 0 || maxreadtag[tagdim] > 0 ) {
+	      printf("   Physical given tag range is [%d %d]\n",minphystag[tagdim],maxphystag[tagdim]);
+	      if( maxreadtag[tagdim] != maxphystag[tagdim] || minreadtag[tagdim] != minphystag[tagdim]) {
+		if(maxreadtag[tagdim] > 0 ) 
+		  printf("   Physical read tag range is [%d %d]\n",minreadtag[tagdim],maxreadtag[tagdim]);
+		else
+		  printf("   No physical tags read for real!\n");
+		if(0) smallerror("Physical names not used consistently!"); 
+	      }
+	    } else  {
+	      if(0) printf("No physical tags defined, using geometric entities!\n");
+	    }
+	    
+	  }
+	  if( tagdim > meshdim ) {
+	    printf("We have %d %dDIM tags that are beyond mesh dimension %d!\n",numEnt, tagdim, meshdim );
+	  }
+	}
+	  	
 	if(numEnt > 0 && !allocated) printf("Reading %d entities in %dD\n",numEnt,tagdim);
 
 	
 	for(i=1; i <= numEnt; i++) {
 	  GETLONGLINE;
 
-	  // if( i==1 ) printf("1st line of dim %d with %d entries: %s\n",tagdim,numEnt,line);
+	  // printf("%d line of dim %d with %d entries: %s\n",i,tagdim,numEnt,line);
 	  
-	  if( tagdim == 0 ) continue;
+	  //if( tagdim == 0 ) continue;
 	  
 	  cp = longline;
 	  tag = next_int(&cp);
 	 	  
-	  if(!allocated)
+	  if(!allocated) {
 	    maxtag[tagdim] = MAX( maxtag[tagdim], tag );
-	  
-	  for(j=1;j<=6;j++) rdum = next_real(&cp);
+	    if( mintag[tagdim] == -1 ) {
+	      mintag[tagdim] = tag;
+	    }
+	    else {
+	      mintag[tagdim] = MIN( mintag[tagdim], tag );
+	    }
+	  }
+	    
+	  // read away the bounding box data that we do not need for anything
+	  if(tagdim == 0)
+	    k = 3;
+	  else
+	    k = 6;
+	  for(j=1;j<=k;j++) rdum = next_real(&cp);
+
+	  // Number of physical tags
 	  nophys = next_int(&cp);
 
-	  if( nophys > 0 )
-	    phystag = next_int(&cp);
-	  else
-	    phystag = 0;
 	  
-	  if(allocated) tagmap[tagdim][tag] = phystag;
-
-
+	  // Read the first physical tag if there are any
+	  if( nophys > 0 ) {	    
+	    if(0) printf("Reading number of physical tags: %d\n",nophys); 
+	    phystag = next_int(&cp);
+	    if(!allocated) {
+	      if(0) printf("Phystag: %d %d %d %d\n",tagdim,tag,i,phystag);
+	      maxreadtag[tagdim] = MAX( maxreadtag[tagdim], phystag );
+	      if( minreadtag[tagdim] == -1 ) {
+		minreadtag[tagdim] = phystag;
+	      }
+	      else {
+		minreadtag[tagdim] = MIN( minreadtag[tagdim], phystag );
+	      }
+	    }
+	    else {
+	      tagmap[tagdim][tag] = phystag;	    
+	    }
+	  }
+	    
 	  // The lines may be too long. So fill the string buffer until we get a newline. 
 	  j = k = 0;
 	  for(;;) { 
@@ -4726,7 +4833,19 @@ omstart:
 	  //  idum = next_int(&cp);	  
 	}
       }
-      
+
+      for(tagdim=meshdim-2;tagdim>=0;tagdim--) {
+	phystagoffset[tagdim] = phystagoffset[tagdim+1]+MAX(0,maxphystag[tagdim+1]);
+	printf("Physical tag offset for %dD is %d\n",tagdim,phystagoffset[tagdim]);
+      }
+
+      tagoffset[meshdim] = maxphystag[meshdim];
+      tagoffset[meshdim-1] = phystagoffset[0];
+      for(tagdim=meshdim-2;tagdim>=0;tagdim--) {
+	tagoffset[tagdim] = tagoffset[tagdim+1]+MAX(0,maxtag[tagdim+1]);
+	printf("Geometric tag offset for %dD is %d\n",tagdim,tagoffset[tagdim]);
+      }
+            
       GETLONGLINE;
       if(!strstr(longline,"$EndEntities")) {
 	printf("$Entities section should end to string $EndEntities:\n%s\n",longline);
@@ -4762,20 +4881,26 @@ omstart:
 	elementtype = GmshToElmerType(typeEle);
 	elemnodes = elementtype % 100;
 	maxelemtype = MAX(maxelemtype,elementtype);
-	
-	if( allocated && tagsize > 0 ) {
-	  printf("Reading %d elements with tag %d of type %d\n", numElements, tagEntity, elementtype);
+
+	if(!allocated) meshdim = MAX(meshdim, GetElementDimension(elementtype));
+		
+	if( allocated ) {
+	  if(0) printf("Reading %d elements with tag %d of type %d\n", numElements, tagEntity, elementtype);
 	  if( tagsize > 0 ) {
 	    if( tagmap[dimEntity][tagEntity] ) {
 	      printf("Mapping mesh tag %d to physical tag %d in %dDIM\n",tagEntity,tagmap[dimEntity][tagEntity],dimEntity);	    
-	      tagEntity = tagmap[dimEntity][tagEntity];
+	      tagEntity = tagmap[dimEntity][tagEntity] + phystagoffset[dimEntity];
 	    }
 	    else {
-	      printf("Mesh tag %d is not associated to any physical tag!\n",tagEntity);
+	      tagEntity += tagoffset[dimEntity];
 	    }
 	  }
+	  else {
+	    tagEntity += tagoffset[dimEntity];
+	  }
 	}
-			     
+	  
+	
 	for(i=1; i <= numElements; i++) {
 	  GETLINE;	
 	  cp = line;
@@ -4812,38 +4937,47 @@ omstart:
       nophysical = next_int(&cp);
       for(i=0;i<nophysical;i++) {
 	GETLINE;
-        if(allocated) {
-	  cp = line;
-	  gmshtype = next_int(&cp);
-	  if(gmshtype < entdim-1) {
-	    printf("Assuming maximum entity dim to be %d\n",dim-1);
-	    entdim--;
+	cp = line;
+	tagdim = next_int(&cp);	
+	tagphys = next_int(&cp);
+
+	if(!allocated) {
+	  maxphystag[tagdim] = MAX( maxphystag[tagdim], tagphys );
+	  if( minphystag[tagdim] == -1 ) {
+	    minphystag[tagdim] = tagphys;
 	  }
-	  tagphys = next_int(&cp);
-	  if(gmshtype == entdim-1) {
+	  else {
+	    minphystag[tagdim] = MIN( minphystag[tagdim], tagphys );
+	  }
+	}
+	else if(allocated) {
+	  // We must not let different tags be overrun
+	  l = phystagoffset[tagdim]; 
+	  
+	  if(tagdim < meshdim) {
 	    physsurfexist = TRUE;
-	    if(tagphys < MAXBCS)  {
-	      if(!data->boundaryname[tagphys]) data->boundaryname[tagphys] = Cvector(0,MAXNAMESIZE);
-	      sscanf(cp," \"%[^\"]\"",data->boundaryname[tagphys]);
-	      printf("Boundary name for physical group %d is: %s\n",tagphys,data->boundaryname[tagphys]);
+	    if(tagphys+l < MAXBCS)  {
+	      data->boundarynamesexist = TRUE;
+	      if(!data->boundaryname[tagphys+l]) data->boundaryname[tagphys+l] = Cvector(0,MAXNAMESIZE);
+	      sscanf(cp," \"%[^\"]\"",data->boundaryname[tagphys+l]);
+	      printf("BC name for physical group %d is: %s\n",tagphys,data->boundaryname[tagphys+l]);
 	    }
 	    else {
-	      printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[gmshtype],cp+1);
+	      printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[tagdim],cp+1);
 	    }	    
 	  }
-	  else if(gmshtype == entdim) {
+	  else if(tagdim == meshdim) {
 	    physvolexist = TRUE;
 	    if(tagphys < MAXBODIES) {
+	      data->bodynamesexist = TRUE;
 	      if(!data->bodyname[tagphys]) data->bodyname[tagphys] = Cvector(0,MAXNAMESIZE);
 	      sscanf(cp," \"%[^\"]\"",data->bodyname[tagphys]);
 	      printf("Body name for physical group %d is: %s\n",tagphys,data->bodyname[tagphys]);
 	    }
 	    else {
-	      printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[gmshtype],cp+1);
+	      printf("Index %d too large: ignoring physical %s %s",tagphys,manifoldname[tagdim],cp+1);
 	    }
 	  }
-	  else printf("Physical groups of dimension %d not supported in %d-dimensional mesh: "
-		      "ignoring group %d %s",gmshtype,dim,tagphys,cp+1);
         }
       }
 
@@ -5232,7 +5366,7 @@ omstart:
 
     if(strstr(line,"TYPES")) {
       if(!strstr(line,"ALL=TET04")) {
-	printf("Only all tets implemnted at the monment!\n");
+	printf("Only all tets implemented at the moment!\n");
 	return(1);
       }
       elemtype0 = 504;
@@ -5922,7 +6056,7 @@ omstart:
 	  if(!data->bodyname[nogroup]) data->bodyname[nogroup] = Cvector(0,MAXNAMESIZE);
 	  strcpy(data->bodyname[nogroup],entityname);
 	  data->bodynamesexist = TRUE;
-	  data->boundarynamesexist = TRUE;
+	  if(0) data->boundarynamesexist = TRUE;
 
 	  if(info) printf("Reading %d:th group with index %d with %d entities: %s\n",
 			  group,nogroup,noentities,entityname);
@@ -6739,7 +6873,7 @@ int LoadFluxMesh3D(struct FemType *data,struct BoundaryType *bound,
 	next_int(&cp);              //2 internal element type description
 	next_int(&cp);              //3 internal element type description
 	matind = next_int(&cp);     //4 number of the belonging region
-	dimplusone = next_int(&cp); //5 dimensiality 4-3D 3-2D
+	dimplusone = next_int(&cp); //5 dimensionality 4-3D 3-2D
 	next_int(&cp);              //6 zero here always
 	next_int(&cp);              //7 internal element type description
 	nonodes = next_int(&cp);    //8 number of nodes

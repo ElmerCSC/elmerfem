@@ -75,7 +75,7 @@
 
   LOGICAL :: AllocationsDone = .FALSE., Found, GotIt, CalvingFront, UnFoundFatal=.TRUE.
   LOGICAL :: stat
-  LOGICAL :: Newton
+  LOGICAL :: Newton, Converged
 
   INTEGER :: i,j, n, m, t, istat, DIM, p, STDOFs
   INTEGER :: NonlinearIter, NewtonIter, iter, other_body_id
@@ -251,7 +251,7 @@
 
     !Initialize the system and do the assembly:
     !------------------------------------------
-    CALL DefaultInitialize()
+500 CALL DefaultInitialize()
 
     ! bulk assembly
     DO t=1,Solver % NumberOfActiveElements
@@ -417,7 +417,13 @@
     ! Dirichlet 
     CALL DefaultDirichletBCs()
 
+    !------------------------------------------------------------------------------
+    !     Check stepsize for nonlinear iteration
+    !------------------------------------------------------------------------------
+    IF( DefaultLinesearch( Converged ) ) GOTO 500
+    IF( Converged ) EXIT
 
+    
     !------------------------------------------------------------------------------
     !     Solve the system and check for convergence
     !------------------------------------------------------------------------------

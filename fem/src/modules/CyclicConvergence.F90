@@ -126,7 +126,7 @@ SUBROUTINE CyclicConvergence( Model,Solver,dt,Transient)
   iCycle = iCycle + 1
 
   IF( iCycle > tsize ) THEN
-    CALL Info(Caller,'Increasing size of valTable to '//TRIM(I2S(2*tsize)),Level=6)
+    CALL Info(Caller,'Increasing size of valTable to '//I2S(2*tsize),Level=6)
     ALLOCATE(tmpTable(2*tsize))
     tmpTable(1:tsize) = valTable
     tmpTable(tsize+1:2*tsize) = 0.0_dp
@@ -138,7 +138,7 @@ SUBROUTINE CyclicConvergence( Model,Solver,dt,Transient)
   
   valTable(iCycle) = val
 
-  WRITE(Message,'(A,ES12.3)') 'Entry '//TRIM(I2S(iCycle))//' for convergence criterion: ',val
+  WRITE(Message,'(A,ES12.3)') 'Entry '//I2S(iCycle)//' for convergence criterion: ',val
   CALL Info(Caller,Message,Level=6)
   
   ! Same cycle, nothing to do!
@@ -199,22 +199,22 @@ SUBROUTINE CyclicConvergence( Model,Solver,dt,Transient)
       CALL Fatal(Caller,'No tolerances given to evaluate convergence!')
     END IF
     
-    CALL Info(Caller,TRIM(I2S(nConv))//' measures converged out of '//TRIM(I2S(nCnt)),Level=10)
+    CALL Info(Caller,I2S(nConv)//' measures converged out of '//I2S(nCnt),Level=10)
     Converged = ( nConv == nCnt ) 
 
     IF( Converged ) THEN      
-      CALL Info(Caller,'Cyclic convergence reached after '//TRIM(I2S(nCycle))//' cycles!',Level=5)
+      CALL Info(Caller,'Cyclic convergence reached after '//I2S(nCycle)//' cycles!',Level=5)
       pVar => VariableGet( Mesh % Variables,'produce')
       pVar % Values(1) = 1.0_dp
       convCycle = nCycle
     ELSE
-      CALL Info(Caller,'Cyclic convergence not reached after '//TRIM(I2S(nCycle))//' cycles!',Level=10)    
+      CALL Info(Caller,'Cyclic convergence not reached after '//I2S(nCycle)//' cycles!',Level=10)    
     END IF
   ELSE
     prodCycles = ListGetInteger( Params,'Number of Production Cycles',Found )
     IF(.NOT. Found) prodCycles = 1
     IF( nCycle - convCycle == prodCycles ) THEN
-      CALL Info(Caller,'Finish flag was activated after '//TRIM(I2S(nCycle))//' cycles!',Level=5)
+      CALL Info(Caller,'Finish flag was activated after '//I2S(nCycle)//' cycles!',Level=5)
       pVar => VariableGet( Mesh % Variables,'finish')
       pVar % Values(1) = 1.0_dp
     END IF
