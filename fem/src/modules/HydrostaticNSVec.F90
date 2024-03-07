@@ -495,6 +495,7 @@ CONTAINS
 
     INTEGER :: t, i, j, k, p, q, ngp, allocstat, dofs
     INTEGER, SAVE :: elemdim
+    CHARACTER(LEN=MAX_NAME_LEN):: str
 
     TYPE(ValueHandle_t), SAVE :: Dens_h, Load_h(3)
     TYPE(Variable_t), POINTER, SAVE :: HeightVar 
@@ -560,7 +561,10 @@ CONTAINS
       CALL ListInitElementKeyword( Load_h(1),'Body Force','Flow Bodyforce 1')
       CALL ListInitElementKeyword( Load_h(2),'Body Force','Flow Bodyforce 2')
       CALL ListInitElementKeyword( Load_h(3),'Body Force','Flow Bodyforce 3')
-      HeightVar => VariableGet( CurrentModel % Mesh % Variables,'height') 
+
+      str = ListGetString( CurrentModel % Solver % Values,'Height Variable Name',Found )
+      IF(.NOT. Found) str = 'height'            
+      HeightVar => VariableGet( CurrentModel % Mesh % Variables, str) 
     END IF
     
     ! Vectorized basis functions
@@ -780,7 +784,9 @@ CONTAINS
 
       CALL ListInitElementVariable( Velo_v )
 
-      HeightVar => VariableGet( CurrentModel % Mesh % Variables,'height') 
+      str = ListGetString( CurrentModel % Solver % Values,'Height Variable Name',Found )
+      IF(.NOT. Found) str = 'height'            
+      HeightVar => VariableGet( CurrentModel % Mesh % Variables, str) 
 
       SlipCoeffVar => VariableGet( CurrentModel % Mesh % Variables,'Slip Coefficient',ThisOnly=.TRUE.)
       SaveSlipCoeff = ASSOCIATED(SlipCoeffVar)
@@ -1359,7 +1365,10 @@ CONTAINS
      
   END SUBROUTINE PopulateDerivedFields
 
-
+ 
+  ! Initialize height above z=0 such that we can access it from anywhere, not only at top.
+  ! Structured mesh is assumed in z-direction.
+  !---------------------------------------------------------------------------------------
   SUBROUTINE InitializeHeightField()
 
     IMPLICIT NONE
