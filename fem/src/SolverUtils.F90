@@ -12529,10 +12529,11 @@ END FUNCTION SearchNodeL
   !> This could be used to detect problems in mesh when suspecting
   !> floating parts not fixed by any BC, for example.
   !---------------------------------------------------------------------------------
-  SUBROUTINE CalculateMeshPieces( Mesh, ElementMode )
+  SUBROUTINE CalculateMeshPieces( Mesh, ElementMode, PieceIndex)
 
     TYPE(Mesh_t), POINTER :: Mesh
     LOGICAL, OPTIONAL :: ElementMode
+    INTEGER, OPTIONAL :: PieceIndex(:)
 
     LOGICAL :: Ready
     INTEGER :: i,j,k,n,t,t2,k2,MinIndex,MaxIndex,Loop,NoPieces
@@ -12676,6 +12677,17 @@ END FUNCTION SearchNodeL
     CALL Info('CalculateMeshPieces',&
         'Number of separate pieces in mesh is '//I2S(NoPieces),Level=5)
 
+    ! Use the compact numbering of mesh pieces
+    DO i=1,n
+      j = MeshPiece(i)
+      IF(j>0) MeshPiece(i) = PiecePerm(j)
+    END DO
+        
+    IF(PRESENT(PieceIndex)) THEN
+      PieceIndex = MeshPiece
+      RETURN
+    END IF
+    
     i = ListGetInteger( CurrentModel % Simulation,'Desired Mesh Pieces',Found )
     IF( Found ) THEN
       IF( i == NoPieces ) THEN
@@ -12711,17 +12723,57 @@ END FUNCTION SearchNodeL
         j = Var % Perm( i ) 
         IF( j == 0 ) CYCLE
       END IF
-      IF( MeshPiece(i) > 0 ) THEN
-        Var % Values( j ) = 1.0_dp * PiecePerm( MeshPiece( i ) )
-      ELSE
-        Var % Values( j ) = 0.0_dp
-      END IF
+      Var % Values( j ) = 1.0_dp * MeshPiece( i ) 
     END DO
     CALL Info('CalculateMeshPieces','Creating variable showing the non-connected domains: mesh piece',Level=5)
   
   END SUBROUTINE CalculateMeshPieces
+!------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> Compute radius of rotor using only topology information.
+!> Assumes that axis of rotation is z-axis. 
+!------------------------------------------------------------------------------
+  FUNCTION DetermineRotorRadius(Mesh) RESULT( Radius ) 
+!------------------------------------------------------------------------------
+    IMPLICIT NONE 
+    TYPE(Mesh_t), POINTER :: Mesh
+    REAL(KIND=dp) :: Radius
+    
+    INTEGER, ALLOCATABLE :: PieceIndex(:)
+    INTEGER :: i,imin,n
+    REAL(KIND=dp) :: r2,rmin,rmax
 
+    Radius = -1.0_dp
+    n = Mesh % NumberOfNodes
+    ALLOCATE(PieceIndex(n))
+    PieceIndex = 0
+    CALL CalculateMeshPieces( Mesh, PieceIndex = PieceIndex )
+    IF( MAXVAL(PieceIndex) /= 2) RETURN
+
+    ! Find minimum radius nodes i.e. center node
+    rmin = HUGE(rmin)
+    imin = 0
+    DO i=1,n
+      r2 = Mesh % Nodes % x(i)**2 + Mesh % Nodes % y(i)**2
+      IF(r2<rmin) THEN
+        rmin = r2
+        imin = i
+      END IF
+    END DO
+
+    ! Find the maximum radius in the same piece i.e. rotor radius
+    rmax = 0.0_dp
+    DO i=1,n
+      IF(PieceIndex(i) /= PieceIndex(imin)) CYCLE
+      r2 = Mesh % Nodes % x(i)**2 + Mesh % Nodes % y(i)**2
+      rmax = MAX(rmax,r2)
+    END DO
+    Radius = SQRT(rmax)             
+    
+  END FUNCTION DetermineRotorRadius
+!------------------------------------------------------------------------------
+  
 
 !------------------------------------------------------------------------------
 !> Compute weights of entities i.e. their area and volume in the mesh.
