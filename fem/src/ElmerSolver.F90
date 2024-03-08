@@ -1665,7 +1665,7 @@
          CALL VariableAdd( Mesh % Variables, Mesh, Name='rotor velo',DOFs=1, Values=sAngleVelo )
        END IF
        
-       IF( ListGetLogical( CurrentModel % Simulation,'Rotor Mode') ) THEN
+       IF( ListGetLogical( CurrentModel % Simulation,'Rotor Mode',GotIt) ) THEN
          BLOCK
            REAL(KIND=dp) :: Rad
            Rad = DetermineRotorRadius(Mesh)

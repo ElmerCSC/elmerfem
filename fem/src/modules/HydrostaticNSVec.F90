@@ -1177,16 +1177,14 @@ CONTAINS
         IF(ASSOCIATED(VarVx)) i=i+1
         IF(ASSOCIATED(VarVy)) i=i+1
         IF(ASSOCIATED(VarFull)) i=i+1
-        IF(i==3) THEN                
-          CALL Info('HydrostaticNSVec','Setting velocity for each component separately',Level=10)
-          dofs = 1          
-        ELSE
-          CALL Fatal('HydrostaticNSVec','Could not find full velocity variable: '//TRIM(str))
+        IF(i<3) THEN                
+          CALL Fatal('HydrostaticNSVec','Could not find components of velocity variable: '//TRIM(str))
         END IF
+        CALL Info('HydrostaticNSVec','Setting velocity for each component separately',Level=10)
+        dofs = 1          
         zdof = 1
       END IF
       VarFull % Values = 0.0_dp      
-      PRINT *,'DOfs:',Dofs      
     END IF
       
     NULLIFY(VarP) 
