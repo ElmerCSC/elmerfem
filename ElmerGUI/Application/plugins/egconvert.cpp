@@ -97,7 +97,7 @@ static int GetrowDouble(char *line1,FILE *io)
 
   for(i=0;i<MAXLINESIZE;i++) { 
 
-    /* The fortran double is not recognized by C string operators */
+    /* The Fortran double is not recognized by C string operators */
     if( line0[i] == 'd' || line0[i] == 'D' ) {
       line1[i] = 'e';
     } else {
@@ -1193,7 +1193,7 @@ static int ReadAbaqusField(FILE *in,char *buffer,int *argtype,int *argno)
 
 int LoadAbaqusOutput(struct FemType *data,char *prefix,int info)
 /* Load the grid from a format that can be read by ABAQUS 
-   program designed for structural mechanics.
+   program designed for structural mechanics. 
    */
 {
   int knotno,elemno,elset,secno;
@@ -2767,7 +2767,8 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
     }
     for(j=0;j<maxnodes;j++) kmax = MAX(kmax,data->topology[i][j]);
     for(j=0;j<maxnodes;j++) kmin = MIN(kmin,data->topology[i][j]);
-    data->material[i] = 1;
+    j = next_int(&cp);    
+    data->material[i] = MAX(1,j);
   }
   fclose(in);
   if(info) {
@@ -3380,8 +3381,10 @@ int LoadComsolMesh(struct FemType *data,struct BoundaryType *bound,char *prefix,
 {
   int noknots,noelements,maxnodes,material;
   int allocated,dim=0, elemnodes=0, elembasis=0, elemtype;
-  int debug,offset,domains,mindom,minbc,elemdim=0;
+  int debug,domains,mindom,minbc,maxdom,maxbc,maxlabel,elemdim=0,entitylen;
+  int *bclabel, *domlabel, n_label=0, offset, bcoffset, domoffset, *bcinfo;
   char filename[MAXFILESIZE],line[MAXLINESIZE],*cp;
+  char entityname[MAXNAMESIZE];
   int i,j,k;
   FILE *in;
 
@@ -3403,6 +3406,9 @@ int LoadComsolMesh(struct FemType *data,struct BoundaryType *bound,char *prefix,
 
   mindom = 1000;
   minbc = 1000;
+  maxdom = 0;
+  maxlabel = 0;
+  maxbc = 0;
   offset = 1;
 
 omstart:
@@ -3525,24 +3531,80 @@ omstart:
 	material = next_int(&cp);
 
 	if(allocated) {
-	  if(elemdim < dim) 
-	    material = material - minbc + 1;
-	  else 
-	    material = material - mindom + 1;
-	  data->material[domains] = material;	  
+	  if( elemdim < dim ) {
+	    if(maxlabel>0) bcinfo[domains] = TRUE;
+	    data->material[domains] = material + bcoffset;	  
+	  }
+	  else {
+	    data->material[domains] = material + domoffset;
+	  }
 	}
 	else {
 	  if(elemdim < dim) {
-	    if(minbc > material) minbc = material;
+	    minbc = MIN(minbc,material);
+	    maxbc = MAX(maxbc,material);
 	  }
 	  else { 
-	    if(mindom > material) mindom = material;	  
+	    mindom = MIN(mindom,material);	  
+	    maxdom = MAX(maxdom,material);	  
 	  }
 	}
 
       }
     }
 
+    else if(strstr(line,"# Label")) {
+      int ind, ind1, n_ent = 0;
+
+      n_label += 1;
+      maxlabel = MAX(maxlabel,n_label);
+
+      if(allocated) {
+	/* Read the length of the label and proceed over the empty space*/
+	cp = line;
+	entitylen = next_int(&cp);
+	cp += 1;
+	strncpy(entityname,cp,entitylen);
+	entityname[entitylen] = '\0';
+	if(debug) printf("BoundaryName %d is: %s\n",n_label,entityname);
+      }
+      
+      j = 0;
+      for(i=1;i<=4;i++) {
+	Comsolrow(line,in);	
+	if(strstr(line,"# Geometry/mesh tag")) j++;
+	if(strstr(line,"# Dimension")) j++;
+	if(strstr(line,"# Number of entities")) {
+	  j++;
+	  cp = line; 
+	  n_ent = next_int(&cp);
+	}
+	if(debug) printf("Numbber of entities: %d\n",n_ent);
+	if(strstr(line,"# Entities")) {
+	  j++;
+	  for(k=1;k<=n_ent;k++) {
+	    Comsolrow(line,in);	
+	    if(allocated) {
+	      cp = line;
+	      ind = next_int(&cp)+bcoffset;
+
+	      if(k==1) {
+		/* Use the first entity to represent all entities. */
+		ind1 = ind;
+		data->boundaryname[ind1] = Cvector(0,MAXNAMESIZE);
+		strncpy(data->boundaryname[ind1],entityname,entitylen);
+	      }
+	      bclabel[ind] = ind1;
+	      if(debug) printf("Mapping: %d %d %d\n",n_label,ind,ind1);
+	    }
+	  }
+	}
+      }
+      if(j<4) {
+	if(debug) printf("We should have number 4 keywords after label so something might be off!");
+	break;
+      }                  
+    }
     else if(strstr(line,"#")) {
       if(debug) printf("Unused command:  %s",line);
     }
@@ -3565,6 +3627,29 @@ end:
     data->noelements = noelements;
     data->maxnodes = maxnodes;
     data->dim = dim;
+    n_label = 0;
+
+    bcoffset = 1 - minbc;
+    domoffset = 1 - mindom;
+
+    if(maxlabel>0)  {
+      printf("Mesh has %d labels with physical names.\n",maxlabel);
+
+      /* Allocate for the tables that renumbers geometric entities to physical ones. */
+      maxbc++;
+      maxdom++;
+      bclabel = Ivector(minbc,maxbc);
+      for(i=minbc;i<=maxbc;i++) 
+	bclabel[i] = -1;
+      domlabel = Ivector(mindom,maxdom);			
+      for(i=mindom;i<=maxdom;i++) 
+	domlabel[i] = -1;
+      data->boundarynamesexist = TRUE;
+
+      bcinfo = Ivector(1,noelements);
+      for(i=1;i<=noelements;i++)
+	bcinfo[i] = FALSE;
+    }
     
     if(info) {
       printf("Allocating for %d knots and %d %d-node elements.\n",
@@ -3577,7 +3662,23 @@ end:
   }
   fclose(in);
 
-  if(info) printf("The Comsol mesh was loaded from file %s.\n\n",filename);
+  /* Perform remapping of entities */
+  if(maxlabel > 0 ) {
+    for(i=1;i<=data->noelements;i++) {
+      j = data->material[i];
+      if(bcinfo[i]) {
+	if(bclabel[j]>-1) {	  
+	  data->material[i] = bclabel[j];	  
+	}
+      }
+    }        
+    free_Ivector(bclabel,minbc,maxbc);
+    free_Ivector(domlabel,mindom,maxdom);
+    free_Ivector(bcinfo,1,noelements);
+  }
+  
+  
+  if(info) printf("Comsol mesh was loaded from file %s.\n\n",filename);
   ElementsToBoundaryConditions(data,bound,FALSE,TRUE);
 
   return(0);
@@ -5668,13 +5769,13 @@ int LoadUniversalMesh(struct FemType *data,struct BoundaryType *bound,
    fields in FE community are treated. */
 {
   int noknots,totknots,noelements,elemcode,maxnodes;
-  int allocated,dim,ind,lines;
+  int allocated,dim,ind,lines,groupset,goffset,poffset,noconf1,noconf2;
   int reordernodes,reorderelements,nogroups,maxnodeind,maxelem,elid,unvtype,elmertype;
   int nonodes,group,grouptype,mode,nopoints,nodeind,matind,physind,colorind;
-  int minelemtype,maxelemtype,physoffset=0,doscaling=FALSE;
+  int minelemtype,maxelemtype,doscaling=FALSE;
   int debug,mingroup,maxgroup,minphys,maxphys,nogroup,noentities,dummy,isbeam;
   int *u2eind=NULL,*u2eelem=NULL;
-  int *elementtypes;
+  int *elementtypes,*physmap;
   char filename[MAXFILESIZE],line[MAXLINESIZE],*cp;
   int i,j,k;
   char entityname[MAXNAMESIZE];
@@ -5713,7 +5814,12 @@ int LoadUniversalMesh(struct FemType *data,struct BoundaryType *bound,
   maxgroup = 0;
   minphys = INT_MAX;
   maxphys = 0;
-    
+  groupset = 0;
+  goffset = 0;
+  poffset = 0;
+  noconf1 = 0;
+  noconf2 = 0;
+  
 omstart:
 
   /* this is a global variable in the module */
@@ -5836,6 +5942,9 @@ omstart:
 	  if(elid != noelements) reorderelements = TRUE;
 	  maxelem = MAX(maxelem, elid);
 	}
+	else {
+	  physind += poffset;
+	}
 
 	/* For beam elements there is a stupid additional row filled with zeros? */
 	isbeam = ( elmertype / 100 == 2);
@@ -5880,7 +5989,7 @@ omstart:
 	  UnvToElmerIndx(elmertype,data->topology[noelements]);	  
 
 	  /* should this be physical property or material property? */
-	  data->material[noelements] = physind + physoffset;
+	  data->material[noelements] = physind;
 	}
 	else {
 	  minelemtype = MIN( minelemtype, elmertype );
@@ -5988,6 +6097,10 @@ omstart:
 	  minphys = MIN( minphys, physind );
 	  maxphys = MAX( maxphys, physind );
 	}
+	else {
+	  physind += poffset;
+	}
+
 	
 	if(unvtype == 11 || unvtype == 21) Getrow(line,in,FALSE);
 	Getrow(line,in,FALSE);
@@ -6018,7 +6131,7 @@ omstart:
 	  UnvToElmerIndx(elmertype,data->topology[noelements]);	  
 
 	  /* should this be physical property or material property? */
-	  data->material[noelements] = physind + physoffset;
+	  data->material[noelements] = physind;
 	}
       }
     }  
@@ -6041,6 +6154,9 @@ omstart:
 	if(!allocated) {
 	  mingroup = MIN( mingroup, nogroup );
 	  maxgroup = MAX( maxgroup, nogroup );
+	}
+	else {
+	  nogroup += goffset;
 	}
 
 	Getrow(line,in,FALSE);	
@@ -6078,13 +6194,21 @@ omstart:
 	  if(ind == 0) continue;
 
 	  if( grouptype == 8 ) {
-
 	    if(allocated) {
-	      if(reorderelements) ind = u2eelem[ind];
+	      if(reorderelements) ind = u2eelem[ind];	      
 	      elemcode = data->elementtypes[ind];
 	      maxelemtype = MAX( maxelemtype, elemcode );
 	      minelemtype = MIN( minelemtype, elemcode );
-	      data->material[ind] = nogroup;
+
+	      if(data->material[ind] < 0 ) {
+		if(data->material[ind] == -nogroup)
+		  noconf1++;
+		else
+		  noconf2++;
+	      }
+
+	      data->material[ind] = -nogroup;
+	      groupset++;
 	    }
 	  }
 	  else if(grouptype == 7) {
@@ -6092,11 +6216,19 @@ omstart:
 
 	    if(allocated) {
 	      elemcode = 101;
-	      data->material[noelements+nopoints] = nogroup;
+	      if(data->material[noelements+nopoints] < 0 ) {
+		if(data->material[noelements+nopoints] == -nogroup)
+		  noconf1++;
+		else
+		  noconf2++;
+	      }
+	      
+	      data->material[noelements+nopoints] = -nogroup;
 	      maxelemtype = MAX( maxelemtype, elemcode );
 	      minelemtype = MIN( minelemtype, elemcode );
 	      data->elementtypes[noelements+nopoints] = elemcode;	      
 	      data->topology[noelements+nopoints][0] = ind;
+	      groupset++;
 	    }
 	  }
 	  else {
@@ -6163,45 +6295,112 @@ end:
 
     /* Set an offset for physical indexes so that the defined groups and 
        existing physical indexes won't mix confusingly */
-    if( maxphys >= mingroup && minphys <= maxgroup ) {
-      physoffset = maxgroup - minphys + 1;
-    }
-    else {
-      physoffset = 0;
-    }
-
     if(info) {
       printf("Physical index interval is [%d,%d]\n",minphys,maxphys);
-      if( maxgroup ) 
-	printf("Group index interval is [%d,%d]\n",mingroup,maxgroup);
-      if(physoffset) printf("Using offset %d for physical indexes\n",physoffset);
+      if( maxgroup ) printf("Group index interval is [%d,%d]\n",mingroup,maxgroup);
     }
-
-
+    if(!mingroup) {
+      printf("Applying group offset to 1!\n");
+      goffset = 1;
+      mingroup += 1;
+      maxgroup += 1;
+    }
+    if(!minphys) {
+      printf("Applying physical entity offset to 1!\n");
+      poffset = 1;
+      minphys += 1;
+      maxphys += 1;
+    }
+    
     goto omstart;    
   }
   fclose(in);
 
-  /* If the physical index may be zero, then we have a risk that there is 
-     an unset material index. Elmer does not like material indexes of zeros. 
-     This could be made prettier as now the almost same thing is done twice. */
-  if( minphys + physoffset == 0 ) {
-    mingroup = INT_MAX;
-    maxgroup = 0;
-    for(i=1;i<=data->noelements;i++) {
-      mingroup = MIN( mingroup, data->material[i] );
-      maxgroup = MAX( maxgroup, data->material[i] );
-    }
-    if( mingroup == 0 ) {
-      if(info) {
-	if(!maxgroup) printf("No material groups were successfully applied\n");
-	printf("Unset elements were given material index %d\n",maxgroup+1);    
-      }
-      for(i=1;i<=data->noelements;i++) 
-	if(data->material[i] == 0) data->material[i] = maxgroup + 1;
-    }
-  }    
+  if(noconf1) printf("Group given multiple times with same group: %d\n",noconf1);
+  if(noconf2) printf("Group given multiple times but with different group index: %d\n",noconf2);
+  
+  /* Rorder materials if there is an overlap between groups and physical entities, or 
+     if numbering uses also zero. */
+  if( groupset) {
+    int i1,i2,k2,ioffset;
 
+    if(info) printf("Group given for %d elements out of %d\n",groupset,noelements);
+    i1=MIN(minphys,mingroup);
+    i2=MAX(maxphys,maxgroup);
+
+    /* Give plenty of room for new indexes */
+    i2=2*i2;
+    
+    physmap = Ivector(i1,i2);
+    for(i=i1;i<=i2;i++) physmap[i] = 0;
+
+    /* Give priority to group (negative index) */
+    for(i=1;i<=data->noelements;i++) {
+      j = data->material[i];
+      if(j<0) physmap[-j] = -1;
+    }
+    /* Now check the physical index */
+    for(i=1;i<=data->noelements;i++) {
+      j = data->material[i];
+      if(j>0) {
+	if(physmap[j]==0) physmap[j] = -2;
+	if(physmap[j]==-1) {
+	  if(info) printf("Physical index and group index collide: %d\n",j);
+	  physmap[j] = -3;
+	}
+      }
+    }
+
+    for(i=i1;i<=i2;i++) {
+      /* For tag -3 we need to find new index */
+      if(physmap[i]==-3) {
+	/* Find a free index and tag it with -4 when it has been used */
+	for(j=i1;j<=i2;j++)
+	  if(!physmap[j]) break;
+	physmap[i] = j;
+	physmap[j] = -4;
+	if(info) printf("Replacing physical index %d with free index %d\n",i,j);
+	/* We may have some remnants that we remove since physical entity is not named */
+	if(data->bodyname[j]) {
+	  printf("Removing name of an empty group: %s\n",data->bodyname[j]);
+	  free_Cvector(data->bodyname[j],0,MAXNAMESIZE);
+	  data->bodyname[j] = NULL; 
+	}
+      }
+    }
+    /* Finally do the renumbering */
+    k = 0;
+    k2 = 0;
+    for(i=1;i<=data->noelements;i++) {
+      j = data->material[i];
+      if(j<0)
+	data->material[i] = -j;
+      else {
+	if(physmap[j] > 0) {
+	  data->material[i] = physmap[j];
+	  k2++;
+	}
+	else k++;
+      }
+    }
+    if(k) printf("Using original physical entity index for %d elements\n",k);
+    if(k2) printf("Using mapped physical entity index for %d elements\n",k2);
+
+    for(i=i1;i<=i2;i++) physmap[i] = 0;
+    for(i=1;i<=data->noelements;i++) 
+      physmap[data->material[i]] += 1;
+    for(i=i1;i<=i2;i++) {
+      j = physmap[i];
+      if(j) {
+	if(data->bodyname[i])  
+	  printf("Entity %d (%s) count is %d\n",i,data->bodyname[i],j);
+	else 
+	  printf("Entity %d count is %d\n",i,j);	
+      }
+    }
+    free_Ivector(physmap,i1,i2);    
+  }
+      
   /* Elmer likes that node indexes are given so that no integers are missed.
      If this is not the case we need to do renumbering of nodes. */
   if(reordernodes) {

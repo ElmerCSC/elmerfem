@@ -9155,7 +9155,7 @@ int CreateBoundaryLayerDivide(struct FemType *data,struct BoundaryType *bound,
 
 
   /* Go through all the boundaries with boundary layer definitions and compute 
-     the numbder of nodes at the surface. */
+     the number of nodes at the surface. */
 
   maxbc = 0;
   qlayer = 0.0;
