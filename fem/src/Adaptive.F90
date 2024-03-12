@@ -1149,7 +1149,7 @@ BLOCK
           zmin = ParallelReduction( MINVAL(refmesh % nodes % z), 1)
           zmax = ParallelReduction( MAXVAL(refmesh % nodes % z), 2)
 
-          cscale = 10 * MAX( xmax - xmin, MAX( ymax - ymin, zmax - zmin)  )
+          cscale = 1 * MAX( xmax - xmin, MAX( ymax - ymin, zmax - zmin)  )
 
           refmesh % nodes % x = cscale * refmesh % nodes % x
           refmesh % nodes % y = cscale * refmesh % nodes % y
