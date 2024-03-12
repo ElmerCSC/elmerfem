@@ -3381,7 +3381,7 @@ int LoadComsolMesh(struct FemType *data,struct BoundaryType *bound,char *prefix,
 {
   int noknots,noelements,maxnodes,material;
   int allocated,dim=0, elemnodes=0, elembasis=0, elemtype;
-  int debug,domains,mindom,minbc,maxdom,maxbc,maxlabel,elemdim=0,entitylen;
+  int debug,domains,mindom,minbc,maxdom,maxbc,maxlabel,elemdim=0,entitylen,entitydim;
   int *bclabel, *domlabel, n_label=0, offset, bcoffset, domoffset, *bcinfo;
   char filename[MAXFILESIZE],line[MAXLINESIZE],*cp;
   char entityname[MAXNAMESIZE];
@@ -3392,13 +3392,13 @@ int LoadComsolMesh(struct FemType *data,struct BoundaryType *bound,char *prefix,
   if ((in = fopen(filename,"r")) == NULL) {
     AddExtension(prefix,filename,"mphtxt");
     if ((in = fopen(filename,"r")) == NULL) {
-      printf("LoadComsolMesh: opening of the Comsol mesh file '%s' wasn't successful !\n",
+      if(info) printf("LoadComsolMesh: opening of the Comsol mesh file '%s' wasn't successful !\n",
 	     filename);
       return(1);
     }
   }
 
-  printf("Reading mesh from Comsol mesh file %s.\n",filename);
+  if(info) printf("Reading mesh from Comsol mesh file %s.\n",filename);
   InitializeKnots(data);
 
   debug = FALSE;
@@ -3465,7 +3465,7 @@ omstart:
     }
 
     else if(strstr(line,"# Mesh point coordinates") || strstr(line, "# Mesh vertex coordinates" )) {
-      printf("Loading %d coordinates\n",noknots);
+      if(info) printf("Loading %d coordinates\n",noknots);
 
       for(i=1;i<=noknots;i++) {
 	Comsolrow(line,in);	
@@ -3573,7 +3573,11 @@ omstart:
       for(i=1;i<=4;i++) {
 	Comsolrow(line,in);	
 	if(strstr(line,"# Geometry/mesh tag")) j++;
-	if(strstr(line,"# Dimension")) j++;
+	if(strstr(line,"# Dimension")) {
+	  cp = line;
+	  entitydim = next_int(&cp);
+	  j++;
+	}
 	if(strstr(line,"# Number of entities")) {
 	  j++;
 	  cp = line; 
@@ -3586,16 +3590,29 @@ omstart:
 	    Comsolrow(line,in);	
 	    if(allocated) {
 	      cp = line;
-	      ind = next_int(&cp)+bcoffset;
-
-	      if(k==1) {
-		/* Use the first entity to represent all entities. */
-		ind1 = ind;
-		data->boundaryname[ind1] = Cvector(0,MAXNAMESIZE);
-		strncpy(data->boundaryname[ind1],entityname,entitylen);
+	      if(entitydim == dim ) {
+		ind = next_int(&cp)+domoffset;
+		if(k==1) {
+		  /* Use the first entity to represent all entities. */
+		  ind1 = ind;		
+		  data->bodyname[ind1] = Cvector(0,MAXNAMESIZE);
+		  strncpy(data->bodyname[ind1],entityname,entitylen);
+		  data->bodynamesexist = TRUE;
+		}
+		domlabel[ind] = ind1;
+		if(debug) printf("Mapping bulk: %d %d %d\n",n_label,ind,ind1);
 	      }
-	      bclabel[ind] = ind1;
-	      if(debug) printf("Mapping: %d %d %d\n",n_label,ind,ind1);
+	      else if(entitydim == dim-1 ) {
+		ind = next_int(&cp)+bcoffset;
+		if(k==1) {
+		  ind1 = ind;		
+		  data->boundaryname[ind1] = Cvector(0,MAXNAMESIZE);
+		  strncpy(data->boundaryname[ind1],entityname,entitylen);
+		  data->boundarynamesexist = TRUE;
+		}
+		bclabel[ind] = ind1;
+		if(debug) printf("Mapping bc: %d %d %d\n",n_label,ind,ind1);
+	      }
 	    }
 	  }
 	}
@@ -3632,8 +3649,13 @@ end:
     bcoffset = 1 - minbc;
     domoffset = 1 - mindom;
 
+    if(info) {
+      if(domoffset) printf("Offset of body indexing set to start from one, not %d\n",mindom);
+      if(bcoffset) printf("Offset of BC indexing set to start from one, not %d\n",minbc);
+    }
+      
     if(maxlabel>0)  {
-      printf("Mesh has %d labels with physical names.\n",maxlabel);
+      if(info) printf("Mesh has %d labels with physical names.\n",maxlabel);
 
       /* Allocate for the tables that renumbers geometric entities to physical ones. */
       maxbc++;
@@ -3644,7 +3666,6 @@ end:
       domlabel = Ivector(mindom,maxdom);			
       for(i=mindom;i<=maxdom;i++) 
 	domlabel[i] = -1;
-      data->boundarynamesexist = TRUE;
 
       bcinfo = Ivector(1,noelements);
       for(i=1;i<=noelements;i++)
@@ -3667,9 +3688,10 @@ end:
     for(i=1;i<=data->noelements;i++) {
       j = data->material[i];
       if(bcinfo[i]) {
-	if(bclabel[j]>-1) {	  
-	  data->material[i] = bclabel[j];	  
-	}
+	if(bclabel[j]>-1) data->material[i] = bclabel[j];	  
+      } 
+      else {
+	if(domlabel[j]>-1) data->material[i] = domlabel[j];	  
       }
     }        
     free_Ivector(bclabel,minbc,maxbc);
