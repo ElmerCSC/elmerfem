@@ -1665,6 +1665,20 @@
          CALL VariableAdd( Mesh % Variables, Mesh, Name='rotor velo',DOFs=1, Values=sAngleVelo )
        END IF
        
+       IF( ListGetLogical( CurrentModel % Simulation,'Rotor Mode',GotIt) ) THEN
+         BLOCK
+           REAL(KIND=dp) :: Rad
+           Rad = DetermineRotorRadius(Mesh)
+           IF(Rad>0) THEN
+             WRITE(Message,'(A,ES14.6)') '"Rotor Radius" defined to be: ',Rad
+             CALL Info('AddTimeEtc',Message)
+             CALL ListAddConstReal( CurrentModel % Simulation,'Rotor Radius',Rad)
+           ELSE
+             CALL Warn('AddTimeEtc','Could not determine "Rotor Radius"')
+           END IF
+         END BLOCK
+       END IF
+       
        IF( ListCheckPresentAnySolver( CurrentModel,'Scanning Loops') ) THEN
          CALL VariableAdd( Mesh % Variables, Mesh, Name='scan', DOFs=1, Values=sScan )
        END IF

@@ -223,7 +223,7 @@ CONTAINS
 !   Add nodal average of the h-value to the mesh variable list:
 !   -----------------------------------------------------------
 
-    NN = RefMesh % NumberOfNodes
+    nn = RefMesh % NumberOfNodes
     Var => VariableGet( RefMesh % Variables, 'Hvalue', ThisOnly=.TRUE. )
 
     IF ( ASSOCIATED( Var ) ) THEN
@@ -278,7 +278,7 @@ CONTAINS
     WHERE( Referenced(1:nn) > 0 )
       Hvalue(1:nn) = Hvalue(1:nn) / Referenced(1:nn)
     END WHERE
-    CALL ParallelAverageHvalue(  RefMesh, hValue )
+    CALL ParallelAverageHvalue(  RefMesh, Hvalue )
     
 !   Add estimate of the convergence with respecto to h:
 !  ----------------------------------------------------
@@ -521,10 +521,10 @@ CONTAINS
       CALL Info( Caller, Message, Level=6 )
     ELSE
       NewMesh => SplitMesh( RefMesh, ErrorIndicator, ErrorLimit, &
-          NodalError, hValue, hConvergence, minH, maxH, MaxChangeFactor )
+          NodalError, Hvalue, hConvergence, minH, maxH, MaxChangeFactor )
     END IF
 
-!   Hvalue(1:nn) = PrevHValue(1:nn)
+    Hvalue(1:nn) = PrevHValue(1:nn)
 !   NodalError = PrevNodalError
 
     IF ( .NOT.ASSOCIATED( NewMesh ) ) THEN
@@ -1323,7 +1323,7 @@ END BLOCK
 
 !------------------------------------------------------------------------------
   FUNCTION SplitMesh( RefMesh,ErrorIndicator,ErrorLimit, NodalError, &
-       hValue, hConvergence, minH, maxH, MaxChange ) RESULT(NewMesh)
+       Hvalue, hConvergence, minH, maxH, MaxChange ) RESULT(NewMesh)
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: NodalError(:), hConvergence(:), Hvalue(:), MaxChange
     TYPE(Mesh_t), POINTER :: NewMesh, RefMesh

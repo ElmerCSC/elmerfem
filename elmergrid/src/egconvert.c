@@ -3381,8 +3381,10 @@ int LoadComsolMesh(struct FemType *data,struct BoundaryType *bound,char *prefix,
 {
   int noknots,noelements,maxnodes,material;
   int allocated,dim=0, elemnodes=0, elembasis=0, elemtype;
-  int debug,offset,domains,mindom,minbc,elemdim=0;
+  int debug,domains,mindom,minbc,maxdom,maxbc,maxlabel,elemdim=0,entitylen,entitydim;
+  int *bclabel, *domlabel, n_label=0, offset, bcoffset, domoffset, *bcinfo;
   char filename[MAXFILESIZE],line[MAXLINESIZE],*cp;
+  char entityname[MAXNAMESIZE];
   int i,j,k;
   FILE *in;
 
@@ -3390,13 +3392,13 @@ int LoadComsolMesh(struct FemType *data,struct BoundaryType *bound,char *prefix,
   if ((in = fopen(filename,"r")) == NULL) {
     AddExtension(prefix,filename,"mphtxt");
     if ((in = fopen(filename,"r")) == NULL) {
-      printf("LoadComsolMesh: opening of the Comsol mesh file '%s' wasn't successful !\n",
+      if(info) printf("LoadComsolMesh: opening of the Comsol mesh file '%s' wasn't successful !\n",
 	     filename);
       return(1);
     }
   }
 
-  printf("Reading mesh from Comsol mesh file %s.\n",filename);
+  if(info) printf("Reading mesh from Comsol mesh file %s.\n",filename);
   InitializeKnots(data);
 
   debug = FALSE;
@@ -3404,6 +3406,9 @@ int LoadComsolMesh(struct FemType *data,struct BoundaryType *bound,char *prefix,
 
   mindom = 1000;
   minbc = 1000;
+  maxdom = 0;
+  maxlabel = 0;
+  maxbc = 0;
   offset = 1;
 
 omstart:
@@ -3460,7 +3465,7 @@ omstart:
     }
 
     else if(strstr(line,"# Mesh point coordinates") || strstr(line, "# Mesh vertex coordinates" )) {
-      printf("Loading %d coordinates\n",noknots);
+      if(info) printf("Loading %d coordinates\n",noknots);
 
       for(i=1;i<=noknots;i++) {
 	Comsolrow(line,in);	
@@ -3526,24 +3531,97 @@ omstart:
 	material = next_int(&cp);
 
 	if(allocated) {
-	  if(elemdim < dim) 
-	    material = material - minbc + 1;
-	  else 
-	    material = material - mindom + 1;
-	  data->material[domains] = material;	  
+	  if( elemdim < dim ) {
+	    if(maxlabel>0) bcinfo[domains] = TRUE;
+	    data->material[domains] = material + bcoffset;	  
+	  }
+	  else {
+	    data->material[domains] = material + domoffset;
+	  }
 	}
 	else {
 	  if(elemdim < dim) {
-	    if(minbc > material) minbc = material;
+	    minbc = MIN(minbc,material);
+	    maxbc = MAX(maxbc,material);
 	  }
 	  else { 
-	    if(mindom > material) mindom = material;	  
+	    mindom = MIN(mindom,material);	  
+	    maxdom = MAX(maxdom,material);	  
 	  }
 	}
 
       }
     }
 
+    else if(strstr(line,"# Label")) {
+      int ind, ind1, n_ent = 0;
+
+      n_label += 1;
+      maxlabel = MAX(maxlabel,n_label);
+
+      if(allocated) {
+	/* Read the length of the label and proceed over the empty space*/
+	cp = line;
+	entitylen = next_int(&cp);
+	cp += 1;
+	strncpy(entityname,cp,entitylen);
+	entityname[entitylen] = '\0';
+	if(debug) printf("BoundaryName %d is: %s\n",n_label,entityname);
+      }
+      
+      j = 0;
+      for(i=1;i<=4;i++) {
+	Comsolrow(line,in);	
+	if(strstr(line,"# Geometry/mesh tag")) j++;
+	if(strstr(line,"# Dimension")) {
+	  cp = line;
+	  entitydim = next_int(&cp);
+	  j++;
+	}
+	if(strstr(line,"# Number of entities")) {
+	  j++;
+	  cp = line; 
+	  n_ent = next_int(&cp);
+	}
+	if(debug) printf("Numbber of entities: %d\n",n_ent);
+	if(strstr(line,"# Entities")) {
+	  j++;
+	  for(k=1;k<=n_ent;k++) {
+	    Comsolrow(line,in);	
+	    if(allocated) {
+	      cp = line;
+	      if(entitydim == dim ) {
+		ind = next_int(&cp)+domoffset;
+		if(k==1) {
+		  /* Use the first entity to represent all entities. */
+		  ind1 = ind;		
+		  data->bodyname[ind1] = Cvector(0,MAXNAMESIZE);
+		  strncpy(data->bodyname[ind1],entityname,entitylen);
+		  data->bodynamesexist = TRUE;
+		}
+		domlabel[ind] = ind1;
+		if(debug) printf("Mapping bulk: %d %d %d\n",n_label,ind,ind1);
+	      }
+	      else if(entitydim == dim-1 ) {
+		ind = next_int(&cp)+bcoffset;
+		if(k==1) {
+		  ind1 = ind;		
+		  data->boundaryname[ind1] = Cvector(0,MAXNAMESIZE);
+		  strncpy(data->boundaryname[ind1],entityname,entitylen);
+		  data->boundarynamesexist = TRUE;
+		}
+		bclabel[ind] = ind1;
+		if(debug) printf("Mapping bc: %d %d %d\n",n_label,ind,ind1);
+	      }
+	    }
+	  }
+	}
+      }
+      if(j<4) {
+	if(debug) printf("We should have number 4 keywords after label so something might be off!");
+	break;
+      }                  
+    }
     else if(strstr(line,"#")) {
       if(debug) printf("Unused command:  %s",line);
     }
@@ -3566,6 +3644,33 @@ end:
     data->noelements = noelements;
     data->maxnodes = maxnodes;
     data->dim = dim;
+    n_label = 0;
+
+    bcoffset = 1 - minbc;
+    domoffset = 1 - mindom;
+
+    if(info) {
+      if(domoffset) printf("Offset of body indexing set to start from one, not %d\n",mindom);
+      if(bcoffset) printf("Offset of BC indexing set to start from one, not %d\n",minbc);
+    }
+      
+    if(maxlabel>0)  {
+      if(info) printf("Mesh has %d labels with physical names.\n",maxlabel);
+
+      /* Allocate for the tables that renumbers geometric entities to physical ones. */
+      maxbc++;
+      maxdom++;
+      bclabel = Ivector(minbc,maxbc);
+      for(i=minbc;i<=maxbc;i++) 
+	bclabel[i] = -1;
+      domlabel = Ivector(mindom,maxdom);			
+      for(i=mindom;i<=maxdom;i++) 
+	domlabel[i] = -1;
+
+      bcinfo = Ivector(1,noelements);
+      for(i=1;i<=noelements;i++)
+	bcinfo[i] = FALSE;
+    }
     
     if(info) {
       printf("Allocating for %d knots and %d %d-node elements.\n",
@@ -3578,7 +3683,24 @@ end:
   }
   fclose(in);
 
-  if(info) printf("The Comsol mesh was loaded from file %s.\n\n",filename);
+  /* Perform remapping of entities */
+  if(maxlabel > 0 ) {
+    for(i=1;i<=data->noelements;i++) {
+      j = data->material[i];
+      if(bcinfo[i]) {
+	if(bclabel[j]>-1) data->material[i] = bclabel[j];	  
+      } 
+      else {
+	if(domlabel[j]>-1) data->material[i] = domlabel[j];	  
+      }
+    }        
+    free_Ivector(bclabel,minbc,maxbc);
+    free_Ivector(domlabel,mindom,maxdom);
+    free_Ivector(bcinfo,1,noelements);
+  }
+  
+  
+  if(info) printf("Comsol mesh was loaded from file %s.\n\n",filename);
   ElementsToBoundaryConditions(data,bound,FALSE,TRUE);
 
   return(0);
