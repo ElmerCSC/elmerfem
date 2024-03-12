@@ -606,6 +606,7 @@ CONTAINS
     CALL SetCurrentMesh( Model, NewMesh )
 
     CALL Info(Caller,'Interpolate vectors from old mesh to new mesh!',Level=7)    
+    Var => RefMesh % Variables
     DO WHILE( ASSOCIATED( Var ) )
       ! This cycles global variable such as time etc. 
       IF( SIZE( Var % Values ) == Var % DOFs ) THEN
