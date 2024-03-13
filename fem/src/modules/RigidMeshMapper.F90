@@ -70,7 +70,7 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
       RotorBodies(:), IntArray(:) => NULL()
   REAL(KIND=dp) :: x0(4), x1(4), RotMatrix(4,4),TrsMatrix(4,4),SclMatrix(4,4), &
       TrfMatrix(4,4),Identity(4,4), Origin(4),Angles(3),Scaling(3),alpha, Coord(3), &
-      dCoord(3), Norm, dx(3), zmin, zmax
+      dCoord(3), Norm, dx(3), zmin, zmax, zloc
   REAL(KIND=dp) :: RotorSkew, StatorSkew
   REAL(KIND=dp) :: at0,at1,at2,Coeff,Source,relax(1),MaxDeform,AngleCoeff, RotorRad, RotorAngle
   REAL(KIND=dp), POINTER :: Xorig(:),Yorig(:),Zorig(:),Xnew(:),Ynew(:),Znew(:),&
@@ -81,7 +81,7 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
   LOGICAL :: Found,GotMatrix,GotRotate,GotTranslate,GotScale,Visited=.FALSE.,&
       UseOriginalMesh, Cumulative, GotRelaxField=.FALSE., &
       CalculateVelocity,TranslateBeforeRotate, StoreOriginalMesh, &
-      RotorMode, DoIt, GotSkew, GotRotorAngle
+      RotorMode, DoIt, GotSkew, GotRotorAngle, GotSkewFun
   LOGICAL :: AnyMeshMatrix,AnyMeshRotate,AnyMeshTranslate,AnyMeshScale,&
       AnyMeshOrigin, AnyRelax, ConstantMap, GotMap, IsRotor
   LOGICAL, POINTER :: NodeDone(:)
@@ -156,16 +156,20 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
 
   IF( RotorMode .AND. .NOT. Visited ) THEN
     RotorSkew = AngleCoeff * ListGetCReal(CurrentModel % Simulation,'Rotor Skew',GotSkew )
+    GotSkewFun = ListCheckPresent( CurrentModel % Simulation,'Rotor Skew Function')
     StatorSkew = AngleCoeff * ListGetCReal(CurrentModel % Simulation,'Stator Skew',Found )
-    GotSkew = GotSkew .OR. Found
+    GotSkew = GotSkew .OR. GotSkewFun .OR. Found
     IF( GotSkew ) THEN
       zmax = ListGetCReal( CurrentModel % Simulation,'Extruded Max Coordinate',Found ) 
       IF(.NOT. Found) THEN
         CALL Fatal('RigidMeshMapper','"Rotor Skew" currently requires "Extruded Max Coordinate" to be given!')
       END IF
       zmin = ListGetCReal( CurrentModel % Simulation,'Extruded Min Coordinate',Found ) 
+      IF(InfoActive(5)) THEN
+        PRINT *,'RotorSkew:',RotorSkew, StatorSkew, zmin, zmax, GotSkew, GotSkewFun 
+      END IF
     END IF
-
+      
     ALLOCATE(RotorElement(Mesh % NumberOfBulkElements))
     RotorElement = .FALSE.
     
@@ -195,11 +199,18 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
             Coord(3) = Zorig(NodeI)
 
             ! Skew is not constant, perform it for each node 1st if requested. 
+            zloc = (coord(3)-zmin)/(zmax-zmin)
+
             IF( IsRotor ) THEN
-              alpha = ((coord(3)-zmin)/(zmax-zmin)-0.5_dp) * RotorSkew 
+              IF(GotSkewFun) THEN
+                alpha = AngleCoeff * ListGetFun( CurrentModel % Simulation,'Rotor Skew Function',zloc)                
+              ELSE
+                alpha = (zloc-0.5_dp) * RotorSkew
+              END IF
             ELSE
-              alpha = ((coord(3)-zmin)/(zmax-zmin)-0.5_dp) * StatorSkew 
-            END IF               
+              alpha = (zloc-0.5_dp) * StatorSkew 
+            END IF
+            
             Xorig(NodeI) = Coord(1)*COS(alpha) - Coord(2)*SIN(alpha)
             Yorig(Nodei) = Coord(1)*SIN(alpha) + Coord(2)*COS(alpha)        
             NodeDone(NodeI) = .TRUE.
