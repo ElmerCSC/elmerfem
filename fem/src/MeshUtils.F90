@@ -2458,10 +2458,8 @@ CONTAINS
 
    ! Read mesh.names - this could be saved by some mesh formats
    !--------------------------------------------------------------------------
-   IF( ListGetLogical( Model % Simulation,'Use Mesh Names',Found ) ) THEN
-     FileName = MeshNamePar(1:BaseNameLen)//'/mesh.names'
-     CALL ReadTargetNames( Model, FileName )
-   END IF
+   FileName = MeshNamePar(1:BaseNameLen)//'/mesh.names'
+   CALL ReadTargetNames( Model, FileName )
 
    ! Map bodies using Target Bodies and boundaries using Target Boundaries.
    ! This must be done before the element definitions are studied since
@@ -4160,8 +4158,8 @@ CONTAINS
 !------------------------------------------------------------------------------
  
  SUBROUTINE ReadTargetNames(Model,Filename)
-     CHARACTER(LEN=*) :: FileName
-     TYPE(Model_t) :: Model
+   CHARACTER(LEN=*) :: FileName
+   TYPE(Model_t) :: Model
 !------------------------------------------------------------------------------
    INTEGER, PARAMETER :: FileUnit = 10
    INTEGER, PARAMETER :: A=ICHAR('A'),Z=ICHAR('Z'),U2L=ICHAR('a')-ICHAR('A')
@@ -4169,14 +4167,36 @@ CONTAINS
    INTEGER :: ivals(256)
    CHARACTER(LEN=1024) :: str, name0, name1
    TYPE(ValueList_t), POINTER :: Vlist
-   LOGICAL :: Found, AlreadySet
+   LOGICAL :: Found, AlreadySet, DoIt, DoBCs, DoBodies
+   INTEGER :: BodyMaps, BCMaps
+   CHARACTER(*), PARAMETER :: Caller = 'ReadTargetNames'
+
+   
+   DoIt = ListGetLogical( Model % Simulation,'Use Mesh Names',Found )
+   IF(DoIt) THEN   
+     DoBCs = .TRUE.
+     DoBodies = .TRUE.
+   ELSE     
+     DoBCs = .FALSE.
+     DoBodies = .FALSE.
+   END IF
+
+   DoIt = ListGetLogical( Model % Simulation,'Use Mesh Body Names',Found )
+   IF(Found) DoBodies = DoIt   
+   DoIt = ListGetLogical( Model % Simulation,'Use Mesh Boundary Names',Found ) 
+   IF(Found) DoBCs = DoIt
+
+   IF(.NOT. (DoBodies .OR. DoBCs )) RETURN
+   
+   BodyMaps = 0
+   BCMaps = 0
 
    OPEN( Unit=FileUnit, File=FileName, STATUS='OLD', IOSTAT=iostat )
    IF( iostat /= 0 ) THEN
-     CALL Fatal('ReadTargetNames','Requested the use of entity names but this file does not exits: '//TRIM(FileName))
+     CALL Fatal(Caller,'Requested the use of entity names but this file does not exits: '//TRIM(FileName))
    END IF
    
-   CALL Info('ReadTargetNames','Reading names info from file: '//TRIM(FileName))
+   CALL Info(Caller,'Reading names info from file: '//TRIM(FileName))
 
    DO WHILE( .TRUE. ) 
      READ(FileUnit,'(A)',IOSTAT=iostat) str
@@ -4208,42 +4228,44 @@ CONTAINS
 
      n = str2ints( str(i3:),ivals )
      IF( n == 0 ) THEN
-       CALL Fatal('ReadTargetNames','Could not find arguments for: '//str(i1:i2))
+       CALL Fatal(Caller,'Could not find arguments for: '//str(i1:i2))
      END IF
 
      AlreadySet = .FALSE.
 
      DO i=1,Model % NumberOfBCs
+       IF(.NOT. DoBCs) CYCLE
        Vlist => Model % BCs(i) % Values
        name1 = ListGetString( Vlist,'Name',Found )
        IF(.NOT. Found ) CYCLE
        IF( name0(1:i2-i1+1) == TRIM(name1) ) THEN
 !        PRINT *,'Name > '//TRIM(name1)//' < matches BC '//I2S(i)
          IF( AlreadySet ) THEN
-           CALL Fatal('ReadTargetNames','Mapping of name is not unique: '//TRIM(name1) )
+           CALL Fatal(Caller,'Mapping of name is not unique: '//TRIM(name1) )
          ELSE IF( ListCheckPresent( Vlist,'Target Boundaries') ) THEN
-           CALL Info('ReadTargetNames','> Target Boundaries < already defined for BC '&
-               //I2S(i))
+           CALL Info(Caller,'> Target Boundaries < already defined for BC '//I2S(i))
          ELSE
            CALL ListAddIntegerArray( Vlist,'Target Boundaries',n,ivals(1:n))
+           BodyMaps = BodyMaps + 1
            AlreadySet = .TRUE.
          END IF
        END IF
      END DO
 
      DO i=1,Model % NumberOfBodies
+       IF(.NOT. DoBodies) CYCLE
        Vlist => Model % Bodies(i) % Values
        name1 = ListGetString( Vlist,'Name',Found )
        IF(.NOT. Found ) CYCLE
        IF( name0(1:i2-i1+1) == TRIM(name1) ) THEN
 !        PRINT *,'Name > '//TRIM(name1)//' < matches body '//I2S(i)
          IF( AlreadySet ) THEN
-           CALL Fatal('ReadTargetNames','Mapping of name is not unique: '//TRIM(name1) )
+           CALL Fatal(Caller,'Mapping of name is not unique: '//TRIM(name1) )
          ELSE IF( ListCheckPresent( Vlist,'Target Bodies') ) THEN
-           CALL Info('ReadTargetNames','> Target Bodies < already defined for Body '&
-               //I2S(i))
+           CALL Info(Caller,'> Target Bodies < already defined for Body '//I2S(i))
          ELSE
            CALL ListAddIntegerArray( Vlist,'Target Bodies',n,ivals(1:n))
+           BCMaps = BCMaps + 1
            AlreadySet = .TRUE.
          END IF
        END IF
@@ -4251,12 +4273,23 @@ CONTAINS
      
      IF(.NOT. AlreadySet ) THEN
        IF( ParEnv % MyPe == 0 ) THEN
-         CALL Warn('ReadTargetNames','Could not map name to Body nor BC: '//name0(1:i2-i1+1) )
+         CALL Info(Caller,'Could not map name to Body nor BC: '//name0(1:i2-i1+1), Level=20)
        END IF
      END IF
 
    END DO
 
+   IF(DoBodies) THEN
+     CALL Info(Caller,'Mapped '//I2S(BodyMaps)//' body names to indexes')
+   ELSE
+     CALL Info(Caller,'Mapping of body names not requested')
+   END IF   
+   IF(DoBCs) THEN
+     CALL Info(Caller,'Mapped '//I2S(BCMaps)//' bc names to indexes')
+   ELSE
+     CALL Info(Caller,'Mapping of bc names not requested!')
+   END IF
+     
    CLOSE(FileUnit)
    
  END SUBROUTINE ReadTargetNames
