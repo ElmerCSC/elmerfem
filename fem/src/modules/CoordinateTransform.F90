@@ -172,6 +172,8 @@ SUBROUTINE RotMSolver( Model,Solver,dt,TransientSimulation )
   REAL :: PDDetTol
   INTEGER :: PDMaxIter
 
+  LOGICAL :: LocalSystemBetaRefAndGamma
+
   INTEGER, PARAMETER :: ind1(9) = [1,1,1,2,2,2,3,3,3]
   INTEGER, PARAMETER :: ind2(9) = [1,2,3,1,2,3,1,2,3]
   
@@ -224,7 +226,7 @@ SUBROUTINE RotMSolver( Model,Solver,dt,TransientSimulation )
       CALL Warn('CoordinateTransform','Polar Decomposition Max Iteration not set.') 
       PDMaxIter= 100
     END IF  
-    
+
     CoordSys_ijk(1,:) = [1,0,0]
     CoordSys_ijk(2,:) = [0,1,0]
     CoordSys_ijk(3,:) = [0,0,1]
@@ -249,6 +251,9 @@ SUBROUTINE RotMSolver( Model,Solver,dt,TransientSimulation )
     IF (SIZE(beta_ref,1) /= 3) CALL Fatal('RotMSolver','Beta Reference should have three components!')
     CoordSys_ref(2,1:3) = normalized(beta_ref(1:3,1))
  
+    LocalSystemBetaRefAndGamma = ListGetLogical(BodyParams, 'Local Coordinate System Beta Reference and Gamma', Found)
+    IF (.NOT. Found) LocalSystemBetaRefAndGamma = .FALSE.
+
     CoordSys_ref(3,1:3) = normalized(crossproduct(CoordSys_ref(1,1:3), CoordSys_ref(2,1:3)))
  
     ! Compute the rotation matrices for 2 rank tensors for all the elements
@@ -270,7 +275,7 @@ CONTAINS
     REAL(KIND=dp) :: un,vn,wn,Basis(nn), DetJ,localC,gradv(3)
     REAL(KIND=dp) :: dBasisdx(nn,3),Coordsys(3,3),Coordsys2(3,3), &
                      Relem(3,3), jac_ref(3,3), jac_e(3,3), alpha(nn), &
-                     beta(nn), tvec(3)
+                     beta(nn), tvec(3), gamma(3,nn)
     REAL(KIND=dp) :: CoordSys_ijk(3,3), CoordSys_ref(3,3)
  
     INTEGER :: j,Indexes(nd),l,m,k
@@ -282,23 +287,34 @@ CONTAINS
     INTEGER :: PDMaxIter
  
     CALL GetElementNodes(Nodes)
-    tmpvar => VariableGet( Mesh % Variables, 'alpha direction')
-    IF(ASSOCIATED(tmpvar)) THEN
-      CALL GetLocalSolution(alpha,'alpha direction')
-    ELSE
-      tmpvar => VariableGet( Mesh % Variables, 'alpha')
-      IF(ASSOCIATED(tmpvar)) THEN
-        CALL GetLocalSolution(alpha,'alpha')
-      END IF
-    END IF
 
-    tmpvar => VariableGet( Mesh % Variables, 'beta direction')
-    IF(ASSOCIATED(tmpvar)) THEN
-      CALL GetLocalSolution(beta,'beta direction')
-    ELSE
-      tmpvar => VariableGet( Mesh % Variables, 'beta')
+    IF (LocalSystemBetaRefAndGamma) THEN
+      gamma=0._dp
+      tmpvar => VariableGet( Mesh % Variables, 'coilcurrent e')
       IF(ASSOCIATED(tmpvar)) THEN
-        CALL GetLocalSolution(beta,'beta')
+        CALL GetLocalSolution(gamma,'coilcurrent e')
+      ELSE
+        CALL Fatal('ComputeRotM', 'Local System Beta Reference And Gamma tried but Gamma (coilcurrent e) is not found!')
+      END IF
+    ELSE
+      tmpvar => VariableGet( Mesh % Variables, 'alpha direction')
+      IF(ASSOCIATED(tmpvar)) THEN
+        CALL GetLocalSolution(alpha,'alpha direction')
+      ELSE
+        tmpvar => VariableGet( Mesh % Variables, 'alpha')
+        IF(ASSOCIATED(tmpvar)) THEN
+          CALL GetLocalSolution(alpha,'alpha')
+        END IF
+      END IF
+
+      tmpvar => VariableGet( Mesh % Variables, 'beta direction')
+      IF(ASSOCIATED(tmpvar)) THEN
+        CALL GetLocalSolution(beta,'beta direction')
+      ELSE
+        tmpvar => VariableGet( Mesh % Variables, 'beta')
+        IF(ASSOCIATED(tmpvar)) THEN
+          CALL GetLocalSolution(beta,'beta')
+        END IF
       END IF
     END IF
 
@@ -314,27 +330,44 @@ CONTAINS
       ! CoordSys(1,1:3) is the perpendicular direction to the foil 
       ! surface
       ! -----------------------------------------------------
-      CoordSys(1,1:3) = normalized(MATMUL( alpha(1:nn), dBasisdx(1:nn,:)))
-      IF (ANY(ISNAN(CoordSys(1,:)))) THEN
-        print *, "Element index = ", GetElementIndex(Element)
-        print *, "Element aspect ratio = ", ElementAspectRatio(Model, Element)
-        CALL Warn('CoordinateTransform','Element coordinate system is NaN, this could be &
-          due to a poor mesh. Let us try to use the degenerate element normal as the local coordinate system alpha vector.') 
-        CoordSys(1,1:3) = NormalOfDegenerateElement(Model, Element)
-        IF (ANY(ISNAN(CoordSys(1,:)))) CALL Fatal('CoordinateTransform','Degenerate element normal did not work...') 
-      END IF
+      IF (LocalSystemBetaRefAndGamma) THEN
+        CoordSys(3,1:3) = MATMUL(gamma(1:3,1:nn), basis(1:nn)) ! Assume this is from normalized coil current
+        IF (ANY(ISNAN(CoordSys(3,:)))) THEN
+          print *, "Element index = ", GetElementIndex(Element)
+          print *, "Element aspect ratio = ", ElementAspectRatio(Model, Element)
+          CALL Warn('CoordinateTransform','Element coordinate system is NaN, this could be &
+            due to a poor mesh. Let us try to use the degenerate element normal as the local coordinate system alpha vector.') 
+          CoordSys(3,1:3) = NormalOfDegenerateElement(Model, Element)
+          IF (ANY(ISNAN(CoordSys(3,:)))) CALL Fatal('CoordinateTransform','Degenerate element normal did not work...') 
+        END IF
 
-      CoordSys(2,1:3) = normalized(MATMUL( beta(1:nn), dBasisdx(1:nn,:)))
-      IF (ANY(ISNAN(CoordSys(2,:)))) THEN
-        print *, "Element index = ", GetElementIndex(Element)
-        print *, "Element aspect ratio = ", ElementAspectRatio(Model, Element)
-        CALL Warn('CoordinateTransform','Element coordinate system is NaN, this could be &
-          due to a poor mesh. Let us try to use the degenerate element normal as the local coordinate system beta vector.') 
-        CoordSys(2,1:3) = NormalOfDegenerateElement(Model, Element)
-        IF (ANY(ISNAN(CoordSys(2,:)))) CALL Fatal('CoordinateTransform','Degenerate element normal did not work...') 
-      END IF
+        CoordSys(2,1:3) = CoordSys_ref(2,1:3)
 
-      CoordSys(3,1:3) = normalized(crossproduct(CoordSys(1,1:3), CoordSys(2,1:3)))
+        CoordSys(1,1:3) = crossproduct(CoordSys(2,1:3), CoordSys(3,1:3))
+!        print "('>',3(F5.1,x),/,x)", CoordSys
+      ELSE
+        CoordSys(1,1:3) = normalized(MATMUL( alpha(1:nn), dBasisdx(1:nn,:)))
+        IF (ANY(ISNAN(CoordSys(1,:)))) THEN
+          print *, "Element index = ", GetElementIndex(Element)
+          print *, "Element aspect ratio = ", ElementAspectRatio(Model, Element)
+          CALL Warn('CoordinateTransform','Element coordinate system is NaN, this could be &
+            due to a poor mesh. Let us try to use the degenerate element normal as the local coordinate system alpha vector.') 
+          CoordSys(1,1:3) = NormalOfDegenerateElement(Model, Element)
+          IF (ANY(ISNAN(CoordSys(1,:)))) CALL Fatal('CoordinateTransform','Degenerate element normal did not work...') 
+        END IF
+
+        CoordSys(2,1:3) = normalized(MATMUL( beta(1:nn), dBasisdx(1:nn,:)))
+        IF (ANY(ISNAN(CoordSys(2,:)))) THEN
+          print *, "Element index = ", GetElementIndex(Element)
+          print *, "Element aspect ratio = ", ElementAspectRatio(Model, Element)
+          CALL Warn('CoordinateTransform','Element coordinate system is NaN, this could be &
+            due to a poor mesh. Let us try to use the degenerate element normal as the local coordinate system beta vector.') 
+          CoordSys(2,1:3) = NormalOfDegenerateElement(Model, Element)
+          IF (ANY(ISNAN(CoordSys(2,:)))) CALL Fatal('CoordinateTransform','Degenerate element normal did not work...') 
+        END IF
+
+        CoordSys(3,1:3) = normalized(crossproduct(CoordSys(1,1:3), CoordSys(2,1:3)))
+      END IF
  
       CoordSys2 = CoordSys
  

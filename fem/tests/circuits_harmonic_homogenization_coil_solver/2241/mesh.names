@@ -1,0 +1,20 @@
+! ----- names for bodies -----
+$ core = 1
+$ airgap_1_limb_2 = 2
+$ wp1 = 3
+$ air = 4
+! ----- names for boundaries -----
+$ xy0 = 1
+$ airgap_1_limb_2_boundary0 = 2
+$ wp1_alpha0 = 3
+$ wp1_beta1 = 4
+$ wp1_alpha1 = 5
+$ wp1_beta0 = 6
+$ airgap_1_limb_2_boundary1 = 7
+$ coreface_xy = 8
+$ wp1_gamma0 = 9
+$ cylinder_lateral_surface = 10
+$ wp1_gamma1 = 11
+$ infinity_xz1 = 12
+$ infinity_xz0 = 13
+$ bnry18 = 14
