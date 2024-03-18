@@ -5684,31 +5684,33 @@ CONTAINS
     REAL(KIND=dp) :: x(4), RotMatrix(4,4),TrsMatrix(4,4),SclMatrix(4,4), &
            TrfMatrix(4,4),Identity(4,4),Angles(3),Alpha,scl(3),s1,s2
     REAL(KIND=dp), POINTER :: PArray(:,:)
-    INTEGER :: i,j,k
+    INTEGER :: i,j,k,n
     CHARACTER(*), PARAMETER :: Caller = 'OverlayInterfaceMeshes'
 
     ! First, check the bounding boxes
     !---------------------------------------------------------------------------
-    x1_min(1) = MINVAL( BMesh1 % Nodes % x )
-    x1_min(2) = MINVAL( BMesh1 % Nodes % y )
-    x1_min(3) = MINVAL( BMesh1 % Nodes % z )
+    n = BMesh1 % NumberOfNodes
+    x1_min(1) = MINVAL( BMesh1 % Nodes % x(1:n) )
+    x1_min(2) = MINVAL( BMesh1 % Nodes % y(1:n) )
+    x1_min(3) = MINVAL( BMesh1 % Nodes % z(1:n) )
     
-    x1_max(1) = MAXVAL( BMesh1 % Nodes % x )
-    x1_max(2) = MAXVAL( BMesh1 % Nodes % y )
-    x1_max(3) = MAXVAL( BMesh1 % Nodes % z )
+    x1_max(1) = MAXVAL( BMesh1 % Nodes % x(1:n) )
+    x1_max(2) = MAXVAL( BMesh1 % Nodes % y(1:n) )
+    x1_max(3) = MAXVAL( BMesh1 % Nodes % z(1:n) )
 
     WRITE(Message,'(A,3ES15.6)') 'Minimum values for this periodic BC:  ',x1_min
     CALL Info(Caller,Message,Level=8)    
     WRITE(Message,'(A,3ES15.6)') 'Maximum values for this periodic BC:  ',x1_max
     CALL Info(Caller,Message,Level=8)    
-
-    x2_min(1) = MINVAL( BMesh2 % Nodes % x )
-    x2_min(2) = MINVAL( BMesh2 % Nodes % y )
-    x2_min(3) = MINVAL( BMesh2 % Nodes % z )
     
-    x2_max(1) = MAXVAL( BMesh2 % Nodes % x )
-    x2_max(2) = MAXVAL( BMesh2 % Nodes % y )
-    x2_max(3) = MAXVAL( BMesh2 % Nodes % z )
+    n = BMesh2 % NumberOfNodes
+    x2_min(1) = MINVAL( BMesh2 % Nodes % x(1:n) )
+    x2_min(2) = MINVAL( BMesh2 % Nodes % y(1:n) )
+    x2_min(3) = MINVAL( BMesh2 % Nodes % z(1:n) )
+    
+    x2_max(1) = MAXVAL( BMesh2 % Nodes % x(1:n) )
+    x2_max(2) = MAXVAL( BMesh2 % Nodes % y(1:n) )
+    x2_max(3) = MAXVAL( BMesh2 % Nodes % z(1:n) )
     
     WRITE(Message,'(A,3ES15.6)') 'Minimum values for target periodic BC:',x2_min
     CALL Info(Caller,Message,Level=8)    
@@ -5781,7 +5783,8 @@ CONTAINS
           RotMatrix = MATMUL( RotMatrix, TrfMatrix )
         END DO
         
-        DO i = 1, BMesh2 % NumberOfNodes          
+        n = BMesh2 % NumberOfNodes
+        DO i = 1, n
           x(1) = BMesh2 % Nodes % x(i)
           x(2) = BMesh2 % Nodes % y(i)
           x(3) = BMesh2 % Nodes % z(i)
@@ -5794,13 +5797,13 @@ CONTAINS
           BMesh2 % Nodes % z(i) = x(3)
         END DO
         
-        x2r_min(1) = MINVAL( BMesh2 % Nodes % x )
-        x2r_min(2) = MINVAL( BMesh2 % Nodes % y )
-        x2r_min(3) = MINVAL( BMesh2 % Nodes % z )
+        x2r_min(1) = MINVAL( BMesh2 % Nodes % x(1:n) )
+        x2r_min(2) = MINVAL( BMesh2 % Nodes % y(1:n) )
+        x2r_min(3) = MINVAL( BMesh2 % Nodes % z(1:n) )
         
-        x2r_max(1) = MAXVAL( BMesh2 % Nodes % x )
-        x2r_max(2) = MAXVAL( BMesh2 % Nodes % y )
-        x2r_max(3) = MAXVAL( BMesh2 % Nodes % z )
+        x2r_max(1) = MAXVAL( BMesh2 % Nodes % x(1:n) )
+        x2r_max(2) = MAXVAL( BMesh2 % Nodes % y(1:n) )
+        x2r_max(3) = MAXVAL( BMesh2 % Nodes % z(1:n) )
         
         WRITE(Message,'(A,3ES15.6)') 'Minimum values for rotated target:',x2r_min
         CALL Info(Caller,Message,Level=8)    
@@ -15160,20 +15163,25 @@ CONTAINS
     WRITE(Message,'(A,ES12.3)') 'Radius of the rotational interface:',Radius
     CALL Info('RotationalInterfaceMeshes',Message,Level=8)    
  
-    WRITE(Message,'(A,ES12.3)') 'Discrepancy from constant radius:',err1
-    CALL Info('RotationalInterfaceMeshes',Message,Level=8)    
-
-    WRITE(Message,'(A,ES12.3)') 'Discrepancy from constant radius:',err2
-    CALL Info('RotationalInterfaceMeshes',Message,Level=8)    
-
-    IF( err1 > eps_rad .OR. err2 > eps_rad ) THEN
+    WRITE(Message,'(A,ES12.3)') 'Discrepancy from constant radius for Mesh1:',err1
+    IF( err1 > eps_rad )  THEN
+      CALL Info('RotationalInterfaceMeshes',Message,Level=3)    
       CALL Warn('RotationalInterfaceMeshes','Discrepancy of radius is rather large!')
+    ELSE
+      CALL Info('RotationalInterfaceMeshes',Message,Level=8)    
+    END IF
+
+    WRITE(Message,'(A,ES12.3)') 'Discrepancy from constant radius for Mesh2:',err1
+    IF( err2 > eps_rad ) THEN
+      CALL Info('RotationalInterfaceMeshes',Message,Level=3)    
+      CALL Warn('RotationalInterfaceMeshes','Discrepancy of radius is rather large!')
+    ELSE
+      CALL Info('RotationalInterfaceMeshes',Message,Level=8)    
     END IF
 
     ! Add "Rotor Radius" to the simulation section in case it should be useful elsewhere...
     CALL ListAddConstReal( CurrentModel % Simulation,'Rotor Radius',Radius )
-    
-    
+        
     ! Ok, so we have concluded that the interface has constant radius
     ! therefore the constant radius may be removed from the mesh description.
     ! Or perhaps we don't remove to allow more intelligent projector building 
