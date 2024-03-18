@@ -19622,11 +19622,12 @@ CONTAINS
   
 
 !------------------------------------------------------------------------------
-  SUBROUTINE SaveLinearSystem( Solver, Ain, LinSysName )
+  SUBROUTINE SaveLinearSystem( Solver, Ain, LinSysName, OffsetInd )
 !------------------------------------------------------------------------------
     TYPE( Solver_t ) :: Solver
     TYPE(Matrix_t), POINTER, OPTIONAL :: Ain
-    CHARACTER(LEN=*), OPTIONAL :: LinSysName          
+    CHARACTER(LEN=*), OPTIONAL :: LinSysName
+    INTEGER, OPTIONAL :: OffsetInd
 !------------------------------------------------------------------------------    
     TYPE(Matrix_t), POINTER :: A
     TYPE(ValueList_t), POINTER :: Params
@@ -19728,7 +19729,12 @@ CONTAINS
     OPEN(1,FILE=dumpfile, STATUS='Unknown')
     WRITE(1,*) A % NumberOfRows
     WRITE(1,*) SIZE(A % Values)
-    IF( SavePerm ) WRITE(1,*) SIZE( Perm )    
+    i = 0
+    IF( SavePerm ) i = SIZE( Perm ) 
+    WRITE(1,*) i        
+    WRITE(1,*) MINVAL(A % Cols)
+    WRITE(1,*) MAXVAL(A % Cols)
+    IF(PRESENT(OffsetInd)) WRITE(1,*) OffsetInd
     CLOSE(1)
 
     IF(Parallel) THEN
