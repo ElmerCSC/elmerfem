@@ -30132,7 +30132,7 @@ CONTAINS
         RETURN
       END IF
       
-      val = ATAN(Coord(2),Coord(1)) - Phi0
+      val = ATAN2(Coord(2),Coord(1)) - Phi0
       IF( val > PI ) THEN
         val = val - 2*PI
       ELSE IF( val < -PI ) THEN
