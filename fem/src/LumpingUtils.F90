@@ -1580,8 +1580,8 @@ MODULE LumpingUtils
       vol = vol / area
       Zimp = 1.0_dp / trans
 
-      PRINT *,'LumpedCurr:',vol,curr,port_curr
-      PRINT *,'Zimp:',trans,Zimp,curr,PortBC
+      PRINT *,'LumpedCurr:',vol,curr,port_curr,Zimp *curr, CONJG(Zimp) * port_curr
+      !PRINT *,'Zimp:',trans,Zimp,curr,PortBC
       
       OutFlux = (vol + Zimp * curr) / (2*SQRT(REAL(Zimp)))
       InFlux = (vol - CONJG(Zimp) * port_curr  ) / (2*SQRT(REAL(Zimp)))      

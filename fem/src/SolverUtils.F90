@@ -7072,6 +7072,8 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 
+    CALL Info(Caller,'Checking constraint modes boundaries!',Level=20)
+    
     nlen = LEN_TRIM(Name)
     Mesh => Solver % Mesh
     Var => Solver % Variable     
@@ -7088,7 +7090,7 @@ CONTAINS
       Solver % NumberOfConstraintModes = 0
       RETURN
     END IF
-
+    
     ExternalLoop = ListGetLogical( Solver % Values,'Nonlinear System Constraint Modes', Found ) .OR. &
         ListGetLogical( Solver % Values,'Steady State Constraint Modes', Found ) .OR. &
         ListGetLogical( Solver % Values,'Run Control Constraint Modes', Found ) .OR. &
@@ -7098,7 +7100,6 @@ CONTAINS
     CoilMode = ListGetLogical( Solver % Values,'Constraint Modes Coils',Found ) 
     RhsMode = ListGetLogical(Solver % Values,'Constraint Modes Rhs',Found ) 
     LumpedMode = ListGetLogical(Solver % Values,'Constraint Modes Lumped',Found )
-
     
     ! These work on the rhs vector, not Dirichlet values.
     RhsMode = RhsMode .OR. EmWaveMode .OR. CoilMode
@@ -7107,7 +7108,7 @@ CONTAINS
     Element => Mesh % Elements(1)
     pSolver => Solver
     HaveP = isActivePElement(Element,pSolver)
-
+    
     IgnoreP = .FALSE.
     IF( HaveP ) THEN
       IgnoreP = ListGetLogical( Solver % Values,'Ignore Constraint Modes p',Found )  
@@ -7205,7 +7206,7 @@ CONTAINS
       Ncomplex = 1
       CALL Info(Caller,'Assuming real valued system for constraint modes',Level=12)
     END IF
-
+    
     NoModes = NDOFS * j  / Ncomplex
     
     IF( BcMode ) THEN
@@ -14546,6 +14547,8 @@ END FUNCTION SearchNodeL
     ! This flag tries to improve on the initial guess of the linear solvers, and may 
     ! sometimes even result to the exact solution.
     IF( ListGetLogical( Params,'Linear System Normalize Guess',GotIt ) ) THEN
+      CALL Info(Caller,'Normalizing initial guess!',Level=30)
+
       ALLOCATE( TempVector(A % NumberOfRows) )
 
       IF ( Parallel ) THEN
@@ -14581,6 +14584,7 @@ END FUNCTION SearchNodeL
     END IF
 
     IF( ListGetLogical( Params,'Linear System Nullify Guess',GotIt ) ) THEN
+      CALL Info(Caller,'Nullifying initial guess!',Level=30)
       x(1:n) = 0.0_dp
     END IF
     
@@ -15284,7 +15288,7 @@ END FUNCTION SearchNodeL
     
     Nmode = 0
 20  CALL ConstraintModesDriver( A, x, b, Solver, .TRUE., Nmode, LinModes )  
-        
+    
     ! Here activate constraint solve only if constraints are not treated as blocks
     IF( BlockMode .AND. RestrictionMode ) THEN
       CALL Warn(Caller,'Matrix is restricted and block matrix, giving precedence to block nature!')
@@ -15984,7 +15988,7 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
     TYPE(Variable_t), POINTER :: Var
     INTEGER :: i,j,k,n,NoModes,Mmode,ierr
     LOGICAL :: PrecRecompute, Stat, Found, ComputeFluxes, ComputeLinkage, Symmetric, &
-        IsComplex, Parallel, ConsiderP, RhsMode, EmWaveMode, CoilMode
+        IsComplex, Parallel, ConsiderP, RhsMode, EmWaveMode, CoilMode, GaussLaw
     REAL(KIND=dp), ALLOCATABLE :: Fluxes(:), b0(:), A0(:), TempRhs(:)
     REAL(KIND=dp), ALLOCATABLE :: FluxesRow(:), FluxesRowIm(:)
     REAL(KIND=dp) :: FluxesRhs, FluxesRhsIm
@@ -16035,6 +16039,8 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
     CoilMode = ListGetLogical( Params,'Constraint Modes Coils',Found ) 
 
     IF(EmWaveMode) IsComplex = .TRUE.
+    GaussLaw = .FALSE.
+    IF(EMWaveMode) GaussLaw = ListGetLogical( Params,'Use Gauss Law',Found ) 
     
     IF( EmWaveMode .OR. CoilMode ) THEN
       ComputeFluxes = .TRUE.
@@ -16071,9 +16077,8 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
       END IF
 
       IF( ComputeFluxes .OR. ComputeLinkage ) THEN
-        ALLOCATE( FluxesRow(NoModes) )
+        ALLOCATE( FluxesRow(NoModes), Fluxes(n) )       
         IF( IsComplex ) ALLOCATE( FluxesRowIm(NoModes) )         
-        ALLOCATE( Fluxes( n ) )
         
         IF( Parallel ) THEN
           ALLOCATE(TempRHS(SIZE(A % BulkRhs)))
@@ -16150,6 +16155,7 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
           CALL EnforceDirichletConditions( Solver, A, b )
         END IF
       END IF
+      CALL ListAddLogical( Params,'Skip Zero Rhs Test',.TRUE. )
     END IF
       
     IF( .NOT. PreSolve ) THEN 
@@ -16199,9 +16205,15 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
         DEALLOCATE( Fluxes, FluxesRow )
         IF( IsComplex ) DEALLOCATE( FluxesRowIm )
         IF( Parallel ) DEALLOCATE(TempRHS)
-        IF( IsComplex .OR. CoilMode) DEALLOCATE( A0, b0, ConstrainedDOF0 )
+        IF( IsComplex .OR. CoilMode) THEN
+          A % Values = A0
+          A % Rhs = b0
+          A % ConstrainedDOF = ConstrainedDOF0           
+          DEALLOCATE( A0, b0, ConstrainedDOF0 )
+        END IF
       END IF
 
+      CALL ListAddLogical( Params,'Skip Zero Rhs Test',.FALSE. )
     END IF
       
   CONTAINS
