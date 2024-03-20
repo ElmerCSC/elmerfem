@@ -127,6 +127,31 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
   END IF
   CALL ListAddNewLogical( SolverParams, "Linear System Complex", .TRUE.)
 
+
+  ! These use one flag to call library features to compute automatically
+  ! a capacitance matrix.
+  IF( ListGetLogical( SolverParams,'Calculate S-Matrix',Found ) ) THEN
+    CALL Info('VectorHelmholtz_init','Using Constraint Modes functionality for S-Matrix')
+    CALL ListAddNewLogical( SolverParams,'Constraint Modes Analysis',.TRUE.)
+  END IF
+
+  IF( ListGetLogical( SolverParams,'Constraint Modes Analysis', Found ) ) THEN
+    CALL ListAddNewLogical( SolverParams,'Constraint Modes Lumped',.TRUE.)
+    CALL ListAddNewLogical( SolverParams,'Constraint Modes Fluxes',.TRUE.)
+    !CALL ListAddNewLogical( SolverParams,'Constraint Modes Matrix Results',.TRUE.)
+    CALL ListAddNewLogical( SolverParams,'Constraint Modes EM Wave',.TRUE.)        
+    IF( ListCheckPresent( SolverParams,'S-Matrix Filename') ) THEN
+      CALL ListRename( SolverParams,'S-Matrix Filename',&
+          'Constraint Modes Matrix Filename', Found ) 
+    ELSE     
+      CALL ListAddNewString( SolverParams,'Constraint Modes Matrix Filename',&
+          'SMatrix.dat',.FALSE.)
+    END IF
+    CALL ListRenameAllBC( Model,'S-Matrix Port','Constraint Mode')
+    !CALL ListAddLogical( Params,'Optimize Bandwidth',.FALSE.)
+    !CALL Info('VectorHelmoltz_init','Suppressing bandwidth optimization in S-Matrix computation!')
+  END IF
+  
 !------------------------------------------------------------------------------
 END SUBROUTINE VectorHelmholtzSolver_Init0
 !------------------------------------------------------------------------------
@@ -994,6 +1019,22 @@ CONTAINS
  END SUBROUTINE VectorHelmholtzSolver
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+SUBROUTINE VectorHelmholtz_Dummy(Model,Solver,dt,Transient)
+!------------------------------------------------------------------------------
+  USE VectorHelmholtzUtils
+
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+END SUBROUTINE VectorHelmholtz_Dummy
+!------------------------------------------------------------------------------
+ 
  
 !> \ingroup Solvers
 !> Solver for computing derived fields from the electric field.
@@ -1093,7 +1134,7 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
   CALL ListAddLogical( SolverParams, 'No Matrix',.TRUE.)
   CALL ListAddString( SolverParams, 'Equation', 'never' )
   CALL ListAddString( SolverParams, 'Procedure', &
-              'VectorHelmholtz MagnetoDynamics_Dummy',.FALSE. )
+              'VectorHelmholtz VectorHelmholtz_Dummy',.FALSE. )
   CALL ListAddString( SolverParams, 'Variable', '-nooutput cf_dummy' )
 
   pname = ListGetString( Model % Solvers(soln) % Values, 'Mesh', Found )
@@ -1141,21 +1182,6 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
 END SUBROUTINE VectorHelmholtzCalcFields_Init0
 !------------------------------------------------------------------------------
 
-
-!------------------------------------------------------------------------------
-SUBROUTINE MagnetoDynamics_Dummy(Model,Solver,dt,Transient)
-!------------------------------------------------------------------------------
-  USE VectorHelmholtzUtils
-
-  IMPLICIT NONE
-!------------------------------------------------------------------------------
-  TYPE(Solver_t) :: Solver
-  TYPE(Model_t) :: Model
-  REAL(KIND=dp) :: dt
-  LOGICAL :: Transient
-!------------------------------------------------------------------------------
-END SUBROUTINE MagnetoDynamics_Dummy
-!------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
@@ -1235,28 +1261,6 @@ SUBROUTINE VectorHelmholtzCalcFields_Init(Model,Solver,dt,Transient)
       NextFreeKeyword('Exported Variable', SolverParams), &
       "Joule Heating[Joule Heating re:1 Joule Heating im:1]")
   END IF
-
-  ! These use one flag to call library features to compute automatically
-  ! a capacitance matrix.
-  IF( ListGetLogical( SolverParams,'Calculate S-Matrix',Found ) ) THEN
-    CALL Info('VectorHelmholtz_init','Using Constraint Modes functionality for S-Matrix')
-    CALL ListAddNewLogical( SolverParams,'Constraint Modes Analysis',.TRUE.)
-    CALL ListAddNewLogical( SolverParams,'Constraint Modes Lumped',.TRUE.)
-    CALL ListAddNewLogical( SolverParams,'Constraint Modes Fluxes',.TRUE.)
-    CALL ListAddNewLogical( SolverParams,'Constraint Modes Matrix Results',.TRUE.)
-    CALL ListAddNewLogical( SolverParams,'Constraint Modes EM Wave',.TRUE.)        
-    IF( ListCheckPresent( SolverParams,'S-Matrix Filename') ) THEN
-      CALL ListRename( SolverParams,'S-Matrix Filename',&
-          'Constraint Modes Matrix Filename', Found ) 
-    ELSE     
-      CALL ListAddNewString( SolverParams,'Constraint Modes Matrix Filename',&
-          'SMatrix.dat',.FALSE.)
-    END IF
-    CALL ListRenameAllBC( Model,'S-Matrix Port','Constraint Mode')
-    !CALL ListAddLogical( Params,'Optimize Bandwidth',.FALSE.)
-    !CALL Info('VectorHelmoltz_init','Suppressing bandwidth optimization in S-Matrix computation!')
-  END IF
-
   
 !------------------------------------------------------------------------------
 END SUBROUTINE VectorHelmholtzCalcFields_Init
