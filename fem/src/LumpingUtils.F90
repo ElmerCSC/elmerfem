@@ -1615,7 +1615,7 @@ MODULE LumpingUtils
       TYPE(Element_t), POINTER :: Element
       LOGICAL :: InitHandles
 !------------------------------------------------------------------------------
-      COMPLEX(KIND=dp) :: B, Zs, L(3), muinv, TemGrad(3), eps, &
+      COMPLEX(KIND=dp) :: B, Zs, L(3), muinv, MagLoad(3), TemGrad(3), eps, &
           e_ip(3), e_ip_norm, e_ip_tan(3), f_ip_tan(3), imu, phi, eps0, mu0inv, epsr, mur
       REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:), e_local(:,:)
       REAL(KIND=dp) :: weight, DetJ, Normal(3), cond, u, v, w, x, y, z, rob0
@@ -1737,18 +1737,16 @@ MODULE LumpingUtils
           B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
         END IF
                   
-        !IF( ListGetLogical( Model % Simulation,'Z test', Found ) ) THEN        
         Zs = 1.0_dp / (SQRT(REAL(muinv*eps)))
         !ELSE
         !Zs = imu * Omega / (B * muinv)        
         !END IF
 
-        L = ListGetElementComplex3D( MagLoad_h, Basis, Element, Found, GaussPoint = t )
+        MagLoad = ListGetElementComplex3D( MagLoad_h, Basis, Element, Found, GaussPoint = t )
         TemGrad = CMPLX( ListGetElementRealGrad( TemRe_h,dBasisdx,Element,Found), &
             ListGetElementRealGrad( TemIm_h,dBasisdx,Element,Found) )
-        L = L + TemGrad
-
-        L = L / (2*B)
+        !L = ( MagLoad + TemGrad ) / ( 2*imu*B) 
+        L = ( MagLoad + TemGrad ) / ( 2*B) 
                 
         IF( EdgeBasis ) THEN
           ! In order to get the normal component of the electric field we must operate on the
@@ -1796,7 +1794,7 @@ MODULE LumpingUtils
       TYPE(Element_t), POINTER :: Element
       LOGICAL :: InitHandles
 !------------------------------------------------------------------------------
-      COMPLEX(KIND=dp) :: tc_ip, cd_ip, v_ip, eps0, eps, mu0inv, muinv, mur, epsr, &
+      COMPLEX(KIND=dp) :: tc_ip, cd_ip, v_ip, ep_ip, eps0, eps, mu0inv, muinv, mur, epsr, &
           cond_ip, imu
       REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),v_local(:,:)
       REAL(KIND=dp) :: weight, DetJ 
@@ -1807,7 +1805,7 @@ MODULE LumpingUtils
       INTEGER :: t, i, j, m, np, p, q, ndofs, n, nd
       LOGICAL :: AllocationsDone = .FALSE.
       TYPE(Element_t), POINTER :: Parent, MatElement
-      TYPE(ValueHandle_t), SAVE :: MuCoeff_h, EpsCoeff_h, CondCoeff_h
+      TYPE(ValueHandle_t), SAVE :: MuCoeff_h, EpsCoeff_h, CondCoeff_h, ExtPot_h
       TYPE(ValueHandle_t), SAVE :: TransferCoeff_h, ElCurrent_h, BCMat_h
       
       SAVE AllocationsDone, Basis, dBasisdx, v_local, mu0inv, eps0
@@ -1830,6 +1828,7 @@ MODULE LumpingUtils
         
         CALL ListInitElementKeyword( TransferCoeff_h,'Boundary Condition','Electric Transfer Coefficient',InitIm=.TRUE.)
         CALL ListInitElementKeyword( ElCurrent_h,'Boundary Condition','Electric Current Density',InitIm=.TRUE.)
+        CALL ListInitElementKeyword( ExtPot_h,'Boundary Condition','External Potential',InitIm=.TRUE.)
 
         CALL ListInitElementKeyword( BCMat_h,'Boundary Condition','Material')
 
@@ -1897,9 +1896,13 @@ MODULE LumpingUtils
         eps = epsr * eps0
 
         cond_ip = ListGetElementReal( CondCoeff_h, Basis, MatElement, Found, GaussPoint = t )        
-        tc_ip = ListGetElementComplex( TransferCoeff_h, Basis, Element, Found, GaussPoint = t )
         cd_ip = ListGetElementComplex( ElCurrent_h, Basis, Element, Found, GaussPoint = t )
 
+        tc_ip = ListGetElementComplex( TransferCoeff_h, Basis, Element, Found, GaussPoint = t )
+        IF(Found) THEN
+          ep_ip = ListGetElementComplex( ExtPot_h, Basis, Element, Found, GaussPoint = t )
+          IF(Found) cd_ip = cd_ip + 2 * tc_ip * ep_ip
+        END IF
         v_ip = CMPLX( SUM( Basis(1:n) * v_local(1,1:n) ), SUM( Basis(1:n) * v_local(2,1:n) ) )
                 
         area = area + weight

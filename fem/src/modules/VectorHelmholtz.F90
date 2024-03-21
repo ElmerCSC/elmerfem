@@ -775,7 +775,7 @@ CONTAINS
     LOGICAL :: InitHandles
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:)    
-    COMPLEX(KIND=dp) :: B, L(3), muinv, TemGrad(3), BetaPar, jn, Cond, SurfImp, epsr, mur, imu
+    COMPLEX(KIND=dp) :: B, L(3), muinv, TemGrad(3), MagLoad(3), BetaPar, jn, Cond, SurfImp, epsr, mur, imu, ep
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:)
     REAL(KIND=dp) :: th, DetJ
     LOGICAL :: Stat, Found, UpdateStiff, WithNdofs, ThinSheet, ConductorBC
@@ -785,7 +785,7 @@ CONTAINS
     INTEGER :: t, i, j, m, np, p, q, ndofs
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(Element_t), POINTER :: Parent
-    TYPE(ValueHandle_t), SAVE :: MagLoad_h, ElRobin_h, MuCoeff_h, EpsCoeff_h, Absorb_h, TemRe_h, TemIm_h
+    TYPE(ValueHandle_t), SAVE :: MagLoad_h, ElRobin_h, MuCoeff_h, EpsCoeff_h, Absorb_h, TemRe_h, TemIm_h, ExtPot_h
     TYPE(ValueHandle_t), SAVE :: TransferCoeff_h, ElCurrent_h
     TYPE(ValueHandle_t), SAVE :: Thickness_h, RelNu_h, CondCoeff_h
     TYPE(ValueHandle_t), SAVE :: GoodConductor, ChargeConservation
@@ -809,8 +809,10 @@ CONTAINS
       CALL ListInitElementKeyword( TemIm_h,'Boundary Condition','TEM Potential Im')
       CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)      
       CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity',InitIm=.TRUE.)      
+
       CALL ListInitElementKeyword( TransferCoeff_h,'Boundary Condition','Electric Transfer Coefficient',InitIm=.TRUE.)
       CALL ListInitElementKeyword( ElCurrent_h,'Boundary Condition','Electric Current Density',InitIm=.TRUE.)
+      CALL ListInitElementKeyword( ExtPot_h,'Boundary Condition','External Potential',InitIm=.TRUE.)
 
       CALL ListInitElementKeyword( Thickness_h,'Boundary Condition','Layer Thickness')
       CALL ListInitElementKeyword( RelNu_h,'Boundary Condition','Layer Relative Reluctivity',InitIm=.TRUE.)
@@ -867,8 +869,14 @@ CONTAINS
         ! If a degenerate (1-D) element, perform only simplified assembly by assuming that
         ! a given thickness is associated with the degenerate element
         !
-        BetaPar = ListGetElementComplex(TransferCoeff_h, Basis, Element, Found, GaussPoint = t)
         jn = ListGetElementComplex(ElCurrent_h, Basis, Element, Found, GaussPoint = t)
+
+        BetaPar = ListGetElementComplex(TransferCoeff_h, Basis, Element, Found, GaussPoint = t)
+        IF(Found) THEN
+          ep = ListGetElementComplex(ExtPot_h, Basis, Element, Found, GaussPoint = t)
+          IF(Found) jn = jn + 2 * BetaPar * ep
+        END IF
+
         IF (ABS(BetaPar) < AEPS .AND. ABS(jn) < AEPS) CYCLE
         DO p = 1,n
           i = (p-1)*ndofs + 1
@@ -919,13 +927,11 @@ CONTAINS
           END IF
         END IF
       END IF
-      L = ListGetElementComplex3D( MagLoad_h, Basis, Element, Found, GaussPoint = t )
-
       
-      
+      MagLoad = ListGetElementComplex3D( MagLoad_h, Basis, Element, Found, GaussPoint = t )           
       TemGrad = CMPLX( ListGetElementRealGrad( TemRe_h,dBasisdx,Element,Found), &
           ListGetElementRealGrad( TemIm_h,dBasisdx,Element,Found) )
-      L = L + TemGrad
+      L = MagLoad + TemGrad
 
       IF (.NOT. WithNdofs) THEN
         IF (ABS(B) < AEPS .AND. ABS(DOT_PRODUCT(L,L)) < AEPS) CYCLE
@@ -978,7 +984,6 @@ CONTAINS
         END IF
           
         IF (UseGaussLaw) THEN
-
           IF (Regularize .AND. ABS(DOT_PRODUCT(L,L)) > AEPS) THEN
             ! Apply the conservation of surface charge (not sure whether this is beneficial):
             DO p = 1,n
@@ -987,8 +992,13 @@ CONTAINS
             END DO
           END IF
           
-          BetaPar = ListGetElementComplex(TransferCoeff_h, Basis, Element, Found, GaussPoint = t)
           jn = ListGetElementComplex(ElCurrent_h, Basis, Element, Found, GaussPoint = t)
+          BetaPar = ListGetElementComplex(TransferCoeff_h, Basis, Element, Found, GaussPoint = t)
+          IF( Found ) THEN
+            ep = ListGetElementComplex(ExtPot_h, Basis, Element, Found, GaussPoint = t)
+            IF(Found) jn = jn + 2 * BetaPar * ep
+          END IF
+            
           DO p = 1,n
             i = (p-1)*ndofs + 1
             FORCE(i) = FORCE(i) - im * omega * jn * Basis(p) * detJ * IP % s(t)
