@@ -29899,7 +29899,7 @@ CONTAINS
     INTEGER :: i,j,k,n,m,t,t0
     INTEGER :: bc_ind, pSign, rSign, dim, BCsTagged, RuleInd
     TYPE(ValueList_t), POINTER :: BC
-    REAL(KIND=dp) :: Coord(3), eps, val, rad, phi, phimin, phimax, RuleC
+    REAL(KIND=dp) :: Coord(3), eps, val, r, rad, phi, phimin, phimax, RuleC
     LOGICAL :: Found, Hit, Parallel, CreateBCs, SplitBC, DoIt
     INTEGER, ALLOCATABLE :: EdgeConstraint(:)
     CHARACTER(:), ALLOCATABLE :: RuleStr
@@ -29964,10 +29964,13 @@ CONTAINS
     END IF
     
     n = Mesh % NumberOfNodes 
-        
+
     DO bc_ind = 1, Model % NumberOfBCs
       BC => Model % BCs(bc_ind) % Values
-
+      
+      eps = ListGetCReal(BC,'Boundary Detect Epsilon',Found )
+      IF(.NOT. Found) eps = 1.0e-6
+    
       pSign = 0
       RuleInd = 0
       !PRINT *,'bc tag:',bc_ind, Model % BCs(bc_ind) % Tag
@@ -29977,6 +29980,18 @@ CONTAINS
       ! that have rather constant set of BCs can be treated easily. 
       RuleStr = ListGetString(BC,'Boundary Detect',Found )
       IF(.NOT. Found) RuleStr = ListGetString(BC,'Boundary Create',Found )
+
+      ! When we have rules "phimax" and "phimin" they may be augmented with inner and outer
+      rSign = 0
+      IF( LEN_TRIM(RuleStr) == 12 ) THEN
+        IF( RuleStr(8:12) == 'inner' ) THEN
+          Rad = ListGetCReal( CurrentModel % Simulation,'Rotor Radius',Found)
+          rSign = -1
+        ELSE IF(RuleStr(8:12) == 'outer') THEN
+          Rad = ListGetCReal( CurrentModel % Simulation,'Rotor Radius',Found)
+          rSign = 1
+        END IF
+      END IF
 
       IF( Found ) THEN
         SELECT CASE( RuleStr )
@@ -30018,12 +30033,17 @@ CONTAINS
           ! The "inner" and "outer" rules allow to separate rotor and stator
           phimax = -2*PI
           phimin = 2*PI
+          m = 0
           DO i=1,n
-            ! Skip the nodes at 
-            IF( SQRT(Mesh % Nodes % x(i)**2 + Mesh % Nodes % y(i)**2) < eps) CYCLE
+            ! Skip the nodes at exact origin
+            r = SQRT(Mesh % Nodes % x(i)**2 + Mesh % Nodes % y(i)**2)
+            IF(r < eps) CYCLE
+            IF(rSign == -1 .AND. r > rad-eps ) CYCLE
+            IF(rSign == 1 .AND. r < rad+eps ) CYCLE            
             phi = ATAN2(Mesh % Nodes % y(i), Mesh % Nodes % x(i) )
             phimax = MAX(phimax,phi)
             phimin = MIN(phimin,phi)
+            m = m+1
           END DO
           IF(Parallel) THEN
             phimin = ParallelReduction(phimin,1)
@@ -30036,11 +30056,19 @@ CONTAINS
         CASE('phimin','phimin inner','phimin outer')
           phimax = -2*PI
           phimin = 2*PI
+          m  = 0
           DO i=1,n
-            IF( SQRT(Mesh % Nodes % x(i)**2 + Mesh % Nodes % y(i)**2) < eps) CYCLE
+            r = SQRT(Mesh % Nodes % x(i)**2 + Mesh % Nodes % y(i)**2)
+            IF(r < eps) CYCLE
+            IF(rSign == -1 .AND. r > rad-eps ) CYCLE
+            IF(rSign == 1 .AND. r < rad+eps ) CYCLE            
             phi = ATAN2(Mesh % Nodes % y(i), Mesh % Nodes % x(i) )
+
+            PRINT *,'phi',phi
+
             phimax = MAX(phimax,phi)
             phimin = MIN(phimin,phi)
+            m = m+1
           END DO
           IF(Parallel) THEN
             phimin = ParallelReduction(phimin,1)
@@ -30082,18 +30110,6 @@ CONTAINS
         END IF        
       END IF
 
-      ! When we have rules "phimax" and "phimin" they may be augmented with inner and outer
-      rSign = 0
-      IF( RuleInd == 5 ) THEN
-        IF( RuleStr(8:12) == 'inner' ) THEN
-          Rad = ListGetCReal( CurrentModel % Simulation,'Rotor Radius',Found)
-          rSign = -1
-        ELSE IF(RuleStr(8:12) == 'outer') THEN
-          Rad = ListGetCReal( CurrentModel % Simulation,'Rotor Radius',Found)
-          rSign = 1
-        END IF
-      END IF
-
       IF( RuleInd == 3 .AND. Mesh % MeshDim < 3 ) THEN
         CALL Fatal(Caller,'Cannot use z-rules for 2D mesh!')
       END IF
@@ -30101,15 +30117,16 @@ CONTAINS
       CALL Info(Caller,'Trying to tag elements to boundary: '//I2S(bc_ind),Level=20)
       BCsTagged = 0
       
-      eps = ListGetCReal(BC,'Boundary Levelset Epsilon',Found )
-      IF(.NOT. Found) eps = 1.0e-6
-      
       CALL TagElements()
 
       IF(Parallel) BCsTagged = ParallelReduction(BCsTagged)
       
       CALL Info(Caller,'Number of boundary elements "'//TRIM(RuleStr)//'" tagged to '&
           //I2S(bc_ind)//' is: '//I2S(BCsTagged),Level=7)
+      IF( BCsTagged == 0 ) THEN
+        CALL Fatal(Caller,'Could not find any boundary elements with rule!')
+      END IF
+
     END DO
 
     IF( CreateBCs ) THEN
