@@ -75,21 +75,24 @@ MODULE LumpingUtils
 ! Local variables
 !------------------------------------------------------------------------------
      TYPE(Element_t), POINTER :: Element
+     TYPE(Nodes_t) :: Nodes
      LOGICAL, ALLOCATABLE :: VisitedNode(:)
-     REAL(KIND=dp) :: Origin(3), Axis(3), P(3), F(3), v1(3), v2(3)
+     REAL(KIND=dp) :: Origin(3), Axis(3), P(3), F(3), v1(3), v2(3), &
+         RotorRadius, rad, minrad, maxrad, eps
      REAL(KIND=dp), POINTER :: Pwrk(:,:)
-     INTEGER :: t, i, j, k, n, dofs, globalnode
+     INTEGER :: t, i, j, k, n, dofs, globalnode, AirBody
      LOGICAL :: ElementalVar, Found, NeedLocation
      INTEGER, POINTER :: MasterEntities(:),NodeIndexes(:),DofIndexes(:)
      LOGICAL :: VisitNodeOnlyOnce     
      INTEGER :: FirstElem, LastElem
-     LOGICAL :: BcMode, isParallel
-     
-     CALL Info('ComponentNodalForceReduction','Performing reduction for component: '&
+     LOGICAL :: BcMode, BulkMode, RotorMode, isParallel
+     CHARACTER(*), PARAMETER :: Caller = 'ComponentNodalForceReduction'
+    
+     CALL Info(Caller,'Performing reduction for component: '&
          //TRIM(ListGetString(CompParams,'Name')),Level=10)
 
      IF(.NOT. (PRESENT(Torque) .OR. PRESENT(Moment) .OR. PRESENT(Force) ) ) THEN
-       CALL Warn('ComponentNodalForceReduction','Nothing to compute!')
+       CALL Warn(Caller,'Nothing to compute!')
        RETURN
      END IF
 
@@ -98,20 +101,28 @@ MODULE LumpingUtils
      IF( PRESENT(Force)) Force = 0.0_dp
 
      isParallel = CurrentModel % Solver % Parallel
-     
+
+
+     eps = 1.0e-6
      BcMode = .FALSE.
-     MasterEntities => ListGetIntegerArray( CompParams,'Master Bodies',Found )     
-     IF( .NOT. Found ) THEN
-       MasterEntities => ListGetIntegerArray( CompParams,'Master Boundaries',Found ) 
-       BcMode = .TRUE.
+     BulkMode = .FALSE.
+     RotorMode = ListGetLogical( CompParams,'Rotor Mode',Found )
+     IF( RotorMode ) THEN
+       RotorRadius = ListGetConstReal( CurrentModel % Simulation,'Rotor Radius',Found )
+       IF(.NOT. Found ) THEN
+         CALL Fatal(Caller,'"Rotor Mode" requires "Rotor Radius"')
+       END IF
+     ELSE
+       MasterEntities => ListGetIntegerArray( CompParams,'Master Bodies',BulkMode )     
+       IF( .NOT. BulkMode ) THEN
+         MasterEntities => ListGetIntegerArray( CompParams,'Master Boundaries', BCMode) 
+       END IF                    
+       IF(.NOT. (BulkMode .OR. BCMode ) ) THEN
+         CALL Warn(Caller,'> Master Bodies < or > Master Boundaries < not given')
+         RETURN
+       END IF
      END IF
-
-     IF(.NOT. Found ) THEN
-       CALL Warn('ComponentNodalForceReduction',&
-           '> Master Bodies < or > Master Boundaries < not given')
-       RETURN
-     END IF
-
+       
      NeedLocation = PRESENT( Moment ) .OR. PRESENT( Torque )
 
      ! User may specific origin and axis for torque computation
@@ -119,7 +130,7 @@ MODULE LumpingUtils
      Pwrk => ListGetConstRealArray( CompParams,'Torque Origin',Found )
      IF( Found ) THEN
        IF( SIZE(Pwrk,1) /= 3 .OR. SIZE(Pwrk,2) /= 1 ) THEN
-         CALL Fatal('ComponentNodalForceReduction','Size of > Torque Origin < should be 3!')
+         CALL Fatal(Caller,'Size of > Torque Origin < should be 3!')
        END IF
        Origin = Pwrk(1:3,1)
      ELSE
@@ -128,7 +139,7 @@ MODULE LumpingUtils
      Pwrk => ListGetConstRealArray( CompParams,'Torque Axis',Found )
      IF( Found ) THEN
        IF( SIZE(Pwrk,1) /= 3 .OR. SIZE(Pwrk,2) /= 1 ) THEN
-         CALL Fatal('ComponentNodalForceReduction','Size of > Torque Axis < should be 3!')
+         CALL Fatal(Caller,'Size of > Torque Axis < should be 3!')
        END IF
        Axis = Pwrk(1:3,1)
        ! Normalize axis is it should just be used for the direction
@@ -140,7 +151,7 @@ MODULE LumpingUtils
 
      ElementalVar = ( NF % TYPE == Variable_on_nodes_on_elements )
      IF( PRESENT( SetPerm ) .AND. .NOT. ElementalVar ) THEN
-       CALL Fatal('ComponentNodalForceReduction','SetPerm is usable only for elemental fields')
+       CALL Fatal(Caller,'SetPerm is usable only for elemental fields')
      END IF
 
      dofs = NF % Dofs
@@ -167,14 +178,52 @@ MODULE LumpingUtils
        LastElem = Mesh % NumberOfBulkElements
      END IF
 
+     ! This is a special reduction that only applies to rotors that are surrounded by airgap.
+     ! Very special operator for electrical machines that removes the bookkeeping of the bodies
+     ! that constitute the rotor. 
+     AirBody = 0
+     IF(RotorMode ) THEN       
+       DO t=FirstElem,LastElem
+         Element => Mesh % Elements(t)
+         n = Element % TYPE % NumberOfNodes
+         CALL CopyElementNodesFromMesh( Nodes, Mesh, n, Element % NodeIndexes)         
+         DO i=1,n
+           rad = SQRT(Nodes % x(i)**2 + Nodes % y(i)**2)
+           IF(i==1) THEN
+             minrad = rad
+             maxrad = rad
+           ELSE
+             minrad = MIN(minrad,rad)
+             maxrad = MAX(maxrad,rad)
+           END IF
+         END DO           
 
+         ! The body is defined by an element that is at and inside the rotor radius. 
+         IF(ABS(maxrad-RotorRadius) < eps .AND. minrad < RotorRadius*(1-eps) ) THEN
+           AirBody = Element % BodyId
+           EXIT
+         END IF
+       END DO
+       AirBody = ParallelReduction(AirBody,2)         
+       CALL Info(Caller,'Airgap inner body determined to be: '//I2S(AirBody),Level=12)           
+       IF(AirBody==0) THEN
+         CALL Fatal(Caller,'Could not define airgap inner body!')
+       END IF       
+     END IF
+
+    
      DO t=FirstElem,LastElem
        Element => Mesh % Elements(t)
 
        IF( BcMode ) THEN
          IF( ALL( MasterEntities /= Element % BoundaryInfo % Constraint ) ) CYCLE
-       ELSE
+       ELSE IF( BulkMode ) THEN
          IF( ALL( MasterEntities /= Element % BodyId ) ) CYCLE
+       ELSE IF( RotorMode ) THEN
+         IF( Element % BodyId == AirBody ) CYCLE
+         CALL CopyElementNodesFromMesh( Nodes, Mesh, n, Element % NodeIndexes)         
+         rad = SQRT((SUM(Nodes % x(1:n))/n)**2 + (SUM(Nodes % y(1:n))/n)**2)
+         IF(rad > RotorRadius ) CYCLE         
        END IF
 
        n = Element % TYPE % NumberOfNodes
