@@ -435,15 +435,15 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
         ! Rotations around main axis:
         !----------------------------        
         GotRotate = .FALSE.
+        Angles = 0.0_dp
+
         IF( AnyMeshRotate ) THEN
           Parray => ListGetConstRealArray( ValueList,'Mesh Rotate', GotRotate )                
           IF ( GotRotate ) THEN
-            Angles = 0.0_dp
             DO i=1,SIZE(Parray,1)
               Angles(i) = Parray(i,1) 
             END DO
           ELSE 
-            Angles = 0.0_dp
             Angles(1:1) = ListGetReal( ValueList,'Mesh Rotate 1', 1, NodeIndex, Found )
             IF( Found ) GotRotate = .TRUE.
             Angles(2:2) = ListGetReal( ValueList,'Mesh Rotate 2', 1, NodeIndex, Found )
