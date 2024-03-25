@@ -2406,7 +2406,7 @@ CONTAINS
          i2s(Numprocs)//'/part.1.header', EXIST=Found)
      IF(.NOT. Found ) THEN
        CALL Warn(Caller,'Requested mesh > '//MeshNamePar(1:n)//' < in partition '&
-           //I2S(Numprocs)//' does not exist!')
+           //I2S(MyPe)//' does not exist!')
        RETURN
      END IF
      CALL Info(Caller,'Loading parallel mesh for '//I2S(Numprocs)//' partitions',Level=8)
