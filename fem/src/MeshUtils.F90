@@ -30063,9 +30063,6 @@ CONTAINS
             IF(rSign == -1 .AND. r > rad-eps ) CYCLE
             IF(rSign == 1 .AND. r < rad+eps ) CYCLE            
             phi = ATAN2(Mesh % Nodes % y(i), Mesh % Nodes % x(i) )
-
-            PRINT *,'phi',phi
-
             phimax = MAX(phimax,phi)
             phimin = MIN(phimin,phi)
             m = m+1

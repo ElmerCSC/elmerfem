@@ -183,32 +183,37 @@ MODULE LumpingUtils
      ! that constitute the rotor. 
      AirBody = 0
      IF(RotorMode ) THEN       
-       DO t=FirstElem,LastElem
-         Element => Mesh % Elements(t)
-         n = Element % TYPE % NumberOfNodes
-         CALL CopyElementNodesFromMesh( Nodes, Mesh, n, Element % NodeIndexes)         
-         DO i=1,n
-           rad = SQRT(Nodes % x(i)**2 + Nodes % y(i)**2)
-           IF(i==1) THEN
-             minrad = rad
-             maxrad = rad
-           ELSE
-             minrad = MIN(minrad,rad)
-             maxrad = MAX(maxrad,rad)
-           END IF
-         END DO           
+       AirBody = ListGetInteger( CompParams,'Air Body',Found ) 
+       IF(AirBody == 0) THEN
+         DO t=FirstElem,LastElem
+           Element => Mesh % Elements(t)
+           n = Element % TYPE % NumberOfNodes
+           CALL CopyElementNodesFromMesh( Nodes, Mesh, n, Element % NodeIndexes)         
+           DO i=1,n
+             rad = SQRT(Nodes % x(i)**2 + Nodes % y(i)**2)
+             IF(i==1) THEN
+               minrad = rad
+               maxrad = rad
+             ELSE
+               minrad = MIN(minrad,rad)
+               maxrad = MAX(maxrad,rad)
+             END IF
+           END DO
 
-         ! The body is defined by an element that is at and inside the rotor radius. 
-         IF(ABS(maxrad-RotorRadius) < eps .AND. minrad < RotorRadius*(1-eps) ) THEN
-           AirBody = Element % BodyId
-           EXIT
+           ! The body is defined by an element that is at and inside the rotor radius. 
+           IF(ABS(maxrad-RotorRadius) < eps .AND. minrad < RotorRadius*(1-eps) ) THEN
+             AirBody = Element % BodyId
+             EXIT
+           END IF
+         END DO
+         AirBody = ParallelReduction(AirBody,2)         
+         CALL Info(Caller,'Airgap inner body determined to be: '//I2S(AirBody),Level=12)           
+         IF(AirBody==0) THEN
+           CALL Fatal(Caller,'Could not define airgap inner body!')
+         ELSE
+           CALL ListAddInteger(CompParams,'Air Body',AirBody)
          END IF
-       END DO
-       AirBody = ParallelReduction(AirBody,2)         
-       CALL Info(Caller,'Airgap inner body determined to be: '//I2S(AirBody),Level=12)           
-       IF(AirBody==0) THEN
-         CALL Fatal(Caller,'Could not define airgap inner body!')
-       END IF       
+       END IF
      END IF
 
     
