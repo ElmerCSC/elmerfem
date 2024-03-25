@@ -678,16 +678,18 @@
      CALL CompareToReferenceSolution( Finalize = .TRUE. )
      
 #ifdef DEVEL_LISTUSAGE
-     IF(InfoActive(6)) THEN
+     IF(InfoActive(10) .AND. ParEnv % MyPe == 0 ) THEN
        CALL Info('MAIN','Reporting unused list entries for sif improvement!')
-       CALL Info('MAIN','If you do not want these lines undefine > DEVEL_LISTUSAGE < !')
+       CALL Info('MAIN','If you do not want these lines undefine > DEVEL_LISTUSAGE < !')       
        CALL ReportListCounters( CurrentModel, 2 )
      END IF
 #endif
 #ifdef DEVEL_LISTCOUNTER
-     CALL Info('MAIN','Reporting list counters for code optimization purposes only!')
-     CALL Info('MAIN','If you get these lines with production code undefine > DEVEL_LISTCOUNTER < !')
-     CALL ReportListCounters( CurrentModel, 3 )
+     IF( ParEnv % MyPe == 0 ) THEN
+       CALL Info('MAIN','Reporting list counters for code optimization purposes only!')
+       CALL Info('MAIN','If you get these lines with production code undefine > DEVEL_LISTCOUNTER < !')
+       CALL ReportListCounters( CurrentModel, 3 )
+     END IF
 #endif
           
 !------------------------------------------------------------------------------
