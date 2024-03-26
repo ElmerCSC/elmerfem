@@ -2005,7 +2005,7 @@ SUBROUTINE SequentialRemeshParMMG(Model, InMesh,OutMesh,Boss,EdgePairs,PairCount
 
     !! GET THE NEW MESH
     CALL Info(FuncName,'Recovering mesh',Level=20)
-    CALL GET_ParMMG_MESH(OutMesh,Parallel)
+    CALL GET_ParMMG_MESH(OutMesh,Parallel,Calving=.FALSE.)
   END IF
 
   CALL Info(FuncName,'Releasing mesh',Level=20)
@@ -2266,11 +2266,12 @@ SUBROUTINE Set_ParMMG_Mesh(Mesh, Parallel, EdgePairs, PairCount)
 END SUBROUTINE Set_ParMMG_Mesh
 
 
-SUBROUTINE Get_ParMMG_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
+SUBROUTINE Get_ParMMG_Mesh(NewMesh, Parallel, FixedNodes, FixedElems, Calving)
 
   !------------------------------------------------------------------------------
   TYPE(Mesh_t), POINTER :: NewMesh
   LOGICAL :: Parallel
+  LOGICAL :: Calving
   LOGICAL, OPTIONAL, ALLOCATABLE :: FixedNodes(:), FixedElems(:)
   !------------------------------------------------------------------------------
 
@@ -2524,6 +2525,8 @@ SUBROUTINE Get_ParMMG_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
   CALL Info(FuncName,'Before comm barrier',Level=20)
   
   CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
+
+  CALL Finalize_MMG_Mesh(NewMesh)
 
 #else
      CALL Fatal('Get_ParMMG_Mesh',&
@@ -2806,7 +2809,7 @@ SUBROUTINE DistributedRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,&
   CALL PMMG_Get_meshSize(pmmgMesh,NVerts,NTetras,NPrisms,NTris,NQuads,NEdges,ierr)
 
   !! GET THE NEW MESH
-  CALL GET_ParMMG_MESH(OutMesh,Parallel)
+  CALL GET_ParMMG_MESH(OutMesh,Parallel,Calving=.FALSE.)
 
   !! Release mmg mesh
   CALL PMMG_Free_all ( PMMG_ARG_start,     &
@@ -2908,13 +2911,6 @@ END SUBROUTINE DistributedRemeshParMMG
     IF ( ier == 0 ) CALL Fatal(FuncName,'Call to MMGS_Get_meshSize failed!')
     CALL Info(FuncName,'MMG2D_Get_meshSize done',Level=30)
       
-    ! Initialize the new mesh stucture
-    NewMesh => AllocateMesh()
-    IF (MeshNumber > 0 ) THEN
-      WRITE(NewMesh % Name,'(A,A,I0)') TRIM(OutPutFileName),'_N',MeshNumber
-    ELSE
-      NewMesh % Name = TRIM(OutPutFileName)
-    END IF
 
     nt0 = 0; np0 = 0; na0 = 0
     Combine = ListGetLogical( Solver % Values,'Keep unmeshed regions',Found )
@@ -2987,6 +2983,14 @@ END SUBROUTINE DistributedRemeshParMMG
       END DO
     END IF
     
+    ! Initialize the new mesh stucture
+    NewMesh => AllocateMesh(nt + nt0,na + na0,np + np0,ParEnv%PEs > 1)
+    IF (MeshNumber > 0 ) THEN
+      WRITE(NewMesh % Name,'(A,A,I0)') TRIM(OutPutFileName),'_N',MeshNumber
+    ELSE
+      NewMesh % Name = TRIM(OutPutFileName)
+    END IF
+
     NewMesh % MaxElementNodes = maxnodes
     NewMesh % MeshDim = OldMesh % MeshDim    
     NewMesh % NumberOfNodes = np + np0 

@@ -75,7 +75,6 @@ Solver 1
 !  Bulk Assembly Procedure 21 = File "./ZeroAssembly" "BulkAssembly"
   Bulk Assembly Procedure 22 = File "./PoissonAssembly" "BulkAssembly"
 
-  Block Gauss Seidel = Logical True
   Block Preconditioner = Logical False
 
   Primary Variable = Integer 1

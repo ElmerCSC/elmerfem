@@ -4,7 +4,6 @@
 
   Block Gauss-Seidel = True
   Block Quadratic Hcurl System = Logical True
-  Block Matrix Reuse = False
   Block Preconditioner = True
 
 ! True + True seems to provide best speed-up
@@ -28,22 +27,24 @@
   block 11: Linear System Complex = True
   block 11: Linear System Scaling = False
 
-!  block 22: Linear System Solver = "Iterative"
-!  block 22: Linear System Convergence Tolerance = 1e-6
-!  block 22: Linear System Iterative Method = bicgstabl !idrs
-!  block 22: Linear System Residual Output = 20
-!  block 22: Linear System Max Iterations = 100
-!  block 22: Linear System Complex = True
-!  block 22: Linear System Abort Not Converged = False
-!  block 22: Linear System Scaling = True
-
-  block 22: Linear System Solver = "direct"
-  block 22: Linear System direct method = "mumps"
+  block 22: Linear System Solver = "Iterative"
+  block 22: Linear System Convergence Tolerance = 1e-2
+  block 22: Linear System Iterative Method = GCR !bicgstabl
+  block 22: Linear System GCR Restart = 20
+  block 22: Linear System Preconditioning = diagonal
+  block 22: Linear System Residual Output = 20
+  block 22: Linear System Max Iterations = 100
   block 22: Linear System Complex = True
-  block 22: Linear System Scaling = False
+  block 22: Linear System Abort Not Converged = False
+  block 22: Linear System Scaling = True
+
+!  block 22: Linear System Solver = "direct"
+!  block 22: Linear System direct method = "mumps"
+!  block 22: Linear System Complex = True
+!  block 22: Linear System Scaling = False
 
 
-! This is tentative keyword that does not really benefit.
+! This is a tentative keyword that does not really benefit.
 ! We split the equation into 3x3 blocks (lin edge, quad edge, face) 
 !  Block Quadratic Hcurl Faces = Logical True
 

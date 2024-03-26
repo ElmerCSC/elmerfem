@@ -136,6 +136,29 @@ CONTAINS
 !-----------------------------------------------------------------
 
 
+!-----------------------------------------------------------------
+! > This subroutine sets the value of ExecID (using the -exec-id
+! > command-line argument's value if specified, or the default
+! > value otherwise).
+!-----------------------------------------------------------------
+   SUBROUTINE SetExecID()
+!-----------------------------------------------------------------
+     CHARACTER(LEN=MAX_NAME_LEN) :: Arg
+     INTEGER :: NoArgs, i
+     ExecID = "elmerice"
+     NoArgs = COMMAND_ARGUMENT_COUNT()
+     DO i = 1,NoArgs
+        CALL GET_COMMAND_ARGUMENT(i, Arg)
+        IF (Arg == "-exec-id") THEN
+           IF (i < NoArgs) CALL GET_COMMAND_ARGUMENT(i+1, ExecID)
+           EXIT
+        END IF
+     END DO
+!-----------------------------------------------------------------
+   END SUBROUTINE SetExecID
+!-----------------------------------------------------------------
+
+
 !------------------------------------------------------------------------
 !> Initialize parallel execution environment
 !-----------------------------------------------------------------------
@@ -191,7 +214,8 @@ CONTAINS
 #ifdef HAVE_XIOS
     INQUIRE(FILE="iodef.xml", EXIST=USE_XIOS)
     IF (USE_XIOS) THEN
-      CALL xios_initialize(TRIM(xios_id),return_comm=ELMER_COMM_WORLD)
+      CALL SetExecID()
+      CALL xios_initialize(TRIM(ExecID),return_comm=ELMER_COMM_WORLD)
     ELSE
 #ifndef ELMER_COLOUR
 #define ELMER_COLOUR 0

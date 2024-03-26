@@ -6293,9 +6293,19 @@ CONTAINS
            'Initial Condition', ListFound )         
        IF(ListFound) List => CurrentModel % ICs(id) % Values
        
-     CASE( SECTION_TYPE_MATERIAL ) 
-       id = ListGetInteger( CurrentModel % Bodies(ListId) % Values, &
-           'Material', ListFound )         
+     CASE( SECTION_TYPE_MATERIAL )
+       IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN
+         id = Element % BoundaryInfo % Constraint
+         IF(id >= 1 .AND. id <= CurrentModel % NumberOfBCs ) THEN 
+           id = ListGetInteger( CurrentModel % BCs(id) % Values, &
+               'Material', ListFound )
+         ELSE
+           id = 0
+         END IF
+       ELSE
+         id = ListGetInteger( CurrentModel % Bodies(ListId) % Values, &
+             'Material', ListFound )
+       END IF
        IF(ListFound) List => CurrentModel % Materials(id) % Values
 
      CASE( SECTION_TYPE_COMPONENT ) 

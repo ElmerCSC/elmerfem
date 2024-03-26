@@ -182,5 +182,5 @@ Boundary Condition 3
    Porous 1 = Real 0.0
 End
 
-Solver 2 :: Reference Norm = Real 0.921524588
+Solver 2 :: Reference Norm = Real 0.919542625
 Solver 2 :: Reference Norm Tolerance = Real 1E-04

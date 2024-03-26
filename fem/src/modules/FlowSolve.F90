@@ -195,6 +195,9 @@
 
      IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
 
+     
+
+     
      CALL DefaultStart()
      
 !    Check for local coordinate system
@@ -279,10 +282,17 @@
      ForceVector => StiffMatrix % RHS
      UNorm = Solver % Variable % Norm
 
+
+     ! Enable keyword used also in IncompressibleNSVec and HydrostaticNSVec
+     IF(ListGetLogical(Solver % Values,'Constant-Viscosity Start',GotIt )) THEN
+       IF(.NOT. AllocationsDone) THEN
+         CALL ListAddConstReal( Solver % Values,'Newtonian Viscosity Condition',1.0_dp)
+       END IF
+     END IF
+     
 !------------------------------------------------------------------------------
 !     Allocate some permanent storage, this is done first time only
-!------------------------------------------------------------------------------
-
+!------------------------------------------------------------------------------     
      IF ( .NOT.AllocationsDone .OR. Solver % MeshChanged ) THEN
 
        N = Solver % Mesh % MaxElementDOFs
@@ -1277,6 +1287,11 @@
 
       Unorm = DefaultSolve()
 
+      ! If we have constant viscosity start then remove it already after first solution.
+      IF(ListGetLogical(Solver % Values,'Constant-Viscosity Start',GotIt )) THEN
+        CALL ListRemove( Solver % Values,'Newtonian Viscosity Condition')
+      END IF
+      
       st = CPUTIme()-st
       totat = totat + at
       totst = totst + st

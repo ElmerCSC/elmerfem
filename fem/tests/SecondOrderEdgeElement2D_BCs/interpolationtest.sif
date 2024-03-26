@@ -86,5 +86,5 @@ End
 !    Real MATC "tx(0)*tx(0)*tx(1)"
 !End
 
-Solver 1 :: Reference Norm = 7.46553280E-01
+Solver 1 :: Reference Norm = 7.37389209E-01
 Solver 1 :: Reference Norm Tolerance = 1.0E-6

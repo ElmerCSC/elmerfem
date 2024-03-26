@@ -3413,17 +3413,22 @@ CONTAINS
      END IF
 
      IF( Solver % NumberOfConstraintModes > 0 ) THEN
-
        ! If we have a frozen stat then the nonlinear system loop is used to find that frozen state
        ! and we perform the linearized constraint modes analysis at the end. 
        IF( ListGetLogical(Solver % Values,'Constraint Modes Analysis Frozen',Found ) ) THEN
          BLOCK 
            INTEGER :: n
+           REAL(KIND=dp) :: Norm
            REAL(KIND=dp), ALLOCATABLE :: xtmp(:), btmp(:)
+           REAL(KIND=dp), POINTER :: rhs(:)
+
+           CALL ListAddLogical(Solver % Values,'Constraint Modes Analysis Frozen',.FALSE.)
            n = SIZE(Solver % Matrix % rhs)
+           rhs => Solver % Matrix % rhs           
            ALLOCATE(xtmp(n),btmp(n))
            xtmp = 0.0_dp; btmp = 0.0_dp
-           CALL SolveConstraintModesSystem( Solver % Matrix, xtmp, btmp , Solver )
+           CALL SolveSystem( Solver % Matrix, ParMatrix, btmp, xtmp, Norm,Solver % Variable % DOFs,Solver )
+           CALL ListAddLogical(Solver % Values,'Constraint Modes Analysis Frozen',.TRUE.)
          END BLOCK
        END IF
          
@@ -3431,7 +3436,6 @@ CONTAINS
          CALL FinalizeLumpedMatrix( Solver )            
        END IF
      END IF
-
 
      IF( ListGetLogical( Solver % Values,'MMG Remesh', Found ) ) THEN
        CALL Remesh(CurrentModel,Solver)

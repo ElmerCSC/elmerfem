@@ -200,10 +200,12 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
 
  !------------------------------------------------------------------------------
 
+  IF(.NOT. ASSOCIATED(Solver % Matrix) ) RETURN
+    
   CALL Info(Caller,'--------------------------------------')
   CALL Info(Caller,'Solving current distribution in a coil')
   CALL Info(Caller,'--------------------------------------')
-
+  
   Params => GetSolverParams()
 
   nsize = SIZE( Solver % Variable % Values ) 
@@ -431,6 +433,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
   Set => SetA
   CALL CountFixingNodes(Set,1)
   IF( CoilClosed ) THEN
+    CALL Info(Caller,'Defining 2nd set of fixing nodes',Level=20)
     Set => SetB
     CALL CountFixingNodes(Set,2)
   END IF
@@ -590,10 +593,10 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
 
       IF( ParEnv % PEs > 1 ) THEN
         TmpCurr = MinCurr
-        CALL MPI_ALLREDUCE(MinCurr,TmpCurr,3,MPI_DOUBLE_PRECISION,MPI_MIN,ELMER_COMM_WORLD,ierr)
+        CALL MPI_ALLREDUCE(MinCurr,TmpCurr,3,MPI_DOUBLE_PRECISION,MPI_MIN,ParEnv % ActiveComm,ierr)
         MinCurr = TmpCurr
         TmpCurr = MaxCurr
-        CALL MPI_ALLREDUCE(MaxCurr,TmpCurr,3,MPI_DOUBLE_PRECISION,MPI_MAX,ELMER_COMM_WORLD,ierr)
+        CALL MPI_ALLREDUCE(MaxCurr,TmpCurr,3,MPI_DOUBLE_PRECISION,MPI_MAX,ParEnv % ActiveComm,ierr)
         MaxCurr = TmpCurr
       END IF
 
@@ -861,7 +864,7 @@ CONTAINS
     IF( ParEnv % PEs > 1 ) THEN
       SerTmp(1:3) = Center
       SerTmp(4) = Volume
-      CALL MPI_ALLREDUCE(SerTmp,ParTmp,4,MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
+      CALL MPI_ALLREDUCE(SerTmp,ParTmp,4,MPI_DOUBLE_PRECISION,MPI_SUM,ParEnv % ActiveComm,ierr)
       Center = ParTmp(1:3)
       Volume = ParTmp(4)
     END IF
@@ -975,7 +978,7 @@ CONTAINS
     END DO
 
     IF( ParEnv % PEs > 1 ) THEN
-      CALL MPI_ALLREDUCE(Imoment,ParTmp,9,MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
+      CALL MPI_ALLREDUCE(Imoment,ParTmp,9,MPI_DOUBLE_PRECISION,MPI_SUM,ParEnv % ActiveComm,ierr)
       Imoment = ParTmp
     END IF
 
@@ -1093,9 +1096,9 @@ CONTAINS
     END DO
 
     IF( ParEnv % PEs > 1 ) THEN
-      CALL MPI_ALLREDUCE(MinCoord,ParTmp,3,MPI_DOUBLE_PRECISION,MPI_MIN,ELMER_COMM_WORLD,ierr)
+      CALL MPI_ALLREDUCE(MinCoord,ParTmp,3,MPI_DOUBLE_PRECISION,MPI_MIN,ParEnv % ActiveComm,ierr)
       MinCoord = ParTmp
-      CALL MPI_ALLREDUCE(MaxCoord,ParTmp,3,MPI_DOUBLE_PRECISION,MPI_MAX,ELMER_COMM_WORLD,ierr)
+      CALL MPI_ALLREDUCE(MaxCoord,ParTmp,3,MPI_DOUBLE_PRECISION,MPI_MAX,ParEnv % ActiveComm,ierr)
       MaxCoord = ParTmp
     END IF
 

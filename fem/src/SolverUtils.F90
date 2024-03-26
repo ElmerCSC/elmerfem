@@ -7072,6 +7072,8 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 
+    CALL Info(Caller,'Checking constraint modes boundaries!',Level=20)
+    
     nlen = LEN_TRIM(Name)
     Mesh => Solver % Mesh
     Var => Solver % Variable     
@@ -7088,7 +7090,7 @@ CONTAINS
       Solver % NumberOfConstraintModes = 0
       RETURN
     END IF
-
+    
     ExternalLoop = ListGetLogical( Solver % Values,'Nonlinear System Constraint Modes', Found ) .OR. &
         ListGetLogical( Solver % Values,'Steady State Constraint Modes', Found ) .OR. &
         ListGetLogical( Solver % Values,'Run Control Constraint Modes', Found ) .OR. &
@@ -7098,7 +7100,6 @@ CONTAINS
     CoilMode = ListGetLogical( Solver % Values,'Constraint Modes Coils',Found ) 
     RhsMode = ListGetLogical(Solver % Values,'Constraint Modes Rhs',Found ) 
     LumpedMode = ListGetLogical(Solver % Values,'Constraint Modes Lumped',Found )
-
     
     ! These work on the rhs vector, not Dirichlet values.
     RhsMode = RhsMode .OR. EmWaveMode .OR. CoilMode
@@ -7107,7 +7108,7 @@ CONTAINS
     Element => Mesh % Elements(1)
     pSolver => Solver
     HaveP = isActivePElement(Element,pSolver)
-
+    
     IgnoreP = .FALSE.
     IF( HaveP ) THEN
       IgnoreP = ListGetLogical( Solver % Values,'Ignore Constraint Modes p',Found )  
@@ -7205,7 +7206,7 @@ CONTAINS
       Ncomplex = 1
       CALL Info(Caller,'Assuming real valued system for constraint modes',Level=12)
     END IF
-
+    
     NoModes = NDOFS * j  / Ncomplex
     
     IF( BcMode ) THEN
@@ -11288,8 +11289,6 @@ END FUNCTION SearchNodeL
     END IF
 
     !IF( Debug ) PRINT *,'Adapt',UseAdapt,Element % ElementIndex, n,MaxV,MinV,MaxLim,MinLim,Np,RelOrder
-
-!PRINT *,'Np:',Np, pRef
     
     IF( Np > 0 ) THEN
       IntegStuff = GaussPoints( Element, Np = Np, PReferenceElement = pRef )
@@ -12521,206 +12520,6 @@ END FUNCTION SearchNodeL
 
   END SUBROUTINE CalculateNodalWeights
 !------------------------------------------------------------------------------
-
-
-
-
-  !> Calculate the number of separature pieces in a serial mesh.
-  !> This could be used to detect problems in mesh when suspecting
-  !> floating parts not fixed by any BC, for example.
-  !---------------------------------------------------------------------------------
-  SUBROUTINE CalculateMeshPieces( Mesh, ElementMode )
-
-    TYPE(Mesh_t), POINTER :: Mesh
-    LOGICAL, OPTIONAL :: ElementMode
-
-    LOGICAL :: Ready
-    INTEGER :: i,j,k,n,t,t2,k2,MinIndex,MaxIndex,Loop,NoPieces
-    INTEGER, ALLOCATABLE :: MeshPiece(:),PiecePerm(:)
-    TYPE(Element_t), POINTER :: Element, Element2
-    INTEGER, POINTER :: Indexes(:)
-    TYPE(Variable_t), POINTER :: Var
-    TYPE(Mesh_t), POINTER :: Faces(:)
-    LOGICAL :: ElemMode, Found
-    
-    IF( ParEnv % PEs > 1 ) THEN
-      CALL Warn('CalculateMeshPieces','Implemented only for serial meshes!')
-    END IF
-
-    ElemMode = .FALSE.
-    IF( PRESENT(ElementMode) ) THEN
-      ElemMode = ElementMode
-    END IF
-
-    IF( ElemMode ) THEN
-      n = Mesh % NumberOfBulkElements
-    ELSE   
-      n = Mesh % NumberOfNodes
-    END IF
-    ALLOCATE( MeshPiece( n ) ) 
-    MeshPiece = 0
-
-    ! Only set the piece for the nodes that are used by some element
-    ! For others the marker will remain zero. 
-    DO t = 1, Mesh % NumberOfBulkElements
-      Element => Mesh % Elements(t)        
-      IF( ElemMode ) THEN
-        MeshPiece( t ) = 1
-      ELSE      
-        Indexes => Element % NodeIndexes
-        MeshPiece( Indexes ) = 1
-      END IF
-    END DO
-    j = 0
-    DO i = 1, n
-      IF( MeshPiece(i) > 0 ) THEN
-        j = j + 1
-        MeshPiece(i) = j
-      END IF
-    END DO
-
-    IF(n>j) THEN
-      CALL Info('CalculateMeshPieces',&
-          'Number of non-body nodes in mesh is '//I2S(n-j),Level=5)
-    END IF
-      
-    ! We go through the elements and set all the piece indexes to minimimum index
-    ! until the mesh is unchanged. Thereafter the whole piece will have the minimum index
-    ! of the piece.
-    Ready = .FALSE.
-    Loop = 0
-    DO WHILE(.NOT. Ready) 
-      Ready = .TRUE.
-      DO t = 1, Mesh % NumberOfBulkElements
-        Element => Mesh % Elements(t)        
-        
-        IF( ElemMode ) THEN
-          k = MeshPiece(t)
-          IF( Mesh % MeshDim == 2 ) THEN
-            DO i=1, Element % TYPE % NumberOfEdges
-              DO j=1,2
-                IF(j==1) THEN
-                  Element2 => Mesh % Edges(Element % EdgeIndexes(i)) % BoundaryInfo % Left
-                ELSE
-                  Element2 => Mesh % Edges(Element % EdgeIndexes(i)) % BoundaryInfo % Right
-                END IF
-                IF(.NOT. ASSOCIATED(Element2) ) CYCLE
-                t2 = Element2 % ElementIndex
-                IF(t==t2) CYCLE
-                k2 = MeshPiece(t2)
-                IF(k2 /= k ) THEN
-                  Ready = .FALSE.
-                  IF( k2 < k ) THEN
-                    k = k2 
-                    MeshPiece(t) = k2
-                  ELSE
-                    MeshPiece(t2) = k
-                  END IF
-                END IF
-              END DO
-            END DO
-          ELSE
-            DO i=1, Element % TYPE % NumberOfFaces
-              DO j=1,2
-                IF(j==1) THEN
-                  Element2 => Mesh % Faces(Element % FaceIndexes(i)) % BoundaryInfo % Left
-                ELSE
-                  Element2 => Mesh % Faces(Element % FaceIndexes(i)) % BoundaryInfo % Right
-                END IF
-                IF(.NOT. ASSOCIATED(Element2) ) CYCLE
-                t2 = Element2 % ElementIndex
-                IF(t==t2) CYCLE
-                k2 = MeshPiece(t2)
-                IF(k2 /= k ) THEN
-                  Ready = .FALSE.
-                  IF( k2 < k ) THEN
-                    k = k2 
-                    MeshPiece(t) = k2
-                  ELSE
-                    MeshPiece(t2) = k
-                  END IF
-                END IF
-              END DO
-            END DO
-          END IF
-        ELSE
-          Indexes => Element % NodeIndexes          
-          MinIndex = MINVAL( MeshPiece( Indexes ) )
-          MaxIndex = MAXVAL( MeshPiece( Indexes ) )
-          IF( MaxIndex > MinIndex ) THEN
-            MeshPiece( Indexes ) = MinIndex
-            Ready = .FALSE.
-          END IF
-        END IF
-      END DO
-      Loop = Loop + 1
-    END DO
-    CALL Info('CalculateMeshPieces','Mesh coloring loops: '//I2S(Loop),Level=6)
-
-    ! Compute the true number of different pieces
-    IF( MaxIndex == 1 ) THEN
-      NoPieces = 1
-    ELSE
-      ALLOCATE( PiecePerm( MaxIndex ) ) 
-      PiecePerm = 0
-      NoPieces = 0
-      DO i = 1, n
-        j = MeshPiece(i) 
-        IF( j == 0 ) CYCLE
-        IF( PiecePerm(j) == 0 ) THEN
-          NoPieces = NoPieces + 1
-          PiecePerm(j) = NoPieces 
-        END IF
-      END DO
-    END IF
-    CALL Info('CalculateMeshPieces',&
-        'Number of separate pieces in mesh is '//I2S(NoPieces),Level=5)
-
-    i = ListGetInteger( CurrentModel % Simulation,'Desired Mesh Pieces',Found )
-    IF( Found ) THEN
-      IF( i == NoPieces ) THEN
-        CALL Info('CalculateMeshPieces','Number of pieces agree with the requested '//I2S(i))
-        RETURN
-      ELSE
-        CALL Fatal('CalculateMeshPieces','Number of pieces differ from the requested '//I2S(i))
-      END IF
-    END IF
-
-    ! No point to create piece of just ones
-    IF( NoPieces == 1 ) RETURN
-    
-    ! Save the mesh piece field to > mesh piece < 
-    Var => VariableGet( Mesh % Variables,'Mesh Piece' )
-    IF(.NOT. ASSOCIATED( Var ) ) THEN
-      IF( ElemMode ) THEN
-        CALL VariableAddVector ( Mesh % Variables,Mesh, CurrentModel % Solver,'Mesh Piece', &
-            VarType = Variable_on_elements )
-      ELSE
-        CALL VariableAddVector ( Mesh % Variables,Mesh, CurrentModel % Solver,'Mesh Piece' )
-      END IF
-      Var => VariableGet( Mesh % Variables,'Mesh Piece' )
-    END IF
-
-    IF( .NOT. ASSOCIATED( Var ) ) THEN
-      CALL Fatal('CalculateMeshPieces','Could not get handle to variable > Mesh Piece <')
-    END IF
-
-    DO i = 1, n
-      j = i
-      IF( ASSOCIATED( Var % Perm ) ) THEN
-        j = Var % Perm( i ) 
-        IF( j == 0 ) CYCLE
-      END IF
-      IF( MeshPiece(i) > 0 ) THEN
-        Var % Values( j ) = 1.0_dp * PiecePerm( MeshPiece( i ) )
-      ELSE
-        Var % Values( j ) = 0.0_dp
-      END IF
-    END DO
-    CALL Info('CalculateMeshPieces','Creating variable showing the non-connected domains: mesh piece',Level=5)
-  
-  END SUBROUTINE CalculateMeshPieces
-
 
 
 !------------------------------------------------------------------------------
@@ -14443,7 +14242,7 @@ END FUNCTION SearchNodeL
     TYPE(Mesh_t), POINTER :: Mesh
     LOGICAL :: Relax,GotIt,Stat,ScaleSystem, EigenAnalysis, HarmonicAnalysis,&
                BackRotation, ApplyRowEquilibration, ApplyLimiter, Parallel, &
-               SkipZeroRhs, ComplexSystem, ComputeChangeScaled, ConstraintModesAnalysis, &
+               SkipZeroRhs, ComplexSystem, ComputeChangeScaled, &
                RecursiveAnalysis, CalcLoads
     INTEGER :: n,i,j,k,l,ii,m,DOF,istat,this,mn
     CHARACTER(:), ALLOCATABLE :: Method, Prec, SaveSlot
@@ -14458,7 +14257,9 @@ END FUNCTION SearchNodeL
     TYPE(Variable_t), POINTER :: IterV
     LOGICAL :: NormalizeToUnity, AndersonAcc, AndersonScaled, NoSolve, Found
     REAL(KIND=dp), POINTER :: pv(:)
+    CHARACTER(*), PARAMETER :: Caller = 'SolveLinearSystem'
 
+    
     TARGET b, x 
     
     INTERFACE 
@@ -14493,7 +14294,7 @@ END FUNCTION SearchNodeL
     Params => Solver % Values
      
     IF( ListGetLogical( Params,'Linear System Skip Complex',GotIt ) ) THEN
-      CALL Info('SolveLinearSystem','This time skipping complex treatment',Level=20)
+      CALL Info(Caller,'This time skipping complex treatment',Level=20)
       A % COMPLEX = .FALSE.
       ComplexSystem = .FALSE.
     ELSE
@@ -14502,7 +14303,7 @@ END FUNCTION SearchNodeL
     END IF
 
     IF( ListGetLogical( Params,'Linear System Skip Scaling',GotIt ) ) THEN     
-      CALL Info('SolveLinearSystem','This time skipping scaling',Level=20)
+      CALL Info(Caller,'This time skipping scaling',Level=20)
       ScaleSystem = .FALSE.
     ELSE
       ScaleSystem = ListGetLogical( Params, 'Linear System Scaling', GotIt )
@@ -14510,9 +14311,9 @@ END FUNCTION SearchNodeL
     END IF
    
     IF( A % COMPLEX ) THEN
-      CALL Info('SolveLinearSystem','Assuming complex valued linear system',Level=6)
+      CALL Info(Caller,'Assuming complex valued linear system',Level=6)
     ELSE
-      CALL Info('SolveLinearSystem','Assuming real valued linear system',Level=8)
+      CALL Info(Caller,'Assuming real valued linear system',Level=8)
     END IF
 
     Parallel = Solver % Parallel
@@ -14522,18 +14323,18 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
     IF ( Parallel  ) THEN
       IF( .NOT. ASSOCIATED(A % ParMatrix) ) THEN
-        CALL Info('SolveLinearSystem','Creating parallel matrix structures',Level=8)
+        CALL Info(Caller,'Creating parallel matrix structures',Level=8)
         CALL ParallelInitMatrix( Solver, A )
       ELSE
-        CALL Info('SolveLinearSystem','Using previously created parallel matrix structures!',Level=15)
+        CALL Info(Caller,'Using previously created parallel matrix structures!',Level=15)
       END IF      
       Parallel = ASSOCIATED(A % ParMatrix)       
     END IF
 
     IF( Parallel ) THEN
-      CALL Info('SolveLinearSystem','Assuming parallel linear system',Level=8)
+      CALL Info(Caller,'Assuming parallel linear system',Level=8)
     ELSE
-      CALL Info('SolveLinearSystem','Assuming serial linear system',Level=8)
+      CALL Info(Caller,'Assuming serial linear system',Level=8)
     END IF  
         
     IF ( ListGetLogical( Solver % Values, 'Linear System Save',GotIt )) THEN
@@ -14589,22 +14390,12 @@ END FUNCTION SearchNodeL
     EigenAnalysis = Solver % NOFEigenValues > 0 .AND. &
         ListGetLogical( Params, 'Eigen Analysis',GotIt )
 
-    ConstraintModesAnalysis = ListGetLogical( Params, &
-        'Constraint Modes Analysis',GotIt )
-    ! We can also have a combination of standard analysis + constraint modes
-    ! analysis of the frozen state. Then the default solution slot should really do
-    ! the standard analysis.
-    IF( ConstraintModesAnalysis ) THEN
-      IF( ListGetLogical( Params,'Constraint Modes Analysis Frozen',Found ) ) THEN
-        ConstraintModesAnalysis = .FALSE.
-      END IF
-    END IF
     
     HarmonicAnalysis = ( Solver % NOFEigenValues > 0 ) .AND. &
         ListGetLogical( Params, 'Harmonic Analysis',GotIt )
 
     ! These analyses types may require recursive strategies and may also have zero rhs
-    RecursiveAnalysis = HarmonicAnalysis .OR. EigenAnalysis .OR. ConstraintModesAnalysis
+    RecursiveAnalysis = HarmonicAnalysis .OR. EigenAnalysis 
 
 
     ApplyLimiter = ListGetLogical( Params,'Apply Limiter',GotIt ) 
@@ -14619,7 +14410,7 @@ END FUNCTION SearchNodeL
     IF ( .NOT. ( RecursiveAnalysis .OR. ApplyLimiter .OR. SkipZeroRhs ) ) THEN
       bnorm = SQRT(ParallelReduction(SUM(b(1:n)**2)))      
       IF ( bnorm <= TINY( bnorm) ) THEN
-        CALL Info('SolveLinearSystem','Solution trivially zero!',Level=5)
+        CALL Info(Caller,'Solution trivially zero!',Level=5)
         x = 0.0d0
 
         ! Increase the nonlinear counter since otherwise some stuff may stagnate
@@ -14635,12 +14426,11 @@ END FUNCTION SearchNodeL
     END IF
 
     IF ( Solver % MultiGridLevel == -1  ) RETURN
-
+    
     ! Set the flags to false to allow recursive strategies for these analysis types, little dirty...
     IF( RecursiveAnalysis ) THEN
       IF( HarmonicAnalysis ) CALL ListAddLogical( Solver % Values,'Harmonic Analysis',.FALSE.)
       IF( EigenAnalysis ) CALL ListAddLogical( Solver % Values,'Eigen Analysis',.FALSE.)
-      IF( ConstraintModesAnalysis ) CALL ListAddLogical( Solver % Values,'Constraint Modes Analysis',.FALSE.)
     END IF
 
 
@@ -14688,29 +14478,11 @@ END FUNCTION SearchNodeL
       CALL InvalidateVariable( CurrentModel % Meshes, Solver % Mesh, &
           Solver % Variable % Name )
     END IF
-
-
-!   If solving constraint modes analysis go there:
-!   ----------------------------------------------
-    IF ( ConstraintModesAnalysis ) THEN      
-
-      CALL SolveConstraintModesSystem( A, x, b , Solver )
-      
-      IF ( BackRotation ) CALL BackRotateNTSystem( x, Solver % Variable % Perm, DOFs )
-      
-      Norm = ComputeNorm(Solver,n,x)
-      Solver % Variable % Norm = Norm
-      
-      CALL InvalidateVariable( CurrentModel % Meshes, Solver % Mesh, &
-          Solver % Variable % Name )
-    END IF
-   
     
     ! We have solved {harmonic,eigen,constraint} system and no need to continue further
     IF( RecursiveAnalysis ) THEN
       IF( HarmonicAnalysis ) CALL ListAddLogical( Solver % Values,'Harmonic Analysis',.TRUE.)
       IF( EigenAnalysis ) CALL ListAddLogical( Solver % Values,'Eigen Analysis',.TRUE.)
-      IF( ConstraintModesAnalysis ) CALL ListAddLogical( Solver % Values,'Constraint Modes Analysis',.TRUE.)
       RETURN
     END IF
 
@@ -14725,7 +14497,7 @@ END FUNCTION SearchNodeL
     END IF
 
     IF ( bnorm <= TINY( bnorm) .AND..NOT.SkipZeroRhs) THEN
-      CALL Info('SolveLinearSystem','Solution trivially zero!',Level=5)
+      CALL Info(Caller,'Solution trivially zero!',Level=5)
       x = 0.0d0
 
       ! Increase the nonlinear counter since otherwise some stuff may stagnate
@@ -14775,6 +14547,8 @@ END FUNCTION SearchNodeL
     ! This flag tries to improve on the initial guess of the linear solvers, and may 
     ! sometimes even result to the exact solution.
     IF( ListGetLogical( Params,'Linear System Normalize Guess',GotIt ) ) THEN
+      CALL Info(Caller,'Normalizing initial guess!',Level=30)
+
       ALLOCATE( TempVector(A % NumberOfRows) )
 
       IF ( Parallel ) THEN
@@ -14804,24 +14578,25 @@ END FUNCTION SearchNodeL
       IF( xn > TINY( xn ) ) THEN
         x(1:n) = x(1:n) * ( bn / xn )
         WRITE( Message,'(A,ES12.3)') 'Linear System Normalizing Factor: ',bn/xn
-        CALL Info('SolveLinearSystem',Message,Level=6) 
+        CALL Info(Caller,Message,Level=6) 
       END IF
       DEALLOCATE( TempVector )
     END IF
 
     IF( ListGetLogical( Params,'Linear System Nullify Guess',GotIt ) ) THEN
+      CALL Info(Caller,'Nullifying initial guess!',Level=30)
       x(1:n) = 0.0_dp
     END IF
     
     Method = ListGetString(Params,'Linear System Solver',GotIt)
     IF(.NOT. GotIt) THEN
-      CALL Fatal('SolveLinearSystem','Give "Linear System Solver", e.g. "linear" or "direct"')
+      CALL Fatal(Caller,'Give "Linear System Solver", e.g. "linear" or "direct"')
     END IF
     
     IF (Method=='multigrid' .OR. Method=='iterative' ) THEN
       Prec = ListGetString(Params,'Linear System Preconditioning',GotIt)
       IF( GotIt ) THEN
-        CALL Info('SolveLinearSystem','Linear System Preconditioning: '//TRIM(Prec),Level=8)
+        CALL Info(Caller,'Linear System Preconditioning: '//TRIM(Prec),Level=8)
         IF( SEQL(Prec,'vanka') ) THEN
           IF(LEN(Prec)>=6) THEN
             i = ICHAR(Prec(6:6)) - ICHAR('0')
@@ -14839,10 +14614,10 @@ END FUNCTION SearchNodeL
 
       IF( A % ndeg > 1 ) THEN
         IF( CRS_CheckStructuredDofs( A, A % ndeg) ) THEN
-          CALL Fatal('SolveLinearSystem','CRS matrix failed the dense test of size '//I2S(A % ndeg))
+          CALL Fatal(Caller,'CRS matrix failed the dense test of size '//I2S(A % ndeg))
           A % ndeg = 0
         ELSE
-          CALL Info('SolveLinearSystem','CRS matrix passed the dense test of size '//I2S(A % ndeg),Level=12)
+          CALL Info(Caller,'CRS matrix passed the dense test of size '//I2S(A % ndeg),Level=12)
         END IF
       END IF
     END IF
@@ -14855,7 +14630,7 @@ END FUNCTION SearchNodeL
       
     
     IF ( .NOT. Parallel ) THEN
-      CALL Info('SolveLinearSystem','Serial linear System Solver: '//TRIM(Method),Level=8)
+      CALL Info(Caller,'Serial linear System Solver: '//TRIM(Method),Level=8)
       
       SELECT CASE(Method)
       CASE('multigrid')
@@ -14864,7 +14639,7 @@ END FUNCTION SearchNodeL
       CASE('iterative')
         CALL IterSolver( A, x, b, Solver )
       CASE('feti')
-        CALL Fatal('SolveLinearSystem', &
+        CALL Fatal(Caller, &
             'Feti solver available only in parallel.')
       CASE('block')
         CALL BlockSolveExt( A, x, b, Solver )
@@ -14873,10 +14648,10 @@ END FUNCTION SearchNodeL
       CASE('direct')
         CALL DirectSolver( A, x, b, Solver )        
       CASE DEFAULT        
-        CALL Fatal('SolveLinearSystem','Unknown "Linear System Solver": '//TRIM(Method))
+        CALL Fatal(Caller,'Unknown "Linear System Solver": '//TRIM(Method))
       END SELECT
     ELSE
-      CALL Info('SolveLinearSystem','Parallel linear System Solver: '//TRIM(Method),Level=8)
+      CALL Info(Caller,'Parallel linear System Solver: '//TRIM(Method),Level=8)
 
       SELECT CASE(Method)
       CASE('multigrid')
@@ -14894,7 +14669,7 @@ END FUNCTION SearchNodeL
       CASE('direct')
         CALL DirectSolver( A, x, b, Solver )
       CASE DEFAULT        
-        CALL Fatal('SolveLinearSystem','Unknown "Linear System Solver": '//TRIM(Method))
+        CALL Fatal(Caller,'Unknown "Linear System Solver": '//TRIM(Method))
       END SELECT
     END IF
 
@@ -14933,7 +14708,7 @@ END FUNCTION SearchNodeL
       CalcLoads = ListGetLogical( Solver % Values,'Calculate Loads',GotIt )
       IF( .NOT. GotIt ) CalcLoads = .TRUE.
       IF( CalcLoads ) THEN
-        CALL Info('SolveLinearSystem','Calculating nodal loads for: '//&
+        CALL Info(Caller,'Calculating nodal loads for: '//&
             GetVarName(Solver % Variable),Level=6)
         CALL CalculateLoads( Solver, Aaid, x, Dofs, .TRUE., NodalLoads ) 
       END IF
@@ -14962,7 +14737,7 @@ END FUNCTION SearchNodeL
       CalcLoads = ListGetLogical( Solver % Values,'Calculate Residual',GotIt )
       IF( .NOT. GotIt ) CalcLoads = .TRUE.
       IF( CalcLoads ) THEN
-        CALL Info('SolveLinearSystem','Calculating nodal residual',Level=6)
+        CALL Info(Caller,'Calculating nodal residual',Level=6)
         CALL CalculateLoads( Solver, Aaid, x, Dofs, .FALSE., NodalLoads ) 
       END IF
     END IF
@@ -15410,7 +15185,8 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
     TYPE(Variable_t), POINTER :: Var, NodalLoads
     TYPE(Mesh_t), POINTER :: Mesh, SaveMEsh
-    LOGICAL :: Relax, Found, NeedPrevSol, Timing, ResidualMode,ConstraintMode, BlockMode, GloNum
+    LOGICAL :: Relax, Found, NeedPrevSol, Timing, ResidualMode, &
+        RestrictionMode, BlockMode, GloNum
     INTEGER :: n,i,j,k,l,m,istat,nrows,ncols,colsj,rowoffset
     CHARACTER(:), ALLOCATABLE :: Method, VariableName
     INTEGER(KIND=AddrInt) :: Proc
@@ -15419,7 +15195,9 @@ END FUNCTION SearchNodeL
     REAL(KIND=dp), POINTER :: bb(:),Res(:)
     REAL(KIND=dp) :: t0,rt0,rst,st,ct
     TYPE(ValueList_t), POINTER :: Params
-
+    INTEGER :: NMode, LinModes
+    CHARACTER(*), PARAMETER :: Caller = 'SolveSystem'
+    
     INTERFACE
       SUBROUTINE BlockSolveExt(A,x,b,Solver)
         USE Types
@@ -15433,7 +15211,7 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
     Params => Solver % Values
 
-    CALL Info('SolveSystem','Solving linear system',Level=10)
+    CALL Info(Caller,'Solving linear system',Level=10)
 
     Timing = ListCheckPrefix(Params,'Linear System Timing')
     IF( Timing ) THEN
@@ -15445,7 +15223,7 @@ END FUNCTION SearchNodeL
     ResidualMode = ListGetLogical( Params,'Linear System Residual Mode',Found )
     
     BlockMode = ListGetLogical( Params,'Linear System Block Mode',Found ) 
-      
+    
 !------------------------------------------------------------------------------
 ! The allocation of previous values has to be here in order to 
 ! work properly with the Dirichlet elimination.
@@ -15465,7 +15243,7 @@ END FUNCTION SearchNodeL
     END IF
 
     IF( NeedPrevSol ) THEN
-      CALL Info('SolveSystem','Previous solution must be stored before system is solved',Level=10)
+      CALL Info(Caller,'Previous solution must be stored before system is solved',Level=10)
       Found = ASSOCIATED(Solver % Variable % NonlinValues)
       IF( Found ) THEN
         IF ( SIZE(Solver % Variable % NonlinValues) /= n) THEN
@@ -15475,13 +15253,13 @@ END FUNCTION SearchNodeL
       END IF
       IF(.NOT. Found) THEN
         ALLOCATE( Solver % Variable % NonlinValues(n), STAT=istat ) 
-        IF ( istat /= 0 ) CALL Fatal( 'SolveSystem', 'Memory allocation error.' )
+        IF ( istat /= 0 ) CALL Fatal( Caller, 'Memory allocation error.' )
       END IF
       Solver % Variable % NonlinValues = x(1:n)
     END IF
 
     IF ( Solver % LinBeforeProc /= 0 ) THEN
-      CALL Info('SolveSystem','Calling procedure before solving system',Level=7)
+      CALL Info(Caller,'Calling procedure before solving system',Level=7)
       istat = ExecLinSolveProcs( Solver % LinBeforeProc,CurrentModel,Solver, &
                        A, b, x, n, DOFs, Norm )
        IF ( istat /= 0 ) GOTO 10
@@ -15490,7 +15268,7 @@ END FUNCTION SearchNodeL
     ! If residual mode is requested make change of variables:
     ! Ax=b -> Adx = b-Ax0 = r
     IF( ResidualMode ) THEN
-      CALL Info('SolveSystem','Changing the equation to residual based mode',Level=10)
+      CALL Info(Caller,'Changing the equation to residual based mode',Level=10)
       ALLOCATE( Res(n) ) 
 
       ! If needed move the current solution to N-T coordinate system
@@ -15506,29 +15284,38 @@ END FUNCTION SearchNodeL
       bb => b
     END IF
 
-    ConstraintMode = HaveConstraintMatrix( A ) 
-
+    RestrictionMode = HaveConstraintMatrix( A ) 
+    
+    Nmode = 0
+20  CALL ConstraintModesDriver( A, x, b, Solver, .TRUE., Nmode, LinModes )  
+    
     ! Here activate constraint solve only if constraints are not treated as blocks
-    IF( BlockMode .AND. ConstraintMode ) THEN
-      CALL Warn('SolveSystem','Matrix is constraint and block matrix, giving precedence to block nature!')
+    IF( BlockMode .AND. RestrictionMode ) THEN
+      CALL Warn(Caller,'Matrix is restricted and block matrix, giving precedence to block nature!')
     END IF
-      
+    
     IF( BlockMode ) THEN
-      CALL Info('SolveSystem','Solving linear system with block strategy',Level=10)
+      CALL Info(Caller,'Solving linear system with block strategy',Level=10)
       CALL BlockSolveExt( A, x, bb, Solver )
-    ELSE IF ( ConstraintMode ) THEN
-      CALL Info('SolveSystem','Solving linear system with constraint matrix',Level=10)
+    ELSE IF ( RestrictionMode ) THEN
+      CALL Info(Caller,'Solving linear system with linear restrictions!',Level=10)
       IF( ListGetLogical( Params,'Save Constraint Matrix',Found ) ) THEN
         GloNum = ListGetLogical( Params,'Save Constraint Matrix Global Numbering',Found )
         CALL SaveProjector(A % ConstraintMatrix,.TRUE.,'cm',Parallel=GloNum)
       END IF
       CALL SolveWithLinearRestriction( A,bb,x,Norm,DOFs,Solver )
     ELSE ! standard mode
-      CALL Info('SolveSystem','Solving linear system in standard way',Level=12)
+      CALL Info(Caller,'Solving linear system in standard way',Level=12)
       CALL SolveLinearSystem( A,bb,x,Norm,DOFs,Solver )
     END IF
-    CALL Info('SolveSystem','System solved',Level=12)
+    CALL Info(Caller,'System solved',Level=12)
 
+    
+    IF( Nmode > 0 ) THEN
+      CALL ConstraintModesDriver( A, x, b, Solver, .FALSE. ) 
+      IF( Nmode < LinModes ) GOTO 20
+    END IF
+    
     ! Even in the residual mode the system is reverted back to complete vectors 
     ! and we may forget about the residual.
     IF( ResidualMode ) DEALLOCATE( Res ) 
@@ -15538,13 +15325,13 @@ END FUNCTION SearchNodeL
 10  CONTINUE
 
     IF ( Solver % LinAfterProc /= 0 ) THEN
-      CALL Info('SolveSystem','Calling procedure after solving system',Level=7)
+      CALL Info(Caller,'Calling procedure after solving system',Level=7)
       istat = ExecLinSolveProcs( Solver % LinAfterProc, CurrentModel, Solver, &
               A, b, x, n, DOFs, Norm )
     END IF
 
     IF ( Solver % TimeOrder == 2 ) THEN
-      CALL Info('SolveSystem','Setting up PrevValues for 2nd order transient equations',Level=12)
+      CALL Info(Caller,'Setting up PrevValues for 2nd order transient equations',Level=12)
 
       IF ( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
         CALL Update2ndOrder(n,Solver % dt,x, &
@@ -15558,7 +15345,7 @@ END FUNCTION SearchNodeL
 
       WRITE(Message,'(a,f8.2,f8.2,a)') 'Linear system time (CPU,REAL) for '&
           //GetVarName(Solver % Variable)//': ',st,rst,' (s)'
-      CALL Info('SolveSystem',Message,Level=4)    
+      CALL Info(Caller,Message,Level=4)    
       
       IF( ListGetLogical(Params,'Linear System Timing',Found)) THEN
         CALL ListAddConstReal(CurrentModel % Simulation,'res: linsys cpu time '&
@@ -15577,7 +15364,7 @@ END FUNCTION SearchNodeL
 
         WRITE(Message,'(a,f8.2,f8.2,a)') 'Linear system time cumulative (CPU,REAL) for '&
             //GetVarName(Solver % Variable)//': ',st,rst,' (s)'
-        CALL Info('SolveSystem',Message,Level=7)    
+        CALL Info(Caller,Message,Level=7)    
         
         CALL ListAddConstReal(CurrentModel % Simulation,'res: cum linsys cpu time '&
             //GetVarName(Solver % Variable),st)
@@ -15587,7 +15374,7 @@ END FUNCTION SearchNodeL
 
     END IF
 
-    CALL Info('SolveSystem','Finished solving the system',Level=12)
+    CALL Info(Caller,'Finished solving the system',Level=12)
 
 !------------------------------------------------------------------------------
 END SUBROUTINE SolveSystem
@@ -16190,54 +15977,50 @@ END SUBROUTINE BoundaryCirculation
 !------------------------------------------------------------------------------
 !> Solve a linear system with permutated constraints.
 !------------------------------------------------------------------------------
-SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
+SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysModes )
 !------------------------------------------------------------------------------
     TYPE(Matrix_t), POINTER :: A
     TYPE(Solver_t), TARGET :: Solver
     REAL(KIND=dp) CONTIG :: x(:),b(:)
+    LOGICAL :: PreSolve
+    INTEGER, OPTIONAL :: ThisMode, LinSysModes
 !------------------------------------------------------------------------------
     TYPE(Variable_t), POINTER :: Var
-    INTEGER :: i,j,k,n,NoModes,Nmode,Mmode,ierr
+    INTEGER :: i,j,k,n,NoModes,Mmode,ierr
     LOGICAL :: PrecRecompute, Stat, Found, ComputeFluxes, ComputeLinkage, Symmetric, &
-        IsComplex, Parallel, ConsiderP, RhsMode, EmWaveMode, CoilMode
+        IsComplex, Parallel, ConsiderP, RhsMode, EmWaveMode, CoilMode, GaussLaw
     REAL(KIND=dp), ALLOCATABLE :: Fluxes(:), b0(:), A0(:), TempRhs(:)
     REAL(KIND=dp), ALLOCATABLE :: FluxesRow(:), FluxesRowIm(:)
     REAL(KIND=dp) :: FluxesRhs, FluxesRhsIm
     LOGICAL, ALLOCATABLE :: ConstrainedDOF0(:)
     REAL(KIND=dp) :: flux
     CHARACTER(:), ALLOCATABLE :: MatrixFile
-    CHARACTER(*), PARAMETER :: Caller = 'SolveConstraintModesSystem'
-    INTEGER, SAVE :: ThisMode = 0
+    CHARACTER(*), PARAMETER :: Caller = 'ConstraintModesDriver'
+    INTEGER, SAVE :: NMode = 0
     TYPE(Variable_t), POINTER :: pVar
     TYPE(ValueList_t), POINTER :: Params
+    LOGICAL :: LinsysMode 
+
+    SAVE FluxesRow, FluxesRowIm, Fluxes, TempRhs, A0, b0, ConstrainedDOF0, LinsysMode, NMode
+
     
     !------------------------------------------------------------------------------
-    n = A % NumberOfRows
-    
-    Var => Solver % Variable
-    IF( SIZE(x) /= n ) THEN
-      CALL Fatal(Caller,'Conflicting sizes for matrix and variable! ('//I2S(SIZE(x))//','//I2S(n)//')')
-    END IF
-    
+    !NMode = 0
+    IF(PRESENT(LinSysModes)) LinSysModes = 0
     NoModes = Solver % NumberOfConstraintModes 
-    CALL Info(Caller,'Number of constraint modes is: '//I2S(NoModes),Level=8)
-    IF( NoModes == 0 ) CALL Fatal(Caller,'No constraint modes in system?!')
 
-    ! We loop over the mode if it is not given in some external loop.
-    !---------------------------------------------------------------------
-    ThisMode = 0
-    pVar => NULL()
-
+    IF(NoModes <= 0) RETURN    
     Params => Solver % Values
-    IF( ListGetLogical( Params,'Nonlinear System Constraint Modes', Found ) ) &
-        pVar => VariableGet( Solver % Mesh % Variables,'nonlin iter')    
-    IF( ListGetLogical( Params,'Steady State Constraint Modes', Found ) ) &
-        pVar => VariableGet( Solver % Mesh % Variables,'coupled iter')
-    IF( ListGetLogical( Params,'Run Control Constraint Modes', Found ) .OR. &
-        ListGetLogical( CurrentModel % Control,'Constraint Modes Analysis', Found ) ) &
-        pVar => VariableGet( Solver % Mesh % Variables,'run')    
-    IF(ASSOCIATED(pVar)) ThisMode = NINT( pVar % Values(1) ) 
     
+    ! We can also have a combination of standard analysis + constraint modes
+    ! analysis of the frozen state. Then the default solution slot should really do
+    ! the standard analysis.
+    IF( ListGetLogical( Params,'Constraint Modes Analysis Frozen',Found ) ) THEN
+      RETURN
+    END IF
+
+    Var => Solver % Variable
+    n = A % NumberOfRows        
     Parallel = Solver % Parallel
     
     IsComplex = ListGetLogical( Params,'Linear System Complex',Found)
@@ -16256,44 +16039,67 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
     CoilMode = ListGetLogical( Params,'Constraint Modes Coils',Found ) 
 
     IF(EmWaveMode) IsComplex = .TRUE.
+    GaussLaw = .FALSE.
+    IF(EMWaveMode) GaussLaw = ListGetLogical( Params,'Use Gauss Law',Found ) 
     
     IF( EmWaveMode .OR. CoilMode ) THEN
       ComputeFluxes = .TRUE.
       RhsMode = .TRUE.
     END IF
+
     
-    IF( ComputeFluxes .OR. ComputeLinkage ) THEN
-      ALLOCATE( FluxesRow(NoModes) )
-
-      IF( IsComplex ) ALLOCATE( FluxesRowIm(NoModes) ) 
-        
-      ALLOCATE( Fluxes( n ) )
-
-      IF( Parallel ) THEN
-        ALLOCATE(TempRHS(SIZE(A % BulkRhs)))
-        TempRhs = 0.0_dp
-      END IF
+    IF( PreSolve ) THEN
+      CALL Info(Caller,'Number of constraint modes is: '//I2S(NoModes),Level=8)
       
-      IF( IsComplex .OR. CoilMode) THEN
-        ALLOCATE( A0(SIZE(A % Values)), b0(n), ConstrainedDOF0(n) )
-        A0 = A % Values
-        b0 = A % Rhs
-        ConstrainedDOF0 = A % ConstrainedDOF
-      END IF
-    END IF
-    
-    DO NMode=1,NoModes
-      IF( ThisMode /= 0 ) THEN
-        IF(NMode /= ThisMode ) CYCLE       
+      ! We loop over the mode if it is not given in some external loop.
+      !---------------------------------------------------------------------
+      pVar => NULL()
+      IF( ListGetLogical( Params,'Nonlinear System Constraint Modes', Found ) ) &
+          pVar => VariableGet( Solver % Mesh % Variables,'nonlin iter')    
+      IF( ListGetLogical( Params,'Steady State Constraint Modes', Found ) ) &
+          pVar => VariableGet( Solver % Mesh % Variables,'coupled iter')
+      IF( ListGetLogical( Params,'Run Control Constraint Modes', Found ) .OR. &
+          ListGetLogical( CurrentModel % Control,'Constraint Modes Analysis', Found ) ) &
+          pVar => VariableGet( Solver % Mesh % Variables,'run')    
+      LinSysMode = .NOT. ASSOCIATED(pVar)
+      
+      IF(LinSysMode) THEN
+        Nmode = ThisMode + 1
+        LinSysModes = NoModes
       ELSE
-        IF( NMode == 2 ) THEN
-          CALL ListAddLogical( Params,'No Precondition Recompute',.TRUE.)
+        Nmode = NINT( pVar % Values(1) ) 
+        LinSysModes = 0
+      END IF
+      ThisMode = Nmode
+      
+      IF( SIZE(x) /= n ) THEN
+        CALL Fatal(Caller,'Conflicting sizes for matrix and variable! ('//I2S(SIZE(x))//','//I2S(n)//')')
+      END IF
+
+      IF( ComputeFluxes .OR. ComputeLinkage ) THEN
+        ALLOCATE( FluxesRow(NoModes), Fluxes(n) )       
+        IF( IsComplex ) ALLOCATE( FluxesRowIm(NoModes) )         
+        
+        IF( Parallel ) THEN
+          ALLOCATE(TempRHS(SIZE(A % BulkRhs)))
+          TempRhs = 0.0_dp
+        END IF
+        
+        IF( IsComplex .OR. CoilMode) THEN
+          ALLOCATE( A0(SIZE(A % Values)), b0(n), ConstrainedDOF0(n) )
+          A0 = A % Values
+          b0 = A % Rhs
+          ConstrainedDOF0 = A % ConstrainedDOF
         END IF
       END IF
+      
+      IF(LinSysMode .AND. NMode == 2 ) THEN
+        CALL ListAddLogical( Params,'No Precondition Recompute',.TRUE.)
+      END IF
 
-      CALL Info(Caller,'Solving for constrained mode: '//I2S(NMode),Level=6)
+      CALL Info(Caller,'Setting up constrained mode: '//I2S(NMode),Level=6)
       i = Nmode
-
+      
       ! The matrix has been manipulated already before. This ensures
       ! that the system has values 1 at the constraint mode i.
       IF( CoilMode ) THEN                
@@ -16313,7 +16119,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
             b = b0
           END WHERE
         ELSE       
-          IF( Nmode > 1 .AND. ThisMode == 0 ) THEN
+          IF( Nmode > 1 .AND. LinSysMode ) THEN
             WHERE( Var % ConstraintModesIndeces == Nmode-1 ) 
               b = 0.0_dp
             END WHERE
@@ -16338,7 +16144,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
           END WHERE
           CALL EnforceDirichletConditions( Solver, A, b )
         ELSE       
-          IF( Nmode > 1 .AND. ThisMode == 0 ) THEN
+          IF( Nmode > 1 .AND. LinSysMode ) THEN
             WHERE( Var % ConstraintModesIndeces == Nmode-1 ) 
               A % DValues = 0.0_dp
             END WHERE
@@ -16349,20 +16155,23 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
           CALL EnforceDirichletConditions( Solver, A, b )
         END IF
       END IF
-        
-      CALL SolveSystem( A,ParMatrix,b,x,Var % Norm,Var % DOFs,Solver )
+      CALL ListAddLogical( Params,'Skip Zero Rhs Test',.TRUE. )
+    END IF
+      
+    IF( .NOT. PreSolve ) THEN 
+      CALL Info(Caller,'Mode '//I2S(NMode)//' computed, doing some postprocessing',Level=10)
 
       IF( .NOT. ( IsComplex .OR. CoilMode ) ) THEN
         WHERE( Var % ConstraintModesIndeces == Nmode ) b = 0.0_dp
       END IF
-            
+      
       IF( NMode <= Var % NumberOfConstraintModes ) THEN
         Var % ConstraintModes(NMode,:) = x
       END IF
-        
+
       IF( ComputeFluxes .OR. ComputeLinkage ) THEN
         CALL Info(Caller,'Computing lumped fluxes',Level=8)
-
+        
         IF( CoilMode ) THEN
           CALL MagneticEnergies()
         ELSE IF(EmWaveMode ) THEN
@@ -16371,7 +16180,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
           CALL ConstraintModesFluxes(EmWaveMode)
         ELSE IF( ComputeLinkage ) THEN
           CALL ConstraintModesLinkage()
-        END IF          
+        END IF
         
         ! Do parallel communication here at one sweep, not before!
         IF(.NOT. EMWaveMode ) THEN
@@ -16384,21 +16193,29 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
           CALL StoreLumpedFluxes(Solver, NoModes, NMode, FluxesRow ) 
         END IF
       END IF
-
-    END DO
-
-    CALL Info(Caller,'Modes computed, doing some postprocessing',Level=10)
-    
-    IF( ComputeFluxes .OR. ComputeLinkage .OR. CoilMode ) THEN
-      IF( ThisMode == 0 ) THEN
-        CALL FinalizeLumpedMatrix( Solver )            
+            
+      IF(LinSysMode .AND. NMode == NoModes ) THEN
+        IF( ComputeFluxes .OR. ComputeLinkage .OR. CoilMode ) THEN
+          CALL FinalizeLumpedMatrix( Solver )            
+        END IF
+        CALL ListAddLogical( Params,'No Precondition Recompute',.FALSE.)
       END IF
+
+      IF( ComputeFluxes .OR. ComputeLinkage ) THEN
+        DEALLOCATE( Fluxes, FluxesRow )
+        IF( IsComplex ) DEALLOCATE( FluxesRowIm )
+        IF( Parallel ) DEALLOCATE(TempRHS)
+        IF( IsComplex .OR. CoilMode) THEN
+          A % Values = A0
+          A % Rhs = b0
+          A % ConstrainedDOF = ConstrainedDOF0           
+          DEALLOCATE( A0, b0, ConstrainedDOF0 )
+        END IF
+      END IF
+
+      CALL ListAddLogical( Params,'Skip Zero Rhs Test',.FALSE. )
     END IF
       
-    IF( ThisMode == 0 ) THEN
-      CALL ListAddLogical( Params,'No Precondition Recompute',.FALSE.)
-    END IF
-
   CONTAINS
 
     SUBROUTINE MagneticEnergies()
@@ -16544,13 +16361,13 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
       
       DO j=1,n
         k = Var % ConstraintModesIndeces(j)
-
+        
         IF( ConsiderP ) THEN
           ! P dofs are associated with negative index as they are not included in ConstraintModesAnalysis.
           IF( k < -1 ) k = k + poffset
         END IF
 
-        IF( k > 0 ) THEN
+        IF( k > 0 ) THEN          
           IF( IsComplex ) THEN
             Mmode = (k+1)/2
             IF( MOD(k,2) == 1 ) THEN                
@@ -16737,7 +16554,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
     
     
 !------------------------------------------------------------------------------
-  END SUBROUTINE SolveConstraintModesSystem
+  END SUBROUTINE ConstraintModesDriver
 !------------------------------------------------------------------------------
 
 
@@ -19822,11 +19639,12 @@ CONTAINS
   
 
 !------------------------------------------------------------------------------
-  SUBROUTINE SaveLinearSystem( Solver, Ain, LinSysName )
+  SUBROUTINE SaveLinearSystem( Solver, Ain, LinSysName, OffsetInd )
 !------------------------------------------------------------------------------
     TYPE( Solver_t ) :: Solver
     TYPE(Matrix_t), POINTER, OPTIONAL :: Ain
-    CHARACTER(LEN=*), OPTIONAL :: LinSysName          
+    CHARACTER(LEN=*), OPTIONAL :: LinSysName
+    INTEGER, OPTIONAL :: OffsetInd
 !------------------------------------------------------------------------------    
     TYPE(Matrix_t), POINTER :: A
     TYPE(ValueList_t), POINTER :: Params
@@ -19928,7 +19746,12 @@ CONTAINS
     OPEN(1,FILE=dumpfile, STATUS='Unknown')
     WRITE(1,*) A % NumberOfRows
     WRITE(1,*) SIZE(A % Values)
-    IF( SavePerm ) WRITE(1,*) SIZE( Perm )    
+    i = 0
+    IF( SavePerm ) i = SIZE( Perm ) 
+    WRITE(1,*) i        
+    WRITE(1,*) MINVAL(A % Cols)
+    WRITE(1,*) MAXVAL(A % Cols)
+    IF(PRESENT(OffsetInd)) WRITE(1,*) OffsetInd
     CLOSE(1)
 
     IF(Parallel) THEN

@@ -1,9 +1,7 @@
-! Solves vector helmholtz equation using quadratic whitney elements
-! such that 2x2 (or 4x4) block matrix is created from the initial
-! complex martrix and this is used for preconditioning of external
-! gcr iteration. This could be a robust technique for quadratic elements.
-! Currently is seems that if we choose any other than direct method
-! for the individual block the outer iterations does not want to converge.
+! Solves the vector Helmholtz equation using quadratic Whitney elements
+! such that a 2x2 (or 4x4) block matrix is created from the initial
+! complex matrix and this is used for the preconditioning of external
+! GCR iteration. This could be a robust technique for quadratic elements.
 !
 ! P.R. 18.1.2024
 
@@ -76,11 +74,10 @@ Solver 1
 !  Optimize Bandwidth = False
   Procedure = "VectorHelmholtz" "VectorHelmholtzSolver"
 
-
 !  Linear System Solver = "direct"
 !  Linear System direct method = "mumps"
 
-! 1) split lin/quad block
+! 1) split into lin/quad DOFs
 include block.sif
 
 ! 2) split lin/quad + re/im
@@ -149,7 +146,7 @@ End
 !End
 
 
-Solver 1 :: Reference Norm = 3.82093040E-03
+Solver 1 :: Reference Norm = 3.28679313E-03
 Solver 1 :: Reference Norm Tolerance = 1e-3
 Solver 3 :: Reference Norm = 4.03148005E+05
 Solver 3 :: Reference Norm Tolerance = 1e-3

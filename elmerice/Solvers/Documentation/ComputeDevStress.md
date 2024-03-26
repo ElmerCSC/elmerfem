@@ -14,7 +14,9 @@ The Cauchy stress is computed using:
 *sigma_{ij}  = 2 {eta}  {epsilon}_{ij} - p delta_{ij}*
 where *epsilon* is directly evaluated from the velocity field and *p* is the isotropic pressure.The convention is that a positive stress corresponds to a tensile stress (opposite to the isotropic pressure convention).
 
-This solver doesn't work for the GOLF anisotropic ([AIFlow Solver](./AIFlowSolve.md)) and the snow/firn ([Porous Solver](./PorousSolve.md)) rheologies. Nevertheless, these two solvers have intrinsic functions that allow direct computation of the stress.
+This solver doesn't work for the GOLF anisotropic ([AIFlow Solver](./AIFlowSolve.md)) rheology. Nevertheless, this solver has intrinsic functions that allow direct computation of the stress.
+
+2024-01-23: the ComputeDevStress solver is now compatible with the snow/firn rheology ([Porous Solver](./PorousSolve.md)). In that case, the Flow Solver Name variable has simply to be set to "Porous". Note that the possibility of using intrinsic functions of the Porous Solver allowing direct computation of stresses at nodes is kept. In that case, the stress at a given node is computed as the average contribution from all the elements belonging at this given node. This is slightly different than solving the above equation through the variational method as done by the ComputeDevStress. The ComputeDevStress approach is preferable, especially at partition interfaces.
 
 2023-11-14: Using the new Vectorized Stokes solver IncompressibleNSvec, the ComputeDevStress solver will not work as the Constant Temperature in the Material has been changed to Relative Temperature. You can either set back to the old keywords setting Glen Allow Old Keywords to True in the Material section. An other solution is to use the effective viscosity and strain-rate computed internaly in the vectorized Stokes solver (variables Viscosity and Shearrate should be exported using either -ip or -lm).  
 
@@ -31,7 +33,7 @@ Solver 1
   Variable DOFs = 1
   ! the name of the variable containing the flow solution (U,V,W,Pressure)
   !-----------------------------------------------------------------------
-  Flow Solver Name = String "Flow Solution"
+  Flow Solver Name = String "Flow Solution" ! "Porous" is if used together with Porous Solver
   ! no default value anymore for "Stress Variable Name"
   Stress Variable Name = String 'Sigma'
   !-----------------------------------------------------------------------

@@ -757,8 +757,7 @@ CONTAINS
 
 
   !-------------------------------------------------------------------------------------
-  !> Picks the components of a full matrix to given domains or bodies.
-  !> The rest stays in 1st domain.
+  !> Arranges the DOFs of a H(div) approximation into groups
   !-------------------------------------------------------------------------------------
   SUBROUTINE BlockPickHdiv( Solver, BlockIndex, NoVar )
     
@@ -1005,7 +1004,7 @@ CONTAINS
 
     ! Also inherit the constraints, if any
     ! If the constraints are treated as block matrix also the
-    ! pointer should not be assicoated. 
+    ! pointer should not be associated. 
     CM => A % ConstraintMatrix
     DO WHILE(ASSOCIATED(CM))
       C_aa=>AllocateMatrix(); C_aa % Format=MATRIX_LIST
@@ -1073,7 +1072,7 @@ CONTAINS
     ALLOCATE( WBasis(n,3), RotWBasis(n,3), Basis(n), dBasisDx(n,3), Indexes(n) )
     
     
-    CALL Info('BlockPickMatrixHorVer','Dividing matrix in vertical and horizontal dofs',Level=10)
+    CALL Info('BlockPickMatrixHorVer','Dividing matrix into vertical and horizontal dofs',Level=10)
 
 
     n = MAXVAL(Solver % Variable % Perm)
@@ -1319,7 +1318,7 @@ CONTAINS
 
 
   !-------------------------------------------------------------------------------------
-  !> Picks linear parts of a quadratic Hcurl matrix.
+  !> Makes a quadratic H(curl) approximation to have a block structure
   !-------------------------------------------------------------------------------------
   SUBROUTINE BlockPickMatrixHcurl( Solver, NoVar, DoCmplx )
 
@@ -1327,37 +1326,13 @@ CONTAINS
     INTEGER :: Novar
     LOGICAL :: DoCmplx
 
-    INTEGER::i,j,k,n,m,n0,dofs,nn,t,ic,kc
+    INTEGER :: i,j,k,n,m,n0,dofs,ic,kc
     TYPE(Matrix_t), POINTER :: A,B
-    INTEGER, ALLOCATABLE :: DTag(:), DPerm(:), ndir(:)
-    INTEGER, POINTER :: QuadIndexes(:), LinIndexes(:)
+    INTEGER, ALLOCATABLE :: BlockTag(:), BlockPerm(:), nblock(:)
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Element_t), POINTER :: Element, Edge
-    
-    n = 28 ! currently just large enough
-    ALLOCATE( QuadIndexes(n), LinIndexes(n) )
-        
-    CALL Info('BlockPickMatrixHcurl','Dividing Hcurl matrix in linear and non-linear dofs',Level=10)
 
-    n = MAXVAL(Solver % Variable % Perm)
-    Mesh => Solver % Mesh 
-    
-    A => Solver % Matrix
-    dofs = Solver % Variable % Dofs
-
-    m = A % NumberOfRows    
-    n = m
-    IF(.NOT. DoCmplx) n = n / dofs
-      
-    ALLOCATE( DTag(n), DPerm(m), ndir(NoVar) ) 
-
-    ! Set the default blocks. Only linear basis will be set separately. 
-    IF( DoCmplx ) THEN
-      DTag(1::2) = 3
-      DTag(2::2) = 4
-    ELSE     
-      DTag = 2
-    END IF
+    Mesh => Solver % Mesh
 
     IF(.NOT. ASSOCIATED( Mesh % Edges ) ) THEN
       CALL Fatal('BlockPickMatrixHcurl','This subroutine needs Edges!')
@@ -1365,63 +1340,90 @@ CONTAINS
     IF(.NOT. ASSOCIATED( Mesh % Faces ) ) THEN
       CALL Fatal('BlockPickMatrixHcurl','This subroutine needs Faces!')
     END IF
-    
-    ! quad
-    ! CALL ListAddString( SolverParams, "Element", &
-    !    "n:0 e:2 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )
-    ! piola
-    ! CALL ListAddString( SolverParams, "Element", "n:0 e:1 -brick b:3 -quad_face b:2" )
-    ! basic
-    ! CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
+        
+    CALL Info('BlockPickMatrixHcurl','Arranging a quadratic H(curl) approximation into blocks',Level=10)
 
+    A => Solver % Matrix
+    dofs = Solver % Variable % Dofs
+
+    m = A % NumberOfRows    
+    n = m
+    IF(.NOT. DoCmplx) n = n / dofs
+      
+    ALLOCATE( BlockTag(n), BlockPerm(m), nblock(NoVar) )
+
+    ! Set the default blocks
+    IF( DoCmplx ) THEN
+      ! Synopsis: the tags of (4x4) block structure
+      !   - Re, lowest-order = 1
+      !   - Im, lowest-order = 2
+      !   - Re, higher-order = 3
+      !   - Im, higher-order = 4
+      ! while (3x3) structure corresponds to
+      !   - Re and Im, lowest-order = 1
+      !   - Re, higher-order = 2
+      !   - Im, higher-order = 3
+      BlockTag(1::2) = 3
+      BlockTag(2::2) = 4
+    ELSE
+      ! Synopsis:
+      !   - lowest-order = 1
+      !   - higher-order = 2
+      !   - higher-order DOFs which are not associated with edges = 3 (optional)
+      BlockTag = 2
+    END IF
         
     n0 = Mesh % NumberOfNodes    
     DO i=1, Mesh % NumberOfEdges
-      ! This corresponds to the linear edge
+      ! This corresponds to the lowest-order DOF over an edge
       j = n0 + 2*i-1
       k = Solver % Variable % Perm(j)
       IF(k==0) CYCLE
       IF( DoCmplx ) THEN
-        Dtag(2*k-1) = 1
-        Dtag(2*k) = 2 
+        BlockTag(2*k-1) = 1
+        BlockTag(2*k) = 2 
       ELSE
-        Dtag(k) = 1
+        ! If BlockTag array were created for all DOFs with DOFs>1,
+        ! it would have a repeated entries occuring in clusters of
+        ! size DOFs. Therefore a smaller array can be used to tag DOFs.
+        BlockTag(k) = 1
       END IF
     END DO
 
     IF(NoVar == 3) THEN
       IF( DoCmplx ) THEN
-        WHERE( Dtag > 1 )
-          Dtag = Dtag - 1
+        WHERE( BlockTag > 1 )
+          BlockTag = BlockTag - 1
         END WHERE
       ELSE
         DO j = n0 + 2*Mesh % NumberOfEdges + 1, SIZE(Solver % Variable % Perm)
           k = Solver % Variable % Perm(j)
-          IF(k>0) Dtag(k) = 3
+          IF(k>0) BlockTag(k) = 3
         END DO
       END IF
     END IF
     
-    ! Number linear and quadratic-only dofs separately
-    Dperm = 0
-    ndir = 0
+    ! Number each group of DOFs separately
+    BlockPerm = 0
+    nblock = 0
     IF( DoCmplx ) THEN
       DO i=1,n
-        ndir(DTag(i)) = ndir(DTag(i)) + 1
-        DPerm(i) = ndir(DTag(i))
+        nblock(BlockTag(i)) = nblock(BlockTag(i)) + 1
+        BlockPerm(i) = nblock(BlockTag(i))
       END DO
-    ELSE      
+    ELSE
       DO i=1,n
+        n0 = dofs*(i-1)
         DO j=1,dofs
-          ndir(DTag(i)) = ndir(DTag(i)) + 1
-          k = dofs*(i-1)+j
-          DPerm(k) = ndir(DTag(i))
+          nblock(BlockTag(i)) = nblock(BlockTag(i)) + 1
+          k = n0 + j
+          BlockPerm(k) = nblock(BlockTag(i))
         END DO
       END DO
     END IF
 
     DO i=1,NoVar
-      CALL Info('BlockPickMatrixHcurl','Block vector '//I2S(i)//' size: '//I2S(ndir(i)),Level=6)
+      CALL Info('BlockPickMatrixHcurl','Block vector '//I2S(i)//' size: '//I2S(nblock(i)),Level=6)
     END DO
 
     ! Allocate vectors if not present
@@ -1431,8 +1433,8 @@ CONTAINS
         IF( ASSOCIATED( B % Values ) ) B % Values = 0.0_dp
       END DO
       B => TotMatrix % SubMatrix(i,i) % Mat      
-      IF(.NOT. ASSOCIATED( B % InvPerm ) ) ALLOCATE( B % InvPerm(ndir(i)) )
-      IF(.NOT. ASSOCIATED( B % Rhs) ) ALLOCATE(B % Rhs(ndir(i)) )
+      IF(.NOT. ASSOCIATED( B % InvPerm ) ) ALLOCATE( B % InvPerm(nblock(i)) )
+      IF(.NOT. ASSOCIATED( B % Rhs) ) ALLOCATE(B % Rhs(nblock(i)) )
       !PRINT *,'a complex', a % complex
       !B % COMPLEX = A % COMPLEX
     END DO
@@ -1454,26 +1456,26 @@ CONTAINS
           kc = (k-1)/dofs+1
         END IF
           
-        IF( DTag(ic) < 1 .OR. DTag(ic) > NoVar ) THEN
-          PRINT *,'i:',i,ic,Dtag(ic)
+        IF( BlockTag(ic) < 1 .OR. BlockTag(ic) > NoVar ) THEN
+          PRINT *,'i:',i,ic,BlockTag(ic)
         END IF
         
-        IF( DTag(kc) < 1 .OR. DTag(kc) > NoVar ) THEN
-          PRINT *,'k:',k,kc,Dtag(kc)
+        IF( BlockTag(kc) < 1 .OR. BlockTag(kc) > NoVar ) THEN
+          PRINT *,'k:',k,kc,BlockTag(kc)
         END IF
         
-        B => TotMatrix % SubMatrix(DTag(ic),DTag(kc)) % Mat
+        B => TotMatrix % SubMatrix(BlockTag(ic),BlockTag(kc)) % Mat
         
-        IF( Dperm(i) < 1 .OR. DPerm(k) < 1 ) THEN
-          PRINT *,'ik',Dperm(i),Dperm(k)
+        IF( BlockPerm(i) < 1 .OR. BlockPerm(k) < 1 ) THEN
+          PRINT *,'ik',BlockPerm(i),BlockPerm(k)
           STOP EXIT_ERROR
         END IF
-        CALL AddToMatrixElement(B,Dperm(i),DPerm(k),A % Values(j))
+        CALL AddToMatrixElement(B,BlockPerm(i),BlockPerm(k),A % Values(j))
       END DO
 
-      B => TotMatrix % SubMatrix(DTag(ic),DTag(ic)) % Mat      
-      B % Rhs(Dperm(i)) = A % Rhs(i)          
-      B % InvPerm(Dperm(i)) = i          
+      B => TotMatrix % SubMatrix(BlockTag(ic),BlockTag(ic)) % Mat      
+      B % Rhs(BlockPerm(i)) = A % Rhs(i)          
+      B % InvPerm(BlockPerm(i)) = i          
     END DO
     
     DO i=1,NoVar
@@ -1603,7 +1605,7 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: SolverMatrix
     TYPE(Matrix_t), POINTER :: Amat
     TYPE(ValueList_t), POINTER :: Params
-    LOGICAL :: ReuseMatrix, Found
+    LOGICAL :: Found
 
     LOGICAL :: BlockAV
     INTEGER::i,j,k,l,n,i1,i2,i3,rowi,colj,NoCon,rb,cb
@@ -2923,8 +2925,7 @@ CONTAINS
     NoVar = TotMatrix % NoVar
     m = 0
     
-    PRINT *,'BlockInfo:',NoVar
-    
+    PRINT *,'BlockInfo:',NoVar   
     
     DO k=1,NoVar
       DO l=1,NoVar
@@ -3300,7 +3301,7 @@ CONTAINS
       END IF
               
 
-      IF( InfoActive( 15 ) ) THEN
+      IF( InfoActive( 25 ) ) THEN
         CALL BlockMatrixInfo()
       END IF
 
@@ -4242,7 +4243,7 @@ CONTAINS
     TYPE(Solver_t), POINTER :: PSolver
     TYPE(Variable_t), POINTER :: Var
     INTEGER :: i,j,k,l,n,nd,NonLinIter,tests,NoTests,iter
-    LOGICAL :: GotIt, GotIt2, BlockPrec, BlockGS, BlockJacobi, BlockAV, &
+    LOGICAL :: GotIt, GotIt2, BlockPrec, BlockAV, &
         BlockHdiv, BlockHcurl, BlockHorVer, BlockCart, BlockNodal, BlockDomain, &
         BlockDummy, BlockComplex 
     INTEGER :: ColVar, RowVar, NoVar, BlockDofs, VarDofs
@@ -4253,7 +4254,7 @@ CONTAINS
     REAL(KIND=dp), POINTER :: SaveValues(:)
     REAL(KIND=dp), POINTER CONTIG :: SaveRHS(:)
     LOGICAL :: Robust, LinearSearch, ErrorReduced, IsProcedure, ScaleSystem,&
-        ReuseMatrix, LS, BlockScaling, BlockMonolithic, Found
+        LS, BlockScaling, BlockMonolithic, Found
     INTEGER :: HaveConstraint, HaveAdd
     INTEGER, POINTER :: VarPerm(:)
     INTEGER, POINTER :: BlockPerm(:)
@@ -4290,10 +4291,6 @@ CONTAINS
     BlockMonolithic = ListGetLogical( Params,'Block Monolithic',GotIt)
     
     BlockScaling = ListGetLogical( Params,'Block Scaling',GotIt)
-    
-    ! Block iteration style: jacobi vs. gauss-seidel
-    BlockGS = ListGetLogical( Params,'Block Gauss-Seidel',GotIt)    
-    BlockJacobi = ListGetLogical( Params,'Block Jacobi',GotIt)
 
     ! Different strategies on how to split the initial monolithic matrix into blocks
     BlockAV = ListGetLogical( Params,'Block A-V System', GotIt)

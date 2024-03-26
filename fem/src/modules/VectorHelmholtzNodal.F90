@@ -172,12 +172,13 @@ SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
     CALL Fatal(Caller,'Invalid number of dofs in solver variable: '//I2S(dofs))
   END IF
   Segregated = .NOT. Monolithic
-        
+  
   SecondOrder = ListGetLogicalAnySolver( Model, 'Quadratic Approximation')
   IF( SecondOrder ) THEN
     PiolaVersion = .TRUE.
   ELSE
-    PiolaVersion = ListGetLogicalAnySolver(Model, 'Use Piola Transform' )
+    PiolaVersion = ListGetLogicalAnySolver(Model, 'Use Piola Transform' ) .OR. &
+        ListGetLogicalAnySOlver(Model,"Second Kind Basis")    
   END IF
 
   PrecUse = ListGetLogical( Params,'Preconditioning Solver',Found ) 

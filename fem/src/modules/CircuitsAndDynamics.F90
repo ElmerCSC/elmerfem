@@ -155,8 +155,8 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       CALL Fatal(Caller, 'Memory allocation error.' )
     END IF
 
-    n_Circuits => Model%n_Circuits
-    Model%Circuit_tot_n = 0
+    n_Circuits => Model % n_Circuits
+    Model % Circuit_tot_n = 0
 
     ! Look for the real valued solver we attach the circuit equations to:
     ! -------------------------------------------------------------------
@@ -194,6 +194,9 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 
     DO p=1,n_Circuits
       n = GetNofCircVariables(p)
+
+      CALL Info(Caller,'Initializing circuit '//I2S(p)//' with '//I2S(n)//' variables!',Level=6)
+
       CALL AllocateCircuit(p)
       
       Circuits(p) % n_comp = CountNofCircComponents(p, n)
@@ -213,6 +216,9 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     
     END DO
 
+    CALL CheckComponentVariables()
+
+    
     ! Create CRS matrix structures for the circuit equations:
     ! ------------------------------------------------------
     CALL Circuits_MatrixInit()
@@ -302,8 +308,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
   END IF
 
   IF( LIstGetLogical( Solver % Values,'Save Circuit Matrix',Found ) ) THEN
-    CALL ListAddString( Solver % Values, 'Linear System Save Prefix','circuit')
-    CALL SaveLinearSystem( Solver, CM )
+    CALL SaveLinearSystem( Solver, CM,'circuit',ASolver % Matrix % NumberOfRows)
   END IF
     
   
@@ -1326,12 +1331,12 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     Model % HarmonicCircuits = .TRUE.
     CALL AddComponentsToBodyLists()
     
-    ALLOCATE( Model%Circuit_tot_n, Model%n_Circuits, STAT=istat )
+    ALLOCATE( Model % Circuit_tot_n, Model % n_Circuits, STAT=istat )
     IF ( istat /= 0 ) THEN
       CALL Fatal( Caller, 'Memory allocation error.' )
     END IF
 
-    n_Circuits => Model%n_Circuits
+    n_Circuits => Model % n_Circuits
     Model % Circuit_tot_n = 0
 
     ! Look for the solver we attach the circuit equations to:
@@ -1433,8 +1438,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
   END IF
 
   IF( ListGetLogical( Solver % Values,'Save Circuit Matrix',Found ) ) THEN
-    CALL ListAddString( Solver % Values, 'Linear System Save Prefix','circuit')
-    CALL SaveLinearSystem( Solver, CM )
+    CALL SaveLinearSystem( Solver, CM,'circuit',ASolver % Matrix % NumberOfRows)
   END IF
     
   CALL DefaultFinish()

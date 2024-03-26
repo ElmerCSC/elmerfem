@@ -49,10 +49,7 @@ int main( int argc, char **argv )
   char *str;
   char *ioptr;
   
-#ifdef _OPENMP
-  /* Set number of threads to 1, computations are single threaded anyway */
-  omp_set_num_threads(1);
-#endif
+
 
   (void)mtc_init( stdin, stdout, stderr );
   str = mtc_domath( "source(\"mc.ini\")" );

@@ -2458,11 +2458,8 @@ CONTAINS
 
    ! Read mesh.names - this could be saved by some mesh formats
    !--------------------------------------------------------------------------
-   IF( ListGetLogical( Model % Simulation,'Use Mesh Names',Found ) ) THEN
-     FileName = MeshNamePar(1:BaseNameLen)//'/mesh.names'
-     CALL ReadTargetNames( Model, FileName )
-   END IF
-
+   FileName = MeshNamePar(1:BaseNameLen)//'/mesh.names'
+   CALL ReadTargetNames( Model, FileName )
 
    ! Map bodies using Target Bodies and boundaries using Target Boundaries.
    ! This must be done before the element definitions are studied since
@@ -4161,8 +4158,8 @@ CONTAINS
 !------------------------------------------------------------------------------
  
  SUBROUTINE ReadTargetNames(Model,Filename)
-     CHARACTER(LEN=*) :: FileName
-     TYPE(Model_t) :: Model
+   CHARACTER(LEN=*) :: FileName
+   TYPE(Model_t) :: Model
 !------------------------------------------------------------------------------
    INTEGER, PARAMETER :: FileUnit = 10
    INTEGER, PARAMETER :: A=ICHAR('A'),Z=ICHAR('Z'),U2L=ICHAR('a')-ICHAR('A')
@@ -4170,14 +4167,36 @@ CONTAINS
    INTEGER :: ivals(256)
    CHARACTER(LEN=1024) :: str, name0, name1
    TYPE(ValueList_t), POINTER :: Vlist
-   LOGICAL :: Found, AlreadySet
+   LOGICAL :: Found, AlreadySet, DoIt, DoBCs, DoBodies
+   INTEGER :: BodyMaps, BCMaps
+   CHARACTER(*), PARAMETER :: Caller = 'ReadTargetNames'
+
+   
+   DoIt = ListGetLogical( Model % Simulation,'Use Mesh Names',Found )
+   IF(DoIt) THEN   
+     DoBCs = .TRUE.
+     DoBodies = .TRUE.
+   ELSE     
+     DoBCs = .FALSE.
+     DoBodies = .FALSE.
+   END IF
+
+   DoIt = ListGetLogical( Model % Simulation,'Use Mesh Body Names',Found )
+   IF(Found) DoBodies = DoIt   
+   DoIt = ListGetLogical( Model % Simulation,'Use Mesh Boundary Names',Found ) 
+   IF(Found) DoBCs = DoIt
+
+   IF(.NOT. (DoBodies .OR. DoBCs )) RETURN
+   
+   BodyMaps = 0
+   BCMaps = 0
 
    OPEN( Unit=FileUnit, File=FileName, STATUS='OLD', IOSTAT=iostat )
    IF( iostat /= 0 ) THEN
-     CALL Fatal('ReadTargetNames','Requested the use of entity names but this file does not exits: '//TRIM(FileName))
+     CALL Fatal(Caller,'Requested the use of entity names but this file does not exits: '//TRIM(FileName))
    END IF
    
-   CALL Info('ReadTargetNames','Reading names info from file: '//TRIM(FileName))
+   CALL Info(Caller,'Reading names info from file: '//TRIM(FileName))
 
    DO WHILE( .TRUE. ) 
      READ(FileUnit,'(A)',IOSTAT=iostat) str
@@ -4209,42 +4228,44 @@ CONTAINS
 
      n = str2ints( str(i3:),ivals )
      IF( n == 0 ) THEN
-       CALL Fatal('ReadTargetNames','Could not find arguments for: '//str(i1:i2))
+       CALL Fatal(Caller,'Could not find arguments for: '//str(i1:i2))
      END IF
 
      AlreadySet = .FALSE.
 
      DO i=1,Model % NumberOfBCs
+       IF(.NOT. DoBCs) CYCLE
        Vlist => Model % BCs(i) % Values
        name1 = ListGetString( Vlist,'Name',Found )
        IF(.NOT. Found ) CYCLE
        IF( name0(1:i2-i1+1) == TRIM(name1) ) THEN
 !        PRINT *,'Name > '//TRIM(name1)//' < matches BC '//I2S(i)
          IF( AlreadySet ) THEN
-           CALL Fatal('ReadTargetNames','Mapping of name is not unique: '//TRIM(name1) )
+           CALL Fatal(Caller,'Mapping of name is not unique: '//TRIM(name1) )
          ELSE IF( ListCheckPresent( Vlist,'Target Boundaries') ) THEN
-           CALL Info('ReadTargetNames','> Target Boundaries < already defined for BC '&
-               //I2S(i))
+           CALL Info(Caller,'> Target Boundaries < already defined for BC '//I2S(i))
          ELSE
            CALL ListAddIntegerArray( Vlist,'Target Boundaries',n,ivals(1:n))
+           BodyMaps = BodyMaps + 1
            AlreadySet = .TRUE.
          END IF
        END IF
      END DO
 
      DO i=1,Model % NumberOfBodies
+       IF(.NOT. DoBodies) CYCLE
        Vlist => Model % Bodies(i) % Values
        name1 = ListGetString( Vlist,'Name',Found )
        IF(.NOT. Found ) CYCLE
        IF( name0(1:i2-i1+1) == TRIM(name1) ) THEN
 !        PRINT *,'Name > '//TRIM(name1)//' < matches body '//I2S(i)
          IF( AlreadySet ) THEN
-           CALL Fatal('ReadTargetNames','Mapping of name is not unique: '//TRIM(name1) )
+           CALL Fatal(Caller,'Mapping of name is not unique: '//TRIM(name1) )
          ELSE IF( ListCheckPresent( Vlist,'Target Bodies') ) THEN
-           CALL Info('ReadTargetNames','> Target Bodies < already defined for Body '&
-               //I2S(i))
+           CALL Info(Caller,'> Target Bodies < already defined for Body '//I2S(i))
          ELSE
            CALL ListAddIntegerArray( Vlist,'Target Bodies',n,ivals(1:n))
+           BCMaps = BCMaps + 1
            AlreadySet = .TRUE.
          END IF
        END IF
@@ -4252,12 +4273,23 @@ CONTAINS
      
      IF(.NOT. AlreadySet ) THEN
        IF( ParEnv % MyPe == 0 ) THEN
-         CALL Warn('ReadTargetNames','Could not map name to Body nor BC: '//name0(1:i2-i1+1) )
+         CALL Info(Caller,'Could not map name to Body nor BC: '//name0(1:i2-i1+1), Level=20)
        END IF
      END IF
 
    END DO
 
+   IF(DoBodies) THEN
+     CALL Info(Caller,'Mapped '//I2S(BodyMaps)//' body names to indexes')
+   ELSE
+     CALL Info(Caller,'Mapping of body names not requested')
+   END IF   
+   IF(DoBCs) THEN
+     CALL Info(Caller,'Mapped '//I2S(BCMaps)//' bc names to indexes')
+   ELSE
+     CALL Info(Caller,'Mapping of bc names not requested!')
+   END IF
+     
    CLOSE(FileUnit)
    
  END SUBROUTINE ReadTargetNames
@@ -5652,31 +5684,33 @@ CONTAINS
     REAL(KIND=dp) :: x(4), RotMatrix(4,4),TrsMatrix(4,4),SclMatrix(4,4), &
            TrfMatrix(4,4),Identity(4,4),Angles(3),Alpha,scl(3),s1,s2
     REAL(KIND=dp), POINTER :: PArray(:,:)
-    INTEGER :: i,j,k
+    INTEGER :: i,j,k,n
     CHARACTER(*), PARAMETER :: Caller = 'OverlayInterfaceMeshes'
 
     ! First, check the bounding boxes
     !---------------------------------------------------------------------------
-    x1_min(1) = MINVAL( BMesh1 % Nodes % x )
-    x1_min(2) = MINVAL( BMesh1 % Nodes % y )
-    x1_min(3) = MINVAL( BMesh1 % Nodes % z )
+    n = BMesh1 % NumberOfNodes
+    x1_min(1) = MINVAL( BMesh1 % Nodes % x(1:n) )
+    x1_min(2) = MINVAL( BMesh1 % Nodes % y(1:n) )
+    x1_min(3) = MINVAL( BMesh1 % Nodes % z(1:n) )
     
-    x1_max(1) = MAXVAL( BMesh1 % Nodes % x )
-    x1_max(2) = MAXVAL( BMesh1 % Nodes % y )
-    x1_max(3) = MAXVAL( BMesh1 % Nodes % z )
+    x1_max(1) = MAXVAL( BMesh1 % Nodes % x(1:n) )
+    x1_max(2) = MAXVAL( BMesh1 % Nodes % y(1:n) )
+    x1_max(3) = MAXVAL( BMesh1 % Nodes % z(1:n) )
 
     WRITE(Message,'(A,3ES15.6)') 'Minimum values for this periodic BC:  ',x1_min
     CALL Info(Caller,Message,Level=8)    
     WRITE(Message,'(A,3ES15.6)') 'Maximum values for this periodic BC:  ',x1_max
     CALL Info(Caller,Message,Level=8)    
-
-    x2_min(1) = MINVAL( BMesh2 % Nodes % x )
-    x2_min(2) = MINVAL( BMesh2 % Nodes % y )
-    x2_min(3) = MINVAL( BMesh2 % Nodes % z )
     
-    x2_max(1) = MAXVAL( BMesh2 % Nodes % x )
-    x2_max(2) = MAXVAL( BMesh2 % Nodes % y )
-    x2_max(3) = MAXVAL( BMesh2 % Nodes % z )
+    n = BMesh2 % NumberOfNodes
+    x2_min(1) = MINVAL( BMesh2 % Nodes % x(1:n) )
+    x2_min(2) = MINVAL( BMesh2 % Nodes % y(1:n) )
+    x2_min(3) = MINVAL( BMesh2 % Nodes % z(1:n) )
+    
+    x2_max(1) = MAXVAL( BMesh2 % Nodes % x(1:n) )
+    x2_max(2) = MAXVAL( BMesh2 % Nodes % y(1:n) )
+    x2_max(3) = MAXVAL( BMesh2 % Nodes % z(1:n) )
     
     WRITE(Message,'(A,3ES15.6)') 'Minimum values for target periodic BC:',x2_min
     CALL Info(Caller,Message,Level=8)    
@@ -5749,7 +5783,8 @@ CONTAINS
           RotMatrix = MATMUL( RotMatrix, TrfMatrix )
         END DO
         
-        DO i = 1, BMesh2 % NumberOfNodes          
+        n = BMesh2 % NumberOfNodes
+        DO i = 1, n
           x(1) = BMesh2 % Nodes % x(i)
           x(2) = BMesh2 % Nodes % y(i)
           x(3) = BMesh2 % Nodes % z(i)
@@ -5762,13 +5797,13 @@ CONTAINS
           BMesh2 % Nodes % z(i) = x(3)
         END DO
         
-        x2r_min(1) = MINVAL( BMesh2 % Nodes % x )
-        x2r_min(2) = MINVAL( BMesh2 % Nodes % y )
-        x2r_min(3) = MINVAL( BMesh2 % Nodes % z )
+        x2r_min(1) = MINVAL( BMesh2 % Nodes % x(1:n) )
+        x2r_min(2) = MINVAL( BMesh2 % Nodes % y(1:n) )
+        x2r_min(3) = MINVAL( BMesh2 % Nodes % z(1:n) )
         
-        x2r_max(1) = MAXVAL( BMesh2 % Nodes % x )
-        x2r_max(2) = MAXVAL( BMesh2 % Nodes % y )
-        x2r_max(3) = MAXVAL( BMesh2 % Nodes % z )
+        x2r_max(1) = MAXVAL( BMesh2 % Nodes % x(1:n) )
+        x2r_max(2) = MAXVAL( BMesh2 % Nodes % y(1:n) )
+        x2r_max(3) = MAXVAL( BMesh2 % Nodes % z(1:n) )
         
         WRITE(Message,'(A,3ES15.6)') 'Minimum values for rotated target:',x2r_min
         CALL Info(Caller,Message,Level=8)    
@@ -15128,20 +15163,25 @@ CONTAINS
     WRITE(Message,'(A,ES12.3)') 'Radius of the rotational interface:',Radius
     CALL Info('RotationalInterfaceMeshes',Message,Level=8)    
  
-    WRITE(Message,'(A,ES12.3)') 'Discrepancy from constant radius:',err1
-    CALL Info('RotationalInterfaceMeshes',Message,Level=8)    
-
-    WRITE(Message,'(A,ES12.3)') 'Discrepancy from constant radius:',err2
-    CALL Info('RotationalInterfaceMeshes',Message,Level=8)    
-
-    IF( err1 > eps_rad .OR. err2 > eps_rad ) THEN
+    WRITE(Message,'(A,ES12.3)') 'Discrepancy from constant radius for Mesh1:',err1
+    IF( err1 > eps_rad )  THEN
+      CALL Info('RotationalInterfaceMeshes',Message,Level=3)    
       CALL Warn('RotationalInterfaceMeshes','Discrepancy of radius is rather large!')
+    ELSE
+      CALL Info('RotationalInterfaceMeshes',Message,Level=8)    
+    END IF
+
+    WRITE(Message,'(A,ES12.3)') 'Discrepancy from constant radius for Mesh2:',err1
+    IF( err2 > eps_rad ) THEN
+      CALL Info('RotationalInterfaceMeshes',Message,Level=3)    
+      CALL Warn('RotationalInterfaceMeshes','Discrepancy of radius is rather large!')
+    ELSE
+      CALL Info('RotationalInterfaceMeshes',Message,Level=8)    
     END IF
 
     ! Add "Rotor Radius" to the simulation section in case it should be useful elsewhere...
     CALL ListAddConstReal( CurrentModel % Simulation,'Rotor Radius',Radius )
-    
-    
+        
     ! Ok, so we have concluded that the interface has constant radius
     ! therefore the constant radius may be removed from the mesh description.
     ! Or perhaps we don't remove to allow more intelligent projector building 
@@ -24250,6 +24290,256 @@ CONTAINS
   END FUNCTION PointInMesh
 
 
+  !> Calculate the number of separature pieces in a serial mesh.
+  !> This could be used to detect problems in mesh when suspecting
+  !> floating parts not fixed by any BC, for example.
+  !---------------------------------------------------------------------------------
+  SUBROUTINE CalculateMeshPieces( Mesh, ElementMode, PieceIndex)
+
+    TYPE(Mesh_t), POINTER :: Mesh
+    LOGICAL, OPTIONAL :: ElementMode
+    INTEGER, OPTIONAL :: PieceIndex(:)
+
+    LOGICAL :: Ready
+    INTEGER :: i,j,k,n,t,t2,k2,MinIndex,MaxIndex,Loop,NoPieces
+    INTEGER, ALLOCATABLE :: MeshPiece(:),PiecePerm(:)
+    TYPE(Element_t), POINTER :: Element, Element2
+    INTEGER, POINTER :: Indexes(:)
+    TYPE(Variable_t), POINTER :: Var
+    TYPE(Mesh_t), POINTER :: Faces(:)
+    LOGICAL :: ElemMode, Found
+    
+    IF( ParEnv % PEs > 1 ) THEN
+      CALL Warn('CalculateMeshPieces','Implemented only for serial meshes!')
+    END IF
+
+    ElemMode = .FALSE.
+    IF( PRESENT(ElementMode) ) THEN
+      ElemMode = ElementMode
+    END IF
+
+    IF( ElemMode ) THEN
+      n = Mesh % NumberOfBulkElements
+    ELSE   
+      n = Mesh % NumberOfNodes
+    END IF
+    ALLOCATE( MeshPiece( n ) ) 
+    MeshPiece = 0
+
+    ! Only set the piece for the nodes that are used by some element
+    ! For others the marker will remain zero. 
+    DO t = 1, Mesh % NumberOfBulkElements
+      Element => Mesh % Elements(t)        
+      IF( ElemMode ) THEN
+        MeshPiece( t ) = 1
+      ELSE      
+        Indexes => Element % NodeIndexes
+        MeshPiece( Indexes ) = 1
+      END IF
+    END DO
+    j = 0
+    DO i = 1, n
+      IF( MeshPiece(i) > 0 ) THEN
+        j = j + 1
+        MeshPiece(i) = j
+      END IF
+    END DO
+
+    IF(n>j) THEN
+      CALL Info('CalculateMeshPieces',&
+          'Number of non-body nodes in mesh is '//I2S(n-j),Level=5)
+    END IF
+      
+    ! We go through the elements and set all the piece indexes to minimimum index
+    ! until the mesh is unchanged. Thereafter the whole piece will have the minimum index
+    ! of the piece.
+    Ready = .FALSE.
+    Loop = 0
+    DO WHILE(.NOT. Ready) 
+      Ready = .TRUE.
+      DO t = 1, Mesh % NumberOfBulkElements
+        Element => Mesh % Elements(t)        
+        
+        IF( ElemMode ) THEN
+          k = MeshPiece(t)
+          IF( Mesh % MeshDim == 2 ) THEN
+            DO i=1, Element % TYPE % NumberOfEdges
+              DO j=1,2
+                IF(j==1) THEN
+                  Element2 => Mesh % Edges(Element % EdgeIndexes(i)) % BoundaryInfo % Left
+                ELSE
+                  Element2 => Mesh % Edges(Element % EdgeIndexes(i)) % BoundaryInfo % Right
+                END IF
+                IF(.NOT. ASSOCIATED(Element2) ) CYCLE
+                t2 = Element2 % ElementIndex
+                IF(t==t2) CYCLE
+                k2 = MeshPiece(t2)
+                IF(k2 /= k ) THEN
+                  Ready = .FALSE.
+                  IF( k2 < k ) THEN
+                    k = k2 
+                    MeshPiece(t) = k2
+                  ELSE
+                    MeshPiece(t2) = k
+                  END IF
+                END IF
+              END DO
+            END DO
+          ELSE
+            DO i=1, Element % TYPE % NumberOfFaces
+              DO j=1,2
+                IF(j==1) THEN
+                  Element2 => Mesh % Faces(Element % FaceIndexes(i)) % BoundaryInfo % Left
+                ELSE
+                  Element2 => Mesh % Faces(Element % FaceIndexes(i)) % BoundaryInfo % Right
+                END IF
+                IF(.NOT. ASSOCIATED(Element2) ) CYCLE
+                t2 = Element2 % ElementIndex
+                IF(t==t2) CYCLE
+                k2 = MeshPiece(t2)
+                IF(k2 /= k ) THEN
+                  Ready = .FALSE.
+                  IF( k2 < k ) THEN
+                    k = k2 
+                    MeshPiece(t) = k2
+                  ELSE
+                    MeshPiece(t2) = k
+                  END IF
+                END IF
+              END DO
+            END DO
+          END IF
+        ELSE
+          Indexes => Element % NodeIndexes          
+          MinIndex = MINVAL( MeshPiece( Indexes ) )
+          MaxIndex = MAXVAL( MeshPiece( Indexes ) )
+          IF( MaxIndex > MinIndex ) THEN
+            MeshPiece( Indexes ) = MinIndex
+            Ready = .FALSE.
+          END IF
+        END IF
+      END DO
+      Loop = Loop + 1
+    END DO
+    CALL Info('CalculateMeshPieces','Mesh coloring loops: '//I2S(Loop),Level=6)
+
+    ! Compute the true number of different pieces
+    IF( MaxIndex == 1 ) THEN
+      NoPieces = 1
+    ELSE
+      ALLOCATE( PiecePerm( MaxIndex ) ) 
+      PiecePerm = 0
+      NoPieces = 0
+      DO i = 1, n
+        j = MeshPiece(i) 
+        IF( j == 0 ) CYCLE
+        IF( PiecePerm(j) == 0 ) THEN
+          NoPieces = NoPieces + 1
+          PiecePerm(j) = NoPieces 
+        END IF
+      END DO
+    END IF
+    CALL Info('CalculateMeshPieces',&
+        'Number of separate pieces in mesh is '//I2S(NoPieces),Level=5)
+
+    ! Use the compact numbering of mesh pieces
+    DO i=1,n
+      j = MeshPiece(i)
+      IF(j>0) MeshPiece(i) = PiecePerm(j)
+    END DO
+        
+    IF(PRESENT(PieceIndex)) THEN
+      PieceIndex = MeshPiece
+      RETURN
+    END IF
+    
+    i = ListGetInteger( CurrentModel % Simulation,'Desired Mesh Pieces',Found )
+    IF( Found ) THEN
+      IF( i == NoPieces ) THEN
+        CALL Info('CalculateMeshPieces','Number of pieces agree with the requested '//I2S(i))
+        RETURN
+      ELSE
+        CALL Fatal('CalculateMeshPieces','Number of pieces differ from the requested '//I2S(i))
+      END IF
+    END IF
+
+    ! No point to create piece of just ones
+    IF( NoPieces == 1 ) RETURN
+    
+    ! Save the mesh piece field to > mesh piece < 
+    Var => VariableGet( Mesh % Variables,'Mesh Piece' )
+    IF(.NOT. ASSOCIATED( Var ) ) THEN
+      IF( ElemMode ) THEN
+        CALL VariableAddVector ( Mesh % Variables,Mesh, CurrentModel % Solver,'Mesh Piece', &
+            VarType = Variable_on_elements )
+      ELSE
+        CALL VariableAddVector ( Mesh % Variables,Mesh, CurrentModel % Solver,'Mesh Piece' )
+      END IF
+      Var => VariableGet( Mesh % Variables,'Mesh Piece' )
+    END IF
+
+    IF( .NOT. ASSOCIATED( Var ) ) THEN
+      CALL Fatal('CalculateMeshPieces','Could not get handle to variable > Mesh Piece <')
+    END IF
+
+    DO i = 1, n
+      j = i
+      IF( ASSOCIATED( Var % Perm ) ) THEN
+        j = Var % Perm( i ) 
+        IF( j == 0 ) CYCLE
+      END IF
+      Var % Values( j ) = 1.0_dp * MeshPiece( i ) 
+    END DO
+    CALL Info('CalculateMeshPieces','Creating variable showing the non-connected domains: mesh piece',Level=5)
+  
+  END SUBROUTINE CalculateMeshPieces
+!------------------------------------------------------------------------------
+
+
+  !------------------------------------------------------------------------------
+!> Compute radius of rotor using only topology information.
+!> Assumes that axis of rotation is z-axis. 
+!------------------------------------------------------------------------------
+  FUNCTION DetermineRotorRadius(Mesh) RESULT( Radius ) 
+!------------------------------------------------------------------------------
+    IMPLICIT NONE 
+    TYPE(Mesh_t), POINTER :: Mesh
+    REAL(KIND=dp) :: Radius
+    
+    INTEGER, ALLOCATABLE :: PieceIndex(:)
+    INTEGER :: i,imin,n
+    REAL(KIND=dp) :: r2,rmin,rmax
+
+    Radius = -1.0_dp
+    n = Mesh % NumberOfNodes
+    ALLOCATE(PieceIndex(n))
+    PieceIndex = 0
+    CALL CalculateMeshPieces( Mesh, PieceIndex = PieceIndex )
+    IF( MAXVAL(PieceIndex) /= 2) RETURN
+
+    ! Find minimum radius nodes i.e. center node
+    rmin = HUGE(rmin)
+    imin = 0
+    DO i=1,n
+      r2 = Mesh % Nodes % x(i)**2 + Mesh % Nodes % y(i)**2
+      IF(r2<rmin) THEN
+        rmin = r2
+        imin = i
+      END IF
+    END DO
+
+    ! Find the maximum radius in the same piece i.e. rotor radius
+    rmax = 0.0_dp
+    DO i=1,n
+      IF(PieceIndex(i) /= PieceIndex(imin)) CYCLE
+      r2 = Mesh % Nodes % x(i)**2 + Mesh % Nodes % y(i)**2
+      rmax = MAX(rmax,r2)
+    END DO
+    Radius = SQRT(rmax)             
+    
+  END FUNCTION DetermineRotorRadius
+!------------------------------------------------------------------------------
+  
 
 !--------------------------------------------------------------------------
 !> This subroutine finds the structure of an extruded mesh even though it is 
@@ -25519,19 +25809,19 @@ CONTAINS
   !> The linear search only makes sense for a small number of points. 
   !> Users include saving routines of pointwise information. 
   !-----------------------------------------------------------------
-  FUNCTION ClosestNodeInMesh(Mesh,Coord,MinDist) RESULT ( NodeIndx )
+  FUNCTION ClosestNodeInMesh(Mesh,Coord,MinDist,DoParallel) RESULT ( NodeIndx )
     TYPE(Mesh_t) :: Mesh
     REAL(KIND=dp) :: Coord(3)
     REAL(KIND=dp), OPTIONAL :: MinDist
+    LOGICAL, OPTIONAL :: DoParallel
     INTEGER :: NodeIndx
 
-    REAL(KIND=dp) :: Dist2,MinDist2,NodeCoord(3)
+    REAL(KIND=dp) :: Dist2,MinDist2,ParDist2, NodeCoord(3)
     INTEGER :: i
 
     MinDist2 = HUGE( MinDist2 ) 
 
-    DO i=1,Mesh % NumberOfNodes
-      
+    DO i=1,Mesh % NumberOfNodes      
       NodeCoord(1) = Mesh % Nodes % x(i)
       NodeCoord(2) = Mesh % Nodes % y(i)
       NodeCoord(3) = Mesh % Nodes % z(i)
@@ -25543,6 +25833,16 @@ CONTAINS
       END IF
     END DO
     
+    ! In parallel only return a hit in the correct partition.
+    IF(PRESENT(DoParallel)) THEN
+      IF( DoParallel ) THEN
+        ParDist2 = ParallelReduction(MinDist2,1)
+        IF(ABS(ParDist2-MinDist2) > 1.0e-20 ) THEN
+          NodeIndx = 0
+        END IF
+      END IF
+    END IF
+      
     IF( PRESENT( MinDist ) ) MinDist = SQRT( MinDist2 ) 
 
   END FUNCTION ClosestNodeInMesh
@@ -29599,12 +29899,31 @@ CONTAINS
     INTEGER :: i,j,k,n,m,t,t0
     INTEGER :: bc_ind, pSign, rSign, dim, BCsTagged, RuleInd
     TYPE(ValueList_t), POINTER :: BC
-    REAL(KIND=dp) :: Coord(3), eps, val, rad, phi, phimin, phimax, RuleC
-    LOGICAL :: Found, Hit, Parallel, CreateBCs, SplitBC
+    REAL(KIND=dp) :: Coord(3), eps, val, r, rad, phi, phimin, phimax, RuleC
+    LOGICAL :: Found, Hit, Parallel, CreateBCs, SplitBC, DoIt
     INTEGER, ALLOCATABLE :: EdgeConstraint(:)
     CHARACTER(:), ALLOCATABLE :: RuleStr
     CHARACTER(*), PARAMETER :: Caller = 'TagBCsUsingRule'
      
+
+    ! We may need the rotor radius in defining certain BCs.
+    DoIt = ListGetLogical( Model % Simulation,'Rotor Mode',Found) .AND. &
+        .NOT. ListCheckPresent( Model % Simulation,'Rotor Radius')
+    DoIt = DoIt .OR. ListGetLogical( Model % Simulation,'Determine Rotor Radius',Found)
+    IF(DoIt) THEN
+      IF(ParEnv % PEs == 1 .OR. ListGetLogical( Model % Simulation,'Single Mesh',Found ) ) THEN
+        Rad = DetermineRotorRadius(Mesh)
+        IF(Rad>0) THEN
+          CALL ListAddConstReal(Model % Simulation,'Rotor Radius',Rad)
+          WRITE(Message,'(A,ES14.6)') '"Rotor Radius" is found to be: ',Rad
+          CALL Info(Caller,Message)
+        ELSE
+          CALL Fatal(Caller,'Could not determine "Rotor Radius", maybe there are not two pieces!?')
+        END IF
+      ELSE
+        CALL Fatal(Caller,'Cannot determine "Rotor Radius" yet in parallel!')
+      END IF
+    END IF    
     
     ! Nothing to do with any boundary   
     CreateBCs = ListCheckPresentAnyBC(Model,'Boundary Create')
@@ -29645,10 +29964,13 @@ CONTAINS
     END IF
     
     n = Mesh % NumberOfNodes 
-        
+
     DO bc_ind = 1, Model % NumberOfBCs
       BC => Model % BCs(bc_ind) % Values
-
+      
+      eps = ListGetCReal(BC,'Boundary Detect Epsilon',Found )
+      IF(.NOT. Found) eps = 1.0e-6
+    
       pSign = 0
       RuleInd = 0
       !PRINT *,'bc tag:',bc_ind, Model % BCs(bc_ind) % Tag
@@ -29658,6 +29980,18 @@ CONTAINS
       ! that have rather constant set of BCs can be treated easily. 
       RuleStr = ListGetString(BC,'Boundary Detect',Found )
       IF(.NOT. Found) RuleStr = ListGetString(BC,'Boundary Create',Found )
+
+      ! When we have rules "phimax" and "phimin" they may be augmented with inner and outer
+      rSign = 0
+      IF( LEN_TRIM(RuleStr) == 12 ) THEN
+        IF( RuleStr(8:12) == 'inner' ) THEN
+          Rad = ListGetCReal( CurrentModel % Simulation,'Rotor Radius',Found)
+          rSign = -1
+        ELSE IF(RuleStr(8:12) == 'outer') THEN
+          Rad = ListGetCReal( CurrentModel % Simulation,'Rotor Radius',Found)
+          rSign = 1
+        END IF
+      END IF
 
       IF( Found ) THEN
         SELECT CASE( RuleStr )
@@ -29699,12 +30033,17 @@ CONTAINS
           ! The "inner" and "outer" rules allow to separate rotor and stator
           phimax = -2*PI
           phimin = 2*PI
+          m = 0
           DO i=1,n
-            ! Skip the nodes at 
-            IF( SQRT(Mesh % Nodes % x(i)**2 + Mesh % Nodes % y(i)**2) < eps) CYCLE
+            ! Skip the nodes at exact origin
+            r = SQRT(Mesh % Nodes % x(i)**2 + Mesh % Nodes % y(i)**2)
+            IF(r < eps) CYCLE
+            IF(rSign == -1 .AND. r > rad-eps ) CYCLE
+            IF(rSign == 1 .AND. r < rad+eps ) CYCLE            
             phi = ATAN2(Mesh % Nodes % y(i), Mesh % Nodes % x(i) )
             phimax = MAX(phimax,phi)
             phimin = MIN(phimin,phi)
+            m = m+1
           END DO
           IF(Parallel) THEN
             phimin = ParallelReduction(phimin,1)
@@ -29717,11 +30056,16 @@ CONTAINS
         CASE('phimin','phimin inner','phimin outer')
           phimax = -2*PI
           phimin = 2*PI
+          m  = 0
           DO i=1,n
-            IF( SQRT(Mesh % Nodes % x(i)**2 + Mesh % Nodes % y(i)**2) < eps) CYCLE
+            r = SQRT(Mesh % Nodes % x(i)**2 + Mesh % Nodes % y(i)**2)
+            IF(r < eps) CYCLE
+            IF(rSign == -1 .AND. r > rad-eps ) CYCLE
+            IF(rSign == 1 .AND. r < rad+eps ) CYCLE            
             phi = ATAN2(Mesh % Nodes % y(i), Mesh % Nodes % x(i) )
             phimax = MAX(phimax,phi)
             phimin = MIN(phimin,phi)
+            m = m+1
           END DO
           IF(Parallel) THEN
             phimin = ParallelReduction(phimin,1)
@@ -29763,18 +30107,6 @@ CONTAINS
         END IF        
       END IF
 
-      ! When we have rules "phimax" and "phimin" they may be augmented with inner and outer
-      rSign = 0
-      IF( RuleInd == 5 ) THEN
-        IF( RuleStr(8:12) == 'inner' ) THEN
-          Rad = ListGetCReal( CurrentModel % Simulation,'Rotor Radius',Found)
-          rSign = -1
-        ELSE IF(RuleStr(8:12) == 'outer') THEN
-          Rad = ListGetCReal( CurrentModel % Simulation,'Rotor Radius',Found)
-          rSign = 1
-        END IF
-      END IF
-
       IF( RuleInd == 3 .AND. Mesh % MeshDim < 3 ) THEN
         CALL Fatal(Caller,'Cannot use z-rules for 2D mesh!')
       END IF
@@ -29782,15 +30114,16 @@ CONTAINS
       CALL Info(Caller,'Trying to tag elements to boundary: '//I2S(bc_ind),Level=20)
       BCsTagged = 0
       
-      eps = ListGetCReal(BC,'Boundary Levelset Epsilon',Found )
-      IF(.NOT. Found) eps = 1.0e-6
-      
       CALL TagElements()
 
       IF(Parallel) BCsTagged = ParallelReduction(BCsTagged)
       
       CALL Info(Caller,'Number of boundary elements "'//TRIM(RuleStr)//'" tagged to '&
           //I2S(bc_ind)//' is: '//I2S(BCsTagged),Level=7)
+      IF( BCsTagged == 0 ) THEN
+        CALL Fatal(Caller,'Could not find any boundary elements with rule!')
+      END IF
+
     END DO
 
     IF( CreateBCs ) THEN
@@ -29813,7 +30146,7 @@ CONTAINS
         RETURN
       END IF
       
-      val = ATAN(Coord(2),Coord(1)) - Phi0
+      val = ATAN2(Coord(2),Coord(1)) - Phi0
       IF( val > PI ) THEN
         val = val - 2*PI
       ELSE IF( val < -PI ) THEN

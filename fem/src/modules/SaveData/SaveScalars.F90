@@ -178,6 +178,9 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   REAL (KIND=DP) :: CT, RT  
   LOGICAL :: SlicesReduce, TimesReduce, DoIt
   INTEGER :: PrevComm, CommRank, CommSize, nSlices, nTimes
+  REAL(KIND=dp) :: Vals(100)
+  LOGICAL :: GotEigen, GotEdge
+  INTEGER :: NoVals
   CHARACTER(*), PARAMETER :: Caller = 'SaveScalars'
   
   SAVE :: jsonpos, PrevRunInd
@@ -377,7 +380,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         DO j=1,NoCoordinates 
           Coords(1:NoDims) = PointCoordinates(j,1:NoDims)
           IF(NoDims < 3 ) Coords(NoDims+1:3) = 0.0_dp
-          ClosestIndex(j) = ClosestNodeInMesh( Mesh, Coords )
+          ClosestIndex(j) = ClosestNodeInMesh( Mesh, Coords, DoParallel = .TRUE. )
         END DO
         
         SaveIndex => ClosestIndex
@@ -393,12 +396,13 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   IF( n > 0 ) THEN
     IF( ASSOCIATED( Mesh % Elements(1) % DGIndexes ) ) THEN
       ALLOCATE( DGIndex(n) )       
+      DGIndex = 0
       DO i=1,n
         IF( i<= NoPoints ) THEN
           DGIndex(i) = NodeToDGIndex(Mesh,PointIndex(i))
         ELSE
           j = SaveIndex(i-NoPoints)
-          DGIndex(i) = NodeToDGIndex(Mesh,j)
+          IF(j>0) DGIndex(i) = NodeToDGIndex(Mesh,j)
         END IF
       END DO
     END IF
@@ -996,8 +1000,9 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       l = SaveIndex(k-NoPoints)
     END IF
 
-
-    
+    lpar = ParallelReduction(l, 2 ) 
+    IF( lpar == 0 ) CYCLE
+        
     Var => Model % Variables
 
     DO WHILE( ASSOCIATED( Var ) )
@@ -1014,50 +1019,67 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         IF(EigenDofs == Var % DOFs) THEN
           DO j=1,NoEigenValues
             DO i=1,Var % DOFs              
-              Ind = Var % Perm(l)              
+              Ind = 0
+              IF( l>0 ) Ind = Var % Perm(l)              
+
+              NoVals = 0
               IF( Ind > 0 ) THEN
-
-                Val = REAL( Var % EigenVectors(j, Var%Dofs*(Ind-1)+i) )
-                IF(Var % DOFs == 1) THEN
-                  WRITE(Name,'("value: Re Eigen ",I0," ",A," at node ",I0)') j,TRIM(Var % Name),l
-                ELSE
-                  WRITE(Name,'("value: Re Eigen ",I0," ",A,I2," at node ",I0)') j,TRIM(Var % Name),i,l
-                END IF
-                CALL AddToSaveList( TRIM(Name), Val)
-                
+                Vals(1) = REAL( Var % EigenVectors(j, Var%Dofs*(Ind-1)+i) )
+                NoVals = 1
                 IF(ComplexEigenVectors) THEN
-                  Val2 = AIMAG( Var % EigenVectors(j, Var%Dofs*(Ind-1)+i) )
-                  IF(Var % DOFs == 1) THEN
-                    WRITE(Name,'("value: Im Eigen ",I0," ",A," at node ",I0)') j,TRIM(Var % Name),l
-                  ELSE
-                    WRITE(Name,'("value: Im Eigen ",I0," ",A,I2," at node ",I0)') j,TRIM(Var % Name),i,l
-                  END IF
-                  CALL AddToSaveList( TRIM(Name), Val2)
+                  Vals(2) = AIMAG( Var % EigenVectors(j, Var%Dofs*(Ind-1)+i) )
+                  NoVals = 2
                 END IF
-
+              END IF
+                
+              NoVals = ParallelReduction(NoVals)
+              IF( NoVals > 0 ) THEN              
+                IF(Var % DOFs == 1) THEN
+                  WRITE(Name,'("value: Re Eigen ",I0," ",A," at node ",I0)') j,TRIM(Var % Name),lpar
+                ELSE
+                  WRITE(Name,'("value: Re Eigen ",I0," ",A,I2," at node ",I0)') j,TRIM(Var % Name),i,lpar
+                END IF
+                CALL AddToSaveList( TRIM(Name), Vals(1))                               
+                IF(ComplexEigenVectors) THEN
+                  IF(Var % DOFs == 1) THEN
+                    WRITE(Name,'("value: Im Eigen ",I0," ",A," at node ",I0)') j,TRIM(Var % Name),lpar
+                  ELSE
+                    WRITE(Name,'("value: Im Eigen ",I0," ",A,I2," at node ",I0)') j,TRIM(Var % Name),i,lpar
+                  END IF
+                  CALL AddToSaveList( TRIM(Name), Vals(2))
+                END IF
               END IF
             END DO
           END DO
         END IF
 
       ELSE IF( Var % Dofs == 1) THEN          
-        ! The variables exist always also as scalars, therefore omit vectors. 
-
+        ! The variables exist always also as scalars, therefore omit vectors.         
         Ind = l
-
-        IF(ASSOCIATED(Var % Perm)) THEN
-          IF( Var % TYPE == variable_on_nodes_on_elements ) THEN
-            Ind = Var % Perm(DGIndex(k))
-          ELSE
-            IF(ASSOCIATED(Var % Perm)) Ind = Var % Perm(l)
+        NoVals = 0
+        IF(l>0) THEN
+          IF(ASSOCIATED(Var % Perm)) THEN
+            IF( Var % TYPE == variable_on_nodes_on_elements ) THEN
+              Ind = Var % Perm(DGIndex(k))
+            ELSE
+              IF(ASSOCIATED(Var % Perm)) Ind = Var % Perm(l)
+            END IF
           END IF
-        END IF
-          
-        IF(Ind > 0) THEN
-          WRITE(Name,'("value: ",A," at node ",I0)') TRIM( Var % Name ), l
-          CALL AddToSaveList( TRIM(Name), Var % Values(Ind))        
+          val = 0.0_dp
+          IF(Ind > 0) THEN
+            val = Var % Values(Ind)
+            NoVals = 1
+          END IF
+        ELSE
+          val = -HUGE(val)
         END IF
 
+        NoVals = ParallelReduction(NoVals,2)        
+        IF(NoVals > 0) THEN
+          val = ParallelReduction(val,2)
+          WRITE(Name,'("value: ",A," at node ",I0)') TRIM( Var % Name ), lpar
+          CALL AddToSaveList( TRIM(Name), val)        
+        END IF
       END IF
 
       Var => Var % Next      
@@ -1080,6 +1102,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   DO k=1,NoElements        
     l = SaveIndex(k)
 
+    ! In parallel only one partition should have found the element.
     lpar = l
     IF( l > 0 ) THEN
       Element => Mesh % Elements(l)
@@ -1088,7 +1111,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
     lpar = ParallelReduction(lpar, 2 ) 
     IF( lpar == 0 ) CYCLE
-   
+
+    ! Only try to find the data in the active element/partition. 
     IF( l > 0 ) THEN
       n = Element % TYPE % NumberOfNodes
 
@@ -1114,7 +1138,6 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       END DO
     END IF
 
-#if 1
 
     Var => Model % Variables
     DO WHILE( ASSOCIATED( Var ) )
@@ -1122,139 +1145,45 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       IF ( .NOT. Var % Output .OR. SIZE(Var % Values) == Var % DOFs) THEN
         CONTINUE 
       ELSE IF( Var % Dofs == 1 ) THEN
-        BLOCK
-          REAL(KIND=dp) :: Vals(100)
-          INTEGER :: NoVals
-          LOGICAL :: GotEigen, GotEdge
-          NoVals = 0
+        NoVals = 0
+
+        ! The active partition knows the number of variables. 
+        IF(l>0) THEN
           CALL EvaluateVariableAtGivenPoint(NoVals,Vals,Mesh,Var,Element=Element,&
               LocalCoord=LocalCoords, GotEigen=GotEigen, GotEdge=GotEdge)
+        END IF
+        NoVals = ParallelReduction(NoVals,2)
 
-          DO i = 1, NoVals
-            IF( GotEigen ) THEN 
-              Name = "value: Eigen "//TRIM(I2S(i))//" "//TRIM(Var % Name)
-            ELSE IF( GotEdge ) THEN
-              IF( i <= 3 ) THEN
-                Name = "value: "//TRIM(Var % Name)//' {e} '//TRIM(I2S(i))
-              ELSE IF(i == 4 ) THEN
-                Name = "value: "//TRIM(Var % Name)//' nodal'
-              END IF
-            ELSE 
-              IF( NoVals == 1 ) THEN
-                Name = "value: "//TRIM(Var % Name)
-              ELSE
-                Name = "value: "//TRIM(Var % Name)
-              END IF
+        DO i = 1, NoVals
+          IF(l>0) THEN
+            val = Vals(i)
+          ELSE
+            val = -HUGE(val)
+          END IF
+          val = ParallelReduction(val,2)
+
+          IF( GotEigen ) THEN 
+            Name = "value: Eigen "//TRIM(I2S(i))//" "//TRIM(Var % Name)
+          ELSE IF( GotEdge ) THEN
+            IF( i <= 3 ) THEN
+              Name = "value: "//TRIM(Var % Name)//' {e} '//TRIM(I2S(i))
+            ELSE IF(i == 4 ) THEN
+              Name = "value: "//TRIM(Var % Name)//' nodal'
             END IF
-            Name = TRIM(Name)//' in element '//TRIM(I2S(lpar))
-            CALL AddToSaveList(TRIM(Name), Vals(i),.FALSE.,ParOper)
-          END DO
-        END BLOCK
+          ELSE 
+            IF( NoVals == 1 ) THEN
+              Name = "value: "//TRIM(Var % Name)
+            ELSE
+              Name = "value: "//TRIM(Var % Name)
+            END IF
+          END IF
+          Name = TRIM(Name)//' in element '//TRIM(I2S(lpar))
+          CALL AddToSaveList(TRIM(Name), val,.FALSE.,ParOper)
+        END DO
       END IF
 
       Var => Var % Next      
-
     END DO
-#else
-    
-    Var => Model % Variables
-    DO WHILE( ASSOCIATED( Var ) )
-
-      ElementalVar = ( Var % TYPE == Variable_on_nodes_on_elements ) 
-
-      IF ( .NOT. Var % Output .OR. SIZE(Var % Values) == Var % DOFs) THEN
-        CONTINUE 
-
-      ELSE IF (ASSOCIATED (Var % EigenVectors)) THEN
-        NoEigenValues = SIZE(Var % EigenValues) 
-        EigenDofs = SIZE( Var % EigenVectors(1,:) ) / SIZE( Var % Perm )
-
-        IF(EigenDofs == Var % DOFs) THEN
-          DO j=1,NoEigenValues
-            DO i=1,Var % DOFs
-
-              Val = -HUGE(Val)
-              Val2 = -HUGE(Val)
-              GotIt = .FALSE.
-
-              IF( l > 0 ) THEN
-                IF( ElementalVar ) THEN
-                  NodeIndexes => Element % DgIndexes
-                ELSE
-                  NodeIndexes => Element % NodeIndexes 
-                END IF
-                
-                IF( ALL(Var % Perm(NodeIndexes(1:n)) > 0)) THEN
-                  ElementValues(1:n) = REAL( Var % EigenVectors(j,Var%Dofs*(Var % Perm(NodeIndexes(1:n))-1)+i) )
-                  Val = SUM( CoordinateBasis(1:n) * ElementValues(1:n) )             
-                  
-                  IF(ComplexEigenVectors) THEN
-                    ElementValues(1:n) = AIMAG( Var % EigenVectors(j,Var%Dofs*(Var % Perm(NodeIndexes(1:n))-1)+i) )
-                    Val2 = SUM( CoordinateBasis(1:n) * ElementValues(1:n) )             
-                  END IF
-                  
-                  GotIt = .TRUE.
-                END IF
-              END IF
-                
-              IF( GotIt .OR. IsParallel ) THEN
-                IF(Var % DOFs == 1) THEN
-                  WRITE(Name,'("value: Re Eigen ",I0," ",A," in element ",I0)') j,TRIM(Var % Name),lpar
-                ELSE
-                  WRITE(Name,'("value: Re Eigen ",I0," ",A," ",I0," in element ",I0)') j,TRIM(Var % Name),i,lpar
-                END IF
-                CALL AddToSaveList(TRIM(Name), Val,.FALSE.,ParOper)
-
-                IF( ComplexEigenVectors ) THEN
-                  IF(Var % DOFs == 1) THEN
-                    WRITE(Name,'("value: Im Eigen ",I0," ",A," in element ",I0)') j,TRIM(Var % Name),lpar
-                  ELSE
-                    WRITE(Name,'("value: Im Eigen ",I0," ",A," ",I0," in element ",I0)') j,TRIM(Var % Name),i,lpar
-                  END IF
-                  CALL AddToSaveList(TRIM(Name), Val2,.FALSE.,ParOper)                  
-                END IF
-              END IF
-            END DO
-          END DO
-        END IF
-
-      ELSE IF(Var % Dofs == 1) THEN          
-
-        Val = -HUGE( Val )
-        GotIt = .FALSE.
-
-        IF( l > 0 ) THEN
-          IF( ElementalVar ) THEN
-            NodeIndexes => Element % DgIndexes
-          ELSE
-            NodeIndexes => Element % NodeIndexes 
-          END IF
-          
-          IF( ASSOCIATED( Var % Perm ) ) THEN
-            IF( ALL(Var % Perm(NodeIndexes(1:n)) > 0)) THEN            
-              ElementValues(1:n) = Var % Values(Var % Perm(NodeIndexes(1:n)))
-              Val = SUM( CoordinateBasis(1:n) * ElementValues(1:n) ) 
-              GotIt = .TRUE.
-            END IF
-          ELSE
-            ElementValues(1:n) = Var % Values(NodeIndexes(1:n))
-            Val = SUM( CoordinateBasis(1:n) * ElementValues(1:n) ) 
-            GotIt = .TRUE.
-          END IF
-        END IF
-
-        IF(GotIt .OR. IsParallel) THEN
-          WRITE(Name,'("value: ",A," in element ",I0)') TRIM(Var % Name),lpar
-          CALL AddToSaveList(TRIM(Name), Val,.FALSE.,ParOper)                   
-        END IF
-      END IF
-
-      Var => Var % Next      
-
-    END DO
-#endif
-
-    
   END DO
 
   IF( NoElements > 0 ) THEN

@@ -3031,6 +3031,71 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+   SUBROUTINE EdgeElementStyle(VList, PiolaVersion, SecondFamily, QuadraticApproximation, &
+       BasisDegree, Check ) 
+
+     TYPE(ValueList_t), POINTER :: VList
+     LOGICAL :: PiolaVersion
+     LOGICAL, OPTIONAL :: SecondFamily
+     LOGICAL, OPTIONAL :: QuadraticApproximation
+     INTEGER, OPTIONAL :: BasisDegree
+     LOGICAL, OPTIONAL :: Check
+     
+     LOGICAL :: Found, Quadratic, Second 
+     
+     Quadratic = ListGetLogical(VList,'Quadratic Approximation', Found )      
+     IF( Quadratic ) THEN
+       Second = .FALSE.
+       PiolaVersion = .TRUE.
+     ELSE       
+       Second = ListGetLogical(Vlist,'Second Kind Basis', Found )
+       IF(Second) THEN
+         PiolaVersion = .TRUE.
+       ELSE    
+         PiolaVersion = ListGetLogical(Vlist,'Use Piola Transform', Found )
+       END IF
+     END IF
+
+     IF(PRESENT(SecondFamily)) THEN
+       SecondFamily = Second
+     END IF
+     
+     IF(PRESENT(BasisDegree)) THEN
+       BasisDegree = 1
+       IF(Quadratic) BasisDegree = 2
+     END IF
+
+     IF(PRESENT(QuadraticApproximation)) THEN
+       QuadraticApproximation = Quadratic
+     END IF
+
+     ! When initializing the consistency of the keywords may be checked.
+     ! Also always add the Piola flag since it determines the type of IP's.
+     IF( PRESENT(Check)) THEN
+       IF(Check) THEN
+         IF(PiolaVersion) THEN
+           IF(.NOT. ListCheckPresent(Vlist,'Use Piola Transform')) THEN
+             IF(Quadratic) THEN
+               CALL Info('EdgeElementStyle','"Quadratic Approximation" requested without Piola. ' &
+                   //'Setting "Use Piola Transform = True"')
+             ELSE IF( Second ) THEN
+               CALL Info('EdgeElementStyle','"Second Kind Basis" requested without Piola. ' &
+                   //'Setting "Use Piola Transform = True"')
+             END IF
+             CALL ListAddLogical(Vlist,'Use Piola Transform',.TRUE.)
+           END IF
+         END IF
+         IF(Quadratic) THEN
+           IF( ListGetLogical(Vlist,'Second Kind Basis', Found ) ) THEN
+             CALL Warn('EdgeElementStyle','"Second Kind Basis" not available as quadratic!')
+           END IF
+         END IF
+       END IF
+     END IF    
+     
+   END SUBROUTINE EdgeElementStyle
+
+   
 !------------------------------------------------------------------------------
 !>  Return the referential description b(f(p)) of the basis function b(x),
 !>  with f mapping points p on a reference element to points x on a physical
@@ -3082,8 +3147,9 @@ CONTAINS
      TYPE(Element_t), POINTER :: Parent, Edge, Face
      INTEGER :: EdgeBasisDegree
      LOGICAL :: PerformPiolaTransform, Found, DesignedBubbles, SerendipityPBasis
+     LOGICAL :: SecondFamily
      
-     SAVE PrevSolver, EdgeBasisDegree, PerformPiolaTransform
+     SAVE PrevSolver, EdgeBasisDegree, PerformPiolaTransform, SecondFamily
 !------------------------------------------------------------------------------
 
      IF( PRESENT( USolver ) ) THEN
@@ -3094,21 +3160,16 @@ CONTAINS
      
      IF(PRESENT(EdgeBasis)) THEN       
        IF( .NOT. ASSOCIATED( PrevSolver, PSolver ) ) THEN
-         PrevSolver => pSolver          
-         IF( ListGetLogical(pSolver % Values,'Quadratic Approximation', Found ) ) THEN
-           EdgeBasisDegree = 2
-           PerformPiolaTransform = .TRUE.
-         ELSE
-           EdgeBasisDegree = 1
-           PerformPiolaTransform = ListGetLogical(pSolver % Values,'Use Piola Transform', Found )
-         END IF
+         PrevSolver => pSolver                  
+         CALL EdgeElementStyle(pSolver % Values, PerformPiolaTransform, SecondFamily, &
+             BasisDegree = EdgeBasisDegree )
        END IF
        IF( PerformPiolaTransform ) THEN       
          stat = EdgeElementInfo(Element,Nodes,u,v,w,detF=Detj,Basis=Basis, &
              EdgeBasis=EdgeBasis,RotBasis=RotBasis,dBasisdx=dBasisdx,&
-             BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = PerformPiolaTransform )
+             SecondFamily = SecondFamily, BasisDegree = EdgeBasisDegree, &
+             ApplyPiolaTransform = PerformPiolaTransform )
        ELSE
-         ! Is this really necessary to call in case no piola version? 
          stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis, dBasisdx )
          CALL GetEdgeBasis(Element,EdgeBasis,RotBasis,Basis,dBasisdx)         
        END IF
@@ -6630,14 +6691,20 @@ END SUBROUTINE PickActiveFace
        REAL(KIND=dp) :: ElmMetric(3,3), detJ, CurlBasis(54,3)
        REAL(KIND=dp) :: t(3), s(3), v1, v2, v3, h1, h2, h3, dh1, dh2, dh3, grad(2)
        REAL(KIND=dp) :: LBasis(Element % TYPE % NumberOfNodes), Beta(4), EdgeSign(16)
+       REAL(KIND=dp) :: fs1, fs2
        LOGICAL :: Create2ndKindBasis, PerformPiolaTransform, UsePretabulatedBasis, Parallel
        LOGICAL :: SecondOrder, ApplyTraceMapping, Found
        LOGICAL :: ReverseSign(4)
+       LOGICAL :: ScaleFaceBasis, RedefineFaceBasis
        INTEGER, POINTER :: EdgeMap(:,:), Ind(:)
        INTEGER :: TriangleFaceMap(3), SquareFaceMap(4), BrickFaceMap(6,4), PrismSquareFaceMap(3,4), DOFs
        INTEGER :: ActiveFaceId
 !----------------------------------------------------------------------------------------------------------
-
+       RedefineFaceBasis = .TRUE. ! Left as an emergency switch to revert to the original (ill-conditioned) basis
+       ScaleFaceBasis = .TRUE.
+       fs1 = 28.0d0
+       fs2 = 84.0d0
+       
        Mesh => CurrentModel % Solver % Mesh
        Parallel = ASSOCIATED(Mesh % ParallelInfo % GInterface)
 
@@ -7281,11 +7348,25 @@ END SUBROUTINE PickActiveFace
                WorkBasis(3,2) = -((1.0d0 + u)*(-3.0d0 + 3.0d0*u + Sqrt(3.0d0)*v))/(12.0d0*Sqrt(3.0d0))
                WorkCurlBasis(3,3) = (Sqrt(3.0d0) - 3.0d0*Sqrt(3.0d0)*u - 3.0d0*v)/12.0d0
 
-               EdgeBasis(7,:) = D1 * WorkBasis(I1,:)
-               CurlBasis(7,3) = D1 * WorkCurlBasis(I1,3)
-               EdgeBasis(8,:) = D2 * WorkBasis(I2,:)
-               CurlBasis(8,3) = D2 * WorkCurlBasis(I2,3)  
-
+               IF (RedefineFaceBasis) THEN
+                 EdgeBasis(7,:) = 0.5d0 * D1 * WorkBasis(I1,:) + 0.5d0 * D2 * WorkBasis(I2,:)
+                 CurlBasis(7,:) = 0.5d0 * D1 * WorkCurlBasis(I1,:) + 0.5d0 * D2 * WorkCurlBasis(I2,:)
+                 EdgeBasis(8,:) = 0.5d0 * D2 * WorkBasis(I2,:) - 0.5d0 * D1 * WorkBasis(I1,:)
+                 CurlBasis(8,:) = 0.5d0 * D2 * WorkCurlBasis(I2,:) - 0.5d0 * D1 * WorkCurlBasis(I1,:)
+               ELSE
+                 EdgeBasis(7,:) = D1 * WorkBasis(I1,:)
+                 CurlBasis(7,3) = D1 * WorkCurlBasis(I1,3)
+                 EdgeBasis(8,:) = D2 * WorkBasis(I2,:)
+                 CurlBasis(8,3) = D2 * WorkCurlBasis(I2,3)  
+               END IF
+               
+               ! Finally, scale to reduce ill-conditioning:
+               IF (ScaleFaceBasis) THEN
+                 EdgeBasis(7,:) = sqrt(fs1) * EdgeBasis(7,:)
+                 EdgeBasis(8,:) = sqrt(fs2) * EdgeBasis(8,:)
+                 CurlBasis(7,:) = sqrt(fs1) * CurlBasis(7,:)
+                 CurlBasis(8,:) = sqrt(fs2) * CurlBasis(8,:)
+               END IF
              END IF
            END IF
 
@@ -8058,11 +8139,18 @@ END SUBROUTINE PickActiveFace
                    3.0d0*Sqrt(2.0d0)*w)/(48.0d0*Sqrt(2.0d0))
                WorkCurlBasis(3,3) = (-Sqrt(3.0d0) - 3.0d0*Sqrt(3.0d0)*u + 3.0d0*v)/12.0d0
 
-               EdgeBasis(13,:) = D1 * WorkBasis(I1,:)
-               CurlBasis(13,:) = D1 * WorkCurlBasis(I1,:)
-               EdgeBasis(14,:) = D2 * WorkBasis(I2,:)
-               CurlBasis(14,:) = D2 * WorkCurlBasis(I2,:)  
-
+               IF (RedefineFaceBasis) THEN
+                 EdgeBasis(13,:) = 0.5d0 * D1 * WorkBasis(I1,:) + 0.5d0 * D2 * WorkBasis(I2,:)
+                 CurlBasis(13,:) = 0.5d0 * D1 * WorkCurlBasis(I1,:) + 0.5d0 * D2 * WorkCurlBasis(I2,:)
+                 EdgeBasis(14,:) = 0.5d0 * D2 * WorkBasis(I2,:) - 0.5d0 * D1 * WorkBasis(I1,:)
+                 CurlBasis(14,:) = 0.5d0 * D2 * WorkCurlBasis(I2,:) - 0.5d0 * D1 * WorkCurlBasis(I1,:)
+               ELSE
+                 EdgeBasis(13,:) = D1 * WorkBasis(I1,:)
+                 CurlBasis(13,:) = D1 * WorkCurlBasis(I1,:)
+                 EdgeBasis(14,:) = D2 * WorkBasis(I2,:)
+                 CurlBasis(14,:) = D2 * WorkCurlBasis(I2,:)  
+               END IF
+                 
                !-------------------------------------------------
                ! Two basis functions defined on the face 124:
                !-------------------------------------------------
@@ -8102,12 +8190,19 @@ END SUBROUTINE PickActiveFace
                WorkCurlBasis(3,1) = (-3.0d0*Sqrt(2.0d0) + Sqrt(2.0d0)*u + Sqrt(6.0d0)*v + Sqrt(3.0d0)*w)/16.0d0
                WorkCurlBasis(3,2) = (-Sqrt(6.0d0) + 3.0d0*Sqrt(6.0d0)*u + Sqrt(2.0d0)*v + 3.0d0*w)/16.0d0
                WorkCurlBasis(3,3) = -w/(4.0d0*Sqrt(2.0d0))
-
-               EdgeBasis(15,:) = D1 * WorkBasis(I1,:)
-               CurlBasis(15,:) = D1 * WorkCurlBasis(I1,:)
-               EdgeBasis(16,:) = D2 * WorkBasis(I2,:)
-               CurlBasis(16,:) = D2 * WorkCurlBasis(I2,:)  
-
+               
+               IF (RedefineFaceBasis) THEN
+                 EdgeBasis(15,:) = 0.5d0 * D1 * WorkBasis(I1,:) + 0.5d0 * D2 * WorkBasis(I2,:)
+                 CurlBasis(15,:) = 0.5d0 * D1 * WorkCurlBasis(I1,:) + 0.5d0 * D2 * WorkCurlBasis(I2,:)
+                 EdgeBasis(16,:) = 0.5d0 * D2 * WorkBasis(I2,:) - 0.5d0 * D1 * WorkBasis(I1,:)
+                 CurlBasis(16,:) = 0.5d0 * D2 * WorkCurlBasis(I2,:) - 0.5d0 * D1 * WorkCurlBasis(I1,:)
+               ELSE
+                 EdgeBasis(15,:) = D1 * WorkBasis(I1,:)
+                 CurlBasis(15,:) = D1 * WorkCurlBasis(I1,:)
+                 EdgeBasis(16,:) = D2 * WorkBasis(I2,:)
+                 CurlBasis(16,:) = D2 * WorkCurlBasis(I2,:)  
+               END IF
+                 
                !-------------------------------------------------
                ! Two basis functions defined on the face 234:
                !-------------------------------------------------
@@ -8148,11 +8243,18 @@ END SUBROUTINE PickActiveFace
                WorkCurlBasis(3,2) = -v/(4.0d0*Sqrt(2.0d0))
                WorkCurlBasis(3,3) = -w/(4.0d0*Sqrt(2.0d0))
 
-               EdgeBasis(17,:) = D1 * WorkBasis(I1,:)
-               CurlBasis(17,:) = D1 * WorkCurlBasis(I1,:)
-               EdgeBasis(18,:) = D2 * WorkBasis(I2,:)
-               CurlBasis(18,:) = D2 * WorkCurlBasis(I2,:)  
-
+               IF (RedefineFaceBasis) THEN
+                 EdgeBasis(17,:) = 0.5d0 * D1 * WorkBasis(I1,:) + 0.5d0 * D2 * WorkBasis(I2,:) 
+                 CurlBasis(17,:) = 0.5d0 * D1 * WorkCurlBasis(I1,:) + 0.5d0 * D2 * WorkCurlBasis(I2,:)
+                 EdgeBasis(18,:) = 0.5d0 * D2 * WorkBasis(I2,:) - 0.5d0 * D1 * WorkBasis(I1,:)
+                 CurlBasis(18,:) = 0.5d0 * D2 * WorkCurlBasis(I2,:) - 0.5d0 * D1 * WorkCurlBasis(I1,:)
+               ELSE
+                 EdgeBasis(17,:) = D1 * WorkBasis(I1,:)
+                 CurlBasis(17,:) = D1 * WorkCurlBasis(I1,:)
+                 EdgeBasis(18,:) = D2 * WorkBasis(I2,:)
+                 CurlBasis(18,:) = D2 * WorkCurlBasis(I2,:)  
+               END IF
+               
                !-------------------------------------------------
                ! Two basis functions defined on the face 314:
                !-------------------------------------------------
@@ -8193,10 +8295,25 @@ END SUBROUTINE PickActiveFace
                WorkCurlBasis(3,2) = (4.0d0*Sqrt(2.0d0)*v - 3.0d0*w)/16.0d0
                WorkCurlBasis(3,3) =  -w/(4.0d0*Sqrt(2.0d0))
 
-               EdgeBasis(19,:) = D1 * WorkBasis(I1,:)
-               CurlBasis(19,:) = D1 * WorkCurlBasis(I1,:)
-               EdgeBasis(20,:) = D2 * WorkBasis(I2,:)
-               CurlBasis(20,:) = D2 * WorkCurlBasis(I2,:)                  
+               IF (RedefineFaceBasis) THEN
+                 EdgeBasis(19,:) = 0.5d0 * D1 * WorkBasis(I1,:) + 0.5d0 * D2 * WorkBasis(I2,:)
+                 CurlBasis(19,:) = 0.5d0 * D1 * WorkCurlBasis(I1,:) + 0.5d0 * D2 * WorkCurlBasis(I2,:)
+                 EdgeBasis(20,:) = 0.5d0 * D2 * WorkBasis(I2,:) - 0.5d0 * D1 * WorkBasis(I1,:)
+                 CurlBasis(20,:) = 0.5d0 * D2 * WorkCurlBasis(I2,:) - 0.5d0 * D1 * WorkCurlBasis(I1,:)
+               ELSE
+                 EdgeBasis(19,:) = D1 * WorkBasis(I1,:)
+                 CurlBasis(19,:) = D1 * WorkCurlBasis(I1,:)
+                 EdgeBasis(20,:) = D2 * WorkBasis(I2,:)
+                 CurlBasis(20,:) = D2 * WorkCurlBasis(I2,:)
+               END IF
+                 
+               ! Finally, scale to reduce ill-conditioning:
+               IF (ScaleFaceBasis) THEN
+                 EdgeBasis(13:20:2,:) = sqrt(fs1) * EdgeBasis(13:20:2,:)
+                 CurlBasis(13:20:2,:) = sqrt(fs1) * CurlBasis(13:20:2,:)
+                 EdgeBasis(14:20:2,:) = sqrt(fs2) * EdgeBasis(14:20:2,:)
+                 CurlBasis(14:20:2,:) = sqrt(fs2) * CurlBasis(14:20:2,:)                 
+               END IF
              END IF
            END IF
            
@@ -8636,11 +8753,18 @@ END SUBROUTINE PickActiveFace
              WorkCurlBasis(3,3) = -w * sqrt(0.2D1) * (w * sqrt(0.2D1) - 2.0D0 * u - 0.2D1) / &
                  (0.16D2 * (w * sqrt(0.2D1) - 0.2D1) ) 
 
-             EdgeBasis(21,:) = D1 * WorkBasis(I1,:)
-             CurlBasis(21,:) = D1 * WorkCurlBasis(I1,:)
-             EdgeBasis(22,:) = D2 * WorkBasis(I2,:)
-             CurlBasis(22,:) = D2 * WorkCurlBasis(I2,:)              
-
+             IF (RedefineFaceBasis) THEN
+               EdgeBasis(21,:) = 0.5d0 * D1 * WorkBasis(I1,:) + 0.5d0 * D2 * WorkBasis(I2,:)
+               CurlBasis(21,:) = 0.5d0 * D1 * WorkCurlBasis(I1,:) + 0.5d0 * D2 * WorkCurlBasis(I2,:)
+               EdgeBasis(22,:) = 0.5d0 * D2 * WorkBasis(I2,:) - 0.5d0 * D1 * WorkBasis(I1,:)
+               CurlBasis(22,:) = 0.5d0 * D2 * WorkCurlBasis(I2,:) - 0.5d0 * D1 * WorkCurlBasis(I1,:)
+             ELSE             
+               EdgeBasis(21,:) = D1 * WorkBasis(I1,:)
+               CurlBasis(21,:) = D1 * WorkCurlBasis(I1,:)
+               EdgeBasis(22,:) = D2 * WorkBasis(I2,:)
+               CurlBasis(22,:) = D2 * WorkCurlBasis(I2,:)              
+             END IF
+               
              !-------------------------------------------------
              ! Two basis functions defined on the face 235:
              !-------------------------------------------------
@@ -8686,10 +8810,17 @@ END SUBROUTINE PickActiveFace
              WorkCurlBasis(3,3) = -w * sqrt(0.2D1) * (w * sqrt(0.2D1) - 2.0D0 * v - 0.2D1) / &
                  ( (w * sqrt(0.2D1) - 0.2D1) * 0.16D2 )
 
-             EdgeBasis(23,:) = D1 * WorkBasis(I1,:)
-             CurlBasis(23,:) = D1 * WorkCurlBasis(I1,:)
-             EdgeBasis(24,:) = D2 * WorkBasis(I2,:)
-             CurlBasis(24,:) = D2 * WorkCurlBasis(I2,:)              
+             IF (RedefineFaceBasis) THEN
+               EdgeBasis(23,:) = 0.5d0 * D1 * WorkBasis(I1,:) + 0.5d0 * D2 * WorkBasis(I2,:)
+               CurlBasis(23,:) = 0.5d0 * D1 * WorkCurlBasis(I1,:) + 0.5d0 * D2 * WorkCurlBasis(I2,:)
+               EdgeBasis(24,:) = 0.5d0 * D2 * WorkBasis(I2,:) - 0.5d0 * D1 * WorkBasis(I1,:)
+               CurlBasis(24,:) = 0.5d0 * D2 * WorkCurlBasis(I2,:) - 0.5d0 * D1 * WorkCurlBasis(I1,:)
+             ELSE
+               EdgeBasis(23,:) = D1 * WorkBasis(I1,:)
+               CurlBasis(23,:) = D1 * WorkCurlBasis(I1,:)
+               EdgeBasis(24,:) = D2 * WorkBasis(I2,:)
+               CurlBasis(24,:) = D2 * WorkCurlBasis(I2,:)
+             END IF
 
              !-------------------------------------------------
              ! Two basis functions defined on the face 345:
@@ -8736,11 +8867,18 @@ END SUBROUTINE PickActiveFace
              WorkCurlBasis(3,3) = -w * sqrt(0.2D1) * (w * sqrt(0.2D1) + 2.0D0 * u - 0.2D1) / &
                  (0.16D2 * (w * sqrt(0.2D1) - 0.2D1) ) 
 
-             EdgeBasis(25,:) = D1 * WorkBasis(I1,:)
-             CurlBasis(25,:) = D1 * WorkCurlBasis(I1,:)
-             EdgeBasis(26,:) = D2 * WorkBasis(I2,:)
-             CurlBasis(26,:) = D2 * WorkCurlBasis(I2,:)              
-
+             IF (RedefineFaceBasis) THEN
+               EdgeBasis(25,:) = 0.5d0 * D1 * WorkBasis(I1,:) + 0.5d0 * D2 * WorkBasis(I2,:)
+               CurlBasis(25,:) = 0.5d0 * D1 * WorkCurlBasis(I1,:) + 0.5d0 * D2 * WorkCurlBasis(I2,:)
+               EdgeBasis(26,:) = 0.5d0 * D2 * WorkBasis(I2,:) - 0.5d0 * D1 * WorkBasis(I1,:)
+               CurlBasis(26,:) = 0.5d0 * D2 * WorkCurlBasis(I2,:) - 0.5d0 * D1 * WorkCurlBasis(I1,:)
+             ELSE
+               EdgeBasis(25,:) = D1 * WorkBasis(I1,:)
+               CurlBasis(25,:) = D1 * WorkCurlBasis(I1,:)
+               EdgeBasis(26,:) = D2 * WorkBasis(I2,:)
+               CurlBasis(26,:) = D2 * WorkCurlBasis(I2,:)              
+             END IF
+               
              !-------------------------------------------------
              ! Two basis functions defined on the face 415:
              !-------------------------------------------------
@@ -8786,11 +8924,17 @@ END SUBROUTINE PickActiveFace
              WorkCurlBasis(3,3) = -w * sqrt(0.2D1) * (w * sqrt(0.2D1) + 2.0D0 * v - 0.2D1) / &
                  (0.16D2 * (w * sqrt(0.2D1) - 0.2D1) ) 
 
-             EdgeBasis(27,:) = D1 * WorkBasis(I1,:)
-             CurlBasis(27,:) = D1 * WorkCurlBasis(I1,:)
-             EdgeBasis(28,:) = D2 * WorkBasis(I2,:)
-             CurlBasis(28,:) = D2 * WorkCurlBasis(I2,:)              
-
+             IF (RedefineFaceBasis) THEN
+               EdgeBasis(27,:) = 0.5d0 * D1 * WorkBasis(I1,:) + 0.5d0 * D2 * WorkBasis(I2,:)
+               CurlBasis(27,:) = 0.5d0 * D1 * WorkCurlBasis(I1,:) + 0.5d0 * D2 * WorkCurlBasis(I2,:)
+               EdgeBasis(28,:) = 0.5d0 * D2 * WorkBasis(I2,:) - 0.5d0 * D1 * WorkBasis(I1,:)
+               CurlBasis(28,:) = 0.5d0 * D2 * WorkCurlBasis(I2,:) - 0.5d0 * D1 * WorkCurlBasis(I1,:)
+             ELSE
+               EdgeBasis(27,:) = D1 * WorkBasis(I1,:)
+               CurlBasis(27,:) = D1 * WorkCurlBasis(I1,:)
+               EdgeBasis(28,:) = D2 * WorkBasis(I2,:)
+               CurlBasis(28,:) = D2 * WorkCurlBasis(I2,:)              
+             END IF
 
              ! Finally three interior basis functions:
              ! -----------------------------------------------------------------------------------
@@ -8823,6 +8967,19 @@ END SUBROUTINE PickActiveFace
                  0.2D1 * sqrt(0.2D1) + 0.14D2 * w) / (0.16D2 * (w * sqrt(0.2D1) - 0.2D1) ** 2 ) 
              CurlBasis(31,3) = -(u - v) * w * sqrt(0.2D1) / 0.16D2
 
+             ! Finally, scale to reduce ill-conditioning:
+             IF (ScaleFaceBasis) THEN
+               EdgeBasis(21:27:2,:) = sqrt(fs1) * EdgeBasis(21:27:2,:)
+               CurlBasis(21:27:2,:) = sqrt(fs1) * CurlBasis(21:27:2,:)
+               EdgeBasis(22:28:2,:) = sqrt(fs2) * EdgeBasis(22:28:2,:)
+               CurlBasis(22:28:2,:) = sqrt(fs2) * CurlBasis(22:28:2,:)                 
+
+               EdgeBasis(29:30,:) = sqrt(506.9d0) * EdgeBasis(29:30,:)
+               CurlBasis(29:30,:) = sqrt(506.9d0) * CurlBasis(29:30,:)
+               EdgeBasis(31,:) = sqrt(167.8d0) * EdgeBasis(31,:)
+               CurlBasis(31,:) = sqrt(167.8d0) * CurlBasis(31,:)
+             END IF
+             
            ELSE
              !-----------------------------------------------------------------------------------------
              ! The lowest-order pyramid from the optimal family. Now these basis functions are 
@@ -9242,16 +9399,30 @@ END SUBROUTINE PickActiveFace
              WorkBasis(3,2) = -((1.0d0 + u)*(-3.0d0 + 3.0d0*u + Sqrt(3.0d0)*v))/(12.0d0*Sqrt(3.0d0))
              WorkCurlBasis(3,3) = (Sqrt(3.0d0) - 3.0d0*Sqrt(3.0d0)*u - 3.0d0*v)/12.0d0
 
-             EdgeBasis(19,1:2) = D1 * WorkBasis(I1,1:2) * h1
-             CurlBasis(19,1) = -D1 * WorkBasis(I1,2) * dh1
-             CurlBasis(19,2) = D1 * WorkBasis(I1,1) * dh1
-             CurlBasis(19,3) = D1 * WorkCurlBasis(I1,3) * h1
+             IF (RedefineFaceBasis) THEN
+               EdgeBasis(19,1:2) = (D1 * WorkBasis(I1,1:2) + D2 * WorkBasis(I2,1:2)) * 0.5d0 * h1
+               EdgeBasis(20,1:2) = (-D1 * WorkBasis(I1,1:2) + D2 * WorkBasis(I2,1:2)) * 0.5d0 * h1
 
-             EdgeBasis(20,1:2) = D2 * WorkBasis(I2,1:2) * h1
-             CurlBasis(20,1) = -D2 * WorkBasis(I2,2) * dh1
-             CurlBasis(20,2) = D2 * WorkBasis(I2,1) * dh1
-             CurlBasis(20,3) = D2 * WorkCurlBasis(I2,3) * h1
+               CurlBasis(19,1) = -(D1 * WorkBasis(I1,2) + D2 * WorkBasis(I2,2)) * 0.5d0 * dh1
+               CurlBasis(19,2) = (D1 * WorkBasis(I1,1) + D2 * WorkBasis(I2,1)) * 0.5d0 * dh1
+               CurlBasis(19,3) = (D1 * WorkCurlBasis(I1,3) + D2 * WorkCurlBasis(I2,3)) * 0.5d0 * h1
 
+               CurlBasis(20,1) = -(-D1 * WorkBasis(I1,2) + D2 * WorkBasis(I2,2)) * 0.5d0 * dh1
+               CurlBasis(20,2) = (-D1 * WorkBasis(I1,1) + D2 * WorkBasis(I2,1)) * 0.5d0 * dh1
+               CurlBasis(20,3) = (-D1 * WorkCurlBasis(I1,3) + D2 * WorkCurlBasis(I2,3)) * 0.5d0 * h1
+               
+             ELSE
+               EdgeBasis(19,1:2) = D1 * WorkBasis(I1,1:2) * h1
+               CurlBasis(19,1) = -D1 * WorkBasis(I1,2) * dh1
+               CurlBasis(19,2) = D1 * WorkBasis(I1,1) * dh1
+               CurlBasis(19,3) = D1 * WorkCurlBasis(I1,3) * h1
+
+               EdgeBasis(20,1:2) = D2 * WorkBasis(I2,1:2) * h1
+               CurlBasis(20,1) = -D2 * WorkBasis(I2,2) * dh1
+               CurlBasis(20,2) = D2 * WorkBasis(I2,1) * dh1
+               CurlBasis(20,3) = D2 * WorkCurlBasis(I2,3) * h1
+             END IF
+               
              !-------------------------------------------------
              ! Two basis functions defined on the face 456:
              !-------------------------------------------------
@@ -9267,16 +9438,38 @@ END SUBROUTINE PickActiveFace
              END IF
              CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
-             EdgeBasis(21,1:2) = D1 * WorkBasis(I1,1:2) * h2
-             CurlBasis(21,1) = -D1 * WorkBasis(I1,2) * dh2
-             CurlBasis(21,2) = D1 * WorkBasis(I1,1) * dh2
-             CurlBasis(21,3) = D1 * WorkCurlBasis(I1,3) * h2
+             IF (RedefineFaceBasis) THEN
+               EdgeBasis(21,1:2) = (D1 * WorkBasis(I1,1:2) + D2 * WorkBasis(I2,1:2)) * 0.5d0 * h2
+               EdgeBasis(22,1:2) = (-D1 * WorkBasis(I1,1:2) + D2 * WorkBasis(I2,1:2)) * 0.5d0 * h2
 
-             EdgeBasis(22,1:2) = D2 * WorkBasis(I2,1:2) * h2
-             CurlBasis(22,1) = -D2 * WorkBasis(I2,2) * dh2
-             CurlBasis(22,2) = D2 * WorkBasis(I2,1) * dh2
-             CurlBasis(22,3) = D2 * WorkCurlBasis(I2,3) * h2
+               CurlBasis(21,1) = -(D1 * WorkBasis(I1,2) + D2 * WorkBasis(I2,2)) * 0.5d0 * dh2
+               CurlBasis(21,2) = (D1 * WorkBasis(I1,1) + D2 * WorkBasis(I2,1)) * 0.5d0 * dh2
+               CurlBasis(21,3) = (D1 * WorkCurlBasis(I1,3) + D2 * WorkCurlBasis(I2,3)) * 0.5d0 * h2
 
+               CurlBasis(22,1) = -(-D1 * WorkBasis(I1,2) + D2 * WorkBasis(I2,2)) * 0.5d0 * dh2
+               CurlBasis(22,2) = (-D1 * WorkBasis(I1,1) + D2 * WorkBasis(I2,1)) * 0.5d0 * dh2
+               CurlBasis(22,3) = (-D1 * WorkCurlBasis(I1,3) + D2 * WorkCurlBasis(I2,3)) * 0.5d0 * h2
+               
+             ELSE
+               EdgeBasis(21,1:2) = D1 * WorkBasis(I1,1:2) * h2
+               CurlBasis(21,1) = -D1 * WorkBasis(I1,2) * dh2
+               CurlBasis(21,2) = D1 * WorkBasis(I1,1) * dh2
+               CurlBasis(21,3) = D1 * WorkCurlBasis(I1,3) * h2
+
+               EdgeBasis(22,1:2) = D2 * WorkBasis(I2,1:2) * h2
+               CurlBasis(22,1) = -D2 * WorkBasis(I2,2) * dh2
+               CurlBasis(22,2) = D2 * WorkBasis(I2,1) * dh2
+               CurlBasis(22,3) = D2 * WorkCurlBasis(I2,3) * h2
+             END IF
+
+             ! scale to reduce ill-conditioning:
+             IF (ScaleFaceBasis) THEN
+               EdgeBasis(19:21:2,:) = sqrt(fs1) * EdgeBasis(19:21:2,:)
+               CurlBasis(19:21:2,:) = sqrt(fs1) * CurlBasis(19:21:2,:)
+               EdgeBasis(20:22:2,:) = sqrt(fs2) * EdgeBasis(20:22:2,:)
+               CurlBasis(20:22:2,:) = sqrt(fs2) * CurlBasis(20:22:2,:)
+             END IF
+               
              !-------------------------------------------------
              ! Four basis functions defined on the face 1254:
              !-------------------------------------------------              
@@ -9430,6 +9623,11 @@ END SUBROUTINE PickActiveFace
              CurlBasis(36,2) = EdgeBasis(36,1)/h3 * dh3
              CurlBasis(36,3) = (Sqrt(3.0d0) - 3.0d0*Sqrt(3.0d0)*u - 3.0d0*v)/12.0d0 * h3
 
+             IF (ScaleFaceBasis) THEN
+               EdgeBasis(35:36,1:2) = sqrt(150.0d0) * EdgeBasis(35:36,1:2)
+               CurlBasis(35:36,1:3) = sqrt(150.0d0) * CurlBasis(35:36,1:3)
+             END IF
+             
            ELSE
              !--------------------------------------------------------------
              ! The lowest-order element from the optimal family. The optimal
@@ -10571,8 +10769,8 @@ END SUBROUTINE PickActiveFace
      END FUNCTION EdgeElementInfo
 !------------------------------------------------------------------------------
 
-
-
+     
+     
 !----------------------------------------------------------------------------
      SUBROUTINE TriangleFaceDofsOrdering(I1,I2,D1,D2,Ind)       
 !-----------------------------------------------------------------------------
