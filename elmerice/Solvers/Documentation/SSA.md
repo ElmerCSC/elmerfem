@@ -93,6 +93,7 @@ a Budd type friction law
   - SSA Friction Linear Velocity → *u_lin*  
   - SSA Haf Exponent → *q*  
   - SSA Min Effective Pressure → *N_{min}*, such that *N >= N_{min}*  
+  - gravity norm → *g*  
 
 a regularised Coulomb friction law without explicit effective pressure dependence  
   - SSA Friction Parameter → *beta*  
@@ -108,7 +109,8 @@ a regularised Coulomb type friction law
   - SSA Friction Maximum Value → *C ~ max bed slope*  
   - SSA Min Effective Pressure → *N_{min}*, such that *N >= N_{min}*  
 
-The keywords are set in the material section of the .sif.
+The keywords above that start with "SSA" are set in the material section of the .sif.
+"gravity norm" is set in the constants section (same usage as for GlaDS).
 The Budd paramerisation and the Gagliardini version of the regularised Coulomb sliding parameterisation require the variable "effective pressure" to be present. 
 
 
