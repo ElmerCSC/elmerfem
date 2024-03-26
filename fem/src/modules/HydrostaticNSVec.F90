@@ -138,8 +138,8 @@ CONTAINS
               CALL Warn(Caller,'Replace >Temperature Field Variable< with >Relative Temperature = Equals ...<')
             END IF
           END IF
-          IF( ViscTemp_h % NotPresentAnywhere ) THEN
-            CALL Fatal(Caller,'>Relative Temperature< not given for viscosity model "glen"')
+          IF( ViscTemp_h % NotPresentAnywhere .AND. ViscArr_h % NotPresentAnywhere) THEN
+            CALL Fatal(Caller,'Neither >Relative Temperature< nor >Arrhenius Factor< given for viscosity model "glen"')
           END IF
 
           IF( ListCheckPresentAnyMaterial( CurrentModel,'Glen Enhancement Factor Function')  ) THEN

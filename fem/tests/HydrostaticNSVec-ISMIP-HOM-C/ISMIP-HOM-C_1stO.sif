@@ -238,3 +238,4 @@ Boundary Condition 6
 End
 
 Solver 2 :: Reference Norm = 11.360647
+Solver 2 :: Reference Norm Tolerance = 1.0E-04
