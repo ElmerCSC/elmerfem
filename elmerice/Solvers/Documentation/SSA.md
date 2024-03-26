@@ -59,41 +59,58 @@ When the SSA solution is computed on a boundary of a mesh of dimension larger th
 ### Basal friction
 
 #### friction laws
-Currently, there are 4 friction laws implemented in the SSA solver:
+Friction paramerisations currently implemented in the SSA solver:
 
-- a linear friction law
+- a linear friction law  
 *tau_b = beta . u*
-- a Weertman type friction law
+- a Weertman type friction law  
 *tau_b = beta.{u_b}^{m - 1} . u*
-- a Coulomb type friction law
-*tau_b = 1/{A_s}^{1/n} {[{ 1/ {(1 + alpha . chi^q)} }]}^{1/n} . {u_b}^{1/n-1}. u*
-where *alpha = {(q - 1)^{q-1}}/{q^q}* and *chi = {u_b}/{C^n N^n A_s}*
-- a regularised coulomb friction law  
+- a Budd type friction law  
+*tau_b = beta.{z\*}^{q} . {u_b}^{m - 1} . u*  
+where *z\* * is height above floatation, related to effective pressure by *N=rho_ice.g.z\* *
+- a regularised coulomb friction law without explicit effective pressure dependence of the form used by e.g. Joughin 2019  
 *tau_b = beta (u_b/(u_b+u_0))^m*
+- a regularised coulomb friction law of the form presented by Gagliardini 2007 & Schoof 2005  
+*tau_b = 1/{A_s}^{1/n} {[{ 1/ {(1 + alpha . chi^q)} }]}^{1/n} . {u_b}^{1/n-1}. u*  
+where *alpha = {(q - 1)^{q-1}}/{q^q}* and *chi = {u_b}/{C^n N^n A_s}*  
 
-The latter three are non-linear and a Newton linearisation can be used. 
+The latter are non-linear and a Newton linearisation can be used. 
 When *u_b = (u^2+v^2)^{1/2}< u_min*, *u_b* in the previous equations is replaced by *u_min*.
 
 The friction law is chosen using the keyword SSA Friction Law, which takes the value Linear, Weertman, coulomb, regularised Coulomb. The other keywords are:  
-- a linear friction law
-  - SSA Friction Parameter → *beta*
-- a Weertman type friction law
-  - SSA Friction Parameter → *beta*
-  - SSA Friction Exponent → *m*
-  - SSA Friction Linear Velocity → *u_lin*
-- a Regularised Coulomb friction law  
+
+a linear friction law  
   - SSA Friction Parameter → *beta*  
-  - SSA Friction Exponent → *m*
-  - SSA Friction Linear Velocity → *u_lin*
-  - SSA Friction Threshold Velocity → *u_0*
-- a Coulomb type friction law
-  - SSA Friction Parameter → *beta= {A_s}^{-m}*
-  - SSA Friction Exponent → *m = 1/n*
-  - SSA Friction Linear Velocity → *u_lin*
-  - SSA Friction Post-Peak → *q >= 1*
-  - SSA Friction Maximum Value → *C ~ max bed slope*
-  - Effective Pressure (variable) → *N*
-  - SSA Min Effective Pressure → *N_{min}*, such that *N >= N_{min}*
+
+a Weertman type friction law  
+  - SSA Friction Parameter → *beta*  
+  - SSA Friction Exponent → *m*  
+  - SSA Friction Linear Velocity → *u_lin*  
+
+a Budd type friction law  
+  - SSA Friction Parameter → *beta*  
+  - SSA Friction Exponent → *m*  
+  - SSA Friction Linear Velocity → *u_lin*  
+  - SSA Haf Exponent → *q*  
+  - SSA Min Effective Pressure → *N_{min}*, such that *N >= N_{min}*  
+
+a regularised Coulomb friction law without explicit effective pressure dependence  
+  - SSA Friction Parameter → *beta*  
+  - SSA Friction Exponent → *m*  
+  - SSA Friction Linear Velocity → *u_lin*  
+  - SSA Friction Threshold Velocity → *u_0*  
+
+a regularised Coulomb type friction law  
+  - SSA Friction Parameter → *beta= {A_s}^{-m}*  
+  - SSA Friction Exponent → *m = 1/n*  
+  - SSA Friction Linear Velocity → *u_lin*  
+  - SSA Friction Post-Peak → *q >= 1*  
+  - SSA Friction Maximum Value → *C ~ max bed slope*  
+  - SSA Min Effective Pressure → *N_{min}*, such that *N >= N_{min}*  
+
+The keywords are set in the material section of the .sif.
+The Budd paramerisation and the Gagliardini version of the regularised Coulomb sliding parameterisation require the variable "effective pressure" to be present. 
+
 
 #### Sub-Element grounding line parametrisation
 The flotation condition can be tested directly at the integration points. The friction parameter is then set to 0 if ice is floating at the integration point.
