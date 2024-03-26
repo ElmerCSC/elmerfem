@@ -156,6 +156,9 @@ End
 
 Boundary Condition 3
   Target Boundaries(1) = 6
+  !
+  ! An absorbing BC for the TM case:
+  !  
   Electric Robin Coefficient im = Real $ k0*k0/beta0  
 End
 

@@ -155,8 +155,8 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       CALL Fatal(Caller, 'Memory allocation error.' )
     END IF
 
-    n_Circuits => Model%n_Circuits
-    Model%Circuit_tot_n = 0
+    n_Circuits => Model % n_Circuits
+    Model % Circuit_tot_n = 0
 
     ! Look for the real valued solver we attach the circuit equations to:
     ! -------------------------------------------------------------------
@@ -194,6 +194,9 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 
     DO p=1,n_Circuits
       n = GetNofCircVariables(p)
+
+      CALL Info(Caller,'Initializing circuit '//I2S(p)//' with '//I2S(n)//' variables!',Level=6)
+
       CALL AllocateCircuit(p)
       
       Circuits(p) % n_comp = CountNofCircComponents(p, n)
@@ -213,16 +216,15 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     
     END DO
 
+    CALL CheckComponentVariables()
+
+    
     ! Create CRS matrix structures for the circuit equations:
     ! ------------------------------------------------------
     CALL Circuits_MatrixInit()
     ALLOCATE(Crt(Model % Circuit_tot_n))
 
-    MultName = ListGetString( Solver % Values, 'Lagrange Multiplier Name', Found )
-    IF ( .NOT. Found ) THEN
-      MultName = 'LagrangeMultiplier'
-      CALL Info(Caller,'Defaulting name of Lagrange multiplier to: '//TRIM(MultName),Level=8)
-    END IF      
+    MultName = LagrangeMultiplierName(ASolver)
   END IF
   
   ! If we have angle given explicitly, do not compute it 
@@ -306,8 +308,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
   END IF
 
   IF( LIstGetLogical( Solver % Values,'Save Circuit Matrix',Found ) ) THEN
-    CALL ListAddString( Solver % Values, 'Linear System Save Prefix','circuit')
-    CALL SaveLinearSystem( Solver, CM )
+    CALL SaveLinearSystem( Solver, CM,'circuit',ASolver % Matrix % NumberOfRows)
   END IF
     
   
@@ -590,7 +591,7 @@ CONTAINS
       ! There has been somewhat different philosophies in how to create the scalar and vector fields
       ! that span the current densities. This is an effort to enable the components to all use
       ! the current density computed by the CoilSolver without writing any additional keywords to the
-      ! component sections. The idea is that the the circuit then only has current densities defined
+      ! component sections. The idea is that the circuit then only has current densities defined
       ! by the CoilSolver. If this is not desired then also no such keywords should be used in the Solver
       ! section of this module. 
       !------------------------------------------------------------------------------------------------
@@ -1330,12 +1331,12 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     Model % HarmonicCircuits = .TRUE.
     CALL AddComponentsToBodyLists()
     
-    ALLOCATE( Model%Circuit_tot_n, Model%n_Circuits, STAT=istat )
+    ALLOCATE( Model % Circuit_tot_n, Model % n_Circuits, STAT=istat )
     IF ( istat /= 0 ) THEN
       CALL Fatal( Caller, 'Memory allocation error.' )
     END IF
 
-    n_Circuits => Model%n_Circuits
+    n_Circuits => Model % n_Circuits
     Model % Circuit_tot_n = 0
 
     ! Look for the solver we attach the circuit equations to:
@@ -1437,8 +1438,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
   END IF
 
   IF( ListGetLogical( Solver % Values,'Save Circuit Matrix',Found ) ) THEN
-    CALL ListAddString( Solver % Values, 'Linear System Save Prefix','circuit')
-    CALL SaveLinearSystem( Solver, CM )
+    CALL SaveLinearSystem( Solver, CM,'circuit',ASolver % Matrix % NumberOfRows)
   END IF
     
   CALL DefaultFinish()
@@ -1703,10 +1703,11 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       CASE ('stranded')
         StrandedHomogenization = GetLogical(CompParams, 'Homogenization Model', Found)
         IF ( StrandedHomogenization ) THEN 
-          sigma_33 = 0._dp
-          sigmaim_33 = 0._dp
           sigma_33 = GetReal(CompParams, 'sigma 33', Found)
+          IF ( .NOT. Found ) sigma_33 = 0._dp
           sigmaim_33 = GetReal(CompParams, 'sigma 33 im', FoundIm)
+          IF ( .NOT. FoundIm ) sigmaim_33 = 0._dp
+          IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model sigma 33 not found!')
           IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('AddComponentEquationsAndCouplings', &
               'Homogenization Model Sigma 33 not found!')
           Tcoef = CMPLX(0._dp, 0._dp, KIND=dp)
@@ -2564,7 +2565,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
   REAL (KIND=dp), ALLOCATABLE, SAVE :: Az0(:)
   REAL (KIND=dp), POINTER :: Acorr(:)
   CHARACTER(*), PARAMETER :: Caller = 'CircuitsOutput'
-  CHARACTER(LEN=MAX_NAME_LEN), SAVE :: CktPrefix
+  CHARACTER(LEN=MAX_NAME_LEN), SAVE :: CktPrefix, sname
   LOGICAL :: Parallel
 !------------------------------------------------------------------------------  
       
@@ -2656,7 +2657,9 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
   ALLOCATE(crt(circuit_tot_n), crtt(circuit_tot_n))
    crt = 0._dp
    crtt = 0._dp
-   LagrangeVar => VariableGet( Solver % Mesh % Variables,'LagrangeMultiplier')
+
+   sname = LagrangeMultiplierName( ASolver )
+   LagrangeVar => VariableGet( ASolver % Mesh % Variables,sname)
    IF(ASSOCIATED(LagrangeVar)) THEN
      CALL Info(Caller,'Initializing Lagrange multipliers of size: '&
          //I2S(SIZE(LagrangeVar % Values)),Level=8)

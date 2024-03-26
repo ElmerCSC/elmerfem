@@ -1686,7 +1686,7 @@ CONTAINS
       Offset = Offset + IntSize + k
     END IF
 
-    ! For higher order L-elemenet we need to create also the coordinates on-the-fly.
+    ! For higher order L-element we need to create also the coordinates on-the-fly.
     ! It would be convenient if the coordinate would be available as a 3-component variable.
     ! If the coordinates change this should be modified...
     IF( LagN > 0 ) THEN

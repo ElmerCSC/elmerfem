@@ -18,7 +18,7 @@ Boundary Definitions
   4        4        2        1
 End
 Numbering = Horizontal
-Minimum Elemenet Divisions = 2 2 
+Minimum Element Divisions = 2 2 
 Element Degree = 1
 Element Innernodes = False
 Triangles = False

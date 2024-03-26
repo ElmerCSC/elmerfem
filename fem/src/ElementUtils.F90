@@ -126,6 +126,7 @@ CONTAINS
      IF ( ASSOCIATED( Matrix % Values ) )      DEALLOCATE( Matrix % Values )
      IF ( ASSOCIATED( Matrix % MassValues ) )  DEALLOCATE( Matrix % MassValues )
      IF ( ASSOCIATED( Matrix % DampValues ) )  DEALLOCATE( Matrix % DampValues )
+     IF ( ASSOCIATED( Matrix % PrecValues ) )  DEALLOCATE( Matrix % PrecValues )
      IF ( ASSOCIATED( Matrix % BulkValues ) )  DEALLOCATE( Matrix % BulkValues )
      IF ( ASSOCIATED( Matrix % BulkRHS   ) )   DEALLOCATE( Matrix % BulkRHS )
 
@@ -179,6 +180,7 @@ CONTAINS
            IF(ALLOCATED(m % ILUValues)) DEALLOCATE(m % ILUValues)
            IF(ALLOCATED(m % MassValues)) DEALLOCATE(m % MassValues)
            IF(ALLOCATED(m % DampValues)) DEALLOCATE(m % DampValues)
+           IF(ALLOCATED(m % PrecValues)) DEALLOCATE(m % PrecValues)
          END IF
        END DO
        DEALLOCATE(s % IfMatrix)
@@ -195,6 +197,7 @@ CONTAINS
            IF(ALLOCATED(m % ILUValues)) DEALLOCATE(m % ILUValues)
            IF(ALLOCATED(m % MassValues)) DEALLOCATE(m % MassValues)
            IF(ALLOCATED(m % DampValues)) DEALLOCATE(m % DampValues)
+           IF(ALLOCATED(m % PrecValues)) DEALLOCATE(m % PrecValues)
          END IF
        END DO
        DEALLOCATE(s % NbsIfMatrix)
@@ -2014,7 +2017,14 @@ CONTAINS
      END IF
      
      NULLIFY( Matrix % MassValues, Matrix % DampValues, Matrix % Force, Matrix % RHS_im )
-!------------------------------------------------------------------------------
+
+     IF (ListGetLogical(Solver % Values, 'Allocate Preconditioning Matrix', GotIt)) THEN
+       CALL Info(Caller, 'Allocating for separate preconditioning matrix!', Level=20)
+       ALLOCATE(Matrix % PrecValues(SIZE(Matrix % Values)) )
+       Matrix % PrecValues = 0.0d0
+     END IF
+
+     !------------------------------------------------------------------------------
      Matrix % Solver => Solver
      Matrix % DGMatrix = DG
      Matrix % Subband = DOFs * n
@@ -2356,6 +2366,30 @@ CONTAINS
  END SUBROUTINE TangentDirections
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+!> Given one or two tangents return the normal direction.
+!> It is assumed that if one tangent is given the normal is in xy-plane otherwise
+!> in 3D. Note that the sign of normal vector is not unique.
+!------------------------------------------------------------------------------
+  FUNCTION NormalDirection( Tangent1,Tangent2 ) RESULT ( Normal ) 
+!------------------------------------------------------------------------------
+   REAL(KIND=dp) :: Normal(3),Tangent1(3)
+   REAL(KIND=dp), OPTIONAL :: Tangent2(3)
+!------------------------------------------------------------------------------
+   REAL(KIND=dp) :: t1(3),t2(3)
+!------------------------------------------------------------------------------
+
+   IF(PRESENT(Tangent2)) THEN
+     Normal = CrossProduct(Tangent1,Tangent2)
+   ELSE
+     Normal(1) = Tangent1(2)
+     Normal(2) = -Tangent1(1)
+   END IF
+   Normal = Normal/SQRT(SUM(Normal**2))       
+!------------------------------------------------------------------------------
+ END FUNCTION NormalDirection
+!------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------

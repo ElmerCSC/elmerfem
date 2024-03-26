@@ -132,34 +132,23 @@ CONTAINS
     CHARACTER(LEN=1024) :: InfoFileName 
    
 
-    MinOutputLevel = ListGetInteger( OutputList, &
-        'Min Output Level', GotIt )
-
-    MaxOutputLevel = ListGetInteger( OutputList, &
-        'Max Output Level', GotIt )
-
+    MinOutputLevel = ListGetInteger( OutputList,'Min Output Level', GotIt )
+    MaxOutputLevel = ListGetInteger( OutputList,'Max Output Level', GotIt )
     IF ( .NOT. GotIt ) MaxOutputLevel = 10
-
-    OutputMask => ListGetIntegerArray( OutputList, &
-        'Output Level', GotIt )
-
+    DO i=0,31
+      OutputLevelMask(i) = ( i >= MinOutputLevel .AND. i <= MaxOutputLevel )
+    END DO
+    
+    OutputMask => ListGetIntegerArray( OutputList,'Output Level', GotIt )
     IF ( GotIt ) THEN
       DO i=1,SIZE(OutputMask)
-        OutputLevelMask(i-1) = OutputMask(i) /= 0
+        OutputLevelMask(i-1) = ( OutputMask(i) /= 0 .AND. OutputLevelMask(i-1))
       END DO
     END IF
 
-    DO i=0,31
-      OutputLevelMask(i) = OutputLevelMask(i) .AND. &
-          i >= MinOutputLevel .AND. i <= MaxOutputLevel
-    END DO
-
-    OutputPrefix = ListGetLogical( OutputList, &
-        'Output Prefix', GotIt )
+    OutputPrefix = ListGetLogical( OutputList,'Output Prefix', GotIt )
     IF ( .NOT. GotIt ) OutputPrefix = .FALSE.
-
-    OutputCaller = ListGetLogical( OutputList, &
-        'Output Caller', GotIt )
+    OutputCaller = ListGetLogical( OutputList,'Output Caller', GotIt )
     IF ( .NOT. GotIt ) OutputCaller = .TRUE.
 
     ! By default only on partition is used to show the results
@@ -1162,8 +1151,9 @@ CONTAINS
       END DO
             
       ! If automatic numbering is used map the names to numbers
+      ! Also otherwise, this may be handy sometimes.
       !------------------------------------------------------------
-      IF( .NOT. Numbering ) THEN
+      !IF( .NOT. Numbering ) THEN
         DO i = 1, Model % NumberOfBodies
           IF( .NOT. ListCheckPresent( Model % Bodies(i) % Values,'Material') ) THEN
             name = ListGetString( Model % Bodies(i) % Values,'Material Name', Found )
@@ -1246,9 +1236,9 @@ CONTAINS
           END IF
                
         END DO ! number of bodies
-      END IF
+      !END IF
 
-
+        
       ! Make sanity check that all Material, Body Force and Equation is associated to some
       ! body. This is not detrimental so a warning suffices.
       !-----------------------------------------------------------------------------------
@@ -1679,6 +1669,10 @@ CONTAINS
         N2   = 1
         SizeGiven = .FALSE.
         SizeUnknown = .FALSE.
+
+        ! Optional parameter tag
+        partag = 0
+        disttag = .FALSE.
         
         DO WHILE( ReadAndTrim(InFileUnit,str,echo,string_literal) ) 
           
@@ -1693,10 +1687,6 @@ CONTAINS
               str = TRIM(TypeString) // ' ' // TRIM(str)
             END IF
           END IF
-
-          ! Optional parameter tag
-          partag = 0
-          disttag = .FALSE.
           
 20        CONTINUE
 
@@ -2023,10 +2013,12 @@ CONTAINS
                CALL Info(Caller,'Adding parameter tag '&
                    //I2S(partag)//' to keyword: '//TRIM(Name),Level=7)
                IF(.NOT. ScanOnly ) CALL ListParTagKeyword( List, Name, partag ) 
+               partag = 0
              END IF
              ! Add tag so we know to divide this keyword by the entity integral 
              IF( disttag ) THEN               
                IF(.NOT. ScanOnly ) CALL ListDistTagKeyword( List, Name )
+               disttag = .FALSE.
              END IF             
                           
              EXIT
@@ -2646,7 +2638,7 @@ CONTAINS
     CALL ListTagKeywords( Model,'normalize by volume',.TRUE., Found ) 
            
     CALL ListAddNewString( Model % Simulation,'Solver Input File',ModelName ) 
-    
+
     CALL InitializeOutputLevel( Model % Simulation )
 
     Transient=ListGetString(Model % Simulation, &
@@ -3660,7 +3652,16 @@ CONTAINS
         END IF
       END DO
     END BLOCK
-      
+
+    DO i=1,Model % NumberOfBCs
+      List => Model % BCs(i) % Values
+      CALL ListObsoliteFatal( List,'Transmittivity','Transmissivity') 
+    END DO
+    DO i=1,Model % NumberOfMaterials
+      List => Model % Materials(i) % Values
+      CALL ListObsoliteFatal( List,'Transmittivity','Transmissivity') 
+    END DO
+          
 
   END SUBROUTINE CompleteModelKeywords
   
@@ -4994,7 +4995,7 @@ CONTAINS
             IF ( PRESENT(FoundTStep) ) FoundTStep = TimeStep
          ELSE
             CALL Warn( Caller,&
-                 'Did not find the the requested timestep in the positions file;' )
+                 'Did not find the requested timestep in the positions file;' )
             CALL Warn( Caller,'using the last found one instead.')
             Offset2 = -TimeStepSize + VarNr*8
             CALL BinFSeek( PosUnit, Offset2 , BIN_SEEK_END )

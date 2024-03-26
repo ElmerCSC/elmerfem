@@ -43,7 +43,7 @@
 
 
 !------------------------------------------------------------------------------
-!> Module containing a the control for iterative solvers for linear systems
+!> Module containing control of the iterative solvers for linear systems
 !> that come with the Elmer suite.
 !------------------------------------------------------------------------------
 MODULE IterSolve
@@ -401,6 +401,10 @@ CONTAINS
     ELSE
        ComponentwiseStopC = ListGetLogical(Params,'Linear System Componentwise Backward Error',GotIt)
        IF (ComponentwiseStopC) THEN
+          IF (ComplexSystem) THEN
+            CALL Info('IterSolver', 'Linear System Componentwise Backward Error is active')
+            CALL Fatal('IterSolver', 'Error computation does not support Linear System Complex = True')
+          END IF
           StopcProc = AddrFunc(ComponentwiseBackwardError)
           HUTI_STOPC = HUTI_USUPPLIED_STOPC
        ELSE
@@ -414,7 +418,12 @@ CONTAINS
                  StopcProc = AddrFunc(NormwiseBackwardError)
                END IF
              ELSE
-                StopcProc = AddrFunc(NormwiseBackwardErrorGeneralized)
+               IF (ComplexSystem) THEN
+                 CALL Info('IterSolver', 'Linear System Normwise Backward Error is active')
+                 CALL Fatal('IterSolver', 'Error computation needs Linear System Row Equilibration = True')
+               ELSE
+                 StopcProc = AddrFunc(NormwiseBackwardErrorGeneralized)
+               END IF
              END IF
              HUTI_STOPC = HUTI_USUPPLIED_STOPC
           ELSE
@@ -670,7 +679,7 @@ CONTAINS
               ELSE IF ( PCondType == PRECOND_ILUT ) THEN
                 Condition = CRS_ComplexILUT( A,ILUT_TOL )
               END IF
-            ELSE IF (ILUn>=0) THEN
+            ELSE IF (ILUn>=0 .OR. PCondType == PRECOND_ILUT) THEN
               SELECT CASE(PCondType)
               CASE(PRECOND_ILUn, PRECOND_Circuit)
                 NullEdges = ListGetLogical(Params, 'Edge Basis', GotIt)

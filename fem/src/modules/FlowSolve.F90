@@ -94,7 +94,7 @@
      REAL(KIND=dp) :: RelativeChange,UNorm,Gravity(3),AngularVelocity(3), &
        Tdiff,s,Relaxation,NewtonTol,NewtonUBound,NonlinearTol, &
        ReferencePressure=0.0, SpecificHeatRatio, &
-       PseudoCompressibilityScale=1.0, FreeSTol, res
+       PseudoCompressibilityScale=1.0, FreeSTol, res, MaxNorm
 
      INTEGER :: NSDOFs,NewtonIter,NewtonMaxIter,NonlinearIter,FreeSIter
 
@@ -195,6 +195,9 @@
 
      IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
 
+     
+
+     
      CALL DefaultStart()
      
 !    Check for local coordinate system
@@ -279,10 +282,17 @@
      ForceVector => StiffMatrix % RHS
      UNorm = Solver % Variable % Norm
 
+
+     ! Enable keyword used also in IncompressibleNSVec and HydrostaticNSVec
+     IF(ListGetLogical(Solver % Values,'Constant-Viscosity Start',GotIt )) THEN
+       IF(.NOT. AllocationsDone) THEN
+         CALL ListAddConstReal( Solver % Values,'Newtonian Viscosity Condition',1.0_dp)
+       END IF
+     END IF
+     
 !------------------------------------------------------------------------------
 !     Allocate some permanent storage, this is done first time only
-!------------------------------------------------------------------------------
-
+!------------------------------------------------------------------------------     
      IF ( .NOT.AllocationsDone .OR. Solver % MeshChanged ) THEN
 
        N = Solver % Mesh % MaxElementDOFs
@@ -477,6 +487,10 @@
      FreeSIter = ListGetInteger( Solver % Values, &
         'Free Surface After Iterations', GotIt, minv=0 )
      IF ( .NOT. GotIt ) FreeSIter = 0
+
+     MaxNorm = ListGetConstReal( Solver % Values, &
+        'Nonlinear System Max Norm Return', GotIt, minv=0.0d0 )
+     IF ( .NOT. GotIt ) MaxNorm = HUGE(1.0_dp)
 
      DirectionName = ListGetString(Solver %Values, 'Implicit Friction Direction Vector', ImplicitFrictionDirection)
      IF (ImplicitFrictionDirection) THEN
@@ -1273,6 +1287,11 @@
 
       Unorm = DefaultSolve()
 
+      ! If we have constant viscosity start then remove it already after first solution.
+      IF(ListGetLogical(Solver % Values,'Constant-Viscosity Start',GotIt )) THEN
+        CALL ListRemove( Solver % Values,'Newtonian Viscosity Condition')
+      END IF
+      
       st = CPUTIme()-st
       totat = totat + at
       totst = totst + st
@@ -1312,6 +1331,10 @@
       END IF
         
       IF ( RelativeChange < NonLinearTol .AND. Iter<NonlinearIter ) EXIT
+      IF ( Solver % Variable % Norm > MaxNorm) THEN
+         CALL Warn('FlowSolve', 'Exiting as nonlinear norm is above allowed maximum!')
+         EXIT
+      END IF
 
 !------------------------------------------------------------------------------
 !     If free surfaces in model, this will move the nodal points

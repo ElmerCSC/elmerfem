@@ -18,6 +18,8 @@ This solver doesn't work for the GOLF anisotropic ([AIFlow Solver](./AIFlowSolve
 
 2024-01-23: the ComputeDevStress solver is now compatible with the snow/firn rheology ([Porous Solver](./PorousSolve.md)). In that case, the Flow Solver Name variable has simply to be set to "Porous". Note that the possibility of using intrinsic functions of the Porous Solver allowing direct computation of stresses at nodes is kept. In that case, the stress at a given node is computed as the average contribution from all the elements belonging at this given node. This is slightly different than solving the above equation through the variational method as done by the ComputeDevStress. The ComputeDevStress approach is preferable, especially at partition interfaces.
 
+2023-11-14: Using the new Vectorized Stokes solver IncompressibleNSvec, the ComputeDevStress solver will not work as the Constant Temperature in the Material has been changed to Relative Temperature. You can either set back to the old keywords setting Glen Allow Old Keywords to True in the Material section. An other solution is to use the effective viscosity and strain-rate computed internaly in the vectorized Stokes solver (variables Viscosity and Shearrate should be exported using either -ip or -lm).  
+
 ## SIF contents
 The required keywords in the SIF file for this solver are:
 

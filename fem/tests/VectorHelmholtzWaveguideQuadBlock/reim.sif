@@ -1,0 +1,55 @@
+  Linear System Symmetric = False
+  Linear system Complex = True
+  Linear System Block Mode = True
+
+  Block Gauss-Seidel = True
+  Block Matrix Reuse = False
+  Block Preconditioner = True
+
+! True + True seems to provide best speed-up
+  Block Scaling = True
+
+! Linear system solver for outer loop
+!-----------------------------------------
+  Outer: Linear System Solver = "Iterative"
+  Outer: Linear System Convergence Tolerance = 1e-6
+  Outer: Linear System Iterative Method = gcr
+  Outer: Linear System Max Iterations = 200 
+  Outer: Linear System Residual Output = 1
+  Outer: Linear System GCR Restart = 50
+  Outer: Linear System Abort Not Converged = False
+  Outer: Linear System Pseudo Complex = True
+  Outer: Linear System Symmetric = True
+
+  $blocktol = 0.01
+
+  block 11: Linear System Complex = False
+  block 22: Linear System Scaling = False
+
+!  block 11: Linear System Solver = "Iterative"
+!  block 11: Linear System Convergence Tolerance = 1.0e-6
+!  block 11: Linear System Iterative Method = bicgstab2
+!  block 11: Linear System Residual Output = 1
+!  block 11: Linear System Max Iterations = 2000
+!  block 11: Linear System Abort Not Converged = False
+!  block 11: Linear System Scaling = True
+!  block 11: Linear System Preconditioning = ILU3
+
+!  block 22: Linear System Solver = "Iterative"
+!  block 22: Linear System Convergence Tolerance = 1.0e-6
+!  block 22: Linear System Iterative Method = idrs
+!  block 22: Linear System Residual Output = 1
+!  block 22: Linear System Max Iterations = 2000
+!  block 22: Linear System Abort Not Converged = False
+!  block 22: Linear System Scaling = True
+!  block 22: Linear System Preconditioning = ILU1
+  
+  block 11: Linear System Solver = "direct"
+  block 11: Linear System direct method = "mumps"
+  block 11: Linear System Scaling = False
+
+  block 22: Linear System Solver = "direct"
+  block 22: Linear System direct method = "mumps"
+  block 22: Linear System Complex = False
+
+  Linear System Timing = Logical True

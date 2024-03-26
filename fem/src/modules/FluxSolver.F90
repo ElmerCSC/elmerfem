@@ -38,7 +38,7 @@
 
 !------------------------------------------------------------------------------
 !> Subroutine for computing fluxes and gradients of scalar fields. 
-!> For example, one may compute the the heat flux as the negative gradient of temperature
+!> For example, one may compute the heat flux as the negative gradient of temperature
 !> field multiplied by the heat conductivity.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
@@ -220,7 +220,7 @@ SUBROUTINE FluxSolver( Model,Solver,dt,Transient )
     Solver % Matrix % RHS => ForceVector(:,i)
 
     ! If nothing else specified, then consider only the last component
-    ! for norm comparison. The the coupled system norm also converges. 
+    ! for norm comparison. Then the coupled system norm also converges. 
     IF( i == Dofs .AND. AutoNorm ) THEN
       CALL ListRemove( SolverParams,'Skip Compute Nonlinear Change')
     END IF

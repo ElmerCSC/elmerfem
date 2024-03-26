@@ -51,7 +51,7 @@ SUBROUTINE CheckFlowConvergence( Model, Solver, dt, Transient )
   REAL(KIND=dp) :: SaveNewtonTol, MaxNSDiverge, MaxNSValue, FirstMaxNSValue, FlowMax,&
   SaveFlowMax, Mag, NSChange, SaveDt, SaveRelax,SaveMeshMinLC,SaveMeshRmLC,SaveMeshRmThresh
   REAL(KIND=dp), POINTER :: TimestepSizes(:,:)
-  INTEGER :: i,j,SaveNewtonIter,Num, ierr, FailCount
+  INTEGER :: i,j,SaveNewtonIter,Num, ierr, FailCount, ier
   CHARACTER(MAX_NAME_LEN) :: FlowVarName, SolverName, EqName, RemeshEqName
 
   SAVE ::SaveNewtonTol, SaveNewtonIter, SaveFlowMax, SaveDt, FirstTime, FailCount,&
@@ -752,7 +752,7 @@ CONTAINS
          MeshBC,col, dim, MetisMethod, MetisMethodDefault, active, NextBasalPerm, &
          FrontBCtag, GroupCount, GroupEnd, GroupStart, TangledGroups
 
-    INTEGER :: comm, ierr, Me, PEs, TotalNodes, DegenCount
+    INTEGER :: comm, ierr, Me, PEs, TotalNodes, DegenCount, ier
     INTEGER, PARAMETER :: GeoUnit = 10
     INTEGER, ALLOCATABLE :: MyFaceNodeNums(:), PFaceNodeCount(:), FNColumns(:), disps(:), &
          WritePoints(:), LocalTangledNode(:), TangledNode(:), WorkInt(:), TangledColumn(:),&
@@ -1819,7 +1819,7 @@ CONTAINS
        WRITE(GeoUnit,'(A)') 'Physical Surface(1)={1};'
 
        !-------------Write attractor etc--------------
-       WRITE(GeoUnit,'(A)') 'Field[1] = Attractor;'
+       WRITE(GeoUnit,'(A)') 'Field[1] = Distance;'
        WRITE(GeoUnit,'(A)') 'Field[1].NNodesByEdge = 100.0;'
        WRITE(GeoUnit,'(A)') 'Field[1].NodesList = {'
        DO i=1,SIZE(FrontLineNodeNums)-1
@@ -1845,7 +1845,8 @@ CONTAINS
        !-----------system call gmsh------------------
        !'env -i' obscures all environment variables, so gmsh doesn't see any
        !MPI stuff and break down.
-       CALL EXECUTE_COMMAND_LINE( "env -i PATH=$PATH LD_LIBRARY_PATH=$LD_LIBRARY_PATH gmsh -2 "// filename, .TRUE., ierr )
+       CALL EXECUTE_COMMAND_LINE( "env -i PATH=$PATH LD_LIBRARY_PATH=$LD_LIBRARY_PATH &
+            gmsh -2 "// filename//achar(0), .TRUE., ierr, ier)
        IF(ierr > 1) THEN
          IF(ierr == 127) THEN
            CALL Fatal(SolverName, "The 3D Calving implementation depends on GMSH, but this has not been found.")
@@ -1872,7 +1873,7 @@ CONTAINS
           WRITE(Message, '(A,A)') "ElmerGrid 14 2 ",TRIM(filename_root)
        END IF
 
-       CALL EXECUTE_COMMAND_LINE( Message, .TRUE., ierr )
+       CALL EXECUTE_COMMAND_LINE( Message, .TRUE., ierr, ier)
        IF(ierr /= 0) THEN
           WRITE(Message, '(A,i0)') "Error executing ElmerGrid, error code: ",ierr
           CALL Fatal(SolverName,Message)
@@ -2970,16 +2971,16 @@ CONTAINS
 	     TRIM(filename_root),INT(TimestepVar % Values(1))
 
 	WRITE(Message,'(A,A)') "mkdir -p ",TRIM(MoveMeshFullPath)
-	CALL EXECUTE_COMMAND_LINE( Message, .TRUE., ierr )
+	CALL EXECUTE_COMMAND_LINE( Message, .TRUE., ierr, ier )
 
 	WRITE(Message,'(A,A,A,A)') "mv ",TRIM(filename_root),"* ",&
 	     TRIM(MoveMeshFullPath)
-	CALL EXECUTE_COMMAND_LINE( Message, .TRUE., ierr )
+	CALL EXECUTE_COMMAND_LINE( Message, .TRUE., ierr, ier )
 
       ELSE
 	WRITE(Message,'(A,A,A,A,A,A)') "rm -r ",TRIM(filename)," ",&
 	     TRIM(filename_root),".msh ",TRIM(filename_root)
-	CALL EXECUTE_COMMAND_LINE( Message, .TRUE., ierr )
+	CALL EXECUTE_COMMAND_LINE( Message, .TRUE., ierr, ier )
       END IF
 
       !Deallocations

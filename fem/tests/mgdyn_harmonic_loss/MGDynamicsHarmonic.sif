@@ -14,7 +14,7 @@ Simulation
   Timestep Intervals = 10
   Steady State Max Iterations = 1
 
-  Post File = MGDynamics.vtu
+!  Post File = MGDynamics.vtu
   Output Intervals(1) = 1
 End
 

@@ -71,6 +71,9 @@
 /* Define if you have a CPardiso solver from MKL */
 #cmakedefine HAVE_CPARDISO
 
+/* Define if you have a CHOLMOD library */
+#cmakedefine HAVE_CHOLMOD
+
 /* Define if you have LAPACK library. */
 #define HAVE_LAPACK
 
@@ -159,8 +162,10 @@
 #cmakedefine HAVE_TRILINOS
 
 /* MMG */
+#if 1
 #cmakedefine HAVE_MMG 
 #cmakedefine HAVE_PARMMG
+#endif
 
 #define ELMER_LINKTYP ${ELMER_LINKTYP}
 #define ENABLE_DYNAMIC_LINKING 1

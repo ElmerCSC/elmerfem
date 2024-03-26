@@ -387,6 +387,7 @@
          CurrentModel => LoadModel(ModelName,.FALSE.,ParEnv % PEs,ParEnv % MyPE,MeshIndex)
          IF(.NOT.ASSOCIATED(CurrentModel)) EXIT
 
+         
          !----------------------------------------------------------------------------------
          ! Set namespace searching mode
          !----------------------------------------------------------------------------------
@@ -472,6 +473,7 @@
 ! Support easily saving scalars to a file activated by "Scalars File" keyword.
 !-----------------------------------------------------------------------------
        CALL AddSaveScalarsHack()
+
 
 !------------------------------------------------------------------------------
 !      Add coordinates such that if there is a solver that is run on creation
@@ -676,16 +678,18 @@
      CALL CompareToReferenceSolution( Finalize = .TRUE. )
      
 #ifdef DEVEL_LISTUSAGE
-     IF(InfoActive(6)) THEN
+     IF(InfoActive(10) .AND. ParEnv % MyPe == 0 ) THEN
        CALL Info('MAIN','Reporting unused list entries for sif improvement!')
-       CALL Info('MAIN','If you do not want these lines undefine > DEVEL_LISTUSAGE < !')
+       CALL Info('MAIN','If you do not want these lines undefine > DEVEL_LISTUSAGE < !')       
        CALL ReportListCounters( CurrentModel, 2 )
      END IF
 #endif
 #ifdef DEVEL_LISTCOUNTER
-     CALL Info('MAIN','Reporting list counters for code optimization purposes only!')
-     CALL Info('MAIN','If you get these lines with production code undefine > DEVEL_LISTCOUNTER < !')
-     CALL ReportListCounters( CurrentModel, 3 )
+     IF( ParEnv % MyPe == 0 ) THEN
+       CALL Info('MAIN','Reporting list counters for code optimization purposes only!')
+       CALL Info('MAIN','If you get these lines with production code undefine > DEVEL_LISTCOUNTER < !')
+       CALL ReportListCounters( CurrentModel, 3 )
+     END IF
 #endif
           
 !------------------------------------------------------------------------------
@@ -1646,6 +1650,7 @@
        CALL VariableAdd( Mesh % Variables, Mesh, &
                Name='coupled iter', DOFs=1, Values=steadyIt )
 
+
        IF( ListCheckPrefix( CurrentModel % Simulation,'Periodic Time') .OR. &
            ListCheckPresent( CurrentModel % Simulation,'Time Period') ) THEN
          ! For periodic systems we may do several cycles.
@@ -1661,7 +1666,7 @@
          CALL VariableAdd( Mesh % Variables, Mesh, Name='rotor angle',DOFs=1, Values=sAngle )
          CALL VariableAdd( Mesh % Variables, Mesh, Name='rotor velo',DOFs=1, Values=sAngleVelo )
        END IF
-       
+              
        IF( ListCheckPresentAnySolver( CurrentModel,'Scanning Loops') ) THEN
          CALL VariableAdd( Mesh % Variables, Mesh, Name='scan', DOFs=1, Values=sScan )
        END IF
@@ -2775,9 +2780,10 @@
        END IF
 
        RealTimestep = 1
-              
-       DO timestep = 1,Timesteps(interval)
-         
+
+       timestep = 1
+       DO WHILE(timestep <= Timesteps(interval))
+
          cum_Timestep = cum_Timestep + 1
          sStep(1) = cum_Timestep
 
@@ -2997,17 +3003,32 @@
                maxtime = ListGetConstReal( CurrentModel % Simulation,'Real Time Max',GotIt)
                IF( GotIt ) THEN
                  WRITE( Message,'(A,F8.3)') 'Fraction of real time left: ',&
-                     1.0_dp-RealTime() / maxtime
+                     1.0_dp-(RealTime()-RT0)/ maxtime
                END IF
 
+               ! This gives elapsed time in same format as estimated time
+               timeleft = (newtime-RT0)
+               IF( timeleft > 1 ) THEN
+                 IF (timeleft >= 10 * 3600) THEN 
+                   WRITE( Message,'(A)') 'Elapsed time: '//I2S(NINT(timeleft/3600))//' hours'
+                 ELSE IF (timeleft >= 3600) THEN   
+                   WRITE( Message,'(A,F5.1,A)') 'Elapsed time:',timeleft/3600,' hours'
+                 ELSE IF(timeleft >= 60) THEN 
+                   WRITE( Message,'(A,F5.1,A)') 'Elapsed time:',timeleft/60,' minutes'
+                 ELSE                         
+                   WRITE( Message,'(A,F5.1,A)') 'Elapsed time:',timeleft,' seconds'
+                 END IF
+                 CALL Info( 'MAIN', Message, Level=6 )
+               END IF
+               
                ! Compute estimated time left in seconds
                timeleft = (stepcount-(cum_Timestep-1))*(newtime-prevtime)
                
                ! No sense to show too short estimated times
                IF( timeleft > 1 ) THEN
-                 IF (timeleft >= 24 * 3600) THEN ! >24 hours
+                 IF (timeleft >= 10 * 3600) THEN ! >10 hours
                    WRITE( Message,'(A)') 'Estimated time left: '//I2S(NINT(timeleft/3600))//' hours'
-                 ELSE IF (timeleft >= 3600) THEN   ! 1 to 20 hours
+                 ELSE IF (timeleft >= 3600) THEN   ! >1 hours
                    WRITE( Message,'(A,F5.1,A)') 'Estimated time left:',timeleft/3600,' hours'
                  ELSE IF(timeleft >= 60) THEN ! 1 to 60 minutes
                    WRITE( Message,'(A,F5.1,A)') 'Estimated time left:',timeleft/60,' minutes'
@@ -3279,7 +3300,7 @@
            CALL SaveToPost(0)
            k = MOD( Timestep-1, OutputIntervals(Interval) )
 
-           IF ( k == 0 .OR. SteadyStateReached ) THEN            
+           IF ( k == 0 .OR. SteadyStateReached ) THEN
              DO i=1,nSolvers
                Solver => CurrentModel % Solvers(i)
                IF ( Solver % PROCEDURE == 0 ) CYCLE
@@ -3334,7 +3355,24 @@
          IF ( SteadyStateReached .AND. .NOT. (Transient .OR. Scanning) ) THEN
             IF ( Timestep >= CoupledMinIter ) EXIT
          END IF
-         
+
+         ! if extra steps have been added need to check if the loop needs extended
+         ! (used for calving algorithm)
+         IF(Transient) THEN
+            Timesteps => ListGetIntegerArray( CurrentModel % Simulation, &
+            'Timestep Intervals', GotIt )
+            IF ( .NOT.GotIt ) THEN
+                CALL Fatal('ElmerSolver', 'Keyword > Timestep Intervals < MUST be ' //  &
+                    'defined for transient and scanning simulations' )
+            END IF
+         END IF
+         Timestep = Timestep + 1
+
+         stepcount = 0
+         DO i = 1, TimeIntervals
+            stepcount = stepcount + Timesteps(i)
+         END DO
+
 !------------------------------------------------------------------------------
        END DO ! timestep within an iterval
 !------------------------------------------------------------------------------
@@ -3531,9 +3569,9 @@
 !------------------------------------------------------------------------------
   SUBROUTINE SaveCurrent( CurrentStep )
 !------------------------------------------------------------------------------
-    INTEGER :: i, j,k,l,n,m,q,CurrentStep,nlen
-    TYPE(Variable_t), POINTER :: Var
-    LOGICAL :: EigAnal, GotIt, BinaryOutput, SaveAll, OutputActive
+    INTEGER :: i, j,k,l,n,m,q,CurrentStep,nlen,Time
+    TYPE(Variable_t), POINTER :: Var, TimeVar
+    LOGICAL :: EigAnal, GotIt, BinaryOutput, SaveAll, OutputActive, EveryTime
     TYPE(ValueList_t), POINTER :: vList
     TYPE(Solver_t), POINTER :: pSolver
     
@@ -3574,6 +3612,19 @@
         IF( i > 0 ) THEN
           CALL Warn('SaveCurrent','> Output File < for restart should not include directory: '&
               //TRIM(OutputFile))
+        END IF
+
+        ! This was added for needs of calving where remeshing is applied and can go wrong but
+        ! we want to study the results. 
+        EveryTime = ListGetLogical( vList,'Output File Each Timestep',GotIt)
+        IF(EveryTime) THEN
+          TimeVar => VariableGet( CurrentModel % Variables, 'Timestep' )
+          Time = INT(TimeVar % Values(1))
+
+          OutputFile = OutputFile // '.' // i2s(Time)
+
+          ! set saves to zero. This will insure new save file even if remeshing fails
+          Mesh % SavesDone = 0
         END IF
 
         !IF ( ParEnv % PEs > 1 ) THEN
@@ -3663,8 +3714,9 @@
     TYPE(Variable_t), POINTER :: Var
     LOGICAL :: EigAnal = .FALSE., Found
     INTEGER :: i, j,k,l,n,q,CurrentStep,nlen,nlen2,timesteps,SavedEigenValues
+    CHARACTER(LEN=MAX_NAME_LEN) :: Simul, SaveWhich
+    CHARACTER(MAX_NAME_LEN) :: OutputDirectory
     TYPE(Solver_t), POINTER :: pSolver
-    CHARACTER(:), ALLOCATABLE :: Simul, SaveWhich
     
     Simul = ListGetString( CurrentModel % Simulation,'Simulation Type' )
 

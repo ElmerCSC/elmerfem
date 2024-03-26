@@ -1,0 +1,152 @@
+!ParallelRemesh test case
+
+$namerun = "ParallelRemesh"
+
+Header
+  Mesh DB "." "cube"
+  Results Directory "results/"
+End
+
+Simulation
+  Coordinate System = "Cartesian 3D"
+  Simulation Type = Transient
+
+  Timestepping Method = "bdf"
+  BDF Order = 1
+
+  Timestep Intervals(1) = 4 !9 for time saving
+  Output Intervals(1) = 1
+  Timestep Sizes(1) = Real $1.0/365.0
+
+  Initialize Dirichlet Conditions = Logical False !<- important, FrontExtent...
+
+  Steady State Max Iterations = 1 !20
+  Steady State Min Iterations = 1
+  Set Dirichlet BCs By BC Numbering = Logical True
+  max output level = 10
+!  Output Intervals = 1
+!  Output File = "$namerun".result" !"
+!  Output Coordinates = Logical True
+
+  Stabilization Use Longest Element Edge = Logical True
+
+!  Max Output Partition = integer 32
+!  max output level = 20
+!  output to file = logical true
+End
+
+Body 1
+  name = All
+  Equation = 1
+  Material = 1
+  Body force = 1
+  Initial Condition = 1
+End
+
+Solver 1 !creates test levelset variable
+  Equation = "Levelset"
+  Procedure = "TestLevelSet" "TestLevelSet"
+
+  Variable = "Remesh Levelset"
+  Variable DOFs = 1
+End
+
+Solver 2
+  Equation = "ResultOutputPreRemesh"
+  Procedure = File "ResultOutputSolve" "ResultOutputSolver"
+
+  Output File Name  = "$namerun"_preremesh" !"
+  Vtu Format = logical true
+  Binary Output = True
+  Single Precision = True
+  Save Geometry IDs = True
+End
+
+Solver 3
+  Equation = "Remesh"
+  Procedure = "ParallelRemesh" "ParallelRemesh"
+
+  mmg Hmin = Real 0.01
+  mmg Hausd = Real 0.05
+  mmg Hgrad = Real 2.0
+  mmg Hmax = Real 0.2
+
+  mmg Anisotropic = Logical True
+  mmg Target Length(3) = Variable Coordinate 1
+    Real Procedure "ParallelRemesh" "MeshMetricAniso"
+
+  MeshMetric Max Distance = Real 0.3
+  MeshMetric Min Distance = Real 0.1
+  MeshMetric Max LC = Real 0.1
+  MeshMetric Min LC = Real 0.03
+  MeshMetric Z Independent = Logical False
+
+  Rebalance = Logical True
+  Repartition Method = String "ParMetis"
+  Manually Assign Edges = Logical True
+  Automatic Angle Detection = Logical False
+
+!  Save Mesh Name = File "cube"
+
+  Save MMG Meshes = Logical False
+  Pre MMG Mesh Name = String "elmermesh_pre.mesh"
+  MMG Output Mesh Name = String "elmermesh_post.mesh"
+  Save MMG Sols = Logical False
+  Pre MMG Sol Name = String "elmersol_pre.sol"
+  MMG Output Sol Name = String "elmersol_post.sol"
+End
+
+Solver 4
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+
+  Operator 1 = partitions
+  Operator 2 = partition checksum
+  Operator 3 = partition neighbours checksum
+
+  Filename = f.dat
+
+  Show Norm Index = 2
+End
+
+
+!Solver 5
+!  Equation = "ResultOutputPostRemesh"
+!  Procedure = File "ResultOutputSolve1" "ResultOutputSolver"
+
+!  Output File Name  = "$namerun"_postremesh" !"
+!  Vtu Format = logical true
+!  Binary Output = True
+!  Single Precision = True
+!  Save Geometry IDs = True
+!End
+
+!!!!! EQUATION
+
+Equation 1 !Main body
+   Active Solvers (2) = 1 3 
+End
+!!!!! BOUNDARY CONDITIONS
+Boundary Condition 1
+End
+
+Boundary Condition 2
+End
+
+Boundary Condition 3
+End
+
+Boundary Condition 4
+End
+
+Boundary Condition 5
+End
+
+Boundary Condition 6
+End
+
+Body Force 1
+End
+
+Solver 4 :: Reference Norm = 1.44610300E+07
+Solver 4 :: Reference Norm Tolerance = 1.0e-2

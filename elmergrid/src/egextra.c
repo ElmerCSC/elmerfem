@@ -101,7 +101,7 @@ int SaveBoundary(struct FemType *data,struct BoundaryType *bound,
   int sideind[MAXNODESD1]; 
 
   if(!bound->created) {
-    printf("SaveBoundary: You tried to save a nonexisting boundary.\n");
+    printf("SaveBoundary: You tried to save a nonexistent boundary.\n");
     return(1);
   }
   if(bound->nosides == 0) return(0);
@@ -1328,7 +1328,7 @@ Real AbsMeanVector(Real *vector,int first,int last)
 
 
 Real DifferVector(Real *vector1,Real *vector2,int first,int last)
-/* Calcultes the mean of the relative difference of two vectors */
+/* Calculates the mean of the relative difference of two vectors */
 {
   Real sum=0.0, eps=1.0E-50;
   int i,n;

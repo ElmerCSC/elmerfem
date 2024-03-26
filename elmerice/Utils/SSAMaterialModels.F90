@@ -58,14 +58,22 @@ MODULE SSAMaterialModels
    REAL(KIND=dp) :: rho,rhow,sealevel ! density, sea-water density, sea-level
    REAL(KIND=dp),OPTIONAL :: SlipDer ! dSlip/du=dSlip/dv if ub=(u^2+v^2)^1/2 ! required to compute the Jacobian
 
-   TYPE(ValueList_t), POINTER :: Material
+
+
+   INTEGER            :: iFriction
+   INTEGER, PARAMETER :: LINEAR = 1
+   INTEGER, PARAMETER :: WEERTMAN = 2
+   INTEGER, PARAMETER :: BUDD = 5
+   INTEGER, PARAMETER :: REG_COULOMB_GAG = 3 ! Schoof 2005 & Gagliardini 2007
+   INTEGER, PARAMETER :: REG_COULOMB_JOU = 4 ! Joughin 2019
+   
+   TYPE(ValueList_t), POINTER :: Material, Constants
    TYPE(Variable_t), POINTER :: GMSol,BedrockSol,NSol
    INTEGER, POINTER :: NodeIndexes(:)
    CHARACTER(LEN=MAX_NAME_LEN) :: Friction
-   REAL(KIND=dp) :: Slip2
+   REAL(KIND=dp) :: Slip2, gravity, qq, hafq
    REAL(KIND=dp) :: fm,fq,MinN,U0
    REAL(KIND=dp) :: alpha,beta,fB
-   INTEGER :: iFriction
    INTEGER :: GLnIP
 
    REAL(KIND=dp),DIMENSION(n) :: NodalBeta, NodalGM, NodalBed, NodalLinVelo,NodalC,NodalN
@@ -89,54 +97,70 @@ MODULE SSAMaterialModels
    Friction = ListGetString(Material, 'SSA Friction Law',Found, UnFoundFatal=.TRUE.)
    SELECT CASE(Friction)
      CASE('linear')
-       iFriction = 1
+       iFriction = LINEAR
        fm = 1.0_dp
      CASE('weertman')
-       iFriction = 2
+       iFriction = WEERTMAN
+     CASE('budd')
+       iFriction = BUDD
      CASE('coulomb')
-       iFriction = 3
+       iFriction = REG_COULOMB_GAG
      CASE('regularized coulomb')
-       iFriction = 4
+       iFriction = REG_COULOMB_JOU
      CASE DEFAULT
-       CALL FATAL("SSAEffectiveFriction",'Friction should be linear, Weertman, Coulomb or Regularized coulomb')
+       CALL FATAL("SSAEffectiveFriction",'Friction choice not recognised')
     END SELECT
 
-    ! for all friction law
+    ! coefficient for all friction parameterisations
     NodalBeta = 0.0_dp
     NodalBeta(1:n) = ListGetReal( &
            Material, 'SSA Friction Parameter', n, NodeIndexes(1:n), Found,&
            UnFoundFatal=.TRUE.)
 
-    ! for Weertman and Coulomb friction
-    IF (iFriction > 1) THEN
+    ! for nonlinear powers of sliding velocity
+    SELECT CASE (iFriction)
+    CASE(REG_COULOMB_JOU,REG_COULOMB_GAG,WEERTMAN,BUDD)
       fm = ListGetConstReal( Material, 'SSA Friction Exponent', Found , UnFoundFatal=.TRUE.)
-
       NodalLinVelo = 0.0_dp
       NodalLinVelo(1:n) = ListGetReal( &
            Material, 'SSA Friction Linear Velocity', n, NodeIndexes(1:n), Found,&
            UnFoundFatal=.TRUE.)
-    END IF
+    CASE DEFAULT
+    END SELECT
 
-    ! only for Coulomb friction
-    IF (iFriction == 3) THEN
-      fq = ListGetConstReal( Material, 'SSA Friction Post-Peak', Found, UnFoundFatal=.TRUE. )
-
-      NodalC = 0.0_dp
-      NodalC(1:n) = ListGetReal( &
-           Material, 'SSA Friction Maximum Value', n, NodeIndexes(1:n), Found,&
-           UnFoundFatal=.TRUE.)
-
-      ! Get the effective pressure
+    ! where explicit dependence on effective pressure is present...
+    SELECT CASE (iFriction)
+    CASE(REG_COULOMB_GAG,BUDD)
       NSol => VariableGet( CurrentModel % Variables, 'Effective Pressure', UnFoundFatal=.TRUE. )
       CALL GetLocalSolution( NodalN,UElement=Element, UVariable=NSol)
-
       MinN = ListGetConstReal( Material, 'SSA Min Effective Pressure', Found, UnFoundFatal=.TRUE.)
-    END IF
+      fN = SUM( NodalN(1:n) * Basis(1:n) )
+      ! Effective pressure should be >0 (for the friction law)
+      fN = MAX(fN, MinN)
+    END SELECT
+    
+    ! parameters unique to one sliding parameterisation
+    SELECT CASE (iFriction)
 
-    ! only for Regularized Coulomb friction law we need to get U0 of Joughin law
-    IF (iFriction == 4) THEN
+    CASE(BUDD)
+      Constants => GetConstants()
+      gravity = ListGetConstReal( Constants, 'Gravity Norm', UnFoundFatal=.TRUE. )
+      ! calculate haf from N = rho_i g z*
+      qq = ListGetConstReal( Material, 'SSA Haf Exponent', Found, UnFoundFatal=.TRUE.)
+      hafq = fN / (gravity * rho) ** qq
+      
+    CASE(REG_COULOMB_GAG)
+      fq = ListGetConstReal( Material, 'SSA Friction Post-Peak', Found, UnFoundFatal=.TRUE. )
+      NodalC = 0.0_dp
+      NodalC(1:n) = ListGetReal( &
+          Material, 'SSA Friction Maximum Value', n, NodeIndexes(1:n), Found,&
+          UnFoundFatal=.TRUE.)
+      fC = SUM( NodalC(1:n) * Basis(1:n) )
+
+    CASE(REG_COULOMB_JOU)
       U0 = ListGetConstReal( Material, 'SSA Friction Threshold Velocity', Found, UnFoundFatal=.TRUE.)
-    END IF
+
+    END SELECT
 
     Beta=SUM(Basis(1:n)*NodalBeta(1:n))
 
@@ -152,9 +176,9 @@ MODULE SSAMaterialModels
    END IF
 
    Slip2=0.0_dp
-   IF (iFriction > 1) THEN
+   IF (iFriction .NE. LINEAR) THEN
      LinVelo = SUM( NodalLinVelo(1:n) * Basis(1:n) )
-     IF ((iFriction == 2).AND.(fm==1.0_dp)) iFriction=1
+     IF ((iFriction == WEERTMAN).AND.(fm==1.0_dp)) iFriction=LINEAR
      Slip2=1.0_dp
      IF (ub < LinVelo) then
        ub = LinVelo
@@ -162,21 +186,21 @@ MODULE SSAMaterialModels
      ENDIF
    END IF
 
-   IF (iFriction==3) THEN
-     fC = SUM( NodalC(1:n) * Basis(1:n) )
-     fN = SUM( NodalN(1:n) * Basis(1:n) )
-     ! Effective pressure should be >0 (for the friction law)
-     fN = MAX(fN, MinN)
-   END IF
-
    SELECT CASE (iFriction)
-    CASE(1)
+
+   CASE(LINEAR)
      Slip = beta
      IF (PRESENT(SlipDer)) SlipDer = 0._dp
-    CASE(2)
+
+   CASE(WEERTMAN)
      Slip = beta * ub**(fm-1.0_dp)
      IF (PRESENT(SlipDer)) SlipDer = Slip2*Slip*(fm-1.0_dp)/(ub*ub)
-    CASE(3)
+
+   CASE(BUDD)
+     Slip = beta * hafq * ub**(fm-1.0_dp)
+!     IF (PRESENT(SlipDer)) SlipDer = Slip2*Slip*(fm-1.0_dp)/(ub*ub)
+
+   CASE(REG_COULOMB_GAG)
      IF (fq.NE.1.0_dp) THEN
        alpha = (fq-1.0_dp)**(fq-1.0_dp) / fq**fq
      ELSE
@@ -185,11 +209,13 @@ MODULE SSAMaterialModels
      fB = alpha * (beta / (fC*fN))**(fq/fm)
      Slip = beta * ub**(fm-1.0_dp) / (1.0_dp + fB * ub**fq)**fm
      IF (PRESENT(SlipDer)) SlipDer  = Slip2 * Slip * ((fm-1.0_dp) / (ub*ub) - &
-             fm*fq*fB*ub**(fq-2.0_dp)/(1.0_dp+fB*ub**fq))
-    CASE(4)
+         fm*fq*fB*ub**(fq-2.0_dp)/(1.0_dp+fB*ub**fq))
+
+   CASE(REG_COULOMB_JOU)
      Slip = beta * ub**(fm-1.0_dp) / (ub + U0)**fm
      IF (PRESENT(SlipDer)) SlipDer = Slip2 * Slip * ((fm-1.0_dp) / (ub*ub) - &
-              fm*ub**(-1.0_dp)/(ub+U0))
+         fm*ub**(-1.0_dp)/(ub+U0))
+
    END SELECT
 
   END FUNCTION SSAEffectiveFriction

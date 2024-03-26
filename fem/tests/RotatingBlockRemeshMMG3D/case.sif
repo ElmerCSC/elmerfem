@@ -104,7 +104,7 @@ Solver 1
 !  remesh interval = integer 3
 
 ! This is a new feature:
-! The MMG is applied only the the region where this solver is active.
+! The MMG is applied only in the region where this solver is active.
 ! The other regions remain as is and are combined with the remeshed region.
 ! Intended use of the feature is, for example, air gap between stator & rotor. 
 

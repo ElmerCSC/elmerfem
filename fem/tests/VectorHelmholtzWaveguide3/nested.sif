@@ -1,5 +1,5 @@
 !
-! This differs from the the primary case VectorHelmholtzWaveguide in using
+! This differs from the primary case VectorHelmholtzWaveguide in using
 ! hexahedral elements and applying a nested iteration in the solution of 
 ! the linear system. The inner iteration depends on solving perturbed systems
 ! which should be easier to solve than the primary problem. This sif file is
@@ -62,18 +62,16 @@ End
 
 Solver 1
   Equation = "VectorHelmholtz"
-  Variable = E[E re:1 E im:1]
   Use Piola Transform = Logical False
   Optimize Bandwidth = True
-  Linear System Symmetric = False
-  Procedure = "VectorHelmholtz" "VectorHelmholtzSolver"
 
-!  Calculate Energy Norm = Logical True
+  Procedure = "VectorHelmholtz" "VectorHelmholtzSolver"
 
   Linear System Block Mode = True
   Block Nested System = True
   Block Preconditioner = True
   Block Scaling = True
+  Linear System Symmetric = False
   linear system abort not converged = false
 
 ! Specify the perturbation:
@@ -88,9 +86,9 @@ Solver 1
   Outer: Linear System Convergence Tolerance = 1e-8
   Outer: Linear System Normwise Backward Error = True
   Outer: Linear System Iterative Method = gcr
-  Outer: Linear System GCR Restart =  100
-  Outer: Linear System Residual Output =  1
-  Outer: Linear System Max Iterations =  100
+  Outer: Linear System GCR Restart = 100
+  Outer: Linear System Residual Output = 1
+  Outer: Linear System Max Iterations = 100
   Outer: Linear System Pseudo Complex = True
 
 ! Linear system solver for the inner solution:
@@ -113,14 +111,14 @@ Solver 1
   !block 11: Linear System Solver = "direct"
   !block 11: Linear System direct method = "mumps"
 
+  Nonlinear System Consistent Norm = True
+!  Calculate Energy Norm = Logical True
 End
 
 Solver 2
   Equation = "calcfields"
 
-  Optimize Bandwidth = False
   Procedure = "VectorHelmholtz" "VectorHelmholtzCalcFields"
-  Linear System Symmetric = False
 
   Calculate Elemental Fields = Logical True
   

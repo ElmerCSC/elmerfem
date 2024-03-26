@@ -725,9 +725,9 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
        IF (PartlyGroundedElement) THEN
           SELECT CASE (MeltParam)
           CASE('SEM3','sem3','SEM1','sem1')
-             rhow = ListGetConstReal( Model % Constants, 'SW Density', Found)
+             rhow = ListGetConstReal( Model % Constants, 'Ocean Water Density', Found)
              IF (.NOT.Found) THEN
-                WRITE (Message,'(A)') 'Fatal: Constant SW Density not found.'
+                WRITE (Message,'(A)') 'Fatal: Constant Ocean Water Density not found.'
                 CALL FATAL(SolverName,Message)
              END IF
              rho = ListGetConstReal( Model % Constants, 'Ice Density', Found)

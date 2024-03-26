@@ -46,12 +46,13 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
-  LOGICAL :: Found, PiolaVersion, SecondOrder, LagrangeGauge, StaticConductivity, &
+  LOGICAL :: Found, PiolaVersion, SecondOrder, SecondFamily, LagrangeGauge, StaticConductivity, &
              ElectroDynamics
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(ValueListEntry_t), POINTER :: VariablePtr
   INTEGER, PARAMETER :: b_empty = 0, b_Piola = 1, &
-       b_Secondorder = 2, b_Gauge = 4, b_Transient = 8, b_StaticCond = 16
+      b_Secondorder = 2, b_Gauge = 4, b_Transient = 8, b_StaticCond = 16, &
+      b_SecondFamily = 32
   INTEGER :: Paramlist
   CHARACTER(:), ALLOCATABLE :: ElemType
 
@@ -91,28 +92,29 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
   LagrangeGauge = GetLogical(SolverParams, 'Use Lagrange Gauge', Found)
   
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
-    PiolaVersion = GetLogical(SolverParams, &
-        'Use Piola Transform', Found )   
-    SecondOrder = GetLogical(SolverParams, 'Quadratic Approximation', Found)
-    IF (.NOT. PiolaVersion .AND. SecondOrder) THEN
-      CALL Warn("WhitneyAVSolver_Init0", &
-           "Requested Quadratic Approximation without Piola Transform. Setting Use Piola Transform = True.")
-      PiolaVersion = .TRUE.
-      CALL ListAddLogical( SolverParams, 'Use Piola Transform', .TRUE. )
-    END IF
+    ! We use one place where all the edge element keywords are defined and checked.
+    CALL EdgeElementStyle(SolverParams, PiolaVersion, SecondFamily, SecondOrder, Check = .TRUE. )
 
     IF (PiolaVersion) Paramlist = Paramlist + b_Piola
     IF (SecondOrder) Paramlist = Paramlist + b_Secondorder
     IF (LagrangeGauge) Paramlist = Paramlist + b_Gauge
     IF (StaticConductivity) Paramlist = Paramlist + b_StaticCond
     IF (Transient .OR. ElectroDynamics) Paramlist = Paramlist + b_Transient
-
+    IF (SecondFamily) ParamList = ParamList + b_SecondFamily
+    
     SELECT CASE (Paramlist)
     CASE (b_Piola + b_Transient + b_Secondorder, &
          b_Piola + b_Gauge + b_Secondorder, &
          b_Piola + b_Transient + b_Secondorder + b_StaticCond, &
          b_Piola + b_Secondorder + b_StaticCond)
       ElemType = "n:1 e:2 -brick b:6 -prism b:2 -pyramid b:3 -quad_face b:4 -tri_face b:2"
+
+      ! Note: only tets available for 2nd kind basis!
+    CASE (b_Piola + b_Transient + b_SecondFamily, &
+         b_Piola + b_Gauge + b_SecondFamily, &
+         b_Piola + b_Transient + b_SecondFamily + b_StaticCond, &
+         b_Piola + b_SecondFamily + b_StaticCond)
+      ElemType = "n:1 e:2"
 
     CASE (b_Piola + b_Transient, &
          b_Piola + b_Transient + b_StaticCond, &
@@ -124,6 +126,9 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
 
     CASE (b_Piola + b_Secondorder)
       ElemType = "n:0 e:2 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" 
+
+    CASE (b_Piola + b_Secondfamily)
+      ElemType = "n:0 e:2"
 
     CASE (b_Piola)
       ElemType = "n:0 e:1 -brick b:3 -quad_face b:2"
@@ -335,7 +340,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   INTEGER, POINTER :: Perm(:)
   INTEGER, ALLOCATABLE :: FluxMap(:)
   LOGICAL, ALLOCATABLE, SAVE :: TreeEdges(:)
-  LOGICAL :: Stat, EigenAnalysis, TG, DoneAssembly=.FALSE., &
+  LOGICAL :: Stat, TG, DoneAssembly=.FALSE., &
          SkipAssembly, ConstantSystem, ConstantBulk, JFix, JFixSolve, FoundRelax, &
          PiolaVersion, SecondOrder, LFact, LFactFound, EdgeBasis, &
          HasTensorReluctivity
@@ -388,13 +393,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   ElectroDynamics = ListGetLogical( SolverParams, 'Electrodynamics model', Found )
   EigenSystem = ListGetLogical( SolverParams, 'Eigen Analysis', Found )
   
-  SecondOrder = GetLogical( SolverParams, 'Quadratic Approximation', Found )
-  IF( SecondOrder ) THEN
-    PiolaVersion = .TRUE.
-  ELSE
-    PiolaVersion = GetLogical( SolverParams, 'Use Piola Transform', Found )
-  END IF
-
+  CALL EdgeElementStyle(SolverParams, PiolaVersion, SecondOrder )
   IF (PiolaVersion) THEN
     CALL Info('WhitneyAVSolver', &
         'Using Piola Transformed element basis functions',Level=4)
@@ -1485,15 +1484,10 @@ END BLOCK
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
-      IF (PiolaVersion) THEN
-        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
-             DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
-             BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-      ELSE
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-                  IP % W(t), detJ, Basis, dBasisdx )
-        CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
-      END IF
+
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis, dBasisdx, EdgeBasis = WBasis, &
+          RotBasis = RotWBasis, USolver = pSolver )
 
       x = SUM(Nodes % x(1:n)*Basis(1:n))
       y = SUM(Nodes % y(1:n)*Basis(1:n))
@@ -1546,15 +1540,9 @@ END BLOCK
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
-      IF (PiolaVersion) THEN
-        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
-             DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
-             BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-      ELSE
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-                  IP % W(t), detJ, Basis, dBasisdx )
-        CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
-      END IF
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis, dBasisdx, EdgeBasis = WBasis, &
+          RotBasis = RotWBasis, USolver = pSolver )
 
       x = SUM(Nodes % x(1:n)*Basis(1:n))
       y = SUM(Nodes % y(1:n)*Basis(1:n))
@@ -1603,24 +1591,16 @@ END BLOCK
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+           IP % W(t), detJ, Basis, dBasisdx )
+      CALL GetParentUVW(Element,GetElementNOFNodes(Element),Parent,n,uu,v,w,Basis)
+      
       IF (PiolaVersion) THEN
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-                  IP % W(t), detJ, Basis, dBasisdx )
-
-        CALL GetParentUVW(Element,GetElementNOFNodes(Element),Parent,n,uu,v,w,Basis)
- 
         stat = EdgeElementInfo( Parent, PNodes, uu, v, w, &
               DetF = PDetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-
       ELSE
-
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-                  IP % W(t), detJ, Basis, dBasisdx )
-
-        CALL GetParentUVW(Element,GetElementNOFNodes(Element),Parent,n,uu,v,w,Basis)
         stat = ElementInfo( Parent, PNodes, uu,v,w, pdetJ, Basis, dBasisdx )
-
         CALL GetEdgeBasis(Parent,WBasis,RotWBasis,Basis,dBasisdx)
       END IF
 
@@ -1679,16 +1659,9 @@ END BLOCK
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
-      IF (PiolaVersion) THEN
-        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
-             DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, dBasisdx = dBasisdx, &
-             BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)         
-      ELSE
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-                  IP % W(t), detJ, Basis, dBasisdx )
-        CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
-      END IF
-
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis, dBasisdx, EdgeBasis = WBasis, &
+          RotBasis = RotWBasis, USolver = pSolver )
       IF(WBaseFound) W = MATMUL(Wpot(1:n),dBasisdx(1:n,:))
 
       A = A + IP % s(t) * detJ
@@ -1748,18 +1721,10 @@ SUBROUTINE LocalConstraintMatrix( Element, n, nd, PiolaVersion, SecondOrder )
 
   np = n*Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
   DO t=1,IP % n
-    IF (PiolaVersion) THEN
-      stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-        IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
-        RotBasis = RotWBasis, dBasisdx = dBasisdx, &
-        BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-    ELSE
-      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-        IP % W(t), detJ, Basis, dBasisdx )
 
-      CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
-    END IF
-
+    stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+        IP % W(t), detJ, Basis, dBasisdx, EdgeBasis = WBasis, &
+        RotBasis = RotWBasis, USolver = pSolver )
 
     IF ( TransientGauge ) THEN
       IF ( ElectroDynamics ) THEN
@@ -1900,19 +1865,6 @@ END SUBROUTINE LocalConstraintMatrix
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
           IP % W(t), detJ, Basis, dBasisdx, EdgeBasis = WBasis, &
           RotBasis = RotWBasis, USolver = pSolver )
-
-
-!      IF (PiolaVersion) THEN
-!          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-!               IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
-!               RotBasis = RotWBasis, dBasisdx = dBasisdx, &
-!               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-!       ELSE
-!          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-!               IP % W(t), detJ, Basis, dBasisdx )
-!
-!          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
-!       END IF
 
        IF ( HasHBCurve ) THEN
          B_ip = MATMUL( Aloc(np+1:nd), RotWBasis(1:nd-np,:) )
@@ -2364,17 +2316,10 @@ END SUBROUTINE LocalConstraintMatrix
 
     np = n*Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
     DO t=1,IP % n
-      IF (PiolaVersion) THEN
-        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-            IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
-            RotBasis = RotWBasis, dBasisdx = dBasisdx, &
-            BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-      ELSE
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-            IP % W(t), detJ, Basis, dBasisdx )
 
-        CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
-      END IF
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis, dBasisdx, EdgeBasis = WBasis, &
+          RotBasis = RotWBasis, USolver = pSolver )            
 
       L = MATMUL(-JFixPot(1:n), dBasisdx(1:n,:))
       DO i = 1,nd-np
@@ -2434,16 +2379,11 @@ END SUBROUTINE LocalConstraintMatrix
     np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
 
     DO t=1,IP % n
-       IF ( PiolaVersion ) THEN
-         stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-             IP % W(t), DetF = DetJ, Basis = Basis, dBasisdx=dBasisdx, EdgeBasis = WBasis, &
-             BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-       ELSE
-          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-               IP % W(t), detJ, Basis, dBasisdx )
-          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
-       END IF
 
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis, dBasisdx, EdgeBasis = WBasis, &
+          RotBasis = RotWBasis, USolver = pSolver )
+      
        B  = SUM(Basis(1:n) * Bcoef(1:n))
        L  = MATMUL(LOAD(1:3,1:n), Basis(1:n))
 
@@ -2568,16 +2508,10 @@ END SUBROUTINE LocalConstraintMatrix
 
     np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     DO t=1,IP % n
-       IF ( PiolaVersion ) THEN
-          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
-               DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
-               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-       ELSE
-          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-               IP % W(t), detJ, Basis, dBasisdx )
 
-          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
-       END IF
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis, dBasisdx, EdgeBasis = WBasis, &
+          RotBasis = RotWBasis, USolver = pSolver )
 
        localGapLength  = SUM(Basis(1:n) * GapLength(1:n))
        muAir  = SUM(Basis(1:n) * AirGapMu(1:n))
@@ -3081,18 +3015,10 @@ END SUBROUTINE LocalConstraintMatrix
          EdgeBasisDegree=EdgeBasisDegree )
 
     np = n*Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
-    DO t=1,IP % n
-      IF (PiolaVersion) THEN
-        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-            IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
-            RotBasis = RotWBasis, dBasisdx = dBasisdx, &
-            BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-      ELSE
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-            IP % W(t), detJ, Basis, dBasisdx )
-        
-        CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
-      END IF
+    DO t=1,IP % n            
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis, dBasisdx, &
+          EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
 
       B_ip = MATMUL( Aloc(np+1:nd), RotWBasis(1:nd-np,:) )
       b2 = SUM(B_ip**2)
@@ -3297,7 +3223,10 @@ SUBROUTINE HelmholtzProjectorT(Model, Solver, dt, TransientSimulation)
     END IF
   END DO
 
-  IF (.NOT. Found ) THEN
+  IF (Found ) THEN
+    CALL Info('HelmholtzProjector', 'Solver inherits potential '&
+         //TRIM(PotName)//' from solver: '//I2S(i),Level=7)
+  ELSE
     CALL Fatal('HelmholtzProjector', 'Solver associated with potential variable > '&
         //TRIM(PotName)//' < not found!')
   END IF
@@ -3306,14 +3235,7 @@ SUBROUTINE HelmholtzProjectorT(Model, Solver, dt, TransientSimulation)
   ! Find some parameters to inherit the vector FE basis as defined in 
   ! the primary solver:
   !
-  SecondOrder = GetLogical(SolverPtr % Values, 'Quadratic Approximation', Found)  
-
-  IF (SecondOrder) THEN
-    PiolaVersion = .TRUE.
-  ELSE
-    PiolaVersion = GetLogical(SolverPtr % Values, 'Use Piola Transform', Found) 
-  END IF
-
+  CALL EdgeElementStyle(SolverPtr % Values, PiolaVersion, QuadraticApproximation = SecondOrder )
   IF (PiolaVersion) CALL Info('HelmholtzProjector', &
       'Using Piola-transformed finite elements', Level=5)
   
@@ -3397,7 +3319,7 @@ CONTAINS
     INTEGER :: i, j, p, q, t, EdgeBasisDegree 
 
     REAL(KIND=dp) :: Basis(n), dBasisdx(n,3), A(3)
-    REAL(KIND=dp) :: u, v, w, s, DetJ
+    REAL(KIND=dp) :: s, DetJ
     REAL(KIND=dp) :: WBasis(nd_pot-n_pot,3), CurlWBasis(nd_pot-n_pot,3)
 !------------------------------------------------------------------------------
     CALL GetElementNodes(Nodes)
@@ -3413,25 +3335,15 @@ CONTAINS
       EdgeBasisDegree = 1
       IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
     END IF
-
+          
+    IF( dim == 2 .AND. .NOT. PiolaVersion ) THEN
+      CALL Fatal('HelmholtzProjector', 'Use Piola Transform = True needed in 2D')
+    END IF
+    
     DO t=1,IP % n
-
-      u = IP % U(t)
-      v = IP % V(t)
-      w = IP % W(t)
-
-      IF (PiolaVersion) THEN
-        stat = EdgeElementInfo(Element, Nodes, u, v, w, DetF=DetJ, &
-            Basis=Basis, EdgeBasis=WBasis, dBasisdx=dBasisdx, &
-            BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-      ELSE
-        stat = ElementInfo(Element, Nodes, u, v, w, detJ, Basis, dBasisdx)
-        IF( dim == 3 ) THEN
-          CALL GetEdgeBasis(Element, WBasis, CurlWBasis, Basis, dBasisdx)
-        ELSE
-          CALL Fatal('HelmholtzProjector', 'Use Piola Transform = True needed in 2D')
-        END IF
-      END IF
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis, dBasisdx, EdgeBasis = WBasis, &
+          RotBasis = CurlWBasis, USolver = SolverPtr ) 
       s = detJ * IP % s(t)
 
       A = MATMUL(PotSol(n_pot+1:nd_pot), WBasis(1:nd_pot-n_pot,:))
@@ -3469,7 +3381,7 @@ SUBROUTINE RemoveKernelComponentT_Init0(Model, Solver, dt, Transient)
   TYPE(ValueList_t), POINTER :: SolverParams
   INTEGER :: i,j
   CHARACTER(LEN=MAX_NAME_LEN) :: Avname
-  LOGICAL :: Found, PiolaVersion, SecondOrder
+  LOGICAL :: Found, PiolaVersion, SecondOrder, SecondKind
 !------------------------------------------------------------------------------
   SolverParams => GetSolverParams()
 ! CALL ListAddLogical(SolverParams, 'Linear System Refactorize', .FALSE.)
@@ -3501,29 +3413,22 @@ SUBROUTINE RemoveKernelComponentT_Init0(Model, Solver, dt, Transient)
   CALL ListAddString( SolverParams, 'Potential Variable', AVName )
 
   IF (.NOT. ListCheckPresent(SolverParams, "Element")) THEN
-    PiolaVersion = ListGetLogical(Model % Solvers(i) % Values, 'Use Piola Transform', Found)
-    SecondOrder = ListGetLogical(Model % Solvers(i) % Values, 'Quadratic Approximation', Found)
+    CALL EdgeElementStyle(Model % Solvers(i) % Values, PiolaVersion, SecondKind, SecondOrder )
     
-    CALL ListAddLogical(SolverParams, 'Use Piola Transform', PiolaVersion )
-    CALL ListAddLogical(SolverParams, 'Quadratic Approximation', SecondOrder )
-
-    IF (.NOT. PiolaVersion .AND. SecondOrder) THEN
-      CALL Warn("RemoveKernelComponent_Init0", &
-           "Quadratic Approximation requested without Use Piola Transform " &
-           //"Setting Use Piola Transform = True.")
-      PiolaVersion = .TRUE.
-    END IF
+    IF(PiolaVersion) CALL ListAddLogical(SolverParams, 'Use Piola Transform', PiolaVersion )
+    IF(SecondOrder) CALL ListAddLogical(SolverParams, 'Quadratic Approximation', SecondOrder )
+    IF(SecondKind) CALL ListAddLogical(SolverParams, 'Second Kind Basis', SecondKind )
 
     IF (SecondOrder) THEN
       CALL ListAddString(SolverParams, "Element", &
           "n:0 e:2 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2")
+    ELSE IF( SecondKind ) THEN
+      CALL ListAddString( SolverParams, "Element", "n:0 e:2")
+    ELSE IF (PiolaVersion) THEN
+      CALL ListAddString(SolverParams, "Element", &
+          "n:0 e:1 -brick b:3 -quad_face b:2")
     ELSE
-      IF (PiolaVersion) THEN
-        CALL ListAddString(SolverParams, "Element", &
-            "n:0 e:1 -brick b:3 -quad_face b:2")
-      ELSE
-        CALL ListAddString( SolverParams, "Element", "n:0 e:1")
-      END IF
+      CALL ListAddString( SolverParams, "Element", "n:0 e:1")
     END IF
   END IF
 
@@ -3643,19 +3548,9 @@ SUBROUTINE RemoveKernelComponentT(Model, Solver, dt, TransientSimulation)
   !
   ! Find some parameters to inherit the vector FE basis as defined in the primary solver:
   !
-  SecondOrder = GetLogical(SolverPtr % Values, 'Quadratic Approximation', Found)  
-
-  IF (SecondOrder) THEN
-    PiolaVersion = .TRUE.
-  ELSE
-    PiolaVersion = GetLogical(SolverPtr % Values, 'Use Piola Transform', Found) 
-  END IF
-
+  CALL EdgeElementStyle(SolverPtr % Values, PiolaVersion, QuadraticApproximation = SecondOrder )
   IF (PiolaVersion) CALL Info('RemoveKernelComponent', &
       'Using Piola-transformed finite elements', Level=5)
-
-!  SecondFamily = GetLogical(SolverPtr % Values, 'Second Kind Basis', Found)
-
 
   !-----------------------
   ! System assembly:
@@ -3737,7 +3632,7 @@ CONTAINS
     INTEGER :: i, j, p, q, t, EdgeBasisDegree 
 
     REAL(KIND=dp) :: Basis(n), dBasisdx(n,3), A(3)
-    REAL(KIND=dp) :: u, v, w, s, DetJ
+    REAL(KIND=dp) :: s, DetJ
     REAL(KIND=dp) :: WBasis(nd,3), CurlWBasis(nd,3)
 !------------------------------------------------------------------------------
     CALL GetElementNodes(Nodes)
@@ -3747,30 +3642,21 @@ CONTAINS
 
     IF (SecondOrder) THEN
       EdgeBasisDegree = 2  
-      IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
-          EdgeBasisDegree=EdgeBasisDegree)
     ELSE
       EdgeBasisDegree = 1
-      IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    END IF
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+        EdgeBasisDegree=EdgeBasisDegree)
+
+    IF( dim == 2 .AND. .NOT. PiolaVersion ) THEN
+      CALL Fatal('RemoveKernelComponent', '"Use Piola Transform = True" needed in 2D')
     END IF
 
+    
     DO t=1,IP % n
-      u = IP % U(t)
-      v = IP % V(t)
-      w = IP % W(t)
-
-      IF (PiolaVersion) THEN
-        stat = EdgeElementInfo(Element, Nodes, u, v, w, DetF=DetJ, &
-            Basis=Basis, EdgeBasis=WBasis, dBasisdx=dBasisdx, &
-            BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-      ELSE
-        stat = ElementInfo(Element, Nodes, u, v, w, detJ, Basis, dBasisdx)
-        IF( dim == 3 ) THEN
-          CALL GetEdgeBasis(Element, WBasis, CurlWBasis, Basis, dBasisdx)
-        ELSE
-          CALL Fatal('RemoveKernelComponent', 'Use Piola Transform = True needed in 2D')
-        END IF
-      END IF
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis, dBasisdx, EdgeBasis = WBasis, &
+          RotBasis = CurlWBasis, USolver = SolverPtr )       
 
       s = detJ * IP % s(t)
       DO p=1,nd

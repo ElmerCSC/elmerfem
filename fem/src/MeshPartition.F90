@@ -105,7 +105,7 @@ CONTAINS
     TYPE(Graph_t) :: LocalGraph
     REAL(KIND=dp) :: t1,t2, ImbalanceTol, ZTolChange
     INTEGER :: i,j,k,l,m,n,ierr,NNodes,NBulk,Ngraph,counter,DIM,&
-         max_elemno,NoPart, ZMinElems
+         max_elemno,NoPart, ZMinElems,OutputLevel
     INTEGER, ALLOCATABLE :: ElemAdj(:), ElemStart(:), ElemAdjProc(:), ParElemAdj(:), ParElemStart(:),&
          ParElemIdx(:),ParElemAdjProc(:),sharecount(:),&
          ParElemMap(:)
@@ -113,7 +113,7 @@ CONTAINS
     LOGICAL :: UsePerm, Success, GotParMetis, DistributedMesh
     LOGICAL, ALLOCATABLE :: PartSuccess(:), PartGotNodes(:)
     
-    CHARACTER(MAX_NAME_LEN) :: ImbTolStr
+    CHARACTER(MAX_NAME_LEN) :: ImbTolStr,Method, Approach, ParMetisLib, ZoltanLib, GraphPackage
     CHARACTER(*), PARAMETER :: FuncName="Zoltan_Interface"
 
     !Zoltan things
@@ -171,7 +171,7 @@ CONTAINS
       IF(.NOT. Found) NoPart = ParEnv % PEs
     END IF
 
-    CALL Info(FuncName,'Partitioning with Zoltan to '//I2S(NoPart)//' partitions',Level=6)
+    CALL Info(FuncName,'Partitioning with Zoltan to '//TRIM(I2S(NoPart))//' partitions',Level=6)
     
     IF( PRESENT( SerialMode ) ) THEN
       Serial = SerialMode
@@ -191,15 +191,60 @@ CONTAINS
     NBulk = Mesh % NumberOfBulkElements
     Ngraph = Nbulk
     DIM = CoordinateSystemDimension()
-
-    IF (.NOT. Serial) THEN
+    
+    IF(.NOT. Serial) THEN
       ALLOCATE(PartGotNodes(ParEnv % PEs))
       CALL MPI_ALLGATHER(NNodes > 0, 1, MPI_LOGICAL, PartGotNodes, &
           1, MPI_LOGICAL, ELMER_COMM_WORLD, ierr)
+
       DistributedMesh = ALL(PartGotNodes)
-    ELSE
-      DistributedMesh = .FALSE.
     END IF
+
+    Method = ListGetString(Model % Solver % Values,"Repartition Method", Found)
+    IF(.NOT. Found) THEN
+      CALL Info(FuncName, "Not Found 'Repartition Method' so assuming 'Zoltan'")
+      Method = 'Zoltan'
+    END IF
+    Approach = ListGetString(Model % Solver % Values,"Repartition Approach", Found)
+    IF(.NOT. Found) THEN
+      CALL Info(FuncName, "Not Found 'Repartition Approach' so assuming 'repartition'")
+      Approach = 'repartition'
+    END IF
+    OutputLevel = ListGetInteger(Model % Solver % Values,"Repartition Output Level", Found)
+    IF(.NOT. Found) THEN
+      CALL Info(FuncName, "Not Found 'Repartition Output Level' so assuming '0'")
+      OutputLevel = 0
+    END IF
+
+    IF(Serial) THEN
+      Approach = 'partition'
+      Method = 'zoltan'
+      CALL Info(FuncName, 'used in serial so using Zoltan partition')
+    END IF
+
+    SELECT CASE( Method )
+    CASE( 'parmetis' )
+      IF(.NOT. GotParMetis) CALL FATAL(FuncName, "ParMetis repartitioning selected but not installed")
+      IF(.NOT. DistributedMesh) CALL FATAL(FuncName, "ParMetis requires fully distributed mesh with nodes on each partition")
+      ParMetisLib = ListGetString(Model % Solver % Values,"Repartition ParMetis Library", Found)
+      IF(.NOT. Found) THEN
+        CALL Info(FuncName, "Not Found 'Repartition ParMetis Library' so assuming 'adaptiverepart'")
+        ParMetisLib = 'adaptiverepart'
+      END IF
+    CASE( 'zoltan' )
+      ZoltanLib = ListGetString(Model % Solver % Values,"Repartition Zoltan Library", Found)
+      IF(.NOT. Found) THEN
+        CALL Info(FuncName, "Not Found 'Repartition Zoltan Library' so assuming 'graph'")
+        ZoltanLib = 'graph'
+      END IF
+      GraphPackage = ListGetString(Model % Solver % Values,"Repartition Zoltan Graph Package", Found)
+      IF(.NOT. Found) THEN
+        CALL Info(FuncName, "Not Found 'Repartition Zoltan Graph Package' so assuming 'phg'")
+        GraphPackage = 'phg'
+      END IF
+    CASE DEFAULT
+      CALL Fatal(FuncName,"Repartition method selected invalid")
+    END SELECT
 
 10  CONTINUE
 
@@ -250,31 +295,28 @@ CONTAINS
       zz_obj => Zoltan_Create(ELMER_COMM_WORLD)
     END IF
 
-    ! Set default values for keywords, if not given
-    IF(Debug) THEN
-      CALL ListAddNewString( PartParams,"zoltan: debug_level","5")
-    ELSE
-      CALL ListAddNewString( PartParams,"zoltan: debug_level","0")
-    END IF
+    CALL ListAddNewString( PartParams,"zoltan: debug_level",I2S(OutputLevel))
 
-    IF(GotParMetis .AND. DistributedMesh) THEN
-      CALL Info(FuncName, 'Using ParMetis for rebalancing')
+    SELECT CASE( Method )
+    CASE( 'parmetis' )
       CALL ListAddNewString( PartParams,"zoltan: lb_method","graph")
-      CALL ListAddNewString( PartParams,"zoltan: graph_package","parmetis")
-      CALL ListAddNewString( PartParams,"zoltan: lb_approach","repartition")
-      CALL ListAddNewString( PartParams,"zoltan: parmetis_method","adaptiverepart")
-    ELSE
-      CALL Info(FuncName, 'Not got ParMetis so using Zoltan phg for rebalancing')
-      CALL ListAddNewString( PartParams,"zoltan: lb_method","graph")
-      CALL ListAddNewString( PartParams,"zoltan: graph_package","phg")
+      CALL ListAddNewString( PartParams,"zoltan: graph_package",TRIM(Method))
+      CALL ListAddNewString( PartParams,"zoltan: lb_approach",TRIM(Approach))
+      CALL ListAddNewString( PartParams,"zoltan: parmetis_method",TRIM(ParMetisLib))
+    CASE( 'zoltan' )
+      CALL ListAddNewString( PartParams,"zoltan: lb_method",TRIM(ZoltanLib))
+      CALL ListAddNewString( PartParams,"zoltan: graph_package",TRIM(GraphPackage))
+      CALL ListAddNewString( PartParams,"zoltan: lb_approach",TRIM(Approach))
       CALL ListAddNewString( PartParams,"zoltan: num_gid_entries","1")
       CALL ListAddNewString( PartParams,"zoltan: num_lid_entries","1")
       CALL ListAddNewString( PartParams,"zoltan: obj_weight_dim","0")
       CALL ListAddNewString( PartParams,"zoltan: edge_weight_dim","0")
       CALL ListAddNewString( PartParams,"zoltan: check_graph","0")
       CALL ListAddNewString( PartParams,"zoltan: phg_multilevel","1")
-      IF(Debug) CALL ListAddNewString( PartParams,"zoltan: phg_output_level","2")
-    END IF
+      IF(OutputLevel > 4) CALL ListAddNewString( PartParams,"zoltan: phg_output_level","2")
+    CASE DEFAULT
+      CALL Fatal(FuncName,"Programming error...")
+    END SELECT
 
     !CALL ListAddNewString( PartParams,"zoltan: imbalance_tol","1.1") !Max load imbalance (default 10%)
     WRITE(ImbTolStr, '(F20.10)') ImbalanceTol
@@ -282,12 +324,10 @@ CONTAINS
 
     ! The settings for serial vs. parallel operation differ slightly
     IF( Serial ) THEN
-      CALL ListAddNewString( PartParams,"zoltan: return_lists","export part")    
-      CALL ListAddNewString( PartParams,"zoltan: lb_approach","partition")  
-      CALL ListAddNewString( PartParams,"zoltan: num_global_parts",I2S(NoPart))  
+      CALL ListAddNewString( PartParams,"zoltan: return_lists","export part")
+      CALL ListAddNewString( PartParams,"zoltan: num_global_parts",TRIM(I2S(NoPart)))  
     ELSE
       CALL ListAddNewString( PartParams,"zoltan: return_lists","all")    !TODO - we only use export list
-      CALL ListAddNewString( PartParams,"zoltan: lb_approach","repartition")  !repartition/refine <- faster
     END IF
       
     ! Pass keyword with prefix 'zoltan:' from the value list to zoltan
@@ -2095,10 +2135,184 @@ CONTAINS
     CALL Info(FuncName,'Waiting for MPI barrier',Level=15)
     CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
 
+
     CALL CheckTimer(FuncName,Level=5,Delete=.TRUE.)
     CALL Info(FuncName,'Distributing mesh finished',Level=8)
 
+    CALL Finalize_Zoltan_Mesh(Newmesh)
+
   END FUNCTION RedistributeMesh
+
+
+  SUBROUTINE Finalize_Zoltan_Mesh(Mesh)
+
+     TYPE(Mesh_t), POINTER :: Mesh
+
+     CHARACTER(:), ALLOCATABLE :: ElementDef, ElementDef0
+     INTEGER ::  i,j,Def_DOFs(10,6)
+     TYPE(Solver_t), POINTER :: Solver
+     LOGICAL :: stat, GotMesh = .FALSE.
+
+
+      Solver => CurrentModel % Solver
+
+
+      Def_Dofs = -1; Def_Dofs(:,1)=1
+
+      ! Define what kind of element we are working with in this solver
+      !-----------------------------------------------------------------
+      ElementDef = ListGetString( Solver % Values, 'Element', stat )
+
+      IF ( .NOT. stat ) THEN
+        IF ( ListGetLogical( Solver % Values, 'Discontinuous Galerkin', stat ) ) THEN
+           Solver % Def_Dofs(:,:,4) = 0  ! The final value is set when calling LoadMesh2
+           IF ( .NOT. GotMesh ) Def_Dofs(:,4) = MAX(Def_Dofs(:,4),0 )
+           i=i+1
+           Solver % DG = .TRUE.
+!          CYCLE
+        ELSE
+           ElementDef = "n:1"
+        END IF
+      END IF
+
+      ElementDef0 = ElementDef
+      DO WHILE(.TRUE.)
+        j = INDEX( ElementDef0, '-' )
+        IF (j>0) THEN
+          !
+          ! Read the element definition up to the next flag which specifies the
+          ! target element set
+          !
+          ElementDef = ElementDef0(1:j-1)
+        ELSE
+          ElementDef = ElementDef0
+        END IF
+        !  Calling GetDefs fills Def_Dofs arrays:
+        CALL GetDefs( ElementDef, Solver % Def_Dofs, Def_Dofs(:,:), .NOT. GotMesh )
+        IF(j>0) THEN
+          ElementDef0 = ElementDef0(j+1:)
+        ELSE
+          EXIT
+        END IF
+      END DO
+
+      CALL PrepareMesh( CurrentModel, Mesh, ParEnv % PEs>1 , Def_Dofs )
+
+CONTAINS
+
+!------------------------------------------------------------------------------
+!> This subroutine is used to fill Def_Dofs array of the solver structure.
+!> Note that this subroutine makes no attempt to figure out the index of
+!> the body, so all bodies are assigned with the same element definition.
+!> A similar array of reduced dimension is also filled so as to figure out
+!> the maximal-complexity definition over all solvers which use the same
+!> global mesh.
+!------------------------------------------------------------------------------
+    SUBROUTINE GetDefs(ElementDef, Solver_Def_Dofs, Def_Dofs, Def_Dofs_Update)
+!------------------------------------------------------------------------------
+      CHARACTER(LEN=*), INTENT(IN) :: ElementDef     !< an element definition string
+      INTEGER, INTENT(OUT) :: Solver_Def_Dofs(:,:,:) !< Def_Dofs of the solver structure
+      INTEGER, INTENT(INOUT) :: Def_Dofs(:,:)        !< holds the maximal-complexity definition on global mesh
+      LOGICAL, INTENT(IN) :: Def_Dofs_Update         !< is .TRUE. when the definition refers to the global mesh
+!------------------------------------------------------------------------------
+      INTEGER, POINTER :: ind(:)
+      INTEGER, TARGET :: Family(10)
+      INTEGER :: i,j,l,n
+      LOGICAL :: stat
+
+      Family = [1,2,3,4,5,6,7,8,9,10]
+
+      ! The default assumption is that the given element definition is applied 
+      ! to all basic element families (note that the element sets 9 and 10 are
+      ! not included since the explicit choice of the target family is 
+      ! a part of the element definition string when the target index is
+      ! deduced to be 9 or 10).
+      !
+      ind => Family(1:8)
+      !
+      ! If the element family is specified, change the target family 
+      !
+      IF (SEQL(ElementDef, 'point') )     ind => Family(1:1)
+      IF (SEQL(ElementDef, 'line') )      ind => Family(2:2)
+      IF (SEQL(ElementDef, 'tri') )       ind => Family(3:3)
+      IF (SEQL(ElementDef, 'quad') )      ind => Family(4:4)
+      IF (SEQL(ElementDef, 'tetra') )     ind => Family(5:5)
+      IF (SEQL(ElementDef, 'pyramid') )   ind => Family(6:6)
+      IF (SEQL(ElementDef, 'prism') )     ind => Family(7:7)
+      IF (SEQL(ElementDef, 'brick') )     ind => Family(8:8)
+      IF (SEQL(ElementDef, 'tri_face') )  ind => Family(9:9)
+      IF (SEQL(ElementDef, 'quad_face') ) ind => Family(10:10)
+
+      n = INDEX(ElementDef,'-')
+      IF (n<=0) n=LEN_TRIM(ElementDef)
+          
+      j = INDEX( ElementDef(1:n), 'n:' )
+      IF ( j>0 ) THEN
+        READ( ElementDef(j+2:), * ) l
+        Solver_Def_Dofs(ind,:,1) = l
+        IF ( Def_Dofs_Update ) Def_Dofs(ind,1) = MAX(Def_Dofs(ind,1), l)
+      END IF
+          
+      j = INDEX( ElementDef(1:n), 'e:' )
+      IF ( j>0 ) THEN
+        READ( ElementDef(j+2:), * ) l
+        Solver_Def_Dofs(ind,:,2) = l
+        IF ( Def_Dofs_Update ) Def_Dofs(ind,2) = MAX(Def_Dofs(ind,2), l )
+      END IF
+          
+      j = INDEX( ElementDef(1:n), 'f:' )
+      IF ( j>0 ) THEN
+        READ( ElementDef(j+2:), * ) l
+        Solver_Def_Dofs(ind,:,3) = l
+        IF ( Def_Dofs_Update ) Def_Dofs(ind,3) = MAX(Def_Dofs(ind,3), l )
+      END IF
+          
+      j = INDEX( ElementDef(1:n), 'd:' )
+      IF ( j>0 ) THEN
+        READ( ElementDef(j+2:), * ) l
+
+        ! Zero value triggers discontinuous approximation within LoadMesh2,
+        ! substitute the default negative initialization value to avoid troubles:
+        IF (l == 0) l = -1
+
+        Solver_Def_Dofs(ind,:,4) = l
+        IF ( Def_Dofs_Update ) Def_Dofs(ind,4) = MAX(Def_Dofs(ind,4), l )
+      ELSE 
+        IF ( ListGetLogical( Solver % Values, &
+            'Discontinuous Galerkin', stat ) ) THEN
+          Solver_Def_Dofs(ind,:,4) = 0
+          IF ( Def_Dofs_Update ) Def_Dofs(ind,4) = MAX(Def_Dofs(ind,4),0 )
+        END IF
+      END IF
+          
+      j = INDEX( ElementDef(1:n), 'b:' )
+      IF ( j>0 ) THEN
+        READ( ElementDef(j+2:), * ) l
+        Solver_Def_Dofs(ind,:,5) = l
+        IF ( Def_Dofs_Update ) Def_Dofs(ind,5) = MAX(Def_Dofs(ind,5), l )
+      END IF
+          
+      j = INDEX( ElementDef(1:n), 'p:' )
+      IF ( j>0 ) THEN
+        IF ( ElementDef(j+2:j+2)=='%' ) THEN
+          ! Seeing a p-element definition starting as p:% means that a 
+          ! a special keyword construct is used so that the degree of
+          ! approximation can be evaluated by calling a MATC function.
+          ! This special case is handled elsewhere and we now postpone
+          ! setting the right value.
+          Solver_Def_Dofs(ind,:,6) = 0
+        ELSE
+          READ( ElementDef(j+2:), * ) l
+          Solver_Def_Dofs(ind,:,6) = l
+          IF ( Def_Dofs_Update ) Def_Dofs(ind,6) = MAX(Def_Dofs(ind,6), l )
+         END IF
+      END IF
+
+!------------------------------------------------------------------------------
+    END SUBROUTINE GetDefs
+!------------------------------------------------------------------------------
+
+    END SUBROUTINE Finalize_Zoltan_Mesh
 
   
   FUNCTION ElementPartitions( Mesh, ElemInd, NewPart, IndPart ) RESULT ( npart )

@@ -1,0 +1,26 @@
+! Outer iteration
+  Linear System Complex = True
+  Linear System Solver = iterative 
+  Linear System Iterative Method = GCR 
+  Linear System Max Iterations = 200
+  Linear System GCR Restart = 50
+  Linear System Convergence Tolerance = 1.0e-7
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 1
+  Linear System Scaling = True
+
+  Linear System Preconditioning = multigrid
+
+
+! Mg parameters only active when $pn>2 and prec set to "multigrid"
+  Edge Basis = True
+  MG Method = p
+  MG Levels = 2
+  MG Smoother = wsgs
+  MG Pre Smoothing iterations = 1
+  MG Post Smoothing Iterations = 1
+  MG Smoother Relaxation Factor = Real 0.5
+
+  MG Lowest Linear Solver = Direct
+  mglowest: Linear System Scaling = True
+  mglowest: Linear System Direct Method = MUMPS

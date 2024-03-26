@@ -456,10 +456,15 @@ CONTAINS
 
     IF ( BigMode ) THEN
       ALLOCATE( LRows(SIZE(Rows)), LCols(SIZE(Cols)) )
-      DO i=1,n
+
+      DO i=1,n+1
         LRows(i) = Rows(i)-1
+      END DO
+
+      DO i=1,SIZE(Cols)
         LCols(i) = Cols(i)-1
       END DO
+
       ln = n ! TODO: Kludge: ln is AddrInt and n is regular INTEGER
       CALL umf4_l_def( Control )
       CALL umf4_l_sym( ln,ln, LRows, LCols, Values, Symbolic, Control, iInfo )
@@ -470,8 +475,8 @@ CONTAINS
       CALL umf4sym( n,n, Rows, Cols, Values, Symbolic, Control, iInfo )
     END IF
 
-    IF (iinfo(1)<0) THEN
-      PRINT *, 'Error occurred in umf4sym: ', iinfo(1)
+    IF (iInfo(1)<0) THEN
+      PRINT *, 'Error occurred in umf4sym: ', iInfo(1)
       STOP EXIT_ERROR
     END IF
 
@@ -546,9 +551,9 @@ CONTAINS
        INTEGER(KIND=AddrInt) :: chol
      END SUBROUTINE cholmod_ffree
 
-     FUNCTION cholmod_ffactorize(n,rows,cols,vals) RESULT(chol) BIND(c,NAME="cholmod_ffactorize")
+     FUNCTION cholmod_ffactorize(n,rows,cols,vals,cmplx) RESULT(chol) BIND(c,NAME="cholmod_ffactorize")
         USE Types
-        INTEGER :: n, Rows(*), Cols(*)
+        INTEGER :: n, cmplx, Rows(*), Cols(*)
         REAL(KIND=dp) :: Vals(*)
         INTEGER(KIND=dp) :: chol
      END FUNCTION cholmod_ffactorize
@@ -562,7 +567,7 @@ CONTAINS
   END INTERFACE
 
   LOGICAL :: Factorize, FreeFactorize, Found
-
+  INTEGER :: i
   REAL(KIND=dp), POINTER CONTIG :: Vals(:)
   INTEGER, POINTER CONTIG :: Rows(:), Cols(:), Diag(:)
 
@@ -592,7 +597,9 @@ CONTAINS
     Vals => A % Values
 
     Rows=Rows-1; Cols=Cols-1 ! c numbering
-    A % Cholmod=cholmod_ffactorize(A % NumberOfRows, Rows, Cols, Vals)
+    i=0
+    IF(A % Complex) i=1
+    A % Cholmod=cholmod_ffactorize(A % NumberOfRows, Rows, Cols, Vals, i)
     Rows=Rows+1; Cols=Cols+1 ! fortran numbering
   END IF
 

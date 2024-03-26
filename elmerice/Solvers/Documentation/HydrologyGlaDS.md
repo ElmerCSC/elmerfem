@@ -32,7 +32,7 @@ The SIF examples given here are from the tests used in the [SHMIP](https://shmip
 Constants
   Latent Heat = Real $Lw
   Gravity Norm = Real $gravity
-  Water Density = Real $rhow
+  Fresh Water Density = Real $rhow
   Ice Density = Real $rhoi
   Sheet Thickness Variable Name = String "Sheet Thickness"
   Hydraulic Potential Variable Name = String "Hydraulic Potential"

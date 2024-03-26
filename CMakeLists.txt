@@ -6,6 +6,7 @@
 #  Phil Weir, NUMA Engineering Services, Ltd.
 #  Mikko Byckling, CSC - IT Center for Science Ltd.
 #  Juhani Kataja, CSC - IT Center for Science Ltd.
+#  Thomas Zwinger, CSC - IT Center for Science Ltd.
 #
 # First public beta release 11th of October, 2013
 #
@@ -74,6 +75,7 @@ SET(WITH_OpenMP FALSE CACHE BOOL "Use OpenMP thread and SIMD (if available) para
 SET(WITH_MKL FALSE CACHE BOOL "Use Intel Math Kernel library")
 SET(WITH_Mumps FALSE CACHE BOOL "Use Mumps sparse direct solver")
 SET(WITH_Hypre FALSE CACHE BOOL "Use Hypre linear algebra library")
+SET(WITH_CHOLMOD FALSE CACHE BOOL "Use CHOLMOD linear algebra library")
 SET(WITH_ELMERGUI FALSE CACHE BOOL "Include ElmerGUI")
 SET(WITH_ElmerIce FALSE CACHE BOOL "Include ElmerIce")
 SET(WITH_XIOS FALSE CACHE BOOL "Include XIOS")
@@ -239,6 +241,10 @@ IF(WITH_AMGX)
   FIND_PACKAGE(AMGX)
 ENDIF()
 
+IF(WITH_CHOLMOD)
+  FIND_PACKAGE(CHOLMOD)
+ENDIF()
+
 # if(APPLE)
 #   # message(STATUS "Trying to find Accelerate library")
 #   # find_library(BLAS_LIBRARIES Accelerate HINTS /System/Library/Frameworks/Accelerate.framework)
@@ -344,6 +350,7 @@ IF(WITH_Zoltan)
 
     MESSAGE(STATUS "------------------------------------------------")
   ENDIF()
+  FIND_PACKAGE(ParMetis)
 ENDIF(WITH_Zoltan)
 
 
@@ -544,6 +551,12 @@ IF (AMGX_FOUND)
   LINK_DIRECTORIES(${CUDA_LIBDIR})
 ENDIF()
 
+IF (CHOLMOD_FOUND)
+  SET(HAVE_CHOLMOD TRUE)
+  MARK_AS_ADVANCED(HAVE_CHOLMOD)
+  INCLUDE_DIRECTORIES(${CHOLMOD_INCLUDE_DIR})
+  #LINK_DIRECTORIES(${})
+ENDIF()
   
 # Check if Fortran compiler supports procedure pointer
 INCLUDE(testProcedurePointer)
@@ -612,7 +625,13 @@ IF(WITH_ElmerIce)
   ADD_SUBDIRECTORY(elmerice)
 ENDIF(WITH_ElmerIce)
 
-ADD_SUBDIRECTORY(umfpack)
+IF (EXTERNAL_UMFPACK)
+    MESSAGE(STATUS "Using external UMFPACK instead of built-in")
+    FIND_PACKAGE(UMFPACK REQUIRED)    
+ELSE()
+  MESSAGE(STATUS "Using built-in UMFPACK")
+  ADD_SUBDIRECTORY(umfpack)
+ENDIF()
 ADD_SUBDIRECTORY(fhutiter)
 ADD_SUBDIRECTORY(meshgen2d)
 ADD_SUBDIRECTORY(fem)
@@ -651,6 +670,20 @@ MESSAGE(STATUS "------------------------------------------------")
 MESSAGE(STATUS "  BLAS library:   " "${BLAS_LIBRARIES}")
 MESSAGE(STATUS "  LAPACK library: " "${LAPACK_LIBRARIES}")
 MESSAGE(STATUS "------------------------------------------------")
+IF(UMFPACK_FOUND)
+  MESSAGE(STATUS " UMFPACK library: " "${UMFPACK_LIBRARIES}")
+  MESSAGE(STATUS " UMFPACK headers: " "${UMFPACK_INCLUDE_DIR}")
+  MARK_AS_ADVANCED(HAVE_UMFPACK)
+  MESSAGE(STATUS "------------------------------------------------")
+ELSE()
+  MESSAGE(STATUS " UMFPACK library: Using internal Elmer library")
+ENDIF()
+IF(CHOLMOD_FOUND)
+  MESSAGE(STATUS " CHOLMOD library: " "${CHOLMOD_LIBRARIES}")
+  MESSAGE(STATUS " CHOLMOD headers: " "${CHOLMOD_INCLUDE_DIR}")
+  MESSAGE(STATUS "------------------------------------------------")
+  MARK_AS_ADVANCED(HAVE_CHOLMOD)
+ENDIF()
 MESSAGE(STATUS "  Fortran compiler:        " "${CMAKE_Fortran_COMPILER}")
 MESSAGE(STATUS "  Fortran flags:           " "${CMAKE_Fortran_FLAGS} ${CMAKE_Fortran_FLAGS_${CMAKE_BUILD_TYPE_UPCASE}}")
 MESSAGE(STATUS "------------------------------------------------")

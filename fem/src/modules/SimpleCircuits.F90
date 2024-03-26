@@ -123,8 +123,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
         Asolver => Model % Solvers(i)
         IF(ListCheckPresent(Asolver % Values,'Export Lagrange Multiplier'))EXIT
       END DO
-    END IF
-
+    END IF    
     CALL Info('Circuits2D','Associated circuit with solver index: '//I2S(i),Level=10)
     
     AngVar => DefaultVariableGet( 'Rotor Angle' )
@@ -167,7 +166,10 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     ! Circuit variable values from previous timestep:
     ! -----------------------------------------------
     ip = 0._dp
-    LagrangeVar => VariableGet( Solver % Mesh % Variables,'LagrangeMultiplier')
+    
+    
+    sname = LagrangeMultiplierName(ASolver)
+    LagrangeVar => VariableGet( ASolver % Mesh % Variables, sname, ThisOnly = .TRUE.)    
     IF(ASSOCIATED(LagrangeVar)) THEN
       IF(SIZE(LagrangeVar % Values)>=Circuit_tot_m) ip=LagrangeVar % Values(1:Circuit_tot_m)
     END IF
@@ -806,7 +808,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
   END IF
 
   ip = 0._dp
-  LagrangeVar => VariableGet( Solver % Mesh % Variables,'LagrangeMultiplier')
+  sname = LagrangeMultiplierName( ASolver )
+  LagrangeVar => VariableGet( ASolver % Mesh % Variables,sname,ThisOnly=.TRUE.)
   IF(ASSOCIATED(LagrangeVar)) THEN
     IF(SIZE(LagrangeVar % Values)>=2*Circuit_tot_m) ip=LagrangeVar % Values(1:2*Circuit_tot_m)
   END IF

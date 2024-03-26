@@ -4,7 +4,7 @@ $namerun = "ParallelRemesh"
 
 Header
   Mesh DB "." "cube"
-  Results Directory "results/"
+  Results Directory "results"
 End
 
 Simulation
@@ -82,6 +82,7 @@ Solver 3
   MeshMetric Z Independent = Logical False
 
   Rebalance = Logical True
+  Repartition Method = String "Zoltan"
   Manually Assign Edges = Logical True
   Automatic Angle Detection = Logical False
 
@@ -147,5 +148,5 @@ End
 Body Force 1
 End
 
-Solver 4 :: Reference Norm = 1.44610300E+07
+Solver 4 :: Reference Norm = 2.24269610E+07
 Solver 4 :: Reference Norm Tolerance = 1.0e-2

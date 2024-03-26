@@ -192,7 +192,7 @@
         BB(:,proc+1) = myBB
       END DO
 
-      CALL CheckBuffer((n*(3 * 2)) + 2) !3 x double precision coord, 2 x count
+      CALL CheckBuffer(Parenv % PEs*(n*(3 * 2 + 2)+MPI_BSEND_OVERHEAD)) !3 x double precision coord, 2 x count
 
       IF ( n==0 ) THEN
         ! We have found all nodes, nothing to do except sent the info to others!
@@ -272,8 +272,8 @@
         END DO
         DEALLOCATE(nodes_x,nodes_y,nodes_z,BB)
       END IF
-       
 
+       
       ! receive points from others:
       ! ----------------------------
       ALLOCATE(ProcRecv(Parenv % Pes))
@@ -362,6 +362,7 @@
               nvars = nvars+j
               Nvar => VariableGet( Nmesh % Variables,Var % Name,ThisOnly=.TRUE.)
               ALLOCATE(Nvar % PrevValues(n,j))
+              Nvar % PrevValues = 0._dp
             END IF
           END IF
           Var => Var % Next
@@ -537,7 +538,9 @@ CONTAINS
     IF( Var % Dofs > 1 ) IsLegit = .FALSE.
     !IF( Var % Secondary ) IsLegit = .FALSE.
     ! Coordinates are special and should not be interpolated. 
-    IF( Var % Name(1:10) == 'coordinate' ) IsLegit = .FALSE.
+    IF(LEN(Var % Name) >= 10) THEN
+      IF( Var % Name(1:10) == 'coordinate' ) IsLegit = .FALSE.
+    END IF
     ! This is global variable for which the type has not been properly set.
     IF(.NOT. ASSOCIATED(Var % Perm) .AND. SIZE(Var % Values) == 1 ) IsLegit = .FALSE.
     
@@ -1280,7 +1283,9 @@ CONTAINS
     IsLegit = ( Var % TYPE == Variable_on_nodes_on_elements .OR. Var % Type == Variable_on_nodes ) 
     IF( Var % Dofs > 1 ) IsLegit = .FALSE.
     !IF( Var % Secondary ) IsLegit = .FALSE.
-    IF( Var % Name(1:10) == 'coordinate' ) IsLegit = .FALSE.
+    IF(LEN(Var % Name) >= 10) THEN
+      IF( Var % Name(1:10) == 'coordinate' ) IsLegit = .FALSE.
+    END IF
     IF(.NOT. ASSOCIATED(Var % Perm) .AND. SIZE(Var % Values) == 1 ) IsLegit = .FALSE.
     
   END FUNCTION LegitInterpVar

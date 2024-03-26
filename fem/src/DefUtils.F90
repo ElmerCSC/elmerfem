@@ -3231,12 +3231,20 @@ CONTAINS
      iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
      iter = NINT(iterV % Values(1))
 
+     
      DO j=1,SIZE(SlaveSolverIndexes)
        k = SlaveSolverIndexes(j)
        SlaveSolver => CurrentModel % Solvers(k)
 
        CALL Info('DefaultSlaveSolvers','Calling slave solver: '//I2S(k),Level=8)
-       
+
+       IF( ListGetLogical( Solver % Values,'Monolithic Slave',Found )  ) THEN
+         IF(.NOT. ListCheckPresent( SlaveSolver % Values,'Linear System Solver Disabled') ) THEN
+           CALL Info('DefaultSlaveSolvers','Disabling linear system solver for slave: '//I2S(k),Level=6)
+           CALL ListAddLogical(SlaveSolver % Values,'Linear System Solver Disabled',.TRUE.)
+         END IF
+       END IF
+         
        IF(ParEnv % PEs>1) THEN
          SParEnv = ParEnv
 
@@ -3341,7 +3349,7 @@ CONTAINS
 
 
 
-!> Performs pre-steps related to the the active solver
+!> Performs pre-steps related to the active solver
 !------------------------------------------------------------------------------
   RECURSIVE SUBROUTINE DefaultStart( USolver )
 !------------------------------------------------------------------------------
@@ -3382,7 +3390,7 @@ CONTAINS
 
 
   
-!> Performs finalizing steps related to the the active solver
+!> Performs finalizing steps related to the active solver
 !------------------------------------------------------------------------------
   RECURSIVE SUBROUTINE DefaultFinish( USolver )
 !------------------------------------------------------------------------------
@@ -3405,17 +3413,22 @@ CONTAINS
      END IF
 
      IF( Solver % NumberOfConstraintModes > 0 ) THEN
-
        ! If we have a frozen stat then the nonlinear system loop is used to find that frozen state
        ! and we perform the linearized constraint modes analysis at the end. 
        IF( ListGetLogical(Solver % Values,'Constraint Modes Analysis Frozen',Found ) ) THEN
          BLOCK 
            INTEGER :: n
+           REAL(KIND=dp) :: Norm
            REAL(KIND=dp), ALLOCATABLE :: xtmp(:), btmp(:)
+           REAL(KIND=dp), POINTER :: rhs(:)
+
+           CALL ListAddLogical(Solver % Values,'Constraint Modes Analysis Frozen',.FALSE.)
            n = SIZE(Solver % Matrix % rhs)
+           rhs => Solver % Matrix % rhs           
            ALLOCATE(xtmp(n),btmp(n))
            xtmp = 0.0_dp; btmp = 0.0_dp
-           CALL SolveConstraintModesSystem( Solver % Matrix, xtmp, btmp , Solver )
+           CALL SolveSystem( Solver % Matrix, ParMatrix, btmp, xtmp, Norm,Solver % Variable % DOFs,Solver )
+           CALL ListAddLogical(Solver % Values,'Constraint Modes Analysis Frozen',.TRUE.)
          END BLOCK
        END IF
          
@@ -3423,7 +3436,6 @@ CONTAINS
          CALL FinalizeLumpedMatrix( Solver )            
        END IF
      END IF
-
 
      IF( ListGetLogical( Solver % Values,'MMG Remesh', Found ) ) THEN
        CALL Remesh(CurrentModel,Solver)
@@ -3457,7 +3469,8 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: Ctmp
     CHARACTER(:), ALLOCATABLE :: linsolver, precond, dumpfile, saveslot
     INTEGER :: NameSpaceI, Count, MaxCount, i
-    LOGICAL :: LinearSystemTrialing, SourceControl, NonlinearControl
+    LOGICAL :: LinearSystemTrialing, SourceControl, NonlinearControl, &
+        MonolithicSlave
     REAL(KIND=dp) :: s(3)
     
     CALL Info('DefaultSolve','Solving linear system with default routines',Level=10)
@@ -3492,10 +3505,17 @@ CONTAINS
         CALL ListAddLogical(Params,'Back Rotate N-T Solution',BackRotNT)
     END IF
 
-    
+    MonolithicSlave = ListGetLogical(Params,'Monolithic Slave',Found )
+    IF( MonolithicSlave ) THEN      
+      CALL MergeSlaveSolvers( Solver, PreSolve = .TRUE.)
+    END IF
+           
     IF( ListGetLogical( Params,'Harmonic Mode',Found ) ) THEN
       CALL ChangeToHarmonicSystem( Solver )
     END IF
+
+    ! Generate projector that allows enforcing of total flux when using Robin BC's
+    CALL GenerateRobinProjectors( CurrentModel, Solver )
     
     ! Combine the individual projectors into one massive projector
     CALL GenerateConstraintMatrix( CurrentModel, Solver )
@@ -3580,6 +3600,10 @@ CONTAINS
       CALL FCT_Correction( Solver )
     END IF
 
+    IF( MonolithicSlave ) THEN      
+      CALL MergeSlaveSolvers( Solver, PreSolve = .FALSE.)
+    END IF
+    
     ! Backchange the linear system 
     IF( ListGetLogical( Params,'Harmonic Mode',Found ) ) THEN
       CALL ChangeToHarmonicSystem( Solver, .TRUE. )

@@ -187,7 +187,7 @@ Boundary Condition 3
    Infinity BC = Logical True
 End
 
-Solver 3 :: Reference Norm = 2.29579655E-06
-Solver 4 :: Reference Norm = 1.30972027E+02
+Solver 3 :: Reference Norm = 2.50070334E-06
+Solver 4 :: Reference Norm = 1.31466802E+02
 
 

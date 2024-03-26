@@ -241,9 +241,9 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
        END IF
     END DO
 !$omp end parallel do
-    
-    CALL DefaultFinishBulkAssembly()
 
+    CALL DefaultFinishBulkAssembly()
+    
     Active = GetNOFBoundaryElements()
 !$omp parallel do private(Element, n, nd, BC,Found, t)
     DO t=1,active
@@ -263,6 +263,7 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
     END DO
 !$omp end parallel do
 
+    CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
     
     CALL SetMagneticFluxDensityBC()
@@ -840,15 +841,13 @@ CONTAINS
     IF (ASSOCIATED(CompParams)) THEN
       CoilType = GetString(CompParams, 'Coil Type', Found)
       IF (Found) THEN
+        CoilBody = .TRUE.
         SELECT CASE (CoilType)
         CASE ('stranded')
-          CoilBody = .TRUE.
           StrandedCoil = .TRUE.
         CASE ('massive')
-          CoilBody = .TRUE.
           LondonEquations = ListGetLogical(CompParams, 'London Equations', LondonEquations)
         CASE ('foil winding')
-          CoilBody = .TRUE.
 !          CALL GetElementRotM(Element, RotM, n)
         CASE DEFAULT
           CALL Fatal (Caller, 'Non existent Coil Type Chosen!')
@@ -1198,7 +1197,6 @@ CONTAINS
           END IF
 
           IF(.NOT. Found ) THEN
-            PRINT *,'Element:',Element % ElementIndex, t
             CALL Fatal(Caller,'Could not define reluctivity in any way in Body: '&
                 //I2S(Element % BodyId))
           END IF
@@ -1596,7 +1594,7 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   LOGICAL :: AllocationsDone = .FALSE., Found, ElectroDynamics
   TYPE(Element_t),POINTER :: Element
-  REAL(KIND=dp) :: Norm
+  REAL(KIND=dp) :: Norm, omega
   INTEGER :: i,j,k,ip,jp,n, nb, nd, t, istat, Active, iter, NonlinIter
   TYPE(ValueList_t), POINTER :: BC
   TYPE(Mesh_t),   POINTER :: Mesh
@@ -1655,8 +1653,9 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
   ELSE IF( DoRestart ) THEN
     CALL Fatal(Caller,'Could not find transient solver for restart!')
   END IF
-    
 
+  Omega = GetAngularFrequency()
+ 
   ElectroDynamics = GetLogical( GetSolverParams(), 'Electrodynamics Model', Found)
   NonlinIter = GetInteger(Params,'Nonlinear system max iterations',Found)
   IF(.NOT.Found) NonlinIter = 1
@@ -1678,6 +1677,7 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
       CALL LocalMatrix(Element, n, nd)
     END DO
 !$omp end parallel do
+    CALL DefaultFinishBulkAssembly()
 
     Active = GetNOFBoundaryElements()
 !$omp parallel do private(Element, n, nd, BC, Found)
@@ -1686,18 +1686,20 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
       BC=>GetBC(Element)
       IF(.NOT.ASSOCIATED(BC)) CYCLE
       
+      n  = GetElementNOFNodes(Element)
+      nd = GetElementNOFDOFs(Element)
+      
       IF(GetLogical(BC,'Infinity BC',Found)) THEN
-        n  = GetElementNOFNodes(Element)
-        nd = GetElementNOFDOFs(Element)
         CALL LocalMatrixInfinityBC(  Element, n, nd )
       ELSE IF(GetLogical(BC,'Air Gap',Found)) THEN
-        n  = GetElementNOFNodes( Element )
-        nd = GetElementNOFDOFs( Element )
         CALL LocalMatrixAirGapBC(Element, BC, n, nd)
+      ELSE IF( ListCheckPresent( BC,'Layer Electric Conductivity' ) ) THEN
+        CALL LocalMatrixSkinBC(Element, BC, n, nd)
       END IF
     END DO
 !$omp end parallel do
 
+    CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
     
     CALL SetMagneticFluxDensityBC()
@@ -1728,7 +1730,7 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
    
   CALL DefaultFinish()
   
-  ! Perform restart if continuing to transient real-valued combination. 
+  ! Perform restart if continuing to transient real-values combination. 
   IF( DoRestart ) THEN
     LVar => Model % Solvers(TransientSolverInd) % Variable 
     IF( ASSOCIATED( LVar ) ) THEN         
@@ -1736,13 +1738,16 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
       LVar % PrevValues(:,1) = LVar % Values
     END IF
 
-    Lvar => VariableGet( Mesh % Variables,'LagrangeMultiplier')
+    sname = LagrangeMultiplierName( Solver )
+    Lvar => VariableGet( Mesh % Variables, sname, ThisOnly = .TRUE. )
     IF ( ASSOCIATED(Lvar) ) THEN
       CALL Info(Caller,&
           'Size of Lagrange Multiplier: '//I2S(SIZE(LVar % Values)),Level=8)
       DO i=1,SIZE( LVar % Values ) / 2
         Lvar % Values(i) = Lvar % Values(2*(i-1)+1)
       END DO
+    ELSE
+      CALL Info(Caller,'Could not find Lagrange Multiplier for restart: '//TRIM(sname))
     END IF
     CALL Info(Caller,'Harmonic solution provided as initial guess for transient system!')
     RestartDone = .TRUE.
@@ -2374,9 +2379,9 @@ CONTAINS
     IF (ASSOCIATED(CompParams)) THEN
       CoilType = GetString(CompParams, 'Coil Type', Found)
       IF (Found) THEN
+        CoilBody = .TRUE.
         SELECT CASE (CoilType)
         CASE ('stranded')
-          CoilBody = .TRUE.
           StrandedCoil = .TRUE.
           StrandedHomogenization = GetLogical(CompParams, 'Homogenization Model', Found)
 
@@ -2394,10 +2399,8 @@ CONTAINS
           END IF
 
         CASE ('massive')
-          CoilBody = .TRUE.
           LondonEquations = ListGetLogical(CompParams, 'London Equations', LondonEquations)
         CASE ('foil winding')
-          CoilBody = .TRUE.
   !         CALL GetElementRotM(Element, RotM, n)
           InPlaneProximity = GetLogical(CompParams, 'Foil In Plane Proximity', Found)
           IF (InPlaneProximity) THEN
@@ -2698,7 +2701,7 @@ CONTAINS
     INTEGER :: i,p,q,t
     TYPE(GaussIntegrationPoints_t) :: IP
     COMPLEX(KIND=dp) :: STIFF(nd,nd), FORCE(nd)
-    REAL(KIND=dp) :: R(n), R_ip, Coord(3),Normal(3),mu,u,v,&
+    REAL(KIND=dp) :: R(n), R_ip, Coord(3),Normal(3),mu,u,v,x,&
         AirGapLength(nd), AirGapMu(nd), AirGapL
 
     TYPE(ValueList_t), POINTER :: Material
@@ -2728,6 +2731,11 @@ CONTAINS
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
               IP % W(t), detJ, Basis, dBasisdx )
 
+      IF( CSymmetry ) THEN
+        x = SUM( Basis(1:n) * Nodes % x(1:n) )
+        detJ = detJ * x
+      END IF
+      
       mu = 4*pi*1d-7*SUM(Basis(1:n)*AirGapMu(1:n))
       AirGapL = SUM(Basis(1:n)*AirGapLength(1:n))
 
@@ -2738,6 +2746,66 @@ CONTAINS
     CALL DefaultUpdateEquations( STIFF, FORCE, UElement=Element )
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixAirGapBC
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  SUBROUTINE LocalMatrixSkinBC(Element, BC, n, nd )
+!------------------------------------------------------------------------------
+    INTEGER :: n, nd
+    TYPE(ValueList_t), POINTER :: BC
+    TYPE(Element_t), POINTER :: Element
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,x
+    LOGICAL :: Stat, Found
+    INTEGER :: i,p,q,t
+    TYPE(GaussIntegrationPoints_t) :: IP
+    COMPLEX(KIND=dp) :: STIFF(nd,nd), FORCE(nd), imu, invZs, delta
+    REAL(KIND=dp) :: SkinCond(nd), Mu(nd), CondAtIp, MuAtIp, MuVacuum
+    TYPE(Nodes_t) :: Nodes
+    SAVE Nodes
+    !$OMP THREADPRIVATE(Nodes)
+!------------------------------------------------------------------------------
+    CALL GetElementNodes( Nodes, Element )
+    STIFF = 0._dp
+    FORCE = 0._dp
+
+    muVacuum = 4 * PI * 1d-7
+    imu = CMPLX(0.0_dp, 1.0_dp)
+    
+    SkinCond(1:n) = GetReal( BC,'Layer Electric Conductivity', Found)
+    Mu(1:n) = GetReal( BC,'Layer Relative Permeability', Found)
+      
+    !Numerical integration:
+    !----------------------
+    IP = GaussPoints( Element )
+    DO t=1,IP % n
+      ! Basis function values & derivatives at the integration point:
+      !--------------------------------------------------------------
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+              IP % W(t), detJ, Basis, dBasisdx )
+
+      IF( CSymmetry ) THEN
+        x = SUM( Basis(1:n) * Nodes % x(1:n) )
+        detJ = detJ * x
+      END IF
+      
+      muAtIP = muVacuum*SUM(Basis(1:n)*Mu(1:n))
+      condAtIp = SUM(Basis(1:n)*SkinCond(1:n))
+
+      delta = SQRT( 2.0_dp/(condAtIp*omega*muAtIp))      
+      invZs = (condAtIp*delta)/(1.0_dp+imu)
+      
+      DO p=1,nd
+        DO q=1,nd
+          STIFF(p,q) = STIFF(p,q) + IP % s(t) * DetJ * &
+              ( imu * omega * invZs ) * Basis(p) * Basis(q)
+        END DO
+      END DO
+              
+    END DO
+    CALL DefaultUpdateEquations( STIFF, FORCE, UElement=Element )
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalMatrixSkinBC
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
@@ -3117,7 +3185,7 @@ CONTAINS
     COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
     REAL(KIND=dp) :: localV(2), coilthickness, localAlpha, N_j
     TYPE(ValueList_t), POINTER :: CompParams
-    CHARACTER(LEN=MAX_NAME_LEN) :: CoilType, bodyNumber, XYNumber
+    CHARACTER(LEN=MAX_NAME_LEN) :: CoilType, bodyNumber, XYNumber, str
     LOGICAL :: CoilBody, EddyLoss
     COMPLEX(KIND=dp) :: imag_value, imag_value2
     INTEGER :: IvarId, ReIndex, ImIndex, VvarDofs, VvarId
@@ -3151,7 +3219,11 @@ CONTAINS
     ALLOCATE( STIFF(n,n), FORCE(Totdofs,n) )
     ALLOCATE( POT(2,n), Basis(n), dBasisdx(n,3), alpha(n) )
     ALLOCATE( Cond(n), mu(n), sigma_33(n), sigmaim_33(n), CoreLossUDF(n)) 
-    LagrangeVar => VariableGet( Solver % Mesh % Variables,'LagrangeMultiplier')
+    
+
+    str = LagrangeMultiplierName( Azsol % Solver )
+    LagrangeVar => VariableGet( Solver % Mesh % Variables, str, ThisOnly = .TRUE.)
+
     ModelDepth = GetCircuitModelDepth()
 
     IF( JouleHeating ) THEN
@@ -3271,10 +3343,10 @@ CONTAINS
       
       IF (ASSOCIATED(CompParams)) THEN    
         CoilType = GetString(CompParams, 'Coil Type', Found)
+        IF (Found) CoilBody = .TRUE.
         
         SELECT CASE (CoilType)
         CASE ('stranded')
-          CoilBody = .TRUE.
           StrandedCoil = .TRUE.
           
           IvarId = GetInteger (CompParams, 'Circuit Current Variable Id', Found)
@@ -3307,13 +3379,11 @@ CONTAINS
           END IF
  
         CASE ('massive')
-          CoilBody = .TRUE.
 
           VvarId = GetInteger (CompParams, 'Circuit Voltage Variable Id', Found)
           IF (.NOT. Found) CALL Fatal (Caller, 'Circuit Voltage Variable Id not found!')
 
         CASE ('foil winding')
-          CoilBody = .TRUE.
           CALL GetLocalSolution(alpha,'Alpha')
 
           VvarId = GetInteger (CompParams, 'Circuit Voltage Variable Id', Found)

@@ -201,8 +201,8 @@ void STDCALLBULL FC_FUNC(solvehypre,SOLVEHYPRE)
    st = realtime_();
 
 
-/*    fprintf(stdout,"HYRPE INT: %d %d  %d %d %d \n", hypre_intpara[0], hypre_intpara[1], hypre_intpara[2], hypre_intpara[3], hypre_intpara[4]);  */
-/*    fprintf(stdout,"HYRPE DP: %d %d %d %d %d \n", hypre_dppara[0], hypre_dppara[1], hypre_dppara[2], hypre_dppara[3], hypre_dppara[4]);  */
+/*    fprintf(stdout,"HYPRE INT: %d %d  %d %d %d \n", hypre_intpara[0], hypre_intpara[1], hypre_intpara[2], hypre_intpara[3], hypre_intpara[4]);  */
+/*    fprintf(stdout,"HYPRE DP: %d %d %d %d %d \n", hypre_dppara[0], hypre_dppara[1], hypre_dppara[2], hypre_dppara[3], hypre_dppara[4]);  */
    /* Choose a solver and solve the system */
    /* NB.: hypremethod = 0 ... BiCGStab + ILUn
                          1 ... BiCGStab + ParaSails
@@ -332,7 +332,7 @@ void STDCALLBULL FC_FUNC(solvehypre,SOLVEHYPRE)
       HYPRE_BoomerAMGSetPrintLevel(solver, 3);  
       HYPRE_BoomerAMGSetRelaxType(solver, hypre_intpara[0]);   /* G-S/Jacobi hybrid relaxation */
       HYPRE_BoomerAMGSetCoarsenType(solver, hypre_intpara[1]);  /* coarsening type */
-      HYPRE_BoomerAMGSetNumSweeps(solver, hypre_intpara[2]);   /* Sweeeps on each level */
+      HYPRE_BoomerAMGSetNumSweeps(solver, hypre_intpara[2]);   /* Sweeps on each level */
       HYPRE_BoomerAMGSetMaxLevels(solver, hypre_intpara[3]); /* levels of coarsening */
       HYPRE_BoomerAMGSetInterpType(solver, hypre_intpara[4]);  /* interpolation type */
       HYPRE_BoomerAMGSetSmoothType(solver, hypre_intpara[5]);  /* smoother type */

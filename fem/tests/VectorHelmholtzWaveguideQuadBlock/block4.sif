@@ -1,0 +1,47 @@
+  Linear System Symmetric = False
+  Linear system Complex = False
+  Linear System Block Mode = True
+
+  Block Gauss-Seidel = True
+  Block Quadratic Hcurl System = Logical True
+  Block Matrix Reuse = False
+  Block Preconditioner = True
+
+! Treat linear re/im dofs together, quadratic in their own block
+!  Block Quadratic Hcurl Semicomplex = Logical True
+
+! True + True seems to provide best speed-up
+  Block Scaling = True
+
+! Linear system solver for outer loop
+!-----------------------------------------
+  Outer: Linear System Solver = "Iterative"
+  Outer: Linear System Convergence Tolerance = 1e-6
+  Outer: Linear System Iterative Method = gcr
+  Outer: Linear System Max Iterations = 200 
+  Outer: Linear System Residual Output = 1
+  Outer: Linear System GCR Restart = 50
+  Outer: Linear System Abort Not Converged = False
+  Outer: Linear System Pseudo Complex = True
+
+  $blocktol = 0.01
+
+  block 11: Linear System Solver = "direct"
+  block 11: Linear System direct method = "mumps"
+  block 11: Linear System Complex = False
+
+  block 22: Linear System Solver = "direct"
+  block 22: Linear System direct method = "mumps"
+  block 22: Linear System Complex = False
+
+  block 33: Linear System Solver = "direct"
+  block 33: Linear System direct method = "mumps"
+  block 33: Linear System Complex = False
+
+  block 44: Linear System Solver = "direct"
+  block 44: Linear System direct method = "mumps"
+  block 44: Linear System Complex = False
+
+  Block Complex System = Logical True
+  Block Order(4) = Integer 1 3 2 4
+

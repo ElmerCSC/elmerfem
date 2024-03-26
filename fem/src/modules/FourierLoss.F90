@@ -120,6 +120,7 @@ SUBROUTINE FourierLossSolver_init( Model,Solver,dt,Transient )
   ElementalField = ListGetLogical( SolverParams, 'Calculate Elemental Fields', Found2 )
   IF(.NOT. (Found .OR. Found2) ) THEN
     ElementalField = .TRUE.
+    CALL ListAddLogical( SolverParams,'Calculate Elemental Fields',ElementalField )
     CALL Info(Caller,'Computing elemental fields only by default when neither given!')
   END IF
   
@@ -165,7 +166,8 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
   !------------------------------------------------------------------------------
 
   USE DefUtils
-
+  USE MagnetoDynamicsUtils
+  
   IMPLICIT NONE
   !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver  !< Linear & nonlinear equation solver options
@@ -454,7 +456,7 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
   at2 = RealTime()
   WRITE( Message,'(A,ES12.3)') 'Assembly time: ',at2-at1
   CALL Info( Caller, Message, Level=5 )
-  
+
   !------------------------------------------------------------------------------     
   IF( NodalField ) THEN
     CALL ListAddLogical( SolverParams,'Linear System Compute Change',.FALSE.) 
@@ -477,12 +479,16 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
   ! Print and save the lumped results
   !-------------------------------------------------------------------------------
   CALL CommunicateLosess()
+
+  ! Let's use the total loss as a norm if no global linear system was solved.
+  IF(.NOT. NodalField ) THEN
+    Solver % Variable % Values = TotalLoss 
+  END IF
   
   ! We need to perform the DFT also for the missing part
   !----------------------------------------------------------------------
   EndCycle = .TRUE.
   CALL LocalFourierTransform( EndCycle ) 
-  
 
 CONTAINS 
 
@@ -758,7 +764,7 @@ CONTAINS
     INTEGER :: ncomp
     
     INTEGER :: elem,i,j,k,p,q,n,nd,nt,t,BodyId,nsum
-    TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
+    TYPE(GaussIntegrationPoints_t), TARGET :: IP
     TYPE(Nodes_t) :: Nodes
     TYPE(Element_t), POINTER :: Element, TargetElement
     REAL(KIND=dp) :: weight,coeff,coeff2,detJ,GradAtIp(3,3),CurlAtIP(3),ValAtIp
@@ -771,7 +777,7 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:)
     REAL(KIND=dp), ALLOCATABLE :: WBasis(:,:), RotWBasis(:,:)
     INTEGER, ALLOCATABLE :: Indeces(:), Pivot(:)
-    LOGICAL :: DG, Erroneous
+    LOGICAL :: DG, Erroneous, MaterialExponents
     
     SAVE Nodes
     
@@ -790,31 +796,13 @@ CONTAINS
     Freq = Omega / (2*PI)
 
     DG = GetLogical(SolverParams,'Discontinuous Galerkin',Found )
+
     
-    WrkArray => ListGetConstRealArray( SolverParams,'Harmonic Loss Frequency Exponent',Found )
-    IF( Found ) THEN 
-      IF( SIZE( WrkArray,1 ) < Ncomp ) THEN
-        CALL Fatal(Caller,'> Harmonic Loss Frequency Exponent < too small')
-      END IF
-      FreqPower(1:Ncomp) = WrkArray(1:Ncomp,1)
-    ELSE       
-      DO icomp = 1, Ncomp
-        FreqPower(icomp) = GetCReal( SolverParams,'Harmonic Loss Frequency Exponent '//I2S(icomp) )
-      END DO
+    MaterialExponents = ListCheckPrefixAnyMaterial( Model,'Harmonic Loss Frequency Exponent') 
+    IF(.NOT. MaterialExponents) THEN
+      CALL GetLossExponents(SolverParams,FreqPower,FieldPower,Ncomp)
     END IF
-
-    WrkArray => ListGetConstRealArray( SolverParams,'Harmonic Loss Field Exponent',Found )
-    IF( Found ) THEN
-      IF( SIZE( WrkArray,1 ) < Ncomp ) THEN
-        CALL Fatal(Caller,'> Harmonic Loss Field Exponent < too small')
-      END IF
-      FieldPower(1:Ncomp) = WrkArray(1:Ncomp,1)        
-    ELSE
-      DO icomp = 1, Ncomp
-        FieldPower(icomp) = GetCReal( SolverParams,'Harmonic Loss Field Exponent '//I2S(icomp) )
-      END DO
-    END IF
-
+      
     ! Sum over the loss for each frequency, each body, and for the combined effect
     SeriesLoss = 0.0_dp
     BodyLoss = 0.0_dp
@@ -843,35 +831,28 @@ CONTAINS
 
       ! Integrate over local element:
       ! -----------------------------
-      IntegStuff = GaussPoints( Element )
+      IP = GaussPoints( Element )
       STIFF  = 0.0_dp
       FORCE  = 0.0_dp
 
       BodyId = Element % BodyId
       Material => GetMaterial()
 
-      
-      DO t=1,IntegStuff % n
+      IF(MaterialExponents) THEN
+        CALL GetLossExponents(Material,FreqPower,FieldPower,Ncomp)
+      END IF
+
+      DO t=1,IP % n
         IF( DirectField ) THEN
           ! For direct field we don't need the curl i.e. no dBasisdx needed
-          Found = ElementInfo( Element, Nodes, IntegStuff % u(t), &
-              IntegStuff % v(t), IntegStuff % w(t), detJ, Basis )
+          Found = ElementInfo( Element, Nodes, IP % u(t), &
+              IP % v(t), IP % w(t), detJ, Basis )
         ELSE
-          Found = ElementInfo( Element, Nodes, IntegStuff % u(t), &
-              IntegStuff % v(t), IntegStuff % w(t), detJ, Basis, dBasisdx )
-        END IF
-          
-        !---------------------------------------------------------------------
-        ! Get edge basis functions if needed. Given that only linear edge
-        ! interpolation functions are available currently, the following should 
-        ! work. If higher-order versions become available, we then need to add 
-        ! an argument which specifies the approximation degree.  
-        !---------------------------------------------------------------------
-        IF (AVField) THEN
-          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx) 
-        END IF
-
-        Weight = IntegStuff % s(t) * detJ
+          Found = ElementInfo( Element, Nodes, IP % u(t), IP % V(t), &
+              IP % W(t), detJ, Basis, dBasisdx, EdgeBasis = WBasis, &
+              RotBasis = RotWBasis, USolver = TargetSolverPtr )           
+        END IF        
+        Weight = IP % s(t) * detJ
 
         ! As there are so many components it does not really pay of much to save
         ! the matrix. The r.h.s. will always be more laboursome to assembly.
@@ -1057,7 +1038,7 @@ CONTAINS
     END DO
       
     ! Output of the losses on screen    
-    ! First the component losses, the the body losses
+    ! First the component losses, then the body losses
     DO k=1,NComp
       CALL Info(Caller,'Wavewise Fourier loss for component: '//I2S(k),Level=6)
       
@@ -1105,8 +1086,17 @@ CONTAINS
           END DO
           WRITE( 10,'(ES15.6)') BodyLoss(Ncomp,j)            
         END DO
-        CALL Info(Caller, &
-            'Fourier losses for bodies was saved to file: '//TRIM(LossesFile),Level=6 )
+        CALL Info(Caller,'Fourier losses for bodies was saved to file: '//TRIM(LossesFile),Level=6 )
+        CLOSE(10)
+      END IF
+
+      LossesFile = ListGetString(SolverParams,'Series Loss Filename',Found )
+      IF( Found ) THEN
+        OPEN (10, FILE=LossesFile)
+        DO j=1,FourierDofs/2
+          WRITE( 10,'(2ES15.6)') SUM(SeriesLoss(1:Ncomp,2*j-1)), SUM(SeriesLoss(1:Ncomp,2*j))
+        END DO
+        CALL Info(Caller,'Series losses for bodies was saved to file: '//TRIM(LossesFile),Level=6 )
         CLOSE(10)
       END IF
     END IF
