@@ -808,7 +808,7 @@ CONTAINS
 
     IF( ALLOCATED( Basis ) ) THEN
       IF( SIZE( Basis ) < nd ) THEN
-        DEALLOCATE( Basis ) 
+        DEALLOCATE( Basis, dBasisdx ) 
       END IF
     END IF
 
