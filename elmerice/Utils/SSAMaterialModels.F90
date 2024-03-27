@@ -198,7 +198,8 @@ MODULE SSAMaterialModels
 
    CASE(BUDD)
      Slip = beta * hafq * ub**(fm-1.0_dp)
-!     IF (PRESENT(SlipDer)) SlipDer = Slip2*Slip*(fm-1.0_dp)/(ub*ub)
+     ! TODO:
+     !     IF (PRESENT(SlipDer)) SlipDer = 
 
    CASE(REG_COULOMB_GAG)
      IF (fq.NE.1.0_dp) THEN
