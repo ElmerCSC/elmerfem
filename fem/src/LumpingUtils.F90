@@ -1882,7 +1882,7 @@ MODULE LumpingUtils
         
         CALL ListInitElementKeyword( TransferCoeff_h,'Boundary Condition','Electric Transfer Coefficient',InitIm=.TRUE.)
         CALL ListInitElementKeyword( ElCurrent_h,'Boundary Condition','Electric Current Density',InitIm=.TRUE.)
-        CALL ListInitElementKeyword( ExtPot_h,'Boundary Condition','External Potential',InitIm=.TRUE.)
+        CALL ListInitElementKeyword( ExtPot_h,'Boundary Condition','Incident Voltage',InitIm=.TRUE.)
 
         CALL ListInitElementKeyword( BCMat_h,'Boundary Condition','Material')
 

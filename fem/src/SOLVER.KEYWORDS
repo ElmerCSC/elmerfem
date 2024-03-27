@@ -353,6 +353,8 @@ BC:Real:            'Field'
 BC:Real:            'Field Flux'
 BC:Real:            'Robin Coefficient'
 BC:Real:            'External Field'
+BC:Real:            'External Potential'
+BC:Real:            'Incident Voltage"
 BC:String:          'Name'
 BC:String:          'Radiation'
 Body:Integer:       'Body Force'
