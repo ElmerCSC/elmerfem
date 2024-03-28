@@ -1534,8 +1534,8 @@ MODULE LumpingUtils
 !------------------------------------------------------------------------------
 !> Compute integrals for determining the S parameters.
 !------------------------------------------------------------------------------
-  FUNCTION BoundaryWaveFlux(Model, Mesh, MasterEntities, Avar, InFlux, &
-      PoyntMode, PortBC ) RESULT ( OutFlux ) 
+  FUNCTION BoundaryWaveFlux(Model, Mesh, MasterEntities, Avar, InFlux, PortBC ) &
+      RESULT ( OutFlux ) 
 !------------------------------------------------------------------------------
     TYPE(Model_t) :: Model    
     TYPE(Mesh_t), POINTER :: Mesh
@@ -1543,7 +1543,6 @@ MODULE LumpingUtils
     TYPE(Variable_t), POINTER :: Avar
     COMPLEX(KIND=dp) :: OutFlux
     COMPLEX(KIND=dp) :: InFlux
-    LOGICAL :: PoyntMode
     LOGICAL :: PortBC
 !------------------------------------------------------------------------------
 ! Local variables
@@ -1555,14 +1554,13 @@ MODULE LumpingUtils
     TYPE(ValueList_t), POINTER :: BC
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     REAL(KIND=dp) :: area, omega
-    COMPLEX(KIND=dp) :: intnorm, intel, intpoynt, vol, curr, port_curr, trans, Zimp
+    COMPLEX(KIND=dp) :: int_norm, int_el, vol, curr, port_curr, trans, Zimp
     CHARACTER(*), PARAMETER :: Caller = 'BoundaryWaveFlux'
 
     area = 0.0_dp
 
-    intnorm = 0.0_dp
-    intel = 0.0_dp
-    intpoynt = 0.0_dp
+    int_norm = 0.0_dp
+    int_el = 0.0_dp
 
     vol = 0.0_dp
     curr = 0.0_dp
@@ -1613,9 +1611,9 @@ MODULE LumpingUtils
         Element => Mesh % Faces(k)        
       END IF      
       IF(UseGaussLaw) THEN
-        CALL LocalIntegBC2(BC, Element, InitHandles)
+        CALL LocalIntegBC_AV(BC, Element, InitHandles)
       ELSE
-        CALL LocalIntegBC(BC, Element, InitHandles)
+        CALL LocalIntegBC_E(BC, Element, InitHandles)
       END IF
     END DO
 
@@ -1644,18 +1642,10 @@ MODULE LumpingUtils
       OutFlux = vol !curr 
       InFlux = 1.0 !port_curr 
     ELSE
-      intel = ParallelReduction(intel)
-      intnorm = ParallelReduction(intnorm)      
-      IF( PoyntMode ) THEN
-        ! Magnitude of poynting vector squareroot, phase of electric field 
-        intpoynt = ParallelReduction(intpoynt)      
-        OutFlux = intel * SQRT( REAL(IntPoynt) )  / ABS(intel)
-        InFlux = SQRT( REAL( intnorm ) )
-        !PRINT *,'intnorm:',intnorm, IntPoynt, OutFlux, Anorm
-      ELSE
-        OutFlux = intel
-        InFlux = intnorm 
-      END IF
+      int_el = ParallelReduction(int_el)
+      int_norm = ParallelReduction(int_norm)      
+      OutFlux = int_el
+      InFlux = int_norm 
     END IF
           
     CALL Info(Caller,'Reduction operator finished',Level=12)
@@ -1663,7 +1653,7 @@ MODULE LumpingUtils
   CONTAINS
 
 !-----------------------------------------------------------------------------
-    SUBROUTINE LocalIntegBC( BC, Element, InitHandles )
+    SUBROUTINE LocalIntegBC_E( BC, Element, InitHandles )
 !------------------------------------------------------------------------------
       TYPE(ValueList_t), POINTER :: BC
       TYPE(Element_t), POINTER :: Element
@@ -1792,14 +1782,10 @@ MODULE LumpingUtils
         END IF
                   
         Zs = 1.0_dp / (SQRT(REAL(muinv*eps)))
-        !ELSE
-        !Zs = imu * Omega / (B * muinv)        
-        !END IF
 
         MagLoad = ListGetElementComplex3D( MagLoad_h, Basis, Element, Found, GaussPoint = t )
         TemGrad = CMPLX( ListGetElementRealGrad( TemRe_h,dBasisdx,Element,Found), &
             ListGetElementRealGrad( TemIm_h,dBasisdx,Element,Found) )
-        !L = ( MagLoad + TemGrad ) / ( 2*imu*B) 
         L = ( MagLoad + TemGrad ) / ( 2*B) 
                 
         IF( EdgeBasis ) THEN
@@ -1818,31 +1804,22 @@ MODULE LumpingUtils
         e_ip_norm = SUM(e_ip*Normal)
         e_ip_tan = e_ip - e_ip_norm * Normal
 
-        ! integral over Poynting vector: This gives the energy
-        IntPoynt = IntPoynt + weight * 0.5_dp * SUM(e_ip * CONJG(e_ip) ) / Zs        
+        ! Integral over electric field: This gives the phase
+        int_el = int_el + weight * SUM(e_ip_tan * CONJG(L) )         
 
-        ! integral over electric field: This gives the phase
-        intel = intel + weight * SUM(e_ip_tan * CONJG(L) )         
-
-        IF( PoyntMode ) THEN
-          ! Normalize Poynting vector
-          !intnorm = intnorm + weight * 0.5_dp * ABS( SUM( e_ip * CONJG(L) ) ) / Zs
-          intnorm = intnorm + weight * 0.5_dp * ABS( SUM( L * CONJG(L) ) ) / Zs
-        ELSE
-          ! Normalize electric field
-          intnorm = intnorm + weight * ABS( SUM( L * CONJG(L) ) ) 
-        END IF
+        ! Norm of electric field used for normalization
+        int_norm = int_norm + weight * ABS( SUM( L * CONJG(L) ) ) 
        
         area = area + weight        
       END DO
       
 !------------------------------------------------------------------------------
-    END SUBROUTINE LocalIntegBC
+    END SUBROUTINE LocalIntegBC_E
 !------------------------------------------------------------------------------
 
 
 !-----------------------------------------------------------------------------
-    SUBROUTINE LocalIntegBC2( BC, Element, InitHandles )
+    SUBROUTINE LocalIntegBC_AV( BC, Element, InitHandles )
 !------------------------------------------------------------------------------
       TYPE(ValueList_t), POINTER :: BC
       TYPE(Element_t), POINTER :: Element
@@ -1873,8 +1850,8 @@ MODULE LumpingUtils
       END IF
 
       ! BC given with these:
-      ! Electric Current Density
       ! Electric Transfer Coefficient      
+      ! Electric Current Density / Incident Voltage
       IF( InitHandles ) THEN
         CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)      
         CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity',InitIm=.TRUE.)
@@ -1961,17 +1938,14 @@ MODULE LumpingUtils
                 
         area = area + weight
 
-        !FORCE(i) = FORCE(i) - im * omega * jn * Basis(p) * detJ * IP % s(t)
-        !STIFF(i,j) = STIFF(i,j) - im * omega * BetaPar * Basis(p) * Basis(q) * detJ * IP % s(t)
-
         curr = curr - tc_ip * v_ip * weight
-        port_curr = port_curr + cd_ip * weight !- tc_ip * v_ip * weight
+        port_curr = port_curr + cd_ip * weight
         trans = trans + tc_ip * weight         
         vol = vol + v_ip * weight          
       END DO
       
 !------------------------------------------------------------------------------
-    END SUBROUTINE LocalIntegBC2
+    END SUBROUTINE LocalIntegBC_AV
 !------------------------------------------------------------------------------
     
   END FUNCTION BoundaryWaveFlux

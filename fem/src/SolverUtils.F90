@@ -15666,8 +15666,7 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
     ! Normalize by the source    
     BLOCK
       
-      LOGICAL :: DoPoynt, FixIt      
-      DoPoynt = ListGetLogical(Solver % Values,'Normalize by Poynting Vector',Found )     
+      LOGICAL :: FixIt      
       FixIt =  ListGetLogical( Solver % Values,'Enforce Unity rowsum',Found )
 
       IF( InfoActive(20) ) THEN        
@@ -15685,17 +15684,11 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
       END IF      
    
       DO i=1,NoModes
-        IF( DoPoynt ) THEN
-          nrm = Lumped % Crhs(i) 
-          FluxesMatrix(i,:) = FluxesMatrix(i,:) / Nrm
-          FluxesMatrixIm(i,:) = FluxesMatrixIm(i,:) / Nrm
-        ELSE          
-          DO j=1,NoModes         
-            nrm = SQRT(Lumped % Crhs(j) * Lumped % Crhs(i))                               
-            FluxesMatrix(i,j) = FluxesMatrix(i,j) / nrm
-            FluxesMatrixIm(i,j) = FluxesMatrixIm(i,j) / nrm
-          END DO
-        END IF
+        DO j=1,NoModes         
+          nrm = SQRT(Lumped % Crhs(j) * Lumped % Crhs(i))                               
+          FluxesMatrix(i,j) = FluxesMatrix(i,j) / nrm
+          FluxesMatrixIm(i,j) = FluxesMatrixIm(i,j) / nrm
+        END DO
       END DO
         
       IF( FixIt ) THEN
@@ -16265,14 +16258,8 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
       INTEGER, POINTER :: MasterEntities(:)
       COMPLEX(KIND=dp) :: OutFlux,InFlux,PortFlux
       INTEGER :: i,j,k,n,port,alloc     
-      LOGICAL :: DoPoynt
-
-      DoPoynt = ListGetLogical(Solver % Values,'Normalize by Poynting Vector',Found ) 
-      IF( DoPoynt ) THEN
-        CALL Info(Caller,'Using Poynting vector for lumping',Level=10)
-      ELSE
-        CALL Info(Caller,'Using <Ej,Ej> for lumping',Level=10)
-      END IF
+      
+      CALL Info(Caller,'Using <Ej,Ej> for lumping',Level=10)
       
       Mesh => Solver % Mesh
       AVar => Solver % Variable      
@@ -16297,8 +16284,7 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
           ALLOCATE(MasterEntities(n))
         END DO
 
-        OutFlux = BoundaryWaveFlux(CurrentModel, Mesh, MasterEntities, Avar, &
-            PortFlux, DoPoynt, port==NMode )
+        OutFlux = BoundaryWaveFlux(CurrentModel, Mesh, MasterEntities, Avar, PortFlux, port==NMode )
           
         ! Memorize the coefficient for normalization: <Ec,Ej>/<Ei,Ei>                
         ! Real and imag part of: <Ec,Ej>
