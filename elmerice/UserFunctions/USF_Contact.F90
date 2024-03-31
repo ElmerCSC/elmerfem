@@ -269,14 +269,14 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
               IF (thresh.LE.0.0_dp) THEN
                  GroundedMask(Nn) = -1.0_dp
                  GL_retreat = GL_retreat + 1
-                 PRINT *, 'Retreat of the Grounding Line : '
-                 PRINT *, Nodes % x(ii), Nodes % y(ii), Nodes % z(ii)
+                 WRITE(Message,*)'Retreat of the Grounding Line : ', Nodes % x(ii), Nodes % y(ii)
+                 CALL INFO(USF_Name, Message, Level=4)
               ELSE
                  IF ( Distance(DistancePerm(Element % NodeIndexes(ii))).LE.thresh ) THEN
                     GroundedMask(Nn) = -1.0_dp
                     GL_retreat = GL_retreat + 1
-                    PRINT *, 'Retreat of the Grounding Line : '
-                    PRINT *, Nodes % x(ii), Nodes % y(ii), Nodes % z(ii)
+                    WRITE(message,*)'Retreat of the Grounding Line : ', Nodes % x(ii), Nodes % y(ii)
+                    CALL INFO(USF_Name, Message, Level=4)
                  END IF
               END IF
            END IF

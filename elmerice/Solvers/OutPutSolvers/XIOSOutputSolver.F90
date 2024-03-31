@@ -247,8 +247,8 @@
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         ! XIOS context definition
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        CALL xios_context_initialize(TRIM(xios_id),ELMER_COMM_WORLD)
-        CALL xios_set_current_context(TRIM(xios_id))
+        CALL xios_context_initialize(TRIM(ExecID),ELMER_COMM_WORLD)
+        CALL xios_set_current_context(TRIM(ExecID))
 
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         ! check that mandatory fields have been defined
