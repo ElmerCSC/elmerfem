@@ -1481,6 +1481,7 @@ CONTAINS
 
           DampCoeff(1:n) =  GetReal( BC, 'Damping', Found )
 
+          NormalSpring = .FALSE.
           IF( ListCheckPrefix( BC,'Spring' ) ) THEN         
             SpringCoeff(1:n,1,1) =  GetReal( BC, 'Spring', NormalSpring )
             IF ( .NOT. NormalSpring ) THEN
