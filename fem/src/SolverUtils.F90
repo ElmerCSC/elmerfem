@@ -7679,10 +7679,16 @@ END SUBROUTINE SetNodalSources
     ActivePart = .FALSE.
     ActivePartAll = .FALSE.
     DO BC=1,Model % NumberOfBCs
-      IF(.NOT. ListCheckPresent( Model % BCs(BC) % Values,'Target Boundaries')) CYCLE
-      ActivePart(BC) = ListCheckPresent( Model % BCs(BC) % Values, LoadName )
-      ActivePartAll(BC) = ListCheckPresent( &
-          Model % BCs(BC) % Values, LoadName(1:nlen) // ' DOFs' )
+      ValueList => Model % BCs(BC) % Values    
+      IF (ListCheckPresent(ValueList,'Target Nodes') .OR. &
+          ListCheckPresent(ValueList,'Target Coordinates')) CYCLE
+
+      IF(ListCheckPresent(ValueList,'Target Boundaries') .OR. &
+          ListCheckPresent(ValueList,'Name') ) THEN
+        ActivePart(BC) = ListCheckPresent( Model % BCs(BC) % Values, LoadName )
+        ActivePartAll(BC) = ListCheckPresent( &
+            Model % BCs(BC) % Values, LoadName(1:nlen) // ' DOFs' )
+      END IF
     END DO
 
     IF ( ANY(ActivePart) .OR. ANY(ActivePartAll) ) THEN
@@ -7766,10 +7772,8 @@ END SUBROUTINE SetNodalSources
 
       ! At the first calling the list of coordinates is transformed to list of nodes.
       IF(.NOT. NodesFound) THEN
-        IF(.NOT. NodesFound) THEN
-          IF( ListCheckPresent( ValueList,'Target Coordinates' ) ) THEN
-            CALL TargetCoordinatesToTargetNodes( Model % Mesh, ValueList, NodesFound )
-          END IF
+        IF( ListCheckPresent( ValueList,'Target Coordinates' ) ) THEN
+          CALL TargetCoordinatesToTargetNodes( Model % Mesh, ValueList, NodesFound )
         END IF
       END IF
       
