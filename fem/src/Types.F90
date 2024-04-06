@@ -1098,7 +1098,7 @@ MODULE Types
 
     INTEGER :: ELMER_COMM_WORLD = -1
 
-    CHARACTER(len=*),PARAMETER :: xios_id="elmerice"
+    CHARACTER(len=MAX_NAME_LEN) :: ExecID
 !------------------------------------------------------------------------------
 END MODULE Types
 !------------------------------------------------------------------------------

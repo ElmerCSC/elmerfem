@@ -132,34 +132,23 @@ CONTAINS
     CHARACTER(LEN=1024) :: InfoFileName 
    
 
-    MinOutputLevel = ListGetInteger( OutputList, &
-        'Min Output Level', GotIt )
-
-    MaxOutputLevel = ListGetInteger( OutputList, &
-        'Max Output Level', GotIt )
-
+    MinOutputLevel = ListGetInteger( OutputList,'Min Output Level', GotIt )
+    MaxOutputLevel = ListGetInteger( OutputList,'Max Output Level', GotIt )
     IF ( .NOT. GotIt ) MaxOutputLevel = 10
-
-    OutputMask => ListGetIntegerArray( OutputList, &
-        'Output Level', GotIt )
-
+    DO i=0,31
+      OutputLevelMask(i) = ( i >= MinOutputLevel .AND. i <= MaxOutputLevel )
+    END DO
+    
+    OutputMask => ListGetIntegerArray( OutputList,'Output Level', GotIt )
     IF ( GotIt ) THEN
       DO i=1,SIZE(OutputMask)
-        OutputLevelMask(i-1) = OutputMask(i) /= 0
+        OutputLevelMask(i-1) = ( OutputMask(i) /= 0 .AND. OutputLevelMask(i-1))
       END DO
     END IF
 
-    DO i=0,31
-      OutputLevelMask(i) = OutputLevelMask(i) .AND. &
-          i >= MinOutputLevel .AND. i <= MaxOutputLevel
-    END DO
-
-    OutputPrefix = ListGetLogical( OutputList, &
-        'Output Prefix', GotIt )
+    OutputPrefix = ListGetLogical( OutputList,'Output Prefix', GotIt )
     IF ( .NOT. GotIt ) OutputPrefix = .FALSE.
-
-    OutputCaller = ListGetLogical( OutputList, &
-        'Output Caller', GotIt )
+    OutputCaller = ListGetLogical( OutputList,'Output Caller', GotIt )
     IF ( .NOT. GotIt ) OutputCaller = .TRUE.
 
     ! By default only on partition is used to show the results
@@ -2649,7 +2638,7 @@ CONTAINS
     CALL ListTagKeywords( Model,'normalize by volume',.TRUE., Found ) 
            
     CALL ListAddNewString( Model % Simulation,'Solver Input File',ModelName ) 
-    
+
     CALL InitializeOutputLevel( Model % Simulation )
 
     Transient=ListGetString(Model % Simulation, &

@@ -1180,12 +1180,7 @@ CONTAINS
     ! then you must use global matrices for time integration.
     !----------------------------------------------------------------------------------
     DoIt = .FALSE.
-    IF( ListGetLogical( SolverParams,'Linear System FCT',Found ) ) THEN
-!     IF( ParEnv % PEs > 1 ) THEN
-!       CALL Fatal('AddEquationBasics','FCT scheme not implemented in parallel yet!')
-!     END IF
-      DoIt = .TRUE.
-    END IF
+    IF( ListGetLogical( SolverParams,'Linear System FCT',Found ) ) DoIt = .TRUE.
     IF( ListGetLogical( SolverParams,'Nonlinear Timestepping',Found ) ) DoIt = .TRUE.
     IF( ListGetLogical( SolverParams,'Apply Conforming BCs',Found ) ) DoIt = .TRUE.
     

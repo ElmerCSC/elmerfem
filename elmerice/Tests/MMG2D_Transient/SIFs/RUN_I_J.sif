@@ -92,7 +92,7 @@ End
 !!
 Solver 2
 !  Exec Solver = After Timestep
-  Exec Solver = All
+  Exec Solver = After All
 
   Equation = "Save Scalars"
     Procedure = File "SaveData" "SaveScalars"

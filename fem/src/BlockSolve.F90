@@ -2925,8 +2925,7 @@ CONTAINS
     NoVar = TotMatrix % NoVar
     m = 0
     
-    PRINT *,'BlockInfo:',NoVar
-    
+    PRINT *,'BlockInfo:',NoVar   
     
     DO k=1,NoVar
       DO l=1,NoVar
@@ -3302,7 +3301,7 @@ CONTAINS
       END IF
               
 
-      IF( InfoActive( 15 ) ) THEN
+      IF( InfoActive( 25 ) ) THEN
         CALL BlockMatrixInfo()
       END IF
 

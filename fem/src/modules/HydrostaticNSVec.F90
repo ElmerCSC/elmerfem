@@ -138,8 +138,8 @@ CONTAINS
               CALL Warn(Caller,'Replace >Temperature Field Variable< with >Relative Temperature = Equals ...<')
             END IF
           END IF
-          IF( ViscTemp_h % NotPresentAnywhere ) THEN
-            CALL Fatal(Caller,'>Relative Temperature< not given for viscosity model "glen"')
+          IF( ViscTemp_h % NotPresentAnywhere .AND. ViscArr_h % NotPresentAnywhere) THEN
+            CALL Fatal(Caller,'Neither >Relative Temperature< nor >Arrhenius Factor< given for viscosity model "glen"')
           END IF
 
           IF( ListCheckPresentAnyMaterial( CurrentModel,'Glen Enhancement Factor Function')  ) THEN
@@ -495,6 +495,7 @@ CONTAINS
 
     INTEGER :: t, i, j, k, p, q, ngp, allocstat, dofs
     INTEGER, SAVE :: elemdim
+    CHARACTER(LEN=MAX_NAME_LEN):: str
 
     TYPE(ValueHandle_t), SAVE :: Dens_h, Load_h(3)
     TYPE(Variable_t), POINTER, SAVE :: HeightVar 
@@ -560,7 +561,10 @@ CONTAINS
       CALL ListInitElementKeyword( Load_h(1),'Body Force','Flow Bodyforce 1')
       CALL ListInitElementKeyword( Load_h(2),'Body Force','Flow Bodyforce 2')
       CALL ListInitElementKeyword( Load_h(3),'Body Force','Flow Bodyforce 3')
-      HeightVar => VariableGet( CurrentModel % Mesh % Variables,'height') 
+
+      str = ListGetString( CurrentModel % Solver % Values,'Height Variable Name',Found )
+      IF(.NOT. Found) str = 'height'            
+      HeightVar => VariableGet( CurrentModel % Mesh % Variables, str) 
     END IF
     
     ! Vectorized basis functions
@@ -780,7 +784,9 @@ CONTAINS
 
       CALL ListInitElementVariable( Velo_v )
 
-      HeightVar => VariableGet( CurrentModel % Mesh % Variables,'height') 
+      str = ListGetString( CurrentModel % Solver % Values,'Height Variable Name',Found )
+      IF(.NOT. Found) str = 'height'            
+      HeightVar => VariableGet( CurrentModel % Mesh % Variables, str) 
 
       SlipCoeffVar => VariableGet( CurrentModel % Mesh % Variables,'Slip Coefficient',ThisOnly=.TRUE.)
       SaveSlipCoeff = ASSOCIATED(SlipCoeffVar)
@@ -802,7 +808,7 @@ CONTAINS
 
     IF( ALLOCATED( Basis ) ) THEN
       IF( SIZE( Basis ) < nd ) THEN
-        DEALLOCATE( Basis ) 
+        DEALLOCATE( Basis, dBasisdx ) 
       END IF
     END IF
 
@@ -1171,16 +1177,14 @@ CONTAINS
         IF(ASSOCIATED(VarVx)) i=i+1
         IF(ASSOCIATED(VarVy)) i=i+1
         IF(ASSOCIATED(VarFull)) i=i+1
-        IF(i==3) THEN                
-          CALL Info('HydrostaticNSVec','Setting velocity for each component separately',Level=10)
-          dofs = 1          
-        ELSE
-          CALL Fatal('HydrostaticNSVec','Could not find full velocity variable: '//TRIM(str))
+        IF(i<3) THEN                
+          CALL Fatal('HydrostaticNSVec','Could not find components of velocity variable: '//TRIM(str))
         END IF
+        CALL Info('HydrostaticNSVec','Setting velocity for each component separately',Level=10)
+        dofs = 1          
         zdof = 1
       END IF
       VarFull % Values = 0.0_dp      
-      PRINT *,'DOfs:',Dofs      
     END IF
       
     NULLIFY(VarP) 
@@ -1359,7 +1363,10 @@ CONTAINS
      
   END SUBROUTINE PopulateDerivedFields
 
-
+ 
+  ! Initialize height above z=0 such that we can access it from anywhere, not only at top.
+  ! Structured mesh is assumed in z-direction.
+  !---------------------------------------------------------------------------------------
   SUBROUTINE InitializeHeightField()
 
     IMPLICIT NONE

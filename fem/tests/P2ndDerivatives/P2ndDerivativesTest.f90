@@ -266,7 +266,7 @@ CONTAINS
      scal = MAX(ABS(f1),ABS(f2))
      IF(ABS(f1-f2)>scal*eps) THEN
        PRINT*,f1,f2,ABS(f1-f2), '>', scal*eps, str
-       STOP str 
+       STOP "Test failed."
      END IF
 !------------------------------------------------------------------------------
    END SUBROUTINE CheckValue
