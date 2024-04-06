@@ -12368,7 +12368,7 @@ END FUNCTION SearchNodeL
     CHARACTER(*), OPTIONAL :: VarName
     TYPE(Variable_t), POINTER, OPTIONAL :: Var
 !------------------------------------------------------------------------------
-    CHARACTER(:), ALLOCATABLE :: IntVarName
+    CHARACTER(:), ALLOCATABLE :: IntVarName, MaskName
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Variable_t), POINTER :: WeightsVar
     TYPE(ValueList_t), POINTER :: ElemParams
@@ -12397,14 +12397,16 @@ END FUNCTION SearchNodeL
     END IF
     WeightsVar => VariableGet( Mesh % Variables, IntVarName )
 
+    MaskName = "Calculate " // TRIM(IntVarName)
+    
     IF( WeightAtBoundary ) THEN
       ElemStart = Mesh % NumberOfBulkElements + 1
       ElemFin = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
-      UseMask = ListCheckPresentAnyBC( CurrentModel, IntVarName )
+      UseMask = ListCheckPresentAnyBC( CurrentModel, MaskName )
     ELSE
       ElemStart = 1
       ElemFin = Mesh % NumberOfBulkElements 
-      UseMask = ListCheckPresentAnyBodyForce( CurrentModel, IntVarName )
+      UseMask = ListCheckPresentAnyBodyForce( CurrentModel, MaskName )
     END IF
 
     RequireLogical = .FALSE.
@@ -12476,7 +12478,7 @@ END FUNCTION SearchNodeL
         IF( RequireLogical ) THEN
           IF( .NOT. ListGetLogical( ElemParams, IntVarName, Stat ) ) CYCLE
         ELSE
-          IF( .NOT. ListCheckPresent( ElemParams, IntVarName ) ) CYCLE
+          IF( .NOT. ListCheckPresent( ElemParams, MaskName ) ) CYCLE
         END IF
       END IF
 
