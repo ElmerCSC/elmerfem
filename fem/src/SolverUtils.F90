@@ -12397,8 +12397,12 @@ END FUNCTION SearchNodeL
     END IF
     WeightsVar => VariableGet( Mesh % Variables, IntVarName )
 
-    MaskName = "Calculate " // TRIM(IntVarName)
-    
+    IF( PRESENT( VarName ) ) THEN
+      MaskName = TRIM(VarName)
+    ELSE
+      MaskName = "Calculate " // TRIM(IntVarName)
+    END IF
+      
     IF( WeightAtBoundary ) THEN
       ElemStart = Mesh % NumberOfBulkElements + 1
       ElemFin = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
