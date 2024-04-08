@@ -20453,7 +20453,7 @@ CONTAINS
       ! For P elements mappings are different
       IF ( ASSOCIATED(Element % PDefs) ) THEN
         CALL GetElementEdgeMap( Element, EdgeMap )
-        IF(Element % Type % ElementCode > 500) &
+        IF(Element % Type % ElementCode >= 500) &
           CALL GetElementFaceEdgeMap( Element, FaceEdgeMap ) 
 
         n = Element % TYPE % NumberOfEdges
@@ -20543,6 +20543,8 @@ CONTAINS
           IF( Edge > SIZE( Edges ) ) THEN
             CALL Fatal('FindMeshEdges3D','Number of edges larger than expected!')
           END IF
+
+          Edges(Edge) % ElementIndex = Edge
                     
           IF( ASSOCIATED( Edges(Edge) % TYPE ) ) THEN
             IF ( .NOT. ASSOCIATED(Edges(Edge) % BoundaryInfo % Left)) THEN
