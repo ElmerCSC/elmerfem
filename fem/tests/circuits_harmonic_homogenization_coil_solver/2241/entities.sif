@@ -1,0 +1,74 @@
+!------ Skeleton for body section -----
+Body 1
+  Name = core
+End
+
+Body 2
+  Name = airgap_1_limb_2
+End
+
+Body 3
+  Name = wp1
+End
+
+Body 4
+  Name = air
+End
+
+!------ Skeleton for boundary section -----
+Boundary Condition 1
+  Name = xy0
+End
+
+Boundary Condition 2
+  Name = airgap_1_limb_2_boundary0
+End
+
+Boundary Condition 3
+  Name = wp1_alpha0
+End
+
+Boundary Condition 4
+  Name = wp1_beta1
+End
+
+Boundary Condition 5
+  Name = wp1_alpha1
+End
+
+Boundary Condition 6
+  Name = wp1_beta0
+End
+
+Boundary Condition 7
+  Name = airgap_1_limb_2_boundary1
+End
+
+Boundary Condition 8
+  Name = coreface_xy
+End
+
+Boundary Condition 9
+  Name = wp1_gamma0
+End
+
+Boundary Condition 10
+  Name = cylinder_lateral_surface
+End
+
+Boundary Condition 11
+  Name = wp1_gamma1
+End
+
+Boundary Condition 12
+  Name = infinity_xz1
+End
+
+Boundary Condition 13
+  Name = infinity_xz0
+End
+
+Boundary Condition 14
+  Name = bnry18
+End
+

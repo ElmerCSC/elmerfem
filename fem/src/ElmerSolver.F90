@@ -678,16 +678,18 @@
      CALL CompareToReferenceSolution( Finalize = .TRUE. )
      
 #ifdef DEVEL_LISTUSAGE
-     IF(InfoActive(6)) THEN
+     IF(InfoActive(10) .AND. ParEnv % MyPe == 0 ) THEN
        CALL Info('MAIN','Reporting unused list entries for sif improvement!')
-       CALL Info('MAIN','If you do not want these lines undefine > DEVEL_LISTUSAGE < !')
+       CALL Info('MAIN','If you do not want these lines undefine > DEVEL_LISTUSAGE < !')       
        CALL ReportListCounters( CurrentModel, 2 )
      END IF
 #endif
 #ifdef DEVEL_LISTCOUNTER
-     CALL Info('MAIN','Reporting list counters for code optimization purposes only!')
-     CALL Info('MAIN','If you get these lines with production code undefine > DEVEL_LISTCOUNTER < !')
-     CALL ReportListCounters( CurrentModel, 3 )
+     IF( ParEnv % MyPe == 0 ) THEN
+       CALL Info('MAIN','Reporting list counters for code optimization purposes only!')
+       CALL Info('MAIN','If you get these lines with production code undefine > DEVEL_LISTCOUNTER < !')
+       CALL ReportListCounters( CurrentModel, 3 )
+     END IF
 #endif
           
 !------------------------------------------------------------------------------
@@ -1664,21 +1666,7 @@
          CALL VariableAdd( Mesh % Variables, Mesh, Name='rotor angle',DOFs=1, Values=sAngle )
          CALL VariableAdd( Mesh % Variables, Mesh, Name='rotor velo',DOFs=1, Values=sAngleVelo )
        END IF
-       
-       IF( ListGetLogical( CurrentModel % Simulation,'Rotor Mode',GotIt) ) THEN
-         BLOCK
-           REAL(KIND=dp) :: Rad
-           Rad = DetermineRotorRadius(Mesh)
-           IF(Rad>0) THEN
-             WRITE(Message,'(A,ES14.6)') '"Rotor Radius" defined to be: ',Rad
-             CALL Info('AddTimeEtc',Message)
-             CALL ListAddConstReal( CurrentModel % Simulation,'Rotor Radius',Rad)
-           ELSE
-             CALL Warn('AddTimeEtc','Could not determine "Rotor Radius"')
-           END IF
-         END BLOCK
-       END IF
-       
+              
        IF( ListCheckPresentAnySolver( CurrentModel,'Scanning Loops') ) THEN
          CALL VariableAdd( Mesh % Variables, Mesh, Name='scan', DOFs=1, Values=sScan )
        END IF

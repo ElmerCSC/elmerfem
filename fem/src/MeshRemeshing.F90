@@ -2997,13 +2997,6 @@ END SUBROUTINE DistributedRemeshParMMG
     IF ( ier == 0 ) CALL Fatal(FuncName,'Call to MMGS_Get_meshSize failed!')
     CALL Info(FuncName,'MMG2D_Get_meshSize done',Level=30)
       
-    ! Initialize the new mesh stucture
-    NewMesh => AllocateMesh()
-    IF (MeshNumber > 0 ) THEN
-      WRITE(NewMesh % Name,'(A,A,I0)') TRIM(OutPutFileName),'_N',MeshNumber
-    ELSE
-      NewMesh % Name = TRIM(OutPutFileName)
-    END IF
 
     nt0 = 0; np0 = 0; na0 = 0
     Combine = ListGetLogical( Solver % Values,'Keep unmeshed regions',Found )
@@ -3076,6 +3069,14 @@ END SUBROUTINE DistributedRemeshParMMG
       END DO
     END IF
     
+    ! Initialize the new mesh stucture
+    NewMesh => AllocateMesh(nt + nt0,na + na0,np + np0,ParEnv%PEs > 1)
+    IF (MeshNumber > 0 ) THEN
+      WRITE(NewMesh % Name,'(A,A,I0)') TRIM(OutPutFileName),'_N',MeshNumber
+    ELSE
+      NewMesh % Name = TRIM(OutPutFileName)
+    END IF
+
     NewMesh % MaxElementNodes = maxnodes
     NewMesh % MeshDim = OldMesh % MeshDim    
     NewMesh % NumberOfNodes = np + np0 

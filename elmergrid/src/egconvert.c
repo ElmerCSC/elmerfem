@@ -3427,7 +3427,7 @@ omstart:
     if(strstr(line,"# sdim")) {
       cp = line;
       dim = next_int(&cp);
-      if(debug) printf("dim=%d\n",dim);
+      if(info && !allocated) printf("Dimension of mesh is: %d\n",dim);
     }
 
     else if(strstr(line,"# number of mesh points") || strstr(line, "# number of mesh vertices")) {
@@ -3465,8 +3465,6 @@ omstart:
     }
 
     else if(strstr(line,"# Mesh point coordinates") || strstr(line, "# Mesh vertex coordinates" )) {
-      if(info) printf("Loading %d coordinates\n",noknots);
-
       for(i=1;i<=noknots;i++) {
 	Comsolrow(line,in);	
 
@@ -3553,11 +3551,13 @@ omstart:
       }
     }
 
-    else if(strstr(line,"# Label")) {
+    else if(strstr(line,"# Label") && !strstr(line,"Union Selection")) {
       int ind, ind1, n_ent = 0;
-
+      
       n_label += 1;
       maxlabel = MAX(maxlabel,n_label);
+
+      if(debug) printf("Reading Label %d\n",n_label);
 
       if(allocated) {
 	/* Read the length of the label and proceed over the empty space*/
@@ -3576,15 +3576,17 @@ omstart:
 	if(strstr(line,"# Dimension")) {
 	  cp = line;
 	  entitydim = next_int(&cp);
+	  if(debug) printf("Dimension of entity: %d\n",entitydim);
 	  j++;
 	}
 	if(strstr(line,"# Number of entities")) {
 	  j++;
 	  cp = line; 
 	  n_ent = next_int(&cp);
+	  if(debug) printf("Number of entities: %d\n",n_ent);
 	}
-	if(debug) printf("Numbber of entities: %d\n",n_ent);
 	if(strstr(line,"# Entities")) {
+	  if(debug) printf("Reading %d entities\n",n_ent);
 	  j++;
 	  for(k=1;k<=n_ent;k++) {
 	    Comsolrow(line,in);	
@@ -3597,7 +3599,6 @@ omstart:
 		  ind1 = ind;		
 		  data->bodyname[ind1] = Cvector(0,MAXNAMESIZE);
 		  strncpy(data->bodyname[ind1],entityname,entitylen);
-		  data->bodynamesexist = TRUE;
 		}
 		domlabel[ind] = ind1;
 		if(debug) printf("Mapping bulk: %d %d %d\n",n_label,ind,ind1);
@@ -3608,7 +3609,6 @@ omstart:
 		  ind1 = ind;		
 		  data->boundaryname[ind1] = Cvector(0,MAXNAMESIZE);
 		  strncpy(data->boundaryname[ind1],entityname,entitylen);
-		  data->boundarynamesexist = TRUE;
 		}
 		bclabel[ind] = ind1;
 		if(debug) printf("Mapping bc: %d %d %d\n",n_label,ind,ind1);
@@ -3640,6 +3640,11 @@ end:
     }
 
     rewind(in);
+
+    if(info) {
+      printf("Comsol mesh consists of %d nodes and %d elements\n",noknots,noelements);
+    }
+    
     data->noknots = noknots;
     data->noelements = noelements;
     data->maxnodes = maxnodes;
@@ -3648,15 +3653,17 @@ end:
 
     bcoffset = 1 - minbc;
     domoffset = 1 - mindom;
-
+    
     if(info) {
-      if(domoffset) printf("Offset of body indexing set to start from one, not %d\n",mindom);
-      if(bcoffset) printf("Offset of BC indexing set to start from one, not %d\n",minbc);
+      printf("Original body index range is [%d,%d]\n",mindom,maxdom);
+      printf("Original bc index range is [%d,%d]\n",minbc,maxbc);
+      if(domoffset) printf("Offset of body indexing set to start from one!\n");
+      if(bcoffset) printf("Offset of BC indexing set to start from one!\n");
     }
       
     if(maxlabel>0)  {
       if(info) printf("Mesh has %d labels with physical names.\n",maxlabel);
-
+      
       /* Allocate for the tables that renumbers geometric entities to physical ones. */
       maxbc++;
       maxdom++;
@@ -3670,6 +3677,10 @@ end:
       bcinfo = Ivector(1,noelements);
       for(i=1;i<=noelements;i++)
 	bcinfo[i] = FALSE;
+
+      /* The code may think bodies are boundaries unless both names are set to exist even if they don't. */
+      data->bodynamesexist = TRUE;
+      data->boundarynamesexist = TRUE;
     }
     
     if(info) {
@@ -3685,21 +3696,29 @@ end:
 
   /* Perform remapping of entities */
   if(maxlabel > 0 ) {
+
+    if(debug) {      
+      for(i=minbc;i<=maxbc;i++) 
+	if(bclabel[i] > 0) printf("bc map: %d %d\n",i,bclabel[i]);
+      for(i=mindom;i<=maxdom;i++) 
+	if(domlabel[i] > 0) printf("bulk map: %d %d\n",i,domlabel[i]);
+    }
+
     for(i=1;i<=data->noelements;i++) {
       j = data->material[i];
       if(bcinfo[i]) {
 	if(bclabel[j]>-1) data->material[i] = bclabel[j];	  
       } 
       else {
-	if(domlabel[j]>-1) data->material[i] = domlabel[j];	  
+	if(domlabel[j]>-1) 
+	  data->material[i] = domlabel[j];	  
       }
     }        
     free_Ivector(bclabel,minbc,maxbc);
     free_Ivector(domlabel,mindom,maxdom);
     free_Ivector(bcinfo,1,noelements);
   }
-  
-  
+    
   if(info) printf("Comsol mesh was loaded from file %s.\n\n",filename);
   ElementsToBoundaryConditions(data,bound,FALSE,TRUE);
 

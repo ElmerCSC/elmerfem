@@ -308,8 +308,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
   END IF
 
   IF( LIstGetLogical( Solver % Values,'Save Circuit Matrix',Found ) ) THEN
-    CALL ListAddString( Solver % Values, 'Linear System Save Prefix','circuit')
-    CALL SaveLinearSystem( Solver, CM )
+    CALL SaveLinearSystem( Solver, CM,'circuit',ASolver % Matrix % NumberOfRows)
   END IF
     
   
@@ -1439,8 +1438,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
   END IF
 
   IF( ListGetLogical( Solver % Values,'Save Circuit Matrix',Found ) ) THEN
-    CALL ListAddString( Solver % Values, 'Linear System Save Prefix','circuit')
-    CALL SaveLinearSystem( Solver, CM )
+    CALL SaveLinearSystem( Solver, CM,'circuit',ASolver % Matrix % NumberOfRows)
   END IF
     
   CALL DefaultFinish()
