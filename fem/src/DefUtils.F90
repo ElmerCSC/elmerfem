@@ -5310,7 +5310,7 @@ CONTAINS
            Constantvalue = ( ptr % type /= LIST_TYPE_CONSTANT_SCALAR_PROC )
 
 
-           IF ( isActivePElement(Parent)) THEN
+           IF ( isActivePElement(Parent,Solver)) THEN
              n = GetElementNOFNodes()
              ! Get indexes of boundary dofs:
              CALL mGetBoundaryIndexesFromParent( Solver % Mesh, Element, gInd, numEdgeDofs )
