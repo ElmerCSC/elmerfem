@@ -1,0 +1,104 @@
+! An example of a periodic beam structure
+!
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "beam1d"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 3D
+  Simulation Type = Steady
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+  Post File = "periodic.vtu"
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Material 1
+ Youngs Modulus = Real 2.0e-1
+ Shear Modulus = Real 1.0
+ ! Youngs Modulus = Real 70.0e+9
+ ! Shear Modulus = Real 26.0e+9
+
+ ! Specify basis where the cross section parameters are expressed: 
+ Principal Direction 2(3) = Real 0.0 0.0 -1.0
+
+ ! Specify I_k:
+ Second Moment of Area 2 = Real 1.0
+ Second Moment of Area 3 = Real 1.0
+ ! Specify A:
+ Cross Section Area = Real 1.0
+ ! Specify J_T:
+ Torsional Constant = Real 1.0
+ ! The density is used only in transient cases:
+ Density = 2700.0
+End
+
+Body Force 1
+  Body Force 1 = 0.0
+  Body Force 2 = Variable Coordinate
+    Real MATC "1.0e-2*cos(2.0*pi*tx(0))"
+  Body Force 3 = 0.0
+End
+
+Equation 1 :: Active Solvers(1) = 1
+
+Solver 1
+  Equation = "Timoshenko Beam Equations"
+  Procedure = "BeamSolver3D" "TimoshenkoSolver"
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1e-7
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = Diagonal
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1e-9
+  Linear System Iterative Method = IDRS
+!  Linear System Abort Not Converged = False
+  Steady State Convergence Tolerance = 1e-9
+  Apply Conforming BCs = True
+End
+
+! -------------------------------------------------------------------------
+! The following can be used to save the deflection and the rotation
+! at the end:
+! -------------------------------------------------------------------------
+Solver 2
+  Equation = "Save Scalars"
+!  Exec Solver = After Timestep
+  Procedure = "SaveData" "SaveScalars"
+!  Filename = cantilever.dat
+  Variable 1 = U 1
+  Variable 2 = U 2
+  Variable 3 = U 3
+  Variable 4 = Theta 1
+  Variable 5 = Theta 2
+  Variable 6 = Theta 3
+  Save Points(1) = 2
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  U 1 = Real 0.0
+  U 3 = Real 0.0
+  Theta 1 = Real 0.0
+  Theta 2 = Real 0.0
+  Theta 3 = Real 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 2
+  Conforming BC = 1
+End
+
+Solver 1 :: Reference Norm = Real 9.73572657E-05
+Solver 1 :: Reference Norm Tolerance = Real 1.0e-5

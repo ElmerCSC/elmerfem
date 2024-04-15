@@ -5222,7 +5222,7 @@ CONTAINS
     DO i=1, Mesh % NumberOfBoundaryElements
       Element => Elements(i)
       ElemCode = Element % Type % ElementCode 
-      IF (ElemCode<=200) CYCLE
+!      IF (ElemCode<=200) CYCLE
 
       nSplit = 1
       IF( SplitQuadratic ) THEN
@@ -5328,7 +5328,7 @@ CONTAINS
       Element => Elements(i)
       
       ElemCode = Element % Type % ElementCode 
-      IF (ElemCode <= 200) CYCLE
+!      IF (ElemCode <= 200) CYCLE
 
       IF( TagNormalFlip ) THEN            
         n = Element % TYPE % NumberOfNodes
