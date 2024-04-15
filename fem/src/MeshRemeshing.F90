@@ -624,12 +624,12 @@ SUBROUTINE Set_PMMG_Parameters(SolverParams, ReTrial )
   !END IF
 
 !  [1/0] Avoid/allow point relocation
-  NoMove = ListGetLogical(SolverParams,'No move',Found)
-  IF (NoMove) THEN
-    CALL PMMG_SET_IPARAMETER(pmmgMesh,PMMGPARAM_nomove,1,ierr)
-    IF ( ierr == 0 ) CALL Fatal('MMGSolver',&
-         'Call to MMG3D_SET_IPARAMETER <No move> Failed')
-  END IF
+! NoMove = ListGetLogical(SolverParams,'No move',Found)
+! IF (NoMove) THEN
+!   CALL PMMG_SET_IPARAMETER(pmmgMesh,PMMGPARAM_nomove,1,ierr)
+!   IF ( ierr == 0 ) CALL Fatal('MMGSolver',&
+!        'Call to MMG3D_SET_IPARAMETER <No move> Failed')
+! END IF
 
   ! [1/0] Avoid/allow surface modifications
   NoSurf = ListGetLogical(SolverParams,'mmg No surf',Found)
