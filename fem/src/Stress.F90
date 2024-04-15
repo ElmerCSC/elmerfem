@@ -175,9 +175,10 @@ MODULE StressLocal
 
      NeedHeat = ANY( NodalTemperature(1:ntot) /= 0.0d0 )
      IF (.NOT.EvaluateLoadAtIP) NeedHarmonic = ANY( LOAD_im(:,1:n) /= 0.0d0 ) 
-     NeedPreStress = ANY( NodalPreStrain(1:6,1:n) /= 0.0d0 ) 
-     NeedPreStress = NeedPreStress .OR. ANY( NodalPreStress(1:6,1:n) /= 0.0d0 ) 
-
+     NeedPreStress = ANY( NodalPreStrain(1:6,1:n) /= 0.0d0 ) .OR. &
+         ANY( NodalStrainLoad(1:6,1:n) /= 0.0d0 )
+     NeedPreStress = NeedPreStress .OR. ANY( NodalPreStress(1:6,1:n) /= 0.0d0 ) .OR. &
+         ANY( NodalStressLoad(1:6,1:n) /= 0.0d0 )
 
      BF => GetBodyForce()
      GPA = .FALSE.
