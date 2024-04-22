@@ -5585,8 +5585,6 @@ CONTAINS
 
      ! BLOCK
      !------------------------------------
-     QuadraticApproximation = ListGetLogical(Params, 'Quadratic Approximation', Found)
-     SecondKindBasis = ListGetLogical(Params, 'Second Kind Basis', Found)
      DO DOF=1,x % DOFs
        IF(.NOT. ReleaseAny) CYCLE
        

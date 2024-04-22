@@ -7,10 +7,10 @@ the form
 
 This case is checked to give the relative ($\mathbf{L}_2$) error
 
-$$ || \mathbf{E} - \mathbf{E}_h || / || \mathbf{E} || = 4.62445E-002. $$
+$$ || \mathbf{E} - \mathbf{E}_h || / || \mathbf{E} || = 4.62445 \cdot 10^{-2}. $$
 
 If we apply a regular subdivision (Mesh Levels = 2), we obtain
 
-$$ || \mathbf{E} - \mathbf{E}_h || / || \mathbf{E} || = 1.17795E-002 $$
+$$ || \mathbf{E} - \mathbf{E}_h || / || \mathbf{E} || = 1.17795 \cdot 10^{-2} $$
 
 so we see quadratic convergence as expected.
