@@ -2905,6 +2905,7 @@ CONTAINS
            coord(2) = Mesh % Nodes % y( k ) 
            coord(3) = Mesh % Nodes % z( k ) 
 
+           PrevDisp = 0._dp
            IF( CalculateVelocity ) THEN
              IF( dofs == 2 ) THEN
                PrevDisp(1) = PrevDispVals( 2 * l - 1)
