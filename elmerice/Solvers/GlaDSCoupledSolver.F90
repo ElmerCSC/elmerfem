@@ -2681,6 +2681,8 @@ SUBROUTINE GlaDS_GLflux( Model,Solver,dt,TransientSimulation )
   ! Sum nodal values for nodes that exist on multiple partitions
   CALL ParallelSumVector(Solver % Matrix, cglfVals)
 
+  GLfluxVals = 0.0
+  
   DO nn = 1, numNodes
      IF (gmPerm(nn).le.0) CYCLE
 !     IF (gmVals(gmPerm(nn)).eq.0) GLfluxVals(GLfluxPerm(nn)) = volFluxSheet + volFluxChannel
@@ -2733,26 +2735,21 @@ END SUBROUTINE GlaDS_GLflux
 !  Weights variable name = String "Friction heating boundary weights"
 !
 !
-!  Notes when using this with a 2D SSA setup:
-!
-!  Assuming we don't have nodal heat, we can calculate a friction heat if we
-!  know about the sliding law and the relevant parameters
-!
-!  Grounded Melt = Variable ssavelocity 1, ssavelocity 2, beta
-!     Real lua "((tx[0]^2.0+tx[1]^2.0)*10.0^tx[2])/(rhoi*Lf)"
-!
-!       SSA Mean Density = Real #rhoi
-!
-!
-! Which law are we using (linear, weertman , coulomb or regularised coulomb)
-!  SSA Friction Law = String "coulomb"
-!  SSA Friction Parameter = Variable "Coulomb As"
-!    Real Lua "tx[0]^(-1/3)"
-!  SSA Friction Maximum Value = Equals "Coulomb C"
-!  SSA Friction Post-Peak = Real 1.0
-!  SSA Friction Exponent = Real #1.0/n
 
-
+! Heat is Mega Joules per year.
+  ! We multiply by 10^6 to convert from Mega Joules to Joules.
+  !
+  
+  ! Different modes of operation.
+  ! "heat"     - a variable providing nodal heat (e.g. could be residual from temperate ice solver) is used
+  !              to calculate the melt rate.  Weights (based on area) are also needed in this case.
+  !
+  ! MeltRate = Heat / (area * density * latent_heat)
+  !
+  ! "friction" - a sliding velocity variable is provided and used by this routine to calculate basal shear
+  !              stress, which is then used (along with the effective linear sliding coefficient ("ceff",
+  !              see SSASolver.F90), to calculate melt based on friction heat.
+!
 RECURSIVE SUBROUTINE GroundedMelt( Model,Solver,Timestep,TransientSimulation )
 
   USE DefUtils
@@ -2769,82 +2766,118 @@ RECURSIVE SUBROUTINE GroundedMelt( Model,Solver,Timestep,TransientSimulation )
   !------------------------------------------------------------------------------
   !    Local variables
   !------------------------------------------------------------------------------
-  TYPE(ValueList_t), POINTER  :: SolverParams
-  TYPE(Variable_t), POINTER   :: MeltVar, WeightsVar, HeatVar, GHFVar
+  TYPE(ValueList_t), POINTER  :: SolverParams, Material
+  TYPE(Variable_t), POINTER   :: MeltVar, WeightsVar, HeatVar, GHFVar, Ceffvar, UbVar 
   LOGICAL, SAVE               :: FirstTime = .TRUE., UseGHF = .FALSE.
   LOGICAL                     :: Found
-  CHARACTER(LEN=MAX_NAME_LEN) :: MyName = 'GroundedMelt solver', HeatVarName, WeightsVarName, GHFvarName
-  REAL(KIND=dp),PARAMETER     :: rho = 1000.0_dp ! density of pure water
+  CHARACTER(LEN=MAX_NAME_LEN) :: MyName = 'Grounded Melt solver', HeatVarName, WeightsVarName, GHFvarName
+  CHARACTER(LEN=MAX_NAME_LEN) :: MeltMode, CeffVarName, UbVarName
+  REAL(KIND=dp)               :: rho_fw ! density of fresh water
   REAL(KIND=dp),PARAMETER     :: threshold = 0.001_dp ! threshold friction melt rate for including GHF in melt calc
-  REAL(KIND=dp), POINTER      :: WtVals(:), HeatVals(:), MeltVals(:), GHFVals(:)
-  REAL(KIND=dp)               :: LatHeat, GHFscaleFactor
-  INTEGER, POINTER            :: WtPerm(:), HeatPerm(:), MeltPerm(:), GHFPerm(:)
+  REAL(KIND=dp), POINTER      :: WtVals(:), HeatVals(:), MeltVals(:), GHFVals(:), Ceffvals(:), UbVals(:)
+  REAL(KIND=dp)               :: LatHeat, GHFscaleFactor, Ub(1)
+  INTEGER, POINTER            :: WtPerm(:), HeatPerm(:), MeltPerm(:), GHFPerm(:), Ceffperm(:), UbPerm(:)
   INTEGER                     :: nn
-
-  !  IF (FirstTime) THEN
-  !     CALL CalculateNodalWeights(Solver, .FALSE., VarName='Weights')
-  !     CALL CalculateNodalWeights(Solver, .FALSE.)
-  !     CALL CalculateNodalWeights(Solver, .TRUE.)
-  !     FirstTime = .FALSE.
-  !  END IF
   
-  SolverParams => GetSolverParams()
 
-  GHFvarName = GetString(SolverParams,'GHF variable name', Found)
-  IF (Found) THEN
-     UseGHF = .TRUE.
-     GHFscaleFactor = GetConstReal( Model % Constants, 'GHF scale factor', Found)
-     IF(.NOT.Found) GHFscaleFactor = 1.0
-  ELSE
-     UseGHF = .FALSE.
-  END IF
-
-  LatHeat = GetConstReal( Model % Constants, 'Latent Heat', Found)
-  IF(.NOT.Found) CALL Fatal(MyName, '>Latent Heat< not found in constants')
-  
-  HeatVarName = GetString(SolverParams,'heat variable name', Found)
-  IF(.NOT.Found) CALL Fatal(MyName, '>Heat variable name< not found in solver params')
-  WeightsVarName = GetString(SolverParams,'Weights variable name', Found)
-  IF(.NOT.Found) CALL Fatal(MyName, '>Weights variable name< not found in solver params')
-     
-  IF (UseGHF) THEN
-     GHFVar     => VariableGet(Model % Variables, GHFvarName, ThisOnly = .TRUE., UnfoundFatal = .TRUE.)
-     GHFVals    => GHFVar%Values 
-     GHFPerm    => GHFVar%Perm
-  END IF
-
-  HeatVar    => VariableGet(Model % Variables, HeatVarName, ThisOnly = .TRUE., UnfoundFatal = .TRUE.)
-  HeatVals   => HeatVar%Values 
-  HeatPerm   => HeatVar%Perm
-
-  WeightsVar => VariableGet(Model % Variables, WeightsVarName, ThisOnly = .TRUE., UnfoundFatal = .TRUE.)
-  WtVals     => WeightsVar%Values 
-  WtPerm     => WeightsVar%Perm
+  rho_fw = ListGetConstReal( Model % Constants, 'Fresh Water Density', Found )
+  IF (.NOT.Found) CALL FATAL(MyName, 'Constant >Fresh Water Density< not found')
+  LatHeat = ListGetConstReal( Model % Constants, 'Latent Heat', Found)
+  IF (.NOT.Found) CALL Fatal(MyName, '>Latent Heat< not found in constants')
 
   MeltVar    => Solver%Variable
   MeltVals   => MeltVar%Values 
   MeltPerm   => MeltVar%Perm
+
+  SolverParams => GetSolverParams()
+
+  MeltMode = GetString(SolverParams,'Melt mode', Found)
+  IF(.NOT.Found) CALL Fatal(MyName, '>Melt mode< not found in solver params')
   
+  SELECT CASE (MeltMode)
+
+  CASE ("heat")      
+    HeatVarName = GetString(SolverParams,'heat variable name', Found)
+    IF(.NOT.Found) CALL Fatal(MyName, '>Heat variable name< not found in solver params')
+    WeightsVarName = GetString(SolverParams,'Weights variable name', Found)
+    IF(.NOT.Found) CALL Fatal(MyName, '>Weights variable name< not found in solver params')
+
+    HeatVar    => VariableGet(Model % Variables, HeatVarName, ThisOnly = .TRUE., UnfoundFatal = .TRUE.)
+    HeatVals   => HeatVar%Values 
+    HeatPerm   => HeatVar%Perm
+
+    WeightsVar => VariableGet(Model % Variables, WeightsVarName, ThisOnly = .TRUE., UnfoundFatal = .TRUE.)
+    WtVals     => WeightsVar%Values 
+    WtPerm     => WeightsVar%Perm
+
+  CASE ("friction")
+    UbVarName = GetString(SolverParams,'Ub variable name', Found)
+    IF (.NOT.Found) UbVarName = "SSAVelocity"
+    CeffVarName = GetString(SolverParams,'Ceff variable name', Found)
+    IF (.NOT.Found) CeffVarName = "Ceff"
+
+    CeffVar    => VariableGet(Model % Variables, CeffVarName, ThisOnly = .TRUE., UnfoundFatal = .TRUE.)
+    CeffVals   => CeffVar%Values 
+    CeffPerm   => CeffVar%Perm
+
+    UbVar      => VariableGet(Model % Variables, UbVarName, ThisOnly = .TRUE., UnfoundFatal = .TRUE.)
+    UbVals     => UbVar%Values 
+    UbPerm     => UbVar%Perm
+
+    IF (UbVar % DOFS .NE. 2) THEN
+      CALL Fatal(MyName, 'Expecting Ub variable to be 2D')
+    END IF
+    !    Material => GetMaterial() ! get sliding velocity from material
+
+  CASE DEFAULT
+    CALL Fatal(MyName, 'MeltMode not recognised')
+
+  END SELECT
+   
+  GHFvarName = GetString(SolverParams,'GHF variable name', Found)
+  IF (Found) THEN
+    UseGHF = .TRUE.
+    GHFscaleFactor = GetConstReal( Model % Constants, 'GHF scale factor', Found)
+    IF(.NOT.Found) GHFscaleFactor = 1.0
+  ELSE
+    UseGHF = .FALSE.
+  END IF
+       
+  IF (UseGHF) THEN
+    GHFVar     => VariableGet(Model % Variables, GHFvarName, ThisOnly = .TRUE., UnfoundFatal = .TRUE.)
+    GHFVals    => GHFVar%Values 
+    GHFPerm    => GHFVar%Perm
+  END IF
+
   LoopAllNodes: DO nn=1,Solver % Mesh % NumberOfNodes
 
-     !
-     ! MeltRate = Heat / (area * density * latent_heat)
-     !
-     ! Heat is Mega Joules per year.
-     ! We multiply by 10^6 to convert from Mega Joules to Joules.
-     !
-     IF (MeltPerm(nn).GT.0) THEN
-        MeltVals(MeltPerm(nn)) = ABS( 1.0e6 * HeatVals(HeatPerm(nn)) ) / ( WtVals(WtPerm(nn)) * rho * LatHeat )
-        IF (UseGHF) THEN
-           ! Scaled GHF is in Mega Joules per m^2 per year.
-           MeltVals(MeltPerm(nn)) = MeltVals(MeltPerm(nn)) + &
-                ( GHFVals(GHFPerm(nn))*GHFscaleFactor*1.0e6 ) / ( rho*LatHeat )
-        END IF
-     END IF
+    IF (MeltPerm(nn).GT.0) THEN
+
+      SELECT CASE (MeltMode)
+      CASE ("heat")      
+        MeltVals(MeltPerm(nn)) = ABS( 1.0e6 * HeatVals(HeatPerm(nn)) ) / ( WtVals(WtPerm(nn)) * rho_fw * LatHeat )
+      CASE ("friction")
+        Ub = (UbVals(2*(UbPerm(nn)-1)+1)**2 + UbVals(2*(UbPerm(nn)-1)+2)**2)**0.5
+!        Ub(1:1) = ListGetReal( Material, 'Sliding Velocity', 1, [nn], Found, UnfoundFatal = .TRUE. )
+        MeltVals(MeltPerm(nn)) = (Ub(1)**2 * CeffVals(CeffPerm(nn)) ) / ( rho_fw * LatHeat )
+      END SELECT
+      
+      IF (UseGHF) THEN
+        ! Scaled GHF is in Mega Joules per m^2 per year.
+        MeltVals(MeltPerm(nn)) = MeltVals(MeltPerm(nn)) + &
+             ( GHFVals(GHFPerm(nn))*GHFscaleFactor*1.0e6 ) / ( rho_fw*LatHeat )
+      END IF
+    END IF
 
   END DO LoopAllNodes
   
-  NULLIFY(HeatVar, HeatVals, HeatPerm, WeightsVar, WtVals, WtPerm, MeltVar, MeltVals, MeltPerm)
+  SELECT CASE(MeltMode)
+  CASE("heat")
+    NULLIFY(HeatVar, HeatVals, HeatPerm, WeightsVar, WtVals, WtPerm)
+  CASE("friction")
+    NULLIFY(CeffVar, CeffVals, CeffPerm)
+  END SELECT
+  NULLIFY(MeltVar, MeltVals, MeltPerm)
   IF (UseGHF) THEN
      NULLIFY(GHFVar, GHFVals, GHFPerm)
   END IF
