@@ -514,7 +514,15 @@ CONTAINS
     
     IP = GaussPointsAdapt(Element)
     ngp = IP % n
-    
+
+    !-----------------------------------------------------------------------------
+    ! Output the number of integration points as information.
+    ! This in not fully informative if several element types are present.
+    !-----------------------------------------------------------------------------    
+    IF( Element % ElementIndex == 1 ) THEN
+      CALL Info(Caller,'Number of 1st integration points: '//I2S(IP % n), Level=10)
+    END IF
+        
     ! Deallocate storage if needed
     IF (ALLOCATED(Basis)) THEN
       IF (SIZE(Basis,1) < ngp .OR. SIZE(Basis,2) < nd) &
@@ -728,6 +736,9 @@ CONTAINS
     END IF
     
     IP = GaussPointsAdapt( Element )
+    IF( Element % ElementIndex == 1 ) THEN
+      CALL Info(Caller,'Number of 1st integration points: '//I2S(IP % n), Level=10)
+    END IF
       
     IF( ListGetElementLogical( OrigMesh_h ) ) THEN
       CALL GetElementNodesOrig( Nodes, UElement=Element )
