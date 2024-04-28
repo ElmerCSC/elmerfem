@@ -92,16 +92,16 @@ RECURSIVE SUBROUTINE ComputeDevStress( Model,Solver,dt,TransientSimulation )
   
   INTEGER :: NewtonIter, NonlinearIter
   
-  TYPE(Variable_t), POINTER :: StressSol, FlowVariable, DensityVariable
+  TYPE(Variable_t), POINTER :: StressSol, FlowVariable, DensityVariable, VMisesVariable
   
   REAL(KIND=dp), POINTER ::  Stress(:), Solution(:), &
-       ForceVector(:), FlowValues(:), DensityValues(:)
+       ForceVector(:), FlowValues(:), DensityValues(:), VMisesValues(:)
   
   INTEGER, POINTER :: StressPerm(:), NodeIndexes(:), &
-       FlowPerm(:), DensityPerm(:)
+       FlowPerm(:), DensityPerm(:), VMisesPerm(:)
   
   LOGICAL :: Isotropic, AllocationsDone = .FALSE.,  &
-       Requal0
+       Requal0, ComputeVMises
   LOGICAL :: GotIt, GotIt_CT, GotIt_TFV, OldKeyword,  Cauchy = .FALSE.,UnFoundFatal=.TRUE.,OutOfPlaneFlow
   
   REAL(KIND=dp), ALLOCATABLE:: LocalMassMatrix(:,:), &
@@ -116,7 +116,7 @@ RECURSIVE SUBROUTINE ComputeDevStress( Model,Solver,dt,TransientSimulation )
   
   REAL(KIND=dp), POINTER :: BoundaryNormals(:,:), &
        BoundaryTangent1(:,:), BoundaryTangent2(:,:)
-  CHARACTER(LEN=MAX_NAME_LEN) :: FlowSolverName, StressSolverName, TempName, DensityName
+  CHARACTER(LEN=MAX_NAME_LEN) :: FlowSolverName, StressSolverName, TempName, DensityName, VMisesName
   
 #ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: at, at0
@@ -192,7 +192,27 @@ RECURSIVE SUBROUTINE ComputeDevStress( Model,Solver,dt,TransientSimulation )
      END IF
   END IF
 
-
+  ComputeVMises = GetLogical( Solver % Values, 'Compute von Mises Stress', GotIt )
+  IF (.NOT.GotIt) THEN
+    ComputeVMises = .FALSE.
+  ELSE IF (ComputeVMises) THEN
+    CALL INFO('ComputeDevStress', 'Computing von Mises stress', Level=5)
+    VMisesName = GetString(Solver % Values,'Von Mises Stress Name', GotIt)
+    IF (.NOT.GotIT) THEN
+      WRITE(VMisesName,'(A)') 'Von Mises Stress'
+    END IF
+    VMisesVariable => VariableGet(Solver % Mesh % Variables, VMisesname)
+    IF ( ASSOCIATED( VMisesVariable ) ) THEN
+        VMisesPerm    => VMisesVariable % Perm
+        VMisesValues => VMisesVariable % Values
+        CALL INFO('ComputeDevStress', 'Output of von Mises stress to ' // TRIM(VMisesname), Level=3)
+     ELSE
+        CALL FATAL('ComputeDevStress', TRIM(VMisesName) // ' not associated, but output requested')
+     END IF
+  ELSE
+    ComputeVMises = .FALSE.
+  END IF
+  
 !------------------------------------------------------------------------------
 !  Read constants from constants section of SIF file
 !------------------------------------------------------------------------------
@@ -397,7 +417,7 @@ RECURSIVE SUBROUTINE ComputeDevStress( Model,Solver,dt,TransientSimulation )
                 LocalViscosity, LocalFluidity, LocalDensity, &
                 CurrentElement, n, &
                 ElementNodes, Cauchy, iSolverName)
-
+            
 !------------------------------------------------------------------------------
 !        Update global matrices from local matrices 
 !------------------------------------------------------------------------------
@@ -439,6 +459,34 @@ RECURSIVE SUBROUTINE ComputeDevStress( Model,Solver,dt,TransientSimulation )
      END DO ! End DO Comp
 
 
+     IF (ComputeVMises) THEN
+       VMisesValues = 0.0_dp
+       DO k=1,Solver % Mesh % NumberOfNodes
+         IF (VMisesPerm(k) > 0) THEN
+           IF (DIM == 3) THEN
+             DO COMP = 1, 3
+               i = COMP + 1
+               IF (COMP == 3) i = 1
+               VMisesValues(VMisesPerm(k)) =  VMisesValues(VMisesPerm(k)) &
+                    + 0.5_dp *( Stress( StressDOFs*(StressPerm(k)-1) + COMP ) &
+                    - Stress( StressDOFs*(StressPerm(k)-1) + i ) )**2.0_dp &
+                    + 3.0_dp * (Stress( StressDOFs*(StressPerm(k)-1) + COMP + 3))**2.0_dp
+             END DO
+           ELSE IF (DIM == 2) THEN
+             DO COMP = 1, 2
+               VMisesValues(VMisesPerm(k)) =  VMisesValues(VMisesPerm(k)) &
+                    + (Stress( StressDOFs*(StressPerm(k)-1) + COMP))**2.0_dp
+             END DO
+             VMisesValues(VMisesPerm(k)) =  VMisesValues(VMisesPerm(k))  &
+                  - (Stress( StressDOFs*(StressPerm(k)-1) + 1)) &
+                  * (Stress( StressDOFs*(StressPerm(k)-1) + 2)) &
+                  + 3.0_dp * (Stress( StressDOFs*(StressPerm(k)-1) + 4))**2.0_dp
+           END IF                  
+           VMisesValues(VMisesPerm(k)) = SQRT(VMisesValues(VMisesPerm(k)))
+         END IF
+       END DO
+     END IF
+     
      Unorm = SQRT( SUM( Stress**2 ) / SIZE(Stress) )
      Solver % Variable % Norm = Unorm  
 
