@@ -4679,10 +4679,13 @@ CONTAINS
          IF (BDOFs > 0) THEN
            p = getEffectiveBubbleP(element,p,bdofs)
 
-           IF(.NOT. SerendipityPBasis) THEN
-             IF(nbmax-nbp<getBubbleDOFs(Element,p)) THEN
+           IF(nbmax-nbp<getBubbleDOFs(Element,p)) THEN
+             IF(SerendipityPBasis) THEN
                CALL Fatal("ElementInfoVec", &
-                 "Quad bubble scheme has changed, number of bubbles is now (p-1)^2 (0,1,4,9,16,25,...)")
+                 "Not enough space for storing bubble basis, check your #bubbles: i*(i-1)/2 (0,1,3,6,10,15,...)")
+             ELSE
+               CALL Fatal("ElementInfoVec", &
+                 "Not enough space for storing bubble basis, check your #bubbles: i^2 (0,1,4,9,16,25,...)")
              END IF
            END IF
 
@@ -5070,15 +5073,20 @@ CONTAINS
          IF (BDOFs > 0) THEN
            p = getEffectiveBubbleP(element,p,bdofs)
 
+           IF(nbmax-nbp<getBubbleDOFs(Element,p)) THEN
+             IF(SerendipityPBasis) THEN
+               CALL Fatal("ElementInfoVec", &
+                 "Not enough space for storing bubble basis, check your #bubbles: i*(i-1)*(i-1)/2 (0,1,4,10,16,...)")
+             ELSE
+               CALL Fatal("ElementInfoVec", &
+                 "Not enough space for storing bubble basis, check your #bubbles: i^3: (0,1,8,27,64,...)")
+             END IF
+           END IF
+
            IF(SerendipityPBasis) THEN
              CALL H1Basis_SD_BrickBubbleP(ncl, uWrk, vWrk, wWrk, P, nbmax, BasisWrk, nbp)
              CALL H1Basis_SD_dBrickBubbleP(ncl, uWrk, vWrk, wWrk, P, nbmax, dBasisdxWrk, nbdxp)
            ELSE
-             IF(nbmax-nbp<getBubbleDOFs(Element,p)) THEN
-               CALL Fatal("ElementInfoVec", &
-                  "Brick bubble scheme has changed, number of bubbles is now (p-1)^3 (1,8,27,64,125,...)")
-             END IF
-
              CALL H1Basis_BrickBubbleP(ncl, uWrk, vWrk, wWrk, P, nbmax, BasisWrk, nbp)
              CALL H1Basis_dBrickBubbleP(ncl, uWrk, vWrk, wWrk, P, nbmax, dBasisdxWrk, nbdxp)
            END IF
