@@ -907,7 +907,7 @@ END BLOCK
    IF( CalcPotential ) THEN
      DO i=1,nbf
        a(i) = ParallelReduction(a(i))
-       u(i) = CMPLX( ParallelReduction(REAL(u(i))),ParallelReduction(AIMAG(u(i))) )
+       u(i) = ParallelReduction(u(i))
      END DO
      
      DO i=1,nbf
@@ -923,11 +923,11 @@ END BLOCK
    END IF
 
    IF( CalcTorque ) THEN
-     Torq = CMPLX( ParallelReduction(REAL(Torq)), ParallelReduction(AIMAG(Torq)) )
+     Torq = ParallelReduction(Torq)
      CALL ListAddConstReal(Model % Simulation,'res: Air Gap Torque re', REAL(Torq))
      CALL ListAddConstReal(Model % Simulation,'res: Air Gap Torque im', AIMAG(Torq))
 
-     zforce = CMPLX( ParallelReduction(REAL(zforce)), ParallelReduction(AIMAG(zforce)) )
+     zforce = ParallelReduction(zforce)
      CALL ListAddConstReal(Model % Simulation,'res: Axial force(vol) re', REAL(zforce))
      CALL ListAddConstReal(Model % Simulation,'res: Axial force(vol) im', AIMAG(zforce))
 
@@ -944,7 +944,7 @@ END BLOCK
      END DO
    END IF
      IF(ListGetLogicalAnyBC(Model,'Calculate Axial Force')) THEN
-       zzforce = CMPLX( ParallelReduction(REAL(zzforce)), ParallelReduction(AIMAG(zzforce)) )
+       zzforce = ParallelReduction(zzforce)
        CALL ListAddConstReal(Model % Simulation,'res: Axial force(surf) re', REAL(zzforce))
        CALL ListAddConstReal(Model % Simulation,'res: Axial force(surf) im', AIMAG(zzforce))
      END IF

@@ -613,7 +613,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp) :: Freq, FreqPower(2), FieldPower(2), LossCoeff(2), ElemLoss(2), ValAtIP
    REAL(KIND=dp) :: ComponentLoss(2,2), rot_velo(3), angular_velo(3)
    REAL(KIND=dp) :: Coeff, TotalLoss(3), LumpedForce(3), localAlpha, localV(2), nofturns, coilthickness
-   REAL(KIND=dp) :: Flux(2), AverageFluxDensity(2), Area, N_j, wvec(3), PosCoord(3), TorqueDeprecated(3)
+   REAL(KIND=dp) :: Flux(2), AverageFluxDensity(2), Area, N_j, wvec(3)
    REAL(KIND=dp) :: R_ip, mu_r
    REAL(KIND=dp), SAVE :: mu0 = 1.2566370614359173e-6_dp
 
@@ -703,7 +703,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    TYPE(VariableArray_t) :: NodalFieldPointers(32), ElementalFieldPointers(32)
    TYPE(Variable_t), POINTER :: FieldVariable
    LOGICAL :: EigenAnalysis, VtuStyle, OldLossKeywords
-   INTEGER :: Field, FieldsToCompute, NOFEigen, MaxFields
+   INTEGER :: Field, FieldsToCompute, NOFEigen, MaxFields, NoSlices
 
 !-------------------------------------------------------------------------------------------
 
@@ -714,7 +714,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    
    SolverParams => GetSolverParams()
 
-   Parallel = ( ParEnv % PEs > 1 ) .AND. ( .NOT. Solver % Mesh % SingleMesh ) 
+   Parallel = ( ParEnv % PEs > 1 )    
+   NoSlices = MAX(1,ListGetInteger( Model % Simulation,'Number Of Slices', Found ) )   
    
    dim = CoordinateSystemDimension()
    fdim = 3   
@@ -2501,23 +2502,23 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    ! Perform parallel reductions 
    IF(Parallel) THEN
-     Power = ParallelReduction(Power)
-     IF( LayerBC ) SurfPower = ParallelReduction( SurfPower)
+     Power = ParallelReduction(Power) / NoSlices
+     IF( LayerBC ) SurfPower = ParallelReduction( SurfPower ) / NoSlices
 
-     Energy(1) = ParallelReduction(Energy(1))
-     Energy(2) = ParallelReduction(Energy(2))
-     Energy(3) = ParallelReduction(Energy(3))
+     Energy(1) = ParallelReduction(Energy(1)) / NoSlices
+     Energy(2) = ParallelReduction(Energy(2)) / NoSlices
+     Energy(3) = ParallelReduction(Energy(3)) / NoSlices
      
      IF (LossEstimation) THEN
        DO j=1,2
          DO i=1,2
-           ComponentLoss(j,i) = ParallelReduction(ComponentLoss(j,i)) 
+           ComponentLoss(j,i) = ParallelReduction(ComponentLoss(j,i)) / NoSlices
          END DO
        END DO
 
        DO j=1,3
          DO i=1,Model % NumberOfBodies
-           BodyLoss(j,i) = ParallelReduction(BodyLoss(j,i))
+           BodyLoss(j,i) = ParallelReduction(BodyLoss(j,i)) / NoSlices
          END DO
          TotalLoss(j) = SUM( BodyLoss(j,:) )
        END DO
@@ -2643,14 +2644,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        CALL Info( 'MagnetoDynamicsCalcFields', Message)
      END DO
 
-     CALL NodalTorqueDeprecated(TorqueDeprecated, Found)
-     IF (Found) THEN
-       WRITE(Message,*) 'Torque over defined bodies', TorqueDeprecated
-       CALL Info( 'MagnetoDynamicsCalcFields', Message )
-       CALL Warn( 'MagnetoDynamicsCalcFields', 'Keyword "Calculate Torque over body" is deprecated, use Torque Groups instead')
-       CALL ListAddConstReal(Model % Simulation, 'res: x-axis torque over defined bodies', TorqueDeprecated(1))
-       CALL ListAddConstReal(Model % Simulation, 'res: y-axis torque over defined bodies', TorqueDeprecated(2))
-       CALL ListAddConstReal(Model % Simulation, 'res: z-axis torque over defined bodies', TorqueDeprecated(3))
+     IF( ListGetLogicalAnyBody( Model,'Calculate Torque over body') ) THEN
+       CALL Fatal( 'MagnetoDynamicsCalcFields', &
+           'Keyword "Calculate Torque over body" is deprecated, use Component with torque instead')
      END IF
    END IF
 
@@ -2701,9 +2697,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
       END DO
 
       IF( Parallel ) THEN
-        Flux(1) = ParallelReduction(Flux(1))
-        Flux(2) = ParallelReduction(Flux(2))
-        Area = ParallelReduction(Area)
+        Flux(1) = ParallelReduction(Flux(1)) / NoSlices
+        Flux(2) = ParallelReduction(Flux(2)) / NoSlices
+        Area = ParallelReduction(Area) / NoSlices
       END IF
 
       IF( Area < EPSILON( Area ) ) THEN
@@ -2847,7 +2843,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
     
     IF( Parallel ) THEN
-      ThinLinePower  = ParallelReduction(ThinLinePower)
+      ThinLinePower  = ParallelReduction(ThinLinePower) / NoSlices
     END IF
     WRITE(Message,*) 'Total thin line power (the Joule effect): ', ThinLinePower
     CALL Info( 'MagnetoDynamicsCalcFields', Message )
@@ -2949,7 +2945,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
     END DO
     
     IF( Parallel ) THEN
-      Power  = ParallelReduction(Power)
+      Power = ParallelReduction(Power) / NoSlices
     END IF
       
     WRITE(Message,*) 'Thin sheet current power (the Joule effect): ', Power
@@ -3285,61 +3281,6 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
- SUBROUTINE NodalTorqueDeprecated(T, FoundOne)
-!------------------------------------------------------------------------------
-   IMPLICIT NONE
-   REAL(KIND=dp), INTENT(OUT) :: T(3)
-   LOGICAL, INTENT(OUT) :: FoundOne
-!------------------------------------------------------------------------------
-   REAL(KIND=dp) :: P(3), F(3)
-   TYPE(Element_t), POINTER :: Element
-   TYPE(Variable_t), POINTER :: CoordVar
-   LOGICAL :: VisitedNode(Mesh % NumberOfNodes)
-   INTEGER :: pnodal, nnt, ElemNodeDofs(27), ndofs, globalnode, m, n
-   LOGICAL :: ONCE=.TRUE., Found
-   
-   VisitedNode = .FALSE.
-   FoundOne = .FALSE.
-
-   DO n=1,size(Model % bodies)
-     IF(GetLogical(Model % bodies(n) % Values, 'Calculate Torque over body', FoundOne)) EXIT
-   END DO
-   IF(.not. FoundOne) RETURN
-   T = 0._dp
-   P = 0._dp
-
-   DO pnodal=1,GetNOFActive()
-     Element => GetActiveElement(pnodal)
-     IF(GetLogical(GetBodyParams(Element), 'Calculate Torque over body', Found)) THEN
-       ndofs = GetElementDOFs(ElemNodeDofs)
-       DO nnt=1,ndofs
-         globalnode = ElemNodeDofs(nnt)
-         IF (.NOT. VisitedNode(globalnode)) THEN
-           F(1) = NF % Values( 3*(NF % Perm((globalnode))-1) + 1)
-           F(2) = NF % Values( 3*(NF % Perm((globalnode))-1) + 2)
-           F(3) = NF % Values( 3*(NF % Perm((globalnode))-1) + 3)
-           P(1) = Mesh % Nodes % x(globalnode)
-           P(2) = Mesh % Nodes % y(globalnode)
-           P(3) = Mesh % Nodes % z(globalnode)
-           T(1) = T(1) + P(2)*F(3)-P(3)*F(2)
-           T(2) = T(2) + P(3)*F(1)-P(1)*F(3)
-           T(3) = T(3) + P(1)*F(2)-P(2)*F(1)
-           VisitedNode(globalnode) = .TRUE.
-         END IF
-       END DO ! nnt
-     END IF
-   END DO ! pnodal
-
-   IF( Parallel ) THEN
-     T(1) = ParallelReduction(T(1))
-     T(2) = ParallelReduction(T(2))
-     T(3) = ParallelReduction(T(3))
-   END IF
-!------------------------------------------------------------------------------
- END SUBROUTINE NodalTorqueDeprecated
-!------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
   SUBROUTINE NodalTorque(T, TorqueGroups)
 !------------------------------------------------------------------------------
    IMPLICIT NONE
@@ -3443,7 +3384,6 @@ CONTAINS
    VisitedNode = .FALSE.
    T = 0._dp
 
-
    DO pnodal=1,GetNOFActive()
      Element => GetActiveElement(pnodal)
      BodyParams => GetBodyParams(Element)
@@ -3484,7 +3424,7 @@ CONTAINS
 
    IF( Parallel ) THEN
      DO ng=1,SIZE(TorqueGroups)
-       T(ng) = ParallelReduction(T(ng))
+       T(ng) = ParallelReduction(T(ng)) / NoSlices
      END DO
    END IF
 

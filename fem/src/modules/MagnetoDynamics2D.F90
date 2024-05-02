@@ -144,7 +144,7 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
   
   LOGICAL :: NewtonRaphson = .FALSE., CSymmetry, SkipDegenerate, &
       HandleAsm, MassAsm, ConstantMassInUse = .FALSE.
-  LOGICAL :: InitHandles
+  LOGICAL :: InitHandles, SliceAverage
   INTEGER :: CoupledIter
   TYPE(Variable_t), POINTER :: IterV, CoordVar
 
@@ -181,7 +181,7 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
   
   CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
       CurrentCoordinateSystem() == CylindricSymmetric )
-  
+
   HandleAsm = ListGetLogical( SolverParams,'Handle Assembly',Found )
   IF( HandleAsm ) THEN
     CALL Info(Caller,'Performing handle version of bulk element assembly',Level=7)
@@ -418,13 +418,13 @@ CONTAINS
        pPot(:),Density(:)
    REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:)
    LOGICAL, ALLOCATABLE :: TorqueElem(:)
-   INTEGER :: i,bfid,n,nd,nbf,NoSlices,PrevComm
+   INTEGER :: i,bfid,n,nd,nbf,PrevComm,NoSlices,NoTimes
    LOGICAL :: Found, Stat
    TYPE(ValueList_t),POINTER::Params
    TYPE(GaussIntegrationPoints_t) :: IP
    TYPE(Nodes_t) :: Nodes
    LOGICAL :: CalcTorque, CalcPot, CalcInert
-   LOGICAL :: ThisTorque, ThisPot, ThisInert, Parallel, HaveRange, SliceAverage
+   LOGICAL :: ThisTorque, ThisPot, ThisInert, Parallel, HaveRange
    LOGICAL :: Visited = .FALSE.
    
    SAVE Visited, Nodes, Basis, dBasisdx, a, u, POT, dPOT, pPot, Density, Ctorq, TorqueElem
@@ -433,6 +433,13 @@ CONTAINS
 
    CALL Info(Caller,'Calculating lumped parameters',Level=8)
 
+   NoSlices = MAX(1,ListGetInteger( Model % Simulation,'Number Of Slices', SliceAverage ) )
+   NoTimes = ListGetInteger( Model % Simulation,'Number Of Times', Found )
+   IF( NoTimes > 1 ) THEN
+     PrevComm = ParEnv % ActiveComm
+     ParEnv % ActiveComm = ParallelSlicesComm() 
+   END IF
+      
    ! Define whether we have something to compute
    rinner = ListGetCRealAnyBody( Model,'r inner',CalcTorque )
    IF( CalcTorque ) THEN
@@ -461,15 +468,7 @@ CONTAINS
         
    IF(.NOT. (CalcTorque .OR. CalcPot .OR. CalcInert) ) RETURN
 
-   Parallel = ( ParEnv % PEs > 1 ) .AND. (.NOT. Mesh % SingleMesh ) 
-
-   NoSlices = ListGetInteger( Model % Simulation,'Number Of Slices', SliceAverage ) 
-   IF( NoSlices > 1 .AND. NoSlices < ParEnv % PEs ) THEN
-     CALL Info(Caller,'Changing communicator for slice operation!',Level=5)
-     PrevComm = ParEnv % ActiveComm
-     ParEnv % ActiveComm = ParallelSlicesComm() 
-   END IF
-   
+   Parallel = ( ParEnv % PEs > 1 )
    
    nbf = Model % NumberOfBodyForces
    IF(.NOT. Visited ) THEN
@@ -649,10 +648,10 @@ CONTAINS
    ! store the results for saving by SaveScalars.
    !-------------------------------------------------------------------------   
    IF( CalcPot ) THEN
-     IF( Parallel ) THEN
+     IF( ParEnv % PEs > 1 ) THEN
        DO i=1,nbf
-         a(i) = ParallelReduction(a(i))
-         u(i) = ParallelReduction(u(i))
+         a(i) = ParallelReduction(a(i)) / NoSlices
+         u(i) = ParallelReduction(u(i)) / NoSlices
        END DO
      END IF     
      DO i=1,nbf
@@ -666,19 +665,14 @@ CONTAINS
    END IF
    
    IF( CalcTorque ) THEN   
-     IF( Parallel ) THEN
-       Torq = ParallelReduction(Torq)
-       TorqArea = ParallelReduction(TorqArea)
-     END IF
-
      ! Arkkios formula assumes that rinner and router are nicely aligned with elements.
-     ! This may not the case, so the 1st time we make a geometric correction. 
+     ! This may not the case, so the 1st time we make a geomeric correction. 
      IF(.NOT. Visited ) THEN
        WRITE(Message,'(A,ES15.4)') 'Air gap initial torque:', Torq
        CALL Info(Caller,Message,Level=6)
 
-       IF (TorqArea /= 0) THEN
-         !Ctorq = PI*(router**2-rinner**2) / TorqArea
+       TorqArea = ParallelReduction(TorqArea) / NoSlices       
+       IF (TorqArea > EPSILON(TorqArea) ) THEN
          Ctorq = 2 * PI * rmean * rdiff / TorqArea
 
          WRITE(Message,'(A,F8.4)') 'Air gap correction initial:', cTorq
@@ -711,13 +705,10 @@ CONTAINS
        WRITE(Message,'(A,ES15.4)') 'Air gap torque for slice'//I2S(ParEnv % MyPe)//':', Torq
        CALL Info(Caller,Message,Level=5)
        CALL ListAddConstReal(Model % Simulation,'res: air gap torque for slice', Torq)
-
-       ! But the averaging makes sense only for more than one slice
-       IF( NoSlices > 1 ) THEN
-         Torq = ParallelReduction(Torq) / NoSlices
-       END IF
      END IF
        
+     ! But the averaging makes sense only for more than one slice
+     Torq = ParallelReduction(Torq) / NoSlices
      WRITE(Message,'(A,ES15.4)') 'Air gap torque:', Torq
      CALL Info(Caller,Message,Level=5)
      CALL ListAddConstReal(Model % Simulation,'res: air gap torque', Torq)
@@ -727,8 +718,8 @@ CONTAINS
 
    IF( CalcInert ) THEN
      IF( Parallel ) THEN
-       IMoment = ParallelReduction(IMoment)
-       IA = ParallelReduction(IA)
+       IMoment = ParallelReduction(IMoment) / NoSlices
+       IA = ParallelReduction(IA) / NoSlices
      END IF
 
      WRITE(Message,'(A,ES15.4)') 'Inertial volume:', IA
@@ -740,15 +731,11 @@ CONTAINS
      CALL ListAddConstReal(Model % Simulation,'res: inertial volume', IA)
      CALL ListAddConstReal(Model % Simulation,'res: inertial moment', IMoment)
    END IF
-
-   IF( SliceAverage ) THEN
-     IF( NoSlices > 1 .AND. NoSlices < ParEnv % PEs ) THEN
-       CALL Info(Caller,'Reverting communicator from slice operation!',Level=10)
-       ParEnv % ActiveComm = PrevComm
-     END IF
-   END IF
      
    Visited = .TRUE.
+   
+   ! Revert the communicatior back to original
+   IF( NoTimes > 1 ) ParEnv % ActiveComm = PrevComm
    
 !------------------------------------------------------------------------------
  END SUBROUTINE CalculateLumpedTransient
@@ -1599,7 +1586,8 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
   TYPE(ValueList_t), POINTER :: BC
   TYPE(Mesh_t),   POINTER :: Mesh
   COMPLEX(KIND=dp), PARAMETER :: im=(0._dp,1._dp)
-  LOGICAL, SAVE :: NewtonRaphson = .FALSE., CSymmetry, DoRestart, RestartDone = .FALSE.
+  LOGICAL, SAVE :: NewtonRaphson = .FALSE., CSymmetry, DoRestart, &
+      SliceAverage, RestartDone = .FALSE.
   INTEGER :: CoupledIter, TransientSolverInd
   TYPE(Variable_t), POINTER :: IterV, CoordVar, LVar
   TYPE(Matrix_t),POINTER::CM
@@ -1710,13 +1698,8 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
   END DO
   
   IF(.NOT. CSymmetry ) THEN
-    IF( ListGetLogical(Solver% Values,'Old Model Lumping',Found ) ) THEN
-      CALL CalculateLumpedOld(Model % NumberOfBodyForces)      
-    ELSE
-      CALL CalculateLumpedHarmonic()
-    END IF
+    CALL CalculateLumpedHarmonic()
   END IF
-
 
   CoordVar => VariableGet(Mesh % Variables,'Coordinates')
   IF(ASSOCIATED(CoordVar)) THEN
@@ -1756,91 +1739,9 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
   IF( TransientSolverInd > 0 ) THEN
     CALL ListPopNamespace()
   END IF
+
   
 CONTAINS
-
-!------------------------------------------------------------------------------
- SUBROUTINE CalculateLumpedOld(nbf)
-!------------------------------------------------------------------------------
-   INTEGER::nbf
-!------------------------------------------------------------------------------
-   REAL(KIND=dp) :: a(nbf),IMoment,IA,TorqArea,rinner,router,ctorq, &
-       xRe, xIm, torq
-   COMPLEX(KIND=dp)::u(nbf)
-   INTEGER :: i,bfid,n,nd
-   TYPE(ValueList_t),POINTER::Params
-!------------------------------------------------------------------------------
-
-   U=0._dp; a=0._dp; torq=0._dp; TorqArea=0._dp; IMoment=0._dp;IA=0
-   DO i=1,GetNOFActive()
-     Element => GetActiveElement(i)
-     nd = GetElementNOFDOFs(Element)
-     n  = GetElementNOFNodes(Element)
-     
-     CALL Torque(Torq,TorqArea,Element,n,nd)
-
-     Params=>GetBodyForce(Element)
-     IF(ASSOCIATED(Params)) THEN
-       bfid=GetBodyForceId(Element)
-       IF(GetLogical(Params,'Calculate Potential',Found)) &
-         CALL Potential(u(bfid),a(bfid),Element,n,nd)
-     END IF
-
-     Params=>GetBodyParams(Element)
-     IF(ASSOCIATED(Params)) THEN
-       IF(GetLogical(Params,'Calculate Inertial Moment',Found)) &
-         CALL InertialMoment(IMoment,IA,Element,n,nd)
-     END IF
-   END DO
-
-   DO i=1,nbf
-     a(i) = ParallelReduction(a(i))
-     xRe = REAL( u(i) ); xIm = AIMAG( u(i) )
-     xRe = ParallelReduction(xRe)
-     xIm = ParallelReduction(xIm)
-     u(i) = CMPLX( xRe, xIm )
-   END DO
-   IMoment = ParallelReduction(IMoment)
-   IA = ParallelReduction(IA)
-   Torq = ParallelReduction(Torq)
-
-   
-   WRITE(Message,'(A,ES15.4)') 'Air gap initial torque:', Torq
-   CALL Info(Caller,Message,Level=8)
-
-   TorqArea = ParallelReduction(TorqArea)
-   rinner = ListGetCRealAnyBody( Model,'r inner',Found )
-   router = ListGetCRealAnyBody( Model,'r outer',Found )
-   IF (TorqArea /= 0) THEN
-      Ctorq = PI*(router**2-rinner**2) / TorqArea
-   ELSE
-      Ctorq = 0.0_dp
-   END IF
-   WRITE(Message,'(A,ES15.4)') 'Air gap correction:', cTorq
-   CALL Info(Caller,Message,Level=8)
-   Torq = Ctorq * Torq
-   
-   DO i=1,nbf
-     IF(a(i)>0) THEN
-       CALL ListAddConstReal(Model % Simulation,'res: Potential re / bodyforce ' &
-                     //i2s(i),REAL(u(i))/a(i))
-       CALL ListAddConstReal(Model % Simulation,'res: Potential im / bodyforce ' &
-                     //i2s(i),AIMAG(u(i))/a(i))
-     END IF
-   END DO
-   CALL ListAddConstReal(Model % Simulation,'res: air gap torque', Torq)
-   CALL ListAddConstReal(Model % Simulation,'res: inertial volume', IA)
-   CALL ListAddConstReal(Model % Simulation,'res: inertial moment', IMoment)
-
-   WRITE(Message,'(A,ES15.4)') 'Air gap torque:', Torq
-   CALL Info(Caller,Message,Level=7)
-   WRITE(Message,'(A,ES15.4)') 'Inertial volume:', IA
-   CALL Info(Caller,Message,Level=7)
-   WRITE(Message,'(A,ES15.4)') 'Inertial moment:', Imoment
-   CALL Info(Caller,Message,Level=7)
-!------------------------------------------------------------------------------
- END SUBROUTINE CalculateLumpedOld
-!------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
@@ -1993,13 +1894,13 @@ CONTAINS
    COMPLEX(KIND=dp), ALLOCATABLE :: POTC(:),U(:)
    REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:)
    LOGICAL, ALLOCATABLE :: TorqueElem(:)
-   INTEGER :: i,bfid,n,nd,nbf,NoSlices,PrevComm
+   INTEGER :: i,bfid,n,nd,nbf,NoSlices,NoTimes,PrevComm
    LOGICAL :: Found, Stat
    TYPE(ValueList_t),POINTER::Params
    TYPE(GaussIntegrationPoints_t) :: IP
    TYPE(Nodes_t) :: Nodes
    LOGICAL :: CalcTorque, Calcpot, CalcInert
-   LOGICAL :: ThisTorque, ThisPot, ThisInert, Parallel, HaveRange, SliceAverage
+   LOGICAL :: ThisTorque, ThisPot, ThisInert, Parallel, HaveRange
    LOGICAL :: Visited = .FALSE.
    
    SAVE Visited, Nodes, Basis, dBasisdx, a, u, POT, POTC, Density, Ctorq, TorqueElem
@@ -2007,7 +1908,14 @@ CONTAINS
 !------------------------------------------------------------------------------
 
    CALL Info(Caller,'Calculating lumped parameters',Level=8)
-
+   
+   NoSlices = MAX(1,ListGetInteger( Model % Simulation,'Number Of Slices', SliceAverage ) )
+   NoTimes = ListGetInteger( Model % Simulation,'Number Of Times', Found )
+   IF( NoTimes > 1 ) THEN
+     PrevComm = ParEnv % ActiveComm
+     ParEnv % ActiveComm = ParallelSlicesComm() 
+   END IF
+     
    ! Define whether we have something to compute
    rinner = ListGetCRealAnyBody( Model,'r inner',CalcTorque )
    IF( CalcTorque ) THEN
@@ -2032,15 +1940,7 @@ CONTAINS
    
    IF(.NOT. (CalcTorque .OR. CalcPot .OR. CalcInert) ) RETURN
 
-   Parallel = ( ParEnv % PEs > 1 ) .AND. (.NOT. Mesh % SingleMesh ) 
-
-   NoSlices = ListGetInteger( Model % Simulation,'Number Of Slices', SliceAverage ) 
-   IF( NoSlices > 1 .AND. NoSlices < ParEnv % PEs ) THEN
-     CALL Info(Caller,'Changing communicator for slice operation!',Level=5)
-     PrevComm = ParEnv % ActiveComm
-     ParEnv % ActiveComm = ParallelSlicesComm() 
-   END IF
-   
+   Parallel = ( ParEnv % PEs > 1 ) 
    
    nbf = Model % NumberOfBodyForces
    IF(.NOT. Visited ) THEN
@@ -2211,11 +2111,8 @@ CONTAINS
    IF( CalcPot ) THEN
      IF( Parallel ) THEN
        DO i=1,nbf
-         a(i) = ParallelReduction(a(i))
-         xRe = REAL( u(i) ); xIm = AIMAG( u(i) )
-         xRe = ParallelReduction(xRe)
-         xIm = ParallelReduction(xIm)
-         u(i) = CMPLX( xRe, xIm )
+         a(i) = ParallelReduction(a(i)) / NoSlices
+         u(i) = ParallelReduction(u(i)) / NoSlices
        END DO
      END IF     
      DO i=1,nbf
@@ -2231,18 +2128,14 @@ CONTAINS
    END IF
    
    IF( CalcTorque ) THEN   
-     IF( Parallel ) THEN
-       Torq = ParallelReduction(Torq)
-       TorqArea = ParallelReduction(TorqArea)
-     END IF
-
      ! Arkkios formula assumes that rinner and router are nicely aligned with elements.
      ! This may not the case, so the 1st time we make a geometric correction. 
      IF(.NOT. Visited ) THEN
        WRITE(Message,'(A,ES15.4)') 'Air gap initial torque:', Torq
        CALL Info(Caller,Message,Level=6)
 
-       IF (TorqArea /= 0) THEN
+       TorqArea = ParallelReduction(TorqArea) / NoSlices
+       IF (TorqArea > EPSILON(TorqArea) ) THEN
          Ctorq = 2 * PI * rmean * rdiff / TorqArea
 
          WRITE(Message,'(A,F8.4)') 'Air gap correction initial:', cTorq
@@ -2275,13 +2168,11 @@ CONTAINS
        WRITE(Message,'(A,ES15.4)') 'Air gap torque for slice'//I2S(ParEnv % MyPe)//':', Torq
        CALL Info(Caller,Message,Level=5)
        CALL ListAddConstReal(Model % Simulation,'res: air gap torque for slice', Torq)
-
-       ! But the averaging makes sense only for more than one slice
-       IF( NoSlices > 1 ) THEN
-         Torq = ParallelReduction(Torq) / NoSlices
-       END IF
      END IF
        
+     ! But the averaging makes sense only for more than one slice
+     IF(Parallel) Torq = ParallelReduction(Torq) / NoSlices
+
      WRITE(Message,'(A,ES15.4)') 'Air gap torque:', Torq
      CALL Info(Caller,Message,Level=5)
      CALL ListAddConstReal(Model % Simulation,'res: air gap torque', Torq)
@@ -2289,8 +2180,8 @@ CONTAINS
    
    IF( CalcInert ) THEN
      IF( Parallel ) THEN
-       IMoment = ParallelReduction(IMoment)
-       IA = ParallelReduction(IA)
+       IMoment = ParallelReduction(IMoment) / NoSlices
+       IA = ParallelReduction(IA) / NoSlices
      END IF
 
      WRITE(Message,'(A,ES15.4)') 'Inertial volume:', IA
@@ -2302,16 +2193,12 @@ CONTAINS
      CALL ListAddConstReal(Model % Simulation,'res: inertial volume', IA)
      CALL ListAddConstReal(Model % Simulation,'res: inertial moment', IMoment)
    END IF
-
-   IF( SliceAverage ) THEN
-     IF( NoSlices > 1 .AND. NoSlices < ParEnv % PEs ) THEN
-       CALL Info(Caller,'Reverting communicator from slice operation!',Level=10)
-       ParEnv % ActiveComm = PrevComm
-     END IF
-   END IF
      
    Visited = .TRUE.
-   
+  
+   ! Revert the communicatior back to original
+   IF( NoTimes > 1 ) ParEnv % ActiveComm = PrevComm
+      
 !------------------------------------------------------------------------------
  END SUBROUTINE CalculateLumpedHarmonic
 !------------------------------------------------------------------------------
@@ -3021,6 +2908,17 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
   IF ( COUNT( Solver % Variable % Perm > 0 ) <= 0 ) RETURN
+
+
+  BLOCK
+    INTEGER :: NoSlices, NoTimes
+    NoSlices = ListGetInteger( Model % Simulation,'Number Of Slices', GotIt )
+    NoTimes = ListGetInteger( Model % Simulation,'Number Of Times', GotIt )
+    IF(NoSlices > 1 .OR. NoTimes > 1 ) THEN
+      CALL Fatal(Caller,'BSolver cannot deal with Slices or Times, use CalcFields!')
+    END IF
+  END BLOCK
+    
   
   SolverParams => GetSolverParams()
 
@@ -3694,7 +3592,7 @@ CONTAINS
 
     ! Check the total heating and normalize it, if requested
     IF( JouleHeating ) THEN
-      TotalHeating = 2*PI*ParallelReduction(TotalHeating)
+      TotalHeating = 2*PI*ParallelReduction(TotalHeating) 
 
       WRITE(Message,'(A,ES15.4)') 'Joule Heating (W): ',TotalHeating
       CALL Info(Caller,Message)
@@ -3728,10 +3626,9 @@ CONTAINS
     IF( LossEstimation ) THEN
       DO j=1,2
         ComponentLoss(j) = ParallelReduction(ComponentLoss(j)) 
-      END DO
-      
+      END DO      
       DO j=1,Model % NumberOfBodies
-        BodyLoss(j) = ParallelReduction(BodyLoss(j))
+        BodyLoss(j) = ParallelReduction(BodyLoss(j)) 
       END DO
       
       TotalLoss = SUM( ComponentLoss )
@@ -3762,8 +3659,8 @@ CONTAINS
     IF (LorentzForceCompute) THEN
        DO j=1,Model % NumberOfBodies
          DO i = 1, 2
-           BodyLorentzForcesRe(i,j) = ParallelReduction(BodyLorentzForcesRe(i,j))
-           BodyLorentzForcesIm(i,j) = ParallelReduction(BodyLorentzForcesIm(i,j))
+           BodyLorentzForcesRe(i,j) = ParallelReduction(BodyLorentzForcesRe(i,j)) 
+           BodyLorentzForcesIm(i,j) = ParallelReduction(BodyLorentzForcesIm(i,j)) 
            IF (ISNAN(BodyLorentzForcesRe(i, j))) THEN
              BodyLorentzForcesRe(i, j)=0._dp
            END IF  
@@ -3826,7 +3723,7 @@ CONTAINS
     IF (ComplexPowerCompute) THEN
        DO j=1,Model % NumberOfBodies
          DO i = 1, 2
-           BodyComplexPower(i,j) = ParallelReduction(BodyComplexPower(i,j))
+           BodyComplexPower(i,j) = ParallelReduction(BodyComplexPower(i,j)) 
          END DO
          WRITE( Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyComplexPower(1, j)
          WRITE (bodyNumber, "(I0)") j
@@ -3923,7 +3820,7 @@ CONTAINS
           WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyAvBre(i,j)
           CALL Info('Average Magnetic Flux Density '//TRIM(XYNumber), Message, Level=6 )
           IF (Fluxdofs==4) THEN
-            BodyAvBim(i,j)=ParallelReduction(BodyAvBim(i,j))*ModelDepth/BodyVolumes(j) 
+            BodyAvBim(i,j)=ParallelReduction(BodyAvBim(i,j))*ModelDepth/BodyVolumes(j)
             WRITE (XYNumber, "(I0)") i 
             WRITE (bodyNumber, "(I0)") j
             CALL ListAddConstReal( Model % Simulation,'res: Average Magnetic Flux Density ' &
