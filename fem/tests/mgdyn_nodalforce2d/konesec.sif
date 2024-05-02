@@ -47,7 +47,6 @@ Body 6
   Name = "statorcoreplating"
   Equation = 1
   Material = 6
-  Calculate torque over body = logical true
 End
 
 Body 4
@@ -72,7 +71,6 @@ Body 7
   Equation = 1
   Material = 3
   Body Force = 1
-  Calculate torque over body = logical true
 End
 
 Body 8
@@ -80,7 +78,6 @@ Body 8
   Equation = 1
   Material = 3
   Body Force = 2
-  Calculate torque over body = logical true
 End
 
 Body 9
@@ -88,14 +85,12 @@ Body 9
   Equation = 1
   Material = 3
   Body Force = 3
-  Calculate torque over body = logical true
 End
 
 Body 10
   Name = "cutout_stator"
   Equation = 1
   Material = 1
-  Calculate torque over body = logical true
 End
 
 ! for winding_a
@@ -116,6 +111,17 @@ Body Force 4
 $omega = 2*pi*25*180/pi
   Mesh Rotate 3 = Variable time,timestep size
     Real MATC "omega*(tx(0)-tx(1))"
+End
+
+
+! Rotor Component for torque calculation using
+! the sum of nodal forces in rotating domains
+! The postprocessing quantity is obtained via the CalcFields Solver
+! Note: this is active only if CalcFields solver is turned on!
+Component 1
+  Name = String "Rotating_Domains"
+  Master Bodies(5) = Integer 6 7 8 9 10
+  Calculate Magnetic Torque = Logical true
 End
 
 ! Air
