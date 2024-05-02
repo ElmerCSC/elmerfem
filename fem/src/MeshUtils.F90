@@ -29929,12 +29929,22 @@ CONTAINS
     CHARACTER(*), PARAMETER :: Caller = 'TagBCsUsingRule'
      
 
+    Parallel = ( ParEnv % PEs > 1 )
+    IF( Parallel ) THEN
+      IF( ListGetLogical( Model % Simulation,'Single Mesh',Found ) ) THEN
+        Parallel = .FALSE.
+        CALL Info(Caller,'Working on single mesh, so reverting parallel mode to serial!',Level=8)
+      END IF
+    END IF
+    
     ! We may need the rotor radius in defining certain BCs.
     DoIt = ListGetLogical( Model % Simulation,'Rotor Mode',Found) .AND. &
         .NOT. ListCheckPresent( Model % Simulation,'Rotor Radius')
     DoIt = DoIt .OR. ListGetLogical( Model % Simulation,'Determine Rotor Radius',Found)
     IF(DoIt) THEN
-      IF(ParEnv % PEs == 1 .OR. ListGetLogical( Model % Simulation,'Single Mesh',Found ) ) THEN
+      IF( Parallel ) THEN
+        CALL Fatal(Caller,'Cannot determine "Rotor Radius" yet in parallel!')
+      ELSE        
         Rad = DetermineRotorRadius(Mesh)
         IF(Rad>0) THEN
           CALL ListAddConstReal(Model % Simulation,'Rotor Radius',Rad)
@@ -29943,8 +29953,6 @@ CONTAINS
         ELSE
           CALL Fatal(Caller,'Could not determine "Rotor Radius", maybe there are not two pieces!?')
         END IF
-      ELSE
-        CALL Fatal(Caller,'Cannot determine "Rotor Radius" yet in parallel!')
       END IF
     END IF    
     
@@ -29976,8 +29984,6 @@ CONTAINS
     CALL Info(Caller,'Number of unconstrained boundary elements: '//I2S(n))
 
     IF(.NOT. CreateBCs ) THEN
-      Parallel = .FALSE.
-      IF(.NOT. Mesh % SingleMesh ) Parallel = (ParEnv % PEs > 1)
       m = n
       IF(Parallel) m = ParallelReduction(m)
       IF(m == 0) THEN
