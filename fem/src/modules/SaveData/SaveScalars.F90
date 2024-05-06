@@ -2916,6 +2916,7 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: Material
     LOGICAL :: Stat, Permutated, NodalVar    
     INTEGER :: i,j,j2,k,p,q,t,DIM,bc,n,nd,hits,istat
+    INTEGER :: tmpDofs
     INTEGER, TARGET :: Indexes(100)
 
     IF( ASSOCIATED( Var % Perm ) ) THEN
@@ -2993,7 +2994,8 @@ CONTAINS
           IF( .NOT. FindMinMax .AND. IsParallel ) THEN
             IF(ASSOCIATED( Var % Solver) ) THEN
               IF( ASSOCIATED( Var % SOlver % Matrix ) ) THEN
-                IF( Var % Solver % Matrix % ParallelInfo % NeighbourList(NoDofs*(j2-1)+1) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+                tmpDofs=Var % Solver % Variable % Dofs
+                IF( Var % Solver % Matrix % ParallelInfo % NeighbourList(tmpDofs*(j2-1)+1) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
               END IF
             END IF
           END IF
