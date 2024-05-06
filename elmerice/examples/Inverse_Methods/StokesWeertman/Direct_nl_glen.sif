@@ -27,8 +27,8 @@ Simulation
   Steady State Min Iterations = 1
   Steady State Max Iterations = 1
 
-  Post File = "Direct_nl.vtu"
-  OutPut File = "Direct_nl.result"
+  Post File = "Direct_nl_glen.vtu"
+  OutPut File = "Direct_nl_glen.result"
 
   max output level = 3
 End
@@ -62,11 +62,19 @@ End
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 Material 1
-  Density = Real $rhoi 
-  Viscosity Model = String "power law"
-  Viscosity = Real $eta                       
-  Viscosity Exponent = Real $1.0/n                
-  Critical Shear Rate = Real 1.0e-10
+  Density = Real $rhoi
+
+   Viscosity Model = String Glen
+  Glen Exponent = Real $n
+  Critical Shear Rate =  Real 1.0E-10
+  Glen Enhancement Factor = Real 1.0
+  Set Arrhenius Factor = Logical True
+  Arrhenius Factor = Real 100.0
+
+  !Viscosity Model = String "power law"
+  !Viscosity = Real $eta                       
+  !Viscosity Exponent = Real $1.0/n                
+  !Critical Shear Rate = Real 1.0e-10
 End
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

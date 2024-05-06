@@ -598,7 +598,7 @@ CONTAINS
                 CALL Warn(Caller,'Replace >Temperature Field Variable< with >Relative Temperature = Equals ...<')
               END IF
             END IF
-            IF( ViscTemp_h % NotPresentAnywhere ) THEN
+            IF (ViscArrSet_h % NotPresentAnywhere .AND. ViscTemp_h % NotPresentAnywhere ) THEN
               CALL Fatal(Caller,'>Relative Temperature< not given for viscosity model "glen"')
             END IF            
             

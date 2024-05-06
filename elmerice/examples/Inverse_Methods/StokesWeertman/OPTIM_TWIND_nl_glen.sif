@@ -6,7 +6,7 @@
 ! OPTIMISATION PARAMETERS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !! Name of the RUN 
-$name="TWIND_nl"
+$name="TWIND_nl_glen"
 !! Regularisation parameter
 $Lambda=0.0
 !! max. number of iterations
@@ -42,7 +42,7 @@ Simulation
   OutPut Intervals = 1
 
   !! restart True solution
-  Restart File = "Direct_nl.result"
+  Restart File = "Direct_nl_glen.result"
   Restart Before Initial Conditions = logical True
 
   max output level = 3
@@ -115,10 +115,18 @@ End
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 Material 1
   Density = Real $rhoi
-  Viscosity Model = String "power law"
-  Viscosity = Real $eta
-  Viscosity Exponent = Real $1.0/n
-  Critical Shear Rate = Real 1.0e-10
+
+  Viscosity Model = String Glen
+  Glen Exponent = Real $n
+  Critical Shear Rate =  Real 1.0E-10
+  Glen Enhancement Factor = Real 1.0
+  Set Arrhenius Factor = Logical True
+  Arrhenius Factor = Real 100.0
+
+  !Viscosity Model = String "power law"
+  !Viscosity = Real $eta
+  !Viscosity Exponent = Real $1.0/n
+  !Critical Shear Rate = Real 1.0e-10
 End
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -152,13 +160,14 @@ Solver 2
 
   !linear settings:
   !------------------------------
-  Linear System Solver = Iterative
-  Linear System Iterative Method = GCR
-  Linear System Preconditioning= ILU0
-  Linear System Convergence Tolerance= 1.0e-10
-  Linear System Max Iterations = 500
+  include "block4_idrs.sif"
+  !Linear System Solver = Iterative
+  !Linear System Iterative Method = GCR
+  !Linear System Preconditioning= ILU0
+  !Linear System Convergence Tolerance= 1.0e-10
+  !Linear System Max Iterations = 500
 
-  Linear System Residual Output = 100
+  !Linear System Residual Output = 100
 
   Linear System Abort Not Converged = False
 
