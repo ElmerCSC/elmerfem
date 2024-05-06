@@ -1086,39 +1086,49 @@ CONTAINS
         DofIndexes(1:nd) = PtoIndexes(1:nd)
       END IF
       
-      IF( ALL(Dofindexes(1:nd) > 0 ) ) THEN
         IF( IsGrad ) THEN
           IF( Var % Dofs /= 1 ) THEN
             CALL Fatal('EvaluteVariableAtGivenPoint','Gradient only possible for one dof!')
           END IF
-          DO ii=1,3
-            Values(No+ii) = SUM( dBasisdx(1:nd,ii) * Var % Values(DofIndexes(1:nd)))
-          END DO
+          IF( ALL(Dofindexes(1:nd) > 0 ) ) THEN
+             DO ii=1,3
+               Values(No+ii) = SUM( dBasisdx(1:nd,ii) * Var % Values(DofIndexes(1:nd)))
+             END DO
+          ELSE
+              Values(No+1:No+3)=0._dp
+          END IF
           No = No + 3
         ELSE IF( IsEigen ) THEN          
           DO iMode = 1, NoEigenValues
             cValues => Var % EIgenVectors(iMode,:)            
-            DO ii=1,Var % DOfs              
-              Values(No+ii) = Values(No+ii) + SUM( PtoBasis(1:nd) * &
-                  cValues(Var%Dofs*(DofIndexes(1:nd)-1)+ii))
-            END DO
+            IF( ALL(Dofindexes(1:nd) > 0 ) ) THEN
+               DO ii=1,Var % DOfs              
+                 Values(No+ii) = Values(No+ii) + SUM( PtoBasis(1:nd) * &
+                     cValues(Var%Dofs*(DofIndexes(1:nd)-1)+ii))
+               END DO
+             ELSE
+               Values(No+1:No+Var % Dofs)=0._dp      
+             END IF
           END DO
           No = No + Var % Dofs
         ELSE
-          IF( Var % Dofs > 1 ) THEN
-            DO ii=1,Var % Dofs
-              Values(No+ii) = SUM( PtoBasis(1:nd) * &
-                  Var % Values(Var%Dofs*(DofIndexes(1:nd)-1)+ii))
-            END DO
+          IF( ALL(Dofindexes(1:nd) > 0 ) ) THEN
+             IF( Var % Dofs > 1 ) THEN
+               DO ii=1,Var % Dofs
+                 Values(No+ii) = SUM( PtoBasis(1:nd) * &
+                     Var % Values(Var%Dofs*(DofIndexes(1:nd)-1)+ii))
+               END DO
+             ELSE
+               Values(No+1) = SUM(PToBasis(1:nd) * Var % Values(DofIndexes(1:nd)))            
+               IF( comps >= 2 ) Values(No+2) = SUM(PToBasis(1:nd) * Var2 % Values(DofIndexes(1:nd)))
+               IF( comps >= 3 ) Values(No+3) = SUM(PToBasis(1:nd) * Var3 % Values(DofIndexes(1:nd)))            
+             END IF
           ELSE
-            Values(No+1) = SUM(PToBasis(1:nd) * Var % Values(DofIndexes(1:nd)))            
-            IF( comps >= 2 ) Values(No+2) = SUM(PToBasis(1:nd) * Var2 % Values(DofIndexes(1:nd)))
-            IF( comps >= 3 ) Values(No+3) = SUM(PToBasis(1:nd) * Var3 % Values(DofIndexes(1:nd)))            
-          END IF
+             Values(No+1:No+MAX( Var % Dofs, comps ))=0._dp
+          ENDIF
           No = No + MAX( Var % Dofs, comps )
         END IF
       END IF
-    END IF
 
 #if 0
     ! Debugging code

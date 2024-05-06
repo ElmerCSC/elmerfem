@@ -1463,7 +1463,7 @@ CONTAINS
         END DO
       END IF
 
-      DgVar = ASSOCIATED( Mesh % Elements(1) % DGIndexes ) 
+      !DgVar = ASSOCIATED( Mesh % Elements(1) % DGIndexes ) 
       
       ! Go through the elements and register the boundary index and fluxes if asked
       DO t = 1,  Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements        
