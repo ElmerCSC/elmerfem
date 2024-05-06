@@ -4599,7 +4599,7 @@ SUBROUTINE Send_LocIf_Old( SplittedMatrix )
   L = 0
   VecL = 0
 
-  CALL CheckBuffer( TotalL + ParEnv % NumOfNeighbours*(1+MPI_BSEND_OVERHEAD) )
+  CALL CheckBuffer( 8*TotalL + ParEnv % NumOfNeighbours*(1+MPI_BSEND_OVERHEAD) )
 
   DO i = 1, ParEnv % PEs
      IfM => SplittedMatrix % IfMatrix(i)
