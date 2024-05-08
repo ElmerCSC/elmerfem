@@ -873,7 +873,14 @@ MODULE Types
      REAL(KIND=dp), POINTER :: CrhsIm(:) => NULL()
    END TYPE LumpedModel_t
 
-        
+
+   TYPE LocalSystemStorage_t
+     INTEGER :: n = -1                            ! Size of local matrix assembled
+     REAL(KIND=dp), ALLOCATABLE ::  K(:,:), F(:)  ! Local stiffness matrix and force
+     INTEGER :: eind = -1                         ! Pointer to the active element that holds this element matrix storage.
+   END TYPE LocalSystemStorage_T
+   
+   
 !------------------------------------------------------------------------------
 
     TYPE Solver_t
@@ -926,7 +933,9 @@ MODULE Types
 
       INTEGER :: NumberOfConstraintModes = -1 
       TYPE(LumpedModel_t), POINTER :: Lumped => NULL()
-      
+
+      INTEGER :: LocalSystemMode = -1
+      TYPE(LocalSystemStorage_t), POINTER :: LocalSystem(:) => NULL()
     END TYPE Solver_t
 
 !------------------------------------------------------------------------------

@@ -1054,11 +1054,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     INTEGER :: RelIntegOrder, NoActive 
     LOGICAL :: AnyDamping, NeedMass, NeedDensity, AnyPre, AnyStress
-    LOGICAL :: ConstantStiffnessMatrix
-    REAL(KIND=dp) :: cmult
-    CHARACTER(LEN=MAX_NAME_LEN) :: multname
-    TYPE(Variable_t), POINTER :: multvar
-
+    LOGICAL :: LocalMatrixIdentical
     
     AnyDamping = ListCheckPresentAnyMaterial( Model,"Damping" ) .OR. &
         ListCheckPrefixAnyMaterial( Model,"Rayleigh" )
@@ -1071,17 +1067,9 @@ CONTAINS
     AnyPre = ListCheckPrefixAnyMaterial( Model, 'Pre' ) 
     AnyStress = ListCheckPrefixAnyBodyForce( Model,'Stress')
 
-    ConstantStiffnessMatrix = ListGetLogical( Solver % Values,'Constant Stiffness Matrix', Found ) 
-    IF( ConstantStiffnessMatrix ) THEN
-      IF( NeedDensity ) CALL Fatal('StressSolve','"Constant Stiffness Matrix" applicable only for steady cases!')      
-      multvar => NULL()
-      multname = ListGetString( Solver % Values,'Stiffness Matrix Multiplier Name',Found )
-      IF(Found ) THEN
-        multvar => VariableGet( Solver % Mesh % Variables, multname, UnfoundFatal = .TRUE.)
-        IF( multvar % TYPE /= Variable_on_elements ) THEN
-          CALL Fatal('StreeSolve','"Stiffness Matrix Multiplier Name" should be elemental field!')
-        END IF
-      END IF
+    LocalMatrixIdentical = ListGetLogical( Solver % Values,'Local Matrix Identical', Found ) 
+    IF( LocalMatrixIdentical ) THEN
+      IF( NeedDensity ) CALL Fatal('StressSolve','"Local Matrix Identical" applicable only for steady cases!')      
     END IF
             
      CALL StartAdvanceOutput( 'StressSolve', 'Assembly:')
@@ -1099,11 +1087,9 @@ CONTAINS
 
        Element => GetActiveElement(t)
 
-       ! We assumes that all element have the same stiffness matrix
-       ! and only assembly one of them! This assumes same shape, material parameters and
-       ! node ordering. Only the 1st needs to be assembled.
-       IF( t > 1 .AND. ConstantStiffnessMatrix ) GOTO 100
-       
+       ! The 1st element defines the other local stiffness matrices too!
+       IF( LocalMatrixIdentical .AND. t>1) GOTO 100
+         
        n = GetElementNOFNOdes()
        ntot = GetElementNOFDOFs()
 
@@ -1365,16 +1351,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !      Update global matrices from local matrices 
 !------------------------------------------------------------------------------
-100    IF( ConstantStiffnessMatrix ) THEN
-         IF(t==1) CALL ListAddConstRealArray(Solver % Values,&
-             'Elemental Stiffness Matrix', dim*n, dim*n, STIFF )      
-         IF( ASSOCIATED( MultVar ) ) THEN
-           cmult = MultVar % Values(MultVar % Perm(Element % ElementIndex))
-           CALL DefaultUpdateEquations( cmult * STIFF, cmult * FORCE )
-         ELSE
-           CALL DefaultUpdateEquations( STIFF, FORCE )
-         END IF           
-       ELSE IF ( ConstantBulkMatrixInUse ) THEN
+100    IF ( ConstantBulkMatrixInUse ) THEN
          CALL DefaultUpdateForce( FORCE )
          IF ( HarmonicAnalysis ) THEN
            SaveRHS => Solver % Matrix % RHS

@@ -3353,11 +3353,11 @@ CONTAINS
 !------------------------------------------------------------------------------
   RECURSIVE SUBROUTINE DefaultStart( USolver )
 !------------------------------------------------------------------------------
-     TYPE(Solver_t), OPTIONAL, TARGET, INTENT(IN) :: USolver
-     
+     TYPE(Solver_t), OPTIONAL, TARGET, INTENT(IN) :: USolver     
      TYPE(Solver_t), POINTER :: Solver
      LOGICAL :: Found
      TYPE(ValueList_t), POINTER :: Params
+     INTEGER :: i,n
      
      IF ( PRESENT( USolver ) ) THEN
        Solver => USolver
@@ -3383,6 +3383,33 @@ CONTAINS
      ! One can run preprocessing solver in this slot.
      !-----------------------------------------------------------------------------
      CALL DefaultSlaveSolvers(Solver,'Pre Solvers')
+
+     IF( ListGetLogical(Params,'Local Matrix Storage',Found ) ) THEN
+       n = Solver % NumberOfActiveElements
+       IF(ASSOCIATED(Solver % LocalSystem)) THEN
+         IF(SIZE(Solver % LocalSystem) < n ) DEALLOCATE(Solver % LocalSystem)
+       END IF
+       IF(.NOT. ASSOCIATED(Solver % LocalSystem ) ) THEN
+         ALLOCATE( Solver % LocalSystem(n) )
+         Solver % LocalSystem(1:n) % eind = 0         
+         ! If the stiffness matrix is constant the 1st element gives stiffness matrix for all!
+         ! This could be inhereted differently too for splitted meshes, for example. 
+         IF( ListGetLogical( Params,'Local Matrix Identical', Found )  ) THEN
+           Solver % LocalSystem(1:n) % eind = 1         
+         END IF                    
+       END IF
+
+       IF(.NOT. ASSOCIATED(Solver % InvActiveElements) ) THEN
+         ALLOCATE( Solver % InvActiveElements( Solver % Mesh % NumberOfBulkElements &
+             + Solver % Mesh % NumberOFBoundaryElements ) )         
+         Solver % InvActiveElements = 0
+         DO i=1,Solver % NumberOfActiveElements
+           Solver % InvActiveElements( Solver % ActiveElements(i) ) = i
+         END DO
+       END IF
+       
+       Solver % LocalSystemMode = 1
+     END IF
      
 !------------------------------------------------------------------------------
    END SUBROUTINE DefaultStart
@@ -3783,8 +3810,8 @@ CONTAINS
            G, F, Element, n, nd )
      END IF
 
+     
      IF ( ParEnv % PEs > 1 ) THEN
-
        IF ( ASSOCIATED(Element % BoundaryInfo) ) THEN
           P1 => Element % BoundaryInfo % Left
           P2 => Element % BoundaryInfo % Right
@@ -3838,6 +3865,16 @@ CONTAINS
          PermIndexes(j) = Solver % Variable % Perm(Indexes(j))
        END DO
 
+       IF( Solver % LocalSystemMode > 0 ) THEN
+         CALL UseLocalMatrixStorage( Solver, n * x % dofs, G, F, ElemInd = Element % ElementIndex )
+       END IF
+       
+       ! If we have any antiperiodic entries we need to check them all!
+       IF( Solver % PeriodicFlipActive ) THEN
+         CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, G )
+         CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
+       END IF
+       
        CALL UpdateGlobalEquationsVec( A, G, b, f, n, &
                x % DOFs, PermIndexes, &
                UElement=Element, MCAssembly=MCAsm )
@@ -3845,12 +3882,16 @@ CONTAINS
        Indexes => GetIndexStore()
        n = GetElementDOFs( Indexes, Element, Solver )
 
+       IF( Solver % LocalSystemMode > 0 ) THEN
+         CALL UseLocalMatrixStorage( Solver, n * x % dofs, G, F, ElemInd = Element % ElementIndex )
+       END IF
+       
        ! If we have any antiperiodic entries we need to check them all!
        IF( Solver % PeriodicFlipActive ) THEN
          CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, G )
          CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
        END IF
-               
+       
        IF(Solver % DirectMethod == DIRECT_PERMON) THEN
          CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs, &
                               x % Perm(Indexes(1:n)), UElement=Element )
@@ -3861,6 +3902,7 @@ CONTAINS
        END IF
 
        ! backflip, in case G is needed again
+       ! For change of sign backflip and flip are same operations.
        IF( Solver % PeriodicFlipActive ) THEN
          CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, G )
          CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
@@ -4054,6 +4096,10 @@ CONTAINS
        END DO
      END DO
 
+     IF( Solver % LocalSystemMode > 0 ) THEN
+       CALL UseLocalMatrixStorage( Solver, n * x % dofs, G, F, ElemInd = Element % ElementIndex )
+     END IF
+               
      ! If we have any antiperiodic entries we need to check them all!
      IF( Solver % PeriodicFlipActive ) THEN
        CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, G )

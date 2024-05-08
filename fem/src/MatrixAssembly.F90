@@ -354,6 +354,121 @@ CONTAINS
 
    END FUNCTION AnyFlipPeriodic
 
+
+!---------------------------------------------------------------------------
+!> Store local matrix, e.g. for topology optimization.
+!---------------------------------------------------------------------------
+   SUBROUTINE UseLocalMatrixStorage( Solver, n, K, F, elemind, activeind) 
+     TYPE(Solver_t) :: Solver
+     INTEGER :: n
+     REAL(KIND=dp) :: K(:,:), F(:)
+     INTEGER, OPTIONAL :: elemind, activeind
+     
+     TYPE(LocalSystemStorage_t), POINTER :: pLocal
+     TYPE(Variable_t), POINTER :: cVar => NULL()
+     CHARACTER(:), ALLOCATABLE :: multname
+     REAL(KIND=dp) :: cmult
+     INTEGER :: prevSolverId = -1
+     INTEGER :: eind
+     LOGICAL :: Found
+     LOGICAL :: DoMultiply = .FALSE.
+
+     SAVE cVar, DoMultiply, prevSolverId
+     
+     IF( PRESENT(activeind) ) THEN
+       eind = activeind
+     ELSE
+       IF(eind > Solver % NumberOfActiveElements ) RETURN
+       eind = Solver % InvActiveElements(elemind)
+       IF(eind==0) RETURN
+     END IF
+     
+     pLocal => Solver % LocalSystem(eind) 
+     IF( pLocal % eind == eind .OR. pLocal % eind < 1 ) THEN
+       ! Save local system for this element.
+       IF(pLocal % n < n ) THEN
+         IF( plocal % n > 0 ) THEN
+           DEALLOCATE(pLocal % K, pLocal % F) 
+         END IF
+         pLocal % n = n
+         ALLOCATE(pLocal % K(n,n), pLocal % F(n)) 
+       END IF
+       pLocal % eind = eind
+       pLocal % K(1:n,1:n) = K(1:n,1:n)
+       pLocal % F(1:n) = F(1:n)
+     ELSE
+       ! Obtain local system for this element which is copy of some other element
+       pLocal => Solver % LocalSystem(pLocal % eind)
+       K(1:n,1:n) = pLocal % K(1:n,1:n) 
+       F(1:n) = pLocal % F(1:n)        
+     END IF
+
+     IF(Solver % SolverId /= PrevSolverId) THEN
+       ! For the 1st element obtain the multiplier vector
+       cvar => NULL()
+       DoMultiply = .FALSE.
+       multname = ListGetString( Solver % Values,'Matrix Multiplier Name',Found )
+       IF(Found ) THEN
+         cvar => VariableGet( Solver % Mesh % Variables, multname, UnfoundFatal = .TRUE.)
+         IF(.NOT. ASSOCIATED(cVar) ) THEN
+           CALL Fatal('UseLocalMatrixStorage','Field not found: '//TRIM(multname))
+         END IF
+         IF( cvar % TYPE /= Variable_on_elements ) THEN
+           CALL Fatal('UseLocalMatrixStorage','"Field should be elemental: '//TRIM(multname))
+         END IF
+         DoMultiply = .TRUE.
+       END IF
+       prevSolverId = Solver % SolverId
+     END IF
+
+     IF( DoMultiply ) THEN
+       cmult = cvar % Values(cvar % Perm(eind))
+       K(1:n,1:n) = cmult * K(1:n,1:n)
+       F(1:n) = cmult * F(1:n)
+     END IF
+           
+   END SUBROUTINE UseLocalMatrixStorage
+
+   
+!---------------------------------------------------------------------------
+!> Obtain local matrix, e.g. for topology optimization.
+!> If the elements are alike, the element index may point to a different
+!> element that itself. 
+!---------------------------------------------------------------------------
+   SUBROUTINE GetLocalMatrixStorage( Solver, n, K, F, Found, elemind, activeind ) 
+     TYPE(Solver_t) :: Solver
+     INTEGER :: n
+     REAL(KIND=dp) :: K(:,:), F(:)
+     LOGICAL :: Found
+     INTEGER, OPTIONAL :: elemind, activeind
+  
+     TYPE(LocalSystemStorage_t), POINTER :: pLocal
+     INTEGER :: eind
+
+     Found = .FALSE.
+     IF( PRESENT(activeind) ) THEN
+       eind = activeind
+     ELSE
+       IF(eind > Solver % NumberOfActiveElements ) RETURN
+       eind = Solver % InvActiveElements(elemind)
+       IF(eind < 1) RETURN
+     END IF
+     
+     pLocal => Solver % LocalSystem(eind) 
+     IF(eind /= pLocal % eind ) THEN
+       pLocal => Solver % LocalSystem(pLocal % eind)
+     END IF
+     IF(pLocal % eind < 1 ) RETURN
+     
+     IF(pLocal % n == n ) THEN
+       K(1:n,1:n) = pLocal % K(1:n,1:n)
+       F(1:n) = pLocal % F(1:n)
+       Found = .TRUE.
+     END IF
+       
+   END SUBROUTINE GetLocalMatrixStorage
+
+   
    
    
 !> Glues a local matrix to the global one.
