@@ -46,6 +46,7 @@ MODULE SSAMaterialModels
 !>  Return the effective friction coefficient
 !--------------------------------------------------------------------------------
    FUNCTION SSAEffectiveFriction(Element,n,Basis,ub,SEP,PartlyGrounded,h,rho,rhow,sealevel,SlipDer) RESULT(Slip)
+
    IMPLICIT NONE
    REAL(KIND=dp) :: Slip ! the effective friction coefficient
    TYPE(Element_t), POINTER :: Element ! the current element
@@ -57,8 +58,6 @@ MODULE SSAMaterialModels
    REAL(KIND=dp) :: h ! for SEP: the ice thickness at current location
    REAL(KIND=dp) :: rho,rhow,sealevel ! density, sea-water density, sea-level
    REAL(KIND=dp),OPTIONAL :: SlipDer ! dSlip/du=dSlip/dv if ub=(u^2+v^2)^1/2 ! required to compute the Jacobian
-
-
 
    INTEGER            :: iFriction
    INTEGER, PARAMETER :: LINEAR = 1
@@ -79,7 +78,7 @@ MODULE SSAMaterialModels
    REAL(KIND=dp),DIMENSION(n) :: NodalBeta, NodalGM, NodalBed, NodalLinVelo,NodalC,NodalN
    REAL(KIND=dp) :: bedrock,Hf,fC,fN,LinVelo
 
-   LOGICAL :: Found
+   LOGICAL :: Found, NeedN
 
 !  Sub - element GL parameterisation
    IF (SEP) THEN
@@ -129,15 +128,27 @@ MODULE SSAMaterialModels
     END SELECT
 
     ! where explicit dependence on effective pressure is present...
+    NeedN = .FALSE.
     SELECT CASE (iFriction)
+    CASE(REG_COULOMB_JOU)
+      ! This is Eliot Jager's suggested modification to the Joughin form of
+      ! regularised Coulomb sliding, where the initial coefficient is now
+      ! multiplied by effective pressure, N 
+      NeedN = ListGetLogical( Material, 'SSA Friction need N', Found)
+      CALL INFO("SSAEffectiveFriction","> SSA Friction need N < not found, assuming false",level=3)
+      IF (.NOT. Found) NeedN = .FALSE.
     CASE(REG_COULOMB_GAG,BUDD)
+      NeedN = .TRUE.
+    END SELECT
+
+    IF (NeedN) THEN 
       NSol => VariableGet( CurrentModel % Variables, 'Effective Pressure', UnFoundFatal=.TRUE. )
       CALL GetLocalSolution( NodalN,UElement=Element, UVariable=NSol)
       MinN = ListGetConstReal( Material, 'SSA Min Effective Pressure', Found, UnFoundFatal=.TRUE.)
       fN = SUM( NodalN(1:n) * Basis(1:n) )
       ! Effective pressure should be >0 (for the friction law)
       fN = MAX(fN, MinN)
-    END SELECT
+    END If
     
     ! parameters unique to one sliding parameterisation
     SELECT CASE (iFriction)
@@ -214,9 +225,10 @@ MODULE SSAMaterialModels
 
    CASE(REG_COULOMB_JOU)
      Slip = beta * ub**(fm-1.0_dp) / (ub + U0)**fm
+     IF (NeedN) Slip = Slip * fN
      IF (PRESENT(SlipDer)) SlipDer = Slip2 * Slip * ((fm-1.0_dp) / (ub*ub) - &
          fm*ub**(-1.0_dp)/(ub+U0))
-
+     
    END SELECT
 
   END FUNCTION SSAEffectiveFriction
