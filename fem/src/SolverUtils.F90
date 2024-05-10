@@ -509,10 +509,14 @@ CONTAINS
 
 !------------------------------------------------------------------------------
      Order = MIN(Solver % DoneTime, Solver % Order)
+     IF(Order == 0 ) THEN
+       CALL Info('Add1stOrderTime_CRS','Zeroth order, nothing to do!',Level=20)
+       RETURN
+     END IF
+     
      Method = ListGetString( Solver % Values, 'Timestepping Method', GotIt )
      CurrSol => Solver % Variable % Values
      PrevSol => Solver % Variable % PrevValues
-
      
      SELECT CASE( Method )
        
@@ -544,7 +548,7 @@ CONTAINS
              Solver % Beta )
 
      END SELECT
-
+     
 !------------------------------------------------------------------------------
    END SUBROUTINE Add1stOrderTime_CRS
 !------------------------------------------------------------------------------

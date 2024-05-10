@@ -6677,7 +6677,7 @@ CONTAINS
     END IF
 
     IF( GetLogical( Params,'Bulk System Multiply',Found ) ) THEN	
-      CALL Info('DefaultFinishAssembly','Multiplying matrix equation',Level=10)
+      CALL Info('DefaultFinishBulkAssembly','Multiplying matrix equation',Level=10)
       CALL LinearSystemMultiply( PSolver )
     END IF
 
@@ -6803,13 +6803,14 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: A
     REAL(KIND=dp) :: sscond
     CHARACTER(:), ALLOCATABLE :: str
-
+    
     IF( PRESENT( Solver ) ) THEN
       PSolver => Solver
     ELSE
       PSolver => CurrentModel % Solver
     END IF
-
+    A => PSolver % Matrix
+    
     Params => GetSolverParams(PSolver)
 
     ! Nonlinear timestepping needs a copy of the linear system from previous
@@ -6817,19 +6818,19 @@ CONTAINS
     IF( ListGetLogical( Params,'Nonlinear Timestepping', Found ) ) THEN
       CALL Info('DefaultFinishAssembly','Saving system values for Solver: '&
           //TRIM(PSolver % Variable % Name), Level=8)
-      CALL CopyBulkMatrix( PSolver % Matrix ) 
+      CALL CopyBulkMatrix( A ) 
     END IF
 
     ! Makes a low order matrix of the initial one saving original values
     ! to BulkValues. Also created a lumped mass matrix.
     IF( ListGetLogical( Params,'Linear System FCT',Found ) ) THEN
       IF( PSolver % Variable % Dofs == 1 ) THEN
-        CALL CRS_FCTLowOrder( PSolver % Matrix )
+        CALL CRS_FCTLowOrder( A )
       ELSE
         CALL Fatal('DefaultFinishAssembly','FCT scheme implemented only for one dof')
       END IF
     END IF
-
+    
     IF(GetLogical(Params,'Use Global Mass Matrix',Found)) THEN
 
       Transient = GetString( CurrentModel % Simulation, 'Simulation Type') == 'transient'
@@ -6853,7 +6854,7 @@ CONTAINS
       END IF
     END IF
  
-    CALL FinishAssembly( PSolver, PSolver % Matrix % RHS )
+    CALL FinishAssembly( PSolver, A % RHS )
 
     IF( GetLogical( Params,'Linear System Multiply',Found ) ) THEN
       CALL Info('DefaultFinishAssembly','Multiplying matrix equation',Level=10)
@@ -6864,14 +6865,13 @@ CONTAINS
       CALL LinearSystemMinDiagonal( PSolver )      
     END IF
 
-
     IF ( ListGetLogical( Params,'Linear System Save',Found )) THEN
       str = GetString( Params,'Linear System Save Slot', Found )
       IF(Found .AND. str == 'assembly') THEN
         CALL SaveLinearSystem( PSolver ) 
       END IF
     END IF
-
+        
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultFinishAssembly
 !------------------------------------------------------------------------------

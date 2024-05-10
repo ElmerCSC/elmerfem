@@ -183,8 +183,15 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
 
   dim = CoordinateSystemDimension()
   fdim = 3   
-  IF( ListGetLogical( SolverParams,'2D result fields',Found ) ) fdim = dim
-  
+  IF( ListGetLogical( SolverParams,'2D result fields',Found ) ) THEN    
+    IF( dim == 2 ) THEN
+      CALL Info('MagnetoDynamicsCalcFields_init','Enforcing result fields to be 2D!',Level=12)
+      fdim = dim
+    ELSE
+      CALL Info('MagnetoDynamicsCalcFields_init','Keyword "2D result fields" is not applicable in 3D!',Level=7)
+    END IF
+  END IF
+      
   ! Inherit this from the _init0 solver. Hence we know it must exist!
   RealField = ListGetLogical( SolverParams,'Target Variable Real Field') 
 

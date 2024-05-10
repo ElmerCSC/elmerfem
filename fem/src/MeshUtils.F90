@@ -9587,8 +9587,9 @@ CONTAINS
       REAL(KIND=dp) :: val, u, v, w
       TYPE(Nodes_t) :: NodesM
       LOGICAL :: LeftCircle, Found, Stat
-
-      CALL Info('AddNodalProjectorStrongGeneric','Creating strong generic projector for nodal dofs',Level=10)
+      CHARACTER(*), PARAMETER :: Caller = 'AddNodalProjectorStrongGeneric'
+     
+      CALL Info(Caller,'Creating strong (node-to-surface) generic projector for nodal dofs',Level=10)
 
       n = Mesh % MaxElementNodes
       ALLOCATE( NodesM % x(n), NodesM % y(n), NodesM % z(n), Basis(n), coeff(n), coeffi(n) )
@@ -9727,14 +9728,14 @@ CONTAINS
 
         IF(.NOT. Found ) THEN
           IF( MaxMinBasis > -1.0d-6 ) THEN
-            CALL Info('AddNodalProjectorStrongGeneric',Message,Level=8)
+            CALL Info(Caller,Message,Level=8)
             Found = .TRUE.
           ELSE
             Nundefined = Nundefined + 1
             IF( .NOT. HaveMaxDistance ) THEN
               WRITE( Message,'(A,2I8,3ES12.3)') 'Problematic node: ',&
                   ind,ParEnv % MyPe,x1,y1,MaxMinBasis
-              CALL Warn('AddNodalProjectorStrongGeneric',Message )
+              CALL Warn(Caller,Message )
             END IF
           END IF
         END IF
@@ -9767,11 +9768,9 @@ CONTAINS
 
       IF( Nundefined > 0 ) THEN
         IF( HaveMaxDistance ) THEN
-          CALL Info('AddNodalProjectorStrongGeneric',&
-              'Nodes could not be found in any element: '//I2S(Nundefined))          
+          CALL Info(Caller,'Nodes could not be found in any element: '//I2S(Nundefined))          
         ELSE
-          CALL Warn('AddNodalProjectorStrongGeneric',&
-              'Nodes could not be found in any element: '//I2S(Nundefined))          
+          CALL Warn(Caller,'Nodes could not be found in any element: '//I2S(Nundefined))          
         END IF
       END IF
 
@@ -12228,7 +12227,7 @@ CONTAINS
       LOGICAL :: SaveElem, DebugElem, SaveErr, symmX, symmY
       CHARACTER(*), PARAMETER :: Caller = "AddEdgeProjectorStrongGeneric"
       
-      CALL Info(Caller,'Creating weak constraints using a generic integrator',Level=8)      
+      CALL Info(Caller,'Creating strong (edge-to-surface) constraints using a generic integrator',Level=8)      
 
       IF(Naxial > 0) CALL Fatal(Caller,'Not implemented yet for axial systems!')
       IF(HaveMaxDistance) CALL Fatal(Caller,'Not implemented yet with MaxDistance')      
