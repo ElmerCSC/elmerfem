@@ -1400,14 +1400,17 @@
        CALL ListAddString(Params,'Equation','InternalVtuOutputSolver')
        CALL ListAddString(Params,'Output Format','vtu')
        CALL ListAddString(Params,'Output File Name',str(1:k-1),.FALSE.)
-       CALL ListAddString(Params,'Exec Solver','after saving')
-       CALL ListAddLogical(Params,'Save Geometry IDs',.TRUE.)
        CALL ListAddLogical(Params,'No Matrix',.TRUE.)
        CALL ListAddNewString(Params,'Variable','-global vtu_internal_dummy')
        
        ! Add a few often needed keywords also if they are given in simulation section
        CALL ListCopyPrefixedKeywords( Simu, Params, 'vtu:' )
 
+       CALL ListAddNewString(Params,'Exec Solver','after saving')
+       CALL ListAddNewLogical(Params,'Save Geometry IDs',.TRUE.)
+       CALL ListCompareAndCopy(CurrentModel % Simulation, Params, 'ascii output', nooverwrite = .TRUE. )
+       CALL ListCompareAndCopy(CurrentModel % Simulation, Params, 'binary output', nooverwrite = .TRUE. )
+       
        CALL Info('AddVtuOutputSolverHack','Finished appending VTU output solver',Level=12)
        
      END SUBROUTINE AddVtuOutputSolverHack
