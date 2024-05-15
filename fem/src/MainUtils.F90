@@ -542,6 +542,7 @@ CONTAINS
          Failed = .TRUE.
        END IF
      END DO
+     IF(.NOT. Failed) RETURN
      
      ! Number the bulk indexes such that each node gets a new index
      CALL Info('CheckAndCreateDGIndexes','Creating DG indexes!',Level=12)
