@@ -15807,6 +15807,11 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
         END DO
         CLOSE(11)
 
+        OPEN( 11, FILE=TRIM(MatrixFile)//'_angle')
+        DO i=1,NoModes
+          WRITE (11,*) ( 180.0_dp / PI ) * ATAN2(FluxesMatrixIm(i,:),FluxesMatrix(i,:))           
+        END DO
+        CLOSE(11)
 
         IF( ASSOCIATED( Lumped % ImpRe ) ) THEN
           OPEN( 11, FILE=TRIM(MatrixFile)//'_Z')
