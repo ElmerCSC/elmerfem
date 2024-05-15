@@ -3121,8 +3121,7 @@ CONTAINS
      INTEGER :: k, n
 
      k = StringToLowerCase( str,Name,.TRUE. )
-     Found = .FALSE.
-
+     IF(PRESENT(Found)) Found = .FALSE.
 
      IF(PRESENT(nooverwrite)) THEN
        IF(nooverwrite) THEN
@@ -3144,7 +3143,7 @@ CONTAINS
      
      ! Add the same entry to the 2nd list 
      CALL ListCopyItem( ptr, listb ) 
-     Found = .TRUE.
+     IF(PRESENT(Found)) Found = .TRUE.
 
      IF( PRESENT(remove) ) THEN
        IF( remove ) CALL ListRemove( list, name)

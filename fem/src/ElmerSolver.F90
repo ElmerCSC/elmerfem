@@ -1402,12 +1402,13 @@
        CALL ListAddString(Params,'Output File Name',str(1:k-1),.FALSE.)
        CALL ListAddLogical(Params,'No Matrix',.TRUE.)
        CALL ListAddNewString(Params,'Variable','-global vtu_internal_dummy')
+       CALL ListAddString(Params,'Exec Solver','after saving')
+       CALL ListAddLogical(Params,'Save Geometry IDs',.TRUE.)
        
        ! Add a few often needed keywords also if they are given in simulation section
        CALL ListCopyPrefixedKeywords( Simu, Params, 'vtu:' )
 
-       CALL ListAddNewString(Params,'Exec Solver','after saving')
-       CALL ListAddNewLogical(Params,'Save Geometry IDs',.TRUE.)
+       ! It makes sense to inherit global ascii/binary flags if not given
        CALL ListCompareAndCopy(CurrentModel % Simulation, Params, 'ascii output', nooverwrite = .TRUE. )
        CALL ListCompareAndCopy(CurrentModel % Simulation, Params, 'binary output', nooverwrite = .TRUE. )
        
