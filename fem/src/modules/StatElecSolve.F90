@@ -74,6 +74,8 @@ SUBROUTINE StatElecSolver_Init( Model,Solver,dt,TransientSimulation)
 
     str = ListGetString(Params,'Element',Found )
     IF( Found ) THEN
+      CALL Info('StatElecSolver_init',&
+          'p-elements are supported by the modernized StatElecSolveVec module',Level=3)
       IF(str(1:2) == 'p:') CALL Fatal('StatElecSolver_init','No support for p-elements in solver!')
     END IF
         
