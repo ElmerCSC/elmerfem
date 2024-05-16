@@ -15550,13 +15550,15 @@ END SUBROUTINE SolveEigenSystem
 !------------------------------------------------------------------------------
 !> Compute lumped fluxes, for example for capacitance or impedance matrices. 
 !------------------------------------------------------------------------------
-SUBROUTINE StoreLumpedFluxes( Solver, NoModes, iMode, FluxesRow, FluxesRowIm, FluxesRhs, FluxesRhsIm )
+SUBROUTINE StoreLumpedFluxes( Solver, NoModes, iMode, FluxesRow, FluxesRowIm, &
+    FluxesRhs, FluxesRhsIm, ImpRe, ImpIm ) 
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   INTEGER :: NoModes, iMode
   REAL(KIND=dp) :: FluxesRow(:)
   REAL(KIND=dp), OPTIONAL :: FluxesRowIm(:)
   REAL(KIND=dp), OPTIONAL :: FluxesRhs, FluxesRhsIm
+  REAL(KIND=dp), OPTIONAL :: ImpRe, ImpIm
 !------------------------------------------------------------------------------
   REAL(KIND=dp), POINTER :: FluxesMatrix(:,:), FluxesMatrixIm(:,:)
   INTEGER :: i,j,k,n,Nmode,Mmode
@@ -15591,6 +15593,14 @@ SUBROUTINE StoreLumpedFluxes( Solver, NoModes, iMode, FluxesRow, FluxesRowIm, Fl
       ALLOCATE( Lumped % CRhsIm( NoModes ) )
       Lumped % CrhsIm = 0.0_dp
     END IF
+    IF( PRESENT(ImpRe) ) THEN
+      ALLOCATE( Lumped % ImpRe( NoModes ) )
+      Lumped % ImpRe = 0.0_dp
+    END IF
+    IF( PRESENT(ImpIm) ) THEN
+      ALLOCATE( Lumped % ImpIm( NoModes ) )
+      Lumped % ImpIm = 0.0_dp
+    END IF
   END IF
 
   IF( Lumped % IsComplex ) FluxesMatrixIm => Solver % Lumped % CMatrixIm
@@ -15605,7 +15615,13 @@ SUBROUTINE StoreLumpedFluxes( Solver, NoModes, iMode, FluxesRow, FluxesRowIm, Fl
   IF(PRESENT(FluxesRhsIm) ) THEN
     Lumped % CRhsIm(iMode) = FluxesRhsIm
   END IF
-
+  IF( PRESENT(ImpRe) ) THEN
+    Lumped % ImpRe(iMode) = ImpRe
+  END IF
+  IF( PRESENT(ImpIm) ) THEN
+    Lumped % ImpIm(iMode) = ImpIm
+  END IF
+        
   Lumped % CntModes = iMode
 
   BLOCK
@@ -15790,6 +15806,21 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
           CheckSum(i) = SUM(FluxesMatrix(i,:)**2+FluxesMatrixIm(i,:)**2) 
         END DO
         CLOSE(11)
+
+        OPEN( 11, FILE=TRIM(MatrixFile)//'_angle')
+        DO i=1,NoModes
+          WRITE (11,*) ( 180.0_dp / PI ) * ATAN2(FluxesMatrixIm(i,:),FluxesMatrix(i,:))           
+        END DO
+        CLOSE(11)
+
+        IF( ASSOCIATED( Lumped % ImpRe ) ) THEN
+          OPEN( 11, FILE=TRIM(MatrixFile)//'_Z')
+          DO i=1,NoModes
+            WRITE (11,*) Lumped % ImpRe(i), Lumped % ImpIm(i) 
+          END DO
+          CLOSE(11)
+        END IF
+          
       END IF
       CALL Info( Caller,'Constraint modes fluxes was saved to file '//TRIM(MatrixFile),Level=5)
 
@@ -15999,7 +16030,7 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
         IsComplex, Parallel, ConsiderP, RhsMode, EmWaveMode, CoilMode, GaussLaw
     REAL(KIND=dp), ALLOCATABLE :: Fluxes(:), b0(:), A0(:), TempRhs(:)
     REAL(KIND=dp), ALLOCATABLE :: FluxesRow(:), FluxesRowIm(:)
-    REAL(KIND=dp) :: FluxesRhs, FluxesRhsIm
+    REAL(KIND=dp) :: FluxesRhs, FluxesRhsIm, ImpRe, ImpIm
     LOGICAL, ALLOCATABLE :: ConstrainedDOF0(:)
     REAL(KIND=dp) :: flux
     CHARACTER(:), ALLOCATABLE :: MatrixFile
@@ -16196,7 +16227,11 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
         END IF
         
         IF( IsComplex ) THEN
-          CALL StoreLumpedFluxes(Solver, NoModes, NMode, FluxesRow, FluxesRowIm, FluxesRhs, FluxesRhsIm)
+          IF(EmWaveMode ) THEN
+            CALL StoreLumpedFluxes(Solver, NoModes, NMode, FluxesRow, FluxesRowIm, FluxesRhs, FluxesRhsIm, ImpRe, ImpIm)
+          ELSE
+            CALL StoreLumpedFluxes(Solver, NoModes, NMode, FluxesRow, FluxesRowIm, FluxesRhs, FluxesRhsIm)
+          END IF
         ELSE
           CALL StoreLumpedFluxes(Solver, NoModes, NMode, FluxesRow ) 
         END IF
@@ -16271,7 +16306,7 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
       TYPE(Variable_t), POINTER :: AVar
       TYPE(ValueList_t), POINTER :: Vlist
       INTEGER, POINTER :: MasterEntities(:)
-      COMPLEX(KIND=dp) :: OutFlux,InFlux,PortFlux
+      COMPLEX(KIND=dp) :: OutFlux,InFlux,PortFlux,InImp,PortImp
       INTEGER :: i,j,k,n,port,alloc     
       
       CALL Info(Caller,'Using <Ej,Ej> for lumping',Level=10)
@@ -16299,7 +16334,7 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
           ALLOCATE(MasterEntities(n))
         END DO
 
-        OutFlux = BoundaryWaveFlux(CurrentModel, Mesh, MasterEntities, Avar, PortFlux, port==NMode )
+        OutFlux = BoundaryWaveFlux(CurrentModel, Mesh, MasterEntities, Avar, PortFlux, PortImp, port==NMode )
           
         ! Memorize the coefficient for normalization: <Ec,Ej>/<Ei,Ei>                
         ! Real and imag part of: <Ec,Ej>
@@ -16307,13 +16342,18 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
         FluxesRowIm(port) = AIMAG(OutFlux) 
 
         ! Memorize diagonal entry <Ej,Ej*> for future normalization
-        IF(port==NMode) InFlux = PortFlux
-
+        IF(port==NMode) THEN
+          InFlux = PortFlux
+          InImp = PortImp
+        END IF
+               
         DEALLOCATE(MasterEntities)                
       END DO
 
       FluxesRhs = REAL(InFlux)      
       FluxesRhsIm = AIMAG(InFlux)
+      ImpRe = REAL(InImp)
+      ImpIm = AIMAG(InImp)
       
     END SUBROUTINE EMWaveFluxes
 

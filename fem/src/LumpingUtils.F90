@@ -1534,7 +1534,7 @@ MODULE LumpingUtils
 !------------------------------------------------------------------------------
 !> Compute integrals for determining the S parameters.
 !------------------------------------------------------------------------------
-  FUNCTION BoundaryWaveFlux(Model, Mesh, MasterEntities, Avar, InFlux, PortBC ) &
+  FUNCTION BoundaryWaveFlux(Model, Mesh, MasterEntities, Avar, InFlux, PortImp, PortBC ) &
       RESULT ( OutFlux ) 
 !------------------------------------------------------------------------------
     TYPE(Model_t) :: Model    
@@ -1543,6 +1543,7 @@ MODULE LumpingUtils
     TYPE(Variable_t), POINTER :: Avar
     COMPLEX(KIND=dp) :: OutFlux
     COMPLEX(KIND=dp) :: InFlux
+    COMPLEX(KIND=dp) :: PortImp
     LOGICAL :: PortBC
 !------------------------------------------------------------------------------
 ! Local variables
@@ -1618,22 +1619,23 @@ MODULE LumpingUtils
     END DO
 
     Area = ParallelReduction(Area)
-        
+    trans = ParallelReduction(trans)
+    Zimp = 1.0_dp / trans
+
+    PortImp = Zimp
+    
     IF( UseGaussLaw ) THEN
       vol = ParallelReduction(Vol)
       curr = ParallelReduction(curr)
       port_curr = ParallelReduction(port_curr)
-      trans = ParallelReduction(trans)
 
       ! Still testing these!
       curr = -curr
       port_curr = -port_curr
       
       vol = vol / area
-      Zimp = 1.0_dp / trans
 
-      PRINT *,'LumpedCurr:',vol,curr,port_curr,Zimp *curr, CONJG(Zimp) * port_curr
-      !PRINT *,'Zimp:',trans,Zimp,curr,PortBC
+      PRINT *,'LumpedCurr av:',vol,curr,port_curr,Zimp *curr, CONJG(Zimp) * port_curr
       
       OutFlux = (vol + Zimp * curr) / (2*SQRT(REAL(Zimp)))
       InFlux = (vol - CONJG(Zimp) * port_curr  ) / (2*SQRT(REAL(Zimp)))      
@@ -1641,13 +1643,18 @@ MODULE LumpingUtils
       ! For now use just the average voltages
       OutFlux = vol !curr 
       InFlux = 1.0 !port_curr 
+      PortImp = Zimp
     ELSE
       int_el = ParallelReduction(int_el)
       int_norm = ParallelReduction(int_norm)      
       OutFlux = int_el
       InFlux = int_norm 
+      
+      PRINT *,'LumpedCurr e:',int_el,int_norm,area,trans,Zimp
+
     END IF
-          
+    
+    
     CALL Info(Caller,'Reduction operator finished',Level=12)
     
   CONTAINS
@@ -1809,7 +1816,8 @@ MODULE LumpingUtils
 
         ! Norm of electric field used for normalization
         int_norm = int_norm + weight * ABS( SUM( L * CONJG(L) ) ) 
-       
+
+        trans = trans + B * weight / Omega                
         area = area + weight        
       END DO
       
