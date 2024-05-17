@@ -153,7 +153,7 @@ CONTAINS
       ALLOCATE(VelocityMass(ntot,ntot), PressureMass(ntot, ntot), &
           ForcePart(ntot))
     END IF
-
+           
     IF (Newton) THEN
       ALLOCATE(muDerVec0(ngp), g(ngp,ntot,dim), StrainRateVec(ngp,dim,dim))
       muDerVec0 = 0._dp
@@ -1043,7 +1043,7 @@ CONTAINS
     INTEGER :: c,i,j,k,l,p,q,t,ngp,norm_comp
     LOGICAL :: NormalTangential, HaveSlip, HaveForce, HavePres, HaveFrictionW, HaveFrictionU, &
         HaveFriction, HaveNormal, FrictionNormal, Found, Stat, HaveFSSA, &
-        FoundLoad, GotRelax
+        FoundLoad, GotRelax, LocalNewton
     REAL(KIND=dp) :: ExtPressure, s, detJ, FSSAtheta, wut0, wexp, wcoeff, un, ut, rho
     REAL(KIND=dp) :: SlipCoeff(3), SurfaceTraction(3), Normal(3), Tangent(3), Tangent2(3), &
         Vect(3), Velo(3), TanFrictionCoeff, DummyVals(1), LoadVec(dim), FSSAaccum, &
@@ -1136,8 +1136,7 @@ CONTAINS
     IF( .NOT. ALLOCATED( Basis ) ) THEN
       ALLOCATE( Basis(nd) )
     END IF
-      
-    
+          
     CALL GetElementNodes( Nodes )
     STIFF = 0.0d0
     JAC = 0.0d0
@@ -1149,6 +1148,7 @@ CONTAINS
     IP = GaussPoints( Element )
     ngp = IP % n
     
+    LocalNewton = .FALSE.
     NormalTangential = ListGetElementLogical( NormalTangentialVelo_h, Element, Found )
     IF (.NOT.Found) THEN
       NormalTangential = ListGetElementLogical( NormalTangential_h, Element, Found )
@@ -1263,9 +1263,12 @@ CONTAINS
           wexp = ListGetElementReal( WeertmanExp_h, Basis, Element, GaussPoint = t )
           TanFrictionCoeff = MIN(wcoeff * ut**(wexp-1.0_dp),1.0e20)
           ! dTanFrictionCoeff/dut for Newton
-          TanFder=0._dp
-          IF ((ut > wut0).AND.(TanFrictionCoeff < 1.0e20)) &
-             TanFder = (wexp-1.0_dp) * wcoeff * ut**(wexp-2.0_dp) 
+          IF(FrictionNewton ) THEN
+            TanFder=0._dp
+            IF ((ut > wut0).AND.(TanFrictionCoeff < 1.0e20)) &
+                TanFder = (wexp-1.0_dp) * wcoeff * ut**(wexp-2.0_dp)
+            LocalNewton = .TRUE.
+          END IF
         ELSE
           ! Else, user defined friction law
           DummyVals(1) = ut          
@@ -1356,7 +1359,7 @@ CONTAINS
                         STIFF( (p-1)*c+j,(q-1)*c+k ) + &
                         s * SlipCoeff(i) * Basis(q) * Basis(p) * Vect(j) * Vect(k)
 
-                    IF(HaveFrictionW .AND. FrictionNewton) THEN
+                    IF(HaveFrictionW .AND. LocalNewton) THEN
                       JAC((p-1)*c+j,(q-1)*c+k ) = JAC((p-1)*c+j,(q-1)*c+k ) + &
                           s * TanFder * Basis(q) * Basis(p) * Vect(j) * velo(k) * SUM(velo(1:dim)*Vect(1:dim))/ut
                     END IF
@@ -1375,7 +1378,7 @@ CONTAINS
                     STIFF( (p-1)*c+i,(q-1)*c+i ) + &
                     s * SlipCoeff(i) * Basis(q) * Basis(p)
 
-               IF(HaveFrictionW .AND. FrictionNewton) THEN
+               IF(HaveFrictionW .AND. LocalNewton) THEN
                  DO j=1,dim
                   IF(j == norm_comp) CYCLE
                   JAC((p-1)*c+i,(q-1)*c+j ) = JAC((p-1)*c+i,(q-1)*c+j ) + &
@@ -1646,7 +1649,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   REAL(KIND=dp) :: Norm
 
   LOGICAL :: AllocationsDone = .FALSE., Found, StokesFlow, BlockPrec, Converged
-  LOGICAL :: GradPVersion, DivCurlForm, SpecificLoad, InitBCHandles
+  LOGICAL :: GradPVersion, DivCurlForm, SpecificLoad, InitBCHandles, FrictionNewton
 
   TYPE(Solver_t), POINTER, SAVE :: SchurSolver => Null()
   
@@ -1786,6 +1789,12 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     
     Active = GetNOFBoundaryElements()
     InitBCHandles = .TRUE.  
+    
+    FrictionNewton = .FALSE.
+    IF( Newton ) THEN  
+      FrictionNewton = .NOT. ListGetLogical( Solver % Values,'Friction Newton Disabled')
+    END IF
+       
     DO Element_id=1,Active
       Element => GetBoundaryElement(Element_id)
       IF (ActiveBoundaryElement()) THEN
@@ -1797,7 +1806,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
         
         ! Get element local matrix and rhs vector:
         !-----------------------------------------
-        CALL LocalBoundaryMatrix(Element, n, nd, dim, dt, SpecificLoad, InitBCHandles, Newton)
+        CALL LocalBoundaryMatrix(Element, n, nd, dim, dt, SpecificLoad, InitBCHandles, FrictionNewton)
         InitBCHandles = .FALSE.
       END IF
     END DO
