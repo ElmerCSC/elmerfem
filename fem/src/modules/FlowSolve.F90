@@ -77,14 +77,13 @@
 
      TYPE(Model_t) :: Model
      TYPE(Solver_t), TARGET :: Solver
-
      REAL(KIND=dp) :: dt
      LOGICAL :: TransientSimulation
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
      TYPE(Matrix_t),POINTER :: StiffMatrix
-
+     
      INTEGER :: i,j,k,n,nb,nd,t,iter,LocalNodes,istat,q,m
 
      TYPE(ValueList_t),POINTER :: Material, BC, BodyForce, Equation
@@ -113,7 +112,8 @@
                   MBFlag, Convect  = .TRUE., NormalTangential, RelaxBefore, &
                   divDiscretization, GradPDiscretization, ComputeFree=.FALSE., &
                   Transient, Rotating, AnyRotating, OutOfPlaneFlow=.FALSE.,&
-                  RecheckNewton=.FALSE., ImplicitFrictionDirection=.FALSE.
+                  RecheckNewton=.FALSE., ImplicitFrictionDirection=.FALSE., &
+                  LegacyBubbles=.FALSE.
 
 ! Which compressibility model is used
      CHARACTER(LEN=MAX_NAME_LEN) :: CompressibilityFlag, StabilizeFlag, VarName
@@ -194,10 +194,7 @@
 
 
      IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
-
-     
-
-     
+          
      CALL DefaultStart()
      
 !    Check for local coordinate system
@@ -439,10 +436,16 @@
          Bubbles = .FALSE.
          Stabilize = .FALSE.         
        END IF
+     END IF     
+     
+     IF ( StabilizeFlag == 'bubbles' ) Bubbles = .TRUE.
+     IF( Stabilize .AND. Bubbles ) THEN
+       CALL Fatal('FlowSolver','You cant have stabilization and bubbles both!')
      END IF
 
-     IF ( StabilizeFlag == 'bubbles' ) Bubbles = .TRUE.
+     LegacyBubbles = ( Bubbles .AND. .NOT. ListCheckPresent(Solver % Values,'Element') )
 
+     
      DivDiscretization = ListGetLogical( Solver % Values, &
               'Div Discretization', GotIt )
 
@@ -655,9 +658,14 @@
 !------------------------------------------------------------------------------
 
          n = GetElementNOFNodes()
-         nb = GetElementNOFBDOFs()
+         IF( LegacyBubbles ) THEN
+           nb = n
+         ELSE
+           nb = GetElementNOFBDOFs()
+         END IF
          nd = GetElementDOFs( Indexes )
 
+         
          CALL GetElementNodes( ElementNodes )
 
          SELECT CASE( NSDOFs )
@@ -1033,7 +1041,7 @@
             StabilizeFlag = 'bubbles'
          END IF
 
-         IF ( nb==0 .AND. Bubbles ) nb = n
+         !IF ( nb==0 .AND. Bubbles ) nb = n
 
          TimeForce = 0.0_dp
          IF ( Transient ) THEN
