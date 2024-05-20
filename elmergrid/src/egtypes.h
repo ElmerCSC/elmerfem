@@ -227,12 +227,8 @@ struct FemType {
   char dofname[MAXDOFS][MAXNAMESIZE]; 
   char *bodyname[MAXBODIES]; 
   char *boundaryname[MAXBCS]; 
-  int noboundaries,              /* number of boundaries */
-      boundint[MAXBOUNDARIES],   /* internal material in the boundary */
-      boundext[MAXBOUNDARIES],   /* external material in the boundary */
-      boundsolid[MAXBOUNDARIES], /* which one is solid? */
-      boundtype[MAXBOUNDARIES];  /* type of the boundary */
-
+  int noboundaries;              /* number of boundaries */
+  
   struct CRSType dualgraph,      /* The dual graph of the finite element mesh */
     nodalgraph2,                  /* The nodal graph of the finite element mesh */
     invtopo;                      /* The inverse of the finite element mesh topology */

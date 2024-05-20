@@ -1770,23 +1770,15 @@ int LoadFidapInput(struct FemType *data,struct BoundaryType *boundaries,char *pr
 			elems,nodes,entityname);
 
 	for(entity=1;entity<=maxentity;entity++) {
-#if 0
-	  k = strcmp(entityname,entitylist[entity]);
-#else
 	  if(!data->bodyname[entity]) break;
 	  k = strcmp(entityname,data->bodyname[entity]);
-#endif
 	  if(k == 0) break;
 	}
 
 	if(entity > maxentity) {
 	  maxentity++;
-#if 0
-	  strcpy(entitylist[entity],entityname);
-#else
 	  if(!data->bodyname[entity]) data->bodyname[entity] = Cvector(0,MAXNAMESIZE);
 	  strcpy(data->bodyname[entity],entityname);
-#endif
 	  if(info) printf("Found new entity: %s\n",entityname);
 	}
 
@@ -2953,15 +2945,8 @@ allocate:
 
       for(i=1; i <= noknots; i++) {
 	GETLINE;
-#if 0
-	printf("i=%d line=%s",i,line);
-#endif
 	if(allocated) {
 	  cp = line;
-#if 0
-	  printf("cp = %s",cp);
-#endif
-
 	  data->x[i] = next_real(&cp);
 	  data->y[i] = next_real(&cp);
 	  if(dim > 2) data->z[i] = next_real(&cp);

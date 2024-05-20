@@ -1299,15 +1299,8 @@ void CreateKnots(struct GridType *grid,struct CellType *cell,
   data->numbering = grid->numbering;
   data->indexwidth = grid->maxwidth;
   data->noknots = MAX(noknots,grid->noknots);
-
   data->noboundaries = grid->noboundaries;
-  for(i=0;i<MAXBOUNDARIES;i++) {
-    data->boundint[i] = grid->boundint[i];
-    data->boundext[i] = grid->boundext[i];
-    data->boundsolid[i] = grid->boundsolid[i];
-    data->boundtype[i] = grid->boundtype[i];
-  }
-
+  
   AllocateKnots(data);
   minsize = 1.0e20;
 
@@ -1818,30 +1811,6 @@ int DestroyBoundary(struct BoundaryType *bound)
 #if DEBUG
   printf("%d element sides were destroyed.\n",nosides); 
 #endif
-  return(0);
-}
-
-
-
-int CreateBoundaries(struct CellType *cell,struct FemType *data,
-		     struct BoundaryType *boundaries,int info)
-{
-  int i,j;
- 
-  j = 0;
-  if(data->noboundaries > 0) 
-    for(i=0;i<data->noboundaries;i++) {
-      while(boundaries[j].created) {
-	j++;
-	if(j >= MAXBOUNDARIES) {
-	  printf("CreateBoundaries: too many boundaries %d\n",j);
-	  return(1);
-	}
-      } 
-      CreateBoundary(cell,data,&boundaries[j],
-		     data->boundext[i],data->boundint[i],
-		     data->boundsolid[i],data->boundtype[i],info);
-    }
   return(0);
 }
 
