@@ -1585,8 +1585,8 @@ SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, Transient)
     CALL ListAddNewInteger(Params, 'Nonlinear System Min Iterations', 2)
   END IF
 
-  ! Create solver related to variable "iterpres" when using block preconditioning
-  ! There keyword ensure that the matrix is truly used in the library version of the
+  ! Create solver related to variable "schur" when using block preconditioning
+  ! These keywords ensure that the matrix is truly used in the library version of the
   ! block solver.
   IF( ListGetLogical( Params,'Block Preconditioner',Found ) ) THEN
     CALL ListAddNewString( Params,'Block Matrix Schur Variable','schur')
@@ -1615,6 +1615,9 @@ SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, Transient)
     CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'Slip Speed')
     CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'-nooutput Slip Weight')
   END IF
+
+  CALL ListAddNewLogical(Params,'schur: Variable Output',.FALSE.)
+
   
 !------------------------------------------------------------------------------ 
 END SUBROUTINE IncompressibleNSSolver_Init
@@ -1725,7 +1728,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     ! Create solver that only acts as a container for the shcur complement
     ! matrix used in the block preconditioning solver of the library.
     IF( .NOT. ASSOCIATED( SchurSolver ) ) THEN
-      SchurSolver => CreateChildSolver( Solver,'schur', 1 ) 
+      SchurSolver => CreateChildSolver( Solver,'schur', 1,'schur:') 
     END IF
   END IF
   

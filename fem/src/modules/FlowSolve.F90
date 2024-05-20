@@ -134,7 +134,6 @@
          MagneticForce =.FALSE., UseLocalCoords, PseudoPressureUpdate, &
          AllIncompressible
 
-
      REAL(KIND=dp),ALLOCATABLE :: MASS(:,:),STIFF(:,:), LoadVector(:,:), &
        Viscosity(:),FORCE(:), TimeForce(:), PrevDensity(:),Density(:),   &
        U(:),V(:),W(:),MU(:),MV(:),MW(:), Pressure(:),Alpha(:),Beta(:),   &
@@ -419,7 +418,8 @@
      P2P1 = .FALSE.
      Bubbles   = ListGetLogical( Solver % Values,'Bubbles',GotIt )
      Stabilize = ListGetLogical( Solver % Values,'Stabilize',GotIt )
-
+     P2P1 = .FALSE.
+     
      StabilizeFlag = ListGetString( Solver % Values, &
            'Stabilization Method', GotIt )
      IF ( .NOT. GotIt ) THEN
@@ -433,18 +433,20 @@
      ELSE
        IF (StabilizeFlag == 'p2/p1' .OR. StabilizeFlag == 'p2p1') THEN
          P2P1 = .TRUE.
-         Bubbles = .FALSE.
          Stabilize = .FALSE.         
+       ELSE IF( StabilizeFlag == 'bubbles' ) THEN
+         Bubbles = .TRUE.
        END IF
      END IF     
      
-     IF ( StabilizeFlag == 'bubbles' ) Bubbles = .TRUE.
      IF( Stabilize .AND. Bubbles ) THEN
        CALL Fatal('FlowSolver','You cant have stabilization and bubbles both!')
      END IF
-
+     
      LegacyBubbles = ( Bubbles .AND. .NOT. ListCheckPresent(Solver % Values,'Element') )
-
+     IF( LegacyBubbles ) THEN
+       CALL Info('FlowSolver','Using legacy bubbles (as opposed to elemental ones!)',Level=8)
+     END IF
      
      DivDiscretization = ListGetLogical( Solver % Values, &
               'Div Discretization', GotIt )
@@ -567,9 +569,9 @@
        NoActive = GetNOFActive()
        
        DO t = 1,NoActive
-
+         
          CALL AdvanceOutput( t, NoActive )
-!
+
          Element => GetActiveElement(t)
          NodeIndexes => Element % NodeIndexes
 
@@ -664,7 +666,6 @@
            nb = GetElementNOFBDOFs()
          END IF
          nd = GetElementDOFs( Indexes )
-
          
          CALL GetElementNodes( ElementNodes )
 
@@ -1027,22 +1028,19 @@
            
 !------------------------------------------------------------------------------
          END SELECT
+
+         IF ( CompressibilityModel /= Incompressible .AND. &
+                 StabilizeFlag == 'stabilized' ) THEN
+            nb = n
+         END IF
+         IF ( Element % TYPE % BasisFunctionDegree <= 1 .AND. P2P1 ) THEN
+            nb = n
+         END IF
+           
 !------------------------------------------------------------------------------
 !        If time dependent simulation, add mass matrix to global 
 !        matrix and global RHS vector
 !------------------------------------------------------------------------------
-         IF ( CompressibilityModel /= Incompressible .AND. &
-                 StabilizeFlag == 'stabilized' ) THEN
-            Bubbles = .TRUE.
-            StabilizeFlag = 'bubbles'
-         END IF
-         IF ( Element % TYPE % BasisFunctionDegree <= 1 .AND. P2P1 ) THEN
-            Bubbles = .TRUE.
-            StabilizeFlag = 'bubbles'
-         END IF
-
-         !IF ( nb==0 .AND. Bubbles ) nb = n
-
          TimeForce = 0.0_dp
          IF ( Transient ) THEN
 !------------------------------------------------------------------------------
@@ -1051,11 +1049,11 @@
 !------------------------------------------------------------------------------
            CALL Default1stOrderTime( MASS, STIFF, FORCE )
          END IF
-
+         
          IF ( nb > 0 ) THEN
             CALL NSCondensate( nd, nb, NSDOFs-1, STIFF, FORCE, TimeForce )
          END IF
-
+         
 !------------------------------------------------------------------------------
 !        Add local stiffness matrix and force vector to global matrix & vector
 !------------------------------------------------------------------------------
@@ -1072,7 +1070,7 @@
 !     Neumann & Newton boundary conditions
 !------------------------------------------------------------------------------
       NoActive = GetNOFBoundaryElements()
-      
+
       DO t = 1,NoActive
 
         Element => GetBoundaryElement(t)
