@@ -5,7 +5,7 @@
 #define DIM 2               /* dimension of the space */
 #define MAXDOFS 20          /* maximum number of variables, e.g. T,P */ 
 #define MAXCELLS 100        /* maximum number of subcells in given direction */
-#define MAXBOUNDARIES 4000  /* maximum number of boundaries for BCs */
+#define MAXBOUNDARIES 1000  /* maximum number of boundaries for BCs */
 #define MAXCASES    12      /* maximum number of coexisting cases */ 
 #define MAXFILESIZE 600     /* maximum filenamesize for i/o files */
 #define MAXLINESIZE 600     /* maximum length of line to be read */
@@ -212,12 +212,11 @@ struct FemType {
     **topology,    /* element topology */
     bodynamesexist,
     boundarynamesexist;
-  int edofs[MAXDOFS],   /* number of dofs in each node */
-    eorder[MAXDOFS],    /* does order exist */
-    bandwidth[MAXDOFS], /* bandwidth accounting fixed points */
-    alldofs[MAXDOFS],   /* total number of variables */
-    iterdofs[MAXDOFS],  /* iterations for variable */
-    *order[MAXDOFS];    /* order of the dofs */
+
+  int edofs[MAXDOFS];   /* number of dofs in each node */
+  int bandwidth[MAXDOFS]; /* bandwidth accounting fixed points */
+  int alldofs[MAXDOFS];   /* total number of variables */
+  
   Real minsize,maxsize;
   Real *x,  /* in axisymmetric case r */ 
       *y,   /* in axisymmetric case z */
@@ -227,12 +226,8 @@ struct FemType {
   char dofname[MAXDOFS][MAXNAMESIZE]; 
   char *bodyname[MAXBODIES]; 
   char *boundaryname[MAXBCS]; 
-  int noboundaries,              /* number of boundaries */
-      boundint[MAXBOUNDARIES],   /* internal material in the boundary */
-      boundext[MAXBOUNDARIES],   /* external material in the boundary */
-      boundsolid[MAXBOUNDARIES], /* which one is solid? */
-      boundtype[MAXBOUNDARIES];  /* type of the boundary */
-
+  int noboundaries;              /* number of boundaries */
+   
   struct CRSType dualgraph,      /* The dual graph of the finite element mesh */
     nodalgraph2,                  /* The nodal graph of the finite element mesh */
     invtopo;                      /* The inverse of the finite element mesh topology */

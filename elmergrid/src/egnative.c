@@ -5430,8 +5430,8 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
       /* Copy the entityname to mesh structure */
       if( isbody ) {
 	if(j < 0 || j >= MAXBODIES ) {
-	  printf("Cannot treat names for body %d\n",j);
-	  nameproblem = TRUE;
+	  if(!nameproblem) printf("Cannot treat names for bodies beyond %d\n",j);
+	  nameproblem++;
 	}
 	else {
 	  if(!data->bodyname[j]) data->bodyname[j] = Cvector(0,MAXNAMESIZE);
@@ -5441,8 +5441,8 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
       }
       else {
 	if(j < 0 || j >= MAXBCS ) {
-	  printf("Cannot treat names for boundary %d\n",j);
-	  nameproblem = TRUE;
+	  if(!nameproblem) printf("Cannot treat names for boundaries beyond %d\n",j);
+	  nameproblem++;
 	}
 	else {
 	  if(!data->boundaryname[j]) data->boundaryname[j] = Cvector(0,MAXNAMESIZE);
@@ -5456,7 +5456,8 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
     if( nameproblem ) {
       data->boundarynamesexist = FALSE;
       data->bodynamesexist = FALSE;
-      bigerror("Error: omitting use of names because the indexes are beyond range, code some more...");
+      printf("Number of indexes beyond range: %d\n",nameproblem);
+      smallerror("Omitting use of names because some indexes are beyond range, code some more...");
     }
   }
 

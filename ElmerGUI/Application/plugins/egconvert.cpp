@@ -728,6 +728,7 @@ omstart:
 	  if(allocated) {
 	    if(info) printf("Loading boundary set %d for side %d of %s\n",bcind+newsurface,side,entityname);
 	    k = bcind+newsurface;
+	    if(k>MAXBCS) bigerror("Boundary set larger than MAXBCS!");
 	    if(!data->boundaryname[k]) data->boundaryname[k] = Cvector(0,MAXNAMESIZE);
 	    strcpy(data->boundaryname[k],entityname);
 	    data->boundarynamesexist = TRUE;
@@ -738,6 +739,7 @@ omstart:
 	  sscanf(pstr,"%s",entityname);
 	  if(allocated) {
 	    if(info) printf("Loading element to body %d from %s\n",bodyid,entityname);
+	    if(bodyid>MAXBODIES) bigerror("Body set larger than MAXBODIES!");
 	    if(!data->bodyname[bodyid]) data->bodyname[bodyid] = Cvector(0,MAXNAMESIZE);	      
 	    strcpy(data->bodyname[bodyid],entityname);
 	    data->bodynamesexist = TRUE;
@@ -1770,23 +1772,15 @@ int LoadFidapInput(struct FemType *data,struct BoundaryType *boundaries,char *pr
 			elems,nodes,entityname);
 
 	for(entity=1;entity<=maxentity;entity++) {
-#if 0
-	  k = strcmp(entityname,entitylist[entity]);
-#else
 	  if(!data->bodyname[entity]) break;
 	  k = strcmp(entityname,data->bodyname[entity]);
-#endif
 	  if(k == 0) break;
 	}
 
 	if(entity > maxentity) {
 	  maxentity++;
-#if 0
-	  strcpy(entitylist[entity],entityname);
-#else
 	  if(!data->bodyname[entity]) data->bodyname[entity] = Cvector(0,MAXNAMESIZE);
 	  strcpy(data->bodyname[entity],entityname);
-#endif
 	  if(info) printf("Found new entity: %s\n",entityname);
 	}
 
@@ -2331,6 +2325,7 @@ int LoadAnsysInput(struct FemType *data,struct BoundaryType *bound,
 	bcind = i;
 	bctypeused[bcind] = TRUE;
 	if(0) printf("First unused boundary is of type %d\n",bcind);
+	if(bcind>MAXBCS) bigerror("bcind larger than MAXBCS!");
 	if(!data->boundaryname[bcind]) data->boundaryname[bcind] = Cvector(0,MAXNAMESIZE);
 	strcpy(data->boundaryname[bcind],text);
 	
@@ -2953,15 +2948,8 @@ allocate:
 
       for(i=1; i <= noknots; i++) {
 	GETLINE;
-#if 0
-	printf("i=%d line=%s",i,line);
-#endif
 	if(allocated) {
 	  cp = line;
-#if 0
-	  printf("cp = %s",cp);
-#endif
-
 	  data->x[i] = next_real(&cp);
 	  data->y[i] = next_real(&cp);
 	  if(dim > 2) data->z[i] = next_real(&cp);
