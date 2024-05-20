@@ -1702,13 +1702,12 @@ CONTAINS
          ! Output some information before exiting
          !---------------------------------------------------------------------
          IF( Upper == 0 ) THEN
-           CALL Info(Caller,'Determined lower soft limit set',Level=6)
+           WRITE(Message,'(A,I0)') 'Number of lower limited dofs for '&
+               //TRIM(GetVarName(Var))//': ',COUNT( LimitActive )
          ELSE
-           CALL Info(Caller,'Determined upper soft limit set',Level=6)
+           WRITE(Message,'(A,I0)') 'Number of upper limited dofs for '&
+               //TRIM(GetVarName(Var))//': ',COUNT( LimitActive )
          END IF
-
-         WRITE(Message,'(A,I0)') 'Number of limited dofs for '&
-             //TRIM(GetVarName(Var))//': ',COUNT( LimitActive )
          CALL Info(Caller,Message,Level=5)
          
          IF(added >= 0) THEN
