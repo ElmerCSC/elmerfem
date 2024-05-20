@@ -212,12 +212,11 @@ struct FemType {
     **topology,    /* element topology */
     bodynamesexist,
     boundarynamesexist;
-  int edofs[MAXDOFS],   /* number of dofs in each node */
-    eorder[MAXDOFS],    /* does order exist */
-    bandwidth[MAXDOFS], /* bandwidth accounting fixed points */
-    alldofs[MAXDOFS],   /* total number of variables */
-    iterdofs[MAXDOFS],  /* iterations for variable */
-    *order[MAXDOFS];    /* order of the dofs */
+
+  int edofs[MAXDOFS];   /* number of dofs in each node */
+  int bandwidth[MAXDOFS]; /* bandwidth accounting fixed points */
+  int alldofs[MAXDOFS];   /* total number of variables */
+  
   Real minsize,maxsize;
   Real *x,  /* in axisymmetric case r */ 
       *y,   /* in axisymmetric case z */
@@ -228,9 +227,7 @@ struct FemType {
   char *bodyname[MAXBODIES]; 
   char *boundaryname[MAXBCS]; 
   int noboundaries;              /* number of boundaries */
-
-  
-  
+   
   struct CRSType dualgraph,      /* The dual graph of the finite element mesh */
     nodalgraph2,                  /* The nodal graph of the finite element mesh */
     invtopo;                      /* The inverse of the finite element mesh topology */
