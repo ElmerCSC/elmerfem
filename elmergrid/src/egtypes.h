@@ -5,7 +5,7 @@
 #define DIM 2               /* dimension of the space */
 #define MAXDOFS 20          /* maximum number of variables, e.g. T,P */ 
 #define MAXCELLS 100        /* maximum number of subcells in given direction */
-#define MAXBOUNDARIES 4000  /* maximum number of boundaries for BCs */
+#define MAXBOUNDARIES 1000  /* maximum number of boundaries for BCs */
 #define MAXCASES    12      /* maximum number of coexisting cases */ 
 #define MAXFILESIZE 600     /* maximum filenamesize for i/o files */
 #define MAXLINESIZE 600     /* maximum length of line to be read */
@@ -228,6 +228,8 @@ struct FemType {
   char *bodyname[MAXBODIES]; 
   char *boundaryname[MAXBCS]; 
   int noboundaries;              /* number of boundaries */
+
+  
   
   struct CRSType dualgraph,      /* The dual graph of the finite element mesh */
     nodalgraph2,                  /* The nodal graph of the finite element mesh */

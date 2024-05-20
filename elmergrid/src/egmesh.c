@@ -4086,7 +4086,7 @@ void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
 	  boundaryname0[j] = NULL;
 	
 	/* We need some temporal place is name mapping might not be unique */
-	for(j=minbc;j<=MIN(maxbc,MAXBODIES-1);j++) {
+	for(j=minbc;j<=MIN(maxbc,MAXBCS-1);j++) {
 	  k = 0;
 	  for(elemdim=2;elemdim>=0;elemdim--) {	    
 	    k = mapbc[j][elemdim];
@@ -4102,7 +4102,7 @@ void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
 	  }
 	}
 	
-	for(j=minbc;j<=MIN(maxbc,MAXBODIES-1);j++) {
+	for(j=minbc;j<=MIN(maxbc,MAXBCS-1);j++) {
 	  k = 0;
 	  for(elemdim=2;elemdim>=0;elemdim--) {	    	   	    
 	    k = mapbc[j][elemdim];
@@ -4129,7 +4129,7 @@ void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
 	bound[j].types[i] += bcoffset;
     }
     if(data->boundarynamesexist) {
-      for(j=MAXBOUNDARIES-bcoffset-1;j>=0;j--) {
+      for(j=MAXBCS-bcoffset-1;j>=0;j--) {
 	k = j+bcoffset;
 	if(!data->boundaryname[k]) data->boundaryname[k] = Cvector(0,MAXNAMESIZE);
 	strcpy(data->boundaryname[k],data->boundaryname[j]);
@@ -6181,7 +6181,7 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
 	strcpy(data->bodyname[i],dataxy->bodyname[i]);
       }
     }
-    for(i=1;i< MAXBOUNDARIES;i++) { 
+    for(i=1;i< MAXBCS;i++) { 
       if(dataxy->boundaryname[i]) {
 	if(!data->boundaryname[i]) data->boundaryname[i] = Cvector(0,MAXNAMESIZE);
 	strcpy(data->boundaryname[i],dataxy->boundaryname[i]);
@@ -7258,7 +7258,7 @@ void ElementsToBoundaryConditions(struct FemType *data,
 	  }		
 	  if(movenames) {
 	    data->boundarynamesexist = TRUE;
-	    if(material < MAXBODIES && material < MAXBOUNDARIES) {
+	    if(material < MAXBODIES && material < MAXBCS) {
 	      if(!data->boundaryname[material]) {
 		data->boundaryname[material] = Cvector(0,MAXNAMESIZE);
 		if(data->bodyname[material]) {

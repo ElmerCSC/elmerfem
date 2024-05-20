@@ -728,6 +728,7 @@ omstart:
 	  if(allocated) {
 	    if(info) printf("Loading boundary set %d for side %d of %s\n",bcind+newsurface,side,entityname);
 	    k = bcind+newsurface;
+	    if(k>MAXBCS) bigerror("Boundary set larger than MAXBCS!");
 	    if(!data->boundaryname[k]) data->boundaryname[k] = Cvector(0,MAXNAMESIZE);
 	    strcpy(data->boundaryname[k],entityname);
 	    data->boundarynamesexist = TRUE;
@@ -738,6 +739,7 @@ omstart:
 	  sscanf(pstr,"%s",entityname);
 	  if(allocated) {
 	    if(info) printf("Loading element to body %d from %s\n",bodyid,entityname);
+	    if(bodyid>MAXBODIES) bigerror("Body set larger than MAXBODIES!");
 	    if(!data->bodyname[bodyid]) data->bodyname[bodyid] = Cvector(0,MAXNAMESIZE);	      
 	    strcpy(data->bodyname[bodyid],entityname);
 	    data->bodynamesexist = TRUE;
@@ -2323,6 +2325,7 @@ int LoadAnsysInput(struct FemType *data,struct BoundaryType *bound,
 	bcind = i;
 	bctypeused[bcind] = TRUE;
 	if(0) printf("First unused boundary is of type %d\n",bcind);
+	if(bcind>MAXBCS) bigerror("bcind larger than MAXBCS!");
 	if(!data->boundaryname[bcind]) data->boundaryname[bcind] = Cvector(0,MAXNAMESIZE);
 	strcpy(data->boundaryname[bcind],text);
 	
