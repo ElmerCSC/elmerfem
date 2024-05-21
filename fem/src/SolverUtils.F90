@@ -1710,14 +1710,9 @@ CONTAINS
          END IF
          CALL Info(Caller,Message,Level=5)
          
-         IF(added >= 0) THEN
-           WRITE(Message,'(A,I0,A)') 'Added ',added,' dofs to the set'
-           CALL Info(Caller,Message,Level=6)
-         END IF
-         
-         IF(removed >= 0) THEN
-           WRITE(Message,'(A,I0,A)') 'Removed ',removed,' dofs from the set'
-           CALL Info(Caller,Message,Level=6)
+         IF(added + removed >= 0) THEN
+           CALL Info(Caller,'Added '//I2S(added)//' and removed '&
+               //I2S(removed)//' dofs in contact set',Level=6)
          END IF
 
          ! Set the Dirichlet conditions already here!
