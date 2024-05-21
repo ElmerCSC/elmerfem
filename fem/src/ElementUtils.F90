@@ -148,16 +148,31 @@ CONTAINS
      IF ( ALLOCATED( Matrix % RowOwner ) )   DEALLOCATE( Matrix % RowOwner )
      IF ( ASSOCIATED( Matrix % GOrder) )      DEALLOCATE( Matrix % GOrder )
 
+     CALL FreeMatrix( Matrix % CircuitMatrix )
+     CALL FreeMatrix( Matrix % AddMatrix )
      CALL FreeMatrix( Matrix % EMatrix )
      CALL FreeMatrix( Matrix % ConstraintMatrix )
+
+     IF  (ALLOCATED(Matrix % Dvalues) ) DEALLOCATE(Matrix % DValues)
+     IF  (ASSOCIATED(Matrix % EPerm) ) DEALLOCATE(Matrix % EPerm)
+     IF  (ASSOCIATED(Matrix % BulkResidual) ) DEALLOCATE(Matrix % BulKResidual)
+     IF  (ASSOCIATED(Matrix % DiagScaling) ) DEALLOCATE(Matrix % DiagScaling)
+     IF  (ASSOCIATED(Matrix % Tvalues) ) DEALLOCATE(Matrix % Tvalues)
+     IF  (ASSOCIATED(Matrix % BulkMassValues) ) DEALLOCATE(Matrix % BulkMassValues)
+     IF  (ASSOCIATED(Matrix % BulkDampValues) ) DEALLOCATE(Matrix % BulkDampValues)
+     IF  (ASSOCIATED(Matrix % HaloValues) ) DEALLOCATE(Matrix % HaloValues)
+     IF  (ASSOCIATED(Matrix % HaloMassValues) ) DEALLOCATE(Matrix % HaloMassValues)
 
      IF(ASSOCIATED(Matrix % ParallelInfo)) THEN
        DEALLOCATE(Matrix % ParallelInfo % GlobalDOFs)
        DEALLOCATE(Matrix % ParallelInfo % GInterface)
+
        DO i=1,SIZE(Matrix % ParallelInfo % NeighbourList)
          DEALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours)
        END DO
        DEALLOCATE(Matrix % ParallelInfo % NeighbourList)
+       IF(ASSOCIATED(Matrix % ParallelInfo % Gorder)) DEALLOCATE(Matrix % ParallelInfo % GOrder)
+
        DEALLOCATE(Matrix % ParallelInfo)
      END IF
 
