@@ -164,13 +164,16 @@ CONTAINS
      IF  (ASSOCIATED(Matrix % HaloMassValues) ) DEALLOCATE(Matrix % HaloMassValues)
 
      IF(ASSOCIATED(Matrix % ParallelInfo)) THEN
-       DEALLOCATE(Matrix % ParallelInfo % GlobalDOFs)
-       DEALLOCATE(Matrix % ParallelInfo % GInterface)
-
-       DO i=1,SIZE(Matrix % ParallelInfo % NeighbourList)
-         DEALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours)
-       END DO
-       DEALLOCATE(Matrix % ParallelInfo % NeighbourList)
+       IF(ASSOCIATED(Matrix % ParallelInfo % GlobalDOFs)) DEALLOCATE(Matrix % ParallelInfo % GlobalDOFs)
+       IF(ASSOCIATED(Matrix % ParallelInfo % GInterface)) DEALLOCATE(Matrix % ParallelInfo % GInterface)
+ 
+       IF(ASSOCIATED(Matrix % ParallelInfo % NeighbourList)) THEN
+         DO i=1,SIZE(Matrix % ParallelInfo % NeighbourList)
+           IF (ASSOCIATED(Matrix % ParallelInfo % NeighbourList(i) % Neighbours)) &
+             DEALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours)
+         END DO
+         DEALLOCATE(Matrix % ParallelInfo % NeighbourList)
+       END IF
        IF(ASSOCIATED(Matrix % ParallelInfo % Gorder)) DEALLOCATE(Matrix % ParallelInfo % GOrder)
 
        DEALLOCATE(Matrix % ParallelInfo)
