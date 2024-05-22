@@ -1043,13 +1043,13 @@ CONTAINS
     INTEGER :: c,i,j,k,l,p,q,t,ngp,norm_comp
     LOGICAL :: NormalTangential, HaveSlip, HaveForce, HavePres, HaveFrictionW, HaveFrictionU, &
         HaveFriction, HaveNormal, FrictionNormal, Found, Stat, HaveFSSA, &
-        FoundLoad, GotRelax, LocalNewton
+        FoundLoad, GotRelax, LocalNewton, HaveNormalSlip
     REAL(KIND=dp) :: ExtPressure, s, detJ, FSSAtheta, wut0, wexp, wcoeff, un, ut, rho
-    REAL(KIND=dp) :: SlipCoeff(3), SurfaceTraction(3), Normal(3), Tangent(3), Tangent2(3), &
+    REAL(KIND=dp) :: SlipCoeff(3), NormalSlipCoeff, SurfaceTraction(3), Normal(3), Tangent(3), Tangent2(3), &
         Vect(3), Velo(3), TanFrictionCoeff, DummyVals(1), LoadVec(dim), FSSAaccum, &
         NewtonRelax 
     TYPE(Nodes_t), SAVE :: Nodes
-    TYPE(ValueHandle_t), SAVE :: ExtPressure_h, SurfaceTraction_h, SlipCoeff_h, &
+    TYPE(ValueHandle_t), SAVE :: ExtPressure_h, SurfaceTraction_h, SlipCoeff_h, NormalSlipCoeff_h, &
         NormalTangential_h, NormalTangentialVelo_h, WeertmanCoeff_h, WeertmanExp_h, &
         FrictionUt0_h, FrictionNormal_h, FrictionCoeff_h, &
         FSSAtheta_h, Dens_h, Load_h(3), FSSAaccum_h
@@ -1064,13 +1064,14 @@ CONTAINS
     
 !------------------------------------------------------------------------------
     
-    IF( InitHandles ) THEN   
+    IF( InitHandles ) THEN
       CALL ListInitElementKeyword( ExtPressure_h,'Boundary Condition','Normal Surface Traction')
       IF( .NOT. ListGetElementSomewhere( ExtPressure_h) ) THEN
         CALL ListInitElementKeyword( ExtPressure_h,'Boundary Condition','External Pressure')      
       END IF
       CALL ListInitElementKeyword( SurfaceTraction_h,'Boundary Condition','Surface Traction',InitVec3D=.TRUE.)
       CALL ListInitElementKeyword( SlipCoeff_h,'Boundary Condition','Slip Coefficient',InitVec3D=.TRUE.)
+      CALL ListInitElementKeyword( NormalSlipCoeff_h,'Boundary Condition','Normal Slip Coefficient')
       
       CALL ListInitElementKeyword( FrictionCoeff_h,'Boundary Condition','Friction Coefficient',&
           EvaluateAtIp=.TRUE., DummyCount=1)     
@@ -1202,7 +1203,8 @@ CONTAINS
       ! Slip coefficient
       !----------------------------------
       SlipCoeff = ListGetElementReal3D( SlipCoeff_h, Basis, Element, HaveSlip, GaussPoint = t )
-
+      NormalSlipCoeff = ListGetElementReal( NormalSlipCoeff_h, Basis, Element, HaveNormalSlip, GaussPoint = t )
+      
       IF (HaveFSSA) THEN
         ! Flow bodyforce if present
         LoadVec = 0._dp
@@ -1222,26 +1224,21 @@ CONTAINS
       
       ! Nothing to do, exit the routine
       !---------------------------------
-      IF(.NOT. (HaveForce .OR. HavePres .OR. HaveSlip .OR. HaveFriction .OR. HaveFSSA)) RETURN
+      IF(.NOT. (HaveForce .OR. HavePres .OR. HaveSlip .OR. HaveNormalSlip .OR. HaveFriction .OR. HaveFSSA)) RETURN
 
       ! Calculate normal vector only if needed
-      IF( HavePres .OR. NormalTangential .OR. HaveFriction  .OR. HaveFSSA ) THEN
+      IF( HavePres .OR. NormalTangential .OR. HaveFriction  .OR. HaveFSSA .OR. HaveNormalSlip ) THEN
         Normal = ConsistentNormalVector( CurrentModel % Solver, NrmSol, Element, Found, Basis = Basis )
         IF(.NOT. Found) Normal = NormalVector( Element, Nodes, IP % u(t), IP % v(t),.TRUE. )
       END IF
-      
+            
       !-----------------------------------------------------------------
-      IF( HaveFriction .AND. .NOT. HaveSlip ) THEN
-        IF( HaveSlip ) THEN
-          CALL Fatal('IncompressibleNSVec','You cannot combine different friction models!')
-        END IF
-              
+      IF( HaveFriction  .AND. .NOT. HaveSlip ) THEN
         ! Velocity at integration point for nonlinear friction laws
         Velo = ListGetElementVectorSolution( Velo_v, Basis, Element, dofs = dim )
 
         ! It seems futile to take normal component away as it is usually zero by construction!
         ! We include here the option not to remove it. 
-        norm_comp = 0
         IF(.NOT. FrictionNormal ) THEN
           un = SUM( Normal(1:dim) * Velo(1:dim) )
           velo(1:dim) = velo(1:dim)-un*normal(1:dim)
@@ -1256,7 +1253,7 @@ CONTAINS
           END IF
         END IF
         ut = MAX(wut0, SQRT(SUM(Velo(1:dim)**2)))
-          
+                     
         IF( HaveFrictionW ) THEN
           ! Weertman friction law computed internally
           wcoeff = ListGetElementReal( WeertmanCoeff_h, Basis, Element, GaussPoint = t )
@@ -1275,10 +1272,14 @@ CONTAINS
           TanFrictionCoeff = ListGetElementReal( FrictionCoeff_h, Basis, Element, &
               GaussPoint = t, DummyVals = DummyVals )             
         END IF
-        SlipCoeff = TanFrictionCoeff
-        IF(norm_comp > 0 ) THEN
-          SlipCoeff(norm_comp) = 0.0_dp
-        END IF
+
+        DO i=1,dim
+          IF(i==norm_comp) THEN
+            SlipCoeff(i) = NormalSlipCoeff
+          ELSE
+            SlipCoeff(i) = TanFrictionCoeff
+          END IF
+        END DO
         HaveSlip = .TRUE.
         
         IF(SaveSlipSpeed) THEN
@@ -1307,13 +1308,14 @@ CONTAINS
           END DO
         END IF
       END IF
-                  
-      !IF(t==1) THEN
-      !  PRINT *,'Normal:',Normal,un,ut,norm_comp
-      !  PRINT *,'wexp:',wexp,wcoeff,wut0,HaveFrictionW,HaveFrictionU,HaveSlip
-      !  PRINT *,'Velo:',dim,Velo,NormalTangential,SlipCoeff
-      !END IF
-            
+
+      IF(t==0 ) THEN
+        PRINT *,'Normal:',Element % ElementIndex, Normal,un,ut,norm_comp
+        PRINT *,'wexp:',wexp,wcoeff,wut0,HaveFrictionW,HaveFrictionU,HaveSlip,HaveNormalSlip
+        PRINT *,'Velo:',dim,Velo,NormalTangential, LocalNewton
+        PRINT *,'Slip:',SlipCoeff,NormalSlipCoeff,TanFrictionCoeff
+      END IF
+      
       ! Project external pressure to the normal direction
       IF( HavePres ) THEN
         IF( NormalTangential ) THEN
@@ -1341,7 +1343,7 @@ CONTAINS
       IF( HaveSlip ) THEN               
         IF ( NormalTangential ) THEN
           DO i=1,dim
-            IF(i==norm_comp) CYCLE
+            IF(i==norm_comp .AND. .NOT. HaveNormalSlip ) CYCLE
             SELECT CASE(i)
             CASE(1)
               Vect = Normal
@@ -1359,7 +1361,9 @@ CONTAINS
                         STIFF( (p-1)*c+j,(q-1)*c+k ) + &
                         s * SlipCoeff(i) * Basis(q) * Basis(p) * Vect(j) * Vect(k)
 
-                    IF(HaveFrictionW .AND. LocalNewton) THEN
+                    IF(LocalNewton) THEN
+                      ! Only tangential directions have Newton linearization
+                      IF(i==norm_comp) CYCLE
                       JAC((p-1)*c+j,(q-1)*c+k ) = JAC((p-1)*c+j,(q-1)*c+k ) + &
                           s * TanFder * Basis(q) * Basis(p) * Vect(j) * velo(k) * SUM(velo(1:dim)*Vect(1:dim))/ut
                     END IF
@@ -1373,14 +1377,14 @@ CONTAINS
           DO p=1,nd
             DO q=1,nd
               DO i=1,dim
-                IF(i == norm_comp) CYCLE
+                IF(i == norm_comp .AND. .NOT. HaveNormalSlip ) CYCLE
                 STIFF( (p-1)*c+i,(q-1)*c+i ) = &
                     STIFF( (p-1)*c+i,(q-1)*c+i ) + &
                     s * SlipCoeff(i) * Basis(q) * Basis(p)
 
-               IF(HaveFrictionW .AND. LocalNewton) THEN
+               IF(LocalNewton) THEN
                  DO j=1,dim
-                  IF(j == norm_comp) CYCLE
+                  IF(i==norm_comp) CYCLE
                   JAC((p-1)*c+i,(q-1)*c+j ) = JAC((p-1)*c+i,(q-1)*c+j ) + &
                         s * TanFder * Basis(q) * Basis(p) * velo(i) * velo(j) / ut
                  END DO
@@ -1474,17 +1478,17 @@ CONTAINS
     END DO
 
 
-    IF(HaveFrictionW .AND. FrictionNewton) THEN
-       CALL GetLocalSolution( NodalSol )
-       SOL=0._dp
-       DO i = 1, c
-         SOL(i::c) = NodalSol(i,1:nd)
-       END DO
+    IF(LocalNewton) THEN
+      CALL GetLocalSolution( NodalSol )
+      SOL=0._dp
+      DO i = 1, c
+        SOL(i::c) = NodalSol(i,1:nd)
+      END DO
 
-       IF(GotRelax) JAC = NewtonRelax * JAC
-       
-       STIFF=STIFF+JAC
-       FORCE=FORCE + MATMUL(JAC,SOL)
+      IF(GotRelax) JAC = NewtonRelax * JAC
+      
+      STIFF=STIFF+JAC
+      FORCE=FORCE + MATMUL(JAC,SOL)
     END IF
       
     CALL DefaultUpdateEquations( STIFF, FORCE )
@@ -1652,7 +1656,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   REAL(KIND=dp) :: Norm
 
   LOGICAL :: AllocationsDone = .FALSE., Found, StokesFlow, BlockPrec, Converged
-  LOGICAL :: GradPVersion, DivCurlForm, SpecificLoad, InitBCHandles, FrictionNewton
+  LOGICAL :: GradPVersion, DivCurlForm, SpecificLoad, InitBCHandles
 
   TYPE(Solver_t), POINTER, SAVE :: SchurSolver => Null()
   
@@ -1793,11 +1797,6 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     Active = GetNOFBoundaryElements()
     InitBCHandles = .TRUE.  
     
-    FrictionNewton = .FALSE.
-    IF( Newton ) THEN  
-      FrictionNewton = .NOT. ListGetLogical( Solver % Values,'Friction Newton Disabled')
-    END IF
-       
     DO Element_id=1,Active
       Element => GetBoundaryElement(Element_id)
       IF (ActiveBoundaryElement()) THEN
@@ -1809,7 +1808,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
         
         ! Get element local matrix and rhs vector:
         !-----------------------------------------
-        CALL LocalBoundaryMatrix(Element, n, nd, dim, dt, SpecificLoad, InitBCHandles, FrictionNewton)
+        CALL LocalBoundaryMatrix(Element, n, nd, dim, dt, SpecificLoad, InitBCHandles, Newton)
         InitBCHandles = .FALSE.
       END IF
     END DO
