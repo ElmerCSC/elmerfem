@@ -93,6 +93,8 @@ CONTAINS
      END INTERFACE
 #endif
 
+!------------------------------------------------------------------------------
+
      IF ( .NOT. ASSOCIATED( Matrix ) ) RETURN
 
      CALL DirectSolver( Matrix,x,b,Solver,Free_Fact=.TRUE.)
@@ -124,6 +126,7 @@ CONTAINS
 
      IF ( ALLOCATED( Matrix % ExtraVals ) )    DEALLOCATE( Matrix % ExtraVals )
      IF ( ASSOCIATED( Matrix % Values ) )      DEALLOCATE( Matrix % Values )
+     IF ( ASSOCIATED( Matrix % Values_im ) )   DEALLOCATE( Matrix % Values_im )
      IF ( ASSOCIATED( Matrix % MassValues ) )  DEALLOCATE( Matrix % MassValues )
      IF ( ASSOCIATED( Matrix % DampValues ) )  DEALLOCATE( Matrix % DampValues )
      IF ( ASSOCIATED( Matrix % PrecValues ) )  DEALLOCATE( Matrix % PrecValues )
@@ -152,8 +155,10 @@ CONTAINS
      CALL FreeMatrix( Matrix % AddMatrix )
      CALL FreeMatrix( Matrix % EMatrix )
      CALL FreeMatrix( Matrix % ConstraintMatrix )
+     CALL FreeMatrix( Matrix % CollectionMatrix )
 
      IF  (ALLOCATED(Matrix % Dvalues) ) DEALLOCATE(Matrix % DValues)
+     IF  (ALLOCATED(Matrix % ConstrainedDOF) ) DEALLOCATE(Matrix % ConstrainedDOF)
      IF  (ASSOCIATED(Matrix % EPerm) ) DEALLOCATE(Matrix % EPerm)
      IF  (ASSOCIATED(Matrix % BulkResidual) ) DEALLOCATE(Matrix % BulKResidual)
      IF  (ASSOCIATED(Matrix % DiagScaling) ) DEALLOCATE(Matrix % DiagScaling)
