@@ -16679,7 +16679,7 @@ CONTAINS
     IF(.NOT. Success) THEN
       CALL Info(Caller,'Releasing interface meshes!',Level=20)
       CALL ReleaseMesh(BMesh1); DEALLOCATE(BMesh1)
-      CALL ReleaseMesh(BMesh2); DEALLOCATE(BMesh1)
+      CALL ReleaseMesh(BMesh2); DEALLOCATE(BMesh2)
       RETURN
     END IF
 
