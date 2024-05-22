@@ -5660,6 +5660,9 @@ CONTAINS
       BMesh2 % Elements(i) % NodeIndexes = Perm2(BMesh2 % Elements(i) % NodeIndexes)
     END DO
     DEALLOCATE( Perm1, Perm2, EPerm1, EPerm2, BPerm1, BPerm2 )
+    IF(TagNormalFlip) THEN
+      DEALLOCATE(ElementNodes % x, ElementNodes % y, ElementNodes % z)
+    END IF
 
     IF( CheckForHalo ) DEALLOCATE( ActiveNode ) 
 
@@ -16346,8 +16349,8 @@ CONTAINS
 
     IF(.NOT. Success) THEN
       CALL Info(Caller,'Releasing interface meshes!',Level=20)
-      CALL ReleaseMesh(BMesh1)
-      CALL ReleaseMesh(BMesh2)
+      CALL ReleaseMesh(BMesh1); DEALLOCATE(BMesh1)
+      CALL ReleaseMesh(BMesh2); DEALLOCATE(BMesh2)
       RETURN
     END IF
 
@@ -16566,13 +16569,13 @@ CONTAINS
     CALL Info(Caller,'Releasing interface meshes!',Level=20)
     BMesh1 % Projector => NULL()
     BMesh1 % Parent => NULL()
-    !DEALLOCATE( BMesh1 % InvPerm ) 
-    CALL ReleaseMesh(BMesh1)
+    IF(ASSOCIATED(BMesh1 % InvPerm)) DEALLOCATE(BMesh1 % InvPerm) 
+    CALL ReleaseMesh(BMesh1); DEALLOCATE(BMesh1)
 
     BMesh2 % Projector => NULL()
     BMesh2 % Parent => NULL()
-    !DEALLOCATE( BMesh2 % InvPerm ) 
-    CALL ReleaseMesh(BMesh2)
+    IF(ASSOCIATED(BMesh2 % InvPerm)) DEALLOCATE(BMesh2 % InvPerm) 
+    CALL ReleaseMesh(BMesh2); DEALLOCATE(BMesh2)
 
 100 Projector % ProjectorBC = This
 
@@ -16675,8 +16678,8 @@ CONTAINS
     
     IF(.NOT. Success) THEN
       CALL Info(Caller,'Releasing interface meshes!',Level=20)
-      CALL ReleaseMesh(BMesh1)
-      CALL ReleaseMesh(BMesh2)
+      CALL ReleaseMesh(BMesh1); DEALLOCATE(BMesh1)
+      CALL ReleaseMesh(BMesh2); DEALLOCATE(BMesh1)
       RETURN
     END IF
 
@@ -16777,13 +16780,13 @@ CONTAINS
     CALL Info(Caller,'Releasing interface meshes!',Level=20)
     BMesh1 % Projector => NULL()
     BMesh1 % Parent => NULL()
-    !DEALLOCATE( BMesh1 % InvPerm ) 
-    CALL ReleaseMesh(BMesh1)
+    IF(ASSOCIATED(BMesh1 % InvPerm)) DEALLOCATE( BMesh1 % InvPerm ) 
+    CALL ReleaseMesh(BMesh1); DEALLOCATE(BMesh1)
 
     BMesh2 % Projector => NULL()
     BMesh2 % Parent => NULL()
-    !DEALLOCATE( BMesh2 % InvPerm ) 
-    CALL ReleaseMesh(BMesh2)
+    IF(ASSOCIATED(BMesh2 % InvPerm)) DEALLOCATE( BMesh2 % InvPerm ) 
+    CALL ReleaseMesh(BMesh2); DEALLOCATE(BMesh2)
 
     CALL CheckTimer(Caller,Delete=.TRUE.)
            
@@ -23204,6 +23207,29 @@ CONTAINS
 
       IF ( ASSOCIATED( Mesh % ParallelInfo % GInterface ) ) &
           DEALLOCATE( Mesh % ParallelInfo % GInterface )
+
+      IF ( ASSOCIATED( Mesh % ParallelInfo % EdgeInterface ) ) &
+          DEALLOCATE( Mesh % ParallelInfo % EdgeInterface )
+
+      IF ( ASSOCIATED( Mesh % ParallelInfo % EdgeNeighbourList ) ) THEN 
+        DO i=1,Mesh % NumberOfNodes
+          IF(ASSOCIATED( Mesh % ParallelInfo % EdgeNeighbourList(i) % Neighbours ) ) &
+              DEALLOCATE( Mesh % ParallelInfo % EdgeNeighbourList(i) % Neighbours )
+        END DO
+        DEALLOCATE( Mesh % ParallelInfo % EdgeNeighbourList )
+      END IF
+
+      IF ( ASSOCIATED( Mesh % ParallelInfo % FaceInterface ) ) &
+          DEALLOCATE( Mesh % ParallelInfo % FaceInterface )
+
+      IF ( ASSOCIATED( Mesh % ParallelInfo % EdgeNeighbourList ) ) THEN 
+        DO i=1,Mesh % NumberOfNodes
+          IF(ASSOCIATED( Mesh % ParallelInfo % EdgeNeighbourList(i) % Neighbours ) ) &
+              DEALLOCATE( Mesh % ParallelInfo % EdgeNeighbourList(i) % Neighbours )
+        END DO
+        DEALLOCATE( Mesh % ParallelInfo % EdgeNeighbourList )
+      END IF
+
     END IF
 
     Mesh % Nodes => NULL()
