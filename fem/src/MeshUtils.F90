@@ -16568,9 +16568,11 @@ CONTAINS
     !---------------------------------------------------------------
     CALL Info(Caller,'Releasing interface meshes!',Level=20)
     BMesh1 % Parent => NULL()
+    BMesh1 % Projector => Null()
     CALL ReleaseMesh(BMesh1); DEALLOCATE(BMesh1)
 
-    BMesh2 % Parent => NULL()
+    BMesh2 % Parent=> NULL()
+    BMesh2 % Projector=> Null()
     CALL ReleaseMesh(BMesh2); DEALLOCATE(BMesh2)
 
 100 Projector % ProjectorBC = This
@@ -16775,10 +16777,12 @@ CONTAINS
     !---------------------------------------------------------------
     CALL Info(Caller,'Releasing interface meshes!',Level=20)
     BMesh1 % Parent => NULL()
+    BMesh1 % Projector => Null()
     IF(ASSOCIATED(BMesh1 % InvPerm)) DEALLOCATE( BMesh1 % InvPerm ) 
     CALL ReleaseMesh(BMesh1); DEALLOCATE(BMesh1)
 
     BMesh2 % Parent => NULL()
+    BMesh2 % Projector => Null()
     IF(ASSOCIATED(BMesh2 % InvPerm)) DEALLOCATE( BMesh2 % InvPerm ) 
     CALL ReleaseMesh(BMesh2); DEALLOCATE(BMesh2)
 
