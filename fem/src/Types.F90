@@ -785,10 +785,10 @@ MODULE Types
 
    TYPE Mesh_t
      CHARACTER(MAX_NAME_LEN) :: Name
-     TYPE(Mesh_t), POINTER   :: Next,Parent,Child
+     TYPE(Mesh_t), POINTER   :: Next => Null(), Parent => Null(), Child => Null()
 
-     TYPE(Projector_t), POINTER :: Projector
-     TYPE(Quadrant_t), POINTER  :: RootQuadrant
+     TYPE(Projector_t), POINTER :: Projector => Null()
+     TYPE(Quadrant_t), POINTER  :: RootQuadrant => Null()
 
      LOGICAL :: Changed, OutputActive, Stabilize = .FALSE.
      INTEGER :: SavesDone, AdaptiveDepth, MeshTag = 1
@@ -798,7 +798,7 @@ MODULE Types
      TYPE(FactorsStore_t), ALLOCATABLE :: VFStore(:)
 
      TYPE(ParallelInfo_t) :: ParallelInfo
-     TYPE(Variable_t), POINTER :: Variables
+     TYPE(Variable_t), POINTER :: Variables => Null()
 
      TYPE(Nodes_t), POINTER :: Nodes => NULL()
      TYPE(Element_t), DIMENSION(:), POINTER :: Elements => NULL(), &
@@ -815,7 +815,7 @@ MODULE Types
      INTEGER, POINTER :: PeriodicPerm(:) => NULL()
      LOGICAL, POINTER :: PeriodicFlip(:) => NULL()
      
-     INTEGER, POINTER :: InvPerm(:)
+     INTEGER, POINTER :: InvPerm(:) => Null()
 
      INTEGER :: NumberOfNodes, NumberOfBulkElements, NumberOfEdges, &
                 NumberOfFaces, NumberOfBoundaryElements, MeshDim = 0, MaxDim = 0, PassBCcnt=0
@@ -824,8 +824,8 @@ MODULE Types
      INTEGER :: MaxNDOFs ! The maximum of nodal DOFs per node (created with a flag "n:")
 
      LOGICAL :: EntityWeightsComputed 
-     REAL(KIND=dp), POINTER :: BCWeight(:), BodyForceWeight(:),&
-         BodyWeight(:), MaterialWeight(:)
+     REAL(KIND=dp), POINTER :: BCWeight(:) => Null(), BodyForceWeight(:) => Null(),&
+         BodyWeight(:) => Null(), MaterialWeight(:) => Null()
 
      INTEGER, POINTER :: RePartition(:) => NULL()
      TYPE(NeighbourList_t), POINTER :: Halo(:) => NULL()

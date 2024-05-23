@@ -149,15 +149,20 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       MaterialOper, MaskOper, GotMaskName, GotOldOper, ElementalVar, ComponentVar, &
       Numbering, NodalOper, GotNodalOper, SaveFluxRange, PosOper, NegOper, SaveJson, &
       StartNewFile, SimulationVisited
-  LOGICAL, POINTER :: ValuesInteger(:)
+
+  LOGICAL, ALLOCATABLE :: ValuesInteger(:)
+
   LOGICAL, ALLOCATABLE :: ActiveBC(:)
+
   REAL (KIND=DP) :: Minimum, Maximum, AbsMinimum, AbsMaximum, &
       Mean, Variance, MinDist, x, y, z, Vol, Intmean, intvar, &
       KineticEnergy, PotentialEnergy, &
       Coords(3), LocalCoords(3), TempCoordinates(3), Val, Val2, &
       Change = 0._dp, Norm = 0.0_dp, PrevNorm, ParallelHits, ParallelCands
+
   REAL (KIND=DP), ALLOCATABLE :: Values(:), &
       CoordinateBasis(:), ElementValues(:), BoundaryFluxes(:),BoundaryAreas(:)
+
   REAL (KIND=DP), POINTER :: PointCoordinates(:,:), LineCoordinates(:,:), WrkPntr(:)
   INTEGER, ALLOCATABLE :: BoundaryHits(:)
   INTEGER, POINTER :: PointIndex(:), NodeIndexes(:), SaveIndex(:)
@@ -1634,9 +1639,11 @@ CONTAINS
     INTEGER :: i,n
     REAL(KIND=dp) :: ParVal
     CHARACTER(LEN=MAX_NAME_LEN) :: Str, ParOper
+
+    LOGICAL, ALLOCATABLE :: TmpValuesInteger(:)     
     REAL(KIND=dp), ALLOCATABLE :: TmpValues(:)
     CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: TmpValueNames(:)
-    LOGICAL, POINTER :: TmpValuesInteger(:)     
+
     TYPE(Variable_t), POINTER :: TargetVar
     INTEGER :: MPIOper
     INTEGER :: istat
@@ -1768,7 +1775,7 @@ CONTAINS
     IF( GotIt ) THEN
       TargetVar => VariableGet( Model % Variables, TRIM(VariableName) )
       IF(.NOT. ASSOCIATED(TargetVar)) THEN
-        NULLIFY(WrkPntr)
+        WrkPntr => Null()
         ALLOCATE(WrkPntr(1),STAT=istat)
 	IF( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error 5') 	
  

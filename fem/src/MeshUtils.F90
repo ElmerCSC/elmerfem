@@ -5104,9 +5104,9 @@ CONTAINS
     LOGICAL :: OnTheFlyBC, CheckForHalo, NarrowHalo, NoHalo, SplitQuadratic, Found
 
     TYPE(Element_t), POINTER :: Parent,q
-    INTEGER :: en, in, HaloCount, ActiveCount, ElemCode, nSplit
     INTEGER :: SplitMap(4), SplitSizes(5)
     LOGICAL, ALLOCATABLE :: ActiveNode(:)
+    INTEGER :: en, in, HaloCount, ActiveCount, ElemCode, nSplit
 
     LOGICAL :: TagNormalFlip, Turn
     TYPE(Nodes_t) :: ElementNodes
@@ -5222,7 +5222,7 @@ CONTAINS
     DO i=1, Mesh % NumberOfBoundaryElements
       Element => Elements(i)
       ElemCode = Element % Type % ElementCode 
-!      IF (ElemCode<=200) CYCLE
+!     IF (ElemCode<=200) CYCLE
 
       nSplit = 1
       IF( SplitQuadratic ) THEN
@@ -16567,14 +16567,10 @@ CONTAINS
     ! Deallocate mesh structures:
     !---------------------------------------------------------------
     CALL Info(Caller,'Releasing interface meshes!',Level=20)
-    BMesh1 % Projector => NULL()
     BMesh1 % Parent => NULL()
-    IF(ASSOCIATED(BMesh1 % InvPerm)) DEALLOCATE(BMesh1 % InvPerm) 
     CALL ReleaseMesh(BMesh1); DEALLOCATE(BMesh1)
 
-    BMesh2 % Projector => NULL()
     BMesh2 % Parent => NULL()
-    IF(ASSOCIATED(BMesh2 % InvPerm)) DEALLOCATE(BMesh2 % InvPerm) 
     CALL ReleaseMesh(BMesh2); DEALLOCATE(BMesh2)
 
 100 Projector % ProjectorBC = This
@@ -16778,12 +16774,10 @@ CONTAINS
     ! Deallocate mesh structures:
     !---------------------------------------------------------------
     CALL Info(Caller,'Releasing interface meshes!',Level=20)
-    BMesh1 % Projector => NULL()
     BMesh1 % Parent => NULL()
     IF(ASSOCIATED(BMesh1 % InvPerm)) DEALLOCATE( BMesh1 % InvPerm ) 
     CALL ReleaseMesh(BMesh1); DEALLOCATE(BMesh1)
 
-    BMesh2 % Projector => NULL()
     BMesh2 % Parent => NULL()
     IF(ASSOCIATED(BMesh2 % InvPerm)) DEALLOCATE( BMesh2 % InvPerm ) 
     CALL ReleaseMesh(BMesh2); DEALLOCATE(BMesh2)
@@ -23193,46 +23187,45 @@ CONTAINS
       IF ( ASSOCIATED( Mesh % Nodes % y ) ) DEALLOCATE( Mesh % Nodes % y )
       IF ( ASSOCIATED( Mesh % Nodes % z ) ) DEALLOCATE( Mesh % Nodes % z )
       DEALLOCATE( Mesh % Nodes )
+    END IF
+    Mesh % Nodes => NULL()
 
-      IF ( ASSOCIATED( Mesh % ParallelInfo % GlobalDOFs ) ) &
-          DEALLOCATE( Mesh % ParallelInfo % GlobalDOFs )
 
-      IF ( ASSOCIATED( Mesh % ParallelInfo % NeighbourList ) ) THEN 
-        DO i=1,Mesh % NumberOfNodes
-          IF(ASSOCIATED( Mesh % ParallelInfo % NeighbourList(i) % Neighbours ) ) &
-              DEALLOCATE( Mesh % ParallelInfo % NeighbourList(i) % Neighbours )
-        END DO
-        DEALLOCATE( Mesh % ParallelInfo % NeighbourList )
-      END IF
+    IF ( ASSOCIATED( Mesh % ParallelInfo % GlobalDOFs ) ) &
+        DEALLOCATE( Mesh % ParallelInfo % GlobalDOFs )
 
-      IF ( ASSOCIATED( Mesh % ParallelInfo % GInterface ) ) &
-          DEALLOCATE( Mesh % ParallelInfo % GInterface )
-
-      IF ( ASSOCIATED( Mesh % ParallelInfo % EdgeInterface ) ) &
-          DEALLOCATE( Mesh % ParallelInfo % EdgeInterface )
-
-      IF ( ASSOCIATED( Mesh % ParallelInfo % EdgeNeighbourList ) ) THEN 
-        DO i=1,Mesh % NumberOfNodes
-          IF(ASSOCIATED( Mesh % ParallelInfo % EdgeNeighbourList(i) % Neighbours ) ) &
-              DEALLOCATE( Mesh % ParallelInfo % EdgeNeighbourList(i) % Neighbours )
-        END DO
-        DEALLOCATE( Mesh % ParallelInfo % EdgeNeighbourList )
-      END IF
-
-      IF ( ASSOCIATED( Mesh % ParallelInfo % FaceInterface ) ) &
-          DEALLOCATE( Mesh % ParallelInfo % FaceInterface )
-
-      IF ( ASSOCIATED( Mesh % ParallelInfo % EdgeNeighbourList ) ) THEN 
-        DO i=1,Mesh % NumberOfNodes
-          IF(ASSOCIATED( Mesh % ParallelInfo % EdgeNeighbourList(i) % Neighbours ) ) &
-              DEALLOCATE( Mesh % ParallelInfo % EdgeNeighbourList(i) % Neighbours )
-        END DO
-        DEALLOCATE( Mesh % ParallelInfo % EdgeNeighbourList )
-      END IF
-
+    IF ( ASSOCIATED( Mesh % ParallelInfo % NeighbourList ) ) THEN 
+      DO i=1,Mesh % NumberOfNodes
+        IF(ASSOCIATED( Mesh % ParallelInfo % NeighbourList(i) % Neighbours ) ) &
+            DEALLOCATE( Mesh % ParallelInfo % NeighbourList(i) % Neighbours )
+      END DO
+      DEALLOCATE( Mesh % ParallelInfo % NeighbourList )
     END IF
 
-    Mesh % Nodes => NULL()
+    IF ( ASSOCIATED( Mesh % ParallelInfo % GInterface ) ) &
+        DEALLOCATE( Mesh % ParallelInfo % GInterface )
+
+    IF ( ASSOCIATED( Mesh % ParallelInfo % EdgeInterface ) ) &
+        DEALLOCATE( Mesh % ParallelInfo % EdgeInterface )
+
+    IF ( ASSOCIATED( Mesh % ParallelInfo % EdgeNeighbourList ) ) THEN 
+      DO i=1,Mesh % NumberOfNodes
+        IF(ASSOCIATED( Mesh % ParallelInfo % EdgeNeighbourList(i) % Neighbours ) ) &
+            DEALLOCATE( Mesh % ParallelInfo % EdgeNeighbourList(i) % Neighbours )
+      END DO
+      DEALLOCATE( Mesh % ParallelInfo % EdgeNeighbourList )
+    END IF
+
+    IF ( ASSOCIATED( Mesh % ParallelInfo % FaceInterface ) ) &
+        DEALLOCATE( Mesh % ParallelInfo % FaceInterface )
+
+    IF ( ASSOCIATED( Mesh % ParallelInfo % EdgeNeighbourList ) ) THEN 
+      DO i=1,Mesh % NumberOfNodes
+        IF(ASSOCIATED( Mesh % ParallelInfo % EdgeNeighbourList(i) % Neighbours ) ) &
+           DEALLOCATE( Mesh % ParallelInfo % EdgeNeighbourList(i) % Neighbours )
+      END DO
+      DEALLOCATE( Mesh % ParallelInfo % EdgeNeighbourList )
+    END IF
 
     IF ( ASSOCIATED( Mesh % Edges ) ) THEN
       CALL Info('ReleaseMesh','Releasing mesh edges',Level=15)
@@ -23266,6 +23259,7 @@ CONTAINS
     END DO
     Mesh % Projector => NULL()
 
+    IF(ASSOCIATED(Mesh % InvPerm)) DEALLOCATE(Mesh % InvPerm)
 
 !    Deallocate quadrant tree (used in mesh to mesh interpolation):
 !    --------------------------------------------------------------
