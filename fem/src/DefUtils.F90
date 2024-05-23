@@ -5300,6 +5300,7 @@ CONTAINS
        ReleaseDir = .FALSE.
      END IF
 
+     NodalBCsWithBraces = .FALSE.
      NDOFs = MAXVAL(Solver % Def_Dofs(:,:,1))
      IF (NDOFs > 0) THEN
        DO DOF=1,x % DOFs
@@ -5312,8 +5313,6 @@ CONTAINS
            EXIT
          END IF
        END DO
-     ELSE
-       NodalBCsWithBraces = .FALSE.
      END IF
 
      IF ( x % DOFs > 1 ) THEN
@@ -5454,8 +5453,8 @@ CONTAINS
          name = TRIM(x % name)
          IF (x % DOFs>1) name=ComponentName(name,DOF)
 
-         CALL SetNodalLoads( CurrentModel,A, b, &
-             Name,DOF,x % DOFs,x % Perm ) ! , Offset ) not yet ?
+         !CALL SetNodalLoads( CurrentModel,A, b, &
+         !    Name,DOF,x % DOFs,x % Perm ) ! , Offset ) not yet ?
 
          CALL SetDirichletBoundaries( CurrentModel, A, b, &
              Name, DOF, x % DOFs, x % Perm, Offset, OffDiagonalMatrix )
@@ -6720,7 +6719,9 @@ CONTAINS
     LOGICAL :: Bupd, Found
     INTEGER :: n
     TYPE(Matrix_t), POINTER :: A
-    CHARACTER(:), ALLOCATABLE :: str
+    CHARACTER(:), ALLOCATABLE :: str, name
+    TYPE(Variable_t), POINTER ::  x
+    INTEGER :: dof
     
     IF( PRESENT( Solver ) ) THEN
       PSolver => Solver
@@ -6729,11 +6730,22 @@ CONTAINS
     END IF
 
     Params => GetSolverParams(PSolver)
+    A => PSolver % Matrix
+    x => PSolver % Variable
    
+    ! Set the nodal loads. This needs to be done before any contacts or limiters since otherwise
+    ! the given nodal loads will not be considered properly.     
+    DO DOF=1,x % DOFs
+      name = TRIM(x % name)
+      IF (x % DOFs>1) name=ComponentName(name,DOF)              
+      CALL SetNodalLoads( CurrentModel,A,A % rhs, &
+          Name,DOF,x % DOFs,x % Perm ) 
+    END DO    
+
     IF( ListGetLogical( Params,'Boundary Assembly Timing',Found ) ) THEN 
-      CALL CheckTimer('BoundaryAssembly'//GetVarName(PSolver % Variable), Level=5, Delete=.TRUE. ) 
+      CALL CheckTimer('BoundaryAssembly'//GetVarName(x), Level=5, Delete=.TRUE. ) 
     END IF
-    
+
     ! Reset colouring 
     PSolver % CurrentBoundaryColour = 0
 
@@ -6741,7 +6753,6 @@ CONTAINS
     IF ( PRESENT(BulkUpdate) ) THEN
       BUpd = BulkUpdate 
       IF ( .NOT. BUpd ) RETURN
-
     ELSE
       BUpd = GetLogical( Params,'Calculate Loads', Found )
       IF( BUpd ) THEN
@@ -6757,7 +6768,7 @@ CONTAINS
 
     IF( BUpd ) THEN
       CALL Info('DefaultFinishBoundaryAssembly','Saving system values for Solver: '&
-          //TRIM(PSolver % Variable % Name), Level=8)
+          //TRIM(x % Name), Level=8)
       CALL CopyBulkMatrix( PSolver % Matrix ) 
     END IF
 
@@ -6767,15 +6778,14 @@ CONTAINS
         CALL SaveLinearSystem( PSolver ) 
       END IF
     END IF
-
+       
     ! Create contact BCs using mortar conditions.
     !---------------------------------------------------------------------
-    IF( ListGetLogical( PSolver % Values,'Apply Contact BCs',Found) ) THEN
+    IF( ListGetLogical( Params,'Apply Contact BCs',Found) ) THEN
       CALL DetermineContact( PSolver )	
     END IF
 
     IF( InfoActive( 30 ) ) THEN
-      A => PSolver % Matrix
       IF(ASSOCIATED(A)) THEN
         CALL VectorValuesRange(A % Values,SIZE(A % Values),'A0')       
         CALL VectorValuesRange(A % rhs,SIZE(A % rhs),'b0')

@@ -1242,7 +1242,11 @@ CONTAINS
        CoupledIter = NINT( iterV % Values(1) )
        IF( CoupledIter > 1 ) FirstTime = .FALSE.
      END IF
-          
+     IF( FirstTime ) THEN
+       CALL Info(Caller,'Initializing soft limiter for solver',Level=10)
+     END IF
+
+     
      ! Determine variable for computing the contact load used to determine the 
      ! soft limit set.
      !------------------------------------------------------------------------
@@ -1297,11 +1301,11 @@ CONTAINS
      END IF
        
      LoadEps = ListGetConstReal(Params,'Limiter Load Tolerance',Found ) 
-     IF(.NOT. Found ) LoadEps = EPSILON( LoadEps )
+     IF(.NOT. Found ) LoadEps = 1.0e-8_dp
          
      ValEps = ListGetConstReal(Params,'Limiter Value Tolerance',Found ) 
-     IF(.NOT. Found ) ValEps = EPSILON( ValEps )
-
+     IF(.NOT. Found ) ValEps = 1.0e-8_dp
+     
      ! The user may want to toggle the sign for various kinds of equations
      ! The default sign that come from standard formulation of Laplace equation.
      !---------------------------------------------------------------------------       
@@ -7663,7 +7667,7 @@ END SUBROUTINE SetNodalSources
     LoadName = TRIM(Name) // ' Load'
     nlen = LEN_TRIM(LoadName)
     
-    CALL Info(Caller,'Checking for nodal loads for variable: '//TRIM(Name),Level=12)
+    CALL Info(Caller,'Checking for nodal loads for variable: '//TRIM(Name),Level=20)
 
     n = MAX(Model % NumberOfBCs, Model % NumberOFBodyForces) 
     ALLOCATE( ActivePart(n), ActivePartAll(n) )
@@ -13611,7 +13615,7 @@ END FUNCTION SearchNodeL
     INTEGER, ALLOCATABLE :: BoundaryShared(:),BoundaryActive(:),DofSummed(:),BufInteg(:)
     TYPE(Element_t), POINTER :: Element
     INTEGER :: bc, ind, NoBoundaryActive, NoBCs, ierr
-    LOGICAL :: OnlyGivenBCs
+    LOGICAL :: OnlyGivenBCs, IgnorePeriodic
     LOGICAL :: UseVar, Parallel
 
 
@@ -13711,33 +13715,38 @@ END FUNCTION SearchNodeL
       TempVector = TempVector - RHS
     END IF
 
-
+    
+    IgnorePeriodic = ListGetLogical( Solver % Values,'Calculate Loads Ignore Periodic',Found )
+    
     NoBCs = CurrentModel % NumberOfBCs
-    DO This=1,NoBCs
-      Projector => CurrentModel  % BCs(This) % PMatrix
-      IF (ASSOCIATED(Projector)) THEN
-        DO DOF=1,DOFs
-          DO i=1,Projector % NumberOfRows
-            ii = Projector % InvPerm(i)
-            IF( ii == 0 ) CYCLE
-            k = Solver % Variable % Perm(ii)
-            IF(k<=0) CYCLE
-            k = DOFs * (k-1) + DOF
-            TempVector(k)=0
 
-            DO l = Projector % Rows(i), Projector % Rows(i+1)-1
-              IF ( Projector % Cols(l) <= 0 ) CYCLE
-              m = Solver % Variable % Perm( Projector % Cols(l) )
-              IF ( m > 0 ) THEN
-                m = DOFs * (m-1) + DOF
-                TempVector(k) = TempVector(k) + Projector % Values(l)*TempVector(m)
-              END IF
+    IF( IgnorePeriodic ) THEN
+      DO This=1,NoBCs
+        Projector => CurrentModel  % BCs(This) % PMatrix
+        IF (ASSOCIATED(Projector)) THEN
+          DO DOF=1,DOFs
+            DO i=1,Projector % NumberOfRows
+              ii = Projector % InvPerm(i)
+              IF( ii == 0 ) CYCLE
+              k = Solver % Variable % Perm(ii)
+              IF(k<=0) CYCLE
+              k = DOFs * (k-1) + DOF
+              TempVector(k)=0
+
+              DO l = Projector % Rows(i), Projector % Rows(i+1)-1
+                IF ( Projector % Cols(l) <= 0 ) CYCLE
+                m = Solver % Variable % Perm( Projector % Cols(l) )
+                IF ( m > 0 ) THEN
+                  m = DOFs * (m-1) + DOF
+                  TempVector(k) = TempVector(k) + Projector % Values(l)*TempVector(m)
+                END IF
+              END DO
             END DO
           END DO
-        END DO
-      END IF
-    END DO
-
+        END IF
+      END DO
+    END IF
+      
     IF( UseVar ) THEN
       DO i=1,SIZE( NodalLoads % Perm )
         j = NodalLoads % Perm(i)
