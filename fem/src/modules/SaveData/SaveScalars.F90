@@ -2518,7 +2518,7 @@ CONTAINS
       CASE('diffusive flux') 
       IF(NoDofs /= 1) THEN
         CALL Warn(Caller,'diffusive flux & NoDofs /= 1?')
-        RETURN
+        GOTO 100
       END IF
 
       CASE ('convective flux')
@@ -2530,7 +2530,7 @@ CONTAINS
           END IF
         ELSE
           CALL Warn(Caller,'convective flux & NoDofs < DIM?')
-          RETURN
+          GOTO 100
         END IF
       END IF
       
@@ -2900,6 +2900,8 @@ CONTAINS
       END DO
 
     END DO
+
+100 CONTINUE
 
     DEALLOCATE( ParentNodes % x, ParentNodes % y, ParentNodes % z, PermIndexes )
 
