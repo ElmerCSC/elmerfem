@@ -79,6 +79,8 @@ SUBROUTINE ShallowWaterNSSolver( Model,Solver,dt,Transient)
     CALL DefaultFinishBulkAssembly()
 
     CALL BoundaryAssembly()
+    CALL DefaultFinishBoundaryAssembly()
+
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()
 

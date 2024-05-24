@@ -306,6 +306,7 @@
      CALL DefaultFinishBulkAssembly()
 
      CALL BCAssembly()
+     CALL DefaultFinishBoundaryAssembly()
      CALL DefaultFinishAssembly()
      CALL ConcentratedLoads()
 
