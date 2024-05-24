@@ -5453,6 +5453,7 @@ CONTAINS
          name = TRIM(x % name)
          IF (x % DOFs>1) name=ComponentName(name,DOF)
 
+         ! This has been moved to "DefaultFinishBoundaryAssembly" to enable limiters/contacts.
          !CALL SetNodalLoads( CurrentModel,A, b, &
          !    Name,DOF,x % DOFs,x % Perm ) ! , Offset ) not yet ?
 
