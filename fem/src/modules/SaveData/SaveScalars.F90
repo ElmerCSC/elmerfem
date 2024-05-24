@@ -3082,7 +3082,7 @@ CONTAINS
         EnergyCoeff(Model % MaxElementNodes) 
     REAL(KIND=dp) :: SqrtElementMetric,U,V,W,up,vp,wp,S,A,L,C(3,3),x,y,z,dx,dy,dz,ds,dsmax
     REAL(KIND=dp) :: func, coeff, Normal(3), Flow(3), x0, y0, z0, pos(2), flux
-    REAL(KIND=DP), POINTER :: Pwrk(:,:,:)
+    REAL(KIND=DP), POINTER :: Pwrk(:,:,:) => Null()
     INTEGER, POINTER :: ParentIndexes(:), PermIndexes(:), SideIndexes(:), OnLine(:,:)
 
     LOGICAL :: Stat, Permutated, Inside    

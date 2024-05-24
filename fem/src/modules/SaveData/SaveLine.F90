@@ -1158,7 +1158,7 @@ CONTAINS
     REAL(KIND=dp) :: r,u,v,w,ub,DetJ, Normal(3),Flow(3)
     LOGICAL :: stat, Permutated
     INTEGER :: body_id, k
-    REAL(KIND=DP), POINTER :: Pwrk(:,:,:)
+    REAL(KIND=DP), POINTER :: Pwrk(:,:,:) => Null()
     TYPE(ValueList_t), POINTER :: BC
     INTEGER :: FluxBody
     
