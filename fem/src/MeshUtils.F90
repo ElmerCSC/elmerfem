@@ -8663,10 +8663,10 @@ CONTAINS
     !--------------------------------------------------------------------------
     INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
     LOGICAL ::  StrongNodes, StrongEdges, StrongLevelEdges, StrongExtrudedEdges, &
-        StrongSkewEdges, StrongConformingEdges, StrongConformingNodes
+        StrongConformingEdges, StrongConformingNodes
     LOGICAL :: Found, Parallel, SelfProject, EliminateUnneeded, SomethingUndone, &
-        EdgeBasis, PiolaVersion, GenericIntegrator, Rotational, Cylindrical, WeakProjector, &
-        StrongProjector, CreateDual, HaveMaxDistance
+        SomethingStrong, EdgeBasis, PiolaVersion, GenericIntegrator, Rotational, &
+        Cylindrical, WeakProjector, StrongProjector, CreateDual, HaveMaxDistance
     REAL(KIND=dp) :: XmaxAll, XminAll, YminAll, YmaxAll, Xrange, Yrange, &
         RelTolX, RelTolY, XTol, YTol, RadTol, MaxSkew1, MaxSkew2, SkewTol, &
         ArcCoeff, EdgeCoeff, NodeCoeff, MaxDistance, val
@@ -8848,9 +8848,6 @@ CONTAINS
       IF( StrongExtrudedEdges .AND. GenericIntegrator ) THEN
         CALL Info(Caller,'Using strong extruded edges with partially weak projector',Level=7)
       END IF
-      
-      ! There is no strong strategy for skewed edges currently
-      StrongSkewEdges = .FALSE.
     END IF
 
 
@@ -8897,10 +8894,9 @@ CONTAINS
     END IF
 
     ! Check whether biorthogonal basis for projectors requested:
-    ! ----------------------------------------------------------
-    BiOrthogonalBasis = ListGetLogical( BC, 'Use Biorthogonal Basis', Found)
-
     ! If we want to eliminate the constraints we have to have a biortgonal basis
+    ! ----------------------------------------------------------
+    BiOrthogonalBasis = ListGetLogical( BC, 'Use Biorthogonal Basis', Found)    
     IF(.NOT. Found ) THEN
       BiOrthogonalBasis = ListGetLogical( CurrentModel % Solver % Values, &
           'Eliminate Linear Constraints',Found )
@@ -8910,7 +8906,7 @@ CONTAINS
         CALL ListAddLogical( BC, 'Use Biorthogonal Basis',.TRUE. )
       END IF
     END IF
-
+      
     IF (BiOrthogonalBasis) THEN
       IF( DoEdges ) THEN
         CALL Warn(Caller,'Biorthogonal basis cannot be combined with edge elements!')
@@ -8932,10 +8928,7 @@ CONTAINS
       ELSE
         CALL ListAddLogical( CurrentModel % Solver % Values, 'Use Transpose Values',.TRUE.)
       END IF
-
-      Projector % Child => AllocateMatrix()
-      Projector % Child % Format = MATRIX_LIST
-      CALL Info(Caller,'Using biorthogonal basis, as requested',Level=8)      
+      CALL Info(Caller,'Using biorthogonal basis for weak projectors, as requested',Level=8)      
     END IF
 
 
@@ -9077,8 +9070,7 @@ CONTAINS
         END IF
       END DO
       
-      CALL Info(Caller,&
-          'Number of active nodes in projector: '//I2S(m),Level=8)
+      CALL Info(Caller,'Number of active nodes in projector: '//I2S(m),Level=8)
       EdgeRow0 = m
       
       IF( CreateDual ) THEN
@@ -9123,8 +9115,7 @@ CONTAINS
 
       IF( EliminateUnneeded ) THEN
         n = SUM( EdgePerm )
-        CALL Info(Caller,&
-            'Number of potential edges in projector: '//I2S(n),Level=10)        
+        CALL Info(Caller,'Number of potential edges in projector: '//I2S(n),Level=10)        
         ! Now eliminate the edges which also occur in the other mesh
         ! These must be redundant edges
         DO i=1, BMesh2 % NumberOfBulkElements
@@ -9159,8 +9150,7 @@ CONTAINS
         CALL Info(Caller,&
             'Eliminating redundant edges from projector: '//I2S(n-m),Level=10)
       END IF
-      CALL Info(Caller,&
-          'Number of active edges in projector: '//I2S(m),Level=8)
+      CALL Info(Caller,'Number of active edges in projector: '//I2S(m),Level=8)
       IF (SecondOrder) THEN
         FaceRow0 = EdgeRow0 + 2*m
       ELSE
@@ -9183,26 +9173,28 @@ CONTAINS
       END IF
     END IF
 
-    CALL Info(Caller,&
-        'Max number of rows in projector: '//I2S(ProjectorRows),Level=10)
+    CALL Info(Caller,'Max number of rows in projector: '//I2S(ProjectorRows),Level=10)
     ALLOCATE( Projector % InvPerm(ProjectorRows) )
     Projector % InvPerm = 0
 
     ! If after strong projectors there are still something undone they must 
     ! be dealt with the weak projectors. 
     SomethingUndone = .FALSE.
+    SomethingStrong = .FALSE.
 
     ! If requested, create strong mapping for node dofs
     !------------------------------------------------------------------   
     IF( DoNodes ) THEN
       IF( StrongConformingNodes ) THEN
         CALL AddNodeProjectorStrongConforming()
+        SomethingStrong = .TRUE.
       ELSE IF( StrongNodes ) THEN
         IF( GenericIntegrator ) THEN 
           CALL AddNodalProjectorStrongGeneric()
         ELSE
           CALL AddNodalProjectorStrongStrides()
         END IF
+        SomethingStrong = .TRUE.
       ELSE
         ! If strong projector is applied they can deal with all nodal dofs
         SomethingUndone = .TRUE.
@@ -9241,6 +9233,7 @@ CONTAINS
           SomethingUndone = .TRUE.
           EdgeBasis = .TRUE.
         END IF
+        SomethingStrong = .TRUE.
       ELSE
         SomethingUndone = .TRUE.
         EdgeBasis = .TRUE.
@@ -9250,6 +9243,14 @@ CONTAINS
     ! And the rest
     !-------------------------------------------------------------
     IF( SomethingUndone ) THEN      
+      IF( BiOrthogonalBasis ) THEN
+        IF(SomethingStrong) THEN
+          CALL Fatal(Caller,'Cannot combine strong projectors and biorthogonal basis!')
+        END IF
+        Projector % Child => AllocateMatrix()
+        Projector % Child % FORMAT = MATRIX_LIST
+      END IF
+
       IF( MeshDim == 2 ) THEN
         CALL Info(Caller,'Initial mesh is 2D, using 1D projectors!',Level=10) 
         CALL AddProjectorWeak1D()
@@ -9304,7 +9305,7 @@ CONTAINS
       REAL(KIND=dp) :: e1(2),e2(2),DotProdM, PhiM
       INTEGER, POINTER :: IndexesM(:)
 
-      CALL Info('CheckMeshSkew','Checking mesh skew')
+      CALL Info('CheckMeshSkew','Checking mesh skew',Level=10)
 
       n = 4
       ALLOCATE( NodesM % x(n), NodesM % y(n) )
@@ -9876,13 +9877,10 @@ CONTAINS
           ELSE
             !print *,'skewed edge: ',ParEnv % MyPe,x1,x2,y1,y2,dx,dy
             !print *,'tol:',ABS(y2-y1)/dy,ABS(x2-x1)/dx,RadTol
-
             NoSkewed = NoSkewed + 1
-            SkewEdge = .TRUE.
-            IF(.NOT. StrongSkewEdges) CYCLE
+            CYCLE
           END IF
           
-
           ! Numbering of global indexes is needed to ensure correct direction 
           ! of the edge dofs. Basically the InvPerm could be used also in serial
           ! but the order of numbering is maintained when the reduced mesh is created. 
@@ -9891,51 +9889,6 @@ CONTAINS
             k2 = CurrentModel % Mesh % ParallelInfo % GlobalDOFs(InvPerm1(k2))
           END IF
           ncoeff = 0 
-
-          IF( SkewEdge ) THEN
-            SkewPart = 0
-            sedge = SQRT(ArcCoeff**2*(x1-x2)**2 + (y1-y2)**2)
-            x1o = x1
-            y1o = y1
-            x2o = x2
-            y2o = y2
-          END IF
-
-          ! This is mainly a test branch for skewed quadrilaters.
-          ! It is based on the composition of a skewed edge into 
-          ! four cartesian vectors oriented along x or y -axis. 
-          ! Unfortunately the resulting projector does not seem to be 
-          ! numerically favourable.           
-50        IF( SkewEdge ) THEN
-            IF( SkewPart < 2 ) THEN
-              XConst = .TRUE.
-              YConst = .FALSE.
-              IF( SkewPart == 1 ) THEN
-                x1 = (3.0_dp*x1o + x2o) / 4.0_dp
-              ELSE
-                x1 = (x1o + 3.0_dp*x2o) / 4.0_dp
-              END IF
-              x2 = x1
-              y1 = y1o
-              y2 = y2o
-              cskew = 0.5_dp * ABS(y1-y2) / sedge
-            ELSE 
-              XConst = .FALSE.
-              YConst = .TRUE.
-              IF( SkewPart == 2 ) THEN
-                x1 = x1o
-                x2 = (x1o + x2o) / 2.0_dp
-                y1 = y1o
-                y2 = y1o
-              ELSE
-                x1 = (x1o + x2o) / 2.0_dp
-                x2 = x2o
-                y1 = y2o
-                y2 = y2o
-              END IF
-              cskew = ArcCoeff * ABS(x1-x2) / sedge
-            END IF
-          END IF 
 
           ncoeff0 = ncoeff
           dncoeff = 0
@@ -10121,17 +10074,15 @@ CONTAINS
               END IF
             END DO
 
-            IF( .NOT. SkewEdge ) THEN
-              IF( YConst ) THEN
-                ! Test whether the sum of coefficients has already reached unity
-                wsum = SUM( coeff(1:ncoeff) )
-                EdgeReady = ( 1.0_dp - wsum < 1.0d-12 ) 
-              ELSE IF( XConst ) THEN                       
-                ! If edge was found both on left and right there is no need to continue search
-                EdgeReady = ( dncoeff == 2 ) 
-              END IF
-              IF( EdgeReady ) EXIT
+            IF( YConst ) THEN
+              ! Test whether the sum of coefficients has already reached unity
+              wsum = SUM( coeff(1:ncoeff) )
+              EdgeReady = ( 1.0_dp - wsum < 1.0d-12 ) 
+            ELSE IF( XConst ) THEN                       
+              ! If edge was found both on left and right there is no need to continue search
+              EdgeReady = ( dncoeff == 2 ) 
             END IF
+            IF( EdgeReady ) EXIT
           END DO
 
           IF( YConst ) THEN
@@ -10150,53 +10101,26 @@ CONTAINS
           ELSE
             ! Here there can be a second part if a proper hit was not found 
             ! due to some epsilon rules.
-            IF( SkewEdge ) THEN
-              IF( dncoeff == 1 ) THEN
-                coeff(ncoeff) = cskew * 1.0_dp
-              ELSE IF( dncoeff == 2 ) THEN
-                xm1 = coeff(ncoeff-1)
-                xm2 = coeff(ncoeff)
-                
-                IF( ABS( xm2-xm1) < TINY( xm2 ) ) THEN
-                  CALL Warn('AddEdgeProjectorStrongStrides','Degenerated edge 3?')
-                  coeff(ncoeff-1) = cskew * 0.5_dp
-                ELSE
-                  coeff(ncoeff-1) = cskew * ABS((xm2-xmean)/(xm2-xm1))
-                END IF
-                coeff(ncoeff) = cskew * 1.0_dp - coeff(1)
+            IF( ncoeff == 1 ) THEN
+              coeff(1) = 1.0_dp
+            ELSE IF( ncoeff >= 2 ) THEN
+              IF( ncoeff > 2 ) THEN
+                CALL Warn('AddEdgeProjectorStrongStrides',&
+                    'There should not be more than two target edges: '//I2S(ncoeff)) 
               END IF
-            ELSE
-              IF( ncoeff == 1 ) THEN
-                coeff(1) = 1.0_dp
-              ELSE IF( ncoeff >= 2 ) THEN
-                IF( ncoeff > 2 ) THEN
-                  CALL Warn('AddEdgeProjectorStrongStrides',&
-                       'There should not be more than two target edges: '//I2S(ncoeff)) 
-                END IF
-                xm1 = coeff(1)
-                xm2 = coeff(2)
-                IF( ABS( xm2-xm1) < TINY( xm2 ) ) THEN
-                  CALL Warn('AddEdgeProjectorStrongStrides','Degenerated edge 3?')
-                  coeff(1) = 0.5_dp
-                ELSE
-                  coeff(1) = ABS((xm2-xmean)/(xm2-xm1))
-                END IF
-                coeff(2) = 1.0_dp - coeff(1)
+              xm1 = coeff(1)
+              xm2 = coeff(2)
+              IF( ABS( xm2-xm1) < TINY( xm2 ) ) THEN
+                CALL Warn('AddEdgeProjectorStrongStrides','Degenerated edge 3?')
+                coeff(1) = 0.5_dp
+              ELSE
+                coeff(1) = ABS((xm2-xmean)/(xm2-xm1))
               END IF
+              coeff(2) = 1.0_dp - coeff(1)
             END IF
-
             wsum = SUM( coeff(1:ncoeff) )
           END IF
 
-          ! Skewed edge is treated in four different parts (0,1,2,3)
-          ! Go for the next part, if not finished. 
-          IF( SkewEdge ) THEN
-            IF( SkewPart < 3 ) THEN
-              SkewPart = SkewPart + 1
-              GOTO 50
-            END IF
-          END IF
-              
           IF( ncoeff == 0 ) THEN
             Nundefined = Nundefined + 1
             WRITE( Message,'(A,2I8,4ES12.3)') 'Problematic edge: ',&
@@ -10214,7 +10138,6 @@ CONTAINS
 
           ! In skewed edges the sum of weights may be different from 1 but otherwise
           ! it should be very close to one. 
-!          IF( ABS(wsum) < 0.999 .OR. ( ABS(wsum) > 1.001 .AND. .NOT. SkewEdge ) ) THEN
           IF(.FALSE.) THEN
             PRINT *,'*********************'
             PRINT *,'wsum',eind,ncoeff,wsum,Repeated

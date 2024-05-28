@@ -23120,14 +23120,12 @@ CONTAINS
      IF( .NOT. Found ) THEN
        IF( bcount > 1 .AND. ListGetLogical( Solver % Values, &
            'Eliminate Linear Constraints',Found ) ) THEN
-         CALL Info(Caller,&
-             'Enforcing > Mortar BCs Additive < to True to enable elimination',Level=8)
+         CALL Info(Caller,'Enforcing > Mortar BCs Additive < to True to enable elimination',Level=8)
          SumProjectors = .TRUE.
        END IF       
        IF( .NOT. SumProjectors .AND. ListGetLogical( Solver % Values, &
            'Apply Conforming BCs',Found ) ) THEN
-         CALL Info(Caller,&
-             'Enforcing > Mortar BCs Additive < to True because of conforming BCs',Level=8)
+         CALL Info(Caller,'Enforcing > Mortar BCs Additive < to True because of conforming BCs',Level=8)
          SumProjectors = .TRUE.
        END IF
      END IF
@@ -23312,6 +23310,11 @@ CONTAINS
 
        TransposePresent = TransposePresent .OR. ASSOCIATED(Atmp % Child)
        IF( TransposePresent ) THEN
+         IF(ASSOCIATED(Atmp % Child) ) THEN
+           IF(.NOT. ASSOCIATED(Atmp % Child % Values)) THEN
+             CALL Fatal(Caller,'Atmp has Child which has no values!')
+           END IF
+         END IF
          CALL Info(Caller,'Transpose matrix is present',Level=8)
        END IF
 
@@ -23378,10 +23381,13 @@ CONTAINS
                END IF
              END IF
            END DO
+           CALL Info(Caller,'Number of rows: '//I2S(sumrow),Level=20)         
          END IF
          
          IF( ASSOCIATED( MortarBC % Diag ) .OR. HaveMortarDiag) THEN
+           CALL Info(Caller,'MotarBC diag exists!',Level=30)
            IF( ASSOCIATED(Atmp % InvPerm) ) THEN
+             CALL Info(Caller,'MotarBC InvPerm exists!',Level=30)
              IF( .NOT. ASSOCIATED( MortarBC % Perm ) ) THEN                   
                k = MAXVAL( Atmp % Cols )
                ALLOCATE( MortarBC % Perm(k) )
