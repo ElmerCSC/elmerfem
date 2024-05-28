@@ -320,7 +320,7 @@ CONTAINS
       TYPE(NlistEntry_t), POINTER :: Head
     END TYPE Nlist_t
 
-     TYPE(NlistEntry_t), POINTER :: ptr, ptr1
+     TYPE(NlistEntry_t), POINTER :: ptr, next
      TYPE(Nlist_t), ALLOCATABLE :: NeighList(:)
 
     ! Local variables
@@ -451,11 +451,8 @@ CONTAINS
     DO i=1,ParEnv % Pes
       ptr => NeighList(i) % Head
       DO WHILE(ASSOCIATED(ptr))
-        ptr1 => ptr % next
-        DEALLOCATE(ptr)
-        ptr => ptr1
+        next => ptr % next; DEALLOCATE(ptr); ptr => next
       END DO
-
       NeighList(i) % Head => NULL()
     END DO
     DEALLOCATE( Active )
@@ -513,12 +510,9 @@ CONTAINS
       DO i=1,ParEnv % PEs
         ptr => NeighList(i) % Head
         DO WHILE(ASSOCIATED(ptr))
-          ptr1 => ptr % next
-          DEALLOCATE(ptr)
-          ptr => ptr1
+          next => ptr % next; DEALLOCATE(ptr); ptr => next
         END DO
       END DO
-
       DEALLOCATE(NeighList, buf )
 
       m = SIZE(ParallelInfo % GlobalDOFs)
