@@ -8071,7 +8071,8 @@ CONTAINS
     END IF
 
     IF( doubleusecount > 0 ) THEN
-      CALL Fatal(Caller,'This is not conforming! Number of edges used twice: '//I2S(doubleusecount))
+      CALL Fatal(Caller,'This is not conforming! Number of edges used twice: '&
+          //I2S(doubleusecount)//' (out of '//I2S(noedges)//')')
     END IF
 
     
@@ -8263,7 +8264,8 @@ CONTAINS
     END IF
         
     IF( doubleusecount > 0 ) THEN
-      CALL Fatal(Caller,'This is not conforming! Number of faces used twice: '//I2S(doubleusecount))
+      CALL Fatal(Caller,'This is not conforming! Number of faces used twice: '&
+          //I2S(doubleusecount)//' (out of '//I2S(nofaces)//')')
     END IF
 
     minuscount = 0
@@ -8631,7 +8633,8 @@ CONTAINS
     CALL Info(Caller,Message,Level=10)
 
     IF( doubleusecount > 0 ) THEN
-      CALL Fatal(Caller,'This is not conforming! Number of nodes used twice: '//I2S(doubleusecount))
+      CALL Fatal(Caller,'This is not conforming! Number of nodes used twice: '&
+          //I2S(doubleusecount)//' (out of '//I2S(BMesh1 % NumberOfNodes)//')')
     END IF
 
   END SUBROUTINE ConformingNodePerm
