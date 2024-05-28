@@ -363,6 +363,7 @@ CONTAINS
     CALL CheckBuffer( ParEnv % PEs**2 + ParEnv % PEs*MPI_BSEND_OVERHEAD )
 
     ALLOCATE( Active(ParEnv % PEs), NeighList(Parenv % PEs) )
+
     DO MinActive=0,ParEnv % PEs-1
       IF ( ParEnv % Active(MinActive+1) ) EXIT
     END DO
@@ -373,6 +374,7 @@ CONTAINS
          n = n + 1
          Active(n) = i-1
       END IF
+      NeighList(i) % Head => Null()
     END DO
 
     IF (Parenv % myPE /= MinActive ) THEN
@@ -424,9 +426,7 @@ CONTAINS
           DO WHILE( ASSOCIATED(ptr) )
             n = n + 1
             Active(n) = ptr % e1
-            ptr1 => ptr
             ptr => ptr % Next
-            DEALLOCATE(ptr1)
           END DO
 
           CALL MPI_BSEND( n, 1, MPI_INTEGER, i-1, &
@@ -449,6 +449,13 @@ CONTAINS
     ! has it active:
     ! -----------------------------------------------------
     DO i=1,ParEnv % Pes
+      ptr => NeighList(i) % Head
+      DO WHILE(ASSOCIATED(ptr))
+        ptr1 => ptr % next
+        DEALLOCATE(ptr)
+        ptr => ptr1
+      END DO
+
       NeighList(i) % Head => NULL()
     END DO
     DEALLOCATE( Active )
@@ -497,14 +504,22 @@ CONTAINS
           buf(j) = ptr % e1
           j = j + 1
           buf(j) = ptr % e2
-          ptr1 => ptr
           ptr => ptr % next
-          DEALLOCATE( ptr1 )
         END DO
         CALL MPI_BSEND(j,1,MPI_INTEGER,i-1, 20000,ELMER_COMM_WORLD,status,ierr)
         IF (j>0) CALL MPI_BSEND(buf,j,MPI_INTEGER,i-1,20001,ELMER_COMM_WORLD,status,ierr)
       END DO
-      DEALLOCATE( NeighList, buf )
+
+      DO i=1,ParEnv % PEs
+        ptr => NeighList(i) % Head
+        DO WHILE(ASSOCIATED(ptr))
+          ptr1 => ptr % next
+          DEALLOCATE(ptr)
+          ptr => ptr1
+        END DO
+      END DO
+
+      DEALLOCATE(NeighList, buf )
 
       m = SIZE(ParallelInfo % GlobalDOFs)
       DO i=1,ParEnv % NumOfNeighbours
@@ -545,6 +560,7 @@ CONTAINS
         END IF
       END DO
 !   END IF
+
 
     DEALLOCATE( Active )
 
