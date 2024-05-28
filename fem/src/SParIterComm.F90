@@ -338,7 +338,9 @@ CONTAINS
       ParEnv % Active = .TRUE.
     END IF
 
-    ALLOCATE(ParEnv % IsNeighbour(ParEnv % PEs))
+    IF( .NOT. ASSOCIATED(ParEnv % IsNeighbour) ) THEN
+      ALLOCATE(ParEnv % IsNeighbour(ParEnv % PEs))
+    END IF
     ParEnv % IsNeighbour(:)  = .FALSE.
     ParEnv % NumOfNeighbours = 0
 

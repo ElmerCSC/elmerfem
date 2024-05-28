@@ -281,9 +281,9 @@ MODULE Types
      INTEGER                          :: MyPE
      LOGICAL                          :: Initialized
      INTEGER                          :: ActiveComm
-     LOGICAL, DIMENSION(:), POINTER   :: Active => NULL()
-     LOGICAL, DIMENSION(:), POINTER   :: IsNeighbour => NULL()
-     LOGICAL, DIMENSION(:), POINTER   :: SendingNB => NULL()
+     LOGICAL, DIMENSION(:), POINTER   :: Active => Null()
+     LOGICAL, DIMENSION(:), POINTER   :: IsNeighbour => Null()
+     LOGICAL, DIMENSION(:), POINTER   :: SendingNB => Null()
      INTEGER                          :: NumOfNeighbours
      INTEGER                          :: NumberOfThreads = 1
      LOGICAL                          :: ExternalInit
