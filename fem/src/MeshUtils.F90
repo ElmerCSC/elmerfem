@@ -5565,12 +5565,12 @@ CONTAINS
         BMesh1 % NumberOfNodes, ', ',BMesh2 % NumberOfNOdes
     CALL Info(Caller,Message,Level=9)    
     
-    ALLOCATE( BMesh1 % Nodes )
+!   ALLOCATE( BMesh1 % Nodes )
     CALL AllocateVector( BMesh1 % Nodes % x, BMesh1 % NumberOfNodes ) 
     CALL AllocateVector( BMesh1 % Nodes % y, BMesh1 % NumberOfNodes ) 
     CALL AllocateVector( BMesh1 % Nodes % z, BMesh1 % NumberOfNodes )
     
-    ALLOCATE( BMesh2 % Nodes )
+!   ALLOCATE( BMesh2 % Nodes )
     CALL AllocateVector( BMesh2 % Nodes % x, BMesh2 % NumberOfNodes ) 
     CALL AllocateVector( BMesh2 % Nodes % y, BMesh2 % NumberOfNodes ) 
     CALL AllocateVector( BMesh2 % Nodes % z, BMesh2 % NumberOfNodes )
@@ -25624,7 +25624,6 @@ CONTAINS
     END IF
 
     n = SIZE( Mesh % Nodes % x )    
-    NULLIFY( NewCoords )
     ALLOCATE( NewCoords(3*n) )
 
     ALLOCATE( Mesh % NodesOrig ) 
