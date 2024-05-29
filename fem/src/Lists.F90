@@ -6012,7 +6012,7 @@ CONTAINS
      Handle % List => NULL()
      Handle % Element => NULL()
      Handle % Unfoundfatal = .FALSE.
-     IF (.NOT. ASSOCIATED( Ptr ) ) THEN
+     IF (.NOT. ASSOCIATED( Handle % Ptr ) ) THEN
        Handle % Ptr => ListAllocate()
      END IF
 
