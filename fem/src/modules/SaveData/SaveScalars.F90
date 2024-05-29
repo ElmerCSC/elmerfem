@@ -138,8 +138,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   TYPE(ValueListEntry_t), POINTER :: Lst
   TYPE(Variable_t), POINTER :: Var, OldVar, Var2, Var3
   TYPE(Mesh_t), POINTER :: Mesh
-  TYPE(Element_t),POINTER :: Element
   TYPE(Nodes_t) :: ElementNodes
+  TYPE(Element_t),POINTER :: Element
 
   LOGICAL :: MovingMesh, GotCoeff, &
       GotIt, GotOper, GotParOper, GotVar, GotOldVar, ExactCoordinates, VariablesExist, &
@@ -1562,9 +1562,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   END IF
 
   
-  IF( NoElements > 0 ) THEN
-    DEALLOCATE( ElementNodes % x, ElementNodes % y, ElementNodes % z)
-  END IF
+  DEALLOCATE( ElementNodes % x, ElementNodes % y, ElementNodes % z )
 
   n = 1
   n = ParallelReduction(n) 
