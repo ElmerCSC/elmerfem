@@ -5,29 +5,22 @@
 #define DIM 2               /* dimension of the space */
 #define MAXDOFS 20          /* maximum number of variables, e.g. T,P */ 
 #define MAXCELLS 100        /* maximum number of subcells in given direction */
-#define MAXBOUNDARIES 1000  /* maximum number of boundaries for BCs */
+#define MAXBOUNDARIES 1000  /* maximum number of boundary groups for BCs, usually one or two except in ElmerGrid format */
 #define MAXCASES    12      /* maximum number of coexisting cases */ 
 #define MAXFILESIZE 600     /* maximum filenamesize for i/o files */
 #define MAXLINESIZE 600     /* maximum length of line to be read */
 #define LONGLINESIZE 1201  
 #define MAXNAMESIZE 50      /* maximum size of the variablename */
 #define MAXPARAMS 30        /* maximum number of parameters */
-#define MAXVARS 20          /* maximum number of variables at the sides */
 #define MAXNODESD3 64       /* maximum number of 3D nodes */ 
 #define MAXNODESD2 27       /* maximum number of 2D nodes */ 
 #define MAXNODESD1 9        /* maximum number of 1D nodes */
 #define MAXMAPPINGS 20      /* maximum number of geometry mappings */
 #define MAXCONNECTIONS 500  /* maximum number of connections in nodal or dual graph */
-#define MAXBCS 4000         /* maximum number of BCs in naming */
+#define MAXBCS 4000         /* maximum boundary index in naming, for example */
 #define MAXBODIES 1000      /* maximum number of bodies in naming */
 #define MAXPARTITIONS 512   /* maximum number of partitions */
 #define MAXHALOMODES 10
-#define MAXFORMATS 15
-
-#define CONPLAIN 0
-#define CONDISCONT 1
-#define CONPERIODIC 2
-#define CONCONSTRAINT 3
 
 #define MAXELEMENTTYPE 827
 
@@ -257,8 +250,7 @@ struct BoundaryType {
     *discont,        /* type of discontinuous and periodic BCs */
     *normal,         /* direction of the normal */
     *elementtypes,   /* side element types if needed */
-    **topology,       /* topology if needed */
-    points[MAXVARS]; /* how many points for each side? */
+    **topology;       /* topology if needed */
 };
 
 /* Sometimes one point is discontinuous or there is 
