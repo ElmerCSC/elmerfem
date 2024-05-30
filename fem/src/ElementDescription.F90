@@ -7360,9 +7360,9 @@ END SUBROUTINE PickActiveFace
 
                IF (RedefineFaceBasis) THEN
                  EdgeBasis(7,:) = 0.5d0 * D1 * WorkBasis(I1,:) + 0.5d0 * D2 * WorkBasis(I2,:)
-                 CurlBasis(7,:) = 0.5d0 * D1 * WorkCurlBasis(I1,:) + 0.5d0 * D2 * WorkCurlBasis(I2,:)
+                 CurlBasis(7,3) = 0.5d0 * D1 * WorkCurlBasis(I1,3) + 0.5d0 * D2 * WorkCurlBasis(I2,3)
                  EdgeBasis(8,:) = 0.5d0 * D2 * WorkBasis(I2,:) - 0.5d0 * D1 * WorkBasis(I1,:)
-                 CurlBasis(8,:) = 0.5d0 * D2 * WorkCurlBasis(I2,:) - 0.5d0 * D1 * WorkCurlBasis(I1,:)
+                 CurlBasis(8,3) = 0.5d0 * D2 * WorkCurlBasis(I2,3) - 0.5d0 * D1 * WorkCurlBasis(I1,3)
                ELSE
                  EdgeBasis(7,:) = D1 * WorkBasis(I1,:)
                  CurlBasis(7,3) = D1 * WorkCurlBasis(I1,3)
@@ -7374,8 +7374,8 @@ END SUBROUTINE PickActiveFace
                IF (ScaleFaceBasis) THEN
                  EdgeBasis(7,:) = sqrt(fs1) * EdgeBasis(7,:)
                  EdgeBasis(8,:) = sqrt(fs2) * EdgeBasis(8,:)
-                 CurlBasis(7,:) = sqrt(fs1) * CurlBasis(7,:)
-                 CurlBasis(8,:) = sqrt(fs2) * CurlBasis(8,:)
+                 CurlBasis(7,3) = sqrt(fs1) * CurlBasis(7,3)
+                 CurlBasis(8,3) = sqrt(fs2) * CurlBasis(8,3)
                END IF
              END IF
            END IF
