@@ -338,10 +338,10 @@ CONTAINS
       ParEnv % Active = .TRUE.
     END IF
 
-    IF( .NOT. ASSOCIATED(ParEnv % IsNeighbour) ) THEN
-      ALLOCATE(ParEnv % IsNeighbour(ParEnv % PEs))
-    END IF
-    ParEnv % IsNeighbour(:)  = .FALSE.
+!   IF(.NOT. ASSOCIATED(ParEnv % IsNeighbour)) THEN
+      ALLOCATE(ParEnv % Isneighbour(ParEnv % PEs))
+!   END IF
+    ParEnv % IsNeighbour = .FALSE.
     ParEnv % NumOfNeighbours = 0
 
     !------------------------------------------------------------------
@@ -367,6 +367,7 @@ CONTAINS
     DO MinActive=0,ParEnv % PEs-1
       IF ( ParEnv % Active(MinActive+1) ) EXIT
     END DO
+
     Active = -1
     n = 0
     DO i=1,ParEnv % PEs
@@ -460,7 +461,6 @@ CONTAINS
 
 !   IF ( .NOT. SourceMatrix % DGMatrix ) THEN
       DO ii=1,SourceMatrix % NumberOfRows
-
         Active(ii) = HUGE(i)
         IF ( ParallelInfo % GInterface(ii) ) THEN
           sz = SIZE(ParallelInfo % NeighbourList(ii) % Neighbours)
