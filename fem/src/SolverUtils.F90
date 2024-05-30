@@ -4705,7 +4705,7 @@ CONTAINS
 
     LOGICAL :: Conditional
     LOGICAL, ALLOCATABLE :: DonePeriodic(:)
-    CHARACTER(:), ALLOCATABLE :: CondName, DirName, PassName, PassCondName
+    CHARACTER(:), ALLOCATABLE :: CondName, DirName, PassName, PassCondName, EqName
 
     INTEGER :: NoNodes,NoDims,bf_id,nlen, NOFNodesFound, dim, &
         bndry_start, bndry_end, Upper
@@ -5093,10 +5093,11 @@ CONTAINS
 
       Passive = Passive .OR. ListCheckPresent(ValueList, PassName)
     END DO
-    
+       
     IF ( ANY(ActivePart) .OR. ANY(ActivePartAll) ) THEN
       Solver => Model % Solver
       Mesh   => Solver % Mesh
+      EqName = ListGetString( Solver % Values, 'Equation', GotIt )
 
       ALLOCATE(PassPerm(Mesh % NumberOfNodes),NodeIndexes(1));PassPerm=0
       DO i=0,Mesh % PassBCCnt-1
@@ -5104,8 +5105,8 @@ CONTAINS
         PassPerm(Mesh % Elements(j) % NodeIndexes)=1
       END DO
 
-      DO t=1,Solver % NumberOfActiveElements
-        Element => Mesh % Elements(Solver % ActiveElements(t))
+      DO t=1,Solver % Mesh % NumberOfBulkElements
+        Element => Mesh % Elements(t)
         IF( Element % BodyId <= 0 .OR. Element % BodyId > Model % NumberOfBodies ) THEN
           CALL Warn(Caller,'Element body id beyond body table!')
           CYCLE
@@ -5118,12 +5119,14 @@ CONTAINS
         Conditional = ActiveCond(bf_id)
 
         Model % CurrentElement => Element
+
+        GotIt = CheckElementEquation( Model, Element, EqName ) 
         
-        IF ( ActivePart(bf_id) ) THEN
+        IF ( ActivePart(bf_id) .OR. .NOT. GotIt ) THEN
           n = Element % TYPE % NumberOfNodes
           Indexes(1:n) = Element % NodeIndexes
         ELSE
-          n = mGetElementDOFs( Indexes )
+          n = mGetElementDOFs( Indexes, Uelement = Element, USolver = Model % Solver )
         END IF
 
         ValueList => Model % BodyForces(bf_id) % Values
@@ -5195,66 +5198,6 @@ CONTAINS
       END IF
     END DO
 
-#if 0
-    ! Obsolibe code!
-    ! Go through soft upper and lower limits
-    ! This is no longer needed since the ConstrainedDOF and DValues include
-    ! all necessary information!
-    !-----------------------------------------------------------------
-    Params => Model % Solver % Values
-    ApplyLimiter = ListGetLogical( Params,'Apply Limiter',GotIt) 
-
-    IF( Dof/=0 .AND. ApplyLimiter ) THEN
-      CALL Info(Caller,'Applying limiters',Level=10)
-
-      DO Upper=0,1
-        
-        ! The limiters have been implemented only componentwise
-        !-------------------------------------------------------
-        
-        NULLIFY( LimitActive ) 
-        Var => Model % Solver % Variable
-        IF( Upper == 0 ) THEN
-          IF( ASSOCIATED( Var % LowerLimitActive ) ) &
-              LimitActive => Var % LowerLimitActive
-        ELSE
-          IF( ASSOCIATED( Var % UpperLimitActive ) ) &
-              LimitActive => Var % UpperLimitActive
-        END IF
-        
-        IF( .NOT. ASSOCIATED( LimitActive ) ) CYCLE
-        
-        IF( Upper == 0 ) THEN
-          CondName = TRIM(name)//' Lower Limit' 
-        ELSE
-          CondName = TRIM(name)//' Upper Limit' 
-        END IF
-        
-        ! Set the soft limiter values.
-        ! --------------------------------------------------------------
-        DO t = 1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
-          Element => Mesh % Elements(t)
-          Model % CurrentElement => Element
-          n = Element % TYPE % NumberOfNodes
-          NodeIndexes => Element % NodeIndexes
-          
-          IF( t > Mesh % NumberOfBulkElements ) THEN
-            DO bc = 1,Model % NumberOfBCs
-              IF ( Element % BoundaryInfo % Constraint /= Model % BCs(bc) % Tag ) CYCLE
-              ValueList => Model % BCs(BC) % Values
-              CALL SetLimiterValues(n)
-            END DO
-          ELSE             
-            bf_id = ListGetInteger( Model % Bodies(Element % bodyid) % Values, &
-                'Body Force', GotIt)
-            IF(.NOT. GotIt ) CYCLE
-            ValueList => Model % Bodyforces(bf_id) % Values
-            CALL SetLimiterValues(n)
-          END IF
-        END DO
-      END DO
-    END IF
-#endif    
     
     ! Check the boundaries and body forces for possible single nodes BCs that are used to fixed 
     ! the domain for undetermined equations. The loop is slower than optimal in the case that there is 

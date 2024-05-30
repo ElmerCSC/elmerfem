@@ -131,6 +131,7 @@ SUBROUTINE StatElecSolver_init( Model,Solver,dt,Transient )
           'CapacitanceMatrix.dat',.FALSE.)
     END IF
     CALL ListRenameAllBC( Model,'Capacitance Body','Constraint Mode Potential')
+    CALL ListRenameAllBodyForce( Model,'Capacitance Body','Constraint Mode Potential')
     CALL ListAddLogical( Params,'Optimize Bandwidth',.FALSE.)
     CALL Info('StatElecSolver_init','Suppressing bandwidth optimization in Capacitance Matrix computation!')
   END IF
