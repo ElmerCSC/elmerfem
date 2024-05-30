@@ -429,7 +429,7 @@ MODULE StressLocal
          END DO
          StressLoad = StressLoad + MATMUL( C, StrainLoad )
          
-         IF( .NOT. ( StabilityAnalysis .OR. GeometricStiffness ) ) THEN 
+         IF( .NOT. ActiveGeometricStiffness ) THEN 
            StressTensor = 0.0d0
            StrainTensor = 0.0d0          
          END IF

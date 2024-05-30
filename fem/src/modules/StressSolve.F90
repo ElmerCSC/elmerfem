@@ -1163,7 +1163,7 @@ CONTAINS
        IF (.NOT. ConstantBulkMatrixInUse ) THEN
          PreStress = 0.0d0
          PreStrain = 0.0d0
-         IF( AnyPre ) THEN
+         IF( AnyPre .AND. (StabilityAnalysis .OR. GeometricStiffness)) THEN
            CALL ListGetRealArray( Material, 'Pre Stress', Work, n, NodeIndexes, Found )
            IF ( Found ) THEN
              k = SIZE(Work,1)
