@@ -2193,6 +2193,28 @@ CONTAINS
    END SUBROUTINE ListRenameAllBC
 !------------------------------------------------------------------------------
 
+   !------------------------------------------------------------------------------
+!> Rename all given keywords in body force section.
+!------------------------------------------------------------------------------
+   SUBROUTINE ListRenameAllBodyForce( Model, Name, Name2 ) 
+!------------------------------------------------------------------------------
+     TYPE(Model_t) :: Model
+     CHARACTER(LEN=*) :: Name, Name2
+     LOGICAL :: Found
+     INTEGER :: bc, n
+
+     n = 0
+     DO bc = 1,Model % NumberOfBodyForces
+       CALL ListRename( Model % BodyForces(bc) % Values, Name, Name2, Found )
+       IF( Found ) n = n + 1
+     END DO
+     IF( n > 0 ) CALL Info('ListRenameAllBodyForces',&
+         '"'//TRIM(Name)//'" renamed to "'//TRIM(Name2)//'" on '//I2S(n)//' BCs',Level=6)
+     
+!------------------------------------------------------------------------------
+   END SUBROUTINE ListRenameAllBodyForce
+!------------------------------------------------------------------------------
+
    
 !------------------------------------------------------------------------------
 !> Just checks if a entry is present in the list.
