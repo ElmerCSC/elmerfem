@@ -4581,7 +4581,7 @@ CONTAINS
         IF(n>1) THEN         
           ! Of the sharing partitions who owns this
           DO i=1,n
-            IF(ParEnv % Active(neigh(i))) EXIT
+            IF(ParEnv % Active(neigh(i)+1)) EXIT
           END DO
           ! And if it is not in this partition then skip it
           IF(i<n) THEN

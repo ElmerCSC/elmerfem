@@ -3102,7 +3102,8 @@ CONTAINS
         END IF
       END DO
     END IF
-      
+
+    ParEnv => ParEnv_Common
 
 CONTAINS
 
@@ -4317,7 +4318,6 @@ CONTAINS
       IF (isParallel) THEN
         DO RowVar=1,NoVar
           DO ColVar=1,NoVar
-            CALL ParallelActive( .TRUE.)
             Amat => TotMatrix % SubMatrix(RowVar,ColVar) % Mat
             Amat % Comm = ELMER_COMM_WORLD
             Parenv % ActiveComm = Amat % Comm
@@ -4327,8 +4327,10 @@ CONTAINS
             IF(ASSOCIATED(Amat % ParMatrix )) THEN
               Amat % ParMatrix % ParEnv % ActiveComm = &
                        Amat % Comm
-              ParEnv = Amat % ParMatrix % ParEnv
+              ParEnv => Amat % ParMatrix % ParEnv
             END IF
+
+            CALL ParallelActive( .TRUE.)
           END DO
         END DO
      END IF
@@ -5042,18 +5044,23 @@ CONTAINS
      LOGICAL :: ApplyMortar, FoundMortar, SlaveNotParallel, Parallel, UseOrigMesh
      TYPE(Matrix_t), POINTER :: CM, CM0, CM1, CMP
      TYPE(Mesh_t), POINTER :: Mesh
-     LOGICAL :: DoBC, DoBulk
 
+     LOGICAL :: DoBC, DoBulk
 !------------------------------------------------------------------------------
      MeActive = ASSOCIATED(Solver % Matrix)
+
+     IF ( MeActive .AND. ASSOCIATED(Solver % Matrix % ParMatrix) ) THEN
+       ParEnv => Solver % Matrix % ParMatrix % ParEnv
+       ParEnv % ActiveComm = Solver % Matrix % Comm
+     END IF
+
      IF ( MeActive ) MeActive = (Solver % Matrix % NumberOfRows > 0)
+
      Parallel = Solver % Parallel 
-     
      !------------------------------------------------------------------------------
 
 
      IF( Solver % Mesh % Changed .OR. Solver % NumberOfActiveElements <= 0 ) THEN
-     
        Solver % NumberOFActiveElements = 0
        EquationName = ListGetString( Solver % Values, 'Equation', Found)
 
@@ -5068,14 +5075,13 @@ CONTAINS
 
          ! In parallel we have to prepare the communicator already for the weights
          IF(DoBulk .OR. DoBC ) THEN
-           IF ( Parallel .AND. MeActive .AND. ASSOCIATED( Solver % Matrix ) ) THEN
+           IF ( Parallel .AND. MeActive ) THEN
              ParEnv % ActiveComm = Solver % Matrix % Comm
              IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % GInterface) ) THEN
                IF (.NOT. ASSOCIATED(Solver % Matrix % ParMatrix) ) &
                    CALL ParallelInitMatrix(Solver, Solver % Matrix )               
-               Solver % Matrix % ParMatrix % ParEnv % ActiveComm = &
-                   Solver % Matrix % Comm
-               ParEnv = Solver % Matrix % ParMatrix % ParEnv
+               ParEnv => Solver % Matrix % ParMatrix % ParEnv
+               ParEnv % ActiveComm = Solver % Matrix % Comm
              END IF
            END IF
          END IF
@@ -5085,7 +5091,6 @@ CONTAINS
        END IF
      END IF
 !------------------------------------------------------------------------------
-
      UseOrigMesh = ListGetLogical(Solver % Values,'Use Original Coordinates',Found )
      IF(UseOrigMesh ) THEN
        Mesh => Solver % Mesh
@@ -5121,8 +5126,8 @@ BLOCK
            IF(.NOT. MeActive) ChangedActiveParts = .TRUE.
          END IF
        END IF
+
        CALL ParallelActive( MeActive )
-       
        n = COUNT(ParEnv % Active)
        
        IF ( n>0 .AND. n<ParEnv % PEs ) THEN
@@ -5201,15 +5206,15 @@ END BLOCK
 
        
      IF ( ASSOCIATED(Solver % Matrix) ) THEN
-       ParEnv % ActiveComm = Solver % Matrix % Comm
        IF ( Parallel .AND. MeActive ) THEN
          IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % GInterface) ) THEN
+           ParEnv % ActiveComm = Solver % Matrix % Comm
+
            IF (.NOT. ASSOCIATED(Solver % Matrix % ParMatrix) ) &
              CALL ParallelInitMatrix(Solver, Solver % Matrix )
 
-           Solver % Matrix % ParMatrix % ParEnv % ActiveComm = &
-                    Solver % Matrix % Comm
-           ParEnv = Solver % Matrix % ParMatrix % ParEnv
+           ParEnv => Solver % Matrix % ParMatrix % ParEnv
+           ParEnv % ActiveComm = Solver % Matrix % Comm
 
 #if 0
            ! This one is mainly for debugging of parallel problems
@@ -5357,7 +5362,6 @@ END BLOCK
        CALL Info('SingleSolver','Reverting back to current coordinates',Level=12)
        Mesh % Nodes => Mesh % NodesMapped
      END IF
-       
 !------------------------------------------------------------------------------
    END SUBROUTINE SingleSolver
 !------------------------------------------------------------------------------
@@ -5676,7 +5680,6 @@ END BLOCK
       END IF
 
       OutputPE = sOutputPE
-
 !------------------------------------------------------------------------------
    END SUBROUTINE SolverActivate
 !------------------------------------------------------------------------------

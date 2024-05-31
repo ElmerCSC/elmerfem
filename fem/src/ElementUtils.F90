@@ -281,6 +281,15 @@ CONTAINS
          DEALLOCATE(s % GlueTable)
        END IF
        DEALLOCATE(s)
+
+       IF(ASSOCIATED(p % ParEnv % Active)) THEN
+         DEALLOCATE(p % ParEnv % Active)
+       END IF
+
+       IF(ASSOCIATED(p % ParEnv % Isneighbour)) THEN
+         DEALLOCATE(p % ParEnv % Isneighbour)
+       END IF
+
        DEALLOCATE(p)
      END IF
 

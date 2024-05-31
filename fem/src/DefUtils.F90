@@ -3205,7 +3205,7 @@ CONTAINS
      REAL(KIND=dp) :: dt
      LOGICAL :: Transient, Found, alloc_parenv
 
-     TYPE(ParEnv_t) :: SParEnv
+     TYPE(ParEnv_t), POINTER :: SParEnv
 
      INTERFACE
        SUBROUTINE SolverActivate_x(Model,Solver,dt,Transient)
@@ -3246,11 +3246,11 @@ CONTAINS
        END IF
          
        IF(ParEnv % PEs>1) THEN
-         SParEnv = ParEnv
+         SParEnv => ParEnv
 
          IF(ASSOCIATED(SlaveSolver % Matrix)) THEN
            IF(ASSOCIATED(SlaveSolver % Matrix % ParMatrix) ) THEN
-             ParEnv = SlaveSolver % Matrix % ParMatrix % ParEnv
+             ParEnv => SlaveSolver % Matrix % ParMatrix % ParEnv
            ELSE
              ParEnv % ActiveComm = SlaveSolver % Matrix % Comm
            END IF
@@ -3263,7 +3263,7 @@ CONTAINS
        CALL SolverActivate_x( CurrentModel,SlaveSolver,dt,Transient)
 
        IF(ParEnv % PEs>1) THEN
-         ParEnv = SParEnv
+         ParEnv => SParEnv
        END IF
      END DO
      iterV % Values = iter       

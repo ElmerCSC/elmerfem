@@ -6131,7 +6131,7 @@ SUBROUTINE GetNodalElementSize(Model,expo,noweight,h)
 
       Solver % Matrix % ParMatrix % ParEnv % ActiveComm = &
                  Solver % Matrix % Comm
-      ParEnv = Solver % Matrix % ParMatrix % ParEnv
+      ParEnv => Solver % Matrix % ParMatrix % ParEnv
     END IF
   END IF
 

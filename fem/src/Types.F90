@@ -277,16 +277,15 @@ MODULE Types
 !------------------------------------------------------------------------------
 
   TYPE ParEnv_t
-     INTEGER                          :: PEs
-     INTEGER                          :: MyPE
-     LOGICAL                          :: Initialized
-     INTEGER                          :: ActiveComm
+     INTEGER                          :: PEs  = 1
+     INTEGER                          :: MyPE = 0
+     LOGICAL                          :: Initialized = .FALSE.
+     INTEGER                          :: ActiveComm  = 0
      LOGICAL, DIMENSION(:), POINTER   :: Active => Null()
      LOGICAL, DIMENSION(:), POINTER   :: IsNeighbour => Null()
-     LOGICAL, DIMENSION(:), POINTER   :: SendingNB => Null()
-     INTEGER                          :: NumOfNeighbours
+     INTEGER                          :: NumOfNeighbours = 0
      INTEGER                          :: NumberOfThreads = 1
-     LOGICAL                          :: ExternalInit
+     LOGICAL                          :: ExternalInit = .FALSE.
    END TYPE ParEnv_t
 
 
@@ -348,9 +347,9 @@ MODULE Types
   TYPE SParIterSolverGlobalD_t
      TYPE (SplittedMatrixT), POINTER :: SplittedMatrix=>NULL()
      TYPE (Matrix_t), POINTER :: Matrix=>NULL()
-     TYPE (ParallelInfo_t), POINTER :: ParallelInfo=>NULL()
-     TYPE(ParEnv_t) :: ParEnv
      INTEGER :: DOFs, RelaxIters
+     TYPE(ParEnv_t) :: ParEnv
+     TYPE (ParallelInfo_t), POINTER :: ParallelInfo=>NULL()
   END TYPE SParIterSolverGlobalD_t
 
   TYPE(SParIterSolverGlobalD_t), POINTER :: ParMatrix => NULL()

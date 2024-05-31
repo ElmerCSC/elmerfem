@@ -272,8 +272,6 @@ CONTAINS
     TYPE(Matrix_t) :: SourceMatrix
 !-----------------------------------------------------------------------
     CALL FindActivePEs( ParallelInfo, SourceMatrix )
-    SPMatrix % ParEnv = ParEnv
-    SPMatrix % ParEnv % ActiveComm = SourceMatrix % Comm
 !-----------------------------------------------------------------------
   END SUBROUTINE ParEnvInit
 !-----------------------------------------------------------------------
@@ -286,6 +284,7 @@ CONTAINS
     INTEGER :: ierr
 !-----------------------------------------------------------------------
     LOGICAL, ALLOCATABLE :: Active(:)
+
     ALLOCATE( Active(ParEnv % PEs) )
 
     IF ( .NOT. ASSOCIATED(ParEnv % Active) ) &
@@ -338,9 +337,9 @@ CONTAINS
       ParEnv % Active = .TRUE.
     END IF
 
-!   IF(.NOT. ASSOCIATED(ParEnv % IsNeighbour)) THEN
+    IF(.NOT. ASSOCIATED(ParEnv % IsNeighbour)) THEN
       ALLOCATE(ParEnv % Isneighbour(ParEnv % PEs))
-!   END IF
+    END IF
     ParEnv % IsNeighbour = .FALSE.
     ParEnv % NumOfNeighbours = 0
 

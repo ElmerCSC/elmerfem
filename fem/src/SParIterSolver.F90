@@ -89,30 +89,26 @@ CONTAINS
     TYPE (SParIterSolverGlobalD_t), POINTER :: SParMatrixDesc
 
     TYPE (ParEnv_t), POINTER :: ParallelEnv
-REAL(kind=dp) :: tt,realtime
     !******************************************************************
 
-    IF ( .NOT. ParEnv % Initialized ) THEN
-       ParallelEnv => ParCommInit()
-    END IF
-
     ALLOCATE( SParMatrixDesc )
-!tt=realtime()
-    CALL ParEnvInit( SParMatrixDesc, ParallelInfo, SourceMatrix )
-!if ( parenv % mype==0 ) print*,'ENV INIT TIME: ', realtime()-tt
+
+    SParMatrixDesc % ParEnv = ParEnv
+    ALLOCATE(SParMatrixDesc % ParEnv % Active(ParEnv % PEs))
+    SParMatrixDesc % ParEnv % Active = ParEnv % Active
+    SParMatrixDesc % ParEnv % IsNeighbour => Null()
+    ParEnv => SParMatrixDesc % ParEnv
+
+    CALL ParEnvInit(SParMatrixDesc, ParallelInfo, SourceMatrix)
 
     SParMatrixDesc % Matrix => SourceMatrix
     SParMatrixDesc % DOFs = 1
     SParMatrixDesc % ParallelInfo => ParallelInfo
 
-    ParEnv = SParMatrixDesc % ParEnv
     ParEnv % ActiveComm = SourceMatrix % Comm
-!tt=realtime()
+
     SParMatrixDesc % SplittedMatrix => &
                         SplitMatrix( SourceMatrix, ParallelInfo )
-
-    SParMatrixDesc % ParEnv = ParEnv
-!if ( parenv % mype==0 ) print*,'SPLIT TIME: ', realtime()-tt
 
   END FUNCTION ParInitMatrix
 
@@ -923,7 +919,7 @@ END SUBROUTINE ZeroSplittedMatrix
 !----------------------------------------------------------------------
 
     GlobalData     => SourceMatrix % ParMatrix
-    ParEnv         =  GlobalData % ParEnv
+    ParEnv         => GlobalData % ParEnv
     ParEnv % ActiveComm = SourceMatrix % Comm
     SplittedMatrix => Globaldata % SplittedMatrix
 
@@ -1605,7 +1601,7 @@ INTEGER::inside
   !******************************************************************
   SaveGlobalData => GlobalData
   GlobalData     => SParMatrixDesc
-  ParEnv         =  GlobalData % ParEnv
+  ParEnv         => GlobalData % ParEnv
   ParEnv % ActiveComm = SourceMatrix % Comm
   SplittedMatrix => SParMatrixDesc % SplittedMatrix
 
