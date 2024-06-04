@@ -65,8 +65,8 @@ real(kind=dp):: xxx, yyy
 
   ! Following is in correct place
 
-  TYPE (ParEnv_t), POINTER :: ParEnv
   TYPE (ParEnv_t), SAVE, TARGET :: ParEnv_Common
+  TYPE (ParEnv_t), POINTER :: ParEnv => ParEnv_Common
   TYPE (SParIterSolverGlobalD_t), POINTER :: PIGpntr
   TYPE (SParIterSolverGlobalD_t), POINTER :: GlobalData
 END MODULE SParIterGlobals

@@ -151,8 +151,6 @@
      CALL Info( Caller, ' E L M E R  V I E W F A C T O R S,  W E L C O M E',  Level=3  )
      CALL Info( Caller, '==================================================', Level=3 )
 
-     ParEnv => ParEnv_Common
-
 !------------------------------------------------------------------------------
 !    Read element definition file, and initialize element types
 !------------------------------------------------------------------------------

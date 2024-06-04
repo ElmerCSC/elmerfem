@@ -142,7 +142,6 @@
 
      ! If parallel execution requested, initialize parallel environment:
      !------------------------------------------------------------------
-     ParEnv => ParEnv_Common
      IF(FirstTime)  ParallelEnv => ParallelInit()
 
      OutputPE = -1
