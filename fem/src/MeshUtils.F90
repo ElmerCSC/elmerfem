@@ -17723,7 +17723,7 @@ CONTAINS
        IF(NoBCs >= maxbc ) RETURN
 
        CALL Info(Caller,'Generating '//I2S(maxbc-NoBCs)//' dummy list BCs for convenience!',Level=5)
- 
+       
        OldBCs => Model % BCs(:)
 
        NULLIFY( Model % BCs )
@@ -17735,7 +17735,7 @@ CONTAINS
          IF(tag == 0) tag = i 
          Model % BCs(i) % Tag = tag
        END DO
-       DEALLOCATE( OldBCs ) 
+       IF (ASSOCIATED(OldBCs)) DEALLOCATE( OldBCs ) 
        DO i=NoBCs+1,maxbc
          Model % BCs(i) % Tag = i
        END DO
