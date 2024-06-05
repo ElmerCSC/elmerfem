@@ -17735,7 +17735,7 @@ CONTAINS
          IF(tag == 0) tag = i 
          Model % BCs(i) % Tag = tag
        END DO
-       IF (ASSOCIATED(OldBCs)) DEALLOCATE( OldBCs ) 
+       IF (ASSOCIATED(OldBCs) .AND. NoBCs > 0) DEALLOCATE( OldBCs ) 
        DO i=NoBCs+1,maxbc
          Model % BCs(i) % Tag = i
        END DO
