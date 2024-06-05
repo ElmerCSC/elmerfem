@@ -365,15 +365,15 @@ CONTAINS
      INTEGER, OPTIONAL :: elemind, activeind
      
      TYPE(LocalSystemStorage_t), POINTER :: pLocal
-     TYPE(Variable_t), POINTER :: cVar => NULL()
+     TYPE(Variable_t), POINTER :: cVar => NULL(), rVar => NULL()
      CHARACTER(:), ALLOCATABLE :: multname
-     REAL(KIND=dp) :: cmult
+     REAL(KIND=dp) :: cmult, rmult
      INTEGER :: prevSolverId = -1
      INTEGER :: eind
      LOGICAL :: Found
-     LOGICAL :: DoMultiply = .FALSE.
-
-     SAVE cVar, DoMultiply, prevSolverId
+     LOGICAL :: DoMultiply = .FALSE., DoMultiplyRhs = .FALSE.
+     
+     SAVE cVar, DoMultiply, DoMultiplyRhs, prevSolverId
      
      IF( PRESENT(activeind) ) THEN
        eind = activeind
@@ -382,7 +382,7 @@ CONTAINS
        eind = Solver % InvActiveElements(elemind)
        IF(eind==0) RETURN
      END IF
-     
+
      pLocal => Solver % LocalSystem(eind) 
      IF( pLocal % eind == eind .OR. pLocal % eind < 1 ) THEN
        ! Save local system for this element.
@@ -407,6 +407,7 @@ CONTAINS
        ! For the 1st element obtain the multiplier vector
        cvar => NULL()
        DoMultiply = .FALSE.
+       DoMultiplyRhs = .FALSE.
        multname = ListGetString( Solver % Values,'Matrix Multiplier Name',Found )
        IF(Found ) THEN
          cvar => VariableGet( Solver % Mesh % Variables, multname, UnfoundFatal = .TRUE.)
@@ -417,14 +418,30 @@ CONTAINS
            CALL Fatal('UseLocalMatrixStorage','"Field should be elemental: '//TRIM(multname))
          END IF
          DoMultiply = .TRUE.
+
+         ! We may multiply the r.h.s. with a different multiplier. 
+         multname = ListGetString( Solver % Values,'Rhs Multiplier Name',Found )
+         IF(Found ) THEN
+           rvar => VariableGet( Solver % Mesh % Variables, multname, UnfoundFatal = .TRUE.)
+           IF(.NOT. ASSOCIATED(rVar) ) THEN
+             CALL Fatal('UseLocalMatrixStorage','Field not found: '//TRIM(multname))
+           END IF
+           IF( rvar % TYPE /= Variable_on_elements ) THEN
+             CALL Fatal('UseLocalMatrixStorage','"Field should be elemental: '//TRIM(multname))
+           END IF
+           DoMultiplyRhs = .TRUE.
+         END IF
        END IF
-       prevSolverId = Solver % SolverId
+       prevSolverId = Solver % SolverId       
      END IF
 
      IF( DoMultiply ) THEN
-       cmult = cvar % Values(cvar % Perm(eind))
+       cmult = cvar % Values(cvar % Perm(eind))       
        K(1:n,1:n) = cmult * K(1:n,1:n)
-       F(1:n) = cmult * F(1:n)
+       IF( DoMultiplyRhs ) THEN
+         rmult = rvar % Values(rvar % Perm(eind))       
+         F(1:n) = rmult * F(1:n)
+       END IF         
      END IF
            
    END SUBROUTINE UseLocalMatrixStorage
