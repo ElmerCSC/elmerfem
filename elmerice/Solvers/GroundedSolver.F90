@@ -22,44 +22,73 @@
 ! *****************************************************************************/
 ! ******************************************************************************
 ! *
-! *  Authors: Olivier Gagliardini, Gael Durand
+! *  Authors: Olivier Gagliardini, Gael Durand, Rupert Gladstone, Samuel Cook
 ! *  Email:   
 ! *  Web:     http://elmerice.elmerfem.org
 ! *
 ! *  Original Date: 
 ! * 
 ! *****************************************************************************
+!
+! Rupert's notes June 2024 (TODO: integrate these into documentation):
+!
+! Unifying Samuel's code for identifying isolated ungrounded regions with the main
+! grounded mask code.
+!
+! Aim:
+!
+! 1. All relevant functionality to be accessed through the grounded solver.
+! 2. Default behaviour is backward compatible with non-GMvalid grounded solver:
+!     one grounded mask that allows isolated ungrounded regions.
+! 3. New option to provide a second grounded mask in which isolated ungrounded
+!     regions are removed (unlike Samuel's original, this second mask will
+!     identify the grounding line itself, i.e. the values of -1, 0, 1 will have
+!     the same meaning as the original grounded mask).
+! 
+! Additional solver option:
+!  'Connected mask name = string xxx'
+! This needs to correspond to an existing variable, probably an exported variable.
+! Samuel's calving front mask also needs to be specified at the appropriate BC.
+!
+! Example.
+!  Add this to the GroundedSolver:
+!   Connected mask name = string ConnMask
+!   Exported Variable 1 = -dofs 1 "ConnMask"
+!  Add this to the front BC:
+!   Calving Front Mask = Logical true
+!  
+
 !> Solver for creating a mask on whether the lower side of an ice sheet/shelf is
 !>  grounded or not. +1=grounded,-1=detached, 0=grounding line (=last grounded node)
 SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
-!------------------------------------------------------------------------------
-!******************************************************************************
-!
-!  For the bottom surface, creates and updates a mask which may be equal to -1, 0 or 1
-
-!  GroundedMask = + 1 if grounded
-!               = - 1 if floating
-!               = 0   if on the grounding line (also grounded)
-!
-!  Consequently, a node is grounded if GroundedMask >= 0
-!
-!  y is the vertical in 2D ; z is the vertical in 3D
-!
-!  ARGUMENTS:
-!
-!  TYPE(Model_t) :: Model,  
-!     INPUT: All model information (mesh, materials, BCs, etc...)
-!
-!  TYPE(Solver_t) :: Solver
-!     INPUT: Linear & nonlinear equation solver options
-!
-!  REAL(KIND=dp) :: dt,
-!     INPUT: Timestep size for time dependent simulations
-!
-!  LOGICAL :: TransientSimulation
-!     INPUT: Steady state or transient simulation
-!
-!******************************************************************************
+  !------------------------------------------------------------------------------
+  !******************************************************************************
+  !
+  !  For the bottom surface, creates and updates a mask which may be equal to -1, 0 or 1
+  !  
+  !  GroundedMask = + 1 if grounded
+  !               = - 1 if floating
+  !               = 0   if on the grounding line (also grounded)
+  !
+  !  Consequently, a node is grounded if GroundedMask >= 0
+  !
+  !  y is the vertical in 2D ; z is the vertical in 3D
+  !
+  !  ARGUMENTS:
+  !
+  !  TYPE(Model_t) :: Model,  
+  !     INPUT: All model information (mesh, materials, BCs, etc...)
+  !
+  !  TYPE(Solver_t) :: Solver
+  !     INPUT: Linear & nonlinear equation solver options
+  !
+  !  REAL(KIND=dp) :: dt,
+  !     INPUT: Timestep size for time dependent simulations
+  !
+  !  LOGICAL :: TransientSimulation
+  !     INPUT: Steady state or transient simulation
+  !
+  !******************************************************************************
   USE DefUtils
 
   IMPLICIT NONE
@@ -76,21 +105,22 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
 
   TYPE(Element_t),POINTER :: Element
   TYPE(ValueList_t), POINTER :: Material, SolverParams
-  TYPE(Variable_t), POINTER :: PointerToVariable, bedrockVar, FrontVar, LSvar
+  TYPE(Variable_t), POINTER :: PointerToVariable, bedrockVar, FrontVar, LSvar, ConnMaskVar
   TYPE(Nodes_t), SAVE :: Nodes
 
   LOGICAL :: AllocationsDone = .FALSE., GotIt, stat,UnFoundFatal=.TRUE.,&
-             AllGrounded = .FALSE., useLSvar = .FALSE.
+       AllGrounded = .FALSE., useLSvar = .FALSE.,                       &
+       CheckConn ! check ocean connectivity (creates separate mask without isolated ungrounded regions)
 
-  INTEGER :: i, mn, n, t, Nn, istat, DIM, MSum, ZSum, bedrockSource
-  INTEGER, POINTER :: Permutation(:), bedrockPerm(:), LSvarPerm(:)
+  INTEGER :: ii, mn, en, t, Nn, istat, DIM, MSum, ZSum, bedrockSource
+  INTEGER, POINTER :: Permutation(:), bedrockPerm(:), LSvarPerm(:), ConnMaskPerm(:)
 
   REAL(KIND=dp), POINTER :: VariableValues(:)
   REAL(KIND=dp) :: z, toler
   REAL(KIND=dp), ALLOCATABLE :: zb(:)
 
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName = 'GroundedSolver', bedrockName,&
-                                 FrontVarName, LSvarName
+       FrontVarName, LSvarName, ConnMaskName
 
   INTEGER,PARAMETER :: MATERIAL_DEFAULT = 1, MATERIAL_NAMED = 2, VARIABLE = 3
        
@@ -126,7 +156,15 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
      CALL FATAL(SolverName, 'No tolerance given for the Grounded Mask.')
   END IF
 
-  !CHANGE
+  ConnMaskName = ListGetString(SolverParams, 'Connected mask name',GotIt, UnFoundFatal=.FALSE.)
+  IF (GotIt) THEN
+     CheckConn = .TRUE.
+     ConnMaskVar => VariableGet(Model % Mesh % Variables, ConnMaskName,UnFoundFatal=.TRUE.)
+     ConnMaskPerm => ConnMaskVar % Perm
+  ELSE
+     CheckConn = .FALSE.
+  END IF
+     
   !This to enforce all nodes grounded when doing non-calving hydrology to
   !restart a calving simulation from
   AllGrounded = GetLogical(SolverParams, 'All Grounded', GotIt)
@@ -159,7 +197,6 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
     END IF
   END IF
 
-  !CHANGE
   !Any variable defined on the calving front
   FrontVarName = GetString(SolverParams, 'Front Variable', GotIt)
   IF(GotIt) THEN
@@ -174,7 +211,7 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
   !--------------------------------------------------------------
   DO t = 1, Solver % NumberOfActiveElements
      Element => GetActiveElement(t)
-     n = GetElementNOFNodes()
+     en = GetElementNOFNodes()
      
      IF(.NOT. AllGrounded) THEN
 
@@ -182,26 +219,25 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
        CASE (VARIABLE)
           bedrockVar => VariableGet(Model % Mesh % Variables, bedrockName,UnFoundFatal=UnFoundFatal)
           bedrockPerm => bedrockVar % Perm
-          zb(1:n) =  bedrockVar % values(bedrockPerm(Element % NodeIndexes)) + toler
+          zb(1:en) =  bedrockVar % values(bedrockPerm(Element % NodeIndexes)) + toler
           NULLIFY(bedrockPerm)
           NULLIFY(bedrockVar)
        CASE (MATERIAL_NAMED)
           Material => GetMaterial( Element )
-          zb(1:n) = ListGetReal( Material,bedrockName, n , & 
+          zb(1:en) = ListGetReal( Material,bedrockName, en , & 
              Element % NodeIndexes, GotIt,UnFoundFatal=UnFoundFatal) + toler
        CASE (MATERIAL_DEFAULT)
           Material => GetMaterial( Element )
-          zb(1:n) = ListGetReal( Material,'Min Zs Bottom',n , & 
+          zb(1:en) = ListGetReal( Material,'Min Zs Bottom',en , & 
              Element % NodeIndexes, GotIt,UnFoundFatal=UnFoundFatal) + toler
        END SELECT
      END IF
      
      CALL GetElementNodes( Nodes )
      
-     DO i = 1, n
-        Nn = Permutation(Element % NodeIndexes(i))
+     DO ii = 1, en
+        Nn = Permutation(Element % NodeIndexes(ii))
         IF (Nn==0) CYCLE
-        !CHANGE
         !To enforce grounding
         IF(AllGrounded) THEN
           VariableValues(Nn) = 1.0_dp
@@ -211,25 +247,28 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
         IF (useLSvar) THEN
           LSvar => VariableGet(Model % Mesh % Variables, LSvarName, UnFoundFatal=UnFoundFatal)
           LSvarPerm => LSvar % Perm
-          z = LSvar % values( LSvarPerm(Element % NodeIndexes(i)) )
+          z = LSvar % values( LSvarPerm(Element % NodeIndexes(ii)) )
         ELSE
           IF (DIM == 2) THEN
-            z = Nodes % y( i )
+            z = Nodes % y( ii )
           ELSE IF (DIM == 3) THEN
-            z = Nodes % z( i )
+            z = Nodes % z( ii )
           END IF
 
         END IF
         
         ! Geometrical condition. Is the node is above the bedrock 
         ! (plus the tolerance)?  Note: zb includes tolerance.
-        IF (z > zb(i)) THEN
+        IF (z > zb(ii)) THEN
           VariableValues(Nn) = -1.0_dp
         ELSE
           VariableValues(Nn) = 1.0_dp
         END IF
      END DO
   END DO
+
+  ! Check connectivity of ungrounded regions to the front (previously GMvalid solver)
+  IF (CheckConn) CALL FrontConn( )
   
   !--------------------------------------------------------------
   ! Grounding line loop to label grounded points at grounding Line.
@@ -241,77 +280,278 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
   !  to 0 (i.e. this node is on the grounding line).  
   DO t = 1, Solver % NumberOfActiveElements     
      Element => GetActiveElement(t)
-     n = GetElementNOFNodes()
+     en = GetElementNOFNodes()
      CALL GetElementNodes( Nodes )
      MSum = 0
      ZSum = 0
      
-     DO i = 1, n
-        Nn = Permutation(Element % NodeIndexes(i))
+     DO ii = 1, en
+        Nn = Permutation(Element % NodeIndexes(ii))
         IF (Nn==0) CYCLE
         MSum = MSum + VariableValues(Nn)
         IF (ABS(VariableValues(Nn))<AEPS) ZSum = ZSum + 1.0_dp
      END DO
-     
-     IF (MSum + ZSum < n) THEN
-        DO i = 1, n
-           Nn = Permutation(Element % NodeIndexes(i))
+
+     IF (MSum + ZSum < en) THEN
+        DO ii = 1, en
+           Nn = Permutation(Element % NodeIndexes(ii))
            IF (Nn==0) CYCLE
            IF (ABS(VariableValues(Nn)-1.0_dp)<AEPS) THEN
               VariableValues(Nn) = 0.0_dp
-              IF (DIM==2) PRINT *, 'Grounding Line, x', Nodes % x( i )
-              IF (DIM==3) PRINT *, 'Grounding Line, (x,y)', Nodes % x( i ), Nodes % y( i )
+              IF (DIM==2) PRINT *, 'Grounding Line, x', Nodes % x( ii )
+              IF (DIM==3) PRINT *, 'Grounding Line, (x,y)', Nodes % x( ii ), Nodes % y( ii )
            END IF
         END DO
      END IF
 
-    !CHANGE
+     IF (CheckConn) THEN
+        MSum = 0
+        ZSum = 0
+        DO ii = 1, en
+           Nn = ConnMaskPerm(Element % NodeIndexes(ii))
+           IF (Nn==0) CYCLE
+           MSum = MSum + ConnMaskVar % Values(Nn)
+           IF (ABS(VariableValues(Nn))<AEPS) ZSum = ZSum + 1.0_dp
+        END DO
+        IF (MSum + ZSum < en) THEN
+           DO ii = 1, en
+              Nn = ConnMaskPerm(Element % NodeIndexes(ii))
+              IF (Nn==0) CYCLE
+              IF (ABS(ConnMaskVar % Values(Nn)-1.0_dp)<AEPS) THEN
+                 ConnMaskVar % Values(Nn) = 0.0_dp
+              END IF
+           END DO
+        END IF
+     END IF
+
     !To label all basal frontal nodes not already ungrounded or on GL as on GL -
     !by definition, they're the last grounded node. Also necessary to make
     !plumes work properly.
      IF(ASSOCIATED(FrontVar)) THEN
-       DO i=1, n
-         Nn = FrontVar % Perm(Element % NodeIndexes(i))
+       DO ii=1, en
+         Nn = FrontVar % Perm(Element % NodeIndexes(ii))
          IF(Nn==0) CYCLE
-         Nn = Permutation(Element % NodeIndexes(i))
+         Nn = Permutation(Element % NodeIndexes(ii))
          IF(Nn==0) CYCLE
          IF (VariableValues(Nn) > 0.0) VariableValues(Nn) = 0.0_dp
        END DO
      END IF
   END DO
   
-  IF ( ParEnv % PEs>1 ) CALL ParallelSumVector( Solver % Matrix, VariableValues, 1 )
- 
+  IF (CheckConn) THEN
+     IF ( ParEnv % PEs>1 ) CALL ParallelSumVector( Solver % Matrix, ConnMaskVar % Values, OPER_MIN )
+  END IF
+  IF ( ParEnv % PEs>1 ) CALL ParallelSumVector( Solver % Matrix, VariableValues, OPER_MIN )
+  
   CALL INFO( SolverName , 'Done')
- 
-END SUBROUTINE GroundedSolver 
-!------------------------------------------------------------------------------
-SUBROUTINE GroundedSolverInit( Model,Solver,dt,TransientSimulation )
-!------------------------------------------------------------------------------
-!******************************************************************************
-!
-! for Grounded Mask initialisation purpose
-! same method than above
-!
-!******************************************************************************
-  USE DefUtils
+  
+CONTAINS
+  
+  ! *****************************************************************************/
+  ! * An improved version of the routine to calculate basal melt rates on
+  ! * ungrounded ice, producing a validity mask instead (1 = ungrounded area
+  ! * connected to the ice front; 0 = isolated patch).
+  ! ******************************************************************************
+  ! *
+  ! *  Authors: Samuel Cook
+  ! *  Email:   samuel.cook@univ-grenoble-alpes.fr
+  ! *  Web:     http://www.csc.fi/elmer
+  ! *  Address: CSC - IT Center for Science Ltd.
+  ! *           Keilaranta 14
+  ! *           02101 Espoo, Finland
+  ! *
+  ! *  Original Date: 08.2019
+  ! *
+  ! ****************************************************************************/
+  SUBROUTINE FrontConn ()
+    USE Types
+    USE CoordinateSystems
+    USE DefUtils
+    USE ElementDescription
+    USE CalvingGeometry
+    
+    IMPLICIT NONE
+    
+    !-----------------------------------
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Matrix_t), POINTER :: Matrix
+    TYPE(Variable_t), POINTER :: Var, GroundedVar
+    TYPE(CrevasseGroup3D_t), POINTER :: FloatGroups, CurrentGroup, DelGroup
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Nodes_t) :: ElementNodes
+    TYPE(GaussIntegrationPoints_t) :: IntegStuff
+    
+    REAL(KIND=dp) :: GMCheck, SMeltRate, WMeltRate, SStart, SStop, &
+         TotalArea, TotalBMelt, ElemBMelt, s, t, season,&
+         SqrtElementMetric,U,V,W,Basis(Model % MaxElementNodes)
+    INTEGER :: NoNodes, j, FaceNodeCount, GroupNodeCount, county, &
+         Active, ierr, kk, FoundNew, AllFoundNew
+    INTEGER, PARAMETER :: FileUnit = 75, MaxFloatGroups = 1000, MaxNeighbours = 20
+    INTEGER, POINTER :: Perm(:), InvPerm(:), FrontPerm(:)=>NULL(), Neighbours(:,:), &
+         NeighbourHolder(:), NoNeighbours(:), NodeIndexes(:)
+    INTEGER, ALLOCATABLE :: AllGroupNodes(:), PartNodeCount(:), AllPartGroupNodes(:), &
+         disps(:)
+    LOGICAL :: Found, OutputStats, Visited=.FALSE., Debug, stat, Summer
+    CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, GMaskVarName, FrontMaskName, OutfileName, mode
+    
+    Debug = .FALSE.
+    
+    SolverName = "GM Front connectivity"
+    Mesh => Solver % Mesh
+    
+    !Identify nodes on the front
+    FrontMaskName = "Calving Front Mask"
+    CALL MakePermUsingMask( Model, Solver, Mesh, FrontMaskName, &
+         .FALSE., FrontPerm, FaceNodeCount)
+    
+    !Need the matrix for finding neighbours
+    Matrix => Solver % Matrix
+    
+    IF(.NOT. ASSOCIATED(ConnMaskVar)) CALL Fatal(SolverName, "Front connectivity needs a variable!")
+    ConnMaskVar % Values = 1.0_dp
+    
+    NoNodes = COUNT(ConnMaskPerm > 0)
 
-  IMPLICIT NONE
-!------------------------------------------------------------------------------
-  TYPE(Solver_t) :: Solver
-  TYPE(Model_t) :: Model
+    !    Model, Solver, dt, TransientSimulation, ConnMaskVar
+!    Var => Solver % Variable
+!          VariableValues(Nn) = 1.0_dp
+!  PointerToVariable => Solver % Variable
+!  Permutation  => PointerToVariable % Perm
+!  VariableValues => PointerToVariable % Values
 
-  REAL(KIND=dp) :: dt
-  LOGICAL :: TransientSimulation
+!    GMaskVarName = ListGetString(Params, "GroundedMask Variable", Found)
+!    IF(.NOT. Found) GMaskVarName = "GroundedMask"
+!    GroundedVar => VariableGet(Mesh % Variables, GMaskVarName, .TRUE., UnfoundFatal=.TRUE.)
 
-  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName = 'GroundedSolverInit'
-
-  CALL FATAL( SolverName, 'This solver is deprecated due to code redundancy, &
-       please GroundedSolver instead' )
-
-!------------------------------------------------------------------------------
-END SUBROUTINE GroundedSolverInit 
-!------------------------------------------------------------------------------
-
-
+    GroundedVar => Solver % Variable
+    
+    GMCheck = -1.0_dp
+    
+    !Set up inverse perm for FindNodeNeighbours
+    InvPerm => CreateInvPerm(Matrix % Perm) !Create inverse perm for neighbour search
+    ALLOCATE(Neighbours(Mesh % NumberOfNodes, MaxNeighbours), NoNeighbours(Mesh % NumberOfNodes))
+    Neighbours = 0
+    
+    !Find neighbours for each node on the bed
+    DO ii = 1, Mesh % NumberOfNodes
+       IF(ConnMaskPerm(ii) <= 0) CYCLE
+       
+       NeighbourHolder => FindNodeNeighbours(ii, Matrix, &
+            Matrix % Perm, 1, InvPerm)
+       
+       Neighbours(ii,1:SIZE(NeighbourHolder)) = NeighbourHolder
+       NoNeighbours(ii) = SIZE(NeighbourHolder)
+       DEALLOCATE(NeighbourHolder)
+    END DO
+    
+    !Reuse some old calving code
+    !Find groups of connected floating nodes on the base
+    FloatGroups => NULL()
+    CALL FindCrevasseGroups(Mesh, GroundedVar, Neighbours, &
+         -0.5_dp, FloatGroups)
+    
+    !Check groups are valid (connected to front)
+    CurrentGroup => FloatGroups
+    DO WHILE(ASSOCIATED(CurrentGroup))
+       CurrentGroup % FrontConnected = .FALSE.
+       DO ii=1, CurrentGroup % NumberOfNodes
+          
+          IF(FrontPerm(CurrentGroup % NodeNumbers(ii)) > 0) THEN
+             CurrentGroup % FrontConnected = .TRUE.
+             EXIT
+          END IF
+       END DO
+       CurrentGroup => CurrentGroup % Next
+    END DO
+    
+    DO kk=1,MaxFloatGroups
+       FoundNew = 0
+       !Count and gather nodes from all valid groups
+       GroupNodeCount = 0
+       county = 0
+       DO ii=1,2
+          IF(ii==2) ALLOCATE(AllGroupNodes(GroupNodeCount))
+          CurrentGroup => FloatGroups
+          DO WHILE(ASSOCIATED(CurrentGroup))
+             IF(CurrentGroup % FrontConnected) THEN
+                IF(ii==1) THEN
+                   GroupNodeCount = GroupNodeCount + CurrentGroup % NumberOfNodes
+                ELSE
+                   DO j=1, CurrentGroup % NumberOfNodes
+                      county = county + 1
+                      AllGroupNodes(county) = Mesh % ParallelInfo % GlobalDOFs(CurrentGroup % NodeNumbers(j))
+                   END DO
+                END IF
+             END IF
+             CurrentGroup => CurrentGroup % Next
+          END DO
+       END DO
+       
+       !Distribute info to/from all partitions about groups connected to front
+       ALLOCATE(PartNodeCount(ParEnv % PEs))
+       
+       CALL MPI_ALLGATHER(GroupNodeCount, 1, MPI_INTEGER, PartNodeCount, 1, &
+            MPI_INTEGER, MPI_COMM_WORLD, ierr)
+       
+       ALLOCATE(AllPartGroupNodes(SUM(PartNodeCount)), disps(ParEnv % PEs))
+       disps(1) = 0
+       DO ii=2,ParEnv % PEs
+          disps(ii) = disps(ii-1) + PartNodeCount(ii-1)
+       END DO
+       
+       CALL MPI_ALLGATHERV(AllGroupNodes, GroupNodeCount, MPI_INTEGER, &
+            AllPartGroupNodes, PartNodeCount, disps, MPI_INTEGER, MPI_COMM_WORLD, ierr)
+       
+       !Cycle unconnected groups, looking for partition boundary in connected groups
+       CurrentGroup => FloatGroups
+       DO WHILE(ASSOCIATED(CurrentGroup))
+          IF(.NOT. CurrentGroup % FrontConnected) THEN
+             DO ii=1,CurrentGroup % NumberOfNodes
+                
+                IF(ANY(Mesh % ParallelInfo % GlobalDOFs(CurrentGroup % NodeNumbers(ii)) == &
+                     AllPartGroupNodes)) THEN
+                   CurrentGroup % FrontConnected = .TRUE.
+                   FoundNew = 1
+                END IF
+                
+             END DO
+          END IF
+          CurrentGroup => CurrentGroup % Next
+       END DO
+       CALL MPI_ALLREDUCE(FoundNew, AllFoundNew, 1, MPI_INTEGER, MPI_MAX, ELMER_COMM_WORLD, ierr)
+       IF(AllFoundNew == 1) THEN
+          DEALLOCATE(AllGroupNodes, PartNodeCount, AllPartGroupNodes, disps)
+       ELSE
+          EXIT
+       END IF
+       IF (kk.EQ.MaxFloatGroups) CALL FATAL( SolverName, 'Hard coded loop limit reached; needs recoding!' )
+    END DO !k
+    
+    !Cycle all connected groups, setting melt rate
+    CurrentGroup => FloatGroups
+    DO WHILE(ASSOCIATED(CurrentGroup))
+       IF(CurrentGroup % FrontConnected) THEN
+          DO ii=1,CurrentGroup % NumberOfNodes
+             ConnMaskVar % Values(ConnMaskVar % Perm(CurrentGroup % NodeNumbers(ii))) = GMCheck
+          END DO
+       END IF
+       CurrentGroup => CurrentGroup % Next
+    END DO
+    
+    !Deallocate floatgroups linked list
+    CurrentGroup => FloatGroups
+    DO WHILE(ASSOCIATED(CurrentGroup))
+       DelGroup => CurrentGroup
+       CurrentGroup => CurrentGroup % Next
+       
+       IF(ASSOCIATED(DelGroup % NodeNumbers)) DEALLOCATE(DelGroup % NodeNumbers)
+       IF(ASSOCIATED(DelGroup % FrontNodes)) DEALLOCATE(DelGroup % FrontNodes)
+       IF(ASSOCIATED(DelGroup % BoundaryNodes)) DEALLOCATE(DelGroup % BoundaryNodes)
+       DEALLOCATE(DelGroup)
+    END DO
+    
+    DEALLOCATE(Neighbours, NoNeighbours, FrontPerm, InvPerm)
+  END SUBROUTINE FrontConn
+  
+END SUBROUTINE GroundedSolver
 
