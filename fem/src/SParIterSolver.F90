@@ -1461,6 +1461,8 @@ SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
   INTEGER, DIMENSION(:), ALLOCATABLE :: VecEPerNB
   INTEGER, ALLOCATABLE :: Owner(:), Aperm(:)
 
+  REAL(KIND=dp), TARGET :: DummyPrecVals(1)
+
   REAL(KIND=dp), POINTER :: Vals(:)
   INTEGER, POINTER :: nb(:), Rows(:), Cols(:)
 
@@ -1503,7 +1505,7 @@ INTEGER::inside
                    PE, Owner(n), ILUn, BILU, hypremethod, precond, &
                    symmetry, maxlevel, hypre_intpara(10), verbosity,fcomm,rounds
         REAL(KIND=c_double) :: Vals(n),Xvec(n),RHSvec(n),TOL,threshold,filter, &
-                            hypre_dppara(5), PrecVals(n)
+                            hypre_dppara(5), PrecVals(*)
         INTEGER(KIND=C_INTPTR_T) :: hypreContainer
       END SUBROUTINE SolveHYPRE1
 
@@ -1803,9 +1805,13 @@ INTEGER::inside
         ! setup solver/preconditioner
 
         IF (SourceMatrix % Hypre == 0) THEN
-          precond=0
           PrecVals => SourceMatrix % PrecValues
-          IF(ASSOCIATED(PrecVals)) precond=1
+          IF(ASSOCIATED(PrecVals)) THEN
+            precond=1
+          ELSE
+            precond=0
+            PrecVals => DummyPrecVals
+          END IF
 
           CALL SolveHYPRE1( SourceMatrix % NumberOfRows, Rows, Cols, Vals, Precond, &
               PrecVals, Aperm, Owner,  ILUn, BILU, hypremethod,hypre_intpara, hypre_dppara,&
