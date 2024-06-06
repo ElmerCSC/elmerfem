@@ -35,7 +35,7 @@ using namespace rocalution;
     init_rocalution();
 
     // Print rocALUTION info
-//    info_rocalution();
+    // info_rocalution();
 
     // rocALUTION objects
     LocalVector<double> x;
@@ -68,7 +68,7 @@ using namespace rocalution;
     e.Allocate("e", mat.GetN());
 
     // Initialize rhs & x
-//     for(i=0; i<*n; i++) { rhs[i] = b[i]; x[i] = x_out[i]; }
+    //  for(i=0; i<*n; i++) { rhs[i] = b[i]; x[i] = x_out[i]; }
 
     rhs.CopyFromData(b);
     x.CopyFromData(x_out);
@@ -105,10 +105,10 @@ using namespace rocalution;
     // Solve A x = rhs
     ls.Solve(rhs, &x);
 
-//      LocalVector<double> x0;
-//      x0.Allocate("x0", mat.GetN());
-//      x0.CopyFrom(x);
-      for(i=0; i<*n; i++) x_out[i] = x[i];
+    LocalVector<double> x0;
+    x0.Allocate("x0", mat.GetN());
+    x0.CopyFrom(x);
+    for(i=0; i<*n; i++) x_out[i] = x0[i];
 
     // Stop time measurement
     tack = rocalution_time();

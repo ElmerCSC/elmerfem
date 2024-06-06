@@ -14812,6 +14812,8 @@ END FUNCTION SearchNodeL
         CALL BlockSolveExt( A, x, b, Solver )
       CASE('amgx')
         CALL AMGXSolver( A, x, b, Solver )
+      CASE('rocalution')
+        CALL ROCSolver( A, x, b, Solver )
       CASE DEFAULT
         CALL DirectSolver( A, x, b, Solver )        
       END SELECT
@@ -14831,6 +14833,8 @@ END FUNCTION SearchNodeL
         CALL BlockSolveExt( A, x, b, Solver )
       CASE('amgx')
         CALL AMGXSolver( A, x, b, Solver )
+      CASE('rocalution')
+        CALL ROCSolver( A, x, b, Solver )
      CASE DEFAULT
         CALL DirectSolver( A, x, b, Solver )
       END SELECT
@@ -15226,6 +15230,52 @@ END FUNCTION SearchNodeL
 #endif
 !------------------------------------------------------------------------------
   END SUBROUTINE AMGXSolver
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+  SUBROUTINE ROCSolver( A, x, b, Solver )
+!------------------------------------------------------------------------------
+    USE iso_c_binding, only: C_INTPTR_T, C_CHAR, C_NULL_CHAR
+
+    TYPE(Solver_t) :: Solver
+    TYPE(Matrix_t) :: A
+    REAL(KIND=dp) :: x(:), b(:)
+
+#ifdef HAVE_ROCALUTION
+    INTERFACE
+      SUBROUTINE ROCSolve(n, rows, cols, vals, b, x, nonlin_update, comm ) BIND(C, Name="ROCSolve")
+
+         USE Types
+         USE ISO_C_BINDING, ONLY: C_CHAR, C_INTPTR_T
+
+         IMPLICIT NONE
+
+         REAL(KIND=dp) :: vals(*), b(*), x(*)
+         INTEGER :: rows(*), cols(*), nonlin_update, n, comm
+      END SUBROUTINE ROCSolve
+    END INTERFACE
+
+
+    INTEGER :: nonlin_update, i, j, n, me
+    LOGICAL :: found, isparallel 
+
+    nonlin_update = 1
+    IF ( .NOT. ListGetLogical( Solver % Values, 'Linear System Refactorize', Found ) ) &
+      nonlin_update = 0;
+
+    isParallel = Parenv % PEs>1
+    me =  Parenv % MyPe
+    n = A % NumberOfRows
+
+    CALL ROCSolve( n, A % Rows-1, A % Cols-1, A % Values,  &
+          b, x, nonlin_update, ELMER_COMM_WORLD )
+
+#else
+    CALL Fatal('ROCSolver', "Rocalution doesn't seem to be included.")
+#endif
+!------------------------------------------------------------------------------
+  END SUBROUTINE ROCSolver
 !------------------------------------------------------------------------------
 
 
