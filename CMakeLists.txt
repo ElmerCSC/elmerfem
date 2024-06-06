@@ -544,6 +544,14 @@ IF (AMGX_FOUND)
   LINK_DIRECTORIES(${CUDA_LIBDIR})
 ENDIF()
 
+SET(WITH_ROCALUTION TRUE)
+IF (WITH_ROCALUTION)
+  SET(HAVE_ROCALUTION TRUE)
+  MARK_AS_ADVANCED(HAVE_ROCALUTION)
+  INCLUDE_DIRECTORIES("/appl/lumi/SW/LUMI-23.09/G/EB/rocm/5.6.1/include")
+  LINK_DIRECTORIES("/appl/lumi/SW/LUMI-23.09/G/EB/rocm/5.6.1/lib64")
+ENDIF()
+
   
 # Check if Fortran compiler supports procedure pointer
 INCLUDE(testProcedurePointer)
