@@ -421,13 +421,13 @@ MODULE StressLocal
            PreStrain(i) = SUM( NodalPreStrain(i,1:n)*Basis(1:n) )
            PreStress(i) = SUM( NodalPreStress(i,1:n)*Basis(1:n) )
          END DO
-         PreStress = PreStress + MATMUL( C, PreStrain  )
+         PreStress = PreStress - MATMUL( C, PreStrain  )
          
          DO i=1,6
            StrainLoad(i) = SUM( NodalStrainLoad(i,1:n)*Basis(1:n) )
            StressLoad(i) = SUM( NodalStressLoad(i,1:n)*Basis(1:n) )
          END DO
-         StressLoad = StressLoad + MATMUL( C, StrainLoad )
+         StressLoad = MATMUL( C, StrainLoad ) - StressLoad
          
          IF( .NOT. ActiveGeometricStiffness ) THEN 
            StressTensor = 0.0d0
@@ -975,7 +975,7 @@ CONTAINS
           StrainLoad(i) = SUM( NodalStrainLoad(i,1:n)*Basis(1:n) )
           StressLoad(i) = SUM( NodalStressLoad(i,1:n)*Basis(1:n) )
        END DO
-       StressLoad = StressLoad + MATMUL( C, StrainLoad )
+       StressLoad = MATMUL( C, StrainLoad ) - StressLoad
 
        !
        ! Loop over basis functions (of both unknowns and weights):
