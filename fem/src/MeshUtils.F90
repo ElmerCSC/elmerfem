@@ -24398,6 +24398,7 @@ CONTAINS
     ! Compute the true number of different pieces
     IF( MaxIndex == 1 ) THEN
       NoPieces = 1
+      IF(PRESENT(PieceIndex)) PieceIndex = 1
     ELSE
       ALLOCATE( PiecePerm( MaxIndex ) ) 
       PiecePerm = 0
@@ -24410,20 +24411,17 @@ CONTAINS
           PiecePerm(j) = NoPieces 
         END IF
       END DO
+      ! Use the compact numbering of mesh pieces
+      DO i=1,n
+        j = MeshPiece(i)
+        IF(j>0) MeshPiece(i) = PiecePerm(j)
+      END DO
+      IF(PRESENT(PieceIndex)) PieceIndex = MeshPiece
     END IF
     CALL Info('CalculateMeshPieces',&
         'Number of separate pieces in mesh is '//I2S(NoPieces),Level=5)
-
-    ! Use the compact numbering of mesh pieces
-    DO i=1,n
-      j = MeshPiece(i)
-      IF(j>0) MeshPiece(i) = PiecePerm(j)
-    END DO
-        
-    IF(PRESENT(PieceIndex)) THEN
-      PieceIndex = MeshPiece
-      RETURN
-    END IF
+    
+    IF(PRESENT(PieceIndex)) RETURN
     
     i = ListGetInteger( CurrentModel % Simulation,'Desired Mesh Pieces',Found )
     IF( Found ) THEN
