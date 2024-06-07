@@ -136,7 +136,6 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
 
     IF (Transient) THEN
       CalcVelocities = GetLogical(SolverParams, 'Calculate Velocities', Found)
-      IF (.NOT.Found) CalcVelocities = .FALSE.
     ELSE
       CalcVelocities = .FALSE.
     END IF
@@ -453,9 +452,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
 
        IF (Transient) THEN
          CalcVelocities = GetLogical(SolverParams, 'Calculate Velocities', Found)
-         IF (.NOT.Found) THEN
-           CalcVelocities = .FALSE.
-         ELSE
+         IF (Found) THEN
            DisplacementVelVar => VariableGet( Mesh % Variables, 'Displacement Velocity' )
            IF (ASSOCIATED(DisplacementVelVar)) THEN
              DisplacementVel => DisplacementVelVar % Values
@@ -580,14 +577,12 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
      OrigEigenAnalysis = EigenAnalysis
 
      StabilityAnalysis = GetLogical( SolverParams, 'Stability Analysis', Found )
-     IF( .NOT. Found ) StabilityAnalysis = .FALSE.
 
      IF( StabilityAnalysis .AND. (CurrentCoordinateSystem() /= Cartesian) ) &
          CALL Fatal( 'StressSolve', &
           'Only cartesian coordinate system is allowed in stability analysis.' )
 
      GeometricStiffness = GetLogical( SolverParams, 'Geometric Stiffness', Found )
-     IF (.NOT. Found ) GeometricStiffness = .FALSE.
 
      IF( GeometricStiffness .AND. (CurrentCoordinateSystem() /= Cartesian) ) &
           CALL Fatal( 'StressSolve', &
@@ -605,8 +600,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
      HarmonicAnalysis = getLogical( SolverParams, 'Harmonic Analysis', Found ) .OR. &
          getLogical( SolverParams,'Harmonic Mode',Found ) 
 !------------------------------------------------------------------------------
-     Refactorize = GetLogical( SolverParams, 'Linear System Refactorize', Found )
-     IF ( .NOT. Found ) Refactorize = .TRUE.
+     Refactorize = GetLogical( SolverParams, 'Linear System Refactorize', Found, DefValue = .TRUE. )
 
      IF ( Transient .AND. .NOT. Refactorize .AND. dt /= Prevdt ) THEN
        CALL ListAddLogical( SolverParams, 'Linear System Refactorize', .TRUE. )
@@ -635,8 +629,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
      ModelLumping = GetLogical( SolverParams, 'Model Lumping', Found )
      IF ( ModelLumping ) THEN       
        IF(DIM /= 3) CALL Fatal('StressSolve','Model Lumping implemented only for 3D')
-       FixDisplacement = GetLogical( SolverParams, 'Fix Displacement', Found )
-       IF(.NOT. Found) FixDisplacement = .TRUE.
+       FixDisplacement = GetLogical( SolverParams, 'Fix Displacement', Found, DefValue = .TRUE. )
        IF(FixDisplacement) THEN
          CALL Info( 'StressSolve', 'Using six fixed displacement to compute the spring matrix',Level=5 ) 
        ELSE
@@ -1760,11 +1753,9 @@ CONTAINS
          Permutation = 0
        END IF
 
-       OptimizeBW = GetLogical( StSolver % Values, 'Optimize Bandwidth', Found )
-       IF ( .NOT. Found ) OptimizeBW = .TRUE.
+       OptimizeBW = GetLogical( StSolver % Values, 'Optimize Bandwidth', Found, DefValue = .TRUE. )
 
-       GlobalBubbles = GetLogical(SolverParams,'Bubbles in Global System',Found )
-       IF (.NOT.Found ) GlobalBubbles = .TRUE.
+       GlobalBubbles = GetLogical(SolverParams,'Bubbles in Global System',Found, DefValue = .TRUE. )
 
        IF( ListGetLogicalAnyEquation( Model,'Calculate Stresses' ) ) THEN
          UseMask = .TRUE.
