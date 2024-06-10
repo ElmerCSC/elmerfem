@@ -34,7 +34,7 @@ Solver 1
 
   Variable = "Potential"
   Variable DOFs = 1
-  Procedure = "x" "PoissonSolver"
+  Procedure = "Poisson" "PoissonSolver"
 
   Element = "p:2"
 
