@@ -789,7 +789,8 @@ SUBROUTINE StatElecSolver_post( Model,Solver,dt,Transient )
       IF( ParEnv % MyPe /= Element % PartIndex ) CYCLE
     END IF
     n  = GetElementNOFNodes(Element)
-    CALL LocalPostAssembly( Element, n, InitHandles, MASS, FORCE )
+    nd = GetElementNOFDOFs(Element)
+    CALL LocalPostAssembly( Element, n, nd, InitHandles, MASS, FORCE )
     CALL LocalPostSolve( Element, n, MASS, FORCE )
   END DO
 
@@ -835,10 +836,10 @@ SUBROUTINE StatElecSolver_post( Model,Solver,dt,Transient )
 
 CONTAINS
    
-  SUBROUTINE LocalPostAssembly( Element, n, InitHandles, MASS, FORCE )
+  SUBROUTINE LocalPostAssembly( Element, n, nd, InitHandles, MASS, FORCE )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    INTEGER, INTENT(IN) :: n
+    INTEGER, INTENT(IN) :: n, nd
     TYPE(Element_t), POINTER :: Element
     LOGICAL, INTENT(INOUT) :: InitHandles
     REAL(KIND=dp) :: MASS(:,:), FORCE(:,:)
@@ -873,13 +874,14 @@ CONTAINS
     IF (.NOT. ALLOCATED(Basis)) THEN
       m = Mesh % MaxElementDOFs   
       ALLOCATE(Basis(m), dBasisdx(m,3), ElementPot(m), STAT=allocstat)      
+      Basis = 0.0_dp; dBasisdx = 0.0_dp; ElementPot = 0.0_dp
       IF (allocstat /= 0) THEN
         CALL Fatal(Caller,'Local storage allocation failed')
       END IF
     END IF
 
-    CALL GetElementNodes( Nodes, UElement=Element )
-    CALL GetScalarLocalSolution( ElementPot ) 
+    CALL GetElementNodes( Nodes, UElement=Element, USolver=Solver )
+    CALL GetScalarLocalSolution( ElementPot, UElement=Element, USolver=Solver) 
     
     ! Initialize
     MASS  = 0._dp
@@ -914,7 +916,7 @@ CONTAINS
       ! Compute the electric field from the potential: E = -grad Phi
       !------------------------------------------------------------------------------
       DO j = 1, DIM
-        Grad(j) = SUM( dBasisdx(1:n,j) * ElementPot(1:n) )
+        Grad(j) = SUM( dBasisdx(1:nd,j) * ElementPot(1:nd) )
       END DO
       IF( CalcField ) THEN
         DO j=1,dim
