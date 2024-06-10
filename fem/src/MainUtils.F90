@@ -5049,9 +5049,11 @@ CONTAINS
 !------------------------------------------------------------------------------
      MeActive = ASSOCIATED(Solver % Matrix)
 
-     IF ( MeActive .AND. ASSOCIATED(Solver % Matrix % ParMatrix) ) THEN
-       ParEnv => Solver % Matrix % ParMatrix % ParEnv
-       ParEnv % ActiveComm = Solver % Matrix % Comm
+     IF ( MeActive ) THEN
+       IF (  ASSOCIATED(Solver % Matrix % ParMatrix) ) THEN
+         ParEnv => Solver % Matrix % ParMatrix % ParEnv
+         ParEnv % ActiveComm = Solver % Matrix % Comm
+       END IF
      END IF
 
      IF ( MeActive ) MeActive = (Solver % Matrix % NumberOfRows > 0)
