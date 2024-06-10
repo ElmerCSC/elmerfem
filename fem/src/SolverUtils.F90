@@ -5099,12 +5099,15 @@ CONTAINS
       Mesh   => Solver % Mesh
       EqName = ListGetString( Solver % Values, 'Equation', GotIt )
 
-      ALLOCATE(PassPerm(Mesh % NumberOfNodes),NodeIndexes(1));PassPerm=0
-      DO i=0,Mesh % PassBCCnt-1
-        j=Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements-i
-        PassPerm(Mesh % Elements(j) % NodeIndexes)=1
-      END DO
-
+      IF( Passive ) THEN
+        ALLOCATE(PassPerm(Mesh % NumberOfNodes),NodeIndexes(1))
+        PassPerm = 0
+        DO i=0,Mesh % PassBCCnt-1
+          j=Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements-i
+          PassPerm(Mesh % Elements(j) % NodeIndexes)=1
+        END DO
+      END IF
+        
       DO t=1,Solver % Mesh % NumberOfBulkElements
         Element => Mesh % Elements(t)
         IF( Element % BodyId <= 0 .OR. Element % BodyId > Model % NumberOfBodies ) THEN
@@ -5122,12 +5125,8 @@ CONTAINS
 
         GotIt = CheckElementEquation( Model, Element, EqName ) 
         
-        IF ( ActivePart(bf_id) .OR. .NOT. GotIt ) THEN
-          n = Element % TYPE % NumberOfNodes
-          Indexes(1:n) = Element % NodeIndexes
-        ELSE
-          n = mGetElementDOFs( Indexes, Uelement = Element, USolver = Model % Solver )
-        END IF
+        n = Element % TYPE % NumberOfNodes
+        Indexes(1:n) = Element % NodeIndexes
 
         ValueList => Model % BodyForces(bf_id) % Values
         IF(.NOT. ASSOCIATED( ValueList ) ) CYCLE
@@ -5156,9 +5155,17 @@ CONTAINS
           CALL SetElementValues(n)
         END IF
         
+        ! Set the higher p-dofs related to Dirichlet BC's to zero. 
+        IF ( isActivePElement(Element, Solver) ) THEN
+          nd = mGetElementDOFs( Indexes, Uelement = Element, USolver = Model % Solver )
+          DO i=n+1,nd            
+            CALL SetSinglePoint(Indexes(i),DOF,0.0_dp,.TRUE.)            
+          END DO
+        END IF
+        
       END DO
       
-      DEALLOCATE(NodeIndexes,PassPerm)
+      IF(Passive) DEALLOCATE(PassPerm,NodeIndexes)
     END IF
     
     DEALLOCATE(ActivePart, ActiveCond)
