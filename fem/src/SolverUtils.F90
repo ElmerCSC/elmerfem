@@ -14047,7 +14047,7 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
 !> Prints the values of the CRS matrix to standard output.
 !------------------------------------------------------------------------------
-  SUBROUTINE PrintMatrix( A, Parallel, CNumbering,SaveMass, SaveDamp, SaveStiff)
+  SUBROUTINE PrintMatrix( A, Parallel, CNumbering,SaveMass, SaveDamp, SaveStiff, SkipZeros )
 !------------------------------------------------------------------------------
     TYPE(Matrix_t) :: A            !< Structure holding matrix
     LOGICAL :: Parallel    !< are we in parallel mode?
@@ -14055,10 +14055,11 @@ END FUNCTION SearchNodeL
     LOGICAL, OPTIONAL :: SaveMass  !< Should we save the mass matrix
     LOGICAL, OPTIONAL :: SaveDamp  !< Should we save the damping matrix
     LOGICAL, OPTIONAL :: SaveStiff !< Should we save the stiffness matrix
+    LOGICAL, OPTIONAL :: SkipZeros !< Should we write zeros or not
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,n,IndMass,IndDamp,IndStiff,IndMax,row,col
-    LOGICAL :: DoMass, DoDamp, DoStiff, Found
-    REAL(KIND=dp) :: Vals(3)
+    LOGICAL :: DoMass, DoDamp, DoStiff, Found, Skip0
+    REAL(KIND=dp) :: Vals(3), val
     INTEGER, ALLOCATABLE :: Owner(:)
 
     DoMass = .FALSE.
@@ -14082,6 +14083,9 @@ END FUNCTION SearchNodeL
       DoStiff = .FALSE. 
     END IF
 
+    Skip0 = .FALSE.
+    IF(PRESENT(SkipZeros)) Skip0 = SkipZeros
+        
     IF(.NOT. (DoStiff .OR. DoDamp .OR. DoMass ) ) THEN
       CALL Warn('CRS_PrintMatrix','Saving just the topology!')
     END IF
@@ -14123,8 +14127,6 @@ END FUNCTION SearchNodeL
           END IF
         END IF
 
-        WRITE(1,'(I0,A,I0,A)',ADVANCE='NO') row,' ',col,' '
-
         IF( DoStiff ) THEN
           Vals(IndStiff) = A % Values(j)
         END IF
@@ -14135,6 +14137,11 @@ END FUNCTION SearchNodeL
           Vals(IndMass) = A % MassValues(j)
         END IF
 
+        IF( Skip0 ) THEN
+          IF(SUM(ABS(Vals(1:IndMax))) < EPSILON(val)) CYCLE
+        END IF
+          
+        WRITE(1,'(I0,A,I0,A)',ADVANCE='NO') row,' ',col,' '
         IF( IndMax > 0 ) THEN
           WRITE(1,*) Vals(1:IndMax)          
         ELSE
@@ -19639,7 +19646,7 @@ CONTAINS
     INTEGER, POINTER :: Perm(:)
     REAL(KIND=dp), POINTER :: Sol(:)
     INTEGER :: i
-    LOGICAL :: SaveMass, SaveDamp, SavePerm, SaveSol, Found , Parallel, CNumbering
+    LOGICAL :: SaveMass, SaveDamp, SavePerm, SaveSol, Found , Parallel, CNumbering, SkipZeros
     CHARACTER(*), PARAMETER :: Caller = 'SaveLinearSystem'
 !------------------------------------------------------------------------------
 
@@ -19668,6 +19675,8 @@ CONTAINS
 
     SaveDamp = ListGetLogical( Params,'Linear System Save Damp',Found)   
 
+    SkipZeros = ListGetLogical( Params,'Linear System Save Skip Zeros', Found ) 
+    
     IF( PRESENT( LinSysName ) ) THEN
       dumpprefix = TRIM(LinSysName) 
     ELSE
@@ -19679,7 +19688,7 @@ CONTAINS
     IF(Parallel) dumpfile = TRIM(dumpfile)//'.'//I2S(ParEnv % myPE)
     CALL Info(Caller,'Saving matrix to: '//TRIM(dumpfile),Level=5)
     OPEN(1,FILE=dumpfile, STATUS='Unknown')
-    CALL PrintMatrix(A,Parallel,Cnumbering,SaveMass=SaveMass,SaveDamp=SaveDamp)
+    CALL PrintMatrix(A,Parallel,Cnumbering,SaveMass=SaveMass,SaveDamp=SaveDamp,SkipZeros=SkipZeros)
     CLOSE(1)
 
     dumpfile = TRIM(dumpprefix)//'_b.dat'

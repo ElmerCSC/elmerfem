@@ -1103,14 +1103,14 @@ CONTAINS
 
 
 !> Returns a logical flag by its name if found in the list structure, otherwise false
-  FUNCTION GetLogical( List, Name, Found ) RESULT(l)
+  FUNCTION GetLogical( List, Name, Found, UnfoundFatal, DefValue ) RESULT(l)
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name
-     LOGICAL, OPTIONAL :: Found
+     LOGICAL, OPTIONAL :: Found, UnfoundFatal, DefValue
 
      LOGICAL :: l
 
-     l = ListGetLogical( List, Name, Found )
+     l = ListGetLogical( List, Name, Found, UnfoundFatal, DefValue )
   END FUNCTION GetLogical
 
 
