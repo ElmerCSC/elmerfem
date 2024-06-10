@@ -5,12 +5,12 @@ Header
 End
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 50
   Coordinate System = Cartesian
   Simulation Type = Steady
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
-! Post File   = "ptest.ep"
+  Post File   = "ptest.ep"
 ! Output File = "ptest.dat"
 
   Serendipity P Elements = False
@@ -34,7 +34,7 @@ Solver 1
 
   Variable = "Potential"
   Variable DOFs = 1
-  Procedure = "Poisson" "PoissonSolver"
+  Procedure = "x" "PoissonSolver"
 
   Element = "p:2"
 

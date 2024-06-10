@@ -588,6 +588,7 @@ void STDCALLBULL FC_FUNC_(matc_get_array,MATC_GET_ARRAY) (char *name,
            double *values, int *nrows, int *ncols )
 #endif
 {
+void var_copy_transpose(char *name,double *values,int nrows,int ncols);
   var_copy_transpose(name,values,*nrows,*ncols);
 }
 

@@ -2572,9 +2572,9 @@ CONTAINS
       CHARACTER(LEN=256) :: txcmd
 
       character(len=256) :: elmer_home_env
-      CALL getenv("ELMER_HOME", elmer_home_env)
+      CALL get_environment_variable("ELMER_HOME", elmer_home_env)
 
-      !$OMP PARALLEL Shared(parenv, ModelName, elmer_home_env) Private(txcmd, ompthread, lstat) Default(none)
+      !$OMP PARALLEL Shared(mype, ModelName, elmer_home_env) Private(txcmd, ompthread, lstat) Default(none)
       !$OMP CRITICAL
       LuaState = lua_init()
       IF(.NOT. LuaState % Initialized) THEN
@@ -2583,7 +2583,7 @@ CONTAINS
 
       ! Store mpi task and omp thread ids in a table
       LSTAT = lua_dostring(LuaState, 'ELMER_PARALLEL = {}' // c_null_char)
-      write(txcmd,'(A,I0)') 'ELMER_PARALLEL["pe"] = ', parenv % mype
+      write(txcmd,'(A,I0)') 'ELMER_PARALLEL["pe"] = ',  mype
       lstat = lua_dostring(LuaState, txcmd // c_null_char)
 
       ompthread = 1

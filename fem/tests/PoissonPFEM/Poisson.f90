@@ -56,6 +56,10 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
      AllocationsDone = .TRUE.
   END IF
 
+
+print*,'x'; flush(6)
+   call swapmesh(model,solver % mesh, ". 2ndmesh")
+
    !System assembly:
    !----------------
    Active = GetNOFActive()
@@ -157,6 +161,13 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE LCondensate
 !------------------------------------------------------------------------------
+
+
+
+
+!------------------------------------------------------------------------------
+
+           
 
 !------------------------------------------------------------------------------
 END SUBROUTINE PoissonSolver
