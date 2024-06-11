@@ -355,7 +355,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
       END IF
         
       IF(.NOT. ALLOCATED( CoilIndex ) ) THEN
-        ALLOCATE( CoilIndex( Mesh % NumberOfNodes ) )
+        ALLOCATE( CoilIndex( SIZE(LoadVar % Perm) ) )
         CoilIndex = 0
       END IF
       NoCoils = NoCoils + 1
@@ -526,13 +526,6 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
       Norm = DefaultSolve()
       
       PotVar % Values = SolVar % Values
-
-      ! Get the nodal loads i.e. nodal currents in this case
-      LoadVar => VariableGet( Mesh % Variables,&
-          TRIM(SolVar % Name)//' Loads' )
-      IF( .NOT. ASSOCIATED( LoadVar ) ) THEN
-        CALL Fatal(Caller,'> '//TRIM(SolVar % Name)//' < Loads not associated!')
-      END IF
 
       CALL ScalePotential()
         
