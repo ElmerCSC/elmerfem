@@ -18533,7 +18533,8 @@ CONTAINS
     INTEGER, OPTIONAL :: Partition
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,m,MaxNodes,ElmCode,NumElmCodes,ElmCodeList(100),ElmCodeCounts(100),&
-         Parent1,Parent2, ElemID, nneigh, Constraint, meshBC, NumElements, NoShared
+        Parent1,Parent2, ElemID, nneigh, Constraint, meshBC, NumElements, NoShared, &
+        iostat, BCWarns
     INTEGER, POINTER :: BList(:)
     INTEGER, ALLOCATABLE :: ElementCodes(:)
     LOGICAL :: Parallel, WarnNoTarget, Found
@@ -18581,7 +18582,11 @@ CONTAINS
     END DO
 
     !Write header file
-    OPEN( 1,FILE=TRIM(Path) // headerFN,STATUS='UNKNOWN' )
+    OPEN( 1,FILE=TRIM(Path) // headerFN,STATUS='UNKNOWN', iostat=iostat)
+    IF(iostat /= 0) THEN
+      CALL Fatal('WriteMeshToDisk2','Could not open file: '//TRIM(Path)//headerFN)
+    END IF
+
     WRITE( 1,'(i0,x,i0,x,i0)' ) NewMesh % NumberOfNodes, &
          NewMesh % NumberOfBulkElements, &
          NewMesh % NumberOfBoundaryElements
@@ -18603,7 +18608,10 @@ CONTAINS
     CLOSE(1)
 
     !Write nodes file
-    OPEN( 1,FILE=TRIM(Path) // nodeFN, STATUS='UNKNOWN' )
+    OPEN( 1,FILE=TRIM(Path) // nodeFN, STATUS='UNKNOWN',iostat=iostat)
+    IF(iostat /= 0) THEN
+      CALL Fatal('WriteMeshToDisk2','Could not open file: '//TRIM(Path)//nodeFN)
+    END IF
     DO i=1,NewMesh % NumberOfNodes
        IF (Parallel) THEN
           WRITE(1,'(i0,x)', ADVANCE='NO') &
@@ -18619,7 +18627,10 @@ CONTAINS
     CLOSE(1)
 
     !Write elements file
-    OPEN( 1,FILE=TRIM(Path) // elementFN, STATUS='UNKNOWN' )
+    OPEN( 1,FILE=TRIM(Path) // elementFN, STATUS='UNKNOWN', iostat=iostat)
+    IF(iostat /= 0) THEN
+      CALL Fatal('WriteMeshToDisk2','Could not open file: '//TRIM(Path)//elementFN)
+    END IF
     DO i=1,NewMesh % NumberOfBulkElements
        IF(Parallel) THEN
           ElemID = NewMesh % Elements(i) % GElementIndex
@@ -18644,7 +18655,11 @@ CONTAINS
 
     !Write boundary file
     WarnNoTarget = .FALSE.
-    OPEN( 1,FILE=TRIM(Path) // boundFN, STATUS='UNKNOWN' )
+    OPEN( 1,FILE=TRIM(Path) // boundFN, STATUS='UNKNOWN',iostat=iostat)
+    IF(iostat /= 0) THEN
+      CALL Fatal('WriteMeshToDisk2','Could not open file: '//TRIM(Path)//boundFN)
+    END IF
+    BcWarns = 0
     DO i=1,NewMesh % NumberOfBoundaryElements
        k = i + NewMesh % NumberOfBulkElements
        parent1 = 0
@@ -18672,8 +18687,7 @@ CONTAINS
        END IF
        IF(Found) THEN
           IF(SIZE(BList) > 1) THEN
-             CALL WARN("WriteMeshToDisk2",&
-                  "A BC has more than one Target Boundary, SaveMesh output will not match input!")
+            BcWarns = BcWarns + 1
           END IF
           meshBC = BList(1)
        ELSE
@@ -18698,6 +18712,11 @@ CONTAINS
     END DO
     CLOSE(1)
 
+    IF(BcWarns > 1 ) THEN
+      CALL WARN("WriteMeshToDisk2",&
+          "BC elements '//I2S(BcWarns)//' have more than one Target Boundary, SaveMesh output will not match input!")
+    END IF
+      
     IF(WarnNoTarget) THEN
        CALL WARN("WriteMeshToDisk2","Couldn't find a Target Boundary, assuming mapping to self")
     END IF
@@ -18707,7 +18726,10 @@ CONTAINS
     !Write .shared file
     !Need to create part.n.shared from Mesh % ParallelInfo %
     !NeighbourList % Neighbours.
-    OPEN( 1,FILE=TRIM(Path) // sharedFN, STATUS='UNKNOWN' )
+    OPEN( 1,FILE=TRIM(Path) // sharedFN, STATUS='UNKNOWN',iostat=iostat)
+    IF(iostat /= 0) THEN
+      CALL Fatal('WriteMeshToDisk2','Could not open file: '//TRIM(Path)//sharedFN)
+    END IF
     DO i=1,NewMesh % NumberOfNodes
        nneigh = SIZE(NewMesh % ParallelInfo % NeighbourList(i) % &
             Neighbours)

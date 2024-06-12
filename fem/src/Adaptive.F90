@@ -503,9 +503,7 @@ CONTAINS
       t = RealTime()
       IF( ListGetLogical( Params,'Adaptive Remesh Use MMG', Found ) ) THEN
 #ifdef HAVE_MMG
-        CALL Info(Caller,'Using MMG library for mesh refinement', Level=5)
-
-
+        CALL Info(Caller,'Using MMG library for mesh refinement', Level=5)        
         NewMesh => MMG_ReMesh( RefMesh, ErrorLimit/3, HValue, &
             NodalError, hConvergence, minH, maxH, MaxChangeFactor, Coarsening )         
 #else
@@ -721,7 +719,8 @@ CONTAINS
 !   Try to account for the reordering of DOFs
 !   due to bandwidth optimization:
     !   -----------------------------------------
-
+    
+    CALL Info(Caller,'Updating solver mesh to reflect the new adaptive mesh!',Level=12)
     CALL UpdateSolverMesh( Solver, NewMesh, NoInterp )
     CALL SetActiveElementsTable( Model, Solver )
           
@@ -776,12 +775,10 @@ CONTAINS
     CALL SetCurrentMesh( Model, RefMesh )
     DEALLOCATE( ErrorIndicator, PrevHvalue )
     
-    WRITE( Message, * ) 'Mesh refine took in total (cpu-secs):           ', &
-        CPUTIme() - TotalTime 
-    CALL Info( Caller, Message, Level=6 )
     IF ( RemeshTime > 0 ) THEN
-      WRITE( Message, * ) 'Remeshing took in total (real-secs):            ', &
-          RemeshTime
+      WRITE( Message, * ) 'Mesh refine took in total (cpu-secs):  ', CPUTIme() - TotalTime 
+      CALL Info( Caller, Message, Level=6 )
+      WRITE( Message, * ) 'Remeshing took in total (real-secs):   ',RemeshTime
       CALL Info( Caller, Message, Level=6 )
     END IF
     CALL Info( Caller,'----------- E N D   M E S H   R E F I N E M E N T --------------', Level=5 )
@@ -1081,11 +1078,17 @@ CONTAINS
     LOGICAL :: Coarsening
     TYPE(Mesh_t), POINTER :: NewMesh, RefMesh
 !------------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: Mesh, TmpMesh
-    INTEGER :: i,j,k,n
+    TYPE(Mesh_t), POINTER :: Mesh, TmpMesh, GatheredMesh
+    INTEGER :: i,j,k,n,ierr
     REAL(KIND=dp) :: Lambda
     CHARACTER(LEN=MAX_NAME_LEN) :: MeshCommand, Name, MeshInputFile
-    LOGICAL :: Success, Rebalance
+    LOGICAL :: Success, Rebalance, EnforceSerial
+    REAL(KIND=dp) :: xmax, xmin, ymax, ymin, zmax, zmin, cscale
+    LOGICAL :: ScaleCoord
+    INTEGER :: DoerPart
+    REAL(KIND=dp), POINTER :: NodalVals(:,:)
+    CHARACTER(*), PARAMETER :: Caller = 'MMG_ReMesh'
+        
 !------------------------------------------------------------------------------
 
 #if 0
@@ -1125,18 +1128,15 @@ CONTAINS
 
     IF( RefMesh % MeshDim == 2 ) THEN
       IF( ParEnv % PEs > 1 ) THEN
-        CALL Fatal('MMG_Remesh','2D remeshing not available in parallel!')
+        CALL Fatal(Caller,'2D remeshing not available in parallel!')
       ELSE
-        CALL Info('MMG_Remesh','Calling serial remeshing routines in 2D',Level=10)
+        CALL Info(Caller,'Calling serial remeshing routines in 2D',Level=10)
         NewMesh => MMG2D_ReMesh( RefMesh, Var )
       END IF
     ELSE
-      IF( ParEnv % PEs > 1 ) THEN
-        CALL Info('MMG_Remesh','Calling parallel remeshing routines in 3D',Level=10)
-
-BLOCK
-        REAL(KIND=dp) :: xmax, xmin, ymax, ymin, zmax, zmin, cscale
-        LOGICAL :: ScaleCoord
+      EnforceSerial = ListGetLogical( Params,'Adaptive Remesh Serial',Found )  
+      IF( ParEnv % PEs > 1 .AND. .NOT. EnforceSerial ) THEN
+        CALL Info(Caller,'Calling parallel remeshing routines in 3D',Level=10)
 
         ScaleCoord = ListGetLogical(Params, 'Adaptive Scale Coordinates for MMG', Found)
 
@@ -1173,7 +1173,6 @@ BLOCK
           refmesh % nodes % z = cscale * refmesh % nodes % z
           var % values = cscale * var % values
         END IF
-END BLOCK
 
         CALL RenumberGElems(TmpMesh)
 
@@ -1185,12 +1184,83 @@ END BLOCK
         ELSE
           NewMesh => TmpMesh          
         END IF
+      ELSE IF( ParEnv % PEs > 1 .AND. EnforceSerial ) THEN
+        CALL Info(Caller,'Calling serial remeshing routines for parallel 3D run',Level=10)
+
+        n = RefMesh % NumberOfBulkElements + RefMesh % NumberOfBoundaryElements
+        IF(.NOT. ASSOCIATED(RefMesh % Repartition)) THEN
+          ALLOCATE(RefMesh % Repartition(n), STAT=ierr)
+          IF(ierr /= 0) CALL Fatal(Caller,'Could not ALLOCATE RefMesh % Repartition')
+        END IF               
+        ! For now, set to target with all to 1st partition
+        DoerPart = ListGetInteger( Params,'Adaptive Remesh Owner',Found ) 
+
+        RefMesh % Repartition = DoerPart + 1
+
+        PRINT *,'RefMesh: ',ParEnv % MyPe, &
+            RefMesh % NumberOfBulkElements, RefMesh % NumberOfBoundaryElements
+
+        IF( ASSOCIATED( Var % Perm ) ) THEN
+          DO i=1,SIZE(Var % Perm)
+            IF(i /= Var % Perm(i)) THEN
+              CALL Fatal(Caller,'H field should have unity perm at this stage!')
+            END IF
+          END DO
+        END IF
+          
+        ALLOCATE(NodalVals(Refmesh % NumberOfNodes,1))
+        NodalVals(:,1) = Var % Values
+        GatheredMesh => RedistributeMesh(Model, RefMesh, .TRUE., .FALSE., NodalVals)
+!        GatheredMesh => RedistributeMesh(Model, RefMesh, .TRUE., .FALSE.)
+        
+        PRINT *,'GatheredMesh: ',ParEnv % MyPe, &
+            gatheredMesh % NumberOfBulkElements, gatheredMesh % NumberOfBoundaryElements
+
+        IF( ParEnv % MyPe == DoerPart ) THEN
+#if 0 
+          ! Save the gathered serial mesh for debugging porposes
+          CALL WriteMeshToDisk2(Model, GatheredMesh,'gathered')
+#endif
+
+          DEALLOCATE(Var % Values)
+          ALLOCATE(Var % Values(GatheredMesh % NumberOfNodes))
+          Var % Values = NodalVals(:,1)
+          IF(ASSOCIATED(Var % Perm)) DEALLOCATE(Var % Perm)
+          ALLOCATE(Var % Perm(GatheredMesh % NumberOfNodes))
+          DO i=1,GatheredMesh % NumberOfNodes
+            Var % Perm(i) = i
+          END DO
+
+          ! Here do the adaptive remeshing with serial MMG3D since the parallel one is not very robust. 
+          CALL RemeshMMG3D(Model, GatheredMesh, TmpMesh,Params = Solver % Values, &
+              HVar = Var, Success = Success )
+
+          ! Thereafter partition the mesh in a serial manner. 
+          IF( ListGetString( Solver % Values,'Partitioning method',Found) == 'zoltan') THEN
+            CALL Zoltan_Interface( Model, TmpMesh, SerialMode = .TRUE., NoPartitions = ParEnv % PEs, &
+                StartImbalanceTol=1.1_dp, TolChange=0.02_dp, MinElems=10 )
+          ELSE
+            CALL PartitionMeshSerial( Model, TmpMesh, Solver % Values )
+          END IF
+
+#if 0 
+          ! Save the remeshed serial mesh for debugging porposes
+          CALL WriteMeshToDisk2(Model, TmpMesh,'remeshed')
+#endif
+        ELSE
+          TmpMesh => AllocateMesh()
+          TmpMesh % MeshDim = RefMesh % MeshDim
+        END IF
+        !CALL RenumberGElems(TmpMesh)
+
+        NewMesh => RedistributeMesh(Model, TmpMesh, .TRUE., .FALSE.)
+        CALL ReleaseMesh(TmpMesh)
       ELSE              
-        CALL Info('MMG_Remesh','Calling serial remeshing routines in 3D',Level=10)
+        CALL Info(Caller,'Calling serial remeshing routines in 3D',Level=10)
         CALL RemeshMMG3D(Model, RefMesh, NewMesh,Params = Solver % Values, &
             HVar = Var, Success = Success )
       END IF
-      CALL Info('MMG_Remesh','Finished MMG remeshing',Level=20)      
+      CALL Info(Caller,'Finished MMG remeshing',Level=20)      
     END IF
 
 !------------------------------------------------------------------------------
