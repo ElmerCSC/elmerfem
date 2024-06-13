@@ -369,7 +369,7 @@ CONTAINS
      CHARACTER(:), ALLOCATABLE :: multname
      REAL(KIND=dp) :: cmult, rmult
      INTEGER :: prevSolverId = -1
-     INTEGER :: eind
+     INTEGER :: eind, vind
      LOGICAL :: Found
      LOGICAL :: DoMultiply = .FALSE., DoMultiplyRhs = .FALSE.
      
@@ -436,11 +436,17 @@ CONTAINS
      END IF
 
      IF( DoMultiply ) THEN
-       cmult = cvar % Values(cvar % Perm(eind))       
-       K(1:n,1:n) = cmult * K(1:n,1:n)
+       vind = cvar % Perm(eind)
+       IF(vind > 0 ) THEN
+         cmult = cvar % Values(vind)       
+         K(1:n,1:n) = cmult * K(1:n,1:n)
+       END IF
        IF( DoMultiplyRhs ) THEN
-         rmult = rvar % Values(rvar % Perm(eind))       
-         F(1:n) = rmult * F(1:n)
+         vind = rvar % Perm(eind)
+         IF( vind > 0 ) THEN
+           rmult = rvar % Values(vind)
+           F(1:n) = rmult * F(1:n)
+         END IF
        END IF         
      END IF
            
