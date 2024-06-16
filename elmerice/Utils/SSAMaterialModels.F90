@@ -55,6 +55,7 @@ MODULE SSAMaterialModels
    REAL(KIND=dp) :: ub  ! the velocity for non-linear friction laws
    LOGICAL :: SEP ! Sub-Element Parametrisation of the friction
    LOGICAL :: PartlyGrounded ! is the GL within the current element?
+   LOGICAL :: FirstTime = .TRUE.
    REAL(KIND=dp) :: h ! for SEP: the ice thickness at current location
    REAL(KIND=dp) :: rho,rhow,sealevel ! density, sea-water density, sea-level
    REAL(KIND=dp),OPTIONAL :: SlipDer ! dSlip/du=dSlip/dv if ub=(u^2+v^2)^1/2 ! required to compute the Jacobian
@@ -80,6 +81,8 @@ MODULE SSAMaterialModels
 
    LOGICAL :: Found, NeedN
 
+   SAVE FirstTime
+   
 !  Sub - element GL parameterisation
    IF (SEP) THEN
      GMSol => VariableGet( CurrentModel % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
@@ -135,8 +138,13 @@ MODULE SSAMaterialModels
       ! regularised Coulomb sliding, where the initial coefficient is now
       ! multiplied by effective pressure, N 
       NeedN = ListGetLogical( Material, 'SSA Friction need N', Found)
-      CALL INFO("SSAEffectiveFriction","> SSA Friction need N < not found, assuming false",level=3)
-      IF (.NOT. Found) NeedN = .FALSE.
+      IF (.NOT. Found) THEN
+         IF (FirstTime) THEN
+            CALL INFO("SSAEffectiveFriction","> SSA Friction need N < not found, assuming false",level=3)
+            FirstTime = .FALSE.
+         END IF
+         NeedN = .FALSE.
+      END IF
     CASE(REG_COULOMB_GAG,BUDD)
       NeedN = .TRUE.
     END SELECT
