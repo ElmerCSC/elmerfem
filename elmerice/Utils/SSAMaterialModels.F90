@@ -166,7 +166,7 @@ MODULE SSAMaterialModels
       gravity = ListGetConstReal( Constants, 'Gravity Norm', UnFoundFatal=.TRUE. )
       ! calculate haf from N = rho_i g z*
       qq = ListGetConstReal( Material, 'SSA Haf Exponent', Found, UnFoundFatal=.TRUE.)
-      hafq = fN / (gravity * rho) ** qq
+      hafq = ( fN / (gravity * rho) ) ** qq
       
     CASE(REG_COULOMB_GAG)
       fq = ListGetConstReal( Material, 'SSA Friction Post-Peak', Found, UnFoundFatal=.TRUE. )
