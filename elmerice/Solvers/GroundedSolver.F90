@@ -158,7 +158,7 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
 
   ConnMaskName = ListGetString(SolverParams, 'Connected mask name',GotIt, UnFoundFatal=.FALSE.)
   IF (GotIt) THEN
-     CALL INFO( SolverName, '>Connected mask name< found, checking connectivity.',Level=5 )
+     CALL INFO( SolverName, '>Connected mask name< found, connectivity will be checked.',Level=5 )
      CheckConn = .TRUE.
      ConnMaskVar => VariableGet(Model % Mesh % Variables, ConnMaskName,UnFoundFatal=.TRUE.)
      ConnMaskPerm => ConnMaskVar % Perm
