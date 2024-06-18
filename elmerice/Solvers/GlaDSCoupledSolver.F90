@@ -96,7 +96,7 @@
             qSolution(:), hstoreSolution(:), QcSolution(:), QmSolution(:),&
             CAValues(:), CFValues(:), SHValues(:)
 
-     CHARACTER(LEN=MAX_NAME_LEN) :: VariableName, SolverName
+     CHARACTER(LEN=MAX_NAME_LEN) :: VariableName, SolverName, MaskName
      CHARACTER(LEN=MAX_NAME_LEN) :: SheetThicknessName, ChannelAreaName, ZbName
      CHARACTER(LEN=MAX_NAME_LEN) :: methodSheet, methodChannels 
 
@@ -105,7 +105,7 @@
           meltChannels = .TRUE., NeglectH = .TRUE., Calving = .FALSE., &
           CycleElement=.FALSE., MABool = .FALSE., MaxHBool = .FALSE., LimitEffPres=.FALSE., &
           MinHBool=.FALSE., CycleNode=.FALSE.
-     LOGICAL, SAVE :: UseGM, UseGC, ZeroSheetAtGL, ZeroSheetWithHP
+     LOGICAL, SAVE :: UseGM, UseGC, AllowSheetAtGL, ZeroSheetWithHP
      LOGICAL, ALLOCATABLE ::  IsGhostNode(:), NoChannel(:), NodalNoChannel(:)
 
      ! For use in masking GlaDS floating shelves.  "MASK_HP" is for situations where
@@ -355,32 +355,38 @@
 
         ! Default behaviour relating to marine ice sheets and unglaciated grounded areas is to set the
         ! following switches to false. The defaults change to true when using Samuel Cook's "Calving" 
-        ! (set in simulation seciton of sif).  The defaults will be overwritten for each of the switches
+        ! (set in simulation section of sif).  The defaults will be overwritten for each of the switches
         ! that are specified in the solver section of the sif.       
         SolverParams => GetSolverParams()
+        
         UseGM = GetLogical( SolverParams,'Use GroundedMask', Found )
         IF (.NOT. Found) THEN
-          IF (Calving) THEN              
-            UseGM = .TRUE.
-          ELSE
-            UseGM = .FALSE.
-          END IF
+           IF (Calving) THEN              
+              UseGM = .TRUE.
+           ELSE
+              UseGM = .FALSE.
+           END IF
         END IF
-        UseGC = GetLogical( SolverParams,'Use GMcheck', Found )
-        IF (.NOT. Found) THEN
-          IF (Calving) THEN              
-            UseGC = .TRUE.
-          ELSE
-            UseGC = .FALSE.
-          END IF
+        IF (UseGM) THEN
+           MaskName = GetString( SolverParams, 'Mask Name', Found )
+           IF (.NOT. Found) THEN
+              MaskName = "GroundedMask"
+           END IF
         END IF
-        ZeroSheetAtGL = GetLogical( SolverParams,'Zero Sheet At GL', Found )
+        
+          !        END IF
+!        UseGC = GetLogical( SolverParams,'Use GMcheck', Found )
+!        IF (.NOT. Found) THEN
+!          IF (Calving) THEN              
+!            UseGC = .TRUE.
+!          ELSE
+!            UseGC = .FALSE.
+!          END IF
+!        END IF
+
+        AllowSheetAtGL = GetLogical( SolverParams,'Allow Sheet At GL', Found )
         IF (.NOT. Found) THEN
-          IF (Calving) THEN              
-            ZeroSheetAtGL = .TRUE.
-          ELSE
-            ZeroSheetAtGL = .FALSE.
-          END IF
+           AllowSheetAtGL = .TRUE.
         END IF
         ZeroSheetWithHP = GetLogical( SolverParams,'Zero Sheet With HP', Found )
         IF (.NOT. Found) THEN
@@ -1124,12 +1130,12 @@
               CALL GetElementNodes( ElementNodes )
 
               
-              IF (UseGM.OR.UseGC) THEN
+              IF (UseGM) THEN
                 ! Cycle elements with ungrounded nodes and zero all hydrology variables
                 CycleElement = .FALSE.
 
                 DO i=1, N
-                  MaskStatus = ProcessMasks(UseGM, UseGC, ZeroSheetAtGL, Element % NodeIndexes(i))
+                  MaskStatus = ProcessMask(MaskName, AllowSheetAtGL, Element % NodeIndexes(i))
                   SELECT CASE (MaskStatus)
                   CASE (MASK_ALL)
                     CycleElement = .TRUE.
@@ -1204,9 +1210,9 @@
               IF (k==0) CYCLE
 
               CycleNode = .FALSE.
-              IF (UseGM.OR.UseGC) THEN
+              IF (UseGM) THEN
                 ! Cycle ungrounded nodes and zero hydrology variables
-                MaskStatus = ProcessMasks(UseGM, UseGC, ZeroSheetAtGL, j)
+                MaskStatus = ProcessMask(MaskName, AllowSheetAtGL, Element % NodeIndexes(i))
                 SELECT CASE (MaskStatus)
                 CASE (MASK_ALL)
                   CycleNode = .TRUE.
@@ -1288,11 +1294,11 @@
                  IF (ANY(HydPotPerm(Edge % NodeIndexes(1:n))==0)) CYCLE
                  IF (ALL(NoChannel(Edge % NodeIndexes(1:n)))) CYCLE
 
-                 IF (UseGM.OR.UseGC) THEN
+                 IF (UseGM) THEN
                    ! Cycle ungrounded nodes and zero hydrology variables
                    CycleElement = .FALSE.
                    DO i=1, n
-                     MaskStatus = ProcessMasks(UseGM, UseGC, ZeroSheetAtGL, Edge % NodeIndexes(i))
+                     MaskStatus = ProcessMask(MaskName, AllowSheetAtGL, Element % NodeIndexes(i))
                      SELECT CASE (MaskStatus)
                      CASE (MASK_ALL)
                        CycleElement = .TRUE.
@@ -1520,11 +1526,11 @@
          n = GetElementNOFNodes(Element)
          CALL GetElementNodes( ElementNodes )
 
-         IF (UseGM.OR.UseGC) THEN
+         IF (UseGM) THEN
            ! Cycle ungrounded nodes and zero hydrology variables
            CycleElement = .FALSE.
            DO i=1, n
-             MaskStatus = ProcessMasks(UseGM, UseGC, ZeroSheetAtGL, Element % NodeIndexes(i))
+             MaskStatus = ProcessMask(MaskName, AllowSheetAtGL, Element % NodeIndexes(i))
              SELECT CASE (MaskStatus)
              CASE (MASK_ALL)
                CycleElement = .TRUE.
@@ -1589,6 +1595,35 @@
 
 CONTAINS    
 
+  ! Use the grounded mask to decide how to mask the current node.
+  !----------------------------------------------------------------------------------------------------------
+  FUNCTION ProcessMask(MaskName, AllowSheetAtGL, ii) RESULT( MaskStatus_local )
+
+    CHARACTER(LEN=MAX_NAME_LEN), INTENT(IN) :: MaskName
+    LOGICAL, INTENT(IN)                     :: AllowSheetAtGL
+    INTEGER, INTENT(IN)                     :: ii ! node index
+
+    INTEGER :: MaskStatus_local
+
+    MaskStatus_local = MASK_NONE
+    
+    GroundedMaskVar => VariableGet(Mesh % Variables, MaskName, ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
+
+    IF (GroundedMaskVar % Values(GroundedMaskVar % Perm(ii)).LT.0.0) THEN 
+       MaskStatus_local = MASK_ALL
+    ELSEIF (GroundedMaskVar % Values(GroundedMaskVar % Perm(ii)).EQ.0.0) THEN
+       IF (AllowSheetAtGL) THEN
+          MaskStatus_local = MASK_HP
+       ELSE
+          MaskStatus_local = MASK_ALL
+       END IF
+    END IF
+
+    NULLIFY(GroundedMaskVar)
+  
+  END FUNCTION ProcessMask
+
+
   ! Use the grounded mask and or grounded mask check to decide how to mask the current node.
   ! The following table summarises actions as a function of mask values.
   ! 
@@ -1602,9 +1637,9 @@ CONTAINS
   !  1    1     Grounded (shelf);     Fatal (mask inconsistency)
   !
   !----------------------------------------------------------------------------------------------------------
-  FUNCTION ProcessMasks(UseGM, UseGC, ZeroSheetAtGL, ii) RESULT( MaskStatus_local )
+  FUNCTION ProcessMasks(UseGM, UseGC, AllowSheetAtGL, ii) RESULT( MaskStatus_local )
 
-    LOGICAL, INTENT(IN)  :: UseGM, UseGC, ZeroSheetAtGL
+    LOGICAL, INTENT(IN)  :: UseGM, UseGC, AllowSheetAtGL
     INTEGER, INTENT(IN)  :: ii ! node index
 
     INTEGER :: MaskStatus_local
@@ -1622,7 +1657,7 @@ CONTAINS
           IF (GroundedMaskVar % Values(GroundedMaskVar % Perm(ii)).LT.0.0) THEN 
             MaskStatus_local = MASK_ALL
           ELSEIF (GroundedMaskVar % Values(GroundedMaskVar % Perm(ii)).EQ.0.0) THEN
-            IF (ZeroSheetAtGL) THEN
+            IF (AllowSheetAtGL) THEN
               MaskStatus_local = MASK_HP
             ELSE
               MaskStatus_local = MASK_ALL
@@ -1635,7 +1670,7 @@ CONTAINS
         IF (GroundedMaskVar % Values(GroundedMaskVar % Perm(ii)).LT.0.0) THEN 
           MaskStatus_local = MASK_ALL
         ELSEIF (GroundedMaskVar % Values(GroundedMaskVar % Perm(ii)).EQ.0.0) THEN
-          IF (ZeroSheetAtGL) THEN
+          IF (AllowSheetAtGL) THEN
             MaskStatus_local = MASK_HP
           ELSE
             MaskStatus_local = MASK_ALL
