@@ -21,12 +21,12 @@
  *
  * ************************************************************************ */
 #include "../config.h"
-
-#ifdef HAVE_ROCALUTION
 #include <cstring>
 #include <mpi.h>
 #include <map>
 #include <set>
+
+#ifdef HAVE_ROCALUTION
 #include <rocalution/rocalution.hpp>
 
 using namespace rocalution;
@@ -187,10 +187,7 @@ void elmer_distribute_matrix(const MPI_Comm*    comm,
 
     for(int i = 0; i < num_procs; ++i)
     {
-        if(neighbor[i] == true)
-        {
-            ++neighbors;
-        }
+       if(neighbor[i] == true) ++neighbors;
     }
 
     std::vector<MPI_Request> mpi_req(neighbors * 4);
@@ -508,11 +505,14 @@ extern "C" void ROCParallelSolve( int *gn, int *n, int *rows, int *cols, double 
     ls->SetOperator(gmat);
     ls->Build();
     ls->Verbose(2);
+
     gmat.Info();
+
     ls->Solve(rhs, &x);
+
 //    x.CopyToData(x_out);
 
-    for(i=0; i<*n; i++ ) x_out[i]=x[i];
+      for(i=0; i<*n; i++ ) x_out[i]=x[i];
 
     ls->Clear();
 }
