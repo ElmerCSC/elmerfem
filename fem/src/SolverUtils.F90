@@ -15278,6 +15278,14 @@ END FUNCTION SearchNodeL
           END DO
           CALL ParallelSumVector(A, x)
         END BLOCK
+
+
+        ! Cleanup, remains to be reconsidered for optimizations
+        CALL FreeMatrix(Im)
+        A % CollectionMatrix => Null()
+        DEALLOCATE(Owner,APerm,ILperm,part_vec, SendTo, &
+            GlobalToLocal, gOffsetA, gOffsetB)
+
     ELSE
       CALL ROCSerialSolve( n, A % Rows-1, A % Cols-1, A % Values, b, x, nonlin_update )
     END IF

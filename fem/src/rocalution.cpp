@@ -416,7 +416,7 @@ extern "C" void ROCParallelSolve( int *gn, int *n, int *rows, int *cols, double 
     }
 
         // Disable OpenMP thread affinity
-    set_omp_affinity_rocalution(false);
+//    set_omp_affinity_rocalution(false);
 
     // Initialize platform with rank and # of accelerator devices in the node
     init_rocalution(rank);
@@ -515,7 +515,6 @@ extern "C" void ROCParallelSolve( int *gn, int *n, int *rows, int *cols, double 
     for(i=0; i<*n; i++ ) x_out[i]=x[i];
 
     ls->Clear();
-    free(Lrows); free(Lcols); free(Lvals);
 }
 
 extern "C" void ROCSerialSolve(int *n, int *rows, int *cols, double *vals, double *b, double *x_out, int *nonlin_update)
