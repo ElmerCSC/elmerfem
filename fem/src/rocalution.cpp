@@ -21,12 +21,10 @@
  *
  * ************************************************************************ */
 #include "../config.h"
-#include <stdio.h>
-#include <stdlib.h>
 
 #ifdef HAVE_ROCALUTION
-#include <mpi.h>
 #include <cstring>
+#include <mpi.h>
 #include <map>
 #include <set>
 #include <rocalution/rocalution.hpp>
@@ -629,6 +627,8 @@ extern "C" void ROCSerialSolve(int *n, int *rows, int *cols, double *vals, doubl
     free(Lrows); free(Lcols); free(Lvals);
 } 
 #else
+#include <stdio.h>
+#include <stdlib.h>
 extern "C" void ROCSerialSolve(int *n, int *rows, int *cols, double *vals, double *b, double *x_out, int *nonlin_update)
 {
   fprintf( stderr, "No serial ROCALUTION library included.\n" );

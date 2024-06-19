@@ -367,7 +367,7 @@ void *STDCALLBULL FC_FUNC(loadfunction,LOADFUNCTION) ( int *Quiet, int *abort_no
       cptr = (char *)getenv("ELMER_HOME");
       if ( cptr != NULL  ) {
          strncat( ElmerLib, ELMER_PATH_SEPARATOR, 2*MAX_PATH_LEN-1);
-         strncat( ElmerLib, cptr, 2*MAX_PATH_LEN );
+         strncat( ElmerLib, cptr, 2*MAX_PATH_LEN-1 );
          strncat( ElmerLib, "/share/elmersolver/lib", 2*MAX_PATH_LEN-1 );
       } else {
 #if defined(WIN32) || defined(MINGW32)
