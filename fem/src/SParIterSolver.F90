@@ -1241,13 +1241,14 @@ END SUBROUTINE ZeroSplittedMatrix
 !----------------------------------------------------------------------
 !> Create continuous numbering for the dofs expected by some linear solvers.
 !----------------------------------------------------------------------
-  SUBROUTINE ContinuousNumbering(ParallelInfo, Mperm, Aperm, Owner, nin, Mesh, nOwn )
+  SUBROUTINE ContinuousNumbering(ParallelInfo, Mperm, Aperm, Owner, &
+              nin, Mesh, nOwn, gStart )
 !--------------------------------------------------------------------
      INTEGER :: Mperm(:), Aperm(:), Owner(:)
      TYPE(Mesh_t), OPTIONAL :: Mesh
      INTEGER, OPTIONAL :: nin
      TYPE(ParallelInfo_t) :: ParallelInfo
-     INTEGER, OPTIONAL :: nOwn
+     INTEGER, OPTIONAL :: nOwn, gStart
 
      INTEGER, ALLOCATABLE :: neigh(:), sz(:),buf_a(:,:),buf_g(:,:), &
                   buf_aa(:), buf_gg(:)
@@ -1292,6 +1293,8 @@ END SUBROUTINE ZeroSplittedMatrix
        CALL MPI_RECV( gind, 1, MPI_INTEGER, &
            prev_id, 801, ELMER_COMM_WORLD, status, ierr )
      END IF
+
+     IF(PRESENT(gStart)) gStart = gind
 
      ! give a number to dofs owned by us:
      ! -----------------------------------
