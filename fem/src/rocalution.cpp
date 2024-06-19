@@ -21,12 +21,14 @@
  *
  * ************************************************************************ */
 #include "../config.h"
-#include <cstring>
-#include <mpi.h>
-#include <map>
-#include <set>
+#include <stdio.h>
+#include <stdlib.h>
 
 #ifdef HAVE_ROCALUTION
+#include <mpi.h>
+#include <cstring>
+#include <map>
+#include <set>
 #include <rocalution/rocalution.hpp>
 
 using namespace rocalution;
