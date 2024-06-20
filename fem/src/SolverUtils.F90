@@ -15062,12 +15062,12 @@ END FUNCTION SearchNodeL
         INTEGER :: rows(*), cols(*), nonlin_update, n
       END SUBROUTINE ROCSerialSolve
 
-      SUBROUTINE ROCParallelSolve(gn, n, rows, cols, vals, b, x, goffset, fcomm) BIND(C, Name="ROCParallelSolve")
+      SUBROUTINE ROCParallelSolve(gn, n, rows, cols, vals, b, x, bnrm, goffset, fcomm) BIND(C, Name="ROCParallelSolve")
         USE Types
         USE ISO_C_BINDING, ONLY: C_CHAR, C_INTPTR_T
 
         IMPLICIT NONE
-        REAL(KIND=dp) :: vals(*), b(*), x(*)
+        REAL(KIND=dp) :: vals(*), b(*), x(*), bnrm
         INTEGER :: gn, n, rows(*), cols(*), goffset(*), fcomm
       END SUBROUTINE ROCParallelSolve
     END INTERFACE
@@ -15171,6 +15171,10 @@ END FUNCTION SearchNodeL
             ALLOCATE( SendStuff(i) % Size(SendTo(i)) )
           END DO
  
+BLOCK
+          integer :: buf_size
+          buf_size = 0
+
           SendTo = 0
           DO i=1,a % NumberOfRows
             you = A % ParallelInfo % NeighbourList(i) % Neighbours(1)
@@ -15178,8 +15182,12 @@ END FUNCTION SearchNodeL
               SendTo(you+1) = SendTo(you+1)+1
               SendStuff(you+1) % Size(Sendto(you+1))  = A % Rows(i+1)-A % Rows(i)
               SendStuff(you+1) % Rows(Sendto(you+1))  = i
+              buf_size = buf_size + A % Rows(i+1) - A % Rows(i)
             END IF
           END DO
+
+          CALL CheckBuffer(ParEnv % PEs*(4+4*MPI_BSEND_OVERHEAD) + 4*buf_size)
+END BLOCK
 
           DO i=1,ParEnV % PEs
             IF(i-1==me .OR. .NOT. ParEnv % IsNeighbour(i)) CYCLE
@@ -15204,7 +15212,6 @@ END FUNCTION SearchNodeL
                       MPI_DOUBLE_PRECISION,i-1,1204,ELMER_COMM_WORLD, status, ierr )
             END DO
           END DO
-
 
           DO i=1,ParEnV % PEs
             IF(i-1==me .OR. .NOT. ParEnv % IsNeighbour(i)) CYCLE
@@ -15242,7 +15249,7 @@ END FUNCTION SearchNodeL
             DEALLOCATE( rRows, rSize )
           END DO
 
-          CALL MPI_BARRIER(ELMER_COMM_WORLD,ierr)
+          CALL MPI_BARRIER(A % Comm,ierr)
  
           IF( Im % Format == MATRIX_LIST ) THEN
             CALL List_toCRSMatrix(Im)
@@ -15255,6 +15262,7 @@ END FUNCTION SearchNodeL
 
         BLOCK
           REAL(KIND=dp), ALLOCATABLE :: bb(:),xb(:), r(:)
+          REAL(KIND=dp) :: bnrm
 
           n = Im % NumberOfRows
           j = A  % NumberOfRows
@@ -15267,10 +15275,11 @@ END FUNCTION SearchNodeL
             bb(i) = r(iLPerm(i))
             xb(i) = x(iLPerm(i))
           END DO
-!       bnrm = SQRT(ParallelReduction(SUM(bb**2)))
+          bnrm = SQRT(ParallelReduction(SUM(bb**2)))
+          IF(bnrm <AEPS) bnrm=1;
 
           CALL ROCParallelSolve( gn, n, Im % Rows-1, Im % Cols-1, &
-              Im % Values, bb, xb, gOffsetB, ELMER_COMM_WORLD )
+              Im % Values, bb, xb, bnrm, gOffsetB, A % comm )
 
           x = 0
           DO i=1,n

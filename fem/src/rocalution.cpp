@@ -399,7 +399,7 @@ void elmer_distribute_matrix(const MPI_Comm*    comm,
 
 
 extern "C" void ROCParallelSolve( int *gn, int *n, int *rows, int *cols, double *vals, double *b, double *x_out, 
-		          int *gOffset,int *fcomm )
+		          double *bnrm, int *gOffset,int *fcomm )
 {
     int i, *Lrows, *Lcols, rank, nranks;
     double *Lvals;
@@ -424,7 +424,6 @@ extern "C" void ROCParallelSolve( int *gn, int *n, int *rows, int *cols, double 
     // Start time measurement
     double tick, tack;
     tick = rocalution_time();
-
 
     ParallelManager manager;
     manager.SetMPICommunicator(&comm);
@@ -472,13 +471,9 @@ extern "C" void ROCParallelSolve( int *gn, int *n, int *rows, int *cols, double 
 
 
     {
-      double TOL=1e-6, bnrm;
+      double TOL=1e-6;
       int MaxIter = 1000;
-      bnrm = 0;
-      for(i=0; i<*n; i++ ) bnrm += b[i]*b[i];
-      bnrm = sqrt(bnrm);
-      if (bnrm<1e-16) bnrm = 1;
-      ls->Init(TOL*bnrm,1e-20,1e20,MaxIter);
+      ls->Init(TOL*(*bnrm),1e-20,1e20,MaxIter);
     }
 
 
@@ -510,9 +505,9 @@ extern "C" void ROCParallelSolve( int *gn, int *n, int *rows, int *cols, double 
 
     ls->Solve(rhs, &x);
 
-//    x.CopyToData(x_out);
+//  x.CopyToData(x_out);
 
-      for(i=0; i<*n; i++ ) x_out[i]=x[i];
+    for(i=0; i<*n; i++ ) x_out[i]=x[i];
 
     ls->Clear();
 }
@@ -582,7 +577,7 @@ extern "C" void ROCSerialSolve(int *n, int *rows, int *cols, double *vals, doubl
     {
       double TOL=1e-6, bnrm;
       int MaxIter = 1000;
-      bnrm = 0;
+      bnrm = 0.0;
       for(i=0; i<*n; i++ ) bnrm += b[i]*b[i];
       bnrm = sqrt(bnrm);
       if (bnrm<1e-16) bnrm = 1;
