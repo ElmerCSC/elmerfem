@@ -50,6 +50,7 @@ Generic Solvers:
 - [Adjoint_CostDiscSolver](Adjoint_CostDiscSolver.md)
 - [Adjoint_CostContSolver](Adjoint_CostContSolver.md)
 - [Adjoint_CostRegSolver](Adjoint_CostRegSolver.md)
+- [BackgroundErrorCostSolver](BackgroundErrorCostSolver.md)
 
 Stokes Solvers: 
 
@@ -75,3 +76,15 @@ Generic user functions:
 ## Coupled hydrology-plumes-calving
 
 This is pretty much the output of Samuel Cook's PhD thesis on 3D coupled modelling of a tidewater glacier, and involves coupling the GlaDS hydrology solvers with Joe Todd's 3D calving solvers, and a new 1D ODE solver for glacial meltwater plumes based on the work of Donald Slater. Several other new solvers are also required to manage the interaction between all these moving parts. If you're interested in using this set-up, a full description, including all necessary solvers, SIF inclusions, and mesh fiddliness, is provided in [CoupledIceHydrologyCalvingPlumesDocumentation](CoupledIceHydrologyCalvingPlumesDocumentation.md)(the individual new solvers are also all documented in their own .md files, which you may find it useful to look at). Note: all the necessary modifications to existing Elmer/Ice solvers are in the distributed versions, so you shouldn't have to do anything not listed in the doc, as long as I've not forgotten to tell you about something important. Any questions, email me at samuel.cook .at. univ-grenoble-alpes.fr
+
+## Modelling spatial covariance
+
+Several applications require to model spatial correlation under the form of a covariance matrix:   
+- [BackgroundErrorCostSolver](BackgroundErrorCostSolver.md): acts as a *regularisation* term in the inverse methods by modelling background error statistics.
+- [GaussianSimulationSolver](GaussianSimulationSolver.md): draw spatailly correlated random samples from a uniform distribution.
+- [CovarianceVectorMultiplySolver](CovarianceVectorMultiplySolver.md): can be apply as a filter to smooth noisy data.
+
+These solvers use generic routines implement in the [CovarianceUtilsModule](CovarianceUtilsModule.md).
+
+A pdf document containing the documentation of these solver and model can be generated using pandoc by running:   
+> pandoc -d MakeDoc_CovarianceUtils.yml

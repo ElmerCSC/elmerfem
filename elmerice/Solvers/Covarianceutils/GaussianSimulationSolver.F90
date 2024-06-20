@@ -1,5 +1,5 @@
-!***********************************************************************************************      
-!***********************************************************************************************         
+!***********************************************************************************************
+!***********************************************************************************************
       SUBROUTINE GaussianSimulationSolver( Model,Solver,dt,TransientSimulation )
 !***********************************************************************************************
       USE GeneralUtils
@@ -106,7 +106,6 @@
       seed = ListGetInteger( SolverParams , 'Random Seed',Found )
       IF (Found)  call random_seed( put=seed )
       CALL random_seed(get=seed)
-      PRINT *,"SEED",seed(1)
       deallocate(seed)
 
        !Create DOFs random vectors of size n
@@ -118,8 +117,8 @@
        END DO
 
        DO k=1,DOFs
-         x(Perm(ActiveNodes(1:nn)))=rr(ActiveNodes(1:nn),k) 
-        
+         x(Perm(ActiveNodes(1:nn)))=rr(ActiveNodes(1:nn),k)
+
         SELECT CASE (CovType)
           CASE('diagonal')
               y(:) = std*x(:)
