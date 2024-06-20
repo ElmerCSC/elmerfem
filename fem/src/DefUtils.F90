@@ -3357,7 +3357,7 @@ CONTAINS
      TYPE(Solver_t), POINTER :: Solver
      LOGICAL :: Found
      TYPE(ValueList_t), POINTER :: Params
-     INTEGER :: i,n
+     INTEGER :: i,j,n
      
      IF ( PRESENT( USolver ) ) THEN
        Solver => USolver
@@ -3385,6 +3385,15 @@ CONTAINS
      CALL DefaultSlaveSolvers(Solver,'Pre Solvers')
 
      IF( ListGetLogical(Params,'Local Matrix Storage',Found ) ) THEN
+       IF(.NOT. ASSOCIATED(Solver % InvActiveElements) ) THEN
+         ALLOCATE( Solver % InvActiveElements( Solver % Mesh % NumberOfBulkElements &
+             + Solver % Mesh % NumberOFBoundaryElements ) )         
+         Solver % InvActiveElements = 0
+         DO i=1,Solver % NumberOfActiveElements
+           Solver % InvActiveElements( Solver % ActiveElements(i) ) = i
+         END DO
+       END IF
+
        n = Solver % NumberOfActiveElements
        IF(ASSOCIATED(Solver % LocalSystem)) THEN
          IF(SIZE(Solver % LocalSystem) < n ) DEALLOCATE(Solver % LocalSystem)
@@ -3395,17 +3404,21 @@ CONTAINS
          ! If the stiffness matrix is constant the 1st element gives stiffness matrix for all!
          ! This could be inhereted differently too for splitted meshes, for example. 
          IF( ListGetLogical( Params,'Local Matrix Identical', Found )  ) THEN
+           CALL Info('DefaultStart','Assuming all elements to be identical!')
            Solver % LocalSystem(1:n) % eind = 1         
-         END IF                    
-       END IF
-
-       IF(.NOT. ASSOCIATED(Solver % InvActiveElements) ) THEN
-         ALLOCATE( Solver % InvActiveElements( Solver % Mesh % NumberOfBulkElements &
-             + Solver % Mesh % NumberOFBoundaryElements ) )         
-         Solver % InvActiveElements = 0
-         DO i=1,Solver % NumberOfActiveElements
-           Solver % InvActiveElements( Solver % ActiveElements(i) ) = i
-         END DO
+         ELSE IF( ListGetLogical( Params,'Local Matrix Identical Bodies', Found )  ) THEN
+           CALL Info('DefaultStart','Assuming all elements to be identical within bodies!')
+           BLOCK
+             INTEGER, ALLOCATABLE :: Body1st(:)             
+             ALLOCATE(Body1st(CurrentModel % NumberOfBodies))
+             Body1st = 0
+             DO i=1,Solver % NumberOfActiveElements
+               j = Solver % Mesh % Elements(Solver % ActiveElements(i)) % BodyId
+               IF(Body1st(j) == 0) Body1st(j) = i
+               Solver % LocalSystem(i) % eind = Body1st(j)
+             END DO
+           END BLOCK
+         END IF
        END IF
        
        Solver % LocalSystemMode = 1
