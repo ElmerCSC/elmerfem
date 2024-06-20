@@ -1,29 +1,29 @@
-!***********************************************************************************************      
+!***********************************************************************************************
 ! Compute a cost function from a background as Cost=0.5 * (x-x^b). B^-1 .(x-x^b)
-!  x is the optimised variable; x^b the background
+!  x is the optimized variable; x^b the background
 !  B^1 is the background error covariance matrix:
 !    here B= S . C . S
 !     with:
-!        - S is a diagonale matrix with the standard deviation (assumed constant for now)
-!        - C is a correlation matix
+!        - S is a diagonal matrix with the standard deviation (assumed constant for now)
+!        - C is a correlation matrix
 !  Available choices for C "Covariance type = String ..."
 !        - diagonal; i.e. C=I and B=S^2 is diagonal with the variances
 !        - "full matrix" : C is computed from standard correlation
-!            functions and inverted using lapack routines
+!            functions and inverted using Lapack routines
 !        - "diffusion operator" : C is approximated with the diffusion operator approach
-!  Current limitaions :
+!  Current limitations :
 !    - 2D mesh; TODO to run it on a 2D surface boundary?
-!    - Serial fro the full-matrix approach
+!    - Serial for the full-matrix approach
 !
 ! Rq.
-!  - IF x has DOFs > 1 we apply independandtly the same B^-1
-!  - IF 2 instances of the same solver are used in the same .sif mae a
-!      copy of the lib as things are initialised and saved.... 
+!  - IF x has DOFs > 1 we apply independently the same B^-1
+!  - IF 2 instances of the same solver are used in the same .sif make a
+!      copy of the lib as things are initialized and saved....
 !
 ! TODO:
 !   - add mandatory keywords at init, e.g. variable, ...
-!      
-!***********************************************************************************************         
+!
+!***********************************************************************************************
       SUBROUTINE BackgroundErrorCostSolver( Model,Solver,dt,TransientSimulation )
 !***********************************************************************************************
       USE GeneralUtils
@@ -209,7 +209,7 @@
 
        ! gradient = SIGMA^1 C^1 SIGMA^1 . (x-x_b)
        ! gradients are gathered in the optimisation step; so also normalize by One.
-        DJDValues(DOFS*(DJDPerm(ActiveNodes(1:nn))-1)+i)=DJDValues(DOFS*(DJDPerm(ActiveNodes(1:nn))-1)+i)+ & 
+        DJDValues(DOFS*(DJDPerm(ActiveNodes(1:nn))-1)+i)=DJDValues(DOFS*(DJDPerm(ActiveNodes(1:nn))-1)+i)+ &
                  y(Solver%Variable%Perm(ActiveNodes(1:nn)))/One(Solver%Variable%Perm(ActiveNodes(1:nn)))
 
 

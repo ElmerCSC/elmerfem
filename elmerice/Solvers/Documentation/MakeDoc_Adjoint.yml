@@ -18,6 +18,7 @@ input-files:
 -  Adjoint_CostContSolver.md
 -  AdjointSSA_CostFluxDivSolver.md
 - RegSolvers_part.md
+-  BackgroundErrorCostSolver.md
 -  Adjoint_CostRegSolver.md
 -  AdjointSSA_CostTaubSolver.md
 - StokesSolvers_part.md
