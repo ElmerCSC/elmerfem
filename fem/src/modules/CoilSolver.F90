@@ -349,9 +349,9 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
 
       IF(i==1) THEN
         IF( ListCheckPresent( Params,'Coil Normal') ) &
-            CALL Warn(Caller,'Place "Coil Normal" also in component section')
+            CALL Fatal(Caller,'Place "Coil Normal" also in component section')
         IF( ListCheckPresent( Params,'Coil Center') ) &
-            CALL Warn(Caller,'Place "Coil Center" also in component section')
+            CALL Fatal(Caller,'Place "Coil Center" also in component section')
       END IF
         
       IF(.NOT. ALLOCATED( CoilIndex ) ) THEN
@@ -892,7 +892,7 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: Basis(:)
     REAL(KIND=dp) :: DetJ,r(3),s,CoilTangentTmp(3)
     INTEGER :: e,t,i,j,n,Active,ierr
-    LOGICAL :: stat,Found,Found2
+    LOGICAL :: stat,Found,Found2,TallCoil
     TYPE(Element_t), POINTER :: Element
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -975,6 +975,10 @@ CONTAINS
       Imoment = ParTmp
     END IF
 
+    ! Normalize the moment equation so that when solving for eigenmodes the DSYEV will be more robust. 
+    s = SUM(Imoment)
+    Imoment = Imoment / s
+    
     s = 1.0_dp    
     DO i=1,3
       DO j=1,3
@@ -995,10 +999,19 @@ CONTAINS
     WRITE( Message,'(A,3ES12.4)') 'Coil inertia eigenvalues:',EigVal
     CALL Info(Caller,Message,Level=10)
 
-    IF( ListGetLogical( Params, 'Coil Geometry Tall', Found) ) THEN
-      CoilNormal = EigVec(:,1)  ! high coils
+    TallCoil = ListGetLogical( Params, 'Coil Geometry Tall', Found) 
+    IF(.NOT. Found) THEN
+      TallCoil = ( ABS(EigVal(2)-EigVal(3)) < 0.01 * ABS(EigVal(2)-EigVal(1)) )
+      IF( TallCoil ) THEN
+      END IF
+    END IF
+    
+    IF( TallCoil ) THEN
+      CALL Info( Caller,'Assuming coil to be tall i.e. axis has minimum inertia')
+      CoilNormal = EigVec(:,1)  
     ELSE
-      CoilNormal = EigVec(:,3)  ! low coils
+      CALL Info( Caller,'Assuming coil to be flat i.e. axis has maximum inertia')
+      CoilNormal = EigVec(:,3)  
     END IF
 
     ! Check the sign of the normal using the right-hand-rule.
