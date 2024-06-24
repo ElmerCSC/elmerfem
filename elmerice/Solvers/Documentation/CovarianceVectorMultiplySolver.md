@@ -87,6 +87,12 @@ end
 
 ### Examples
 
+- ElmerIce unitary tests:     
+   - [ELMER_TRUNK]/elmerice/Tests/CovarianceVector   
+   - [ELMER_TRUNK]/elmerice/Tests/CovarianceVector2   
+
+
+
 
 ### References
 
