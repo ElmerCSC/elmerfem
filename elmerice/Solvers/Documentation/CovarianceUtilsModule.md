@@ -46,6 +46,8 @@ Remarks:
 
 - In the literature, the Matérn functions are often defined with the smoothness parameter $\nu$ which can be a real; Here we are restricted to integers an  $m=\nu+1$.   
 - The Matérn functions have two limit cases, the exponential correlation function for $\nu=1/2$ and the squared exponential (or gaussian) correlation function for $\nu \to \infty$.
+- The Gaussian limit can be approached by setting the range to the Dayley length scale (Guillet et al. (2019) Eq. 7):   
+$$D=\sqrt{2m-4}l)$$
 
 For the following, we define the following the mass matrix $M$ and stiffness matrix $K$ discretized by the FEM:
 $$M_{ij}=\int_{\Omega} \phi_i \phi_j d\Omega$$
