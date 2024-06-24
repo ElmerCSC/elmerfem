@@ -137,6 +137,8 @@ end
 ```
 ### Examples
 
+- ElmerIce unitary tests:     
+   - [ELMER_TRUNK]/elmerice/Tests/BackgroundError
 
 ### References
 
