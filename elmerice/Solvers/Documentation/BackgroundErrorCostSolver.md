@@ -22,8 +22,13 @@
       - "diffusion operator"
       - "full matrix"
       - "diagonal"
-    - **covariance type specific keywords**: see [CovarianceUtils.md](CovarianceUtils.md)
+    - **covariance type specific keywords**: see [CovarianceUtils](#Covariance_Module)
 
+### Remark
+This documentation contains equations and is part of a generic documentation that can be converted to pdf using pandoc:
+```
+> pandoc -d MakeDoc_CovarianceUtils.yml
+```
 
 ### General Description
 
@@ -31,7 +36,8 @@ This solver is mainly intended to be used with the adjoint inverse methods imple
 
 It is an alternative to the *Regularisation* solver that penalizes the fist spatial derivatives of the *active* variable $x$, where $x$ is usually the basal friction coefficient, ice viscosity or bed elevation (see [Adjoint_CostRegSolver.md](Adjoint_CostRegSolver.md))
 
-Here the cost is computed as $$Cost=0.5 (x-x^b). B^{-1} .(x-x^b)$$ where:   
+Here the cost is computed as $$Cost=0.5 (x-x^b). B^{-1} .(x-x^b)$$ where:
+
 - $x$ is the *active* variable   
 - $x^b$ is the *background* variable, i.e. a prior estimate of $x$   
 - $B$ is the background error **covariance** matrix, i.e. is described the statics of the *expected* (or *tolerated*) difference between the background $x^b$ and the active variable $x$.
@@ -45,6 +51,7 @@ This cost function is usually applied in addition of a cost function that penali
 If the observation and background errors are gaussian (described by the respective covariance matrices $R$ and $B$), the errors unbiaised and the observation operator is linear, i.e. $u=K.x$, the solution of the variational inverse problem, i.e. finding the minimum of the cost function, solves the Bayesian inference problem.  The optimal solution then depends on the confidence that is given to the observation and to the background, which is *parameterized* by the corresponding covariance matrices. Special care must then be taken when prescribing these matrices.
 
 Providing:   
+
 - the input active variable $x$, given by the solver keyword *Variable name*  
 - a variable containing the background $x^b$, given by the solver keyword *Background Variable name*   
 - a method and the parameters for the covariance structure, given by the solver keyword *Covariance type* and method specific keywords   
@@ -56,17 +63,18 @@ The value of the cost a a function of the iteration is save in an ascii file def
 
 ### Implementation
 
-The covariance matrix is of size $n \times n$, with $n$ the number of mesh nodes, is usually full rank, and often poorly known. It is then standard to parameterize this matrix using standard correlation functions $c(d)$ that describe the spatial correlation between 2 points as a function of the distance $d$ between the points. The correlation structure depends then on the correlation function (typical functions are, e.g., the exponential, squared exponential (or gaussian), Matérn functions) which usually depends on a *correlation length scale* or *range*.
+The covariance matrix is of size $n \times n$, with $n$ the number of mesh nodes, is usually full rank, and often poorly known. It is then standard to parameterize this matrix using standard correlation functions $c(d)$ that describe the spatial correlation between 2 points as a function of the distance $d$ between the points. The correlation structure depends then on the correlation function (typical functions are, e.g., the exponential, squared exponential (or gaussian), Matérn functions, see [CovarianceUtils](#Covariance_Module)) which usually depends on a *correlation length scale* or *range*.
 
 The inverse covariance matrix $B^{-1}$ is factored in the standard form
 $$B^{-1}=\Sigma^{-1}. C^{-1} . \Sigma^{-1}$$
 where:   
+
 - $\Sigma$ is a diagonal matrix containing the  standard deviations, assumed spatially uniforms fro now, i.e. $\Sigma=\sigma I$, with $I$ the identity matrix.   
 - $C^{-1}$ is the inverse of the  correlation matrix whose components are defined using standard correlation functions $c(d)$.
 
 In general it is not necessary to explicitly compute and store $B$ (or its inverse), and it can be replaced by an equivalent operator. For  **Covariance type = String "diffusion operator"**, the operator results from the discretization of a diffusion equation, which can be done efficiently for unstructured meshes with the finite element method.  With this method the operator kernel is a correlation function from the Matérn family. The implementation follows  Guillet et al. (2019).
 
-See [CovarianceUtils.md](CovarianceUtils.md) for details on the possible choices to construct $C$.
+See [CovarianceUtils](#Covariance_Module) for details on the possible choices to construct $C$.
 
 ### Discussion
 
@@ -77,7 +85,6 @@ See [CovarianceUtils.md](CovarianceUtils.md) for details on the possible choices
 
 ### Known Bugs and Limitations
 
-- Limited to 2D meshes
 - Limited to serial if using the "full matrix" covariance method.   
 - The *diffusion operator* might be inaccurate near the boundaries or for highly distorted elements (see Guillet et al., 2019)
 - For the moment the implementation is limited to isotropic covariances with spatially uniform parameters (standard deviation and correlation length scale); but this could be improved (see Guillet et al., 2019)

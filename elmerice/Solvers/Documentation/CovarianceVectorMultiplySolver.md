@@ -15,31 +15,38 @@
       - "diffusion operator"
       - "full matrix"
       - "diagonal"
-    - **covariance type specific keywords**: see [CovarianceUtils.md](CovarianceUtils.md)
+    - **covariance type specific keywords**: see [CovarianceUtils](#Covariance_Module)
 - **Optional Input Keywords:**
     - **Solver Section**:
       - Normalize = *Logical*: wether to normalize the output (default: False)
+
+### Remark
+This documentation contains equations and is part of a generic documentation that can be converted to pdf using pandoc:
+```
+> pandoc -d MakeDoc_CovarianceUtils.yml
+```
 
 
 ### General Description
 
 Compute the product $$y=C.x$$
 with:   
+
 - $x$ and input variable   
 - $C$ a covariance matrix   
 
 Applications:  
+
 - **covariance visualization and code validation**: the spatial correlation function at a given node $z_i$ corresponds to the $i$-th column of the covariance matrix $C$. It can be visualized by plotting the result of applying $C$ to a vector that has a value of one at $z_i$ and a value of zero at all other points (Guillet et al., 2019).  
 - **Filtering**: When *Normalize = Logical True*, the output is normalized by the results of applying $C$ to a vector full of ones. If the kernel is a Gaussian correlation function, this would be equivalent to applying a Gaussian filter and this will thus smooth the input variable. The Matérn covariance, obtained with the *diffusion operator* method, converges to the Gaussian correlation function when the smoothness parameters $\nu$ tends to infinity.
 
 ### Implementation
 
-See the generic documentation for [CovarianceUtils.md](CovarianceUtils.md) for details on the possible choices to construct the covariance matrix $C$.
+See the generic documentation for [CovarianceUtils](#Covariance_Module) for details on the possible choices to construct the covariance matrix $C$.
 
 
 ### Known Bugs and Limitations
 
-- Limited to 2D meshes.   
 - Limited to serial if using the "full matrix" covariance method.   
 
 
