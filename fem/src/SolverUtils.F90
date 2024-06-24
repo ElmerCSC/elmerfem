@@ -18146,7 +18146,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
   REAL(KIND=dp), ALLOCATABLE, TARGET :: SlaveDiag(:), MasterDiag(:), DiagDiag(:)
   LOGICAL, ALLOCATABLE :: TrueDof(:)
   INTEGER, ALLOCATABLE :: Iperm(:)
-
+  REAL(KIND=dp) :: t0,rt0,st,rst
   CHARACTER(:), ALLOCATABLE :: str,MultiplierName
   CHARACTER(*), PARAMETER :: Caller = 'SolveWithLinearRestriction'
 
@@ -18156,6 +18156,9 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
 
   SolverPointer => Solver  
 
+  t0 = CPUTime()
+  rt0 = RealTime()
+    
   Parallel = Solver % Parallel
   
   NotExplicit = ListGetLogical(Solver % Values,'No Explicit Constrained Matrix',Found)
@@ -18290,11 +18293,14 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
   EnforceDirichlet = EnforceDirichlet .AND. ALLOCATED(StiffMatrix % ConstrainedDOF)
 
   UseTranspose = ListGetLogical( Solver % Values, 'Use Transpose values', Found)
-  
+  IF( UseTranspose ) THEN
+    CALL Info(Caller,'Using transpose values in elimination',Level=15)            
+  END IF
+    
   CALL Info(Caller,'Number of Rows / Nonzeros in original matrix: '&
       //I2S(StiffMatrix % NumberOfRows)//' / '//I2S(SIZE(StiffMatrix % Values)),Level=22) 
   
-  IF(ASSOCIATED(RestMatrix).AND..NOT.EliminateConstraints) THEN
+  IF(ASSOCIATED(RestMatrix) .AND. .NOT. EliminateConstraints) THEN
 
     CALL Info(Caller,'Adding ConstraintMatrix into CollectionMatrix',Level=10)
 
@@ -18497,7 +18503,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
 ! Assumes biorthogonal basis for Lagrange coefficient interpolation, but not
 ! necessarily biorthogonal constraint equation test functions.
 !------------------------------------------------------------------------------
-  IF (ASSOCIATED(RestMatrix).AND.EliminateConstraints) THEN
+  IF (ASSOCIATED(RestMatrix) .AND. EliminateConstraints) THEN
     CALL Info(Caller,'Eliminating Constraints from CollectionMatrix',Level=12)
 
     n = StiffMatrix % NumberOfRows
@@ -18538,17 +18544,25 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
         END IF
 
         IF(k == RestMatrix % InvPerm(i)) THEN
-           SlaveDiag(i) = Tvals(j)
+          SlaveDiag(i) = Tvals(j)
         ELSE
-           MasterDiag(i) = Tvals(j)
-           MasterPerm(k)  = i
-           MasterIperm(i) = k
+          MasterDiag(i) = Tvals(j)
+          MasterPerm(k)  = i
+          MasterIperm(i) = k
         END IF
       END DO
     END DO
+
+    IF(InfoActive(25)) THEN
+      PRINT *,'SlaveSum:',SUM(SlaveDiag)
+      PRINT *,'MasterSum:',SUM(MasterDiag) 
+      PRINT *,'SlaveSum abs:',SUM(ABS(SlaveDiag))
+      PRINT *,'MasterSum abs:',SUM(ABS(MasterDiag))
+    END IF
   END IF
 
-  IF (ASSOCIATED(RestMatrix).AND.EliminateConstraints) THEN
+  
+  IF (ASSOCIATED(RestMatrix) .AND. EliminateConstraints) THEN
     EliminateSlave = ListGetLogical( Solver % values, 'Eliminate Slave',Found )
     EliminateFromMaster = ListGetLogical( Solver % values, 'Eliminate From Master',Found )
 
@@ -18583,7 +18597,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
     EliminateDiscont = .FALSE.
   END IF
 
-  IF (ASSOCIATED(RestMatrix).AND.EliminateConstraints) THEN
+  IF (ASSOCIATED(RestMatrix) .AND. EliminateConstraints) THEN
     ! Replace elimination equations by the constraints (could done be as a postprocessing
     ! step, if eq's totally eliminated from linsys.)
     ! ----------------------------------------------------------------------------------
@@ -18800,8 +18814,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
     ! Optimize bandwidth, if needed:
     ! ------------------------------
     IF(EliminateFromMaster) THEN
-      CALL Info(Caller,&
-          'Optimizing bandwidth after elimination',Level=15)
+      CALL Info(Caller,'Optimizing bandwidth after elimination',Level=15)
       DO i=1,RestMatrix % NumberOfRows
         j = SlaveIPerm(i)
         k = MasterIPerm(i)
@@ -18910,13 +18923,23 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
 
   CollectionMatrix % Comm = StiffMatrix % Comm
 
-  CALL Info(Caller,'Now going for the coupled linear system',Level=10)
-
+  
+  st  = CPUTime() - t0;
+  rst = RealTime() - rt0  
+  WRITE(Message,'(a,f8.2,f8.2,a)') 'Collection matrix creation time (CPU,REAL): ',st,rst,' (s)'
+  CALL Info(Caller,Message,Level=6)    
+  
+  i = CollectionMatrix % NumberOfRows - StiffMatrix % NumberOfRows
+  j = SIZE(CollectionMatrix % Values) - SIZE(StiffMatrix % Values )
+  CALL Info(Caller,'Collection matrix increased with '//I2S(i)//&
+      ' rows and '//I2S(j)//' non-zeros',Level=8)
+    
   IF( InfoActive( 30 ) ) THEN
     CALL VectorValuesRange(CollectionMatrix % Values,SIZE(CollectionMatrix % Values),'A')       
     CALL VectorValuesRange(CollectionMatrix % rhs,SIZE(CollectionMatrix % rhs),'b')       
   END IF
     
+  CALL Info(Caller,'Now going for the coupled linear system',Level=10)
   CALL SolveLinearSystem( CollectionMatrix, CollectionVector, &
       CollectionSolution, Norm, DOFs, Solver, StiffMatrix )
     
@@ -18971,13 +18994,15 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
     Solution(i:j) = CollectionSolution(i:j)
 
     IF ( ExportMultiplier ) THEN
+      CALL Info(Caller,'Separating Lagrange multiplier from collection solution',Level=10)
+      
       i = StiffMatrix % NumberOfRows
       j=0
       IF(ASSOCIATED(RestMatrix)) j = RestMatrix % NumberOfRows
       IF(ASSOCIATED(AddMatrix)) &
         j=j+MAX(0,AddMatrix % NumberOfRows - StiffMatrix % NumberOFRows)
 
-      IF(ASSOCIATED(RestMatrix).AND.EliminateConstraints) THEN        
+      IF(ASSOCIATED(RestMatrix) .AND. EliminateConstraints) THEN        
         ! Compute eliminated l-coefficient values:
         ! ---------------------------------------
         MultiplierValues = 0.0_dp
@@ -19000,7 +19025,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
         END IF
       END IF
 
-      IF(EliminateConstraints.AND.EliminateDiscont) THEN
+      IF(EliminateConstraints .AND. EliminateDiscont) THEN
         IF (EliminateFromMaster) THEN
           CALL totv(StiffMatrix,MultiplierValues,MasterIPerm)
         ELSE
