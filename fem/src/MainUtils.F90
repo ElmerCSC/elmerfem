@@ -2663,7 +2663,7 @@ CONTAINS
      TYPE(Variable_t), POINTER :: ChildVar
      TYPE(Matrix_t), POINTER :: ChildMat, ParentMat
      INTEGER :: n,m,dofs, i,j,k,l,ii, jj, nn
-     LOGICAL :: Found, OutputActive
+     LOGICAL :: Found, Lvalue
 
      ParentDofs = ParentSolver % Variable % Dofs
      IF( PRESENT( ChildDofs ) ) THEN
@@ -2711,11 +2711,11 @@ CONTAINS
      ChildVarValues = 0.0_dp
      ChildVarPerm => ParentSolver % Variable % Perm
 
-     OutputActive = ListGetLogical( Solver % Values,'Variable Output', Found )
-     IF(.NOT. Found ) OutputActive = ParentSolver % Variable % Output 
+     Lvalue = ListGetLogical( Solver % Values,'Variable Output', Found )
+     IF(.NOT. Found ) Lvalue = ParentSolver % Variable % Output 
           
      CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, &
-         Solver, ChildVarName, Dofs, ChildVarValues, ChildVarPerm, OutputActive )
+         Solver, ChildVarName, Dofs, ChildVarValues, ChildVarPerm, Lvalue )
      
 
      ChildVar => VariableGet( Solver % Mesh % Variables, ChildVarName )      
@@ -2752,7 +2752,12 @@ CONTAINS
          ChildMat % COMPLEX = .FALSE.
         END IF
      END IF
-         
+
+     Lvalue = ListGetLogical( Solver % Values,'Bubbles in Global System',Found )
+     IF( Found ) THEN
+       CALL ListAddNewLogical( ChildSolver % Values,'Bubbles in Global System',Lvalue )
+     END IF
+     
      IF( ASSOCIATED( ParentSolver % ActiveElements ) ) THEN
        Solver % ActiveElements => ParentSolver % ActiveElements
        Solver % NumberOfActiveElements = ParentSolver % NumberOfActiveElements
