@@ -15,17 +15,23 @@
       - "diffusion operator"
       - "full matrix"
       - "diagonal"
-    - **covariance type specific keywords**: see [CovarianceUtils.md](CovarianceUtils.md)
+    - **covariance type specific keywords**: see [CovarianceUtils](#Covariance_Module)
 - **Optional Input Keywords:**
     - **Solver Section**:
       - Random Seed = *Integer*: a seed to initialize the random generator for repeatability
 
+### Remark
+This documentation contains equations and is part of a generic documentation that can be converted to pdf using pandoc:
+```
+> pandoc -d MakeDoc_CovarianceUtils.yml
+```
 
 ### General Description
 
 For a random variable $X$ that is normally distributed as $$X \sim \mathcal{N}(x^b,C)$$, with $x^b$ the mean and $C$ the covariance matrix, it is possible to draw non-conditionnal realizations $x^s$ as
 $$x^s = x^b + V.z$$
-where:
+where:   
+
 - $V$ is obtained from a factorization of $C$ as $C=VV^T$, classically a Cholesky factorisation.  
 - $z$ is a vector of uniformly distributed random numbers with zero mean.  
 
@@ -35,14 +41,13 @@ For an application to uncertainty quantification in ice sheet modeling, using th
 
 ### Implementation
 
-See the generic documentation for [CovarianceUtils.md](CovarianceUtils.md) for details on the possible choices to construct the covariance matrix $C$ and for the factorization.
+See the generic documentation for [CovarianceUtils](#Covariance_Module) for details on the possible choices to construct the covariance matrix $C$ and for the factorization.
 
 It the solver variable is a vector, each component contains a different realization, otherwise each call to the solver (e.g. during steady-state iterations) will give a different realization.  
 
 ### Known Bugs and Limitations
 
-- Limited to 2D meshes.   
-- Limited to serial if using the "full matrix" covariance method.   
+- Limited to serial if using the "full matrix" covariance method.
 - The *diffusion operator* might be inaccurate near the boundaries or for highly distorted elements (see Guillet et al., 2019)
 - For the moment the implementation is limited to isotropic covariances with spatially uniform parameters (standard deviation and correlation length scale); but this could be improved (see Guillet et al., 2019)
 
