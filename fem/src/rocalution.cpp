@@ -373,7 +373,7 @@ void elmer_distribute_matrix(const MPI_Comm*    comm,
 
 
 extern "C" void ROCParallelSolve( int *gn, int *n, int *rows, int *cols, double *vals, double *b, double *x_out, 
-		          double *bnrm, int *gOffset,int *fcomm )
+   double *bnrm, int *gOffset,int *fcomm, int *imethod, int *prec, int *maxiter, double *TOL )
 {
     int i, *Lrows, *Lcols, rank, nranks;
     double *Lvals;
@@ -430,45 +430,25 @@ extern "C" void ROCParallelSolve( int *gn, int *n, int *rows, int *cols, double 
     BiCGStabl<GlobalMatrix<double>, GlobalVector<double>, double> ls_bcgl;
     GMRES<GlobalMatrix<double>, GlobalVector<double>, double> ls_gmres;
     FGMRES<GlobalMatrix<double>, GlobalVector<double>, double> ls_fgmres;
-    IDR<GlobalMatrix<double>, GlobalVector<double>, double> ls_idr;
 
-    int iterator = 2;
-    switch(iterator) {
+    switch(*imethod) {
       case(0): ls = &ls_cg;  break;
       case(1): ls = &ls_bcg; break;
       case(2): ls = &ls_bcgl; ls_bcgl.SetOrder(4); break;
       case(3): ls = &ls_gmres; ls_gmres.SetBasisSize(50); break;
       case(4): ls = &ls_fgmres; ls_fgmres.SetBasisSize(50); break;
-      case(5): ls = &ls_idr; ls_idr.SetShadowSpace(4); break;
       default: ls = &ls_bcg; break;
     }
 
-
-    {
-      double TOL=1e-6;
-      int MaxIter = 1000;
-      ls->Init(TOL*(*bnrm),1e-20,1e20,MaxIter);
-    }
-
+    ls->Init(*TOL*(*bnrm),1e-20,1e20,*maxiter);
 
     // Preconditioner
-    int prec = 0;
-
     Jacobi<GlobalMatrix<double>, GlobalVector<double>, double> prec_j;
-//      ILU<GlobalMatrix<double>, GlobalVector<double>, double> prec_i;
+//  SGS<GlobalMatrix<double>, GlobalVector<double>, double> prec_g;
 
-    switch(prec) {
+    switch(*prec) {
       case(0): ls->SetPreconditioner(prec_j); break;
-
-#if 0
-      case(1):
-          {
-            int level=0;
-            prec_i.Set(level);
-            ls->SetPreconditioner(prec_i);
-          }
-      break;
-#endif
+//    case(1): ls->SetPreconditioner(prec_g); break;
     }
 
     ls->SetOperator(gmat);
@@ -486,7 +466,8 @@ extern "C" void ROCParallelSolve( int *gn, int *n, int *rows, int *cols, double 
     ls->Clear();
 }
 
-extern "C" void ROCSerialSolve(int *n, int *rows, int *cols, double *vals, double *b, double *x_out, int *nonlin_update)
+extern "C" void ROCSerialSolve(int *n, int *rows, int *cols, double *vals, double *b, double *x_out,
+      int *nonlin_update, int *imethod, int *prec, int *maxiter, double *TOL)
 {
 
     int i, *Lrows, *Lcols, rank, nranks;
@@ -534,47 +515,40 @@ extern "C" void ROCSerialSolve(int *n, int *rows, int *cols, double *vals, doubl
     BiCGStabl<LocalMatrix<double>, LocalVector<double>, double> ls_bcgl;
     GMRES<LocalMatrix<double>, LocalVector<double>, double> ls_gmres;
     FGMRES<LocalMatrix<double>, LocalVector<double>, double> ls_fgmres;
-    IDR<LocalMatrix<double>, LocalVector<double>, double> ls_idr;
 
-    int iterator = 2;
-    switch(iterator) {
+    switch(*imethod) {
       case(0): ls = &ls_cg;  break;
       case(1): ls = &ls_bcg; break;
       case(2): ls = &ls_bcgl; ls_bcgl.SetOrder(4); break;
       case(3): ls = &ls_gmres; ls_gmres.SetBasisSize(50); break;
       case(4): ls = &ls_fgmres; ls_fgmres.SetBasisSize(50); break;
-      case(5): ls = &ls_idr; ls_idr.SetShadowSpace(4); break;
       default: ls = &ls_bcg; break;
     }
 
-
     {
-      double TOL=1e-6, bnrm;
-      int MaxIter = 1000;
+      double bnrm;
       bnrm = 0.0;
       for(i=0; i<*n; i++ ) bnrm += b[i]*b[i];
       bnrm = sqrt(bnrm);
       if (bnrm<1e-16) bnrm = 1;
-      ls->Init(TOL*bnrm,1e-20,1e20,MaxIter);
+      ls->Init(*TOL*bnrm,1e-20,1e20,*maxiter);
     }
 
-
     // Preconditioner
-    int prec = 0;
-
     Jacobi<LocalMatrix<double>, LocalVector<double>, double> prec_j;
+    SGS<LocalMatrix<double>, LocalVector<double>, double> prec_g;
     ILU<LocalMatrix<double>, LocalVector<double>, double> prec_i;
 
-    switch(prec) {
+    switch(*prec) {
       case(0): ls->SetPreconditioner(prec_j); break;
-
-      case(1):
+      case(1): ls->SetPreconditioner(prec_g); break;
+      case(2):
+        ls->SetPreconditioner(prec_i);
         {
           int level=0;
           prec_i.Set(level);
         }
-        ls->SetPreconditioner(prec_i);
-      break;
+        break;
     }
 
     ls->SetOperator(mat);

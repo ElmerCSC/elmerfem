@@ -14602,6 +14602,10 @@ END FUNCTION SearchNodeL
       pv => b
       CALL VectorValuesRange(pv,SIZE(pv),'b')
     END IF
+
+
+    IF(ListGetLogical(Params, 'Linear System Use Rocalution', Found)) &
+      Method = 'rocalution'
       
     
     IF ( .NOT. Parallel ) THEN
@@ -15053,22 +15057,24 @@ END FUNCTION SearchNodeL
 #ifdef HAVE_ROCALUTION
 
     INTERFACE
-      SUBROUTINE ROCSerialSolve(n, rows, cols, vals, b, x, nonlin_update) BIND(C, Name="ROCSerialSolve")
+      SUBROUTINE ROCSerialSolve(n, rows, cols, vals, b, x, nonlin_update, &
+                  imethod, prec, maxiter, tol) BIND(C, Name="ROCSerialSolve")
         USE Types
         USE ISO_C_BINDING, ONLY: C_CHAR, C_INTPTR_T
 
         IMPLICIT NONE
-        REAL(KIND=dp) :: vals(*), b(*), x(*)
-        INTEGER :: rows(*), cols(*), nonlin_update, n
+        REAL(KIND=dp) :: vals(*), b(*), x(*), tol
+        INTEGER :: rows(*), cols(*), nonlin_update, n, imethod, prec, maxiter
       END SUBROUTINE ROCSerialSolve
 
-      SUBROUTINE ROCParallelSolve(gn, n, rows, cols, vals, b, x, bnrm, goffset, fcomm) BIND(C, Name="ROCParallelSolve")
+      SUBROUTINE ROCParallelSolve(gn, n, rows, cols, vals, b, x, bnrm, goffset, &
+               fcomm, imethod, prec, maxiter, tol) BIND(C, Name="ROCParallelSolve")
         USE Types
         USE ISO_C_BINDING, ONLY: C_CHAR, C_INTPTR_T
 
         IMPLICIT NONE
-        REAL(KIND=dp) :: vals(*), b(*), x(*), bnrm
-        INTEGER :: gn, n, rows(*), cols(*), goffset(*), fcomm
+        REAL(KIND=dp) :: vals(*), b(*), x(*), bnrm, tol
+        INTEGER :: gn, n, rows(*), cols(*), goffset(*), fcomm, imethod, prec, maxiter
       END SUBROUTINE ROCParallelSolve
     END INTERFACE
 
@@ -15085,14 +15091,58 @@ END FUNCTION SearchNodeL
     REAL(KIND=dp), ALLOCATABLE :: vBuf(:)
     INTEGER :: status(MPI_STATUS_SIZE),ierr,lrow,you,rcnt,proc,ng,col,own
 
+    REAL(KIND=dp) :: TOL
+    INTEGER :: Imethod, Prec, MaxIter, ILULevel
+
+    TYPE(ValueList_t), POINTER :: Params
+
     TYPE SendStuff_t
        INTEGER, ALLOCATABLE :: Size(:), Rows(:)
     END TYPE SendStuff_t
     TYPE(SendStuff_t), ALLOCATABLE :: SendStuff(:)
 
+
+    Params => Solver % Values
+
     nonlin_update = 1
-    IF ( .NOT. ListGetLogical( Solver % Values, 'Linear System Refactorize', Found ) ) &
+    IF ( .NOT. ListGetLogical( Params, 'Linear System Refactorize', Found ) ) &
       nonlin_update = 0;
+
+    SELECT CASE(ListGetString(Params,'Linear System Iterative Method',Found))
+      CASE('cg')
+         Imethod = 0;
+      CASE('bicgstab')
+         Imethod = 1;
+      CASE('bicgstabl')
+         Imethod = 2;
+      CASE('gmres')
+         Imethod = 3;
+      CASE('fgmres')
+         Imethod = 4;
+      CASE DEFAULT
+         Imethod = 0;
+    END SELECT
+
+    SELECT CASE(ListGetString(Params,'Linear System Preconditioning',Found))
+      CASE('jacobi')
+        Prec = 0;
+      CASE('sgs')
+        Prec = 1;
+      CASE('ilu')
+        Prec = 2; ILULevel = 0
+      CASE('ilu0')
+       Prec = 2; ILULevel = 0
+      CASE('ilu1')
+       Prec = 2; ILULevel = 1
+      CASE('ilu2')
+       Prec = 2; ILULevel = 2
+      CASE DEFAULT
+       Prec = 0;
+    END SELECT
+
+    MaxIter = ListGetInteger(Params,'Linear System Max Iterations')
+    TOL = ListGetCReal(Params,'Linear System Convergence Tolerance')
+
 
     isParallel = Parenv % PEs>1
     me =  Parenv % MyPe
@@ -15278,8 +15328,10 @@ END BLOCK
           bnrm = SQRT(ParallelReduction(SUM(bb**2)))
           IF(bnrm <AEPS) bnrm=1;
 
+
           CALL ROCParallelSolve( gn, n, Im % Rows-1, Im % Cols-1, &
-              Im % Values, bb, xb, bnrm, gOffsetB, A % comm )
+              Im % Values, bb, xb, bnrm, gOffsetB, A % comm, &
+                imethod, prec, maxiter, tol )
 
           x = 0
           DO i=1,n
@@ -15296,7 +15348,8 @@ END BLOCK
             GlobalToLocal, gOffsetA, gOffsetB)
 
     ELSE
-      CALL ROCSerialSolve( n, A % Rows-1, A % Cols-1, A % Values, b, x, nonlin_update )
+      CALL ROCSerialSolve( n, A % Rows-1, A % Cols-1, A % Values, b, x, &
+              nonlin_update, imethod, prec, maxiter, tol )
     END IF
 
 #else
