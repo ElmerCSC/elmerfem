@@ -133,52 +133,26 @@ void elmer_distribute_matrix(const MPI_Comm*    comm,
             else
             {
                 // Boundary point above current process
-                if(local_col[j] < index_offset[rank])
+                // Loop over ranks above current process
+                for(int r = num_procs-1; r >= 0; --r)
                 {
-                    // Loop over ranks above current process
-                    for(int r = rank - 1; r >= 0; --r)
-                    {
-                        // Check if boundary belongs to rank r
-                        if(local_col[j] >= index_offset[r] && local_col[j] < index_offset[r + 1])
-                        {
-                            // Add boundary point to rank r if it has not been added yet
-                            if(!checked[r][i + index_offset[rank]])
-                            {
-                                boundary[r].push_back(i + index_offset[rank]);
-                                neighbor[r] = true;
-                                ++boundary_nnz;
-                                checked[r][i + index_offset[rank]] = true;
-                            }
-                            ++ghost_nnz;
-                            // Rank for current boundary point local_col[j] has been found
-                            // Continue with next boundary point
-                            break;
-                        }
-                    }
-                }
+                    if ( r==rank ) continue;
 
-                // boundary point below current process
-                if(local_col[j] >= index_offset[rank + 1])
-                {
-                    // Loop over ranks above current process
-                    for(int r = rank + 1; r < num_procs; ++r)
+                    // Check if boundary belongs to rank r
+                    if(local_col[j] >= index_offset[r] && local_col[j] < index_offset[r + 1])
                     {
-                        // Check if boundary belongs to rank r
-                        if(local_col[j] >= index_offset[r] && local_col[j] < index_offset[r + 1])
+                        // Add boundary point to rank r if it has not been added yet
+                        if(!checked[r][i + index_offset[rank]])
                         {
-                            // Add boundary point to rank r if it has not been added yet
-                            if(!checked[r][i + index_offset[rank]])
-                            {
-                                boundary[r].push_back(i + index_offset[rank]);
-                                neighbor[r] = true;
-                                ++boundary_nnz;
+                            boundary[r].push_back(i + index_offset[rank]);
+                            neighbor[r] = true;
+                            ++boundary_nnz;
                                 checked[r][i + index_offset[rank]] = true;
-                            }
-                            ++ghost_nnz;
-                            // Rank for current boundary point local_col[j] has been found
-                            // Continue with next boundary point
-                            break;
                         }
+                        ++ghost_nnz;
+                            // Rank for current boundary point local_col[j] has been found
+                        // Continue with next boundary point
+                        break;
                     }
                 }
             }
