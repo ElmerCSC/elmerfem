@@ -20,6 +20,7 @@ run_mgdyn_tests.sh
 fem/tests/CircuitsAndDynamics
 slurm*out
 ElmerGUI/CMakeLists.txt
+result
 
 # Test-generated files
 fem/tests/**/TEST.PASSED

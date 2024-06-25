@@ -254,7 +254,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
      INTEGER, POINTER :: TempPerm(:),DisplPerm(:),StressPerm(:),&
           DisplacementVelPerm(:), NodeIndexes(:)
 
-     LOGICAL :: Found,RayleighDamping, NormalSpring
+     LOGICAL :: Found,RayleighDamping, NormalSpring, NormalDamp
      LOGICAL :: PlaneStress, CalcStress, CalcStressAll, &
         CalcPrincipalAll, CalcPrincipalAngle, CalculateStrains, &
         CalcPrincipalStrain, CalcVelocities, Isotropic(2) = .TRUE.
@@ -271,7 +271,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
      REAL(KIND=dp),ALLOCATABLE:: MASS(:,:),STIFF(:,:),&
        DAMP(:,:), LOAD(:,:),LOAD_im(:,:),FORCE(:),FORCE_im(:), &
        LocalTemperature(:),ElasticModulus(:,:,:),PoissonRatio(:), &
-       HeatExpansionCoeff(:,:,:),DampCoeff(:),SpringCoeff(:,:,:),Beta(:), &
+       HeatExpansionCoeff(:,:,:),DampCoeff(:,:,:),SpringCoeff(:,:,:),Beta(:), &
        ReferenceTemperature(:), Density(:), Damping(:), Beta_im(:), &
        NodalDisplacement(:,:), ContactLimit(:), LocalNormalDisplacement(:), &
        LocalContactPressure(:), PreStress(:,:), PreStrain(:,:), &
@@ -405,7 +405,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
                  Damping( N ),              &
                  RayleighAlpha( N ),        &
                  RayleighBeta( N ),         &
-                 DampCoeff( N ),            &
+                 DampCoeff( N,3,3 ),        &
                  PreStress( 6,N ),          &
                  PreStrain( 6,N ),          &
                  StressLoad( 6,N ),         &
@@ -1449,8 +1449,6 @@ CONTAINS
             END IF
           END IF
 
-          DampCoeff(1:n) =  GetReal( BC, 'Damping', Found )
-
           NormalSpring = .FALSE.
           IF( ListCheckPrefix( BC,'Spring' ) ) THEN         
             SpringCoeff(1:n,1,1) =  GetReal( BC, 'Spring', NormalSpring )
@@ -1465,7 +1463,22 @@ CONTAINS
               END DO
             END IF
           END IF
-            
+
+          NormalDamp = .FALSE.
+          IF( ListCheckPrefix( BC,'Damping' ) ) THEN                  
+            DampCoeff(1:n,1,1) =  GetReal( BC, 'Damping', NormalDamp )
+            IF ( .NOT. NormalDamp ) THEN
+              DO i=1,dim
+                DampCoeff(1:n,i,i) = GetReal( BC, ComponentName('Damping',i), Found)
+                IF(Found) CYCLE
+                DO j=1,dim
+                  IF (ListCheckPresent(BC,'Damping '//i2s(i)//i2s(j) )) &
+                      DampCoeff(1:n,i,j)=GetReal( BC, 'Damping '//i2s(i)//i2s(j), Found)
+                END DO
+              END DO
+            END IF
+          END IF
+                        
           ContactLimit(1:n) =  GetReal( BC, 'Contact Limit', Found )
 
           IF(ModelLumping .AND. .NOT. FixDisplacement) THEN
@@ -1486,7 +1499,7 @@ CONTAINS
           SELECT CASE( CurrentCoordinateSystem() )
           CASE( Cartesian, AxisSymmetric, CylindricSymmetric )
              CALL StressBoundary( STIFF,DAMP,FORCE,FORCE_im, LOAD, LOAD_im,   &
-               SpringCoeff,NormalSpring,DampCoeff, Beta, Beta_im, StressLoad, &
+               SpringCoeff,NormalSpring,DampCoeff,NormalDamp,Beta, Beta_im, StressLoad, &
                    NormalTangential, Element,n,ntot,ElementNodes )
           CASE DEFAULT
              DAMP = 0.0d0
