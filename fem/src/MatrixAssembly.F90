@@ -356,6 +356,34 @@ CONTAINS
 
 
 !---------------------------------------------------------------------------
+!> Skip matrix assembly because the elements are similar.
+!---------------------------------------------------------------------------
+   FUNCTION UseLocalMatrixCopy( Solver, elemind, activeind) RESULT ( Skip ) 
+     TYPE(Solver_t) :: Solver
+     INTEGER, OPTIONAL :: elemind, activeind
+     LOGICAL :: Skip 
+     
+     INTEGER :: eind, vind
+     
+     Skip = .FALSE.
+     IF( Solver % LocalSystemMode <= 0 ) RETURN
+     
+     IF( PRESENT(activeind) ) THEN
+       eind = activeind
+     ELSE
+       IF(eind > Solver % NumberOfActiveElements ) RETURN
+       eind = Solver % InvActiveElements(elemind)
+       IF(eind==0) RETURN
+     END IF
+
+     vind = Solver % LocalSystem(eind) % eind
+     IF( vind > 0 .AND. vind /= eind) Skip = .TRUE.
+     
+   END FUNCTION UseLocalMatrixCopy
+     
+
+   
+!---------------------------------------------------------------------------
 !> Store local matrix, e.g. for topology optimization.
 !---------------------------------------------------------------------------
    SUBROUTINE UseLocalMatrixStorage( Solver, n, K, F, elemind, activeind) 

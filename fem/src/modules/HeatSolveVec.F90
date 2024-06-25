@@ -298,7 +298,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
       !$OMP DO
       DO t=1,Active
         Element => GetActiveElement(t)
-        totelem = totelem + 1
+        totelem = totelem + 1                
         n  = GetElementNOFNodes(Element)
         nd = GetElementNOFDOFs(Element)
         nb = GetElementNOFBDOFs(Element)
@@ -511,6 +511,8 @@ CONTAINS
       
       InitHandles = .FALSE.
     END IF
+
+    IF( UseLocalMatrixCopy( Solver, Element % ElementIndex ) ) GOTO 10
     
     IP = GaussPointsAdapt(Element)
     ngp = IP % n
@@ -614,7 +616,7 @@ CONTAINS
     IF(Transient) CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element)
     CALL CondensateP( nd-nb, nb, STIFF, FORCE )
     
-    CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element, VecAssembly=VecAsm)
+10  CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element, VecAssembly=VecAsm)
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixVec
 !------------------------------------------------------------------------------
@@ -734,6 +736,8 @@ CONTAINS
       
       InitHandles = .FALSE.
     END IF
+
+    IF( UseLocalMatrixCopy( Solver, Element % ElementIndex ) ) GOTO 20
     
     IP = GaussPointsAdapt( Element )
     IF( Element % ElementIndex == 1 ) THEN
@@ -866,7 +870,7 @@ CONTAINS
     IF(Transient) CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element)
     CALL CondensateP( nd-nb, nb, STIFF, FORCE )
     
-    CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element,VecAssembly=VecAsm)
+20  CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element,VecAssembly=VecAsm)
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------

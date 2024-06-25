@@ -6555,9 +6555,9 @@ CONTAINS
       IF(DualLCoeff) THEN
         DualSlave  = .FALSE.
         DualMaster = .FALSE.
-        CALL ListAddLogical( CurrentModel % Solver % Values, 'Use Transpose Values',.FALSE.)
+        CALL ListAddNewLogical( CurrentModel % Solver % Values, 'Use Transpose Values',.FALSE.)
       ELSE
-        CALL ListAddLogical( CurrentModel % Solver % Values, 'Use Transpose Values',.TRUE.)
+        CALL ListAddNewLogical( CurrentModel % Solver % Values, 'Use Transpose Values',.TRUE.)
       END IF
 
       Projector % Child => AllocateMatrix()
@@ -8927,9 +8927,9 @@ CONTAINS
       IF(DualLCoeff) THEN
         DualSlave  = .FALSE.
         DualMaster = .FALSE.
-        CALL ListAddLogical( CurrentModel % Solver % Values, 'Use Transpose Values',.FALSE.)
+        CALL ListAddNewLogical( CurrentModel % Solver % Values, 'Use Transpose Values',.FALSE.)
       ELSE
-        CALL ListAddLogical( CurrentModel % Solver % Values, 'Use Transpose Values',.TRUE.)
+        CALL ListAddNewLogical( CurrentModel % Solver % Values, 'Use Transpose Values',.TRUE.)
       END IF
       CALL Info(Caller,'Using biorthogonal basis for weak projectors, as requested',Level=8)      
     END IF

@@ -5113,11 +5113,13 @@ CONTAINS
 
       IF( ALLOCATED( Perm ) ) THEN
         IF( SIZE( Perm ) < nPerm ) THEN
-          CALL Warn(Caller,'Permutation vector too small?')
+          CALL Warn(Caller,'Permutation vector too small: '&
+              //I2S(SIZE(Perm))//' vs. '//I2S(nPerm))
           DEALLOCATE( Perm ) 
         END IF
         IF( SIZE( Perm ) > nPerm ) THEN
-          CALL Info(Caller,'Permutation vector too large?',Level=15)
+          CALL Info(Caller,'Permutation vector too large: '&
+              //I2S(SIZE(Perm))//' vs. '//I2S(nPerm),Level=15)
         END IF
       END IF
       IF( .NOT. ALLOCATED( Perm ) ) THEN

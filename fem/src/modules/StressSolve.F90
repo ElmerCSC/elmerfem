@@ -1080,9 +1080,9 @@ CONTAINS
 
        Element => GetActiveElement(t)
 
-       ! The 1st element defines the other local stiffness matrices too!
-       IF( LocalMatrixIdentical .AND. t>1) GOTO 100
-         
+       ! If elements are similar skip the other similar elements.
+       IF( UseLocalMatrixCopy( Solver, activeind = t) ) GOTO 100 
+       
        n = GetElementNOFNOdes()
        ntot = GetElementNOFDOFs()
 

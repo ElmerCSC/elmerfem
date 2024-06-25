@@ -781,6 +781,9 @@ CONTAINS
 !$omp threadprivate(Nodes)
     
 !------------------------------------------------------------------------------
+
+    IF( UseLocalMatrixCopy( Solver, Element % ElementIndex ) ) GOTO 10
+
     CALL GetElementNodes( Nodes,Element )
     STIFF = 0._dp
     JAC  = 0._dp
@@ -1028,7 +1031,7 @@ CONTAINS
         CALL Default1stOrderTime( MASS, STIFF, FORCE,UElement=Element, USolver=Solver )
       END IF
     END IF
-    CALL DefaultUpdateEquations( STIFF, FORCE,UElement=Element, USolver=Solver)
+10  CALL DefaultUpdateEquations( STIFF, FORCE,UElement=Element, USolver=Solver)
 
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
@@ -1099,7 +1102,9 @@ CONTAINS
         ALLOCATE(Basis(m), dBasisdx(m,3))
       END IF
     END IF
-      
+    
+    IF( UseLocalMatrixCopy( Solver, Element % ElementIndex ) ) GOTO 20
+    
     Material => GetMaterial(Element)
     IF( .NOT. ASSOCIATED( Material, PrevMaterial ) ) THEN
       PrevMaterial => Material           
@@ -1257,7 +1262,7 @@ CONTAINS
     END IF
     CALL CondensateP( nd-nb, nb, STIFF, FORCE )
     
-    CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element) !, VecAssembly=VecAsm)
+20  CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element) !, VecAssembly=VecAsm)
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixHandles
 !------------------------------------------------------------------------------
