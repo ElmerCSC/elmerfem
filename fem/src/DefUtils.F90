@@ -6713,7 +6713,9 @@ CONTAINS
       A => PSolver % Matrix
       IF(ASSOCIATED(A)) THEN
         CALL VectorValuesRange(A % Values,SIZE(A % Values),'A_bulk')       
-        CALL VectorValuesRange(A % rhs,SIZE(A % rhs),'b_bulk')
+        IF(ASSOCIATED(A % rhs)) THEN
+          CALL VectorValuesRange(A % rhs,SIZE(A % rhs),'b_bulk')
+        END IF
       END IF
     END IF
     
@@ -6802,7 +6804,9 @@ CONTAINS
     IF( InfoActive( 30 ) ) THEN
       IF(ASSOCIATED(A)) THEN
         CALL VectorValuesRange(A % Values,SIZE(A % Values),'A0')       
-        CALL VectorValuesRange(A % rhs,SIZE(A % rhs),'b0')
+        IF( ASSOCIATED( A % rhs) ) THEN
+          CALL VectorValuesRange(A % rhs,SIZE(A % rhs),'b0')
+        END IF
       END IF
     END IF
 

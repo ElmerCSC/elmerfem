@@ -4492,7 +4492,7 @@ CONTAINS
     ELSE
       !s(3) = s(3) / np
       !WRITE(Message,*) '[min,max,ave] for '//TRIM(str)//':', s
-      WRITE(Message,*) '[min,max,sum] for '//TRIM(str)//':', s
+      WRITE(Message,*) '[size,min,max,sum] for '//TRIM(str)//': '//I2S(np)//' ', s
       CALL Info('VectorValuesRange',Message)
     END IF
         
