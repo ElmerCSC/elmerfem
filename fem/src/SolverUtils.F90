@@ -15059,6 +15059,7 @@ END FUNCTION SearchNodeL
     INTERFACE
       SUBROUTINE ROCSerialSolve(n, rows, cols, vals, b, x, nonlin_update, &
                   imethod, prec, maxiter, tol) BIND(C, Name="ROCSerialSolve")
+
         USE Types
         USE ISO_C_BINDING, ONLY: C_CHAR, C_INTPTR_T
 
@@ -15067,8 +15068,10 @@ END FUNCTION SearchNodeL
         INTEGER :: rows(*), cols(*), nonlin_update, n, imethod, prec, maxiter
       END SUBROUTINE ROCSerialSolve
 
+
       SUBROUTINE ROCParallelSolve(gn, n, rows, cols, vals, b, x, bnrm, goffset, &
-               fcomm, imethod, prec, maxiter, tol) BIND(C, Name="ROCParallelSolve")
+         fcomm, imethod, prec, maxiter, tol) BIND(C, Name="ROCParallelSolve")
+
         USE Types
         USE ISO_C_BINDING, ONLY: C_CHAR, C_INTPTR_T
 
@@ -15083,13 +15086,19 @@ END FUNCTION SearchNodeL
 
     TYPE(Matrix_t), POINTER :: Im
 
-    INTEGER, ALLOCATABLE :: part_vec_tmp(:)
-
     INTEGER, ALLOCATABLE, SAVE :: GlobalToLocal(:),rRows(:),rSize(:), cBuf(:), &
-       SendTo(:),Owner(:),aPerm(:), iLperm(:),part_vec(:), gOffsetA(:), gOffsetB(:)
+       SendTo(:),Owner(:),aPerm(:), iLperm(:), tOffset(:), gOffset(:), ibuf(:)
 
-    REAL(KIND=dp), ALLOCATABLE :: vBuf(:)
+    REAL(KIND=dp), ALLOCATABLE :: vBuf(:), dbuf(:)
+
     INTEGER :: status(MPI_STATUS_SIZE),ierr,lrow,you,rcnt,proc,ng,col,own
+
+    INTEGER :: buf_size, procs
+    INTEGER :: xmpi_comm
+    INTEGER :: xmpi_src  = MPI_ANY_SOURCE
+    INTEGER :: xmpi_max  = MPI_MAX
+    INTEGER :: xmpi_int  = MPI_INTEGER
+    INTEGER :: xmpi_dbl  = MPI_DOUBLE_PRECISION
 
     REAL(KIND=dp) :: TOL
     INTEGER :: Imethod, Prec, MaxIter, ILULevel
@@ -15097,10 +15106,9 @@ END FUNCTION SearchNodeL
     TYPE(ValueList_t), POINTER :: Params
 
     TYPE SendStuff_t
-       INTEGER, ALLOCATABLE :: Size(:), Rows(:)
+      INTEGER, ALLOCATABLE :: Size(:), Rows(:)
     END TYPE SendStuff_t
     TYPE(SendStuff_t), ALLOCATABLE :: SendStuff(:)
-
 
     Params => Solver % Values
 
@@ -15143,9 +15151,11 @@ END FUNCTION SearchNodeL
     MaxIter = ListGetInteger(Params,'Linear System Max Iterations')
     TOL = ListGetCReal(Params,'Linear System Convergence Tolerance')
 
+    procs =  Parenv % PEs
+    isParallel = procs>1
+    me    =  Parenv % MyPe
+    xmpi_comm = ELMER_COMM_WORLD
 
-    isParallel = Parenv % PEs>1
-    me =  Parenv % MyPe
     n = A % NumberOfRows
 
     IF(isParallel) THEN
@@ -15155,203 +15165,193 @@ END FUNCTION SearchNodeL
          ParEnv % ActiveComm = A % Comm
       END IF
 
-        IF(.NOT. ASSOCIATED(A % CollectionMatrix)) THEN
-          IF(ALLOCATED(Owner))THEN
-            DEALLOCATE(Owner,APerm,ILperm,part_vec, SendTo, GlobalToLocal, gOffsetA, gOffsetB)
-          END IF
-
-          n = SIZE(A % ParallelInfo % GlobalDOFs)
-          ALLOCATE( Owner(n), Aperm(n), gOffsetA(ParEnv % Pes), gOffsetB(ParEnv % PEs+1) )
-
-          gOffsetA = -1
-          CALL ContinuousNumbering(A % ParallelInfo,A % Perm,aPerm,Owner,gStart=gOffsetA(ParEnv % mype+1))
-
-          gOffsetB = -1
-          CALL MPI_ALLREDUCE( gOffsetA, gOffsetB, ParEnv % PEs, MPI_INTEGER, MPI_MAX, &
-                            ELMER_COMM_WORLD, ierr )
-
-          ng = 0
-          DO i=1, A % NumberOfRows
-            IF(A % ParallelInfo % NeighbourList(i) % Neighbours(1) == me) ng=ng+1
-          END DO
-          ng = NINT(ParallelReduction(1._dp*ng))
-
-          ALLOCATE(part_vec(ng), part_vec_tmp(ng));
-          part_vec_tmp=-1; part_vec=-1
-          DO i=1,A % NumberOfRows
-            part_vec_tmp(APerm(i)) = A % ParallelInfo % NeighbourList(i) % Neighbours(1)
-          END DO
-          CALL MPI_ALLREDUCE( part_vec_tmp, part_vec, ng, MPI_INTEGER, MPI_MAX, &
-                            ELMER_COMM_WORLD, ierr )
-          DEALLOCATE(part_vec_tmp)
-
-          Im => AllocateMatrix(); Im % Format = MATRIX_LIST
-          ALLOCATE(SendTo(ParEnv % Pes),GlobalToLocal(ng),iLPerm(A % NumberOfRows))
-        ELSE
-          Im => A % CollectionMatrix
+      ! Enforce continuous numbering as required by ROCalution 
+      ! ------------------------------------------------------
+      IF (.NOT. ASSOCIATED(A % CollectionMatrix)) THEN
+        IF(ALLOCATED(Owner))THEN
+          DEALLOCATE(Owner,APerm,ILperm,SendTo, GlobalToLocal, tOffset, gOffset)
         END IF
 
-        IF( Im % Format == MATRIX_LIST .OR. nonlin_update==1 ) THEN
-          iLPerm = 0
-          LRow = 0
-          SendTo = 0
-          GlobalToLocal = 0
+        n = SIZE(A % ParallelInfo % GlobalDOFs)
+        ALLOCATE( Owner(n), Aperm(n), tOffset(0:procs), gOffset(0:procs) )
+
+        tOffset = -1
+        CALL ContinuousNumbering(A % ParallelInfo,A % Perm,aPerm,Owner,gStart=tOffset(me))
+
+        gOffset = -1
+        CALL MPI_ALLREDUCE(tOffset,gOffset,ParEnv % PEs,xmpi_int,xmpi_max,xmpi_comm,ierr)
+
+        ng = ParallelReduction(SUM(Owner))
+        Im => AllocateMatrix(); Im % Format = MATRIX_LIST
+        ALLOCATE(SendTo(procs),GlobalToLocal(ng),iLPerm(A % NumberOfRows))
+      ELSE
+        Im => A % CollectionMatrix
+      END IF
+
+      ! Complete the matrix rows such that each partition has full rows of the 'owned' dofs
+      ! -----------------------------------------------------------------------------------
+      IF( Im % Format == MATRIX_LIST .OR. nonlin_update==1 ) THEN
+        iLPerm = 0
+        LRow = 0
+        SendTo = 0
+        GlobalToLocal = 0
  
-          IF (Im % Format == MATRIX_CRS  ) Im % Values = 0._dp
-          DO i=1,A % NumberofRows
-            you = A % ParallelInfo % NeighbourList(i) % Neighbours(1)
-            IF ( you == me ) THEN
-              Lrow = LRow+1
-              iLPerm(LRow) = i
-              DO j=A % Rows(i+1)-1, A % Rows(i),-1
-                CALL AddToMatrixElement(Im, Lrow, aPerm(A  % Cols(j)), A % Values(j))
-              END DO
-              GlobalToLocal(aPerm(i)) = Lrow
-            ELSE
-              SendTo(you+1) = SendTo(you+1)+1
-            END IF
-          END DO
-
-          ALLOCATE(SendStuff(ParEnv % Pes))
-          DO i=1,ParEnv % PEs
-            IF( i-1==me ) CYCLE
-            IF(.NOT.ParEnv % IsNeighbour(i))  CYCLE
-  
-            ALLOCATE( SendStuff(i) % Rows(SendTo(i)) )
-            ALLOCATE( SendStuff(i) % Size(SendTo(i)) )
-          END DO
- 
-BLOCK
-          integer :: buf_size
-          buf_size = 0
-
-          SendTo = 0
-          DO i=1,a % NumberOfRows
-            you = A % ParallelInfo % NeighbourList(i) % Neighbours(1)
-            IF ( you /= me ) THEN
-              SendTo(you+1) = SendTo(you+1)+1
-              SendStuff(you+1) % Size(Sendto(you+1))  = A % Rows(i+1)-A % Rows(i)
-              SendStuff(you+1) % Rows(Sendto(you+1))  = i
-              buf_size = buf_size + A % Rows(i+1) - A % Rows(i)
-            END IF
-          END DO
-
-          CALL CheckBuffer(ParEnv % PEs*(4+4*MPI_BSEND_OVERHEAD) + 4*buf_size)
-END BLOCK
-
-          DO i=1,ParEnV % PEs
-            IF(i-1==me .OR. .NOT. ParEnv % IsNeighbour(i)) CYCLE
-
-            CALL MPI_BSEND(SendTo(i),1,MPI_INTEGER,i-1,1200,ELMER_COMM_WORLD,status, ierr)
-            IF(Sendto(i)==0) CYCLE
-
-            CALL MPI_BSEND(aPerm(SendStuff(i) % Rows),SendTo(i),MPI_INTEGER,i-1, &
-                          1201,ELMER_COMM_WORLD,status,ierr )
-
-            CALL MPI_BSEND( SendStuff(i) % Size,SendTo(i),MPI_INTEGER,i-1, &
-                          1202,ELMER_COMM_WORLD,status,ierr )
-
-            DO j=1,SendTo(i)
-              k = SendStuff(i) % Rows(j)
-
-              CALL MPI_BSEND(aPerm(A % Cols(A % Rows(k):A % Rows(k+1)-1)),SendStuff(i) % Size(j), &
-                         MPI_INTEGER,i-1, 1203,ELMER_COMM_WORLD, status, ierr )
-
-
-              CALL MPI_BSEND(A % Values(A % Rows(k):A % Rows(k+1)-1),SendStuff(i) % Size(j), &
-                      MPI_DOUBLE_PRECISION,i-1,1204,ELMER_COMM_WORLD, status, ierr )
+        IF (Im % Format == MATRIX_CRS  ) Im % Values = 0._dp
+        DO i=1,A % NumberofRows
+          you = A % ParallelInfo % NeighbourList(i) % Neighbours(1)
+          IF ( you == me ) THEN
+            Lrow = LRow+1
+            iLPerm(LRow) = i
+            DO j=A % Rows(i+1)-1, A % Rows(i),-1
+              CALL AddToMatrixElement(Im, Lrow, aPerm(A  % Cols(j)), A % Values(j))
             END DO
-          END DO
-
-          DO i=1,ParEnV % PEs
-            IF(i-1==me .OR. .NOT. ParEnv % IsNeighbour(i)) CYCLE
-
-            CALL MPI_RECV(rcnt,1,MPI_INTEGER,MPI_ANY_SOURCE,1200,ELMER_COMM_WORLD,status,ierr)
-            IF(rcnt==0) CYCLE
-
-            proc = status(MPI_SOURCE)
-            ALLOCATE( rRows(rcnt), rSize(rcnt) )
-
-            CALL MPI_RECV(rRows,rcnt,MPI_INTEGER,proc,1201,ELMER_COMM_WORLD,status,ierr)
-            CALL MPI_RECV(rSize,rcnt,MPI_INTEGER,proc,1202,ELMER_COMM_WORLD,status,ierr)
-            DO j=1,rcnt
-              k = GlobalToLocal(rRows(j))
-
-              IF ( k==0 ) THEN
-                PRINT*,Parenv % MyPE,proc, 'not mine then ?', rRows(j)
-                CYCLE
-              END IF
-
-              ALLOCATE(cBuf(rSize(j)), vBuf(rSize(j)))
-
-              CALL MPI_RECV(cBuf,rSize(j),MPI_INTEGER,proc,1203, &
-                        ELMER_COMM_WORLD,status,ierr )
-
-              CALL MPI_RECV(vBuf,rSize(j),MPI_DOUBLE_PRECISION,proc, &
-                      1204,ELMER_COMM_WORLD, status,ierr)
-              DO l=1,rSize(j)
-                CAll AddToMatrixElement( Im,k,cBuf(l),vBuf(l) )
-              END DO
-
-              DEALLOCATE(cbuf, vbuf)
-            END DO
-
-            DEALLOCATE( rRows, rSize )
-          END DO
-
-          CALL MPI_BARRIER(A % Comm,ierr)
- 
-          IF( Im % Format == MATRIX_LIST ) THEN
-            CALL List_toCRSMatrix(Im)
-            A % CollectionMatrix => Im
+            GlobalToLocal(aPerm(i)) = Lrow
+          ELSE
+            SendTo(you+1) = SendTo(you+1)+1
           END IF
-          n = Im % NumberOfRows
-          gn = ParallelReduction(n);
-          gOffsetB(ParEnv % PEs+1) = gn
+        END DO
+
+        ALLOCATE(SendStuff(ParEnv % Pes))
+        DO i=1,ParEnv % PEs
+          IF( i-1==me ) CYCLE
+          IF(.NOT.ParEnv % IsNeighbour(i))  CYCLE
+
+          ALLOCATE( SendStuff(i) % Rows(SendTo(i)) )
+          ALLOCATE( SendStuff(i) % Size(SendTo(i)) )
+        END DO
+ 
+        SendTo   = 0
+        buf_size = 0
+        DO i=1,a % NumberOfRows
+          you = A % ParallelInfo % NeighbourList(i) % Neighbours(1)
+          IF ( you /= me ) THEN
+            SendTo(you+1) = SendTo(you+1)+1
+            SendStuff(you+1) % Size(Sendto(you+1))  = A % Rows(i+1)-A % Rows(i)
+            SendStuff(you+1) % Rows(Sendto(you+1))  = i
+            buf_size = buf_size + A % Rows(i+1) - A % Rows(i)
+          END IF
+        END DO
+
+        CALL CheckBuffer(ParEnv % PEs*(4+4*MPI_BSEND_OVERHEAD) + 4*buf_size)
+
+        DO i=1,ParEnV % PEs
+          IF(i-1==me .OR. .NOT. ParEnv % IsNeighbour(i)) CYCLE
+
+          CALL MPI_BSEND(SendTo(i),1,xmpi_int,i-1,1200,xmpi_comm,status,ierr)
+          IF(Sendto(i)==0) CYCLE
+
+          ibuf = aPerm(SendStuff(i) % Rows)
+          CALL MPI_BSEND(ibuf,SendTo(i),xmpi_int,i-1,1201,xmpi_comm,status,ierr)
+
+          ibuf = SendStuff(i) % Size
+          CALL MPI_BSEND(ibuf,SendTo(i),xmpi_int,i-1,1202,xmpi_comm,status,ierr)
+
+          DO j=1,SendTo(i)
+          k = SendStuff(i) % Rows(j)
+            l = SendStuff(i) % Size(j)
+            dbuf =  A % Values(A % Rows(k):A % Rows(k+1)-1)
+            ibuf =  aPerm(A % Cols(A % Rows(k):A % Rows(k+1)-1))
+            CALL MPI_BSEND(ibuf,l,xmpi_int,i-1,1203,xmpi_comm,status,ierr)
+            CALL MPI_BSEND(dbuf,l,xmpi_dbl,i-1,1204,xmpi_comm,status,ierr)
+          END DO
+        END DO
+
+        DO i=0,procs-1
+          IF(i==me .OR. .NOT. ParEnv % IsNeighbour(i+1)) CYCLE
+
+          CALL MPI_RECV(rcnt,1,xmpi_int,xmpi_src,1200,xmpi_comm,status,ierr)
+          IF(rcnt==0) CYCLE
+
+          proc = status(MPI_SOURCE)
+          ALLOCATE( rRows(rcnt), rSize(rcnt) )
+
+          CALL MPI_RECV(rRows,rcnt,xmpi_int,proc,1201,xmpi_comm,status,ierr)
+          CALL MPI_RECV(rSize,rcnt,xmpi_int,proc,1202,xmpi_comm,status,ierr)
+          DO j=1,rcnt
+            k = GlobalToLocal(rRows(j))
+
+            IF ( k==0 ) THEN
+              PRINT*,Parenv % MyPE,proc, 'not mine then ?', rRows(j)
+              CYCLE
+            END IF
+
+            ALLOCATE(cBuf(rSize(j)), vBuf(rSize(j)))
+
+            CALL MPI_RECV(cBuf,rSize(j),xmpi_int,proc,1203,xmpi_comm,status,ierr)
+            CALL MPI_RECV(vBuf,rSize(j),xmpi_dbl,proc,1204,xmpi_comm,status,ierr)
+
+            DO l=1,rSize(j)
+              CAll AddToMatrixElement( Im,k,cBuf(l),vBuf(l) )
+            END DO
+
+            DEALLOCATE(cbuf, vbuf)
+          END DO
+          DEALLOCATE( rRows, rSize )
+        END DO
+
+        CALL MPI_BARRIER(A % Comm,ierr)
+ 
+        IF( Im % Format == MATRIX_LIST ) THEN
+          CALL List_toCRSMatrix(Im)
+          A % CollectionMatrix => Im
         END IF
-
-        BLOCK
-          REAL(KIND=dp), ALLOCATABLE :: bb(:),xb(:), r(:)
-          REAL(KIND=dp) :: bnrm
-
-          n = Im % NumberOfRows
-          j = A  % NumberOfRows
-          ALLOCATE(bb(n), xb(n), r(j) )
-
-          r = b(1:j)
-          CALL ParallelSumVector(A, r)
-
-          DO i=1,n
-            bb(i) = r(iLPerm(i))
-            xb(i) = x(iLPerm(i))
-          END DO
-          bnrm = SQRT(ParallelReduction(SUM(bb**2)))
-          IF(bnrm <AEPS) bnrm=1;
+        n = Im % NumberOfRows
+        gn = ParallelReduction(n);
+        gOffset(ParEnv % PEs) = gn
+      END IF
 
 
-          CALL ROCParallelSolve( gn, n, Im % Rows-1, Im % Cols-1, &
-              Im % Values, bb, xb, bnrm, gOffsetB, A % comm, &
-                imethod, prec, maxiter, tol )
+      !  the linear solver
+      ! ----------------------
+      BLOCK
+        REAL(KIND=dp), ALLOCATABLE :: bb(:),xb(:), r(:)
+        REAL(KIND=dp) :: bnrm
 
-          x = 0
-          DO i=1,n
-            x(iLPerm(i)) = xb(i)
-          END DO
-          CALL ParallelSumVector(A, x)
-        END BLOCK
+        n = Im % NumberOfRows
+        j = A  % NumberOfRows
+        ALLOCATE(bb(n), xb(n), r(j) )
 
+        ! complete the RHS of the partition dofs
+        !---------------------------------------
+        r = b(1:j)
+        CALL ParallelSumVector(A, r)
 
-        ! Cleanup, remains to be reconsidered for optimizations
-        CALL FreeMatrix(Im)
-        A % CollectionMatrix => Null()
-        DEALLOCATE(Owner,APerm,ILperm,part_vec, SendTo, &
-            GlobalToLocal, gOffsetA, gOffsetB)
+        ! Extract 'owned' dofs
+        !---------------------
+        DO i=1,n
+          bb(i) = r(iLPerm(i))
+          xb(i) = x(iLPerm(i))
+        END DO
+
+        bnrm = SQRT(ParallelReduction(SUM(bb**2)))
+        IF(bnrm <AEPS) bnrm=1;
+
+        !  call ROCalution
+        ! ----------------
+        CALL ROCParallelSolve( gn, n, Im % Rows-1, Im % Cols-1, &
+            Im % Values, bb, xb, bnrm, gOffset, A % comm, imethod, prec, maxiter, tol )
+
+        ! distribute the result such that all dofs present (even shared and not 'owned')
+        ! in a partition have consistent values
+        ! ------------------------------------------------------------------------------
+        x = 0
+        DO i=1,n
+          x(iLPerm(i)) = xb(i)
+        END DO
+        CALL ParallelSumVector(A, x)
+      END BLOCK
+
+      ! Cleanup, remains to be reconsidered for optimizations
+      CALL FreeMatrix(Im)
+      A % CollectionMatrix => Null()
+      DEALLOCATE(Owner,APerm,ILperm,SendTo,GlobalToLocal,tOffset,gOffset)
 
     ELSE
+      ! Serial case: call the linear solver
+      ! -----------------------------------
       CALL ROCSerialSolve( n, A % Rows-1, A % Cols-1, A % Values, b, x, &
               nonlin_update, imethod, prec, maxiter, tol )
     END IF
-
 #else
     CALL Fatal('ROCSolver', "Rocalution doesn't seem to be included.")
 #endif
