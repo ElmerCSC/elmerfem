@@ -15091,7 +15091,7 @@ END FUNCTION SearchNodeL
 
     REAL(KIND=dp), ALLOCATABLE :: vBuf(:), dbuf(:)
 
-    INTEGER :: status(MPI_STATUS_SIZE),ierr,lrow,you,rcnt,proc,ng,col,own
+    INTEGER :: status(MPI_STATUS_SIZE),ierr,lrow,you,rcnt,proc
 
     INTEGER :: buf_size, procs
     INTEGER :: xmpi_comm
@@ -15181,9 +15181,11 @@ END FUNCTION SearchNodeL
         gOffset = -1
         CALL MPI_ALLREDUCE(tOffset,gOffset,ParEnv % PEs,xmpi_int,xmpi_max,xmpi_comm,ierr)
 
-        ng = ParallelReduction(SUM(Owner))
+        gOffset(ParEnv % PEs) = ParallelReduction(SUM(Owner))
+
+        ALLOCATE(SendTo(procs),GlobalToLocal(gOffset(me)+1:gOffset(me+1)),iLPerm(A % NumberOfRows))
+
         Im => AllocateMatrix(); Im % Format = MATRIX_LIST
-        ALLOCATE(SendTo(procs),GlobalToLocal(ng),iLPerm(A % NumberOfRows))
       ELSE
         Im => A % CollectionMatrix
       END IF
@@ -15247,7 +15249,7 @@ END FUNCTION SearchNodeL
           CALL MPI_BSEND(ibuf,SendTo(i),xmpi_int,i-1,1202,xmpi_comm,status,ierr)
 
           DO j=1,SendTo(i)
-          k = SendStuff(i) % Rows(j)
+            k = SendStuff(i) % Rows(j)
             l = SendStuff(i) % Size(j)
             dbuf =  A % Values(A % Rows(k):A % Rows(k+1)-1)
             ibuf =  aPerm(A % Cols(A % Rows(k):A % Rows(k+1)-1))
@@ -15268,19 +15270,19 @@ END FUNCTION SearchNodeL
           CALL MPI_RECV(rRows,rcnt,xmpi_int,proc,1201,xmpi_comm,status,ierr)
           CALL MPI_RECV(rSize,rcnt,xmpi_int,proc,1202,xmpi_comm,status,ierr)
           DO j=1,rcnt
-            k = GlobalToLocal(rRows(j))
-
-            IF ( k==0 ) THEN
-              PRINT*,Parenv % MyPE,proc, 'not mine then ?', rRows(j)
+            k = rRows(j)
+            IF ( k<= gOffset(me) .OR. k> gOffset(me+1) ) THEN
+              PRINT*,Parenv % MyPE,proc, 'not mine then ?', rRows(j), gOffset(me), gOffset(me+1)
               CYCLE
             END IF
+            k = GlobalToLocal(k)
 
             ALLOCATE(cBuf(rSize(j)), vBuf(rSize(j)))
 
             CALL MPI_RECV(cBuf,rSize(j),xmpi_int,proc,1203,xmpi_comm,status,ierr)
             CALL MPI_RECV(vBuf,rSize(j),xmpi_dbl,proc,1204,xmpi_comm,status,ierr)
 
-            DO l=1,rSize(j)
+            DO l=1,rSize(j);
               CAll AddToMatrixElement( Im,k,cBuf(l),vBuf(l) )
             END DO
 
@@ -15297,7 +15299,6 @@ END FUNCTION SearchNodeL
         END IF
         n = Im % NumberOfRows
         gn = ParallelReduction(n);
-        gOffset(ParEnv % PEs) = gn
       END IF
 
 
