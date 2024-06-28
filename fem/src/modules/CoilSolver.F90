@@ -144,13 +144,22 @@ SUBROUTINE CoilSolver_init( Model,Solver,dt,TransientSimulation )
     
     BC => CurrentModel % BCs(ElBCs(1)) % Values
     IF (.NOT. ASSOCIATED(BC) ) CALL Fatal('CoilSolver_init', 'Boundary not found!')    
+    IF( ListGetLogical( BC,'Coil Start', Found ) ) THEN
+      CALL Fatal('CoilSolver_init',&
+          '"Electrode Boundaries(1)" not consistent with given "Coil Start" in bc '//I2S(ElBCs(1)))
+    END IF
     CALL ListAddLogical( BC,'Coil End',.TRUE.)
 
     BC => CurrentModel % BCs(ElBCs(2)) % Values
     IF (.NOT. ASSOCIATED(BC) ) CALL Fatal('CoilSolver_init', 'Boundary not found!')    
-    CALL ListAddLogical( BC,'Coil Start',.TRUE.)
+    IF( ListGetLogical( BC,'Coil End', Found ) ) THEN
+      CALL Fatal('CoilSolver_init',&
+          '"Electrode Boundaries(2)" not consistent with given "Coil End" in bc '//I2S(ElBCs(2)))
+    END IF
+    CALL ListAddNewLogical( BC,'Coil Start',.TRUE.)
     
     CALL Info('CoilSolver_init','"Coil Start" and "Coil End" set to "Electrode Boundaries"',Level=5)
+        
   END DO
      
 
@@ -189,11 +198,11 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
       CoilHelicity(:),CoilNormals(:,:)
   LOGICAL :: Found, CoilClosed, CoilAnisotropic, UseDistance, FixConductivity, &
       FitCoil, SelectNodes, CalcCurr, NarrowInterface, UseUnityCond
-  LOGICAL, ALLOCATABLE :: GotCurr(:), GotDens(:), NormalizeCoil(:)
+  LOGICAL, ALLOCATABLE :: GotCurr(:), GotDens(:), NormalizeCoil(:), CoilBodies(:)
   REAL(KIND=dp) :: CoilCenter(3), CoilNormal(3), CoilTangent1(3), CoilTangent2(3), &
       MinCurr(3),MaxCurr(3),TmpCurr(3)
   INTEGER, ALLOCATABLE :: CoilIndex(:)
-  CHARACTER(LEN=MAX_NAME_LEN) :: CondName
+  CHARACTER(LEN=MAX_NAME_LEN) :: CondName, EqName
   LOGICAL :: OneCut, TestCut
   CHARACTER(*), PARAMETER :: Caller = 'CoilSolver'
 
@@ -275,6 +284,9 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
     CALL Fatal(Caller,'CoilPot not associated!')
   END IF
 
+  ALLOCATE(CoilBodies(Model % NumberOfBodies))
+  CoilBodies = .FALSE.    
+  
   TestCut = .FALSE.
   OneCut = .FALSE.
   NarrowInterface = .FALSE.
@@ -346,7 +358,8 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
       IF( .NOT. Found ) CALL Fatal(Caller,'Coil fitting requires > Master Bodies <') 
 
       CALL Info(Caller,'Treating coil in Component: '//I2S(i),Level=7)
-
+      CoilBodies(TargetBodies) = .TRUE.
+      
       IF(i==1) THEN
         IF( ListCheckPresent( Params,'Coil Normal') ) &
             CALL Fatal(Caller,'Place "Coil Normal" also in component section')
@@ -357,8 +370,11 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
       IF(.NOT. ALLOCATED( CoilIndex ) ) THEN
         ALLOCATE( CoilIndex( SIZE(LoadVar % Perm) ) )
         CoilIndex = 0
-      END IF
+      END IF      
+            
       NoCoils = NoCoils + 1
+      CALL MarkCoilNodes(TargetBodies, NoCoils) 
+
       IF( CoilClosed ) THEN
         SelectNodes = .TRUE.      
         CALL DefineCoilCenter( CoilCenter, CoilList, TargetBodies )
@@ -366,7 +382,29 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
             CoilList, TargetBodies )
       END IF
     ELSE
-      IF( NoCoils > 0 ) EXIT
+      IF( NoCoils > 0 ) THEN
+        ! Check that we do not try to solve the coil equations in places where the coil is not defined!
+        ! This can happen if we give components, not when the Solver section defines the coil. 
+        EqName = ListGetString( Params, 'Equation', Found)        
+
+        DO t=1,Model % NumberOfBodies
+          Element => Mesh % Elements(t)          
+          j = Element % BodyId
+          IF ( CheckElementEquation( Model, Element, EqName ) ) THEN
+            IF(.NOT. CoilBodies(j)) THEN
+              CALL Fatal(Caller,'CoilSolver body '//I2S(j)//' active in Equation but not in Component!')
+            END IF
+          ELSE
+            IF(CoilBodies(j)) THEN
+              CALL Fatal(Caller,'CoilSolver body '//I2S(j)//' active in Component but not in Equation!')
+            END IF
+          END IF
+        END DO        
+        DEALLOCATE(CoilBodies)
+        
+        EXIT
+      END IF
+
       NoCoils = 1
       CoilList => Params
       IF( CoilClosed ) THEN
@@ -759,7 +797,30 @@ CONTAINS
    END SUBROUTINE CutInterfaceConnections
 !------------------------------------------------------------------------------
 
+   ! If there will be many coils then mark no nodes associated to them
+   !------------------------------------------------------------------------------
+   SUBROUTINE MarkCoilNodes(TargetBodies, Coil) 
 
+     INTEGER, POINTER :: TargetBodies(:)
+     INTEGER :: Coil
+
+     INTEGER :: Active, e, n
+     TYPE(Element_t), POINTER :: Element
+
+     Active = GetNOFActive()
+     DO e=1,Active
+       Element => GetActiveElement(e)
+       n  = GetElementNOFNodes()        
+       IF( ALL( TargetBodies /= Element % BodyId ) ) CYCLE
+       CoilIndex( Element % NodeIndexes ) = NoCoils
+
+       IF( ASSOCIATED( CoilIndexVar ) ) THEN
+         n = CoilIndexVar % Perm( Element % ElementIndex )
+         IF( n > 0 ) CoilIndexVar % Values(n) = 1.0_dp * NoCoils
+       END IF
+     END DO     
+   END SUBROUTINE MarkCoilNodes
+     
   
 
   ! Chooses bulk nodes which are used to set the artificial boundary conditions
@@ -783,24 +844,6 @@ CONTAINS
 
     n = Mesh % MaxElementNodes
     ALLOCATE( Basis(n) )
-
-    
-    ! If there will be many coils then mark no nodes associated to them
-    IF( PRESENT( TargetBodies ) ) THEN
-      Active = GetNOFActive()
-      DO e=1,Active
-        Element => GetActiveElement(e)
-        n  = GetElementNOFNodes()        
-        IF( ALL( TargetBodies /= Element % BodyId ) ) CYCLE
-        CoilIndex( Element % NodeIndexes ) = NoCoils
-
-        IF( ASSOCIATED( CoilIndexVar ) ) THEN
-          n = CoilIndexVar % Perm( Element % ElementIndex )
-          IF( n > 0 ) CoilIndexVar % Values(n) = 1.0_dp * NoCoils
-        END IF
-      END DO
-    END IF
-      
 
     HelperArray => ListGetConstRealArray( Params, 'Coil Center', CoilCenterSet)
     IF( CoilCenterSet ) THEN
@@ -2027,10 +2070,9 @@ CONTAINS
     LOGICAL :: DoIt
 
     CALL Info(Caller,'Performing scaling of potential for desired current for '//I2S(NoCoils)//' coil',Level=30)
-
     
     nsize = SIZE( LoadVar % Perm ) 
-    
+
     DO Coil = 1, NoCoils 
       
       ! Evaluate the positive and negative currents
@@ -2040,7 +2082,7 @@ CONTAINS
       negsum = 0.0_dp
       posi = 0
       negi = 0
-
+      
       DO i=1,nsize
         j = LoadVar % Perm(i) 
         IF( j == 0 ) CYCLE
@@ -2084,11 +2126,11 @@ CONTAINS
       DoIt = .TRUE.
       
       IF( ABS( possum ) < EPSILON( possum ) ) THEN
-        CALL Warn(Caller,'No positive current sources on coil end!')
+        CALL Warn(Caller,'No positive current sources on coil '//I2S(Coil)//' end!')
         DoIt = .FALSE.
       END IF
       IF( ABS( negsum ) < EPSILON( negsum ) ) THEN
-        CALL Warn(Caller,'No negative current sources on coil end!')
+        CALL Warn(Caller,'No negative current sources on coil '//I2S(Coil)//' end!')
         DoIt = .FALSE.
       END IF
 

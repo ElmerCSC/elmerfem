@@ -4492,7 +4492,7 @@ CONTAINS
     ELSE
       !s(3) = s(3) / np
       !WRITE(Message,*) '[min,max,ave] for '//TRIM(str)//':', s
-      WRITE(Message,*) '[min,max,sum] for '//TRIM(str)//':', s
+      WRITE(Message,*) '[size,min,max,sum] for '//TRIM(str)//': '//I2S(np)//' ', s
       CALL Info('VectorValuesRange',Message)
     END IF
         
@@ -15448,7 +15448,7 @@ END FUNCTION SearchNodeL
 
 
 
-  FUNCTION HaveConstraintMatrix( A ) RESULT( HaveConstraint ) 
+  FUNCTION HaveRestrictionMatrix( A ) RESULT( HaveConstraint ) 
 
     TYPE(Matrix_t), POINTER :: A
     LOGICAL :: HaveConstraint
@@ -15456,7 +15456,7 @@ END FUNCTION SearchNodeL
     INTEGER :: n
 
     IF( .NOT. ASSOCIATED( A ) ) THEN
-      CALL Fatal('HaveConstraintMatrix','Matrix A not associated!')
+      CALL Fatal('HaveRestrictionMatrix','Matrix A not associated!')
     END IF
 
     n = 0
@@ -15471,7 +15471,7 @@ END FUNCTION SearchNodeL
     n = ParallelReduction(n)
     HaveConstraint = ( n > 0 ) 
     
-  END FUNCTION HaveConstraintMatrix
+  END FUNCTION HaveRestrictionMatrix
 
   
   
@@ -15591,7 +15591,7 @@ END FUNCTION SearchNodeL
       bb => b
     END IF
 
-    RestrictionMode = HaveConstraintMatrix( A ) 
+    RestrictionMode = HaveRestrictionMatrix( A ) 
     
     Nmode = 0
 20  CALL ConstraintModesDriver( A, x, b, Solver, .TRUE., Nmode, LinModes )  
