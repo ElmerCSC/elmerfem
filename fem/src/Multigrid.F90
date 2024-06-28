@@ -49,7 +49,7 @@ MODULE Multigrid
    USE DirectSolve
    USE Smoothers
    USE ClusteringMethods
-   USE MatrixAssembly, ONLY : mGetElementDofs
+   USE ElementUtils, ONLY : mGetElementDofs
    
    IMPLICIT NONE
 

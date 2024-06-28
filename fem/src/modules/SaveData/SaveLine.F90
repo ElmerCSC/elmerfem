@@ -111,6 +111,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   USE ElementUtils
   USE SolverUtils
   USE MeshUtils
+  USE ElementUtils
   USE SaveUtils
   USE BandwidthOptimize
   USE DefUtils

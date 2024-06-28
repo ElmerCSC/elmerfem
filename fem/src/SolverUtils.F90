@@ -25763,7 +25763,6 @@ CONTAINS
      DEALLOCATE( NodeDone )
 
    END SUBROUTINE SetImplicitFriction
-
    
 END MODULE SolverUtils
 

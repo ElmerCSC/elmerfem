@@ -49,7 +49,7 @@ MODULE MeshUtils
     USE Interpolation
     USE ParallelUtils
     USE Types
-    USE MatrixAssembly, ONLY : mGetElementDofs, mGetBoundaryIndexesFromParent
+    USE ElementUtils, ONLY : mGetBoundaryIndexesFromParent, mGetElementDofs
     IMPLICIT NONE
 
 CONTAINS
@@ -555,39 +555,11 @@ CONTAINS
     CALL Info('MarkBCNodes','Number of BC nodes: '//I2S(NoBCNodes),Level=8)
 
   END SUBROUTINE MarkBCNodes
+!------------------------------------------------------------------------------
 
+  
 
-  !> Returns the local nodal coordinate values from the global mesh
-  !> structure in the given Element and Indexes.
-  !---------------------------------------------------------------------------
-  SUBROUTINE CopyElementNodesFromMesh( ElementNodes, Mesh, n, Indexes)
-    TYPE(Nodes_t) :: ElementNodes
-    TYPE(Mesh_t) :: Mesh
-    INTEGER :: n,m
-    INTEGER, POINTER :: Indexes(:)
-
-    IF ( .NOT. ASSOCIATED( ElementNodes % x ) ) THEN
-      m = n
-      ALLOCATE( ElementNodes % x(n), ElementNodes % y(n),ElementNodes % z(n) )
-    ELSE
-      m = SIZE(ElementNodes % x)
-      IF ( m < n ) THEN
-        DEALLOCATE(ElementNodes % x, ElementNodes % y, ElementNodes % z)
-        ALLOCATE( ElementNodes % x(n), ElementNodes % y(n),ElementNodes % z(n) )
-      ELSE IF( m > n ) THEN
-        ElementNodes % x(n+1:m) = 0.0_dp
-        ElementNodes % y(n+1:m) = 0.0_dp
-        ElementNodes % z(n+1:m) = 0.0_dp
-      END IF
-    END IF
-
-    ElementNodes % x(1:n) = Mesh % Nodes % x(Indexes(1:n))
-    ElementNodes % y(1:n) = Mesh % Nodes % y(Indexes(1:n))
-    ElementNodes % z(1:n) = Mesh % Nodes % z(Indexes(1:n))
-
-  END SUBROUTINE CopyElementNodesFromMesh
-
-
+!------------------------------------------------------------------------------
 !> Create a discontinuous mesh over requested boundaries.
 !> The nodes are duplicated in order to facilitate the discontinuity.
 !> The duplicate nodes are not created by default if the connectivity 

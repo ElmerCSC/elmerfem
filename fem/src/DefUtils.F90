@@ -51,6 +51,7 @@ MODULE DefUtils
 
    USE Adaptive
    USE MeshGenerate 
+   USE ElementUtils
    USE SolverUtils
 
    IMPLICIT NONE
