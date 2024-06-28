@@ -15056,6 +15056,8 @@ END FUNCTION SearchNodeL
 
 #ifdef HAVE_ROCALUTION
 
+    ! Interfaces to c++ code calling ROCalution library
+    ! -------------------------------------------------
     INTERFACE
       SUBROUTINE ROCSerialSolve(n, rows, cols, vals, b, x, nonlin_update, &
                   imethod, prec, maxiter, tol) BIND(C, Name="ROCSerialSolve")
@@ -15079,26 +15081,32 @@ END FUNCTION SearchNodeL
       END SUBROUTINE ROCParallelSolve
     END INTERFACE
 
+    ! local variables:
+    ! ----------------
     LOGICAL :: found, isParallel 
     INTEGER :: nonlin_update, i, j, k,l,n, gn, me
 
-    TYPE(Matrix_t), POINTER :: Im
+    TYPE(Matrix_t), POINTER ::Rmatrix
 
-    INTEGER, ALLOCATABLE, SAVE :: SendTo(:), Owner(:), aPerm(:), iLperm(:), gOffset(:)
+    INTEGER, POINTER ::  aPerm(:), iLperm(:), gOffset(:)
     REAL(KIND=dp), ALLOCATABLE :: dBuf(:)
-    INTEGER, ALLOCATABLE :: iBuf(:), tOffset(:), rRows(:), rSize(:)
+    INTEGER, ALLOCATABLE :: Owner(:), SendTo(:), iBuf(:), tOffset(:), rRows(:), rSize(:)
 
     INTEGER :: status(MPI_STATUS_SIZE),ierr,lrow,you,rcnt,proc
 
     INTEGER :: buf_size, procs
+
+    ! Define these to get somewhat shorter MPI subroutine calls:
+    ! -----------------------------------------------------------
     INTEGER :: xmpi_comm
     INTEGER :: xmpi_src  = MPI_ANY_SOURCE
     INTEGER :: xmpi_max  = MPI_MAX
     INTEGER :: xmpi_int  = MPI_INTEGER
     INTEGER :: xmpi_dbl  = MPI_DOUBLE_PRECISION
 
+
     REAL(KIND=dp) :: TOL
-    INTEGER :: Imethod, Prec, MaxIter, ILULevel
+    INTEGER :: Imethod, Prec, MaxIter, ILULevel, own_n
 
     TYPE(ValueList_t), POINTER :: Params
 
@@ -15109,6 +15117,8 @@ END FUNCTION SearchNodeL
 
     Params => Solver % Values
 
+    ! Extract some controls to ROCalution from the simulation control info:
+    ! ---------------------------------------------------------------------
     nonlin_update = 1
     IF ( .NOT. ListGetLogical( Params, 'Linear System Refactorize', Found ) ) &
       nonlin_update = 0;
@@ -15148,14 +15158,17 @@ END FUNCTION SearchNodeL
     MaxIter = ListGetInteger(Params,'Linear System Max Iterations')
     TOL = ListGetCReal(Params,'Linear System Convergence Tolerance')
 
-    procs =  Parenv % PEs
-    isParallel = procs>1
-    me    =  Parenv % MyPe
-    xmpi_comm = ELMER_COMM_WORLD
+    ! ---------------------------------------------------------------------
 
     n = A % NumberOfRows
 
+    procs =  Parenv % PEs
+    isParallel = procs>1
+
     IF(isParallel) THEN
+      me    =  Parenv % MyPe
+      xmpi_comm = ELMER_COMM_WORLD
+
       IF (.NOT.ASSOCIATED(A % ParMatrix)) THEN
          CALL ParallelInitMatrix(Solver,A)
          ParEnv = A % ParMatrix % ParEnv
@@ -15164,11 +15177,7 @@ END FUNCTION SearchNodeL
 
       ! Enforce continuous ascending numbering as required by ROCalution 
       ! ----------------------------------------------------------------
-      IF (.NOT. ASSOCIATED(A % CollectionMatrix)) THEN
-        IF(ALLOCATED(Owner))THEN
-          DEALLOCATE(Owner,APerm,ILperm,SendTo, gOffset)
-        END IF
-
+      IF (.NOT. ASSOCIATED(A % RocParams % Rmatrix)) THEN
         n = SIZE(A % ParallelInfo % GlobalDOFs)
         ALLOCATE( Owner(n), Aperm(n), tOffset(0:procs), gOffset(0:procs) )
 
@@ -15176,25 +15185,37 @@ END FUNCTION SearchNodeL
         CALL ContinuousNumbering(A % ParallelInfo,A % Perm,aPerm,Owner,gStart=tOffset(me))
 
         gOffset = -1
-        CALL MPI_ALLREDUCE(tOffset,gOffset,ParEnv % PEs,xmpi_int,xmpi_max,xmpi_comm,ierr)
+        CALL MPI_ALLREDUCE(tOffset,gOffset,procs,xmpi_int,xmpi_max,xmpi_comm,ierr)
 
-        gOffset(ParEnv % PEs) = ParallelReduction(SUM(Owner))
+        own_n = SUM(Owner)
+        gOffset(procs) = ParallelReduction(own_n)
 
-        ALLOCATE(SendTo(procs),iLPerm(A % NumberOfRows))
+        ALLOCATE(iLPerm(A % NumberOfRows))
 
-        Im => AllocateMatrix(); Im % Format = MATRIX_LIST
+        Rmatrix => AllocateMatrix();
+        Rmatrix % Format = MATRIX_LIST
+        Rmatrix % ListMatrix => List_AllocateMatrix(own_n)
+
+        A % RocParams % Rmatrix => Rmatrix
+        A % RocParams % CntPerm => aPerm
+        A % RocParams % LocPerm => iLperm
+        A % RocParams % gOffset => gOffset
       ELSE
-        Im => A % CollectionMatrix
+        Rmatrix => A % RocParams % Rmatrix
+        aPerm   => A % RocParams % CntPerm
+        iLPerm  => A % RocParams % LocPerm
+        gOffset => A % RocParams % gOffset
       END IF
 
       ! Complete the matrix rows such that each partition has full rows of the 'owned' dofs
       ! -----------------------------------------------------------------------------------
-      IF( Im % Format == MATRIX_LIST .OR. nonlin_update==1 ) THEN
+      IF( Rmatrix % Format == MATRIX_LIST .OR. nonlin_update==1 ) THEN
  
-        IF (Im % Format == MATRIX_CRS  ) Im % Values = 0._dp
+        IF (Rmatrix % Format == MATRIX_CRS  ) Rmatrix % Values = 0._dp
 
         ! Create inside matrix + count rows with values to send for each neighbour
         ! -------------------------------------------------------------------------
+        ALLOCATE(SendTo(procs))
         iLPerm = 0
         LRow = 0
         SendTo = 0
@@ -15204,7 +15225,7 @@ END FUNCTION SearchNodeL
             lRow = lRow + 1
             iLPerm(lRow) = i
             DO j=A % Rows(i+1)-1, A % Rows(i),-1
-              CALL AddToMatrixElement(Im, lRow, aPerm(A  % Cols(j)), A % Values(j))
+              CALL AddToMatrixElement(Rmatrix, lRow, aPerm(A  % Cols(j)), A % Values(j))
             END DO
           ELSE
             SendTo(you+1) = SendTo(you+1)+1
@@ -15293,7 +15314,7 @@ END FUNCTION SearchNodeL
             CALL MPI_RECV(dBuf,rSize(j),xmpi_dbl,proc,1204,xmpi_comm,status,ierr)
 
             DO l=1,rSize(j)
-              CAll AddToMatrixElement(Im,k-gOffset(me),iBuf(l),dBuf(l))
+              CAll AddToMatrixElement(Rmatrix,k-gOffset(me),iBuf(l),dBuf(l))
             END DO
           END DO
         END DO
@@ -15301,11 +15322,8 @@ END FUNCTION SearchNodeL
 
         CALL MPI_BARRIER(A % Comm,ierr)
  
-        IF( Im % Format == MATRIX_LIST ) THEN
-          CALL List_toCRSMatrix(Im)
-          A % CollectionMatrix => Im
-        END IF
-        n = Im % NumberOfRows
+        IF(Rmatrix % Format == MATRIX_LIST) CALL List_toCRSMatrix(Rmatrix)
+        n = Rmatrix % NumberOfRows
         gn = ParallelReduction(n);
       END IF
 
@@ -15316,7 +15334,7 @@ END FUNCTION SearchNodeL
         REAL(KIND=dp), ALLOCATABLE :: pb(:),px(:), r(:)
         REAL(KIND=dp) :: bnrm
 
-        n = Im % NumberOfRows
+        n = Rmatrix % NumberOfRows
         j = A  % NumberOfRows
         ALLOCATE(pb(n), px(n), r(j) )
 
@@ -15337,8 +15355,8 @@ END FUNCTION SearchNodeL
 
         !  call ROCalution
         ! ----------------
-        CALL ROCParallelSolve( gn, n, Im % Rows-1, Im % Cols-1, &
-            Im % Values, pb, px, bnrm, gOffset, A % comm, imethod, prec, maxiter, tol )
+        CALL ROCParallelSolve( gn, n, Rmatrix % Rows-1, Rmatrix % Cols-1, &
+             Rmatrix % Values, pb, px, bnrm, gOffset, A % comm, imethod, prec, maxiter, tol )
 
         ! distribute the result such that all dofs present (even shared and not 'owned')
         ! in a partition have consistent values
@@ -15351,10 +15369,14 @@ END FUNCTION SearchNodeL
       END BLOCK
 
       ! Cleanup, remains to be reconsidered for optimizations
-      CALL FreeMatrix(Im)
-      A % CollectionMatrix => Null()
-      DEALLOCATE(Owner,APerm,ILperm,SendTo,gOffset)
+      ! -----------------------------------------------------
+      CALL FreeMatrix(Rmatrix);
+      DEALLOCATE(APerm,ILperm,gOffset)
 
+      A % RocParams % Rmatrix => Null()
+      A % RocParams % CntPerm => Null()
+      A % RocParams % LocPerm => Null()
+      A % RocParams % gOffset => Null()
     ELSE
       ! Serial case: call the linear solver
       ! -----------------------------------

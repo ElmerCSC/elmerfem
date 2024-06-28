@@ -181,6 +181,15 @@ MODULE Types
   END TYPE CPardiso_struct
 #endif     
 
+
+#ifdef HAVE_ROCALUTION
+  TYPE RocParams_t
+    TYPE(Matrix_t), POINTER :: Rmatrix => Null()
+    INTEGER, POINTER :: CntPerm(:)=> Null(), LocPerm(:) => Null(), gOffset(:) => Null()
+  END TYPE RocParams_t
+#endif
+
+
   TYPE Matrix_t
     TYPE(Matrix_t), POINTER :: Child => NULL(), Parent => NULL(), CircuitMatrix => NULL(), &
         ConstraintMatrix=>NULL(), EMatrix=>NULL(), AddMatrix=>NULL(), CollectionMatrix=>NULL()
@@ -248,6 +257,9 @@ MODULE Types
 #endif
 #ifdef HAVE_TRILINOS
     INTEGER(KIND=C_INTPTR_T) :: Trilinos=0
+#endif
+#ifdef HAVE_ROCALUTION
+    TYPE(RocParams_t) :: RocParams
 #endif
     INTEGER(KIND=C_INTPTR_T) :: AMGX=0, AMGXMV=0
     INTEGER(KIND=AddrInt) :: SpMV=0
