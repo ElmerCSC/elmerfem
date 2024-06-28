@@ -15059,7 +15059,6 @@ END FUNCTION SearchNodeL
     INTERFACE
       SUBROUTINE ROCSerialSolve(n, rows, cols, vals, b, x, nonlin_update, &
                   imethod, prec, maxiter, tol) BIND(C, Name="ROCSerialSolve")
-
         USE Types
         USE ISO_C_BINDING, ONLY: C_CHAR, C_INTPTR_T
 
@@ -15071,7 +15070,6 @@ END FUNCTION SearchNodeL
 
       SUBROUTINE ROCParallelSolve(gn, n, rows, cols, vals, b, x, bnrm, goffset, &
          fcomm, imethod, prec, maxiter, tol) BIND(C, Name="ROCParallelSolve")
-
         USE Types
         USE ISO_C_BINDING, ONLY: C_CHAR, C_INTPTR_T
 
@@ -15086,10 +15084,9 @@ END FUNCTION SearchNodeL
 
     TYPE(Matrix_t), POINTER :: Im
 
-    INTEGER, ALLOCATABLE, SAVE :: GlobalToLocal(:),rRows(:),rSize(:), cBuf(:), &
-       SendTo(:),Owner(:),aPerm(:), iLperm(:), tOffset(:), gOffset(:), ibuf(:)
-
-    REAL(KIND=dp), ALLOCATABLE :: vBuf(:), dbuf(:)
+    INTEGER, ALLOCATABLE, SAVE :: SendTo(:), Owner(:), aPerm(:), iLperm(:), gOffset(:)
+    REAL(KIND=dp), ALLOCATABLE :: dBuf(:)
+    INTEGER, ALLOCATABLE :: iBuf(:), tOffset(:), rRows(:), rSize(:)
 
     INTEGER :: status(MPI_STATUS_SIZE),ierr,lrow,you,rcnt,proc
 
@@ -15165,11 +15162,11 @@ END FUNCTION SearchNodeL
          ParEnv % ActiveComm = A % Comm
       END IF
 
-      ! Enforce continuous numbering as required by ROCalution 
-      ! ------------------------------------------------------
+      ! Enforce continuous ascending numbering as required by ROCalution 
+      ! ----------------------------------------------------------------
       IF (.NOT. ASSOCIATED(A % CollectionMatrix)) THEN
         IF(ALLOCATED(Owner))THEN
-          DEALLOCATE(Owner,APerm,ILperm,SendTo, GlobalToLocal, tOffset, gOffset)
+          DEALLOCATE(Owner,APerm,ILperm,SendTo, gOffset)
         END IF
 
         n = SIZE(A % ParallelInfo % GlobalDOFs)
@@ -15183,7 +15180,7 @@ END FUNCTION SearchNodeL
 
         gOffset(ParEnv % PEs) = ParallelReduction(SUM(Owner))
 
-        ALLOCATE(SendTo(procs),GlobalToLocal(gOffset(me)+1:gOffset(me+1)),iLPerm(A % NumberOfRows))
+        ALLOCATE(SendTo(procs),iLPerm(A % NumberOfRows))
 
         Im => AllocateMatrix(); Im % Format = MATRIX_LIST
       ELSE
@@ -15193,21 +15190,22 @@ END FUNCTION SearchNodeL
       ! Complete the matrix rows such that each partition has full rows of the 'owned' dofs
       ! -----------------------------------------------------------------------------------
       IF( Im % Format == MATRIX_LIST .OR. nonlin_update==1 ) THEN
+ 
+        IF (Im % Format == MATRIX_CRS  ) Im % Values = 0._dp
+
+        ! Create inside matrix + count rows with values to send for each neighbour
+        ! -------------------------------------------------------------------------
         iLPerm = 0
         LRow = 0
         SendTo = 0
-        GlobalToLocal = 0
- 
-        IF (Im % Format == MATRIX_CRS  ) Im % Values = 0._dp
         DO i=1,A % NumberofRows
           you = A % ParallelInfo % NeighbourList(i) % Neighbours(1)
           IF ( you == me ) THEN
-            Lrow = LRow+1
-            iLPerm(LRow) = i
+            lRow = lRow + 1
+            iLPerm(lRow) = i
             DO j=A % Rows(i+1)-1, A % Rows(i),-1
-              CALL AddToMatrixElement(Im, Lrow, aPerm(A  % Cols(j)), A % Values(j))
+              CALL AddToMatrixElement(Im, lRow, aPerm(A  % Cols(j)), A % Values(j))
             END DO
-            GlobalToLocal(aPerm(i)) = Lrow
           ELSE
             SendTo(you+1) = SendTo(you+1)+1
           END IF
@@ -15222,6 +15220,8 @@ END FUNCTION SearchNodeL
           ALLOCATE( SendStuff(i) % Size(SendTo(i)) )
         END DO
  
+        ! Count number of columns of each neighbour's rows to be sent
+        ! -----------------------------------------------------------
         SendTo   = 0
         buf_size = 0
         DO i=1,a % NumberOfRows
@@ -15233,9 +15233,10 @@ END FUNCTION SearchNodeL
             buf_size = buf_size + A % Rows(i+1) - A % Rows(i)
           END IF
         END DO
-
         CALL CheckBuffer(ParEnv % PEs*(4+4*MPI_BSEND_OVERHEAD) + 4*buf_size)
 
+        ! Send data to neighbours
+        ! -----------------------
         DO i=1,ParEnV % PEs
           IF(i-1==me .OR. .NOT. ParEnv % IsNeighbour(i)) CYCLE
 
@@ -15251,45 +15252,52 @@ END FUNCTION SearchNodeL
           DO j=1,SendTo(i)
             k = SendStuff(i) % Rows(j)
             l = SendStuff(i) % Size(j)
-            dbuf =  A % Values(A % Rows(k):A % Rows(k+1)-1)
-            ibuf =  aPerm(A % Cols(A % Rows(k):A % Rows(k+1)-1))
-            CALL MPI_BSEND(ibuf,l,xmpi_int,i-1,1203,xmpi_comm,status,ierr)
-            CALL MPI_BSEND(dbuf,l,xmpi_dbl,i-1,1204,xmpi_comm,status,ierr)
+            dBuf =  A % Values(A % Rows(k):A % Rows(k+1)-1)
+            iBuf =  aPerm(A % Cols(A % Rows(k):A % Rows(k+1)-1))
+            CALL MPI_BSEND(iBuf,l,xmpi_int,i-1,1203,xmpi_comm,status,ierr)
+            CALL MPI_BSEND(dBuf,l,xmpi_dbl,i-1,1204,xmpi_comm,status,ierr)
           END DO
         END DO
 
+        ! receive data from neighbours
+        ! ----------------------------
+        ALLOCATE( rRows(100), rSize(100) )
         DO i=0,procs-1
           IF(i==me .OR. .NOT. ParEnv % IsNeighbour(i+1)) CYCLE
 
           CALL MPI_RECV(rcnt,1,xmpi_int,xmpi_src,1200,xmpi_comm,status,ierr)
           IF(rcnt==0) CYCLE
 
-          proc = status(MPI_SOURCE)
-          ALLOCATE( rRows(rcnt), rSize(rcnt) )
+          IF(rcnt > SIZE(rRows)) THEN
+            DEALLOCATE(rRows,Rsize)
+            ALLOCATE( rRows(rcnt), rSize(rcnt) )
+          END IF
 
+          proc = status(MPI_SOURCE)
           CALL MPI_RECV(rRows,rcnt,xmpi_int,proc,1201,xmpi_comm,status,ierr)
           CALL MPI_RECV(rSize,rcnt,xmpi_int,proc,1202,xmpi_comm,status,ierr)
           DO j=1,rcnt
             k = rRows(j)
+
             IF ( k<= gOffset(me) .OR. k> gOffset(me+1) ) THEN
               PRINT*,Parenv % MyPE,proc, 'not mine then ?', rRows(j), gOffset(me), gOffset(me+1)
               CYCLE
             END IF
-            k = GlobalToLocal(k)
 
-            ALLOCATE(cBuf(rSize(j)), vBuf(rSize(j)))
+            IF(rSize(j) > SIZE(iBuf)) THEN
+              DEALLOCATE(iBuf,dBuf)
+              ALLOCATE( iBuf(rSize(j)), dBuf(rSize(j)) )
+            END IF
 
-            CALL MPI_RECV(cBuf,rSize(j),xmpi_int,proc,1203,xmpi_comm,status,ierr)
-            CALL MPI_RECV(vBuf,rSize(j),xmpi_dbl,proc,1204,xmpi_comm,status,ierr)
+            CALL MPI_RECV(iBuf,rSize(j),xmpi_int,proc,1203,xmpi_comm,status,ierr)
+            CALL MPI_RECV(dBuf,rSize(j),xmpi_dbl,proc,1204,xmpi_comm,status,ierr)
 
-            DO l=1,rSize(j);
-              CAll AddToMatrixElement( Im,k,cBuf(l),vBuf(l) )
+            DO l=1,rSize(j)
+              CAll AddToMatrixElement(Im,k-gOffset(me),iBuf(l),dBuf(l))
             END DO
-
-            DEALLOCATE(cbuf, vbuf)
           END DO
-          DEALLOCATE( rRows, rSize )
         END DO
+        ! ----------
 
         CALL MPI_BARRIER(A % Comm,ierr)
  
@@ -15305,12 +15313,12 @@ END FUNCTION SearchNodeL
       !  the linear solver
       ! ----------------------
       BLOCK
-        REAL(KIND=dp), ALLOCATABLE :: bb(:),xb(:), r(:)
+        REAL(KIND=dp), ALLOCATABLE :: pb(:),px(:), r(:)
         REAL(KIND=dp) :: bnrm
 
         n = Im % NumberOfRows
         j = A  % NumberOfRows
-        ALLOCATE(bb(n), xb(n), r(j) )
+        ALLOCATE(pb(n), px(n), r(j) )
 
         ! complete the RHS of the partition dofs
         !---------------------------------------
@@ -15320,24 +15328,24 @@ END FUNCTION SearchNodeL
         ! Extract 'owned' dofs
         !---------------------
         DO i=1,n
-          bb(i) = r(iLPerm(i))
-          xb(i) = x(iLPerm(i))
+          pb(i) = r(iLPerm(i))
+          px(i) = x(iLPerm(i))
         END DO
 
-        bnrm = SQRT(ParallelReduction(SUM(bb**2)))
+        bnrm = SQRT(ParallelReduction(SUM(pb**2)))
         IF(bnrm <AEPS) bnrm=1;
 
         !  call ROCalution
         ! ----------------
         CALL ROCParallelSolve( gn, n, Im % Rows-1, Im % Cols-1, &
-            Im % Values, bb, xb, bnrm, gOffset, A % comm, imethod, prec, maxiter, tol )
+            Im % Values, pb, px, bnrm, gOffset, A % comm, imethod, prec, maxiter, tol )
 
         ! distribute the result such that all dofs present (even shared and not 'owned')
         ! in a partition have consistent values
         ! ------------------------------------------------------------------------------
         x = 0
         DO i=1,n
-          x(iLPerm(i)) = xb(i)
+          x(iLPerm(i)) = px(i)
         END DO
         CALL ParallelSumVector(A, x)
       END BLOCK
@@ -15345,7 +15353,7 @@ END FUNCTION SearchNodeL
       ! Cleanup, remains to be reconsidered for optimizations
       CALL FreeMatrix(Im)
       A % CollectionMatrix => Null()
-      DEALLOCATE(Owner,APerm,ILperm,SendTo,GlobalToLocal,tOffset,gOffset)
+      DEALLOCATE(Owner,APerm,ILperm,SendTo,gOffset)
 
     ELSE
       ! Serial case: call the linear solver
