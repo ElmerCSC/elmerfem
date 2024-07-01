@@ -5290,8 +5290,20 @@ CONTAINS
      !---------------------------------------------------------------------
      IF( ListGetLogical( Params,'Apply Limiter',Found) ) THEN
        CALL DetermineSoftLimiter( Solver )	
+
+       ! It is difficult to determine whether loads should be computed before or after setting the limiter.
+       ! There are cases where both alternative are needed.
+       IF(ListGetLogical( Params,'Apply Limiter Loads After',Found) ) THEN         
+         DO DOF=1,x % DOFs
+           name = TRIM(x % name)
+           IF (x % DOFs>1) name=ComponentName(name,DOF)              
+           CALL SetNodalLoads( CurrentModel,A,A % rhs, &
+               Name,DOF,x % DOFs,x % Perm ) 
+         END DO
+       END IF
      END IF
-      
+         
+     
      Offset = 0
      IF(PRESENT(UOffset)) Offset=UOffset
 
@@ -5466,10 +5478,6 @@ CONTAINS
        DO DOF=1,x % DOFs
          name = TRIM(x % name)
          IF (x % DOFs>1) name=ComponentName(name,DOF)
-
-         ! This has been moved to "DefaultFinishBoundaryAssembly" to enable limiters/contacts.
-         !CALL SetNodalLoads( CurrentModel,A, b, &
-         !    Name,DOF,x % DOFs,x % Perm ) ! , Offset ) not yet ?
 
          CALL SetDirichletBoundaries( CurrentModel, A, b, &
              Name, DOF, x % DOFs, x % Perm, Offset, OffDiagonalMatrix )
@@ -6733,7 +6741,7 @@ CONTAINS
     LOGICAL, OPTIONAL :: BulkUpdate
     TYPE(Solver_t), POINTER :: PSolver
     TYPE(ValueList_t), POINTER :: Params
-    LOGICAL :: Bupd, Found
+    LOGICAL :: Bupd, Found, DoIt
     INTEGER :: n
     TYPE(Matrix_t), POINTER :: A
     CHARACTER(:), ALLOCATABLE :: str, name
@@ -6751,14 +6759,20 @@ CONTAINS
     x => PSolver % Variable
    
     ! Set the nodal loads. This needs to be done before any contacts or limiters since otherwise
-    ! the given nodal loads will not be considered properly.     
-    DO DOF=1,x % DOFs
-      name = TRIM(x % name)
-      IF (x % DOFs>1) name=ComponentName(name,DOF)              
-      CALL SetNodalLoads( CurrentModel,A,A % rhs, &
-          Name,DOF,x % DOFs,x % Perm ) 
-    END DO    
-
+    ! the given nodal loads will not be considered properly.         
+    DoIt = .TRUE.
+    IF( ListGetLogical( Params,'Apply Limiter',Found ) ) THEN
+      IF(ListGetLogical( Params,'Apply Limiter Loads After',Found) ) DoIt = .FALSE.
+    END IF
+    IF( DoIt ) THEN
+      DO DOF=1,x % DOFs
+        name = TRIM(x % name)
+        IF (x % DOFs>1) name=ComponentName(name,DOF)              
+        CALL SetNodalLoads( CurrentModel,A,A % rhs, &
+            Name,DOF,x % DOFs,x % Perm ) 
+      END DO
+    END IF
+    
     IF( ListGetLogical( Params,'Boundary Assembly Timing',Found ) ) THEN 
       CALL CheckTimer('BoundaryAssembly'//GetVarName(x), Level=5, Delete=.TRUE. ) 
     END IF
