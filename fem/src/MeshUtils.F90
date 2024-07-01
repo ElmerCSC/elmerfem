@@ -28499,9 +28499,8 @@ CONTAINS
     FUNCTION LagrangeQuadFacePermutation(FaceNodes, p) RESULT(Perm)
       INTEGER, INTENT(IN) :: FaceNodes(4)
       INTEGER, INTENT(IN) :: p       ! the order of Lagrange interpolation
-      INTEGER :: Perm(MAX_LAGRANGE_NODES)
-
       INTEGER, PARAMETER :: MAX_LAGRANGE_NODES = 729
+      INTEGER :: Perm(MAX_LAGRANGE_NODES)
       INTEGER :: AllIndices((p-1)**2)
       INTEGER :: i, j, n, i0, MinEntryInd(1)
 
