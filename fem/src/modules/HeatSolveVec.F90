@@ -344,13 +344,12 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
     !!OMP SHARED(Active, Solver, nColours, VecAsm, DiffuseGray, RadiatorPowers ) &
     !!OMP PRIVATE(t, Element, n, nd, nb, col, InitHandles) & 
     !!OMP REDUCTION(+:totelem) DEFAULT(NONE)
+    InitHandles = .TRUE. 
     DO col=1,nColours
       !!OMP SINGLE
       CALL Info(Caller,'Assembly of boundary colour: '//I2S(col),Level=10)
       Active = GetNOFBoundaryActive(Solver)
-      !!OMP END SINGLE
-      
-      InitHandles = .TRUE. 
+      !!OMP END SINGLE      
       !!OMP DO
       DO t=1,Active
         Element => GetBoundaryElement(t)
