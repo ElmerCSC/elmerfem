@@ -414,10 +414,10 @@
       !END DO
     !END DO
     DO i=1, SIZE(WorkVar % Perm)
-      IF(WorkVar2 % Values(WorkVar2 % Perm(i)) .NE. 0.0) THEN
+      IF(WorkVar % Perm(i) > 0.0 .AND. WorkVar2 % Perm(i) > 0.0) THEN
         WorkVar % Values(WorkVar % Perm(i)) = WorkVar % Values(WorkVar % Perm(i))/WorkVar2 % Values(WorkVar2 % Perm(i))
-      ELSE
-        WorkVar % Values(WorkVar % Perm(i)) = 0.0
+      !ELSE
+        !WorkVar % Values(WorkVar % Perm(i)) = 0.0
       END IF
     END DO
 
@@ -452,12 +452,14 @@
         IF(.NOT. Found) Threshold = 10000.0
 
         DO i=1, SIZE(WorkVar % Perm)
-          Dist = (HydroSolver % Mesh % Nodes % x(WorkVar % Perm(i)) -&
+          IF(WorkVar % Perm(i) > 0.0) THEN
+            Dist = (HydroSolver % Mesh % Nodes % x(WorkVar % Perm(i)) -&
                   RefNode(1))**2
-          Dist = Dist + (HydroSolver % Mesh % Nodes % y(WorkVar % Perm(i)) -&
-                  RefNode(2))**2
-          Dist = SQRT(Dist)
-          IF(Dist > Threshold) WorkVar % Values(WorkVar % Perm(i)) = 1.0
+            Dist = Dist + (HydroSolver % Mesh % Nodes % y(WorkVar % Perm(i)) -&
+                    RefNode(2))**2
+            Dist = SQRT(Dist)
+            IF(Dist > Threshold) WorkVar % Values(WorkVar % Perm(i)) = 1.0
+          END IF
         END DO
       END IF
 
@@ -605,6 +607,7 @@
     WorkVar2 => VariableGet(HydroSolver % Mesh % Variables, "HydroWeights", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
     !IF(ParEnv % PEs > 1) CALL ParallelSumVector(HydroSolver % Matrix, WorkVar2 % Values)
     DO i=1,SIZE(WorkVar % Perm)
+      IF(WorkVar % Perm(i) > 0.0 .AND. WorkVar2 % Perm(i) > 0.0) THEN
       !Element => HydroSolver % Mesh % Elements(i)
       !n = GetElementNOFNodes(Element)
       !DO j=1, n
@@ -612,8 +615,9 @@
         !WorkVar % Values(WorkVar % Perm(Element % NodeIndexes(j)))*&
         !WorkVar2 % Values(WorkVar2 % Perm(Element % NodeIndexes(j)))
       !END DO
-      WorkVar % Values(WorkVar % Perm(i)) =&
-      WorkVar % Values(WorkVar % Perm(i))*WorkVar2 % Values(WorkVar2 % Perm(i))
+        WorkVar % Values(WorkVar % Perm(i)) =&
+        WorkVar % Values(WorkVar % Perm(i))*WorkVar2 % Values(WorkVar2 % Perm(i))
+      END IF
     END DO
     HydroTempResSum = 0.0_dp
     HydroTempResSum = SUM(WorkVar % Values)

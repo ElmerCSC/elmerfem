@@ -301,7 +301,7 @@
         AllocationsDone = .TRUE.
      END IF
 
-
+     SolverParams => GetSolverParams()
 !------------------------------------------------------------------------------
 !    Read physical and numerical constants and initialize 
 !------------------------------------------------------------------------------
@@ -357,7 +357,6 @@
         ! following switches to false. The defaults change to true when using Samuel Cook's "Calving" 
         ! (set in simulation seciton of sif).  The defaults will be overwritten for each of the switches
         ! that are specified in the solver section of the sif.       
-        SolverParams => GetSolverParams()
         UseGM = GetLogical( SolverParams,'Use GroundedMask', Found )
         IF (.NOT. Found) THEN
           IF (Calving) THEN              
@@ -458,8 +457,6 @@
            CALL FATAL(SolverName, Message)
         END IF
      END IF IfFirstTime
-
-     SolverParams => GetSolverParams()
 
      NeglectH = GetLogical( SolverParams,'Neglect Sheet Thickness in Potential', Found )
      IF ( .NOT.Found ) THEN

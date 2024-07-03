@@ -429,7 +429,7 @@ CONTAINS
     GroundedVar => Solver % Variable
     
     GMCheck = -1.0_dp
-    
+   
     !Set up inverse perm for FindNodeNeighbours
     InvPerm => CreateInvPerm(Matrix % Perm) !Create inverse perm for neighbour search
     ALLOCATE(Neighbours(Mesh % NumberOfNodes, MaxNeighbours), NoNeighbours(Mesh % NumberOfNodes))

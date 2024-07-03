@@ -995,6 +995,13 @@ CONTAINS
           END DO
        END IF
 
+       IF(.NOT. Boss) THEN
+         ALLOCATE(FaceNodesT % x(1), FaceNodesT % y(1), FaceNodesT % z(1))
+         FaceNodesT % x(1) = 0
+         FaceNodesT % y(1) = 0
+         FaceNodesT % z(1) = 0
+       END IF
+
        !Global NodeNumbers
        CALL MPI_GATHERV(OldMesh % ParallelInfo % GlobalDOFs(MyFaceNodeNums),&
             FaceNodeCount,MPI_INTEGER,&

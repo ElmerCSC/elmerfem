@@ -3027,7 +3027,7 @@ CONTAINS
      TYPE(Element_t) :: DummyElement
      TYPE(ValueList_t), POINTER :: Vlist
      INTEGER :: inDOFs(10,6)
-     CHARACTER(MAX_NAME_LEN) :: ElementDef0, ElementDef
+     CHARACTER(MAX_NAME_LEN) :: ElementDef0, ElementDef, TargetMesh
      
      
      EdgeDOFs => NULL()
@@ -3037,15 +3037,26 @@ CONTAINS
     
      DGIndex = 0
 
-     InDofs = 0
+     InDofs = -1
      InDofs(:,1) = 1
      IF ( PRESENT(Def_Dofs) ) THEN
        inDofs = Def_Dofs
      ELSE
        DO s=1,Model % NumberOfSolvers
+         !Need to only look at solvers that are going to run on this mesh
+         TargetMesh = ListGetString(Model % Solvers(s) % Values, 'Mesh', GotIt)
          DO i=1,6
            DO j=1,10
-             inDofs(j,i) = MAX(Indofs(j,i),MAXVAL(Model % Solvers(s) % Def_Dofs(j,:,i)))
+             IF(GotIt) THEN
+               !This assumes your meshes all start '. '
+               IF (LEN_TRIM(Model % Solvers(s) % Mesh % Name) > 0) THEN
+                 IF(TRIM(Model % Solvers(s) % Mesh % Name) .NE. TRIM(TargetMesh(2:))) THEN
+                   CYCLE
+                 ELSE
+                   inDofs(j,i) = MAX(Indofs(j,i),MAXVAL(Model % Solvers(s) % Def_Dofs(j,:,i)))
+                 END IF
+               END IF
+             END IF
            END DO
          END DO
        END DO
@@ -3495,6 +3506,7 @@ CONTAINS
        IF(Found) NeedEdges = Stat
      END IF
      
+
      IF ( NeedEdges ) THEN
        CALL Info('NonNodalElements','Requested elements require creation of edges',Level=8)
        CALL SetMeshEdgeFaceDOFs(Mesh,EdgeDOFs,FaceDOFs,inDOFs)
@@ -20999,7 +21011,6 @@ END SUBROUTINE FindNeighbourNodes
     MeshDim = 0 
     Parallel = ( ParEnv % PEs > 1 ) .AND. ( .NOT. Mesh % SingleMesh ) 
 
-    
     DO Sweep = 0, 1    
       n = 0
       DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
@@ -21018,7 +21029,7 @@ END SUBROUTINE FindNeighbourNodes
           END IF
         END IF
       END DO
-      
+
       IF( Sweep == 0 ) THEN
         Solver % NumberOfActiveElements = n
         IF( n == 0 ) EXIT

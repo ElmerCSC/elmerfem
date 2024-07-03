@@ -2407,7 +2407,15 @@ CONTAINS
        ! Gather node coords from all partitions
        ! Note, they're going into 'UnorderedNodes': though they are ordered
        ! within their partition, the partitions aren't ordered...
+       ! For some reason, need to allocate coord lists in non-boss PEs
        !-----------------------------------------------------------
+
+       IF(.NOT. Boss) THEN
+         ALLOCATE(UnorderedNodes % x(1), UnorderedNodes % y(1), UnorderedNodes % z(1))
+         UnorderedNodes % x(1) = 0
+         UnorderedNodes % y(1) = 0
+         UnorderedNodes % z(1) = 0
+       END IF
 
        !Global Node Numbers
        CALL MPI_GATHERV(Mesh % ParallelInfo % GlobalDOFs(OrderedNodeNums),&
