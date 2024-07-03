@@ -80,7 +80,7 @@ See [CovarianceUtils](#Covariance_Module) for details on the possible choices to
 
  Brasseur et al. (1996) have shown that adding a smoothness constraint that penalizes a combination of the nom and of the spatial derivatives up to order 2, is equivalent, for an infinite domain, to imposing a kernel from the  Matérn family with a **smoothness parameter** $\nu=1$. This has been generalized to higher dimensions and derivatives by Barth et al. (2014). Regularisation of inverse problems can often be reinterpreted in the Bayesian framework (Calvetti and Somersalo, 2018), so that the effect of this solver will be similar to the classically used *Regularisation* solver that penalizes he first spatial derivatives, and the choice of the correlation structure and parameters will control the **smoothness** of the inverted field. However this solver is then much more versatile and the parameters have a direct physical interpretation.
 
- For an application of this method in ice-sheet modeling for the inversion of both basal friction and viscosity in the Antarctic Ice Sheet see e.g. Recinos et al. (2023).
+For an application of this method in ice-sheet modeling for the inversion of both basal friction and viscosity in the Antarctic Ice Sheet see e.g. Recinos et al. (2023): it can easily be shown that their definition of the prior covariance matrix (Eqs. 11 and 12) is equivalent to the *diffusion operator* method with $m=2$, and the definition of the variance and correlation range given by their Eq. 18 and 19.
 
 
 ### Known Bugs and Limitations
