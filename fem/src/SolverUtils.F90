@@ -14794,6 +14794,10 @@ END FUNCTION SearchNodeL
       pv => b
       CALL VectorValuesRange(pv,SIZE(pv),'b')
     END IF
+
+
+    IF(ListGetLogical(Params, 'Linear System Use Rocalution', Found)) &
+      Method = 'rocalution'
       
     
     IF ( .NOT. Parallel ) THEN
@@ -14814,8 +14818,11 @@ END FUNCTION SearchNodeL
         CALL AMGXSolver( A, x, b, Solver )
       CASE('rocalution')
         CALL ROCSolver( A, x, b, Solver )
-      CASE DEFAULT
+      CASE('direct')
         CALL DirectSolver( A, x, b, Solver )        
+      CASE DEFAULT        
+        CALL Fatal('SolveLinearSystem','Parallel linear System Solver: '//TRIM(Method),Level=8)
+,'Unknown "Linear System Solver": '//TRIM(Method))
       END SELECT
     ELSE
       CALL Info('SolveLinearSystem','Parallel linear System Solver: '//TRIM(Method),Level=8)
@@ -14835,8 +14842,11 @@ END FUNCTION SearchNodeL
         CALL AMGXSolver( A, x, b, Solver )
       CASE('rocalution')
         CALL ROCSolver( A, x, b, Solver )
-     CASE DEFAULT
+      CASE('direct')
         CALL DirectSolver( A, x, b, Solver )
+      CASE DEFAULT        
+        CALL Fatal('SolveLinearSystem','Parallel linear System Solver: '//TRIM(Method),Level=8)
+,'Unknown "Linear System Solver": '//TRIM(Method))
       END SELECT
     END IF
 
@@ -14879,7 +14889,8 @@ END FUNCTION SearchNodeL
       CalcLoads = ListGetLogical( Solver % Values,'Calculate Loads',GotIt )
       IF( .NOT. GotIt ) CalcLoads = .TRUE.
       IF( CalcLoads ) THEN
-        CALL Info('SolveLinearSystem','Calculating nodal loads',Level=6)
+        CALL Info('SolveLinearSystem','Calculating nodal loads for: '//&
+            GetVarName(Solver % Variable),Level=6)
         CALL CalculateLoads( Solver, Aaid, x, Dofs, .TRUE., NodalLoads ) 
       END IF
     END IF
@@ -15233,50 +15244,350 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
 
 
+
 !------------------------------------------------------------------------------
   SUBROUTINE ROCSolver( A, x, b, Solver )
 !------------------------------------------------------------------------------
-    USE iso_c_binding, only: C_INTPTR_T, C_CHAR, C_NULL_CHAR
-
     TYPE(Solver_t) :: Solver
-    TYPE(Matrix_t) :: A
+    TYPE(Matrix_t), POINTER :: A
     REAL(KIND=dp) :: x(:), b(:)
 
 #ifdef HAVE_ROCALUTION
+
+    ! Interfaces to c++ code calling ROCalution library
+    ! -------------------------------------------------
     INTERFACE
-      SUBROUTINE ROCSolve(n, rows, cols, vals, b, x, nonlin_update, comm ) BIND(C, Name="ROCSolve")
+      SUBROUTINE ROCSerialSolve(n, rows, cols, vals, b, x, nonlin_update, &
+                  imethod, prec, maxiter, tol) BIND(C, Name="ROCSerialSolve")
+        USE Types
+        USE ISO_C_BINDING, ONLY: C_CHAR, C_INTPTR_T
 
-         USE Types
-         USE ISO_C_BINDING, ONLY: C_CHAR, C_INTPTR_T
+        IMPLICIT NONE
+        REAL(KIND=dp) :: vals(*), b(*), x(*), tol
+        INTEGER :: rows(*), cols(*), nonlin_update, n, imethod, prec, maxiter
+      END SUBROUTINE ROCSerialSolve
 
-         IMPLICIT NONE
 
-         REAL(KIND=dp) :: vals(*), b(*), x(*)
-         INTEGER :: rows(*), cols(*), nonlin_update, n, comm
-      END SUBROUTINE ROCSolve
+      SUBROUTINE ROCParallelSolve(gn, n, rows, cols, vals, b, x, bnrm, goffset, &
+         fcomm, imethod, prec, maxiter, tol) BIND(C, Name="ROCParallelSolve")
+        USE Types
+        USE ISO_C_BINDING, ONLY: C_CHAR, C_INTPTR_T
+
+        IMPLICIT NONE
+        REAL(KIND=dp) :: vals(*), b(*), x(*), bnrm, tol
+        INTEGER :: gn, n, rows(*), cols(*), goffset(*), fcomm, imethod, prec, maxiter
+      END SUBROUTINE ROCParallelSolve
     END INTERFACE
 
+    ! local variables:
+    ! ----------------
+    LOGICAL :: found, isParallel 
+    INTEGER :: nonlin_update, i, j, k,l,n, gn, me
 
-    INTEGER :: nonlin_update, i, j, n, me
-    LOGICAL :: found, isparallel 
+    TYPE(Matrix_t), POINTER ::Rmatrix
 
+    INTEGER, POINTER ::  aPerm(:), iLperm(:), gOffset(:)
+    REAL(KIND=dp), ALLOCATABLE :: dBuf(:)
+    INTEGER, ALLOCATABLE :: Owner(:), SendTo(:), iBuf(:), tOffset(:), rRows(:), rSize(:)
+
+    INTEGER :: status(MPI_STATUS_SIZE),ierr,lrow,you,rcnt,proc
+
+    INTEGER :: buf_size, procs
+
+    ! Define these to get somewhat shorter MPI subroutine calls:
+    ! -----------------------------------------------------------
+    INTEGER :: xmpi_comm
+    INTEGER :: xmpi_src  = MPI_ANY_SOURCE
+    INTEGER :: xmpi_max  = MPI_MAX
+    INTEGER :: xmpi_int  = MPI_INTEGER
+    INTEGER :: xmpi_dbl  = MPI_DOUBLE_PRECISION
+
+
+    REAL(KIND=dp) :: TOL
+    INTEGER :: Imethod, Prec, MaxIter, ILULevel, own_n
+
+    TYPE(ValueList_t), POINTER :: Params
+
+    TYPE SendStuff_t
+      INTEGER, ALLOCATABLE :: Size(:), Rows(:)
+    END TYPE SendStuff_t
+    TYPE(SendStuff_t), ALLOCATABLE :: SendStuff(:)
+
+    Params => Solver % Values
+
+    ! Extract some controls to ROCalution from the simulation control info:
+    ! ---------------------------------------------------------------------
     nonlin_update = 1
-    IF ( .NOT. ListGetLogical( Solver % Values, 'Linear System Refactorize', Found ) ) &
+    IF ( .NOT. ListGetLogical( Params, 'Linear System Refactorize', Found ) ) &
       nonlin_update = 0;
 
-    isParallel = Parenv % PEs>1
-    me =  Parenv % MyPe
+    SELECT CASE(ListGetString(Params,'Linear System Iterative Method',Found))
+      CASE('cg')
+         Imethod = 0;
+      CASE('bicgstab')
+         Imethod = 1;
+      CASE('bicgstabl')
+         Imethod = 2;
+      CASE('gmres')
+         Imethod = 3;
+      CASE('fgmres')
+         Imethod = 4;
+      CASE DEFAULT
+         Imethod = 0;
+    END SELECT
+
+    SELECT CASE(ListGetString(Params,'Linear System Preconditioning',Found))
+      CASE('jacobi')
+        Prec = 0;
+      CASE('sgs')
+        Prec = 1;
+      CASE('ilu')
+        Prec = 2; ILULevel = 0
+      CASE('ilu0')
+       Prec = 2; ILULevel = 0
+      CASE('ilu1')
+       Prec = 2; ILULevel = 1
+      CASE('ilu2')
+       Prec = 2; ILULevel = 2
+      CASE DEFAULT
+       Prec = 0;
+    END SELECT
+
+    MaxIter = ListGetInteger(Params,'Linear System Max Iterations')
+    TOL = ListGetCReal(Params,'Linear System Convergence Tolerance')
+
+    ! ---------------------------------------------------------------------
+
     n = A % NumberOfRows
 
-    CALL ROCSolve( n, A % Rows-1, A % Cols-1, A % Values,  &
-          b, x, nonlin_update, ELMER_COMM_WORLD )
+    procs =  Parenv % PEs
+    isParallel = procs>1
 
+    IF(isParallel) THEN
+      me    =  Parenv % MyPe
+      xmpi_comm = ELMER_COMM_WORLD
+
+      IF (.NOT.ASSOCIATED(A % ParMatrix)) THEN
+         CALL ParallelInitMatrix(Solver,A)
+         ParEnv = A % ParMatrix % ParEnv
+         ParEnv % ActiveComm = A % Comm
+      END IF
+
+      ! Enforce continuous ascending numbering as required by ROCalution 
+      ! ----------------------------------------------------------------
+      IF (.NOT. ASSOCIATED(A % RocParams % Rmatrix)) THEN
+        n = SIZE(A % ParallelInfo % GlobalDOFs)
+        ALLOCATE( Owner(n), Aperm(n), tOffset(0:procs), gOffset(0:procs) )
+
+        tOffset = -1
+        CALL ContinuousNumbering(A % ParallelInfo,A % Perm,aPerm,Owner,gStart=tOffset(me))
+
+        gOffset = -1
+        CALL MPI_ALLREDUCE(tOffset,gOffset,procs,xmpi_int,xmpi_max,xmpi_comm,ierr)
+
+        own_n = SUM(Owner)
+        gOffset(procs) = ParallelReduction(own_n)
+
+        ALLOCATE(iLPerm(A % NumberOfRows))
+
+        Rmatrix => AllocateMatrix();
+        Rmatrix % Format = MATRIX_LIST
+        Rmatrix % ListMatrix => List_AllocateMatrix(own_n)
+
+        A % RocParams % Rmatrix => Rmatrix
+        A % RocParams % CntPerm => aPerm
+        A % RocParams % LocPerm => iLperm
+        A % RocParams % gOffset => gOffset
+      ELSE
+        Rmatrix => A % RocParams % Rmatrix
+        aPerm   => A % RocParams % CntPerm
+        iLPerm  => A % RocParams % LocPerm
+        gOffset => A % RocParams % gOffset
+      END IF
+
+      ! Complete the matrix rows such that each partition has full rows of the 'owned' dofs
+      ! -----------------------------------------------------------------------------------
+      IF( Rmatrix % Format == MATRIX_LIST .OR. nonlin_update==1 ) THEN
+ 
+        IF (Rmatrix % Format == MATRIX_CRS  ) Rmatrix % Values = 0._dp
+
+        ! Create inside matrix + count rows with values to send for each neighbour
+        ! -------------------------------------------------------------------------
+        ALLOCATE(SendTo(procs))
+        iLPerm = 0
+        LRow = 0
+        SendTo = 0
+        DO i=1,A % NumberofRows
+          you = A % ParallelInfo % NeighbourList(i) % Neighbours(1)
+          IF ( you == me ) THEN
+            lRow = lRow + 1
+            iLPerm(lRow) = i
+            DO j=A % Rows(i+1)-1, A % Rows(i),-1
+              CALL AddToMatrixElement(Rmatrix, lRow, aPerm(A  % Cols(j)), A % Values(j))
+            END DO
+          ELSE
+            SendTo(you+1) = SendTo(you+1)+1
+          END IF
+        END DO
+
+        ALLOCATE(SendStuff(ParEnv % Pes))
+        DO i=1,ParEnv % PEs
+          IF( i-1==me ) CYCLE
+          IF(.NOT.ParEnv % IsNeighbour(i))  CYCLE
+
+          ALLOCATE( SendStuff(i) % Rows(SendTo(i)) )
+          ALLOCATE( SendStuff(i) % Size(SendTo(i)) )
+        END DO
+ 
+        ! Count number of columns of each neighbour's rows to be sent
+        ! -----------------------------------------------------------
+        SendTo   = 0
+        buf_size = 0
+        DO i=1,a % NumberOfRows
+          you = A % ParallelInfo % NeighbourList(i) % Neighbours(1)
+          IF ( you /= me ) THEN
+            SendTo(you+1) = SendTo(you+1)+1
+            SendStuff(you+1) % Size(Sendto(you+1))  = A % Rows(i+1)-A % Rows(i)
+            SendStuff(you+1) % Rows(Sendto(you+1))  = i
+            buf_size = buf_size + A % Rows(i+1) - A % Rows(i)
+          END IF
+        END DO
+        CALL CheckBuffer(ParEnv % PEs*(4+4*MPI_BSEND_OVERHEAD) + 4*buf_size)
+
+        ! Send data to neighbours
+        ! -----------------------
+        DO i=1,ParEnV % PEs
+          IF(i-1==me .OR. .NOT. ParEnv % IsNeighbour(i)) CYCLE
+
+          CALL MPI_BSEND(SendTo(i),1,xmpi_int,i-1,1200,xmpi_comm,status,ierr)
+          IF(Sendto(i)==0) CYCLE
+
+          ibuf = aPerm(SendStuff(i) % Rows)
+          CALL MPI_BSEND(ibuf,SendTo(i),xmpi_int,i-1,1201,xmpi_comm,status,ierr)
+
+          ibuf = SendStuff(i) % Size
+          CALL MPI_BSEND(ibuf,SendTo(i),xmpi_int,i-1,1202,xmpi_comm,status,ierr)
+
+          DO j=1,SendTo(i)
+            k = SendStuff(i) % Rows(j)
+            l = SendStuff(i) % Size(j)
+            dBuf =  A % Values(A % Rows(k):A % Rows(k+1)-1)
+            iBuf =  aPerm(A % Cols(A % Rows(k):A % Rows(k+1)-1))
+            CALL MPI_BSEND(iBuf,l,xmpi_int,i-1,1203,xmpi_comm,status,ierr)
+            CALL MPI_BSEND(dBuf,l,xmpi_dbl,i-1,1204,xmpi_comm,status,ierr)
+          END DO
+        END DO
+
+        ! receive data from neighbours
+        ! ----------------------------
+        ALLOCATE( rRows(100), rSize(100) )
+        DO i=0,procs-1
+          IF(i==me .OR. .NOT. ParEnv % IsNeighbour(i+1)) CYCLE
+
+          CALL MPI_RECV(rcnt,1,xmpi_int,xmpi_src,1200,xmpi_comm,status,ierr)
+          IF(rcnt==0) CYCLE
+
+          IF(rcnt > SIZE(rRows)) THEN
+            DEALLOCATE(rRows,Rsize)
+            ALLOCATE( rRows(rcnt), rSize(rcnt) )
+          END IF
+
+          proc = status(MPI_SOURCE)
+          CALL MPI_RECV(rRows,rcnt,xmpi_int,proc,1201,xmpi_comm,status,ierr)
+          CALL MPI_RECV(rSize,rcnt,xmpi_int,proc,1202,xmpi_comm,status,ierr)
+          DO j=1,rcnt
+            k = rRows(j)
+
+            IF ( k<= gOffset(me) .OR. k> gOffset(me+1) ) THEN
+              PRINT*,Parenv % MyPE,proc, 'not mine then ?', rRows(j), gOffset(me), gOffset(me+1)
+              CYCLE
+            END IF
+
+            IF(rSize(j) > SIZE(iBuf)) THEN
+              DEALLOCATE(iBuf,dBuf)
+              ALLOCATE( iBuf(rSize(j)), dBuf(rSize(j)) )
+            END IF
+
+            CALL MPI_RECV(iBuf,rSize(j),xmpi_int,proc,1203,xmpi_comm,status,ierr)
+            CALL MPI_RECV(dBuf,rSize(j),xmpi_dbl,proc,1204,xmpi_comm,status,ierr)
+
+            DO l=1,rSize(j)
+              CAll AddToMatrixElement(Rmatrix,k-gOffset(me),iBuf(l),dBuf(l))
+            END DO
+          END DO
+        END DO
+        ! ----------
+
+        CALL MPI_BARRIER(A % Comm,ierr)
+ 
+        IF(Rmatrix % Format == MATRIX_LIST) CALL List_toCRSMatrix(Rmatrix)
+        n = Rmatrix % NumberOfRows
+        gn = ParallelReduction(n);
+      END IF
+
+
+      !  the linear solver
+      ! ----------------------
+      BLOCK
+        REAL(KIND=dp), ALLOCATABLE :: pb(:),px(:), r(:)
+        REAL(KIND=dp) :: bnrm
+
+        n = Rmatrix % NumberOfRows
+        j = A  % NumberOfRows
+        ALLOCATE(pb(n), px(n), r(j) )
+
+        ! complete the RHS of the partition dofs
+        !---------------------------------------
+        r = b(1:j)
+        CALL ParallelSumVector(A, r)
+
+        ! Extract 'owned' dofs
+        !---------------------
+        DO i=1,n
+          pb(i) = r(iLPerm(i))
+          px(i) = x(iLPerm(i))
+        END DO
+
+        bnrm = SQRT(ParallelReduction(SUM(pb**2)))
+        IF(bnrm <AEPS) bnrm=1;
+
+        !  call ROCalution
+        ! ----------------
+        CALL ROCParallelSolve( gn, n, Rmatrix % Rows-1, Rmatrix % Cols-1, &
+             Rmatrix % Values, pb, px, bnrm, gOffset, A % comm, imethod, prec, maxiter, tol )
+
+        ! distribute the result such that all dofs present (even shared and not 'owned')
+        ! in a partition have consistent values
+        ! ------------------------------------------------------------------------------
+        x = 0
+        DO i=1,n
+          x(iLPerm(i)) = px(i)
+        END DO
+        CALL ParallelSumVector(A, x)
+      END BLOCK
+
+      ! Cleanup, remains to be reconsidered for optimizations
+      ! -----------------------------------------------------
+      CALL FreeMatrix(Rmatrix);
+      DEALLOCATE(APerm,ILperm,gOffset)
+
+      A % RocParams % Rmatrix => Null()
+      A % RocParams % CntPerm => Null()
+      A % RocParams % LocPerm => Null()
+      A % RocParams % gOffset => Null()
+    ELSE
+      ! Serial case: call the linear solver
+      ! -----------------------------------
+      CALL ROCSerialSolve( n, A % Rows-1, A % Cols-1, A % Values, b, x, &
+              nonlin_update, imethod, prec, maxiter, tol )
+    END IF
 #else
     CALL Fatal('ROCSolver', "Rocalution doesn't seem to be included.")
 #endif
 !------------------------------------------------------------------------------
   END SUBROUTINE ROCSolver
 !------------------------------------------------------------------------------
+
 
 
 

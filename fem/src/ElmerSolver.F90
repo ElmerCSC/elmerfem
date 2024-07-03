@@ -288,6 +288,9 @@
 #ifdef HAVE_AMGX
          CALL Info( 'MAIN', ' AMGX library linked in.' )
 #endif
+#ifdef HAVE_ROCALUTION
+         CALL Info( 'MAIN', ' ROCALUTION library linked in.' )
+#endif
          CALL Info( 'MAIN', '=============================================================')
        END IF
 
