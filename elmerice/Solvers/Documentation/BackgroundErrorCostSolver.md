@@ -140,6 +140,9 @@ end
 - ElmerIce unitary tests:     
    - [ELMER_TRUNK]/elmerice/Tests/BackgroundError
 
+- Sensitivity of the mass conservation method to the Regularisation scheme:   
+   - https://gricad-gitlab.univ-grenoble-alpes.fr/gilletcf/CovarianceUtils/-/tree/master/MassConservation
+
 ### References
 
 - Barth, A., Beckers, J.-M., Troupin, C., Alvera-Azcárate, A., and Vandenbulcke, L.: divand-1.0: n-dimensional variational data analysis for ocean observations, Geosci. Model Dev., 7, 225–241, https://doi.org/10.5194/gmd-7-225-2014, 2014.
