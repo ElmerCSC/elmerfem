@@ -294,7 +294,7 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
         IF (ABS(VariableValues(Nn))<AEPS) ZSum = ZSum + 1.0_dp
      END DO
 
-     IF (MSum + ZSum < en) THEN
+     IF (MSum + ZSum < en) THEN ! if element contains floating nodes
         DO ii = 1, en
            Nn = Permutation(Element % NodeIndexes(ii))
            IF (Nn==0) CYCLE
@@ -302,7 +302,7 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
               VariableValues(Nn) = 0.0_dp
               IF (DIM==2) WRITE(Message,*)'Grounding Line, x', Nodes % x( ii )
               IF (DIM==3) WRITE(Message,*)'Grounding Line, (x,y)', Nodes % x( ii ), Nodes % y( ii )
-              CALL INFO(SolverName, Message, Level=4)
+              CALL INFO(SolverName, Message, Level=9)
            END IF
         END DO
      END IF
@@ -327,9 +327,9 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
         END IF
      END IF
 
-    !To label all basal frontal nodes not already ungrounded or on GL as on GL -
-    !by definition, they're the last grounded node. Also necessary to make
-    !plumes work properly.
+     !To label all basal frontal nodes not already ungrounded or on GL as on GL -
+     !by definition, they're the last grounded node. Also necessary to make
+     !plumes work properly.
      IF(ASSOCIATED(FrontVar)) THEN
        DO ii=1, en
          Nn = FrontVar % Perm(Element % NodeIndexes(ii))
