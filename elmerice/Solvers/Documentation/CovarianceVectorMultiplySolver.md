@@ -91,6 +91,8 @@ end
    - [ELMER_TRUNK]/elmerice/Tests/CovarianceVector   
    - [ELMER_TRUNK]/elmerice/Tests/CovarianceVector2   
 
+- Validation test cases:   
+   - https://gricad-gitlab.univ-grenoble-alpes.fr/gilletcf/CovarianceUtils/-/tree/master/CovarianceTestCase
 
 
 

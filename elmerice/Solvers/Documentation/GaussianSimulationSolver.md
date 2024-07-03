@@ -102,6 +102,8 @@ end
 
 ### Examples
 
+- Examples available here:   
+   - https://gricad-gitlab.univ-grenoble-alpes.fr/gilletcf/CovarianceUtils/-/tree/master/GaussianSimulationTestCase
 
 ### References
 

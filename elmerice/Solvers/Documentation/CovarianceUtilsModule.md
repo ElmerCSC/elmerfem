@@ -47,7 +47,7 @@ Remarks:
 - In the literature, the Matérn functions are often defined with the smoothness parameter $\nu$ which can be a real; Here we are restricted to integers an  $m=\nu+1$.   
 - The Matérn functions have two limit cases, the exponential correlation function for $\nu=1/2$ and the squared exponential (or gaussian) correlation function for $\nu \to \infty$.
 - The Gaussian limit can be approached by setting the range to the Dayley length scale (Guillet et al. (2019) Eq. 7):   
-$$D=\sqrt{2m-4}l)$$
+$$D=\sqrt{2m-4}l$$
 
 For the following, we define the following the mass matrix $M$ and stiffness matrix $K$ discretized by the FEM:
 $$M_{ij}=\int_{\Omega} \phi_i \phi_j d\Omega$$
@@ -57,7 +57,7 @@ The [BackgroundErrorCostSolver](#Background_Error) requires the inverse correlat
 $$C^{-1} = \Gamma^{-1}ML^{-1}_M \Gamma^{-1}$$
 with:   
 
-- $\Gamma=\sqrt{(4\pi(m-1))}l I$ is a normalization matrix      
+- $\Gamma=\sqrt{4\pi(m-1)}l I$ is a normalization matrix      
 - $L^{-1}_M = [M^{-1}(M + K)]^m$
 
 The [CovarianceVectorMultiplySolver](#Covariance_Vector_product) requires the correlation matrix $C$ which is discretized as:
@@ -242,6 +242,15 @@ END INTERFACE
 ```
 
 Functions related to the computation of the analytical correlation functions.
+
+### Examples
+
+- ElmerIce unitary tests:
+   - [ELMER_TRUNK]/elmerice/Tests/CovarianceVector
+   - [ELMER_TRUNK]/elmerice/Tests/CovarianceVector2
+
+- Validation test cases and set-ups:   
+   - https://gricad-gitlab.univ-grenoble-alpes.fr/gilletcf/CovarianceUtils
 
 ### References
 
