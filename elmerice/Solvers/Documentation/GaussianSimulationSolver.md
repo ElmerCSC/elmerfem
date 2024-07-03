@@ -39,11 +39,19 @@ See e.g. Graham et al., (2017).
 
 For an application to uncertainty quantification in ice sheet modeling, using the *diffusion operator* covariance type, see Bulthuis and Larour (2022).
 
+
 ### Implementation
 
 See the generic documentation for [CovarianceUtils](#Covariance_Module) for details on the possible choices to construct the covariance matrix $C$ and for the factorization.
 
 It the solver variable is a vector, each component contains a different realization, otherwise each call to the solver (e.g. during steady-state iterations) will give a different realization.  
+
+If the solver is called several times, e.g. in steady state-iterations a new random varaible will be produced.
+
+> :warning: This solver depends on the a **random generator**. Elmer always initialize a seed at start-up.    
+> This seed can be changed with the keyword *Random Number Seed = Integer ...* (default: 314159265) in the **Simulation section**.   
+> This means that, if the seed is not changed, the solver will produce the same realisation (or serie of realisations) each time.    
+> A way to change the seed has also been introduced in the solver and can be changed with the keyword *Random Seed = Integer* in the **solver section**.
 
 ### Known Bugs and Limitations
 
@@ -61,6 +69,13 @@ Solver 1
 
   !# Variable names
   Background Variable Name = String "xb"
+
+
+!############################################################################
+!# Seed for the random generator
+!# warning: it is initialised to 314159265 during Elmer initilisation!!
+!############################################################################
+  Random Seed = Integer 314159265
 
 !# Covariance types
  !############################################################################
