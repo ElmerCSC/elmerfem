@@ -73,7 +73,7 @@
      TYPE(Element_t), POINTER :: Element, Edge, Face, Bulk
      TYPE(ValueList_t), POINTER :: Equation, Material, SolverParams, BodyForce, BC, Constants
      TYPE(Variable_t), POINTER :: ChannelAreaVar, ChannelFluxVar, SheetThicknessVar, &
-          GMcheckVar, GroundedMaskVar, HydPotVar
+          GroundedMaskVar, HydPotVar
      TYPE(Mesh_t), POINTER :: Mesh 
      
      INTEGER :: i, j, k, l, m, n, t, iter, body_id, eq_id, material_id, &
@@ -105,7 +105,7 @@
           meltChannels = .TRUE., NeglectH = .TRUE., Calving = .FALSE., &
           CycleElement=.FALSE., MABool = .FALSE., MaxHBool = .FALSE., LimitEffPres=.FALSE., &
           MinHBool=.FALSE., CycleNode=.FALSE.
-     LOGICAL, SAVE :: UseGM, UseGC, AllowSheetAtGL, ZeroSheetWithHP
+     LOGICAL, SAVE :: UseGM, AllowSheetAtGL, ZeroSheetWithHP
      LOGICAL, ALLOCATABLE ::  IsGhostNode(:), NoChannel(:), NodalNoChannel(:)
 
      ! For use in masking GlaDS floating shelves.  "MASK_HP" is for situations where
@@ -160,7 +160,7 @@
           CCw, lc, Lw, NoChannel, NodalNoChannel, &
           Channels, meltChannels, NeglectH, BDForder, &
           Vvar, ublr, hr2, Refq, Nel,&
-          Calving, Load_h, LimitEffPres
+          Calving, Load_h, LimitEffPres, MaskName
 
       
      totst = 0.0_dp
@@ -374,16 +374,6 @@
            END IF
         END IF
         
-          !        END IF
-!        UseGC = GetLogical( SolverParams,'Use GMcheck', Found )
-!        IF (.NOT. Found) THEN
-!          IF (Calving) THEN              
-!            UseGC = .TRUE.
-!          ELSE
-!            UseGC = .FALSE.
-!          END IF
-!        END IF
-
         AllowSheetAtGL = GetLogical( SolverParams,'Allow Sheet At GL', Found )
         IF (.NOT. Found) THEN
            AllowSheetAtGL = .TRUE.
@@ -1151,7 +1141,6 @@
                     CALL FATAL( SolverName, Message)
                   END SELECT
                 END DO
-                NULLIFY(GMcheckVar, GroundedMaskVar)
                 IF (CycleElement) THEN
                   CYCLE
                 END IF
@@ -1623,67 +1612,6 @@ CONTAINS
   
   END FUNCTION ProcessMask
 
-
-  ! Use the grounded mask and or grounded mask check to decide how to mask the current node.
-  ! The following table summarises actions as a function of mask values.
-  ! 
-  ! GM    GC    Status                Action
-  !-------------------------------------------------
-  ! -1    0     Floating (not shelf); don't mask
-  ! -1    1     FLoating (shelf);     mask
-  !  0    0     GL (not shelf);       don't mask
-  !  0    1     GL (shelf);           partial mask
-  !  1    0     Grounded;             don't mask
-  !  1    1     Grounded (shelf);     Fatal (mask inconsistency)
-  !
-  !----------------------------------------------------------------------------------------------------------
-  FUNCTION ProcessMasks(UseGM, UseGC, AllowSheetAtGL, ii) RESULT( MaskStatus_local )
-
-    LOGICAL, INTENT(IN)  :: UseGM, UseGC, AllowSheetAtGL
-    INTEGER, INTENT(IN)  :: ii ! node index
-
-    INTEGER :: MaskStatus_local
-
-    MaskStatus_local = MASK_NONE
-    
-    IF (UseGM) THEN
-      GroundedMaskVar => VariableGet(Mesh % Variables, "groundedmask", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
-    END IF
-
-    IF (UseGC) THEN
-      GMcheckVar => VariableGet(Mesh % Variables, "gmcheck", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
-      IF (GMcheckVar % Values(GMcheckVar % Perm(ii)).GT.0.0) THEN
-        IF (UseGM) THEN
-          IF (GroundedMaskVar % Values(GroundedMaskVar % Perm(ii)).LT.0.0) THEN 
-            MaskStatus_local = MASK_ALL
-          ELSEIF (GroundedMaskVar % Values(GroundedMaskVar % Perm(ii)).EQ.0.0) THEN
-            IF (AllowSheetAtGL) THEN
-              MaskStatus_local = MASK_HP
-            ELSE
-              MaskStatus_local = MASK_ALL
-            END IF
-          END IF
-        END IF
-      END IF
-    ELSE
-      IF (UseGM) THEN
-        IF (GroundedMaskVar % Values(GroundedMaskVar % Perm(ii)).LT.0.0) THEN 
-          MaskStatus_local = MASK_ALL
-        ELSEIF (GroundedMaskVar % Values(GroundedMaskVar % Perm(ii)).EQ.0.0) THEN
-          IF (AllowSheetAtGL) THEN
-            MaskStatus_local = MASK_HP
-          ELSE
-            MaskStatus_local = MASK_ALL
-          END IF
-        END IF
-      ELSE
-        WRITE(Message,'(A)') "Function ProcessMasks should not be called when no mask is specified"
-        CALL FATAL( SolverName, Message)
-      END IF
-    END IF
-    NULLIFY(GMcheckVar, GroundedMaskVar)
-  
-  END FUNCTION ProcessMasks
 
   
   ! Compute consistent channel norm only considering the edges that also have hydrology defined on the nodes.
@@ -2581,6 +2509,7 @@ SUBROUTINE GlaDS_GLflux( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER  :: gmVar, channelVar, sheetThickVar, sheetDisVar
   LOGICAL                    :: GotIt, ValidEdge
   CHARACTER(LEN=MAX_NAME_LEN):: channelVarName, sheetThickVarName, sheetDisVarName, SolverName
+  CHARACTER(LEN=MAX_NAME_LEN):: MaskName
   REAL(KIND=dp), POINTER     :: gmVals(:), channelVals(:), sheetThickVals(:), sheetDisVals(:)
   REAL(KIND=dp), POINTER     :: GLfluxVals(:)
   REAL(KIND=dp)              :: volFluxSheet, volFluxChannel, sheetDisMag
@@ -2641,8 +2570,13 @@ SUBROUTINE GlaDS_GLflux( Model,Solver,dt,TransientSimulation )
   sheetDisPerm => sheetDisVar % Perm
   sheetDisVals => sheetDisVar % Values
 
-  ! grounded mask name is hard coded
-  gmVar =>  VariableGet(Model % mesh % Variables,TRIM("GroundedMask"),UnFoundFatal=.TRUE.)
+  ! grounded mask  
+  MaskName = GetString( SolverParams , 'grounded mask variable', GotIt )
+  IF (.NOT.GotIt) THEN
+     CALL Info(SolverName,'>grounded mask variable< not found, assuming >GroundedMask<',Level=4)
+     MaskName = "GroundedMask"
+  END IF
+  gmVar =>  VariableGet(Model % mesh % Variables,TRIM(MaskName),UnFoundFatal=.TRUE.)
   IF (.NOT.ASSOCIATED(gmVar)) &
        CALL FATAL(SolverName,"Variable >GroundedMask< not found")
   gmPerm => gmVar % Perm
