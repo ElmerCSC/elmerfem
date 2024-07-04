@@ -94,6 +94,8 @@ end
 - Validation test cases:   
    - https://gricad-gitlab.univ-grenoble-alpes.fr/gilletcf/CovarianceUtils/-/tree/master/CovarianceTestCase
 
+- Filtering test case:   
+   - https://gricad-gitlab.univ-grenoble-alpes.fr/gilletcf/CovarianceUtils/-/tree/master/FilterTestCase
 
 
 ### References
