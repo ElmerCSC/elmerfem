@@ -111,7 +111,7 @@ MODULE DefUtils
    ! TODO: Get actual values for these from mesh
    INTEGER, PARAMETER, PRIVATE :: ISTORE_MAX_SIZE = 1024
    INTEGER, PARAMETER, PRIVATE :: VSTORE_MAX_SIZE = 1024
-   PRIVATE :: GetIndexStore, GetVecIndexStore, GetValueStore
+   PRIVATE :: GetIndexStore, GetPermIndexStore, GetValueStore
 CONTAINS
 
 
@@ -164,7 +164,7 @@ CONTAINS
     ind => IndexStore
   END FUNCTION GetIndexStore
 
-  FUNCTION GetVecIndexStore() RESULT(ind)
+  FUNCTION GetPermIndexStore() RESULT(ind)
     IMPLICIT NONE
     INTEGER, POINTER CONTIG :: ind(:)
     INTEGER :: istat
@@ -172,11 +172,11 @@ CONTAINS
     IF ( .NOT. ALLOCATED(VecIndexStore) ) THEN
       ALLOCATE( VecIndexStore(ISTORE_MAX_SIZE), STAT=istat )
       VecIndexStore = 0
-      IF ( istat /= 0 ) CALL Fatal( 'GetVecIndexStore', &
+      IF ( istat /= 0 ) CALL Fatal( 'GetPermIndexStore', &
               'Memory allocation error.' )
     END IF
     ind => VecIndexStore
-  END FUNCTION GetVecIndexStore
+  END FUNCTION GetPermIndexStore
 
   FUNCTION GetValueStore(n) RESULT(val)
     IMPLICIT NONE
@@ -3868,61 +3868,57 @@ CONTAINS
        END IF
 #else
        MCAsm = .TRUE.
-#endif       
-       Indexes => GetIndexStore()
-       n = GetElementDOFs( Indexes, Element, Solver )
-       
-       PermIndexes => GetVecIndexStore()
-       ! Get permuted indices
-!DIR$ IVDEP
-       DO j=1,n
-         PermIndexes(j) = Solver % Variable % Perm(Indexes(j))
-       END DO
-
-       IF( Solver % LocalSystemMode > 0 ) THEN
-         CALL UseLocalMatrixStorage( Solver, n * x % dofs, G, F, ElemInd = Element % ElementIndex )
-       END IF
-       
-       ! If we have any antiperiodic entries we need to check them all!
-       IF( Solver % PeriodicFlipActive ) THEN
-         CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, G )
-         CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
-       END IF
-       
-       CALL UpdateGlobalEquationsVec( A, G, b, f, n, &
-               x % DOFs, PermIndexes, &
-               UElement=Element, MCAssembly=MCAsm )
+#endif
      ELSE
-       Indexes => GetIndexStore()
-       n = GetElementDOFs( Indexes, Element, Solver )
+       MCAsm = .FALSE.
+     END IF
+       
+     Indexes => GetIndexStore()
+     n = GetElementDOFs( Indexes, Element, Solver )
+       
+     PermIndexes => GetPermIndexStore()
+     ! Get permuted indices
+!DIR$ IVDEP
+     DO j=1,n
+       PermIndexes(j) = x % Perm(Indexes(j))
+     END DO
 
-       IF( Solver % LocalSystemMode > 0 ) THEN
-         CALL UseLocalMatrixStorage( Solver, n * x % dofs, G, F, ElemInd = Element % ElementIndex )
-       END IF
-       
-       ! If we have any antiperiodic entries we need to check them all!
-       IF( Solver % PeriodicFlipActive ) THEN
-         CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, G )
-         CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
-       END IF
-       
-       IF(Solver % DirectMethod == DIRECT_PERMON) THEN
-         CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs, &
-                              x % Perm(Indexes(1:n)), UElement=Element )
-         CALL UpdatePermonMatrix( A, G, n, x % DOFs, x % Perm(Indexes(1:n)) )
+     IF( Solver % LocalSystemMode > 0 ) THEN
+       CALL UseLocalMatrixStorage( Solver, n * x % dofs, G, F, ElemInd = Element % ElementIndex )
+     END IF
+     
+     ! If we have any antiperiodic entries we need to check them all!
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, G )
+       CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
+     END IF
+
+     IF( VecAsm ) THEN
+       CALL UpdateGlobalEquationsVec( A, G, b, f, n, &
+           x % DOFs, PermIndexes, &
+           UElement=Element, MCAssembly=MCAsm )
+     ELSE       
+       IF( A % FORMAT == MATRIX_CRS ) THEN
+         ! For CRS format these are effectively the same
+         CALL UpdateGlobalEquationsVec( A,G,b,f,n,x % DOFs, &
+             PermIndexes, UElement=Element )
        ELSE
          CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs, &
-          x % Perm(Indexes(1:n)), UElement=Element )
+             PermIndexes, UElement=Element )       
        END IF
-
-       ! backflip, in case G is needed again
-       ! For change of sign backflip and flip are same operations.
-       IF( Solver % PeriodicFlipActive ) THEN
-         CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, G )
-         CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
+         
+       IF(Solver % DirectMethod == DIRECT_PERMON) THEN
+         CALL UpdatePermonMatrix( A, G, n, x % DOFs, PermIndexes )
        END IF
-       
      END IF
+     
+     ! backflip, in case G is needed again
+     ! For change of sign backflip and flip are same operations.
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, G )
+       CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
+     END IF
+     
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateEquationsR
 !------------------------------------------------------------------------------
