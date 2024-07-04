@@ -218,8 +218,8 @@
 #endif
          END IF
        END IF
-
        ParEnv % NumberOfThreads = nthreads
+
        
        IF( .NOT. Silent ) THEN
          CALL Info( 'MAIN', ' ')
@@ -390,6 +390,11 @@
          CurrentModel => LoadModel(ModelName,.FALSE.,ParEnv % PEs,ParEnv % MyPE,MeshIndex)
          IF(.NOT.ASSOCIATED(CurrentModel)) EXIT
 
+
+         IF( nthreads > 1 ) THEN
+           MaxOutputThread = ListGetInteger( CurrentModel % Simulation,'Max Output Thread',GotIt)
+           IF(.NOT. GotIt) MaxOutputThread = 1
+         END IF
          
          !----------------------------------------------------------------------------------
          ! Set namespace searching mode

@@ -62,6 +62,7 @@ MODULE Messages
    LOGICAL :: OutputPrefix=.FALSE., OutputCaller=.TRUE.
    LOGICAL :: OutputLevelMask(0:31) = .TRUE.
    INTEGER :: MaxOutputLevel=31, MinOutputLevel=0, OutputPE = 0
+   INTEGER :: MaxOutputThread=0, MaxThreads=1
    INTEGER :: MaxOutputPE = 0, MinOutputPE = 0
    INTEGER :: InfoOutUnit = stdout
    INTEGER, PARAMETER :: InfoToFileUnit = 33   
@@ -101,7 +102,9 @@ CONTAINS
      INTEGER :: n
      INTEGER, PARAMETER :: DefLevel = 4
      LOGICAL :: StdoutSet = .FALSE.
-    
+     INTEGER :: nthread, omp_get_thread_num
+
+     
      SAVE nadv1
 
 !-----------------------------------------------------------------------          
@@ -119,6 +122,12 @@ CONTAINS
      IF(.NOT. StdoutSet ) THEN
        StdoutSet = .TRUE.
      END IF
+
+     nthread = -1
+     IF( MaxOutputThread > 0 ) THEN
+       !$ nthread = omp_get_thread_num()+1
+       IF(nthread > MaxOutputThread ) RETURN
+     END IF
      
      nadv = .FALSE.
      IF ( PRESENT( noAdvance ) ) nadv = noAdvance
@@ -133,13 +142,19 @@ CONTAINS
        END IF
      END IF
 
-
      IF ( nadv ) THEN
-       ! If there are several partitions to be saved than plot the partition too
        IF( MaxOutputPE > 0 .AND. .NOT. InfoToFile ) THEN
-         WRITE( InfoOutUnit,'(A,I0,A,A)', ADVANCE = 'NO' ) 'Part',OutputPE,': ',TRIM(String)
-       ELSE         
-         WRITE( InfoOutUnit,'(A)', ADVANCE = 'NO' )  TRIM(String)
+         IF( MaxOutputThread > 1 ) THEN
+           WRITE( InfoOutUnit,'(A,I0,A,I0,A)', ADVANCE = 'NO' ) 'Part',OutputPE,' Thread',nthread,': '//TRIM(String)
+         ELSE
+           WRITE( InfoOutUnit,'(A,I0,A)', ADVANCE = 'NO' ) 'Part',OutputPE,': '//TRIM(String)
+         END IF
+       ELSE
+         IF( MaxOutputThread > 1 ) THEN 
+           WRITE( InfoOutUnit,'(A,I0,A)', ADVANCE = 'NO' ) 'Thread',nthread,': '//TRIM(String)
+         ELSE
+           WRITE( InfoOutUnit,'(A)', ADVANCE = 'NO' ) TRIM(String)
+         END IF
        END IF
      ELSE
 #if MEMDEBUG
@@ -152,9 +167,17 @@ CONTAINS
        END IF
 #else
        IF( MaxOutputPE > 0 .AND. .NOT. InfoToFile ) THEN
-         WRITE( InfoOutUnit,'(A,I0,A,A)', ADVANCE = 'YES' ) 'Part',OutputPE,': ',TRIM(String)
+         IF( MaxOutputThread > 1 ) THEN
+           WRITE( InfoOutUnit,'(A,I0,A,I0,A)', ADVANCE = 'YES' ) 'Part',OutputPE,' Thread',nthread,': '//TRIM(String)
+         ELSE
+           WRITE( InfoOutUnit,'(A,I0,A)', ADVANCE = 'YES' ) 'Part',OutputPE,': '//TRIM(String)
+         END IF
        ELSE
-         WRITE( InfoOutUnit,'(A)', ADVANCE = 'YES' ) TRIM(String)
+         IF( MaxOutputThread > 1 ) THEN 
+           WRITE( InfoOutUnit,'(A,I0,A)', ADVANCE = 'YES' ) 'Thread',nthread,': '//TRIM(String)
+         ELSE
+           WRITE( InfoOutUnit,'(A)', ADVANCE = 'YES' ) TRIM(String)
+         END IF
        END IF
 #endif
      END IF
