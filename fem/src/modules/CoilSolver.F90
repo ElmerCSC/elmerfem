@@ -385,23 +385,15 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
       IF( NoCoils > 0 ) THEN
         ! Check that we do not try to solve the coil equations in places where the coil is not defined!
         ! This can happen if we give components, not when the Solver section defines the coil. 
-        EqName = ListGetString( Params, 'Equation', Found)        
-
-        DO t=1,Model % NumberOfBodies
-          Element => Mesh % Elements(t)          
+        Active = GetNOFActive()
+        DO t=1,Active
+          Element => GetActiveElement(t)
           j = Element % BodyId
-          IF ( CheckElementEquation( Model, Element, EqName ) ) THEN
-            IF(.NOT. CoilBodies(j)) THEN
-              CALL Fatal(Caller,'CoilSolver body '//I2S(j)//' active in Equation but not in Component!')
-            END IF
-          ELSE
-            IF(CoilBodies(j)) THEN
-              CALL Fatal(Caller,'CoilSolver body '//I2S(j)//' active in Component but not in Equation!')
-            END IF
+          IF(.NOT. CoilBodies(j)) THEN
+            CALL Fatal(Caller,'CoilSolver body '//I2S(j)//' active in Equation but not in Component!')
           END IF
-        END DO        
-        DEALLOCATE(CoilBodies)
-        
+        END DO
+        DEALLOCATE(CoilBodies)        
         EXIT
       END IF
 
@@ -804,9 +796,18 @@ CONTAINS
      INTEGER, POINTER :: TargetBodies(:)
      INTEGER :: Coil
 
-     INTEGER :: Active, e, n
+     INTEGER :: Active, e, n, i, j, k
      TYPE(Element_t), POINTER :: Element
 
+     EqName = ListGetString( Params, 'Equation', Found)        
+     DO i=1,SIZE(TargetBodies)
+       j = TargetBodies(i)
+       k = ListGetInteger( Model % Bodies(j) % Values, 'Equation', Found )       
+       IF(.NOT. ListGetLogical(Model % Equations(k) % Values,EqName,Found)) THEN
+         CALL Fatal(Caller,'CoilSolver body '//I2S(j)//' active in Component but not in Equation!')           
+       END IF
+     END DO
+     
      Active = GetNOFActive()
      DO e=1,Active
        Element => GetActiveElement(e)
@@ -2067,14 +2068,18 @@ CONTAINS
     
     REAL(KIND=dp) :: InitialCurrent,possum, negsum, sumerr
     INTEGER :: i,j,k,Coil,nsize,posi,negi
-    LOGICAL :: DoIt
+    LOGICAL :: DoIt, Fail
 
     CALL Info(Caller,'Performing scaling of potential for desired current for '//I2S(NoCoils)//' coil',Level=30)
     
     nsize = SIZE( LoadVar % Perm ) 
-
+    Fail = .FALSE.
+    
     DO Coil = 1, NoCoils 
-      
+      IF( NoCoils > 1 ) THEN
+        CALL Info(Caller,'Scaling coil number: '//I2S(Coil))
+      END IF
+
       ! Evaluate the positive and negative currents
       ! As the total current vanishes these should be roughly the same 
       ! but with different signs. 
@@ -2135,8 +2140,9 @@ CONTAINS
       END IF
 
       IF(.NOT. DoIt) THEN
-        CALL Fatal(Caller,'Crappy potentials, cannot continue!')
-        RETURN
+        CALL Warn(Caller,'Crappy potentials in coil '//I2S(Coil))
+        Fail = .TRUE.
+        CYCLE
       END IF
 
       
@@ -2175,6 +2181,10 @@ CONTAINS
       END IF
     END DO
 
+    IF(Fail) THEN
+      CALL Fatal(Caller,'Scaling of potential failed!')
+    END IF
+    
     CALL Info(Caller,'Scaling of potential finished',Level=30)
 
     
