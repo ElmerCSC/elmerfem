@@ -114,6 +114,7 @@ CONTAINS
     !------------------------------------------------------------------------------
 
     Debug = .FALSE.
+    Var => VariableGet( NewMesh % Variables, HeightName, ThisOnly = .TRUE. )
 
     ALLOCATE( FoundNodes(NewMesh % NumberOfNodes),&
          PointLocalDistance(NewMesh % NumberOfNodes))
@@ -614,6 +615,7 @@ CONTAINS
        DEALLOCATE(astore,vperm,RecvLocalDistance, BetterFound, ProcSend(proc+1) % perm)
 
     END DO
+    Var => VariableGet( NewMesh % Variables, HeightName, ThisOnly = .TRUE. )
 
     DEALLOCATE(PointLocalDistance)
     IF ( ALLOCATED(Perm) ) DEALLOCATE(Perm,ProcSend)

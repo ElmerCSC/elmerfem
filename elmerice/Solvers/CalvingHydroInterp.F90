@@ -594,6 +594,22 @@
     !Temp residual needs to be conserved. Here, just integrate across all
     !elements and compare totals, then scale values on hydromesh uniformly to
     !bring in line with ice mesh
+    !This first section is due to SolveLinearSystem invalidating the
+    !temp variables on the hydro mesh. Not really
+    !sure why it does this, but this fix seems to work without any knock-on
+    !effects.
+    WorkVar2 => HydroSolver % Mesh % Variables
+    DO WHILE (ASSOCIATED(WorkVar2))
+      IF (TRIM(WorkVar2 % Name) == 'temp residual') THEN
+        IF (.NOT. WorkVar2 % Valid) THEN
+          WorkVar2 % Valid = .TRUE.
+          WorkVar2 % PrimaryMesh => HydroSolver % Mesh
+        END IF
+        EXIT
+      END IF
+      WorkVar2 => WorkVar2 % Next
+    END DO
+
     WorkVar => VariableGet(Model % Mesh % Variables, "temp residual", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
 
     IceTempResSum = 0.0_dp
@@ -631,8 +647,10 @@
       CALL MPI_Gather(IceTempResSum, 1, MPI_DOUBLE_PRECISION, ParITRS, 1, MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
       CALL MPI_Gather(HydroTempResSum, 1, MPI_DOUBLE_PRECISION, ParHTRS, 1, MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
       IF(ParEnv % myPE == 0) THEN
-        IF(ANINT(SUM(ParITRS)) .NE. ANINT(SUM(ParHTRS))) THEN
+        IF(INT(ANINT(SUM(ParITRS))) .NE. INT(ANINT(SUM(ParHTRS)))) THEN
           ScaleFactor = SUM(ParITRS)/SUM(ParHTRS)
+        ELSE
+          ScaleFactor = 1.0
         END IF
       END IF
       CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
@@ -641,7 +659,7 @@
         WorkVar % Values(i) = WorkVar % Values(i)*ScaleFactor
       END DO
     ELSE
-      IF(ANINT(IceTempResSum) .NE. ANINT(HydroTempResSum)) THEN
+      IF(INT(ANINT(IceTempResSum)) .NE. INT(ANINT(HydroTempResSum))) THEN
         ScaleFactor = IceTempResSum/HydroTempResSum
         DO i=1, SIZE(WorkVar % Values)
           WorkVar % Values(i) = WorkVar % Values(i)*ScaleFactor

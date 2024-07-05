@@ -830,6 +830,7 @@
 
     CrevVar => VariableGet(PlaneMesh % Variables, "ave_cindex", .TRUE.)
     PCSolver % Variable => CrevVar
+    PCSolver % Variable % Values => CrevVar % Values
     PCSolver % Matrix % Perm => CrevVar % Perm
 
     !----------------------------------------------------
@@ -1710,6 +1711,7 @@
 
     FirstTime = .FALSE.
 
+    PCSolver % Variable % Values => NULL()
     PCSolver % Variable => NULL()
     PCSolver % Matrix % Perm => NULL()
     CALL FreeMatrix(PCSolver % Matrix)

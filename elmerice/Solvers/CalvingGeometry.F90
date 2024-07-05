@@ -458,15 +458,19 @@ CONTAINS
     DO i=1,Mesh % NumberOfBulkElements
        DO j=1,SIZE(Mesh % Elements(i) % NodeIndexes)
           IF(RemoveNode(Mesh % Elements(i) % NodeIndexes(j))) THEN
-            IF(PRESENT(OnLeft) .AND. OnLeft(Mesh % Elements(i) % NodeIndexes(j))) THEN
-              OnLeft(Mesh % Elements(i) % NodeIndexes(j)) = .FALSE.
-              OnLeft(ReplaceWithNode(Mesh % Elements(i) % NodeIndexes(j))) = .TRUE.
+            IF(PRESENT(OnLeft)) THEN
+              IF(OnLeft(Mesh % Elements(i) % NodeIndexes(j))) THEN
+                OnLeft(Mesh % Elements(i) % NodeIndexes(j)) = .FALSE.
+                OnLeft(ReplaceWithNode(Mesh % Elements(i) % NodeIndexes(j))) = .TRUE.
+              END IF
             END IF
-            IF(PRESENT(OnRight) .AND. OnRight(Mesh % Elements(i) % NodeIndexes(j))) THEN
-              PRINT*, 'replace', Mesh % Elements(i) % NodeIndexes(j),&
-              ReplaceWithNode(Mesh % Elements(i) % NodeIndexes(j))
-              OnRight(Mesh % Elements(i) % NodeIndexes(j)) = .FALSE.
-              OnRight(ReplaceWithNode(Mesh % Elements(i) % NodeIndexes(j))) = .TRUE.
+            IF(PRESENT(OnRight)) THEN
+              IF(OnRight(Mesh % Elements(i) % NodeIndexes(j))) THEN
+                PRINT*, 'replace', Mesh % Elements(i) % NodeIndexes(j),&
+                ReplaceWithNode(Mesh % Elements(i) % NodeIndexes(j))
+                OnRight(Mesh % Elements(i) % NodeIndexes(j)) = .FALSE.
+                OnRight(ReplaceWithNode(Mesh % Elements(i) % NodeIndexes(j))) = .TRUE.
+              END IF
             END IF
             Mesh % Elements(i) % NodeIndexes(j) = &
             ReplaceWithNode(Mesh % Elements(i) % NodeIndexes(j))

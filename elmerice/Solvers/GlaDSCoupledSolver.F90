@@ -1198,7 +1198,7 @@
               CycleNode = .FALSE.
               IF (UseGM) THEN
                 ! Cycle ungrounded nodes and zero hydrology variables
-                MaskStatus = ProcessMask(MaskName, AllowSheetAtGL, Element % NodeIndexes(i))
+                MaskStatus = ProcessMask(MaskName, AllowSheetAtGL, j)
                 SELECT CASE (MaskStatus)
                 CASE (MASK_ALL)
                   CycleNode = .TRUE.

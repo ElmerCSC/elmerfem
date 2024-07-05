@@ -139,17 +139,21 @@
       !is positive
       !Here, should therefore all be negative, unless glacier dropped below
       !absolute zero....
-      IF(IMVar % Values(IMVar % Perm(NodeNumber))>=0.0) THEN
-        InternalMelt = 0.0
+      IF(IMVar % Perm(NodeNumber) > 0) THEN
+        IF(IMVar % Values(IMVar % Perm(NodeNumber))>=0.0) THEN
+          InternalMelt = 0.0
+        ELSE
+          !Latent heat of fusion of water is 333.55 J/g, so dividing by that gives
+          ! g of ice melted.
+          !TempRes in MJ, though (probably), so dividing by 333.55 gives Mg of ice
+          ! melted
+          !1 Mg is 1 t, which is 1000 kg, so 1000 l, so 1 m3 (all per year), so
+          !that's it
+          !Also need to divide by element area to get m
+          InternalMelt = (ABS(IMVar % Values(IMVar % Perm(NodeNumber)))/Weights % Values(Weights % Perm(NodeNumber)))/333.55
+        END IF
       ELSE
-        !Latent heat of fusion of water is 333.55 J/g, so dividing by that gives
-        ! g of ice melted.
-        !TempRes in MJ, though (probably), so dividing by 333.55 gives Mg of ice
-        ! melted
-        !1 Mg is 1 t, which is 1000 kg, so 1000 l, so 1 m3 (all per year), so
-        !that's it
-        !Also need to divide by element area to get m
-        InternalMelt = (ABS(IMVar % Values(IMVar % Perm(NodeNumber)))/Weights % Values(Weights % Perm(NodeNumber)))/333.55
+        InternalMelt = 0.0
       END IF
     ELSE
       InternalMelt = 0.0
