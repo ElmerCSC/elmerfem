@@ -72,7 +72,7 @@ MODULE SSAMaterialModels
    INTEGER, POINTER :: NodeIndexes(:)
    CHARACTER(LEN=MAX_NAME_LEN) :: Friction
    REAL(KIND=dp) :: Slip2, gravity, qq, hafq
-   REAL(KIND=dp) :: fm,fq,MinN,U0
+   REAL(KIND=dp) :: fm,fq,MinN,MaxN,U0
    REAL(KIND=dp) :: alpha,beta,fB
    INTEGER :: GLnIP
 
@@ -154,8 +154,9 @@ MODULE SSAMaterialModels
       CALL GetLocalSolution( NodalN,UElement=Element, UVariable=NSol)
       MinN = ListGetConstReal( Material, 'SSA Min Effective Pressure', Found, UnFoundFatal=.TRUE.)
       fN = SUM( NodalN(1:n) * Basis(1:n) )
-      ! Effective pressure should be >0 (for the friction law)
-      fN = MAX(fN, MinN)
+      fN = MAX(fN, MinN) ! Effective pressure should be >0 (for the friction law)
+      MaxN = ListGetConstReal( Material, 'SSA Max Effective Pressure', Found, UnFoundFatal=.FALSE.)
+      IF (Found) fN = MIN(fN, MaxN)
     END If
     
     ! parameters unique to one sliding parameterisation
