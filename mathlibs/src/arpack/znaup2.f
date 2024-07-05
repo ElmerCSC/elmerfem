@@ -225,7 +225,7 @@ c
 c
       save       cnorm, getv0, initv, update, ushift, 
      &           iter, kplusp, msglvl, nconv, nev0, np0, 
-     &           eps23
+     &           eps23,rnorm
 c
 c
 c     %-----------------------%
