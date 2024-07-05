@@ -2396,22 +2396,29 @@ CONTAINS
       END IF
 
       IF ( EigAnal ) THEN
-        !ComplexFlag = ListGetLogical( Solver % Values,  'Eigen System Complex', Found )
-        !IF ( .NOT. Found ) ComplexFlag = .FALSE.
-        
-        n = ListGetInteger( Solver % Values,  'Eigen System Values', Found )
+        n = ListGetInteger( Solver % Values, 'Eigen System Values', Found )
         IF ( Found .AND. n > 0 ) THEN
+          IF (ListGetLogical(Solver % Values, 'Linear System Skip Complex', Found)) THEN
+            ComplexFlag = .FALSE.
+          ELSE
+            ComplexFlag = ListGetLogical(Solver % Values, 'Linear System Complex', Found)
+          END IF
           Solver % NOFEigenValues = n
           IF ( .NOT. ASSOCIATED( Solver % Variable % EigenValues ) ) THEN
             ALLOCATE( Solver % Variable % EigenValues(n) )
-            ALLOCATE( Solver % Variable % EigenVectors(n, &
-                SIZE( Solver % Variable % Values ) ), STAT=AllocStat)
+            IF (ComplexFlag) THEN
+              ALLOCATE( Solver % Variable % EigenVectors(n, &
+                  SIZE( Solver % Variable % Values )/2 ), STAT=AllocStat)
+            ELSE
+              ALLOCATE( Solver % Variable % EigenVectors(n, &
+                  SIZE( Solver % Variable % Values ) ), STAT=AllocStat)
+            END IF
             IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for EigenValues')
            
             Solver % Variable % EigenValues  = 0.0d0
             Solver % Variable % EigenVectors = 0.0d0
 
-            IF( Solver % Variable % DOFs > 1 ) THEN
+            IF( .NOT. ComplexFlag .AND. Solver % Variable % DOFs > 1 ) THEN
               CALL Info('AddEquationSolution','Repointing '//I2S(Solver % Variable % DOFs)//&
                   ' eigenvalue components for: '//TRIM(Solver % Variable % Name))
               
