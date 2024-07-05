@@ -1,0 +1,13 @@
+INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/../test_macros.cmake)
+
+
+CONFIGURE_FILE(case.sif case.sif COPYONLY)
+CONFIGURE_FILE(Init.F90 Init.F90 COPYONLY)
+
+FILE(COPY ELMERSOLVER_STARTINFO rectangle.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+ADD_ELMERICETEST_MODULE(CovarianceVector Init ./Init.F90)
+
+ADD_ELMERICE_TEST(CovarianceVector)
+ADD_ELMERICE_LABEL(CovarianceVector elmerice-fast)
+ADD_ELMERICE_LABEL(CovarianceVector CovUtils)
