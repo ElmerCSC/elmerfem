@@ -920,7 +920,7 @@ CONTAINS
         END IF
         n = MIN( n, SIZE(x) )
 
-        Values => Variable % EigenVectors( :, NoEigen )
+        Values => Variable % EigenVectors( NoEigen, :)
 
         IF ( ASSOCIATED( Variable % Perm ) ) THEN
           DO i=1,n
@@ -988,7 +988,7 @@ CONTAINS
         END IF
         n = MIN( n, SIZE(x) )
 
-        Values => Variable % EigenVectors( :, NoEigen )
+        Values => Variable % EigenVectors( NoEigen, : )
 
         DO i=1,Variable % DOFs
            IF ( ASSOCIATED( Variable % Perm ) ) THEN
