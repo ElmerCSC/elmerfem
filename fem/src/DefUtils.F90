@@ -3437,6 +3437,8 @@ CONTAINS
 !------------------------------------------------------------------------------
      TYPE(Solver_t), OPTIONAL, TARGET, INTENT(IN) :: USolver
      TYPE(Solver_t), POINTER :: Solver
+     TYPE(ValueList_t), POINTER :: Params
+     CHARACTER(:), ALLOCATABLE :: str
      LOGICAL :: Found
 
      IF ( PRESENT( USolver ) ) THEN
@@ -3445,45 +3447,53 @@ CONTAINS
        Solver => CurrentModel % Solver
      END IF
 
+     Params => Solver % Values
+
+     IF ( ListGetLogical( Params,'Linear System Save',Found )) THEN
+       str = GetString( Params,'Linear System Save Slot', Found )
+       IF(Found .AND. str == 'finish') THEN
+         CALL SaveLinearSystem( Solver ) 
+       END IF
+     END IF
+             
      ! One can run postprocessing solver in this slot.
      !-----------------------------------------------------------------------------
      CALL DefaultSlaveSolvers(Solver,'Post Solvers')
 
-     IF( ListGetLogical( Solver % Values,'Apply Explicit Control', Found )) THEN
+     IF( ListGetLogical( Params,'Apply Explicit Control', Found )) THEN
        CALL ApplyExplicitControl( Solver )
      END IF
 
      IF( Solver % NumberOfConstraintModes > 0 ) THEN
        ! If we have a frozen stat then the nonlinear system loop is used to find that frozen state
        ! and we perform the linearized constraint modes analysis at the end. 
-       IF( ListGetLogical(Solver % Values,'Constraint Modes Analysis Frozen',Found ) ) THEN
+       IF( ListGetLogical(Params,'Constraint Modes Analysis Frozen',Found ) ) THEN
          BLOCK 
            INTEGER :: n
            REAL(KIND=dp) :: Norm
            REAL(KIND=dp), ALLOCATABLE :: xtmp(:), btmp(:)
            REAL(KIND=dp), POINTER :: rhs(:)
 
-           CALL ListAddLogical(Solver % Values,'Constraint Modes Analysis Frozen',.FALSE.)
+           CALL ListAddLogical(Params,'Constraint Modes Analysis Frozen',.FALSE.)
            n = SIZE(Solver % Matrix % rhs)
            rhs => Solver % Matrix % rhs           
            ALLOCATE(xtmp(n),btmp(n))
            xtmp = 0.0_dp; btmp = 0.0_dp
            CALL SolveSystem( Solver % Matrix, ParMatrix, btmp, xtmp, Norm,Solver % Variable % DOFs,Solver )
-           CALL ListAddLogical(Solver % Values,'Constraint Modes Analysis Frozen',.TRUE.)
+           CALL ListAddLogical(Params,'Constraint Modes Analysis Frozen',.TRUE.)
          END BLOCK
        END IF
          
-       IF( ListGetLogical( Solver % Values,'Nonlinear System Constraint Modes', Found ) ) THEN
+       IF( ListGetLogical( Params,'Nonlinear System Constraint Modes', Found ) ) THEN
          CALL FinalizeLumpedMatrix( Solver )            
        END IF
      END IF
 
-     IF( ListGetLogical( Solver % Values,'MMG Remesh', Found ) ) THEN
+     IF( ListGetLogical( Params,'MMG Remesh', Found ) ) THEN
        CALL Remesh(CurrentModel,Solver)
      END IF
-     
-     CALL Info('DefaultFinish','Finished solver: '//&         
-         GetString(Solver % Values,'Equation'),Level=8)
+
+     CALL Info('DefaultFinish','Finished solver: '//GetString(Params,'Equation'),Level=8)
      
 !------------------------------------------------------------------------------
    END SUBROUTINE DefaultFinish
