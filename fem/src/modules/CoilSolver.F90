@@ -1082,7 +1082,8 @@ CONTAINS
 
   
   ! Chooses bulk nodes which are used to set the artificial boundary conditions
-  ! in the middle of the coil. Narrow version.
+  ! in the middle of the coil. Narrow version where just one layer of connections
+  ! is affected. 
   !----------------------------------------------------------------------------  
   SUBROUTINE ChooseFixedBulkNodesNarrow( Set, SetNo, SelectNodes )
     
@@ -1100,7 +1101,7 @@ CONTAINS
     INTEGER, POINTER :: Indexes(:)
 
 
-    CALL Info(Caller,'Choosing narrow fixing nodes for set: '//I2S(SetNo))
+    CALL Info(Caller,'Choosing fixing nodes for set: '//I2S(SetNo))
 
     Mirror = ( SetNo == 2 )
 
