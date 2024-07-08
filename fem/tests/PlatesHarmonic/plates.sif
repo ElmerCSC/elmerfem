@@ -64,7 +64,7 @@ Solver 1
   Harmonic Mode = Logical True
 
 ! We may toggle the system to be solved as a real one
-! For hamonic mode the default is True
+! For harmonic mode the default is True
 !  Linear System Complex = False
 End
 
