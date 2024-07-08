@@ -197,7 +197,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), ALLOCATABLE :: DesiredCoilCurrent(:), DesiredCurrentDensity(:),&
       CoilHelicity(:),CoilNormals(:,:)
   LOGICAL :: Found, CoilClosed, CoilAnisotropic, UseDistance, FixConductivity, &
-      FitCoil, SelectNodes, CalcCurr, NarrowInterface, UseUnityCond
+      FitCoil, SelectNodes, CalcCurr, UseUnityCond
   LOGICAL, ALLOCATABLE :: GotCurr(:), GotDens(:), NormalizeCoil(:), CoilBodies(:)
   REAL(KIND=dp) :: CoilCenter(3), CoilNormal(3), CoilTangent1(3), CoilTangent2(3), &
       MinCurr(3),MaxCurr(3),TmpCurr(3)
@@ -289,14 +289,10 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
   
   TestCut = .FALSE.
   OneCut = .FALSE.
-  NarrowInterface = .FALSE.
   IF( CoilParts == 2 ) THEN
     OneCut = GetLogical( Params,'Single Coil Cut',Found )
     TestCut = GetLogical( Params,'Test Coil Cut',Found )
-    
-    NarrowInterface = GetLogical( Params,'Narrow Interface',Found )
-    IF(.NOT. Found) NarrowInterface = .TRUE.
-    
+        
     ALLOCATE( SetB(nsize) )
     SetB = 0 
 
@@ -373,8 +369,13 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
       END IF      
             
       NoCoils = NoCoils + 1
-      CALL MarkCoilNodes(TargetBodies, NoCoils) 
-
+      CALL MarkCoilNodes(TargetBodies, NoCoils, Found ) 
+      IF(.NOT. Found) THEN
+        ! Ok, we didn't find any active nodes. Do not continue with this coil.
+        NoCoils = NoCoils - 1
+        CYCLE
+      END IF
+      
       IF( CoilClosed ) THEN
         SelectNodes = .TRUE.      
         CALL DefineCoilCenter( CoilCenter, CoilList, TargetBodies )
@@ -409,19 +410,11 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
     ! Choose nodes where the Dirichlet values are set. 
     IF( CoilClosed ) THEN
       Set => SetA
-      IF( NarrowInterface ) THEN
-        CALL ChooseFixedBulkNodesNarrow(Set,1,SelectNodes)
-      ELSE
-        CALL ChooseFixedBulkNodes(Set,1,SelectNodes)
-      END IF
+      CALL ChooseFixedBulkNodesNarrow(Set,1,SelectNodes)
       IF( OneCut ) CALL ChooseCoilCut(Set,SelectNodes)
 
       Set => SetB
-      IF( NarrowInterface ) THEN
-        CALL ChooseFixedBulkNodesNarrow(Set,2,SelectNodes)
-      ELSE
-        CALL ChooseFixedBulkNodes(Set,2,SelectNodes)
-      END IF
+      CALL ChooseFixedBulkNodesNarrow(Set,2,SelectNodes)
       IF( OneCut ) CALL ChooseCoilCut(Set,SelectNodes)
     ELSE
       Set => SetA
@@ -541,9 +534,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
       ! If we use narrow strategy we need to cut the connections in the bulk values
       ! between the two different Dirichlet conditions. Otherwise the load computation
       ! will produce crap.
-      IF( NarrowInterface ) THEN
-        CALL CutInterfaceConnections( StiffMatrix, Set )
-      END IF
+      CALL CutInterfaceConnections( StiffMatrix, Set )
 
       CALL DefaultDirichletBCs()
       
@@ -791,22 +782,27 @@ CONTAINS
 
    ! If there will be many coils then mark no nodes associated to them
    !------------------------------------------------------------------------------
-   SUBROUTINE MarkCoilNodes(TargetBodies, Coil) 
+   SUBROUTINE MarkCoilNodes(TargetBodies, Coil, CoilActive ) 
 
      INTEGER, POINTER :: TargetBodies(:)
      INTEGER :: Coil
+     LOGICAL :: CoilActive
 
      INTEGER :: Active, e, n, i, j, k
      TYPE(Element_t), POINTER :: Element
 
+     CoilActive = .TRUE.
+     
      EqName = ListGetString( Params, 'Equation', Found)        
      DO i=1,SIZE(TargetBodies)
        j = TargetBodies(i)
        k = ListGetInteger( Model % Bodies(j) % Values, 'Equation', Found )       
        IF(.NOT. ListGetLogical(Model % Equations(k) % Values,EqName,Found)) THEN
-         CALL Fatal(Caller,'CoilSolver body '//I2S(j)//' active in Component but not in Equation!')           
+         CoilActive = .FALSE.
+         CALL Warn(Caller,'CoilSolver body '//I2S(j)//' active in Component but not in Equation!')           
        END IF
      END DO
+     IF(.NOT. CoilActive) RETURN
      
      Active = GetNOFActive()
      DO e=1,Active
@@ -1085,129 +1081,6 @@ CONTAINS
   END SUBROUTINE DefineCoilParameters
 
   
-
-  ! Chooses bulk nodes which are used to set the artificial boundary conditions
-  ! in the middle of the coil.
-  !----------------------------------------------------------------------------  
-  SUBROUTINE ChooseFixedBulkNodes( Set, SetNo, SelectNodes )
-    
-    INTEGER :: SetNo
-    INTEGER, POINTER :: Set(:)
-    LOGICAL :: SelectNodes
-
-    LOGICAL :: Mirror 
-    TYPE(Mesh_t), POINTER :: Mesh
-    REAL(KIND=dp) :: x,y,z,x0,y0,dy
-    REAL(KIND=dp) :: MinCoord(3),MaxCoord(3),r(3),rp(3),ParTmp(3)
-    INTEGER :: i,j,k,ioffset,ierr
-    LOGICAL :: Found
-
-    CALL Info(Caller,'Choosing wide fixing nodes for set: '//I2S(SetNo))
-
-    Mirror = ( SetNo == 2 )
-
-    Mesh => Solver % Mesh
-
-    ! The maximum coordinate difference for an acceptable node
-    ! The larger the value the more there will be nodes in the set.
-    ! There should be enough nodes so that the BC is good one,
-    ! but not too many either. 
-
-    MinCoord = HUGE( MinCoord )
-    MaxCoord = -HUGE( MaxCoord )
-    ioffset = 10 * NoCoils 
-
-
-    DO i=1,Mesh % NumberOfNodes
-      IF( Perm(i) == 0 ) CYCLE
-
-      IF( SelectNodes ) THEN
-        IF( CoilIndex(i) /= NoCoils ) CYCLE
-      END IF
-
-      r(1) = Mesh % Nodes % x(i)
-      r(2) = Mesh % Nodes % y(i)
-      r(3) = Mesh % Nodes % z(i)
-
-      ! Move to coil origin
-      r = r - CoilCenter
-
-      IF( mirror ) r = -r
-      
-      ! Coordinate projected to coil coordinates
-      rp(1) = SUM( CoilTangent1 * r ) 
-      rp(2) = SUM( CoilTangent2 * r ) 
-      rp(3) = SUM( CoilNormal * r ) 
-      
-      DO j=1,3
-        MinCoord(j) = MIN( MinCoord(j), rp(j) )
-        MaxCoord(j) = MAX( MaxCoord(j), rp(j) ) 
-      END DO
-    END DO
-
-    IF( ParEnv % PEs > 1 ) THEN
-      CALL MPI_ALLREDUCE(MinCoord,ParTmp,3,MPI_DOUBLE_PRECISION,MPI_MIN,ParEnv % ActiveComm,ierr)
-      MinCoord = ParTmp
-      CALL MPI_ALLREDUCE(MaxCoord,ParTmp,3,MPI_DOUBLE_PRECISION,MPI_MAX,ParEnv % ActiveComm,ierr)
-      MaxCoord = ParTmp
-    END IF
-
-    dy = ListGetCReal( Params,'Coil Bandwidth',Found)
-    IF(.NOT. Found ) THEN
-      dy = 0.2 * ( MaxCoord(2) - MinCoord(2) )
-    END IF
-
-    
-    DO i=1,Mesh % NumberOfNodes
-
-      IF( SelectNodes ) THEN
-        IF( CoilIndex(i) /= NoCoils ) CYCLE
-      END IF
-
-      j = Perm(i)
-      IF( j == 0 ) CYCLE
-      
-      r(1) = Mesh % Nodes % x(i)
-      r(2) = Mesh % Nodes % y(i)
-      r(3) = Mesh % Nodes % z(i)
-
-      r = r - CoilCenter
-      IF( mirror ) r = -r
-
-      ! Coordinate projected to coil coordinates
-      rp(1) = SUM( CoilTangent1 * r ) 
-      rp(2) = SUM( CoilTangent2 * r ) 
-      rp(3) = SUM( CoilNormal * r ) 
-
-      IF( SetNo == 1 ) THEN
-        ! This is used to determine "left" and "right" side of the coil
-        PotSelect % Values( PotSelect % Perm(i) ) = rp(1)
-      END IF
-
-      IF( ABS( rp(2) ) > dy ) CYCLE
-
-      ! Values with abs 1 indicate the narrow band that is omitted when computing the currents
-      ! Values with abs 2 indicate the wide band
-      IF( rp(1) > 0 ) THEN
-        IF( rp(2) > dy / 2 ) THEN
-          Set(j) = 2 + ioffset
-        ELSE IF( rp(2) > 0.0 ) THEN
-          Set(j) = 1 + ioffset
-        ELSE IF( rp(2) > -dy / 2 ) THEN
-          Set(j) = -1 - ioffset
-        ELSE 
-          Set(j) = -2 - ioffset
-        END IF
-      END IF
-
-    END DO
-
-
-  END SUBROUTINE ChooseFixedBulkNodes
-
-
-
-
   ! Chooses bulk nodes which are used to set the artificial boundary conditions
   ! in the middle of the coil. Narrow version.
   !----------------------------------------------------------------------------  
