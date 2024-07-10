@@ -14474,6 +14474,320 @@ CONTAINS
   END SUBROUTINE SphereFit
 
 
+
+  !---------------------------------------------------------------------------
+  SUBROUTINE PolynomBoundaryFit(Mesh, PParams, BCind, Ndeg, FitParams, PatchHeight ) 
+  !---------------------------------------------------------------------------
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Valuelist_t), POINTER :: PParams
+    INTEGER, OPTIONAL :: BCind
+    INTEGER :: Ndeg
+    REAL(KIND=dp) :: FitParams(:)
+    REAL(KIND=dp), POINTER :: PatchHeight(:)
+
+    REAL(KIND=dp), POINTER :: rArray(:,:)
+    LOGICAL :: Found
+    REAL(KIND=dp), POINTER :: pArray(:,:)    
+    REAL(KIND=dp), POINTER :: x(:),y(:),z(:)
+    LOGICAL, ALLOCATABLE :: ActiveNode(:)
+    REAL(KIND=dp), ALLOCATABLE :: AngleSum(:), pHeight(:), Weights(:)
+    TYPE(Nodes_t) :: Nodes
+    INTEGER :: n,nd,dim,Corners(4)
+    
+    pArray => ListGetConstRealArray( PParams,'Patch Height Basis',Found )
+
+    IF(.NOT. Found ) THEN
+      dim = 3
+      x => Mesh % Nodes % x
+      y => Mesh % Nodes % y
+      z => Mesh % Nodes % z
+
+      n = Mesh % NumberOfNodes
+      ALLOCATE(ActiveNode(n), AngleSum(n), Weights(n) )
+      ActiveNode = .FALSE.
+      AngleSum = 0.0_dp
+      Weights = 0.0_dp
+      
+      CALL FindBoundaryCorners()      
+      
+      CALL SetBoundaryWeights()
+      
+      CALL FitBoundaryPatch()
+
+      NULLIFY(rArray)
+      ALLOCATE(rArray(nd,1))
+      rArray = 0.0_dp
+
+      rArray(1:4,1) = Nodes % x
+      CALL ListAddConstRealArray( PParams,'Patch Corners x',4,1,rArray) 
+      rArray(1:4,1) = Nodes % y
+      CALL ListAddConstRealArray( PParams,'Patch Corners y',4,1,rArray)
+      rArray(1:4,1) = Nodes % z
+      CALL ListAddConstRealArray( PParams,'Patch Corners z',4,1,rArray)
+      rArray(1:nd,1) = pheight(1:nd)
+      CALL ListAddConstRealArray( PParams,'Patch Height Basis',nd,1,rArray)
+      DEALLOCATE(pheight)
+      
+      pArray => ListGetConstRealArray( PParams,'Patch Height Basis',Found )
+    END IF
+
+    ALLOCATE(PatchHeight(SIZE(pArray,1)))
+    PatchHeight = pArray(:,1)    
+    pArray => ListGetConstRealArray( PParams,'Patch Corners x',UnfoundFatal=.TRUE. )    
+    FitParams(1:4) = pArray(1:4,1)
+    pArray => ListGetConstRealArray( PParams,'Patch Corners y',UnfoundFatal=.TRUE. )
+    FitParams(5:8) = pArray(1:4,1)
+    pArray => ListGetConstRealArray( PParams,'Patch Corners z',UnfoundFatal=.TRUE. )
+    FitParams(9:12) = pArray(1:4,1)
+      
+  CONTAINS
+    
+    ! Found the four courners of the patch. It is assumed that they are the ones
+    ! with the smallest angle. Typically that would be 90 degs.
+    !---------------------------------------------------------------------------------
+    SUBROUTINE FindBoundaryCorners()
+
+      INTEGER :: t,t1,t2,i,j,k,i1,i2,j1,j2
+      REAL(KIND=dp) :: v1(3),v2(3),phi,Angles(4),dist,maxdist
+      TYPE(Element_t), POINTER :: Element
+      
+      t1 = Mesh % NumberOfBulkElements
+      t2 = Mesh % NumberOfBoundaryElements 
+      
+      DO t=t1+1,t1+t2
+        Element => Mesh % Elements(t)
+        IF ( Element % BoundaryInfo % Constraint /= CurrentModel % BCs(BCind) % Tag ) CYCLE
+        
+        n  = MODULO(Element % TYPE % ElementCode, 100)
+        IF(n < 3 .OR. n > 4 ) THEN
+          CALL Fatal('PolynomBoundaryFit','2D polynom can only bet fitted on 2D elements!')
+        END IF
+        
+        DO i=1,n
+          i1 = MODULO(i-2,n)+1
+          i2 = MODULO(i,n)+1
+          j = Element % NodeIndexes(i)
+          j1 = Element % NodeIndexes(i1)
+          j2 = Element % NodeIndexes(i2)
+          v1(1) = x(j1)-x(j)
+          v1(2) = y(j1)-y(j)
+          v1(3) = z(j1)-z(j)
+          v2(1) = x(j2)-x(j)
+          v2(2) = y(j2)-y(j)
+          v2(3) = z(j2)-z(j)
+          v1 = v1 / SQRT(SUM(v1**2))
+          v2 = v2 / SQRT(SUM(v2**2))        
+          phi = ACOS(SUM(v1*v2))        
+          AngleSum(j) = AngleSum(j) + phi
+          ActiveNode(j) = .TRUE.
+        END DO
+      END DO
+
+      Angles = HUGE(phi)
+      DO j=1,4
+        k = MINLOC(AngleSum, dim = 1, Mask = ActiveNode )
+        Corners(j) = k
+        Angles(j) = AngleSum(k) 
+        ! Eliminate the minimum angle and repeat to find the next smallest angle. 
+        AngleSum(k) = 3*PI
+      END DO
+
+      IF( InfoActive(20 ) ) THEN
+        Angles = ( 180_dp / PI ) * Angles
+        PRINT *,'Patch element corners:',Corners
+        PRINT *,'Patch element angles:',Angles
+      END IF
+
+      ! Find the two nodes furthers apart.
+      maxdist = 0.0_dp
+      DO i=1,4
+        DO j=i+1,4
+          v1(1) = x(Corners(j))-x(Corners(i))
+          v1(2) = y(Corners(j))-y(Corners(i))
+          v1(3) = z(Corners(j))-z(Corners(i))
+          dist = SQRT(SUM(v1**2))
+          IF(dist > maxdist) THEN
+            i1 = i
+            i2 = j
+            maxdist = dist
+          END IF
+        END DO
+      END DO
+
+      ! Swap the nodes furthest apart so that they are nodes 1 and 3 (always: i2>i1)
+      ! Then (1-2) and (1-4) create two basis vectors for the plane.
+      IF(i1 /= 1 ) THEN
+        k = Corners(1)
+        Corners(1) = Corners(i1)
+        Corners(i1) = k
+      END IF        
+      IF(i2 /= 3) THEN
+        k = Corners(3)
+        Corners(3) = Corners(i2)
+        Corners(i2) = k
+      END IF
+      
+    END SUBROUTINE FindBoundaryCorners   
+
+
+    ! We want to set the value at nodes, not at integration points. However, we need to sum 
+    ! up the integration weights to the nodes.
+    !---------------------------------------------------------------------------------------
+    SUBROUTINE SetBoundaryWeights()
+      TYPE(Element_t), POINTER :: sElement
+      TYPE(Nodes_t) :: sNodes
+      INTEGER :: t,t1,t2,i,n
+      INTEGER, POINTER :: sIndexes(:)
+      REAL(KIND=dp) :: Basis(4), detJ
+      TYPE(GaussIntegrationPoints_t) :: IP
+      LOGICAL :: stat
+            
+      t1 = Mesh % NumberOfBulkElements
+      t2 = Mesh % NumberOfBoundaryElements 
+      
+      DO t=t1+1,t1+t2
+        sElement => Mesh % Elements(t)        
+        IF ( sElement % BoundaryInfo % Constraint /= CurrentModel % BCs(BCind) % Tag ) CYCLE
+
+        sIndexes => sElement % NodeIndexes
+        n  = sElement % TYPE % NumberOfNodes
+
+        IP = GaussPoints( sElement )
+        CALL CopyElementNodesFromMesh( sNodes, Mesh, n, sIndexes)
+        
+        DO i=1,IP % n
+          stat = ElementInfo( sElement, sNodes, IP % U(i), IP % V(i), &
+              IP % W(i), detJ, Basis )
+          Weights(sIndexes) = Weights(sIndexes) + IP % s(i) * detJ * Basis(1:n)
+        END DO
+      END DO
+
+      IF( InfoActive(20) ) THEN
+        PRINT *,'Sum of Weights on element patch:',SUM(Weights)
+      END IF
+        
+    END SUBROUTINE SetBoundaryWeights
+
+
+    ! Fit patch to the height data given on each node of the patch.
+    !--------------------------------------------------------------
+    SUBROUTINE FitBoundaryPatch()
+      TYPE(Element_t), TARGET :: Element
+      TYPE(Element_t), POINTER :: pElement
+      INTEGER :: n,i,j,k,q,np,edofs
+      REAL(KIND=dp) :: c1(3), c2(3), c4(3), normal(3), v1(3), v2(3), &
+          u,v,w, weight, detJ, norm_proj, dir(4)
+      REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), FORCE(:), Basis(:)
+      LOGICAL :: Erroneous, Stat, Invert, Serendipity
+      INTEGER :: pivot(50)
+      TYPE(GaussIntegrationPoints_t) :: IP
+
+      ! Define parameters for p-element patch. 
+      n = 4
+      np = (ndeg+1)**2      
+      edofs = ndeg - 1      
+      nd = n*(1+edofs)
+      Serendipity = .TRUE.
+      
+      IF(.NOT. ASSOCIATED(Nodes % x) ) THEN
+        ALLOCATE(Nodes % x(nd), Nodes % y(nd), Nodes % z(nd), Basis(nd)) 
+        Nodes % x = 0.0_dp; Nodes % y = 0.0_dp; Nodes % z = 0.0_dp
+        Basis = 0.0_dp
+      END IF        
+
+      DO i=1,n        
+        Nodes % x(i) = x(Corners(i))
+        Nodes % y(i) = y(Corners(i))
+        Nodes % z(i) = z(Corners(i))
+      END DO
+      
+      ! Creat basis vectors for the element assuming that it can be in a plane.  
+      c1(1) = x(Corners(1))
+      c1(2) = y(Corners(1))
+      c1(3) = z(Corners(1))
+      c2(1) = x(Corners(2))
+      c2(2) = y(Corners(2))
+      c2(3) = z(Corners(2))
+      c4(1) = x(Corners(4))
+      c4(2) = y(Corners(4))
+      c4(3) = z(Corners(4))
+      
+      normal = NormalDirection(c2-c1,c4-c1)
+            
+      Element % TYPE => GetElementType(404)
+      pElement => Element
+      
+      ALLOCATE(MASS(nd,nd),FORCE(nd),pheight(nd))
+      MASS = 0.0_dp
+      FORCE = 0.0_dp
+      pheight = 0.0_dp
+      Weight = 1.0_dp
+      
+      IP = GaussPoints( pElement, np = np, PReferenceElement = .TRUE.)
+
+      ! Currently equal weight for all nodes.
+      DO i=1,Mesh % NumberOfNodes
+        IF(.NOT. ActiveNode(i)) CYCLE
+
+        v1(1) = x(i) 
+        v1(2) = y(i) 
+        v1(3) = z(i) 
+        
+        norm_proj = SUM((v1-c1)*normal)
+        
+        ! We can only find the integration points on the plane defined by the superelement. 
+        v2 = v1 - norm_proj * normal
+
+        CALL GlobalToLocal( u,v,w,v2(1),v2(2),v2(3),pElement,Nodes )
+
+        weight = weights(i)
+
+        ! This is minimal quadrilateral p-element on-the-fly without any excess definions needed
+        q = n
+        CALL QuadNodalPBasisAll(u, v, basis) 
+        DO j=1,4
+          invert = (j==4)
+          DO k=1,edofs
+            q = q + 1
+            ! Get values of basis functions for edge=j and j=k+1 by parity
+            IF (Serendipity) THEN
+              Basis(q) = SD_QuadEdgePBasis(j,k+1,u,v,invert)
+            ELSE
+              Basis(q) = QuadEdgePBasis(j,k+1,u,v,invert)
+            END IF
+          END DO
+        END DO
+
+        ! Create equation involving mass matrix that solves for the coordinates at the p-dofs
+        DO q=1,nd
+          MASS(1:nd,q) = MASS(1:nd,q) + Weight * Basis(1:nd) * Basis(q) 
+        END DO        
+        FORCE(1:nd) = FORCE(1:nd) + Weight * Basis(1:nd) * norm_proj
+        
+        DO j=1,4
+          IF(Corners(j) == i) dir(j) = norm_proj
+        END DO        
+      END DO
+
+      ! Set dirichlet conditions for the corners
+      DO j=1,4
+        MASS(j,1:nd) = 0.0_dp
+        MASS(j,j) = 1.0_dp
+        FORCE(j) = dir(j)
+      END DO
+      
+      CALL LUdecomp(MASS,nd,pivot,Erroneous)
+      IF (Erroneous) CALL Fatal('FitBoundaryPatch', 'LU-decomposition fails')      
+      pheight = FORCE
+      CALL LUSolve(nd,MASS,pheight,pivot)
+
+      DEALLOCATE(MASS,FORCE)
+      
+    END SUBROUTINE FitBoundaryPatch
+          
+  END SUBROUTINE PolynomBoundaryFit
+
+  
   
   SUBROUTINE FollowCurvedBoundary(Model, Mesh, SetP )
     TYPE(Model_t) :: Model
@@ -14481,8 +14795,9 @@ CONTAINS
     LOGICAL, OPTIONAL :: SetP
 
     LOGICAL :: Found
-    REAL(KIND=dp) :: FitParams(8)
-    INTEGER :: Mode, bc_ind, dim
+    REAL(KIND=dp) :: FitParams(12)
+    REAL(KIND=dp), POINTER :: normheight(:)
+    INTEGER :: Mode, bc_ind, dim, ndeg
     TYPE(ValueList_t), POINTER :: BC
 
     IF(.NOT. ListCheckPrefixAnyBC( Model,'Follow') ) RETURN
@@ -14508,6 +14823,10 @@ CONTAINS
       ELSE IF( ListGetLogical(BC,'Follow Toroid Boundary', Found ) ) THEN
         CALL TorusFit(Mesh, BC, bc_ind, FitParams ) 
         Mode = 5        
+      ELSE IF( ListCheckPresent(BC,'Follow Polynom Boundary' ) ) THEN
+        ndeg = ListGetInteger( BC,'Follow Polynom Boundary', Found ) 
+        CALL PolynomBoundaryFit(Mesh, BC, bc_ind, Ndeg, FitParams, normheight ) 
+        Mode = 6        
       ELSE
         Mode = 0
       END IF
@@ -14522,6 +14841,79 @@ CONTAINS
     
   CONTAINS
 
+    
+    ! We have fitted a p-element patch to a rectangular boundary.
+    ! Now apply if to each element of the boundary.
+    !--------------------------------------------------------------
+    FUNCTION PatchElementApply(v1) RESULT( v2 )
+      REAL(KIND=dp) :: v1(3)
+      REAL(KIND=dp) :: v2(3) 
+
+      REAL(KIND=dp) :: c1(3),c2(3),c4(3),normal(3),norm_proj,u,v,w,h
+      INTEGER :: n,np,nd,q,edofs,i,j,k
+      TYPE(Element_t), TARGET :: Element
+      TYPE(Element_t), POINTER :: pElement
+      TYPE(Nodes_t), SAVE :: Nodes
+      REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:)
+      LOGICAL :: Serendipity, invert
+            
+      ! Create basis functions using the corners
+      c1 = FitParams([1,5,9])
+      c2 = FitParams([2,6,10])
+      c4 = FitParams([4,8,12])
+      
+      ! Remove normal components so we are in plane
+      ! We can only find the integration points on the plane defined by the superelement. 
+      normal = NormalDirection(c2-c1,c4-c1)
+      norm_proj = SUM((v1-c1)*normal)
+      v2 = v1 - norm_proj * normal
+
+      ! Parameters of the p-element
+      n = 4
+      np = (ndeg+1)**2      
+      edofs = ndeg - 1      
+      nd = n*(1+edofs)
+      Serendipity = .TRUE.
+
+      IF(.NOT. ASSOCIATED(Nodes % x)) THEN
+        ALLOCATE(Nodes % x(n), Nodes % y(n), Nodes % z(n),Basis(nd))
+      END IF
+      Nodes % x = FitParams(1:4)
+      Nodes % y = FitParams(5:8)
+      Nodes % z = FitParams(9:12)
+      Basis = 0.0_dp
+
+      ! Find local coordinates of the node it the patch element. 
+      Element % TYPE => GetElementType(404)
+      pElement => Element
+
+      ! Give the global coordinates in loca coordinates of the patch element. 
+      CALL GlobalToLocal( u,v,w,v2(1),v2(2),v2(3),pElement,Nodes )
+      
+      ! This is minimal quadrilateral p-element on-the-fly without any excess definions needed
+      ! Given the local coordinates find the basis function values at the point.
+      q = n
+      CALL QuadNodalPBasisAll(u, v, basis) 
+      DO j=1,4
+        invert = (j==4)
+        DO k=1,edofs
+          q = q + 1
+          ! Get values of basis functions for edge=j and j=k+1 by parity
+          IF (Serendipity) THEN
+            Basis(q) = SD_QuadEdgePBasis(j,k+1,u,v,invert)
+          ELSE
+            Basis(q) = QuadEdgePBasis(j,k+1,u,v,invert)
+          END IF
+        END DO
+      END DO
+
+      ! Get the updated height and return the new coordinates. 
+      h = SUM( Basis(1:nd) * normheight(1:nd) )
+      v2 = v2 + h * Normal
+      
+    END FUNCTION PatchElementApply
+
+    
           
 !------------------------------------------------------------------------------
     SUBROUTINE SetCurvedBoundary()
@@ -14559,6 +14951,8 @@ CONTAINS
         Rminor = FitParams(8)
         IF( InfoActive(25) .AND. ParEnv % MyPe == 0) PRINT *,'Torus Params:',FitParams(1:8)        
         CALL TangentDirections(Nrm, Tngt1, Tngt2 ) 
+      ELSE IF( Mode == 6 ) THEN
+        Orig = 0.0_dp
       END IF
       
       Parallel = ( ParEnv % PEs > 1 .AND. .NOT. Mesh % SingleMesh )
@@ -14571,9 +14965,10 @@ CONTAINS
             Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
           Element => Mesh % Elements(t)
           IF ( Element % BoundaryInfo % Constraint &
-              /= Model % BCs(bc_ind) % Tag ) CYCLE          
-          n = Element % TYPE % NumberOfNodes          
-          DoneNode(Element % NodeIndexes(1:n)) = .TRUE.
+              == Model % BCs(bc_ind) % Tag ) THEN      
+            n = Element % TYPE % NumberOfNodes          
+            DoneNode(Element % NodeIndexes(1:n)) = .TRUE.
+          END IF
         END DO
 
         IF( Parallel ) THEN
@@ -14621,6 +15016,10 @@ CONTAINS
             NtCoord = rat * (NtCoord-PlaneCoord) + PlaneCoord
 
             Coord = NtCoord(1)*Nrm + NtCoord(2)*Tngt1 + NtCoord(3)*Tngt2
+
+          CASE( 6 ) 
+            Coord = PatchElementApply(Coord)
+            
           END SELECT
           
           Mesh % Nodes % x(j) = Coord(1) + Orig(1)
@@ -14696,6 +15095,20 @@ CONTAINS
                   f = ListGetFunVec( BC,'Surface Function', Coord(1:dim), dim, DfDx=gradf(1:dim) )
                   Coord(1:dim) = Coord(1:dim) - f*gradf(1:dim)/(SUM(gradf(1:dim)**2))            
                 END DO
+              CASE( 5 ) ! torus
+                NtCoord(1) = SUM(Nrm*Coord)
+                NtCoord(2) = SUM(Tngt1*Coord)
+                NtCoord(3) = SUM(Tngt2*Coord)
+
+                PlaneCoord(1) = 0.0_dp
+                r1 = SQRT(SUM(NtCoord(2:3)**2))
+                PlaneCoord(2:3) = NtCoord(2:3)*R/r1
+
+                rat = Rminor / SQRT((r1-R)**2 + NtCoord(1)**2)            
+                NtCoord = rat * (NtCoord-PlaneCoord) + PlaneCoord
+                Coord = NtCoord(1)*Nrm + NtCoord(2)*Tngt1 + NtCoord(3)*Tngt2
+              CASE( 6 ) 
+                Coord = PatchElementApply(Coord)
               END SELECT
 
               Coord = Coord + Orig
@@ -17185,7 +17598,7 @@ CONTAINS
       BaseLineLayer = ListGetInteger( CurrentModel % Simulation,'Extruded Baseline Layer', Found )
       IF(.NOT. Found) BaseLineLayer = 1
       IF( BaseLineLayer > NoBCLayers ) THEN
-        CALL Fatal(Caller,"'Extruded Baseline index' cannot exceed: "//I2S(NoBCLayers)) 
+        CALL Fatal(Caller,"'Extruded Baseline Layer' cannot exceed: "//I2S(NoBCLayers)) 
       END IF
       CALL Info(Caller,'Baseline will be set to layer '//I2S(BaselineLayer),Level=8)
     END IF
