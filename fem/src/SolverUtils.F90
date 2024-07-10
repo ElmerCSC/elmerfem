@@ -8443,6 +8443,8 @@ CONTAINS
     IF( n == 0 ) THEN
       CALL Info(Caller,'No Dirichlet conditions to enforce, exiting!',Level=10)
       RETURN
+    ELSE
+      CALL Info(Caller,'Enforcing Dirichlet conditions...',Level=10)
     END IF    
         
     ! Communicate the Dirichlet conditions for parallel cases since there may be orphans      

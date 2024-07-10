@@ -911,34 +911,32 @@ CONTAINS
 
      Element => GetCurrentElement(UElement)
 
-     IF ( ASSOCIATED( Variable ) ) THEN
-        Indexes => GetIndexStore()
-        IF ( ASSOCIATED(Variable % Solver ) ) THEN
-          n = GetElementDOFs( Indexes, Element, Variable % Solver )
-        ELSE
-          n = GetElementDOFs( Indexes, Element, Solver )
-        END IF
-        n = MIN( n, SIZE(x) )
+     Indexes => GetIndexStore()
+     IF ( ASSOCIATED(Variable % Solver ) ) THEN
+       n = GetElementDOFs( Indexes, Element, Variable % Solver )
+     ELSE
+       n = GetElementDOFs( Indexes, Element, Solver )
+     END IF
+     n = MIN( n, SIZE(x) )
 
-        Values => Variable % EigenVectors( NoEigen, :)
+     Values => Variable % EigenVectors( NoEigen, :)
 
-        IF ( ASSOCIATED( Variable % Perm ) ) THEN
-          DO i=1,n
-            j = Indexes(i)
-            IF ( j>0 .AND. j<= SIZE(Variable % Perm)) THEN
-              j = Variable % Perm(j)
-              IF ( j>0 ) THEN 
-                IF ( IsComplex ) THEN
-                  x(i) = AIMAG(Values(j))
-                ELSE
-                  x(i) =  REAL(Values(j))
-                END IF
-              END IF
-            END IF
-          END DO
-        ELSE
-	  x(1:n) = Values(Indexes(1:n))
-        END IF
+     IF ( ASSOCIATED( Variable % Perm ) ) THEN
+       DO i=1,n
+         j = Indexes(i)
+         IF ( j>0 .AND. j<= SIZE(Variable % Perm)) THEN
+           j = Variable % Perm(j)
+           IF ( j>0 ) THEN 
+             IF ( IsComplex ) THEN
+               x(i) = AIMAG(Values(j))
+             ELSE
+               x(i) =  REAL(Values(j))
+             END IF
+           END IF
+         END IF
+       END DO
+     ELSE
+       x(1:n) = Values(Indexes(1:n))
      END IF
   END SUBROUTINE GetScalarLocalEigenmode
 
@@ -979,43 +977,41 @@ CONTAINS
 
      Element => GetCurrentElement(UElement)
 
-     IF ( ASSOCIATED( Variable ) ) THEN
-        Indexes => GetIndexStore()
-        IF ( ASSOCIATED(Variable % Solver ) ) THEN
-          n = GetElementDOFs( Indexes, Element, Variable % Solver )
-        ELSE
-          n = GetElementDOFs( Indexes, Element, Solver )
-        END IF
-        n = MIN( n, SIZE(x) )
+     Indexes => GetIndexStore()
+     IF ( ASSOCIATED(Variable % Solver ) ) THEN
+       n = GetElementDOFs( Indexes, Element, Variable % Solver )
+     ELSE
+       n = GetElementDOFs( Indexes, Element, Solver )
+     END IF
+     n = MIN( n, SIZE(x) )
 
-        Values => Variable % EigenVectors( NoEigen, : )
+     Values => Variable % EigenVectors( NoEigen, : )
 
-        DO i=1,Variable % DOFs
-           IF ( ASSOCIATED( Variable % Perm ) ) THEN
-             DO j=1,n
-               k = Indexes(j)
-               IF ( k>0 .AND. k<= SIZE(Variable % Perm)) THEN
-                 k = Variable % Perm(k)
-                 IF ( k>0 ) THEN
-                   IF ( IsComplex ) THEN
-                     x(i,j) = AIMAG(Values(Variable % DOFs*(k-1)+i))
-                   ELSE
-                     x(i,j) =  REAL(Values(Variable % DOFs*(k-1)+i))
-                   END IF
-                 END IF
+     DO i=1,Variable % DOFs
+       IF ( ASSOCIATED( Variable % Perm ) ) THEN
+         DO j=1,n
+           k = Indexes(j)
+           IF ( k>0 .AND. k<= SIZE(Variable % Perm)) THEN
+             k = Variable % Perm(k)
+             IF ( k>0 ) THEN
+               IF ( IsComplex ) THEN
+                 x(i,j) = AIMAG(Values(Variable % DOFs*(k-1)+i))
+               ELSE
+                 x(i,j) =  REAL(Values(Variable % DOFs*(k-1)+i))
                END IF
-             END DO
-           ELSE
-              DO j=1,n
-                IF( IsComplex ) THEN
-                  x(i,j) = AIMAG( Values(Variable % DOFs*(Indexes(j)-1)+i) )
-                ELSE
-                  x(i,j) = REAL( Values(Variable % DOFs*(Indexes(j)-1)+i) )
- 	        END IF
-              END DO
+             END IF
            END IF
          END DO
-     END IF
+       ELSE
+         DO j=1,n
+           IF( IsComplex ) THEN
+             x(i,j) = AIMAG( Values(Variable % DOFs*(Indexes(j)-1)+i) )
+           ELSE
+             x(i,j) = REAL( Values(Variable % DOFs*(Indexes(j)-1)+i) )
+           END IF
+         END DO
+       END IF
+     END DO
   END SUBROUTINE GetVectorLocalEigenmode
     
 
@@ -5243,6 +5239,7 @@ CONTAINS
      LOGICAL :: PiolaTransform, QuadraticApproximation, SecondKindBasis
      LOGICAL, ALLOCATABLE :: ReleaseDir(:)
      LOGICAL :: ReleaseAny, NodalBCsWithBraces,AllConstrained
+     LOGICAL :: AugmentedEigenSystem
      
      CHARACTER(:), ALLOCATABLE :: Name
 
@@ -5780,6 +5777,11 @@ CONTAINS
                    EDOFs = Edge % BDOFs     ! The number of DOFs associated with edges
                    IF (EDOFs < 1) CYCLE
 
+                   AugmentedEigenSystem = ListGetLogical(Params, 'Eigen System Augmentation', Found) 
+                   IF (AugmentedEigenSystem) THEN
+                     EDOFs = EDOFs/2
+                   END IF
+
                    n = Edge % TYPE % NumberOfNodes
                    CALL VectorElementEdgeDOFs(BC,Edge,n,Parent,np,Name//' {e}',Work, &
                        EDOFs, SecondKindBasis)
@@ -5793,7 +5795,11 @@ CONTAINS
                    END IF
 
                    DO j=1,EDOFs
-                     k = n_start + j
+                     IF (AugmentedEigenSystem) THEN
+                       k = n_start + 2*j - 1
+                     ELSE
+                       k = n_start + j
+                     END IF
                      nb = x % Perm(gInd(k))
                      IF ( nb <= 0 ) CYCLE
                      nb = Offset + x % DOFs*(nb-1) + DOF

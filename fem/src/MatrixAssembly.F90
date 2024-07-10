@@ -207,7 +207,7 @@ CONTAINS
    SUBROUTINE ZeroRow( A, n )
 !------------------------------------------------------------------------------
      TYPE(Matrix_t) :: A  !< Structure holding the matrix 
-      INTEGER :: n                           !< Row to be zerored.
+     INTEGER :: n         !< Row to be zeroed.
 !------------------------------------------------------------------------------
 
      SELECT CASE( A % FORMAT )
