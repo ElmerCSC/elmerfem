@@ -975,8 +975,16 @@ END SUBROUTINE InterpolateMeshToMesh
                    Var => Var % Next
                    CYCLE
                 END IF
-                
-                OldSol => VariableGet( OldMesh % Variables, Var % Name, .TRUE. )                
+
+                IF(PRESENT(OldVariables)) THEN
+                  OldSol => VariableGet( OldVariables, Var % Name, .TRUE. )
+                ELSE
+                  OldSol => VariableGet( OldMesh % Variables, Var % Name, .TRUE. )
+                END IF
+                IF( .NOT. ASSOCIATED( OldSol ) ) THEN
+                  CALL Fatal('InterpolateMeshToMesh','Variable not associated: '//TRIM(Var % Name))
+                END IF
+                  
                 
                 ! Check that the node was found in the old mesh:
                 ! ----------------------------------------------
