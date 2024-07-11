@@ -6,11 +6,34 @@ command_exists() {
 }
 
 # Function to install packages
-install_packages() {
-    echo "Installing required packages..."
-    pacman -Syu --noconfirm
-    pacman -S --noconfirm mingw-w64-x86_64-toolchain mingw-w64-x86_64-cmake git mingw-w64-x86_64-openblas
-    pacman -S --noconfirm mingw-w64-x86_64-suitesparse
+check_and_install_packages() {
+    local packages=("mingw-w64-x86_64-toolchain" "mingw-w64-x86_64-cmake" "git" "mingw-w64-x86_64-openblas" "mingw-w64-x86_64-suitesparse")
+    local to_install=()
+    local to_update=()
+
+    for package in "${packages[@]}"; do
+        if ! pacman -Qi "$package" &> /dev/null; then
+            to_install+=("$package")
+        elif pacman -Qu "$package" &> /dev/null; then
+            to_update+=("$package")
+        fi
+    done
+
+    if [ ${#to_install[@]} -ne 0 ]; then
+        echo "The following packages will be installed:"
+        printf '%s\n' "${to_install[@]}"
+        pacman -S --noconfirm "${to_install[@]}"
+    fi
+
+    if [ ${#to_update[@]} -ne 0 ]; then
+        echo "The following packages will be updated:"
+        printf '%s\n' "${to_update[@]}"
+        pacman -S --noconfirm "${to_update[@]}"
+    fi
+
+    if [ ${#to_install[@]} -eq 0 ] && [ ${#to_update[@]} -eq 0 ]; then
+        echo "All required packages are already installed and up to date."
+    fi
 }
 
 # Check if running in the correct environment
@@ -18,6 +41,9 @@ if [[ "$(echo $MSYSTEM)" != "MINGW64" ]]; then
     echo "Error: This script must be run in the MSYS2 MinGW 64-bit environment."
     exit 1
 fi
+
+# Check and install required packages
+# check_and_install_packages
 
 if [[ ! "$PATH" =~ /mingw64/bin ]]; then
     echo "Error: /mingw64/bin is not in the PATH. Make sure you're using the correct MSYS2 environment."
@@ -68,14 +94,40 @@ fi
 
 # Build process
 cd build || exit 1
+
+# Run CMake without UMFPACK_ROOT for now
 cmake -G "MinGW Makefiles" -DWITH_MPI=OFF ..
-if [ $? -ne 0 ]; then
+cmake_exit_code=$?
+
+if [ $cmake_exit_code -ne 0 ]; then
     echo "CMake configuration failed."
     exit 1
 fi
 
+# Check if UMFPACK was found
+if ! grep -q "UMFPACK found:" CMakeCache.txt; then
+    echo "Error: UMFPACK was not found by CMake. Attempting to specify UMFPACK_ROOT..."
+    
+    # Try again with UMFPACK_ROOT specified
+    cmake -G "MinGW Makefiles" -DWITH_MPI=OFF -DUMFPACK_ROOT=/mingw64 ..
+    cmake_exit_code=$?
+
+    if [ $cmake_exit_code -ne 0 ]; then
+        echo "CMake configuration failed even with UMFPACK_ROOT specified."
+        exit 1
+    fi
+
+    if ! grep -q "UMFPACK found:" CMakeCache.txt; then
+        echo "Error: UMFPACK was still not found by CMake. Please check your installation."
+        exit 1
+    fi
+fi
+
+echo "Starting build process..."
 mingw32-make 2>&1 | tee build_log.txt
-if [ $? -ne 0 ]; then
+make_exit_code=${PIPESTATUS[0]}
+
+if [ $make_exit_code -ne 0 ]; then
     echo "Build failed. Check build_log.txt for details."
     exit 1
 fi

@@ -146,6 +146,7 @@ ENDIF()
 
 ADD_LIBRARY(mpi_stubs SHARED mpif_stubs.F90)
 ADD_LIBRARY(elmersolver SHARED ${solverlib_SOURCES})
+target_include_directories(elmersolver PRIVATE ${UMFPACK_INCLUDE_DIRS})
 TARGET_LINK_LIBRARIES(elmersolver PRIVATE ${UMFPACK_LIBRARIES})
 SET_TARGET_PROPERTIES(mpi_stubs
                       PROPERTIES LINKER_LANGUAGE Fortran)
