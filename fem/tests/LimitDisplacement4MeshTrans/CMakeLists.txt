@@ -3,4 +3,4 @@ INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
 
 CONFIGURE_FILE( case.sif case.sif COPYONLY)
 file(COPY ELMERSOLVER_STARTINFO slab block.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
-ADD_ELMER_TEST(LimitDisplacement4MeshTrans)
+ADD_ELMER_TEST(LimitDisplacement4MeshTrans LABELS limiter)
