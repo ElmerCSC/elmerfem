@@ -78,6 +78,8 @@
  *	    (32-bit and 64-bit modes)
  */
 
+#include "umfpack.h"
+
 #include "../config.h"
 
 #ifdef NULL

@@ -146,6 +146,7 @@ ENDIF()
 
 ADD_LIBRARY(mpi_stubs SHARED mpif_stubs.F90)
 ADD_LIBRARY(elmersolver SHARED ${solverlib_SOURCES})
+TARGET_LINK_LIBRARIES(elmersolver PRIVATE ${UMFPACK_LIBRARIES})
 SET_TARGET_PROPERTIES(mpi_stubs
                       PROPERTIES LINKER_LANGUAGE Fortran)
 SET_TARGET_PROPERTIES(elmersolver
@@ -177,20 +178,11 @@ IF(HAVE_ZOLTAN)
 ENDIF()
 
 # ElmerSolver libraries
-IF(UMFPACK_FOUND)
-  SET(ELMERSOLVER_LIBRARIES matc fhuti binio arpack
-                          ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES}
-			  ${UMFPACK_LIBRARIES}
-                          ${CMAKE_DL_LIBS})
-			
-  INCLUDE_DIRECTORIES(${UMFPACK_INCLUDE_DIR})
-  #LIST(APPEND ELMERSOLVER_LIBRARIES ${UMFPACK_LIBRARIES})
-  #TARGET_LINK_LIBRARIES(elmersolver "${UMFPACK_LIBRARIES}")
+IF(HAVE_UMFPACK)
+  INCLUDE_DIRECTORIES(${UMFPACK_INCLUDE_DIRS})
+  LIST(APPEND ELMERSOLVER_LIBRARIES ${UMFPACK_LIBRARIES})
 ELSE()
-  SET(ELMERSOLVER_LIBRARIES matc umfpack 
-                          amd fhuti binio arpack
-                          ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES} 
-                          ${CMAKE_DL_LIBS})
+  MESSAGE(FATAL_ERROR "UMFPACK is required but not found")
 ENDIF()
 
 IF(WITH_LUA)
