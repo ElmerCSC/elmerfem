@@ -1374,7 +1374,7 @@ CONTAINS
          IF( AnyLimitBF ) ElemFirst = 1
          IF( AnyLimitBC ) ElemLast = Model % NumberOfBulkElements + &
              Model % NumberOfBoundaryElements 
-         
+
          IF(.NOT. ALLOCATED( LimitDone) ) THEN
            n = Model % MaxElementNodes
            ALLOCATE( LimitDone( totsize ), ElemLimit(n), ElemInit(n), ElemActive(n) )
@@ -1686,10 +1686,13 @@ CONTAINS
                END IF
              END IF
 
-             ! Enforce the values to limits because nonlinear material models
-             ! may otherwise lead to divergence of the iteration
-             !--------------------------------------------------------------
              IF( LimitActive(ind) ) THEN
+               ! Set the Dirichlet conditions already here!
+               Solver % Matrix % DValues(ind) = ElemLimit(i)
+               Solver % Matrix % ConstrainedDOF(ind) = .TRUE.
+
+               ! Enforce the values to limits because nonlinear material models
+               ! may otherwise lead to divergence of the iteration
                IF( Upper == 0 ) THEN
                  Var % Values(ind) = MAX( Var % Values(ind), ElemLimit(i) )
                ELSE
@@ -1718,12 +1721,6 @@ CONTAINS
            CALL Info(Caller,'Added '//I2S(added)//' and removed '&
                //I2S(removed)//' dofs in contact set',Level=6)
          END IF
-
-         ! Set the Dirichlet conditions already here!
-         WHERE( LimitActive )
-           Solver % Matrix % ConstrainedDOF = .TRUE.
-           Solver % Matrix % DValues = Var % Values
-         END WHERE
        END IF
          
      END DO
@@ -1741,19 +1738,24 @@ CONTAINS
          LimitVar => VariableGet( Model % Variables, &
              GetVarName(Var) // ' Contact Active',ThisOnly = .TRUE. )
        END IF
-
-       ! Currently the visulized limit is always scalar even though the limited field could be a vector!
-       DO i = 1, SIZE( LimitVar % Values ) 
-         LimitVar % Values(i) = 0.0_dp
-         DO j=1,Var % Dofs
-           IF( ASSOCIATED( Var % LowerLimitActive ) ) THEN
-             IF( Var % LowerLimitActive(Var%Dofs*(i-1)+j) ) LimitVar % Values(i) = -1.0_dp
-           END IF
-           IF( ASSOCIATED( Var % UpperLimitActive ) ) THEN
-             IF( Var % UpperLimitActive(Var%Dofs*(i-1)+j) ) LimitVar % Values(i) = 1.0_dp
-           END IF
-         END DO
-       END DO
+              
+       LimitVar % Values = 0.0_dp
+       IF( ASSOCIATED( Var % LowerLimitActive ) ) THEN
+         IF(SIZE(LimitVar % Values) /= SIZE(Var % LowerLimitActive)) THEN
+           CALL Fatal(Caller,'Mismatch in size for LimitVar values!')
+         END IF
+         WHERE( Var % LowerLimitActive ) 
+           LimitVar % Values = -1.0_dp
+         END WHERE           
+       END IF
+       IF( ASSOCIATED( Var % UpperLimitActive ) ) THEN
+         IF(SIZE(LimitVar % Values) /= SIZE(Var % UpperLimitActive)) THEN
+           CALL Fatal(Caller,'Mismatch in size for LimitVar values!')
+         END IF
+         WHERE( Var % UpperLimitActive ) 
+           LimitVar % Values = 1.0_dp
+         END WHERE           
+       END IF
      END IF
 
      IF( ALLOCATED( LimitDone ) ) THEN
