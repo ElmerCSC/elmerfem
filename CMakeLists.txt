@@ -184,7 +184,7 @@ ENDIF()
 
 # Get rid of the annoying rank mismatch warning
 IF("${CMAKE_Fortran_COMPILER_ID}" MATCHES "GNU")
-  IF(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 9.9)
+  IF(CMAKE_Fortran_COMPILER_VERSION VERSION_GREATER 9.9)
     SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -fallow-argument-mismatch")
 #    SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -std=legacy")
   ENDIF()
