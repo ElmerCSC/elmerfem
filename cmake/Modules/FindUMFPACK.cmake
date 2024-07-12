@@ -12,12 +12,7 @@
 #  UMFPACK_INCLUDE_DIR       - UMFPACK include dir.
 #  UMFPACK_LIBRARIES         - needed cuda libraries
 
-
-
-
 INCLUDE(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
-
-CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
 
 # If UMFPACK libraries are already defined, do nothing
 IF(UMFPACK_LIBRARIES AND UMFPACK_INCLUDE_DIR)

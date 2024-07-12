@@ -16,8 +16,6 @@
 
 #INCLUDE(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
 
-CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
-
 MESSAGE ("----------------------")
 MESSAGE ("-- AMGX + CUDA:")
 FIND_PACKAGE(CUDA)

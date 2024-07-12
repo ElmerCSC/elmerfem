@@ -12,12 +12,7 @@
 #  CHOLMOD_INCLUDE_DIR       - CHOLMOD include dir.
 #  CHOLMOD_LIBRARIES         - needed cuda libraries
 
-
-
-
 INCLUDE(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
-
-CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
 
 # If CHOLMOD libraries are already defined, do nothing
 IF(CHOLMOD_LIBRARIES AND CHOLMOD_INCLUDE_DIR)
