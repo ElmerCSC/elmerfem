@@ -15,10 +15,9 @@ IF(NOT CMAKE_BUILD_TYPE)
   SET(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Build type (Release, Debug, RelWithDebugInfo, MinSizeRel)")
 ENDIF()
 
-PROJECT(Elmer Fortran C CXX)
+CMAKE_MINIMUM_REQUIRED(VERSION 3.10)
 
-# CMAKE_VERSION seems to require this in minimum
-CMAKE_MINIMUM_REQUIRED(VERSION 1.0.2)
+PROJECT(Elmer Fortran C CXX)
 
 IF(APPLE)
   SET(CMAKE_MACOSX_RPATH 1) 

@@ -1,5 +1,5 @@
+cmake_minimum_required(VERSION 3.10)
 PROJECT(ElmerPost Fortran C CXX)
-cmake_minimum_required(VERSION 2.8)
 
 SET(CMAKE_MODULE_PATH ${CMAKE_ROOT}/Modules "${PROJECT_SOURCE_DIR}/cmake/Modules" )
 
