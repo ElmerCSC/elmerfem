@@ -3,15 +3,13 @@
 #  MMG_INCLUDE_DIR  - user modifiable choice of where to mmg include dir
 #  MMG_LIBRARY    - user modifiable choice of where mmg library is
 
-# his module returns these variables for the rest of the project to use.
+# This module returns these variables for the rest of the project to use.
 #
 #  MMG_FOUND              - True if MMG found 
 #  MMG_LIBRARY            - mmg library is
 #  MMG_INCLUDE_DIR       - mmg include dir.
 
 INCLUDE(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
-
-CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
 
 # If MMG_LIBRARY and MMG_INCLUDE_DIR  are already defined, do nothing
 IF(MMG_LIBRARY AND MMG_INCLUDE_DIR)

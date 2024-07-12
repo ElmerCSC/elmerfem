@@ -13,8 +13,6 @@
 # if all listed variables are TRUE
 INCLUDE(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
 
-CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
-
 # If libraries are already defined, do nothing 
 IF(NN_LIBRARY AND NN_INCLUDE_DIR)
   SET(NN_FOUND TRUE)

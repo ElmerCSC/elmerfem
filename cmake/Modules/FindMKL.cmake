@@ -1,5 +1,4 @@
 # CMake script for finding MKL for Elmer (dynamic linking, Fortran)
-CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
 
 IF (WITH_MPI)
   SET(SCALAPACK_NEEDED TRUE)
