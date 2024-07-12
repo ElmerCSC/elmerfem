@@ -15,15 +15,23 @@
 
 
 
-INCLUDE(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
-
-CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
-
 # If CHOLMOD libraries are already defined, do nothing
 IF(CHOLMOD_LIBRARIES AND CHOLMOD_INCLUDE_DIR)
    SET(CHOLMOD_FOUND TRUE)
    RETURN()
 ENDIF()
+
+# Try to find with CMake config file of upstream UMFPACK.
+FIND_PACKAGE(CHOLMOD CONFIG)
+
+IF(UMFPACK_LIBRARIES AND UMFPACK_INCLUDE_DIR)
+  RETURN()
+ENDIF()
+
+# Fall back to manual search
+CMAKE_MINIMUM_REQUIRED(VERSION 3.6)
+
+INCLUDE(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
 
 SET(CHOLMOD_FOUND FALSE)
 MESSAGE(STATUS "Finding CHOLMOD")

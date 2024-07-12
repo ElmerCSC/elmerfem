@@ -15,10 +15,10 @@ IF(NOT CMAKE_BUILD_TYPE)
   SET(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Build type (Release, Debug, RelWithDebugInfo, MinSizeRel)")
 ENDIF()
 
-PROJECT(Elmer Fortran C CXX)
-
 # CMAKE_VERSION seems to require this in minimum
-CMAKE_MINIMUM_REQUIRED(VERSION 1.0.2)
+CMAKE_MINIMUM_REQUIRED(VERSION 3.10)
+
+PROJECT(Elmer Fortran C CXX)
 
 # To help find UMFPACK
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules/")
@@ -168,38 +168,12 @@ IF(WITH_EXTOPTIM)
 ENDIF()
 
 IF(WITH_OpenMP)
-  # Advanced properties
-  MARK_AS_ADVANCED(
-    OpenMP_C_FLAGS
-    OpenMP_Fortran_FLAGS
-    OpenMP_CXX_FLAGS
-    )
   FIND_PACKAGE(OpenMP REQUIRED)
 
-  # Add OpenMP flags to compilation flags
-  # if(APPLE)
-  #   if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
-  #     set(OpenMP_C "${CMAKE_C_COMPILER}")
-  #     set(OpenMP_C_FLAGS "-fopenmp=libomp -Wno-unused-command-line-argument")
-  #     set(OpenMP_C_LIB_NAMES "libomp" "libgomp" "libiomp5")
-  #     set(OpenMP_libomp_LIBRARY ${OpenMP_C_LIB_NAMES})
-  #     set(OpenMP_libgomp_LIBRARY ${OpenMP_C_LIB_NAMES})
-  #     set(OpenMP_libiomp5_LIBRARY ${OpenMP_C_LIB_NAMES})
-  #   endif()
-  #   if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
-  #     set(OpenMP_CXX "${CMAKE_CXX_COMPILER}")
-  #     set(OpenMP_CXX_FLAGS "-fopenmp=libomp -Wno-unused-command-line-argument")
-  #     set(OpenMP_CXX_LIB_NAMES "libomp" "libgomp" "libiomp5")
-  #     set(OpenMP_libomp_LIBRARY ${OpenMP_CXX_LIB_NAMES})
-  #     set(OpenMP_libgomp_LIBRARY ${OpenMP_CXX_LIB_NAMES})
-  #     set(OpenMP_libiomp5_LIBRARY ${OpenMP_CXX_LIB_NAMES})
-  #   endif()
-  # else()
-    SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
-    SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${OpenMP_Fortran_FLAGS}")
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-  # endif()
-
+  # FIXME: Should link to the CMake targets instead
+  SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+  SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${OpenMP_Fortran_FLAGS}")
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
   # Test compiler support for OpenMP 4.0 features used
   INCLUDE(testOpenMP40)
   IF(CMAKE_Fortran_COMPILER_SUPPORTS_OPENMP40)
@@ -653,7 +627,7 @@ ELSE()
   ADD_SUBDIRECTORY(umfpack)
   SET(HAVE_UMFPACK TRUE)
   SET(UMFPACK_LIBRARIES umfpack)
-  INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/umfpack/include)
+  INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/umfpack/src/umfpack/include)
 ENDIF()
 
 ADD_SUBDIRECTORY(fhutiter)

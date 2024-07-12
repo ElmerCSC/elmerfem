@@ -146,12 +146,11 @@ ENDIF()
 
 ADD_LIBRARY(mpi_stubs SHARED mpif_stubs.F90)
 ADD_LIBRARY(elmersolver SHARED ${solverlib_SOURCES})
-target_include_directories(elmersolver PRIVATE ${UMFPACK_INCLUDE_DIRS})
-TARGET_LINK_LIBRARIES(elmersolver PRIVATE ${UMFPACK_LIBRARIES})
 SET_TARGET_PROPERTIES(mpi_stubs
                       PROPERTIES LINKER_LANGUAGE Fortran)
 SET_TARGET_PROPERTIES(elmersolver
                       PROPERTIES LINKER_LANGUAGE Fortran)
+TARGET_LINK_LIBRARIES(elmersolver PUBLIC fhuti mpi_stubs binio matc arpack ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES})
 
 #We want MMG & Zoltan in the RPATH (if found), but given how many other 
 #components use ELMERSOLVER_RPATH_STRING, it seemed best to make
@@ -180,7 +179,8 @@ ENDIF()
 
 # ElmerSolver libraries
 IF(HAVE_UMFPACK)
-  INCLUDE_DIRECTORIES(${UMFPACK_INCLUDE_DIRS})
+  TARGET_LINK_LIBRARIES(elmersolver PRIVATE ${UMFPACK_LIBRARIES})
+  INCLUDE_DIRECTORIES(${UMFPACK_INCLUDE_DIR})
   LIST(APPEND ELMERSOLVER_LIBRARIES ${UMFPACK_LIBRARIES})
 ELSE()
   MESSAGE(FATAL_ERROR "UMFPACK is required but not found")
@@ -203,7 +203,7 @@ IF(NOT(WIN32))
 ENDIF()
 
 IF(NOT(WITH_MPI))
-  TARGET_LINK_LIBRARIES(elmersolver mpi_stubs ${ELMERSOLVER_LIBRARIES})
+  LIST(APPEND ELMERSOLVER_LIBRARIES mpi_stubs)
   TARGET_LINK_LIBRARIES(Solver_TGT elmersolver)
 ENDIF()
 
