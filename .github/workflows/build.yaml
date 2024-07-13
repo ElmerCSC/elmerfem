@@ -55,7 +55,6 @@ jobs:
           cmake \
             -DCMAKE_BUILD_TYPE="Release" \
             -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/usr" \
-            -DCMAKE_Fortran_FLAGS="-Wno-argument-mismatch" \
             -DBLA_VENDOR="OpenBLAS" \
             -DWITH_OpenMP=ON \
             -DWITH_LUA=ON \
@@ -89,7 +88,7 @@ jobs:
         timeout-minutes: 60
         run: |
           cd ${GITHUB_WORKSPACE}/build
-          echo "::group::Re-run ctest"
+          echo "::group::Re-run failing tests"
           ctest --rerun-failed --output-on-failure || true
           echo "::endgroup::"
           echo "::group::Log from these tests"
