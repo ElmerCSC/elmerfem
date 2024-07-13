@@ -13,23 +13,38 @@ jobs:
     # https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners
     runs-on: ubuntu-latest
 
-    name: ubuntu (${{ matrix.compiler }})
+    name: ubuntu (${{ matrix.compiler }} ${{ matrix.openmp }} OpenMP)
 
     strategy:
       # Allow other runners in the matrix to continue if some fail
       fail-fast: false
 
       matrix:
-        compiler: [gcc]
+        compiler: [gcc, clang]
+        openmp: [with, without]
         include:
           - compiler: gcc
             compiler-pkgs: "g++ gcc"
             cc: "gcc"
             cxx: "g++"
-          #- compiler: clang
-          #  compiler-pkgs: "clang libomp-dev"
-          #  cc: "clang"
-          #  cxx: "clang++"
+            openmp: with
+            openmp-cmake-flags: "-WITH_OpenMP=ON"
+          - compiler: gcc
+            compiler-pkgs: "g++ gcc"
+            cc: "gcc"
+            cxx: "g++"
+            openmp-cmake-flags: "-WITH_OpenMP=OFF"
+          - compiler: clang
+            compiler-pkgs: "clang"
+            cc: "clang"
+            cxx: "clang++"
+            openmp: with
+            openmp-cmake-flags: "-WITH_OpenMP=ON -DOpenMP_C_FLAGS=-fopenmp=libgomp -DOpenMP_CXX_FLAGS=-fopenmp=libgomp"
+          - compiler: clang
+            compiler-pkgs: "clang"
+            cc: "clang"
+            cxx: "clang++"
+            openmp-cmake-flags: "-WITH_OpenMP=OFF"
 
     env:
       CC: ${{ matrix.cc }}
@@ -59,7 +74,7 @@ jobs:
             -DCMAKE_BUILD_TYPE="Release" \
             -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/usr" \
             -DBLA_VENDOR="OpenBLAS" \
-            -DWITH_OpenMP=ON \
+            ${{ matrix.openmp-cmake-flags }} \
             -DWITH_LUA=ON \
             -DWITH_Zoltan=ON \
             -DWITH_Mumps=ON \
