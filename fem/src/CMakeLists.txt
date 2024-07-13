@@ -179,18 +179,19 @@ ENDIF()
 # ElmerSolver libraries
 IF(UMFPACK_FOUND)
   SET(ELMERSOLVER_LIBRARIES matc fhuti binio arpack
+                          ${UMFPACK_LIBRARIES}
                           ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES}
-			  ${UMFPACK_LIBRARIES}
                           ${CMAKE_DL_LIBS})
-			
-  INCLUDE_DIRECTORIES(${UMFPACK_INCLUDE_DIR})
+
+  TARGET_INCLUDE_DIRECTORIES(elmersolver PRIVATE ${UMFPACK_INCLUDE_DIR})
   #LIST(APPEND ELMERSOLVER_LIBRARIES ${UMFPACK_LIBRARIES})
   #TARGET_LINK_LIBRARIES(elmersolver "${UMFPACK_LIBRARIES}")
 ELSE()
-  SET(ELMERSOLVER_LIBRARIES matc umfpack 
-                          amd fhuti binio arpack
-                          ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES} 
+  SET(ELMERSOLVER_LIBRARIES matc fhuti binio arpack
+                          umfpack amd
+                          ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES}
                           ${CMAKE_DL_LIBS})
+  TARGET_INCLUDE_DIRECTORIES(elmersolver PRIVATE ${PROJECT_SOURCE_DIR}/umfpack/src/umfpack/include)
 ENDIF()
 
 IF(WITH_LUA)
