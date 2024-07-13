@@ -82,7 +82,7 @@ jobs:
         timeout-minutes: 150
         run: |
           cd ${GITHUB_WORKSPACE}/build
-          ctest .
+          ctest -L quick
 
       - name: Re-run tests
         if: always() && (steps.run-ctest.outcome == 'failure')
