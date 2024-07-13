@@ -10,6 +10,8 @@ Elmer is a tool that can solve a large number of partial differential equations 
 multiphysical problems. It includes models for structural mechanics, fluid dynamics, heat transfer,
 electromagnetics and beyond. Elmer can be used from PCs to massively parallel HPC platforms.  
 
+[.text-center]
+image:https://github.com/ElmerCSC/elmerfem/actions/workflows/build.yaml/badge.svg["Builds",link=https://github.com/ElmerCSC/elmerfem/actions/workflows/build.yaml]
 
 [.text-center]
 image:https://img.shields.io/github/stars/ElmerCSC/elmerfem.svg?style=social&label=Stars&style=plastic["GitHub stars"] image:https://img.shields.io/github/watchers/ElmerCSC/elmerfem.svg?style=social&label=Watch&style=plastic["GitHub watchers"] image:https://img.shields.io/github/forks/ElmerCSC/elmerfem.svg?style=social&label=Fork&style=plastic["GitHub forks"]
