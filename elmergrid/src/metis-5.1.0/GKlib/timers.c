@@ -10,6 +10,9 @@
 
 #include <GKlib.h>
 
+#ifdef __GNUC__
+# include <sys/time.h>
+#endif
 
 
 
@@ -19,6 +22,7 @@
 double gk_WClockSeconds(void)
 {
 #ifdef __GNUC__
+  
   struct timeval ctime;
 
   gettimeofday(&ctime, NULL);
