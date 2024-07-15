@@ -23,7 +23,7 @@
   $blocktol = 0.01
 
   block 11: Linear System Solver = "direct"
-  block 11: Linear System direct method = "mumps"
+  block 11: Linear System direct method = umfpack ! "mumps"
   block 11: Linear System Complex = True
   block 11: Linear System Scaling = False
 

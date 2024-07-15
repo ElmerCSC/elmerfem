@@ -86,8 +86,10 @@ Solver 2
 
   Linear System Symmetric = True
   Linear System Solver = "Iterative"
-  Linear System Preconditioning = none
-  Linear System Residual Output = 10
+  Linear System Preconditioning = ilu2 !none
+edge basis = true
+
+Linear System Residual Output = 10
   Linear System Max Iterations = 1000
   Linear System Iterative Method = GCR
   Linear System Convergence Tolerance = 1.0e-8

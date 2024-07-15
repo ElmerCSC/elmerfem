@@ -1015,23 +1015,30 @@ CONTAINS
   !------------------------------------------------------------------------------
   SUBROUTINE CommunicateLosess()
 
-    INTEGER :: i,j,k
+    INTEGER :: i,j,k,NoSlices
     CHARACTER(LEN=MAX_NAME_LEN) :: LossesFile
     
+    IF( ParEnv % PEs > 1 ) THEN
+      NoSlices = MAX(1,ListGetInteger( Model % Simulation,'Number Of Slices', Found ) )   
+      IF( NoSlices > 1 ) THEN
+        CALL Info(Caller,'Averaging losses over slices',Level=8)        
+      END IF      
+      DO k=1,Ncomp
+        DO j=1,FourierDofs
+          SeriesLoss(k,j) = ParallelReduction(SeriesLoss(k,j)) / NoSlices
+        END DO
+        DO j=1,Model % NumberOfBodies
+          BodyLoss(k,j) = ParallelReduction(BodyLoss(k,j)) / NoSlices 
+        END DO
+      END DO
+    END IF
+      
+    ! Sum up the losses over components
     DO k=1,Ncomp
-      DO j=1,FourierDofs
-        SeriesLoss(k,j) = ParallelReduction(SeriesLoss(k,j)) 
-      END DO
-
-      DO j=1,Model % NumberOfBodies
-        BodyLoss(k,j) = ParallelReduction(BodyLoss(k,j))
-      END DO
-
       CompLoss(k) = SUM( SeriesLoss(k,:) )
     END DO
     TotalLoss = SUM( CompLoss )
-
-    
+        
     CALL ListAddConstReal( Model % Simulation,TRIM(Pref)//' fourier loss total',TotalLoss )
     DO k=1,Ncomp
       CALL ListAddConstReal( Model % Simulation,TRIM(Pref)//' fourier loss '//I2S(k),CompLoss(k) )
@@ -1119,7 +1126,6 @@ CONTAINS
     !------------------------------------------------------------------------------
   END SUBROUTINE CommunicateLosess
   !------------------------------------------------------------------------------
-
 
 !------------------------------------------------------------------------------
 END SUBROUTINE FourierLossSolver

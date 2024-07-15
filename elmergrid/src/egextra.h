@@ -17,7 +17,6 @@ int SaveBoundaryForm(struct FemType *data,struct CellType *cell,
 int SaveSubcellForm(struct FemType *data,struct CellType *cell, 
 		    char* filename,int info);
  
-int ShowCorners(struct FemType *knot,int variable,Real offset);
 int InspectElement(struct FemType *data,int idx);
 
 int LoadSolutionElmer(struct FemType *data,int results,char *prefix,int info);
@@ -27,11 +26,6 @@ int SaveSizeInfo(struct FemType *data,struct BoundaryType *bound,
 		 char *prefix,int info);
 int SaveElmerInputFemBem(struct FemType *data,struct BoundaryType *bound,
 			 char *prefix,int decimals, int info);
-int SolutionFromMeshToMesh(struct CellType *cell1, struct GridType *grid1, 
-			   struct FemType *data1,
-			   struct CellType *cell2, struct GridType *grid2, 
-			   struct FemType *data2,
-			   int mapgeo,int variable,int info);
 
 void InspectVector(Real *vector,int first,int last,Real *min,
 		   Real *max,int *mini,int *maxi);

@@ -266,7 +266,7 @@ CONTAINS
     LOGICAL, INTENT(OUT) :: Found
 !------------------------------------------------------------------------------
     REAL(KIND=dp), SAVE :: nu_vacuum
-    LOGICAL, SAVE :: FirstTime
+    LOGICAL, SAVE :: FirstTime = .TRUE.
 !------------------------------------------------------------------------------
 
     IF ( FirstTime ) THEN
@@ -305,10 +305,28 @@ CONTAINS
     LOGICAL :: Found_im
     REAL(KIND=dp), POINTER :: work(:,:,:) => NULL()
     INTEGER :: n1, n2, n3
+    REAL(KIND=dp), SAVE :: nu_vacuum
+    LOGICAL, SAVE :: FirstTime = .TRUE.
+!------------------------------------------------------------------------------
 
+    IF ( FirstTime ) THEN
+      nu_vacuum = GetConstReal( CurrentModel % Constants, &
+              'Permeability of Vacuum', Found )
+      IF (.NOT. Found ) THEN
+        nu_vacuum = 1.0d0/(PI * 4.0d-7)
+      ELSE
+        nu_vacuum =  1.0d0/nu_vacuum
+      END IF
+      FirstTime = .FALSE.
+    END IF
+    
     IF (ASSOCIATED(Acoef)) DEALLOCATE(Acoef)
 
     CALL GetRealArray( Material, work, 'Reluctivity', Found )
+    IF (.NOT. Found) THEN
+      CALL GetRealArray( Material, work, 'Relative Reluctivity', Found )
+      IF (Found) work = nu_vacuum * work
+    END IF
 
     IF (Found) THEN
       n1 = SIZE(work,1)
@@ -319,6 +337,11 @@ CONTAINS
     END IF
 
     CALL GetRealArray( Material, work, 'Reluctivity im', Found_im )
+    IF (.NOT. Found_im) THEN
+      CALL GetRealArray( Material, work, 'Relative Reluctivity im', Found_im )
+      IF (Found_im) work = nu_vacuum * work
+    END IF
+    
     IF (Found_im) THEN
       n1 = SIZE(work,1)
       n2 = SIZE(work,2)

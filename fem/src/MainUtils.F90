@@ -542,6 +542,7 @@ CONTAINS
          Failed = .TRUE.
        END IF
      END DO
+     IF(.NOT. Failed) RETURN
      
      ! Number the bulk indexes such that each node gets a new index
      CALL Info('CheckAndCreateDGIndexes','Creating DG indexes!',Level=12)
@@ -2395,22 +2396,29 @@ CONTAINS
       END IF
 
       IF ( EigAnal ) THEN
-        !ComplexFlag = ListGetLogical( Solver % Values,  'Eigen System Complex', Found )
-        !IF ( .NOT. Found ) ComplexFlag = .FALSE.
-        
-        n = ListGetInteger( Solver % Values,  'Eigen System Values', Found )
+        n = ListGetInteger( Solver % Values, 'Eigen System Values', Found )
         IF ( Found .AND. n > 0 ) THEN
+          IF (ListGetLogical(Solver % Values, 'Linear System Skip Complex', Found)) THEN
+            ComplexFlag = .FALSE.
+          ELSE
+            ComplexFlag = ListGetLogical(Solver % Values, 'Linear System Complex', Found)
+          END IF
           Solver % NOFEigenValues = n
           IF ( .NOT. ASSOCIATED( Solver % Variable % EigenValues ) ) THEN
             ALLOCATE( Solver % Variable % EigenValues(n) )
-            ALLOCATE( Solver % Variable % EigenVectors(n, &
-                SIZE( Solver % Variable % Values ) ), STAT=AllocStat)
+            IF (ComplexFlag) THEN
+              ALLOCATE( Solver % Variable % EigenVectors(n, &
+                  SIZE( Solver % Variable % Values )/2 ), STAT=AllocStat)
+            ELSE
+              ALLOCATE( Solver % Variable % EigenVectors(n, &
+                  SIZE( Solver % Variable % Values ) ), STAT=AllocStat)
+            END IF
             IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for EigenValues')
            
             Solver % Variable % EigenValues  = 0.0d0
             Solver % Variable % EigenVectors = 0.0d0
 
-            IF( Solver % Variable % DOFs > 1 ) THEN
+            IF( .NOT. ComplexFlag .AND. Solver % Variable % DOFs > 1 ) THEN
               CALL Info('AddEquationSolution','Repointing '//I2S(Solver % Variable % DOFs)//&
                   ' eigenvalue components for: '//TRIM(Solver % Variable % Name))
               
@@ -2662,7 +2670,7 @@ CONTAINS
      TYPE(Variable_t), POINTER :: ChildVar
      TYPE(Matrix_t), POINTER :: ChildMat, ParentMat
      INTEGER :: n,m,dofs, i,j,k,l,ii, jj, nn
-     LOGICAL :: Found, OutputActive
+     LOGICAL :: Found, Lvalue
 
      ParentDofs = ParentSolver % Variable % Dofs
      IF( PRESENT( ChildDofs ) ) THEN
@@ -2710,11 +2718,11 @@ CONTAINS
      ChildVarValues = 0.0_dp
      ChildVarPerm => ParentSolver % Variable % Perm
 
-     OutputActive = ListGetLogical( Solver % Values,'Variable Output', Found )
-     IF(.NOT. Found ) OutputActive = ParentSolver % Variable % Output 
+     Lvalue = ListGetLogical( Solver % Values,'Variable Output', Found )
+     IF(.NOT. Found ) Lvalue = ParentSolver % Variable % Output 
           
      CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, &
-         Solver, ChildVarName, Dofs, ChildVarValues, ChildVarPerm, OutputActive )
+         Solver, ChildVarName, Dofs, ChildVarValues, ChildVarPerm, Lvalue )
      
 
      ChildVar => VariableGet( Solver % Mesh % Variables, ChildVarName )      
@@ -2751,7 +2759,12 @@ CONTAINS
          ChildMat % COMPLEX = .FALSE.
         END IF
      END IF
-         
+
+     Lvalue = ListGetLogical( Solver % Values,'Bubbles in Global System',Found )
+     IF( Found ) THEN
+       CALL ListAddNewLogical( ChildSolver % Values,'Bubbles in Global System',Lvalue )
+     END IF
+     
      IF( ASSOCIATED( ParentSolver % ActiveElements ) ) THEN
        Solver % ActiveElements => ParentSolver % ActiveElements
        Solver % NumberOfActiveElements = ParentSolver % NumberOfActiveElements
@@ -3101,7 +3114,8 @@ CONTAINS
         END IF
       END DO
     END IF
-      
+
+    ParEnv => ParEnv_Common
 
 CONTAINS
 
@@ -4316,7 +4330,6 @@ CONTAINS
       IF (isParallel) THEN
         DO RowVar=1,NoVar
           DO ColVar=1,NoVar
-            CALL ParallelActive( .TRUE.)
             Amat => TotMatrix % SubMatrix(RowVar,ColVar) % Mat
             Amat % Comm = ELMER_COMM_WORLD
             Parenv % ActiveComm = Amat % Comm
@@ -4326,8 +4339,10 @@ CONTAINS
             IF(ASSOCIATED(Amat % ParMatrix )) THEN
               Amat % ParMatrix % ParEnv % ActiveComm = &
                        Amat % Comm
-              ParEnv = Amat % ParMatrix % ParEnv
+              ParEnv => Amat % ParMatrix % ParEnv
             END IF
+
+            CALL ParallelActive( .TRUE.)
           END DO
         END DO
      END IF
@@ -5041,18 +5056,25 @@ CONTAINS
      LOGICAL :: ApplyMortar, FoundMortar, SlaveNotParallel, Parallel, UseOrigMesh
      TYPE(Matrix_t), POINTER :: CM, CM0, CM1, CMP
      TYPE(Mesh_t), POINTER :: Mesh
-     LOGICAL :: DoBC, DoBulk
 
+     LOGICAL :: DoBC, DoBulk
 !------------------------------------------------------------------------------
      MeActive = ASSOCIATED(Solver % Matrix)
+
+     IF ( MeActive ) THEN
+       IF (  ASSOCIATED(Solver % Matrix % ParMatrix) ) THEN
+         ParEnv => Solver % Matrix % ParMatrix % ParEnv
+         ParEnv % ActiveComm = Solver % Matrix % Comm
+       END IF
+     END IF
+
      IF ( MeActive ) MeActive = (Solver % Matrix % NumberOfRows > 0)
+
      Parallel = Solver % Parallel 
-     
      !------------------------------------------------------------------------------
 
 
      IF( Solver % Mesh % Changed .OR. Solver % NumberOfActiveElements <= 0 ) THEN
-     
        Solver % NumberOFActiveElements = 0
        EquationName = ListGetString( Solver % Values, 'Equation', Found)
 
@@ -5067,14 +5089,13 @@ CONTAINS
 
          ! In parallel we have to prepare the communicator already for the weights
          IF(DoBulk .OR. DoBC ) THEN
-           IF ( Parallel .AND. MeActive .AND. ASSOCIATED( Solver % Matrix ) ) THEN
+           IF ( Parallel .AND. MeActive ) THEN
              ParEnv % ActiveComm = Solver % Matrix % Comm
              IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % GInterface) ) THEN
                IF (.NOT. ASSOCIATED(Solver % Matrix % ParMatrix) ) &
                    CALL ParallelInitMatrix(Solver, Solver % Matrix )               
-               Solver % Matrix % ParMatrix % ParEnv % ActiveComm = &
-                   Solver % Matrix % Comm
-               ParEnv = Solver % Matrix % ParMatrix % ParEnv
+               ParEnv => Solver % Matrix % ParMatrix % ParEnv
+               ParEnv % ActiveComm = Solver % Matrix % Comm
              END IF
            END IF
          END IF
@@ -5084,7 +5105,6 @@ CONTAINS
        END IF
      END IF
 !------------------------------------------------------------------------------
-
      UseOrigMesh = ListGetLogical(Solver % Values,'Use Original Coordinates',Found )
      IF(UseOrigMesh ) THEN
        Mesh => Solver % Mesh
@@ -5120,8 +5140,8 @@ BLOCK
            IF(.NOT. MeActive) ChangedActiveParts = .TRUE.
          END IF
        END IF
+
        CALL ParallelActive( MeActive )
-       
        n = COUNT(ParEnv % Active)
        
        IF ( n>0 .AND. n<ParEnv % PEs ) THEN
@@ -5200,15 +5220,15 @@ END BLOCK
 
        
      IF ( ASSOCIATED(Solver % Matrix) ) THEN
-       ParEnv % ActiveComm = Solver % Matrix % Comm
        IF ( Parallel .AND. MeActive ) THEN
          IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % GInterface) ) THEN
+           ParEnv % ActiveComm = Solver % Matrix % Comm
+
            IF (.NOT. ASSOCIATED(Solver % Matrix % ParMatrix) ) &
              CALL ParallelInitMatrix(Solver, Solver % Matrix )
 
-           Solver % Matrix % ParMatrix % ParEnv % ActiveComm = &
-                    Solver % Matrix % Comm
-           ParEnv = Solver % Matrix % ParMatrix % ParEnv
+           ParEnv => Solver % Matrix % ParMatrix % ParEnv
+           ParEnv % ActiveComm = Solver % Matrix % Comm
 
 #if 0
            ! This one is mainly for debugging of parallel problems
@@ -5356,7 +5376,6 @@ END BLOCK
        CALL Info('SingleSolver','Reverting back to current coordinates',Level=12)
        Mesh % Nodes => Mesh % NodesMapped
      END IF
-       
 !------------------------------------------------------------------------------
    END SUBROUTINE SingleSolver
 !------------------------------------------------------------------------------
@@ -5675,7 +5694,6 @@ END BLOCK
       END IF
 
       OutputPE = sOutputPE
-
 !------------------------------------------------------------------------------
    END SUBROUTINE SolverActivate
 !------------------------------------------------------------------------------

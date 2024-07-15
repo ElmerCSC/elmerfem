@@ -907,7 +907,7 @@ END BLOCK
    IF( CalcPotential ) THEN
      DO i=1,nbf
        a(i) = ParallelReduction(a(i))
-       u(i) = CMPLX( ParallelReduction(REAL(u(i))),ParallelReduction(AIMAG(u(i))) )
+       u(i) = ParallelReduction(u(i))
      END DO
      
      DO i=1,nbf
@@ -923,11 +923,11 @@ END BLOCK
    END IF
 
    IF( CalcTorque ) THEN
-     Torq = CMPLX( ParallelReduction(REAL(Torq)), ParallelReduction(AIMAG(Torq)) )
+     Torq = ParallelReduction(Torq)
      CALL ListAddConstReal(Model % Simulation,'res: Air Gap Torque re', REAL(Torq))
      CALL ListAddConstReal(Model % Simulation,'res: Air Gap Torque im', AIMAG(Torq))
 
-     zforce = CMPLX( ParallelReduction(REAL(zforce)), ParallelReduction(AIMAG(zforce)) )
+     zforce = ParallelReduction(zforce)
      CALL ListAddConstReal(Model % Simulation,'res: Axial force(vol) re', REAL(zforce))
      CALL ListAddConstReal(Model % Simulation,'res: Axial force(vol) im', AIMAG(zforce))
 
@@ -944,7 +944,7 @@ END BLOCK
      END DO
    END IF
      IF(ListGetLogicalAnyBC(Model,'Calculate Axial Force')) THEN
-       zzforce = CMPLX( ParallelReduction(REAL(zzforce)), ParallelReduction(AIMAG(zzforce)) )
+       zzforce = ParallelReduction(zzforce)
        CALL ListAddConstReal(Model % Simulation,'res: Axial force(surf) re', REAL(zzforce))
        CALL ListAddConstReal(Model % Simulation,'res: Axial force(surf) im', AIMAG(zzforce))
      END IF
@@ -1254,7 +1254,9 @@ END BLOCK
                      RotMLoc(3,3), velo(3), omega_velo(3,n), &
                      lorentz_velo(3,n), RotWJ(3)
     REAL(KIND=dp) :: LocalLamThick, skind, babs, muder, AlocR(2,nd)
-    REAL(KIND=dp) :: nu_11(nd), nuim_11(nd), nu_22(nd), nuim_22(nd)
+    REAL(KIND=dp) :: nu_11(nd), nuim_11(nd),  &
+                     nu_22(nd), nuim_22(nd),  &
+                     nu_33(nd), nuim_33(nd)
     REAL(KIND=dp) :: nu_val, nuim_val
     REAL(KIND=dp) :: sigma_33(nd), sigmaim_33(nd)
 
@@ -1339,7 +1341,13 @@ END BLOCK
           nuim_22 = 0._dp
           nu_22 = GetReal(CompParams, 'nu 22', Found)
           nuim_22 = GetReal(CompParams, 'nu 22 im', FoundIm)
-          IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 11 not found!')
+          IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 22 not found!')
+
+          nu_33 = 0._dp
+          nuim_33 = 0._dp
+          nu_33 = GetReal(CompParams, 'nu 33', Found)
+          nuim_33 = GetReal(CompParams, 'nu 33 im', FoundIm)
+          IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 33 not found!')
 
           ! Sigma 33 is not needed in because it does not exist in stranded coil
           ! Its contribution is taken into account in the circuit module if explicit coil resistance is not used!
@@ -1459,6 +1467,9 @@ END BLOCK
            nu_val = SUM( Basis(1:n) * nu_22(1:n) ) 
            nuim_val = SUM( Basis(1:n) * nuim_22(1:n) ) 
            Nu(2,2) = CMPLX(nu_val, nuim_val, KIND=dp)
+           nu_val = SUM( Basis(1:n) * nu_33(1:n) ) 
+           nuim_val = SUM( Basis(1:n) * nuim_33(1:n) ) 
+           Nu(3,3) = CMPLX(nu_val, nuim_val, KIND=dp)
            Nu = MATMUL(MATMUL(RotMLoc, Nu),TRANSPOSE(RotMLoc))
          END IF
        END IF

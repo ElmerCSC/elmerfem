@@ -111,6 +111,7 @@
 #endif
 
 #cmakedefine HAVE_AMGX
+#cmakedefine HAVE_ROCALUTION
 
 /* Define if you have a MUMPS library. */
 /* define HAVE_MUMPS */

@@ -172,7 +172,7 @@ CONTAINS
         TimeCoeff(:), SourceCoeff(:), Velo1Coeff(:), Velo2Coeff(:), Velo3Coeff(:)
     REAL(KIND=dp), SAVE, POINTER  :: VeloCoeff(:,:)
     LOGICAL :: Stat,Found
-    INTEGER :: i,t,p,q,dim,ngp,allocstat
+    INTEGER :: t,dim,ngp,allocstat
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
 
@@ -313,7 +313,7 @@ CONTAINS
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), LOAD(n)
     LOGICAL :: Stat,Found
-    INTEGER :: i,t,p,q,dim
+    INTEGER :: t,p,q,dim
     TYPE(GaussIntegrationPoints_t) :: IP
 
     TYPE(ValueList_t), POINTER :: BC

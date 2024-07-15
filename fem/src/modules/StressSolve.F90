@@ -136,7 +136,6 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
 
     IF (Transient) THEN
       CalcVelocities = GetLogical(SolverParams, 'Calculate Velocities', Found)
-      IF (.NOT.Found) CalcVelocities = .FALSE.
     ELSE
       CalcVelocities = .FALSE.
     END IF
@@ -255,7 +254,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
      INTEGER, POINTER :: TempPerm(:),DisplPerm(:),StressPerm(:),&
           DisplacementVelPerm(:), NodeIndexes(:)
 
-     LOGICAL :: Found,RayleighDamping, NormalSpring
+     LOGICAL :: Found,RayleighDamping, NormalSpring, NormalDamp
      LOGICAL :: PlaneStress, CalcStress, CalcStressAll, &
         CalcPrincipalAll, CalcPrincipalAngle, CalculateStrains, &
         CalcPrincipalStrain, CalcVelocities, Isotropic(2) = .TRUE.
@@ -272,7 +271,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
      REAL(KIND=dp),ALLOCATABLE:: MASS(:,:),STIFF(:,:),&
        DAMP(:,:), LOAD(:,:),LOAD_im(:,:),FORCE(:),FORCE_im(:), &
        LocalTemperature(:),ElasticModulus(:,:,:),PoissonRatio(:), &
-       HeatExpansionCoeff(:,:,:),DampCoeff(:),SpringCoeff(:,:,:),Beta(:), &
+       HeatExpansionCoeff(:,:,:),DampCoeff(:,:,:),SpringCoeff(:,:,:),Beta(:), &
        ReferenceTemperature(:), Density(:), Damping(:), Beta_im(:), &
        NodalDisplacement(:,:), ContactLimit(:), LocalNormalDisplacement(:), &
        LocalContactPressure(:), PreStress(:,:), PreStrain(:,:), &
@@ -406,7 +405,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
                  Damping( N ),              &
                  RayleighAlpha( N ),        &
                  RayleighBeta( N ),         &
-                 DampCoeff( N ),            &
+                 DampCoeff( N,3,3 ),        &
                  PreStress( 6,N ),          &
                  PreStrain( 6,N ),          &
                  StressLoad( 6,N ),         &
@@ -453,9 +452,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
 
        IF (Transient) THEN
          CalcVelocities = GetLogical(SolverParams, 'Calculate Velocities', Found)
-         IF (.NOT.Found) THEN
-           CalcVelocities = .FALSE.
-         ELSE
+         IF (Found) THEN
            DisplacementVelVar => VariableGet( Mesh % Variables, 'Displacement Velocity' )
            IF (ASSOCIATED(DisplacementVelVar)) THEN
              DisplacementVel => DisplacementVelVar % Values
@@ -580,14 +577,12 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
      OrigEigenAnalysis = EigenAnalysis
 
      StabilityAnalysis = GetLogical( SolverParams, 'Stability Analysis', Found )
-     IF( .NOT. Found ) StabilityAnalysis = .FALSE.
 
      IF( StabilityAnalysis .AND. (CurrentCoordinateSystem() /= Cartesian) ) &
          CALL Fatal( 'StressSolve', &
           'Only cartesian coordinate system is allowed in stability analysis.' )
 
      GeometricStiffness = GetLogical( SolverParams, 'Geometric Stiffness', Found )
-     IF (.NOT. Found ) GeometricStiffness = .FALSE.
 
      IF( GeometricStiffness .AND. (CurrentCoordinateSystem() /= Cartesian) ) &
           CALL Fatal( 'StressSolve', &
@@ -605,8 +600,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
      HarmonicAnalysis = getLogical( SolverParams, 'Harmonic Analysis', Found ) .OR. &
          getLogical( SolverParams,'Harmonic Mode',Found ) 
 !------------------------------------------------------------------------------
-     Refactorize = GetLogical( SolverParams, 'Linear System Refactorize', Found )
-     IF ( .NOT. Found ) Refactorize = .TRUE.
+     Refactorize = GetLogical( SolverParams, 'Linear System Refactorize', Found, DefValue = .TRUE. )
 
      IF ( Transient .AND. .NOT. Refactorize .AND. dt /= Prevdt ) THEN
        CALL ListAddLogical( SolverParams, 'Linear System Refactorize', .TRUE. )
@@ -635,8 +629,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
      ModelLumping = GetLogical( SolverParams, 'Model Lumping', Found )
      IF ( ModelLumping ) THEN       
        IF(DIM /= 3) CALL Fatal('StressSolve','Model Lumping implemented only for 3D')
-       FixDisplacement = GetLogical( SolverParams, 'Fix Displacement', Found )
-       IF(.NOT. Found) FixDisplacement = .TRUE.
+       FixDisplacement = GetLogical( SolverParams, 'Fix Displacement', Found, DefValue = .TRUE. )
        IF(FixDisplacement) THEN
          CALL Info( 'StressSolve', 'Using six fixed displacement to compute the spring matrix',Level=5 ) 
        ELSE
@@ -1054,11 +1047,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     INTEGER :: RelIntegOrder, NoActive 
     LOGICAL :: AnyDamping, NeedMass, NeedDensity, AnyPre, AnyStress
-    LOGICAL :: ConstantStiffnessMatrix
-    REAL(KIND=dp) :: cmult
-    CHARACTER(LEN=MAX_NAME_LEN) :: multname
-    TYPE(Variable_t), POINTER :: multvar
-
+    LOGICAL :: LocalMatrixIdentical
     
     AnyDamping = ListCheckPresentAnyMaterial( Model,"Damping" ) .OR. &
         ListCheckPrefixAnyMaterial( Model,"Rayleigh" )
@@ -1071,17 +1060,9 @@ CONTAINS
     AnyPre = ListCheckPrefixAnyMaterial( Model, 'Pre' ) 
     AnyStress = ListCheckPrefixAnyBodyForce( Model,'Stress')
 
-    ConstantStiffnessMatrix = ListGetLogical( Solver % Values,'Constant Stiffness Matrix', Found ) 
-    IF( ConstantStiffnessMatrix ) THEN
-      IF( NeedDensity ) CALL Fatal('StressSolve','"Constant Stiffness Matrix" applicable only for steady cases!')      
-      multvar => NULL()
-      multname = ListGetString( Solver % Values,'Stiffness Matrix Multiplier Name',Found )
-      IF(Found ) THEN
-        multvar => VariableGet( Solver % Mesh % Variables, multname, UnfoundFatal = .TRUE.)
-        IF( multvar % TYPE /= Variable_on_elements ) THEN
-          CALL Fatal('StreeSolve','"Stiffness Matrix Multiplier Name" should be elemental field!')
-        END IF
-      END IF
+    LocalMatrixIdentical = ListGetLogical( Solver % Values,'Local Matrix Identical', Found ) 
+    IF( LocalMatrixIdentical ) THEN
+      IF( NeedDensity ) CALL Fatal('StressSolve','"Local Matrix Identical" applicable only for steady cases!')      
     END IF
             
      CALL StartAdvanceOutput( 'StressSolve', 'Assembly:')
@@ -1099,10 +1080,8 @@ CONTAINS
 
        Element => GetActiveElement(t)
 
-       ! We assumes that all element have the same stiffness matrix
-       ! and only assembly one of them! This assumes same shape, material parameters and
-       ! node ordering. Only the 1st needs to be assembled.
-       IF( t > 1 .AND. ConstantStiffnessMatrix ) GOTO 100
+       ! If elements are similar skip the other similar elements.
+       IF( UseLocalMatrixCopy( Solver, activeind = t) ) GOTO 100 
        
        n = GetElementNOFNOdes()
        ntot = GetElementNOFDOFs()
@@ -1177,7 +1156,7 @@ CONTAINS
        IF (.NOT. ConstantBulkMatrixInUse ) THEN
          PreStress = 0.0d0
          PreStrain = 0.0d0
-         IF( AnyPre ) THEN
+         IF( AnyPre .AND. (StabilityAnalysis .OR. GeometricStiffness)) THEN
            CALL ListGetRealArray( Material, 'Pre Stress', Work, n, NodeIndexes, Found )
            IF ( Found ) THEN
              k = SIZE(Work,1)
@@ -1365,16 +1344,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !      Update global matrices from local matrices 
 !------------------------------------------------------------------------------
-100    IF( ConstantStiffnessMatrix ) THEN
-         IF(t==1) CALL ListAddConstRealArray(Solver % Values,&
-             'Elemental Stiffness Matrix', dim*n, dim*n, STIFF )      
-         IF( ASSOCIATED( MultVar ) ) THEN
-           cmult = MultVar % Values(MultVar % Perm(Element % ElementIndex))
-           CALL DefaultUpdateEquations( cmult * STIFF, cmult * FORCE )
-         ELSE
-           CALL DefaultUpdateEquations( STIFF, FORCE )
-         END IF           
-       ELSE IF ( ConstantBulkMatrixInUse ) THEN
+100    IF ( ConstantBulkMatrixInUse ) THEN
          CALL DefaultUpdateForce( FORCE )
          IF ( HarmonicAnalysis ) THEN
            SaveRHS => Solver % Matrix % RHS
@@ -1479,8 +1449,7 @@ CONTAINS
             END IF
           END IF
 
-          DampCoeff(1:n) =  GetReal( BC, 'Damping', Found )
-
+          NormalSpring = .FALSE.
           IF( ListCheckPrefix( BC,'Spring' ) ) THEN         
             SpringCoeff(1:n,1,1) =  GetReal( BC, 'Spring', NormalSpring )
             IF ( .NOT. NormalSpring ) THEN
@@ -1494,7 +1463,22 @@ CONTAINS
               END DO
             END IF
           END IF
-            
+
+          NormalDamp = .FALSE.
+          IF( ListCheckPrefix( BC,'Damping' ) ) THEN                  
+            DampCoeff(1:n,1,1) =  GetReal( BC, 'Damping', NormalDamp )
+            IF ( .NOT. NormalDamp ) THEN
+              DO i=1,dim
+                DampCoeff(1:n,i,i) = GetReal( BC, ComponentName('Damping',i), Found)
+                IF(Found) CYCLE
+                DO j=1,dim
+                  IF (ListCheckPresent(BC,'Damping '//i2s(i)//i2s(j) )) &
+                      DampCoeff(1:n,i,j)=GetReal( BC, 'Damping '//i2s(i)//i2s(j), Found)
+                END DO
+              END DO
+            END IF
+          END IF
+                        
           ContactLimit(1:n) =  GetReal( BC, 'Contact Limit', Found )
 
           IF(ModelLumping .AND. .NOT. FixDisplacement) THEN
@@ -1515,7 +1499,7 @@ CONTAINS
           SELECT CASE( CurrentCoordinateSystem() )
           CASE( Cartesian, AxisSymmetric, CylindricSymmetric )
              CALL StressBoundary( STIFF,DAMP,FORCE,FORCE_im, LOAD, LOAD_im,   &
-               SpringCoeff,NormalSpring,DampCoeff, Beta, Beta_im, StressLoad, &
+               SpringCoeff,NormalSpring,DampCoeff,NormalDamp,Beta, Beta_im, StressLoad, &
                    NormalTangential, Element,n,ntot,ElementNodes )
           CASE DEFAULT
              DAMP = 0.0d0
@@ -1782,11 +1766,9 @@ CONTAINS
          Permutation = 0
        END IF
 
-       OptimizeBW = GetLogical( StSolver % Values, 'Optimize Bandwidth', Found )
-       IF ( .NOT. Found ) OptimizeBW = .TRUE.
+       OptimizeBW = GetLogical( StSolver % Values, 'Optimize Bandwidth', Found, DefValue = .TRUE. )
 
-       GlobalBubbles = GetLogical(SolverParams,'Bubbles in Global System',Found )
-       IF (.NOT.Found ) GlobalBubbles = .TRUE.
+       GlobalBubbles = GetLogical(SolverParams,'Bubbles in Global System',Found, DefValue = .TRUE. )
 
        IF( ListGetLogicalAnyEquation( Model,'Calculate Stresses' ) ) THEN
          UseMask = .TRUE.

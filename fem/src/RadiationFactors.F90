@@ -567,7 +567,7 @@
          
          OutputName  = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes'         
          OutputName2 = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes.orig'         
-         CALL Rename(OutputName, OutputName2)         
+         CALL RenameF(OutputName, OutputName2)
 
          DoScale = ListCheckPresent( Model % Simulation,'Coordinate Scaling')
        
@@ -608,14 +608,14 @@
        IF( UpdateGeometry ) THEN
          OutputName = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes'         
          OutputName2 = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes.new'         
-         CALL Rename(OutputName, OutputName2)
+         CALL RenameF(OutputName, OutputName2)
 
          OutputName = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes.orig'         
          OutputName2 = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes'         
-         CALL Rename(OutputName, OutputName2)
+         CALL RenameF(OutputName, OutputName2)
        END IF
      END SUBROUTINE ComputeViewfactorsAndRadiators
-     
+
 
      SUBROUTINE CheckFactorsFilesExist()
        LOGICAL :: FilesExist, Found

@@ -15,8 +15,6 @@
 # if all listed variables are TRUE
 INCLUDE(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
 
-CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
-
 # If NETCDF & NETCDF_FORTRAN libraries are already defined, do nothing
 IF(NETCDF_LIBRARIES AND NETCDF_INCLUDE_DIR)
    SET(NETCDF_FOUND TRUE)

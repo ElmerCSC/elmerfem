@@ -10,6 +10,8 @@ Elmer is a tool that can solve a large number of partial differential equations 
 multiphysical problems. It includes models for structural mechanics, fluid dynamics, heat transfer,
 electromagnetics and beyond. Elmer can be used from PCs to massively parallel HPC platforms.  
 
+[.text-center]
+image:https://github.com/ElmerCSC/elmerfem/actions/workflows/build.yaml/badge.svg["Builds",link=https://github.com/ElmerCSC/elmerfem/actions/workflows/build.yaml]
 
 [.text-center]
 image:https://img.shields.io/github/stars/ElmerCSC/elmerfem.svg?style=social&label=Stars&style=plastic["GitHub stars"] image:https://img.shields.io/github/watchers/ElmerCSC/elmerfem.svg?style=social&label=Watch&style=plastic["GitHub watchers"] image:https://img.shields.io/github/forks/ElmerCSC/elmerfem.svg?style=social&label=Fork&style=plastic["GitHub forks"]
@@ -47,7 +49,7 @@ http://www.nic.funet.fi/pub/sci/physics/elmer/bin/VirtualMachines/[VirtualBox VM
 // * CoSci-LLC/docker-elmerice: https://hub.docker.com/repository/docker/coscillc/elmerice[Docker Hub], https://github.com/CoSci-LLC/docker-elmerice[GitHub]
 * Manuals and Tutorials (about 900 pages!): http://www.nic.funet.fi/pub/sci/physics/elmer/doc/[PDF]
 * image:https://img.shields.io/badge/License-GPLv2-blue.svg["License: GPL v2", link=https://www.gnu.org/licenses/gpl-2.0]  image:https://img.shields.io/badge/License-LGPL%20v2.1-blue.svg["License: LGPL v2.1", link=https://www.gnu.org/licenses/lgpl-2.1] link:license_texts/ElmerLicensePolicy.md[Elmer license policy].
-* List of references for citing Elmer: https://www.csc.fi/web/elmer/white-papers[White Papers]
+* List of references for citing Elmer: https://research.csc.fi/web/elmer/white-papers[White Papers]
 
 
 === Discussion and Media   

@@ -8,22 +8,25 @@
 
 # his module returns these variables for the rest of the project to use.
 #
-#  CHOLMOD_FOUND             - True if CHOLMOD found 
+#  CHOLMOD_FOUND             - True if CHOLMOD found
 #  CHOLMOD_INCLUDE_DIR       - CHOLMOD include dir.
 #  CHOLMOD_LIBRARIES         - needed cuda libraries
-
-
-
-
-INCLUDE(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
-
-CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
 
 # If CHOLMOD libraries are already defined, do nothing
 IF(CHOLMOD_LIBRARIES AND CHOLMOD_INCLUDE_DIR)
    SET(CHOLMOD_FOUND TRUE)
    RETURN()
 ENDIF()
+
+# Try to find with CMake config file of upstream UMFPACK.
+FIND_PACKAGE(CHOLMOD CONFIG)
+
+IF(UMFPACK_LIBRARIES AND UMFPACK_INCLUDE_DIR)
+  RETURN()
+ENDIF()
+
+# Fall back to manual search
+INCLUDE(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
 
 SET(CHOLMOD_FOUND FALSE)
 MESSAGE(STATUS "Finding CHOLMOD")
@@ -37,17 +40,17 @@ SET(CHOLMODINCLUDE
   "$ENV{CHOLMOD_ROOT}/include"
   "${CHOLMOD_ROOT}/include/suitesparse"
   "$ENV{CHOLMOD_ROOT}/include/suitesparse"
-  "${CMAKE_SOURCE_DIR}/umfpack/include"
+  "${CMAKE_SOURCE_DIR}/cholmod/include"
   INTERNAL
   )
 # Try to find CHOLMOD
-FIND_PATH(CHOLMOD_INCLUDE_DIR 
-  umfpack.h
-  HINTS 
+FIND_PATH(CHOLMOD_INCLUDE_DIR
+  cholmod.h
+  HINTS
   ${CHOLMODINCLUDE}
   )
 
-SET(CHOLMODLIB 
+SET(CHOLMODLIB
   "${CHOLMODROOT}/lib"
   "$ENV{CHOLMODROOT}/lib"
   "${CHOLMODROOT}/lib64"
@@ -56,10 +59,10 @@ SET(CHOLMODLIB
   "$ENV{CHOLMOD_ROOT}/lib"
   "${CHOLMOD_ROOT}/lib64"
   "$ENV{CHOLMOD_ROOT}/lib64"
-  "${CMAKE_SOURCE_DIR}/umfpack/lib"
+  "${CMAKE_SOURCE_DIR}/cholmod/lib"
   INTERNAL)
 
-FIND_LIBRARY(CHOLMOD_LIB umfpack HINTS ${CHOLMODLIB})
+FIND_LIBRARY(CHOLMOD_LIB cholmod HINTS ${CHOLMODLIB})
 
 IF (CHOLMOD_INCLUDE_DIR AND CHOLMOD_LIB)
   UNSET(CHOLMOD_FAILMSG)
@@ -68,7 +71,7 @@ IF (CHOLMOD_INCLUDE_DIR AND CHOLMOD_LIB)
 ELSE()
   SET(CHOLMOD_FAILMSG "CHOLMOD library not found.")
 ENDIF()
-   
+
 IF (NOT CHOLMOD_FAILMSG)
   SET(CHOLMOD_FOUND TRUE)
 ENDIF()
@@ -90,5 +93,5 @@ MARK_AS_ADVANCED(
   CHOLMODLIB
   CHOLMOD_FAILMSG
   CHOLMOD_FOUND
-  CHOLMOD_INCLUDE_DIR 
+  CHOLMOD_INCLUDE_DIR
   CHOLMOD_LIBRARIES)

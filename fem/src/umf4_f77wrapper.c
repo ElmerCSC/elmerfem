@@ -80,6 +80,8 @@
 
 #include "../config.h"
 
+#include "umfpack.h"
+
 #ifdef NULL
 #undef NULL
 #endif

@@ -58,10 +58,6 @@ Solver 1
   Variable = Temp
   Procedure = "HeatSolve" "HeatSolver"
 
-  Apply Limiter = Logical True
-  Limiter Load Tolerance = Real 1.0e-6
-  Limiter Value Tolerance = Real 1.0e-8
-
   Steady State Convergence Tolerance = 1.0e-5
 
   Nonlinear System Convergence Tolerance = 1.0e-5
@@ -90,5 +86,5 @@ End
 
 
 Solver 1 :: Reference Norm = Real 20.0
-RUN
+
 

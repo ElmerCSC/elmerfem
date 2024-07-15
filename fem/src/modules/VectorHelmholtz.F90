@@ -130,8 +130,8 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
 
   ! These use one flag to call library features to compute automatically
   ! a capacitance matrix.
-  IF( ListGetLogical( SolverParams,'Calculate S-Matrix',Found ) ) THEN
-    CALL Info('VectorHelmholtz_init','Using Constraint Modes functionality for S-Matrix')
+  IF( ListGetLogical( SolverParams,'Calculate S Matrix',Found ) ) THEN
+    CALL Info('VectorHelmholtz_init','Using Constraint Modes functionality for S Matrix')
     CALL ListAddNewLogical( SolverParams,'Constraint Modes Analysis',.TRUE.)
   END IF
 
@@ -140,14 +140,18 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
     CALL ListAddNewLogical( SolverParams,'Constraint Modes Fluxes',.TRUE.)
     !CALL ListAddNewLogical( SolverParams,'Constraint Modes Matrix Results',.TRUE.)
     CALL ListAddNewLogical( SolverParams,'Constraint Modes EM Wave',.TRUE.)        
-    IF( ListCheckPresent( SolverParams,'S-Matrix Filename') ) THEN
-      CALL ListRename( SolverParams,'S-Matrix Filename',&
+    IF( ListCheckPresent( SolverParams,'S Matrix Filename') ) THEN
+      CALL ListRename( SolverParams,'S Matrix Filename',&
           'Constraint Modes Matrix Filename', Found ) 
     ELSE     
       CALL ListAddNewString( SolverParams,'Constraint Modes Matrix Filename',&
           'SMatrix.dat',.FALSE.)
     END IF
-    CALL ListRenameAllBC( Model,'S-Matrix Port','Constraint Mode')
+    IF( ListCheckPresent( SolverParams,'S Matrix Symmetric' ) ) THEN
+      CALL ListRename( SolverParams,'S Matrix Symmetric','Constraint Modes Fluxes Symmetric')
+    END IF
+
+    CALL ListRenameAllBC( Model,'S Matrix Port','Constraint Mode')
     !CALL ListAddLogical( Params,'Optimize Bandwidth',.FALSE.)
     !CALL Info('VectorHelmoltz_init','Suppressing bandwidth optimization in S-Matrix computation!')
   END IF

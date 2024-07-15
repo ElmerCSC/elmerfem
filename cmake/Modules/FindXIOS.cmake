@@ -14,8 +14,6 @@
 # if all listed variables are TRUE
 INCLUDE(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
 
-CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
-
 # If XIOS is already defined, do nothing
 IF(XIOS_LIBRARIES AND XIOS_INCLUDE_DIR)
    SET(XIOS_FOUND TRUE)

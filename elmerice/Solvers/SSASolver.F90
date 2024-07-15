@@ -200,7 +200,7 @@
     END IF
 
     AllocationsDone = .TRUE.
-    CALL INFO( SolverName, 'Memory allocation done.',Level=1 )
+    CALL INFO( SolverName, 'Memory allocation done.',Level=5 )
   END IF
 
   StiffMatrix => Solver % Matrix
@@ -939,7 +939,7 @@ SUBROUTINE GetMeanValueSolver( Model,Solver,dt,TransientSimulation )
       CALL Fatal( SolverName, 'Memory allocation error.' )
     END IF
     AllocationsDone = .TRUE.
-    CALL INFO( SolverName, 'Memory allocation done.',Level=1 )
+    CALL INFO( SolverName, 'Memory allocation done.',Level=5 )
   END IF
 
   StiffMatrix => Solver % Matrix
@@ -1325,7 +1325,7 @@ SUBROUTINE SSASolver( Model,Solver,dt,TransientSimulation )
 
 
     AllocationsDone = .TRUE.
-    CALL INFO( SolverName, 'Memory allocation done.',Level=1 )
+    CALL INFO( SolverName, 'Memory allocation done.',Level=5 )
   END IF
 
 

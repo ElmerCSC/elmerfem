@@ -1,0 +1,96 @@
+name: build
+on:
+  workflow_dispatch:
+  push:
+  pull_request:
+
+concurrency: ci-${{ github.ref }}
+
+jobs:
+
+  ubuntu:
+    # For available GitHub-hosted runners, see:
+    # https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners
+    runs-on: ubuntu-latest
+
+    name: ubuntu (${{ matrix.compiler }})
+
+    strategy:
+      # Allow other runners in the matrix to continue if some fail
+      fail-fast: false
+
+      matrix:
+        compiler: [gcc]
+        include:
+          - compiler: gcc
+            compiler-pkgs: "g++ gcc"
+            cc: "gcc"
+            cxx: "g++"
+          #- compiler: clang
+          #  compiler-pkgs: "clang libomp-dev"
+          #  cc: "clang"
+          #  cxx: "clang++"
+
+    env:
+      CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cxx }}
+
+    steps:
+      - name: get CPU information
+        run: lscpu
+
+      - name: checkout repository
+        uses: actions/checkout@v4
+
+      - name: install dependencies
+        run: |
+          sudo apt -qq update
+          sudo apt install -y ${{ matrix.compiler-pkgs }} cmake gfortran \
+            libopenblas-dev libopenmpi-dev libmumps-dev libparmetis-dev
+
+      - name: configure
+        run: |
+          mkdir ${GITHUB_WORKSPACE}/build
+          cd ${GITHUB_WORKSPACE}/build
+          cmake \
+            -DCMAKE_BUILD_TYPE="Release" \
+            -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/usr" \
+            -DBLA_VENDOR="OpenBLAS" \
+            -DWITH_OpenMP=ON \
+            -DWITH_LUA=ON \
+            -DWITH_Zoltan=OFF \
+            -DWITH_Mumps=ON \
+            -DCREATE_PKGCONFIG_FILE=ON \
+            -DWITH_MPI=ON \
+            -DMPI_TEST_MAXPROC=2 \
+            -DMPIEXEC_PREFLAGS="--allow-run-as-root" \
+            ..
+
+      - name: build
+        run: |
+          cd ${GITHUB_WORKSPACE}/build
+          cmake --build .
+
+      - name: install
+        run: |
+          cd ${GITHUB_WORKSPACE}/build
+          cmake --install .
+
+      - name: check
+        id: run-ctest
+        timeout-minutes: 150
+        run: |
+          cd ${GITHUB_WORKSPACE}/build
+          ctest -L quick
+
+      - name: Re-run tests
+        if: always() && (steps.run-ctest.outcome == 'failure')
+        timeout-minutes: 60
+        run: |
+          cd ${GITHUB_WORKSPACE}/build
+          echo "::group::Re-run failing tests"
+          ctest --rerun-failed --output-on-failure || true
+          echo "::endgroup::"
+          echo "::group::Log from these tests"
+          [ ! -f Testing/Temporary/LastTest.log ] || cat Testing/Temporary/LastTest.log
+          echo "::endgroup::"

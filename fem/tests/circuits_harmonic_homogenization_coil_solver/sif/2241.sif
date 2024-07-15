@@ -227,6 +227,8 @@ Component 1
    Nu 11 im = Real $ 259371
    Nu 22 = Real $ 773655 
    Nu 22 im = Real $ 259371
+   Nu 33 = Real $ 773655      ! these are not physical
+   Nu 33 im = Real $ 259371   ! 
    Sigma 33 = Real 9e7
    Number of Turns = Real 144
    Electrode Area = Real 0.000185614878383
@@ -265,7 +267,7 @@ End
 
 Solver 4 :: Reference Norm = Real 4.01153162E-07
 Solver 4 :: Reference Norm Tolerance = Real 1E-03
-Solver 5 :: Reference Norm = Real 6.02057030E+03
+Solver 5 :: Reference Norm = Real 6.03834682E+03
 Solver 5 :: Reference Norm Tolerance = Real 1E-03
 
 $fprintf( stderr, "TEST CASE 1\n");

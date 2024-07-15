@@ -6,4 +6,4 @@ ADD_ELMERTEST_MODULE(LimitDisplacement2 ContactBC ContactBC.f90)
 
 file(COPY ELMERSOLVER_STARTINFO cube.grd ContactBC.f90 DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(LimitDisplacement2)
+ADD_ELMER_TEST(LimitDisplacement2 LABELS limiter)

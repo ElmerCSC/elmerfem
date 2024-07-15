@@ -4443,7 +4443,7 @@ CONTAINS
             END IF
             IF(ASSOCIATED(Amat % ParMatrix )) THEN
               Amat % ParMatrix % ParEnv % ActiveComm = Amat % Comm
-              ParEnv = Amat % ParMatrix % ParEnv
+              ParEnv => Amat % ParMatrix % ParEnv
             END IF
             !CALL SParIterActiveBarrier()
           END IF
