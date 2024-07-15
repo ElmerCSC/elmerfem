@@ -85,8 +85,10 @@ ELSEIF(${CMAKE_Fortran_COMPILER_ID} MATCHES "PGI")
  SET(MKL_THR_BASENAME "pgi")
  SET(MKL_Fortran_FLAGS "" CACHE STRING "MKL Fortran flags")
 ELSE()
-  MESSAGE(FATAL_ERROR "Finding MKL libraries not implemented for 
+  MESSAGE(WARNING "Finding MKL libraries not implemented for 
                 ${CMAKE_Fortran_COMPILER_ID}")
+  SET(MKL_FOUND FALSE)
+  RETURN()		
 ENDIF()
 
 # From MKL link line advisor
