@@ -8,17 +8,25 @@
 
 # his module returns these variables for the rest of the project to use.
 #
-#  UMFPACK_FOUND             - True if UMFPACK found 
+#  UMFPACK_FOUND             - True if UMFPACK found
 #  UMFPACK_INCLUDE_DIR       - UMFPACK include dir.
 #  UMFPACK_LIBRARIES         - needed cuda libraries
-
-INCLUDE(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
 
 # If UMFPACK libraries are already defined, do nothing
 IF(UMFPACK_LIBRARIES AND UMFPACK_INCLUDE_DIR)
    SET(UMFPACK_FOUND TRUE)
    RETURN()
 ENDIF()
+
+# Try to find with CMake config file of upstream UMFPACK.
+FIND_PACKAGE(UMFPACK CONFIG)
+
+IF(UMFPACK_LIBRARIES AND UMFPACK_INCLUDE_DIR)
+  RETURN()
+ENDIF()
+
+# Fall back to manual search
+INCLUDE(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
 
 SET(UMFPACK_FOUND FALSE)
 MESSAGE(STATUS "Finding UMFPACK")
@@ -36,13 +44,13 @@ SET(UMFPACKINCLUDE
   INTERNAL
   )
 # Try to find UMFPACK
-FIND_PATH(UMFPACK_INCLUDE_DIR 
+FIND_PATH(UMFPACK_INCLUDE_DIR
   umfpack.h
-  HINTS 
+  HINTS
   ${UMFPACKINCLUDE}
   )
 
-SET(UMFPACKLIB 
+SET(UMFPACKLIB
   "${UMFPACKROOT}/lib"
   "$ENV{UMFPACKROOT}/lib"
   "${UMFPACKROOT}/lib64"
@@ -63,7 +71,7 @@ IF (UMFPACK_INCLUDE_DIR AND UMFPACK_LIB)
 ELSE()
   SET(UMFPACK_FAILMSG "UMFPACK library not found.")
 ENDIF()
-   
+
 IF (NOT UMFPACK_FAILMSG)
   SET(UMFPACK_FOUND TRUE)
 ENDIF()
@@ -85,5 +93,5 @@ MARK_AS_ADVANCED(
   UMFPACKLIB
   UMFPACK_FAILMSG
   UMFPACK_FOUND
-  UMFPACK_INCLUDE_DIR 
+  UMFPACK_INCLUDE_DIR
   UMFPACK_LIBRARIES)

@@ -12,13 +12,21 @@
 #  CHOLMOD_INCLUDE_DIR       - CHOLMOD include dir.
 #  CHOLMOD_LIBRARIES         - needed cuda libraries
 
-INCLUDE(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
-
 # If CHOLMOD libraries are already defined, do nothing
 IF(CHOLMOD_LIBRARIES AND CHOLMOD_INCLUDE_DIR)
    SET(CHOLMOD_FOUND TRUE)
    RETURN()
 ENDIF()
+
+# Try to find with CMake config file of upstream UMFPACK.
+FIND_PACKAGE(CHOLMOD CONFIG)
+
+IF(UMFPACK_LIBRARIES AND UMFPACK_INCLUDE_DIR)
+  RETURN()
+ENDIF()
+
+# Fall back to manual search
+INCLUDE(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
 
 SET(CHOLMOD_FOUND FALSE)
 MESSAGE(STATUS "Finding CHOLMOD")
