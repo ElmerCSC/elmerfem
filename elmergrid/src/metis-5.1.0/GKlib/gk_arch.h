@@ -10,6 +10,11 @@
 #ifndef _GK_ARCH_H_
 #define _GK_ARCH_H_
 
+#ifdef __MINGW32__
+#include <sys/time.h>
+#define gettimeofday mingw_gettimeofday
+#endif
+
 /*************************************************************************
 * Architecture-specific differences in header files
 **************************************************************************/

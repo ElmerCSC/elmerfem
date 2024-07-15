@@ -9,7 +9,7 @@
 
 
 #include <GKlib.h>
-
+#include "gk_arch.h"
 
 
 
