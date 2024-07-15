@@ -23,8 +23,9 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: fabien Gillet-Chaulet
+! *  Authors: fabien Gillet-Chaulet, Rupert Gladstone
 ! *  Email:   fabien.gillet-chaulet@univ-grenoble-alpes.fr
+! *           rupertgladstone1972@gmail.com
 ! *  Web:     http://elmerice.elmerfem.org
 ! *
 ! *  Original Date: May 2022
@@ -34,10 +35,12 @@
 !>  Module containing utility routines for the SSA
 !--------------------------------------------------------------------------------
 MODULE SSAMaterialModels
-    USE DefUtils
+  
+  USE DefUtils
+  
+  IMPLICIT NONE
 
-   IMPLICIT NONE
-   CONTAINS
+  CONTAINS
 
 !--------------------------------------------------------------------------------
 !>  Return the effective friction coefficient
@@ -55,14 +58,22 @@ MODULE SSAMaterialModels
    REAL(KIND=dp) :: rho,rhow,sealevel ! density, sea-water density, sea-level
    REAL(KIND=dp),OPTIONAL :: SlipDer ! dSlip/du=dSlip/dv if ub=(u^2+v^2)^1/2 ! required to compute the Jacobian
 
-   TYPE(ValueList_t), POINTER :: Material
+
+
+   INTEGER            :: iFriction
+   INTEGER, PARAMETER :: LINEAR = 1
+   INTEGER, PARAMETER :: WEERTMAN = 2
+   INTEGER, PARAMETER :: BUDD = 5
+   INTEGER, PARAMETER :: REG_COULOMB_GAG = 3 ! Schoof 2005 & Gagliardini 2007
+   INTEGER, PARAMETER :: REG_COULOMB_JOU = 4 ! Joughin 2019
+   
+   TYPE(ValueList_t), POINTER :: Material, Constants
    TYPE(Variable_t), POINTER :: GMSol,BedrockSol,NSol
    INTEGER, POINTER :: NodeIndexes(:)
    CHARACTER(LEN=MAX_NAME_LEN) :: Friction
-   REAL(KIND=dp) :: Slip2
+   REAL(KIND=dp) :: Slip2, gravity, qq, hafq
    REAL(KIND=dp) :: fm,fq,MinN,U0
    REAL(KIND=dp) :: alpha,beta,fB
-   INTEGER :: iFriction
    INTEGER :: GLnIP
 
    REAL(KIND=dp),DIMENSION(n) :: NodalBeta, NodalGM, NodalBed, NodalLinVelo,NodalC,NodalN
@@ -86,54 +97,70 @@ MODULE SSAMaterialModels
    Friction = ListGetString(Material, 'SSA Friction Law',Found, UnFoundFatal=.TRUE.)
    SELECT CASE(Friction)
      CASE('linear')
-       iFriction = 1
+       iFriction = LINEAR
        fm = 1.0_dp
      CASE('weertman')
-       iFriction = 2
+       iFriction = WEERTMAN
+     CASE('budd')
+       iFriction = BUDD
      CASE('coulomb')
-       iFriction = 3
+       iFriction = REG_COULOMB_GAG
      CASE('regularized coulomb')
-       iFriction = 4
+       iFriction = REG_COULOMB_JOU
      CASE DEFAULT
-       CALL FATAL("SSAEffectiveFriction",'Friction should be linear, Weertman, Coulomb or Regularized coulomb')
+       CALL FATAL("SSAEffectiveFriction",'Friction choice not recognised')
     END SELECT
 
-    ! for all friction law
+    ! coefficient for all friction parameterisations
     NodalBeta = 0.0_dp
     NodalBeta(1:n) = ListGetReal( &
            Material, 'SSA Friction Parameter', n, NodeIndexes(1:n), Found,&
            UnFoundFatal=.TRUE.)
 
-    ! for Weertman and Coulomb friction
-    IF (iFriction > 1) THEN
+    ! for nonlinear powers of sliding velocity
+    SELECT CASE (iFriction)
+    CASE(REG_COULOMB_JOU,REG_COULOMB_GAG,WEERTMAN,BUDD)
       fm = ListGetConstReal( Material, 'SSA Friction Exponent', Found , UnFoundFatal=.TRUE.)
-
       NodalLinVelo = 0.0_dp
       NodalLinVelo(1:n) = ListGetReal( &
            Material, 'SSA Friction Linear Velocity', n, NodeIndexes(1:n), Found,&
            UnFoundFatal=.TRUE.)
-    END IF
+    CASE DEFAULT
+    END SELECT
 
-    ! only for Coulomb friction
-    IF (iFriction == 3) THEN
-      fq = ListGetConstReal( Material, 'SSA Friction Post-Peak', Found, UnFoundFatal=.TRUE. )
-
-      NodalC = 0.0_dp
-      NodalC(1:n) = ListGetReal( &
-           Material, 'SSA Friction Maximum Value', n, NodeIndexes(1:n), Found,&
-           UnFoundFatal=.TRUE.)
-
-      ! Get the effective pressure
+    ! where explicit dependence on effective pressure is present...
+    SELECT CASE (iFriction)
+    CASE(REG_COULOMB_GAG,BUDD)
       NSol => VariableGet( CurrentModel % Variables, 'Effective Pressure', UnFoundFatal=.TRUE. )
       CALL GetLocalSolution( NodalN,UElement=Element, UVariable=NSol)
-
       MinN = ListGetConstReal( Material, 'SSA Min Effective Pressure', Found, UnFoundFatal=.TRUE.)
-    END IF
+      fN = SUM( NodalN(1:n) * Basis(1:n) )
+      ! Effective pressure should be >0 (for the friction law)
+      fN = MAX(fN, MinN)
+    END SELECT
+    
+    ! parameters unique to one sliding parameterisation
+    SELECT CASE (iFriction)
 
-    ! only for Regularized Coulomb friction law we need to get U0 of Joughin law
-    IF (iFriction == 4) THEN
+    CASE(BUDD)
+      Constants => GetConstants()
+      gravity = ListGetConstReal( Constants, 'Gravity Norm', UnFoundFatal=.TRUE. )
+      ! calculate haf from N = rho_i g z*
+      qq = ListGetConstReal( Material, 'SSA Haf Exponent', Found, UnFoundFatal=.TRUE.)
+      hafq = fN / (gravity * rho) ** qq
+      
+    CASE(REG_COULOMB_GAG)
+      fq = ListGetConstReal( Material, 'SSA Friction Post-Peak', Found, UnFoundFatal=.TRUE. )
+      NodalC = 0.0_dp
+      NodalC(1:n) = ListGetReal( &
+          Material, 'SSA Friction Maximum Value', n, NodeIndexes(1:n), Found,&
+          UnFoundFatal=.TRUE.)
+      fC = SUM( NodalC(1:n) * Basis(1:n) )
+
+    CASE(REG_COULOMB_JOU)
       U0 = ListGetConstReal( Material, 'SSA Friction Threshold Velocity', Found, UnFoundFatal=.TRUE.)
-    END IF
+
+    END SELECT
 
     Beta=SUM(Basis(1:n)*NodalBeta(1:n))
 
@@ -149,9 +176,9 @@ MODULE SSAMaterialModels
    END IF
 
    Slip2=0.0_dp
-   IF (iFriction > 1) THEN
+   IF (iFriction .NE. LINEAR) THEN
      LinVelo = SUM( NodalLinVelo(1:n) * Basis(1:n) )
-     IF ((iFriction == 2).AND.(fm==1.0_dp)) iFriction=1
+     IF ((iFriction == WEERTMAN).AND.(fm==1.0_dp)) iFriction=LINEAR
      Slip2=1.0_dp
      IF (ub < LinVelo) then
        ub = LinVelo
@@ -159,21 +186,22 @@ MODULE SSAMaterialModels
      ENDIF
    END IF
 
-   IF (iFriction==3) THEN
-     fC = SUM( NodalC(1:n) * Basis(1:n) )
-     fN = SUM( NodalN(1:n) * Basis(1:n) )
-     ! Effective pressure should be >0 (for the friction law)
-     fN = MAX(fN, MinN)
-   END IF
-
    SELECT CASE (iFriction)
-    CASE(1)
+
+   CASE(LINEAR)
      Slip = beta
      IF (PRESENT(SlipDer)) SlipDer = 0._dp
-    CASE(2)
+
+   CASE(WEERTMAN)
      Slip = beta * ub**(fm-1.0_dp)
      IF (PRESENT(SlipDer)) SlipDer = Slip2*Slip*(fm-1.0_dp)/(ub*ub)
-    CASE(3)
+
+   CASE(BUDD)
+     Slip = beta * hafq * ub**(fm-1.0_dp)
+     ! TODO:
+     !     IF (PRESENT(SlipDer)) SlipDer = 
+
+   CASE(REG_COULOMB_GAG)
      IF (fq.NE.1.0_dp) THEN
        alpha = (fq-1.0_dp)**(fq-1.0_dp) / fq**fq
      ELSE
@@ -182,11 +210,13 @@ MODULE SSAMaterialModels
      fB = alpha * (beta / (fC*fN))**(fq/fm)
      Slip = beta * ub**(fm-1.0_dp) / (1.0_dp + fB * ub**fq)**fm
      IF (PRESENT(SlipDer)) SlipDer  = Slip2 * Slip * ((fm-1.0_dp) / (ub*ub) - &
-             fm*fq*fB*ub**(fq-2.0_dp)/(1.0_dp+fB*ub**fq))
-    CASE(4)
+         fm*fq*fB*ub**(fq-2.0_dp)/(1.0_dp+fB*ub**fq))
+
+   CASE(REG_COULOMB_JOU)
      Slip = beta * ub**(fm-1.0_dp) / (ub + U0)**fm
      IF (PRESENT(SlipDer)) SlipDer = Slip2 * Slip * ((fm-1.0_dp) / (ub*ub) - &
-              fm*ub**(-1.0_dp)/(ub+U0))
+         fm*ub**(-1.0_dp)/(ub+U0))
+
    END SELECT
 
   END FUNCTION SSAEffectiveFriction
@@ -258,5 +288,204 @@ MODULE SSAMaterialModels
 
    END FUNCTION ComputeMeanFriction
 
-  END MODULE SSAMaterialModels
+!--------------------------------------------------------------------------------
+!>  Return the effective basal mass balance (to be called separately for each IP in
+!>  a partly grounded element)
+!--------------------------------------------------------------------------------
+   FUNCTION SSAEffectiveBMB(Element,nn,Basis,SEM,BMB,hh,FIPcount,rho,rhow,sealevel,FAF) RESULT(BMBatIP)
+     
+     IMPLICIT NONE
+     
+     REAL(KIND=dp)              :: BMBatIP ! the effective basal melt rate at integration point
+     
+     INTEGER,INTENT(IN)         :: nn ! element number of nodes
+     REAL(KIND=dp), INTENT(IN)  :: BMB(:) ! basal mass balance
+     LOGICAL, INTENT(IN)        :: SEM ! Sub-Element Parametrisation (requires interpolation of floatation on IPs) 
+     REAL(KIND=dp),INTENT(IN)   :: hh ! the ice thickness at current location
+     REAL(KIND=dp),INTENT(IN)   :: Basis(:)
+     TYPE(Element_t),POINTER,INTENT(IN) :: Element
+     
+     ! optional arguments, depending on melt param
+     INTEGER,INTENT(INOUT),OPTIONAL    :: FIPcount
+     REAL(KIND=dp),INTENT(IN),OPTIONAL :: rho,rhow,sealevel ! to calculate floatation for SEM3
+     REAL(KIND=dp),INTENT(IN),OPTIONAL :: FAF ! Floating area fraction for SEM1
+     
+     TYPE(ValueList_t), POINTER  :: Material
+     TYPE(Variable_t), POINTER   :: GMSol,BedrockSol
+     CHARACTER(LEN=MAX_NAME_LEN) :: MeltParam
+     
+     REAL(KIND=dp),DIMENSION(nn) :: NodalBeta, NodalGM, NodalBed, NodalLinVelo,NodalC
+     REAL(KIND=dp) :: bedrock,Hf
+     
+     LOGICAL :: Found
+     
+     !  Sub - element GL parameterisation
+     IF (SEM) THEN
+        GMSol => VariableGet( CurrentModel % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
+        CALL GetLocalSolution( NodalGM,UElement=Element,UVariable=GMSol )
+        BedrockSol => VariableGet( CurrentModel % Variables, 'bedrock',UnFoundFatal=.TRUE. )
+        CALL GetLocalSolution( NodalBed,UElement=Element,UVariable= BedrockSol )
+     END IF
+     
+     Material => GetMaterial(Element)     
+     MeltParam = ListGetString(Material, 'SSA Melt Param',Found, UnFoundFatal=.TRUE.)
 
+     BMBatIP=SUM(Basis(1:nn)*BMB(1:nn))
+     
+     SELECT CASE(MeltParam)
+        
+     CASE('FMP','fmp')
+        
+     CASE('NMP','nmp')
+        BMBatIP = 0.0_dp
+        
+     CASE('SEM1','sem1')
+        ! check element type is triangular (would need to modify
+        ! CalcFloatingAreaFraction to allow other element types)
+        IF (element % type % ElementCode .NE. 303) THEN
+           CALL Fatal('SSAEffectiveBMB','Expecting element type 303!')
+        END IF
+
+        IF (PRESENT(FAF)) THEN
+           BMBatIP = BMBatIP * FAF
+        ELSE
+           CALL Fatal('SSAEffectiveBMB','FAF (floating area fraction) not present!')
+        END IF
+        
+     CASE('SEM3','sem3')
+        bedrock = SUM( NodalBed(1:nn) * Basis(1:nn) )
+        Hf= rhow * (sealevel-bedrock) / rho
+        IF (hh.GT.Hf) THEN
+           BMBatIP = 0.0_dp
+        ELSE
+           IF (PRESENT(FIPcount)) FIPcount = FIPcount + 1
+        END IF
+           
+     CASE DEFAULT
+        WRITE( Message, * ) 'SSA Melt Param not recognised:', MeltParam
+        CALL FATAL("SSAEffectiveBMB",Message)
+        
+     END SELECT
+     
+   END FUNCTION SSAEffectiveBMB
+   
+!--------------------------------------------------------------------------------
+!> Calculate the fractional floating area of a partly grounded element for SEM1.
+!> For implementing SEP1 use (1-FAF) for grounded area fraction.
+!> Written for element type 303.
+!> To be called per element from ThicknessSolver for SEM1.
+!> See Helene Seroussi TC papers from 2014 and 2018.
+!> More notes here: https://www.overleaf.com/read/chpfpgzhwvjr
+!--------------------------------------------------------------------------------
+   FUNCTION CalcFloatingAreaFraction(element,NodalGM,hhVar,sealevel,rho,rhow) RESULT(FAF)
+
+     IMPLICIT NONE
+     
+     REAL(KIND=dp)              :: FAF ! the area fraction of floating ice
+
+     TYPE(Element_t),POINTER,INTENT(IN)     :: Element
+     REAL(KIND=dp),INTENT(IN)               :: NodalGM(:)
+     TYPE(Variable_t),POINTER,INTENT(IN)    :: hhVar
+     REAL(KIND=dp), INTENT(IN)              :: rho,rhow,sealevel ! to calculate floatation 
+
+     TYPE(Variable_t),POINTER               :: bedVar
+     INTEGER,POINTER                        :: hhPerm(:),bedPerm(:)
+     REAL(KIND=dp),POINTER                  :: hh(:),bed(:)
+     
+     ! The following real vars use Yu's terminology (see overleaf linked above)
+     REAL(KIND=dp) :: ss,tt,A1,A2,x1,x2,x3,x4,x5,y1,y2,y3,y4,y5
+     REAL(KIND=dp) :: B1,B2,B3,Zb1,Zb2,Zb3
+
+     ! NI refers to Node Index.
+     ! NI2 is the sole node of its category (floating or GL, see Yu's notes);
+     ! NI1 and NI3 are both in the other category.
+     ! nn is the number of nodes for the current element (3 for triangles, which is assumed here)
+     INTEGER :: NumFLoatingNodes, nn, NI1, NI2, NI3
+
+     bedVar => VariableGet( CurrentModel % Variables, 'bedrock', UnFoundFatal=.TRUE. )
+     bedPerm => bedVar % Perm
+     bed     => bedVar % Values
+
+     hhPerm  => hhVar % Perm
+     hh      => hhVar % Values
+     
+     nn = GetElementNOFNodes()
+     NumFLoatingNodes = -SUM(NodalGM(1:nn))
+
+     IF (ANY(NodalGM(1:nn).GT.0._dp)) THEN
+        CALL Fatal('CalcFloatingAreaFraction','Fully grounded nodes found!')
+     END IF
+
+     IF (NumFLoatingNodes.LT.1) THEN
+        CALL Fatal('CalcFloatingAreaFraction','Not enough floating nodes!')
+
+     ELSEIF (NumFLoatingNodes.EQ.1) THEN
+        IF (NodalGM(1).EQ.-1) THEN
+           NI2 = element % NodeIndexes(1)
+           NI1 = element % NodeIndexes(2)
+           NI3 = element % NodeIndexes(3)
+        ELSEIF (NodalGM(2).EQ.-1) THEN
+           NI2 = element % NodeIndexes(2)
+           NI1 = element % NodeIndexes(1)
+           NI3 = element % NodeIndexes(3)
+        ELSEIF (NodalGM(3).EQ.-1) THEN
+           NI2 = element % NodeIndexes(3)
+           NI1 = element % NodeIndexes(1)
+           NI3 = element % NodeIndexes(2)
+        END IF
+
+     ELSEIF (NumFLoatingNodes.EQ.2) THEN
+        IF (NodalGM(1).EQ.0) THEN
+           NI2 = element % NodeIndexes(1)
+           NI1 = element % NodeIndexes(2)
+           NI3 = element % NodeIndexes(3)
+        ELSEIF (NodalGM(2).EQ.0) THEN
+           NI2 = element % NodeIndexes(2)
+           NI1 = element % NodeIndexes(1)
+           NI3 = element % NodeIndexes(3)
+        ELSEIF (NodalGM(3).EQ.0) THEN
+           NI2 = element % NodeIndexes(3)
+           NI1 = element % NodeIndexes(1)
+           NI3 = element % NodeIndexes(2)
+        END IF
+
+     ELSEIF (NumFLoatingNodes.GT.2) THEN
+        CALL Fatal('CalcFloatingAreaFraction','Too many floating nodes!')
+
+     END IF
+
+     x1 = CurrentModel % Mesh % Nodes % x(NI1)
+     x2 = CurrentModel % Mesh % Nodes % x(NI2)
+     x3 = CurrentModel % Mesh % Nodes % x(NI3)
+
+     y1 = CurrentModel % Mesh % Nodes % y(NI1)
+     y2 = CurrentModel % Mesh % Nodes % y(NI2)
+     y3 = CurrentModel % Mesh % Nodes % y(NI3)
+
+     B1 = bed(bedPerm(NI1))
+     B2 = bed(bedPerm(NI2))
+     B3 = bed(bedPerm(NI3))
+
+     Zb1= sealevel - hh(hhPerm(NI1)) * rho/rhow
+     Zb2= sealevel - hh(hhPerm(NI2)) * rho/rhow
+     Zb3= sealevel - hh(hhPerm(NI3)) * rho/rhow
+     
+     ss = (Zb2-B2)/(B3-B2-Zb3+Zb2)
+     tt = (Zb1-B1)/(B2-B1-Zb2+Zb1)
+
+     x4 = x1 + tt*(x2-x1)
+     x5 = x2 + ss*(x3-x2)
+     y4 = y1 + tt*(y2-y1)
+     y5 = y2 + ss*(y3-y2)
+     
+     A1 = 0.5_dp * ABS( x1*(y2-y3) + x2*(y3-y1) + x3*(y1-y2) )
+     A2 = 0.5_dp * ABS( x4*(y5-y2) + x5*(y2-y4) + x2*(y4-y5) )
+
+     FAF = A2/A1
+     
+     IF (NumFLoatingNodes.EQ.2) FAF = 1.0_dp - FAF  ! Needed because FAF was grounded fraction
+
+   END FUNCTION CalcFloatingAreaFraction
+   
+END MODULE SSAMaterialModels
+ 

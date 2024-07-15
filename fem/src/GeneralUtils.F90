@@ -308,6 +308,24 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+ SUBROUTINE RenameF(old,new)
+!------------------------------------------------------------------------------
+   CHARACTER(LEN=*) :: old,new
+!------------------------------------------------------------------------------
+   INTERFACE
+     SUBROUTINE rename_c(old,new) bind(c,name="rename_c")
+       USE, INTRINSIC :: iso_c_binding
+       CHARACTER(KIND=C_CHAR) :: old(*), new(*)
+     END SUBROUTINE rename_c
+   END INTERFACE
+
+   CALL rename_c(TRIM(old)//CHAR(0), TRIM(new)//CHAR(0))
+!------------------------------------------------------------------------------
+  END SUBROUTINE RenameF
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
   PURE FUNCTION FileNameQualified(file) RESULT(L)
 !------------------------------------------------------------------------------
     LOGICAL :: L
@@ -870,7 +888,7 @@ CONTAINS
      LOGICAL, OPTIONAL :: noeval
      LOGICAL :: l                          !< Success of the read operation
 !------------------------------------------------------------------------------     
-     INTEGER, PARAMETER :: MAXLEN = 16384
+     INTEGER, PARAMETER :: MAXLEN = 163840
      
      CHARACTER(LEN=:), ALLOCATABLE :: temp
      CHARACTER(LEN=12) :: tmpstr
@@ -2022,6 +2040,37 @@ END FUNCTION ComponentNameVar
 !------------------------------------------------------------------------------
 
 
+! Solves a small dense linear system using Lapack routines
+!------------------------------------------------------------------------------
+  SUBROUTINE SolveLinSys( A, x, n )
+!------------------------------------------------------------------------------
+     INTEGER :: n
+     REAL(KIND=dp) :: A(n,n), x(n), b(n)
+
+     INTERFACE
+       SUBROUTINE SolveLapack( N,A,x )
+         INTEGER  N
+         DOUBLE PRECISION  A(n*n),x(n)
+       END SUBROUTINE
+     END INTERFACE
+
+!------------------------------------------------------------------------------
+     SELECT CASE(n)
+     CASE(1)
+       x(1) = x(1) / A(1,1)
+     CASE(2)
+       b = x
+       CALL SolveLinSys2x2(A,x,b)
+     CASE(3)
+       b = x
+       CALL SolveLinSys3x3(A,x,b)
+     CASE DEFAULT
+       CALL SolveLapack(n,A,x)
+     END SELECT
+!------------------------------------------------------------------------------
+  END SUBROUTINE SolveLinSys
+!------------------------------------------------------------------------------
+   
 
 !------------------------------------------------------------------------------
    SUBROUTINE ClearMatrix( Matrix ) 

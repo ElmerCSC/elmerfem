@@ -35,6 +35,28 @@
 ! *****************************************************************************/
 
 
+SUBROUTINE IsosurfaceSolver_init( Model,Solver,dt,Transient )
+!------------------------------------------------------------------------------
+  USE DefUtils
+
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t), TARGET :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+  LOGICAL :: GotIt
+  CHARACTER(LEN=MAX_NAME_LEN) :: Name
+    
+  IF( .NOT. ListCheckPresent( Solver % Values,'Variable') ) THEN
+    Name = ListGetString( Solver % Values, 'Equation',GotIt)
+    CALL ListAddString( Solver % Values,'Variable',&
+        '-nooutput -global '//TRIM(Name)//'_var')
+  END IF
+  
+END SUBROUTINE IsosurfaceSolver_init
+
 
 !------------------------------------------------------------------------------
 !> Subroutine for extracting isosurfaces in 3d and isolines in 2d.
@@ -63,7 +85,7 @@ SUBROUTINE IsosurfaceSolver( Model,Solver,dt,Transient )
              WedgeToTetraMap(3,4), BrickToTetraMap(5,4), &
              TriangleToTriangleMap(1,3), QuadToTriangleMap(2,3)
   INTEGER, POINTER :: Map(:,:), Indexes(:)
-  INTEGER :: NoOrigElements,calls=0,ierr
+  INTEGER :: NoOrigElements,NoOrigBoundaryElements,calls=0,ierr
 
   TYPE(Variable_t), POINTER :: LevelVariable
   LOGICAL :: MovingMesh, Found
@@ -191,6 +213,7 @@ SUBROUTINE IsosurfaceSolver( Model,Solver,dt,Transient )
   ! Check the leading dimension
   !---------------------------------------------------------------
   dim = 0
+
   DO i = ElemFirst,ElemLast 
     Element => Mesh % Elements( i ) 
     Model % CurrentElement => Element
@@ -341,7 +364,10 @@ SUBROUTINE IsosurfaceSolver( Model,Solver,dt,Transient )
   CALL Info('IsosurfaceSolver','Creating mesh edges',Level=9)
   IF (.NOT.ASSOCIATED(Mesh % Edges)) THEN
     IF( dim == 2 ) THEN
+      NoOrigBoundaryElements = Mesh % NumberOfBoundaryElements
+      Mesh % NumberOfBoundaryElements = 0
       CALL FindMeshEdges2D(Mesh)
+      Mesh % NumberOfBoundaryElements = NoOrigBoundaryElements
     ELSE
       CALL FindMeshEdges3D(Mesh)
     END IF
@@ -405,7 +431,7 @@ SUBROUTINE IsosurfaceSolver( Model,Solver,dt,Transient )
   ! Release temporary structures and revert original mesh
   !----------------------------------------------------------------------	
   IF(.NOT. FixedSurface ) THEN
-    IF( NoEdges > 0 ) CALL ReleaseMeshEdgeTables( Mesh )
+    IF( NoEdges > 0 .AND. Mesh % MeshDim == 2 ) CALL ReleaseMeshEdgeTables( Mesh )
     IF ( ASSOCIATED( NewElements ) ) THEN
       DO i=1, NoNewElements
         IF ( ASSOCIATED( NewElements(i) % NodeIndexes ) ) &
@@ -463,7 +489,16 @@ SUBROUTINE IsosurfaceSolver( Model,Solver,dt,Transient )
   IF( GetLogical( Params,'Save Gmsh Geo File',Found ) ) THEN
     CALL SaveGmshGeo2D(IsoMesh)
   END IF
+  IF( GetLogical( Params,'Save STL File',Found ) ) THEN
+    CALL SaveSTLSurface(IsoMesh)    
+  END IF
 
+  ! Just create some variable that will act as a norm.
+  IF(SIZE(Solver % Variable % Values) == 1 ) THEN
+    Solver % Variable % Values = SUM(ParSizes)
+    Solver % Variable % Norm = SUM(ParSizes)
+  END IF
+  
 
 CONTAINS
 
@@ -1049,8 +1084,7 @@ CONTAINS
     DO i=1,Mesh % NumberOfBulkElements
       Element => Mesh % Elements(i)
       IF( Element % TYPE % ElementCode /= 202 ) THEN
-        CALL Warn('SaveGmshGeo2D','Only elements of type 202 can be saved in Gmsh geo format!')
-        RETURN
+        CALL Fatal('SaveGmshGeo2D','Only elements of type 202 can be saved in Gmsh geo format!')
       END IF
       
       i1 = Element % NodeIndexes(1) 
@@ -1250,6 +1284,92 @@ CONTAINS
 
   END SUBROUTINE SaveGmshGeo2D
 
+
+  ! Saves a loop in STL format. 
+  ! This is still not general and assumes one body only.
+  !-------------------------------------------------------------- 
+  SUBROUTINE SaveSTLSurface(Mesh)
+    
+    TYPE(Mesh_t), POINTER :: Mesh
+    CHARACTER(LEN=MAX_NAME_LEN) :: Filename
+    LOGICAL :: Found
+    INTEGER, PARAMETER :: GeoUnit = 10
+    INTEGER :: i,j,k,n, ReverseCnt
+    TYPE(Nodes_t) :: Nodes 
+    REAL(KIND=dp) :: Normal(3), MeshCenter(3), ElemCenter(3), dVec(3)
+    LOGICAL :: Reverse
+    
+    IF( ParEnv % PEs > 1 ) THEN
+      CALL Warn('SaveSTLSurface','Not implemented yet in parallel')
+    END IF
+    
+    Filename = ListGetString(Params,'STL Filename',Found)
+    IF( .NOT. Found ) Filename = 'mesh.stl'
+
+    n = Mesh % NumberOfNodes
+    MeshCenter(1) = SUM(Mesh % Nodes % x(1:n)) / n
+    MeshCenter(2) = SUM(Mesh % Nodes % y(1:n)) / n
+    MeshCenter(3) = SUM(Mesh % Nodes % z(1:n)) / n
+
+    n = 3
+    ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n))
+    
+    
+    ReverseCnt = 0
+    
+    CALL Info('SaveSTLSurface','Writing the surface mesh to STL file: '//TRIM(Filename))
+    
+    OPEN( UNIT=GeoUnit, FILE=Filename, STATUS='UNKNOWN')     
+    WRITE( GeoUnit,'(A)') 'solid body'
+    DO i=1,Mesh % NumberOfBulkElements
+      Element => Mesh % Elements(i)
+      IF( Element % TYPE % ElementCode /= 303 ) THEN
+        CALL Fatal('SaveSTLSurface','Only elements of type 303 can be saved in STL format!')
+      END IF      
+      CALL CopyElementNodesFromMesh(Nodes,Mesh,n,Element % NodeIndexes) 
+      Normal = NormalVector( Element, Nodes )  
+
+      n = 3
+      ElemCenter(1) = SUM(Nodes % x) / n
+      ElemCenter(2) = SUM(Nodes % y) / n
+      ElemCenter(3) = SUM(Nodes % z) / n
+
+      ! For simple geometries "MeshCenter" should be inside the object.
+      dVec = ElemCenter - MeshCenter
+
+      ! If the normal points differently than dVec then reverse nodes. 
+      Reverse = (SUM(Normal*dVec) < 0.0)
+      IF( Reverse) THEN
+        ReverseCnt = ReverseCnt + 1
+        Normal = -Normal
+      END IF
+      
+      WRITE( GeoUnit,'(A,3ES15.6)')   '  facet normal',Normal 
+      WRITE( GeoUnit,'(A)')           '    outer loop'
+      IF( Reverse ) THEN
+        DO j=3,1,-1
+          WRITE( GeoUnit,'(A,3ES15.6)') '      vertex',Nodes % x(j), Nodes % y(j), Nodes % z(j) 
+        END DO
+      ELSE
+        DO j=1,3
+          WRITE( GeoUnit,'(A,3ES15.6)') '      vertex',Nodes % x(j), Nodes % y(j), Nodes % z(j) 
+        END DO
+      END IF
+      WRITE( GeoUnit,'(A)')           '    end loop'
+      WRITE( GeoUnit,'(A)')           '  end facet'
+    END DO
+    WRITE( GeoUnit,'(A)') 'endsolid body'
+
+
+    CALL Info('SaveSTLSurface','Number of triangular elements in STL file: '&
+        //I2S(Mesh % NumberOfBulkElements))
+    CALL Info('SaveSTLSurface','Number of element with reversed normal: '//I2S(ReverseCnt))
+    
+    CALL Info('SaveSTLSurface','Finished writing the STL file!')
+
+  END SUBROUTINE SaveSTLSurface
+
+  
 !------------------------------------------------------------------------------
 END SUBROUTINE IsosurfaceSolver
 !------------------------------------------------------------------------------

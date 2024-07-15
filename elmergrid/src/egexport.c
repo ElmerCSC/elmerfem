@@ -42,7 +42,7 @@
 
 int SaveAbaqusInput(struct FemType *data,char *prefix,int info)
 /* Saves the grid in a format that can be read by ABAQUS 
-   program designed for sructural mechanics. 
+   program designed for structural mechanics.
    The elementtype is set to be that of thermal conduction. 
    */
 {
@@ -375,6 +375,7 @@ int SaveMeshGmsh(struct FemType *data,struct BoundaryType *bound,
 /* This procedure saves the mesh in a format understood by Gmsh */
 {
   int material,noknots,noelements,bulkelems,sideelems,gmshtype,elemtype,boundtype;
+  int usedbody[MAXBODIES],usedbc[MAXBCS],nonames,physent;
   char filename[MAXFILESIZE],outstyle[MAXFILESIZE];
   int i,j,k,nodesd2,elemind;
   int ind[MAXNODESD2];
@@ -415,6 +416,52 @@ int SaveMeshGmsh(struct FemType *data,struct BoundaryType *bound,
   fprintf(out,"2.2 0 %ld\n",sizeof(double));
   fprintf(out,"$EndMeshFormat\n");
 
+  if(data->bodynamesexist || data->boundarynamesexist)  {
+    for(i=0;i<MAXBODIES;i++)
+      usedbody[i] = 0;
+    for(i=0;i<MAXBCS;i++)
+      usedbc[i] = 0;
+        
+    fprintf(out,"$PhysicalNames\n");   
+    nonames = 0;
+    if(data->boundarynamesexist) {
+      for(j=0;j < MAXBOUNDARIES;j++) {
+	if(!bound[j].created) continue;
+	if(!bound[j].nosides) continue;      
+	for(i=1; i <= bound[j].nosides; i++) {
+	  GetBoundaryElement(i,&bound[j],data,ind,&elemtype); 
+	  k = bound[j].types[i];
+	  if(k < MAXBCS) usedbc[k] = GetElementDimension(elemtype);
+	}
+      }
+      for(i=1;i<MAXBCS;i++) 	
+	if(data->boundaryname[i] && usedbc[i]) nonames++;
+    }
+    if(data->bodynamesexist) {
+      for(i=1;i<=noelements;i++) {
+	elemtype = data->elementtypes[i];
+	k = data->material[i];
+	if(k < MAXBODIES) usedbody[k] = GetElementDimension(elemtype);
+      }
+      for(i=1;i<MAXBODIES;i++) 	
+	if(data->bodyname[i] && usedbody[i]) nonames++;
+    }
+    fprintf(out,"%d\n",nonames);
+    if(data->boundarynamesexist) {
+      for(i=1;i<MAXBCS;i++) {
+	if(data->boundaryname[i] && usedbc[i]) 	  
+	  fprintf(out,"%d %d \"%s\"\n",usedbc[i],i,data->boundaryname[i]);
+      }	  
+    }
+    if(data->bodynamesexist) {
+      for(i=1;i<MAXBODIES;i++) {
+	if(data->bodyname[i] && usedbody[i]) 	  
+	  fprintf(out,"%d %d \"%s\"\n",usedbody[i],i,data->bodyname[i]);
+      }	  
+    }	   
+    fprintf(out,"$EndPhysicalNames\n");
+  }
+  
   if(info) printf("Saving %d node coordinates.\n",noknots);
   fprintf(out,"$Nodes\n");
   fprintf(out,"%d\n",noknots);
@@ -445,8 +492,11 @@ int SaveMeshGmsh(struct FemType *data,struct BoundaryType *bound,
     material = data->material[i];
 
     gmshtype = ElmerToGmshType( elemtype );
-    
-    fprintf(out,"%d %d %d %d %d",i,gmshtype,2,0,material);
+
+    physent = 0;
+    if(data->bodynamesexist && material<MAXBODIES)
+      if(data->bodyname[material] && usedbody[material]) physent = material;
+    fprintf(out,"%d %d %d %d %d",i,gmshtype,2,physent,material);
 
     nodesd2 = data->elementtypes[i]%100;
 
@@ -473,7 +523,10 @@ int SaveMeshGmsh(struct FemType *data,struct BoundaryType *bound,
 	gmshtype = ElmerToGmshType( elemtype );
 	elemind += 1;
 
-	fprintf(out,"%d %d %d %d %d",elemind,gmshtype,2,0,boundtype);
+	physent = 0;
+	if(data->boundarynamesexist && boundtype<MAXBCS)
+	  if(data->boundaryname[boundtype] && usedbc[boundtype]) physent = boundtype;
+	fprintf(out,"%d %d %d %d %d",elemind,gmshtype,2,physent,boundtype);
 	nodesd2 = elemtype%100;
 	
 	ElmerToGmshIndx(elemtype,ind);
@@ -487,26 +540,7 @@ int SaveMeshGmsh(struct FemType *data,struct BoundaryType *bound,
   fprintf(out,"$EndElements\n");
 
 
-#if 0
-  if(data->bodynamesexist || data->boundarynamesexist)  {
-    fprintf(out,"$PhysicalNames\n");
-    
-
-    /* this is not really coded yet, just some bits to continue from */
-
-    $PhysicalNames
-     number-of-names
-     physical-dimension physical-number "physical-name"
-     ...
-
-      if(data->boundarynamesexist) 
-	fprintf(out,"bc_%d_%s %d ",boundtype,data->boundaryname[boundtype],sideelemtype);	  
-    
-    if(data->bodynamesexist) 
-      fprintf(out,"body_%d_%s %d ",material,data->bodyname[material],elemtype);
-      fprintf(out,"$EndPhysicalNames\n");
-  }
-
+#if 0 
   timesteps = data->timesteps;
   if(timesteps < 1) timesteps = 1;
 
@@ -515,7 +549,6 @@ int SaveMeshGmsh(struct FemType *data,struct BoundaryType *bound,
     return(2);
   }
  
-
   novctrs = 0;
   for(i=0;i<MAXDOFS;i++) {
     if(data->edofs[i] == 1) novctrs += 1; 
@@ -531,8 +564,6 @@ int SaveMeshGmsh(struct FemType *data,struct BoundaryType *bound,
     for(i=1;i<=data->noknots;i++) 
       rpart[i] = 1.0 * data->nodepart[i];
   }
-
-
 
   for(i=0; i<MAXDOFS; i++) {
     if(data->edofs[i] == 1) 

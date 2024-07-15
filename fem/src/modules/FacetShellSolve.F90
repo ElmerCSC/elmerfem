@@ -306,6 +306,7 @@
      CALL DefaultFinishBulkAssembly()
 
      CALL BCAssembly()
+     CALL DefaultFinishBoundaryAssembly()
      CALL DefaultFinishAssembly()
      CALL ConcentratedLoads()
 
@@ -1012,8 +1013,8 @@
           Tblock( 6*i-5, 6*i-5 ) =  1.0d0
           Tblock( 6*i-4, 6*i-4 ) =  1.0d0
           Tblock( 6*i-3, 6*i-3 ) =  1.0d0
-          Tblock( 6*i-2, 6*i-1 ) =  1.0d0
-          Tblock( 6*i-1, 6*i-2 ) = -1.0d0
+          Tblock( 6*i-2, 6*i-1 ) =  -1.0d0
+          Tblock( 6*i-1, 6*i-2 ) = 1.0d0
           Tblock( 6*i-0, 6*i-0 ) =  1.0d0
        END DO
        LocalDeflection = MATMUL( Tblock, LocalDeflection(1:6*n) )
@@ -1475,8 +1476,8 @@
           Tblock( 6*i-5, 6*i-5 ) =  1.0d0
           Tblock( 6*i-4, 6*i-4 ) =  1.0d0
           Tblock( 6*i-3, 6*i-3 ) =  1.0d0
-          Tblock( 6*i-2, 6*i-1 ) =  1.0d0
-          Tblock( 6*i-1, 6*i-2 ) = -1.0d0
+          Tblock( 6*i-2, 6*i-1 ) =  -1.0d0
+          Tblock( 6*i-1, 6*i-2 ) = 1.0d0
           Tblock( 6*i-0, 6*i-0 ) =  1.0d0
        END DO
 
@@ -2122,7 +2123,7 @@
 
 !         Compute the final reduced shear strain
 !         ======================================
-          ShearStrain(1:2,1:18) = MATMUL(invJ,ShearRef(1:2,1:18))
+          ShearStrain(1:2,1:18) = -MATMUL(invJ,ShearRef(1:2,1:18))
 
 !      The SMITC4 element
 !      ==================
@@ -2201,7 +2202,7 @@
 !         Compute the final reduced shear strain
 !         ======================================
           CALL Jacobi4(Jmat,invJ,detJ,U,V,x,y)
-          ShearStrain(1:2,1:24) = MATMUL(invJ,ShearRef(1:2,1:24))
+          ShearStrain(1:2,1:24) = -MATMUL(invJ,ShearRef(1:2,1:24))
 
        CASE DEFAULT
          CALL Fatal('ShellSolver','Illegal number of nodes for Smitc elements.')

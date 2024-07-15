@@ -1,0 +1,48 @@
+Check Keywords "Warn"
+Header
+  Mesh DB "." "1d"
+End
+Simulation
+  Max Output Level = 6
+  Coordinate System = "Cartesian 1D"
+  Simulation Type = Transient
+  Timestepping Method = BDF
+  BDF Order = 1
+  Timestep Intervals(1) = 5
+  Timestep Sizes(1) = 1
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 50
+
+  Mesh Levels = 8
+End
+
+Body 1
+  Equation = 1
+  Body Force = 1
+End
+
+Body Force 1
+  Source = Variable Potential
+    Real Procedure "Source" "Source"
+End
+
+Equation 1
+  Active Solvers(1)=1
+End
+
+Solver 1
+  Equation = "Poisson"
+  Variable = "Potential"
+  Variable DOFs = 1
+  Procedure = "Poisson" "PoissonSolver"
+  Linear System Solver = "Direct"
+  Steady State Convergence Tolerance = 2e-07
+End
+
+Boundary Condition 1
+  Target Boundaries(2) = 1 2
+  Potential = Real 0
+End
+Solver 1 :: Reference Norm Tolerance = Real 1e-4
+Solver 1 :: Reference Norm = Real 1.41393619E+00
+RUN

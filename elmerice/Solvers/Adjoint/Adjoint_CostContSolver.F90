@@ -121,15 +121,22 @@ SUBROUTINE Adjoint_CostContSolver( Model,Solver,dt,TransientSimulation )
     allocate(Basis(N),dBasisdx(N,3))
 
 !!!!!!! Check for parallel run 
-    Parallel = .FALSE.
-    IF ( ASSOCIATED( Solver % Matrix % ParMatrix ) ) THEN
-      IF ( Solver %  Matrix % ParMatrix % ParEnv % PEs > 1 )  THEN
-          Parallel = .TRUE.
-      END IF
+    !Parallel = .FALSE.
+    !IF ( ASSOCIATED( Solver % Matrix % ParMatrix ) ) THEN
+    !  IF ( Solver %  Matrix % ParMatrix % ParEnv % PEs > 1 )  THEN
+    !      Parallel = .TRUE.
+    !  END IF
+    !END IF
+    Parallel = ParEnv % PEs > 1
+
+    IF(ASSOCIATED(Solver % ActiveElements)) THEN
+      !! check if we are on a boundary or in the bulk
+      BoundarySolver = ( Solver % ActiveElements(1) > Model % Mesh % NumberOfBulkElements )
+    ELSE
+      BoundarySolver = .TRUE. ! must be true for other parts if no elements present
+      ! if not boundarysolver would have active elements
     END IF
 
-    !! check if we are on a boundary or in the bulk
-    BoundarySolver = ( Solver % ActiveElements(1) > Model % Mesh % NumberOfBulkElements )
     IF (BoundarySolver) THEN 
       DIM = CoordinateSystemDimension() - 1
     ELSE
@@ -274,7 +281,7 @@ SUBROUTINE Adjoint_CostContSolver( Model,Solver,dt,TransientSimulation )
      IF (ASSOCIATED(CostVar)) THEN
          CostVar % Values(1)=Cost_S
      END IF
-     IF (Solver % Matrix % ParMatrix % ParEnv % MyPE == 0) then
+     IF (ParEnv % MyPE == 0) then
         OPEN (12, FILE=CostFile,POSITION='APPEND')
            write(12,'(3(ES20.11E3))') TimeVar % Values(1),Cost_S,sqrt(2*Cost_S/Area_S)
         CLOSE(12)

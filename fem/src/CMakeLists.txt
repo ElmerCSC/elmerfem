@@ -36,12 +36,12 @@ SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
   ParallelEigenSolve.F90 solve_cmplx.F90 solve_real.F90 MGPrec.F90
   DefUtils.F90 MeshPartition.F90 MeshRemeshing.F90
   RadiationFactors.F90 f_stubs.c
-  ExchangeCorrelations.F90 SolveHypre.c amgx.c SolverActivate_x.F90
+  ExchangeCorrelations.F90 SolveHypre.c amgx.c rocalution.cpp SolverActivate_x.F90
   SolveTrilinos.cxx SolveSuperLU.c
   umf4_f77wrapper.c VankaCreate.F90 ParticleUtils.F90 Feti.F90
   cholmod.c InterpolateMeshToMesh.F90 InterpVarToVar.F90
   LinearForms.F90 H1Basis.F90 CircuitUtils.F90 BackwardError.F90
-  ElmerSolver.F90 MagnetoDynamicsUtils.F90 ComponentUtils.F90 
+  ElmerSolver.F90 MagnetoDynamicsUtils.F90 LumpingUtils.F90 
   ZirkaHysteresis.F90 SolidMechanicsUtils.F90 MatrixAssembly.F90 
   OptimizationUtils.F90 MeshGenerate.F90)
 
@@ -176,11 +176,23 @@ IF(HAVE_ZOLTAN)
   # SET(ELMERLIB_RPATH_STRING "${ELMERLIB_RPATH_STRING}/:${ZOLTAN_LIBDIR}")
 ENDIF()
 
-# ElmerSolver libraries 
-SET(ELMERSOLVER_LIBRARIES matc umfpack 
-                          amd fhuti binio arpack
-                          ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES} 
+# ElmerSolver libraries
+IF(UMFPACK_FOUND)
+  SET(ELMERSOLVER_LIBRARIES matc fhuti binio arpack
+                          ${UMFPACK_LIBRARIES}
+                          ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES}
                           ${CMAKE_DL_LIBS})
+
+  TARGET_INCLUDE_DIRECTORIES(elmersolver PRIVATE ${UMFPACK_INCLUDE_DIR})
+  #LIST(APPEND ELMERSOLVER_LIBRARIES ${UMFPACK_LIBRARIES})
+  #TARGET_LINK_LIBRARIES(elmersolver "${UMFPACK_LIBRARIES}")
+ELSE()
+  SET(ELMERSOLVER_LIBRARIES matc fhuti binio arpack
+                          umfpack amd
+                          ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES}
+                          ${CMAKE_DL_LIBS})
+  TARGET_INCLUDE_DIRECTORIES(elmersolver PRIVATE ${PROJECT_SOURCE_DIR}/umfpack/src/umfpack/include)
+ENDIF()
 
 IF(WITH_LUA)
   LIST(APPEND ELMERSOLVER_LIBRARIES ${LUA_LIBRARIES})
@@ -279,6 +291,10 @@ IF(WITH_MPI)
   SET(MPI_SOLVER_FILEPATH "${CMAKE_INSTALL_PREFIX}/bin/${ELMERSOLVER_OUTPUT_NAME}")
 ENDIF()
 
+IF(WITH_ROCALUTION)
+  TARGET_LINK_LIBRARIES(elmersolver "${ROCALUTION_LIBRARY}")
+ENDIF()  
+
 IF(WITH_AMGX)
   TARGET_LINK_LIBRARIES(elmersolver "${AMGX_LIBRARY};${CUDA_LIBRARIES}")
 ENDIF()  
@@ -286,6 +302,11 @@ ENDIF()
 IF(WITH_Trilinos)
   TARGET_LINK_LIBRARIES(elmersolver "${Trilinos_LIBRARIES};${ML_LIBRARIES};${Epetra_LIBRARIES};${Teuchos_LIBRARIES}")
 ENDIF()
+
+IF (WITH_CHOLMOD)
+  SET(CURR_CFLAGS "-DHAVE_CHOLMOD ${MPI_Fortran_COMPILE_FLAGS}")
+  TARGET_LINK_LIBRARIES(elmersolver "${CHOLMOD_LIBRARIES};")
+ENDIF()    
 
 # elmersolver -library
 #TARGET_LINK_LIBRARIES(elmersolver ${ELMERSOLVER_LIBRARIES})
@@ -382,3 +403,5 @@ IF(WITH_MPI)
     \${CMAKE_INSTALL_PREFIX}/bin/ElmerSolver.exe)")
   ENDIF()
 ENDIF()
+
+

@@ -235,6 +235,7 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
     IF(AnyBC) THEN
       CALL GlobalBoundaryAssemby()
     END IF
+    CALL DefaultFinishBoundaryAssembly( )
     
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()
@@ -269,6 +270,7 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
     CALL DefaultInitialize()
     CALL GlobalBulkAssembly( 1 )
     CALL DefaultFinishBulkAssembly( )
+    CALL DefaultFinishBoundaryAssembly( )
     
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs( Ux = SensVar )
@@ -743,7 +745,7 @@ CONTAINS
       VeloPres(1:n) = GetReal(BC,'Filmpressure Velocity',GotVelo)
       CoeffPres(1:n) = GetReal(BC,'Filmpressure Transfer Coefficient',GotIt)
       ExtPres(1:n) = GetReal(BC,'External FilmPressure',GotExt)
-      IF(XOR(GotExt,GotIt)) THEN
+      IF(GotExt .NEQV. GotIt) THEN
         CALL Fatal(Caller,'Give neither or both keywords for Robin BC!')
       END IF
 

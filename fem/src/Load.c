@@ -242,14 +242,14 @@ static void STDCALLBULL append_path(char *path1, char *path2)
     len1 = strnlen(path1, 2*MAX_PATH_LEN);
 #if defined(WIN32) || defined(MINGW)
     if (path1[len1-1] != '\\') {
-        strncat(path1, "\\", 2*MAX_PATH_LEN);
+        strncat(path1, "\\", 2*MAX_PATH_LEN-1);
     }
 #else
     if (path1[len1-1] != '/') {
-        strncat(path1, "/", 2*MAX_PATH_LEN);
+        strncat(path1, "/", 2*MAX_PATH_LEN-1);
     }
 #endif
-    strncat(path1, path2, 2*MAX_PATH_LEN);
+    strncat(path1, path2, 2*MAX_PATH_LEN-1);
 }
 
 /*--------------------------------------------------------------------------
@@ -268,20 +268,20 @@ static void STDCALLBULL try_dlopen(char *LibName, void **Handle, char *errorBuf)
     strncpy(dl_names[0], LibName, 2*MAX_PATH_LEN);
     strncpy(dl_names[1], LibName, 2*MAX_PATH_LEN);
 
-    strncat(dl_names[1], SHL_EXTENSION, MAX_PATH_LEN);
+    strncat(dl_names[1], SHL_EXTENSION, MAX_PATH_LEN-1);
 
     for (i = 0; i < 2; i++) {
 #ifdef HAVE_DLOPEN_API
         if ((*Handle = dlopen(dl_names[i], RTLD_NOW)) == NULL) {
-            strncat(errorBuf, dlerror(), MAX_PATH_LEN);
-            strncat(errorBuf, "\n", MAX_PATH_LEN);
+            strncat(errorBuf, dlerror(), MAX_PATH_LEN-1);
+            strncat(errorBuf, "\n", MAX_PATH_LEN)-1;
         } else {
             break;
         }
 #elif defined(HAVE_LOADLIBRARY_API)
         if ((*Handle = LoadLibrary(dl_names[i])) == NULL) {
             sprintf(error_tmp, "Can not find %s.\n", dl_names[i]);
-            strncat(errorBuf, error_tmp, ERROR_BUF_LEN);
+            strncat(errorBuf, error_tmp, ERROR_BUF_LEN-1);
         } else {
             break;
         }
@@ -292,7 +292,7 @@ static void STDCALLBULL try_dlopen(char *LibName, void **Handle, char *errorBuf)
 /*--------------------------------------------------------------------------
   INTERNAL: Parses the search path and tries to open a solver.
             First search is done without any path prefixes.
-  Args: SearchPath - colon separated list of searhc paths
+  Args: SearchPath - colon separated list of search paths
         Library - name of the library file to be opened
         Handle - handle to the dl file, NULL if fails
         error_buf - string buffer for error messages
@@ -361,14 +361,14 @@ void *STDCALLBULL FC_FUNC(loadfunction,LOADFUNCTION) ( int *Quiet, int *abort_no
    strncpy(ElmerLib, ".", 2*MAX_PATH_LEN);
    cptr = (char *)getenv( "ELMER_LIB" );
    if ( cptr != NULL ) {
-      strncat( ElmerLib, ELMER_PATH_SEPARATOR, 2*MAX_PATH_LEN );
-      strncat( ElmerLib, cptr, 2*MAX_PATH_LEN );
+      strncat( ElmerLib, ELMER_PATH_SEPARATOR, 2*MAX_PATH_LEN-1 );
+      strncat( ElmerLib, cptr, 2*MAX_PATH_LEN-1 );
    } else {
       cptr = (char *)getenv("ELMER_HOME");
       if ( cptr != NULL  ) {
-         strncat( ElmerLib, ELMER_PATH_SEPARATOR, 2*MAX_PATH_LEN);
-         strncat( ElmerLib, cptr, 2*MAX_PATH_LEN );
-         strncat( ElmerLib, "/share/elmersolver/lib", 2*MAX_PATH_LEN );
+         strncat( ElmerLib, ELMER_PATH_SEPARATOR, 2*MAX_PATH_LEN-1);
+         strncat( ElmerLib, cptr, 2*MAX_PATH_LEN-1 );
+         strncat( ElmerLib, "/share/elmersolver/lib", 2*MAX_PATH_LEN-1 );
       } else {
 #if defined(WIN32) || defined(MINGW32)
 	/* Should not get here unless WIN32 implements DLOPEN_API */
@@ -377,21 +377,21 @@ void *STDCALLBULL FC_FUNC(loadfunction,LOADFUNCTION) ( int *Quiet, int *abort_no
 	n = (int)(exeName - appPath);
 	if(n < 0) n = 0;
 	if(n > MAX_PATH_LEN) n = MAX_PATH_LEN;
-        strncat(ElmerLib, ELMER_PATH_SEPARATOR, 2*MAX_PATH_LEN);
+        strncat(ElmerLib, ELMER_PATH_SEPARATOR, 2*MAX_PATH_LEN-1);
 	strncat(ElmerLib, appPath, n);
-	strncat(ElmerLib, "\\..\\share\\elmersolver\\lib", 2*MAX_PATH_LEN);
+	strncat(ElmerLib, "\\..\\share\\elmersolver\\lib", 2*MAX_PATH_LEN-1);
 #else
-        strncat( ElmerLib, ELMER_PATH_SEPARATOR, 2*MAX_PATH_LEN );
-	strncat( ElmerLib, ELMER_SOLVER_HOME, 2*MAX_PATH_LEN );
-	strncat( ElmerLib, "/lib", 2*MAX_PATH_LEN );
+        strncat( ElmerLib, ELMER_PATH_SEPARATOR, 2*MAX_PATH_LEN-1 );
+	strncat( ElmerLib, ELMER_SOLVER_HOME, 2*MAX_PATH_LEN-1 );
+	strncat( ElmerLib, "/lib", 2*MAX_PATH_LEN-1 );
 #endif
       }
    }
 
    cptr = (char *)getenv( "ELMER_MODULES_PATH" );
    if ( cptr != NULL ) {
-      strncat( ElmerLib, ELMER_PATH_SEPARATOR, 2*MAX_PATH_LEN);
-      strncat( ElmerLib, cptr, 2*MAX_PATH_LEN);
+      strncat( ElmerLib, ELMER_PATH_SEPARATOR, 2*MAX_PATH_LEN-1);
+      strncat( ElmerLib, cptr, 2*MAX_PATH_LEN-1);
    }
 
    try_open_solver(ElmerLib, Library, &Handle, ErrorBuffer);
@@ -588,6 +588,7 @@ void STDCALLBULL FC_FUNC_(matc_get_array,MATC_GET_ARRAY) (char *name,
            double *values, int *nrows, int *ncols )
 #endif
 {
+void var_copy_transpose(char *name,double *values,int nrows,int ncols);
   var_copy_transpose(name,values,*nrows,*ncols);
 }
 

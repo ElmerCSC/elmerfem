@@ -1,15 +1,17 @@
 SET(CMAKE_Fortran_MODULE_DIRECTORY
   ${PROJECT_BINARY_DIR}/fmodules CACHE PATH "Directory for Fortran modules")
 
+SET(PROJ "")
 SET(ElmerIceUSF_SRC Buoyancy.F90 USF_GetFrictionHeating.F90 USF_Sliding.F90
                     CaffeFlow.F90 USF_LateralFriction.F90 USF_WaterTransfer.F90
                     USF_Contact.F90 USF_ShapeFactor.F90 USF_Zs.F90 USF_Damage.F90
                     USF_Haf.F90 USF_CouplingGlaDS_SSA.F90 USF_CoV.F90 USF_IceProperties.F90
-		    USF_SourceCalcCalving.F90 USF_proj.F90)
+		                USF_GlacierMeshMetric.F90 USF_SourceCalcCalving.F90 ${PROJ})
 
 ADD_LIBRARY(ElmerIceUSF SHARED ${ElmerIceUSF_SRC})
 
 IF(HAVE_PROJ)
+  SET(PROJ USF_proj.F90)
   INCLUDE_DIRECTORIES(${PROJ_INCLUDE_DIR})
   INCLUDE_DIRECTORIES(${FORTRANGIS_INCLUDE_DIR})
   TARGET_LINK_LIBRARIES(ElmerIceUSF ${PROJ_LIBRARY})

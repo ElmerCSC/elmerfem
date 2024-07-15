@@ -136,6 +136,29 @@ CONTAINS
 !-----------------------------------------------------------------
 
 
+!-----------------------------------------------------------------
+! > This subroutine sets the value of ExecID (using the -exec-id
+! > command-line argument's value if specified, or the default
+! > value otherwise).
+!-----------------------------------------------------------------
+   SUBROUTINE SetExecID()
+!-----------------------------------------------------------------
+     CHARACTER(LEN=MAX_NAME_LEN) :: Arg
+     INTEGER :: NoArgs, i
+     ExecID = "elmerice"
+     NoArgs = COMMAND_ARGUMENT_COUNT()
+     DO i = 1,NoArgs
+        CALL GET_COMMAND_ARGUMENT(i, Arg)
+        IF (Arg == "-exec-id") THEN
+           IF (i < NoArgs) CALL GET_COMMAND_ARGUMENT(i+1, ExecID)
+           EXIT
+        END IF
+     END DO
+!-----------------------------------------------------------------
+   END SUBROUTINE SetExecID
+!-----------------------------------------------------------------
+
+
 !------------------------------------------------------------------------
 !> Initialize parallel execution environment
 !-----------------------------------------------------------------------
@@ -191,7 +214,8 @@ CONTAINS
 #ifdef HAVE_XIOS
     INQUIRE(FILE="iodef.xml", EXIST=USE_XIOS)
     IF (USE_XIOS) THEN
-      CALL xios_initialize(TRIM(xios_id),return_comm=ELMER_COMM_WORLD)
+      CALL SetExecID()
+      CALL xios_initialize(TRIM(ExecID),return_comm=ELMER_COMM_WORLD)
     ELSE
 #ifndef ELMER_COLOUR
 #define ELMER_COLOUR 0
@@ -248,8 +272,6 @@ CONTAINS
     TYPE(Matrix_t) :: SourceMatrix
 !-----------------------------------------------------------------------
     CALL FindActivePEs( ParallelInfo, SourceMatrix )
-    SPMatrix % ParEnv = ParEnv
-    SPMatrix % ParEnv % ActiveComm = SourceMatrix % Comm
 !-----------------------------------------------------------------------
   END SUBROUTINE ParEnvInit
 !-----------------------------------------------------------------------
@@ -262,6 +284,7 @@ CONTAINS
     INTEGER :: ierr
 !-----------------------------------------------------------------------
     LOGICAL, ALLOCATABLE :: Active(:)
+
     ALLOCATE( Active(ParEnv % PEs) )
 
     IF ( .NOT. ASSOCIATED(ParEnv % Active) ) &
@@ -296,7 +319,7 @@ CONTAINS
       TYPE(NlistEntry_t), POINTER :: Head
     END TYPE Nlist_t
 
-     TYPE(NlistEntry_t), POINTER :: ptr, ptr1
+     TYPE(NlistEntry_t), POINTER :: ptr, next
      TYPE(Nlist_t), ALLOCATABLE :: NeighList(:)
 
     ! Local variables
@@ -314,8 +337,10 @@ CONTAINS
       ParEnv % Active = .TRUE.
     END IF
 
-    ALLOCATE(ParEnv % IsNeighbour(ParEnv % PEs))
-    ParEnv % IsNeighbour(:)  = .FALSE.
+    IF(.NOT. ASSOCIATED(ParEnv % IsNeighbour)) THEN
+      ALLOCATE(ParEnv % Isneighbour(ParEnv % PEs))
+    END IF
+    ParEnv % IsNeighbour = .FALSE.
     ParEnv % NumOfNeighbours = 0
 
     !------------------------------------------------------------------
@@ -337,9 +362,11 @@ CONTAINS
     CALL CheckBuffer( ParEnv % PEs**2 + ParEnv % PEs*MPI_BSEND_OVERHEAD )
 
     ALLOCATE( Active(ParEnv % PEs), NeighList(Parenv % PEs) )
+
     DO MinActive=0,ParEnv % PEs-1
       IF ( ParEnv % Active(MinActive+1) ) EXIT
     END DO
+
     Active = -1
     n = 0
     DO i=1,ParEnv % PEs
@@ -347,6 +374,7 @@ CONTAINS
          n = n + 1
          Active(n) = i-1
       END IF
+      NeighList(i) % Head => Null()
     END DO
 
     IF (Parenv % myPE /= MinActive ) THEN
@@ -398,9 +426,7 @@ CONTAINS
           DO WHILE( ASSOCIATED(ptr) )
             n = n + 1
             Active(n) = ptr % e1
-            ptr1 => ptr
             ptr => ptr % Next
-            DEALLOCATE(ptr1)
           END DO
 
           CALL MPI_BSEND( n, 1, MPI_INTEGER, i-1, &
@@ -423,6 +449,10 @@ CONTAINS
     ! has it active:
     ! -----------------------------------------------------
     DO i=1,ParEnv % Pes
+      ptr => NeighList(i) % Head
+      DO WHILE(ASSOCIATED(ptr))
+        next => ptr % next; DEALLOCATE(ptr); ptr => next
+      END DO
       NeighList(i) % Head => NULL()
     END DO
     DEALLOCATE( Active )
@@ -430,7 +460,6 @@ CONTAINS
 
 !   IF ( .NOT. SourceMatrix % DGMatrix ) THEN
       DO ii=1,SourceMatrix % NumberOfRows
-
         Active(ii) = HUGE(i)
         IF ( ParallelInfo % GInterface(ii) ) THEN
           sz = SIZE(ParallelInfo % NeighbourList(ii) % Neighbours)
@@ -471,14 +500,19 @@ CONTAINS
           buf(j) = ptr % e1
           j = j + 1
           buf(j) = ptr % e2
-          ptr1 => ptr
           ptr => ptr % next
-          DEALLOCATE( ptr1 )
         END DO
         CALL MPI_BSEND(j,1,MPI_INTEGER,i-1, 20000,ELMER_COMM_WORLD,status,ierr)
         IF (j>0) CALL MPI_BSEND(buf,j,MPI_INTEGER,i-1,20001,ELMER_COMM_WORLD,status,ierr)
       END DO
-      DEALLOCATE( NeighList, buf )
+
+      DO i=1,ParEnv % PEs
+        ptr => NeighList(i) % Head
+        DO WHILE(ASSOCIATED(ptr))
+          next => ptr % next; DEALLOCATE(ptr); ptr => next
+        END DO
+      END DO
+      DEALLOCATE(NeighList, buf )
 
       m = SIZE(ParallelInfo % GlobalDOFs)
       DO i=1,ParEnv % NumOfNeighbours
@@ -519,6 +553,7 @@ CONTAINS
         END IF
       END DO
 !   END IF
+
 
     DEALLOCATE( Active )
 
@@ -3508,15 +3543,18 @@ SUBROUTINE ExchangeSourceVec( SourceMatrix, SplittedMatrix, &
   INTEGER, DIMENSION(MPI_STATUS_SIZE) :: status
 
   INTEGER, ALLOCATABLE :: requests(:), recv_size(:), &
-        send_size(:), perm(:), neigh(:)
+        send_size(:), perm(:), neigh(:), Replications(:)
   !*********************************************************************
   n = ParEnv % NumOfNeighbours
   IF ( n<= 0 ) RETURN
 
-  oper = 0 ! 0=sum, 1=min, 2=max
-  IF ( PRESENT(op) ) oper=op
+  oper = OPER_SUM  ! Operator. See Types.F90 for valid values.
+  IF ( PRESENT(op) ) oper=op ! Optional input argument for operator.
 
   ALLOCATE( neigh(n) )
+
+  ALLOCATE( Replications(SIZE(SourceVec)) )
+  Replications = 1
 
   n = 0
   DO i=1,ParEnv % PEs
@@ -3643,23 +3681,28 @@ SUBROUTINE ExchangeSourceVec( SourceMatrix, SplittedMatrix, &
 !         Ind = SourceMatrix % Perm(Ind)
           IF ( Ind > 0 ) THEN
              SELECT CASE(oper)
-             CASE(0)
+             CASE(OPER_SUM)
                SourceVec(Ind) = SourceVec(Ind) + recv_buf(i) % vec(j)
-             CASE(1)
+             CASE(OPER_MIN)
                SourceVec(Ind) = MIN(SourceVec(Ind),recv_buf(i) % vec(j))
-             CASE(2)
+             CASE(OPER_MAX)
                SourceVec(Ind) = MAX(SourceVec(Ind),recv_buf(i) % vec(j))
+             CASE(OPER_MEAN)
+               SourceVec(Ind) = SourceVec(Ind) + recv_buf(i) % vec(j)
+               Replications(Ind) = Replications(Ind) + 1
              END SELECT
           END IF
        END IF
     END DO
   END DO
 
+  SourceVec = SourceVec / Replications
+
   DO i=1,n
     IF (send_size(i)>0) DEALLOCATE(send_buf(i) % Ind, send_buf(i) % Vec)
     IF (recv_size(i)>0) DEALLOCATE(recv_buf(i) % Ind, recv_buf(i) % Vec)
   END DO
-  DEALLOCATE( recv_buf, send_buf, recv_size, send_size, requests, neigh, perm )
+  DEALLOCATE( recv_buf, send_buf, recv_size, send_size, requests, neigh, perm, replications )
 
 !*********************************************************************
 END SUBROUTINE ExchangeSourceVec
@@ -4567,7 +4610,7 @@ SUBROUTINE Send_LocIf_Old( SplittedMatrix )
   L = 0
   VecL = 0
 
-  CALL CheckBuffer( TotalL + ParEnv % NumOfNeighbours*(1+MPI_BSEND_OVERHEAD) )
+  CALL CheckBuffer( 8*TotalL + ParEnv % NumOfNeighbours*(1+MPI_BSEND_OVERHEAD) )
 
   DO i = 1, ParEnv % PEs
      IfM => SplittedMatrix % IfMatrix(i)
@@ -4986,6 +5029,39 @@ SUBROUTINE SParActiveSUMInt(tsum, oper)
   END SELECT
 !*********************************************************************
 END SUBROUTINE SParActiveSUMInt
+!*********************************************************************
+
+
+!*********************************************************************
+SUBROUTINE SParActiveSUMComplex(tsum, oper)
+   INTEGER :: oper
+   COMPLEX(KIND=dp) :: tsum
+!*********************************************************************
+   INTEGER :: ierr, comm, nact
+   COMPLEX(KIND=dp) :: ssum
+
+   comm = ParEnv % ActiveComm
+   nact = COUNT(ParEnv % Active)
+   
+   IF( nact <= 0 ) THEN
+     comm = ELMER_COMM_WORLD
+     nact = ParEnv % PEs
+   END IF
+     
+   ssum = tsum
+   SELECT CASE(oper)
+   CASE(0)
+     CALL MPI_ALLREDUCE( ssum, tsum, 1, MPI_DOUBLE_COMPLEX, &
+            MPI_SUM, comm, ierr )
+   CASE(1)
+     CALL MPI_ALLREDUCE( ssum, tsum, 1, MPI_DOUBLE_COMPLEX, &
+            MPI_MIN, comm, ierr )
+   CASE(2)
+     CALL MPI_ALLREDUCE( ssum, tsum, 1, MPI_DOUBLE_COMPLEX, &
+            MPI_MAX, comm, ierr )
+  END SELECT
+!*********************************************************************
+END SUBROUTINE SParActiveSUMComplex
 !*********************************************************************
 
 

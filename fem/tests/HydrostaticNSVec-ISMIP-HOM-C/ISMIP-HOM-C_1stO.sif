@@ -1,0 +1,241 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!                                       !!
+!! Elmer(/Ice) Test-Case                   !!
+!!                                       !!
+!!  ISMIP-HOM c                          !!
+!!					 !!
+!! Using 1st order Blatter-Patyn solver  !! 
+!!                                       !!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! Updated 2013
+! Make use of the StructuredMeshMapper solver 
+
+check keywords warn
+!echo on
+$Lkm = 10.0
+$L = Lkm * 1.0e3
+$Slope = 0.1 * pi / 180.0
+
+$yearinsec = 31556926.0 !365.25*24*60*60
+$rhoi = 910.0/(1.0e6*yearinsec^2)   
+$gravity = -9.81*yearinsec^2
+$n = 3.0
+$omega = 2.0 * pi / L
+$b0 = 1000.0*1.0e-6
+$ub =-tan(Slope)*1.0e3*rhoi*gravity/b0
+!$name = "ISMIP-HOM-C_10km_MUMPS"
+$name = "ISMIP-HOM-C_10km_1stO"
+
+Header
+  Mesh DB "." "ISMIP-HOM-3D_10km"
+End
+
+Constants
+  Gravity(4) = 0 0 1 $gravity
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 3D 
+  Simulation Type = Steady        
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+  Output Intervals = 0 
+
+!  Post File = $name$".vtu"
+  max output level = 5
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! The ice 
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+  Pressure = Real 0.0 
+  !Velocity 1 = Variable Coordinate
+  !  Real MATC "ub*(1.0 + 0.1*sin(omega*tx(0))*sin(omega*tx(1))*(tx(2)/1000.0)^2)"
+  !Velocity 2 = Real 0.0
+  !Velocity 3 = Real 0.0
+  Pressure = Variable coordinate 1 
+      Real Procedure "ismip_c.so" "pSIAB"
+  Velocity 1 = Variable coordinate 1 
+      Real Procedure "ismip_c.so" "uSIAB"
+  Velocity 3 =  Variable coordinate 1 
+      Real Procedure "ismip_c.so" "wSIAB"
+  Height = Real 1000.0    
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  Flow BodyForce 1 = Real $ -gravity * sin(Slope)
+  Flow BodyForce 2 = Real 0.0
+  Flow BodyForce 3 = Real $ gravity * cos(Slope)
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Material 1
+  Density = Real $rhoi 
+ !----------------
+  ! vicosity stuff
+  !----------------
+  Viscosity Model = String "Glen"
+  ! Viscosity has to be set to a dummy value
+  ! to avoid warning output from Elmer
+  Viscosity = Real 1.0 
+  Glen Exponent = Real 3.0
+  Critical Shear Rate = Real 1.0e-10
+  ! fixed rate-factor
+  Set Arrhenius Factor = Logical True
+  Arrhenius Factor = Real $1.0E-16 * 1.0E18
+  Glen Enhancement Factor = Real 1.0
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1  
+  Equation = "MapCoordinate"
+  Exec Solver = "Never" ! not needed, as we leave the mesh
+  Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
+  Active Coordinate = Integer 3
+
+  Mesh Velocity Variable = String "dSdt"
+  Mesh Update Variable = String "dS"
+  Mesh Velocity First Zero = Logical True
+End
+
+Solver 2
+  Equation = "1st Order Stokes"
+  Procedure = "HydrostaticNSVec" "HydrostaticNSSolver"
+
+  Variable = -dofs 2 "Horizontal Velocity"
+
+! Optionally populate all components to a vector (could be flow solution too)
+
+  Velocity Vector Name = String "FlowSolution"
+
+
+! This may be turned on/off to consider the effect of horizontal stresses on pressure
+  Pressure Correction = Logical True
+
+
+! This is needed and must be somewhere accessible (not just surface)
+
+  Exported Variable 1 = Height
+
+ 
+
+! I chose to allocated velocity here too
+
+  Exported Variable 4 = FlowSolution[Velocity:3 Pressure:1]
+
+ 
+
+! These are for information and will be populated
+
+  Exported Variable 2 = -elem Shearrate
+
+  Exported Variable 3 = -elem Viscosity
+
+ 
+
+! This is mainly for debugging. It is averaged –(du_x/dx + du_y/dy)
+
+  Exported Variable 5 = duz
+
+  Exported Variable 6 = -dofs 1 "dSdt" 
+  Exported Variable 7 = -dofs 1 "dS" 
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = "IDRS"
+  Linear System Convergence Tolerance = 1.0e-07
+  Linear System Preconditioning = ILU0
+  Linear System Max Iterations = 500
+  Linear System Abort Not Converged = Logical False
+  Linear System Residual Output = 50
+
+  Nonlinear System Max Iterations = 100
+  Nonlinear System Convergence Tolerance  = 1.0e-5
+  Nonlinear System Newton After Iterations = 10
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Reset Newton = Logical True
+  Steady State Convergence Tolerance = Real 1.0e-3
+
+  Linear System Timing = True
+  Linear System Timing Cumulative = True
+End
+
+Solver 3
+  Exec Solver =  After All
+  Equation = "Save Scalars"
+  Procedure = "SaveData" "SaveScalars"
+  Filename = $name".dat"
+
+  Variable 1 = "CPU time"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+Equation 1
+  Active Solvers(3) = 1 2 3
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! Bedrock
+Boundary Condition 1
+  Name = "Bedrock"
+  Target Boundaries = 5 
+  Bottom Surface = Real 0.0
+  Velocity 3 = 0.0
+  Slip Coefficient 1 = Variable Coordinate 1
+    Real Procedure "ismip_c.so" "Sliding"
+  Slip Coefficient 2 = Variable Coordinate 1
+    Real Procedure "ismip_c.so" "Sliding"
+    
+End
+
+! Upper Surface
+Boundary Condition 2
+  Name = "Surface"
+  Target Boundaries = 6
+  Top Surface = Real 1000.0
+End
+
+! Periodic South
+Boundary Condition 3
+  Name = "East"
+  Target Boundaries = 2
+  Periodic BC = 5 
+  Periodic BC Horizontal Velocity 1 = Logical True
+  Periodic BC Horizontal Velocity 2 = Logical True
+End
+
+! Periodic East
+Boundary Condition 4
+  Name = "South"
+  Target Boundaries = 1
+  Periodic BC = 6 
+  Periodic BC Horizontal Velocity 1 = Logical True
+  Periodic BC Horizontal Velocity 2 = Logical True
+End
+
+! Periodic West
+Boundary Condition 5
+  Name = "West"
+  Target Boundaries = 4
+End
+
+! Periodic North
+Boundary Condition 6
+  Name = "North"
+  Target Boundaries = 3
+End
+
+Solver 2 :: Reference Norm = 11.360647
+Solver 2 :: Reference Norm Tolerance = 1.0E-04

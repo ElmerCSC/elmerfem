@@ -1,0 +1,105 @@
+! Limit temperature from below and above on BCs 
+! Here nodal forces to test also that functionality in conjunction
+! with limiters. The order of load setting and limiter definition is
+! crucial. 
+! P.R. 1.7.2024
+
+Check Keywords "Warn"
+Header
+  Mesh DB "." "beam"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian"
+
+  Simulation Type = Steady
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+  Post File = case.vtu
+  Ascii Output = True
+End
+
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Heat"
+  Active Solvers(1) = 1
+End
+
+Body Force 1
+!  Heat Source = Variable Coordinate 1
+!    Real MATC "100*sin(2*pi*tx)"
+End
+
+
+Material 1
+  Name = "Ideal"
+  Heat Conductivity = 1.0
+  Density = 1.0
+End 
+
+
+Solver 1
+  Equation = HeatSolver
+  Variable = Temp
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Apply Limiter = Logical True
+  Limiter Load Tolerance = Real 1.0e-6
+  Limiter Value Tolerance = Real 1.0e-8
+
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Max Iterations = 30
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-5
+  Nonlinear System Relaxation Factor = 1
+  Nonlinear System Convergence Measure = solution   
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU1
+  Linear System ILUT Tolerance = 1.0e-3
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 10
+  Linear System Precondition Recompute = 1
+End 
+
+
+Boundary Condition 1
+  Name = Sides
+  Target Boundaries(2) = 2 4
+  Temp = Real 0.0
+End
+
+Boundary Condition 2
+  Name = Lower
+  Target Boundaries = 1
+  Temp Lower Limit = Real -0.5
+!  Heat Flux = Variable Coordinate 1
+!    Real MATC "0.2*100*sin(2*pi*tx)"
+  Temp Load = Variable Coordinate 1
+    Real MATC "0.01*0.2*100*sin(2*pi*tx)"
+End
+
+Boundary Condition 3
+  Name = Lower
+  Target Boundaries = 3
+  Temp Upper Limit = Real 1.5
+End
+
+
+! 1) body force
+!Solver 1 :: Reference Norm = 1.20034968E+00
+! 2) continuous bc
+!Solver 1 :: Reference Norm = 1.41276571E+00
+! 3) nodal bc
+Solver 1 :: Reference Norm = 1.41330068E+00

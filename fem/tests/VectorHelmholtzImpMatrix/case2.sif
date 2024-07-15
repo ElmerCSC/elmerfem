@@ -1,0 +1,147 @@
+! Test case for impedance matrix with two channels.
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "two_channels"
+End
+
+
+Run Control
+  Constraint Modes Analysis = True
+End 
+
+
+Simulation
+  Max Output Level = 7
+
+  Coordinate System = "Cartesian 3D" 
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+
+  Post File = case.vtu
+  Output Intervals(1) = 1
+End
+
+Constants
+!Permeability of Vacuum = Real 1
+!Permittivity of Vacuum = Real 1
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+$ beta0=41.9332032192090
+$ w=2*pi*(2.5e9)
+$ mu0=4e-7*pi
+
+Material 1
+  Relative Permittivity = Real 1
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+  Angular Frequency = Real $w
+End
+
+
+Solver 1
+  Equation = "VectorHelmholtz"
+  Use Piola Transform = Logical False
+  Procedure = "VectorHelmholtz" "VectorHelmholtzSolver"
+
+!  Linear System Row Equilibration = True
+  Linear System Symmetric = False
+
+  !Linear System Use Hypre = Logical True
+  !Linear System Use Trilinos = Logical True
+  !Linear System Use Mumps = Logical True
+
+  Linear System Solver = String "Iterative"
+  !Linear System Solver = String "Direct"
+  Linear System Iterative Method = String IDRS
+  !BiCGstabl polynomial degree = Integer 2
+  
+  !Linear System Preconditioning Damp Coefficient = Real 0.0
+  !Linear System Preconditioning Damp Coefficient im = Real 1
+
+  Linear System Preconditioning = "ILUT"
+  Linear System ILUT Tolerance = Real 3e-3
+  Linear System Max Iterations = Integer 1000
+  Linear System Convergence Tolerance = 1.0e-10
+
+  linear system abort not converged = false
+
+  Steady State Convergence Tolerance = 1e-09
+  Linear System Residual Output = 20
+
+  Constraint Modes Analysis = Logical True
+  Constraint Modes Lumped = Logical True
+  Constraint Modes Fluxes = Logical True
+  Constraint Modes EM Wave = Logical True
+  Constraint Modes Fluxes Results = Logical True
+  ! Constraint Modes Fluxes Symmetric = Logical True
+  Constraint Modes Fluxes Filename = File "SMatrix.dat"
+  !Normalize by Poynting Vector = Logical True
+End
+
+Solver 2
+  Equation = "calcfields"
+
+  Optimize Bandwidth = False
+  Procedure = "VectorHelmholtz" "VectorHelmholtzCalcFields"
+
+  Calculate Elemental Fields = Logical False
+  
+  Calculate Magnetic Field Strength = Logical False
+  Calculate Magnetic Flux Density = Logical False
+  Calculate Poynting vector = Logical False
+  Calculate Div of Poynting Vector = Logical False
+  Calculate Electric field = Logical True
+  Calculate Energy Functional = Logical True
+
+  Steady State Convergence Tolerance = 1
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = None
+  Linear System Residual Output = 10
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = CG
+  Linear System Convergence Tolerance = 1.0e-9
+End
+
+Solver 3
+  Exec Solver = never
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+  FileName = "scalar_values.dat"
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 2
+  Electric Robin Coefficient im = Real $ beta0
+  Magnetic Boundary Load 3 = Variable Coordinate 1
+    Real MATC "1.0*sin(pi*tx/0.1)"
+  Constraint Mode = Integer 1
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 3
+  Electric Robin Coefficient im = Real $ beta0
+  Magnetic Boundary Load 3 = Variable Coordinate 1
+    Real MATC "1.1*sin(pi*tx/0.1)"
+  Constraint Mode = Integer 2
+End
+
+
+Boundary Condition 3
+  Target Boundaries(3) = 1 4 5 
+  E re {e} = Real 0
+  E im {e} = Real 0
+End
+
+Solver 1 :: Reference Norm = 3.47612285E-05
+Solver 1 :: Reference Norm Tolerance = 1.0E-6
+Solver 2 :: Reference Norm = 6.26908513E-03
+Solver 2 :: Reference Norm Tolerance = 1.0E-4

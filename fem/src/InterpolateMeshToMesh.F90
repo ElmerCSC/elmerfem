@@ -112,7 +112,7 @@
 
          IF( InfoActive(20) ) THEN
            n = COUNT(.NOT. FoundNodes )
-           CALL Info('InterpolateMeshToMesh','Number of unfound nodes in serial: '//I2S(n))
+           IF(n>0) CALL Info('InterpolateMeshToMesh','Number of unfound nodes in serial: '//I2S(n))
          END IF
                     
          IF(PRESENT(UnfoundNodes)) UnfoundNodes = .NOT. FoundNodes
@@ -141,7 +141,7 @@
       n = COUNT(.NOT.FoundNodes); dn = n
 
       IF( InfoActive(20) ) THEN
-        CALL Info('InterpolateMeshToMesh','Number of unfound nodes in own partition: '//I2S(n))
+        IF(n>0) CALL Info('InterpolateMeshToMesh','Number of unfound nodes in own partition: '//I2S(n))
       END IF
       
       AL = .FALSE.
@@ -192,7 +192,7 @@
         BB(:,proc+1) = myBB
       END DO
 
-      CALL CheckBuffer((n*(3 * 2)) + 2) !3 x double precision coord, 2 x count
+      CALL CheckBuffer(Parenv % PEs*(n*(3 * 2 + 2)+MPI_BSEND_OVERHEAD)) !3 x double precision coord, 2 x count
 
       IF ( n==0 ) THEN
         ! We have found all nodes, nothing to do except sent the info to others!
@@ -272,8 +272,8 @@
         END DO
         DEALLOCATE(nodes_x,nodes_y,nodes_z,BB)
       END IF
-       
 
+       
       ! receive points from others:
       ! ----------------------------
       ALLOCATE(ProcRecv(Parenv % Pes))
@@ -303,8 +303,14 @@
       Var => OldVariables
       nvars = 0
       DO WHILE(ASSOCIATED(Var))
-         nvars = nvars + 1
-         Var => Var % Next
+        IF(LegitInterpVar(Var)) THEN         
+          nvars = nvars + 1
+          IF ( ASSOCIATED(Var % PrevValues) ) THEN
+            j = SIZE(Var % PrevValues,2)
+            nvars = nvars+j
+          END IF
+        END IF
+        Var => Var % Next
       END DO
 
       maxrecv = 0
@@ -326,8 +332,7 @@
         n = ProcRecv(i) % n
 
         IF ( n==0 ) THEN
-          CALL MPI_BSEND( n, 1, MPI_INTEGER, proc, &
-                2001, ELMER_COMM_WORLD, ierr )
+          CALL MPI_BSEND( n, 1, MPI_INTEGER, proc, 2001, ELMER_COMM_WORLD, ierr )
           CYCLE
         END IF
       
@@ -347,16 +352,17 @@
         Var => OldVariables
         nvars = 0
         DO WHILE(ASSOCIATED(Var))
-          IF ( Var % DOFs==1 .AND. ASSOCIATED(Var % Perm).AND..NOT.Var % Secondary ) THEN
+          IF(LegitInterpVar(Var)) THEN         
             ALLOCATE(store(n)); store=0
             nvars = nvars+1
             CALL VariableAdd(nMesh % Variables,nMesh,Var % Solver, &
-                     Var % Name,1,store,nperm )
+                Var % Name,1,store,nperm )
             IF ( ASSOCIATED(Var % PrevValues) ) THEN
               j = SIZE(Var % PrevValues,2)
               nvars = nvars+j
               Nvar => VariableGet( Nmesh % Variables,Var % Name,ThisOnly=.TRUE.)
               ALLOCATE(Nvar % PrevValues(n,j))
+              Nvar % PrevValues = 0._dp
             END IF
           END IF
           Var => Var % Next
@@ -371,8 +377,7 @@
 
         nfound = COUNT(FoundNodesPar)
 
-        CALL MPI_BSEND( nfound, 1, MPI_INTEGER, proc, &
-                2001, ELMER_COMM_WORLD, ierr )
+        CALL MPI_BSEND( nfound, 1, MPI_INTEGER, proc, 2001, ELMER_COMM_WORLD, ierr )
 
         ! send interpolated values back to the owner:
         ! -------------------------------------------
@@ -386,7 +391,7 @@
             Var => OldVariables
             nvars = 0
             DO WHILE(ASSOCIATED(Var))
-              IF ( Var % DOFs==1  .AND. ASSOCIATED(Var % Perm).AND..NOT.Var % Secondary) THEN
+              IF(LegitInterpVar(Var)) THEN
                 Nvar => VariableGet( Nmesh % Variables,Var % Name,ThisOnly=.TRUE.)
                 nvars=nvars+1
                 vstore(k,nvars)=Nvar % Values(j)
@@ -459,37 +464,44 @@
         Var => OldVariables
         nvars=0
         DO WHILE(ASSOCIATED(Var))
-          IF ( Var % DOFs==1 .AND. ASSOCIATED(Var % Perm) .AND..NOT.Var % Secondary ) THEN
+          IF(LegitInterpVar(Var)) THEN
+              nvars=nvars+1
+              CALL MPI_RECV( astore, n, MPI_DOUBLE_PRECISION, proc, &
+                  2002+nvars, ELMER_COMM_WORLD, status, ierr )
 
-            nvars=nvars+1
-            CALL MPI_RECV( astore, n, MPI_DOUBLE_PRECISION, proc, &
-                2002+nvars, ELMER_COMM_WORLD, status, ierr )
+              Nvar => VariableGet( NewMesh % Variables,Var % Name,ThisOnly=.TRUE.)
 
-            Nvar => VariableGet( NewMesh % Variables,Var % Name,ThisOnly=.TRUE.)
-
-            IF ( ASSOCIATED(Nvar) ) THEN
-              DO j=1,n
-                k=perm(ProcSend(proc+1) % Perm(vperm(j)))
-                IF ( Nvar % perm(k)>0 ) &
-                  Nvar % Values(Nvar % Perm(k)) = astore(j)
-              END DO
-            END IF
-
-            IF ( ASSOCIATED(Var % PrevValues) ) THEN
-              DO l=1,SIZE(Var % PrevValues,2)
-                nvars=nvars+1
-                CALL MPI_RECV( astore, n, MPI_DOUBLE_PRECISION, proc, &
-                    2002+nvars, ELMER_COMM_WORLD, status, ierr )
-
-                IF ( ASSOCIATED(Nvar) ) THEN
-                  DO j=1,n
-                    k=perm(ProcSend(proc+1) % Perm(vperm(j)))
+              IF ( ASSOCIATED(Nvar) ) THEN
+                DO j=1,n
+                  k=perm(ProcSend(proc+1) % Perm(vperm(j)))
+                  IF(ASSOCIATED(nvar % Perm)) THEN
                     IF ( Nvar % perm(k)>0 ) &
-                      Nvar % PrevValues(Nvar % Perm(k),l) = astore(j)
-                  END DO
-                END IF
-              END DO
-            END IF
+                      Nvar % Values(Nvar % Perm(k)) = astore(j)
+                  ELSE
+                      Nvar % Values(k) = astore(j)
+                  END IF
+                END DO
+              END IF
+
+              IF ( ASSOCIATED(Var % PrevValues) ) THEN
+                DO l=1,SIZE(Var % PrevValues,2)
+                  nvars=nvars+1
+                  CALL MPI_RECV( astore, n, MPI_DOUBLE_PRECISION, proc, &
+                      2002+nvars, ELMER_COMM_WORLD, status, ierr )
+
+                  IF ( ASSOCIATED(Nvar) ) THEN
+                    DO j=1,n
+                      k=perm(ProcSend(proc+1) % Perm(vperm(j)))
+                      IF ( ASSOCIATED(Nvar % perm)) THEN
+                        IF ( Nvar % perm(k)>0 ) &
+                          Nvar % PrevValues(Nvar % Perm(k),l) = astore(j)
+                      ELSE
+                          Nvar % PrevValues(k,l) = astore(j)
+                      END IF
+                    END DO
+                  END IF
+                END DO
+              END IF
           END IF
           Var => Var % Next
         END DO
@@ -505,7 +517,7 @@
       END IF
 
       n = COUNT(.NOT. FoundNodes )           
-      CALL Info('InterpolateMeshToMesh',&
+      IF(n>0) CALL Info('InterpolateMeshToMesh',&
 	'Number of unfound nodes in all partitions: '//I2S(n),Level=6)
       
       IF(PRESENT(UnfoundNodes)) UnfoundNodes = .NOT. FoundNodes
@@ -514,6 +526,27 @@
       
 CONTAINS
 
+  ! Collect here all the historical ways how a variable might be not good for interpolation.
+  !-----------------------------------------------------------------------------------------
+  FUNCTION LegitInterpVar(Var) RESULT ( IsLegit )
+    TYPE(Variable_t), POINTER :: Var
+    LOGICAL :: IsLegit
+
+    ! Only nodal and discontinuous galerkin fields can be interpolated as for now. 
+    IsLegit = ( Var % TYPE == Variable_on_nodes_on_elements .OR. Var % Type == Variable_on_nodes ) 
+    ! Even for vectors the interpolation is done for each scalar component. 
+    IF( Var % Dofs > 1 ) IsLegit = .FALSE.
+    !IF( Var % Secondary ) IsLegit = .FALSE.
+    ! Coordinates are special and should not be interpolated. 
+    IF(LEN(Var % Name) >= 10) THEN
+      IF( Var % Name(1:10) == 'coordinate' ) IsLegit = .FALSE.
+    END IF
+    ! This is global variable for which the type has not been properly set.
+    IF(.NOT. ASSOCIATED(Var % Perm) .AND. SIZE(Var % Values) == 1 ) IsLegit = .FALSE.
+    
+  END FUNCTION LegitInterpVar
+
+  
 !------------------------------------------------------------------------------
    FUNCTION AllocateMesh() RESULT(Mesh)
 !------------------------------------------------------------------------------
@@ -604,7 +637,6 @@ END SUBROUTINE InterpolateMeshToMesh
        INTEGER, POINTER :: Indexes(:)
        REAL(KIND=dp), DIMENSION(3) :: LocalCoordinates
        TYPE(Variable_t), POINTER :: OldSol, NewSol, Var
-       INTEGER, POINTER :: OldPerm(:)
        REAL(KIND=dp), POINTER :: OldValue(:), NewValue(:), ElementValues(:)
        TYPE(Quadrant_t), POINTER :: LeafQuadrant
        TYPE(Element_t),POINTER :: Element, Parent
@@ -618,7 +650,7 @@ END SUBROUTINE InterpolateMeshToMesh
        TYPE(Quadrant_t), POINTER :: RootQuadrant
        
        INTEGER, POINTER   CONTIG :: Rows(:), Cols(:)
-       INTEGER, POINTER    :: Diag(:)
+       INTEGER, POINTER    :: Diag(:), OldPerm(:), NewPerm(:)
 
        TYPE Epntr_t
          TYPE(Element_t), POINTER :: Element
@@ -626,7 +658,7 @@ END SUBROUTINE InterpolateMeshToMesh
        
        TYPE(Epntr_t), ALLOCATABLE :: ElemPtrs(:)
        
-       INTEGER, ALLOCATABLE:: RInd(:)
+       INTEGER, ALLOCATABLE, TARGET :: RInd(:), Unitperm(:)
        LOGICAL :: Found, EpsAbsGiven,EpsRelGiven, MaskExists, CylProject, ProjectorAllocated
        INTEGER :: eps_tries, nrow, PassiveCoordinate
        REAL(KIND=dp) :: eps1 = 0.1, eps2, eps_global, eps_local, eps_basis,eps_numeric
@@ -765,6 +797,10 @@ END SUBROUTINE InterpolateMeshToMesh
        END IF        
        
        FoundCnt = 0
+
+       i = MAX(NewMesh % NumberOfNodes,OldMesh % NumberOfNodes)
+       ALLOCATE(Unitperm(i))
+       Unitperm = [(j,j=1,i)]
 !------------------------------------------------------------------------------
 ! Loop over all nodes in the new mesh
 !------------------------------------------------------------------------------
@@ -922,21 +958,12 @@ END SUBROUTINE InterpolateMeshToMesh
 !
 !         Go through all variables to be interpolated:
 !         --------------------------------------------
+
+
           Var => OldVariables
           DO WHILE( ASSOCIATED( Var ) )
 
-             IF( SIZE( Var % Values ) == Var % DOFs ) THEN
-               Var => Var % Next
-               CYCLE
-             END IF          
-
-             !IF( Var % Secondary ) THEN
-             !  Var => Var % Next
-             !  CYCLE
-             !END IF
-             
-             IF ( Var % DOFs == 1 .AND. &
-                 Var % Name(1:10) /= 'coordinate') THEN
+            IF(LegitInterpVar(Var)) THEN                         
                
 !------------------------------------------------------------------------------
 !
@@ -948,8 +975,17 @@ END SUBROUTINE InterpolateMeshToMesh
                    Var => Var % Next
                    CYCLE
                 END IF
-                OldSol => VariableGet( OldMesh % Variables, Var % Name, .TRUE. )
 
+                IF(PRESENT(OldVariables)) THEN
+                  OldSol => VariableGet( OldVariables, Var % Name, .TRUE. )
+                ELSE
+                  OldSol => VariableGet( OldMesh % Variables, Var % Name, .TRUE. )
+                END IF
+                IF( .NOT. ASSOCIATED( OldSol ) ) THEN
+                  CALL Fatal('InterpolateMeshToMesh','Variable not associated: '//TRIM(Var % Name))
+                END IF
+                  
+                
                 ! Check that the node was found in the old mesh:
                 ! ----------------------------------------------
                 IF ( ASSOCIATED (Element) ) THEN
@@ -962,24 +998,29 @@ END SUBROUTINE InterpolateMeshToMesh
                   ELSE
                     Indexes => Element % NodeIndexes
                   END IF
+
+                   OldPerm => OldSol % Perm
+                   IF (.NOT.ASSOCIATED(OldPerm)) OldPerm => Unitperm
+
+                   NewPerm => NewSol % Perm
+                   IF (.NOT.ASSOCIATED(NewPerm)) NewPerm => Unitperm
                                                                        
-                  IF ( ALL(OldSol % Perm(Indexes) > 0) ) THEN
+                  IF ( ALL(OldPerm(Indexes) > 0) ) THEN
                     IF( NewSol % TYPE == Variable_on_nodes_on_elements ) THEN
                       IF(.NOT. ALLOCATED(OneDGIndex) ) THEN                        
                         CALL CreateOneDGIndex()
                       END IF
                       IF( OneDGIndex(i) > 0 ) THEN
-                        k = NewSol % Perm( OneDGIndex(i) )
+                        k = NewPerm( OneDGIndex(i) )
                       ELSE
                         k = 0
                       END IF
                     ELSE
-                      k = NewSol % Perm(i)
+                      k = NewPerm(i)
                     END IF
                       
                     IF ( k /= 0 ) THEN
-                      ElementValues(1:n) = & 
-                          OldSol % Values(OldSol % Perm(Indexes))
+                      ElementValues(1:n) = OldSol % Values(OldPerm(Indexes))
                       
                       val = InterpolateInElement( Element, ElementValues, &
                           LocalCoordinates(1), LocalCoordinates(2), LocalCoordinates(3) )
@@ -989,7 +1030,7 @@ END SUBROUTINE InterpolateMeshToMesh
                       IF ( ASSOCIATED( OldSol % PrevValues ) ) THEN
                         DO j=1,SIZE(OldSol % PrevValues,2)
                           ElementValues(1:n) = &
-                              OldSol % PrevValues(OldSol % Perm(Indexes),j)
+                              OldSol % PrevValues(OldPerm(Indexes),j)
                           
                           val = InterpolateInElement( Element, ElementValues, &
                               LocalCoordinates(1), LocalCoordinates(2), LocalCoordinates(3) )
@@ -1000,11 +1041,11 @@ END SUBROUTINE InterpolateMeshToMesh
                     END IF
                   END IF
                 ELSE
-                  IF ( NewSol % Perm(i)/=0 ) NewValue(NewSol % Perm(i))=0.0_dp
+                  IF ( NewPerm(i)/=0 ) NewValue(NewPerm(i))=0.0_dp
                 END IF
 
 !------------------------------------------------------------------------------
-             END IF
+              END IF
              Var => Var % Next
            END DO
 !------------------------------------------------------------------------------
@@ -1243,6 +1284,21 @@ END SUBROUTINE InterpolateMeshToMesh
 
 CONTAINS
 
+  FUNCTION LegitInterpVar(Var) RESULT ( IsLegit )
+    TYPE(Variable_t), POINTER :: Var
+    LOGICAL :: IsLegit
+        
+    IsLegit = ( Var % TYPE == Variable_on_nodes_on_elements .OR. Var % Type == Variable_on_nodes ) 
+    IF( Var % Dofs > 1 ) IsLegit = .FALSE.
+    !IF( Var % Secondary ) IsLegit = .FALSE.
+    IF(LEN(Var % Name) >= 10) THEN
+      IF( Var % Name(1:10) == 'coordinate' ) IsLegit = .FALSE.
+    END IF
+    IF(.NOT. ASSOCIATED(Var % Perm) .AND. SIZE(Var % Values) == 1 ) IsLegit = .FALSE.
+    
+  END FUNCTION LegitInterpVar
+
+  
 
   ! Create a representative dg index to be used for interpolation.
   ! This is cheating since it does not work in general. It does work
@@ -1318,19 +1374,7 @@ CONTAINS
 !------------------------------------------------------------------------------
         Var => OldVariables
         DO WHILE( ASSOCIATED(Var) )
-           IF( SIZE( Var % Values ) == Var % DOFs ) THEN   
-             Var => Var % Next
-             CYCLE
-           END IF 
-
-           IF( Var % Secondary ) THEN
-             Var => Var % Next
-             CYCLE
-           END IF 
-
-           IF ( Var % DOFs == 1 .AND. &
-             Var % Name(1:10) /= 'coordinate') THEN
-
+          IF(LegitInterpVar(Var)) THEN
               OldSol => VariableGet( OldMesh % Variables, Var % Name, .TRUE. )
               NewSol => VariableGet( NewMesh % Variables, Var % Name, .TRUE. )
               IF ( .NOT. (ASSOCIATED (NewSol) ) ) THEN
@@ -1351,7 +1395,8 @@ CONTAINS
               END IF
            END IF
            Var => Var % Next
-        END DO
+         END DO         
+         
 !------------------------------------------------------------------------------
      END SUBROUTINE ApplyProjector
 !------------------------------------------------------------------------------

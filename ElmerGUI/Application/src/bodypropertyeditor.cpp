@@ -61,16 +61,16 @@ BodyPropertyEditor::BodyPropertyEditor(QWidget *parent)
 
   connect(ui.discardButton, SIGNAL(clicked()), this, SLOT(discardSlot()));
 
-  connect(ui.materialCombo, SIGNAL(currentIndexChanged(QString)), this, 
+  connect(ui.materialCombo, SIGNAL(currentTextChanged(const QString)), this, 
            SLOT(materialComboChanged(QString)));
 
-  connect(ui.initialConditionCombo, SIGNAL(currentIndexChanged(QString)), this, 
+  connect(ui.initialConditionCombo, SIGNAL(currentTextChanged(const QString)), this, 
            SLOT(initialComboChanged(QString)));
 
-  connect(ui.bodyForceCombo, SIGNAL(currentIndexChanged(QString)), this, 
+  connect(ui.bodyForceCombo, SIGNAL(currentTextChanged(const QString)), this, 
            SLOT(forceComboChanged(QString)));
 
-  connect(ui.equationCombo, SIGNAL(currentIndexChanged(QString)), this, 
+  connect(ui.equationCombo, SIGNAL(currentTextChanged(const QString)), this, 
            SLOT(equationComboChanged(QString)));
   
   ui.applyButton->setIcon(QIcon::fromTheme("list-add"));

@@ -175,8 +175,8 @@ ObjectBrowser::ObjectBrowser(QMainWindow *parent, Qt::WindowFlags flags)
   connect(mainwindow->edgeUnifyAct, SIGNAL(triggered()), this,
           SLOT(boundaryUnifiedSlot()));
 
-  connect(mainwindow->glWidget, SIGNAL(signalBoundarySelected(list_t *)), this,
-          SLOT(boundarySelectedSlot(list_t *)));
+  connect(mainwindow->glWidget, SIGNAL(signalBoundarySelected(list_t *, Qt::KeyboardModifiers)), this,
+          SLOT(boundarySelectedSlot(list_t *, Qt::KeyboardModifiers)));
 
   connect(mainwindow->meshingThread, SIGNAL(started()), this,
           SLOT(meshingStartedSlot()));
@@ -407,7 +407,7 @@ void ObjectBrowser::treeItemDoubleClickedSlot(QTreeWidgetItem *item,
     mainwindow->glWidget->bodyEditActive = false;
     mainwindow->bcEditAct->setChecked(true);
     mainwindow->bodyEditAct->setChecked(false);
-    mainwindow->boundarySelectedSlot(l);
+    mainwindow->boundarySelectedSlot(l, Qt::NoModifier);
     // mainwindow->bcEditActive = bcEditActive;
     // mainwindow->bodyEditActive = bodyEditActive;
     connect1(
@@ -437,7 +437,7 @@ void ObjectBrowser::treeItemDoubleClickedSlot(QTreeWidgetItem *item,
     mainwindow->glWidget->bodyEditActive = false;
     mainwindow->bcEditAct->setChecked(true);
     mainwindow->bodyEditAct->setChecked(false);
-    mainwindow->boundarySelectedSlot(l);
+    mainwindow->boundarySelectedSlot(l, Qt::NoModifier);
     // mainwindow->bcEditActive = bcEditActive;
     // mainwindow->bodyEditActive = bodyEditActive;
     connect1(
@@ -465,7 +465,7 @@ void ObjectBrowser::treeItemDoubleClickedSlot(QTreeWidgetItem *item,
     mainwindow->glWidget->bodyEditActive = true;
     mainwindow->bcEditAct->setChecked(false);
     mainwindow->bodyEditAct->setChecked(true);
-    mainwindow->boundarySelectedSlot(l);
+    mainwindow->boundarySelectedSlot(l, Qt::NoModifier);
     // mainwindow->bcEditActive = bcEditActive;
     // mainwindow->bodyEditActive = bodyEditActive;
     connect1(pe,
@@ -503,7 +503,7 @@ void ObjectBrowser::treeItemDoubleClickedSlot(QTreeWidgetItem *item,
     mainwindow->glWidget->bodyEditActive = true;
     mainwindow->bcEditAct->setChecked(false);
     mainwindow->bodyEditAct->setChecked(true);
-    mainwindow->boundarySelectedSlot(l);
+    mainwindow->boundarySelectedSlot(l, Qt::NoModifier);
     // mainwindow->bcEditActive = bcEditActive;
     // mainwindow->bodyEditActive = bodyEditActive;
     connect1(pe,
@@ -1016,7 +1016,7 @@ void ObjectBrowser::boundaryDividedSlot(double d) {
   boundaryPropertyParentTreeItem->addChild(new QTreeWidgetItem()); // dummy
 }
 
-void ObjectBrowser::boundarySelectedSlot(list_t *l) {
+void ObjectBrowser::boundarySelectedSlot(list_t *l, Qt::KeyboardModifiers modifiers) {
 
   bodyPropertyParentTreeItem->setExpanded(true);
   boundaryPropertyParentTreeItem->setExpanded(true);
@@ -1059,7 +1059,7 @@ void ObjectBrowser::boundarySelectedSlot(list_t *l) {
 
   if (dialog == NULL) {
     cout << " could not find selected body/boundary in "
-            "ObjectBrowser::boundarySelectedSlot(list_t*).  list_t:"
+            "ObjectBrowser::boundarySelectedSlot(list_t*, Qt::KeyboardModifiers).  list_t:"
          << (qulonglong)l << endl;
     return;
   }
@@ -1067,7 +1067,7 @@ void ObjectBrowser::boundarySelectedSlot(list_t *l) {
   for (int i = 0; i < boundaryPropertyParentTreeItem->childCount(); i++) {
     QTreeWidgetItem *child = boundaryPropertyParentTreeItem->child(i);
     if (child->data(0, Qt::UserRole) == (qulonglong)dialog) {
-      tree->setCurrentItem(child);
+      if( !(modifiers & Qt::ControlModifier) )tree->setCurrentItem(child);
       BoundaryPropertyEditor *pe = (BoundaryPropertyEditor *)dialog;
       connect1(
           pe, SIGNAL(BoundaryComboChanged(BoundaryPropertyEditor *, QString)),
@@ -1083,7 +1083,7 @@ void ObjectBrowser::boundarySelectedSlot(list_t *l) {
   for (int i = 0; i < bodyPropertyParentTreeItem->childCount(); i++) {
     QTreeWidgetItem *child = bodyPropertyParentTreeItem->child(i);
     if (child->data(0, Qt::UserRole) == (qulonglong)dialog) {
-      tree->setCurrentItem(child);
+      if( !(modifiers & Qt::ControlModifier)) tree->setCurrentItem(child);
       BodyPropertyEditor *pe = (BodyPropertyEditor *)dialog;
       connect1(pe,
                SIGNAL(BodyMaterialComboChanged(BodyPropertyEditor *, QString)),
@@ -1305,7 +1305,7 @@ int ObjectBrowser::boundaryListToBodyIndex(list_t *l) {
     MAX_BULK_INDEX++;
     if (MAX_BULK_INDEX == 0) {
       cout << "Error in body selection: "
-              "There are no legal body indiced from which to choose"
+              "There are no legal body indices from which to choose"
            << endl;
       cout.flush();
       goto body_selection_finished;
@@ -1747,9 +1747,7 @@ void ObjectBrowser::treeItemSelectionChangedSlot() {
   MainWindow *mainwindow = (MainWindow *)mainWindow;
   if (mainwindow->glWidget->getMesh() == NULL)
     return;
-  if (mainwindow->glWidget->ctrlPressed)
-    return; // ignore if selecting multiple surfaces/edges in glWidget to
-            // maintain the selection at glWidget
+
   QTreeWidgetItem *item = tree->currentItem();
 
   // select boundaries/bodies checked in DyanmicEditor

@@ -68,7 +68,7 @@ enum MatTypes {
 // #include <QLayout>
 // #endif
 
-#ifdef WITH_QT5
+#if WITH_QT5 || WITH_QT6
 #include <QtWidgets>
 #endif
 

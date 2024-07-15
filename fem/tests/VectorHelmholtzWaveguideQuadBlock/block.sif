@@ -1,0 +1,56 @@
+  Linear System Symmetric = True
+  Linear system Complex = True
+  Linear System Block Mode = True
+
+  Block Gauss-Seidel = True
+  Block Quadratic Hcurl System = Logical True
+  Block Preconditioner = True
+
+! True + True seems to provide best speed-up
+  Block Scaling = True
+
+! Linear system solver for outer loop
+!-----------------------------------------
+  Outer: Linear System Solver = "Iterative"
+  Outer: Linear System Convergence Tolerance = 1e-6
+  Outer: Linear System Iterative Method = gcr
+  Outer: Linear System Max Iterations = 200 
+  Outer: Linear System Residual Output = 1
+  Outer: Linear System GCR Restart = 50
+  Outer: Linear System Abort Not Converged = False
+  Outer: Linear System Pseudo Complex = True
+
+  $blocktol = 0.01
+
+  block 11: Linear System Solver = "direct"
+  block 11: Linear System direct method = umfpack ! "mumps"
+  block 11: Linear System Complex = True
+  block 11: Linear System Scaling = False
+
+  block 22: Linear System Solver = "Iterative"
+  block 22: Linear System Convergence Tolerance = 1e-2
+  block 22: Linear System Iterative Method = GCR !bicgstabl
+  block 22: Linear System GCR Restart = 20
+  block 22: Linear System Preconditioning = diagonal
+  block 22: Linear System Residual Output = 20
+  block 22: Linear System Max Iterations = 100
+  block 22: Linear System Complex = True
+  block 22: Linear System Abort Not Converged = False
+  block 22: Linear System Scaling = True
+
+!  block 22: Linear System Solver = "direct"
+!  block 22: Linear System direct method = "mumps"
+!  block 22: Linear System Complex = True
+!  block 22: Linear System Scaling = False
+
+
+! This is a tentative keyword that does not really benefit.
+! We split the equation into 3x3 blocks (lin edge, quad edge, face) 
+!  Block Quadratic Hcurl Faces = Logical True
+
+!  block 33: Linear System Solver = "direct"
+!  block 33: Linear System direct method = "mumps"
+!  block 33: Linear System Complex = True
+!  block 33: Linear System Scaling = False
+
+  Linear System Timing = Logical True

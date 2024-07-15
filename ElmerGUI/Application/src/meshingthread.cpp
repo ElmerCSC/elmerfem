@@ -116,7 +116,7 @@ void MeshingThread::run()
   if(generatorType == GEN_TETLIB) {
     
     cout << "tetlib: control string: " 
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
 	 << string(tetgenControlString.toLatin1()) << endl;
 #else
 	 << string(tetgenControlString.toAscii()) << endl;
@@ -127,7 +127,7 @@ void MeshingThread::run()
     out->deinitialize();
     out->initialize();
     
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
     sprintf(ss, "%s", (const char*)(tetgenControlString.toLatin1()));
 #else
     sprintf(ss, "%s", (const char*)(tetgenControlString.toAscii()));

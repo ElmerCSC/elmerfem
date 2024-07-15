@@ -219,9 +219,11 @@ CONTAINS
           BCParams => Null()
         END DO
       END IF
+      BodyAssociations => Null()
+      BCAssociations => Null()
     END DO
 
-    DO i = 1, SIZE(CurrentModel % Bodies)
+    DO i = 1, CurrentModel % NumberOfBodies
       BodyParams => CurrentModel % Bodies(i) % Values
       IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('AddComponentsToBodyList', &
                           'Body parameters not found!')
@@ -233,24 +235,70 @@ CONTAINS
       BodyParams => Null()
     END DO
 
-    IF (ASSOCIATED(BCAssociations)) THEN
-      DO i = 1, SIZE(CurrentModel % BCs)
-        BCParams => CurrentModel % BCs(i) % Values
-        IF (.NOT. ASSOCIATED(BCParams)) CALL Fatal ('AddComponentsToBodyList', &
-                    'Boundary Condition parameters not found!')
-        j = GetInteger(BCParams, 'Component', Found)
-        IF (.NOT. Found) CYCLE
+    DO i = 1, CurrentModel % NumberOfBCs
+      BCParams => CurrentModel % BCs(i) % Values
+      IF (.NOT. ASSOCIATED(BCParams)) CALL Fatal ('AddComponentsToBodyList', &
+                  'Boundary Condition parameters not found!')
+      j = GetInteger(BCParams, 'Component', Found)
+      IF (.NOT. Found) CYCLE
 
-        WRITE(Message,'(A)') '"Boundary Condition '//TRIM(I2S(i))// &
-            '" associated to "Component '//TRIM(I2S(j))//'"' 
-        CALL Info('AddComponentsToBodyList',Message,Level=5)
-        BCParams => Null()
-      END DO
-    END IF
+      WRITE(Message,'(A)') '"Boundary Condition '//TRIM(I2S(i))// &
+          '" associated to "Component '//TRIM(I2S(j))//'"' 
+      CALL Info('AddComponentsToBodyList',Message,Level=5)
+      BCParams => Null()
+    END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE AddComponentsToBodyLists
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+  SUBROUTINE CheckComponentVariables()
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    
+    LOGICAL :: Found
+    INTEGER :: i, j, k
+    LOGICAL, SAVE :: Visited=.FALSE.
+    TYPE(Valuelist_t), POINTER :: ComponentParams
+    CHARACTER(LEN=MAX_NAME_LEN) :: CoilType, VarName
+   
+    IF(Visited) RETURN
+    IF(CurrentModel % NumberOfComponents == 0) RETURN
+    
+    Visited = .TRUE.
+
+    j = 0
+    DO i = 1, CurrentModel % NumberOfComponents      
+      ComponentParams => CurrentModel % Components(i) % Values                  
+      IF( ListGetLogical( ComponentParams,'Passive Component', Found ) ) CYCLE 
+      CoilType = GetString(ComponentParams, 'Coil Type', Found)
+      IF(.NOT. Found) CYCLE
+
+      SELECT CASE (CoilType)
+      CASE ('stranded')
+        VarName = 'Circuit Current Variable Id'
+      CASE ('massive','foil winding')
+        VarName = 'Circuit Voltage Variable Id'
+      CASE DEFAULT
+        CYCLE
+      END SELECT
+
+      IF(.NOT. ListCheckPresent(ComponentParams, VarName) ) THEN
+        CALL Warn('CheckComponentOwners','Coil type given for component '//I2S(i)//' but no: '//TRIM(VarName))
+        j = j + 1
+      END IF
+    END DO
+
+    IF(j > 0) THEN
+      CALL Warn('CheckComponentOwners','Could not find variables for '//I2S(j)//' coils!')
+      CALL Fatal('CheckComponentOwners','Check your circuit settings!')
+    END IF
+
+  END SUBROUTINE CheckComponentVariables
+      
+
+  
 !------------------------------------------------------------------------------
   FUNCTION GetComponentBodyIds(Id) RESULT (BodyIds)
 !------------------------------------------------------------------------------
@@ -510,7 +558,6 @@ END FUNCTION isComponentName
             CVar % isVvar = .TRUE.
             CVar % Component % vvar => CVar
           ELSE
-            CompInd = CompInd - 1
             Cvar % Component => Null()
             CVar % isIvar = .FALSE.
             CVar % isVvar = .FALSE.
@@ -991,6 +1038,8 @@ END FUNCTION isComponentName
     TYPE(CircuitVariable_t) :: Variable
     INTEGER :: Owner=-1, k
     INTEGER, POINTER :: circuit_tot_n => Null()
+
+    CALL Info('AddVariableToCircuit','Adding variables count to circuit!',Level=20)
     
     Circuit_tot_n => CurrentModel % Circuit_tot_n
     
@@ -1039,6 +1088,9 @@ END FUNCTION isComponentName
     INTEGER :: CId, CompInd
     
     Circuit => CurrentModel % Circuits(CId)
+
+    CALL Info('AddComponentValuesToLists','Adding "Circuit Voltage Variable *" keywords for '&
+        //I2S(Circuit % n_comp)//' components in Circuit '//I2S(CId),Level=20)
     
     DO CompInd=1,Circuit % n_comp
  

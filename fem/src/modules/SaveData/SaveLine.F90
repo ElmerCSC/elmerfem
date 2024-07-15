@@ -111,6 +111,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   USE ElementUtils
   USE SolverUtils
   USE MeshUtils
+  USE ElementUtils
   USE SaveUtils
   USE BandwidthOptimize
   USE DefUtils
@@ -1158,7 +1159,7 @@ CONTAINS
     REAL(KIND=dp) :: r,u,v,w,ub,DetJ, Normal(3),Flow(3)
     LOGICAL :: stat, Permutated
     INTEGER :: body_id, k
-    REAL(KIND=DP), POINTER :: Pwrk(:,:,:)
+    REAL(KIND=DP), POINTER :: Pwrk(:,:,:) => Null()
     TYPE(ValueList_t), POINTER :: BC
     INTEGER :: FluxBody
     
@@ -1333,7 +1334,7 @@ CONTAINS
     REAL(KIND=dp) :: Coord(3), Coord0(3), Center(3)
     TYPE(ValueList_t), POINTER :: ValueList
     TYPE(Element_t), POINTER :: Parent
-    LOGICAL :: BreakLoop
+    LOGICAL :: BreakLoop, ParallelComm
     REAL(KIND=dp) :: linepos 
     
     MaskName = ListGetString(Params,'Save Mask',GotIt) 
@@ -1360,10 +1361,12 @@ CONTAINS
 
       BreakLoop = ListGetLogical(Params,'Break Line Loop',GotIt)
       IF(BreakLoop) OptimizeOrder = .TRUE.
-      
+
+      ParallelComm = Parallel
+      IF(Mesh % SingleMesh ) ParallelComm = .FALSE.
       CALL MakePermUsingMask( Model,Solver,Mesh,MaskName, &
           OptimizeOrder, SavePerm, SaveNodes(1), &
-          RequireLogical = .TRUE., BreakLoop = BreakLoop )
+          RequireLogical = .TRUE., BreakLoop = BreakLoop, ParallelComm = ParallelComm )
       
       IF( SaveNodes(1) > 0 ) THEN
         IF( ListGetLogical( Params,'Calculate Weights',GotIt ) ) THEN
@@ -1461,7 +1464,7 @@ CONTAINS
         END DO
       END IF
 
-      DgVar = ASSOCIATED( Mesh % Elements(1) % DGIndexes ) 
+      !DgVar = ASSOCIATED( Mesh % Elements(1) % DGIndexes ) 
       
       ! Go through the elements and register the boundary index and fluxes if asked
       DO t = 1,  Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements        

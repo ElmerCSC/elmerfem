@@ -44,7 +44,7 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
       SaveVTU, SaveEP, SaveAny, ListSet = .FALSE., ActiveMesh, &
       SomeMeshSaved, SaveAllMeshes
   INTEGER :: i,nInterval=1, nstep=0, OutputCount(6) = 0, MeshDim,&
-      MinMeshDim,MaxMeshDim,MeshLevel,nlen,NoMeshes
+      MinMeshDim,MaxMeshDim,MeshLevel,nlen,NoMeshes, m
   INTEGER, POINTER :: OutputIntervals(:), TimeSteps(:)
 
   TYPE(Mesh_t), POINTER :: Mesh, iMesh, MyMesh
@@ -162,27 +162,28 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   ! First iteration just count the meshes. 
   !----------------------------------------------------------------------------------  
   NowSave = .FALSE.
-  NoMeshes = 0 
-1 iMesh => Model % Meshes
+1 NoMeshes = 0
+  m = 1
+  iMesh => Model % Meshes
   DO WHILE( ASSOCIATED(iMesh) )
-    
+
     IF ( .NOT. SaveAllMeshes .AND. .NOT. iMesh % OutputActive ) THEN
       IF(NowSave) CALL Info(Caller,'Skipping inactive mesh: '//TRIM(iMesh % Name), Level=10 )
-      iMesh => iMesh % next
+      iMesh => iMesh % next; m=m+1
       CYCLE 
     END IF    
 
     IF( SaveThisMesh ) THEN
       IF( .NOT. ASSOCIATED( iMesh, MyMesh ) ) THEN
         IF(NowSave) CALL Info(Caller,'Skipping not my mesh: '//TRIM(iMesh % Name), Level=10 )
-        iMesh => iMesh % next
+        iMesh => iMesh % next; m=m+1
         CYCLE
       END IF
     END IF
 
     IF( SaveSolverMeshIndex > 0 ) THEN
       IF( .NOT. ASSOCIATED( iMesh, Model % Solvers(SaveSolverMeshIndex) % Mesh ) ) THEN
-        iMesh => iMesh % next
+        iMesh => iMesh % next; m=m+1
         CYCLE
       END IF
     END IF
@@ -191,13 +192,13 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
 
     IF( MinMeshDim /= 0 .AND. iMesh % MeshDim < MinMeshDim ) THEN
       IF(NowSave) CALL Info(Caller,'Skipping lower dimensional mesh: '//TRIM(iMesh % Name), Level=10 )
-      iMesh => iMesh % next
+      iMesh => iMesh % next; m=m+1
       CYCLE
     END IF
 
     IF( MaxMeshDim /= 0 .AND. iMesh % MeshDim > MaxMeshDim ) THEN
       IF(NowSave) CALL Info(Caller,'Skipping higher dimensional mesh: '//TRIM(iMesh % Name), Level=10 )
-      iMesh => iMesh % next
+      iMesh => iMesh % next; m=m+1
       CYCLE
     END IF
 
@@ -212,7 +213,7 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
       
       IF( .NOT. Found ) THEN
         IF(NowSave) CALL Info(Caller,'Skipping mesh with mismatching name: '//TRIM(iMesh % Name), Level=10 )
-        iMesh => iMesh % next
+        iMesh => iMesh % next; m=m+1
         CYCLE 
       END IF
     END IF
@@ -223,12 +224,15 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
       IF ( .NOT. iMesh % DiscontMesh ) THEN    
         NoMeshes = NoMeshes + 1
       END IF
-      iMesh => iMesh % Next
+      iMesh => iMesh % Next; m=m+1
       CYCLE
     END IF
 
-    IF(NowSave) CALL Info(Caller,'Working on mesh: '//TRIM(iMesh % Name), Level=7)
-    
+    IF(NowSave) THEN
+      CALL Info(Caller,'Working on mesh '//I2S(m)//': '//TRIM(iMesh % Name)//&
+          ' with '//I2S(iMesh % NumberOfNodes)//' nodes', Level=10)
+    END IF
+      
     CALL SetCurrentMesh( Model, iMesh )
     ModelVariables => Model % Variables
     Model % Variables => iMesh % variables 
@@ -293,7 +297,7 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
       CALL Info( Caller, '-------------------------------------')
     END IF
     
-    iMesh => iMesh % Next
+    iMesh => iMesh % Next; m=m+1
   END DO
 
   IF( .NOT. NowSave ) THEN

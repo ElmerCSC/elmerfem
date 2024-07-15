@@ -89,7 +89,7 @@ End
 Constants
   Latent Heat = Real $Lw
   Gravity Norm = Real $gravity
-  Water Density = Real $rhow
+  Fresh Water Density = Real $rhow
   Ice Density = Real $rhoi
   Sheet Thickness Variable Name = String "Sheet Thickness"
   Hydraulic Potential Variable Name = String "Hydraulic Potential"
@@ -290,6 +290,8 @@ Solver 4
   Stabilization Method = String Bubbles
 
   Exported Variable 1 = Flow Solution Loads[Stress Vector:2 CEQ Residual:1] 
+  Exported Variable 2 = -dofs 1 "Zs"
+  Exported Variable 3 = -dofs 1 "Zb"
   Calculate Loads = Logical True
 
   Flow Model = String "Stokes"

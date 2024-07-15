@@ -71,6 +71,9 @@
 /* Define if you have a CPardiso solver from MKL */
 #cmakedefine HAVE_CPARDISO
 
+/* Define if you have a CHOLMOD library */
+#cmakedefine HAVE_CHOLMOD
+
 /* Define if you have LAPACK library. */
 #define HAVE_LAPACK
 
@@ -108,6 +111,7 @@
 #endif
 
 #cmakedefine HAVE_AMGX
+#cmakedefine HAVE_ROCALUTION
 
 /* Define if you have a MUMPS library. */
 /* define HAVE_MUMPS */
@@ -159,8 +163,10 @@
 #cmakedefine HAVE_TRILINOS
 
 /* MMG */
+#if 1
 #cmakedefine HAVE_MMG 
 #cmakedefine HAVE_PARMMG
+#endif
 
 #define ELMER_LINKTYP ${ELMER_LINKTYP}
 #define ENABLE_DYNAMIC_LINKING 1
@@ -170,7 +176,9 @@
 
 /* Have these defined only for debugging or optimization purposes */
 /* #define DEVEL_LISTCOUNTER */
+#define DEVEL_LISTUSAGE
 /* #define DEVEL_KEYWORDMISSES */
+
 
 #cmakedefine HAVE_LUA
 

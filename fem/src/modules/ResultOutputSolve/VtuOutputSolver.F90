@@ -333,7 +333,12 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   IF( GotIt ) THEN
     nTime = ExtCount
   ELSE
-    nTime = nTime + 1
+    i = GetInteger( Params,'Fileindex step',GotIt)
+    IF( GotIt ) THEN
+      nTime = nTime + i
+    ELSE
+      nTime = nTime + 1
+    END IF
   END IF
 
   FileIndexOffset = GetInteger( Params,'Fileindex offset',GotIt)
@@ -812,8 +817,17 @@ CONTAINS
           CoordScale(i) = 1.0_dp / TmpArray(j,1)
         END DO
       END IF
+    ELSE
+      ! Enable local coordinate scaling for convenience. 
+      TmpArray => ListGetConstRealArray( Params,'Coordinate Scaling',Found )    
+      IF( Found ) THEN            
+        DO i=1,Model % Mesh % MaxDim 
+          j = MIN( i, SIZE(TmpArray,1) )
+          CoordScale(i) = TmpArray(j,1)
+        END DO
+      END IF
     END IF
-
+      
     CoordOffset = 0.0_dp
     TmpArray => ListGetConstRealArray( Params,'Mesh Translate',Found )    
     IF( Found ) THEN            
@@ -1681,7 +1695,7 @@ CONTAINS
       Offset = Offset + IntSize + k
     END IF
 
-    ! For higher order L-elemenet we need to create also the coordinates on-the-fly.
+    ! For higher order L-element we need to create also the coordinates on-the-fly.
     ! It would be convenient if the coordinate would be available as a 3-component variable.
     ! If the coordinates change this should be modified...
     IF( LagN > 0 ) THEN

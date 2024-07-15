@@ -1,0 +1,16 @@
+IF(HAVE_PARMMG)
+IF(HAVE_ZOLTAN)
+  INCLUDE(test_macros)
+  INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
+
+  CONFIGURE_FILE(parallelremesh.sif parallelremesh.sif COPYONLY)
+
+  ADD_ELMERTEST_MODULE(ParallelRemeshZoltan TestLevelSet ./TestLevelSet.F90)
+
+  FILE(COPY ELMERSOLVER_STARTINFO cube.msh DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+  FILE(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/Results/cube")
+
+  ADD_ELMER_TEST(ParallelRemeshZoltan NPROCS 4 LABELS mmg slow)
+ENDIF()
+ENDIF()

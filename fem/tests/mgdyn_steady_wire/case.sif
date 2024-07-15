@@ -86,12 +86,21 @@ Solver 2
 
   Linear System Symmetric = True
   Linear System Solver = "Iterative"
-  Linear System Preconditioning = none
-  Linear System Residual Output = 10
+  Linear System Preconditioning = ilu2 !none
+edge basis = true
+
+Linear System Residual Output = 10
   Linear System Max Iterations = 1000
   Linear System Iterative Method = GCR
   Linear System Convergence Tolerance = 1.0e-8
   BicgStabl Polynomial Degree = 4
+
+! Insteady of using the standard L2 norm of vector potential use
+! sqrt( \int |\curl A|^2 d\Omega ) instead. 
+  Use Magnetic Norm = Logical True
+! This is used so that the steady state default norm does not overshadow
+! the magnetic norm.
+!  Skip Compute Steady State Change = True
 End
 
 

@@ -583,7 +583,7 @@ CONTAINS
      END DO
 
      Radiation = ListGetLogical( Solver % Values, 'Radiation Solver', Found )
-     IF ( Radiation .OR. Equation == 'heat equation' ) THEN
+     IF ( Radiation ) THEN
         t = Mesh % NumberOfBulkElements + 1
         n = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
         DO WHILE( t<= n )
@@ -1501,6 +1501,7 @@ CONTAINS
          NULLIFY( Var % PrevValues )
          IF ( ASSOCIATED( PVar % PrevValues ) ) THEN
             ALLOCATE( Var % PrevValues( DOFs, SIZE(PVar % PrevValues,2) ) )
+            Var % PrevValues = 0._dp
          END IF
 
          IF ( PVar % Name(1:PVar % NameLen) == 'flow solution' ) THEN
@@ -1786,19 +1787,20 @@ CONTAINS
        ptr  => List % Head
        Prev => ptr
        DO WHILE( ASSOCIATED(ptr) )
-         IF ( ptr % NameLen == k .AND. ptr % Name(1:k) == str(1:k) ) THEN
-            IF ( ASSOCIATED(ptr,List % Head) ) THEN
+         IF ( ptr % NameLen == k) THEN
+           IF(ptr % Name(1:k) == str(1:k) ) THEN
+             IF ( ASSOCIATED(ptr,List % Head) ) THEN
                List % Head => ptr % Next
                Prev => List % Head
-            ELSE
+             ELSE
                Prev % Next => ptr % Next
-            END IF
-            CALL ListDelete(ptr)
-            EXIT
-         ELSE
-           Prev => ptr
-           ptr  => ptr % Next 
+             END IF
+             CALL ListDelete(ptr)
+             EXIT
+           END IF
          END IF
+         Prev => ptr
+         ptr  => ptr % Next 
        END DO
      END IF
 !------------------------------------------------------------------------------
@@ -2099,6 +2101,11 @@ CONTAINS
        ptr % Counter = ptr % Counter + 1
      END IF
 #endif
+#ifdef DEVEL_LISTUSAGE
+     IF( ASSOCIATED( ptr ) ) THEN
+       ptr % Counter = 1
+     END IF
+#endif
      
      IF ( PRESENT(Found) ) THEN
        Found = ASSOCIATED(ptr)
@@ -2186,9 +2193,46 @@ CONTAINS
    END SUBROUTINE ListRenameAllBC
 !------------------------------------------------------------------------------
 
-   
-  
+   !------------------------------------------------------------------------------
+!> Rename all given keywords in body force section.
+!------------------------------------------------------------------------------
+   SUBROUTINE ListRenameAllBodyForce( Model, Name, Name2 ) 
+!------------------------------------------------------------------------------
+     TYPE(Model_t) :: Model
+     CHARACTER(LEN=*) :: Name, Name2
+     LOGICAL :: Found
+     INTEGER :: bc, n
 
+     n = 0
+     DO bc = 1,Model % NumberOfBodyForces
+       CALL ListRename( Model % BodyForces(bc) % Values, Name, Name2, Found )
+       IF( Found ) n = n + 1
+     END DO
+     IF( n > 0 ) CALL Info('ListRenameAllBodyForces',&
+         '"'//TRIM(Name)//'" renamed to "'//TRIM(Name2)//'" on '//I2S(n)//' BCs',Level=6)
+     
+!------------------------------------------------------------------------------
+   END SUBROUTINE ListRenameAllBodyForce
+!------------------------------------------------------------------------------
+
+   
+!------------------------------------------------------------------------------
+!> Just checks if a entry is present in the list.
+!------------------------------------------------------------------------------
+   FUNCTION ListCheckPresent( List,Name ) RESULT(Found)
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: Name
+     LOGICAL :: Found
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr
+!------------------------------------------------------------------------------
+     ptr => ListFind(List,Name,Found)
+!------------------------------------------------------------------------------
+   END FUNCTION ListCheckPresent
+!------------------------------------------------------------------------------
+
+   
 !-----------------------------------------------------------------------------
 !> Finds an entry in the list by its name and returns a handle to it.
 !> This one just finds a keyword with the same start as specified by 'name'.
@@ -2315,7 +2359,6 @@ CONTAINS
    END FUNCTION ListCheckSuffix
 !------------------------------------------------------------------------------
   
-
 
 !------------------------------------------------------------------------------
 !> Check if the keyword is with the given suffix is present in any boundary condition.
@@ -2877,7 +2920,7 @@ CONTAINS
     
     IF( Found ) THEN
       CALL Info('ListSetParameters',&
-          'Altered number of parameters: '//I2S(cnt),Level=6)
+          'Scaled number of parameters: '//I2S(cnt),Level=6)
     ELSE
       CALL Warn('ListSetParameters','No parameters were altered!')
     END IF
@@ -3069,6 +3112,17 @@ CONTAINS
        ptrb % Name = name
        ptrb % Namelen = lentrim( name )
      END IF
+
+#ifdef DEVEL_LISTCOUNTER
+     IF( ASSOCIATED( ptr ) ) THEN
+       ptr % Counter = ptr % Counter + 1
+     END IF
+#endif
+#ifdef DEVEL_LISTUSAGE
+     IF( ASSOCIATED( ptr ) ) THEN
+       ptr % Counter = 1
+     END IF
+#endif
      
    END SUBROUTINE ListCopyItem
 
@@ -3076,18 +3130,26 @@ CONTAINS
 !> Checks two lists for a given keyword. If it is given then 
 !> copy it as it is to the 2nd list.
 !------------------------------------------------------------------------------
-   SUBROUTINE ListCompareAndCopy( list, listb, name, Found )
+   SUBROUTINE ListCompareAndCopy( list, listb, name, Found, remove, nooverwrite)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: list, listb
      CHARACTER(LEN=*) :: name
-     LOGICAL :: Found
+     LOGICAL, OPTIONAL :: Found
+     LOGICAL, OPTIONAL :: remove
+     LOGICAL, OPTIONAL :: nooverwrite 
 !------------------------------------------------------------------------------
      TYPE(ValueListEntry_t), POINTER :: ptr
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
      INTEGER :: k, n
 
      k = StringToLowerCase( str,Name,.TRUE. )
-     Found = .FALSE.
+     IF(PRESENT(Found)) Found = .FALSE.
+
+     IF(PRESENT(nooverwrite)) THEN
+       IF(nooverwrite) THEN
+         IF( ListCheckPresent( listb, str ) ) RETURN
+       END IF
+     END IF
 
      ! Find the keyword from the 1st list 
      Ptr => List % Head
@@ -3103,8 +3165,13 @@ CONTAINS
      
      ! Add the same entry to the 2nd list 
      CALL ListCopyItem( ptr, listb ) 
-     Found = .TRUE.
+     IF(PRESENT(Found)) Found = .TRUE.
 
+     IF( PRESENT(remove) ) THEN
+       IF( remove ) CALL ListRemove( list, name)
+     END IF
+
+     
    END SUBROUTINE ListCompareAndCopy
  
 
@@ -3141,7 +3208,7 @@ CONTAINS
        END IF
        ptr => ptr % Next
      END DO
-
+     
      IF( ncopy > 0 ) THEN
        CALL Info('ListCopyPrefixedKeywords',&
            'Copied '//I2S(ncopy)//' keywords with prefix: '//TRIM(prefix),Level=6)
@@ -3176,23 +3243,6 @@ CONTAINS
      
    END SUBROUTINE ListCopyAllKeywords
  
- 
-!------------------------------------------------------------------------------
-!> Just checks if a entry is present in the list.
-!------------------------------------------------------------------------------
-   FUNCTION ListCheckPresent( List,Name ) RESULT(Found)
-!------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: List
-     CHARACTER(LEN=*) :: Name
-     LOGICAL :: Found
-!------------------------------------------------------------------------------
-     TYPE(ValueListEntry_t), POINTER :: ptr
-!------------------------------------------------------------------------------
-     ptr => ListFind(List,Name,Found)
-!------------------------------------------------------------------------------
-   END FUNCTION ListCheckPresent
-!------------------------------------------------------------------------------
-
 
 !------------------------------------------------------------------------------
 !> Check that obsolite keyword is not used instead of the new one.
@@ -3912,10 +3962,8 @@ CONTAINS
        CALL ListPopActiveName()
      ELSE
        IF ( .NOT. ASSOCIATED(ptr % IValues) ) THEN
-         WRITE(Message,*) 'Value type for property [', TRIM(Name), &
-                 '] not used consistently.'
-         CALL Fatal( 'ListGetInteger', Message )
-         RETURN
+         CALL Fatal( 'ListGetInteger', 'Value type for property ['//TRIM(Name)//&
+                 '] not used consistently.')
        END IF
 
        L = ptr % IValues(1)
@@ -3967,9 +4015,8 @@ CONTAINS
      END IF     
      
      IF ( .NOT. ASSOCIATED(ptr % IValues) ) THEN
-       WRITE(Message,*) 'Value type for property [', TRIM(Name), &
-               '] not used consistently.'
-       CALL Fatal( 'ListGetIntegerArray', Message )
+       CALL Fatal( 'ListGetIntegerArray', 'Value type for property ['//TRIM(Name)//&
+           '] not used consistently.')
      END IF
 
      n = SIZE(ptr % IValues)
@@ -4181,9 +4228,8 @@ CONTAINS
      CASE( LIST_TYPE_CONSTANT_SCALAR )
 
        IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
-         WRITE(Message,*) 'VALUE TYPE for property [', TRIM(Name), &
-             '] not used consistently.'
-         CALL Fatal( 'ListGetConstReal', Message )
+         CALL Fatal( 'ListGetConstReal', 'Value type for property ['//TRIM(Name)//&
+           '] not used consistently.')
        END IF
        F = ptr % Coeff * ptr % Fvalues(1,1,1)
 
@@ -4194,9 +4240,8 @@ CONTAINS
      CASE( LIST_TYPE_CONSTANT_SCALAR_PROC )
 
        IF ( ptr % PROCEDURE == 0 ) THEN
-         WRITE(Message,*) 'VALUE TYPE for property [', TRIM(Name), &
-             '] not used consistently.'
-         CALL Fatal( 'ListGetConstReal', Message )
+         CALL Fatal( 'ListGetConstReal', 'Value type for property ['//TRIM(Name)//&
+             '] not used consistently.')
        END IF
 
        xx = 0.0_dp
@@ -4504,18 +4549,21 @@ CONTAINS
 !> and obtains the corresponding variables to a table.
 !------------------------------------------------------------------------------
   SUBROUTINE ListParseStrToVars( str, slen, name, count, VarTable, &
-      SomeAtIp, SomeAtNodes, AllGlobal, DummyCount )
+      SomeAtIp, SomeAtNodes, AllGlobal, DummyCount, List )
 !------------------------------------------------------------------------------
      CHARACTER(LEN=*) :: str, name
      INTEGER :: slen, count
      TYPE(VariableTable_t) :: VarTable(:)
      LOGICAL :: SomeAtIp, SomeAtNodes, AllGlobal
      INTEGER :: DummyCount
+     TYPE(ValueList_t), POINTER, OPTIONAL :: List         
 !------------------------------------------------------------------------------
      INTEGER :: i,j,k,n,k1,l,l0,l1
      TYPE(Variable_t), POINTER :: Var
      REAL(KIND=dp) :: Val
-     
+     LOGICAL :: Found
+     TYPE(ValueListEntry_t), POINTER :: ptr
+ 
      SomeAtIp = .FALSE.
      SomeAtNodes = .FALSE.
      AllGlobal = .TRUE.
@@ -4553,7 +4601,6 @@ CONTAINS
          SomeAtIp = .TRUE.
          VarTable(count) % Variable => NULL()
          VarTable(count) % ParamValue = -1.0_dp
-         
        ELSE IF ( str(l0:l1) == 'coordinate' ) THEN
          VarTable(count+1) % Variable => VariableGet( CurrentModel % Variables,"coordinate 1")
          VarTable(count+2) % Variable => VariableGet( CurrentModel % Variables,"coordinate 2")
@@ -4561,8 +4608,8 @@ CONTAINS
          count = count + 3 
          SomeAtNodes = .TRUE.
          AllGlobal = .FALSE.
-
        ELSE 
+         Found = .FALSE.
          Var => VariableGet( CurrentModel % Variables,TRIM(str(l0:l1)) )                          
          count = count + 1         
          IF ( ASSOCIATED( Var ) ) THEN
@@ -4572,19 +4619,50 @@ CONTAINS
              SomeAtIp = .TRUE.
            ELSE
              SomeAtNodes = .TRUE.
-           END IF           
-         ELSE
+           END IF
+           Found = .TRUE.
+         ELSE IF(l1-l0 > 5) THEN
+           IF(str(l0:l0+4) == 'prev ') THEN
+             Var => VariableGet( CurrentModel % Variables,TRIM(str(l0+5:l1)) )                          
+             IF( ASSOCIATED( Var ) ) THEN
+               VarTable(count) % Variable => Var
+               VarTable(count) % tstep = -1
+               IF( SIZE( Var % Values ) > Var % Dofs ) AllGlobal = .FALSE.           
+               IF( Var % TYPE == Variable_on_gauss_points ) THEN
+                 SomeAtIp = .TRUE.
+               ELSE
+                 SomeAtNodes = .TRUE.
+               END IF
+               Found = .TRUE.
+             END IF
+           END IF
+         END IF
+
+         ! Ok, the string was not a variable name maybe it is a pure number
+         ! or another keytword.
+         IF(.NOT. Found) THEN
            IF( VERIFY( str(l0:l1),'-.0123456789eE') == 0 ) THEN
              !PRINT *,'We do have a number:',Val
              READ(str(l0:l1),*) Val
              VarTable(count) % Variable => NULL()
              VarTable(count) % ParamValue = Val
            ELSE
-             CALL Info('ListParseStrToVars','Parsed variable '//I2S(count)//' of '//str(1:slen),Level=3)
-             CALL Info('ListParseStrToVars','Parse counters: '&
-                 //I2S(l0)//', '//I2S(l1)//', '//I2S(slen),Level=10)
-             CALL Fatal('ListParseStrToVars', 'Can''t find independent variable:['// &
-                 TRIM(str(l0:l1))//'] for dependent variable:['//TRIM(Name)//']' ) 
+             ! Check if the dependency is actually a keyword
+             Found = .FALSE.
+             IF(PRESENT(List) ) THEN
+               ptr => ListFind(List,str(l0:l1),Found)
+             END IF
+             IF( Found ) THEN
+               VarTable(count) % Keyword => ptr
+               AllGlobal = .FALSE.
+               SomeAtNodes = .TRUE.
+             ELSE            
+               CALL Info('ListParseStrToVars','Parsed variable '//I2S(count)//' of '//str(1:slen),Level=3)
+               CALL Info('ListParseStrToVars','Parse counters: '&
+                   //I2S(l0)//', '//I2S(l1)//', '//I2S(slen),Level=10)
+               CALL Fatal('ListParseStrToVars', 'Can''t find independent variable:['// &
+                   TRIM(str(l0:l1))//'] for dependent variable:['//TRIM(Name)//']' )
+             END IF
            END IF
          END IF
        END IF
@@ -4601,7 +4679,7 @@ CONTAINS
 !-------------------------------------------------------------------------------------
 !> Given a table of variables and a node index return the variable values on the node.
 !-------------------------------------------------------------------------------------
-  SUBROUTINE VarsToValuesOnNodes( VarCount, VarTable, ind, T, count, intvarcount, tStep )
+  RECURSIVE SUBROUTINE VarsToValuesOnNodes( VarCount, VarTable, ind, T, count, intvarcount, tStep )
 !------------------------------------------------------------------------------
      INTEGER :: Varcount
      TYPE(VariableTable_t) :: VarTable(:)
@@ -4612,7 +4690,7 @@ CONTAINS
      REAL(KIND=dp) :: T(:)
 !------------------------------------------------------------------------------
      TYPE(Element_t), POINTER :: Element
-     INTEGER :: i,j,k,n,k1,l,varsize,vari,vari0,dti
+     INTEGER :: i,j,k,n,k1,l,varsize,vari,vari0,tstep0,dti
      TYPE(Variable_t), POINTER :: Var
      LOGICAL :: Failed
      REAL(KIND=dp), POINTER :: Values(:)
@@ -4624,16 +4702,22 @@ CONTAINS
      IF(PRESENT(intvarcount)) vari0 = IntVarCount
      count = vari0
 
-     dti = 0
-     IF(PRESENT(tstep)) dti = -tstep
+     tstep0 = 0
+     IF(PRESENT(tstep)) tstep0 = tstep
      
      DO Vari = vari0+1, VarCount
        
        Var => VarTable(Vari) % Variable
-
+       ! If we are asked keyword on previous timestep, then previous for that is 2nd previous...
+       dti = -(tstep0 + VarTable(Vari) % tstep)
+       
        IF(.NOT. ASSOCIATED( Var ) ) THEN
          count = count + 1
-         T(count) = VarTable(Vari) % ParamValue
+         IF(ASSOCIATED( VarTable(Vari) % Keyword ) ) THEN
+           T(count) = ListGetRealInside( VarTable(Vari) % Keyword,'',ind)
+         ELSE
+           T(count) = VarTable(Vari) % ParamValue
+         END IF
          CYCLE
        END IF
        
@@ -4709,7 +4793,6 @@ CONTAINS
                    Values => Var % PrevValues(:,dti)
              END IF
            END IF
-
            DO l=1,Var % DOFs
              count = count + 1
              T(count) = Values(Var % Dofs*(k1-1)+l)
@@ -4776,15 +4859,16 @@ CONTAINS
  !> we need to solve a small linear system in each element to map the values to
  !> the nodes, and further to the integration point defined by Basis.  
  !------------------------------------------------------------------------------
-   FUNCTION InterpolateIPVariableToBoundary( Element, Basis, Var ) RESULT ( T ) 
+   FUNCTION InterpolateIPVariableToBoundary( Element, Basis, Var, dof ) RESULT ( T ) 
  !------------------------------------------------------------------------------
      TYPE(Element_t), POINTER :: Element
      REAL(KIND=dp) :: Basis(:)
      TYPE(Variable_t), POINTER :: Var
+     INTEGER, OPTIONAL :: dof
      REAL(KIND=dp) :: T
 !------------------------------------------------------------------------------
      TYPE(Element_t), POINTER :: Parent
-     INTEGER :: ipar, npar, i, j, n, np, nip
+     INTEGER :: ipar, npar, i, j, n, np, nip, dofs
      REAL(KIND=dp), ALLOCATABLE :: fip(:),fdg(:)
 
      ! We have to provide interface for this as otherwise we would create a
@@ -4802,7 +4886,13 @@ CONTAINS
      T = 0.0_dp
      n = Element % TYPE % NumberOfNodes     
      npar = 0.0_dp
-
+     dofs = Var % Dofs
+     IF(dofs > 1) THEN
+       IF(.NOT. PRESENT(dof)) THEN
+         CALL Fatal('InterpolateIPVariableToBoundary','Give component of ip variable!')
+       END IF
+     END IF
+                 
      ! Go through both potential parents. If we find the information in both then
      ! take on average. Otherwise use one-side interpolation. 
      DO ipar = 1,2 
@@ -4820,8 +4910,14 @@ CONTAINS
        np = Parent % TYPE % NumberOfNodes       
 
        ALLOCATE( fip(nip), fdg(np) )
-       
-       fip(1:nip) = Var % Values(j+1:j+nip)
+
+       IF( dofs > 1 ) THEN         
+         DO i=1,nip
+           fip(i) = Var % Values(dofs*(j+i-1)+dof)
+         END DO
+       ELSE
+         fip(1:nip) = Var % Values(j+1:j+nip)
+       END IF
        fdg(1:np) = 0.0_dp
           
        CALL Ip2DgFieldInElement( CurrentModel % Mesh, Parent, nip, fip, np, fdg )
@@ -4864,7 +4960,7 @@ CONTAINS
      INTEGER, OPTIONAL :: tstep
 !------------------------------------------------------------------------------
      TYPE(Element_t), POINTER :: Element
-     INTEGER :: i,j,k,n,k1,l,varsize,vari,vari0,dti
+     INTEGER :: i,j,k,n,k1,l,varsize,vari,vari0,dti,tstep0
      TYPE(Variable_t), POINTER :: Var
      LOGICAL :: Failed
      REAL(KIND=dp), POINTER :: Values(:)
@@ -4876,10 +4972,11 @@ CONTAINS
      END IF
      count = vari0
 
-     dti = 0
-     IF( PRESENT(tstep) ) dti = -tstep
-
-     DO Vari = vari0+1, VarCount 
+     tstep0 = 0
+     IF(PRESENT(tstep)) tstep0 = tstep
+     
+     DO Vari = vari0+1, VarCount
+       
        Var => VarTable(Vari) % Variable
 
        IF(.NOT. ASSOCIATED( Var ) ) THEN
@@ -4888,6 +4985,7 @@ CONTAINS
          CYCLE
        END IF
        
+       dti = -(tstep0 + VarTable(Vari) % tstep)
        Varsize = SIZE( Var % Values ) / Var % Dofs 
 
        k1 = 0
@@ -4907,13 +5005,16 @@ CONTAINS
            END IF
          ELSE
            IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN
-             IF( Var % Dofs > 1 ) THEN
-               CALL Fatal('VarsToValuesOnIps','We can only map scalar fields to boundary so far!')
-             END IF
              IF(.NOT. PRESENT(Basis) ) THEN
                CALL Fatal('VarsToValuesOnIps','We need the "Basis" parameter to map stuff to boundaries!')
-             END IF             
-             T(count+1) = InterpolateIPVariableToBoundary( Element, Basis, Var )
+             END IF
+             IF( Var % Dofs > 1 ) THEN             
+               DO l=1,Var % Dofs               
+                 T(count+l) = InterpolateIPVariableToBoundary( Element, Basis, Var, l )
+               END DO
+             ELSE
+               T(count+1) = InterpolateIPVariableToBoundary( Element, Basis, Var )                                
+             END IF               
            ELSE
              CALL Warn('VarsToValuesOnIPs','Could not find dependent IP variable: '//TRIM(Var % Name))
            END IF
@@ -5241,15 +5342,14 @@ CONTAINS
        RETURN
      END IF
 
+     
      SELECT CASE(ptr % TYPE)
 
      CASE( LIST_TYPE_CONSTANT_SCALAR )
 
        IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
-         WRITE(Message,*) 'VALUE TYPE for property [', TRIM(Name), &
-             '] not used consistently.'
-         CALL Fatal( 'ListGetReal', Message )
-         RETURN
+         CALL Fatal( 'ListGetReal', 'Value type for property ['//TRIM(Name)//&
+             '] not used consistently.')
        END IF
        F = ptr % Coeff * ptr % Fvalues(1,1,1)
 
@@ -5259,7 +5359,7 @@ CONTAINS
        CALL ListPushActiveName(Name)
 
        CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, Name, VarCount, VarTable, &
-           SomeAtIp, SomeAtNodes, AllGlobal, 0 )
+           SomeAtIp, SomeAtNodes, AllGlobal, 0, List )
        IF( SomeAtIp ) THEN
          CALL Fatal('ListGetReal','Function cannot deal with variables on IPs!')
        END IF
@@ -5275,10 +5375,8 @@ CONTAINS
                  ExecRealFunction( ptr % PROCEDURE,CurrentModel, k, T )
            ELSE
              IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
-               WRITE(Message,*) 'VALUE TYPE for property [', TRIM(Name), &
-                       '] not used consistently.'
-               CALL Fatal( 'ListGetReal', Message )
-               RETURN
+               CALL Fatal( 'ListGetReal', 'Value type for property ['//TRIM(Name)//&
+                   '] not used consistently.')
              END IF
              F(i) = ptr % Coeff * &
                  InterpolateCurve( ptr % TValues,ptr % FValues(1,1,:), &
@@ -5300,7 +5398,7 @@ CONTAINS
      CASE( LIST_TYPE_VARIABLE_SCALAR_STR )
 
        CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, Name, VarCount, &
-           VarTable, SomeAtIp, SomeAtNodes, AllGlobal, 0 )
+           VarTable, SomeAtIp, SomeAtNodes, AllGlobal, 0, List )
        IF( SomeAtIp ) THEN
          CALL Fatal('ListGetReal','Function cannot deal with variables on IPs!')
        END IF
@@ -5329,10 +5427,8 @@ CONTAINS
      CASE( LIST_TYPE_CONSTANT_SCALAR_PROC )
 
        IF ( ptr % PROCEDURE == 0 ) THEN
-         WRITE(Message,*) 'VALUE TYPE for property [', TRIM(Name), &
-             '] not used consistently.'
-         CALL Fatal( 'ListGetReal', Message )
-         RETURN
+         CALL Fatal( 'ListGetReal', 'Value type for property ['//TRIM(Name)//&
+             '] not used consistently.')
        END IF
 
        CALL ListPushActiveName(name)
@@ -5366,7 +5462,98 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+!> Gets a real valued parameter for one node. This is a special
+!> version of this routine only for keywords depending on keywords.
+!------------------------------------------------------------------------------
+   RECURSIVE FUNCTION ListGetRealInside( ptr,Name,NodeIndex) RESULT(F)
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     CHARACTER(LEN=*)  :: Name
+     INTEGER :: NodeIndex
+     REAL(KIND=dp)  :: F
+!------------------------------------------------------------------------------
+     TYPE(Variable_t), POINTER :: Variable, CVar, TVar
+     REAL(KIND=dp) :: T(MAX_FNC)
+     TYPE(VariableTable_t) :: VarTable(MAX_FNC)
+     INTEGER :: j, VarCount
+     LOGICAL :: AllGlobal, SomeAtIp, SomeAtNodes
+     ! INTEGER :: TID, OMP_GET_THREAD_NUM
+!------------------------------------------------------------------------------
+     ! TID = 0
+     ! !$ TID=OMP_GET_THREAD_NUM()
+     F = 0.0_dp
 
+     SELECT CASE(ptr % TYPE)
+
+     CASE( LIST_TYPE_CONSTANT_SCALAR )
+       IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
+         CALL Fatal( 'ListGetRealInside', 'Value type for property ['//TRIM(Name)// &
+             '] not used consistently.' )
+       END IF
+       F = ptr % Coeff * ptr % Fvalues(1,1,1)
+    
+     CASE( LIST_TYPE_VARIABLE_SCALAR )              
+       CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, Name, VarCount, VarTable, &
+           SomeAtIp, SomeAtNodes, AllGlobal, 0 )
+       IF( SomeAtIp ) THEN
+         CALL Fatal('ListGetRealInside','Function cannot deal with variables on IPs!')
+       END IF
+
+       CALL VarsToValuesOnNodes( VarCount, VarTable, NodeIndex, T, j )
+       
+       IF ( .NOT. ANY( T(1:j)==HUGE(1.0_dp) ) ) THEN
+         IF ( ptr % PROCEDURE /= 0 ) THEN
+           F = ptr % Coeff * &
+               ExecRealFunction( ptr % PROCEDURE,CurrentModel, NodeIndex, T )
+         ELSE
+           IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
+             CALL Fatal( 'ListGetRealInside','Value type for property ['//TRIM(Name)// &
+                 '] not used consistently.' )
+           END IF
+           F = ptr % Coeff * &
+               InterpolateCurve( ptr % TValues,ptr % FValues(1,1,:), &
+               T(1), ptr % CubicCoeff )
+         END IF
+       END IF
+
+     CASE( LIST_TYPE_CONSTANT_SCALAR_STR )
+         TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
+         F = ptr % Coeff * GetMatcReal(ptr % Cvalue,1,Tvar % values,'st')
+         
+     CASE( LIST_TYPE_VARIABLE_SCALAR_STR )
+
+       CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, Name, VarCount, &
+           VarTable, SomeAtIp, SomeAtNodes, AllGlobal, 0 )
+       IF( SomeAtIp ) THEN
+         CALL Fatal('ListGetRealInside','Function cannot deal with variables on IPs!')
+       END IF
+              
+       CALL VarsToValuesOnNodes( VarCount, VarTable, NodeIndex, T, j )
+       IF ( .NOT. ptr % LuaFun ) THEN
+         IF ( .NOT. ANY( T(1:j)==HUGE(1.0_dp) ) ) THEN
+           F = Ptr % Coeff * GetMatcReal(ptr % Cvalue,j,T)
+         END IF
+       ELSE
+         CALL ElmerEvalLua(LuaState, ptr, T, F, j )
+       END IF
+
+     CASE( LIST_TYPE_CONSTANT_SCALAR_PROC )
+       IF ( ptr % PROCEDURE == 0 ) THEN
+         CALL Fatal('ListGetRealInside','Value type for property ['//TRIM(Name)// &
+             '] not used consistently.')
+       END IF       
+       F = Ptr % Coeff * &
+           ExecConstRealFunction( ptr % PROCEDURE,CurrentModel, &
+           CurrentModel % Mesh % Nodes % x( NodeIndex ), &
+           CurrentModel % Mesh % Nodes % y( NodeIndex ), &
+           CurrentModel % Mesh % Nodes % z( NodeIndex ) )
+     END SELECT
+
+   END FUNCTION ListGetRealInside
+!------------------------------------------------------------------------------
+
+   
 !------------------------------------------------------------------------------
 !> Gets a real valued parameter in one single point with value x.
 !> Optionally also computes the derivative at that point. 
@@ -5431,10 +5618,8 @@ CONTAINS
      CASE( LIST_TYPE_CONSTANT_SCALAR )
 
        IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
-         WRITE(Message,*) 'VALUE TYPE for property [', TRIM(Name), &
-             '] not used consistently.'
-         CALL Fatal( 'ListGetReal', Message )
-         RETURN
+         CALL Fatal( 'ListGetReal', 'Value type for property ['//TRIM(Name)// &
+             '] not used consistently.')
        END IF
        F = ptr % Coeff * ptr % Fvalues(1,1,1)
        IF( PRESENT( dFdx ) ) THEN
@@ -5474,10 +5659,8 @@ CONTAINS
          CALL ListPopActiveName()
        ELSE
          IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
-           WRITE(Message,*) 'VALUE TYPE for property [', TRIM(Name), &
-               '] not used consistently.'
-           CALL Fatal( 'ListGetFun', Message )
-           RETURN
+           CALL Fatal( 'ListGetFun', 'Value type for property ['//TRIM(Name)// &
+               '] not used consistently.')
          END IF
          F = InterpolateCurve( ptr % TValues,ptr % FValues(1,1,:), &
              x, ptr % CubicCoeff )
@@ -5851,7 +6034,7 @@ CONTAINS
      Handle % List => NULL()
      Handle % Element => NULL()
      Handle % Unfoundfatal = .FALSE.
-     IF (.NOT. ASSOCIATED( Ptr ) ) THEN
+     IF (.NOT. ASSOCIATED( Handle % Ptr ) ) THEN
        Handle % Ptr => ListAllocate()
      END IF
 
@@ -5934,7 +6117,7 @@ CONTAINS
          IF( FirstList ) THEN
            Handle % LValue = LValue
          ELSE
-           IF( XOR( Handle % LValue, LValue ) ) THEN
+           IF(  Handle % LValue .NEQV. LValue ) THEN
              Handle % ConstantEverywhere = .FALSE.
              EXIT
            END IF
@@ -6136,9 +6319,19 @@ CONTAINS
            'Initial Condition', ListFound )         
        IF(ListFound) List => CurrentModel % ICs(id) % Values
        
-     CASE( SECTION_TYPE_MATERIAL ) 
-       id = ListGetInteger( CurrentModel % Bodies(ListId) % Values, &
-           'Material', ListFound )         
+     CASE( SECTION_TYPE_MATERIAL )
+       IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN
+         id = Element % BoundaryInfo % Constraint
+         IF(id >= 1 .AND. id <= CurrentModel % NumberOfBCs ) THEN 
+           id = ListGetInteger( CurrentModel % BCs(id) % Values, &
+               'Material', ListFound )
+         ELSE
+           id = 0
+         END IF
+       ELSE
+         id = ListGetInteger( CurrentModel % Bodies(ListId) % Values, &
+             'Material', ListFound )
+       END IF
        IF(ListFound) List => CurrentModel % Materials(id) % Values
 
      CASE( SECTION_TYPE_COMPONENT ) 
@@ -6527,7 +6720,7 @@ CONTAINS
        IF( Ptr % DepNameLen > 0 ) THEN         
          CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, &
              Handle % Name, Handle % VarCount, Handle % VarTable, &
-             SomeAtIp, SomeAtNodes, AllGlobal, Handle % IntVarCount )
+             SomeAtIp, SomeAtNodes, AllGlobal, Handle % IntVarCount, List )
 
          Handle % GlobalInList = ( AllGlobal .AND. ptr % PROCEDURE == 0 )
          
@@ -6867,10 +7060,8 @@ CONTAINS
          CASE( LIST_TYPE_CONSTANT_SCALAR )
            
            IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
-             WRITE(Message,*) 'Value type for property [', TRIM(Handle % Name), &
-                 '] not used consistently.'
-             CALL Fatal( 'ListGetElementReal', Message )
-             RETURN
+             CALL Fatal( 'ListGetElementReal', 'Value type for property ['//TRIM(Handle % Name)// &
+                 '] not used consistently.')
            END IF
            F(1) = ptr % Coeff * ptr % Fvalues(1,1,1)
 
@@ -6889,7 +7080,7 @@ CONTAINS
                    ExecRealFunction( ptr % PROCEDURE,CurrentModel, &
                    NodeIndexes(i), T )              
              ELSE
-               IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
+               IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN                 
                  CALL Fatal('ListGetElementReal','Value type for property ['//TRIM(Handle % Name)// &
                      '] not used consistently!')
                END IF
@@ -7265,7 +7456,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> This is just a wrapper for getting divergence of a 3D real vector.
+!> This is just a wrapper for getting divergence of a 3D real vector neatly.
 !------------------------------------------------------------------------------
    FUNCTION ListGetElementRealDiv( Handle,dBasisdx,Element,Found,Indexes) RESULT(Rdiv)
 !------------------------------------------------------------------------------
@@ -7275,10 +7466,11 @@ CONTAINS
      LOGICAL, OPTIONAL :: Found
      TYPE(Element_t), POINTER, OPTIONAL :: Element
      INTEGER, POINTER, OPTIONAL :: Indexes(:)
-     REAL(KIND=dp)  :: Rdiv(3)
+     REAL(KIND=dp)  :: Rdiv, Rdiv_comps(3)
 
-     LOGICAL :: Found1, Found2, Found3
+     LOGICAL :: Found1
 
+     IF(PRESENT(Found)) Found = .FALSE.
      Rdiv = 0.0_dp
      
      IF(.NOT. ASSOCIATED( Handle % Handle2 ) ) THEN
@@ -7287,14 +7479,17 @@ CONTAINS
 
      IF( Handle % NotPresentAnywhere .AND. Handle % Handle2 % NotPresentAnywhere &
          .AND.  Handle % Handle3 % NotPresentAnywhere ) THEN
-       IF(PRESENT(Found)) Found = .FALSE.
        RETURN
      END IF
 
-     Rdiv(1) = ListGetElementReal(Handle,dBasisdx(:,1),Element,Found1,Indexes)
-     Rdiv(2) = ListGetElementReal(Handle % Handle2,dBasisdx(:,2),Element,Found2,Indexes)
-     Rdiv(3) = ListGetElementReal(Handle % Handle3,dBasisdx(:,3),Element,Found3,Indexes)
-     IF( PRESENT( Found ) ) Found = Found1 .OR. Found2 .OR. Found3
+     Rdiv_comps(1) = ListGetElementReal(Handle,dBasisdx(:,1),Element,Found1,Indexes)
+     ! We can only take Div of a vector field if all components are present 
+     IF(.NOT. Found1) RETURN          
+     Rdiv_comps(2) = ListGetElementReal(Handle % Handle2,dBasisdx(:,2),Element,Found1,Indexes)
+     Rdiv_comps(3) = ListGetElementReal(Handle % Handle3,dBasisdx(:,3),Element,Found1,Indexes)
+
+     Rdiv = SUM(Rdiv_comps)
+     IF( PRESENT( Found ) ) Found = .TRUE.
      
    END FUNCTION ListGetElementRealDiv
 
@@ -7355,7 +7550,8 @@ CONTAINS
      INTEGER :: i,j,k,k1,l,l0,l1,lsize,n,bodyid,id,node,gp
      TYPE(Element_t), POINTER :: PElement
      TYPE(ValueList_t), POINTER :: List
-     LOGICAL :: AllGlobal, SomeAtIp, SomeAtNodes, ListSame, ListFound, GotIt, IntFound
+     LOGICAL :: AllGlobal, SomeAtIp, SomeAtNodes, ListSame, ListFound, &
+         GotIt, IntFound, SizeSame
 !------------------------------------------------------------------------------
 
      IF( Handle % nValuesVec < ngp ) THEN
@@ -7366,10 +7562,15 @@ CONTAINS
        Handle % nValuesVec = ngp       
 
        IF( Handle % ConstantEverywhere ) THEN
-         Handle % ValuesVec(1:ngp) = Handle % Rvalue
+         Handle % ValuesVec = Handle % Rvalue
        ELSE
-         Handle % ValuesVec(1:ngp) = Handle % DefRValue        
+         Handle % ValuesVec = Handle % DefRValue        
        END IF
+       ! If size is increased we need to ensure that even constants will be rechecked. 
+       Handle % ListId = -1
+       SizeSame = .FALSE.
+     ELSE
+       SizeSame = .TRUE.
      END IF
 
      ! The results are always returned from the Handle % Values
@@ -7398,10 +7599,10 @@ CONTAINS
      ! Find the correct list to look the keyword in.
      ! Bulk and boundary elements are treated separately.
      List => ElementHandleList( PElement, Handle, ListSame, ListFound ) 
-
+     
      ! If the provided list is the same as last time, also the keyword will
      ! be sitting at the same place, otherwise find it in the new list
-     IF( ListSame ) THEN
+     IF( ListSame .AND. SizeSame ) THEN
        IF( PRESENT( Found ) ) Found = Handle % Found       
        IF( .NOT. Handle % Found ) RETURN
        IF( Handle % GlobalInList ) THEN
@@ -7419,7 +7620,7 @@ CONTAINS
          IF( Handle % UnfoundFatal ) THEN
            CALL Fatal('ListGetElementRealVec','Could not find required keyword in list: '//TRIM(Handle % Name))
          END IF
-         Handle % ValuesVec(1:ngp) = Handle % DefRValue
+         Handle % ValuesVec = Handle % DefRValue
          RETURN
        END IF
          
@@ -7443,7 +7644,7 @@ CONTAINS
        IF( ptr % DepNameLen > 0 ) THEN
          CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, &
              Handle % Name, Handle % VarCount, Handle % VarTable, &
-             SomeAtIp, SomeAtNodes, AllGlobal, 0 )
+             SomeAtIp, SomeAtNodes, AllGlobal, 0, List )
          IF( SomeAtIp ) Handle % EvaluateAtIp = .TRUE.
          Handle % GlobalInList = ( AllGlobal .AND. ptr % PROCEDURE == 0 )
          IF( AllGlobal ) Handle % EvaluateAtIp = .FALSE.
@@ -7631,13 +7832,11 @@ CONTAINS
        CASE( LIST_TYPE_CONSTANT_SCALAR )
 
          IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
-           WRITE(Message,*) 'Value type for property [', TRIM(Handle % Name), &
-               '] not used consistently.'
-           CALL Fatal( 'ListGetElementRealVec', Message )
-           RETURN
+           CALL Fatal( 'ListGetElementRealVec', 'Value type for property ['//TRIM(Handle % Name)// &
+               '] not used consistently.')
          END IF
          F(1) = ptr % Coeff * ptr % Fvalues(1,1,1)
-         RValues(1:ngp) = F(1)
+         RValues = F(1)
 
 
        CASE( LIST_TYPE_VARIABLE_SCALAR )
@@ -7654,10 +7853,8 @@ CONTAINS
                  NodeIndexes(i), T )              
            ELSE
              IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
-               WRITE(Message,*) 'Value type for property [', TRIM(Handle % Name), &
-                   '] not used consistently.'
-               CALL Fatal( 'ListGetElementRealVec', Message )
-               RETURN
+               CALL Fatal( 'ListGetElementRealVec', 'Value type for property ['//TRIM(Handle % Name)// &
+                   '] not used consistently.')
              END IF
              F(i) = ptr % Coeff * &
                  InterpolateCurve( ptr % TValues,ptr % FValues(1,1,:), &
@@ -7670,7 +7867,7 @@ CONTAINS
          END DO
          
          IF( Handle % GlobalInList ) THEN
-           Handle % ValuesVec(1:ngp) = F(1)
+           Handle % ValuesVec = F(1)
          ELSE
            Handle % ValuesVec(1:ngp) = MATMUL( BasisVec(1:ngp,1:n), F(1:n) )
          END IF
@@ -7680,7 +7877,7 @@ CONTAINS
        CASE( LIST_TYPE_CONSTANT_SCALAR_STR )
 
          TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
-         Handle % ValuesVec(1:ngp) = ptr % Coeff * GetMatcReal(ptr % Cvalue,1,Tvar % Values,'st')
+         Handle % ValuesVec = ptr % Coeff * GetMatcReal(ptr % Cvalue,1,Tvar % Values,'st')
 
        CASE( LIST_TYPE_VARIABLE_SCALAR_STR )
 
@@ -7701,17 +7898,15 @@ CONTAINS
          END DO
 
          IF( Handle % GlobalInList ) THEN
-           Handle % ValuesVec(1:ngp) = F(1)
+           Handle % ValuesVec = F(1)
          ELSE
            Handle % ValuesVec(1:ngp) = MATMUL( BasisVec(1:ngp,1:n), F(1:n) )
          END IF
 
        CASE( LIST_TYPE_CONSTANT_SCALAR_PROC )
          IF ( ptr % PROCEDURE == 0 ) THEN
-           WRITE(Message,*) 'Value type for property [', TRIM(Handle % Name), &
-               '] not used consistently.'
-           CALL Fatal( 'ListGetElementRealVec', Message )
-           RETURN
+           CALL Fatal( 'ListGetElementRealVec', 'Value type for property ['//TRIM(Handle % Name)// &
+               '] not used consistently.')
          END IF
 
          !CALL ListPushActiveName(Handle % name)
@@ -8528,9 +8723,8 @@ CONTAINS
      END IF
 
      IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
-       WRITE(Message,*) 'Value type for property [', TRIM(Name), &
-               '] not used consistently.'
-       CALL Fatal( 'ListGetConstRealArray', Message )
+       CALL Fatal( 'ListGetConstRealArray', 'Value type for property ['//TRIM(Name)// &
+           '] not used consistently.')
      END IF
 
      n = SIZE( ptr % FValues,1 )
@@ -8576,10 +8770,8 @@ CONTAINS
      END IF
 
      IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
-       WRITE(Message,*) 'Value type for property [', TRIM(Name), &
-               '] not used consistently.'
-       CALL Fatal( 'ListGetConstRealArray1', Message )
-       RETURN
+       CALL Fatal( 'ListGetConstRealArray1', 'Value type for property ['//TRIM(Name)// &
+           '] not used consistently.')
      END IF
 
      n = SIZE( ptr % FValues,1 )
@@ -9224,6 +9416,28 @@ CONTAINS
   END FUNCTION ListCheckPresentAnyComponent
 !------------------------------------------------------------------------------  
 
+
+!------------------------------------------------------------------------------
+  FUNCTION ListCheckPrefixAnyComponent( Model, Name ) RESULT( Found )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE    
+    TYPE(Model_t) :: Model
+    CHARACTER(LEN=*) :: Name
+    LOGICAL :: Found
+    INTEGER :: ind
+    TYPE(ValueListEntry_t), POINTER :: ptr
+    
+    Found = .FALSE.
+    DO ind=1, Model % NumberOfComponents
+      ptr => ListFindPrefix( Model % Components(ind) % Values, Name, Found )
+      IF( Found ) EXIT
+    END DO
+!------------------------------------------------------------------------------
+  END FUNCTION ListCheckPrefixAnyComponent
+!------------------------------------------------------------------------------  
+
+
+  
   !------------------------------------------------------------------------------
 !> Check if the keyword is true in any component.
 !------------------------------------------------------------------------------
@@ -9262,9 +9476,8 @@ CONTAINS
        ptr => ListFind(Model % Materials(mat) % Values,Name,Found)
        IF( .NOT. ASSOCIATED( ptr ) ) CYCLE
        IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
-         WRITE(Message,*) 'Value type for property [', TRIM(Name), &
-             '] not used consistently.'
-         CALL Fatal( 'ListCheckAnyMaterialArray', Message )
+         CALL Fatal( 'ListCheckAnyMaterialArray', 'Value type for property ['//TRIM(Name)// &
+             '] not used consistently.')
        END IF
        n = SIZE( ptr % FValues,1 )
        m = SIZE( ptr % FValues,2 )
@@ -9619,14 +9832,22 @@ CONTAINS
                 IsVector = .NOT. ASSOCIATED(Var1)
               END IF
               
-            ELSE IF( Comp <= 3 ) THEN  ! component 2 or 3
+            ELSE IF( Comp == 2 .OR. Comp == 3 ) THEN 
               ! Associated to the previous case, cycle the other components of the vector
               ! and cycle them if they are part of the vector that will be detected above.
- 
+
+              ! 2D: 2 or 3 components
+              ! 3D: 3 components
               Var1 => VariableGet(Variables,TRIM(str(1:j-2))//' 1',ThisOnly)		
               IF( ASSOCIATED( Var1 ) ) THEN
                 Var1 => VariableGet(Variables,TRIM(str(1:j-2))//' '//I2S(4),ThisOnly)		
                 Set = ASSOCIATED( Var1 )
+                IF( .NOT. Set ) THEN
+                  IF( Comp == 2 .AND. dim == 3 ) THEN
+                    Var1 => VariableGet(Variables,TRIM(str(1:j-2))//' '//I2S(dim),ThisOnly)		
+                    Set = .NOT. ASSOCIATED( Var1 )
+                  END IF
+                END IF
               END IF
             END IF
           END IF
@@ -10063,52 +10284,59 @@ END SUBROUTINE
 !-------------------------------------------------------------------------------
 
 
-#ifdef DEVEL_LISTCOUNTER
+#if defined DEVEL_LISTCOUNTER || defined DEVEL_LISTUSAGE
    
    !------------------------------------------------------------------------------
    !> Go through the lists and for each lists show call counts.
    !------------------------------------------------------------------------------
-   SUBROUTINE ReportListCounters( Model ) 
+   SUBROUTINE ReportListCounters( Model, ReportMode ) 
      TYPE(Model_t) :: Model
+     INTEGER :: ReportMode 
+     
      CHARACTER(LEN=MAX_NAME_LEN) :: dirname,filename
-
      INTEGER :: i, totcount, nelem, ReportUnit     
      LOGICAL :: Unused, GotFile
-     
-     CALL Info('ReportListCounters','Saving ListGet operations count per bulk elements')
 
+     IF(ReportMode == 1 ) THEN
+       ! Just initialize the lists from -1 to 0 such that only orginal keywords will be
+       ! reported in mode 2.
+       GOTO 100
+     END IF
+     
      filename = ListGetString( Model % Simulation,'List Counter File',GotFile )     
      IF(.NOT. GotFile ) filename = '../listcounter.dat'
-
+     
      ! We may toggle this to enable is disable automatic writing to file
      ! For example, when we want to collect data automatically from tests. 
      !GotFile = .TRUE.
-       
+     
      IF( GotFile ) THEN
+       CALL Info('ReportListCounters','Saving ListGet operations counts')
        ReportUnit = 10
        !IF( ParEnv % PEs > 1 ) THEN
        !  filename = TRIM(filename)//'.'//I2S(ParEnv % MyPe)
        !END IF         
        OPEN( 10,File=filename,STATUS='UNKNOWN',POSITION='APPEND' )
        CALL GETCWD(dirname)
-
+       
        ! These are only for reference if writing lot of data to same file
        WRITE( ReportUnit,'(A)') 'Working directory: '//TRIM(dirname)
        nelem = Model % Mesh % NumberOfBulkElements       
        WRITE( ReportUnit,'(T4,A)') 'Number of elements: '//I2S(nelem)
        WRITE( ReportUnit,'(T4,A)') 'Number of nodes: '//I2S(Model % Mesh % NumberOfNodes)       
      ELSE
-       IF( .NOT. InfoActive(12) ) RETURN
        ! IF( ParEnv % MyPe /= 0) RETURN 
        ReportUnit = 6
      END IF
               
-     totcount = 0
-     
      ! In the first round write the unused keywords
      ! On the 2nd round write the keywords that 
      Unused = .TRUE.
-100  IF( Unused ) THEN
+     totcount = 0
+     
+100  IF( ReportMode == 1 ) THEN
+       CONTINUE
+     ELSE IF( Unused ) THEN
        WRITE( ReportUnit,'(T4,A)') 'Unused keywords:'       
      ELSE
        WRITE( ReportUnit,'(T4,A)') 'Used keywords:'              
@@ -10140,16 +10368,18 @@ END SUBROUTINE
      DO i=1,Model % NumberOfSolvers
        CALL ReportList('Solver '//I2S(i), Model % Solvers(i) % Values, Unused )
      END DO
-
-     IF( Unused ) THEN
-       Unused = .FALSE.
-       GOTO 100
+     
+     IF( ReportMode == 3 ) THEN
+       IF( Unused ) THEN
+         Unused = .FALSE.
+         GOTO 100
+       END IF
+       CALL Info('ReportListCounters','List operations total count:'//I2S(totcount))     
      END IF
 
-     IF( GotFile ) CLOSE(ReportUnit)
-         
-     CALL Info('ReportListCounters','List operations total count:'//I2S(totcount))     
-
+     IF (ReportMode /= 1) THEN 
+       IF( GotFile ) CLOSE(ReportUnit)
+     END IF
    CONTAINS
 
      
@@ -10171,11 +10401,23 @@ END SUBROUTINE
          n = ptr % NameLen
          m = ptr % Counter 
 
-         IF( Unused .AND. m == 0 ) THEN
-           WRITE( ReportUnit,'(T8,A,T30,A)') TRIM(SectionName),ptr % Name(1:n)         
-         ELSE IF(.NOT. Unused .AND. m > 0 ) THEN
-           WRITE( ReportUnit,'(T8,A,T30,I0,T40,A)') TRIM(SectionName),m,ptr % Name(1:n)
-           totcount = totcount + m
+         IF(ReportMode == 1 ) THEN
+           ! Change existing keywords tag from 0 to -1
+           ptr % Counter = -1
+         ELSE IF(ReportMode == 2 .AND. m == -1 ) THEN
+           ! Do not report "name" as it makes sense to have one. 
+           IF( ptr % Name == 'name' ) THEN
+             CONTINUE
+           ELSE
+             WRITE( ReportUnit,'(T8,A,T30,A)') TRIM(SectionName),ptr % Name(1:n)
+           END IF
+         ELSE IF( ReportMode == 3 ) THEN
+           IF( Unused .AND. m == 0 ) THEN
+             WRITE( ReportUnit,'(T8,A,T30,A)') TRIM(SectionName),ptr % Name(1:n)
+           ELSE IF(.NOT. Unused .AND. m > 0 ) THEN
+             WRITE( ReportUnit,'(T8,A,T30,I0,T40,A)') TRIM(SectionName),m,ptr % Name(1:n)
+             totcount = totcount + m
+           END IF
          END IF
          ptr => ptr % Next
        END DO

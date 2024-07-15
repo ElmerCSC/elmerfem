@@ -23,9 +23,9 @@
 !
 !/******************************************************************************
 ! *
-! *  Module for computing component-wise the electric field using nodal finite
-! *  finite elemets. This only works when the permeability is constant and
-! *  the boundaries are cartesian. 
+! *  Module for computing component-wise the electric field from the wave
+! *  equation by using nodal finite finite elements. This only works when
+! *  the permeability is constant and the boundaries are Cartesian. 
 ! *
 ! *  Authors: Peter Råback
 ! *  Email:   elmeradm@csc.fi
@@ -40,7 +40,7 @@
 
 
 !------------------------------------------------------------------------------
-!> Initialization of the primary solver, i.e. VectorHelmholtzNodal.
+!> Initialization of the primary solver, i.e., VectorHelmholtzNodal.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
 SUBROUTINE VectorHelmholtzNodal_init( Model,Solver,dt,Transient )
@@ -55,15 +55,14 @@ SUBROUTINE VectorHelmholtzNodal_init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   CHARACTER(*), PARAMETER :: Caller = 'VectorHelmholtzNodal_init'
   TYPE(ValueList_t), POINTER :: Params
-  LOGICAL :: Found, PrecUse, Monolithic, Segregated 
-  INTEGER :: dim
+  LOGICAL :: Found, PrecUse, Monolithic
+  !INTEGER :: dim
    
   Params => GetSolverParams()
-  dim = CoordinateSystemDimension()
+  !dim = CoordinateSystemDimension()
 
   PrecUse = ListGetLogical( Params,'Preconditioning Solver',Found )  
   Monolithic = ListGetLogical( Params,'Monolithic Solver',Found )
-  Segregated = .NOT. Monolithic
   
   ! We solve the equation component-wise. Hence the primary variable is a temporal one. 
   IF( Monolithic ) THEN
@@ -116,8 +115,8 @@ END SUBROUTINE VectorHelmholtzNodal_Init
 
 
 !-----------------------------------------------------------------------------
-!> A modern version for static current conduction supporting multithreading and
-!> SIMD friendly ElmerSolver kernels. 
+!> A solver for the vector Helmholtz equation based on nodal basis  
+!> functions
 !------------------------------------------------------------------------------
 SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
@@ -154,7 +153,7 @@ SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
   dim = CoordinateSystemDimension() 
 
   IF( CurrentCoordinateSystem() /= Cartesian ) THEN 
-    CALL Fatal(Caller,'Only implemented for cartesian problems!')
+    CALL Fatal(Caller,'Only implemented for Cartesian problems!')
   END IF
   
   Mesh => GetMesh()
@@ -164,7 +163,7 @@ SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
   dofs = EiVar % Dofs / 2 
   IF( dofs == 1 ) THEN
     Monolithic = .FALSE.
-    CALL Info(Caller,'Treating the equation in segragated manner!')
+    CALL Info(Caller,'Treating the equation in segregated manner!')
   ELSE IF( dofs == dim ) THEN
     Monolithic = .TRUE.
     CALL Info(Caller,'Treating the equation in monolithic manner!')
@@ -172,12 +171,13 @@ SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
     CALL Fatal(Caller,'Invalid number of dofs in solver variable: '//I2S(dofs))
   END IF
   Segregated = .NOT. Monolithic
-        
+  
   SecondOrder = ListGetLogicalAnySolver( Model, 'Quadratic Approximation')
   IF( SecondOrder ) THEN
     PiolaVersion = .TRUE.
   ELSE
-    PiolaVersion = ListGetLogicalAnySolver(Model, 'Use Piola Transform' )
+    PiolaVersion = ListGetLogicalAnySolver(Model, 'Use Piola Transform' ) .OR. &
+        ListGetLogicalAnySOlver(Model,"Second Kind Basis")    
   END IF
 
   PrecUse = ListGetLogical( Params,'Preconditioning Solver',Found ) 
@@ -193,7 +193,7 @@ SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
     IF(Found) THEN
       EdgeLoadVar => VariableGet( Mesh % Variables, sname )
       IF(.NOT. ASSOCIATED( EdgeLoadVar ) ) CALL Fatal(Caller,'Could not find field: '//TRIM(sname))
-      IF( PiolaVersion ) CALL Fatal(Caller,'Cannot yet handle piola version edge elements!')
+      IF( PiolaVersion ) CALL Fatal(Caller,'Cannot yet handle Piola version edge elements!')
       UseEdgeResidual = .TRUE.
     END IF
   ELSE
@@ -278,7 +278,7 @@ SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
     IF( Segregated ) THEN
       IF( InfoActive(25) ) THEN
         CALL VectorValuesRange(EiVar % Values,SIZE(EiVar % Values),'E'//I2S(compi))       
-        PRINT *,'Componet Norm:',Norm(compi)
+        PRINT *,'Component Norm:',Norm(compi)
       END IF
       EF % Values(compi::2*dim) = EiVar % Values(1::2)
       EF % Values(compi+dim::2*dim) = EiVar % Values(2::2)
@@ -340,8 +340,8 @@ CONTAINS
   ! Project nodal field to be an edge field.
   !-------------------------------------------------------
   SUBROUTINE NodeToEdgeProject()
-    INTEGER :: k,k1,k2,i1,i2,j,j1,j2,n0,n,nd,nb,dofi,voffset
-    REAL(KIND=dp) :: NodalSol(3), EdgeVector(3), s
+    INTEGER :: k,k1,k2,i1,i2,j,j1,j2,n0,dofi,voffset
+    REAL(KIND=dp) :: NodalSol(3), EdgeVector(3)
     TYPE(Element_t), POINTER :: Edge
 
     IF(EdgeSolVar % Dofs /= 2) THEN
@@ -372,25 +372,21 @@ CONTAINS
         j2 = i2
       END IF
         
-      ! Integration length and direction
-      s = SQRT(SUM(EdgeVector**2))
-      
       ! There is an ordering convention that determines the direction of the edge vector
       IF( j1 < j2) EdgeVector = -EdgeVector
-      !s = -s
-      !EdgeVector = EdgeVector / s
-      
+
+      k1 = EF % Perm(i1)
+      k2 = EF % Perm(i2)
+      k = EdgeSolVar % Perm(n0+j)
+
+      ! Integration using the mid-point rule:
       DO dofi=1,EdgeSolVar % dofs
         voffset = 3*(dofi-1)
-        k1 = EF % Perm(i1)
-        k2 = EF % Perm(i2)
 
         ! Value at center of edge
         NodalSol(1) = ( EF % Values(6*k1-5+voffset) + EF % Values(6*k2-5+voffset) ) / 2
         NodalSol(2) = ( EF % Values(6*k1-4+voffset) + EF % Values(6*k2-4+voffset) ) / 2
         NodalSol(3) = ( EF % Values(6*k1-3+voffset) + EF % Values(6*k2-3+voffset) ) / 2
-
-        k = EdgeSolVar % Perm(n0+j)
 
         ! We could add this one direction at the time but here we have the full vector
         ! that we project to Re and Im parts.  
@@ -428,7 +424,8 @@ CONTAINS
           STIFF(m,m), FORCE(m), STAT=allocstat)      
       IF (allocstat /= 0) CALL Fatal(Caller,'Local storage allocation failed')
     END IF
-
+    STIFF = 0._dp
+    
     Active = GetNOFActive(Solver)
     NormLoop = .TRUE.
 
@@ -453,8 +450,9 @@ CONTAINS
       CALL GetElementNodes( Nodes, UElement=Element )
 
       ! Initialize
-      STIFF = 0._dp
-      FORCE = 0._dp
+      IF (.NOT. NormLoop) THEN
+        FORCE = 0._dp
+      END IF
 
       DO ipi=1,IP % n
         ! Basis function values & derivatives at the integration point:
@@ -467,26 +465,26 @@ CONTAINS
         nedge = Element % TYPE % NumberOfEdges        
         DO i=1,nedge
           j = Element % EdgeIndexes(i)                    
-          Edge => Mesh % Edges(j)
-          k = EdgeLoadVar % Perm(n0 + j)
           
-          i1 = Edge % NodeIndexes(1)
-          i2 = Edge % NodeIndexes(2)
-          
-          ! Vector in the direction of the edge
-          EdgeVector(1) = Mesh % Nodes % x(i2) - Mesh % Nodes % x(i1)
-          EdgeVector(2) = Mesh % Nodes % y(i2) - Mesh % Nodes % y(i1)
-          EdgeVector(3) = Mesh % Nodes % z(i2) - Mesh % Nodes % z(i1)
-          
-          ! Integration length of the edge
-          s1 = SQRT(SUM(EdgeVector**2))
-          
-          ! There is an ordering convention that determines the direction of the edge vector
           IF( NormLoop ) THEN
             s2 = SQRT(SUM(WBasis(i,:)**2))
             weight = IP % s(ipi) * s2
             EdgeWeight(j) = EdgeWeight(j) + Weight 
           ELSE
+            Edge => Mesh % Edges(j)
+            k = EdgeLoadVar % Perm(n0 + j)
+          
+            i1 = Edge % NodeIndexes(1)
+            i2 = Edge % NodeIndexes(2)
+          
+            ! Vector in the direction of the edge
+            EdgeVector(1) = Mesh % Nodes % x(i2) - Mesh % Nodes % x(i1)
+            EdgeVector(2) = Mesh % Nodes % y(i2) - Mesh % Nodes % y(i1)
+            EdgeVector(3) = Mesh % Nodes % z(i2) - Mesh % Nodes % z(i1)
+          
+            ! Integration length of the edge
+            s1 = SQRT(SUM(EdgeVector**2))
+            
             weight = IP % s(ipi) / EdgeWeight(j)            
             c = Wbasis(i,compi) * &
                 s1 * CMPLX(EdgeLoadVar % Values(2*k-1), EdgeLoadVar % Values(2*k))           

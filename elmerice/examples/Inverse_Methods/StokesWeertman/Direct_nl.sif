@@ -1,0 +1,175 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!                                       !!
+!! Test for Weertman friction law        !!
+!! Generate perfect model solution
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! PARAMETERS
+$L = 20.0e3
+$Slope = 0.1 * pi / 180.0
+!### physical constants
+$yearinsec = 365.25*24*60*60
+$rhoi = 900.0/(1.0e6*yearinsec^2)   
+$gravity = -9.81*yearinsec^2
+$n = 3.0
+$eta = (2.0*100.0)^(-1.0/n)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Header
+  Mesh DB "." "rectangle"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 3D
+  Simulation Type = Steady        
+
+  ! Internal extrusion
+  Extruded Mesh Levels = Integer 5
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+  Post File = "Direct_nl.vtu"
+  OutPut File = "Direct_nl.result"
+
+  max output level = 3
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! The ice 
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+  Pressure = Real 0.0 
+  Velocity 1 = Real 0.0 
+  Velocity 2 = Real 0.0 
+  Velocity 3 = Real 0.0
+
+  C = Variable Coordinate 1, Coordinate 2
+     Real  MATC "5.0e-3*(1.0 + sin(2.0*pi*tx(0)/L)*sin(2.0*pi*tx(1)/L))"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  Flow BodyForce 1 = Real 0.0
+  Flow BodyForce 2 = Real 0.0
+  Flow BodyForce 3 = Real $gravity
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Material 1
+  Density = Real $rhoi 
+  Viscosity Model = String "power law"
+  Viscosity = Real $eta                       
+  Viscosity Exponent = Real $1.0/n                
+  Critical Shear Rate = Real 1.0e-10
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1  
+  Equation = "MapCoordinate"
+  Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
+  Active Coordinate = Integer 3
+End
+
+Solver 2
+  Equation = "Stokes-Vec"
+  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+
+  Div-Curl Discretization = Logical False
+  Element = "p:1 b:4"
+
+  Flow Model = Stoke
+  Stokes Flow = logical true
+
+  !Relative Integration Order = -1
+
+  !linear settings:
+  !------------------------------
+  Linear System Solver = Iterative
+  Linear System Iterative Method = GCR
+  Linear System GCR Restart =  250
+  Linear System Max Iterations  = 1000
+  Linear System Preconditioning = ILU0
+  Linear System Convergence Tolerance = 1.0e-08
+
+  Linear System Residual Output = 100
+
+  !Non-linear iteration settings:
+  !------------------------------ 
+  Nonlinear System Max Iterations = 50
+  Nonlinear System Convergence Tolerance  = 1.0e-6
+  Nonlinear System Newton After Iterations = 5
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Reset Newton = Logical True
+
+ !!!!!!!!
+  Exported Variable 1 = C
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Equation 1
+  Active Solvers(2) = 1 2
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!! BC (y=y0)    
+Boundary Condition 1
+  Target Boundaries = 1
+End
+
+!!! BC (x=xmax) 
+Boundary Condition 2
+  Target Boundaries = 2
+  Periodic BC = 4
+  Periodic BC Translate(3) =  $L 0.0 0.0
+  Periodic BC Velocity 1  = Logical True
+  Periodic BC Velocity 2  = Logical True
+  Periodic BC Velocity 3  = Logical True
+  Periodic BC Pressure = Logical True
+End
+
+!!! BC (y=ymax)   
+Boundary Condition 3
+  Target Boundaries = 3
+  Periodic BC = 1
+  Periodic BC Translate(3) = 0.0 $L 0.0
+  Periodic BC Velocity 1  = Logical True
+  Periodic BC Velocity 2  = Logical True
+  Periodic BC Velocity 3  = Logical True
+  Periodic BC Pressure = Logical True
+End
+
+!!! BC  (x=x0) 
+Boundary Condition 4
+  Target Boundaries = 4
+End
+
+!!! bedrock
+Boundary Condition 5
+  Flow Force BC = Logical True
+
+  Normal-Tangential Velocity = Logical True
+  Velocity 1 = Real 0.0e0
+
+  Weertman Friction Coefficient = Equals C
+  Weertman Exponent = Real $1.0/3.0
+! Cut-off such that argument is not smaller than this
+  Friction Linear Velocity = Real 1.0e-4
+
+  Bottom Surface = Variable Coordinate 1
+     Real MATC "-tx*tan(Slope)-1000.0"
+End
+
+!!! free surface
+Boundary Condition 6
+  Top Surface = Variable Coordinate 1
+     Real MATC "-tx*tan(Slope)"
+End
+
+!### REFERENCE SOLUTION
+Solver 2 :: Reference Norm = 17.678308
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-4

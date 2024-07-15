@@ -115,7 +115,7 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
   
   INTEGER :: i,j,k,t,n,nn,pn,DIM,kl,kr,l, bc, Trip_node, NoBNodes, NonlinearIter, istat, &
        NElems,ElementCode,Next,Vertex,ii,imin,NewtonAfterIter,Node, iter, LiquidInd, Visited = -1, &
-       SubroutineVisited = 0, NormalDirection, TangentDirection, CoordMini(3), CoordMaxi(3), &
+       SubroutineVisited = 0, NormalDir, TangentDirection, CoordMini(3), CoordMaxi(3), &
        Axis_node
   INTEGER, POINTER :: NodeIndexes(:),TempPerm(:),SurfPerm(:),NormalsPerm(:)
 
@@ -127,7 +127,7 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
   CHARACTER(LEN=MAX_NAME_LEN) :: VariableName, str
 
   SAVE FirstTime, Trip_node, NoBNodes, SubroutineVisited, prevpos0, &
-      PrevTemp, Newton, ccum, NormalDirection, TangentDirection, MeltPoint, &
+      PrevTemp, Newton, ccum, NormalDir, TangentDirection, MeltPoint, &
       ForceVector, FluxCorrect, NodeDone, Eps, PullControl, &
       Visited, Nodes, PNodes, NodalTemp, Conductivity, LatentHeat, &
       TempDiff, AllocationsDone, LocalStiffMatrix, LocalForceVector, LocalMassMatrix, &
@@ -231,7 +231,7 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
         j = i
       END IF
     END DO
-    NormalDirection = j
+    NormalDir = j
     
     ! Direction of maximum change
     j = 1
@@ -430,9 +430,9 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
     END IF
 
     IF(PullControl .OR. TriplePointFixed) THEN      
-      Upull(NormalDirection) = -SurfaceMove(SurfPerm(Trip_node))
+      Upull(NormalDir) = -SurfaceMove(SurfPerm(Trip_node))
       IF(PullControl) THEN
-        WRITE(Message,*) 'Pull velocity: ', Upull(NormalDirection)
+        WRITE(Message,*) 'Pull velocity: ', Upull(NormalDir)
         CALL Info('PhaseChangeSolve',Message) 
       END IF
     END IF
@@ -446,7 +446,7 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
     ! directly from the velocity field.
     !-----------------------------------------------------------------------------------------
     IF( ListGetConstReal(Solver % Values,'Surface Smoothing Factor') < 1.0d-20) THEN
-      Surface = Surface + SpeedUp * dt * ( SurfaceMove + Upull(NormalDirection))
+      Surface = Surface + SpeedUp * dt * ( SurfaceMove + Upull(NormalDir))
     ELSE
       CALL InitializeToZero( StiffMatrix, ForceVector )
       
@@ -479,7 +479,7 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
         Visited = Solver % DoneTime
       END IF
       
-      pos0 = prevpos0 + UPull(NormalDirection) * dt
+      pos0 = prevpos0 + UPull(NormalDir) * dt
       
       IF(PullControl) THEN
         ! This sets the maximum position of the crystal side that is still
@@ -724,7 +724,7 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
 
         IF ( .NOT. Newton ) THEN          
           
-          ! Find the the contour element that has the x-coordinate in closest to the that of the
+          ! Find the contour element that has the x-coordinate in closest to that of the
           ! free surface
 
           Eps = 1.0d-6 * ( xmax - xmin )
@@ -737,7 +737,7 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
 
             IF ( (xx > IsoSurf(i,TangentDirection) - Eps) .AND. (xx < IsoSurf(i+1,TangentDirection) + Eps)) THEN
               dxmin = 0.0
-              d = MIN( ABS(yy - IsoSurf(i,NormalDirection)), ABS(yy - IsoSurf(i+1,NormalDirection)) )              
+              d = MIN( ABS(yy - IsoSurf(i,NormalDir)), ABS(yy - IsoSurf(i+1,NormalDir)) )              
 
               ! Punish for overlapping the boundaries
               d = d + MAX(0.0d0, IsoSurf(i,TangentDirection) - xx)
@@ -775,11 +775,11 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
           END IF
 
           IF ( ABS( IsoSurf(i+1,TangentDirection) - IsoSurf(i,TangentDirection) ) > AEPS ) THEN
-            Update = IsoSurf(i,NormalDirection) + ( xx - IsoSurf(i,TangentDirection) ) * &
-                ( IsoSurf(i+1,NormalDirection) - IsoSurf(i,NormalDirection) ) / &
+            Update = IsoSurf(i,NormalDir) + ( xx - IsoSurf(i,TangentDirection) ) * &
+                ( IsoSurf(i+1,NormalDir) - IsoSurf(i,NormalDir) ) / &
                 ( IsoSurf(i+1,TangentDirection) - IsoSurf(i,TangentDirection) ) - yy
           ELSE
-            Update = 0.5d0 * ( IsoSurf(i,NormalDirection) + IsoSurf(i+1,NormalDirection) ) - yy
+            Update = 0.5d0 * ( IsoSurf(i,NormalDir) + IsoSurf(i+1,NormalDir) ) - yy
           END IF
 
         END IF
@@ -916,10 +916,10 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
   CALL ListAddConstReal(Model % Simulation,'res: Pull Position',pos0)       
 
   IF(PullControl) THEN
-    IF(NormalDirection == 1) THEN
-      CALL ListAddConstReal( Model % Simulation,'res: Pull Velocity 1',UPull(NormalDirection))
+    IF(NormalDir == 1) THEN
+      CALL ListAddConstReal( Model % Simulation,'res: Pull Velocity 1',UPull(NormalDir))
     ELSE         
-      CALL ListAddConstReal( Model % Simulation,'res: Pull Velocity 2',UPull(NormalDirection))        
+      CALL ListAddConstReal( Model % Simulation,'res: Pull Velocity 2',UPull(NormalDir))        
     END IF
   END IF
 
@@ -1075,7 +1075,7 @@ CONTAINS
       DO p=1,n        
         DO q=1,n
           StiffMatrix(p,q) = StiffMatrix(p,q) + s * Basis(p) * Basis(q) * &
-              Normal(NormalDirection) * Density * LocalHeat            
+              Normal(NormalDir) * Density * LocalHeat            
           IF(NodeIndexes(p) /= Trip_node) THEN
             StiffMatrix(p,q) = StiffMatrix(p,q) + &
                 s * StabCoeff * dBasisdx(q,TangentDirection) * dBasisdx(p,TangentDirection)            
@@ -1168,7 +1168,7 @@ CONTAINS
         Normal = NormalVector( Element, Nodes, u, v, .TRUE. )         
       END IF
       
-      Velo = SUM( Basis(1:n) * NodalVelo(1:n)) + Upull(NormalDirection)        
+      Velo = SUM( Basis(1:n) * NodalVelo(1:n)) + Upull(NormalDir)        
       Velo = SpeedUp * Velo 
 
       DO p=1,n        

@@ -71,12 +71,12 @@
 
      INTEGER :: i,j,k,l,t,k1,k2,n,iter,Ndeg,Time,NSDOFs,MatId,istat
 
-     REAL(KIND=dp) :: SimulationTime,dt,s,a1,a2,FMin,FMax
+     REAL(KIND=dp) :: SimulationTime,dt,s,a1,a2,FMin,FMax,Fave
 
      INTEGER, ALLOCATABLE ::  Surfaces(:), TYPE(:)
      REAL(KIND=dp), ALLOCATABLE :: Coords(:),Normals(:),Factors(:)
 
-     TYPE(Element_t),POINTER :: Element, Parent
+     TYPE(Element_t),POINTER :: Element, LParent, RParent
 
      INTEGER :: BandSize,SubbandSize,RadiationSurfaces,Row,Col
      INTEGER, DIMENSION(:), POINTER :: Perm
@@ -87,8 +87,9 @@
      TYPE(ValueList_t), POINTER :: BC, Material, Params
 
      INTEGER :: LeftNode,RightNode,LeftBody,RightBody,RadBody
-     REAL(KIND=dp) :: NX,NY,NZ,NRM(3),DensL,DensR
-
+     REAL(KIND=dp) :: NX,NY,NZ,NRM(3),NrmB(3),DensL,DensR
+     INTEGER, ALLOCATABLE :: VF_cohorts(:)
+     
      INTEGER :: divide, nprob
      REAL(KIND=dp) :: AreaEPS, RayEPS, FactEPS
      REAL(KIND=dp) :: at0, rt0
@@ -144,6 +145,7 @@
      EXTERNAL MatvecViewFact,DiagPrecViewFact
 
 
+
      CALL Info( Caller, ' ', Level=3 )
      CALL Info( Caller, '==================================================', Level=3 )
      CALL Info( Caller, ' E L M E R  V I E W F A C T O R S,  W E L C O M E',  Level=3  )
@@ -182,8 +184,7 @@
      DO i=1,Model % NumberOfSolvers
        Solver => Model % Solvers(i)
        Radiation = ListGetLogical( Solver % Values, 'Radiation Solver', Found )
-       eq = ListGetString( Solver % Values, 'Equation' )
-       IF ( Radiation .OR. TRIM(eq) == 'heat equation' ) THEN
+       IF ( Radiation ) THEN
          Mesh => Solver % Mesh
          Model % Solver => Solver
          EXIT
@@ -376,32 +377,34 @@
          Model % CurrentElement => Element
          k = GetElementNOFNodes()
          CALL GetElementNodes(ElementNodes)
-         
-         IF ( GetElementFamily() == 3 ) THEN
-           nrm = NormalVector( Element,ElementNodes,1/3._dp, 1/3._dp )
-         ELSE
-           nrm = NormalVector( Element, ElementNodes, 0.0_dp, 0.0_dp )
-         END IF
+                  
+         nrm = NormalVector( Element, ElementNodes )
          
          LeftBody = 0
          LeftNode = -1
 	 LeftEmis = .FALSE.
-         Parent => Element % BoundaryInfo % Left
-         IF ( ASSOCIATED(Parent) ) THEN
-           LeftBody  = Parent % BodyId
-           DO i=1,Parent % TYPE % NumberOfNodes
+         LParent => Element % BoundaryInfo % Left
+         IF ( ASSOCIATED(LParent) ) THEN
+           LeftBody  = LParent % BodyId
+           k1 = 0
+           DO i=1,LParent % TYPE % NumberOfNodes
              gotIt =.TRUE.
+             ! Find a node in parent element that is not a node in boundary element.
              DO j=1,Element % TYPE % NumberOfNodes
-               IF ( Element % NodeIndexes(j)==Parent % NodeIndexes(i)) THEN
+               IF ( Element % NodeIndexes(j) == LParent % NodeIndexes(i)) THEN
+                 k1 = k1 + 1
                  gotIt=.FALSE.
                  EXIT
                END IF
              END DO
              IF (gotIt) THEN
-               LeftNode = Parent % NodeIndexes(i)
-               EXIT
+               LeftNode = LParent % NodeIndexes(i)
              END IF
            END DO
+           IF(k1 /= Element % TYPE % NumberOfNodes ) THEN
+             CALL Fatal(Caller,'Boundary element '//I2S(Element % ElementIndex - Mesh % NumberOfBulkElements)//&
+                 ' not included in left parent '//I2S(LParent % ElementIndex)//'!')               
+           END IF
 	   IF( LeftBody > 0 ) THEN 
              MatId = GetInteger( Model % Bodies(LeftBody) % Values,'Material', GotIt)
 	     IF( MatId == 0 ) THEN
@@ -416,23 +419,27 @@
          RightBody = 0
          RightNode=-1
          RightEmis = .FALSE.
-         Parent => Element % BoundaryInfo % Right
-         IF ( ASSOCIATED(Parent) ) THEN
-           RightBody = Parent % BodyId
-           DO i=1,Parent % TYPE % NumberOfNodes
+         RParent => Element % BoundaryInfo % Right
+         IF ( ASSOCIATED(RParent) ) THEN
+           RightBody = RParent % BodyId
+           k1 = 0
+           DO i=1,RParent % TYPE % NumberOfNodes
              gotIt =.TRUE.
              DO j=1,Element % TYPE % NumberOfNodes
-               IF (Element % NodeIndexes(j)==Parent % NodeIndexes(i)) THEN
+               IF (Element % NodeIndexes(j) == RParent % NodeIndexes(i)) THEN
+                 k1 = k1 + 1
                  gotIt=.FALSE.
                  EXIT
                END IF
              END DO
              IF (gotIt) THEN
-               RightNode = Parent % NodeIndexes(i)
-               EXIT
+               RightNode = RParent % NodeIndexes(i)
              END IF
            END DO
-	   
+           IF(k1 /= Element % TYPE % NumberOfNodes ) THEN
+             CALL Fatal(Caller,'Boundary element '//I2S(Element % ElementIndex - Mesh % NumberOfBulkElements)//&
+                 ' not included in right parent '//I2S(RParent % ElementIndex)//'!')               
+           END IF
            MatId = GetInteger( Model % Bodies(RightBody) % Values,'Material', GotIt)
            RightEmis=ListCheckPresent(Model % Materials(MatId) % Values,'Emissivity') 
          END IF
@@ -451,9 +458,10 @@
                             GetBCId( Element ),' Ind:',t
              CALL Info(Caller,Message)
              IF( ASSOCIATED(Element % BoundaryInfo % Left, Element % BoundaryInfo % Right)) THEN
-              CALL Warn(Caller,'Parents of the boundary element are the same')
-              RadBody = LeftBody
+               CALL Warn(Caller,'Parents of the boundary element are the same')
+               RadBody = LeftBody
              END IF
+             CALL Fatal(Caller,'Cannot continue!')
            ELSE IF( RightEmis ) THEN
              RadBody = LeftBody
            ELSE IF( LeftEmis ) THEN
@@ -470,17 +478,28 @@
            CALL Fatal( Caller, LMessage )
          END IF
          
-         IF ( LeftNode <= 0 .OR. (RadBody>0 .AND. RadBody==RightBody) ) &
+         IF ( LeftNode <= 0 .OR. (RadBody>0 .AND. RadBody==RightBody) ) THEN
            LeftNode = RightNode
+         END IF
          Normal_in = -1.0
          IF ( RadBody <= 0 ) Normal_in = 1.0
-         
-         nx = SUM(ElementNodes % x)/k - Mesh % Nodes % x(LeftNode)
-         ny = SUM(ElementNodes % y)/k - Mesh % Nodes % y(LeftNode)
-         nz = SUM(ElementNodes % z)/k - Mesh % Nodes % z(LeftNode)
+                  
+         BLOCK
+           REAL(KIND=dp) :: r1(3), r2(3)           
+           r1(1) = SUM(ElementNodes % x)/k
+           r1(2) = SUM(ElementNodes % y)/k
+           r1(3) = SUM(ElementNodes % z)/k
+
+           r2(1) = Mesh % Nodes % x(LeftNode)
+           r2(2) = Mesh % Nodes % y(LeftNode)
+           r2(3) = Mesh % Nodes % z(LeftNode)
+
+           ! Direction to test the normal
+           NrmB = r1 - r2
+         END BLOCK
          
          IF ( CylindricSymmetry ) THEN
-           IF ( Normal_in * (Nrm(1)*nx + Nrm(2)*Ny + Nrm(3)*nz) > 0 ) THEN
+           IF ( Normal_in * SUM(Nrm*NrmB) > 0 ) THEN
              Surfaces(2*(t-1)+1) = Element % NodeIndexes(2)-1
              Surfaces(2*(t-1)+2) = Element % NodeIndexes(1)-1
            ELSE
@@ -501,8 +520,8 @@
              Surfaces(j*(t-1)+i) = Element % NodeIndexes(i)-1
            END DO
            
-           IF (Normal_in*(Nrm(1)*Nx + Nrm(2)*Ny + Nrm(3)*nz)>0) THEN
-             Normals(3*(t-1)+1:3*(t-1)+3) =  Nrm
+           IF (Normal_in * SUM(Nrm*NrmB)>0) THEN
+             Normals(3*(t-1)+1:3*(t-1)+3) = Nrm
            ELSE
              Normals(3*(t-1)+1:3*(t-1)+3) = -Nrm
            END IF
@@ -597,6 +616,13 @@
 #endif
 
        nprob = 0
+       Fave = 0.0_dp
+       IF(.NOT. ALLOCATED(VF_cohorts)) THEN
+         ALLOCATE(VF_cohorts(100))
+       END IF
+       VF_cohorts = 0
+
+       k = 0
        DO i=1,N
          s = 0.0_dp
          DO j=1,N
@@ -609,20 +635,58 @@
          IF(i == 1) THEN
            Fmin = s 
            Fmax = s
-         ELSE         
-           FMin = MIN( FMin,s )
+           k = 1
+         ELSE
+           IF(s < Fmin) THEN
+             Fmin = s
+             k = i
+           END IF
            FMax = MAX( FMax,s )
          END IF
-       END DO       
+
+         j = CEILING(100*s)
+         j = MIN(100,MAX(1,j))
+         VF_cohorts(j) = VF_cohorts(j) + 1
+         
+         Fave = Fave + s         
+       END DO
+       Fave = Fave / N
        
        CALL Info( Caller, ' ', Level=3 )
        CALL info( Caller, 'Viewfactors before manipulation: ', Level=3 )
-       WRITE( Message,'(A,ES12.3)') 'Minimum row sum: ',FMin
+       WRITE( Message,'(A,ES14.6)') 'Minimum row sum: ',FMin
        CALL Info( Caller, Message )
-       WRITE( Message,'(A,ES12.3)') 'Maximum row sum: ',Fmax
+       WRITE( Message,'(A,ES14.6)') 'Maximum row sum: ',Fmax
+       CALL Info( Caller, Message )
+       WRITE( Message,'(A,ES14.6)') 'Average row sum: ',Fave
        CALL Info( Caller, Message )
        IF(nprob>0) CALL info( Caller, 'Number of rowsums below 0.5 is: '&
            //I2S(nprob)//' (out of '//I2S(n)//')')
+       
+       IF( InfoActive(10) ) THEN
+         ! Report on the most problematic element which has too small viewfactors.
+         IF( Fmin < 0.5 .AND. .NOT. RadiationOpen ) THEN
+           Element => RadElements(k)
+           j = Element % ElementIndex - Model % Mesh % NumberOfBulkElements
+           CALL Info( Caller,'Location of minimum rowsum '//I2S(k)//' element '//I2S(j))
+           PRINT *,'Indexes:',element % nodeindexes
+           PRINT *,'X coord:',model % nodes % x(element % nodeindexes)
+           PRINT *,'Y coord:',model % nodes % y(element % nodeindexes)
+           PRINT *,'Z coord:',model % nodes % z(element % nodeindexes)
+           DO i=1,3
+             j = element % nodeindexes(i)
+             PRINT *,'r:',sqrt(model % nodes % x(j)**2 + model % nodes % y(j)**2 + model % nodes % z(j)**2)
+           END DO
+
+         END IF
+         
+         DO i=1,100
+           j = VF_cohorts(i)
+           IF(j==0) CYCLE
+           CALL Info(Caller,'VF percentile '//I2S(i-1)//'-'//I2S(i)//' count: '//I2S(j))
+         END DO
+       END IF
+
        
        at0 = CPUTime()
 
@@ -631,7 +695,7 @@
        ELSE
          CALL Info( Caller,'Normalizaing Factors...')
          IF( Fmin < EPSILON( Fmin ) ) THEN
-           CALL Fatal(Caller,'Invalied view factors for normalization, check your geometry!')
+           CALL Fatal(Caller,'Invalid view factors for normalization, check your geometry!')
          END IF       
        END IF
 
@@ -663,10 +727,16 @@
          CALL Warn(Caller,'Rowsum of view factors should not be larger than one!')
        END IF
        IF( FMin < 0.999 ) THEN
-         CALL Warn(Caller,'Rowsum of view factors should not be smaller than one!')
+         ! For open BCs the view factor sum may be much less than one, otherwise not.
+         IF(.NOT. ListCheckPresentAnyBC( Model,'Radiation Boundary Open') ) THEN          
+           CALL Warn(Caller,'Rowsum of view factors should not be smaller than one!')
+         END IF
        END IF
 
-
+       IF(InfoActive(7)) THEN
+         CALL ViewFactorsLumping()
+       END IF
+         
        ViewFactorsFile = GetString( GetSimulation(),'View Factors',GotIt)
        IF ( .NOT.GotIt ) ViewFactorsFile = 'ViewFactors.dat'
        IF(RadiationBody > 1) THEN
@@ -745,7 +815,88 @@
      CALL FLUSH(6)
 
    CONTAINS
-   
+
+
+     ! Provide useful information on the boundary-to-boundary view factors that is
+     ! obtained as the area-weigted average of elemental view factor sums.
+     !-----------------------------------------------------------------------------
+     SUBROUTINE ViewFactorsLumping()
+
+       INTEGER :: i,j,k,m,MaxRadBC,bc_id
+       INTEGER, ALLOCATABLE :: BCNumbering(:), VFPerm(:)
+       REAL(KIND=dp), ALLOCATABLE :: LumpedVF(:,:), Areas(:), LumpedAreas(:)
+
+       CALL Info(Caller,'Printing some lumped information of view factors')
+       
+       ALLOCATE(BCNumbering(Model % NumberOfBCs),VFPerm(N),Areas(N))
+       BCNumbering = 0
+       VFPerm = 0
+       Areas = 0.0_dp
+              
+       DO i=1,N
+         Element => RadElements(i)
+         Areas(i) = ElementArea( Mesh, Element, Element % TYPE % NumberOfNodes)
+         bc_id = GetBCId( Element ) 
+         IF(bc_id < 0 .OR. bc_id > Model % NumberOfBCs) THEN
+           CALL Warn(Caller,'BC index out of bounds: '//I2S(bc_id))
+           CYCLE
+         END IF
+         BCNumbering(bc_id) = BCNumbering(bc_id) + 1
+         VFPerm(i) = bc_id
+       END DO
+
+       j = 0
+       DO i=1,Model % NumberOfBCs
+         m = BCNumbering(i)
+         IF(m>0) THEN
+           j = j+1
+           BCNumbering(i) = j
+           CALL Info(Caller,'BC '//I2S(i)//' with '//I2S(m)//' elems perm: '//I2S(j))
+         END IF         
+       END DO
+       MaxRadBC = j
+
+       DO i=1,N
+         VFPerm(i) = BCNumbering(VFPerm(i))
+       END DO
+       
+       ALLOCATE(LumpedVF(MaxRadBC,MaxRadBC),LumpedAreas(MaxRadBC))
+       LumpedVF = 0.0_dp
+       LumpedAreas = 0.0_dp
+       
+       DO i=1,N
+         IF(VFPerm(i) > 0) THEN
+           LumpedAreas(VFPerm(i)) = LumpedAreas(VFPerm(i)) + Areas(i)
+         END IF
+       END DO
+         
+       CALL Info(Caller,'Lumped areas:')
+       WRITE(Message,*) LumpedAreas(:)
+       CALL Info(Caller, Message ) 
+       
+       DO i=1,N
+         DO j=1,N
+           k = (i-1)*N+j
+           LumpedVF(VFPerm(i),VFPerm(j)) = LumpedVF(VFPerm(i),VFPerm(j)) + Areas(i) * Factors(k)
+         END DO
+       END DO
+       DO i=1,MaxRadBC
+         DO j=1,MaxRadBC
+           LumpedVF(i,j) = LumpedVF(i,j) / LumpedAreas(i)
+         END DO
+       END DO
+
+       CALL Info(Caller,'Lumped View Factor Matrix:')
+       DO i=1,MaxRadBC 
+         WRITE(Message,*) LumpedVF(i,:)
+         CALL Info(Caller, Message ) 
+       END DO
+       
+     END SUBROUTINE ViewFactorsLumping
+
+
+
+     
 !> View factors are normalized in order to improve the numberical accuracy. With 
 !> normalization it is ensured that all boundary elements see exactly half 
 !> space. 

@@ -6,6 +6,7 @@
 #  Phil Weir, NUMA Engineering Services, Ltd.
 #  Mikko Byckling, CSC - IT Center for Science Ltd.
 #  Juhani Kataja, CSC - IT Center for Science Ltd.
+#  Thomas Zwinger, CSC - IT Center for Science Ltd.
 #
 # First public beta release 11th of October, 2013
 #
@@ -14,10 +15,9 @@ IF(NOT CMAKE_BUILD_TYPE)
   SET(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Build type (Release, Debug, RelWithDebugInfo, MinSizeRel)")
 ENDIF()
 
-PROJECT(Elmer Fortran C CXX)
+CMAKE_MINIMUM_REQUIRED(VERSION 3.10)
 
-# CMAKE_VERSION seems to require this in minimum
-CMAKE_MINIMUM_REQUIRED(VERSION 1.0.2)
+PROJECT(Elmer Fortran C CXX)
 
 IF(APPLE)
   SET(CMAKE_MACOSX_RPATH 1) 
@@ -74,6 +74,7 @@ SET(WITH_OpenMP FALSE CACHE BOOL "Use OpenMP thread and SIMD (if available) para
 SET(WITH_MKL FALSE CACHE BOOL "Use Intel Math Kernel library")
 SET(WITH_Mumps FALSE CACHE BOOL "Use Mumps sparse direct solver")
 SET(WITH_Hypre FALSE CACHE BOOL "Use Hypre linear algebra library")
+SET(WITH_CHOLMOD FALSE CACHE BOOL "Use CHOLMOD linear algebra library")
 SET(WITH_ELMERGUI FALSE CACHE BOOL "Include ElmerGUI")
 SET(WITH_ElmerIce FALSE CACHE BOOL "Include ElmerIce")
 SET(WITH_XIOS FALSE CACHE BOOL "Include XIOS")
@@ -87,6 +88,7 @@ SET(WITH_CONTRIB FALSE CACHE BOOL "Include contributed solvers")
 
 SET(WITH_LUA FALSE CACHE BOOL "Include LUA extensions.")
 SET(WITH_MMG FALSE CACHE BOOL "Compile with MMG library.")
+SET(WITH_ROCALUTION FALSE CACHE BOOL "Compile with Rocalution library.")
 
 SET(WITH_Zoltan FALSE CACHE BOOL "Link in Zoltan mesh repartitioning library.")
 
@@ -162,46 +164,18 @@ IF(WITH_EXTOPTIM)
 ENDIF()
 
 IF(WITH_OpenMP)
-  # Advanced properties
-  MARK_AS_ADVANCED(
-    OpenMP_C_FLAGS
-    OpenMP_Fortran_FLAGS
-    OpenMP_CXX_FLAGS
-    )
   FIND_PACKAGE(OpenMP REQUIRED)
 
-  # Add OpenMP flags to compilation flags
-  # if(APPLE)
-  #   if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
-  #     set(OpenMP_C "${CMAKE_C_COMPILER}")
-  #     set(OpenMP_C_FLAGS "-fopenmp=libomp -Wno-unused-command-line-argument")
-  #     set(OpenMP_C_LIB_NAMES "libomp" "libgomp" "libiomp5")
-  #     set(OpenMP_libomp_LIBRARY ${OpenMP_C_LIB_NAMES})
-  #     set(OpenMP_libgomp_LIBRARY ${OpenMP_C_LIB_NAMES})
-  #     set(OpenMP_libiomp5_LIBRARY ${OpenMP_C_LIB_NAMES})
-  #   endif()
-  #   if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
-  #     set(OpenMP_CXX "${CMAKE_CXX_COMPILER}")
-  #     set(OpenMP_CXX_FLAGS "-fopenmp=libomp -Wno-unused-command-line-argument")
-  #     set(OpenMP_CXX_LIB_NAMES "libomp" "libgomp" "libiomp5")
-  #     set(OpenMP_libomp_LIBRARY ${OpenMP_CXX_LIB_NAMES})
-  #     set(OpenMP_libgomp_LIBRARY ${OpenMP_CXX_LIB_NAMES})
-  #     set(OpenMP_libiomp5_LIBRARY ${OpenMP_CXX_LIB_NAMES})
-  #   endif()
-  # else()
-    SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
-    SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${OpenMP_Fortran_FLAGS}")
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-  # endif()
+  # FIXME: Should link to the CMake targets instead
+  SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+  SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${OpenMP_Fortran_FLAGS}")
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
 
-  # Test compiler support for OpenMP 4.0 features used
-  INCLUDE(testOpenMP40)
-  IF(CMAKE_Fortran_COMPILER_SUPPORTS_OPENMP40)
+  # Set variables for supported OpenMP version
+  IF(OpenMP_Fortran_VERSION VERSION_GREATER_EQUAL 4.0)
     SET(HAVE_OPENMP40 TRUE)
     MARK_AS_ADVANCED(HAVE_OPENMP40)
-    # Test compiler support for advanced OpenMP 4.5 features used
-    INCLUDE(testOpenMP45)
-    IF(CMAKE_Fortran_COMPILER_SUPPORTS_OPENMP45)
+    IF(OpenMP_Fortran_VERSION VERSION_GREATER_EQUAL 4.5)
       SET(HAVE_OPENMP45 TRUE)
       MARK_AS_ADVANCED(HAVE_OPENMP45)
     ENDIF()
@@ -210,7 +184,7 @@ ENDIF()
 
 # Get rid of the annoying rank mismatch warning
 IF("${CMAKE_Fortran_COMPILER_ID}" MATCHES "GNU")
-  IF(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 9.9)
+  IF(CMAKE_Fortran_COMPILER_VERSION VERSION_GREATER 9.9)
     SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -fallow-argument-mismatch")
 #    SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -std=legacy")
   ENDIF()
@@ -235,8 +209,21 @@ IF(WITH_MPI)
   SET(CMAKE_Fortran_REQUIRED_LIBRARIES ${MPI_Fortran_LIBRARIES})
 ENDIF(WITH_MPI)
 
+
+IF (WITH_ROCALUTION)
+  SET(HAVE_ROCALUTION TRUE)
+  MARK_AS_ADVANCED(HAVE_ROCALUTION)
+  INCLUDE_DIRECTORIES("${ROCALUTION_INCLUDE_DIR}")
+#  LINK_DIRECTORIES("${ROCALUTION_LINK_DIRECTORIES}")
+ENDIF()
+
+
 IF(WITH_AMGX)
   FIND_PACKAGE(AMGX)
+ENDIF()
+
+IF(WITH_CHOLMOD)
+  FIND_PACKAGE(CHOLMOD)
 ENDIF()
 
 # if(APPLE)
@@ -344,6 +331,7 @@ IF(WITH_Zoltan)
 
     MESSAGE(STATUS "------------------------------------------------")
   ENDIF()
+  FIND_PACKAGE(ParMetis)
 ENDIF(WITH_Zoltan)
 
 
@@ -544,6 +532,12 @@ IF (AMGX_FOUND)
   LINK_DIRECTORIES(${CUDA_LIBDIR})
 ENDIF()
 
+IF (CHOLMOD_FOUND)
+  SET(HAVE_CHOLMOD TRUE)
+  MARK_AS_ADVANCED(HAVE_CHOLMOD)
+  INCLUDE_DIRECTORIES(${CHOLMOD_INCLUDE_DIR})
+  #LINK_DIRECTORIES(${})
+ENDIF()
   
 # Check if Fortran compiler supports procedure pointer
 INCLUDE(testProcedurePointer)
@@ -612,7 +606,13 @@ IF(WITH_ElmerIce)
   ADD_SUBDIRECTORY(elmerice)
 ENDIF(WITH_ElmerIce)
 
-ADD_SUBDIRECTORY(umfpack)
+IF (EXTERNAL_UMFPACK)
+    MESSAGE(STATUS "Using external UMFPACK instead of built-in")
+    FIND_PACKAGE(UMFPACK REQUIRED)    
+ELSE()
+  MESSAGE(STATUS "Using built-in UMFPACK")
+  ADD_SUBDIRECTORY(umfpack)
+ENDIF()
 ADD_SUBDIRECTORY(fhutiter)
 ADD_SUBDIRECTORY(meshgen2d)
 ADD_SUBDIRECTORY(fem)
@@ -651,6 +651,20 @@ MESSAGE(STATUS "------------------------------------------------")
 MESSAGE(STATUS "  BLAS library:   " "${BLAS_LIBRARIES}")
 MESSAGE(STATUS "  LAPACK library: " "${LAPACK_LIBRARIES}")
 MESSAGE(STATUS "------------------------------------------------")
+IF(UMFPACK_FOUND)
+  MESSAGE(STATUS " UMFPACK library: " "${UMFPACK_LIBRARIES}")
+  MESSAGE(STATUS " UMFPACK headers: " "${UMFPACK_INCLUDE_DIR}")
+  MARK_AS_ADVANCED(HAVE_UMFPACK)
+  MESSAGE(STATUS "------------------------------------------------")
+ELSE()
+  MESSAGE(STATUS " UMFPACK library: Using internal Elmer library")
+ENDIF()
+IF(CHOLMOD_FOUND)
+  MESSAGE(STATUS " CHOLMOD library: " "${CHOLMOD_LIBRARIES}")
+  MESSAGE(STATUS " CHOLMOD headers: " "${CHOLMOD_INCLUDE_DIR}")
+  MESSAGE(STATUS "------------------------------------------------")
+  MARK_AS_ADVANCED(HAVE_CHOLMOD)
+ENDIF()
 MESSAGE(STATUS "  Fortran compiler:        " "${CMAKE_Fortran_COMPILER}")
 MESSAGE(STATUS "  Fortran flags:           " "${CMAKE_Fortran_FLAGS} ${CMAKE_Fortran_FLAGS_${CMAKE_BUILD_TYPE_UPCASE}}")
 MESSAGE(STATUS "------------------------------------------------")

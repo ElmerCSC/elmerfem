@@ -1,5 +1,4 @@
 # CMake script for finding Permon for Elmer
-CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
 
 SET(_feti4iIfaceF90 "feti4i_mod.F90")
 SET(_feti4iLibName "libfeti4i.so")

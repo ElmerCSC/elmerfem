@@ -88,7 +88,7 @@ SUBROUTINE Mesh2MeshSolver( Model,Solver,dt,TransientSimulation )
   TYPE(ValueList_t), POINTER :: Params
   TYPE(Variable_t), POINTER :: Var, pVar, FromVars
   CHARACTER(LEN=MAX_NAME_LEN) :: Name, VarName, MaskName
-  INTEGER :: i, n, NoVar
+  INTEGER :: i, j, n, NoVar
   LOGICAL :: Found, GotMaskName, AdditiveMode, DoAdd, DoIt
   REAL(KIND=dp), ALLOCATABLE :: TmpSol(:)
   
@@ -155,7 +155,7 @@ SUBROUTINE Mesh2MeshSolver( Model,Solver,dt,TransientSimulation )
   END DO
    
   IF( NoVar > 0 ) THEN      
-    CALL Info('Mesh2MeshSolver','Mapping '//I2S(NoVar)//' fields as requested',Level=7)
+    CALL Info('Mesh2MeshSolver','Mapping '//I2S(NoVar)//' hand-picked fields as requested',Level=7)
         
     ALLOCATE( FromVars )
     pVar => FromVars
@@ -172,6 +172,7 @@ SUBROUTINE Mesh2MeshSolver( Model,Solver,dt,TransientSimulation )
       VarName = GetString( Params, Name, Found )
       IF(.NOT. Found ) EXIT    
 
+      ! Add a new variable to the temporal list.
       IF( i > 1 ) THEN
         ALLOCATE( pVar % Next )
         pVar => pVar % Next
@@ -180,6 +181,16 @@ SUBROUTINE Mesh2MeshSolver( Model,Solver,dt,TransientSimulation )
       Var => VariableGet( ThisMesh % Variables, VarName, ThisOnly = .TRUE. )
       IF( ASSOCIATED( Var ) ) THEN
         pVar = Var
+#if 0 
+        IF(.NOT. ASSOCIATED(pVar % Perm) ) THEN
+          ALLOCATE(pVar % Perm(ThisMesh % NumberOfNodes))
+          DO j=1,ThisMesh % NumberOfNodes
+            pVar % Perm(j) = j
+          END DO
+
+          PRINT *,'copied:',SIZE(Var % Values), TRIM(Var % Name), ASSOCIATED(Var % Perm), Var % Dofs
+        END IF
+#endif
       ELSE
         pVar % Name = TRIM(VarName)
         pVar % dofs =  1
@@ -193,6 +204,7 @@ SUBROUTINE Mesh2MeshSolver( Model,Solver,dt,TransientSimulation )
       WRITE (Name,'(A,I0)') 'Target Variable ',i
       VarName = GetString( Params, Name, Found )
       IF( Found ) THEN
+        CALL Info('Mesh2MeshSolver','Renaming variable "'//TRIM(pVar % Name)//'" to "'//TRIM(VarName)//'"')
         pVar % Name = VarName
         pVar % NameLen = LENTRIM( VarName ) 
       END IF

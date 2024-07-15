@@ -200,10 +200,17 @@ void IsoSurface::draw(VtkPost* vtkPost, TimeStep* timeStep)
   QStringList contourList = contourListText.split(";");
   int contourValues = contourList.count();
 
+#if WITH_QT6
+  vector<double> contourValue;
+  for(int i = 0; i < contourValues; i++)
+    contourValue.push_back(contourList.at(i).toDouble());  
+  sort(contourValue.begin(), contourValue.end());
+#else
   QVector<double> contourValue(contourValues);
   for(int i = 0; i < contourValues; i++)
     contourValue[i] = contourList.at(i).toDouble();  
   qSort(contourValue);
+#endif
 
   bool useListValues = false;
   if(!contourListText.isEmpty())
@@ -313,8 +320,9 @@ void IsoSurface::draw(VtkPost* vtkPost, TimeStep* timeStep)
   // mapper->ImmediateModeRenderingOn();
   if(ui.colorCombo->currentIndex() == 0 ){ // i.e. Null field
   	mapper->SetScalarRange(0, 1);
-    qreal h,s,v;
-    nullColor.getHsvF(&h, &s, &v);
+    double h = nullColor.hueF();
+    double s = nullColor.saturationF();
+    double v = nullColor.valueF();
     int nColor =128;
     vtkLookupTable* nullLut = vtkLookupTable::New();
     nullLut->SetHueRange(h, h);

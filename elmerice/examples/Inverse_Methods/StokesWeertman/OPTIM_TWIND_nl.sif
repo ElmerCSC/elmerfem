@@ -1,0 +1,384 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! Test for Weertman friction law            !!
+!!  optimise the Weertman friction coefficient!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! OPTIMISATION PARAMETERS
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! Name of the RUN 
+$name="TWIND_nl"
+!! Regularisation parameter
+$Lambda=0.0
+!! max. number of iterations
+$niter=50
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! TEST PARAMETERS
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+$L = 20.0e3
+$Slope = 0.1 * pi / 180.0
+!### physical constants
+$yearinsec = 365.25*24*60*60
+$rhoi = 900.0/(1.0e6*yearinsec^2)
+$gravity = -9.81*yearinsec^2
+$n = 3.0
+$eta = (2.0*100.0)^(-1.0/n)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Header
+  Mesh DB "." "rectangle"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 3D
+  Simulation Type = Steady State
+
+  ! Internal extrusion
+  Extruded Mesh Levels = Integer 5
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = $niter
+
+  Post File = "OPTIM_$name$_.vtu"
+  OutPut Intervals = 1
+
+  !! restart True solution
+  Restart File = "Direct_nl.result"
+  Restart Before Initial Conditions = logical True
+
+  max output level = 3
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! Bodies
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+! Top surface
+Body 2
+  Equation = 2
+  Initial Condition = 2
+  Body Force = 2
+End
+! Bottom Surface
+Body 3
+  Equation = 3
+  Initial Condition = 3
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! Initial Conditions
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+  Uobs  1 = Equals Velocity 1
+  Uobs  2 = Equals Velocity 2
+  Uobs  3 = Equals Velocity 3
+End
+
+! Top surface
+Initial Condition 2
+End
+
+! Bottom Surface
+Initial Condition 3
+!! Slip Coefficient
+
+ ! Initial guess
+ alpha = Real -2.5
+
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!  Body Forces
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  Flow BodyForce 1 = Real 0.0
+  Flow BodyForce 2 = Real 0.0
+  Flow BodyForce 3 = Real $gravity
+End
+
+Body Force 2
+ Adjoint Cost = Variable Velocity 1, Uobs 1, Velocity 2, Uobs 2
+   Real MATC "0.5*(tx[0]-tx[1])*(tx[0]-tx[1])+0.5*(tx[2]-tx[3])*(tx[2]-tx[3])"
+
+ Adjoint Cost der 1 = Variable Velocity 1, Uobs 1
+   Real MATC "(tx[0]-tx[1])"
+ Adjoint Cost der 2 = Variable Velocity 2, Uobs 2
+   Real MATC "(tx[0]-tx[1])"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! Materials
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Material 1
+  Density = Real $rhoi
+  Viscosity Model = String "power law"
+  Viscosity = Real $eta
+  Viscosity Exponent = Real $1.0/n
+  Critical Shear Rate = Real 1.0e-10
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! Solvers
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+!! Before simulation
+Solver 1
+  Exec Solver = before simulation
+  Equation = "MapCoordinate"
+  Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
+
+  Active Coordinate = Integer 3
+End
+
+!! Always
+
+!!!!!!!!!!!!!!!!!!!!!
+!! Velocity solution
+!!  body 1 (bulk)
+!!!!!!!!!!!!!!!!!!!!!
+Solver 2
+  Equation = "Stokes-Vec"
+  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+
+  Stokes Flow = logical true
+  
+  Div-Curl Discretization = Logical False
+  Element = "p:1 b:10"
+  !Relative Integration Order = -1
+
+  !linear settings:
+  !------------------------------
+  Linear System Solver = Iterative
+  Linear System Iterative Method = GCR
+  Linear System Preconditioning= ILU0
+  Linear System Convergence Tolerance= 1.0e-10
+  Linear System Max Iterations = 500
+
+  Linear System Residual Output = 100
+
+  Linear System Abort Not Converged = False
+
+
+  !Non-linear iteration settings:
+  !------------------------------ 
+  Nonlinear System Max Iterations = 50
+  Nonlinear System Convergence Tolerance  = 1.0e-8
+  Nonlinear System Newton After Iterations = 5
+  Nonlinear System Newton After Tolerance = 1.0e-4
+  Nonlinear System Reset Newton = Logical True
+
+
+  Steady State Convergence Tolerance = Real 1.0e-12
+
+! Create variables required for the optimisation
+  Exported Variable 1 = -global CostValue 
+  Exported Variable 2 = -nooutput "Velocityb"
+  Exported Variable 2 DOFs = 4
+  Exported Variable 3 = "Uobs"
+  Exported Variable 3 DOFs = 3
+End
+
+!!!!!!!!!!!!!!!!!!!!!
+!! Cost Function
+!!  body 2 (top)
+!!!!!!!!!!!!!!!!!!!!!
+Solver 3
+ Equation = "Cost"
+    procedure = "ElmerIceSolvers" "Adjoint_CostContSolver"
+
+   Cost Variable Name = String "CostValue"  ! Name of Cost Variable
+ ! save the cost as a function of iterations (iterations,Cost,rms=sqrt(2*Cost/Area)
+   Cost Filename = File "Cost_$name$.dat"
+
+  Sensitivity Variable Name = String "velocityb"
+
+end
+
+!!!!!!!!!!!!!!!!!!!!!!!!
+!!  Adjoint 
+!!  body 1 (bulk)
+!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 4
+  Equation = "Adjoint"
+  Variable = -nooutput Adjoint
+  Variable Dofs = 4
+
+  procedure = "ElmerIceSolvers" "Adjoint_LinearSolver"
+
+!## When using Stokes_vec
+  Bubbles in Global System = FALSE
+  Element = string "p:1 -tri b:1 -tetra b:1 -quad b:3 -brick b:4 -prism b:4 -pyramid b:4"
+
+
+!Name of the flow solution solver
+  Direct Solver Equation Name = string "Stokes-Vec"
+
+! linear system
+  Linear System Solver = Iterative
+  Linear System Iterative Method = GCR
+  Linear System Preconditioning= ILU0
+  Linear System Convergence Tolerance= 1.0e-10
+  Linear System Max Iterations = 1000
+
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!
+!!  Derivative / beta
+!!  body 3 (bottom)
+!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 5
+ Equation = "DJDBeta"
+    procedure = "ElmerIceSolvers" "AdjointStokes_GradientBetaSolver"
+
+    Flow Solution Name = String "Flow Solution"
+    Adjoint Solution Name = String "Adjoint"
+    Gradient Variable Name = String "DJDalpha"
+
+!## When using Stokes_vec
+  Bubbles in Global System = FALSE
+  Element = string "p:1 -tri b:1 -tetra b:1 -quad b:3 -brick b:4 -prism b:4 -pyramid b:4"
+
+  !! Exported Variables
+    Exported Variable 1 = alpha
+    Exported Variable 2 = DJDalpha
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!
+!!  Regularisation
+!!  body 3 (bottom)
+!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 6
+  Equation = "DJDBeta_Reg"
+    procedure = "ElmerIceSolvers" "Adjoint_CostRegSolver"
+
+    Cost Filename=File "CostReg_$name$.dat"
+    Optimized Variable Name= String "alpha"
+    Gradient Variable Name= String "DJDalpha"
+    Cost Variable Name= String "CostValue"
+    Lambda= Real $Lambda
+    Reset Cost Value= Logical False  !=> DJDapha already initialized in solver DJDBeta; switch off initialisation to 0 at the beginning of this solver
+    A priori Regularisation= Logical False
+end
+
+!!!!!!!!!!!!!!!!!!!!!!!!
+!!  Optimisation
+!!  body 3 (bottom)
+!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 7
+  Equation = "Optimize_m1qn3"
+  procedure = "ElmerIceSolvers" "Optimize_m1qn3Parallel"
+
+!## When using Stokes_vec
+  Bubbles in Global System = FALSE
+
+  Cost Variable Name = String "CostValue"
+  Optimized Variable Name = String "alpha"
+  Gradient Variable Name = String "DJDalpha"
+  gradient Norm File = File "GradientNormAdjoint_$name$.dat"
+
+  !!
+  Mesh Independent = Logical FALSE
+
+ ! M1QN3 Parameters
+  M1QN3 dxmin = Real 1.0e-10
+  M1QN3 epsg = Real  1.e-6
+  M1QN3 niter = Integer $niter
+  M1QN3 nsim = Integer $niter
+  M1QN3 impres = Integer 5
+  M1QN3 DIS Mode = Logical True
+  M1QN3 df1 = Real 0.5
+  M1QN3 normtype = String "dfn"
+  M1QN3 OutputFile = File  "M1QN3_$name$.out"
+  M1QN3 ndz = Integer 20
+
+end
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! Equations
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! bulk
+Equation 1
+  Active Solvers(3) = 1 2 4
+End
+! Top
+Equation 2
+  Active Solvers(1) = 3
+End
+! bottom
+Equation 3
+  Active Solvers(3) = 5 6 7
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! Boundary Conditions
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!! BC (y=y0)    
+Boundary Condition 1
+  Target Boundaries = 1
+  Velocity 1  = Equals Uobs 1
+  Velocity 2  = Equals Uobs 2
+  Velocity 3  = Equals Uobs 3
+End
+
+!!! BC (x=xmax) 
+Boundary Condition 2
+  Target Boundaries = 2
+  Velocity 1  = Equals Uobs 1
+  Velocity 2  = Equals Uobs 2
+  Velocity 3  = Equals Uobs 3
+End
+
+!!! BC (y=ymax)   
+Boundary Condition 3
+  Target Boundaries = 3
+  Velocity 1  = Equals Uobs 1
+  Velocity 2  = Equals Uobs 2
+  Velocity 3  = Equals Uobs 3
+End
+
+!!! BC  (x=x0) 
+Boundary Condition 4
+  Target Boundaries = 4
+  Velocity 1  = Equals Uobs 1
+  Velocity 2  = Equals Uobs 2
+  Velocity 3  = Equals Uobs 3
+End
+
+Boundary Condition 5
+  Name = "bottom"
+  Body Id = 3
+
+ !! Normal-Tangential coordinate system
+    Normal-Tangential Velocity = Logical True
+    Velocity 1 = Real 0.0
+
+  Weertman Friction Coefficient = Variable alpha
+    REAL procedure "ElmerIceUSF" "TenPowerA"
+  Weertman Exponent = Real 0.3333333333333333333
+! Cut-off such that argument is not smaller than this
+  Friction Linear Velocity = Real 1.0e-4
+
+  Slip Coefficient derivative = Variable alpha
+    REAL procedure "ElmerIceUSF" "TenPowerA_d"
+
+ Bottom Surface = Variable Coordinate 1
+     Real MATC "-tx*tan(Slope)-1000.0"
+End
+
+!!! free surface
+Boundary Condition 6
+  Body Id = 2
+
+  Top Surface = Variable Coordinate 1
+     Real MATC "-tx*tan(Slope)"
+End
+
+
+!### REFERENCE SOLUTION
+Solver 3 :: Reference Norm = 2.49042560E+04
+Solver 3 :: Reference Norm Tolerance = Real 1.0e-5
+

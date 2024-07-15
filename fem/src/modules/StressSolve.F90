@@ -136,7 +136,6 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
 
     IF (Transient) THEN
       CalcVelocities = GetLogical(SolverParams, 'Calculate Velocities', Found)
-      IF (.NOT.Found) CalcVelocities = .FALSE.
     ELSE
       CalcVelocities = .FALSE.
     END IF
@@ -255,7 +254,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
      INTEGER, POINTER :: TempPerm(:),DisplPerm(:),StressPerm(:),&
           DisplacementVelPerm(:), NodeIndexes(:)
 
-     LOGICAL :: GotForceBC,Found,RayleighDamping, NormalSpring
+     LOGICAL :: Found,RayleighDamping, NormalSpring, NormalDamp
      LOGICAL :: PlaneStress, CalcStress, CalcStressAll, &
         CalcPrincipalAll, CalcPrincipalAngle, CalculateStrains, &
         CalcPrincipalStrain, CalcVelocities, Isotropic(2) = .TRUE.
@@ -272,7 +271,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
      REAL(KIND=dp),ALLOCATABLE:: MASS(:,:),STIFF(:,:),&
        DAMP(:,:), LOAD(:,:),LOAD_im(:,:),FORCE(:),FORCE_im(:), &
        LocalTemperature(:),ElasticModulus(:,:,:),PoissonRatio(:), &
-       HeatExpansionCoeff(:,:,:),DampCoeff(:),SpringCoeff(:,:,:),Beta(:), &
+       HeatExpansionCoeff(:,:,:),DampCoeff(:,:,:),SpringCoeff(:,:,:),Beta(:), &
        ReferenceTemperature(:), Density(:), Damping(:), Beta_im(:), &
        NodalDisplacement(:,:), ContactLimit(:), LocalNormalDisplacement(:), &
        LocalContactPressure(:), PreStress(:,:), PreStrain(:,:), &
@@ -406,7 +405,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
                  Damping( N ),              &
                  RayleighAlpha( N ),        &
                  RayleighBeta( N ),         &
-                 DampCoeff( N ),            &
+                 DampCoeff( N,3,3 ),        &
                  PreStress( 6,N ),          &
                  PreStrain( 6,N ),          &
                  StressLoad( 6,N ),         &
@@ -453,9 +452,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
 
        IF (Transient) THEN
          CalcVelocities = GetLogical(SolverParams, 'Calculate Velocities', Found)
-         IF (.NOT.Found) THEN
-           CalcVelocities = .FALSE.
-         ELSE
+         IF (Found) THEN
            DisplacementVelVar => VariableGet( Mesh % Variables, 'Displacement Velocity' )
            IF (ASSOCIATED(DisplacementVelVar)) THEN
              DisplacementVel => DisplacementVelVar % Values
@@ -580,14 +577,12 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
      OrigEigenAnalysis = EigenAnalysis
 
      StabilityAnalysis = GetLogical( SolverParams, 'Stability Analysis', Found )
-     IF( .NOT. Found ) StabilityAnalysis = .FALSE.
 
      IF( StabilityAnalysis .AND. (CurrentCoordinateSystem() /= Cartesian) ) &
          CALL Fatal( 'StressSolve', &
           'Only cartesian coordinate system is allowed in stability analysis.' )
 
      GeometricStiffness = GetLogical( SolverParams, 'Geometric Stiffness', Found )
-     IF (.NOT. Found ) GeometricStiffness = .FALSE.
 
      IF( GeometricStiffness .AND. (CurrentCoordinateSystem() /= Cartesian) ) &
           CALL Fatal( 'StressSolve', &
@@ -605,8 +600,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
      HarmonicAnalysis = getLogical( SolverParams, 'Harmonic Analysis', Found ) .OR. &
          getLogical( SolverParams,'Harmonic Mode',Found ) 
 !------------------------------------------------------------------------------
-     Refactorize = GetLogical( SolverParams, 'Linear System Refactorize', Found )
-     IF ( .NOT. Found ) Refactorize = .TRUE.
+     Refactorize = GetLogical( SolverParams, 'Linear System Refactorize', Found, DefValue = .TRUE. )
 
      IF ( Transient .AND. .NOT. Refactorize .AND. dt /= Prevdt ) THEN
        CALL ListAddLogical( SolverParams, 'Linear System Refactorize', .TRUE. )
@@ -635,8 +629,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
      ModelLumping = GetLogical( SolverParams, 'Model Lumping', Found )
      IF ( ModelLumping ) THEN       
        IF(DIM /= 3) CALL Fatal('StressSolve','Model Lumping implemented only for 3D')
-       FixDisplacement = GetLogical( SolverParams, 'Fix Displacement', Found )
-       IF(.NOT. Found) FixDisplacement = .TRUE.
+       FixDisplacement = GetLogical( SolverParams, 'Fix Displacement', Found, DefValue = .TRUE. )
        IF(FixDisplacement) THEN
          CALL Info( 'StressSolve', 'Using six fixed displacement to compute the spring matrix',Level=5 ) 
        ELSE
@@ -1053,17 +1046,25 @@ CONTAINS
   SUBROUTINE BulkAssembly()
 !------------------------------------------------------------------------------
     INTEGER :: RelIntegOrder, NoActive 
-
-    LOGICAL :: AnyDamping, NeedMass
-
+    LOGICAL :: AnyDamping, NeedMass, NeedDensity, AnyPre, AnyStress
+    LOGICAL :: LocalMatrixIdentical
+    
     AnyDamping = ListCheckPresentAnyMaterial( Model,"Damping" ) .OR. &
         ListCheckPrefixAnyMaterial( Model,"Rayleigh" )
     Damping = 0.0_dp
     RayleighDamping = .FALSE.
 
-    
-    NeedMass = .NOT.QuasiStationary
-    
+    NeedDensity = Transient .OR. EigenOrHarmonicAnalysis()    
+    NeedMass = .NOT. QuasiStationary
+
+    AnyPre = ListCheckPrefixAnyMaterial( Model, 'Pre' ) 
+    AnyStress = ListCheckPrefixAnyBodyForce( Model,'Stress')
+
+    LocalMatrixIdentical = ListGetLogical( Solver % Values,'Local Matrix Identical', Found ) 
+    IF( LocalMatrixIdentical ) THEN
+      IF( NeedDensity ) CALL Fatal('StressSolve','"Local Matrix Identical" applicable only for steady cases!')      
+    END IF
+            
      CALL StartAdvanceOutput( 'StressSolve', 'Assembly:')
      body_id = -1
 
@@ -1078,34 +1079,33 @@ CONTAINS
 !------------------------------------------------------------------------------
 
        Element => GetActiveElement(t)
+
+       ! If elements are similar skip the other similar elements.
+       IF( UseLocalMatrixCopy( Solver, activeind = t) ) GOTO 100 
+       
        n = GetElementNOFNOdes()
        ntot = GetElementNOFDOFs()
 
        NodeIndexes => Element % NodeIndexes
        CALL GetElementNodes( ElementNodes )
 
-       Equation => GetEquation()
-       PlaneStress = GetLogical( Equation, 'Plane Stress',Found )
-       TemperatureName = ListGetString( Equation,'Temperature Name', Found)
-       IF (.NOT.Found) &
-            WRITE (TemperatureName,'(A)') 'Temperature' 
-       
-       Material => GetMaterial()
+       IF( Element % BodyId /= body_id ) THEN
+         Equation => GetEquation()
+         Material => GetMaterial()
 
-       ! inquire if material parameters shall be replaced by handles
-       EvaluateAtIP(1)= &
-            GetLogical( Material, 'Youngs Modulus at IP',Found)
-       EvaluateAtIP(2)= &
-            GetLogical( Material, 'Heat Expansion Coefficient IP',Found)
-       EvaluateAtIP(3) = &
-            GetLogical( Material, 'Poisson Ratio at IP',Found)
- 
-       
+         PlaneStress = GetLogical( Equation, 'Plane Stress',Found )
+         TemperatureName = ListGetString( Equation,'Temperature Name', Found)
+         IF (.NOT.Found) TemperatureName = 'Temperature'          
+
+         ! inquire if material parameters shall be replaced by handles
+         EvaluateAtIP(1) = GetLogical( Material, 'Youngs Modulus at IP',Found)
+         EvaluateAtIP(2) = GetLogical( Material, 'Heat Expansion Coefficient IP',Found)
+         EvaluateAtIP(3) = GetLogical( Material, 'Poisson Ratio at IP',Found) 
+       END IF
+         
        Density(1:n) = GetReal( Material, 'Density', Found )
-       
-       IF ( .NOT. Found )  THEN
-         IF ( Transient .OR. EigenOrHarmonicAnalysis() ) &
-            CALL Fatal( 'StressSolve', 'No value for density found.' )
+       IF( NeedDensity .AND. .NOT. Found ) THEN
+         CALL Fatal('StressSolve','Transient and harmonic analysis needs "Density"')
        END IF
 
        IF( AnyDamping ) THEN
@@ -1121,7 +1121,6 @@ CONTAINS
        END IF
 
        IF  (EvaluateAtIP(2)) THEN
-
          HeatExpansionCoeff = 0.0_dp
          Isotropic(2) = .TRUE. ! we assume isotropy for function, at the moment
          !CALL ListInitElementKeyword(BetaIP_h,'Material','Heat Expansion Coefficient')
@@ -1130,8 +1129,6 @@ CONTAINS
               'Heat Expansion Coefficient', Material, n, NodeIndexes, GotHeatExp )
        END IF
 
-        EvaluateAtIP(1)= &
-            GetLogical( Material, 'Youngs Modulus at IP',Found)
        IF  (EvaluateAtIP(1)) THEN
          ElasticModulus = 0.0_dp
          Isotropic(1) = .TRUE. ! we assume isotropy for function, at the moment
@@ -1156,18 +1153,20 @@ CONTAINS
          LocalTemperature(1:ntot) = 0.0_dp
        END IF
 
-       IF ( .NOT. ConstantBulkMatrixInUse ) THEN
+       IF (.NOT. ConstantBulkMatrixInUse ) THEN
          PreStress = 0.0d0
          PreStrain = 0.0d0
-         CALL ListGetRealArray( Material, 'Pre Stress', Work, n, NodeIndexes, Found )
-         IF ( Found ) THEN
-            k = SIZE(Work,1)
-            PreStress(1:k,1:n) = Work(1:k,1,1:n)
-         END IF
-         CALL ListGetRealArray( Material, 'Pre Strain', Work, n, NodeIndexes, Found )
-         IF ( Found ) THEN
-            k = SIZE(Work,1)
-            PreStrain(1:k,1:n) = Work(1:k,1,1:n)
+         IF( AnyPre .AND. (StabilityAnalysis .OR. GeometricStiffness)) THEN
+           CALL ListGetRealArray( Material, 'Pre Stress', Work, n, NodeIndexes, Found )
+           IF ( Found ) THEN
+             k = SIZE(Work,1)
+             PreStress(1:k,1:n) = Work(1:k,1,1:n)
+           END IF
+           CALL ListGetRealArray( Material, 'Pre Strain', Work, n, NodeIndexes, Found )
+           IF ( Found ) THEN
+             k = SIZE(Work,1)
+             PreStrain(1:k,1:n) = Work(1:k,1,1:n)
+           END IF
          END IF
        END IF
 
@@ -1218,37 +1217,38 @@ CONTAINS
        StressLoad = 0.0d0
        StrainLoad = 0.0d0
        IF ( ASSOCIATED( BodyForce ) ) THEN
-         EvaluateLoadAtIP= &
-              GetLogical( BodyForce, 'Stress Bodyforce at IP',Found)
+         IF( AnyStress ) THEN
+           EvaluateLoadAtIP= &
+               GetLogical( BodyForce, 'Stress Bodyforce at IP',Found)
 
-         IF (.NOT.EvaluateLoadAtIP) THEN         
-           LOAD(1,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 1', Found )
-           LOAD(2,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 2', Found )
-           LOAD(3,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 3', Found )
-           LOAD(4,1:n)  = GetReal( BodyForce, 'Stress Pressure', Found )
+           IF (.NOT.EvaluateLoadAtIP) THEN         
+             LOAD(1,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 1', Found )
+             LOAD(2,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 2', Found )
+             LOAD(3,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 3', Found )
+             LOAD(4,1:n)  = GetReal( BodyForce, 'Stress Pressure', Found )
 
-           IF ( HarmonicAnalysis ) THEN
-             LOAD_im(1,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 1 im', Found )
-             LOAD_im(2,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 2 im', Found )
-             LOAD_im(3,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 3 im', Found )
-             LOAD_im(4,1:n)  = GetReal( BodyForce, 'Stress Pressure im', Found )
+             IF ( HarmonicAnalysis ) THEN
+               LOAD_im(1,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 1 im', Found )
+               LOAD_im(2,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 2 im', Found )
+               LOAD_im(3,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 3 im', Found )
+               LOAD_im(4,1:n)  = GetReal( BodyForce, 'Stress Pressure im', Found )
+             END IF
            END IF
-         END IF
 
-
-         IF( ListCheckPrefix( BodyForce,'Stress Load' ) ) THEN         
-           CALL ListGetRealArray( BodyForce, 'Stress Load', Work, n, NodeIndexes, Found )
-           IF ( Found ) THEN
-             k = SIZE(Work,1)
-             StressLoad(1:k,1:n) = Work(1:k,1,1:n)
-           END IF
-           IF(.NOT. Found ) THEN
-             StressLoad(1,1:n) = GetReal( BodyForce,'Stress Load 1', Found ) 
-             StressLoad(2,1:n) = GetReal( BodyForce,'Stress Load 2', Found ) 
-             StressLoad(3,1:n) = GetReal( BodyForce,'Stress Load 3', Found ) 
-             StressLoad(4,1:n) = GetReal( BodyForce,'Stress Load 4', Found ) 
-             StressLoad(5,1:n) = GetReal( BodyForce,'Stress Load 5', Found ) 
-             StressLoad(6,1:n) = GetReal( BodyForce,'Stress Load 6', Found ) 
+           IF( ListCheckPrefix( BodyForce,'Stress Load' ) ) THEN         
+             CALL ListGetRealArray( BodyForce, 'Stress Load', Work, n, NodeIndexes, Found )
+             IF ( Found ) THEN
+               k = SIZE(Work,1)
+               StressLoad(1:k,1:n) = Work(1:k,1,1:n)
+             END IF
+             IF(.NOT. Found ) THEN
+               StressLoad(1,1:n) = GetReal( BodyForce,'Stress Load 1', Found ) 
+               StressLoad(2,1:n) = GetReal( BodyForce,'Stress Load 2', Found ) 
+               StressLoad(3,1:n) = GetReal( BodyForce,'Stress Load 3', Found ) 
+               StressLoad(4,1:n) = GetReal( BodyForce,'Stress Load 4', Found ) 
+               StressLoad(5,1:n) = GetReal( BodyForce,'Stress Load 5', Found ) 
+               StressLoad(6,1:n) = GetReal( BodyForce,'Stress Load 6', Found ) 
+             END IF
            END IF
          END IF
 
@@ -1344,7 +1344,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !      Update global matrices from local matrices 
 !------------------------------------------------------------------------------
-       IF ( ConstantBulkMatrixInUse ) THEN
+100    IF ( ConstantBulkMatrixInUse ) THEN
          CALL DefaultUpdateForce( FORCE )
          IF ( HarmonicAnalysis ) THEN
            SaveRHS => Solver % Matrix % RHS
@@ -1384,6 +1384,17 @@ CONTAINS
        Element => GetBoundaryElement(t)
        IF ( .NOT. ActiveBoundaryElement() ) CYCLE
        
+       i = GetElementDim(Element)
+       IF( i >= Mesh % MeshDim ) THEN
+         CALL Warn('StressSolve','Invalid dimension '//I2S(i)//' for BC element '//I2S(t))
+         CYCLE
+       END IF
+       IF( i < Mesh % MeshDim - 1) THEN
+         ! Note this might not be always what you want!
+         CALL Info('StressSolve','Skipping lower dimensional element!',Level=30)
+         CYCLE
+       END IF
+       
        n = GetElementNOFNodes()
        ntot = GetElementNOFDOFs()
 
@@ -1397,20 +1408,27 @@ CONTAINS
           DampCoeff   = 0.0d0
           SpringCoeff = 0.0d0
 
+          IF( HarmonicAnalysis ) THEN
+            LOAD_im=0._dp
+            Beta_im=0._dp
+          END IF
+
           ! Force in given direction BC: \tau\cdot n = F:
           !----------------------------------------------
-          GotForceBC = .FALSE.
-          LOAD(1,1:n) = GetReal( BC, 'Force 1',Found )
-          LOAD(2,1:n) = GetReal( BC, 'Force 2',Found )
-          LOAD(3,1:n) = GetReal( BC, 'Force 3',Found )
-          Beta(1:n) =  GetReal( BC, 'Normal Force',Found )
+          IF(ListCheckPrefix( BC,'Force') ) THEN
+            LOAD(1,1:n) = GetReal( BC, 'Force 1',Found )
+            LOAD(2,1:n) = GetReal( BC, 'Force 2',Found )
+            LOAD(3,1:n) = GetReal( BC, 'Force 3',Found )
 
-          LOAD_im=0._dp
-          Beta_im=0._dp
+            IF ( HarmonicAnalysis ) THEN
+              LOAD_im(1,1:n) = GetReal( BC, 'Force 1 im',Found )
+              LOAD_im(2,1:n) = GetReal( BC, 'Force 2 im',Found )
+              LOAD_im(3,1:n) = GetReal( BC, 'Force 3 im',Found )
+            END IF
+          END IF
+            
+          Beta(1:n) =  GetReal( BC, 'Normal Force',Found )
           IF ( HarmonicAnalysis ) THEN
-            LOAD_im(1,1:n) = GetReal( BC, 'Force 1 im',Found )
-            LOAD_im(2,1:n) = GetReal( BC, 'Force 2 im',Found )
-            LOAD_im(3,1:n) = GetReal( BC, 'Force 3 im',Found )
             Beta_im(1:n) =  GetReal( BC, 'Normal Force im',Found )
           END IF
 
@@ -1431,20 +1449,36 @@ CONTAINS
             END IF
           END IF
 
-          DampCoeff(1:n) =  GetReal( BC, 'Damping', Found )
-          SpringCoeff(1:n,1,1) =  GetReal( BC, 'Spring', NormalSpring )
-          IF ( .NOT. NormalSpring ) THEN
-            DO i=1,dim
-              SpringCoeff(1:n,i,i) = GetReal( BC, ComponentName('Spring',i), Found)
-            END DO
-
-            DO i=1,dim
-              DO j=1,dim
-                IF (ListCheckPresent(BC,'Spring '//i2s(i)//i2s(j) )) &
-                  SpringCoeff(1:n,i,j)=GetReal( BC, 'Spring '//i2s(i)//i2s(j), Found)
+          NormalSpring = .FALSE.
+          IF( ListCheckPrefix( BC,'Spring' ) ) THEN         
+            SpringCoeff(1:n,1,1) =  GetReal( BC, 'Spring', NormalSpring )
+            IF ( .NOT. NormalSpring ) THEN
+              DO i=1,dim
+                SpringCoeff(1:n,i,i) = GetReal( BC, ComponentName('Spring',i), Found)
+                IF(Found) CYCLE
+                DO j=1,dim
+                  IF (ListCheckPresent(BC,'Spring '//i2s(i)//i2s(j) )) &
+                      SpringCoeff(1:n,i,j)=GetReal( BC, 'Spring '//i2s(i)//i2s(j), Found)
+                END DO
               END DO
-            END DO
+            END IF
           END IF
+
+          NormalDamp = .FALSE.
+          IF( ListCheckPrefix( BC,'Damping' ) ) THEN                  
+            DampCoeff(1:n,1,1) =  GetReal( BC, 'Damping', NormalDamp )
+            IF ( .NOT. NormalDamp ) THEN
+              DO i=1,dim
+                DampCoeff(1:n,i,i) = GetReal( BC, ComponentName('Damping',i), Found)
+                IF(Found) CYCLE
+                DO j=1,dim
+                  IF (ListCheckPresent(BC,'Damping '//i2s(i)//i2s(j) )) &
+                      DampCoeff(1:n,i,j)=GetReal( BC, 'Damping '//i2s(i)//i2s(j), Found)
+                END DO
+              END DO
+            END IF
+          END IF
+                        
           ContactLimit(1:n) =  GetReal( BC, 'Contact Limit', Found )
 
           IF(ModelLumping .AND. .NOT. FixDisplacement) THEN
@@ -1465,7 +1499,7 @@ CONTAINS
           SELECT CASE( CurrentCoordinateSystem() )
           CASE( Cartesian, AxisSymmetric, CylindricSymmetric )
              CALL StressBoundary( STIFF,DAMP,FORCE,FORCE_im, LOAD, LOAD_im,   &
-               SpringCoeff,NormalSpring,DampCoeff, Beta, Beta_im, StressLoad, &
+               SpringCoeff,NormalSpring,DampCoeff,NormalDamp,Beta, Beta_im, StressLoad, &
                    NormalTangential, Element,n,ntot,ElementNodes )
           CASE DEFAULT
              DAMP = 0.0d0
@@ -1732,11 +1766,9 @@ CONTAINS
          Permutation = 0
        END IF
 
-       OptimizeBW = GetLogical( StSolver % Values, 'Optimize Bandwidth', Found )
-       IF ( .NOT. Found ) OptimizeBW = .TRUE.
+       OptimizeBW = GetLogical( StSolver % Values, 'Optimize Bandwidth', Found, DefValue = .TRUE. )
 
-       GlobalBubbles = GetLogical(SolverParams,'Bubbles in Global System',Found )
-       IF (.NOT.Found ) GlobalBubbles = .TRUE.
+       GlobalBubbles = GetLogical(SolverParams,'Bubbles in Global System',Found, DefValue = .TRUE. )
 
        IF( ListGetLogicalAnyEquation( Model,'Calculate Stresses' ) ) THEN
          UseMask = .TRUE.

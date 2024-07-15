@@ -567,7 +567,7 @@
          
          OutputName  = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes'         
          OutputName2 = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes.orig'         
-         CALL Rename(OutputName, OutputName2)         
+         CALL RenameF(OutputName, OutputName2)
 
          DoScale = ListCheckPresent( Model % Simulation,'Coordinate Scaling')
        
@@ -608,14 +608,14 @@
        IF( UpdateGeometry ) THEN
          OutputName = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes'         
          OutputName2 = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes.new'         
-         CALL Rename(OutputName, OutputName2)
+         CALL RenameF(OutputName, OutputName2)
 
          OutputName = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes.orig'         
          OutputName2 = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes'         
-         CALL Rename(OutputName, OutputName2)
+         CALL RenameF(OutputName, OutputName2)
        END IF
      END SUBROUTINE ComputeViewfactorsAndRadiators
-     
+
 
      SUBROUTINE CheckFactorsFilesExist()
        LOGICAL :: FilesExist, Found
@@ -981,7 +981,7 @@
 
 
      SUBROUTINE TabulateEmissivity()
-       REAL(KIND=dp) :: Transmittivity
+       REAL(KIND=dp) :: Transmissivity
        LOGICAL :: Found, ThisConstant, SomeEmissivity0
        INTEGER :: i,j,k,n
        TYPE(ValueList_t), POINTER :: BC
@@ -1062,16 +1062,16 @@
            n = Element % TYPE % NumberOfNodes          
            CurrentModel % CurrentElement => Element
            Emissivity(i) = SUM( ListGetReal( Vlist,'Emissivity',n,Element % NodeIndexes) ) / n
-           Transmittivity= SUM( ListGetReal( Vlist,'Transmittivity',n,Element % NodeIndexes, Found) ) / n
+           Transmissivity= SUM( ListGetReal( Vlist,'Transmissivity',n,Element % NodeIndexes, Found) ) / n
            IF(.NOT. Found ) Absorptivity(i) = Emissivity(i)
            Absorptivity(i) = SUM( ListGetReal( Vlist,'Absorptivity',n,Element % NodeIndexes, Found) ) / n
            IF(.NOT. Found ) Absorptivity(i) = Emissivity(i)
-           Reflectivity(i) = 1.0_dp - Absorptivity(i) - Transmittivity
+           Reflectivity(i) = 1.0_dp - Absorptivity(i) - Transmissivity
          END IF
        END DO
        
        IF(SomeEmissivity0) THEN
-         CALL Info('TabulateEmissivity','We used constant emissivity for some elemenets!',Level=6)
+         CALL Info('TabulateEmissivity','We used constant emissivity for some elements!',Level=6)
          IF(.NOT. UpdateGebhartFactors ) THEN
            CALL Warn('TabulateEmissivity','Gebhart factors should be updated for non-constant emissivities!')
          END IF

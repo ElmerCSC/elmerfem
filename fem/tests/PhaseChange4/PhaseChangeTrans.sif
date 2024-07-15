@@ -1,0 +1,276 @@
+! Compute transient phase change problem by updating the 
+! interface based on the melting speed. 
+!
+! This is a variation of case 3 using nodal loads to estimate the melt speed.
+! For some reason this alternative strategy using nodal loads
+! does not work for axially symmetric case so this one is cartesian.
+!
+! P.R. 12.9.2023
+
+
+$ velo = 1.0
+$ melt = 0.5
+$ trans = 1.0
+$ cap = 1.0
+$ lat = 1.0
+$ cond = 5.0
+
+Header
+  Mesh DB "." "PhaseChange"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = Transient
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+  Timestepping Method = Implicit Euler
+  Timestep Sizes = 3.0e-2
+
+! Add more timesteps for full analysis
+  Timestep Intervals = 3 !100
+  Output Intervals = 1
+
+! Uncomment output file for visualization
+  Post File = "data.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "solid"
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Body 2
+  Name = "melt"
+  Equation = 1
+  Material = 2
+  Initial Condition = 1
+End
+
+Body 3
+  Name = "heater"
+  Equation = 2
+  Material = 3
+  Initial Condition = 1
+  Body Force = 1
+End
+
+Body 4
+  Name = "interface"
+  Equation = 3
+  Material = 1
+  Initial Condition = 1
+End
+
+
+Equation 1
+  Active Solvers(2) = 1 2 
+  Convection = Constant
+End
+
+Equation 2
+  Active Solvers(1) = 2 
+  Convection = Constant
+End
+
+Equation 3
+  Active Solvers(1) = 3
+End
+
+
+Solver 1
+  Equation = "Mesh Update"
+  Linear System Solver = "Direct"
+  Linear System Direct Method = "umfpack"
+  Steady State Convergence Tolerance = 1.0e-4
+End
+
+
+Solver 2
+  Equation = "Heat Equation"
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = "umfpack"
+
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Relaxation Factor = 1.0
+  Nonlinear System Newton After Iterations = 0
+  Nonlinear System Newton After Tolerance  = 1.0e-2
+
+  Calculate Loads = True
+
+  Steady State Convergence Tolerance = 1.0e-4
+  Stabilize = Logical True
+End
+
+Solver 3
+  Variable = PhaseSurface
+  Equation = "Phase Surface"
+!  Procedure = "PhaseChangeSolve" "PhaseChangeSolve"
+  Procedure = "TransientPhaseChange" "TransientPhaseChange"
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = "umfpack"
+
+  Nonlinear System Relaxation Factor = 1.0
+  Nonlinear System Newton After Iterations = 10
+! Lumped Newton After Iterations = Integer 10
+  Steady State Convergence Tolerance = 1.0e-3
+!  Use Triple Point for Melting Point = Logical True
+
+!  Loads Relaxation Factor = Real 0.7
+  Use Nodal Loads = Logical True
+  Nodal Loads Negative = Logical True
+
+  Surface Smoothing Factor = Real 0.0
+  Transient Speedup = Real 1.0
+  Velocity Smoothing Factor = Real 0.05
+  Velocity Relaxation Factor = Real 0.5
+End
+
+Solver 4
+  Exec Solver = never
+  Equation = String SaveLine
+  Procedure = File "SaveData" "SaveLine"
+  Filename = File "ss.dat"
+  File Append = Logical True
+End
+
+Solver 5
+  Exec Solver = never
+  Equation = String SaveScalars
+  Procedure = File "SaveData" "SaveScalars"
+  Filename = File "fs.dat"
+
+  Variable 1 = String PhaseSurface
+  Operator 1 = String max
+  Variable 2 = String PhaseSurface
+  Operator 2 = String min
+  Variable 3 = String Temperature
+  Operator 3 = String mean
+  Variable 4 = String time
+End
+
+Body Force 1
+!  Heat Source = Real 1.0
+!  Smart Heater Control = Logical True
+
+End
+
+
+Material 1
+  Solid  = Logical True
+
+  Melting Point = Real $ melt 
+  Density = 1
+  Heat Capacity  = $ cap
+  Heat Conductivity = $ cond
+  Youngs Modulus = 1.0
+  Poisson Ratio = 0.3
+  Latent Heat = Real $ lat
+  Convection Velocity 1 = 0.0
+  Convection Velocity 2 = Real $ velo
+End
+
+Material 2
+  Liquid  = Logical True
+
+  Melting Point = Real $ melt
+  Density = 1
+  Heat Capacity = $ cap
+  Heat Conductivity = $ cond
+  Youngs Modulus = 1.0
+  Poisson Ratio  = 0.3
+  Convection Velocity 1 = 0.0
+  Convection Velocity 2 = Real $ velo
+End
+
+
+Material 3
+  Density = 1
+  Heat Capacity = $ cap
+  Heat Conductivity = 1.0
+End
+
+
+Initial Condition 1
+  Temperature = Variable Coordinate 2
+    Real 
+      0.0 1.0 
+      2.0 0.0
+    End 
+  PhaseSurface = Real 0.0
+  Mesh Update 1 = Real 0.0
+  Mesh Update 2 = Real 0.0
+End
+
+
+Boundary Condition 1
+  Name = "melt_crystal"
+  Target Boundaries = 1
+
+  Temperature = Real $ melt
+  Mesh Update 1 = 0
+  Mesh Update 2 = Equals PhaseSurface
+
+  Save Line = Logical True
+  Normal Target Body = Integer 1
+  Body Id = Integer 4
+End
+
+
+Boundary Condition 2
+  Name = "melt_heater"
+  Target Boundaries = 2
+
+  Mesh Update 1 = 0
+  Mesh Update 2 = 0
+  Temperature = 1.0
+End
+
+Boundary Condition 3
+  Name = "solid_top"
+  Target Boundaries = 3
+
+  Mesh Update 1 = 0
+  Mesh Update 2 = 0
+  Temperature = 0.0
+End
+
+Boundary Condition 4
+  Name = "right_walls"
+  Target Boundaries = 4 
+
+  Mesh Update 1 = 0
+  Heat Flux BC = Logical True
+  Heat Transfer Coefficient = Real $ trans
+  External Temperature = Real 1.0
+  Phase Change Side = Logical True
+End
+
+Boundary Condition 5
+  Name = "axis"
+  Target Boundaries = 5
+  Mesh Update 1 = 0
+End
+
+Boundary Condition 6
+  Name = "heater_bottom"
+  Target Boundaries = 6
+End
+
+Solver 1 :: Reference Norm = 5.31150299E-02
+Solver 2 :: Reference Norm = 5.83595961E-01
+Solver 3 :: Reference Norm = 3.48866143E-01

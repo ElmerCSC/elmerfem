@@ -8,8 +8,6 @@
 # * HYPRE_INCLUDE_DIR (cmake)
 # * HYPRE_LIBRARY_DIR (cmake)
 
-cmake_minimum_required(VERSION 2.8)
-
 # If Hypre libraries are already defined, do nothing
 IF(Hypre_LIBRARIES)
   IF(Hypre_INCLUDE_DIR)

@@ -539,7 +539,7 @@ int main(int argc, char *argv[])
 	    DestroyKnots(&data[k]);
 	    free(cell[k]);
 	    
-	    if(info) printf("Iteration %d of elements number targiting %d in 2D\n",
+	    if(info) printf("Iteration %d of elements number targeting %d in 2D\n",
 			    elementsredone,grids[k].wantedelems);
 	    goto redoelements;
 	  }

@@ -47,7 +47,7 @@ MODULE ParallelUtils
      IMPLICIT NONE
 
      INTERFACE ParallelReduction
-       MODULE PROCEDURE ParallelReductionR, ParallelReductionI
+       MODULE PROCEDURE ParallelReductionR, ParallelReductionI, ParallelReductionZ
      END INTERFACE ParallelReduction
           
 CONTAINS
@@ -117,7 +117,7 @@ CONTAINS
 !tt = realtime()
 #ifdef PARALLEL_FOR_REAL
        IF ( ParEnv % PEs <= 1 .OR. .NOT. ASSOCIATED(Matrix) ) RETURN
-       
+
        Mesh => Solver % Mesh
        DOFs = Solver % Variable % DOFs
 
@@ -691,6 +691,7 @@ CONTAINS
 
        Matrix % ParMatrix => &
           ParInitMatrix( Matrix, Matrix % ParallelInfo )
+
 !if(parenv%mype==0) print*,'MATRIX INIT TIME: ', realtime()-tt
 #endif
 CONTAINS
@@ -803,6 +804,8 @@ CONTAINS
 !-------------------------------------------------------------------------------
        LOGICAL :: Upd
 #ifdef PARALLEL_FOR_REAL
+       ParEnv => Matrix % ParMatrix % ParEnv
+       ParEnv % ActiveComm = Matrix % Comm
        Upd = .TRUE.
        IF ( PRESENT(Update) ) Upd=Update
        CALL SParInitSolve( Matrix, x, b, r, Matrix % ParallelInfo, Upd )
@@ -819,7 +822,10 @@ CONTAINS
        INTEGER, OPTIONAL :: op
        REAL(KIND=dp) CONTIG :: x(:)
 !-------------------------------------------------------------------------------
-       ParEnv = Matrix % ParMatrix % ParEnv
+       ParEnv => Matrix % ParMatrix % ParEnv
+       IF(.NOT.ASSOCIATED(Parenv % Active)) THEN
+         ParEnv = ParEnv_Common
+       END IF
        ParEnv % ActiveComm = Matrix % Comm
 
        CALL ExchangeSourceVec( Matrix, Matrix % ParMatrix % SplittedMatrix, &
@@ -836,7 +842,7 @@ CONTAINS
        INTEGER, OPTIONAL :: op
        INTEGER CONTIG :: x(:)
 !-------------------------------------------------------------------------------
-       ParEnv = Matrix % ParMatrix % ParEnv
+       ParEnv => Matrix % ParMatrix % ParEnv
        ParEnv % ActiveComm = Matrix % Comm
 
        CALL ExchangeSourceVecInt( Matrix, Matrix % ParMatrix % SplittedMatrix, &
@@ -858,7 +864,7 @@ CONTAINS
       ! We can inherit the ParEnv from the primary matrix even
       ! though the variable is not directly associated to it!
       IF( PRESENT( Matrix ) ) THEN
-        ParEnv = Matrix % ParMatrix % ParEnv
+        ParEnv => Matrix % ParMatrix % ParEnv
         ParEnv % ActiveComm = Matrix % Comm
       END IF
 
@@ -908,7 +914,7 @@ CONTAINS
       GlobalData => Matrix % ParMatrix
       SaveMatrix  => GlobalMatrix
       GlobalMatrix => Matrix
-      ParEnv = GlobalData % ParEnv
+      ParEnv => GlobalData % ParEnv
       ParEnv % ActiveComm = Matrix % Comm
 
       UpdateL = .FALSE.
@@ -1018,7 +1024,7 @@ CONTAINS
       GlobalData => Matrix % ParMatrix
       SaveMatrix  => GlobalMatrix
       GlobalMatrix => Matrix
-      ParEnv = GlobalData % ParEnv
+      ParEnv => GlobalData % ParEnv
       ParEnv % ActiveComm = Matrix % Comm
       IF ( PRESENT( Update ) ) THEN
         CALL Fatal('ParallelMatrixVectorC','Cannot handle parameter > Update <')
@@ -1317,9 +1323,8 @@ CONTAINS
         ELSE
           oper = 0
         END IF
-
-        IF (.NOT.ASSOCIATED(ParEnv % Active)) &
-            CALL ParallelActive(.TRUE.)
+        
+        IF (.NOT.ASSOCIATED(ParEnv % Active)) CALL ParallelActive(.TRUE.)
         CALL SparActiveSUMInt(isum,oper)
       END IF
 #endif
@@ -1327,7 +1332,36 @@ CONTAINS
     END FUNCTION ParallelReductionI
 !-------------------------------------------------------------------------------
 
-    
+
+!------------------------------------------------------------------------------
+! Same as previous byt for complex values.    
+!-------------------------------------------------------------------------------
+    FUNCTION ParallelReductionZ(z,oper_arg) RESULT(zsum)
+!-------------------------------------------------------------------------------
+      COMPLEX(KIND=dp) :: z, zsum
+      INTEGER, OPTIONAL :: oper_arg
+!-------------------------------------------------------------------------------
+      INTEGER :: oper
+!-------------------------------------------------------------------------------
+      zsum = z
+#ifdef PARALLEL_FOR_REAL
+      IF ( ParEnv % PEs>1) THEN
+        oper = 0
+        IF (PRESENT(oper_arg)) THEN
+          oper=oper_arg
+        ELSE
+          oper = 0
+        END IF
+        
+        IF (.NOT.ASSOCIATED(ParEnv % Active)) &
+            CALL ParallelActive(.TRUE.)
+        CALL SparActiveSUMComplex(zsum,oper)
+      END IF
+#endif
+!-------------------------------------------------------------------------------
+    END FUNCTION ParallelReductionZ
+!-------------------------------------------------------------------------------
+
     
 !-------------------------------------------------------------------------------
     SUBROUTINE ParallelBarrier

@@ -2,7 +2,7 @@
 ! The rotational interface is assumed to be always mortars but the radial
 ! interfaces may be also conforming. For the case of Piola transformed
 ! edge elements we can also deal with skew. Also there is a special BC
-! option to release Dirichlet BCs set for edges of the the rotating BC. 
+! option to release Dirichlet BCs set for edges of the rotating BC. 
 !
 ! P.R. 14.2.2022
 

@@ -89,30 +89,26 @@ CONTAINS
     TYPE (SParIterSolverGlobalD_t), POINTER :: SParMatrixDesc
 
     TYPE (ParEnv_t), POINTER :: ParallelEnv
-REAL(kind=dp) :: tt,realtime
     !******************************************************************
 
-    IF ( .NOT. ParEnv % Initialized ) THEN
-       ParallelEnv => ParCommInit()
-    END IF
-
     ALLOCATE( SParMatrixDesc )
-!tt=realtime()
-    CALL ParEnvInit( SParMatrixDesc, ParallelInfo, SourceMatrix )
-!if ( parenv % mype==0 ) print*,'ENV INIT TIME: ', realtime()-tt
+
+    SParMatrixDesc % ParEnv = ParEnv
+    ALLOCATE(SParMatrixDesc % ParEnv % Active(ParEnv % PEs))
+    SParMatrixDesc % ParEnv % Active = ParEnv % Active
+    SParMatrixDesc % ParEnv % IsNeighbour => Null()
+    ParEnv => SParMatrixDesc % ParEnv
+
+    CALL ParEnvInit(SParMatrixDesc, ParallelInfo, SourceMatrix)
 
     SParMatrixDesc % Matrix => SourceMatrix
     SParMatrixDesc % DOFs = 1
     SParMatrixDesc % ParallelInfo => ParallelInfo
 
-    ParEnv = SParMatrixDesc % ParEnv
     ParEnv % ActiveComm = SourceMatrix % Comm
-!tt=realtime()
+
     SParMatrixDesc % SplittedMatrix => &
                         SplitMatrix( SourceMatrix, ParallelInfo )
-
-    SParMatrixDesc % ParEnv = ParEnv
-!if ( parenv % mype==0 ) print*,'SPLIT TIME: ', realtime()-tt
 
   END FUNCTION ParInitMatrix
 
@@ -349,10 +345,13 @@ st = realtime()
   NULLIFY( SplittedMatrix % InsideMatrix % DampValues )
 
   NeedIlu = .FALSE.
-  Prec = ListGetString(CurrentModel % Solver % Values, &
-      'Linear System Preconditioning', Found )
-  IF(Found) NeedILU = SEQL(Prec,'vanka') 
-    
+  IF( ListGetString(CurrentModel % Solver % Values, &
+      'Linear System Solver', Found ) == 'iterative' ) THEN
+    Prec = ListGetString(CurrentModel % Solver % Values, &
+        'Linear System Preconditioning', Found ) 
+    IF(Found) NeedILU = SEQL(Prec,'vanka')
+  END IF
+  
   SplittedMatrix % InsideMatrix % Ordered = .FALSE.
   NULLIFY( SplittedMatrix % InsideMatrix % ILUValues )
 
@@ -920,7 +919,7 @@ END SUBROUTINE ZeroSplittedMatrix
 !----------------------------------------------------------------------
 
     GlobalData     => SourceMatrix % ParMatrix
-    ParEnv         =  GlobalData % ParEnv
+    ParEnv         => GlobalData % ParEnv
     ParEnv % ActiveComm = SourceMatrix % Comm
     SplittedMatrix => Globaldata % SplittedMatrix
 
@@ -1242,13 +1241,14 @@ END SUBROUTINE ZeroSplittedMatrix
 !----------------------------------------------------------------------
 !> Create continuous numbering for the dofs expected by some linear solvers.
 !----------------------------------------------------------------------
-  SUBROUTINE ContinuousNumbering(ParallelInfo, Mperm, Aperm, Owner, nin, Mesh, nOwn )
+  SUBROUTINE ContinuousNumbering(ParallelInfo, Mperm, Aperm, Owner, &
+              nin, Mesh, nOwn, gStart )
 !--------------------------------------------------------------------
      INTEGER :: Mperm(:), Aperm(:), Owner(:)
      TYPE(Mesh_t), OPTIONAL :: Mesh
      INTEGER, OPTIONAL :: nin
      TYPE(ParallelInfo_t) :: ParallelInfo
-     INTEGER, OPTIONAL :: nOwn
+     INTEGER, OPTIONAL :: nOwn, gStart
 
      INTEGER, ALLOCATABLE :: neigh(:), sz(:),buf_a(:,:),buf_g(:,:), &
                   buf_aa(:), buf_gg(:)
@@ -1293,6 +1293,8 @@ END SUBROUTINE ZeroSplittedMatrix
        CALL MPI_RECV( gind, 1, MPI_INTEGER, &
            prev_id, 801, ELMER_COMM_WORLD, status, ierr )
      END IF
+
+     IF(PRESENT(gStart)) gStart = gind
 
      ! give a number to dofs owned by us:
      ! -----------------------------------
@@ -1462,6 +1464,8 @@ SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
   INTEGER, DIMENSION(:), ALLOCATABLE :: VecEPerNB
   INTEGER, ALLOCATABLE :: Owner(:), Aperm(:)
 
+  REAL(KIND=dp), TARGET :: DummyPrecVals(1)
+
   REAL(KIND=dp), POINTER :: Vals(:)
   INTEGER, POINTER :: nb(:), Rows(:), Cols(:)
 
@@ -1504,7 +1508,7 @@ INTEGER::inside
                    PE, Owner(n), ILUn, BILU, hypremethod, precond, &
                    symmetry, maxlevel, hypre_intpara(10), verbosity,fcomm,rounds
         REAL(KIND=c_double) :: Vals(n),Xvec(n),RHSvec(n),TOL,threshold,filter, &
-                            hypre_dppara(5), PrecVals(n)
+                            hypre_dppara(5), PrecVals(*)
         INTEGER(KIND=C_INTPTR_T) :: hypreContainer
       END SUBROUTINE SolveHYPRE1
 
@@ -1602,7 +1606,7 @@ INTEGER::inside
   !******************************************************************
   SaveGlobalData => GlobalData
   GlobalData     => SParMatrixDesc
-  ParEnv         =  GlobalData % ParEnv
+  ParEnv         => GlobalData % ParEnv
   ParEnv % ActiveComm = SourceMatrix % Comm
   SplittedMatrix => SParMatrixDesc % SplittedMatrix
 
@@ -1804,9 +1808,13 @@ INTEGER::inside
         ! setup solver/preconditioner
 
         IF (SourceMatrix % Hypre == 0) THEN
-          precond=0
           PrecVals => SourceMatrix % PrecValues
-          IF(ASSOCIATED(PrecVals)) precond=1
+          IF(ASSOCIATED(PrecVals)) THEN
+            precond=1
+          ELSE
+            precond=0
+            PrecVals => DummyPrecVals
+          END IF
 
           CALL SolveHYPRE1( SourceMatrix % NumberOfRows, Rows, Cols, Vals, Precond, &
               PrecVals, Aperm, Owner,  ILUn, BILU, hypremethod,hypre_intpara, hypre_dppara,&
@@ -2081,7 +2089,7 @@ INTEGER::inside
                     IF ( NeedPrec ) &
                        CurrIf % PrecValues(l) = CurrIf % PrecValues(l) + &
                             SourceMatrix % PrecValues(j)
-                    IF ( NeedPrec ) &
+                    IF ( NeedMass ) &
                        CurrIf % MassValues(l) = CurrIf % MassValues(l) + &
                             SourceMatrix % MassValues(j)
                     IF ( NeedDamp ) &

@@ -81,7 +81,7 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
   
   INTEGER :: i,j,k,t,n,nn,pn,DIM,kl,kr,l, Trip_node, NoBNodes, istat, &
        NElems,ElementCode,Next,Vertex,ii,imin,NewtonAfterIter,Node, iter, LiquidInd, Visited = -1, &
-       SubroutineVisited = 0, NormalDirection, TangentDirection, CoordMini(3), CoordMaxi(3), &
+       SubroutineVisited = 0, NormalDir, TangentDirection, CoordMini(3), CoordMaxi(3), &
        Axis_node, LiquidBody, SolidBody, NoPhaseElements
   INTEGER, POINTER :: Indexes(:),TempPerm(:),SurfPerm(:),PhaseElements(:)
 
@@ -93,7 +93,7 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
   CHARACTER(LEN=MAX_NAME_LEN) :: VariableName, str
 
   SAVE FirstTime, Trip_node, NoBNodes, SubroutineVisited, prevpos0, &
-      PrevTemp, Newton, ccum, NormalDirection, TangentDirection, MeltPoint, &
+      PrevTemp, Newton, ccum, NormalDir, TangentDirection, MeltPoint, &
       ForceVector, FluxCorrect, NodeDone, Eps,  &
       Visited, Nodes, NodalTemp, Width, &
       TempDiff, AllocationsDone, &
@@ -254,7 +254,7 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
            j = i
         END IF
      END DO
-     NormalDirection = j
+     NormalDir = j
 
      ! Direction of maximum change
      j = 1
@@ -462,7 +462,7 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
         END IF
         Update = SurfaceMove(k) * ( MeltPoint - TTemp ) / dTdz
       ELSE           
-        ! Find the the contour element that has the x-coordinate in closest to the that of the
+        ! Find the contour element that has the x-coordinate in closest to that of the
         ! free surface
         
         Eps = 1.0d-6 * ( xmax - xmin )
@@ -483,8 +483,8 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
           
           x1 = IsoSurf(i,TangentDirection)
           x2 = IsoSurf(i+1,TangentDirection)
-          y1 = IsoSurf(i,NormalDirection)
-          y2 = IsoSurf(i+1,NormalDirection)
+          y1 = IsoSurf(i,NormalDir)
+          y2 = IsoSurf(i+1,NormalDir)
           
           ! If node is in interval take the closest isotherm
           IF ( (xx > x1 - Eps) .AND. (xx < x2 + Eps)) THEN
@@ -515,8 +515,8 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
         i = imin
         x1 = IsoSurf(i,TangentDirection)
         x2 = IsoSurf(i+1,TangentDirection)
-        y1 = IsoSurf(i,NormalDirection)
-        y2 = IsoSurf(i+1,NormalDirection)
+        y1 = IsoSurf(i,NormalDir)
+        y2 = IsoSurf(i+1,NormalDir)
         
         ! There may be a problem if the boundary cannot be mapped on an isotherm
         IF (.NOT. stat) THEN
@@ -958,6 +958,7 @@ END SUBROUTINE BoxMoveMesh
 !-------------------------------------------------------------------------------
   USE Types
   USE Lists
+  USE SolverUtils
   USE ElementDescription
   IMPLICIT NONE
 !-------------------------------------------------------------------------------
@@ -967,29 +968,22 @@ END SUBROUTINE BoxMoveMesh
 !-------------------------------------------------------------------------------
   TYPE(Variable_t), POINTER :: NormalSol
   INTEGER:: k,n,i
-  INTEGER, POINTER :: NodeIndexes(:), NormalsPerm(:) 
+  INTEGER, POINTER :: NodeIndexes(:)
   REAL (KIND=dp):: NodeLatentHeat, Density, NormalPull, u, v
   REAL (KIND=dp):: UPull(3) = (/ 0,0,0 /), Normal(3), ElemLatentHeat(4)
-  REAL (KIND=dp), POINTER :: Normals(:)
-  LOGICAL:: stat, NormalExist = .FALSE., Visited = .FALSE.
+  LOGICAL:: stat, Found, NormalExist = .FALSE., Visited = .FALSE.
   TYPE(Nodes_t) :: Nodes
   TYPE(Element_t), POINTER :: CurrentElement, Parent
   
 !------------------------------------------------------------------------------
 
-  SAVE NormalExist, Normals, NormalsPerm, Nodes
-
+  SAVE NormalExist, Nodes, NormalSol
 
   IF(.NOT. Visited) THEN
     NormalSol  => VariableGet( Model % Variables, 'Normals',ThisOnly=.TRUE. )
-    IF(ASSOCIATED(NormalSol)) THEN
-      NormalsPerm => NormalSol % Perm
-      Normals => NormalSol % Values
-      NormalExist = .TRUE.
-    ELSE
-      n = Model % Mesh % MaxElementNodes  
-      ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n) )
-    END IF
+    NormalExist = ASSOCIATED(NormalSol)
+    n = Model % Mesh % MaxElementNodes  
+    ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n) )
     Visited = .TRUE.
   END IF
 
@@ -1026,11 +1020,12 @@ END SUBROUTINE BoxMoveMesh
   IF(.NOT. ASSOCIATED(Parent)) CALL Fatal('MeltingHeat','Parent not found')
 !------------------------------------------------------------------------------
 
-  IF( NormalExist ) THEN
-    Normal(1) = Normals( 2*NormalsPerm( Node ) - 1 )
-    Normal(2) = Normals( 2*NormalsPerm( Node ))
-    Normal(3) = 0.0d0
-  ELSE
+  Found = .FALSE.
+  IF( NormalExist ) THEN    
+    Normal = ConsistentNormalVector( CurrentModel % Solver, NormalSol, CurrentElement, Found, Node = Node )
+  END IF
+
+  IF(.NOT. Found ) THEN
     Nodes % x(1:n) = Model % Nodes % x(NodeIndexes)
     Nodes % y(1:n) = Model % Nodes % y(NodeIndexes)
     Nodes % z(1:n) = Model % Nodes % z(NodeIndexes)
@@ -1042,7 +1037,6 @@ END SUBROUTINE BoxMoveMesh
     ! If inner boundary, Normal Target Body should be defined for the boundary 
     ! (if not, material density will be used to determine then normal direction 
     ! and should be defined for bodies on both sides):
-
     Normal = NormalVector( CurrentElement, Nodes, u, v, .TRUE. )
   END IF
 

@@ -5,5 +5,5 @@ IF(WITH_Hypre)
 
   file(COPY ELMERSOLVER_STARTINFO cylinders DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-  ADD_ELMER_TEST(mgdyn_hypre_ams NPROCS 2 LABELS hypre slow)
+  ADD_ELMER_TEST(mgdyn_hypre_ams NPROCS 2 LABELS hypre mgdyn)
 ENDIF()

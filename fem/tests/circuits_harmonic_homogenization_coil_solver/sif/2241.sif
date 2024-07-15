@@ -1,0 +1,275 @@
+! A test case derived from `circuits_harmonic_stranded_homogenization`.
+! That case computes the skin and proximity losses for a stranded coilcurrent
+! via so called homogenization, where the strands are not geometrically
+! in the model but their frequency responce is estimated using `sigma`
+! and `nu` parameters that are gotten from the elementary solutions of
+! 2D computations (transversal fields and perpendicular current).
+! In 3D the cross-section needs to be oriented using the RotM transformation
+! That requires the definition of a local coordinate system. For that we
+! have previously used the direction solvers (`Alpha` and `Beta`).
+!
+! The main point now is to get rid of the direction solvers.
+! The other major change is to use `CoilSolver` solution to drive
+! the circuit (instead of `WSolver`). There are many benefits for
+! using the `CoilSolver`, for example, one can calculate closed coils.
+!
+! The important new keywords (with respect to ) here are:
+!  1. `Body: Local Coordinate System Beta Reference and Gamma = Logical True`
+!    * CoordinateTransform computes alpha = beta x gamma:
+!      where beta is set to "Beta Reference" and
+!      Gamma is set to "coilcurrent e" computed by `CoilSolver`
+!  2. `Component: Coil Normal(3) = Real 0. 0. 1.`
+!    * `CoilSolver` needs to know how the coil is oriented
+!  3. `Component: Desired Current Density = Real 1.0`
+!    * `CoilSolver` will set a certain current density over the coil
+!  4. `Component: Coil Use W Vector = Logical True`
+!    * Coil uses a defined `W Vector` for which a name can be provided
+!    * The `W Vector` set here is used for driving the component with circuits
+!  5. `Component: W Vector Variable Name = String "CoilCurrent e"`
+!    * Here we choose the correct field for `W Vector`
+!  6. `Boundary: Coil Start = Logical True` 
+!    * `CoilSolver` needs a boundary for knowing where coil starts (if not closed)
+!  7. `Boundary: Coil End = Logical True` 
+!    * `CoilSolver` needs a boundary for knowing where coil ends (if not closed)
+!
+! Author: Eelis Takala, ERS
+! Original date: January 2024
+! eelis.takala@gmail.com
+Check Keywords "Warn"
+INCLUDE sif/2241-circuits.definitions
+INCLUDE 2241/mesh.names
+Header 1
+   Mesh DB "." "2241"
+End
+Constants 1
+   Permittivity of Vacuum = 8.8542e-12
+End
+Initial Condition 1
+   A re {e} = Real 0
+   A im {e} = Real 0
+End
+Simulation 1
+   Max Output Level = 3
+   Coordinate System = Cartesian 3D
+   Coordinate Mapping(3) = 1 2 3
+   Coordinate Scaling = 0.001
+   Simulation Type = Steady
+   Steady State Max Iterations = 1
+   BDF Order = 1
+   Output Intervals = 1
+   Angular Frequency = 376.991118431
+End
+Solver 1  !---- CoilSolver, CoilSolver
+  Exec Solver = Before All
+  Equation = "CoilSolver"
+  Procedure = "CoilSolver" "CoilSolver"
+  
+  Steady State Convergence Tolerance = 1e-06 ! related to the Steady State Iterations (see Simulation)
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = ILU1
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1e-7
+  Linear System Iterative Method = BiCGStab
+  Linear System Residual Output = 1
+  ! When we normalize, we introduce propably some divergence that
+  ! does not impress the solver very much... Helmholtz projection needed?
+  Normalize Coil Current = Logical True ! necessary to have a uniform current across the coil
+  Fix Input Current Density = Logical True
+  Nonlinear System Consistent Norm = Logical True
+  Coil Closed = Logical False
+  Narrow Interface = Logical True
+  Save Coil Set = Logical True
+  Save Coil Index = Logical True
+  Calculate Elemental Fields = Logical True
+End
+Solver 2
+   Exec Solver = Before All
+   Equation = Transformation matrix
+   Procedure = "CoordinateTransform" "RotMSolver"
+   Variable = -nooutput Dummy
+   Optimize Bandwidth = False
+   Exported Variable 1 = -nooutput RotM E[RotM E:9]
+   Exported Variable 2 = -nooutput Alpha Vector E[Alpha Vector E:3]
+   Exported Variable 3 = -nooutput Beta Vector E[Beta Vector E:3]
+   Exported Variable 4 = -nooutput Gamma Vector E[Gamma Vector E:3]
+   Discontinuous Galerkin = True
+End
+Solver 3 !-- CircuitsAndDynamics - CircuitsAndDynamicsHarmonic
+   Exec Solver = Always
+   Equation = Circuits
+   Variable = X
+   No Matrix = Logical True
+   Procedure = "CircuitsAndDynamics" "CircuitsAndDynamicsHarmonic"
+End
+Solver 4 !-- MagnetoDynamics - WhitneyAVHarmonicSolver
+   Exec Solver = Always
+   Equation = "MGDynamics"
+   Variable = "A[A re:1 A im:1]"
+   Procedure = "MagnetoDynamics" "WhitneyAVHarmonicSolver"
+   Angular Frequency = 376.991118431
+   Export Lagrange Multiplier = Logical True
+   Linear System Symmetric = Logical True
+   Linear System Complex = Logical True
+   Linear System Solver = Iterative
+   Linear System Iterative Method = BicgstabL
+   Linear System preconditioning = Circuit
+   Linear System Convergence Tolerance = 1.e-7
+   Linear System Max Iterations = 5000
+   Linear System Residual Output = 1000
+   BicgStabL Polynomial Degree = 4
+   Linear System Abort not Converged = True
+   Steady State Convergence Tolerance = 1e-06
+End
+Solver 5
+   Exec Solver = Always
+   Equation = "MGDynamicsCalc"
+   Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+   Linear System Symmetric = True
+   Potential Variable = String "A"
+   Calculate Current Density = Logical True
+   Loss Estimation = Logical True
+   Calculate Homogenization Loss = Logical True
+   Calculate Joule Heating = Logical True
+   Steady State Convergence Tolerance = 0
+   Linear System Solver = "Iterative"
+   Linear System Preconditioning = None
+   Linear System Residual Output = 1000
+   Linear System Max Iterations = 5000
+   Linear System Iterative Method = CG
+   Steady State Convergence Tolerance = 1e-6
+   Linear System Convergence Tolerance = 1.0e-8
+End
+Solver 6
+   Exec Solver = After timestep
+   Equation = "ResultOutput"
+   Procedure = "ResultOutputSolve" "ResultOutputSolver"
+   Output File Name = 2241-results
+   Vtu format = Logical True
+   Save Geometry Ids = Logical True
+End
+Solver 7
+   Exec Solver = Always
+   Equation = Circuits Output
+   Procedure = "CircuitsAndDynamics" "CircuitsOutput"
+End
+Solver 8
+   Exec Solver = Never
+   Equation = "sv"
+   Procedure = "SaveData" "SaveScalars"
+   Filename = 2241/dat/2241.dat
+End
+Equation 1
+   Active Solvers(2) = 4 5
+End
+Equation 2
+   Active Solvers(5) = 1 2 3 4 5
+End
+Material 1
+   Name = iron
+   Electric Conductivity = 0
+   Relative Permeability = 2000
+   Relative Permittivity = 1e100
+End
+Material 2
+   Name = air
+   Electric Conductivity = 0
+   Relative Permeability = 1
+   Relative Permittivity = 1
+End
+Material 3
+   Name = metal
+   Relative Permeability = 1
+   Relative Permittivity = 1e100
+   Electric Conductivity = 1e7
+End
+Body 1
+   Name = core
+   Target Bodies(1) = $ core
+   Equation = 1
+   Material = 1
+   Initial Condition = 1
+End
+Body 2
+   Name = air
+   Target Bodies(1) = $ air
+   Equation = 1
+   Material = 2
+   Initial Condition = 1
+End
+Body 3
+   Name = airgap_1_limb_2
+   Target Bodies(1) = $ airgap_1_limb_2
+   Equation = 1
+   Material = 2
+   Initial Condition = 1
+End
+Body 4
+   Name = wp1
+   Target Bodies(1) = $ wp1
+   Equation = 2
+   Material = 3
+   Initial Condition = 1
+   Body Force = 1
+   Alpha reference (3) = Real 1 0 0
+   Beta reference (3) = Real 0 1 0
+   ! Setting the following keyword on,
+   ! CoordinateTransform computes alpha = beta x gamma:
+   ! where beta is set to "Beta Reference" and
+   ! Gamma is set to "coilcurrent e" computed by `CoilSolver`
+   Local Coordinate System Beta Reference and Gamma = Logical True
+End
+Component 1
+   Name = String wp1
+   Body = Integer 4
+   Coil Type = String stranded
+   Homogenization Model = Logical True
+   Nu 11 = Real $ 773655 
+   Nu 11 im = Real $ 259371
+   Nu 22 = Real $ 773655 
+   Nu 22 im = Real $ 259371
+   Nu 33 = Real $ 773655      ! these are not physical
+   Nu 33 im = Real $ 259371   ! 
+   Sigma 33 = Real 9e7
+   Number of Turns = Real 144
+   Electrode Area = Real 0.000185614878383
+   Circuit Equation Voltage Factor = Real 0.5 !symmetry (half of the problem is solved)
+   Coil Normal(3) = Real 0. 0. 1. ! this is needed by `CoilSolver`
+   Desired Current Density = Real 1.0 ! not sure if this is needed `CoilSolver`
+   ! the following two are needed so that we can drive with the circuit with `CoilSolver` solution
+   Coil Use W Vector = Logical True
+   W Vector Variable Name = String "CoilCurrent e"
+End 
+Body Force 1
+   Name = "Circuit"
+   S Re = Real $ cos(0.0*pi/3) * 1.41421356237
+   S Im = Real $ sin(0.0*pi/3) * 1.41421356237
+End
+Boundary Condition 1
+   Name = BCn Flux Parallel
+   Target Boundaries(2) = $ coreface_xy xy0
+   A re {e} = Real 0
+   A im {e} = Real 0
+End
+Boundary Condition 2
+   Name = ground
+   Target Boundaries = $ wp1_gamma1
+   A re {e} = Real 0
+   A im {e} = Real 0
+   Coil End = Logical True ! needed by the coil solver (except if Coil Closed = Logical True)
+End
+Boundary Condition 3
+   Name = current in foil winding
+   Target Boundaries = $ wp1_gamma0
+   A re {e} = Real 0
+   A im {e} = Real 0
+   Coil Start = Logical True ! needed by the coil solver (except if Coil Closed = Logical True)
+End
+
+Solver 4 :: Reference Norm = Real 4.01153162E-07
+Solver 4 :: Reference Norm Tolerance = Real 1E-03
+Solver 5 :: Reference Norm = Real 6.03834682E+03
+Solver 5 :: Reference Norm Tolerance = Real 1E-03
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+

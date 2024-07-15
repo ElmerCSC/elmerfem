@@ -132,34 +132,23 @@ CONTAINS
     CHARACTER(LEN=1024) :: InfoFileName 
    
 
-    MinOutputLevel = ListGetInteger( OutputList, &
-        'Min Output Level', GotIt )
-
-    MaxOutputLevel = ListGetInteger( OutputList, &
-        'Max Output Level', GotIt )
-
+    MinOutputLevel = ListGetInteger( OutputList,'Min Output Level', GotIt )
+    MaxOutputLevel = ListGetInteger( OutputList,'Max Output Level', GotIt )
     IF ( .NOT. GotIt ) MaxOutputLevel = 10
-
-    OutputMask => ListGetIntegerArray( OutputList, &
-        'Output Level', GotIt )
-
+    DO i=0,31
+      OutputLevelMask(i) = ( i >= MinOutputLevel .AND. i <= MaxOutputLevel )
+    END DO
+    
+    OutputMask => ListGetIntegerArray( OutputList,'Output Level', GotIt )
     IF ( GotIt ) THEN
       DO i=1,SIZE(OutputMask)
-        OutputLevelMask(i-1) = OutputMask(i) /= 0
+        OutputLevelMask(i-1) = ( OutputMask(i) /= 0 .AND. OutputLevelMask(i-1))
       END DO
     END IF
 
-    DO i=0,31
-      OutputLevelMask(i) = OutputLevelMask(i) .AND. &
-          i >= MinOutputLevel .AND. i <= MaxOutputLevel
-    END DO
-
-    OutputPrefix = ListGetLogical( OutputList, &
-        'Output Prefix', GotIt )
+    OutputPrefix = ListGetLogical( OutputList,'Output Prefix', GotIt )
     IF ( .NOT. GotIt ) OutputPrefix = .FALSE.
-
-    OutputCaller = ListGetLogical( OutputList, &
-        'Output Caller', GotIt )
+    OutputCaller = ListGetLogical( OutputList,'Output Caller', GotIt )
     IF ( .NOT. GotIt ) OutputCaller = .TRUE.
 
     ! By default only on partition is used to show the results
@@ -351,6 +340,7 @@ CONTAINS
 
     LOGICAL :: FirstTime = .TRUE.
     LOGICAL :: KeywordsLoaded = .FALSE.
+    LOGICAL :: SimulationRead = .FALSE.
     
     INTEGER :: nlen, BCcount, BodyCount, EqCount, MatCount, BfCount, &
         IcCount, SolverCount, LineCount, ComponentCount
@@ -568,7 +558,11 @@ CONTAINS
       
       IF( SEQL(Section,'run control') ) THEN
         ! "Run Control" section has been read but to a different Model structure
-        IF( .NOT. ScanOnly ) THEN
+        IF( ScanOnly ) THEN
+          IF( SimulationRead ) THEN
+            CALL Fatal(Caller,'"Run Control" should precede "Simulation" section!')
+          END IF
+        ELSE
           ArrayN = 1
           IF(.NOT.ASSOCIATED(Model % Control)) &
               Model % Control => ListAllocate()
@@ -584,7 +578,9 @@ CONTAINS
         END IF
         
       ELSE IF ( SEQL(Section, 'simulation') ) THEN        
-        IF ( .NOT. ScanOnly ) THEN
+        IF ( ScanOnly ) THEN
+          SimulationRead = .TRUE.
+        ELSE
           ArrayN = 1
           IF(.NOT.ASSOCIATED(Model % Simulation)) &
               Model % Simulation=>ListAllocate()
@@ -1155,8 +1151,9 @@ CONTAINS
       END DO
             
       ! If automatic numbering is used map the names to numbers
+      ! Also otherwise, this may be handy sometimes.
       !------------------------------------------------------------
-      IF( .NOT. Numbering ) THEN
+      !IF( .NOT. Numbering ) THEN
         DO i = 1, Model % NumberOfBodies
           IF( .NOT. ListCheckPresent( Model % Bodies(i) % Values,'Material') ) THEN
             name = ListGetString( Model % Bodies(i) % Values,'Material Name', Found )
@@ -1239,9 +1236,9 @@ CONTAINS
           END IF
                
         END DO ! number of bodies
-      END IF
+      !END IF
 
-
+        
       ! Make sanity check that all Material, Body Force and Equation is associated to some
       ! body. This is not detrimental so a warning suffices.
       !-----------------------------------------------------------------------------------
@@ -1672,6 +1669,10 @@ CONTAINS
         N2   = 1
         SizeGiven = .FALSE.
         SizeUnknown = .FALSE.
+
+        ! Optional parameter tag
+        partag = 0
+        disttag = .FALSE.
         
         DO WHILE( ReadAndTrim(InFileUnit,str,echo,string_literal) ) 
           
@@ -1686,10 +1687,6 @@ CONTAINS
               str = TRIM(TypeString) // ' ' // TRIM(str)
             END IF
           END IF
-
-          ! Optional parameter tag
-          partag = 0
-          disttag = .FALSE.
           
 20        CONTINUE
 
@@ -2016,10 +2013,12 @@ CONTAINS
                CALL Info(Caller,'Adding parameter tag '&
                    //I2S(partag)//' to keyword: '//TRIM(Name),Level=7)
                IF(.NOT. ScanOnly ) CALL ListParTagKeyword( List, Name, partag ) 
+               partag = 0
              END IF
              ! Add tag so we know to divide this keyword by the entity integral 
              IF( disttag ) THEN               
                IF(.NOT. ScanOnly ) CALL ListDistTagKeyword( List, Name )
+               disttag = .FALSE.
              END IF             
                           
              EXIT
@@ -2573,9 +2572,9 @@ CONTAINS
       CHARACTER(LEN=256) :: txcmd
 
       character(len=256) :: elmer_home_env
-      CALL getenv("ELMER_HOME", elmer_home_env)
+      CALL get_environment_variable("ELMER_HOME", elmer_home_env)
 
-      !$OMP PARALLEL Shared(parenv, ModelName, elmer_home_env) Private(txcmd, ompthread, lstat) Default(none)
+      !$OMP PARALLEL Shared(mype, ModelName, elmer_home_env) Private(txcmd, ompthread, lstat) Default(none)
       !$OMP CRITICAL
       LuaState = lua_init()
       IF(.NOT. LuaState % Initialized) THEN
@@ -2584,7 +2583,7 @@ CONTAINS
 
       ! Store mpi task and omp thread ids in a table
       LSTAT = lua_dostring(LuaState, 'ELMER_PARALLEL = {}' // c_null_char)
-      write(txcmd,'(A,I0)') 'ELMER_PARALLEL["pe"] = ', parenv % mype
+      write(txcmd,'(A,I0)') 'ELMER_PARALLEL["pe"] = ',  mype
       lstat = lua_dostring(LuaState, txcmd // c_null_char)
 
       ompthread = 1
@@ -2626,6 +2625,11 @@ CONTAINS
     CALL LoadInputFile( Model,InFileUnit,ModelName,MeshDir,MeshName, .TRUE., .FALSE. )
     IF ( .NOT. OpenFile ) CLOSE( InFileUnit )
 
+#ifdef DEVEL_LISTUSAGE 
+    ! Switch original keywords from -1 to 0 if in this mode.
+    CALL ReportListCounters( Model, 1 )
+#endif
+             
     ! These are here to provide possibility to create tags for keywords
     ! using suffixes. The new way would be to use prefix -dist.
     ! The idea is to have a generic way to determine which keywords
@@ -2634,7 +2638,7 @@ CONTAINS
     CALL ListTagKeywords( Model,'normalize by volume',.TRUE., Found ) 
            
     CALL ListAddNewString( Model % Simulation,'Solver Input File',ModelName ) 
-    
+
     CALL InitializeOutputLevel( Model % Simulation )
 
     Transient=ListGetString(Model % Simulation, &
@@ -2962,7 +2966,8 @@ CONTAINS
       END IF
 
       IF( MeshLevels > 1 ) THEN
-      !  CALL PrepareMesh( Model, NewMesh, ParEnv % PEs > 1 )        
+        ! This has been commented out, but is needed. There may be some issues in parallel still...
+        CALL PrepareMesh( Model, NewMesh, ParEnv % PEs > 1 )        
       END IF
     
       
@@ -3239,10 +3244,46 @@ CONTAINS
       Mesh => Mesh % Next      
     END DO
 
+
+    CALL TagRadiationSolver() 
+    
 !------------------------------------------------------------------------------
 
   CONTAINS
 
+    ! Set radiation solver tag to one heat equation.
+    !--------------------------------------------------
+    SUBROUTINE TagRadiationSolver()
+      TYPE(ValueList_t), POINTER :: Params
+
+      ! Radiation solver tag already exists?
+      IF( ListGetLogicalAnySolver( Model,'Radiation Solver') ) RETURN
+      
+      DO i=1,Model % NumberOfSolvers
+        Params => Model % Solvers(i) % Values
+        str = ListGetString( Params, 'Equation' )
+        IF ( TRIM(str) == 'heat equation' ) THEN
+          CALL Info('LoadModel','Defined radition solver by Equation name "heat equation"',Level=10) 
+          CALL ListAddLogical( Params,'Radiation Solver',.TRUE.)
+          RETURN
+        ENDIF
+      END DO
+      
+      DO i=1,Model % NumberOfSolvers
+        Params => Model % Solvers(i) % Values
+        str = ListGetString(Params, 'Procedure', Found)
+        IF(.NOT. Found) CYCLE
+        j = INDEX( str,'HeatSolver')
+        IF( j > 0 ) THEN
+          CALL Info('LoadModel','Defined radiation solver by Procedure containing "HeatSolver"',Level=10) 
+          CALL ListAddLogical( Params,'Radiation Solver',.TRUE.)
+          RETURN
+        END IF
+      END DO
+
+    END SUBROUTINE TagRadiationSolver
+
+    
 !------------------------------------------------------------------------------
 !> This subroutine is used to fill Def_Dofs array of the solver structure.
 !> Note that this subroutine makes no attempt to figure out the index of
@@ -3611,7 +3652,16 @@ CONTAINS
         END IF
       END DO
     END BLOCK
-      
+
+    DO i=1,Model % NumberOfBCs
+      List => Model % BCs(i) % Values
+      CALL ListObsoliteFatal( List,'Transmittivity','Transmissivity') 
+    END DO
+    DO i=1,Model % NumberOfMaterials
+      List => Model % Materials(i) % Values
+      CALL ListObsoliteFatal( List,'Transmittivity','Transmissivity') 
+    END DO
+          
 
   END SUBROUTINE CompleteModelKeywords
   
@@ -4945,7 +4995,7 @@ CONTAINS
             IF ( PRESENT(FoundTStep) ) FoundTStep = TimeStep
          ELSE
             CALL Warn( Caller,&
-                 'Did not find the the requested timestep in the positions file;' )
+                 'Did not find the requested timestep in the positions file;' )
             CALL Warn( Caller,'using the last found one instead.')
             Offset2 = -TimeStepSize + VarNr*8
             CALL BinFSeek( PosUnit, Offset2 , BIN_SEEK_END )
@@ -5063,11 +5113,13 @@ CONTAINS
 
       IF( ALLOCATED( Perm ) ) THEN
         IF( SIZE( Perm ) < nPerm ) THEN
-          CALL Warn(Caller,'Permutation vector too small?')
+          CALL Warn(Caller,'Permutation vector too small: '&
+              //I2S(SIZE(Perm))//' vs. '//I2S(nPerm))
           DEALLOCATE( Perm ) 
         END IF
         IF( SIZE( Perm ) > nPerm ) THEN
-          CALL Info(Caller,'Permutation vector too large?',Level=15)
+          CALL Info(Caller,'Permutation vector too large: '&
+              //I2S(SIZE(Perm))//' vs. '//I2S(nPerm),Level=15)
         END IF
       END IF
       IF( .NOT. ALLOCATED( Perm ) ) THEN
@@ -5234,7 +5286,10 @@ CONTAINS
         NumberOfNodes, NumberOfElements, ind, nDOFs, MeshDim, Nzeros
     INTEGER, POINTER :: MaskPerm(:), MaskOrder(:)
 !------------------------------------------------------------------------------
-
+    
+    IF( INDEX( PostFile,'.vtu' ) /= 0 ) RETURN
+    !IF( INDEX( PostFile,'.ep' ) == 0 ) RETURN
+    
     IF( Model % Mesh % SavesDone == 0 ) THEN
       CALL Info('WritePostFile','Saving results in ElmerPost format to file '//TRIM(PostFile))
     END IF
@@ -6078,7 +6133,7 @@ SUBROUTINE GetNodalElementSize(Model,expo,noweight,h)
 
       Solver % Matrix % ParMatrix % ParEnv % ActiveComm = &
                  Solver % Matrix % Comm
-      ParEnv = Solver % Matrix % ParMatrix % ParEnv
+      ParEnv => Solver % Matrix % ParMatrix % ParEnv
     END IF
   END IF
 

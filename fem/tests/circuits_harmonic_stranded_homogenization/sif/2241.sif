@@ -20,7 +20,7 @@ Simulation 1
    Steady State Max Iterations = 1
    BDF Order = 1
    Output Intervals = 1
-   Angular Frequency = $ 2*pi*10000
+   Angular Frequency = 376.991118431
 End
 Solver 1
    Exec Solver = Before all
@@ -104,6 +104,8 @@ Solver 7
    Potential Variable = String "A"
    Calculate Current Density = Logical True
    Loss Estimation = Logical True
+   Calculate Homogenization Loss = Logical True
+   Calculate Joule Heating = Logical True
    Steady State Convergence Tolerance = 0
    Linear System Solver = "Iterative"
    Linear System Preconditioning = None
@@ -117,7 +119,7 @@ Solver 8
    Exec Solver = After timestep
    Equation = "ResultOutput"
    Procedure = "ResultOutputSolve" "ResultOutputSolver"
-   Output File Name = 2241-results2
+   Output File Name = 2241-results
    Vtu format = Logical True
    Save Geometry Ids = Logical True
 End
@@ -196,6 +198,8 @@ Component 1
    Nu 11 im = Real $ 259371
    Nu 22 = Real $ 773655 
    Nu 22 im = Real $ 259371
+   Nu 33 = Real $ 773655      ! these are not physical
+   Nu 33 im = Real $ 259371   ! 
    Sigma 33 = Real 9e7
    Number of Turns = Real 144
    Electrode Area = Real 0.000185614878383
@@ -249,7 +253,7 @@ End
 
 Solver 4 :: Reference Norm = Real 5.88944303E-01 
 Solver 4 :: Reference Norm Tolerance = Real 1E-03
-Solver 6 :: Reference Norm = Real 4.09497893E-07 
+Solver 6 :: Reference Norm = Real 4.09225331E-07
 Solver 6 :: Reference Norm Tolerance = Real 1E-03
 !Solver 7 :: Reference Norm = Real 1.63166208E-09
 !Solver 7 :: Reference Norm Tolerance = Real 1E-03

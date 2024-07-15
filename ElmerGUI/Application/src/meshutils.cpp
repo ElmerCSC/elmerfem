@@ -316,6 +316,7 @@ void Meshutils::findSurfaceElements(mesh_t *mesh)
 	}
 	
 	int facenodes = degree * faceedges;
+        if (code == 827) facenodes = 9;
 
 	s->setNodes(facenodes);
 	s->setCode(100 * faceedges + facenodes);
@@ -1062,7 +1063,7 @@ void Meshutils::findSurfaceElementEdges(mesh_t *mesh)
 //-----------------------------------------------------------------------------
 void Meshutils::findSharpPoints(mesh_t *mesh, double limit)
 {
-  qreal t0[3], t1[3];
+  QREAL_OR_FLOAT t0[3], t1[3];
 
   cout << "Limit: " << limit << " degrees" << endl;
   cout.flush();
@@ -1358,13 +1359,21 @@ int Meshutils::divideEdgeBySharpPoints(mesh_t *mesh)
 
 void Meshutils::sort_index(int n, double *a, int *b)
 {
+#if WITH_QT6
+  vector<QPair<double, int>> list;
+
+  for(int i = 0; i < n; i++)
+    list.push_back(qMakePair(a[i], b[i]));
+
+  sort(list.begin(), list.end());
+#else
   QList<QPair<double, int> > list;
 
   for(int i = 0; i < n; i++)
     list << qMakePair(a[i], b[i]);
 
   qSort(list);
-
+#endif
   for(int i = 0; i < n; i++) {
     a[i] = list[i].first;
     b[i] = list[i].second;
@@ -1569,7 +1578,7 @@ int Meshutils::divideSurfaceBySharpEdges(mesh_t *mesh)
 //-----------------------------------------------------------------------------
 void Meshutils::findSurfaceElementNormals(mesh_t *mesh)
 {
-  static qreal a[3], b[3], c[3];
+  static QREAL_OR_FLOAT a[3], b[3], c[3];
   double center_surface[3], center_element[3], center_difference[3];
   Helpers *helpers = new Helpers;
   int u, v, w, e0, e1, i0, i1, bigger;
@@ -1707,6 +1716,17 @@ void Meshutils::findSurfaceElementNormals(mesh_t *mesh)
 	  surface->setNodeIndex(5, tmp);
 
 	} else if(surface->getCode() == 408) {
+	  int tmp = surface->getNodeIndex(1);
+	  surface->setNodeIndex(1, surface->getNodeIndex(3));
+	  surface->setNodeIndex(3, tmp);
+	  tmp = surface->getNodeIndex(4);
+	  surface->setNodeIndex(4, surface->getNodeIndex(7));
+	  surface->setNodeIndex(7, tmp);
+	  tmp = surface->getNodeIndex(5);
+	  surface->setNodeIndex(5, surface->getNodeIndex(6));
+	  surface->setNodeIndex(6, tmp);
+
+	} else if(surface->getCode() == 409) {
 	  int tmp = surface->getNodeIndex(1);
 	  surface->setNodeIndex(1, surface->getNodeIndex(3));
 	  surface->setNodeIndex(3, tmp);
@@ -1897,7 +1917,7 @@ void Meshutils::increaseElementOrder(mesh_t *mesh)
     int family = e->getCode() / 100;
     int edges = familyedges[family];
 
-    // Skip undtermined and nonlinear element 
+    // Skip undetermined and nonlinear element
     if((e->getNodes() < 2) || (e->getNodes() > familylinnodes[family])) continue;
 
     for(int f=0; f<edges; f++) {

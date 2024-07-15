@@ -104,7 +104,7 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
   integer, allocatable :: LocalToGlobalPerm(:),nodePerm(:),TestPerm(:)
 
   logical :: FirstVisit=.TRUE.,Firsttime=.TRUE.,Found,UseMask,ComputeNormG=.FALSE.,&
-       UnFoundFatal=.TRUE.,MeshIndep, BoundarySolver
+       UnFoundFatal=.TRUE.,MeshIndep, BoundarySolver, AllPartsActive
   logical,SAVE :: Parallel
   logical,allocatable :: VisitedNode(:)
 
@@ -207,7 +207,20 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
               MeshIndep=.FALSE.
             END IF
 
-            BoundarySolver = ( Solver % ActiveElements(1) > Model % Mesh % NumberOfBulkElements )
+            ! for tetrahedral 3d meshes where all parts may not have boundary elements on the solver boundary
+            AllPartsActive =  ListGetLogical( SolverParams,'All Partitions Active', Found)
+            IF(.NOT. Found) THEN
+              CALL WARN(SolverName,'Keyword >All Partitions Active< not found in solver params')
+              CALL WARN(SolverName,'Taking default value >TRUE<')
+              AllPartsActive = .TRUE.
+            END IF
+
+            IF(ASSOCIATED(Solver % ActiveElements)) THEN
+              BoundarySolver = ( Solver % ActiveElements(1) > Model % Mesh % NumberOfBulkElements )
+            ELSE
+              BoundarySolver = .TRUE.
+            END IF
+
             IF(BoundarySolver) THEN
               CALL Info(SolverName, "Solver defined on boundary", Level=10)
             ELSE
@@ -393,11 +406,17 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
         End do
       End do
 
-     if (NActiveNodes.eq.0) THEN
+      IF(AllPartsActive) THEN
+        if (NActiveNodes.eq.0) THEN
             WRITE(Message,'(A)') 'NActiveNodes = 0 !!!'
             CALL FATAL(SolverName,Message)
-     End if
-  
+        End if
+      ELSE
+        if (NActiveNodes.eq.0) THEN
+            WRITE(Message,'(A,i0)') 'NActiveNodes = 0 in part ', ParEnv % MyPE
+            CALL WARN(SolverName,Message)
+        End if
+      END IF
     allocate(ActiveNodes(NActiveNodes),LocalToGlobalPerm(NActiveNodes),x(VarDOFs*NActiveNodes),g(VarDOFs*NActiveNodes))
     IF(MeshIndep) ALLOCATE(b(VarDOFs*NActiveNodes))
     ActiveNodes(1:NActiveNodes)=NewNode(1:NActiveNodes)
@@ -601,6 +620,8 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
                       BetaValues(VarDOFs*(BetaPerm(ActiveNodes(i))-1)+j)=xtot(VarDOFs*(i-1)+j)
                  End DO
             End Do
+
+            IF(NActiveNodes == 0) BetaValues = 0.0_dp
                       
             ni=1+VarDOFs*NActiveNodes
             Do i=2,Npes

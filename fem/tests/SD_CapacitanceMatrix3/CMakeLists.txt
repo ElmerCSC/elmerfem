@@ -5,4 +5,4 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 
 file(COPY plates.grd ELMERSOLVER_STARTINFO DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(SD_CapacitanceMatrix3 NPROCS 1 3 LABELS quick cmodes serendipity)
+ADD_ELMER_TEST(SD_CapacitanceMatrix3 NPROCS 1 3 LABELS quick cmodes serendipity lumping)

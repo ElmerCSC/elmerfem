@@ -1,4 +1,4 @@
-! Solver eigenmodes of a plate using the standard plate solver.
+! Solve eigenmodes of a plate using the standard plate solver.
 ! Here the eigenmodes are solved from a complex system which would basically
 ! enable complex eigenvalues (i.e. including of damping).
 !

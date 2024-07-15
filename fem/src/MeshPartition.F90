@@ -105,7 +105,7 @@ CONTAINS
     TYPE(Graph_t) :: LocalGraph
     REAL(KIND=dp) :: t1,t2, ImbalanceTol, ZTolChange
     INTEGER :: i,j,k,l,m,n,ierr,NNodes,NBulk,Ngraph,counter,DIM,&
-         max_elemno,NoPart, ZMinElems
+         max_elemno,NoPart, ZMinElems,OutputLevel
     INTEGER, ALLOCATABLE :: ElemAdj(:), ElemStart(:), ElemAdjProc(:), ParElemAdj(:), ParElemStart(:),&
          ParElemIdx(:),ParElemAdjProc(:),sharecount(:),&
          ParElemMap(:)
@@ -113,7 +113,7 @@ CONTAINS
     LOGICAL :: UsePerm, Success, GotParMetis, DistributedMesh
     LOGICAL, ALLOCATABLE :: PartSuccess(:), PartGotNodes(:)
     
-    CHARACTER(MAX_NAME_LEN) :: ImbTolStr
+    CHARACTER(MAX_NAME_LEN) :: ImbTolStr,Method, Approach, ParMetisLib, ZoltanLib, GraphPackage
     CHARACTER(*), PARAMETER :: FuncName="Zoltan_Interface"
 
     !Zoltan things
@@ -171,10 +171,13 @@ CONTAINS
       IF(.NOT. Found) NoPart = ParEnv % PEs
     END IF
 
-    CALL Info(FuncName,'Partitioning with Zoltan to '//I2S(NoPart)//' partitions',Level=6)
+    CALL Info(FuncName,'Partitioning with Zoltan to '//TRIM(I2S(NoPart))//' partitions',Level=6)
     
     IF( PRESENT( SerialMode ) ) THEN
       Serial = SerialMode
+      IF( Serial .AND. ParEnv % PEs >1 ) THEN
+        CALL Info(FuncName,'Using serial partitioning in parallel case!')
+      END IF
     ELSE
       Serial = ( ParEnv % PEs == 1 )
       IF( PRESENT( PartitionCand ) ) THEN
@@ -191,15 +194,60 @@ CONTAINS
     NBulk = Mesh % NumberOfBulkElements
     Ngraph = Nbulk
     DIM = CoordinateSystemDimension()
-
-    IF (.NOT. Serial) THEN
+    
+    IF(.NOT. Serial) THEN
       ALLOCATE(PartGotNodes(ParEnv % PEs))
       CALL MPI_ALLGATHER(NNodes > 0, 1, MPI_LOGICAL, PartGotNodes, &
           1, MPI_LOGICAL, ELMER_COMM_WORLD, ierr)
+
       DistributedMesh = ALL(PartGotNodes)
-    ELSE
-      DistributedMesh = .FALSE.
     END IF
+
+    Method = ListGetString(Model % Solver % Values,"Repartition Method", Found)
+    IF(.NOT. Found) THEN
+      CALL Info(FuncName, "Not Found 'Repartition Method' so assuming 'Zoltan'")
+      Method = 'Zoltan'
+    END IF
+    Approach = ListGetString(Model % Solver % Values,"Repartition Approach", Found)
+    IF(.NOT. Found) THEN
+      CALL Info(FuncName, "Not Found 'Repartition Approach' so assuming 'repartition'")
+      Approach = 'repartition'
+    END IF
+    OutputLevel = ListGetInteger(Model % Solver % Values,"Repartition Output Level", Found)
+    IF(.NOT. Found) THEN
+      CALL Info(FuncName, "Not Found 'Repartition Output Level' so assuming '0'")
+      OutputLevel = 0
+    END IF
+
+    IF(Serial) THEN
+      Approach = 'partition'
+      Method = 'zoltan'
+      CALL Info(FuncName, 'used in serial so using Zoltan partition')
+    END IF
+
+    SELECT CASE( Method )
+    CASE( 'parmetis' )
+      IF(.NOT. GotParMetis) CALL FATAL(FuncName, "ParMetis repartitioning selected but not installed")
+      IF(.NOT. DistributedMesh) CALL FATAL(FuncName, "ParMetis requires fully distributed mesh with nodes on each partition")
+      ParMetisLib = ListGetString(Model % Solver % Values,"Repartition ParMetis Library", Found)
+      IF(.NOT. Found) THEN
+        CALL Info(FuncName, "Not Found 'Repartition ParMetis Library' so assuming 'adaptiverepart'")
+        ParMetisLib = 'adaptiverepart'
+      END IF
+    CASE( 'zoltan' )
+      ZoltanLib = ListGetString(Model % Solver % Values,"Repartition Zoltan Library", Found)
+      IF(.NOT. Found) THEN
+        CALL Info(FuncName, "Not Found 'Repartition Zoltan Library' so assuming 'graph'")
+        ZoltanLib = 'graph'
+      END IF
+      GraphPackage = ListGetString(Model % Solver % Values,"Repartition Zoltan Graph Package", Found)
+      IF(.NOT. Found) THEN
+        CALL Info(FuncName, "Not Found 'Repartition Zoltan Graph Package' so assuming 'phg'")
+        GraphPackage = 'phg'
+      END IF
+    CASE DEFAULT
+      CALL Fatal(FuncName,"Repartition method selected invalid")
+    END SELECT
 
 10  CONTINUE
 
@@ -250,31 +298,28 @@ CONTAINS
       zz_obj => Zoltan_Create(ELMER_COMM_WORLD)
     END IF
 
-    ! Set default values for keywords, if not given
-    IF(Debug) THEN
-      CALL ListAddNewString( PartParams,"zoltan: debug_level","5")
-    ELSE
-      CALL ListAddNewString( PartParams,"zoltan: debug_level","0")
-    END IF
+    CALL ListAddNewString( PartParams,"zoltan: debug_level",I2S(OutputLevel))
 
-    IF(GotParMetis .AND. DistributedMesh) THEN
-      CALL Info(FuncName, 'Using ParMetis for rebalancing')
+    SELECT CASE( Method )
+    CASE( 'parmetis' )
       CALL ListAddNewString( PartParams,"zoltan: lb_method","graph")
-      CALL ListAddNewString( PartParams,"zoltan: graph_package","parmetis")
-      CALL ListAddNewString( PartParams,"zoltan: lb_approach","repartition")
-      CALL ListAddNewString( PartParams,"zoltan: parmetis_method","adaptiverepart")
-    ELSE
-      CALL Info(FuncName, 'Not got ParMetis so using Zoltan phg for rebalancing')
-      CALL ListAddNewString( PartParams,"zoltan: lb_method","graph")
-      CALL ListAddNewString( PartParams,"zoltan: graph_package","phg")
+      CALL ListAddNewString( PartParams,"zoltan: graph_package",TRIM(Method))
+      CALL ListAddNewString( PartParams,"zoltan: lb_approach",TRIM(Approach))
+      CALL ListAddNewString( PartParams,"zoltan: parmetis_method",TRIM(ParMetisLib))
+    CASE( 'zoltan' )
+      CALL ListAddNewString( PartParams,"zoltan: lb_method",TRIM(ZoltanLib))
+      CALL ListAddNewString( PartParams,"zoltan: graph_package",TRIM(GraphPackage))
+      CALL ListAddNewString( PartParams,"zoltan: lb_approach",TRIM(Approach))
       CALL ListAddNewString( PartParams,"zoltan: num_gid_entries","1")
       CALL ListAddNewString( PartParams,"zoltan: num_lid_entries","1")
       CALL ListAddNewString( PartParams,"zoltan: obj_weight_dim","0")
       CALL ListAddNewString( PartParams,"zoltan: edge_weight_dim","0")
       CALL ListAddNewString( PartParams,"zoltan: check_graph","0")
       CALL ListAddNewString( PartParams,"zoltan: phg_multilevel","1")
-      IF(Debug) CALL ListAddNewString( PartParams,"zoltan: phg_output_level","2")
-    END IF
+      IF(OutputLevel > 4) CALL ListAddNewString( PartParams,"zoltan: phg_output_level","2")
+    CASE DEFAULT
+      CALL Fatal(FuncName,"Programming error...")
+    END SELECT
 
     !CALL ListAddNewString( PartParams,"zoltan: imbalance_tol","1.1") !Max load imbalance (default 10%)
     WRITE(ImbTolStr, '(F20.10)') ImbalanceTol
@@ -282,12 +327,10 @@ CONTAINS
 
     ! The settings for serial vs. parallel operation differ slightly
     IF( Serial ) THEN
-      CALL ListAddNewString( PartParams,"zoltan: return_lists","export part")    
-      CALL ListAddNewString( PartParams,"zoltan: lb_approach","partition")  
-      CALL ListAddNewString( PartParams,"zoltan: num_global_parts",I2S(NoPart))  
+      CALL ListAddNewString( PartParams,"zoltan: return_lists","export part")
+      CALL ListAddNewString( PartParams,"zoltan: num_global_parts",TRIM(I2S(NoPart)))  
     ELSE
       CALL ListAddNewString( PartParams,"zoltan: return_lists","all")    !TODO - we only use export list
-      CALL ListAddNewString( PartParams,"zoltan: lb_approach","repartition")  !repartition/refine <- faster
     END IF
       
     ! Pass keyword with prefix 'zoltan:' from the value list to zoltan
@@ -577,7 +620,10 @@ CONTAINS
     NBulk = Mesh % NumberOfBulkElements
     
     !Find and globally number mesh faces
-    IF(DIM == 3) THEN
+    IF(Nbulk == 0 ) THEN
+      CONTINUE
+
+    ELSE IF(DIM == 3) THEN
       CALL FindMeshFaces3D(Mesh)
       CALL FindMeshEdges3D(Mesh)
       CALL SParFaceNumbering(Mesh)
@@ -2006,11 +2052,12 @@ CONTAINS
   !> Takes an existing mesh and a repartitioning vector and redisributes the mesh
   !> among the partitions. Assumes that global node and element indexes are sane. 
   !------------------------------------------------------------------------------
-  FUNCTION RedistributeMesh( Model, Mesh, ParallelMesh, FreeOldMesh ) RESULT( NewMesh )
+  FUNCTION RedistributeMesh( Model, Mesh, ParallelMesh, FreeOldMesh, NodalVals) RESULT( NewMesh )
     TYPE(Model_t) :: Model
     TYPE(Mesh_t), POINTER :: Mesh, NewMesh
     LOGICAL :: ParallelMesh, FreeOldMesh
-
+    REAL(KIND=dp), POINTER, OPTIONAL :: NodalVals(:,:)
+    
     TYPE( MeshPack_t), ALLOCATABLE, TARGET :: SentPack(:), RecPack(:)
     INTEGER, POINTER :: NewPart(:)
     INTEGER :: NoPartitions, newnodes, newnbdry, newnbulk, dim, minind, maxind, n, ierr,i
@@ -2051,7 +2098,7 @@ CONTAINS
     CALL UpdateInterfaceNodeCandidates( Mesh )
 
     ! 1) First pack the mesh for parallel communication
-    CALL PackMeshPieces(Model, Mesh, NewPart, ParallelMesh, NoPartitions, SentPack, dim)
+    CALL PackMeshPieces(Model, Mesh, NewPart, ParallelMesh, NoPartitions, SentPack, dim, NodalVals )
 
     ! 2) Then sent the pieces among different partitions
     CALL CommunicateMeshPieces(Model, Mesh, ParallelMesh, NoPartitions, SentPack, RecPack)
@@ -2064,7 +2111,7 @@ CONTAINS
 
     ! 4) Finally unpack and glue the pieces on an existing mesh
     CALL UnpackMeshPieces(Model, Mesh, NewMesh, NewPart, minind, &
-         maxind, RecPack, ParallelMesh, GlobalToLocal, dim)
+         maxind, RecPack, ParallelMesh, GlobalToLocal, dim, NodalVals )
 
     CALL FindRepartitionInterfaces(Model, NewMesh, dim)
 
@@ -2095,10 +2142,184 @@ CONTAINS
     CALL Info(FuncName,'Waiting for MPI barrier',Level=15)
     CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
 
+
     CALL CheckTimer(FuncName,Level=5,Delete=.TRUE.)
     CALL Info(FuncName,'Distributing mesh finished',Level=8)
 
+    CALL Finalize_Zoltan_Mesh(Newmesh)
+
   END FUNCTION RedistributeMesh
+
+
+  SUBROUTINE Finalize_Zoltan_Mesh(Mesh)
+
+     TYPE(Mesh_t), POINTER :: Mesh
+
+     CHARACTER(:), ALLOCATABLE :: ElementDef, ElementDef0
+     INTEGER ::  i,j,Def_DOFs(10,6)
+     TYPE(Solver_t), POINTER :: Solver
+     LOGICAL :: stat, GotMesh = .FALSE.
+
+
+      Solver => CurrentModel % Solver
+
+
+      Def_Dofs = -1; Def_Dofs(:,1)=1
+
+      ! Define what kind of element we are working with in this solver
+      !-----------------------------------------------------------------
+      ElementDef = ListGetString( Solver % Values, 'Element', stat )
+
+      IF ( .NOT. stat ) THEN
+        IF ( ListGetLogical( Solver % Values, 'Discontinuous Galerkin', stat ) ) THEN
+           Solver % Def_Dofs(:,:,4) = 0  ! The final value is set when calling LoadMesh2
+           IF ( .NOT. GotMesh ) Def_Dofs(:,4) = MAX(Def_Dofs(:,4),0 )
+           i=i+1
+           Solver % DG = .TRUE.
+!          CYCLE
+        ELSE
+           ElementDef = "n:1"
+        END IF
+      END IF
+
+      ElementDef0 = ElementDef
+      DO WHILE(.TRUE.)
+        j = INDEX( ElementDef0, '-' )
+        IF (j>0) THEN
+          !
+          ! Read the element definition up to the next flag which specifies the
+          ! target element set
+          !
+          ElementDef = ElementDef0(1:j-1)
+        ELSE
+          ElementDef = ElementDef0
+        END IF
+        !  Calling GetDefs fills Def_Dofs arrays:
+        CALL GetDefs( ElementDef, Solver % Def_Dofs, Def_Dofs(:,:), .NOT. GotMesh )
+        IF(j>0) THEN
+          ElementDef0 = ElementDef0(j+1:)
+        ELSE
+          EXIT
+        END IF
+      END DO
+
+      CALL PrepareMesh( CurrentModel, Mesh, ParEnv % PEs>1 , Def_Dofs )
+
+CONTAINS
+
+!------------------------------------------------------------------------------
+!> This subroutine is used to fill Def_Dofs array of the solver structure.
+!> Note that this subroutine makes no attempt to figure out the index of
+!> the body, so all bodies are assigned with the same element definition.
+!> A similar array of reduced dimension is also filled so as to figure out
+!> the maximal-complexity definition over all solvers which use the same
+!> global mesh.
+!------------------------------------------------------------------------------
+    SUBROUTINE GetDefs(ElementDef, Solver_Def_Dofs, Def_Dofs, Def_Dofs_Update)
+!------------------------------------------------------------------------------
+      CHARACTER(LEN=*), INTENT(IN) :: ElementDef     !< an element definition string
+      INTEGER, INTENT(OUT) :: Solver_Def_Dofs(:,:,:) !< Def_Dofs of the solver structure
+      INTEGER, INTENT(INOUT) :: Def_Dofs(:,:)        !< holds the maximal-complexity definition on global mesh
+      LOGICAL, INTENT(IN) :: Def_Dofs_Update         !< is .TRUE. when the definition refers to the global mesh
+!------------------------------------------------------------------------------
+      INTEGER, POINTER :: ind(:)
+      INTEGER, TARGET :: Family(10)
+      INTEGER :: i,j,l,n
+      LOGICAL :: stat
+
+      Family = [1,2,3,4,5,6,7,8,9,10]
+
+      ! The default assumption is that the given element definition is applied 
+      ! to all basic element families (note that the element sets 9 and 10 are
+      ! not included since the explicit choice of the target family is 
+      ! a part of the element definition string when the target index is
+      ! deduced to be 9 or 10).
+      !
+      ind => Family(1:8)
+      !
+      ! If the element family is specified, change the target family 
+      !
+      IF (SEQL(ElementDef, 'point') )     ind => Family(1:1)
+      IF (SEQL(ElementDef, 'line') )      ind => Family(2:2)
+      IF (SEQL(ElementDef, 'tri') )       ind => Family(3:3)
+      IF (SEQL(ElementDef, 'quad') )      ind => Family(4:4)
+      IF (SEQL(ElementDef, 'tetra') )     ind => Family(5:5)
+      IF (SEQL(ElementDef, 'pyramid') )   ind => Family(6:6)
+      IF (SEQL(ElementDef, 'prism') )     ind => Family(7:7)
+      IF (SEQL(ElementDef, 'brick') )     ind => Family(8:8)
+      IF (SEQL(ElementDef, 'tri_face') )  ind => Family(9:9)
+      IF (SEQL(ElementDef, 'quad_face') ) ind => Family(10:10)
+
+      n = INDEX(ElementDef,'-')
+      IF (n<=0) n=LEN_TRIM(ElementDef)
+          
+      j = INDEX( ElementDef(1:n), 'n:' )
+      IF ( j>0 ) THEN
+        READ( ElementDef(j+2:), * ) l
+        Solver_Def_Dofs(ind,:,1) = l
+        IF ( Def_Dofs_Update ) Def_Dofs(ind,1) = MAX(Def_Dofs(ind,1), l)
+      END IF
+          
+      j = INDEX( ElementDef(1:n), 'e:' )
+      IF ( j>0 ) THEN
+        READ( ElementDef(j+2:), * ) l
+        Solver_Def_Dofs(ind,:,2) = l
+        IF ( Def_Dofs_Update ) Def_Dofs(ind,2) = MAX(Def_Dofs(ind,2), l )
+      END IF
+          
+      j = INDEX( ElementDef(1:n), 'f:' )
+      IF ( j>0 ) THEN
+        READ( ElementDef(j+2:), * ) l
+        Solver_Def_Dofs(ind,:,3) = l
+        IF ( Def_Dofs_Update ) Def_Dofs(ind,3) = MAX(Def_Dofs(ind,3), l )
+      END IF
+          
+      j = INDEX( ElementDef(1:n), 'd:' )
+      IF ( j>0 ) THEN
+        READ( ElementDef(j+2:), * ) l
+
+        ! Zero value triggers discontinuous approximation within LoadMesh2,
+        ! substitute the default negative initialization value to avoid troubles:
+        IF (l == 0) l = -1
+
+        Solver_Def_Dofs(ind,:,4) = l
+        IF ( Def_Dofs_Update ) Def_Dofs(ind,4) = MAX(Def_Dofs(ind,4), l )
+      ELSE 
+        IF ( ListGetLogical( Solver % Values, &
+            'Discontinuous Galerkin', stat ) ) THEN
+          Solver_Def_Dofs(ind,:,4) = 0
+          IF ( Def_Dofs_Update ) Def_Dofs(ind,4) = MAX(Def_Dofs(ind,4),0 )
+        END IF
+      END IF
+          
+      j = INDEX( ElementDef(1:n), 'b:' )
+      IF ( j>0 ) THEN
+        READ( ElementDef(j+2:), * ) l
+        Solver_Def_Dofs(ind,:,5) = l
+        IF ( Def_Dofs_Update ) Def_Dofs(ind,5) = MAX(Def_Dofs(ind,5), l )
+      END IF
+          
+      j = INDEX( ElementDef(1:n), 'p:' )
+      IF ( j>0 ) THEN
+        IF ( ElementDef(j+2:j+2)=='%' ) THEN
+          ! Seeing a p-element definition starting as p:% means that a 
+          ! a special keyword construct is used so that the degree of
+          ! approximation can be evaluated by calling a MATC function.
+          ! This special case is handled elsewhere and we now postpone
+          ! setting the right value.
+          Solver_Def_Dofs(ind,:,6) = 0
+        ELSE
+          READ( ElementDef(j+2:), * ) l
+          Solver_Def_Dofs(ind,:,6) = l
+          IF ( Def_Dofs_Update ) Def_Dofs(ind,6) = MAX(Def_Dofs(ind,6), l )
+         END IF
+      END IF
+
+!------------------------------------------------------------------------------
+    END SUBROUTINE GetDefs
+!------------------------------------------------------------------------------
+
+    END SUBROUTINE Finalize_Zoltan_Mesh
 
   
   FUNCTION ElementPartitions( Mesh, ElemInd, NewPart, IndPart ) RESULT ( npart )
@@ -2128,7 +2349,8 @@ CONTAINS
   !> Converts element datastructure into a integer and real stream to facilitate
   !> sending to another partition.
   !------------------------------------------------------------------------------
-  SUBROUTINE PackMeshPieces(Model, Mesh, NewPart, ParallelMesh, NoPartitions, SentPack, dim)
+  SUBROUTINE PackMeshPieces(Model, Mesh, NewPart, ParallelMesh, NoPartitions, &
+      SentPack, dim, NodalVals )
 
     IMPLICIT NONE
 
@@ -2137,8 +2359,10 @@ CONTAINS
     LOGICAL :: ParallelMesh
     INTEGER, POINTER :: NewPart(:)
     INTEGER :: NoPartitions, dim
-    TYPE( MeshPack_t), ALLOCATABLE, TARGET :: SentPack(:)
+    REAL(KIND=dp), POINTER, OPTIONAL :: NodalVals(:,:)
     !------------------------
+    
+    TYPE( MeshPack_t), ALLOCATABLE, TARGET :: SentPack(:)
     TYPE(Element_t), POINTER :: Element, Parent
     INTEGER :: i,j,k,l,n,nblk,nbdry,allocstat,part,elemcode,geom_id,sweep
     LOGICAL :: CheckNeighbours, IsBulk
@@ -2146,10 +2370,11 @@ CONTAINS
     TYPE(MeshPack_t), POINTER :: PPack
     INTEGER, POINTER :: TmpPart(:)
     LOGICAL :: HaveHalo
-    INTEGER :: NPart
+    INTEGER :: NPart, nVals
     INTEGER, ALLOCATABLE, SAVE :: IndPart(:)
+    CHARACTER(*), PARAMETER :: FuncName='PackMeshPieces'
 
-    CALL Info('PackMeshPieces','Packing mesh pieces for sending',Level=8)
+    CALL Info(FuncName,'Packing mesh pieces for sending',Level=8)
 
     ! Allocate and initialize the structures used to communicate this mesh
     n = NoPartitions
@@ -2166,20 +2391,30 @@ CONTAINS
     SentPack(1:n) % bcpos = 0
 
     IF( Mesh % NumberOfNodes == 0 ) THEN
-      CALL Info('PackMeshPieces','Mesh is empty, nothing to pack',Level=10)
+      CALL Info(FuncName,'Mesh is empty, nothing to pack',Level=10)
       RETURN
     END IF
 
     HaveHalo = ASSOCIATED( Mesh % Halo )
     IF( HaveHalo ) THEN
-      CALL info('PackMeshPieces','Including halo elements in communication',Level=10)        
+      CALL info(FuncName,'Including halo elements in communication',Level=10)        
     END IF
             
     nblk = Mesh % NumberOfBulkElements
     nbdry = Mesh % NumberOfBoundaryElements
 
+    CALL Info(FuncName,'Packing '//I2S(nblk)//'+'//I2S(nbdry)//' elements for sending!',Level=10)
+    nblk = Mesh % NumberOfBulkElements
+    nbdry = Mesh % NumberOfBoundaryElements
+
+    nVals = 0
+    IF(PRESENT(NodalVals)) THEN
+      IF(ASSOCIATED(NodalVals)) nVals = SIZE(NodalVals,2)
+    END IF
+    CALL Info(FuncName,'Packing '//I2S(dim)//'D nodes and '//I2S(nVals)//' nodal fields!',Level=10)
+       
     IF( SIZE( NewPart ) < nblk + nbdry ) THEN
-      CALL Info('PackMeshPieces','Growing the partition vector to accounts BCs',Level=8)
+      CALL Info(FuncName,'Growing the partition vector to accounts BCs',Level=8)
       ALLOCATE( TmpPart( nblk + nbdry ) )
       TmpPart(1:nblk) = NewPart(1:nblk)
       TmpPart(nblk+1:nblk+nbdry) = 0
@@ -2190,19 +2425,19 @@ CONTAINS
     END IF
 
     IF( ANY(NewPart(nblk+1:nblk+nbdry) <= 0 ) ) THEN
-      CALL Info('PackMeshPieces','Inheriting partition vector for BCs',Level=8)
+      CALL Info(FuncName,'Inheriting partition vector for BCs',Level=8)
       DO i=nblk+1,nblk+nbdry
         IF( NewPart(i) > 0 ) CYCLE
         Element => Mesh % Elements(i)
         IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) THEN
-          CALL Fatal('PackMeshPieces','Boundary element lacking boundary info')
+          CALL Fatal(FuncName,'Boundary element lacking boundary info')
         END IF
         Parent => Element % BoundaryInfo % Left
         IF( .NOT. ASSOCIATED(Parent) ) THEN
           Parent => Element % BoundaryInfo % Right
         END IF
         IF( .NOT. ASSOCIATED( Parent ) ) THEN
-          CALL Fatal('PackMeshPieces','Boundary element lacking parent info')
+          CALL Fatal(FuncName,'Boundary element lacking parent info')
         END IF
         NewPart(i) = NewPart(Parent % ElementIndex)
       END DO
@@ -2215,7 +2450,7 @@ CONTAINS
         NeighbourList => Mesh % ParallelInfo % NeighbourList
       END IF
       IF( CheckNeighbours ) THEN
-        CALL info('PackMeshPieces','Using existing information of shared nodes',Level=10)
+        CALL info(FuncName,'Using existing information of shared nodes',Level=10)
       END IF
     END IF
 
@@ -2384,6 +2619,9 @@ CONTAINS
           PPack % NumberOfNodes = COUNT( PPack % NodeMask )
           PPack % icount = PPack % icount + PPack % NumberOfNodes
           PPack % rcount = dim * PPack % NumberOfNodes
+          IF(nVals > 0 ) THEN
+            PPack % rcount = PPack % rcount + nVals * PPack % NumberOfNodes
+          END IF
           PPack % lcount = PPack % NumberOfNodes
           
           ALLOCATE( PPack % idata(PPack % icount), &
@@ -2391,7 +2629,7 @@ CONTAINS
               PPack % ldata(PPack % lcount ), & 
               STAT = allocstat )
           IF( allocstat /= 0 ) THEN
-            CALL Fatal('PackMeshPieces','Could not allocate vectors for data')
+            CALL Fatal(FuncName,'Could not allocate vectors for data')
           END IF
           PPack % idata = 0
           PPack % rdata = 0.0_dp
@@ -2428,7 +2666,13 @@ CONTAINS
               PPack % rdata(PPack % rcount+2) = Mesh % Nodes % y(i)
               IF( dim == 3 ) PPack % rdata(PPack % rcount+3) = Mesh % Nodes % z(i)                           
               PPack % rcount = PPack % rcount + dim
-              
+
+              ! Tentatively add some nodal variables
+              IF(nVals > 0) THEN
+                PPack % rdata(PPack % rcount+1:PPack % rcount+nVals) = NodalVals(i,1:nVals)
+                PPack % rcount = PPack % rcount + nVals
+              END IF
+                
               PPack % lcount = PPack % lcount + 1
               PPack % ldata(PPack % lcount) = Mesh % ParallelInfo % GInterface(i)
             END IF
@@ -2438,7 +2682,7 @@ CONTAINS
       END IF
     END DO
 
-    CALL Info('PackMeshPieces','Finished packing mesh pieces',Level=8)
+    CALL Info(FuncName,'Finished packing mesh pieces',Level=8)
 
   END SUBROUTINE PackMeshPieces
 
@@ -2456,15 +2700,17 @@ CONTAINS
     INTEGER :: i,j,n,ierr,ni,nr,nl,status(MPI_STATUS_SIZE)
     INTEGER, ALLOCATABLE :: Requests(:)
     LOGICAL :: HaveHalo
+    CHARACTER(*), PARAMETER :: FuncName='CommunicateMeshPieces'
+
     
-    CALL Info('CommunicateMeshPieces','communicating mesh pieces in parallel',Level=6)
+    CALL Info(FuncName,'communicating mesh pieces in parallel',Level=6)
 
     ni = SUM( SentPack(1:NoPartitions) % icount )
-    CALL Info('CommunicateMeshPieces','Number of integer values to sent: '//I2S(ni),Level=8)
+    CALL Info(FuncName,'Number of integer values to sent: '//I2S(ni),Level=8)
     nr = SUM( SentPack(1:NoPartitions) % rcount )
-    CALL Info('CommunicateMeshPieces','Number of real values to sent: '//I2S(nr),Level=8)
+    CALL Info(FuncName,'Number of real values to sent: '//I2S(nr),Level=8)
     nl = SUM( SentPack(1:NoPartitions) % lcount )
-    CALL Info('CommunicateMeshPieces','Number of logical values to sent: '//I2S(nl),Level=8)
+    CALL Info(FuncName,'Number of logical values to sent: '//I2S(nl),Level=8)
 
     n = NoPartitions
     ALLOCATE( RecPack( n ) )
@@ -2488,7 +2734,7 @@ CONTAINS
     CALL MPI_ALLREDUCE(HaveHalo, Mesh % HaveHalo, 1, MPI_LOGICAL, &
         MPI_LOR, ELMER_COMM_WORLD, ierr )
     IF( Mesh % HaveHalo ) THEN
-      CALL Info('CommunicateMeshPieces','Assuming halo being communicated',Level=12)
+      CALL Info(FuncName,'Assuming halo being communicated',Level=12)
     END IF
        
     
@@ -2517,7 +2763,7 @@ CONTAINS
            1002, ELMER_COMM_WORLD, status, ierr )
     END DO
 
-    CALL Info('PackMeshPieces','Waiting for the 1st barrier',Level=15)
+    CALL Info(FuncName,'Waiting for the 1st barrier',Level=15)
     CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
 
     IF( InfoActive(15) ) THEN
@@ -2554,7 +2800,7 @@ CONTAINS
 
     ! Sent data:
     !--------------------------
-    CALL Info('CommunicateMeshPieces','Now sending the actual data',Level=12)
+    CALL Info(FuncName,'Now sending the actual data',Level=12)
     DO i=1,NoPartitions
       IF( i-1 == ParEnv % Mype ) CYCLE
       IF( SentPack(i) % icount > 5 ) THEN
@@ -2569,7 +2815,7 @@ CONTAINS
 
     ! Receive data:
     !--------------------------
-    CALL Info('CommunicateMeshPieces','Now receiving the actual integer data',Level=12)
+    CALL Info(FuncName,'Now receiving the actual integer data',Level=12)
     DO i = 1, NoPartitions
       IF( i-1 == ParEnv % MyPe ) CYCLE
       IF( RecPack(i) % icount > 5 ) THEN
@@ -2582,10 +2828,10 @@ CONTAINS
       END IF
     END DO
 
-    CALL Info('CommunicateMeshPieces','Waiting for the 2nd barrier',Level=15)
+    CALL Info(FuncName,'Waiting for the 2nd barrier',Level=15)
     CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
 
-    CALL Info('CommunicateMeshPieces','Finished communicating mesh pieces',Level=8)
+    CALL Info(FuncName,'Finished communicating mesh pieces',Level=8)
 
   END SUBROUTINE CommunicateMeshPieces
 
@@ -2667,6 +2913,9 @@ CONTAINS
     n = Mesh % NumberOfNodes
     IF( n > 0 ) THEN
       IF( ParallelMesh ) THEN
+        IF(.NOT. ASSOCIATED(Mesh % ParallelInfo % GlobalDofs ) ) THEN
+          CALL Fatal('LocalNumberingMeshPieces','ParallelMesh assumed but no GlobalDofs associated!')          
+        END IF
         maxind = MAXVAL( Mesh % ParallelInfo % GlobalDofs(1:n) )
         minind = MINVAL( Mesh % ParallelInfo % GlobalDofs(1:n) )
       ELSE
@@ -2778,7 +3027,8 @@ CONTAINS
   !> mesh structure such that there could be elements already at the bottom.
   !------------------------------------------------------------------------------
   SUBROUTINE UnpackMeshPieces(Model, Mesh, NewMesh, NewPart, &
-       minind, maxind, RecPack, ParallelMesh, GlobalToLocal, dim)
+      minind, maxind, RecPack, ParallelMesh, GlobalToLocal, &
+      dim, NodalVals )
 
     IMPLICIT NONE
 
@@ -2788,18 +3038,20 @@ CONTAINS
     INTEGER, POINTER :: NewPart(:)
     INTEGER, ALLOCATABLE :: GlobalToLocal(:)
     INTEGER :: dim,minind,maxind
-    TYPE( MeshPack_t), ALLOCATABLE, TARGET :: RecPack(:)
+    REAL(KIND=dp), POINTER, OPTIONAL :: NodalVals(:,:)
     !----------------------------------
+    TYPE( MeshPack_t), ALLOCATABLE, TARGET :: RecPack(:)
     TYPE(Element_t), POINTER :: Element, Element0
     INTEGER :: i,j,k,n,t,nbulk,nbdry,allocstat,part,elemcode,elemindex,geom_id,sweep,partindex
     INTEGER :: gind,lind,rcount,icount,lcount,minelem,maxelem,newnbdry,newnodes,newnbulk
     LOGICAL :: IsBulk, Found, HaveParent
     TYPE(MeshPack_t), POINTER :: PPack
     INTEGER, ALLOCATABLE :: GlobalToLocalElem(:), LeftParent(:), RightParent(:)
-    CHARACTER(*), PARAMETER :: Caller = 'UnpackMeshPieces'
-    INTEGER :: NPart, errcount 
+    INTEGER :: NPart, errcount, NVals 
     INTEGER, ALLOCATABLE, SAVE :: IndPart(:)
     LOGICAL :: HaveHalo
+    REAL(KIND=dp), POINTER :: NewVals(:,:)
+    CHARACTER(*), PARAMETER :: Caller = 'UnpackMeshPieces'
     
     CALL Info(Caller,'Unpacking mesh pieces to form a new mesh',Level=12)
 
@@ -2816,6 +3068,16 @@ CONTAINS
     nbulk = 0
     nbdry = 0
     errcount = 0
+    nVals = 0
+    IF(PRESENT(NodalVals)) THEN
+      ! Make the nodal vals to be of right size.
+      IF(ASSOCIATED(NodalVals)) nVals = SIZE(NodalVals,2)
+      IF(nVals > 0) THEN
+        ALLOCATE(NewVals(newnodes,nVals))
+        NewVals = 0.0_dp
+      END IF
+    END IF
+    CALL Info(Caller,'Unpacking '//I2S(dim)//'D nodes and '//I2S(nVals)//' nodal fields!',Level=10)
     
     ! There are temporal arrays needed to inherit the parent information
     ALLOCATE( LeftParent(NewNBulk+1:NewNBulk+NewNBdry ) ) 
@@ -2945,6 +3207,10 @@ CONTAINS
       NewMesh % Nodes % y(k) = Mesh % Nodes % y(i)
       IF( dim == 3 ) NewMesh % Nodes % z(k) = Mesh % Nodes % z(i)
 
+      IF(nVals > 0 ) THEN 
+        NewVals(k,1:nVals) = NodalVals(i,1:nVals)
+      END IF
+        
       NewMesh % ParallelInfo % GInterface(k) = Mesh % ParallelInfo % GInterface(i)
     END DO
 
@@ -3061,7 +3327,8 @@ CONTAINS
           END IF
           IF( GlobalToLocal(k) <= 0 .OR. GlobalToLocal(k) > newnodes ) THEN
             errcount = errcount + 1
-            PRINT *,'Local index out of bounds:',ParEnv % Mype,Element % PartIndex, k,minind,maxind,GlobalToLocal(k)
+            PRINT *,'Local index out of bounds:',ParEnv % Mype,Element % PartIndex, k,minind,maxind,&
+                SIZE(GlobalToLocal), GlobalToLocal(k)
           END IF
           Element % NodeIndexes(j) = GlobalToLocal(k)
         END DO
@@ -3171,7 +3438,12 @@ CONTAINS
         NewMesh % Nodes % y(k) = PPack % rdata(rcount+2)
         IF( dim == 3 ) NewMesh % Nodes % z(k) = PPack % rdata(rcount+3)
         rcount = rcount + dim
-
+        
+        IF(nVals > 0 ) THEN 
+          NewVals(k,1:nVals) = PPack % rdata(rcount+1:rcount+nVals)
+          rcount = rcount + nVals
+        END IF
+        
         NewMesh % ParallelInfo % GInterface(k) = PPack % ldata(lcount+1)
         lcount = lcount + 1
       END DO
@@ -3180,14 +3452,11 @@ CONTAINS
     IF( errcount > 0 ) THEN
       CALL Fatal(Caller,'Encountered '//I2S(errcount)//' indexing issues in nodes')
     END IF
- 
-
-    
+     
     n = COUNT( NewMesh % ParallelInfo % GInterface )
     CALL Info(Caller,'Potential interface nodes '//I2S(n)//' out of '&
         //I2S(NewMesh % NumberOfNodes),Level=20)
-
-    
+   
     CALL Info(Caller,'Creating local to global numbering for '&
          //I2S(newnodes)//' nodes',Level=20)
     ALLOCATE( NewMesh % ParallelInfo % GlobalDofs( newnodes ), STAT = allocstat)
@@ -3217,6 +3486,12 @@ CONTAINS
            Element % DGDOFs ) 
      END DO
 
+     IF(nVals > 0 ) THEN 
+       DEALLOCATE(NodalVals)
+       NodalVals => NewVals
+     END IF
+
+     
     CALL Info(Caller,'Finished unpacking and gluing mesh pieces',Level=8)
 
   END SUBROUTINE UnpackMeshPieces
@@ -3521,6 +3796,7 @@ CONTAINS
      END IF
 
      IF(.NOT. ASSOCIATED( Mesh % RePartition ) ) THEN
+       CALL Info(FuncName,'Allocating RePartition table of size: '//I2S(n),Level=20)
        ALLOCATE( Mesh % RePartition( n ), STAT = allocstat)
        IF( allocstat /= 0 ) THEN
          CALL Fatal(FuncName,'Allocation error for repartitioning vector')       
@@ -3535,7 +3811,7 @@ CONTAINS
      PartOffsetBC = 0
 
      ! Only use the halo for master elements
-     MasterHalo = ListGetLogical( Model % Simulation,'Boundary Partition Halo Master')
+     MasterHalo = ListGetLogical( Model % Simulation,'Boundary Partition Halo Master',Found)
      IF( MasterHalo ) THEN
        ALLOCATE( MasterElement(n) )
        MasterElement = .FALSE.
@@ -3562,7 +3838,7 @@ CONTAINS
        END IF
 
        DO SetNo = 1, NumberOfBoundarySets
-         CALL Info(FuncName,'Doing boundary partitioning set: '//I2S(SetNo),Level=8)
+         CALL Info(FuncName,'Doing boundary partitioning set: '//I2S(SetNo),Level=12)
 
          SectionParams => NULL()
          ! Get the bc-specific partitioning commands, if any
@@ -3603,6 +3879,8 @@ CONTAINS
        END IF
        
      ELSE IF( EqInterface ) THEN
+       CALL Info(FuncName,'Doing equation interface set',Level=12)
+
        NumberOfBoundarySets = 1       
        CALL SetInterfacePartition()
        CALL ExtendBoundaryPart(.FALSE.)
@@ -3814,7 +4092,7 @@ CONTAINS
      SUBROUTINE InheritBulkToBoundaryPart()
        
        TYPE(Element_t), POINTER :: Element, Parent
-       INTEGER :: t, LeftRight, BoundPart, NoHerited, NoConflict, ElemIndx
+       INTEGER :: t, LeftRight, BoundPart, NoHerited, NoConflict, ElemIndx, ParentParts(2)
 
        CALL Info(FuncName,'Inheriting the bulk partitioning into the boundary mesh') 
 
@@ -3830,6 +4108,7 @@ CONTAINS
          !IF( ElementPart( t ) > 0 ) CYCLE
          
          IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN
+           ParentParts = -1
            DO LeftRight=0,1
              IF( LeftRight == 0 ) THEN
                Parent => Element % BoundaryInfo % Left
@@ -3839,20 +4118,25 @@ CONTAINS
              
              IF( ASSOCIATED( Parent ) ) THEN               
                ElemIndx = Parent % ElementIndex
-               
-               IF( ElementPart(t) > 0 ) THEN
-                 IF( ElementPart(t) /= ElementPart(ElemIndx) ) THEN
-                   NoConflict = NoConflict + 1
-                 END IF
+               IF(ParentParts(1) == -1 ) THEN
+                 ParentParts(1) = ElementPart(ElemIndx)
                ELSE
-                 ElementPart(t) = ElementPart(ElemIndx)
-                 NoHerited = NoHerited + 1
-                 !PRINT *,'inherit:',t,Element % TYPE % ElementCode, &
-                 !    Parent % TYPE % ElementCode, ElemIndx
-                 !EXIT
+                 ParentParts(2) = ElementPart(ElemIndx)
                END IF
              END IF
            END DO
+           
+           IF( ParentParts(1) > -1 ) THEN
+             NoHerited = NoHerited + 1
+             IF( ElementPart(t) > 0 ) THEN
+               IF( .NOT. ANY(ElementPart(t) == ParentParts ) ) THEN
+                 NoConflict = NoConflict + 1
+                 ElementPart(t) = ParentParts(1)
+               END IF
+             ELSE                          
+               ElementPart(t) = ParentParts(1)
+             END IF
+           END IF
          END IF
        END DO
        
@@ -4614,12 +4898,10 @@ CONTAINS
       REAL(KIND=dp) :: BoundaryFraction
       INTEGER, POINTER :: PartDivs(:)
       
-
       PartitionCand = ( ElementSet == SetNo )
       n = Mesh % NumberOfBulkElements      
       NoCandElements = COUNT( PartitionCand ) 
-
-      
+     
       CALL Info(FuncName,'Doing element set: '//I2S(SetNo))
       CALL Info(FuncName,'Number of elements in set: '//I2S(NoCandElements))
 
@@ -4628,7 +4910,6 @@ CONTAINS
         RETURN
       END IF
         
-
       GotMethod = .FALSE.
       IF( ASSOCIATED( LocalParams) ) THEN
         SetMethod = ListGetString( LocalParams,'Partitioning Method',GotMethod)
@@ -4671,6 +4952,7 @@ CONTAINS
       END IF
       
       IF(NoPartitions == 0 ) THEN
+        CALL Info(FuncName,'Number of partitions not defined!',Level=10)
         IF( IsBoundary ) THEN
           CALL Info(FuncName,'Defaulting to one partition for BCs',Level=10)
           NoPartitions = 1          
@@ -4707,7 +4989,7 @@ CONTAINS
       END IF
 
       IF( .NOT. GotMethod ) THEN
-        CALL Fatal(FuncName,'Could not define > Partitioning Method < ')
+        CALL Fatal(FuncName,'Undefined > Partitioning Method < e.g. "uniform", "directional"')
       END IF
 
       Found = .FALSE.
