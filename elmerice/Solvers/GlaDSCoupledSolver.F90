@@ -2592,6 +2592,10 @@ SUBROUTINE GlaDS_GLflux( Model,Solver,dt,TransientSimulation )
   cglfPerm => cglfVar % Perm
   cglfVals => cglfVar % Values
   
+  ! set to zero to ensure old values at previous GL are not kept.
+  cglfVals = 0.0
+  sglfVals = 0.0
+  
   ! Loop over all nodes
   numNodes = Solver % Mesh % Nodes % NumberOfNodes
   DO nn = 1, numNodes
@@ -2656,6 +2660,8 @@ SUBROUTINE GlaDS_GLflux( Model,Solver,dt,TransientSimulation )
           cglfVals(cglfPerm(nn)) + sglfVals(sglfPerm(nn))
   END DO
   
+  NULLIFY(cglfVals)
+  NULLIFY(sglfVals)
   NULLIFY(SolverParams)
   NULLIFY(GLfluxVals)
   NULLIFY(GLfluxPerm)
@@ -2689,33 +2695,28 @@ END SUBROUTINE GlaDS_GLflux
 ! [Edit: CalculateNodalWeights gives partition boundary artefacts, but the 
 !  forcetostress solver seems to produce weights without these artefacts]
 !
+! Different modes of operation.
+! "heat"     - a variable providing nodal heat (e.g. could be residual from temperate ice solver) is used
+!              to calculate the melt rate.  Weights (based on area) are also needed in this case.
+!
+! MeltRate = Heat / (area * density * latent_heat)
+!
+! "friction" - a sliding velocity variable is provided and used by this routine to calculate basal shear
+!              stress, which is then used (along with the effective linear sliding coefficient ("ceff",
+!              see SSASolver.F90), to calculate melt based on friction heat.
+!
 ! Example .sif parameters:
 ! 
 ! Constants:
 !  Latent Heat = 334000.0 ! Joules per kg
 !
-! solver params:
+! example solver params:
 !  variable = GroundedMeltRate
-!  Mode = "NodalHeat"
+!  Mode = "heat"
 !  heat variable name = String "Friction Load"
 !  Weights variable name = String "Friction heating boundary weights"
 !
-!
 
-! Heat is Mega Joules per year.
-  ! We multiply by 10^6 to convert from Mega Joules to Joules.
-  !
-  
-  ! Different modes of operation.
-  ! "heat"     - a variable providing nodal heat (e.g. could be residual from temperate ice solver) is used
-  !              to calculate the melt rate.  Weights (based on area) are also needed in this case.
-  !
-  ! MeltRate = Heat / (area * density * latent_heat)
-  !
-  ! "friction" - a sliding velocity variable is provided and used by this routine to calculate basal shear
-  !              stress, which is then used (along with the effective linear sliding coefficient ("ceff",
-  !              see SSASolver.F90), to calculate melt based on friction heat.
-!
 RECURSIVE SUBROUTINE GroundedMelt( Model,Solver,Timestep,TransientSimulation )
 
   USE DefUtils
@@ -2819,6 +2820,9 @@ RECURSIVE SUBROUTINE GroundedMelt( Model,Solver,Timestep,TransientSimulation )
 
     IF (MeltPerm(nn).GT.0) THEN
 
+      ! Heat is assumed to be in units of Mega Joules per year.
+      ! We multiply by 10^6 to convert from Mega Joules to Joules.
+      ! (Melt is calculated in m/year).
       SELECT CASE (MeltMode)
       CASE ("heat")      
         MeltVals(MeltPerm(nn)) = ABS( 1.0e6 * HeatVals(HeatPerm(nn)) ) / ( WtVals(WtPerm(nn)) * rho_fw * LatHeat )
@@ -2829,7 +2833,7 @@ RECURSIVE SUBROUTINE GroundedMelt( Model,Solver,Timestep,TransientSimulation )
       END SELECT
       
       IF (UseGHF) THEN
-        ! Scaled GHF is in Mega Joules per m^2 per year.
+        ! Scaled GHF is assumed to be given in Mega Joules per m^2 per year.
         MeltVals(MeltPerm(nn)) = MeltVals(MeltPerm(nn)) + &
              ( GHFVals(GHFPerm(nn))*GHFscaleFactor*1.0e6 ) / ( rho_fw*LatHeat )
       END IF
