@@ -116,6 +116,7 @@ jobs:
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-openblas
             mingw-w64-x86_64-parmetis
+            mingw-w64-x86_64-msmpi
             base-devel
       
       - name: Configure
@@ -130,7 +131,9 @@ jobs:
             -DWITH_Zoltan=OFF \
             -DWITH_Mumps=OFF \
             -DCREATE_PKGCONFIG_FILE=ON \
-            -DWITH_MPI=OFF
+            -DWITH_MPI=ON
+            -DCMAKE_Fortran_FLAGS="-fno-allow-invalid-boz"
+            
       
       - name: Build
         run: |
