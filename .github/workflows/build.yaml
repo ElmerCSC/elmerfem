@@ -94,3 +94,51 @@ jobs:
           echo "::group::Log from these tests"
           [ ! -f Testing/Temporary/LastTest.log ] || cat Testing/Temporary/LastTest.log
           echo "::endgroup::"
+
+
+  windows-mingw:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            git
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-gcc-fortran
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-openblas
+            mingw-w64-x86_64-openmpi
+            mingw-w64-x86_64-parmetis
+            make
+      
+      - name: Configure
+        run: |
+          mkdir build
+          cd build
+          cmake .. -G "MSYS Makefiles" \
+            -DCMAKE_BUILD_TYPE="Release" \
+            -DBLA_VENDOR="OpenBLAS" \
+            -DWITH_OpenMP=ON \
+            -DWITH_LUA=ON \
+            -DWITH_Zoltan=OFF \
+            -DWITH_Mumps=OFF \
+            -DCREATE_PKGCONFIG_FILE=ON \
+            -DWITH_MPI=ON
+      
+      - name: Build
+        run: |
+          cd build
+          cmake --build .
+      
+      - name: Test
+        run: |
+          cd build
+          ctest -L quick
