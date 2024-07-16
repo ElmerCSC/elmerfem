@@ -1,5 +1,39 @@
-!***********************************************************************************************      
-!***********************************************************************************************         
+!/*****************************************************************************/
+! *
+! *  Elmer/Ice, a glaciological add-on to Elmer
+! *  http://elmerice.elmerfem.org
+! *
+! *
+! *  This program is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU General Public License
+! *  as published by the Free Software Foundation; either version 2
+! *  of the License, or (at your option) any later version.
+! *
+! *  This program is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! *  GNU General Public License for more details.
+! *
+! *  You should have received a copy of the GNU General Public License
+! *  along with this program (in file fem/GPL-2); if not, write to the
+! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+! *  Boston, MA 02110-1301, USA.
+! *
+! *****************************************************************************/
+! ******************************************************************************
+! ******************************************************************************
+! *
+! *  Authors: F. Gillet-Chaulet
+! *  Web:     http://elmerice.elmerfem.org
+! *
+! *  Original Date: 24/06/2024
+! *
+! *****************************************************************************
+!***********************************************************************************************
+! Generate random realization from a given covariance matrix
+!***********************************************************************************************
+!***********************************************************************************************
+!***********************************************************************************************
       SUBROUTINE GaussianSimulationSolver( Model,Solver,dt,TransientSimulation )
 !***********************************************************************************************
       USE GeneralUtils
@@ -106,7 +140,6 @@
       seed = ListGetInteger( SolverParams , 'Random Seed',Found )
       IF (Found)  call random_seed( put=seed )
       CALL random_seed(get=seed)
-      PRINT *,"SEED",seed(1)
       deallocate(seed)
 
        !Create DOFs random vectors of size n
@@ -118,8 +151,8 @@
        END DO
 
        DO k=1,DOFs
-         x(Perm(ActiveNodes(1:nn)))=rr(ActiveNodes(1:nn),k) 
-        
+         x(Perm(ActiveNodes(1:nn)))=rr(ActiveNodes(1:nn),k)
+
         SELECT CASE (CovType)
           CASE('diagonal')
               y(:) = std*x(:)

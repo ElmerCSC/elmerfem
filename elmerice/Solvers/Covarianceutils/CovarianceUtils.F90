@@ -1,3 +1,37 @@
+!/*****************************************************************************/
+! *
+! *  Elmer/Ice, a glaciological add-on to Elmer
+! *  http://elmerice.elmerfem.org
+! *
+! *
+! *  This program is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU General Public License
+! *  as published by the Free Software Foundation; either version 2
+! *  of the License, or (at your option) any later version.
+! *
+! *  This program is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! *  GNU General Public License for more details.
+! *
+! *  You should have received a copy of the GNU General Public License
+! *  along with this program (in file fem/GPL-2); if not, write to the
+! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+! *  Boston, MA 02110-1301, USA.
+! *
+! *****************************************************************************/
+! ******************************************************************************
+! ******************************************************************************
+! *
+! *  Authors: F. Gillet-Chaulet
+! *  Web:     http://elmerice.elmerfem.org
+! *
+! *  Original Date: 24/06/2024
+! *
+! *****************************************************************************
+!***********************************************************************************************
+! Module to deal with covariances matrices
+!***********************************************************************************************
       MODULE CovarianceUtils
       USE MainUtils
       USE DefUtils
@@ -31,7 +65,7 @@
           INTEGER :: t
           INTEGER :: counter
           INTEGER,POINTER :: Perm(:)
-          LOGICAL :: BoundarySolver 
+          LOGICAL :: BoundarySolver
 
           IF (.NOT.ASSOCIATED(Solver % Matrix)) &
             CALL FATAL("GetActiveNodesSet","Matrix must be associated")
@@ -39,7 +73,7 @@
 
           n = Solver % Matrix % NumberOfRows
           ALLOCATE(ActiveNodes(n),InvPerm(n))
- 
+
           counter = 0
           DO t=1,Solver % Mesh % NumberOfNodes
             IF (Perm(t).LT.1) CYCLE
@@ -56,7 +90,7 @@
           ELSE
             PbDim = CoordinateSystemDimension()
           ENDIF
-          
+
         END SUBROUTINE GetActiveNodesSet
 
 !############################################################################################
@@ -173,7 +207,7 @@
           IF (Cm.LT.2) &
             CALL FATAL("Covariance","<Matern exponent m> should be >=2")
           Crange = ListGetConstReal(SolverParams,"correlation range", UnFoundFatal=.TRUE.)
-          std = ListGetConstReal(SolverParams,"standard deviation",UnFoundFatal=.TRUE.) 
+          std = ListGetConstReal(SolverParams,"standard deviation",UnFoundFatal=.TRUE.)
           gamma=sqrt(4*Pi*(Cm-1))*Crange
 
           MMatrix => MSolver % Matrix
@@ -315,7 +349,7 @@
           IF (Cm.LT.2) &
             CALL FATAL("Covariance","<Matern exponent m> should be >=2")
           Crange = ListGetConstReal(SolverParams,"correlation range", UnFoundFatal=.TRUE.)
-          std = ListGetConstReal(SolverParams,"standard deviation",UnFoundFatal=.TRUE.) 
+          std = ListGetConstReal(SolverParams,"standard deviation",UnFoundFatal=.TRUE.)
           gamma=sqrt(4*Pi*(Cm-1))*Crange
 
           MMatrix => MSolver % Matrix
@@ -368,7 +402,7 @@
 !############################################################################################
 !-------------------------------------------------------------------------------------------
 !  Using the diffusion operator approach; build the  required matrices
-!   
+!
 !-------------------------------------------------------------------------------------------
         SUBROUTINE CovarianceInitD(Solver,MSolver,KMSolver)
           TYPE(Solver_t) :: Solver
@@ -496,7 +530,7 @@
           TYPE(Solver_t) :: Solver
           INTEGER,INTENT(IN) :: n
           INTEGER,INTENT(IN) :: InvPerm(n)
-          REAL(kind=dp),INTENT(OUT) :: aap(:)  
+          REAL(kind=dp),INTENT(OUT) :: aap(:)
           INTEGER,INTENT(IN) :: Op !1: correlation matrix ; 2: Cholesky; 3: inverse
           INTEGER,INTENT(IN) :: PbDim
 
@@ -645,10 +679,10 @@
 
       END
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-! Modified Bessel function of second kind Kn  
+! Modified Bessel function of second kind Kn
 !  Computed from the recursion
 !    Kn+1 = 2*n/x Kn + Kn-1
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!      
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
       FUNCTION BesselKn(n,x) RESULT(Kn)
       REAL(kind=dp) :: Kn
       INTEGER,INTENT(IN) :: n
@@ -682,8 +716,8 @@
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! Modified Bessel function of second kind of order 0, K0
 !  Polynomial approximation; cf
-!  https://www.advanpix.com/2015/11/25/rational-approximations-for-the-modified-bessel-function-of-the-second-kind-k0-for-computations-with-double-precision/       
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!   
+!  https://www.advanpix.com/2015/11/25/rational-approximations-for-the-modified-bessel-function-of-the-second-kind-k0-for-computations-with-double-precision/
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
       FUNCTION BesselK0(x) RESULT(K0)
       REAL(KIND=dp) :: K0
       REAL(KIND=dp), INTENT(IN) :: x
@@ -767,7 +801,7 @@
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! Modified Bessel function of second kind of order 1, K1
 !  Polynomial approximation; cf
-!    https://www.advanpix.com/2016/01/05/rational-approximations-for-the-modified-bessel-function-of-the-second-kind-k1-for-computations-with-double-precision/      
+!    https://www.advanpix.com/2016/01/05/rational-approximations-for-the-modified-bessel-function-of-the-second-kind-k1-for-computations-with-double-precision/
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
       FUNCTION BesselK1(x) RESULT(K1)
       REAL(KIND=dp) :: K1
@@ -872,7 +906,7 @@
       END
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!   Integer factorial 
+!   Integer factorial
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
       function fact(n)
       implicit none
@@ -889,4 +923,3 @@
 
 
       END MODULE CovarianceUtils
-
