@@ -116,7 +116,7 @@ jobs:
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-openblas
             mingw-w64-x86_64-parmetis
-            make
+            base-devel
       
       - name: Configure
         run: |
