@@ -132,7 +132,7 @@ jobs:
             -DWITH_Mumps=OFF \
             -DCREATE_PKGCONFIG_FILE=ON \
             -DWITH_MPI=ON
-            -DCMAKE_Fortran_FLAGS="-fno-allow-invalid-boz"
+            -DCMAKE_Fortran_FLAGS="-w -fallow-argument-mismatch -fallow-invalid-boz"
             
       
       - name: Build
