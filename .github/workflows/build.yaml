@@ -115,7 +115,6 @@ jobs:
             mingw-w64-x86_64-gcc-fortran
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-openblas
-            mingw-w64-x86_64-openmpi
             mingw-w64-x86_64-parmetis
             make
       
@@ -131,7 +130,7 @@ jobs:
             -DWITH_Zoltan=OFF \
             -DWITH_Mumps=OFF \
             -DCREATE_PKGCONFIG_FILE=ON \
-            -DWITH_MPI=ON
+            -DWITH_MPI=OFF
       
       - name: Build
         run: |
