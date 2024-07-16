@@ -2,7 +2,7 @@
   description = "Elmer FEM";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.05";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
     flake-utils.url = "github:numtide/flake-utils";
 
@@ -13,24 +13,22 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    hypre = {
-      url = "github:mk3z/hypre";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
     csa = {
       url = "github:mk3z/csa-c";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
-    nn = {
-      url = "github:mk3z/nn-c";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
     mmg = {
       url = "github:mk3z/mmg/develop";
       inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    parmmg = {
+      url = "github:mk3z/parmmg/develop";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        mmg.follows = "mmg";
+      };
     };
   };
 
@@ -45,10 +43,9 @@
       system: let
         pkgs = nixpkgs.legacyPackages.${system};
         mumps = inputs.mumps.packages.${system}.default;
-        hypre = inputs.hypre.packages.${system}.default;
         csa = inputs.csa.packages.${system}.default;
-        nn = inputs.nn.packages.${system}.default;
         mmg = inputs.mmg.packages.${system}.default;
+        parmmg = inputs.parmmg.packages.${system}.default;
 
         basePkg = {
           name,
@@ -171,13 +168,13 @@
             buildInputs = with pkgs;
               [
                 hdf5-mpi
+                hypre
+                nn
                 scalapack
               ]
               ++ [
                 csa
-                hypre
                 mumps
-                nn
               ];
 
             cmakeFlags = [
@@ -196,12 +193,16 @@
               "-DWITH_ScatteredDataInterpolator:BOOL=TRUE"
               "-DCSA_LIBRARY=${csa}/lib/libcsa.a"
               "-DCSA_INCLUDE_DIR=${csa}/include"
-              "-DNN_INCLUDE_DIR=${nn}/include"
-              "-DNN_LIBRARY=${nn}/lib/libnn.a"
+              "-DNN_INCLUDE_DIR=${pkgs.nn}/include"
+              "-DNN_LIBRARY=${pkgs.nn}/lib/libnn.a"
 
               "-DWITH_MMG:BOOL=TRUE"
               "-DMMG_INCLUDE_DIR=${mmg}/include"
               "-DMMG_LIBRARY=${mmg}/lib/libmmg.so"
+
+              "-DWITH_PARMMG:BOOL=TRUE"
+              "-DPARMMG_INCLUDE_DIR=${parmmg}/include"
+              "-DPARMMG_LIBRARY=${parmmg}/lib/libparmmg.so"
 
               "-DWITH_GridDataReader:BOOL=TRUE"
 
