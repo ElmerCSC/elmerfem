@@ -20,7 +20,7 @@ CMAKE_MINIMUM_REQUIRED(VERSION 3.10)
 PROJECT(Elmer Fortran C CXX)
 
 IF(APPLE)
-  SET(CMAKE_MACOSX_RPATH 1) 
+  SET(CMAKE_MACOSX_RPATH 1)
 ENDIF()
 
 #shamelessly borrowed from FreeCAD project: https://github.com/FreeCAD/FreeCAD/blob/master/cMake/FreeCAD_Helpers/SetupPython.cmake
@@ -108,7 +108,7 @@ ENDIF()
 
 MARK_AS_ADVANCED(ELMER_INSTALL_LIB_DIR)
 
-ENABLE_TESTING()
+INCLUDE(CTest)
 
 SET(ELMER_FEM_MAJOR_VERSION 9)
 SET(ELMER_FEM_MINOR_VERSION 0)
@@ -341,20 +341,20 @@ IF(WITH_NETCDF)
   #----------------------- #
   MESSAGE(STATUS "------------------------------------------------")
   MESSAGE(STATUS "Elmer/Ice package: Looking for [NETCDF] & [NETCDF Fortran] libraries")
-  
-  
+
+
   FIND_PACKAGE(NETCDF)
-  
+
   IF(NETCDF_FOUND)
-  
+
     SET(HAVE_NETCDF TRUE CACHE BOOL "Has NETCDF for Elmer/Ice Output" )
     GET_FILENAME_COMPONENT(NETCDF_LIBDIR ${NETCDF_LIBRARY} DIRECTORY)
     GET_FILENAME_COMPONENT(NETCDFF_LIBDIR ${NETCDFF_LIBRARY} DIRECTORY)
-  
+
     MARK_AS_ADVANCED(HAVE_NETCDF)
     INCLUDE_DIRECTORIES(${NETCDF_INCLUDE_DIR})
     ADD_DEFINITIONS(-DHAVE_NETCDF)
-  
+
     MESSAGE(STATUS "  NETCDF:           " "${NETCDF_FOUND}")
     MESSAGE(STATUS "  NETCDF_INC:       " "${NETCDF_INCLUDE_DIR}")
     MESSAGE(STATUS "  NETCDF_LIBS:     " "${NETCDF_LIBRARIES}")
@@ -362,26 +362,26 @@ IF(WITH_NETCDF)
     MESSAGE(STATUS "Library not found: >NETCDF_FOUND< ")
     MESSAGE(WARNING "  \n Missing: >NETCDF_INCLUDE_DIR< , >NETCDF_LIBRARY<,  >NETCDFF_LIBRARY< \n some functionalities will be disabled")
   ENDIF(NETCDF_FOUND)
-  
+
   IF(NETCDF_FOUND)
     # ---------------------- #
     # -- HDF5 libraries -- #
     #----------------------- #
     MESSAGE(STATUS "------------------------------------------------")
     MESSAGE(STATUS "Elmer/Ice package: Looking for [HDF5] & [HDF5 Fortran] libraries")
-  
+
     FIND_PACKAGE(PHDF5)
-    
+
     IF(PHDF5_FOUND)
-    
+
       SET(HAVE_HDF5 TRUE CACHE BOOL "Has HDF5 for Elmer/Ice Output" )
       GET_FILENAME_COMPONENT(PHDF5_LIBDIR ${PHDF5_LIBRARY} DIRECTORY)
       GET_FILENAME_COMPONENT(PHDF5HL_LIBDIR ${PHDF5HL_LIBRARY} DIRECTORY)
-    
+
       MARK_AS_ADVANCED(HAVE_HDF5)
       INCLUDE_DIRECTORIES(${PHDF5_INCLUDE_DIR})
       ADD_DEFINITIONS(-DHAVE_HDF5)
-    
+
       MESSAGE(STATUS "  HDF5:           " "${PHDF5_FOUND}")
       MESSAGE(STATUS "  HDF5_INC:       " "${PHDF5_INCLUDE_DIR}")
       MESSAGE(STATUS "  HDF5_LIBS:     " "${PHDF5_LIBRARIES}")
@@ -390,7 +390,7 @@ IF(WITH_NETCDF)
       MESSAGE(WARNING "  \n Missing: >HDF5_INCLUDE_DIR< , >HDF5_LIBRARY<,  >HDF5F_LIBRARY< \n some functionalities will be disabled")
     ENDIF(PHDF5_FOUND)
   ENDIF(NETCDF_FOUND)
-  
+
 ENDIF(WITH_NETCDF)
 
 # MMG Remeshing
@@ -424,13 +424,13 @@ IF(WITH_MMG)
 
   MESSAGE(STATUS "------------------------------------------------")
 
-  IF (WITH_PARMMG) 
+  IF (WITH_PARMMG)
     FIND_PACKAGE(PARMMG)
     IF(PARMMG_FOUND)
 
       SET(HAVE_PARMMG TRUE CACHE BOOL "Has ParMmg tools for Elmer/Ice Mesh adaptation" )
       GET_FILENAME_COMPONENT(PARMMG_LIBDIR ${PARMMG_LIBRARY} DIRECTORY)
-      
+
       MARK_AS_ADVANCED(HAVE_PARMMG)
       MESSAGE(STATUS "  ParMmg:           " "${PARMMG_FOUND}")
       MESSAGE(STATUS "  ParMmg_INC:       " "${PARMMG_INCLUDE_DIR}")
@@ -452,7 +452,7 @@ IF(WITH_MMG)
   # INCLUDE_DIRECTORIES(${PARMMG_INCLUDE_DIR})
   # TARGET_LINK_LIBRARIES( ${YOUR_TARGET} ${PARMMG_LIBRARY})
   #  SET(HAVE_PARMMG FALSE)
-  ENDIF(WITH_PARMMG) 
+  ENDIF(WITH_PARMMG)
 ELSE()
   SET(HAVE_MMG FALSE)
   SET(HAVE_PARMMG FALSE)
@@ -538,7 +538,7 @@ IF (CHOLMOD_FOUND)
   INCLUDE_DIRECTORIES(${CHOLMOD_INCLUDE_DIR})
   #LINK_DIRECTORIES(${})
 ENDIF()
-  
+
 # Check if Fortran compiler supports procedure pointer
 INCLUDE(testProcedurePointer)
 IF(NOT CMAKE_Fortran_COMPILER_SUPPORTS_PROCEDUREPOINTER)
@@ -608,7 +608,7 @@ ENDIF(WITH_ElmerIce)
 
 IF (EXTERNAL_UMFPACK)
     MESSAGE(STATUS "Using external UMFPACK instead of built-in")
-    FIND_PACKAGE(UMFPACK REQUIRED)    
+    FIND_PACKAGE(UMFPACK REQUIRED)
 ELSE()
   MESSAGE(STATUS "Using built-in UMFPACK")
   ADD_SUBDIRECTORY(umfpack)
