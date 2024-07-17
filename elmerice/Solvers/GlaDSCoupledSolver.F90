@@ -1284,7 +1284,7 @@
                    ! Cycle ungrounded nodes and zero hydrology variables
                    CycleElement = .FALSE.
                    DO i=1, n
-                     MaskStatus = ProcessMask(MaskName, AllowSheetAtGL, Element % NodeIndexes(i))
+                     MaskStatus = ProcessMask(MaskName, AllowSheetAtGL, Edge % NodeIndexes(i))
                      SELECT CASE (MaskStatus)
                      CASE (MASK_ALL)
                        CycleElement = .TRUE.
@@ -2606,7 +2606,7 @@ SUBROUTINE GlaDS_GLflux( Model,Solver,dt,TransientSimulation )
      IF (gmVals(gmPerm(nn)).eq.0) THEN
 
         ! Sheet discharge multiplied by sheet thickness gives the volume flux from the sheet.
-        ! We're hard conding the assumption that the sheet discharge is always a 2D vector,
+        ! We're hard coding the assumption that the sheet discharge is always a 2D vector,
         ! which should be safe so long as we always run GlaDS in 2D.
         sheetDisMag = ( sheetDisVals( 2*(sheetDisPerm(nn)-1)+1 )**2.0 +      &
                         sheetDisVals( 2*(sheetDisPerm(nn)-1)+2 )**2.0  )**0.5
