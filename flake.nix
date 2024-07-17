@@ -64,7 +64,7 @@
           pkgs.stdenv.mkDerivation {
             inherit name doCheck checkPhase storepath;
 
-            pname = "elmerfem";
+            pname = "${name}-devel";
 
             src = nix-filter {
               root = self;
@@ -123,10 +123,10 @@
             ];
           };
 
-        nogui = {doCheck ? false}:
+        default = {doCheck ? false}:
           basePkg {
             inherit doCheck;
-            name = "elmerfem";
+            name = "elmer";
             nativeBuildInputs = [];
             buildInputs = [];
             cmakeFlags = [];
@@ -135,7 +135,7 @@
         gui = {doCheck ? false}:
           basePkg {
             inherit doCheck;
-            name = "elmerfem-gui";
+            name = "elmer-gui";
 
             nativeBuildInputs = [pkgs.libsForQt5.wrapQtAppsHook];
 
@@ -161,7 +161,7 @@
         ice = {doCheck ? false}:
           basePkg {
             inherit doCheck;
-            name = "elmerice";
+            name = "elmer-ice";
 
             nativeBuildInputs = [];
 
@@ -217,14 +217,13 @@
           };
       in {
         checks = {
-          nogui = nogui {doCheck = true;};
+          default = default {doCheck = true;};
           gui = gui {doCheck = true;};
           ice = ice {doCheck = true;};
         };
 
         packages = {
-          default = nogui {};
-          nogui = nogui {};
+          default = default {};
           gui = gui {};
           ice = ice {};
         };
