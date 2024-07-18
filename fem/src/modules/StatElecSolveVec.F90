@@ -131,6 +131,7 @@ SUBROUTINE StatElecSolver_init( Model,Solver,dt,Transient )
           'CapacitanceMatrix.dat',.FALSE.)
     END IF
     CALL ListRenameAllBC( Model,'Capacitance Body','Constraint Mode Potential')
+    CALL ListRenameAllBodyForce( Model,'Capacitance Body','Constraint Mode Potential')
     CALL ListAddLogical( Params,'Optimize Bandwidth',.FALSE.)
     CALL Info('StatElecSolver_init','Suppressing bandwidth optimization in Capacitance Matrix computation!')
   END IF
@@ -139,8 +140,9 @@ SUBROUTINE StatElecSolver_init( Model,Solver,dt,Transient )
   
   CALL ListWarnUnsupportedKeyword('solver','adaptive mesh redinement',FatalFound=.TRUE.)
   CALL ListWarnUnsupportedKeyword('body force','piezo material',FatalFound=.TRUE.)
-  CALL ListWarnUnsupportedKeyword('boundary condition','Layer Relative Permittivity',FatalFound=.TRUE.)
-  CALL ListWarnUnsupportedKeyword('boundary condition','infinity bc',FatalFound=.TRUE.)
+  IF( ListCheckPresentAnyBC(Model,'infinity bc') ) THEN
+    CALL Fatal('StatElecSolver_init','Use "Elecric Infinity BC" instead of "Infinity BC"')
+  END IF
   
   ! If no fields need to be computed do not even call the _post solver!
   CALL ListAddLogical(Params,'PostSolver Active',PostActive)
@@ -261,7 +263,8 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
     !$OMP SHARED(Solver, Active, nColours, VecAsm) &
     !$OMP PRIVATE(t, Element, n, nd, nb,col, InitHandles) &
     !$OMP REDUCTION(+:totelem) DEFAULT(NONE)
-   
+    InitHandles = .TRUE.
+      
     DO col=1,nColours
       
       !$OMP SINGLE
@@ -269,7 +272,6 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
       Active = GetNOFActive(Solver)
       !$OMP END SINGLE
 
-      InitHandles = .TRUE.
       !$OMP DO
       DO t=1,Active
         Element => GetActiveElement(t)
@@ -301,13 +303,13 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
     !$OMP SHARED(Active, Solver, nColours, VecAsm) &
     !$OMP PRIVATE(t, Element, n, nd, nb, col, InitHandles) & 
     !$OMP REDUCTION(+:totelem) DEFAULT(NONE)
+    InitHandles = .TRUE. 
     DO col=1,nColours
       !$OMP SINGLE
       CALL Info(Caller,'Assembly of boundary colour: '//I2S(col),Level=10)
       Active = GetNOFBoundaryActive(Solver)
       !$OMP END SINGLE
 
-      InitHandles = .TRUE. 
       !$OMP DO
       DO t=1,Active
         Element => GetBoundaryElement(t)
@@ -362,8 +364,8 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:,:),dBasisdx(:,:,:), DetJVec(:)
     REAL(KIND=dp), ALLOCATABLE, SAVE :: STIFF(:,:), FORCE(:)
     REAL(KIND=dp), SAVE, POINTER  :: EpsAtIpVec(:), SourceAtIpVec(:)
-    REAL(KIND=dp) :: eps0, weight
-    LOGICAL :: Stat,Found, Pref
+    REAL(KIND=dp) :: eps0
+    LOGICAL :: Stat,Found
     INTEGER :: i,t,p,q,dim,ngp,allocstat
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
@@ -464,9 +466,9 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:),dBasisdx(:,:)
     REAL(KIND=dp), ALLOCATABLE, SAVE :: STIFF(:,:), FORCE(:)
     REAL(KIND=dp) :: eps0, weight
-    REAL(KIND=dp) :: SourceAtIp, EpsAtIp, DetJ, A
+    REAL(KIND=dp) :: SourceAtIp, EpsAtIp, DetJ
     LOGICAL :: Stat,Found
-    INTEGER :: i,j,t,p,q,dim,m,allocstat
+    INTEGER :: i,j,t,dim,m,allocstat
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(ValueHandle_t), SAVE :: SourceCoeff_h, EpsCoeff_h
@@ -551,18 +553,19 @@ CONTAINS
     LOGICAL :: VecAsm
     LOGICAL, INTENT(INOUT) :: InitHandles
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: F,C,Ext, Weight,Eps0
+    REAL(KIND=dp) :: Weight,Eps0,Alpha,Beta,Ext
     REAL(KIND=dp) :: Basis(nd),DetJ,Coord(3),Normal(3)
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), LOAD(n)
-    LOGICAL :: Stat,Found,RobinBC
+    LOGICAL :: Stat,Found,GotSome
     INTEGER :: i,t,p,q,dim
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BC       
     TYPE(Nodes_t) :: Nodes
-    TYPE(ValueHandle_t), SAVE :: Flux_h, Robin_h, Ext_h, Farfield_h, Infty_h
-
+    TYPE(ValueHandle_t), SAVE :: Flux_h, Farfield_h, Infty_h, &
+        LayerEps_h, LayerH_h, LayerRho_h, LayerV_h
+    REAL(KIND=dp) :: LayerEps, LayerV, LayerRho, LayerH    
     SAVE Nodes, Eps0
-    !$OMP THREADPRIVATE(Nodes,Flux_h,Robin_h,Ext_h,Farfield_h)
+    !$OMP THREADPRIVATE(Nodes,Flux_h,Farfield_h)
 !------------------------------------------------------------------------------
     BC => GetBC(Element)
     IF (.NOT.ASSOCIATED(BC) ) RETURN
@@ -571,6 +574,10 @@ CONTAINS
       CALL ListInitElementKeyword( Flux_h,'Boundary Condition','Electric Flux')
       CALL ListInitElementKeyword( Infty_h,'Boundary Condition','Electric Infinity BC')
       CALL ListInitElementKeyword( Farfield_h,'Boundary Condition','Farfield Potential')
+      CALL ListInitElementKeyword( LayerEps_h,'Boundary Condition','Layer Relative Permittivity')
+      CALL ListInitElementKeyword( LayerH_h,'Boundary Condition','Layer Thickness')
+      CALL ListInitElementKeyword( LayerRho_h,'Boundary Condition','Layer Charge Density')
+      CALL ListInitElementKeyword( LayerV_h,'Boundary Condition','Electrode Potential')
       IF( ASSOCIATED( Model % Constants ) ) THEN
         Eps0 = ListGetCReal( Model % Constants,'Permittivity Of Vacuum',Found )
       END IF
@@ -585,7 +592,6 @@ CONTAINS
     FORCE = 0._dp
     LOAD = 0._dp
            
-
     ! Numerical integration:
     !-----------------------
     IP = GaussPoints( Element )
@@ -595,7 +601,6 @@ CONTAINS
       !--------------------------------------------------------------
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
               IP % W(t), detJ, Basis )
-
       Weight = IP % s(t) * DetJ
       
       IF ( AxiSymmetric ) THEN
@@ -603,35 +608,54 @@ CONTAINS
       END IF
 
       ! Evaluate terms at the integration point:
+      ! BC: -epsilon@Phi/@n = -alpha Phi + beta
       !------------------------------------------
 
       ! Given flux:
       ! -----------
-      F = ListGetElementReal( Flux_h, Basis, Element, Found )
-      IF( Found ) THEN
-        FORCE(1:nd) = FORCE(1:nd) + Weight * F * Basis(1:nd)
-      END IF
-
-      ! Robin type of condition for farfield potential (r*(u-u_0)):
-      ! -----------------------------------------------------------
+      Alpha = 0.0_dp
+      Beta = ListGetElementReal( Flux_h, Basis, Element, GotSome )
+      
       IF( ListGetElementLogical( Infty_h, Element, Found ) ) THEN
+        ! Robin type of condition for farfield potential (r*(u-u_0)):
+        ! -----------------------------------------------------------
+        GotSome = .TRUE.
         Coord(1) = SUM( Nodes % x(1:n)*Basis(1:n) )
         Coord(2) = SUM( Nodes % y(1:n)*Basis(1:n) )
         Coord(3) = SUM( Nodes % z(1:n)*Basis(1:n) )
         
         Normal = NormalVector( Element, Nodes, IP % u(t), IP % v(t), .TRUE. )
-        C = Eps0 * SUM( Coord * Normal ) / SUM( Coord * Coord )         
-        
-        DO p=1,nd
-          DO q=1,nd
-            STIFF(p,q) = STIFF(p,q) + Weight * C * Basis(q) * Basis(p)
-          END DO
-        END DO
         Ext = ListGetElementReal( Farfield_h, Basis, Element, Found )
-        IF( Found ) THEN
-          FORCE(1:nd) = FORCE(1:nd) + Weight * C * Ext * Basis(1:nd)
+
+        Alpha = Eps0 * SUM( Coord * Normal ) / SUM( Coord * Coord )         
+        Beta = Beta + Alpha * Ext
+      ELSE
+        ! Boundary condition for electrostatic layer on the boundary.
+        !------------------------------------------------------------
+        LayerEps = ListGetElementReal( LayerEps_h, Basis, Element, Found )
+        IF(Found) THEN
+          GotSome = .TRUE.
+          LayerH = ListGetElementReal( LayerH_h, Basis, Element, Found )
+          IF ( .NOT. Found) THEN
+            CALL Fatal( Caller,'Charge > Layer thickness < not given!' )
+          END IF 
+          LayerV = ListGetElementReal( LayerV_h, Basis, Element, Found )
+          LayerRho = ListGetElementReal( LayerRho_h, Basis, Element, Found )
+
+          Alpha = LayerEps / LayerH          
+          Beta = Beta + Alpha * LayerV + 0.5_dp * LayerRho * LayerH / Eps0
         END IF
       END IF
+
+      IF( GotSome ) THEN      
+        DO p=1,nd
+          DO q=1,nd
+            STIFF(p,q) = STIFF(p,q) + Weight * Alpha * Basis(q) * Basis(p)
+          END DO
+        END DO
+        FORCE(1:nd) = FORCE(1:nd) + Weight * Beta * Basis(1:nd)
+      END IF
+
     END DO
     
     CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element,VecAssembly=VecAsm)
@@ -662,7 +686,7 @@ SUBROUTINE StatElecSolver_post( Model,Solver,dt,Transient )
 ! Local variables
 !------------------------------------------------------------------------------
   TYPE(Element_t),POINTER :: Element
-  INTEGER :: i, dofs, n, nb, nd, t, active
+  INTEGER :: i, n, nd, t
   LOGICAL :: Found, InitHandles = .TRUE.
   TYPE(Mesh_t), POINTER :: Mesh
   REAL(KIND=dp), ALLOCATABLE :: WeightVector(:),FORCE(:,:),MASS(:,:),&
@@ -765,7 +789,8 @@ SUBROUTINE StatElecSolver_post( Model,Solver,dt,Transient )
       IF( ParEnv % MyPe /= Element % PartIndex ) CYCLE
     END IF
     n  = GetElementNOFNodes(Element)
-    CALL LocalPostAssembly( Element, n, InitHandles, MASS, FORCE )
+    nd = GetElementNOFDOFs(Element)
+    CALL LocalPostAssembly( Element, n, nd, InitHandles, MASS, FORCE )
     CALL LocalPostSolve( Element, n, MASS, FORCE )
   END DO
 
@@ -811,20 +836,20 @@ SUBROUTINE StatElecSolver_post( Model,Solver,dt,Transient )
 
 CONTAINS
    
-  SUBROUTINE LocalPostAssembly( Element, n, InitHandles, MASS, FORCE )
+  SUBROUTINE LocalPostAssembly( Element, n, nd, InitHandles, MASS, FORCE )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    INTEGER, INTENT(IN) :: n
+    INTEGER, INTENT(IN) :: n, nd
     TYPE(Element_t), POINTER :: Element
     LOGICAL, INTENT(INOUT) :: InitHandles
     REAL(KIND=dp) :: MASS(:,:), FORCE(:,:)
 !------------------------------------------------------------------------------
     REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:),dBasisdx(:,:),ElementPot(:)
     REAL(KIND=dp) :: eps0, weight
-    REAL(KIND=dp) :: SourceAtIp, EpsAtIp, DetJ
+    REAL(KIND=dp) :: EpsAtIp, DetJ
     REAL(KIND=dp) :: EpsGrad(3), Grad(3), Heat
     LOGICAL :: Stat,Found
-    INTEGER :: i,j,t,p,q,dim,m,allocstat
+    INTEGER :: i,j,t,dim,m,allocstat
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(ValueHandle_t), SAVE :: SourceCoeff_h, EpsCoeff_h
@@ -849,13 +874,14 @@ CONTAINS
     IF (.NOT. ALLOCATED(Basis)) THEN
       m = Mesh % MaxElementDOFs   
       ALLOCATE(Basis(m), dBasisdx(m,3), ElementPot(m), STAT=allocstat)      
+      Basis = 0.0_dp; dBasisdx = 0.0_dp; ElementPot = 0.0_dp
       IF (allocstat /= 0) THEN
         CALL Fatal(Caller,'Local storage allocation failed')
       END IF
     END IF
 
-    CALL GetElementNodes( Nodes, UElement=Element )
-    CALL GetScalarLocalSolution( ElementPot ) 
+    CALL GetElementNodes( Nodes, UElement=Element, USolver=Solver )
+    CALL GetScalarLocalSolution( ElementPot, UElement=Element, USolver=Solver) 
     
     ! Initialize
     MASS  = 0._dp
@@ -890,7 +916,7 @@ CONTAINS
       ! Compute the electric field from the potential: E = -grad Phi
       !------------------------------------------------------------------------------
       DO j = 1, DIM
-        Grad(j) = SUM( dBasisdx(1:n,j) * ElementPot(1:n) )
+        Grad(j) = SUM( dBasisdx(1:nd,j) * ElementPot(1:nd) )
       END DO
       IF( CalcField ) THEN
         DO j=1,dim
@@ -1132,9 +1158,6 @@ CONTAINS
 !------------------------------------------------------------------------------
     INTEGER :: i, Vari
     TYPE(Variable_t), POINTER :: pVar
-    REAL(KIND=dp), ALLOCATABLE :: tmp(:)
-    LOGICAL :: DoneWeight = .FALSE.
-    REAL(KIND=dp) :: PotDiff, Capacitance, ControlTarget, ControlScaling, val
 
     DO Vari = 1, 8
       pVar => PostVars(Vari) % Var
@@ -1168,30 +1191,20 @@ FUNCTION ElectricBoundaryResidual(Model, Edge, Mesh, Quant, Perm, Gnorm) RESULT(
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Element_t), POINTER :: Edge
 !------------------------------------------------------------------------------
-
   TYPE(Nodes_t) :: Nodes, EdgeNodes
-  TYPE(Element_t), POINTER :: Element, Bndry
-
+  TYPE(Element_t), POINTER :: Element
   INTEGER :: i, j, k, n, l, t, dim, Pn, En, nd
   LOGICAL :: stat, Found
   INTEGER, ALLOCATABLE :: Indexes(:)
-
   REAL(KIND=dp), POINTER :: Hwrk(:, :, :)
-
   REAL(KIND=dp) :: SqrtMetric, Metric(3, 3), Symb(3, 3, 3), dSymb(3, 3, 3, 3)
-
   REAL(KIND=dp), ALLOCATABLE :: NodalPermittivity(:), &
                                 EdgeBasis(:), Basis(:), x(:), y(:), z(:), &
                                 dBasisdx(:, :), Potential(:), Flux(:)
-
-  REAL(KIND=dp) :: Grad(3, 3), Normal(3), EdgeLength, gx, gy, gz, Permittivity
-
+  REAL(KIND=dp) :: Normal(3), EdgeLength, gx, gy, gz, Permittivity
   REAL(KIND=dp) :: u, v, w, s, detJ
-
-  REAL(KIND=dp) :: Source, Residual, ResidualNorm, Area
-
+  REAL(KIND=dp) :: Residual, ResidualNorm
   TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
-
   LOGICAL :: First = .TRUE., Dirichlet
   SAVE Hwrk, First
 !------------------------------------------------------------------------------
@@ -1406,26 +1419,19 @@ FUNCTION ElectricEdgeResidual(Model, Edge, Mesh, Quant, Perm) RESULT(Indicator)
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Element_t), POINTER :: Edge
 !------------------------------------------------------------------------------
-
   TYPE(Nodes_t) :: Nodes, EdgeNodes
-  TYPE(Element_t), POINTER :: Element, Bndry
-
+  TYPE(Element_t), POINTER :: Element
   INTEGER :: i, j, k, l, n, t, dim, En, Pn, nd
   INTEGER, ALLOCATABLE :: Indexes(:)
-  LOGICAL :: stat, Found
+  LOGICAL :: stat
   REAL(KIND=dp), POINTER :: Hwrk(:, :, :)
-
   REAL(KIND=dp) :: SqrtMetric, Metric(3, 3), Symb(3, 3, 3), dSymb(3, 3, 3, 3)
-
   REAL(KIND=dp) :: Permittivity
   REAL(KIND=dp) :: u, v, w, s, detJ
   REAL(KIND=dp) :: Grad(3, 3), Normal(3), EdgeLength, Jump
-
   REAL(KIND=dp), ALLOCATABLE :: NodalPermittivity(:), x(:), y(:), z(:), EdgeBasis(:), &
-                                Basis(:), dBasisdx(:, :), Potential(:)
-
-  REAL(KIND=dp) :: Residual, ResidualNorm, Area
-
+      Basis(:), dBasisdx(:, :), Potential(:)
+  REAL(KIND=dp) :: ResidualNorm
   TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
   TYPE(ValueList_t), POINTER :: Material
 
@@ -1614,28 +1620,20 @@ FUNCTION ElectricInsideResidual(Model, Element, Mesh, &
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
-
   TYPE(Nodes_t) :: Nodes
-
   INTEGER :: i, j, k, l, n, t, dim, nd
   INTEGER, ALLOCATABLE :: Indexes(:)
-
   LOGICAL :: stat, Found
   TYPE(Variable_t), POINTER :: Var
-
   REAL(KIND=dp), POINTER :: Hwrk(:, :, :)
-
   REAL(KIND=dp) :: SqrtMetric, Metric(3, 3), Symb(3, 3, 3), dSymb(3, 3, 3, 3)
 
-  REAL(KIND=dp), ALLOCATABLE :: x(:), y(:), z(:)
   REAL(KIND=dp), ALLOCATABLE :: NodalPermittivity(:)
   REAL(KIND=dp), ALLOCATABLE :: NodalSource(:), Potential(:), PrevPot(:)
   REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:, :), ddBasisddx(:, :, :)
-
   REAL(KIND=dp) :: u, v, w, s, detJ
-
-  REAL(KIND=dp) :: Permittivity, dt  ! TODO is dt used?
-  REAL(KIND=dp) :: Source, Residual, ResidualNorm, Area
+  REAL(KIND=dp) :: Permittivity, dt  
+  REAL(KIND=dp) :: Residual, ResidualNorm, Area
 
   TYPE(ValueList_t), POINTER :: Material
 
@@ -1858,28 +1856,19 @@ FUNCTION StatElecSolver_boundary_Residual(Model, Edge, Mesh, Quant, Perm, Gnorm)
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Element_t), POINTER :: Edge
 !------------------------------------------------------------------------------
-
   TYPE(Nodes_t) :: Nodes, EdgeNodes
-  TYPE(Element_t), POINTER :: Element, Bndry
-
+  TYPE(Element_t), POINTER :: Element
   INTEGER :: i, j, k, n, l, t, dim, Pn, En, nd
   LOGICAL :: stat, Found
   INTEGER, ALLOCATABLE :: Indexes(:)
-
   REAL(KIND=dp), POINTER :: Hwrk(:, :, :)
-
   REAL(KIND=dp) :: SqrtMetric, Metric(3, 3), Symb(3, 3, 3), dSymb(3, 3, 3, 3)
-
   REAL(KIND=dp), ALLOCATABLE :: NodalPermittivity(:), &
-                                EdgeBasis(:), Basis(:), x(:), y(:), z(:), &
-                                dBasisdx(:, :), Potential(:), Flux(:)
-
-  REAL(KIND=dp) :: Grad(3, 3), Normal(3), EdgeLength, gx, gy, gz, Permittivity
-
+      EdgeBasis(:), Basis(:), x(:), y(:), z(:), &
+      dBasisdx(:, :), Potential(:), Flux(:)  
+  REAL(KIND=dp) :: Normal(3), EdgeLength, gx, gy, gz, Permittivity
   REAL(KIND=dp) :: u, v, w, s, detJ
-
-  REAL(KIND=dp) :: Source, Residual, ResidualNorm, Area
-
+  REAL(KIND=dp) :: Residual, ResidualNorm
   TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 
   LOGICAL :: First = .TRUE., Dirichlet
@@ -2096,26 +2085,19 @@ FUNCTION StatElecSolver_edge_residual(Model, Edge, Mesh, Quant, Perm) RESULT(Ind
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Element_t), POINTER :: Edge
 !------------------------------------------------------------------------------
-
   TYPE(Nodes_t) :: Nodes, EdgeNodes
-  TYPE(Element_t), POINTER :: Element, Bndry
-
+  TYPE(Element_t), POINTER :: Element
   INTEGER :: i, j, k, l, n, t, dim, En, Pn, nd
   INTEGER, ALLOCATABLE :: Indexes(:)
-  LOGICAL :: stat, Found
+  LOGICAL :: stat
   REAL(KIND=dp), POINTER :: Hwrk(:, :, :)
-
   REAL(KIND=dp) :: SqrtMetric, Metric(3, 3), Symb(3, 3, 3), dSymb(3, 3, 3, 3)
-
   REAL(KIND=dp) :: Permittivity
   REAL(KIND=dp) :: u, v, w, s, detJ
   REAL(KIND=dp) :: Grad(3, 3), Normal(3), EdgeLength, Jump
-
   REAL(KIND=dp), ALLOCATABLE :: NodalPermittivity(:), x(:), y(:), z(:), EdgeBasis(:), &
-                                Basis(:), dBasisdx(:, :), Potential(:)
-
-  REAL(KIND=dp) :: Residual, ResidualNorm, Area
-
+      Basis(:), dBasisdx(:, :), Potential(:)
+  REAL(KIND=dp) :: ResidualNorm
   TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
   TYPE(ValueList_t), POINTER :: Material
 
@@ -2304,31 +2286,20 @@ FUNCTION StatElecSolver_Inside_residual(Model, Element, Mesh, &
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
-
   TYPE(Nodes_t) :: Nodes
-
   INTEGER :: i, j, k, l, n, t, dim, nd
   INTEGER, ALLOCATABLE :: Indexes(:)
-
   LOGICAL :: stat, Found
   TYPE(Variable_t), POINTER :: Var
-
   REAL(KIND=dp), POINTER :: Hwrk(:, :, :)
-
   REAL(KIND=dp) :: SqrtMetric, Metric(3, 3), Symb(3, 3, 3), dSymb(3, 3, 3, 3)
-
-  REAL(KIND=dp), ALLOCATABLE :: x(:), y(:), z(:)
   REAL(KIND=dp), ALLOCATABLE :: NodalPermittivity(:)
   REAL(KIND=dp), ALLOCATABLE :: NodalSource(:), Potential(:), PrevPot(:)
   REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:, :), ddBasisddx(:, :, :)
-
   REAL(KIND=dp) :: u, v, w, s, detJ
-
-  REAL(KIND=dp) :: Permittivity, dt  ! TODO is dt used?
-  REAL(KIND=dp) :: Source, Residual, ResidualNorm, Area
-
+  REAL(KIND=dp) :: Permittivity, dt 
+  REAL(KIND=dp) :: Residual, ResidualNorm, Area
   TYPE(ValueList_t), POINTER :: Material
-
   TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 
   LOGICAL :: First = .TRUE.
@@ -2412,16 +2383,6 @@ FUNCTION StatElecSolver_Inside_residual(Model, Element, Mesh, &
       1, Model % NumberOFBodyForces)
 
   NodalSource = 0.0d0
-  !  TODO doees this work?
-  ! IF( k > 0 ) THEN
-  !   NodalSource(1:n) = GetReal( Model % BodyForces(k) % Values, &
-  !       'Volumetric Heat Source',VolSource )
-  !   IF( .NOT. VolSource ) THEN
-  !     NodalSource(1:n) = GetReal( Model % BodyForces(k) % Values, &
-  !         'Heat Source',  Found )
-  !   END IF
-  ! END IF
-
   IF (Found .AND. k > 0) THEN
     NodalSource(1:n) = ListGetReal(Model % BodyForces(k) % Values, &
                                    'Charge Density', n, Element % NodeIndexes, stat)

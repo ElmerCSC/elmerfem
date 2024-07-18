@@ -1,4 +1,4 @@
-!/*****************************************************************************
+!/****************************************************************************
 ! *
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
@@ -623,13 +623,13 @@ SUBROUTINE Set_PMMG_Parameters(SolverParams, ReTrial )
   !       'Call to MMG3D_SET_IPARAMETER <No swap>Failed')
   !END IF
 
-  ! [1/0] Avoid/allow point relocation
-  !NoMove = ListGetLogical(SolverParams,'No move',Found)
-  !IF (NoMove) THEN
-  !  CALL PMMG_SET_IPARAMETER(pmmgMesh,PMMGPARAM_nomove,1,ierr)
-  !  IF ( ierr == 0 ) CALL Fatal('MMGSolver',&
-  !       'Call to MMG3D_SET_IPARAMETER <No move> Failed')
-  !END IF
+!  [1/0] Avoid/allow point relocation
+! NoMove = ListGetLogical(SolverParams,'No move',Found)
+! IF (NoMove) THEN
+!   CALL PMMG_SET_IPARAMETER(pmmgMesh,PMMGPARAM_nomove,1,ierr)
+!   IF ( ierr == 0 ) CALL Fatal('MMGSolver',&
+!        'Call to MMG3D_SET_IPARAMETER <No move> Failed')
+! END IF
 
   ! [1/0] Avoid/allow surface modifications
   NoSurf = ListGetLogical(SolverParams,'mmg No surf',Found)
@@ -2052,10 +2052,11 @@ SUBROUTINE SequentialRemeshParMMG(Model, InMesh,OutMesh,Boss,EdgePairs,PairCount
 END SUBROUTINE SequentialRemeshParMMG
 
 
-SUBROUTINE Set_ParMMG_Mesh(Mesh, Parallel, EdgePairs, PairCount)
+SUBROUTINE Set_ParMMG_Mesh(Mesh, Parallel, EdgePairs, PairCount, FreezeInternalArg)
 
   TYPE(Mesh_t), POINTER :: Mesh
   LOGICAL :: Parallel
+  LOGICAL, OPTIONAL :: FreezeInternalArg
   INTEGER, ALLOCATABLE, OPTIONAL :: EdgePairs(:,:)
   INTEGER, OPTIONAL :: PairCount
 
@@ -2069,7 +2070,7 @@ SUBROUTINE Set_ParMMG_Mesh(Mesh, Parallel, EdgePairs, PairCount)
       SharedNodesGlobal(:,:)
   LOGICAL, ALLOCATABLE :: IsNeighbour(:)
   INTEGER, POINTER :: Neighbours(:)
-  LOGICAL :: Warn101=.FALSE., Warn202=.FALSE.,Debug=.FALSE.,Elem202
+  LOGICAL :: Warn101=.FALSE., Warn202=.FALSE.,Debug=.FALSE.,Elem202, FreezeInternal
   CHARACTER(*), PARAMETER :: FuncName="Set_ParMMG_Mesh"
   IF(CoordinateSystemDimension() /= 3) CALL Fatal("ParMMG","Only works for 3D meshes!")
 
@@ -2079,6 +2080,9 @@ SUBROUTINE Set_ParMMG_Mesh(Mesh, Parallel, EdgePairs, PairCount)
   
   IF(Parallel) CALL Assert(ASSOCIATED(Mesh % ParallelInfo % GlobalDOFs), FuncName,&
        "Parallel sim but no ParallelInfo % GlobalDOFs")
+
+  FreezeInternal = .FALSE.
+  IF(PRESENT(FreezeInternalArg)) FreezeInternal = FreezeInternalArg
 
   nverts = Mesh % NumberOfNodes
   ntetras = 0
@@ -2091,9 +2095,18 @@ SUBROUTINE Set_ParMMG_Mesh(Mesh, Parallel, EdgePairs, PairCount)
   nbulk = Mesh % NumberOfBulkElements
   nbdry = Mesh % NumberOfBoundaryElements
 
+
+
   !Cycle mesh elements gathering type count
   DO i=1,nbulk+nbdry
     Element => Mesh % Elements(i)
+
+    IF(.NOT.FreezeInternal) THEN
+      IF(i>nbulk) THEN
+         IF(Element % BoundaryInfo % Constraint<=0) CYCLE
+      END IF
+    END IF
+
     SELECT CASE(Element % TYPE % ElementCode)
     CASE(101)
       Warn101 = .TRUE.
@@ -2147,6 +2160,12 @@ SUBROUTINE Set_ParMMG_Mesh(Mesh, Parallel, EdgePairs, PairCount)
   !Cycle mesh elements, sending them to MMG3D
   DO i=1,nbulk+nbdry
     Element => Mesh % Elements(i)
+    IF(.NOT.FreezeInternal) THEN
+      IF(i>nbulk) THEN
+         IF(Element % BoundaryInfo % Constraint<=0) CYCLE
+      END IF
+    END IF
+
     NNodes = Element % TYPE % NumberOfNodes
 
     NodeIndexes => Element % NodeIndexes
@@ -2284,7 +2303,7 @@ SUBROUTINE Get_ParMMG_Mesh(NewMesh, Parallel, FixedNodes, FixedElems, Calving)
   INTEGER :: NVerts, NTetras, NPrisms, NTris, NQuads, NEdges, nbulk, nbdry,ierr, NoNeighbours,&
           OutProc, counter, GlobalID, owner, unique, ntot
   INTEGER :: ref,corner,required,ridge
-  INTEGER :: parent,ied
+  INTEGER :: parent(2),ied(2)
   INTEGER :: i,j,k,ii,kk,NoBCs,MinIndex,MaxIndex,MinIndexBC,MaxIndexBC,imin
   LOGICAL :: Found, Debug
   LOGICAL, ALLOCATABLE :: UsedNode(:)
@@ -2311,6 +2330,7 @@ SUBROUTINE Get_ParMMG_Mesh(NewMesh, Parallel, FixedNodes, FixedElems, Calving)
 
   ! INITIALISE THE NEW MESH STRUCTURE
   !NPrisms, NQuads should be zero
+
   NewMesh => AllocateMesh( NTetras, NTris, NVerts, .TRUE.)
 
   NewMesh % Name = "ParMMG_Output"
@@ -2426,19 +2446,73 @@ SUBROUTINE Get_ParMMG_Mesh(NewMesh, Parallel, FixedNodes, FixedElems, Calving)
 
   CALL Info(FuncName,'ParMMG_Get_triangle done',Level=20)
 
-  ! currently segfaults as no parmmg routine to recover parent id
+  ! Currently segfaults as no parmmg routine to recover parent id
+#if 1
   kk=NewMesh % NumberOfBulkElements
   DO ii=1,NTris
     kk = kk + 1
+    CALL PMMG_GET_TetsFromTria(pmmgMesh,ii,Parent,ied,ierr)
 
-    CALL PMMG_GET_TetFromTria(pmmgMesh, &
-         ii,parent,ied,ierr)
+    IF ( ierr /= 1 ) CALL Fatal('MMGSolver','Call to  MMG3D_Get_TetFromTria failed!')
 
-    IF ( ierr /= 1 ) CALL Fatal('MMGSolver',&
-         'Call to  MMG3D_Get_TetFromTria failed!')
     Element => NewMesh % Elements(kk)
-    Element % BoundaryInfo % Left => NewMesh % Elements(parent) !TODO - parent ID offset?
+    Element % BoundaryInfo % Left  => Null()
+    Element % BoundaryInfo % Right => Null()
+ 
+    IF(Parent(1)>0.AND.Parent(1)<=kk) THEN
+      Element % BoundaryInfo % Left  => NewMesh % Elements(parent(1))
+      IF(Parent(2)>0.AND.Parent(2)<=kk) THEN
+        Element % BoundaryInfo % Right => NewMesh % Elements(parent(2))
+      END IF
+    ELSE IF(Parent(2)>0.AND.Parent(2)<=kk) THEN
+      Element % BoundaryInfo % Left  => NewMesh % Elements(parent(2))
+    END IF
   END DO
+#else
+  BLOCK
+    INTEGER :: i,j,l,k,p
+
+    PRINT*,ParEnv % MyPE, ' start '
+    kk = NewMesh % NumberOfBulkElements
+    DO ii=1,NTris
+      kk =  kk + 1
+
+      Element => NewMesh % Elements(kk)
+      IF(.NOT.ASSOCIATED(Element % BoundaryInfo)) STOP
+
+      Element % BoundaryInfo % Left  => Null()
+      Element % BoundaryInfo % Right => Null()
+
+      DO k=1,Newmesh % NumberOfBulkElements
+        l = 0 
+        DO j=1,4
+          IF (Element % NodeIndexes(1)==NewMesh % Elements(k) % NodeIndexes(j)) l = l+1
+        END DO
+        IF(l<1) EXIT
+
+        DO j=1,4
+          IF (Element % NodeIndexes(2)==NewMesh % Elements(k) % NodeIndexes(j)) l = l+1
+        END DO
+        IF(l<2) EXIT
+
+        DO j=1,4
+          IF (Element % NodeIndexes(3)==NewMesh % Elements(k) % NodeIndexes(j)) l = l+1
+        END DO
+
+        IF (l==3) THEN
+          IF ( ASSOCIATED(Element % BoundaryInfo % Left ) ) THEN
+            Element % BoundaryInfo % Right => NewMesh % Elements(k)
+            EXIT
+          ELSE
+            Element % BoundaryInfo % Left  => NewMesh % Elements(k)
+!           EXIT
+          END IF
+        END IF
+      END DO
+    END DO
+    PRINT*,ParEnv % MyPE, ' done '
+  END BLOCK
+#endif
 
   ! get parallel info back
   ! get number of neighbours
@@ -2568,7 +2642,7 @@ SUBROUTINE DistributedRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,&
        nBCs,NodeNum(1), MaxRemeshIter, mmgloops, ElemBodyID, &
        NVerts, NTetras, NPrisms, NTris, NQuads, NEdges, Counter, Time
   INTEGER, ALLOCATABLE :: TetraQuality(:)
-  LOGICAL :: Debug, Parallel, AnisoFlag, Found, SaveMMGMeshes, SaveMMGSols
+  LOGICAL :: Debug, Parallel, AnisoFlag, Found, SaveMMGMeshes, SaveMMGSols, FreezeInternal
   LOGICAL, ALLOCATABLE :: RmElement(:)
   CHARACTER(:), ALLOCATABLE :: MeshName, SolName, &
         premmg_meshfile, mmg_meshfile, premmg_solfile, mmg_solfile
@@ -2693,10 +2767,11 @@ SUBROUTINE DistributedRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,&
     ! If this is retrial then get only selected parameters again that may depend on the variable "MMG Loop".
     CALL Set_PMMG_Parameters(FuncParams, mmgloops > 1 )
         
+    FreezeInternal = ListGetLogical( Params, 'MMG freeze internal boundaries', Found )
     IF (Present(PairCount)) THEN
-      CALL SET_ParMMG_MESH(InMesh,Parallel,EdgePairs,PairCount)
+      CALL SET_ParMMG_MESH(InMesh,Parallel,EdgePairs,PairCount,FreezeInternalArg=FreezeInternal)
     ELSE
-      CALL SET_ParMMG_MESH(InMesh,Parallel)
+      CALL SET_ParMMG_MESH(InMesh,Parallel,FreezeInternalArg=FreezeInternal)
     END IF
 
     !Set the metric values at nodes
@@ -2746,6 +2821,18 @@ SUBROUTINE DistributedRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,&
       END DO
     END IF
 
+    IF(FreezeInternal) THEN
+      DO i=nBulk+1,nBulk+nBdry
+        IF ( inMesh % Elements(i) % Type % ElementCode /= 303 ) CYCLE
+!       IF ( inMesh % Elements(i) % BoundaryInfo % Constraint<=0 ) CYCLE
+ 
+        IF ( ASSOCIATED(inMesh % Elements(i) % BoundaryInfo % Right) ) THEN
+          CALL PMMG_SET_REQUIREDTRIANGLE(pmmgMesh,i-nBulk,ierr)
+        END IF
+      END DO
+    END IF
+
+
     IF(PRESENT(ElemFixed)) THEN
       DO i=1,NBulk + NBdry
         IF(ElemFixed(InMesh % Elements(i) % GElementIndex)) THEN
@@ -2754,7 +2841,7 @@ SUBROUTINE DistributedRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,&
           ELSE
             CALL PMMG_SET_REQUIREDTRIANGLE(pmmgMesh,i-NBulk,ierr)
           END IF
-        END IF
+         END IF
       END DO
     END IF
 
@@ -2796,7 +2883,6 @@ SUBROUTINE DistributedRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,&
     CALL Info(FuncName,'PMMG_parmmglib_centralized done',Level=20)
   END DO
 
-    
   IF(SaveMMGMeshes) THEN
     MeshName = TRIM(mmg_meshfile)//I2S(time)//'.mesh'
     CALL PMMG_SaveMesh_Distributed(pmmgMesh,MeshName,LEN(TRIM(MeshName)),ierr)

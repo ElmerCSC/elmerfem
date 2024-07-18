@@ -175,9 +175,10 @@ MODULE StressLocal
 
      NeedHeat = ANY( NodalTemperature(1:ntot) /= 0.0d0 )
      IF (.NOT.EvaluateLoadAtIP) NeedHarmonic = ANY( LOAD_im(:,1:n) /= 0.0d0 ) 
-     NeedPreStress = ANY( NodalPreStrain(1:6,1:n) /= 0.0d0 ) 
-     NeedPreStress = NeedPreStress .OR. ANY( NodalPreStress(1:6,1:n) /= 0.0d0 ) 
-
+     NeedPreStress = ANY( NodalPreStrain(1:6,1:n) /= 0.0d0 ) .OR. &
+         ANY( NodalStrainLoad(1:6,1:n) /= 0.0d0 )
+     NeedPreStress = NeedPreStress .OR. ANY( NodalPreStress(1:6,1:n) /= 0.0d0 ) .OR. &
+         ANY( NodalStressLoad(1:6,1:n) /= 0.0d0 )
 
      BF => GetBodyForce()
      GPA = .FALSE.
@@ -420,15 +421,15 @@ MODULE StressLocal
            PreStrain(i) = SUM( NodalPreStrain(i,1:n)*Basis(1:n) )
            PreStress(i) = SUM( NodalPreStress(i,1:n)*Basis(1:n) )
          END DO
-         PreStress = PreStress + MATMUL( C, PreStrain  )
+         PreStress = PreStress - MATMUL( C, PreStrain  )
          
          DO i=1,6
            StrainLoad(i) = SUM( NodalStrainLoad(i,1:n)*Basis(1:n) )
            StressLoad(i) = SUM( NodalStressLoad(i,1:n)*Basis(1:n) )
          END DO
-         StressLoad = StressLoad + MATMUL( C, StrainLoad )
+         StressLoad = MATMUL( C, StrainLoad ) - StressLoad
          
-         IF( .NOT. ( StabilityAnalysis .OR. GeometricStiffness ) ) THEN 
+         IF( .NOT. ActiveGeometricStiffness ) THEN 
            StressTensor = 0.0d0
            StrainTensor = 0.0d0          
          END IF
@@ -974,7 +975,7 @@ CONTAINS
           StrainLoad(i) = SUM( NodalStrainLoad(i,1:n)*Basis(1:n) )
           StressLoad(i) = SUM( NodalStressLoad(i,1:n)*Basis(1:n) )
        END DO
-       StressLoad = StressLoad + MATMUL( C, StrainLoad )
+       StressLoad = MATMUL( C, StrainLoad ) - StressLoad
 
        !
        ! Loop over basis functions (of both unknowns and weights):
@@ -1060,24 +1061,24 @@ CONTAINS
 
 !------------------------------------------------------------------------------
  SUBROUTINE StressBoundary( STIFF,DAMP,FORCE,FORCE_im,LOAD,LOAD_im,NodalSpring, &
-      NormalSpring, NodalDamp, NodalBeta,NodalBeta_im,NodalStress,NormalTangential, &
+      NormalSpring, NodalDamp, NormalDamp, NodalBeta,NodalBeta_im,NodalStress,NormalTangential, &
          Element,n,ntot,Nodes )
    USE ElementUtils
 !------------------------------------------------------------------------------
-   REAL(KIND=dp) :: NodalSpring(:,:,:),NodalDamp(:),NodalBeta(:),LOAD(:,:)
+   REAL(KIND=dp) :: NodalSpring(:,:,:),NodalDamp(:,:,:),NodalBeta(:),LOAD(:,:)
    REAL(KIND=dp) :: LOAD_im(:,:),FORCE_im(:),NodalBeta_im(:)
    TYPE(Element_t),POINTER  :: Element
    TYPE(Nodes_t)    :: Nodes
    REAL(KIND=dp) :: STIFF(:,:),DAMP(:,:),FORCE(:), NodalStress(:,:)
 
    INTEGER :: n,ntot
-   LOGICAL :: NormalTangential, NormalSpring
+   LOGICAL :: NormalTangential, NormalSpring, NormalDamp
 !------------------------------------------------------------------------------
    REAL(KIND=dp) :: Basis(ntot)
    REAL(KIND=dp) :: dBasisdx(ntot,3),detJ
 
    REAL(KIND=dp) :: u,v,w,s
-   REAL(KIND=dp) :: LoadAtIp(3),LoadAtIp_im(3), SpringCoeff(3,3),DampCoeff(3),Beta,Normal(3),&
+   REAL(KIND=dp) :: LoadAtIp(3),LoadAtIp_im(3), SpringCoeff(3,3),DampCoeff(3,3),Beta,Normal(3),&
                     Tangent(3), Tangent2(3), Vect(3), Vect2(3), Stress(3,3), Tf(3,3)
    REAL(KIND=dp), POINTER :: U_Integ(:),V_Integ(:),W_Integ(:),S_Integ(:)
 
@@ -1167,32 +1168,35 @@ CONTAINS
      LoadAtIp = LoadatIp + MATMUL( Stress, Normal )
 
      IF ( NormalTangential ) THEN
-        Tf=0._dp
-        SELECT CASE( Element % TYPE % DIMENSION )
-        CASE(1)
-           Tangent(1) =  Normal(2)
-           Tangent(2) = -Normal(1)
-           Tangent(3) =  0.0_dp
-           Tangent2   =  0.0_dp
-        CASE(2)
-           CALL TangentDirections( Normal, Tangent, Tangent2 ) 
-        END SELECT
+       Tf=0._dp
+       SELECT CASE( Element % TYPE % DIMENSION )
+       CASE(1)
+         Tangent(1) =  Normal(2)
+         Tangent(2) = -Normal(1)
+         Tangent(3) =  0.0_dp
+         Tangent2   =  0.0_dp
+       CASE(2)
+         CALL TangentDirections( Normal, Tangent, Tangent2 ) 
+       END SELECT
      END IF
 
      DO i=1,dim
        DO j=1,dim
          SpringCoeff(i,j) = SUM(Basis(1:n)*NodalSpring(1:n,i,j))
+         DampCoeff(i,j) = SUM(Basis(1:n)*NodalDamp(1:n,i,j))
        END DO
      END DO
 
-     IF ( NormalTangential ) THEN
-       DampCoeff(1) = SUM( NodalDamp(1:n)*Basis(1:n) )
-     ELSE
-       DampCoeff(1:3) = SUM( NodalDamp(1:n)*Basis(1:n))*Normal
+     IF ( .NOT. NormalTangential ) THEN
        IF ( NormalSpring ) THEN
          SpringCoeff(1,1) = SpringCoeff(1,1)*Normal(1)
          SpringCoeff(2,2) = SpringCoeff(1,1)*Normal(2)
          SpringCoeff(3,3) = SpringCoeff(1,1)*Normal(3)
+       END IF
+       IF( NormalDamp ) THEN
+         DampCoeff(1,1) = DampCoeff(1,1)*Normal(1)
+         DampCoeff(2,2) = DampCoeff(1,1)*Normal(2)
+         DampCoeff(3,3) = DampCoeff(1,1)*Normal(3)
        END IF
      END IF
 
@@ -1201,44 +1205,44 @@ CONTAINS
          DO i=1,dim
            IF ( NormalTangential ) THEN
              SELECT CASE(i)
-                CASE(1)
-                  Vect = Normal
-                CASE(2)
-                  Vect = Tangent
-                CASE(3)
-                  Vect = Tangent2
+             CASE(1)
+               Vect = Normal
+             CASE(2)
+               Vect = Tangent
+             CASE(3)
+               Vect = Tangent2
              END SELECT
 
              DO ii = 1,dim
                DO jj = 1,dim
-                  k = (p-1)*ndim + ii
-                  l = (q-1)*ndim + jj
-                  DAMP(k,l)  = DAMP(k,l) + s * DampCoeff(i) * &
-                     Vect(ii) * Vect(jj) * Basis(q) * Basis(p)
+                 k = (p-1)*ndim + ii
+                 l = (q-1)*ndim + jj
 
-                  DO j=1,dim
-                    SELECT CASE(j)
-                       CASE(1)
-                         Vect2 = Normal
-                       CASE(2)
-                         Vect2 = Tangent
-                       CASE(3)
-                         Vect2 = Tangent2
-                    END SELECT
-                    STIFF(k,l) = STIFF(k,l) + s * SpringCoeff(i,j) * &
+                 DO j=1,dim
+                   SELECT CASE(j)
+                   CASE(1)
+                     Vect2 = Normal
+                   CASE(2)
+                     Vect2 = Tangent
+                   CASE(3)
+                     Vect2 = Tangent2
+                   END SELECT
+                   STIFF(k,l) = STIFF(k,l) + s * SpringCoeff(i,j) * &
                        Vect(ii) * Vect2(jj) * Basis(q) * Basis(p)
-                  END DO
+                   DAMP(k,l) = DAMP(k,l) + s * DampCoeff(i,j) * &
+                       Vect(ii) * Vect2(jj) * Basis(q) * Basis(p)
+                 END DO
                END DO
              END DO
            ELSE
-              k = (p-1)*ndim + i
-              l = (q-1)*ndim + i
-              DAMP(k,l)  = DAMP(k,l)  + s * DampCoeff(i) * Basis(q) * Basis(p)
+             k = (p-1)*ndim + i
+             l = (q-1)*ndim + i
 
-              DO j=1,dim
-                l = (q-1)*ndim + j
-                STIFF(k,l) = STIFF(k,l) + s * SpringCoeff(i,j) * Basis(q) * Basis(p)
-              END DO
+             DO j=1,dim
+               l = (q-1)*ndim + j
+               STIFF(k,l) = STIFF(k,l) + s * SpringCoeff(i,j) * Basis(q) * Basis(p)
+               DAMP(k,l) = DAMP(k,l) + s * DampCoeff(i,j) * Basis(q) * Basis(p)
+             END DO
            END IF
          END DO
        END DO
@@ -1247,26 +1251,26 @@ CONTAINS
      DO q=1,Ntot
        DO i=1,dim
          IF ( NormalTangential ) THEN
-            SELECT CASE(i)
-               CASE(1)
-                 Vect = Normal
-               CASE(2)
-                 Vect = Tangent
-               CASE(3)
-                 Vect = Tangent2
-            END SELECT
+           SELECT CASE(i)
+           CASE(1)
+             Vect = Normal
+           CASE(2)
+             Vect = Tangent
+           CASE(3)
+             Vect = Tangent2
+           END SELECT
 
-            DO j=1,dim
-               k = (q-1)*ndim + j
-               FORCE(k) = FORCE(k) + &
-                   s * Basis(q) * LoadAtIp(i) * Vect(j)
-               FORCE_im(k) = FORCE_im(k) + &
-                   s * Basis(q) * LoadAtIp_im(i) * Vect(j)
-            END DO
+           DO j=1,dim
+             k = (q-1)*ndim + j
+             FORCE(k) = FORCE(k) + &
+                 s * Basis(q) * LoadAtIp(i) * Vect(j)
+             FORCE_im(k) = FORCE_im(k) + &
+                 s * Basis(q) * LoadAtIp_im(i) * Vect(j)
+           END DO
          ELSE
-            k = (q-1)*ndim + i
-            FORCE(k) = FORCE(k) + s * Basis(q) * LoadAtIp(i)
-            FORCE_im(k) = FORCE_im(k) + s * Basis(q) * LoadAtIp_im(i)
+           k = (q-1)*ndim + i
+           FORCE(k) = FORCE(k) + s * Basis(q) * LoadAtIp(i)
+           FORCE_im(k) = FORCE_im(k) + s * Basis(q) * LoadAtIp_im(i)
          END IF
        END DO
      END DO

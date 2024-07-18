@@ -817,8 +817,17 @@ CONTAINS
           CoordScale(i) = 1.0_dp / TmpArray(j,1)
         END DO
       END IF
+    ELSE
+      ! Enable local coordinate scaling for convenience. 
+      TmpArray => ListGetConstRealArray( Params,'Coordinate Scaling',Found )    
+      IF( Found ) THEN            
+        DO i=1,Model % Mesh % MaxDim 
+          j = MIN( i, SIZE(TmpArray,1) )
+          CoordScale(i) = TmpArray(j,1)
+        END DO
+      END IF
     END IF
-
+      
     CoordOffset = 0.0_dp
     TmpArray => ListGetConstRealArray( Params,'Mesh Translate',Found )    
     IF( Found ) THEN            

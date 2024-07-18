@@ -24,6 +24,7 @@ Simulation
 
   !Post File = vectorhelmholtz.vtu
   Output Intervals(1) = 1
+!  Mesh Levels = 2
 End
 
 Constants
@@ -65,7 +66,10 @@ End
 
 Solver 1
   Equation = "VectorHelmholtz"
-  Use Piola Transform = Logical True
+  Use Piola Transform = True
+  Second Kind Basis = True
+!  Quadratic Approximation = True
+
   Procedure = "VectorHelmholtz" "VectorHelmholtzSolver"
 
   Linear System Symmetric = False
@@ -77,7 +81,7 @@ Solver 1
 
   Linear System Solver = String "Iterative"
   !Linear System Solver = String "Direct"
-  Linear System Iterative Method = String "bicgstabl"
+  Linear System Iterative Method = BiCGStabl
   BiCGstabl polynomial degree = Integer 4
   
   Linear System Preconditioning Damp Coefficient = Real 0.0
@@ -85,10 +89,10 @@ Solver 1
   Mass-proportional Damping = True
   !Linear System Preconditioning = String "boomerAMG"
   !Linear System Preconditioning = String "parasails"
-  !Linear System Preconditioning = String "vanka"
+  Linear System Preconditioning = String "vanka"
   !Linear System Preconditioning = String "None"
   !Linear System Preconditioning = String "diagonal"
-  Linear System Preconditioning = String "ILU0"
+  !Linear System Preconditioning = String "ILU0"
   Linear System ILUT Tolerance = Real 3e-3
   Linear System Max Iterations = Integer 4000
   Linear System Convergence Tolerance = 1.0e-7
@@ -106,10 +110,10 @@ Solver 2
 
   Procedure = "VectorHelmholtz" "VectorHelmholtzCalcFields"
 
-  Calculate Elemental Fields = Logical True
+  Calculate Elemental Fields = True
   Calculate Magnetic Field Strength = Logical True
   Calculate Magnetic Flux Density = Logical True
-  Calculate Poynting vector = Logical True
+  !Calculate Poynting vector = Logical True
   !Calculate Div of Poynting Vector = Logical True
   Calculate Electric field = Logical True
   Calculate Energy Functional = Logical True
@@ -134,11 +138,12 @@ Solver 4
   !Equation = VtuOutput
   Equation = "result output"
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
-  Output File Name = TM
+  Output File Name = TM_2ndkind
   Vtu Format = Logical True
   !GMSH Format = Logical True
   !Single Precision = Logical True
   !Save Bulk Only = True
+  Discontinuous Bodies = True
 End 
 
 Boundary Condition 1
@@ -166,7 +171,7 @@ End
 ! + the do-nothing BC on the boundaries 2 and 5 to set n x curl E = 0 
 
 
-Solver 1 :: Reference Norm = 3.86725348E-03
-Solver 1 :: Reference Norm Tolerance = 1e-3
-Solver 2 :: Reference Norm = 3.83939406E-05
-Solver 2 :: Reference Norm Tolerance = 1e-3
+Solver 1 :: Reference Norm = 1.93829545E-03
+Solver 1 :: Reference Norm Tolerance = 1e-4
+Solver 2 :: Reference Norm = 3.44478182E-01
+Solver 2 :: Reference Norm Tolerance = 1e-4

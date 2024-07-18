@@ -132,6 +132,32 @@ int GetMaxElementDimension(struct FemType *data)
 }
 
 
+int GetMaxBodyIndex(struct FemType *data) {
+  int i,maxind;
+  
+  maxind = 0;
+  for(i=1; i <= data->noelements; i++) 
+    maxind = MAX(maxind, data->material[i]);
+  return(maxind);
+}
+
+int GetMaxBCIndex(struct BoundaryType *bound) {
+  int i,j,maxind;
+  
+  maxind = 0;
+  for(j=0;j < MAXBOUNDARIES;j++) {
+    if(bound[j].created == FALSE) continue;
+    if(bound[j].nosides == 0) continue;
+    
+    for(i=1; i <= bound[j].nosides; i++) 
+      maxind = MAX(maxind, bound[j].types[i]);
+  }
+  return(maxind);
+}
+
+
+
+
 int GetCoordinateDimension(struct FemType *data,int info)
 {
   int i,j,noknots,coorddim;
@@ -907,7 +933,6 @@ void InitializeKnots(struct FemType *data)
   for(i=0;i<MAXDOFS;i++) {
     data->edofs[i] = 0;
     data->bandwidth[i] = 0;
-    data->iterdofs[i] = 0;
     strcpy(data->dofname[i],""); 
   }
 
@@ -1299,15 +1324,8 @@ void CreateKnots(struct GridType *grid,struct CellType *cell,
   data->numbering = grid->numbering;
   data->indexwidth = grid->maxwidth;
   data->noknots = MAX(noknots,grid->noknots);
-
   data->noboundaries = grid->noboundaries;
-  for(i=0;i<MAXBOUNDARIES;i++) {
-    data->boundint[i] = grid->boundint[i];
-    data->boundext[i] = grid->boundext[i];
-    data->boundsolid[i] = grid->boundsolid[i];
-    data->boundtype[i] = grid->boundtype[i];
-  }
-
+  
   AllocateKnots(data);
   minsize = 1.0e20;
 
@@ -1526,7 +1544,6 @@ int CreateVariable(struct FemType *data,int variable,int unknowns,
 		    dofname,data->alldofs[variable]);
     for(i=1;i<=data->alldofs[variable]*timesteps;i++)
       data->dofs[variable][i] = value;  
-    data->iterdofs[variable] = 1;
   }
   else if (data->edofs[variable] == unknowns) {
     if(info) printf("CreateVariable: Variable %d exists with correct number of dofs!\n",
@@ -1537,18 +1554,7 @@ int CreateVariable(struct FemType *data,int variable,int unknowns,
 		    variable);
     return(2);
   }  
-
-
-  if(eorder) {
-    if (data->eorder[variable] == FALSE) {
-      data->eorder[variable] = TRUE;
-      data->order[variable] = Ivector(1,data->alldofs[variable]);
-      for(i=1;i<=data->alldofs[variable];i++)
-	data->order[variable][i] = i;
-    }
-    if(info) printf("Created index for variable %s.\n",dofname);
-  }
-
+  
   strcpy(data->dofname[variable],dofname);
 
   return(0);
@@ -1818,30 +1824,6 @@ int DestroyBoundary(struct BoundaryType *bound)
 #if DEBUG
   printf("%d element sides were destroyed.\n",nosides); 
 #endif
-  return(0);
-}
-
-
-
-int CreateBoundaries(struct CellType *cell,struct FemType *data,
-		     struct BoundaryType *boundaries,int info)
-{
-  int i,j;
- 
-  j = 0;
-  if(data->noboundaries > 0) 
-    for(i=0;i<data->noboundaries;i++) {
-      while(boundaries[j].created) {
-	j++;
-	if(j >= MAXBOUNDARIES) {
-	  printf("CreateBoundaries: too many boundaries %d\n",j);
-	  return(1);
-	}
-      } 
-      CreateBoundary(cell,data,&boundaries[j],
-		     data->boundext[i],data->boundint[i],
-		     data->boundsolid[i],data->boundtype[i],info);
-    }
   return(0);
 }
 
@@ -4117,7 +4099,7 @@ void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
 	  boundaryname0[j] = NULL;
 	
 	/* We need some temporal place is name mapping might not be unique */
-	for(j=minbc;j<=MIN(maxbc,MAXBODIES-1);j++) {
+	for(j=minbc;j<=MIN(maxbc,MAXBCS-1);j++) {
 	  k = 0;
 	  for(elemdim=2;elemdim>=0;elemdim--) {	    
 	    k = mapbc[j][elemdim];
@@ -4133,7 +4115,7 @@ void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
 	  }
 	}
 	
-	for(j=minbc;j<=MIN(maxbc,MAXBODIES-1);j++) {
+	for(j=minbc;j<=MIN(maxbc,MAXBCS-1);j++) {
 	  k = 0;
 	  for(elemdim=2;elemdim>=0;elemdim--) {	    	   	    
 	    k = mapbc[j][elemdim];
@@ -4160,7 +4142,7 @@ void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
 	bound[j].types[i] += bcoffset;
     }
     if(data->boundarynamesexist) {
-      for(j=MAXBOUNDARIES-bcoffset-1;j>=0;j--) {
+      for(j=MAXBCS-bcoffset-1;j>=0;j--) {
 	k = j+bcoffset;
 	if(!data->boundaryname[k]) data->boundaryname[k] = Cvector(0,MAXNAMESIZE);
 	strcpy(data->boundaryname[k],data->boundaryname[j]);
@@ -6212,7 +6194,7 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
 	strcpy(data->bodyname[i],dataxy->bodyname[i]);
       }
     }
-    for(i=1;i< MAXBOUNDARIES;i++) { 
+    for(i=1;i< MAXBCS;i++) { 
       if(dataxy->boundaryname[i]) {
 	if(!data->boundaryname[i]) data->boundaryname[i] = Cvector(0,MAXNAMESIZE);
 	strcpy(data->boundaryname[i],dataxy->boundaryname[i]);
@@ -7289,7 +7271,7 @@ void ElementsToBoundaryConditions(struct FemType *data,
 	  }		
 	  if(movenames) {
 	    data->boundarynamesexist = TRUE;
-	    if(material < MAXBODIES && material < MAXBOUNDARIES) {
+	    if(material < MAXBODIES && material < MAXBCS) {
 	      if(!data->boundaryname[material]) {
 		data->boundaryname[material] = Cvector(0,MAXNAMESIZE);
 		if(data->bodyname[material]) {

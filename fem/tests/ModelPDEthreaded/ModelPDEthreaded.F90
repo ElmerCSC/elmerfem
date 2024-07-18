@@ -143,9 +143,8 @@ CONTAINS
     REAL(KIND=dp), POINTER CONTIG :: diff_coeff(:), conv_coeff(:), react_coeff(:), &
          time_coeff(:), Load(:), Velo(:,:), LoadAtIp(:), &
          DiffInBasis(:), ReactInBasis(:), ConvInBasis(:), VeloInBasis(:,:), rho(:)
-    REAL(KIND=dp) :: Weight
     LOGICAL :: Stat,Found
-    INTEGER :: i,t,p,q,dim,ngp,allocstat
+    INTEGER :: i,t,dim,ngp,allocstat
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BodyForce, Material
     TYPE(Nodes_t), SAVE :: Nodes
@@ -325,10 +324,10 @@ CONTAINS
     LOGICAL :: VecAsm
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Flux(n), RobinCoeff(n), Ext_t(n), F,C,Ext, Weight
-    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,LoadAtIP
+    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), LOAD(n)
     LOGICAL :: Stat,Found
-    INTEGER :: i,t,p,q,dim
+    INTEGER :: t,p,q,dim
     TYPE(GaussIntegrationPoints_t) :: IP
 
     TYPE(ValueList_t), POINTER :: BC
@@ -401,7 +400,7 @@ CONTAINS
     REAL(KIND=dp) :: K(:,:),F(:),Kbb(Nb,Nb), &
          Kbl(Nb,N), Klb(N,Nb), Fb(Nb)
 
-    INTEGER :: m, i, j, l, p, Ldofs(N), Bdofs(Nb)
+    INTEGER :: i, Ldofs(N), Bdofs(Nb)
 
     IF ( Nb <= 0 ) RETURN
 

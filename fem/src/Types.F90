@@ -130,7 +130,7 @@ MODULE Types
 
 
   TYPE SubVector_t
-    TYPE(Variable_t), POINTER :: Var
+    TYPE(Variable_t), POINTER :: Var => NULL()
     REAL(KIND=dp) :: rnorm, bnorm, xnorm
     REAL(KIND=dp), ALLOCATABLE :: rhs(:)
     REAL(KIND=dp), ALLOCATABLE :: DiagScaling(:)
@@ -138,8 +138,8 @@ MODULE Types
   END TYPE SubVector_t
 
   TYPE SubMatrix_t
-    TYPE(Matrix_t), POINTER :: Mat
-    TYPE(Matrix_t), POINTER :: PrecMat
+    TYPE(Matrix_t), POINTER :: Mat => NULL()
+    TYPE(Matrix_t), POINTER :: PrecMat => NULL()
     LOGICAL :: ParallelSquareMatrix = .TRUE.
     LOGICAL :: ParallelIsolatedMatrix = .FALSE.
     INTEGER, POINTER :: ParPerm(:) => NULL()
@@ -181,8 +181,17 @@ MODULE Types
   END TYPE CPardiso_struct
 #endif     
 
+
+#ifdef HAVE_ROCALUTION
+  TYPE RocParams_t
+    TYPE(Matrix_t), POINTER :: Rmatrix => Null()
+    INTEGER, POINTER :: CntPerm(:)=> Null(), LocPerm(:) => Null(), gOffset(:) => Null()
+  END TYPE RocParams_t
+#endif
+
+
   TYPE Matrix_t
-    TYPE(Matrix_t), POINTER :: Child => NULL(), Parent => NULL(), CircuitMatrix => Null(), &
+    TYPE(Matrix_t), POINTER :: Child => NULL(), Parent => NULL(), CircuitMatrix => NULL(), &
         ConstraintMatrix=>NULL(), EMatrix=>NULL(), AddMatrix=>NULL(), CollectionMatrix=>NULL()
 
     INTEGER :: NumberOfRows, ExtraDOFs=0, ParallelDOFs=0
@@ -211,14 +220,14 @@ MODULE Types
     REAL(KIND=dp), POINTER CONTIG :: BulkResidual(:)=>NULL()
 
     REAL(KIND=dp),  POINTER CONTIG :: Values(:)=>NULL(), ILUValues(:)=>NULL(), &
-               DiagScaling(:) => NULL(), TValues(:) => NULL(), Values_im(:)
+               DiagScaling(:) => NULL(), TValues(:) => NULL(), Values_im(:) => NULL()
 
     REAL(KIND=dp), ALLOCATABLE :: extraVals(:)
     REAL(KIND=dp) :: RhsScaling=1.0, AveScaling=1.0 
     INTEGER :: ScalingMethod = 0
     REAL(KIND=dp),  POINTER CONTIG :: MassValues(:)=>NULL(),DampValues(:)=>NULL(), &
         BulkValues(:)=>NULL(), BulkMassValues(:)=>NULL(), BulkDampValues(:)=>NULL(), &
-        PrecValues(:)=>NULL(), HaloValues(:)=>Null(), HaloMassValues(:)=>Null()
+        PrecValues(:)=>NULL(), HaloValues(:)=>NULL(), HaloMassValues(:)=>NULL()
 
 #ifdef HAVE_FETI4I
     TYPE(C_PTR) :: PermonMatrix = C_NULL_PTR, PermonSolverInstance = C_NULL_PTR
@@ -249,6 +258,9 @@ MODULE Types
 #ifdef HAVE_TRILINOS
     INTEGER(KIND=C_INTPTR_T) :: Trilinos=0
 #endif
+#ifdef HAVE_ROCALUTION
+    TYPE(RocParams_t) :: RocParams
+#endif
     INTEGER(KIND=C_INTPTR_T) :: AMGX=0, AMGXMV=0
     INTEGER(KIND=AddrInt) :: SpMV=0
 
@@ -277,16 +289,15 @@ MODULE Types
 !------------------------------------------------------------------------------
 
   TYPE ParEnv_t
-     INTEGER                          :: PEs
-     INTEGER                          :: MyPE
-     LOGICAL                          :: Initialized
-     INTEGER                          :: ActiveComm
-     LOGICAL, DIMENSION(:), POINTER   :: Active
-     LOGICAL, DIMENSION(:), POINTER   :: IsNeighbour
-     LOGICAL, DIMENSION(:), POINTER   :: SendingNB
-     INTEGER                          :: NumOfNeighbours
+     INTEGER                          :: PEs  = 1
+     INTEGER                          :: MyPE = 0
+     LOGICAL                          :: Initialized = .FALSE.
+     INTEGER                          :: ActiveComm  = 0
+     LOGICAL, DIMENSION(:), POINTER   :: Active => Null()
+     LOGICAL, DIMENSION(:), POINTER   :: IsNeighbour => Null()
+     INTEGER                          :: NumOfNeighbours = 0
      INTEGER                          :: NumberOfThreads = 1
-     LOGICAL                          :: ExternalInit
+     LOGICAL                          :: ExternalInit = .FALSE.
    END TYPE ParEnv_t
 
 
@@ -348,12 +359,12 @@ MODULE Types
   TYPE SParIterSolverGlobalD_t
      TYPE (SplittedMatrixT), POINTER :: SplittedMatrix=>NULL()
      TYPE (Matrix_t), POINTER :: Matrix=>NULL()
-     TYPE (ParallelInfo_t), POINTER :: ParallelInfo=>NULL()
-     TYPE(ParEnv_t) :: ParEnv
      INTEGER :: DOFs, RelaxIters
+     TYPE(ParEnv_t) :: ParEnv
+     TYPE (ParallelInfo_t), POINTER :: ParallelInfo=>NULL()
   END TYPE SParIterSolverGlobalD_t
 
-  TYPE(SParIterSolverGlobalD_t), POINTER :: ParMatrix
+  TYPE(SParIterSolverGlobalD_t), POINTER :: ParMatrix => NULL()
 
 !-------------------------------------------------------------------------------
 
@@ -386,7 +397,7 @@ MODULE Types
      REAL(KIND=dp) :: StabilizationMK               ! stab.param. depending on
                                                     ! interpolation type
 
-     TYPE(BasisFunctions_t), POINTER :: BasisFunctions(:)
+     TYPE(BasisFunctions_t), POINTER :: BasisFunctions(:) => NULL()
      REAL(KIND=dp), DIMENSION(:), ALLOCATABLE :: NodeU, NodeV, NodeW
      REAL(KIND=dp), DIMENSION(:), ALLOCATABLE :: P_NodeU, P_NodeV, P_NodeW
      REAL(KIND=dp), DIMENSION(:), ALLOCATABLE :: N_NodeU, N_NodeV, N_NodeW
@@ -395,14 +406,16 @@ MODULE Types
 !------------------------------------------------------------------------------
    TYPE ValueListEntry_t
      INTEGER :: Type
-     TYPE(ValueListEntry_t), POINTER :: Next => Null()
+     TYPE(ValueListEntry_t), POINTER :: Next => NULL()
 
-     REAL(KIND=dp), POINTER :: TValues(:), Cumulative(:) => NULL()
-     REAL(KIND=dp), POINTER :: FValues(:,:,:), CubicCoeff(:)=>NULL()
+     REAL(KIND=dp), POINTER :: TValues(:) => NULL()
+     REAL(KIND=dp), POINTER :: Cumulative(:) => NULL()
+     REAL(KIND=dp), POINTER :: FValues(:,:,:) => NULL()
+     REAL(KIND=dp), POINTER :: CubicCoeff(:) => NULL()
      INTEGER :: Fdim = 0 
      
      LOGICAL :: LValue
-     INTEGER, POINTER :: IValues(:)
+     INTEGER, POINTER :: IValues(:) => NULL()
 
      INTEGER(KIND=AddrInt) :: PROCEDURE
 
@@ -425,7 +438,7 @@ MODULE Types
    END TYPE ValueListEntry_t
 
    TYPE ValueList_t
-     TYPE(ValueListEntry_t), POINTER :: Head => Null()
+     TYPE(ValueListEntry_t), POINTER :: Head => NULL()
    END TYPE ValueList_t
 
    
@@ -446,16 +459,16 @@ MODULE Types
      INTEGER :: ListId = -1
      LOGICAL :: BulkElement
      TYPE(Element_t), POINTER :: Element => NULL()
-     TYPE(ValueList_t), POINTER :: List => Null()
-     TYPE(ValueList_t), POINTER :: Ptr  => Null()
-     TYPE(Nodes_t), POINTER :: Nodes
-     INTEGER, POINTER :: Indexes
+     TYPE(ValueList_t), POINTER :: List => NULL()
+     TYPE(ValueList_t), POINTER :: Ptr  => NULL()
+     TYPE(Nodes_t), POINTER :: Nodes => NULL()
+     INTEGER, POINTER :: Indexes => NULL()
      INTEGER :: n
      INTEGER :: nValuesVec = 0
      REAL(KIND=dp), POINTER :: ValuesVec(:) => NULL()
      REAL(KIND=dp), POINTER :: Values(:) => NULL()
      REAL(KIND=dp), POINTER :: ParValues(:,:) => NULL()
-     LOGICAL, POINTER :: ParUsed(:)
+     LOGICAL, POINTER :: ParUsed(:) => NULL()
      INTEGER :: ParNo = 0
      INTEGER :: IValue, DefIValue = 0
      REAL(KIND=dp) :: RValue, DefRValue = 0.0_dp
@@ -497,7 +510,7 @@ MODULE Types
      INTEGER,POINTER :: Perm(:)=>NULL()
      INTEGER :: dofs
      INTEGER :: tstep = 0
-     TYPE(Element_t), POINTER :: Element
+     TYPE(Element_t), POINTER :: Element=>NULL()
      LOGICAL :: ActiveElement = .FALSE.
      LOGICAL :: Found
      INTEGER :: Indexes(100)     
@@ -508,7 +521,7 @@ MODULE Types
 !------------------------------------------------------------------------------
 
    TYPE MaterialArray_t
-     TYPE(ValueList_t), POINTER :: Values => Null()
+     TYPE(ValueList_t), POINTER :: Values => NULL()
    END TYPE MaterialArray_t
 
 !------------------------------------------------------------------------------
@@ -516,44 +529,44 @@ MODULE Types
    TYPE BoundaryConditionArray_t
      INTEGER :: Tag=0
      TYPE(Matrix_t), POINTER :: PMatrix => NULL()
-     TYPE(ValueList_t), POINTER :: Values => Null()
+     TYPE(ValueList_t), POINTER :: Values => NULL()
    END TYPE BoundaryConditionArray_t
 
 !------------------------------------------------------------------------------
 
    TYPE InitialConditionArray_t
      INTEGER :: Tag=0
-     TYPE(ValueList_t), POINTER :: Values => Null()
+     TYPE(ValueList_t), POINTER :: Values => NULL()
    END TYPE InitialConditionArray_t
 
 !------------------------------------------------------------------------------
 
     TYPE ComponentArray_t
-      TYPE(ValueList_t), POINTER :: Values => Null()
+      TYPE(ValueList_t), POINTER :: Values => NULL()
     END TYPE ComponentArray_t
 
 !------------------------------------------------------------------------------
 
     TYPE BodyForceArray_t
-      TYPE(ValueList_t), POINTER :: Values => Null()
+      TYPE(ValueList_t), POINTER :: Values => NULL()
     END TYPE BodyForceArray_t
 
 !------------------------------------------------------------------------------
 
     TYPE BoundaryArray_t
-      TYPE(ValueList_t), POINTER :: Values => Null()
+      TYPE(ValueList_t), POINTER :: Values => NULL()
     END TYPE BoundaryArray_t
 
 !------------------------------------------------------------------------------
 
     TYPE BodyArray_t
-      TYPE(ValueList_t), POINTER :: Values => Null()
+      TYPE(ValueList_t), POINTER :: Values => NULL()
     END TYPE BodyArray_t
 
 !------------------------------------------------------------------------------
 
     TYPE EquationArray_t
-      TYPE(ValueList_t), POINTER :: Values => Null()
+      TYPE(ValueList_t), POINTER :: Values => NULL()
     END TYPE EquationArray_t
 
 !------------------------------------------------------------------------------
@@ -570,7 +583,7 @@ MODULE Types
     
    TYPE IntegrationPointsTable_t
      INTEGER :: IPCount = 0
-     INTEGER, POINTER :: IPOffset(:)
+     INTEGER, POINTER :: IPOffset(:) => NULL()
      !TYPE(GaussIntegrationPoints_t), POINTER :: IPs
    END TYPE IntegrationPointsTable_t
       
@@ -636,7 +649,7 @@ MODULE Types
    
    TYPE ListMatrix_t
      INTEGER :: Degree, Level
-     TYPE(ListMatrixEntry_t), POINTER :: Head
+     TYPE(ListMatrixEntry_t), POINTER :: Head => NULL()
    END TYPE ListMatrix_t
 
    TYPE ListMatrixArray_t
@@ -704,13 +717,13 @@ MODULE Types
       INTEGER :: GaussPoints     ! Number of gauss points to use when using p elements
       LOGICAL :: Serendipity=.TRUE.     ! Is this a serendipity of complete basis element ?
       INTEGER :: localNumber     ! Local number of an edge or face for element on boundary
-      TYPE(Element_t), POINTER :: localParent => Null()     ! Local number of an edge or face for element on boundary
+      TYPE(Element_t), POINTER :: localParent => NULL()     ! Local number of an edge or face for element on boundary
    END TYPE PElementDefs_t
 
 !-------------------------------------------------------------------------------
 
    TYPE NeighbourList_t
-     INTEGER, DIMENSION(:), POINTER :: Neighbours
+     INTEGER, DIMENSION(:), POINTER :: Neighbours=>NULL()
    END TYPE NeighbourList_t
 
 !------------------------------------------------------------------------------
@@ -731,7 +744,7 @@ MODULE Types
 !------------------------------------------------------------------------------
 
    TYPE QuadrantPointer_t
-     TYPE(Quadrant_t), POINTER :: Quadrant
+     TYPE(Quadrant_t), POINTER :: Quadrant=>NULL()
    END TYPE QuadrantPointer_t
 
 !------------------------------------------------------------------------------
@@ -740,15 +753,15 @@ MODULE Types
      INTEGER, DIMENSION(:), POINTER :: Elements
      REAL(KIND=dp) :: SIZE, MinElementSize, BoundingBox(6)
      INTEGER :: NElemsInQuadrant
-     TYPE(QuadrantPointer_t), DIMENSION(:), POINTER :: ChildQuadrants
+     TYPE(QuadrantPointer_t), DIMENSION(:), POINTER :: ChildQuadrants=>NULL()
    END TYPE Quadrant_t
 
 !------------------------------------------------------------------------------
 
    TYPE Projector_t
-     TYPE(Projector_t), POINTER :: Next
-     TYPE(Mesh_t), POINTER :: Mesh
-     TYPE(Matrix_t), POINTER :: Matrix, TMatrix
+     TYPE(Projector_t), POINTER :: Next=>NULL()
+     TYPE(Mesh_t), POINTER :: Mesh=>NULL()
+     TYPE(Matrix_t), POINTER :: Matrix=>NULL(), TMatrix=>NULL()
    END TYPE Projector_t
 
 
@@ -785,20 +798,20 @@ MODULE Types
 
    TYPE Mesh_t
      CHARACTER(MAX_NAME_LEN) :: Name
-     TYPE(Mesh_t), POINTER   :: Next,Parent,Child
+     TYPE(Mesh_t), POINTER   :: Next => NULL(), Parent => NULL(), Child => NULL()
 
-     TYPE(Projector_t), POINTER :: Projector
-     TYPE(Quadrant_t), POINTER  :: RootQuadrant
+     TYPE(Projector_t), POINTER :: Projector => NULL()
+     TYPE(Quadrant_t), POINTER  :: RootQuadrant => NULL()
 
      LOGICAL :: Changed, OutputActive, Stabilize = .FALSE.
      INTEGER :: SavesDone, AdaptiveDepth, MeshTag = 1
      LOGICAL :: AdaptiveFinished = .FALSE.
 
-     TYPE(Factors_t), POINTER :: ViewFactors(:)
+     TYPE(Factors_t), POINTER :: ViewFactors(:)=>NULL()
      TYPE(FactorsStore_t), ALLOCATABLE :: VFStore(:)
 
      TYPE(ParallelInfo_t) :: ParallelInfo
-     TYPE(Variable_t), POINTER :: Variables
+     TYPE(Variable_t), POINTER :: Variables => NULL()
 
      TYPE(Nodes_t), POINTER :: Nodes => NULL()
      TYPE(Element_t), DIMENSION(:), POINTER :: Elements => NULL(), &
@@ -815,7 +828,7 @@ MODULE Types
      INTEGER, POINTER :: PeriodicPerm(:) => NULL()
      LOGICAL, POINTER :: PeriodicFlip(:) => NULL()
      
-     INTEGER, POINTER :: InvPerm(:)
+     INTEGER, POINTER :: InvPerm(:) => NULL()
 
      INTEGER :: NumberOfNodes, NumberOfBulkElements, NumberOfEdges, &
                 NumberOfFaces, NumberOfBoundaryElements, MeshDim = 0, MaxDim = 0, PassBCcnt=0
@@ -824,8 +837,8 @@ MODULE Types
      INTEGER :: MaxNDOFs ! The maximum of nodal DOFs per node (created with a flag "n:")
 
      LOGICAL :: EntityWeightsComputed 
-     REAL(KIND=dp), POINTER :: BCWeight(:), BodyForceWeight(:),&
-         BodyWeight(:), MaterialWeight(:)
+     REAL(KIND=dp), POINTER :: BCWeight(:) => NULL(), BodyForceWeight(:) => NULL(),&
+         BodyWeight(:) => NULL(), MaterialWeight(:) => NULL()
 
      INTEGER, POINTER :: RePartition(:) => NULL()
      TYPE(NeighbourList_t), POINTER :: Halo(:) => NULL()
@@ -871,9 +884,18 @@ MODULE Types
      REAL(KIND=dp), POINTER :: CMatrixIm(:,:) => NULL()                
      REAL(KIND=dp), POINTER :: Crhs(:) => NULL()
      REAL(KIND=dp), POINTER :: CrhsIm(:) => NULL()
+     REAL(KIND=dp), POINTER :: ImpRe(:) => NULL()
+     REAL(KIND=dp), POINTER :: ImpIm(:) => NULL()     
    END TYPE LumpedModel_t
 
-        
+
+   TYPE LocalSystemStorage_t
+     INTEGER :: n = -1                            ! Size of local matrix assembled
+     REAL(KIND=dp), ALLOCATABLE ::  K(:,:), F(:)  ! Local stiffness matrix and force
+     INTEGER :: eind = -1                         ! Pointer to the active element that holds this element matrix storage.
+   END TYPE LocalSystemStorage_T
+   
+   
 !------------------------------------------------------------------------------
 
     TYPE Solver_t
@@ -926,7 +948,9 @@ MODULE Types
 
       INTEGER :: NumberOfConstraintModes = -1 
       TYPE(LumpedModel_t), POINTER :: Lumped => NULL()
-      
+
+      INTEGER :: LocalSystemMode = -1
+      TYPE(LocalSystemStorage_t), POINTER :: LocalSystem(:) => NULL()
     END TYPE Solver_t
 
 !------------------------------------------------------------------------------
@@ -936,7 +960,7 @@ MODULE Types
   TYPE CircuitVariable_t
     LOGICAL :: isIvar, isVvar
     INTEGER :: BodyId, valueId, ImValueId, dofs, pdofs, Owner, ComponentId
-    TYPE(Component_t), POINTER :: Component => Null()
+    TYPE(Component_t), POINTER :: Component => NULL()
     REAL(KIND=dp), ALLOCATABLE :: A(:), B(:)
     REAL(KIND=dp), ALLOCATABLE :: SourceRe(:), SourceIm(:), Mre(:), Mim(:)
     INTEGER, ALLOCATABLE :: EqVarIds(:)
@@ -947,10 +971,10 @@ MODULE Types
          N_j, coilthickness, i_multiplier_re, i_multiplier_im, nofturns, &
          VoltageFactor=1._dp, SymmetryCoeff=1._dp
     INTEGER :: polord, nofcnts, BodyId, ComponentId
-    INTEGER, POINTER :: ElBoundaries(:) => Null()
-    INTEGER, POINTER :: BodyIds(:) => Null()
+    INTEGER, POINTER :: ElBoundaries(:) => NULL()
+    INTEGER, POINTER :: BodyIds(:) => NULL()
     CHARACTER(:), ALLOCATABLE :: CoilType, ComponentType
-    TYPE(CircuitVariable_t), POINTER :: ivar, vvar
+    TYPE(CircuitVariable_t), POINTER :: ivar=>NULL(), vvar=>NULL()
     LOGICAL :: UseCoilResistance = .FALSE.
   END TYPE Component_t
 
@@ -962,8 +986,8 @@ MODULE Types
     INTEGER :: n, m, n_comp,CvarDofs
 !   CHARACTER(:), ALLOCATABLE :: names(:), source(:)
     CHARACTER(MAX_NAME_LEN), ALLOCATABLE :: names(:), source(:)
-    TYPE(Component_t), POINTER :: Components(:)
-    TYPE(CircuitVariable_t), POINTER :: CircuitVariables(:)
+    TYPE(Component_t), POINTER :: Components(:)=>NULL()
+    TYPE(CircuitVariable_t), POINTER :: CircuitVariables(:)=>NULL()
   END TYPE Circuit_t
 !-------------------Circuit stuff----------------------------------------------
 
@@ -983,19 +1007,19 @@ MODULE Types
 !
 !     Simulation input data, that concern the model as a whole
 !
-      TYPE(ValueList_t), POINTER :: Simulation => Null()
+      TYPE(ValueList_t), POINTER :: Simulation => NULL()
 !
 !     Variables
 !
       TYPE(Variable_t), POINTER  :: Variables => NULL()
 
 !     External control of the simulation to sweep over parameter space.
-      TYPE(ValueList_t), POINTER :: Control => Null()
+      TYPE(ValueList_t), POINTER :: Control => NULL()
       
 !     Some physical constants, that will be read from the database or set by
 !     other means: gravity direction/intensity and Stefan-Boltzmann constant)
 !
-      TYPE(ValueList_t), POINTER :: Constants => Null()
+      TYPE(ValueList_t), POINTER :: Constants => NULL()
 !
 !     Types  of  equations (flow,heat,...) and  some  parameters (for example
 !     laminar or turbulent flow or type of convection model for heat equation,
@@ -1075,16 +1099,16 @@ MODULE Types
       INTEGER :: TotalMatrixElements = 0
       INTEGER, POINTER :: RowNonzeros(:) => NULL()
 
-      TYPE(Mesh_t), POINTER :: Meshes
+      TYPE(Mesh_t), POINTER :: Meshes => NULL()
 
       TYPE(Mesh_t),   POINTER :: Mesh   => NULL()
       TYPE(Solver_t), POINTER :: Solver => NULL()
       
       ! Circuits:
-      INTEGER, POINTER :: n_Circuits=>Null(), Circuit_tot_n=>Null()
-      TYPE(Matrix_t), POINTER :: CircuitMatrix => Null()
-      TYPE(Circuit_t), POINTER :: Circuits(:) => Null()
-      TYPE(Solver_t), POINTER :: ASolver    
+      INTEGER, POINTER :: n_Circuits => NULL(), Circuit_tot_n => NULL()
+      TYPE(Matrix_t), POINTER :: CircuitMatrix => NULL()
+      TYPE(Circuit_t), POINTER :: Circuits(:) => NULL()
+      TYPE(Solver_t), POINTER :: ASolver => NULL()
       
       LOGICAL :: HarmonicCircuits
 
@@ -1093,8 +1117,8 @@ MODULE Types
       
     END TYPE Model_t
 
-    TYPE(Model_t),  POINTER :: CurrentModel
-    TYPE(Matrix_t), POINTER :: GlobalMatrix
+    TYPE(Model_t),  POINTER :: CurrentModel => NULL()
+    TYPE(Matrix_t), POINTER :: GlobalMatrix => NULL()
 
     INTEGER :: ELMER_COMM_WORLD = -1
 

@@ -122,6 +122,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
   USE Interpolation
+  USE ElementUtils
   USE SaveUtils
   
   IMPLICIT NONE
@@ -138,8 +139,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   TYPE(ValueListEntry_t), POINTER :: Lst
   TYPE(Variable_t), POINTER :: Var, OldVar, Var2, Var3
   TYPE(Mesh_t), POINTER :: Mesh
-  TYPE(Element_t),POINTER :: Element
   TYPE(Nodes_t) :: ElementNodes
+  TYPE(Element_t),POINTER :: Element
 
   LOGICAL :: MovingMesh, GotCoeff, &
       GotIt, GotOper, GotParOper, GotVar, GotOldVar, ExactCoordinates, VariablesExist, &
@@ -149,15 +150,20 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       MaterialOper, MaskOper, GotMaskName, GotOldOper, ElementalVar, ComponentVar, &
       Numbering, NodalOper, GotNodalOper, SaveFluxRange, PosOper, NegOper, SaveJson, &
       StartNewFile, SimulationVisited
-  LOGICAL, POINTER :: ValuesInteger(:)
+
+  LOGICAL, ALLOCATABLE :: ValuesInteger(:)
+
   LOGICAL, ALLOCATABLE :: ActiveBC(:)
+
   REAL (KIND=DP) :: Minimum, Maximum, AbsMinimum, AbsMaximum, &
       Mean, Variance, MinDist, x, y, z, Vol, Intmean, intvar, &
       KineticEnergy, PotentialEnergy, &
       Coords(3), LocalCoords(3), TempCoordinates(3), Val, Val2, &
       Change = 0._dp, Norm = 0.0_dp, PrevNorm, ParallelHits, ParallelCands
+
   REAL (KIND=DP), ALLOCATABLE :: Values(:), &
       CoordinateBasis(:), ElementValues(:), BoundaryFluxes(:),BoundaryAreas(:)
+
   REAL (KIND=DP), POINTER :: PointCoordinates(:,:), LineCoordinates(:,:), WrkPntr(:)
   INTEGER, ALLOCATABLE :: BoundaryHits(:)
   INTEGER, POINTER :: PointIndex(:), NodeIndexes(:), SaveIndex(:)
@@ -423,11 +429,9 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   ALLOCATE( ActiveBC( Model % NumberOfBCs ), STAT=istat )
   IF( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error 3') 	
 
-
   ComplexEigenVectors = ListGetLogical(Params,'Complex Eigen Vectors',GotIt)
   
-    
-   
+      
   !------------------------------------------------------------------------------
   ! Go through the variables and compute the desired statistical data
   !------------------------------------------------------------------------------
@@ -1121,10 +1125,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       Coords(1:NoDims) = PointCoordinates(k,1:NoDims)
       IF(NoDims < 3 ) Coords(NoDims+1:3) = 0.0_dp
 
-      ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
-      ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
-      ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
-               
+      CALL CopyElementNodesFromMesh( ElementNodes, Mesh, n, NodeIndexes)
+      
       Hit = PointInElement( Element, ElementNodes, &
           Coords, LocalCoords, GlobalEps = 1.0_dp, LocalEps=0.1_dp )	          
 
@@ -1557,15 +1559,12 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   END IF
 
   
-  IF( NoElements > 0 ) THEN
-    DEALLOCATE( ElementNodes % x, ElementNodes % y, ElementNodes % z)
-  END IF
+  DEALLOCATE( ElementNodes % x, ElementNodes % y, ElementNodes % z )
 
   n = 1
   n = ParallelReduction(n) 
 
   PrevRunInd = RunInd
-
 
   IF( PrevComm > 0 ) ParEnv % ActiveComm = PrevComm
 
@@ -1634,9 +1633,11 @@ CONTAINS
     INTEGER :: i,n
     REAL(KIND=dp) :: ParVal
     CHARACTER(LEN=MAX_NAME_LEN) :: Str, ParOper
+
+    LOGICAL, ALLOCATABLE :: TmpValuesInteger(:)     
     REAL(KIND=dp), ALLOCATABLE :: TmpValues(:)
     CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: TmpValueNames(:)
-    LOGICAL, POINTER :: TmpValuesInteger(:)     
+
     TYPE(Variable_t), POINTER :: TargetVar
     INTEGER :: MPIOper
     INTEGER :: istat
@@ -1768,7 +1769,7 @@ CONTAINS
     IF( GotIt ) THEN
       TargetVar => VariableGet( Model % Variables, TRIM(VariableName) )
       IF(.NOT. ASSOCIATED(TargetVar)) THEN
-        NULLIFY(WrkPntr)
+        WrkPntr => Null()
         ALLOCATE(WrkPntr(1),STAT=istat)
 	IF( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error 5') 	
  
@@ -2028,10 +2029,8 @@ CONTAINS
       CALL Warn(Caller,'Unknown statistical operator!')
 
     END SELECT
-      
-    
+          
     CALL Info(Caller,'Finished computing operator',Level=12)
-
 
   END FUNCTION VectorStatistics
 
@@ -2159,11 +2158,10 @@ CONTAINS
     INTEGER :: t, hits
     TYPE(Element_t), POINTER :: Element
     INTEGER, POINTER :: NodeIndexes(:), PermIndexes(:)
-    REAL(KIND=dp) :: SqrtMetric,Metric(3,3),Symb(3,3,3),dSymb(3,3,3,3)
-    REAL(KIND=dp) :: Basis(Model % MaxElementNodes), dBasisdx(Model % MaxElementNodes,3)
+    REAL(KIND=dp) :: Basis(Model % MaxElementNodes)
     REAL(KIND=dp) :: EnergyTensor(3,3,Model % MaxElementNodes),&
         EnergyCoeff(Model % MaxElementNodes), ElemVals(Model % MaxElementNodes) 
-    REAL(KIND=dp) :: SqrtElementMetric,U,V,W,S,A,L,C(3,3),x,y,z,Vals(3),uvw(3)
+    REAL(KIND=dp) :: DetJ,U,V,W,S,A,L,C(3,3),x,y,z,Vals(3),uvw(3)
     REAL(KIND=dp) :: func, coeff, integral1, integral2, Grad(3), CoeffGrad(3)
     REAL(KIND=DP), POINTER :: Pwrk(:,:,:) => Null()
     LOGICAL :: Stat
@@ -2206,11 +2204,8 @@ CONTAINS
       IF ( ANY(Var % Perm(PermIndexes) == 0 ) ) CYCLE      
       hits = hits + 1
       
-
       NodeIndexes => Element % NodeIndexes 
-      ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes(1:n))
-      ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes(1:n))
-      ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes(1:n))
+      CALL CopyElementNodesFromMesh( ElementNodes, Mesh, n, NodeIndexes)
 
       IF( PassiveCoordinate > 0 ) THEN
         SELECT CASE( PassiveCoordinate ) 
@@ -2284,25 +2279,19 @@ CONTAINS
 !------------------------------------------------------------------------------
 !        Basis function values & derivatives at the integration point
 !------------------------------------------------------------------------------
-        stat = ElementInfo( Element,ElementNodes,U,V,W,SqrtElementMetric, &
-            Basis,dBasisdx )
+        stat = ElementInfo( Element,ElementNodes,U,V,W,DetJ,Basis)
 !------------------------------------------------------------------------------
 !      Coordinatesystem dependent info
 !------------------------------------------------------------------------------
-        s = 1.0
+        
+        s = DetJ * IntegStuff % s(i)
         IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
           x = SUM( ElementNodes % x(1:n)*Basis(1:n) )
-          y = SUM( ElementNodes % y(1:n)*Basis(1:n) )
-          z = SUM( ElementNodes % z(1:n)*Basis(1:n) )
-          s = 2*PI
+          s = 2._dp * PI * x * s 
         END IF
-        
-        CALL CoordinateSystemInfo( Metric,SqrtMetric,Symb,dSymb,x,y,z )
-        
-        s = s * SqrtMetric * SqrtElementMetric * IntegStuff % s(i)
+
         coeff = SUM( EnergyCoeff(1:n) * Basis(1:n))
         vol =  coeff * vol + S
-
 
         uvw(1)=u;uvw(2)=v;uvw(3)=w;
 
@@ -2356,10 +2345,7 @@ CONTAINS
         CASE ('diffusive energy')
           CoeffGrad = 0.0d0
           DO j = 1, DIM
-            !            Grad(j) = SUM( dBasisdx(1:n,j) * ElemVals(1:n) )
             DO k = 1, DIM
-              !              CoeffGrad(j) = CoeffGrad(j) + SUM( EnergyTensor(j,k,1:n) * Basis(1:n) ) * &
-              !                  SUM( dBasisdx(1:n,k) * Var % Values(Var % Perm(PermIndexes)) )
               CoeffGrad(j) = CoeffGrad(j) + SUM( EnergyTensor(j,k,1:n) * Basis(1:n) ) * Grad(k)
             END DO
           END DO
@@ -2367,24 +2353,18 @@ CONTAINS
           integral1 = integral1 + s * SUM( Grad(1:DIM) * CoeffGrad(1:DIM) )
 
         CASE ('convective energy')
-          !          func = SUM( ElemVals(1:n) * Basis(1:n) )
           IF( PosOper ) func = MAX( 0.0_dp, func )
           IF( NegOper ) func = MIN( 0.0_dp, func ) 
 
           IF(NoDofs == 1) THEN
-            !func = SUM( ElemVals(1:n) * Basis(1:n) )
             integral1 = integral1 + s * coeff * func**2
           ELSE
-            !func = 0.0d0
             j=MIN(DIM,NoDofs)
-            !func = SUM( Var % Values(NoDofs*(Var % Perm(PermIndexes)-1)+j) * Basis(1:n) )
             integral1 = integral1 + s * coeff * SUM(Grad(1:j)**2)
-            !END DO
           END IF
 
         CASE ('potential energy')
 
-          !func = SUM( ElemVals(1:n) * Basis(1:n) )
           IF( PosOper ) func = MAX( 0.0_dp, func )
           IF( NegOper ) func = MIN( 0.0_dp, func ) 
 
@@ -2465,13 +2445,10 @@ CONTAINS
     INTEGER :: t, FluxBody, LBody, RBody, NActive
     TYPE(Element_t), POINTER :: Element, Parent    
     TYPE(ValueList_t), POINTER :: Material, BCVal
-    REAL(KIND=dp) :: SqrtMetric,Metric(3,3),Symb(3,3,3),dSymb(3,3,3,3)
-    REAL(KIND=dp) :: Basis(Model % MaxElementNodes),dBasisdx(Model % MaxElementNodes,3),&
-        ParentBasis(Model % MaxElementNodes),&
-        ParentdBasisdx(Model % MaxElementNodes,3),EnergyTensor(3,3,Model % MaxElementNodes),&
-        EnergyCoeff(Model % MaxElementNodes)
-    REAL(KIND=dp) :: SqrtElementMetric,U,V,W,up,vp,wp,S,A,L,C(3,3),x,y,z
-    REAL(KIND=dp) :: func, coeff, Normal(3), Flow(3), flux
+    REAL(KIND=dp) :: Basis(Model % MaxElementNodes),ParentBasis(Model % MaxElementNodes),&
+        EnergyTensor(3,3,Model % MaxElementNodes),EnergyCoeff(Model % MaxElementNodes)
+    REAL(KIND=dp) :: DetJ,U,V,W,up,vp,wp,S,A,L,C(3,3),x,y,z
+    REAL(KIND=dp) :: func, coeff, Normal(3), Flow(3), Grad(3), flux
     REAL(KIND=DP), POINTER :: Pwrk(:,:,:) => Null()
     INTEGER, POINTER :: ParentIndexes(:), PermIndexes(:)
     REAL(KIND=dp) :: LocalVectorSolution(3,35), LocalVeloSolution(3,35)
@@ -2510,8 +2487,7 @@ CONTAINS
       
       CASE('diffusive flux') 
       IF(NoDofs /= 1) THEN
-        CALL Warn(Caller,'diffusive flux & NoDofs /= 1?')
-        RETURN
+        CALL Fatal(Caller,'diffusive flux & NoDofs /= 1?')
       END IF
 
       CASE ('convective flux')
@@ -2523,7 +2499,7 @@ CONTAINS
           END IF
         ELSE
           CALL Warn(Caller,'convective flux & NoDofs < DIM?')
-          RETURN
+          GOTO 100
         END IF
       END IF
       
@@ -2593,10 +2569,8 @@ CONTAINS
         IF(.NOT. ListGetLogical(Model % BCs(bc) % Values,'Flux Integrate',gotIt ) .AND. &
             .NOT. ListGetLogical(Model % BCs(bc) % Values, MaskName, gotIt ) ) CYCLE
                  
-        ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes(1:n))
-        ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes(1:n))
-        ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes(1:n))
-
+        CALL CopyElementNodesFromMesh( ElementNodes, Mesh, n, NodeIndexes)
+                 
         IF( PassiveCoordinate > 0 ) THEN
           SELECT CASE( PassiveCoordinate ) 
           CASE(1) 
@@ -2613,8 +2587,7 @@ CONTAINS
           
         CASE('diffusive flux') 
           
-          FluxBody = ListGetInteger( Model % BCs(bc) % Values, &
-              'Flux Integrate Body', gotIt ) 
+          FluxBody = ListGetInteger( Model % BCs(bc) % Values,'Flux Integrate Body', gotIt ) 
           IF ( GotIt ) THEN
             IF ( ASSOCIATED( Element  % BoundaryInfo % Left ) ) &
                 Lbody = Element % BoundaryInfo % Left % BodyId
@@ -2626,17 +2599,15 @@ CONTAINS
             ELSEIF ( Rbody == FluxBody ) THEN
               Parent => Element % BoundaryInfo % Right
             ELSE
-              WRITE( Message, * ) 'No such flux integrate body on bc ', &
-                  Element % BoundaryInfo % Constraint
-              CALL Fatal( Caller, Message )
+              CALL Fatal( Caller,'No such flux integrate body on bc '&
+                  //I2S(Element % BoundaryInfo % Constraint))
             END IF
           ELSE        
             Parent => ELement % BoundaryInfo % Left
             stat = ASSOCIATED( Parent )
             
             IF(Permutated) THEN
-              IF(stat) stat = ALL(Var % Perm(Parent % NodeIndexes) > 0)
-              
+              IF(stat) stat = ALL(Var % Perm(Parent % NodeIndexes) > 0)              
               IF ( .NOT. stat ) THEN
                 Parent => ELement % BoundaryInfo % Right              
                 stat = ASSOCIATED( Parent )
@@ -2647,42 +2618,37 @@ CONTAINS
                 'No solution available for specified boundary' )
           END IF                   
           
-          pn = Parent % TYPE % NumberOfNodes
           ParentIndexes => Parent % NodeIndexes
           i = ListGetInteger( Model % Bodies(Parent % BodyId) % Values, 'Material', &
               minv=1, maxv=Model % NumberOFMaterials )
           Material => Model % Materials(i) % Values
 
-          ParentNodes % x(1:pn) = Mesh % Nodes % x(ParentIndexes(1:pn))
-          ParentNodes % y(1:pn) = Mesh % Nodes % y(ParentIndexes(1:pn))
-          ParentNodes % z(1:pn) = Mesh % Nodes % z(ParentIndexes(1:pn))
-
           EnergyTensor = 0._dp
 
           IF(GotCoeff) THEN
-            CALL ListGetRealArray( Material, CoeffName, Pwrk, pn, ParentIndexes )
+            CALL ListGetRealArray( Material, CoeffName, Pwrk, n, Element % NodeIndexes )
 
             IF ( SIZE(Pwrk,1) == 1 ) THEN
               DO i=1,3
-                EnergyTensor( i,i,1:pn ) = Pwrk( 1,1,1:pn )
+                EnergyTensor( i,i,1:n ) = Pwrk( 1,1,1:n )
               END DO
             ELSE IF ( SIZE(Pwrk,2) == 1 ) THEN
               DO i=1,MIN(3,SIZE(Pwrk,1))
-                EnergyTensor(i,i,1:pn) = Pwrk(i,1,1:pn)
+                EnergyTensor(i,i,1:n) = Pwrk(i,1,1:n)
               END DO
             ELSE
               DO i=1,MIN(3,SIZE(Pwrk,1))
                 DO j=1,MIN(3,SIZE(Pwrk,2))
-                  EnergyTensor( i,j,1:pn ) = Pwrk(i,j,1:pn)
+                  EnergyTensor( i,j,1:n ) = Pwrk(i,j,1:n)
                 END DO
               END DO
             END IF
           ELSE
             DO i=1,3          
-              EnergyTensor(i,i,1:pn) = 1.0d0
+              EnergyTensor(i,i,1:n) = 1.0_dp
             END DO
           END IF
-          EnergyCoeff(1:n) = 1.0D00
+          EnergyCoeff(1:n) = 1.0_dp
           fluxescomputed(bc) = fluxescomputed(bc) + 1
 
 
@@ -2734,9 +2700,7 @@ CONTAINS
               minv=1, maxv=Model % NumberOFMaterials )
           Material => Model % Materials(i) % Values
 
-          ParentNodes % x(1:pn) = Mesh % Nodes % x(ParentIndexes(1:pn))
-          ParentNodes % y(1:pn) = Mesh % Nodes % y(ParentIndexes(1:pn))
-          ParentNodes % z(1:pn) = Mesh % Nodes % z(ParentIndexes(1:pn))
+          CALL CopyElementNodesFromMesh( ParentNodes, Mesh, pn, ParentIndexes)
 
           IF(GotCoeff) THEN
             EnergyCoeff(1:n) = ListGetReal( Material, CoeffName, n, NodeIndexes )
@@ -2771,54 +2735,41 @@ CONTAINS
 !------------------------------------------------------------------------------
 !        Basis function values & derivatives at the integration point
 !------------------------------------------------------------------------------
-          stat = ElementInfo( Element,ElementNodes,U,V,W,SqrtElementMetric, &
-              Basis,dBasisdx )
+          stat = ElementInfo( Element,ElementNodes,U,V,W,DetJ,Basis)
 !------------------------------------------------------------------------------
 !      Coordinatesystem dependent info
 !------------------------------------------------------------------------------
-          x = SUM( ElementNodes % x(1:n)*Basis(1:n) )
-          y = SUM( ElementNodes % y(1:n)*Basis(1:n) )
-          z = SUM( ElementNodes % z(1:n)*Basis(1:n) )
-
-          s = 1.0d0
-
-          IF(.FALSE.) THEN
-            IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
-              s = 2.0d0 * PI 
-            END IF
-            CALL CoordinateSystemInfo( Metric,SqrtMetric,Symb,dSymb,x,y,z )
-            s = s * SqrtMetric * SqrtElementMetric * IntegStuff % s(i)
-          ELSE
-            IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
-              s = 2.0d0 * PI * x 
-            END IF
-            s = s * SqrtElementMetric * IntegStuff % s(i)
+          s = DetJ * IntegStuff % s(i)
+          IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
+            x = SUM( ElementNodes % x(1:n)*Basis(1:n) )
+            s = 2._dp * PI * x * s
           END IF
           
           
           SELECT CASE(OperName)
             
           CASE ('diffusive flux')
-            
-            Normal = NormalVector( Element,ElementNodes,U,V,.TRUE. )
-            CALL GetParentUVW( Element, n, Parent, pn, Up, Vp, Wp, Basis)
-            
-            stat = ElementInfo( Parent,ParentNodes,Up,Vp,Wp,SqrtElementMetric, &
-                ParentBasis,ParentdBasisdx )
-            
+
+            BLOCK
+              REAL(KIND=dp) :: uvw(3)
+              uvw(1) = u
+              uvw(2) = v
+              uvw(3) = w
+              Grad = 0.0_dp
+              k = 0
+              ! This can use p-element basis etc. when evaluating the gradient in the parent element.
+              CALL EvaluateVariableAtGivenPoint(k,Grad,Mesh,Var,Element=Element,LocalCoord=uvw,&
+                  LocalBasis=Basis,DoGrad=.TRUE.,Parent=Parent)              
+            END BLOCK
+                        
             Flow = 0.0d0
             DO j = 1, DIM
               DO k = 1, DIM
-                IF(Permutated) THEN
-                  Flow(j) = Flow(j) + SUM( EnergyTensor(j,k,1:pn) * ParentBasis(1:pn) ) * &
-                      SUM( ParentdBasisdx(1:pn,k) * Var % Values(Var % Perm(ParentIndexes(1:pn))) )
-                ELSE
-                  Flow(j) = Flow(j) + SUM( EnergyTensor(j,k,1:pn) * ParentBasis(1:pn) ) * &
-                      SUM( ParentdBasisdx(1:pn,k) * Var % Values(ParentIndexes(1:pn)) ) 
-                END IF
+                Flow(j) = Flow(j) + SUM( EnergyTensor(j,k,1:n) * Basis(1:n) ) * Grad(k)
               END DO
             END DO
             
+            Normal = NormalVector( Element,ElementNodes,U,V,.TRUE. )
             flux = SUM(Normal(1:DIM) * Flow(1:DIM))
 
             IF( SaveFluxRange ) THEN
@@ -2894,6 +2845,8 @@ CONTAINS
 
     END DO
 
+100 CONTINUE
+
     DEALLOCATE( ParentNodes % x, ParentNodes % y, ParentNodes % z, PermIndexes )
 
   END SUBROUTINE BoundaryIntegrals
@@ -2916,6 +2869,7 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: Material
     LOGICAL :: Stat, Permutated, NodalVar    
     INTEGER :: i,j,j2,k,p,q,t,DIM,bc,n,nd,hits,istat
+    INTEGER :: tmpDofs
     INTEGER, TARGET :: Indexes(100)
 
     IF( ASSOCIATED( Var % Perm ) ) THEN
@@ -2993,7 +2947,8 @@ CONTAINS
           IF( .NOT. FindMinMax .AND. IsParallel ) THEN
             IF(ASSOCIATED( Var % Solver) ) THEN
               IF( ASSOCIATED( Var % SOlver % Matrix ) ) THEN
-                IF( Var % Solver % Matrix % ParallelInfo % NeighbourList(NoDofs*(j2-1)+1) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+                tmpDofs=Var % Solver % Variable % Dofs
+                IF( Var % Solver % Matrix % ParallelInfo % NeighbourList(tmpDofs*(j2-1)+1) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
               END IF
             END IF
           END IF
@@ -3064,14 +3019,13 @@ CONTAINS
     TYPE(Element_t), TARGET :: SideElement
     TYPE(Element_t), POINTER :: Element, Parent    
     TYPE(ValueList_t), POINTER :: Material
-    REAL(KIND=dp) :: SqrtMetric,Metric(3,3),Symb(3,3,3),dSymb(3,3,3,3),LocalCoordinates(3),Point(3)
-    REAL(KIND=dp) :: Basis(Model % MaxElementNodes),dBasisdx(Model % MaxElementNodes,3),&
-        ParentBasis(Model % MaxElementNodes),&
-        ParentdBasisdx(Model % MaxElementNodes,3),EnergyTensor(3,3,Model % MaxElementNodes),&
+    REAL(KIND=dp) :: LocalCoordinates(3),Point(3)
+    REAL(KIND=dp) :: Basis(Model % MaxElementNodes),ParentBasis(Model % MaxElementNodes),&
+        EnergyTensor(3,3,Model % MaxElementNodes),&
         EnergyCoeff(Model % MaxElementNodes) 
-    REAL(KIND=dp) :: SqrtElementMetric,U,V,W,up,vp,wp,S,A,L,C(3,3),x,y,z,dx,dy,dz,ds,dsmax
+    REAL(KIND=dp) :: DetJ,U,V,W,up,vp,wp,S,A,L,C(3,3),x,y,z,dx,dy,dz,ds,dsmax,Grad(3)
     REAL(KIND=dp) :: func, coeff, Normal(3), Flow(3), x0, y0, z0, pos(2), flux
-    REAL(KIND=DP), POINTER :: Pwrk(:,:,:)
+    REAL(KIND=DP), POINTER :: Pwrk(:,:,:) => Null()
     INTEGER, POINTER :: ParentIndexes(:), PermIndexes(:), SideIndexes(:), OnLine(:,:)
 
     LOGICAL :: Stat, Permutated, Inside    
@@ -3157,10 +3111,8 @@ CONTAINS
         pn = Parent % TYPE % NumberOfNodes
         ParentIndexes => Parent % NodeIndexes
 
-        ParentNodes % x(1:pn) = Mesh % Nodes % x(ParentIndexes(1:pn))
-        ParentNodes % y(1:pn) = Mesh % Nodes % y(ParentIndexes(1:pn))
-        ParentNodes % z(1:pn) = Mesh % Nodes % z(ParentIndexes(1:pn))          
-        
+        CALL CopyElementNodesFromMesh( ParentNodes, Mesh, pn, ParentIndexes)
+
         IF(Permutated) THEN
           PermIndexes(1:pn) = Var % Perm(ParentIndexes(1:pn))
           IF (ANY( PermIndexes(1:pn) == 0)) CYCLE
@@ -3273,8 +3225,6 @@ CONTAINS
             CALL Warn('PolylineIntegrate','This should never happen')
           END IF
         END IF
-
-
         
         i = ListGetInteger( Model % Bodies(Parent % BodyId) % Values, 'Material', &
             minv=1, maxv=Model % NumberOFMaterials )
@@ -3286,37 +3236,37 @@ CONTAINS
           
           CASE('diffusive flux') 
           
-          IF(GotCoeff) THEN
-            CALL ListGetRealArray( Material, CoeffName, Pwrk, &
-                pn, ParentIndexes, gotIt )
-            
-            EnergyTensor = 0._dp
-            IF(GotIt) THEN
-              IF ( SIZE(Pwrk,1) == 1 ) THEN
-                DO i=1,3
-                  EnergyTensor( i,i,1:pn ) = Pwrk( 1,1,1:pn )
-                END DO
-              ELSE IF ( SIZE(Pwrk,2) == 1 ) THEN
-                DO i=1,MIN(3,SIZE(Pwrk,1))
-                  EnergyTensor(i,i,1:pn) = Pwrk(i,1,1:pn)
-                END DO
-              ELSE
-                DO i=1,MIN(3,SIZE(Pwrk,1))
-                  DO j=1,MIN(3,SIZE(Pwrk,2))
-                    EnergyTensor( i,j,1:pn ) = Pwrk(i,j,1:pn)
+            IF(GotCoeff) THEN
+              CALL ListGetRealArray( Material, CoeffName, Pwrk, &
+                  pn, ParentIndexes, gotIt )
+
+              EnergyTensor = 0._dp
+              IF(GotIt) THEN
+                IF ( SIZE(Pwrk,1) == 1 ) THEN
+                  DO i=1,3
+                    EnergyTensor( i,i,1:pn ) = Pwrk( 1,1,1:pn )
                   END DO
+                ELSE IF ( SIZE(Pwrk,2) == 1 ) THEN
+                  DO i=1,MIN(3,SIZE(Pwrk,1))
+                    EnergyTensor(i,i,1:pn) = Pwrk(i,1,1:pn)
+                  END DO
+                ELSE
+                  DO i=1,MIN(3,SIZE(Pwrk,1))
+                    DO j=1,MIN(3,SIZE(Pwrk,2))
+                      EnergyTensor( i,j,1:pn ) = Pwrk(i,j,1:pn)
+                    END DO
+                  END DO
+                END IF
+              ELSE 
+                DO i=1,3          
+                  EnergyTensor(i,i,1:pn) = 1.0d0
                 END DO
               END IF
-            ELSE 
-              DO i=1,3          
-                EnergyTensor(i,i,1:pn) = 1.0d0
-              END DO
             END IF
-          END IF
-          
+
           CASE ('convective flux','area')
-          EnergyCoeff(1:n) = ListGetReal( Material, CoeffName, pn, ParentIndexes, gotIt )
-          IF(.NOT. GotIt) EnergyCoeff(1:pn) = 1.0d0
+            EnergyCoeff(1:n) = ListGetReal( Material, CoeffName, pn, ParentIndexes, gotIt )
+            IF(.NOT. GotIt) EnergyCoeff(1:pn) = 1.0d0
           
         END SELECT
 
@@ -3334,28 +3284,17 @@ CONTAINS
 !------------------------------------------------------------------------------
 !        Basis function values & derivatives at the integration point
 !------------------------------------------------------------------------------
-          stat = ElementInfo( Element,ElementNodes,U,V,W,SqrtElementMetric, &
-              Basis,dBasisdx )
+          stat = ElementInfo( Element,ElementNodes,U,V,W,DetJ,Basis)
           
-          x = SUM( ElementNodes % x(1:n) * Basis(1:n) )
-          y = SUM( ElementNodes % y(1:n) * Basis(1:n) )
-          z = SUM( ElementNodes % z(1:n) * Basis(1:n) )
-
 !------------------------------------------------------------------------------
 !      Coordinatesystem dependent info
 !------------------------------------------------------------------------------
-
-          s = 1.0d0
-
-          IF(.FALSE.) THEN
-            IF(CurrentCoordinateSystem() /= Cartesian ) s = 2.0 * PI 
-            CALL CoordinateSystemInfo( Metric,SqrtMetric,Symb,dSymb,x,y,z )
-            s = s * SqrtMetric * SqrtElementMetric * IntegStuff % s(i)
-          ELSE
-            IF(CurrentCoordinateSystem() /= Cartesian ) s = 2.0 * PI * x
-            s = s * SqrtElementMetric * IntegStuff % s(i)            
+          s = DetJ * IntegStuff % s(i)            
+          IF(CurrentCoordinateSystem() /= Cartesian ) THEN
+            x = SUM( ElementNodes % x(1:n) * Basis(1:n) )
+            s = 2._dp * PI * x * s
           END IF
-     
+            
           Normal = NormalVector( Element,ElementNodes,U,V,.FALSE. )
 
 !------------------------------------------------------------------------------
@@ -3375,26 +3314,29 @@ CONTAINS
           Up = LocalCoordinates(1)
           Vp = LocalCoordinates(2)
           Wp = LocalCoordinates(3)
-          
-          
-          stat = ElementInfo( Parent,ParentNodes,Up,Vp,Wp,SqrtElementMetric, &
-              ParentBasis,ParentdBasisdx )
-          
+                    
+          stat = ElementInfo( Parent,ParentNodes,Up,Vp,Wp,DetJ,ParentBasis)
   
           SELECT CASE(OperName)
             
             CASE ('diffusive flux')           
+
+              Grad = 0.0_dp
+              k = 0
+              ! This can use p-element basis etc. when evaluating the gradient in the parent element.
+              CALL EvaluateVariableAtGivenPoint(k,Grad,Mesh,Var,Element=Parent,LocalCoord=LocalCoordinates,&
+                  LocalBasis=ParentBasis,DoGrad=.TRUE.)
+              
               Flow = 0.0d0
               DO j = 1, DIM
                 DO k = 1, DIM
-                  Flow(j) = Flow(j) + SUM( EnergyTensor(j,k,1:pn) * ParentBasis(1:pn) ) * &
-                      SUM( ParentdBasisdx(1:pn,k) * Var % Values(PermIndexes(1:pn)) ) 
+                  Flow(j) = Flow(j) + SUM( EnergyTensor(j,k,1:n) * Basis(1:n) ) * Grad(k)
                 END DO
-              END DO
+              END DO              
               fluxes(Line) = fluxes(Line) + s * SUM(Normal(1:DIM) * Flow(1:DIM))
-            
-            
+                        
             CASE ('convective flux')            
+          
               coeff = SUM( EnergyCoeff(1:pn) * ParentBasis(1:pn))              
               IF(NoDofs == 1) THEN
                 func = SUM( Var % Values(PermIndexes(1:pn)) * ParentBasis(1:pn) )                
@@ -3423,7 +3365,7 @@ CONTAINS
               END IF
                          
             CASE ('area')                        
-              coeff = SUM( EnergyCoeff(1:pn) * Basis(1:pn))
+              coeff = SUM( EnergyCoeff(1:pn) * ParentBasis(1:pn))
               fluxes(Line) = fluxes(Line) + s * coeff 
               
             END SELECT

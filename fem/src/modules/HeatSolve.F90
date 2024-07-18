@@ -1110,6 +1110,7 @@
 
       IF ( TransientSimulation .AND. ConstantBulk ) CALL AddGlobalTime()
 
+      CALL DefaultFinishBoundaryAssembly()
       CALL DefaultFinishAssembly()
       CALL Info( 'HeatSolve', 'Assembly done', Level=4 )
 

@@ -2,7 +2,6 @@
 #                       qmake project file for libng
 #----------------------------------------------------------------------
 #include(../ElmerGUI.pri)
-#CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
 #PROJECT(netgen CXX)
 
 INCLUDE_DIRECTORIES("libsrc/include")

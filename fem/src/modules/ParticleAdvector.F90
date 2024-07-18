@@ -920,7 +920,7 @@ CONTAINS
         ELSE IF( SEQL(VariableName, 'particle') ) THEN
           ParticleVar => ParticleVariableGet( Particles, VariableName )
           IF( ASSOCIATED( ParticleVar ) ) THEN
-            NewValues = ParticleVar % Values(1:SIZE(NewValues))
+            NewValues(1:NoParticles) = ParticleVar % Values(1:NoParticles)
           ELSE
             CALL Warn(Caller,'Field does not exist: '//TRIM(VariableName))
           END IF

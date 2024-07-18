@@ -494,6 +494,8 @@ END MODULE PorousMaterials
         CALL DefaultUpdateEquations( STIFF, FORCE )
       END DO
       
+      CALL DefaultFinishBoundaryAssembly( )
+
       CALL DefaultFinishAssembly()
       CALL Info( 'RichardsSolver', 'Assembly done', Level=6 )
       

@@ -235,6 +235,7 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
     IF(AnyBC) THEN
       CALL GlobalBoundaryAssemby()
     END IF
+    CALL DefaultFinishBoundaryAssembly( )
     
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()
@@ -269,6 +270,7 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
     CALL DefaultInitialize()
     CALL GlobalBulkAssembly( 1 )
     CALL DefaultFinishBulkAssembly( )
+    CALL DefaultFinishBoundaryAssembly( )
     
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs( Ux = SensVar )

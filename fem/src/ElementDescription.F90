@@ -4680,8 +4680,13 @@ CONTAINS
            p = getEffectiveBubbleP(element,p,bdofs)
 
            IF(nbmax-nbp<getBubbleDOFs(Element,p)) THEN
-             CALL Fatal("ElementInfoVec", &
-               "Quad bubble scheme has changed, number of bubbles is now (p-1)^2 (0,1,4,9,16,25,...)")
+             IF(SerendipityPBasis) THEN
+               CALL Fatal("ElementInfoVec", &
+                 "Not enough space for storing bubble basis, check your #bubbles: i*(i-1)/2 (0,1,3,6,10,15,...)")
+             ELSE
+               CALL Fatal("ElementInfoVec", &
+                 "Not enough space for storing bubble basis, check your #bubbles: i^2 (0,1,4,9,16,25,...)")
+             END IF
            END IF
 
            ! For first round of blocked loop, compute polynomial degrees and 
@@ -5069,8 +5074,13 @@ CONTAINS
            p = getEffectiveBubbleP(element,p,bdofs)
 
            IF(nbmax-nbp<getBubbleDOFs(Element,p)) THEN
-             CALL Fatal("ElementInfoVec", &
-                "Brick bubble scheme has changed, number of bubbles is now (p-1)^3 (1,8,27,64,125,...)")
+             IF(SerendipityPBasis) THEN
+               CALL Fatal("ElementInfoVec", &
+                 "Not enough space for storing bubble basis, check your #bubbles: i*(i-1)*(i-1)/2 (0,1,4,10,16,...)")
+             ELSE
+               CALL Fatal("ElementInfoVec", &
+                 "Not enough space for storing bubble basis, check your #bubbles: i^3: (0,1,8,27,64,...)")
+             END IF
            END IF
 
            IF(SerendipityPBasis) THEN
@@ -7350,9 +7360,9 @@ END SUBROUTINE PickActiveFace
 
                IF (RedefineFaceBasis) THEN
                  EdgeBasis(7,:) = 0.5d0 * D1 * WorkBasis(I1,:) + 0.5d0 * D2 * WorkBasis(I2,:)
-                 CurlBasis(7,:) = 0.5d0 * D1 * WorkCurlBasis(I1,:) + 0.5d0 * D2 * WorkCurlBasis(I2,:)
+                 CurlBasis(7,3) = 0.5d0 * D1 * WorkCurlBasis(I1,3) + 0.5d0 * D2 * WorkCurlBasis(I2,3)
                  EdgeBasis(8,:) = 0.5d0 * D2 * WorkBasis(I2,:) - 0.5d0 * D1 * WorkBasis(I1,:)
-                 CurlBasis(8,:) = 0.5d0 * D2 * WorkCurlBasis(I2,:) - 0.5d0 * D1 * WorkCurlBasis(I1,:)
+                 CurlBasis(8,3) = 0.5d0 * D2 * WorkCurlBasis(I2,3) - 0.5d0 * D1 * WorkCurlBasis(I1,3)
                ELSE
                  EdgeBasis(7,:) = D1 * WorkBasis(I1,:)
                  CurlBasis(7,3) = D1 * WorkCurlBasis(I1,3)
@@ -7364,8 +7374,8 @@ END SUBROUTINE PickActiveFace
                IF (ScaleFaceBasis) THEN
                  EdgeBasis(7,:) = sqrt(fs1) * EdgeBasis(7,:)
                  EdgeBasis(8,:) = sqrt(fs2) * EdgeBasis(8,:)
-                 CurlBasis(7,:) = sqrt(fs1) * CurlBasis(7,:)
-                 CurlBasis(8,:) = sqrt(fs2) * CurlBasis(8,:)
+                 CurlBasis(7,3) = sqrt(fs1) * CurlBasis(7,3)
+                 CurlBasis(8,3) = sqrt(fs2) * CurlBasis(8,3)
                END IF
              END IF
            END IF

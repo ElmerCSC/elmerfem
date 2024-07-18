@@ -98,6 +98,7 @@ CONTAINS
         CALL ParallelUpdateSolve( A,x,r )
         M => ParallelMatrix( A, Mx, Mb, Mr )
 
+
         n = M % NumberOfRows
         ALLOCATE(Diag(n))
         Diag = M % Values(M % Diag)
@@ -367,13 +368,16 @@ CONTAINS
         TYPE(Matrix_t), POINTER :: A
         LOGICAL, OPTIONAL :: Update
 !------------------------------------------------------------------------------
+        LOGICAL :: L
+!------------------------------------------------------------------------------
         IF ( .NOT. Parallel ) THEN
           CALL CRS_MatrixVectorMultiply( A, x, b )
         ELSE
+          L = SIZE(b) == A % NumberOfRows 
           IF ( PRESENT( Update ) ) THEN
-            CALL ParallelMatrixVector( A,x,b,Update,ZeroNotOwned=.TRUE. )
+            CALL ParallelMatrixVector( A,x,b,Update,ZeroNotOwned=L )
           ELSE
-            CALL ParallelMatrixVector( A,x,b,ZeroNotOwned=.TRUE. )
+            CALL ParallelMatrixVector( A,x,b,ZeroNotOwned=L)
           END IF
         END IF
 !------------------------------------------------------------------------------

@@ -218,8 +218,8 @@
 #endif
          END IF
        END IF
-
        ParEnv % NumberOfThreads = nthreads
+
        
        IF( .NOT. Silent ) THEN
          CALL Info( 'MAIN', ' ')
@@ -287,6 +287,9 @@
 #endif
 #ifdef HAVE_AMGX
          CALL Info( 'MAIN', ' AMGX library linked in.' )
+#endif
+#ifdef HAVE_ROCALUTION
+         CALL Info( 'MAIN', ' ROCALUTION library linked in.' )
 #endif
          CALL Info( 'MAIN', '=============================================================')
        END IF
@@ -387,6 +390,11 @@
          CurrentModel => LoadModel(ModelName,.FALSE.,ParEnv % PEs,ParEnv % MyPE,MeshIndex)
          IF(.NOT.ASSOCIATED(CurrentModel)) EXIT
 
+
+         IF( nthreads > 1 ) THEN
+           MaxOutputThread = ListGetInteger( CurrentModel % Simulation,'Max Output Thread',GotIt)
+           IF(.NOT. GotIt) MaxOutputThread = 1
+         END IF
          
          !----------------------------------------------------------------------------------
          ! Set namespace searching mode
@@ -1400,14 +1408,18 @@
        CALL ListAddString(Params,'Equation','InternalVtuOutputSolver')
        CALL ListAddString(Params,'Output Format','vtu')
        CALL ListAddString(Params,'Output File Name',str(1:k-1),.FALSE.)
-       CALL ListAddString(Params,'Exec Solver','after saving')
-       CALL ListAddLogical(Params,'Save Geometry IDs',.TRUE.)
        CALL ListAddLogical(Params,'No Matrix',.TRUE.)
        CALL ListAddNewString(Params,'Variable','-global vtu_internal_dummy')
+       CALL ListAddString(Params,'Exec Solver','after saving')
+       CALL ListAddLogical(Params,'Save Geometry IDs',.TRUE.)
        
        ! Add a few often needed keywords also if they are given in simulation section
        CALL ListCopyPrefixedKeywords( Simu, Params, 'vtu:' )
 
+       ! It makes sense to inherit global ascii/binary flags if not given
+       CALL ListCompareAndCopy(CurrentModel % Simulation, Params, 'ascii output', nooverwrite = .TRUE. )
+       CALL ListCompareAndCopy(CurrentModel % Simulation, Params, 'binary output', nooverwrite = .TRUE. )
+       
        CALL Info('AddVtuOutputSolverHack','Finished appending VTU output solver',Level=12)
        
      END SUBROUTINE AddVtuOutputSolverHack

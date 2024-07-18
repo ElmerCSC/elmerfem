@@ -176,8 +176,11 @@ FUNCTION IcePressureMeltingPoint(Model, Node, press) RESULT(Tpmp)
   IF (FirstTime) THEN
     FirstTime = .FALSE.
     Constants => GetConstants()
-    IF (.NOT.ASSOCIATED(Constants)) CALL FATAL("IcePressureMeltingPoint","No Constants associated.")
-    ClausiusClapeyron = GetConstReal( Constants, 'Clausius Clapeyron Constant', GotIt)
+    IF (ASSOCIATED(Constants)) THEN
+      ClausiusClapeyron = GetConstReal( Constants, 'Clausius Clapeyron Constant', GotIt)
+    ELSE
+      GotIt=.FALSE.
+    ENDIF
     IF (.NOT.GotIt) THEN
       ClausiusClapeyron = 9.8d-08
       CALL INFO("IcePressureMeltingPoint","No entry found for >Clausius Clapeyron Constant<.",Level=9)
@@ -185,9 +188,80 @@ FUNCTION IcePressureMeltingPoint(Model, Node, press) RESULT(Tpmp)
     END IF
   END IF
   Tpmp = GetIcePressureMeltingPoint(ClausiusClapeyron,scalingfactor*press) + tmpoffset
-
 END FUNCTION IcePressureMeltingPoint
+!==============================================================================
+FUNCTION RelativeTemperature(Model, Node, InputArray) RESULT(Trel)
+!==============================================================================
+  USE IceProperties
+  USE DefUtils
+  IMPLICIT None
 
+  TYPE(Model_t) :: Model
+  INTEGER :: Node
+  REAL(KIND=dp) :: Trel, InputArray(2)
+  ! ----
+  REAL(KIND=dp) :: press, Tabs, Tpmp,  ClausiusClapeyron, tmpoffset, scalingfactor=1.0_dp
+  TYPE(Element_t), POINTER :: Element
+  TYPE(ValueList_t), POINTER  :: Material, BC, Constants
+  LOGICAL :: CorrectRelTemp = .FALSE., GotIt, FirstTime = .TRUE., InCelsius = .FALSE.
+
+  SAVE FirstTime, ClausiusClapeyron
+  
+  Tabs = InputArray(1)
+  press = InputArray(2)
+  Element => Model % CurrentElement
+  Material => GetMaterial(Element)
+  IF (.NOT.ASSOCIATED(Material)) THEN
+    BC => GetBC(Element)
+    IF (.NOT.ASSOCIATED(BC)) THEN
+      scalingfactor=1.0_dp
+      CALL INFO("IcePressureMeltingPoint", 'No "Pressure Scaling Factor" found - setting to 1.0',Level=9)
+    ELSE
+      scalingfactor = GetConstReal(BC,"Pressure Scaling Factor",GotIt)
+    END IF
+  ELSE
+    scalingfactor = GetConstReal(Material,"Pressure Scaling Factor",GotIt)
+  END IF
+  IF (.NOT.GotIt) scalingfactor = 1.0_dp
+  IF (FirstTime) THEN
+    FirstTime = .FALSE.
+    Constants => GetConstants()
+    CorrectRelTemp=ListGetLogical(Material,"Correct Relative Tempeature", GotIt)
+    IF (ASSOCIATED(Constants)) THEN
+      ClausiusClapeyron = GetConstReal( Constants, 'Clausius Clapeyron Constant', GotIt)
+    ELSE
+      GotIt=.FALSE.
+    ENDIF
+    IF (.NOT.GotIt) THEN
+      ClausiusClapeyron = 9.8d-08
+      CALL INFO("IcePressureMeltingPoint","No entry found for >Clausius Clapeyron Constant<.",Level=9)
+      CALL INFO("IcePressureMeltingPoint","Setting to 9.8d-08 (SI units)",Level=9)
+    END IF
+  END IF
+
+  InCelsius = GetLogical(Material, "Pressure Melting Point Celsius", GotIt)
+  IF (InCelsius) THEN
+    tmpoffset = 273.15_dp
+  ELSE
+    tmpoffset = 0.0_dp
+  END IF
+  Tpmp = GetIcePressureMeltingPoint(ClausiusClapeyron,scalingfactor*press) + tmpoffset  
+  Trel = Tabs - Tpmp
+  Element => Model % CurrentElement
+  Material => GetMaterial(Element)
+  IF (ASSOCIATED(Material)) THEN
+    CorrectRelTemp=ListGetLogical(Material,"Correct Relative Tempeature", GotIt)
+    IF (.NOT.GotIt) THEN
+      CorrectRelTemp=.FALSE.
+    ELSE IF (CorrectRelTemp) THEN
+      IF (FirstTime) THEN
+        CALL INFO("USF_IceProperties(IcePressureMeltingPoint)","Limiting Relative Temperature",Level=3)
+        FirstTime = .FALSE.
+      ENDIF
+      Trel = MIN(Trel, 0.0_dp)
+    ENDIF
+  ENDIF
+END FUNCTION RelativeTemperature
 !==============================================================================
 FUNCTION ArrheniusFactor(Model, Node, InputArray) RESULT(ArrhF)
 !==============================================================================

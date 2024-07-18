@@ -2193,9 +2193,46 @@ CONTAINS
    END SUBROUTINE ListRenameAllBC
 !------------------------------------------------------------------------------
 
-   
-  
+   !------------------------------------------------------------------------------
+!> Rename all given keywords in body force section.
+!------------------------------------------------------------------------------
+   SUBROUTINE ListRenameAllBodyForce( Model, Name, Name2 ) 
+!------------------------------------------------------------------------------
+     TYPE(Model_t) :: Model
+     CHARACTER(LEN=*) :: Name, Name2
+     LOGICAL :: Found
+     INTEGER :: bc, n
 
+     n = 0
+     DO bc = 1,Model % NumberOfBodyForces
+       CALL ListRename( Model % BodyForces(bc) % Values, Name, Name2, Found )
+       IF( Found ) n = n + 1
+     END DO
+     IF( n > 0 ) CALL Info('ListRenameAllBodyForces',&
+         '"'//TRIM(Name)//'" renamed to "'//TRIM(Name2)//'" on '//I2S(n)//' BCs',Level=6)
+     
+!------------------------------------------------------------------------------
+   END SUBROUTINE ListRenameAllBodyForce
+!------------------------------------------------------------------------------
+
+   
+!------------------------------------------------------------------------------
+!> Just checks if a entry is present in the list.
+!------------------------------------------------------------------------------
+   FUNCTION ListCheckPresent( List,Name ) RESULT(Found)
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: Name
+     LOGICAL :: Found
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr
+!------------------------------------------------------------------------------
+     ptr => ListFind(List,Name,Found)
+!------------------------------------------------------------------------------
+   END FUNCTION ListCheckPresent
+!------------------------------------------------------------------------------
+
+   
 !-----------------------------------------------------------------------------
 !> Finds an entry in the list by its name and returns a handle to it.
 !> This one just finds a keyword with the same start as specified by 'name'.
@@ -2322,7 +2359,6 @@ CONTAINS
    END FUNCTION ListCheckSuffix
 !------------------------------------------------------------------------------
   
-
 
 !------------------------------------------------------------------------------
 !> Check if the keyword is with the given suffix is present in any boundary condition.
@@ -3094,19 +3130,26 @@ CONTAINS
 !> Checks two lists for a given keyword. If it is given then 
 !> copy it as it is to the 2nd list.
 !------------------------------------------------------------------------------
-   SUBROUTINE ListCompareAndCopy( list, listb, name, Found, remove )
+   SUBROUTINE ListCompareAndCopy( list, listb, name, Found, remove, nooverwrite)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: list, listb
      CHARACTER(LEN=*) :: name
-     LOGICAL :: Found
+     LOGICAL, OPTIONAL :: Found
      LOGICAL, OPTIONAL :: remove
+     LOGICAL, OPTIONAL :: nooverwrite 
 !------------------------------------------------------------------------------
      TYPE(ValueListEntry_t), POINTER :: ptr
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
      INTEGER :: k, n
 
      k = StringToLowerCase( str,Name,.TRUE. )
-     Found = .FALSE.
+     IF(PRESENT(Found)) Found = .FALSE.
+
+     IF(PRESENT(nooverwrite)) THEN
+       IF(nooverwrite) THEN
+         IF( ListCheckPresent( listb, str ) ) RETURN
+       END IF
+     END IF
 
      ! Find the keyword from the 1st list 
      Ptr => List % Head
@@ -3122,7 +3165,7 @@ CONTAINS
      
      ! Add the same entry to the 2nd list 
      CALL ListCopyItem( ptr, listb ) 
-     Found = .TRUE.
+     IF(PRESENT(Found)) Found = .TRUE.
 
      IF( PRESENT(remove) ) THEN
        IF( remove ) CALL ListRemove( list, name)
@@ -3200,23 +3243,6 @@ CONTAINS
      
    END SUBROUTINE ListCopyAllKeywords
  
- 
-!------------------------------------------------------------------------------
-!> Just checks if a entry is present in the list.
-!------------------------------------------------------------------------------
-   FUNCTION ListCheckPresent( List,Name ) RESULT(Found)
-!------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: List
-     CHARACTER(LEN=*) :: Name
-     LOGICAL :: Found
-!------------------------------------------------------------------------------
-     TYPE(ValueListEntry_t), POINTER :: ptr
-!------------------------------------------------------------------------------
-     ptr => ListFind(List,Name,Found)
-!------------------------------------------------------------------------------
-   END FUNCTION ListCheckPresent
-!------------------------------------------------------------------------------
-
 
 !------------------------------------------------------------------------------
 !> Check that obsolite keyword is not used instead of the new one.
@@ -6008,7 +6034,7 @@ CONTAINS
      Handle % List => NULL()
      Handle % Element => NULL()
      Handle % Unfoundfatal = .FALSE.
-     IF (.NOT. ASSOCIATED( Ptr ) ) THEN
+     IF (.NOT. ASSOCIATED( Handle % Ptr ) ) THEN
        Handle % Ptr => ListAllocate()
      END IF
 

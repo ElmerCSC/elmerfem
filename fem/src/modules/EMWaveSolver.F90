@@ -89,7 +89,7 @@ SUBROUTINE EMWaveSolver_Init0(Model,Solver,dt,Transient)
   ! Use by some solvers e.g. SaveLine to acknowledge E as edge field
   CALL ListAddNewLogical( SolverParams,'Hcurl Basis',.TRUE.)
   IF( ListGetLogical( SolverParams,'Constant Bulk Matrix',Found ) .OR. &
-      ListGetLogical( SolverParams,'Eigen System',Found ) ) THEN
+      ListGetLogical( SolverParams,'Eigen Analysis',Found ) ) THEN
     CALL ListAddNewLogical( SolverParams,'Use Global Mass Matrix',.TRUE.)    
   END IF
   

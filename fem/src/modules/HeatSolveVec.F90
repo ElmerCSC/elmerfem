@@ -93,7 +93,7 @@ SUBROUTINE HeatSolver_init( Model,Solver,dt,Transient )
   CHARACTER(*), PARAMETER :: Caller = 'HeatSolver_init'
   TYPE(ValueList_t), POINTER :: Params
   LOGICAL :: Found
-  INTEGER :: dim, n, m
+  INTEGER :: dim
   LOGICAL :: DB, DG
   
   Params => GetSolverParams()
@@ -168,34 +168,34 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   CHARACTER(LEN=MAX_NAME_LEN) :: EqName
   CHARACTER(*), PARAMETER :: Caller = 'HeatSolver'
 
-     INTERFACE
-        FUNCTION HeatBoundaryResidual( Model,Edge,Mesh,Quant,Perm,Gnorm ) RESULT(Indicator)
-          USE Types
-          TYPE(Element_t), POINTER :: Edge
-          TYPE(Model_t) :: Model
-          TYPE(Mesh_t), POINTER :: Mesh
-          REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
-          INTEGER :: Perm(:)
-        END FUNCTION HeatBoundaryResidual
+  INTERFACE
+    FUNCTION HeatBoundaryResidual( Model,Edge,Mesh,Quant,Perm,Gnorm ) RESULT(Indicator)
+      USE Types
+      TYPE(Element_t), POINTER :: Edge
+      TYPE(Model_t) :: Model
+      TYPE(Mesh_t), POINTER :: Mesh
+      REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
+      INTEGER :: Perm(:)
+    END FUNCTION HeatBoundaryResidual
 
-        FUNCTION HeatEdgeResidual( Model,Edge,Mesh,Quant,Perm ) RESULT(Indicator)
-          USE Types
-          TYPE(Element_t), POINTER :: Edge
-          TYPE(Model_t) :: Model
-          TYPE(Mesh_t), POINTER :: Mesh
-          REAL(KIND=dp) :: Quant(:), Indicator(2)
-          INTEGER :: Perm(:)
-        END FUNCTION HeatEdgeResidual
+    FUNCTION HeatEdgeResidual( Model,Edge,Mesh,Quant,Perm ) RESULT(Indicator)
+      USE Types
+      TYPE(Element_t), POINTER :: Edge
+      TYPE(Model_t) :: Model
+      TYPE(Mesh_t), POINTER :: Mesh
+      REAL(KIND=dp) :: Quant(:), Indicator(2)
+      INTEGER :: Perm(:)
+    END FUNCTION HeatEdgeResidual
 
-        FUNCTION HeatInsideResidual( Model,Element,Mesh,Quant,Perm, Fnorm ) RESULT(Indicator)
-          USE Types
-          TYPE(Element_t), POINTER :: Element
-          TYPE(Model_t) :: Model
-          TYPE(Mesh_t), POINTER :: Mesh
-          REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
-          INTEGER :: Perm(:)
-        END FUNCTION HeatInsideResidual
-     END INTERFACE
+    FUNCTION HeatInsideResidual( Model,Element,Mesh,Quant,Perm, Fnorm ) RESULT(Indicator)
+      USE Types
+      TYPE(Element_t), POINTER :: Element
+      TYPE(Model_t) :: Model
+      TYPE(Mesh_t), POINTER :: Mesh
+      REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
+      INTEGER :: Perm(:)
+    END FUNCTION HeatInsideResidual
+  END INTERFACE
   
   IF (.NOT. ASSOCIATED(Solver % Matrix)) RETURN
 
@@ -286,7 +286,8 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
     !$OMP SHARED(Solver, Active, nColours, VecAsm) &
     !$OMP PRIVATE(t, Element, n, nd, nb,col, InitHandles) &
     !$OMP REDUCTION(+:totelem) DEFAULT(NONE)
-   
+    InitHandles = .TRUE.
+    
     DO col=1,nColours
       
       !$OMP SINGLE
@@ -294,11 +295,10 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
       Active = GetNOFActive(Solver)
       !$OMP END SINGLE
       
-      InitHandles = .TRUE.
       !$OMP DO
       DO t=1,Active
         Element => GetActiveElement(t)
-        totelem = totelem + 1
+        totelem = totelem + 1                
         n  = GetElementNOFNodes(Element)
         nd = GetElementNOFDOFs(Element)
         nb = GetElementNOFBDOFs(Element)
@@ -320,7 +320,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
 
     CALL Info(Caller,'Performing boundary element assembly',Level=12)
 
-BLOCK
+    BLOCK
       REAL(KIND=dp), POINTER :: RadiatorCoords(:,:)
       TYPE(ValueList_t), POINTER :: RadList
 
@@ -328,9 +328,9 @@ BLOCK
       ! This will make it easier to make GUIs etc.
       IF( .NOT. ListCheckPresentAnyBodyForce( Model,'Radiator Coordinates',RadList ) ) &
           RadList => Params
-      
+
       CALL GetConstRealArray( RadList, RadiatorCoords, 'Radiator Coordinates', Found)
-      
+
       IF(Found) THEN
         n = SIZE(RadiatorCoords,1)
         ALLOCATE( RadiatorPowers(n))
@@ -338,19 +338,18 @@ BLOCK
           RadiatorPowers(t)=GetCReal(RadList, 'Radiator Power '//I2S(t), Found)
         END DO
       END IF
-END BLOCK
+    END BLOCK
 
     !!OMP PARALLEL &
     !!OMP SHARED(Active, Solver, nColours, VecAsm, DiffuseGray, RadiatorPowers ) &
     !!OMP PRIVATE(t, Element, n, nd, nb, col, InitHandles) & 
     !!OMP REDUCTION(+:totelem) DEFAULT(NONE)
+    InitHandles = .TRUE. 
     DO col=1,nColours
       !!OMP SINGLE
       CALL Info(Caller,'Assembly of boundary colour: '//I2S(col),Level=10)
       Active = GetNOFBoundaryActive(Solver)
-      !!OMP END SINGLE
-      
-      InitHandles = .TRUE. 
+      !!OMP END SINGLE      
       !!OMP DO
       DO t=1,Active
         Element => GetBoundaryElement(t)
@@ -461,7 +460,7 @@ CONTAINS
         SourceAtIpVec(:), RhoAtIpVec(:),VeloAtIpVec(:,:),ConvVelo(:,:),ConvVelo_i(:)
 
     LOGICAL :: Stat,Found,ConvComp,ConvConst
-    INTEGER :: i,t,p,q,ngp,allocstat
+    INTEGER :: i,ngp,allocstat
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
@@ -511,10 +510,20 @@ CONTAINS
       
       InitHandles = .FALSE.
     END IF
+
+    IF( UseLocalMatrixCopy( Solver, Element % ElementIndex ) ) GOTO 10
     
     IP = GaussPointsAdapt(Element)
     ngp = IP % n
-    
+
+    !-----------------------------------------------------------------------------
+    ! Output the number of integration points as information.
+    ! This in not fully informative if several element types are present.
+    !-----------------------------------------------------------------------------    
+    IF( Element % ElementIndex == 1 ) THEN
+      CALL Info(Caller,'Number of 1st integration points: '//I2S(IP % n), Level=10)
+    END IF
+        
     ! Deallocate storage if needed
     IF (ALLOCATED(Basis)) THEN
       IF (SIZE(Basis,1) < ngp .OR. SIZE(Basis,2) < nd) &
@@ -606,7 +615,7 @@ CONTAINS
     IF(Transient) CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element)
     CALL CondensateP( nd-nb, nb, STIFF, FORCE )
     
-    CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element, VecAssembly=VecAsm)
+10  CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element, VecAssembly=VecAsm)
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixVec
 !------------------------------------------------------------------------------
@@ -684,7 +693,7 @@ CONTAINS
     REAL(KIND=dp) :: PlateTangent(3), PlateSpeed
     REAL(KIND=dp), POINTER :: CondTensor(:,:)
     LOGICAL :: Stat,Found,ConvComp,ConvConst
-    INTEGER :: i,j,t,p,q,m,allocstat,CondRank
+    INTEGER :: i,j,t,p,q,CondRank
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
@@ -726,8 +735,13 @@ CONTAINS
       
       InitHandles = .FALSE.
     END IF
+
+    IF( UseLocalMatrixCopy( Solver, Element % ElementIndex ) ) GOTO 20
     
     IP = GaussPointsAdapt( Element )
+    IF( Element % ElementIndex == 1 ) THEN
+      CALL Info(Caller,'Number of 1st integration points: '//I2S(IP % n), Level=10)
+    END IF
       
     IF( ListGetElementLogical( OrigMesh_h ) ) THEN
       CALL GetElementNodesOrig( Nodes, UElement=Element )
@@ -855,7 +869,7 @@ CONTAINS
     IF(Transient) CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element)
     CALL CondensateP( nd-nb, nb, STIFF, FORCE )
     
-    CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element,VecAssembly=VecAsm)
+20  CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element,VecAssembly=VecAsm)
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------
@@ -911,8 +925,7 @@ CONTAINS
     REAL(KIND=dp) :: Basis(nd),DetJ,Coord(3),Normal(3)
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), ElemWeight(nd)
     LOGICAL :: Stat,Found,RobinBC,RadIdeal,RadDiffuse,TorBC
-    INTEGER :: i,j,t,p,q,Indexes(n)
-    INTEGER :: NoOwners, NoParents
+    INTEGER :: t,p,q,Indexes(n)
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BC       
 
@@ -1188,22 +1201,20 @@ CONTAINS
     INTEGER :: n, nd, nb
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: F,C,T0, Emis, Emis2, RadC, RadF, RadText, Text, Fj, &
-        RadLoadAtIp, A1, A2, AngleFraction, Topen, Emis1, Abso1, Refl1, AssFrac
-    REAL(KIND=dp) :: Basis(nd),DetJ,Coord(3),Normal(3),Atext(12),Base(12),S,RadCoeffAtIP
+    REAL(KIND=dp) :: T0,Text, Fj, &
+        RadLoadAtIp, AngleFraction, Topen, Emis1, Abso1, Refl1, AssFrac
+    REAL(KIND=dp) :: Basis(nd),DetJ,Atext(12),Base(12),S,RadCoeffAtIP
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), TempAtIp
     REAL(KIND=dp), POINTER :: Fact(:) 
     TYPE(Element_t), POINTER :: RadElement
     LOGICAL :: Stat,Found,BCOpen,Radiators
-    INTEGER :: i,j,l,t,p,q,Indexes(n),bindex,k,k1,k2,m,nf,nf_imp
-    INTEGER :: NoOwners, NoParents
+    INTEGER :: j,t,p,q,bindex,k,k1,k2,nf,nf_imp
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BC       
     TYPE(Nodes_t) :: Nodes
     INTEGER, POINTER :: ElementList(:),pIndexes(:)
-    REAL(KIND=dp), POINTER :: ForceVector(:)
-    
-    REAL(KIND=dp) :: x,NodalTemp(12),RadCoeff(12),RadLoad(12)
+    REAL(KIND=dp), POINTER :: ForceVector(:)   
+    REAL(KIND=dp) :: NodalTemp(12)
     INTEGER, TARGET :: ElemInds(12),ElemInds2(12)
     
     SAVE Nodes
@@ -1527,7 +1538,7 @@ CONTAINS
     REAL(KIND=dp) :: Jump(nl+nr), AverageFlux(nl+nr)
     REAL(KIND=dp) :: detJ, U, V, W, S
     LOGICAL :: Stat
-    INTEGER :: i, j, k, p, q, t, m, allocstat
+    INTEGER :: i, k, p, q, m, allocstat
     TYPE(GaussIntegrationPoints_t) :: IP
     REAL(KIND=dp) :: hE, Normal(3), LeftOut(3), Gamma
     TYPE(Nodes_t) ::Nodes, LeftParentNodes, RightParentNodes
@@ -1643,9 +1654,8 @@ CONTAINS
     LOGICAL :: FoundJump, Swapped    
     TYPE(ValueList_t), POINTER :: Mat
     LOGICAL :: LeftActive, RightActive, HaveJump
-    INTEGER :: Body1 = -1, Body2 = -1
         
-    SAVE Body1, Body2, LeftActive, HaveJump
+    SAVE LeftActive, HaveJump
 
     HaveJump = .FALSE.
     Swapped = .FALSE.
@@ -1695,9 +1705,9 @@ CONTAINS
     LOGICAL :: InitHandles, BCDone 
 !------------------------------------------------------------------------------
     REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:)
-    REAL(KIND=dp) :: Basis(n), Jump(n), detJ, S, alpha, beta, AssFrac
+    REAL(KIND=dp) :: Basis(n), detJ, S, alpha, beta, AssFrac
     LOGICAL :: Stat
-    INTEGER :: i, j, k, p, q, t, i1, i2, JumpOrder, ntmp
+    INTEGER :: i, j, p, q, t, i1, i2, JumpOrder, ntmp
     INTEGER :: DgIndexes(2*n)
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
@@ -1974,32 +1984,21 @@ END SUBROUTINE HeatSolver
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(Element_t), POINTER :: Edge
 !------------------------------------------------------------------------------
-
      TYPE(Nodes_t) :: Nodes, EdgeNodes
-     TYPE(Element_t), POINTER :: Element, Bndry
-
-     INTEGER :: i,j,k,n,l,t,dim,Pn,En,nd
+     TYPE(Element_t), POINTER :: Element
+     INTEGER :: i,j,k,l,t,dim,Pn,En,nd
      LOGICAL :: stat, Found
      INTEGER, ALLOCATABLE :: Indexes(:)
-
      REAL(KIND=dp), POINTER :: Hwrk(:,:,:)
-
      REAL(KIND=dp) :: SqrtMetric, Metric(3,3), Symb(3,3,3), dSymb(3,3,3,3)
-
      REAL(KIND=dp), ALLOCATABLE :: NodalConductivity(:), ExtTemperature(:), &
-       TransferCoeff(:), EdgeBasis(:), Basis(:), x(:), y(:), z(:), &
-       dBasisdx(:,:), Temperature(:), Flux(:), NodalEmissivity(:)
-
+         TransferCoeff(:), EdgeBasis(:), Basis(:), x(:), y(:), z(:), &
+         dBasisdx(:,:), Temperature(:), Flux(:), NodalEmissivity(:)
      REAL(KIND=dp) :: Conductivity, Emissivity, StefanBoltzmann
-
-     REAL(KIND=dp) :: Grad(3,3), Normal(3), EdgeLength, gx, gy, gz
-
+     REAL(KIND=dp) :: Normal(3), EdgeLength, gx, gy, gz
      REAL(KIND=dp) :: u, v, w, s, detJ
-
-     REAL(KIND=dp) :: Source, Residual, ResidualNorm, Area
-
+     REAL(KIND=dp) :: Residual, ResidualNorm
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
-
      LOGICAL :: First = .TRUE., Dirichlet
      SAVE Hwrk, First
 !------------------------------------------------------------------------------
@@ -2271,26 +2270,18 @@ END SUBROUTINE HeatSolver
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(Element_t), POINTER :: Edge
 !------------------------------------------------------------------------------
-
      TYPE(Nodes_t) :: Nodes, EdgeNodes
-     TYPE(Element_t), POINTER :: Element, Bndry
-
+     TYPE(Element_t), POINTER :: Element
      INTEGER :: i,j,k,l,n,t,dim,En,Pn,nd
      INTEGER, ALLOCATABLE :: Indexes(:)
-     LOGICAL :: stat, Found
+     LOGICAL :: stat
      REAL(KIND=dp), POINTER :: Hwrk(:,:,:)
-
      REAL(KIND=dp) :: SqrtMetric, Metric(3,3), Symb(3,3,3), dSymb(3,3,3,3)
-
      REAL(KIND=dp), ALLOCATABLE :: NodalConductivity(:), x(:), y(:), z(:), &
             EdgeBasis(:), Basis(:), dBasisdx(:,:), Temperature(:)
-
      REAL(KIND=dp) :: Grad(3,3), Normal(3), EdgeLength, Jump, Conductivity
-
      REAL(KIND=dp) :: u, v, w, s, detJ
-
-     REAL(KIND=dp) :: Residual, ResidualNorm, Area
-
+     REAL(KIND=dp) :: ResidualNorm
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 
      LOGICAL :: First = .TRUE.
@@ -2484,7 +2475,6 @@ END SUBROUTINE HeatSolver
 
      REAL(KIND=dp), ALLOCATABLE :: NodalDensity(:)
      REAL(KIND=dp), ALLOCATABLE :: NodalCapacity(:)
-     REAL(KIND=dp), ALLOCATABLE :: x(:), y(:), z(:)
      REAL(KIND=dp), ALLOCATABLE :: NodalConductivity(:)
      REAL(KIND=dp), ALLOCATABLE :: Velo(:,:), Pressure(:)
      REAL(KIND=dp), ALLOCATABLE :: NodalSource(:), Temperature(:), PrevTemp(:)
@@ -2493,7 +2483,7 @@ END SUBROUTINE HeatSolver
      REAL(KIND=dp) :: u, v, w, s, detJ, Density, Capacity
 
      REAL(KIND=dp) :: SpecificHeatRatio, ReferencePressure, dt
-     REAL(KIND=dp) :: Source, Residual, ResidualNorm, Area, Conductivity
+     REAL(KIND=dp) :: Residual, ResidualNorm, Area, Conductivity
 
      TYPE( ValueList_t ), POINTER :: Material
 

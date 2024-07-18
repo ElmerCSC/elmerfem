@@ -111,6 +111,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   USE ElementUtils
   USE SolverUtils
   USE MeshUtils
+  USE ElementUtils
   USE SaveUtils
   USE BandwidthOptimize
   USE DefUtils
@@ -1158,7 +1159,7 @@ CONTAINS
     REAL(KIND=dp) :: r,u,v,w,ub,DetJ, Normal(3),Flow(3)
     LOGICAL :: stat, Permutated
     INTEGER :: body_id, k
-    REAL(KIND=DP), POINTER :: Pwrk(:,:,:)
+    REAL(KIND=DP), POINTER :: Pwrk(:,:,:) => Null()
     TYPE(ValueList_t), POINTER :: BC
     INTEGER :: FluxBody
     
@@ -1463,7 +1464,7 @@ CONTAINS
         END DO
       END IF
 
-      DgVar = ASSOCIATED( Mesh % Elements(1) % DGIndexes ) 
+      !DgVar = ASSOCIATED( Mesh % Elements(1) % DGIndexes ) 
       
       ! Go through the elements and register the boundary index and fluxes if asked
       DO t = 1,  Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements        
