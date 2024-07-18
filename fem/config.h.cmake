@@ -141,6 +141,9 @@
 /* Define if you have a UMFPACK library. */
 #define HAVE_UMFPACK
 
+/* Define to the Fortran type that matches SuiteSparse_long. */
+#cmakedefine UMFPACK_LONG_FORTRAN_TYPE @UMFPACK_LONG_FORTRAN_TYPE@
+
 /* Define to 1 if you have the <unistd.h> header file. */
 #define HAVE_UNISTD_H
 
