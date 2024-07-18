@@ -193,7 +193,7 @@
      Mesh => Solver % Mesh
      DIM = Mesh % MeshDim
      M = Mesh % NumberOfNodes
-
+   
 !------------------------------------------------------------------------------
 !    Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
@@ -366,6 +366,7 @@
               UseGM = .FALSE.
            END IF
         END IF
+
         IF (UseGM) THEN
            MaskName = GetString( SolverParams, 'Mask Name', Found )
            IF (.NOT. Found) THEN
@@ -1486,7 +1487,7 @@
       qSolution = 0.0_dp
 
       ! Loop over all elements are we need to compute grad(Phi)
-      DO t=1,Solver % NumberOfActiveElements
+      ElementsLoop: DO t=1,Solver % NumberOfActiveElements
          !CHANGE - necessary if using a 2D mesh as is otherwise set to 1 as
          !boundary elements are last in first loop where it's set
          dimSheet = Element % TYPE % DIMENSION
@@ -1554,18 +1555,15 @@
                 qSolution(k) = qSolution(k) + Discharge(j)
              END DO  
           END DO
-      END DO
 
-      ! Mean nodal value
-      DO i=1,n
-         DO j=1,dimSheet
-            k = dimSheet*(qPerm(Element % NodeIndexes(i))-1)+j
-            IF ( Refq(k) > 0.0_dp ) THEN 
-              qSolution(k) = qSolution(k)/Refq(k) 
-            END IF
-         END DO  
-      END DO
+      END DO ElementsLoop
 
+      DO k=1,SIZE(qSolution)
+         IF ( Refq(k) > 0.0_dp ) THEN 
+            qSolution(k) = qSolution(k)/Refq(k) 
+         END IF
+      END DO
+         
    END IF
 
    SubroutineVisited = .TRUE.
@@ -1604,6 +1602,8 @@ CONTAINS
           MaskStatus_local = MASK_ALL
        END IF
     END IF
+
+!    MaskStatus_local = MASK_NONE
 
     NULLIFY(GroundedMaskVar)
   
