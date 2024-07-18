@@ -69,8 +69,11 @@
                 (nix-filter.lib.matchExt "nix")
                 "flake.lock"
                 ".git"
+                ".github"
                 ".gitignore"
                 ".gitmodules"
+                ".travis.yml"
+                ".vscode"
               ];
             };
 
