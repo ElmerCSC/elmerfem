@@ -53,16 +53,13 @@
           buildInputs,
           cmakeFlags,
           doCheck,
-          checkPhase ? ''
-            runHook preCheckPhase
-            ctest -j $NIX_BUILD_CORES -L fast
-            runHook postCheckPhase
-          '',
+          checkOptions,
+          ...
         } @ inputs: let
           storepath = placeholder "out";
         in
           pkgs.stdenv.mkDerivation {
-            inherit name doCheck checkPhase storepath;
+            inherit name doCheck storepath;
 
             pname = "${name}-devel";
 
@@ -72,8 +69,11 @@
                 (nix-filter.lib.matchExt "nix")
                 "flake.lock"
                 ".git"
+                ".github"
                 ".gitignore"
                 ".gitmodules"
+                ".travis.yml"
+                ".vscode"
               ];
             };
 
@@ -111,6 +111,12 @@
               ]
               ++ inputs.cmakeFlags;
 
+            checkPhase = ''
+              runHook preCheckPhase
+              ctest -j $NIX_BUILD_CORES -L ${checkOptions}
+              runHook postCheckPhase
+            '';
+
             autoPatchelfIgnoreMissingDeps = ["libmpi_stubs.so"];
 
             preConfigure = ''
@@ -123,18 +129,24 @@
             ];
           };
 
-        default = {doCheck ? false}:
+        default = {
+          doCheck ? false,
+          checkOptions ? "-L quick",
+        }:
           basePkg {
-            inherit doCheck;
+            inherit doCheck checkOptions;
             name = "elmer";
             nativeBuildInputs = [];
             buildInputs = [];
             cmakeFlags = [];
           };
 
-        gui = {doCheck ? false}:
+        gui = {
+          doCheck ? false,
+          checkOptions ? "-L quick",
+        }:
           basePkg {
-            inherit doCheck;
+            inherit doCheck checkOptions;
             name = "elmer-gui";
 
             nativeBuildInputs = [pkgs.libsForQt5.wrapQtAppsHook];
@@ -158,9 +170,12 @@
             ];
           };
 
-        ice = {doCheck ? false}:
+        ice = {
+          doCheck ? false,
+          checkOptions ? ''-L fast -E "(Hydro_Coupled)|(Hydro_SedOnly)|(Proj_South)"'',
+        }:
           basePkg {
-            inherit doCheck;
+            inherit doCheck checkOptions;
             name = "elmer-ice";
 
             nativeBuildInputs = [];
@@ -208,12 +223,6 @@
 
               "-DWITH_Trilinos:BOOL=FALSE"
             ];
-
-            checkPhase = ''
-              runHook preCheckPhase
-              ctest -j $NIX_BUILD_CORES -L fast -E "(Hydro_Coupled)|(Hydro_SedOnly)|(Proj_South)"
-              runHook postCheckPhase
-            '';
           };
       in {
         checks = {
