@@ -2509,6 +2509,7 @@ SUBROUTINE GlaDS_GLflux( Model,Solver,dt,TransientSimulation )
   CHARACTER(LEN=MAX_NAME_LEN):: MaskName
   REAL(KIND=dp), POINTER     :: gmVals(:), channelVals(:), sheetThickVals(:), sheetDisVals(:)
   REAL(KIND=dp), POINTER     :: GLfluxVals(:)
+  REAL(KIND=dp)              :: x1,x2,y1,y2
   REAL(KIND=dp)              :: volFluxSheet, volFluxChannel, sheetDisMag
   INTEGER, POINTER           :: gmPerm(:), channelPerm(:), sheetThickPerm(:), sheetDisPerm(:)
   INTEGER, POINTER           :: GLfluxPerm(:)
@@ -2516,6 +2517,7 @@ SUBROUTINE GlaDS_GLflux( Model,Solver,dt,TransientSimulation )
 
   TYPE(Variable_t), POINTER  :: cglfVar, sglfVar
   REAL(KIND=dp), POINTER     :: cglfVals(:), sglfVals(:)
+  REAL(KIND=dp)              :: EdgeVec(3),SDVec(3),SDVec1(3),SDVec2(3),EdgeSD
   INTEGER, POINTER           :: cglfPerm(:), sglfPerm(:)
 
 
@@ -2595,22 +2597,76 @@ SUBROUTINE GlaDS_GLflux( Model,Solver,dt,TransientSimulation )
   ! set to zero to ensure old values at previous GL are not kept.
   cglfVals = 0.0
   sglfVals = 0.0
+
+  ! Sheet flux strategy:
+  ! We take the cross product of the sheet discharge vector with the edge vector for edges
+  ! that represent a section of grounding line.
+  ! We assign half of this value to the nodes at either end.
+  ! Note: sheet discharge needs to be multiplied by a suitable width to give a volume flux,
+  ! and the above approach provides this.
+  ! Note that the direction for the GL edge element is arbitrary.  We first take the dot product
+  ! to ascertain whether the angle between the two vectors is less than 90 degrees, and reverse
+  ! the direction of the GL edge if it isn't.
+  ! This presumes that the sheet discharge is always going from grounded ice into the ocean.
+  volFluxSheet = 0.0
+  sglfVals = 0.0
+  
+  EdgeLoopForSD: DO ee=1, Solver % Mesh % NumberOfEdges 
+     Edge => Solver % Mesh % Edges(ee)
+     IF (.NOT.ASSOCIATED(Edge)) CYCLE
+     ! ...ignoring edges not entirely on the lower surface...
+     IF (ANY(gmPerm(Edge % NodeIndexes(1:2)).EQ.0)) CYCLE
+     ! ... and check whether the edge contains 2 GL nodes.
+     ! If yes, the edge is valid for calculating GL sheet flux.
+     ValidEdge = .FALSE.
+     IF ( (gmVals(gmPerm(Edge % NodeIndexes(1))).EQ.0.0) .AND.      & 
+          (gmVals(gmPerm(Edge % NodeIndexes(2))).EQ.0.0)  ) THEN
+        ValidEdge = .TRUE.
+     END IF
+     IF (ValidEdge) THEN
+        ! compose edge vector:
+        x1 = Solver % Mesh % Nodes % x(Edge % NodeIndexes(1))
+        y1 = Solver % Mesh % Nodes % y(Edge % NodeIndexes(1))
+        x2 = Solver % Mesh % Nodes % x(Edge % NodeIndexes(2))
+        y2 = Solver % Mesh % Nodes % y(Edge % NodeIndexes(2))
+        EdgeVec(:) = (/x2-x1,y2-y1,0.0_dp/)
+        ! compose mean sheet dischagre vector (based on nodes at either end):
+        SDVec1(:)  = (/                                                    &
+             sheetDisVals( 2*(sheetDisPerm(Edge % NodeIndexes(1))-1)+1 ),  &
+             sheetDisVals( 2*(sheetDisPerm(Edge % NodeIndexes(1))-1)+2 ),  &
+             0.0_dp /)
+        SDVec2(:)  = (/                                                    &
+             sheetDisVals( 2*(sheetDisPerm(Edge % NodeIndexes(2))-1)+1 ),  &
+             sheetDisVals( 2*(sheetDisPerm(Edge % NodeIndexes(2))-1)+2 ),  &
+             0.0_dp /)
+        SDVec = (SDVec1 + SDVec2) * 0.5
+        ! Check vectors are within 90 degrees of each other:
+        IF (DOT_PRODUCT(EdgeVec,SDVec).LT.0.0) THEN
+           EdgeVec(:) = (/x1-x2,y1-y2,0.0_dp/)
+        END IF
+        ! Make scalar product of vectors; add half of this to sheet discharge flux for each node
+        EdgeSD = CROSS_PRODUCT_MAGNITUDE(EdgeVec,SDVec)
+        sglfVals(sglfPerm(Edge % NodeIndexes(1))) = sglfVals(sglfPerm(Edge % NodeIndexes(1))) + 0.5*EdgeSD
+        sglfVals(sglfPerm(Edge % NodeIndexes(2))) = sglfVals(sglfPerm(Edge % NodeIndexes(2))) + 0.5*EdgeSD
+     END IF
+  END DO EdgeLoopForSD
   
   ! Loop over all nodes
   numNodes = Solver % Mesh % Nodes % NumberOfNodes
-  DO nn = 1, numNodes
+  NodesLoop: DO nn = 1, numNodes
 
      ! We're interested in nodes where the grounded mask is both defined (non-zero permutation)
      ! and has value set to zero (the grounding line).
      IF (gmPerm(nn).le.0) CYCLE
      IF (gmVals(gmPerm(nn)).eq.0) THEN
 
-        ! Sheet discharge multiplied by sheet thickness gives the volume flux from the sheet.
-        ! We're hard coding the assumption that the sheet discharge is always a 2D vector,
-        ! which should be safe so long as we always run GlaDS in 2D.
-        sheetDisMag = ( sheetDisVals( 2*(sheetDisPerm(nn)-1)+1 )**2.0 +      &
-                        sheetDisVals( 2*(sheetDisPerm(nn)-1)+2 )**2.0  )**0.5
-        volFluxSheet = sheetThickVals(sheetThickPerm(nn)) * sheetDisMag
+! Old code based on wrong assumption about sheet discharge:
+!        ! Sheet discharge multiplied by sheet thickness gives the volume flux from the sheet.
+!        ! We're hard coding the assumption that the sheet discharge is always a 2D vector,
+!        ! which should be safe so long as we always run GlaDS in 2D.
+!        sheetDisMag = ( sheetDisVals( 2*(sheetDisPerm(nn)-1)+1 )**2.0 +      &
+!                        sheetDisVals( 2*(sheetDisPerm(nn)-1)+2 )**2.0  )**0.5
+!        volFluxSheet = sheetThickVals(sheetThickPerm(nn)) * sheetDisMag
         
         volFluxChannel = 0.0
 
@@ -2642,22 +2698,23 @@ SUBROUTINE GlaDS_GLflux( Model,Solver,dt,TransientSimulation )
         END DO
         
         cglfVals(cglfPerm(nn)) = volFluxChannel
-        sglfVals(sglfPerm(nn)) = volFluxSheet
+!        sglfVals(sglfPerm(nn)) = volFluxSheet
 
      END IF
-
-  END DO
+     
+  END DO NodesLoop
 
   ! Sum nodal values for nodes that exist on multiple partitions
   CALL ParallelSumVector(Solver % Matrix, cglfVals)
+  CALL ParallelSumVector(Solver % Matrix, sglfVals)
 
   GLfluxVals = 0.0
   
   DO nn = 1, numNodes
      IF (gmPerm(nn).le.0) CYCLE
-!     IF (gmVals(gmPerm(nn)).eq.0) GLfluxVals(GLfluxPerm(nn)) = volFluxSheet + volFluxChannel
-     IF (gmVals(gmPerm(nn)).eq.0) GLfluxVals(GLfluxPerm(nn)) =  & 
-          cglfVals(cglfPerm(nn)) + sglfVals(sglfPerm(nn))
+     IF (gmVals(gmPerm(nn)).eq.0) THEN
+        GLfluxVals(GLfluxPerm(nn)) =  cglfVals(cglfPerm(nn)) + sglfVals(sglfPerm(nn))
+     END IF
   END DO
   
   NULLIFY(cglfVals)
@@ -2674,6 +2731,27 @@ SUBROUTINE GlaDS_GLflux( Model,Solver,dt,TransientSimulation )
   NULLIFY(channelVals)
   NULLIFY(channelPerm)
 
+CONTAINS
+
+  FUNCTION CROSS_PRODUCT_MAGNITUDE(aa, bb)
+    REAL(KIND=dp)               :: CROSS_PRODUCT_MAGNITUDE
+    REAL(KIND=dp), DIMENSION(3) :: xx
+    REAL(KIND=dp), DIMENSION(3), INTENT(IN) :: aa, bb
+
+    xx = CROSS_PRODUCT(aa, bb)
+    CROSS_PRODUCT_MAGNITUDE = ( xx(1)**2.0 + xx(2)**2.0 + xx(3)**2.0 )**0.5
+
+  END FUNCTION CROSS_PRODUCT_MAGNITUDE
+
+  FUNCTION CROSS_PRODUCT(aa, bb)
+    REAL(KIND=dp), DIMENSION(3) :: CROSS_PRODUCT
+    REAL(KIND=dp), DIMENSION(3), INTENT(IN) :: aa, bb
+    
+    CROSS_PRODUCT(1) = aa(2) * bb(3) - aa(3) * bb(2)
+    CROSS_PRODUCT(2) = aa(3) * bb(1) - aa(1) * bb(3)
+    CROSS_PRODUCT(3) = aa(1) * bb(2) - aa(2) * bb(1)
+  END FUNCTION CROSS_PRODUCT
+  
 END SUBROUTINE GlaDS_GLflux
 
 ! Different ways of calculating a grounded melt rate to pass to GlaDS as a
