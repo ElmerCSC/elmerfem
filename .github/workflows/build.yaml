@@ -71,7 +71,7 @@ jobs:
       - name: build
         run: |
           cd ${GITHUB_WORKSPACE}/build
-          cmake --build .
+          cmake --build . -j$(nproc)
 
       - name: install
         run: |
@@ -83,7 +83,7 @@ jobs:
         timeout-minutes: 150
         run: |
           cd ${GITHUB_WORKSPACE}/build
-          ctest -L quick
+          ctest -L quick -j$(nproc)
 
       - name: Re-run tests
         if: always() && (steps.run-ctest.outcome == 'failure')
