@@ -46,7 +46,8 @@ jobs:
         run: |
           sudo apt -qq update
           sudo apt install -y ${{ matrix.compiler-pkgs }} cmake gfortran \
-            libopenblas-dev libopenmpi-dev libmumps-dev libparmetis-dev
+            libopenblas-dev libopenmpi-dev libmumps-dev libparmetis-dev \
+            libqwt-qt5-dev qtscript5-dev libqt5svg5-dev
 
       - name: configure
         run: |
@@ -60,6 +61,7 @@ jobs:
             -DWITH_LUA=ON \
             -DWITH_Zoltan=OFF \
             -DWITH_Mumps=ON \
+            -DWITH_ELMERGUI=ON \
             -DCREATE_PKGCONFIG_FILE=ON \
             -DWITH_MPI=ON \
             -DMPI_TEST_MAXPROC=2 \
