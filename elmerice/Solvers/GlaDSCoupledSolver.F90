@@ -79,7 +79,8 @@
      INTEGER :: i, j, k, l, m, n, t, iter, body_id, eq_id, material_id, &
           istat, LocalNodes,bf_id, bc_id,  DIM, dimSheet, iterC, &
           NSDOFs, NonlinearIter, GhostNodes, NonlinearIterMin, Ne, BDForder, &
-          CoupledIter, Nel, ierror, ChannelSolver, FluxVariable, ThicknessSolver, ierr
+          MinCoupledIter, MaxCoupledIter, Nel, ierror, ChannelSolver, FluxVariable, &
+          ThicknessSolver, ierr
 
      TYPE(Variable_t), POINTER :: HydPotSol
      TYPE(Variable_t), POINTER :: ThickSol, AreaSol, VSol, WSol, NSol,  &
@@ -520,13 +521,17 @@
           'Nonlinear System Convergence Tolerance',    Found )
      IF ((.Not.Found).AND.(NonlinearIter>1)) CALL FATAL(SolverName,'Need >Nonlinear System Convergence Tolerance<')
 
-     CoupledIter = GetInteger( SolverParams, &
+     MaxCoupledIter = GetInteger( SolverParams, &
                     'Coupled Max Iterations', Found)
-     IF ( .NOT.Found ) CoupledIter = 1
+     IF ( .NOT.Found ) MaxCoupledIter = 1
+
+     MinCoupledIter = GetInteger( SolverParams, &
+                    'Coupled Min Iterations', Found)
+     IF ( .NOT.Found ) MinCoupledIter = 2
 
      CoupledTol  = GetConstReal( SolverParams, &
           'Coupled Convergence Tolerance',    Found )
-     IF ((.Not.Found).AND.(CoupledIter>1)) CALL FATAL(SolverName,'Need >Nonlinear System Convergence Tolerance<')
+     IF ((.Not.Found).AND.(MaxCoupledIter>1)) CALL FATAL(SolverName,'Need >Nonlinear System Convergence Tolerance<')
      
      ThickSol => VariableGet( Mesh % Variables, SheetThicknessName, UnfoundFatal = .TRUE. )
      ThickPerm     => ThickSol % Perm
@@ -608,7 +613,7 @@
     PrevCoupledNorm = ComputeNorm( Solver, SIZE(HydPot), HydPot ) 
 
     
-    DO iterC = 1, CoupledIter
+    DO iterC = 1, MaxCoupledIter
 
 !------------------------------------------------------------------------------
 !       non-linear system iteration loop
@@ -1467,7 +1472,8 @@
       WRITE( Message, * ) 'COUPLING LOOP (NRM,RELC) : ',iterC, CoupledNorm, RelativeChange
       CALL Info( SolverName, Message, Level=3 )
 
-      IF ((RelativeChange < CoupledTol).AND. (iterC > 1)) EXIT 
+      IF ((RelativeChange < CoupledTol) .AND. (iterC .GE. MinCoupledIter)) EXIT 
+
    END DO ! iterC
 
 !--------------------------------------------------------------------------------------------
