@@ -41,6 +41,8 @@ jobs:
 
       - name: checkout repository
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: install dependencies
         run: |
@@ -59,7 +61,7 @@ jobs:
             -DBLA_VENDOR="OpenBLAS" \
             -DWITH_OpenMP=ON \
             -DWITH_LUA=ON \
-            -DWITH_Zoltan=OFF \
+            -DWITH_Zoltan=ON \
             -DWITH_Mumps=ON \
             -DWITH_ELMERGUI=ON \
             -DCREATE_PKGCONFIG_FILE=ON \
