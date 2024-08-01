@@ -45,10 +45,16 @@ jobs:
             cc:p
             fc:p
             cmake:p
+            msmpi:p
             openblas:p
             parmetis:p
             qwt-qt5:p
             qt5-script:p
+
+      - name: install MSMPI
+        uses: mpi4py/setup-mpi@v1
+        with:
+          mpi: msmpi
 
       - name: configure
         run: |
@@ -62,11 +68,13 @@ jobs:
             -DBLA_VENDOR="OpenBLAS" \
             -DWITH_OpenMP=ON \
             -DWITH_LUA=ON \
+            -DWITH_MPI=ON \
+            -DMPI_TEST_MAXPROC=2 \
+            -DMPIEXEC_EXECUTABLE="$(cygpath -m "${MSMPI_BIN}")/mpiexec.exe" \
             -DWITH_Zoltan=OFF \
             -DWITH_Mumps=OFF \
             -DWITH_ELMERGUI=ON \
             -DCREATE_PKGCONFIG_FILE=ON \
-            -DWITH_MPI=OFF \
             ..
 
       - name: build
