@@ -1,9 +1,9 @@
-name: full-test
+name: ubuntu-clang-full
 on:
   workflow_dispatch:
   schedule:
-    # Run job every Tuesday at 09:50 UTC
-    - cron: '50 09 * * 2'
+    # Run job every Thursday at 09:50 UTC
+    - cron: '50 09 * * 4'
 
 concurrency: ci-${{ github.ref }}
 
@@ -14,23 +14,20 @@ jobs:
     # https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners
     runs-on: ubuntu-latest
 
-    name: ubuntu (${{ matrix.compiler }})
+    name: ubuntu-full (${{ matrix.compiler }})
 
     strategy:
       # Allow other runners in the matrix to continue if some fail
       fail-fast: false
 
       matrix:
-        compiler: [gcc]
+        compiler: [clang]
         include:
-          - compiler: gcc
-            compiler-pkgs: "g++ gcc"
-            cc: "gcc"
-            cxx: "g++"
-          #- compiler: clang
-          #  compiler-pkgs: "clang libomp-dev"
-          #  cc: "clang"
-          #  cxx: "clang++"
+          - compiler: clang
+            compiler-pkgs: "clang"
+            cc: "clang"
+            cxx: "clang++"
+            openmp-cmake-flags: "-WITH_OpenMP=ON -DOpenMP_C_FLAGS=-fopenmp=libgomp -DOpenMP_CXX_FLAGS=-fopenmp=libgomp"
 
     env:
       CC: ${{ matrix.cc }}
@@ -60,7 +57,7 @@ jobs:
             -DCMAKE_BUILD_TYPE="Release" \
             -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/usr" \
             -DBLA_VENDOR="OpenBLAS" \
-            -DWITH_OpenMP=ON \
+            ${{ matrix.openmp-cmake-flags }} \
             -DWITH_LUA=ON \
             -DWITH_Zoltan=ON \
             -DWITH_Mumps=ON \
@@ -86,4 +83,16 @@ jobs:
         timeout-minutes: 150
         run: |
           cd ${GITHUB_WORKSPACE}/build
-          CTEST_OUTPUT_ON_FAILURE=1 ctest . -j$(nproc)
+          ctest -L quick -j$(nproc)
+
+      - name: Re-run tests
+        if: always() && (steps.run-ctest.outcome == 'failure')
+        timeout-minutes: 60
+        run: |
+          cd ${GITHUB_WORKSPACE}/build
+          echo "::group::Re-run failing tests"
+          ctest --rerun-failed --output-on-failure || true
+          echo "::endgroup::"
+          echo "::group::Log from these tests"
+          [ ! -f Testing/Temporary/LastTest.log ] || cat Testing/Temporary/LastTest.log
+          echo "::endgroup::"

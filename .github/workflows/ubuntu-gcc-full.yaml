@@ -1,0 +1,86 @@
+name: ubuntu-gcc-full
+on:
+  workflow_dispatch:
+  schedule:
+    # Run job every Tuesday at 09:50 UTC
+    - cron: '50 09 * * 2'
+
+concurrency: ci-${{ github.ref }}
+
+jobs:
+
+  ubuntu:
+    # For available GitHub-hosted runners, see:
+    # https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners
+    runs-on: ubuntu-latest
+
+    name: ubuntu-full (${{ matrix.compiler }})
+
+    strategy:
+      # Allow other runners in the matrix to continue if some fail
+      fail-fast: false
+
+      matrix:
+        compiler: [gcc]
+        include:
+          - compiler: gcc
+            compiler-pkgs: "g++ gcc"
+            cc: "gcc"
+            cxx: "g++"
+            openmp-cmake-flags: "-WITH_OpenMP=ON"
+
+    env:
+      CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cxx }}
+
+    steps:
+      - name: get CPU information
+        run: lscpu
+
+      - name: checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: install dependencies
+        run: |
+          sudo apt -qq update
+          sudo apt install -y ${{ matrix.compiler-pkgs }} cmake gfortran \
+            libopenblas-dev libopenmpi-dev libmumps-dev libparmetis-dev \
+            libqwt-qt5-dev qtscript5-dev libqt5svg5-dev
+
+      - name: configure
+        run: |
+          mkdir ${GITHUB_WORKSPACE}/build
+          cd ${GITHUB_WORKSPACE}/build
+          cmake \
+            -DCMAKE_BUILD_TYPE="Release" \
+            -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/usr" \
+            -DBLA_VENDOR="OpenBLAS" \
+            ${{ matrix.openmp-cmake-flags }} \
+            -DWITH_LUA=ON \
+            -DWITH_Zoltan=ON \
+            -DWITH_Mumps=ON \
+            -DWITH_ELMERGUI=ON \
+            -DCREATE_PKGCONFIG_FILE=ON \
+            -DWITH_MPI=ON \
+            -DMPI_TEST_MAXPROC=2 \
+            -DMPIEXEC_PREFLAGS="--allow-run-as-root" \
+            ..
+
+      - name: build
+        run: |
+          cd ${GITHUB_WORKSPACE}/build
+          cmake --build . -j$(nproc)
+
+      - name: install
+        run: |
+          cd ${GITHUB_WORKSPACE}/build
+          cmake --install .
+
+      - name: check
+        id: run-ctest
+        timeout-minutes: 150
+        run: |
+          cd ${GITHUB_WORKSPACE}/build
+          CTEST_OUTPUT_ON_FAILURE=1 ctest . -j$(nproc)
