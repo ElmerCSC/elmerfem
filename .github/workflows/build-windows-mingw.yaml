@@ -25,6 +25,11 @@ jobs:
         msystem: [MINGW64]
 
     steps:
+      - name: get CPU name
+        shell: pwsh
+        run : |
+          Get-CIMInstance -Class Win32_Processor | Select-Object -Property Name
+
       - name: checkout repository
         uses: actions/checkout@v4
 
