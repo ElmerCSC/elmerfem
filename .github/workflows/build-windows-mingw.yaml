@@ -9,47 +9,83 @@ concurrency: ci-windows-mingw-${{ github.ref }}
 jobs:
 
   windows-mingw:
+
     runs-on: windows-latest
+
     defaults:
       run:
         shell: msys2 {0}
-    
+
+    strategy:
+      # Allow other runners in the matrix to continue if some fail
+      fail-fast: false
+
+      matrix:
+        # msystem: [MINGW64, CLANG64]
+        msystem: [MINGW64]
+
     steps:
-      - uses: actions/checkout@v4
-      
-      - uses: msys2/setup-msys2@v2
+      - name: checkout repository
+        uses: actions/checkout@v4
+
+      - name: install dependencies
+        uses: msys2/setup-msys2@v2
         with:
-          msystem: MINGW64
+          msystem: ${{ matrix.msystem }}
           update: true
           install: >-
-            git
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-gcc-fortran
-            mingw-w64-x86_64-cmake
-            mingw-w64-x86_64-openblas
-            mingw-w64-x86_64-parmetis
             base-devel
-      
-      - name: Configure
+            git
+          pacboy: >-
+            cc:p
+            fc:p
+            cmake:p
+            openblas:p
+            parmetis:p
+
+      - name: configure
         run: |
-          mkdir build
-          cd build
-          cmake .. -G "MSYS Makefiles" \
+          mkdir ${GITHUB_WORKSPACE}/build
+          cd ${GITHUB_WORKSPACE}/build
+          cmake \
+            -G "MSYS Makefiles" \
             -DCMAKE_BUILD_TYPE="Release" \
+            -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/usr" \
+            -DCPACK_BUNDLE_EXTRA_WINDOWS_DLLS=OFF \
             -DBLA_VENDOR="OpenBLAS" \
             -DWITH_OpenMP=ON \
             -DWITH_LUA=ON \
             -DWITH_Zoltan=OFF \
             -DWITH_Mumps=OFF \
             -DCREATE_PKGCONFIG_FILE=ON \
-            -DWITH_MPI=OFF
-      
-      - name: Build
+            -DWITH_MPI=OFF \
+            ..
+
+      - name: build
         run: |
-          cd build
-          cmake --build .
-      
-      - name: Test
+          cd ${GITHUB_WORKSPACE}/build
+          cmake --build . -j$(nproc)
+
+      - name: install
         run: |
-          cd build
-          ctest -L quick
+          cd ${GITHUB_WORKSPACE}/build
+          cmake --install .
+
+      - name: check
+        id: run-ctest
+        timeout-minutes: 150
+        run: |
+          cd ${GITHUB_WORKSPACE}/build
+          ctest -L quick -j$(nproc)
+
+      - name: re-run tests
+        if: always() && (steps.run-ctest.outcome == 'failure')
+        timeout-minutes: 60
+        run: |
+          cd ${GITHUB_WORKSPACE}/build
+          echo "::group::Re-run failing tests"
+          ctest --rerun-failed --output-on-failure || true
+          echo "::endgroup::"
+          echo "::group::Log from these tests"
+          [ ! -f Testing/Temporary/LastTest.log ] || cat Testing/Temporary/LastTest.log
+          echo "::endgroup::"
