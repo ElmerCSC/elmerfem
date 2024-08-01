@@ -5,7 +5,7 @@ on:
     # Run job every Thursday at 09:50 UTC
     - cron: '50 09 * * 4'
 
-concurrency: ci-${{ github.ref }}
+concurrency: ci-ubuntu-clang-full-${{ github.ref }}
 
 jobs:
 
