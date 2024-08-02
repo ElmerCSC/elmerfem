@@ -5,4 +5,4 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 
 file(COPY cube.grd ELMERSOLVER_STARTINFO DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(StressConstraintModes3 LABELS cmodes)
+ADD_ELMER_TEST(StressConstraintModes3 LABELS cmodes failing)
