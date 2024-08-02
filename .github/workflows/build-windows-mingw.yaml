@@ -32,6 +32,8 @@ jobs:
 
       - name: checkout repository
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: install dependencies
         uses: msys2/setup-msys2@v2
@@ -45,12 +47,20 @@ jobs:
             cc:p
             fc:p
             cmake:p
+            msmpi:p
             openblas:p
             parmetis:p
             qwt-qt5:p
             qt5-script:p
 
+      - name: install MSMPI
+        uses: mpi4py/setup-mpi@v1
+        with:
+          mpi: msmpi
+
       - name: configure
+        # Downgrade incompatible-pointer-types to a warning to work around
+        # build error of Zoltan with newer GCC.
         run: |
           mkdir ${GITHUB_WORKSPACE}/build
           cd ${GITHUB_WORKSPACE}/build
@@ -62,11 +72,16 @@ jobs:
             -DBLA_VENDOR="OpenBLAS" \
             -DWITH_OpenMP=ON \
             -DWITH_LUA=ON \
-            -DWITH_Zoltan=OFF \
+            -DWITH_MPI=ON \
+            -DMPI_TEST_MAXPROC=2 \
+            -DMPIEXEC_EXECUTABLE="$(cygpath -m "${MSMPI_BIN}")/mpiexec.exe" \
+            -DWITH_Zoltan=ON \
+            -DCMAKE_C_FLAGS="-Wno-error=incompatible-pointer-types" \
+            -DParMetis_LIBRARIES="$(pkg-config --libs parmetis)" \
+            -DParMetis_INCLUDE_DIR="$(pkg-config --cflags parmetis)" \
             -DWITH_Mumps=OFF \
             -DWITH_ELMERGUI=ON \
             -DCREATE_PKGCONFIG_FILE=ON \
-            -DWITH_MPI=OFF \
             ..
 
       - name: build
