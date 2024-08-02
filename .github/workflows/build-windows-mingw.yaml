@@ -12,6 +12,8 @@ jobs:
 
     runs-on: windows-latest
 
+    name: MSYS2 (${{ matrix.umfpack }} UMFPACK, ${{ matrix.msystem }})
+
     defaults:
       run:
         shell: msys2 {0}
@@ -23,6 +25,11 @@ jobs:
       matrix:
         # msystem: [MINGW64, CLANG64]
         msystem: [MINGW64]
+        umfpack: [internal, external]
+        include:
+          - umfpack: external
+            umfpack-package: suitesparse:p
+            umfpack-cmake-flags: "-DEXTERNAL_UMFPACK=ON"
 
     steps:
       - name: get CPU name
@@ -52,6 +59,7 @@ jobs:
             parmetis:p
             qwt-qt5:p
             qt5-script:p
+            ${{ matrix.umfpack-package }}
 
       - name: install MSMPI
         uses: mpi4py/setup-mpi@v1
@@ -82,6 +90,7 @@ jobs:
             -DWITH_Mumps=OFF \
             -DWITH_ELMERGUI=ON \
             -DCREATE_PKGCONFIG_FILE=ON \
+            ${{ matrix.umfpack-cmake-flags }} \
             ..
 
       - name: build
