@@ -98,6 +98,8 @@ jobs:
       - name: check
         id: run-ctest
         timeout-minutes: 150
+        env:
+          CTEST_OUTPUT_ON_FAILURE: 1
         run: |
           cd ${GITHUB_WORKSPACE}/build
           ctest -L quick -j$(nproc)
@@ -105,6 +107,8 @@ jobs:
       - name: Re-run tests
         if: always() && (steps.run-ctest.outcome == 'failure')
         timeout-minutes: 60
+        env:
+          CTEST_OUTPUT_ON_FAILURE: 1
         run: |
           cd ${GITHUB_WORKSPACE}/build
           echo "::group::Re-run failing tests"
