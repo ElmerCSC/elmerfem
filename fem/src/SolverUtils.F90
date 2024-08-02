@@ -14367,16 +14367,17 @@ END FUNCTION SearchNodeL
     Solver % MultiGridLevel = Solver % MultigridTotal
 !------------------------------------------------------------------------------
 
-    EigenAnalysis = Solver % NOFEigenValues > 0 .AND. &
-        ListGetLogical( Params, 'Eigen Analysis',GotIt )
-
-    
+    EigenAnalysis = .FALSE.
+    IF(.NOT. ListGetLogical( Params,'Skip Eigen Analysis',GotIt)) THEN
+      EigenAnalysis = Solver % NOFEigenValues > 0 .AND. &
+          ListGetLogical( Params, 'Eigen Analysis',GotIt )
+    END IF
+          
     HarmonicAnalysis = ( Solver % NOFEigenValues > 0 ) .AND. &
         ListGetLogical( Params, 'Harmonic Analysis',GotIt )
-
+    
     ! These analyses types may require recursive strategies and may also have zero rhs
-    RecursiveAnalysis = HarmonicAnalysis .OR. EigenAnalysis 
-
+    RecursiveAnalysis = HarmonicAnalysis .OR. EigenAnalysis     
 
     ApplyLimiter = ListGetLogical( Params,'Apply Limiter',GotIt ) 
     SkipZeroRhs = ListGetLogical( Params,'Skip Zero Rhs Test',GotIt )
@@ -15555,7 +15556,7 @@ END FUNCTION SearchNodeL
     TYPE(Variable_t), POINTER :: Var, NodalLoads
     TYPE(Mesh_t), POINTER :: Mesh, SaveMEsh
     LOGICAL :: Relax, Found, NeedPrevSol, Timing, ResidualMode, &
-        RestrictionMode, BlockMode, GloNum
+        RestrictionMode, BlockMode, GloNum, FirstLoop
     INTEGER :: n,i,j,k,l,m,istat,nrows,ncols,colsj,rowoffset
     CHARACTER(:), ALLOCATABLE :: Method, VariableName
     INTEGER(KIND=AddrInt) :: Proc
@@ -15654,9 +15655,10 @@ END FUNCTION SearchNodeL
     END IF
 
     RestrictionMode = HaveRestrictionMatrix( A ) 
-    
+
+    FirstLoop = .TRUE.
     Nmode = 0
-20  CALL ConstraintModesDriver( A, x, b, Solver, .TRUE., Nmode, LinModes )  
+20  CALL ConstraintModesDriver( A, x, b, Solver, .TRUE., Nmode, LinModes, FirstLoop = FirstLoop )  
     
     ! Here activate constraint solve only if constraints are not treated as blocks
     IF( BlockMode .AND. RestrictionMode ) THEN
@@ -15680,8 +15682,9 @@ END FUNCTION SearchNodeL
     CALL Info(Caller,'System solved',Level=12)
 
     
-    IF( Nmode > 0 ) THEN
-      CALL ConstraintModesDriver( A, x, b, Solver, .FALSE. ) 
+    IF( LinModes > 0 .OR. Nmode > 0 ) THEN
+      CALL ConstraintModesDriver( A, x, b, Solver, .FALSE., FirstLoop = FirstLoop ) 
+      FirstLoop = .FALSE.
       IF( Nmode < LinModes ) GOTO 20
     END IF
     
@@ -16374,13 +16377,14 @@ END SUBROUTINE BoundaryCirculation
 !------------------------------------------------------------------------------
 !> Solve a linear system with permutated constraints.
 !------------------------------------------------------------------------------
-SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysModes )
+SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysModes, FirstLoop )
 !------------------------------------------------------------------------------
     TYPE(Matrix_t), POINTER :: A
     TYPE(Solver_t), TARGET :: Solver
     REAL(KIND=dp) CONTIG :: x(:),b(:)
     LOGICAL :: PreSolve
     INTEGER, OPTIONAL :: ThisMode, LinSysModes
+    LOGICAL, OPTIONAL :: FirstLoop
 !------------------------------------------------------------------------------
     TYPE(Variable_t), POINTER :: Var
     INTEGER :: i,j,k,n,NoModes,Mmode,ierr
@@ -16396,13 +16400,12 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
     INTEGER :: NMode = 0
     TYPE(Variable_t), POINTER :: pVar
     TYPE(ValueList_t), POINTER :: Params
-    LOGICAL :: LinsysMode 
+    LOGICAL :: LinsysMode, EigenMode 
 
     SAVE FluxesRow, FluxesRowIm, Fluxes, TempRhs, A0, b0, ConstrainedDOF0, LinsysMode, NMode
 
     
     !------------------------------------------------------------------------------
-    !NMode = 0
     IF(PRESENT(LinSysModes)) LinSysModes = 0
     NoModes = Solver % NumberOfConstraintModes 
 
@@ -16416,6 +16419,8 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
       RETURN
     END IF
 
+    EigenMode = ListgetLogical( Solver % Values, 'Eigen Analysis', Found ) 
+    
     Var => Solver % Variable
     n = A % NumberOfRows        
     Parallel = Solver % Parallel
@@ -16447,7 +16452,7 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
     
     IF( PreSolve ) THEN
       CALL Info(Caller,'Number of constraint modes is: '//I2S(NoModes),Level=8)
-      
+          
       ! We loop over the mode if it is not given in some external loop.
       !---------------------------------------------------------------------
       pVar => NULL()
@@ -16461,14 +16466,21 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
       LinSysMode = .NOT. ASSOCIATED(pVar)
       
       IF(LinSysMode) THEN
-        Nmode = ThisMode + 1
         LinSysModes = NoModes
+        ! If we combined eigen analysis base + constraint modes base do an empty
+        ! cycle that does the eigenmodes first without updating the counter. 
+        IF( PRESENT( FirstLoop ) ) THEN
+          IF( FirstLoop .AND. EigenMode ) RETURN
+        END IF        
+        Nmode = ThisMode + 1
       ELSE
         Nmode = NINT( pVar % Values(1) ) 
         LinSysModes = 0
       END IF
       ThisMode = Nmode
       
+      IF(EigenMode) CALL ListAddLogical( Solver % Values,'Skip Eigen Analysis',.TRUE.)
+
       IF( SIZE(x) /= n ) THEN
         CALL Fatal(Caller,'Conflicting sizes for matrix and variable! ('//I2S(SIZE(x))//','//I2S(n)//')')
       END IF
@@ -16556,6 +16568,10 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
     END IF
       
     IF( .NOT. PreSolve ) THEN 
+      IF( PRESENT( FirstLoop ) ) THEN
+        IF( FirstLoop .AND. EigenMode ) RETURN
+      END IF
+
       CALL Info(Caller,'Mode '//I2S(NMode)//' computed, doing some postprocessing',Level=10)
 
       IF( .NOT. ( IsComplex .OR. CoilMode ) ) THEN
@@ -16615,8 +16631,16 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
       END IF
 
       CALL ListAddLogical( Params,'Skip Zero Rhs Test',.FALSE. )
+
+      IF(EigenMode) THEN
+        CALL ListAddLogical( Solver % Values,'Skip Eigen Analysis',.FALSE.)
+      END IF
+
+
     END IF
-      
+
+
+    
   CONTAINS
 
     SUBROUTINE MagneticEnergies()

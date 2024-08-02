@@ -324,9 +324,11 @@ CONTAINS
  
          IF (ido == -1 .OR. ido == 1) THEN
 
-!           WRITE( Message,'(A,I0)') 'Arpack reverse communication calls: ',Iter
-!           CALL Info( Caller, Message, Level=20 )
-            CALL Info( Caller, '.', .TRUE., Level=5 )
+            IF(InfoActive(20)) THEN
+              CALL Info(Caller,'Arpack reverse communication calls: '//I2S(iter))
+            ELSE
+              CALL Info(Caller, '.', .TRUE.)
+            END IF
             iter = iter + 1
 
 !---------------------------------------------------------------------
@@ -943,9 +945,11 @@ END SUBROUTINE CheckResiduals
               RESID, NCV, V, n, IPARAM, IPNTR, WORKD, WORKL, lWORKL, kinfo )
 
          IF( ido==-1 .OR. ido==1 ) THEN
-!           WRITE( Message, * ) 'Arpack reverse communication calls: ', Iter
-!           CALL Info( Caller, Message, Level=20 )
-            CALL Info( Caller, '.', .TRUE., Level=5 )
+            IF(InfoActive(20)) THEN
+              CALL Info(Caller,'Arpack reverse communication calls: '//I2S(iter))
+            ELSE
+              CALL Info(Caller, '.', .TRUE.)
+            END IF
             iter = iter + 1
          END IF
 
@@ -1348,9 +1352,11 @@ END SUBROUTINE CheckResiduals
            RESID, NCV, v, n, IPARAM, IPNTR, WORKD, WORKL, lWORKL, RWORK, kinfo )
 
          IF (ido == -1 .OR. ido == 1) THEN
-!           WRITE( Message, * ) 'Arpack reverse communication calls: ', Iter
-!           CALL Info(Caller, Message, Level=20 )
-            CALL Info(Caller, '.', .TRUE., Level=5 )
+            IF(InfoActive(20)) THEN
+              CALL Info(Caller,'Arpack reverse communication calls: '//I2S(iter))
+            ELSE
+              CALL Info(Caller, '.', .TRUE.)
+            END IF
             Iter = Iter + 1
 !---------------------------------------------------------------------
 !           Perform  y <--- OP*x = inv[M]*A*x   (lumped mass)
@@ -1879,9 +1885,11 @@ END SUBROUTINE CheckResidualsComplex
             ! 
             ! ido =-1 inv(A)*z:
             !--------------------------
-!           WRITE( Message, * ) 'Arpack reverse communication calls: ', Iter
-!           CALL Info( Caller, Message, Level=20 )
-            CALL Info( Caller, '.', .TRUE., Level=5 )
+            IF(InfoActive(20)) THEN
+              CALL Info(Caller,'Arpack reverse communication calls: '//I2S(iter))
+            ELSE
+              CALL Info(Caller, '.', .TRUE.)
+            END IF
             iter = iter + 1
 
             x => workd( ipntr(2) : ipntr(2)+n-1 )
