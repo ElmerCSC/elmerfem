@@ -65,7 +65,6 @@ jobs:
           mkdir ${GITHUB_WORKSPACE}/build
           cd ${GITHUB_WORKSPACE}/build
           cmake \
-            -G "MSYS Makefiles" \
             -DCMAKE_BUILD_TYPE="Release" \
             -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/usr" \
             -DCPACK_BUNDLE_EXTRA_WINDOWS_DLLS=OFF \
