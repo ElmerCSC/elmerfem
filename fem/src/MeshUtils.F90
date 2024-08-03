@@ -13923,7 +13923,6 @@ CONTAINS
     LOGICAL, ALLOCATABLE :: ActiveNode(:)
     REAL(KIND=dp), POINTER :: rArray(:,:)
     
-
     BCMode = PRESENT( BCind )
 
     ! Set the range for the possible active elements. 
@@ -14064,7 +14063,7 @@ CONTAINS
 
 100 CALL TangentDirections( AxisNormal,Tangent1,Tangent2 )
 
-    IF( InfoActive(30) .AND. ParEnv % MyPe == 0 ) THEN
+    IF( InfoActive(25) .AND. ParEnv % MyPe == 0 ) THEN
       PRINT *,'Axis Normal:',AxisNormal
       PRINT *,'Axis Tangent 1:',Tangent1
       PRINT *,'Axis Tangent 2:',Tangent2
@@ -14124,8 +14123,6 @@ CONTAINS
           MPI_DOUBLE_PRECISION,MPI_MAX,ELMER_COMM_WORLD,ierr)
     END IF
       
-    !PRINT *,'MinDist1:',MinDist,CircleInd(1),CircleCoord(1,:)
-
     ! Find one more point such that their minimum distance to the previous point(s)
     ! is maximized. This takes some time but the further the nodes are apart the more 
     ! accurate it will be to fit the circle to the points. Also if there is just 
@@ -14182,9 +14179,9 @@ CONTAINS
           MPI_DOUBLE_PRECISION,MPI_MAX,ELMER_COMM_WORLD,ierr)
     END IF
       
-    IF( InfoActive(30) .AND. ParEnv % MyPe == 0 ) THEN
+    IF( InfoActive(25) .AND. ParEnv % MyPe == 0 ) THEN
       DO i=1,3
-        PRINT *,'Circle Coord:',i,CircleCoord(3*i-2:3*i) 
+        PRINT *,'Circle Coord:',i,CircleInd(i),CircleCoord(3*i-2:3*i) 
       END DO
     END IF
       
@@ -14212,8 +14209,10 @@ CONTAINS
     A(1:3,3) = CircleCoord(2::3)  ! y
     m14 = Det3x3( a )
 
-    !PRINT *,'determinants:',m11,m12,m13,m14
-
+    IF(InfoActive(25) .AND. ParEnv % Mype == 0 ) THEN
+      PRINT *,'CylinderFit determinants:',m11,m12,m13,m14
+    END IF
+      
     IF( ABS( m11 ) < EPSILON( m11 ) ) THEN
       CALL Fatal('CylinderFit','Points cannot be an a circle')
     END IF
@@ -14224,7 +14223,7 @@ CONTAINS
 
     Coord = x0 * Tangent1 + y0 * Tangent2
 
-    IF( InfoActive(30) .AND. ParEnv % MyPe == 0) THEN
+    IF( InfoActive(25) .AND. ParEnv % MyPe == 0) THEN
       PRINT *,'Cylinder center and radius:',Coord, rad
     END IF
 
@@ -14247,6 +14246,11 @@ CONTAINS
         FitParams(4:6) = AxisNormal(1:3)
         FitParams(7) = rad
       END IF
+
+      IF( InfoActive(25) .AND. ParEnv % MyPe == 0) THEN
+        PRINT *,'Cylinder FitParams: ',FitParams 
+      END IF
+
     END IF
       
     DEALLOCATE( Nodes % x, Nodes % y, Nodes % z )
