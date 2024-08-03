@@ -1,0 +1,99 @@
+name: build-macos-homebrew
+on:
+  workflow_dispatch:
+  push:
+  pull_request:
+
+concurrency: ci-macos-homebrew-${{ github.ref }}
+
+jobs:
+
+  macos-homebrew:
+
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      # Allow other runners in the matrix to continue if some fail
+      fail-fast: false
+
+      matrix:
+        os: [macos-14, macos-13]
+
+    steps:
+      - name: get CPU information
+        run: |
+          sysctl hw
+          sysctl machdep
+
+      - name: checkout repository
+        uses: actions/checkout@v4
+
+      - name: install dependencies
+        # It looks like "gfortran" isn't working correctly unless "gcc" is
+        # re-installed.
+        run: |
+          brew update
+          brew reinstall gcc
+          brew install cmake libomp open-mpi qwt-qt5
+          echo "HOMEBREW_PREFIX=$(brew --prefix)" >> $GITHUB_ENV
+
+      - name: configure
+        env:
+          LDFLAGS: -L${{ env.HOMEBREW_PREFIX }}/opt/libomp/lib -lomp
+        run: |
+          mkdir ${GITHUB_WORKSPACE}/build
+          cd ${GITHUB_WORKSPACE}/build
+          cmake \
+            -DCMAKE_BUILD_TYPE="Release" \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_Fortran_COMPILER=gfortran \
+            -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/usr" \
+            -DBLA_VENDOR="Apple" \
+            -DCMAKE_PREFIX_PATH="${HOMEBREW_PREFIX}/opt/libomp;${HOMEBREW_PREFIX}/opt/qt@5;${HOMEBREW_PREFIX}/opt/qwt-qt5" \
+            -DWITH_OpenMP=ON \
+            -DOpenMP_C_FLAGS="-Xclang -fopenmp -I${HOMEBREW_PREFIX}/opt/libomp/include" \
+            -DOpenMP_CXX_FLAGS="-Xclang -fopenmp -I${HOMEBREW_PREFIX}/opt/libomp/include" \
+            -DOpenMP_Fortran_FLAGS="-fopenmp -I${HOMEBREW_PREFIX}/opt/libomp/include" \
+            -DWITH_LUA=ON \
+            -DWITH_MPI=ON \
+            -DMPI_TEST_MAXPROC=2 \
+            -DWITH_Zoltan=OFF \
+            -DWITH_Mumps=OFF \
+            -DWITH_ELMERGUI=ON \
+            -DQWT_INCLUDE_DIR="${HOMEBREW_PREFIX}/opt/qwt-qt5/lib/qwt.framework/Headers" \
+            -DCREATE_PKGCONFIG_FILE=ON \
+            ..
+
+      - name: build
+        run: |
+          cd ${GITHUB_WORKSPACE}/build
+          cmake --build . -j$(sysctl -n hw.logicalcpu)
+
+      - name: install
+        run: |
+          cd ${GITHUB_WORKSPACE}/build
+          cmake --install .
+
+      - name: check
+        id: run-ctest
+        timeout-minutes: 150
+        env:
+          CTEST_OUTPUT_ON_FAILURE: 1
+        run: |
+          cd ${GITHUB_WORKSPACE}/build
+          ctest -L quick -j$(sysctl -n hw.logicalcpu)
+
+      - name: re-run tests
+        if: always() && (steps.run-ctest.outcome == 'failure')
+        timeout-minutes: 60
+        env:
+          CTEST_OUTPUT_ON_FAILURE: 1
+        run: |
+          cd ${GITHUB_WORKSPACE}/build
+          echo "::group::Re-run failing tests"
+          ctest --rerun-failed --output-on-failure || true
+          echo "::endgroup::"
+          echo "::group::Log from these tests"
+          [ ! -f Testing/Temporary/LastTest.log ] || cat Testing/Temporary/LastTest.log
+          echo "::endgroup::"
