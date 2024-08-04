@@ -14067,6 +14067,10 @@ CONTAINS
       PRINT *,'Axis Normal:',AxisNormal
       PRINT *,'Axis Tangent 1:',Tangent1
       PRINT *,'Axis Tangent 2:',Tangent2
+      i = PMesh % NumberOfNodes
+      IF(BcMode) THEN
+        PRINT *,'Active nodes: ',i,COUNT(ActiveNode)
+      END IF
     END IF
 
     ! Finding three points with maximum distance in the tangent directions
@@ -14075,15 +14079,17 @@ CONTAINS
     ! Save the local coordinates in the N-T system of the cylinder
     MinDist = HUGE(MinDist)
     MaxDist = -HUGE(MaxDist)
-    DO i=1, PMesh % NumberOfNodes
-      Coord(1) = PMesh % Nodes % x(i)
-      Coord(2) = PMesh % Nodes % y(i)
-      Coord(3) = PMesh % Nodes % z(i)
 
+    CIrcleInd = 0
+    DO i=1, PMesh % NumberOfNodes
       IF( BCMode ) THEN
         IF( .NOT. ActiveNode(i) ) CYCLE
       END IF
       
+      Coord(1) = PMesh % Nodes % x(i)
+      Coord(2) = PMesh % Nodes % y(i)
+      Coord(3) = PMesh % Nodes % z(i)
+
       d1 = SUM( Tangent1 * Coord )
       IF( d1 < MinDist ) THEN
         MinDist = d1
@@ -14098,14 +14104,14 @@ CONTAINS
     CircleCoord = -HUGE(CircleCoord)
     DO j=1,2    
       i = CircleInd(j)
-
-      IF( BCMode ) THEN
+      
+      IF( BCMode .AND. ParEnv % PEs > 1 ) THEN
         IF(j==1) THEN
           Dist = ParallelReduction( MinDist, 1 )
-          IF(ABS(MinDist-Dist) > 1.0e-10) CYCLE
+          IF(ABS(MinDist-Dist) > 1.0e-8) CYCLE
         ELSE IF(j==2) THEN
           Dist = ParallelReduction( MaxDist, 2)
-          IF(ABS(MaxDist-Dist) > 1.0e-10) CYCLE
+          IF(ABS(MaxDist-Dist) > 1.0e-8) CYCLE
         END IF
       END IF
         
@@ -14118,11 +14124,15 @@ CONTAINS
       CircleCoord(3*(j-1)+3) = SUM( AxisNormal * Coord )
     END DO
 
-    IF( BCMode ) THEN
+    IF( BCMode .AND. ParEnv % PEs > 1 ) THEN
       CALL MPI_ALLREDUCE(MPI_IN_PLACE,CircleCoord,6, &
           MPI_DOUBLE_PRECISION,MPI_MAX,ELMER_COMM_WORLD,ierr)
     END IF
-      
+
+    IF( InfoActive(25) .AND. ParEnv % MyPe == 0 ) THEN
+      PRINT *,'Circle Coord:',CircleCoord(1:6)
+    END IF
+    
     ! Find one more point such that their minimum distance to the previous point(s)
     ! is maximized. This takes some time but the further the nodes are apart the more 
     ! accurate it will be to fit the circle to the points. Also if there is just 
@@ -14131,13 +14141,12 @@ CONTAINS
     ! The maximum minimum distance of any node from the previously defined nodes
     MaxDist = 0.0_dp
     DO i=1, PMesh % NumberOfNodes
-      Coord(1) = PMesh % Nodes % x(i)
-      Coord(2) = PMesh % Nodes % y(i)
-      Coord(3) = PMesh % Nodes % z(i)
-      
       IF( BCMode ) THEN
         IF( .NOT. ActiveNode(i) ) CYCLE
       END IF
+      Coord(1) = PMesh % Nodes % x(i)
+      Coord(2) = PMesh % Nodes % y(i)
+      Coord(3) = PMesh % Nodes % z(i)
       
       ! Minimum distance from the previously defined nodes
       MinDist = HUGE(MinDist)
@@ -14158,9 +14167,9 @@ CONTAINS
     
     ! Ok, we have found the point now set the circle coordinates 
     DoIt = .TRUE.
-    IF( BCMode ) THEN
+    IF( BCMode .AND. ParEnv % PEs > 1 ) THEN
       Dist = ParallelReduction( MaxDist, 2 )
-      DoIt = ( ABS(MaxDist-Dist) < 1.0e-10 )
+      DoIt = ( ABS(MaxDist-Dist) < 1.0e-8 )
     END IF
 
     IF( DoIt ) THEN
@@ -14174,7 +14183,7 @@ CONTAINS
       CircleCoord(3*(j-1)+3) = SUM( AxisNormal * Coord )
     END IF
 
-    IF( BCMode ) THEN
+    IF( BCMode .AND. ParEnv % PEs > 1 ) THEN
       CALL MPI_ALLREDUCE(MPI_IN_PLACE,CircleCoord,9, &
           MPI_DOUBLE_PRECISION,MPI_MAX,ELMER_COMM_WORLD,ierr)
     END IF
