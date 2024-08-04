@@ -852,7 +852,7 @@ CONTAINS
 
        np = mGetElementDOFs(pIndexes,Element)
        np = MIN(np,n)
-       Ind(1:np) = NT % BoundaryReorder(pIndexes(1:np))
+       Ind(1:np) = NT % BoundaryReorder(MIN(pIndexes(1:np),SIZE(NT % BoundaryReorder)))
        
        ! TODO: See that RotateMatrix is vectorized
        CALL RotateMatrix( Lmtr, Lvec, n, dim, NDOFs, Ind, NT % BoundaryNormals, &
