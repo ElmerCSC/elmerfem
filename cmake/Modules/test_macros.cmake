@@ -1,4 +1,3 @@
-include(CMakeParseArguments)
 MACRO(ADD_ELMER_LABEL test_name label_string)
   SET_PROPERTY(TEST ${test_name} APPEND PROPERTY LABELS ${label_string})
 ENDMACRO()

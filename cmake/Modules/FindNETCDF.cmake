@@ -13,7 +13,7 @@
 
 # # handle the QUIETLY and REQUIRED arguments and set NETCDF_FOUND to TRUE
 # if all listed variables are TRUE
-INCLUDE(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
+INCLUDE(FindPackageHandleStandardArgs)
 
 # If NETCDF & NETCDF_FORTRAN libraries are already defined, do nothing
 IF(NETCDF_LIBRARIES AND NETCDF_INCLUDE_DIR)
