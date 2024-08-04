@@ -9,7 +9,7 @@
 #  MMG_LIBRARY            - mmg library is
 #  MMG_INCLUDE_DIR       - mmg include dir.
 
-INCLUDE(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
+INCLUDE(FindPackageHandleStandardArgs)
 
 # If MMG_LIBRARY and MMG_INCLUDE_DIR  are already defined, do nothing
 IF(MMG_LIBRARY AND MMG_INCLUDE_DIR)

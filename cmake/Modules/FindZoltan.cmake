@@ -9,7 +9,7 @@
 #  ZOLTAN_LIBRARY            - zoltan library is
 #  ZOLTAN_INCLUDE_DIR       - zoltan include dir.
 
-INCLUDE(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
+INCLUDE(FindPackageHandleStandardArgs)
 
 # If ZOLTAN_LIBRARY and ZOLTAN_INCLUDE_DIR  are already defined, do nothing
 IF(ZOLTAN_LIBRARY AND ZOLTAN_INCLUDE_DIR)
