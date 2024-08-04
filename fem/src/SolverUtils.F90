@@ -760,10 +760,10 @@ CONTAINS
      IF ( Rotate ) THEN
        NormalIndexes = 0
 
-       np = mGetElementDOFs(pIndexes,Element)
-       np = MIN(np, n)
+       np = mGetElementDOFs(pIndexes,Element,NotBubble=.TRUE.)
+       np = MIN(np,n)
        NormalIndexes(1:np) = NT % BoundaryReorder(pIndexes(1:np))
-       
+
        CALL RotateMatrix( LocalStiffMatrix, LocalForce, n, dim, NDOFs, &
           NormalIndexes, NT % BoundaryNormals, NT % BoundaryTangent1, NT % BoundaryTangent2 )
      END IF
@@ -850,18 +850,10 @@ CONTAINS
      IF ( Rotate ) THEN
        Ind = 0
 
-       np = mGetElementDOFs(pIndexes,Element)
+       np = mGetElementDOFs(pIndexes,Element,NotBubble=.TRUE.)
        np = MIN(np,n)
+       Ind(1:np) = NT % BoundaryReorder(pIndexes(1:np))
 
-       DO i=1,np
-         j = pIndexes(i)
-         IF(j > 0 .AND. j <= SIZE(NT % BoundaryReorder) ) THEN
-           Ind(i) = NT % BoundaryReorder(j)
-         ELSE
-           Ind(i) = j
-         END IF
-       END DO
-       
        ! TODO: See that RotateMatrix is vectorized
        CALL RotateMatrix( Lmtr, Lvec, n, dim, NDOFs, Ind, NT % BoundaryNormals, &
                     NT % BoundaryTangent1, NT % BoundaryTangent2 )
@@ -14491,7 +14483,7 @@ END FUNCTION SearchNodeL
           END IF
         END DO
       END IF
-      
+
       ! This is temporal (?) fix for a glitch where the complex eigen vector
       ! is expanded to one where real and complex parts follow each other. 
       IF( ListGetLogical( Solver % Values,'Expand Eigen Vectors', Stat ) ) THEN
@@ -19713,7 +19705,7 @@ CONTAINS
                 MAXVAL(f(i::dofs,iControl)),SUM(f(i::dofs,iControl))
           END DO
         END  IF
-       
+
         IF( ABS(cAmp(iControl)) > 1.0e-20 ) THEN
           b(1:nsize) = b(1:nsize) + cAmp(iControl) * f(1:nsize,iControl)
         END IF

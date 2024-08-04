@@ -3894,12 +3894,12 @@ CONTAINS
 
      !> Return number of degrees of freedom and their indexes.
    !------------------------------------------------------------------------------
-   FUNCTION mGetElementDOFs( Indexes, UElement, USolver, NotDG, UMesh )  RESULT(nd)
+   FUNCTION mGetElementDOFs( Indexes, UElement, USolver, NotDG, UMesh, NotBubble )  RESULT(nd)
    !------------------------------------------------------------------------------
      INTEGER :: Indexes(:)
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
      TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
-     LOGICAL, OPTIONAL :: NotDG
+     LOGICAL, OPTIONAL :: NotDG, NotBubble
      TYPE(Mesh_t), OPTIONAL, TARGET :: UMesh
      INTEGER :: nd
 
@@ -3907,7 +3907,7 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element, Parent, Face
      TYPE(Mesh_t), POINTER :: Mesh
 
-     LOGICAL :: Found, GB, DGDisable, NeedEdges
+     LOGICAL :: Found, GB, DGDisable, BubbleDisable, NeedEdges
      INTEGER :: i,j,k,id, nb, p, NDOFs, MaxNDOFs, EDOFs, MaxEDOFs, FDOFs, MaxFDOFs, BDOFs
      INTEGER :: Ind, ElemFamily, ParentFamily, face_type, face_id
      INTEGER :: NodalIndexOffset, EdgeIndexOffset, FaceIndexOffset
@@ -3992,7 +3992,7 @@ CONTAINS
 
      NDOFs = Solver % Def_Dofs(ElemFamily,id,1)
      IF (NDOFs > 0) THEN
-       DO i=1,Element % TYPE % NumberOfNodes
+       DO i=1,MIN(SIZE(Element % NodeIndexes),Element % TYPE % NumberOfNodes)
          DO j=1,NDOFs
            nd = nd + 1
            Indexes(nd) = MaxNDOFs * (Element % NodeIndexes(i)-1) + j
@@ -4259,7 +4259,11 @@ BLOCK
          END IF
        END SELECT
      ELSE
-       IF (ASSOCIATED(Element % BubbleIndexes) .AND. Solver % GlobalBubbles) THEN
+       BubbleDisable=.FALSE.
+       IF (PRESENT(NotBubble)) BubbleDisable=NotBubble
+
+       IF (.NOT. BubbleDisable .AND. ASSOCIATED(Element % BubbleIndexes) &
+           .AND. Solver % GlobalBubbles) THEN
          BDOFs = 0
          nb = Solver % Def_Dofs(ElemFamily,id,5)
          p = Solver % Def_Dofs(ElemFamily,id,6)
