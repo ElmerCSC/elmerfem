@@ -27018,7 +27018,7 @@ CONTAINS
 
     INTEGER :: nc, dualmaxdeg, i, v, w, uci, wci, vli, vti, vcol, wcol, &
             nrc, nunc, nthr, TID, allocstat, gn
-    INTEGER, ALLOCATABLE :: colours(:)
+    INTEGER, POINTER :: colours(:)
     INTEGER, PARAMETER :: VERTEX_PER_THREAD = 100
     LOGICAL :: consistent
 
@@ -27199,7 +27199,8 @@ CONTAINS
 
     ! Set up colouring data structure
     Colouring % nc = nc
-    CALL MOVE_ALLOC(colours, Colouring % colours)
+    !CALL MOVE_ALLOC(colours, Colouring % colours)
+    colouring % colours => colours
   END SUBROUTINE ElmerGraphColour
 
   SUBROUTINE Colouring_Deallocate(Colours)
