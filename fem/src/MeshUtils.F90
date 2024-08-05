@@ -27625,7 +27625,6 @@ CONTAINS
 
     ! Set up colouring data structure
     Colouring % nc = nc
-    !CALL MOVE_ALLOC(colours, Colouring % colours)
     colouring % colours => colours
   END SUBROUTINE ElmerGraphColour
 
@@ -27686,7 +27685,7 @@ CONTAINS
 
     TYPE(Element_t), POINTER :: Element
     INTEGER :: elem, nelem, nbelem, astat, lcolour, rcolour, nbc
-    INTEGER, ALLOCATABLE :: bcolours(:)
+    INTEGER, POINTER :: bcolours(:)
 
     nelem = Mesh % NumberOfBulkElements
     nbelem = Mesh % NumberOfBoundaryElements
@@ -27734,7 +27733,7 @@ CONTAINS
 
     ! Set up colouring data structure
     BoundaryColours % nc = nbc
-    CALL MOVE_ALLOC(bcolours, BoundaryColours % colours)
+    BoundaryColours % colours => bcolours
   END SUBROUTINE ElmerBoundaryGraphColour
   
   ! Given CRS indices, referenced indirectly from graph, 
