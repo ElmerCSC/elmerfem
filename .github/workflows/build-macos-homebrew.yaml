@@ -34,7 +34,7 @@ jobs:
         run: |
           brew update
           brew reinstall gcc
-          brew install cmake libomp open-mpi qwt-qt5
+          brew install cmake libomp openblas open-mpi qwt-qt5
           echo "HOMEBREW_PREFIX=$(brew --prefix)" >> $GITHUB_ENV
 
       - name: configure
@@ -49,8 +49,8 @@ jobs:
             -DCMAKE_CXX_COMPILER=clang++ \
             -DCMAKE_Fortran_COMPILER=gfortran \
             -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/usr" \
-            -DBLA_VENDOR="Apple" \
-            -DCMAKE_PREFIX_PATH="${HOMEBREW_PREFIX}/opt/libomp;${HOMEBREW_PREFIX}/opt/qt@5;${HOMEBREW_PREFIX}/opt/qwt-qt5" \
+            -DBLA_VENDOR="OpenBLAS" \
+            -DCMAKE_PREFIX_PATH="${HOMEBREW_PREFIX}/opt/libomp;${HOMEBREW_PREFIX}/opt/openblas;${HOMEBREW_PREFIX}/opt/qt@5;${HOMEBREW_PREFIX}/opt/qwt-qt5" \
             -DWITH_OpenMP=ON \
             -DOpenMP_C_FLAGS="-Xclang -fopenmp -I${HOMEBREW_PREFIX}/opt/libomp/include" \
             -DOpenMP_CXX_FLAGS="-Xclang -fopenmp -I${HOMEBREW_PREFIX}/opt/libomp/include" \
