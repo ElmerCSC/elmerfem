@@ -25157,6 +25157,17 @@ CONTAINS
      INTEGER :: dofs,n,i,j,k,l,i1,i2,nip     
      LOGICAL :: GotIt, IsEigen
 
+     INTERFACE 
+       SUBROUTINE Ip2DgFieldInElement( Mesh, Parent, nip, fip, np, fdg )
+         USE Types
+         IMPLICIT NONE
+         TYPE(Mesh_t), POINTER :: Mesh
+         TYPE(Element_t), POINTER :: Parent
+         INTEGER :: nip, np
+         REAL(KIND=dp) :: fip(:), fdg(:)
+       END SUBROUTINE Ip2DgFieldInElement
+     END INTERFACE
+
 
      IF( PRESENT(GotVal) ) GotVal = .FALSE.
      GotIt = .FALSE.
