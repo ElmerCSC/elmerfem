@@ -71,7 +71,10 @@ Solver 2
 
 ! Not active when using potential as source
   Fix Input Current density = True
-  
+  jfix: linear system iterative method = idrs
+  jfix: Linear System Preconditioning = ILU1
+
+
   Use Elemental CoilCurrent = True
 
   Nonlinear System Max Iterations = 1
@@ -178,6 +181,7 @@ Boundary Condition 1
   Name = "far"
   AV {e} = 0.0
   AV = 0.0
+  jfix = Real 0.0
 End
 
 
