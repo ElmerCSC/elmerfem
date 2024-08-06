@@ -142,6 +142,7 @@ CONTAINS
        NT => CurrentModel % Solver % NormalTangential
        NT % NormalTangentialNOFNodes = 0
        NT % NormalTangentialName = TRIM(str)
+
        CALL CheckNormalTangentialBoundary( CurrentModel, NT % NormalTangentialName, &
            NT % NormalTangentialNOFNodes, NT % BoundaryReorder, &
            NT % BoundaryNormals, NT % BoundaryTangent1, NT % BoundaryTangent2, dim )
@@ -756,12 +757,11 @@ CONTAINS
        Rotate = ( NT % NormalTangentialNOFNodes > 0 )
      END IF
 
-     
      IF ( Rotate ) THEN
        NormalIndexes = 0
 
        np = mGetElementDOFs(pIndexes,Element)
-       np = MIN(np,n)
+       np = MIN(np, n)
        NormalIndexes(1:np) = NT % BoundaryReorder(pIndexes(1:np))
        
        CALL RotateMatrix( LocalStiffMatrix, LocalForce, n, dim, NDOFs, &
@@ -846,7 +846,7 @@ CONTAINS
        NT => CurrentModel % Solver % NormalTangential
        Rotate = ( NT % NormalTangentialNOFNodes > 0 )
      END IF
-     
+
      IF ( Rotate ) THEN
        Ind = 0
 
@@ -17850,6 +17850,7 @@ CONTAINS
     
     IF(.NOT. ASSOCIATED(A % rhs)) THEN
       ALLOCATE(A % rhs(A % NumberOfRows))
+      A % RHS = 0._dp
     END IF
 
     IF(ASSOCIATED(betaVar)) THEN
