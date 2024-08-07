@@ -646,6 +646,23 @@
            IF(iSweep == OptimIters) EXIT
          END DO
 
+
+         !XX  Temporary fix
+         IF(ParEnv % PEs>1) THEN
+           DO i=1,CurrentModel % NumberOfSolvers 
+             iSolver => CurrentModel % Solvers(i)
+             IF( iSolver % NumberOfConstraintModes > 0 ) THEN
+               IF( ListGetLogical( iSolver % Values,'Run Control Constraint Modes', Found ) .OR. &
+                   ListGetLogical( CurrentModel % Control,'Constraint Modes Analysis',Found ) ) THEN
+                 ParEnv => ParEnv_Common
+                 DEALLOCATE(ParEnv % active)
+                 ParEnv % ActiveComm = ELMER_COMM_WORLD
+                 EXIT
+               END IF
+             END IF
+           END DO
+         END IF
+
          DO i=1,CurrentModel % NumberOfSolvers 
            iSolver => CurrentModel % Solvers(i)
            IF( iSolver % NumberOfConstraintModes > 0 ) THEN
