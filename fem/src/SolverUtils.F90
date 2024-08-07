@@ -15218,11 +15218,10 @@ END FUNCTION SearchNodeL
       me    =  Parenv % MyPe
       xmpi_comm = ELMER_COMM_WORLD
 
-      IF (.NOT.ASSOCIATED(A % ParMatrix)) THEN
-         CALL ParallelInitMatrix(Solver,A)
-         ParEnv = A % ParMatrix % ParEnv
-         ParEnv % ActiveComm = A % Comm
-      END IF
+      IF (.NOT.ASSOCIATED(A % ParMatrix)) CALL ParallelInitMatrix(Solver,A)
+
+      ParEnv => A % ParMatrix % ParEnv
+      ParEnv % ActiveComm = A % Comm
 
       ! Enforce continuous ascending numbering as required by ROCalution 
       ! ----------------------------------------------------------------
@@ -16148,7 +16147,7 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
       CALL Info( Caller, Message, Level=5 )
     END DO
   END DO
-  
+
   MatrixFile = ListGetString(Solver % Values,'Constraint Modes Fluxes Filename',Found )
   IF(.NOT. Found) MatrixFile = ListGetString(Solver % Values,'Constraint Modes Matrix Filename',Found )
   IF( Found ) THEN

@@ -2910,7 +2910,6 @@ CONTAINS
       END DO
     END IF 
 
-      
 !------------------------------------------------------------------------------
     IF( PRESENT( AtTime ) ) THEN
       ExecSlot = AtTime
@@ -3116,6 +3115,10 @@ CONTAINS
     END IF
 
     ParEnv => ParEnv_Common
+    IF(PArEnv % PEs>1) THEN
+      ParEnv % Active = .TRUE.
+      ParEnv % ActiveComm = ELMER_COMM_WORLD
+    END IF
 
 CONTAINS
 
@@ -4336,12 +4339,8 @@ CONTAINS
             Solver % Variable => TotMatrix % SubVector(ColVar) % Var
             CALL ParallelInitMatrix(Solver,Amat)
 
-            IF(ASSOCIATED(Amat % ParMatrix )) THEN
-              Amat % ParMatrix % ParEnv % ActiveComm = &
-                       Amat % Comm
-              ParEnv => Amat % ParMatrix % ParEnv
-            END IF
-
+            Amat % ParMatrix % ParEnv % ActiveComm = Amat % Comm
+            ParEnv => Amat % ParMatrix % ParEnv
             CALL ParallelActive( .TRUE.)
           END DO
         END DO
@@ -5060,14 +5059,6 @@ CONTAINS
      LOGICAL :: DoBC, DoBulk
 !------------------------------------------------------------------------------
      MeActive = ASSOCIATED(Solver % Matrix)
-
-     IF ( MeActive ) THEN
-       IF (  ASSOCIATED(Solver % Matrix % ParMatrix) ) THEN
-         ParEnv => Solver % Matrix % ParMatrix % ParEnv
-         ParEnv % ActiveComm = Solver % Matrix % Comm
-       END IF
-     END IF
-
      IF ( MeActive ) MeActive = (Solver % Matrix % NumberOfRows > 0)
 
      Parallel = Solver % Parallel 
@@ -5090,7 +5081,6 @@ CONTAINS
          ! In parallel we have to prepare the communicator already for the weights
          IF(DoBulk .OR. DoBC ) THEN
            IF ( Parallel .AND. MeActive ) THEN
-             ParEnv % ActiveComm = Solver % Matrix % Comm
              IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % GInterface) ) THEN
                IF (.NOT. ASSOCIATED(Solver % Matrix % ParMatrix) ) &
                    CALL ParallelInitMatrix(Solver, Solver % Matrix )               
@@ -5173,8 +5163,7 @@ BLOCK
          IF( ANY( ParEnv % Active(MinOutputPE+1:MIN(MaxOutputPE+1,ParEnv % PEs)) ) ) THEN
            ! If any of the active output partitions in active just use it.
            ! Typically the 1st one. Others are passive. 
-           IF( ParEnv % MyPe >= MinOutputPE .AND. &
-               ParEnv % MyPe <= MaxOutputPE ) THEN 
+           IF( ParEnv % MyPe >= MinOutputPE .AND. ParEnv % MyPe <= MaxOutputPE ) THEN 
              OutputPE = ParEnv % MyPE
            ELSE
              OutputPE = -1
