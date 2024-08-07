@@ -143,7 +143,7 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
   
   LOGICAL :: NewtonRaphson = .FALSE., CSymmetry, SkipDegenerate, &
       HandleAsm, MassAsm, ConstantMassInUse = .FALSE.
-  LOGICAL :: InitHandles, SliceAverage
+  LOGICAL :: SliceAverage
   TYPE(Variable_t), POINTER :: CoordVar
 
   REAL(KIND=dp), ALLOCATABLE, SAVE :: MassValues(:)
@@ -218,37 +218,23 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
     END IF
 
     tind = 0
-    IF( HandleAsm ) THEN
-      InitHandles = .TRUE.     
-      !$omp parallel do private(Element,n,nd,nb,t,InitHandles)   
-      DO t=1,active
-        Element => GetActiveElement(t)
-        n  = GetElementNOFNodes(Element)
-        nd = GetElementNOFDOFs(Element)
-        nb = GetElementNOFBDOFs(Element)
-        IF( SkipDegenerate .AND. DegenerateElement( Element ) ) THEN
-          CALL Info(Caller,'Skipping degenerate element:'//I2S(t),Level=12)
-          CYCLE
-        END IF
-        CALL LocalMatrixHandles(  Element, n, nd+nb, nb, InitHandles )
-      END DO
-      !$omp end parallel do  
-    ELSE      
-      !$omp parallel do private(Element,n,nd,nb,t)   
-      DO t=1,active
-        Element => GetActiveElement(t)
-        n  = GetElementNOFNodes(Element)
-        nd = GetElementNOFDOFs(Element)
-        nb = GetElementNOFBDOFs(Element)
-        IF( SkipDegenerate .AND. DegenerateElement( Element ) ) THEN
-          CALL Info(Caller,'Skipping degenerate element:'//I2S(t),Level=12)
-          CYCLE
-        END IF
+    !$omp parallel do private(Element,n,nd,nb,t)   
+    DO t=1,active
+      Element => GetActiveElement(t)
+      n  = GetElementNOFNodes(Element)
+      nd = GetElementNOFDOFs(Element)
+      nb = GetElementNOFBDOFs(Element)
+      IF( SkipDegenerate .AND. DegenerateElement( Element ) ) THEN
+        CALL Info(Caller,'Skipping degenerate element:'//I2S(t),Level=12)
+        CYCLE
+      END IF
+      IF( HandleAsm ) THEN
+        CALL LocalMatrixHandles(  Element, n, nd+nb, nb )
+      ELSE
         CALL LocalMatrix(Element, n, nd)
-      END DO
-      !$omp end parallel do  
-    END IF
-
+      END IF
+    END DO
+    !$omp end parallel do  
       
     CALL DefaultFinishBulkAssembly()
     
@@ -1049,12 +1035,11 @@ CONTAINS
 !------------------------------------------------------------------------------
 ! Assembly using handles. A little faster even for linear triangles, maybe 20%. 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixHandles( Element, n, nd, nb, InitHandles )
+  SUBROUTINE LocalMatrixHandles( Element, n, nd, nb )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     INTEGER, INTENT(IN) :: n, nd, nb
     TYPE(Element_t), POINTER :: Element
-    LOGICAL, INTENT(INOUT) :: InitHandles
 !------------------------------------------------------------------------------
     REAL(KIND=dp), POINTER, SAVE :: Basis(:), dBasisdx(:,:)
     REAL(KIND=dp), ALLOCATABLE, SAVE :: MASS(:,:), DAMP(:,:), STIFF(:,:), FORCE(:), POT(:)    
@@ -1070,18 +1055,19 @@ CONTAINS
     LOGICAL :: StrandedCoil
     TYPE(ValueHandle_t), SAVE :: SourceCoeff_h, CondCoeff_h, PermCoeff_h, &
         RelPermCoeff_h, RelucCoeff_h, Mag1Coeff_h, Mag2Coeff_h, CoilType_h
-
-    SAVE HBCurve, Nu0, PrevMaterial
+    INTEGER :: PrevElemInd = HUGE(PrevElemInd)
+    
+    SAVE HBCurve, Nu0, PrevMaterial, PrevElemInd
     
     !$omp threadprivate(Basis, dBasisdx, MASS, DAMP, STIFF, FORCE, POT, &
     !$omp               Nodes, Nu0, HBCurve, PrevMaterial, &
     !$omp               SourceCoeff_h, CondCoeff_h, PermCoeff_h, RelPermCoeff_h, &
-    !$omp               RelucCoeff_h, Mag1Coeff_h, Mag2Coeff_h, CoilType_h )
+    !$omp               RelucCoeff_h, Mag1Coeff_h, Mag2Coeff_h, CoilType_h, PrevElemInd )
     
 !------------------------------------------------------------------------------
 
-    ! This InitHandles flag might be false on threaded 1st call
-    IF( InitHandles ) THEN
+    ! The elements should be in growing order. Hence we initialize if we start the list.
+    IF( Element % ElementIndex < PrevElemInd ) THEN
       CALL ListInitElementKeyword( SourceCoeff_h,'Body Force','Current Density')
       CALL ListInitElementKeyword( CondCoeff_h,'Material','Electric Conductivity')
       CALL ListInitElementKeyword( PermCoeff_h,'Material','Permeability')
@@ -1095,10 +1081,9 @@ CONTAINS
         Nu0 = ListGetCReal( Model % Constants,'Permeability of Vacuum',Found)
       END IF
       IF( .NOT. Found ) Nu0 = PI * 4.0d-7
-      InitHandles = .FALSE.
     END IF
-
-
+    PrevElemInd = Element % ElementIndex
+    
     ! Allocate storage if needed
     IF (.NOT. ALLOCATED(MASS)) THEN
       m = Mesh % MaxElementDofs
