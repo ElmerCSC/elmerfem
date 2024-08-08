@@ -48,7 +48,20 @@
 ! Additional solver option:
 !  'Connected mask name = string xxx'
 ! This needs to correspond to an existing variable, probably an exported variable.
-! Samuel's calving front mask also needs to be specified at the appropriate BC.
+! Samuel's calving front mask also needs to be specified at the appropriate front
+! BC:
+!  Calving Front Mask = Logical true
+!
+! August 2024 additional solver option:
+!  'Connectivity Mode = string xxx'
+! Where options for xxx are 'inland', 'front' (default) or 'combined'.
+! If 'inland' is chosen connection to the inland boundary is checked.  This means that
+! isolated grounded regions of shelf will be omitted from the resulting mask.
+! 'combined' utilises both, such that both isolated ungrounded regions upstream of the
+! GL and isolated grounded regions downstream of the GL will be ignored.
+! If 'inland' or 'combined' are chosen then the inland boundary condition should
+! contain: 
+!  Inland Boundary Mask = Logical true
 !
 ! Example.
 !  Add this to the GroundedSolver:
@@ -112,17 +125,18 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
        AllGrounded = .FALSE., useLSvar = .FALSE.,                       &
        CheckConn ! check ocean connectivity (creates separate mask without isolated ungrounded regions)
 
-  INTEGER :: ii, mn, en, t, Nn, istat, DIM, MSum, ZSum, bedrockSource
+  INTEGER :: ii, mn, en, t, Nn, istat, DIM, MSum, ZSum, bedrockSource, ConnectivityMode
   INTEGER, POINTER :: Permutation(:), bedrockPerm(:), LSvarPerm(:), ConnMaskPerm(:)
 
   REAL(KIND=dp), POINTER :: VariableValues(:)
   REAL(KIND=dp) :: z, toler
-  REAL(KIND=dp), ALLOCATABLE :: zb(:)
+  REAL(KIND=dp), ALLOCATABLE :: zb(:), ICMaskVals(:)
 
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName = 'GroundedSolver', bedrockName,&
-       FrontVarName, LSvarName, ConnMaskName
+       FrontVarName, LSvarName, ConnMaskName, ConnectivityModeStr
 
   INTEGER,PARAMETER :: MATERIAL_DEFAULT = 1, MATERIAL_NAMED = 2, VARIABLE = 3
+  INTEGER,PARAMETER :: INLAND = 10, FRONT = 11, COMBINED = 12
        
   SAVE AllocationsDone, DIM, SolverName, zb, toler
   !------------------------------------------------------------------------------
@@ -166,7 +180,30 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
      CALL INFO( SolverName, '>Connected mask name< not found, not using.',Level=5 )
      CheckConn = .FALSE.
   END IF
-     
+
+  ConnectivityModeStr = ListGetString(SolverParams, 'Connectivity Mode',GotIt, UnFoundFatal=.FALSE.)
+  IF (GotIt) THEN
+     CALL INFO( SolverName, '>Connectivity Mode< found.',Level=7 )
+     IF (.NOT.CheckConn) THEN
+        CALL FATAL( SolverName, '>Connectivity Mode< was given but no >connected mask name defined<' )
+     END IF
+  ELSE     
+     IF (CheckConn) THEN
+        CALL INFO( SolverName, '>Connectivity Mode< not found, assuming >front<.',Level=5 )
+     END IF
+     ConnectivityModeStr = 'front'
+  END IF
+  SELECT CASE(ConnectivityModeStr)
+  CASE("inland")
+     ConnectivityMode = INLAND
+  CASE("front")
+     ConnectivityMode = FRONT
+  CASE("combined")
+     ConnectivityMode = COMBINED
+  CASE DEFAULT
+     CALL FATAL( SolverName, 'Connectivity Mode not recognised.' )
+  END SELECT
+  
   !This to enforce all nodes grounded when doing non-calving hydrology to
   !restart a calving simulation from
   AllGrounded = GetLogical(SolverParams, 'All Grounded', GotIt)
@@ -270,7 +307,32 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
   END DO
 
   ! Check connectivity of ungrounded regions to the front (previously GMvalid solver)
-  IF (CheckConn) CALL FrontConn( )
+  IF (CheckConn) THEN
+     SELECT CASE(ConnectivityMode)
+
+     CASE(INLAND)
+        ALLOCATE(ICMaskVals(SIZE(ConnMaskVar % Values)))
+        CALL BoundaryConn (INLAND,ICMaskVals)
+        ConnMaskVar % Values = ICMaskVals * (-1.0)
+        DEALLOCATE(ICMaskVals)
+
+     CASE(FRONT)
+        CALL BoundaryConn (FRONT)
+
+     CASE(COMBINED)
+        ALLOCATE(ICMaskVals(SIZE(ConnMaskVar % Values)))
+        CALL BoundaryConn (INLAND,ICMaskVals)
+        CALL BoundaryConn (FRONT)
+        DO ii = 1, SIZE(ConnMaskVar % Values)
+           IF (ConnMaskPerm(ii) .LE. 0) CYCLE
+           IF (ICMaskVals(ConnMaskVar % Perm(ii)).GT.0.0) THEN
+              ConnMaskVar % Values(ConnMaskVar % Perm(ii)) = -1.0
+           END IF
+        END DO
+        DEALLOCATE(ICMaskVals)
+
+     END SELECT
+  END IF
   
   !--------------------------------------------------------------
   ! Grounding line loop to label grounded points at grounding Line.
@@ -354,10 +416,15 @@ CONTAINS
   ! * An improved version of the routine to calculate basal melt rates on
   ! * ungrounded ice, producing a validity mask instead (1 = ungrounded area
   ! * connected to the ice front; 0 = isolated patch).
+  ! * 
+  ! * August 2024 Added option to reverse this and look at connection to inland
+  ! * boundary instead when creating mask.
+  ! * Note that some of the variable names still reflect the assumption that we're
+  ! * testing for connectivity to the ice front (TODO: rename for clarity?)
   ! ******************************************************************************
   ! *
   ! *  Authors: Samuel Cook
-  ! *  Email:   samuel.cook@univ-grenoble-alpes.fr
+  ! *  Email:   samuel.cook@unil.ch, RupertGladstone1972@gmail.com
   ! *  Web:     http://www.csc.fi/elmer
   ! *  Address: CSC - IT Center for Science Ltd.
   ! *           Keilaranta 14
@@ -366,7 +433,7 @@ CONTAINS
   ! *  Original Date: 08.2019
   ! *
   ! ****************************************************************************/
-  SUBROUTINE FrontConn ()
+  SUBROUTINE BoundaryConn (BoundaryLabel,MaskVals)
     USE Types
     USE CoordinateSystems
     USE DefUtils
@@ -374,6 +441,9 @@ CONTAINS
     USE CalvingGeometry
     
     IMPLICIT NONE
+
+    INTEGER, INTENT(IN)                                  :: BoundaryLabel
+    REAL(KIND=dp), DIMENSION(:), INTENT(INOUT), OPTIONAL :: MaskVals
     
     !-----------------------------------
     TYPE(Mesh_t), POINTER :: Mesh
@@ -384,9 +454,9 @@ CONTAINS
     TYPE(Nodes_t) :: ElementNodes
     TYPE(GaussIntegrationPoints_t) :: IntegStuff
     
-    REAL(KIND=dp) :: GMCheck, SMeltRate, WMeltRate, SStart, SStop, &
-         TotalArea, TotalBMelt, ElemBMelt, s, t, season,&
-         SqrtElementMetric,U,V,W,Basis(Model % MaxElementNodes)
+    REAL(KIND=dp) :: SMeltRate, WMeltRate, SStart, SStop, &
+         TotalArea, TotalBMelt, ElemBMelt, s, t, season, threshold, &
+         SqrtElementMetric,U,V,W,Basis(Model % MaxElementNodes), ConnCheck
     INTEGER :: NoNodes, j, FaceNodeCount, GroupNodeCount, county, &
          Active, ierr, kk, FoundNew, AllFoundNew
     INTEGER, PARAMETER :: FileUnit = 75, MaxFloatGroups = 1000, MaxNeighbours = 20
@@ -394,16 +464,25 @@ CONTAINS
          NeighbourHolder(:), NoNeighbours(:), NodeIndexes(:)
     INTEGER, ALLOCATABLE :: AllGroupNodes(:), PartNodeCount(:), AllPartGroupNodes(:), &
          disps(:)
-    LOGICAL :: Found, OutputStats, Visited=.FALSE., Debug, stat, Summer
+    LOGICAL :: Found, OutputStats, Visited=.FALSE., Debug, stat, Summer, AboveThreshold
     CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, GMaskVarName, FrontMaskName, OutfileName, mode
     
     Debug = .FALSE.
     
-    SolverName = "GM Front connectivity"
+    SolverName = "Grounded mask connectivity"
     Mesh => Solver % Mesh
     
     !Identify nodes on the front
-    FrontMaskName = "Calving Front Mask"
+    SELECT CASE (BoundaryLabel)
+    CASE(INLAND)
+       FrontMaskName = "Inland Boundary Mask"
+       Threshold = 0.5_dp
+       AboveThreshold = .TRUE.
+    CASE(FRONT)
+       FrontMaskName = "Calving Front Mask"
+       Threshold = -0.5_dp
+       AboveThreshold = .FALSE.
+    END SELECT
     CALL MakePermUsingMask( Model, Solver, Mesh, FrontMaskName, &
          .FALSE., FrontPerm, FaceNodeCount)
     
@@ -411,8 +490,11 @@ CONTAINS
     Matrix => Solver % Matrix
     
     IF(.NOT. ASSOCIATED(ConnMaskVar)) CALL Fatal(SolverName, "Front connectivity needs a variable!")
-    ConnMaskVar % Values = 1.0_dp
-    
+    IF (PRESENT(MaskVals)) THEN
+       MaskVals = 1.0_dp
+    ELSE
+       ConnMaskVar % Values = 1.0_dp
+    END IF
     NoNodes = COUNT(ConnMaskPerm > 0)
 
     !    Model, Solver, dt, TransientSimulation, ConnMaskVar
@@ -428,7 +510,7 @@ CONTAINS
 
     GroundedVar => Solver % Variable
     
-    GMCheck = -1.0_dp
+    ConnCheck = -1.0_dp
    
     !Set up inverse perm for FindNodeNeighbours
     InvPerm => CreateInvPerm(Matrix % Perm) !Create inverse perm for neighbour search
@@ -451,7 +533,7 @@ CONTAINS
     !Find groups of connected floating nodes on the base
     FloatGroups => NULL()
     CALL FindCrevasseGroups(Mesh, GroundedVar, Neighbours, &
-         -0.5_dp, FloatGroups)
+         threshold, FloatGroups, AboveThreshold)
     
     !Check groups are valid (connected to front)
     CurrentGroup => FloatGroups
@@ -535,7 +617,11 @@ CONTAINS
     DO WHILE(ASSOCIATED(CurrentGroup))
        IF(CurrentGroup % FrontConnected) THEN
           DO ii=1,CurrentGroup % NumberOfNodes
-             ConnMaskVar % Values(ConnMaskVar % Perm(CurrentGroup % NodeNumbers(ii))) = GMCheck
+             IF (PRESENT(MaskVals)) THEN
+                MaskVals(ConnMaskVar % Perm(CurrentGroup % NodeNumbers(ii))) = ConnCheck
+             ELSE
+                ConnMaskVar % Values(ConnMaskVar % Perm(CurrentGroup % NodeNumbers(ii))) = ConnCheck
+             END IF
           END DO
        END IF
        CurrentGroup => CurrentGroup % Next
@@ -554,7 +640,7 @@ CONTAINS
     END DO
     
     DEALLOCATE(Neighbours, NoNeighbours, FrontPerm, InvPerm)
-  END SUBROUTINE FrontConn
+  END SUBROUTINE BoundaryConn
   
 END SUBROUTINE GroundedSolver
 

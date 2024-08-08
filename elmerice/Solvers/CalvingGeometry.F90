@@ -1503,41 +1503,62 @@ CONTAINS
   ! Constructs groups of nodes which fall below a given threshold for some variable
   ! Used with the result of ProjectCalving, it groups nodes which have crevasse 
   ! penetration beyond the threshold.
+  !
+  ! Added August 2024 (RupertGladstone1972@gmail.com):
+  ! Default is that valid mask values are only below the given threshold (e.g. shelf
+  ! only).  New logical optional argument AboveThreshold_Optional allows this to be
+  ! reversed such that valid mask values are above the threshold (e.g. grounded) 
   !-----------------------------------------------------------------------------
-  SUBROUTINE FindCrevasseGroups(Mesh, Variable, Neighbours, Threshold, Groups)
+  SUBROUTINE FindCrevasseGroups(Mesh, Variable, Neighbours, Threshold, Groups, AboveThreshold_Optional)
     IMPLICIT NONE
 
-    TYPE(Mesh_t), POINTER :: Mesh
-    TYPE(Variable_t), POINTER :: Variable
-    INTEGER, POINTER :: Neighbours(:,:)
-    TYPE(CrevasseGroup3D_t), POINTER :: Groups, CurrentGroup
-    REAL(KIND=dp) :: Threshold
+    TYPE(Mesh_t), POINTER            :: Mesh
+    TYPE(Variable_t), POINTER        :: Variable
+    INTEGER, POINTER                 :: Neighbours(:,:)
+    TYPE(CrevasseGroup3D_t), POINTER :: Groups
+    REAL(KIND=dp), INTENT(IN)        :: Threshold
+    LOGICAL, INTENT(IN),OPTIONAL     :: AboveThreshold_Optional
     !---------------------------------------
+    TYPE(CrevasseGroup3D_t), POINTER :: CurrentGroup
     INTEGER :: i, ID
     REAL(KIND=dp), POINTER :: Values(:)
     INTEGER, POINTER :: VPerm(:)
     INTEGER, ALLOCATABLE :: WorkInt(:)
     LOGICAL, ALLOCATABLE :: Condition(:)
-    LOGICAL :: First, Debug
+    LOGICAL :: First, Debug, AboveThreshold
     
     Debug = .FALSE.
 
+    IF (PRESENT(AboveThreshold_Optional)) THEN
+       AboveThreshold = AboveThreshold_Optional
+    ELSE
+       AboveThreshold = .FALSE.
+    END IF
+    
     Values => Variable % Values
     VPerm => Variable % Perm
 
     ALLOCATE(Condition(Mesh % NumberOfNodes))
     DO i=1, Mesh % NumberOfNodes
-
        IF(VPerm(i) <= 0) THEN
           Condition(i) = .FALSE.
-       ELSE IF(Values(VPerm(i)) < Threshold) THEN
-          Condition(i) = .TRUE.
        ELSE
-          Condition(i) = .FALSE.
+          IF (AboveThreshold) THEN
+             IF (Values(VPerm(i)) .GT. Threshold) THEN
+                Condition(i) = .TRUE.
+             ELSE
+                Condition(i) = .FALSE.
+             END IF
+          ELSE
+             IF (Values(VPerm(i)) .LT. Threshold) THEN
+                Condition(i) = .TRUE.
+             ELSE
+                Condition(i) = .FALSE.
+             END IF
+          END IF
        END IF
-
     END DO
-
+    
     First = .TRUE.
     ID = 1
     DO i=1,Mesh % NumberOfNodes
