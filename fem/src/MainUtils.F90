@@ -2826,7 +2826,11 @@ CONTAINS
       REAL(KIND=dp), ALLOCATABLE :: k1(:),k2(:),k3(:),k4(:)
     END TYPE RungeKutta_t
     TYPE(RungeKutta_t), ALLOCATABLE, TARGET :: RKCoeff(:)
+
+    TYPE(ParEnv_t) :: ParEnv_Save
 !------------------------------------------------------------------------------
+
+    ParEnv_Save = ParEnv_Common
 
 !------------------------------------------------------------------------------
 !   Initialize equation solvers for new timestep
@@ -3114,8 +3118,10 @@ CONTAINS
       END DO
     END IF
 
+    ParEnv_Common = ParEnv_Save
     ParEnv => ParEnv_Common
-    IF(PArEnv % PEs>1) THEN
+    IF(ParEnv % PEs>1) THEN
+      IF(.NOT.ASSOCIATED(ParEnv % Active)) ALLOCATE(ParEnv % Active(ParEnv % PEs))
       ParEnv % Active = .TRUE.
       ParEnv % ActiveComm = ELMER_COMM_WORLD
     END IF
@@ -5188,6 +5194,8 @@ BLOCK
            M % Comm = ELMER_COMM_WORLD
            M => M % Parent
          END DO
+
+         IF(.NOT.ASSOCIATED(Solver % Matrix)) ParEnv % Active = .TRUE.
 
          ! Here set the default partitions active. 
          IF( ParEnv % MyPe >= MinOutputPE .AND. &
