@@ -130,7 +130,7 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
 
   REAL(KIND=dp), POINTER :: VariableValues(:)
   REAL(KIND=dp) :: z, toler
-  REAL(KIND=dp), ALLOCATABLE :: zb(:), ICMaskVals(:)
+  REAL(KIND=dp), ALLOCATABLE :: zb(:)
 
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName = 'GroundedSolver', bedrockName,&
        FrontVarName, LSvarName, ConnMaskName, ConnectivityModeStr
@@ -311,25 +311,17 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
      SELECT CASE(ConnectivityMode)
 
      CASE(INLAND)
-        ALLOCATE(ICMaskVals(SIZE(ConnMaskVar % Values)))
-        CALL BoundaryConn (INLAND,ICMaskVals)
-        ConnMaskVar % Values = ICMaskVals * (-1.0)
-        DEALLOCATE(ICMaskVals)
+        ConnMaskVar % Values = 1.0_dp
+        CALL BoundaryConn (INLAND)
 
      CASE(FRONT)
+        ConnMaskVar % Values = 1.0_dp
         CALL BoundaryConn (FRONT)
 
      CASE(COMBINED)
-        ALLOCATE(ICMaskVals(SIZE(ConnMaskVar % Values)))
-        CALL BoundaryConn (INLAND,ICMaskVals)
+        ConnMaskVar % Values = 1.0_dp
+        CALL BoundaryConn (INLAND)
         CALL BoundaryConn (FRONT)
-        DO ii = 1, SIZE(ConnMaskVar % Values)
-           IF (ConnMaskPerm(ii) .LE. 0) CYCLE
-           IF (ICMaskVals(ConnMaskVar % Perm(ii)).GT.0.0) THEN
-              ConnMaskVar % Values(ConnMaskVar % Perm(ii)) = -1.0
-           END IF
-        END DO
-        DEALLOCATE(ICMaskVals)
 
      END SELECT
   END IF
@@ -346,9 +338,9 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
      Element => GetActiveElement(t)
      en = GetElementNOFNodes()
      CALL GetElementNodes( Nodes )
+
      MSum = 0
-     ZSum = 0
-     
+     ZSum = 0     
      DO ii = 1, en
         Nn = Permutation(Element % NodeIndexes(ii))
         IF (Nn==0) CYCLE
@@ -376,7 +368,7 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
            Nn = ConnMaskPerm(Element % NodeIndexes(ii))
            IF (Nn==0) CYCLE
            MSum = MSum + ConnMaskVar % Values(Nn)
-           IF (ABS(VariableValues(Nn))<AEPS) ZSum = ZSum + 1.0_dp
+           IF (ABS(ConnMaskVar % Values(Nn))<AEPS) ZSum = ZSum + 1.0_dp
         END DO
         IF (MSum + ZSum < en) THEN
            DO ii = 1, en
@@ -433,7 +425,7 @@ CONTAINS
   ! *  Original Date: 08.2019
   ! *
   ! ****************************************************************************/
-  SUBROUTINE BoundaryConn (BoundaryLabel,MaskVals)
+  SUBROUTINE BoundaryConn (BoundaryLabel)
     USE Types
     USE CoordinateSystems
     USE DefUtils
@@ -443,7 +435,6 @@ CONTAINS
     IMPLICIT NONE
 
     INTEGER, INTENT(IN)                                  :: BoundaryLabel
-    REAL(KIND=dp), DIMENSION(:), INTENT(INOUT), OPTIONAL :: MaskVals
     
     !-----------------------------------
     TYPE(Mesh_t), POINTER :: Mesh
@@ -454,9 +445,9 @@ CONTAINS
     TYPE(Nodes_t) :: ElementNodes
     TYPE(GaussIntegrationPoints_t) :: IntegStuff
     
-    REAL(KIND=dp) :: SMeltRate, WMeltRate, SStart, SStop, &
+    REAL(KIND=dp) :: SMeltRate, WMeltRate, SStart, SStop, ScaleFactor, &
          TotalArea, TotalBMelt, ElemBMelt, s, t, season, threshold, &
-         SqrtElementMetric,U,V,W,Basis(Model % MaxElementNodes), ConnCheck
+         SqrtElementMetric,U,V,W,Basis(Model % MaxElementNodes)
     INTEGER :: NoNodes, j, FaceNodeCount, GroupNodeCount, county, &
          Active, ierr, kk, FoundNew, AllFoundNew
     INTEGER, PARAMETER :: FileUnit = 75, MaxFloatGroups = 1000, MaxNeighbours = 20
@@ -478,10 +469,12 @@ CONTAINS
        FrontMaskName = "Inland Boundary Mask"
        Threshold = 0.5_dp
        AboveThreshold = .TRUE.
+       ScaleFactor = -1.0_dp
     CASE(FRONT)
        FrontMaskName = "Calving Front Mask"
        Threshold = -0.5_dp
        AboveThreshold = .FALSE.
+       ScaleFactor = 1.0_dp
     END SELECT
     CALL MakePermUsingMask( Model, Solver, Mesh, FrontMaskName, &
          .FALSE., FrontPerm, FaceNodeCount)
@@ -490,28 +483,11 @@ CONTAINS
     Matrix => Solver % Matrix
     
     IF(.NOT. ASSOCIATED(ConnMaskVar)) CALL Fatal(SolverName, "Front connectivity needs a variable!")
-    IF (PRESENT(MaskVals)) THEN
-       MaskVals = 1.0_dp
-    ELSE
-       ConnMaskVar % Values = 1.0_dp
-    END IF
+
     NoNodes = COUNT(ConnMaskPerm > 0)
-
-    !    Model, Solver, dt, TransientSimulation, ConnMaskVar
-!    Var => Solver % Variable
-!          VariableValues(Nn) = 1.0_dp
-!  PointerToVariable => Solver % Variable
-!  Permutation  => PointerToVariable % Perm
-!  VariableValues => PointerToVariable % Values
-
-!    GMaskVarName = ListGetString(Params, "GroundedMask Variable", Found)
-!    IF(.NOT. Found) GMaskVarName = "GroundedMask"
-!    GroundedVar => VariableGet(Mesh % Variables, GMaskVarName, .TRUE., UnfoundFatal=.TRUE.)
 
     GroundedVar => Solver % Variable
     
-    ConnCheck = -1.0_dp
-   
     !Set up inverse perm for FindNodeNeighbours
     InvPerm => CreateInvPerm(Matrix % Perm) !Create inverse perm for neighbour search
     ALLOCATE(Neighbours(Mesh % NumberOfNodes, MaxNeighbours), NoNeighbours(Mesh % NumberOfNodes))
@@ -612,21 +588,23 @@ CONTAINS
        IF (kk.EQ.MaxFloatGroups) CALL FATAL( SolverName, 'Hard coded loop limit reached; needs recoding!' )
     END DO !k
     
-    !Cycle all connected groups, setting melt rate
+    !Cycle all connected groups
     CurrentGroup => FloatGroups
     DO WHILE(ASSOCIATED(CurrentGroup))
        IF(CurrentGroup % FrontConnected) THEN
           DO ii=1,CurrentGroup % NumberOfNodes
-             IF (PRESENT(MaskVals)) THEN
-                MaskVals(ConnMaskVar % Perm(CurrentGroup % NodeNumbers(ii))) = ConnCheck
-             ELSE
-                ConnMaskVar % Values(ConnMaskVar % Perm(CurrentGroup % NodeNumbers(ii))) = ConnCheck
-             END IF
+             ConnMaskVar % Values(ConnMaskVar % Perm(CurrentGroup % NodeNumbers(ii))) = -1.0_dp
+          END DO
+       ELSE
+          DO ii=1,CurrentGroup % NumberOfNodes
+             ConnMaskVar % Values(ConnMaskVar % Perm(CurrentGroup % NodeNumbers(ii))) = 1.0_dp
           END DO
        END IF
        CurrentGroup => CurrentGroup % Next
     END DO
     
+    ConnMaskVar % Values = ScaleFactor * ConnMaskVar % Values
+
     !Deallocate floatgroups linked list
     CurrentGroup => FloatGroups
     DO WHILE(ASSOCIATED(CurrentGroup))
