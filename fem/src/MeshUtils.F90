@@ -2449,6 +2449,12 @@ CONTAINS
    !------------------------------------------------------------------------------
    CALL MapInternalExternalBCs()
    
+   ! Create new boundaries on intersection of boundaries or bodies.
+   ! This way the original mesh does not need to include the BCs
+   ! initially.
+   !-------------------------------------------------------------------
+   CALL CreateIntersectionBCs(Model, Mesh)
+
    ! Sometimes we need boundaries that do not exist in the original mesh.
    ! Then we may create boundaries based on some geometric rules. 
    !--------------------------------------------------------------------
@@ -2947,7 +2953,7 @@ CONTAINS
      CALL SetEqualElementIndeces( Mesh )
    END IF
       
-   CALL CreateIntersectionBCs(Model,Mesh)
+!   CALL CreateIntersectionBCs(Model,Mesh)
 
    IF( ListGetLogical( Vlist,'Increase Element Order',Found ) ) THEN
      ! We need to follow the boundary also for the new nodes of the quadratic mesh.
@@ -29900,7 +29906,7 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: BC
     INTEGER, ALLOCATABLE :: BoundaryId(:), IntersectionBCs(:,:)
     LOGICAL, ALLOCATABLE :: EdgeDone(:), NodeDone(:)
-    LOGICAL :: Found, Hit, EdgesPresent 
+    LOGICAL :: Found, Hit, EdgesPresent, NeedEdges
     
     ! Count how many of the BCs are intersection BCs that we need to determine
     j = 0
@@ -29974,10 +29980,14 @@ CONTAINS
     ! On the 2nd lopp add the new elements in the element list.
     !-------------------------------------------------------------    
     EdgesPresent = ASSOCIATED( Mesh % Edges )
+    NeedEdges = (Mesh % MeshDim == 3 .OR. ANY(IntersectionBCs(:,4)==1) )
+
+    IF(NeedEdges .AND. .NOT. EdgesPresent ) THEN
+      CALL Info('CreateInterectionsBCs','Need edges for speedy search!',Level=7)
+      CALL FindMeshEdges( Mesh ) 
+    END IF
+
     IF( Mesh % MeshDim == 3 ) THEN
-      IF(.NOT. EdgesPresent ) THEN
-        CALL FindMeshEdges( Mesh ) 
-      END IF
       ALLOCATE( EdgeDone( Mesh % NumberOfEdges ) )       
       CALL CreateIntersection3D(.TRUE.,NewCnt)
       IF(NewCnt==0) THEN
@@ -29986,12 +29996,6 @@ CONTAINS
       END IF
       CALL CreateIntersection3D(.FALSE.,NewCnt)
     ELSE
-      IF(ANY(IntersectionBCs(:,4) == 1 )) THEN
-        IF(.NOT. EdgesPresent ) THEN
-          CALL Info('CreateInterectionsBCs','Need edges for speedy search!')
-          CALL FindMeshEdges( Mesh )
-        END IF
-      END IF
       IF(ANY(IntersectionBCs(:,4) == 0 )) THEN      
         ALLOCATE( NodeDone( Mesh % NumberOfNodes ) )
       END IF
@@ -30010,7 +30014,7 @@ CONTAINS
       END DO
     END IF
 
-1   IF(Mesh % MeshDim == 3 .AND. .NOT. EdgesPresent ) THEN
+1   IF(NeedEdges .AND. .NOT. EdgesPresent ) THEN
       CALL ReleaseMeshEdgeTables( Mesh )
       CALL ReleaseMeshFaceTables( Mesh )
     END IF
@@ -30260,8 +30264,6 @@ CONTAINS
           END DO
         END DO
         
-        PRINT *,'doing:',l,Mesh % NumberOfEdges, IntersectionBCs(l,1:3), NewCnt
-
         DO t=1,Mesh % NumberOfEdges
           IF(.NOT. BulkMode) CYCLE
 
