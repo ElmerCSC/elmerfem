@@ -14,8 +14,8 @@ Simulation
   Simulation Type = "Steady State"
   Steady State Max Iterations = 1
   Output Intervals = 0
-  Post File = "case.vtu"
-  Ascii Output = True
+!  Post File = "case.vtu"
+!  Ascii Output = True
 End
 
 Body 1
