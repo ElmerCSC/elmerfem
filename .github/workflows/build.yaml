@@ -65,7 +65,8 @@ jobs:
           sudo apt install -y ${{ matrix.compiler-pkgs }} cmake gfortran \
             libopenblas-dev libopenmpi-dev libmumps-dev libparmetis-dev \
             libqwt-qt5-dev qtscript5-dev libqt5svg5-dev \
-            libvtk9-qt-dev libglvnd-dev
+            libvtk9-qt-dev libglvnd-dev \
+            occt-misc libocct-data-exchange-dev libocct-draw-dev
 
       - name: configure
         run: |
@@ -81,6 +82,8 @@ jobs:
             -DWITH_Mumps=ON \
             -DWITH_ELMERGUI=ON \
             -DWITH_VTK=ON \
+            -DWITH_OCC=ON \
+            -DWITH_MATC=ON \
             -DCREATE_PKGCONFIG_FILE=ON \
             -DWITH_MPI=ON \
             -DMPI_TEST_MAXPROC=2 \
