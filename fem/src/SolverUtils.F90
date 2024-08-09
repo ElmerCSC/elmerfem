@@ -14460,37 +14460,38 @@ END FUNCTION SearchNodeL
       CALL Info(Caller, 'Repointing '//I2S(Solver % Variable % DOFs)//&
           ' eigenvalue components for: '//TRIM(Solver % Variable % Name))
 
-      DO k=1,Solver % Variable % DOFs
-        str = ComponentName( Solver % Variable % Name, k )
-        Var => VariableGet( Solver % Mesh % Variables, str, .TRUE. )
-                
-        IF( ASSOCIATED( Var ) ) THEN
-          IF (Solver % Variable % DOFs == 2) THEN
-            CALL Info('SolveEigenSystem', 'Eigenvalue component ' &
-                //I2S(k)//': '//TRIM(str))
-            Var % EigenValues => Solver % Variable % EigenValues
-            IF (.NOT. ASSOCIATED(Var % EigenVectors)) THEN
-              ALLOCATE(Var % EigenVectors(SIZE(Var % EigenValues), &
-                  SIZE(Solver % Variable % EigenVectors,2)), STAT=AllocStat)
-            END IF
+      IF (A % Complex) THEN
+        DO k=1,Solver % Variable % DOFs
+          str = ComponentName( Solver % Variable % Name, k )
+          Var => VariableGet( Solver % Mesh % Variables, str, .TRUE. )
 
-            DO i=1,SIZE(Var % EigenVectors,2)
-              SELECT CASE(k)
-              CASE(1)
-                Var % EigenVectors(:,i) = &
-                    CMPLX(REAL(Solver % Variable % EigenVectors(:,i)), 0.0_dp, kind=dp)
-              CASE(2)
-                ! This is the imaginary component as a real-valued array: 
-                Var % EigenVectors(:,i) = &
-                    CMPLX(AIMAG(Solver % Variable % EigenVectors(:,i)), 0.0_dp, kind=dp)
-              END SELECT
-            END DO
-          ELSE
-            CALL Warn(Caller, 'A complex-valued system should have 2 DOFs')
+          IF( ASSOCIATED( Var ) ) THEN
+            IF (Solver % Variable % DOFs == 2) THEN
+              CALL Info('SolveEigenSystem', 'Eigenvalue component ' &
+                  //I2S(k)//': '//TRIM(str))
+              Var % EigenValues => Solver % Variable % EigenValues
+              IF (.NOT. ASSOCIATED(Var % EigenVectors)) THEN
+                ALLOCATE(Var % EigenVectors(SIZE(Var % EigenValues), &
+                    SIZE(Solver % Variable % EigenVectors,2)), STAT=AllocStat)
+              END IF
+
+              DO i=1,SIZE(Var % EigenVectors,2)
+                SELECT CASE(k)
+                CASE(1)
+                  Var % EigenVectors(:,i) = &
+                      CMPLX(REAL(Solver % Variable % EigenVectors(:,i)), 0.0_dp, kind=dp)
+                CASE(2)
+                  ! This is the imaginary component as a real-valued array: 
+                  Var % EigenVectors(:,i) = &
+                      CMPLX(AIMAG(Solver % Variable % EigenVectors(:,i)), 0.0_dp, kind=dp)
+                END SELECT
+              END DO
+            ELSE
+              CALL Warn(Caller, 'A complex-valued system should have 2 DOFs')
+            END IF
           END IF
-        END IF
-      END DO
-      
+        END DO
+      END IF
       
       ! This is temporal (?) fix for a glitch where the complex eigen vector
       ! is expanded to one where real and complex parts follow each other. 
@@ -15811,8 +15812,6 @@ SUBROUTINE SolveEigenSystem( StiffMatrix, NOFEigen, &
       ELSE
         CALL ParallelArpackEigenSolveComplex( Solver, A, n/2, NOFEigen, EigenValues, EVecs )
       END IF
-
-
     END IF
 
     IF (Damped.AND.Direct) THEN
