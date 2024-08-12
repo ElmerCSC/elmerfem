@@ -99,7 +99,6 @@
 
             cmakeFlags =
               [
-                "-DELMER_INSTALL_LIB_DIR=${storepath}/lib"
                 "-DCMAKE_INSTALL_LIBDIR=lib"
                 "-DCMAKE_INSTALL_INCLUDEDIR=include"
                 "-DWITH_LUA:BOOL=TRUE"
