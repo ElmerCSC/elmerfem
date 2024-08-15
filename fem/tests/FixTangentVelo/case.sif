@@ -13,7 +13,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 7
+  Max Output Level = 20
 
   Coordinate System = "Cartesian"
   Simulation Type = "Steady State"
