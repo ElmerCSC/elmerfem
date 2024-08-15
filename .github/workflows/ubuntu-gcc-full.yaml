@@ -63,6 +63,7 @@ jobs:
             -DWITH_Mumps=ON \
             -DWITH_ElmerIce=ON \
             -DWITH_ELMERGUI=ON \
+            -DWITH_PARAVIEW=ON \
             -DCREATE_PKGCONFIG_FILE=ON \
             -DWITH_MPI=ON \
             -DMPI_TEST_MAXPROC=2 \
