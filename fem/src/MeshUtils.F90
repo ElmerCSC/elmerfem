@@ -27450,7 +27450,7 @@ CONTAINS
 
     INTEGER :: nc, dualmaxdeg, i, v, w, uci, wci, vli, vti, vcol, wcol, &
             nrc, nunc, nthr, TID, allocstat, gn
-    INTEGER, ALLOCATABLE :: colours(:)
+    INTEGER, POINTER :: colours(:)
     INTEGER, PARAMETER :: VERTEX_PER_THREAD = 100
     LOGICAL :: consistent
 
@@ -27524,10 +27524,8 @@ CONTAINS
         ! For each w\in adj(v) do
         DO w=vli, vti
           ! fc[colour[w]]<-v
-          !!$OMP ATOMIC READ
-          !$OMP CRITICAL
+          !$OMP ATOMIC READ
           wcol = colours(Graph % ind(w))
-          !$OMP END CRITICAL
           IF (wcol /= 0) fc(wcol) = v
         END DO
 
@@ -27535,10 +27533,8 @@ CONTAINS
         ! c <- min\{i>0: fc[i]/=v \}
         DO i=1,dualmaxdeg+1
           IF (fc(i) /= v) THEN
-            !!$OMP ATOMIC WRITE 
-            !$OMP CRITICAL
+            !$OMP ATOMIC WRITE 
             colours(v) = i
-            !$OMP END CRITICAL
             ! Maintain maximum colour
             nc = MAX(nc, i)
             EXIT
@@ -27635,7 +27631,8 @@ CONTAINS
 
     ! Set up colouring data structure
     Colouring % nc = nc
-    CALL MOVE_ALLOC(colours, Colouring % colours)
+!   CALL MOVE_ALLOC(colours, Colouring % colours)
+    Coloring % colours => colours
   END SUBROUTINE ElmerGraphColour
 
   SUBROUTINE Colouring_Deallocate(Colours)
@@ -27695,7 +27692,7 @@ CONTAINS
 
     TYPE(Element_t), POINTER :: Element
     INTEGER :: elem, nelem, nbelem, astat, lcolour, rcolour, nbc
-    INTEGER, ALLOCATABLE :: bcolours(:)
+    INTEGER, POINTER :: bcolours(:)
 
     nelem = Mesh % NumberOfBulkElements
     nbelem = Mesh % NumberOfBoundaryElements
@@ -27743,7 +27740,8 @@ CONTAINS
 
     ! Set up colouring data structure
     BoundaryColours % nc = nbc
-    CALL MOVE_ALLOC(bcolours, BoundaryColours % colours)
+!   CALL MOVE_ALLOC(bcolours, BoundaryColours % colours)
+    BoundaryColours % colours => bcolours
   END SUBROUTINE ElmerBoundaryGraphColour
   
   ! Given CRS indices, referenced indirectly from graph, 
