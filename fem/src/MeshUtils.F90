@@ -13923,6 +13923,9 @@ CONTAINS
     REAL(KIND=dp) :: d1,d2,MinDist,MaxDist,Dist,X0,Y0,Rad
     REAL(KIND=dp) :: Normal(3), AxisNormal(3), Tangent1(3), Tangent2(3), Coord(3), &
         CircleCoord(9)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+    REAL(KIND=dp) :: buffer(9)
+#endif
     INTEGER :: CircleInd(3) 
     LOGICAL :: BCMode, DoIt, GotNormal, GotCenter, GotRadius
     INTEGER :: Tag, t1, t2
@@ -14031,8 +14034,13 @@ CONTAINS
     ! Only in BC mode we do currently parallel reduction.
     ! This could be altered too. 
     IF( BCMode ) THEN
-      CALL MPI_ALLREDUCE(MPI_IN_PLACE,NiNj,9, &
-          MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+      buffer = NiNj
+      CALL MPI_ALLREDUCE(buffer, &
+#else
+      CALL MPI_ALLREDUCE(MPI_IN_PLACE, &
+#endif
+          NiNj,9,MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
     END IF
       
     ! The potential direction for the cylinder axis is the direction with 
@@ -14131,8 +14139,13 @@ CONTAINS
     END DO
 
     IF( BCMode .AND. ParEnv % PEs > 1 ) THEN
-      CALL MPI_ALLREDUCE(MPI_IN_PLACE,CircleCoord,6, &
-          MPI_DOUBLE_PRECISION,MPI_MAX,ELMER_COMM_WORLD,ierr)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+      buffer = CircleCoord
+      CALL MPI_ALLREDUCE(buffer, &
+#else
+      CALL MPI_ALLREDUCE(MPI_IN_PLACE, &
+#endif
+          CircleCoord,6,MPI_DOUBLE_PRECISION,MPI_MAX,ELMER_COMM_WORLD,ierr)
     END IF
 
     IF( InfoActive(25) .AND. ParEnv % MyPe == 0 ) THEN
@@ -14190,8 +14203,13 @@ CONTAINS
     END IF
 
     IF( BCMode .AND. ParEnv % PEs > 1 ) THEN
-      CALL MPI_ALLREDUCE(MPI_IN_PLACE,CircleCoord,9, &
-          MPI_DOUBLE_PRECISION,MPI_MAX,ELMER_COMM_WORLD,ierr)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+      buffer = CircleCoord
+      CALL MPI_ALLREDUCE(buffer, &
+#else
+      CALL MPI_ALLREDUCE(MPI_IN_PLACE, &
+#endif
+          CircleCoord,9,MPI_DOUBLE_PRECISION,MPI_MAX,ELMER_COMM_WORLD,ierr)
     END IF
       
     IF( InfoActive(25) .AND. ParEnv % MyPe == 0 ) THEN
