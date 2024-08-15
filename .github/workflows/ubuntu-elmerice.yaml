@@ -87,18 +87,5 @@ jobs:
           CTEST_OUTPUT_ON_FAILURE: 1
         run: |
           cd ${GITHUB_WORKSPACE}/build
-          ctest -LE slow -j$(nproc)
+          ctest -L elmerice -j$(nproc) --output-on-failure
 
-      - name: Re-run tests
-        if: always() && (steps.run-ctest.outcome == 'failure')
-        timeout-minutes: 60
-        env:
-          CTEST_OUTPUT_ON_FAILURE: 1
-        run: |
-          cd ${GITHUB_WORKSPACE}/build
-          echo "::group::Re-run failing tests"
-          ctest --rerun-failed --output-on-failure || true
-          echo "::endgroup::"
-          echo "::group::Log from these tests"
-          [ ! -f Testing/Temporary/LastTest.log ] || cat Testing/Temporary/LastTest.log
-          echo "::endgroup::"
