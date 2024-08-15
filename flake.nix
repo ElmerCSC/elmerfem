@@ -106,13 +106,15 @@
                 "-DWITH_OpenMP:BOOLEAN=TRUE"
                 "-DWITH_MPI:BOOLEAN=TRUE"
 
+                "-DWITH_ElmerIce:BOOL=TRUE"
+
                 "-Wno-dev"
               ]
               ++ inputs.cmakeFlags;
 
             checkPhase = ''
               runHook preCheckPhase
-              ctest -j $NIX_BUILD_CORES -L ${checkOptions}
+              ctest -j $NIX_BUILD_CORES ${checkOptions}
               runHook postCheckPhase
             '';
 
@@ -130,7 +132,7 @@
 
         default = {
           doCheck ? false,
-          checkOptions ? "-L quick",
+          checkOptions ? ''-L "quick|fast" -E "(ForceToStress_parallel)|(Hydro_Coupled)|(Hydro_SedOnly)|(Proj_South)|(PoissonDG_np8)|(poisson_transient_conforming_anti_np8)"'',
         }:
           basePkg {
             inherit doCheck checkOptions;
@@ -142,7 +144,7 @@
 
         gui = {
           doCheck ? false,
-          checkOptions ? "-L quick",
+          checkOptions ? ''-L "quick|fast" -E "(ForceToStress_parallel)|(Hydro_Coupled)|(Hydro_SedOnly)|(Proj_South)|(PoissonDG_np8)|(poisson_transient_conforming_anti_np8)"'',
         }:
           basePkg {
             inherit doCheck checkOptions;
@@ -169,13 +171,13 @@
             ];
           };
 
-        ice = {
+        full = {
           doCheck ? false,
-          checkOptions ? ''-L fast -E "(Hydro_Coupled)|(Hydro_SedOnly)|(Proj_South)"'',
+          checkOptions ? ''-L "quick|fast" -E "(ForceToStress_parallel)|(Hydro_Coupled)|(Hydro_SedOnly)|(Proj_South)|(PoissonDG_np8)|(poisson_transient_conforming_anti_np8)"'',
         }:
           basePkg {
             inherit doCheck checkOptions;
-            name = "elmer-ice";
+            name = "elmer-full";
 
             nativeBuildInputs = [];
 
@@ -192,8 +194,6 @@
               ];
 
             cmakeFlags = [
-              "-DWITH_ElmerIce:BOOL=TRUE"
-
               "-DWITH_NETCDF:BOOL=TRUE"
               "-DNETCDF_LIBRARY=${pkgs.netcdf-mpi}/lib/libnetcdf.so"
               "-DNETCDFF_LIBRARY=${pkgs.netcdffortran}/lib/libnetcdff.so"
@@ -227,13 +227,13 @@
         checks = {
           default = default {doCheck = true;};
           gui = gui {doCheck = true;};
-          ice = ice {doCheck = true;};
+          full = full {doCheck = true;};
         };
 
         packages = {
           default = default {};
           gui = gui {};
-          ice = ice {};
+          full = full {};
         };
       }
     );
