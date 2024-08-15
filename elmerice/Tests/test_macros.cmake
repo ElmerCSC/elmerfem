@@ -49,6 +49,13 @@ MACRO(RUN_ELMERICE_TEST)
   SET(ENV{ELMER_HOME} "${BINARY_DIR}/fem/src")
   SET(ENV{ELMER_LIB} "${BINARY_DIR}/fem/src/modules")
   SET(ENV{ELMER_MODULES_PATH} "${BINARY_DIR}/elmerice/Solvers:${BINARY_DIR}/elmerice/Solvers/GridDataReader:${BINARY_DIR}/elmerice/Solvers/ScatteredDataInterpolator:${BINARY_DIR}/elmerice/Solvers/MeshAdaptation_2D:${BINARY_DIR}/elmerice/UserFunctions")
+
+  IF(WIN32)
+    SET(ENV{PATH} "${BINARY_DIR}/elmerice/Solvers;${BINARY_DIR}/elmerice/Utils;${BINARY_DIR}/fem/src;$ENV{PATH}")
+    GET_FILENAME_COMPONENT(COMPILER_DIRECTORY ${CMAKE_Fortran_COMPILER} PATH)
+    SET(ENV{PATH} "$ENV{ELMER_HOME};$ENV{ELMER_LIB};${BINARY_DIR}/fhutiter/src;${BINARY_DIR}/matc/src;${BINARY_DIR}/mathlibs/src/arpack;${BINARY_DIR}/mathlibs/src/parpack;${COMPILER_DIRECTORY};$ENV{PATH}")
+  ENDIF(WIN32)
+
   #Optional arguments like WITH_MPI
   SET(LIST_VAR "${ARGN}")
   IF(LIST_VAR STREQUAL "")
