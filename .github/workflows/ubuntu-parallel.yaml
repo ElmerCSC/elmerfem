@@ -1,0 +1,101 @@
+name: ubuntu-parallel
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+
+  ubuntu:
+    runs-on: self-hosted
+    
+    name: ubuntu-parallel (${{ matrix.compiler }})
+
+    strategy:
+      # Allow other runners in the matrix to continue if some fail
+      fail-fast: false
+
+      matrix:
+        compiler: [gcc]
+        include:
+          - compiler: gcc
+            compiler-pkgs: "g++ gcc"
+            cc: "gcc"
+            cxx: "g++"
+            openmp-cmake-flags: "-WITH_OpenMP=ON"
+
+    env:
+      CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cxx }}
+
+    steps:
+      - name: get CPU information
+        run: lscpu
+
+      - name: checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: install dependencies
+        run: |
+          sudo apt -qq update
+          sudo apt install -y ${{ matrix.compiler-pkgs }} cmake gfortran \
+            libhypre-dev libopenblas-dev libopenmpi-dev libmumps-dev \
+            libparmetis-dev libqwt-qt5-dev qtscript5-dev libqt5svg5-dev
+
+      - name: configure
+        run: |
+          mkdir ${GITHUB_WORKSPACE}/build
+          cd ${GITHUB_WORKSPACE}/build
+          cmake \
+            -DCMAKE_BUILD_TYPE="Release" \
+            -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/usr" \
+            -DBLA_VENDOR="OpenBLAS" \
+            ${{ matrix.openmp-cmake-flags }} \
+            -DWITH_LUA=ON \
+            -DWITH_Zoltan=ON \
+            -DWITH_Mumps=ON \
+            -DWITH_Hypre=ON \
+            -DHypre_INCLUDE_DIR="/usr/include/hypre" \
+            -DWITH_ELMERGUI=ON \
+            -DWITH_ELMERICE=ON \
+            -DCREATE_PKGCONFIG_FILE=ON \
+            -DWITH_MPI=ON \
+            -DMPI_TEST_MAXPROC=$(nproc) \
+            -DMPIEXEC_PREFLAGS="--allow-run-as-root" \
+            ..
+
+      - name: build
+        run: |
+          cd ${GITHUB_WORKSPACE}/build
+          cmake --build . -j$(nproc)
+
+      - name: install
+        run: |
+          cd ${GITHUB_WORKSPACE}/build
+          cmake --install .
+
+      - name: check
+        id: run-ctest
+        timeout-minutes: 150
+        env:
+          CTEST_OUTPUT_ON_FAILURE: 1
+        run: |
+          cd ${GITHUB_WORKSPACE}/build
+          ctest . -j$(nproc) -L "parallel|fast"
+
+      - name: re-run tests
+        if: always() && (steps.run-ctest.outcome == 'failure')
+        timeout-minutes: 60
+        env:
+          CTEST_OUTPUT_ON_FAILURE: 1
+        run: |
+          cd ${GITHUB_WORKSPACE}/build
+          echo "::group::Re-run failing tests"
+          ctest --rerun-failed --output-on-failure || true
+          echo "::endgroup::"
+          echo "::group::Log from these tests"
+          [ ! -f Testing/Temporary/LastTest.log ] || cat Testing/Temporary/LastTest.log
+          echo "::endgroup::"
