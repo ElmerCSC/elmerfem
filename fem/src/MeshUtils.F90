@@ -27632,7 +27632,7 @@ CONTAINS
     ! Set up colouring data structure
     Colouring % nc = nc
 !   CALL MOVE_ALLOC(colours, Colouring % colours)
-    Coloring % colours => colours
+    Colouring % colours => colours
   END SUBROUTINE ElmerGraphColour
 
   SUBROUTINE Colouring_Deallocate(Colours)
