@@ -117,13 +117,25 @@ CONTAINS
      REAL(KIND=dp) :: params(:)
      CHARACTER(*), OPTIONAL :: resul
 
-     INTEGER :: i,l
+     INTEGER :: i,j,l
      CHARACTER(LEN=1024) :: pcmd,res
  
      IF(nparams==0) THEN
        pcmd = "tx=0"
      ELSE
+#if 0
        WRITE(pcmd,*)  [(params(i),i=1,nparams)]
+#else
+       ! cray ftn output from above can be somewhat convoluted, do this instead
+       j = 1
+       DO i=1,nparams
+         WRITE(pcmd(j:), *) params(i)
+         DO WHILE(pcmd(j:j) == ' '); j=j+1; END DO
+         DO WHILE(pcmd(j:j) /= ' '); j=j+1; END DO
+         IF(pcmd(j-1:j-1)=='.') pcmd(j-1:j-1) = ' '
+         j = j + 1
+       END DO
+#endif
        IF(PRESENT(resul)) THEN
          pcmd = TRIM(resul)//'='//TRIM(pcmd)
        ELSE

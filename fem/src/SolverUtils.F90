@@ -16187,12 +16187,11 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
           END DO
           CLOSE(11)
         END IF
-          
+
+        WRITE(Message,*) 'Normalization checksum: ',CheckSum
+        CALL Info(Caller,Message) 
       END IF
       CALL Info( Caller,'Constraint modes fluxes was saved to file '//TRIM(MatrixFile),Level=5)
-
-      WRITE(Message,*) 'Normalization checksum: ',CheckSum
-      CALL Info(Caller,Message) 
     END IF
   END IF
   
@@ -25137,6 +25136,17 @@ CONTAINS
    ! dg, or gauss point field. Perhaps even edge or face element field.
    !-------------------------------------------------------------------------------------
    FUNCTION EvalFieldAtElem( Mesh, Var, Element, Basis, dofi, eigeni, imVal, GotVal ) RESULT ( Val )
+
+     INTERFACE 
+       SUBROUTINE Ip2DgFieldInElement( Mesh, Parent, nip, fip, np, fdg )
+         USE Types
+         IMPLICIT NONE
+         TYPE(Mesh_t), POINTER :: Mesh
+         TYPE(Element_t), POINTER :: Parent
+         INTEGER :: nip, np
+         REAL(KIND=dp) :: fip(:), fdg(:)
+       END SUBROUTINE Ip2DgFieldInElement
+     END INTERFACE
 
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(Variable_t), POINTER :: Var

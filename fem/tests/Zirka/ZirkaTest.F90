@@ -11,6 +11,8 @@ SUBROUTINE ZirkaTest( Model,Solver,dt,TransientSimulation ) ! {{{
 
   REAL(KIND=dp) :: dt
   LOGICAL :: TransientSimulation
+
+#if 0
   integer :: unit, testnum
   TYPE(ValueList_t), POINTER :: params
   type(Variable_t), POINTER :: variable
@@ -298,5 +300,6 @@ function readdat(f, m, n) result(table) ! {{{
   close(iu)
 
 end function ! }}}
+#endif
 END SUBROUTINE ZirkaTest ! }}}
 !-------------------------------------------------------------------------------
