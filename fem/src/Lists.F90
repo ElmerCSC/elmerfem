@@ -255,6 +255,7 @@ CONTAINS
          INTEGER :: body_id, MaxGroup, group0, group
          INTEGER, POINTER :: DgMap(:), DgMaster(:), DgSlave(:)
          LOGICAL :: GotDgMap, GotMaster, GotSlave
+!------------------------------------------------------------------------------
          
          DgMap => ListGetIntegerArray( Solver % Values,'DG Reduced Basis Mapping',GotDgMap )
          DgMaster => ListGetIntegerArray( Solver % Values,'DG Reduced Basis Master Bodies',GotMaster )
@@ -338,7 +339,8 @@ CONTAINS
              ' db nodes from bulk hits',Level=15)
 
          IF ( FoundDG ) THEN
-           RETURN ! Discontinuous bodies !!!
+           GOTO 10
+!          RETURN ! Discontinuous bodies !!!
          END IF
        END BLOCK
      END IF
@@ -420,7 +422,8 @@ CONTAINS
            ' nodes from bulk hits',Level=15)
        
        IF ( FoundDG ) THEN
-          RETURN ! Discontinuous galerkin !!!
+          GOTO 10
+!         RETURN ! Discontinuous galerkin !!!
        END IF
      END IF
 
@@ -690,6 +693,9 @@ CONTAINS
     
      IF ( ALLOCATED(EdgeDOFs) ) DEALLOCATE(EdgeDOFs)
      IF ( ALLOCATED(FaceDOFs) ) DEALLOCATE(FaceDOFs)
+
+10   CONTINUE
+
 !------------------------------------------------------------------------------
    END FUNCTION InitialPermutation
 !------------------------------------------------------------------------------
