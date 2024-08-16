@@ -7365,8 +7365,8 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE SetNodalSources( Model, Mesh, SourceName, dofs, Perm, GotSrc, SrcVec )
 !------------------------------------------------------------------------------
-    TYPE(Model_t), POINTER :: Model  !< The current model structure
-    TYPE(Mesh_t), POINTER :: Mesh    !< The current mesh structure
+    TYPE(Model_t) :: Model  !< The current model structure
+    TYPE(Mesh_t)  :: Mesh    !< The current mesh structure
     CHARACTER(LEN=*) :: SourceName   !< Name of the keyword setting the source term
     INTEGER :: DOFs                  !< The total number of DOFs for this equation
     INTEGER :: Perm(:)               !< The node reordering info
@@ -7374,7 +7374,7 @@ CONTAINS
     REAL(KIND=dp) :: SrcVec(:)       !< The assemblied source vector
 !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: Element
-    INTEGER :: i,t,n,bc,bf,FirstElem,LastElem,nlen
+    INTEGER :: i,j,k,t,n,bc,bf,FirstElem,LastElem,nlen
     LOGICAL :: Found,AnyBC,AnyBF,Axisymmetric
     REAL(KIND=dp) :: Coeff
     REAL(KIND=dp), ALLOCATABLE :: FORCE(:,:)
@@ -7389,8 +7389,7 @@ CONTAINS
     CALL Info(Caller,'Checking for generalized source terms: '&
         //SourceName(1:nlen),Level=15)
 
-    ALLOCATE( ActiveBC(Model % NumberOfBCs ), &
-        ActiveBF(Model % NumberOfBodyForces) )
+    ALLOCATE( ActiveBC(Model % NumberOfBCs), ActiveBF(Model % NumberOfBodyForces) )
     
     ! First make a quick test going through the short boundary condition and
     ! body force lists.
@@ -7465,8 +7464,10 @@ CONTAINS
       CALL LocalSourceAssembly(Element, dofs, FORCE )
 
       DO i=1,dofs
-        SrcVec(dofs*(Perm(Indexes)-1)+i) = SrcVec(dofs*(Perm(Indexes)-1)+i) + &
-            Coeff * FORCE(i,1:n)
+        DO j=1,Element % Type % NumberOfNodes
+          k = dofs*(Perm(Indexes(j)-1))+i
+          SrcVec(k) = SrcVec(k) + Coeff * FORCE(i,j)
+        END DO
       END DO
     END DO
       
@@ -19699,21 +19700,21 @@ CONTAINS
         ! We need to add the control source here in order to be able to use
         ! standard means for convergence monitoring. 
         CALL Info(Caller,'Computing source term for: '//TRIM(str),Level=7)
-        CALL SetNodalSources( CurrentModel,Mesh,str, &
-            dofs, Perm, GotF, f(:,iControl) )
+        CALL SetNodalSources( CurrentModel,Mesh,str,dofs, Perm, GotF, f(:,iControl) )
 
-       ! The additional source needs to be nullified for Dirichlet conditions
-       IF( ALLOCATED( A % ConstrainedDOF ) ) THEN
-         WHERE( A % ConstrainedDOF ) f(:,iControl) = 0.0_dp
-       END IF
+        ! The additional source needs to be nullified for Dirichlet conditions
+        IF( ALLOCATED( A % ConstrainedDOF ) ) THEN
+          WHERE( A % ConstrainedDOF ) f(:,iControl) = 0.0_dp
+        END IF
 
-       IF(InfoActive(10)) THEN
-         DO i=1,dofs
-           PRINT *,'ranges b:',i,MINVAL(b(i::dofs)),MAXVAL(b(i::dofs)),SUM(b(i::dofs))
-           PRINT *,'ranges f:',i,MINVAL(f(i::dofs,iControl)),&
-               MAXVAL(f(i::dofs,iControl)),SUM(f(i::dofs,iControl))
-         END DO
-       END  IF
+        IF(InfoActive(10)) THEN
+          DO i=1,dofs
+            PRINT *,'ranges b:',i,MINVAL(b(i::dofs)),MAXVAL(b(i::dofs)),SUM(b(i::dofs))
+ 
+            PRINT *,'ranges f:',i,MINVAL(f(i::dofs,iControl)),&
+                MAXVAL(f(i::dofs,iControl)),SUM(f(i::dofs,iControl))
+          END DO
+        END  IF
        
         IF( ABS(cAmp(iControl)) > 1.0e-20 ) THEN
           b(1:nsize) = b(1:nsize) + cAmp(iControl) * f(1:nsize,iControl)
