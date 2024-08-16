@@ -69,6 +69,9 @@
          PolyStart(:), PolyEnd(:), EdgeLine(:,:), EdgeCount(:), Nodes(:), StartNodes(:,:),&
          WorkInt(:), WorkInt2D(:,:), PartCount(:), ElemsToAdd(:), PartElemsToAdd(:), &
          EdgeLineNodes(:), NodePositions(:), FrontToLateralConstraint(:), UnfoundConstraints(:)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+   INTEGER, ALLOCATABLE :: buffer2(:)
+#endif
    REAL(KIND=dp) :: FrontOrientation(3), &
         RotationMatrix(3,3), UnRotationMatrix(3,3), NodeHolder(3), MaxMeshDist,&
         y_coord(2), TempDist,MinDist, xl,xr,yl, yr, xx,yy,&
@@ -990,6 +993,9 @@
 
      ALLOCATE(IMBdryConstraint(IMBdryCount))
      IMBdryConstraint = 0
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+     ALLOCATE(buffer2(IMBdryCount))
+#endif
 
      !Now cycle elements: for those with a node either side
      !of domain boundary, cycle 3d mesh boundary elements
@@ -1051,7 +1057,13 @@
 
      !Send info back to boss
      IF(Boss) THEN
-       CALL MPI_Reduce(MPI_IN_PLACE, IMBdryConstraint, IMBdryCount, MPI_INTEGER, &
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+       buffer2 = IMBdryConstraint
+       CALL MPI_Reduce(buffer2, &
+#else
+       CALL MPI_Reduce(MPI_IN_PLACE, &
+#endif
+            IMBdryConstraint, IMBdryCount, MPI_INTEGER, &
             MPI_MAX, 0, ELMER_COMM_WORLD, ierr)
      ELSE
        CALL MPI_Reduce(IMBdryConstraint, IMBdryConstraint, IMBdryCount, MPI_INTEGER, &
@@ -1133,7 +1145,13 @@
        END DO
 
        IF(Boss) THEN
-         CALL MPI_Reduce(MPI_IN_PLACE, IMBdryConstraint, IMBdryCount, MPI_INTEGER, &
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+         buffer2 = IMBdryConstraint
+         CALL MPI_Reduce(buffer2, &
+#else
+         CALL MPI_Reduce(MPI_IN_PLACE, &
+#endif
+              IMBdryConstraint, IMBdryCount, MPI_INTEGER, &
               MPI_MAX, 0, ELMER_COMM_WORLD, ierr)
        ELSE
          CALL MPI_Reduce(IMBdryConstraint, IMBdryConstraint, IMBdryCount, MPI_INTEGER, &
@@ -1692,6 +1710,9 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Variable_t), POINTER :: DistVar
     REAL(KIND=dp) :: SearchDist, RotationMatrix(3,3), Extent(4), Buffer
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+    REAL(KIND=dp) :: buffer2
+#endif
     !------------------------------
     REAL(KIND=dp) :: NodeHolder(3)
     INTEGER :: i,ierr
@@ -1718,10 +1739,37 @@ CONTAINS
 
     END DO
 
-    CALL MPI_AllReduce(MPI_IN_PLACE, extent(1), 1, MPI_DOUBLE_PRECISION, MPI_MIN, ELMER_COMM_WORLD, ierr)
-    CALL MPI_AllReduce(MPI_IN_PLACE, extent(2), 1, MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD, ierr)
-    CALL MPI_AllReduce(MPI_IN_PLACE, extent(3), 1, MPI_DOUBLE_PRECISION, MPI_MIN, ELMER_COMM_WORLD, ierr)
-    CALL MPI_AllReduce(MPI_IN_PLACE, extent(4), 1, MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD, ierr)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+    buffer2 = extent(1)
+    CALL MPI_AllReduce(buffer2, &
+#else
+    CALL MPI_AllReduce(MPI_IN_PLACE, &
+#endif
+         extent(1), 1, MPI_DOUBLE_PRECISION, MPI_MIN, ELMER_COMM_WORLD, ierr)
+
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+    buffer2 = extent(2)
+    CALL MPI_AllReduce(buffer2, &
+#else
+    CALL MPI_AllReduce(MPI_IN_PLACE, &
+#endif
+         extent(2), 1, MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD, ierr)
+
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+    buffer2 = extent(3)
+    CALL MPI_AllReduce(buffer2, &
+#else
+    CALL MPI_AllReduce(MPI_IN_PLACE, &
+#endif
+         extent(3), 1, MPI_DOUBLE_PRECISION, MPI_MIN, ELMER_COMM_WORLD, ierr)
+
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+    buffer2 = extent(4)
+    CALL MPI_AllReduce(buffer2, &
+#else
+    CALL MPI_AllReduce(MPI_IN_PLACE, &
+#endif
+         extent(4), 1, MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD, ierr)
 
     extent(1) = extent(1) - buffer
     extent(2) = extent(2) + buffer
@@ -1754,6 +1802,9 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: PathPoly(:,:),xL(:),yL(:),xR(:),yR(:),WorkReal(:),WorkReal2(:,:)
     LOGICAL :: inside,does_intersect,FoundIntersect
     LOGICAL, ALLOCATABLE :: RemoveCrev(:), WorkLogical(:)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+    LOGICAL, ALLOCATABLE :: buffer(:)
+#endif
     CHARACTER(MAX_NAME_LEN) :: FuncName="CheckLateralCalving", Adv_EqName, LeftRailFName, RightRailFName
     INTEGER, PARAMETER :: io=20
 
@@ -1882,6 +1933,9 @@ CONTAINS
     CLOSE(io)
 
     ALLOCATE(RemoveCrev(NoPaths))
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+    ALLOCATE(buffer(NoPaths))
+#endif
     RemoveCrev = .FALSE.
     DO i=1, Mesh % NumberOfNodes
 
@@ -1986,7 +2040,13 @@ CONTAINS
       END IF
     END DO
 
-    CALL MPI_AllReduce(MPI_IN_PLACE, RemoveCrev, NoPaths, MPI_LOGICAL, MPI_LOR, ELMER_COMM_WORLD, ierr)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+         buffer = RemoveCrev
+         CALL MPI_ALLREDUCE(buffer, &
+#else
+         CALL MPI_ALLREDUCE(MPI_IN_PLACE, &
+#endif
+        RemoveCrev, NoPaths, MPI_LOGICAL, MPI_LOR, ELMER_COMM_WORLD, ierr)
 
     DO WHILE(ANY(RemoveCrev))
       DO i=1, NoPaths

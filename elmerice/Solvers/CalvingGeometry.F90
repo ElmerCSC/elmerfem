@@ -3949,6 +3949,9 @@ CONTAINS
     INTEGER :: i,j,dummyint,BCTag
     REAL(KIND=dp) :: geps,leps
     LOGICAL :: Debug, skip, PartMask, Complete, ThisBC, Found
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+    LOGICAL :: buffer
+#endif
     LOGICAL, POINTER :: OldMaskLogical(:), NewMaskLogical(:), UnfoundNodes(:)=>NULL(), OldElemMask(:)
     LOGICAL, ALLOCATABLE :: PartsMask(:), FoundNode(:)
     CHARACTER(LEN=MAX_NAME_LEN) :: HeightName, Solvername
@@ -4154,7 +4157,13 @@ CONTAINS
         END IF
       END DO
       IF(COUNT(FoundNode) == UnfoundCount) Complete = .TRUE.
-      CALL MPI_AllReduce(MPI_IN_PLACE, Complete, 1, MPI_LOGICAL, MPI_LAND, ELMER_COMM_WORLD, ierr)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+      buffer = Complete
+      CALL MPI_AllReduce(buffer, &
+#else
+      CALL MPI_AllReduce(MPI_IN_PLACE, &
+#endif
+          Complete, 1, MPI_LOGICAL, MPI_LAND, ELMER_COMM_WORLD, ierr)
     END DO
 
     DEALLOCATE(OldMaskLogical, &
