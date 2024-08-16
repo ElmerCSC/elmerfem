@@ -87,5 +87,5 @@ jobs:
           CTEST_OUTPUT_ON_FAILURE: 1
         run: |
           cd ${GITHUB_WORKSPACE}/build
-          ctest -L elmerice -j$(nproc) --output-on-failure
+          ctest -L fast -j$(nproc) --output-on-failure
 
