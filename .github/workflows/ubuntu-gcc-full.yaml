@@ -61,6 +61,7 @@ jobs:
             -DWITH_LUA=ON \
             -DWITH_Zoltan=ON \
             -DWITH_Mumps=ON \
+            -DWITH_ElmerIce=ON \
             -DWITH_ELMERGUI=ON \
             -DCREATE_PKGCONFIG_FILE=ON \
             -DWITH_MPI=ON \

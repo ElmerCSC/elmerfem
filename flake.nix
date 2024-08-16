@@ -49,14 +49,17 @@
 
         basePkg = {
           name,
-          nativeBuildInputs,
-          buildInputs,
-          cmakeFlags,
+          nativeBuildInputs ? [],
+          buildInputs ? [],
+          cmakeFlags ? [],
           doCheck,
-          checkOptions,
+          checkOptions ? ''-L "quick|fast" -E "(ForceToStress_parallel)|(Hydro_Coupled)|(Hydro_SedOnly)|(Proj_South)|(.*_np[3-9])"'',
           ...
-        } @ inputs: let
+        }: let
           storepath = placeholder "out";
+          extraNativeBuildInputs = nativeBuildInputs;
+          extraBuildInputs = buildInputs;
+          extraCmakeFlags = cmakeFlags;
         in
           pkgs.stdenv.mkDerivation {
             inherit name doCheck storepath;
@@ -86,7 +89,7 @@
                 pkg-config
                 autoPatchelfHook
               ]
-              ++ inputs.nativeBuildInputs;
+              ++ extraNativeBuildInputs;
 
             buildInputs = with pkgs;
               [
@@ -95,7 +98,7 @@
                 liblapack
                 tbb
               ]
-              ++ inputs.buildInputs;
+              ++ extraBuildInputs;
 
             cmakeFlags =
               [
@@ -106,13 +109,15 @@
                 "-DWITH_OpenMP:BOOLEAN=TRUE"
                 "-DWITH_MPI:BOOLEAN=TRUE"
 
+                "-DWITH_ElmerIce:BOOL=TRUE"
+
                 "-Wno-dev"
               ]
-              ++ inputs.cmakeFlags;
+              ++ extraCmakeFlags;
 
             checkPhase = ''
               runHook preCheckPhase
-              ctest -j $NIX_BUILD_CORES -L ${checkOptions}
+              ctest -j $NIX_BUILD_CORES ${checkOptions}
               runHook postCheckPhase
             '';
 
@@ -128,24 +133,15 @@
             ];
           };
 
-        default = {
-          doCheck ? false,
-          checkOptions ? "-L quick",
-        }:
+        default = {doCheck ? false}:
           basePkg {
-            inherit doCheck checkOptions;
+            inherit doCheck;
             name = "elmer";
-            nativeBuildInputs = [];
-            buildInputs = [];
-            cmakeFlags = [];
           };
 
-        gui = {
-          doCheck ? false,
-          checkOptions ? "-L quick",
-        }:
+        gui = {doCheck ? false}:
           basePkg {
-            inherit doCheck checkOptions;
+            inherit doCheck;
             name = "elmer-gui";
 
             nativeBuildInputs = [pkgs.libsForQt5.wrapQtAppsHook];
@@ -169,15 +165,10 @@
             ];
           };
 
-        ice = {
-          doCheck ? false,
-          checkOptions ? ''-L fast -E "(Hydro_Coupled)|(Hydro_SedOnly)|(Proj_South)"'',
-        }:
+        full = {doCheck ? false}:
           basePkg {
-            inherit doCheck checkOptions;
-            name = "elmer-ice";
-
-            nativeBuildInputs = [];
+            inherit doCheck;
+            name = "elmer-full";
 
             buildInputs = with pkgs;
               [
@@ -192,12 +183,10 @@
               ];
 
             cmakeFlags = [
-              "-DWITH_ElmerIce:BOOL=TRUE"
-
               "-DWITH_NETCDF:BOOL=TRUE"
               "-DNETCDF_LIBRARY=${pkgs.netcdf-mpi}/lib/libnetcdf.so"
-              "-DNETCDFF_LIBRARY=${pkgs.netcdffortran}/lib/libnetcdff.so"
               "-DNETCDF_INCLUDE_DIR=${pkgs.netcdf-mpi}/include"
+              "-DNETCDFF_LIBRARY=${pkgs.netcdffortran}/lib/libnetcdff.so"
               "-DCMAKE_Fortran_FLAGS=-I${pkgs.netcdffortran}/include"
 
               "-DWITH_Hypre:BOOL=TRUE"
@@ -205,8 +194,10 @@
               "-DWITH_Mumps:BOOL=TRUE"
 
               "-DWITH_ScatteredDataInterpolator:BOOL=TRUE"
+
               "-DCSA_LIBRARY=${csa}/lib/libcsa.a"
               "-DCSA_INCLUDE_DIR=${csa}/include"
+
               "-DNN_INCLUDE_DIR=${pkgs.nn}/include"
               "-DNN_LIBRARY=${pkgs.nn}/lib/libnn.a"
 
@@ -227,13 +218,13 @@
         checks = {
           default = default {doCheck = true;};
           gui = gui {doCheck = true;};
-          ice = ice {doCheck = true;};
+          full = full {doCheck = true;};
         };
 
         packages = {
           default = default {};
           gui = gui {};
-          ice = ice {};
+          full = full {};
         };
       }
     );

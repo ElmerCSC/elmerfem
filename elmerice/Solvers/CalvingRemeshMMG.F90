@@ -1259,6 +1259,9 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
        SaveFlowMax, Mag, NSChange, SaveDt, SaveRelax,SaveMeshHmin,SaveMeshHmax,&
        SaveMeshHgrad,SaveMeshHausd, SaveMetric, MeshChange, NewMetric, NewMeshDist,&
        SaveMeshDist, NewMeshHGrad
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+  REAL(KIND=dp) :: buffer
+#endif
   REAL(KIND=dp), ALLOCATABLE :: SaveMeshHausdArray(:,:), SaveMeshHminArray(:,:), &
        NewMeshHausdArray(:,:), NewMeshHminArray(:,:)
   REAL(KIND=dp), POINTER :: TimestepSizes(:,:), WorkArray(:,:)
@@ -1404,7 +1407,13 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
       FlowMax = MAX(FlowMax, Mag)
     END DO
 
-    CALL MPI_AllReduce(MPI_IN_PLACE, FlowMax, 1, MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD, ierr)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+    buffer = FlowMax
+    CALL MPI_AllReduce(buffer, &
+#else
+    CALL MPI_AllReduce(MPI_IN_PLACE, &
+#endif
+         FlowMax, 1, MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD, ierr)
   END IF
 
   IF(CheckFlowDiverge) THEN

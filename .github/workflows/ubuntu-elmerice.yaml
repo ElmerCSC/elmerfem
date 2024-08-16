@@ -1,11 +1,11 @@
-name: ubuntu-clang-full
+name: ubuntu-elmerice
 on:
   workflow_dispatch:
-  schedule:
-    # Run job every Thursday at 09:50 UTC
-    - cron: '50 09 * * 4'
+  push:
+    branches:
+      - elmerice
 
-concurrency: ci-ubuntu-clang-full-${{ github.ref }}
+concurrency: ci-ubuntu-elmerice-${{ github.ref }}
 
 jobs:
 
@@ -14,20 +14,20 @@ jobs:
     # https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners
     runs-on: ubuntu-latest
 
-    name: ubuntu-full (${{ matrix.compiler }})
+    name: ubuntu-elmerice (${{ matrix.compiler }})
 
     strategy:
       # Allow other runners in the matrix to continue if some fail
       fail-fast: false
 
       matrix:
-        compiler: [clang]
+        compiler: [gcc]
         include:
-          - compiler: clang
-            compiler-pkgs: "clang"
-            cc: "clang"
-            cxx: "clang++"
-            openmp-cmake-flags: "-WITH_OpenMP=ON -DOpenMP_C_FLAGS=-fopenmp=libgomp -DOpenMP_CXX_FLAGS=-fopenmp=libgomp"
+          - compiler: gcc
+            compiler-pkgs: "g++ gcc"
+            cc: "gcc"
+            cxx: "g++"
+            openmp-cmake-flags: "-WITH_OpenMP=ON"
 
     env:
       CC: ${{ matrix.cc }}
@@ -63,6 +63,7 @@ jobs:
             -DWITH_Mumps=ON \
             -DWITH_ElmerIce=ON \
             -DWITH_ELMERGUI=ON \
+            -DWITH_MATC=ON \
             -DCREATE_PKGCONFIG_FILE=ON \
             -DWITH_MPI=ON \
             -DMPI_TEST_MAXPROC=2 \
@@ -86,18 +87,5 @@ jobs:
           CTEST_OUTPUT_ON_FAILURE: 1
         run: |
           cd ${GITHUB_WORKSPACE}/build
-          ctest . -j$(nproc)
+          ctest -L fast -j$(nproc) --output-on-failure
 
-      - name: Re-run tests
-        if: always() && (steps.run-ctest.outcome == 'failure')
-        timeout-minutes: 60
-        env:
-          CTEST_OUTPUT_ON_FAILURE: 1
-        run: |
-          cd ${GITHUB_WORKSPACE}/build
-          echo "::group::Re-run failing tests"
-          ctest --rerun-failed --output-on-failure || true
-          echo "::endgroup::"
-          echo "::group::Log from these tests"
-          [ ! -f Testing/Temporary/LastTest.log ] || cat Testing/Temporary/LastTest.log
-          echo "::endgroup::"

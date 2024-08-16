@@ -20,7 +20,7 @@ MACRO(ADD_ELMERICE_TEST test_name)
       -DMPIEXEC_POSTFLAGS=${MPIEXEC_POSTFLAGS}
       -DWITH_MPI=${WITH_MPI}
       -P ${CMAKE_CURRENT_SOURCE_DIR}/runTest.cmake)
-    SET_TESTS_PROPERTIES(${test_name} PROPERTIES LABELS "elmerice")
+  SET_TESTS_PROPERTIES(${test_name} PROPERTIES LABELS "elmerice")
 ENDMACRO()
 
 MACRO(ADD_ELMERICETEST_MODULE test_name module_name file_name)
@@ -31,8 +31,6 @@ MACRO(ADD_ELMERICETEST_MODULE test_name module_name file_name)
   ADD_LIBRARY(${ELMERICETEST_CMAKE_NAME} MODULE ${file_name})
   SET_TARGET_PROPERTIES(${ELMERICETEST_CMAKE_NAME}
     PROPERTIES PREFIX "")
-  TARGET_LINK_LIBRARIES(${ELMERICETEST_CMAKE_NAME}
-    elmersolver)
   SET_TARGET_PROPERTIES(${ELMERICETEST_CMAKE_NAME}
     PROPERTIES OUTPUT_NAME ${module_name} LINKER_LANGUAGE Fortran)
   TARGET_LINK_LIBRARIES(${ELMERICETEST_CMAKE_NAME} elmersolver)
@@ -49,25 +47,31 @@ MACRO(RUN_ELMERICE_TEST)
   SET(ENV{ELMER_HOME} "${BINARY_DIR}/fem/src")
   SET(ENV{ELMER_LIB} "${BINARY_DIR}/fem/src/modules")
   SET(ENV{ELMER_MODULES_PATH} "${BINARY_DIR}/elmerice/Solvers:${BINARY_DIR}/elmerice/Solvers/GridDataReader:${BINARY_DIR}/elmerice/Solvers/ScatteredDataInterpolator:${BINARY_DIR}/elmerice/Solvers/MeshAdaptation_2D:${BINARY_DIR}/elmerice/UserFunctions")
-  #Optional arguments like WITH_MPI
+
+  IF(WIN32)
+    SET(ENV{PATH} "${BINARY_DIR}/elmerice/Solvers;${BINARY_DIR}/elmerice/Utils;${BINARY_DIR}/fem/src;$ENV{PATH}")
+    GET_FILENAME_COMPONENT(COMPILER_DIRECTORY ${CMAKE_Fortran_COMPILER} PATH)
+    SET(ENV{PATH} "$ENV{ELMER_HOME};$ENV{ELMER_LIB};${BINARY_DIR}/fhutiter/src;${BINARY_DIR}/matc/src;${BINARY_DIR}/mathlibs/src/arpack;${BINARY_DIR}/mathlibs/src/parpack;${COMPILER_DIRECTORY};$ENV{PATH}")
+  ENDIF(WIN32)
+
+  # Optional arguments like WITH_MPI
   SET(LIST_VAR "${ARGN}")
   IF(LIST_VAR STREQUAL "")
     FILE(REMOVE "TEST.PASSED")
     EXECUTE_PROCESS(COMMAND ${ELMERSOLVER_BIN}
       OUTPUT_FILE "test-stdout.log"
       ERROR_FILE "test-stderr.log")
-  ELSE()
-     IF("${LIST_VAR}" STREQUAL WITH_MPI)
-       SET(N "${NPROCS}")
-         IF("N" STREQUAL "")
-	   MESSAGE( FATAL_ERROR "Test failed:variable <NPROC> not defined. Set <NPROC> in runTes.cmake")
-         ELSE()
-           FILE(REMOVE "TEST.PASSED_${N}")
-	   EXECUTE_PROCESS(COMMAND ${MPIEXEC} ${MPIEXEC_NUMPROC_FLAG} ${N} ${MPIEXEC_PREFLAGS} ${ELMERSOLVER_BIN} ${MPIEXEC_POSTFLAGS}
-             OUTPUT_FILE "test-stdout.log"
-             ERROR_FILE "test-stderr.log")
-         ENDIF()
-       ENDIF()
+  ELSEIF("${LIST_VAR}" STREQUAL "${WITH_MPI}" AND ${WITH_MPI})
+    # Macro has been called with WITH_MPI argument and MPI is enabled
+    SET(N "${NPROCS}")
+    IF("${N}" STREQUAL "")
+      MESSAGE(FATAL_ERROR "Test failed:variable <NPROC> not defined. Set <NPROC> in runTest.cmake")
+    ELSE()
+      FILE(REMOVE "TEST.PASSED_${N}")
+      EXECUTE_PROCESS(COMMAND ${MPIEXEC} ${MPIEXEC_NUMPROC_FLAG} ${N} ${MPIEXEC_PREFLAGS} ${ELMERSOLVER_BIN} ${MPIEXEC_POSTFLAGS}
+        OUTPUT_FILE "test-stdout.log"
+        ERROR_FILE "test-stderr.log")
+    ENDIF()
   ENDIF()
 
   IF(NPROCS GREATER "1")

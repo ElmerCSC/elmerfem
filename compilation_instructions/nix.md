@@ -2,16 +2,20 @@
 
 ## Compiling from upstream
 
-The Nix flake exposes three different derivations (packages) that can be built using `nix build github:ElmerCSC/elmerfem#<version>`.
+The Nix flake exposes derivations (packages) that can be built using `nix build github:ElmerCSC/elmerfem#<version>`.
 
-### `default`
+### List of included derivations
+
+#### `default`
 Barebones Elmer with OpenMP and MPI support.
 
-### `gui`
+#### `gui`
 Elmer with GUI.
 
-### `ice`
-Elmer/ICE
+#### `full`
+A derivation with more parallel computing features such as HYPRE.
+
+All derivations have Elmer/Ice.
 
 Specifying no version builds the `default` derivation.
 
