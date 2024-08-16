@@ -2547,7 +2547,7 @@ SUBROUTINE GlaDS_GLflux( Model,Solver,dt,TransientSimulation )
      CALL Info(SolverName,'>subglac channel flux variable< not found, assuming >Channel Flux<',Level=4)
      channelVarName = "Channel Flux"
   END IF
-  channelVar =>  VariableGet(Model % mesh % Variables,TRIM(channelVarName),UnFoundFatal=.TRUE.)
+  channelVar =>  VariableGet(Solver % mesh % Variables,TRIM(channelVarName),UnFoundFatal=.TRUE.)
   IF (.NOT.ASSOCIATED(channelVar)) &
        CALL FATAL(SolverName,"Variable "//TRIM(channelVarName)//" not found")
   channelPerm => channelVar % Perm
@@ -2558,7 +2558,7 @@ SUBROUTINE GlaDS_GLflux( Model,Solver,dt,TransientSimulation )
      CALL Info(SolverName,'>subglac sheet thickness variable< not found, assuming >sheet thickness<',Level=4)
      sheetThickVarName = "Sheet thickness"
   END IF
-  sheetThickVar =>  VariableGet(Model % mesh % Variables,TRIM(sheetThickVarName),UnFoundFatal=.TRUE.)
+  sheetThickVar =>  VariableGet(Solver % mesh % Variables,TRIM(sheetThickVarName),UnFoundFatal=.TRUE.)
   IF (.NOT.ASSOCIATED(sheetThickVar)) &
        CALL FATAL(SolverName,"Variable "//TRIM(sheetThickVarName)//" not found")
   sheetThickPerm => sheetThickVar % Perm
@@ -2569,7 +2569,7 @@ SUBROUTINE GlaDS_GLflux( Model,Solver,dt,TransientSimulation )
      CALL Info(SolverName,'>subglac sheet discharge variable< not found, assuming >sheet discharge<',Level=4)
      sheetDisVarName = "sheet discharge"
   END IF
-  sheetDisVar =>  VariableGet(Model % mesh % Variables,TRIM(sheetDisVarName),UnFoundFatal=.TRUE.)
+  sheetDisVar =>  VariableGet(Solver % mesh % Variables,TRIM(sheetDisVarName),UnFoundFatal=.TRUE.)
   IF (.NOT.ASSOCIATED(sheetDisVar)) &
        CALL FATAL(SolverName,"Variable "//TRIM(sheetDisVarName)//" not found")
   sheetDisPerm => sheetDisVar % Perm
@@ -2581,7 +2581,7 @@ SUBROUTINE GlaDS_GLflux( Model,Solver,dt,TransientSimulation )
      CALL Info(SolverName,'>grounded mask variable< not found, assuming >GroundedMask<',Level=4)
      MaskName = "GroundedMask"
   END IF
-  gmVar =>  VariableGet(Model % mesh % Variables,TRIM(MaskName),UnFoundFatal=.TRUE.)
+  gmVar =>  VariableGet(Solver % mesh % Variables,TRIM(MaskName),UnFoundFatal=.TRUE.)
   IF (.NOT.ASSOCIATED(gmVar)) &
        CALL FATAL(SolverName,"Variable >GroundedMask< not found")
   gmPerm => gmVar % Perm
@@ -2589,12 +2589,12 @@ SUBROUTINE GlaDS_GLflux( Model,Solver,dt,TransientSimulation )
 
   ! The two variables that will contain the sheet and channel fluxes on the GL are also
   ! hard coded (well, their names anyway).
-  sglfVar =>  VariableGet(Model % mesh % Variables,TRIM("Sheet GL flux"),UnFoundFatal=.TRUE.)
+  sglfVar =>  VariableGet(Solver % mesh % Variables,TRIM("Sheet GL flux"),UnFoundFatal=.TRUE.)
   IF (.NOT.ASSOCIATED(sglfVar)) &
        CALL FATAL(SolverName,"Variable >Sheet GL flux< not found")
   sglfPerm => sglfVar % Perm
   sglfVals => sglfVar % Values
-  cglfVar =>  VariableGet(Model % mesh % Variables,TRIM("Channel GL flux"),UnFoundFatal=.TRUE.)
+  cglfVar =>  VariableGet(Solver % mesh % Variables,TRIM("Channel GL flux"),UnFoundFatal=.TRUE.)
   IF (.NOT.ASSOCIATED(cglfVar)) &
        CALL FATAL(SolverName,"Variable >Channel GL flux< not found")
   cglfPerm => cglfVar % Perm

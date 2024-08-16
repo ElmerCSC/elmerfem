@@ -75,14 +75,14 @@
         Basis(Model % MaxElementNodes), TotalArea, TotalPMelt, TotalBMelt, &
         ElemPMelt, ElemBMelt, ElemToeMelt, Target_PMelt_Average, TotalToeMelt, &
         Target_BMelt_Average, BMelt_Average, PMelt_Average, scale, NodeElev, BMSummerStop, &
-        BMSummerStart, Season, aboveMelt, meMelt, Dist, MinDist, ChannelQ,&
+        BMSummerStart, Season, aboveMelt, meMelt, Dist, MinDist,&
         Q0, Plume1MR, Plume2MR, PlProp, Node, NearestNode(3),&
         TargetNode(3), MaxX, MinX, MaxY, MinY, PlDist(2), MeshRes, BMRDist,&
         BMRMinDist, PlDepth, SStart, SStop
 
    REAL(KIND=dp), ALLOCATABLE :: Xs(:), Ys(:), DwDz(:), W0(:), DmDz(:), MMR(:), MME(:), &
         PlumePoints(:,:,:), PlStart(:,:),PlStop(:,:), PointStore(:),&
-        DistArray(:), PlInQ(:), SheetQ(:), PlFinalQ(:), Zi(:), Xi(:), Ta(:),&
+        DistArray(:), PlInQ(:), PlFinalQ(:), Zi(:), Xi(:), Ta(:),&
         Sa(:), PlAxis(:), PlPos(:,:), NearestFrontNodes(:,:),&
         XArray(:), YArray(:), ZArray(:), PlCoordArray(:,:),&
         Plz(:), PlMR(:), Row(:), PlZArray(:,:), PlMRArray(:,:),&
@@ -397,31 +397,15 @@
      !running along the GL itself (i.e., edges with both nodes on the GL),
      !but these a) should be prohibited by the BCs and b) are probably
      !negligible anyway
-     ALLOCATE(PlInQ(SIZE(HydroGLNodes)), SheetQ(3))
-     WorkVar => VariableGet(HydroMesh % Variables, 'channel flux', ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
-     WorkVar2 => VariableGet(HydroMesh % Variables, 'sheet discharge', ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
-     WorkVar3 => VariableGet(HydroMesh % Variables, 'sheet thickness', ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
+     ALLOCATE(PlInQ(SIZE(HydroGLNodes)))
+     WorkVar => VariableGet(HydroMesh % Variables, 'GlaDS GL Flux', ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
      j=1
      DO i=1, SIZE(HydroGLNodes)
-       SheetQ = 0.0_dp
-       ChannelQ = 0.0
        IF(HydroGLNodes(i) == 0) THEN
          PlInQ(i) = 0.0
          CYCLE
        END IF
-       DO j=1,HydroMesh % NumberOfEdges
-         Edge => HydroMesh % Edges(j)
-         IF(ANY(Edge % NodeIndexes(1:2) == HydroGLNodes(i))) THEN
-           ChannelQ = ChannelQ + WorkVar % Values(WorkVar % Perm(HydroMesh % NumberOfNodes+j))
-         ELSE
-           CYCLE
-         END IF
-       END DO
-       DO j=1,2
-         SheetQ(j) = SheetQ(j) + (WorkVar2 % Values(2*(WorkVar2 % Perm(HydroGLNodes(i))-1)+j))
-       END DO
-       SheetQ(3) = SQRT((SheetQ(1)**2)+(SheetQ(2)**2))*WorkVar3 % Values(WorkVar3 % Perm(HydroGLNodes(i)))
-       PlInQ(i) = ChannelQ + SheetQ(3)
+       PlInQ(i) = WorkVar % Values(WorkVar % Perm(HydroGLNodes(i)))
      END DO
 
      !Check for multiple entries that have same NearestFrontNode and combine Q
