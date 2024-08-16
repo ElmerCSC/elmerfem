@@ -11,6 +11,7 @@ SUBROUTINE ZirkaTest( Model,Solver,dt,TransientSimulation ) ! {{{
 
   REAL(KIND=dp) :: dt
   LOGICAL :: TransientSimulation
+
   integer :: unit, testnum
   TYPE(ValueList_t), POINTER :: params
   type(Variable_t), POINTER :: variable
@@ -90,6 +91,42 @@ subroutine test6() ! {{{
   END BLOCK
 
 end subroutine ! }}}
+
+function readBH(f) result(BH) ! {{{
+  real(kind=dp), allocatable :: BH(:,:)
+  character(len=*) :: f
+  real*8 :: lenf
+  integer :: iu, len, n
+
+  open(newunit=iu, file=f, action='read', status='old')
+
+  read(iu, *) len
+
+  allocate(BH(1:len,2))
+
+  do n = 1,len
+    read (iu,*) BH(n,1:2)
+  end do
+  close(iu)
+
+end function ! }}}
+
+function readdat(f, m, n) result(table) ! {{{
+  real(kind=dp), allocatable :: table(:,:)
+  character(len=*) :: f
+  real*8 :: lenf
+  integer :: iu, m, n, k
+
+  open(newunit=iu, file=f, action='read', status='old')
+
+  allocate(table(m,n))
+
+  do k = 1,m
+    read (iu,*) table(k,1:n)
+  end do
+  close(iu)
+
+end function ! }}}
 
 subroutine print_interval(mc, B_low, B_up, m, Hexact) ! {{{
   type(MasterCurve_t) :: mc
@@ -211,6 +248,7 @@ subroutine test3() ! {{{
   real(kind=dp), pointer :: rps_array(:,:)
   real(kind=dp), allocatable, target :: scalar_array(:,:)
   
+  integer :: i_r
   integer  :: n, m
   integer :: nr
   type(ZirkaABC_t), POINTER :: ABCParams
@@ -238,65 +276,27 @@ subroutine test3() ! {{{
   rps => null()
 
   m = 1
-  BLOCK
-    integer :: i_r
-    ! rps_array => ListGetConstRealArray(GetSolverParams(), 'rps_3', found)
-    scalar_array = readdat("scalars_a.dat", 7, 9)
+  ! rps_array => ListGetConstRealArray(GetSolverParams(), 'rps_3', found)
+  scalar_array = readdat("scalars_a.dat", 7, 9)
   call info('ZirkaTest','Running zirkatest')
-    rps(1:size(scalar_array,1)) => scalar_array(:,3)
-    H(1:size(scalar_array,1)) => scalar_array(:,4)
+  rps(1:size(scalar_array,1)) => scalar_array(:,3)
+  H(1:size(scalar_array,1)) => scalar_array(:,4)
 
-    do i_r = 2, ubound(rps,1)
-      call mc % drive(rps(i_r-1), cache = .true.)
-        associate (B_low => rps(i_r-1),  B_up => rps(i_r))
-          call print_interval(mc, B_low, B_up, m, H(i_r-1))
-        end associate
-    end do
-    i_r = ubound(rps,1)
-    call mc % drive(rps(i_r), cache = .true.)
-    associate (B_low => rps(i_r),  B_up => rps(i_r))
-      call print_interval(mc, B_low, B_up, m, H(i_r))
-    end associate
-    variable => VariableGet(solver % variable, "testvar")
-    variable % values = abs(H(i_r)-mc % eval(rps(i_r), cached = .true.))/abs(H(i_r))
-    variable % norm = abs(H(i_r)-mc % eval(rps(i_r), cached = .true.))/abs(H(i_r))
-  END BLOCK
-
+  do i_r = 2, ubound(rps,1)
+    call mc % drive(rps(i_r-1), cache = .true.)
+      associate (B_low => rps(i_r-1),  B_up => rps(i_r))
+        call print_interval(mc, B_low, B_up, m, H(i_r-1))
+      end associate
+  end do
+  i_r = ubound(rps,1)
+  call mc % drive(rps(i_r), cache = .true.)
+  associate (B_low => rps(i_r),  B_up => rps(i_r))
+    call print_interval(mc, B_low, B_up, m, H(i_r))
+  end associate
+  variable => VariableGet(solver % variable, "testvar")
+  variable % values = abs(H(i_r)-mc % eval(rps(i_r), cached = .true.))/abs(H(i_r))
+  variable % norm = abs(H(i_r)-mc % eval(rps(i_r), cached = .true.))/abs(H(i_r))
 end subroutine ! }}}
-function readBH(f) result(BH) ! {{{
-  real(kind=dp), allocatable :: BH(:,:)
-  character(len=*) :: f
-  real*8 :: lenf
-  integer :: iu, len, n
 
-  open(newunit=iu, file=f, action='read', status='old')
-
-  read(iu, *) len
-
-  allocate(BH(1:len,2))
-
-  do n = 1,len
-    read (iu,*) BH(n,1:2)
-  end do
-  close(iu)
-
-end function ! }}}
-
-function readdat(f, m, n) result(table) ! {{{
-  real(kind=dp), allocatable :: table(:,:)
-  character(len=*) :: f
-  real*8 :: lenf
-  integer :: iu, m, n, k
-
-  open(newunit=iu, file=f, action='read', status='old')
-
-  allocate(table(m,n))
-
-  do k = 1,m
-    read (iu,*) table(k,1:n)
-  end do
-  close(iu)
-
-end function ! }}}
 END SUBROUTINE ZirkaTest ! }}}
 !-------------------------------------------------------------------------------
