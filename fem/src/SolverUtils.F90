@@ -7438,6 +7438,7 @@ CONTAINS
     DO t=FirstElem, LastElem 
       Element => Mesh % Elements(t)
       Indexes => Element % NodeIndexes
+      n = Element % Type % NumberOfNodes
 
       IF( t > Mesh % NumberOfBulkElements ) THEN
         Found = .FALSE.
@@ -7464,10 +7465,7 @@ CONTAINS
       CALL LocalSourceAssembly(Element, dofs, FORCE )
 
       DO i=1,dofs
-        DO j=1,Element % Type % NumberOfNodes
-          k = dofs*(Perm(Indexes(j)-1))+i
-          SrcVec(k) = SrcVec(k) + Coeff * FORCE(i,j)
-        END DO
+        SrcVec(dofs*(Perm(Indexes)-1)+i) = SrcVec(dofs*(Perm(Indexes)-1)+i) + FORCE(i,1:n)
       END DO
     END DO
       
@@ -19710,7 +19708,6 @@ CONTAINS
         IF(InfoActive(10)) THEN
           DO i=1,dofs
             PRINT *,'ranges b:',i,MINVAL(b(i::dofs)),MAXVAL(b(i::dofs)),SUM(b(i::dofs))
- 
             PRINT *,'ranges f:',i,MINVAL(f(i::dofs,iControl)),&
                 MAXVAL(f(i::dofs,iControl)),SUM(f(i::dofs,iControl))
           END DO
