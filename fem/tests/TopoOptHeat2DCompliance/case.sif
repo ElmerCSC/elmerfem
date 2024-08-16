@@ -1,0 +1,153 @@
+!--------------------------------------------------------
+! Test case for topology optimization.
+! Peter Råback & Stefan Hiemer, 2024.
+!
+! This case is the basic compliance minimization problem of a 2D
+! heat equation.
+!
+! This test case with
+! - pde based density filter
+!
+! Note that the test is not run to the end. Add SS iterations
+! and resolution for better solution. 
+!-------------------------------------------------------------
+
+$L=40.0
+$H=1.0
+$rmax=2*H
+$pexp=3.0
+$rhomin=1.0e-3
+$Vfrac=0.4
+$wmin=1.0e-3
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "tree"
+  Include Path ""
+  Results Directory "results"
+End
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = Cartesian
+  Simulation Type = Steady state
+
+  Steady State Max Iterations = 5 !1000
+
+  Output Intervals = 0
+  Post File = a.vtu
+  vtu: Save Bulk Only = Logical True
+  vtu: ascii output = logical True
+
+  Mesh Levels = 2
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Domain"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+
+Initial Condition 1
+  Name = "Guess"
+  topo rho = Real $Vfrac
+  topo mult = Real $Vfrac^pexp
+End
+
+
+Solver 1
+  Equation = HeatEq
+  Procedure = "HeatSolveVec" "HeatSolver"
+  Variable = Temperature
+
+  Nonlinear System Max Iterations = 1
+
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+
+  Local Matrix Identical = Logical True
+  Local Matrix Storage = Logical True  
+
+  Vector Assembly = False
+  Matrix Multiplier Name = String "topo mult"
+
+  Optimize Bandwidth = False
+  Solver Timing = True
+
+! Convergence tolerance for elasticity solution. 
+  Steady State Convergence Measure = solution
+  Steady State Convergence Tolerance = 1.0e-4
+End
+
+
+Solver 2
+  Equation = TopoOpt
+  Procedure = "TopoOpt" "TopoOpt"
+
+  Filter Method = String "density" 
+!  Sensitivity Filter Threshold = Real $wmin
+
+  Filter Type = String "pde"
+  Pde Filter Diffusion Constant = Real 1.0
+  Variable = xnodal
+
+  Penalty Exponent = Real $pexp
+  Minimum Relative Density = Real $rhomin
+  Volume Fraction = Real $Vfrac
+
+! Convergence tolerance for objective function.
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Linear System Solver = direct
+  Linear System Direct Method = umfpack
+
+  Solver Timing = True
+End
+
+Solver 3
+  Exec Solver = After Simulation
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Filename = "f.dat"
+End
+
+Equation 1
+  Name = "HeatEq"
+  Active Solvers(2) = 1 2
+End
+
+Material 1
+  Name = "Ideal"
+  Heat Conductivity = 1.0
+  Heat Capacity = 0.0
+  Density = 1.0
+End
+
+Body Force 1
+  Name = "Source"
+  Volumetric Heat Source = 1.0
+End 
+
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  Name = "Natural"
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 2 
+  Name = "Null"
+  Temperature = 0.0
+End
+
+
+! Norms after 5 SS iterations 
+Solver 1 :: Reference Norm = 4.90205214E+03
+Solver 2 :: Reference Norm = 4.77156235E-01
+
+! Norms after 169 SS iterations 
+!Solver 1 :: Reference Norm = 3.42919540E+03
+!Solver 2 :: Reference Norm = 5.17295836E-01
