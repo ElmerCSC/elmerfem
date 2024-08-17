@@ -297,7 +297,5 @@ subroutine test3() ! {{{
   variable % values = abs(H(i_r)-mc % eval(rps(i_r), cached = .true.))/abs(H(i_r))
   variable % norm = abs(H(i_r)-mc % eval(rps(i_r), cached = .true.))/abs(H(i_r))
 end subroutine ! }}}
-
-end function ! }}}
 END SUBROUTINE ZirkaTest ! }}}
 !-------------------------------------------------------------------------------
