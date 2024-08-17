@@ -3581,13 +3581,9 @@ CONTAINS
     
     CALL Info('DefaultSolve','Calling SolveSystem for linear solution',Level=20)
 
-print*,'a: ', associated(solver), associated(Solver % matrix); flush(6)
     A => Solver % Matrix
-print*,'a: ', associated(solver % variable); flush(6)
     x => Solver % Variable    
-print*,'a: ', associated(A), associated(A % RHS); flush(6)
     b => A % RHS
-print*,'a: ', associated(x % values), SIZE(x % values); flush(6)
     SOL => x % Values
 
     ! Debugging stuff activated only when "Max Output Level" >= 20
@@ -3598,7 +3594,6 @@ print*,'a: ', associated(x % values), SIZE(x % values); flush(6)
       
 10  CONTINUE
 
-print*,'going sol'; flush(6)
     CALL SolveSystem(A,ParMatrix,b,SOL,x % Norm,x % DOFs,Solver)
     
     IF( InfoActive( 20 ) ) THEN
