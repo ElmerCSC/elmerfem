@@ -482,6 +482,113 @@ CONTAINS
    END SUBROUTINE List_AddMatrixIndexes
 !-------------------------------------------------------------------------------
 
+
+!-------------------------------------------------------------------------------
+   SUBROUTINE List_AddMatrixRow(List,k1,nk2,Ind,Vals)
+   ! Add an array of sorted indeces to a row in ListMatrix_t. "ind" may
+   ! contain duplicate entries.
+!-------------------------------------------------------------------------------
+     IMPLICIT NONE
+
+     TYPE(ListMatrix_t) :: List(:)
+     INTEGER, INTENT(IN) :: k1, nk2
+     INTEGER, INTENT(INOUT) :: Ind(nk2)
+     REAL(KIND=dp), INTENT(INOUT) :: Vals(nk2)
+
+     TYPE(ListMatrixEntry_t), POINTER :: RowPtr, PrevPtr, Entry, Dummy
+!-------------------------------------------------------------------------------
+     INTEGER :: i,k2,k2i,j, k,prevind
+
+     IF (k1>SIZE(List)) THEN
+       CALL Fatal('List_AddMatrixIndexes','Row index out of bounds: '//TRIM(I2S(k1)))
+     END IF
+
+     CALL SortF(nk2, Ind, Vals)
+     
+     ! Add each element in Ind to the row list
+     RowPtr => List(k1) % Head
+    
+     ! First element needs special treatment as it may modify 
+     ! the list starting point
+     IF (.NOT. ASSOCIATED(RowPtr)) THEN
+       Dummy => NULL() 
+       Entry => List_GetMatrixEntry(Ind(1),Dummy)
+       Entry % Val = Vals(1)
+       List(k1) % Degree = 1
+       List(k1) % Head => Entry
+       k2i = 2
+       prevind = ind(1)
+     ELSE IF (RowPtr % Index > Ind(1)) THEN
+       Entry => List_GetMatrixEntry(Ind(1),RowPtr)
+       Entry % Val = Vals(1)
+       List(k1) % Degree = List(k1) % Degree + 1
+       List(k1) % Head => Entry
+       k2i = 2
+       prevind = ind(1)
+     ELSE IF (RowPtr % Index == Ind(1)) THEN
+        k2i = 2
+        prevind = ind(1)
+     ELSE
+       k2i = 1
+       prevind = -1
+     END IF
+
+     PrevPtr => List(k1) % Head
+     RowPtr  => List(k1) % Head % Next
+
+     DO i=k2i,nk2
+       k2 = Ind(i)
+       if (k2 == prevind) cycle
+
+       ! Find a correct place place to add index to
+       DO WHILE( ASSOCIATED(RowPtr) )
+         IF (RowPtr % Index >= k2) EXIT
+         PrevPtr => RowPtr
+         RowPtr  => RowPtr % Next
+       END DO
+       
+       IF (ASSOCIATED(RowPtr)) THEN
+         ! Do not add duplicates
+         IF (RowPtr % Index /= k2) THEN
+           ! Create new element between PrevPtr and RowPtr
+           Entry => List_GetMatrixEntry(k2,RowPtr)
+           Entry % Val = Vals(i)
+           PrevPtr % Next => Entry
+           List(k1) % Degree = List(k1) % Degree + 1
+
+           ! Advance to next element in list
+           PrevPtr => Entry
+         ELSE
+           ! Advance to next element in list
+           RowPtr % Val = RowPtr % Val + Vals(i)
+           PrevPtr => RowPtr
+           RowPtr  => RowPtr % Next
+         END IF
+       ELSE
+         EXIT
+       END IF
+
+       prevind = k2
+     END DO
+
+     DO j=i,nk2
+       k2 = Ind(j)
+       if (k2 == prevind) cycle
+       prevind = k2
+
+       Dummy => NULL()
+       Entry => List_GetMatrixEntry(k2,Dummy)
+       Entry % Val = Vals(j)
+       PrevPtr % Next => Entry
+       PrevPtr => PrevPtr % Next
+       List(k1) % Degree = List(k1) % Degree + 1
+     END DO
+!-------------------------------------------------------------------------------
+   END SUBROUTINE List_AddMatrixRow
+!-------------------------------------------------------------------------------
+
+
+
 !-------------------------------------------------------------------------------
    FUNCTION List_GetMatrixEntry(ind, next) RESULT(ListEntry)
 !-------------------------------------------------------------------------------

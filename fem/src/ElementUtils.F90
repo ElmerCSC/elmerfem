@@ -1904,6 +1904,7 @@ CONTAINS
      IF ( PRESENT(Equation) ) THEN
        CALL Info(Caller,'Creating initial permutation',Level=14)
        k = InitialPermutation( Perm,Model,Solver,Mesh,Eq,DG,GB )
+print*,'aft k', k
        IF ( k <= 0 ) THEN
          IF(ALLOCATED(InvInitialReorder)) DEALLOCATE(InvInitialReorder)
          RETURN

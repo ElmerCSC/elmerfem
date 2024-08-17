@@ -27468,7 +27468,7 @@ CONTAINS
 
     INTEGER :: nc, dualmaxdeg, i, v, w, uci, wci, vli, vti, vcol, wcol, &
             nrc, nunc, nthr, TID, allocstat, gn
-    INTEGER, ALLOCATABLE :: colours(:)
+    INTEGER, POINTER :: colours(:)
     INTEGER, PARAMETER :: VERTEX_PER_THREAD = 100
     LOGICAL :: consistent
 
@@ -27649,7 +27649,8 @@ CONTAINS
 
     ! Set up colouring data structure
     Colouring % nc = nc
-    CALL MOVE_ALLOC(colours, Colouring % colours)
+!   CALL MOVE_ALLOC(colours, Colouring % colours)
+    Colouring % colours => colours
   END SUBROUTINE ElmerGraphColour
 
   SUBROUTINE Colouring_Deallocate(Colours)
@@ -27709,7 +27710,7 @@ CONTAINS
 
     TYPE(Element_t), POINTER :: Element
     INTEGER :: elem, nelem, nbelem, astat, lcolour, rcolour, nbc
-    INTEGER, ALLOCATABLE :: bcolours(:)
+    INTEGER, POINTER :: bcolours(:)
 
     nelem = Mesh % NumberOfBulkElements
     nbelem = Mesh % NumberOfBoundaryElements
@@ -27757,7 +27758,8 @@ CONTAINS
 
     ! Set up colouring data structure
     BoundaryColours % nc = nbc
-    CALL MOVE_ALLOC(bcolours, BoundaryColours % colours)
+!   CALL MOVE_ALLOC(bcolours, BoundaryColours % colours)
+    BoundaryColours % colours => bcolours
   END SUBROUTINE ElmerBoundaryGraphColour
   
   ! Given CRS indices, referenced indirectly from graph, 

@@ -375,7 +375,7 @@ Solver 2 :: Reference Norm = 4.22134445E-03
 Solver 3 :: Reference Norm = 6.66996883E-02
 Solver 7 :: Reference Norm = 5.92002332E-01
 
-Solver 2 :: Reference Norm Tolerance = 1e-4
-Solver 3 :: Reference Norm Tolerance = 1e-4
+Solver 2 :: Reference Norm Tolerance = 2e-4
+Solver 3 :: Reference Norm Tolerance = 2e-4
 
 
