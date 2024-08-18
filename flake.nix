@@ -53,7 +53,7 @@
           buildInputs ? [],
           cmakeFlags ? [],
           doCheck,
-          checkOptions ? ''-L "quick|fast" -E "(ForceToStress_parallel)|(Hydro_Coupled)|(Hydro_SedOnly)|(Proj_South)|(.*_np[3-9])"'',
+          checkOptions ? ''-L "quick|fast" -E "ForceToStress_parallel"'',
           ...
         }: let
           storepath = placeholder "out";
@@ -110,6 +110,8 @@
                 "-DWITH_MPI:BOOLEAN=TRUE"
 
                 "-DWITH_ElmerIce:BOOL=TRUE"
+
+                "-DMPIEXEC_PREFLAGS=-oversubscribe"
 
                 "-Wno-dev"
               ]
