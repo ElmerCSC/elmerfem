@@ -88,6 +88,7 @@ jobs:
             -DParMetis_INCLUDE_DIR="$(pkg-config --cflags parmetis)" \
             -DWITH_Mumps=OFF \
             -DWITH_ELMERGUI=ON \
+            -DWITH_PARAVIEW=ON \
             -DCREATE_PKGCONFIG_FILE=ON \
             ${{ matrix.umfpack-cmake-flags }} \
             ..

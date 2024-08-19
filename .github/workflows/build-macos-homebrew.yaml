@@ -61,6 +61,7 @@ jobs:
             -DWITH_Zoltan=OFF \
             -DWITH_Mumps=OFF \
             -DWITH_ELMERGUI=ON \
+            -DWITH_PARAVIEW=ON \
             -DQWT_INCLUDE_DIR="${HOMEBREW_PREFIX}/opt/qwt-qt5/lib/qwt.framework/Headers" \
             -DCREATE_PKGCONFIG_FILE=ON \
             ..
