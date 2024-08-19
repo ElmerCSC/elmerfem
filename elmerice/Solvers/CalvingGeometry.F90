@@ -7926,7 +7926,7 @@ CONTAINS
 
     ! write to file
     IF(FileCreated) THEN
-      OPEN( 36, FILE=filename, STATUS='UNKNOWN', ACCESS='APPEND')
+      OPEN( 36, FILE=filename, STATUS='UNKNOWN', POSITION='APPEND')
     ELSE
         OPEN( 36, FILE=filename, STATUS='UNKNOWN')
         WRITE(36, '(A)') "Calving Stats Output File"
@@ -8854,7 +8854,7 @@ CONTAINS
 
         ! write to file
         IF(FileCreated) THEN
-          OPEN( 37, FILE=filename, STATUS='UNKNOWN', ACCESS='APPEND')
+          OPEN( 37, FILE=filename, STATUS='UNKNOWN', POSITION='APPEND')
         ELSE
           OPEN( 37, FILE=filename, STATUS='UNKNOWN')
           WRITE(37, '(A)') "Terminus Position File"

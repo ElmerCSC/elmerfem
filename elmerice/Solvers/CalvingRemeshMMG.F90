@@ -1063,7 +1063,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
           CALL WARN('CalvingStat', 'Output file name not given so using CalvingStats.txt')
           Filename = "CalvingStats.txt"
         END IF
-        OPEN( 36, FILE=filename, STATUS='UNKNOWN', ACCESS='APPEND')
+        OPEN( 36, FILE=filename, STATUS='UNKNOWN', POSITION='APPEND')
         WRITE(36, '(A,i0)') 'Remeshing failed: ', GetTimestep()
         CLOSE(36)
       END IF

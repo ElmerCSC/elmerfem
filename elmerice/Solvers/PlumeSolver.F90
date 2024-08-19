@@ -1000,7 +1000,7 @@
                  &Total Melt (m^3)"
           END IF
         ELSE
-          OPEN( UNIT=OutFileUnit, File=OutfileName, STATUS='UNKNOWN', ACCESS='APPEND' )
+          OPEN( UNIT=OutFileUnit, File=OutfileName, STATUS='UNKNOWN', POSITION='APPEND' )
         END IF
 
         IF(RemoveToe) THEN
