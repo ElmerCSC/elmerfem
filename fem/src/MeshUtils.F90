@@ -23975,29 +23975,29 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!>     Assign local number of edge to given boundary element. Also copies all 
-!>     p element attributes from element edge to boundary edge.
+!> Assign local number of edge to given boundary element. Also copies all 
+!> p element attributes from element edge to boundary edge.
 !------------------------------------------------------------------------------
-  SUBROUTINE AssignLocalNumber( EdgeElement, Element, Mesh,NoPE )
+  SUBROUTINE AssignLocalNumber( EdgeElement, Element, Mesh, NoPE )
 !------------------------------------------------------------------------------
     USE PElementMaps, ONLY : getFaceEdgeMap 
     IMPLICIT NONE
 
     ! Parameters
-    TYPE(Mesh_t) :: Mesh            !< Finite element mesh containing faces and edges.
+    TYPE(Mesh_t) :: Mesh                     !< Finite element mesh containing faces and edges.
     TYPE(Element_t), POINTER :: EdgeElement  !< Edge element to which assign local number
     TYPE(Element_t), POINTER :: Element      !< Bulk element with some global numbering to use to assign local number
     LOGICAL, OPTIONAL :: NoPE
 !------------------------------------------------------------------------------
     ! Local variables
 
-    INTEGER i,j,k,n,edgeNumber, numEdges, bMap(4)
+    INTEGER i,j,k,n,edgeNumber, numEdges, bMap(4), bIndex(4)
     TYPE(Element_t), POINTER :: Edge
     LOGICAL :: EvalPE
 
     EvalPE = .TRUE.
     IF(PRESENT(NoPE)) EvalPE = .NOT.NoPE
-
+    
     ! Get number of points, edges or faces
     numEdges = 0
     SELECT CASE (Element % TYPE % DIMENSION)
@@ -24011,102 +24011,110 @@ CONTAINS
       CALL Fatal('AssignLocalNumber','Unsupported Element dim: '//I2S(Element % TYPE % DIMENSION))
     END SELECT
 
+    ! If edges have not been created, stop search. This should not happen, actually.
+    IF (.NOT. ASSOCIATED(Element % EdgeIndexes)) THEN
+      CALL Warn('MeshUtils::AssignLocalNumber','Edde indexes not associated!')
+      RETURN
+    END IF
+        
     ! For each edge or face in element try to find local number
     DO edgeNumber=1, numEdges
-       ! If edges have not been created, stop search. This should not happen, actually.
-       IF (.NOT. ASSOCIATED(Element % EdgeIndexes)) THEN
-          ! EdgeElement % localNumber = 0
-          RETURN
-       END IF
+      Edge => GetElementEntity(Element,edgeNumber,Mesh)
+      
+      ! Edge element not found. This should not be possible, unless there
+      ! is an error in the mesh read in process..
+      IF (.NOT. ASSOCIATED(Edge)) THEN
+        CALL Fatal('MeshUtils::AssignLocalNumber','Edge element not found')
+      END IF
+      
+      n = 0
+      ! For each element node
+      DO i=1, Edge % TYPE % NumberOfNodes
+        ! For each node in edge element
+        DO j=1, EdgeElement % TYPE % NumberOfNodes
+          ! If edge and edgeelement node match increment counter
+          IF (Edge % NodeIndexes(i) == EdgeElement % NodeIndexes(j)) THEN
+            n = n + 1
+            EXIT
+          END IF
+        END DO
+      END DO
 
-       Edge => GetElementEntity(Element,edgeNumber,Mesh)
+      ! If all nodes are on boundary, edge/face was found
+      IF (n == EdgeElement % TYPE % NumberOfNodes) THEN
+        IF(EvalPE) THEN
+          EdgeElement % PDefs % localNumber = edgeNumber
+          EdgeElement % PDefs % LocalParent => Element
+        END IF
 
-       ! Edge element not found. This should not be possible, unless there
-       ! is an error in the mesh read in process..
-       IF (.NOT. ASSOCIATED(Edge)) THEN
-          CALL Warn('MeshUtils::AssignLocalNumber','Edge element not found')
-          ! EdgeElement % localNumber = 0
-          RETURN
-       END IF
+        ! Change ordering of global nodes to match that of element
+        bMap = getElementBoundaryMap( Element, edgeNumber )
+        Bindex(1:n) = Element % NodeIndexes(bMap(1:n))
 
-       n = 0
-       ! For each element node
-       DO i=1, Edge % TYPE % NumberOfNodes
-          ! For each node in edge element
+        k = 0
+        DO i=1, Edge % TYPE % NumberOfNodes
           DO j=1, EdgeElement % TYPE % NumberOfNodes
-             ! If edge and edgeelement node match increment counter
-             IF (Edge % NodeIndexes(i) == EdgeElement % NodeIndexes(j)) n = n + 1
+            IF (Edge % NodeIndexes(i) == bIndex(j)) THEN
+              k = k + 1
+              EXIT
+            END IF
           END DO
-       END DO
+        END DO
+        
+        ! Ok, reorder the nodal to comply with the mapping.
+        ! Do not do this if we would not just reorder but also loose some nodes!
+        IF(k==n) THEN
+          EdgeElement % NodeIndexes(1:n) = Bindex(1:n)
+        ELSE
+#if 0
+          PRINT *,'Element Types: ',Element % TYPE % ElementCode, EdgeElement % TYPE % ElementCode, numEdges
+          IF(ASSOCIATED(Element % Pdefs)) PRINT *,'Element TetraType:',Element % PDefs % TetraType 
+          PRINT *,'Element:',Element % NodeIndexes
+          PRINT *,'EdgeA:  ',EdgeElement % NodeIndexes
+          PRINT *,'EdgeB:  ',Edge % NodeIndexes
+          PRINT *,'Element hits:',EvalPE, n,k
+          PRINT *,'BoundaryMap:',bmap(1:n)
+#endif
+          CALL Warn('AssignLocalNumber','Skipped mapping as we would loose nodes!')
+        END IF
 
-       ! If all nodes are on boundary, edge was found
-       IF (n == EdgeElement % TYPE % NumberOfNodes) THEN
-          IF(EvalPE) THEN
-            EdgeElement % PDefs % localNumber = edgeNumber
-            EdgeElement % PDefs % LocalParent => Element
+        ! Copy misc attributes of edge element to boundary element
+        IF(EvalPE) THEN
+          EdgeElement % PDefs % isEdge = Edge % PDefs % isEdge
+          EdgeElement % PDefs % GaussPoints = Edge % PDefs % GaussPoints
+          EdgeElement % PDefs % P = Edge % PDefs % P
+        END IF
+
+        !(and boundary bubble dofs)
+        EdgeElement % BDOFs = MAX(EdgeElement % BDOFs, Edge % BDOFs)
+
+        
+        ! If this boundary has edges copy edge indexes
+        IF (ASSOCIATED(Edge % EdgeIndexes)) THEN
+          ! Allocate element edges to element
+          n = Edge % TYPE % NumberOfEdges
+          bmap(1:4) = getFaceEdgeMap( Element, edgeNumber )
+
+          IF ( ASSOCIATED( EdgeElement % EdgeIndexes) ) THEN
+            DEALLOCATE( EdgeElement % EdgeIndexes )
           END IF
 
-          ! Change ordering of global nodes to match that of element
-          bMap = getElementBoundaryMap( Element, edgeNumber )
-          DO j=1,n
-            EdgeElement % NodeIndexes(j) = Element % NodeIndexes(bMap(j))
+          CALL AllocateVector( EdgeElement % EdgeIndexes, n )
+          ! Copy edges from edge to boundary edge
+          DO i=1,n
+            EdgeElement % EdgeIndexes(i) = Element % EdgeIndexes(bmap(i))
+            !    EdgeElement % EdgeIndexes(i) = Element % EdgeIndexes(i)
           END DO
-          
-          k = 0
-          DO i=1, Edge % TYPE % NumberOfNodes
-            DO j=1, EdgeElement % TYPE % NumberOfNodes
-              IF (Edge % NodeIndexes(i) == EdgeElement % NodeIndexes(j)) k = k + 1
-            END DO
-          END DO
-          IF(k < n) THEN
-            WRITE(Message,*) 'Invalid indexes:',Element % TYPE % ElementCode, &
-                EdgeElement % TYPE % ElementCode, EvalPE, n,k,bmap(1:n)
-            CALL Fatal('AssignLocalNumber',Message)
-          END IF
-             
-          ! Copy attributes of edge element to boundary element
-          ! Misc attributes
-          IF(EvalPE) THEN
-            EdgeElement % PDefs % isEdge = Edge % PDefs % isEdge
-          
-          ! Gauss points
-            EdgeElement % PDefs % GaussPoints = Edge % PDefs % GaussPoints
+        END IF
 
-          ! Element p
-            EdgeElement % PDefs % P = Edge % PDefs % P
-          END IF
-          
-          !(and boundary bubble dofs)
-          EdgeElement % BDOFs = MAX(EdgeElement % BDOFs, Edge % BDOFs)
-
-
-          ! If this boundary has edges copy edge indexes
-          IF (ASSOCIATED(Edge % EdgeIndexes)) THEN
-             ! Allocate element edges to element
-             n = Edge % TYPE % NumberOfEdges
-             bmap(1:4) = getFaceEdgeMap( Element, edgeNumber )
-             
-             IF ( ASSOCIATED( EdgeElement % EdgeIndexes) ) THEN
-                DEALLOCATE( EdgeElement % EdgeIndexes )
-             END IF
-             
-             CALL AllocateVector( EdgeElement % EdgeIndexes, n )
-             ! Copy edges from edge to boundary edge
-             DO i=1,n
-                EdgeElement % EdgeIndexes(i) = Element % EdgeIndexes(bmap(i))
-             !    EdgeElement % EdgeIndexes(i) = Element % EdgeIndexes(i)
-             END DO
-          END IF
-          
-          ! Edge fields copied and local edge found so return
-          RETURN
-       END IF
+        ! Edge fields copied and local edge found so return
+        RETURN
+      END IF
     END DO
 
     ! If we are here local number not found
     IF(.NOT.ASSOCIATED(EdgeElement % PDefs % LocalParent)) THEN
       CALL Warn('MeshUtils::AssignLocalNumber','Unable to find local edge '//I2S(EdgeElement % ElementIndex))
-      ! EdgeElement % localNumber = 1
     END IF
 
         
@@ -24122,15 +24130,16 @@ CONTAINS
       NULLIFY(Entity)
       ! Switch by element dimension
       SELECT CASE (Element % TYPE % DIMENSION)
-         CASE (2)
-            Entity => Mesh % Edges( Element % EdgeIndexes(which))
-         CASE (3)
-            Entity => Mesh % Faces( Element % FaceIndexes(which))
-         CASE DEFAULT
-            WRITE (*,*) 'AssignLocalNumber::GetElementEntity: Unsupported dimension'
-            RETURN
+      CASE (2)
+        Entity => Mesh % Edges( Element % EdgeIndexes(which))
+      CASE (3)
+        Entity => Mesh % Faces( Element % FaceIndexes(which))
+      CASE DEFAULT
+        CALL Fatal('AssignLocalNumber::GetElementEntity',&
+            'Impossible Element dim: '//I2S(Element % TYPE % DIMENSION))
       END SELECT
     END FUNCTION GetElementEntity
+
   END SUBROUTINE AssignLocalNumber
     
 
