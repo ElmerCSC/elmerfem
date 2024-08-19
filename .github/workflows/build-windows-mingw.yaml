@@ -2,7 +2,13 @@ name: build-windows-mingw
 on:
   workflow_dispatch:
   push:
+    paths-ignore:
+      - '**.nix'
+      - 'flake.lock'
   pull_request:
+    paths-ignore:
+      - '**.nix'
+      - 'flake.lock'
 
 concurrency: ci-windows-mingw-${{ github.ref }}
 

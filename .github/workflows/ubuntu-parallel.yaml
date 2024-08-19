@@ -2,7 +2,13 @@ name: ubuntu-parallel
 
 on:
   push:
+    paths-ignore:
+      - '**.nix'
+      - 'flake.lock'
   pull_request:
+    paths-ignore:
+      - '**.nix'
+      - 'flake.lock'
   workflow_dispatch:
 
 jobs:

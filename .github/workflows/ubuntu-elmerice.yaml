@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - elmerice
+    paths-ignore:
+      - '**.nix'
+      - 'flake.lock'
 
 concurrency: ci-ubuntu-elmerice-${{ github.ref }}
 
