@@ -7,6 +7,7 @@
 #  Mikko Byckling, CSC - IT Center for Science Ltd.
 #  Juhani Kataja, CSC - IT Center for Science Ltd.
 #  Thomas Zwinger, CSC - IT Center for Science Ltd.
+#  Matias Zwinger, CSC - IT Center for Science Ltd.
 #
 # First public beta release 11th of October, 2013
 #
@@ -27,35 +28,40 @@ ENDIF()
 # For building on OS X
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 
-  # If the user doesn't tell us which package manager they're using
-  if(NOT DEFINED MACPORTS_PREFIX AND NOT DEFINED HOMEBREW_PREFIX)
+  # If Elmer is being built on Nix, all other checks can be skipped
+  if(DEFINED NIX AND NIX)
+    message(STATUS "Detected Nix install")
+  else()
+    # If the user doesn't tell us which package manager they're using
+    if(NOT DEFINED MACPORTS_PREFIX AND NOT DEFINED HOMEBREW_PREFIX)
 
-    # Try to find MacPorts path
-    find_program(MACPORTS_EXECUTABLE port)
-    if(EXISTS ${MACPORTS_EXECUTABLE})
-      string(REPLACE "/bin/port" ""
-      MACPORTS_PREFIX ${MACPORTS_EXECUTABLE})
-      message(STATUS "Detected MacPorts install at ${MACPORTS_PREFIX}")
-    endif(EXISTS ${MACPORTS_EXECUTABLE})
+      # Try to find MacPorts path
+      find_program(MACPORTS_EXECUTABLE port)
+      if(EXISTS ${MACPORTS_EXECUTABLE})
+        string(REPLACE "/bin/port" ""
+        MACPORTS_PREFIX ${MACPORTS_EXECUTABLE})
+        message(STATUS "Detected MacPorts install at ${MACPORTS_PREFIX}")
+      endif(EXISTS ${MACPORTS_EXECUTABLE})
 
-    # Try to find Homebrew path
-    find_program(HOMEBREW_EXECUTABLE brew)
-    if(EXISTS ${HOMEBREW_EXECUTABLE})
-      string(REPLACE "/bin/brew" ""
-      HOMEBREW_PREFIX ${HOMEBREW_EXECUTABLE})
-      message(STATUS "Detected Homebrew install at ${HOMEBREW_PREFIX}")
+      # Try to find Homebrew path
+      find_program(HOMEBREW_EXECUTABLE brew)
+      if(EXISTS ${HOMEBREW_EXECUTABLE})
+        string(REPLACE "/bin/brew" ""
+        HOMEBREW_PREFIX ${HOMEBREW_EXECUTABLE})
+        message(STATUS "Detected Homebrew install at ${HOMEBREW_PREFIX}")
+      endif()
+
+    endif(NOT DEFINED MACPORTS_PREFIX AND NOT DEFINED HOMEBREW_PREFIX)
+
+    # In case someone tries to shoot themselves in the foot
+    if(DEFINED MACPORTS_PREFIX AND DEFINED HOMEBREW_PREFIX)
+      message(SEND_ERROR "Multiple package management systems detected - ")
+      message(SEND_ERROR "define either MACPORTS_PREFIX or HOMEBREW_PREFIX")
+
+    # No package manager
+    elseif(NOT DEFINED MACPORTS_PREFIX AND NOT DEFINED HOMEBREW_PREFIX)
+      message(SEND_ERROR "No package manager detected - install MacPorts or Homebrew")
     endif()
-
-  endif(NOT DEFINED MACPORTS_PREFIX AND NOT DEFINED HOMEBREW_PREFIX)
-
-  # In case someone tries to shoot themselves in the foot
-  if(DEFINED MACPORTS_PREFIX AND DEFINED HOMEBREW_PREFIX)
-    message(SEND_ERROR "Multiple package management systems detected - ")
-    message(SEND_ERROR "define either MACPORTS_PREFIX or HOMEBREW_PREFIX")
-
-  # No package manager
-  elseif(NOT DEFINED MACPORTS_PREFIX AND NOT DEFINED HOMEBREW_PREFIX)
-    message(SEND_ERROR "No package manager detected - install MacPorts or Homebrew")
   endif()
 endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 
