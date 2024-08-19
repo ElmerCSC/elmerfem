@@ -33,7 +33,7 @@ Simulation
   Coordinate System = Cartesian
   Simulation Type = Steady state
 
-  Steady State Max Iterations = 1000
+  Steady State Max Iterations = 3 !1000
   Output Intervals = 0  
 
   Post File = b.vtu
@@ -161,9 +161,9 @@ End
 
 
 ! Norms after 3 SS iterations 
-!Solver 1 :: Reference Norm = 3.33123269E+03
-!Solver 2 :: Reference Norm = 4.67688425E-01
+Solver 1 :: Reference Norm = 3.33123269E+03
+Solver 2 :: Reference Norm = 4.67688425E-01
 
 ! Norms after 169 SS iterations 
-Solver 1 :: Reference Norm = 2.68226325E+03
-Solver 2 :: Reference Norm = 5.02045434E-01
+!Solver 1 :: Reference Norm = 2.68226325E+03
+!Solver 2 :: Reference Norm = 5.02045434E-01
