@@ -95,6 +95,8 @@
 
             cmakeFlags =
               [
+                "-DNIX:BOOL=TRUE"
+
                 "-DCMAKE_INSTALL_LIBDIR=lib"
                 "-DCMAKE_INSTALL_INCLUDEDIR=include"
                 "-DWITH_LUA:BOOL=TRUE"
