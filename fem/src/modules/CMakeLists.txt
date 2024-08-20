@@ -2,15 +2,28 @@ INCLUDE_DIRECTORIES("${CMAKE_BINARY_DIR}/fem/src")
 INCLUDE_DIRECTORIES("${CMAKE_SOURCE_DIR}/fhutiter/include")
 INCLUDE(AddModules)
 
-ADD_ELMER_MODULES(SKIP contrib)
+
+
+if(INCLUDE_ELMER_MODULES)
+  MAKE_SKIP_LIST(INCLUDE ${INCLUDE_ELMER_MODULES})
+endif()
+
+LIST(APPEND SKIP_LIST contrib)
+ADD_ELMER_MODULES(SKIP ${SKIP_LIST})
 
 IF(WITH_CONTRIB)
   ADD_SUBDIRECTORY(contrib)
 ENDIF(WITH_CONTRIB)
 
-ADD_DEPENDENCIES(EliminatePeriodic EliminateDirichlet)
-ADD_DEPENDENCIES(FourierLoss MagnetoDynamics)
-TARGET_LINK_LIBRARIES(EliminatePeriodic EliminateDirichlet)
+if(TARGET EliminatePeriodic)
+  ADD_DEPENDENCIES(EliminatePeriodic EliminateDirichlet)
+  TARGET_LINK_LIBRARIES(EliminatePeriodic EliminateDirichlet)
+endif()
+
+if(TARGET FourierLoss)
+  ADD_DEPENDENCIES(FourierLoss MagnetoDynamics)
+endif()
+
 
 #IF(HAVE_NETCDF)
 #  TARGET_LINK_LIBRARIES(SaveGridData ${NETCDF_LIBRARY})
