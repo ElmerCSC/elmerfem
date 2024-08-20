@@ -98,6 +98,8 @@ SET(WITH_ROCALUTION FALSE CACHE BOOL "Compile with Rocalution library.")
 
 SET(WITH_Zoltan FALSE CACHE BOOL "Link in Zoltan mesh repartitioning library.")
 
+SET(INCLUDE_ELMER_MODULES "" CACHE STRING "Semicolon separated list of solver modules to be compiled. If empty compile all.")
+
 # Let user select if the contiguous attribute is used or not
 SET(USE_CONTIGUOUS FALSE CACHE BOOL "Use contiguous attribute")
 
