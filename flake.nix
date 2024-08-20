@@ -60,8 +60,11 @@
           extraNativeBuildInputs = nativeBuildInputs;
           extraBuildInputs = buildInputs;
           extraCmakeFlags = cmakeFlags;
+
+          inherit (pkgs) stdenv;
+          inherit (pkgs) lib;
         in
-          pkgs.stdenv.mkDerivation {
+          stdenv.mkDerivation {
             inherit name doCheck storepath;
 
             pname = "${name}-devel";
@@ -87,8 +90,12 @@
                 cmake
                 gfortran
                 pkg-config
-                autoPatchelfHook
               ]
+              ++ (
+                if stdenv.isDarwin
+                then [fixDarwinDylibNames]
+                else [autoPatchelfHook]
+              )
               ++ extraNativeBuildInputs;
 
             buildInputs = with pkgs;
@@ -98,6 +105,7 @@
                 liblapack
                 tbb
               ]
+              ++ lib.optionals stdenv.isDarwin [pkgs.llvmPackages_12.openmp]
               ++ extraBuildInputs;
 
             cmakeFlags =
@@ -116,6 +124,12 @@
                 "-DMPIEXEC_PREFLAGS=-oversubscribe"
 
                 "-Wno-dev"
+              ]
+              ++ lib.optionals stdenv.isDarwin
+              [
+                ''-DOpenMP_C_FLAGS="-fopenmp"''
+                ''-DOpenMP_CXX_FLAGS="-fopenmp"''
+                ''-DOpenMP_Fortran_FLAGS="-fopenmp"''
               ]
               ++ extraCmakeFlags;
 
