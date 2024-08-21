@@ -4558,6 +4558,7 @@ CONTAINS
       ! If list is give check that variable is on the list.
       !---------------------------------------------------------------------------
       IF( ListVariableCount > 0  ) THEN
+        ListVariableFound = .FALSE.
         DO j=1,ListVariableCount
           LoadThis = .FALSE.
           VarName2 = ListGetString( ResList,'Restart Variable '//I2S(j), Found )
