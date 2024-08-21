@@ -22,8 +22,7 @@ fi
 
 if test @HAVE_ELMERICE@ = "TRUE"; then
     ELMERICE_LIB=$LIBDIR/../../share/elmersolver/lib
-    LIBELMERICE="-Xlinker -rpath=$ELMERICE_LIB $ELMERICE_LIB/ElmerIceSolvers.so $ELMERICE_LIB/ElmerIceUSF.so"
-    #"$ELMERICE_LIB/ElmerIceSolvers@SHL_EXTENSION@ $ELMERICE_LIB/ElmerIceUSF@SHL_EXTENSION@"
+    LIBELMERICE="-Xlinker -rpath -Xlinker $ELMERICE_LIB $ELMERICE_LIB/ElmerIceSolvers@SHL_EXTENSION@ $ELMERICE_LIB/ElmerIceUSF@SHL_EXTENSION@"
     printf "with elmerice\n"
 else
     LIBELMERICE=""
