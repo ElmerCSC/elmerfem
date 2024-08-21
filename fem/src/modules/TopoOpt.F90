@@ -84,7 +84,7 @@ SUBROUTINE TopoOpt( Model,Solver,dt,Transient )
   TYPE(Matrix_t), POINTER :: Fmat 
   REAL(KIND=dp), ALLOCATABLE :: local_sol_array(:,:), local_sol(:)
   REAL(KIND=dp), POINTER :: ce(:), dc(:), dv(:), dv0(:), bw(:), xTopo(:), xPhys(:), xMult(:)
-  INTEGER :: TimesVisited = 0, dim, dofs, Niter, i, j, n, m, Nelems, Nnodes, nsize
+  INTEGER :: TimesVisited = 0, dim, dofs, Niter, i, j, n, m, Nelems, Nnodes, nsize, cMode
   REAL(KIND=dp) :: volFrac, penal, emin, efrac, gt, obj, val, wmin, Diff(3)
   TYPE(Solver_t), POINTER :: PhysSolver
   TYPE(Mesh_t), POINTER :: Mesh
@@ -99,7 +99,7 @@ SUBROUTINE TopoOpt( Model,Solver,dt,Transient )
   SAVE :: TimesVisited, Fmat, xTopo, xPhys, xMult, Niter, PhysSolver, dim, Mesh, &
       local_sol_array, local_sol, ce, dc, dv, dv0, bw, wmin, FilterMethod, FilterType, &
       gt, Nnodes, Nelems, uVar, aVar, dofs, Nodes, PdeFilter, SimpleFilter, Diff, nsize, &
-      ElemPerm, Csymmetry, SolveAdj
+      ElemPerm, Csymmetry, SolveAdj, obj
   
   
   CALL Info(Caller,'-------------------------------------------')
@@ -260,8 +260,8 @@ SUBROUTINE TopoOpt( Model,Solver,dt,Transient )
     CASE DEFAULT
       CALL Fatal(Caller,'Uknown filtering method: '//TRIM(FilterMethod))
     END SELECT
-  END IF
-
+  END IF  ! TimesVisited==0
+  
   IF(InfoActive(20)) THEN
     CALL VectorValuesRange(PhysSolver % Matrix % Values,SIZE(PhysSolver % Matrix % Values),'Kmat')       
     CALL VectorValuesRange(uVar % Values,SIZE(uVar % Values),TRIM(uVar % Name))
@@ -280,9 +280,28 @@ SUBROUTINE TopoOpt( Model,Solver,dt,Transient )
   END IF
   
   ! Gradients/Sensitivities with respect to the SIMP objective function and
-  ! the volume constraint.     
-  obj = ObjectiveGradients(xPhys,ce,dc,dv0)
+  ! the volume constraint.       
+  cMode = GetCycleMode()
+  ! 0 - normal
+  ! 1 - init cycle
+  ! 2 - mid cycle
+  ! 3 - end cycle
+  
+  IF( cMode == 0 .OR. cMode == 1 ) THEN
+    obj = 0.0_dp
+    dc = 0.0_dp
+  END IF
+    
+  CALL ObjectiveGradients(xPhys,ce,dc,dv0,obj)
 
+  IF( cMode == 1 .OR. cMode == 2 ) THEN
+    CALL Info(Caller,'Mid of cycle, finishing early!')
+    GOTO 1
+  END IF
+      
+  obj = ParallelReduction( obj ) 
+
+  
   IF(InfoActive(20)) THEN
     CALL VectorValuesRange(xPhys,SIZE(xPhys),'xPhys')       
     CALL VectorValuesRange(ce,SIZE(ce),'ce')       
@@ -345,28 +364,52 @@ SUBROUTINE TopoOpt( Model,Solver,dt,Transient )
     Solver % Variable % Values = obj
   END IF
 
-  ! Multiplier for local stiffness matrix of the external solver.
-  xMult = emin + efrac * xPhys**penal
-
   IF(ASSOCIATED(bw)) THEN
     CALL DefineTopologyBW(dv0,xPhys,bw)    
   END IF
-  
+
   IF(InfoActive(20)) THEN
     CALL VectorValuesRange(xPhys,SIZE(xPhys),'xPhys2')       
   END IF
   
+  ! Multiplier for local stiffness matrix of the external solver.
+1 xMult = emin + efrac * xPhys**penal
+    
   TimesVisited = TimesVisited + 1
   
 CONTAINS
 
+  FUNCTION GetCycleMode() RESULT ( Mode )
+    INTEGER :: Mode
+    INTEGER :: nCycle, nT
+
+    Mode = 0
+    nCycle = ListGetInteger( Model % Simulation,'Periodic Timesteps',Found )
+    nT = TimesVisited 
+
+    ! 1st iteration make a something to create asymmetry
+    IF(nCycle == 0 .OR. nT == 0 ) RETURN
+
+    SELECT CASE( MODULO(nT,nCycle) )
+    CASE( 0 )
+      Mode = 3
+    CASE( 1 )
+      Mode = 1
+    CASE DEFAULT
+      Mode = 2
+    END SELECT
+    
+  END FUNCTION GetCycleMode
+
+
+  
   !---------------------------------------------------------------------
   !> xphys: in [0,1], densities used for scaling the material properties
   !> ce: elementsize energies before scaling by density
   !> dc: gradient with respect to objective function.
   !> dv: gradient with respect to volume constraint.
   !---------------------------------------------------------------------
-  FUNCTION ObjectiveGradients(x,ce,dc,dv) RESULT ( obj ) 
+  SUBROUTINE ObjectiveGradients(x,ce,dc,dv,obj) 
     REAL(KIND=dp), POINTER :: x(:)
     REAL(KIND=dp), POINTER :: ce(:),dc(:),dv(:)
     REAL(KIND=dp) :: obj
@@ -399,17 +442,15 @@ CONTAINS
       ce(i) = SUM( local_sol(1:m) * MATMUL( Stiff, local_sol(1:m) ) )            
     END DO
 
-    ! Objective function
-    obj = SUM( (emin + efrac*( x**penal ) ) * ce )
-
     !PRINT *,'Objective:',obj,emin,efrac,penal,SUM(x),SUM(ce)
     
     ! Derivative of elemental energy
-    dc = -penal*x**(penal-1) * efrac * ce
+    dc = dc - penal*x**(penal-1) * efrac * ce
 
-    obj = ParallelReduction( obj ) 
+    ! Objective function
+    obj = obj + SUM( (emin + efrac*( x**penal ) ) * ce )
     
-  END FUNCTION ObjectiveGradients
+  END SUBROUTINE ObjectiveGradients
     
 
   !--------------------------------------------------------------------------
