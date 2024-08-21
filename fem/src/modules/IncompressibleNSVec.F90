@@ -1204,10 +1204,9 @@ CONTAINS
       !----------------------------------
       SlipCoeff = ListGetElementReal3D( SlipCoeff_h, Basis, Element, HaveSlip, GaussPoint = t )
       NormalSlipCoeff = ListGetElementReal( NormalSlipCoeff_h, Basis, Element, HaveNormalSlip, GaussPoint = t )
-      
+
       IF (HaveFSSA) THEN
         ! Flow bodyforce if present
-        LoadVec = 0._dp
         FoundLoad = .FALSE.
         DO i=1,dim
           LoadVec(i) = ListGetElementRealParent( Load_h(i), Basis, Element, Found )
@@ -1415,7 +1414,9 @@ CONTAINS
               DO j=1,dim
                 l = (q-1)*c + j
                 FORCE(l) = FORCE(l) + s * Basis(q) * SurfaceTraction(i) * Vect(j)
-                IF (i==1) FORCE(l) = FORCE(l) + s * FSSAtheta * dt * FSSAaccum * Basis(q) * LoadVec(j) 
+                IF(HaveFSSA) THEN
+                  IF (i==1) FORCE(l) = FORCE(l) + s * FSSAtheta * dt * FSSAaccum * Basis(q) * LoadVec(j) 
+                END IF
               END DO
             END DO
           END DO
@@ -1424,7 +1425,9 @@ CONTAINS
             DO q=1,nd
               k = (q-1)*c + i
               FORCE(k) = FORCE(k) + s * Basis(q) * SurfaceTraction(i)
-              FORCE(k) = FORCE(k) + s * FSSAtheta * dt *  FSSAaccum * Basis(q) * LoadVec(i)
+              IF(HaveFSSA) THEN
+                FORCE(k) = FORCE(k) + s * FSSAtheta * dt *  FSSAaccum * Basis(q) * LoadVec(i)
+              END IF
             END DO
           END DO
         END IF
