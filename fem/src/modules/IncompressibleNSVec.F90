@@ -1207,6 +1207,7 @@ CONTAINS
 
       IF (HaveFSSA) THEN
         ! Flow bodyforce if present
+        LoadVec = 0._dp
         FoundLoad = .FALSE.
         DO i=1,dim
           LoadVec(i) = ListGetElementRealParent( Load_h(i), Basis, Element, Found )
