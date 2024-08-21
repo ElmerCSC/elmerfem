@@ -14841,6 +14841,7 @@ CONTAINS
 
     dim = Mesh % MeshDim
     
+    FitParams = 0
     DO bc_ind = 1, Model % NumberOfBCs
       BC => Model % BCs(bc_ind) % Values
       IF( ListGetLogical(BC,'Follow Circle Boundary', Found ) ) THEN

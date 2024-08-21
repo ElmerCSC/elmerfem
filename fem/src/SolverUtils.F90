@@ -24635,6 +24635,7 @@ CONTAINS
      OutputDirectory = ListGetString( Solver % Values,'Output Directory',Found) 
      IF(.NOT. Found) OutputDirectory = ListGetString( CurrentModel % Simulation,&
          'Output Directory',Found) 
+
      IF(.NOT. Found) OutputDirectory = TRIM(OutputPath)          
      nd = LEN_TRIM(OutputDirectory)
 
@@ -24661,10 +24662,12 @@ CONTAINS
      IF( nd > 0 .AND. .NOT. AbsPathInName ) THEN
        ! Check that we have not given the path relative to home directory
        ! because the code does not understand the meaning of tilde.
-       IF( OutputDirectory(1:2) == '~/') THEN
-         CALL get_environment_variable('HOME',Str)
-         OutputDirectory = TRIM(Str)//'/'//OutputDirectory(3:nd)
-         nd = LEN_TRIM(OutputDirectory)
+       IF(nd>=2) THEN
+         IF( OutputDirectory(1:2) == '~/') THEN
+           CALL get_environment_variable('HOME',Str)
+           OutputDirectory = TRIM(Str)//'/'//OutputDirectory(3:nd)
+           nd = LEN_TRIM(OutputDirectory)
+         END IF
        END IF
        ! To be on the safe side create the directory. If it already exists no harm done.
        ! Note that only one directory may be created. Hence if there is a path with many subdirectories

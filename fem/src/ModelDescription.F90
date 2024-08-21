@@ -2067,15 +2067,17 @@ CONTAINS
                  k = 0
                  DO i=1,N1
                    ! Find first empty space at "k"
+                   k = k + 1
                    DO WHILE( k <= slen )
-                     k = k + 1
                      IF ( str(k:k) == ' ') EXIT
+                     k = k + 1
                    END DO
 
                    ! Find first non-empty space at "k"
+                   k = k + 1
                    DO WHILE( k <= slen )
-                     k = k + 1
                      IF ( str(k:k) /= ' ') EXIT
+                     k = k + 1
                    END DO
 
                    IF ( k > slen ) THEN
@@ -2091,10 +2093,10 @@ CONTAINS
                    END IF
 
                    ! Find first empty space at "k2"
-                   k2 = k 
+                   k2 = k + 1
                    DO WHILE( k2 <= slen )
-                     k2 = k2 + 1
                      IF ( str(k2:k2) == ' ') EXIT
+                     k2 = k2 + 1
                    END DO
                    k2 = k2-1
 
@@ -2130,10 +2132,10 @@ CONTAINS
                  k = str_beg
 
                  ! Find first empty space at "k2"
-                 k2 = k 
+                 k2 = k + 1
                  DO WHILE( k2 <= slen )
-                   k2 = k2 + 1
                    IF ( str(k2:k2) == ' ') EXIT
+                   k2 = k2 + 1
                  END DO
                  k2 = k2-1
                                  
