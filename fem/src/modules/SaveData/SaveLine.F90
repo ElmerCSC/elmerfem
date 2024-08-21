@@ -1335,7 +1335,7 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: ValueList
     TYPE(Element_t), POINTER :: Parent
     LOGICAL :: BreakLoop, ParallelComm
-    REAL(KIND=dp) :: linepos 
+    REAL(KIND=dp) :: linepos
     
     MaskName = ListGetString(Params,'Save Mask',GotIt) 
     IF(.NOT. GotIt) MaskName = 'Save Line'
@@ -1344,7 +1344,6 @@ CONTAINS
         ListCheckPresentAnyBodyForce( Model, MaskName ) ) ) RETURN
 
     CALL Info(Caller,'Saving existing nodes into ascii table',Level=8)
-
 
     IF( Solver % TimesVisited > 0 ) THEN
       InitializePerm = ( MaskName /= PrevMaskName ) 
@@ -1597,7 +1596,7 @@ CONTAINS
   SUBROUTINE SavePolyLines()
 
     TYPE(Solver_t), POINTER :: pSolver
-    REAL(KIND=dp) :: linepos, tanprod(2), s, eps
+    REAL(KIND=dp) :: linepos = 0, tanprod(2), s, eps
     
     pSolver => Solver
     eps = 1.0e-5
