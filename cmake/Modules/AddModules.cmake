@@ -4,10 +4,22 @@
 # Adds solver module <name> having sources in "<name>.F90".
 # Optionally treat all .F90 files in <subdirectory> as sources.
 #
+#
 # ADD_ELMER_MODULES([SKIP <name_1> <name_2> ... <skip_n>])
 # Treats all directories and .F90 files from current directory as input
 # for ADD_ELMER_MODULE. Skips those files and directories that equal
 # to <skip_m> for some 0<m<n+1.
+#
+#
+# MAKE_SKIP_LIST(INCLUDE name_1;name_2;...;name_n)
+# Find all modules similarly as ADD_ELMER_MODULES and remove those modules from the list
+# that match name_1, or name_2, or, ..., name_n. 
+#
+# Populates a local variable called SKIP_LIST with the resulting list.
+#
+# Useful when combined with ADD_ELMER_MODULES(SKIP SKIP_LIST)
+
+
 
 MACRO(ADD_ELMER_MODULE BASENAME)
   CMAKE_PARSE_ARGUMENTS(_parsedArgs "" "" "SOURCES;DIRECTORY" "${ARGN}")
@@ -44,9 +56,9 @@ MACRO(ADD_ELMER_MODULES)
   FILE(GLOB SRC_FILES RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "*.F90")
 
   FOREACH(FNAME ${SRC_FILES})
-    LIST(FIND _parsedArgs_SKIP ${FNAME} FILE_INDEX)
+    GET_FILENAME_COMPONENT(BASENAME ${FNAME} NAME_WE)
+    LIST(FIND _parsedArgs_SKIP ${BASENAME} FILE_INDEX)
     IF(FILE_INDEX EQUAL -1)
-      GET_FILENAME_COMPONENT(BASENAME ${FNAME} NAME_WE)
       IF(NOT BASENAME STREQUAL "")
         ADD_ELMER_MODULE(${BASENAME})
       ENDIF()
@@ -68,4 +80,37 @@ MACRO(ADD_ELMER_MODULES)
   ENDFOREACH()
 
   message(STATUS "Found ${num_modules} modules from ${CMAKE_CURRENT_SOURCE_DIR}")
+ENDMACRO()
+
+MACRO(MAKE_SKIP_LIST) # Provide list of modules to be included
+  CMAKE_PARSE_ARGUMENTS(_parsedArgs "" "" "INCLUDE" "${ARGN}")
+
+  FILE(GLOB SRC_FILES RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "*.F90")
+
+  SET(SKIP_LIST "")
+
+  FOREACH(FNAME ${SRC_FILES})
+    GET_FILENAME_COMPONENT(BASENAME ${FNAME} NAME_WE)
+
+    IF(NOT ${BASENAME} IN_LIST _parsedArgs_INCLUDE)
+      LIST(APPEND SKIP_LIST ${BASENAME})
+    ELSE()
+      message(STATUS "Including ${BASENAME} module")
+    ENDIF()
+  ENDFOREACH()
+
+
+  FILE(GLOB SRC_DIRS RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "*")
+
+  FOREACH(DIRNAME ${SRC_DIRS})
+    IF(IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/${DIRNAME}")
+      LIST(FIND ARGN ${DIRNAME} DIR_INDEX)
+      IF(NOT ${DIRNAME} IN_LIST _parsedArgs_INCLUDE)
+        LIST(APPEND SKIP_LIST ${DIRNAME})
+      ELSE()
+        message(STATUS "Including ${DIRNAME} module")
+      ENDIF()
+    ENDIF()
+  ENDFOREACH()
+
 ENDMACRO()
