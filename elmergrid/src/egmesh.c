@@ -9906,7 +9906,7 @@ int CreateDualGraph(struct FemType *data,int unconnected,int info)
   int *invrow,*invcol;
   struct CRSType *dualgraph;
 
-  printf("Creating a dual graph of the finite element mesh\n");  
+  if(info) printf("Creating a dual graph of the finite element mesh\n");  
 
   dualgraph = &data->dualgraph;
   if(dualgraph->created) {
@@ -9924,7 +9924,7 @@ int CreateDualGraph(struct FemType *data,int unconnected,int info)
   /* If a dual graph only for the unconnected nodes is requested do that.
      Basically the connected nodes are omitted in the graph. */
   if( unconnected ) {
-    printf("Removing connected nodes from the dual graph\n");
+    if(info) printf("Removing connected nodes from the dual graph\n");
     if( data->nodeconnectexist ) {
       if(info) printf("Creating connected elements list from the connected nodes\n");
       SetConnectedElements(data,info);
@@ -10034,6 +10034,7 @@ int CreateDualGraph(struct FemType *data,int unconnected,int info)
   }
   else {
     dualsize = freeelements;
+    if(info) printf("Allocating for the dual graph for %d with %d connections\n",dualsize,totcon);
     dualrow = Ivector(0,dualsize);
     for(i=1;i<=dualsize;i++) 
       dualrow[i] = 0;
@@ -10053,7 +10054,7 @@ int CreateDualGraph(struct FemType *data,int unconnected,int info)
     goto omstart;
   } 
 
-  if( orphanelements ) {
+  if( orphanelements && info ) {
     printf("There are %d elements in the dual mesh that are not connected!\n",orphanelements);
     if(unconnected) printf("The orphan elements are likely caused by the hybrid partitioning\n");
   }

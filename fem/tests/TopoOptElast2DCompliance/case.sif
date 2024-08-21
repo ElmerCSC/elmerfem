@@ -34,11 +34,11 @@ Simulation
   Coordinate System = Cartesian
   Simulation Type = Steady state
   Steady State Max Iterations = 5 !1000
-  Output Intervals = 1
+  Output Intervals = 0
 
-!  Post File = a.vtu 
-!  vtu: Save Bulk Only = Logical True
-!  vtu: ascii output = logical True
+  Post File = a.vtu 
+  vtu: Save Bulk Only = Logical True
+  vtu: ascii output = logical True
 
   Mesh Levels = 1
 End
@@ -107,6 +107,8 @@ Solver 2
   Bisection Search Tolerance = Real 1.0e-3
 
   Solver Timing = True
+
+  Create BW Topology = Logical True
 End
 
 
