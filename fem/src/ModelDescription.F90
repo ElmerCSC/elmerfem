@@ -4224,6 +4224,8 @@ CONTAINS
       CALL Info(Caller,'Skipping restart for child mesh',Level=4)
       RETURN
     END IF
+
+    ALLOCATE(CHARACTER(MAX_STRING_LEN)::Row)
     
     ! This routine may be called either in Simulation section or from Solver section
     IF( PRESENT( SolverId ) ) THEN
@@ -4334,7 +4336,6 @@ CONTAINS
     
     RestartFileOpen = .TRUE.
 
-    ALLOCATE(CHARACTER(MAX_STRING_LEN)::Row)
     READ( RestartUnit, '(A)', IOSTAT=iostat ) Row
     IF( iostat /= 0 ) THEN
       CALL Fatal(Caller,'Error reading header line!')
