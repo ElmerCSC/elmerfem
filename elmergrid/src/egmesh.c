@@ -10161,3 +10161,51 @@ int MeshTypeStatistics(struct FemType *data,int info)
   return(0);
 }
 
+int BoundingBox(struct FemType *data,int nomesh,int nomeshes,int info)
+{
+  int i;
+  Real xmin, xmax, ymin, ymax, zmin, zmax, sidemax;
+
+  xmin = xmax = data->x[1];
+  ymin = ymax = data->y[1];
+  zmin = zmax = data->z[1];
+
+  for(i=1; i<=data->noknots; i++){
+    xmax = MAX( xmax, data->x[i] );
+    xmin = MIN( xmin, data->x[i] );
+    ymax = MAX( ymax, data->y[i] );
+    ymin = MIN( ymin, data->y[i] );
+    zmax = MAX( zmax, data->z[i] );
+    zmin = MIN( zmin, data->z[i] );
+  }
+  sidemax = MAX(xmax-xmin,ymax-ymin);
+  sidemax = MAX(sidemax,zmax-zmin);
+
+  if(nomeshes > 1)  {
+    printf("Bounding box of all nodes in mesh[%d] of [%d] meshes:\n",nomesh,nomeshes);
+  }
+  else  {
+    printf("Bounding box of all nodes in mesh:\n");
+  }
+
+  printf("X:[%g,%g] ",xmin,xmax);
+  printf("Y:[%g,%g] ",ymin,ymax);
+  printf("Z:[%g,%g]\n",zmin,zmax);
+
+  if(sidemax > 49.9)  {
+    printf("\nNotice: the longest bounding box side length of [%g] is greater than 50.\n",sidemax);
+    printf("ElmerGUI includes a library of material properties, defined in SI units.  If using ElmerGUI, \n");
+    printf("then the geometry is expected to have meters as length.  Geometry that exceeds 50 meters \n");
+    printf("in length or width or height may not be intended.  Many Geometry generators assume \n");
+    printf("millimeters as the basic unit of length.  Scaling the geometry from millimeters to meters \n");
+    printf("may be the desired action.  For more help, search the Elmer users forum for posts \n");
+    printf("about SI units, or for posts about Coordinate Scaling.\n");
+    printf("Scaling can be accomplished in at least three ways, as follows:\n");
+    printf(" 1. Define the original geometry in meters, not millimeters.\n");
+    printf(" 2. Call ElmerGrid with -scale 0.001 0.001 0.001 as an option.\n");
+    printf(" 3. Add Coordinate Scaling = 0.001 to the simulation section of the sif file.\n");
+    printf("If using Elmer to analyze large geometry, such as a glacier, then ignore this notice.\n\n");
+  }
+
+  return(0);
+}
