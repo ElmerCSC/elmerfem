@@ -138,6 +138,7 @@ CONTAINS
     LOGICAL :: isMass, isDamp, EigenAnalysis, DampedAnalysis, HarmonicAnalysis, Found
 
     EigenAnalysis=.FALSE.; HarmonicAnalysis=.FALSE.
+    DampedAnalysis = .FALSE.
     IF(ASSOCIATED(A % Solver)) THEN
        EigenAnalysis = A % Solver % NOFEigenValues > 0 .AND. &
            ListGetLogical( A % Solver % Values, 'Eigen Analysis',Found)
