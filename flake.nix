@@ -39,7 +39,7 @@
     nix-filter,
     ...
   } @ inputs:
-    flake-utils.lib.eachDefaultSystem (
+    (flake-utils.lib.eachDefaultSystem (
       system: let
         pkgs = nixpkgs.legacyPackages.${system};
         mumps = inputs.mumps.packages.${system}.default;
@@ -229,5 +229,12 @@
           full = full {};
         };
       }
-    );
+    ))
+    // {
+      overlay = final: prev: {
+        elmer = self.packages.default;
+        elmer-gui = self.packages.gui;
+        elmer-full = self.packages.full;
+      };
+    };
 }
