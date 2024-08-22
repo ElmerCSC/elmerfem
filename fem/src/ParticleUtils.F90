@@ -2646,27 +2646,29 @@ RETURN
     ! Use a simple bounding box for initialization
     ! By default a local bounding box is used...
     !-------------------------------------------------------------------------  
-    IF( InitMethod(1:3) == 'box') THEN
-      Eps = GetCReal( Params,'Wall Particle Radius',GotIt)
-      IF(.NOT. GotIt) eps = 1.0d-8
+    IF(LEN(InitMethod)>=3) THEN
+      IF( InitMethod(1:3) == 'box') THEN
+        Eps = GetCReal( Params,'Wall Particle Radius',GotIt)
+        IF(.NOT. GotIt) eps = 1.0d-8
       
-      MinCoord(1) = GetCReal( Params,'Min Initial Coordinate 1',GotIt) 
-      IF(.NOT. GotIt) MinCoord(1) = Particles % LocalMinCoord(1) + eps
+        MinCoord(1) = GetCReal( Params,'Min Initial Coordinate 1',GotIt) 
+        IF(.NOT. GotIt) MinCoord(1) = Particles % LocalMinCoord(1) + eps
       
-      MaxCoord(1) = GetCReal( Params,'Max Initial Coordinate 1',GotIt) 
-      IF(.NOT. GotIt) MaxCoord(1) = Particles % LocalMaxCoord(1) - eps
+        MaxCoord(1) = GetCReal( Params,'Max Initial Coordinate 1',GotIt) 
+        IF(.NOT. GotIt) MaxCoord(1) = Particles % LocalMaxCoord(1) - eps
       
-      MinCoord(2) = GetCReal( Params,'Min Initial Coordinate 2',GotIt) 
-      IF(.NOT. GotIt) MinCoord(2) = Particles % LocalMinCoord(2) + eps
+        MinCoord(2) = GetCReal( Params,'Min Initial Coordinate 2',GotIt) 
+        IF(.NOT. GotIt) MinCoord(2) = Particles % LocalMinCoord(2) + eps
       
-      MaxCoord(2) = GetCReal( Params,'Max Initial Coordinate 2',GotIt) 
-      IF(.NOT. GotIt) MaxCoord(2) = Particles % LocalMaxCoord(2) - eps
+        MaxCoord(2) = GetCReal( Params,'Max Initial Coordinate 2',GotIt) 
+        IF(.NOT. GotIt) MaxCoord(2) = Particles % LocalMaxCoord(2) - eps
       
-      MinCoord(3) = GetCReal( Params,'Min Initial Coordinate 3',GotIt) 
-      IF(.NOT. GotIt) MinCoord(3) = Particles % LocalMinCoord(3) 
+        MinCoord(3) = GetCReal( Params,'Min Initial Coordinate 3',GotIt) 
+        IF(.NOT. GotIt) MinCoord(3) = Particles % LocalMinCoord(3) 
       
-      MaxCoord(3) = GetCReal( Params,'Max Initial Coordinate 3',GotIt) 
-      IF(.NOT. GotIt) MaxCoord(3) = Particles % LocalMaxCoord(3) - eps
+        MaxCoord(3) = GetCReal( Params,'Max Initial Coordinate 3',GotIt) 
+        IF(.NOT. GotIt) MaxCoord(3) = Particles % LocalMaxCoord(3) - eps
+      END IF
     END IF
     
     IF( InitMethod == 'box random cubic' .OR. InitMethod == 'box uniform cubic') THEN
@@ -3035,7 +3037,7 @@ RETURN
         LOGICAL :: stat
         LOGICAL :: Debug
         
-        Debug = ( i == 0 )
+        Debug = .FALSE.
         
         DO i=1,NoElements                       
           No = AdvVar % Perm( i )
@@ -6486,6 +6488,7 @@ RETURN
 
       Element => Mesh % Elements( j )
       CurrentModel % CurrentElement => Element
+      Coord = 0._dp
       Coord(1:dim) = Particles % Coordinate(i, 1:dim) 
 
       stat = ParticleElementInfo( Element, Coord, DetJ, Basis )
