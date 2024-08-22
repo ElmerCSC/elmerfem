@@ -14277,7 +14277,7 @@ END FUNCTION SearchNodeL
        END SUBROUTINE BlockSolveExt
     END INTERFACE
 !------------------------------------------------------------------------------
-    
+
     Params => Solver % Values
      
     IF( ListGetLogical( Params,'Linear System Skip Complex',GotIt ) ) THEN
@@ -18063,6 +18063,7 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   ! Set the harmonic system matrix
   IF( EigenMode ) THEN
     ALLOCATE(Aharm % MassValues(SIZE(Aharm % Values)))
+    Aharm % MassValues = 0.0_dp
 
     DO k=1,n
       kr = Aharm % Rows(2*(k-1)+1)
