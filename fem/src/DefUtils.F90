@@ -3904,14 +3904,14 @@ CONTAINS
            x % DOFs, PermIndexes, &
            UElement=Element, MCAssembly=MCAsm )
      ELSE       
-       IF( A % FORMAT == MATRIX_CRS ) THEN
-         ! For CRS format these are effectively the same
-         CALL UpdateGlobalEquationsVec( A,G,b,f,n,x % DOFs, &
-             PermIndexes, UElement=Element )
-       ELSE
+!      IF( A % FORMAT == MATRIX_CRS ) THEN
+!        ! For CRS format these are effectively the same
+!        CALL UpdateGlobalEquationsVec( A,G,b,f,n,x % DOFs, &
+!            PermIndexes, UElement=Element )
+!      ELSE
          CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs, &
              PermIndexes, UElement=Element )       
-       END IF
+!      END IF
          
        IF(Solver % DirectMethod == DIRECT_PERMON) THEN
          CALL UpdatePermonMatrix( A, G, n, x % DOFs, PermIndexes )
