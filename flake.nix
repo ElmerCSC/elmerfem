@@ -2,7 +2,7 @@
   description = "Elmer FEM";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.05";
 
     flake-utils.url = "github:numtide/flake-utils";
 
@@ -39,7 +39,7 @@
     nix-filter,
     ...
   } @ inputs:
-    flake-utils.lib.eachDefaultSystem (
+    (flake-utils.lib.eachDefaultSystem (
       system: let
         pkgs = nixpkgs.legacyPackages.${system};
         mumps = inputs.mumps.packages.${system}.default;
@@ -229,5 +229,12 @@
           full = full {};
         };
       }
-    );
+    ))
+    // {
+      overlay = final: prev: {
+        elmer = final.callPackage self.packages.${final.system}.default {};
+        elmer-gui = final.callPackage self.packages.${final.system}.gui {};
+        elmer-full = final.callPackage self.packages.${final.system}.full {};
+      };
+    };
 }
