@@ -2333,7 +2333,7 @@ CONTAINS
          call zmv( rwork(1:l+1,z:z+l), rwork(1:l+1,y0), rwork(1:l+1,y), l+1 )
          kappa0 = SQRT( ABS(zdotc(l+1, rwork(1:l+1,y0), 1, rwork(1:l+1,y), 1)) )  ! replace zdotc
 
-         call zmv( rwork(1:l+1,z:z+l), rwork(1:l+1,y0), rwork(1:l+1,y), l+1 )
+         call zmv( rwork(1:l+1,z:z+l), rwork(1:l+1,yl), rwork(1:l+1,y), l+1 )
          kappal = SQRT( ABS(zdotc(l+1, rwork(1:l+1,yl), 1, rwork(1:l+1,y), 1)) )  ! replace zdotc
 
          call zmv( rwork(1:l+1,z:z+l), rwork(1:l+1,y0), rwork(1:l+1,y), l+1 )
