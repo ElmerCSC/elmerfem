@@ -68,15 +68,27 @@
 
             src = nix-filter {
               root = self;
-              exclude = [
-                (nix-filter.lib.matchExt "nix")
-                "flake.lock"
-                ".git"
-                ".github"
-                ".gitignore"
-                ".gitmodules"
-                ".travis.yml"
-                ".vscode"
+              include = [
+                "cmake"
+                "CMakeLists.txt"
+                "contrib"
+                "cpack"
+                "elmergrid"
+                "ElmerGUI"
+                "ElmerGUIlogger"
+                "ElmerGUItester"
+                "elmerice"
+                "ElmerWorkflows"
+                "fem"
+                "fhutiter"
+                "license_texts"
+                "matc"
+                "mathlibs"
+                "meshgen2d"
+                "misc"
+                "pics"
+                "post"
+                "umfpack"
               ];
             };
 
