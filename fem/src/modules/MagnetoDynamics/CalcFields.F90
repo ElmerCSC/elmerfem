@@ -992,8 +992,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    END IF
 
    HomogenizationLoss = ASSOCIATED(PL) .OR. ASSOCIATED(EL_PL)
-
    IF (HomogenizationLoss) ALLOCATE( Nu_el(3,3,n) )
+   w_dens = 0._dp
 
    VtuStyle = .FALSE.
    cdofs = 1
