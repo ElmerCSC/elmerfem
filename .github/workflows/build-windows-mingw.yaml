@@ -63,8 +63,8 @@ jobs:
             msmpi:p
             openblas:p
             parmetis:p
-            qwt-qt5:p
-            qt5-script:p
+            qt6-declarative:p
+            qwt-qt6:p
             ${{ matrix.umfpack-package }}
 
       - name: install MSMPI
@@ -94,6 +94,7 @@ jobs:
             -DParMetis_INCLUDE_DIR="$(pkg-config --cflags parmetis)" \
             -DWITH_Mumps=OFF \
             -DWITH_ELMERGUI=ON \
+            -DWITH_QT6=ON \
             -DWITH_PARAVIEW=ON \
             -DCREATE_PKGCONFIG_FILE=ON \
             ${{ matrix.umfpack-cmake-flags }} \
