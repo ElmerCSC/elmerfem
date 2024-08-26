@@ -253,9 +253,9 @@
     ))
     // {
       overlay = final: prev: {
-        elmer = final.callPackage self.packages.${final.system}.default {};
-        elmer-gui = final.callPackage self.packages.${final.system}.gui {};
-        elmer-full = final.callPackage self.packages.${final.system}.full {};
+        elmer = self.packages.${final.system}.default;
+        elmer-gui = self.packages.${final.system}.gui;
+        elmer-full = self.packages.${final.system}.full;
       };
     };
 }
