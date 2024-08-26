@@ -16,4 +16,8 @@ jobs:
       with:
         name: elmerfem
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
-    - run: nix build -L
+    - name: nix build
+      run: |
+        nix build -L
+        nix build .#gui -L
+        nix build .#full -L

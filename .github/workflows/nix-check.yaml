@@ -12,4 +12,5 @@ jobs:
       with:
         nix_path: nixpkgs=channel:nixos-24.05
     - uses: DeterminateSystems/magic-nix-cache-action@v2
-    - run: nix flake check -L
+    - name: nix flake check
+      run: nix flake check -L
