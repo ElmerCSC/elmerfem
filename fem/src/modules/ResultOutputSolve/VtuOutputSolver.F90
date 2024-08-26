@@ -285,7 +285,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
       OutputMeshes, ParallelDofsNodes, LagN
   INTEGER, POINTER :: ActiveModes(:), ActiveModes2(:)
   LOGICAL :: GotActiveModes, GotActiveModes2, EigenAnalysis, &
-      WriteIds, SaveLinear, &
+      WriteIds, SaveLinear, SaveMetainfo, &
       NoPermutation, SaveElemental, SaveNodal, NoInterp
   LOGICAL, ALLOCATABLE :: ActiveElem(:)
   INTEGER, ALLOCATABLE :: GeometryBodyMap(:),GeometryBCMap(:)
@@ -354,6 +354,8 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
     AsciiOutput = GetLogical( Params,'Ascii Output',GotIt)
     BinaryOutput = .NOT. AsciiOutput
   END IF
+
+  SaveMetainfo = GetLogical( Params,'Save Metainfo',GotIt )
 
   ParallelBase = GetLogical( Params,'Partition Numbering',GotIt )
   
@@ -767,6 +769,37 @@ CONTAINS
       OutStr = '<VTKFile type="UnstructuredGrid" version="0.1" byte_order="BigEndian">'//lf
     END IF
     CALL AscBinStrWrite( OutStr )
+
+    IF( SaveMetainfo ) THEN
+      IF( FileIndex == 1 .AND. ParEnv % MyPe == 0 ) THEN
+        Txt = GetVersion()
+        WRITE( OutStr,'(A)') '<!-- Elmer version: '//TRIM(Txt)//' -->'//lf     
+        CALL AscBinStrWrite( OutStr )
+
+        Txt = GetRevision( Found )
+        IF( Found ) THEN
+          WRITE( OutStr,'(A)') '<!-- Elmer revision: '//TRIM(Txt)//' -->'//lf
+          CALL AscBinStrWrite( OutStr )
+        END IF
+
+        Txt = GetCompilationDate( Found )
+        IF( Found ) THEN
+          WRITE( OutStr,'(A)') '<!-- Elmer compilation date: '//TRIM(Txt)//' -->'//lf
+          CALL AscBinStrWrite( OutStr )
+        END IF
+
+        Txt = GetSifName( Found) 
+        IF( Found ) THEN
+          WRITE( OutStr,'(A)') '<!-- Solver input file: '//TRIM(Txt)//' -->'//lf
+          CALL AscBinStrWrite( OutStr )
+        END IF
+
+        Txt = FormatDate()      
+        WRITE( OutStr,'(A)') '<!-- File started at: '//TRIM(Txt)//' -->'//lf
+        CALL AscBinStrWrite( OutStr )
+      END IF
+    END IF
+      
     WRITE( OutStr,'(A)') '  <UnstructuredGrid>'//lf
     CALL AscBinStrWrite( OutStr )
     WRITE( OutStr,'(A,I0,A,I0,A)') '    <Piece NumberOfPoints="',NumberOfDofNodes,&
