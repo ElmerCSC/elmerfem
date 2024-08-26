@@ -61,7 +61,6 @@ jobs:
             fc:p
             cmake:p
             msmpi:p
-            opencascade:p
             openblas:p
             parmetis:p
             qt6-declarative:p
@@ -82,6 +81,7 @@ jobs:
             pdal:p
             unixodbc:p
             utf8cpp:p
+            opencascade:p
             ${{ matrix.umfpack-package }}
 
       - name: install MSMPI
@@ -113,6 +113,7 @@ jobs:
             -DWITH_ELMERGUI=ON \
             -DWITH_QT6=ON \
             -DWITH_VTK=ON \
+            -DWITH_OCC=ON \
             -DWITH_PARAVIEW=ON \
             -DCREATE_PKGCONFIG_FILE=ON \
             ${{ matrix.umfpack-cmake-flags }} \
