@@ -355,8 +355,10 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
     BinaryOutput = .NOT. AsciiOutput
   END IF
 
-  SaveMetainfo = GetLogical( Params,'Save Metainfo',GotIt )
-
+  ! Do not save metainfo if we use the results of saving for consistency test.
+  SaveMetainfo = .NOT. ( GetLogical( Params,'Skip Metainfo',GotIt ) .OR. &
+      ListCheckPresent( Params,'Reference Values') )
+  
   ParallelBase = GetLogical( Params,'Partition Numbering',GotIt )
   
   IF( BinaryOutput ) THEN
