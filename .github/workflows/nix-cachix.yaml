@@ -1,5 +1,6 @@
 name: "nix build and push to cache"
 on:
+  workflow_dispatch:
   pull_request:
   push:
 
