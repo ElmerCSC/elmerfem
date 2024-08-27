@@ -6,6 +6,8 @@
 
     flake-utils.url = "github:numtide/flake-utils";
 
+    flake-compat.url = "https://flakehub.com/f/edolstra/flake-compat/1.tar.gz";
+
     nix-filter.url = "github:numtide/nix-filter";
 
     mumps = {
