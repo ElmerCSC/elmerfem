@@ -6340,25 +6340,29 @@ RETURN
         dtmax2 = MAX(dtmax2, dt)          
       END DO
 
-      dtave = dtave / Particles % NumberOfParticles      
-      WRITE(Message,'(A,ES12.3)') 'Average particle timestep:',dtave
-      CALL Info('GetParticleTimestep', Message,Level=12)           
-
-      WRITE(Message,'(A,ES12.3)') 'Minimum particle timestep:',dtmin2
-      CALL Info('GetParticleTimestep', Message, Level=12)           
-      
-      WRITE(Message,'(A,ES12.3)') 'Maximum particle timestep:',dtmax2
-      CALL Info('GetParticleTimestep', Message,Level=12)           
-
+      nset = ParallelReduction(nset) 
       WRITE(Message,'(A,I0)') 'Timestep set for particles: ',nset
       CALL Info('GetParticleTimestep', Message,Level=12)           
 
-      ! If no particles are set then the indicative forward timestep becomes zero!
-      nset = ParallelReduction(nset) 
       IF( nset == 0 ) THEN
+        ! If no particles are set then the indicative forward timestep becomes zero!
         dtout = 0.0_dp
-      ELSE     
-        dtout = ParallelReduction(dtmax2,2)     
+      ELSE        
+        dtmax2 = ParallelReduction(dtmax2,2) 
+        IF( InfoActive(12) ) THEN
+          dtave = ParallelReduction(dtave) / nset 
+          dtmin2 = ParallelReduction(dtmin2,1) 
+                    
+          WRITE(Message,'(A,ES12.3)') 'Average particle timestep:',dtave
+          CALL Info('GetParticleTimestep', Message)
+
+          WRITE(Message,'(A,ES12.3)') 'Minimum particle timestep:',dtmin2
+          CALL Info('GetParticleTimestep', Message)
+        
+          WRITE(Message,'(A,ES12.3)') 'Maximum particle timestep:',dtmax2
+          CALL Info('GetParticleTimestep', Message)
+        END IF
+        dtout = dtmax2
       END IF
     END IF
           
