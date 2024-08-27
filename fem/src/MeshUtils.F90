@@ -12815,26 +12815,34 @@ CONTAINS
 
     
     
-    ! Return shortest distance squared of a point to a line segment.
-    ! This is limited to the spacial case when the point lies in origin. 
+    ! Return shortest distance squared of a point to a line segment defined
+    ! by points (x1,y1) and (x2,y2). This is limited to the special case when
+    ! the reference point lies in origin (0,0). 
+    !----------------------------------------------------------------------
     FUNCTION SegmentOriginDistance2(x1,y1,x2,y2) RESULT ( r2 )
-      REAL(KIND=dp) :: x1,y1,x2,y2,r2
-      REAL(KIND=dp) :: q,xc,yc
+      REAL(KIND=dp) :: x1,y1,x2,y2,r2,s2
+      REAL(KIND=dp) :: q,xc,yc,eps
 
-      IF(x1==0.AND.y1==0) THEN
-        r2 = 0;
+      eps = SQRT(TINY(eps))
+      
+      ! 1st point lies in the origin and hence it certainly is the closest distance.      
+      r2 = x1**2 + y1**2
+      IF(r2 <= eps ) RETURN
+
+      ! 1st and 2nd point are the same so r2 is good presentation of the distance. 
+      s2 = (x1-x2)**2 + (y1-y2)**2
+      IF( s2 <= eps ) RETURN
+                 
+      q = ( x1*(x1-x2) + y1*(y1-y2) ) / ( SQRT(r2 * s2) )
+      IF( q <= 0.0_dp ) THEN
+        ! r2 is already good!
+        CONTINUE
+      ELSE IF( q >= 1.0_dp ) THEN
+        r2 = x2**2 + y2**2
       ELSE
-        q = ( x1*(x1-x2) + y1*(y1-y2) ) / &
-            SQRT((x1**2+y1**2) * ((x1-x2)**2+(y1-y2)**2))
-        IF( q <= 0.0_dp ) THEN
-          r2 = x1**2 + y1**2
-        ELSE IF( q >= 1.0_dp ) THEN
-          r2 = x2**2 + y2**2
-        ELSE
-          xc = x1 + q * (x2-x1)
-          yc = y1 + q * (y2-y1)
-          r2 = xc**2 + yc**2
-        END IF
+        xc = x1 + q * (x2-x1)
+        yc = y1 + q * (y2-y1)
+        r2 = xc**2 + yc**2
       END IF
     END FUNCTION SegmentOriginDistance2
 

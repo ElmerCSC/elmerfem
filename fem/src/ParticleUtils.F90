@@ -6353,10 +6353,15 @@ RETURN
       WRITE(Message,'(A,I0)') 'Timestep set for particles: ',nset
       CALL Info('GetParticleTimestep', Message,Level=12)           
 
-      dtout = ParallelReduction(dtmax2, 2)     
+      ! If no particles are set then the indicative forward timestep becomes zero!
+      nset = ParallelReduction(nset) 
+      IF( nset == 0 ) THEN
+        dtout = 0.0_dp
+      ELSE     
+        dtout = ParallelReduction(dtmax2,2)     
+      END IF
     END IF
-    
-    
+          
     IF( Particles % Rk2 ) THEN
       IF( Particles % DtConstant ) THEN
         Particles % Dtime = 0.5_dp * Particles % Dtime
@@ -6364,7 +6369,7 @@ RETURN
         DtVar % Values = 0.5_dp * DtVar % Values
       END IF
     END IF
-
+    
   END FUNCTION GetParticleTimeStep
 
 
