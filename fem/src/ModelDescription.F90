@@ -115,7 +115,10 @@ CONTAINS
        IF ( .NOT. abort ) a=0
     END IF
 
-    Proc = LoadFunction( q,a,Libname,Procname )
+    Proc = LoadFunction( q,0,Libname,Procname,1 )
+
+    ! if no luck, try without fortran name mangling
+    IF(Proc==0) Proc = LoadFunction( q,a,Libname,Procname,0 )
   END FUNCTION GetProcAddr
 !------------------------------------------------------------------------------
 

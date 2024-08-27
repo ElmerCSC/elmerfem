@@ -291,20 +291,20 @@ MODULE LoadMod
 #endif
 
         ! DYNAMIC LOADING  (wrapper via module procedure for typecasting)
-        FUNCTION loadfunction(quiet, abort_not_found, library, fname) RESULT(ptr)
+        FUNCTION loadfunction(quiet, abort_not_found, library, fname,mangle) RESULT(ptr)
             IMPLICIT NONE
-            INTEGER :: quiet, abort_not_found
+            INTEGER :: quiet, abort_not_found, mangle
             CHARACTER :: library(*), fname(*)
             ! TYPE(C_FUNPTR) :: ptr
             INTEGER(KIND=AddrInt) :: ptr
             TYPE(C_PTR) :: cptr
 
             INTERFACE
-                FUNCTION loadfunction_c(quiet, abort_not_found, library, fname ) RESULT(cptr) &
+                FUNCTION loadfunction_c(quiet, abort_not_found, library, fname, mangle ) RESULT(cptr) &
                     BIND(C,name='loadfunction_c')
                     USE, INTRINSIC :: ISO_C_BINDING
                     INTEGER(C_INT) :: quiet
-                    INTEGER(C_INT) :: abort_not_found
+                    INTEGER(C_INT) :: abort_not_found, mangle
                     CHARACTER(C_CHAR) :: library(*), fname(*)
                     ! INTEGER(CAddrInt) :: fptr
                     TYPE(C_PTR) :: cptr
@@ -312,7 +312,7 @@ MODULE LoadMod
             END INTERFACE
 
             ! Ugly hack, store C function pointer as integer
-            cptr = loadfunction_c(quiet, abort_not_found, library, fname)
+            cptr = loadfunction_c(quiet, abort_not_found, library, fname, mangle)
             ptr = TRANSFER(cptr, ptr)
         END FUNCTION loadfunction
 
