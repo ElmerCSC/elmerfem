@@ -27,7 +27,7 @@ else()
       PRINT *, \"test1 =\", test1
 
       CALL MPI_Init(ierr)
-      CALL MPI_Allreduce(MPI_IN_PLACE, test1, 3, MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD)
+      CALL MPI_Allreduce(MPI_IN_PLACE, test1, 3, MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
       CALL MPI_Finalize(ierr)
       PRINT *, \"test1 =\", test1
 
