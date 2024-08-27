@@ -63,8 +63,25 @@ jobs:
             msmpi:p
             openblas:p
             parmetis:p
-            qwt-qt5:p
-            qt5-script:p
+            qt6-declarative:p
+            qwt-qt6:p
+            vtk:p
+            adios2:p
+            boost:p
+            cgns:p
+            cli11:p
+            eigen3:p
+            fast_float:p
+            ffmpeg:p
+            gl2ps:p
+            liblas:p
+            libmariadbclient:p
+            openslide:p
+            openvdb:p
+            pdal:p
+            unixodbc:p
+            utf8cpp:p
+            opencascade:p
             ${{ matrix.umfpack-package }}
 
       - name: install MSMPI
@@ -94,6 +111,9 @@ jobs:
             -DParMetis_INCLUDE_DIR="$(pkg-config --cflags parmetis)" \
             -DWITH_Mumps=OFF \
             -DWITH_ELMERGUI=ON \
+            -DWITH_QT6=ON \
+            -DWITH_VTK=ON \
+            -DWITH_OCC=ON \
             -DWITH_PARAVIEW=ON \
             -DCREATE_PKGCONFIG_FILE=ON \
             ${{ matrix.umfpack-cmake-flags }} \
