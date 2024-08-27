@@ -300,10 +300,13 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
      
      NewtonThreshold = ListGetConstReal( Solver % Values, &
           'Nonlinear System Newton After Tolerance', Found )
-     IF ( Found .AND. (iter > 1) .AND. (NonLinError < NewtonThreshold) ) THEN
-        Newton = .TRUE.
-        PicardIteration = .FALSE.
-        Hybrid = .FALSE.
+
+     IF ( Found .AND. (iter > 1) ) THEN
+       IF (NonLinError < NewtonThreshold ) THEN
+         Newton = .TRUE.
+         PicardIteration = .FALSE.
+         Hybrid = .FALSE.
+       END IF
      END IF
 
      MaxPicardIterations = ListGetInteger( Solver % Values, &
