@@ -10956,7 +10956,6 @@ CONTAINS
         END DO
       END IF
        
-              
       DO ind=1,BMesh1 % NumberOfBulkElements
 
         ! Optionally save the submesh for specified element, for visualization and debugging
@@ -11139,7 +11138,6 @@ CONTAINS
         ElemCands = 0
         ElemHits = 0
 
-        
         DO indM=1,BMesh2 % NumberOfBulkElements
 
           ElementM => BMesh2 % Elements(indM)        
@@ -12823,16 +12821,20 @@ CONTAINS
       REAL(KIND=dp) :: x1,y1,x2,y2,r2
       REAL(KIND=dp) :: q,xc,yc
 
-      q = ( x1*(x1-x2) + y1*(y1-y2) ) / &
-          SQRT((x1**2+y1**2) * ((x1-x2)**2+(y1-y2)**2))
-      IF( q <= 0.0_dp ) THEN
-        r2 = x1**2 + y1**2
-      ELSE IF( q >= 1.0_dp ) THEN
-        r2 = x2**2 + y2**2
+      IF(x1==0.AND.y1==0) THEN
+        r2 = 0;
       ELSE
-        xc = x1 + q * (x2-x1)
-        yc = y1 + q * (y2-y1)
-        r2 = xc**2 + yc**2
+        q = ( x1*(x1-x2) + y1*(y1-y2) ) / &
+            SQRT((x1**2+y1**2) * ((x1-x2)**2+(y1-y2)**2))
+        IF( q <= 0.0_dp ) THEN
+          r2 = x1**2 + y1**2
+        ELSE IF( q >= 1.0_dp ) THEN
+          r2 = x2**2 + y2**2
+        ELSE
+          xc = x1 + q * (x2-x1)
+          yc = y1 + q * (y2-y1)
+          r2 = xc**2 + yc**2
+        END IF
       END IF
     END FUNCTION SegmentOriginDistance2
 

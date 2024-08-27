@@ -1280,7 +1280,7 @@
        END IF
        
        ! Scale matrix to unit diagonals
-       Diag = SQRT(1._dp/ABS(Diag))
+       Diag = SQRT(1._dp/MAX(ABS(Diag),1.0d-12))
        DO i=1,RadiationSurfaces
          DO j=G % Rows(i),G % Rows(i+1)-1
            G % Values(j) = G % Values(j)*Diag(i)*Diag(G % Cols(j))

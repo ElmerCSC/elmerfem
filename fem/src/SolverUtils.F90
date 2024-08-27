@@ -762,7 +762,12 @@ CONTAINS
 
        np = mGetElementDOFs(pIndexes,Element)
        np = MIN(np, n)
-       NormalIndexes(1:np) = NT % BoundaryReorder(pIndexes(1:np))
+       DO i=1,np
+         j = pIndexes(i)
+         IF(j>0 .AND. j<= SIZE(NT % BoundaryReorder)) THEN
+           NormalIndexes(i) = NT % BoundaryReorder(j)
+         END IF
+       END DO
        
        CALL RotateMatrix( LocalStiffMatrix, LocalForce, n, dim, NDOFs, &
           NormalIndexes, NT % BoundaryNormals, NT % BoundaryTangent1, NT % BoundaryTangent2 )
@@ -816,7 +821,7 @@ CONTAINS
 
      ! Local variables
      INTEGER :: dim, i,j,k,np
-     INTEGER :: Ind(n*NDOFs),pIndexes(64)
+     INTEGER :: NormalIndexes(n),pIndexes(64)
      REAL(KIND=dp) :: Vals(n*NDOFs)
 !DIR$ ATTRIBUTES ALIGN:64::Ind, Vals
 
@@ -848,22 +853,20 @@ CONTAINS
      END IF
 
      IF ( Rotate ) THEN
-       Ind = 0
+       NormalIndexes = 0
 
        np = mGetElementDOFs(pIndexes,Element)
        np = MIN(np,n)
 
        DO i=1,np
          j = pIndexes(i)
-         IF(j > 0 .AND. j <= SIZE(NT % BoundaryReorder) ) THEN
-           Ind(i) = NT % BoundaryReorder(j)
-         ELSE
-           Ind(i) = j
+         IF(j>0 .AND. j<= SIZE(NT % BoundaryReorder)) THEN
+           NormalIndexes(i) = NT % BoundaryReorder(j)
          END IF
        END DO
        
        ! TODO: See that RotateMatrix is vectorized
-       CALL RotateMatrix( Lmtr, Lvec, n, dim, NDOFs, Ind, NT % BoundaryNormals, &
+       CALL RotateMatrix( Lmtr, Lvec, n, dim, NDOFs, NormalIndexes, NT % BoundaryNormals, &
                     NT % BoundaryTangent1, NT % BoundaryTangent2 )
 
        !IF ( Rotate .AND. NormalTangentialNOFNodes > 0 .AND. ndofs>=dim) THEN
@@ -989,7 +992,13 @@ CONTAINS
 
        np = mGetElementDOFs(pIndexes,Element)
        np = MIN(np,n)
-       NormalIndexes(1:np) = NT % BoundaryReorder(pIndexes(1:np))
+
+       DO i=1,np
+         j = pIndexes(i)
+         IF(j>0 .AND. j<= SIZE(NT % BoundaryReorder)) THEN
+           NormalIndexes(i) = NT % BoundaryReorder(j)
+         END IF
+       END DO
 
        CALL RotateMatrix( LocalStiffMatrix, LocalForce, n, dim, NDOFs, &
           NormalIndexes, NT % BoundaryNormals, NT % BoundaryTangent1, NT % BoundaryTangent2 )
@@ -5017,8 +5026,7 @@ CONTAINS
             Conditional = ActiveCond(BC)
             
             Element => Mesh % Elements(t)
-            IF ( Element % BoundaryInfo % Constraint /= &
-                Model % BCs(BC) % Tag ) CYCLE
+            IF ( Element % BoundaryInfo % Constraint /= Model % BCs(BC) % Tag ) CYCLE
             
             Model % CurrentElement => Element
             IF ( ActivePart(BC) ) THEN
@@ -5044,8 +5052,6 @@ CONTAINS
         END DO
       END IF
     END IF
-
-
 
     BLOCK
       INTEGER,ALLOCATABLE :: ChildBCs(:)
@@ -5215,7 +5221,6 @@ CONTAINS
       END IF
     END DO
 
-    
     ! Check the boundaries and body forces for possible single nodes BCs that are used to fixed 
     ! the domain for undetermined equations. The loop is slower than optimal in the case that there is 
     ! a large amount of different boundaries that have a node to set. 
@@ -5321,7 +5326,6 @@ CONTAINS
       END DO
     END IF
 
-    
 !------------------------------------------------------------------------------
 !   Take care of the matrix entries of passive elements
 !------------------------------------------------------------------------------
@@ -5375,7 +5379,6 @@ CONTAINS
       END DO
       DEALLOCATE(PassPerm,NodeIndexes)
     END IF
-
 
     ! Check the boundaries and body forces for possible single nodes BCs that must have a constant
     ! value on that boundary / body force.
@@ -5577,7 +5580,6 @@ CONTAINS
       CALL Info(Caller,'Modified matrix non-zeros: '&
           //I2S(SIZE( A % Cols )),Level=8)
     END IF
-
 
     ! Check the boundaries for a curve bc.
     !--------------------------------------------------------------------------------------------
@@ -5781,7 +5783,6 @@ CONTAINS
       
     END BLOCK
 
-
     ! Check the boundaries and body forces for possible single nodes BCs that must have a constant
     ! value on that boundary / body force.
     !--------------------------------------------------------------------------------------------
@@ -5887,7 +5888,6 @@ CONTAINS
           //I2S(DirCount),Level=12)
     END IF
       
-    
 !------------------------------------------------------------------------------
 
   CONTAINS

@@ -3308,7 +3308,7 @@ CONTAINS
           BAtIp(8) = AIMAG(imag_value)
           imag_value = CMPLX(BatIp(1), BatIp(3), KIND=dp)
           imag_value2 = CMPLX(BatIp(2), BatIp(4), KIND=dp)
-          BMagnAtIP = SQRT(ABS(imag_value**2._dp) + ABS(imag_value2**2._dp))
+          BMagnAtIP = SQRT(ABS(imag_value*imag_value) + ABS(imag_value2*imag_value2))
         END IF
         
         IF (LorentzForceCompute) THEN
@@ -3320,8 +3320,14 @@ CONTAINS
           By = CMPLX(BatIp(2), BatIp(4), KIND=dp)
           Jz = CMPLX(BatIp(7), BatIp(8), KIND=dp)
 
-          LorentzForceDensX = ModelDepth * Weight * By / Jz * ABS(Jz)**2._dp
-          LorentzForceDensY = -ModelDepth * Weight * Bx / Jz * ABS(Jz)**2._dp
+          IF(Jz/=0) THEN
+            LorentzForceDensX = ModelDepth * Weight * By / Jz * ABS(Jz)*ABS(Jz)
+            LorentzForceDensY = -ModelDepth * Weight * Bx / Jz * ABS(Jz)*ABS(Jz)
+          ELSE
+            LorentzForceDensX = 0
+            LorentzForceDensY = 0
+          END IF
+
           BodyLorentzForcesRe(1, BodyId) = BodyLorentzForcesRe(1, BodyId) + &
             REAL(LorentzForceDensX)
           BodyLorentzForcesRe(2, BodyId) = BodyLorentzForcesRe(2, BodyId) + &

@@ -57,7 +57,7 @@ FUNCTION currdens1( model, n, args) RESULT(curr)
 
   r = sqrt(x**2 + z**2)
 
-  theta = atan(x/z)
+  theta = atan2(x,z)
 
   curr = currentInToroidR(r, r0, y, turns, I) * sin(theta)
 
@@ -87,7 +87,7 @@ FUNCTION currdens2( model, n, args) RESULT(curr)
 
   r = sqrt(x**2 + z**2)
 
-  theta = atan(x/z)
+  theta = atan2(x,z)
 
   curr = currentInToroidY(r, r0, y, turns, I)
 
@@ -117,7 +117,7 @@ FUNCTION currdens3( model, n, args) RESULT(curr)
 
   r = sqrt(x**2 + z**2)
 
-  theta = atan(x/z)
+  theta = atan2(x,z)
 
   curr = currentInToroidR(r, r0, y, turns, I) * cos(theta)
 
