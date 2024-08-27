@@ -5988,7 +5988,9 @@ CONTAINS
         END IF
         
         DO j=1,n
-          IF ( Conditional .AND. Condition(j) < 0.0d0 ) CYCLE
+          IF ( Conditional ) THEN
+            IF( Condition(j) < 0.0_dp ) CYCLE
+          END IF
 
           k = Perm(Indexes(j))
           IF ( k > 0 ) THEN
