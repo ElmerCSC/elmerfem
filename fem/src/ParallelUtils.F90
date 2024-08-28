@@ -1386,21 +1386,21 @@ CONTAINS
 
 
     FUNCTION ParallelSlicesComm() RESULT( CustomComm )
-      INTEGER :: CustomComm      
-#ifdef PARALLEL_FOR_REAL      
+      INTEGER :: CustomComm
+#ifdef PARALLEL_FOR_REAL
       LOGICAL :: Visited = .FALSE.
-      INTEGER :: nSlices, nTimes, iSlice, iTime
+      INTEGER :: nSlices, nTimes, iSlice, iTime, ierr
       INTEGER :: CustomComm0
       LOGICAL :: GotIt
       SAVE Visited, CustomComm0
-      
+
       IF(.NOT. Visited ) THEN
         nSlices = ListGetInteger( CurrentModel % Simulation,'Number Of Slices',GotIt)
         nTimes = ListGetInteger( CurrentModel % Simulation,'Number Of Times',GotIt)
         IF(nSlices > 1 .AND. nTimes > 1) THEN
-          iSlice = MODULO( ParEnv % MyPe, nSlices )           
+          iSlice = MODULO( ParEnv % MyPe, nSlices )
           iTime = ParEnv % MyPe / nSlices 
-          CALL MPI_Comm_split(ELMER_COMM_WORLD, iTime, ParEnv % PEs, CustomComm0);
+          CALL MPI_Comm_split(ELMER_COMM_WORLD, iTime, ParEnv % PEs, CustomComm0, ierr);
         ELSE
           CustomComm0 = ELMER_COMM_WORLD
         END IF
@@ -1415,57 +1415,57 @@ CONTAINS
       
     END FUNCTION ParallelSlicesComm
 
-    
+
     FUNCTION ParallelTimesComm() RESULT( CustomComm )
-      INTEGER :: CustomComm      
-#ifdef PARALLEL_FOR_REAL      
+      INTEGER :: CustomComm
+#ifdef PARALLEL_FOR_REAL
       LOGICAL :: Visited = .FALSE.
-      INTEGER :: nSlices, nTimes, iSlice, iTime
+      INTEGER :: nSlices, nTimes, iSlice, iTime, ierr
       INTEGER :: CustomComm0
       LOGICAL :: GotIt
       SAVE Visited, CustomComm0
-      
+
       IF(.NOT. Visited ) THEN
         nSlices = ListGetInteger( CurrentModel % Simulation,'Number Of Slices',GotIt)
         nTimes = ListGetInteger( CurrentModel % Simulation,'Number Of Times',GotIt)
         IF(nSlices > 1 .AND. nTimes > 1) THEN
-          iSlice = MODULO( ParEnv % MyPe, nSlices )           
-          iTime = ParEnv % MyPe / nSlices 
-          CALL MPI_Comm_split(ELMER_COMM_WORLD, iSlice, ParEnv % PEs, CustomComm0);
+          iSlice = MODULO( ParEnv % MyPe, nSlices )
+          iTime = ParEnv % MyPe / nSlices
+          CALL MPI_Comm_split(ELMER_COMM_WORLD, iSlice, ParEnv % PEs, CustomComm0, ierr);
         ELSE
           CustomComm0 = ELMER_COMM_WORLD
         END IF
         PRINT *,'Creating TimesComm:',ParEnv % MyPe, iSlice, iTime
         Visited = .TRUE.
       END IF
-      
+
       CustomComm = CustomComm0
 #else
       CustomComm = -1
-#endif      
+#endif
     END FUNCTION ParallelTimesComm
 
 
     FUNCTION ParallelPieceRank(CustomComm) RESULT (CommRank)
-      INTEGER :: CustomComm, CommRank
+      INTEGER :: CustomComm, CommRank, ierr
 #ifdef PARALLEL_FOR_REAL
       PRINT *,'GetRank:',ParEnv % MyPe, CustomComm
-      CALL MPI_Comm_rank(CustomComm, CommRank)
+      CALL MPI_Comm_rank(CustomComm, CommRank, ierr)
       PRINT *,'GotRank:',ParEnv % MyPe, CommRank
 #else
       CommRank = -1 
-#endif       
+#endif
     END FUNCTION ParallelPieceRank
 
     FUNCTION ParallelPieceSize(CustomComm) RESULT (CommSize)
-      INTEGER :: CustomComm, CommSize
+      INTEGER :: CustomComm, CommSize, ierr
 #ifdef PARALLEL_FOR_REAL
       PRINT *,'GetSize:',ParEnv % MyPe, CustomComm
-      CALL MPI_Comm_size(CustomComm, CommSize)
+      CALL MPI_Comm_size(CustomComm, CommSize, ierr)
       PRINT *,'GotSize:',ParEnv % MyPe, CommSize
 #else
       CommRank = -1 
-#endif       
+#endif
     END FUNCTION ParallelPieceSize
 
 
