@@ -5,13 +5,12 @@
 
 if(CMAKE_CROSSCOMPILING)
   # assume it is working
-  message(STATUS "Checking whether MPI_IN_PLACE is supported with ${CMAKE_Fortran_COMPILER} -- assuming yes")
+  message(STATUS "Checking whether MPI_IN_PLACE is supported with ${MPI_Fortran_COMPILER} -- assuming yes")
   set(CHECK_MPI_IN_PLACE_RUN_ERROR OFF)
+  set(CHECK_MPI_IN_PLACE_COMPILE ON)
 else()
 
-  set(save_CMAKE_Fortran_COMPILER ${CMAKE_Fortran_COMPILER})
-  set(CMAKE_Fortran_COMPILER ${MPI_Fortran_COMPILER})
-  message(STATUS "Checking whether MPI_IN_PLACE is supported with ${CMAKE_Fortran_COMPILER}")
+  message(STATUS "Checking whether MPI_IN_PLACE is supported with ${MPI_Fortran_COMPILER}")
 
   file(WRITE ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeTmp/testMPI_IN_PLACE.f90
     "
@@ -38,17 +37,14 @@ else()
     END PROGRAM TEST_MPI_IN_PLACE
     ")
   try_run(CHECK_MPI_IN_PLACE_RUN_ERROR CHECK_MPI_IN_PLACE_COMPILE ${CMAKE_BINARY_DIR}
-    SOURCES ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeTmp/testMPI_IN_PLACE.f90)
+    SOURCES ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeTmp/testMPI_IN_PLACE.f90
+    LINK_LIBRARIES MPI::MPI_Fortran)
 endif()
 
-if(CHECK_MPI_IN_PLACE_RUN_ERROR)
-  message(STATUS "Checking whether MPI_IN_PLACE is supported with ${CMAKE_Fortran_COMPILER} -- no")
+if(CHECK_MPI_IN_PLACE_RUN_ERROR OR NOT CHECK_MPI_IN_PLACE_COMPILE)
+  message(STATUS "Checking whether MPI_IN_PLACE is supported with ${MPI_Fortran_COMPILER} -- no")
   set(ELMER_BROKEN_MPI_IN_PLACE ON CACHE INTERNAL "")
 else()
-  message(STATUS "Checking whether MPI_IN_PLACE is supported with ${CMAKE_Fortran_COMPILER} -- yes")
+  message(STATUS "Checking whether MPI_IN_PLACE is supported with ${MPI_Fortran_COMPILER} -- yes")
   set(ELMER_BROKEN_MPI_IN_PLACE OFF CACHE INTERNAL "")
-endif()
-
-if(NOT CMAKE_CROSSCOMPILING)
-  set(CMAKE_Fortran_COMPILER ${save_CMAKE_Fortran_COMPILER})
 endif()
