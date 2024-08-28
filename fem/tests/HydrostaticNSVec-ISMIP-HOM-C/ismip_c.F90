@@ -33,13 +33,13 @@ FUNCTION uSIAB ( Model, nodenumber, x) RESULT(u)
      H = 1000.0_dp 
 
 !    ub = (rho.g H sin(alpha) ) / beta^2
-     beta = MAX(1.0+SIN(2.0*Pi*x/L) , 0.1) 
+     beta = MAX(1.0_dp+SIN(2.0_dp*Pi*x/L) , 0.1_dp) 
      ub = 14.760702_dp / beta 
 
-     u = ub + 9.45699e-14 * ((S-y)**4. - H**4.)
+     u = ub + 9.45699d-14 * ((S-y)**4._dp - H**4._dp)
    
 1000 Format(a1)
-1002 Format(a1,e14.8)
+1002 Format(a1,g14.8)
    
 END FUNCTION uSIAB   
 
@@ -57,7 +57,7 @@ FUNCTION wSIAB ( Model, nodenumber, x) RESULT(v)
    LOGICAL :: FirstTime=.True. 
 
    SAVE FirstTime
-   SAVE L
+   SAVE L, tanalpha
 
    IF (FirstTime) THEN
        FirstTime=.False.
@@ -74,12 +74,12 @@ FUNCTION wSIAB ( Model, nodenumber, x) RESULT(v)
      S = -tanalpha*x
      H = 1000.0_dp 
      B = S-H
-     dHx = 0.0                                           
+     dHx = 0.0  _dp                                         
 
-     v = -9.45699e-14 * (tanalpha * ( (S-z)**4. - H**4.) + 4.0*dHx*(z-B)*H**3.) 
+     v = -9.45699d-14 * (tanalpha * ( (S-z)**4.0_dp - H**4.0_dp) + 4.0_dp*dHx*(z-B)*H**3.0_dp) 
    
 1000 Format(a1)
-1002 Format(a1,e14.8)
+1002 Format(a1,g14.8)
    
 END FUNCTION wSIAB   
 
@@ -107,7 +107,7 @@ FUNCTION pSIAB ( Model, nodenumber, x) RESULT(p)
 
      S = -tanalpha*x
 
-     p = 0.0089271 * (S - z) 
+     p = 0.0089271_dp * (S - z) 
    
 END FUNCTION pSIAB   
 
