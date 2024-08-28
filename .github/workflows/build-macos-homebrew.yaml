@@ -40,7 +40,9 @@ jobs:
         run: |
           brew update
           brew reinstall gcc
-          brew install cmake libomp openblas open-mpi qwt-qt5
+          brew install \
+            cmake libomp openblas open-mpi \
+            qwt
           echo "HOMEBREW_PREFIX=$(brew --prefix)" >> $GITHUB_ENV
 
       - name: configure
@@ -56,7 +58,7 @@ jobs:
             -DCMAKE_Fortran_COMPILER=gfortran \
             -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/usr" \
             -DBLA_VENDOR="OpenBLAS" \
-            -DCMAKE_PREFIX_PATH="${HOMEBREW_PREFIX}/opt/libomp;${HOMEBREW_PREFIX}/opt/openblas;${HOMEBREW_PREFIX}/opt/qt@5;${HOMEBREW_PREFIX}/opt/qwt-qt5" \
+            -DCMAKE_PREFIX_PATH="${HOMEBREW_PREFIX}/opt/libomp;${HOMEBREW_PREFIX}/opt/openblas;${HOMEBREW_PREFIX}/opt/qt;${HOMEBREW_PREFIX}/opt/qwt" \
             -DWITH_OpenMP=ON \
             -DOpenMP_C_FLAGS="-Xclang -fopenmp -I${HOMEBREW_PREFIX}/opt/libomp/include" \
             -DOpenMP_CXX_FLAGS="-Xclang -fopenmp -I${HOMEBREW_PREFIX}/opt/libomp/include" \
@@ -67,8 +69,9 @@ jobs:
             -DWITH_Zoltan=OFF \
             -DWITH_Mumps=OFF \
             -DWITH_ELMERGUI=ON \
+            -DWITH_QT6=ON \
             -DWITH_PARAVIEW=ON \
-            -DQWT_INCLUDE_DIR="${HOMEBREW_PREFIX}/opt/qwt-qt5/lib/qwt.framework/Headers" \
+            -DQWT_INCLUDE_DIR="${HOMEBREW_PREFIX}/opt/qwt/lib/qwt.framework/Headers" \
             -DCREATE_PKGCONFIG_FILE=ON \
             ..
 
