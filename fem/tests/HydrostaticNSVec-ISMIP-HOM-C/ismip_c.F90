@@ -74,7 +74,7 @@ FUNCTION wSIAB ( Model, nodenumber, x) RESULT(v)
      S = -tanalpha*x
      H = 1000.0_dp 
      B = S-H
-     dHx = 0.0  _dp                                         
+     dHx = 0.0_dp                                         
 
      v = -9.45699d-14 * (tanalpha * ( (S-z)**4.0_dp - H**4.0_dp) + 4.0_dp*dHx*(z-B)*H**3.0_dp) 
    
