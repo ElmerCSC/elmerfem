@@ -1751,7 +1751,7 @@ CONTAINS
        IF(.NOT. ASSOCIATED( LimitVar ) ) THEN
          CALL Info(Caller,'Creating field for contact: '//TRIM(GetVarName(Var)),Level=7)
          CALL VariableAddVector( Model % Variables, Solver % Mesh, Solver,&
-             GetVarName(Var) //' Contact Active', Perm = FieldPerm )
+             GetVarName(Var) //' Contact Active', Var % Dofs, Perm = FieldPerm )
          LimitVar => VariableGet( Model % Variables, &
              GetVarName(Var) // ' Contact Active',ThisOnly = .TRUE. )
        END IF

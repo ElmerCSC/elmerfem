@@ -1677,8 +1677,8 @@ CONTAINS
           IF( ListGetLogical( SolverParams,'Save Limiter',Found ) ) THEN      
             CALL Info('AddEqutionBasics','Adding "contact active" field for '//var_name(1:n))
             CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver,&
-                var_name(1:n) //' Contact Active', dofs = Solver % Variable % Dofs, &
-                Perm = Solver % Variable % Perm )
+                TRIM(GetVarName(Solver % Variable))//' Contact Active', &
+                dofs = Solver % Variable % Dofs, Perm = Solver % Variable % Perm )
           END IF
         END IF
                     
