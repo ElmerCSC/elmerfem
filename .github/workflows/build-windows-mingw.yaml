@@ -63,6 +63,7 @@ jobs:
             msmpi:p
             openblas:p
             parmetis:p
+            mumps:p
             qt6-declarative:p
             qwt-qt6:p
             vtk:p
@@ -109,7 +110,9 @@ jobs:
             -DCMAKE_C_FLAGS="-Wno-error=incompatible-pointer-types" \
             -DParMetis_LIBRARIES="$(pkg-config --libs parmetis)" \
             -DParMetis_INCLUDE_DIR="$(pkg-config --cflags parmetis)" \
-            -DWITH_Mumps=OFF \
+            -DWITH_Mumps=ON \
+            -DMumps_LIBRARIES=$(pkg-config -libs mumps-dmo) \
+            -DMumps_INCLUDE_DIR=$(pkg-config --variable=includedir mumps-dmo) \
             -DWITH_ELMERGUI=ON \
             -DWITH_QT6=ON \
             -DWITH_VTK=ON \
