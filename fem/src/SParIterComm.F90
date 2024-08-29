@@ -508,8 +508,8 @@ CONTAINS
           buf(j) = ptr % e2
           ptr => ptr % next
         END DO
-        CALL MPI_BSEND(j,1,MPI_INTEGER,i-1, 20000,ELMER_COMM_WORLD,status,ierr)
-        IF (j>0) CALL MPI_BSEND(buf,j,MPI_INTEGER,i-1,20001,ELMER_COMM_WORLD,status,ierr)
+        CALL MPI_BSEND(j,1,MPI_INTEGER,i-1, 20000,ELMER_COMM_WORLD,ierr)
+        IF (j>0) CALL MPI_BSEND(buf,j,MPI_INTEGER,i-1,20001,ELMER_COMM_WORLD,ierr)
       END DO
 
       DO i=1,ParEnv % PEs
@@ -2489,7 +2489,7 @@ tstart = realtime()
      Iterate = Iterate+1
      IF(Iterate > MaxIterates ) THEN
         WRITE(*,'(A,I6,A)') 'SParIterGlobalNumbering: PE: ', ParEnv % MyPE+1,'Max iterations exceeded'
-        CALL MPI_FINALIZE( ELMER_COMM_WORLD, ierr )
+        CALL MPI_FINALIZE( ierr )
      END IF
      DO i = n, Mesh % NumberOfNodes
         Mesh % ParallelInfo % GlobalDOFs(i) = 0
