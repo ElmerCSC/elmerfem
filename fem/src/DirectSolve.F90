@@ -713,14 +713,21 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE Mumps_SolveSystem( Solver,A,x,b,Free_Fact )
 !------------------------------------------------------------------------------
- 
+#ifdef HAVE_MUMPS
+#  if defined(ELMER_HAVE_MPI_MODULE)
+  USE mpi
+#  endif
+#endif
+
   LOGICAL, OPTIONAL :: Free_Fact
   TYPE(Matrix_t) :: A
   TYPE(Solver_t) :: Solver
   REAL(KIND=dp), TARGET :: x(*), b(*)
 
 #ifdef HAVE_MUMPS
+#  if defined(ELMER_HAVE_MPIF_HEADER)
   INCLUDE 'mpif.h'
+#  endif
 
   INTEGER, ALLOCATABLE :: Owner(:)
   INTEGER :: i,j,n,ip,ierr,icntlft,nzloc
@@ -1022,19 +1029,26 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE MumpsLocal_Factorize(Solver, A)
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+#ifdef HAVE_MUMPS
+#  if defined(ELMER_HAVE_MPI_MODULE)
+    USE mpi
+#  endif
+#endif
+    IMPLICIT NONE
 
-      TYPE(Solver_t) :: Solver
-       TYPE(Matrix_t) :: A
+    TYPE(Solver_t) :: Solver
+    TYPE(Matrix_t) :: A
 
 #ifdef HAVE_MUMPS
-       INCLUDE 'mpif.h'
+#  if defined(ELMER_HAVE_MPIF_HEADER)
+    INCLUDE 'mpif.h'
+#  endif
 
-     INTEGER :: i, j, n, nz, allocstat, icntlft, ptype, nzloc
-     LOGICAL :: matpd, matsym, nullpiv, stat
+    INTEGER :: i, j, n, nz, allocstat, icntlft, ptype, nzloc
+    LOGICAL :: matpd, matsym, nullpiv, stat
 
-     ! INTEGER :: myrank, ierr
-     ! CHARACTER(len=32) :: buf
+    ! INTEGER :: myrank, ierr
+    ! CHARACTER(len=32) :: buf
 
     IF ( ASSOCIATED(A % mumpsIDL) ) THEN
          CALL MumpsLocal_Free(A)
@@ -1196,6 +1210,11 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE MumpsLocal_SolveNullSpace(Solver, A, z, nz)
 !------------------------------------------------------------------------------
+#ifdef HAVE_MUMPS
+#  if defined(ELMER_HAVE_MPI_MODULE)
+      USE mpi
+#  endif
+#endif
       IMPLICIT NONE
 
       TYPE(Solver_t) :: Solver
@@ -1204,7 +1223,9 @@ CONTAINS
       INTEGER :: nz, nrhs
 
 #ifdef HAVE_MUMPS
+#  if defined(ELMER_HAVE_MPIF_HEADER)
       INCLUDE 'mpif.h'
+#  endif
 
       INTEGER :: j,k,n, allocstat
       LOGICAL :: Factorize, FreeFactorize, stat
@@ -1426,16 +1447,21 @@ CONTAINS
   SUBROUTINE Permon_SolveSystem( Solver,A,x,b,Free_Fact )
 !------------------------------------------------------------------------------
 #ifdef HAVE_FETI4I
-   use feti4i
+  USE feti4i
+#  if defined(ELMER_HAVE_MPI_MODULE)
+  USE mpi
+#  endif
 #endif
- 
+
   LOGICAL, OPTIONAL :: Free_Fact
   TYPE(Matrix_t) :: A
   TYPE(Solver_t) :: Solver
   REAL(KIND=dp), TARGET :: x(*), b(*)
 
 #ifdef HAVE_FETI4I
+#  if defined(ELMER_HAVE_MPIF_HEADER)
   INCLUDE 'mpif.h'
+#  endif
 
   INTEGER, ALLOCATABLE :: Owner(:)
   INTEGER :: i,j,n,nd,ip,ierr,icntlft,nzloc

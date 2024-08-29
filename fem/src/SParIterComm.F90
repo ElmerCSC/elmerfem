@@ -54,6 +54,12 @@ MODULE SParIterComm
   USE XIOS
 #endif
 
+#ifndef HAVE_PARMMG
+#  if defined(ELMER_HAVE_MPI_MODULE)
+  USE mpi
+#  endif
+#endif
+
   IMPLICIT NONE
 
 #ifdef HAVE_PARMMG
@@ -72,7 +78,7 @@ MODULE SParIterComm
   INTEGER :: PMMGPARAM_aniso = PMMG_IPARAM_anisosize
   INTEGER :: PMMGPARAM_APImode = PMMG_IPARAM_APImode
   INTEGER :: PMMGPARAM_globalnum = PMMG_IPARAM_globalNum
-#else
+#elif defined(ELMER_HAVE_MPIF_HEADER)
   INCLUDE "mpif.h"
 #endif
 
