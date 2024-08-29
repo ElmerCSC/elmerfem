@@ -43,6 +43,12 @@
 #include "convergenceview.h"
 #include "mainwindow.h"
 
+#if defined(__cplusplus) && __cplusplus >= 201703L
+#  define REGISTER
+#else
+#  define REGISTER register
+#endif
+
 using namespace std;
 
 //-----------------------------------------------------------------------------
@@ -59,7 +65,7 @@ void CurveData::append(double *x, double *y, int count)
     d_y.resize(newSize);
   }
   
-  for(register int i = 0; i < count; i++) {
+  for(REGISTER int i = 0; i < count; i++) {
     d_x[d_count + i] = x[i];
     d_y[d_count + i] = y[i];
   }
