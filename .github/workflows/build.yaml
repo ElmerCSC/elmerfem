@@ -35,26 +35,26 @@ jobs:
             cc: "gcc"
             cxx: "g++"
             openmp: with
-            openmp-cmake-flags: "-WITH_OpenMP=ON"
+            openmp-cmake-flags: "-DWITH_OpenMP=ON"
           - compiler: gcc
             compiler-pkgs: "g++ gcc"
             cc: "gcc"
             cxx: "g++"
             mpi: without
             openmp: with
-            openmp-cmake-flags: "-WITH_OpenMP=ON"
+            openmp-cmake-flags: "-DWITH_OpenMP=ON"
           - compiler: gcc
             compiler-pkgs: "g++ gcc"
             cc: "gcc"
             cxx: "g++"
             mpi: with
             openmp: without
-            openmp-cmake-flags: "-WITH_OpenMP=OFF"
+            openmp-cmake-flags: "-DWITH_OpenMP=OFF"
           - compiler: clang
             compiler-pkgs: "clang"
             cc: "clang"
             cxx: "clang++"
-            openmp-cmake-flags: "-WITH_OpenMP=ON -DOpenMP_C_FLAGS=-fopenmp=libgomp -DOpenMP_CXX_FLAGS=-fopenmp=libgomp"
+            openmp-cmake-flags: "-DWITH_OpenMP=ON -DOpenMP_C_FLAGS=-fopenmp=libgomp -DOpenMP_CXX_FLAGS=-fopenmp=libgomp"
 
     env:
       CC: ${{ matrix.cc }}
