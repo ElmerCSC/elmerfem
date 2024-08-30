@@ -77,6 +77,9 @@ using namespace std;
 // Construct main window...
 //-----------------------------------------------------------------------------
 MainWindow::MainWindow() {
+
+  logMessage("Welcome to ElmerGUI, compiled on: " + QString(__DATE__));
+
 #ifdef __APPLE__
   // find "Home directory":
   char executablePath[MAXPATHLENGTH] = {0};
@@ -1803,6 +1806,41 @@ void MainWindow::loadElmerMesh(QString dirName) {
 
   QDir::setCurrent(dirName);
   saveDirName = dirName;
+
+  logMessage("Bounding box of all nodes in mesh:");
+  QString coordnames[3] = {"X","Y","Z"};
+  double sidemax = 0.0;
+  for (int j = 0; j < 3; j++) {
+    double mincoord, maxcoord, coord;
+    mincoord = maxcoord = glWidget->getMesh()->getNode(0)->getX(j);
+    for (int i = 0; i < glWidget->getMesh()->getNodes(); i++) {
+      coord = glWidget->getMesh()->getNode(i)->getX(j);
+      if (mincoord > coord)
+        mincoord = coord;
+      if (maxcoord < coord)
+        maxcoord = coord;
+      if(sidemax < (maxcoord - mincoord ))
+        sidemax = maxcoord - mincoord;
+    }
+    logMessage(coordnames[j] + ": [ " + QString::number(mincoord) +
+               " ,  " + QString::number(maxcoord) + " ]");
+  }
+
+  if(sidemax > 49.9)  {
+    logMessage("");
+    logMessage("Notice: the longest bounding box side length of [ "+ QString::number(sidemax) +" ] is greater than 50.");
+    logMessage("ElmerGUI includes a library of material properties, defined in SI units.  If using ElmerGUI,");
+    logMessage("then the geometry is expected to have meters as length.  Geometry that exceeds 50 meters");
+    logMessage("in length or width or height may not be intended.  Many Geometry generators assume");
+    logMessage("millimeters as the basic unit of length.  Scaling the geometry from millimeters to meters");
+    logMessage("may be the desired action.  For more help, search the Elmer users forum for posts");
+    logMessage("about SI units, or for posts about Coordinate Scaling.");
+    logMessage("Scaling can be accomplished in at least three ways, as follows:");
+    logMessage(" 1. Define the original geometry in meters, not millimeters.");
+    logMessage(" 2. Call ElmerGrid with -scale 0.001 0.001 0.001 as an option.");
+    logMessage(" 3. Add Coordinate Scaling = 0.001 to the simulation section of the sif file.");
+    logMessage("");
+  }
 
   logMessage("Ready");
 }

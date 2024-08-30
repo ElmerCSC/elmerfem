@@ -169,6 +169,8 @@ int ConvertEgTypeToMeshType(struct FemType *dat,struct BoundaryType *bound,mesh_
     return(1);
   }
 
+  BoundingBox(dat,0,1,info);
+
   printf("Converting ElmerGrid data to ElmerGUI data\n");
   
   elemdim =  GetMaxElementDimension(dat);
