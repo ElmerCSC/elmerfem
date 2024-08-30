@@ -51,10 +51,12 @@ jobs:
             openmp: without
             openmp-cmake-flags: "-DWITH_OpenMP=OFF"
           - compiler: clang
-            compiler-pkgs: "clang"
+            compiler-pkgs: "clang libomp-dev"
             cc: "clang"
             cxx: "clang++"
-            openmp-cmake-flags: "-DWITH_OpenMP=ON -DOpenMP_C_FLAGS=-fopenmp=libgomp -DOpenMP_CXX_FLAGS=-fopenmp=libgomp"
+            mpi: with
+            openmp: with
+            openmp-cmake-flags: "-DWITH_OpenMP=ON -DOpenMP_C_FLAGS='-fopenmp=libgomp -D_OPENMP=201511' -DOpenMP_CXX_FLAGS='-fopenmp=libgomp -D_OPENMP=201511' -DOpenMP_C_LIB_NAMES='gomp;pthread' -DOpenMP_CXX_LIB_NAMES='gomp;pthread'"
 
     env:
       CC: ${{ matrix.cc }}
