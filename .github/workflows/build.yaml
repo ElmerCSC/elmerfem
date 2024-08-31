@@ -121,7 +121,7 @@ jobs:
           CTEST_OUTPUT_ON_FAILURE: 1
         run: |
           cd ${GITHUB_WORKSPACE}/build
-          ctest -L quick -j$(nproc)
+          set -o pipefail && ctest -L quick -j$(nproc) . | tee ./ctest_output.log
 
       - name: Re-run tests
         if: always() && (steps.run-ctest.outcome == 'failure')
@@ -130,6 +130,21 @@ jobs:
           CTEST_OUTPUT_ON_FAILURE: 1
         run: |
           cd ${GITHUB_WORKSPACE}/build
+          failed_tests=($(sed -n 's/^.*#[0-9]*\:\s*\(\S*\).*Failed.*/\1/p' ./ctest_output.log))
+          for test in "${failed_tests[@]}"; do
+            echo "::group::Content of fem/tests/${test}"
+            echo ---- Files ----
+            ls -Rl fem/tests/${test}
+            if [ -f fem/tests/${test}/test-stderr*.log ]; then
+              echo ---- Content of test-stderr*.log ----
+              cat fem/tests/${test}/test-stderr*.log
+            fi
+            if [ -f fem/tests/${test}/test-stdout*.log ]; then
+              echo ---- Content of test-stdout*.log ----
+              cat fem/tests/${test}/test-stdout*.log
+            fi
+            echo "::endgroup::"
+          done
           echo "::group::Re-run failing tests"
           ctest --rerun-failed --output-on-failure || true
           echo "::endgroup::"
