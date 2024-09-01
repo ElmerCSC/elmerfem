@@ -83,7 +83,7 @@ jobs:
           sudo apt -qq update
           sudo apt install -y ${{ matrix.compiler-pkgs }} cmake gfortran \
             libopenblas-dev \
-            libhypre-dev \
+            $([ "${{ matrix.mpi }}" == "with" ] && echo "libhypre-dev") \
             $([ "${{ matrix.mpi }}" == "with" ] && echo "libopenmpi-dev libmumps-dev libparmetis-dev") \
             libqwt-qt5-dev qtscript5-dev libqt5svg5-dev \
             libvtk9-qt-dev libglvnd-dev \
@@ -102,7 +102,7 @@ jobs:
             -DWITH_LUA=ON \
             $([ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_Zoltan=ON" || echo "-DWITH_Zoltan=OFF") \
             $([ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_Mumps=ON" || echo "-DWITH_Mumps=OFF") \
-            -DWITH_Hypre=ON -DHYPRE_INCLUDE_DIR=/usr/include/hypre \
+            $([ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_Hypre=ON -DHYPRE_INCLUDE_DIR=/usr/include/hypre" || echo "-DWITH_Hypre=OFF") \
             -DWITH_ELMERGUI=ON \
             -DWITH_VTK=ON \
             -DWITH_OCC=ON \
