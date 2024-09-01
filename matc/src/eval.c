@@ -723,27 +723,27 @@ VARIABLE *evalclause(root) CLAUSE *root;
       {
         VARIABLE *var;
         char *r;
-  
+
         /*
          *  VARIABLE name
          */
         r = SDATA(root->this);
-  
+
         /*
-         *  check for name conflicts 
+         *  check for name conflicts
          */
         if (fnc_check(r) || com_check(r) || lst_find(CONSTANTS, r))
         {
           error( "VARIABLE not created [%s], identifier in use.\n ", r);
         }
-  
-        if ((res = evaltree(LINK(root->this))) != NULL) 
+
+        if ((res = evaltree(LINK(root->this))) != NULL)
         {
-          var_delete(r);
-          var = var_new(r,TYPE(res),1,1);
-  
+          if ((var = var_check(r)) == NULL)
+            var = var_new(r,TYPE(res),1,1);
+
           d = MATR(res);
-          for(i = 0; i < NCOL(res)*NROW(res); i++) 
+          for(i = 0; i < NCOL(res)*NROW(res); i++)
           {
             *MATR(var) = *d++;
             ptr = evalclause(LINK(root));
@@ -754,7 +754,7 @@ VARIABLE *evalclause(root) CLAUSE *root;
         root = root->jmp;
       break;
       }
-    } 
+    }
     root = LINK(root);
   }
   return ptr;

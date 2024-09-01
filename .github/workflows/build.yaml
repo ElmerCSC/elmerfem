@@ -26,7 +26,7 @@ jobs:
       fail-fast: false
 
       matrix:
-        compiler: [gcc, clang]
+        compiler: [gcc]
         mpi: [with]
         openmp: [with]
         include:
@@ -35,26 +35,35 @@ jobs:
             cc: "gcc"
             cxx: "g++"
             openmp: with
-            openmp-cmake-flags: "-WITH_OpenMP=ON"
+            openmp-cmake-flags: "-DWITH_OpenMP=ON"
           - compiler: gcc
             compiler-pkgs: "g++ gcc"
             cc: "gcc"
             cxx: "g++"
             mpi: without
             openmp: with
-            openmp-cmake-flags: "-WITH_OpenMP=ON"
+            openmp-cmake-flags: "-DWITH_OpenMP=ON"
           - compiler: gcc
             compiler-pkgs: "g++ gcc"
             cc: "gcc"
             cxx: "g++"
             mpi: with
             openmp: without
-            openmp-cmake-flags: "-WITH_OpenMP=OFF"
+            openmp-cmake-flags: "-DWITH_OpenMP=OFF"
           - compiler: clang
             compiler-pkgs: "clang"
             cc: "clang"
             cxx: "clang++"
-            openmp-cmake-flags: "-WITH_OpenMP=ON -DOpenMP_C_FLAGS=-fopenmp=libgomp -DOpenMP_CXX_FLAGS=-fopenmp=libgomp"
+            mpi: with
+            openmp: without
+            openmp-cmake-flags: "-DWITH_OpenMP=OFF"
+          # - compiler: clang
+          #   compiler-pkgs: "clang libomp-dev"
+          #   cc: "clang"
+          #   cxx: "clang++"
+          #   mpi: with
+          #   openmp: with
+          #   openmp-cmake-flags: "-DWITH_OpenMP=ON -DOpenMP_C_FLAGS='-fopenmp=libgomp -D_OPENMP=201511' -DOpenMP_CXX_FLAGS='-fopenmp=libgomp -D_OPENMP=201511' -DOpenMP_C_LIB_NAMES='gomp;pthread' -DOpenMP_CXX_LIB_NAMES='gomp;pthread'"
 
     env:
       CC: ${{ matrix.cc }}
@@ -119,7 +128,7 @@ jobs:
           CTEST_OUTPUT_ON_FAILURE: 1
         run: |
           cd ${GITHUB_WORKSPACE}/build
-          ctest -L quick -j$(nproc)
+          set -o pipefail && ctest -L quick -j$(nproc) . | tee ./ctest_output.log
 
       - name: Re-run tests
         if: always() && (steps.run-ctest.outcome == 'failure')
@@ -128,6 +137,21 @@ jobs:
           CTEST_OUTPUT_ON_FAILURE: 1
         run: |
           cd ${GITHUB_WORKSPACE}/build
+          failed_tests=($(sed -n 's/^.*#[0-9]*\:\s*\(\S*\).*Failed.*/\1/p' ./ctest_output.log))
+          for test in "${failed_tests[@]}"; do
+            echo "::group::Content of fem/tests/${test}"
+            echo ---- Files ----
+            ls -Rl fem/tests/${test}
+            if [ -f fem/tests/${test}/test-stderr*.log ]; then
+              echo ---- Content of test-stderr*.log ----
+              cat fem/tests/${test}/test-stderr*.log
+            fi
+            if [ -f fem/tests/${test}/test-stdout*.log ]; then
+              echo ---- Content of test-stdout*.log ----
+              cat fem/tests/${test}/test-stdout*.log
+            fi
+            echo "::endgroup::"
+          done
           echo "::group::Re-run failing tests"
           ctest --rerun-failed --output-on-failure || true
           echo "::endgroup::"
