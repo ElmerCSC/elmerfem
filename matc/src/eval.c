@@ -449,13 +449,13 @@ VARIABLE *evalclause(root) CLAUSE *root;
 #else
            FILE *fp = popen( SDATA(root->this), "r" );
 #endif
-           static char s[101];
+           static char s[121];
 #pragma omp threadprivate (s)
 
            if ( !fp ) error( "systemcall: open failure: [%s].\n", SDATA(root->this) );
 
            while( fgets( s, 120, fp ) ) PrintOut( s );
-  
+
 #if defined(WIN32) || defined(MINGW32)
            _pclose( fp );
 #else
