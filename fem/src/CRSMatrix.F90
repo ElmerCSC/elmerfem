@@ -5137,7 +5137,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !> At first call register the matrix topology.
 !> At second round change the matrix topology of the vectors.
 !> Without change in topology all matrix operations with BulkValues,
-!> MassValues, and DampValues would break down. 
+!> MassValues, DampValues etc. would break down. 
 !------------------------------------------------------------------------------
   SUBROUTINE CRS_ChangeTopology( A, Init )
 !------------------------------------------------------------------------------
@@ -5183,7 +5183,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       
       CALL Info('CRS_ChangeTopology','New matrix non-zeros: '//I2S(n),Level=12)
       
-      DO ivec=1,3
+      DO ivec=1,5
         NULLIFY(Aold)
         SELECT CASE(ivec)
         CASE( 1 )
@@ -5192,6 +5192,10 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
           Aold => A % MassValues
         CASE( 3 )
           Aold => A % DampValues
+        CASE( 4 )
+          Aold => A % BulkMassValues
+        CASE( 5 )
+          Aold => A % BulkDampValues
         END SELECT
         
         IF( .NOT. ASSOCIATED(Aold) ) CYCLE
@@ -5222,7 +5226,14 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
           A % MassValues => Anew
         CASE( 3 )
           A % DampValues => Anew 
+        CASE( 4 )
+          A % BulkMassValues => Anew
+        CASE( 5 )
+          A % BulkDampValues => Anew 
         END SELECT
+
+        CALL Info('CRS_ChangeTopology','Done changing matrix '//I2S(n)//' topology',Level=20)
+
         
       END DO
             

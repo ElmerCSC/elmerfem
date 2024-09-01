@@ -3012,7 +3012,16 @@ CONTAINS
    ELSE
      Solver => CurrentModel % solver
    END IF
+   
+   ! This is now the default global time integration routine but the old hack may still be called
+   !---------------------------------------------------------------------------------------------
+   IF( .NOT. ListGetLogical( Solver % Values,'Old Global Time Integration',Found ) ) THEN
+     CALL Add2ndOrderTime_CRS( Solver % Matrix, Solver % Matrix % rhs, &
+         Solver % dt, Solver % Variable % PrevValues, Solver )
+     RETURN
+   END IF
 
+   
    IF ( .NOT.ASSOCIATED(Solver % Variable % Values, SaveValues) ) THEN
       IF ( ALLOCATED(STIFF) ) DEALLOCATE( STIFF,MASS,DAMP,X )
       n = 0

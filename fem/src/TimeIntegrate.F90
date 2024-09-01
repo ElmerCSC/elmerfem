@@ -440,7 +440,6 @@ CONTAINS
 
 !------------------------------------------------------------------------------
      INTEGER :: i,j,n1,n2
-
      REAL(KIND=dp) :: s, aa, a2b(n)
 !------------------------------------------------------------------------------
      n1 = MIN( n, SIZE(StiffMatrix,1) )
@@ -481,6 +480,89 @@ CONTAINS
    END SUBROUTINE Time2ndOrder
 !------------------------------------------------------------------------------
 
+   
+
+   SUBROUTINE Time2ndOrder_CRS( dt, Matrix, Force, param_a, param_b, PrevValues )
+
+     REAL(KIND=dp) :: dt
+     TYPE(Matrix_t), POINTER :: Matrix
+     REAL(KIND=dp) :: Force(:)
+     REAL(KIND=dp) :: param_a, param_b
+     REAL(KIND=dp), POINTER :: PrevValues(:,:)
+
+     INTEGER :: i,j,k,n
+     INTEGER, POINTER :: Rows(:), Cols(:)
+     REAL(KIND=dp), POINTER :: X(:), V(:), A(:), A2(:)
+     REAL(KIND=dp), POINTER :: Mass(:), Damp(:), Stiff(:)
+     REAL(KIND=dp) :: Alpha, Beta, Gamma, Delta
+     REAL(KIND=dp) :: c1,c2,c3,c4,c5,c6,c7,s
+     
+     X => PrevValues(:,3)
+     V => PrevValues(:,4)
+     A => PrevValues(:,5)
+
+     n = Matrix % NumberOfRows
+     Mass => Matrix % MassValues
+     Damp => Matrix % DampValues
+     Stiff => Matrix % Values
+
+     Rows => Matrix % Rows
+     Cols => Matrix % Cols
+     
+     IF(param_b>=0) THEN ! this is rho_inf for Generalized-alpha
+       Alpha  = (2*param_b-1)/(param_b+1)
+       Beta = 1/(param_b+1)**2
+       Gamma = (3-param_b)/(2*(param_b+1))
+       Delta = param_b/(param_b+1)
+       A2 => PrevValues(:,7)
+     ELSE !bossak
+       Alpha = param_a
+       Gamma = 0.5d0 - Alpha
+       Beta = (1-Alpha)**2/4
+       Delta = 0
+       A2 => PrevValues(:,5)
+     END IF
+
+     c1 = (1-Alpha)/(1-Delta)/(Beta*dt**2)
+     c2 = (1-Alpha)/(1-Delta)/(Beta*dt)
+     c3 = Delta/(1-Delta)
+     c4 = -((1-Alpha)*(1-1/(2*Beta))+Alpha)/(1-Delta)
+
+     c5 = Gamma / (Beta*dt)
+     c6 = Gamma / Beta - 1
+     c7 = - ((1-Gamma) + Gamma * (1-1/(2*Beta))) * dt
+
+     IF( ASSOCIATED(Mass) ) THEN
+       !$omp parallel do private(i,j,k,s)
+       DO i=1,n
+         s = 0.0_dp
+         DO j=Rows(i),Rows(i+1)-1
+           k = Cols(j)
+           s = s + Mass(j) * ( c1*X(k) + c2*V(k) + c3*A(k) + c4*A2(k) )
+         END DO
+         Force(i) = Force(i) + s
+       END DO
+       !$omp end parallel do
+       Stiff = Stiff + c1 * Mass
+     END IF
+
+     IF( ASSOCIATED(Damp) ) THEN
+       !$omp parallel do private(i,j,k,s)
+       DO i=1,n
+         s = 0.0_dp
+         DO j=Rows(i),Rows(i+1)-1
+           k = Cols(j)
+           s = s + Damp(j) * ( c5*X(k) + c6*V(k) + c7*A2(k) )
+         END DO
+         Force(i) = Force(i) + s
+       END DO
+       !$omp end parallel do
+       Stiff = Stiff + c5 * Damp
+     END IF     
+     
+   END SUBROUTINE Time2ndOrder_CRS
+
+   
 !------------------------------------------------------------------------------
    SUBROUTINE Update2ndOrder(n,dt,x,prevX,param_a, param_b)
 !------------------------------------------------------------------------------
@@ -590,57 +672,62 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+#if 0 
 !------------------------------------------------------------------------------
 !> Apply 2nd order Newmark time integration scheme.
 !------------------------------------------------------------------------------
-   SUBROUTINE Newmark2ndOrder( N, dt, MassMatrix, DampMatrix, StiffMatrix, &
+   SUBROUTINE Newmark2ndOrder_CRS( dt, Matrix, Force, PrevSol0, PrevSolv1, Average ) 
+       &
                         Force, PrevSol0,PrevSol1, Average )
 !------------------------------------------------------------------------------
-
-     INTEGER :: N
-     REAL(KIND=dp) :: Force(:),PrevSol0(:),PrevSol1(:),dt
-     LOGICAL :: Average
-     REAL(KIND=dp) :: MassMatrix(:,:),DampMatrix(:,:),StiffMatrix(:,:)
-
+     
+     INTEGER :: i,j,n
+     REAL(KIND=dp), POINTER :: Stiff(:),Mass(:),MassL(:)
+     INTEGER, POINTER :: Cols(:),Rows(:)
+     REAL(KIND=dp) :: su,mu,uj,ui
 !------------------------------------------------------------------------------
-     INTEGER :: i,j
+    
+    n = Matrix % NumberOfRows
+    Rows => Matrix % Rows
+    Cols => Matrix % Cols
+    Stiff => Matrix % Values
+    Mass => Matrix % MassValues
+    Damp => Matrix % DampValues
+    
+    IF( ASSOCIATED( Damp ) ) THEN   
+      !$omp parallel do private(j,s,u0,u1)     
+      DO i=1,n
+        s = 0.0_dp
+        DO j=Rows(i),Rows(i+1)-1
+          u0 = PrevSol(Cols(j))
+          s = s + cd*Damp(j)*u0 
+        END DO
+        Force(i) = Force(i) + s
+      END DO
+      !$omp end parallel do
+      Stiff = Stiff + cm * Mass + cd * Damp
+    END IF
+    
+    IF( ASSOCIATED( Mass ) ) THEN
+      !$omp parallel do private(j,s,u0,u1)     
+      DO i=1,n
+        s = 0.0_dp
+        DO j=Rows(i),Rows(i+1)-1
+          u0 = PrevSol(Cols(j))
+          u1 = PrevSol(Cols(j))
+          s = s + cd*Mass(j)*(u1-u0)
+        END DO
+        Force(i) = Force(i) + s
+      END DO
+      !$omp end parallel do
+      Stiff = Stiff + cm * Mass 
+    END IF
+  END IF
+#endif
 
-     REAL(KIND=dp) :: s
-!------------------------------------------------------------------------------
-     IF ( Average ) THEN 
-       DO i=1,N
-         s = 0.0d0
-         DO j=1,N
-           s = s - ((1/dt**2)*MassMatrix(i,j) - (1/(2*dt))*DampMatrix(i,j) + &
-                       StiffMatrix(i,j) / 3 ) * PrevSol0(j)
+   
 
-           s = s + ((2/dt**2)*MassMatrix(i,j) - StiffMatrix(i,j) / 3) *  &
-                               PrevSol1(j)
-
-           StiffMatrix(i,j) = StiffMatrix(i,j) / 3 +  &
-                        (1/dt**2)*MassMatrix(i,j) + (1/(2*dt))*DampMatrix(i,j)
-         END DO
-         Force(i) = Force(i) + s
-       END DO
-     ELSE 
-       DO i=1,N
-         s = 0.0d0
-         DO j=1,N
-           s = s - ((1/dt**2)*MassMatrix(i,j) - (1/(2*dt))*DampMatrix(i,j)) * &
-                                     PrevSol0(j)
-
-           s = s + (2/dt**2)*MassMatrix(i,j) * PrevSol1(j)
-
-           StiffMatrix(i,j) = StiffMatrix(i,j) +  &
-                        (1/dt**2)*MassMatrix(i,j) + (1/(2*dt))*DampMatrix(i,j)
-         END DO
-         Force(i) = Force(i) + s
-       END DO
-     END IF
-   END SUBROUTINE Newmark2ndOrder
-!------------------------------------------------------------------------------
-
-
+   
 
 !------------------------------------------------------------------------------
 ! These are similar subroutines as above except they operate on the full

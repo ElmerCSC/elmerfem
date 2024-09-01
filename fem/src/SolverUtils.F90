@@ -544,6 +544,12 @@ CONTAINS
      CASE('runge-kutta')
        CALL RungeKutta_CRS( dt, Matrix, Force, PrevSol(:,1), CurrSol )
 
+     CASE('adams-bashforth')
+       CALL Fatal('Add1stOrderTime_CRS','Not implemented for method: '//TRIM(Method))
+       
+     CASE('adams-moulton')
+       CALL Fatal('Add1stOrderTime_CRS','Not implemented for method: '//TRIM(Method))
+       
      CASE DEFAULT
        CALL NewmarkBeta_CRS( dt, Matrix, Force, PrevSol(:,1), &
              Solver % Beta )
@@ -685,7 +691,26 @@ CONTAINS
    END SUBROUTINE Add2ndOrderTime
 !------------------------------------------------------------------------------
 
+   
+   SUBROUTINE Add2ndOrderTime_CRS( Matrix, Force, &
+       dt, PrevValues, Solver )
+!------------------------------------------------------------------------------
+     TYPE(Matrix_t), POINTER :: Matrix  !< Global matrix (including stiffness and mass)
+     REAL(KIND=dp) :: Force(:)          !< Global right-hand-side vector.
+     REAL(KIND=dp) :: dt                !< Simulation timestep size
+     REAL(KIND=dp), POINTER :: PrevValues(:,:)
+     TYPE(Solver_t), POINTER :: Solver
+     
+     IF( Matrix % Lumped ) THEN
+       CALL Fatal('Add2ndOrderTime_CRS','Implement matrix lumping for this!')
+     END IF
 
+     CALL Time2ndOrder_CRS(dt, Matrix, Force, Solver % Alpha, Solver % Beta, PrevValues )
+     
+   END SUBROUTINE Add2ndOrderTime_CRS
+     
+
+   
 !------------------------------------------------------------------------------
 !> Update the right-hand-side of the global equation by adding the local entry. 
 !------------------------------------------------------------------------------
@@ -4470,7 +4495,7 @@ CONTAINS
     INTEGER :: np
     REAL(KIND=dp) :: s(3)
     LOGICAL :: Parallel, Found
-    
+
     Parallel = ( ParEnv % PEs > 1)
     IF( Parallel ) Parallel = .NOT. CurrentModel % Mesh % SingleMesh 
     IF( Parallel ) THEN
@@ -13609,11 +13634,13 @@ END FUNCTION SearchNodeL
     ELSE
       Rhs => Aaid % Rhs
     END IF
-
+    
     IF ( Parallel ) THEN
-      ALLOCATE(TempRHS(SIZE(Rhs)))
-      TempRHS = Rhs 
-      CALL ParallelInitSolve( Aaid, x, TempRHS, Tempvector )
+      IF( ASSOCIATED( Rhs ) ) THEN
+        ALLOCATE(TempRHS(SIZE(Rhs)))
+        TempRHS = Rhs 
+        CALL ParallelInitSolve( Aaid, x, TempRHS, Tempvector )
+      END IF
       CALL ParallelMatrixVector( Aaid, x, TempVector, .TRUE. )
     ELSE
       CALL MatrixVectorMultiply( Aaid, x, TempVector )
@@ -13664,21 +13691,22 @@ END FUNCTION SearchNodeL
       END IF
     END IF
 
-    IF ( Parallel ) THEN
-      DO i=1,Aaid % NumberOfRows
-        IF ( AAid % ParallelInfo % NeighbourList(i) % Neighbours(1) == ParEnv % Mype ) THEN
-          TempVector(i) = TempVector(i) - TempRHS(i)
-        ELSE
-          TempVector(i) = 0
-        END IF
-      END DO
-      CALL ParallelSumVector( AAid, Tempvector )
-      DEALLOCATE( TempRhs ) 
-    ELSE
-      TempVector = TempVector - RHS
+    IF( ASSOCIATED( Rhs ) ) THEN
+      IF ( Parallel ) THEN
+        DO i=1,Aaid % NumberOfRows
+          IF ( AAid % ParallelInfo % NeighbourList(i) % Neighbours(1) == ParEnv % Mype ) THEN
+            TempVector(i) = TempVector(i) - TempRHS(i)
+          ELSE
+            TempVector(i) = 0
+          END IF
+        END DO
+        CALL ParallelSumVector( AAid, Tempvector )
+        DEALLOCATE( TempRhs ) 
+      ELSE
+        TempVector = TempVector - RHS
+      END IF
     END IF
-
-    
+          
     IgnorePeriodic = ListGetLogical( Solver % Values,'Calculate Loads Ignore Periodic',Found )
     
     NoBCs = CurrentModel % NumberOfBCs
@@ -14657,11 +14685,12 @@ END FUNCTION SearchNodeL
 
     IF(ListGetLogical(Params, 'Linear System Use Rocalution', Found)) &
       Method = 'rocalution'
-      
     
     IF ( .NOT. Parallel ) THEN
       CALL Info(Caller,'Serial linear System Solver: '//TRIM(Method),Level=8)
-      
+
+      IF(ListGetLogical(Params, 'Linear System Use Hypre', Found)) Method = 'hypre'
+            
       SELECT CASE(Method)
       CASE('multigrid')
         CALL MultiGridSolve( A, x, b, &
@@ -14677,6 +14706,8 @@ END FUNCTION SearchNodeL
         CALL AMGXSolver( A, x, b, Solver )
       CASE('rocalution')
         CALL ROCSolver( A, x, b, Solver )
+      CASE('hypre')
+        CALL HypreSolverSerial( A, x, b, Solver )
       CASE('direct')
         CALL DirectSolver( A, x, b, Solver )        
       CASE DEFAULT        

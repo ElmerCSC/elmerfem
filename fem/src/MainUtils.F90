@@ -148,9 +148,9 @@ CONTAINS
     ELSE
       IF (ListGetLogical( Params,  &
           'Linear System Use Hypre', Found )) THEN
-        IF( .NOT. Parallel ) THEN
-          CALL Fatal('CheckLinearSolverOptions','Hypre not usable in serial!')
-        END IF
+        !IF( .NOT. Parallel ) THEN
+        !  CALL Fatal('CheckLinearSolverOptions','Hypre not usable in serial!')
+        !END IF
 #ifndef HAVE_HYPRE
         CALL Fatal('CheckLinearSolverOptions','Hypre requested but not compiled with!')
 #endif
