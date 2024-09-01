@@ -450,6 +450,7 @@ VARIABLE *evalclause(root) CLAUSE *root;
            FILE *fp = popen( SDATA(root->this), "r" );
 #endif
            static char s[101];
+#pragma omp threadprivate (s)
 
            if ( !fp ) error( "systemcall: open failure: [%s].\n", SDATA(root->this) );
 
@@ -722,27 +723,27 @@ VARIABLE *evalclause(root) CLAUSE *root;
       {
         VARIABLE *var;
         char *r;
-  
+
         /*
          *  VARIABLE name
          */
         r = SDATA(root->this);
-  
+
         /*
-         *  check for name conflicts 
+         *  check for name conflicts
          */
         if (fnc_check(r) || com_check(r) || lst_find(CONSTANTS, r))
         {
           error( "VARIABLE not created [%s], identifier in use.\n ", r);
         }
-  
-        if ((res = evaltree(LINK(root->this))) != NULL) 
+
+        if ((res = evaltree(LINK(root->this))) != NULL)
         {
-          var_delete(r);
-          var = var_new(r,TYPE(res),1,1);
-  
+          if ((var = var_check(r)) == NULL)
+            var = var_new(r,TYPE(res),1,1);
+
           d = MATR(res);
-          for(i = 0; i < NCOL(res)*NROW(res); i++) 
+          for(i = 0; i < NCOL(res)*NROW(res); i++)
           {
             *MATR(var) = *d++;
             ptr = evalclause(LINK(root));
@@ -753,7 +754,7 @@ VARIABLE *evalclause(root) CLAUSE *root;
         root = root->jmp;
       break;
       }
-    } 
+    }
     root = LINK(root);
   }
   return ptr;
@@ -765,6 +766,7 @@ VARIABLE *put_values(ptr, resname, par) VARIABLE *ptr, *par; char *resname;
 ^=====================================================================*/
 {
   static double defind = 0.0;
+#pragma omp threadprivate (defind)
 
   double *ind1,
          *ind2,
