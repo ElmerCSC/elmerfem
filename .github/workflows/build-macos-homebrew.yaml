@@ -42,7 +42,7 @@ jobs:
           brew reinstall gcc
           brew install \
             cmake libomp openblas open-mpi \
-            qwt vtk
+            qwt vtk opencascade
           echo "HOMEBREW_PREFIX=$(brew --prefix)" >> $GITHUB_ENV
 
       - name: configure
@@ -72,6 +72,8 @@ jobs:
             -DWITH_QT6=ON \
             -DQWT_INCLUDE_DIR="${HOMEBREW_PREFIX}/opt/qwt/lib/qwt.framework/Headers" \
             -DWITH_VTK=ON \
+            -DWITH_OCC=ON \
+            -DWITH_MATC=ON \
             -DWITH_PARAVIEW=ON \
             -DCREATE_PKGCONFIG_FILE=ON \
             ..
