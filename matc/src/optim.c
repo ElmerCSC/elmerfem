@@ -3,7 +3,7 @@
  *  Elmer, A Finite Element Software for Multiphysical Problems
  *
  *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
- * 
+ *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
- * License along with this library (in file ../LGPL-2.1); if not, write 
- * to the Free Software Foundation, Inc., 51 Franklin Street, 
+ * License along with this library (in file ../LGPL-2.1); if not, write
+ * to the Free Software Foundation, Inc., 51 Franklin Street,
  * Fifth Floor, Boston, MA  02110-1301  USA
  *
  *****************************************************************************/
@@ -45,7 +45,7 @@
  ******************************************************************************/
 
 /*
- * $Id: optim.c,v 1.1.1.1 2005/04/14 13:29:14 vierinen Exp $ 
+ * $Id: optim.c,v 1.1.1.1 2005/04/14 13:29:14 vierinen Exp $
  *
  * $Log: optim.c,v $
  * Revision 1.1.1.1  2005/04/14 13:29:14  vierinen
@@ -54,13 +54,13 @@
  * Revision 1.2  1998/08/01 12:34:52  jpr
  *
  * Added Id, started Log.
- * 
+ *
  *
  */
 
 #include "elmer/matc.h"
 
-TREE *optimtree(root) TREE *root;
+TREE *optimtree(TREE *root)
 {
   int constant = TRUE, csize = 0;
   int constsubs;
@@ -81,7 +81,7 @@ TREE *optimtree(root) TREE *root;
     {
       subs = SUBS(tptr) = optimtree(SUBS(tptr));
       if (subs == (TREE *)NULL) error("it's not worth it.\n");
-      if (ETYPE(subs) != ETYPE_CONST || LINK(subs) != NULL) 
+      if (ETYPE(subs) != ETYPE_CONST || LINK(subs) != NULL)
         constsubs = FALSE;
       prevsubs = subs; subs = NEXT(subs);
 
@@ -89,9 +89,9 @@ TREE *optimtree(root) TREE *root;
       {
         subs = optimtree(subs);
         if (subs == (TREE *)NULL) error("it's not worth it.\n");
-        if (ETYPE(subs) != ETYPE_CONST || LINK(subs) != NULL) 
+        if (ETYPE(subs) != ETYPE_CONST || LINK(subs) != NULL)
           constsubs = FALSE;
-        NEXT(prevsubs) = subs; prevsubs = subs; 
+        NEXT(prevsubs) = subs; prevsubs = subs;
         subs = NEXT(subs);
       }
 
@@ -126,7 +126,7 @@ TREE *optimtree(root) TREE *root;
       {
         args = ARGS(tptr) = optimtree(ARGS(tptr));
         if (args == (TREE *)NULL) error("it's not worth it.\n");
-        if (ETYPE(args) != ETYPE_CONST || LINK(args) != NULL) 
+        if (ETYPE(args) != ETYPE_CONST || LINK(args) != NULL)
           constargs = FALSE;
         prevargs = args; args = NEXT(args); argcount++;
 
@@ -134,9 +134,9 @@ TREE *optimtree(root) TREE *root;
         {
           args = optimtree(args);
           if (args == (TREE *)NULL) error("it's not worth it.\n");
-          if (ETYPE(args) != ETYPE_CONST || LINK(args) != NULL) 
+          if (ETYPE(args) != ETYPE_CONST || LINK(args) != NULL)
             constargs = FALSE;
-          NEXT(prevargs) = args; prevargs = args; 
+          NEXT(prevargs) = args; prevargs = args;
           args = NEXT(args); argcount++;
         }
       }
@@ -150,14 +150,14 @@ TREE *optimtree(root) TREE *root;
           {
             if (com->minp == com->maxp)
             {
-              fprintf(math_err, 
+              fprintf(math_err,
                 "Builtin function [%s] requires %d argument(s).\n",
                  SDATA(tptr), com->minp);
               error("");
             }
             else
             {
-              fprintf(math_err, 
+              fprintf(math_err,
                 "Builtin function [%s] takes from %d to %d argument(s).\n",
                  SDATA(tptr), com->minp, com->maxp);
               error("");
@@ -188,7 +188,7 @@ TREE *optimtree(root) TREE *root;
           par = parroot;
           while(par)
           {
-            parroot = NEXT(par); 
+            parroot = NEXT(par);
             NEXT(par) = NULL;
             par = parroot;
           }
@@ -199,7 +199,7 @@ TREE *optimtree(root) TREE *root;
             TREE *newroot;
 
             newroot = newtree();
-            if (tptr == root) 
+            if (tptr == root)
               root = newroot;
             else
               LINK(tprev) = newroot;
@@ -252,7 +252,7 @@ TREE *optimtree(root) TREE *root;
     case ETYPE_EQUAT:
     {
       TREE *leftptr;
- 
+
       LEFT(tptr) = leftptr = optimtree(LEFT(tptr));
 
       if (
@@ -263,11 +263,11 @@ TREE *optimtree(root) TREE *root;
         TREE *newroot;
 
         newroot = leftptr;
-        if (tptr == root) 
+        if (tptr == root)
           root = newroot;
         else
            LINK(tprev) = newroot;
- 
+
         NEXT(newroot) = NEXT(tptr);
         NEXT(tptr) = (TREE *)NULL;
         LINK(newroot) = LINK(tptr);
@@ -306,7 +306,7 @@ TREE *optimtree(root) TREE *root;
         {
           if (LINK(leftptr) == NULL && LINK(rightptr) == NULL)
           {
-            opres = (*VDATA(tptr))(CDATA(leftptr)->this, 
+            opres = (*VDATA(tptr))(CDATA(leftptr)->this,
                                    CDATA(rightptr)->this);
             NEXT(CDATA(leftptr)) = NULL;
           }
@@ -317,7 +317,7 @@ TREE *optimtree(root) TREE *root;
         if (LINK(leftptr) == NULL)
          opres = (*VDATA(tptr))(CDATA(leftptr)->this, NULL);
       }
-      else if (rightptr != NULL && ETYPE(rightptr) == ETYPE_CONST) 
+      else if (rightptr != NULL && ETYPE(rightptr) == ETYPE_CONST)
       {
         if (LINK(rightptr) == NULL)
           opres = (*VDATA(tptr))(CDATA(rightptr)->this, NULL);
@@ -327,12 +327,12 @@ TREE *optimtree(root) TREE *root;
       {
         TREE *newroot;
 
-        tmp = (VARIABLE *)ALLOCMEM(VARIABLESIZE); 
+        tmp = (VARIABLE *)ALLOCMEM(VARIABLESIZE);
         tmp->this = opres;
         REFCNT(tmp) = 1;
 
         newroot = newtree();
-        if (tptr == root) 
+        if (tptr == root)
           root = newroot;
         else
           LINK(tprev) = newroot;
@@ -375,7 +375,7 @@ TREE *optimtree(root) TREE *root;
       free_tree(subs);
       SUBS(tptr) = NULL;
     }
-    else if (constsubs && subs) 
+    else if (constsubs && subs)
     {
       SUBS(tptr) = subs;
       while(subvar)
@@ -410,7 +410,7 @@ TREE *optimtree(root) TREE *root;
       else
         ptr = root;
 
-      if (ETYPE(ptr) == ETYPE_STRING) 
+      if (ETYPE(ptr) == ETYPE_STRING)
         CDATA(newroot) = var_temp_new(TYPE_STRING, 1, csize);
       else if (ETYPE(ptr) == ETYPE_NUMBER)
         CDATA(newroot) = var_temp_new(TYPE_DOUBLE, 1, csize);
@@ -425,7 +425,7 @@ TREE *optimtree(root) TREE *root;
           M(CDATA(newroot),0,i++)=DDATA(ptr);
           break;
         case ETYPE_STRING:
-          for(j = 0; j < strlen(SDATA(ptr)); j++) 
+          for(j = 0; j < strlen(SDATA(ptr)); j++)
             M(CDATA(newroot),0,i++)=(double)SDATA(ptr)[j];
           break;
         case ETYPE_CONST:
@@ -436,7 +436,7 @@ TREE *optimtree(root) TREE *root;
         }
         ptr = LINK(ptr);
       }
- 
+
       LINK(newroot) = tptr;
       LINK(tprev) = (TREE *)NULL;
       if (prevroot != (TREE *)NULL)
@@ -451,7 +451,7 @@ TREE *optimtree(root) TREE *root;
         free_tree(root);
         root = newroot;
       }
-      constant = FALSE; 
+      constant = FALSE;
       csize = 0;
     }
 
@@ -472,7 +472,7 @@ TREE *optimtree(root) TREE *root;
     else
       ptr = root;
 
-    if (ETYPE(ptr) == ETYPE_STRING) 
+    if (ETYPE(ptr) == ETYPE_STRING)
       CDATA(newroot) = var_temp_new(TYPE_STRING, 1, csize);
     else if (ETYPE(ptr) == ETYPE_NUMBER)
       CDATA(newroot) = var_temp_new(TYPE_DOUBLE, 1, csize);
@@ -487,7 +487,7 @@ TREE *optimtree(root) TREE *root;
         M(CDATA(newroot), 0, i++) = DDATA(ptr);
         break;
       case ETYPE_STRING:
-        for(j = 0; j < strlen(SDATA(ptr)); j++) 
+        for(j = 0; j < strlen(SDATA(ptr)); j++)
           M(CDATA(newroot), 0, i++) = (double)SDATA(ptr)[j];
         break;
       case ETYPE_CONST:
@@ -527,7 +527,7 @@ TREE *optimtree(root) TREE *root;
 }
 
 
-CLAUSE *optimclause(root) CLAUSE *root;
+CLAUSE *optimclause(CLAUSE *root)
 {
   CLAUSE *cptr = root;
 
