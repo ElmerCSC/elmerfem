@@ -37,6 +37,8 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <time.h>
+#include <unistd.h>
 #include <sys/types.h>
 
 
@@ -59,25 +61,35 @@ typedef struct list {
     pointers to start of global lists
 */
 #ifdef MODULE_MATC
+#ifdef _OPENMP
+  /* Move initialization to matc.c::mtc_init() for thread safety */
+  EXT LIST * listheaders;
+#pragma omp threadprivate(listheaders)
 
-  EXT LIST listheaders[5] = {
-    {
-      NULL, "Allocations"                    /* memory allocations     */
-    }, {
-      NULL, "Constants"                     /* global CONSTANTS        */
-    }, {
-      NULL, "Currently defined VARIABLES"    /* global VARIABLES       */
-    }, { 
-      NULL, "Builtin Functions"              /* internal commands      */
-    }, {
-      NULL, "User Functions"                 /* user defined functions */
-    }
-  };
 #else
-
+  EXT LIST listheaders[5] = {
+      {
+        NULL, "Allocations"                   /* memory allocations */
+      }, {
+        NULL, "Constants"                     /* global CONSTANTS */
+      }, {
+        NULL, "Currently defined VARIABLES"   /* global VARIABLES */
+      }, {
+        NULL, "Builtin Functions"             /* internal commands */
+      }, {
+        NULL, "User Functions"                /* user defined functions */
+      }
+    };
+#endif /* _OPENMP */
+#else
+#ifdef _OPENMP
+  /* Move initialization to matc.c::mtc_init() for thread safety */
+  EXT LIST * listheaders;
+#pragma omp threadprivate(listheaders)
+#else
   EXT LIST listheaders[];
-
-#endif
+#endif /* _OPENMP */
+#endif /* MODULE_MATC */
 
 #define ALLOCATIONS 0
 #define CONSTANTS   1
@@ -85,7 +97,7 @@ typedef struct list {
 #define COMMANDS    3
 #define FUNCTIONS   4
 
-#define MAX_HEADERS 4
+#define MAX_HEADERS 5
 
 #define ALLOC_HEAD listheaders[ALLOCATIONS].next
 #define CONST_HEAD listheaders[CONSTANTS].next
@@ -148,7 +160,7 @@ typedef struct variable
 } VARIABLE;
 
 /*
-     shortcuts for accsessing structure MATRIX
+     shortcuts for accessing structure MATRIX
 */
 #define MATR(ptr)    (ptr)->this->data
 #define TYPE(ptr)    (ptr)->this->type
@@ -183,7 +195,7 @@ typedef struct command
 
 #define CMDFLAG_PW 1           /* element by element operation    */
 #define CMDFLAG_CE 2           /* command can be executed when 
-                                  preprosessing if constant
+                                  preprocessing if constant
                                   arguments.                      */
 
 /*******************************************************************
@@ -256,7 +268,8 @@ char *symchars = "`._";
    EXT char *reswords[];
    EXT SYMTYPE rsymbols[];
    EXT char *symchars;
-
+   /* #pragma omp threadprivate(ssymbols, csymbols, reswords, rsymbols, symchars)
+    * TODO: this should be added when GCC 4.8 arrives if needed */
 #endif
 
 /*
@@ -296,7 +309,7 @@ typedef struct tree {
 } TREE;
 
 /*
-    shortcuts for accsessing above structures
+    shortcuts for accessing above structures
 */
 #define SDATA(ptr) (ptr)->tentry.entrydata.s_data
 #define DDATA(ptr) (ptr)->tentry.entrydata.d_data
@@ -369,13 +382,15 @@ typedef struct clause
 #define PMODE_CONT  "####> "
 
 EXT FILE *math_in, *math_out, *math_err;
-
+#pragma omp threadprivate(math_in, math_out, math_err)
 /* 
      see doread(), error() in matc.c
 */
 EXT jmp_buf *jmpbuf;
+#pragma omp threadprivate(jmpbuf)
 
 EXT int term;
+#pragma omp threadprivate(term)
 
 #ifdef VAX
 struct desc
@@ -394,6 +409,7 @@ struct desc
 #ifdef MODULE_MATC
 static char *math_out_str = NULL;
 static int math_out_count;
+#pragma omp threadprivate (math_out_str, math_out_count)
 #endif
 #endif
 
@@ -402,31 +418,9 @@ void mem_free_all(void);
 
 #ifdef MODULE_MATC
 static int math_out_allocated  = 0;
-void error( char *format, ... )
-{
-    va_list args;
-
-    va_start( args, format );
-#ifdef STRING_OUTPUT
-    if ( math_out_count+512 > math_out_allocated )
-    { 
-        math_out_allocated += 512;
-        math_out_str = (char *)realloc( math_out_str, math_out_allocated );
-    }
-    math_out_count += sprintf( &math_out_str[math_out_count], "MATC ERROR: " );
-    math_out_count += vsprintf( &math_out_str[math_out_count], format, args );
-#else
-    fprintf( math_err, "MATC ERROR: " );
-    vfprintf( math_err, format, args );
-#endif
-    va_end( args );
-
-    (void)mem_free_all();
-    longjmp( *jmpbuf, 2 );
-}
-
+#pragma omp threadprivate (math_out_allocated)
 void error_matc( char *format, ... )
-{// Just a copy of error( char *format, ...) to avoid undefined reference error
+{
     va_list args;
 
     va_start( args, format );
@@ -467,10 +461,11 @@ void PrintOut( char *format, ... )
     va_end( args );
 }
 #else
-extern void error( char *format, ... );
 extern void error_matc( char *format, ... );
 extern void PrintOut( char *format, ... );
 #endif
+
+#define error error_matc
 
 /*******************************************************************
                        function prototypes 
