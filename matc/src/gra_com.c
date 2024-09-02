@@ -303,21 +303,21 @@ VARIABLE *gra_gperspective(var) VARIABLE *var;
 
 VARIABLE *gra_gdbuffer(var) VARIABLE *var;
 {
-  GRA_DBUFFER(1);
+  GRA_DBUFFER(MATR(var));
 
   return NULL;
 }
 
 VARIABLE *gra_gsbuffer(var) VARIABLE *var;
 {
-  GRA_SBUFFER(1);
+  GRA_SBUFFER(MATR(var));
 
   return NULL;
 }
 
 VARIABLE *gra_gswapbuf(var) VARIABLE *var;
 {
-  GRA_SWAPBUF(1);
+  GRA_SWAPBUF(MATR(var));
 
   return NULL;
 }
