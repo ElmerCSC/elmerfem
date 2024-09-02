@@ -92,17 +92,24 @@ CONTAINS
 !
 !
 
-      IMPLICIT NONE
+#define PARALLEL_FOR_REAL
+#ifdef PARALLEL_FOR_REAL
+#  if defined(ELMER_HAVE_MPI_MODULE)
+      USE mpi
+#  endif
+#endif
 
+      IMPLICIT NONE
 
       TYPE(Matrix_t), POINTER :: A
       TYPE(Solver_t), TARGET :: Solver
       INTEGER :: N, NEIG
       COMPLEX(KIND=dp) :: EigValues(:), EigVectors(:,:)
 
-#define PARALLEL_FOR_REAL
 #ifdef PARALLEL_FOR_REAL
-INCLUDE "mpif.h"
+#  if defined(ELMER_HAVE_MPIF_HEADER)
+      INCLUDE "mpif.h"
+#  endif
 #ifdef USE_ARPACK
 !
 !     %--------------%
@@ -661,17 +668,23 @@ INCLUDE "mpif.h"
 !
 !
 
-      IMPLICIT NONE
+#ifdef PARALLEL_FOR_REAL
+#  if defined(ELMER_HAVE_MPI_MODULE)
+      USE mpi
+#  endif
+#endif
 
+      IMPLICIT NONE
 
       TYPE(Matrix_t), POINTER :: Matrix
       TYPE(Solver_t), TARGET :: Solver
       INTEGER :: N, NEIG
       COMPLEX(KIND=dp) :: EigValues(:), EigVectors(:,:)
 
-#define PARALLEL_FOR_REAL
 #ifdef PARALLEL_FOR_REAL
-INCLUDE "mpif.h"
+#  if defined(ELMER_HAVE_MPIF_HEADER)
+      INCLUDE "mpif.h"
+#  endif
 #ifdef USE_ARPACK
 !
 !     %--------------%

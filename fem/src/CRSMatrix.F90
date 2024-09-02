@@ -2549,6 +2549,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !------------------------------------------------------------------------------
   SUBROUTINE CRS_FCTLowOrder( A )
     USE SparIterGlobals
+#if defined(ELMER_HAVE_MPI_MODULE)
+    USE mpi
+#endif
 !------------------------------------------------------------------------------
     TYPE(Matrix_t) :: A           !< Initial higher order matrix
 !------------------------------------------------------------------------------
@@ -2563,8 +2566,10 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     LOGICAL, ALLOCATABLE :: ActiveNodes(:), RowFound(:)
 
     TYPE(Matrix_t), POINTER :: im
-    
+
+#if defined(ELMER_HAVE_MPIF_HEADER)
     INCLUDE "mpif.h"
+#endif
 
     CALL Info('CRS_FCTLowOrder','Making low order FCT correction to matrix',Level=5)
 

@@ -2074,10 +2074,15 @@ END FUNCTION ComponentNameVar
 
 !------------------------------------------------------------------------------
    SUBROUTINE ClearMatrix( Matrix ) 
-     TYPE(Matrix_t), POINTER, INTENT(in) :: Matrix
-INCLUDE "mpif.h"
-  
-     Matrix % FORMAT = MATRIX_CRS
+#if defined(ELMER_HAVE_MPI_MODULE)
+      USE mpi
+#endif
+      TYPE(Matrix_t), POINTER, INTENT(in) :: Matrix
+#if defined(ELMER_HAVE_MPIF_HEADER)
+      INCLUDE "mpif.h"
+#endif
+
+      Matrix % FORMAT = MATRIX_CRS
 
       NULLIFY( Matrix % Child )
       NULLIFY( Matrix % Parent )
