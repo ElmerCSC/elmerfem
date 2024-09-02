@@ -306,8 +306,8 @@ TREE *optimtree(TREE *root)
         {
           if (LINK(leftptr) == NULL && LINK(rightptr) == NULL)
           {
-            opres = (*VDATA(tptr))(CDATA(leftptr)->this,
-                                   CDATA(rightptr)->this);
+            opres = ((MATRIX *(*)(MATRIX *, MATRIX *)) (VDATA(tptr)))
+                        (CDATA(leftptr)->this, CDATA(rightptr)->this);
             NEXT(CDATA(leftptr)) = NULL;
           }
         }
@@ -315,12 +315,14 @@ TREE *optimtree(TREE *root)
       else if (leftptr != NULL && ETYPE(leftptr) == ETYPE_CONST)
       {
         if (LINK(leftptr) == NULL)
-         opres = (*VDATA(tptr))(CDATA(leftptr)->this, NULL);
+         opres = ((MATRIX *(*)(MATRIX *, MATRIX *)) (VDATA(tptr)))
+                    (CDATA(leftptr)->this, NULL);
       }
       else if (rightptr != NULL && ETYPE(rightptr) == ETYPE_CONST)
       {
         if (LINK(rightptr) == NULL)
-          opres = (*VDATA(tptr))(CDATA(rightptr)->this, NULL);
+          opres = ((MATRIX *(*)(MATRIX *, MATRIX *)) (VDATA(tptr)))
+                      (CDATA(rightptr)->this, NULL);
       }
 
       if (opres != NULL)

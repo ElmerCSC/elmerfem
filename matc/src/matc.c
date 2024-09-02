@@ -671,16 +671,19 @@ VARIABLE *com_pointw(double (*sub)(), VARIABLE *ptr)
         error("Currently at most three arguments for pointwise functions allowed, sorry.");
       }
       a3 = MATR(ptr2);
-      for(i = 0; i < sz; i++) *b++ = (*sub)(*a++,*a2++,*a3++);
+      for(i = 0; i < sz; i++)
+        *b++ = ((double (*)(double, double, double)) sub)(*a++, *a2++, *a3++);
     }
     else
     {
-      for(i = 0; i < sz; i++) *b++ = (*sub)(*a++,*a2++);
+      for(i = 0; i < sz; i++)
+        *b++ = ((double (*)(double, double)) sub)(*a++, *a2++);
     }
   }
   else
   {
-    for(i = 0; i < sz; i++) *b++ = (*sub)(*a++);
+    for(i = 0; i < sz; i++)
+      *b++ = ((double (*)(double)) sub)(*a++);
   }
 
   return res;

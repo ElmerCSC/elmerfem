@@ -3,7 +3,7 @@
  *  Elmer, A Finite Element Software for Multiphysical Problems
  *
  *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
- * 
+ *
  *  This program is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU General Public License
  *  as published by the Free Software Foundation; either version 2
@@ -216,7 +216,7 @@ VARIABLE *evaltree(TREE *root)
         }
         else
         {
-          tmp = (*com->sub)(par);
+          tmp = ((VARIABLE *(*)(VARIABLE *)) (com->sub))(par);
         }
       }
 
@@ -320,11 +320,11 @@ VARIABLE *evaltree(TREE *root)
       rightptr = evaltree(RIGHT(root));
 
       if (leftptr && rightptr)
-        opres = (*VDATA(root))(leftptr->this, rightptr->this);
+        opres = ((MATRIX *(*)(MATRIX *, MATRIX *)) (VDATA(root)))(leftptr->this, rightptr->this);
       else if (leftptr)
-        opres = (*VDATA(root))(leftptr->this, NULL);
+        opres = ((MATRIX *(*)(MATRIX *, MATRIX *)) (VDATA(root)))(leftptr->this, NULL);
       else if (rightptr)
-        opres = (*VDATA(root))(rightptr->this, NULL);
+        opres = ((MATRIX *(*)(MATRIX *, MATRIX *)) (VDATA(root)))(rightptr->this, NULL);
 
       var_delete_temp(leftptr);
       var_delete_temp(rightptr);
