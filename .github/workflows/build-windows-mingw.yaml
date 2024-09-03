@@ -34,7 +34,6 @@ jobs:
         umfpack: [internal, external]
         include:
           - umfpack: external
-            umfpack-package: suitesparse:p
             umfpack-cmake-flags: "-DEXTERNAL_UMFPACK=ON"
 
     steps:
@@ -64,6 +63,7 @@ jobs:
             openblas:p
             parmetis:p
             mumps:p
+            suitesparse:p
             qt6-declarative:p
             qwt-qt6:p
             vtk:p
@@ -83,7 +83,6 @@ jobs:
             unixodbc:p
             utf8cpp:p
             opencascade:p
-            ${{ matrix.umfpack-package }}
 
       - name: install MSMPI
         uses: mpi4py/setup-mpi@v1
@@ -113,6 +112,7 @@ jobs:
             -DWITH_Mumps=ON \
             -DMumps_LIBRARIES=$(pkg-config -libs mumps-dmo) \
             -DMumps_INCLUDE_DIR=$(pkg-config --variable=includedir mumps-dmo) \
+            -DWITH_CHOLMOD=ON \
             -DWITH_ELMERGUI=ON \
             -DWITH_QT6=ON \
             -DWITH_VTK=ON \

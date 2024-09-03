@@ -85,12 +85,14 @@ jobs:
             libopenblas-dev \
             $([ "${{ matrix.mpi }}" == "with" ] && echo "libhypre-dev") \
             $([ "${{ matrix.mpi }}" == "with" ] && echo "libopenmpi-dev libmumps-dev libparmetis-dev") \
+            $([ "${{ matrix.compiler }}" == "gcc" ] && echo "libsuitesparse-dev") \
             libqwt-qt5-dev qtscript5-dev libqt5svg5-dev \
             libvtk9-qt-dev libglvnd-dev \
             occt-misc libocct-data-exchange-dev libocct-draw-dev \
             $([ "${{ matrix.mpi }}" == "with" ] && echo "trilinos-all-dev libptscotch-dev")
 
       - name: configure
+        # CHOLMOD requires a working OpenMP package. So, disable it for clang.
         run: |
           mkdir ${GITHUB_WORKSPACE}/build
           cd ${GITHUB_WORKSPACE}/build
@@ -102,6 +104,7 @@ jobs:
             -DWITH_LUA=ON \
             $([ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_Zoltan=ON" || echo "-DWITH_Zoltan=OFF") \
             $([ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_Mumps=ON" || echo "-DWITH_Mumps=OFF") \
+            $([ "${{ matrix.compiler }}" == "gcc" ] && echo "-DWITH_CHOLMOD=ON" || echo "-DWITH_CHOLMOD=OFF") \
             $([ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_Hypre=ON -DHYPRE_INCLUDE_DIR=/usr/include/hypre" || echo "-DWITH_Hypre=OFF") \
             -DWITH_ELMERGUI=ON \
             -DWITH_VTK=ON \

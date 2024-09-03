@@ -41,7 +41,7 @@ jobs:
           brew update
           brew reinstall gcc
           brew install \
-            cmake libomp openblas open-mpi \
+            cmake libomp openblas open-mpi suitesparse \
             qwt vtk opencascade
           echo "HOMEBREW_PREFIX=$(brew --prefix)" >> $GITHUB_ENV
 
@@ -68,6 +68,7 @@ jobs:
             -DMPI_TEST_MAXPROC=2 \
             -DWITH_Zoltan=OFF \
             -DWITH_Mumps=OFF \
+            -DWITH_CHOLMOD=ON \
             -DWITH_ELMERGUI=ON \
             -DWITH_QT6=ON \
             -DQWT_INCLUDE_DIR="${HOMEBREW_PREFIX}/opt/qwt/lib/qwt.framework/Headers" \
