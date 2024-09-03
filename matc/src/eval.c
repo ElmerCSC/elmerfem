@@ -3,7 +3,7 @@
  *  Elmer, A Finite Element Software for Multiphysical Problems
  *
  *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
- * 
+ *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
- * License along with this library (in file ../LGPL-2.1); if not, write 
- * to the Free Software Foundation, Inc., 51 Franklin Street, 
+ * License along with this library (in file ../LGPL-2.1); if not, write
+ * to the Free Software Foundation, Inc., 51 Franklin Street,
  * Fifth Floor, Boston, MA  02110-1301  USA
  *
  *****************************************************************************/
@@ -66,7 +66,7 @@ $  usage of the function and type of the parameters
 
 
 /*
- * $Id: eval.c,v 1.5 2006/02/02 06:51:16 jpr Exp $ 
+ * $Id: eval.c,v 1.5 2006/02/02 06:51:16 jpr Exp $
  *
  * $Log: eval.c,v $
  * Revision 1.4  2005/08/25 13:44:22  vierinen
@@ -84,22 +84,22 @@ $  usage of the function and type of the parameters
  * Revision 1.2  1998/08/01 12:34:35  jpr
  *
  * Added Id, started Log.
- * 
+ *
  *
  */
 
 #include "elmer/matc.h"
 
-VARIABLE *evaltree(root) TREE *root;
+VARIABLE *evaltree(TREE *root)
 /*======================================================================
-?  Evaluate the equation tree (real hard). The tree might be a list of 
+?  Evaluate the equation tree (real hard). The tree might be a list of
 |  trees. If there is more than one tree in the list, the return value
-|  will be a single column vector, the result from each tree is 
+|  will be a single column vector, the result from each tree is
 |  concatenated to this vector. If there's only one tree, return
 |  value is tree's evaluated result.
 |
-&  strlen(), fopen(), fclose(), var_temp_new(), var_temp_copy(), 
-|  var_delete_temp(), com_check(), var_check(), fnc_check(), 
+&  strlen(), fopen(), fclose(), var_temp_new(), var_temp_copy(),
+|  var_delete_temp(), com_check(), var_check(), fnc_check(),
 |  fnc_exec(), com_pointw(), com_source()
 |
 ^=====================================================================*/
@@ -110,8 +110,8 @@ VARIABLE *evaltree(root) TREE *root;
                        /* evaluated trees results           */
             *subs,     /* indexes for tree elements         */
             *par,      /* parameters for tree elements      */
-            *res,      /* result is returned in this var.   */ 
-                       /* probably used as a temporary too  */ 
+            *res,      /* result is returned in this var.   */
+                       /* probably used as a temporary too  */
             *leftptr,  /* result from left leaf             */
             *rightptr, /* result from right leaf            */
             *tmp,      /* can't manage without these        */
@@ -140,10 +140,10 @@ VARIABLE *evaltree(root) TREE *root;
 
 /*-------------------------------------------------------------------*/
 
-  /* 
+  /*
       while there's trees in the list.
   */
-  while(root) 
+  while(root)
   {
 
     subs = par = tmp = NULL;
@@ -190,7 +190,7 @@ VARIABLE *evaltree(root) TREE *root;
       }
 
 
-      /* 
+      /*
           one of the builtin commands (sin, ones, help, ...)
       */
       if ((com = com_check(SDATA(root))) != (COMMAND *)NULL)
@@ -216,7 +216,7 @@ VARIABLE *evaltree(root) TREE *root;
         }
         else
         {
-          tmp = (*com->sub)(par);
+          tmp = ((VARIABLE *(*)(VARIABLE *)) (com->sub))(par);
         }
       }
 
@@ -249,7 +249,7 @@ VARIABLE *evaltree(root) TREE *root;
       */
       else if ((fp = fopen(SDATA(root),"r")) != (FILE *)NULL)
       {
-        fclose(fp); 
+        fclose(fp);
         tmp = var_temp_new(TYPE_STRING, 1, strlen(SDATA(root)));
         for(i = 0; i < strlen(SDATA(root)); i++)
         {
@@ -270,7 +270,7 @@ VARIABLE *evaltree(root) TREE *root;
 
       break;
 
-    
+
     /******************************************************
                   single string constant
     *******************************************************/
@@ -295,7 +295,7 @@ VARIABLE *evaltree(root) TREE *root;
     *******************************************************/
     case ETYPE_CONST:
       tmp = (VARIABLE *)ALLOCMEM(VARIABLESIZE);
-      tmp->this = CDATA(root)->this; 
+      tmp->this = CDATA(root)->this;
       REFCNT(tmp)++;
       break;
 
@@ -319,12 +319,12 @@ VARIABLE *evaltree(root) TREE *root;
       leftptr  = evaltree(LEFT(root));
       rightptr = evaltree(RIGHT(root));
 
-      if (leftptr && rightptr) 
-        opres = (*VDATA(root))(leftptr->this, rightptr->this);
+      if (leftptr && rightptr)
+        opres = ((MATRIX *(*)(MATRIX *, MATRIX *)) (VDATA(root)))(leftptr->this, rightptr->this);
       else if (leftptr)
-        opres = (*VDATA(root))(leftptr->this, NULL);
+        opres = ((MATRIX *(*)(MATRIX *, MATRIX *)) (VDATA(root)))(leftptr->this, NULL);
       else if (rightptr)
-        opres = (*VDATA(root))(rightptr->this, NULL);
+        opres = ((MATRIX *(*)(MATRIX *, MATRIX *)) (VDATA(root)))(rightptr->this, NULL);
 
       var_delete_temp(leftptr);
       var_delete_temp(rightptr);
@@ -381,7 +381,7 @@ VARIABLE *evaltree(root) TREE *root;
     }
 
     if (subs) var_delete_temp(subs);
-    if (par) var_delete_temp(par); 
+    if (par) var_delete_temp(par);
 
     if (tmp != NULL) dim += NROW(tmp) * NCOL(tmp);/* count size of the result */
 
@@ -389,15 +389,15 @@ VARIABLE *evaltree(root) TREE *root;
   }
  /*-------------------------------------------------------------------*/
 
-  /* 
+  /*
       there was only one tree, so return  it's result.
   */
   if (tmp == first) return first;
 
-  /* 
+  /*
       it was a list of trees, concatenate the results
   */
-  res = var_temp_new(TYPE(first), 1, dim);   
+  res = var_temp_new(TYPE(first), 1, dim);
 
   resbeg = (char *)MATR(res);
   for(tmp = first; tmp; tmp = NEXT(tmp))
@@ -405,7 +405,7 @@ VARIABLE *evaltree(root) TREE *root;
     memcpy(resbeg, (char *)MATR(tmp), MATSIZE(tmp));
     resbeg += MATSIZE(tmp);
   }
-  /* 
+  /*
       and delete rest of the temporaries.
   */
   var_delete_temp(first);
@@ -413,15 +413,15 @@ VARIABLE *evaltree(root) TREE *root;
   return res;
 }
 
-VARIABLE *evalclause(root) CLAUSE *root;
+VARIABLE *evalclause(CLAUSE *root)
 /*======================================================================
 ?  Evaluate the operations list. The list contains equations trees
 |  (actually lists of trees :-).
 |
 &  ALLOCMEM, FREEMEM, STRCOPY, var_temp_new(), var_delete_temp(),
-&  var_check(), com_check(), fnc_check(), evaltree(), 
+&  var_check(), com_check(), fnc_check(), evaltree(),
 ^=====================================================================*/
-{       
+{
   VARIABLE *ptr = NULL,
            *res, *par, *tmp;      /* used for something magic */
 
@@ -436,7 +436,7 @@ VARIABLE *evalclause(root) CLAUSE *root;
   while(root)
   {
     if (root->data == endsym) return ptr;
- 
+
     switch(root->data)
     {
       /************************************************************
@@ -464,7 +464,7 @@ VARIABLE *evalclause(root) CLAUSE *root;
       }
       break;
       /************************************************************
-                       Function definition 
+                       Function definition
       ************************************************************/
       case funcsym:
       {
@@ -481,7 +481,7 @@ VARIABLE *evalclause(root) CLAUSE *root;
         {
           error( "Function not created [%s], identifier in use.\n",name);
         }
-          
+
         /*
          *   allocate mem for FUNCTION structure and add it
          *   to the the FUNCTIONS list
@@ -495,7 +495,7 @@ VARIABLE *evalclause(root) CLAUSE *root;
          *   copy parameter names to the structure.
          */
         argcount = 0;
-        for(tptr = ARGS(root->this); tptr; tptr = NEXT(tptr)) argcount++; 
+        for(tptr = ARGS(root->this); tptr; tptr = NEXT(tptr)) argcount++;
         if (argcount > 0)
         {
           fnc -> parnames = (char **)ALLOCMEM(argcount * sizeof(char *));
@@ -528,12 +528,12 @@ VARIABLE *evalclause(root) CLAUSE *root;
                 }
             }
         }
-  
+
         /*
          *   copy imported variable names to the structure.
          */
         argcount = 0;
-        for(tptr = LEFT(root->this); tptr; tptr = NEXT(tptr)) argcount++; 
+        for(tptr = LEFT(root->this); tptr; tptr = NEXT(tptr)) argcount++;
         if (argcount > 0)
         {
           fnc -> imports = (char **)ALLOCMEM((argcount+1) * sizeof(char *));
@@ -548,7 +548,7 @@ VARIABLE *evalclause(root) CLAUSE *root;
          *   copy exported variable names to the structure.
          */
         argcount = 0;
-        for(tptr = RIGHT(root->this); tptr; tptr = NEXT(tptr)) argcount++; 
+        for(tptr = RIGHT(root->this); tptr; tptr = NEXT(tptr)) argcount++;
         if (argcount > 0)
         {
           fnc -> exports = (char **)ALLOCMEM((argcount+1) * sizeof(char *));
@@ -558,17 +558,17 @@ VARIABLE *evalclause(root) CLAUSE *root;
         }
         else
           fnc -> exports = NULL;
- 
+
         /*
             and finally the function body
         */
         fnc -> body = LINK(root); LINK(root) = NULL;
-  
+
 /*        PrintOut( "Function defined: [%s].\n", name); */
- 
+
         return NULL;
       }
-     
+
 
       /***************************************************************
                              statement
@@ -595,23 +595,23 @@ VARIABLE *evalclause(root) CLAUSE *root;
           r = SDATA( root->this );
 
           /*
-           *  check for name conflicts 
+           *  check for name conflicts
            */
           if ( fnc_check(r) || com_check(r) || lst_find(CONSTANTS, r) )
           {
               error( "VARIABLE not created [%s], identifier in use.\n", r );
           }
-  
+
           /*
            *   is it indexed ?
            */
-          pflg = FALSE; 
+          pflg = FALSE;
           argptr = ARGS(root->this);
           if (argptr)
           {
             iflg = TRUE;
             if ((par = tmp = evaltree(argptr)) != NULL)
-            { 
+            {
               argptr = NEXT(argptr);
               while(argptr)
               {
@@ -622,17 +622,17 @@ VARIABLE *evalclause(root) CLAUSE *root;
             }
           }
         }
-  
+
         /*
          *  evaluate the right side of the statement
          *  and put the result where it belongs
          */
         ptr = evaltree( LINK(root)->this );
         ptr = put_result( ptr, r, par, iflg, pflg );
-   
+
         if ( par ) var_delete_temp( par );
         root = LINK(root);
-   
+
       break;
       }
 
@@ -658,7 +658,7 @@ VARIABLE *evalclause(root) CLAUSE *root;
               root = root -> jmp;
             }
           }
-  
+
           /*
            *   condition true
            */
@@ -682,19 +682,19 @@ VARIABLE *evalclause(root) CLAUSE *root;
           }
         }
       break;
-  
+
       /***************************************************************
                              while statement
       ****************************************************************/
       case whilesym:
-  
+
         while(TRUE)
         {
           if ((res = evaltree(root->this)) == NULL) break;
 
           for(i=0, d=MATR(res); i < NROW(res)*NCOL(res); i++)
             if (*d++ == 0) break;
-  
+
           /*
               condition true, go for another loop
           */
@@ -703,7 +703,7 @@ VARIABLE *evalclause(root) CLAUSE *root;
             ptr = evalclause(LINK(root));
             var_delete_temp(res);
           }
-  
+
           /*
               condition false, done with while-loop
           */
@@ -715,7 +715,7 @@ VARIABLE *evalclause(root) CLAUSE *root;
         }
         root = root->jmp;
       break;
-  
+
       /***************************************************************
                              for statement
       ****************************************************************/
@@ -760,7 +760,7 @@ VARIABLE *evalclause(root) CLAUSE *root;
   return ptr;
 }
 
-VARIABLE *put_values(ptr, resname, par) VARIABLE *ptr, *par; char *resname;
+VARIABLE *put_values(VARIABLE *ptr, char *resname, VARIABLE *par)
 /*======================================================================
 ?  extract values from ptr, indexes in par, and put them to res
 ^=====================================================================*/
@@ -775,11 +775,11 @@ VARIABLE *put_values(ptr, resname, par) VARIABLE *ptr, *par; char *resname;
   int i, j, k,
       rows, cols,
       size1, size2,
-      imax1, imax2, 
+      imax1, imax2,
       ind;
 
   VARIABLE *res;
-  
+
   res = (VARIABLE *)lst_find(VARIABLES, resname);
 
   if (NEXT(par) == NULL)
@@ -813,7 +813,7 @@ VARIABLE *put_values(ptr, resname, par) VARIABLE *ptr, *par; char *resname;
               memcpy(&M(res,i,j),&dtmp[k],csize*sizeof(double));
               j += csize-1;
               k += csize;
-              csize = 0; 
+              csize = 0;
               if (k >= imax1) k = 0;
             }
           }
@@ -825,7 +825,7 @@ VARIABLE *put_values(ptr, resname, par) VARIABLE *ptr, *par; char *resname;
         ind1  = &defind;
         size1 = 1;
         ind2  = MATR(par);
-        size2 = NCOL(par); 
+        size2 = NCOL(par);
       }
     }
     else
@@ -833,13 +833,13 @@ VARIABLE *put_values(ptr, resname, par) VARIABLE *ptr, *par; char *resname;
       ind1  = &defind;
       size1 = 1;
       ind2  = MATR(par);
-      size2 = NCOL(par); 
+      size2 = NCOL(par);
     }
   }
   else
   {
     ind1  = MATR(par);
-    size1 = NCOL(par); 
+    size1 = NCOL(par);
     ind2  = MATR(NEXT(par));
     size2 = NCOL(NEXT(par));
   }
@@ -906,15 +906,13 @@ VARIABLE *put_values(ptr, resname, par) VARIABLE *ptr, *par; char *resname;
   return res;
 }
 
-VARIABLE *put_result(ptr, resname, par, indexflag, printflag)
+VARIABLE *put_result(VARIABLE *ptr, char *resname, VARIABLE *par,
+    int indexflag, int printflag)
 /*======================================================================
 ?  copy VARIABLE from one place to another
-|  and conditionally print the result  
+|  and conditionally print the result
 ^=====================================================================*/
-   int indexflag, printflag;
-   VARIABLE *ptr, *par;
-   char *resname;
-{                       
+{
    VARIABLE *res = NULL;
 
   var_delete( "ans" );

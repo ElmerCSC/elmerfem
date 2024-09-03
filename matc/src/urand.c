@@ -3,7 +3,7 @@
  *  Elmer, A Finite Element Software for Multiphysical Problems
  *
  *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
- * 
+ *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
- * License along with this library (in file ../LGPL-2.1); if not, write 
- * to the Free Software Foundation, Inc., 51 Franklin Street, 
+ * License along with this library (in file ../LGPL-2.1); if not, write
+ * to the Free Software Foundation, Inc., 51 Franklin Street,
  * Fifth Floor, Boston, MA  02110-1301  USA
  *
  *****************************************************************************/
@@ -66,7 +66,7 @@ $  usage of the function and type of the parameters
 
 
 /*
- * $Id: urand.c,v 1.4 2006/02/07 10:24:44 jpr Exp $ 
+ * $Id: urand.c,v 1.4 2006/02/07 10:24:44 jpr Exp $
  *
  * $Log: urand.c,v $
  * Revision 1.4  2006/02/07 10:24:44  jpr
@@ -84,7 +84,7 @@ $  usage of the function and type of the parameters
  * Revision 1.2  1998/08/01 12:34:57  jpr
  *
  * Added Id, started Log.
- * 
+ *
  *
  */
 
@@ -108,9 +108,9 @@ double urand(int *iy)
 
   if (m2 == 0)
   {
-    
+
     /* if first entry, compute machine integer word length */
-    
+
     m = 1;
     do
     {
@@ -118,44 +118,44 @@ double urand(int *iy)
       m = itwo * m2;
     } while(m > m2);
     halfm = m2;
-    
+
     /* compute multiplier and increment for linear congruential method */
-    
+
     ia = 8 * (int)(halfm * atan(1.0) / 8.00) + 5;
     ic = 2*(int)(halfm * (0.50 - sqrt(3.0) / 6.0)) + 1;
     mic = (m2 - ic) + m2;
-    
+
     /* s is the scale factor for converting to floating point */
-    
+
     s = 0.5 / halfm;
-    
+
   }
-  
+
   /* compute next random number */
-  
+
   *iy = *iy * ia;
-  
+
   /*
     the following statement is for computers which do not allow
     integer overflow on addition
     */
-  
+
   if (*iy > mic) *iy = (*iy - m2) - m2;
-  
+
   *iy = *iy + ic;
-  
+
   /*
     the following statement is for computers where the
     word length for addition is greater than for multiplication
     */
-  
+
   if (*iy / 2 > m2) *iy = (*iy - m2) - m2;
-  
+
   /*
     the following statement is for computers where integer
     overflow affects the sign bit
     */
-  
+
   if (*iy < 0) *iy = (*iy + m2) + m2;
 
   return *iy * s;

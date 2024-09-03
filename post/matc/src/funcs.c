@@ -66,7 +66,7 @@ $  usage of the function and type of the parameters
 
 
 /*
- * $Id: funcs.c,v 1.2 2005/05/27 12:26:20 vierinen Exp $ 
+ * $Id: funcs.c,v 1.2 2005/05/27 12:26:20 vierinen Exp $
  *
  * $Log: funcs.c,v $
  * Revision 1.2  2005/05/27 12:26:20  vierinen
@@ -81,13 +81,13 @@ $  usage of the function and type of the parameters
  * Revision 1.2  1998/08/01 12:34:39  jpr
  *
  * Added Id, started Log.
- * 
+ *
  *
  */
 
 #include "elmer/matc.h"
 
-FUNCTION *fnc_check(name) char *name;
+FUNCTION *fnc_check(char *name)
 /*======================================================================
 ?  Look for specified user defined function from the FUNCTIONS list
 |
@@ -98,10 +98,10 @@ FUNCTION *fnc_check(name) char *name;
   return (FUNCTION *)lst_find(FUNCTIONS, name);
 }
 
-VARIABLE *fnc_delete(ptr) VARIABLE *ptr;
+VARIABLE *fnc_delete(VARIABLE *ptr)
 /*======================================================================
 ?  Unlink given function definition from list FUNCTION *FUNC_HEAD,
-|  and free associated memory. 
+|  and free associated memory.
 |
 |  user command fdel("name")
 |
@@ -138,7 +138,7 @@ VARIABLE *fnc_delete(ptr) VARIABLE *ptr;
    return (VARIABLE *)NULL;
 }
 
-VARIABLE *fnc_list(ptr) VARIABLE *ptr;
+VARIABLE *fnc_list(VARIABLE *ptr)
 /*======================================================================
 ?  Print given function definition from list FUNCTION *FUNC_HEAD,
 |
@@ -154,11 +154,11 @@ VARIABLE *fnc_list(ptr) VARIABLE *ptr;
    FILE *fp = math_out;
 
    /*
-       convert string from ptr 
+       convert string from ptr
    */
    s = var_to_string(ptr);
- 
-   /* 
+
+   /*
        function exists. try listing the definition
    */
    if ((fnc = fnc_check(s)) != (FUNCTION *)NULL) {
@@ -181,7 +181,7 @@ VARIABLE *fnc_list(ptr) VARIABLE *ptr;
      if ( fnc->parcount != 0 )
      {
          PrintOut( "(%s", fnc->parnames[0] );
-         for( i = 1; i < fnc -> parcount; i++ ) 
+         for( i = 1; i < fnc -> parcount; i++ )
              PrintOut( ",%s", fnc -> parnames[i] );
          PrintOut( ")" );
      }
@@ -209,7 +209,7 @@ VARIABLE *fnc_list(ptr) VARIABLE *ptr;
 }
 
 
-void fnc_free_entry(fnc) FUNCTION *fnc;
+void fnc_free_entry(FUNCTION *fnc)
 /*======================================================================
 ?  Free allocated memory from FUNCTION structure.
 |
@@ -243,9 +243,9 @@ void fnc_free_entry(fnc) FUNCTION *fnc;
   lst_free(FUNCTIONS, (LIST *)fnc);
 }
 
-void fnc_free()
+void fnc_free(void)
 /*======================================================================
-?  Deallocate memory reserved for user defined functions 
+?  Deallocate memory reserved for user defined functions
 | and unlink the list FUNCTION *FUNC_HEAD.
 |
 @  FUNCTION *FUNC_HEAD
@@ -264,14 +264,14 @@ void fnc_free()
    FUNC_HEAD = (LIST *)NULL;     /* security */
 }
 
-VARIABLE *fnc_exec(fnc, par) FUNCTION *fnc; VARIABLE *par;
+VARIABLE *fnc_exec(FUNCTION *fnc, VARIABLE *par)
 /*======================================================================
-?  Execute function from parameter FUNCTION *fnc, with it's 
+?  Execute function from parameter FUNCTION *fnc, with it's
 |  parameters in VARIABLE VARIABLE *par;
 |
-=  Return value is the executed function's value, which is 
-|  given in VARIABLE _function_name, or if nonexeistent, 
-|  the return value of the last executed statement in 
+=  Return value is the executed function's value, which is
+|  given in VARIABLE _function_name, or if nonexeistent,
+|  the return value of the last executed statement in
 |  function body.
 |
 @  VAR_HEAD
@@ -309,7 +309,7 @@ VARIABLE *fnc_exec(fnc, par) FUNCTION *fnc; VARIABLE *par;
       if ((ptr = var_check(fnc->imports[i])) != NULL)
       {
         VAR_HEAD = (LIST *)par;
-        if (var_check(fnc->imports[i]) == NULL) 
+        if (var_check(fnc->imports[i]) == NULL)
         {
           ptr = var_temp_copy(ptr);
           NAME(ptr) = STRCOPY(fnc->imports[i]);
@@ -318,11 +318,11 @@ VARIABLE *fnc_exec(fnc, par) FUNCTION *fnc; VARIABLE *par;
         par = (VARIABLE *)VAR_HEAD;
         VAR_HEAD = (LIST *)headsave;
       }
-      else 
+      else
         PrintOut( "WARNING: %s: imported variable [%s] doesn't exist\n",
                           NAME(fnc), fnc->imports[i]);
 
- 
+
    /*
        parameters to functions own list of VARIABLES.
    */
@@ -340,7 +340,7 @@ VARIABLE *fnc_exec(fnc, par) FUNCTION *fnc; VARIABLE *par;
    if (fnc->exports != NULL)
      for(i = 0; fnc->exports[i] != NULL; i++)
        if ((ptr = var_check(fnc->exports[i])) != NULL)
-       { 
+       {
          VAR_HEAD = (LIST *)headsave;
 #if 0
          ptr = var_temp_copy(ptr);
@@ -388,7 +388,7 @@ VARIABLE *fnc_exec(fnc, par) FUNCTION *fnc; VARIABLE *par;
 }
 
 
-void fnc_com_init()
+void fnc_com_init(void)
 /*======================================================================
 ?  Initialize function handling commands.
 |
