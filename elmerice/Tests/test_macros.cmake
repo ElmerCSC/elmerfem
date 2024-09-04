@@ -61,14 +61,14 @@ MACRO(RUN_ELMERICE_TEST)
     EXECUTE_PROCESS(COMMAND ${ELMERSOLVER_BIN}
       OUTPUT_FILE "test-stdout.log"
       ERROR_FILE "test-stderr.log")
-  ELSEIF("${LIST_VAR}" STREQUAL "${WITH_MPI}" AND ${WITH_MPI})
+  ELSEIF("${LIST_VAR}" STREQUAL "WITH_MPI" AND WITH_MPI)
     # Macro has been called with WITH_MPI argument and MPI is enabled
     SET(N "${NPROCS}")
     IF("${N}" STREQUAL "")
       MESSAGE(FATAL_ERROR "Test failed:variable <NPROC> not defined. Set <NPROC> in runTest.cmake")
     ELSE()
       FILE(REMOVE "TEST.PASSED_${N}")
-      EXECUTE_PROCESS(COMMAND ${MPIEXEC} ${MPIEXEC_NUMPROC_FLAG} ${N} ${MPIEXEC_PREFLAGS} ${ELMERSOLVER_BIN} ${MPIEXEC_POSTFLAGS}
+      EXECUTE_PROCESS(COMMAND "${MPIEXEC}" ${MPIEXEC_NUMPROC_FLAG} ${N} ${MPIEXEC_PREFLAGS} ${ELMERSOLVER_BIN} ${MPIEXEC_POSTFLAGS}
         OUTPUT_FILE "test-stdout.log"
         ERROR_FILE "test-stderr.log")
     ENDIF()
