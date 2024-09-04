@@ -656,16 +656,17 @@ ENDIF()
 
 # Find external arpack and parpack
 IF(EXTERNAL_ARPACK)
-  MESSAGE(STATUS "Using external arpack instead of built-in")
+  MESSAGE(STATUS "Using external arpack library instead of built-in")
   FIND_PACKAGE(ARPACK REQUIRED)
   SET(CMAKE_REQUIRED_LIBRARIES
     ${CMAKE_REQUIRED_LIBRARIES} ${ARPACK_LIBRARIES})
-  IF(MPI_FOUND)
-    SET(CMAKE_REQUIRED_LIBRARIES
+ENDIF()
+
+IF(MPI_FOUND AND EXTERNAL_PARPACK)
+  MESSAGE(STATUS "Using external parpack library instead of built-in")
+  FIND_PACKAGE(PARPACK REQUIRED)
+  SET(CMAKE_REQUIRED_LIBRARIES
     ${CMAKE_REQUIRED_LIBRARIES} ${PARPACK_LIBRARIES})
-  ENDIF()
-ELSE()
-  MESSAGE(STATUS "Using built-in arpack library")
 ENDIF()
 
 ADD_SUBDIRECTORY(fhutiter)
