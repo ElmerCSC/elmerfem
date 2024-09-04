@@ -113,6 +113,7 @@ jobs:
             -DMumps_LIBRARIES=$(pkg-config -libs mumps-dmo) \
             -DMumps_INCLUDE_DIR=$(pkg-config --variable=includedir mumps-dmo) \
             -DWITH_CHOLMOD=ON \
+            -DWITH_ElmerIce=ON \
             -DWITH_ELMERGUI=ON \
             -DWITH_QT6=ON \
             -DWITH_VTK=ON \
@@ -141,7 +142,7 @@ jobs:
         run: |
           cd ${GITHUB_WORKSPACE}/build
           ctest . \
-            -L quick \
+            -L "quick|elmerice-fast" \
             -j$(nproc) \
             --timeout 180
 
