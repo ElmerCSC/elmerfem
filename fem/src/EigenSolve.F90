@@ -1193,7 +1193,13 @@ END SUBROUTINE CheckResiduals
 
       Params => Solver % Values
 
-      NCV   = 3*NEIG+1
+      NCV = ListGetInteger( Params, 'Eigen System Lanczos Vectors', stat )
+      IF ( .NOT. stat ) NCV = 3*NEIG + 1
+
+      IF ( NCV <=  NEIG ) THEN
+        CALL Fatal( 'EigenSolve', & 
+            'Number of Lanczos vectors must exceed the number of eigenvalues.' )
+      END IF
 
       ALLOCATE( WORKL(3*NCV**2 + 6*NCV), D(NCV), &
          WORKEV(3*NCV), V(n,NCV+1), CHOOSE(NCV), STAT=istat )
