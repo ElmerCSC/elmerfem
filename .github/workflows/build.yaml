@@ -143,8 +143,14 @@ jobs:
           CTEST_OUTPUT_ON_FAILURE: 1
         run: |
           cd ${GITHUB_WORKSPACE}/build
-          failed_tests=($(sed -n 's/^.*#[0-9]*\:\s*\(\S*\).*Failed.*/\1/p' ./ctest_output.log))
+          # read names of failed tests from log and strip potential "_np*" suffix
+          failed_tests=($(sed -n 's/^.*#[0-9]*\:\s*\(\S*\).*Failed.*/\1/p' ./ctest_output.log | sed -e 's/_np[0-9]*$//g'))
+          # remove duplicate test names
+          declare -A unique_failed_tests
           for test in "${failed_tests[@]}"; do
+            unique_failed_tests["${test}"]="${test}";
+          done
+          for test in "${unique_failed_tests[@]}"; do
             # check if test is from fem or ElmerIce
             if [ -d fem/tests/${test} ]; then
               test_root=fem/tests
