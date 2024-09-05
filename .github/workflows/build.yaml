@@ -106,6 +106,7 @@ jobs:
             $([ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_Mumps=ON" || echo "-DWITH_Mumps=OFF") \
             $([ "${{ matrix.compiler }}" == "gcc" ] && echo "-DWITH_CHOLMOD=ON" || echo "-DWITH_CHOLMOD=OFF") \
             $([ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_Hypre=ON -DHYPRE_INCLUDE_DIR=/usr/include/hypre" || echo "-DWITH_Hypre=OFF") \
+            $([ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_ElmerIce=ON" || echo "-DWITH_ElmerIce=OFF") \
             -DWITH_ELMERGUI=ON \
             -DWITH_VTK=ON \
             -DWITH_OCC=ON \
@@ -133,7 +134,7 @@ jobs:
           CTEST_OUTPUT_ON_FAILURE: 1
         run: |
           cd ${GITHUB_WORKSPACE}/build
-          set -o pipefail && ctest -L quick -j$(nproc) . | tee ./ctest_output.log
+          set -o pipefail && ctest -L "quick|elmerice-fast" -j$(nproc) . | tee ./ctest_output.log
 
       - name: Re-run tests
         if: always() && (steps.run-ctest.outcome == 'failure')
@@ -142,18 +143,30 @@ jobs:
           CTEST_OUTPUT_ON_FAILURE: 1
         run: |
           cd ${GITHUB_WORKSPACE}/build
-          failed_tests=($(sed -n 's/^.*#[0-9]*\:\s*\(\S*\).*Failed.*/\1/p' ./ctest_output.log))
+          # read names of failed tests from log and strip potential "_np*" suffix
+          failed_tests=($(sed -n 's/^.*#[0-9]*\:\s*\(\S*\).*Failed.*/\1/p' ./ctest_output.log | sed -e 's/_np[0-9]*$//g'))
+          # remove duplicate test names
+          declare -A unique_failed_tests
           for test in "${failed_tests[@]}"; do
-            echo "::group::Content of fem/tests/${test}"
-            echo ---- Files ----
-            ls -Rl fem/tests/${test}
-            if [ -f fem/tests/${test}/test-stderr*.log ]; then
-              echo ---- Content of test-stderr*.log ----
-              cat fem/tests/${test}/test-stderr*.log
+            unique_failed_tests["${test}"]="${test}";
+          done
+          for test in "${unique_failed_tests[@]}"; do
+            # check if test is from fem or ElmerIce
+            if [ -d fem/tests/${test} ]; then
+              test_root=fem/tests
+            else
+              test_root=elmerice/Tests
             fi
-            if [ -f fem/tests/${test}/test-stdout*.log ]; then
+            echo "::group::Content of ${test_root}/${test}"
+            echo ---- Files ----
+            ls -Rl ${test_root}/${test}
+            if [ -f ${test_root}/${test}/test-stderr*.log ]; then
+              echo ---- Content of test-stderr*.log ----
+              cat ${test_root}/${test}/test-stderr*.log
+            fi
+            if [ -f ${test_root}/${test}/test-stdout*.log ]; then
               echo ---- Content of test-stdout*.log ----
-              cat fem/tests/${test}/test-stdout*.log
+              cat ${test_root}/${test}/test-stdout*.log
             fi
             echo "::endgroup::"
           done
