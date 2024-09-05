@@ -730,7 +730,11 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
       previ = 1
     END IF
   END IF
-    
+  IF(previ > 0) THEN
+    CALL Info('ElasticSolver','Taking previous displacement from PrevValues(:,'//I2S(previ)//')',Level=30)
+  END IF
+  
+  
   time = GetTime()
   
   CALL DefaultStart()
@@ -860,23 +864,26 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
         InertialLoad = 0.0D0
 
         IF ( ASSOCIATED(BodyForce) ) THEN
-           LoadVector(1,1:n) = GetReal( BodyForce, 'Stress Bodyforce 1', GotIt )
-           LoadVector(2,1:n) = GetReal( BodyForce, 'Stress Bodyforce 2', GotIt )
-           IF ( dim > 2 ) THEN
+          IF( ListCheckPrefix(BodyForce,'Stress Bodyforce') ) THEN
+            LoadVector(1,1:n) = GetReal( BodyForce, 'Stress Bodyforce 1', GotIt )
+            LoadVector(2,1:n) = GetReal( BodyForce, 'Stress Bodyforce 2', GotIt )
+            IF ( dim > 2 ) THEN
               LoadVector(3,1:n) = GetReal( BodyForce, 'Stress Bodyforce 3', GotIt )
-           END IF
-           
-           InertialLoad(1,1:n) = GetReal( BodyForce, 'Inertial Bodyforce 1', GotIt )
-           InertialLoad(2,1:n) = GetReal( BodyForce, 'Inertial Bodyforce 2', GotIt )
+            END IF
+          END IF
 
-           IF ( dim > 2 ) THEN
+          IF( ListCheckPrefix(BodyForce,'Inertial Bodyforce') ) THEN
+            InertialLoad(1,1:n) = GetReal( BodyForce, 'Inertial Bodyforce 1', GotIt )
+            InertialLoad(2,1:n) = GetReal( BodyForce, 'Inertial Bodyforce 2', GotIt )
+            IF ( dim > 2 ) THEN
               InertialLoad(3,1:n) = GetReal(  BodyForce, 'Inertial Bodyforce 3', GotIt )
-           END IF
+            END IF
+          END IF
 
-           IF( STDOFS > dim ) THEN
-             LoadVector(STDOFs,1:n) = GetReal( BodyForce, 'Stress Volume Source', GotIt )                        
-           END IF
-         END IF
+          IF( STDOFS > dim ) THEN
+            LoadVector(STDOFs,1:n) = GetReal( BodyForce, 'Stress Volume Source', GotIt )                        
+          END IF
+        END IF
                 
         !------------------------------------------------------------------------------
         !        Get values of field variables:
