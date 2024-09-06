@@ -150,7 +150,7 @@ Material 1
   Name = "Ice"
   Youngs modulus = 1.0e9 ! 1e9
   Density = #rhoi
-  Poisson ratio = $2.0/3.0
+  Poisson ratio = $1.0/3.0
 End
 
 Material 2
@@ -238,5 +238,5 @@ Boundary Condition 6
   Spring 3 = #k0
 End
 
-Solver 1 :: Reference Norm = 2.28884446E-01
-Solver 2 :: Reference Norm = 1.40346989E-01
+Solver 1 :: Reference Norm = 2.26994935E-01
+Solver 2 :: Reference Norm = 1.43211477E-01
