@@ -45,6 +45,10 @@ IF(NOT PARPACK_FOUND)
     MESSAGE(STATUS "Manual search of parpack")
     # Try to find PARPACK header
     SET(ARPACKINCLUDE
+      "${PARPACK_ROOT}/include"
+      "$ENV{PARPACK_ROOT}/include"
+      "${PARPACKROOT}/include"
+      "$ENV{PARPACKROOT}/include"
       "${ARPACK_ROOT}/include"
       "$ENV{ARPACK_ROOT}/include"
       "${ARPACKROOT}/include"
@@ -55,6 +59,10 @@ IF(NOT PARPACK_FOUND)
       HINTS ${ARPACKINCLUDE} PATH_SUFFIXES arpack arpackng arpack-ng parpack parpackng parpack-ng)
     # Try to find PARPACK libraries
     SET(ARPACKLIB
+      "${PARPACK_ROOT}/lib"
+      "$ENV{PARPACK_ROOT}/lib64"
+      "${PARPACKROOT}/lib"
+      "$ENV{PARPACKROOT}/lib64"
       "${ARPACK_ROOT}/lib"
       "$ENV{ARPACK_ROOT}/lib64"
       "${ARPACKROOT}/lib"
