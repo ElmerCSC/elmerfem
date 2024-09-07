@@ -9,54 +9,79 @@
 #  ZOLTAN_LIBRARY            - zoltan library is
 #  ZOLTAN_INCLUDE_DIR       - zoltan include dir.
 
-INCLUDE(FindPackageHandleStandardArgs)
-
-# If ZOLTAN_LIBRARY and ZOLTAN_INCLUDE_DIR  are already defined, do nothing
 IF(ZOLTAN_LIBRARY AND ZOLTAN_INCLUDE_DIR)
-   SET(ZOLTAN_FOUND TRUE)
-   RETURN()
-ENDIF()
-
-SET(ZOLTAN_FOUND FALSE)
-SET(ZOLTANINCLUDE
-  "${ZOLTANROOT}/include"
-  "$ENV{ZOLTANROOT}/include"
-  "${ZOLTAN_ROOT}/include"
-  "$ENV{ZOLTAN_ROOT}/include"
-  "${CMAKE_SOURCE_DIR}/zoltan/include"
-  INTERNAL
-  )
-
-FIND_PATH(ZOLTAN_INCLUDE_DIR
-  zoltan.h
-  HINTS 
-  ${ZOLTANINCLUDE}
-  )
-
-SET(ZOLTANLIB 
-  "${ZOLTANROOT}/lib"
-  "$ENV{ZOLTANROOT}/lib"
-  "${ZOLTAN_ROOT}/lib"
-  "$ENV{ZOLTAN_ROOT}/lib"
-  "${CMAKE_SOURCE_DIR}/zoltan/lib"
-  INTERNAL)
-
-FIND_LIBRARY(ZOLTAN_LIBRARY zoltan HINTS ${ZOLTANLIB})
-
-IF (ZOLTAN_INCLUDE_DIR AND ZOLTAN_LIBRARY)
-  UNSET(ZOLTAN_FAILMSG)
-  SET(ZOLTANLIB_FOUND TRUE)
-ELSE()
-  SET(ZOLTAN_FAILMSG "ZOLTAN libraries not found.")
-ENDIF()
-
-IF (NOT ZOLTAN_FAILMSG)
   SET(ZOLTAN_FOUND TRUE)
+ELSE()
+  SET(ZOLTAN_FOUND FALSE)
 ENDIF()
 
-MARK_AS_ADVANCED(
-  ZOLTANINCLUDE
-  ZOLTANLIB
-  ZOLTAN_FAILMSG
-  ZOLTAN_INCLUDE_DIR
-  ZOLTAN_LIBRARY)
+IF(NOT ZOLTAN_FOUND)
+  MESSAGE(STATUS "Finding Zoltan library")
+  # Try to find with CMake config file of upstream Zoltan.
+  FIND_PACKAGE(ZOLTAN CONFIG NAMES Zoltan zoltan)
+  IF(ZOLTAN_FOUND)
+    GET_TARGET_PROPERTY(ZOLTAN_INCLUDE_DIR Zoltan::zoltan INTERFACE_INCLUDE_DIRECTORIES)
+    GET_TARGET_PROPERTY(ZOLTAN_LIBRARY Zoltan::zoltan IMPORTED_LOCATION_RELEASE)
+    # Check if a debug build was used
+    IF(NOT ZOLTAN_LIBRARY)
+      GET_TARGET_PROPERTY(ZOLTAN_LIBRARY Zoltan::zoltan IMPORTED_LOCATION_DEBUG)
+    ENDIF()
+    IF(Zoltan_ENABLE_ParMETIS)
+      FIND_PACKAGE(ParMetis)
+    ENDIF()
+  ENDIF()
+
+  IF(NOT ZOLTAN_INCLUDE_DIR AND NOT ZOLTAN_LIBRARY)
+
+    INCLUDE(FindPackageHandleStandardArgs)
+    MESSAGE(STATUS "Manual search of Zoltan library")
+
+    SET(ZOLTANINCLUDE
+      "${ZOLTANROOT}/include"
+      "$ENV{ZOLTANROOT}/include"
+      "${ZOLTAN_ROOT}/include"
+      "$ENV{ZOLTAN_ROOT}/include"
+      "${CMAKE_SOURCE_DIR}/zoltan/include"
+      INTERNAL)
+    FIND_PATH(ZOLTAN_INCLUDE_DIR zoltan.h HINTS ${ZOLTANINCLUDE})
+
+    SET(ZOLTANLIB
+      "${ZOLTANROOT}/lib"
+      "$ENV{ZOLTANROOT}/lib"
+      "${ZOLTAN_ROOT}/lib"
+      "$ENV{ZOLTAN_ROOT}/lib"
+      "${CMAKE_SOURCE_DIR}/zoltan/lib"
+      INTERNAL)
+    FIND_LIBRARY(ZOLTAN_LIBRARY zoltan HINTS ${ZOLTANLIB})
+
+  ENDIF(NOT ZOLTAN_INCLUDE_DIR AND NOT ZOLTAN_LIBRARY)
+
+ENDIF(NOT ZOLTAN_FOUND)
+
+# This checks could be inadequate because this variables are not empty if nothing found
+# Other option is to use the keyword REQUIRED, but this will increase cmake version to 3.18
+# https://cmake.org/cmake/help/latest/command/find_library.html
+# https://cmake.org/cmake/help/latest/command/find_path.html
+IF (ZOLTAN_INCLUDE_DIR AND ZOLTAN_LIBRARY)
+  SET(ZOLTAN_FOUND TRUE)
+ #The config script was not used, define the target manually
+  IF(NOT TARGET Zoltan::zoltan)
+    ADD_LIBRARY(Zoltan::zoltan SHARED IMPORTED)
+    SET_TARGET_PROPERTIES(Zoltan::zoltan PROPERTIES
+                          INTERFACE_INCLUDE_DIRECTORIES ${ZOLTAN_INCLUDE_DIR}
+                          IMPORTED_LOCATION ${ZOLTAN_LIBRARY} )
+  ENDIF()
+  IF (NOT ZOLTAN_FIND_QUIETLY)
+    MESSAGE(STATUS "Zoltan library found")
+    MESSAGE(STATUS "Zoltan include dir: ${ZOLTAN_INCLUDE_DIR}")
+    MESSAGE(STATUS "Zoltan library: ${ZOLTAN_LIBRARY}")
+  ENDIF()
+ELSE()
+  SET(ZOLTAN_FOUND FALSE)
+  IF (ZOLTAN_FIND_REQUIRED)
+      MESSAGE(FATAL_ERROR "Zoltan library not found.")
+  ENDIF()
+
+ENDIF(ZOLTAN_INCLUDE_DIR AND ZOLTAN_LIBRARY)
+
+MARK_AS_ADVANCED( ZOLTANINCLUDE ZOLTANLIB ZOLTAN_INCLUDE_DIR ZOLTAN_LIBRARY )
