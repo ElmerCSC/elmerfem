@@ -1249,7 +1249,8 @@ CONTAINS
          ElemFirst, ElemLast, totsize, i2, j2, ind2
      REAL(KIND=dp), POINTER :: FieldValues(:), LoadValues(:), &
          ElemLimit(:),ElemInit(:), ElemActive(:)
-     REAL(KIND=dp) :: LimitSign, EqSign, ValEps, LoadEps, val
+     REAL(KIND=dp) :: LimitSign, EqSign, ValEps, LoadEps, ValEps0, LoadEps0, &
+         MaxValue, MaxLoad, val
      INTEGER, POINTER :: FieldPerm(:), NodeIndexes(:)
      LOGICAL :: Found,AnyLimitBC, AnyLimitBF, GotInit, GotActive
      LOGICAL, ALLOCATABLE :: LimitDone(:)
@@ -1257,18 +1258,17 @@ CONTAINS
      TYPE(ValueList_t), POINTER :: Params, Entity
      LOGICAL, ALLOCATABLE :: InterfaceDof(:)
      INTEGER :: ConservativeAfterIters, NonlinIter, CoupledIter, DownStreamDirection
-     LOGICAL :: Conservative, ConservativeAdd, ConservativeRemove, &
+     LOGICAL :: Conservative, ConservativeAdd, ConservativeRemove, RelativeEps, &
          DoAdd, DoRemove, DirectionActive, FirstTime, DownStreamRemove
      TYPE(Mesh_t), POINTER :: Mesh
 
      CHARACTER(:), ALLOCATABLE :: Name,LimitName, InitName, ActiveName
      CHARACTER(*), PARAMETER :: Caller = 'DetermineSoftLimiter'
-     
+
      Model => CurrentModel
      Var => Solver % Variable
      Mesh => Solver % Mesh
      
-
      ! Check the iterations counts and determine whether this is the first 
      ! time with this solver. 
      !------------------------------------------------------------------------
@@ -1303,7 +1303,6 @@ CONTAINS
        RETURN
      END IF
      LoadValues => LoadVar % Values
-
 
      ! The variable to be constrained by the soft limiters
      FieldValues => Var % Values
@@ -1342,11 +1341,15 @@ CONTAINS
        IF(.NOT. Found ) DownStreamDirection = 1
      END IF
        
-     LoadEps = ListGetConstReal(Params,'Limiter Load Tolerance',Found ) 
-     IF(.NOT. Found ) LoadEps = 1.0e-8_dp
-         
-     ValEps = ListGetConstReal(Params,'Limiter Value Tolerance',Found ) 
-     IF(.NOT. Found ) ValEps = 1.0e-8_dp
+     LoadEps0 = ListGetConstReal(Params,'Limiter Load Tolerance',Found ) 
+     IF(.NOT. Found ) LoadEps0 = 1.0e-8_dp
+     LoadEps = LoadEps0
+     
+     ValEps0 = ListGetConstReal(Params,'Limiter Value Tolerance',Found ) 
+     IF(.NOT. Found ) ValEps0 = 1.0e-8_dp
+     ValEps = ValEps0
+
+     RelativeEps = ListGetLogical(Params,'Limiter Relative Tolerance', Found ) 
      
      ! The user may want to toggle the sign for various kinds of equations
      ! The default sign that come from standard formulation of Laplace equation.
@@ -1447,6 +1450,25 @@ CONTAINS
            LimitDone = .FALSE.
          END IF
 
+         IF( RelativeEps ) THEN         
+           IF( dofs == 1 ) THEN
+             MaxLoad = MAXVAL( ABS( LoadValues ) )
+             MaxValue = MAXVAL( ABS( Var % Values ) ) 
+           ELSE
+             MaxLoad = MAXVAL( ABS( LoadValues(dof::dofs ) ) )
+             MaxValue = MAXVAL( ABS( Var % Values(dof::dofs) ) ) 
+           END IF
+           MaxLoad = ParallelReduction(MaxLoad)
+           MaxValue = ParallelReduction(MaxValue)
+           IF( InfoActive(20) ) THEN
+             WRITE(Message,'(A,ES12.3)') 'Using load maximum for scaling: ',MaxLoad
+             CALL Info(Caller,Message)
+             WRITE(Message,'(A,ES12.3)') 'Using value maximum for scaling: ',MaxValue
+             CALL Info(Caller,Message)
+           END IF
+           LoadEps = LoadEps0 * MaxLoad
+           ValEps = ValEps0 * MaxValue 
+         END IF
 
          IF( FirstTime ) THEN
            ! In the first time set the initial set 
@@ -1701,7 +1723,7 @@ CONTAINS
                  ! This means that set is released only at the boundaries. 
                  IF( ConservativeRemove ) DoRemove = InterfaceDof( ind ) 
                  IF( DoRemove ) THEN
-                   IF(LimitActive(ind)) THEN
+                   IF(LimitActive(ind)) THEN                     
                      removed = removed + 1
                      LimitActive(ind) = .FALSE.
                    END IF
@@ -8480,7 +8502,7 @@ CONTAINS
       CALL Info(Caller,'No Dirichlet conditions to enforce, exiting!',Level=10)
       RETURN
     ELSE
-      CALL Info(Caller,'Enforcing Dirichlet conditions...',Level=10)
+      CALL Info(Caller,'Enforcing total of '//I2S(n)//' Dirichlet conditions.',Level=10)
     END IF    
         
     ! Communicate the Dirichlet conditions for parallel cases since there may be orphans      
@@ -20279,7 +20301,7 @@ CONTAINS
     CHARACTER(:), ALLOCATABLE :: BoundaryName
     TYPE(Nodes_t) :: Nodes
     REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:)
-    REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:)
+    REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:), rhs(:)
     REAL(KIND=dp) :: detJ, val
     LOGICAL :: Stat
     
@@ -20290,6 +20312,9 @@ CONTAINS
     ALLOCATE( Basis(n), dBasisdx(n, 3), FORCE(N), STIFF(N,N), &
         Nodes % x(n), Nodes % y(n), Nodes % z(n), &
         STAT=istat)
+
+    ALLOCATE( rhs(A % NumberOfRows) )
+    rhs = 0.0_dp
     
     IF(.FALSE.) THEN
       N = Mesh % NumberOfNodes
@@ -20343,11 +20368,12 @@ CONTAINS
         END DO
       END DO
       
-      CALL UpdateGlobalEquations( A,STIFF,A % rhs,FORCE,n,1,Perm(Indexes(1:n)) )
+      CALL UpdateGlobalEquations( A,STIFF,rhs,FORCE,n,1,Perm(Indexes(1:n)) )
     END DO
     
     DEALLOCATE( Basis, dBasisdx, FORCE, STIFF, & 
         Nodes % x, Nodes % y, Nodes % z)
+    DEALLOCATE( rhs ) 
 
   END SUBROUTINE LaplaceMatrixAssembly
 
@@ -20372,7 +20398,6 @@ CONTAINS
     REAL(KIND=dp), POINTER :: Basis(:),rhs(:)
     REAL(KIND=dp) :: detJ, val
     LOGICAL :: Stat
-    
     
     Mesh => Solver % Mesh
         
@@ -20425,6 +20450,11 @@ CONTAINS
         Nodes % x, Nodes % y, Nodes % z)
     DEALLOCATE( rhs )
 
+    ! We don't currently need to do this as we copy the ParallelInfo from primary matrix.
+    IF ( Parenv  % PEs > 1 ) THEN
+      ! CALL ParallelInitMatrix( Solver, A )
+    END IF
+    
   END SUBROUTINE MassMatrixAssembly
 
 

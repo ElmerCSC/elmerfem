@@ -1843,21 +1843,22 @@ CONTAINS
       str = 'Prec Matrix Density '//I2S(RowVar)
       Coeff = ListGetCReal( Params, str, GotIt2)
       
-      IF( GotIt .OR. GotIt2 ) THEN
-        CALL Info('BlockPrecMatrix','Creating simple preconditioning matrix',Level=8)
-        
+      IF( GotIt .OR. GotIt2 ) THEN        
         CALL CRS_CopyMatrixTopology( TotMatrix % Submatrix(RowVar,RowVar) % Mat, &
             TotMatrix % Submatrix(RowVar,RowVar) % PrecMat )   
         
         Amat => TotMatrix % Submatrix(RowVar,RowVar) % PrecMat
         VarPerm => TotMatrix % Subvector(RowVar) % Var % Perm
         IF( GotIt ) THEN
+          CALL Info('BlockPrecMatrix','Creating simple preconditioning Laplace matrix',Level=8)
           CALL LaplaceMatrixAssembly( Solver, VarPerm, Amat )
           Amat % Values = Coeff * Amat % Values
         ELSE 
+          CALL Info('BlockPrecMatrix','Creating simple preconditioning mass matrix',Level=8)
           CALL MassMatrixAssembly( Solver, VarPerm, Amat )
           Amat % Values = Coeff * Amat % Values
         END IF
+        Amat % ParallelInfo => TotMatrix % Submatrix(RowVar,RowVar) % Mat % ParallelInfo
       END IF
       
       str = 'Prec Matrix Complex Coeff '//I2S(RowVar)      
@@ -1931,7 +1932,6 @@ CONTAINS
       IF( .NOT. ASSOCIATED( AVar % Solver % Matrix ) ) THEN
         CALL Fatal('BlockPrecMatrix','Schur matrix does not exist for: '//str)
       END IF
-
       CALL Info('BlockPrecMatrix','Using Schur matrix to precondition block '//I2S(NoVar))
       TotMatrix % Submatrix(NoVar,NoVar) % PrecMat => AVar % Solver % Matrix
     END IF  
