@@ -689,6 +689,13 @@ END BLOCK
         STIFF(:,j) = 0._dp
         STIFF(j,j) = 1._dp
       END DO
+
+BLOCK
+      INTEGER :: nb
+      nb = GetElementNOFBDOFs(Element)
+      IF(nb>0) CALL NSCondensate( N, Nb, dim, STIFF, FORCE )
+END BLOCK
+
     END IF
 
     DAMP  = ( DAMP  + TRANSPOSE(DAMP) )  / 2.0_dp

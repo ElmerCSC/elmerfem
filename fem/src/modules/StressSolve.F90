@@ -1084,7 +1084,7 @@ CONTAINS
        IF( UseLocalMatrixCopy( Solver, activeind = t) ) GOTO 100 
        
        n = GetElementNOFNOdes()
-       ntot = GetElementNOFDOFs()
+       ntot = GetElementNOFDOFs() + GetElementNOFBDOFs()
 
        NodeIndexes => Element % NodeIndexes
        CALL GetElementNodes( ElementNodes )
