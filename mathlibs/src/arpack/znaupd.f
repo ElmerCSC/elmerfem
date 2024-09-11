@@ -20,11 +20,11 @@ c
 c  Mode 1:  A*x = lambda*x.
 c           ===> OP = A  and  B = I.
 c
-c  Mode 2:  A*x = lambda*M*x, M symmetric positive definite
+c  Mode 2:  A*x = lambda*M*x, M Hermitian positive definite
 c           ===> OP = inv[M]*A  and  B = M.
 c           ===> (If M can be factored see remark 3 below)
 c
-c  Mode 3:  A*x = lambda*M*x, M symmetric semi-definite
+c  Mode 3:  A*x = lambda*M*x, M Hermitian semi-definite
 c           ===> OP =  inv[A - sigma*M]*M   and  B = M. 
 c           ===> shift-and-invert mode 
 c           If OP*x = amu*x, then lambda = sigma + 1/amu.
@@ -167,7 +167,7 @@ c          No longer referenced. Implicit restarting is ALWAYS used.
 c
 c          IPARAM(7) = MODE
 c          On INPUT determines what type of eigenproblem is being solved.
-c          Must be 1,2,3,4; See under \Description of znaupd for the 
+c          Must be 1,2,3; See under \Description of znaupd for the 
 c          four modes available.
 c
 c          IPARAM(8) = NP
@@ -255,7 +255,7 @@ c          = -7: Length of private work array is not sufficient.
 c          = -8: Error return from LAPACK eigenvalue calculation;
 c          = -9: Starting vector is zero.
 c          = -10: IPARAM(7) must be 1,2,3.
-c          = -11: IPARAM(7) = 1 and BMAT = 'G' are incompatable.
+c          = -11: IPARAM(7) = 1 and BMAT = 'G' are incompatible.
 c          = -12: IPARAM(1) must be equal to 0 or 1.
 c          = -9999: Could not build an Arnoldi factorization.
 c                   User input error highly likely.  Please
@@ -284,7 +284,7 @@ c     eigenvector z of the original problem is recovered by solving
 c     L'z = x  where x is a Ritz vector of OP.
 c
 c  4. At present there is no a-priori analysis to guide the selection
-c     of NCV relative to NEV.  The only formal requrement is that NCV > NEV + 1.
+c     of NCV relative to NEV.  The only formal requirement is that NCV > NEV + 1.
 c     However, it is recommended that NCV .ge. 2*NEV.  If many problems of
 c     the same type are to be solved, one should experiment with increasing
 c     NCV while keeping NEV fixed for a given test problem.  This will 
@@ -460,9 +460,10 @@ c        %----------------%
 c
          ierr   = 0
          ishift = iparam(1)
-         levec  = iparam(2)
+c         levec  = iparam(2)
          mxiter = iparam(3)
-         nb     = iparam(4)
+c         nb     = iparam(4)
+         nb = 1
 c
 c        %--------------------------------------------%
 c        | Revision 2 performs only implicit restart. |
@@ -490,7 +491,7 @@ c
             ierr = -6
          else if (lworkl .lt. 3*ncv**2 + 5*ncv) then
             ierr = -7
-         else if (mode .lt. 1 .or. mode .gt. 5) then
+         else if (mode .lt. 1 .or. mode .gt. 3) then
                                                 ierr = -10
          else if (mode .eq. 1 .and. bmat .eq. 'G') then
                                                 ierr = -11
