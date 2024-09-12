@@ -116,6 +116,14 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
 
       i = GetInteger( SolverParams, 'Nonlinear System Max Iterations', Found )
       CALL ListAddInteger( SolverParams, 'Nonlinear System Max Iterations', MAX(i,2) )
+
+      ! Create solver related to variable "elast schur" when using block preconditioning
+      ! These keywords ensure that the matrix is truly used in the library version of the
+      ! block solver.
+      IF( ListGetLogical( SolverParams,'Block Preconditioner',Found ) ) THEN
+        CALL ListAddNewString( SolverParams,'Block Matrix Schur Variable','elast schur')
+        CALL ListAddNewLogical(SolverParams,'elast schur: Variable Output',.FALSE.)
+      END IF      
     END IF
     
     IF(.NOT.ListCheckPresent( SolverParams, 'Time derivative order') ) &
@@ -189,16 +197,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
     
     CALL ListAddLogical( SolverParams, 'stress: Linear System Save', .FALSE. )
 
-    
-    ! Create solver related to variable "elast schur" when using block preconditioning
-    ! These keywords ensure that the matrix is truly used in the library version of the
-    ! block solver.
-    IF( ListGetLogical( SolverParams,'Block Preconditioner',Found ) ) THEN
-      CALL ListAddNewString( SolverParams,'Block Matrix Schur Variable','elast schur')
-      CALL ListAddNewLogical(SolverParams,'elast schur: Variable Output',.FALSE.)
-    END IF
-    
-
+   
     
 !------------------------------------------------------------------------------
   END SUBROUTINE StressSolver_Init
@@ -514,13 +513,10 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
      END IF
 
 !------------------------------------------------------------------------------
-!    Struff for schur complement preconditioning.
+!    Stuff for Schur complement preconditioning.
 !------------------------------------------------------------------------------
-     BlockPrec = GetLogical(SolverParams,'Block Preconditioner',Found )
-     IF(BlockPrec .AND. .NOT. Incompr ) THEN
-       CALL Warn('StressSolve','Schur complement is applicable only for incompressible matrerials!')
-       BlockPrec = .FALSE.
-     END IF
+     SchurSolver => NULL()
+     BlockPrec = Incompr .AND. GetLogical(SolverParams,'Block Preconditioner',Found )     
      IF(BlockPrec ) THEN
        CALL Info('StressSolve','Creating Schur complement approximation',Level=7)
        IF(.NOT. ASSOCIATED( SchurSolver ) ) THEN
