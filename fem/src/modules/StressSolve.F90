@@ -1083,6 +1083,7 @@ CONTAINS
     INTEGER :: RelIntegOrder, NoActive 
     LOGICAL :: AnyDamping, NeedMass, NeedDensity, AnyPre, AnyStress
     LOGICAL :: LocalMatrixIdentical
+    REAL(KIND=dp) :: tFORCE(SIZE(FORCE))
     
     AnyDamping = ListCheckPresentAnyMaterial( Model,"Damping" ) .OR. &
         ListCheckPrefixAnyMaterial( Model,"Rayleigh" )
@@ -1354,6 +1355,9 @@ CONTAINS
 !      If time dependent simulation, add mass matrix to global 
 !      matrix and global RHS vector
 !------------------------------------------------------------------------------
+       tForce = 0._dp
+       IF (Transient) tForce = FORCE
+
        IF ( .NOT. (ConstantBulkMatrix .OR. ConstantBulkSystem .OR. ConstantSystem) ) THEN
          IF ( Transient .AND. .NOT. EigenOrHarmonicAnalysis() ) THEN
             IF( GetInteger( GetSolverParams(), 'Time derivative order', Found) == 2 ) THEN
@@ -1364,6 +1368,11 @@ CONTAINS
          END IF
        END IF
 
+        BLOCK
+           INTEGER :: nb
+           nb = GetElementNOFBDOFS(Element)
+           IF(nb>0) CALL NSCondensate(n,nb,dim,STIFF,FORCE,tFORCE)
+         END BLOCK
 !------------------------------------------------------------------------------
 !      Check if reference of displacement has been changed
 !------------------------------------------------------------------------------
