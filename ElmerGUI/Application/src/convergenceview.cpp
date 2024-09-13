@@ -330,7 +330,7 @@ void ConvergenceView::savePictureSlot()
 
   QFileInfo fi(fileName);
   QString suffix = fi.suffix();
-  suffix.toUpper();
+  suffix = suffix.toUpper();
 
 #if WITH_QT5 || WITH_QT6
   bool ok = pixmap.save(fileName, suffix.toLatin1(), 95); // fixed quality

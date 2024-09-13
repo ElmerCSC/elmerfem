@@ -2836,7 +2836,7 @@ void MainWindow::grabFrameSlot() {
 
   QFileInfo fi(pictureFileName);
   QString suffix(fi.suffix());
-  suffix.toUpper();
+  suffix = suffix.toUpper();
 
   int imageQuality(egIni->value("defaultimagequality").toInt());
 
