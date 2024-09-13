@@ -73,7 +73,9 @@ SUBROUTINE EMPortSolver_Init0(Model, Solver, dt, Transient)
   IF (.NOT. ListCheckPresent(Params, "Element") ) THEN
     CALL EdgeElementStyle(Params, PiolaVersion, SecondFamily, SecondOrder, Check = .TRUE.)
 
-    IF (PiolaVersion) THEN
+    IF (SecondOrder) THEN
+      CALL ListAddString(Params, "Element", "n:1 e:2 -tri b:2 -quad b:4")
+    ELSE IF (PiolaVersion) THEN
       CALL ListAddString(Params, "Element", "n:1 e:1 -quad b:2")
     ELSE
       CALL ListAddString(Params, "Element", "n:1 e:1" )
@@ -148,9 +150,19 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
   InitHandles = .TRUE.
   DO t=1,Active
     Element => GetActiveElement(t)
+    
     n  = GetElementNOFNodes(Element)
     nd = GetElementNOFDOFs(Element)
 
+    IF (EdgeBasisDegree > 1) THEN
+      SELECT CASE(GetElementFamily(Element))    
+      CASE(3)
+        IF (n < 6) CALl Fatal(Caller, 'A background mesh needs 6-node triangles')
+      CASE(4)
+        IF (n < 9) CALl Fatal(Caller, 'A background mesh needs 9-node quads')
+      END SELECT
+    END IF
+    
     CALL LocalMatrix(Element, n, nd, InitHandles)
   END DO
     
