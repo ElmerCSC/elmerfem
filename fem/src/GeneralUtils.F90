@@ -2498,18 +2498,11 @@ END FUNCTION ComponentNameVar
         Suffix = '.dat'
       END IF
     END IF
-
+    
     DO No = 1,9999
       IF( No > 0 ) PrevFilename = Filename
-      IF( No < 10) THEN
-        WRITE( FileName,'(A,I1,A)') TRIM(Prefix),No,TRIM(Suffix)
-      ELSE IF( No < 100) THEN
-        WRITE( FileName,'(A,I2,A)') TRIM(Prefix),No,TRIM(Suffix)
-      ELSE IF( No < 1000) THEN
-        WRITE( FileName,'(A,I3,A)') TRIM(Prefix),No,TRIM(Suffix)
-      ELSE IF( No < 10000) THEN
-        WRITE( FileName,'(A,I4,A)') TRIM(Prefix),No,TRIM(Suffix)
-      END IF
+      FileName = TRIM(Prefix)//I2S(No)//TRIM(Suffix)
+
       INQUIRE( FILE=Filename, EXIST=FileIs )
       IF(.NOT. FileIs) EXIT
     END DO
@@ -2517,6 +2510,8 @@ END FUNCTION ComponentNameVar
     IF( PRESENT(LastExisting)) THEN
       IF( LastExisting ) Filename = PrevFilename
     END IF
+
+    CALL Info('NextFreeFilename','Next Free filename is: '//TRIM(Filename),Level=12)
 
 !------------------------------------------------------------------------------
   END FUNCTION NextFreeFilename

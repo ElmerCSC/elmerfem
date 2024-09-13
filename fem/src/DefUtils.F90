@@ -1281,7 +1281,9 @@ CONTAINS
        IF( ASSOCIATED(Parent) ) THEN
 
          GotMat = .FALSE.
-         IF( Parent % BodyId > 0 .AND. Parent % BodyId <= CurrentModel % NumberOfBodies ) THEN
+         IF( Parent % BodyId == 0) THEN
+           CYCLE
+         ELSE IF( Parent % BodyId <= CurrentModel % NumberOfBodies ) THEN
            mat_id = ListGetInteger( CurrentModel % Bodies(Parent % BodyId) % Values,'Material',GotMat)
          ELSE
            CALL Warn('GetParentMatProp','Invalid parent BodyId '//I2S(Parent % BodyId)//&
