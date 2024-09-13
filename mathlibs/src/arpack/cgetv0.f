@@ -359,9 +359,9 @@ c     | Check for further orthogonalization. |
 c     %--------------------------------------%
 c
       if (msglvl .gt. 2) then
-          call svout (logfil, 1, rnorm0, ndigit, 
+          call svout (logfil, 1, [rnorm0], ndigit, 
      &                '_getv0: re-orthonalization ; rnorm0 is')
-          call svout (logfil, 1, rnorm, ndigit, 
+          call svout (logfil, 1, [rnorm], ndigit, 
      &                '_getv0: re-orthonalization ; rnorm is')
       end if
 c
@@ -392,7 +392,7 @@ c
    50 continue
 c
       if (msglvl .gt. 0) then
-         call svout (logfil, 1, rnorm, ndigit,
+         call svout (logfil, 1, [rnorm], ndigit,
      &        '_getv0: B-norm of initial / restarted starting vector')
       end if
       if (msglvl .gt. 2) then

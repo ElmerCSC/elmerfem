@@ -473,7 +473,7 @@ c
             thres = dimag(workl(ritz))
          end if
          if (msglvl .gt. 2) then
-            call dvout(logfil, 1, thres, ndigit,
+            call dvout(logfil, 1, [thres], ndigit,
      &           '_neupd: Threshold eigenvalue used for re-ordering')
          end if
 c
@@ -557,9 +557,9 @@ c
  10      continue
 c
          if (msglvl .gt. 2) then
-             call ivout(logfil, 1, ktrord, ndigit,
+             call ivout(logfil, 1, [ktrord], ndigit,
      &            '_neupd: Number of specified eigenvalues')
-             call ivout(logfil, 1, nconv, ndigit,
+             call ivout(logfil, 1, [nconv], ndigit,
      &            '_neupd: Number of "converged" eigenvalues')
          end if 
 c
