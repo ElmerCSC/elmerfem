@@ -496,7 +496,7 @@ c
             thres = dimag(workl(ritz))
          end if
          if (msglvl .gt. 2) then
-            call pdvout(comm, logfil, 1, thres, ndigit,
+            call pdvout(comm, logfil, 1, [thres], ndigit,
      &           '_neupd: Threshold eigenvalue used for re-ordering')
          end if
 c
@@ -580,9 +580,9 @@ c
  10      continue
 c
          if (msglvl .gt. 2) then
-             call pivout(comm, logfil, 1, ktrord, ndigit,
+             call pivout(comm, logfil, 1, [ktrord], ndigit,
      &            '_neupd: Number of specified eigenvalues')
-             call pivout(comm, logfil, 1, nconv, ndigit,
+             call pivout(comm, logfil, 1, [nconv], ndigit,
      &            '_neupd: Number of "converged" eigenvalues')
          end if 
 c

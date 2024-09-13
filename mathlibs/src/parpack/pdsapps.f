@@ -272,9 +272,9 @@ c
             big   = abs(h(i,2)) + abs(h(i+1,2))
             if (h(i+1,1) .le. epsmch*big) then
                if (msglvl .gt. 0) then
-                  call pivout (comm, logfil, 1, i, ndigit, 
+                  call pivout (comm, logfil, 1, [i], ndigit, 
      &                 '_sapps: deflation at row/column no.')
-                  call pivout (comm, logfil, 1, jj, ndigit, 
+                  call pivout (comm, logfil, 1, [jj], ndigit, 
      &                 '_sapps: occured before shift number.')
                   call pdvout (comm, logfil, 1, h(i+1,1), ndigit, 
      &                 '_sapps: the corresponding off diagonal element')
@@ -443,7 +443,7 @@ c
          big   = abs(h(i,2)) + abs(h(i+1,2))
          if (h(i+1,1) .le. epsmch*big) then
             if (msglvl .gt. 0) then
-               call pivout (comm, logfil, 1, i, ndigit, 
+               call pivout (comm, logfil, 1, [i], ndigit, 
      &              '_sapps: deflation at row/column no.')
                call pdvout (comm, logfil, 1, h(i+1,1), ndigit, 
      &              '_sapps: the corresponding off diagonal element')

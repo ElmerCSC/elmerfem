@@ -226,8 +226,8 @@ c
       tngets = tngets + (t1 - t0)
 c
       if (msglvl .gt. 0) then
-         call pivout (comm, logfil, 1, kev, ndigit, '_ngets: KEV is')
-         call pivout (comm, logfil, 1, np, ndigit, '_ngets: NP is')
+         call pivout (comm, logfil, 1, [kev], ndigit, '_ngets: KEV is')
+         call pivout (comm, logfil, 1, [np], ndigit, '_ngets: NP is')
          call psvout (comm, logfil, kev+np, ritzr, ndigit,
      &        '_ngets: Eigenvalues of current H matrix -- real part')
          call psvout (comm, logfil, kev+np, ritzi, ndigit,

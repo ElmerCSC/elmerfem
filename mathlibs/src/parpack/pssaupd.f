@@ -644,9 +644,9 @@ c
       if (info .eq. 2) info = 3
 c
       if (msglvl .gt. 0) then
-         call pivout (comm, logfil, 1, mxiter, ndigit,
+         call pivout (comm, logfil, 1, [mxiter], ndigit,
      &               '_saupd: number of update iterations taken')
-         call pivout (comm, logfil, 1, np, ndigit,
+         call pivout (comm, logfil, 1, [np], ndigit,
      &               '_saupd: number of "converged" Ritz values')
          call psvout (comm, logfil, np, workl(Ritz), ndigit, 
      &               '_saupd: final Ritz values')

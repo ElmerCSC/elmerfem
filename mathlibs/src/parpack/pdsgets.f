@@ -216,8 +216,8 @@ c
       tsgets = tsgets + (t1 - t0)
 c
       if (msglvl .gt. 0) then
-         call pivout (comm, logfil, 1, kev, ndigit, '_sgets: KEV is')
-         call pivout (comm, logfil, 1, np, ndigit, '_sgets: NP is')
+         call pivout (comm, logfil, 1, [kev], ndigit, '_sgets: KEV is')
+         call pivout (comm, logfil, 1, [np], ndigit, '_sgets: NP is')
          call pdvout (comm, logfil, kev+np, ritz, ndigit,
      &        '_sgets: Eigenvalues of current H matrix')
          call pdvout (comm, logfil, kev+np, bounds, ndigit, 

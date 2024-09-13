@@ -393,9 +393,9 @@ c     %--------------------------------------------------------------%
  1000 continue
 c
          if (msglvl .gt. 1) then
-            call pivout (comm, logfil, 1, j, ndigit, 
+            call pivout (comm, logfil, 1, [j], ndigit, 
      &                  '_naitr: generating Arnoldi vector number')
-            call pdvout (comm, logfil, 1, rnorm, ndigit, 
+            call pdvout (comm, logfil, 1, [rnorm], ndigit, 
      &                  '_naitr: B-norm of the current residual is')
          end if
 c 
@@ -415,7 +415,7 @@ c           | basis and continue the iteration.                 |
 c           %---------------------------------------------------%
 c
             if (msglvl .gt. 0) then
-               call pivout (comm, logfil, 1, j, ndigit,
+               call pivout (comm, logfil, 1, [j], ndigit,
      &                     '_naitr: ****** RESTART AT STEP ******')
             end if
 c 
@@ -753,7 +753,7 @@ c
          end if
 c 
          if (msglvl .gt. 0 .and. iter .gt. 0) then
-            call pivout (comm, logfil, 1, j, ndigit,
+            call pivout (comm, logfil, 1, [j], ndigit,
      &           '_naitr: Iterative refinement for Arnoldi residual')
             if (msglvl .gt. 2) then
                 xtemp(1) = rnorm

@@ -617,9 +617,9 @@ c        | caused by incorrect passing of the dnaupd data.           |
 c        %-----------------------------------------------------------%
 c
          if (msglvl .gt. 2) then
-             call pivout(comm, logfil, 1, numcnv, ndigit,
+             call pivout(comm, logfil, 1, [numcnv], ndigit,
      &            '_neupd: Number of specified eigenvalues')
-             call pivout(comm, logfil, 1, nconv, ndigit,
+             call pivout(comm, logfil, 1, [nconv], ndigit,
      &            '_neupd: Number of "converged" eigenvalues')
          end if
 c
