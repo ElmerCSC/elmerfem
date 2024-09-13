@@ -1,16 +1,16 @@
 c\BeginDoc
 c
-c\Name: pzgetv0 
+c\Name: pzgetv0
 c
-c Message Passing Layer: MPI 
+c Message Passing Layer: MPI
 c
-c\Description: 
+c\Description:
 c  Generate a random initial residual vector for the Arnoldi process.
-c  Force the residual vector to be in the range of the operator OP.  
+c  Force the residual vector to be in the range of the operator OP.
 c
 c\Usage:
-c  call pzgetv0 
-c     ( COMM, IDO, BMAT, ITRY, INITV, N, J, V, LDV, RESID, RNORM, 
+c  call pzgetv0
+c     ( COMM, IDO, BMAT, ITRY, INITV, N, J, V, LDV, RESID, RNORM,
 c       IPNTR, WORKD, WORKL, IERR )
 c
 c\Arguments
@@ -39,7 +39,7 @@ c          B = 'I' -> standard eigenvalue problem A*x = lambda*x
 c          B = 'G' -> generalized eigenvalue problem A*x = lambda*B*x
 c
 c  ITRY    Integer.  (INPUT)
-c          ITRY counts the number of times that pzgetv0  is called.  
+c          ITRY counts the number of times that pzgetv0  is called.
 c          It should be set to 1 on the initial call to pzgetv0 .
 c
 c  INITV   Logical variable.  (INPUT)
@@ -58,11 +58,11 @@ c          The first J-1 columns of V contain the current Arnoldi basis
 c          if this is a "restart".
 c
 c  LDV     Integer.  (INPUT)
-c          Leading dimension of V exactly as declared in the calling 
+c          Leading dimension of V exactly as declared in the calling
 c          program.
 c
 c  RESID   Complex*16  array of length N.  (INPUT/OUTPUT)
-c          Initial residual vector to be generated.  If RESID is 
+c          Initial residual vector to be generated.  If RESID is
 c          provided, force RESID into the range of the operator OP.
 c
 c  RNORM   Double precision  scalar.  (OUTPUT)
@@ -87,7 +87,7 @@ c
 c\BeginLib
 c
 c\Local variables:
-c     xxxxxx  Complex*16 
+c     xxxxxx  Complex*16
 c
 c\References:
 c  1. D.C. Sorensen, "Implicit Application of Polynomial Filters in
@@ -97,19 +97,19 @@ c
 c\Routines called:
 c     second   ARPACK utility routine for timing.
 c     pzvout    Parallel ARPACK utility routine that prints vectors.
-c     pzlarnv   Parallel wrapper for LAPACK routine zlarnv  (generates a random vector). 
+c     pzlarnv   Parallel wrapper for LAPACK routine zlarnv  (generates a random vector).
 c     zgemv     Level 2 BLAS routine for matrix vector multiplication.
 c     zcopy     Level 1 BLAS that copies one vector to another.
 c     zdotc     Level 1 BLAS that computes the scalar product of two vectors.
-c     pdznorm2  Parallel version of Level 1 BLAS that computes the norm of a vector. 
+c     pdznorm2  Parallel version of Level 1 BLAS that computes the norm of a vector.
 c
 c\Author
 c     Danny Sorensen               Phuong Vu
 c     Richard Lehoucq              CRPC / Rice University
 c     Dept. of Computational &     Houston, Texas
-c     Applied Mathematics 
-c     Rice University           
-c     Houston, Texas            
+c     Applied Mathematics
+c     Rice University
+c     Houston, Texas
 c
 c\Parallel Modifications
 c     Kristi Maschhoff
@@ -124,10 +124,10 @@ c\EndLib
 c
 c-----------------------------------------------------------------------
 c
-      subroutine pzgetv0  
-     &   ( comm, ido, bmat, itry, initv, n, j, v, ldv, resid, rnorm, 
+      subroutine pzgetv0
+     &   ( comm, ido, bmat, itry, initv, n, j, v, ldv, resid, rnorm,
      &     ipntr, workd, workl, ierr )
-c 
+c
       include   'mpif.h'
 c
 c     %---------------%
@@ -150,7 +150,7 @@ c
       character  bmat*1
       logical    initv
       integer    ido, ierr, itry, j, ldv, n
-      Double precision 
+      Double precision
      &           rnorm
 c
 c     %-----------------%
@@ -158,16 +158,16 @@ c     | Array Arguments |
 c     %-----------------%
 c
       integer    ipntr(3)
-      Complex*16 
+      Complex*16
      &           resid(n), v(ldv,j), workd(2*n), workl(2*j)
 c
 c     %------------%
 c     | Parameters |
 c     %------------%
 c
-      Complex*16 
+      Complex*16
      &           one, zero
-      Double precision 
+      Double precision
      &           rzero
       parameter  (one = (1.0, 0.0) , zero = (0.0, 0.0) ,
      &            rzero = 0.0 )
@@ -178,13 +178,13 @@ c     %------------------------%
 c
       logical    first, inits, orth
       integer    idist, iseed(4), iter, msglvl, jj, myid, igen
-      Double precision 
+      Double precision
      &           rnorm0
-      Complex*16 
+      Complex*16
      &           cnorm, cnorm2
       save       first, iseed, inits, iter, msglvl, orth, rnorm0
 c
-      Complex*16 
+      Complex*16
      &           cnorm_buf
 c
 c     %----------------------%
@@ -197,11 +197,11 @@ c     %--------------------%
 c     | External Functions |
 c     %--------------------%
 c
-      Double precision  
-     &           pdznorm2 , dlapy2 
-      Complex*16 
-     &           zdotc 
-      external   zdotc , pdznorm2 , dlapy2 
+      Double precision
+     &           pdznorm2 , dlapy2
+      Complex*16
+     &           zdotc
+      external   zdotc , pdznorm2 , dlapy2
 c
 c     %-----------------%
 c     | Data Statements |
@@ -245,7 +245,7 @@ c
       end if
 c
       if (ido .eq.  0) then
-c 
+c
 c        %-------------------------------%
 c        | Initialize timing statistics  |
 c        | & message level for debugging |
@@ -253,7 +253,7 @@ c        %-------------------------------%
 c
          call second (t0)
          msglvl = mgetv0
-c 
+c
          ierr   = 0
          iter   = 0
          first  = .FALSE.
@@ -272,7 +272,7 @@ c
             idist = 2
             call pzlarnv  (comm, idist, iseed, n, resid)
          end if
-c 
+c
 c        %----------------------------------------------------------%
 c        | Force the starting vector into the range of OP to handle |
 c        | the generalized problem when B is possibly (singular).   |
@@ -288,7 +288,7 @@ c
             go to 9000
          end if
       end if
-c 
+c
 c     %----------------------------------------%
 c     | Back from computing B*(initial-vector) |
 c     %----------------------------------------%
@@ -300,10 +300,10 @@ c     | Back from computing B*(orthogonalized-vector) |
 c     %-----------------------------------------------%
 c
       if (orth)  go to 40
-c 
+c
       call second (t3)
       tmvopx = tmvopx + (t3 - t2)
-c 
+c
 c     %------------------------------------------------------%
 c     | Starting vector is now in the range of OP; r = OP*r; |
 c     | Compute B-norm of starting vector.                   |
@@ -321,14 +321,14 @@ c
       else if (bmat .eq. 'I') then
          call zcopy  (n, resid, 1, workd, 1)
       end if
-c 
+c
    20 continue
 c
       if (bmat .eq. 'G') then
          call second (t3)
          tmvbx = tmvbx + (t3 - t2)
       end if
-c 
+c
       first = .FALSE.
       if (bmat .eq. 'G') then
           cnorm_buf = zdotc  (n, resid, 1, workd, 1)
@@ -345,7 +345,7 @@ c     | Exit if this is the very first Arnoldi step |
 c     %---------------------------------------------%
 c
       if (j .eq. 1) go to 50
-c 
+c
 c     %----------------------------------------------------------------
 c     | Otherwise need to B-orthogonalize the starting vector against |
 c     | the current Arnoldi basis using Gram-Schmidt with iter. ref.  |
@@ -361,13 +361,13 @@ c
       orth = .TRUE.
    30 continue
 c
-      call zgemv  ('C', n, j-1, one, v, ldv, workd, 1, 
+      call zgemv  ('C', n, j-1, one, v, ldv, workd, 1,
      &            zero, workl(j+1), 1)
       call MPI_ALLREDUCE( workl(j+1), workl, j-1,
      &                    MPI_DOUBLE_COMPLEX , MPI_SUM, comm, ierr)
-      call zgemv  ('N', n, j-1, -one, v, ldv, workl, 1, 
+      call zgemv  ('N', n, j-1, -one, v, ldv, workl, 1,
      &            one, resid, 1)
-c 
+c
 c     %----------------------------------------------------------%
 c     | Compute the B-norm of the orthogonalized starting vector |
 c     %----------------------------------------------------------%
@@ -383,14 +383,14 @@ c
       else if (bmat .eq. 'I') then
          call zcopy  (n, resid, 1, workd, 1)
       end if
-c 
+c
    40 continue
 c
       if (bmat .eq. 'G') then
          call second (t3)
          tmvbx = tmvbx + (t3 - t2)
       end if
-c 
+c
       if (bmat .eq. 'G') then
          cnorm_buf = zdotc  (n, resid, 1, workd, 1)
          call MPI_ALLREDUCE( cnorm_buf, cnorm, 1,
@@ -405,14 +405,14 @@ c     | Check for further orthogonalization. |
 c     %--------------------------------------%
 c
       if (msglvl .gt. 2) then
-          call pdvout  (comm, logfil, 1, [rnorm0], ndigit, 
+          call pdvout  (comm, logfil, 1, [rnorm0], ndigit,
      &                '_getv0: re-orthonalization ; rnorm0 is')
-          call pdvout  (comm, logfil, 1, [rnorm], ndigit, 
+          call pdvout  (comm, logfil, 1, [rnorm], ndigit,
      &                '_getv0: re-orthonalization ; rnorm is')
       end if
 c
       if (rnorm .gt. 0.717*rnorm0) go to 50
-c 
+c
       iter = iter + 1
       if (iter .le. 5 ) then
 c
@@ -434,7 +434,7 @@ c
          rnorm = rzero
          ierr = -1
       end if
-c 
+c
    50 continue
 c
       if (msglvl .gt. 0) then
@@ -447,10 +447,10 @@ c
      &        '_getv0: initial / restarted starting vector')
       end if
       ido = 99
-c 
+c
       call second (t1)
       tgetv0 = tgetv0 + (t1 - t0)
-c 
+c
  9000 continue
       return
 c
