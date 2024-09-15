@@ -64,12 +64,12 @@ void CurveData::append(double *x, double *y, int count)
     d_x.resize(newSize);
     d_y.resize(newSize);
   }
-  
+
   for(REGISTER int i = 0; i < count; i++) {
     d_x[d_count + i] = x[i];
     d_y[d_count + i] = y[i];
   }
-  
+
   d_count += count;
 }
 
@@ -111,7 +111,7 @@ ConvergenceView::ConvergenceView(Limit *limit, QWidget *parent)
   legend = new QwtLegend;
   legend->setFrameStyle(QFrame::Box|QFrame::Sunken);
   plot->insertLegend(legend, QwtPlot::RightLegend);
-  
+
   // grid
   grid = new QwtPlotGrid;
   grid->enableXMin(true);
@@ -121,7 +121,7 @@ ConvergenceView::ConvergenceView(Limit *limit, QWidget *parent)
 #else
   grid->setMajPen(QPen(Qt::black, 0, Qt::DotLine));
   grid->setMinPen(QPen(Qt::gray, 0 , Qt::DotLine));
-#endif 
+#endif
   grid->attach(plot);
 
   // axis
@@ -162,7 +162,7 @@ ConvergenceView::ConvergenceView(Limit *limit, QWidget *parent)
   showNSHistory = true;
   showSSHistory = false;
 
-  setWindowIcon(QIcon(":/icons/Mesh3D.png"));  
+  setWindowIcon(QIcon(":/icons/Mesh3D.png"));
 }
 
 ConvergenceView::~ConvergenceView()
@@ -192,10 +192,10 @@ void ConvergenceView::appendData(double *y, int size, QString name)
     SS = true;
 
   Curve *curve = curveList.value(name, NULL);
-  
+
   if(curve == NULL) {
     curve = new Curve;
-    curve->d_data = new CurveData;    
+    curve->d_data = new CurveData;
     curve->d_curve = new QwtPlotCurve(name);
 //    curve->d_curve->setRenderHint(QwtPlotItem::RenderAntialiased);
     QPen currentPen = pen[curveList.count()];
@@ -213,11 +213,11 @@ void ConvergenceView::appendData(double *y, int size, QString name)
 
   double x = (double)(curve->d_data->count());
   curve->d_data->append(&x, y, size);
-  /*curve->d_curve->setRawData(curve->d_data->x(), 
-			     curve->d_data->y(), 
+  /*curve->d_curve->setRawData(curve->d_data->x(),
+			     curve->d_data->y(),
 			     curve->d_data->count());*/
-  curve->d_curve->setRawSamples(curve->d_data->x(), 
-			     curve->d_data->y(), 
+  curve->d_curve->setRawSamples(curve->d_data->x(),
+			     curve->d_data->y(),
 			     curve->d_data->count());
   plot->setTitle(title);
 }
@@ -232,7 +232,7 @@ void ConvergenceView::removeData()
     delete curve->d_curve;
     curve->d_curve = NULL;
   }
-  curveList.clear();  
+  curveList.clear();
   title = "Convergence history";
   /*  plot->clear(); */
   plot->detachItems();
@@ -254,7 +254,7 @@ void ConvergenceView::createActions()
 {
   savePictureAct = new QAction(QIcon(""), tr("&Save picture as..."), this);
   savePictureAct->setStatusTip("Save picture in jpg-format");
-  connect(savePictureAct, SIGNAL(triggered()), this, SLOT(savePictureSlot())); 
+  connect(savePictureAct, SIGNAL(triggered()), this, SLOT(savePictureSlot()));
 
   exitAct = new QAction(QIcon::fromTheme("application-exit"), tr("&Quit"), this);
   exitAct->setShortcut(tr("Ctrl+Q"));
@@ -263,24 +263,24 @@ void ConvergenceView::createActions()
 
   showGridAct = new QAction(QIcon(iconChecked), tr("&Grid"), this);
   showGridAct->setStatusTip("Show grid");
-  connect(showGridAct, SIGNAL(triggered()), this, SLOT(showGridSlot()));  
+  connect(showGridAct, SIGNAL(triggered()), this, SLOT(showGridSlot()));
 
   showLegendAct = new QAction(QIcon(iconChecked), tr("&Legend"), this);
   showLegendAct->setStatusTip("Show legend");
-  connect(showLegendAct, SIGNAL(triggered()), this, SLOT(showLegendSlot())); 
+  connect(showLegendAct, SIGNAL(triggered()), this, SLOT(showLegendSlot()));
 
-  showNSHistoryAct = new QAction(QIcon(iconChecked), 
+  showNSHistoryAct = new QAction(QIcon(iconChecked),
 				 tr("&Nonlinear system"), this);
   showNSHistoryAct->setStatusTip("Show nonlinear system convergence history");
-  connect(showNSHistoryAct, SIGNAL(triggered()), this, SLOT(showNSHistorySlot())); 
+  connect(showNSHistoryAct, SIGNAL(triggered()), this, SLOT(showNSHistorySlot()));
 
   showSSHistoryAct = new QAction(QIcon(""), tr("&Steady state"), this);
   showSSHistoryAct->setStatusTip("Show steady state convergence history");
-  connect(showSSHistoryAct, SIGNAL(triggered()), this, SLOT(showSSHistorySlot())); 
+  connect(showSSHistoryAct, SIGNAL(triggered()), this, SLOT(showSSHistorySlot()));
 
   clearHistoryAct = new QAction(QIcon(""), tr("&Clear history"), this);
   clearHistoryAct->setStatusTip("Clear current convergence history");
-  connect(clearHistoryAct, SIGNAL(triggered()), this, SLOT(clearHistorySlot())); 
+  connect(clearHistoryAct, SIGNAL(triggered()), this, SLOT(clearHistorySlot()));
 }
 
 void ConvergenceView::createMenus()
@@ -289,7 +289,7 @@ void ConvergenceView::createMenus()
   fileMenu->addAction(savePictureAct);
   fileMenu->addSeparator();
   fileMenu->addAction(exitAct);
-  
+
   viewMenu = menuBar()->addMenu(tr("&View"));
   viewMenu->addAction(showGridAct);
   viewMenu->addAction(showLegendAct);
@@ -321,7 +321,7 @@ void ConvergenceView::savePictureSlot()
 #else
   QPixmap pixmap = QPixmap::grabWidget(plot);
 #endif
-  
+
   QString fileName = QFileDialog::getSaveFileName(this,
 	  tr("Save picture"), "", tr("Picture files (*.bmp *.jpg *.png *.pbm *.pgm *.ppm)"));
 
@@ -330,7 +330,7 @@ void ConvergenceView::savePictureSlot()
 
   QFileInfo fi(fileName);
   QString suffix = fi.suffix();
-  suffix.toUpper();
+  suffix = suffix.toUpper();
 
 #if WITH_QT5 || WITH_QT6
   bool ok = pixmap.save(fileName, suffix.toLatin1(), 95); // fixed quality
@@ -347,7 +347,7 @@ void ConvergenceView::savePictureSlot()
 void ConvergenceView::showGridSlot()
 {
   showGrid = !showGrid;
-  
+
   if(showGrid) {
     grid->attach(plot);
     showGridAct->setIcon(QIcon(iconChecked));
@@ -362,7 +362,7 @@ void ConvergenceView::showGridSlot()
 void ConvergenceView::showLegendSlot()
 {
   showLegend = !showLegend;
-  
+
   if(showLegend) {
     legend = new QwtLegend;
     legend->setFrameStyle(QFrame::Box|QFrame::Sunken);
@@ -379,7 +379,7 @@ void ConvergenceView::showLegendSlot()
 void ConvergenceView::showNSHistorySlot()
 {
   showNSHistory = !showNSHistory;
-  
+
   if(showNSHistory) {
     showNSHistoryAct->setIcon(QIcon(iconChecked));
   } else {
@@ -405,7 +405,7 @@ void ConvergenceView::showNSHistorySlot()
 void ConvergenceView::showSSHistorySlot()
 {
   showSSHistory = !showSSHistory;
-  
+
   if(showSSHistory) {
     showSSHistoryAct->setIcon(QIcon(iconChecked));
   } else {
