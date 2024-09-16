@@ -924,7 +924,8 @@ void InitializeKnots(struct FemType *data)
   data->nodalexists = FALSE;
   /* data->invtopoexists = FALSE; */
   data->partitiontableexists = FALSE;
-
+  data->maxpartitiontable = 0;
+  
   data->invtopo.created = FALSE;
   data->nodalgraph2.created = FALSE;
   data->dualgraph.created = FALSE;
