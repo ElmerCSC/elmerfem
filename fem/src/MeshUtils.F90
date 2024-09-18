@@ -23462,7 +23462,6 @@ CONTAINS
     LOGICAL :: Found, FacesPresent, EdgesPresent
     TYPE(Element_t), POINTER :: Enew,Eold,Edge,Parent
     TYPE(PElementDefs_t), POINTER :: PDefs
-    INTEGER :: ierr, ParTmp(6), ParSizes(6)
     LOGICAL :: Parallel, IsBulkElement, IsOddCut
     LOGICAL :: Is15, Is24, Is35, Is26, Is34, Is16
     INTEGER, ALLOCATABLE :: CutCorner(:), MinCorner(:), BulkElementOffset(:)
@@ -23677,6 +23676,8 @@ CONTAINS
           Enew % ElementIndex = NewElCnt         
           CALL AllocateVector( ENew % NodeIndexes, 3 )
           Enew % NodeIndexes(1:3) = Face % NodeIndexes(LocalMap(1:3))
+          Enew % EdgeIndexes => NULL()
+          Enew % FaceIndexes => NULL()
           
           IF(.NOT. IsBulkElement ) THEN
             CALL UpdateParentElements()
@@ -23769,6 +23770,8 @@ CONTAINS
           Enew % ElementIndex = NewElCnt         
           CALL AllocateVector( ENew % NodeIndexes, 4 )
           Enew % NodeIndexes = Eold % NodeIndexes(LocalMap(1:4))          
+          Enew % EdgeIndexes => NULL()
+          Enew % FaceIndexes => NULL()
         END DO
       END SELECT
             
@@ -23776,7 +23779,8 @@ CONTAINS
         nBulkElems = NewElCnt
       END IF
     END DO
-    
+
+    ! Release old elements and rplace them with new elements and element counts
     CALL ReleaseMeshElements( Mesh ) 
 
     Mesh % Elements => NewElements
@@ -23784,7 +23788,7 @@ CONTAINS
     Mesh % NumberOfBoundaryElements = NewElCnt - nBulkElems
             
     ! These are now conservative and could be updated
-    !NewMesh % MaxElementDOFs  = Mesh % MaxElementDOFs
+    ! NewMesh % MaxElementDOFs  = Mesh % MaxElementDOFs
 
     IF( MeshDim == 3 ) THEN
       Mesh % MaxElementNodes = 4
@@ -23834,30 +23838,7 @@ CONTAINS
       Enew % BubbleIndexes => NULL()
     END DO
     
-    CALL Info( Caller, '******** New mesh ********', Level=6 )
-    WRITE( Message, * ) 'Bulk elements     : ',Mesh % NumberOfBulkElements
-    CALL Info( Caller, Message, Level=6 )
-    WRITE( Message, * ) 'Boundary elements : ',Mesh % NumberOfBoundaryElements
-    CALL Info( Caller, Message, Level=6 )
-
-    
-    IF( .FALSE. .AND. Parallel ) THEN
-      ! Information of the new system size, also in parallel
-      !----------------------------------------------------------------------
-      ParTmp(1) = Mesh % NumberOfBulkElements
-      ParTmp(2) = Mesh % NumberOfBoundaryElements
-
-      CALL MPI_ALLREDUCE(ParTmp,ParSizes,2,MPI_INTEGER,MPI_SUM,ELMER_COMM_WORLD,ierr)
-
-      CALL Info(Caller,'Information on parallel mesh sizes')
-      WRITE ( Message,'(A,I0,A)') 'New mesh has ',ParSizes(1),' bulk elements'
-      CALL Info(Caller,Message)
-      WRITE ( Message,'(A,I0,A)') 'New mesh has ',ParSizes(2),' boundary elements'
-      CALL Info(Caller,Message)
-    END IF
-
     CALL CheckTimer(Caller,Delete=.TRUE.)
-
     
 !   Update structures needed for parallel execution:
 !   ------------------------------------------------
@@ -23868,12 +23849,12 @@ CONTAINS
 
     ! Release old edges and faces since they don't match the new mesh.
     !-----------------------------------------------------------------
-    !CALL ReleaseMeshEdgeTables( Mesh )
-    !CALL ReleaseMeshFaceTables( Mesh )
-    Mesh % Faces => NULL()
-    Mesh % Edges => NULL()
-    Mesh % NumberOfFaces = 0 
-    Mesh % NumberOfEdges = 0 
+    CALL ReleaseMeshEdgeTables( Mesh )
+    CALL ReleaseMeshFaceTables( Mesh )
+    !Mesh % Faces => NULL()
+    !Mesh % Edges => NULL()
+    !Mesh % NumberOfFaces = 0 
+    !Mesh % NumberOfEdges = 0 
     
     IF( FacesPresent ) THEN 
       CALL Info(Caller,'Generating faces in the new mesh as thet were present in the old!',Level=20)
