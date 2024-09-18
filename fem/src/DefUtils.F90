@@ -5250,7 +5250,7 @@ CONTAINS
      LOGICAL :: PiolaTransform, QuadraticApproximation, SecondKindBasis
      LOGICAL, ALLOCATABLE :: ReleaseDir(:)
      LOGICAL :: ReleaseAny, NodalBCsWithBraces,AllConstrained
-     LOGICAL :: AugmentedEigenSystem
+     LOGICAL :: CheckRight, AugmentedEigenSystem
      
      CHARACTER(:), ALLOCATABLE :: Name
 
@@ -5765,10 +5765,26 @@ CONTAINS
            ! Get parent element:
            ! -------------------
            Parent => Element % BoundaryInfo % Left
-           IF ( .NOT. ASSOCIATED( Parent ) ) THEN
-              Parent => Element % BoundaryInfo % Right
+           IF ( ASSOCIATED( Parent ) ) THEN
+             IF (Parent % BodyId < 1) THEN
+               CheckRight = .TRUE.
+             ELSE
+               CheckRight = .FALSE.
+             END IF
+           ELSE
+             CheckRight = .TRUE.
            END IF
-           IF ( .NOT. ASSOCIATED( Parent ) )   CYCLE
+             
+           IF (CheckRight) THEN
+             Parent => Element % BoundaryInfo % Right
+             IF ( ASSOCIATED( Parent ) ) THEN
+               IF (Parent % BodyId < 1) THEN
+                 Call Warn('SetDefaultDirichlet', 'Cannot set a BC owing to a missing parent body index')
+                 CYCLE
+               END IF
+             END IF
+           END IF
+           IF ( .NOT. ASSOCIATED( Parent ) ) CYCLE
            np = Parent % TYPE % NumberOfNodes
 
            IF ( ListCheckPrefix(BC, Name//' {e}') ) THEN
