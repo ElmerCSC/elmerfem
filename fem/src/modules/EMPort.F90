@@ -73,10 +73,13 @@ SUBROUTINE EMPortSolver_Init0(Model, Solver, dt, Transient)
   IF (.NOT. ListCheckPresent(Params, "Element") ) THEN
     CALL EdgeElementStyle(Params, PiolaVersion, SecondFamily, SecondOrder, Check = .TRUE.)
 
+    ! Share the DOFs definition with the vector Helmholtz model so that the solution might be
+    ! utilized by the vector Helmholtz model:
     IF (SecondOrder) THEN
-      CALL ListAddString(Params, "Element", "n:1 e:2 -tri b:2 -quad b:4")
+      CALL ListAddString(Params, "Element", &
+          "n:1 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2")
     ELSE IF (PiolaVersion) THEN
-      CALL ListAddString(Params, "Element", "n:1 e:1 -quad b:2")
+      CALL ListAddString(Params, "Element", "n:1 e:1 -quad_face b:2 -quad b:2 -brick b:3")
     ELSE
       CALL ListAddString(Params, "Element", "n:1 e:1" )
     END IF
@@ -107,7 +110,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
   TYPE(ValueList_t), POINTER :: Params
   TYPE(Element_t), POINTER :: Element
   LOGICAL :: PiolaVersion, EigenProblem, InitHandles, Found
-  INTEGER :: dim, DOFs, EdgeBasisDegree, Active, t, n, nd
+  INTEGER :: DOFs, EdgeBasisDegree, Active, t, n, nd, EFamily
   COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
   REAL(KIND=dp) :: mu0inv, eps0, omega
   REAL(KIND=dp) :: Norm
@@ -122,9 +125,6 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
     CALL Fatal(Caller,'Implemented only for Cartesian problems!')
   END IF
   
-  dim = CoordinateSystemDimension() 
-  IF (dim /= 2) CALL Fatal(Caller, 'A 2-D region is expected')
-
   DOFs = Solver % Variable % Dofs
   IF (DOFs /= 2) THEN
     CALL Fatal(Caller, 'Complex field, specify two DOFs instead of '//I2S(DOFs))
@@ -150,12 +150,14 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
   InitHandles = .TRUE.
   DO t=1,Active
     Element => GetActiveElement(t)
+    EFamily = GetElementFamily(Element)
+    IF (EFamily > 4) CYCLE
     
     n  = GetElementNOFNodes(Element)
     nd = GetElementNOFDOFs(Element)
 
     IF (EdgeBasisDegree > 1) THEN
-      SELECT CASE(GetElementFamily(Element))    
+      SELECT CASE(EFamily)    
       CASE(3)
         IF (n < 6) CALl Fatal(Caller, 'A background mesh needs 6-node triangles')
       CASE(4)
@@ -221,12 +223,15 @@ CONTAINS
     INTEGER :: m, allocstat, t
     INTEGER :: i, j, p, q, vdofs
     LOGICAL :: Stat, Found
+    LOGICAL :: CreateEps, CreateNu
     REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:), dBasisdx(:,:), WBasis(:,:), &
         CurlWBasis(:,:)
     COMPLEX(KIND=dp), ALLOCATABLE, SAVE :: Stiff(:,:), Mass(:,:), Force(:)
     REAL(KIND=dp) :: weight, DetJ, CondAtIp
     COMPLEX(KIND=dp) :: Nu, Eps
-
+    TYPE(ValueList_t), POINTER :: Material
+    REAL(KIND=dp) :: RelPermit(n), RelPermit_Im(n)
+    REAL(KIND=dp) :: RelNu(n), RelNu_Im(n)
 !------------------------------------------------------------------------------
 
     IF (InitHandles) THEN
@@ -254,6 +259,15 @@ CONTAINS
 
     ! The number of DOFs for one vector FE field  
     vdofs = nd - n
+
+    Material => GetMaterial()
+    RelPermit(1:n) = GetReal(Material, 'Relative Permittivity', CreateEps)
+    RelPermit_Im(1:n) = GetReal(Material, 'Relative Permittivity Im', Found)
+    CreateEps = Found .OR. CreateEps
+
+    RelNu(1:n) = GetReal(Material, 'Relative Reluctivity', CreateNu)
+    RelNu_Im(1:n) = GetReal(Material, 'Relative Reluctivity Im', Found)
+    CreateNu = Found .OR. CreateNu
     
     DO t=1,IP % n
       !--------------------------------------------------------------
@@ -263,16 +277,18 @@ CONTAINS
           detJ, Basis, dBasisdx, EdgeBasis = Wbasis, RotBasis = CurlWBasis, USolver = SolverPtr)
       Weight = IP % s(t) * DetJ
 
-      Nu = ListGetElementComplex(NuCoeff_h, Basis, Element, Found, GaussPoint = t)      
-      IF( Found ) THEN
-        Nu = Nu * mu0inv
+!      Nu = ListGetElementComplex(NuCoeff_h, Basis, Element, CreateNu, GaussPoint = t)      
+      IF( CreateNu ) THEN
+        !Nu = Nu * mu0inv
+        Nu = mu0inv * CMPLX(SUM(RelNu(1:n)*Basis(1:n)), SUM(RelNu_Im(1:n)*Basis(1:n)), kind=dp)
       ELSE
         Nu = mu0inv
       END IF
 
-      Eps = ListGetElementComplex(EpsCoeff_h, Basis, Element, Found, GaussPoint = t)        
-      IF( Found ) THEN
-        Eps = Eps0 * Eps
+!      Eps = ListGetElementComplex(EpsCoeff_h, Basis, Element, CreateEps, GaussPoint = t)        
+      IF( CreateEps ) THEN
+        !Eps = Eps0 * Eps
+        Eps = Eps0 * CMPLX(SUM(RelPermit(1:n)*Basis(1:n)), SUM(RelPermit_Im(1:n)*Basis(1:n)), kind=dp)  
       ELSE
         Eps = Eps0 
       END IF
@@ -424,8 +440,8 @@ SUBROUTINE EMPortSolver_Post(Model, Solver, dt, Transient)
   
   COMPLEX(KIND=dp) :: Beta, Ez
   
-  LOGICAL :: EigenProblem, InitHandles, Found
-  INTEGER :: dim, Active, t
+  LOGICAL :: EigenProblem, Found
+  INTEGER :: Active, t
   COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
   REAL(KIND=dp) :: mu0inv, eps0, omega
 
