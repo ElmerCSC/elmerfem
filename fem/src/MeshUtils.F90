@@ -2448,6 +2448,11 @@ CONTAINS
    ! whether a boundary element is internal or external.
    !------------------------------------------------------------------------------
    CALL MapInternalExternalBCs()
+
+
+   ! If requested split quadrilaterals to triangles.
+   !-----------------------------------------------------------------------
+   CALL SplitMeshQuads(Mesh, Model % Simulation )
    
    ! Create new boundaries on intersection of boundaries or bodies.
    ! This way the original mesh does not need to include the BCs
@@ -2949,6 +2954,8 @@ CONTAINS
    END IF
    Model % DIMENSION = MAX( Model % DIMENSION, Mesh % MaxDim ) 
 
+   CALL SplitMeshQuads( Mesh, Vlist ) 
+   
    IF( ListGetLogical( Vlist,'Constant Stencil', Found ) ) THEN
      CALL SetEqualElementIndeces( Mesh )
    END IF
@@ -18142,7 +18149,7 @@ CONTAINS
         CALL WriteMeshToDisk(Mesh_out, ExtrudedMeshName)
       END IF
     END IF
-
+    
   CONTAINS
 
     SUBROUTINE AppendMissingBCs(Model,maxbc)
@@ -23440,6 +23447,505 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+
+
+!------------------------------------------------------------------------------
+!> Split mesh with quadfaces into one with only triangle faces.
+!------------------------------------------------------------------------------
+  SUBROUTINE SplitMeshQuads(Mesh, Vlist) 
+!------------------------------------------------------------------------------
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(ValueList_t), POINTER :: Vlist
+!------------------------------------------------------------------------------
+    REAL(KIND=dp), POINTER :: x(:),y(:),z(:)
+    INTEGER :: i, j, k, k2, n, AddCnt, NewElCnt, nBulkElems, nBoundaryElems 
+    LOGICAL :: Found, FacesPresent, EdgesPresent
+    TYPE(Element_t), POINTER :: Enew,Eold,Edge,Parent
+    TYPE(PElementDefs_t), POINTER :: PDefs
+    LOGICAL :: Parallel, IsBulkElement, IsOddCut
+    LOGICAL :: Is15, Is24, Is35, Is26, Is34, Is16
+    INTEGER, ALLOCATABLE :: CutCorner(:), MinCorner(:), BulkElementOffset(:)
+    INTEGER :: TypeCnt(0:8), LocalMap(4), LocalMin(3), LocalCut(3)
+    INTEGER :: CutChanges, MeshDim, CutComb, iCut
+    TYPE(Element_t), POINTER :: Face
+    TYPE(Element_t), POINTER :: NewElements(:) => NULL()
+    CHARACTER(*), PARAMETER :: Caller="SplitMeshQuads"
+
+!------------------------------------------------------------------------------
+    IF ( .NOT. ASSOCIATED( Mesh ) ) RETURN
+    IF(.NOT. ASSOCIATED(VList)) RETURN
+    IF(Mesh % MeshDim < 2 ) RETURN
+    
+    IF( Mesh % MeshDim == 2 ) THEN
+      IF(.NOT. ListGetLogical( Vlist,'Split Mesh Quads',Found ) ) RETURN              
+    ELSE
+      IF(.NOT. ListGetLogical( Vlist,'Split Mesh Prisms',Found ) ) RETURN              
+    END IF
+    CALL Info( Caller,'Splitting all quadrilaterals into triangles in '//I2S(Mesh % MeshDim)//'D',Level=5)
+      
+    TypeCnt = 0
+    DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+      j = Mesh % Elements(i) % TYPE % ElementCode/100
+      TypeCnt(j) = TypeCnt(j) + 1
+    END DO
+    
+    IF(TypeCnt(4) > 0) CALL Info(Caller,'Splitting '//I2S(TypeCnt(4))//' quad elements',Level=8)
+    IF(TypeCnt(6) > 0) CALL Info(Caller,'Splitting '//I2S(TypeCnt(6))//' pyramid elements',Level=8)
+    IF(TypeCnt(7) > 0) CALL Info(Caller,'Splitting '//I2S(TypeCnt(7))//' prism elements',Level=8)    
+    IF(TypeCnt(8) > 0) CALL Info(Caller,'Splitting '//I2S(TypeCnt(8))//' hexahedron elements',Level=8)
+
+    !DO i=0,8
+    !  PRINT *,'TypeCount:',i,TypeCnt(i)
+    !END DO
+    
+    IF(TypeCnt(6) + TypeCnt(8) > 0 ) THEN
+      CALL Fatal(Caller,'Not implemented yet for pyramids and hexahedrons!')
+    END IF
+    
+    CALL ResetTimer(Caller)
+
+    Parallel = ( ParEnv % PEs > 1 ) .AND. (.NOT. Mesh % SingleMesh )
+    
+    AddCnt = TypeCnt(4) + 2*TypeCnt(7)    
+    CALL Info(Caller,'Number of elements added by splitting is '//I2S(AddCnt),Level=6)
+    
+    x => Mesh % Nodes % x
+    y => Mesh % Nodes % y
+    z => Mesh % Nodes % z
+    MeshDim = Mesh % MeshDim
+    EdgesPresent = ASSOCIATED(Mesh % Edges)
+    FacesPresent = ASSOCIATED(Mesh % Faces)
+        
+    NewElCnt = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements + AddCnt
+    CALL Info(Caller,'Count of new elements: '//I2S(NewElCnt),Level=7)
+    CALL AllocateVector( NewElements, NewElCnt )
+    CALL Info(Caller,'New elements allocated.', Level=10 )
+    
+    ! We do not need to all the complex stuff in 2D.
+    IF( MeshDim < 3 ) GOTO 1
+
+    ! First negotiate the split direction of the mesh.
+    ! We start from assuming that cut direction is though off local
+    ! indexes and the one owning the smallest global index calls the shots.    
+    !----------------------------------------------------------------------
+    CALL Info(Caller,'Trying to find consistent splitting direction in 3D',Level=12)
+    IF(.NOT.FacesPresent) CALL FindMeshFaces3D( Mesh )
+    ALLOCATE(CutCorner(Mesh % NumberOfFaces), MinCorner(Mesh % NumberOfFaces))
+    
+    ! Initialize with smallest index of the face
+    DO i=1,Mesh % NumberOfFaces
+      Face => Mesh % Faces(i)
+      MinCorner(i) = MINVAL(Face % NodeIndexes)
+    END DO
+    CutCorner = MinCorner
+
+    
+    DO WHILE(.TRUE.)
+      CutChanges = 0
+      
+      DO i=1,Mesh % NumberOfBulkElements         
+        Eold => Mesh % Elements(i)        
+        SELECT CASE( Eold % TYPE % ElementCode )
+          
+        CASE(706)
+          ! Faces 1 & 2 are triangles
+          ! Faces 3, 4 and 5 are married
+          ! There are 8 ways to cut the faces but only 6 of those are legal. 
+          ! WedgeFaceMap(3,:) = (/ 1,2,5,4 /)
+          ! WedgeFaceMap(4,:) = (/ 2,3,6,5 /)
+          ! WedgeFaceMap(5,:) = (/ 3,1,4,6 /)
+                            
+          LocalMin(1:3) = MinCorner(Eold % FaceIndexes(3:5))
+          LocalCut(1:3) = CutCorner(Eold % FaceIndexes(3:5))
+
+          ! How are we cutting the three faces? 
+          Is24 = ANY( LocalCut(1) == Eold % NodeIndexes([2,4])) 
+          Is26 = ANY( LocalCut(2) == Eold % NodeIndexes([2,6])) 
+          Is16 = ANY( LocalCut(3) == Eold % NodeIndexes([1,4])) 
+          Is15 = .NOT. Is24
+          Is35 = .NOT. Is26
+          Is34 = .NOT. Is16
+
+          ! Code the cases to numbers [111,222]
+          ! Cases 121 and 212 are not allowed!
+          CutComb = 111
+          IF(.NOT. Is24) CutComb = CutComb+100  ! Is15
+          IF(.NOT. Is26) CutComb = CutComb+10   ! Is35
+          IF(.NOT. Is16) CutComb = CutComb+1    ! Is34
+          
+          IF( CutComb == 121 .OR. CutComb == 212 ) THEN
+            iCut = 0
+            DO k=1,3
+              IF(LocalCut(k) == MAXVAL(LocalCut(1:3))) EXIT
+            END DO
+
+            IF(k==1) THEN
+              IF(CutComb == 121 ) iCut = 1 !-> 221 
+              IF(CutComb == 212 ) iCut = 2 !-> 112
+            ELSE IF(k==2) THEN
+              IF(CutComb == 121 ) iCut = 2 !-> 111
+              IF(CutComb == 212 ) iCut = 3 !-> 222
+            ELSE IF(k==3) THEN
+              IF(CutComb == 121 ) iCut = 3 !-> 122
+              IF(CutComb == 212 ) iCut = 1 !-> 211
+            ELSE
+              CALL Fatal(Caller,'Invalid value for k!')
+            END IF
+
+            IF(icut>0) THEN
+              CutCorner(Eold % FaceIndexes(2+k)) = Eold % NodeIndexes(iCut)
+              CutChanges = CutChanges + 1                            
+            ELSE
+              CALL Fatal(Caller,'Could not fix invalid cut!')
+            END IF
+          END IF
+        END SELECT
+      END DO
+
+      CALL Info(Caller,'Number of switches in cut direction: '//I2S(CutChanges))
+      IF(CutChanges == 0) EXIT      
+    END DO
+    
+    ! Jump directly here if we have 2D mesh. 
+1   CONTINUE
+
+    ! We need to register the offset coming from split.
+    ALLOCATE(BulkElementOffset(Mesh % NumberOfBulkElements))
+    BulkElementOffset = 0
+    NewElCnt = 0
+            
+!   Now update all new mesh elements:
+!   ---------------------------------
+    DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+
+      Eold => Mesh % Elements(i)
+      IsBulkElement = (i <= Mesh % NumberOfBulkElements ) 
+      
+      IF(IsBulkElement) THEN
+        ! For bulk elements store the offset so we can remap the parents more easily. 
+        BulkElementOffset(i) = NewElCnt 
+      END IF
+
+      SELECT CASE( Eold % TYPE % ElementCode )
+
+      CASE(101,202,303,504)
+        ! Copy elements without quad faces as is. 
+        NewElCnt = NewElCnt + 1
+        Enew => NewElements(NewElCnt)
+        Enew = Eold
+        Enew % ElementIndex = NewElCnt         
+        CALL AllocateVector( ENew % NodeIndexes, Eold % TYPE % NumberOfNodes )
+        Enew % NodeIndexes = Eold % NodeIndexes
+
+        IF(.NOT. IsBulkElement ) THEN
+          CALL UpdateParentElements()
+        END IF
+
+      CASE(404)
+        IF( MeshDim == 3 ) THEN
+          Parent => Eold % BoundaryInfo % Left
+          IF(.NOT. ASSOCIATED(Parent)) THEN
+            Parent => Eold % BoundaryInfo % Right
+          END IF          
+          Face => Find_Face(Mesh, Eold, Parent ) 
+          IsOddCut = ANY( CutCorner(Face % ElementIndex) == Face % NodeIndexes([1,3]) )
+        ELSE
+          Face => Eold
+          IsOddCut = .TRUE.
+        END IF
+                    
+        DO j=1,2         
+          IF( IsOddCut ) THEN
+            IF(j==1) THEN
+              LocalMap(1:3) = [1,2,3]
+            ELSE
+              LocalMap(1:3) = [3,4,1]
+            END IF
+          ELSE
+            IF(j==1) THEN
+              LocalMap(1:3) = [4,1,2]
+            ELSE
+              LocalMap(1:3) = [2,3,4]
+            END IF
+          END IF
+
+          NewElCnt = NewElCnt + 1
+          Enew => NewElements(NewElCnt)
+          Enew = Eold
+          Enew % TYPE => GetElementType(303)
+          Enew % ElementIndex = NewElCnt         
+          CALL AllocateVector( ENew % NodeIndexes, 3 )
+          Enew % NodeIndexes(1:3) = Face % NodeIndexes(LocalMap(1:3))
+          Enew % EdgeIndexes => NULL()
+          Enew % FaceIndexes => NULL()
+          
+          IF(.NOT. IsBulkElement ) THEN
+            CALL UpdateParentElements()
+          END IF
+        END DO
+
+      CASE(706)
+
+        LocalCut(1:3) = CutCorner(Eold % FaceIndexes(3:5))
+
+        ! How are we cutting the three faces? 
+        Is24 = ANY( LocalCut(1) == Eold % NodeIndexes([2,4])) 
+        Is26 = ANY( LocalCut(2) == Eold % NodeIndexes([2,6])) 
+        Is16 = ANY( LocalCut(3) == Eold % NodeIndexes([1,4])) 
+        Is15 = .NOT. Is24
+        Is35 = .NOT. Is26
+        Is34 = .NOT. Is16
+
+        ! Code the cases to numbers [111,222]
+        CutComb = 111
+        IF(.NOT. Is24) CutComb = CutComb+100  ! Is15
+        IF(.NOT. Is26) CutComb = CutComb+10   ! Is35
+        IF(.NOT. Is16) CutComb = CutComb+1    ! Is34
+              
+        DO j=1,3                   
+          SELECT CASE(CutComb)
+          CASE(111)
+            IF(j==1) THEN
+              LocalMap(1:4) = [1,2,4,6]
+            ELSE IF(j==2) THEN
+              LocalMap(1:4) = [2,5,4,6]
+            ELSE 
+              LocalMap(1:4) = [1,2,3,6]
+            END IF
+
+          CASE(112)
+            IF(j==1) THEN
+              LocalMap(1:4) = [1,2,4,3]
+            ELSE IF(j==2) THEN
+              LocalMap(1:4) = [2,5,4,6]
+            ELSE 
+              LocalMap(1:4) = [2,3,6,4]
+            END IF
+
+          CASE(122)
+            IF(j==1) THEN
+              LocalMap(1:4) = [1,2,4,3]
+            ELSE IF(j==2) THEN
+              LocalMap(1:4) = [2,5,4,3]
+            ELSE 
+              LocalMap(1:4) = [4,5,3,6]
+            END IF
+
+          CASE(221)
+            IF(j==1) THEN
+              LocalMap(1:4) = [1,2,5,3]
+            ELSE IF(j==2) THEN
+              LocalMap(1:4) = [1,5,4,6]
+            ELSE 
+              LocalMap(1:4) = [1,3,5,6]
+            END IF
+
+          CASE(222)
+            IF(j==1) THEN
+              LocalMap(1:4) = [1,2,5,3]
+            ELSE IF(j==2) THEN
+              LocalMap(1:4) = [1,5,4,3]
+            ELSE 
+              LocalMap(1:4) = [4,5,3,6]
+            END IF
+
+          CASE(211)
+            IF(j==1) THEN
+              LocalMap(1:4) = [1,2,5,6]
+            ELSE IF(j==2) THEN
+              LocalMap(1:4) = [1,5,4,6]
+            ELSE 
+              LocalMap(1:4) = [1,2,3,6]
+            END IF
+
+          CASE DEFAULT
+            CALL Fatal(Caller,'Unknown case for split: '//I2S(CutComb))
+
+          END SELECT
+
+          NewElCnt = NewElCnt + 1
+          Enew => NewElements(NewElCnt)
+          Enew = Eold
+          Enew % TYPE => GetElementType(504)
+          Enew % ElementIndex = NewElCnt         
+          CALL AllocateVector( ENew % NodeIndexes, 4 )
+          Enew % NodeIndexes = Eold % NodeIndexes(LocalMap(1:4))          
+          Enew % EdgeIndexes => NULL()
+          Enew % FaceIndexes => NULL()
+        END DO
+      END SELECT
+            
+      IF(i==Mesh % NumberOfBulkElements) THEN
+        nBulkElems = NewElCnt
+      END IF
+    END DO
+
+    ! Release old elements and rplace them with new elements and element counts
+    CALL ReleaseMeshElements( Mesh ) 
+
+    Mesh % Elements => NewElements
+    Mesh % NumberOfBulkElements = nBulkElems
+    Mesh % NumberOfBoundaryElements = NewElCnt - nBulkElems
+            
+    ! These are now conservative and could be updated
+    ! NewMesh % MaxElementDOFs  = Mesh % MaxElementDOFs
+
+    IF( MeshDim == 3 ) THEN
+      Mesh % MaxElementNodes = 4
+    ELSE
+      Mesh % MaxElementNodes = 3
+    END IF
+    
+#if 0
+    j = 0
+    DO i=1,Mesh % NumberOfBulkElements
+      Enew => NewElements(i)        
+      IF ( Enew % DGDOFs>0 ) THEN
+        Enew % DGDofs == Enew % TYPE % NumberOfNodes
+        ALLOCATE(Enew % DGIndexes(Enew % DGDOFs))
+        DO k=1,Enew % DGDOFs
+          j = j + 1
+          Enew % DGIndexes(k)=j
+        END DO
+      ELSE
+        Enew % DGIndexes=>NULL()
+      END IF
+    END DO
+#endif
+
+    DO i=1,NewElCnt 
+      IF (i<=Mesh % NumberOfBulkElements) THEN
+        Enew => Mesh % Elements(i)
+        PDefs => Enew % PDefs
+        IF(ASSOCIATED(PDefs)) THEN
+          CALL AllocatePDefinitions(Enew)
+          Enew % PDefs = PDefs
+          
+          ! All elements in actual mesh are not edges
+          Enew % PDefs % isEdge = .FALSE.
+          
+          ! If element is of type tetrahedron and is a p element,
+          ! do the Ainsworth & Coyle trick
+          IF (Enew % TYPE % ElementCode == 504) CALL ConvertToACTetra(Enew)
+          CALL GetRefPElementNodes( Enew % TYPE,  Enew % TYPE % NodeU, &
+              Enew % TYPE % NodeV, Enew % TYPE % NodeW )
+        END IF
+      ELSE
+        Enew % PDefs=>NULL()
+      END IF
+      Enew % EdgeIndexes => NULL()
+      Enew % FaceIndexes => NULL()
+      Enew % BubbleIndexes => NULL()
+    END DO
+    
+    CALL CheckTimer(Caller,Delete=.TRUE.)
+    
+!   Update structures needed for parallel execution:
+!   ------------------------------------------------
+    IF( Parallel ) THEN
+      ! We don't have any updates for parallel mesh.
+      ! The nodes stay the same.
+    END IF
+
+    ! Release old edges and faces since they don't match the new mesh.
+    !-----------------------------------------------------------------
+    CALL ReleaseMeshEdgeTables( Mesh )
+    CALL ReleaseMeshFaceTables( Mesh )
+    !Mesh % Faces => NULL()
+    !Mesh % Edges => NULL()
+    !Mesh % NumberOfFaces = 0 
+    !Mesh % NumberOfEdges = 0 
+    
+    IF( FacesPresent ) THEN 
+      CALL Info(Caller,'Generating faces in the new mesh as thet were present in the old!',Level=20)
+      CALL FindMeshFaces3D( Mesh )
+    END IF
+    IF( EdgesPresent ) THEN 
+      CALL Info(Caller,'Generating faces in the new mesh as thet were present in the old!',Level=20)
+      CALL FindMeshEdges( Mesh )
+    END IF
+
+    !CALL CheckMeshInfo( Mesh )     
+    !CALL writemeshtodisk( Mesh, "koe" )
+
+  CONTAINS
+
+    
+    SUBROUTINE UpdateParentElements()
+
+      INTEGER :: j,m,lcnt,l,nCands,ElemCode,BulkOffset
+      TYPE(Element_t), POINTER :: CandParent, Parent
+      LOGICAL :: hit
+      
+      ALLOCATE( Enew % BoundaryInfo )
+      Enew % BoundaryInfo = Eold % BoundaryInfo 
+
+      DO j=1,2
+        IF(j==1) THEN
+          Parent => Eold % BoundaryInfo % Left
+        ELSE
+          Parent => Eold % BoundaryInfo % Right
+        END IF
+        IF(.NOT. ASSOCIATED( Parent ) ) CYCLE
+
+        ElemCode = Parent % TYPE % ElementCode
+
+        ! Depending on the elementtype the original element has been split into several candidate elements. 
+        SELECT CASE(ElemCode)
+        CASE(202)
+          nCands = 1
+        CASE(303)
+          nCands = 1
+        CASE(404)
+          nCands = 2
+        CASE(504)
+          nCands = 1
+        CASE(706)
+          nCands = 3
+        END SELECT
+
+        hit = .FALSE.
+
+        BulkOffset = BulkElementOffset(Parent % ElementIndex)
+
+        DO k=1,nCands
+          CandParent => NewElements(BulkOffset+k)
+          m = Enew % Type % NumberOfNodes
+          lcnt = 0
+          DO l=1,m
+            IF(ANY(Enew % NodeIndexes(l) == CandParent % NodeIndexes)) lcnt = lcnt + 1
+          END DO
+          IF(lcnt == m) THEN
+            IF(j==1) THEN
+              Enew % BoundaryInfo % Left => CandParent
+            ELSE
+              Enew % BoundaryInfo % Right => CandParent
+            END IF
+            hit = .TRUE.
+            EXIT
+          END IF
+        END DO
+            
+        IF(.NOT. Hit) THEN
+          PRINT *,'Not Found:',j,k,lcnt,nCands,ElemCode,Parent % ElementIndex, BulkOffset
+          PRINT *,'This:',Eold % NodeIndexes
+          PRINT *,'Parent:',Parent % NodeIndexes
+          DO k=1,nCands
+            CandParent => NewElements(BulkOffset+k)
+            PRINT *,'Cands:',CandParent % NodeIndexes
+          END DO
+          CALL Fatal('UpdateParentElements','Could not find parent for type '//I2S(ElemCode))
+        END IF
+        
+      END DO
+
+    END SUBROUTINE UpdateParentElements
+    
+     
+   END SUBROUTINE SplitMeshQuads
+!------------------------------------------------------------------------------
+
+
   
 !------------------------------------------------------------------------------
 !> Sometimes we are lucky and the mesh includes similar elements that are
@@ -23654,53 +24160,8 @@ CONTAINS
       Mesh % RootQuadrant => NULL()
     END IF
 
-
-    IF ( ASSOCIATED( Mesh % Elements ) ) THEN
-      CALL Info('ReleaseMesh','Releasing mesh elements',Level=15)
-
-      DO i=1,SIZE(Mesh % Elements)
-
-!          Boundaryinfo structure for boundary elements
-!          ---------------------------------------------
-        IF ( Mesh % Elements(i) % Copy ) CYCLE
-
-        IF ( i > Mesh % NumberOfBulkElements ) THEN
-          bInfo => Mesh % Elements(i) % BoundaryInfo
-          IF ( ASSOCIATED(bInfo) ) THEN
-            IF (ASSOCIATED(bInfo % RadiationFactors)) THEN
-              IF ( ALLOCATED(bInfo % RadiationFactors % Elements ) ) THEN
-                DEALLOCATE(bInfo % RadiationFactors % Elements )
-                DEALLOCATE(bInfo % RadiationFactors % Factors )
-              END IF
-              DEALLOCATE(bInfo % RadiationFactors)
-            END IF
-            DEALLOCATE(bInfo)
-          END IF
-        END IF
-
-        IF ( ASSOCIATED( Mesh % Elements(i) % NodeIndexes ) ) &
-            DEALLOCATE( Mesh % Elements(i) % NodeIndexes )
-        Mesh % Elements(i) % NodeIndexes => NULL()
-
-        IF ( ASSOCIATED( Mesh % Elements(i) % DGIndexes ) ) &
-            DEALLOCATE( Mesh % Elements(i) % DGIndexes )
-        Mesh % Elements(i) % DGIndexes => NULL()
-
-        IF ( ASSOCIATED( Mesh % Elements(i) % BubbleIndexes ) ) &
-            DEALLOCATE( Mesh % Elements(i) % BubbleIndexes )
-        Mesh % Elements(i) % BubbleIndexes => NULL()
-
-        ! This creates problems later on!!!
-        !IF ( ASSOCIATED( Mesh % Elements(i) % PDefs ) ) &
-        !   DEALLOCATE( Mesh % Elements(i) % PDefs )
-        
-        Mesh % Elements(i) % PDefs => NULL() 
-      END DO
-      
-      DEALLOCATE( Mesh % Elements )
-      Mesh % Elements => NULL()
-    END IF
-     
+    CALL ReleaseMeshElements( Mesh ) 
+         
     Mesh % NumberOfNodes = 0
     Mesh % NumberOfBulkElements = 0
     Mesh % NumberOfBoundaryElements = 0
@@ -23712,6 +24173,68 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+  SUBROUTINE ReleaseMeshElements(Mesh)
+
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(BoundaryInfo_t), POINTER :: bInfo
+    INTEGER :: i, n
+
+    IF(.NOT. ASSOCIATED(Mesh % Elements) ) THEN
+      CALL Info('ReleaseMeshElements','Elements not associated, nothing to release',Level=30)
+      RETURN
+    END IF
+
+    n = SIZE( Mesh % Elements )     
+    CALL Info('ReleaseMeshElements','Releasing number of elements: '//I2S(n),Level=30)
+
+
+    DO i=1,n
+
+      ! Boundaryinfo structure for boundary elements
+      !---------------------------------------------
+      IF ( Mesh % Elements(i) % Copy ) CYCLE
+
+      IF ( i > Mesh % NumberOfBulkElements ) THEN
+        bInfo => Mesh % Elements(i) % BoundaryInfo
+        IF ( ASSOCIATED(bInfo) ) THEN
+          IF (ASSOCIATED(bInfo % RadiationFactors)) THEN
+            IF ( ALLOCATED(bInfo % RadiationFactors % Elements ) ) THEN
+              DEALLOCATE(bInfo % RadiationFactors % Elements )
+              DEALLOCATE(bInfo % RadiationFactors % Factors )
+            END IF
+            DEALLOCATE(bInfo % RadiationFactors)
+          END IF
+          DEALLOCATE(bInfo)
+        END IF
+      END IF
+
+      IF ( ASSOCIATED( Mesh % Elements(i) % NodeIndexes ) ) &
+          DEALLOCATE( Mesh % Elements(i) % NodeIndexes )
+      Mesh % Elements(i) % NodeIndexes => NULL()
+
+      IF ( ASSOCIATED( Mesh % Elements(i) % DGIndexes ) ) &
+          DEALLOCATE( Mesh % Elements(i) % DGIndexes )
+      Mesh % Elements(i) % DGIndexes => NULL()
+
+      IF ( ASSOCIATED( Mesh % Elements(i) % BubbleIndexes ) ) &
+          DEALLOCATE( Mesh % Elements(i) % BubbleIndexes )
+      Mesh % Elements(i) % BubbleIndexes => NULL()
+
+      ! This creates problems later on!!!
+      !IF ( ASSOCIATED( Mesh % Elements(i) % PDefs ) ) &
+      !   DEALLOCATE( Mesh % Elements(i) % PDefs )
+
+      Mesh % Elements(i) % PDefs => NULL() 
+    END DO
+
+    DEALLOCATE( Mesh % Elements )
+    Mesh % Elements => NULL()
+
+    
+  END SUBROUTINE ReleaseMeshElements
+
+
+  
 !------------------------------------------------------------------------------
   SUBROUTINE ReleaseMeshEdgeTables( Mesh )
 !------------------------------------------------------------------------------
