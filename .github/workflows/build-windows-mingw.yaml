@@ -140,7 +140,10 @@ jobs:
           CTEST_OUTPUT_ON_FAILURE: 1
         run: |
           cd ${GITHUB_WORKSPACE}/build
-          ctest -L quick -j$(nproc)
+          ctest . \
+            -L quick \
+            -j$(nproc) \
+            --timeout 180
 
       - name: re-run tests
         if: always() && (steps.run-ctest.outcome == 'failure')
@@ -150,7 +153,7 @@ jobs:
         run: |
           cd ${GITHUB_WORKSPACE}/build
           echo "::group::Re-run failing tests"
-          ctest --rerun-failed --output-on-failure || true
+          ctest --rerun-failed --output-on-failure --timeout 180 || true
           echo "::endgroup::"
           echo "::group::Log from these tests"
           [ ! -f Testing/Temporary/LastTest.log ] || cat Testing/Temporary/LastTest.log

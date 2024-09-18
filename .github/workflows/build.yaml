@@ -134,7 +134,12 @@ jobs:
           CTEST_OUTPUT_ON_FAILURE: 1
         run: |
           cd ${GITHUB_WORKSPACE}/build
-          set -o pipefail && ctest -L "quick|elmerice-fast" -j$(nproc) . | tee ./ctest_output.log
+          set -o pipefail && \
+            ctest . \
+              -L "quick|elmerice-fast" \
+              -j$(nproc) \
+              --timeout 180 \
+            | tee ./ctest_output.log
 
       - name: Re-run tests
         if: always() && (steps.run-ctest.outcome == 'failure')
@@ -171,7 +176,7 @@ jobs:
             echo "::endgroup::"
           done
           echo "::group::Re-run failing tests"
-          ctest --rerun-failed --output-on-failure || true
+          ctest --rerun-failed --output-on-failure --timeout 180 || true
           echo "::endgroup::"
           echo "::group::Log from these tests"
           [ ! -f Testing/Temporary/LastTest.log ] || cat Testing/Temporary/LastTest.log
