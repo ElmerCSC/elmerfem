@@ -23464,11 +23464,11 @@ CONTAINS
     TYPE(PElementDefs_t), POINTER :: PDefs
     INTEGER :: ierr, ParTmp(6), ParSizes(6)
     LOGICAL :: Parallel, IsBulkElement, IsOddCut
-    LOGICAL, ALLOCATABLE :: CutOdd(:)
-    INTEGER, ALLOCATABLE :: BulkElementOffset(:)
-    INTEGER :: TypeCnt(0:8)
-    INTEGER :: min3, min5, j3, j4, j5, k3, CutChanges, MeshDim
-    TYPE(Element_t), POINTER :: Face, Face3, Face4, Face5    
+    LOGICAL :: Is15, Is24, Is35, Is26, Is34, Is16
+    INTEGER, ALLOCATABLE :: CutCorner(:), MinCorner(:), BulkElementOffset(:)
+    INTEGER :: TypeCnt(0:8), LocalMap(4), LocalMin(3), LocalCut(3)
+    INTEGER :: CutChanges, MeshDim, CutComb, iCut
+    TYPE(Element_t), POINTER :: Face
     TYPE(Element_t), POINTER :: NewElements(:) => NULL()
     CHARACTER(*), PARAMETER :: Caller="SplitMeshQuads"
 
@@ -23530,10 +23530,17 @@ CONTAINS
     ! indexes and the one owning the smallest global index calls the shots.    
     !----------------------------------------------------------------------
     CALL Info(Caller,'Trying to find consistent splitting direction in 3D',Level=12)
-    ALLOCATE(CutOdd(Mesh % NumberOfFaces))
-    CutOdd = .TRUE.
     IF(.NOT.FacesPresent) CALL FindMeshFaces3D( Mesh )
+    ALLOCATE(CutCorner(Mesh % NumberOfFaces), MinCorner(Mesh % NumberOfFaces))
+    
+    ! Initialize with smallest index of the face
+    DO i=1,Mesh % NumberOfFaces
+      Face => Mesh % Faces(i)
+      MinCorner(i) = MINVAL(Face % NodeIndexes)
+    END DO
+    CutCorner = MinCorner
 
+    
     DO WHILE(.TRUE.)
       CutChanges = 0
       
@@ -23543,46 +23550,54 @@ CONTAINS
           
         CASE(706)
           ! Faces 1 & 2 are triangles
-          ! Faces 3 & 5 are married
-          ! Face 4 can be chosen freely. 
-          
-          j3 = Eold % FaceIndexes(3)
-          j5 = Eold % FaceIndexes(5)
+          ! Faces 3, 4 and 5 are married
+          ! There are 8 ways to cut the faces but only 6 of those are legal. 
+          ! WedgeFaceMap(3,:) = (/ 1,2,5,4 /)
+          ! WedgeFaceMap(4,:) = (/ 2,3,6,5 /)
+          ! WedgeFaceMap(5,:) = (/ 3,1,4,6 /)
+                            
+          LocalMin(1:3) = MinCorner(Eold % FaceIndexes(3:5))
+          LocalCut(1:3) = CutCorner(Eold % FaceIndexes(3:5))
 
-          Face3 => Mesh % Faces(j3)
-          Face5 => Mesh % Faces(j5)
+          ! How are we cutting the three faces? 
+          Is24 = ANY( LocalCut(1) == Eold % NodeIndexes([2,4])) 
+          Is26 = ANY( LocalCut(2) == Eold % NodeIndexes([2,6])) 
+          Is16 = ANY( LocalCut(3) == Eold % NodeIndexes([1,4])) 
+          Is15 = .NOT. Is24
+          Is35 = .NOT. Is26
+          Is34 = .NOT. Is16
 
-          ! The face with the smaller node index rules. 
-          min3 = MINVAL(Face3 % NodeIndexes)
-          min5 = MINVAL(Face5 % NodeIndexes)
+          ! Code the cases to numbers [111,222]
+          ! Cases 121 and 212 are not allowed!
+          CutComb = 111
+          IF(.NOT. Is24) CutComb = CutComb+100  ! Is15
+          IF(.NOT. Is26) CutComb = CutComb+10   ! Is35
+          IF(.NOT. Is16) CutComb = CutComb+1    ! Is34
           
-          ! If the smallest index is the same, then the 2nd smallest rules. 
-          IF(min3 == min5 ) THEN
-            k = min3
-            min3 = MINVAL(Face3 % NodeIndexes, Face3 % NodeIndexes /= k )
-            min5 = MINVAL(Face5 % NodeIndexes, Face5 % NodeIndexes /= k )
-          END IF
-          ! If also the 2nd smallest index is the same, then the 3rd smallest rules. 
-          IF(min3 == min5 ) THEN
-            k2 = min3
-            min3 = MINVAL(Face3 % NodeIndexes, Face3 % NodeIndexes /= k .AND. Face3 % NodeIndexes /= k2 )
-            min5 = MINVAL(Face5 % NodeIndexes, Face5 % NodeIndexes /= k .AND. Face3 % NodeIndexes /= k2 )
-          END IF
-          IF(min3 == min5) THEN
-            CALL Fatal(Caller,'We should not have three same indexes in quad faces!')
-          END IF
-          
-          IF(min3 < min5 ) THEN
-            ! Face 3 has smaller index and sets the rules
-            IF( CutOdd(j3) .NEQV. .NOT. CutOdd(j5) ) THEN
-              CutOdd(j5) = .NOT. CutOdd(j5)
-              CutChanges = CutChanges + 1                            
+          IF( CutComb == 121 .OR. CutComb == 212 ) THEN
+            iCut = 0
+            DO k=1,3
+              IF(LocalCut(k) == MAXVAL(LocalCut(1:3))) EXIT
+            END DO
+
+            IF(k==1) THEN
+              IF(CutComb == 121 ) iCut = 1 !-> 221 
+              IF(CutComb == 212 ) iCut = 2 !-> 112
+            ELSE IF(k==2) THEN
+              IF(CutComb == 121 ) iCut = 2 !-> 111
+              IF(CutComb == 212 ) iCut = 3 !-> 222
+            ELSE IF(k==3) THEN
+              IF(CutComb == 121 ) iCut = 3 !-> 122
+              IF(CutComb == 212 ) iCut = 1 !-> 211
+            ELSE
+              CALL Fatal(Caller,'Invalid value for k!')
             END IF
-          ELSE IF( min5 < min3 ) THEN
-            ! Face 5 has smaller index and sets the rules
-            IF( CutOdd(j5) .NEQV. .NOT. CutOdd(j3) ) THEN
-              CutOdd(j3) = .NOT. CutOdd(j3)
+
+            IF(icut>0) THEN
+              CutCorner(Eold % FaceIndexes(2+k)) = Eold % NodeIndexes(iCut)
               CutChanges = CutChanges + 1                            
+            ELSE
+              CALL Fatal(Caller,'Could not fix invalid cut!')
             END IF
           END IF
         END SELECT
@@ -23634,78 +23649,127 @@ CONTAINS
             Parent => Eold % BoundaryInfo % Right
           END IF          
           Face => Find_Face(Mesh, Eold, Parent ) 
-          IsOddCut = CutOdd( Face % ElementIndex )
+          IsOddCut = ANY( CutCorner(Face % ElementIndex) == Face % NodeIndexes([1,3]) )
         ELSE
           Face => Eold
           IsOddCut = .TRUE.
         END IF
                     
         DO j=1,2         
+          IF( IsOddCut ) THEN
+            IF(j==1) THEN
+              LocalMap(1:3) = [1,2,3]
+            ELSE
+              LocalMap(1:3) = [3,4,1]
+            END IF
+          ELSE
+            IF(j==1) THEN
+              LocalMap(1:3) = [4,1,2]
+            ELSE
+              LocalMap(1:3) = [2,3,4]
+            END IF
+          END IF
+
           NewElCnt = NewElCnt + 1
           Enew => NewElements(NewElCnt)
           Enew = Eold
           Enew % TYPE => GetElementType(303)
           Enew % ElementIndex = NewElCnt         
           CALL AllocateVector( ENew % NodeIndexes, 3 )
-
-          IF( IsOddCut ) THEN
-            IF(j==1) THEN
-              Enew % NodeIndexes = Face % NodeIndexes([1,2,3])
-            ELSE
-              Enew % NodeIndexes = Face % NodeIndexes([3,4,1])
-            END IF
-          ELSE
-            IF(j==1) THEN
-              Enew % NodeIndexes = Face % NodeIndexes([4,1,2])
-            ELSE
-              Enew % NodeIndexes = Face % NodeIndexes([2,3,4])
-            END IF
-          END IF
-
+          Enew % NodeIndexes(1:3) = Face % NodeIndexes(LocalMap(1:3))
+          
           IF(.NOT. IsBulkElement ) THEN
             CALL UpdateParentElements()
           END IF
         END DO
 
       CASE(706)
-        j3 = Eold % FaceIndexes(3)
-        j4 = Eold % FaceIndexes(5)
 
-        Face3 => Mesh % Faces(j3)
-        Face4 => Mesh % Faces(j4)
+        LocalCut(1:3) = CutCorner(Eold % FaceIndexes(3:5))
 
-        DO j=1,3         
+        ! How are we cutting the three faces? 
+        Is24 = ANY( LocalCut(1) == Eold % NodeIndexes([2,4])) 
+        Is26 = ANY( LocalCut(2) == Eold % NodeIndexes([2,6])) 
+        Is16 = ANY( LocalCut(3) == Eold % NodeIndexes([1,4])) 
+        Is15 = .NOT. Is24
+        Is35 = .NOT. Is26
+        Is34 = .NOT. Is16
+
+        ! Code the cases to numbers [111,222]
+        CutComb = 111
+        IF(.NOT. Is24) CutComb = CutComb+100  ! Is15
+        IF(.NOT. Is26) CutComb = CutComb+10   ! Is35
+        IF(.NOT. Is16) CutComb = CutComb+1    ! Is34
+              
+        DO j=1,3                   
+          SELECT CASE(CutComb)
+          CASE(111)
+            IF(j==1) THEN
+              LocalMap(1:4) = [1,2,4,6]
+            ELSE IF(j==2) THEN
+              LocalMap(1:4) = [2,5,4,6]
+            ELSE 
+              LocalMap(1:4) = [1,2,3,6]
+            END IF
+
+          CASE(112)
+            IF(j==1) THEN
+              LocalMap(1:4) = [1,2,4,3]
+            ELSE IF(j==2) THEN
+              LocalMap(1:4) = [2,5,4,6]
+            ELSE 
+              LocalMap(1:4) = [2,3,6,4]
+            END IF
+
+          CASE(122)
+            IF(j==1) THEN
+              LocalMap(1:4) = [1,2,4,3]
+            ELSE IF(j==2) THEN
+              LocalMap(1:4) = [2,5,4,3]
+            ELSE 
+              LocalMap(1:4) = [4,5,3,6]
+            END IF
+
+          CASE(221)
+            IF(j==1) THEN
+              LocalMap(1:4) = [1,2,5,3]
+            ELSE IF(j==2) THEN
+              LocalMap(1:4) = [1,5,4,6]
+            ELSE 
+              LocalMap(1:4) = [1,3,5,6]
+            END IF
+
+          CASE(222)
+            IF(j==1) THEN
+              LocalMap(1:4) = [1,2,5,3]
+            ELSE IF(j==2) THEN
+              LocalMap(1:4) = [1,5,4,3]
+            ELSE 
+              LocalMap(1:4) = [4,5,3,6]
+            END IF
+
+          CASE(211)
+            IF(j==1) THEN
+              LocalMap(1:4) = [1,2,5,6]
+            ELSE IF(j==2) THEN
+              LocalMap(1:4) = [1,5,4,6]
+            ELSE 
+              LocalMap(1:4) = [1,2,3,6]
+            END IF
+
+          CASE DEFAULT
+            CALL Fatal(Caller,'Unknown case for split: '//I2S(CutComb))
+
+          END SELECT
+
           NewElCnt = NewElCnt + 1
           Enew => NewElements(NewElCnt)
           Enew = Eold
           Enew % TYPE => GetElementType(504)
           Enew % ElementIndex = NewElCnt         
           CALL AllocateVector( ENew % NodeIndexes, 4 )
-
-          ! This is 3D so we always have CutOdd existing. 
-          IF(j==1) THEN
-            IF( CutOdd(Face3 % ElementIndex ) ) THEN              
-              Enew % NodeIndexes = Eold % NodeIndexes([4,5,6,1])
-              k3 = 1
-            ELSE
-              Enew % NodeIndexes = Eold % NodeIndexes([1,2,3,4])
-              k3 = 4
-            END IF
-          ELSE IF(j==2) THEN
-            IF( CutOdd(Face4 % ElementIndex ) ) THEN
-              Enew % NodeIndexes = Eold % NodeIndexes([2,3,6,k3])                
-            ELSE
-              Enew % NodeIndexes = Eold % NodeIndexes([2,3,5,k3])                
-            END IF
-          ELSE
-            IF( CutOdd(Face4 % ElementIndex ) ) THEN
-              Enew % NodeIndexes = Eold % NodeIndexes([2,6,5,k3])                
-            ELSE
-              Enew % NodeIndexes = Eold % NodeIndexes([3,5,6,k3])                
-            END IF
-          END IF
+          Enew % NodeIndexes = Eold % NodeIndexes(LocalMap(1:4))          
         END DO
-
       END SELECT
             
       IF(i==Mesh % NumberOfBulkElements) THEN
@@ -23798,14 +23862,19 @@ CONTAINS
 !   Update structures needed for parallel execution:
 !   ------------------------------------------------
     IF( Parallel ) THEN
-      !CALL UpdateParallelMesh( Mesh, NewMesh )
+      ! We don't have any updates for parallel mesh.
+      ! The nodes stay the same.
     END IF
 
     ! Release old edges and faces since they don't match the new mesh.
     !-----------------------------------------------------------------
-    CALL ReleaseMeshEdgeTables( Mesh )
-    CALL ReleaseMeshFaceTables( Mesh )
-        
+    !CALL ReleaseMeshEdgeTables( Mesh )
+    !CALL ReleaseMeshFaceTables( Mesh )
+    Mesh % Faces => NULL()
+    Mesh % Edges => NULL()
+    Mesh % NumberOfFaces = 0 
+    Mesh % NumberOfEdges = 0 
+    
     IF( FacesPresent ) THEN 
       CALL Info(Caller,'Generating faces in the new mesh as thet were present in the old!',Level=20)
       CALL FindMeshFaces3D( Mesh )
@@ -23826,7 +23895,7 @@ CONTAINS
       INTEGER :: j,m,lcnt,l,nCands,ElemCode,BulkOffset
       TYPE(Element_t), POINTER :: CandParent, Parent
       LOGICAL :: hit
-
+      
       ALLOCATE( Enew % BoundaryInfo )
       Enew % BoundaryInfo = Eold % BoundaryInfo 
 
@@ -23875,8 +23944,18 @@ CONTAINS
             EXIT
           END IF
         END DO
-        IF(.NOT. Hit) CALL Fatal('UpdateParentElements','Could not find parent for type '//I2S(ElemCode))
-
+            
+        IF(.NOT. Hit) THEN
+          PRINT *,'Not Found:',j,k,lcnt,nCands,ElemCode,Parent % ElementIndex, BulkOffset
+          PRINT *,'This:',Eold % NodeIndexes
+          PRINT *,'Parent:',Parent % NodeIndexes
+          DO k=1,nCands
+            CandParent => NewElements(BulkOffset+k)
+            PRINT *,'Cands:',CandParent % NodeIndexes
+          END DO
+          CALL Fatal('UpdateParentElements','Could not find parent for type '//I2S(ElemCode))
+        END IF
+        
       END DO
 
     END SUBROUTINE UpdateParentElements
