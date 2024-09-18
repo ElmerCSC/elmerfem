@@ -108,6 +108,30 @@ jobs:
           CTEST_OUTPUT_ON_FAILURE: 1
         run: |
           cd ${GITHUB_WORKSPACE}/build
+          # get names of failed tests and strip potential "_np*" suffix
+          failed_tests=($(ctest . -N --rerun-failed | grep -E "Test\s+#.*" | awk '{print $3}' | sed -e 's/_np[0-9]*$//g'))
+          # remove duplicate test names
+          unique_failed_tests=($(echo "${failed_tests[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
+          for test in "${unique_failed_tests[@]}"; do
+            # check if test is from fem or ElmerIce
+            if [ -d fem/tests/${test} ]; then
+              test_root=fem/tests
+            else
+              test_root=elmerice/Tests
+            fi
+            echo "::group::Content of ${test_root}/${test}"
+            echo ---- Files ----
+            ls -Rl ${test_root}/${test}
+            if [ -f ${test_root}/${test}/test-stderr*.log ]; then
+              echo ---- Content of test-stderr*.log ----
+              cat ${test_root}/${test}/test-stderr*.log
+            fi
+            if [ -f ${test_root}/${test}/test-stdout*.log ]; then
+              echo ---- Content of test-stdout*.log ----
+              cat ${test_root}/${test}/test-stdout*.log
+            fi
+            echo "::endgroup::"
+          done
           echo "::group::Re-run failing tests"
           ctest --rerun-failed --output-on-failure --timeout 180 || true
           echo "::endgroup::"
