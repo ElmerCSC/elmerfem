@@ -15364,22 +15364,22 @@ END FUNCTION SearchNodeL
         DO i=1,ParEnV % PEs
           IF(i-1==me .OR. .NOT. ParEnv % IsNeighbour(i)) CYCLE
 
-          CALL MPI_BSEND(SendTo(i),1,xmpi_int,i-1,1200,xmpi_comm,status,ierr)
+          CALL MPI_BSEND(SendTo(i),1,xmpi_int,i-1,1200,xmpi_comm,ierr)
           IF(Sendto(i)==0) CYCLE
 
           ibuf = aPerm(SendStuff(i) % Rows)
-          CALL MPI_BSEND(ibuf,SendTo(i),xmpi_int,i-1,1201,xmpi_comm,status,ierr)
+          CALL MPI_BSEND(ibuf,SendTo(i),xmpi_int,i-1,1201,xmpi_comm,ierr)
 
           ibuf = SendStuff(i) % Size
-          CALL MPI_BSEND(ibuf,SendTo(i),xmpi_int,i-1,1202,xmpi_comm,status,ierr)
+          CALL MPI_BSEND(ibuf,SendTo(i),xmpi_int,i-1,1202,xmpi_comm,ierr)
 
           DO j=1,SendTo(i)
             k = SendStuff(i) % Rows(j)
             l = SendStuff(i) % Size(j)
             dBuf =  A % Values(A % Rows(k):A % Rows(k+1)-1)
             iBuf =  aPerm(A % Cols(A % Rows(k):A % Rows(k+1)-1))
-            CALL MPI_BSEND(iBuf,l,xmpi_int,i-1,1203,xmpi_comm,status,ierr)
-            CALL MPI_BSEND(dBuf,l,xmpi_dbl,i-1,1204,xmpi_comm,status,ierr)
+            CALL MPI_BSEND(iBuf,l,xmpi_int,i-1,1203,xmpi_comm,ierr)
+            CALL MPI_BSEND(dBuf,l,xmpi_dbl,i-1,1204,xmpi_comm,ierr)
           END DO
         END DO
 
