@@ -225,7 +225,17 @@ ENDIF(WITH_MPI)
 
 
 IF (WITH_ROCALUTION)
-  SET(HAVE_ROCALUTION TRUE)
+
+  MESSAGE(STATUS "------------------------------------------------")
+  MESSAGE(STATUS "Looking for rocALUTION installation")
+
+  FIND_PACKAGE(rocalution REQUIRED)
+
+  MESSAGE(STATUS "  rocALUTION:     " "${rocalution_FOUND}")
+  MESSAGE(STATUS "  rocALUTION_INC: " "${ROCALUTION_INCLUDE_DIR}")
+  MESSAGE(STATUS "  rocALUTION_LIB: " "${ROCALUTION_LIBRARY}")
+
+  SET(HAVE_ROCALUTION TRUE CACHE BOOL "")
   MARK_AS_ADVANCED(HAVE_ROCALUTION)
   INCLUDE_DIRECTORIES("${ROCALUTION_INCLUDE_DIR}")
   MESSAGE(STATUS "  ---------------------------------")
@@ -502,6 +512,7 @@ IF (WITH_XIOS)
 
   MESSAGE(STATUS "------------------------------------------------")
 ENDIF()
+
 
 MESSAGE(STATUS "------------------------------------------------")
 
