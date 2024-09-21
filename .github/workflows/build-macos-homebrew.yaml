@@ -69,6 +69,7 @@ jobs:
             -DWITH_Zoltan=OFF \
             -DWITH_Mumps=OFF \
             -DWITH_CHOLMOD=ON \
+            -DWITH_ElmerIce=ON \
             -DWITH_ELMERGUI=ON \
             -DWITH_QT6=ON \
             -DQWT_INCLUDE_DIR="${HOMEBREW_PREFIX}/opt/qwt/lib/qwt.framework/Headers" \
@@ -97,7 +98,7 @@ jobs:
         run: |
           cd ${GITHUB_WORKSPACE}/build
           ctest . \
-            -L quick \
+            -L "quick|elmerice-fast" \
             -j$(sysctl -n hw.logicalcpu) \
             --timeout 180
 
