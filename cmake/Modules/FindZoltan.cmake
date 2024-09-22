@@ -5,21 +5,21 @@
 
 # This module returns these variables for the rest of the project to use.
 #
-#  ZOLTAN_FOUND              - True if ZOLTAN found 
+#  Zoltan_FOUND              - True if ZOLTAN found
 #  ZOLTAN_LIBRARY            - zoltan library is
 #  ZOLTAN_INCLUDE_DIR       - zoltan include dir.
 
 IF(ZOLTAN_LIBRARY AND ZOLTAN_INCLUDE_DIR)
-  SET(ZOLTAN_FOUND TRUE)
+  SET(Zoltan_FOUND TRUE)
 ELSE()
-  SET(ZOLTAN_FOUND FALSE)
+  SET(Zoltan_FOUND FALSE)
 ENDIF()
 
-IF(NOT ZOLTAN_FOUND)
+IF(NOT Zoltan_FOUND)
   MESSAGE(STATUS "Finding Zoltan library")
   # Try to find with CMake config file of upstream Zoltan.
-  FIND_PACKAGE(ZOLTAN CONFIG NAMES Zoltan zoltan)
-  IF(ZOLTAN_FOUND)
+  FIND_PACKAGE(Zoltan CONFIG NAMES Zoltan zoltan)
+  IF(Zoltan_FOUND)
     GET_TARGET_PROPERTY(ZOLTAN_INCLUDE_DIR Zoltan::zoltan INTERFACE_INCLUDE_DIRECTORIES)
     GET_TARGET_PROPERTY(ZOLTAN_LIBRARY Zoltan::zoltan IMPORTED_LOCATION_RELEASE)
     # Check if a debug build was used
@@ -56,14 +56,14 @@ IF(NOT ZOLTAN_FOUND)
 
   ENDIF(NOT ZOLTAN_INCLUDE_DIR AND NOT ZOLTAN_LIBRARY)
 
-ENDIF(NOT ZOLTAN_FOUND)
+ENDIF(NOT Zoltan_FOUND)
 
 # This checks could be inadequate because this variables are not empty if nothing found
 # Other option is to use the keyword REQUIRED, but this will increase cmake version to 3.18
 # https://cmake.org/cmake/help/latest/command/find_library.html
 # https://cmake.org/cmake/help/latest/command/find_path.html
 IF (ZOLTAN_INCLUDE_DIR AND ZOLTAN_LIBRARY)
-  SET(ZOLTAN_FOUND TRUE)
+  SET(Zoltan_FOUND TRUE)
  #The config script was not used, define the target manually
   IF(NOT TARGET Zoltan::zoltan)
     ADD_LIBRARY(Zoltan::zoltan SHARED IMPORTED)
@@ -71,14 +71,14 @@ IF (ZOLTAN_INCLUDE_DIR AND ZOLTAN_LIBRARY)
                           INTERFACE_INCLUDE_DIRECTORIES ${ZOLTAN_INCLUDE_DIR}
                           IMPORTED_LOCATION ${ZOLTAN_LIBRARY} )
   ENDIF()
-  IF (NOT ZOLTAN_FIND_QUIETLY)
+  IF (NOT Zoltan_FIND_QUIETLY)
     MESSAGE(STATUS "Zoltan library found")
-    MESSAGE(STATUS "Zoltan include dir: ${ZOLTAN_INCLUDE_DIR}")
-    MESSAGE(STATUS "Zoltan library: ${ZOLTAN_LIBRARY}")
+    MESSAGE(STATUS "Zoltan include path: ${ZOLTAN_INCLUDE_DIR}")
+    MESSAGE(STATUS "Zoltan library:      ${ZOLTAN_LIBRARY}")
   ENDIF()
 ELSE()
-  SET(ZOLTAN_FOUND FALSE)
-  IF (ZOLTAN_FIND_REQUIRED)
+  SET(Zoltan_FOUND FALSE)
+  IF (Zoltan_FIND_REQUIRED)
       MESSAGE(FATAL_ERROR "Zoltan library not found.")
   ENDIF()
 
