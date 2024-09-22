@@ -228,6 +228,10 @@ ENDIF(WITH_MPI)
 
 IF (WITH_ROCALUTION)
 
+  IF(NOT WITH_MPI)
+    MESSAGE(FATAL_ERROR "Building with rocALUTION requires MPI")
+  ENDIF()
+
   MESSAGE(STATUS "------------------------------------------------")
   MESSAGE(STATUS "Looking for rocALUTION installation")
 
