@@ -4800,7 +4800,7 @@ CONTAINS
     LOGICAL, ALLOCATABLE, SAVE :: NTzeroing_done(:,:)
     INTEGER, ALLOCATABLE, SAVE :: NTelement(:,:)
 
-    REAL(KIND=dp) :: Mult(Model % MaxElementNodes), MaxMult, ParMaxMult
+    REAL(KIND=dp) :: Mult(Model % MaxElementNodes), MaxMult, ParMaxMult, MoveCoeff
     LOGICAL :: GotMult
     INTEGER :: maxind
     
@@ -5438,7 +5438,7 @@ CONTAINS
       ELSE
         DirName = TRIM(Name)//' Profile'
       END IF
-
+      
       AnySingleBC = ListCheckPresentAnyBC( Model, DirName )
       AnySingleBF = ListCheckPresentAnyBodyForce( Model, DirName )
 
@@ -5479,11 +5479,14 @@ CONTAINS
           END IF
 
           IF(GotMult) THEN
-            IF(.NOT. ListCheckPresent( ValueList,DirName) ) CYCLE 
-          ELSE
+            IF(.NOT. ListCheckPresent( ValueList,DirName) ) CYCLE
+          ELSE            
             IF(.NOT. ListGetLogical( ValueList,DirName, GotIt) ) CYCLE
           END IF
-          
+                    
+          MoveCoeff = ListGetCReal( ValueList,TRIM(DirName)//' Resistance',GotIt)
+          IF(.NOT. GotIt) MoveCoeff = 1.0_dp
+
           ! This tells us that this has been visited before            
           ind = ListGetInteger( ValueList,TRIM(DirName)//' Node Index',GotIt )     
 
@@ -5540,7 +5543,7 @@ CONTAINS
             IF(GotMult) ind = maxind
 
             ! Find the maximum partition that owns the node. 
-            ! It could be minimum also, just some convection is needed. 
+            ! It could be minimum also, just some convention is needed. 
             IF( Parallel ) THEN
               IF( GotMult ) THEN
                 ParMaxMult = ABS(MaxMult)
@@ -5576,9 +5579,24 @@ CONTAINS
           ! Ok, now sum up the rows to the corresponding nodal index
           LumpedNodeSet = .FALSE.
 
-          ! Don't lump the "supernode" and therefore mark it set already
+
+          ! If we need to do scaling then play with the supernode too!
+          IF( Ndofs == 1 ) THEN
+            BLOCK
+              INTEGER :: k0
+              k0 = Offset + NDOFs * (Perm(ind)-1) + DOF
+              IF(ABS(MoveCoeff-1.0) > EPSILON(MoveCoeff)) THEN
+                CALL MoveRow( A, k0, k0, MoveCoeff )
+                b(k0) = MoveCoeff * b(k0)
+              END IF
+            END BLOCK
+          ELSE
+            CALL SetLumpedRows(ind,n)
+          END IF
+          ! Supernode has been set, if needed. 
           LumpedNodeSet(ind) = .TRUE.
 
+          
           DO t = ElemFirst, ElemLast
             Element => Mesh % Elements(t)
 
@@ -5608,7 +5626,7 @@ CONTAINS
             IF( GotIt ) THEN                        
               t = Offset + Perm(ind)
               CALL AddToMatrixElement(A,t,t,SingleVal) 
-            END IF
+            END IF                        
           END IF
 
           n = COUNT( LumpedNodeSet ) 
@@ -6125,8 +6143,8 @@ CONTAINS
             Coeff = 1.0_dp
           END IF
             
-          CALL MoveRow( A, k, k0, 1.0_dp )
-          b(k0) = b(k0) + 1.0_dp * b(k)
+          CALL MoveRow( A, k, k0, MoveCoeff )
+          b(k0) = b(k0) + MoveCoeff * b(k)
 
           CALL AddToMatrixElement( A, k, k, 1.0_dp )
           CALL AddToMatrixElement( A, k, k0, -Coeff )
