@@ -5595,8 +5595,6 @@ CONTAINS
                 b(k0) = MoveCoeff * b(k0)
               END IF
             END BLOCK
-          ELSE
-            CALL SetLumpedRows(ind,n)
           END IF
           ! Supernode has been set, if needed. 
           LumpedNodeSet(ind) = .TRUE.
