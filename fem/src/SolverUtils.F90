@@ -5513,8 +5513,13 @@ CONTAINS
               END IF
 
               n = Element % TYPE % NumberOfNodes
-              NodeIndexes => Element % NodeIndexes
 
+              IF ( Model % Solver % DG ) THEN
+                NodeIndexes => Element % DGIndexes
+              ELSE
+                NodeIndexes => Element % NodeIndexes
+              END IF
+                
               IF(GotMult) THEN
                 Mult(1:n) = ListGetReal( ValueList,TRIM(DirName),n,NodeIndexes,UnfoundFatal=.TRUE.)
               END IF
@@ -5608,8 +5613,13 @@ CONTAINS
             END IF
 
             n = Element % TYPE % NumberOfNodes
-            Indexes(1:n) = Element % NodeIndexes
 
+            IF ( Model % Solver % DG ) THEN
+              Indexes(1:n) = Element % DGIndexes
+            ELSE
+              Indexes(1:n) = Element % NodeIndexes
+            END IF
+                
             IF(GotMult) Mult(1:n) = ListGetReal( ValueList,TRIM(Name)//' Profile',n,Indexes,UnfoundFatal=.TRUE.)
 
             CALL SetLumpedRows(ind,n)
