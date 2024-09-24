@@ -120,6 +120,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
   CALL Info(Caller,'',Level=8)
   CALL Info(Caller,'------------------------------------------------',Level=6)
   CALL Info(Caller,'Solving electromagnetic port equations over a surface')
+  CALL Info(Caller,'------------------------------------------------',Level=6)
 
   IF ( CurrentCoordinateSystem() /= Cartesian ) THEN 
     CALL Fatal(Caller,'Implemented only for Cartesian problems!')
@@ -277,6 +278,11 @@ CONTAINS
           detJ, Basis, dBasisdx, EdgeBasis = Wbasis, RotBasis = CurlWBasis, USolver = SolverPtr)
       Weight = IP % s(t) * DetJ
 
+      ! NOTE: There seems to be an issue with getting the values of model parameters
+      ! by using variables of type ValueHandle_t when the keyword Body Id is used to
+      ! create body indentifiers. We use the traditional way to read the material parameters
+      ! until this trouble is resolved.
+      
 !      Nu = ListGetElementComplex(NuCoeff_h, Basis, Element, CreateNu, GaussPoint = t)      
       IF( CreateNu ) THEN
         !Nu = Nu * mu0inv
