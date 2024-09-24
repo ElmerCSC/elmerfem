@@ -86,12 +86,19 @@ CONTAINS
           END IF
         END IF
         
+#if !defined (HAVE_UMFPACK) && defined (HAVE_MUMPS)
+        IF ( str == 'umfpack' .OR. str == 'big umfpack' ) THEN
+          CALL Warn( 'CheckLinearSolverOptions', 'UMFPACK solver not installed, using MUMPS instead!' )
+          str = 'mumps'
+          CALL ListAddString( Params,'Linear System Direct Method', str)
+        END IF
+#endif
+
         SELECT CASE( str )
         CASE('banded' )
-          
         CASE( 'umfpack', 'big umfpack' )
 #ifndef HAVE_UMFPACK
-          CALL Fatal( 'GetMatrixFormat', 'UMFPACK solver has not been installed.' )
+          CALL Fatal( 'CheckLinearSolverOptions', 'UMFPACK (and MUMPS) solver has not been installed.' )
 #endif
         CASE( 'mumps', 'mumpslocal' )
 #ifndef HAVE_MUMPS
