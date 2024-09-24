@@ -1662,6 +1662,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
    END SUBROUTINE CRS_AdditiveMatrixVectorMultiply
 !------------------------------------------------------------------------------
 
+   
 !------------------------------------------------------------------------------
 !> Matrix vector product (v = Au) for a matrix given in CRS format
 !> This one only applies to the active elements of u. The idea is that
@@ -1705,6 +1706,40 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
   END SUBROUTINE CRS_MaskedMatrixVectorMultiply
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+!> Matrix vector product (v = Au) for a matrix given in CRS format
+!> This one only applies to the active elements of u. The idea is that
+!> we may look at the partial matrix norm, for example. 
+!------------------------------------------------------------------------------
+  FUNCTION CRS_MatrixRowVectorMultiply( A,u,i) RESULT ( rsum )
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t), INTENT(IN) :: A                !< Structure holding matrix
+    REAL(KIND=dp), DIMENSION(*), INTENT(IN) :: u   !< Vector to be multiplied
+    INTEGER :: i                                   !< Row of matrix
+    REAL(KIND=dp) :: rsum                          !< Matrix row x vector sum. 
+    !------------------------------------------------------------------------------
+    INTEGER, POINTER  CONTIG :: Cols(:),Rows(:)
+    REAL(KIND=dp), POINTER  CONTIG :: Values(:)
+    INTEGER :: j,n
+    !------------------------------------------------------------------------------
+
+    IF(i<1 .OR. i>A % NumberOfRows) THEN
+      CALL Fatal('CRS_MatrixRowVectorMultiply','Invalid row number '//I2S(i))
+    END IF
+    Rows   => A % Rows
+    Cols   => A % Cols
+    Values => A % Values
+
+    rsum = 0.0_dp
+    DO j=Rows(i),Rows(i+1)-1
+      rsum = rsum + Values(j) * u(Cols(j))
+    END DO 
+!------------------------------------------------------------------------------
+  END FUNCTION CRS_MatrixRowVectorMultiply
+!------------------------------------------------------------------------------
+
+  
   
 !------------------------------------------------------------------------------
 !>  Matrix-vector product v = |A|u with A a matrix in the CRS format and

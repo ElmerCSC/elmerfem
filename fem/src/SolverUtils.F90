@@ -4785,7 +4785,7 @@ CONTAINS
 
     TYPE(Element_t), POINTER :: Parent
 
-    INTEGER :: ind, ElemFirst, ElemLast, bf, BCstr, BCend, BCinc
+    INTEGER :: ind, ElemFirst, ElemLast, bf, BCstr, BCend, BCinc, nodeind
     REAL(KIND=dp) :: SingleVal
     LOGICAL :: AnySingleBC, AnySingleBF
     LOGICAL, ALLOCATABLE :: LumpedNodeSet(:)
@@ -4793,6 +4793,7 @@ CONTAINS
     INTEGER :: DirCount
     CHARACTER(*), PARAMETER :: Caller = 'SetDirichletBoundaries'
     LOGICAL, ALLOCATABLE :: CandNodes(:)
+    INTEGER, ALLOCATABLE :: LumpedIndx(:)
     INTEGER, POINTER :: PlaneInds(:)
     LOGICAL :: Parallel
 
@@ -5431,7 +5432,7 @@ CONTAINS
     ! value on that boundary / body force.
     !--------------------------------------------------------------------------------------------
     NeedListMatrix = .FALSE.
-
+    
     DO l = 0, 1
       IF( l == 0 ) THEN
         DirName = TRIM(Name)//' Constant'
@@ -5513,12 +5514,7 @@ CONTAINS
               END IF
 
               n = Element % TYPE % NumberOfNodes
-
-              IF ( Model % Solver % DG ) THEN
-                NodeIndexes => Element % DGIndexes
-              ELSE
-                NodeIndexes => Element % NodeIndexes
-              END IF
+              NodeIndexes => Element % NodeIndexes
                 
               IF(GotMult) THEN
                 Mult(1:n) = ListGetReal( ValueList,TRIM(DirName),n,NodeIndexes,UnfoundFatal=.TRUE.)
@@ -5526,7 +5522,13 @@ CONTAINS
 
               DO i=1,n
                 j = NodeIndexes(i)
-                IF( Perm(j) == 0) CYCLE
+
+                IF(Model % Solver % DG) THEN                                   
+                  IF( Perm(Element % DGIndexes(i)) == 0) CYCLE
+                ELSE
+                  IF( Perm(j) == 0) CYCLE
+                END IF
+                  
                 IF( Parallel ) THEN
                   IF( SIZE( Mesh % ParallelInfo % NeighbourList(j) % Neighbours) > 1 ) CYCLE               
                   IF( Mesh % ParallelInfo % NeighbourList(j) % Neighbours(1) /= ParEnv % MyPe ) CYCLE               
@@ -5583,7 +5585,32 @@ CONTAINS
 
           ! Ok, now sum up the rows to the corresponding nodal index
           LumpedNodeSet = .FALSE.
+          nodeind = ind
 
+          ! This is a quick hack since we need to separate the index associated to node from
+          ! on index associated to a DG index. 
+          IF( Model % Solver % DG ) THEN
+            ind = 0
+            DO t = ElemFirst, ElemLast
+              Element => Mesh % Elements(t)              
+              IF( bc <= Model % NumberOfBCs ) THEN
+                IF ( Element % BoundaryInfo % Constraint /= Model % BCs(bc) % Tag ) CYCLE
+              ELSE
+                bf = ListGetInteger( Model % Bodies(Element % bodyid) % Values,'Body Force',GotIt)
+                IF( bc - Model % NumberOfBCs /= bf ) CYCLE
+              END IF              
+              n = Element % TYPE % NumberOfNodes             
+              DO i=1,n
+                IF(Element % NodeIndexes(i) == nodeind) THEN
+                  ind = Element % DGIndexes(i)
+                END IF
+              END DO
+              IF(ind > 0) EXIT
+            END DO
+            IF(ind == 0) THEN
+              CALL Fatal(Caller,'Could not determine DG index associated to node index!')
+            END IF
+          END IF
 
           ! If we need to do scaling then play with the supernode too!
           IF( Ndofs == 1 ) THEN
@@ -5598,8 +5625,13 @@ CONTAINS
           END IF
           ! Supernode has been set, if needed. 
           LumpedNodeSet(ind) = .TRUE.
-
-          
+                    
+          IF(.NOT. ALLOCATED(LumpedIndx)) THEN
+            ALLOCATE(LumpedIndx(Model % NumberOfBCs + Model % NumberOfBodyForces))
+            LumpedIndx = 0
+          END IF
+          LumpedIndx(bc) = ind
+            
           DO t = ElemFirst, ElemLast
             Element => Mesh % Elements(t)
 
@@ -5611,15 +5643,15 @@ CONTAINS
             END IF
 
             n = Element % TYPE % NumberOfNodes
-
             IF ( Model % Solver % DG ) THEN
               Indexes(1:n) = Element % DGIndexes
             ELSE
               Indexes(1:n) = Element % NodeIndexes
             END IF
                 
-            IF(GotMult) Mult(1:n) = ListGetReal( ValueList,TRIM(Name)//' Profile',n,Indexes,UnfoundFatal=.TRUE.)
-
+            IF(GotMult) Mult(1:n) = ListGetReal( ValueList,TRIM(Name)//' Profile',n,&
+                Element % NodeIndexes,UnfoundFatal=.TRUE.)
+                       
             CALL SetLumpedRows(ind,n)
           END DO
 
@@ -5649,10 +5681,43 @@ CONTAINS
       ! Revert back to CRS matrix and change to the new topology. 
       CALL List_ToCRSMatrix(A)
       CALL CRS_ChangeTopology(A, Init=.FALSE.)
-      
+
       CALL Info(Caller,'Modified matrix non-zeros: '&
           //I2S(SIZE( A % Cols )),Level=8)
     END IF
+      
+    ! We are back to CRS matrix.
+    ! If we have a fixed point iteration we may add the flux multiplied by resistance to rhs as well. 
+    BLOCK
+      INTEGER :: k0
+      REAL(KIND=dp) :: prevFlux
+      TYPE(ValueList_t), POINTER :: vList
+      IF(ALLOCATED(LumpedIndx) ) THEN
+        DO bc = 1,SIZE(LumpedIndx) 
+          ind = LumpedIndx(bc)
+          IF(ind>0) THEN
+            k0 = Offset + NDOFs * (Perm(ind)-1) + DOF
+            prevFlux = CRS_MatrixRowVectorMultiply(A,Model % Solver % Variable % Values,k0)            
+
+            ! In case this was added, remove it from the flux.
+            SingleVal = ListGetCReal( ValueList,TRIM(Name)//' Constant Coefficient',GotIt)
+            prevFlux = prevFlux - SingleVal * Model % Solver % Variable % Values(k0)
+            
+            IF( bc <= Model % NumberOfBCs ) THEN
+              Vlist => Model % BCs(bc) % Values
+              WRITE(Message,'(A,ES12.3)') 'Previous bc '//I2S(bc)//' lumped flux: ',prevFlux 
+            ELSE
+              i = bc-Model % NumberOfBCs
+              Vlist => Model % BodyForces(i) % Values
+              WRITE(Message,'(A,ES12.3)') 'Previous bf '//I2S(i)//' lumped flux: ',prevFlux 
+            END IF            
+            CALL Info(Caller,Message)
+            DirName = TRIM(Name)//' Constant Prev Flux'
+            CALL ListAddConstReal(Vlist, DirName, prevFlux )
+          END IF
+        END DO
+      END IF
+    END BLOCK
 
     ! Check the boundaries for a curve bc.
     !--------------------------------------------------------------------------------------------
@@ -6133,7 +6198,6 @@ CONTAINS
       INTEGER :: ind,i,j,k,k0,l
       REAL(KIND=dp) :: Coeff
       ! -------------------------------------------------------------------        
-
       
       DO j=1,n
         ind = Indexes(j)
@@ -6150,7 +6214,7 @@ CONTAINS
           ELSE
             Coeff = 1.0_dp
           END IF
-            
+          
           CALL MoveRow( A, k, k0, MoveCoeff )
           b(k0) = b(k0) + MoveCoeff * b(k)
 
