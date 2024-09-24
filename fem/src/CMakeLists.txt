@@ -276,8 +276,9 @@ ELSE()
   # Either the header from an actual MPI implementation or the replacement stub
   TARGET_COMPILE_DEFINITIONS(elmersolver PRIVATE ELMER_HAVE_MPIF_HEADER)
 ENDIF()
+
 IF(WITH_ROCALUTION)
-  TARGET_LINK_LIBRARIES(elmersolver roc::rocalution)
+  TARGET_LINK_LIBRARIES(elmersolver ${ROCALUTION_LIBRARY})
 ENDIF()  
 
 IF(WITH_AMGX)
