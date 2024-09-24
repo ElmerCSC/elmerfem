@@ -5524,7 +5524,8 @@ CONTAINS
                 j = NodeIndexes(i)
 
                 IF(Model % Solver % DG) THEN                                   
-                  IF( Perm(Element % DGIndexes(i)) == 0) CYCLE
+                  CALL PickDgIndexes(Element,Indexes)                  
+                  IF( Perm(Indexes(i)) == 0) CYCLE
                 ELSE
                   IF( Perm(j) == 0) CYCLE
                 END IF
@@ -5600,9 +5601,10 @@ CONTAINS
                 IF( bc - Model % NumberOfBCs /= bf ) CYCLE
               END IF              
               n = Element % TYPE % NumberOfNodes             
+              CALL PickDgIndexes(Element,Indexes)                  
               DO i=1,n
                 IF(Element % NodeIndexes(i) == nodeind) THEN
-                  ind = Element % DGIndexes(i)
+                  ind = Indexes(i)
                 END IF
               END DO
               IF(ind > 0) EXIT
@@ -5643,8 +5645,8 @@ CONTAINS
             END IF
 
             n = Element % TYPE % NumberOfNodes
-            IF ( Model % Solver % DG ) THEN
-              Indexes(1:n) = Element % DGIndexes
+            IF ( Model % Solver % DG ) THEN              
+              CALL PickDgIndexes(Element,Indexes)                  
             ELSE
               Indexes(1:n) = Element % NodeIndexes
             END IF
@@ -6030,6 +6032,55 @@ CONTAINS
 
   CONTAINS
 
+    ! For boundary element in a DG mesh get the DG indexes from itself, or
+    ! from the parent elements.
+    !-------------------------------------------------------------------------
+    SUBROUTINE PickDgIndexes(Element,DgIndexes)
+      TYPE(Element_t), POINTER :: Element
+      INTEGER :: DGIndexes(:)
+      
+      TYPE(Element_t), POINTER :: Parent
+      INTEGER :: i,j,lr,n,m
+
+      n = Element % Type % NumberOfNodes
+       
+      IF( ASSOCIATED( Element % DgIndexes ) ) THEN
+        DGIndexes(1:n) = Element % DGIndexes(1:n)
+        IF(ANY(DgIndexes(1:n) == 0) ) THEN
+          ! If this fails, maybe used the 2nd strategy always...
+          CALL Fatal('PickDgIndexes','Some of BC element DG indexes is zero!')
+        END IF
+      ELSE IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN
+        m = 0
+        DO lr=1,2
+          IF(lr==1) THEN
+            Parent => Element % BoundaryInfo % Left
+          ELSE
+            Parent => Element % BoundaryInfo % Right
+          END IF
+          IF(.NOT. ASSOCIATED( Parent ) ) CYCLE
+          IF(.NOT. ASSOCIATED( Parent % DGIndexes ) ) CYCLE
+          IF(ANY(Perm(Parent % DGIndexes) == 0)) CYCLE
+          
+          DO i=1,Element % TYPE % NumberOfNodes
+            DO j=1,Parent % TYPE % NumberOfNodes
+              IF( Element % NodeIndexes(i) == Parent % NodeIndexes(j) ) THEN
+                DGIndexes(i) = Parent % DGIndexes(j)
+                m = m+1
+                EXIT
+              END IF
+            END DO
+          END DO
+          EXIT
+        END DO
+        IF(m /= n) THEN
+          CALL Fatal('PickDgIndexes','Could not find all DG Indexes for BC element')
+        END IF
+      END IF
+      
+    END SUBROUTINE PickDgIndexes
+
+    
      ! Check n-t node setting element
      !-------------------------------
     SUBROUTINE CheckNTElement(n,elno)
