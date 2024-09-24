@@ -72,6 +72,15 @@ MACRO(ADD_ELMER_TEST TestName)
           SET_PROPERTY(TEST ${_this_test_name} APPEND PROPERTY LABELS ${lbl})
         ENDFOREACH()
       ENDIF()
+      IF(${n} GREATER 0)
+        # Avoid running tests using the same directory concurrently.
+        # To achieve that, set test dependencies such that they are run in
+        # the order as they appear in the NPROCS argument.
+        MATH(EXPR n_prev "${n} - 1")
+        LIST(GET tests_list ${n_prev} _prev_test_name)
+        SET_TESTS_PROPERTIES(${_this_test_name} PROPERTIES
+          DEPENDS ${_prev_test_name})
+      ENDIF()
     ENDIF(_this_test_name)
   ENDFOREACH()
 ENDMACRO(ADD_ELMER_TEST)
