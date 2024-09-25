@@ -117,6 +117,8 @@ MODULE SSAMaterialModels
        iFriction = REG_COULOMB_GAG
      CASE('regularized coulomb')
        iFriction = REG_COULOMB_JOU
+     CASE('regularized coulomb hybrid')
+       iFriction = REG_COULOMB_HYB
      CASE DEFAULT
        CALL FATAL("SSAEffectiveFriction",'Friction choice not recognised')
     END SELECT
@@ -153,7 +155,7 @@ MODULE SSAMaterialModels
          END IF
          NeedN = .FALSE.
       END IF
-    CASE(REG_COULOMB_GAG,BUDD)
+    CASE(REG_COULOMB_GAG,REG_COULOMB_HYB,BUDD)
       NeedN = .TRUE.
     END SELECT
 
@@ -177,16 +179,18 @@ MODULE SSAMaterialModels
       qq = ListGetConstReal( Material, 'SSA Haf Exponent', Found, UnFoundFatal=.TRUE.)
       hafq = ( fN / (gravity * rho) ) ** qq
       
-    CASE(REG_COULOMB_GAG)
-      fq = ListGetConstReal( Material, 'SSA Friction Post-Peak', Found, UnFoundFatal=.TRUE. )
-      NodalC = 0.0_dp
-      NodalC(1:n) = ListGetReal( &
-          Material, 'SSA Friction Maximum Value', n, NodeIndexes(1:n), Found,&
-          UnFoundFatal=.TRUE.)
-      fC = SUM( NodalC(1:n) * Basis(1:n) )
-
-    CASE(REG_COULOMB_JOU)
-      U0 = ListGetConstReal( Material, 'SSA Friction Threshold Velocity', Found, UnFoundFatal=.TRUE.)
+    CASE(REG_COULOMB_GAG,REG_COULOMB_HYB,REG_COULOMB_JOU)
+      IF (iFriction .NE. REG_COULOMB_JOU) THEN
+         fq = ListGetConstReal( Material, 'SSA Friction Post-Peak', Found, UnFoundFatal=.TRUE. )
+         NodalC = 0.0_dp
+         NodalC(1:n) = ListGetReal( &
+              Material, 'SSA Friction Maximum Value', n, NodeIndexes(1:n), Found,&
+              UnFoundFatal=.TRUE.)
+         fC = SUM( NodalC(1:n) * Basis(1:n) )
+      END IF
+      IF (iFriction .NE. REG_COULOMB_GAG) THEN
+         U0 = ListGetConstReal( Material, 'SSA Friction Threshold Velocity', Found, UnFoundFatal=.TRUE.)
+      END IF
 
     END SELECT
 
@@ -240,6 +244,17 @@ MODULE SSAMaterialModels
      IF (PRESENT(SlipDer)) SlipDer  = Slip2 * Slip * ((fm-1.0_dp) / (ub*ub) - &
          fm*fq*fB*ub**(fq-2.0_dp)/(1.0_dp+fB*ub**fq))
 
+     ! The sandard "SSA friction parameter" is taken as the effective pressure threshold.
+     ! Max val is same as REG_COULMB_GAG
+     ! Threshold vel is same as REG_COULOMB_JOU
+   CASE(REG_COULOMB_HYB)
+     IF (fq.NE.1.0_dp) THEN
+        CALL Fatal('SSAEffectiveFriction','Expecting unity post peak exponent')
+     END IF     
+     Slip = fC * fN * ub**(fm-1.0_dp) / (ub + (fN/beta)*U0)**fm
+     ! TODO:
+     !     IF (PRESENT(SlipDer)) SlipDer = 
+     
    CASE(REG_COULOMB_JOU)
      Slip = beta * ub**(fm-1.0_dp) / (ub + U0)**fm
      IF (NeedN) Slip = Slip * fN
