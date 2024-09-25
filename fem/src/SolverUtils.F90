@@ -16738,19 +16738,30 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
           END WHERE
         END IF
       ELSE        
-        IF( IsComplex ) THEN       
-          A % Values = A0
-          b = b0
-          A % ConstrainedDOF = ConstrainedDOF0
+        IF( IsComplex ) THEN
+          ! Quick and a little dirty fix for complex capacitance matrix.
+          IF( ListGetLogical( Solver % Values,'Calculate Capacitance Matrix',Found ) ) THEN
+            WHERE( Var % ConstraintModesIndeces /= 0 ) 
+              A % ConstrainedDOF = .TRUE.
+              A % DValues = 0.0_dp
+            END WHERE
+            WHERE( Var % ConstraintModesIndeces == 2*Nmode-1 )
+              A % DValues = 1.0_dp
+            END WHERE
+          ELSE
+            A % Values = A0
+            b = b0
+            A % ConstrainedDOF = ConstrainedDOF0
 
-          WHERE( Var % ConstraintModesIndeces == 2*Nmode-1 )
-            A % ConstrainedDOF = .TRUE.
-            A % DValues = 1.0_dp
-          END WHERE
-          WHERE( Var % ConstraintModesIndeces == 2*Nmode ) 
-            A % ConstrainedDOF = .TRUE.
-            A % DValues = 0.0_dp
-          END WHERE
+            WHERE( Var % ConstraintModesIndeces == 2*Nmode-1 )
+              A % ConstrainedDOF = .TRUE.
+              A % DValues = 1.0_dp
+            END WHERE
+            WHERE( Var % ConstraintModesIndeces == 2*Nmode ) 
+              A % ConstrainedDOF = .TRUE.
+              A % DValues = 0.0_dp
+            END WHERE
+          END IF
           CALL EnforceDirichletConditions( Solver, A, b )
         ELSE       
           IF( Nmode > 1 .AND. LinSysMode ) THEN
