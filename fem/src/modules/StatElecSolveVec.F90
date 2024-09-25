@@ -591,10 +591,10 @@ CONTAINS
       END IF
     END DO
 
+    CALL CondensateP( nd-nb, nb, STIFF, FORCE )
     IF (CVersion) THEN
       CALL DefaultUpdateEquations(CStiff, CForce)
     ELSE
-      CALL CondensateP( nd-nb, nb, STIFF, FORCE )
       CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element, VecAssembly=VecAsm)
     END IF
 !------------------------------------------------------------------------------
