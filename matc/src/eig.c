@@ -3,7 +3,7 @@
  *  Elmer, A Finite Element Software for Multiphysical Problems
  *
  *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
- * 
+ *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
- * License along with this library (in file ../LGPL-2.1); if not, write 
- * to the Free Software Foundation, Inc., 51 Franklin Street, 
+ * License along with this library (in file ../LGPL-2.1); if not, write
+ * to the Free Software Foundation, Inc., 51 Franklin Street,
  * Fifth Floor, Boston, MA  02110-1301  USA
  *
  *****************************************************************************/
@@ -66,7 +66,7 @@ $  usage of the function and type of the parameters
 
 
 /*
- * $Id: eig.c,v 1.1.1.1 2005/04/14 13:29:14 vierinen Exp $ 
+ * $Id: eig.c,v 1.1.1.1 2005/04/14 13:29:14 vierinen Exp $
  *
  * $Log: eig.c,v $
  * Revision 1.1.1.1  2005/04/14 13:29:14  vierinen
@@ -75,7 +75,7 @@ $  usage of the function and type of the parameters
  * Revision 1.2  1998/08/01 12:34:33  jpr
  *
  * Added Id, started Log.
- * 
+ *
  *
  */
 
@@ -86,75 +86,73 @@ $  usage of the function and type of the parameters
 #define MAXITER 1000
 #define EPS 1e-16
 
-VARIABLE *mtr_hesse(var)
-     VARIABLE *var;
+VARIABLE *mtr_hesse(VARIABLE *var)
 {
   VARIABLE *res;
 
   double *a;
 
   int n;
-  
+
   if (NCOL(var) != NROW(var))
   {
      error( "hesse: matrix must be square, current dimensions: [%d,%d]\n", NROW(var), NCOL(var) );
   }
-  
+
   res = var_temp_copy(var);
 
   a = MATR(res); n = NROW(res);
   if (NROW(res) == 1) return res;
-  
+
   hesse(a, n, n);
 
   return res;
 }
 
-VARIABLE *mtr_eig(var)
-     VARIABLE *var;
+VARIABLE *mtr_eig(VARIABLE *var)
 {
   VARIABLE *ptr, *res;
 
   int iter, i, j, k, n;
   double *a, b, s, t;
-  
+
   if (NCOL(var) != NROW(var))
   {
     error("eig: matrix must be square, current dimensions: [%d,%d]\n", NROW(var), NCOL(var));
   }
-  
+
   ptr = var_temp_copy(var);
 
   a = MATR(ptr); n = NROW(ptr);
-  
+
   if (NROW(ptr) == 1) return ptr;
-  
+
   hesse(a, n, n);
-  
+
   for(iter = 0; iter < MAXITER; iter++)
   {
-    
+
     for (i = 0; i < n - 1; i++)
     {
       s = EPS*(abs(A(i,i))+abs(A(i+1,i+1)));
       if (abs(A(i+1,i)) < s) A(i+1,i) = 0.0;
     }
-    
+
     i = 0;
     do
     {
-      for(j = i; j < n - 1; j++) 
+      for(j = i; j < n - 1; j++)
 	if (A(j+1,j) != 0) break;
-      
+
       for(k = j; k < n - 1; k++)
 	if (A(k+1,k) == 0) break;
-      
+
       i = k;
-      
+
     } while(i < n - 1 && k - j + 1 < 3);
-    
+
     if (k - j + 1 < 3) break;
-    
+
     francis(&A(j,j), k - j + 1, n);
   }
 
@@ -166,7 +164,7 @@ VARIABLE *mtr_eig(var)
     else
     {
       b = A(i,i) + A(i+1,i+1); s = b * b;
-      t = A(i,i) * A(i+1,i+1) - A(i,i+1)*A(i+1,i); 
+      t = A(i,i) * A(i+1,i+1) - A(i,i+1)*A(i+1,i);
       s = s - 4 * t;
       if (s < 0)
       {
@@ -182,17 +180,15 @@ VARIABLE *mtr_eig(var)
       }
       i++;
     }
-  
+
   if (A(n-1, n-2) == 0) M(res,j,0) = A(n-1, n-1);
-  
+
   var_delete_temp(ptr);
-  
+
   return res;
 }
 
-void vbcalc(x,v,b,beg,end)
-     double x[],v[],*b;
-     int beg, end;
+void vbcalc(double x[], double v[], double *b, int beg, int end)
 {
   double alpha,m,mp1;
   int i;
@@ -226,9 +222,7 @@ void vbcalc(x,v,b,beg,end)
 
 #define H(i,j) h[(i) * N + (j)]
 
-void hesse(h, DIM, N)
-     int DIM, N;
-     double *h;
+void hesse(double *h, int DIM, int N)
 {
   double *v, *x, b, s;
   int i, j, k;
@@ -279,9 +273,7 @@ void hesse(h, DIM, N)
 }
 
 
-void francis(h, DIM, N)
-     int DIM, N;
-     double *h;
+void francis(double *h, int DIM, int N)
 {
   double x[3], v[3], b, s, t, bv, v0i;
   int i, i1, j, k, n, m, end;
@@ -347,7 +339,7 @@ void francis(h, DIM, N)
  *   for(j = 1; j < 3; j++)
  *     s = s + H(j,i) * x[j];
  */
-    s = h[i] + h[N+i]*x[1] + h[(N<<1)+i]*x[2]; 
+    s = h[i] + h[N+i]*x[1] + h[(N<<1)+i]*x[2];
 /*
  *   for(j = 0; j < 3; j++)
  *     H(j,i) = H(j,i) - s * v[j];

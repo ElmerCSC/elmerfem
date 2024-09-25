@@ -82,6 +82,10 @@
 
 #include "umfpack.h"
 
+#if !defined(SuiteSparse_long)
+#define SuiteSparse_long long
+#endif
+
 #ifdef NULL
 #undef NULL
 #endif
@@ -234,7 +238,7 @@ void STDCALLBULL FC_FUNC(umf4fsym,UMF4FSYM) (void **Symbolic)
 #undef UMFPACK_solve
 #undef UMFPACK_symbolic
 
-#define Int long
+#define Int SuiteSparse_long
 #define UMFPACK_defaults	 umfpack_dl_defaults
 #define UMFPACK_free_numeric	 umfpack_dl_free_numeric
 #define UMFPACK_free_symbolic	 umfpack_dl_free_symbolic

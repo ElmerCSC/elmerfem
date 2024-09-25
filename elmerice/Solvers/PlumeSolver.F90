@@ -79,6 +79,9 @@
         Q0, Plume1MR, Plume2MR, PlProp, Node, NearestNode(3),&
         TargetNode(3), MaxX, MinX, MaxY, MinY, PlDist(2), MeshRes, BMRDist,&
         BMRMinDist, PlDepth, SStart, SStop
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+  REAL(KIND=dp) :: buffer
+#endif
 
    REAL(KIND=dp), ALLOCATABLE :: Xs(:), Ys(:), DwDz(:), W0(:), DmDz(:), MMR(:), MME(:), &
         PlumePoints(:,:,:), PlStart(:,:),PlStop(:,:), PointStore(:),&
@@ -923,11 +926,35 @@
          END IF
       END IF
 
-      CALL MPI_AllReduce(MPI_IN_PLACE, TotalArea, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD, ierr)
-      CALL MPI_AllReduce(MPI_IN_PLACE, TotalPMelt, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD, ierr)
-      CALL MPI_AllReduce(MPI_IN_PLACE, TotalBMelt, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD, ierr)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+      buffer = TotalArea
+      CALL MPI_AllReduce(buffer, &
+#else
+      CALL MPI_AllReduce(MPI_IN_PLACE, &
+#endif
+           TotalArea, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD, ierr)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+      buffer = TotalPMelt
+      CALL MPI_AllReduce(buffer, &
+#else
+      CALL MPI_AllReduce(MPI_IN_PLACE, &
+#endif
+           TotalPMelt, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD, ierr)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+      buffer = TotalBMelt
+      CALL MPI_AllReduce(buffer, &
+#else
+      CALL MPI_AllReduce(MPI_IN_PLACE, &
+#endif
+           TotalBMelt, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD, ierr)
       IF(RemoveToe) THEN
-        CALL MPI_AllReduce(MPI_IN_PLACE, TotalToeMelt, 1, MPI_DOUBLE, &
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+        buffer = TotalToeMelt
+        CALL MPI_AllReduce(buffer, &
+#else
+        CALL MPI_AllReduce(MPI_IN_PLACE, &
+#endif
+             TotalToeMelt, 1, MPI_DOUBLE, &
              MPI_SUM, MPI_COMM_WORLD, ierr)
       END IF
 
@@ -973,7 +1000,7 @@
                  &Total Melt (m^3)"
           END IF
         ELSE
-          OPEN( UNIT=OutFileUnit, File=OutfileName, STATUS='UNKNOWN', ACCESS='APPEND' )
+          OPEN( UNIT=OutFileUnit, File=OutfileName, STATUS='UNKNOWN', POSITION='APPEND' )
         END IF
 
         IF(RemoveToe) THEN

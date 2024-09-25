@@ -63,6 +63,9 @@
    REAL(KIND=dp), POINTER :: Advance(:)
    REAL(KIND=dp), ALLOCATABLE :: Rot_y_coords(:,:), Rot_z_coords(:,:), ColumnNormals(:,:), &
         TangledShiftTo(:)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+    REAL(KIND=dp) :: buffer
+#endif
    LOGICAL :: Found, Debug, Parallel, Boss, ShiftLeft, LeftToRight, MovedOne, ShiftSecond, &
         Protrusion, SqueezeLeft, SqueezeRight, FirstTime=.TRUE., intersect_flag, FrontMelting, &
         IgnoreVelo
@@ -581,15 +584,39 @@
 
    !Gather rotated y coord of all columns
    DO i=1,FrontLineCount
-     CALL MPI_AllReduce(MPI_IN_PLACE, Rot_y_coords(i,1), &
-          1, MPI_DOUBLE_PRECISION, MPI_MIN, ELMER_COMM_WORLD,ierr)
-     CALL MPI_AllReduce(MPI_IN_PLACE, Rot_y_coords(i,2), &
-          1, MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD,ierr)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+     buffer = Rot_y_coords(i,1)
+     CALL MPI_AllReduce(buffer, &
+#else
+     CALL MPI_AllReduce(MPI_IN_PLACE, &
+#endif
+          Rot_y_coords(i,1), 1, MPI_DOUBLE_PRECISION, MPI_MIN, &
+          ELMER_COMM_WORLD, ierr)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+     buffer = Rot_y_coords(i,2)
+     CALL MPI_AllReduce(buffer, &
+#else
+     CALL MPI_AllReduce(MPI_IN_PLACE, &
+#endif
+          Rot_y_coords(i,2), 1, MPI_DOUBLE_PRECISION, MPI_MAX, &
+          ELMER_COMM_WORLD, ierr)
 
-     CALL MPI_AllReduce(MPI_IN_PLACE, Rot_z_coords(i,1), &
-          1, MPI_DOUBLE_PRECISION, MPI_MIN, ELMER_COMM_WORLD,ierr)
-     CALL MPI_AllReduce(MPI_IN_PLACE, Rot_z_coords(i,2), &
-          1, MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD,ierr)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+     buffer = Rot_z_coords(i,1)
+     CALL MPI_AllReduce(buffer, &
+#else
+     CALL MPI_AllReduce(MPI_IN_PLACE, &
+#endif
+          Rot_z_coords(i,1), 1, MPI_DOUBLE_PRECISION, MPI_MIN, &
+          ELMER_COMM_WORLD, ierr)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+     buffer = Rot_z_coords(i,2)
+     CALL MPI_AllReduce(buffer, &
+#else
+     CALL MPI_AllReduce(MPI_IN_PLACE, &
+#endif
+          Rot_z_coords(i,2), 1, MPI_DOUBLE_PRECISION, MPI_MAX, &
+          ELMER_COMM_WORLD,ierr)
 
      IF(Boss .AND. Debug) PRINT *,'Debug, rot_y_coords: ',i,rot_y_coords(i,:)
      IF(Boss .AND. Debug) PRINT *,'Debug, rot_z_coords: ',i,rot_z_coords(i,:)

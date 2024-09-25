@@ -324,9 +324,11 @@ CONTAINS
  
          IF (ido == -1 .OR. ido == 1) THEN
 
-!           WRITE( Message,'(A,I0)') 'Arpack reverse communication calls: ',Iter
-!           CALL Info( Caller, Message, Level=20 )
-            CALL Info( Caller, '.', .TRUE., Level=5 )
+            IF(InfoActive(20)) THEN
+              CALL Info(Caller,'Arpack reverse communication calls: '//I2S(iter))
+            ELSE
+              CALL Info(Caller, '.', .TRUE.)
+            END IF
             iter = iter + 1
 
 !---------------------------------------------------------------------
@@ -943,9 +945,11 @@ END SUBROUTINE CheckResiduals
               RESID, NCV, V, n, IPARAM, IPNTR, WORKD, WORKL, lWORKL, kinfo )
 
          IF( ido==-1 .OR. ido==1 ) THEN
-!           WRITE( Message, * ) 'Arpack reverse communication calls: ', Iter
-!           CALL Info( Caller, Message, Level=20 )
-            CALL Info( Caller, '.', .TRUE., Level=5 )
+            IF(InfoActive(20)) THEN
+              CALL Info(Caller,'Arpack reverse communication calls: '//I2S(iter))
+            ELSE
+              CALL Info(Caller, '.', .TRUE.)
+            END IF
             iter = iter + 1
          END IF
 
@@ -1189,7 +1193,13 @@ END SUBROUTINE CheckResiduals
 
       Params => Solver % Values
 
-      NCV   = 3*NEIG+1
+      NCV = ListGetInteger( Params, 'Eigen System Lanczos Vectors', stat )
+      IF ( .NOT. stat ) NCV = 3*NEIG + 1
+
+      IF ( NCV <=  NEIG ) THEN
+        CALL Fatal( 'EigenSolve', & 
+            'Number of Lanczos vectors must exceed the number of eigenvalues.' )
+      END IF
 
       ALLOCATE( WORKL(3*NCV**2 + 6*NCV), D(NCV), &
          WORKEV(3*NCV), V(n,NCV+1), CHOOSE(NCV), STAT=istat )
@@ -1348,9 +1358,11 @@ END SUBROUTINE CheckResiduals
            RESID, NCV, v, n, IPARAM, IPNTR, WORKD, WORKL, lWORKL, RWORK, kinfo )
 
          IF (ido == -1 .OR. ido == 1) THEN
-!           WRITE( Message, * ) 'Arpack reverse communication calls: ', Iter
-!           CALL Info(Caller, Message, Level=20 )
-            CALL Info(Caller, '.', .TRUE., Level=5 )
+            IF(InfoActive(20)) THEN
+              CALL Info(Caller,'Arpack reverse communication calls: '//I2S(iter))
+            ELSE
+              CALL Info(Caller, '.', .TRUE.)
+            END IF
             Iter = Iter + 1
 !---------------------------------------------------------------------
 !           Perform  y <--- OP*x = inv[M]*A*x   (lumped mass)
@@ -1879,9 +1891,11 @@ END SUBROUTINE CheckResidualsComplex
             ! 
             ! ido =-1 inv(A)*z:
             !--------------------------
-!           WRITE( Message, * ) 'Arpack reverse communication calls: ', Iter
-!           CALL Info( Caller, Message, Level=20 )
-            CALL Info( Caller, '.', .TRUE., Level=5 )
+            IF(InfoActive(20)) THEN
+              CALL Info(Caller,'Arpack reverse communication calls: '//I2S(iter))
+            ELSE
+              CALL Info(Caller, '.', .TRUE.)
+            END IF
             iter = iter + 1
 
             x => workd( ipntr(2) : ipntr(2)+n-1 )

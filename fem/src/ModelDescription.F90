@@ -115,7 +115,10 @@ CONTAINS
        IF ( .NOT. abort ) a=0
     END IF
 
-    Proc = LoadFunction( q,a,Libname,Procname )
+    Proc = LoadFunction( q,0,Libname,Procname,1 )
+
+    ! if no luck, try without fortran name mangling
+    IF(Proc==0) Proc = LoadFunction( q,a,Libname,Procname,0 )
   END FUNCTION GetProcAddr
 !------------------------------------------------------------------------------
 
@@ -2067,15 +2070,17 @@ CONTAINS
                  k = 0
                  DO i=1,N1
                    ! Find first empty space at "k"
+                   k = k + 1
                    DO WHILE( k <= slen )
-                     k = k + 1
                      IF ( str(k:k) == ' ') EXIT
+                     k = k + 1
                    END DO
 
                    ! Find first non-empty space at "k"
+                   k = k + 1
                    DO WHILE( k <= slen )
-                     k = k + 1
                      IF ( str(k:k) /= ' ') EXIT
+                     k = k + 1
                    END DO
 
                    IF ( k > slen ) THEN
@@ -2091,10 +2096,10 @@ CONTAINS
                    END IF
 
                    ! Find first empty space at "k2"
-                   k2 = k 
+                   k2 = k + 1
                    DO WHILE( k2 <= slen )
-                     k2 = k2 + 1
                      IF ( str(k2:k2) == ' ') EXIT
+                     k2 = k2 + 1
                    END DO
                    k2 = k2-1
 
@@ -2130,10 +2135,10 @@ CONTAINS
                  k = str_beg
 
                  ! Find first empty space at "k2"
-                 k2 = k 
+                 k2 = k + 1
                  DO WHILE( k2 <= slen )
-                   k2 = k2 + 1
                    IF ( str(k2:k2) == ' ') EXIT
+                   k2 = k2 + 1
                  END DO
                  k2 = k2-1
                                  
@@ -4222,6 +4227,8 @@ CONTAINS
       CALL Info(Caller,'Skipping restart for child mesh',Level=4)
       RETURN
     END IF
+
+    ALLOCATE(CHARACTER(MAX_STRING_LEN)::Row)
     
     ! This routine may be called either in Simulation section or from Solver section
     IF( PRESENT( SolverId ) ) THEN
@@ -4332,7 +4339,6 @@ CONTAINS
     
     RestartFileOpen = .TRUE.
 
-    ALLOCATE(CHARACTER(MAX_STRING_LEN)::Row)
     READ( RestartUnit, '(A)', IOSTAT=iostat ) Row
     IF( iostat /= 0 ) THEN
       CALL Fatal(Caller,'Error reading header line!')
@@ -4555,6 +4561,7 @@ CONTAINS
       ! If list is give check that variable is on the list.
       !---------------------------------------------------------------------------
       IF( ListVariableCount > 0  ) THEN
+        ListVariableFound = .FALSE.
         DO j=1,ListVariableCount
           LoadThis = .FALSE.
           VarName2 = ListGetString( ResList,'Restart Variable '//I2S(j), Found )

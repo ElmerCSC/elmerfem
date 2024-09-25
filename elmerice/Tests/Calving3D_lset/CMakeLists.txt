@@ -14,7 +14,15 @@ IF(HAVE_MMG AND HAVE_ZOLTAN)
   FILE(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/Results/isoline")
   FILE(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/Results/calving_plane")
 
-  ADD_ELMERICE_TEST(Calving3D_lset)
-  ADD_ELMERICE_LABEL(Calving3D_lset slow)
+  IF(WITH_MPI)
+    # Check the task bounds and add only compatible tests
+    SET(NPROCS 2)
+    IF(${NPROCS} GREATER ${MPI_TEST_MAXPROC} OR ${NPROCS} LESS ${MPI_TEST_MINPROC})
+      MESSAGE(STATUS "Skipping test Calving3D_lset with ${NPROCS} procs")
+    ELSE()
+      ADD_ELMERICE_TEST(Calving3D_lset)
+      ADD_ELMERICE_LABEL(Calving3D_lset slow)
+    ENDIF()
+  ENDIF()
 
 ENDIF()

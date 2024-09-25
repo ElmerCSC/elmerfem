@@ -15,8 +15,8 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with this program (in file fem/GPL-2); if not, write to the 
- *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
+ *  along with this program (in file fem/GPL-2); if not, write to the
+ *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
  *  Boston, MA 02110-1301, USA.
  *
  *****************************************************************************/
@@ -45,7 +45,7 @@
  ******************************************************************************/
 
 /*
- * $Id: dri_ps.c,v 1.2 2005/05/27 12:26:19 vierinen Exp $ 
+ * $Id: dri_ps.c,v 1.2 2005/05/27 12:26:19 vierinen Exp $
  *
  * $Log: dri_ps.c,v $
  * Revision 1.2  2005/05/27 12:26:19  vierinen
@@ -57,16 +57,16 @@
  * Revision 1.2  1998/08/01 12:34:32  jpr
  *
  * Added Id, started Log.
- * 
+ *
  *
  */
-  
+
 #include "elmer/matc.h"
 
 #define GRA_PS_FILE "matc.ps"
 
 #define GRA_PS_MAXC 16
-static unsigned char gra_ps_rgb[GRA_PS_MAXC][3] = 
+static unsigned char gra_ps_rgb[GRA_PS_MAXC][3] =
 {
   { 255, 255, 255 },
   { 0,   0,     0 },
@@ -89,11 +89,11 @@ static unsigned char gra_ps_rgb[GRA_PS_MAXC][3] =
 static double sh = -1,
               fs = -1,
               pip180 = 3.14158/180.0;
+#pragma omp threadprivate (gra_ps_rgb, sh, fs, pip180)
 
-
-void gra_ps_open(dev) int dev;
+void gra_ps_open(int dev)
 {
-  int i; 
+  int i;
 
   if (gra_state.out_fp == NULL)
   {
@@ -134,29 +134,29 @@ void gra_ps_open(dev) int dev;
   sh = -1;
 }
 
-void gra_ps_close()
+void gra_ps_close(void)
 {
   fprintf(gra_state.out_fp, "showpage grestore\n");
   gra_close_sys();
 }
 
-void gra_ps_clear()
+void gra_ps_clear(void)
 {
   /* fprintf(gra_state.out_fp, "showpage\n"); */
 
   gra_state.cur_point.x =
-  gra_state.cur_point.y = 0; 
+  gra_state.cur_point.y = 0;
 }
 
-void gra_ps_flush()
+void gra_ps_flush(void)
 {
 }
 
-void gra_ps_reset()
+void gra_ps_reset(void)
 {
 }
 
-void gra_ps_defcolor(index, r, g, b) int index; double r, g, b;
+void gra_ps_defcolor(int index, double r, double g, double b)
 {
   fprintf(gra_state.out_fp, "/c%d {%.3g %.3g %.3g c} def\n", index, r, g, b);
   if (gra_state.cur_color == index)
@@ -165,7 +165,7 @@ void gra_ps_defcolor(index, r, g, b) int index; double r, g, b;
   }
 }
 
-void gra_ps_color(index) int index;
+void gra_ps_color(int index)
 {
   if (gra_state.cur_color != index)
   {
@@ -174,7 +174,7 @@ void gra_ps_color(index) int index;
   }
 }
 
-void gra_ps_polyline(n, p) int n; Point *p;
+void gra_ps_polyline(int n, Point *p)
 {
   double *xn,*yn,zn, vx, vy;
   int i, np, nn, ni;
@@ -204,19 +204,19 @@ void gra_ps_polyline(n, p) int n; Point *p;
         for(np=0,i=1; i < nn; i++)
         {
           gra_window_to_viewport(xn[i+ni],yn[i+ni],zn,&vx,&vy);
-          if (np++ > 32 && i != n-1) 
+          if (np++ > 32 && i != n-1)
           {
             fprintf(gra_state.out_fp,
                     "%.3g %.3g l %.3g %.3g m\n", vx, vy, vx, vy);
             np = 0;
           }
-          else 
+          else
             fprintf(gra_state.out_fp,"%.3g %.3g l\n", vx, vy);
         }
-        fprintf(gra_state.out_fp,"d\n"); 
+        fprintf(gra_state.out_fp,"d\n");
         ni += nn - 1;
       }
-      else 
+      else
         ni++;
       nn  = n - ni;
     }
@@ -226,7 +226,7 @@ void gra_ps_polyline(n, p) int n; Point *p;
   }
 }
 
-void gra_ps_draw(p) Point *p;
+void gra_ps_draw(Point *p)
 {
   double vx,vy,xn[2],yn[2],zn;
   int n = 2;
@@ -249,17 +249,17 @@ void gra_ps_draw(p) Point *p;
   }
 }
 
-void gra_ps_move(p) Point *p;
+void gra_ps_move(Point *p)
 {
   double wx,wy,wz;
-   
+
   gra_mtrans(p[0].x,p[0].y,p[0].z,&wx,&wy,&wz);
 
   gra_state.cur_point.x = wx;
   gra_state.cur_point.y = wy;
 }
 
-void gra_ps_polymarker(index, n, p) int index, n; Point *p;
+void gra_ps_polymarker(int index, int n, Point *p)
 {
   double vx,vy,wx,wy,wz;
   int *x, *y,
@@ -295,7 +295,7 @@ void gra_ps_polymarker(index, n, p) int index, n; Point *p;
   }
 }
 
-void gra_ps_marker(index, p) int index; Point *p;
+void gra_ps_marker(int index, Point *p)
 {
   double wx,wy,wz;
 
@@ -305,7 +305,7 @@ void gra_ps_marker(index, p) int index; Point *p;
 }
 
 
-void gra_ps_areafill(n, p) int n; Point *p;
+void gra_ps_areafill(int n, Point *p)
 {
   double vx,vy,*xn,*yn,zn;
   int i, nn;
@@ -337,7 +337,7 @@ void gra_ps_areafill(n, p) int n; Point *p;
         fprintf(gra_state.out_fp,"%.3g %.3g l\n", vx, vy);
       }
 
-      fprintf(gra_state.out_fp,"p\n"); 
+      fprintf(gra_state.out_fp,"p\n");
     }
 
     FREEMEM((char *)yn);
@@ -345,7 +345,7 @@ void gra_ps_areafill(n, p) int n; Point *p;
   }
 }
 
-void gra_ps_image(w, h, d, r) int w, h, d; unsigned char *r;
+void gra_ps_image(int w, int h, int d, unsigned char *r)
 {
   int i, j, k;
 
@@ -362,14 +362,14 @@ void gra_ps_image(w, h, d, r) int w, h, d; unsigned char *r;
                          gra_state.viewport.xhigh-gra_state.viewport.xlow,
                          gra_state.viewport.yhigh-gra_state.viewport.ylow);
   fprintf(gra_state.out_fp, "%d %d %d [%d 0 0 %d 0 0]\n",w,h,d,w,h);
-  fprintf(gra_state.out_fp, "{ currentfile picstr readhexstring pop } image\n");   
+  fprintf(gra_state.out_fp, "{ currentfile picstr readhexstring pop } image\n");
   for(i = k = 0; i < h; i++)
   {
     for(j = 0; j < w; j++)
     {
       fprintf(gra_state.out_fp,"%02x", *r++);
       k++;
-      if (k >= 40) 
+      if (k >= 40)
       {
         fprintf(gra_state.out_fp,"\n");
         k = 0;
@@ -379,11 +379,11 @@ void gra_ps_image(w, h, d, r) int w, h, d; unsigned char *r;
   fprintf(gra_state.out_fp," grestore\n");
 }
 
-void gra_ps_text(h, r, str) double h, r; char *str;
+void gra_ps_text(double h, double r, char *str)
 {
   double wx = gra_state.cur_point.x;
   double wy = gra_state.cur_point.y;
-  double wz =0.0; 
+  double wz =0.0;
   double vx,vy;
 
   if (!(wx >= CL_XMIN && wx <= CL_XMAX &&
@@ -392,7 +392,7 @@ void gra_ps_text(h, r, str) double h, r; char *str;
   gra_window_to_viewport(wx,wy,wz,&vx,&vy);
   fprintf(gra_state.out_fp,"%.3g %.3g m\n", vx, vy );
 
-  if ( sh != h ) 
+  if ( sh != h )
   {
     fs = (gra_state.viewport.xhigh-gra_state.viewport.xlow) /
            (gra_state.window.xhigh-gra_state.window.xlow);
@@ -403,7 +403,7 @@ void gra_ps_text(h, r, str) double h, r; char *str;
     fprintf(gra_state.out_fp,"/Times-Roman f %g h x\n", fs);
   }
 
-  if ( r != 0.0 ) 
+  if ( r != 0.0 )
       fprintf(gra_state.out_fp,"s %.3g a (%s) t r\n", r, str );
   else
       fprintf(gra_state.out_fp, "(%s) t\n", str );

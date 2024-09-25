@@ -6,15 +6,12 @@
 
     flake-utils.url = "github:numtide/flake-utils";
 
+    flake-compat.url = "https://flakehub.com/f/edolstra/flake-compat/1.tar.gz";
+
     nix-filter.url = "github:numtide/nix-filter";
 
     mumps = {
       url = "github:mk3z/mumps";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
-    hypre = {
-      url = "github:mk3z/hypre";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
@@ -23,15 +20,27 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    nn = {
-      url = "github:mk3z/nn-c";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
     mmg = {
       url = "github:mk3z/mmg/develop";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    parmmg = {
+      url = "github:mk3z/parmmg/develop";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        mmg.follows = "mmg";
+      };
+    };
+  };
+
+  nixConfig = {
+    extra-substituters = [
+      "https://elmerfem.cachix.org"
+    ];
+    extra-trusted-public-keys = [
+      "elmerfem.cachix.org-1:nWIb5JzEzC2/W6qiuaC0urJRG+S7KvTn9WatX43gkHk="
+    ];
   };
 
   outputs = {
@@ -41,42 +50,56 @@
     nix-filter,
     ...
   } @ inputs:
-    flake-utils.lib.eachDefaultSystem (
+    (flake-utils.lib.eachDefaultSystem (
       system: let
         pkgs = nixpkgs.legacyPackages.${system};
         mumps = inputs.mumps.packages.${system}.default;
-        hypre = inputs.hypre.packages.${system}.default;
         csa = inputs.csa.packages.${system}.default;
-        nn = inputs.nn.packages.${system}.default;
         mmg = inputs.mmg.packages.${system}.default;
+        parmmg = inputs.parmmg.packages.${system}.default;
 
         basePkg = {
           name,
-          nativeBuildInputs,
-          buildInputs,
-          cmakeFlags,
+          nativeBuildInputs ? [],
+          buildInputs ? [],
+          cmakeFlags ? [],
           doCheck,
-          checkPhase ? ''
-            runHook preCheckPhase
-            ctest -j $NIX_BUILD_CORES -L fast
-            runHook postCheckPhase
-          '',
-        } @ inputs: let
+          checkOptions ? ''-L "quick|fast" -E "ForceToStress_parallel"'',
+          ...
+        }: let
           storepath = placeholder "out";
+          extraNativeBuildInputs = nativeBuildInputs;
+          extraBuildInputs = buildInputs;
+          extraCmakeFlags = cmakeFlags;
         in
           pkgs.stdenv.mkDerivation {
-            inherit name doCheck checkPhase storepath;
+            inherit name doCheck storepath;
 
-            pname = "elmerfem";
+            pname = "${name}-devel";
 
             src = nix-filter {
               root = self;
-              exclude = [
-                (nix-filter.lib.matchExt "nix")
-                "flake.lock"
-                ".git"
-                ".gitignore"
-                ".gitmodules"
+              include = [
+                "cmake"
+                "CMakeLists.txt"
+                "contrib"
+                "cpack"
+                "elmergrid"
+                "ElmerGUI"
+                "ElmerGUIlogger"
+                "ElmerGUItester"
+                "elmerice"
+                "ElmerWorkflows"
+                "fem"
+                "fhutiter"
+                "license_texts"
+                "matc"
+                "mathlibs"
+                "meshgen2d"
+                "misc"
+                "pics"
+                "post"
+                "umfpack"
               ];
             };
 
@@ -89,7 +112,7 @@
                 pkg-config
                 autoPatchelfHook
               ]
-              ++ inputs.nativeBuildInputs;
+              ++ extraNativeBuildInputs;
 
             buildInputs = with pkgs;
               [
@@ -98,11 +121,10 @@
                 liblapack
                 tbb
               ]
-              ++ inputs.buildInputs;
+              ++ extraBuildInputs;
 
             cmakeFlags =
               [
-                "-DELMER_INSTALL_LIB_DIR=${storepath}/lib"
                 "-DCMAKE_INSTALL_LIBDIR=lib"
                 "-DCMAKE_INSTALL_INCLUDEDIR=include"
                 "-DWITH_LUA:BOOL=TRUE"
@@ -110,9 +132,19 @@
                 "-DWITH_OpenMP:BOOLEAN=TRUE"
                 "-DWITH_MPI:BOOLEAN=TRUE"
 
+                "-DWITH_ElmerIce:BOOL=TRUE"
+
+                "-DMPIEXEC_PREFLAGS=-oversubscribe"
+
                 "-Wno-dev"
               ]
-              ++ inputs.cmakeFlags;
+              ++ extraCmakeFlags;
+
+            checkPhase = ''
+              runHook preCheckPhase
+              ctest -j $NIX_BUILD_CORES ${checkOptions}
+              runHook postCheckPhase
+            '';
 
             autoPatchelfIgnoreMissingDeps = ["libmpi_stubs.so"];
 
@@ -126,19 +158,16 @@
             ];
           };
 
-        nogui = {doCheck ? false}:
+        default = {doCheck ? false}:
           basePkg {
             inherit doCheck;
-            name = "elmerfem";
-            nativeBuildInputs = [];
-            buildInputs = [];
-            cmakeFlags = [];
+            name = "elmer";
           };
 
         gui = {doCheck ? false}:
           basePkg {
             inherit doCheck;
-            name = "elmerfem-gui";
+            name = "elmer-gui";
 
             nativeBuildInputs = [pkgs.libsForQt5.wrapQtAppsHook];
 
@@ -161,32 +190,28 @@
             ];
           };
 
-        ice = {doCheck ? false}:
+        full = {doCheck ? false}:
           basePkg {
             inherit doCheck;
-            name = "elmerice";
-
-            nativeBuildInputs = [];
+            name = "elmer-full";
 
             buildInputs = with pkgs;
               [
                 hdf5-mpi
+                hypre
+                nn
                 scalapack
               ]
               ++ [
                 csa
-                hypre
                 mumps
-                nn
               ];
 
             cmakeFlags = [
-              "-DWITH_ElmerIce:BOOL=TRUE"
-
               "-DWITH_NETCDF:BOOL=TRUE"
               "-DNETCDF_LIBRARY=${pkgs.netcdf-mpi}/lib/libnetcdf.so"
-              "-DNETCDFF_LIBRARY=${pkgs.netcdffortran}/lib/libnetcdff.so"
               "-DNETCDF_INCLUDE_DIR=${pkgs.netcdf-mpi}/include"
+              "-DNETCDFF_LIBRARY=${pkgs.netcdffortran}/lib/libnetcdff.so"
               "-DCMAKE_Fortran_FLAGS=-I${pkgs.netcdffortran}/include"
 
               "-DWITH_Hypre:BOOL=TRUE"
@@ -194,39 +219,45 @@
               "-DWITH_Mumps:BOOL=TRUE"
 
               "-DWITH_ScatteredDataInterpolator:BOOL=TRUE"
+
               "-DCSA_LIBRARY=${csa}/lib/libcsa.a"
               "-DCSA_INCLUDE_DIR=${csa}/include"
-              "-DNN_INCLUDE_DIR=${nn}/include"
-              "-DNN_LIBRARY=${nn}/lib/libnn.a"
+
+              "-DNN_INCLUDE_DIR=${pkgs.nn}/include"
+              "-DNN_LIBRARY=${pkgs.nn}/lib/libnn.a"
 
               "-DWITH_MMG:BOOL=TRUE"
               "-DMMG_INCLUDE_DIR=${mmg}/include"
               "-DMMG_LIBRARY=${mmg}/lib/libmmg.so"
 
+              "-DWITH_PARMMG:BOOL=TRUE"
+              "-DPARMMG_INCLUDE_DIR=${parmmg}/include"
+              "-DPARMMG_LIBRARY=${parmmg}/lib/libparmmg.so"
+
               "-DWITH_GridDataReader:BOOL=TRUE"
 
               "-DWITH_Trilinos:BOOL=FALSE"
             ];
-
-            checkPhase = ''
-              runHook preCheckPhase
-              ctest -j $NIX_BUILD_CORES -L fast -E "(Hydro_Coupled)|(Hydro_SedOnly)|(Proj_South)"
-              runHook postCheckPhase
-            '';
           };
       in {
         checks = {
-          nogui = nogui {doCheck = true;};
+          default = default {doCheck = true;};
           gui = gui {doCheck = true;};
-          ice = ice {doCheck = true;};
+          full = full {doCheck = true;};
         };
 
         packages = {
-          default = nogui {};
-          nogui = nogui {};
+          default = default {};
           gui = gui {};
-          ice = ice {};
+          full = full {};
         };
       }
-    );
+    ))
+    // {
+      overlay = final: prev: {
+        elmer = self.packages.${final.system}.default;
+        elmer-gui = self.packages.${final.system}.gui;
+        elmer-full = self.packages.${final.system}.full;
+      };
+    };
 }

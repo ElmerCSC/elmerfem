@@ -327,10 +327,11 @@ try_open_solver(char *SearchPath, char *Library, void **Handle, char *errorBuf)
   loaded library and name of the routine.
   -------------------------------------------------------------------------*/
 #ifdef USE_ISO_C_BINDINGS
-void *STDCALLBULL loadfunction_c( int *Quiet, int *abort_not_found, char *Library, char *Name )
+void *STDCALLBULL loadfunction_c( int *Quiet, int *abort_not_found, 
+        char *Library, char *Name, int *mangle )
 #else
 void *STDCALLBULL FC_FUNC(loadfunction,LOADFUNCTION) ( int *Quiet, int *abort_not_found,
-                                                       char *Library, char *Name )
+                                    char *Library, char *Name, int *mangle )
 #endif
 {
 /*--------------------------------------------------------------------------*/
@@ -349,7 +350,11 @@ void *STDCALLBULL FC_FUNC(loadfunction,LOADFUNCTION) ( int *Quiet, int *abort_no
    memset(NewName, 0, MAX_PATH_LEN);
    memset(ErrorBuffer, 0, ERROR_BUF_LEN);
 /*--------------------------------------------------------------------------*/
-   fortranMangle( Name, NewName );
+   if(*mangle) {
+     fortranMangle( Name, NewName );
+   } else {
+     strncpy( NewName, Name, MAX_PATH_LEN-1 );
+   }
    strncpy( NewLibName, Library, 3*MAX_PATH_LEN );
 
    if ( *Quiet==0 ) {

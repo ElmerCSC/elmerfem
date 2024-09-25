@@ -1250,7 +1250,7 @@ CONTAINS
        
        ElementIndex = GetParticleElement( Particles, No )
 
-       IF( ElementIndex == 0 ) CYCLE
+       IF( ElementIndex < 1 ) CYCLE
 
        BulkElement => Mesh % Elements( ElementIndex )
        IF(.NOT. ASSOCIATED( BulkElement ) ) CYCLE

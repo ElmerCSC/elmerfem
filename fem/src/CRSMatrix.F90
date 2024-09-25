@@ -138,6 +138,7 @@ CONTAINS
     LOGICAL :: isMass, isDamp, EigenAnalysis, DampedAnalysis, HarmonicAnalysis, Found
 
     EigenAnalysis=.FALSE.; HarmonicAnalysis=.FALSE.
+    DampedAnalysis = .FALSE.
     IF(ASSOCIATED(A % Solver)) THEN
        EigenAnalysis = A % Solver % NOFEigenValues > 0 .AND. &
            ListGetLogical( A % Solver % Values, 'Eigen Analysis',Found)
@@ -1661,6 +1662,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
    END SUBROUTINE CRS_AdditiveMatrixVectorMultiply
 !------------------------------------------------------------------------------
 
+   
 !------------------------------------------------------------------------------
 !> Matrix vector product (v = Au) for a matrix given in CRS format
 !> This one only applies to the active elements of u. The idea is that
@@ -1704,6 +1706,40 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
   END SUBROUTINE CRS_MaskedMatrixVectorMultiply
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+!> Matrix vector product (v = Au) for a matrix given in CRS format
+!> This one only applies to the active elements of u. The idea is that
+!> we may look at the partial matrix norm, for example. 
+!------------------------------------------------------------------------------
+  FUNCTION CRS_MatrixRowVectorMultiply( A,u,i) RESULT ( rsum )
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t), INTENT(IN) :: A                !< Structure holding matrix
+    REAL(KIND=dp), DIMENSION(*), INTENT(IN) :: u   !< Vector to be multiplied
+    INTEGER :: i                                   !< Row of matrix
+    REAL(KIND=dp) :: rsum                          !< Matrix row x vector sum. 
+    !------------------------------------------------------------------------------
+    INTEGER, POINTER  CONTIG :: Cols(:),Rows(:)
+    REAL(KIND=dp), POINTER  CONTIG :: Values(:)
+    INTEGER :: j,n
+    !------------------------------------------------------------------------------
+
+    IF(i<1 .OR. i>A % NumberOfRows) THEN
+      CALL Fatal('CRS_MatrixRowVectorMultiply','Invalid row number '//I2S(i))
+    END IF
+    Rows   => A % Rows
+    Cols   => A % Cols
+    Values => A % Values
+
+    rsum = 0.0_dp
+    DO j=Rows(i),Rows(i+1)-1
+      rsum = rsum + Values(j) * u(Cols(j))
+    END DO 
+!------------------------------------------------------------------------------
+  END FUNCTION CRS_MatrixRowVectorMultiply
+!------------------------------------------------------------------------------
+
+  
   
 !------------------------------------------------------------------------------
 !>  Matrix-vector product v = |A|u with A a matrix in the CRS format and
@@ -2548,6 +2584,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !------------------------------------------------------------------------------
   SUBROUTINE CRS_FCTLowOrder( A )
     USE SparIterGlobals
+#if defined(ELMER_HAVE_MPI_MODULE)
+    USE mpi
+#endif
 !------------------------------------------------------------------------------
     TYPE(Matrix_t) :: A           !< Initial higher order matrix
 !------------------------------------------------------------------------------
@@ -2562,8 +2601,10 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     LOGICAL, ALLOCATABLE :: ActiveNodes(:), RowFound(:)
 
     TYPE(Matrix_t), POINTER :: im
-    
+
+#if defined(ELMER_HAVE_MPIF_HEADER)
     INCLUDE "mpif.h"
+#endif
 
     CALL Info('CRS_FCTLowOrder','Making low order FCT correction to matrix',Level=5)
 
@@ -5136,7 +5177,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !> At first call register the matrix topology.
 !> At second round change the matrix topology of the vectors.
 !> Without change in topology all matrix operations with BulkValues,
-!> MassValues, and DampValues would break down. 
+!> MassValues, DampValues etc. would break down. 
 !------------------------------------------------------------------------------
   SUBROUTINE CRS_ChangeTopology( A, Init )
 !------------------------------------------------------------------------------
@@ -5182,7 +5223,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       
       CALL Info('CRS_ChangeTopology','New matrix non-zeros: '//I2S(n),Level=12)
       
-      DO ivec=1,3
+      DO ivec=1,5
         NULLIFY(Aold)
         SELECT CASE(ivec)
         CASE( 1 )
@@ -5191,6 +5232,10 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
           Aold => A % MassValues
         CASE( 3 )
           Aold => A % DampValues
+        CASE( 4 )
+          Aold => A % BulkMassValues
+        CASE( 5 )
+          Aold => A % BulkDampValues
         END SELECT
         
         IF( .NOT. ASSOCIATED(Aold) ) CYCLE
@@ -5221,7 +5266,14 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
           A % MassValues => Anew
         CASE( 3 )
           A % DampValues => Anew 
+        CASE( 4 )
+          A % BulkMassValues => Anew
+        CASE( 5 )
+          A % BulkDampValues => Anew 
         END SELECT
+
+        CALL Info('CRS_ChangeTopology','Done changing matrix '//I2S(n)//' topology',Level=20)
+
         
       END DO
             

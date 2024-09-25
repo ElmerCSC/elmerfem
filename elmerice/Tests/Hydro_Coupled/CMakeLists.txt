@@ -5,4 +5,4 @@ CONFIGURE_FILE(Coupled.sif Coupled.sif COPYONLY)
 FILE(COPY ELMERSOLVER_STARTINFO cube.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMERICE_TEST(Hydro_Coupled)
-ADD_ELMERICE_LABEL(Hydro_Coupled elmerice-fast)
+ADD_ELMERICE_LABEL(Hydro_Coupled obsolete)

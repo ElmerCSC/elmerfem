@@ -1,0 +1,121 @@
+!---------------------------------------------------------------------
+! Solves a static current conduction problem using some library
+! functionality such that a simple external circuit is solved
+! alongside. The keywords may not be very intuitive since they
+! have been created originally for some other problems.
+!
+! This one with two ports.
+!
+! P.R. / 24.9.2024
+!--------------------------------------------------------------------
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "angle"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = "Cartesian"
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+!  Post File = "case.vtu"
+!  vtu: ascii output = logical true
+End
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equation1"
+  Active Solvers(1) = 1
+End
+
+Solver 1
+  Equation = "StatCurrent"
+  Variable = "Potential"
+  Procedure = "StatCurrentSolveVec" "StatCurrentSolver"
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "bicgstab"
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Preconditioning = ILU2
+  Linear System Residual Output = 20
+End  
+
+Solver 2
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+  Filename = f.dat
+  Mask Name 1 = Right BC
+  Variable 1 = Potential
+  Operator 1 = boundary min
+  Variable 2 = Potential
+  Operator 2 = boundary max
+  Mask Name 3 = Upper BC
+  Variable 3 = Potential
+  Operator 3 = boundary min
+  Variable 4 = Potential
+  Operator 4 = boundary max
+
+! Showing value of max potential 
+  Show Norm Index = 2
+End 
+
+Material 1
+  Name = "Material1"
+  Electric Conductivity = 5.0
+End
+
+Boundary Condition 1
+  Name = "corner"
+  Target Boundaries(1) = 1
+  Potential = 0.0
+End
+
+Boundary Condition 2
+  Name = "right"
+  Target Boundaries(1) = 2 
+$Rext=5.0
+$Uext=10.0
+$C=1.0
+
+! C*U + (\int i_n) Rext = Uext
+  Potential Constant = Logical True
+  Potential Constant Resistance = Real $Rext
+  Potential Constant Flux = Real $Uext
+  Potential Constant Coefficient = Real $C
+
+  Right BC = Logical True
+End
+
+Boundary Condition 3
+  Name = "upper"
+  Target Boundaries(1) = 3
+
+
+! C*U + (\int i_n) Rext = Uext
+! The case has been constructed so that internal resistance is 1 Ohm.
+! Hence voltage over the beam becomes 1V with external voltage of 3V.
+
+  Potential Constant = Logical True
+  Potential Constant Resistance = Real $Rext
+  Potential Constant Flux = Real $Uext
+  Potential Constant Coefficient = Real $C
+
+  Upper BC = Logical True
+End
+
+Solver 1 :: Reference Norm = 1.05811980E+00
+Solver 2 :: Reference Norm = 1.81058501E+00
+
+

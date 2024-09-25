@@ -147,10 +147,10 @@ void elmer_distribute_matrix(const MPI_Comm*    comm,
                             boundary[r].push_back(i + index_offset[rank]);
                             neighbor[r] = true;
                             ++boundary_nnz;
-                                checked[r][i + index_offset[rank]] = true;
+                            checked[r][i + index_offset[rank]] = true;
                         }
                         ++ghost_nnz;
-                            // Rank for current boundary point local_col[j] has been found
+                        // Rank for current boundary point local_col[j] has been found
                         // Continue with next boundary point
                         break;
                     }

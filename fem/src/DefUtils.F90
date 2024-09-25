@@ -1281,7 +1281,9 @@ CONTAINS
        IF( ASSOCIATED(Parent) ) THEN
 
          GotMat = .FALSE.
-         IF( Parent % BodyId > 0 .AND. Parent % BodyId <= CurrentModel % NumberOfBodies ) THEN
+         IF( Parent % BodyId == 0) THEN
+           CYCLE
+         ELSE IF( Parent % BodyId <= CurrentModel % NumberOfBodies ) THEN
            mat_id = ListGetInteger( CurrentModel % Bodies(Parent % BodyId) % Values,'Material',GotMat)
          ELSE
            CALL Warn('GetParentMatProp','Invalid parent BodyId '//I2S(Parent % BodyId)//&
@@ -3012,7 +3014,16 @@ CONTAINS
    ELSE
      Solver => CurrentModel % solver
    END IF
+   
+   ! This is now the default global time integration routine but the old hack may still be called
+   !---------------------------------------------------------------------------------------------
+   IF( .NOT. ListGetLogical( Solver % Values,'Old Global Time Integration',Found ) ) THEN
+     CALL Add2ndOrderTime_CRS( Solver % Matrix, Solver % Matrix % rhs, &
+         Solver % dt, Solver % Variable % PrevValues, Solver )
+     RETURN
+   END IF
 
+   
    IF ( .NOT.ASSOCIATED(Solver % Variable % Values, SaveValues) ) THEN
       IF ( ALLOCATED(STIFF) ) DEALLOCATE( STIFF,MASS,DAMP,X )
       n = 0
@@ -3904,14 +3915,14 @@ CONTAINS
            x % DOFs, PermIndexes, &
            UElement=Element, MCAssembly=MCAsm )
      ELSE       
-       IF( A % FORMAT == MATRIX_CRS ) THEN
-         ! For CRS format these are effectively the same
-         CALL UpdateGlobalEquationsVec( A,G,b,f,n,x % DOFs, &
-             PermIndexes, UElement=Element )
-       ELSE
+!      IF( A % FORMAT == MATRIX_CRS ) THEN
+!        ! For CRS format these are effectively the same
+!        CALL UpdateGlobalEquationsVec( A,G,b,f,n,x % DOFs, &
+!            PermIndexes, UElement=Element )
+!      ELSE
          CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs, &
              PermIndexes, UElement=Element )       
-       END IF
+!      END IF
          
        IF(Solver % DirectMethod == DIRECT_PERMON) THEN
          CALL UpdatePermonMatrix( A, G, n, x % DOFs, PermIndexes )
@@ -5239,7 +5250,7 @@ CONTAINS
      LOGICAL :: PiolaTransform, QuadraticApproximation, SecondKindBasis
      LOGICAL, ALLOCATABLE :: ReleaseDir(:)
      LOGICAL :: ReleaseAny, NodalBCsWithBraces,AllConstrained
-     LOGICAL :: AugmentedEigenSystem
+     LOGICAL :: CheckRight, AugmentedEigenSystem
      
      CHARACTER(:), ALLOCATABLE :: Name
 
@@ -5754,10 +5765,26 @@ CONTAINS
            ! Get parent element:
            ! -------------------
            Parent => Element % BoundaryInfo % Left
-           IF ( .NOT. ASSOCIATED( Parent ) ) THEN
-              Parent => Element % BoundaryInfo % Right
+           IF ( ASSOCIATED( Parent ) ) THEN
+             IF (Parent % BodyId < 1) THEN
+               CheckRight = .TRUE.
+             ELSE
+               CheckRight = .FALSE.
+             END IF
+           ELSE
+             CheckRight = .TRUE.
            END IF
-           IF ( .NOT. ASSOCIATED( Parent ) )   CYCLE
+             
+           IF (CheckRight) THEN
+             Parent => Element % BoundaryInfo % Right
+             IF ( ASSOCIATED( Parent ) ) THEN
+               IF (Parent % BodyId < 1) THEN
+                 Call Warn('SetDefaultDirichlet', 'Cannot set a BC owing to a missing parent body index')
+                 CYCLE
+               END IF
+             END IF
+           END IF
+           IF ( .NOT. ASSOCIATED( Parent ) ) CYCLE
            np = Parent % TYPE % NumberOfNodes
 
            IF ( ListCheckPrefix(BC, Name//' {e}') ) THEN

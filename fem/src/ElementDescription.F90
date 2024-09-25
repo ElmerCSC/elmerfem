@@ -2567,8 +2567,16 @@ CONTAINS
 
        BodyId = Element % BodyId
        IF (BodyId==0 .AND. ASSOCIATED(Element % BoundaryInfo)) THEN
-         Parent => Element % PDefs % LocalParent
+         Parent => Element % PDefs % LocalParent         
          IF(ASSOCIATED(Parent)) BodyId = Parent % BodyId
+         IF( BodyId == 0 ) THEN
+           Parent => Element % BoundaryInfo % Left
+           IF( ASSOCIATED(Parent)) BodyId = Parent % BodyId
+         END IF
+         IF(BodyId == 0) THEN
+           Parent => Element % BoundaryInfo % Right
+           IF( ASSOCIATED(Parent)) BodyId = Parent % BodyId
+         END IF
        END IF
        IF (BodyId==0) THEN
          CALL Warn('ElementBasisDegree', 'Element '//I2S(Element % ElementIndex)//' of type '//&
@@ -3252,11 +3260,20 @@ CONTAINS
 
       BodyId = Element % BodyId
       IF (BodyId==0 .AND. ASSOCIATED(Element % BoundaryInfo)) THEN
-        Parent => Element % PDefs % LocalParent
+        Parent => Element % PDefs % LocalParent         
         IF(ASSOCIATED(Parent)) BodyId = Parent % BodyId
+        IF( BodyId == 0 ) THEN
+          Parent => Element % BoundaryInfo % Left
+          IF( ASSOCIATED(Parent)) BodyId = Parent % BodyId
+        END IF
+        IF(BodyId == 0) THEN
+          Parent => Element % BoundaryInfo % Right
+          IF( ASSOCIATED(Parent)) BodyId = Parent % BodyId
+        END IF
       END IF
+
       IF (BodyId==0) THEN
-        CALL Warn('ElementBasisDegree', 'Element '//I2S(Element % ElementIndex)//' of type '//&
+        CALL Warn('ElementInfo', 'Element '//I2S(Element % ElementIndex)//' of type '//&
             I2S(Element % TYPE % ElementCode)//' has 0 BodyId, assuming index 1')
         BodyId = 1
       END IF
@@ -4521,7 +4538,7 @@ CONTAINS
      END IF
 
      IF (BodyId==0) THEN
-       CALL Warn('ElementBasisDegree', 'Element '//I2S(Element % ElementIndex)//' of type '//&
+       CALL Warn('ElementInfoVec', 'Element '//I2S(Element % ElementIndex)//' of type '//&
            I2S(Element % TYPE % ElementCode)//' has 0 BodyId, assuming index 1')
        BodyId = 1
      END IF

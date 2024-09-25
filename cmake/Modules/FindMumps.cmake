@@ -1,5 +1,5 @@
 # cmake script for finding MUMPS sparse direct solver
-INCLUDE(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
+INCLUDE(FindPackageHandleStandardArgs)
 
 # If Mumps libraries are already defined, do nothing
 IF(Mumps_LIBRARIES AND Mumps_INCLUDE_DIR)

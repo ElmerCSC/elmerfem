@@ -12,7 +12,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 25
   Angular Frequency = $ if( fem ) { w } else { k }
 
   Coordinate System = "Cartesian 2D"

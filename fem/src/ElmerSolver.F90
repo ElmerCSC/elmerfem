@@ -3395,6 +3395,7 @@
 
      BLOCK
        TYPE(Solver_t), POINTER :: iSolver
+
        DO i=1,CurrentModel % NumberOfSolvers 
          iSolver => CurrentModel % Solvers(i)
          IF( iSolver % NumberOfConstraintModes > 0 ) THEN
@@ -3404,7 +3405,6 @@
          END IF
        END DO
      END BLOCK
-     
      
 100  CONTINUE
 
