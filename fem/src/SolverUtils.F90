@@ -4785,7 +4785,7 @@ CONTAINS
 
     TYPE(Element_t), POINTER :: Parent
 
-    INTEGER :: ind, ElemFirst, ElemLast, bf, BCstr, BCend, BCinc, nodeind
+    INTEGER :: ind, ElemFirst, ElemLast, bf, BCstr, BCend, BCinc, dgind
     REAL(KIND=dp) :: SingleVal
     LOGICAL :: AnySingleBC, AnySingleBF
     LOGICAL, ALLOCATABLE :: LumpedNodeSet(:)
@@ -5304,8 +5304,7 @@ CONTAINS
         ! On the first time find a one single uniquely defined node for setting 
         ! the value. In parallel it will be an unshared node with the highest possible 
         ! node number 
-        IF( .NOT. GotIt ) THEN        
-          
+        IF(.NOT. GotIt ) THEN                  
           ind = 0
           DO t = ElemFirst, ElemLast
             Element => Mesh % Elements(t)
@@ -5489,20 +5488,22 @@ CONTAINS
           IF(.NOT. GotIt) MoveCoeff = 1.0_dp
 
           ! This tells us that this has been visited before            
-          ind = ListGetInteger( ValueList,TRIM(DirName)//' Node Index',GotIt )     
-
+          ind = ListGetInteger( ValueList,TRIM(DirName)//' Node Index',GotIt )               
+         
           ! On the first time find a one single uniquely defined node for setting 
           ! the value. In parallel it will be an unshared node with the highest possible 
           ! node number 
           IF( GotIt ) THEN        
+            dgind = ListGetInteger( ValueList,TRIM(DirName)//' DG Node Index',GotIt )               
             IF( GotMult ) THEN
               MaxMult = ListGetConstReal( ValueList,TRIM(DirName)//' Max Value',UnfoundFatal=.TRUE.) 
             END IF
           ELSE
             MaxMult = 0.0_dp          
             ind = 0
+            dgind = 0
             maxind = 0
-
+            
             DO t = ElemFirst, ElemLast
               Element => Mesh % Elements(t)
 
@@ -5542,6 +5543,7 @@ CONTAINS
                   END IF
                 ELSE
                   ind = j 
+                  IF( Model % Solver % DG ) dgind = Indexes(i)
                   EXIT
                 END IF
               END DO
@@ -5564,7 +5566,17 @@ CONTAINS
               IF( k == -1 ) THEN
                 CALL Warn(Caller,'Could not find node to set: '//TRIM(DirName))
               END IF
-              IF( k /= ParEnv % MyPe ) ind = 0
+              j = 0
+              IF( k /= ParEnv % MyPe .AND. ind > 0) THEN
+                ind = 0
+                dgind = 0
+                j = 1 
+              END IF
+              ! Just a counter for partitions that have hits but do not own the index.
+              j = ParallelReduction(j)
+              IF(j>0) THEN
+                CALL Warn(Caller,'Problems: boundary extends over '//I2S(j+1)//' partitions')
+              END IF
             ELSE
               IF( ind == 0 ) THEN
                 CALL Warn(Caller,'Could not find node to set: '//TRIM(DirName))
@@ -5572,6 +5584,10 @@ CONTAINS
             END IF
 
             CALL ListAddInteger( ValueList,TRIM(DirName)//' Node Index', ind )
+            IF( Model % Solver % DG ) THEN
+              CALL ListAddInteger( ValueList,TRIM(DirName)//' DG Node Index', dgind )
+            END IF
+
             IF(GotMult) THEN
               CALL ListAddConstReal( ValueList,TRIM(DirName)//' Max Value', MaxMult )
             END IF
@@ -5581,37 +5597,20 @@ CONTAINS
             NeedListMatrix = .TRUE.
           END IF
 
-          IF( Parallel ) CALL Warn(Caller,'Node index not set properly in parallel')
+          ! This is probably in parallel a passive partition. 
           IF( ind == 0 ) CYCLE
 
           ! Ok, now sum up the rows to the corresponding nodal index
+          ! We go through elements and need to mark the nodes in order not to visit them twice. 
           LumpedNodeSet = .FALSE.
-          nodeind = ind
 
-          ! This is a quick hack since we need to separate the index associated to node from
-          ! on index associated to a DG index. 
+          ! Actually from this on we do not need the node index if we have a DG field.
+          ! Replace it with the DG index.
           IF( Model % Solver % DG ) THEN
-            ind = 0
-            DO t = ElemFirst, ElemLast
-              Element => Mesh % Elements(t)              
-              IF( bc <= Model % NumberOfBCs ) THEN
-                IF ( Element % BoundaryInfo % Constraint /= Model % BCs(bc) % Tag ) CYCLE
-              ELSE
-                bf = ListGetInteger( Model % Bodies(Element % bodyid) % Values,'Body Force',GotIt)
-                IF( bc - Model % NumberOfBCs /= bf ) CYCLE
-              END IF              
-              n = Element % TYPE % NumberOfNodes             
-              CALL PickDgIndexes(Element,Indexes)                  
-              DO i=1,n
-                IF(Element % NodeIndexes(i) == nodeind) THEN
-                  ind = Indexes(i)
-                END IF
-              END DO
-              IF(ind > 0) EXIT
-            END DO
-            IF(ind == 0) THEN
+            IF( dgind == 0 ) THEN
               CALL Fatal(Caller,'Could not determine DG index associated to node index!')
             END IF
+            ind = dgind
           END IF
 
           ! If we need to do scaling then play with the supernode too!
