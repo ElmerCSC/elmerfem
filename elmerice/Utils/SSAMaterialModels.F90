@@ -66,11 +66,12 @@ MODULE SSAMaterialModels
    INTEGER, PARAMETER :: BUDD = 5
    INTEGER, PARAMETER :: REG_COULOMB_GAG = 3 ! Schoof 2005 & Gagliardini 2007
    INTEGER, PARAMETER :: REG_COULOMB_JOU = 4 ! Joughin 2019
+   INTEGER, PARAMETER :: REG_COULOMB_HYB = 6 ! Rupert's Hybrid
    
    TYPE(ValueList_t), POINTER :: Material, Constants
    TYPE(Variable_t), POINTER :: GMSol,BedrockSol,NSol
    INTEGER, POINTER :: NodeIndexes(:)
-   CHARACTER(LEN=MAX_NAME_LEN) :: Friction
+   CHARACTER(LEN=MAX_NAME_LEN) :: Friction, MaskName
    REAL(KIND=dp) :: Slip2, gravity, qq, hafq
    REAL(KIND=dp) :: fm,fq,MinN,MaxN,U0
    REAL(KIND=dp) :: alpha,beta,fB
@@ -82,10 +83,18 @@ MODULE SSAMaterialModels
    LOGICAL :: Found, NeedN
 
    SAVE FirstTime
+
+   Material => GetMaterial(Element)
+
+   ! Allow user-named grounded mask
+   MaskName = ListGetString(Material, 'SSA Friction mask name',Found, UnFoundFatal=.FALSE.)
+   IF (.NOT.Found) THEN
+      MaskName = 'GroundedMask'
+   END IF
    
-!  Sub - element GL parameterisation
+   !  Sub - element GL parameterisation
    IF (SEP) THEN
-     GMSol => VariableGet( CurrentModel % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
+     GMSol => VariableGet( CurrentModel % Variables, MaskName,UnFoundFatal=.TRUE. )
      CALL GetLocalSolution( NodalGM,UElement=Element,UVariable=GMSol)
 
      BedrockSol => VariableGet( CurrentModel % Variables, 'bedrock',UnFoundFatal=.TRUE. )
@@ -93,7 +102,6 @@ MODULE SSAMaterialModels
    END IF
 
 ! Friction law
-   Material => GetMaterial(Element)
    NodeIndexes => Element % NodeIndexes
 
    Friction = ListGetString(Material, 'SSA Friction Law',Found, UnFoundFatal=.TRUE.)
@@ -258,6 +266,8 @@ MODULE SSAMaterialModels
   INTEGER :: GLnIP
   REAL(KIND=dp) :: sealevel,rhow
 
+  TYPE(ValueList_t), POINTER :: Material
+  CHARACTER(LEN=MAX_NAME_LEN) :: MaskName
   LOGICAL :: PartlyGroundedElement
   TYPE(Variable_t),POINTER :: GMSol
   REAL(KIND=dp) :: NodalGM(n)
@@ -266,12 +276,19 @@ MODULE SSAMaterialModels
   REAL(KIND=dp) :: h,ub,rho,Velo(2)
   REAL(KIND=dp) :: area,tb
   REAL(KIND=dp) :: Ceff
-  LOGICAL :: stat
+  LOGICAL :: stat, Found
   INTEGER :: t
 
+  ! Allow user-named grounded mask
+  Material => GetMaterial(Element)
+  MaskName = ListGetString(Material, 'SSA Friction mask name',Found, UnFoundFatal=.FALSE.)
+  IF (.NOT.Found) THEN
+     MaskName = 'GroundedMask'
+  END IF
+  
   strbasemag=0._dp
   IF (SEP) THEN
-     GMSol => VariableGet( CurrentModel % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
+     GMSol => VariableGet( CurrentModel % Variables, MaskName,UnFoundFatal=.TRUE. )
      CALL GetLocalSolution( NodalGM,UElement=Element,UVariable=GMSol)
      PartlyGroundedElement=(ANY(NodalGM(1:n).GE.0._dp).AND.ANY(NodalGM(1:n).LT.0._dp))
      IF (PartlyGroundedElement) THEN
@@ -333,22 +350,29 @@ MODULE SSAMaterialModels
      
      TYPE(ValueList_t), POINTER  :: Material
      TYPE(Variable_t), POINTER   :: GMSol,BedrockSol
-     CHARACTER(LEN=MAX_NAME_LEN) :: MeltParam
+     CHARACTER(LEN=MAX_NAME_LEN) :: MeltParam, MaskName
      
      REAL(KIND=dp),DIMENSION(nn) :: NodalBeta, NodalGM, NodalBed, NodalLinVelo,NodalC
      REAL(KIND=dp) :: bedrock,Hf
      
      LOGICAL :: Found
+
+     Material => GetMaterial(Element)     
+     
+     ! Allow user-named grounded mask
+     MaskName = ListGetString(Material, 'SSA Friction mask name',Found, UnFoundFatal=.FALSE.)
+     IF (.NOT.Found) THEN
+        MaskName = 'GroundedMask'
+     END IF
      
      !  Sub - element GL parameterisation
      IF (SEM) THEN
-        GMSol => VariableGet( CurrentModel % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
+        GMSol => VariableGet( CurrentModel % Variables, MaskName,UnFoundFatal=.TRUE. )
         CALL GetLocalSolution( NodalGM,UElement=Element,UVariable=GMSol )
         BedrockSol => VariableGet( CurrentModel % Variables, 'bedrock',UnFoundFatal=.TRUE. )
         CALL GetLocalSolution( NodalBed,UElement=Element,UVariable= BedrockSol )
      END IF
      
-     Material => GetMaterial(Element)     
      MeltParam = ListGetString(Material, 'SSA Melt Param',Found, UnFoundFatal=.TRUE.)
 
      BMBatIP=SUM(Basis(1:nn)*BMB(1:nn))
