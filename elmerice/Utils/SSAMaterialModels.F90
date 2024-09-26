@@ -91,7 +91,9 @@ MODULE SSAMaterialModels
    IF (.NOT.Found) THEN
       MaskName = 'GroundedMask'
    END IF
-   
+   WRITE( Message, * ) 'Grounded mask name for SSA friction is:', MaskName
+   CALL INFO("SSAEffectiveFriction", Message, level=5)
+               
    !  Sub - element GL parameterisation
    IF (SEP) THEN
      GMSol => VariableGet( CurrentModel % Variables, MaskName,UnFoundFatal=.TRUE. )
@@ -300,7 +302,9 @@ MODULE SSAMaterialModels
   IF (.NOT.Found) THEN
      MaskName = 'GroundedMask'
   END IF
-  
+  WRITE( Message, * ) 'Grounded mask name for SSA friction is:', MaskName
+  CALL INFO("ComputeMeanFriction", Message, level=5)
+
   strbasemag=0._dp
   IF (SEP) THEN
      GMSol => VariableGet( CurrentModel % Variables, MaskName,UnFoundFatal=.TRUE. )
@@ -375,11 +379,13 @@ MODULE SSAMaterialModels
      Material => GetMaterial(Element)     
      
      ! Allow user-named grounded mask
-     MaskName = ListGetString(Material, 'SSA Friction mask name',Found, UnFoundFatal=.FALSE.)
+     MaskName = ListGetString(Material, 'SSA BMB mask name',Found, UnFoundFatal=.FALSE.)
      IF (.NOT.Found) THEN
         MaskName = 'GroundedMask'
      END IF
-     
+     WRITE( Message, * ) 'Grounded mask name for SSA BMB is:', MaskName
+     CALL INFO("SSAEffectiveBMB", Message, level=5)
+
      !  Sub - element GL parameterisation
      IF (SEM) THEN
         GMSol => VariableGet( CurrentModel % Variables, MaskName,UnFoundFatal=.TRUE. )
