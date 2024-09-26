@@ -835,6 +835,10 @@ IF(HAVE_EXTOPTIM)
   MESSAGE(STATUS "------------------------------------------------")
 ENDIF(HAVE_EXTOPTIM)
 
+IF(NOT HAVE_UMFPACK AND NOT HAVE_MUMPS)
+  MESSAGE(WARNING "Elmer is configured without backend for direct solvers (UMFPACK or MUMPS).\n"
+                  "Are you sure this is intended?")
+ENDIF()
 
 
 # Packaging
