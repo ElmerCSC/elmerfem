@@ -44,6 +44,8 @@
 !> if they are made available at the compilation time. 
 !------------------------------------------------------------------------------
 
+#include "../config.h"
+
 MODULE DirectSolve
 
    USE CRSMatrix
@@ -2464,6 +2466,13 @@ CONTAINS
     
     
     CALL Info('DirectSolver','Using direct method: '//Method,Level=9)
+
+#if !defined (HAVE_UMFPACK) && defined (HAVE_MUMPS)
+    IF ( Method == 'umfpack' .OR. Method == 'big umfpack' ) THEN
+      CALL Warn( 'CheckLinearSolverOptions', 'UMFPACK solver not installed, using MUMPS instead!' )
+      Method = 'mumps'
+    END IF
+#endif
 
     SELECT CASE(Method)
       CASE( 'banded', 'symmetric banded' )
