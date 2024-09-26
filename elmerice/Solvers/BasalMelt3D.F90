@@ -67,6 +67,9 @@
    REAL(KIND=dp) :: MeltRate, SMeltRate, WMeltRate, SStart, SStop, &
         TotalArea, TotalBMelt, ElemBMelt, s, t, season,&
         SqrtElementMetric,U,V,W,Basis(Model % MaxElementNodes)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+    REAL(KIND=dp) :: buffer
+#endif
    INTEGER :: DIM, NoNodes, i,j,n, FaceNodeCount, GroupNodeCount, county, &
         Active, ierr, k, FoundNew, AllFoundNew
    INTEGER, PARAMETER :: FileUnit = 75
@@ -314,8 +317,21 @@
          PRINT *, 'BasalMelt3D: total background melt: ',TotalBMelt
       END IF
 
-      CALL MPI_AllReduce(MPI_IN_PLACE, TotalArea, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD, ierr)
-      CALL MPI_AllReduce(MPI_IN_PLACE, TotalBMelt, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD, ierr)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+      buffer = TotalArea
+      CALL MPI_AllReduce(buffer, &
+#else
+      CALL MPI_AllReduce(MPI_IN_PLACE, &
+#endif
+           TotalArea, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD, ierr)
+
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+      buffer = TotalBMelt
+      CALL MPI_AllReduce(buffer, &
+#else
+      CALL MPI_AllReduce(MPI_IN_PLACE, &
+#endif
+           TotalBMelt, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD, ierr)
 
       IF(ParEnv % MyPE == 0) THEN
         IF(.NOT. Visited) THEN
@@ -324,7 +340,7 @@
           WRITE(FileUnit, '(A)') "Timestep, Time, Ungrounded Area, &
                &Total Basal Melt (m^3)"
         ELSE
-          OPEN( UNIT=FileUnit, File=OutfileName, STATUS='UNKNOWN', ACCESS='APPEND' )
+          OPEN( UNIT=FileUnit, File=OutfileName, STATUS='UNKNOWN', POSITION='APPEND' )
         END IF
 
         WRITE(FileUnit, '(I0,ES20.11,ES20.11,ES20.11)') &

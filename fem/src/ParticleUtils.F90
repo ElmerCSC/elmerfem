@@ -2447,7 +2447,7 @@ RETURN
     
     TYPE(ValueList_t), POINTER :: Params, BodyForce 
     TYPE(Variable_t), POINTER :: VeloVar, MaskVar, AdvVar
-    TYPE(Element_t), POINTER :: CurrentElement
+    TYPE(Element_t), POINTER :: Element
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Nodes_t) :: Nodes
     INTEGER :: Offset, NewParticles,LastParticle,NoElements
@@ -2603,9 +2603,9 @@ RETURN
 
           j = 0
           DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
-            CurrentElement => Mesh % Elements(i)
-            NodeIndexes =>  CurrentElement % NodeIndexes
-            n = CurrentElement % TYPE % NumberOfNodes
+            Element => Mesh % Elements(i)
+            NodeIndexes =>  Element % NodeIndexes
+            n = Element % TYPE % NumberOfNodes
 
             IF( i == Mesh % NumberOfBulkElements ) THEN
               IF( j > 0 ) EXIT
@@ -2646,27 +2646,29 @@ RETURN
     ! Use a simple bounding box for initialization
     ! By default a local bounding box is used...
     !-------------------------------------------------------------------------  
-    IF( InitMethod(1:3) == 'box') THEN
-      Eps = GetCReal( Params,'Wall Particle Radius',GotIt)
-      IF(.NOT. GotIt) eps = 1.0d-8
+    IF(LEN(InitMethod)>=3) THEN
+      IF( InitMethod(1:3) == 'box') THEN
+        Eps = GetCReal( Params,'Wall Particle Radius',GotIt)
+        IF(.NOT. GotIt) eps = 1.0d-8
       
-      MinCoord(1) = GetCReal( Params,'Min Initial Coordinate 1',GotIt) 
-      IF(.NOT. GotIt) MinCoord(1) = Particles % LocalMinCoord(1) + eps
+        MinCoord(1) = GetCReal( Params,'Min Initial Coordinate 1',GotIt) 
+        IF(.NOT. GotIt) MinCoord(1) = Particles % LocalMinCoord(1) + eps
       
-      MaxCoord(1) = GetCReal( Params,'Max Initial Coordinate 1',GotIt) 
-      IF(.NOT. GotIt) MaxCoord(1) = Particles % LocalMaxCoord(1) - eps
+        MaxCoord(1) = GetCReal( Params,'Max Initial Coordinate 1',GotIt) 
+        IF(.NOT. GotIt) MaxCoord(1) = Particles % LocalMaxCoord(1) - eps
       
-      MinCoord(2) = GetCReal( Params,'Min Initial Coordinate 2',GotIt) 
-      IF(.NOT. GotIt) MinCoord(2) = Particles % LocalMinCoord(2) + eps
+        MinCoord(2) = GetCReal( Params,'Min Initial Coordinate 2',GotIt) 
+        IF(.NOT. GotIt) MinCoord(2) = Particles % LocalMinCoord(2) + eps
       
-      MaxCoord(2) = GetCReal( Params,'Max Initial Coordinate 2',GotIt) 
-      IF(.NOT. GotIt) MaxCoord(2) = Particles % LocalMaxCoord(2) - eps
+        MaxCoord(2) = GetCReal( Params,'Max Initial Coordinate 2',GotIt) 
+        IF(.NOT. GotIt) MaxCoord(2) = Particles % LocalMaxCoord(2) - eps
       
-      MinCoord(3) = GetCReal( Params,'Min Initial Coordinate 3',GotIt) 
-      IF(.NOT. GotIt) MinCoord(3) = Particles % LocalMinCoord(3) 
+        MinCoord(3) = GetCReal( Params,'Min Initial Coordinate 3',GotIt) 
+        IF(.NOT. GotIt) MinCoord(3) = Particles % LocalMinCoord(3) 
       
-      MaxCoord(3) = GetCReal( Params,'Max Initial Coordinate 3',GotIt) 
-      IF(.NOT. GotIt) MaxCoord(3) = Particles % LocalMaxCoord(3) - eps
+        MaxCoord(3) = GetCReal( Params,'Max Initial Coordinate 3',GotIt) 
+        IF(.NOT. GotIt) MaxCoord(3) = Particles % LocalMaxCoord(3) - eps
+      END IF
     END IF
     
     IF( InitMethod == 'box random cubic' .OR. InitMethod == 'box uniform cubic') THEN
@@ -2822,15 +2824,15 @@ RETURN
         j = i
         IF( GotMask ) j = InvPerm(j)
 
-        CurrentElement => Mesh % Elements(j)
-        NodeIndexes =>  CurrentElement % NodeIndexes
-        n = CurrentElement % TYPE % NumberOfNodes
+        Element => Mesh % Elements(j)
+        NodeIndexes =>  Element % NodeIndexes
+        n = Element % TYPE % NumberOfNodes
 
         ! If weight is used see that we have a weight, and that it is positive
         IF( GotWeight ) THEN
           IF( j > Mesh % NumberOfBulkElements ) CYCLE
 
-          body_id = CurrentElement % BodyId
+          body_id = Element % BodyId
           bf_id = ListGetInteger( CurrentModel % Bodies(body_id) % Values,&
               'Body Force',minv=1)
           BodyForce => CurrentModel % BodyForces(bf_id) % Values
@@ -2849,7 +2851,7 @@ RETURN
         Nodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
         Nodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
 
-        DetJ = ElementSize( CurrentElement, Nodes ) 
+        DetJ = ElementSize( Element, Nodes ) 
         MaxDetJ = MAX( MaxDetJ, DetJ ) 
         MinDetJ = MIN( MinDetJ, DetJ )
       END DO      
@@ -2883,23 +2885,23 @@ RETURN
         j = CEILING( NoElements * EvenRandom() )
         IF( GotMask ) j = InvPerm(j)
                 
-        CurrentElement => Mesh % Elements(j)
-        NodeIndexes =>  CurrentElement % NodeIndexes
-        n = CurrentElement % TYPE % NumberOfNodes
+        Element => Mesh % Elements(j)
+        NodeIndexes =>  Element % NodeIndexes
+        n = Element % TYPE % NumberOfNodes
 
         Nodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
         Nodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
         Nodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
         
         IF( CheckForSize ) THEN
-          DetJ = ElementSize( CurrentElement, Nodes ) 
+          DetJ = ElementSize( Element, Nodes ) 
 
           ! The weight could be computed really using the integration point
           ! Here we assumes constant weight within the whole element. 
           IF( GotWeight ) THEN
             IF( j > Mesh % NumberOfBulkElements ) CYCLE
 
-            body_id = CurrentElement % BodyId
+            body_id = Element % BodyId
             bf_id = ListGetInteger( CurrentModel % Bodies(body_id) % Values,&
                 'Body Force',minv=1)
             BodyForce => CurrentModel % BodyForces(bf_id) % Values
@@ -2918,7 +2920,7 @@ RETURN
         END IF
 
         ! Create a random particle within the element
-        Coord = RandomPointInElement( CurrentElement, Nodes )
+        Coord = RandomPointInElement( Element, Nodes )
 
         i = i + 1
         k = Offset + i
@@ -2948,9 +2950,9 @@ RETURN
           PRINT *,'j too large',j,i,k,(NoElements-1)*(i-1)/(NewParticles-1)+1
         END IF
         
-        CurrentElement => Mesh % Elements(j)
-        NodeIndexes =>  CurrentElement % NodeIndexes
-        n = CurrentElement % TYPE % NumberOfNodes
+        Element => Mesh % Elements(j)
+        NodeIndexes =>  Element % NodeIndexes
+        n = Element % TYPE % NumberOfNodes
         Coord(1) = SUM( Mesh % Nodes % x(NodeIndexes ) ) / n
         Coord(2) = SUM( Mesh % Nodes % y(NodeIndexes ) ) / n
         IF( dim == 3 ) Coord(3) = SUM( Mesh % Nodes % z(NodeIndexes ) ) / n
@@ -2983,9 +2985,9 @@ RETURN
 
       IF( SaveParticleOrigin ) THEN
         DO i=1,Mesh % NumberOfBulkElements
-          CurrentElement => Mesh % Elements(i)
-          NodeIndexes =>  CurrentElement % NodeIndexes
-          n = CurrentElement % TYPE % NumberOfNodes
+          Element => Mesh % Elements(i)
+          NodeIndexes =>  Element % NodeIndexes
+          n = Element % TYPE % NumberOfNodes
           DO j=1,n
             IF( ASSOCIATED( AdvVar ) ) THEN
               k = AdvVar % Perm(NodeIndexes(j))
@@ -3004,9 +3006,9 @@ RETURN
         No = AdvVar % Perm( i )
         IF( No == 0 ) CYCLE
         
-        CurrentElement => Mesh % Elements(i)
-        NodeIndexes =>  CurrentElement % NodeIndexes
-        n = CurrentElement % TYPE % NumberOfNodes
+        Element => Mesh % Elements(i)
+        NodeIndexes =>  Element % NodeIndexes
+        n = Element % TYPE % NumberOfNodes
         
         Center(1) = SUM( Mesh % Nodes % x(NodeIndexes ) ) / n
         Center(2) = SUM( Mesh % Nodes % y(NodeIndexes ) ) / n
@@ -3035,15 +3037,15 @@ RETURN
         LOGICAL :: stat
         LOGICAL :: Debug
         
-        Debug = ( i == 0 )
+        Debug = .FALSE.
         
         DO i=1,NoElements                       
           No = AdvVar % Perm( i )
           IF( No == 0 ) CYCLE
           
-          CurrentElement => Mesh % Elements(i)
-          NodeIndexes =>  CurrentElement % NodeIndexes
-          n = CurrentElement % TYPE % NumberOfNodes
+          Element => Mesh % Elements(i)
+          NodeIndexes =>  Element % NodeIndexes
+          n = Element % TYPE % NumberOfNodes
           
           Nodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
           Nodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
@@ -3058,10 +3060,10 @@ RETURN
           m = AdvVar % Perm(i+1) - AdvVar % Perm(i) 
           IF( m == 0 ) CYCLE
           
-          IP = GaussPoints(CurrentElement, m )
+          IP = GaussPoints(Element, m )
           
           DO j = 1, IP % n 
-            stat = ElementInfo( CurrentElement, Nodes, IP % v(j), IP % u(j), IP % w(j), detJ, Basis ) 
+            stat = ElementInfo( Element, Nodes, IP % v(j), IP % u(j), IP % w(j), detJ, Basis ) 
             No = AdvVar % Perm(i) + j
             
             Coord(1) = SUM( Basis(1:n) * Nodes % x(1:n) )
@@ -3100,13 +3102,13 @@ RETURN
         GotScale = ( ABS( DGScale - 1.0_dp ) > TINY( DgScale ) )
 
         DO i=1,NoElements                       
-          CurrentElement => Mesh % Elements(i)
-          NodeIndexes =>  CurrentElement % NodeIndexes
-          n = CurrentElement % TYPE % NumberOfNodes
+          Element => Mesh % Elements(i)
+          NodeIndexes =>  Element % NodeIndexes
+          n = Element % TYPE % NumberOfNodes
 
-          CurrentElement => Mesh % Elements(i)
-          NodeIndexes =>  CurrentElement % NodeIndexes
-          n = CurrentElement % TYPE % NumberOfNodes
+          Element => Mesh % Elements(i)
+          NodeIndexes =>  Element % NodeIndexes
+          n = Element % TYPE % NumberOfNodes
 
           IF( GotScale ) THEN
             Center(1) = SUM( Mesh % Nodes % x(NodeIndexes ) ) / n
@@ -3121,7 +3123,7 @@ RETURN
           END IF
             
           DO j = 1, n
-            No = AdvVar % Perm( CurrentElement % DgIndexes(j) )
+            No = AdvVar % Perm( Element % DgIndexes(j) )
             IF( No == 0 ) CYCLE
             k = NodeIndexes(j)
             Coord(1) = Mesh % Nodes % x(k)
@@ -4402,7 +4404,8 @@ RETURN
         AccurateNow = AccurateAlways
       END IF
       FaceIndex0 = 0
-
+      ElementIndex0 = 0
+      
 200   ElementIndex = GetParticleElement( Particles, No )
       Rfin = GetParticleCoord( Particles, No )
       Velo = GetParticleVelo( Particles, No )      
@@ -4515,10 +4518,10 @@ RETURN
   !> to a global coordinate. Sloppy tolerances are used since we *should* 
   !> have already located the element.
   !--------------------------------------------------------------------------
-  FUNCTION ParticleElementInfo( CurrentElement, GlobalCoord, &
+  FUNCTION ParticleElementInfo( Element, GlobalCoord, &
       SqrtElementMetric, Basis, dBasisdx ) RESULT ( stat )
     
-    TYPE(Element_t), POINTER :: CurrentElement
+    TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp) :: GlobalCoord(:), SqrtElementMetric, LocalDistance
     REAL(KIND=dp) :: Basis(:)
     REAL(KIND=dp), OPTIONAL :: dBasisdx(:,:)
@@ -4533,11 +4536,20 @@ RETURN
     INTEGER :: n
     
     SAVE ElementNodes
+
+    IF(.NOT. ASSOCIATED(Element) ) THEN
+      CALL Fatal('ParticleElementInfo','Element not associated!')
+    END IF
+
+    IF(.NOT. ASSOCIATED(Element % TYPE) ) THEN
+      PRINT *,'Element:',Element % ElementIndex
+      CALL Fatal('ParticleElementInfo','Element % Type not associated!')
+    END IF
     
-    n = CurrentElement % TYPE % NumberOfNodes
-    CALL GetElementNodes(ElementNodes,CurrentElement)
+    n = Element % TYPE % NumberOfNodes
+    CALL GetElementNodes(ElementNodes,Element)
     
-    Stat = PointInElement( CurrentElement, ElementNodes, &
+    Stat = PointInElement( Element, ElementNodes, &
         GlobalCoord, LocalCoord, GlobalEps = -1.0_dp, LocalEps = 1.0e3_dp, &
 	LocalDistance = LocalDistance ) 
 
@@ -4552,7 +4564,7 @@ RETURN
         ELSE
           CALL Warn(Caller,'Distance from element higher than expected!')
         END IF
-        PRINT *,'LocalDistance:',LocalDistance,'Element:',CurrentElement % ElementIndex
+        PRINT *,'LocalDistance:',LocalDistance,'Element:',Element % ElementIndex
         PRINT *,'Nodes X:',ElementNodes % x(1:n) - GlobalCoord(1)
         PRINT *,'Nodes Y:',ElementNodes % y(1:n) - GlobalCoord(2)
         PRINT *,'Nodes Z:',ElementNodes % z(1:n) - GlobalCoord(3)
@@ -4564,7 +4576,7 @@ RETURN
     v = LocalCoord(2)
     w = LocalCoord(3)
     
-    stat = ElementInfo( CurrentElement, ElementNodes, U, V, W, SqrtElementMetric, &
+    stat = ElementInfo( Element, ElementNodes, U, V, W, SqrtElementMetric, &
         Basis, dBasisdx )
     IF(.NOT. Stat) Misses(2) = Misses(2) + 1
     
@@ -4578,10 +4590,10 @@ RETURN
   !> size of individual solvers it has been hard coded here. 
   !--------------------------------------------------------------------------
   
-  SUBROUTINE GetVectorFieldInMesh(Var, CurrentElement, Basis, Velo, dBasisdx, GradVelo )
+  SUBROUTINE GetVectorFieldInMesh(Var, Element, Basis, Velo, dBasisdx, GradVelo )
     
     TYPE(Variable_t), POINTER :: Var
-    TYPE(Element_t) :: CurrentElement
+    TYPE(Element_t) :: Element
     REAL(KIND=dp) :: Basis(:), Velo(:) 
     REAL(KIND=dp), OPTIONAL :: dBasisdx(:,:), GradVelo(:,:)
     
@@ -4621,11 +4633,11 @@ RETURN
     END IF
 
     
-    n = CurrentElement % TYPE % NumberOfNodes    
+    n = Element % TYPE % NumberOfNodes    
     IF( Var % TYPE == Variable_on_nodes_on_elements ) THEN      
-      LocalPerm(1:n) = Var % Perm( CurrentElement % DGIndexes )
+      LocalPerm(1:n) = Var % Perm( Element % DGIndexes )
     ELSE
-      LocalPerm(1:n) = Var % Perm( CurrentElement % NodeIndexes )
+      LocalPerm(1:n) = Var % Perm( Element % NodeIndexes )
     END IF
     npos = COUNT ( LocalPerm(1:n) > 0 )
         
@@ -4695,10 +4707,10 @@ RETURN
   !> The routine returns a potential and its gradient.
   !--------------------------------------------------------------------------
   
-  SUBROUTINE GetScalarFieldInMesh(Var, CurrentElement, Basis, Pot, dBasisdx, GradPot )
+  SUBROUTINE GetScalarFieldInMesh(Var, Element, Basis, Pot, dBasisdx, GradPot )
     
     TYPE(Variable_t), POINTER :: Var
-    TYPE(Element_t) :: CurrentElement
+    TYPE(Element_t) :: Element
     REAL(KIND=dp) :: Basis(:), Pot 
     REAL(KIND=dp), OPTIONAL :: dBasisdx(:,:), GradPot(:)
     
@@ -4726,14 +4738,14 @@ RETURN
     
     IF(.NOT. ASSOCIATED( Var ) ) RETURN
     
-    n = CurrentElement % TYPE % NumberOfNodes
+    n = Element % TYPE % NumberOfNodes
     IF( ASSOCIATED( Var % Perm ) ) THEN
-      LocalPerm(1:n) = Var % Perm( CurrentElement % NodeIndexes )
+      LocalPerm(1:n) = Var % Perm( Element % NodeIndexes )
       IF( .NOT. ALL ( LocalPerm(1:n) > 0 )) RETURN
       LocalField(1:n) = Var % Values( LocalPerm(1:n) )
     ELSE
       ! Some variables do not have permutation, most importantly the node coordinates
-      LocalField(1:n) = Var % Values( CurrentElement % NodeIndexes )
+      LocalField(1:n) = Var % Values( Element % NodeIndexes )
     END IF
 
     Pot = SUM( Basis(1:n) * LocalField(1:n) )
@@ -6338,23 +6350,32 @@ RETURN
         dtmax2 = MAX(dtmax2, dt)          
       END DO
 
-      dtave = dtave / Particles % NumberOfParticles      
-      WRITE(Message,'(A,ES12.3)') 'Average particle timestep:',dtave
-      CALL Info('GetParticleTimestep', Message,Level=12)           
-
-      WRITE(Message,'(A,ES12.3)') 'Minimum particle timestep:',dtmin2
-      CALL Info('GetParticleTimestep', Message, Level=12)           
-      
-      WRITE(Message,'(A,ES12.3)') 'Maximum particle timestep:',dtmax2
-      CALL Info('GetParticleTimestep', Message,Level=12)           
-
+      nset = ParallelReduction(nset) 
       WRITE(Message,'(A,I0)') 'Timestep set for particles: ',nset
       CALL Info('GetParticleTimestep', Message,Level=12)           
 
-      dtout = ParallelReduction(dtmax2, 2)     
+      IF( nset == 0 ) THEN
+        ! If no particles are set then the indicative forward timestep becomes zero!
+        dtout = 0.0_dp
+      ELSE        
+        dtmax2 = ParallelReduction(dtmax2,2) 
+        IF( InfoActive(12) ) THEN
+          dtave = ParallelReduction(dtave) / nset 
+          dtmin2 = ParallelReduction(dtmin2,1) 
+                    
+          WRITE(Message,'(A,ES12.3)') 'Average particle timestep:',dtave
+          CALL Info('GetParticleTimestep', Message)
+
+          WRITE(Message,'(A,ES12.3)') 'Minimum particle timestep:',dtmin2
+          CALL Info('GetParticleTimestep', Message)
+        
+          WRITE(Message,'(A,ES12.3)') 'Maximum particle timestep:',dtmax2
+          CALL Info('GetParticleTimestep', Message)
+        END IF
+        dtout = dtmax2
+      END IF
     END IF
-    
-    
+          
     IF( Particles % Rk2 ) THEN
       IF( Particles % DtConstant ) THEN
         Particles % Dtime = 0.5_dp * Particles % Dtime
@@ -6362,7 +6383,7 @@ RETURN
         DtVar % Values = 0.5_dp * DtVar % Values
       END IF
     END IF
-
+    
   END FUNCTION GetParticleTimeStep
 
 
@@ -6486,6 +6507,7 @@ RETURN
 
       Element => Mesh % Elements( j )
       CurrentModel % CurrentElement => Element
+      Coord = 0._dp
       Coord(1:dim) = Particles % Coordinate(i, 1:dim) 
 
       stat = ParticleElementInfo( Element, Coord, DetJ, Basis )

@@ -315,8 +315,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
   END IF
     
   ! Get the loads
-  LoadVar => VariableGet( Mesh % Variables,&
-      TRIM(SolVar % Name)//' Loads' )
+  LoadVar => VariableGet( Mesh % Variables, TRIM(SolVar % Name)//' Loads' )
   IF( .NOT. ASSOCIATED( LoadVar ) ) THEN
     CALL Fatal(Caller,'> '//TRIM(SolVar % Name)//' < Loads not associated!')
   END IF
@@ -339,6 +338,8 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
   CoilHelicity = 0.0_dp
   CoilNormals = 0.0_dp
   
+  ALLOCATE( CoilIndex(SIZE(LoadVar % Perm)))
+  CoilIndex = 0
 
   ! These are different for different coils, would there be many
   !-----------------------------------------------------------------------
@@ -363,11 +364,6 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
             CALL Fatal(Caller,'Place "Coil Center" also in component section')
       END IF
         
-      IF(.NOT. ALLOCATED( CoilIndex ) ) THEN
-        ALLOCATE( CoilIndex( SIZE(LoadVar % Perm) ) )
-        CoilIndex = 0
-      END IF      
-            
       NoCoils = NoCoils + 1
       CALL MarkCoilNodes(TargetBodies, NoCoils, Found ) 
       IF(.NOT. Found) THEN
@@ -1941,14 +1937,14 @@ CONTAINS
   SUBROUTINE ScalePotential() 
     
     REAL(KIND=dp) :: InitialCurrent,possum, negsum, sumerr
-    INTEGER :: i,j,k,Coil,nsize,posi,negi
+    INTEGER :: i,j,k,Coil,nsize,posi,negi, sgn
     LOGICAL :: DoIt, Fail
 
     CALL Info(Caller,'Performing scaling of potential for desired current for '//I2S(NoCoils)//' coil',Level=30)
     
     nsize = SIZE( LoadVar % Perm ) 
     Fail = .FALSE.
-    
+
     DO Coil = 1, NoCoils 
       IF( NoCoils > 1 ) THEN
         CALL Info(Caller,'Scaling coil number: '//I2S(Coil))
@@ -1980,7 +1976,7 @@ CONTAINS
         ! are accounted for. 
         sgn = Set(j)
         IF( sgn == 0 ) CYCLE
-        
+
         IF( MODULO(sgn,10) == 2  ) THEN
           possum = possum + LoadVar % Values(j)
           posi = posi + 1

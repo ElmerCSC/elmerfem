@@ -24,9 +24,9 @@
 !/******************************************************************************
 ! *
 ! *  Module for static electric fields. 
-! *  Based on the multithreaded and vectorized StatCurrentSolveVec that is based om
-! * ModelPDE by Mikko Byckling. Replaces gradually the old StatElecSolver that is
-! * not optimized.  
+! *  Based on the multithreaded and vectorized StatCurrentSolveVec that is based on
+! *  ModelPDE by Mikko Byckling. Replaces gradually the old StatElecSolver that is
+! *  not optimized.  
 ! *
 ! *  Authors: Peter Råback
 ! *  Email:   Peter.Raback@csc.fi
@@ -40,6 +40,31 @@
 ! *****************************************************************************/
 
 
+!------------------------------------------------------------------------------
+SUBROUTINE StatElecSolver_Init0( Model,Solver,dt,Transient )
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER :: Params
+  CHARACTER(*), PARAMETER :: Caller = 'StatElecSolver_Init0'
+!------------------------------------------------------------------------------
+  IF (ListCheckPresentAnyMaterial(Model, 'Relative Permittivity Im')) THEN
+    CALL Info(Caller, 'Complex-valued solution triggered by Relative Permittivity Im', Level=7)
+    Params => GetSolverParams()
+    CALL ListAddNewLogical(Params, 'Linear System Complex', .TRUE.)
+    CALL ListAddNewInteger(Params, 'Variable DOFs', 2)
+  END IF
+!------------------------------------------------------------------------------
+END SUBROUTINE StatElecSolver_Init0
+!------------------------------------------------------------------------------
+  
+  
 !------------------------------------------------------------------------------
 !> Initialization of the primary solver, i.e. StatElecSolver.
 !> \ingroup Solvers
@@ -62,8 +87,12 @@ SUBROUTINE StatElecSolver_init( Model,Solver,dt,Transient )
   Params => GetSolverParams()
   dim = CoordinateSystemDimension()
 
-  CALL ListAddNewString( Params,'Variable','Potential')
-
+  IF (ListGetInteger(Params, 'Variable DOFs', Found) == 2) THEN
+    CALL ListAddNewString( Params,'Variable','Potential[Potential re:1 Potential im:1]')
+  ELSE
+    CALL ListAddNewString( Params,'Variable','Potential')
+  END IF
+    
   PostActive = .FALSE.
   
   CalculateElemental = ListGetLogical( Params,'Calculate Elemental Fields',Found )
@@ -170,7 +199,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
   REAL(KIND=dp) :: Norm
   INTEGER :: n, nb, nd, t, active, dim, RelOrder
   INTEGER :: iter, maxiter, nColours, col, totelem, nthr
-  LOGICAL :: Found, VecAsm, InitHandles, AxiSymmetric
+  LOGICAL :: Found, VecAsm, InitHandles, AxiSymmetric, CVersion
   TYPE(ValueList_t), POINTER :: Params 
   TYPE(Mesh_t), POINTER :: Mesh
   CHARACTER(*), PARAMETER :: Caller = 'StatElecSolver'
@@ -210,6 +239,10 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
 
   Mesh => GetMesh()
   Params => GetSolverParams()
+
+  CVersion = Solver % Variable % DOFs == 2
+  IF (CVersion) CALL Info(Caller, &
+      'Performing assembly for a complex-valued system',Level=7)
   
   IF( ListGetLogical( Params,'Follow P Curvature', Found )  ) THEN
     CALL FollowCurvedBoundary( Model, Mesh, .TRUE. ) 
@@ -239,6 +272,8 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
     VecAsm = .FALSE.
   END IF
 
+  IF (CVersion) VecAsm = .FALSE.
+  
   IF( VecAsm ) THEN
     CALL Info(Caller,'Performing vectorized bulk element assembly',Level=7)
   ELSE
@@ -260,7 +295,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
     CALL ResetTimer( Caller//'BulkAssembly' )
 
     !$OMP PARALLEL &
-    !$OMP SHARED(Solver, Active, nColours, VecAsm) &
+    !$OMP SHARED(Solver, Active, nColours, VecAsm, CVersion) &
     !$OMP PRIVATE(t, Element, n, nd, nb,col, InitHandles) &
     !$OMP REDUCTION(+:totelem) DEFAULT(NONE)
     InitHandles = .TRUE.
@@ -282,7 +317,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
         IF( VecAsm ) THEN
           CALL LocalMatrixVec(  Element, n, nd+nb, nb, VecAsm, InitHandles )
         ELSE
-          CALL LocalMatrix(  Element, n, nd+nb, nb, InitHandles )
+          CALL LocalMatrix(  Element, n, nd+nb, nb, InitHandles, CVersion )
         END IF
       END DO
       !$OMP END DO
@@ -294,6 +329,9 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
 
     CALL DefaultFinishBulkAssembly()
 
+    ! If a complex-valued problem, the assembly for boundaries is not yet ready
+    IF (CVersion) GOTO 201
+    
     nColours = GetNOFBoundaryColours(Solver)
 
     CALL Info(Caller,'Performing boundary element assembly',Level=12)
@@ -327,7 +365,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
     !$OMP END PARALLEL
 
     CALL CheckTimer(Caller//'BCAssembly',Delete=.TRUE.)
-
+201 CONTINUE
     CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()
@@ -456,17 +494,20 @@ CONTAINS
 !------------------------------------------------------------------------------
 ! Assembly of the matrix entries arising from the bulk elements. Not vectorized.
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrix( Element, n, nd, nb, InitHandles )
+  SUBROUTINE LocalMatrix( Element, n, nd, nb, InitHandles, CVersion )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     INTEGER, INTENT(IN) :: n, nd, nb
     TYPE(Element_t), POINTER :: Element
     LOGICAL, INTENT(INOUT) :: InitHandles
+    LOGICAL, INTENT(IN) :: CVersion 
 !------------------------------------------------------------------------------
     REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:),dBasisdx(:,:)
     REAL(KIND=dp), ALLOCATABLE, SAVE :: STIFF(:,:), FORCE(:)
+    COMPLEX(KIND=dp), ALLOCATABLE, SAVE :: CSTIFF(:,:), CFORCE(:)
     REAL(KIND=dp) :: eps0, weight
     REAL(KIND=dp) :: SourceAtIp, EpsAtIp, DetJ
+    COMPLEX(KIND=dp) :: CEpsAtIp
     LOGICAL :: Stat,Found
     INTEGER :: i,j,t,dim,m,allocstat
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -478,7 +519,8 @@ CONTAINS
     ! This InitHandles flag might be false on threaded 1st call
     IF( InitHandles ) THEN
       CALL ListInitElementKeyword( SourceCoeff_h,'Body Force','Charge Source')
-      CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity')
+      CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity',InitIm=CVersion)
+      
       Found = .FALSE.
       IF( ASSOCIATED( Model % Constants ) ) THEN
         Eps0 = ListGetCReal( Model % Constants,'Permittivity Of Vacuum',Found )
@@ -499,7 +541,7 @@ CONTAINS
     IF (.NOT. ALLOCATED(Basis)) THEN
       m = Mesh % MaxElementDofs
       ALLOCATE(Basis(m), dBasisdx(m,3),&
-          STIFF(m,m), FORCE(m), STAT=allocstat)
+          STIFF(m,m), FORCE(m), CSTIFF(m,m), CFORCE(m), STAT=allocstat)
       
       IF (allocstat /= 0) THEN
         CALL Fatal(Caller,'Local storage allocation failed')
@@ -511,6 +553,10 @@ CONTAINS
     ! Initialize
     STIFF = 0._dp
     FORCE = 0._dp
+    IF (CVersion) THEN
+      CSTIFF =  CMPLX(0.0_dp, 0.0_dp, kind=dp)
+      CFORCE =  CMPLX(0.0_dp, 0.0_dp, kind=dp)
+    END IF
     
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
@@ -525,19 +571,33 @@ CONTAINS
 
       ! diffusion term (D*grad(u),grad(v)):
       ! -----------------------------------
-      EpsAtIp = ListGetElementReal( EpsCoeff_h, Basis, Element, Found, GaussPoint = t )      
-      STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + Weight * &
-          Eps0 * EpsAtIp * MATMUL( dBasisdx(1:nd,:), TRANSPOSE( dBasisdx(1:nd,:) ) )
+      IF (CVersion) THEN
+        CEpsAtIp = ListGetElementComplex(EpsCoeff_h, Basis, Element, Found, GaussPoint = t)
+        CSTIFF(1:nd,1:nd) = CSTIFF(1:nd,1:nd) + Weight * &
+            Eps0 * CEpsAtIp * MATMUL( dBasisdx(1:nd,:), TRANSPOSE( dBasisdx(1:nd,:) ) )
+      ELSE
+        EpsAtIp = ListGetElementReal( EpsCoeff_h, Basis, Element, Found, GaussPoint = t )      
+        STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + Weight * &
+            Eps0 * EpsAtIp * MATMUL( dBasisdx(1:nd,:), TRANSPOSE( dBasisdx(1:nd,:) ) )
+      END IF
 
       SourceAtIP = ListGetElementReal( SourceCoeff_h, Basis, Element, Found ) 
       IF( Found ) THEN
-        FORCE(1:nd) = FORCE(1:nd) + Weight * SourceAtIP * Basis(1:nd)
+        IF (CVersion) THEN
+          CFORCE(1:nd) = CFORCE(1:nd) + Weight * SourceAtIP * Basis(1:nd)
+        ELSE
+          FORCE(1:nd) = FORCE(1:nd) + Weight * SourceAtIP * Basis(1:nd)
+        END IF
       END IF
     END DO
-    
-    CALL CondensateP( nd-nb, nb, STIFF, FORCE )
-    
-    CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element, VecAssembly=VecAsm)
+
+    IF (CVersion) THEN
+      CALL CondensateP( nd-nb, nb, CStiff, CForce )
+      CALL DefaultUpdateEquations(CStiff, CForce)
+    ELSE
+      CALL CondensateP( nd-nb, nb, STIFF, FORCE )
+      CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element, VecAssembly=VecAsm)
+    END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------

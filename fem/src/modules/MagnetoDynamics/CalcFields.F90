@@ -988,10 +988,10 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      ComponentLoss = 0.0_dp
      ALLOCATE( BodyLoss(3,Model % NumberOfBodies) )
      BodyLoss = 0.0_dp
+     TotalLoss = 0._dp
    END IF
 
    HomogenizationLoss = ASSOCIATED(PL) .OR. ASSOCIATED(EL_PL)
-
    IF (HomogenizationLoss) ALLOCATE( Nu_el(3,3,n) )
 
    VtuStyle = .FALSE.
@@ -1651,6 +1651,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        END IF
        
        Nu = CMPLX(0.0d0, 0.0d0, kind=dp)
+       w_dens = 0._dp
        IF ( HasHBCurve ) THEN
          IF (RealField) THEN
            Babs=SQRT(SUM(B(1,:)**2))
@@ -2001,7 +2002,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            !
          END IF
 
-         IF(ALLOCATED(BodyLoss)) BodyLoss(3,BodyId) = BodyLoss(3,BodyId) + Coeff
          Power = Power + Coeff
          IF ( ASSOCIATED(JH) .OR. ASSOCIATED(EL_JH) .OR. ASSOCIATED(NJH) ) THEN           
            FORCE(p,k+1) = FORCE(p,k+1) + Coeff
@@ -2009,11 +2009,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            jh_k = k
          END IF
          
-
          !-------------------------------------------------
          ! Compute a loss estimate for cos and sin modes:
          !-------------------------------------------------
          IF (LossEstimation) THEN
+           BodyLoss(3,BodyId) = BodyLoss(3,BodyId) + Coeff
+
            IF( OldLossKeywords ) THEN
              LossCoeff(1) = ListGetFun( Material,'Harmonic Loss Linear Coefficient',Freq,Found ) 
              LossCoeff(2) = ListGetFun( Material,'Harmonic Loss Quadratic Coefficient',Freq,Found ) 
@@ -2534,6 +2535,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          END DO
        END DO
 
+       TotalLoss = 0._dp
        DO j=1,3
          DO i=1,Model % NumberOfBodies
            BodyLoss(j,i) = ParallelReduction(BodyLoss(j,i)) / NoSlices

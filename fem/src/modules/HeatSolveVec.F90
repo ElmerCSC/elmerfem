@@ -130,7 +130,21 @@ SUBROUTINE HeatSolver_init( Model,Solver,dt,Transient )
       CALL Fatal(Caller,'Keyword supported only with DG active: "Heat Gap"')
     END IF
   END IF
-    
+
+  ! These use one flag to call library features to compute automatically
+  ! a conductivity matrix.
+  IF( ListGetLogical(Params,'Calculate Conductance Matrix',Found ) ) THEN
+    CALL ListAddNewLogical( Params,'Constraint Modes Analysis',.TRUE.)
+    CALL ListAddNewLogical( Params,'Constraint Modes Lumped',.TRUE.)
+    CALL ListAddNewLogical( Params,'Constraint Modes Fluxes',.TRUE.)
+    CALL ListAddNewLogical( Params,'Constraint Modes Matrix Symmetric',.TRUE.)
+    CALL ListAddNewString( Params,'Constraint Modes Matrix Filename',&
+        'ThermalConductanceMatrix.dat',.FALSE.)
+    CALL ListRenameAllBC( Model,'Conductivity Body','Constraint Mode Temperature')
+  END IF
+
+
+  
 END SUBROUTINE HeatSolver_Init
 
 

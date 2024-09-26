@@ -1,18 +1,18 @@
 
-module ToroidCurrents
-  contains 
+module ToroidCurrents2
+  contains
 
     function rho(r, r0, y)
-      USE Types 
+      USE Types
       real(kind=dp) :: rho, r, r0, y
-      
+
        rho = sqrt((r-r0)**2+y**2)
     end function rho
 
     function currentInToroidR(r, r0, y, turns, I) result (curr)
-      USE Types 
+      USE Types
       real(kind=dp) :: r, r0, y, curr, rho1, rho2, turns, I
-   
+
       rho1 = rho(8d-3, r0, y)
       rho2 = rho(10d-3, r0, y)
 
@@ -21,9 +21,9 @@ module ToroidCurrents
     end function currentInToroidR
 
     function currentInToroidY(r, r0, y, turns, I) result (curr)
-      USE Types 
+      USE Types
       real(kind=dp) :: r, r0, y, curr, rho1, rho2, turns, I
-   
+
       rho1 = rho(8d-3, r0, y)
       rho2 = rho(10d-3, r0, y)
 
@@ -31,11 +31,11 @@ module ToroidCurrents
 
     end function currentInToroidY
 
-End module ToroidCurrents
+End module ToroidCurrents2
 
 FUNCTION currdens1( model, n, args) RESULT(curr)
   USE DefUtils
-  Use ToroidCurrents
+  Use ToroidCurrents2
   IMPLICIT None
   TYPE(Model_t) :: model
   INTEGER :: n
@@ -57,7 +57,7 @@ FUNCTION currdens1( model, n, args) RESULT(curr)
 
   r = sqrt(x**2 + z**2)
 
-  theta = atan(x/z)
+  theta = atan2(x,z)
 
   curr = currentInToroidR(r, r0, y, turns, I) * sin(theta)
 
@@ -65,7 +65,7 @@ END FUNCTION currdens1
 
 FUNCTION currdens2( model, n, args) RESULT(curr)
   USE DefUtils
-  Use ToroidCurrents
+  Use ToroidCurrents2
   IMPLICIT None
   TYPE(Model_t) :: model
   INTEGER :: n
@@ -87,7 +87,7 @@ FUNCTION currdens2( model, n, args) RESULT(curr)
 
   r = sqrt(x**2 + z**2)
 
-  theta = atan(x/z)
+  theta = atan2(x,z)
 
   curr = currentInToroidY(r, r0, y, turns, I)
 
@@ -95,7 +95,7 @@ END FUNCTION currdens2
 
 FUNCTION currdens3( model, n, args) RESULT(curr)
   USE DefUtils
-  Use ToroidCurrents
+  Use ToroidCurrents2
   IMPLICIT None
   TYPE(Model_t) :: model
   INTEGER :: n
@@ -117,10 +117,8 @@ FUNCTION currdens3( model, n, args) RESULT(curr)
 
   r = sqrt(x**2 + z**2)
 
-  theta = atan(x/z)
+  theta = atan2(x,z)
 
   curr = currentInToroidR(r, r0, y, turns, I) * cos(theta)
 
 END FUNCTION currdens3
-
-

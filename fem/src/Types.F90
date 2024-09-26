@@ -854,7 +854,7 @@ MODULE Types
    
    TYPE Graphcolour_t
      INTEGER :: nc
-     INTEGER, ALLOCATABLE :: colours(:)
+     INTEGER, POINTER :: colours(:) => Null()
    END TYPE Graphcolour_t
 
    TYPE MortarBC_t 

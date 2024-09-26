@@ -2448,7 +2448,18 @@ CONTAINS
    ! whether a boundary element is internal or external.
    !------------------------------------------------------------------------------
    CALL MapInternalExternalBCs()
+
+
+   ! If requested split quadrilaterals to triangles.
+   !-----------------------------------------------------------------------
+   CALL SplitMeshQuads(Mesh, Model % Simulation )
    
+   ! Create new boundaries on intersection of boundaries or bodies.
+   ! This way the original mesh does not need to include the BCs
+   ! initially.
+   !-------------------------------------------------------------------
+   CALL CreateIntersectionBCs(Model, Mesh)
+
    ! Sometimes we need boundaries that do not exist in the original mesh.
    ! Then we may create boundaries based on some geometric rules. 
    !--------------------------------------------------------------------
@@ -2943,11 +2954,13 @@ CONTAINS
    END IF
    Model % DIMENSION = MAX( Model % DIMENSION, Mesh % MaxDim ) 
 
+   CALL SplitMeshQuads( Mesh, Vlist ) 
+   
    IF( ListGetLogical( Vlist,'Constant Stencil', Found ) ) THEN
      CALL SetEqualElementIndeces( Mesh )
    END IF
       
-   CALL CreateIntersectionBCs(Model,Mesh)
+!   CALL CreateIntersectionBCs(Model,Mesh)
 
    IF( ListGetLogical( Vlist,'Increase Element Order',Found ) ) THEN
      ! We need to follow the boundary also for the new nodes of the quadratic mesh.
@@ -10962,7 +10975,6 @@ CONTAINS
         END DO
       END IF
        
-              
       DO ind=1,BMesh1 % NumberOfBulkElements
 
         ! Optionally save the submesh for specified element, for visualization and debugging
@@ -11145,7 +11157,6 @@ CONTAINS
         ElemCands = 0
         ElemHits = 0
 
-        
         DO indM=1,BMesh2 % NumberOfBulkElements
 
           ElementM => BMesh2 % Elements(indM)        
@@ -12823,16 +12834,28 @@ CONTAINS
 
     
     
-    ! Return shortest distance squared of a point to a line segment.
-    ! This is limited to the spacial case when the point lies in origin. 
+    ! Return shortest distance squared of a point to a line segment defined
+    ! by points (x1,y1) and (x2,y2). This is limited to the special case when
+    ! the reference point lies in origin (0,0). 
+    !----------------------------------------------------------------------
     FUNCTION SegmentOriginDistance2(x1,y1,x2,y2) RESULT ( r2 )
-      REAL(KIND=dp) :: x1,y1,x2,y2,r2
-      REAL(KIND=dp) :: q,xc,yc
+      REAL(KIND=dp) :: x1,y1,x2,y2,r2,s2
+      REAL(KIND=dp) :: q,xc,yc,eps
 
-      q = ( x1*(x1-x2) + y1*(y1-y2) ) / &
-          SQRT((x1**2+y1**2) * ((x1-x2)**2+(y1-y2)**2))
+      eps = SQRT(TINY(eps))
+      
+      ! 1st point lies in the origin and hence it certainly is the closest distance.      
+      r2 = x1**2 + y1**2
+      IF(r2 <= eps ) RETURN
+
+      ! 1st and 2nd point are the same so r2 is good presentation of the distance. 
+      s2 = (x1-x2)**2 + (y1-y2)**2
+      IF( s2 <= eps ) RETURN
+                 
+      q = ( x1*(x1-x2) + y1*(y1-y2) ) / ( SQRT(r2 * s2) )
       IF( q <= 0.0_dp ) THEN
-        r2 = x1**2 + y1**2
+        ! r2 is already good!
+        CONTINUE
       ELSE IF( q >= 1.0_dp ) THEN
         r2 = x2**2 + y2**2
       ELSE
@@ -13929,13 +13952,15 @@ CONTAINS
     REAL(KIND=dp) :: d1,d2,MinDist,MaxDist,Dist,X0,Y0,Rad
     REAL(KIND=dp) :: Normal(3), AxisNormal(3), Tangent1(3), Tangent2(3), Coord(3), &
         CircleCoord(9)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+    REAL(KIND=dp) :: buffer(9)
+#endif
     INTEGER :: CircleInd(3) 
     LOGICAL :: BCMode, DoIt, GotNormal, GotCenter, GotRadius
     INTEGER :: Tag, t1, t2
     LOGICAL, ALLOCATABLE :: ActiveNode(:)
     REAL(KIND=dp), POINTER :: rArray(:,:)
     
-
     BCMode = PRESENT( BCind )
 
     ! Set the range for the possible active elements. 
@@ -14038,8 +14063,13 @@ CONTAINS
     ! Only in BC mode we do currently parallel reduction.
     ! This could be altered too. 
     IF( BCMode ) THEN
-      CALL MPI_ALLREDUCE(MPI_IN_PLACE,NiNj,9, &
-          MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+      buffer = NiNj
+      CALL MPI_ALLREDUCE(buffer, &
+#else
+      CALL MPI_ALLREDUCE(MPI_IN_PLACE, &
+#endif
+          NiNj,9,MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
     END IF
       
     ! The potential direction for the cylinder axis is the direction with 
@@ -14076,10 +14106,14 @@ CONTAINS
 
 100 CALL TangentDirections( AxisNormal,Tangent1,Tangent2 )
 
-    IF( InfoActive(30) .AND. ParEnv % MyPe == 0 ) THEN
+    IF( InfoActive(25) .AND. ParEnv % MyPe == 0 ) THEN
       PRINT *,'Axis Normal:',AxisNormal
       PRINT *,'Axis Tangent 1:',Tangent1
       PRINT *,'Axis Tangent 2:',Tangent2
+      i = PMesh % NumberOfNodes
+      IF(BcMode) THEN
+        PRINT *,'Active nodes: ',i,COUNT(ActiveNode)
+      END IF
     END IF
 
     ! Finding three points with maximum distance in the tangent directions
@@ -14088,15 +14122,17 @@ CONTAINS
     ! Save the local coordinates in the N-T system of the cylinder
     MinDist = HUGE(MinDist)
     MaxDist = -HUGE(MaxDist)
-    DO i=1, PMesh % NumberOfNodes
-      Coord(1) = PMesh % Nodes % x(i)
-      Coord(2) = PMesh % Nodes % y(i)
-      Coord(3) = PMesh % Nodes % z(i)
 
+    CIrcleInd = 0
+    DO i=1, PMesh % NumberOfNodes
       IF( BCMode ) THEN
         IF( .NOT. ActiveNode(i) ) CYCLE
       END IF
       
+      Coord(1) = PMesh % Nodes % x(i)
+      Coord(2) = PMesh % Nodes % y(i)
+      Coord(3) = PMesh % Nodes % z(i)
+
       d1 = SUM( Tangent1 * Coord )
       IF( d1 < MinDist ) THEN
         MinDist = d1
@@ -14111,14 +14147,14 @@ CONTAINS
     CircleCoord = -HUGE(CircleCoord)
     DO j=1,2    
       i = CircleInd(j)
-
-      IF( BCMode ) THEN
+      
+      IF( BCMode .AND. ParEnv % PEs > 1 ) THEN
         IF(j==1) THEN
           Dist = ParallelReduction( MinDist, 1 )
-          IF(ABS(MinDist-Dist) > 1.0e-10) CYCLE
+          IF(ABS(MinDist-Dist) > 1.0e-8) CYCLE
         ELSE IF(j==2) THEN
           Dist = ParallelReduction( MaxDist, 2)
-          IF(ABS(MaxDist-Dist) > 1.0e-10) CYCLE
+          IF(ABS(MaxDist-Dist) > 1.0e-8) CYCLE
         END IF
       END IF
         
@@ -14131,13 +14167,20 @@ CONTAINS
       CircleCoord(3*(j-1)+3) = SUM( AxisNormal * Coord )
     END DO
 
-    IF( BCMode ) THEN
-      CALL MPI_ALLREDUCE(MPI_IN_PLACE,CircleCoord,6, &
-          MPI_DOUBLE_PRECISION,MPI_MAX,ELMER_COMM_WORLD,ierr)
+    IF( BCMode .AND. ParEnv % PEs > 1 ) THEN
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+      buffer = CircleCoord
+      CALL MPI_ALLREDUCE(buffer, &
+#else
+      CALL MPI_ALLREDUCE(MPI_IN_PLACE, &
+#endif
+          CircleCoord,6,MPI_DOUBLE_PRECISION,MPI_MAX,ELMER_COMM_WORLD,ierr)
     END IF
-      
-    !PRINT *,'MinDist1:',MinDist,CircleInd(1),CircleCoord(1,:)
 
+    IF( InfoActive(25) .AND. ParEnv % MyPe == 0 ) THEN
+      PRINT *,'Circle Coord:',CircleCoord(1:6)
+    END IF
+    
     ! Find one more point such that their minimum distance to the previous point(s)
     ! is maximized. This takes some time but the further the nodes are apart the more 
     ! accurate it will be to fit the circle to the points. Also if there is just 
@@ -14146,13 +14189,12 @@ CONTAINS
     ! The maximum minimum distance of any node from the previously defined nodes
     MaxDist = 0.0_dp
     DO i=1, PMesh % NumberOfNodes
-      Coord(1) = PMesh % Nodes % x(i)
-      Coord(2) = PMesh % Nodes % y(i)
-      Coord(3) = PMesh % Nodes % z(i)
-      
       IF( BCMode ) THEN
         IF( .NOT. ActiveNode(i) ) CYCLE
       END IF
+      Coord(1) = PMesh % Nodes % x(i)
+      Coord(2) = PMesh % Nodes % y(i)
+      Coord(3) = PMesh % Nodes % z(i)
       
       ! Minimum distance from the previously defined nodes
       MinDist = HUGE(MinDist)
@@ -14173,9 +14215,9 @@ CONTAINS
     
     ! Ok, we have found the point now set the circle coordinates 
     DoIt = .TRUE.
-    IF( BCMode ) THEN
+    IF( BCMode .AND. ParEnv % PEs > 1 ) THEN
       Dist = ParallelReduction( MaxDist, 2 )
-      DoIt = ( ABS(MaxDist-Dist) < 1.0e-10 )
+      DoIt = ( ABS(MaxDist-Dist) < 1.0e-8 )
     END IF
 
     IF( DoIt ) THEN
@@ -14189,14 +14231,19 @@ CONTAINS
       CircleCoord(3*(j-1)+3) = SUM( AxisNormal * Coord )
     END IF
 
-    IF( BCMode ) THEN
-      CALL MPI_ALLREDUCE(MPI_IN_PLACE,CircleCoord,9, &
-          MPI_DOUBLE_PRECISION,MPI_MAX,ELMER_COMM_WORLD,ierr)
+    IF( BCMode .AND. ParEnv % PEs > 1 ) THEN
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+      buffer = CircleCoord
+      CALL MPI_ALLREDUCE(buffer, &
+#else
+      CALL MPI_ALLREDUCE(MPI_IN_PLACE, &
+#endif
+          CircleCoord,9,MPI_DOUBLE_PRECISION,MPI_MAX,ELMER_COMM_WORLD,ierr)
     END IF
       
-    IF( InfoActive(30) .AND. ParEnv % MyPe == 0 ) THEN
+    IF( InfoActive(25) .AND. ParEnv % MyPe == 0 ) THEN
       DO i=1,3
-        PRINT *,'Circle Coord:',i,CircleCoord(3*i-2:3*i) 
+        PRINT *,'Circle Coord:',i,CircleInd(i),CircleCoord(3*i-2:3*i) 
       END DO
     END IF
       
@@ -14224,8 +14271,10 @@ CONTAINS
     A(1:3,3) = CircleCoord(2::3)  ! y
     m14 = Det3x3( a )
 
-    !PRINT *,'determinants:',m11,m12,m13,m14
-
+    IF(InfoActive(25) .AND. ParEnv % Mype == 0 ) THEN
+      PRINT *,'CylinderFit determinants:',m11,m12,m13,m14
+    END IF
+      
     IF( ABS( m11 ) < EPSILON( m11 ) ) THEN
       CALL Fatal('CylinderFit','Points cannot be an a circle')
     END IF
@@ -14236,7 +14285,7 @@ CONTAINS
 
     Coord = x0 * Tangent1 + y0 * Tangent2
 
-    IF( InfoActive(30) .AND. ParEnv % MyPe == 0) THEN
+    IF( InfoActive(25) .AND. ParEnv % MyPe == 0) THEN
       PRINT *,'Cylinder center and radius:',Coord, rad
     END IF
 
@@ -14259,6 +14308,11 @@ CONTAINS
         FitParams(4:6) = AxisNormal(1:3)
         FitParams(7) = rad
       END IF
+
+      IF( InfoActive(25) .AND. ParEnv % MyPe == 0) THEN
+        PRINT *,'Cylinder FitParams: ',FitParams 
+      END IF
+
     END IF
       
     DEALLOCATE( Nodes % x, Nodes % y, Nodes % z )
@@ -14816,6 +14870,7 @@ CONTAINS
 
     dim = Mesh % MeshDim
     
+    FitParams = 0
     DO bc_ind = 1, Model % NumberOfBCs
       BC => Model % BCs(bc_ind) % Values
       IF( ListGetLogical(BC,'Follow Circle Boundary', Found ) ) THEN
@@ -18106,7 +18161,7 @@ CONTAINS
         CALL WriteMeshToDisk(Mesh_out, ExtrudedMeshName)
       END IF
     END IF
-
+    
   CONTAINS
 
     SUBROUTINE AppendMissingBCs(Model,maxbc)
@@ -23403,6 +23458,505 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+
+
+!------------------------------------------------------------------------------
+!> Split mesh with quadfaces into one with only triangle faces.
+!------------------------------------------------------------------------------
+  SUBROUTINE SplitMeshQuads(Mesh, Vlist) 
+!------------------------------------------------------------------------------
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(ValueList_t), POINTER :: Vlist
+!------------------------------------------------------------------------------
+    REAL(KIND=dp), POINTER :: x(:),y(:),z(:)
+    INTEGER :: i, j, k, k2, n, AddCnt, NewElCnt, nBulkElems, nBoundaryElems 
+    LOGICAL :: Found, FacesPresent, EdgesPresent
+    TYPE(Element_t), POINTER :: Enew,Eold,Edge,Parent
+    TYPE(PElementDefs_t), POINTER :: PDefs
+    LOGICAL :: Parallel, IsBulkElement, IsOddCut
+    LOGICAL :: Is15, Is24, Is35, Is26, Is34, Is16
+    INTEGER, ALLOCATABLE :: CutCorner(:), MinCorner(:), BulkElementOffset(:)
+    INTEGER :: TypeCnt(0:8), LocalMap(4), LocalMin(3), LocalCut(3)
+    INTEGER :: CutChanges, MeshDim, CutComb, iCut
+    TYPE(Element_t), POINTER :: Face
+    TYPE(Element_t), POINTER :: NewElements(:) => NULL()
+    CHARACTER(*), PARAMETER :: Caller="SplitMeshQuads"
+
+!------------------------------------------------------------------------------
+    IF ( .NOT. ASSOCIATED( Mesh ) ) RETURN
+    IF(.NOT. ASSOCIATED(VList)) RETURN
+    IF(Mesh % MeshDim < 2 ) RETURN
+    
+    IF( Mesh % MeshDim == 2 ) THEN
+      IF(.NOT. ListGetLogical( Vlist,'Split Mesh Quads',Found ) ) RETURN              
+    ELSE
+      IF(.NOT. ListGetLogical( Vlist,'Split Mesh Prisms',Found ) ) RETURN              
+    END IF
+    CALL Info( Caller,'Splitting all quadrilaterals into triangles in '//I2S(Mesh % MeshDim)//'D',Level=5)
+      
+    TypeCnt = 0
+    DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+      j = Mesh % Elements(i) % TYPE % ElementCode/100
+      TypeCnt(j) = TypeCnt(j) + 1
+    END DO
+    
+    IF(TypeCnt(4) > 0) CALL Info(Caller,'Splitting '//I2S(TypeCnt(4))//' quad elements',Level=8)
+    IF(TypeCnt(6) > 0) CALL Info(Caller,'Splitting '//I2S(TypeCnt(6))//' pyramid elements',Level=8)
+    IF(TypeCnt(7) > 0) CALL Info(Caller,'Splitting '//I2S(TypeCnt(7))//' prism elements',Level=8)    
+    IF(TypeCnt(8) > 0) CALL Info(Caller,'Splitting '//I2S(TypeCnt(8))//' hexahedron elements',Level=8)
+
+    !DO i=0,8
+    !  PRINT *,'TypeCount:',i,TypeCnt(i)
+    !END DO
+    
+    IF(TypeCnt(6) + TypeCnt(8) > 0 ) THEN
+      CALL Fatal(Caller,'Not implemented yet for pyramids and hexahedrons!')
+    END IF
+    
+    CALL ResetTimer(Caller)
+
+    Parallel = ( ParEnv % PEs > 1 ) .AND. (.NOT. Mesh % SingleMesh )
+    
+    AddCnt = TypeCnt(4) + 2*TypeCnt(7)    
+    CALL Info(Caller,'Number of elements added by splitting is '//I2S(AddCnt),Level=6)
+    
+    x => Mesh % Nodes % x
+    y => Mesh % Nodes % y
+    z => Mesh % Nodes % z
+    MeshDim = Mesh % MeshDim
+    EdgesPresent = ASSOCIATED(Mesh % Edges)
+    FacesPresent = ASSOCIATED(Mesh % Faces)
+        
+    NewElCnt = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements + AddCnt
+    CALL Info(Caller,'Count of new elements: '//I2S(NewElCnt),Level=7)
+    CALL AllocateVector( NewElements, NewElCnt )
+    CALL Info(Caller,'New elements allocated.', Level=10 )
+    
+    ! We do not need to all the complex stuff in 2D.
+    IF( MeshDim < 3 ) GOTO 1
+
+    ! First negotiate the split direction of the mesh.
+    ! We start from assuming that cut direction is though off local
+    ! indexes and the one owning the smallest global index calls the shots.    
+    !----------------------------------------------------------------------
+    CALL Info(Caller,'Trying to find consistent splitting direction in 3D',Level=12)
+    IF(.NOT.FacesPresent) CALL FindMeshFaces3D( Mesh )
+    ALLOCATE(CutCorner(Mesh % NumberOfFaces), MinCorner(Mesh % NumberOfFaces))
+    
+    ! Initialize with smallest index of the face
+    DO i=1,Mesh % NumberOfFaces
+      Face => Mesh % Faces(i)
+      MinCorner(i) = MINVAL(Face % NodeIndexes)
+    END DO
+    CutCorner = MinCorner
+
+    
+    DO WHILE(.TRUE.)
+      CutChanges = 0
+      
+      DO i=1,Mesh % NumberOfBulkElements         
+        Eold => Mesh % Elements(i)        
+        SELECT CASE( Eold % TYPE % ElementCode )
+          
+        CASE(706)
+          ! Faces 1 & 2 are triangles
+          ! Faces 3, 4 and 5 are married
+          ! There are 8 ways to cut the faces but only 6 of those are legal. 
+          ! WedgeFaceMap(3,:) = (/ 1,2,5,4 /)
+          ! WedgeFaceMap(4,:) = (/ 2,3,6,5 /)
+          ! WedgeFaceMap(5,:) = (/ 3,1,4,6 /)
+                            
+          LocalMin(1:3) = MinCorner(Eold % FaceIndexes(3:5))
+          LocalCut(1:3) = CutCorner(Eold % FaceIndexes(3:5))
+
+          ! How are we cutting the three faces? 
+          Is24 = ANY( LocalCut(1) == Eold % NodeIndexes([2,4])) 
+          Is26 = ANY( LocalCut(2) == Eold % NodeIndexes([2,6])) 
+          Is16 = ANY( LocalCut(3) == Eold % NodeIndexes([1,4])) 
+          Is15 = .NOT. Is24
+          Is35 = .NOT. Is26
+          Is34 = .NOT. Is16
+
+          ! Code the cases to numbers [111,222]
+          ! Cases 121 and 212 are not allowed!
+          CutComb = 111
+          IF(.NOT. Is24) CutComb = CutComb+100  ! Is15
+          IF(.NOT. Is26) CutComb = CutComb+10   ! Is35
+          IF(.NOT. Is16) CutComb = CutComb+1    ! Is34
+          
+          IF( CutComb == 121 .OR. CutComb == 212 ) THEN
+            iCut = 0
+            DO k=1,3
+              IF(LocalCut(k) == MAXVAL(LocalCut(1:3))) EXIT
+            END DO
+
+            IF(k==1) THEN
+              IF(CutComb == 121 ) iCut = 1 !-> 221 
+              IF(CutComb == 212 ) iCut = 2 !-> 112
+            ELSE IF(k==2) THEN
+              IF(CutComb == 121 ) iCut = 2 !-> 111
+              IF(CutComb == 212 ) iCut = 3 !-> 222
+            ELSE IF(k==3) THEN
+              IF(CutComb == 121 ) iCut = 3 !-> 122
+              IF(CutComb == 212 ) iCut = 1 !-> 211
+            ELSE
+              CALL Fatal(Caller,'Invalid value for k!')
+            END IF
+
+            IF(icut>0) THEN
+              CutCorner(Eold % FaceIndexes(2+k)) = Eold % NodeIndexes(iCut)
+              CutChanges = CutChanges + 1                            
+            ELSE
+              CALL Fatal(Caller,'Could not fix invalid cut!')
+            END IF
+          END IF
+        END SELECT
+      END DO
+
+      CALL Info(Caller,'Number of switches in cut direction: '//I2S(CutChanges))
+      IF(CutChanges == 0) EXIT      
+    END DO
+    
+    ! Jump directly here if we have 2D mesh. 
+1   CONTINUE
+
+    ! We need to register the offset coming from split.
+    ALLOCATE(BulkElementOffset(Mesh % NumberOfBulkElements))
+    BulkElementOffset = 0
+    NewElCnt = 0
+            
+!   Now update all new mesh elements:
+!   ---------------------------------
+    DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+
+      Eold => Mesh % Elements(i)
+      IsBulkElement = (i <= Mesh % NumberOfBulkElements ) 
+      
+      IF(IsBulkElement) THEN
+        ! For bulk elements store the offset so we can remap the parents more easily. 
+        BulkElementOffset(i) = NewElCnt 
+      END IF
+
+      SELECT CASE( Eold % TYPE % ElementCode )
+
+      CASE(101,202,303,504)
+        ! Copy elements without quad faces as is. 
+        NewElCnt = NewElCnt + 1
+        Enew => NewElements(NewElCnt)
+        Enew = Eold
+        Enew % ElementIndex = NewElCnt         
+        CALL AllocateVector( ENew % NodeIndexes, Eold % TYPE % NumberOfNodes )
+        Enew % NodeIndexes = Eold % NodeIndexes
+
+        IF(.NOT. IsBulkElement ) THEN
+          CALL UpdateParentElements()
+        END IF
+
+      CASE(404)
+        IF( MeshDim == 3 ) THEN
+          Parent => Eold % BoundaryInfo % Left
+          IF(.NOT. ASSOCIATED(Parent)) THEN
+            Parent => Eold % BoundaryInfo % Right
+          END IF          
+          Face => Find_Face(Mesh, Eold, Parent ) 
+          IsOddCut = ANY( CutCorner(Face % ElementIndex) == Face % NodeIndexes([1,3]) )
+        ELSE
+          Face => Eold
+          IsOddCut = .TRUE.
+        END IF
+                    
+        DO j=1,2         
+          IF( IsOddCut ) THEN
+            IF(j==1) THEN
+              LocalMap(1:3) = [1,2,3]
+            ELSE
+              LocalMap(1:3) = [3,4,1]
+            END IF
+          ELSE
+            IF(j==1) THEN
+              LocalMap(1:3) = [4,1,2]
+            ELSE
+              LocalMap(1:3) = [2,3,4]
+            END IF
+          END IF
+
+          NewElCnt = NewElCnt + 1
+          Enew => NewElements(NewElCnt)
+          Enew = Eold
+          Enew % TYPE => GetElementType(303)
+          Enew % ElementIndex = NewElCnt         
+          CALL AllocateVector( ENew % NodeIndexes, 3 )
+          Enew % NodeIndexes(1:3) = Face % NodeIndexes(LocalMap(1:3))
+          Enew % EdgeIndexes => NULL()
+          Enew % FaceIndexes => NULL()
+          
+          IF(.NOT. IsBulkElement ) THEN
+            CALL UpdateParentElements()
+          END IF
+        END DO
+
+      CASE(706)
+
+        LocalCut(1:3) = CutCorner(Eold % FaceIndexes(3:5))
+
+        ! How are we cutting the three faces? 
+        Is24 = ANY( LocalCut(1) == Eold % NodeIndexes([2,4])) 
+        Is26 = ANY( LocalCut(2) == Eold % NodeIndexes([2,6])) 
+        Is16 = ANY( LocalCut(3) == Eold % NodeIndexes([1,4])) 
+        Is15 = .NOT. Is24
+        Is35 = .NOT. Is26
+        Is34 = .NOT. Is16
+
+        ! Code the cases to numbers [111,222]
+        CutComb = 111
+        IF(.NOT. Is24) CutComb = CutComb+100  ! Is15
+        IF(.NOT. Is26) CutComb = CutComb+10   ! Is35
+        IF(.NOT. Is16) CutComb = CutComb+1    ! Is34
+              
+        DO j=1,3                   
+          SELECT CASE(CutComb)
+          CASE(111)
+            IF(j==1) THEN
+              LocalMap(1:4) = [1,2,4,6]
+            ELSE IF(j==2) THEN
+              LocalMap(1:4) = [2,5,4,6]
+            ELSE 
+              LocalMap(1:4) = [1,2,3,6]
+            END IF
+
+          CASE(112)
+            IF(j==1) THEN
+              LocalMap(1:4) = [1,2,4,3]
+            ELSE IF(j==2) THEN
+              LocalMap(1:4) = [2,5,4,6]
+            ELSE 
+              LocalMap(1:4) = [2,3,6,4]
+            END IF
+
+          CASE(122)
+            IF(j==1) THEN
+              LocalMap(1:4) = [1,2,4,3]
+            ELSE IF(j==2) THEN
+              LocalMap(1:4) = [2,5,4,3]
+            ELSE 
+              LocalMap(1:4) = [4,5,3,6]
+            END IF
+
+          CASE(221)
+            IF(j==1) THEN
+              LocalMap(1:4) = [1,2,5,3]
+            ELSE IF(j==2) THEN
+              LocalMap(1:4) = [1,5,4,6]
+            ELSE 
+              LocalMap(1:4) = [1,3,5,6]
+            END IF
+
+          CASE(222)
+            IF(j==1) THEN
+              LocalMap(1:4) = [1,2,5,3]
+            ELSE IF(j==2) THEN
+              LocalMap(1:4) = [1,5,4,3]
+            ELSE 
+              LocalMap(1:4) = [4,5,3,6]
+            END IF
+
+          CASE(211)
+            IF(j==1) THEN
+              LocalMap(1:4) = [1,2,5,6]
+            ELSE IF(j==2) THEN
+              LocalMap(1:4) = [1,5,4,6]
+            ELSE 
+              LocalMap(1:4) = [1,2,3,6]
+            END IF
+
+          CASE DEFAULT
+            CALL Fatal(Caller,'Unknown case for split: '//I2S(CutComb))
+
+          END SELECT
+
+          NewElCnt = NewElCnt + 1
+          Enew => NewElements(NewElCnt)
+          Enew = Eold
+          Enew % TYPE => GetElementType(504)
+          Enew % ElementIndex = NewElCnt         
+          CALL AllocateVector( ENew % NodeIndexes, 4 )
+          Enew % NodeIndexes = Eold % NodeIndexes(LocalMap(1:4))          
+          Enew % EdgeIndexes => NULL()
+          Enew % FaceIndexes => NULL()
+        END DO
+      END SELECT
+            
+      IF(i==Mesh % NumberOfBulkElements) THEN
+        nBulkElems = NewElCnt
+      END IF
+    END DO
+
+    ! Release old elements and rplace them with new elements and element counts
+    CALL ReleaseMeshElements( Mesh ) 
+
+    Mesh % Elements => NewElements
+    Mesh % NumberOfBulkElements = nBulkElems
+    Mesh % NumberOfBoundaryElements = NewElCnt - nBulkElems
+            
+    ! These are now conservative and could be updated
+    ! NewMesh % MaxElementDOFs  = Mesh % MaxElementDOFs
+
+    IF( MeshDim == 3 ) THEN
+      Mesh % MaxElementNodes = 4
+    ELSE
+      Mesh % MaxElementNodes = 3
+    END IF
+    
+#if 0
+    j = 0
+    DO i=1,Mesh % NumberOfBulkElements
+      Enew => NewElements(i)        
+      IF ( Enew % DGDOFs>0 ) THEN
+        Enew % DGDofs == Enew % TYPE % NumberOfNodes
+        ALLOCATE(Enew % DGIndexes(Enew % DGDOFs))
+        DO k=1,Enew % DGDOFs
+          j = j + 1
+          Enew % DGIndexes(k)=j
+        END DO
+      ELSE
+        Enew % DGIndexes=>NULL()
+      END IF
+    END DO
+#endif
+
+    DO i=1,NewElCnt 
+      IF (i<=Mesh % NumberOfBulkElements) THEN
+        Enew => Mesh % Elements(i)
+        PDefs => Enew % PDefs
+        IF(ASSOCIATED(PDefs)) THEN
+          CALL AllocatePDefinitions(Enew)
+          Enew % PDefs = PDefs
+          
+          ! All elements in actual mesh are not edges
+          Enew % PDefs % isEdge = .FALSE.
+          
+          ! If element is of type tetrahedron and is a p element,
+          ! do the Ainsworth & Coyle trick
+          IF (Enew % TYPE % ElementCode == 504) CALL ConvertToACTetra(Enew)
+          CALL GetRefPElementNodes( Enew % TYPE,  Enew % TYPE % NodeU, &
+              Enew % TYPE % NodeV, Enew % TYPE % NodeW )
+        END IF
+      ELSE
+        Enew % PDefs=>NULL()
+      END IF
+      Enew % EdgeIndexes => NULL()
+      Enew % FaceIndexes => NULL()
+      Enew % BubbleIndexes => NULL()
+    END DO
+    
+    CALL CheckTimer(Caller,Delete=.TRUE.)
+    
+!   Update structures needed for parallel execution:
+!   ------------------------------------------------
+    IF( Parallel ) THEN
+      ! We don't have any updates for parallel mesh.
+      ! The nodes stay the same.
+    END IF
+
+    ! Release old edges and faces since they don't match the new mesh.
+    !-----------------------------------------------------------------
+    CALL ReleaseMeshEdgeTables( Mesh )
+    CALL ReleaseMeshFaceTables( Mesh )
+    !Mesh % Faces => NULL()
+    !Mesh % Edges => NULL()
+    !Mesh % NumberOfFaces = 0 
+    !Mesh % NumberOfEdges = 0 
+    
+    IF( FacesPresent ) THEN 
+      CALL Info(Caller,'Generating faces in the new mesh as thet were present in the old!',Level=20)
+      CALL FindMeshFaces3D( Mesh )
+    END IF
+    IF( EdgesPresent ) THEN 
+      CALL Info(Caller,'Generating faces in the new mesh as thet were present in the old!',Level=20)
+      CALL FindMeshEdges( Mesh )
+    END IF
+
+    !CALL CheckMeshInfo( Mesh )     
+    !CALL writemeshtodisk( Mesh, "koe" )
+
+  CONTAINS
+
+    
+    SUBROUTINE UpdateParentElements()
+
+      INTEGER :: j,m,lcnt,l,nCands,ElemCode,BulkOffset
+      TYPE(Element_t), POINTER :: CandParent, Parent
+      LOGICAL :: hit
+      
+      ALLOCATE( Enew % BoundaryInfo )
+      Enew % BoundaryInfo = Eold % BoundaryInfo 
+
+      DO j=1,2
+        IF(j==1) THEN
+          Parent => Eold % BoundaryInfo % Left
+        ELSE
+          Parent => Eold % BoundaryInfo % Right
+        END IF
+        IF(.NOT. ASSOCIATED( Parent ) ) CYCLE
+
+        ElemCode = Parent % TYPE % ElementCode
+
+        ! Depending on the elementtype the original element has been split into several candidate elements. 
+        SELECT CASE(ElemCode)
+        CASE(202)
+          nCands = 1
+        CASE(303)
+          nCands = 1
+        CASE(404)
+          nCands = 2
+        CASE(504)
+          nCands = 1
+        CASE(706)
+          nCands = 3
+        END SELECT
+
+        hit = .FALSE.
+
+        BulkOffset = BulkElementOffset(Parent % ElementIndex)
+
+        DO k=1,nCands
+          CandParent => NewElements(BulkOffset+k)
+          m = Enew % Type % NumberOfNodes
+          lcnt = 0
+          DO l=1,m
+            IF(ANY(Enew % NodeIndexes(l) == CandParent % NodeIndexes)) lcnt = lcnt + 1
+          END DO
+          IF(lcnt == m) THEN
+            IF(j==1) THEN
+              Enew % BoundaryInfo % Left => CandParent
+            ELSE
+              Enew % BoundaryInfo % Right => CandParent
+            END IF
+            hit = .TRUE.
+            EXIT
+          END IF
+        END DO
+            
+        IF(.NOT. Hit) THEN
+          PRINT *,'Not Found:',j,k,lcnt,nCands,ElemCode,Parent % ElementIndex, BulkOffset
+          PRINT *,'This:',Eold % NodeIndexes
+          PRINT *,'Parent:',Parent % NodeIndexes
+          DO k=1,nCands
+            CandParent => NewElements(BulkOffset+k)
+            PRINT *,'Cands:',CandParent % NodeIndexes
+          END DO
+          CALL Fatal('UpdateParentElements','Could not find parent for type '//I2S(ElemCode))
+        END IF
+        
+      END DO
+
+    END SUBROUTINE UpdateParentElements
+    
+     
+   END SUBROUTINE SplitMeshQuads
+!------------------------------------------------------------------------------
+
+
   
 !------------------------------------------------------------------------------
 !> Sometimes we are lucky and the mesh includes similar elements that are
@@ -23617,53 +24171,8 @@ CONTAINS
       Mesh % RootQuadrant => NULL()
     END IF
 
-
-    IF ( ASSOCIATED( Mesh % Elements ) ) THEN
-      CALL Info('ReleaseMesh','Releasing mesh elements',Level=15)
-
-      DO i=1,SIZE(Mesh % Elements)
-
-!          Boundaryinfo structure for boundary elements
-!          ---------------------------------------------
-        IF ( Mesh % Elements(i) % Copy ) CYCLE
-
-        IF ( i > Mesh % NumberOfBulkElements ) THEN
-          bInfo => Mesh % Elements(i) % BoundaryInfo
-          IF ( ASSOCIATED(bInfo) ) THEN
-            IF (ASSOCIATED(bInfo % RadiationFactors)) THEN
-              IF ( ALLOCATED(bInfo % RadiationFactors % Elements ) ) THEN
-                DEALLOCATE(bInfo % RadiationFactors % Elements )
-                DEALLOCATE(bInfo % RadiationFactors % Factors )
-              END IF
-              DEALLOCATE(bInfo % RadiationFactors)
-            END IF
-            DEALLOCATE(bInfo)
-          END IF
-        END IF
-
-        IF ( ASSOCIATED( Mesh % Elements(i) % NodeIndexes ) ) &
-            DEALLOCATE( Mesh % Elements(i) % NodeIndexes )
-        Mesh % Elements(i) % NodeIndexes => NULL()
-
-        IF ( ASSOCIATED( Mesh % Elements(i) % DGIndexes ) ) &
-            DEALLOCATE( Mesh % Elements(i) % DGIndexes )
-        Mesh % Elements(i) % DGIndexes => NULL()
-
-        IF ( ASSOCIATED( Mesh % Elements(i) % BubbleIndexes ) ) &
-            DEALLOCATE( Mesh % Elements(i) % BubbleIndexes )
-        Mesh % Elements(i) % BubbleIndexes => NULL()
-
-        ! This creates problems later on!!!
-        !IF ( ASSOCIATED( Mesh % Elements(i) % PDefs ) ) &
-        !   DEALLOCATE( Mesh % Elements(i) % PDefs )
-        
-        Mesh % Elements(i) % PDefs => NULL() 
-      END DO
-      
-      DEALLOCATE( Mesh % Elements )
-      Mesh % Elements => NULL()
-    END IF
-     
+    CALL ReleaseMeshElements( Mesh ) 
+         
     Mesh % NumberOfNodes = 0
     Mesh % NumberOfBulkElements = 0
     Mesh % NumberOfBoundaryElements = 0
@@ -23675,6 +24184,68 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+  SUBROUTINE ReleaseMeshElements(Mesh)
+
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(BoundaryInfo_t), POINTER :: bInfo
+    INTEGER :: i, n
+
+    IF(.NOT. ASSOCIATED(Mesh % Elements) ) THEN
+      CALL Info('ReleaseMeshElements','Elements not associated, nothing to release',Level=30)
+      RETURN
+    END IF
+
+    n = SIZE( Mesh % Elements )     
+    CALL Info('ReleaseMeshElements','Releasing number of elements: '//I2S(n),Level=30)
+
+
+    DO i=1,n
+
+      ! Boundaryinfo structure for boundary elements
+      !---------------------------------------------
+      IF ( Mesh % Elements(i) % Copy ) CYCLE
+
+      IF ( i > Mesh % NumberOfBulkElements ) THEN
+        bInfo => Mesh % Elements(i) % BoundaryInfo
+        IF ( ASSOCIATED(bInfo) ) THEN
+          IF (ASSOCIATED(bInfo % RadiationFactors)) THEN
+            IF ( ALLOCATED(bInfo % RadiationFactors % Elements ) ) THEN
+              DEALLOCATE(bInfo % RadiationFactors % Elements )
+              DEALLOCATE(bInfo % RadiationFactors % Factors )
+            END IF
+            DEALLOCATE(bInfo % RadiationFactors)
+          END IF
+          DEALLOCATE(bInfo)
+        END IF
+      END IF
+
+      IF ( ASSOCIATED( Mesh % Elements(i) % NodeIndexes ) ) &
+          DEALLOCATE( Mesh % Elements(i) % NodeIndexes )
+      Mesh % Elements(i) % NodeIndexes => NULL()
+
+      IF ( ASSOCIATED( Mesh % Elements(i) % DGIndexes ) ) &
+          DEALLOCATE( Mesh % Elements(i) % DGIndexes )
+      Mesh % Elements(i) % DGIndexes => NULL()
+
+      IF ( ASSOCIATED( Mesh % Elements(i) % BubbleIndexes ) ) &
+          DEALLOCATE( Mesh % Elements(i) % BubbleIndexes )
+      Mesh % Elements(i) % BubbleIndexes => NULL()
+
+      ! This creates problems later on!!!
+      !IF ( ASSOCIATED( Mesh % Elements(i) % PDefs ) ) &
+      !   DEALLOCATE( Mesh % Elements(i) % PDefs )
+
+      Mesh % Elements(i) % PDefs => NULL() 
+    END DO
+
+    DEALLOCATE( Mesh % Elements )
+    Mesh % Elements => NULL()
+
+    
+  END SUBROUTINE ReleaseMeshElements
+
+
+  
 !------------------------------------------------------------------------------
   SUBROUTINE ReleaseMeshEdgeTables( Mesh )
 !------------------------------------------------------------------------------
@@ -23949,29 +24520,29 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!>     Assign local number of edge to given boundary element. Also copies all 
-!>     p element attributes from element edge to boundary edge.
+!> Assign local number of edge to given boundary element. Also copies all 
+!> p element attributes from element edge to boundary edge.
 !------------------------------------------------------------------------------
-  SUBROUTINE AssignLocalNumber( EdgeElement, Element, Mesh,NoPE )
+  SUBROUTINE AssignLocalNumber( EdgeElement, Element, Mesh, NoPE )
 !------------------------------------------------------------------------------
     USE PElementMaps, ONLY : getFaceEdgeMap 
     IMPLICIT NONE
 
     ! Parameters
-    TYPE(Mesh_t) :: Mesh            !< Finite element mesh containing faces and edges.
+    TYPE(Mesh_t) :: Mesh                     !< Finite element mesh containing faces and edges.
     TYPE(Element_t), POINTER :: EdgeElement  !< Edge element to which assign local number
     TYPE(Element_t), POINTER :: Element      !< Bulk element with some global numbering to use to assign local number
     LOGICAL, OPTIONAL :: NoPE
 !------------------------------------------------------------------------------
     ! Local variables
 
-    INTEGER i,j,k,n,edgeNumber, numEdges, bMap(4)
+    INTEGER i,j,k,n,edgeNumber, numEdges, bMap(4), bIndex(4)
     TYPE(Element_t), POINTER :: Edge
     LOGICAL :: EvalPE
 
     EvalPE = .TRUE.
     IF(PRESENT(NoPE)) EvalPE = .NOT.NoPE
-
+    
     ! Get number of points, edges or faces
     numEdges = 0
     SELECT CASE (Element % TYPE % DIMENSION)
@@ -23985,102 +24556,110 @@ CONTAINS
       CALL Fatal('AssignLocalNumber','Unsupported Element dim: '//I2S(Element % TYPE % DIMENSION))
     END SELECT
 
+    ! If edges have not been created, stop search. This should not happen, actually.
+    IF (.NOT. ASSOCIATED(Element % EdgeIndexes)) THEN
+      CALL Warn('MeshUtils::AssignLocalNumber','Edde indexes not associated!')
+      RETURN
+    END IF
+        
     ! For each edge or face in element try to find local number
     DO edgeNumber=1, numEdges
-       ! If edges have not been created, stop search. This should not happen, actually.
-       IF (.NOT. ASSOCIATED(Element % EdgeIndexes)) THEN
-          ! EdgeElement % localNumber = 0
-          RETURN
-       END IF
+      Edge => GetElementEntity(Element,edgeNumber,Mesh)
+      
+      ! Edge element not found. This should not be possible, unless there
+      ! is an error in the mesh read in process..
+      IF (.NOT. ASSOCIATED(Edge)) THEN
+        CALL Fatal('MeshUtils::AssignLocalNumber','Edge element not found')
+      END IF
+      
+      n = 0
+      ! For each element node
+      DO i=1, Edge % TYPE % NumberOfNodes
+        ! For each node in edge element
+        DO j=1, EdgeElement % TYPE % NumberOfNodes
+          ! If edge and edgeelement node match increment counter
+          IF (Edge % NodeIndexes(i) == EdgeElement % NodeIndexes(j)) THEN
+            n = n + 1
+            EXIT
+          END IF
+        END DO
+      END DO
 
-       Edge => GetElementEntity(Element,edgeNumber,Mesh)
+      ! If all nodes are on boundary, edge/face was found
+      IF (n == EdgeElement % TYPE % NumberOfNodes) THEN
+        IF(EvalPE) THEN
+          EdgeElement % PDefs % localNumber = edgeNumber
+          EdgeElement % PDefs % LocalParent => Element
+        END IF
 
-       ! Edge element not found. This should not be possible, unless there
-       ! is an error in the mesh read in process..
-       IF (.NOT. ASSOCIATED(Edge)) THEN
-          CALL Warn('MeshUtils::AssignLocalNumber','Edge element not found')
-          ! EdgeElement % localNumber = 0
-          RETURN
-       END IF
+        ! Change ordering of global nodes to match that of element
+        bMap = getElementBoundaryMap( Element, edgeNumber )
+        Bindex(1:n) = Element % NodeIndexes(bMap(1:n))
 
-       n = 0
-       ! For each element node
-       DO i=1, Edge % TYPE % NumberOfNodes
-          ! For each node in edge element
+        k = 0
+        DO i=1, Edge % TYPE % NumberOfNodes
           DO j=1, EdgeElement % TYPE % NumberOfNodes
-             ! If edge and edgeelement node match increment counter
-             IF (Edge % NodeIndexes(i) == EdgeElement % NodeIndexes(j)) n = n + 1
+            IF (Edge % NodeIndexes(i) == bIndex(j)) THEN
+              k = k + 1
+              EXIT
+            END IF
           END DO
-       END DO
+        END DO
+        
+        ! Ok, reorder the nodal to comply with the mapping.
+        ! Do not do this if we would not just reorder but also loose some nodes!
+        IF(k==n) THEN
+          EdgeElement % NodeIndexes(1:n) = Bindex(1:n)
+        ELSE
+#if 0
+          PRINT *,'Element Types: ',Element % TYPE % ElementCode, EdgeElement % TYPE % ElementCode, numEdges
+          IF(ASSOCIATED(Element % Pdefs)) PRINT *,'Element TetraType:',Element % PDefs % TetraType 
+          PRINT *,'Element:',Element % NodeIndexes
+          PRINT *,'EdgeA:  ',EdgeElement % NodeIndexes
+          PRINT *,'EdgeB:  ',Edge % NodeIndexes
+          PRINT *,'Element hits:',EvalPE, n,k
+          PRINT *,'BoundaryMap:',bmap(1:n)
+#endif
+          CALL Warn('AssignLocalNumber','Skipped mapping as we would loose nodes!')
+        END IF
 
-       ! If all nodes are on boundary, edge was found
-       IF (n == EdgeElement % TYPE % NumberOfNodes) THEN
-          IF(EvalPE) THEN
-            EdgeElement % PDefs % localNumber = edgeNumber
-            EdgeElement % PDefs % LocalParent => Element
+        ! Copy misc attributes of edge element to boundary element
+        IF(EvalPE) THEN
+          EdgeElement % PDefs % isEdge = Edge % PDefs % isEdge
+          EdgeElement % PDefs % GaussPoints = Edge % PDefs % GaussPoints
+          EdgeElement % PDefs % P = Edge % PDefs % P
+        END IF
+
+        !(and boundary bubble dofs)
+        EdgeElement % BDOFs = MAX(EdgeElement % BDOFs, Edge % BDOFs)
+
+        
+        ! If this boundary has edges copy edge indexes
+        IF (ASSOCIATED(Edge % EdgeIndexes)) THEN
+          ! Allocate element edges to element
+          n = Edge % TYPE % NumberOfEdges
+          bmap(1:4) = getFaceEdgeMap( Element, edgeNumber )
+
+          IF ( ASSOCIATED( EdgeElement % EdgeIndexes) ) THEN
+            DEALLOCATE( EdgeElement % EdgeIndexes )
           END IF
 
-          ! Change ordering of global nodes to match that of element
-          bMap = getElementBoundaryMap( Element, edgeNumber )
-          DO j=1,n
-            EdgeElement % NodeIndexes(j) = Element % NodeIndexes(bMap(j))
+          CALL AllocateVector( EdgeElement % EdgeIndexes, n )
+          ! Copy edges from edge to boundary edge
+          DO i=1,n
+            EdgeElement % EdgeIndexes(i) = Element % EdgeIndexes(bmap(i))
+            !    EdgeElement % EdgeIndexes(i) = Element % EdgeIndexes(i)
           END DO
-          
-          k = 0
-          DO i=1, Edge % TYPE % NumberOfNodes
-            DO j=1, EdgeElement % TYPE % NumberOfNodes
-              IF (Edge % NodeIndexes(i) == EdgeElement % NodeIndexes(j)) k = k + 1
-            END DO
-          END DO
-          IF(k < n) THEN
-            WRITE(Message,*) 'Invalid indexes:',Element % TYPE % ElementCode, &
-                EdgeElement % TYPE % ElementCode, EvalPE, n,k,bmap(1:n)
-            CALL Fatal('AssignLocalNumber',Message)
-          END IF
-             
-          ! Copy attributes of edge element to boundary element
-          ! Misc attributes
-          IF(EvalPE) THEN
-            EdgeElement % PDefs % isEdge = Edge % PDefs % isEdge
-          
-          ! Gauss points
-            EdgeElement % PDefs % GaussPoints = Edge % PDefs % GaussPoints
+        END IF
 
-          ! Element p
-            EdgeElement % PDefs % P = Edge % PDefs % P
-          END IF
-          
-          !(and boundary bubble dofs)
-          EdgeElement % BDOFs = MAX(EdgeElement % BDOFs, Edge % BDOFs)
-
-
-          ! If this boundary has edges copy edge indexes
-          IF (ASSOCIATED(Edge % EdgeIndexes)) THEN
-             ! Allocate element edges to element
-             n = Edge % TYPE % NumberOfEdges
-             bmap(1:4) = getFaceEdgeMap( Element, edgeNumber )
-             
-             IF ( ASSOCIATED( EdgeElement % EdgeIndexes) ) THEN
-                DEALLOCATE( EdgeElement % EdgeIndexes )
-             END IF
-             
-             CALL AllocateVector( EdgeElement % EdgeIndexes, n )
-             ! Copy edges from edge to boundary edge
-             DO i=1,n
-                EdgeElement % EdgeIndexes(i) = Element % EdgeIndexes(bmap(i))
-             !    EdgeElement % EdgeIndexes(i) = Element % EdgeIndexes(i)
-             END DO
-          END IF
-          
-          ! Edge fields copied and local edge found so return
-          RETURN
-       END IF
+        ! Edge fields copied and local edge found so return
+        RETURN
+      END IF
     END DO
 
     ! If we are here local number not found
     IF(.NOT.ASSOCIATED(EdgeElement % PDefs % LocalParent)) THEN
       CALL Warn('MeshUtils::AssignLocalNumber','Unable to find local edge '//I2S(EdgeElement % ElementIndex))
-      ! EdgeElement % localNumber = 1
     END IF
 
         
@@ -24096,15 +24675,16 @@ CONTAINS
       NULLIFY(Entity)
       ! Switch by element dimension
       SELECT CASE (Element % TYPE % DIMENSION)
-         CASE (2)
-            Entity => Mesh % Edges( Element % EdgeIndexes(which))
-         CASE (3)
-            Entity => Mesh % Faces( Element % FaceIndexes(which))
-         CASE DEFAULT
-            WRITE (*,*) 'AssignLocalNumber::GetElementEntity: Unsupported dimension'
-            RETURN
+      CASE (2)
+        Entity => Mesh % Edges( Element % EdgeIndexes(which))
+      CASE (3)
+        Entity => Mesh % Faces( Element % FaceIndexes(which))
+      CASE DEFAULT
+        CALL Fatal('AssignLocalNumber::GetElementEntity',&
+            'Impossible Element dim: '//I2S(Element % TYPE % DIMENSION))
       END SELECT
     END FUNCTION GetElementEntity
+
   END SUBROUTINE AssignLocalNumber
     
 
@@ -27442,7 +28022,7 @@ CONTAINS
 
     INTEGER :: nc, dualmaxdeg, i, v, w, uci, wci, vli, vti, vcol, wcol, &
             nrc, nunc, nthr, TID, allocstat, gn
-    INTEGER, ALLOCATABLE :: colours(:)
+    INTEGER, POINTER :: colours(:)
     INTEGER, PARAMETER :: VERTEX_PER_THREAD = 100
     LOGICAL :: consistent
 
@@ -27623,7 +28203,8 @@ CONTAINS
 
     ! Set up colouring data structure
     Colouring % nc = nc
-    CALL MOVE_ALLOC(colours, Colouring % colours)
+!   CALL MOVE_ALLOC(colours, Colouring % colours)
+    Colouring % colours => colours
   END SUBROUTINE ElmerGraphColour
 
   SUBROUTINE Colouring_Deallocate(Colours)
@@ -27683,7 +28264,7 @@ CONTAINS
 
     TYPE(Element_t), POINTER :: Element
     INTEGER :: elem, nelem, nbelem, astat, lcolour, rcolour, nbc
-    INTEGER, ALLOCATABLE :: bcolours(:)
+    INTEGER, POINTER :: bcolours(:)
 
     nelem = Mesh % NumberOfBulkElements
     nbelem = Mesh % NumberOfBoundaryElements
@@ -27731,7 +28312,8 @@ CONTAINS
 
     ! Set up colouring data structure
     BoundaryColours % nc = nbc
-    CALL MOVE_ALLOC(bcolours, BoundaryColours % colours)
+!   CALL MOVE_ALLOC(bcolours, BoundaryColours % colours)
+    BoundaryColours % colours => bcolours
   END SUBROUTINE ElmerBoundaryGraphColour
   
   ! Given CRS indices, referenced indirectly from graph, 
@@ -29898,13 +30480,14 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: BC
     INTEGER, ALLOCATABLE :: BoundaryId(:), IntersectionBCs(:,:)
     LOGICAL, ALLOCATABLE :: EdgeDone(:), NodeDone(:)
-    LOGICAL :: Found, Hit, EdgesPresent 
+    LOGICAL :: Found, Hit, EdgesPresent, NeedEdges
     
     ! Count how many of the BCs are intersection BCs that we need to determine
     j = 0
     DO bc_id=1,Model % NumberOfBCs
       BC => Model % BCs(bc_id) % Values
-      IF( ListCheckPresent( BC,'Intersection BC' ) ) j = j+1 
+      IF( ListCheckPresent( BC,'Intersection BC' ) .OR. &
+          ListCheckPresent( BC,'Intersection Body') ) j = j+1 
     END DO
     NewBCs = j
     IF(NewBCs==0) RETURN
@@ -29913,60 +30496,72 @@ CONTAINS
         'Number of intersection BCs to determine: '//I2S(NewBCs),Level=5)
 
     ! Create a fast look-up table that define the new BC indexes and the parent BCs
-    ALLOCATE(IntersectionBCs(j,4))
+    ALLOCATE(IntersectionBCs(j,5))
     IntersectionBCs = 0
     j = 0
     DO bc_id=1,Model % NumberOfBCs
       BC => Model % BCs(bc_id) % Values
       ParentBCs => ListGetIntegerArray( BC,'Intersection BC',Found )
-      IF(.NOT. Found ) CYCLE
+      k = 0 
+      IF(.NOT. Found ) THEN
+        ! If the intersection is between two bodies mark it seperately!
+        ParentBCs => ListGetIntegerArray( BC,'Intersection Body',Found )
+        k = 1
+      END IF
+      IF(.NOT. Found) CYCLE
       j = j + 1
       IF(SIZE(ParentBCs) /= 2 ) CALL Fatal('CreateIntersectionBCs','Only available for two parents!')
       IntersectionBCs(j,1) = Model % BCs(bc_id) % Tag
       IntersectionBCs(j,2:3) = ParentBCs(1:2)
+      IntersectionBCs(j,4) = k
     END DO
 
     nbulk = Mesh % NumberOfBulkElements
     nbc = Mesh % NumberOfBoundaryElements
     nold = nbulk + nbc
 
-    ALLOCATE( BoundaryId( nbc ) )
-    BoundaryId = 0
+    ! If we need to find intersection between boundaries create a helper structure. 
+    IF( ANY(IntersectionBCs(:,4) == 0) ) THEN
+      ALLOCATE( BoundaryId( nbc ) )
+      BoundaryId = 0
+     
+      DO t=1,nbc
+        Element => Mesh % Elements(nbulk+t)
 
-  
-   
-    DO t=1,nbc
-      Element => Mesh % Elements(nbulk+t)
-      
-      ! Only treat 2D boundary elements
-      IF( Mesh % MeshDim == 3 ) THEN
-        IF( Element % TYPE % ElementCode < 300 ) CYCLE
-      ELSE
-        IF( Element % TYPE % ElementCode < 200 ) CYCLE
-      END IF
-        
-      DO bc_id=1,Model % NumberOfBCs
-        IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc_id) % Tag ) EXIT
+        ! Only treat 2D boundary elements
+        IF( Mesh % MeshDim == 3 ) THEN
+          IF( Element % TYPE % ElementCode < 300 ) CYCLE
+        ELSE
+          IF( Element % TYPE % ElementCode < 200 ) CYCLE
+        END IF
+
+        DO bc_id=1,Model % NumberOfBCs
+          IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc_id) % Tag ) EXIT
+        END DO
+        IF ( bc_id > Model % NumberOfBCs ) CYCLE
+
+        IF( ANY(IntersectionBCs(:,2)==bc_id .OR. IntersectionBCs(:,3)==bc_id)) THEN
+          BoundaryId(t) = bc_id
+        END IF
       END DO
-      IF ( bc_id > Model % NumberOfBCs ) CYCLE
 
-      IF( ANY(IntersectionBCs(:,2)==bc_id .OR. IntersectionBCs(:,3)==bc_id)) THEN
-        BoundaryId(t) = bc_id
-      END IF
-    END DO
-
-    n = COUNT( BoundaryId > 0 )
-    CALL Info('CreateIntersectionBCs','Number of candidate intersection parents: '//I2S(n))
-    
+      n = COUNT( BoundaryId > 0 )
+      CALL Info('CreateIntersectionBCs','Number of candidate intersection parents: '//I2S(n))
+    END IF
+      
     ! Go the new boundary elements over two times.
     ! On the 1st loop just count the number of new elements.
     ! On the 2nd lopp add the new elements in the element list.
     !-------------------------------------------------------------    
     EdgesPresent = ASSOCIATED( Mesh % Edges )
+    NeedEdges = (Mesh % MeshDim == 3 .OR. ANY(IntersectionBCs(:,4)==1) )
+
+    IF(NeedEdges .AND. .NOT. EdgesPresent ) THEN
+      CALL Info('CreateInterectionsBCs','Need edges for speedy search!',Level=7)
+      CALL FindMeshEdges( Mesh ) 
+    END IF
+
     IF( Mesh % MeshDim == 3 ) THEN
-      IF(.NOT. EdgesPresent ) THEN
-        CALL FindMeshEdges( Mesh ) 
-      END IF
       ALLOCATE( EdgeDone( Mesh % NumberOfEdges ) )       
       CALL CreateIntersection3D(.TRUE.,NewCnt)
       IF(NewCnt==0) THEN
@@ -29975,7 +30570,9 @@ CONTAINS
       END IF
       CALL CreateIntersection3D(.FALSE.,NewCnt)
     ELSE
-      ALLOCATE( NodeDone( Mesh % NumberOfNodes ) ) 
+      IF(ANY(IntersectionBCs(:,4) == 0 )) THEN      
+        ALLOCATE( NodeDone( Mesh % NumberOfNodes ) )
+      END IF
       CALL CreateIntersection2D(.TRUE.,NewCnt)
       IF(NewCnt==0) THEN
         CALL Info('CreateIntersectionBCs','Could not find any additional interface elements!')
@@ -29987,147 +30584,208 @@ CONTAINS
     IF( InfoActive(10) ) THEN
       DO i=1,newbcs
         CALL Info('CreateIntersectionBCs','New boundary '//I2S(IntersectionBCs(i,1))//&
-            ' with '//I2S(IntersectionBCs(i,4))//' elements')
+            ' with '//I2S(IntersectionBCs(i,5))//' elements')
       END DO
     END IF
 
-1   IF(Mesh % MeshDim == 3 .AND. .NOT. EdgesPresent ) THEN
+1   IF(NeedEdges .AND. .NOT. EdgesPresent ) THEN
       CALL ReleaseMeshEdgeTables( Mesh )
       CALL ReleaseMeshFaceTables( Mesh )
     END IF
       
     CALL Info('CreateIntersectionBCs','All done!',Level=12)
 
-
   CONTAINS
 
+
     ! Find intersection between 2D boundaries i.e. the result will
-    ! be a new 1D boundary.
+    ! be a new 1D boundary, or between 3D bodies and the result will
+    ! be a new 2D boundary. 
     !-------------------------------------------------------------
     SUBROUTINE CreateIntersection3D(AllocateOnly,NewCnt)
       LOGICAL :: AllocateOnly
       INTEGER :: NewCnt
-      
+      LOGICAL :: BulkMode
+            
       EdgeDone = .FALSE.
       NewCnt = 0
 
-      DO t=1,nbc
-        j = BoundaryId(t) 
-        IF(j==0) CYCLE
-        Element => Mesh % Elements(nbulk+t)
-        NodeIndexes => Element % NodeIndexes
-        n = Element % Type % NumberOfNodes
+      DO l=1,newbcs
+        BulkMode = ( IntersectionBCs(l,4) == 1)
+        
+        IF( BulkMode ) THEN
+          DO t=1,Mesh % NumberOfFaces
+            Element => Mesh % Faces(t)
+            IF(.NOT. ASSOCIATED(Element % BoundaryInfo)) CYCLE
 
-        DO t2=t+1,nbc
-          j2 = BoundaryId(t2) 
-          IF(j2==0) CYCLE
-          IF(j==j2) CYCLE
-          Element2 => Mesh % Elements(nbulk+t2)
-          NodeIndexes2 => Element2 % NodeIndexes
-          n2 = Element2 % TYPE % NumberOfNodes
-
-          ! Do we have any common nodes. Some are required...
-          k = 0
-          DO i=1,n
-            IF( ANY(NodeIndexes(i) == NodeIndexes2(1:n2) ) ) k = k+1
-          END DO
-          IF(k<2) CYCLE
-          
-          DO l=1,newbcs
-            ! Do we have a suitable pair of indexes for the parents
-            IF( .NOT. ( ( IntersectionBCs(l,2) == j .AND. IntersectionBCs(l,3) == j2 ) .OR. &
-                ( IntersectionBCs(l,2) == j2 .AND. IntersectionBCs(l,3) == j ) ) ) CYCLE
-            
-            EdgeIndexes => Element % EdgeIndexes
-            IF(ASSOCIATED(EdgeIndexes)) THEN
-              Face => Element
-            ELSE
-              Face => NULL()
-              IF( ASSOCIATED( Element % BoundaryInfo % Left ) ) THEN
-                Face => Find_Face(Mesh, Element % BoundaryInfo % Left, Element )                
-              END IF
-              IF(.NOT. ASSOCIATED(Face) ) THEN
-                IF( ASSOCIATED( Element % BoundaryInfo % Right ) ) THEN
-                  Face => Find_Face(Mesh, Element % BoundaryInfo % Right, Element )
-                END IF
-              END IF
-              IF(ASSOCIATED( Face ) ) THEN
-                EdgeIndexes => Face % EdgeIndexes
-              ELSE
-                CALL Fatal('CreateIntersectionBCs','EdgeIndexes not associated!')
-              END IF
+            j = 0
+            IF(ASSOCIATED(Element % BoundaryInfo % Left)) THEN
+              j = Element % BoundaryInfo % Left % BodyId
+            END IF
+            j2 = 0
+            IF(ASSOCIATED(Element % BoundaryInfo % Right)) THEN
+              j2 = Element % BoundaryInfo % Right % BodyId
             END IF
 
-            ! This is a probably candidate as we have two 2D elements of proper type
-            ! sharing at least two nodes. Just have to find for which edges the intersection
-            ! applies. It could sometimes be a false positive also. 
-            DO i=1,Face % TYPE % NumberOfEdges
-              e = EdgeIndexes(i)          
-              IF( EdgeDone(e) ) CYCLE
+            IF(j == j2) CYCLE
+            IF( ALL( IntersectionBCs(l,2:3) /= j)) CYCLE
+            IF( ALL( IntersectionBCs(l,2:3) /= j2)) CYCLE
 
-              EdgeIndexes2 => Element2 % EdgeIndexes
-              IF(ASSOCIATED(EdgeIndexes2)) THEN
-                Face2 => Element2
+            NodeIndexes => Element % NodeIndexes
+            n = Element % TYPE % NumberOfNodes
+
+            NewCnt = NewCnt + 1
+
+            IF(.NOT. AllocateOnly ) THEN
+              Enew => Mesh % Elements(nold+NewCnt)        
+              ALLOCATE(Enew % BoundaryInfo)         
+              Enew % PartIndex = Element % PartIndex
+              Enew % ElementIndex = nold + NewCnt
+              Enew % TYPE => GetElementType(Element % Type % ElementCode)
+
+              CALL AllocateVector( ENew % NodeIndexes, n)
+              Enew % NodeIndexes = NodeIndexes
+              Enew % NDOFs = 1
+              Enew % BoundaryInfo % Constraint = IntersectionBCs(l,1)
+              IF(j==0) THEN
+                Enew % BoundaryInfo % Left => NULL()
               ELSE
-                Face2 => NULL()
-                IF( ASSOCIATED( Element2 % BoundaryInfo % Left ) ) THEN
-                  Face2 => Find_Face(Mesh, Element2 % BoundaryInfo % Left, Element2 )
+                Enew % BoundaryInfo % Left => Element % BoundaryInfo % Left 
+              END IF
+              IF(j2==0) THEN
+                Enew % BoundaryInfo % Right => NULL()
+              ELSE
+                Enew % BoundaryInfo % Right => Element % BoundaryInfo % Right 
+              END IF
+
+              Enew % EdgeIndexes => NULL()
+              Enew % FaceIndexes => NULL()
+              Enew % PDefs => NULL()
+              Enew % BubbleIndexes => NULL()
+
+              IntersectionBCs(l,5) = IntersectionBCs(l,5) + 1
+            END IF
+          END DO
+        ELSE
+          DO t=1,nbc
+            j = BoundaryId(t) 
+            IF(j==0) CYCLE
+            ! Do we have a suitable pair of indexes for the parents
+            IF( ALL( IntersectionBCs(l,2:3) /= j)) CYCLE
+
+            Element => Mesh % Elements(nbulk+t)
+            NodeIndexes => Element % NodeIndexes
+            n = Element % TYPE % NumberOfNodes
+
+            DO t2=t+1,nbc
+              j2 = BoundaryId(t2) 
+              IF(j2==0) CYCLE
+              IF(j==j2) CYCLE
+              IF( ALL( IntersectionBCs(l,2:3) /= j2)) CYCLE
+
+              Element2 => Mesh % Elements(nbulk+t2)
+              NodeIndexes2 => Element2 % NodeIndexes
+              n2 = Element2 % TYPE % NumberOfNodes
+
+              ! Do we have any common nodes. Some are required...
+              k = 0
+              DO i=1,n
+                IF( ANY(NodeIndexes(i) == NodeIndexes2(1:n2) ) ) k = k+1
+              END DO
+              IF(k<2) CYCLE
+
+              EdgeIndexes => Element % EdgeIndexes
+              IF(ASSOCIATED(EdgeIndexes)) THEN
+                Face => Element
+              ELSE
+                Face => NULL()
+                IF( ASSOCIATED( Element % BoundaryInfo % Left ) ) THEN
+                  Face => Find_Face(Mesh, Element % BoundaryInfo % Left, Element )                
                 END IF
-                IF(.NOT. ASSOCIATED(Face2) ) THEN
-                  IF( ASSOCIATED( Element2 % BoundaryInfo % Right ) ) THEN
-                    Face2 => Find_Face(Mesh, Element2 % BoundaryInfo % Right, Element2 )
+                IF(.NOT. ASSOCIATED(Face) ) THEN
+                  IF( ASSOCIATED( Element % BoundaryInfo % Right ) ) THEN
+                    Face => Find_Face(Mesh, Element % BoundaryInfo % Right, Element )
                   END IF
                 END IF
-                IF(ASSOCIATED( Face2 ) ) THEN
-                  EdgeIndexes2 => Face2 % EdgeIndexes
+                IF(ASSOCIATED( Face ) ) THEN
+                  EdgeIndexes => Face % EdgeIndexes
                 ELSE
-                  CALL Fatal('CreateIntersectionBCs','EdgeIndexes2 not associated!')
+                  CALL Fatal('CreateIntersectionBCs','EdgeIndexes not associated!')
                 END IF
               END IF
 
-              DO i2=1,Face2 % TYPE % NumberOfEdges
-                e2 = EdgeIndexes2(i2)
+              ! This is a probably candidate as we have two 2D elements of proper type
+              ! sharing at least two nodes. Just have to find for which edges the intersection
+              ! applies. It could sometimes be a false positive also. 
+              DO i=1,Face % TYPE % NumberOfEdges
+                e = EdgeIndexes(i)          
+                IF( EdgeDone(e) ) CYCLE
 
-                ! Ok, we have a hit. Same edge appearing in the proper parent
-                ! boundary elements. Create the actual boundary element only if
-                ! we have already allocated for it. 
-                IF(e==e2) THEN
-                  EdgeDone(e) = .TRUE.
-                  NewCnt = NewCnt + 1
-
-                  IF(.NOT. AllocateOnly ) THEN
-                    Enew => Mesh % Elements(nold+NewCnt)        
-                    ALLOCATE(Enew % BoundaryInfo)         
-                    Enew % PartIndex = Element % PartIndex
-                    Enew % ElementIndex = nold + NewCnt
-                    Enew % TYPE => Mesh % Edges(e) % TYPE
-
-                    m = Enew % TYPE % NumberOfNodes
-                    CALL AllocateVector( ENew % NodeIndexes, m)
-                    Enew % NodeIndexes = Mesh % Edges(e) % NodeIndexes
-                    Enew % NDOFs = m
-                    Enew % BoundaryInfo % Constraint = IntersectionBCs(l,1)
-                    Enew % BoundaryInfo % Left => Element
-                    Enew % BoundaryInfo % Right => Element2
-
-                    Enew % EdgeIndexes => NULL()
-                    Enew % FaceIndexes => NULL()
-                    Enew % PDefs => NULL()
-                    Enew % BubbleIndexes => NULL()
-
-                    ! Just a simple counter for the new BCs of this type
-                    IntersectionBCs(l,4) = IntersectionBCs(l,4) + 1
+                EdgeIndexes2 => Element2 % EdgeIndexes
+                IF(ASSOCIATED(EdgeIndexes2)) THEN
+                  Face2 => Element2
+                ELSE
+                  Face2 => NULL()
+                  IF( ASSOCIATED( Element2 % BoundaryInfo % Left ) ) THEN
+                    Face2 => Find_Face(Mesh, Element2 % BoundaryInfo % Left, Element2 )
                   END IF
-
-                  EXIT
+                  IF(.NOT. ASSOCIATED(Face2) ) THEN
+                    IF( ASSOCIATED( Element2 % BoundaryInfo % Right ) ) THEN
+                      Face2 => Find_Face(Mesh, Element2 % BoundaryInfo % Right, Element2 )
+                    END IF
+                  END IF
+                  IF(ASSOCIATED( Face2 ) ) THEN
+                    EdgeIndexes2 => Face2 % EdgeIndexes
+                  ELSE
+                    CALL Fatal('CreateIntersectionBCs','EdgeIndexes2 not associated!')
+                  END IF
                 END IF
-              END DO
 
+                DO i2=1,Face2 % TYPE % NumberOfEdges
+                  e2 = EdgeIndexes2(i2)
+
+                  ! Ok, we have a hit. Same edge appearing in the proper parent
+                  ! boundary elements. Create the actual boundary element only if
+                  ! we have already allocated for it. 
+                  IF(e==e2) THEN
+                    EdgeDone(e) = .TRUE.
+                    NewCnt = NewCnt + 1
+
+                    IF(.NOT. AllocateOnly ) THEN
+                      Enew => Mesh % Elements(nold+NewCnt)        
+                      ALLOCATE(Enew % BoundaryInfo)         
+                      Enew % PartIndex = Element % PartIndex
+                      Enew % ElementIndex = nold + NewCnt
+
+                      Enew % TYPE => Mesh % Edges(e) % TYPE
+
+                      m = Enew % TYPE % NumberOfNodes
+                      CALL AllocateVector( ENew % NodeIndexes, m)
+                      Enew % NodeIndexes = Mesh % Edges(e) % NodeIndexes
+                      Enew % NDOFs = m
+                      Enew % BoundaryInfo % Constraint = IntersectionBCs(l,1)
+                      Enew % BoundaryInfo % Left => Element
+                      Enew % BoundaryInfo % Right => Element2
+
+                      Enew % EdgeIndexes => NULL()
+                      Enew % FaceIndexes => NULL()
+                      Enew % PDefs => NULL()
+                      Enew % BubbleIndexes => NULL()
+
+                      ! Just a simple counter for the new BCs of this type
+                      IntersectionBCs(l,4) = IntersectionBCs(l,4) + 1
+                    END IF
+
+                    EXIT
+                  END IF
+                END DO
+
+              END DO
             END DO
           END DO
-        END DO
+        END IF
       END DO
-
+        
       ! There is nothing to do since no new elements will be created.
       IF( NewCnt == 0 ) RETURN
               
@@ -30152,6 +30810,18 @@ CONTAINS
           END IF
         END DO
 
+        DO t=1,Mesh % NumberOfFaces
+          Element => Mesh % Faces(t)
+          IF(ASSOCIATED(Element % BoundaryInfo % Left)) THEN
+            Element % BoundaryInfo % Left => &
+                NewElements(Element % BoundaryInfo % Left % ElementIndex)
+          END IF
+          IF(ASSOCIATED(Element % BoundaryInfo % Right)) THEN
+            Element % BoundaryInfo % Right => &
+                NewElements(Element % BoundaryInfo % Right % ElementIndex)
+          END IF
+        END DO
+                
         DEALLOCATE(Mesh % Elements)
         Mesh % Elements => NewElements
         Mesh % NumberOfBoundaryElements = nbc + NewCnt
@@ -30159,87 +30829,146 @@ CONTAINS
 
     END SUBROUTINE CreateIntersection3D
 
-
+    
     ! Find intersection between 1D boundaries i.e. the result will
     ! be a new 0D boundary (=node). 
     !-------------------------------------------------------------
     SUBROUTINE CreateIntersection2D(AllocateOnly,NewCnt)
       LOGICAL :: AllocateOnly
       INTEGER :: NewCnt
+      LOGICAL :: BulkMode
       
-      NodeDone = .FALSE.
       NewCnt = 0
 
-      DO t=1,nbc
-        j = BoundaryId(t) 
-        IF(j==0) CYCLE
-        Element => Mesh % Elements(nbulk+t)
-        NodeIndexes => Element % NodeIndexes
-        n = Element % Type % NumberOfNodes
+      DO l=1,newbcs
+        BulkMode = ( IntersectionBCs(l,4) == 1)
+        
+        IF( BulkMode ) THEN
+          DO t=1,Mesh % NumberOfEdges
+            Element => Mesh % Edges(t)
+            IF(.NOT. ASSOCIATED(Element % BoundaryInfo)) CYCLE
 
-        DO t2=t+1,nbc
-          j2 = BoundaryId(t2) 
-          IF(j==j2 .OR. j2==0) CYCLE
-          Element2 => Mesh % Elements(nbulk+t2)
-          NodeIndexes2 => Element2 % NodeIndexes
-          n2 = Element2 % TYPE % NumberOfNodes
-
-          
-          ! Do we have any common nodes. Some are required...
-          k = 0
-          e = 0
-          DO i=1,n
-            IF( ANY(NodeIndexes(i) == NodeIndexes2(1:n2) ) ) THEN
-              e = NodeIndexes(i)
-              k = k+1
+            j = 0
+            IF(ASSOCIATED(Element % BoundaryInfo % Left)) THEN
+              j = Element % BoundaryInfo % Left % BodyId
             END IF
-          END DO
-          IF(k/=1) CYCLE
 
+            j2 = 0
+            IF(ASSOCIATED(Element % BoundaryInfo % Right)) THEN
+              j2 = Element % BoundaryInfo % Right % BodyId
+            END IF
 
-          DO l=1,newbcs
+            IF(j == j2) CYCLE
+            IF( ALL( IntersectionBCs(l,2:3) /= j)) CYCLE
+            IF( ALL( IntersectionBCs(l,2:3) /= j2)) CYCLE
 
-            ! Do we have a suitable pair of indexes for the parents
+            NodeIndexes => Element % NodeIndexes
+            n = Element % TYPE % NumberOfNodes
 
-            IF( .NOT. ( ( IntersectionBCs(l,2) == j .AND. IntersectionBCs(l,3) == j2 ) .OR. &
-                ( IntersectionBCs(l,2) == j2 .AND. IntersectionBCs(l,3) == j ) ) ) CYCLE
-
-            
-            NodeDone(e) = .TRUE.
             NewCnt = NewCnt + 1
-            
+
             IF(.NOT. AllocateOnly ) THEN
               Enew => Mesh % Elements(nold+NewCnt)        
               ALLOCATE(Enew % BoundaryInfo)         
-              Enew % PartIndex = Element % PartIndex
+              !Enew % PartIndex = Element % PartIndex
               Enew % ElementIndex = nold + NewCnt
-              Enew % TYPE => GetElementType(101)
-              
-              CALL AllocateVector( ENew % NodeIndexes, 1)
-              Enew % NodeIndexes = e
+              Enew % TYPE => GetElementType(Element % Type % ElementCode)
+
+              CALL AllocateVector( ENew % NodeIndexes, n)
+              Enew % NodeIndexes = NodeIndexes
               Enew % NDOFs = 1
               Enew % BoundaryInfo % Constraint = IntersectionBCs(l,1)
-              Enew % BoundaryInfo % Left => Element
-              Enew % BoundaryInfo % Right => Element2
-              
+              IF(j==0) THEN
+                Enew % BoundaryInfo % Left => NULL()
+              ELSE
+                Enew % BoundaryInfo % Left => Element % BoundaryInfo % Left 
+              END IF
+              IF(j2==0) THEN
+                Enew % BoundaryInfo % Right => NULL()
+              ELSE
+                Enew % BoundaryInfo % Right => Element % BoundaryInfo % Right 
+              END IF
+
               Enew % EdgeIndexes => NULL()
               Enew % FaceIndexes => NULL()
               Enew % PDefs => NULL()
               Enew % BubbleIndexes => NULL()
 
-              IntersectionBCs(l,4) = IntersectionBCs(l,4) + 1
+              IntersectionBCs(l,5) = IntersectionBCs(l,5) + 1
             END IF
-            
-            EXIT
           END DO
-        END DO
+        ELSE
+          DO t=1,nbc
+            NodeDone = .FALSE.
+            j = BoundaryId(t) 
+            IF(j==0) CYCLE
+            IF( ALL( IntersectionBCs(l,2:3) /= j)) CYCLE
+
+            Element => Mesh % Elements(nbulk+t)
+            NodeIndexes => Element % NodeIndexes
+            n = Element % TYPE % NumberOfNodes
+
+            DO t2=t+1,nbc
+              j2 = BoundaryId(t2)
+              IF(j2==0) CYCLE
+
+              IF(j==j2) CYCLE
+              IF( ALL( IntersectionBCs(l,2:3) /= j2)) CYCLE
+
+              Element2 => Mesh % Elements(nbulk+t2)
+              NodeIndexes2 => Element2 % NodeIndexes
+              n2 = Element2 % TYPE % NumberOfNodes
+
+              ! Ok, so BC elements t and t2 have suitable indeces. 
+              ! Do we have any common nodes. Some are required...
+              k = 0
+              e = 0
+              DO i=1,n
+                IF( ANY(NodeIndexes(i) == NodeIndexes2(1:n2) ) ) THEN
+                  e = NodeIndexes(i)
+                  k = k+1
+                END IF
+              END DO
+              IF(k/=1) CYCLE
+
+              IF(NodeDone(e)) CYCLE
+              NodeDone(e) = .TRUE.
+              NewCnt = NewCnt + 1
+              
+              PRINT *,'BC node:',l,t,t2,e,n
+              
+              IF(.NOT. AllocateOnly ) THEN
+                Enew => Mesh % Elements(nold+NewCnt)        
+                ALLOCATE(Enew % BoundaryInfo)         
+                Enew % PartIndex = Element % PartIndex
+                Enew % ElementIndex = nold + NewCnt
+                !Enew % TYPE => Element % Type 
+                Enew % TYPE => GetElementType(101)
+
+                CALL AllocateVector( ENew % NodeIndexes, 1)
+                Enew % NodeIndexes = e
+                Enew % NDOFs = 1
+                Enew % BoundaryInfo % Constraint = IntersectionBCs(l,1)
+                Enew % BoundaryInfo % Left => Element
+                Enew % BoundaryInfo % Right => Element2
+
+                Enew % EdgeIndexes => NULL()
+                Enew % FaceIndexes => NULL()
+                Enew % PDefs => NULL()
+                Enew % BubbleIndexes => NULL()
+                
+                IntersectionBCs(l,5) = IntersectionBCs(l,5) + 1
+              END IF
+            END DO
+          END DO
+        END IF
       END DO
-      
+
       IF( NewCnt == 0 ) RETURN
               
       IF(AllocateOnly) THEN
         ALLOCATE( NewElements(nold + NewCnt ) )
-        CALL Info('CreateIntersectionBCs','Allocated for '//I2S(NewCnt)//' new 0D boundary elements!',Level=6)
+        CALL Info('CreateIntersectionBCs','Allocated for '//I2S(NewCnt)//' new boundary elements in 2D!',Level=6)
         
         NewElements(1:nold) = Mesh % Elements(1:nold)
         
@@ -30258,11 +30987,23 @@ CONTAINS
           END IF
         END DO
 
+        DO t=1,Mesh % NumberOfEdges
+          Element => Mesh % Edges(t)
+          IF(ASSOCIATED(Element % BoundaryInfo % Left)) THEN
+            Element % BoundaryInfo % Left => &
+                NewElements(Element % BoundaryInfo % Left % ElementIndex)
+          END IF
+          IF(ASSOCIATED(Element % BoundaryInfo % Right)) THEN
+            Element % BoundaryInfo % Right => &
+                NewElements(Element % BoundaryInfo % Right % ElementIndex)
+          END IF
+        END DO
+        
         DEALLOCATE(Mesh % Elements)
         Mesh % Elements => NewElements
         Mesh % NumberOfBoundaryElements = nbc + NewCnt
       END IF
-
+      
     END SUBROUTINE CreateIntersection2D
     
     

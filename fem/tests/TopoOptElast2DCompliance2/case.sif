@@ -1,0 +1,161 @@
+!--------------------------------------------------------
+! Test case for topology optimization.
+! Peter Råback & Stefan Hiemer, 2024.
+!
+! This case is the basic compliance minimization problem of a 2D
+! elastic structure, see e.g.
+! O. Sigmund, “A 99 line topology optimization code written in matlab,”
+! Structural and multidisciplinary optimization, vol. 21, pp. 120–127, 200.
+!
+! This test case with
+! - neighbourhood based density filter
+!
+! Note that the test is not run to the end. Add SS iterations
+! and resolution for better solution. 
+!-------------------------------------------------------------
+
+$L=60.0
+$H=L/3
+$rmax=0.04*L
+$pexp=3.0
+$rhomin=1.0e-7
+$Vfrac=0.5
+$wmin=1.0e-6
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "rect"
+  Include Path ""
+  Results Directory "results"
+End
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = Cartesian
+  Simulation Type = Steady state
+  Steady State Max Iterations = 5 !1000
+  Output Intervals = 1
+
+!  Post File = a.vtu 
+!  vtu: Save Bulk Only = Logical True
+!  vtu: ascii output = logical True
+
+  Mesh Levels = 1
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Body Property 1"
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Initial Condition 1
+  Name = "Guess"
+  topo rho = Real $Vfrac
+  topo mult = Real $Vfrac^pexp
+End
+
+Solver 1
+  Equation = LinearElasticity
+  Procedure = "StressSolve" "StressSolver"
+  Variable = -dofs 2 Displacement
+
+  Nonlinear System Max Iterations = 1
+
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+ 
+  Local Matrix Identical = Logical False
+  Local Matrix Storage = Logical True  
+
+  Matrix Multiplier Name = String "topo mult"
+
+  Optimize Bandwidth = False
+  Solver Timing = True
+
+  Steady State Convergence Tolerance = 1.0e-4
+  Displace Mesh = False
+End
+
+
+Solver 2
+  Equation = TopoOpt
+  Procedure = "TopoOpt" "TopoOpt"
+
+  Linear System Solver = direct
+  Linear System Direct Method = MUMPS
+
+  Filter Method = String "density"  ! density, sensitivity, none
+  Sensitivity Filter Threshold = Real $wmin
+
+! If you want to use PDE filter activate the following:
+!  PDE Filter Diffusion Constant(2) = Real 1.0 1.0 
+!  Variable = xNodal
+
+  Filter Type = String "simple" ! distance, pde, simple
+! Distance Filter Radius = Real $rmax
+  Simple Filter Iterations = Integer 3
+
+  Penalty Exponent = Real $pexp
+  Minimum Relative Density = Real $rhomin
+  Volume Fraction = Real $Vfrac
+
+! Convergence tolerance for objective function.
+  Steady State Convergence Tolerance = 1.0e-5
+  Bisection Search Tolerance = Real 1.0e-3
+
+  Solver Timing = True
+End
+
+
+Solver 3
+  Exec Solver = After Simulation
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Filename = "f.dat"
+End
+
+Equation 1
+  Name = "Elast"
+!  Calculate Stresses = True
+  Active Solvers(2) = 1 2
+
+! This has been checked!
+  Plane Stress = True
+End
+
+Material 1
+  Name = "PlaneStuff"
+  Youngs modulus = 1.0
+  Poisson ratio = 0.3
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  Name = "Symmetry"
+  Displacement 1 = 0.0
+End
+
+Boundary Condition 2
+  Target Coordinates(1,2) = 0.0 $H$
+  Name = "PointLoad"
+  Displacement 2 Load = Real -1.0
+End
+
+Boundary Condition 3
+  Target Coordinates(1,2) = $L$ 0.0 
+  Name = "Fix"
+!  Displacement 1 = 0.0
+  Displacement 2 = 0.0
+End
+
+! After 5 SS iterations
+Solver 1 :: Reference Norm = 1.57147988E+02
+Solver 2 :: Reference Norm = 3.38506813E+02
+
+! After 81 SS iterations
+!Solver 1 :: Reference Norm = 1.07853500E+02
+!Solver 2 :: Reference Norm = 2.28797734E+02
+

@@ -272,6 +272,7 @@ CONTAINS
         Residual = rnorm / bnorm
         IF( MOD(k,OutputInterval) == 0) THEN
           WRITE (*, '(I8, 2E11.4)') k, rnorm, residual
+          CALL FLUSH(6)
         END IF
         
         Converged = (Residual < MinTolerance) 
@@ -376,6 +377,7 @@ CONTAINS
         
         IF( MOD(i,OutputInterval) == 0) THEN
           WRITE (*, '(I8, 2E11.4)') i, rnorm, residual
+          CALL FLUSH(6)
         END IF
         
         Converged = (Residual < MinTolerance) 
@@ -503,6 +505,7 @@ CONTAINS
         
         IF( MOD(k,OutputInterval) == 0) THEN
           WRITE (*, '(I8, 2E11.4)') k, rnorm, residual
+          CALL FLUSH(6)
         END IF
         
         Converged = (Residual < MinTolerance) 
@@ -1101,6 +1104,7 @@ CONTAINS
 
         IF( MOD(Round,OutputInterval) == 0) THEN
           WRITE (*, '(I8, 2E11.4)') Round, rnrm, errorind
+          CALL FLUSH(6)
         END IF
         
         IF( Robust ) THEN
@@ -1136,10 +1140,12 @@ CONTAINS
         IF(OutputInterval /= HUGE(OutputInterval)) THEN
           WRITE(*,'(A,I8,E11.4,I8,2E11.4)') 'BiCGStabl robust: ',&
               MIN(MaxRounds,Round), BestNorm, BestIter, rnrm, errorind
+          CALL FLUSH(6)
         END IF
       ELSE
         IF(OutputInterval /= HUGE(OutputInterval)) THEN
           WRITE (*, '(A, I8, 2E11.4)') 'BiCGStabl: ', MIN(MaxRounds,Round), rnrm, errorind
+          CALL FLUSH(6)
         END IF
       END IF
             
@@ -1399,7 +1405,8 @@ CONTAINS
            Residual = stopcfun(x,b,r,ipar,dpar)
            IF( MOD(k,OutputInterval) == 0) THEN
              WRITE (*, '(A, I6, 2E12.4)') '   gcr:',k, rnorm / bnorm, residual
-           END IF           
+             CALL FLUSH(6)
+           END IF
          ELSE
            Residual = rnorm / bnorm
            IF( MOD(k,OutputInterval) == 0) THEN
@@ -1408,6 +1415,7 @@ CONTAINS
              ELSE
                WRITE (*, '(A, I6, 2E12.4)') '   gcr:',k, residual, beta
              END IF
+             CALL FLUSH(6)
            END IF
          END IF
            
@@ -1848,6 +1856,7 @@ CONTAINS
         
         IF( MOD(iter,OutputInterval) == 0) THEN
           WRITE (*, '(I8, E11.4)') iter, errorind
+          CALL FLUSH(6)
         END IF
 
         IF( Robust ) THEN
@@ -1890,11 +1899,13 @@ CONTAINS
         IF(OutputInterval /= HUGE(OutputInterval)) THEN
           WRITE(*,'(A,I8,E11.4,I8,E11.4)') 'Idrs robust: ',&
               iter, BestNorm, BestIter, errorind
+          CALL FLUSH(6)
         END IF
       ELSE
         IF(OutputInterval /= HUGE(OutputInterval)) THEN
           WRITE(*,'(A,I8,E11.4)') 'Idrs: ',&
               iter, errorind
+          CALL FLUSH(6)
         END IF
       END IF
       
@@ -2071,11 +2082,13 @@ CONTAINS
            Residual = stopcfun(x,b,r,ipar,dpar)
            IF( MOD(k,OutputInterval) == 0) THEN
              WRITE (*, '(A, I6, 2E12.4)') '   gcr:',k, rnorm / bnorm, residual
-           END IF           
+             CALL FLUSH(6)
+           END IF
          ELSE
            Residual = rnorm / bnorm
            IF( MOD(k,OutputInterval) == 0) THEN
              WRITE (*, '(A, I8, 3ES12.4,A)') '   gcrz:',k, residual, beta,'i'
+             CALL FLUSH(6)
            END IF
          END IF
         
@@ -2095,7 +2108,8 @@ CONTAINS
                CALL Info('WARNING', Message, Level=2)
                WRITE( Message, * ) 'True residual norm = ', TrueResNorm
                CALL Info('WARNING', Message, Level=2)   
-            END IF
+               CALL FLUSH(6)
+             END IF
          END IF 
          Diverged = (Residual > MaxTolerance) .OR. (Residual /= Residual)    
          IF( Converged .OR. Diverged) EXIT
@@ -2330,17 +2344,16 @@ CONTAINS
          rwork(l+1,yl) = -zone
 
          ! --- Convex combination
+         call zmv( rwork(1:l+1,z:z+l), rwork(1:l+1,y0), rwork(1:l+1,y), l+1 )
+         kappa0 = SQRT( ABS(zdotc(l+1, rwork(1:l+1,y0), 1, rwork(1:l+1,y), 1)) )  ! replace zdotc
 
-         CALL zhemv ('u', l+1, zone, rwork(1:l+1,z:z+l), l+1, &
-              rwork(1:l+1,y0), 1, zzero, rwork(1:l+1,y), 1)
-         kappa0 = SQRT( ABS(zdotc(l+1, rwork(1:l+1,y0), 1, rwork(1:l+1,y), 1)) ) ! replace zdotc
-         CALL zhemv ('u', l+1, zone, rwork(1:l+1,z:z+l), l+1, &
-              rwork(1:l+1,yl), 1, zzero, rwork(1:l+1,y), 1)
+         call zmv( rwork(1:l+1,z:z+l), rwork(1:l+1,yl), rwork(1:l+1,y), l+1 )
          kappal = SQRT( ABS(zdotc(l+1, rwork(1:l+1,yl), 1, rwork(1:l+1,y), 1)) )  ! replace zdotc
-         CALL zhemv ('u', l+1, zone, rwork(1:l+1,z:z+l), l+1, &
-              rwork(1:l+1,y0), 1, zzero, rwork(1:l+1,y), 1)
-         varrho = zdotc(l+1, rwork(1:l+1,yl), 1, rwork(1:l+1,y), 1) / &            ! replace zdotc
+
+         call zmv( rwork(1:l+1,z:z+l), rwork(1:l+1,y0), rwork(1:l+1,y), l+1 )
+         varrho = zdotc(l+1, rwork(1:l+1,yl), 1, rwork(1:l+1,y), 1) / &           ! replace zdotc
               (kappa0*kappal)
+
          hatgamma = varrho/ABS(varrho) * MAX(ABS(varrho),7d-1) * &
               kappa0/kappal
          rwork(1:l+1,y0) = rwork(1:l+1,y0) - hatgamma * rwork(1:l+1,yl)
@@ -2354,8 +2367,7 @@ CONTAINS
             work(1:n,r) = work(1:n,r) - rwork(j+1,y0) * work(1:n,r+j)
          ENDDO
 
-         CALL zhemv ('u', l+1, zone, rwork(1:l+1,z:z+l), l+1, &
-              rwork(1:l+1,y0), 1, zzero, rwork(1:l+1,y), 1)
+         call zmv( rwork(1:l+1,z:z+l), rwork(1:l+1,y0), rwork(1:l+1,y), l+1 )
          rnrm = SQRT( ABS(zdotc(l+1, rwork(1:l+1,y0), 1, rwork(1:l+1,y), 1)) )
 
          !---------------------------------------
@@ -2394,7 +2406,8 @@ CONTAINS
 
          errorind = rnrm/bnrm
          IF( MOD(Round,OutputInterval) == 0) THEN
-            WRITE (*, '(I8, E11.4)') Round, errorind
+           WRITE (*, '(I8, E11.4)') Round, errorind
+           CALL FLUSH(6)
          END IF
 
          Converged = (errorind < Tol) 
@@ -2403,7 +2416,8 @@ CONTAINS
       END DO
 
       IF( EarlyExit .AND. (OutputInterval/=HUGE(OutputInterval)) ) THEN
-         WRITE (*, '(I8, E11.4)') Round, errorind         
+        WRITE (*, '(I8, E11.4)') Round, errorind
+        CALL FLUSH(6)
       END IF
 
       !------------------------------------------------------------
@@ -2416,6 +2430,71 @@ CONTAINS
     !----------------------------------------------------------
     END SUBROUTINE ComplexBiCGStabl
     !----------------------------------------------------------
+
+!--------------------------------------------------------------
+
+    SUBROUTINE zmv(a,x,y,n)
+      integer, INTENT(in) :: n
+      complex(kind=dp), INTENT(in)  ::a(n,n), x(n)
+      complex(kind=dp), INTENT(out) ::y(n)
+ 
+      complex(kind=dp), parameter :: zone  = cmplx(1._dp, 0._dp,kind=dp)
+      complex(kind=dp), parameter :: zzero = cmplx(0._dp, 0._dp,kind=dp)
+    
+      IF(n>8) THEN
+        CALL zhemv ('u', n, zone, a, n, x, 1, zzero, y, 1)
+        RETURN
+      END IF
+
+      y(1) = a(1,1)*x(1) + a(1,2)*x(2) + a(1,3)*x(3)
+      y(2) = a(2,1)*x(1) + a(2,2)*x(2) + a(2,3)*x(3)
+      y(3) = a(3,1)*x(1) + a(3,2)*x(2) + a(3,3)*x(3)
+      IF(n==3) RETURN
+
+      y(1) = y(1) + a(1,4)*x(4)
+      y(2) = y(2) + a(2,4)*x(4)
+      y(3) = y(3) + a(3,4)*x(4)
+      y(4) = a(4,1)*x(1)+a(4,2)*x(2)+a(4,3)*x(3)+a(4,4)*x(4)
+      IF(n==4) RETURN
+
+      y(1) = y(1) + a(1,5)*x(5)
+      y(2) = y(2) + a(2,5)*x(5)
+      y(3) = y(3) + a(3,5)*x(5)
+      y(4) = y(4) + a(4,5)*x(5)
+      y(5) = a(5,1)*x(1)+a(5,2)*x(2)+a(5,3)*x(3)+a(5,4)*x(4)+ &
+             a(5,5)*x(5)
+      IF(n==5) RETURN
+
+      y(1) = y(1) + a(1,6)*x(6)
+      y(2) = y(2) + a(2,6)*x(6)
+      y(3) = y(3) + a(3,6)*x(6)
+      y(4) = y(4) + a(4,6)*x(6)
+      y(5) = y(5) + a(5,6)*x(6)
+      y(6) = a(6,1)*x(1)+a(6,2)*x(2)+a(6,3)*x(3)+a(6,4)*x(4)+ &
+             a(6,5)*x(5)+a(6,6)*x(6)
+      IF(n==6) RETURN
+
+      y(1) = y(1) + a(1,7)*x(7)
+      y(2) = y(2) + a(2,7)*x(7)
+      y(3) = y(3) + a(3,7)*x(7)
+      y(4) = y(4) + a(4,7)*x(7)
+      y(5) = y(5) + a(5,7)*x(7)
+      y(6) = y(6) + a(6,7)*x(7)
+      y(7) = a(7,1)*x(1)+a(7,2)*x(2)+a(7,3)*x(3)+a(7,4)*x(4)+ &
+             a(7,5)*x(5)+a(7,6)*x(6)+a(7,7)*x(7)
+      IF(n==7) RETURN
+
+      y(1) = y(1) + a(1,8)*x(8)
+      y(2) = y(2) + a(2,8)*x(8)
+      y(3) = y(3) + a(3,8)*x(8)
+      y(4) = y(4) + a(4,8)*x(8)
+      y(5) = y(5) + a(5,8)*x(8)
+      y(6) = y(6) + a(6,8)*x(8)
+      y(7) = y(7) + a(7,8)*x(8)
+      y(8) = a(8,1)*x(1)+a(8,2)*x(2)+a(8,3)*x(3)+a(8,4)*x(4)+ &
+             a(8,5)*x(5)+a(8,6)*x(6)+a(8,7)*x(7)+a(8,8)*x(8)
+
+    END SUBROUTINE zmv
 
 !--------------------------------------------------------------
   END SUBROUTINE itermethod_z_bicgstabl
@@ -2652,6 +2731,7 @@ CONTAINS
           
           IF( MOD(iter,OutputInterval) == 0) THEN
             WRITE (*, '(I8, E11.4)') iter, errorind
+            CALL FLUSH(6)
           END IF
 
           Converged = (errorind < Tol)
@@ -2709,6 +2789,7 @@ CONTAINS
 
         IF( MOD(iter,OutputInterval) == 0) THEN
           WRITE (*, '(I8, E11.4)') iter, errorind
+          CALL FLUSH(6)
         END IF
 
         Converged = (errorind < Tol)

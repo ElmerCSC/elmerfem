@@ -1,11 +1,14 @@
-name: full-test
+name: ubuntu-elmerice
 on:
   workflow_dispatch:
-  schedule:
-    # Run job every Tuesday at 09:50 UTC
-    - cron: '50 09 * * 2'
+  push:
+    branches:
+      - elmerice
+    paths-ignore:
+      - '**.nix'
+      - 'flake.lock'
 
-concurrency: ci-${{ github.ref }}
+concurrency: ci-ubuntu-elmerice-${{ github.ref }}
 
 jobs:
 
@@ -14,7 +17,7 @@ jobs:
     # https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners
     runs-on: ubuntu-latest
 
-    name: ubuntu (${{ matrix.compiler }})
+    name: ubuntu-elmerice (${{ matrix.compiler }})
 
     strategy:
       # Allow other runners in the matrix to continue if some fail
@@ -27,10 +30,7 @@ jobs:
             compiler-pkgs: "g++ gcc"
             cc: "gcc"
             cxx: "g++"
-          #- compiler: clang
-          #  compiler-pkgs: "clang libomp-dev"
-          #  cc: "clang"
-          #  cxx: "clang++"
+            openmp-cmake-flags: "-WITH_OpenMP=ON"
 
     env:
       CC: ${{ matrix.cc }}
@@ -42,12 +42,15 @@ jobs:
 
       - name: checkout repository
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: install dependencies
         run: |
           sudo apt -qq update
           sudo apt install -y ${{ matrix.compiler-pkgs }} cmake gfortran \
-            libopenblas-dev libopenmpi-dev libmumps-dev libparmetis-dev
+            libopenblas-dev libopenmpi-dev libmumps-dev libparmetis-dev \
+            libqwt-qt5-dev qtscript5-dev libqt5svg5-dev
 
       - name: configure
         run: |
@@ -57,10 +60,14 @@ jobs:
             -DCMAKE_BUILD_TYPE="Release" \
             -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/usr" \
             -DBLA_VENDOR="OpenBLAS" \
-            -DWITH_OpenMP=ON \
+            ${{ matrix.openmp-cmake-flags }} \
             -DWITH_LUA=ON \
-            -DWITH_Zoltan=OFF \
+            -DWITH_Zoltan=ON \
             -DWITH_Mumps=ON \
+            -DWITH_ElmerIce=ON \
+            -DWITH_ELMERGUI=ON \
+            -DWITH_MATC=ON \
+            -DWITH_PARAVIEW=ON \
             -DCREATE_PKGCONFIG_FILE=ON \
             -DWITH_MPI=ON \
             -DMPI_TEST_MAXPROC=2 \
@@ -70,7 +77,7 @@ jobs:
       - name: build
         run: |
           cd ${GITHUB_WORKSPACE}/build
-          cmake --build .
+          cmake --build . -j$(nproc)
 
       - name: install
         run: |
@@ -80,15 +87,43 @@ jobs:
       - name: check
         id: run-ctest
         timeout-minutes: 150
+        env:
+          CTEST_OUTPUT_ON_FAILURE: 1
         run: |
           cd ${GITHUB_WORKSPACE}/build
-          ctest .
+          ctest -L elmerice -j$(nproc) --output-on-failure
 
-      - name: Re-run tests
+      - name: re-run tests
         if: always() && (steps.run-ctest.outcome == 'failure')
         timeout-minutes: 60
+        env:
+          CTEST_OUTPUT_ON_FAILURE: 1
         run: |
           cd ${GITHUB_WORKSPACE}/build
+          # get names of failed tests and strip potential "_np*" suffix
+          failed_tests=($(ctest . -N --rerun-failed | grep -E "Test\s+#.*" | awk '{print $3}' | sed -e 's/_np[0-9]*$//g'))
+          # remove duplicate test names
+          unique_failed_tests=($(echo "${failed_tests[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
+          for test in "${unique_failed_tests[@]}"; do
+            # check if test is from fem or ElmerIce
+            if [ -d fem/tests/${test} ]; then
+              test_root=fem/tests
+            else
+              test_root=elmerice/Tests
+            fi
+            echo "::group::Content of ${test_root}/${test}"
+            echo ---- Files ----
+            ls -Rl ${test_root}/${test}
+            if [ -f ${test_root}/${test}/test-stderr*.log ]; then
+              echo ---- Content of test-stderr*.log ----
+              cat ${test_root}/${test}/test-stderr*.log
+            fi
+            if [ -f ${test_root}/${test}/test-stdout*.log ]; then
+              echo ---- Content of test-stdout*.log ----
+              cat ${test_root}/${test}/test-stdout*.log
+            fi
+            echo "::endgroup::"
+          done
           echo "::group::Re-run failing tests"
           ctest --rerun-failed --output-on-failure || true
           echo "::endgroup::"

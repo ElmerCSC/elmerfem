@@ -3,7 +3,7 @@
  *  Elmer, A Finite Element Software for Multiphysical Problems
  *
  *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
- * 
+ *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
- * License along with this library (in file ../LGPL-2.1); if not, write 
- * to the Free Software Foundation, Inc., 51 Franklin Street, 
+ * License along with this library (in file ../LGPL-2.1); if not, write
+ * to the Free Software Foundation, Inc., 51 Franklin Street,
  * Fifth Floor, Boston, MA  02110-1301  USA
  *
  *****************************************************************************/
@@ -45,7 +45,7 @@
  ******************************************************************************/
 
 /*
- * $Id: jacobi.c,v 1.1.1.1 2005/04/14 13:29:14 vierinen Exp $ 
+ * $Id: jacobi.c,v 1.1.1.1 2005/04/14 13:29:14 vierinen Exp $
  *
  * $Log: jacobi.c,v $
  * Revision 1.1.1.1  2005/04/14 13:29:14  vierinen
@@ -54,14 +54,14 @@
  * Revision 1.2  1998/08/01 12:34:43  jpr
  *
  * Added Id, started Log.
- * 
+ *
  *
  */
 
 #include "elmer/matc.h"
 
 /************************************************************************
-  P R O G R A M 
+  P R O G R A M
   To solve the generalized eigenproblem using the
   generalized Jacobi iteration
 
@@ -85,14 +85,13 @@
 
 *************************************************************************/
 
-int matc_jacobi(a,b,x,eigv,d,n,rtol)
-  double a[],b[],x[],eigv[],d[],rtol;
-  int n;
+int matc_jacobi(double a[], double b[], double x[], double eigv[], double d[],
+    int n, double rtol)
 {
   register int i,j,k,ii,jj;
   int    nsmax=50,        /* Max number of sweeps */
          nsweep,          /* Current sweep number */
-         nr,           
+         nr,
          jp1,jm1,kp1,km1,
          convergence;
 
@@ -109,7 +108,7 @@ int matc_jacobi(a,b,x,eigv,d,n,rtol)
          bb;              /* Scale mass matrix */
 
 /************************************************************************
-  Initialize eigenvalue and eigenvector matrices 
+  Initialize eigenvalue and eigenvector matrices
 *************************************************************************/
   for( i=0 ; i<n ; i++)
   {
@@ -221,7 +220,7 @@ int matc_jacobi(a,b,x,eigv,d,n,rtol)
                 b[i*n+k] = bk+ca*bj;
               };
           };
-   
+
           ak = a[k*n+k];
           bk = b[k*n+k];
           a[k*n+k] = ak+2.0*ca*a[j*n+k]+ca*ca*a[j*n+j];
@@ -314,7 +313,7 @@ int matc_jacobi(a,b,x,eigv,d,n,rtol)
   return 1 ;
 }
 
-VARIABLE *mtr_jacob(a) VARIABLE *a;
+VARIABLE *mtr_jacob(VARIABLE *a)
 {
   VARIABLE *x, *ev;
 
@@ -327,7 +326,7 @@ VARIABLE *mtr_jacob(a) VARIABLE *a;
   b = MATR(NEXT(a));
   n = NROW(a);
 
-  if (NROW(NEXT(a)) != NCOL(NEXT(a)) || n != NROW(NEXT(a))) 
+  if (NROW(NEXT(a)) != NCOL(NEXT(a)) || n != NROW(NEXT(a)))
     error("Jacob: Matrix dimensions incompatible.\n");
 
   rtol = *MATR(NEXT(NEXT(a)));
@@ -340,4 +339,4 @@ VARIABLE *mtr_jacob(a) VARIABLE *a;
   FREEMEM((char *)d);
 
   return ev;
-};
+}

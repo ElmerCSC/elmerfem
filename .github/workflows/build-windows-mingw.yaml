@@ -1,0 +1,185 @@
+name: build-windows-mingw
+on:
+  workflow_dispatch:
+  push:
+    paths-ignore:
+      - '**.nix'
+      - 'flake.lock'
+  pull_request:
+    paths-ignore:
+      - '**.nix'
+      - 'flake.lock'
+
+concurrency: ci-windows-mingw-${{ github.ref }}
+
+jobs:
+
+  windows-mingw:
+
+    runs-on: windows-latest
+
+    name: MSYS2 (${{ matrix.umfpack }} UMFPACK, ${{ matrix.msystem }})
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    strategy:
+      # Allow other runners in the matrix to continue if some fail
+      fail-fast: false
+
+      matrix:
+        # msystem: [MINGW64, CLANG64]
+        msystem: [MINGW64]
+        umfpack: [internal, external]
+        include:
+          - umfpack: external
+            umfpack-cmake-flags: "-DEXTERNAL_UMFPACK=ON"
+
+    steps:
+      - name: get CPU name
+        shell: pwsh
+        run : |
+          Get-CIMInstance -Class Win32_Processor | Select-Object -Property Name
+
+      - name: checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: install dependencies
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: ${{ matrix.msystem }}
+          update: true
+          install: >-
+            base-devel
+            git
+          pacboy: >-
+            cc:p
+            fc:p
+            cmake:p
+            msmpi:p
+            openblas:p
+            parmetis:p
+            mumps:p
+            suitesparse:p
+            qt6-declarative:p
+            qwt-qt6:p
+            vtk:p
+            adios2:p
+            boost:p
+            cgns:p
+            cli11:p
+            eigen3:p
+            fast_float:p
+            ffmpeg:p
+            gl2ps:p
+            liblas:p
+            libmariadbclient:p
+            openslide:p
+            openvdb:p
+            pdal:p
+            unixodbc:p
+            utf8cpp:p
+            opencascade:p
+
+      - name: install MSMPI
+        uses: mpi4py/setup-mpi@v1
+        with:
+          mpi: msmpi
+
+      - name: configure
+        # Downgrade incompatible-pointer-types to a warning to work around
+        # build error of Zoltan with newer GCC.
+        run: |
+          mkdir ${GITHUB_WORKSPACE}/build
+          cd ${GITHUB_WORKSPACE}/build
+          cmake \
+            -DCMAKE_BUILD_TYPE="Release" \
+            -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/usr" \
+            -DCPACK_BUNDLE_EXTRA_WINDOWS_DLLS=OFF \
+            -DBLA_VENDOR="OpenBLAS" \
+            -DWITH_OpenMP=ON \
+            -DWITH_LUA=ON \
+            -DWITH_MPI=ON \
+            -DMPI_TEST_MAXPROC=2 \
+            -DMPIEXEC_EXECUTABLE="$(cygpath -m "${MSMPI_BIN}")/mpiexec.exe" \
+            -DWITH_Zoltan=ON \
+            -DCMAKE_C_FLAGS="-Wno-error=incompatible-pointer-types" \
+            -DParMetis_LIBRARIES="$(pkg-config --libs parmetis)" \
+            -DParMetis_INCLUDE_DIR="$(pkg-config --cflags parmetis)" \
+            -DWITH_Mumps=ON \
+            -DMumps_LIBRARIES=$(pkg-config -libs mumps-dmo) \
+            -DMumps_INCLUDE_DIR=$(pkg-config --variable=includedir mumps-dmo) \
+            -DWITH_CHOLMOD=ON \
+            -DWITH_ElmerIce=ON \
+            -DWITH_ELMERGUI=ON \
+            -DWITH_QT6=ON \
+            -DWITH_VTK=ON \
+            -DWITH_OCC=ON \
+            -DWITH_MATC=ON \
+            -DWITH_PARAVIEW=ON \
+            -DCREATE_PKGCONFIG_FILE=ON \
+            ${{ matrix.umfpack-cmake-flags }} \
+            ..
+
+      - name: build
+        run: |
+          cd ${GITHUB_WORKSPACE}/build
+          cmake --build . -j$(nproc)
+
+      - name: install
+        run: |
+          cd ${GITHUB_WORKSPACE}/build
+          cmake --install .
+
+      - name: check
+        id: run-ctest
+        timeout-minutes: 150
+        env:
+          CTEST_OUTPUT_ON_FAILURE: 1
+        run: |
+          cd ${GITHUB_WORKSPACE}/build
+          ctest . \
+            -L "quick|elmerice-fast" \
+            -j$(nproc) \
+            --timeout 180
+
+      - name: re-run tests
+        if: always() && (steps.run-ctest.outcome == 'failure')
+        timeout-minutes: 60
+        env:
+          CTEST_OUTPUT_ON_FAILURE: 1
+        run: |
+          cd ${GITHUB_WORKSPACE}/build
+          # get names of failed tests and strip potential "_np*" suffix
+          failed_tests=($(ctest . -N --rerun-failed | grep -E "Test\s+#.*" | awk '{print $3}' | sed -e 's/_np[0-9]*$//g'))
+          # remove duplicate test names
+          unique_failed_tests=($(echo "${failed_tests[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
+          for test in "${unique_failed_tests[@]}"; do
+            # check if test is from fem or ElmerIce
+            if [ -d fem/tests/${test} ]; then
+              test_root=fem/tests
+            else
+              test_root=elmerice/Tests
+            fi
+            echo "::group::Content of ${test_root}/${test}"
+            echo ---- Files ----
+            ls -Rl ${test_root}/${test}
+            if [ -f ${test_root}/${test}/test-stderr*.log ]; then
+              echo ---- Content of test-stderr*.log ----
+              cat ${test_root}/${test}/test-stderr*.log
+            fi
+            if [ -f ${test_root}/${test}/test-stdout*.log ]; then
+              echo ---- Content of test-stdout*.log ----
+              cat ${test_root}/${test}/test-stdout*.log
+            fi
+            echo "::endgroup::"
+          done
+          echo "::group::Re-run failing tests"
+          ctest --rerun-failed --output-on-failure --timeout 180 || true
+          echo "::endgroup::"
+          echo "::group::Log from these tests"
+          [ ! -f Testing/Temporary/LastTest.log ] || cat Testing/Temporary/LastTest.log
+          echo "::endgroup::"

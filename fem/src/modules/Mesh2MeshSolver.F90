@@ -287,7 +287,11 @@ SUBROUTINE Mesh2MeshSolver( Model,Solver,dt,TransientSimulation )
       
       IF( DoIt ) THEN
         DoIt = ( SIZE( pVar % Values ) > Var % DOFs )  ! not global variable
-        IF( DoIt ) DoIt = ( pVar % Name(1:10) /= 'coordinate' )  ! not coordinate
+        IF ( Doit .AND. LEN(pVar % Name)>=10  ) THEN
+          DoIt = ( pVar % Name(1:10) /= 'coordinate' )  ! not coordinate
+        ELSE
+          DoIt = .FALSE.
+        END IF
       END IF
       
       IF( DoIt ) THEN

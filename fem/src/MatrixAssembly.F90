@@ -405,22 +405,32 @@ CONTAINS
      
      IF( PRESENT(activeind) ) THEN
        eind = activeind
-     ELSE
-       IF(eind > Solver % NumberOfActiveElements ) RETURN
+     ELSE IF( PRESENT( elemind ) ) THEN
+       ! This is probably related to boundary elements for which we haven't saved stuff. 
+       IF( elemind > SIZE(Solver % InvActiveElements ) ) RETURN
+       !IF( elemind < 1 .OR. elemind > SIZE(Solver % InvActiveElements ) ) THEN
+       !  CALL Fatal('GetLocalMatrixStorage','Parameter "elemind" is out of bounds!')
+       !END IF
+       ! Given element index, return its position in the active element list.
        eind = Solver % InvActiveElements(elemind)
        IF(eind==0) RETURN
+     ELSE
+       CALL Fatal('UseLocalMatrixStorage','Give element index as a parameter in some way!')
      END IF
 
+     ! Size of local system is same as size of ActiveElements table. 
      pLocal => Solver % LocalSystem(eind) 
      IF( pLocal % eind == eind .OR. pLocal % eind < 1 ) THEN
        ! Save local system for this element.
        IF(pLocal % n < n ) THEN
+         ! The size of local system allocated. 
          IF( plocal % n > 0 ) THEN
            DEALLOCATE(pLocal % K, pLocal % F) 
          END IF
          pLocal % n = n
          ALLOCATE(pLocal % K(n,n), pLocal % F(n)) 
        END IF
+       ! This elements is saved in its location. 
        pLocal % eind = eind
        pLocal % K(1:n,1:n) = K(1:n,1:n)
        pLocal % F(1:n) = F(1:n)
@@ -432,7 +442,7 @@ CONTAINS
      END IF
 
      IF(Solver % SolverId /= PrevSolverId) THEN
-       ! For the 1st element obtain the multiplier vector
+       ! For the 1st element obtain the multiplier vector, for other elements it will be the same. 
        cvar => NULL()
        DoMultiply = .FALSE.
        DoMultiplyRhs = .FALSE.
@@ -463,6 +473,7 @@ CONTAINS
        prevSolverId = Solver % SolverId       
      END IF
 
+     ! Multiply locally stored matrix. Possible use is, for example, density in topology optimization. 
      IF( DoMultiply ) THEN
        vind = cvar % Perm(eind)
        IF(vind > 0 ) THEN
@@ -484,7 +495,7 @@ CONTAINS
 !---------------------------------------------------------------------------
 !> Obtain local matrix, e.g. for topology optimization.
 !> If the elements are alike, the element index may point to a different
-!> element that itself. 
+!> element than itself. 
 !---------------------------------------------------------------------------
    SUBROUTINE GetLocalMatrixStorage( Solver, n, K, F, Found, elemind, activeind ) 
      TYPE(Solver_t) :: Solver
@@ -499,10 +510,12 @@ CONTAINS
      Found = .FALSE.
      IF( PRESENT(activeind) ) THEN
        eind = activeind
-     ELSE
-       IF(eind > Solver % NumberOfActiveElements ) RETURN
+     ELSE IF( PRESENT( elemind ) ) THEN
+       IF( elemind > SIZE(Solver % InvActiveElements ) ) RETURN
        eind = Solver % InvActiveElements(elemind)
-       IF(eind < 1) RETURN
+       IF(eind==0) RETURN
+     ELSE
+       CALL Fatal('GetLocalMatrixStorage','Give element index as a parameter in some way!')
      END IF
      
      pLocal => Solver % LocalSystem(eind) 

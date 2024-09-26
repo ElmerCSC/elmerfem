@@ -39,6 +39,41 @@
 ! *****************************************************************************/
 
 !------------------------------------------------------------------------------
+SUBROUTINE HeatSolver_init( Model,Solver,dt,Transient )
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+  CHARACTER(*), PARAMETER :: Caller = 'HeatSolver_init'
+  TYPE(ValueList_t), POINTER :: Params
+  LOGICAL :: Found
+  
+  Params => GetSolverParams()
+
+  ! Default variable name
+  CALL ListAddNewString( Params,'Variable','Temperature')
+
+  ! These use one flag to call library features to compute automatically
+  ! a conductivity matrix.
+  IF( ListGetLogical(Params,'Calculate Conductance Matrix',Found ) ) THEN
+    CALL ListAddNewLogical( Params,'Constraint Modes Analysis',.TRUE.)
+    CALL ListAddNewLogical( Params,'Constraint Modes Lumped',.TRUE.)
+    CALL ListAddNewLogical( Params,'Constraint Modes Fluxes',.TRUE.)
+    CALL ListAddNewLogical( Params,'Constraint Modes Matrix Symmetric',.TRUE.)
+    CALL ListAddNewString( Params,'Constraint Modes Matrix Filename',&
+        'ThermalConductanceMatrix.dat',.FALSE.)
+    CALL ListRenameAllBC( Model,'Conductivity Body','Constraint Mode Temperature')
+  END IF
+  
+END SUBROUTINE HeatSolver_Init
+
+
+!------------------------------------------------------------------------------
 !> Subroutine for solving the energy a.k.a. heat equation in various coordinate systems.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------

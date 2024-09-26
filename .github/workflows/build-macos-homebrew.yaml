@@ -1,0 +1,141 @@
+name: build-macos-homebrew
+on:
+  workflow_dispatch:
+  push:
+    paths-ignore:
+      - '**.nix'
+      - 'flake.lock'
+  pull_request:
+    paths-ignore:
+      - '**.nix'
+      - 'flake.lock'
+
+concurrency: ci-macos-homebrew-${{ github.ref }}
+
+jobs:
+
+  macos-homebrew:
+
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      # Allow other runners in the matrix to continue if some fail
+      fail-fast: false
+
+      matrix:
+        os: [macos-14, macos-13]
+
+    steps:
+      - name: get CPU information
+        run: |
+          sysctl hw
+          sysctl machdep
+
+      - name: checkout repository
+        uses: actions/checkout@v4
+
+      - name: install dependencies
+        # It looks like "gfortran" isn't working correctly unless "gcc" is
+        # re-installed.
+        run: |
+          brew update
+          brew reinstall gcc
+          brew install \
+            cmake libomp openblas open-mpi suitesparse \
+            qwt vtk opencascade
+          echo "HOMEBREW_PREFIX=$(brew --prefix)" >> $GITHUB_ENV
+
+      - name: configure
+        env:
+          LDFLAGS: -L${{ env.HOMEBREW_PREFIX }}/opt/libomp/lib -lomp
+        run: |
+          mkdir ${GITHUB_WORKSPACE}/build
+          cd ${GITHUB_WORKSPACE}/build
+          cmake \
+            -DCMAKE_BUILD_TYPE="Release" \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_Fortran_COMPILER=gfortran \
+            -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/usr" \
+            -DBLA_VENDOR="OpenBLAS" \
+            -DCMAKE_PREFIX_PATH="${HOMEBREW_PREFIX}/opt/libomp;${HOMEBREW_PREFIX}/opt/openblas;${HOMEBREW_PREFIX}/opt/qt;${HOMEBREW_PREFIX}/opt/qwt" \
+            -DWITH_OpenMP=ON \
+            -DOpenMP_C_FLAGS="-Xclang -fopenmp -I${HOMEBREW_PREFIX}/opt/libomp/include" \
+            -DOpenMP_CXX_FLAGS="-Xclang -fopenmp -I${HOMEBREW_PREFIX}/opt/libomp/include" \
+            -DOpenMP_Fortran_FLAGS="-fopenmp -I${HOMEBREW_PREFIX}/opt/libomp/include" \
+            -DWITH_LUA=ON \
+            -DWITH_MPI=ON \
+            -DMPI_TEST_MAXPROC=2 \
+            -DWITH_Zoltan=OFF \
+            -DWITH_Mumps=OFF \
+            -DWITH_CHOLMOD=ON \
+            -DWITH_ElmerIce=ON \
+            -DWITH_ELMERGUI=ON \
+            -DWITH_QT6=ON \
+            -DQWT_INCLUDE_DIR="${HOMEBREW_PREFIX}/opt/qwt/lib/qwt.framework/Headers" \
+            -DWITH_VTK=ON \
+            -DWITH_OCC=ON \
+            -DWITH_MATC=ON \
+            -DWITH_PARAVIEW=ON \
+            -DCREATE_PKGCONFIG_FILE=ON \
+            ..
+
+      - name: build
+        run: |
+          cd ${GITHUB_WORKSPACE}/build
+          cmake --build . -j$(sysctl -n hw.logicalcpu)
+
+      - name: install
+        run: |
+          cd ${GITHUB_WORKSPACE}/build
+          cmake --install .
+
+      - name: check
+        id: run-ctest
+        timeout-minutes: 150
+        env:
+          CTEST_OUTPUT_ON_FAILURE: 1
+        run: |
+          cd ${GITHUB_WORKSPACE}/build
+          ctest . \
+            -L "quick|elmerice-fast" \
+            -j$(sysctl -n hw.logicalcpu) \
+            --timeout 180
+
+      - name: re-run tests
+        if: always() && (steps.run-ctest.outcome == 'failure')
+        timeout-minutes: 60
+        env:
+          CTEST_OUTPUT_ON_FAILURE: 1
+        run: |
+          cd ${GITHUB_WORKSPACE}/build
+          # get names of failed tests and strip potential "_np*" suffix
+          failed_tests=($(ctest . -N --rerun-failed | grep -E "Test\s+#.*" | awk '{print $3}' | sed -e 's/_np[0-9]*$//g'))
+          # remove duplicate test names
+          unique_failed_tests=($(echo "${failed_tests[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
+          for test in "${unique_failed_tests[@]}"; do
+            # check if test is from fem or ElmerIce
+            if [ -d fem/tests/${test} ]; then
+              test_root=fem/tests
+            else
+              test_root=elmerice/Tests
+            fi
+            echo "::group::Content of ${test_root}/${test}"
+            echo ---- Files ----
+            ls -Rl ${test_root}/${test}
+            if [ -f ${test_root}/${test}/test-stderr*.log ]; then
+              echo ---- Content of test-stderr*.log ----
+              cat ${test_root}/${test}/test-stderr*.log
+            fi
+            if [ -f ${test_root}/${test}/test-stdout*.log ]; then
+              echo ---- Content of test-stdout*.log ----
+              cat ${test_root}/${test}/test-stdout*.log
+            fi
+            echo "::endgroup::"
+          done
+          echo "::group::Re-run failing tests"
+          ctest --rerun-failed --output-on-failure --timeout 180 || true
+          echo "::endgroup::"
+          echo "::group::Log from these tests"
+          [ ! -f Testing/Temporary/LastTest.log ] || cat Testing/Temporary/LastTest.log
+          echo "::endgroup::"

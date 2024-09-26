@@ -72,7 +72,7 @@ Solver 1
 
   Eigen Analysis = True
   Eigen System Values = 10
-  Eigen System Convergence Tolerance = Real 1.0e-8
+  Eigen System Convergence Tolerance = 0
   Eigen System Select = smallest magnitude
 !  Eigen System Shift = Real 1.0e-3
 

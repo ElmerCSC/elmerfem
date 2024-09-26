@@ -263,13 +263,15 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
     
   Found = .FALSE.
   IF( ASSOCIATED( Model % Constants ) ) THEN
-    mu0inv = 1.0_dp / GetConstReal( Model % Constants,  'Permeability of Vacuum', Found )
+    mu0inv = GetConstReal( Model % Constants, 'Permeability of Vacuum', Found )
+    IF(mu0inv/=0) mu0inv=1/mu0inv
   END IF
   IF(.NOT. Found ) mu0inv = 1.0_dp / ( PI * 4.0d-7 )
   
   Found = .FALSE.
   IF( ASSOCIATED( Model % Constants ) ) THEN
-    eps0 = GetConstReal ( Model % Constants, 'Permittivity of Vacuum', Found )
+    IF (ListCheckPresent(Model % Constants, 'Permittivity of Vacuum')) &
+        eps0 = GetConstReal ( Model % Constants, 'Permittivity of Vacuum', Found )
   END IF
   IF(.NOT. Found ) eps0 = 8.854187817d-12
 
@@ -1377,7 +1379,8 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    
    Found = .FALSE.
    IF( ASSOCIATED( Model % Constants ) ) THEN
-     mu0inv = 1.0_dp / GetConstReal( Model % Constants,  'Permeability of Vacuum', Found )
+     mu0inv = GetConstReal( Model % Constants,  'Permeability of Vacuum', Found )
+     IF(mu0inv /= 0) mu0inv = 1/mu0inv;
    END IF
    IF(.NOT. Found ) mu0inv = 1.0_dp / ( PI * 4.0d-7 )
    

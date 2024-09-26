@@ -3,7 +3,7 @@
  *  Elmer, A Finite Element Software for Multiphysical Problems
  *
  *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
- * 
+ *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
- * License along with this library (in file ../LGPL-2.1); if not, write 
- * to the Free Software Foundation, Inc., 51 Franklin Street, 
+ * License along with this library (in file ../LGPL-2.1); if not, write
+ * to the Free Software Foundation, Inc., 51 Franklin Street,
  * Fifth Floor, Boston, MA  02110-1301  USA
  *
  *****************************************************************************/
@@ -45,7 +45,7 @@
  ******************************************************************************/
 
 /*
- * $Id: files.c,v 1.1.1.1 2005/04/14 13:29:14 vierinen Exp $ 
+ * $Id: files.c,v 1.1.1.1 2005/04/14 13:29:14 vierinen Exp $
  *
  * $Log: files.c,v $
  * Revision 1.1.1.1  2005/04/14 13:29:14  vierinen
@@ -54,7 +54,7 @@
  * Revision 1.2  1998/08/01 12:34:36  jpr
  *
  * Added Id, started Log.
- * 
+ *
  *
  */
 
@@ -90,7 +90,7 @@ static FILE *fil_fps[MAXFILES];
 static FILE *fil_fps_save[3];
 #pragma omp threadprivate(fil_fps, fil_fps_save)
 
-VARIABLE *fil_fread(var) VARIABLE *var;
+VARIABLE *fil_fread(VARIABLE *var)
 {
   VARIABLE *res;
   FILE *fp;
@@ -98,7 +98,7 @@ VARIABLE *fil_fread(var) VARIABLE *var;
   int i, ind, len;
   size_t iosize;
 
-  
+
   ind = *MATR(var);
   if (ind < 0 || ind >= MAXFILES)
   {
@@ -117,7 +117,7 @@ VARIABLE *fil_fread(var) VARIABLE *var;
   }
 
   len = *MATR(NEXT(var));
-  if (len <= 0) 
+  if (len <= 0)
   {
     error("fread: invalid length specified.\n");
   }
@@ -139,7 +139,7 @@ VARIABLE *fil_fread(var) VARIABLE *var;
   return res;
 }
 
-VARIABLE *fil_fwrite(var) VARIABLE *var;
+VARIABLE *fil_fwrite(VARIABLE *var)
 {
   int i, ind, len;
   FILE *fp;
@@ -178,8 +178,8 @@ VARIABLE *fil_fwrite(var) VARIABLE *var;
   return (VARIABLE *)NULL;
 }
 
-VARIABLE *fil_fscanf(var) VARIABLE *var;
-{ 
+VARIABLE *fil_fscanf(VARIABLE *var)
+{
   VARIABLE *res;
   FILE *fp;
 
@@ -203,7 +203,7 @@ VARIABLE *fil_fscanf(var) VARIABLE *var;
     error("fscanf: end of file detected.\n");
   }
 
-  got = fscanf(fp, fmt, 
+  got = fscanf(fp, fmt,
       &str_p[0],  &str_p[1],  &str_p[2],  &str_p[3],  &str_p[4],  &str_p[5],
       &str_p[6],  &str_p[7],  &str_p[8],  &str_p[9],  &str_p[10], &str_p[11],
       &str_p[12], &str_p[13], &str_p[14], &str_p[15], &str_p[16], &str_p[17],
@@ -235,14 +235,14 @@ VARIABLE *fil_fscanf(var) VARIABLE *var;
   return res;
 }
 
-VARIABLE *fil_fgets(var) VARIABLE *var;
+VARIABLE *fil_fgets(VARIABLE *var)
 {
   VARIABLE *res;
   FILE *fp;
 
   int i, ind;
   char *ioptr;
-  
+
   ind = *MATR(var);
   if (ind < 0 || ind >= MAXFILES)
   {
@@ -281,7 +281,7 @@ VARIABLE *fil_fgets(var) VARIABLE *var;
   return res;
 }
 
-VARIABLE *fil_fprintf(var) VARIABLE *var;
+VARIABLE *fil_fprintf(VARIABLE *var)
 {
   int i, ind;
   char *str;
@@ -299,7 +299,7 @@ VARIABLE *fil_fprintf(var) VARIABLE *var;
   fp = fil_fps[ind];
 
   var = str_sprintf(NEXT(var));
-  str = var_to_string(var);  
+  str = var_to_string(var);
   fprintf(fp, "%s",str);
 
   var_delete_temp(var);
@@ -314,9 +314,9 @@ VARIABLE *fil_fprintf(var) VARIABLE *var;
   return (VARIABLE *)NULL;
 }
 
-VARIABLE *fil_fputs(var) VARIABLE *var;
+VARIABLE *fil_fputs(VARIABLE *var)
 {
-  char *str = var_to_string(NEXT(var)); 
+  char *str = var_to_string(NEXT(var));
   int ind = *MATR(var);
   FILE *fp;
 
@@ -343,7 +343,7 @@ VARIABLE *fil_fputs(var) VARIABLE *var;
   return (VARIABLE *)NULL;
 }
 
-VARIABLE *fil_fopen(var) VARIABLE *var;
+VARIABLE *fil_fopen(VARIABLE *var)
 {
   VARIABLE *res;
 
@@ -354,7 +354,7 @@ VARIABLE *fil_fopen(var) VARIABLE *var;
   name = var_to_string(var);
 
   for(file = 0; file < MAXFILES; file++)
-  { 
+  {
     if (fil_fps[file] == NULL) break;
   }
 
@@ -395,7 +395,7 @@ VARIABLE *fil_fopen(var) VARIABLE *var;
   return res;
 }
 
-VARIABLE *fil_fclose(var) VARIABLE *var;
+VARIABLE *fil_fclose(VARIABLE *var)
 {
   int file = *MATR(var);
 
@@ -440,7 +440,7 @@ VARIABLE *fil_fclose(var) VARIABLE *var;
   return (VARIABLE *)NULL;
 }
 
-VARIABLE *fil_freopen(var) VARIABLE *var;
+VARIABLE *fil_freopen(VARIABLE *var)
 {
   int file = *MATR(var);
 
@@ -452,7 +452,7 @@ VARIABLE *fil_freopen(var) VARIABLE *var;
   return (VARIABLE *)NULL;
 }
 
-VARIABLE *fil_save(ptr) VARIABLE *ptr;
+VARIABLE *fil_save(VARIABLE *ptr)
 {
   VARIABLE *tmp;
   char *file;
@@ -461,15 +461,15 @@ VARIABLE *fil_save(ptr) VARIABLE *ptr;
   int i, j, ascflg = FALSE;
 
   file = var_to_string(ptr);
-   
+
   if ((fp = fopen(file, "w")) == (FILE *)NULL)
   {
     error( "save: can't open file: %s.\n", file );
   }
-   
+
   tmp = NEXT(ptr);
 
-  if (NEXT(NEXT(ptr)) != (VARIABLE *)NULL) 
+  if (NEXT(NEXT(ptr)) != (VARIABLE *)NULL)
     ascflg = M(NEXT(NEXT(ptr)), 0, 0);
 
   if (ascflg)
@@ -481,7 +481,7 @@ VARIABLE *fil_save(ptr) VARIABLE *ptr;
        fclose(fp); error("save: error writing file.\n");
     }
 
-    for(i = 0; i < NROW(tmp); i++) 
+    for(i = 0; i < NROW(tmp); i++)
       for(j = 0; j < NCOL(tmp); j++)
       {
         fprintf(fp, "%e\n", M(tmp, i, j));
@@ -513,7 +513,7 @@ VARIABLE *fil_save(ptr) VARIABLE *ptr;
   return NULL;
 }
 
-VARIABLE *fil_load(ptr) VARIABLE *ptr;
+VARIABLE *fil_load(VARIABLE *ptr)
 {
   int i, j, ftype, type, ncol, nrow;
 
@@ -523,9 +523,9 @@ VARIABLE *fil_load(ptr) VARIABLE *ptr;
   FILE *fp;
   size_t iosize;
   int iostat;
-  
+
   file = var_to_string(ptr);
-  
+
   if ((fp = fopen(file, "r")) == (FILE *)NULL)
   {
     error( "load: can't open file: %s.\n", file );
@@ -536,12 +536,12 @@ VARIABLE *fil_load(ptr) VARIABLE *ptr;
   if (ferror(fp)) {
     fclose(fp); error("load: error reading file.n");
   }
-   
-  res = var_temp_new(type, nrow, ncol);     
+
+  res = var_temp_new(type, nrow, ncol);
 
   if (ftype == FILE_ASCII)
   {
-    for(i = 0; i < nrow; i++) 
+    for(i = 0; i < nrow; i++)
       for(j = 0; j < ncol; j++)
       {
         iostat = fscanf(fp, "%lf", &M(res, i, j));
@@ -565,7 +565,7 @@ VARIABLE *fil_load(ptr) VARIABLE *ptr;
 
   return res;
 }
-   
+
 void fil_com_init()
 {
   static char *freadHelp =
@@ -687,6 +687,6 @@ void fil_com_init()
   com_init( "load",    FALSE, FALSE, fil_load,    1, 1, loadHelp    );
 
   fil_fps[0] = fil_fps_save[0] = stdin;
-  fil_fps[1] = fil_fps_save[1] = stdout; 
+  fil_fps[1] = fil_fps_save[1] = stdout;
   fil_fps[2] = fil_fps_save[2] = stderr;
 }

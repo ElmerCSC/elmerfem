@@ -441,7 +441,7 @@ CONTAINS
     ! This InitHandles flag might be false on threaded 1st call
     IF( InitHandles ) THEN
       CALL ListInitElementKeyword( SourceCoeff_h,'Body Force','Current Source')
-      CALL ListInitElementKeyword( CondCoeff_h,'Material','Electric Conductivity')
+      CALL ListInitElementKeyword( CondCoeff_h,'Material','Electric Conductivity',UnfoundFatal=.TRUE.)
       CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity')
       Found = .FALSE.
       IF( ASSOCIATED( Model % Constants ) ) THEN

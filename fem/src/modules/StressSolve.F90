@@ -116,6 +116,14 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
 
       i = GetInteger( SolverParams, 'Nonlinear System Max Iterations', Found )
       CALL ListAddInteger( SolverParams, 'Nonlinear System Max Iterations', MAX(i,2) )
+
+      ! Create solver related to variable "elast schur" when using block preconditioning
+      ! These keywords ensure that the matrix is truly used in the library version of the
+      ! block solver.
+      IF( ListGetLogical( SolverParams,'Block Preconditioner',Found ) ) THEN
+        CALL ListAddNewString( SolverParams,'Block Matrix Schur Variable','elast schur')
+        CALL ListAddNewLogical(SolverParams,'elast schur: Variable Output',.FALSE.)
+      END IF      
     END IF
     
     IF(.NOT.ListCheckPresent( SolverParams, 'Time derivative order') ) &
@@ -188,6 +196,8 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
     END IF
     
     CALL ListAddLogical( SolverParams, 'stress: Linear System Save', .FALSE. )
+
+   
     
 !------------------------------------------------------------------------------
   END SUBROUTINE StressSolver_Init
@@ -208,6 +218,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
     USE StressGeneral
     USE Adaptive
     USE DefUtils
+    USE MainUtils
 
     IMPLICIT NONE
 !------------------------------------------------------------------------------
@@ -268,6 +279,11 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
      LOGICAL :: GeometricStiffness = .FALSE., EigenAnalysis=.FALSE., OrigEigenAnalysis, &
            Refactorize = .TRUE., Incompr
 
+     TYPE(Solver_t), POINTER, SAVE :: SchurSolver => NULL()
+     REAL(KIND=dp), ALLOCATABLE :: SchurMass(:,:), SchurForce(:)
+     REAL(KIND=dp) :: schurMult
+     LOGICAL :: BlockPrec
+     
      REAL(KIND=dp),ALLOCATABLE:: MASS(:,:),STIFF(:,:),&
        DAMP(:,:), LOAD(:,:),LOAD_im(:,:),FORCE(:),FORCE_im(:), &
        LocalTemperature(:),ElasticModulus(:,:,:),PoissonRatio(:), &
@@ -370,7 +386,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
           CALL DisplaceMesh( Mesh, Displacement, -1, DisplPerm, STDOFs )
         END IF
      END IF
-
+     
 !------------------------------------------------------------------------------
 !     Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
@@ -435,9 +451,9 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
                  TransformMatrix(3,3),  STAT=istat )
 
        IF ( istat /= 0 ) THEN
-          CALL Fatal( 'StressSolve', 'Memory allocation error.' )
-        END IF
-
+         CALL Fatal( 'StressSolve', 'Memory allocation error.' )
+       END IF
+        
        NULLIFY( Work )
        TransformMatrix = 0.0d0
 
@@ -496,6 +512,21 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
        AllocationsDone = .TRUE.
      END IF
 
+!------------------------------------------------------------------------------
+!    Stuff for Schur complement preconditioning.
+!------------------------------------------------------------------------------
+     SchurSolver => NULL()
+     BlockPrec = Incompr .AND. GetLogical(SolverParams,'Block Preconditioner',Found )     
+     IF(BlockPrec ) THEN
+       CALL Info('StressSolve','Creating Schur complement approximation',Level=7)
+       IF(.NOT. ASSOCIATED( SchurSolver ) ) THEN
+         SchurSolver => CreateChildSolver( Solver,'elast schur', 1,'elast schur:') 
+       END IF
+       schurMult = ListGetCReal( SolverParams,'Schur matrix multiplier', Found )
+       IF(.NOT. Found) schurMult = 1.0_dp
+       ALLOCATE(SchurMass(n,n),SchurForce(n))
+     END IF
+     
 !------------------------------------------------------------------------------
 !    Do some additional initialization, and go for it
 !------------------------------------------------------------------------------
@@ -665,7 +696,10 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
        CALL Info( 'StressSolve', 'Starting assembly...',Level=5 )
 !------------------------------------------------------------------------------
 500    CALL DefaultInitialize()
-
+       IF (ASSOCIATED(SchurSolver)) THEN
+         CALL DefaultInitialize(USolver=SchurSolver)
+       END IF
+       
        ConstantBulkMatrixInUse = ConstantBulkMatrix .AND. &
            ASSOCIATED(Solver % Matrix % BulkValues)
 
@@ -709,7 +743,8 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
        END IF
 
        CALL DefaultDirichletBCS()
-
+       IF(ASSOCIATED(SchurSolver)) CALL DefaultDirichletBCs(USolver=SchurSolver)
+       
        !------------------------------------------------------------------------------
        !     Check stepsize for nonlinear iteration
        !------------------------------------------------------------------------------
@@ -1048,6 +1083,7 @@ CONTAINS
     INTEGER :: RelIntegOrder, NoActive 
     LOGICAL :: AnyDamping, NeedMass, NeedDensity, AnyPre, AnyStress
     LOGICAL :: LocalMatrixIdentical
+    REAL(KIND=dp) :: tFORCE(SIZE(FORCE))
     
     AnyDamping = ListCheckPresentAnyMaterial( Model,"Damping" ) .OR. &
         ListCheckPrefixAnyMaterial( Model,"Rayleigh" )
@@ -1084,7 +1120,7 @@ CONTAINS
        IF( UseLocalMatrixCopy( Solver, activeind = t) ) GOTO 100 
        
        n = GetElementNOFNOdes()
-       ntot = GetElementNOFDOFs()
+       ntot = GetElementNOFDOFs() + GetElementNOFBDOFs()
 
        NodeIndexes => Element % NodeIndexes
        CALL GetElementNodes( ElementNodes )
@@ -1297,11 +1333,31 @@ CONTAINS
              PoissonRatio,Density,PlaneStress,Isotropic,HeatExpansionCoeff,   &
              LocalTemperature, Element,n,ElementNodes )
        END SELECT
+       
+!------------------------------------------------------------------------------
+! Add approximation for Schur complement currently assuming that is is proportional
+! to mass matrix. This is misuse since probably the matrix should be proportional
+! to the elastic or viscous properties. 
+!------------------------------------------------------------------------------
+       IF( ASSOCIATED( SchurSolver ) ) THEN
+         SchurMass = 0.0_dp
+         SchurForce = 0.0_dp
+         DO i=1,ntot
+           DO j=1,ntot
+             SchurMass(i,j) = schurMult * MASS(STDOFS*(i-1)+1,STDOFS*(j-1)+1)
+           END DO
+         END DO           
+         CALL DefaultUpdateEquations( SchurMass, SchurForce, UElement=Element, &
+             Usolver = SchurSolver )
+       END IF      
+       
 !------------------------------------------------------------------------------
 !      If time dependent simulation, add mass matrix to global 
 !      matrix and global RHS vector
 !------------------------------------------------------------------------------
-       
+       tForce = 0._dp
+       IF (Transient) tForce = FORCE
+
        IF ( .NOT. (ConstantBulkMatrix .OR. ConstantBulkSystem .OR. ConstantSystem) ) THEN
          IF ( Transient .AND. .NOT. EigenOrHarmonicAnalysis() ) THEN
             IF( GetInteger( GetSolverParams(), 'Time derivative order', Found) == 2 ) THEN
@@ -1312,6 +1368,11 @@ CONTAINS
          END IF
        END IF
 
+        BLOCK
+           INTEGER :: nb
+           nb = GetElementNOFBDOFS(Element)
+           IF(nb>0) CALL NSCondensate(n,nb,dim,STIFF,FORCE,tFORCE)
+         END BLOCK
 !------------------------------------------------------------------------------
 !      Check if reference of displacement has been changed
 !------------------------------------------------------------------------------
@@ -1352,7 +1413,7 @@ CONTAINS
            CALL DefaultUpdateForce( FORCE_im )
            Solver % Matrix % RHS => SaveRHS
          END IF
-       ELSE
+       ELSE                 
          CALL DefaultUpdateEquations( STIFF, FORCE )
          IF ( HarmonicAnalysis ) THEN
            SaveRHS => Solver % Matrix % RHS
@@ -1366,6 +1427,8 @@ CONTAINS
            CALL DefaultUpdateMass( MASS )
            CALL DefaultUpdateDamp( DAMP )
          END IF
+
+                 
        END IF
 
 !------------------------------------------------------------------------------

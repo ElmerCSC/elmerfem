@@ -333,7 +333,7 @@ MainWindow::MainWindow() {
   if (defH <= 300)
     defH = 300;
   this->resize(defW, defH);
-  sifWindow->resize(defW - 50, defH - 50);  
+  sifWindow->resize(defW - 50, defH - 50);
   solverLogWindow->resize(defW - 50, defH - 50);
 
   loadSettings();
@@ -926,7 +926,7 @@ void MainWindow::createActions() {
   getStartedAct = new QAction(QIcon(""), tr("Get started..."), this);
   getStartedAct->setStatusTip(tr("Information to get started"));
   connect(getStartedAct, SIGNAL(triggered()), this, SLOT(getStartedSlot()));
-  
+
   generateAndSaveAndRunAct =
       new QAction(QIcon::fromTheme("doubletriangle-right"),
                   tr("&Generate, save and run"), this);
@@ -943,11 +943,11 @@ void MainWindow::createActions() {
 
   if (egIni->isSet("bgimage"))
     chooseBGColorAct->setEnabled(false);
-  
+
   runPostProcessorAct = new QAction(QIcon(":/icons/Post.png"), tr("ElmerPost"), this);
   runPostProcessorAct->setStatusTip(tr("Select ElmerPost as post-processor"));
   connect(runPostProcessorAct, SIGNAL(triggered()), this, SLOT(resultsSlot()));
-  
+
   selectElmerPostAct = new QAction(QIcon(":/icons/Post.png"), tr("ElmerPost"), this);
   selectElmerPostAct->setStatusTip(tr("Select ElmerPost as post-processor"));
   connect(selectElmerPostAct, SIGNAL(triggered()), this, SLOT(selectElmerPostSlot()));
@@ -1096,8 +1096,8 @@ void MainWindow::createMenus() {
   colorizeMenu->addAction(chooseSurfaceMeshColorAct);
   colorizeMenu->addAction(chooseSharpEdgeColorAct);
   colorizeMenu->addSeparator();
-  colorizeMenu->addAction(chooseSelectionColorAct);  
-  colorizeMenu->addSeparator();  
+  colorizeMenu->addAction(chooseSelectionColorAct);
+  colorizeMenu->addSeparator();
   colorizeMenu->addAction(showBoundaryColorAct);
   colorizeMenu->addAction(showBodyColorAct);
   viewMenu->addSeparator();
@@ -1142,7 +1142,7 @@ void MainWindow::createMenus() {
 
   // Help menu
   helpMenu = menuBar()->addMenu(tr("&Help"));
-  helpMenu->addAction(getStartedAct);  
+  helpMenu->addAction(getStartedAct);
   helpMenu->addAction(aboutAct);
 
   // Sys tray menu:
@@ -1167,7 +1167,7 @@ void MainWindow::createMenus() {
   contextMenu->addMenu(editMenu);
   contextMenu->addMenu(solverMenu);
   contextMenu->addMenu(helpMenu);
-  
+
   selectPostMenu = new QMenu;
   selectPostMenu->addAction(selectElmerPostAct);
   selectPostMenu->addAction(selectVtkPostAct);
@@ -1364,7 +1364,7 @@ void MainWindow::newProjectSlot() {
 #endif
 
 #ifdef EG_VTK
-    vtkPost->hideAll();    
+    vtkPost->hideAll();
 #endif
 
 #ifdef EG_OCC
@@ -2396,7 +2396,7 @@ void MainWindow::loadProject(QString projectDirName) {
 #if 0
   // Changed the load order in 19 March 2009 for taking the "use as a body"
   // flags into account. The original boundary property loader is below.
-  // 
+  //
   // Changed back to original 23 March 2009. Todo...
   //===========================================================================
   //                          LOAD BOUNDARY PROPERTIES
@@ -2410,10 +2410,10 @@ void MainWindow::loadProject(QString projectDirName) {
 
     if(index < 0) {
       logMessage("Load project: boundary properties: index out of bounds");
-      
+
       progressBar->hide();
       progressLabel->hide();
-      
+
       return;
     }
 
@@ -2812,7 +2812,7 @@ void MainWindow::savePictureSlot() {
   grabTimeLine->stop();
   grabTimeLine->setDuration(delay);
 #if WITH_QT6
-  grabTimeLine->setEasingCurve(QEasingCurve(QEasingCurve::Linear));  
+  grabTimeLine->setEasingCurve(QEasingCurve(QEasingCurve::Linear));
 #else
   grabTimeLine->setCurveShape(QTimeLine::LinearCurve);
 #endif
@@ -2836,7 +2836,7 @@ void MainWindow::grabFrameSlot() {
 
   QFileInfo fi(pictureFileName);
   QString suffix(fi.suffix());
-  suffix.toUpper();
+  suffix = suffix.toUpper();
 
   int imageQuality(egIni->value("defaultimagequality").toInt());
 
@@ -5068,7 +5068,7 @@ void MainWindow::showVtkPostSlot() {
     vtkPost->show();
 	return;
   }
-  
+
   QString postFileName =
       saveDirName + "/" + generalSetup->ui.postFileEdit->text().trimmed();
   // Parallel solution:
@@ -5167,7 +5167,7 @@ void MainWindow::showParaViewSlot() {
   // Paraview can deal with case..vtu kind of arguments which however,
   // fail if there is only one file. Use dirty check to see that there
   // are more than one file.
-  
+
   if (!parallelActive) {
     secondName = pvFile.baseName() + "_t0002.vtu";
   } else {
@@ -5197,7 +5197,7 @@ void MainWindow::showParaViewSlot() {
   // Launch ParaView
   //================
   paraview->start("paraview", args);
-  
+
   if (!paraview->waitForStarted()) {
     logMessage("Unable to start ParaView");
     return;
@@ -5207,7 +5207,7 @@ void MainWindow::showParaViewSlot() {
 
   updateSysTrayIcon("ParaView started",
                     "");
-  
+
 #endif
 }
 
@@ -7357,8 +7357,8 @@ void MainWindow::getStartedSlot() {
   ));
   msgBox.exec();
 }
- 
- 
+
+
 //*****************************************************************************
 //
 //                           Auxiliary non-menu items
@@ -7811,13 +7811,13 @@ void MainWindow::loadSettings() {
   } else {
     objectBrowser = NULL;
   }
-  
+
   switch (settings_value("postProcessor/i", 0).toInt()){
-    case 0: selectElmerPostSlot(); break; 
+    case 0: selectElmerPostSlot(); break;
     case 1: selectVtkPostSlot(); break;
     case 2: selectParaViewSlot(); break;
   }
-  
+
   saveDirName = settings_value("defaultDir/project", "").toString();
   // Color settings
   glWidget->backgroundColor = settings_value("color/background", glWidget->backgroundColor).value<QColor>();
@@ -7826,8 +7826,8 @@ void MainWindow::loadSettings() {
   glWidget->surfaceMeshColor = settings_value("color/surfaceMesh", glWidget->surfaceMeshColor).value<QColor>();
   glWidget->sharpEdgeColor = settings_value("color/sharpEdge", glWidget->sharpEdgeColor).value<QColor>();
   glWidget->selectionColor = settings_value("color/selection", glWidget->selectionColor).value<QColor>();
-  
-  synchronizeMenuToState();  
+
+  synchronizeMenuToState();
 }
 
 // Save settings
@@ -7856,7 +7856,7 @@ void MainWindow::saveSettings() {
   } else {
     settings_setValue("objectBrowser/show", false);
   }
-  
+
   if(selectElmerPostAct->isChecked()){
     settings_setValue("postProcessor/i", 0);
   }else if(selectVtkPostAct->isChecked()){
@@ -7866,9 +7866,9 @@ void MainWindow::saveSettings() {
   }
 
   settings_setValue("defaultDir/project", saveDirName);
-  
+
   // Commented out as restoring defaultEdfDir is not so useful
-  // settings_setValue("defaultDir/edfEditor", edfEditor->defaultEdfDir());  
+  // settings_setValue("defaultDir/edfEditor", edfEditor->defaultEdfDir());
 
   // Color settings
   settings_setValue("color/background", glWidget->backgroundColor);
@@ -8193,7 +8193,7 @@ void MainWindow::showObjectBrowserSlot() {
 
 void MainWindow::selectElmerPostSlot(){
   runPostProcessorAct->setText(tr("Start ElmerPost"));
-  runPostProcessorAct->setIcon(QIcon(":/icons/Post.png"));  
+  runPostProcessorAct->setIcon(QIcon(":/icons/Post.png"));
   runPostProcessorAct->setStatusTip(tr("Run ElmerPost for visualization"));
   runPostProcessorAct->disconnect();
   connect(runPostProcessorAct, SIGNAL(triggered()), this, SLOT(resultsSlot()));
@@ -8203,7 +8203,7 @@ void MainWindow::selectElmerPostSlot(){
 }
 void MainWindow::selectVtkPostSlot(){
   runPostProcessorAct->setText(tr("Start ElmerVTK"));
-  runPostProcessorAct->setIcon(QIcon(":/icons/Mesh3D.png"));  
+  runPostProcessorAct->setIcon(QIcon(":/icons/Mesh3D.png"));
   runPostProcessorAct->setStatusTip(tr("Invokes VTK based ElmerGUI postprocessor"));
   runPostProcessorAct->disconnect();
   connect(runPostProcessorAct, SIGNAL(triggered()), this, SLOT(showVtkPostSlot()));
@@ -8213,7 +8213,7 @@ void MainWindow::selectVtkPostSlot(){
 }
 void MainWindow::selectParaViewSlot(){
   runPostProcessorAct->setText(tr("Start ParaView"));
-  runPostProcessorAct->setIcon(QIcon(":/icons/Paraview.png"));  
+  runPostProcessorAct->setIcon(QIcon(":/icons/Paraview.png"));
   runPostProcessorAct->setStatusTip(tr("Invokes ParaView for visualization"));
   runPostProcessorAct->disconnect();
   connect(runPostProcessorAct, SIGNAL(triggered()), this, SLOT(showParaViewSlot()));

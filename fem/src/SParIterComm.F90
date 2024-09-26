@@ -54,6 +54,12 @@ MODULE SParIterComm
   USE XIOS
 #endif
 
+#ifndef HAVE_PARMMG
+#  if defined(ELMER_HAVE_MPI_MODULE)
+  USE mpi
+#  endif
+#endif
+
   IMPLICIT NONE
 
 #ifdef HAVE_PARMMG
@@ -72,7 +78,7 @@ MODULE SParIterComm
   INTEGER :: PMMGPARAM_aniso = PMMG_IPARAM_anisosize
   INTEGER :: PMMGPARAM_APImode = PMMG_IPARAM_APImode
   INTEGER :: PMMGPARAM_globalnum = PMMG_IPARAM_globalNum
-#else
+#elif defined(ELMER_HAVE_MPIF_HEADER)
   INCLUDE "mpif.h"
 #endif
 
@@ -502,8 +508,8 @@ CONTAINS
           buf(j) = ptr % e2
           ptr => ptr % next
         END DO
-        CALL MPI_BSEND(j,1,MPI_INTEGER,i-1, 20000,ELMER_COMM_WORLD,status,ierr)
-        IF (j>0) CALL MPI_BSEND(buf,j,MPI_INTEGER,i-1,20001,ELMER_COMM_WORLD,status,ierr)
+        CALL MPI_BSEND(j,1,MPI_INTEGER,i-1, 20000,ELMER_COMM_WORLD,ierr)
+        IF (j>0) CALL MPI_BSEND(buf,j,MPI_INTEGER,i-1,20001,ELMER_COMM_WORLD,ierr)
       END DO
 
       DO i=1,ParEnv % PEs
@@ -2483,7 +2489,7 @@ tstart = realtime()
      Iterate = Iterate+1
      IF(Iterate > MaxIterates ) THEN
         WRITE(*,'(A,I6,A)') 'SParIterGlobalNumbering: PE: ', ParEnv % MyPE+1,'Max iterations exceeded'
-        CALL MPI_FINALIZE( ELMER_COMM_WORLD, ierr )
+        CALL MPI_FINALIZE( ierr )
      END IF
      DO i = n, Mesh % NumberOfNodes
         Mesh % ParallelInfo % GlobalDOFs(i) = 0

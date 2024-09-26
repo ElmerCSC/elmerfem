@@ -22,7 +22,7 @@ c     A*VNEW_{k} - VNEW_{k}*HNEW_{k} = rnew_{k}*e_{k}^T.
 c
 c\Usage:
 c  call pdnapps
-c     ( COMM, N, KEV, NP, SHIFTR, SHIFTI, V, LDV, H, LDH, RESID, Q, LDQ, 
+c     ( COMM, N, KEV, NP, SHIFTR, SHIFTI, V, LDV, H, LDH, RESID, Q, LDQ,
 c       WORKL, WORKD )
 c
 c\Arguments
@@ -33,7 +33,7 @@ c          Problem size, i.e. size of matrix A.
 c
 c  KEV     Integer.  (INPUT/OUTPUT)
 c          KEV+NP is the size of the input matrix H.
-c          KEV is the size of the updated matrix HNEW.  KEV is only 
+c          KEV is the size of the updated matrix HNEW.  KEV is only
 c          updated on ouput when fewer than NP shifts are applied in
 c          order to keep the conjugate pair together.
 c
@@ -42,7 +42,7 @@ c          Number of implicit shifts to be applied.
 c
 c  SHIFTR, Double precision array of length NP.  (INPUT)
 c  SHIFTI  Real and imaginary part of the shifts to be applied.
-c          Upon, entry to pdnapps, the shifts must be sorted so that the 
+c          Upon, entry to pdnapps, the shifts must be sorted so that the
 c          conjugate pairs are in consecutive locations.
 c
 c  V       Double precision N by (KEV+NP) array.  (INPUT/OUTPUT)
@@ -55,7 +55,7 @@ c          Leading dimension of V exactly as declared in the calling
 c          program.
 c
 c  H       Double precision (KEV+NP) by (KEV+NP) array.  (INPUT/OUTPUT)
-c          On INPUT, H contains the current KEV+NP by KEV+NP upper 
+c          On INPUT, H contains the current KEV+NP by KEV+NP upper
 c          Hessenber matrix of the Arnoldi factorization.
 c          On OUTPUT, H contains the updated KEV by KEV upper Hessenberg
 c          matrix in the KEV leading submatrix.
@@ -66,7 +66,7 @@ c          program.
 c
 c  RESID   Double precision array of length N.  (INPUT/OUTPUT)
 c          On INPUT, RESID contains the the residual vector r_{k+p}.
-c          On OUTPUT, RESID is the update residual vector rnew_{k} 
+c          On OUTPUT, RESID is the update residual vector rnew_{k}
 c          in the first KEV locations.
 c
 c  Q       Double precision KEV+NP by KEV+NP work array.  (WORKSPACE)
@@ -120,8 +120,8 @@ c     Danny Sorensen               Phuong Vu
 c     Richard Lehoucq              CRPC / Rice University
 c     Dept. of Computational &     Houston, Texas
 c     Applied Mathematics
-c     Rice University           
-c     Houston, Texas    
+c     Rice University
+c     Houston, Texas
 c
 c\Parallel Modifications
 c     Kristi Maschhoff
@@ -129,8 +129,8 @@ c
 c\Revision history:
 c     Starting Point: Serial Code FILE: napps.F   SID: 2.2
 c
-c\SCCS Information: 
-c FILE: napps.F   SID: 1.5   DATE OF SID: 03/19/97   
+c\SCCS Information:
+c FILE: napps.F   SID: 1.5   DATE OF SID: 03/19/97
 c
 c\Remarks
 c  1. In this version, each shift is applied to all the sublocks of
@@ -144,7 +144,7 @@ c
 c-----------------------------------------------------------------------
 c
       subroutine pdnapps
-     &   ( comm, n, kev, np, shiftr, shifti, v, ldv, h, ldh, resid, 
+     &   ( comm, n, kev, np, shiftr, shifti, v, ldv, h, ldh, resid,
      &     q, ldq, workl, workd )
 c
 c     %--------------------%
@@ -171,7 +171,7 @@ c     | Array Arguments |
 c     %-----------------%
 c
       Double precision
-     &           h(ldh,kev+np), resid(n), shifti(np), shiftr(np), 
+     &           h(ldh,kev+np), resid(n), shifti(np), shiftr(np),
      &           v(ldv,kev+np), q(ldq,kev+np), workd(2*n), workl(kev+np)
 c
 c     %------------%
@@ -189,15 +189,15 @@ c
       integer    i, iend, ir, istart, j, jj, kplusp, msglvl, nr
       logical    cconj, first
       Double precision
-     &           c, f, g, h11, h12, h21, h22, h32, ovfl, r, s, sigmai, 
+     &           c, f, g, h11, h12, h21, h22, h32, ovfl, r, s, sigmai,
      &           sigmar, smlnum, ulp, unfl, u(3), t, tau, tst1
-      save       first, ovfl, smlnum, ulp, unfl 
+      save       first, ovfl, smlnum, ulp, unfl
 c
 c     %----------------------%
 c     | External Subroutines |
 c     %----------------------%
 c
-      external   daxpy, dcopy, dscal, dlacpy, dlarf, dlarfg, dlartg, 
+      external   daxpy, dcopy, dscal, dlacpy, dlarf, dlarfg, dlartg,
      &           dlaset, dlabad, second, pivout, pdvout, pdmout
 c
 c     %--------------------%
@@ -248,9 +248,9 @@ c     %-------------------------------%
 c
       call second (t0)
       msglvl = mnapps
-c 
-      kplusp = kev + np 
-c 
+c
+      kplusp = kev + np
+c
 c     %--------------------------------------------%
 c     | Initialize Q to the identity to accumulate |
 c     | the rotations and reflections              |
@@ -276,11 +276,11 @@ c
          sigmai = shifti(jj)
 c
          if (msglvl .gt. 2 ) then
-            call pivout (comm, logfil, 1, jj, ndigit, 
+            call pivout (comm, logfil, 1, [jj], ndigit,
      &               '_napps: shift number.')
-            call pdvout (comm, logfil, 1, sigmar, ndigit, 
+            call pdvout (comm, logfil, 1, [sigmar], ndigit,
      &               '_napps: The real part of the shift ')
-            call pdvout (comm, logfil, 1, sigmai, ndigit, 
+            call pdvout (comm, logfil, 1, [sigmai], ndigit,
      &               '_napps: The imaginary part of the shift ')
          end if
 c
@@ -345,11 +345,11 @@ c
      &         tst1 = dlanhs( '1', kplusp-jj+1, h, ldh, workl )
             if( abs( h( i+1,i ) ).le.max( ulp*tst1, smlnum ) ) then
                if (msglvl .gt. 0) then
-                  call pivout (comm, logfil, 1, i, ndigit, 
+                  call pivout (comm, logfil, 1, [i], ndigit,
      &                 '_napps: matrix splitting at row/column no.')
-                  call pivout (comm, logfil, 1, jj, ndigit, 
+                  call pivout (comm, logfil, 1, [jj], ndigit,
      &                 '_napps: matrix splitting with shift number.')
-                  call pdvout (comm, logfil, 1, h(i+1,i), ndigit, 
+                  call pdvout (comm, logfil, 1, h(i+1,i), ndigit,
      &                 '_napps: off diagonal element.')
                end if
                iend = i
@@ -361,9 +361,9 @@ c
    40    continue
 c
          if (msglvl .gt. 2) then
-             call pivout (comm, logfil, 1, istart, ndigit, 
+             call pivout (comm, logfil, 1, [istart], ndigit,
      &                   '_napps: Start of current block ')
-             call pivout (comm, logfil, 1, iend, ndigit, 
+             call pivout (comm, logfil, 1, [iend], ndigit,
      &                   '_napps: End of current block ')
          end if
 c
@@ -378,7 +378,7 @@ c        | If istart + 1 = iend then no reason to apply a       |
 c        | complex conjugate pair of shifts on a 2 by 2 matrix. |
 c        %------------------------------------------------------%
 c
-         if ( istart + 1 .eq. iend .and. abs( sigmai ) .gt. zero ) 
+         if ( istart + 1 .eq. iend .and. abs( sigmai ) .gt. zero )
      &      go to 100
 c
          h11 = h(istart,istart)
@@ -391,7 +391,7 @@ c           %---------------------------------------------%
 c
             f = h11 - sigmar
             g = h21
-c 
+c
             do 80 i = istart, iend-1
 c
 c              %-----------------------------------------------------%
@@ -423,7 +423,7 @@ c
                do 50 j = i, kplusp
                   t        =  c*h(i,j) + s*h(i+1,j)
                   h(i+1,j) = -s*h(i,j) + c*h(i+1,j)
-                  h(i,j)   = t   
+                  h(i,j)   = t
    50          continue
 c
 c              %---------------------------------------------%
@@ -433,7 +433,7 @@ c
                do 60 j = 1, min(i+2,iend)
                   t        =  c*h(j,i) + s*h(j,i+1)
                   h(j,i+1) = -s*h(j,i) + c*h(j,i+1)
-                  h(j,i)   = t   
+                  h(j,i)   = t
    60          continue
 c
 c              %----------------------------------------------------%
@@ -443,7 +443,7 @@ c
                do 70 j = 1, min( i+jj, kplusp )
                   t        =   c*q(j,i) + s*q(j,i+1)
                   q(j,i+1) = - s*q(j,i) + c*q(j,i+1)
-                  q(j,i)   = t   
+                  q(j,i)   = t
    70          continue
 c
 c              %---------------------------%
@@ -459,7 +459,7 @@ c
 c           %-----------------------------------%
 c           | Finished applying the real shift. |
 c           %-----------------------------------%
-c 
+c
          else
 c
 c           %----------------------------------------------------%
@@ -475,9 +475,9 @@ c           | Compute 1st column of (H - shift*I)*(H - conj(shift)*I) |
 c           %---------------------------------------------------------%
 c
             s    = 2.0*sigmar
-            t = dlapy2 ( sigmar, sigmai ) 
+            t = dlapy2 ( sigmar, sigmai )
             u(1) = ( h11 * (h11 - s) + t * t ) / h21 + h12
-            u(2) = h11 + h22 - s 
+            u(2) = h11 + h22 - s
             u(3) = h32
 c
             do 90 i = istart, iend-1
@@ -517,7 +517,7 @@ c              %-----------------------------------------------------%
 c              | Accumulate the reflector in the matrix Q;  Q <- Q*G |
 c              %-----------------------------------------------------%
 c
-               call dlarf ('Right', kplusp, nr, u, 1, tau, 
+               call dlarf ('Right', kplusp, nr, u, 1, tau,
      &                     q(1,i), ldq, workl)
 c
 c              %----------------------------%
@@ -536,7 +536,7 @@ c           %--------------------------------------------%
 c           | Finished applying a complex pair of shifts |
 c           | to the current block                       |
 c           %--------------------------------------------%
-c 
+c
          end if
 c
   100    continue
@@ -593,7 +593,7 @@ c
       if (h(kev+1,kev) .gt. zero)
      &    call dgemv ('N', n, kplusp, one, v, ldv, q(1,kev+1), 1, zero,
      &                workd(n+1), 1)
-c 
+c
 c     %----------------------------------------------------------%
 c     | Compute column 1 to kev of (V*Q) in backward order       |
 c     | taking advantage of the upper Hessenberg structure of Q. |
@@ -610,7 +610,7 @@ c     |  Move v(:,kplusp-kev+1:kplusp) into v(:,1:kev). |
 c     %-------------------------------------------------%
 c
       call dlacpy ('A', n, kev, v(1,kplusp-kev+1), ldv, v, ldv)
-c 
+c
 c     %--------------------------------------------------------------%
 c     | Copy the (kev+1)-st column of (V*Q) in the appropriate place |
 c     %--------------------------------------------------------------%
@@ -635,19 +635,19 @@ c
      &        '_napps: sigmak = (e_{kev+p}^T*Q)*e_{kev}')
          call pdvout (comm, logfil, 1, h(kev+1,kev), ndigit,
      &        '_napps: betak = e_{kev+1}^T*H*e_{kev}')
-         call pivout (comm, logfil, 1, kev, ndigit, 
+         call pivout (comm, logfil, 1, [kev], ndigit,
      &               '_napps: Order of the final Hessenberg matrix ')
          if (msglvl .gt. 2) then
             call pdmout (comm, logfil, kev, kev, h, ldh, ndigit,
      &      '_napps: updated Hessenberg matrix H for next iteration')
          end if
-c 
+c
       end if
-c 
+c
  9000 continue
       call second (t1)
       tnapps = tnapps + (t1 - t0)
-c 
+c
       return
 c
 c     %----------------%

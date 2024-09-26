@@ -9,7 +9,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 25
 
   Coordinate System = "Cartesian"
   Simulation Type = Steady
@@ -61,15 +61,15 @@ Solver 1
 
   Block 11: Linear System Solver = Iterative
 
-!  Block 11: Linear System Preconditioning = BoomerAMG
-!  Block 11: Linear System Use Hypre = True
+  Block 11: Linear System Preconditioning = BoomerAMG
+  Block 11: Linear System Use Hypre = True
   Block 11: Linear System Iterative Method = BiCGStab
 ! Block 11: Linear System Use Backward Error Estimate = Logical True
 
   Block 22: Linear system Solver = Iterative
-!  Block 22: Linear System Preconditioning = AMS
+  Block 22: Linear System Preconditioning = AMS
   Block 22: Linear System Use Hypre = True
-  Block 22: Linear System Iterative Method = BiCGStabL
+  Block 22: Linear System Iterative Method = BiCGStab
 ! Block 22: Linear System Use Backward Error Estimate = Logical True
 
   Steady State Convergence Tolerance = 1e-6

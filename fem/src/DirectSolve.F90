@@ -375,7 +375,7 @@ CONTAINS
        BIND(C,name='umf4_l_sym')
        USE, INTRINSIC :: ISO_C_BINDING
        !INTEGER(CAddrInt) ::m,n,rows(*),cols(*) 
-       INTEGER(C_LONG) :: m,n,rows(*),cols(*) !TODO: m,n of are called with AddrInt kind
+       INTEGER(UMFPACK_LONG_FORTRAN_TYPE) :: m,n,rows(*),cols(*) !TODO: m,n of are called with AddrInt kind
        INTEGER(CAddrInt) ::  symbolic
        REAL(C_DOUBLE) :: Values(*), control(*),iinfo(*)
     END SUBROUTINE umf4_l_sym
@@ -384,7 +384,7 @@ CONTAINS
        BIND(C,name='umf4_l_num')
        USE, INTRINSIC :: ISO_C_BINDING
        !INTEGER(CAddrInt) :: rows(*),cols(*)
-       INTEGER(C_LONG) :: rows(*),cols(*)
+       INTEGER(UMFPACK_LONG_FORTRAN_TYPE) :: rows(*),cols(*)
        INTEGER(CAddrInt) ::  numeric, symbolic
        REAL(C_DOUBLE) :: Values(*), control(*),iinfo(*)
     END SUBROUTINE umf4_l_num
@@ -393,7 +393,7 @@ CONTAINS
        BIND(C,name='umf4_l_sol')
        USE, INTRINSIC :: ISO_C_BINDING
        !INTEGER(CAddrInt) :: sys
-       INTEGER(C_LONG) :: sys
+       INTEGER(UMFPACK_LONG_FORTRAN_TYPE) :: sys
        INTEGER(CAddrInt) :: numeric
        REAL(C_DOUBLE) :: x(*), b(*), control(*), iinfo(*)
     END SUBROUTINE umf4_l_sol
@@ -414,8 +414,8 @@ CONTAINS
   INTEGER :: i, n, status, sys
   REAL(KIND=dp) :: iInfo(90), Control(20)
   INTEGER(KIND=AddrInt) :: symbolic, zero=0
-  INTEGER(KIND=C_LONG) :: ln, lsys
-  INTEGER(KIND=C_LONG), ALLOCATABLE :: LRows(:), LCols(:)
+  INTEGER(KIND=UMFPACK_LONG_FORTRAN_TYPE) :: ln, lsys
+  INTEGER(KIND=UMFPACK_LONG_FORTRAN_TYPE), ALLOCATABLE :: LRows(:), LCols(:)
 
   SAVE iInfo, Control
  
@@ -713,14 +713,21 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE Mumps_SolveSystem( Solver,A,x,b,Free_Fact )
 !------------------------------------------------------------------------------
- 
+#ifdef HAVE_MUMPS
+#  if defined(ELMER_HAVE_MPI_MODULE)
+  USE mpi
+#  endif
+#endif
+
   LOGICAL, OPTIONAL :: Free_Fact
   TYPE(Matrix_t) :: A
   TYPE(Solver_t) :: Solver
   REAL(KIND=dp), TARGET :: x(*), b(*)
 
 #ifdef HAVE_MUMPS
+#  if defined(ELMER_HAVE_MPIF_HEADER)
   INCLUDE 'mpif.h'
+#  endif
 
   INTEGER, ALLOCATABLE :: Owner(:)
   INTEGER :: i,j,n,ip,ierr,icntlft,nzloc
@@ -1022,19 +1029,26 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE MumpsLocal_Factorize(Solver, A)
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+#ifdef HAVE_MUMPS
+#  if defined(ELMER_HAVE_MPI_MODULE)
+    USE mpi
+#  endif
+#endif
+    IMPLICIT NONE
 
-      TYPE(Solver_t) :: Solver
-       TYPE(Matrix_t) :: A
+    TYPE(Solver_t) :: Solver
+    TYPE(Matrix_t) :: A
 
 #ifdef HAVE_MUMPS
-       INCLUDE 'mpif.h'
+#  if defined(ELMER_HAVE_MPIF_HEADER)
+    INCLUDE 'mpif.h'
+#  endif
 
-     INTEGER :: i, j, n, nz, allocstat, icntlft, ptype, nzloc
-     LOGICAL :: matpd, matsym, nullpiv, stat
+    INTEGER :: i, j, n, nz, allocstat, icntlft, ptype, nzloc
+    LOGICAL :: matpd, matsym, nullpiv, stat
 
-     ! INTEGER :: myrank, ierr
-     ! CHARACTER(len=32) :: buf
+    ! INTEGER :: myrank, ierr
+    ! CHARACTER(len=32) :: buf
 
     IF ( ASSOCIATED(A % mumpsIDL) ) THEN
          CALL MumpsLocal_Free(A)
@@ -1196,6 +1210,11 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE MumpsLocal_SolveNullSpace(Solver, A, z, nz)
 !------------------------------------------------------------------------------
+#ifdef HAVE_MUMPS
+#  if defined(ELMER_HAVE_MPI_MODULE)
+      USE mpi
+#  endif
+#endif
       IMPLICIT NONE
 
       TYPE(Solver_t) :: Solver
@@ -1204,7 +1223,9 @@ CONTAINS
       INTEGER :: nz, nrhs
 
 #ifdef HAVE_MUMPS
+#  if defined(ELMER_HAVE_MPIF_HEADER)
       INCLUDE 'mpif.h'
+#  endif
 
       INTEGER :: j,k,n, allocstat
       LOGICAL :: Factorize, FreeFactorize, stat
@@ -1426,16 +1447,21 @@ CONTAINS
   SUBROUTINE Permon_SolveSystem( Solver,A,x,b,Free_Fact )
 !------------------------------------------------------------------------------
 #ifdef HAVE_FETI4I
-   use feti4i
+  USE feti4i
+#  if defined(ELMER_HAVE_MPI_MODULE)
+  USE mpi
+#  endif
 #endif
- 
+
   LOGICAL, OPTIONAL :: Free_Fact
   TYPE(Matrix_t) :: A
   TYPE(Solver_t) :: Solver
   REAL(KIND=dp), TARGET :: x(*), b(*)
 
 #ifdef HAVE_FETI4I
+#  if defined(ELMER_HAVE_MPIF_HEADER)
   INCLUDE 'mpif.h'
+#  endif
 
   INTEGER, ALLOCATABLE :: Owner(:)
   INTEGER :: i,j,n,nd,ip,ierr,icntlft,nzloc

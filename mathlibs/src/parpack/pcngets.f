@@ -4,9 +4,9 @@ c\Name: pcngets
 c
 c Message Passing Layer: MPI
 c
-c\Description: 
+c\Description:
 c  Given the eigenvalues of the upper Hessenberg matrix H,
-c  computes the NP shifts AMU that are zeros of the polynomial of 
+c  computes the NP shifts AMU that are zeros of the polynomial of
 c  degree NP which filters out components of the unwanted eigenvectors
 c  corresponding to the AMU's based on some given criteria.
 c
@@ -44,8 +44,8 @@ c  RITZ    Complex array of length KEV+NP.  (INPUT/OUTPUT)
 c          On INPUT, RITZ contains the the eigenvalues of H.
 c          On OUTPUT, RITZ are sorted so that the unwanted
 c          eigenvalues are in the first NP locations and the wanted
-c          portion is in the last KEV locations.  When exact shifts are 
-c          selected, the unwanted part corresponds to the shifts to 
+c          portion is in the last KEV locations.  When exact shifts are
+c          selected, the unwanted part corresponds to the shifts to
 c          be applied. Also, if ISHIFT .eq. 1, the unwanted eigenvalues
 c          are further sorted so that the ones with largest Ritz values
 c          are first.
@@ -53,7 +53,7 @@ c
 c  BOUNDS  Complex array of length KEV+NP.  (INPUT/OUTPUT)
 c          Error bounds corresponding to the ordering in RITZ.
 c
-c  
+c
 c
 c\EndDoc
 c
@@ -74,9 +74,9 @@ c\Author
 c     Danny Sorensen               Phuong Vu
 c     Richard Lehoucq              CRPC / Rice University
 c     Dept. of Computational &     Houston, Texas
-c     Applied Mathematics 
-c     Rice University           
-c     Houston, Texas 
+c     Applied Mathematics
+c     Rice University
+c     Houston, Texas
 c
 c\Parallel Modifications
 c     Kristi Maschhoff
@@ -84,7 +84,7 @@ c
 c\Revision history:
 c     Starting Point: Serial Complex Code FILE: ngets.F   SID: 2.1
 c
-c\SCCS Information: 
+c\SCCS Information:
 c FILE: ngets.F   SID: 1.2   DATE OF SID: 4/19/96
 c
 c\Remarks
@@ -152,14 +152,14 @@ c     %-------------------------------%
 c     | Initialize timing statistics  |
 c     | & message level for debugging |
 c     %-------------------------------%
-c 
+c
       call second (t0)
       msglvl = mcgets
-c 
+c
       call csortc (which, .true., kev+np, ritz, bounds)
-c     
+c
       if ( ishift .eq. 1 ) then
-c     
+c
 c        %-------------------------------------------------------%
 c        | Sort the unwanted Ritz values used as shifts so that  |
 c        | the ones with largest Ritz estimates are first        |
@@ -168,27 +168,27 @@ c        | forward instability of the iteration when the shifts  |
 c        | are applied in subroutine pcnapps.                    |
 c        | Be careful and use 'SM' since we want to sort BOUNDS! |
 c        %-------------------------------------------------------%
-c     
+c
          call csortc ( 'SM', .true., np, bounds, ritz )
 c
       end if
-c     
+c
       call second (t1)
       tcgets = tcgets + (t1 - t0)
 c
       if (msglvl .gt. 0) then
-         call pivout (comm, logfil, 1, kev, ndigit, '_ngets: KEV is')
-         call pivout (comm, logfil, 1, np, ndigit, '_ngets: NP is')
+         call pivout (comm, logfil, 1, [kev], ndigit, '_ngets: KEV is')
+         call pivout (comm, logfil, 1, [np], ndigit, '_ngets: NP is')
          call pcvout (comm, logfil, kev+np, ritz, ndigit,
      &        '_ngets: Eigenvalues of current H matrix ')
-         call pcvout (comm, logfil, kev+np, bounds, ndigit, 
+         call pcvout (comm, logfil, kev+np, bounds, ndigit,
      &      '_ngets: Ritz estimates of the current KEV+NP Ritz values')
       end if
-c     
+c
       return
-c     
+c
 c     %----------------%
 c     | End of pcngets |
 c     %----------------%
-c     
+c
       end

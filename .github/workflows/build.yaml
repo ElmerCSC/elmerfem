@@ -2,18 +2,24 @@ name: build
 on:
   workflow_dispatch:
   push:
+    paths-ignore:
+      - '**.nix'
+      - 'flake.lock'
   pull_request:
+    paths-ignore:
+      - '**.nix'
+      - 'flake.lock'
 
-concurrency: ci-${{ github.ref }}
+concurrency: ci-ubuntu-${{ github.ref }}
 
 jobs:
 
   ubuntu:
     # For available GitHub-hosted runners, see:
     # https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
-    name: ubuntu (${{ matrix.compiler }})
+    name: ubuntu (${{ matrix.compiler }} ${{ matrix.mpi }} MPI ${{ matrix.openmp }} OpenMP)
 
     strategy:
       # Allow other runners in the matrix to continue if some fail
@@ -21,15 +27,43 @@ jobs:
 
       matrix:
         compiler: [gcc]
+        mpi: [with]
+        openmp: [with]
         include:
           - compiler: gcc
             compiler-pkgs: "g++ gcc"
             cc: "gcc"
             cxx: "g++"
-          #- compiler: clang
-          #  compiler-pkgs: "clang libomp-dev"
-          #  cc: "clang"
-          #  cxx: "clang++"
+            openmp: with
+            openmp-cmake-flags: "-DWITH_OpenMP=ON"
+          - compiler: gcc
+            compiler-pkgs: "g++ gcc"
+            cc: "gcc"
+            cxx: "g++"
+            mpi: without
+            openmp: with
+            openmp-cmake-flags: "-DWITH_OpenMP=ON"
+          - compiler: gcc
+            compiler-pkgs: "g++ gcc"
+            cc: "gcc"
+            cxx: "g++"
+            mpi: with
+            openmp: without
+            openmp-cmake-flags: "-DWITH_OpenMP=OFF"
+          - compiler: clang
+            compiler-pkgs: "clang"
+            cc: "clang"
+            cxx: "clang++"
+            mpi: with
+            openmp: without
+            openmp-cmake-flags: "-DWITH_OpenMP=OFF"
+          # - compiler: clang
+          #   compiler-pkgs: "clang libomp-dev"
+          #   cc: "clang"
+          #   cxx: "clang++"
+          #   mpi: with
+          #   openmp: with
+          #   openmp-cmake-flags: "-DWITH_OpenMP=ON -DOpenMP_C_FLAGS='-fopenmp=libgomp -D_OPENMP=201511' -DOpenMP_CXX_FLAGS='-fopenmp=libgomp -D_OPENMP=201511' -DOpenMP_C_LIB_NAMES='gomp;pthread' -DOpenMP_CXX_LIB_NAMES='gomp;pthread'"
 
     env:
       CC: ${{ matrix.cc }}
@@ -41,14 +75,24 @@ jobs:
 
       - name: checkout repository
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: install dependencies
         run: |
           sudo apt -qq update
           sudo apt install -y ${{ matrix.compiler-pkgs }} cmake gfortran \
-            libopenblas-dev libopenmpi-dev libmumps-dev libparmetis-dev
+            libopenblas-dev \
+            $([ "${{ matrix.mpi }}" == "with" ] && echo "libhypre-dev") \
+            $([ "${{ matrix.mpi }}" == "with" ] && echo "libopenmpi-dev libmumps-dev libparmetis-dev") \
+            $([ "${{ matrix.compiler }}" == "gcc" ] && echo "libsuitesparse-dev") \
+            libqwt-qt5-dev qtscript5-dev libqt5svg5-dev \
+            libvtk9-qt-dev libglvnd-dev \
+            occt-misc libocct-data-exchange-dev libocct-draw-dev \
+            $([ "${{ matrix.mpi }}" == "with" ] && echo "trilinos-all-dev libptscotch-dev")
 
       - name: configure
+        # CHOLMOD requires a working OpenMP package. So, disable it for clang.
         run: |
           mkdir ${GITHUB_WORKSPACE}/build
           cd ${GITHUB_WORKSPACE}/build
@@ -56,20 +100,27 @@ jobs:
             -DCMAKE_BUILD_TYPE="Release" \
             -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/usr" \
             -DBLA_VENDOR="OpenBLAS" \
-            -DWITH_OpenMP=ON \
+            ${{ matrix.openmp-cmake-flags }} \
             -DWITH_LUA=ON \
-            -DWITH_Zoltan=OFF \
-            -DWITH_Mumps=ON \
+            $([ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_Zoltan=ON" || echo "-DWITH_Zoltan=OFF") \
+            $([ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_Mumps=ON" || echo "-DWITH_Mumps=OFF") \
+            $([ "${{ matrix.compiler }}" == "gcc" ] && echo "-DWITH_CHOLMOD=ON" || echo "-DWITH_CHOLMOD=OFF") \
+            $([ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_Hypre=ON -DHYPRE_INCLUDE_DIR=/usr/include/hypre" || echo "-DWITH_Hypre=OFF") \
+            $([ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_ElmerIce=ON" || echo "-DWITH_ElmerIce=OFF") \
+            -DWITH_ELMERGUI=ON \
+            -DWITH_VTK=ON \
+            -DWITH_OCC=ON \
+            -DWITH_MATC=ON \
+            -DWITH_PARAVIEW=ON \
             -DCREATE_PKGCONFIG_FILE=ON \
-            -DWITH_MPI=ON \
-            -DMPI_TEST_MAXPROC=2 \
-            -DMPIEXEC_PREFLAGS="--allow-run-as-root" \
+            $([ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_MPI=ON -DMPI_TEST_MAXPROC=2 -DMPIEXEC_PREFLAGS=--allow-run-as-root" || echo "-DWITH_MPI=OFF") \
+            $([ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_Trilinos=ON" || echo "-DWITH_Trilinos=OFF") \
             ..
 
       - name: build
         run: |
           cd ${GITHUB_WORKSPACE}/build
-          cmake --build .
+          cmake --build . -j$(nproc)
 
       - name: install
         run: |
@@ -79,17 +130,48 @@ jobs:
       - name: check
         id: run-ctest
         timeout-minutes: 150
+        env:
+          CTEST_OUTPUT_ON_FAILURE: 1
         run: |
           cd ${GITHUB_WORKSPACE}/build
-          ctest -L quick
+          ctest . \
+            -L "quick|elmerice-fast" \
+            -j$(nproc) \
+            --timeout 180
 
       - name: Re-run tests
         if: always() && (steps.run-ctest.outcome == 'failure')
         timeout-minutes: 60
+        env:
+          CTEST_OUTPUT_ON_FAILURE: 1
         run: |
           cd ${GITHUB_WORKSPACE}/build
+          # get names of failed tests and strip potential "_np*" suffix
+          failed_tests=($(ctest . -N --rerun-failed | grep -E "Test\s+#.*" | awk '{print $3}' | sed -e 's/_np[0-9]*$//g'))
+          # remove duplicate test names
+          unique_failed_tests=($(echo "${failed_tests[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
+          for test in "${unique_failed_tests[@]}"; do
+            # check if test is from fem or ElmerIce
+            if [ -d fem/tests/${test} ]; then
+              test_root=fem/tests
+            else
+              test_root=elmerice/Tests
+            fi
+            echo "::group::Content of ${test_root}/${test}"
+            echo ---- Files ----
+            ls -Rl ${test_root}/${test}
+            if [ -f ${test_root}/${test}/test-stderr*.log ]; then
+              echo ---- Content of test-stderr*.log ----
+              cat ${test_root}/${test}/test-stderr*.log
+            fi
+            if [ -f ${test_root}/${test}/test-stdout*.log ]; then
+              echo ---- Content of test-stdout*.log ----
+              cat ${test_root}/${test}/test-stdout*.log
+            fi
+            echo "::endgroup::"
+          done
           echo "::group::Re-run failing tests"
-          ctest --rerun-failed --output-on-failure || true
+          ctest --rerun-failed --output-on-failure --timeout 180 || true
           echo "::endgroup::"
           echo "::group::Log from these tests"
           [ ! -f Testing/Temporary/LastTest.log ] || cat Testing/Temporary/LastTest.log

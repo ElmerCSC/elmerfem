@@ -60,6 +60,7 @@ MODULE SParIterSolve
 
 CONTAINS
 
+  
   SUBROUTINE Dummy
   END SUBROUTINE Dummy
 
@@ -156,7 +157,7 @@ CONTAINS
     CHARACTER(:), ALLOCATABLE :: Prec
     REAL(kind=dp) :: st
   !******************************************************************
-st = realtime()
+    st = realtime()
     ALLOCATE( SplittedMatrix )
     SplittedMatrix % InsideMatrix => AllocateMatrix()
 
@@ -892,6 +893,170 @@ END SUBROUTINE ZeroSplittedMatrix
 !----------------------------------------------------------------------
 
 
+
+!----------------------------------------------------------------------
+! Get Hypre parameters in one central place. 
+!----------------------------------------------------------------------
+  SUBROUTINE SetHypreParameters(Params, hypremethod, Ilun, hypre_dppara, hypre_intpara )
+    TYPE(ValueList_t), POINTER :: Params
+    INTEGER :: hypremethod
+    INTEGER :: ilun
+    REAL(KIND=dp) :: hypre_dppara(5)
+    INTEGER :: hypre_intpara(10)
+
+    CHARACTER(:), ALLOCATABLE :: PrecMethod, IterativeMethod    
+    INTEGER :: hypre_sol, hypre_pre, k
+    LOGICAL :: BPC, Found
+    CHARACTER(*), PARAMETER :: Caller = 'HypreParameters' 
+       
+    CALL Info(Caller,'Setting parameters for Hypre solvers',Level=12)
+
+    hypremethod = 0
+    ilun = 0
+    hypre_dppara = 0.0_dp
+    hypre_intpara = 0
+        
+    IterativeMethod = ListGetString( Params,'Linear System Iterative Method' )      
+    IF ( IterativeMethod == 'bicgstab' ) THEN
+      CALL Info(Caller, "Hypre: BiCGStab",Level=5)
+      hypre_sol = 0;
+    ELSE IF ( IterativeMethod == 'boomeramg' )THEN
+      CALL Info(Caller, "Hypre: BoomerAMG",Level=5)
+      hypre_sol = 1;
+    ELSE IF ( IterativeMethod == 'cg' ) THEN
+      hypre_sol = 2;
+      CALL Info(Caller, "Hypre: CG",Level=5)
+    ELSE IF ( IterativeMethod == 'gmres' ) THEN
+      hypre_sol = 3;
+      CALL Info(Caller, "Hypre: GMRes",Level=5)
+    ELSE IF ( IterativeMethod == 'flexgmres' ) THEN
+      hypre_sol = 4;
+      CALL Info(Caller, "Hypre: FlexGMRes",Level=5)
+    ELSE IF ( IterativeMethod == 'lgmres' ) THEN
+      hypre_sol = 5;
+      CALL Info(Caller, "Hypre: LGMRes",Level=5)
+    ELSE
+      CALL Fatal(Caller,'Unknown iterative method: '//TRIM(IterativeMethod))
+    END IF
+
+    PrecMethod = ListGetString(Params,'Linear System Preconditioning', Found )
+    ILUn = 0
+    hypre_pre = 0
+    IF ( hypre_sol /= 1) THEN
+      IF ( SEQL(PrecMethod,'ilu') ) THEN
+        Ilun = 0
+        IF(LEN(PrecMethod)>=4) READ( PrecMethod(4:), *, END=10 ) ILUn
+10      CONTINUE
+        WRITE( Message,'(a, i1)') 'Preconditioner: ILU', ILUn
+        CALL Info(Caller, Message,Level=5)
+      ELSE IF( PrecMethod == 'parasails' ) THEN
+        CALL Info(Caller, "Preconditioner: ParaSails",Level=5)
+        hypre_pre = 1
+      ELSE IF( PrecMethod == 'boomeramg' ) THEN
+        CALL Info(Caller, "Preconditioner: boomerAMG",Level=5)
+        hypre_pre = 2
+      ELSE IF( PrecMethod == 'ams' ) THEN
+        CALL Info(Caller, "Preconditioner: AMS",Level=5)
+        hypre_pre = 3
+      ELSE IF( PrecMethod == 'none' ) THEN
+        hypre_pre = 9
+      END IF
+    END IF
+
+    hypremethod = hypre_sol * 10 + hypre_pre
+    CALL Info(Caller,'Hypre method index: '//I2S(hypremethod),Level=8)
+    
+    ! NB.: hypremethod = 0 ... BiCGStab + ILUn
+    !                    1 ... BiCGStab + ParaSails
+    !                    2 ... BiCGStab + BoomerAMG
+    !                   10 ... BoomerAMG
+    !                   20 ... CG + ILUn
+    !                   21 ... CG + ParaSails
+    !                   22 ... CG + BoomerAMG  
+    !                   30 ... GMRes + ILUn
+    !                   31 ... GMRes + ParaSails
+    !                   32 ... GMRes + BoomerAMG  
+    !                   40 ... FlexGMRes + ILUn
+    !                   41 ... FlexGMRes + ParaSails
+    !                   42 ... FlexGMRes + BoomerAMG  
+    
+    IF ( hypre_pre == 1) THEN ! ParaSails as preconditioner
+      hypre_dppara(1) = ListGetConstReal( Params,&
+          'ParaSails Threshold', Found )
+      IF ( .NOT. Found ) hypre_dppara(1) = -0.95d0;
+
+      hypre_dppara(2) = ListGetConstReal( Params,&
+          'ParaSails Filter', Found )
+      IF ( .NOT. Found ) hypre_dppara(2) = -0.95d0;
+
+      hypre_intpara(1) = ListGetInteger( Params,&
+          'ParaSails Symmetry', Found )
+      IF ( .NOT. Found ) hypre_intpara(1) = 0;
+
+      hypre_intpara(2) = ListGetInteger( Params,&
+          'ParaSails Maxlevel', Found )
+      IF ( .NOT. Found ) hypre_intpara(2) = 1;
+
+    ELSE IF ( hypre_pre == 2 .OR. hypre_pre==3 .OR. hypre_sol == 1 ) THEN ! BoomerAMG as preconditioner or solver
+      hypre_intpara(1) = ListGetInteger( Params, &
+          'BoomerAMG Relax Type', Found )
+      IF (.NOT.Found) hypre_intpara(1) = 3
+
+      hypre_intpara(2) = ListGetInteger( Params, &
+          'BoomerAMG Coarsen Type', Found )
+      IF (.NOT.Found)  hypre_intpara(2)  = 0
+
+      hypre_intpara(3) = ListGetInteger( Params, &
+          'BoomerAMG Num Sweeps', Found )
+      IF (.NOT.Found)  hypre_intpara(3) = 1
+
+      hypre_intpara(4) = ListGetInteger( Params, &
+          'Boomeramg Max Levels', Found )
+      IF (.NOT.Found)  hypre_intpara(4) = 25
+
+      hypre_intpara(5) = ListGetInteger( Params, &
+          'BoomerAMG Interpolation Type', Found )
+      IF (.NOT.Found)  hypre_intpara(5) = 0
+
+      hypre_intpara(6) = ListGetInteger( Params, &
+          'BoomerAMG Smooth Type', Found )
+      IF (.NOT.Found)  hypre_intpara(6) = 6
+
+      hypre_intpara(7) = ListGetInteger( Params, &
+          'BoomerAMG Cycle Type', Found )
+      IF (.NOT.Found)  hypre_intpara(7) = 1
+
+      BPC = ListGetLogical( Params, 'Block Preconditioner', Found )
+
+      hypre_intpara(8) = ListGetInteger( Params, &
+          'BoomerAMG Num Functions', Found )
+      k = CurrentModel % Solver % Variable % DOFs
+      IF (.NOT.Found)  THEN
+        IF (BPC) THEN
+          hypre_intpara(8) = 1
+        ELSE
+          hypre_intpara(8) = k
+        END IF
+      ELSE IF ( .NOT.BPC .AND. (hypre_intpara(8) /= k) ) THEN
+        WRITE(Message,'(A,I0,A,I0)') 'Read > BoomerAMG Num Functions < value ',&
+            hypre_intpara(8), ', not equal to DOFs of solver variable ',k
+        CALL Warn(Caller,Message)
+      END IF
+      hypre_dppara(1) = ListGetConstReal( Params, &
+          'BoomerAMG Strong Threshold', Found )
+      IF (.NOT.Found)  hypre_dppara(1) = 0.25
+    END IF
+
+    IF( hypre_sol == 3 .OR. hypre_sol == 4 ) THEN
+      hypre_intpara(9) = ListGetInteger( Params, &
+          'HYPRE GmRes Dimension',Found )
+      IF( .NOT. Found ) hypre_intpara(9) = 20
+    END IF
+  
+  END SUBROUTINE SetHypreParameters
+
+
+
 !----------------------------------------------------------------------
   SUBROUTINE SParInitSolve( SourceMatrix,XVec,RHSVec,RVec, &
           ParallelInfo, UpdateMatrix )
@@ -1455,11 +1620,10 @@ SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
   TYPE (BasicMatrix_t), POINTER :: CurrIf
   TYPE (GlueTableT), POINTER :: GT
 
-  CHARACTER(:), ALLOCATABLE :: Prec, IterativeMethod, XmlFile
+  CHARACTER(:), ALLOCATABLE :: XmlFile
   REAL(KIND=dp) :: TOL, hypre_dppara(5) = 0
   INTEGER :: ILUn, BILU, Rounds, buf(2), src, status(MPI_STATUS_SIZE), ssz,nob, &
-      hypre_sol, hypre_pre, hypremethod,  &
-      gind, hypre_intpara(10) = 0
+      hypremethod,  gind, hypre_intpara(10) = 0
 
   INTEGER, DIMENSION(:), ALLOCATABLE :: VecEPerNB
   INTEGER, ALLOCATABLE :: Owner(:), Aperm(:)
@@ -1475,9 +1639,10 @@ SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
   
   INTEGER :: nrows, ncols, nnz
   TYPE(ValueList_t), POINTER :: Params
-INTEGER,ALLOCATABLE::revdoflist(:)
-INTEGER::inside
-
+  INTEGER,ALLOCATABLE::revdoflist(:)
+  INTEGER::inside
+  
+  
 #ifdef HAVE_HYPRE
     TYPE(Matrix_t), POINTER :: GM
     INTEGER:: nnd,ind(2), precond
@@ -1487,18 +1652,6 @@ INTEGER::inside
     LOGICAL :: BPC
 
     INTERFACE
-      !! original C function, does everything
-      SUBROUTINE SolveHYPRE( n, Rows, Cols, Vals, Perm, INVPerm, GDOFs, &
-           Owner, Xvec, RHSVec, PE, ILUn, Rounds, TOL, &
-           hypremethod, hypre_intpara, hypre_dppara, fcomm)
-        USE, INTRINSIC :: iso_c_binding
-        INTEGER(KIND=c_int) :: n, Rows(n), Cols(n), Perm(n), INVPerm(n), GDOFs(n), &
-                   PE, Owner(n), Rounds, ILUn, hypremethod, &
-                   symmetry, maxlevel, hypre_intpara(10), fcomm
-        REAL(KIND=c_double) :: Vals(n),Xvec(n),RHSvec(n),TOL,threshold,filter, &
-                            hypre_dppara(5)
-      END SUBROUTINE SolveHYPRE
-
       !! create HYPRE matrix and setup solver/preconditioner
       SUBROUTINE SolveHYPRE1( n, Rows, Cols, Vals, Precond, PrecVals, GDOFs, &
            Owner, ILUn, BILU, hypremethod, hypre_intpara, hypre_dppara, rounds, &
@@ -1511,7 +1664,7 @@ INTEGER::inside
                             hypre_dppara(5), PrecVals(*)
         INTEGER(KIND=C_INTPTR_T) :: hypreContainer
       END SUBROUTINE SolveHYPRE1
-
+      
       !! solve linear system with same matrix as in SolveHYPRE1
       SUBROUTINE SolveHYPRE2( n, GDOFs, &
            Owner, Xvec, RHSVec, Rounds, TOL, verbosity, hypreContainer, fcomm) BIND(C,name="solvehypre2")
@@ -1603,6 +1756,8 @@ INTEGER::inside
     END INTERFACE
 #endif
 
+  CHARACTER(*), PARAMETER :: Caller = 'SParIterSolver' 
+    
   !******************************************************************
   SaveGlobalData => GlobalData
   GlobalData     => SParMatrixDesc
@@ -1616,82 +1771,15 @@ INTEGER::inside
 
   !******************************************************************
 
-  CALL Info('SParIterSolver','Solving linear in parallel with iterative methods',Level=8)
+  CALL Info(Caller,'Solving linear in parallel with iterative methods',Level=8)
 
   Params => Solver % Values
 
 #ifdef HAVE_HYPRE
     IF (ListGetLogical(Params,'Linear System Use HYPRE', Found )) THEN
 
-      CALL Info('SParIterSolver','Solving linear system using HYPRE library',Level=6)
+      CALL Info(Caller,'Solving linear system using HYPRE library',Level=6)
       
-      Prec = ListGetString(Params,'Linear System Preconditioning', Found )
-      ILUn = 0
-      hypre_pre = 0
-      hypre_sol = 0
-
-      IterativeMethod = ListGetString( Params,'Linear System Iterative Method' )
-
-      IF ( IterativeMethod == 'bicgstab' ) THEN
-        CALL Info("SParIterSolver", "Hypre: BiCGStab",Level=5)
-        hypre_sol = 0;
-      ELSE IF ( IterativeMethod == 'boomeramg' )THEN
-        CALL Info("SParIterSolver", "Hypre: BoomerAMG",Level=5)
-        hypre_sol = 1;
-      ELSE IF ( IterativeMethod == 'cg' ) THEN
-        hypre_sol = 2;
-        CALL Info("SParIterSolver", "Hypre: CG",Level=5)
-      ELSE IF ( IterativeMethod == 'gmres' ) THEN
-        hypre_sol = 3;
-        CALL Info("SParIterSolver", "Hypre: GMRes",Level=5)
-      ELSE IF ( IterativeMethod == 'flexgmres' ) THEN
-        hypre_sol = 4;
-        CALL Info("SParIterSolver", "Hypre: FlexGMRes",Level=5)
-      ELSE IF ( IterativeMethod == 'lgmres' ) THEN
-        hypre_sol = 5;
-        CALL Info("SParIterSolver", "Hypre: LGMRes",Level=5)
-      ELSE
-        CALL Fatal('SParIterSolver','Unknown iterative method: '//TRIM(IterativeMethod))
-      END IF
-
-      IF ( hypre_sol /= 1) THEN
-         IF ( SEQL(Prec,'ilu') ) THEN
-           Ilun = 0
-           IF(LEN(Prec)>=4) READ( Prec(4:), *, END=10 ) ILUn
-10         CONTINUE
-           WRITE( Message,'(a, i1)') 'Preconditioner: ILU', ILUn
-           CALL Info("SParIterSolver", Message,Level=3)
-         ELSE IF( Prec == 'parasails' ) THEN
-           CALL Info("SParIterSolver", "Preconditioner: ParaSails",Level=3)
-           hypre_pre = 1
-         ELSE IF( Prec == 'boomeramg' ) THEN
-           CALL Info("SParIterSolver", "Preconditioner: boomerAMG",Level=3)
-           hypre_pre = 2
-         ELSE IF( Prec == 'ams' ) THEN
-           CALL Info("SParIterSolver", "Preconditioner: AMS",Level=3)
-           hypre_pre = 3
-         ELSE IF( Prec == 'none' ) THEN
-           hypre_pre = 9
-         END IF
-      END IF
-
-      hypremethod = hypre_sol * 10 + hypre_pre
-      CALL Info('SParIterSolver','Hypre method index: '//I2S(hypremethod),Level=8)
-      
-      ! NB.: hypremethod = 0 ... BiCGStab + ILUn
-      !                    1 ... BiCGStab + ParaSails
-      !                    2 ... BiCGStab + BoomerAMG
-      !                   10 ... BoomerAMG
-      !                   20 ... CG + ILUn
-      !                   21 ... CG + ParaSails
-      !                   22 ... CG + BoomerAMG  
-      !                   30 ... GMRes + ILUn
-      !                   31 ... GMRes + ParaSails
-      !                   32 ... GMRes + BoomerAMG  
-      !                   40 ... FlexGMRes + ILUn
-      !                   41 ... FlexGMRes + ParaSails
-      !                   42 ... FlexGMRes + BoomerAMG  
-
       TOL = ListGetConstReal( Params, &
            'Linear System Convergence Tolerance', Found )
       IF ( .NOT. Found ) TOL = 1.0d-6
@@ -1700,80 +1788,7 @@ INTEGER::inside
            'Linear System Max Iterations', Found )
       IF ( .NOT. Found ) Rounds = 1000
 
-      IF ( hypre_pre == 1) THEN ! ParaSails as preconditioner
-         hypre_dppara(1) = ListGetConstReal( Params, &
-             'ParaSails Threshold', Found )
-         IF ( .NOT. Found ) hypre_dppara(1) = -0.95d0;
-
-         hypre_dppara(2) = ListGetConstReal( Params, &
-             'ParaSails Filter', Found )
-         IF ( .NOT. Found ) hypre_dppara(2) = -0.95d0;
-
-         hypre_intpara(1) = ListGetInteger( Params, &
-             'ParaSails Symmetry', Found )
-         IF ( .NOT. Found ) hypre_intpara(1) = 0;
-
-         hypre_intpara(2) = ListGetInteger( Params, &
-             'ParaSails Maxlevel', Found )
-         IF ( .NOT. Found ) hypre_intpara(2) = 1;
-
-      ELSE IF ( hypre_pre == 2 .OR. hypre_pre==3 .OR. hypre_sol == 1 ) THEN ! BoomerAMG as preconditioner or solver
-         hypre_intpara(1) = ListGetInteger( Params, &
-             'BoomerAMG Relax Type', Found )
-         IF (.NOT.Found) hypre_intpara(1) = 3
-
-         hypre_intpara(2) = ListGetInteger( Params, &
-              'BoomerAMG Coarsen Type', Found )
-         IF (.NOT.Found)  hypre_intpara(2)  = 0
-
-         hypre_intpara(3) = ListGetInteger( Params, &
-              'BoomerAMG Num Sweeps', Found )
-         IF (.NOT.Found)  hypre_intpara(3) = 1
-
-         hypre_intpara(4) = ListGetInteger( Params, &
-              'Boomeramg Max Levels', Found )
-         IF (.NOT.Found)  hypre_intpara(4) = 25
-
-         hypre_intpara(5) = ListGetInteger( Params, &
-              'BoomerAMG Interpolation Type', Found )
-         IF (.NOT.Found)  hypre_intpara(5) = 0
-
-         hypre_intpara(6) = ListGetInteger( Params, &
-              'BoomerAMG Smooth Type', Found )
-         IF (.NOT.Found)  hypre_intpara(6) = 6
-
-         hypre_intpara(7) = ListGetInteger( Params, &
-              'BoomerAMG Cycle Type', Found )
-         IF (.NOT.Found)  hypre_intpara(7) = 1
-
-         BPC = ListGetLogical( Params, 'Block Preconditioner', Found )
-         IF (.NOT.Found) BPC=.FALSE.
-         
-         hypre_intpara(8) = ListGetInteger( Params, &
-              'BoomerAMG Num Functions', Found )
-         k = CurrentModel % Solver % Variable % DOFs
-         IF (.NOT.Found)  THEN
-           IF (BPC) THEN
-             hypre_intpara(8) = 1
-           ELSE
-             hypre_intpara(8) = k
-           END IF
-         ELSE IF ( .NOT.BPC .AND. (hypre_intpara(8) /= k) ) THEN
-           WRITE(Message,'(A,I0,A,I0)') 'Read > BoomerAMG Num Functions < value ',&
-                 hypre_intpara(8), ', not equal to DOFs of solver variable ',k
-           CALL Warn('SParIterSolver',Message)
-         END IF
-         hypre_dppara(1) = ListGetConstReal( Params, &
-              'BoomerAMG Strong Threshold', Found )
-         IF (.NOT.Found)  hypre_dppara(1) = 0.25
-      END IF
-
-      IF( hypre_sol == 3 .OR. hypre_sol == 4 ) THEN
-        hypre_intpara(9) = ListGetInteger( Params, &
-            'HYPRE GmRes Dimension',Found )
-        IF( .NOT. Found ) hypre_intpara(9) = 20
-      END IF
-
+      CALL SetHypreParameters(Params, hypremethod, ilun, hypre_dppara, hypre_intpara )
 
       ! Hypre wants to have a continuous ascending numbering across
       ! partitions, try creating such a beast:
@@ -1798,7 +1813,7 @@ INTEGER::inside
 
       CALL SParIterActiveBarrier()
 
-      IF(hypre_pre/=3) THEN
+      IF(MODULO(hypremethod,10) /= 3) THEN
         IF (NewSetup) THEN
           IF (SourceMatrix % Hypre /= 0) THEN
             CALL SolveHYPRE4(SourceMatrix % Hypre)
@@ -1908,7 +1923,7 @@ INTEGER::inside
       DEALLOCATE( VecEPerNB )
 
 !     CALL ExchangeSourceVec( SourceMatrix, SplittedMatrix, ParallelInfo, RHSVec )
-      CALL Info('SParIterSolver','Finished solving linear system with HYPRE',Level=12)
+      CALL Info(Caller,'Finished solving linear system with HYPRE',Level=12)
 
       RETURN
    END IF
@@ -1972,9 +1987,9 @@ INTEGER::inside
 
           DEALLOCATE( Owner )
           IF (ierr<0) THEN
-            CALL Fatal('SParIterSolver','Failed to construct Trilinos solver')
+            CALL Fatal(Caller,'Failed to construct Trilinos solver')
           ELSE IF (ierr>0) THEN
-            CALL Warn('SParIterSolver','Warning issued when trying to construct Trilinos solver')          
+            CALL Warn(Caller,'Warning issued when trying to construct Trilinos solver')          
           END IF
         END IF
         ! solve using previously computed Trilinos data structures.
@@ -1986,10 +2001,10 @@ INTEGER::inside
                 Rounds, TOL, verbosity, SourceMatrix % Trilinos, ierr)
       
       IF (ierr<0) THEN
-        CALL Fatal('SParIterSolver',&
+        CALL Fatal(Caller,&
                'Linear system solve using Trilinos caused an error');
       ELSE IF (ierr>0) THEN
-        CALL NumericalError('SParIterSolver',&
+        CALL NumericalError(Caller,&
              'Linear system solve using Trilinos issued a warning')
       END IF
       
@@ -2153,6 +2168,232 @@ INTEGER::inside
 END SUBROUTINE SParIterSolver
 !*********************************************************************
 
+
+!--------------------------------------------------------------------
+!> Call the parallel iterative solver from Hypre in serial mode. 
+!--------------------------------------------------------------------
+SUBROUTINE HypreSolverSerial( Matrix, XVec, RHSVec, Solver )
+
+  USE, INTRINSIC :: iso_c_binding                
+
+  TYPE (Matrix_t) :: Matrix
+  REAL(KIND=dp), DIMENSION(:) :: XVec, RHSVec
+  TYPE (Solver_t) :: Solver
+
+  CHARACTER(*), PARAMETER :: Caller = 'HypreSolverSerial' 
+
+#ifndef HAVE_HYPRE
+  CALL Fatal(Caller,'Serial Hypre requested but the library is not linked in!')
+#else
+    
+  ! Local variables
+  INTEGER :: i, j, k, l, n
+  REAL(KIND=dp) :: TOL, hypre_dppara(5) = 0
+  INTEGER :: ILUn, BILU, Rounds, buf(2), src, status(MPI_STATUS_SIZE), ssz,nob, &
+      hypremethod,  hypre_intpara(10) = 0
+
+  INTEGER, ALLOCATABLE :: Owner(:), Aperm(:)
+  REAL(KIND=dp), TARGET :: DummyPrecVals(1)
+  REAL(KIND=dp), POINTER :: Vals(:)
+  INTEGER, POINTER :: Rows(:), Cols(:)
+
+  LOGICAL :: Found, NewSetup, UpdateTolerance
+  INTEGER :: verbosity
+  INTEGER :: nrows, ncols, nnz
+  TYPE(ValueList_t), POINTER :: Params
+
+  TYPE(Matrix_t), POINTER :: GM
+  INTEGER:: nnd,ind(2), precond
+  REAL(KIND=dp), POINTER :: PrecVals(:)
+  REAL(KIND=dp), ALLOCATABLE :: xx_d(:),yy_d(:),zz_d(:)
+  INTEGER, ALLOCATABLE :: bperm(:), bowner(:)
+
+  INTERFACE
+    !! create HYPRE matrix and setup solver/preconditioner
+    SUBROUTINE SolveHYPRE1( n, Rows, Cols, Vals, Precond, PrecVals, GDOFs, &
+        Owner, ILUn, BILU, hypremethod, hypre_intpara, hypre_dppara, rounds, &
+        TOL, verbosity, hypreContainer, fcomm ) BIND(C,name="solvehypre1")
+      USE, INTRINSIC :: iso_c_binding
+      INTEGER(KIND=c_int) :: n, Rows(n), Cols(n), GDOFs(n), &
+          PE, Owner(n), ILUn, BILU, hypremethod, precond, &
+          symmetry, maxlevel, hypre_intpara(10), verbosity,fcomm,rounds
+      REAL(KIND=c_double) :: Vals(n),Xvec(n),RHSvec(n),TOL,threshold,filter, &
+          hypre_dppara(5), PrecVals(*)
+      INTEGER(KIND=C_INTPTR_T) :: hypreContainer
+    END SUBROUTINE SolveHYPRE1
+    
+    !! solve linear system with same matrix as in SolveHYPRE1
+    SUBROUTINE SolveHYPRE2( n, GDOFs, &
+        Owner, Xvec, RHSVec, Rounds, TOL, verbosity, hypreContainer, fcomm) BIND(C,name="solvehypre2")
+      USE, INTRINSIC :: iso_c_binding
+      INTEGER(KIND=c_int) :: n, GDOFs(n), Owner(n), Rounds, verbosity, fcomm
+      REAL(KIND=c_double) :: Xvec(n),RHSvec(n),TOL
+      INTEGER(KIND=C_INTPTR_T) :: hypreContainer
+    END SUBROUTINE SolveHYPRE2
+
+    !! note: SolveHYPRE3 does not yet exist, it would update the matrix
+    !!       but not the preconditioner.
+
+    !! destroy the data structures (should be called when the matrix has
+    !! to be updated and SolveHYPRE1 has to be called again).
+    SUBROUTINE SolveHYPRE4(hypreContainer) BIND(C,name="solvehypre4")
+      USE, INTRINSIC :: iso_c_binding
+      INTEGER(KIND=C_INTPTR_T) :: hypreContainer
+    END SUBROUTINE SolveHYPRE4
+
+
+    SUBROUTINE SolveHypreAMS(nrows,rows,cols,vals,n,grows,gcols,gvals, &
+        perm, invperm, globaldofs, owner, Bperm,nodeowner,xvec, rhsvec, pe, ILUn, rounds, &
+        TOL, xx_d, yy_d, zz_d, hypremethod, hypre_intpara, hypre_dppara,verbosity,hyprecontainer,fcomm ) & 
+        BIND(C,name="solvehypreams")
+
+      USE, INTRINSIC :: iso_c_binding
+      INTEGER(KIND=c_int) :: nrows, n, Rows(*), Cols(*), Perm(*), INVPerm(*), &
+          Grows(*), gcols(*), PE, Owner(*), Rounds, ILUn, hypremethod, fcomm, &
+          symmetry, maxlevel, hypre_intpara(10),bperm(*),nodeOwner(*),globaldofs(*),verbosity
+      REAL(KIND=c_double) :: Vals(*),Xvec(*),RHSvec(*),TOL,threshold,filter, &
+          hypre_dppara(5), Gvals(*), xx_d(*), yy_d(*), zz_d(*)
+      INTEGER(KIND=C_INTPTR_T) :: hypreContainer
+    END SUBROUTINE SolveHYPREAMS
+
+    SUBROUTINE UpdateHypre(TOL, hypremethod, hypreContainer) BIND(C,name="updatehypre")
+      USE, INTRINSIC :: iso_c_binding
+      REAL(KIND=c_double) :: TOL
+      INTEGER(KIND=c_int) :: hypremethod
+      INTEGER(KIND=C_INTPTR_T) :: hypreContainer
+    END SUBROUTINE UpdateHypre
+
+  END INTERFACE
+
+
+
+  CALL Info(Caller,'Solving linear system using HYPRE library',Level=6)
+
+  Rows => Matrix % Rows
+  Cols => Matrix % Cols
+  Vals => Matrix % Values
+  Params => Solver % Values
+
+  TOL = ListGetConstReal( Params, &
+      'Linear System Convergence Tolerance', Found )
+  IF ( .NOT. Found ) TOL = 1.0d-6
+  
+  Rounds = ListGetInteger( Params,'Linear System Max Iterations', Found )
+  IF ( .NOT. Found ) Rounds = 1000
+    
+  CALL SetHypreParameters(Params, hypremethod, ilun, hypre_dppara, hypre_intpara )
+ 
+  ! Hypre wants to have a continuous ascending numbering across
+  ! partitions, try creating such a beast:
+  ! ------------------------------------------------------------
+  n = Matrix % NumberOfRows
+  ALLOCATE( Owner(n), Aperm(n) )
+  DO i=1,n
+    Aperm(i) = i-1
+  END DO
+  Owner = 1
+  
+  ! ------------------------------------------------------------
+  verbosity = ListGetInteger( CurrentModel % Simulation,'Max Output Level',Found )
+  IF( .NOT. Found ) verbosity = 10
+
+  NewSetup = ListGetLogical( Params, 'Linear System Refactorize',Found ) 
+  IF(.NOT.Found) NewSetup = .TRUE.
+
+  IF (ListGetLogical(Params, 'HYPRE Block Diagonal', Found)) THEN
+    bilu = Solver % Variable % Dofs
+  ELSE
+    bilu = 1
+  END IF
+
+  IF(MODULO(hypremethod,10) /= 3) THEN
+    IF (NewSetup) THEN
+      IF (Matrix % Hypre /= 0) THEN
+        CALL SolveHYPRE4(Matrix % Hypre)
+        Matrix % Hypre = 0
+      END IF
+    END IF
+    ! setup solver/preconditioner
+    
+    IF (Matrix % Hypre == 0) THEN
+      PrecVals => Matrix % PrecValues
+      IF(ASSOCIATED(PrecVals)) THEN
+        precond=1
+      ELSE
+        precond=0
+        PrecVals => DummyPrecVals
+      END IF
+      
+      CALL SolveHYPRE1( Matrix % NumberOfRows, Rows, Cols, Vals, Precond, &
+          PrecVals, Aperm, Owner, ILUn, BILU, hypremethod,hypre_intpara, hypre_dppara,&
+          rounds, TOL, verbosity, Matrix % Hypre, Matrix % Comm)
+    END IF
+
+    ! In some cases the stopping tolerance is adapted during the solution procedure.
+    ! Make an update if needed:
+    UpdateTolerance = ListGetLogical( Params, 'Linear System Adaptive Tolerance', Found )
+    IF (UpdateTolerance) THEN
+      !PRINT *, 'Setting tolerance to:', TOL
+      CALL UpdateHypre( TOL, hypremethod, Matrix % Hypre)
+    END IF
+
+    ! solve using previously computed HYPRE data structures.
+    ! NOTE: this is only correct if the matrix has not changed,
+    ! otherwise we should use the SolveHYPRE3 function, which is
+    ! not implemented, yet. This function will not update the matrix
+    ! in the solver and thus solve an old system if A has changed. 
+    CALL SolveHYPRE2( Matrix % NumberOfRows, Aperm, Owner, Xvec, RHSvec, &
+        Rounds, TOL, verbosity, Matrix % Hypre, Matrix % Comm )
+  ELSE
+    GM => AllocateMatrix()
+    GM % FORMAT = MATRIX_LIST
+    DO i=Solver % Mesh % NumberofEdges,1,-1
+      ind = Solver % Mesh % Edges(i) % NodeIndexes
+      IF (ind(1) > ind(2)) THEN
+        k = 2
+      ELSE
+        k = 1
+      END IF
+      CALL List_AddToMatrixElement(gm%listmatrix,i,ind(k),-1._dp)
+      CALL List_AddToMatrixElement(gm%listmatrix,i,ind(3-k), 1._dp)
+    END DO
+    CALL List_tocrsMatrix(GM)
+
+    nnd = Solver % Mesh % NumberOfEdges
+    ALLOCATE(xx_d(nnd),yy_d(nnd),zz_d(nnd) )
+    ALLOCATE( bOwner(n), bperm(n) )
+    DO i=1,nnd
+      bperm(i) = i-1
+    END DO
+    bOwner = 1
+
+    CALL CRS_MatrixVectorMultiply(GM,Solver % Mesh % Nodes % x,xx_d)
+    CALL CRS_MatrixVectorMultiply(GM,Solver % Mesh % Nodes % y,yy_d)
+    CALL CRS_MatrixVectorMultiply(GM,Solver % Mesh % Nodes % z,zz_d)
+
+    nnd = Solver % Mesh % NumberOfNodes
+    CALL SolveHYPREAMS( Matrix % NumberOfRows, Rows, Cols, Vals, &
+        nnd,GM % Rows,GM % Cols,GM % Values,Aperm,Aperm,Aperm,Owner, &
+        Bperm,BOwner,Xvec,RHSvec,ParEnv % myPE, ILUn, Rounds,TOL,  &
+        xx_d,yy_d,zz_d,hypremethod,hypre_intpara, hypre_dppara,verbosity, &
+        Matrix % Hypre, Matrix % Comm)
+
+    DEALLOCATE(GM % Rows) 
+    DEALLOCATE(GM % Cols) 
+    DEALLOCATE(GM % Diag) 
+    DEALLOCATE(GM % Values) 
+    DEALLOCATE(GM)
+    DEALLOCATE( BOwner, Bperm )
+  END IF
+
+  DEALLOCATE( Owner, Aperm )
+
+  CALL Info(Caller,'Finished solving linear system with HYPRE',Level=12)
+#endif
+  
+!-------------------------------------------------------------------------
+END SUBROUTINE HypreSolverSerial
+!-------------------------------------------------------------------------
 
 
 
