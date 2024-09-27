@@ -17261,50 +17261,24 @@ CONTAINS
   END SUBROUTINE GeneratePeriodicProjectors
 
 
-!------------------------------------------------------------------------------
-!> Create node distribution for a unit segment x \in [0,1] with n elements 
-!> i.e. n+1 nodes. There are different options for the type of distribution.
-!> 1) Even distribution 
-!> 2) Geometric distribution
-!> 3) Arbitrary distribution determined by a functional dependence
-!> Note that the 3rd algorithm involves iterative solution of the nodal
-!> positions and is therefore not bullet-proof.
-!------------------------------------------------------------------------------
-  SUBROUTINE UnitSegmentDivision( w, n, ExtList )
+  ! This is separated from the general UnitSegmentDivision since it can be used
+  ! in other places as well. Note that w should range from 0 to n.
+  !----------------------------------------------------------------------------
+  SUBROUTINE GeometricUnitDivision(w, n, q)
     REAL(KIND=dp), ALLOCATABLE :: w(:)
     INTEGER :: n
-    TYPE(ValueList_t), POINTER, OPTIONAL :: ExtList
-    !---------------------------------------------------------------
-    INTEGER :: i,J,iter,maxiter
-    REAL(KIND=dp) :: q,r,h1,hn,minhn,err_eps,err,xn
-    REAL(KIND=dp), ALLOCATABLE :: wold(:),h(:)
-    LOGICAL :: Found, GotRatio, FunExtruded, Fun1D
-    TYPE(Nodes_t) :: Nodes
-    TYPE(ValueList_t), POINTER :: ParList
+    REAL(KIND=dp) :: q
+
+    INTEGER :: i,j
+    REAL(KIND=dp) :: r,h1
     
-    IF( PRESENT( ExtList ) ) THEN
-      ParList => ExtList
+    IF( ( ABS(ABS(q)-1.0_dp) < 1.0d-6 ) .OR. (q < 0.0_dp .AND. n <= 2) ) THEN
+      CALL Info('GeometricUnitDivision','Creating linear division',Level=8)
+      DO i=0,n     
+        w(i) = i/(1._dp * n)
+      END DO
     ELSE
-      ParList => CurrentModel % Simulation
-    END IF
-
-    FunExtruded = ListCheckPresent( ParList,'Extruded Mesh Density')
-    Fun1D = ListCheckPresent( ParList,'1D Mesh Density')
-    
-    ! Geometric division
-    !---------------------------------------------------------------
-    q = ListGetConstReal( ParList,'Extruded Mesh Ratio',GotRatio)
-    IF(.NOT. GotRatio) q = ListGetConstReal( ParList,'1D Mesh Ratio',GotRatio)
-    IF( GotRatio ) THEN
-      IF( ( ABS(ABS(q)-1.0_dp) < 1.0d-6 ) .OR. (q < 0.0_dp .AND. n <= 2) ) THEN
-        CALL Info('UnitSegmentDivision','Assuming linear division as mesh ratio is close to one!')
-        GotRatio = .FALSE.
-      END IF
-    END IF
-    
-    IF( GotRatio ) THEN
-      CALL Info('UnitSegmentDivision','Creating geometric division',Level=5)
-
+      CALL Info('GeometricUnitDivision','Creating geometric division',Level=8)
       IF( q > 0.0_dp ) THEN      
         r = q**(1.0_dp/(n-1))
         h1 = (1-r)/(1-r**n)
@@ -17322,7 +17296,7 @@ CONTAINS
           r = q**(1.0_dp/((n-1)/2))
           h1 = 0.5_dp / ( (1-r**((n+1)/2))/(1-r) - 0.5_dp * r**((n-1)/2))
         END IF
-        
+
         w(0) = 0.0_dp
         DO i=1,n
           IF( i <= n/2 ) THEN
@@ -17333,91 +17307,144 @@ CONTAINS
         END DO
         w(n) = 1.0_dp
       END IF
-            
-    ! Generic division given by a function
-    !-----------------------------------------------------------------------
-    ELSE IF( FunExtruded .OR. Fun1D ) THEN
+    END IF   
+    
+  END SUBROUTINE GeometricUnitDivision
 
-      CALL Info('UnitSegmentDivision','Creating functional division',Level=5)
 
-      ! Initial guess is an even distribution
-      DO i=0,n
-        w(i) = i/(1._dp * n)
-      END DO
+  ! This is separated from the general UnitSegmentDivision since it can be used
+  ! in other places as well. Note that w should range from 0 to n.
+  !----------------------------------------------------------------------------
+  SUBROUTINE FunctionUnitDivision(w, n, FunName, FunList )
+    REAL(KIND=dp), ALLOCATABLE :: w(:)
+    INTEGER :: n
+    CHARACTER(:), ALLOCATABLE :: FunName
+    TYPE(ValueList_t), POINTER :: FunList
+    
+    INTEGER :: i,j,iter,maxiter
+    REAL(KIND=dp) :: r,h1,hn,minhn,err_eps,err,xn
+    REAL(KIND=dp), ALLOCATABLE :: wold(:),h(:)
+       
+    CALL Info('FunctionUnitDivision','Creating functional division: '//TRIM(FunName),Level=5)
 
-      ALLOCATE( wold(0:n),h(1:n))
+    ! Initial guess is an even distribution
+    DO i=0,n
+      w(i) = i/(1._dp * n)
+    END DO
+
+    ALLOCATE( wold(0:n),h(1:n))
+    wold = w
+
+    ! parameters that determine the accuracy of the iteration
+    maxiter = 10000
+    err_eps = 1.0d-6
+
+    ! Iterate to have a density distribution
+    !---------------------------------------
+    DO iter=1,maxiter
+
+      minhn = HUGE(minhn)
       wold = w
 
-      ! parameters that determine the accuracy of the iteration
-      maxiter = 10000
-      err_eps = 1.0d-6
-
-      ! Iterate to have a density distribution
-      !---------------------------------------
-      DO iter=1,maxiter
-        
-        minhn = HUGE(minhn)
-        wold = w
-
-        ! Compute the point in the local mesh xn \in [0,1]  
-        ! and get the mesh parameter for that element from
-        ! external function.
-        !---------------------------------------------------
-        DO i=1,n
-          xn = (w(i)+w(i-1))/2.0_dp
-          minhn = MIN( minhn, w(i)-w(i-1) )
-          IF( FunExtruded ) THEN
-            h(i) = ListGetFun( ParList,'Extruded Mesh Density', xn )
-          ELSE
-            h(i) = ListGetFun( ParList,'1D Mesh Density', xn )
-          END IF
-          IF( h(i) < EPSILON( h(i) ) ) THEN
-            CALL Fatal('UnitSegmentDivision','Given value for h(i) was negative!')
-          END IF
-        END DO
-
-        ! Utilize symmetric Gauss-Seidel to compute the new positions, w(i).
-        ! from a weigted mean of the desired elemental densities, h(i).
-        ! Note that something more clever could be applied here. 
-        ! This was just a first implementation...
-        !-------------------------------------------------------------
-        DO i=1,n-1
-          w(i) = (w(i-1)*h(i+1)+w(i+1)*h(i))/(h(i)+h(i+1))
-        END DO
-        DO i=n-1,1,-1
-          w(i) = (w(i-1)*h(i+1)+w(i+1)*h(i))/(h(i)+h(i+1))
-        END DO
-        
-        ! If the maximum error is small compared to the minimum elementsize then exit
-        !-----------------------------------------------------------------------------
-        err = MAXVAL( ABS(w-wold))/minhn
-
-        IF( err < err_eps ) THEN
-          WRITE( Message, '(A,I0,A)') 'Convergence obtained in ',iter,' iterations'
-          CALL Info('UnitSegmentDivision', Message, Level=9 )
-          EXIT
+      ! Compute the point in the local mesh xn \in [0,1]  
+      ! and get the mesh parameter for that element from
+      ! external function.
+      !---------------------------------------------------
+      DO i=1,n
+        xn = (w(i)+w(i-1))/2.0_dp
+        minhn = MIN( minhn, w(i)-w(i-1) )
+        h(i) = ListGetFun( FunList, FunName, xn )
+        IF( h(i) < EPSILON( h(i) ) ) THEN
+          CALL Fatal('FunctionUnitDivision','Given value for h(i) was negative!')
         END IF
       END DO
 
-      IF( iter > maxiter ) THEN
-        CALL Warn('UnitSegmentDivision','No convergence obtained for the unit mesh division!')
-      END IF
-
-    ! Uniform division 
-    !--------------------------------------------------------------
-    ELSE
-      CALL Info('UnitSegmentDivision','Creating linear division',Level=5)
-      DO i=0,n     
-        w(i) = i/(1._dp * n)
+      ! Utilize symmetric Gauss-Seidel to compute the new positions, w(i).
+      ! from a weigted mean of the desired elemental densities, h(i).
+      ! Note that something more clever could be applied here. 
+      ! This was just a first implementation...
+      !-------------------------------------------------------------
+      DO i=1,n-1
+        w(i) = (w(i-1)*h(i+1)+w(i+1)*h(i))/(h(i)+h(i+1))
       END DO
-    END IF
-    
-    CALL Info('UnitSegmentDivision','Mesh division ready',Level=9)
-    DO i=0,n
-      WRITE( Message, '(A,I0,A,ES12.4)') 'w(',i,') : ',w(i)
-      CALL Info('UnitSegmentDivision', Message, Level=9 )
+      DO i=n-1,1,-1
+        w(i) = (w(i-1)*h(i+1)+w(i+1)*h(i))/(h(i)+h(i+1))
+      END DO
+
+      ! If the maximum error is small compared to the minimum elementsize then exit
+      !-----------------------------------------------------------------------------
+      err = MAXVAL( ABS(w-wold))/minhn
+
+      IF( err < err_eps ) THEN
+        WRITE( Message, '(A,I0,A)') 'Convergence obtained in ',iter,' iterations'
+        CALL Info('FunctionUnitDivision', Message, Level=9 )
+        EXIT
+      END IF
     END DO
 
+    IF( iter > maxiter ) THEN
+      CALL Warn('UnitSegmentDivision','No convergence obtained for the unit mesh division!')
+    END IF
+  END SUBROUTINE FunctionUnitDivision
+  
+      
+!------------------------------------------------------------------------------
+!> Create node distribution for a unit segment x \in [0,1] with n elements 
+!> i.e. n+1 nodes. There are different options for the type of distribution.
+!> 1) Even distribution 
+!> 2) Geometric distribution
+!> 3) Arbitrary distribution determined by a functional dependence
+!> Note that the 3rd algorithm involves iterative solution of the nodal
+!> positions and is therefore not bullet-proof.
+!------------------------------------------------------------------------------
+  SUBROUTINE UnitSegmentDivision( w, n, ExtList )
+    REAL(KIND=dp), ALLOCATABLE :: w(:)
+    INTEGER :: n
+    TYPE(ValueList_t), POINTER, OPTIONAL :: ExtList
+    !---------------------------------------------------------------    
+    INTEGER :: i 
+    REAL(KIND=dp) :: q 
+    CHARACTER(:), ALLOCATABLE :: FunName        
+    LOGICAL :: Found, GotRatio, GotFun 
+    TYPE(ValueList_t), POINTER :: ParList
+    
+    IF( PRESENT( ExtList ) ) THEN
+      ParList => ExtList
+    ELSE
+      ParList => CurrentModel % Simulation
+    END IF
+
+    DO i=1,2
+      IF(i==1) THEN
+        FunName = 'Extruded Mesh Density'
+      ELSE
+        FunName = '1D Mesh Density'
+      END IF      
+      GotFun = ListCheckPresent( ParList, FunName ) 
+      IF(GotFun) EXIT
+    END DO
+
+    IF( GotFun ) THEN
+      ! Generic division given by a function
+      !-----------------------------------------------------------------------
+      CALL FunctionUnitDivision(w,n,FunName,ParList)
+    ELSE
+      ! Uniform or geometric division 
+      !--------------------------------------------------------------
+      q = ListGetConstReal( ParList,'Extruded Mesh Ratio',GotRatio)
+      IF(.NOT. GotRatio) q = ListGetConstReal( ParList,'1D Mesh Ratio',GotRatio)
+      IF(.NOT. GotRatio) q = 1.0_dp
+      CALL GeometricUnitDivision(w,n,q)      
+    END IF
+    
+    IF(InfoActive(9)) THEN
+      CALL Info('UnitSegmentDivision','Mesh division ready' )
+      DO i=0,n
+        WRITE( Message, '(A,I0,A,ES12.4)') 'w(',i,') : ',w(i)
+        CALL Info('UnitSegmentDivision', Message )
+      END DO
+    END IF
+      
   END SUBROUTINE UnitSegmentDivision
 !------------------------------------------------------------------------------
 
