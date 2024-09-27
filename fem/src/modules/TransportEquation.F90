@@ -75,6 +75,7 @@
      TYPE(Variable_t), POINTER :: FlowSol, Udot0Var 
      TYPE(VariablePtr_t), POINTER :: U0Var(:)
      TYPE(ValueList_t), POINTER :: Material
+     TYPE(Solver_t), POINTER :: PSolver
 
      INTEGER :: i,j,k,p,n,t,body_id,bf_id,istat,LocalNodes,&
          AdvectionVariableComponents, VelocityComponents
@@ -417,7 +418,8 @@
 !    Dirichlet boundary settings. Actually no need to call it except for
 !    transient simulations.
 !------------------------------------------------------------------------------
-      CALL FinishAssembly( Solver, ForceVector )
+       PSolver => Solver
+       CALL FinishAssembly( PSolver, ForceVector )
 
 !------------------------------------------------------------------------------
 !    Dirichlet boundary conditions

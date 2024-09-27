@@ -56,7 +56,7 @@ SUBROUTINE AdjointSolver( Model,Solver,dt,TransientSimulation )
 
   IMPLICIT NONE
 !------------------------------------------------------------------------------
-  TYPE(Solver_t) :: Solver
+  TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
 
 
@@ -65,7 +65,7 @@ SUBROUTINE AdjointSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  TYPE(Solver_t),Pointer :: NSSolver
+  TYPE(Solver_t),POINTER :: NSSolver, PSolver
   TYPE(Matrix_t),POINTER :: InitMat,TransMat,StiffMatrix
   TYPE(ValueList_t),POINTER ::  BC,SolverParams
   TYPE(Nodes_t) :: ElementNodes
@@ -237,7 +237,8 @@ SUBROUTINE AdjointSolver( Model,Solver,dt,TransientSimulation )
         End Do
       EndDo
 
-      CALL FinishAssembly( Solver, ForceVector )
+      PSolver => Solver
+      CALL FinishAssembly( PSolver, ForceVector )
        
       CALL DefaultDirichletBCs()
 

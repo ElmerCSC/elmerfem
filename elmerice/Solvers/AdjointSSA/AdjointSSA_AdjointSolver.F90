@@ -63,14 +63,14 @@
    USE DefUtils
    IMPLICIT NONE
 !------------------------------------------------------------------------------
-   TYPE(Solver_t) :: Solver
+   TYPE(Solver_t), TARGET :: Solver
    TYPE(Model_t) :: Model
    REAL(KIND=dp) :: dt
    LOGICAL :: TransientSimulation
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-   TYPE(Solver_t),Pointer :: NSSolver
+   TYPE(Solver_t),POINTER :: NSSolver, PSolver
    TYPE(Matrix_t),POINTER :: InitMat,TransMat,StiffMatrix
    TYPE(ValueList_t),POINTER ::  BC,BF,SolverParams
    TYPE(ValueListEntry_t),POINTER :: NormalTangential,NormalTangentialC
@@ -258,7 +258,8 @@
       End Do
    EndDo
 
-   CALL FinishAssembly( Solver, ForceVector )
+   PSolver => Solver
+   CALL FinishAssembly( PSolver, ForceVector )
 
    Unorm = DefaultSolve()
 

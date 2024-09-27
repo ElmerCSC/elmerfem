@@ -9998,7 +9998,7 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
   SUBROUTINE FinishAssembly( Solver, ForceVector )
 !------------------------------------------------------------------------------
-    TYPE(Solver_t) :: Solver
+    TYPE(Solver_t),POINTER :: Solver
     REAL(KIND=dp) :: ForceVector(:)
     INTEGER :: Order
     LOGICAL :: Found
