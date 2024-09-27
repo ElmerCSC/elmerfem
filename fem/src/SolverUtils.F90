@@ -8613,7 +8613,7 @@ CONTAINS
   SUBROUTINE EnforceDirichletConditions( Solver, A, b, OffDiagonal ) 
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    TYPE(Solver_t) :: Solver
+    TYPE(Solver_t), POINTER :: Solver
     TYPE(Matrix_t), POINTER :: A
     REAL(KIND=dp) :: b(:)
     LOGICAL, OPTIONAL :: OffDiagonal
@@ -16762,7 +16762,11 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
               A % DValues = 0.0_dp
             END WHERE
           END IF
-          CALL EnforceDirichletConditions( Solver, A, b )
+          BLOCK
+            TYPE(Solver_t), POINTER :: pSolver
+            pSolver => Solver   
+            CALL EnforceDirichletConditions( pSolver, A, b )
+          END BLOCK
         ELSE       
           IF( Nmode > 1 .AND. LinSysMode ) THEN
             WHERE( Var % ConstraintModesIndeces == Nmode-1 ) 
@@ -16772,7 +16776,11 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
           WHERE( Var % ConstraintModesIndeces == Nmode ) 
             A % DValues = 1.0_dp
           END WHERE
-          CALL EnforceDirichletConditions( Solver, A, b )
+          BLOCK
+            TYPE(Solver_t), POINTER :: pSolver
+            pSolver => Solver   
+            CALL EnforceDirichletConditions( pSolver, A, b )
+          END BLOCK
         END IF
       END IF
       CALL ListAddLogical( Params,'Skip Zero Rhs Test',.TRUE. )
@@ -17791,7 +17799,7 @@ END SUBROUTINE DerivateExportedVariables
 !------------------------------------------------------------------------------
 SUBROUTINE SolveHarmonicSystem( G, Solver )
 !------------------------------------------------------------------------------
-    TYPE(Solver_t) :: Solver
+    TYPE(Solver_t), TARGET :: Solver
     TYPE(Matrix_t), TARGET :: G
 !------------------------------------------------------------------------------
     TYPE(Matrix_t), POINTER :: BMatrix, A => NULL()
@@ -17918,8 +17926,11 @@ SUBROUTINE SolveHarmonicSystem( G, Solver )
                 2*j, DOFs, Solver % Variable % Perm )
       END DO
 
-      CALL EnforceDirichletConditions( Solver, A, b )
- 
+      BLOCK
+        TYPE(Solver_t), POINTER :: pSolver
+        pSolver => Solver   
+        CALL EnforceDirichletConditions( pSolver, A, b )
+      END BLOCK
       
       CALL SolveLinearSystem( A, b, x, Norm, DOFs, Solver )
       
@@ -18124,7 +18135,7 @@ END SUBROUTINE MergeSlaveSolvers
 !------------------------------------------------------------------------------
 SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
 !------------------------------------------------------------------------------
-  TYPE(Solver_t) :: Solver
+  TYPE(Solver_t), TARGET :: Solver
   LOGICAL, OPTIONAL :: BackToReal
   !------------------------------------------------------------------------------
   TYPE(Matrix_t), POINTER :: Are => NULL(), Aharm => NULL(), SaveMatrix 
@@ -18210,7 +18221,11 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
       CALL Fatal('ChangeToHarmonicSystem','Harmonic system requires mass!')
     END IF
     ! This is set outside so that it can be called more flexibilly
-    CALL EnforceDirichletConditions( Solver, Are, Are % rhs  )
+    BLOCK
+      TYPE(Solver_t), POINTER :: pSolver
+      pSolver => Solver   
+      CALL EnforceDirichletConditions( pSolver, Are, Are % rhs  )
+    END BLOCK
     RETURN
   END IF
 
@@ -18448,8 +18463,12 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   Solver % Matrix => Aharm
 
   IF(AnyDirichlet) THEN
-    IF(ParEnv % PEs>1) CALL ParallelInitMatrix(Solver, Aharm)
-    CALL EnforceDirichletConditions( Solver, Aharm, b )
+    BLOCK
+      TYPE(Solver_t), POINTER :: pSolver
+      pSolver => Solver   
+      IF(ParEnv % PEs>1) CALL ParallelInitMatrix(Solver, Aharm)
+      CALL EnforceDirichletConditions( pSolver, Aharm, b )
+    END BLOCK
   END IF
 
   ! Save the original matrix and variable in Ematrix and Evar

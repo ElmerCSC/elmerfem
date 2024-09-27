@@ -1228,7 +1228,11 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
              StiffMatrix % DValues(i) = StiffMatrix % DValues(i) - DisplacementRot(i)
            END IF
          END DO
-         CALL EnforceDirichletConditions(Solver, StiffMatrix, ForceVector)
+         BLOCK
+           TYPE(Solver_t), POINTER :: pSolver
+           pSolver => Solver
+           CALL EnforceDirichletConditions(pSolver, StiffMatrix, ForceVector)
+         END BLOCK
        END IF
 
        ! The initial guess for the displacement increment:
