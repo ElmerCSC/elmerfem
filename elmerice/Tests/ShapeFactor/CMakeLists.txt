@@ -1,8 +1,10 @@
-INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/../test_macros.cmake)
+IF(HAVE_UMFPACK OR HAVE_MUMPS)
+  INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/../test_macros.cmake)
 
-CONFIGURE_FILE(shapefactor2d.sif shapefactor2d.sif COPYONLY)
+  CONFIGURE_FILE(shapefactor2d.sif shapefactor2d.sif COPYONLY)
 
-FILE(COPY ELMERSOLVER_STARTINFO rectangle.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+  FILE(COPY ELMERSOLVER_STARTINFO rectangle.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMERICE_TEST(ShapeFactor)
-ADD_ELMERICE_LABEL(ShapeFactor elmerice-fast)
+  ADD_ELMERICE_TEST(ShapeFactor)
+  ADD_ELMERICE_LABEL(ShapeFactor elmerice-fast)
+ENDIF()
