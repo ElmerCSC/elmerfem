@@ -394,7 +394,7 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
             ForceVector, LocalForceVector, n, 1, SurfPerm(NodeIndexes) )
       END DO
       
-      CALL FinishAssembly( PSolver, ForceVector )
+      CALL FinishAssembly( Solver, ForceVector )
 
       ! No Dirihtlet conditions here since       
       ! One should not really try to force the phase change at some point, 
@@ -465,7 +465,7 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
             ForceVector, LocalForceVector, n, 1, SurfPerm(NodeIndexes) )
       END DO
       
-      CALL FinishAssembly( PSolver, ForceVector )    
+      CALL FinishAssembly( Solver, ForceVector )    
       CALL SolveSystem( StiffMatrix, ParMatrix, ForceVector, Surface, Norm, 1, Solver )        
     END IF
  

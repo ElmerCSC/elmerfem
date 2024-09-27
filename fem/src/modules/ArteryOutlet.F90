@@ -51,10 +51,10 @@ SUBROUTINE OutletCompute_Init( Model,Solver,dt,TransientSimulation )
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
-  TYPE(Solver_t),TARGET :: Solver
+  TYPE(Solver_t) :: Solver
   REAL(KIND=dp) :: dt
   LOGICAL :: TransientSimulation
-  !------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: Params
   TYPE(Mesh_t), POINTER :: Mesh, PMesh
 
@@ -100,7 +100,7 @@ SUBROUTINE OutletCompute( Model,Solver,dt,TransientSimulation )
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
-  TYPE(Solver_t), TARGET :: Solver
+  TYPE(Solver_t):: Solver
   REAL(KIND=dp) :: dt
   LOGICAL :: TransientSimulation
  
@@ -114,7 +114,7 @@ SUBROUTINE OutletCompute( Model,Solver,dt,TransientSimulation )
   TYPE(ValueList_t), POINTER :: Material
   TYPE(Variable_t), POINTER :: LVar, FlowSol
   TYPE(Mesh_t), POINTER :: Mesh1D, Mesh3D
-  TYPE(Solver_t), POINTER :: FlowSolver, PSolver
+  TYPE(Solver_t), POINTER :: FlowSolver
 
   INTEGER :: t, k,n,m,ie,bf_id,mat_id,prev_mat_id,istat,LocalNodes,i,j, nonliniter, l, &
       bc, joinnode, Connections, SolidConnections, fsstep, fsstepmax, NonlinearIter, &
@@ -158,10 +158,7 @@ SUBROUTINE OutletCompute( Model,Solver,dt,TransientSimulation )
   CALL Info('OutletCompute','Starting')
   
   Mesh1D => Solver % Mesh
-  
-  PSolver => Solver
-!  IF (.NOT.ASSOCIATED(PSolver)) CALL FATAL('OutletCompute','Solver pointer not associated')
-  
+
   Wnodal => Solver % Variable % Values
   LocalNodes = SIZE( Wnodal )
 
@@ -549,7 +546,7 @@ SUBROUTINE OutletCompute( Model,Solver,dt,TransientSimulation )
       !    Dirichlet boundary settings. Actually no need to call it except for
       !    transient simulations.
       !------------------------------------------------------------------------------
-      CALL FinishAssembly( PSolver, ForceVector )
+      CALL FinishAssembly( Solver,ForceVector )
       
       FirstTime = .FALSE.
       

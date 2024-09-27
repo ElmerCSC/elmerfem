@@ -63,14 +63,14 @@
    USE DefUtils
    IMPLICIT NONE
 !------------------------------------------------------------------------------
-   TYPE(Solver_t), TARGET :: Solver
+   TYPE(Solver_t) :: Solver
    TYPE(Model_t) :: Model
    REAL(KIND=dp) :: dt
    LOGICAL :: TransientSimulation
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-   TYPE(Solver_t),POINTER :: DSolver, PSolver  ! Pointer to the Direct Solver and to adjoint solver
+   TYPE(Solver_t),Pointer :: DSolver  ! Pointer to the Direct Solver
    TYPE(Variable_t), POINTER :: Sol   ! Solution Variable
    INTEGER :: DOFs
 
@@ -253,8 +253,7 @@
       End Do
    EndDo
 
-   PSolver => Solver
-   CALL FinishAssembly( PSolver, ForceVector )
+   CALL FinishAssembly( Solver, ForceVector )
 
    Unorm = DefaultSolve()
 

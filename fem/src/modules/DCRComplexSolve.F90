@@ -49,7 +49,7 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
 
   IMPLICIT NONE
 !------------------------------------------------------------------------------
-  TYPE(Solver_t),TARGET :: Solver
+  TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
 
   REAL(KIND=dp) :: dt
@@ -60,8 +60,7 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Matrix_t),POINTER  :: StiffMatrix
   TYPE(Nodes_t) :: ElementNodes
   TYPE(Element_t),POINTER :: CurrentElement
-  TYPE(Solver_t),POINTER :: PSolver
-  
+
   INTEGER, POINTER :: NodeIndexes(:)
 
   LOGICAL :: AllocationsDone = .FALSE., Bubbles, GotIt, notScalar = .TRUE., stat
@@ -367,8 +366,8 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
      END DO
 !------------------------------------------------------------------------------
-     PSolver => Solver
-     CALL FinishAssembly( PSolver, ForceVector )
+
+     CALL FinishAssembly( Solver, ForceVector )
 !
 !    Dirichlet BCs:
 !    --------------

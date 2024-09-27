@@ -160,7 +160,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
 
   IMPLICIT NONE
 !------------------------------------------------------------------------------
-  TYPE(Solver_t), TARGET :: Solver
+  TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
   REAL(KIND=dp) :: dt
   LOGICAL :: TransientSimulation
@@ -736,11 +736,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
           Solver % Matrix % DValues(i) = Solver % Matrix % DValues(i) - Solver % Variable % Values(i)
         END IF
       END DO
-      BLOCK
-        TYPE(Solver_t), POINTER :: pSolver
-        pSolver => Solver   
-        CALL EnforceDirichletConditions(pSolver, Solver % Matrix, Solver % Matrix % RHS)
-      END BLOCK
+      CALL EnforceDirichletConditions(Solver, Solver % Matrix, Solver % Matrix % RHS)
     END IF
  
     ! ---------------------------------------------------------------------------------
