@@ -704,7 +704,7 @@
 
         IF(ANY(ABS(A % CircuitMatrix % Values)>0)) THEN
 #if !defined (HAVE_UMFPACK) && defined (HAVE_MUMPS)
-          CALL Mumps_SolveSystem( sv, A % CircuitMatrix, u(i:j), v(i:j) )
+          CALL MumpsLocal_SolveSystem( sv, A % CircuitMatrix, u(i:j), v(i:j) )
 #else
           CALL Umfpack_SolveSystem( sv, A % CircuitMatrix, u(i:j), v(i:j) )
 #endif
@@ -767,7 +767,7 @@
         END DO
 
 #if !defined (HAVE_UMFPACK) && defined (HAVE_MUMPS)
-        CALL Mumps_SolveSystem( sv, A % CircuitMatrix, ru, rv )
+        CALL MumpsLocal_SolveSystem( sv, A % CircuitMatrix, ru, rv )
 #else
         CALL Umfpack_SolveSystem( sv, A % CircuitMatrix, ru, rv )
 #endif
