@@ -848,7 +848,7 @@ CONTAINS
      INTEGER :: dim, i,j,k,np
      INTEGER :: NormalIndexes(n),pIndexes(64)
      REAL(KIND=dp) :: Vals(n*NDOFs)
-!DIR$ ATTRIBUTES ALIGN:64::Ind, Vals
+!DIR$ ATTRIBUTES ALIGN:64::Vals
 
      TYPE(Element_t), POINTER :: Element
      LOGICAL :: Rotate
