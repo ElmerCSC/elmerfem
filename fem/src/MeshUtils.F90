@@ -8771,6 +8771,7 @@ CONTAINS
       ! It is assumed that that the target mesh is always un-skewed 
       ! Make a test here to be able to skip it later. No test is needed
       ! if the generic integrator is enforced. 
+#if 0 
       IF(.NOT. GenericIntegrator ) THEN
         MaxSkew1 = CheckMeshSkew( BMesh1, NotAllQuads )
         IF( NotAllQuads ) THEN
@@ -8794,6 +8795,7 @@ CONTAINS
           GenericIntegrator = .TRUE. 
         END IF
       END IF
+#endif
       
       IF( GenericIntegrator ) THEN
         CALL Info(Caller,'Edge projection for the BC requires weak projector!',Level=7)
@@ -8871,14 +8873,6 @@ CONTAINS
     Projector => AllocateMatrix()
     Projector % FORMAT = MATRIX_LIST
     Projector % ProjectorType = PROJECTOR_TYPE_GALERKIN
-
-    CreateDual = ListGetLogical( BC,'Create Dual Projector',Found ) 
-    IF( CreateDual ) THEN
-      DualProjector => AllocateMatrix()
-      DualProjector % FORMAT = MATRIX_LIST
-      DualProjector % ProjectorType = PROJECTOR_TYPE_GALERKIN
-      Projector % EMatrix => DualProjector
-    END IF
 
     ! Check whether biorthogonal basis for projectors requested:
     ! If we want to eliminate the constraints we have to have a biortgonal basis
@@ -8990,40 +8984,6 @@ CONTAINS
         END IF
       END IF
       
-      IF( CreateDual ) THEN
-        ALLOCATE( DualNodePerm( Mesh % NumberOfNodes ) )
-        DualNodePerm = 0
-
-        DO i=1,BMesh2 % NumberOfBulkElements
-          Element => BMesh2 % Elements(i)        
-          IF( Parallel ) THEN
-            IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE          
-          END IF
-          DualNodePerm(InvPerm2(Element % NodeIndexes)) = 1
-        END DO
-                
-        IF( EliminateUnneeded ) THEN
-          m = 0
-          n = SUM( DualNodePerm )
-          CALL Info(Caller,&
-              'Number of potential dofs in dual projector: '//I2S(n),Level=10)        
-          ! Now eliminate the nodes which also occur in the other mesh
-          ! These must be redundant edges
-          DO i=1, SIZE(InvPerm1)
-            j = InvPerm1(i) 
-            IF( DualNodePerm(j) /= 0 ) THEN
-              DualNodePerm(j) = 0
-              PRINT *,'Removing dual node:',j,Mesh % Nodes % x(j), Mesh % Nodes % y(j)
-              m = m + 1
-            END IF
-          END DO
-          IF( m > 0 ) THEN
-            CALL Info(Caller,&
-                'Eliminating redundant dual nodes from projector: '//I2S(m),Level=10)
-          END IF
-        END IF
-      END IF
-      
       IF( ListCheckPresent( BC,'Level Projector Condition') ) THEN
         ALLOCATE( Cond( Mesh % MaxElementNodes ) )
         Cond = 1.0_dp
@@ -9060,7 +9020,50 @@ CONTAINS
       CALL Info(Caller,'Number of active nodes in projector: '//I2S(m),Level=8)
       EdgeRow0 = m
       
+      
+      CreateDual = ListGetLogical( BC,'Create Dual Projector',Found ) 
       IF( CreateDual ) THEN
+        IF( DoEdges ) THEN
+          CALL Fatal(Caller,'Dual projector cannot handle edges!')
+        END IF
+
+        DualProjector => AllocateMatrix()
+        DualProjector % FORMAT = MATRIX_LIST
+        DualProjector % ProjectorType = PROJECTOR_TYPE_GALERKIN
+        Projector % EMatrix => DualProjector
+
+        ALLOCATE( DualNodePerm( Mesh % NumberOfNodes ) )
+        DualNodePerm = 0
+
+        DO i=1,BMesh2 % NumberOfBulkElements
+          Element => BMesh2 % Elements(i)        
+          IF( Parallel ) THEN
+            IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE          
+          END IF
+          DualNodePerm(InvPerm2(Element % NodeIndexes)) = 1
+        END DO
+                
+        IF( EliminateUnneeded ) THEN
+          m = 0
+          n = SUM( DualNodePerm )
+          CALL Info(Caller,&
+              'Number of potential dofs in dual projector: '//I2S(n),Level=10)        
+          ! Now eliminate the nodes which also occur in the other mesh
+          ! These must be redundant edges
+          DO i=1, SIZE(InvPerm1)
+            j = InvPerm1(i) 
+            IF( DualNodePerm(j) /= 0 ) THEN
+              DualNodePerm(j) = 0
+              PRINT *,'Removing dual node:',j,Mesh % Nodes % x(j), Mesh % Nodes % y(j)
+              m = m + 1
+            END IF
+          END DO
+          IF( m > 0 ) THEN
+            CALL Info(Caller,&
+                'Eliminating redundant dual nodes from projector: '//I2S(m),Level=10)
+          END IF
+        END IF
+
         m = 0
         DO i=1,Mesh % NumberOfNodes
           IF( DualNodePerm(i) > 0 ) THEN
@@ -9070,12 +9073,9 @@ CONTAINS
         END DO
         ALLOCATE( DualProjector % InvPerm(m) )
         DualProjector % InvPerm = 0
-
-        IF( DoEdges ) THEN
-          CALL Fatal(Caller,'Dual projector cannot handle edges!')
-        END IF
       END IF
     ELSE
+      CreateDual = .FALSE.
       EdgeRow0 = 0
     END IF
     ProjectorRows = EdgeRow0
@@ -9213,10 +9213,9 @@ CONTAINS
         ! Some of the dofs may have been set by the strong projector. 
         m = COUNT( EdgePerm > 0 )
         IF( m > 0 ) THEN
-          CALL Info(Caller,&
-              'Number of weak edges in projector: '//I2S(m),Level=10)      
+          CALL Info(Caller,'Number of weak edges in projector: '//I2S(m),Level=10)      
         END IF
-        IF( m > 0 .OR. PiolaVersion) THEN
+        IF( m > 0 ) THEN
           SomethingUndone = .TRUE.
           EdgeBasis = .TRUE.
         END IF
@@ -9231,8 +9230,8 @@ CONTAINS
     !-------------------------------------------------------------
     IF( SomethingUndone ) THEN      
       IF( BiOrthogonalBasis ) THEN
-        IF(SomethingStrong) THEN
-          CALL Fatal(Caller,'Cannot combine strong projectors and biorthogonal basis!')
+        IF( EdgeBasis ) THEN
+          CALL Fatal(Caller,'Cannot combine edge projectors and biorthogonal basis!')
         END IF
         Projector % Child => AllocateMatrix()
         Projector % Child % FORMAT = MATRIX_LIST
@@ -9264,7 +9263,7 @@ CONTAINS
     END IF
     
     IF( DoNodes ) DEALLOCATE( NodePerm )
-    IF( CreateDual .AND. DoNodes ) DEALLOCATE( DualNodePerm )
+    IF( CreateDual ) DEALLOCATE( DualNodePerm )
     IF( DoEdges ) DEALLOCATE( EdgePerm )
 
     m = COUNT( Projector % InvPerm  == 0 ) 
