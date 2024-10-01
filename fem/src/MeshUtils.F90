@@ -2491,8 +2491,7 @@ CONTAINS
    IF(.NOT. ListGetLogical( VList,'Finalize Meshes Before Extrusion',Found ) ) THEN
      ! The final preparation for the mesh (including dof definitions) will be
      ! done only after the mesh has been extruded. 
-     IF( ListCheckPresent( VList,'Extruded Mesh Levels') .OR. &
-       ListCheckPresent( VList,'Extruded Mesh Layers') ) THEN
+     IF( ListCheckPrefix( VList,'Extruded Mesh') ) THEN
        CALL Info(Caller,'This mesh will be extruded, skipping finalization',Level=12)
        RETURN
      END IF
@@ -17271,8 +17270,10 @@ CONTAINS
 
     INTEGER :: i,j
     REAL(KIND=dp) :: r,h1
-    
-    IF( ( ABS(ABS(q)-1.0_dp) < 1.0d-6 ) .OR. (q < 0.0_dp .AND. n <= 2) ) THEN
+
+    IF( n < 1 ) THEN
+      CALL Fatal('GeometricUnitDivision','Cannot create division for '//I2S(n)//' element!')
+    ELSE IF( ( ABS(ABS(q)-1.0_dp) < 1.0d-6 ) .OR. (q < 0.0_dp .AND. n <= 2) .OR. n==1) THEN
       CALL Info('GeometricUnitDivision','Creating linear division',Level=8)
       DO i=0,n     
         w(i) = i/(1._dp * n)
@@ -17327,11 +17328,16 @@ CONTAINS
        
     CALL Info('FunctionUnitDivision','Creating functional division: '//TRIM(FunName),Level=5)
 
+    IF( n < 1 ) THEN
+      CALL Fatal('GeometricUnitDivision','Cannot create division for '//I2S(n)//' element!')
+    END IF
+
     ! Initial guess is an even distribution
     DO i=0,n
       w(i) = i/(1._dp * n)
     END DO
-
+    IF(n == 1 ) RETURN
+    
     ALLOCATE( wold(0:n),h(1:n))
     wold = w
 
@@ -17383,7 +17389,7 @@ CONTAINS
     END DO
 
     IF( iter > maxiter ) THEN
-      CALL Warn('UnitSegmentDivision','No convergence obtained for the unit mesh division!')
+      CALL Warn('FunctionUnitDivision','No convergence obtained for the unit mesh division!')
     END IF
   END SUBROUTINE FunctionUnitDivision
   
@@ -17449,6 +17455,66 @@ CONTAINS
 !------------------------------------------------------------------------------
 
   
+  FUNCTION MapExtrudedMaterial(Vlist,mat0,ilayer,EndLayer) RESULT ( mat )
+    TYPE(Valuelist_t), POINTER :: Vlist
+    INTEGER :: mat0, mat
+    INTEGER, OPTIONAL :: ilayer
+    LOGICAL, OPTIONAL :: EndLayer
+
+    TYPE(ValueList_t), POINTER, SAVE :: PrevList
+    LOGICAL, SAVE :: EndMat, ExtMat
+    INTEGER, POINTER, SAVE :: ExtrudedElements(:)
+    INTEGER, ALLOCATABLE, SAVE :: InvExtrudedElements(:)
+    INTEGER, SAVE :: nDiv, nElems
+    INTEGER :: i,j
+    LOGICAL :: SetMat
+    
+    IF(.NOT. ASSOCIATED(PrevList,Vlist)) THEN
+      IF(ALLOCATED(InvExtrudedElements))  DEALLOCATE(InvExtrudedElements)
+           
+      PrevList => Vlist
+      EndMat = ListCheckPresent( Vlist,'Extruded Mesh End Map')
+      IF(EndMat) THEN
+        CALL Info('MapExtrudedMaterial','Extruded Mesh will be mapped at the ends!')
+      END IF        
+
+      ExtrudedElements => ListGetIntegerArray(Vlist,'Extruded Elements',ExtMat)                
+      IF(ExtMat) THEN
+        nDiv = SIZE(ExtrudedElements)
+        nElems = SUM(ExtrudedElements)
+        ALLOCATE(InvExtrudedElements(nElems))
+        InvExtrudedElements = 0
+        j = 0
+        DO i=1,nDiv
+          IF( ExtrudedElements(i) == 0) CYCLE
+          InvExtrudedElements(j+1:j+ExtrudedElements(i)) = i
+          j = j+ExtrudedElements(i)
+        END DO
+      ELSE
+        nElems = ListGetInteger(Vlist,'Extruded Mesh Layers',UnfoundFatal=.TRUE.)
+      END IF
+    END IF
+
+    mat = mat0
+    IF( EndMat ) THEN
+      IF(ilayer < 1 .OR. ilayer > nElems ) THEN
+        CALL Fatal('MapExtrudedMaterial','Invalid body id: '//I2S(ilayer))
+      END IF
+
+      SetMat = .FALSE.
+      IF( ExtMat ) THEN
+        j = InvExtrudedElements(ilayer)
+        SetMat = (j==1 .OR. j==nDiv)
+      ELSE
+        SetMat = (ilayer==1 .OR. ilayer==nElems)
+      END IF             
+      IF(SetMat) mat = NINT(ListGetFun( Vlist,'Extruded Mesh End Map',1.0_dp * mat0 ) )
+    END IF
+
+  END FUNCTION MapExtrudedMaterial
+
+  
+  
   SUBROUTINE CheckPointElementParents(Mesh)
     TYPE(Mesh_t), POINTER :: Mesh
     LOGICAL :: Found
@@ -17512,8 +17578,102 @@ CONTAINS
     END DO
     
   END SUBROUTINE CheckPointElementParents
-  
 
+  
+  ! Collect here the routines that defines the division in the exruded direction.
+  !-----------------------------------------------------------------------------  
+  SUBROUTINE ExtrudedDivision(Vlist, nlevels, Wtable)
+    TYPE(ValueList_t), POINTER :: Vlist
+    INTEGER :: nlevels
+    REAL(KIND=dp), ALLOCATABLE :: Wtable(:)
+
+    LOGICAL :: Found, GotLimits    
+    REAL(KIND=dp) :: q,zmin,zmax,z
+    INTEGER :: i,j,k,nDiv
+    REAL(KIND=dp), POINTER :: ExtrudedLimits(:,:), ExtrudedSizes(:,:), ExtrudedRatios(:,:)
+    INTEGER, POINTER :: ExtrudedElements(:)
+    REAL(KIND=dp), ALLOCATABLE :: Wtmp(:)
+    
+    nlevels = ListGetInteger(Vlist,'Extruded Mesh Layers',Found)
+    IF( .NOT. Found ) THEN
+      nlevels = ListGetInteger(Vlist,'Extruded Mesh Levels',Found)-1 
+      IF(Found) THEN
+        CALL ListAddNewInteger(Vlist,'Extruded Mesh Layers',nlevels)     
+      END IF
+    END IF
+    IF(Found ) THEN
+      q = ListGetCReal(Vlist,'Extruded Mesh Ratio',Found )
+      IF(.NOT. Found) q = 1.0_dp
+      ALLOCATE(Wtable(0:nlevels))
+      CALL UnitSegmentDivision(Wtable,nlevels,Vlist)
+      zmin = ListGetCReal(Vlist,'Extruded Min Coordinate',Found )
+      zmax = ListGetCReal(Vlist,'Extruded Max Coordinate',Found )
+      IF(.NOT. Found) zmax = 1.0_dp
+
+      Wtable = zmin + (zmax-zmin) * Wtable      
+    ELSE
+      ExtrudedElements => ListGetIntegerArray(Vlist,'Extruded Elements',Found)                
+      IF(.NOT. Found ) CALL Fatal('ExtrudedDivision','We should not even be here!')      
+      nDiv = SIZE(ExtrudedElements) 
+      
+      ExtrudedLimits => ListGetConstRealArray(Vlist,'Extruded Limits',GotLimits) 
+      IF(GotLimits) THEN
+        IF(SIZE(ExtrudedLimits,1) /= nDiv+1 .OR. SIZE(ExtrudedLimits,2) /= 1) THEN
+          CALL Fatal('ExtrudedDivision','Incompatible size for "Extruded Limits"')
+        END IF
+      ELSE
+        ExtrudedSizes => ListGetConstRealArray(Vlist,'Extruded Sizes',Found ) 
+        IF(.NOT. Found) THEN
+          CALL Fatal('ExtrudedDivision','Give either "Extruded Limits" or "Extruded Sizes"!')
+        END IF
+        IF(SIZE(ExtrudedSizes,1) /= nDiv .OR. SIZE(ExtrudedSizes,2) /= 1) THEN
+          CALL Fatal('ExtrudedDivision','Incompatible size for "Extruded Sizes"')
+        END IF
+      END IF
+
+      ExtrudedRatios => ListGetConstRealArray(Vlist,'Extruded Ratios',Found)                
+      IF(Found) THEN
+        IF(SIZE(ExtrudedRatios,1) /= nDiv .OR. SIZE(ExtrudedRatios,2) /= 1) THEN
+          CALL Fatal('ExtrudedDivision','Incompatible size for "Extruded Elements"')
+        END IF
+      END IF
+
+      i = MAXVAL(ExtrudedElements)
+      nlevels = SUM(ExtrudedElements)
+      ALLOCATE(Wtable(0:nlevels),Wtmp(0:i))
+      j = 0
+      q = 1.0_dp
+      DO i=1,nDiv
+        IF(ASSOCIATED(ExtrudedRatios)) q = ExtrudedRatios(i,1)        
+
+        k = ExtrudedElements(i)
+        CALL GeometricUnitDivision(Wtmp,k,q)
+
+        IF(GotLimits) THEN          
+          Wtable(j:j+k) = ExtrudedLimits(i,1) + &
+              Wtmp(0:k)*(ExtrudedLimits(i+1,1)-ExtrudedLimits(i,1))
+        ELSE
+          Wtable(j:j+k) = z + ExtrudedSizes(i,1)*Wtmp(0:k) 
+          z = z + ExtrudedSizes(i,1)
+        END IF
+        j = j + k
+      END DO
+      DO i=0,nlevels
+        WRITE( Message, '(A,I0,A,ES12.4)') 'w(',i,') : ',wTable(i)
+        CALL Info('ExtrudedDivision', Message )
+      END DO
+
+      !CALL ListAddNewConstReal(Vlist,'Extruded Min Coordinate',Wtable(0) )
+      !CALL ListAddNewConstReal(Vlist,'Extruded Max Coordinate',Wtable(nlevels) )
+    END IF
+    
+    IF(nlevels < 2) THEN
+      CALL Fatal('ExtrudedDivision','There must be at least two "Extruded Mesh Layers"!')
+    END IF    
+      
+  END SUBROUTINE ExtrudedDivision
+
+  
 !------------------------------------------------------------------------------
 !> Given a 2D mesh extrude it to be 3D. The 3rd coordinate will always
 !> be at the interval [0,1]. Therefore the adaptation for different shapes
@@ -17523,10 +17683,10 @@ CONTAINS
 !> NOTE: This function handles NDOFs of the element structure in a way
 !>       which is not consistent with "Element = n:N ...", with N>1 
 !------------------------------------------------------------------------------
-  FUNCTION MeshExtrude(Mesh_in, in_levels) RESULT(Mesh_out)
+  FUNCTION MeshExtrude(Mesh_in, Vlist) RESULT(Mesh_out)
 !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh_in, Mesh_out
-    INTEGER :: in_levels
+    TYPE(ValueList_t), POINTER :: Vlist
 !------------------------------------------------------------------------------
     CHARACTER(:), ALLOCATABLE :: ExtrudedMeshName
     INTEGER :: i,j,k,l,n,cnt,ind(8),max_baseline_bid,max_bid,l_n,max_body,&
@@ -17535,24 +17695,27 @@ CONTAINS
     TYPE(ParallelInfo_t), POINTER :: PI_in, PI_out
     INTEGER :: nnodes,gnodes,gelements,ierr,bcignored,cnt101
     LOGICAL :: isParallel, Found, PreserveBaseline, Rotational, Rotate2Pi, CollectExtrudedBCs
-    REAL(KIND=dp)::w,MinCoord,MaxCoord,CurrCoord
+    REAL(KIND=dp)::CurrCoord 
     REAL(KIND=dp), POINTER :: ActiveCoord(:)
     REAL(KIND=dp), ALLOCATABLE :: Wtable(:)
     INTEGER, POINTER :: BCLayers(:), TmpLayers(:)
     INTEGER :: NoBCLayers, bcoffset, baseline0, bclevel, BaseLineLayer, bcind, &
-        m, max_bid0
+        m, max_bid0, in_levels, nlev
     INTEGER :: BcCounter(100)    
     LOGICAL :: GotBCLayers, DoCount
     CHARACTER(*), PARAMETER :: Caller="MeshExtrude"   
 
 !------------------------------------------------------------------------------
 
-    CALL Info(Caller,'Creating '//I2S(in_levels+1)//' extruded element layers',Level=10)
-
     Mesh_out => AllocateMesh()
-
     isParallel = ( ParEnv % PEs > 1 )
 
+    ! Create the division for the 1D mesh
+    !--------------------------------------------
+    CALL ExtrudedDivision(Vlist,nlev,Wtable)    
+    CALL Info(Caller,'Creating '//I2S(nlev)//' extruded element layers',Level=10)
+    in_levels = nlev-1
+        
     ! Generate volume nodal points:
     ! -----------------------------
     n = Mesh_in % NumberOfNodes
@@ -17613,12 +17776,6 @@ CONTAINS
     CALL Info(Caller,'Global count of original elements: '//I2S(gelements),Level=12)
     CALL Info(Caller,'Number of nodes for extruded mesh: '//I2S(nnodes),Level=12)
 
-
-    ! Create the division for the 1D unit mesh
-    !--------------------------------------------
-    ALLOCATE( Wtable( 0: in_levels + 1 ) )
-    CALL UnitSegmentDivision( Wtable, in_levels + 1 ) 
-
     ExtrudedCoord = ListGetInteger( CurrentModel % Simulation,'Extruded Coordinate Index', &
         Found, minv=1,maxv=3 )
     IF(.NOT. Found) ExtrudedCoord = Mesh_in % MeshDim + 1 
@@ -17635,18 +17792,12 @@ CONTAINS
     PreserveBaseline = ListGetLogical( CurrentModel % Simulation,'Preserve Baseline',Found )
     IF(.NOT. Found) PreserveBaseline = .FALSE.
 
-    MinCoord = ListGetConstReal( CurrentModel % Simulation,'Extruded Min Coordinate',Found )
-    IF(.NOT. Found) MinCoord = 0.0_dp
-
-    MaxCoord = ListGetConstReal( CurrentModel % Simulation,'Extruded Max Coordinate',Found )
-    IF(.NOT. Found) MaxCoord = 1.0_dp
-
     CollectExtrudedBCs = ListGetLogical( CurrentModel % Simulation,'Extruded BCs Collect',Found )
     
     Rotate2Pi = .FALSE.
     Rotational = ListGetLogical( CurrentModel % Simulation,'Extruded Mesh Rotational',Found )    
     IF( Rotational ) THEN
-      Rotate2Pi = ( ABS(ABS( MaxCoord-MinCoord ) - 2*PI) < 1.0d-3*PI )
+      Rotate2Pi = ( ABS(MAXVAL(Wtable)-MINVAL(Wtable) - 2*PI) < 1.0d-3*PI )
       IF( Rotate2Pi ) CALL Info(Caller,'Perfoming full 2Pi rotation',Level=6)
     END IF
 
@@ -17718,10 +17869,8 @@ CONTAINS
       ! If we rotate full 2Pi then we have natural closure!
       IF( Rotate2Pi ) THEN
         IF( i == in_levels+1) EXIT
-      END IF
-      
-      w = Wtable( i ) 
-      CurrCoord = w * MaxCoord + (1-w) * MinCoord      
+      END IF      
+      CurrCoord = Wtable( i ) 
       
       DO j=1,Mesh_in % NumberOfNodes
 
@@ -17830,9 +17979,11 @@ CONTAINS
         Elem_in => Mesh_in % Elements(j)
         Elem_out => Mesh_out % Elements(cnt)
 
-        Elem_out % BodyId = Elem_in % BodyId
+        !Elem_out % BodyId = Elem_in % BodyId
+        Elem_out % BodyId = MapExtrudedMaterial(Vlist,Elem_in % BodyId,i+1)        
+
         Elem_out % PartIndex = Elem_in % PartIndex
-        
+               
         ! If we have internal BC layers then find the correct index for the body
         IF( NoBCLayers > 2 ) THEN
           DO k=1,NoBCLayers-1
@@ -18227,10 +18378,10 @@ CONTAINS
 !> but also the communication pattern. A separate routine was made in order to avoid
 !> introducing of bugs as the internal extrusion is a widely used feature. 
 !------------------------------------------------------------------------------
-  FUNCTION MeshExtrudeSlices(Mesh_in, in_levels) RESULT(Mesh_out)
+  FUNCTION MeshExtrudeSlices(Mesh_in, Vlist) RESULT(Mesh_out)
 !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh_in, Mesh_out
-    INTEGER :: in_levels
+    TYPE(ValueList_t), POINTER :: Vlist
 !------------------------------------------------------------------------------
     CHARACTER(:), ALLOCATABLE :: ExtrudedMeshName
     INTEGER :: i,j,k,l,n,m,cnt,ind(8),bid,max_bid,l_n,max_body,bcid,&
@@ -18242,17 +18393,14 @@ CONTAINS
         nParMesh,nParExt,OrigPart,ElemCode,bodyid
     LOGICAL :: isParallel, SingleIn, Found, TopBC, BotBC, CollectExtrudedBCs
     INTEGER,ALLOCATABLE :: ChildBCs(:)
-    REAL(KIND=dp)::w,MinCoord,MaxCoord,CurrCoord,zmin,zmax
+    REAL(KIND=dp)::CurrCoord 
     REAL(KIND=dp), POINTER :: ActiveCoord(:)
     REAL(KIND=dp), ALLOCATABLE :: Wtable(:)
     CHARACTER(*), PARAMETER :: Caller="MeshExtrudeSlices"   
 !------------------------------------------------------------------------------
 
     ! The historical choice in_levels in annoying when we want to split the divisions.
-    nlev = in_levels+1
     
-    CALL Info(Caller,'Creating '//I2S(nlev)//' extruded element layers',Level=10)
-
     IF( ListGetLogical( CurrentModel % Simulation,'Preserve Baseline',Found ) ) &
         CALL Fatal(Caller,'The slice version cannot handle "Preserve Baseline"!')
     
@@ -18262,10 +18410,10 @@ CONTAINS
     isParallel = ( ParEnv % PEs > 1 )
     SingleIn = Mesh_in % SingleMesh
     
-    ! Create the division for the 1D unit mesh
+    ! Create the division for the 1D mesh
     !--------------------------------------------
-    ALLOCATE( Wtable( 0: nlev ) )
-    CALL UnitSegmentDivision( Wtable, nlev )
+    CALL ExtrudedDivision(Vlist,nlev,Wtable)    
+    CALL Info(Caller,'Creating '//I2S(nlev)//' extruded element layers',Level=10)
     
     ! In parallel let us pick only our own share of the
     ! division. This logic makes it possible to have nonuniform divisions easily.
@@ -18295,6 +18443,7 @@ CONTAINS
     ELSE
       nParExt = 1
       nParMesh = 1 
+      ilev = 0
     END IF
         
     ! Allocate extruded mesh:
@@ -18324,11 +18473,6 @@ CONTAINS
     ELSE IF( ExtrudedCoord == 3 ) THEN
       ActiveCoord => Mesh_out % Nodes % z
     END IF
-
-    MinCoord = ListGetConstReal( CurrentModel % Simulation,'Extruded Min Coordinate',Found )
-    IF(.NOT. Found) MinCoord = 0.0_dp
-    MaxCoord = ListGetConstReal( CurrentModel % Simulation,'Extruded Max Coordinate',Found )
-    IF(.NOT. Found) MaxCoord = 1.0_dp
 
     CollectExtrudedBCs = ListGetLogical( CurrentModel % Simulation,'Extruded BCs Collect',Found )
      
@@ -18378,14 +18522,10 @@ CONTAINS
     CALL Info(Caller,'Number of nodes in layer: '//I2S(gnodes),Level=12)
     CALL Info(Caller,'Number of elements in layer: '//I2S(gelements),Level=12)
     
-    !CALL Info(Caller,'Number of extruded nodes: '//I2S((nlev+1)*gnodes),Level=7)
-    !CALL Info(Caller,'Number of exruded elements: '//I2S(nlev*gelements),Level=7)
-    
     cnt=0
     DO i=0,nlev
 
-      w = Wtable( i ) 
-      CurrCoord = w * MaxCoord + (1-w) * MinCoord      
+      CurrCoord = Wtable(i)  
       
       DO j=1,Mesh_in % NumberOfNodes
 
@@ -18472,6 +18612,9 @@ CONTAINS
         Element => Mesh_out % Elements(cnt)
         Element = Mesh_in % Elements(j)
 
+        bodyid = Element % BodyId
+        Element % BodyId = MapExtrudedMaterial(Vlist,bodyid,ilev+i+1)        
+        
         l_n = Mesh_in % Elements(j) % TYPE % NumberOfNodes
         ind(1:l_n) = Mesh_in % Elements(j) % NodeIndexes(1:l_n)+i*n
         ind(l_n+1:2*l_n) = Mesh_in % Elements(j) % NodeIndexes(1:l_n)+(i+1)*n
@@ -25480,7 +25623,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-  !------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
 !> Compute radius of rotor using only topology information.
 !> Assumes that axis of rotation is z-axis. 
 !------------------------------------------------------------------------------
