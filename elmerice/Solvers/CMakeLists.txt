@@ -4,27 +4,27 @@ SET(WITH_ScatteredDataInterpolator FALSE CACHE BOOL "Include ElmerIce ScatteredD
 MARK_AS_ADVANCED(WITH_ScatteredDataInterpolator)
 
 # ---------------------- #
-# -- NetCDF libraries -- #
+# -- netCDF libraries -- #
 #----------------------- #
 MESSAGE(STATUS "------------------------------------------------")
-MESSAGE(STATUS "Elmer/Ice package: Looking for [NetCDF] & [NetCDF Fortran] libraries")
+MESSAGE(STATUS "Elmer/Ice package: Looking for [netCDF] & [netCDF Fortran] libraries")
 
-FIND_PACKAGE(NetCDF)
+FIND_PACKAGE(NETCDF MODULE)
 
-IF(NetCDF_FOUND)
+IF(NETCDF_FOUND)
 
   SET(HAVE_NETCDF TRUE)
   MARK_AS_ADVANCED(HAVE_NETCDF)
-  INCLUDE_DIRECTORIES(${NetCDF_INCLUDE_DIR})
+  INCLUDE_DIRECTORIES(${NETCDF_INCLUDE_DIR})
   ADD_DEFINITIONS(-DHAVE_NETCDF)
 
-  MESSAGE(STATUS "  NetCDF:           " "${NetCDF_FOUND}")
-  MESSAGE(STATUS "  NetCDF_INC:       " "${NetCDF_INCLUDE_DIR}")
-  MESSAGE(STATUS "  NetCDF_LIBS:     " "${NetCDF_LIBRARIES}")
+  MESSAGE(STATUS "  netCDF:           " "${NETCDF_FOUND}")
+  MESSAGE(STATUS "  netCDF_INC:       " "${NETCDF_INCLUDE_DIR}")
+  MESSAGE(STATUS "  netCDF_LIBS:      " "${NETCDF_LIBRARIES}")
 ELSE()
-  MESSAGE(STATUS "Library not found: >NetCDF_FOUND< ")
-  MESSAGE(WARNING "  \n Missing: >NetCDF_INCLUDE_DIR< , >NetCDF_LIBRARY<,  >NetCDFF_LIBRARY< \n some functionalities will be disabled")
-ENDIF(NetCDF_FOUND)
+  MESSAGE(STATUS "Library not found: netCDF ")
+  MESSAGE(WARNING "  \n Missing: <NETCDF_INCLUDE_DIR> , <NETCDF_LIBRARY>,  <NETCDFF_LIBRARY> \n some functionalities will be disabled")
+ENDIF()
 
 # ---------------------- #
 # -- HDF5 libraries -- #
@@ -137,7 +137,7 @@ ENDIF()
 TARGET_LINK_LIBRARIES(ElmerIceSolvers Elmer::MPI_Fortran elmersolver ElmerIceUtils)
 
 IF(HAVE_NETCDF)
-TARGET_LINK_LIBRARIES(ElmerIceSolvers ${NETCDF_LIBRARIES})
+  TARGET_LINK_LIBRARIES(ElmerIceSolvers ${NETCDF_LIBRARIES})
 ENDIF()
 IF(HAVE_HDF5)
 TARGET_LINK_LIBRARIES(ElmerIceSolvers ${PHDF5_LIBRARIES})
