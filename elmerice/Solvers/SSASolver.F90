@@ -70,8 +70,8 @@
   TYPE(Nodes_t)   :: ElementNodes
   TYPE(Element_t),POINTER :: CurrentElement, Element, ParentElement, BoundaryElement
   TYPE(Matrix_t),POINTER  :: StiffMatrix
-  TYPE(ValueList_t), POINTER :: SolverParams, BodyForce, Material, BC
-  TYPE(Variable_t), POINTER :: PointerToVariable, ZsSol, ZbSol, VeloSol,strbasemag,Ceff
+  TYPE(ValueList_t), POINTER :: SolverParams, BodyForce, Material, BC, Constants
+  TYPE(Variable_t), POINTER  :: PointerToVariable, ZsSol, ZbSol, VeloSol, strbasemag, Ceff, GMSol
 
   LOGICAL :: AllocationsDone = .FALSE., Found, GotIt, CalvingFront, UnFoundFatal=.TRUE.
   LOGICAL :: stat
@@ -91,15 +91,16 @@
 
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), LOAD(:), FORCE(:), &
        NodalGravity(:), NodalViscosity(:), NodalDensity(:), &
-       NodalZs(:), NodalZb(:), NodalU(:), NodalV(:),Basis(:)
+       NodalZs(:), NodalZb(:), NodalU(:), NodalV(:),Basis(:), NodalGM(:)
 
   REAL(KIND=dp) :: DetJ,UnLimit,un,un_max,FillValue
-  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, ZsName, ZbName
+  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, ZsName, ZbName, MaskName
 #ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: at, at0
 #else
   REAL(KIND=dp) :: at, at0, CPUTime, RealTime
 #endif     
+  LOGICAL :: PartlyGroundedElement
   LOGICAL :: SEP ! Sub-element parametrization for Grounding line
   INTEGER :: GLnIP ! number of Integ. Points for GL Sub-element parametrization
 
@@ -108,7 +109,7 @@
   SAVE NodalGravity, NodalViscosity, NodalDensity, &
        NodalZs, NodalZb,   &
        NodalU, NodalV, &
-       Basis
+       Basis, nodalGM
 
   !------------------------------------------------------------------------------
   PointerToVariable => Solver % Variable
@@ -185,13 +186,13 @@
     M = Model % Mesh % NumberOfNodes
     IF (AllocationsDone) DEALLOCATE(FORCE, LOAD, STIFF, NodalGravity, &
          NodalViscosity, NodalDensity,  &
-         NodalZb, NodalZs,  NodalU, NodalV, &
+         NodalZb, NodalZs,  NodalU, NodalV, NodalGM, &
          ElementNodes % x, &
          ElementNodes % y, ElementNodes % z ,Basis)
 
     ALLOCATE( FORCE(STDOFs*N), LOAD(N), STIFF(STDOFs*N,STDOFs*N), &
          NodalGravity(N), NodalDensity(N), NodalViscosity(N), &
-         NodalZb(N), NodalZs(N), NodalU(N), NodalV(N), &
+         NodalZb(N), NodalZs(N), NodalU(N), NodalV(N), NodalGM(N), &
          ElementNodes % x(N), ElementNodes % y(N), ElementNodes % z(N), &
          Basis(N), &
          STAT=istat )
@@ -534,10 +535,20 @@
           End do
           un=sqrt(un)
 
+          PartlyGroundedElement = .FALSE.
+          IF (SEP) THEN
+             Constants => GetConstants()
+             MaskName = ListGetString(Constants,'Grounded Mask Variable Name',UnFoundFatal=.FALSE.,DefValue='GroundedMask')
+             GMSol => VariableGet( CurrentModel % Variables, MaskName, UnFoundFatal=.TRUE. )
+             CALL GetLocalSolution( NodalGM,UElement=Element,UVariable=GMSol)
+             PartlyGroundedElement=(ANY(NodalGM(1:n).GE.0._dp).AND.ANY(NodalGM(1:n).LT.0._dp))
+          END IF
+          
           h=MAX(SUM(Basis(1:n)*(NodalZs(1:n)-NodalZb(1:n))),MinH)
           Ceff%Values(Ceff%Perm(NodeIndexes(i)))=  &
-                  SSAEffectiveFriction(Element,n,Basis,un,SEP,.TRUE.,h,SUM(NodalDensity(1:n)*Basis(1:n)),rhow,sealevel)
-        End do
+               SSAEffectiveFriction(Element,n,Basis,un,SEP,PartlyGroundedElement,h,SUM(NodalDensity(1:n)*Basis(1:n)),rhow,sealevel)
+!     SSAEffectiveFriction(Element,n,Basis,un,SEP,.TRUE.,h,SUM(NodalDensity(1:n)*Basis(1:n)),rhow,sealevel)
+       END DO
       End IF
 
    END DO
@@ -596,6 +607,8 @@ CONTAINS
     LOGICAL :: Stat, NewtonLin
     INTEGER :: i, j, t, p, q , dim
     TYPE(GaussIntegrationPoints_t) :: IP
+    CHARACTER(LEN=MAX_NAME_LEN) :: MaskName
+    TYPE(ValueList_t), POINTER :: Constants
 
     TYPE(Nodes_t) :: Nodes
     !------------------------------------------------------------------------------
@@ -608,8 +621,12 @@ CONTAINS
     ! Use Newton Linearisation
     NewtonLin = (Newton.AND.(cm.NE.1.0_dp))
 
+    PartlyGroundedElement = .FALSE.
     IF (SEP) THEN
-     GMSol => VariableGet( CurrentModel % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
+     Constants => GetConstants()
+     MaskName = ListGetString(Constants,'Grounded Mask Variable Name',UnFoundFatal=.FALSE.,DefValue='GroundedMask')
+     GMSol => VariableGet( CurrentModel % Variables, MaskName, UnFoundFatal=.TRUE. )
+!     GMSol => VariableGet( CurrentModel % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
      CALL GetLocalSolution( NodalGM,UElement=Element,UVariable=GMSol)
      PartlyGroundedElement=(ANY(NodalGM(1:n).GE.0._dp).AND.ANY(NodalGM(1:n).LT.0._dp))
      IF (PartlyGroundedElement) THEN
