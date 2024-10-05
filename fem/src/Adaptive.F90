@@ -118,7 +118,7 @@ CONTAINS
     INTEGER :: MaxDepth, MinDepth, NLen
     CHARACTER(:), ALLOCATABLE :: Path, VarName
     REAL(KIND=dp), POINTER  :: Time(:), NodalError(:), PrevValues(:), &
-         Hvalue(:), HValue1(:), PrevNodalError(:), PrevHValue(:), hConvergence(:), ptr(:), tt(:)
+         Hvalue(:), HValueF(:), PrevNodalError(:), PrevHValue(:), hConvergence(:), ptr(:), tt(:)
     REAL(KIND=dp), POINTER  :: ErrorIndicator(:), eRef(:), hRef(:), Work(:)
     LOGICAL :: NoInterp, Parallel, AdaptiveOutput, AdaptInit
     TYPE(ValueList_t), POINTER :: Params
@@ -244,6 +244,7 @@ CONTAINS
     END IF
 
     CALL AllocateVector( PrevHvalue, nn )
+    
     IF( AdaptInit ) THEN
       PrevHValue(1:nn) = 0.0_dp
     ELSE
@@ -279,8 +280,25 @@ CONTAINS
       Hvalue(1:nn) = Hvalue(1:nn) / Referenced(1:nn)
     END WHERE
     CALL ParallelAverageHvalue(  RefMesh, Hvalue )
+
+    !   Add estimate of the convergence with respecto to h:
+!  ----------------------------------------------------
+    Var => VariableGet( RefMesh % Variables, 'HValueF', ThisOnly=.TRUE. )
+
+    IF ( ASSOCIATED( Var ) ) THEN
+      HValueF => Var % Values
+      Var % PrimaryMesh => RefMesh
+      IF( AdaptInit ) HValueF = 1.0_dp
+    ELSE
+      CALL AllocateVector( HValueF, nn )
+      HValueF = 1.0d0
+      CALL VariableAdd( RefMesh % Variables, RefMesh, Solver, &
+          'HValueF', 1, HValueF, Output=AdaptiveOutput )
+      Var => VariableGet( RefMesh % Variables, 'HValueF', ThisOnly=.TRUE. )
+    END IF
     
-!   Add estimate of the convergence with respecto to h:
+
+    !   Add estimate of the convergence with respecto to h:
 !  ----------------------------------------------------
     Var => VariableGet( RefMesh % Variables, 'hConvergence', ThisOnly=.TRUE. )
 
@@ -511,7 +529,7 @@ CONTAINS
 #endif          
       ELSE       
         CALL Info(Caller,'Using file I/O for mesh refinement',Level=5)
-        NewMesh => External_ReMesh( RefMesh, ErrorLimit/3, HValue, &
+        NewMesh => External_ReMesh( RefMesh, ErrorLimit/3, HValue, HValueF, &
             NodalError, hConvergence, minH, maxH, MaxChangeFactor, Coarsening )
       END IF
       RemeshTime = RealTime() - t
@@ -1270,11 +1288,11 @@ CONTAINS
 
   
 !------------------------------------------------------------------------------
-  FUNCTION External_ReMesh( RefMesh, ErrorLimit, HValue, NodalError, &
+  FUNCTION External_ReMesh( RefMesh, ErrorLimit, HValue, HValueF, NodalError, &
        hConvergence, minH, maxH, MaxChange, Coarsening ) RESULT( NewMesh )
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: NodalError(:), hConvergence(:), &
-           ErrorLimit, minH, maxH, MaxChange, HValue(:)
+           ErrorLimit, minH, maxH, MaxChange, HValue(:), HValueF(:)
     LOGICAL :: Coarsening
     TYPE(Mesh_t), POINTER :: NewMesh, RefMesh
 !------------------------------------------------------------------------------
@@ -1283,7 +1301,7 @@ CONTAINS
     REAL(KIND=dp) :: Lambda
     CHARACTER(:), ALLOCATABLE :: MeshCommand, Name, MeshInputFile
 !------------------------------------------------------------------------------
-
+    
     OPEN( 11, STATUS='UNKNOWN', FILE='bgmesh' )
     WRITE( 11,* ) COUNT( NodalError > 100*AEPS )
 
@@ -1309,6 +1327,7 @@ CONTAINS
              WRITE(11,'(4e23.15)') RefMesh % Nodes % x(i), &
                   RefMesh % Nodes % y(i), &
                   RefMesh % Nodes % z(i), Lambda
+              HValueF(i) = Lambda
           END IF
        ELSE
           IF ( CoordinateSystemDimension() == 2 ) THEN
