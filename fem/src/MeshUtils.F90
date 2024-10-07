@@ -27736,34 +27736,36 @@ CONTAINS
 
     ! Divide work by number of rows in the vertex graph
     nthr = 1 
-    !$ nthr = omp_get_max_threads()
+!   !$ nthr = omp_get_max_threads()
 
     ! Load balance the actual work done by threads (slow)
     ! CALL ThreadLoadBalanceElementNeighbour(nthr, nelem, eptr, eind, vptr, thrblk)
     CALL ThreadStaticWorkShare(nthr, nelem, thrblk)
 
-    !$OMP PARALLEL SHARED(nelem, nvertex, eptr, eind, &
-    !$OMP                 vptr, vind, Mesh, DualGraph, &
-    !$OMP                 nthr, thrblk, dnnz) &
-    !$OMP PRIVATE(i, eid, nli, nti, nn, nv, vli, vti, te, &
-    !$OMP         maxNodesPad, neighSizePad, ptrli, ptrti, &
-    !$OMP         wrkheap, wrkmap, neighind, &
-    !$OMP         wrkind, nwrkind, wrkindresize, allocstat, &
-    !$OMP         mapSizePad, thrli, thrti, TID) NUM_THREADS(nthr) &
-    !$OMP DEFAULT(NONE)
+    CALL Warn("MeshUtils::ElmerMeshToDualGraph", "OpenMP threading is disabled. Expect poor performance")
+
+!!! !$OMP PARALLEL SHARED(nelem, nvertex, eptr, eind, &
+!!! !$OMP                 vptr, vind, Mesh, DualGraph, &
+!!! !$OMP                 nthr, thrblk, dnnz) &
+!!! !$OMP PRIVATE(i, eid, nli, nti, nn, nv, vli, vti, te, &
+!!! !$OMP         maxNodesPad, neighSizePad, ptrli, ptrti, &
+!!! !$OMP         wrkheap, wrkmap, neighind, &
+!!! !$OMP         wrkind, nwrkind, wrkindresize, allocstat, &
+!!! !$OMP         mapSizePad, thrli, thrti, TID) NUM_THREADS(nthr) &
+!!! !$OMP DEFAULT(NONE)
 
     TID = 1
-    !$ TID = OMP_GET_THREAD_NUM()+1
+!!! !$ TID = OMP_GET_THREAD_NUM()+1
 
     ! Ensure that the vertex to element lists are sorted
-    !$OMP DO 
+!!! !$OMP DO 
     DO i=1,nvertex
       vli = vptr(i)
       vti = vptr(i+1)-1
 
       CALL Sort(vti-vli+1, vind(vli:vti))
     END DO
-    !$OMP END DO NOWAIT
+!!! !$OMP END DO NOWAIT
 
     ! Allocate work array (local to each thread)
     maxNodesPad = IntegerNBytePad(Mesh % MaxElementNodes, 8)
@@ -27799,7 +27801,7 @@ CONTAINS
             'Unable to allocate local workspace!')
 
     ! Ensure that all the threads have finished sorting the vertex indices
-    !$OMP BARRIER
+!!! !$OMP BARRIER
 
     ! Get thread indices
     thrli = thrblk(TID)
@@ -27853,20 +27855,20 @@ CONTAINS
     END DO
 
     ! Get the global size of the dual mesh
-    !$OMP DO REDUCTION(+:dnnz)
+!!! !$OMP DO REDUCTION(+:dnnz)
     DO i=1,nthr
       dnnz = nwrkind
     END DO
-    !$OMP END DO
+!!! !$OMP END DO
 
     ! Allocate memory for dual mesh indices
-    !$OMP SINGLE
+!!! !$OMP SINGLE
     ALLOCATE(DualGraph % ind(dnnz), STAT=allocstat)
     IF (allocstat /= 0) CALL Fatal('ElmerMeshToDualGraph', &
             'Unable to allocate dual mesh!')
     ! ptr stores row counts, build crs pointers from them
     CALL ComputeCRSIndexes(nelem, DualGraph % ptr)
-    !$OMP END SINGLE
+!!! !$OMP END SINGLE
 
     DualGraph % ind(&
             DualGraph % ptr(thrli):DualGraph % ptr(thrti)-1)=wrkind(1:nwrkind)
@@ -27880,7 +27882,7 @@ CONTAINS
             'Unable to deallocate local workspace!')
     DEALLOCATE(neighind, ptrli, ptrti, wrkind)
 
-    !$OMP END PARALLEL
+!!! !$OMP END PARALLEL
 
     ! Deallocate the rest of memory
     DEALLOCATE(eind, eptr, vptr, vind, thrblk)
@@ -28201,13 +28203,14 @@ CONTAINS
     consistent = .FALSE.
     IF (PRESENT(ConsistentColours)) consistent = ConsistentColours
 
+    CALL Warn("MeshUtils::ElmerGraphColour", "OpenMP threading is disabled. Expect poor performance")
     ! Get maximum vertex degree of the given graph
-    !$OMP PARALLEL DO SHARED(Graph) &
-    !$OMP PRIVATE(v) REDUCTION(max:dualmaxdeg) DEFAULT(NONE)
+!!! !$OMP PARALLEL DO SHARED(Graph) &
+!!! !$OMP PRIVATE(v) REDUCTION(max:dualmaxdeg) DEFAULT(NONE)
     DO v=1,Graph % n
       dualmaxdeg = MAX(dualmaxdeg, Graph % ptr(v+1)- Graph % ptr(v))
     END DO
-    !$OMP END PARALLEL DO
+!!! !$OMP END PARALLEL DO
 
     nthr = 1
     ! Ensure that each vertex has at most one thread attached to it
@@ -28218,11 +28221,11 @@ CONTAINS
     IF (allocstat /= 0) CALL Fatal('ElmerDualGraphColour', &
             'Unable to allocate colour maps!')
 
-    !$OMP PARALLEL SHARED(gn, dualmaxdeg, Graph, colours, nunc, &
-    !$OMP                 uncolored, ucptr, nthr) &
-    !$OMP PRIVATE(uci, vli, vti, v, w, wci, vcol, wcol, fc, nrc, rc, rcnew, &
-    !$OMP         allocstat, TID) &
-    !$OMP REDUCTION(max:nc) DEFAULT(NONE) NUM_THREADS(nthr)
+!!! !$OMP PARALLEL SHARED(gn, dualmaxdeg, Graph, colours, nunc, &
+!!! !$OMP                 uncolored, ucptr, nthr) &
+!!! !$OMP PRIVATE(uci, vli, vti, v, w, wci, vcol, wcol, fc, nrc, rc, rcnew, &
+!!! !$OMP         allocstat, TID) &
+!!! !$OMP REDUCTION(max:nc) DEFAULT(NONE) NUM_THREADS(nthr)
 
     TID=1
     !$ TID=OMP_GET_THREAD_NUM()+1
@@ -28236,17 +28239,17 @@ CONTAINS
     fc = 0
 
     ! Initialize colours and uncolored entries
-    !$OMP DO 
+!!! !$OMP DO 
     DO v=1,gn
       colours(v)=0
       ! U <- V
       uncolored(v)=v
     END DO
-    !$OMP END DO
+!!! !$OMP END DO
 
     DO
       ! For each v\in U in parallel do
-      !$OMP DO
+!!!   !$OMP DO
       DO uci=1,nunc
         v = uncolored(uci)
         vli = Graph % ptr(v)
@@ -28264,7 +28267,7 @@ CONTAINS
         ! c <- min\{i>0: fc[i]/=v \}
         DO i=1,dualmaxdeg+1
           IF (fc(i) /= v) THEN
-            !$OMP ATOMIC WRITE 
+!!!         !$OMP ATOMIC WRITE 
             colours(v) = i
             ! Maintain maximum colour
             nc = MAX(nc, i)
@@ -28276,7 +28279,7 @@ CONTAINS
 
       nrc = 0
       ! For each v\in U in parallel do
-      !$OMP DO
+!!!   !$OMP DO
       DO uci=1,nunc
         v = uncolored(uci)
         vli = Graph % ptr(v)
@@ -28305,24 +28308,24 @@ CONTAINS
           END IF
         END DO
       END DO
-      !$OMP END DO NOWAIT
+!!    !$OMP END DO NOWAIT
 
       ucptr(TID)=nrc
-      !$OMP BARRIER
+!!    !$OMP BARRIER
 
-      !$OMP SINGLE
+!!    !$OMP SINGLE
       CALL ComputeCRSIndexes(nthr, ucptr)
       nunc = ucptr(nthr+1)-1
-      !$OMP END SINGLE
+!!    !$OMP END SINGLE
 
       ! U <- R
       uncolored(ucptr(TID):ucptr(TID+1)-1)=rc(1:nrc)
-      !$OMP BARRIER
+!!    !$OMP BARRIER
 
       ! Colour the remaining vertices sequentially if the 
       ! size of the set of uncoloured vertices is small enough
       IF (nunc < nthr*VERTEX_PER_THREAD) THEN
-        !$OMP SINGLE
+!!      !$OMP SINGLE
         DO uci=1,nunc
           v = uncolored(uci)
           vli = Graph % ptr(v)
@@ -28347,7 +28350,7 @@ CONTAINS
             END IF
           END DO
         END DO
-        !$OMP END SINGLE NOWAIT
+!!      !$OMP END SINGLE NOWAIT
 
         EXIT
       END IF
@@ -28356,7 +28359,7 @@ CONTAINS
 
     ! Deallocate thread local storage
     DEALLOCATE(fc, rc)
-    !$OMP END PARALLEL
+!!  !$OMP END PARALLEL
 
     DEALLOCATE(uncolored, ucptr)
 
