@@ -12,7 +12,7 @@ End
 Element Degree = 1
 Element Innernodes = False
 
-Materials Interval = 1 2
+Materials Interval = 1 1
 Boundary Definitions
 ! type     out      int
    1      -1        1        1
@@ -26,6 +26,13 @@ Boundary Definitions
 End
 Element Ratios 1 = 1 1 1 
 Element Ratios 2 = 1 1 
-Element Divisions 1 = 10 0 15 
+Element Divisions 1 = 11 0 15 
+Element Divisions 2 = 11 5 
+
+Start New Mesh
+Materials Interval = 2 2
+Element Divisions 1 = 10 0 15
 Element Divisions 2 = 10 5 
+
+Unite = True
 
