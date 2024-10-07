@@ -1169,7 +1169,7 @@ void SetCellData(struct GridType *grid,struct CellType *cell,int info)
 
   for(j=1;j<= grid->ycells ;j++)                   /* cells direction up    */
     for(i=1;i<= grid->xcells; i++)                 /* cells direction right */      
-      if( cnew = grid->numbered[j][i] ) {          /* if cell is occupied   */
+      if( (cnew = grid->numbered[j][i]) ) {          /* if cell is occupied   */
 
         /* Initialize the numbering to zero  */
         cell[cnew].left1st = 0;
