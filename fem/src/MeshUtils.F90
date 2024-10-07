@@ -28275,7 +28275,7 @@ CONTAINS
           END IF
         END DO
       END DO
-      !$OMP END DO
+!!!   !$OMP END DO
 
       nrc = 0
       ! For each v\in U in parallel do
