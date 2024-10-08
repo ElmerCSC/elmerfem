@@ -6,4 +6,4 @@ CONFIGURE_FILE(modeldata.sif modeldata.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO umagnet DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(mgdyn_airgap_force NPROCS 1 2 LABELS whitney failing)
+ADD_ELMER_TEST(mgdyn_airgap_force NPROCS 1 2 LABELS whitney slow)
