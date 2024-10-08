@@ -6,5 +6,5 @@ IF(HAVE_UMFPACK OR HAVE_MUMPS)
 
   file(COPY ELMERSOLVER_STARTINFO shoebox_hexas.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-  ADD_ELMER_TEST(EMWaveBoxHexasEigen LABELS whitney eigen em-wave)
+  ADD_ELMER_TEST(EMWaveBoxHexasEigen LABELS whitney eigen em-wave slow)
 ENDIF()
