@@ -66,8 +66,6 @@ CONTAINS
     INTEGER :: Perm(:)
     REAL(KIND=dp) :: Quant(:)
     TYPE( Model_t ) :: Model
-    REAL(KIND=dp) :: dt
-    LOGICAL :: TransientSimulation
 
 
     INTERFACE
@@ -120,11 +118,15 @@ CONTAINS
     INTEGER :: MaxDepth, MinDepth, NLen
     CHARACTER(:), ALLOCATABLE :: Path, VarName
     REAL(KIND=dp), POINTER  :: Time(:), NodalError(:), PrevValues(:), &
-         Hvalue(:), HValueF(:), PrevNodalError(:), PrevHValue(:), hConvergence(:), ptr(:), tt(:)
+         Hvalue(:), HValue1(:), PrevNodalError(:), PrevHValue(:), hConvergence(:), ptr(:), tt(:)
     REAL(KIND=dp), POINTER  :: ErrorIndicator(:), eRef(:), hRef(:), Work(:)
     LOGICAL :: NoInterp, Parallel, AdaptiveOutput, AdaptInit
     TYPE(ValueList_t), POINTER :: Params
     CHARACTER(*), PARAMETER :: Caller = 'RefineMesh'
+    REAL(KIND=dp), POINTER :: Wrk(:,:)
+    REAL(KIND=dp) :: CoordScale(3)
+    INTEGER :: mesh_dim
+
 
     
     SAVE DoFinalRef
@@ -246,7 +248,6 @@ CONTAINS
     END IF
 
     CALL AllocateVector( PrevHvalue, nn )
-    
     IF( AdaptInit ) THEN
       PrevHValue(1:nn) = 0.0_dp
     ELSE
@@ -282,25 +283,8 @@ CONTAINS
       Hvalue(1:nn) = Hvalue(1:nn) / Referenced(1:nn)
     END WHERE
     CALL ParallelAverageHvalue(  RefMesh, Hvalue )
-
-    !   Add estimate of the convergence with respecto to h:
-!  ----------------------------------------------------
-    Var => VariableGet( RefMesh % Variables, 'HValueF', ThisOnly=.TRUE. )
-
-    IF ( ASSOCIATED( Var ) ) THEN
-      HValueF => Var % Values
-      Var % PrimaryMesh => RefMesh
-      IF( AdaptInit ) HValueF = 1.0_dp
-    ELSE
-      CALL AllocateVector( HValueF, nn )
-      HValueF = 1.0d0
-      CALL VariableAdd( RefMesh % Variables, RefMesh, Solver, &
-          'HValueF', 1, HValueF, Output=AdaptiveOutput )
-      Var => VariableGet( RefMesh % Variables, 'HValueF', ThisOnly=.TRUE. )
-    END IF
     
-
-    !   Add estimate of the convergence with respecto to h:
+!   Add estimate of the convergence with respecto to h:
 !  ----------------------------------------------------
     Var => VariableGet( RefMesh % Variables, 'hConvergence', ThisOnly=.TRUE. )
 
@@ -529,9 +513,13 @@ CONTAINS
 #else
         CALL Fatal( Caller,'Remeshing requested with MMG but not compiled with!')
 #endif          
+      ELSE IF( ListGetLogical( Params,'Adaptive Remesh Use Gmsh', Found ) ) THEN
+      CALL Info(Caller,'Using Gmsh library for mesh refinement', Level=5)        
+        NewMesh => Gmsh_ReMesh( RefMesh, ErrorLimit/3, HValue, &
+            NodalError, hConvergence, minH, maxH, MaxChangeFactor, Coarsening )
       ELSE       
         CALL Info(Caller,'Using file I/O for mesh refinement',Level=5)
-        NewMesh => External_ReMesh( RefMesh, ErrorLimit/3, HValue, HValueF, &
+        NewMesh => External_ReMesh( RefMesh, ErrorLimit/3, HValue, &
             NodalError, hConvergence, minH, maxH, MaxChangeFactor, Coarsening )
       END IF
       RemeshTime = RealTime() - t
@@ -1288,13 +1276,169 @@ CONTAINS
 !------------------------------------------------------------------------------
 #endif
 
-  
 !------------------------------------------------------------------------------
-  FUNCTION External_ReMesh( RefMesh, ErrorLimit, HValue, HValueF, NodalError, &
+FUNCTION Gmsh_ReMesh( RefMesh, ErrorLimit, HValue, NodalError, &
+    hConvergence, minH, maxH, MaxChange, Coarsening ) RESULT( NewMesh )
+  !------------------------------------------------------------------------------
+  REAL(KIND=dp) :: NodalError(:), hConvergence(:), &
+        ErrorLimit, minH, maxH, MaxChange, HValue(:)
+  LOGICAL :: Coarsening
+  TYPE(Mesh_t), POINTER :: NewMesh, RefMesh
+  !------------------------------------------------------------------------------
+  TYPE(Mesh_t), POINTER :: Mesh
+  INTEGER :: i,j,k,n
+  REAL(KIND=dp) :: Lambda
+  CHARACTER(:), ALLOCATABLE :: MeshCommand, Name, MeshInputFile, MeshConversionCommand
+  !------------------------------------------------------------------------------
+
+  ! Before writing the background mesh, find the coordinates scaling and then write the background mesh in the scaled coordinates
+      ! Scaling of coordinates
+  !-----------------------------------------------------------------------------
+  ! Determine the mesh dimension 
+  !----------------------------------------------------------------------------
+  CALL SetMeshDimension( RefMesh )
+
+  mesh_dim = RefMesh % MaxDim
+
+  Wrk => ListGetConstRealArray( Model % Simulation,'Coordinate Scaling',Found )
+  CoordScale = 1.0_dp    
+  IF( Found ) THEN            
+  DO i=1, mesh_dim
+    j = MIN( i, SIZE(Wrk,1) )
+    CoordScale(i) = Wrk(j,1)
+  END DO
+  WRITE(Message,'(A,3ES10.3)') 'Scaling the background mesh coordinates:',CoordScale(1:3)
+  CALL Info(Caller ,Message, Level=10)
+  END IF 
+
+
+  ! write the bacground mesh for gmsh too. Need to make it to write it if requested
+  ! View "mesh size field" {
+  OPEN( 11, STATUS='UNKNOWN', FILE='gmsh_bgmesh.pos' )
+  WRITE( 11,* ) 'View "mesh size field" {'
+
+  DO i=1,RefMesh % NumberOfNodes
+    IF ( NodalError(i) > 100*AEPS ) THEN
+      Lambda = ( ErrorLimit / NodalError(i) ) ** ( 1.0d0 / hConvergence(i) )
+
+      IF ( RefMesh % AdaptiveDepth < 1 ) THEN
+          Lambda = HValue(i) * MAX( MIN( Lambda, 1.33d0), 0.75d0)
+      ELSE
+          Lambda = HValue(i) * MAX(MIN(Lambda, MaxChange), 1.0d0/MaxChange)
+      END IF
+
+      IF( .NOT.Coarsening ) Lambda = MIN( Lambda, Hvalue(i) )
+
+      IF ( maxH > 0 ) Lambda = MIN( Lambda, maxH )
+      IF ( minH > 0 ) Lambda = MAX( Lambda, minH )
+
+      IF ( CoordinateSystemDimension() == 2 ) THEN
+          ! Write a list based background mesh for gmsh. S for scalar and P for point.
+          ! the mesh size is scaled by the minimum of the scaling factors. This may need to be changed to include all cases.
+          WRITE( 11,* ) 'SP(', (RefMesh % Nodes % x(i)) / CoordScale(1), &
+              ', ', (RefMesh % Nodes % y(i)) / CoordScale(2), ') {', &
+              Lambda / MIN(CoordScale(1), CoordScale(2)), '};'
+      ELSE
+          ! Write a list based background mesh for gmsh. S for scalar and P for point. 
+          ! the mesh size is scaled by the minimum of the scaling factors. This may need to be changed to include all cases.
+          WRITE( 11,* ) 'SP(', (RefMesh % Nodes % x(i)) / CoordScale(1), &
+              ', ', (RefMesh % Nodes % y(i)) / CoordScale(2), &
+              ', ', (RefMesh % Nodes % z(i)) / CoordScale(3), ') {', &
+              Lambda / MIN(CoordScale(1), MIN(CoordScale(2), CoordScale(3))), '};'
+      END IF
+    ELSE
+      IF ( CoordinateSystemDimension() == 2 ) THEN
+          WRITE(11, *) 'SP(', (RefMesh % Nodes % x(i)) / CoordScale(1), &
+              ', ', (RefMesh % Nodes % y(i)) / CoordScale(2), ') {', &
+              HValue(i) / MIN(CoordScale(1), CoordScale(2)), '};'
+      ELSE
+          WRITE(11, *) 'SP(', (RefMesh % Nodes % x(i)) / CoordScale(1), &
+              ', ', (RefMesh % Nodes % y(i)) / CoordScale(2), &
+              ', ', (RefMesh % Nodes % z(i)) / CoordScale(3), ') {', &
+              HValue(i) / MIN(CoordScale(1), MIN(CoordScale(2), CoordScale(3))), '};'
+      END IF
+    END IF
+  END DO
+  ! write }; at the end of the file and close it;
+  WRITE( 11,* ) '};'
+  CLOSE( 11 )
+
+  Path = ListGetString( Params, 'Adaptive Mesh Name', Found )
+  IF ( .NOT. Found ) Path = 'RefinedMesh'
+
+  IF (ListGetLogical(Params,'Adaptive Mesh Numbering',Found)) THEN 
+    i = RefMesh % AdaptiveDepth + 1
+    nLen = LEN_TRIM(Path)
+    Path = Path(1:nlen) // I2S(i)
+  END IF
+
+  nLen = LEN_TRIM(OutputPath)
+  IF ( nlen > 0 ) THEN
+    Path = OutputPath(1:nlen) // '/' // TRIM(Path)
+  ELSE
+    Path = TRIM(Path)
+  END IF
+  CALL Info(Caller,'Writing the background mesh to: '//TRIM(Path),Level=10)
+  CALL MakeDirectory( TRIM(Path) // CHAR(0) )
+  CALL WriteMeshToDisk( RefMesh, Path )
+
+  Mesh => RefMesh
+  DO WHILE( ASSOCIATED( Mesh ) )
+    IF ( Mesh % AdaptiveDepth == 0 ) EXIT
+    Mesh => Mesh % Parent
+  END DO
+
+  MeshInputFile = ListGetString( Params, 'Mesh Input File', Found )
+
+  IF ( .NOT. Found ) THEN
+    MeshInputFile = ListGetString( Model % Simulation, 'Mesh Input File' )
+  END IF
+
+  CALL Info(Caller,'Mesh input file: '//TRIM(MeshInputFile),Level=14)
+
+  ! temporary solution to get the mesh command to work
+  MeshCommand = ListGetString( Params, 'Mesh Command', Found )
+  MeshConversionCommand = ListGetString( Params, 'Mesh Conversion Command', Found )
+  CALL Info(Caller, 'Gmsh command: '//TRIM(MeshCommand),Level=10)
+  CALL SystemCommand( MeshCommand )
+  CALL Info(Caller, 'Conversion of mesh using Gmsh done. Starting ElmerGrid', Level=5)
+  ! the conversion command need to get the path from Path
+  MeshConversionCommand = MeshConversionCommand // ' -out ' // TRIM(Path)
+  CALL Info(Caller, 'ElmerGrid command: '//TRIM(MeshConversionCommand),Level=10)
+  CALL SystemCommand( MeshConversionCommand )
+
+  CALL Info(Caller, 'Conversion of mesh ElmerGrid done.', Level=5)
+
+  ! print the output path 
+  CAll Info(Caller, 'Output path: '//TRIM(OutputPath), Level=10)
+  NewMesh => LoadMesh2( Model, OutPutPath, Path, .FALSE., 1, 0 )
+
+  IF ( Solver % Variable % Name == 'temperature' ) THEN
+    Name = ListGetString( Model % Simulation, 'Gebhart Factors', Found )
+    IF ( Found ) THEN
+      MeshCommand = 'View ' // TRIM(OutputPath) // &
+            '/' // TRIM(Mesh % Name) // ' ' // TRIM(Path)
+
+      CALL SystemCommand( MeshCommand )
+
+      Name = TRIM(OutputPath) // '/' // &
+                    TRIM(Mesh % Name) // '/' // TRIM(Name)
+
+      CALL LoadGebhartFactors( NewMesh, TRIM(Name) )
+    END IF
+  END IF
+
+!------------------------------------------------------------------------------
+END FUNCTION Gmsh_ReMesh
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+  FUNCTION External_ReMesh( RefMesh, ErrorLimit, HValue, NodalError, &
        hConvergence, minH, maxH, MaxChange, Coarsening ) RESULT( NewMesh )
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: NodalError(:), hConvergence(:), &
-           ErrorLimit, minH, maxH, MaxChange, HValue(:), HValueF(:)
+           ErrorLimit, minH, maxH, MaxChange, HValue(:)
     LOGICAL :: Coarsening
     TYPE(Mesh_t), POINTER :: NewMesh, RefMesh
 !------------------------------------------------------------------------------
@@ -1303,7 +1447,7 @@ CONTAINS
     REAL(KIND=dp) :: Lambda
     CHARACTER(:), ALLOCATABLE :: MeshCommand, Name, MeshInputFile
 !------------------------------------------------------------------------------
-    
+
     OPEN( 11, STATUS='UNKNOWN', FILE='bgmesh' )
     WRITE( 11,* ) COUNT( NodalError > 100*AEPS )
 
@@ -1329,7 +1473,6 @@ CONTAINS
              WRITE(11,'(4e23.15)') RefMesh % Nodes % x(i), &
                   RefMesh % Nodes % y(i), &
                   RefMesh % Nodes % z(i), Lambda
-              HValueF(i) = Lambda
           END IF
        ELSE
           IF ( CoordinateSystemDimension() == 2 ) THEN
@@ -1342,8 +1485,7 @@ CONTAINS
           END IF
        END IF
     END DO
-    CALL Info( Caller,'Saving in gmsh 2.0 (.msh) format' )
-    CALL GmshOutputSolver( Model,Solver,dt,TransientSimulation )
+    
     WRITE(11,*) 0
     CLOSE(11)
 
@@ -2556,551 +2698,3 @@ END MODULE Adaptive
 !-----------------------------------------------------------------------------
 
 !> \} 
-
-!/*****************************************************************************/
-! *
-! *  Elmer, A Finite Element Software for Multiphysical Problems
-! *
-! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
-! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
-! *
-! *****************************************************************************/
-
-!------------------------------------------------------------------------------
-!> Saves results in ascii format understood by the pre-/postprocessing software Gmsh.
-!> \ingroup Solvers
-!------------------------------------------------------------------------------
-SUBROUTINE GmshOutputSolver( Model,Solver,dt,TransientSimulation )
-  !------------------------------------------------------------------------------
-    USE DefUtils
-    USE SaveUtils
-    IMPLICIT NONE
-  !------------------------------------------------------------------------------
-    TYPE(Solver_t) :: Solver
-    TYPE(Model_t) :: Model
-    REAL(KIND=dp) :: dt
-    LOGICAL :: TransientSimulation
-  !------------------------------------------------------------------------------
-  ! Local variables
-  !------------------------------------------------------------------------------
-    TYPE(Element_t),POINTER :: Element
-    INTEGER, POINTER :: Perm(:)
-    REAL(KIND=dp), POINTER :: Values(:),Values2(:),Values3(:)
-    REAL(KIND=dp) :: Vector(3), Time
-    COMPLEX(KIND=dp), POINTER :: CValues(:)
-    TYPE(Variable_t), POINTER :: Solution, TimeVariable
-    TYPE(ValueList_t), POINTER :: Params
-    TYPE(Mesh_t), POINTER :: Mesh
-    
-    LOGICAL :: Found, GotField, FileAppend, AlterTopology, MaskExists
-    LOGICAL :: EigenAnalysis = .FALSE., EigenActive, ComponentVector, Parallel
-    
-    INTEGER :: VisitedTimes = 0, ExtCount
-    INTEGER :: i,j,k,l,m,n,nsize,dim,dofs,ElmerCode, GmshCode,body_id, Vari, Rank, truedim
-    INTEGER :: Tag, NumberOfAllElements, BCOffSet
-    INTEGER, PARAMETER :: MaxElemCode = 827
-    INTEGER :: ElmerToGmshType(MaxElemCode), GmshToElmerType(21), &
-        ElmerIndexes(27), GmshIndexes(27) 
-    INTEGER, POINTER :: NodeIndexes(:)
-  
-    INTEGER, ALLOCATABLE :: NodePerm(:),DgPerm(:)
-    INTEGER, ALLOCATABLE, TARGET :: InvDgPerm(:), InvNodePerm(:)
-    LOGICAL, ALLOCATABLE :: ActiveElem(:)
-    LOGICAL :: NoPermutation
-    INTEGER :: NumberOfGeomNodes, NumberOfDofNodes,NumberOfElements, ElemFirst, ElemLast
-    INTEGER, POINTER :: InvFieldPerm(:), DGInvPerm(:)
-    
-    INTEGER, PARAMETER :: LENGTH = 1024
-    CHARACTER(LEN=LENGTH) :: Txt, FieldName, CompName
-    CHARACTER(MAX_NAME_LEN) :: OutputFile
-    CHARACTER(:), ALLOCATABLE :: OutputDirectory
-    INTEGER :: GmshUnit
-    CHARACTER(*), PARAMETER :: Caller = 'GmshOutputSolver'
-      
-    SAVE VisitedTimes
-    
-  !------------------------------------------------------------------------------
-  
-    CALL Info(Caller,'Saving results in Gmsh format')
-  
-    Mesh => Model % Mesh
-    Params => Solver % Values
-    Parallel = ( ParEnv % PEs > 1 )
-    
-    ExtCount = ListGetInteger( Params,'Output Count',Found)
-    IF( Found ) THEN
-      VisitedTimes = ExtCount
-    ELSE
-      VisitedTimes = VisitedTimes + 1
-    END IF
-      
-    GmshToElmerType = (/ 202, 303, 404, 504, 808, 706, 605, 203, 306, 409, &
-        510, 827, 0, 0, 101, 408, 820, 715, 613, 0, 310 /)
-    ElmerToGmshType = 0
-  
-    DO i=1,SIZE(GmshToElmerType)
-      j = GmshToElmerType(i)
-      IF( j > 0 ) ElmerToGmshType(j) = i
-    END DO
-  
-    EigenAnalysis = GetLogical( Params, 'Eigen Analysis', Found )
-    FileAppend = GetLogical( Params,'File Append',Found)
-    IF(.NOT. Found) FileAppend = .FALSE.
-    AlterTopology = GetLogical( Params,'Alter Topology',Found)
-    
-    OutputFile = GetString( Solver % Values, 'Output File Name', Found )
-    IF( Found ) THEN
-      IF(INDEX(OutputFile,'.') == 0) WRITE( OutputFile,'(A,A)') TRIM(OutputFile),".msh"
-    ELSE
-      OutputFile = 'gmsh_bgmesh.msh'
-    END IF
-       
-    CALL SolverOutputDirectory( Solver, OutputFile, OutputDirectory, UseMeshDir = .TRUE. )
-    OutputFile = TRIM(OutputDirectory)// '/' //TRIM(OutputFile)
-    
-    !------------------------------------------------------------------------------
-    ! Initialize stuff for masked saving
-    !------------------------------------------------------------------------------
-    CALL GenerateSaveMask(Mesh,Params,Parallel,0,.FALSE.,&
-        NodePerm,ActiveElem,NumberOfGeomNodes,NumberOfElements,&
-        ElemFirst,ElemLast)
-  
-    IF( ParEnv % PEs > 1 ) THEN
-      IF( NumberOfElements == 0 ) THEN
-        CALL Info(Caller,'Nothing to save in partition: '//TRIM(I2S(ParEnv % MyPe)),Level=8)
-        RETURN
-      ELSE
-        OutputFile = TRIM(OutputFile)//'_'//I2S(ParEnv % PEs)//'np'//I2S(ParEnv % MyPe+1)
-      END IF
-    ELSE
-      IF( NumberOfElements == 0 ) THEN
-        CALL Warn(Caller,'Notging to save, this is suspicious')
-        RETURN      
-      END IF      
-    END IF
-    
-    CALL GenerateSavePermutation(Mesh,.FALSE.,.FALSE.,0,.FALSE.,&
-        ActiveElem,NumberOfGeomNodes,NoPermutation,NumberOfDofNodes,&
-        DgPerm,InvDgPerm,NodePerm,InvNodePerm)
-    
-    InvFieldPerm => InvNodePerm
-    
-    dim = CoordinateSystemDimension()
-    IF( VisitedTimes > 1 ) THEN
-      IF( AlterTopology ) THEN
-        OutputFile = NextFreeFilename( OutputFile )
-        CALL Info(Caller,'Writing mesh and data to a new file: '//TRIM(OutputFile))
-      ELSE IF( FileAppend ) THEN      
-        CALL Info(Caller,'Appending data to the same file: '//TRIM(OutputFile))
-        OPEN(NEWUNIT=GmshUnit, FILE=OutputFile, POSITION='APPEND' )      
-        GOTO 10
-      ELSE
-        OutputFile = NextFreeFilename( OutputFile )          
-        CALL Info(Caller,'Writing data to a new file: '//TRIM(OutputFile))
-        OPEN(NEWUNIT=GmshUnit, FILE=OutputFile )
-        WRITE(GmshUnit,'(A)') '$MeshFormat'
-        WRITE(GmshUnit,'(A)') '2.0 0 8'
-        WRITE(GmshUnit,'(A)') '$EndMeshFormat'          
-        GOTO 10    
-      END IF
-    END IF
-  
-  
-    ! Save the header
-    !-------------------------------------------------
-    CALL Info('GmshOutputSolver','Saving results to file: '//TRIM(OutputFile))
-    OPEN(NEWUNIT=GmshUnit, FILE=OutputFile )
-    
-    WRITE(GmshUnit,'(A)') '$MeshFormat'
-    WRITE(GmshUnit,'(A)') '2.0 0 8'
-    WRITE(GmshUnit,'(A)') '$EndMeshFormat'    
-    
-  
-    ! Save the mesh nodes
-    !-------------------------------------------------
-    CALL Info(Caller,'Writing the mesh nodes')
-    CALL WriteGmshNodes()
-  
-    ! Save the mesh elements
-    !-------------------------------------------------
-    CALL Info(Caller,'Writing the mesh elements')
-    CALL WriteGmshElements() 
-  
-    ! With a mask the list of physical entities should be checked
-    !-------------------------------------------------------------
-    IF(.NOT. MaskExists ) THEN
-  !    CALL WritePhysicalNames() 
-    END IF
-  
-  10 CONTINUE
-  
-    CALL Info(Caller,'Writing the nodal data')
-    CALL WriteGmshData()
-        
-    IF(.FALSE.) THEN
-      WRITE(GmshUnit,'(A)') '$ElementData'
-      WRITE(GmshUnit,'(A)') '$EndElementData'
-    END IF
-    
-    IF(.FALSE.) THEN
-      WRITE(GmshUnit,'(A)') '$ElementNodeData'
-      WRITE(GmshUnit,'(A)') '$EndElementNodeData'
-    END IF
-    
-    CLOSE(GmshUnit)
-  
-  
-  
-    IF(ALLOCATED(DgPerm)) DEALLOCATE(DgPerm)
-    IF(ALLOCATED(InvDgPerm)) DEALLOCATE(InvDgPerm)
-    IF(ALLOCATED(NodePerm)) DEALLOCATE(NodePerm)
-    IF(ALLOCATED(InvNodePerm)) DEALLOCATE(InvNodePerm)
-    IF(ALLOCATED(ActiveElem)) DEALLOCATE(ActiveElem)
-  
-    
-    CALL Info(Caller,'Gmsh output complete')
-  
-  CONTAINS
-    
-    SUBROUTINE WriteGmshNodes()
-  
-      nsize = NumberOfGeomNodes
-      
-      WRITE(GmshUnit,'(A)') '$Nodes'
-      WRITE(GmshUnit,'(I8)') nsize
-      DO i = 1, nsize
-        IF( NoPermutation ) THEN
-          j = i 
-        ELSE
-          j = InvNodePerm(i)
-        END IF
-        
-        IF( dim == 3 ) THEN
-          WRITE(GmshUnit,'(I8,3ES16.7E3)') i,Mesh % Nodes % x(j),Mesh % Nodes % y(j), Mesh % Nodes % z(j)
-        ELSE
-          WRITE(GmshUnit,'(I8,2ES16.7E3,A)') i,Mesh % Nodes % x(j),Mesh % Nodes % y(j),' 0.0' 
-        END IF
-      END DO
-      WRITE(GmshUnit,'(A)') '$EndNodes'
-    END SUBROUTINE WriteGmshNodes
-      
-    
-    SUBROUTINE WriteGmshElements()
-  
-      nsize = NumberOfElements 
-  
-      BCOffSet = 100
-      DO WHILE( BCOffset <= Model % NumberOfBodies ) 
-        BCOffset = 10 * BCOffset
-      END DO
-  
-      WRITE(GmshUnit,'(A)') '$Elements'
-      WRITE(GmshUnit,'(I8)') nsize
-  
-      l = 0
-      DO i = ElemFirst, ElemLast
-        IF(.NOT. ActiveElem(i) ) CYCLE
-  
-        l = l + 1
-        Element => Mesh % Elements(i)
-        ElmerCode = Element % TYPE % ElementCode
-  
-        n = Element % Type % NumberOfNodes
-        IF( NoPermutation ) THEN
-          ElmerIndexes(1:n) = Element % NodeIndexes(1:n)
-        ELSE
-          ElmerIndexes(1:n) = NodePerm(Element % NodeIndexes(1:n))
-        END IF
-          
-        GmshCode = ElmerToGmshType(ElmerCode)
-        IF( GmshCode == 0 ) THEN
-          CALL Warn(Caller,'Gmsh element index not found!')
-          CYCLE
-        END IF
-  
-        IF( i <= Model % NumberOfBulkElements ) THEN
-          Tag = Element % BodyId
-        ELSE
-          Tag = GetBCId( Element ) + BCOffset
-        END IF
-  
-        WRITE(GmshUnit,'(I8,I3,I3,I5,I5)',ADVANCE='NO') l,GmshCode,2,Tag,Tag
-        k = MOD(ElmerCode,100)
-  
-        CALL ElmerToGmshIndex(ElmerCode,ElmerIndexes,GmshIndexes)
-  
-        DO j=1,k-1
-          WRITE(GmshUnit,'(I8)',ADVANCE='NO') GmshIndexes(j)
-        END DO
-        WRITE(GmshUnit,'(I8)') GmshIndexes(k)
-      END DO
-      WRITE(GmshUnit,'(A)') '$EndElements'
-    END SUBROUTINE WriteGmshElements
-  
-  
-    SUBROUTINE WritePhysicalNames()
-      CALL Info(Caller,'Writing the physical entity names')
-      nsize = Model % NumberOfBodies + Model % NumberOfBCs
-      WRITE(GmshUnit,'(A)') '$PhysicalNames'
-      WRITE(GmshUnit,'(I8)') nsize
-      DO i=1,Model % NumberOfBodies 
-        Txt = ListGetString( Model % Bodies(i) % Values,'Name',Found)
-        IF( Found ) THEN
-          WRITE(GmshUnit,'(I8,A)') i,'"'//TRIM(Txt)//'"'
-        ELSE
-          WRITE(GmshUnit,'(I8,A,I0,A)') i,'"Body ',i,'"'       
-        END IF
-      END DO
-      DO i=1,Model % NumberOfBCs
-        Txt = ListGetString( Model % BCs(i) % Values,'Name',Found)
-        IF( Found ) THEN
-          WRITE(GmshUnit,'(I8,A)') i+BCOffset,'"'//TRIM(Txt)//'"'
-        ELSE
-          WRITE(GmshUnit,'(I8,A,I0,A)') i+BCOffset,'"Boundary Condition ',i,'"'               
-        END IF
-      END DO
-      WRITE(GmshUnit,'(A)') '$EndPhysicalNames'
-    END SUBROUTINE WritePhysicalNames
-      
-  
-    ! In case of DG fields we average the fields on-the-fly to nodes.
-    !----------------------------------------------------------------
-    SUBROUTINE CreateTemporalNodalField(Mesh,Solution,Revert)
-      TYPE(Mesh_t) :: Mesh
-      TYPE(Variable_t) :: Solution
-      LOGICAL, OPTIONAL :: revert
-  
-      REAL(KIND=dp), POINTER :: NodalVals(:), TmpVals(:)
-      INTEGER, POINTER :: NodalPerm(:), TmpPerm(:), NodalCnt(:)
-      INTEGER :: i,j,k,l,n,t,dofs,ElemFam
-  
-      SAVE NodalPerm, NodalVals, NodalCnt, TmpPerm, TmpVals
-      
-      IF( PRESENT( Revert ) ) THEN
-        IF( Revert ) THEN
-          DEALLOCATE( NodalVals, NodalPerm, NodalCnt )
-          Solution % Perm => TmpPerm
-          Solution % Values => TmpVals
-          RETURN
-        END IF
-      END IF
-      
-      dofs = Solution % dofs
-      
-      n = Mesh % NumberOfNodes
-      ALLOCATE( NodalPerm(n), NodalCnt(n), NodalVals(n*dofs) ) 
-      NodalPerm = 0
-      NodalCnt = 0
-      NodalVals = 0.0_dp
-      
-      DO t=1,Mesh % NumberOfBulkElements
-        Element => Mesh % Elements(t)
-  
-        ! This is just a quick hack to not consider those element in averaging that don't
-        ! even have one face on the active set of nodes. 
-        IF( ALLOCATED(NodePerm) ) THEN
-          ElemFam = Element % TYPE % ElementCode / 100 
-          l = COUNT( NodePerm(Element % NodeIndexes ) > 0 )
-          SELECT CASE(ElemFam)          
-          CASE(3,4)
-            IF(l<2) CYCLE
-          CASE(5,6,7)
-            IF(l<3) CYCLE
-          CASE(8)
-            IF(l<4) CYCLE          
-          END SELECT
-        END IF
-        
-        DO i=1,Element % TYPE % NumberOfNodes
-          j = Element % DGIndexes(i)
-          k = Element % NodeIndexes(i)  
-  
-          NodalCnt(k) = NodalCnt(k) + 1
-          NodalPerm(k) = k
-  
-          j = Solution % Perm(j)
-          IF(j==0) CYCLE
-  
-          DO l=1,dofs
-            NodalVals(dofs*(k-1)+l) = NodalVals(dofs*(k-1)+l) + Solution % Values(dofs*(j-1)+l)
-          END DO
-        END DO
-      END DO
-        
-      DO i=1,dofs
-        WHERE ( NodalCnt > 0 )
-          NodalVals(i::dofs) = NodalVals(i::dofs) / NodalCnt 
-        END WHERE
-      END DO
-  
-      TmpVals => Solution % Values
-      TmpPerm => Solution % Perm
-      
-      Solution % Perm => NodalPerm
-      Solution % Values => NodalVals
-      
-  
-    END SUBROUTINE CreateTemporalNodalField
-      
-      
-    
-    
-    SUBROUTINE WriteGmshData()
-      INTEGER :: ii
-      LOGICAL :: DgVar
-      
-      
-      ! Time is needed
-      !-------------------------------------------------
-      TimeVariable => VariableGet( Model % Variables, 'Time' )        
-      Time = TimeVariable % Values(1)
-  
-      ! Loop over different type of variables
-      !-------------------------------------------------
-      CALL Info(Caller,'Writing the nodal data')
-      DO Rank = 0,0
-        DO Vari = 1,1
-          IF(Rank==0) WRITE(Txt,'(A,I0)') 'Scalar Field ',Vari
-          IF(Rank==1) WRITE(Txt,'(A,I0)') 'Vector Field ',Vari
-          IF(Rank==2) WRITE(Txt,'(A,I0)') 'Tensor Field ',Vari
-  
-          FieldName = GetString( Solver % Values, TRIM(Txt), Found )
-          FieldName = 'HvalueF'
-
-          ! IF(.NOT. Found) EXIT 
-          IF( Rank == 2) THEN
-            CALL Warn(Caller,'Not implemented yet for tensors!')
-            CYCLE
-          END IF
-          ComponentVector = .FALSE.
-          Solution => VariableGet( Mesh % Variables, FieldName )
-          DGVar = .FALSE.
-          
-          IF(ASSOCIATED(Solution)) THEN
-            DGVar = ( Solution % TYPE == Variable_on_nodes_on_elements )          
-            IF(DgVar) CALL CreateTemporalNodalField(Mesh,Solution)
-  
-            Values => Solution % Values
-            Perm => Solution % Perm
-            dofs = Solution % DOFs
-          ELSE
-            IF( Rank == 1 ) THEN
-              Solution => VariableGet( Mesh % Variables, FieldName//' 1' )
-              IF( ASSOCIATED( Solution ) ) THEN
-                ComponentVector = .TRUE.
-                Values => Solution % Values
-                Perm => Solution % Perm
-                dofs = 1
-                Solution => VariableGet( Mesh % Variables, FieldName//' 2' )
-                IF( ASSOCIATED(Solution)) THEN
-                  Values2 => Solution % Values
-                  dofs = 2
-                END IF
-                Solution => VariableGet( Mesh % Variables, FieldName//' 3' )
-                IF( ASSOCIATED(Solution)) THEN
-                  Values3 => Solution % Values
-                  dofs = 3
-                END IF
-              END IF
-            END IF
-            IF( .NOT. ASSOCIATED(Solution)) THEN
-              CALL Warn('GmshOutputSolver','Variable not present: '//TRIM(FieldName))
-              CYCLE
-            END IF
-          END IF
-          IF( ASSOCIATED(Solution % EigenVectors) ) THEN
-            CALL Warn(Caller,'Eigenvectors related to field: '//TRIM(FieldName))
-            CALL Warn(Caller,'Eigenvectors saving yet not supported')
-          END IF
-  
-          truedim = MIN(dofs, dim)
-          nsize = NumberOfGeomNodes
-  
-          WRITE(GmshUnit,'(A)') '$NodeData'
-          WRITE(GmshUnit,'(A)') '1'
-          WRITE(GmshUnit,'(A)') '"'//TRIM(FieldName)//'"'
-          WRITE(GmshUnit,'(A)') '1'
-          
-          ! Gmsh starts steady state indexes from zero, hence deductions by one
-          IF( TransientSimulation ) THEN
-            WRITE(GmshUnit,'(ES16.7E3)') Time
-          ELSE
-            WRITE(GmshUnit,'(ES16.7E3)') Time - 1.0_dp
-          END IF
-          WRITE(GmshUnit,'(A)') '3'
-          WRITE(GmshUnit,'(I8)') VisitedTimes-1
-          IF(Rank == 0) THEN
-            WRITE(GmshUnit,'(A)') '1'
-          ELSE IF(Rank == 1) THEN
-            WRITE(GmshUnit,'(A)') '3'
-          ELSE 
-            WRITE(GmshUnit,'(A)') '9'
-          END IF
-          WRITE(GmshUnit,'(I8)') nsize
-  
-          DO ii = 1, NumberOfGeomNodes
-            IF( NoPermutation ) THEN
-              i = ii 
-            ELSE
-              i = InvFieldPerm(ii) 
-            END IF
-  
-            IF( ASSOCIATED( Perm ) ) THEN
-              j = Perm(i)
-            ELSE
-              j = i
-            END IF
-            
-            IF( Rank == 0 ) THEN
-              WRITE(GmshUnit,'(I8,ES16.7E3)') ii,Values(j)
-            ELSE IF(Rank == 1) THEN
-              IF( j == 0 ) THEN
-                WRITE(GmshUnit,'(I8,A)') ii,' 0.0 0.0 0.0'                
-              ELSE IF( ComponentVector ) THEN
-                IF( truedim == 2 ) THEN
-                  WRITE(GmshUnit,'(I8,2ES16.7E3,A)') ii,&
-                      Values(j),Values2(j),' 0.0'
-                ELSE
-                  WRITE(GmshUnit,'(I8,3ES16.7E3)') ii,&
-                      Values(j),Values2(j),Values3(j)
-                END IF
-              ELSE
-                IF( truedim == 2 ) THEN
-                  WRITE(GmshUnit,'(I8,2ES16.7E3,A)') ii,&
-                      Values(dofs*(j-1)+1),Values(dofs*(j-1)+2),' 0.0'
-                ELSE
-                  WRITE(GmshUnit,'(I8,3ES16.7E3)') ii,&
-                      Values(dofs*(j-1)+1),Values(dofs*(j-1)+2),Values(dofs*(j-1)+3)
-                END IF
-              END IF
-            END IF
-          END DO
-          WRITE(GmshUnit,'(A)') '$EndNodeData'
-  
-          IF(DgVar) CALL CreateTemporalNodalField(Mesh,Solution,Revert=.TRUE.)
-          
-        END DO
-      END DO
-    END SUBROUTINE WriteGmshData
-      
-  
-     
-  !------------------------------------------------------------------------------
-  END SUBROUTINE GmshOutputSolver
-  !------------------------------------------------------------------------------
-    
-  
