@@ -81,7 +81,7 @@ SUBROUTINE SaveProjection( Model,Solver,dt,Transient )
   CHARACTER(LEN=MAX_NAME_LEN) ::  VarName, TargetName
   INTEGER, POINTER :: UnitPerm(:)
   REAL(KIND=dp) :: Nrm
-  LOGICAL :: Found 
+  LOGICAL :: Found, Normalize, ToSlave, ToMaster
 
   CALL Info('SaveProjection','Creating selected projected values as fields')
 
@@ -92,21 +92,28 @@ SUBROUTINE SaveProjection( Model,Solver,dt,Transient )
     i = i + 1
     VarName = ListGetString( Params,'Variable '//I2S(i), Found )
     IF(.NOT. Found) EXIT    
-  END DO
-  NoVar = i-1
-  CALL Info('SaveProjection','Saving projections from '//I2S(NoVar)//' fields')
-  
-
-  DO i=1,NoVar
-    VarName = ListGetString( Params,'Variable '//I2S(i), Found )
     Var => VariableGet( Model % Variables, TRIM(VarName) )
     IF(.NOT. ASSOCIATED(Var)) THEN
       CALL Warn('SaveProjection','Requested variable does not exist!')
-      CYCLE
+      EXIT
     END IF
+  END DO
+  NoVar = i-1
+  CALL Info('SaveProjection','Saving projections from '//I2S(NoVar)//' fields')
+   
+
+  DO i=1,NoVar    
+    VarName = ListGetString( Params,'Variable '//I2S(i), Found )
+    Var => VariableGet( Model % Variables, TRIM(VarName) )
+    CALL info('SaveProjection','Doing variable: '//TRIM(VarName))
     
     TargetName = ListGetString( Params,'Target Variable '//I2S(i), Found )
-    IF(.NOT. Found) VarName = 'Projection '//TRIM(VarName)
+    IF(.NOT. Found) TargetName = 'Projection '//TRIM(VarName)
+
+    Normalize = ListGetLogical( Params,'Normalize '//I2S(i), Found )
+    IF(.NOT. Found) Normalize = .TRUE.
+    ToSlave = ListGetLogical( Params,'Project To Slave '//I2S(i),Found ) 
+    ToMaster = ListGetLogical( Params,'Project To Master '//I2S(i),Found ) 
     
     TargetVar => VariableGet( Model % Variables, TRIM(TargetName) )
     IF(.NOT. ASSOCIATED(TargetVar)) THEN
@@ -145,12 +152,20 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: A
     INTEGER :: bc, dofs, i, j, k, pi, pj
     INTEGER, POINTER :: Rows(:), Cols(:)
+    LOGICAL :: acti, actj, AddThis
     REAL(KIND=dp) :: r1
     REAL(KIND=dp), POINTER :: Values(:)      
-
+    REAL(KIND=dp), ALLOCATABLE :: Weight(:)
+    LOGICAL, ALLOCATABLE :: IsInvInvPerm(:)
+    
     dofs = Var % Dofs
     TargetVar % Values = 0.0_dp
-
+    
+    IF(Normalize) THEN
+      ALLOCATE(Weight(SIZE(TargetVar % Values)))
+      Weight = 0.0_dp      
+    END IF
+          
     ! Go through all the projectors.
     ! There could be perhaps reason to skip some, but this will do for now.
     DO bc=1,Model % NumberOfBCs        
@@ -161,33 +176,76 @@ CONTAINS
       
       IF(.NOT. ASSOCIATED(A)) CYCLE
       n = A % NumberOfRows
+      IF(n==0) CYCLE
+
       Rows => A % Rows
       Cols => A % Cols
       Values => A % Values
-      
+
+      IF(.NOT. ASSOCIATED(A % InvPerm)) THEN
+        CALL Fatal('SaveProjection','InvPerm not associated!')
+      END IF
+
+      ! Create table telling which is slave/master dof. 
+      ALLOCATE(IsInvInvPerm(MAXVAL(Cols)))
+      IsInvInvPerm = .FALSE.
+      DO i=1,n
+        pi = A % InvPerm(i)
+        IsInvInvPerm(pi) = .TRUE.
+      END DO
+
       DO k=1,dofs
         DO i=1,n
-          IF(ASSOCIATED(A % InvPerm)) THEN
-            pi = A % InvPerm(i)
-          ELSE
-            pi = i
-          END IF
-          IF(ASSOCIATED(Var % Perm)) pi = Var % Perm(pi)          
+          pi = A % InvPerm(i)
+          acti = IsInvInvPerm(pi)
+          IF(ASSOCIATED(Var % Perm)) pi = Var % Perm(pi)
           IF(pi==0) CYCLE
           pi = dofs*(pi-1)+k
           r1 = 0.0_dp
           DO j=Rows(i),Rows(i+1)-1
             pj = Cols(j)
             IF(ASSOCIATED(Var % Perm)) pj = Var % Perm(pj)
-            IF(pj==0) CYCLE
+            IF(pj==0) CYCLE            
             pj = dofs*(pj-1)+k
-            r1 = r1 + Values(j) * Var % Values(pj)
+            actj = IsInvInvPerm(Cols(j))
+            
+            IF( ToSlave ) THEN
+              IF(.NOT. actj) THEN
+                ! Project only master dofs to slave.
+                r1 = -Values(j) * Var % Values(pj)
+                TargetVar % Values(pi) = TargetVar % Values(pi) + r1
+              END IF
+            ELSE IF(.NOT. ToMaster) THEN
+              ! Either project fully to slave
+              r1 = -Values(j) * Var % Values(pj)
+              TargetVar % Values(pi) = TargetVar % Values(pi) + r1
+            END IF
+            ! Normalize using just the weights from slave dofs.
+            IF( Normalize .AND. actj) Weight(pi) = Weight(pi) + Values(j)                
+
+            IF( ToMaster ) THEN
+              ! Project slave dofs to master
+              IF(.NOT. actj) THEN
+                r1 = Values(j) * Var % Values(pi)
+                TargetVar % Values(pj) = TargetVar % Values(pj) + r1               
+                ! Normalize using just the weights from master dofs.
+                IF(Normalize .AND. .NOT. actj) Weight(pj) = Weight(pj) + Values(j)
+              END IF
+            END IF                        
           END DO
           
-          TargetVar % Values(pi) = TargetVar % Values(pi) + r1 
         END DO
       END DO
+
+      IF(ALLOCATED(IsInvInvPerm)) DEALLOCATE(IsInvInvPerm)       
     END DO
+
+    IF(Normalize) THEN
+      WHERE(ABS(Weight) >  EPSILON(r1) )
+        TargetVar % Values = TargetVar % Values / Weight
+      END WHERE      
+    END IF
+    
   END SUBROUTINE ProjectToVariable
   
 END SUBROUTINE SaveProjection

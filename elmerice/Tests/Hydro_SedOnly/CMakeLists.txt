@@ -7,4 +7,5 @@ IF(HAVE_UMFPACK OR HAVE_MUMPS)
 
   ADD_ELMERICE_TEST(Hydro_SedOnly)
   ADD_ELMERICE_LABEL(Hydro_SedOnly obsolete)
+  ADD_ELMERICE_LABEL(Hydro_SedOnly slow)
 ENDIF()

@@ -12,7 +12,7 @@ Header
 End
   
 Simulation
-  Max Output Level = 5
+  Max Output Level = 10
   Coordinate System = "Cartesian 2D"
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Steady State
@@ -21,8 +21,8 @@ Simulation
   
   Output Intervals = 0
 
-!  Post File = case.vtu
-!  Ascii Output = True
+  Post File = case.vtu
+  Ascii Output = True
 End 
 
 Constants
@@ -75,15 +75,40 @@ Solver 2
   Equation = SaveProject
   Procedure = "SaveData" "SaveProjection"
 
+! Projector is Pu=0 <=> Qu_s=-Ru_m
+! This gives Pu
+! For weak projector this is the result of Galerkin intergral over u_s-u_m.
   Variable 1 = Temperature
-  Variable 2 = Coordinate 1
-  Variable 3 = Coordinate 2
-
-! Note that the field values depend on type of projection.
-! They may, or may not, be multiplied by nodal weight. 
   Target Variable 1 = Proj Temperature
-  Target Variable 2 = Proj X
-  Target Variable 3 = Proj Y 
+  Normalize 1 = Logical False
+
+! This gives normalized projection u_s=-Ru_m/rowsum(Q)
+  Variable 2 = Temperature
+  Target Variable 2 = Proj S Temperature
+  Project To Slave 2 = Logical True
+  Project To Master 2 = Logical False
+
+! This gives normalized projection for u_m
+  Variable 3 = Temperature
+  Target Variable 3 = Proj M Temperature
+  Project To Slave 3 = Logical False
+  Project To Master 3 = Logical True
+
+! This gives both u_s and u_m
+  Variable 4 = Temperature
+  Target Variable 4 = Proj SM Temperature
+  Project To Slave 4 = Logical True
+  Project To Master 4 = Logical True
+
+  Variable 5 = Coordinate 1
+  Target Variable 5 = Proj X
+  Project To Slave 5 = Logical True
+  Project To Master 5 = Logical True
+
+  Variable 6 = Coordinate 2
+  Target Variable 6 = Proj Y
+  Project To Slave 6 = Logical True
+  Project To Master 6 = Logical True
 
   Apply Mortar BCs = Logical True
 End 
@@ -132,6 +157,6 @@ Boundary Condition 4
 End
 
 
-Solver 1 :: Reference Norm = 1.81336882E+00
-Solver 2 :: Reference Norm = 1.57162326E-01
+Solver 1 :: Reference Norm = 1.78949575E+00
+Solver 2 :: Reference Norm = 1.33772301E+01
 

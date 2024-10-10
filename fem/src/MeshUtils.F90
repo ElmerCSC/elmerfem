@@ -25552,6 +25552,7 @@ CONTAINS
     CALL Info('CalculateMeshPieces','Mesh coloring loops: '//I2S(Loop),Level=6)
 
     ! Compute the true number of different pieces
+    MaxIndex = MAXVAL( MeshPiece )
     IF( MaxIndex == 1 ) THEN
       NoPieces = 1
       IF(PRESENT(PieceIndex)) PieceIndex = 1
