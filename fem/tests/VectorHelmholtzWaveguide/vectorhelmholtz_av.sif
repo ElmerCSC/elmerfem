@@ -89,7 +89,7 @@ Solver 1
   Steady State Convergence Tolerance = 1e-09
   Linear System Residual Output = 10
   Calculate Loads = Logical True
-  Calculate Energy Norm = Logical True
+  Calculate Energy Inner Product = Logical True
 End
 
 Solver 2

@@ -83,7 +83,7 @@ Solver 1
 
 ! Optionally we could compute energy norm
 !  Calculate Loads = Logical True
-!  Calculate Energy Norm = Logical True
+!  Calculate Energy Inner Product = Logical True
 
 !  Optimize Bandwidth = False
 End
