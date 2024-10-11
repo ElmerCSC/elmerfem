@@ -372,7 +372,12 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
      QuasiStationary = GetLogical( SolverParams, 'Quasi Stationary',Found)
      
      Incompr = GetLogical( SolverParams, 'Incompressible', Found )
-
+     IF( Incompr ) THEN
+       IF( STDOFs /= dim+1 ) THEN
+         CALL Fatal('StressSolver','Invalid size for incompressible displacement solution!')
+       END IF
+     END IF
+     
      MeshDisplacementActive = ListGetLogical( SolverParams,  &
                'Displace Mesh', Found )
 
@@ -1105,7 +1110,9 @@ CONTAINS
      body_id = -1
 
      RelIntegOrder = ListGetInteger( SolverParams,'Relative Integration Order',Found)
-
+     ! This might be a good idea!
+     !IF(.NOT. Found .AND. Incompr ) RelIntegOrder = 1
+     
      NoActive = GetNOFActive()
 
      DO t=1,NoActive
