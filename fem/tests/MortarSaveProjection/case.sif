@@ -21,17 +21,9 @@ Simulation
   
   Output Intervals = 0
 
-  Post File = case.vtu
-  Ascii Output = True
+!  Post File = case.vtu
+!  Ascii Output = True
 End 
-
-Constants
-  Gravity(4) = 0 -1 0 9.82
-  Stefan Boltzmann = 5.67e-08
-  Permittivity of Vacuum = 8.8542e-12
-  Boltzmann Constant = 1.3807e-23
-  Unit Charge = 1.602e-19
-End
 
 Body 1
   Target Bodies(1) = 1

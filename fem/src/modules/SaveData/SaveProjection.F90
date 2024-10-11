@@ -82,8 +82,9 @@ SUBROUTINE SaveProjection( Model,Solver,dt,Transient )
   INTEGER, POINTER :: UnitPerm(:)
   REAL(KIND=dp) :: Nrm
   LOGICAL :: Found, Normalize, ToSlave, ToMaster
+  INTEGER, POINTER :: ActiveProjs(:)
 
-  CALL Info('SaveProjection','Creating selected projected values as fields')
+  CALL Info('SaveProjection','Creating selected projected values as fields',Level=8)
 
   Params => GetSolverParams()
   
@@ -105,7 +106,7 @@ SUBROUTINE SaveProjection( Model,Solver,dt,Transient )
   DO i=1,NoVar    
     VarName = ListGetString( Params,'Variable '//I2S(i), Found )
     Var => VariableGet( Model % Variables, TRIM(VarName) )
-    CALL info('SaveProjection','Doing variable: '//TRIM(VarName))
+    CALL info('SaveProjection','Doing variable: '//TRIM(VarName),Level=8)
     
     TargetName = ListGetString( Params,'Target Variable '//I2S(i), Found )
     IF(.NOT. Found) TargetName = 'Projection '//TRIM(VarName)
@@ -132,6 +133,8 @@ SUBROUTINE SaveProjection( Model,Solver,dt,Transient )
       TargetVar => VariableGet( Model % Variables, TRIM(TargetName) )       
     END IF
 
+    ActiveProjs => ListGetIntegerArray( Params,'Active Projectors '//I2S(i),Found )
+    
     ! Do additive projection!
     CALL ProjectToVariable()
     Nrm = Nrm + SUM(TargetVar % Values**2)
@@ -156,7 +159,7 @@ CONTAINS
     REAL(KIND=dp) :: r1
     REAL(KIND=dp), POINTER :: Values(:)      
     REAL(KIND=dp), ALLOCATABLE :: Weight(:)
-    LOGICAL, ALLOCATABLE :: IsInvInvPerm(:)
+    LOGICAL, POINTER :: IsInvInvPerm(:)
     
     dofs = Var % Dofs
     TargetVar % Values = 0.0_dp
@@ -165,19 +168,25 @@ CONTAINS
       ALLOCATE(Weight(SIZE(TargetVar % Values)))
       Weight = 0.0_dp      
     END IF
-          
+
     ! Go through all the projectors.
     ! There could be perhaps reason to skip some, but this will do for now.
     DO bc=1,Model % NumberOfBCs        
+      IF(ASSOCIATED(ActiveProjs)) THEN
+        IF(.NOT. ANY(ActiveProjs == bc)) CYCLE 
+      END IF
+
       A => CurrentModel % BCs(bc) % PMatrix
       IF(.NOT. ASSOCIATED(A) ) THEN
         A => Solver % MortarBCs(bc) % Projector
       END IF
-      
+           
       IF(.NOT. ASSOCIATED(A)) CYCLE
       n = A % NumberOfRows
       IF(n==0) CYCLE
 
+      CALL Info('SaveProjection','Doing projection for BC '//I2S(bc)//' of size '//I2S(n),Level=20)
+      
       Rows => A % Rows
       Cols => A % Cols
       Values => A % Values
@@ -191,12 +200,14 @@ CONTAINS
       IsInvInvPerm = .FALSE.
       DO i=1,n
         pi = A % InvPerm(i)
-        IsInvInvPerm(pi) = .TRUE.
+        IF(pi > 0 ) IsInvInvPerm(pi) = .TRUE.
       END DO
+
 
       DO k=1,dofs
         DO i=1,n
           pi = A % InvPerm(i)
+          IF(pi == 0) CYCLE
           acti = IsInvInvPerm(pi)
           IF(ASSOCIATED(Var % Perm)) pi = Var % Perm(pi)
           IF(pi==0) CYCLE
@@ -232,18 +243,16 @@ CONTAINS
                 IF(Normalize .AND. .NOT. actj) Weight(pj) = Weight(pj) + Values(j)
               END IF
             END IF                        
-          END DO
-          
+          END DO          
         END DO
       END DO
-
-      IF(ALLOCATED(IsInvInvPerm)) DEALLOCATE(IsInvInvPerm)       
+      DEALLOCATE(IsInvInvPerm)       
     END DO
 
     IF(Normalize) THEN
       WHERE(ABS(Weight) >  EPSILON(r1) )
         TargetVar % Values = TargetVar % Values / Weight
-      END WHERE      
+      END WHERE
     END IF
     
   END SUBROUTINE ProjectToVariable
