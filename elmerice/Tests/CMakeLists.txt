@@ -1,4 +1,4 @@
-CMAKE_MINIMUM_REQUIRED(VERSION 3.10)
+cmake_minimum_required(VERSION 3.10...3.12)
 PROJECT(ElmerIceTests Fortran C)
 
 SET(ELMERGRID_BIN "${CMAKE_BINARY_DIR}/elmergrid/src/ElmerGrid")
@@ -68,12 +68,12 @@ FOREACH(_file ${ELMERICE_TEST_FILES})
   ENDIF()
 ENDFOREACH()
 
-	
+
 
 #IF(NOT(CMAKE_BUILD_TYPE MATCHES "Rel"))
 #INSTALL(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/. #
 #		  DESTINATION ${CMAKE_BINARY_DIR}/elmericetests#
-#		  FILES_MATCHING REGEX 
+#		  FILES_MATCHING REGEX
 #		  ".+\\.(f90|F90|sif|mif|grd|eg|msh|good|dat|pos|result|in2d|best0|txt)|HB|Makefile|TEST\\.RESULT|ELMERSOLVER_STARTINFO|mesh\\.*|DATA|PROG")
 #
 #INSTALL(FILES ${CMAKE_CURRENT_SOURCE_DIR}/Compare.f90
