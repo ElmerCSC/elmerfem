@@ -102,7 +102,7 @@
      CHARACTER(LEN=MAX_NAME_LEN) :: methodSheet, methodChannels 
 
      LOGICAL :: Found, FluxBC, Channels, Storage, FirstTime = .TRUE., &
-          AllocationsDone = .FALSE.,  SubroutineVisited = .FALSE., &
+          AllocationsDone = .FALSE., &
           meltChannels = .TRUE., NeglectH = .TRUE., Calving = .FALSE., &
           CycleElement=.FALSE., MABool = .FALSE., MaxHBool = .FALSE., LimitEffPres=.FALSE., &
           MinHBool=.FALSE., CycleNode=.FALSE.
@@ -1227,19 +1227,6 @@
                 CYCLE
               END IF
               
-              IF(MaxHBool) THEN
-                IF (ThickSolution(k)>MaxH) THEN
-                  ThickSolution(k) = MaxH
-                  !ThickPrev(k,1) = 0.0
-                END IF
-              END IF
-
-              IF(MinHBool) THEN
-                IF (ThickSolution(k)<MinH) THEN
-                  ThickSolution(k) = MinH
-                END IF
-              END IF
-              
               SELECT CASE(methodSheet)
               CASE('implicit') 
                  IF (ThickSolution(k) > hr2(j)) THEN
@@ -1264,6 +1251,20 @@
 
               ! Update Vvar
               Vvar(j) = Vvar(j) * ThickSolution(k)
+
+              IF(MaxHBool) THEN
+                 IF (ThickSolution(k)>MaxH) THEN
+                    ThickSolution(k) = MaxH
+                  !ThickPrev(k,1) = 0.0
+                 END IF
+              END IF
+
+              IF(MinHBool) THEN
+                IF (ThickSolution(k)<MinH) THEN
+                  ThickSolution(k) = MinH
+                END IF
+              END IF
+              
 
            END DO 
 !------------------------------------------------------------------------------
@@ -1571,8 +1572,6 @@
       END DO
          
    END IF
-
-   SubroutineVisited = .TRUE.
 
    !CHANGE - to make sure PrevValues for added variables in calving updated
    IF(Calving) THEN
