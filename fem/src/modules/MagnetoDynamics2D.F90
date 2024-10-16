@@ -443,11 +443,6 @@ CONTAINS
      HaveRange = .TRUE.     
    ELSE
      rmean = ListGetConstReal( CurrentModel % Simulation,'Rotor Radius',CalcTorque)
-     rmean = ParallelReduction( rmean, 2 )
-     IF(.NOT. CalcTorque .AND. rmean > EPSILON(rmean) ) THEN
-       CALL ListAddConstReal( CurrentModel % Simulation,'Rotor Radius',rmean)
-       CalcTorque = .TRUE.
-     END IF
      rdiff = ListGetConstReal( CurrentModel % Simulation,'Rotor Air Gap Width',Found)
      IF(.NOT. Found ) rdiff = 1.0e-3 * rmean
      HaveRange = .FALSE.

@@ -1,8 +1,10 @@
-INCLUDE(test_macros)
-INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
+IF(HAVE_UMFPACK OR HAVE_MUMPS)
+  INCLUDE(test_macros)
+  INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
 
-CONFIGURE_FILE( box.sif box.sif COPYONLY)
+  CONFIGURE_FILE( box.sif box.sif COPYONLY)
 
-file(COPY ELMERSOLVER_STARTINFO ac.result box.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+  file(COPY ELMERSOLVER_STARTINFO ac.result box.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(fsi_box2 LABELS elasticsolve fsi restart)
+  ADD_ELMER_TEST(fsi_box2 LABELS elasticsolve fsi restart)
+ENDIF()

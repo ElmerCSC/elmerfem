@@ -139,7 +139,7 @@
 #define HAVE_SYS_TYPES_H
 
 /* Define if you have a UMFPACK library. */
-#define HAVE_UMFPACK
+#cmakedefine HAVE_UMFPACK
 
 /* Define to the Fortran type that matches SuiteSparse_long. */
 #cmakedefine UMFPACK_LONG_FORTRAN_TYPE @UMFPACK_LONG_FORTRAN_TYPE@

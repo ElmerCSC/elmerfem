@@ -1,9 +1,11 @@
-INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/../test_macros.cmake)
+IF(HAVE_UMFPACK OR HAVE_MUMPS)
+  INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/../test_macros.cmake)
 
-CONFIGURE_FILE(case.sif case.sif COPYONLY)
+  CONFIGURE_FILE(case.sif case.sif COPYONLY)
 
-FILE(COPY ELMERSOLVER_STARTINFO rectangle.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+  FILE(COPY ELMERSOLVER_STARTINFO rectangle.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMERICE_TEST(BackgroundError)
-ADD_ELMERICE_LABEL(BackgroundError elmerice-fast)
-ADD_ELMERICE_LABEL(BackgroundError CovUtils)
+  ADD_ELMERICE_TEST(BackgroundError)
+  ADD_ELMERICE_LABEL(BackgroundError elmerice-fast)
+  ADD_ELMERICE_LABEL(BackgroundError CovUtils)
+ENDIF()

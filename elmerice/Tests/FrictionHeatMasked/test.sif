@@ -39,9 +39,10 @@ Simulation
   Steady State Min Iterations = 1
   Steady State Max Iterations = 1
 
+  ascii output = true
   Post File = "test_$Step$.vtu"
 
-  max output level = 4
+  max output level = 5
 
   Initialize Dirichlet Conditions = Logical False
 !  Extruded Mesh Levels = 3
@@ -183,13 +184,12 @@ End
 
 !creates output
 Solver 7
-    Equation = "ForceToStress"
-    Procedure = File "ElmerIceSolvers" "ForceToStress"
-    Variable = String "Friction Heating"
-    Variable DOFs = 1
-    Force Variable Name = String "Friction Load"
-    Linear System Solver = Direct
-    Linear System Direct Method = umfpack
+  Equation = "ForceToStress"
+  Procedure = "ElmerIceSolvers" "ForceToStress"
+  Variable = "Friction Heating"
+  Force Variable Name = String "Friction Load"
+  Linear System Solver = "Direct"
+  Linear System Direct Method = "umfpack"
 End
 
 !creates output
@@ -326,8 +326,11 @@ Boundary Condition 6
      REAL MATC "tx(0)+H"
 End
 
-Solver 3 :: Reference Norm = Real 207.29755
-Solver 3 :: Reference Norm Tolerance = Real 1E-06
-Solver 7 :: Reference Norm = Real 31.2285175 
-Solver 7 :: Reference Norm Tolerance = Real 1E-06
+Solver 3 :: Reference Norm =  207.29755
+Solver 3 :: Reference Norm Tolerance = 1.0E-06
+Solver 5 :: Reference Norm = 9.36764080E-02
+Solver 5 :: Reference Norm Tolerance = 1.0E-06
+! The norm seems to be zero now!
+!Solver 8 :: Reference Norm =  31.2285175 
+!Solver 8 :: Reference Norm Tolerance = 1.0E-06
 

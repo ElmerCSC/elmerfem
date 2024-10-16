@@ -18,7 +18,7 @@ jobs:
 
     runs-on: windows-latest
 
-    name: MSYS2 (${{ matrix.umfpack }} UMFPACK, ${{ matrix.msystem }})
+    name: MSYS2 (${{ matrix.dependencies }} dependencies, ${{ matrix.msystem }})
 
     defaults:
       run:
@@ -31,10 +31,11 @@ jobs:
       matrix:
         # msystem: [MINGW64, CLANG64]
         msystem: [MINGW64]
-        umfpack: [internal, external]
+        dependencies: [bundled, external]
         include:
-          - umfpack: external
-            umfpack-cmake-flags: "-DEXTERNAL_UMFPACK=ON"
+          - dependencies: external
+            external-packages: parpack:p
+            external-cmake-flags: -DEXTERNAL_UMFPACK=ON -DEXTERNAL_ARPACK=ON -DEXTERNAL_PARPACK=ON
 
     steps:
       - name: get CPU name
@@ -83,6 +84,7 @@ jobs:
             unixodbc:p
             utf8cpp:p
             opencascade:p
+            ${{ matrix.external-packages }}
 
       - name: install MSMPI
         uses: mpi4py/setup-mpi@v1
@@ -121,7 +123,7 @@ jobs:
             -DWITH_MATC=ON \
             -DWITH_PARAVIEW=ON \
             -DCREATE_PKGCONFIG_FILE=ON \
-            ${{ matrix.umfpack-cmake-flags }} \
+            ${{ matrix.external-cmake-flags }} \
             ..
 
       - name: build
@@ -142,9 +144,9 @@ jobs:
         run: |
           cd ${GITHUB_WORKSPACE}/build
           ctest . \
-            -L "quick|elmerice-fast" \
+            -LE slow \
             -j$(nproc) \
-            --timeout 180
+            --timeout 300
 
       - name: re-run tests
         if: always() && (steps.run-ctest.outcome == 'failure')

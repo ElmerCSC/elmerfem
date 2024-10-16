@@ -79,9 +79,9 @@ Solver 1
 ! Constant bulk matrix saves ~20% for the test problem.
   Constant Bulk Matrix = True
 
-! Optionally we could compute energy norm
+! Optionally we could compute energy inner product
 !  Calculate Loads = Logical True
-!  Calculate Energy Norm = Logical True
+!  Calculate Energy Inner Product = Logical True
 End
 
 Solver 2

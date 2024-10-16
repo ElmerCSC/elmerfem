@@ -1120,8 +1120,12 @@ CONTAINS
        IF( UseLocalMatrixCopy( Solver, activeind = t) ) GOTO 100 
        
        n = GetElementNOFNOdes()
-       ntot = GetElementNOFDOFs() + GetElementNOFBDOFs()
-
+       IF( STDOFs > dim ) THEN
+         ntot = GetElementNOFDOFs() + GetElementNOFBDOFs()
+       ELSE
+         ntot = GetElementNOFDOFs() 
+       END IF
+         
        NodeIndexes => Element % NodeIndexes
        CALL GetElementNodes( ElementNodes )
 
@@ -1355,9 +1359,11 @@ CONTAINS
 !      If time dependent simulation, add mass matrix to global 
 !      matrix and global RHS vector
 !------------------------------------------------------------------------------
-       tForce = 0._dp
-       IF (Transient) tForce = FORCE
-
+       IF( STDOFs > dim ) THEN
+         tForce = 0._dp
+         IF (Transient) tForce = FORCE
+       END IF
+         
        IF ( .NOT. (ConstantBulkMatrix .OR. ConstantBulkSystem .OR. ConstantSystem) ) THEN
          IF ( Transient .AND. .NOT. EigenOrHarmonicAnalysis() ) THEN
             IF( GetInteger( GetSolverParams(), 'Time derivative order', Found) == 2 ) THEN
@@ -1369,10 +1375,15 @@ CONTAINS
        END IF
 
         BLOCK
-           INTEGER :: nb
-           nb = GetElementNOFBDOFS(Element)
-           IF(nb>0) CALL NSCondensate(n,nb,dim,STIFF,FORCE,tFORCE)
-         END BLOCK
+          INTEGER :: nb
+          nb = GetElementNOFBDOFS(Element)
+          ! Stabilization is needed if there are bubbles .AND. some addititional dof!
+          ! Otherwise the NSCondensate is not a fitting method!!!
+          IF(nb>0 .AND. STDOFs > dim ) THEN
+            ! Or should the 1st argument be ntot????
+            CALL NSCondensate(n,nb,dim,STIFF,FORCE,tFORCE)
+          END IF
+        END BLOCK
 !------------------------------------------------------------------------------
 !      Check if reference of displacement has been changed
 !------------------------------------------------------------------------------

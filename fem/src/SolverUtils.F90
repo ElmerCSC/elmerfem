@@ -848,7 +848,7 @@ CONTAINS
      INTEGER :: dim, i,j,k,np
      INTEGER :: NormalIndexes(n),pIndexes(64)
      REAL(KIND=dp) :: Vals(n*NDOFs)
-!DIR$ ATTRIBUTES ALIGN:64::Ind, Vals
+!DIR$ ATTRIBUTES ALIGN:64::Vals
 
      TYPE(Element_t), POINTER :: Element
      LOGICAL :: Rotate
@@ -13808,7 +13808,8 @@ END FUNCTION SearchNodeL
       CALL MatrixVectorMultiply( Aaid, x, TempVector )
     END IF
 
-    IF( ListGetLogical(Solver % Values, 'Calculate Energy Norm', Found) ) THEN
+    IF(ListGetLogical(Solver % Values, 'Calculate Energy Inner Product', Found) .OR. &
+        ListGetLogical(Solver % Values, 'Calculate Energy Norm', Found) ) THEN
       Energy = 0._dp
       IF( ListGetLogical(Solver % Values, 'Linear System Complex', Found) ) THEN
         Energy_im = 0._dp
@@ -13823,16 +13824,16 @@ END FUNCTION SearchNodeL
         Energy    = ParallelReduction(Energy)
         Energy_im = ParallelReduction(Energy_im)
 
-        CALL ListAddConstReal( Solver % Values, 'Energy norm', Energy)
-        CALL ListAddConstReal( Solver % Values, 'Energy norm im', Energy_im)
+        CALL ListAddConstReal( Solver % Values, 'Energy inner product', Energy)
+        CALL ListAddConstReal( Solver % Values, 'Energy inner product im', Energy_im)
 
-        WRITE( Message,'(A,A,A)') 'res: ',GetVarname(Solver % Variable),' Energy Norm'
+        WRITE( Message,'(A,A,A)') 'res: ',GetVarname(Solver % Variable),' Energy inner product'
         CALL ListAddConstReal( CurrentModel % Simulation, Message, Energy )
 
-        WRITE( Message,'(A,A,A)') 'res: ',GetVarname(Solver % Variable),' Energy Norm im'
+        WRITE( Message,'(A,A,A)') 'res: ',GetVarname(Solver % Variable),' Energy inner product im'
         CALL ListAddConstReal( CurrentModel % Simulation, Message, Energy_im )
 
-        WRITE( Message, * ) 'Energy Norm (Energy Functional): ', Energy, Energy_im
+        WRITE( Message, * ) 'Energy inner product: ', Energy, Energy_im
         CALL Info( 'CalculateLoads', Message, Level=5)
       ELSE 
         DO i=1,Aaid % NumberOfRows
@@ -13843,12 +13844,12 @@ END FUNCTION SearchNodeL
           Energy = Energy + x(i)*TempVector(i)
         END DO
         Energy = ParallelReduction(Energy)
-        CALL ListAddConstReal( Solver % Values, 'Energy norm', Energy )
+        CALL ListAddConstReal( Solver % Values, 'Energy inner product', Energy )
 
-        WRITE( Message,'(A,A,A)') 'res: ',GetVarname(Solver % Variable),' Energy Norm'
+        WRITE( Message,'(A,A,A)') 'res: ',GetVarname(Solver % Variable),' Energy inner product'
         CALL ListAddConstReal( CurrentModel % Simulation, Message, Energy )
 
-        WRITE( Message, * ) '(The square of) Energy Norm: ', Energy
+        WRITE( Message, * ) 'Energy inner product: ', Energy
         CALL Info( 'CalculateLoads', Message, Level=5)
       END IF
     END IF

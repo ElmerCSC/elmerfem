@@ -924,7 +924,8 @@ void InitializeKnots(struct FemType *data)
   data->nodalexists = FALSE;
   /* data->invtopoexists = FALSE; */
   data->partitiontableexists = FALSE;
-
+  data->maxpartitiontable = 0;
+  
   data->invtopo.created = FALSE;
   data->nodalgraph2.created = FALSE;
   data->dualgraph.created = FALSE;
@@ -2457,19 +2458,19 @@ omstart:
 	continue;
 
       /* point (i,j) must now be a corner */
-      if(cellno = grid->numbered[j][i]) {
+      if((cellno = grid->numbered[j][i])) {
 	elem = GetElementIndex(&(cell)[cellno],1,1);
 	ind  = BOTLEFT;
       } 
-      else if(cellno = grid->numbered[j][i-1]) {
+      else if((cellno = grid->numbered[j][i-1])) {
 	elem = GetElementIndex(&(cell)[cellno],cell[cellno].xelem,1);
 	ind  = BOTRIGHT;
       } 
-      else if(cellno = grid->numbered[j-1][i]) {
+      else if((cellno = grid->numbered[j-1][i])) {
 	elem = GetElementIndex(&(cell)[cellno],1,cell[cellno].yelem);
 	ind  = TOPLEFT;
       } 
-      else if(cellno = grid->numbered[j-1][i-1]) {
+      else if((cellno = grid->numbered[j-1][i-1])) {
 	elem = GetElementIndex(&(cell)[cellno],cell[cellno].xelem,cell[cellno].yelem);
 	ind  = TOPRIGHT;
       }
@@ -9906,7 +9907,7 @@ int CreateDualGraph(struct FemType *data,int unconnected,int info)
   int *invrow,*invcol;
   struct CRSType *dualgraph;
 
-  printf("Creating a dual graph of the finite element mesh\n");  
+  if(info) printf("Creating a dual graph of the finite element mesh\n");  
 
   dualgraph = &data->dualgraph;
   if(dualgraph->created) {
@@ -9924,7 +9925,7 @@ int CreateDualGraph(struct FemType *data,int unconnected,int info)
   /* If a dual graph only for the unconnected nodes is requested do that.
      Basically the connected nodes are omitted in the graph. */
   if( unconnected ) {
-    printf("Removing connected nodes from the dual graph\n");
+    if(info) printf("Removing connected nodes from the dual graph\n");
     if( data->nodeconnectexist ) {
       if(info) printf("Creating connected elements list from the connected nodes\n");
       SetConnectedElements(data,info);
@@ -10034,6 +10035,7 @@ int CreateDualGraph(struct FemType *data,int unconnected,int info)
   }
   else {
     dualsize = freeelements;
+    if(info) printf("Allocating for the dual graph for %d with %d connections\n",dualsize,totcon);
     dualrow = Ivector(0,dualsize);
     for(i=1;i<=dualsize;i++) 
       dualrow[i] = 0;
@@ -10053,7 +10055,7 @@ int CreateDualGraph(struct FemType *data,int unconnected,int info)
     goto omstart;
   } 
 
-  if( orphanelements ) {
+  if( orphanelements && info ) {
     printf("There are %d elements in the dual mesh that are not connected!\n",orphanelements);
     if(unconnected) printf("The orphan elements are likely caused by the hybrid partitioning\n");
   }
@@ -10160,3 +10162,51 @@ int MeshTypeStatistics(struct FemType *data,int info)
   return(0);
 }
 
+int BoundingBox(struct FemType *data,int nomesh,int nomeshes,int info)
+{
+  int i;
+  Real xmin, xmax, ymin, ymax, zmin, zmax, sidemax;
+
+  xmin = xmax = data->x[1];
+  ymin = ymax = data->y[1];
+  zmin = zmax = data->z[1];
+
+  for(i=1; i<=data->noknots; i++){
+    xmax = MAX( xmax, data->x[i] );
+    xmin = MIN( xmin, data->x[i] );
+    ymax = MAX( ymax, data->y[i] );
+    ymin = MIN( ymin, data->y[i] );
+    zmax = MAX( zmax, data->z[i] );
+    zmin = MIN( zmin, data->z[i] );
+  }
+  sidemax = MAX(xmax-xmin,ymax-ymin);
+  sidemax = MAX(sidemax,zmax-zmin);
+
+  if(nomeshes > 1)  {
+    printf("Bounding box of all nodes in mesh[%d] of [%d] meshes:\n",nomesh,nomeshes);
+  }
+  else  {
+    printf("Bounding box of all nodes in mesh:\n");
+  }
+
+  printf("X:[%g,%g] ",xmin,xmax);
+  printf("Y:[%g,%g] ",ymin,ymax);
+  printf("Z:[%g,%g]\n",zmin,zmax);
+
+  if(sidemax > 49.9)  {
+    printf("\nNotice: the longest bounding box side length of [%g] is greater than 50.\n",sidemax);
+    printf("ElmerGUI includes a library of material properties, defined in SI units.  If using ElmerGUI, \n");
+    printf("then the geometry is expected to have meters as length.  Geometry that exceeds 50 meters \n");
+    printf("in length or width or height may not be intended.  Many Geometry generators assume \n");
+    printf("millimeters as the basic unit of length.  Scaling the geometry from millimeters to meters \n");
+    printf("may be the desired action.  For more help, search the Elmer users forum for posts \n");
+    printf("about SI units, or for posts about Coordinate Scaling.\n");
+    printf("Scaling can be accomplished in at least three ways, as follows:\n");
+    printf(" 1. Define the original geometry in meters, not millimeters.\n");
+    printf(" 2. Call ElmerGrid with -scale 0.001 0.001 0.001 as an option.\n");
+    printf(" 3. Add Coordinate Scaling = 0.001 to the simulation section of the sif file.\n");
+    printf("If using Elmer to analyze large geometry, such as a glacier, then ignore this notice.\n\n");
+  }
+
+  return(0);
+}

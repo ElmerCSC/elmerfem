@@ -4969,8 +4969,10 @@ omstart:
 	printf("Physical tag offset for %dD is %d\n",tagdim,phystagoffset[tagdim]);
       }
 
-      tagoffset[meshdim] = maxphystag[meshdim];
-      tagoffset[meshdim-1] = phystagoffset[0];
+      if(meshdim>0) {
+        tagoffset[meshdim] = maxphystag[meshdim];
+        tagoffset[meshdim-1] = phystagoffset[0];
+      }
       for(tagdim=meshdim-2;tagdim>=0;tagdim--) {
 	tagoffset[tagdim] = tagoffset[tagdim+1]+MAX(0,maxtag[tagdim+1]);
 	printf("Geometric tag offset for %dD is %d\n",tagdim,tagoffset[tagdim]);

@@ -35,6 +35,8 @@
 !> \ingroup ElmerLib
 !> \{
 
+#include "../config.h"
+
 !-------------------------------------------------------------------------------
 !> Vanka preconditioning for iterative methods.
 !-------------------------------------------------------------------------------
@@ -688,7 +690,12 @@
       IF(n>0) THEN
         IF ( .NOT.ASSOCIATED(sv) ) THEN
           ALLOCATE(sv)
+#if !defined (HAVE_UMFPACK) && defined (HAVE_MUMPS)
+          CALL Warn( 'CheckLinearSolverOptions', 'UMFPACK solver not installed, using MUMPS instead!' )
+          CALL ListAddString(  sv % Values, 'Linear System Direct Method', 'Mumps')
+#else
           CALL ListAddString(  sv % Values, 'Linear System Direct Method', 'Umfpack')
+#endif
           CALL ListAddLogical( sv % Values, 'Linear System Refactorize', .FALSE.)
           CALL ListAddLogical( sv % Values, 'Linear System Free Factorization', .FALSE.)
         END IF
@@ -696,7 +703,11 @@
         j = ndim - A % ExtraDOFs + n
 
         IF(ANY(ABS(A % CircuitMatrix % Values)>0)) THEN
+#if !defined (HAVE_UMFPACK) && defined (HAVE_MUMPS)
+          CALL MumpsLocal_SolveSystem( sv, A % CircuitMatrix, u(i:j), v(i:j) )
+#else
           CALL Umfpack_SolveSystem( sv, A % CircuitMatrix, u(i:j), v(i:j) )
+#endif
         END IF
       END IF
 
@@ -731,7 +742,12 @@
       IF(n>0) THEN
         IF ( .NOT.ASSOCIATED(sv) ) THEN
           ALLOCATE(sv)
+#if !defined (HAVE_UMFPACK) && defined (HAVE_MUMPS)
+          CALL Warn( 'CheckLinearSolverOptions', 'UMFPACK solver not installed, using MUMPS instead!' )
+          CALL ListAddString(  sv % Values, 'Linear System Direct Method', 'Mumps')
+#else
           CALL ListAddString(  sv % Values, 'Linear System Direct Method', 'Umfpack')
+#endif
           CALL ListAddLogical( sv % Values, 'Linear System Refactorize', .FALSE.)
           CALL ListAddLogical( sv % Values, 'Linear System Free Factorization', .FALSE.)
         END IF
@@ -749,8 +765,12 @@
           j = j + 1
           rv(k)   =  REAL(v(i+j)); rv(k+1) = AIMAG(v(i+j))
         END DO
- 
+
+#if !defined (HAVE_UMFPACK) && defined (HAVE_MUMPS)
+        CALL MumpsLocal_SolveSystem( sv, A % CircuitMatrix, ru, rv )
+#else
         CALL Umfpack_SolveSystem( sv, A % CircuitMatrix, ru, rv )
+#endif
 
         j = 0
         DO k=1,n,2
