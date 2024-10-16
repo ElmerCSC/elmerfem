@@ -68,7 +68,7 @@ Solver 1
   linear system abort not converged = false
 
   Linear System Residual Output = 1
-  Calculate Energy Norm = Logical True
+  Calculate Energy Inner Product = Logical True
 
   ! linear system normwise backward error = logical true
   linear system complex = false

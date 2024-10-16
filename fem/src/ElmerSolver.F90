@@ -845,26 +845,15 @@
      !--------------------------------------------------------------------
      SUBROUTINE CreateExtrudedMesh()
 
-       INTEGER :: ExtrudeLayers
        LOGICAL :: SliceVersion
 
        IF(.NOT. ListCheckPrefix(CurrentModel % Simulation,'Extruded Mesh') ) RETURN
        
-       ExtrudeLayers = GetInteger(CurrentModel % Simulation,'Extruded Mesh Levels',Found)-1 
-       IF( .NOT. Found ) THEN
-         ExtrudeLayers = GetInteger(CurrentModel % Simulation,'Extruded Mesh Layers',Found)
-       END IF
-       IF(.NOT. Found ) RETURN
-       
-       IF(ExtrudeLayers < 2) THEN
-         CALL Fatal('MAIN','There must be at least two "Extruded Mesh Layers"!')
-       END IF
-
        SliceVersion = GetLogical(CurrentModel % Simulation,'Extruded Mesh Slices',Found )              
        IF( SliceVersion ) THEN
-         ExtrudedMesh => MeshExtrudeSlices(CurrentModel % Meshes, ExtrudeLayers-1)
+         ExtrudedMesh => MeshExtrudeSlices(CurrentModel % Meshes, CurrentModel % Simulation )
        ELSE
-         ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLayers-1)
+         ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, CurrentModel % Simulation)
        END IF
          
        ! Make the solvers point to the extruded mesh, not the original mesh

@@ -613,7 +613,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    COMPLEX(KIND=dp), ALLOCATABLE :: Magnetization(:,:), BodyForceCurrDens(:,:)
    COMPLEX(KIND=dp), ALLOCATABLE :: R_Z(:), PR(:)
 !------------------------------------------------------------------------------
-   REAL(KIND=dp) :: s,Norm 
+   REAL(KIND=dp) :: s,Norm, Mult
    REAL(KIND=dp) :: B(2,3), E(2,3), JatIP(2,3), VP_ip(2,3), JXBatIP(2,3), CC_J(2,3), HdotB, LMSol(2)
    REAL(KIND=dp) :: ldetJ,detJ, C_ip, ST(3,3), Omega, ThinLinePower, Power, Energy(3), w_dens
    REAL(KIND=dp) :: localThickness
@@ -1150,7 +1150,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                n, Element % NodeIndexes, Found), 0, KIND=dp)
            END IF
          END SELECT
-
+         
+         Mult = ListGetCReal( BodyForce,'Current Density Multiplier', Found )
+         IF(Found) BodyForceCurrDens(1:3,1:n) = Mult * BodyForceCurrDens(1:3,1:n)
        END IF
      END IF
 

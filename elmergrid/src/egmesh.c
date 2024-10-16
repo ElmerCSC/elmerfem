@@ -2458,19 +2458,19 @@ omstart:
 	continue;
 
       /* point (i,j) must now be a corner */
-      if(cellno = grid->numbered[j][i]) {
+      if((cellno = grid->numbered[j][i])) {
 	elem = GetElementIndex(&(cell)[cellno],1,1);
 	ind  = BOTLEFT;
       } 
-      else if(cellno = grid->numbered[j][i-1]) {
+      else if((cellno = grid->numbered[j][i-1])) {
 	elem = GetElementIndex(&(cell)[cellno],cell[cellno].xelem,1);
 	ind  = BOTRIGHT;
       } 
-      else if(cellno = grid->numbered[j-1][i]) {
+      else if((cellno = grid->numbered[j-1][i])) {
 	elem = GetElementIndex(&(cell)[cellno],1,cell[cellno].yelem);
 	ind  = TOPLEFT;
       } 
-      else if(cellno = grid->numbered[j-1][i-1]) {
+      else if((cellno = grid->numbered[j-1][i-1])) {
 	elem = GetElementIndex(&(cell)[cellno],cell[cellno].xelem,cell[cellno].yelem);
 	ind  = TOPRIGHT;
       }

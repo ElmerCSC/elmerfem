@@ -141,9 +141,9 @@ jobs:
         run: |
           cd ${GITHUB_WORKSPACE}/build
           ctest . \
-            -L "quick|elmerice-fast" \
+            -LE slow \
             -j$(nproc) \
-            --timeout 180
+            --timeout 300
 
       - name: Re-run tests
         if: always() && (steps.run-ctest.outcome == 'failure')

@@ -112,3 +112,4 @@ int DestroyDualGraph(struct FemType *data,int info);
 int CreateInverseTopology(struct FemType *data,int info);
 int DestroyInverseTopology(struct FemType *data,int info);
 int MeshTypeStatistics(struct FemType *data,int info);
+int BoundingBox(struct FemType *data,int nomesh,int nomeshes,int info);
