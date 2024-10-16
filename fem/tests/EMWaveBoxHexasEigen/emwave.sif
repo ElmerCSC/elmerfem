@@ -36,7 +36,9 @@ End
 Material 1
   Relative Permittivity = 1.0
   Relative Permeability = 1.0
-  Electric Conductivity = 1.0e1
+  ! Electric Conductivity could be taken into account only when
+  ! Eigen System Damped = True would be present: 
+  !Electric Conductivity = 1.0e17
 End
 
 Equation 1
@@ -74,16 +76,14 @@ Solver 1
   Eigen System Values = 10
   Eigen System Convergence Tolerance = 0
   Eigen System Select = smallest magnitude
-!  Eigen System Shift = Real 1.0e-3
 
 ! This is a very sensitive parameter. Decreasing it too much
 ! will reviel tons of zero eigenmodes...
   Eigen System Shift = Real 4.0e3
-  Eigen System Complex = Logical True
 
 ! Optionally we could compute energy norm
 !  Calculate Loads = Logical True
-!  Calculate Energy Norm = Logical True
+!  Calculate Energy Inner Product = Logical True
 
 !  Optimize Bandwidth = False
 End

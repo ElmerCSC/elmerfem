@@ -919,6 +919,9 @@ CONTAINS
      END IF
      n = MIN( n, SIZE(x) )
 
+     IF (SIZE(Variable % EigenVectors,1) < NoEigen) THEN
+       CALL Fatal('GetScalarLocalEigenmode', 'Less eigenfunctions available than requested')
+     END IF
      Values => Variable % EigenVectors( NoEigen, :)
 
      IF ( ASSOCIATED( Variable % Perm ) ) THEN
@@ -985,6 +988,9 @@ CONTAINS
      END IF
      n = MIN( n, SIZE(x) )
 
+     IF (SIZE(Variable % EigenVectors,1) < NoEigen) THEN
+       CALL Fatal('GetVectorLocalEigenmode', 'Less eigenfunctions available than requested')
+     END IF
      Values => Variable % EigenVectors( NoEigen, : )
 
      DO i=1,Variable % DOFs

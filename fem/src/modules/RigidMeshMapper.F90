@@ -178,12 +178,20 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
     StatorSkew = AngleCoeff * ListGetCReal(CurrentModel % Simulation,'Stator Skew',Found )
     GotSkew = GotSkew .OR. GotSkewFun .OR. Found
     IF( GotSkew ) THEN
-      zmax = ListGetCReal( CurrentModel % Simulation,'Extruded Max Coordinate',Found ) 
+      zmax = ListGetCReal( CurrentModel % Simulation,'Rotor Skew Max Coordinate',Found ) 
+      IF(.NOT. Found) THEN
+        zmax = ListGetCReal( CurrentModel % Simulation,'Extruded Max Coordinate',Found ) 
+        IF(.NOT. Found) zmax = ParallelReduction(MAXVAL(Zorig))        
+      END IF
       IF(.NOT. Found) THEN
         CALL Fatal(Caller,'"Rotor Skew" currently requires "Extruded Max Coordinate" to be given!')
+      END IF      
+      zmin = ListGetCReal( CurrentModel % Simulation,'Rotor Skew Min Coordinate',Found ) 
+      IF(.NOT. Found) THEN
+        zmin = ListGetCReal( CurrentModel % Simulation,'Extruded Min Coordinate',Found ) 
+        IF(.NOT. Found) zmin = ParallelReduction(MINVAL(Zorig))
       END IF
-      zmin = ListGetCReal( CurrentModel % Simulation,'Extruded Min Coordinate',Found ) 
-      IF(InfoActive(5)) THEN
+      IF(InfoActive(20)) THEN
         PRINT *,'RotorSkew:',RotorSkew, StatorSkew, zmin, zmax, GotSkew, GotSkewFun 
       END IF
     END IF
@@ -219,6 +227,9 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
             ! Skew is not constant, perform it for each node 1st if requested. 
             zloc = (coord(3)-zmin)/(zmax-zmin)
 
+            ! By construction this must be in [0,1]
+            zloc = MAX(0.0_dp,MIN(1.0_dp,zloc))
+            
             IF( IsRotor ) THEN
               IF(GotSkewFun) THEN
                 alpha = AngleCoeff * ListGetFun( CurrentModel % Simulation,'Rotor Skew Function',zloc)                

@@ -2040,9 +2040,16 @@ CONTAINS
     !----------------------------------------------
 
     ExtrudeLevels = ListGetInteger(Model % Simulation, "Remesh Extruded Mesh Levels", Found, UnfoundFatal=.TRUE.)
-    ExtrudedMesh => NULL()
-    ExtrudedMesh => MeshExtrude(FootprintMesh, ExtrudeLevels-2)
 
+    ! The dirty ListAdd/ListRemove stuff is due to changed API of the ExtrudedMesh routine.
+    i = ListGetInteger( Model % Simulation,'Extruded Mesh Layers',Found)
+    CALL ListAddInteger( Model % Simulation,'Extruded Mesh Layers',ExtrudeLevels-1) 
+    ExtrudedMesh => MeshExtrude(FootprintMesh, Model % Simulation)
+    IF(i>0) THEN
+      CALL ListAddInteger( Model % Simulation,'Extruded Mesh Layers',i)
+    ELSE
+      CALL ListRemove( Model % Simulation,'Extruded Mesh Layers')
+    END IF
     !----------------------------------------------------
     ! Interp front position from squished front nodes
     ! onto freshly extruded footprint mesh
