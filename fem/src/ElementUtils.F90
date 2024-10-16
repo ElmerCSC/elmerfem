@@ -40,7 +40,10 @@
 !--------------------------------------------------------------------------------
 !>  Some basic finite element utilities.
 !--------------------------------------------------------------------------------
+#include "../config.h"
+
 MODULE ElementUtils
+
 
     USE DirectSolve
     USE Integration
@@ -74,7 +77,7 @@ CONTAINS
     INTERFACE
       !! destroy the data structures (should be called when the matrix has
       !! to be updated and SolveHYPRE1 has to be called again).
-      SUBROUTINE SolveHYPRE4(hypreContainer)
+      SUBROUTINE SolveHYPRE4(hypreContainer) BIND(C,Name="solvehypre4")
         USE, INTRINSIC :: iso_c_binding
         INTEGER(KIND=C_INTPTR_T) :: hypreContainer
       END SUBROUTINE SolveHYPRE4
