@@ -223,7 +223,7 @@ MODULE Types
                DiagScaling(:) => NULL(), TValues(:) => NULL(), Values_im(:) => NULL()
 
     REAL(KIND=dp), ALLOCATABLE :: extraVals(:)
-    REAL(KIND=dp) :: RhsScaling=1.0, AveScaling=1.0 
+    REAL(KIND=dp) :: RhsScaling=1.0_dp, AveScaling=1.0_dp 
     INTEGER :: ScalingMethod = 0
     REAL(KIND=dp),  POINTER CONTIG :: MassValues(:)=>NULL(),DampValues(:)=>NULL(), &
         BulkValues(:)=>NULL(), BulkMassValues(:)=>NULL(), BulkDampValues(:)=>NULL(), &
@@ -610,7 +610,8 @@ MODULE Types
      INTEGER :: DOFs = 0
      INTEGER, POINTER          :: Perm(:) => NULL()
      LOGICAL :: PeriodicFlipActive = .FALSE.
-     REAL(KIND=dp)             :: Norm=0, PrevNorm=0,NonlinChange=0, SteadyChange=0
+     REAL(KIND=dp)             :: Norm=0.0_dp, PrevNorm=0.0_dp,&
+         NonlinChange=0.0_dp, SteadyChange=0.0_dp
      INTEGER :: NonlinConverged=-1, SteadyConverged=-1, NonlinIter=-1
      INTEGER :: LinConverged=-1
      COMPLEX(KIND=dp), POINTER :: EigenValues(:) => NULL(), &
@@ -631,7 +632,7 @@ MODULE Types
 !------------------------------------------------------------------------------
    TYPE ListMatrixEntry_t
      INTEGER :: Index = -1
-     REAL(KIND=dp) :: val = 0.0
+     REAL(KIND=dp) :: val = 0.0_dp
      TYPE(ListMatrixEntry_t), POINTER :: Next => NULL()
    END TYPE ListMatrixEntry_t
 

@@ -10306,7 +10306,7 @@ END FUNCTION SearchNodeL
     INTEGER, POINTER :: Perm(:)
     
     CALL Info('ComputeNorm','Computing norm of solution',Level=10)
-    
+
     IF(PRESENT(values)) THEN
       x => values
     ELSE
@@ -10440,8 +10440,10 @@ END FUNCTION SearchNodeL
           totn = totn + 1
         END DO
       END SELECT
-
+      
       totn = ParallelReduction(totn) 
+      IF(totn == 0) GOTO 10
+
       nscale = 1.0_dp * totn
       
       SELECT CASE(NormDim)
@@ -10456,9 +10458,11 @@ END FUNCTION SearchNodeL
       END SELECT
     
     ELSE IF( NormDofs < Dofs ) THEN
-      totn = ParallelReduction(n) 
-      nscale = NormDOFs*totn/(1._dp*DOFs)
       Norm = 0.0_dp
+      totn = ParallelReduction(n) 
+      IF(totn == 0) GOTO 10
+
+      nscale = NormDOFs*totn/(1._dp*DOFs)
 
       SELECT CASE(NormDim)
       CASE(0)
@@ -10526,7 +10530,9 @@ END FUNCTION SearchNodeL
       END IF
 
     ELSE
-      val = 0.0_dp
+      Norm = 0.0_dp
+      IF(n==0) GOTO 10 
+      
       SELECT CASE(NormDim)
       CASE(0)
         Norm = MAXVAL(ABS(x(1:n)))
@@ -10539,7 +10545,7 @@ END FUNCTION SearchNodeL
       END SELECT
     END IF
     
-    IF( ComponentsAllocated ) THEN
+10  IF( ComponentsAllocated ) THEN
       DEALLOCATE( NormComponents ) 
     END IF
 !------------------------------------------------------------------------------
@@ -10896,6 +10902,7 @@ END FUNCTION SearchNodeL
     ! The norm should be bounded in order to reach convergence
     !--------------------------------------------------------------------------
     IF( Norm /= Norm ) THEN
+      PRINT *,'Norm:',Norm,PrevNorm, n
       CALL NumericalError(Caller,'Norm of solution appears to be NaN')
     END IF
 
