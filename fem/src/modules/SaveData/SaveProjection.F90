@@ -34,7 +34,7 @@
 ! *           Keilaranta 14
 ! *           02101 Espoo, Finland 
 ! *
-! *  Original Date: 20 Nov 2001
+! *  Original Date: 1.10.2024
 ! *
 ! *****************************************************************************/
 
@@ -87,7 +87,11 @@ SUBROUTINE SaveProjection( Model,Solver,dt,Transient )
   CALL Info('SaveProjection','Creating selected projected values as fields',Level=8)
 
   Params => GetSolverParams()
-  
+
+  ! Because this solver does not have a DefaultInitialize slot the nonlinear projectors
+  ! are not initialized. Do it here.
+  CALL GenerateProjectors(Model,Solver,Nonlinear = .TRUE. )
+ 
   i = 0
   DO WHILE(.TRUE.)  
     i = i + 1
