@@ -123,6 +123,10 @@ CONTAINS
     LOGICAL :: NoInterp, Parallel, AdaptiveOutput, AdaptInit
     TYPE(ValueList_t), POINTER :: Params
     CHARACTER(*), PARAMETER :: Caller = 'RefineMesh'
+    REAL(KIND=dp), POINTER :: Wrk(:,:)
+    REAL(KIND=dp) :: CoordScale(3)
+    INTEGER :: mesh_dim
+
 
     
     SAVE DoFinalRef
@@ -509,6 +513,10 @@ CONTAINS
 #else
         CALL Fatal( Caller,'Remeshing requested with MMG but not compiled with!')
 #endif          
+      ELSE IF( ListGetLogical( Params,'Adaptive Remesh Use Gmsh', Found ) ) THEN
+      CALL Info(Caller,'Using Gmsh library for mesh refinement', Level=5)        
+        NewMesh => Gmsh_ReMesh( RefMesh, ErrorLimit/3, HValue, &
+            NodalError, hConvergence, minH, maxH, MaxChangeFactor, Coarsening )
       ELSE       
         CALL Info(Caller,'Using file I/O for mesh refinement',Level=5)
         NewMesh => External_ReMesh( RefMesh, ErrorLimit/3, HValue, &
@@ -1268,7 +1276,163 @@ CONTAINS
 !------------------------------------------------------------------------------
 #endif
 
-  
+!------------------------------------------------------------------------------
+FUNCTION Gmsh_ReMesh( RefMesh, ErrorLimit, HValue, NodalError, &
+    hConvergence, minH, maxH, MaxChange, Coarsening ) RESULT( NewMesh )
+  !------------------------------------------------------------------------------
+  REAL(KIND=dp) :: NodalError(:), hConvergence(:), &
+        ErrorLimit, minH, maxH, MaxChange, HValue(:)
+  LOGICAL :: Coarsening
+  TYPE(Mesh_t), POINTER :: NewMesh, RefMesh
+  !------------------------------------------------------------------------------
+  TYPE(Mesh_t), POINTER :: Mesh
+  INTEGER :: i,j,k,n
+  REAL(KIND=dp) :: Lambda
+  CHARACTER(:), ALLOCATABLE :: MeshCommand, Name, MeshInputFile, MeshConversionCommand
+  !------------------------------------------------------------------------------
+
+  ! Before writing the background mesh, find the coordinates scaling and then write the background mesh in the scaled coordinates
+      ! Scaling of coordinates
+  !-----------------------------------------------------------------------------
+  ! Determine the mesh dimension 
+  !----------------------------------------------------------------------------
+  CALL SetMeshDimension( RefMesh )
+
+  mesh_dim = RefMesh % MaxDim
+
+  Wrk => ListGetConstRealArray( Model % Simulation,'Coordinate Scaling',Found )
+  CoordScale = 1.0_dp    
+  IF( Found ) THEN            
+  DO i=1, mesh_dim
+    j = MIN( i, SIZE(Wrk,1) )
+    CoordScale(i) = Wrk(j,1)
+  END DO
+  WRITE(Message,'(A,3ES10.3)') 'Scaling the background mesh coordinates:',CoordScale(1:3)
+  CALL Info(Caller ,Message, Level=10)
+  END IF 
+
+
+  ! write the bacground mesh for gmsh too. Need to make it to write it if requested
+  ! View "mesh size field" {
+  OPEN( 11, STATUS='UNKNOWN', FILE='gmsh_bgmesh.pos' )
+  WRITE( 11,* ) 'View "mesh size field" {'
+
+  DO i=1,RefMesh % NumberOfNodes
+    IF ( NodalError(i) > 100*AEPS ) THEN
+      Lambda = ( ErrorLimit / NodalError(i) ) ** ( 1.0d0 / hConvergence(i) )
+
+      IF ( RefMesh % AdaptiveDepth < 1 ) THEN
+          Lambda = HValue(i) * MAX( MIN( Lambda, 1.33d0), 0.75d0)
+      ELSE
+          Lambda = HValue(i) * MAX(MIN(Lambda, MaxChange), 1.0d0/MaxChange)
+      END IF
+
+      IF( .NOT.Coarsening ) Lambda = MIN( Lambda, Hvalue(i) )
+
+      IF ( maxH > 0 ) Lambda = MIN( Lambda, maxH )
+      IF ( minH > 0 ) Lambda = MAX( Lambda, minH )
+
+      IF ( CoordinateSystemDimension() == 2 ) THEN
+          ! Write a list based background mesh for gmsh. S for scalar and P for point.
+          ! the mesh size is scaled by the minimum of the scaling factors. This may need to be changed to include all cases.
+          WRITE( 11,* ) 'SP(', (RefMesh % Nodes % x(i)) / CoordScale(1), &
+              ', ', (RefMesh % Nodes % y(i)) / CoordScale(2), ') {', &
+              Lambda / MIN(CoordScale(1), CoordScale(2)), '};'
+      ELSE
+          ! Write a list based background mesh for gmsh. S for scalar and P for point. 
+          ! the mesh size is scaled by the minimum of the scaling factors. This may need to be changed to include all cases.
+          WRITE( 11,* ) 'SP(', (RefMesh % Nodes % x(i)) / CoordScale(1), &
+              ', ', (RefMesh % Nodes % y(i)) / CoordScale(2), &
+              ', ', (RefMesh % Nodes % z(i)) / CoordScale(3), ') {', &
+              Lambda / MIN(CoordScale(1), MIN(CoordScale(2), CoordScale(3))), '};'
+      END IF
+    ELSE
+      IF ( CoordinateSystemDimension() == 2 ) THEN
+          WRITE(11, *) 'SP(', (RefMesh % Nodes % x(i)) / CoordScale(1), &
+              ', ', (RefMesh % Nodes % y(i)) / CoordScale(2), ') {', &
+              HValue(i) / MIN(CoordScale(1), CoordScale(2)), '};'
+      ELSE
+          WRITE(11, *) 'SP(', (RefMesh % Nodes % x(i)) / CoordScale(1), &
+              ', ', (RefMesh % Nodes % y(i)) / CoordScale(2), &
+              ', ', (RefMesh % Nodes % z(i)) / CoordScale(3), ') {', &
+              HValue(i) / MIN(CoordScale(1), MIN(CoordScale(2), CoordScale(3))), '};'
+      END IF
+    END IF
+  END DO
+  ! write }; at the end of the file and close it;
+  WRITE( 11,* ) '};'
+  CLOSE( 11 )
+
+  Path = ListGetString( Params, 'Adaptive Mesh Name', Found )
+  IF ( .NOT. Found ) Path = 'RefinedMesh'
+
+  IF (ListGetLogical(Params,'Adaptive Mesh Numbering',Found)) THEN 
+    i = RefMesh % AdaptiveDepth + 1
+    nLen = LEN_TRIM(Path)
+    Path = Path(1:nlen) // I2S(i)
+  END IF
+
+  nLen = LEN_TRIM(OutputPath)
+  IF ( nlen > 0 ) THEN
+    Path = OutputPath(1:nlen) // '/' // TRIM(Path)
+  ELSE
+    Path = TRIM(Path)
+  END IF
+  CALL Info(Caller,'Writing the background mesh to: '//TRIM(Path),Level=10)
+  CALL MakeDirectory( TRIM(Path) // CHAR(0) )
+  CALL WriteMeshToDisk( RefMesh, Path )
+
+  Mesh => RefMesh
+  DO WHILE( ASSOCIATED( Mesh ) )
+    IF ( Mesh % AdaptiveDepth == 0 ) EXIT
+    Mesh => Mesh % Parent
+  END DO
+
+  MeshInputFile = ListGetString( Params, 'Mesh Input File', Found )
+
+  IF ( .NOT. Found ) THEN
+    MeshInputFile = ListGetString( Model % Simulation, 'Mesh Input File' )
+  END IF
+
+  CALL Info(Caller,'Mesh input file: '//TRIM(MeshInputFile),Level=14)
+
+  ! temporary solution to get the mesh command to work
+  MeshCommand = ListGetString( Params, 'Mesh Command', Found )
+  MeshConversionCommand = ListGetString( Params, 'Mesh Conversion Command', Found )
+  CALL Info(Caller, 'Gmsh command: '//TRIM(MeshCommand),Level=10)
+  CALL SystemCommand( MeshCommand )
+  CALL Info(Caller, 'Conversion of mesh using Gmsh done. Starting ElmerGrid', Level=5)
+  ! the conversion command need to get the path from Path
+  MeshConversionCommand = MeshConversionCommand // ' -out ' // TRIM(Path)
+  CALL Info(Caller, 'ElmerGrid command: '//TRIM(MeshConversionCommand),Level=10)
+  CALL SystemCommand( MeshConversionCommand )
+
+  CALL Info(Caller, 'Conversion of mesh ElmerGrid done.', Level=5)
+
+  ! print the output path 
+  CAll Info(Caller, 'Output path: '//TRIM(OutputPath), Level=10)
+  NewMesh => LoadMesh2( Model, OutPutPath, Path, .FALSE., 1, 0 )
+
+  IF ( Solver % Variable % Name == 'temperature' ) THEN
+    Name = ListGetString( Model % Simulation, 'Gebhart Factors', Found )
+    IF ( Found ) THEN
+      MeshCommand = 'View ' // TRIM(OutputPath) // &
+            '/' // TRIM(Mesh % Name) // ' ' // TRIM(Path)
+
+      CALL SystemCommand( MeshCommand )
+
+      Name = TRIM(OutputPath) // '/' // &
+                    TRIM(Mesh % Name) // '/' // TRIM(Name)
+
+      CALL LoadGebhartFactors( NewMesh, TRIM(Name) )
+    END IF
+  END IF
+
+!------------------------------------------------------------------------------
+END FUNCTION Gmsh_ReMesh
+!------------------------------------------------------------------------------
+
+
 !------------------------------------------------------------------------------
   FUNCTION External_ReMesh( RefMesh, ErrorLimit, HValue, NodalError, &
        hConvergence, minH, maxH, MaxChange, Coarsening ) RESULT( NewMesh )
