@@ -35,10 +35,18 @@ jobs:
         uses: actions/checkout@v4
 
       - name: install dependencies
+
+        # Homebrew's Python conflicts with the Python that comes pre-installed
+        # on the GitHub runners. Some of the dependencies depend on different
+        # versions of Homebrew's Python. Enforce using the ones from Homebrew
+        # to avoid errors on updates.
+        # See: https://github.com/orgs/Homebrew/discussions/3928
+
         # It looks like "gfortran" isn't working correctly unless "gcc" is
         # re-installed.
         run: |
           brew update
+          brew install --overwrite python@3.12 python@3.13
           brew reinstall gcc
           brew install \
             cmake libomp openblas open-mpi suitesparse \
