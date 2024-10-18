@@ -459,11 +459,22 @@ extern "C" void ROCParallelSolve( int *gn, int *n, int *rows, int *cols, double 
 
     ls->Solve(rhs, &x);
 
-//  x.CopyToData(x_out);
+    // x.CopyToData(x_out);
 
+    x.MoveToHost();
+    
     for(i=0; i<*n; i++ ) x_out[i]=x[i];
 
     ls->Clear();
+
+      // Stop time measurement                                                                             
+    //    tack = rocalution_time();                                                                            
+    // std::cout << "Solver execution:" << (tack - tick) / 1e6 << " sec" << std::endl;                      
+                                                                                                         
+    // Stop rocALUTION platform                                                                          
+    //stop_rocalution();                                                                                   
+                                                                                                         
+    //free(Lrows); free(Lcols); free(Lvals);               
 }
 
 extern "C" void ROCSerialSolve(int *n, int *rows, int *cols, double *vals, double *b, double *x_out,
