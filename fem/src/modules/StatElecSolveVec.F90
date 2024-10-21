@@ -175,6 +175,11 @@ SUBROUTINE StatElecSolver_init( Model,Solver,dt,Transient )
   
   ! If no fields need to be computed do not even call the _post solver!
   CALL ListAddLogical(Params,'PostSolver Active',PostActive)
+
+  ! If library adaptivity is compiled with, use that by default.
+#ifdef LIBRARY_ADAPTIVIVTY
+  CALL ListAddNewLogical(Params,'Library Adaptivity',.TRUE.)
+#endif
   
 END SUBROUTINE StatElecSolver_Init
 
@@ -204,34 +209,37 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
   TYPE(Mesh_t), POINTER :: Mesh
   CHARACTER(*), PARAMETER :: Caller = 'StatElecSolver'
 
+#ifndef LIBRARY_ADAPTIVITY
   INTERFACE
-    FUNCTION ElectricBoundaryResidual(Model, Edge, Mesh, Quant, Perm, Gnorm) RESULT(Indicator)
+    FUNCTION StatElecSolver_Boundary_Residual(Model, Edge, Mesh, Quant, Perm, Gnorm) RESULT(Indicator)
       USE Types
       TYPE(Element_t), POINTER :: Edge
       TYPE(Model_t) :: Model
       TYPE(Mesh_t), POINTER :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
       INTEGER :: Perm(:)
-    END FUNCTION ElectricBoundaryResidual
-
-    FUNCTION ElectricEdgeResidual(Model, Edge, Mesh, Quant, Perm) RESULT(Indicator)
+    END FUNCTION StatElecSolver_Boundary_Residual
+    
+    FUNCTION StatElecSolver_Edge_Residual(Model, Edge, Mesh, Quant, Perm) RESULT(Indicator)
       USE Types
       TYPE(Element_t), POINTER :: Edge
       TYPE(Model_t) :: Model
       TYPE(Mesh_t), POINTER :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2)
       INTEGER :: Perm(:)
-    END FUNCTION ElectricEdgeResidual
-
-    FUNCTION ElectricInsideResidual(Model, Element, Mesh, Quant, Perm, Fnorm) RESULT(Indicator)
+    END FUNCTION StatElecSolver_Edge_Residual
+    
+    FUNCTION StatElecSolver_Inside_Residual(Model, Element, Mesh, Quant, Perm, Fnorm) RESULT(Indicator)
       USE Types
       TYPE(Element_t), POINTER :: Element
       TYPE(Model_t) :: Model
       TYPE(Mesh_t), POINTER :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
       INTEGER :: Perm(:)
-    END FUNCTION ElectricInsideResidual
+    END FUNCTION StatElecSolver_Inside_Residual
   END INTERFACE
+#endif
+  
 !------------------------------------------------------------------------------
 
   CALL Info(Caller,'------------------------------------------------')
@@ -380,11 +388,13 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
 
   CALL DefaultFinish()
 
-#ifndef LIBRARY_ADAPTIVITY
-  IF (ListGetLogical(Solver % Values, 'Adaptive Mesh Refinement', Found)) &
-    CALL RefineMesh(Model, Solver, Solver % Variable % Values, Solver % Variable % Perm, &
-                    ElectricInsideResidual, ElectricEdgeResidual, ElectricBoundaryResidual)
-#endif
+  IF (ListGetLogical(Solver % Values, 'Adaptive Mesh Refinement', Found)) THEN
+    IF(.NOT. ListGetLogical( Solver % Values,'Library Adaptivity',Found )) THEN
+      CALL RefineMesh(Model, Solver, Solver % Variable % Values, Solver % Variable % Perm, &
+          StatElecSolver_Inside_Residual, StatElecSolver_Edge_Residual, &
+          StatElecSolver_Boundary_Residual)
+    END IF
+  END IF
 
 CONTAINS
 
@@ -518,7 +528,7 @@ CONTAINS
 
     ! This InitHandles flag might be false on threaded 1st call
     IF( InitHandles ) THEN
-      CALL ListInitElementKeyword( SourceCoeff_h,'Body Force','Charge Source')
+      CALL ListInitElementKeyword( SourceCoeff_h,'Body Force','Charge Density')
       CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity',InitIm=CVersion)
       
       Found = .FALSE.
@@ -918,7 +928,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     ! This InitHandles flag might be false on threaded 1st call
     IF( InitHandles ) THEN
-      CALL ListInitElementKeyword( SourceCoeff_h,'Body Force','Charge Source')
+      CALL ListInitElementKeyword( SourceCoeff_h,'Body Force','Charge Density')
       CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity')
       Found = .FALSE.
       IF( ASSOCIATED( Model % Constants ) ) THEN
@@ -1234,676 +1244,13 @@ CONTAINS
 
   END SUBROUTINE GlobalPostAve
 !------------------------------------------------------------------------------
-  
- 
-!------------------------------------------------------------------------
 END SUBROUTINE StatElecSolver_Post
-
-!------------------------------------------------------------------------------
-FUNCTION ElectricBoundaryResidual(Model, Edge, Mesh, Quant, Perm, Gnorm) RESULT(Indicator)
-!------------------------------------------------------------------------------
-  USE DefUtils
-  IMPLICIT NONE
-!------------------------------------------------------------------------------
-  TYPE(Model_t) :: Model
-  INTEGER :: Perm(:)
-  REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
-  TYPE(Mesh_t), POINTER :: Mesh
-  TYPE(Element_t), POINTER :: Edge
-!------------------------------------------------------------------------------
-  TYPE(Nodes_t) :: Nodes, EdgeNodes
-  TYPE(Element_t), POINTER :: Element
-  INTEGER :: i, j, k, n, l, t, dim, Pn, En, nd
-  LOGICAL :: stat, Found
-  INTEGER, ALLOCATABLE :: Indexes(:)
-  REAL(KIND=dp), POINTER :: Hwrk(:, :, :)
-  REAL(KIND=dp) :: SqrtMetric, Metric(3, 3), Symb(3, 3, 3), dSymb(3, 3, 3, 3)
-  REAL(KIND=dp), ALLOCATABLE :: NodalPermittivity(:), &
-                                EdgeBasis(:), Basis(:), x(:), y(:), z(:), &
-                                dBasisdx(:, :), Potential(:), Flux(:)
-  REAL(KIND=dp) :: Normal(3), EdgeLength, gx, gy, gz, Permittivity
-  REAL(KIND=dp) :: u, v, w, s, detJ
-  REAL(KIND=dp) :: Residual, ResidualNorm
-  TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
-  LOGICAL :: First = .TRUE., Dirichlet
-  SAVE Hwrk, First
-!------------------------------------------------------------------------------
-
-!    Initialize:
-!    -----------
-  IF (First) THEN
-    First = .FALSE.
-    NULLIFY (Hwrk)
-  END IF
-
-  Indicator = 0.0d0
-  Gnorm = 0.0d0
-
-  Metric = 0.0d0
-  DO i = 1, 3
-    Metric(i, i) = 1.0d0
-  END DO
-
-  SELECT CASE (CurrentCoordinateSystem())
-  CASE (AxisSymmetric, CylindricSymmetric)
-    dim = 3
-  CASE DEFAULT
-    dim = CoordinateSystemDimension()
-  END SELECT
-!
-!    ---------------------------------------------
-
-  Element => Edge % BoundaryInfo % Left
-
-  IF (.NOT. ASSOCIATED(Element)) THEN
-    Element => Edge % BoundaryInfo % Right
-  ELSE IF (ANY(Perm(Element % NodeIndexes) <= 0)) THEN
-    Element => Edge % BoundaryInfo % Right
-  END IF
-
-  IF (.NOT. ASSOCIATED(Element)) RETURN
-  IF (ANY(Perm(Element % NodeIndexes) <= 0)) RETURN
-
-  en = Edge % TYPE % NumberOfNodes
-  pn = Element % TYPE % NumberOfNodes
-
-  ALLOCATE (EdgeNodes % x(en), EdgeNodes % y(en), EdgeNodes % z(en))
-
-  EdgeNodes % x = Mesh % Nodes % x(Edge % NodeIndexes)
-  EdgeNodes % y = Mesh % Nodes % y(Edge % NodeIndexes)
-  EdgeNodes % z = Mesh % Nodes % z(Edge % NodeIndexes)
-
-  nd = GetElementNOFDOFs(Element)
-  ALLOCATE (Potential(nd), Basis(nd), &
-            x(en), y(en), z(en), EdgeBasis(nd), &
-            dBasisdx(nd, 3), NodalPermittivity(nd), Flux(nd), &
-            Indexes(nd))
-
-  nd = GetElementDOFs(Indexes, Element)
-
-  ALLOCATE (Nodes % x(nd), Nodes % y(nd), Nodes % z(nd))
-  Nodes % x(1:nd) = Mesh % Nodes % x(Indexes(1:nd))
-  Nodes % y(1:nd) = Mesh % Nodes % y(Indexes(1:nd))
-  Nodes % z(1:nd) = Mesh % Nodes % z(Indexes(1:nd))
-
-  DO l = 1, en
-    DO k = 1, pn
-      IF (Edge % NodeIndexes(l) == Element % NodeIndexes(k)) THEN
-        x(l) = Element % TYPE % NodeU(k)
-        y(l) = Element % TYPE % NodeV(k)
-        z(l) = Element % TYPE % NodeW(k)
-        EXIT
-      END IF
-    END DO
-  END DO
-!
-!    Integrate square of residual over boundary element:
-!    ---------------------------------------------------
-
-  Indicator = 0.0d0
-  EdgeLength = 0.0d0
-  ResidualNorm = 0.0d0
-
-  DO j = 1, Model % NumberOfBCs
-    IF (Edge % BoundaryInfo % Constraint /= Model % BCs(j) % Tag) CYCLE
-
-!
-!       Check if dirichlet BC given:
-!       ----------------------------
-    Dirichlet = ListCheckPresent(Model % BCs(j) % Values, &
-                                 ComponentName(Model % Solver % Variable))
-    IF (.NOT. Dirichlet) THEN
-      Dirichlet = ListCheckPrefix(Model % BCs(j) % Values, &
-                                  'Constraint Mode')
-    END IF
-    ! TODO s = ListGetConstReal( Model % BCs(j) % Values,'Potential',Dirichlet )
-
-!       Get various flux bc options:
-!       ----------------------------
-
-!       ...given flux:
-!       --------------
-    Flux(1:en) = ListGetReal(Model % BCs(j) % Values, &
-                             'Electric Flux', en, Edge % NodeIndexes, Found)
-
-!       get material parameters:
-!       ------------------------
-    k = ListGetInteger(Model % Bodies(Element % BodyId) % Values, 'Material', &
-                       minv=1, maxv=Model % NumberOFMaterials)
-
-    CALL ListGetRealArray(Model % Materials(k) % Values, &
-                          'Relative Permittivity', Hwrk, en, Edge % NodeIndexes, stat)
-    IF (.NOT. stat) &
-      CALL ListGetRealArray(Model % Materials(k) % Values, &
-                            'Permittivity', Hwrk, En, Edge % NodeIndexes)
-    NodalPermittivity(1:en) = Hwrk(1, 1, 1:en)
-
-!       elementwise nodal solution:
-!       ---------------------------
-    nd = GetElementDOFs(Indexes, Element)
-    Potential(1:nd) = Quant(Perm(Indexes(1:nd)))
-
-!       do the integration:
-!       -------------------
-    EdgeLength = 0.0d0
-    ResidualNorm = 0.0d0
-
-    IntegStuff = GaussPoints(Edge)
-
-    DO t = 1, IntegStuff % n
-      u = IntegStuff % u(t)
-      v = IntegStuff % v(t)
-      w = IntegStuff % w(t)
-
-      stat = ElementInfo(Edge, EdgeNodes, u, v, w, detJ, &
-                         EdgeBasis, dBasisdx)
-      Normal = NormalVector(Edge, EdgeNodes, u, v, .TRUE.)
-
-      IF (CurrentCoordinateSystem() == Cartesian) THEN
-        s = IntegStuff % s(t) * detJ
-      ELSE
-        gx = SUM(EdgeBasis(1:en) * EdgeNodes % x(1:en))
-        gy = SUM(EdgeBasis(1:en) * EdgeNodes % y(1:en))
-        gz = SUM(EdgeBasis(1:en) * EdgeNodes % z(1:en))
-        CALL CoordinateSystemInfo(Metric, SqrtMetric, &
-                                  Symb, dSymb, gx, gy, gz)
-        s = IntegStuff % s(t) * detJ * SqrtMetric
-      END IF
-
-!
-!          Integration point in parent element local
-!          coordinates:
-!          -----------------------------------------
-      u = SUM(EdgeBasis(1:en) * x(1:en))
-      v = SUM(EdgeBasis(1:en) * y(1:en))
-      w = SUM(EdgeBasis(1:en) * z(1:en))
-      stat = ElementInfo(Element, Nodes, u, v, w, detJ, Basis, dBasisdx)
-
-!
-!          Electric permittivity at the integration point:
-!          --------------------------------------------
-      Permittivity = SUM(NodalPermittivity(1:en) * EdgeBasis(1:en))
-!
-!          given flux at integration point:
-!          --------------------------------
-      Residual = -SUM(Flux(1:en) * EdgeBasis(1:en))
-
-!          flux given by the computed solution, and
-!          force norm for scaling the residual:
-!          -----------------------------------------
-      IF (CurrentCoordinateSystem() == Cartesian) THEN
-        DO k = 1, dim
-          Residual = Residual + Permittivity * &
-                     SUM(dBasisdx(1:nd, k) * Potential(1:nd)) * Normal(k)
-
-          Gnorm = Gnorm + s * (Permittivity * &
-                               SUM(dBasisdx(1:nd, k) * Potential(1:nd)) * Normal(k))**2
-        END DO
-      ELSE
-        DO k = 1, dim
-          DO l = 1, dim
-            Residual = Residual + Metric(k, l) * Permittivity * &
-                       SUM(dBasisdx(1:nd, k) * Potential(1:nd)) * Normal(l)
-
-            Gnorm = Gnorm + s * (Metric(k, l) * Permittivity * &
-                                 SUM(dBasisdx(1:nd, k) * Potential(1:nd)) * Normal(l))**2
-          END DO
-        END DO
-      END IF
-
-      EdgeLength = EdgeLength + s
-      IF (.NOT. Dirichlet) THEN
-        ResidualNorm = ResidualNorm + s * Residual**2
-      END IF
-    END DO
-    EXIT
-  END DO
-
-  IF (CoordinateSystemDimension() == 3) EdgeLength = SQRT(EdgeLength)
-
-!    Gnorm = EdgeLength * Gnorm
-  Indicator = EdgeLength * ResidualNorm
-!------------------------------------------------------------------------------
-END FUNCTION ElectricBoundaryResidual
-!------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
-FUNCTION ElectricEdgeResidual(Model, Edge, Mesh, Quant, Perm) RESULT(Indicator)
-!------------------------------------------------------------------------------
-  USE DefUtils
-  IMPLICIT NONE
-
-  TYPE(Model_t) :: Model
-  INTEGER :: Perm(:)
-  REAL(KIND=dp) :: Quant(:), Indicator(2)
-  TYPE(Mesh_t), POINTER :: Mesh
-  TYPE(Element_t), POINTER :: Edge
-!------------------------------------------------------------------------------
-  TYPE(Nodes_t) :: Nodes, EdgeNodes
-  TYPE(Element_t), POINTER :: Element
-  INTEGER :: i, j, k, l, n, t, dim, En, Pn, nd
-  INTEGER, ALLOCATABLE :: Indexes(:)
-  LOGICAL :: stat
-  REAL(KIND=dp), POINTER :: Hwrk(:, :, :)
-  REAL(KIND=dp) :: SqrtMetric, Metric(3, 3), Symb(3, 3, 3), dSymb(3, 3, 3, 3)
-  REAL(KIND=dp) :: Permittivity
-  REAL(KIND=dp) :: u, v, w, s, detJ
-  REAL(KIND=dp) :: Grad(3, 3), Normal(3), EdgeLength, Jump
-  REAL(KIND=dp), ALLOCATABLE :: NodalPermittivity(:), x(:), y(:), z(:), EdgeBasis(:), &
-      Basis(:), dBasisdx(:, :), Potential(:)
-  REAL(KIND=dp) :: ResidualNorm
-  TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
-  TYPE(ValueList_t), POINTER :: Material
-
-  LOGICAL :: First = .TRUE.
-  SAVE Hwrk, First
-!------------------------------------------------------------------------------
-
-  !    Initialize:
-  !    -----------
-  IF (First) THEN
-    First = .FALSE.
-    NULLIFY (Hwrk)
-  END IF
-
-  SELECT CASE (CurrentCoordinateSystem())
-  CASE (AxisSymmetric, CylindricSymmetric)
-    dim = 3
-  CASE DEFAULT
-    dim = CoordinateSystemDimension()
-  END SELECT
-
-  Metric = 0.0d0
-  DO i = 1, 3
-    Metric(i, i) = 1.0d0
-  END DO
-  Grad = 0.0d0
-!
-!    ---------------------------------------------
-
-  n = Mesh % MaxElementDOFs
-  ALLOCATE (Nodes % x(n), Nodes % y(n), Nodes % z(n))
-
-  en = Edge % TYPE % NumberOfNodes
-  ALLOCATE (EdgeNodes % x(en), EdgeNodes % y(en), EdgeNodes % z(en))
-
-  EdgeNodes % x = Mesh % Nodes % x(Edge % NodeIndexes)
-  EdgeNodes % y = Mesh % Nodes % y(Edge % NodeIndexes)
-  EdgeNodes % z = Mesh % Nodes % z(Edge % NodeIndexes)
-
-  ALLOCATE (NodalPermittivity(en), EdgeBasis(en), Basis(n), &
-            dBasisdx(n, 3), x(en), y(en), z(en), Potential(n), Indexes(n))
-
-!    Integrate square of jump over edge:
-!    -----------------------------------
-  ResidualNorm = 0.0d0
-  EdgeLength = 0.0d0
-  Indicator = 0.0d0
-
-  IntegStuff = GaussPoints(Edge)
-
-  DO t = 1, IntegStuff % n
-
-    u = IntegStuff % u(t)
-    v = IntegStuff % v(t)
-    w = IntegStuff % w(t)
-
-    stat = ElementInfo(Edge, EdgeNodes, u, v, w, detJ, &
-                       EdgeBasis, dBasisdx)
-
-    Normal = NormalVector(Edge, EdgeNodes, u, v, .FALSE.)
-
-    IF (CurrentCoordinateSystem() == Cartesian) THEN
-      s = IntegStuff % s(t) * detJ
-    ELSE
-      u = SUM(EdgeBasis(1:en) * EdgeNodes % x(1:en))
-      v = SUM(EdgeBasis(1:en) * EdgeNodes % y(1:en))
-      w = SUM(EdgeBasis(1:en) * EdgeNodes % z(1:en))
-
-      CALL CoordinateSystemInfo(Metric, SqrtMetric, &
-                                Symb, dSymb, u, v, w)
-      s = IntegStuff % s(t) * detJ * SqrtMetric
-    END IF
-
-    !
-    ! Compute flux over the edge as seen by elements
-    ! on both sides of the edge:
-    ! ----------------------------------------------
-    DO i = 1, 2
-      SELECT CASE (i)
-      CASE (1)
-        Element => Edge % BoundaryInfo % Left
-      CASE (2)
-        Element => Edge % BoundaryInfo % Right
-      END SELECT
-!
-!          Can this really happen (maybe it can...)  ?
-!          -------------------------------------------
-      IF (ANY(Perm(Element % NodeIndexes) <= 0)) CYCLE
-!
-!          Next, get the integration point in parent
-!          local coordinates:
-!          -----------------------------------------
-      pn = Element % TYPE % NumberOfNodes
-
-      DO j = 1, en
-        DO k = 1, pn
-          IF (Edge % NodeIndexes(j) == Element % NodeIndexes(k)) THEN
-            x(j) = Element % TYPE % NodeU(k)
-            y(j) = Element % TYPE % NodeV(k)
-            z(j) = Element % TYPE % NodeW(k)
-            EXIT
-          END IF
-        END DO
-      END DO
-
-      u = SUM(EdgeBasis(1:en) * x(1:en))
-      v = SUM(EdgeBasis(1:en) * y(1:en))
-      w = SUM(EdgeBasis(1:en) * z(1:en))
-!
-!          Get parent element basis & derivatives at the integration point:
-!          -----------------------------------------------------------------
-      nd = GetElementDOFs(Indexes, Element)
-      Nodes % x(1:nd) = Mesh % Nodes % x(Indexes(1:nd))
-      Nodes % y(1:nd) = Mesh % Nodes % y(Indexes(1:nd))
-      Nodes % z(1:nd) = Mesh % Nodes % z(Indexes(1:nd))
-
-      stat = ElementInfo(Element, Nodes, u, v, w, detJ, Basis, dBasisdx)
-!
-!          Material parameters:
-!          --------------------
-      k = ListGetInteger(Model % Bodies( &
-                         Element % BodyId) % Values, 'Material', &
-                         minv=1, maxv=Model % NumberOFMaterials)
-
-      Material => Model % Materials(k) % Values
-      CALL ListGetRealArray(Material, &
-                            'Relative Permittivity', Hwrk, en, Edge % NodeIndexes, stat)  ! Should we have stat here?
-      IF (.NOT. stat) &
-        CALL ListGetRealArray(Material, &
-                              'Permittivity', Hwrk, En, Edge % NodeIndexes)
-
-      NodalPermittivity(1:en) = Hwrk(1, 1, 1:en)
-      Permittivity = SUM(NodalPermittivity(1:en) * EdgeBasis(1:en))
-!
-!          Potential at element nodal points:
-!          ------------------------------------
-      Potential(1:nd) = Quant(Perm(Indexes(1:nd)))
-!
-!          Finally, the flux:
-!          ------------------
-      DO j = 1, dim
-        Grad(j, i) = Permittivity * SUM(dBasisdx(1:nd, j) * Potential(1:nd))
-      END DO
-    END DO
-
-!       Compute square of the flux jump:
-!       -------------------------------
-    EdgeLength = EdgeLength + s
-    Jump = 0.0d0
-    DO k = 1, dim
-      IF (CurrentCoordinateSystem() == Cartesian) THEN
-        Jump = Jump + (Grad(k, 1) - Grad(k, 2)) * Normal(k)
-      ELSE
-        DO l = 1, dim
-          Jump = Jump + &
-                 Metric(k, l) * (Grad(k, 1) - Grad(k, 2)) * Normal(l)
-        END DO
-      END IF
-    END DO
-    ResidualNorm = ResidualNorm + s * Jump**2
-  END DO
-
-  IF (dim == 3) EdgeLength = SQRT(EdgeLength)
-  Indicator = EdgeLength * ResidualNorm
-
-  DEALLOCATE (Nodes % x, Nodes % y, Nodes % z)
-
-  DEALLOCATE (EdgeNodes % x, EdgeNodes % y, EdgeNodes % z)
-  DEALLOCATE (x, y, z, NodalPermittivity, EdgeBasis, &
-              Basis, dBasisdx, Potential)
-!------------------------------------------------------------------------------
-END FUNCTION ElectricEdgeResidual
-!------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
-FUNCTION ElectricInsideResidual(Model, Element, Mesh, &
-                                Quant, Perm, Fnorm) RESULT(Indicator)
-!------------------------------------------------------------------------------
-  USE DefUtils
-!------------------------------------------------------------------------------
-  IMPLICIT NONE
-!------------------------------------------------------------------------------
-  TYPE(Model_t) :: Model
-  INTEGER :: Perm(:)
-  REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
-  TYPE(Mesh_t), POINTER :: Mesh
-  TYPE(Element_t), POINTER :: Element
-!------------------------------------------------------------------------------
-  TYPE(Nodes_t) :: Nodes
-  INTEGER :: i, j, k, l, n, t, dim, nd
-  INTEGER, ALLOCATABLE :: Indexes(:)
-  LOGICAL :: stat, Found
-  TYPE(Variable_t), POINTER :: Var
-  REAL(KIND=dp), POINTER :: Hwrk(:, :, :)
-  REAL(KIND=dp) :: SqrtMetric, Metric(3, 3), Symb(3, 3, 3), dSymb(3, 3, 3, 3)
-
-  REAL(KIND=dp), ALLOCATABLE :: NodalPermittivity(:)
-  REAL(KIND=dp), ALLOCATABLE :: NodalSource(:), Potential(:), PrevPot(:)
-  REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:, :), ddBasisddx(:, :, :)
-  REAL(KIND=dp) :: u, v, w, s, detJ
-  REAL(KIND=dp) :: Permittivity, dt  
-  REAL(KIND=dp) :: Residual, ResidualNorm, Area
-
-  TYPE(ValueList_t), POINTER :: Material
-
-  TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
-
-  LOGICAL :: First = .TRUE.
-  SAVE Hwrk, First
-!------------------------------------------------------------------------------
-
-!    Initialize:
-!    -----------
-  Indicator = 0.0d0
-  Fnorm = 0.0d0
-!
-!    Check if this eq. computed in this element:
-!    -------------------------------------------
-  IF (ANY(Perm(Element % NodeIndexes) <= 0)) RETURN
-
-  IF (First) THEN
-    First = .FALSE.
-    NULLIFY (Hwrk)
-  END IF
-
-  Metric = 0.0d0
-  DO i = 1, 3
-    Metric(i, i) = 1.0d0
-  END DO
-
-  SELECT CASE (CurrentCoordinateSystem())
-  CASE (AxisSymmetric, CylindricSymmetric)
-    dim = 3
-  CASE DEFAULT
-    dim = CoordinateSystemDimension()
-  END SELECT
-
-!    Alllocate local arrays
-!    ----------------------
-  nd = GetElementNOFDOFs(Element)
-  n = GetElementNOFNodes(Element)
-  ALLOCATE (NodalPermittivity(nd), &
-            PrevPot(nd), NodalSource(nd), Potential(nd), &
-            Basis(nd), dBasisdx(nd, 3), ddBasisddx(nd, 3, 3), Indexes(nd))
-!
-!    Element nodal points:
-!    ---------------------
-  ALLOCATE (Nodes % x(nd), Nodes % y(nd), Nodes % z(nd))
-
-  nd = GetElementDOFs(Indexes, Element)
-  Nodes % x = Mesh % Nodes % x(Indexes(1:nd))
-  Nodes % y = Mesh % Nodes % y(Indexes(1:nd))
-  Nodes % z = Mesh % Nodes % z(Indexes(1:nd))
-!
-!    Elementwise nodal solution:
-!    ---------------------------
-  Potential(1:nd) = Quant(Perm(Indexes(1:nd)))
-!
-!    Check for time dep.
-!    -------------------
-  PrevPot(1:nd) = Potential(1:nd)
-  dt = Model % Solver % dt
-  IF (ListGetString(Model % Simulation, 'Simulation Type') == 'transient') THEN
-    Var => VariableGet(Model % Variables, 'Potential', .TRUE.)
-    PrevPot(1:nd) = Var % PrevValues(Var % Perm(Indexes(1:nd)), 1)
-  END IF
-!
-!    Material parameters: relative permittivity
-!    ------------------------------------------
-  k = ListGetInteger(Model % Bodies(Element % BodyId) % Values, 'Material', &
-                     minv=1, maxv=Model % NumberOfMaterials)
-
-  Material => Model % Materials(k) % Values
-
-  CALL ListGetRealArray(Material, 'Relative Permittivity', Hwrk, n, Element % NodeIndexes, stat)
-  IF (.NOT. stat) &
-    CALL ListGetRealArray(Material, 'Permittivity', Hwrk, n, Element % NodeIndexes)
-  NodalPermittivity(1:n) = Hwrk(1, 1, 1:n)
-
-!
-!    Charge density (source):
-!    ------------------------
-!
-  k = ListGetInteger( &
-      Model % Bodies(Element % BodyId) % Values, 'Body Force', Found, &
-      1, Model % NumberOFBodyForces)
-
-  NodalSource = 0.0d0
-  !  TODO doees this work?
-  ! IF( k > 0 ) THEN
-  !   NodalSource(1:n) = GetReal( Model % BodyForces(k) % Values, &
-  !       'Volumetric Heat Source',VolSource )
-  !   IF( .NOT. VolSource ) THEN
-  !     NodalSource(1:n) = GetReal( Model % BodyForces(k) % Values, &
-  !         'Heat Source',  Found )
-  !   END IF
-  ! END IF
-
-  IF (Found .AND. k > 0) THEN
-    NodalSource(1:n) = ListGetReal(Model % BodyForces(k) % Values, &
-                                   'Charge Density', n, Element % NodeIndexes, stat)
-    IF (.NOT. stat) &
-      NodalSource(1:n) = ListGetReal(Model % BodyForces(k) % Values, &
-                                     'Source', n, Element % NodeIndexes)
-  END IF
-
-!
-!    Integrate square of residual over element:
-!    ------------------------------------------
-
-  ResidualNorm = 0.0d0
-  Area = 0.0d0
-
-  IntegStuff = GaussPoints(Element)
-  ddBasisddx = 0
-
-  DO t = 1, IntegStuff % n
-    u = IntegStuff % u(t)
-    v = IntegStuff % v(t)
-    w = IntegStuff % w(t)
-
-    stat = ElementInfo(Element, Nodes, u, v, w, detJ, &
-                       Basis, dBasisdx, ddBasisddx, .TRUE., .FALSE.)
-
-    IF (CurrentCoordinateSystem() == Cartesian) THEN
-      s = IntegStuff % s(t) * detJ
-    ELSE
-      u = SUM(Basis(1:nd) * Nodes % x(1:nd))
-      v = SUM(Basis(1:nd) * Nodes % y(1:nd))
-      w = SUM(Basis(1:nd) * Nodes % z(1:nd))
-
-      CALL CoordinateSystemInfo(Metric, SqrtMetric, &
-                                Symb, dSymb, u, v, w)
-      s = IntegStuff % s(t) * detJ * SqrtMetric
-    END IF
-
-    Permittivity = SUM(NodalPermittivity(1:n) * Basis(1:n))
-!
-!       Residual of the electrostatic equation:
-!
-!        R = -div(e grad(u)) - s
-!       ---------------------------------------------------
-!
-!       or more generally:
-!
-!        R = -g^{jk} (C T_{,j}}_{,k} - s
-!       ---------------------------------------------------
-!
-    Residual = -SUM(NodalSource(1:n) * Basis(1:n))
-
-    IF (CurrentCoordinateSystem() == Cartesian) THEN
-      DO j = 1, dim
-!
-!             - grad(e).grad(T):
-!             --------------------
-!
-        Residual = Residual - &
-                   SUM(Potential(1:nd) * dBasisdx(1:nd, j)) * &
-                   SUM(NodalPermittivity(1:n) * dBasisdx(1:n, j))
-
-!
-!             - e div(grad(u)):
-!             -------------------
-!
-        Residual = Residual - Permittivity * &
-                   SUM(Potential(1:nd) * ddBasisddx(1:nd, j, j))
-      END DO
-    ELSE
-      DO j = 1, dim
-        DO k = 1, dim
-!
-!                - g^{jk} C_{,k}T_{j}:
-!                ---------------------
-!
-          Residual = Residual - Metric(j, k) * &
-                     SUM(Potential(1:nd) * dBasisdx(1:nd, j)) * &
-                     SUM(NodalPermittivity(1:n) * dBasisdx(1:n, k))
-
-!
-!                - g^{jk} C T_{,jk}:
-!                -------------------
-!
-          Residual = Residual - Metric(j, k) * Permittivity * &
-                     SUM(Potential(1:nd) * ddBasisddx(1:nd, j, k))
-!
-!                + g^{jk} C {_jk^l} T_{,l}:
-!                ---------------------------
-          DO l = 1, dim
-            Residual = Residual + Metric(j, k) * Permittivity * &
-                       Symb(j, k, l) * SUM(Potential(1:nd) * dBasisdx(1:nd, l))
-          END DO
-        END DO
-      END DO
-    END IF
-
-!
-!       Compute also force norm for scaling the residual:
-!       -------------------------------------------------
-    DO i = 1, dim
-      Fnorm = Fnorm + s * (SUM(NodalSource(1:n) * Basis(1:n)))**2
-    END DO
-    Area = Area + s
-    ResidualNorm = ResidualNorm + s * Residual**2
-  END DO
-
-!    Fnorm = Element % hk**2 * Fnorm
-  Indicator = Element % hK**2 * ResidualNorm
-!------------------------------------------------------------------------------
-END FUNCTION ElectricInsideResidual
-!------------------------------------------------------------------------------
 !------------------------------------------------------------------------
 
+
+
+!------------------------------------------------------------------------------
+! Subroutine for computing residuals for adaptive mesh refinement.
 !------------------------------------------------------------------------------
 FUNCTION StatElecSolver_boundary_Residual(Model, Edge, Mesh, Quant, Perm, Gnorm) RESULT(Indicator)
 !------------------------------------------------------------------------------
@@ -2555,4 +1902,3 @@ FUNCTION StatElecSolver_Inside_residual(Model, Element, Mesh, &
 !------------------------------------------------------------------------------
 END FUNCTION StatElecSolver_inside_residual
 !------------------------------------------------------------------------------
-!------------------------------------------------------------------------
