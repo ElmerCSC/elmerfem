@@ -186,32 +186,32 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   CHARACTER(*), PARAMETER :: Caller = 'HeatSolver'
 
   INTERFACE
-    FUNCTION HeatBoundaryResidual( Model,Edge,Mesh,Quant,Perm,Gnorm ) RESULT(Indicator)
+    FUNCTION HeatSolver_Boundary_Residual( Model,Edge,Mesh,Quant,Perm,Gnorm ) RESULT(Indicator)
       USE Types
       TYPE(Element_t), POINTER :: Edge
       TYPE(Model_t) :: Model
       TYPE(Mesh_t), POINTER :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
       INTEGER :: Perm(:)
-    END FUNCTION HeatBoundaryResidual
+    END FUNCTION HeatSolver_Boundary_Residual
 
-    FUNCTION HeatEdgeResidual( Model,Edge,Mesh,Quant,Perm ) RESULT(Indicator)
+    FUNCTION HeatSolver_Edge_Residual( Model,Edge,Mesh,Quant,Perm ) RESULT(Indicator)
       USE Types
       TYPE(Element_t), POINTER :: Edge
       TYPE(Model_t) :: Model
       TYPE(Mesh_t), POINTER :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2)
       INTEGER :: Perm(:)
-    END FUNCTION HeatEdgeResidual
+    END FUNCTION HeatSolver_Edge_Residual
 
-    FUNCTION HeatInsideResidual( Model,Element,Mesh,Quant,Perm, Fnorm ) RESULT(Indicator)
+    FUNCTION HeatSolver_Inside_Residual( Model,Element,Mesh,Quant,Perm, Fnorm ) RESULT(Indicator)
       USE Types
       TYPE(Element_t), POINTER :: Element
       TYPE(Model_t) :: Model
       TYPE(Mesh_t), POINTER :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
       INTEGER :: Perm(:)
-    END FUNCTION HeatInsideResidual
+    END FUNCTION HeatSolver_Inside_Residual
   END INTERFACE
   
   IF (.NOT. ASSOCIATED(Solver % Matrix)) RETURN
@@ -454,7 +454,8 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
  IF ( ListGetLogical( Solver % Values, 'Adaptive Mesh Refinement', Found ) ) THEN
    IF( .NOT. ListGetLogical(Params,'Library Adaptivity',Found) ) THEN
      CALL RefineMesh( Model,Solver,Temperature,TempPerm, &
-         HeatInsideResidual, HeatEdgeResidual, HeatBoundaryResidual )
+         HeatSolver_Inside_Residual, HeatSolver_Edge_Residual, &
+         HeatSolver_Boundary_Residual )
    END IF
  END IF
    
