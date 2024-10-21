@@ -137,7 +137,7 @@ Material 1
 End
 
 Boundary Condition 1
-  Target Boundaries(1) = 1
+  Target Boundaries(1) = 4
   Name = "Symmetry"
   Displacement 1 = 0.0
 End
