@@ -15,7 +15,7 @@ IF(NOT CMAKE_BUILD_TYPE)
   SET(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Build type (Release, Debug, RelWithDebugInfo, MinSizeRel)")
 ENDIF()
 
-CMAKE_MINIMUM_REQUIRED(VERSION 3.10)
+cmake_minimum_required(VERSION 3.10...3.12)
 
 PROJECT(Elmer Fortran C CXX)
 
@@ -106,15 +106,6 @@ SET(INCLUDE_ELMER_MODULES "" CACHE STRING "Semicolon separated list of solver mo
 SET(USE_CONTIGUOUS FALSE CACHE BOOL "Use contiguous attribute")
 
 MARK_AS_ADVANCED(WITH_ELMERPOST)
-
-# if("${CMAKE_VERSION}" VERSION_GREATER 2.8.12)
-#   CMAKE_POLICY(SET CMP0022 OLD)
-# ENDIF()
-
-OPTION (USE_NEW_POLICY_CMP0057 "Option to enable new policy CMP0057" ON)
-IF (USE_NEW_POLICY_CMP0057)
-  CMAKE_POLICY(SET CMP0057 NEW)
-ENDIF()
 
 MARK_AS_ADVANCED(ELMER_INSTALL_LIB_DIR)
 
@@ -510,9 +501,21 @@ SET(CMAKE_REQUIRED_LIBRARIES
 
 IF(MPI_FOUND)
   # Mumps
-  IF(WITH_Mumps)
-    FIND_PACKAGE(Mumps REQUIRED)
-  ENDIF()
+  if(WITH_Mumps)
+    find_package(MUMPS CONFIG)
+    if(MUMPS_FOUND)
+      set(Mumps_FOUND true)
+      set(Mumps_LIBRARIES ${MUMPS_LIBRARIES})
+      set(Mumps_INCLUDE_DIR ${MUMPS_INCLUDE_DIRS})
+      if(MUMPS_METIS_FOUND)
+        set(Metis_FOUND true)
+        set(Metis_LIBRARIES ${METIS_LIBRARIES})
+        set(Metis_INCLUDE_DIR ${METIS_INCLUDE_DIRS})
+      endif()
+    else()
+      FIND_PACKAGE(Mumps REQUIRED)
+    endif()
+  endif()
   # Hypre
   IF(WITH_Hypre)
     FIND_PACKAGE(Hypre REQUIRED OPTIONAL_COMPONENTS Euclid parcsr_ls ParaSails IJ_mv FEI core QUIET)
