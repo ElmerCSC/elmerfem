@@ -174,6 +174,9 @@ SUBROUTINE VectorHelmholtzSolver_Init(Model,Solver,dt,Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: SolverParams
+  LOGICAL :: Found
+  INTEGER :: i, j, soln
+  CHARACTER(LEN=MAX_NAME_LEN) :: sname
 !------------------------------------------------------------------------------
   SolverParams => GetSolverParams()
   
@@ -183,6 +186,27 @@ SUBROUTINE VectorHelmholtzSolver_Init(Model,Solver,dt,Transient)
     CALL ListAddNewLogical(SolverParams, 'Allocate Preconditioning Matrix', .TRUE.)
   END IF
 
+  !
+  ! The following is for creating sources from pre-computed eigenfunctions:
+  !
+  IF (ListGetLogicalAnyBC(Model, 'Eigenfunction BC')) THEN
+    soln = 0
+    DO i=1,Model % NumberOfSolvers
+      sname = GetString(Model % Solvers(i) % Values, 'Procedure', Found)
+      j = INDEX(sname, 'EMPortSolver')
+      IF (j > 0) THEN
+        soln = i
+        EXIT
+      END IF
+    END DO
+
+    IF( soln == 0 ) THEN
+      CALL Fatal('VectorHelmholtzSolver_Init','Eigenfunction BC given without solving a port model')      
+    ELSE
+      CALL Info('VectorHelmholtzSolver_Init','The eigensolver index is: '//I2S(soln), Level=12)
+      CALL ListAddInteger(SolverParams, 'Eigensolver Index', soln)
+    END IF
+  END IF
 !------------------------------------------------------------------------------
 END SUBROUTINE VectorHelmholtzSolver_Init
 !------------------------------------------------------------------------------
@@ -207,13 +231,15 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
+  TYPE(Solver_t), POINTER :: Eigensolver => NULL()
   LOGICAL :: Found, HasPrecDampCoeff, MassProportional
   REAL(KIND=dp) :: Omega, mu0inv, eps0, rob0
-  INTEGER :: i, NoIterationsMax, EdgeBasisDegree
+  INTEGER :: i, soln, NoIterationsMax, EdgeBasisDegree
   TYPE(Mesh_t), POINTER :: Mesh
   COMPLEX(KIND=dp) :: PrecDampCoeff
   LOGICAL :: PiolaVersion, EdgeBasis, LowFrequencyModel, LorenzCondition
   LOGICAL :: UseGaussLaw, ChargeConservation
+  LOGICAL :: EigenfunctionSource
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Solver_t), POINTER :: pSolver
   CHARACTER(*), PARAMETER :: Caller = 'VectorHelmholtzSolver'
@@ -281,6 +307,16 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   LorenzCondition = GetLogical(SolverParams, 'Lorenz Condition', Found)
   UseGaussLaw = GetLogical(SolverParams, 'Use Gauss Law', Found)
   ChargeConservation = GetLogical(SolverParams, 'Apply Conservation of Charge', Found)
+
+  EigenfunctionSource = ListGetLogicalAnyBC(Model, 'Eigenfunction BC')
+  IF (EigenfunctionSource) THEN
+    soln = ListGetInteger(SolverParams, 'Eigensolver Index', Found) 
+    IF (soln == 0) THEN
+      CALL Fatal(Caller, 'We should know > Eigensolver Index <')
+    END IF
+    Eigensolver => Model % Solvers(soln)
+  END IF
+  
   
   ! Resolve internal nonlinearities, if requested:
   ! ----------------------------------------------
@@ -781,27 +817,33 @@ CONTAINS
     LOGICAL :: InitHandles
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:)    
-    COMPLEX(KIND=dp) :: B, L(3), muinv, TemGrad(3), MagLoad(3), BetaPar, jn, Cond, SurfImp, epsr, mur, imu, ep
+    COMPLEX(KIND=dp) :: B, L(3), muinv, TemGrad(3), MagLoad(3), BetaPar, jn, Cond, SurfImp, epsr, mur, ep
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:)
+    REAL(KIND=dp), ALLOCATABLE :: Re_Eigenf(:), Im_Eigenf(:)
     REAL(KIND=dp) :: th, DetJ
-    LOGICAL :: Stat, Found, UpdateStiff, WithNdofs, ThinSheet, ConductorBC
+    LOGICAL :: Stat, Found, UpdateStiff, WithNdofs, ThinSheet, ConductorBC, EigenBC, PortSource
     LOGICAL :: LineElement, DegenerateElement, Regularize
     LOGICAL :: AllocationsDone = .FALSE.
     TYPE(GaussIntegrationPoints_t) :: IP
-    INTEGER :: t, i, j, m, np, p, q, ndofs
+    INTEGER :: t, i, j, m, np, p, q, ndofs, EigenInd
+    INTEGER :: nd_eigen
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(Element_t), POINTER :: Parent
     TYPE(ValueHandle_t), SAVE :: MagLoad_h, ElRobin_h, MuCoeff_h, EpsCoeff_h, Absorb_h, TemRe_h, TemIm_h, ExtPot_h
     TYPE(ValueHandle_t), SAVE :: TransferCoeff_h, ElCurrent_h
     TYPE(ValueHandle_t), SAVE :: Thickness_h, RelNu_h, CondCoeff_h
     TYPE(ValueHandle_t), SAVE :: GoodConductor, ChargeConservation
+    TYPE(ValueHandle_t), SAVE :: EigenvectorSource, EigenvectorInd, IncidentWave
     
-    SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, FORCE, STIFF, MASS
+    SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, FORCE, STIFF, MASS, Re_Eigenf, Im_Eigenf
 
     IF(.NOT. AllocationsDone ) THEN
       m = Mesh % MaxElementDOFs
       ALLOCATE( WBasis(m,3), RotWBasis(m,3), Basis(m), dBasisdx(m,3),&
           FORCE(m),STIFF(m,m),MASS(m,m))      
+      IF (EigenfunctionSource) THEN
+        ALLOCATE(Re_Eigenf(m), Im_Eigenf(m))
+      END IF
       AllocationsDone = .TRUE.
     END IF
 
@@ -823,6 +865,10 @@ CONTAINS
       CALL ListInitElementKeyword( Thickness_h,'Boundary Condition','Layer Thickness')
       CALL ListInitElementKeyword( RelNu_h,'Boundary Condition','Layer Relative Reluctivity',InitIm=.TRUE.)
       CALL ListInitElementKeyword( CondCoeff_h,'Boundary Condition','Layer Electric Conductivity',InitIm=.TRUE.)
+
+      CALL ListInitElementKeyword( EigenvectorSource,'Boundary Condition','Eigenfunction BC')
+      CALL ListInitElementKeyword( EigenvectorInd,'Boundary Condition','Eigenfunction Index')
+      CALL ListInitElementKeyword( IncidentWave,'Boundary Condition','Incident Wave')      
       InitHandles = .FALSE.
     END IF
 
@@ -834,6 +880,26 @@ CONTAINS
     MASS = 0.0_dp
     FORCE = 0.0_dp
 
+    ! Check whether BC should be created in terms of pre-computed eigenfunction:
+    EigenBC = ListGetElementLogical(EigenvectorSource, Element, Found)
+
+    IF (EigenBC) THEN
+      EigenInd = ListGetElementInteger(EigenvectorInd, Element, Found)
+      IF (EigenInd < 1) CALL Fatal(Caller, 'Eigenfunction Index must be positive')
+      PortSource = ListGetElementLogical(IncidentWave, Element, Found)
+
+      CALL GetScalarLocalEigenmode(Re_Eigenf, ComponentName(Eigensolver % Variable, 1), Element, &
+          Eigensolver, EigenInd, ComplexPart=.FALSE.)
+      CALL GetScalarLocalEigenmode(Im_Eigenf, ComponentName(Eigensolver % Variable, 2), Element, &
+          Eigensolver, EigenInd, ComplexPart=.FALSE.)
+      
+      nd_eigen = GetElementNOFDOFs(USolver=Eigensolver)
+      nd_eigen = nd_eigen - n
+      IF (nd_eigen /= nd) CALL Fatal(Caller, &
+          'The DOFs of the port model are not compatible with the DOFs of this solver')
+    END IF
+
+    
     ! Numerical integration:
     !-----------------------
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
@@ -845,12 +911,13 @@ CONTAINS
 
     IF (WithNdofs) THEN
       Regularize = UseGaussLaw .AND. ListGetElementLogical( ChargeConservation, Element, Found )
+      IF (EigenBC) THEN
+        CALL Fatal(Caller, 'Eigenfunction BC needs the plain E-formulation')
+      END IF
     END IF
 
     LineElement = GetElementFamily(Element) == 2
     DegenerateElement = (CoordinateSystemDimension() == 3) .AND. LineElement
-
-    imu = CMPLX(0.0_dp, 1.0_dp)
     
     UpdateStiff = .FALSE.
     DO t=1,IP % n  
@@ -915,7 +982,7 @@ CONTAINS
         B = th * Cond
       ELSE
         IF( ListGetElementLogical( Absorb_h, Element, Found ) ) THEN
-          B = imu * rob0 * SQRT( epsr / mur ) 
+          B = im * rob0 * SQRT( epsr / mur ) 
         ELSE
           ConductorBC = ListGetElementLogical( GoodConductor, Element, Found )
           IF (ConductorBC) THEN
@@ -933,11 +1000,22 @@ CONTAINS
           END IF
         END IF
       END IF
-      
-      MagLoad = ListGetElementComplex3D( MagLoad_h, Basis, Element, Found, GaussPoint = t )           
-      TemGrad = CMPLX( ListGetElementRealGrad( TemRe_h,dBasisdx,Element,Found), &
-          ListGetElementRealGrad( TemIm_h,dBasisdx,Element,Found) )
-      L = MagLoad + TemGrad
+
+      IF (EigenBC) THEN
+        B = im * SQRT(-Eigensolver % Variable % Eigenvalues(EigenInd))
+        L = CMPLX(0.0_dp, 0.0_dp, kind=dp)
+        IF (PortSource) THEN
+          DO p=1,nd
+            L(:) = L(:) + CMPLX(Re_Eigenf(n+p) * WBasis(p,:), Im_Eigenf(n+p) * WBasis(p,:), kind=dp) 
+          END DO
+          L = 2 * B * L
+        END IF
+      ELSE
+        MagLoad = ListGetElementComplex3D( MagLoad_h, Basis, Element, Found, GaussPoint = t )           
+        TemGrad = CMPLX( ListGetElementRealGrad( TemRe_h,dBasisdx,Element,Found), &
+            ListGetElementRealGrad( TemIm_h,dBasisdx,Element,Found) )
+        L = MagLoad + TemGrad
+      END IF
 
       IF (.NOT. WithNdofs) THEN
         IF (ABS(B) < AEPS .AND. ABS(DOT_PRODUCT(L,L)) < AEPS) CYCLE
@@ -1219,7 +1297,7 @@ SUBROUTINE VectorHelmholtzCalcFields_Init(Model,Solver,dt,Transient)
 
   SolverParams => GetSolverParams()
 
-  CALL ListAddString( SolverParams, 'Variable', '-nooutput hr_dummy' )
+  CALL ListAddString( SolverParams, 'Variable', '-nooutput vectorhelmholtz_dummy' )
 
   CALL ListAddLogical( SolverParams, 'Linear System refactorize', .FALSE.)
 
@@ -1375,7 +1453,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    UseGaussLaw = GetLogical(pSolver % Values, 'Use Gauss Law', Found)
    LorenzCondition = GetLogical(pSolver % Values, 'Lorenz Condition', Found)
    
-   Omega = GetAngularFrequency(Found=Found)
+   Omega = GetAngularFrequency(pSolver % Values)
    
    Found = .FALSE.
    IF( ASSOCIATED( Model % Constants ) ) THEN

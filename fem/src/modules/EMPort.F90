@@ -479,7 +479,7 @@ SUBROUTINE EMPortSolver_Post(Model, Solver, dt, Transient)
   ModeIndex = ListGetInteger(Params, 'Mode Index', Found)
 !  print *, 'processing eigenvalue', PrimSolver % Variable % Eigenvalues(ModeIndex)
 
-  Beta = -im * SQRT(PrimSolver % Variable % Eigenvalues(ModeIndex))
+  Beta = SQRT(-PrimSolver % Variable % Eigenvalues(ModeIndex))
 !  print *, 'propagation parameter beta', Beta
   
   DO k=1, GetNOFActive()
