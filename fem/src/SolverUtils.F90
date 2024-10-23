@@ -19221,8 +19221,10 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
   
   i = StiffMatrix % NumberOfRows+1
   j = SIZE(CollectionSolution)
-  CollectionSolution(i:j) = 0._dp
-  IF(ExportMultiplier) CollectionSolution(i:j) = MultiplierValues(1:j-i+1)
+  IF( j>= i) THEN
+    CollectionSolution(i:j) = 0._dp
+    IF(ExportMultiplier) CollectionSolution(i:j) = MultiplierValues(1:j-i+1)
+  END IF
 
   IF( InfoActive(30) ) THEN
     pSol => CollectionSolution
@@ -19305,9 +19307,11 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
   END IF
     
   CALL Info(Caller,'Now going for the coupled linear system',Level=10)
+
+  Collectionmatrix % DGMatrix = StiffMatrix %  DGMatrix
   CALL SolveLinearSystem( CollectionMatrix, CollectionVector, &
-      CollectionSolution, Norm, DOFs, Solver, StiffMatrix )
-    
+     CollectionSolution, Norm, DOFs, Solver, StiffMatrix )
+
   !-------------------------------------------------------------------------------
   ! For restricted systems study the norm without some block components.
   ! For example, excluding gauge constraints may give valuable information
