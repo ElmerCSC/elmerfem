@@ -6,5 +6,5 @@ CONFIGURE_FILE(case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO cubes_inside_cube.msh  DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(StatElecSolveMMG3D LABELS mmg slow cmodes)
+ADD_ELMER_TEST(StatElecSolveMMG3D LABELS mmg slow cmodes amr)
 ENDIF()

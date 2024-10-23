@@ -10306,7 +10306,7 @@ END FUNCTION SearchNodeL
     INTEGER, POINTER :: Perm(:)
     
     CALL Info('ComputeNorm','Computing norm of solution',Level=10)
-    
+
     IF(PRESENT(values)) THEN
       x => values
     ELSE
@@ -10440,8 +10440,10 @@ END FUNCTION SearchNodeL
           totn = totn + 1
         END DO
       END SELECT
-
+      
       totn = ParallelReduction(totn) 
+      IF(totn == 0) GOTO 10
+
       nscale = 1.0_dp * totn
       
       SELECT CASE(NormDim)
@@ -10456,9 +10458,11 @@ END FUNCTION SearchNodeL
       END SELECT
     
     ELSE IF( NormDofs < Dofs ) THEN
-      totn = ParallelReduction(n) 
-      nscale = NormDOFs*totn/(1._dp*DOFs)
       Norm = 0.0_dp
+      totn = ParallelReduction(n) 
+      IF(totn == 0) GOTO 10
+
+      nscale = NormDOFs*totn/(1._dp*DOFs)
 
       SELECT CASE(NormDim)
       CASE(0)
@@ -10526,7 +10530,9 @@ END FUNCTION SearchNodeL
       END IF
 
     ELSE
-      val = 0.0_dp
+      Norm = 0.0_dp
+      IF(n==0) GOTO 10 
+      
       SELECT CASE(NormDim)
       CASE(0)
         Norm = MAXVAL(ABS(x(1:n)))
@@ -10539,7 +10545,7 @@ END FUNCTION SearchNodeL
       END SELECT
     END IF
     
-    IF( ComponentsAllocated ) THEN
+10  IF( ComponentsAllocated ) THEN
       DEALLOCATE( NormComponents ) 
     END IF
 !------------------------------------------------------------------------------
@@ -10896,6 +10902,7 @@ END FUNCTION SearchNodeL
     ! The norm should be bounded in order to reach convergence
     !--------------------------------------------------------------------------
     IF( Norm /= Norm ) THEN
+      PRINT *,'Norm:',Norm,PrevNorm, n
       CALL NumericalError(Caller,'Norm of solution appears to be NaN')
     END IF
 
@@ -24825,117 +24832,6 @@ CONTAINS
    END SUBROUTINE ReleaseProjectors
 
 
-   !> Defines and potentially creates output directory.
-   !> The output directory may given in different ways, and even be part of the
-   !> filename, or be relative to home directory. We try to parse every possible
-   !> scenario here that user might have in mind.
-   !-----------------------------------------------------------------------------
-   SUBROUTINE SolverOutputDirectory( Solver, Filename, OutputDirectory, &
-       MakeDir, UseMeshDir  )
-
-     TYPE(Solver_t) :: Solver
-     LOGICAL, OPTIONAL :: MakeDir, UseMeshDir
-     CHARACTER(*) :: Filename
-     CHARACTER(:), ALLOCATABLE :: OutputDirectory
-
-     LOGICAL :: Found, AbsPathInName, DoDir, PartitioningSubDir
-     INTEGER :: nd, nf, n
-     CHARACTER(LEN=MAX_NAME_LEN) :: Str
-
-     IF( PRESENT( MakeDir ) ) THEN
-       DoDir = MakeDir
-     ELSE
-       DoDir = ( Solver % TimesVisited == 0 ) .AND. ( ParEnv % MyPe == 0 )
-     END IF
-
-     ! Output directory is obtained in order
-     ! 1) solver section
-     ! 2) simulation section
-     ! 3) header section
-     OutputDirectory = ListGetString( Solver % Values,'Output Directory',Found) 
-     IF(.NOT. Found) OutputDirectory = ListGetString( CurrentModel % Simulation,&
-         'Output Directory',Found) 
-
-     IF(.NOT. Found) OutputDirectory = TRIM(OutputPath)          
-     nd = LEN_TRIM(OutputDirectory)
-
-     ! If the path is just working directory then that is not an excude
-     ! to not use the mesh name, or directory that comes with the filename 
-     IF(.NOT. Found .AND. nd == 1 .AND. OutputDirectory(1:1)=='.') nd = 0
-
-     ! If requested by the optional parameter use the mesh directory when
-     ! no results directory given. This is an old convection used in some solvers. 
-     IF( nd == 0 .AND. PRESENT( UseMeshDir ) ) THEN
-       IF( UseMeshDir ) THEN
-         OutputDirectory = TRIM(CurrentModel % Mesh % Name)
-         nd = LEN_TRIM(OutputDirectory)       
-       END IF
-     END IF
-     
-     ! Use may have given part or all of the path in the filename.
-     ! This is not preferred, but we cannot trust the user.
-     nf = LEN_TRIM(Filename)        
-     n = INDEX(Filename(1:nf),'/')
-     AbsPathInName = INDEX(FileName,':')>0 .OR. (Filename(1:1)=='/') &
-         .OR. (Filename(1:1)==Backslash)
-
-     IF( nd > 0 .AND. .NOT. AbsPathInName ) THEN
-       ! Check that we have not given the path relative to home directory
-       ! because the code does not understand the meaning of tilde.
-       IF(nd>=2) THEN
-         IF( OutputDirectory(1:2) == '~/') THEN
-           CALL get_environment_variable('HOME',Str)
-           OutputDirectory = TRIM(Str)//'/'//OutputDirectory(3:nd)
-           nd = LEN_TRIM(OutputDirectory)
-         END IF
-       END IF
-       ! To be on the safe side create the directory. If it already exists no harm done.
-       ! Note that only one directory may be created. Hence if there is a path with many subdirectories
-       ! that will be a problem. Fortran does not have a standard ENQUIRE for directories hence
-       ! we just try to make it. 
-       IF( DoDir ) THEN
-         CALL Info('SolverOutputDirectory','Creating directory: '//TRIM(OutputDirectory(1:nd)),Level=8)
-         CALL MakeDirectory( OutputDirectory(1:nd) // CHAR(0) )      
-       END IF
-     END IF
-
-     ! In this case the filename includes also path and we remove it from there and
-     ! add it to the directory. 
-     IF( n > 2 ) THEN    
-       CALL Info('SolverOutputDirectory','Parcing path from filename: '//TRIM(Filename(1:n)),Level=10)
-       IF( AbsPathInName .OR. nd == 0) THEN
-         ! If the path is absolute then it overruns the given path!
-         OutputDirectory = Filename(1:n-1)
-         nd = n-1
-       ELSE
-         ! If path is relative we add it to the OutputDirectory and take it away from Filename
-         OutputDirectory = OutputDirectory(1:nd)//'/'//Filename(1:n-1)        
-         nd = nd + n 
-       END IF
-       Filename = Filename(n+1:nf)      
-
-       IF( DoDir ) THEN
-         CALL Info('SolverOutputDirectory','Creating directory: '//TRIM(OutputDirectory(1:nd)),Level=8)
-         CALL MakeDirectory( OutputDirectory(1:nd) // CHAR(0) )
-       END IF
-     END IF
-
-     ! Finally, on request save each partitioning to different directory.
-     PartitioningSubDir = ListGetLogical( Solver % Values,'Output Partitioning Directory',Found)
-     IF(.NOT. Found ) THEN
-       PartitioningSubDir = ListGetLogical( CurrentModel % Simulation,'Output Partitioning Directory',Found)
-     END IF
-     IF( PartitioningSubDir ) THEN
-       OutputDirectory = TRIM(OutputDirectory)//'/np'//I2S(ParEnv % PEs)
-       nd = LEN_TRIM(OutputDirectory)             
-       IF( DoDir ) THEN
-         CALL Info('SolverOutputDirectory','Creating directory: '//TRIM(OutputDirectory(1:nd)),Level=8)
-         CALL MakeDirectory( OutputDirectory(1:nd) // CHAR(0) )
-       END IF
-      END IF
-
-   END SUBROUTINE SolverOutputDirectory
-   !-----------------------------------------------------------------------------
 
    ! This routine changes the IP field to DG field just while the results are being written.
    !---------------------------------------------------------------------------------------

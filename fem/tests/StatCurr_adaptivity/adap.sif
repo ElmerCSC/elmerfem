@@ -1,0 +1,58 @@
+Header
+  Mesh DB "." "kulma"
+End
+
+Constants
+  Permittivity Of Vacuum = Real 8.8542e-12
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 20
+  Mesh Input File = "kulma.mif"
+! Post File = "kulma.ep"
+End
+
+Body 1
+  Material = 1
+  Equation = 1
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Material 1
+  Electric Conductivity = 1
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 2
+  Potential = 0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 5
+  Potential = 1
+End
+
+Solver 1
+  Equation = StatCurrent
+  Variable = Potential
+  Procedure = "StatCurrentSolve" "StatCurrentSolver"
+
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+
+  Steady State Convergence Tolerance = 1.0e-8
+
+  Adaptive Mesh Refinement = True
+  Adaptive Remesh = True
+  Adaptive Error Limit = 0.05
+  Adaptive Max H = 0.25
+End
+
+Solver 1 :: Reference Norm = Real 0.536205922533
+Solver 1 :: Reference Norm Tolerance = Real 1.0e-2

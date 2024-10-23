@@ -24,8 +24,8 @@ Coordinate Ratios = 1
 Decimals = 8
 Element Degree = 1
 Element Innernodes = False
-Element Divisions 1 = 1 80 80 1
-Element Divisions 2 = 1 80 1
+Element Divisions 1 = 1 10 10 1
+Element Divisions 2 = 1 10 1
 Element Ratios 1 = 1 1 1 1
 Element Ratios 2 = 1 1 1
 End

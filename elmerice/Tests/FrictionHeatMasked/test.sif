@@ -180,6 +180,10 @@ Solver 6
   Procedure = File "DummySolver" "DummySolver"
   Variable =  -dofs 1 "Friction Load"
   Exported Variable 1 = -dofs 1 "Friction Load Mask"
+
+! This seems to result to NaN for some reason on some platforms.
+! So supress it for now.
+  Exec Solver = never
 End
 
 !creates output

@@ -32,16 +32,21 @@ End
 
 Simulation
   Max Output Level = 7
-  Coordinate System = Cartesian
+  Coordinate System = Cartesian 3D
   Simulation Type = Steady state
-  Steady State Max Iterations = 3 ! 1000
+  Steady State Max Iterations = 1000
 
 ! Activate for output
-!  Post File = a.vtu
+  Post File = c.vtu
 !  vtu: Save Bulk Only = Logical True
-!  vtu: ascii output = logical True
+  vtu: ascii output = logical True
 
   Mesh Levels = 1
+
+! Extruded the 2D mesh into 3rd dimension
+  Extruded Mesh Layers = 10
+  Extruded Min Coordinate = -5.0
+  Extruded Max Coordinate =  5.0
 End
 
 Body 1
@@ -61,7 +66,8 @@ End
 Solver 1
   Equation = LinearElasticity
   Procedure = "StressSolve" "StressSolver"
-  Variable = -dofs 2 Displacement
+!  Procedure = "ElasticSolve" "ElasticSolver"
+  Variable = -dofs 3 Displacement
 
   Nonlinear System Max Iterations = 1
   Nonlinear System Consistent Norm = True
@@ -137,23 +143,46 @@ Material 1
 End
 
 Boundary Condition 1
-  Target Boundaries(1) = 4
-  Name = "Symmetry"
-  Displacement 1 = 0.0
+  Target Boundaries(1) = 1
+  Name = "Bot"
 End
 
 Boundary Condition 2
-  Target Coordinates(1,2) = 0.0 $H$
-  Name = "PointLoad"
-  Displacement 2 Load = Real -1.0
+  Target Boundaries(1) = 2
+  Name = "Right"
+  Force 2 = Variable "Coordinate 2"
+    Real
+      0.0 -1.0
+      10.0 0.0
+      20.0 0.0
+    End 
+
 End
 
 Boundary Condition 3
-  Target Coordinates(1,2) = $L$ 0.0 
-  Name = "Fix"
-!  Displacement 1 = 0.0
-  Displacement 2 = 0.0
+  Target Boundaries(1) = 3
+  Name = "Top"
 End
+
+Boundary Condition 4
+  Target Boundaries(1) = 4
+  Name = "Left"
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
+  Displacement 3 = 0.0
+End
+
+Boundary Condition 5
+  Name = "Front"
+  Displacement 3 = 0.0
+End
+
+Boundary Condition 6
+  Name = "Back"
+End
+
+
+
 
 ! After 3 SS iterations
 Solver 1 :: Reference Norm = 2.11183667E+02

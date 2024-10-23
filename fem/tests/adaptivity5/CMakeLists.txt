@@ -6,5 +6,5 @@ IF(HAVE_UMFPACK OR HAVE_MUMPS)
 
   file(COPY ELMERSOLVER_STARTINFO mesh.grd  DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-  ADD_ELMER_TEST(adaptivity5 LABELS quick elasticsolve)
+  ADD_ELMER_TEST(adaptivity5 LABELS quick elasticsolve amr)
 ENDIF()

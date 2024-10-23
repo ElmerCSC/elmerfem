@@ -482,9 +482,19 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
     END IF
   END IF
 
+  ! Sometimes we may want to ignore eigenmodes completely.
+  !--------------------------------------------------------------
+  IF( ListGetLogical( Params,'Ignore Eigenmodes',GotIt) ) THEN
+    EigenAnalysis = .FALSE.
+    EigenVectorMode = 0
+    MaxModes = 0
+    MaxModes2 = 0
+    GOTO 1 
+  END IF
+  
   !------------------------------------------------------------------------------
   ! Check whether we have nodes coming from different reasons
-  !------------------------------------------------------------------------------  
+  !------------------------------------------------------------------------------       
   ActiveModes => ListGetIntegerArray( Params,'Active EigenModes',GotActiveModes ) 
   IF( GotActiveModes ) THEN
     MaxModes = SIZE( ActiveModes )
@@ -502,9 +512,9 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
               GetInteger( Model % Solvers(i) % Values,'Scanning Loops', GotIt ) )
         END IF
       END DO
-    END IF     
+    END IF
   END IF
-  EigenVectorMode = 0
+    
   IF( MaxModes > 0 ) THEN
     CALL Info(Caller,'Maximum number of eigen/harmonic modes: '//I2S(MaxModes),Level=7)
     Str = ListGetString( Params,'Eigen Vector Component', GotIt )
@@ -547,6 +557,9 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
     FileIndex = 1
   END IF
 
+  ! Let's jump here if we ignore all modes. 
+1 CONTINUE
+  
   BcOffset = 0
   WriteIds = GetLogical( Params,'Save Geometry Ids',GotIt)  
   IF( WriteIds ) THEN
@@ -972,13 +985,23 @@ CONTAINS
           Values => Solution % Values
           IF ( ASSOCIATED(Solution2) ) Values2 => Solution2 % Values
           IF ( ASSOCIATED(Solution3) ) Values3 => Solution3 % Values
-          
-          EigenVectors => Solution % EigenVectors
-          IF(ASSOCIATED(Solution2) ) EigenVectors2 => Solution2 % EigenVectors
-          IF(ASSOCIATED(Solution3) ) EigenVectors3 => Solution3 % EigenVectors
-          
-          ConstraintModes => Solution % ConstraintModes
-         
+
+          IF( MaxModes == 0 ) THEN
+            EigenVectors => NULL()
+            EigenVectors2 => NULL()
+            EigenVectors3 => NULL()            
+          ELSE
+            EigenVectors => Solution % EigenVectors
+            IF(ASSOCIATED(Solution2) ) EigenVectors2 => Solution2 % EigenVectors
+            IF(ASSOCIATED(Solution3) ) EigenVectors3 => Solution3 % EigenVectors
+          END IF
+
+          IF( MaxModes2 == 0 ) THEN
+            ConstraintModes => NULL()
+          ELSE
+            ConstraintModes => Solution % ConstraintModes
+          END IF
+            
           ! Default is to save the field only once
           NoFields = 0
           NoFields2 = 0
@@ -1063,7 +1086,7 @@ CONTAINS
               IF(.NOT. ASSOCIATED( Solution ) ) THEN
                 Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldNameB)//' 1',ThisOnly=NoInterp)
                 ComponentVectorB = ASSOCIATED(Solution)
-                EigenVectorsB => Solution % EigenVectors
+                IF(NoModes>0) EigenVectorsB => Solution % EigenVectors
               END IF
               
               IF( ASSOCIATED(Solution)) THEN 
@@ -1073,12 +1096,12 @@ CONTAINS
                   Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldNameB)//' 2',ThisOnly=NoInterp)
                   IF( ASSOCIATED(Solution)) THEN
                     ValuesB2 => Solution % Values
-                    EigenVectorsB2 => Solution % EigenVectors
+                    IF(NoModes>0) EigenVectorsB2 => Solution % EigenVectors
                   END IF
                   Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldNameB)//' 3',ThisOnly=NoInterp)
                   IF( ASSOCIATED(Solution)) THEN
                     ValuesB3 => Solution % Values
-                    EigenVectorsB3 => Solution % EigenVectors
+                    IF(NoModes>0) EigenVectorsB3 => Solution % EigenVectors
                   END IF
                 END IF
                 ComplementExists = .TRUE.
@@ -1367,13 +1390,23 @@ CONTAINS
               dofs = 3
             END IF
           END IF
-          
-          EigenVectors => Solution % EigenVectors
-          IF(ASSOCIATED(Solution2) ) EigenVectors2 => Solution2 % EigenVectors
-          IF(ASSOCIATED(Solution3) ) EigenVectors3 => Solution3 % EigenVectors
-          
-          ConstraintModes => Solution % ConstraintModes
-         
+
+          IF( MaxModes == 0 ) THEN
+            EigenVectors => NULL()
+            EigenVectors2 => NULL()
+            EigenVectors3 => NULL()
+          ELSE
+            EigenVectors => Solution % EigenVectors
+            IF(ASSOCIATED(Solution2) ) EigenVectors2 => Solution2 % EigenVectors
+            IF(ASSOCIATED(Solution3) ) EigenVectors3 => Solution3 % EigenVectors
+          END IF
+            
+          IF( MaxModes2 == 0 ) THEN
+            ConstraintModes => NULL()
+          ELSE
+            ConstraintModes => Solution % ConstraintModes
+          END IF
+            
           ! Default is to save the field only once
           NoFields = 0
           NoFields2 = 0
@@ -1383,7 +1416,7 @@ CONTAINS
           IF( EigenAnalysis ) THEN
             IF( MaxModes > 0 .AND. FileIndex <= MaxModes .AND. &
                 ASSOCIATED(EigenVectors) ) THEN  
-              NoModes = SIZE( Solution % EigenVectors, 1 )
+              NoModes = SIZE( EigenVectors, 1 )
               
               IF( GotActiveModes ) THEN
                 IndField = ActiveModes( FileIndex ) 
@@ -1417,8 +1450,8 @@ CONTAINS
               NoFields2 = 1
             END IF
           ELSE
-            IF( MaxModes > 0 .AND. ASSOCIATED(Solution % EigenVectors) ) THEN  
-              NoModes = SIZE( Solution % EigenVectors, 1 )
+            IF( MaxModes > 0 .AND. ASSOCIATED(EigenVectors) ) THEN  
+              NoModes = SIZE( EigenVectors, 1 )
               IF( MaxModes > 0 ) NoModes = MIN( MaxModes, NoModes )
               NoFields = NoModes
             END IF

@@ -90,7 +90,8 @@ jobs:
             libqwt-qt5-dev qtscript5-dev libqt5svg5-dev \
             libvtk9-qt-dev libglvnd-dev \
             occt-misc libocct-data-exchange-dev libocct-draw-dev \
-            $([ "${{ matrix.mpi }}" == "with" ] && echo "trilinos-all-dev libptscotch-dev")
+            $([ "${{ matrix.mpi }}" == "with" ] && echo "trilinos-all-dev libptscotch-dev") \
+            $([ "${{ matrix.mpi }}" == "with" ] && echo "libnetcdff-dev")
 
       - name: configure
         # CHOLMOD and rocALUTION require a working OpenMP package. So, disable them for clang.

@@ -6,5 +6,5 @@ CONFIGURE_FILE(case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO winkel.msh  DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(adaptivity1-mmg3d LABELS mmg)
+ADD_ELMER_TEST(adaptivity1-mmg3d LABELS mmg amr)
 ENDIF()
