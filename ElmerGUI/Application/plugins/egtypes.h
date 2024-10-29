@@ -335,6 +335,7 @@ struct ElmergridType {
     removelowdim,
     removeunused,
     removeintbcs,
+    autoclean,
     increase,
     reducemat1,
     reducemat2,
