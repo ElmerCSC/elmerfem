@@ -3624,6 +3624,7 @@ void InitParameters(struct ElmergridType *eg)
   eg->removelowdim = FALSE;
   eg->removeintbcs = FALSE;
   eg->removeunused = FALSE;
+  eg->autoclean = FALSE;
   eg->dim = 3;
   eg->center = FALSE;
   eg->scale = FALSE;
@@ -3961,6 +3962,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
       eg->boundorder = TRUE;
       eg->removeunused = TRUE;
       printf("Lower dimensional boundaries will be removed\n");
+      eg->autoclean = TRUE;
       printf("Materials and boundaries will be renumbered\n");
       printf("Nodes that do not appear in any element will be removed\n");
     }   

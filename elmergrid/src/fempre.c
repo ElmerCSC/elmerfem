@@ -137,6 +137,15 @@ int main(int argc, char *argv[])
 
   timer_show();
   
+  if(info){
+    if(!eg.autoclean && (inmethod > 2)){
+      printf("Notice: Input file type %d, -autoclean option not entered.\n",inmethod);
+      printf("For this type of input file, running ElmerGrid with the -autoclean option\n");
+      printf("is usually the preferred method.  Advanced users of Elmer who definitely\n");
+      printf("know they don't want -autoclean, may safely ignore this notice.\n\n");
+    }
+  }
+
   switch (inmethod) {
 
   case 1:        
