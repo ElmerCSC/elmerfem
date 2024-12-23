@@ -17,7 +17,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 25
 
   Coordinate System = "Cartesian"
   Coordinate Mapping(3) = 1 2 3
@@ -87,13 +87,15 @@ Solver 1
   Eliminate Linear Constraints = Logical True
   Eliminate Slave = Logical True    
 !  Eliminate From Master = Logical True
-!  Eliminate Discont = Logical True
 
   Apply Mortar BCs = Logical True  
 
   Nonlinear System Consistent Norm = True  
 
   Linear System Abort Not Converged = False
+
+
+!  Old Elimination = Logical True
 End
 
 

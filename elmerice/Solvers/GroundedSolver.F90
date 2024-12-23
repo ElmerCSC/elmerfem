@@ -122,7 +122,7 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Nodes_t), SAVE :: Nodes
 
   LOGICAL :: AllocationsDone = .FALSE., GotIt, stat,UnFoundFatal=.TRUE.,&
-       AllGrounded = .FALSE., useLSvar = .FALSE.,                       &
+       AllGrounded = .FALSE., useLSvar = .FALSE.,  Active               &
        CheckConn ! check ocean connectivity (creates separate mask without isolated ungrounded regions)
 
   INTEGER :: ii, mn, en, t, Nn, istat, DIM, MSum, ZSum, bedrockSource, ConnectivityMode
@@ -146,6 +146,8 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
   PointerToVariable => Solver % Variable
   Permutation  => PointerToVariable % Perm
   VariableValues => PointerToVariable % Values
+
+  Active = ANY(Permutation > 0)
 
   CALL INFO(SolverName, 'Computing grounded mask from geometry', level=3)
 
@@ -396,10 +398,10 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
   END DO
   
   IF (CheckConn) THEN
-     IF ( ParEnv % PEs>1 ) CALL ParallelSumVector( Solver % Matrix, ConnMaskVar % Values, OPER_MIN )
+     IF ( ParEnv % PEs>1 .AND. Active) CALL ParallelSumVector( Solver % Matrix, ConnMaskVar % Values, OPER_MIN )
   END IF
-  IF ( ParEnv % PEs>1 ) CALL ParallelSumVector( Solver % Matrix, VariableValues, OPER_MIN )
-  
+  IF ( ParEnv % PEs>1 .AND. Active) CALL ParallelSumVector( Solver % Matrix, VariableValues, OPER_MIN )
+
   CALL INFO( SolverName , 'Done')
   
 CONTAINS

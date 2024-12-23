@@ -33,6 +33,12 @@
 ! *  Original Date: 16.11.2005
 ! *
 ! *****************************************************************************/
+! *  Modified by: Cruz Garcia Molina
+! *  Email:   Cruz.Garcia-molina@univ-grenoble-alpes.fr
+! *  Address: IGE - OSUG B
+! *           460 rue de la Piscine 
+! *           Domaine universitaire 
+! *           38400 St Martin d'Hères, France
 !------------------------------------------------------------------------------
 !>  Renormalizes the level-set function using straight-forward geometric search.
 !>  Also includes an option to do the convection at the same time as an alternative
@@ -68,14 +74,19 @@
      INTEGER, POINTER :: SurfPerm(:)
      REAL(KIND=dp), POINTER :: Surface(:),Distance(:), Surf(:)
      REAL(KIND=dp), ALLOCATABLE :: ZeroNodes(:,:,:), Direction(:)
+     REAL(KIND=dp), ALLOCATABLE :: send(:),recv(:),recZeroNodes(:,:,:)
      INTEGER, POINTER :: DistancePerm(:)
-     INTEGER :: ZeroLevels, ReinitializeInterval, ExtractInterval
+     INTEGER :: ZeroLevels, ReinitializeInterval, ExtractInterval, &
+             & ierr, request, recZeroLevels,aux,nPEs
+     INTEGER,ALLOCATABLE,SAVE :: pZeroLevels(:),disps(:)
      LOGICAL :: Reinitialize, Extrct
+     LOGICAL,SAVE :: Parallel
      REAL(KIND=dp) :: Relax, dt, r, NarrowBand, DsMax
      REAL(KIND=dp), ALLOCATABLE :: ElemVelo(:,:), SurfaceFlux(:)
      REAL(KIND=dp) :: at,totat,st,totst
      CHARACTER(LEN=MAX_NAME_LEN) :: LevelSetVariableName
-     
+     INTEGER status(MPI_STATUS_SIZE)     
+
      SAVE ElementNodes, ElemVelo, Direction, ZeroNodes, TimesVisited, &
          Distance, DistancePerm, ExtractAllocated, DistanceAllocated
 
@@ -135,6 +146,9 @@
 !    Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
      IF ( .NOT. ExtractAllocated ) THEN
+       Parallel = ( ParEnv % PEs > 1 )
+       IF (Parallel) ALLOCATE(pZeroLevels(ParEnv % PEs),disps(ParEnv % PEs))
+       
        N = Solver % Mesh % MaxElementNodes
        ALLOCATE( ElementNodes % x( N ), ElementNodes % y( N ), ElementNodes % z( N ),   &
            ElemVelo( 2, N), ZeroNodes(Solver % Mesh % NumberOfBulkElements,2,2), &
@@ -166,12 +180,43 @@
      st = CPUTIme()-st
      WRITE(Message,'(a,F8.2)') 'Zero level extracted in time (s):',st
      CALL Info( 'LevelSetDistance',Message, Level=4 )
+     recZeroLevels = ZeroLevels
+     
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! BEGIN of SENDING-RECEIVING ZeroLevels array
+     IF (Parallel) THEN
+       nPEs=ParEnv % PEs
+       CALL MPI_AllGather(ZeroLevels,1,MPI_INTEGER,pZeroLevels,1,MPI_INTEGER,ELMER_COMM_WORLD, ierr)
+       recZeroLevels = SUM(pZeroLevels(1:nPEs))
+       ALLOCATE(send(ZeroLevels),recv(recZeroLevels),recZeroNodes(recZeroLevels,2,2))
+       disps(1)=0
+       Do i=2,nPes
+         disps(i)=disps(i-1)+pZeroLevels(i-1)
+       END DO
+       DO i=1,2
+         DO j=1,2
+           IF (ZeroLevels.GT.0) send(1:ZeroLevels)=ZeroNodes(1:ZeroLevels,i,j)
+           CALL MPI_AllGatherv(send,ZeroLevels,MPI_DOUBLE_PRECISION,recv,&
+               pZeroLevels,disps,MPI_DOUBLE_PRECISION,ELMER_COMM_WORLD, ierr)
+           recZeroNodes(1:recZeroLevels,i,j)=recv(1:recZeroLevels)
+         END DO
+       END DO
 
+       ZeroLevels=recZeroLevels
+       IF (size(ZeroNodes,1).LT.ZeroLevels) THEN
+         DEALLOCATE(ZeroNodes)
+         ALLOCATE(ZeroNodes(ZeroLevels,2,2))
+       END IF
+       ZeroNodes(1:ZeroLevels,1:2,1:2)=recZeroNodes(1:recZeroLevels,1:2,1:2)
+
+       DEALLOCATE(send,recv,recZeroNodes)
+     ENDIF
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! END of SENDING-RECEIVING ZeroLevels array
+     
      IF( ZeroLevels == 0) THEN
        CALL Warn('LevelSetDistance','The does not seem to be a zero level-set present, exiting...')
        RETURN
      END IF
-
+     
      IF(.NOT. Reinitialize) THEN
        CALL Info('LevelSetDistance','Exiting without reinitialization')
        RETURN
@@ -306,7 +351,7 @@ CONTAINS
       Element => Solver % Mesh % Elements(i)
       n = Element % TYPE % NumberOfNodes
       NodeIndexes => Element % NodeIndexes
-      
+      IF ( Element % PartIndex /= ParEnv % MyPE ) CYCLE !! ommit halo elements
       IF ( ALL( Surface(SurfPerm(NodeIndexes)) < 0) .OR. &
           ALL( Surface(SurfPerm(NodeIndexes)) > 0) ) CYCLE
       

@@ -117,6 +117,9 @@ Solver 2
   Bisection Search Tolerance = Real 1.0e-3
 
   Solver Timing = True
+
+  Create Zero Levelset = Logical True
+  Save Density Histogram = Logical True
 End
 
 

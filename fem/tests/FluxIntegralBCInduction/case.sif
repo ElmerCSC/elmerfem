@@ -20,7 +20,7 @@ End
 $chr="a"
 
 Simulation
-  Max Output Level = 7
+  Max Output Level = 20
   Coordinate System = Axi Symmetric
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Steady state
@@ -77,20 +77,11 @@ Solver 2
 
   Calculate Magnetic Field Strength = True
   Calculate Electric Field = True
-  Calculate Nodal Heating = True
-  Calculate Current Density = True
+  Calculate Nodal Heating = False
+  Calculate Current Density = False
 
-  Calculate Nodal Fields = True
-  Calculate Elemental Fields = False
-  
-  Optimize Bandwidth = False
-  Linear System Scaling = False
-
-  Linear System Solver = Direct
-  Linear System Direct Method = umfpack
-
-  ctest 1 = Real -1.0
-  ctest 2 = Real -1.0
+  Calculate Nodal Fields = False
+  Calculate Elemental Fields = True
 End
 
 

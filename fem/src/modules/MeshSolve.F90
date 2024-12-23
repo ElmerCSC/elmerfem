@@ -94,15 +94,12 @@ END SUBROUTINE MeshSolver_Init
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-  INTEGER :: i,j,k,l,m,n,nd,nb,t,DOFs,STDOFs,LocalNodes,istat
+  INTEGER :: i,j,k,l,m,n,nd,nb,t,DOFs,STDOFs,LocalNodes,istat,iter,maxIter
 
   TYPE(Element_t),POINTER :: Element
   TYPE(ValueList_t),POINTER :: Material, BC
-
-  REAL(KIND=dp) :: RelativeChange, UNorm, PrevUNorm,  maxu
-
+  REAL(KIND=dp) :: maxu, Unorm
   TYPE(Variable_t), POINTER :: StressSol, MeshSol
-
   REAL(KIND=dp), POINTER :: MeshUpdate(:),Displacement(:), &
        MeshVelocity(:)
 
@@ -195,9 +192,6 @@ END SUBROUTINE MeshSolver_Init
   END IF
 
 !------------------------------------------------------------------------------
-
-  UNorm = Solver % Variable % Norm
-!------------------------------------------------------------------------------
 ! Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
   IF ( .NOT. AllocationsDone .OR. Solver % MeshChanged ) THEN
@@ -237,136 +231,143 @@ END SUBROUTINE MeshSolver_Init
   CALL Info( 'MeshSolve', ' ', Level=4 )
   CALL Info( 'MeshSolve', 'Starting assembly...', Level=4 )
 !------------------------------------------------------------------------------
-  CALL DefaultInitialize()
 !------------------------------------------------------------------------------
 
-  
-  DO t=1,Solver % NumberOfActiveElements
+  MaxIter = GetInteger(Solver % Values,'Nonlinear System Max Iterations',Found)
+  IF(.NOT.Found) MaxIter = 1
 
-     IF ( RealTime() - at0 > 1.0 ) THEN
+  ! In some rare case we may have contact and then we need nonlinear iterations.
+  !----------------------------------------------------------------------------
+  DO iter=1,MaxIter
+
+    CALL DefaultInitialize()
+    
+    DO t=1,Solver % NumberOfActiveElements      
+
+      IF ( RealTime() - at0 > 1.0 ) THEN
         WRITE(Message,'(a,i3,a)' ) '   Assembly: ', INT(100.0 - 100.0 * &
-             (Solver % NumberOfActiveElements-t) / &
-             (1.0*Solver % NumberOfActiveElements)), ' % done'
+            (Solver % NumberOfActiveElements-t) / &
+            (1.0*Solver % NumberOfActiveElements)), ' % done'
 
         CALL Info( 'MeshSolve', Message, Level=5 )
-                     
+
         at0 = RealTime()
-     END IF
+      END IF
 
-     Element => GetActiveElement(t)
-     nd = GetElementNOFDOFs()
-     nb = GetElementNOFBDOFs()
-     n  = GetElementNOFNodes()
+      Element => GetActiveElement(t)
+      nd = GetElementNOFDOFs()
+      nb = GetElementNOFBDOFs()
+      n  = GetElementNOFNodes()
 
-     Material => GetMaterial()
+      Material => GetMaterial()
 
-     ElasticModulus(1,1,1:n) = GetReal( Material, &
+      ElasticModulus(1,1,1:n) = GetReal( Material, &
           'Mesh Elastic Modulus', Found )
-     IF ( .NOT. Found ) THEN
+      IF ( .NOT. Found ) THEN
         ElasticModulus(1,1,1:n) = GetReal( Material, &
-             'Youngs Modulus', Found )
-     END IF
-     IF ( .NOT. Found ) ElasticModulus(1,1,1:n) = 1.0d0
+            'Youngs Modulus', Found )
+      END IF
+      IF ( .NOT. Found ) ElasticModulus(1,1,1:n) = 1.0d0
 
-     PoissonRatio(1:n) = GetReal( Material, &
+      PoissonRatio(1:n) = GetReal( Material, &
           'Mesh Poisson Ratio', Found )
-     IF ( .NOT. Found ) THEN
+      IF ( .NOT. Found ) THEN
         PoissonRatio(1:n) = GetReal( Material, &
-          'Poisson Ratio', Found )
-     END IF
-     IF ( .NOT. Found ) PoissonRatio(1:n) = 0.25d0
+            'Poisson Ratio', Found )
+      END IF
+      IF ( .NOT. Found ) PoissonRatio(1:n) = 0.25d0
 
 !------------------------------------------------------------------------------
 !    Get element local stiffness & mass matrices
 !------------------------------------------------------------------------------
-     CALL LocalMatrix( STIFF, FORCE, ElasticModulus, &
-       PoissonRatio, .FALSE., Isotropic, Element, n, nd, nb )
+      CALL LocalMatrix( STIFF, FORCE, ElasticModulus, &
+          PoissonRatio, .FALSE., Isotropic, Element, n, nd, nb )
 
 !------------------------------------------------------------------------------
 !    Update global matrices from local matrices 
 !------------------------------------------------------------------------------
-     CALL DefaultUpdateEquations( STIFF, FORCE )
-  END DO
-  CALL DefaultFinishBulkAssembly()
+      CALL DefaultUpdateEquations( STIFF, FORCE )
+    END DO
+    CALL DefaultFinishBulkAssembly()
 
 
 !------------------------------------------------------------------------------
 !     Neumann & Newton boundary conditions
 !------------------------------------------------------------------------------
 
-  DoIt = ListCheckPresentAnyBC( Model,'Mesh Normal Force' ) .OR. &
-      ListCheckPrefixAnyBC( Model,'Mesh Force' )
-  
-  IF( DoIt ) THEN
-    DO t = 1, Solver % Mesh % NumberOfBoundaryElements
+    DoIt = ListCheckPresentAnyBC( Model,'Mesh Normal Force' ) .OR. &
+        ListCheckPrefixAnyBC( Model,'Mesh Force' )
 
-      Element => GetBoundaryElement(t)
-      IF ( .NOT.ActiveBoundaryElement() ) CYCLE
+    IF( DoIt ) THEN
+      DO t = 1, Solver % Mesh % NumberOfBoundaryElements
 
-      BC => GetBC()
-      IF ( .NOT. ASSOCIATED(BC) ) CYCLE
+        Element => GetBoundaryElement(t)
+        IF ( .NOT.ActiveBoundaryElement() ) CYCLE
+
+        BC => GetBC()
+        IF ( .NOT. ASSOCIATED(BC) ) CYCLE
 
 !------------------------------------------------------------------------------
 !        Force in given direction BC: \tau\cdot n = F
 !------------------------------------------------------------------------------
-      nd = GetElementNOFDOFs()
-      n  = GetElementNOFNodes()
-      nb = GetElementNOFBDOFs()
+        nd = GetElementNOFDOFs()
+        n  = GetElementNOFNodes()
+        nb = GetElementNOFBDOFs()
 
-      LOAD = 0.0D0
-      Alpha      = 0.0D0
-      Beta       = 0.0D0
+        LOAD = 0.0D0
+        Alpha =  0.0D0
+        DO i = 1, DIM
+          Alpha(i,1:n) =  ListGetReal( BC, 'Mesh Penalty Factor '//TRIM(I2S(i)), n, Element % NodeIndexes, Found)        
+          IF (Found) THEN
+            WRITE(Message,*) 'Mesh Penalty Factor '//TRIM(I2S(i))//' =', Alpha(i,1) 
+            CALL INFO("MeshSolve", Message, Level=20)
+            !CALL INFO("MeshSolve"
+          END IF
+        END DO
+        Beta       =  0.0D0
 
-      GotForceBC = .FALSE.
-      LOAD(1,1:n) =  GetReal( BC, 'Mesh Force 1', Found )
-      GotForceBC = GotForceBC.OR.Found
-      LOAD(2,1:n) =  GetReal( BC, 'Mesh Force 2', Found )
-      GotForceBC = GotForceBC.OR.Found
-      LOAD(3,1:n) =  GetReal( BC, 'Mesh Force 3', Found )
-      GotForceBC = GotForceBC.OR.Found
+        GotForceBC = .FALSE.
+        LOAD(1,1:n) =  GetReal( BC, 'Mesh Force 1', Found )
+        GotForceBC = GotForceBC.OR.Found
+        LOAD(2,1:n) =  GetReal( BC, 'Mesh Force 2', Found )
+        GotForceBC = GotForceBC.OR.Found
+        LOAD(3,1:n) =  GetReal( BC, 'Mesh Force 3', Found )
+        GotForceBC = GotForceBC.OR.Found
 
-      Beta(1:n) = GetReal( BC, 'Mesh Normal Force',Found )
-      GotForceBC = GotForceBC.OR.Found
+        Beta(1:n) = GetReal( BC, 'Mesh Normal Force',Found )
+        GotForceBC = GotForceBC.OR.Found
 
-      IF ( .NOT.GotForceBC ) CYCLE
+        IF ( .NOT.GotForceBC ) CYCLE
 
-      CALL MeshBoundary( STIFF,FORCE, LOAD,Alpha,Beta,Element,n,nd,nb )
+        CALL MeshBoundary( STIFF,FORCE, LOAD,Alpha,Beta,Element,n,nd,nb )
 
-      CALL DefaultUpdateEquations( STIFF, FORCE )
-    END DO
-  END IF
+        CALL DefaultUpdateEquations( STIFF, FORCE )
+      END DO
+    END IF
     
 !------------------------------------------------------------------------------
   
-  CALL DefaultFinishAssembly()
-  CALL Info( 'MeshSolve', 'Assembly done', Level=4 )
+    CALL DefaultFinishBoundaryAssembly()
+
+    CALL DefaultFinishAssembly()
+    CALL Info( 'MeshSolve', 'Assembly done', Level=4 )
 
 !------------------------------------------------------------------------------
 ! Dirichlet boundary conditions
 !------------------------------------------------------------------------------
-  CALL DefaultDirichletBCs()
+    CALL DefaultDirichletBCs()
 
 !------------------------------------------------------------------------------
-  CALL Info( 'MeshSolve', 'Set boundaries done', Level=4 )
+    CALL Info( 'MeshSolve', 'Set boundaries done', Level=4 )
 !------------------------------------------------------------------------------
 ! Solve the system and check for convergence
 !------------------------------------------------------------------------------
-  PrevUNorm = UNorm
+    UNorm = DefaultSolve()
 
-  UNorm = DefaultSolve()
+    IF( DefaultConverged() ) EXIT
+  END DO
 
-  IF ( UNorm + PrevUNorm  /= 0.0d0 ) THEN
-     RelativeChange = 2*ABS( PrevUNorm - UNorm ) / (PrevUNorm + UNorm)
-  ELSE
-     RelativeChange = 0.0d0
-  END IF
 
-  WRITE( Message, * ) 'Result Norm   : ',UNorm
-  CALL Info( 'MeshSolve', Message, Level=4 )
-  WRITE( Message, * ) 'Relative Change : ',RelativeChange
-  CALL Info( 'MeshSolve', Message, Level=4 )
-
-  
   IF ( TransientSimulation ) THEN
     ComputeMeshVelocity = ListGetLogical( Solver % Values, 'Compute Mesh Velocity', Found )
     IF ( .NOT. Found ) ComputeMeshVelocity = .TRUE.

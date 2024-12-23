@@ -1336,6 +1336,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Parent
     LOGICAL :: BreakLoop, ParallelComm
     REAL(KIND=dp) :: linepos
+    INTEGER, ALLOCATABLE :: NodeToElement(:)
     
     MaskName = ListGetString(Params,'Save Mask',GotIt) 
     IF(.NOT. GotIt) MaskName = 'Save Line'
@@ -1400,6 +1401,19 @@ CONTAINS
           InvPerm(SavePerm(i)) = i
         END IF
       END DO
+      
+      ! Create a table where from each node we have something pointing to an element.
+      ALLOCATE(NodeToElement(Mesh % NumberOfNodes))
+      NodeToElement = 0
+      DO t = 1,  Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements                
+        CurrentElement => Mesh % Elements(t)
+        IF( ParEnv % PEs > 1 ) THEN
+          IF( CurrentElement % PartIndex /= ParEnv % MyPe ) CYCLE
+        END IF
+        NodeIndexes => CurrentElement % NodeIndexes        
+        NodeToElement(NodeIndexes) = CurrentElement % ElementIndex
+      END DO
+
       
       IF(CalculateFlux) THEN
         CALL Info(Caller,'Calculating nodal fluxes',Level=8)
@@ -1565,6 +1579,10 @@ CONTAINS
         linepos = -1.0_dp
         DO t = 1, SaveNodes(1)    
           node = InvPerm(t)
+          
+          ! Get some element which may be usefull in evaluating the field.
+          CurrentElement => Mesh % Elements(NodeToElement(node))
+          
           IF( CalculateFlux ) THEN
             CALL WriteFieldsAtElement( CurrentElement, BoundaryIndex(t), node, &
                 dgnode, UseNode = .TRUE., NodalFlux = PointFluxes(t,:), &

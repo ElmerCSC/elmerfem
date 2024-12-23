@@ -1342,7 +1342,7 @@ void CreateKnots(struct GridType *grid,struct CellType *cell,
   for(cellj=1;cellj<= grid->ycells ;cellj++) {        /* cells direction up     */
     for(j=1; j<=grid->yelems[cellj]; j++)             /* lines inside cells     */
       for(celli=1;celli<= grid->xcells; celli++)      /* cells direction right  */
-	if(k=grid->numbered[cellj][celli]) {
+	if((k=grid->numbered[cellj][celli])) {
 	  material = cell[k].material;
 	  for(i=1; i<=grid->xelems[celli]; i++) {
 
@@ -1958,7 +1958,7 @@ int CreateNewNodes(struct FemType *data,int *order,int material,int newknots)
     newz[j] = data->z[i];
 
     for(k=1;k<MAXDOFS;k++) {
-      if(lmax = data->edofs[k])
+      if((lmax = data->edofs[k]))
 	for(l=1;l<=lmax;l++) 
 	  newdofs[k][lmax*(j-1)+l] = data->dofs[k][lmax*(i-1)+l];
     }
@@ -1971,7 +1971,7 @@ int CreateNewNodes(struct FemType *data,int *order,int material,int newknots)
       newz[j] = data->z[i];
 
       for(k=1;k<MAXDOFS;k++) {
-	if(lmax = data->edofs[k])
+	if((lmax = data->edofs[k]))
 	  for(l=1;l<=lmax;l++) 
 	    newdofs[k][lmax*(j-1)+l] = data->dofs[k][lmax*(i-1)+l];
       }
@@ -3673,7 +3673,7 @@ static void ReorderAutomatic(struct FemType *data,int iterations,
     dz = 0.0;
 
     for(l=1;l<=maxnodes;l++){
-      if(ind = neighbours[j][l]) {
+      if((ind = neighbours[j][l])) {
 	nolocal++;
 	localtmp[l] = ind;
 	dx = data->x[l] - data->x[ind];
@@ -6052,7 +6052,7 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
 	z = grid->z[cellk-1] + k*grid->dz[cellk];
       }
       else {
-	if(k<=grid->zelems[cellk]/2) {
+	if((k<=grid->zelems[cellk]/2)) {
 	  z = grid->z[cellk-1] + grid->dz[cellk] *
 	    (1.- pow(grid->zratios[cellk],(Real)(k))) / (1.-grid->zratios[cellk]);
 	}
@@ -7462,7 +7462,7 @@ int SideAndBulkMappings(struct FemType *data,struct BoundaryType *bound,struct E
       if(!bound[j].created) continue;
 	
 	for(i=1; i <= bound[j].nosides; i++) {
-	  if(currenttype = bound[j].types[i]) {
+	  if((currenttype = bound[j].types[i])) {
 	    for(l=0;l<eg->sidemappings;l++) {
 	      if(currenttype >= eg->sidemap[3*l] && currenttype <= eg->sidemap[3*l+1]) {
 		bound[j].types[i] = eg->sidemap[3*l+2];
@@ -8118,7 +8118,7 @@ omstart:
 
 	    if(data->material[parent] == layerparents[k])
 	      dolayer = k + 1;
-	    else if(parent = bound[j].parent2[i]) {
+	    else if((parent = bound[j].parent2[i])) {
 	      if(data->material[parent] == layerparents[k]) {
 		use2 = TRUE;
 		dolayer = k + 1;
@@ -8242,7 +8242,7 @@ omstart:
 	    parent = bound[j].parent[i];
 	    if(data->material[parent] == layerparents[k])
 	      dolayer = TRUE;
-	    else if(parent = bound[j].parent2[i]) {
+	    else if((parent = bound[j].parent2[i])) {
 	      if(data->material[parent] == layerparents[k]) {
 		dolayer = TRUE;
 	      }

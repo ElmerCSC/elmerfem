@@ -560,9 +560,9 @@ SUBROUTINE Set_PMMG_Parameters(SolverParams, ReTrial )
 
   
   ! If this is a ReTrial then we only change some real valued keywords!
-  IF( PRESENT( ReTrial ) ) THEN
-    IF( ReTrial ) RETURN
-  END IF
+  !IF( PRESENT( ReTrial ) ) THEN
+  !  IF( ReTrial ) RETURN
+  !END IF
     
 !!! PARAMS: generic options (debug, mem, verbosity)
   ! [val] Set the verbosity level to n

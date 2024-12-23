@@ -40,6 +40,7 @@ image:https://zenodo.org/badge/DOI/10.5281/zenodo.7892181.svg?style=social&label
 === Direct links  
 
 * Pre-compiled builds:
+https://github.com/ElmerCSC/elmer-wsl[WSL distro],
 http://www.nic.funet.fi/pub/sci/physics/elmer/bin/windows[Windows Installers],
 http://www.nic.funet.fi/pub/sci/physics/elmer/bin/VirtualMachines/[VirtualBox VM]
 * Ubuntu Launchpad: https://launchpad.net/~elmer-csc-ubuntu/+archive/ubuntu/elmer-csc-ppa[PPA]

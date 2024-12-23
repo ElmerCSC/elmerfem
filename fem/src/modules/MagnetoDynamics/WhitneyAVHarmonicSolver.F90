@@ -595,6 +595,7 @@ CONTAINS
        END DO
        CALL Info('WhitneyAVHarmonicSolver','Finished adding the fixing potential',Level=10)   
      END IF
+    CALL DefaultFinishBulkAssembly()
 
     
     ! Robin type of BC in terms of H:
@@ -671,6 +672,8 @@ CONTAINS
        IF(EigenSystem) CALL DefaultUpdateMass(MASS,Element)
     END DO
 
+    CALL DefaultFinishBoundaryAssembly()
+    
     CALL DefaultFinishAssembly()
 
     !

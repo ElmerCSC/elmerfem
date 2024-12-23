@@ -136,7 +136,7 @@ CONTAINS
 
     INTEGER :: i, j, ngp, nerror, nbasis, nndof, nbdof, allocstat, &
             nbasisvec, ndbasisdxvec, rep, dim, perm, q, tag, ll, lln, ncl
-    INTEGER, PARAMETER :: NREP = 100, BubblePerm = 2
+    INTEGER, PARAMETER :: NREP = 10, BubblePerm = 2
     REAL(kind=dp) :: t_start, t_end, t_startvec, t_endvec, &
             t_start_tmp, t_tot_n, t_totvec_n, &
             t_tot_b, t_totvec_b
@@ -280,7 +280,7 @@ CONTAINS
 
     INTEGER :: i, j, k, l, q, ndof, ngp, nerror, nbasis, nndof, nedof, nfdof, &
             nbdof, allocstat, nbasisvec, ndbasisdxvec, rep, dim, perm, tag, ll, lln, ncl
-    INTEGER, PARAMETER :: NREP = 100, EdgePerm = 2, BubblePerm=3
+    INTEGER, PARAMETER :: NREP = 10, EdgePerm = 2, BubblePerm=3
     REAL(kind=dp) :: t_start, t_end, t_startvec, t_endvec, &
             t_start_tmp, t_tot_n, t_totvec_n, t_tot_e, t_totvec_e, &
             t_tot_f, t_totvec_f, t_tot_b, t_totvec_b
@@ -515,7 +515,7 @@ CONTAINS
 
     INTEGER :: i, j, k, l, q, ndof, ngp, nerror, nbasis, nndof, nedof, nbdof, allocstat, &
             nbasisvec, ndbasisdxvec, rep, dim, perm, tag, ll, lln, ncl
-    INTEGER, PARAMETER :: NREP = 100, EdgePerm = 2, BubblePerm = 4
+    INTEGER, PARAMETER :: NREP = 10, EdgePerm = 2, BubblePerm = 4
     REAL(kind=dp) :: t_start, t_end, t_startvec, t_endvec, &
             t_start_tmp, t_tot_n, t_totvec_n, &
             t_tot_e, t_totvec_e, t_tot_b, t_totvec_b
@@ -748,7 +748,7 @@ CONTAINS
 
     INTEGER :: i, j, k, l, q, ndof, nedof, nfdof, ngp, nerror, nbasis, nndof, nbdof, allocstat, &
             nbasisvec, ndbasisdxvec, rep, dim, tag, perm, ll, lln, ncl
-    INTEGER, PARAMETER :: NREP = 100, EdgePerm=2, FacePerm=2
+    INTEGER, PARAMETER :: NREP = 10, EdgePerm=2, FacePerm=2
     REAL(kind=dp) :: t_start, t_end, t_startvec, t_endvec, &
           t_start_tmp, t_tot_n, t_totvec_n, &
           t_tot_e, t_totvec_e, t_tot_f, t_totvec_f, t_tot_b, t_totvec_b
@@ -981,7 +981,7 @@ CONTAINS
     INTEGER :: i, j, k, l, q, ngp, nerror, nbasis, nndof, nedof, &
           nfdof, nbdof, allocstat, perm, &
           nbasisvec, ndbasisdxvec, rep, dim, tag, ndof, ll, lln, ncl
-    INTEGER, PARAMETER :: NREP = 100, EdgePerm=2, FacePerm=4
+    INTEGER, PARAMETER :: NREP = 10, EdgePerm=2, FacePerm=4
     REAL(kind=dp) :: t_start, t_end, t_startvec, t_endvec, &
             t_start_tmp, t_tot_n, t_totvec_n, &
             t_tot_e, t_totvec_e, t_tot_f, t_totvec_f, t_tot_b, t_totvec_b
@@ -1261,7 +1261,7 @@ CONTAINS
     INTEGER :: i, j, k, l, q, ngp, nerror, nbasis, nndof, nedof, &
           nfdof, nbdof, allocstat, perm, &
           nbasisvec, ndbasisdxvec, rep, dim, tag, ndof, ll, lln, ncl
-    INTEGER, PARAMETER :: NREP = 100, EdgePerm=2, FacePerm=4
+    INTEGER, PARAMETER :: NREP = 10, EdgePerm=2, FacePerm=4
     REAL(kind=dp) :: t_start, t_end, t_startvec, t_endvec, &
             t_start_tmp, t_tot_n, t_totvec_n, &
             t_tot_e, t_totvec_e, t_tot_f, t_totvec_f, t_tot_b, t_totvec_b
@@ -1537,7 +1537,7 @@ CONTAINS
     INTEGER :: i, j, k, l, q, ngp, nerror, nbasis, nndof, nedof, &
             nfdof, nbdof, allocstat, perm, &
             nbasisvec, ndbasisdxvec, rep, dim, tag, ndof, ll, lln, ncl
-    INTEGER, PARAMETER :: NREP = 100, EdgePerm=2, FacePerm=4
+    INTEGER, PARAMETER :: NREP = 10, EdgePerm=2, FacePerm=4
     REAL(kind=dp) :: t_start, t_end, t_startvec, t_endvec, &
             t_start_tmp, t_tot_n, t_totvec_n, &
             t_tot_e, t_totvec_e, t_tot_f, t_totvec_f, t_tot_b, t_totvec_b
@@ -1771,6 +1771,7 @@ CONTAINS
     REAL(KIND=dp) CONTIG, INTENT(IN) :: Basis1(:,:), Basis2(:,:), &
             dBasisdx1(:,:,:), dBasisdx2(:,:,:)
     REAL(kind=dp), INTENT(IN) :: tol
+    REAL(KIND=dp) :: maxerr, thiserr
     INTEGER :: nerror
 
     INTEGER :: i, j, dim
@@ -1780,12 +1781,16 @@ CONTAINS
             ', ndim=', ndim
 
     nerror = 0
+    maxerr = 0.0_dp
+    
     ! Test basis
     DO j=1,nbasis
       DO i=1,ngp
-        IF (ABS(Basis1(i,j)-Basis2(i,j)) >= tol) THEN
+        thiserr = ABS(Basis1(i,j)-Basis2(i,j))
+        maxerr = MAX(maxerr,thiserr)
+        IF( thiserr >= tol ) THEN
           nerror = nerror + 1
-          WRITE (*,*) 'Basis:', i,j,Basis1(i,j), Basis2(i,j)
+          WRITE (*,*) 'Basis:', i,j,Basis1(i,j), Basis2(i,j), thiserr
         END IF
       END DO
     END DO
@@ -1793,9 +1798,11 @@ CONTAINS
     DO dim=1, ndim
       DO j=1,nbasis
         DO i=1,ngp
-          IF (ABS(dBasisdx1(i,j,dim)-dBasisdx2(i,j,dim)) >= tol) THEN
+          thiserr = ABS(dBasisdx1(i,j,dim)-dBasisdx2(i,j,dim))
+          maxerr = MAX(maxerr, thiserr )
+          IF( thiserr >= tol) THEN
             nerror = nerror + 1
-            WRITE (*,*) 'dBasisdx:', i,j,dim, dBasisdx1(i,j,dim), dBasisdx2(i,j,dim)
+            WRITE (*,*) 'dBasisdx:', i,j,dim, dBasisdx1(i,j,dim), dBasisdx2(i,j,dim), thiserr
           END IF
         END DO
       END DO
@@ -1806,6 +1813,7 @@ CONTAINS
     ELSE
       WRITE (*,'(A,ES12.3)') 'TestBasis: Failed with errors, tol=', tol
     END IF
+    WRITE (*,'(A,ES12.3)') 'TestBasis: Maximum error=',maxerr
   END FUNCTION TestBasis
 
   SUBROUTINE PrintTestData(Element, ngp, nrep, nndofs, t_n1, t_b1, t_tot1, &
@@ -1816,6 +1824,8 @@ CONTAINS
     INTEGER, INTENT(IN) :: ngp, nrep, nndofs
     REAL(kind=dp), INTENT(IN) :: t_n1, t_b1, t_tot1, t_n2, t_b2, t_tot2
 
+    IF(.NOT. InfoActive(10)) RETURN
+    
     WRITE (*,'(A,I0)') 'Element type=', Element % TYPE % ElementCode
     IF (ASSOCIATED(Element % PDefs)) THEN
       WRITE (*,'(A,I0)') 'Element polynomial degree=', Element % PDefs % P

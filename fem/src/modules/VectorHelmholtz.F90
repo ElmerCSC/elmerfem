@@ -117,6 +117,8 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
     END IF
   END IF
 
+  CALL ListAddNewLogical(SolverParams, 'Bubbles in Global System', .TRUE.)
+
   !CALL ListAddNewLogical( SolverParams,'Hcurl Basis',.TRUE.)
   IF (WithNDOFs) THEN
     CALL ListAddNewLogical(SolverParams,'Variable Output',.TRUE.)
@@ -232,7 +234,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
 ! Local variables
 !------------------------------------------------------------------------------
   TYPE(Solver_t), POINTER :: Eigensolver => NULL()
-  LOGICAL :: Found, HasPrecDampCoeff, MassProportional
+  LOGICAL :: Found, PrecMatrix, HasPrecDampCoeff, MassProportional, CurlCurlPrec
   REAL(KIND=dp) :: Omega, mu0inv, eps0, rob0
   INTEGER :: i, soln, NoIterationsMax, EdgeBasisDegree
   TYPE(Mesh_t), POINTER :: Mesh
@@ -276,12 +278,19 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   PrecDampCoeff = CMPLX(REAL(PrecDampCoeff), &
       GetCReal(SolverParams, 'Linear System Preconditioning Damp Coefficient im', Found ) )
   HasPrecDampCoeff = HasPrecDampCoeff .OR. Found 
-  IF (HasPrecDampCoeff) MassProportional = GetLogical(SolverParams, 'Mass-proportional Damping', Found)
-
-  IF(HasPrecDampCoeff) THEN
+  IF (HasPrecDampCoeff) THEN
+    MassProportional = GetLogical(SolverParams, 'Mass-proportional Damping', Found)
+  ELSE
+    MassProportional = .FALSE.
+  END IF
+    
+  CurlCurlPrec = GetLogical(SolverParams, 'Curl-Curl Preconditioning', Found)
+  PrecMatrix = HasPrecDampCoeff .OR. CurlCurlPrec
+  
+  IF(PrecMatrix) THEN
     IF(ListGetString(SolverParams,'Linear System Solver',Found ) == 'direct') THEN
-      CALL Warn(Caller,'Damped preconditioning does not make sense for direct methods, canceling!')
-      HasPrecDampCoeff = .FALSE.
+      CALL Warn(Caller,'Generating preconditioning matrix does not make sense for direct methods, canceling!')
+      PrecMatrix = .FALSE.
     ELSE
       CALL Info(Caller,'Generating special preconditioning matrix',Level=12)
     END IF
@@ -360,7 +369,7 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: BC
     REAL(KIND=dp), POINTER CONTIG:: SavedValues(:) => NULL()
     REAL(KIND=dp) :: Norm
-    INTEGER :: Active,k,n,nd,t
+    INTEGER :: Active,k,n,nd,nb,t
     LOGICAL :: InitHandles 
 !---------------------------------------------------------------------------------------------
     ! System assembly:
@@ -375,10 +384,11 @@ CONTAINS
       Element => GetActiveElement(t)
       n  = GetElementNOFNodes() 
       nd = GetElementNOFDOFs()  
+      nb = GetElementNOFBDOFs()
       
       ! Glue local element matrix and rhs vector:
       !----------------------------------------
-      CALL LocalMatrix( Element, n, nd, InitHandles )
+      CALL LocalMatrix( Element, n, nd+nb, nb, InitHandles )
     END DO
     CALL DefaultFinishBulkAssembly()
 
@@ -549,15 +559,16 @@ CONTAINS
   
 
 !-----------------------------------------------------------------------------
-  SUBROUTINE LocalMatrix( Element, n, nd, InitHandles )
+  SUBROUTINE LocalMatrix( Element, n, nd, nb, InitHandles )
 !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: Element
-    INTEGER :: n, nd
+    INTEGER :: n, nd, nb
     LOGICAL :: InitHandles
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp) :: eps, muinv, Cond, L(3)
     REAL(KIND=dp) :: DetJ, weight
     COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:), MASS(:,:), Gauge(:,:), PREC(:,:)
+    COMPLEX(KIND=dp), ALLOCATABLE, SAVE :: CurlMat(:,:)
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:)
     LOGICAL :: Stat, WithNDOFs, ConductorBody
     LOGICAL :: AllocationsDone = .FALSE.
@@ -572,7 +583,7 @@ CONTAINS
     IF(.NOT. AllocationsDone ) THEN
       m = Mesh % MaxElementDOFs
       ALLOCATE( WBasis(m,3), RotWBasis(m,3), Basis(m), dBasisdx(m,3), &
-          MASS(m,m), STIFF(m,m), Gauge(m,m), PREC(m,m), FORCE(m) )      
+          MASS(m,m), STIFF(m,m), Gauge(m,m), PREC(m,m), CurlMat(m,m), FORCE(m) )      
       AllocationsDone = .TRUE.
     END IF
 
@@ -589,6 +600,7 @@ CONTAINS
  
     STIFF(1:nd,1:nd) = 0.0_dp
     MASS(1:nd,1:nd)  = 0.0_dp
+    CurlMat = 0.0_dp
     FORCE(1:nd) = 0.0_dp
 
     ndofs = MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
@@ -599,7 +611,7 @@ CONTAINS
       Gauge(1:nd,1:nd)  = 0.0_dp
     END IF
 
-    IF (HasPrecDampCoeff) PREC = 0.0_dp    
+    IF (PrecMatrix) PREC = 0.0_dp
     
     ! Numerical integration:
     !----------------------
@@ -628,7 +640,7 @@ CONTAINS
         DO q = 1,nd-np
           j = q+np
           ! the mu^-1 curl E . curl v 
-          STIFF(i,j) = STIFF(i,j) + muinv * &
+          CurlMat(i,j) = CurlMat(i,j) + muinv * &
               SUM(RotWBasis(p,:) * RotWBasis(q,:)) * weight
         END DO
       END DO
@@ -783,25 +795,35 @@ CONTAINS
       END IF
     END DO
 
-    IF( HasPrecDampCoeff ) THEN
-      IF (MassProportional) THEN
+    IF( PrecMatrix ) THEN
+      IF (CurlCurlPrec) THEN
+        PREC = STIFF(1:nd,1:nd) + CurlMat(1:nd,1:nd)
+        IF (WithNDOFs) THEN 
+          PREC(1:nd,1:nd) = PREC(1:nd,1:nd) + Gauge(1:nd,1:nd)
+        END IF
+      ELSE IF (MassProportional) THEN
         PREC = -PrecDampCoeff * (MASS(1:nd,1:nd))
       ELSE
-        PREC = PrecDampCoeff * (STIFF(1:nd,1:nd) - MASS(1:nd,1:nd))
+        PREC = PrecDampCoeff * (STIFF(1:nd,1:nd) + CurlMat(1:nd,1:nd) - MASS(1:nd,1:nd))
       END IF
     END IF
 
-    STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + MASS(1:nd, 1:nd)
+    STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + CurlMat(1:nd,1:nd) + MASS(1:nd, 1:nd)
     IF (WithNDOFs) THEN 
       STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + Gauge(1:nd,1:nd)
     END IF
 
-    IF( HasPrecDampCoeff ) THEN
-      CALL DefaultUpdatePrec(STIFF(1:nd,1:nd) + PREC(1:nd,1:nd))
+    IF( PrecMatrix ) THEN
+      IF (.NOT. CurlCurlPrec) THEN
+        PREC(1:nd,1:nd) = STIFF(1:nd,1:nd) + PREC(1:nd,1:nd)
+      END IF
+      IF (nb > 0) CALL CondensateP(nd-nb, nb, PREC)
+      CALL DefaultUpdatePrec(PREC(1:nd,1:nd))
     END IF
     
     ! Update global matrix and rhs vector from local matrix & vector:
     !---------------------------------------------------------------    
+    IF (nb > 0) CALL CondensateP(nd-nb, nb, STIFF, FORCE)
     CALL DefaultUpdateEquations( STIFF, FORCE, Element )
 
 !------------------------------------------------------------------------------
@@ -822,7 +844,7 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: Re_Eigenf(:), Im_Eigenf(:)
     REAL(KIND=dp) :: th, DetJ
     LOGICAL :: Stat, Found, UpdateStiff, WithNdofs, ThinSheet, ConductorBC, EigenBC, PortSource
-    LOGICAL :: LineElement, DegenerateElement, Regularize
+    LOGICAL :: LineElement, DegenerateElement, Regularize, Consistent
     LOGICAL :: AllocationsDone = .FALSE.
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, m, np, p, q, ndofs, EigenInd
@@ -880,6 +902,10 @@ CONTAINS
     MASS = 0.0_dp
     FORCE = 0.0_dp
 
+    ndofs = MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
+    WithNdofs = ndofs > 0
+    np = n * ndofs
+    
     ! Check whether BC should be created in terms of pre-computed eigenfunction:
     EigenBC = ListGetElementLogical(EigenvectorSource, Element, Found)
 
@@ -894,8 +920,13 @@ CONTAINS
           Eigensolver, EigenInd, ComplexPart=.FALSE.)
       
       nd_eigen = GetElementNOFDOFs(USolver=Eigensolver)
-      nd_eigen = nd_eigen - n
-      IF (nd_eigen /= nd) CALL Fatal(Caller, &
+      
+      IF (WithNDOFs) THEN
+        Consistent = (nd_eigen == nd)
+      ELSE
+        Consistent = (nd_eigen - n) == nd
+      END IF
+      IF (.NOT. Consistent) CALL Fatal(Caller, &
           'The DOFs of the port model are not compatible with the DOFs of this solver')
     END IF
 
@@ -905,15 +936,8 @@ CONTAINS
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
         EdgeBasisDegree=EdgeBasisDegree )
 
-    ndofs = MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
-    np = n * ndofs
-    WithNdofs = ndofs > 0
-
     IF (WithNdofs) THEN
       Regularize = UseGaussLaw .AND. ListGetElementLogical( ChargeConservation, Element, Found )
-      IF (EigenBC) THEN
-        CALL Fatal(Caller, 'Eigenfunction BC needs the plain E-formulation')
-      END IF
     END IF
 
     LineElement = GetElementFamily(Element) == 2
@@ -1096,8 +1120,8 @@ CONTAINS
     END DO
 
     IF (UpdateStiff) THEN
-      IF (HasPrecDampCoeff) THEN
-        IF (MassProportional) THEN
+      IF (PrecMatrix) THEN
+        IF (MassProportional .OR. CurlCurlPrec) THEN
           CALL DefaultUpdatePrec(STIFF)
         ELSE
           CALL DefaultUpdatePrec(PrecDampCoeff*STIFF + STIFF)

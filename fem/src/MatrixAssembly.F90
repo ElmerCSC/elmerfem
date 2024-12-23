@@ -838,7 +838,7 @@ SUBROUTINE CondensatePR( N, Nb, K, F, F1 )
     Kbb = K(Bdofs,Bdofs)
     Kbl = K(Bdofs,Ldofs)
     Klb = K(Ldofs,Bdofs)
-    Fb  = F(Bdofs)
+    IF (PRESENT(F))Fb  = F(Bdofs)
 
     CALL InvertMatrix( Kbb,nb )
 
@@ -877,7 +877,7 @@ SUBROUTINE CondensatePC( N, Nb, K, F, F1 )
     Kbb = K(Bdofs,Bdofs)
     Kbl = K(Bdofs,Ldofs)
     Klb = K(Ldofs,Bdofs)
-    Fb  = F(Bdofs)
+    IF (PRESENT(F))Fb  = F(Bdofs)
 
     CALL ComplexInvertMatrix( Kbb,nb )
 

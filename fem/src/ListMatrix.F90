@@ -121,7 +121,7 @@ CONTAINS
   SUBROUTINE List_ToCRS(L,Rows,Cols,Diag)
 !-------------------------------------------------------------------------------
     TYPE(ListMatrix_t) :: L(:)
-    INTEGER :: i,j,n
+    INTEGER :: i,j,n,istat
     TYPE(Matrix_t), POINTER :: A
     TYPE(ListMatrixEntry_t), POINTER :: P
     INTEGER, POINTER CONTIG :: Rows(:),Cols(:),Diag(:)
@@ -130,12 +130,22 @@ CONTAINS
       IF ( L(n) % Degree>0 ) EXIT
     END DO
 
-    ALLOCATE( Rows(n+1), Diag(n) )
+    ALLOCATE( Rows(n+1), Diag(n), STAT=istat)
+    IF(istat /= 0 ) THEN
+      CALL Fatal('List_ToCRS','Could not allocate memory for CRS Rows of size '//I2S(n))
+    END IF
+
+    
     Rows(1) = 1
     DO i=1,n
       Rows(i+1) = Rows(i) + L(i) % Degree
     END DO
-    ALLOCATE( Cols(Rows(i+1)-1) )
+    ALLOCATE( Cols(Rows(i+1)-1), Stat=istat)
+    IF(istat /= 0 ) THEN
+      CALL Fatal('List_ToCRS','Could not allocate memory for CRS Cols of size '//I2S(Rows(i+1)-1))
+    END IF
+
+
     j = 0
     DO i=1,n
       P => L(i) % Head
@@ -170,7 +180,7 @@ CONTAINS
     TYPE(Matrix_t) :: A
     
     TYPE(ListMatrix_t), POINTER :: L(:)   
-    INTEGER :: i,j,n
+    INTEGER :: i,j,k,n,m,istat
     TYPE(ListMatrixEntry_t), POINTER :: P
     INTEGER, POINTER CONTIG :: Rows(:),Cols(:),Diag(:)
     REAL(KIND=dp), POINTER CONTIG :: Values(:)
@@ -183,7 +193,6 @@ CONTAINS
     L => A % ListMatrix
 
     IF( .NOT. ASSOCIATED( L ) ) THEN
-!     CALL Warn('ListToCRSMatrix','List not associated')
       A % FORMAT = MATRIX_CRS      
       A % NumberOfRows = 0
       RETURN
@@ -192,26 +201,34 @@ CONTAINS
     DO n=SIZE(L),1,-1
       IF ( L(n) % Degree > 0 ) EXIT
     END DO
+    CALL Info('List_ToCRSMatrix','List size '//I2S(SIZE(L))//' vs. active rows '//I2S(n),Level=25)
     
-    ALLOCATE( Rows(n+1), Diag(n) )
+    ALLOCATE( Rows(n+1), Diag(n), STAT=istat)
+    IF(istat /= 0 ) THEN
+      CALL Fatal('List_ToCRSMatrix','Could not allocate memory for CRS Rows of size '//I2S(n))
+    END IF
+    
     Diag = 0
     Rows(1) = 1
     DO i=1,n
       Rows(i+1) = Rows(i) + L(i) % Degree
     END DO
 
+    m = Rows(n+1)-1
     CALL Info('List_ToCRSMatrix',&
-        'Changing matrix type with number of non-zeros: '//I2S(Rows(n+1)-1),Level=8)
+        'Changing matrix type with number of non-zeros: '//I2S(m),Level=8)
 
-    ALLOCATE( Cols(Rows(n+1)-1)) 
-    ALLOCATE( Values(Rows(n+1)-1) )
+    ALLOCATE( Cols(m),Values(m),STAT=istat) 
+    IF(istat /= 0 ) THEN
+      CALL Fatal('List_ToCRS','Could not allocate memory for CRS Cols & Values of size '//I2S(m))
+    END IF
 
     j = 0
     DO i=1,n
       P => L(i) % Head
       DO WHILE(ASSOCIATED(P))
         j = j + 1
-        Cols(j)   = P % Index
+        Cols(j) = P % Index
         Values(j) = P % Val
         P => P % Next
       END DO

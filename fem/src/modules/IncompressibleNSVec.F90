@@ -1593,13 +1593,6 @@ SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, Transient)
     CALL ListAddNewInteger(Params, 'Nonlinear System Min Iterations', 2)
   END IF
 
-  ! Create solver related to variable "schur" when using block preconditioning
-  ! These keywords ensure that the matrix is truly used in the library version of the
-  ! block solver.
-  IF( ListGetLogical( Params,'Block Preconditioner',Found ) ) THEN
-    CALL ListAddNewString( Params,'Block Matrix Schur Variable','schur')
-  END IF
-
   ! Backward compatibility with old FlowSolver
   str = GetString( Params, 'Flow Model', Found )
   IF( Found ) THEN
@@ -1721,7 +1714,6 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   StokesFlow = GetLogical(Params, 'Stokes Flow', Found )
   GradPVersion = GetLogical(Params, 'GradP Discretization', Found)
   DivCurlForm = GetLogical(Params, 'Div-Curl Discretization', Found)
-  BlockPrec = GetLogical(Params,'Block Preconditioner',Found )
   SpecificLoad = GetLogical(Params,'Specific Load',Found)
   
   Maxiter = GetInteger(Params, 'Nonlinear system max iterations', Found)
@@ -1730,9 +1722,27 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
 
   IF (DivCurlForm) CALL Info(Caller, 'The div-curl form is used for the viscous terms')
   IF (GradPVersion) CALL Info(Caller, 'The pressure gradient is not integrated by parts')
-  IF (BlockPrec) CALL Info(Caller,'Creating pressure block for block preconditioner')
 
+  BlockPrec = GetLogical(Params,'Block Preconditioner',Found )
+  IF(BlockPrec) THEN
+    ! Do not create the Schur complement approximation if some other means are used. 
+    IF( ListGetLogical( Params,'Create Schur Matrix Approximation',Found ) ) THEN
+      CALL Info(Caller,'Schur complement not created, matrix approximation used instead!')
+      BlockPrec = .FALSE.
+    END IF
+    IF( ListCheckPrefix( Params,'Schur Operator' ) ) THEN
+      CALL Info(Caller,'Schur complement not created, matrix operations used instead!')
+      BlockPrec = .FALSE.
+    END IF
+  END IF
   IF(BlockPrec ) THEN
+    CALL Info(Caller,'Creating pressure block for block preconditioner')
+
+    ! Create solver related to variable "schur" when using block preconditioning
+    ! These keywords ensure that the matrix is truly used in the library version of the
+    ! block solver.
+    CALL ListAddNewString( Params,'Block Matrix Schur Variable','schur')
+
     ! Create solver that only acts as a container for the shcur complement
     ! matrix used in the block preconditioning solver of the library.
     IF( .NOT. ASSOCIATED( SchurSolver ) ) THEN
