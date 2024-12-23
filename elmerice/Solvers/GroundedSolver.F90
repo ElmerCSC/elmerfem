@@ -121,8 +121,8 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER :: PointerToVariable, bedrockVar, FrontVar, LSvar, ConnMaskVar
   TYPE(Nodes_t), SAVE :: Nodes
 
-  LOGICAL :: AllocationsDone = .FALSE., GotIt, stat,UnFoundFatal=.TRUE.,&
-       AllGrounded = .FALSE., useLSvar = .FALSE.,  Active               &
+  LOGICAL :: AllocationsDone = .FALSE., GotIt, stat, UnFoundFatal=.TRUE.,&
+       AllGrounded = .FALSE., useLSvar = .FALSE., Active,                &
        CheckConn ! check ocean connectivity (creates separate mask without isolated ungrounded regions)
 
   INTEGER :: ii, mn, en, t, Nn, istat, DIM, MSum, ZSum, bedrockSource, ConnectivityMode
