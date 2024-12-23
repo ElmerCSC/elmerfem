@@ -155,9 +155,6 @@ CONTAINS
     ELSE
       IF (ListGetLogical( Params,  &
           'Linear System Use Hypre', Found )) THEN
-        !IF( .NOT. Parallel ) THEN
-        !  CALL Fatal('CheckLinearSolverOptions','Hypre not usable in serial!')
-        !END IF
 #ifndef HAVE_HYPRE
         CALL Fatal('CheckLinearSolverOptions','Hypre requested but not compiled with!')
 #endif
@@ -5297,10 +5294,12 @@ END BLOCK
        LOGICAL :: PostActive
 
        PostActive = ListGetLogical( Solver % Values,'PostSolver Active',Found )
+
        IF( PostActive ) THEN
          ProcName = ListGetString( Solver % Values,'Procedure', Found )
          SolverAddr = GetProcAddr( TRIM(ProcName)//'_post', abort=.FALSE. )
          IF( SolverAddr /= 0 ) THEN
+           CALL Info("SingleSolver",'Calling solver for postprocessing',Level=10)
            CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
          END IF
        END IF

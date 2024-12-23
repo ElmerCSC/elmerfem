@@ -121,9 +121,9 @@ int FuseSolutionElmerPartitioned(char *prefix,char *outfile,int decimals,int par
   }
   totknots = sumknots;
   totelements = sumelements;
-  res = Rvector(1,novctrs);
+  if(novctrs) res = Rvector(1,novctrs);
 
-  if(info) printf("There are altogether %d nodes and %d elements.\n",totknots,sumelements);
+  if(info) printf("There are %d nodes, %d elements and %d vectors.\n",totknots,sumelements,novctrs);
 
 
   AddExtension(outfile,filename,"ep");
@@ -192,6 +192,8 @@ int FuseSolutionElmerPartitioned(char *prefix,char *outfile,int decimals,int par
   }
 
   if(info) printf("Reading and writing %d degrees of freedom.\n",novctrs);
+  if(!novctrs) goto skip;
+  
   sprintf(outstyle,"%%.%dg ",decimals);
 
   activestep = FALSE;
@@ -233,6 +235,7 @@ int FuseSolutionElmerPartitioned(char *prefix,char *outfile,int decimals,int par
   }
 
 
+ skip:
   for(i=0;i<nofiles;i++) 
     fclose(in[i]);
   fclose(out);

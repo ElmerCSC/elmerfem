@@ -619,7 +619,7 @@ SUBROUTINE ProjectCalving( Model,Solver,dt,TransientSimulation )
       myNodes = myNodes + (PlaneNodes-Parenv % Pes*myNodes)
 
   IF ( Parenv % PEs>1 ) THEN
-    CALL CheckBuffer( (2 * (2 * (DOFs_3D+1)*SUM(PointStore(:) % NoInt)) + PlaneNodes ))
+    CALL CheckBuffer( (4 * (2 * (DOFs_3D+1)*SUM(PointStore(:) % NoInt)) + PlaneNodes ))
     CALL SendPoints()
     CALL ReceivePoints()
     CALL CheckBuffer(1) !Just frees the buffer space for future subroutines.

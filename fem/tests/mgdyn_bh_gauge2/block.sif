@@ -243,8 +243,8 @@ body force 1
   current density 3 = equals volume current 3
 end
 
+!Solver 5 :: reference norm = real 2.204993E-05
+!Solver 5 :: reference norm tolerance = real 2e-4
 Solver 6 :: Reference Norm = Real  8.05311383E-03
 Solver 6 :: Reference Norm tolerance = Real 2e-4
-Solver 5 :: reference norm = real 2.204993E-05
-Solver 5 :: reference norm tolerance = real 2e-4
 

@@ -101,6 +101,10 @@ MODULE DefUtils
      MODULE PROCEDURE GetScalarLocalEigenmode, GetVectorLocalEigenmode
    END INTERFACE
 
+   INTERFACE GetLocalConsmode
+     MODULE PROCEDURE GetScalarLocalConsmode, GetVectorLocalConsmode
+   END INTERFACE
+
    INTEGER, ALLOCATABLE, TARGET, PRIVATE :: IndexStore(:), VecIndexStore(:)
    REAL(KIND=dp), ALLOCATABLE, TARGET, PRIVATE  :: ValueStore(:)
    !$OMP THREADPRIVATE(IndexStore, VecIndexStore, ValueStore)
@@ -920,7 +924,7 @@ CONTAINS
      n = MIN( n, SIZE(x) )
 
      IF (SIZE(Variable % EigenVectors,1) < NoEigen) THEN
-       CALL Fatal('GetScalarLocalEigenmode', 'Less eigenfunctions available than requested')
+       CALL Fatal('GetScalarLocalEigenmode', 'Fewer eigenfunctions available than requested')
      END IF
      Values => Variable % EigenVectors( NoEigen, :)
 
@@ -989,7 +993,7 @@ CONTAINS
      n = MIN( n, SIZE(x) )
 
      IF (SIZE(Variable % EigenVectors,1) < NoEigen) THEN
-       CALL Fatal('GetVectorLocalEigenmode', 'Less eigenfunctions available than requested')
+       CALL Fatal('GetVectorLocalEigenmode', 'Fewer eigenfunctions available than requested')
      END IF
      Values => Variable % EigenVectors( NoEigen, : )
 
@@ -1019,7 +1023,172 @@ CONTAINS
        END IF
      END DO
   END SUBROUTINE GetVectorLocalEigenmode
-    
+
+
+
+!> Returns the desired constraint mode as a scalar field in an element
+  SUBROUTINE GetScalarLocalConsmode( x,name,UElement,USolver,NoMode)
+    REAL(KIND=dp) :: x(:)
+    CHARACTER(LEN=*), OPTIONAL :: name
+    TYPE(Solver_t)  , OPTIONAL, TARGET :: USolver
+    TYPE(Element_t),  OPTIONAL, TARGET :: UElement
+    INTEGER, OPTIONAL :: NoMode
+
+    REAL(KIND=dp), POINTER :: Values(:)
+    TYPE(Variable_t), POINTER :: Variable
+    TYPE(Solver_t)  , POINTER :: Solver
+    TYPE(Element_t),  POINTER :: Element
+
+    INTEGER :: i, j, k, l, n
+    INTEGER, POINTER :: Indexes(:)
+
+    Solver => CurrentModel % Solver
+    IF ( PRESENT(USolver) ) Solver => USolver
+
+    x = 0.0d0
+
+    IF ( PRESENT(name) ) THEN
+      Variable => VariableGet( Solver % Mesh % Variables, name )
+    ELSE
+      Variable => Solver % Variable
+    END IF
+    IF ( .NOT. ASSOCIATED( Variable ) ) RETURN
+    IF ( .NOT. ASSOCIATED( Variable % ConstraintModes ) ) RETURN
+
+    Element => GetCurrentElement(UElement)
+
+    Indexes => GetIndexStore()
+    IF ( ASSOCIATED(Variable % Solver ) ) THEN
+      n = GetElementDOFs( Indexes, Element, Variable % Solver )
+    ELSE
+      n = GetElementDOFs( Indexes, Element, Solver )
+    END IF
+    n = MIN( n, SIZE(x) )
+
+    IF (SIZE(Variable % ConstraintModes,1) < NoMode) THEN
+      CALL Fatal('GetScalarLocalConsmode', 'Fewer constraint modes available than requested')
+    END IF
+    Values => Variable % ConstraintModes( NoMode, :)
+
+
+    IF ( ASSOCIATED( Variable % Perm ) ) THEN
+      IF( Variable % PeriodicFlipActive ) THEN
+        DO i=1,n
+          j = Indexes(i)
+          IF ( j>0 .AND. j<=SIZE(Variable % Perm) ) THEN
+            k = Variable % Perm(j)
+            IF ( k>0 ) THEN
+              x(i) = Values(k)
+              IF( CurrentModel % Mesh % PeriodicFlip(j) ) x(i) = -x(i)
+            END IF
+          END IF
+        END DO
+      ELSE
+        DO i=1,n
+          j = Indexes(i)
+          IF ( j>0 .AND. j<=SIZE(Variable % Perm) ) THEN
+            j = Variable % Perm(j)
+            IF ( j>0 ) THEN
+              x(i) = Values(j)
+            END IF
+          END IF
+        END DO
+      END IF
+    ELSE
+      DO i=1,n
+        j = Indexes(i)
+        IF ( j>0 .AND. j<=SIZE(Variable % Values) ) THEN
+          x(i) = Values(Indexes(i))
+        END IF
+      END DO
+    END IF
+
+  END SUBROUTINE GetScalarLocalConsmode
+
+
+
+!> Returns the desired constraint mode as a vector field in an element
+  SUBROUTINE GetVectorLocalConsmode( x,name,UElement,USolver,NoMode)
+    REAL(KIND=dp) :: x(:,:)
+    CHARACTER(LEN=*), OPTIONAL :: name
+    TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
+    TYPE(Element_t), OPTIONAL, TARGET :: UElement
+    INTEGER, OPTIONAL :: NoMode
+
+    TYPE(Variable_t), POINTER :: Variable
+    TYPE(Solver_t)  , POINTER :: Solver
+    TYPE(Element_t),  POINTER :: Element
+
+    INTEGER :: i, j, k, l, n
+    INTEGER, POINTER :: Indexes(:)
+    REAL(KIND=dp), POINTER ::  Values(:)
+
+    Solver => CurrentModel % Solver
+    IF ( PRESENT(USolver) ) Solver => USolver
+
+    x = 0.0d0
+
+    IF ( PRESENT(name) ) THEN
+      Variable => VariableGet( Solver % Mesh % Variables, name )
+    ELSE
+      Variable => Solver % Variable
+    END IF
+    IF ( .NOT. ASSOCIATED( Variable ) ) RETURN
+    IF ( .NOT. ASSOCIATED( Variable % ConstraintModes ) ) RETURN
+
+    Element => GetCurrentElement(UElement)
+
+    Indexes => GetIndexStore()
+    IF ( ASSOCIATED(Variable % Solver ) ) THEN
+      n = GetElementDOFs( Indexes, Element, Variable % Solver )
+    ELSE
+      n = GetElementDOFs( Indexes, Element, Solver )
+    END IF
+    n = MIN( n, SIZE(x) )
+
+    IF (SIZE(Variable % ConstraintModes,1) < NoMode) THEN
+      CALL Fatal('GetVectorLocalConsmode', 'Fewer constraint modes available than requested')
+    END IF
+    Values => Variable % ConstraintModes( NoMode, :)
+
+    DO i=1,Variable % DOFs
+      IF ( ASSOCIATED( Variable % Perm ) ) THEN
+        IF( Variable % PeriodicFlipActive ) THEN
+          DO j=1,n
+            k = Indexes(j)
+            IF ( k>0 .AND. k<=SIZE(Variable % Perm) ) THEN
+              l = Variable % Perm(k)
+              IF( l>0 ) THEN
+                x(i,j) = Values(Variable % DOFs*(l-1)+i)
+                IF( CurrentModel % Mesh % PeriodicFlip(k) ) x(i,j) = -x(i,j)
+              END IF
+            END IF
+          END DO
+        ELSE           
+          DO j=1,n
+            k = Indexes(j)
+            IF ( k>0 .AND. k<=SIZE(Variable % Perm) ) THEN
+              l = Variable % Perm(k)
+              IF (l>0) THEN
+                x(i,j) = Values(Variable % DOFs*(l-1)+i)
+              END IF
+            END IF
+          END DO
+        END IF
+      ELSE
+        DO j=1,n
+          IF ( Variable % DOFs*(Indexes(j)-1)+i <= &
+              SIZE( Variable % Values ) ) THEN
+            x(i,j) = Values(Variable % DOFs*(Indexes(j)-1)+i)
+          END IF
+        END DO
+      END IF
+    END DO
+
+  END SUBROUTINE GetVectorLocalConsmode
+
+
+  
 
   FUNCTION DefaultVariableGet( Name, ThisOnly, USolver ) RESULT ( Var )
 
@@ -3453,7 +3622,7 @@ CONTAINS
      TYPE(ValueList_t), POINTER :: Params
      CHARACTER(:), ALLOCATABLE :: str
      LOGICAL :: Found
-
+     
      IF ( PRESENT( USolver ) ) THEN
        Solver => USolver
      ELSE
@@ -3485,15 +3654,26 @@ CONTAINS
            INTEGER :: n
            REAL(KIND=dp) :: Norm
            REAL(KIND=dp), ALLOCATABLE :: xtmp(:), btmp(:)
-           REAL(KIND=dp), POINTER :: rhs(:)
 
            CALL ListAddLogical(Params,'Constraint Modes Analysis Frozen',.FALSE.)
+           CALL ListAddLogical(Params,'Skip Compute Nonlinear Change',.TRUE.)
+           
            n = SIZE(Solver % Matrix % rhs)
-           rhs => Solver % Matrix % rhs           
            ALLOCATE(xtmp(n),btmp(n))
-           xtmp = 0.0_dp; btmp = 0.0_dp
-           CALL SolveSystem( Solver % Matrix, ParMatrix, btmp, xtmp, Norm,Solver % Variable % DOFs,Solver )
+
+           btmp = Solver % Matrix % rhs
+           xtmp = Solver % Variable % Values 
+
+           Solver % Matrix % rhs = 0.0_dp
+           CALL SolveSystem( Solver % Matrix, ParMatrix, Solver % Matrix % rhs, &
+               Solver % Variable % Values, Norm, Solver % Variable % DOFs,Solver )
+           
            CALL ListAddLogical(Params,'Constraint Modes Analysis Frozen',.TRUE.)
+           CALL ListAddLogical(Params,'Skip Compute Nonlinear Change',.FALSE.)
+
+           Solver % Matrix % rhs = btmp 
+           Solver % Variable % Values = xtmp
+           DEALLOCATE(xtmp,btmp)
          END BLOCK
        END IF
          
@@ -4524,13 +4704,11 @@ CONTAINS
 
      IF ( PRESENT( USolver ) ) THEN
         Solver => USolver
-        A => Solver % Matrix
-        x => Solver % Variable
      ELSE
         Solver => CurrentModel % Solver
-        A => Solver % Matrix
-        x => Solver % Variable
      END IF
+     A => Solver % Matrix
+     x => Solver % Variable
 
      Element => GetCurrentElement( UElement ) 
 
@@ -4569,10 +4747,15 @@ CONTAINS
      IF( Solver % PeriodicFlipActive ) THEN
        CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, M )
      END IF
-      
-     CALL UpdateMassMatrix( A, M, n, x % DOFs, x % Perm(Indexes(1:n)), & 
-         A % PrecValues )
 
+     SELECT CASE( A % Format )
+     CASE( MATRIX_CRS )
+       CALL CRS_GlueLocalMatrix( A, n, x % DOFs, x % Perm(Indexes(1:n)), &
+           M, A % PrecValues )
+     CASE DEFAULT
+       CALL FATAL( 'DefaultUpdatePrecR', 'Unexpected matrix format')
+     END SELECT
+ 
      IF( Solver % PeriodicFlipActive ) THEN
        CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, M )
      END IF
@@ -4600,13 +4783,11 @@ CONTAINS
 
      IF ( PRESENT( USolver ) ) THEN
         Solver => USolver
-        A => Solver % Matrix
-        x => Solver % Variable
      ELSE
         Solver => CurrentModel % Solver
-        A => Solver % Matrix
-        x => Solver % Variable
      END IF
+     A => Solver % Matrix
+     x => Solver % Variable
 
      Element => GetCurrentElement( UElement ) 
 
@@ -4656,9 +4837,15 @@ CONTAINS
      IF( Solver % PeriodicFlipActive ) THEN
        CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, M )
      END IF
-     
-     CALL UpdateMassMatrix( A, M, n, x % DOFs, x % Perm(Indexes(1:n)), &
-              A % PrecValues )
+
+     SELECT CASE( A % Format )
+     CASE( MATRIX_CRS )
+       CALL CRS_GlueLocalMatrix( A, n, x % DOFs, x % Perm(Indexes(1:n)), &
+           M, A % PrecValues )
+     CASE DEFAULT
+       CALL FATAL( 'DefaultUpdatePrecC', 'Unexpected matrix format')
+     END SELECT
+
      DEALLOCATE( M )
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdatePrecC
@@ -6116,7 +6303,6 @@ CONTAINS
      IF ( GetLogical(Params,'Constraint Modes Analysis',Found) ) THEN
        CALL SetConstraintModesBoundaries( CurrentModel, Solver, A, b, x % Name, x % DOFs, x % Perm )
      END IF
-      
      
 #ifdef HAVE_FETI4I
      IF(C_ASSOCIATED(A % PermonMatrix)) THEN

@@ -4307,7 +4307,7 @@ CONTAINS
 !> Returns a scalar real value, that may depend on other scalar values such as 
 !> time or timestep size etc.
 !------------------------------------------------------------------------------
-  RECURSIVE FUNCTION ListGetCReal( List, Name, Found, minv, maxv, UnfoundFatal) RESULT(s)
+  RECURSIVE FUNCTION ListGetCReal( List, Name, Found, minv, maxv, UnfoundFatal, DefValue ) RESULT(s)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name
@@ -4315,28 +4315,33 @@ CONTAINS
      LOGICAL, OPTIONAL :: Found,UnfoundFatal
      INTEGER, TARGET :: Dnodes(1)
      INTEGER, POINTER :: NodeIndexes(:)
-
+     REAL(KIND=dp), OPTIONAL :: DefValue
+     
      REAL(KIND=dp) :: s
      REAL(KIND=dp) :: x(1)
      TYPE(Element_t), POINTER :: Element
-
+     LOGICAL :: LFound 
+     
      INTEGER :: n, istat
 
-     IF ( PRESENT( Found ) ) Found = .FALSE.
-
+     LFound = .FALSE.
      NodeIndexes => Dnodes
      n = 1
      NodeIndexes(n) = 1
 
      x = 0.0_dp
      IF ( ASSOCIATED(List % head) ) THEN
-        IF ( PRESENT( Found ) ) THEN
-           x(1:n) = ListGetReal( List, Name, n, NodeIndexes, Found, minv=minv, maxv=maxv, UnfoundFatal=UnfoundFatal )
-        ELSE
-           x(1:n) = ListGetReal( List, Name, n, NodeIndexes, minv=minv, maxv=maxv, UnfoundFatal=UnfoundFatal)
-        END IF
+       x(1:n) = ListGetReal( List, Name, n, NodeIndexes, LFound, minv=minv, maxv=maxv, &
+           UnfoundFatal=UnfoundFatal )
      END IF
      s = x(1)
+
+     IF( PRESENT( DefValue ) ) THEN
+       IF(.NOT. LFound ) s = DefValue
+     END IF
+
+     IF ( PRESENT( Found ) ) Found = LFound
+     
 !------------------------------------------------------------------------------
   END FUNCTION ListGetCReal
 !------------------------------------------------------------------------------

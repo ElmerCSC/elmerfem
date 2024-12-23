@@ -1409,6 +1409,8 @@ CONTAINS
        Mesh % MaxBDOFs    * Mesh % NumberOFBulkElements
    n0 = SIZE( Mesh % Nodes % x )
 
+   IF(.NOT. ASSOCIATED(Mesh % Nodes % x)) n0 = 0
+
    pelementsPresent = .FALSE.
    DO i=1,Mesh % NumberOfBulkElements
      IF(isPelement(Mesh % Elements(i))) THEN
@@ -16450,27 +16452,38 @@ CONTAINS
   ! an integral constraint may be applied on it. For example, we could set the
   ! incoming flow without actually setting the profile.
   !--------------------------------------------------------------------------------------
-  FUNCTION IntegralProjector(Model, Mesh, BCInd ) RESULT ( Projector )
+  FUNCTION IntegralProjector(Model, Mesh, BCInd, IsBodyForce ) RESULT ( Projector )
 
     TYPE(Model_t) :: Model  
     TYPE(Mesh_t), TARGET :: Mesh
-    INTEGER :: BCInd    
+    INTEGER :: BCInd
+    LOGICAL :: IsBodyForce
     TYPE(Matrix_t), POINTER :: Projector
         
     REAL(KIND=dp) :: area
     TYPE(ValueList_t), POINTER :: BC
     LOGICAL :: Found
-    INTEGER :: n
+    INTEGER :: n, nbc
     CHARACTER(*), PARAMETER :: Caller="IntegralProjector"
 
+    nbc = Model % NumberOfBCs
     
-    BC => Model % BCs(BCInd) % Values
+    IF(IsBodyForce) THEN    
+      BC => Model % BodyForces(BCInd-nbc) % Values
+      IF(.NOT. ASSOCIATED(BC)) CALL Warn(Caller,'Why not body force associated!?')
+    ELSE
+      BC => Model % BCs(BCInd) % Values
+    END IF
     NULLIFY(Projector)
     
     IF( .NOT. ListGetLogical( BC,'Integral BC', Found ) ) RETURN
-
-    CALL Info(Caller,'Creating integral constraint matrix for boundary: '//I2S(BCind),Level=6)
     
+    IF(IsBodyForce) THEN
+      CALL Info(Caller,'Creating integral constraint matrix for body force: '//I2S(BCind-nbc),Level=6)
+    ELSE
+      CALL Info(Caller,'Creating integral constraint matrix for boundary: '//I2S(BCind),Level=6)
+    END IF
+      
     Projector => AllocateMatrix()
     Projector % FORMAT = MATRIX_LIST
     Projector % ProjectorType = PROJECTOR_TYPE_INTEGRAL
@@ -16499,7 +16512,7 @@ CONTAINS
     
     SUBROUTINE CreateIntegralProjector()
     
-      INTEGER :: i,j,n,t,p
+      INTEGER :: i,j,n,t,p,t1,t2
       REAL(KIND=dp) :: u,v,w,weight,x,detJ,val
       REAL(KIND=dp), ALLOCATABLE :: Basis(:)
       TYPE(Nodes_t) :: Nodes
@@ -16519,12 +16532,26 @@ CONTAINS
       AxisSym = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
           CurrentCoordinateSystem() == CylindricSymmetric ) 
 
-      DO t = 1, Mesh % NumberOfBoundaryElements
+      IF(IsBodyForce) THEN
+        t1 = 1
+        t2 = Mesh % NumberOfBulkElements 
+      ELSE
+        t1 = Mesh % NumberOfBulkElements + 1
+        t2 = (t1-1) + Mesh % NumberOfBoundaryElements
+      END IF
+        
+      
+      DO t = t1, t2
 
-        Element => Mesh % Elements(Mesh % NumberOfBulkElements + t )
+        Element => Mesh % Elements( t )
 
-        IF ( Element % BoundaryInfo % Constraint /= Model % BCs(BCInd) % Tag ) CYCLE
-
+        IF( IsBodyForce ) THEN
+          i = ListGetInteger( Model % Bodies(Element % BodyId) % Values,'Body Force',Stat)
+          IF(i /= BCind-nbc) CYCLE
+        ELSE
+          IF ( Element % BoundaryInfo % Constraint /= Model % BCs(BCInd) % Tag ) CYCLE
+        END IF
+          
         n = Element % TYPE % NumberOfNodes        
         Indexes => Element % NodeIndexes      
         IP = GaussPoints( Element )
@@ -16558,11 +16585,11 @@ CONTAINS
 
 
     ! Let us associate the inverse permutation to some degree of freedom that is unique and not
-    ! set by some other BCs. This unique index is needed in the future. 
+    ! set by some other BC / BodyForce. This unique index is needed in the future. 
     !------------------------------------------------------------------------------------------
     SUBROUTINE SetInvPermIndex()
     
-      INTEGER :: i,j,t,n,maxind
+      INTEGER :: i,j,t,t1,t2,n,maxind
       TYPE(Element_t), POINTER :: Element
       INTEGER, POINTER :: Indexes(:)  
       LOGICAL, ALLOCATABLE :: SomeOtherBC(:)
@@ -16577,24 +16604,43 @@ CONTAINS
       SomeOtherBC = .FALSE.
       maxind = 0
       
-      DO t = 1, Mesh % NumberOfBoundaryElements
-        Element => Mesh % Elements(Mesh % NumberOfBulkElements + t )
-        IF ( Element % BoundaryInfo % Constraint == Model % BCs(BCInd) % Tag ) CYCLE
+      IF(IsBodyForce) THEN
+        t1 = 1
+        t2 = Mesh % NumberOfBulkElements 
+      ELSE
+        t1 = Mesh % NumberOfBulkElements + 1
+        t2 = (t1-1) + Mesh % NumberOfBoundaryElements
+      END IF
+        
+      DO t = t1, t2
+        Element => Mesh % Elements(t)
+        IF( IsBodyForce ) THEN
+          i = ListGetInteger( Model % Bodies(Element % BodyId) % Values,'Body Force',Found)
+          IF(i == BCind-nbc) CYCLE
+        ELSE          
+          IF ( Element % BoundaryInfo % Constraint == Model % BCs(BCInd) % Tag ) CYCLE
+        END IF
         Indexes => Element % NodeIndexes      
         SomeOtherBC(Indexes) = .TRUE.
       END DO
 
-      DO t = 1, Mesh % NumberOfBoundaryElements
-        Element => Mesh % Elements(Mesh % NumberOfBulkElements + t )
-        IF ( Element % BoundaryInfo % Constraint == Model % BCs(BCInd) % Tag ) THEN
-          Indexes => Element % NodeIndexes      
-          n = Element % TYPE % NumberOfNodes        
-          DO i=1,n
-            j = Indexes(i)
-            IF( SomeOtherBC(j) ) CYCLE
-            maxind = MAX(maxind,j)
-          END DO
+      DO t = t1, t2
+        Element => Mesh % Elements(t)
+
+        IF( IsBodyForce ) THEN
+          i = ListGetInteger( Model % Bodies(Element % BodyId) % Values,'Body Force',Found)
+          IF(i /= BCind-nbc) CYCLE
+        ELSE
+          IF ( Element % BoundaryInfo % Constraint /= Model % BCs(BCInd) % Tag ) CYCLE
         END IF
+          
+        Indexes => Element % NodeIndexes      
+        n = Element % TYPE % NumberOfNodes        
+        DO i=1,n
+          j = Indexes(i)
+          IF( SomeOtherBC(j) ) CYCLE
+          maxind = MAX(maxind,j)
+        END DO
       END DO
       
       IF( maxind == 0 ) THEN
@@ -17675,6 +17721,134 @@ CONTAINS
       
   END SUBROUTINE ExtrudedDivision
 
+
+  ! Enable skew for extruded or initially 3D mesh, mainly intended for electrical
+  ! machines. This is a library routine since we may want to perform skew right
+  ! after the extrusion, if the mesh is further to be split into other elements. 
+  !-----------------------------------------------------------------------------  
+  SUBROUTINE SetMeshSkew(Mesh, Vlist )
+    TYPE(ValueList_t), POINTER :: Vlist
+    TYPE(Mesh_t), POINTER :: Mesh
+    REAL(KIND=dp) :: RotorRad, AngleCoeff, RotorSkew, StatorSkew
+    REAL(KIND=dp) :: zmin, zmax, Coord(3), zloc, alpha
+    LOGICAL :: Found, GotSkewFun, GotSkew, IsRotor
+    LOGICAL, ALLOCATABLE :: NodeDone(:)
+    INTEGER :: NoNodes, elem, n, i, j, NodeIndex(1)
+    LOGICAL :: SkewDone = .FALSE.        
+    TYPE(Element_t), POINTER :: Element
+    INTEGER, POINTER :: RotorBodies(:)
+    CHARACTER(*), PARAMETER :: Caller="SetMeshSkew"   
+
+    SAVE SkewDone
+
+    IF(SkewDone) THEN
+      CALL Info(Caller,'Skew already done!',Level=10)
+      RETURN
+    END IF
+
+    RotorBodies => ListGetIntegerArray( Vlist,'Rotor Bodies',Found )
+    IF(.NOT. ASSOCIATED(RotorBodies) ) THEN
+      RotorRad = ListGetCReal(Vlist,'Rotor Radius',Found )
+      IF(.NOT. Found) THEN
+        CALL Info(Caller,'Neither "Rotor Radius" or "Rotor Bodies" given!',Level=10)
+        RETURN
+      END IF
+    END IF
+    
+    IF( ListGetLogical( Vlist,'Rotate in Radians',Found ) ) THEN
+      CALL Info(Caller,'Using radians for skew!',Level=10)
+      AngleCoeff = 1.0_dp
+    ELSE
+      CALL Info(Caller,'Using degrees for skew!',Level=10)
+      AngleCoeff = PI / 180.0_dp
+    END IF
+
+    RotorSkew = AngleCoeff * ListGetCReal(Vlist,'Rotor Skew',GotSkew )
+    GotSkewFun = ListCheckPresent( Vlist,'Rotor Skew Function')
+    StatorSkew = AngleCoeff * ListGetCReal(Vlist,'Stator Skew',Found )
+    GotSkew = GotSkew .OR. GotSkewFun .OR. Found
+    IF(.NOT. GotSkew) THEN
+      CALL Info(Caller,'No settings for skew given!',Level=10)
+      RETURN
+    END IF
+
+    NoNodes = Mesh % NumberOfNodes
+
+    zmin = ListGetCReal( Vlist,'Rotor Skew Min Coordinate',Found ) 
+    IF(.NOT. Found) THEN
+      zmin = ListGetCReal( Vlist,'Extruded Min Coordinate',Found ) 
+    END IF
+    IF(.NOT. Found) THEN
+      zmin = MINVAL(Mesh % Nodes % z(1:NoNodes))
+      zmin = ParallelReduction(zmin,1)
+    END IF
+
+    zmax = ListGetCReal( Vlist,'Rotor Skew Max Coordinate',Found ) 
+    IF(.NOT. Found) THEN
+      zmax = ListGetCReal( Vlist,'Extruded Max Coordinate',Found ) 
+    END IF
+    IF(.NOT. Found) THEN
+      zmax = MAXVAL(Mesh % Nodes % z(1:NoNodes))
+      zmax = ParallelReduction(zmax,2)
+    END IF
+    
+    WRITE(Message,'(A,2ES12.3)') 'Coordinate range for extrusion:',zmin,zmax    
+    CALL Info(Caller,Message)
+    
+    ALLOCATE(NodeDone(NoNodes))
+    NodeDone = .FALSE.
+
+    DO elem = 1,Mesh % NumberOfBulkElements      
+      Element => Mesh % Elements(elem)
+      n = Element % TYPE % NumberOfNodes
+
+      Coord(1) = SUM(Mesh % Nodes % x(Element % NodeIndexes)) / n
+      Coord(2) = SUM(Mesh % Nodes % y(Element % NodeIndexes)) / n
+      Coord(3) = SUM(Mesh % Nodes % z(Element % NodeIndexes)) / n
+
+      IF(ASSOCIATED(RotorBodies)) THEN
+        IsRotor = ANY( RotorBodies == Element % BodyId ) 
+      ELSE
+        IsRotor = (Coord(1)**2+Coord(2)**2 < RotorRad**2) 
+      END IF
+
+      DO i=1,n
+        j = Element % NodeIndexes(i)
+        NodeIndex(1) = j
+        IF(.NOT. NodeDone(j)) THEN
+          Coord(1) = Mesh % Nodes % x(j)
+          Coord(2) = Mesh % Nodes % y(j)
+          Coord(3) = Mesh % Nodes % z(j)
+
+          ! Skew is not constant, perform it for each node 1st if requested. 
+          zloc = (coord(3)-zmin)/(zmax-zmin)
+
+          ! By construction this must be in [0,1]
+          zloc = MAX(0.0_dp,MIN(1.0_dp,zloc))
+
+          IF( IsRotor ) THEN
+            IF(GotSkewFun) THEN
+              alpha = AngleCoeff * ListGetFun( Vlist,'Rotor Skew Function',zloc)                
+            ELSE
+              alpha = (zloc-0.5_dp) * RotorSkew
+            END IF
+          ELSE
+            alpha = (zloc-0.5_dp) * StatorSkew 
+          END IF
+
+          Mesh % Nodes % x(j) = Coord(1)*COS(alpha) - Coord(2)*SIN(alpha)
+          Mesh % Nodes % y(j) = Coord(1)*SIN(alpha) + Coord(2)*COS(alpha)        
+          NodeDone(j) = .TRUE.
+        END IF
+      END DO
+    END DO
+
+    SkewDone = .TRUE.
+    
+    CALL Info(Caller,'Mesh skew done',Level=10)
+    
+  END SUBROUTINE SetMeshSkew
+    
   
 !------------------------------------------------------------------------------
 !> Given a 2D mesh extrude it to be 3D. The 3rd coordinate will always
@@ -18318,6 +18492,8 @@ CONTAINS
       CALL AppendMissingBCs(CurrentModel,j)
     END IF
 
+    CALL SetMeshSkew(Mesh_out, CurrentModel % Simulation )
+    
     CALL PrepareMesh( CurrentModel, Mesh_out, isParallel )
     
     ExtrudedMeshName = ListGetString(CurrentModel % Simulation,'Extruded Mesh Name',Found)
@@ -18877,6 +19053,7 @@ CONTAINS
       DEALLOCATE(TmpBCs)
     END BLOCK
       
+    CALL SetMeshSkew(Mesh_out, CurrentModel % Simulation )
     
     ExtrudedMeshName = ListGetString(CurrentModel % Simulation,'Extruded Mesh Name',Found)
     IF(Found) THEN
@@ -23732,6 +23909,11 @@ CONTAINS
       CALL Fatal(Caller,'Not implemented yet for pyramids and hexahedrons!')
     END IF
     
+    IF(Mesh % MeshDim == 3 .AND. TypeCnt(7) == 0) THEN
+      CALL Warn(Caller,'No wedges exist, doing nothing!')
+      RETURN
+    END IF
+    
     CALL ResetTimer(Caller)
 
     Parallel = ( ParEnv % PEs > 1 ) .AND. (.NOT. Mesh % SingleMesh )
@@ -23769,6 +23951,41 @@ CONTAINS
     END DO
     CutCorner = MinCorner
 
+    BLOCK
+      INTEGER :: DoMax
+      INTEGER, POINTER :: Inds(:)
+      REAL(KIND=dp) :: d13,d24
+    
+      DoMax = 0
+      IF(LIstGetLogical(Vlist,'Split Mesh Prisms Min',Found )) DoMax = 1
+      IF(LIstGetLogical(Vlist,'Split Mesh Prisms Max',Found )) DoMax = -1
+
+      ! Optionally cut the 3D meshes such that the shorter (longer) diagonal
+      ! is used to cut the quad faces. 
+      IF(DoMax /= 0) THEN
+        DO i=1,Mesh % NumberOfFaces
+          Face => Mesh % Faces(i)
+          IF(Face % TYPE % ElementCode /= 404) CYCLE
+          Inds => Face % NodeIndexes
+          
+          ! Compute |r1-r3|^2 
+          d13 = (x(Inds(1))-x(Inds(3)))**2 + &
+              (y(Inds(1))-y(Inds(3)))**2 + (z(Inds(1))-z(Inds(3)))**2 
+          
+          ! Compute |r2-r4|^2 
+          d24 = (x(Inds(2))-x(Inds(4)))**2 + &
+              (y(Inds(2))-y(Inds(4)))**2 + (z(Inds(2))-z(Inds(4)))**2 
+          
+          IF(DoMax * d13 < DoMax * d24) THEN
+            CutCorner(i) = MIN(Inds(1),Inds(3))
+          ELSE
+            CutCorner(i) = MIN(Inds(2),Inds(4))
+          END IF
+        END DO
+      END IF
+    END BLOCK
+          
+    
     
     DO WHILE(.TRUE.)
       CutChanges = 0
@@ -24339,6 +24556,14 @@ CONTAINS
 
     IF ( ASSOCIATED( Mesh % ParallelInfo % FaceInterface ) ) &
         DEALLOCATE( Mesh % ParallelInfo % FaceInterface )
+
+    IF ( ASSOCIATED( Mesh % ParallelInfo % FaceNeighbourList ) ) THEN
+      DO i=1,Mesh % NumberOfNodes
+        IF(ASSOCIATED( Mesh % ParallelInfo % FaceNeighbourList(i) % Neighbours ) ) &
+            DEALLOCATE( Mesh % ParallelInfo % FaceNeighbourList(i) % Neighbours )
+      END DO
+      DEALLOCATE( Mesh % ParallelInfo % FaceNeighbourList )
+    END IF
 
     IF ( ASSOCIATED( Mesh % ParallelInfo % EdgeNeighbourList ) ) THEN 
       DO i=1,Mesh % NumberOfNodes

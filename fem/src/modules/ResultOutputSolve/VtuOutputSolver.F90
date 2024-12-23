@@ -514,7 +514,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
       END DO
     END IF
   END IF
-    
+  EigenVectorMode = 0
   IF( MaxModes > 0 ) THEN
     CALL Info(Caller,'Maximum number of eigen/harmonic modes: '//I2S(MaxModes),Level=7)
     Str = ListGetString( Params,'Eigen Vector Component', GotIt )
@@ -541,8 +541,8 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
     MaxModes2 = 0
     DO i=1,Model % NumberOfSolvers
       IF( .NOT. ASSOCIATED( Model % Solvers(i) % Variable ) ) CYCLE
-      MaxModes2 = MAX( MaxModes2, &
-          Model % Solvers(i) % Variable % NumberOfConstraintModes )
+      j = Model % Solvers(i) % Variable % NumberOfConstraintModes
+      MaxModes2 = MAX( MaxModes2, j ) 
     END DO
   END IF
   IF( MaxModes2 > 0 ) THEN
@@ -710,7 +710,7 @@ CONTAINS
     LOGICAL, INTENT(IN) :: RemoveDisp
     INTEGER, PARAMETER :: VtuUnit = 58
     INTEGER :: i,ii,j,jj,k,dofs,Rank,n,m,dim,vari,sdofs,dispdofs, dispBdofs, Offset, &
-        NoFields, NoFields2, IndField, iField, NoModes, NoModes2, NoFieldsWritten, &
+        NoFields, NoFields2, IndField, iField, iField0, NoModes, NoModes2, NoFieldsWritten, &
         cumn, iostat
     CHARACTER(LEN=1024) :: Txt, ScalarFieldName, VectorFieldName, TensorFieldName, &
         FieldName, FieldNameB, OutStr
@@ -1118,10 +1118,17 @@ CONTAINS
           END IF
 
           !---------------------------------------------------------------------
-          ! Finally save the field values 
+          ! Finally save the nodal field values 
           !---------------------------------------------------------------------
           DoIm = 0
-300       DO iField = 1, NoFields + NoFields2          
+
+          IF(Solution % FrozenMode ) THEN
+            iField0 = 0
+          ELSE
+            iField0 = 1
+          END IF
+          
+300       DO iField = iField0, NoFields + NoFields2          
 
             IF( ( DG .OR. DN ) .AND. VarType == Variable_on_nodes_on_elements ) THEN
               CALL Info(Caller,'Setting field type to discontinuous',Level=12)
@@ -1156,7 +1163,7 @@ CONTAINS
             IF( WriteXML ) THEN
               NoFieldsWritten = NoFieldsWritten + 1
 
-              IF( NoModes + NoModes2 == 0 .OR. EigenAnalysis ) THEN
+              IF( iField==0 .OR. NoModes + NoModes2 == 0 .OR. EigenAnalysis ) THEN
                 WRITE( OutStr,'(A,I0,A)') '        <DataArray type="Float',PrecBits,'" Name="'//TRIM(FieldName)
               ELSE IF( iField <= NoFields ) THEN
                 IF( IsHarmonic ) THEN
@@ -1227,6 +1234,28 @@ CONTAINS
                 DO k=1,sdofs              
                   IF(j==0 .OR. k > dofs) THEN
                     val = 0.0_dp
+                  ELSE IF( NoModes + NoModes2 == 0  .OR. iField == 0 ) THEN 
+                    IF( Use2 ) THEN
+                      IF( ComponentVectorB ) THEN
+                        IF( k == 1 ) val = ValuesB(j)
+                        IF( k == 2 ) val = ValuesB2(j)
+                        IF( k == 3 ) val = ValuesB3(j)
+                      ELSE
+                        val = ValuesB(dofs*(j-1)+k)              
+                      END IF
+                    ELSE
+                      IF( ComponentVector ) THEN
+                        IF( k == 1 ) val = Values(j)
+                        IF( k == 2 ) val = Values2(j)
+                        IF( k == 3 ) val = Values3(j)
+                      ELSE
+                        IF(dofs*(j-1)+k > SIZE(Values) .OR. dofs*(j-1)+k < 1 ) THEN
+                          PRINT *,'vtu:',dofs,j,k,SIZE(values),dofs*(j-1)+k
+                          call flush(6)
+                        END IF
+                        val = Values(dofs*(j-1)+k)              
+                      END IF
+                    END IF
                   ELSE IF( NoModes > 0 .AND. iField <= NoFields ) THEN
                     IF( Use2 ) THEN
                       IF( ComponentVectorB ) THEN
@@ -1249,29 +1278,7 @@ CONTAINS
 
                   ELSE IF( NoModes2 > 0 ) THEN
                     val = ConstraintModes(IndField,dofs*(j-1)+k)
-                  ELSE
-                    IF( Use2 ) THEN
-                      IF( ComponentVectorB ) THEN
-                        IF( k == 1 ) val = ValuesB(j)
-                        IF( k == 2 ) val = ValuesB2(j)
-                        IF( k == 3 ) val = ValuesB3(j)
-                      ELSE
-                        val = ValuesB(dofs*(j-1)+k)              
-                      END IF
-                    ELSE
-                      IF( ComponentVector ) THEN
-                        IF( k == 1 ) val = Values(j)
-                        IF( k == 2 ) val = Values2(j)
-                        IF( k == 3 ) val = Values3(j)
-                      ELSE
-                        IF(dofs*(j-1)+k > SIZE(Values) .OR. dofs*(j-1)+k < 1 ) THEN
-                          PRINT *,'vtu:',dofs,j,k,SIZE(values),dofs*(j-1)+k
-                          call flush(6)
-                        END IF
-                        val = Values(dofs*(j-1)+k)              
-                      END IF
-                    END IF
-                  END IF
+                   END IF
 
                   IF( FlipActive ) THEN
                     IF( Model % Mesh % PeriodicFlip(i) ) val = -val
@@ -1472,7 +1479,7 @@ CONTAINS
           END IF
           
           !---------------------------------------------------------------------
-          ! Finally save the field values 
+          ! Finally save the elemental field values 
           !---------------------------------------------------------------------
           DoIm = 0
 400       DO iField = 1, NoFields + NoFields2          
@@ -1501,7 +1508,7 @@ CONTAINS
               NoFieldsWritten = NoFieldsWritten + 1
 
               CALL Info(Caller,'Writing variable: '//TRIM(FieldName),Level=20)
-              IF( NoModes + NoModes2 == 0 .OR. EigenAnalysis ) THEN
+              IF( iField == 0 .OR. NoModes + NoModes2 == 0 .OR. EigenAnalysis ) THEN
                 WRITE( OutStr,'(A,I0,A)') '        <DataArray type="Float',PrecBits,'" Name="'//TRIM(FieldName)
               ELSE IF( iField <= NoFields ) THEN
                 IF( IsHarmonic ) THEN
@@ -1619,7 +1626,7 @@ CONTAINS
                   DO k=1,sdofs
                     IF( k > dofs ) THEN
                       val = 0.0_dp
-
+                      
                     ELSE IF( NoModes > 0 .AND. iField <= NoFields ) THEN
                       IF( ComponentVector ) THEN
                         IF( k == 1 ) zval = SUM(EigenVectors(IndField,ElemInd(1:n)))/n
@@ -2153,7 +2160,8 @@ CONTAINS
     LOGICAL :: ScalarsExist, VectorsExist, Found, ComponentVector, AllActive, ThisActive
     LOGICAL, POINTER :: ActivePartition(:)
     TYPE(Variable_t), POINTER :: Solution, Solution2, Solution3
-    INTEGER :: Active, NoActive, ierr, NoFields, NoFields2, NoModes, NoModes2, IndField, iField, VarType
+    INTEGER :: Active, NoActive, ierr, NoFields, NoFields2, NoModes, NoModes2, &
+        IndField, iField, iField0, VarType
     INTEGER, DIMENSION(MPI_STATUS_SIZE) :: status
     
 
@@ -2296,9 +2304,15 @@ CONTAINS
           ELSE
             sdofs = 1
           END IF
+
+          IF(Solution % FrozenMode ) THEN
+            iField0 = 0
+          ELSE
+            iField0 = 1
+          END IF
           
-          DO iField = 1, NoFields 
-            IF( NoModes + NoModes2 == 0 .OR. EigenAnalysis ) THEN
+          DO iField = iField0, NoFields 
+            IF( iField == 0 .OR. NoModes + NoModes2 == 0 .OR. EigenAnalysis ) THEN
               FullName = TRIM( FieldName ) 
             ELSE          
               IF( GotActiveModes ) THEN
@@ -2405,9 +2419,15 @@ CONTAINS
             ELSE
               sdofs = 1
             END IF
-
-            DO iField = 1, NoFields
-              IF( NoModes + NoModes2 == 0 .OR. EigenAnalysis ) THEN
+            
+            IF(Solution % FrozenMode ) THEN
+              iField0 = 0
+            ELSE
+              iField0 = 1
+            END IF
+            
+            DO iField = iField0, NoFields
+              IF( iField == 0 .OR. NoModes + NoModes2 == 0 .OR. EigenAnalysis ) THEN
                 FullName = TRIM( FieldName ) 
               ELSE          
                 IF( NoModes > 0 ) THEN

@@ -79,8 +79,8 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
        front_BC_ID, front_body_id, my_calv_front,calv_front, ncalv_parts, &
        group_calve, comm_calve, group_world,ecode, NElNodes, target_bodyid,gdofs(4), &
        PairCount,RPairCount, NCalvNodes, croot, nonCalvBoss,&
-       NVerts, NTetras, NPrisms, NTris, NQuads, NEdges
-  INTEGER, POINTER :: NodeIndexes(:), geom_id
+       NVerts, NTetras, NPrisms, NTris, NQuads, NEdges, dummyint
+  INTEGER, POINTER :: NodeIndexes(:), geom_id, TopPerm(:)=>NULL(), FrontPerm(:)=>NULL()
   INTEGER, ALLOCATABLE :: Prnode_count(:), cgroup_membs(:),disps(:), &
        PGDOFs_send(:),pcalv_front(:),GtoLNN(:),EdgePairs(:,:),REdgePairs(:,:), ElNodes(:),&
        Nodes(:), IslandCounts(:), pNCalvNodes(:,:), TetraQuality(:)
@@ -91,15 +91,15 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   REAL(KIND=dp), POINTER :: WorkArray(:,:) => NULL()
   LOGICAL, ALLOCATABLE :: calved_node(:), remeshed_node(:), fixed_node(:), fixed_elem(:), &
        elem_send(:), RmElem(:), RmNode(:),new_fixed_node(:), new_fixed_elem(:), FoundNode(:,:), &
-       UsedElem(:), NewNodes(:), RmIslandNode(:), RmIslandElem(:), PartGotNodes(:)
+       UsedElem(:), NewNodes(:), RmIslandNode(:), RmIslandElem(:), PartGotNodes(:), SendNode(:)
   LOGICAL :: ImBoss, Found, Isolated, Debug,DoAniso,NSFail,CalvingOccurs,&
        RemeshOccurs,CheckFlowConvergence, NoNewNodes, RSuccess, Success,&
        SaveMMGMeshes, SaveMMGSols, PauseSolvers, PauseAfterCalving, FixNodesOnRails, &
        SolversPaused, NewIceberg, GotNodes(4), CalvingFileCreated=.FALSE., SuppressCalv,&
-       DistributedMesh,SaveTerminus
+       DistributedMesh,SaveTerminus,RemeshFront,RemeshIfNoCalving
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, CalvingVarName, MeshName, SolName, &
        premmgls_meshfile, mmgls_meshfile, premmgls_solfile, mmgls_solfile,&
-       RepartMethod, Filename
+       RepartMethod, Filename, DistVarName
   TYPE(Variable_t), POINTER :: TimeVar
   INTEGER :: Time, remeshtimestep, proc, idx, island, node, MaxLSetIter, mmgloops
   REAL(KIND=dp) :: TimeReal, PreCalveVolume, PostCalveVolume, CalveVolume, LsetMinQuality
@@ -183,7 +183,16 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   remesh_thresh = ListGetConstReal(SolverParams,"Remeshing Distance", DefValue=1000.0_dp)
   LsetMinQuality = ListGetConstReal(SolverParams,"Mesh Min Quality", DefValue=0.00001_dp)
   RmcValue = ListGetConstReal(SolverParams,"Mesh Rmc Value", DefValue=1e-15_dp)
-  CalvingVarName = ListGetString(SolverParams,"Calving Variable Name", DefValue="Calving Lset")
+  CalvingVarName = ListGetString(SolverParams, "Calving Variable Name", Found)
+  IF(.NOT. Found) THEN
+    CALL WARN(SolverName, "'Levelset Variable Name' not set so assuming 'Calving Lset'.")
+    CalvingVarName = "Calving LSet"
+  END IF
+  DistVarName = ListGetString(SolverParams, "Distance Variable Name", Found)
+  IF(.NOT. Found) THEN
+    CALL WARN(SolverName, "'Distance Variable Name' not set so assuming 'Distance'.")
+    DistVarName = "Distance"
+  END IF
   SaveMMGMeshes = ListGetLogical(SolverParams,"Save MMGLS Meshes", DefValue=.FALSE.)
   SaveMMGSols = ListGetLogical(SolverParams,"Save MMGLS Sols", DefValue=.FALSE.)
   IF(SaveMMGMeshes) THEN
@@ -203,6 +212,16 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   FixNodesOnRails = ListGetLogical(SolverParams,"Fix Nodes On Rails", DefValue=.TRUE.)
   SuppressCalv = ListGetLogical(SolverParams,"Suppress Calving", DefValue=.FALSE.)
   SaveTerminus = ListGetLogical(SolverParams,"Save Terminus", DefValue=.TRUE.)
+  RemeshFront = ListGetLogical(SolverParams,"Remesh Full Calving Front", Found)
+  IF(.NOT. Found) THEN
+    CALL Info(SolverName, "Not Found 'Remesh Full Calving Front' asssuming TRUE")
+    RemeshFront = .TRUE.
+  END IF
+  RemeshIfNoCalving = ListGetLogical(SolverParams,"Remesh if no calving", Found)
+  IF(.NOT. Found) THEN
+    CALL Info(SolverName, "Not Found 'Remesh if no calving' asssuming TRUE")
+    RemeshIfNoCalving = .TRUE.
+  END IF
 
   ! calving algo passes through 202 elems to mmg
   i = ListGetInteger( Model % Bodies(Mesh % Elements(1) % BodyId) % Values, 'Material')
@@ -238,7 +257,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   fixed_node = .FALSE.
 
   ! TO DO some other wah to define remeshed nodes
-  DistanceVar  => VariableGet(Mesh % Variables, "Distance", .TRUE., UnfoundFatal=.TRUE.)
+  DistanceVar  => VariableGet(Mesh % Variables, DistVarName, .TRUE., UnfoundFatal=.TRUE.)
   ALLOCATE(test_dist(NNodes))
   test_dist = DistanceVar  % Values(DistanceVar % Perm(:))
   remeshed_node = test_dist < remesh_thresh
@@ -246,7 +265,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   !Get the calving levelset function (-ve inside calving event, +ve in intact ice)
   !-------------------
   IF (CalvingOccurs) THEN
-     CalvingVar => VariableGet(Mesh % Variables, "Calving Lset", .TRUE., UnfoundFatal=.TRUE.)
+     CalvingVar => VariableGet(Mesh % Variables, CalvingVarName, .TRUE., UnfoundFatal=.TRUE.)
 
      ALLOCATE(test_lset(NNodes),&
           calved_node(NNodes)&
@@ -257,7 +276,11 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
      calved_node = test_lset < 0.0
      ! calving front boundary nodes may have lset value greater than remesh dist
      DO i=1, NNodes
-        newdist = MINVAL((/test_lset(i), test_dist(i)/))
+        IF(RemeshFront) THEN
+          newdist = MINVAL((/test_lset(i), test_dist(i)/))
+        ELSE
+          newdist = test_lset(i)
+        END IF
         remeshed_node(i) = newdist < remesh_thresh
      END DO
   END IF
@@ -308,9 +331,8 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       IF(elem_send(ParentElem % ElementIndex)) elem_send(i) = .TRUE.
     END DO
 
-    DEALLOCATE(fixed_node) !reuse later
   END IF
-
+  DEALLOCATE(fixed_node) !reuse later
 
   !This does nothing yet but it will be important - determine
   !the discrete calving zones, each of which will be separately remeshed
@@ -502,7 +524,11 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       ! so use dist so front boundary nodes aren't fixed
       IF(CalvingOccurs) THEN
         DO i=1,GNNode
-          newdist = MINVAL((/Gtest_lset(i), Gtest_dist(i)/))
+          IF(RemeshFront) THEN
+            newdist = MINVAL((/Gtest_lset(i), Gtest_dist(i)/))
+          ELSE
+            newdist = Gtest_lset(i)
+          END IF
           fixed_node(i) = newdist > remesh_thresh
         END DO
       ELSE
@@ -517,6 +543,14 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       END DO
     END IF
   END IF ! My calving front > 1
+
+  ! if no calving and we don't want to remesh then go to end
+  ! need gathered mesh for terminus output
+  ! also need to update mesh deformation variables
+  IF(.NOT. RemeshIfNoCalving .AND. .NOT. CalvingOccurs .AND. .NOT. NSFail) THEN
+    RSuccess =.FALSE.
+    GO TO 30
+  END IF
 
   !Nominated partition does the remeshing
   IF(ImBoss) THEN
@@ -864,94 +898,97 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       NBulk = NewMeshR % NumberOfBulkElements
       NBdry = NewMeshR % NumberOfBoundaryElements
 
-      !sometimes some icebergs are not removed fully from the MMG levelset
-      !find all connected nodes in groups and remove in groups not in the
-      !main icebody
-      !limit here of 10 possible mesh 'islands'
-      ALLOCATE(FoundNode(10, NNodes), ElNodes(4), &
-              UsedElem(NBulk))
-      FoundNode = .FALSE.! count of nodes found
-      UsedElem = .FALSE. !count of elems used
-      island=0 ! count of different mesh islands
-      NoNewNodes=.TRUE. ! whether node has neighour
-      DO WHILE(COUNT(FoundNode) < NNodes)
-        IF(NoNewNodes) THEN
-          island = island + 1
-          NewIceberg = .TRUE.
-        END IF
-        NoNewNodes = .TRUE.
-        DO i=1, NBulk
-          IF(UsedElem(i)) CYCLE
-          Element => NewMeshR % Elements(i)
-          ElNodes = Element % NodeIndexes
-          ! if there are not any matching nodes and its not a new iceberg
-          DO j=1, 4
-            GotNodes(j) = ANY(FoundNode(:, ElNodes(j)))
-          END DO
-          IF(ALL(.NOT. GotNodes) .AND. .NOT. NewIceberg) CYCLE
-          NewIceberg = .FALSE.
-          UsedElem(i) = .TRUE.
-          FoundNode(island, ElNodes) = .TRUE.
-          NoNewNodes = .FALSE.
-        END DO
-      END DO
-
-      ALLOCATE(IslandCounts(10))
-      DO i=1,10
-        IslandCounts(i) = COUNT(FoundNode(i, :))
-      END DO
-      Island = COUNT(IslandCounts > 0)
-      DEALLOCATE(IslandCounts) ! reused
-
-      ! if iceberg not removed mark nodes and elems
-      IF(Island > 1) THEN
-        CALL WARN(SolverName, 'Mesh island found after levelset- removing...')
-        ALLOCATE(RmIslandNode(NNodes), RmIslandElem(Nbulk+NBdry),&
-                IslandCounts(Island))
-        RmIslandNode = .FALSE.
-        RmIslandElem = .FALSE.
-        counter=0
-        DO i=1, 10
-          IF(COUNT(FoundNode(i, :)) == 0) CYCLE
-          counter=counter+1
-          IslandCounts(counter) = COUNT(FoundNode(i, :))
-        END DO
-        DO i=1, Island
-          IF(IslandCounts(i) < MAXVAL(IslandCounts)) THEN
-            DO j=1, NNodes
-              IF(.NOT. FoundNode(i,j)) CYCLE! if not part of island
-              RmIslandNode(j) = .TRUE.
-            END DO
+      IF(RemeshFront) THEN ! if just remesh where calving occurs cannot remove 
+        !islands as mesh already split
+        !sometimes some icebergs are not removed fully from the MMG levelset
+        !find all connected nodes in groups and remove in groups not in the
+        !main icebody
+        !limit here of 10 possible mesh 'islands'
+        ALLOCATE(FoundNode(10, NNodes), ElNodes(4), &
+                UsedElem(NBulk))
+        FoundNode = .FALSE.! count of nodes found
+        UsedElem = .FALSE. !count of elems used
+        island=0 ! count of different mesh islands
+        NoNewNodes=.TRUE. ! whether node has neighour
+        DO WHILE(COUNT(FoundNode) < NNodes)
+          IF(NoNewNodes) THEN
+            island = island + 1
+            NewIceberg = .TRUE.
           END IF
-        END DO
-        ! mark all elems with rm nodes as need removing
-        nodes = PACK((/ (i,i=1,SIZE(RmIslandNode)) /), RmIslandNode .eqv. .TRUE.)
-        DO i=1, Nbulk+Nbdry
-          Element => NewMeshR % Elements(i)
-          ElNodes = Element % NodeIndexes
-          !any([(any(A(i) == B), i = 1, size(A))])
-          IF( .NOT. ANY([(ANY(ElNodes(i)==Nodes), i = 1, SIZE(ElNodes))])) CYCLE
-          RmIslandElem(i) = .TRUE.
+          NoNewNodes = .TRUE.
+          DO i=1, NBulk
+            IF(UsedElem(i)) CYCLE
+            Element => NewMeshR % Elements(i)
+            ElNodes = Element % NodeIndexes
+            ! if there are not any matching nodes and its not a new iceberg
+            DO j=1, 4
+              GotNodes(j) = ANY(FoundNode(:, ElNodes(j)))
+            END DO
+            IF(ALL(.NOT. GotNodes) .AND. .NOT. NewIceberg) CYCLE
+            NewIceberg = .FALSE.
+            UsedElem(i) = .TRUE.
+            FoundNode(island, ElNodes) = .TRUE.
+            NoNewNodes = .FALSE.
+          END DO
         END DO
 
-        !Chop out missed iceberg if they exist
-        CALL CutMesh(NewMeshR, RmIslandNode, RmIslandElem)
+        ALLOCATE(IslandCounts(10))
+        DO i=1,10
+          IslandCounts(i) = COUNT(FoundNode(i, :))
+        END DO
+        Island = COUNT(IslandCounts > 0)
+        DEALLOCATE(IslandCounts) ! reused
 
-        !modify rmelem and rmnode to include island removal
-        counter=0
-        DO i=1, SIZE(RmElem)
-          IF(RmElem(i)) CYCLE
-          counter=counter+1
-          IF(RmIslandElem(Counter)) RmElem(i) =.TRUE.
-        END DO
-        counter=0
-        DO i=1, SIZE(RmNode)
-          IF(RmNode(i)) CYCLE
-          counter=counter+1
-          IF(RmIslandNode(Counter)) RmNode(i) =.TRUE.
-        END DO
-        CALL INFO(SolverName, 'Mesh island removed', level=10)
-      END IF
+        ! if iceberg not removed mark nodes and elems
+        IF(Island > 1) THEN
+          CALL WARN(SolverName, 'Mesh island found after levelset- removing...')
+          ALLOCATE(RmIslandNode(NNodes), RmIslandElem(Nbulk+NBdry),&
+                  IslandCounts(Island))
+          RmIslandNode = .FALSE.
+          RmIslandElem = .FALSE.
+          counter=0
+          DO i=1, 10
+            IF(COUNT(FoundNode(i, :)) == 0) CYCLE
+            counter=counter+1
+            IslandCounts(counter) = COUNT(FoundNode(i, :))
+          END DO
+          DO i=1, Island
+            IF(IslandCounts(i) < MAXVAL(IslandCounts)) THEN
+              DO j=1, NNodes
+                IF(.NOT. FoundNode(i,j)) CYCLE! if not part of island
+                RmIslandNode(j) = .TRUE.
+              END DO
+            END IF
+          END DO
+          ! mark all elems with rm nodes as need removing
+          nodes = PACK((/ (i,i=1,SIZE(RmIslandNode)) /), RmIslandNode .eqv. .TRUE.)
+          DO i=1, Nbulk+Nbdry
+            Element => NewMeshR % Elements(i)
+            ElNodes = Element % NodeIndexes
+            !any([(any(A(i) == B), i = 1, size(A))])
+            IF( .NOT. ANY([(ANY(ElNodes(i)==Nodes), i = 1, SIZE(ElNodes))])) CYCLE
+            RmIslandElem(i) = .TRUE.
+          END DO
+
+          !Chop out missed iceberg if they exist
+          CALL CutMesh(NewMeshR, RmIslandNode, RmIslandElem)
+
+          !modify rmelem and rmnode to include island removal
+          counter=0
+          DO i=1, SIZE(RmElem)
+            IF(RmElem(i)) CYCLE
+            counter=counter+1
+            IF(RmIslandElem(Counter)) RmElem(i) =.TRUE.
+          END DO
+          counter=0
+          DO i=1, SIZE(RmNode)
+            IF(RmNode(i)) CYCLE
+            counter=counter+1
+            IF(RmIslandNode(Counter)) RmNode(i) =.TRUE.
+          END DO
+          CALL INFO(SolverName, 'Mesh island removed', level=10)
+        END IF
+      END IF !remeshfront
 
     END IF ! CalvingOccurs
 
@@ -1047,11 +1084,12 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 30 CONTINUE
 
    !Wait for all partitions to finish
-   IF(My_Calv_Front>0) THEN
-     CALL MPI_BARRIER(COMM_CALVE,ierr)
-     CALL MPI_COMM_FREE(COMM_CALVE,ierr)
-     CALL MPI_GROUP_FREE(group_world,ierr)
-   END IF
+
+   CALL MPI_GROUP_FREE(group_world,ierr)
+   CALL MPI_GROUP_FREE(group_calve,ierr)
+   IF(My_Calv_Front > 0) &
+       CALL MPI_COMM_FREE(COMM_CALVE,ierr)
+
    CALL MPI_BARRIER(ELMER_COMM_WORLD,ierr)
 
    CALL MPI_BCAST(CalvingFileCreated, 1, MPI_LOGICAL, my_cboss, ELMER_COMM_WORLD, ierr)
@@ -1122,7 +1160,77 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
      END IF
    END DO
 
-   IF(SaveTerminus) CALL SaveTerminusPosition(Model, Solver, GatheredMesh, ImBoss)
+   IF(SaveTerminus) THEN
+      IF(RemeshFront) THEN ! got entire front
+        CALL SaveTerminusPosition(Model, Solver, GatheredMesh, ImBoss)
+      ELSE ! only remeshing where bergs calve
+        CALL MakePermUsingMask( Model, Solver, GatheredMesh, "Calving Front Mask", &
+               .FALSE., FrontPerm, dummyint)
+        CALL MakePermUsingMask( Model, Solver, GatheredMesh, "Top Surface Mask", &
+               .FALSE., TopPerm, dummyint)
+
+        IF(.NOT. ASSOCIATED(GatheredMesh % Repartition)) THEN
+              ALLOCATE(GatheredMesh % Repartition(GatheredMesh % NumberOfBulkElements+&
+                       GatheredMesh % NumberOfBoundaryElements), STAT=ierr)
+              IF(ierr /= 0) PRINT*, ParEnv % MyPE, 'Unable to allocate mesh % repartition'
+        END IF
+
+        GatheredMesh % Repartition = ParEnv % MyPE + 1
+        IF(ImBoss) DEALLOCATE(fixed_node)
+        DEALLOCATE(elem_send)
+        ALLOCATE(SendNode(GatheredMesh % NumberOfNodes), &
+               fixed_node(GatheredMesh % NumberOfNodes))
+        SendNode = .FALSE.; fixed_node = .FALSE.
+        DO i=1, GatheredMesh % NumberOfNodes
+               IF( (TopPerm(i)>0) .AND. (FrontPerm(i)>0)) THEN
+                       SendNode(i) = .TRUE.
+               END IF
+        END DO
+
+        ALLOCATE(elem_send(GatheredMesh % NumberOfBulkElements+&
+               GatheredMesh % NumberOfBoundaryElements))
+        elem_send = .FALSE.
+        DO i=1,GatheredMesh % NumberOfBulkElements
+          Element => GatheredMesh % Elements(i)
+          CALL Assert(Element % ElementIndex == i, SolverName,"Misnumbered bulk element.")
+          NodeIndexes => Element % NodeIndexes
+          NElNodes = Element % TYPE % NumberOfNodes
+          IF(ANY(SendNode(NodeIndexes(1:NElNodes)))) THEN
+            elem_send(i) = .TRUE.
+            IF(.NOT. ALL(SendNode(NodeIndexes(1:NElNodes)))) THEN
+              fixed_node(NodeIndexes(1:NElNodes)) = .TRUE.
+            END IF
+          END IF
+        END DO
+
+        SendNode = SendNode .OR. fixed_node
+
+        !Cycle boundary elements, checking parent elems
+        !BC elements follow parents
+        DO i=GatheredMesh % NumberOfBulkElements+1, GatheredMesh % NumberOfBulkElements+&
+               GatheredMesh % NumberOfBoundaryElements 
+          Element => GatheredMesh % Elements(i)
+          ParentElem => Element % BoundaryInfo % Left
+          IF(.NOT. ASSOCIATED(ParentElem)) THEN
+            ParentElem => Element % BoundaryInfo % Right
+          END IF
+          CALL Assert(ASSOCIATED(ParentElem),SolverName,"Boundary element has no parent!")
+          IF(elem_send(ParentElem % ElementIndex)) elem_send(i) = .TRUE.
+        END DO
+
+        DO i=1, GatheredMesh % NumberOfBulkElements + GatheredMesh % NumberOfBoundaryElements
+               IF(Elem_send(i)) GatheredMesh % RePartition(i) = my_cboss + 1
+        END DO
+
+        ParMetisMesh => RedistributeMesh(Model, GatheredMesh, .TRUE., .FALSE.)
+
+        CALL SaveTerminusPosition(Model, Solver, ParMetisMesh, ImBoss)
+
+        CALL ReleaseMesh(ParMetisMesh)
+        ParMetisMesh => NULL()
+        DEALLOCATE(FrontPerm,TopPerm)
+      END IF ! remeshfront
+   END IF ! saveterminus
 
    !Call zoltan to determine redistribution of mesh
    ! then do the redistribution

@@ -471,9 +471,27 @@ CONTAINS
         CALL Info(FuncName, Message)
         IF(ImbalanceTol < 1.0) CALL FATAL(FuncName, 'Unable to rebalance successfully')
         DEALLOCATE(ElemAdj, ElemAdjProc, ElemStart, PartSuccess)
+
+        ! release zoltan input/output arrays
+        IF(numImport > 0) &
+          zierr = Zoltan_LB_Free_Part(importGlobalGids,importLocalGids,importProcs,importToPart)
+        IF(numExport > 0) &
+          zierr = Zoltan_LB_Free_Part(exportGlobalGids,exportLocalGids,exportProcs,exportToPart)
+
+        ! release zoltan object and mpi communicators
+        CALL Zoltan_Destroy(zz_obj)
         GOTO 10
       END IF
     END IF
+
+    ! release zoltan input/output arrays
+    IF(numImport > 0) &
+      zierr = Zoltan_LB_Free_Part(importGlobalGids,importLocalGids,importProcs,importToPart)
+    IF(numExport > 0) &
+      zierr = Zoltan_LB_Free_Part(exportGlobalGids,exportLocalGids,exportProcs,exportToPart)
+
+    ! release zoltan object and mpi communicators
+    CALL Zoltan_Destroy(zz_obj)
     
     CALL Info(FuncName,'Finished Zoltan partitioning',Level=10)
     
@@ -620,11 +638,12 @@ CONTAINS
     NBulk = Mesh % NumberOfBulkElements
     
     !Find and globally number mesh faces
-    IF(Nbulk == 0 ) THEN
-      CONTINUE
-
-    ELSE IF(DIM == 3) THEN
-      CALL FindMeshFaces3D(Mesh)
+    IF(DIM == 3) THEN
+      IF( NBulk /= 0 ) THEN
+        CALL FindMeshFaces3D(Mesh)
+      ELSE
+        CALL AllocateVector( Mesh % Faces, 6*Mesh % NumberOfBulkElements, 'FindMeshFaces3D' )
+      END IF
       CALL FindMeshEdges3D(Mesh)
       CALL SParFaceNumbering(Mesh)
       MFacePtr => Mesh % Faces
@@ -687,7 +706,7 @@ CONTAINS
     !don't know at this point the required size of work_int, if there are lots
     !of bulk elements, probably NBulk is sufficient, but for only a few
     !disconnected elements, maybe not. So set min size = 1000
-    work_size = MAX(NBulk, 1000)
+    work_size = MAX(NBulk, 5000)
     ALLOCATE(SendFaces(ParEnv % PEs),RecvFaces(ParEnv % PEs),work_int(work_size))
 
     RecvFaces % Count = 0
@@ -2350,7 +2369,7 @@ CONTAINS
   !> sending to another partition.
   !------------------------------------------------------------------------------
   SUBROUTINE PackMeshPieces(Model, Mesh, NewPart, ParallelMesh, NoPartitions, &
-      SentPack, dim, NodalVals )
+    SentPack, dim, NodalVals )
 
     IMPLICIT NONE
 
@@ -3041,6 +3060,7 @@ CONTAINS
     REAL(KIND=dp), POINTER, OPTIONAL :: NodalVals(:,:)
     !----------------------------------
     TYPE( MeshPack_t), ALLOCATABLE, TARGET :: RecPack(:)
+    !----------------------------------
     TYPE(Element_t), POINTER :: Element, Element0
     INTEGER :: i,j,k,n,t,nbulk,nbdry,allocstat,part,elemcode,elemindex,geom_id,sweep,partindex
     INTEGER :: gind,lind,rcount,icount,lcount,minelem,maxelem,newnbdry,newnodes,newnbulk
@@ -3327,8 +3347,7 @@ CONTAINS
           END IF
           IF( GlobalToLocal(k) <= 0 .OR. GlobalToLocal(k) > newnodes ) THEN
             errcount = errcount + 1
-            PRINT *,'Local index out of bounds:',ParEnv % Mype,Element % PartIndex, k,minind,maxind,&
-                SIZE(GlobalToLocal), GlobalToLocal(k)
+            PRINT *,'Local index out of bounds:',ParEnv % Mype,Element % PartIndex, k,minind,maxind,GlobalToLocal(k)
           END IF
           Element % NodeIndexes(j) = GlobalToLocal(k)
         END DO
@@ -3438,12 +3457,7 @@ CONTAINS
         NewMesh % Nodes % y(k) = PPack % rdata(rcount+2)
         IF( dim == 3 ) NewMesh % Nodes % z(k) = PPack % rdata(rcount+3)
         rcount = rcount + dim
-        
-        IF(nVals > 0 ) THEN 
-          NewVals(k,1:nVals) = PPack % rdata(rcount+1:rcount+nVals)
-          rcount = rcount + nVals
-        END IF
-        
+
         NewMesh % ParallelInfo % GInterface(k) = PPack % ldata(lcount+1)
         lcount = lcount + 1
       END DO
@@ -3452,11 +3466,14 @@ CONTAINS
     IF( errcount > 0 ) THEN
       CALL Fatal(Caller,'Encountered '//I2S(errcount)//' indexing issues in nodes')
     END IF
-     
+ 
+
+    
     n = COUNT( NewMesh % ParallelInfo % GInterface )
     CALL Info(Caller,'Potential interface nodes '//I2S(n)//' out of '&
         //I2S(NewMesh % NumberOfNodes),Level=20)
-   
+
+    
     CALL Info(Caller,'Creating local to global numbering for '&
          //I2S(newnodes)//' nodes',Level=20)
     ALLOCATE( NewMesh % ParallelInfo % GlobalDofs( newnodes ), STAT = allocstat)

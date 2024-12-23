@@ -459,8 +459,9 @@ extern "C" void ROCParallelSolve( int *gn, int *n, int *rows, int *cols, double 
 
     ls->Solve(rhs, &x);
 
-//  x.CopyToData(x_out);
-
+    // move solution back from device to host
+    x.MoveToHost();
+    
     for(i=0; i<*n; i++ ) x_out[i]=x[i];
 
     ls->Clear();

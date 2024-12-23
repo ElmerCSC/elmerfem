@@ -620,6 +620,7 @@ MODULE Types
      INTEGER, POINTER :: ConstraintModesIndeces(:) => NULL()
      REAL(KIND=dp), POINTER :: ConstraintModesWeights(:) => NULL()
      INTEGER :: NumberOfConstraintModes = -1
+     LOGICAL :: FrozenMode = .FALSE.
      REAL(KIND=dp), POINTER :: Values(:) => NULL() ,&
           PrevValues(:,:) => NULL(), &
           PValues(:) => NULL(), NonlinValues(:) => NULL(), &
