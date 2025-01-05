@@ -1234,9 +1234,10 @@ void STDCALLBULL FC_FUNC(createhypreams,CREATEHYPREAMS)
    if(hypre_intpara[4]) 
      HYPRE_AMSSetBetaPoissonMatrix(precond,NULL);
    
-   i = (verbosity >= 6);
-   if(verbosity >= 10) i=3;
-   HYPRE_AMSSetPrintLevel(precond, i); 
+  //  i = (verbosity >= 6);
+  //  if(verbosity >= 10) i=3;
+   HYPRE_AMSSetPrintLevel(precond, hypre_intpara[5]);   /* print solve info */
+  //  fprintf( stdout, "SolveHypre: Max Residual Output %d\n", hypre_intpara[5]);
    
    Container->precond = precond;
    Container->G = G; 

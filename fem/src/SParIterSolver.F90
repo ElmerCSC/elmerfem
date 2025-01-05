@@ -1078,7 +1078,9 @@ END SUBROUTINE ZeroSplittedMatrix
             'AMS Relax Type', Found, DefValue = 2 )
         hypre_intpara(4) = ListGetInteger( Params,&
             'AMS Relax Times', Found, DefValue = 1 )
-
+        hypre_intpara(6) = ListGetInteger( Params,&
+            'Linear System Residual Output', Found, DefValue = 100 )
+        
         hypre_dppara(2) = ListGetCReal( Params,&
             'AMS Relax Weight', Found, DefValue = 1.0_dp )
         hypre_dppara(3) = ListGetCReal( Params,&
@@ -1087,6 +1089,7 @@ END SUBROUTINE ZeroSplittedMatrix
             'AMS Alpha Threshold', Found, DefValue = 0.25_dp )
         hypre_dppara(5) = ListGetCReal( Params,&
             'AMS Beta Threshold', Found, DefValue = 0.25_dp )
+        
         
         IF( ListGetLogical( Params,&
             'AMS Singular Matrix', Found ) ) hypre_intpara(5) = 1
