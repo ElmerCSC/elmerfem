@@ -4709,7 +4709,7 @@ CONTAINS
       ! These take monolithic splitting and only return the "BlockIndex" which tells to which
       ! block each dof belongs to. Then the same routine can split the matrices for all. 
       !-----------------------------------------------------------------------------------------------
-      n = SIZE( Solver % Variable % Values )      
+      n = SIZE( Solver % Variable % Perm )      
       ALLOCATE( BlockIndex(n) )
       BlockIndex = 0
       BlockDofs = 0
