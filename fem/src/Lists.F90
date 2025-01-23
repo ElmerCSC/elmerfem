@@ -222,7 +222,7 @@ CONTAINS
      INTEGER :: NodalIndexOffset, EdgeIndexOffset, FaceIndexOffset, Indexes(128)
      INTEGER, POINTER :: Def_Dofs(:)
      INTEGER, ALLOCATABLE :: EdgeDOFs(:), FaceDOFs(:)
-     LOGICAL :: FoundDG, DG, DB, GB, Found, Radiation
+     LOGICAL :: FoundDG, DG, DB, GB, Bubbles, Found, Radiation
      TYPE(Element_t),POINTER :: Element, Edge, Face
      CHARACTER(*), PARAMETER :: Caller = 'InitialPermutation'
 !------------------------------------------------------------------------------
@@ -575,13 +575,19 @@ CONTAINS
          BDOFs = Def_Dofs(5)
          j = Def_Dofs(6)
          IF (BDOFs >= 0 .OR. j >= 1) THEN
+           ! Apparently an "Element" command has been given so we use
+           ! the given definition
            IF (j > 1) ndofs = GetBubbleDOFs(Element, j)
            ndofs = MAX(BDOFs, ndofs) 
          ELSE
-           ! The following is not an ideal way to obtain the bubble count
-           ! in order to support solverwise definitions, but we are not expected 
-           ! to end up in this branch anyway:
-           ndofs = Element % BDOFs
+           ! Apparently no "Element" command has been given which should
+           ! activate the use of bubbles. Then the only way to activate the use of
+           ! bubbles seems to be "Bubbles" command. If this not present, we 
+           ! see no reason to add the indexes for bubble DOFs
+           Bubbles = ListGetLogical(Solver % Values, 'Bubbles', Found )
+           ! The following is not a right way to obtain the bubble count
+           ! in order to support solverwise definitions
+           IF (Bubbles) ndofs = Element % BDOFs
          END IF
 
          DO i=1,ndofs
