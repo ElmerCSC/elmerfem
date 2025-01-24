@@ -3940,7 +3940,7 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element, Parent, Face
      TYPE(Mesh_t), POINTER :: Mesh
 
-     LOGICAL :: Found, GB, DGDisable, NeedEdges
+     LOGICAL :: Found, GB, DGDisable, NeedEdges, Bubbles
      INTEGER :: i,j,k,id, nb, p, NDOFs, MaxNDOFs, EDOFs, MaxEDOFs, FDOFs, MaxFDOFs, BDOFs
      INTEGER :: Ind, ElemFamily, ParentFamily, face_type, face_id
      INTEGER :: NodalIndexOffset, EdgeIndexOffset, FaceIndexOffset
@@ -4300,10 +4300,10 @@ BLOCK
            IF (p > 1) BDOFs = GetBubbleDOFs(Element, p)
            BDOFs = MAX(nb, BDOFs)
          ELSE
-           ! The following is not an ideal way to obtain the bubble count
-           ! in order to support solverwise definitions, but we are not expected 
-           ! to end up in this branch anyway:
-           BDOFs = Element % BDOFs
+           Bubbles = ListGetLogical(Solver % Values, 'Bubbles', Found )
+           ! The following is not a right way to obtain the bubble count
+           ! in order to support solverwise definitions
+           IF (Bubbles) BDOFs = SIZE(Element % BubbleIndexes)
          END IF
          DO i=1,BDOFs
            nd = nd + 1

@@ -1673,7 +1673,7 @@ CONTAINS
      TYPE( Solver_t ), OPTIONAL, TARGET :: USolver
 
      TYPE( Solver_t ), POINTER :: Solver
-     INTEGER :: ind
+     INTEGER :: ind, n
 
      Solver => CurrentModel % Solver
      IF ( PRESENT( USolver ) ) Solver => USolver
@@ -1702,6 +1702,11 @@ CONTAINS
        ! May be used by user functions, not thread safe
        CurrentModel % CurrentElement => Element 
 #endif
+       ! Finally update the BDOFs field of the Element structure so that
+       ! the correct solverwise bubble count is returned by calling the function
+       ! GetElementNOFBDOFs without optional arguments in the assembly loop
+       !
+       n = GetElementNOFBDOFs(Element, Solver, Update =.TRUE.)
      ELSE
        WRITE( Message, * ) 'Invalid element number requested: ', t
        CALL Fatal( 'GetActiveElement', Message )
@@ -1906,7 +1911,7 @@ CONTAINS
 
      INTEGER :: i, j, k, id, ElemFamily, ParentFamily, face_type, face_id 
      INTEGER :: NDOFs
-     LOGICAL :: Found, GB, NeedEdges
+     LOGICAL :: Found, GB, NeedEdges, Bubbles
 
      IF ( PRESENT( USolver ) ) THEN
         Solver => USolver
@@ -2171,10 +2176,10 @@ CONTAINS
              IF (p > 1) BDOFs = GetBubbleDOFs(Element, p)
              BDOFs = MAX(nb, BDOFs)
            ELSE
-             ! The following is not an ideal way to obtain the bubble count
-             ! in order to support solverwise definitions, but we are not expected 
-             ! to end up in this branch anyway:
-             BDOFs = Element % BDOFs
+             Bubbles = ListGetLogical(Solver % Values, 'Bubbles', Found )
+             ! The following is not a right way to obtain the bubble count
+             ! in order to support solverwise definitions
+             IF (Bubbles) BDOFs = SIZE(Element % BubbleIndexes)
            END IF
            n = n + BDOFs
          END IF
@@ -2215,7 +2220,7 @@ CONTAINS
 
     TYPE(Element_t), POINTER  :: CurrElement
     TYPE(Solver_t), POINTER :: Solver
-    LOGICAL :: Found, GB, UpdateRequested
+    LOGICAL :: Found, GB, UpdateRequested,Bubbles
     INTEGER :: k, p, ElemFamily
 
     IF ( PRESENT( USolver ) ) THEN
@@ -2240,13 +2245,21 @@ CONTAINS
       p = Solver % Def_Dofs(ElemFamily, CurrElement % Bodyid, 6) 
 
       IF (k >= 0 .OR. p >= 1) THEN
+        ! Apparently an "Element" command has been read from a solver section.
+        ! Therefore we return the value of the solverwise definition.
         IF (p > 1) n = GetBubbleDOFs(CurrElement, p)
         n = MAX(k,n)
-      ELSE 
-        n = CurrElement % BDOFs
+      ELSE
+        ! The element command hasn't been given, so the only way to activate the bubbles
+        ! should be the "Bubbles" command. The following is not a reliable way to obtain
+        ! the bubble count when solverwise definitions are used.   
+        Bubbles = ListGetLogical(Solver % Values, 'Bubbles', Found)
+        IF (Bubbles .AND. ASSOCIATED(Element % BubbleIndexes)) THEN
+          n = SIZE(Element % BubbleIndexes)
+        END IF
       END IF
 
-      IF (UpdateRequested .AND. n>=0) THEN
+      IF (UpdateRequested) THEN
         CurrElement % BDOFs = n
       END IF
     ELSE
@@ -2262,7 +2275,14 @@ CONTAINS
         IF (k >= 0 .OR. p >= 1) THEN
           IF (p > 1) n = GetBubbleDOFs(CurrElement, p)
           n = MAX(k,n)
-          IF ( n>=0 ) CurrElement % BDOFs = n
+          CurrElement % BDOFs = n
+        ELSE
+          Bubbles = ListGetLogical(Solver % Values, 'Bubbles', Found)
+          IF (Bubbles .AND. ASSOCIATED(Element % BubbleIndexes)) THEN
+            CurrElement % BDOFs = SIZE(Element % BubbleIndexes)
+          ELSE
+            CurrElement % BDOFs = 0
+          END IF
         END IF
         n = 0
       END IF

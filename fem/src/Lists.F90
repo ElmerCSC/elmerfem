@@ -582,12 +582,12 @@ CONTAINS
          ELSE
            ! Apparently no "Element" command has been given which should
            ! activate the use of bubbles. Then the only way to activate the use of
-           ! bubbles seems to be "Bubbles" command. If this not present, we 
+           ! bubbles seems to be "Bubbles" command. If this is not present, we 
            ! see no reason to add the indexes for bubble DOFs
            Bubbles = ListGetLogical(Solver % Values, 'Bubbles', Found )
            ! The following is not a right way to obtain the bubble count
            ! in order to support solverwise definitions
-           IF (Bubbles) ndofs = Element % BDOFs
+           IF (Bubbles) ndofs = SIZE(Element % BubbleIndexes)
          END IF
 
          DO i=1,ndofs
