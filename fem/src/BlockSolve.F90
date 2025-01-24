@@ -551,7 +551,7 @@ CONTAINS
         IF( PRESENT(BlockIndex) ) THEN
           CALL Info('BlockInitVar','Using BlockIndex to pick variable and perm',Level=20)
           NULLIFY(VarPerm)
-          m = SIZE(Solver % Variable % Perm) 
+          m = SIZE(Solver % Variable % Values)
           ALLOCATE(VarPerm(m))
           VarPerm = 0
 
