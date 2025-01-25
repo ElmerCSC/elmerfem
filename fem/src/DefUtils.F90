@@ -1673,7 +1673,7 @@ CONTAINS
      TYPE( Solver_t ), OPTIONAL, TARGET :: USolver
 
      TYPE( Solver_t ), POINTER :: Solver
-     INTEGER :: ind, n
+     INTEGER :: ind
 
      Solver => CurrentModel % Solver
      IF ( PRESENT( USolver ) ) Solver => USolver
@@ -1702,11 +1702,6 @@ CONTAINS
        ! May be used by user functions, not thread safe
        CurrentModel % CurrentElement => Element 
 #endif
-       ! Finally update the BDOFs field of the Element structure so that
-       ! the correct solverwise bubble count is returned by calling the function
-       ! GetElementNOFBDOFs without optional arguments in the assembly loop
-       !
-       !n = GetElementNOFBDOFs(Element, Solver, Update =.TRUE.)
      ELSE
        WRITE( Message, * ) 'Invalid element number requested: ', t
        CALL Fatal( 'GetActiveElement', Message )
