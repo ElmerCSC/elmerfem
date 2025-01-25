@@ -1706,7 +1706,7 @@ CONTAINS
        ! the correct solverwise bubble count is returned by calling the function
        ! GetElementNOFBDOFs without optional arguments in the assembly loop
        !
-       n = GetElementNOFBDOFs(Element, Solver, Update =.TRUE.)
+       !n = GetElementNOFBDOFs(Element, Solver, Update =.TRUE.)
      ELSE
        WRITE( Message, * ) 'Invalid element number requested: ', t
        CALL Fatal( 'GetActiveElement', Message )
