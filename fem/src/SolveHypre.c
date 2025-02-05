@@ -812,7 +812,7 @@ void STDCALLBULL FC_FUNC(solvehypre2,SOLVEHYPRE2)
    /* which process number am I? */
    MPI_Comm_rank(comm, &myid); 
 
-   myid = 0;
+   if(0) myid = 0;
    
    if( myid == 0 ) 
      myverb = verbosity;
@@ -961,9 +961,9 @@ void STDCALLBULL FC_FUNC(solvehypre2,SOLVEHYPRE2)
    for( i=0,k=0; i<local_size; i++ )
      if ( owner[i] ) xvec[i] = txvec[k++];
 
-   if(myverb > 5) fprintf(stdout,"SolveHypre: required iterations %d (method %d) to norm %lg\n",
+   if(myverb > 5) fprintf(stdout,"SolveHypre: Required iterations %d (method %d) to norm %lg\n",
 			  num_iterations,Container->hypre_method, final_res_norm);   
-   if (myverb > 4) fprintf( stdout, "SolveHypre: solution time (method %d): %g\n", 
+   if (myverb > 4) fprintf( stdout, "SolveHypre: Solution time (method %d): %g\n", 
 			    Container->hypre_method, realtime_()-st );
    free( txvec );
    free( rcols );
@@ -995,7 +995,7 @@ void STDCALLBULL FC_FUNC(solvehypre4,SOLVEHYPRE4)
    hypre_pre = Container->hypre_method % 100;
 
    
-   if(myverb > 6 ) fprintf(stdout,"SolveHypre: Detroying Hypre solver structures!\n");
+   if(myverb > 10 ) fprintf(stdout,"SolveHypre: Detroying Hypre solver structures!\n");
 
    /* Destroy Hypre preconditioner */
    if ( hypre_pre == 1 ) {

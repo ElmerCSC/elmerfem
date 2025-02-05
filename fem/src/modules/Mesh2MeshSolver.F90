@@ -113,7 +113,8 @@ SUBROUTINE Mesh2MeshSolver( Model,Solver,dt,TransientSimulation )
   CALL Info('Mesh2MeshSolver','Mapping result between meshes')
     
   ThisMesh => Getmesh()
-  CALL Info('Mesh2MeshSolver','This mesh name is: '//TRIM(ThisMesh % Name),Level=7)   
+  CALL Info('Mesh2MeshSolver','This mesh dimension is '&
+      //I2S(ThisMesh % MeshDim)//' and name: '//TRIM(ThisMesh % Name),Level=7)   
 
   Params => GetSolverParams()
 
@@ -136,6 +137,7 @@ SUBROUTINE Mesh2MeshSolver( Model,Solver,dt,TransientSimulation )
         TargetMesh => Mesh
         EXIT
       END IF
+      Mesh => Mesh % Next
     END DO
     IF( ASSOCIATED( TargetMesh ) ) THEN
       CALL Info('Mesh2MeshSolver','Using target mesh as the first mesh different from this mesh',Level=8)

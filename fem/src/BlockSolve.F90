@@ -551,12 +551,12 @@ CONTAINS
         IF( PRESENT(BlockIndex) ) THEN
           CALL Info('BlockInitVar','Using BlockIndex to pick variable and perm',Level=20)
           NULLIFY(VarPerm)
-          m = SIZE(Solver % Variable % Perm) 
+          m = SIZE(Solver % Variable % Values)
           ALLOCATE(VarPerm(m))
           VarPerm = 0
 
           k = 0
-          DO j=1,SIZE(Solver % Variable % Perm)
+          DO j=1,SIZE(Solver % Variable % Values)
             IF(BlockIndex(j) == i) THEN
               k = k+1
               VarPerm(j) = k
@@ -577,9 +577,21 @@ CONTAINS
 
       IF(PRESENT(BlockIndex)) THEN
         B => BlockMatrix % SubMatrix(i,i) % Mat
-        IF(ASSOCIATED(B % InvPerm ) ) THEN
-          Var % Values = Solver % Variable % Values(B % InvPerm)
+
+        IF( ParEnv % PEs == 1 ) THEN        
+          IF(.NOT. ASSOCIATED(B % InvPerm) ) CALL Fatal('BlockInitVar','InvPerm not present!')
+          IF(ASSOCIATED(B % InvPerm ) ) THEN
+            Var % Values = Solver % Variable % Values(B % InvPerm)
+          END IF
+        ELSE
+          IF(.NOT. ASSOCIATED(B % Perm) ) CALL Fatal('BlockInitVar','Perm not present!')
+          DO j=1,SIZE(B % Perm)
+            k = B % Perm(j)
+            IF(k==0) CYCLE
+            Var % Values(k) = Solver % Variable % Values(Solver % Matrix % Perm(j))
+          END DO
         END IF
+          
       END IF
 
     END DO
@@ -622,15 +634,31 @@ CONTAINS
       END IF
       
       ! Copy the block part to the monolithic solution
-      DO j=1,n
-        k = Amat % InvPerm(j)
-        IF( k < 1 .OR. k > m ) THEN
-          PRINT *,'ijk:',i,j,k
-          CYCLE
+      IF(ASSOCIATED(Amat % Perm)) THEN
+        IF( ParEnv % PEs == 1 ) THEN
+          CALL Warn('BlockBackCopyVar','Why do we have Amat % Perm in serial?')
         END IF
-        Solver % Variable % Values(k) = Var % Values(j)
-      END DO
+      ELSE
+        IF( ParEnv % PEs > 1 ) THEN
+          CALL Warn('BlockBackCopyVar','Why do we not have Amat % Perm in parallel?')
+        END IF
+      END IF
 
+      ! Note that confusingly InvPerm has different defintion in serial and parallel.
+      ! In serial it points just to indexes of the original matrix.
+      ! In parallel it points to all possible indexes that could be present. 
+      IF( ParEnv % PEs > 1 ) THEN
+        DO j=1,SIZE(Amat % Perm)
+          k = Amat % Perm(j)
+          IF(k==0) CYCLE          
+          Solver % Variable % Values(Solver % Matrix % Perm(j)) = Var % Values(k)
+        END DO
+      ELSE
+        WHERE(Amat % InvPerm > 0) 
+          Solver % Variable % Values(Amat % InvPerm) = Var % Values
+        END WHERE
+      END IF
+      
     END DO
         
     BlockMatrix % TotSize = BlockMatrix % Offset( NoVar + 1 )
@@ -1052,10 +1080,10 @@ CONTAINS
     INTEGER :: Novar
     LOGICAL :: DoAddMatrix
         
-    INTEGER :: bcol,brow,bi,bk,i,k,j,n,istat,NoBlock
+    INTEGER :: bcol,brow,bi,bk,i,k,j,n,m,istat,NoBlock,dofs
     TYPE(Matrix_t), POINTER :: A, B, C
     INTEGER, ALLOCATABLE :: BlockNumbering(:), rowcount(:), offset(:)
-    LOGICAL :: SplitComplex, Found
+    LOGICAL :: SplitComplex, CreatePermPar, Found
     REAL(KIND=dp) :: Coeff, Coeff0
     
     CALL Info('BlockPickMatrixPerm','Picking indexed  block matrix from monolithic one',Level=10)
@@ -1077,13 +1105,13 @@ CONTAINS
     END IF
     TotMatrix % BlockPerm = 0 
     
-    
     DO i=1,n
       brow = BlockIndex(i)
       rowcount(brow) = rowcount(brow) + 1
       BlockNumbering(i) = rowcount(brow)
     END DO
 
+    CreatePermPar = ASSOCIATED(A % InvPerm) .AND. ( ParEnv % PEs > 1 )
     
     DO i = 1, NoVar
       B => TotMatrix % SubMatrix(i,i) % Mat
@@ -1096,14 +1124,28 @@ CONTAINS
         ALLOCATE(B % Rhs(n))
       END IF
       B % rhs = 0.0_dp
-      
+
+      ! Create Perm only in parallel
+      IF( CreatePermPar ) THEN
+        m = SIZE( Solver % Variable % Perm ) * Solver % Variable % Dofs 
+        IF(ASSOCIATED(B % Perm)) THEN
+          IF(SIZE(B % Perm) /= m) DEALLOCATE( B % Perm)
+        END IF
+        IF(.NOT. ASSOCIATED(B % Perm)) THEN
+          ALLOCATE(B % Perm(m))
+        END IF
+        B % Perm = 0
+      END IF
+
+      ! Always generate InvPerm
       IF(ASSOCIATED(B % InvPerm)) THEN
         IF(SIZE(B % InvPerm) /= n) DEALLOCATE( B % InvPerm)
       END IF
       IF(.NOT. ASSOCIATED(B % InvPerm)) THEN
-       ALLOCATE(B % InvPerm(n))
+        ALLOCATE(B % InvPerm(n))
       END IF
-      B % InvPerm = 0 
+      B % InvPerm = 0
+
       ! Add the (n,n) entry since this helps to create most efficiently the full ListMatrix
       ! CALL AddToMatrixElement(B,n,n,0.0_dp)      
 
@@ -1118,8 +1160,18 @@ CONTAINS
       B => TotMatrix % SubMatrix(brow,brow) % Mat
       B % Rhs(bi) = A % Rhs(i)
 
-      B % InvPerm(bi) = i
-      
+      IF( CreatePermPar ) THEN
+        j = A % InvPerm(i)
+        IF(j<0 .OR. j>SIZE(B % Perm)) THEN
+          PRINT *,'Too big j:',j,SIZE(B % Perm),i,SIZE(A % Perm),SIZE(A % InvPerm)
+          STOP
+        END IF
+        B % Perm(j) = bi
+        B % InvPerm(bi) = j
+      ELSE
+        B % InvPerm(bi) = i
+      END IF
+        
       TotMatrix % BlockPerm(offset(brow)+bi) = i
       
       DO j=A % Rows(i+1)-1,A % Rows(i),-1
@@ -1133,8 +1185,6 @@ CONTAINS
         CALL AddToMatrixElement(B,bi,bk,A % Values(j))
       END DO
     END DO
-
-
 
     NoBlock = NoVar
     IF( DoAddMatrix ) THEN
@@ -1154,17 +1204,6 @@ CONTAINS
         ALLOCATE(B % Rhs(n))
       END IF
       B % rhs = 0.0_dp
-
-#if 0 
-      ! Don't know what to do yet...
-      IF(ASSOCIATED(B % InvPerm)) THEN
-        IF(SIZE(B % InvPerm) /= n) DEALLOCATE( B % InvPerm)
-      END IF
-      IF(.NOT. ASSOCIATED(B % InvPerm)) THEN
-       ALLOCATE(B % InvPerm(n))
-      END IF
-      B % InvPerm = 0 
-#endif
            
       DO i=1,C % NumberOfRows 
         IF(i <= A % NumberOfRows ) THEN
@@ -1207,6 +1246,11 @@ CONTAINS
           CALL List_toCRSMatrix(B)
         END IF
       END DO
+      
+      IF( i==j .AND. ParEnv % PEs > 1 ) THEN
+        CALL ParallelInitMatrix( Solver, B )
+      END IF
+      
     END DO
 
     IF( ASSOCIATED(A % PrecValues) ) THEN
@@ -4083,25 +4127,30 @@ CONTAINS
     IF (isParallel) THEN
       CALL Info(Caller,'Performing parallel initializations!',Level=18)
       DO i=1,NoVar
+        A => TotMatrix % SubMatrix(i,i) % Mat          
+        ! ParallelInitSolve expects full vectors
+        CALL Info(Caller,'Initializing submatrix '//I2S(11*i),Level=20)
+        IF (ASSOCIATED(A % ParMatrix % SplittedMatrix % InsideMatrix % PrecValues)) THEN
+          IF (.NOT. ASSOCIATED(A % PrecValues)) & 
+              NULLIFY(A % ParMatrix % SplittedMatrix % InsideMatrix % PrecValues)
+        END IF
+        CALL ParallelInitSolve(A, TotMatrix % Subvector(i) % Var % Values, A % rhs, r )
+        IF( ASSOCIATED(SolverMatrix)) THEN
+          x(offset(i)+1:offset(i+1)) = TotMatrix % SubVector(i) % Var % Values        
+          IF(ASSOCIATED(A % rhs)) b(offset(i)+1:offset(i+1)) = A % rhs
+        END IF
+        CALL Info(Caller,'Done initializing submatrix '//I2S(11*i),Level=20)
+      END DO
+      DO i=1,NoVar
         DO j=1,NoVar
           A => TotMatrix % SubMatrix(i,j) % Mat          
-          ! ParallelInitSolve expects full vectors
-          IF ( i /= j ) THEN
-            IF(ASSOCIATED(A % ParMatrix)) CALL ParallelInitSolve(A,r,r,r)
-          ELSE
-            IF (ASSOCIATED(A % ParMatrix % SplittedMatrix % InsideMatrix % PrecValues)) THEN
-              IF (.NOT. ASSOCIATED(A % PrecValues)) & 
-                  NULLIFY(A % ParMatrix % SplittedMatrix % InsideMatrix % PrecValues)
-            END IF
-            CALL ParallelInitSolve(A, TotMatrix % Subvector(i) % Var % Values, A % rhs, r )
-            IF( ASSOCIATED(SolverMatrix)) THEN
-              x(offset(i)+1:offset(i+1)) = TotMatrix % SubVector(i) % Var % Values        
-              IF(ASSOCIATED(A % rhs)) b(offset(i)+1:offset(i+1)) = A % rhs
-            END IF
-          END IF
+          IF(i==j) CYCLE
+          CALL Info(Caller,'Initializing submatrix '//I2S(10*i+j),Level=20)
+          IF(ASSOCIATED(A % ParMatrix)) CALL ParallelInitSolve(A,r,r,r)
         END DO
       END DO
       IF(ASSOCIATED(SolverMatrix)) THEN
+        CALL Info(Caller,'Initializing SolverMatrix',Level=20)
         CALL ParallelInitSolve( SolverMatrix, x, b, r )      
         x = 0.0_dp
         b = 0.0_dp
@@ -4660,7 +4709,7 @@ CONTAINS
       ! These take monolithic splitting and only return the "BlockIndex" which tells to which
       ! block each dof belongs to. Then the same routine can split the matrices for all. 
       !-----------------------------------------------------------------------------------------------
-      n = SIZE( Solver % Variable % Values )      
+      n = SIZE( Solver % Variable % Values)      
       ALLOCATE( BlockIndex(n) )
       BlockIndex = 0
       BlockDofs = 0

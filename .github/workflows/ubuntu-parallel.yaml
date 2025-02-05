@@ -115,12 +115,18 @@ jobs:
             echo ---- Files ----
             ls -Rl ${test_root}/${test}
             if [ -f ${test_root}/${test}/test-stderr*.log ]; then
-              echo ---- Content of test-stderr*.log ----
-              cat ${test_root}/${test}/test-stderr*.log
+              err_logs=($(ls ${test_root}/${test}/test-stderr*.log))
+              for err_log in "${err_logs[@]}"; do
+                echo ---- Content of ${err_log} ----
+                cat ${err_log}
+              done
             fi
             if [ -f ${test_root}/${test}/test-stdout*.log ]; then
-              echo ---- Content of test-stdout*.log ----
-              cat ${test_root}/${test}/test-stdout*.log
+              out_logs=($(ls ${test_root}/${test}/test-stdout*.log))
+              for out_log in "${out_logs[@]}"; do
+                echo ---- Content of ${out_log} ----
+                cat ${out_log}
+              done
             fi
             echo "::endgroup::"
           done

@@ -111,6 +111,10 @@ SUBROUTINE mpi_allgather
   RETURN
 END SUBROUTINE mpi_allgather
 
+SUBROUTINE mpi_allgatherv
+  RETURN
+END SUBROUTINE mpi_allgatherv
+
 SUBROUTINE mpi_gatherv
   RETURN
 END SUBROUTINE mpi_gatherv

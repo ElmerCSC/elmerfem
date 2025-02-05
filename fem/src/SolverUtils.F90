@@ -4683,6 +4683,9 @@ CONTAINS
     
     CALL Info('FindClosestNode','Closest node found to be: '//I2S(MinNode),Level=20)
     
+    WRITE(Message,'(A,ES12.5)') 'Closest node distance: ',MinDist
+    CALL Info('FindClosestNode',Message,Level=20)
+    
   END SUBROUTINE FindClosestNode
 
 
@@ -9155,10 +9158,11 @@ CONTAINS
 !------------------------------------------------------------------------------
 !   Compute sum of elementwise normals for nodes on boundaries
 !------------------------------------------------------------------------------
-      ALLOCATE( n_comp(SIZE(BoundaryReorder)) )
-      n_comp = 0
       
       IF ( NumberOfBoundaryNodes>0 ) THEN
+        ALLOCATE( n_comp(SIZE(BoundaryReorder)) )
+        n_comp = 0
+
         BoundaryNormals = 0._dp
         ConflictCount = 0
 
@@ -9479,8 +9483,6 @@ CONTAINS
         END DO
         DEALLOCATE( n_index, n_count )
       END IF
-
-      DEALLOCATE(n_comp)
     END IF
 
 !------------------------------------------------------------------------------
@@ -15928,11 +15930,19 @@ END FUNCTION SearchNodeL
           CALL Info(Caller,'Eliminating constraints before going into block matrix!')
           CALL EliminateLinearRestriction( A, bb, A % ConstraintMatrix, Acoll, Solver, .TRUE. )
           CALL List_ToCRSMatrix(Acoll)
+
+          Acoll % Comm = A % Comm 
           Acoll % AddMatrix => A % AddMatrix
+          CALL ParallelInitMatrix(Solver, Acoll)
+          
           CALL BlockSolveExt( Acoll, x, Acoll % rhs, Solver )
+
           CALL Info(Caller,'Freeing collection matrix after solution',Level=10)
           NULLIFY( Acoll % AddMatrix )         
+
           CALL FreeMatrix(Acoll)
+          ParEnv => A % ParMatrix % ParEnv
+
           Acoll => NULL()
         END BLOCK
       ELSE
@@ -16662,12 +16672,12 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
     REAL(KIND=dp) :: FluxesRhs, FluxesRhsIm, ImpRe, ImpIm
     LOGICAL, ALLOCATABLE :: ConstrainedDOF0(:)
     REAL(KIND=dp) :: flux
-    CHARACTER(:), ALLOCATABLE :: MatrixFile
-    CHARACTER(*), PARAMETER :: Caller = 'ConstraintModesDriver'
-    INTEGER :: NMode = 0
+    CHARACTER(:), ALLOCATABLE :: MatrixFile, BCName
+    INTEGER :: NMode = 0, dof
     TYPE(Variable_t), POINTER :: pVar
     TYPE(ValueList_t), POINTER :: Params
-    LOGICAL :: LinsysMode, EigenMode 
+    LOGICAL :: LinsysMode, EigenMode, GotBC, LumpedMode 
+    CHARACTER(*), PARAMETER :: Caller = 'ConstraintModesDriver'
 
     SAVE FluxesRow, FluxesRowIm, Fluxes, TempRhs, A0, b0, ConstrainedDOF0, LinsysMode, NMode
 
@@ -16695,6 +16705,11 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
     
     IsComplex = ListGetLogical( Params,'Linear System Complex',Found)
 
+
+    ! If the mode is nodal it is not lumped
+    ! If it relates to whole boundary it is. 
+    LumpedMode = ListGetLogical( Params,'Constraint Modes Lumped',Found )
+    
     ! This is to my understanding not needed. To estimate the fluxes we
     ! basically integrate over basis functions that estimate unity.
     ! For p-elements this means using the linear nodal basis only, not any
@@ -16776,7 +16791,18 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
 
       CALL Info(Caller,'Setting up constrained mode: '//I2S(NMode),Level=6)
       i = Nmode
-      
+
+
+      ! By default constraint modes are set to 0/1.
+      ! However, we can also set the BC's in some other way using prefix "mode 1:" etc.  
+      GotBC = .FALSE.
+      IF( LumpedMode ) THEN
+        DO dof=1,Var % dofs
+          BcName = 'mode '//I2S(Nmode)//': '//ComponentName(Var % name,dof)
+          IF(ListCheckPresentAnyBC(CurrentModel, BcName ) ) GotBC = .TRUE.
+        END DO
+      END IF
+        
       ! The matrix has been manipulated already before. This ensures
       ! that the system has values 1 at the constraint mode i.
       IF( CoilMode ) THEN                
@@ -16831,16 +16857,41 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
             END WHERE
           END IF
           CALL EnforceDirichletConditions( Solver, A, b )
-        ELSE       
+
+        ELSE IF( GotBC ) THEN
+          
+          IF( Nmode > 1 .AND. LinSysMode ) THEN
+            DO dof=1,Var % dofs
+              WHERE( Var % ConstraintModesIndeces == Var % Dofs*(Nmode-2)+dof ) 
+                A % DValues = 0.0_dp
+              END WHERE
+            END DO
+          END IF
+          
+          DO dof=1,Var % dofs
+            BcName = 'mode '//I2S(Nmode)//': '//ComponentName(Var % name,dof)
+            IF(ListCheckPresentAnyBC(CurrentModel, BcName ) ) THEN            
+              CALL Info(Caller,"Setting constraint for: "//TRIM(BCName),Level=7)
+              CALL SetDirichletBoundaries( CurrentModel, A, b, &
+                  BcName, dof, Var % DOFs, Var % Perm )
+            END IF
+          END DO
+
+          CALL EnforceDirichletConditions( Solver, A, b )
+          
+        ELSE
+          
           IF( Nmode > 1 .AND. LinSysMode ) THEN
             WHERE( Var % ConstraintModesIndeces == Nmode-1 ) 
               A % DValues = 0.0_dp
             END WHERE
           END IF
+
           WHERE( Var % ConstraintModesIndeces == Nmode ) 
             A % DValues = 1.0_dp
           END WHERE
-          CALL EnforceDirichletConditions( Solver, A, b )
+
+          CALL EnforceDirichletConditions( Solver, A, b )                    
         END IF
       END IF
       CALL ListAddLogical( Params,'Skip Zero Rhs Test',.TRUE. )

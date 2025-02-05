@@ -2895,7 +2895,7 @@ REAL(kind=dp) :: s, RealTime
       END DO
       v(i)=v(i)+rsum
     END DO
-!omp end parallel do
+!$omp end parallel do
   END IF
 
 

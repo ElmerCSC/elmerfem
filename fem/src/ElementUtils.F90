@@ -3763,14 +3763,18 @@ CONTAINS
       END IF
 
       IF(l>0) THEN
-        IF( .NOT. ALLOCATED(fip) .OR. SIZE(fip) < l ) THEN
-          IF( ALLOCATED( fip ) ) DEALLOCATE( fip )
+        IF( .NOT. ALLOCATED(fip)) THEN
+          ALLOCATE( fip(l) )
+        ELSE IF (SIZE(fip) < l) THEN
+          DEALLOCATE( fip )
           ALLOCATE( fip(l) )
         END IF
 
-        IF( .NOT. ALLOCATED(fdg) .OR. SIZE(fdg) < n ) THEN
-          IF( ALLOCATED( fdg ) ) DEALLOCATE( fdg )
-          ALLOCATE( fdg(n) )
+        IF(.NOT. ALLOCATED(fdg)) THEN
+           ALLOCATE( fdg(n) )
+        ELSE IF(SIZE(fdg) < n) THEN
+           DEALLOCATE( fdg )
+           ALLOCATE( fdg(n) )
         END IF
 
         DO ii=1,MAX(Var % Dofs,comps)
@@ -3940,7 +3944,7 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element, Parent, Face
      TYPE(Mesh_t), POINTER :: Mesh
 
-     LOGICAL :: Found, GB, DGDisable, NeedEdges
+     LOGICAL :: Found, GB, DGDisable, NeedEdges, Bubbles
      INTEGER :: i,j,k,id, nb, p, NDOFs, MaxNDOFs, EDOFs, MaxEDOFs, FDOFs, MaxFDOFs, BDOFs
      INTEGER :: Ind, ElemFamily, ParentFamily, face_type, face_id
      INTEGER :: NodalIndexOffset, EdgeIndexOffset, FaceIndexOffset
@@ -4300,10 +4304,12 @@ BLOCK
            IF (p > 1) BDOFs = GetBubbleDOFs(Element, p)
            BDOFs = MAX(nb, BDOFs)
          ELSE
-           ! The following is not an ideal way to obtain the bubble count
-           ! in order to support solverwise definitions, but we are not expected 
-           ! to end up in this branch anyway:
-           BDOFs = Element % BDOFs
+           IF (ASSOCIATED(Solver % Values)) THEN
+             Bubbles = ListGetLogical(Solver % Values, 'Bubbles', Found )
+             ! The following is not a right way to obtain the bubble count
+             ! in order to support solverwise definitions
+             IF (Bubbles) BDOFs = SIZE(Element % BubbleIndexes)
+           END IF
          END IF
          DO i=1,BDOFs
            nd = nd + 1

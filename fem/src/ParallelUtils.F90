@@ -118,6 +118,8 @@ CONTAINS
 #ifdef PARALLEL_FOR_REAL
        IF ( ParEnv % PEs <= 1 .OR. .NOT. ASSOCIATED(Matrix) ) RETURN
 
+       CALL Info('ParallelInitMatrix','Creating communication structures for matrix!',Level=15)
+       
        Mesh => Solver % Mesh
        DOFs = Solver % Variable % DOFs
 
@@ -133,7 +135,21 @@ CONTAINS
 
        n = SIZE(Perm)
        k = n*DOFs + Matrix % ExtraDOFs
-       ALLOCATE( Matrix % Perm(k), Matrix % InvPerm(k))
+
+       i = 0
+       IF(ASSOCIATED( Matrix % Perm) ) i=i+1
+       IF(ASSOCIATED( Matrix % InvPerm) ) i=i+1
+
+       IF(i==1) THEN
+         CALL Fatal('ParallelInitMatrix','Only Perm or InvPerm is associated!')
+       END IF       
+       IF(i==2) THEN
+         CALL Info('ParallelInitMatrix','Skipping generation of Perm and InvPerm',Level=20)
+         GOTO 1
+       END IF
+
+       j = MAXVAL(Perm)*DOFs + Matrix % ExtraDOFs
+       ALLOCATE( Matrix % Perm(k), Matrix % InvPerm(j))
 
        BLOCK
          LOGICAL :: DoConf = .FALSE.
@@ -148,24 +164,29 @@ CONTAINS
            END IF
 
            IF ( Perm(i) /= 0 ) THEN
-              DO j=1,DOFs
-                 Matrix % Perm((i-1)*DOFs+j) = DOFs * (Perm(i)-1) + j
-              END DO
+             DO j=1,DOFs
+               Matrix % Perm((i-1)*DOFs+j) = DOFs * (Perm(i)-1) + j
+             END DO
            END IF
          END DO
-        END BLOCK
+       END BLOCK
 
-        DO i=n*DOFs+1,SIZE(Matrix % Perm)
-          Matrix % Perm(i) = i
-        END DO
+       DO i=n*DOFs+1,SIZE(Matrix % Perm)
+         Matrix % Perm(i) = i
+       END DO
 
        Matrix % INVPerm = 0
        DO i=1,SIZE(Matrix % Perm)
-          IF ( Matrix % Perm(i) /= 0 ) THEN
-             Matrix % InvPerm(Matrix % Perm(i)) = i
-          END IF
+         IF ( Matrix % Perm(i) /= 0 ) THEN
+           Matrix % InvPerm(Matrix % Perm(i)) = i
+         END IF
        END DO
 
+1      CONTINUE
+
+       IF(ASSOCIATED(Matrix % ParallelInfo)) THEN
+         CALL Fatal('ParallelInitMatrix','ParallelInfo already created!')
+       END IF               
        ALLOCATE( Matrix % ParallelInfo )
 
        IF ( .NOT. Matrix % DGMatrix ) THEN
@@ -213,7 +234,6 @@ CONTAINS
            l_beg = Mesh % NumberOfNodes
 
            n = Mesh % NumberOfEdges
-
            edofs = Mesh % MaxEdgeDOFS
            maxedofs = ParallelReduction(edofs,2)
 
@@ -230,6 +250,7 @@ CONTAINS
                  l = DOFs*(l_beg + edofs*(i-1)+j-1)+m
                  l = Matrix % Perm(l)
                  IF(l==0) CYCLE
+
                  Matrix % ParallelInfo % GlobalDOFs(l) = &
                      DOFs*(g_beg+maxedofs*(Element % GelementIndex-1)+j-1)+m
                  Matrix % ParallelInfo % GInterface(l) = Mesh % ParallelInfo % EdgeInterface(i)
@@ -807,7 +828,14 @@ CONTAINS
 !-------------------------------------------------------------------------------
        LOGICAL :: Upd
 #ifdef PARALLEL_FOR_REAL
+       IF(.NOT. ASSOCIATED(Matrix % ParMatrix)) THEN
+         CALL Fatal('ParallelInitSolve','ParMatrix not associated!')
+       END IF
        ParEnv => Matrix % ParMatrix % ParEnv
+       IF(.NOT. ASSOCIATED(ParEnv)) THEN
+         CALL Fatal('ParallelInitSolve','ParEnv not associated!')
+       END IF
+       
        ParEnv % ActiveComm = Matrix % Comm
        Upd = .TRUE.
        IF ( PRESENT(Update) ) Upd=Update

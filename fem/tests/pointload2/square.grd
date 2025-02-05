@@ -18,7 +18,7 @@ End
 Numbering = Horizontal
 Element Degree = 1
 Element Innernodes = False
-Reference Density = 0.01
+Reference Density = 0.05
 Element Ratios 1 = 1 
 Element Ratios 2 = 1 
 Element Densities 1 = 1

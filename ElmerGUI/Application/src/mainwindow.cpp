@@ -1545,6 +1545,7 @@ void MainWindow::readInputFile(QString fileName) {
   sprintf(cs, "%s", baseFileName.toAscii().data());
 #endif
 
+  fileSuffix = fileSuffix.toLower();
   activeGenerator = GEN_UNKNOWN;
   tetlibInputOk = false;
   nglibInputOk = false;
@@ -1650,7 +1651,7 @@ void MainWindow::readInputFile(QString fileName) {
       tetlibInputOk = true;
     }
 
-  } else if ((fileSuffix == "grd") || (fileSuffix == "FDNEUT") ||
+  } else if ((fileSuffix == "grd") || (fileSuffix == "fdneut") ||
              (fileSuffix == "msh") || (fileSuffix == "mphtxt") ||
              (fileSuffix == "inp") || (fileSuffix == "unv") ||
              (fileSuffix == "plt")) {
@@ -5245,12 +5246,41 @@ void MainWindow::meshcontrolSlot() {
   meshControl->show();
 }
 
+int checkStlForAscii(const char * filename)
+{
+  char ch;
+  char bufin[100];
+  int stlbinary = 0;
+  ifstream stlfile(filename);
+
+  if (stlfile.is_open()) {
+    cout << "Open stl input file: " << filename << endl;
+
+    for (int j = 0; j < 100; j++) {
+      stlfile.get(ch);
+      bufin[j] = ch;
+    }
+    //cout << "bufin: " << bufin << endl;
+    if( strstr(bufin,"facet")) {
+      cout << "stl input file is in ASCII file format" << endl;
+    } else {
+      stlbinary = 1;
+      cout << "stl input file is in binary file format" << endl;
+    }
+    cout << endl;
+    stlfile.close();
+  } else {
+    cout << "stl input file not found or is corrupted" << filename << endl;
+  }
+
+  return stlbinary;
+}
 // Mesh -> Remesh
 //-----------------------------------------------------------------------------
 void MainWindow::remeshSlot() {
   if (activeGenerator == GEN_UNKNOWN) {
-    logMessage("Unable to (re)mesh: no input data or mesh generator (please "
-               "make sure that your input file suffix is in lower case)");
+    logMessage("Unable to (re)mesh: no input data or mesh generator. Allowed: "
+               "smesh, poly, off, ply, mesh, stl, grd, FDNEUT, msh, mphtxt, inp, unv, plt, in2d");
     return;
   }
 
@@ -5358,10 +5388,17 @@ void MainWindow::remeshSlot() {
 
         // STL: regenerate structures for nglib:
         //--------------------------------------
+        // check if input file is in ascii or binary format
 #if WITH_QT5 || WITH_QT6
-        nggeom = nglib::Ng_STL_LoadGeometry(stlFileName.toLatin1().data(), 0);
+        int stlbinary = checkStlForAscii(stlFileName.toLatin1().data());
 #else
-        nggeom = nglib::Ng_STL_LoadGeometry(stlFileName.toAscii().data(), 0);
+        int stlbinary = checkStlForAscii(stlFileName.toAscii().data());
+#endif
+
+#if WITH_QT5 || WITH_QT6
+        nggeom = nglib::Ng_STL_LoadGeometry(stlFileName.toLatin1().data(), stlbinary);
+#else
+        nggeom = nglib::Ng_STL_LoadGeometry(stlFileName.toAscii().data(), stlbinary);
 #endif
 
         if (!nggeom) {

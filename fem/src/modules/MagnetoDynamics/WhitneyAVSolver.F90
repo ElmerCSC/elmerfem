@@ -1750,11 +1750,13 @@ END BLOCK
        IA = ParallelReduction(IA) / NoSlices
      END IF
 
-     WRITE(Message,'(A,ES15.4)') 'Inertial volume:', IA
-     CALL Info(Caller,Message,Level=7)
-
-     WRITE(Message,'(A,ES15.4)') 'Inertial moment:', Imoment
-     CALL Info(Caller,Message,Level=7)
+     IF(Imoment > EPSILON(Imoment)) THEN    
+       WRITE(Message,'(A,ES15.4)') 'Inertial volume:', IA
+       CALL Info(Caller,Message,Level=7)
+       
+       WRITE(Message,'(A,ES15.4)') 'Inertial moment:', Imoment
+       CALL Info(Caller,Message,Level=7)
+     END IF
        
      CALL ListAddConstReal(Model % Simulation,'res: inertial volume', IA)
      CALL ListAddConstReal(Model % Simulation,'res: inertial moment', IMoment)

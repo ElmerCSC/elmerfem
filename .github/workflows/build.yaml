@@ -17,40 +17,54 @@ jobs:
   ubuntu:
     # For available GitHub-hosted runners, see:
     # https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.os }}
 
-    name: ubuntu (${{ matrix.compiler }} ${{ matrix.mpi }} MPI ${{ matrix.openmp }} OpenMP)
+    name: ${{ matrix.os }} (${{ matrix.compiler }} ${{ matrix.mpi }} MPI ${{ matrix.openmp }} OpenMP)
 
     strategy:
       # Allow other runners in the matrix to continue if some fail
       fail-fast: false
 
       matrix:
+        os: [ubuntu-24.04]
         compiler: [gcc]
         mpi: [with]
         openmp: [with]
         include:
-          - compiler: gcc
+          - os: ubuntu-24.04
+            compiler: gcc
             compiler-pkgs: "g++ gcc"
             cc: "gcc"
             cxx: "g++"
+            mpi: with
             openmp: with
             openmp-cmake-flags: "-DWITH_OpenMP=ON"
-          - compiler: gcc
+          - os: ubuntu-24.04
+            compiler: gcc
             compiler-pkgs: "g++ gcc"
             cc: "gcc"
             cxx: "g++"
             mpi: without
             openmp: with
             openmp-cmake-flags: "-DWITH_OpenMP=ON"
-          - compiler: gcc
+          - os: ubuntu-24.04
+            compiler: gcc
             compiler-pkgs: "g++ gcc"
             cc: "gcc"
             cxx: "g++"
             mpi: with
             openmp: without
             openmp-cmake-flags: "-DWITH_OpenMP=OFF"
-          - compiler: clang
+          - os: ubuntu-24.04-arm
+            compiler: gcc
+            compiler-pkgs: "g++ gcc"
+            cc: "gcc"
+            cxx: "g++"
+            mpi: with
+            openmp: without
+            openmp-cmake-flags: "-DWITH_OpenMP=OFF"
+          - os: ubuntu-24.04
+            compiler: clang
             compiler-pkgs: "clang"
             cc: "clang"
             cxx: "clang++"
@@ -79,10 +93,16 @@ jobs:
           submodules: recursive
 
       - name: install dependencies
+        # OpenBLAS before version 0.3.29 shipped kernels for ?NRM2 on
+        # Neoverse N2 that was inaccurate or returned NaN.  Use the
+        # reference implementation for the Ubuntu on ARM runners to avoid
+        # that issue.
+        # Consider reverting to OpenBLAS for all runners once Ubuntu ships
+        # a new enough version.
         run: |
           sudo apt -qq update
           sudo apt install -y ${{ matrix.compiler-pkgs }} cmake gfortran \
-            libopenblas-dev \
+            $([ "${{ matrix.os }}" == "ubuntu-24.04-arm" ] && echo "libblas-dev liblapack-dev" || echo "libopenblas-dev") \
             $([ "${{ matrix.mpi }}" == "with" ] && echo "libhypre-dev") \
             $([ "${{ matrix.mpi }}" == "with" ] && echo "libopenmpi-dev libmumps-dev libparmetis-dev") \
             $([ "${{ matrix.compiler }}" == "gcc" ] && echo "libsuitesparse-dev") \
@@ -98,14 +118,14 @@ jobs:
         run: |
           # work around error in the rocALUTION CMake config file distributed by Ubuntu
           if [ "${{ matrix.compiler }}" == "gcc" ] && [ "${{ matrix.mpi }}" == "with" ]; then
-            sudo sed -i '/find_dependency(HIP)/d' /usr/lib/x86_64-linux-gnu/cmake/rocalution/rocalution-config.cmake
+            sudo sed -i '/find_dependency(HIP)/d' /usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/cmake/rocalution/rocalution-config.cmake
           fi
           mkdir ${GITHUB_WORKSPACE}/build
           cd ${GITHUB_WORKSPACE}/build
           cmake \
             -DCMAKE_BUILD_TYPE="Release" \
             -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/usr" \
-            -DBLA_VENDOR="OpenBLAS" \
+            $([ "${{ matrix.os }}" == "ubuntu-24.04-arm" ] && echo "-DBLA_VENDOR=Generic" || echo "-DBLA_VENDOR=OpenBLAS") \
             ${{ matrix.openmp-cmake-flags }} \
             -DWITH_LUA=ON \
             $([ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_Zoltan=ON" || echo "-DWITH_Zoltan=OFF") \
@@ -168,12 +188,18 @@ jobs:
             echo ---- Files ----
             ls -Rl ${test_root}/${test}
             if [ -f ${test_root}/${test}/test-stderr*.log ]; then
-              echo ---- Content of test-stderr*.log ----
-              cat ${test_root}/${test}/test-stderr*.log
+              err_logs=($(ls ${test_root}/${test}/test-stderr*.log))
+              for err_log in "${err_logs[@]}"; do
+                echo ---- Content of ${err_log} ----
+                cat ${err_log}
+              done
             fi
             if [ -f ${test_root}/${test}/test-stdout*.log ]; then
-              echo ---- Content of test-stdout*.log ----
-              cat ${test_root}/${test}/test-stdout*.log
+              out_logs=($(ls ${test_root}/${test}/test-stdout*.log))
+              for out_log in "${out_logs[@]}"; do
+                echo ---- Content of ${out_log} ----
+                cat ${out_log}
+              done
             fi
             echo "::endgroup::"
           done

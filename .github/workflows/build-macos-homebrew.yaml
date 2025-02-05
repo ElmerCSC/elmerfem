@@ -18,12 +18,28 @@ jobs:
 
     runs-on: ${{ matrix.os }}
 
+    name: ${{ matrix.os }} (${{ matrix.openmp }} OpenMP)
+
     strategy:
       # Allow other runners in the matrix to continue if some fail
       fail-fast: false
 
       matrix:
-        os: [macos-14, macos-13]
+        os: [macos-14]
+        openmp: [without]
+        # Building with OpenMP causes some test failures on macOS on Apple
+        # Silicon.
+        # The affected tests currently are: H1BasisEvaluation and
+        # SD_H1BasisEvaluation.
+        # For the time being, disable building with OpenMP in CI on Apple
+        # Silicon.
+        # OpenMP is also needed as a transitional build dependency of the
+        # SuiteSparse package from Homebrew.
+        # FIXME: Consider building with OpenMP again when this (potentially
+        # upstream) issue has been fixed.
+        include:
+          - os: macos-13
+            openmp: with
 
     steps:
       - name: get CPU information
@@ -49,34 +65,40 @@ jobs:
           brew install --overwrite python@3.12 python@3.13
           brew reinstall gcc
           brew install \
-            cmake libomp openblas open-mpi suitesparse \
+            cmake openblas open-mpi \
+            ${{ matrix.openmp == 'with' && 'libomp suitesparse' || '' }} \
             qwt vtk opencascade
           echo "HOMEBREW_PREFIX=$(brew --prefix)" >> $GITHUB_ENV
 
       - name: configure
         env:
-          LDFLAGS: -L${{ env.HOMEBREW_PREFIX }}/opt/libomp/lib -lomp
+          LDFLAGS: ${{ matrix.openmp == 'with' && format('-L{0}/opt/libomp/lib -lomp', env.HOMEBREW_PREFIX) || '' }}
+        # The tests `SD_H1BasisEvaluation` and `SD_LinearFormsAssembly` are
+        # failing on macos-13 (Intel CPU) at optimization level `-O3`.
+        # They are passing if ElmerFEM is built with optimization level `-O2`.
         run: |
           mkdir ${GITHUB_WORKSPACE}/build
           cd ${GITHUB_WORKSPACE}/build
           cmake \
-            -DCMAKE_BUILD_TYPE="Release" \
+            -DCMAKE_BUILD_TYPE=${{ matrix.os == 'macos-13' && 'RelWithDebInfo' || 'Release' }} \
             -DCMAKE_C_COMPILER=clang \
             -DCMAKE_CXX_COMPILER=clang++ \
             -DCMAKE_Fortran_COMPILER=gfortran \
             -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/usr" \
             -DBLA_VENDOR="OpenBLAS" \
-            -DCMAKE_PREFIX_PATH="${HOMEBREW_PREFIX}/opt/libomp;${HOMEBREW_PREFIX}/opt/openblas;${HOMEBREW_PREFIX}/opt/qt;${HOMEBREW_PREFIX}/opt/qwt" \
-            -DWITH_OpenMP=ON \
-            -DOpenMP_C_FLAGS="-Xclang -fopenmp -I${HOMEBREW_PREFIX}/opt/libomp/include" \
-            -DOpenMP_CXX_FLAGS="-Xclang -fopenmp -I${HOMEBREW_PREFIX}/opt/libomp/include" \
-            -DOpenMP_Fortran_FLAGS="-fopenmp -I${HOMEBREW_PREFIX}/opt/libomp/include" \
+            -DCMAKE_PREFIX_PATH="$( [ "${{ matrix.openmp }}" == "with" ] && echo "${HOMEBREW_PREFIX}/opt/libomp;")${HOMEBREW_PREFIX}/opt/openblas;${HOMEBREW_PREFIX}/opt/qt;${HOMEBREW_PREFIX}/opt/qwt" \
+            ${{ matrix.openmp == 'with'
+              && '-DWITH_OpenMP=ON \
+                  -DOpenMP_C_FLAGS="-Xclang -fopenmp -I${HOMEBREW_PREFIX}/opt/libomp/include" \
+                  -DOpenMP_CXX_FLAGS="-Xclang -fopenmp -I${HOMEBREW_PREFIX}/opt/libomp/include" \
+                  -DOpenMP_Fortran_FLAGS="-fopenmp -I${HOMEBREW_PREFIX}/opt/libomp/include"'
+              || '-DWITH_OpenMP=OFF' }} \
             -DWITH_LUA=ON \
             -DWITH_MPI=ON \
             -DMPI_TEST_MAXPROC=2 \
             -DWITH_Zoltan=OFF \
             -DWITH_Mumps=OFF \
-            -DWITH_CHOLMOD=ON \
+            -DWITH_CHOLMOD=${{ matrix.openmp == 'with' && 'ON' || 'OFF' }} \
             -DWITH_ElmerIce=ON \
             -DWITH_ELMERGUI=ON \
             -DWITH_QT6=ON \
@@ -132,12 +154,18 @@ jobs:
             echo ---- Files ----
             ls -Rl ${test_root}/${test}
             if [ -f ${test_root}/${test}/test-stderr*.log ]; then
-              echo ---- Content of test-stderr*.log ----
-              cat ${test_root}/${test}/test-stderr*.log
+              err_logs=($(ls ${test_root}/${test}/test-stderr*.log))
+              for err_log in "${err_logs[@]}"; do
+                echo ---- Content of ${err_log} ----
+                cat ${err_log}
+              done
             fi
             if [ -f ${test_root}/${test}/test-stdout*.log ]; then
-              echo ---- Content of test-stdout*.log ----
-              cat ${test_root}/${test}/test-stdout*.log
+              out_logs=($(ls ${test_root}/${test}/test-stdout*.log))
+              for out_log in "${out_logs[@]}"; do
+                echo ---- Content of ${out_log} ----
+                cat ${out_log}
+              done
             fi
             echo "::endgroup::"
           done

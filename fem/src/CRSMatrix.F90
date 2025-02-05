@@ -2383,7 +2383,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
 
 !------------------------------------------------------------------------------
-!>    Pics the block diagonal entries from matrix A to build matrix B.
+!> Picks the block diagonal entries from matrix A to build matrix B.
 !------------------------------------------------------------------------------
   SUBROUTINE CRS_BlockDiagonal(A,B,Blocks) 
 !------------------------------------------------------------------------------
@@ -2789,7 +2789,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
 
 !------------------------------------------------------------------------------
-!>    Pics a block from matrix A to build matrix B. It is assumed that the 
+!> Picks a block from matrix A to build matrix B. It is assumed that the 
 !> matrix is split into given number of equally sized blocks.
 !------------------------------------------------------------------------------
   SUBROUTINE CRS_BlockMatrixPick(A,B,Blocks,Nrow,Ncol,PickPrec)
@@ -2904,8 +2904,8 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
 
 !------------------------------------------------------------------------------
-!> Pics a block from matrix A to build matrix B. It is assumed that the 
-!> matrix is split by intervals given by the users. For example for AV matris
+!> Picks a block from matrix A to build matrix B. It is assumed that the 
+!> matrix is split by intervals given by the users. For example for AV matrix
 !> the user would give the size of V as the input and choose then blocks
 !> (1,1), (1,2), (2,1) or (2,2). This logic assumes that nodes are numbered
 !> first, followed by other dofs. 
@@ -3061,7 +3061,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
 
 !------------------------------------------------------------------------------
-!> Pics a block from matrix A to build matrix B. 
+!> Picks a block from matrix A to build matrix B. 
 !> This subroutine enables the use of 
 !> nontrivial block decompositions. 
 !------------------------------------------------------------------------------
@@ -4750,8 +4750,8 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
   SUBROUTINE CRS_MatrixVectorProd( u,v,ipar )
 !------------------------------------------------------------------------------
     INTEGER, DIMENSION(*), INTENT(IN) :: ipar  !< Structure holding info HUTIter-iterative solver package
-    REAL(KIND=dp), INTENT(IN) :: u(HUTI_NDIM)  !< vector to multiply u
-    REAL(KIND=dp) :: v(HUTI_NDIM)              !< result vector
+    REAL(KIND=dp), INTENT(IN) :: u(*)  !< vector to multiply u
+    REAL(KIND=dp) :: v(*)              !< result vector
 
 !------------------------------------------------------------------------------
     INTEGER, POINTER  CONTIG :: Cols(:),Rows(:)

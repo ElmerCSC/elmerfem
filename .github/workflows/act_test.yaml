@@ -1,37 +1,44 @@
-name: ubuntu-elmerice
+name: act_test
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - elmerice
-    paths-ignore:
-      - '**.nix'
-      - 'flake.lock'
+  # push:
+  #   paths-ignore:
+  #     - '**.nix'
+  #     - 'flake.lock'
+  # pull_request:
+  #   paths-ignore:
+  #     - '**.nix'
+  #     - 'flake.lock'
 
-concurrency: ci-ubuntu-elmerice-${{ github.ref }}
+concurrency: act_test-${{ github.ref }}
 
 jobs:
 
   ubuntu:
     # For available GitHub-hosted runners, see:
     # https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
 
-    name: ubuntu-elmerice (${{ matrix.compiler }})
+    name: ${{ matrix.os }} (${{ matrix.compiler }} ${{ matrix.mpi }} MPI ${{ matrix.openmp }} OpenMP)
 
     strategy:
       # Allow other runners in the matrix to continue if some fail
       fail-fast: false
 
       matrix:
+        os: [ubuntu-24.04]
         compiler: [gcc]
+        mpi: [with]
+        openmp: [with]
         include:
-          - compiler: gcc
+          - os: ubuntu-24.04-arm
+            compiler: gcc
             compiler-pkgs: "g++ gcc"
             cc: "gcc"
             cxx: "g++"
-            openmp-cmake-flags: "-WITH_OpenMP=ON"
-
+            mpi: with
+            openmp: without
+            openmp-cmake-flags: "-DWITH_OpenMP=OFF"
     env:
       CC: ${{ matrix.cc }}
       CXX: ${{ matrix.cxx }}
@@ -49,29 +56,43 @@ jobs:
         run: |
           sudo apt -qq update
           sudo apt install -y ${{ matrix.compiler-pkgs }} cmake gfortran \
-            libopenblas-dev libopenmpi-dev libmumps-dev libparmetis-dev \
-            libqwt-qt5-dev qtscript5-dev libqt5svg5-dev
+            libopenblas-dev \
+            $([ "${{ matrix.mpi }}" == "with" ] && echo "libhypre-dev") \
+            $([ "${{ matrix.mpi }}" == "with" ] && echo "libopenmpi-dev libmumps-dev libparmetis-dev") \
+            $([ "${{ matrix.compiler }}" == "gcc" ] && echo "libsuitesparse-dev") \
+            $([ "${{ matrix.compiler }}" == "gcc" ] && [ "${{ matrix.mpi }}" == "with" ] && echo "librocalution-dev") \
+            $([ "${{ matrix.mpi }}" == "with" ] && echo "trilinos-all-dev libptscotch-dev") \
+            $([ "${{ matrix.mpi }}" == "with" ] && echo "libnetcdff-dev")
 
       - name: configure
+        # CHOLMOD and rocALUTION require a working OpenMP package. So, disable them for clang.
         run: |
+          # work around error in the rocALUTION CMake config file distributed by Ubuntu
+          if [ "${{ matrix.compiler }}" == "gcc" ] && [ "${{ matrix.mpi }}" == "with" ]; then
+            sudo sed -i '/find_dependency(HIP)/d' /usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/cmake/rocalution/rocalution-config.cmake
+          fi
           mkdir ${GITHUB_WORKSPACE}/build
           cd ${GITHUB_WORKSPACE}/build
           cmake \
-            -DCMAKE_BUILD_TYPE="Release" \
+            -DCMAKE_BUILD_TYPE="RelWithDebInfo" \
             -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/usr" \
             -DBLA_VENDOR="OpenBLAS" \
             ${{ matrix.openmp-cmake-flags }} \
             -DWITH_LUA=ON \
-            -DWITH_Zoltan=ON \
-            -DWITH_Mumps=ON \
-            -DWITH_ElmerIce=ON \
-            -DWITH_ELMERGUI=ON \
-            -DWITH_MATC=ON \
-            -DWITH_PARAVIEW=ON \
+            $([ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_Zoltan=OFF" || echo "-DWITH_Zoltan=OFF") \
+            $([ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_Mumps=OFF" || echo "-DWITH_Mumps=OFF") \
+            $([ "${{ matrix.compiler }}" == "gcc" ] && echo "-DWITH_CHOLMOD=OFF" || echo "-DWITH_CHOLMOD=OFF") \
+            $([ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_Hypre=OFF -DHYPRE_INCLUDE_DIR=/usr/include/hypre" || echo "-DWITH_Hypre=OFF") \
+            $([ "${{ matrix.compiler }}" == "gcc" ] && [ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_ROCALUTION=OFF" || echo "-DWITH_ROCALUTION=OFF") \
+            $([ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_ElmerIce=OFF" || echo "-DWITH_ElmerIce=OFF") \
+            -DWITH_ELMERGUI=OFF \
+            -DWITH_VTK=OFF \
+            -DWITH_OCC=OFF \
+            -DWITH_MATC=OFF \
+            -DWITH_PARAVIEW=OFF \
             -DCREATE_PKGCONFIG_FILE=ON \
-            -DWITH_MPI=ON \
-            -DMPI_TEST_MAXPROC=2 \
-            -DMPIEXEC_PREFLAGS="--allow-run-as-root" \
+            $([ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_MPI=ON -DMPI_TEST_MAXPROC=2 -DMPIEXEC_PREFLAGS=--allow-run-as-root" || echo "-DWITH_MPI=OFF") \
+            $([ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_Trilinos=OFF" || echo "-DWITH_Trilinos=OFF") \
             ..
 
       - name: build
@@ -91,9 +112,12 @@ jobs:
           CTEST_OUTPUT_ON_FAILURE: 1
         run: |
           cd ${GITHUB_WORKSPACE}/build
-          ctest -L elmerice -j$(nproc) --output-on-failure
+          ctest . \
+            -LE slow \
+            -j$(nproc) \
+            --timeout 300
 
-      - name: re-run tests
+      - name: Re-run tests
         if: always() && (steps.run-ctest.outcome == 'failure')
         timeout-minutes: 60
         env:
@@ -131,7 +155,7 @@ jobs:
             echo "::endgroup::"
           done
           echo "::group::Re-run failing tests"
-          ctest --rerun-failed --output-on-failure || true
+          ctest --rerun-failed --output-on-failure --timeout 180 || true
           echo "::endgroup::"
           echo "::group::Log from these tests"
           [ ! -f Testing/Temporary/LastTest.log ] || cat Testing/Temporary/LastTest.log

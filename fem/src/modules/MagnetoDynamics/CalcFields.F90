@@ -2040,7 +2040,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                ElemLoss(1) = ElemLoss(1) + s * Basis(p) * LossCoeff(1) * ( Freq ** FreqPower(1) ) * ( ValAtIp ** FieldPower(1) )
                ElemLoss(2) = ElemLoss(2) + s * Basis(p) * LossCoeff(2) * ( Freq ** FreqPower(2) ) * ( ValAtIp ** FieldPower(2) )
                ComponentLoss(:,l) = ComponentLoss(:,l) + ElemLoss
-               BodyLoss(:,BodyId) = BodyLoss(:,BodyId) + ElemLoss
+               BodyLoss(1:2,BodyId) = BodyLoss(1:2,BodyId) + ElemLoss
              END DO
            ELSE
              ElemLoss = 0.0_dp

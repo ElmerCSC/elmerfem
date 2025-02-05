@@ -58,9 +58,9 @@ MODULE DefUtils
 
    INTERFACE DefaultUpdateEquations
      MODULE PROCEDURE DefaultUpdateEquationsR, DefaultUpdateEquationsC, &
-         DefaultUpdateEquationsDiagC
-   END INTERFACE
-
+         DefaultUpdateEquationsDiagC, DefaultUpdateEquationsCutFemR
+   END INTERFACE 
+   
    INTERFACE DefaultUpdatePrec
      MODULE PROCEDURE DefaultUpdatePrecR, DefaultUpdatePrecC
    END INTERFACE
@@ -1906,7 +1906,7 @@ CONTAINS
 
      INTEGER :: i, j, k, id, ElemFamily, ParentFamily, face_type, face_id 
      INTEGER :: NDOFs
-     LOGICAL :: Found, GB, NeedEdges
+     LOGICAL :: Found, GB, NeedEdges, Bubbles
 
      IF ( PRESENT( USolver ) ) THEN
         Solver => USolver
@@ -2171,10 +2171,12 @@ CONTAINS
              IF (p > 1) BDOFs = GetBubbleDOFs(Element, p)
              BDOFs = MAX(nb, BDOFs)
            ELSE
-             ! The following is not an ideal way to obtain the bubble count
-             ! in order to support solverwise definitions, but we are not expected 
-             ! to end up in this branch anyway:
-             BDOFs = Element % BDOFs
+             IF (ASSOCIATED(Solver % Values)) THEN
+               Bubbles = ListGetLogical(Solver % Values, 'Bubbles', Found )
+               ! The following is not a right way to obtain the bubble count
+               ! in order to support solverwise definitions
+               IF (Bubbles) BDOFs = SIZE(Element % BubbleIndexes)
+             END IF
            END IF
            n = n + BDOFs
          END IF
@@ -2215,7 +2217,7 @@ CONTAINS
 
     TYPE(Element_t), POINTER  :: CurrElement
     TYPE(Solver_t), POINTER :: Solver
-    LOGICAL :: Found, GB, UpdateRequested
+    LOGICAL :: Found, GB, UpdateRequested,Bubbles
     INTEGER :: k, p, ElemFamily
 
     IF ( PRESENT( USolver ) ) THEN
@@ -2240,13 +2242,23 @@ CONTAINS
       p = Solver % Def_Dofs(ElemFamily, CurrElement % Bodyid, 6) 
 
       IF (k >= 0 .OR. p >= 1) THEN
+        ! Apparently an "Element" command has been read from a solver section.
+        ! Therefore we return the value of the solverwise definition.
         IF (p > 1) n = GetBubbleDOFs(CurrElement, p)
         n = MAX(k,n)
-      ELSE 
-        n = CurrElement % BDOFs
+      ELSE
+        ! The element command hasn't been given, so the only way to activate the bubbles
+        ! should be the "Bubbles" command. The following is not a reliable way to obtain
+        ! the bubble count when solverwise definitions are used.
+        IF (ASSOCIATED(Solver % Values)) THEN
+          Bubbles = ListGetLogical(Solver % Values, 'Bubbles', Found)
+          IF (Bubbles) THEN
+            n = CurrElement % BDOFs
+          END IF
+        END IF
       END IF
 
-      IF (UpdateRequested .AND. n>=0) THEN
+      IF (UpdateRequested) THEN
         CurrElement % BDOFs = n
       END IF
     ELSE
@@ -2262,7 +2274,18 @@ CONTAINS
         IF (k >= 0 .OR. p >= 1) THEN
           IF (p > 1) n = GetBubbleDOFs(CurrElement, p)
           n = MAX(k,n)
-          IF ( n>=0 ) CurrElement % BDOFs = n
+          CurrElement % BDOFs = n
+        ELSE
+          IF (ASSOCIATED(Solver % Values)) THEN
+            Bubbles = ListGetLogical(Solver % Values, 'Bubbles', Found)
+            IF (Bubbles .AND. ASSOCIATED(CurrElement % BubbleIndexes)) THEN
+              CurrElement % BDOFs = SIZE(CurrElement % BubbleIndexes)
+            ELSE
+              CurrElement % BDOFs = 0
+            END IF
+          ELSE
+            CurrElement % BDOFs = 0
+          END IF
         END IF
         n = 0
       END IF
@@ -2302,28 +2325,29 @@ CONTAINS
      END IF
 
      n = Element % TYPE % NumberOfNodes
-     ElementNodes % x(1:n) = Mesh % Nodes % x(Element % NodeIndexes)
-     ElementNodes % y(1:n) = Mesh % Nodes % y(Element % NodeIndexes)
-     ElementNodes % z(1:n) = Mesh % Nodes % z(Element % NodeIndexes)
+     
+     ElementNodes % x(1:n) = Mesh % Nodes % x(Element % NodeIndexes(1:n))
+     ElementNodes % y(1:n) = Mesh % Nodes % y(Element % NodeIndexes(1:n))
+     ElementNodes % z(1:n) = Mesh % Nodes % z(Element % NodeIndexes(1:n))
 
      sz = SIZE(ElementNodes % x)
      IF ( sz > n ) THEN
        ElementNodes % x(n+1:sz) = 0.0_dp
        ElementNodes % y(n+1:sz) = 0.0_dp
        ElementNodes % z(n+1:sz) = 0.0_dp
-     END IF
 
-     sz1 = SIZE(Mesh % Nodes % x)
-     IF (sz1 > Mesh % NumberOfNodes) THEN
-        Indexes => GetIndexStore()
-        nd = GetElementDOFs(Indexes,Element,NotDG=.TRUE.)
-        DO i=n+1,nd
+       sz1 = SIZE(Mesh % Nodes % x)
+       IF (sz1 > Mesh % NumberOfNodes) THEN
+         Indexes => GetIndexStore()
+         nd = GetElementDOFs(Indexes,Element,NotDG=.TRUE.)
+         DO i=n+1,nd
            IF ( Indexes(i)>0 .AND. Indexes(i)<=sz1 ) THEN
              ElementNodes % x(i) = Mesh % Nodes % x(Indexes(i))
              ElementNodes % y(i) = Mesh % Nodes % y(Indexes(i))
              ElementNodes % z(i) = Mesh % Nodes % z(Indexes(i))
            END IF
-        END DO
+         END DO
+       END IF
      END IF
   END SUBROUTINE GetElementNodes
 
@@ -2833,8 +2857,9 @@ CONTAINS
      END IF
      
      DO bc_id=1,CurrentModel % NumberOfBCs
-        IF ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(bc_id) % Tag ) EXIT
+       IF ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(bc_id) % Tag ) EXIT
      END DO
+      
      IF ( bc_id > CurrentModel % NumberOfBCs ) bc_id=0
 !------------------------------------------------------------------------------
   END FUNCTION GetBCId
@@ -2854,9 +2879,11 @@ CONTAINS
 
      Element => GetCurrentElement( UElement )
      
-     BC => Null()
+     BC => NULL()
      bc_id = GetBCId( Element )
+     
      IF ( bc_id > 0 )  BC => CurrentModel % BCs(bc_id) % Values
+     
 !------------------------------------------------------------------------------
   END FUNCTION GetBC
 !------------------------------------------------------------------------------
@@ -3557,7 +3584,11 @@ CONTAINS
      IF( Solver % NewtonActive ) THEN
        IF( ListGetLogical( Params,'Nonlinear System Reset Newton', Found) ) Solver % NewtonActive = .FALSE.
      END IF
-          
+
+     IF( ListGetLogical( Params,'Nonlinear System Nullify Guess', Found ) ) THEN
+       Solver % Variable % Values = 0.0_dp
+     END IF
+     
      ! If we changed the system last time to harmonic one then revert back the real system
      IF( ListGetLogical( Params,'Harmonic Mode',Found ) ) THEN
        CALL ChangeToHarmonicSystem( Solver, .TRUE. )
@@ -3869,6 +3900,11 @@ CONTAINS
 
     ! This could be somewhere else too. Now it is here for debugging.
     CALL SaveParallelInfo( Solver )
+
+    IF( ListGetLogical( Params,'Linear System Solve and Stop',Found ) ) THEN
+      CALL Info('DefaultSolve','Just solved matrix and stopped!',Level=4)
+      STOP EXIT_OK
+    END IF
     
 !------------------------------------------------------------------------------
   END FUNCTION DefaultSolve
@@ -4126,7 +4162,56 @@ CONTAINS
   END SUBROUTINE DefaultUpdateEquationsR
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+  SUBROUTINE DefaultUpdateEquationsCutFemR( G, F, CutElem, Element, USolver )
+!------------------------------------------------------------------------------
+     REAL(KIND=dp) :: G(:,:), f(:)
+     LOGICAL :: CutElem
+     TYPE(Element_t) :: Element
+     TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
+     
+     TYPE(Solver_t), POINTER   :: Solver
+     TYPE(Matrix_t), POINTER   :: A
+     TYPE(Variable_t), POINTER :: x
+     TYPE(Element_t), POINTER  :: CurrElement
+     REAL(KIND=dp), POINTER CONTIG   :: b(:)
+     REAL(KIND=dp), ALLOCATABLE :: Gsum(:,:), fsum(:) 
+     INTEGER, ALLOCATABLE :: iorder(:), sumIndexes(:)
+     INTEGER :: nsum , n0          
+     LOGICAL :: Found 
+     INTEGER :: i, j, k, n, m, nd, nn
+     INTEGER, POINTER CONTIG :: PermIndexes(:)
+
+     SAVE :: Gsum, Fsum, nsum, n0, iorder, nn, sumIndexes
+     
+     IF ( PRESENT( USolver ) ) THEN
+       Solver => USolver
+     ELSE
+       Solver => CurrentModel % Solver
+     END IF
+     
+     A => Solver % Matrix
+     x => Solver % Variable
+     b => A % RHS
+
+     n = Element % Type % NumberOfNodes     
+     PermIndexes => GetPermIndexStore()
+     
+     PermIndexes(1:n) = x % Perm(Element % NodeIndexes(1:n))
+     IF(ANY(PermIndexes(1:n) == 0)) THEN
+       CALL Fatal('DefaultUpdateEquationsCutFemR','Zero PermIndexes in piece element?')
+     END IF
+     CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs, &
+         PermIndexes(1:n), UElement=Element )            
+     RETURN
+          
+!------------------------------------------------------------------------------
+   END SUBROUTINE DefaultUpdateEquationsCutFemR
+!------------------------------------------------------------------------------
   
+
+
   SUBROUTINE DefaultUpdateEquationsIm( G, F, UElement, USolver, VecAssembly )     
     TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
     TYPE(Element_t), OPTIONAL, TARGET :: UElement
@@ -5569,7 +5654,7 @@ CONTAINS
          SaveElement => GetCurrentElement() 
          DO i=1,Solver % Mesh % NumberOfBoundaryElements
            Element => GetBoundaryElement(i)
-           IF ( .NOT. ActiveBoundaryElement() ) CYCLE
+           IF ( .NOT. ActiveBoundaryElement(Element) ) CYCLE
 
            ! Get parent element:
            ! -------------------
@@ -5579,7 +5664,7 @@ CONTAINS
 
            IF ( .NOT. ASSOCIATED(Parent) )   CYCLE
 
-           BC => GetBC()
+           BC => GetBC(Element)
            IF ( .NOT.ASSOCIATED(BC) ) CYCLE
 
            ptr => ListFind(BC, Name,Found )
@@ -5646,7 +5731,7 @@ CONTAINS
            DO i=1,Solver % Mesh % NumberOfBoundaryElements
              Element => GetBoundaryElement(i)
 
-             BC => GetBC()
+             BC => GetBC(Element)
              IF ( .NOT.ASSOCIATED(BC) ) CYCLE
              IF ( .NOT. ListCheckPresent(BC, TRIM(Name)) ) CYCLE
 
@@ -5701,7 +5786,7 @@ CONTAINS
          SaveElement => GetCurrentElement()
          DO i=1,Solver % Mesh % NumberOfBoundaryElements
            Element => GetBoundaryElement(i)
-           IF ( .NOT. ActiveBoundaryElement() ) CYCLE
+           IF ( .NOT. ActiveBoundaryElement(Element) ) CYCLE
 
            BC => GetBC()
            IF ( .NOT.ASSOCIATED(BC) ) CYCLE
@@ -5888,7 +5973,7 @@ CONTAINS
          np = Parent % TYPE % NumberOfNodes
          
          IF(.NOT. ASSOCIATED( Solver % Mesh % Edges ) ) CYCLE
-         SELECT CASE(GetElementFamily())
+         SELECT CASE(GetElementFamily(Element))
              
          CASE(3,4)
            CALL PickActiveFace(Solver % Mesh, Parent, Element, Face, j)
@@ -5947,7 +6032,7 @@ CONTAINS
         DO i=1,Solver % Mesh % NumberOfBoundaryElements
            Element => GetBoundaryElement(i)
 
-           BC => GetBC()
+           BC => GetBC(Element)
            IF ( .NOT.ASSOCIATED(BC) ) CYCLE
            IF ( .NOT. ListCheckPrefix(BC, Name//' {e}') .AND. &
                 .NOT. ListCheckPrefix(BC, Name//' {f}') ) CYCLE
@@ -5972,7 +6057,7 @@ CONTAINS
              Parent => Element % BoundaryInfo % Right
              IF ( ASSOCIATED( Parent ) ) THEN
                IF (Parent % BodyId < 1) THEN
-                 Call Warn('SetDefaultDirichlet', 'Cannot set a BC owing to a missing parent body index')
+                 CALL Warn('SetDefaultDirichlet', 'Cannot set a BC owing to a missing parent body index')
                  CYCLE
                END IF
              END IF
@@ -5986,7 +6071,7 @@ CONTAINS
               ! which, in addition to edge DOFs, may also have DOFs associated with faces. 
               !--------------------------------------------------------------------------------
               IF ( ASSOCIATED( Solver % Mesh % Edges ) ) THEN
-                 SELECT CASE(GetElementFamily())
+                 SELECT CASE(GetElementFamily(Element))
                  CASE(2)
 
                    CALL PickActiveFace(Solver % Mesh, Parent, Element, Edge, j)
@@ -6285,13 +6370,16 @@ CONTAINS
      END DO
 
      IF( ReleaseAny) THEN
-       IF( InfoActive(10) ) THEN
+       IF( InfoActive(20) ) THEN
          k = COUNT( A % ConstrainedDOF ) 
-         PRINT *,'Original number of of Dirichlet BCs:',k       
+         CALL Info('DefaultDirichletBCs', &
+             'Original number of of Dirichlet BCs: '//I2S(k))       
          k = COUNT( ReleaseDir )
-         PRINT *,'Marked number of Dirichlet BCs not to set:',k       
+         CALL Info('DefaultDirichletBCs',&
+             'Marked number of Dirichlet BCs not to set: '//I2S(k))       
          k = COUNT( ReleaseDir .AND. A % ConstrainedDOF )
-         PRINT *,'Ignoring number of Dirichlet BCs:',k
+         CALL Info('DefaultDirichletBCs',&
+             'Ignoring number of Dirichlet BCs: '//I2S(k))
        END IF         
        WHERE( ReleaseDir )
          A % ConstrainedDOF = .FALSE.
@@ -6441,7 +6529,7 @@ CONTAINS
 
     ! Is this element type stuff needed and for what?
     SavedType => Element % TYPE
-    IF ( GetElementFamily()==1 ) Element % TYPE=>GetElementType(202)
+    IF ( GetElementFamily(Element)==1 ) Element % TYPE=>GetElementType(202)
       
     Integral = 0._dp
     IP = GaussPoints(Element)

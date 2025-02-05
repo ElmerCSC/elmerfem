@@ -85,7 +85,6 @@
      REAL(KIND=dp), ALLOCATABLE :: ElemVelo(:,:), SurfaceFlux(:)
      REAL(KIND=dp) :: at,totat,st,totst
      CHARACTER(LEN=MAX_NAME_LEN) :: LevelSetVariableName
-     INTEGER status(MPI_STATUS_SIZE)     
 
      SAVE ElementNodes, ElemVelo, Direction, ZeroNodes, TimesVisited, &
          Distance, DistancePerm, ExtractAllocated, DistanceAllocated
@@ -182,35 +181,43 @@
      CALL Info( 'LevelSetDistance',Message, Level=4 )
      recZeroLevels = ZeroLevels
      
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! BEGIN of SENDING-RECEIVING ZeroLevels array
+     ! BEGIN of SENDING-RECEIVING ZeroLevels array
      IF (Parallel) THEN
-       nPEs=ParEnv % PEs
-       CALL MPI_AllGather(ZeroLevels,1,MPI_INTEGER,pZeroLevels,1,MPI_INTEGER,ELMER_COMM_WORLD, ierr)
-       recZeroLevels = SUM(pZeroLevels(1:nPEs))
-       ALLOCATE(send(ZeroLevels),recv(recZeroLevels),recZeroNodes(recZeroLevels,2,2))
-       disps(1)=0
-       Do i=2,nPes
-         disps(i)=disps(i-1)+pZeroLevels(i-1)
-       END DO
-       DO i=1,2
-         DO j=1,2
-           IF (ZeroLevels.GT.0) send(1:ZeroLevels)=ZeroNodes(1:ZeroLevels,i,j)
-           CALL MPI_AllGatherv(send,ZeroLevels,MPI_DOUBLE_PRECISION,recv,&
-               pZeroLevels,disps,MPI_DOUBLE_PRECISION,ELMER_COMM_WORLD, ierr)
-           recZeroNodes(1:recZeroLevels,i,j)=recv(1:recZeroLevels)
+#if 0 
+       BLOCK
+         INTEGER status(MPI_STATUS_SIZE)     
+
+         nPEs=ParEnv % PEs
+         CALL MPI_AllGather(ZeroLevels,1,MPI_INTEGER,pZeroLevels,1,MPI_INTEGER,ELMER_COMM_WORLD, ierr)
+         recZeroLevels = SUM(pZeroLevels(1:nPEs))
+         ALLOCATE(send(ZeroLevels),recv(recZeroLevels),recZeroNodes(recZeroLevels,2,2))
+         disps(1)=0
+         Do i=2,nPes
+           disps(i)=disps(i-1)+pZeroLevels(i-1)
          END DO
-       END DO
+         DO i=1,2
+           DO j=1,2
+             IF (ZeroLevels > 0) send(1:ZeroLevels) = ZeroNodes(1:ZeroLevels,i,j)
+             CALL MPI_AllGatherv(send,ZeroLevels,MPI_DOUBLE_PRECISION,recv,&
+                 pZeroLevels,disps,MPI_DOUBLE_PRECISION,ELMER_COMM_WORLD, ierr)
+             recZeroNodes(1:recZeroLevels,i,j) = recv(1:recZeroLevels)
+           END DO
+         END DO
 
-       ZeroLevels=recZeroLevels
-       IF (size(ZeroNodes,1).LT.ZeroLevels) THEN
-         DEALLOCATE(ZeroNodes)
-         ALLOCATE(ZeroNodes(ZeroLevels,2,2))
-       END IF
-       ZeroNodes(1:ZeroLevels,1:2,1:2)=recZeroNodes(1:recZeroLevels,1:2,1:2)
+         ZeroLevels=recZeroLevels
+         IF (SIZE(ZeroNodes,1) < ZeroLevels) THEN
+           DEALLOCATE(ZeroNodes)
+           ALLOCATE(ZeroNodes(ZeroLevels,2,2))
+         END IF
+         ZeroNodes(1:ZeroLevels,1:2,1:2) = recZeroNodes(1:recZeroLevels,1:2,1:2)
 
-       DEALLOCATE(send,recv,recZeroNodes)
+         DEALLOCATE(send,recv,recZeroNodes)         
+       END BLOCK
+#else
+       CALL Fatal('LevelSetDistance','Subroutine not compiled with MPI!')
+#endif
      ENDIF
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! END of SENDING-RECEIVING ZeroLevels array
+     ! END of SENDING-RECEIVING ZeroLevels array
      
      IF( ZeroLevels == 0) THEN
        CALL Warn('LevelSetDistance','The does not seem to be a zero level-set present, exiting...')

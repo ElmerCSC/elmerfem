@@ -39,8 +39,8 @@
 #include "egmesh.h"
 #include "egconvert.h"
 
-#define GETLINE ioptr=fgets(line,MAXLINESIZE,in) 
-#define GETLONGLINE ioptr=fgets(longline,LONGLINESIZE,in)
+#define GETLINE (ioptr=fgets(line,MAXLINESIZE,in))
+#define GETLONGLINE (ioptr=fgets(longline,LONGLINESIZE,in))
 
 static int linenumber;
 static char *ioptr;
@@ -4701,20 +4701,21 @@ omstart:
 
 
 static int LoadGmshInput41(struct FemType *data,struct BoundaryType *bound,
-			   char *filename,int usetaggeom, int keeporphans, int info)
+			   char *filename,int usetaggeom, int keeporphans, int gmshbinary, int info)
 {
   int noknots = 0,noelements = 0,nophysical = 0,maxnodes,dim,notags;
   int elemind[MAXNODESD2],elementtype;
   int i,j,k,l,allocated,*revindx=NULL,maxindx;
   int elemno, gmshtype, tagphys=0, tagpart, elemnodes,maxelemtype;
-  int tagmat,verno,meshdim,tagdim;
+  int tagmat,verno,meshdim,tagdim,frcount;
   int physvolexist, physsurfexist,**tagmap,tagsize;
-  int maxtag[4],mintag[4],maxreadtag[4],minreadtag[4],maxphystag[4],minphystag[4],tagoffset[4],phystagoffset[4];
+  int maxtag[4],mintag[4],maxreadtag[4],minreadtag[4];
+  int maxphystag[4],minphystag[4],tagoffset[4],phystagoffset[4];
   FILE *in;
   const char manifoldname[4][10] = {"point", "line", "surface", "volume"};
   char *cp,line[MAXLINESIZE],longline[LONGLINESIZE];
 
-  if ((in = fopen(filename,"r")) == NULL) {
+  if ((in = fopen(filename,"rb")) == NULL) {
     printf("The opening of the mesh file %s failed!\n",filename);
     return(1);
   }
@@ -4746,227 +4747,354 @@ omstart:
  
     if(strstr(line,"$MeshFormat")) {
       GETLINE;
-      cp = line;
-      verno = next_int(&cp);
-
-      if(verno != 4) {
-	printf("Version number is not compatible with the parser: %d\n",verno);
+      if(gmshbinary){
+        int one;
+        fread(&one, sizeof(int), 1, in);
+        if(one != 1) {
+          printf("Gmsh binary file needs to swap bytes, not implemented in ElmerGrid. Exiting!\n");
+          bigerror("Gmsh binary file needs to swap bytes, not implemented in ElmerGrid. Exiting!");
+        }
+        GETLINE;
       }
-
       GETLINE;
-      if(!strstr(line,"$EndMeshFormat")) {
-	printf("$MeshFormat section should end to string $EndMeshFormat:\n%s\n",line);
-      }      
+      if(!strstr(line,"$EndMeshFormat"))
+	      printf("$MeshFormat section should end to string $EndMeshFormat:\n%s\n",line);
     }
-      
+
     else if(strstr(line,"$Nodes")) {
-      int numEntityBlocks,tagEntity,dimEntity,parEntity,numNodes,ind;
+      int numEntityBlocks,tagEntity,dimEntity,parEntity,numNodes;
       int minNodeTag, maxNodeTag, parTag;
-      
-      GETLINE;
-      cp = line;
+      size_t tagNode;
 
-      numEntityBlocks = next_int(&cp);
-      noknots = next_int(&cp);
-      minNodeTag = next_int(&cp);
-      maxNodeTag = next_int(&cp);
-      
-      if(allocated && info) printf("Reading %d nodes in %d blocks.\n",noknots,numEntityBlocks);
-      
-      k = 0;
-      
-      for(j=1; j <= numEntityBlocks; j++) {
-	GETLINE;
-	cp = line;
-
-	dimEntity = next_int(&cp);
-	tagEntity = next_int(&cp);
-	parTag = next_int(&cp);
-	numNodes = next_int(&cp);
-
-	if( 0 && numNodes > 1 ) printf("Reading node block %d with %d nodes\n",j,numNodes);
-		
-	for(i=1; i <= numNodes; i++) {
-	  GETLINE;
-	  cp = line;
-	  
-	  ind = next_int(&cp);	  
-
-	  if( 0 && numNodes > 1 ) printf("block %d node %d ind %d %d\n",j,i,ind,k+i);
-	  
-	  if(allocated) {
-	    if(maxindx > noknots) revindx[ind] = k+i;
-	  }
-	  else {
-	    maxindx = MAX(ind,maxindx);
-	  }
-	}
-
-	for(i=1; i <= numNodes; i++) {
-	  GETLINE;
-	  cp = line;
-	  
-	  if(allocated) {
-	    data->x[k+i] = next_real(&cp);
-	    data->y[k+i] = next_real(&cp);
-	    data->z[k+i] = next_real(&cp);
-	  }
-	}
-	k += numNodes;	
+      if(gmshbinary) {
+        size_t inputData[4];
+        frcount = fread(inputData, sizeof(size_t), 4, in);
+        if(frcount != 4)
+          printf("1 fread error, frcount = %d, not equal to %d\n",frcount,4);
+        numEntityBlocks = (int) inputData[0];
+        noknots = (int) inputData[1];
+        minNodeTag = (int) inputData[2];
+        maxNodeTag = (int) inputData[3];
       }
-      GETLINE;
+      else {
+        GETLINE;
+	      cp = line;
+	      numEntityBlocks = next_int(&cp);
+	      noknots = next_int(&cp);
+	      minNodeTag = next_int(&cp);
+	      maxNodeTag = next_int(&cp);
+      }
+      if(allocated && info) printf("Reading %d nodes in %d blocks.\n",
+                                   noknots,numEntityBlocks);
 
-      if(!strstr(line,"$EndNodes")) {
-	printf("$Nodes section should end to string $EndNodes:\n%s\n",line);
-      }           
+      k = 0;
+
+      for(j=1; j <= numEntityBlocks; j++) {
+        if(gmshbinary) {
+          int inputData[3];
+          size_t numNodesInBlock;
+          frcount = fread(inputData, sizeof(int), 3, in);
+          if(frcount != 3)
+            printf("2 fread error, frcount = %d, not equal to %d\n",frcount,3);
+          dimEntity = inputData[0];
+          tagEntity = inputData[1];
+          parTag    = inputData[2];
+
+          frcount = fread(&numNodesInBlock, sizeof(size_t), 1, in);
+          if(frcount != 1)
+            printf("3 fread error, frcount = %d, not equal to %d\n",frcount,1);
+          numNodes = (int) numNodesInBlock;
+        }
+        else {
+          GETLINE;
+	        cp = line;
+	        dimEntity = next_int(&cp);
+	        tagEntity = next_int(&cp);
+	        parTag = next_int(&cp);
+	        numNodes = next_int(&cp);
+        }
+
+        if( 0 && numNodes > 1 ) printf("Reading node block %d with %d nodes\n",j,numNodes);
+
+        for(i=1; i <= numNodes; i++) {
+          if(gmshbinary) {
+            frcount = fread(&tagNode, sizeof(size_t), 1, in);
+            if(frcount != 1)
+              printf("4 fread error, frcount = %d, not equal to %d\n",frcount,1);
+          }
+          else {
+            GETLINE;
+	          cp = line;
+	          tagNode = next_int(&cp);
+          }
+
+          if( 0 && numNodes > 1 ) printf("block %d node %d tagNode %lu %d\n",j,i,(unsigned long)tagNode,k+i);
+
+          if(allocated) {
+            if(maxindx > noknots) revindx[tagNode] = k+i;
+          }
+          else {
+            maxindx = MAX(tagNode,maxindx);
+          }
+        }
+
+        for(i=1; i <= numNodes; i++) {
+          if(gmshbinary) {
+            double inputData[3];
+            frcount = fread(inputData, sizeof(double), 3, in);
+            if(frcount != 3)
+              printf("5 fread error, frcount = %d, not equal to %d\n",frcount,3);
+            if(allocated) {
+              data->x[k+i] = inputData[0];
+              data->y[k+i] = inputData[1];
+              data->z[k+i] = inputData[2];
+            }
+          }
+          else {
+            double x,y,z;
+            GETLINE;
+	          cp = line;
+	          if(allocated) {
+	            data->x[k+i] = next_real(&cp);
+	            data->y[k+i] = next_real(&cp);
+	            data->z[k+i] = next_real(&cp);
+	          }
+          }
+        }
+        k += numNodes;
+      }
+      if(gmshbinary) GETLINE;
+      GETLINE;
+      if(!strstr(line,"$EndNodes"))
+        printf("$Nodes section should end to string $EndNodes:\n%s\n",line);
     }
 
     else if(strstr(line,"$Entities")) {
       int numPoints, numCurves, numSurfaces, numVolumes, numEnt;
-      int tag,nophys,phystag;
-      int nobound, idum;
+      int tag,phystag;
+      size_t nophys,nobound;
+      int  idum;
       Real rdum;
 
       usetaggeom = FALSE;
       
-      GETLINE;
-      cp = line;
-      numPoints = next_int(&cp);
-      numCurves = next_int(&cp);
-      numSurfaces = next_int(&cp);
-      numVolumes = next_int(&cp);
+      if(gmshbinary) {
+        size_t data[4];
+        frcount = fread(data, sizeof(size_t), 4, in);
+        if(frcount != 4)
+          printf("6 fread error, frcount = %d, not equal to %d\n",frcount,4);
+        numPoints   = (int) data[0];
+        numCurves   = (int) data[1];
+        numSurfaces = (int) data[2];
+        numVolumes  = (int) data[3];
+       }
+      else {
+        GETLINE;
+        cp = line;
+        numPoints = next_int(&cp);
+        numCurves = next_int(&cp);
+        numSurfaces = next_int(&cp);
+        numVolumes = next_int(&cp);
+      }
 
       if(allocated) {
-	tagsize = 0;
-	for(tagdim=0;tagdim<=meshdim;tagdim++)
-	  tagsize = MAX( tagsize, maxtag[tagdim]);
-	if(info) printf("Allocating lookup table for tags of size %d\n",tagsize);
-	if( tagsize > 0 ) {
-	  tagmap = Imatrix(0,3,1,tagsize);
-	  for(i=0;i<=3;i++)
-	    for(j=1;j<=tagsize;j++)
-	      tagmap[i][j] = 0;
-	}
+        tagsize = 0;
+        for(tagdim=0; tagdim<=meshdim; tagdim++)
+          tagsize = MAX( tagsize, maxtag[tagdim]);
+        if(info) printf("Allocating lookup table for tags of size %d\n",tagsize);
+        if( tagsize > 0 ) {
+          tagmap = Imatrix(0,3,1,tagsize);
+          for(i=0; i<=3; i++)
+            for(j=1; j<=tagsize; j++)
+              tagmap[i][j] = 0;
+        }
       }
-      
-      for(tagdim=0;tagdim<=3;tagdim++) {	
-	
-	if( tagdim == 0 ) 
-	  numEnt = numPoints;
-	else if( tagdim == 1 )
-	  numEnt = numCurves;
-	else if( tagdim == 2 )
-	  numEnt = numSurfaces;
-	else if( tagdim == 3 )
-	  numEnt = numVolumes;
-		
-	if(allocated && numEnt > 0 ) {
-	  if( maxtag[tagdim] > 0 ) {
-	    if( mintag[tagdim] == -1 ) mintag[tagdim] = maxtag[tagdim];
-	    if( minphystag[tagdim] == -1) minphystag[tagdim] = maxphystag[tagdim];
-	    printf("Defined %d %dDIM entities with geometric tag range [%d %d]\n",
-		   numEnt,tagdim,mintag[tagdim],maxtag[tagdim]);
-	    if( maxphystag[tagdim] > 0 || maxreadtag[tagdim] > 0 ) {
-	      printf("   Physical given tag range is [%d %d]\n",minphystag[tagdim],maxphystag[tagdim]);
-	      if( maxreadtag[tagdim] != maxphystag[tagdim] || minreadtag[tagdim] != minphystag[tagdim]) {
-		if(maxreadtag[tagdim] > 0 ) 
-		  printf("   Physical read tag range is [%d %d]\n",minreadtag[tagdim],maxreadtag[tagdim]);
-		else
-		  printf("   No physical tags read for real!\n");
-		if(0) smallerror("Physical names not used consistently!"); 
-	      }
-	    } else  {
-	      if(0) printf("No physical tags defined, using geometric entities!\n");
-	    }
-	    
-	  }
-	  if( tagdim > meshdim ) {
-	    printf("We have %d %dDIM tags that are beyond mesh dimension %d!\n",numEnt, tagdim, meshdim );
-	  }
-	}
-	  	
-	if(numEnt > 0 && !allocated) printf("Reading %d entities in %dD\n",numEnt,tagdim);
+      for(tagdim=0; tagdim<=3; tagdim++) {
 
-	
-	for(i=1; i <= numEnt; i++) {
-	  GETLONGLINE;
+        if( tagdim == 0 )
+          numEnt = numPoints;
+        else if( tagdim == 1 )
+          numEnt = numCurves;
+        else if( tagdim == 2 )
+          numEnt = numSurfaces;
+        else if( tagdim == 3 )
+          numEnt = numVolumes;
 
-	  // printf("%d line of dim %d with %d entries: %s\n",i,tagdim,numEnt,line);
-	  
-	  //if( tagdim == 0 ) continue;
-	  
-	  cp = longline;
-	  tag = next_int(&cp);
-	 	  
-	  if(!allocated) {
-	    maxtag[tagdim] = MAX( maxtag[tagdim], tag );
-	    if( mintag[tagdim] == -1 ) {
-	      mintag[tagdim] = tag;
-	    }
-	    else {
-	      mintag[tagdim] = MIN( mintag[tagdim], tag );
-	    }
-	  }
-	    
-	  // read away the bounding box data that we do not need for anything
-	  if(tagdim == 0)
-	    k = 3;
-	  else
-	    k = 6;
-	  for(j=1;j<=k;j++) rdum = next_real(&cp);
+        if(allocated && numEnt > 0 ) {
+          if( maxtag[tagdim] > 0 ) {
+            if( mintag[tagdim] == -1 ) mintag[tagdim] = maxtag[tagdim];
+            if( minphystag[tagdim] == -1) minphystag[tagdim] = maxphystag[tagdim];
+              printf("Defined %d %dDIM entities with geometric tag range [%d %d]\n",
+                     numEnt,tagdim,mintag[tagdim],maxtag[tagdim]);
+            if( maxphystag[tagdim] > 0 || maxreadtag[tagdim] > 0 ) {
+              printf("   Physical given tag range is [%d %d]\n",minphystag[tagdim],maxphystag[tagdim]);
+              if( maxreadtag[tagdim] != maxphystag[tagdim] || minreadtag[tagdim] != minphystag[tagdim]) {
+                if(maxreadtag[tagdim] > 0 )
+                  printf("   Physical read tag range is [%d %d]\n",minreadtag[tagdim],maxreadtag[tagdim]);
+                else
+                  printf("   No physical tags read for real!\n");
+                if(0)  smallerror("Physical names not used consistently!");
+              }
+            } else {
+              if(0)  printf("No physical tags defined, using geometric entities!\n");
+            }
 
-	  // Number of physical tags
-	  nophys = next_int(&cp);
+          }
+          if( tagdim > meshdim ) {
+            printf("We have %d %dDIM tags that are beyond mesh dimension %d!\n",
+                   numEnt, tagdim, meshdim );
+          }
+        }
 
-	  
-	  // Read the first physical tag if there are any
-	  if( nophys > 0 ) {	    
-	    if(0) printf("Reading number of physical tags: %d\n",nophys); 
-	    phystag = next_int(&cp);
-	    if(!allocated) {
-	      if(0) printf("Phystag: %d %d %d %d\n",tagdim,tag,i,phystag);
-	      maxreadtag[tagdim] = MAX( maxreadtag[tagdim], phystag );
-	      if( minreadtag[tagdim] == -1 ) {
-		minreadtag[tagdim] = phystag;
-	      }
-	      else {
-		minreadtag[tagdim] = MIN( minreadtag[tagdim], phystag );
-	      }
-	    }
-	    else {
-	      tagmap[tagdim][tag] = phystag;	    
-	    }
-	  }
-	    
-	  // The lines may be too long. So fill the string buffer until we get a newline. 
-	  j = k = 0;
-	  for(;;) { 
-	    for(l=0;l<LONGLINESIZE;l++) {
-	      if( longline[l] == '\n') {
-		j = l;
-	    	break;	    
-	      }
-	    }
-	    if(j) break;
-	    k += LONGLINESIZE;
-	    GETLONGLINE;
-	  }	   	    	      
-	  if( k > 0 && !allocated) printf("Entity line %d has length %d.\n",i,k+j);
-	  
-	  //for(j=2;j<=nophys;j++)
-	  //  idum = next_int(&cp);
+        if(numEnt > 0 && !allocated) printf("Reading %d entities in %dD\n",numEnt,tagdim);
 
-	  //// if( tagdim == 0 ) continue;
+        for(i=1; i <= numEnt; i++) {
+          if(gmshbinary) {
+            frcount = fread(&tag, sizeof(int), 1, in);
+            if(frcount != 1)
+              printf("7 fread error, frcount = %d, not equal to %d\n",frcount,1);
 
-	  //nobound = next_int(&cp);
-	  // for(j=1;j<=nobound;j++)
-	  //  idum = next_int(&cp);	  
-	}
+            if(tagdim == 0) {
+              double inputData3[3];
+              // read away the bounding box data that we do not need for anything
+              frcount = fread(&inputData3, sizeof(double), 3, in);
+              if(frcount != 3)
+                printf("8 fread error, frcount = %d, not equal to %d\n",frcount,3);
+              frcount = fread(&nophys, sizeof(size_t), 1, in);
+              if(frcount != 1)
+                printf("9 fread error, frcount = %d, not equal to %d\n",frcount,1);
+              if(nophys > 0) {
+                fread(&phystag, sizeof(int), nophys, in);
+                if(frcount != (int) nophys)
+                  printf("9 fread error, frcount = %d, not equal to %lu\n",
+                         frcount,(unsigned long) nophys);
+              }
+            } else {
+              double inputData6[6];
+              // read away the bounding box data that we do not need for anything
+              frcount = fread(&inputData6, sizeof(double), 6, in);
+              if(frcount != 6)
+                printf("10 fread error, frcount = %d, not equal to %d\n",frcount,6);
+              frcount = fread(&nophys, sizeof(size_t), 1, in);
+              if(frcount != 1)
+                printf("11 fread error, frcount = %d, not equal to %d\n",frcount,1);
+              if(nophys > 0) {
+                frcount = fread(&phystag, sizeof(int), nophys, in);
+                if(frcount != (int) nophys)
+                  printf("12 fread error, frcount = %d, not equal to %lu\n",
+                         frcount,(unsigned long) nophys);
+              }
+              frcount = fread(&nobound, sizeof(size_t), 1, in);
+              if(frcount != 1)
+                printf("13 fread error, frcount = %d, not equal to %d\n",frcount,1);
+
+              int noboundint = (int) nobound;
+              if(noboundint > 0) {
+                for( k= 0; k < noboundint; k++) {
+                  frcount = fread(&idum, sizeof(int), 1, in);
+                  if(frcount != 1)
+                    printf("14 fread error, frcount = %d, not equal to %d\n",frcount,1);
+                }
+              }
+            }
+            // Read the first physical tag if there are any
+            if( nophys > 0 ) {
+              if(!allocated) {
+                maxreadtag[tagdim] = MAX( maxreadtag[tagdim], phystag );
+                if( minreadtag[tagdim] == -1 ) {
+                  minreadtag[tagdim] = phystag;
+                }
+                else {
+                  minreadtag[tagdim] = MIN( minreadtag[tagdim], phystag );
+                }
+              }
+              else {
+                tagmap[tagdim][tag] = phystag;
+              }
+            }
+          }
+          else {
+            GETLONGLINE;
+            // printf("%d line of dim %d with %d entries: %s\n",i,tagdim,numEnt,line);
+
+            //if( tagdim == 0 ) continue;
+
+            cp = longline;
+            tag = next_int(&cp);
+
+            if(!allocated) {
+              maxtag[tagdim] = MAX( maxtag[tagdim], tag );
+              if( mintag[tagdim] == -1 ) {
+                mintag[tagdim] = tag;
+              }
+              else {
+                mintag[tagdim] = MIN( mintag[tagdim], tag );
+              }
+            }
+
+            // read away the bounding box data that we do not need for anything
+            if(tagdim == 0)
+              k = 3;
+            else
+              k = 6;
+            for(j=1; j<=k; j++) rdum = next_real(&cp);
+
+            // Number of physical tags
+            nophys = next_int(&cp);
+
+            // Read the first physical tag if there are any
+            if( nophys > 0 ) {
+              if(0) printf("Reading number of physical tags: %lu\n",(unsigned long) nophys);
+              phystag = next_int(&cp);
+              if(!allocated) {
+                if(0) printf("Phystag: %d %d %d %d\n",tagdim,tag,i,phystag);
+                maxreadtag[tagdim] = MAX( maxreadtag[tagdim], phystag );
+                if( minreadtag[tagdim] == -1 ) {
+                  minreadtag[tagdim] = phystag;
+                }
+                else {
+                  minreadtag[tagdim] = MIN( minreadtag[tagdim], phystag );
+                }
+              }
+              else {
+                tagmap[tagdim][tag] = phystag;
+              }
+            }
+          }
+
+          if(!allocated) {
+            maxtag[tagdim] = MAX( maxtag[tagdim], tag );
+            if( mintag[tagdim] == -1 ) {
+              mintag[tagdim] = tag;
+            }
+            else {
+              mintag[tagdim] = MIN( mintag[tagdim], tag );
+            }
+          }
+          if(!gmshbinary) {
+            // The lines may be too long. So fill the string buffer until we get a newline.
+            j = k = 0;
+            for(;;) {
+              for(l=0; l<LONGLINESIZE; l++) {
+                if( longline[l] == '\n') {
+                  j = l;
+                  break;
+                }
+              }
+              if(j) break;
+              k += LONGLINESIZE;
+              GETLONGLINE;
+              printf("extra getlongline: %s\n",longline);
+              fflush(stdout);
+            }
+            if( k > 0 && !allocated) printf("Entity line %d has length %d.\n",i,k+j);
+          }
+        }
       }
 
       for(tagdim=meshdim-2;tagdim>=0;tagdim--) {
-	phystagoffset[tagdim] = phystagoffset[tagdim+1]+MAX(0,maxphystag[tagdim+1]);
-	printf("Physical tag offset for %dD is %d\n",tagdim,phystagoffset[tagdim]);
+	      phystagoffset[tagdim] = phystagoffset[tagdim+1]+MAX(0,maxphystag[tagdim+1]);
+	      printf("Physical tag offset for %dD is %d\n",tagdim,phystagoffset[tagdim]);
       }
 
       if(meshdim>0) {
@@ -4974,225 +5102,292 @@ omstart:
         tagoffset[meshdim-1] = phystagoffset[0];
       }
       for(tagdim=meshdim-2;tagdim>=0;tagdim--) {
-	tagoffset[tagdim] = tagoffset[tagdim+1]+MAX(0,maxtag[tagdim+1]);
-	printf("Geometric tag offset for %dD is %d\n",tagdim,tagoffset[tagdim]);
+	      tagoffset[tagdim] = tagoffset[tagdim+1]+MAX(0,maxtag[tagdim+1]);
+	      printf("Geometric tag offset for %dD is %d\n",tagdim,tagoffset[tagdim]);
       }
-            
+
+      if(gmshbinary) GETLONGLINE;
       GETLONGLINE;
-      if(!strstr(longline,"$EndEntities")) {
-	printf("$Entities section should end to string $EndEntities:\n%s\n",longline);
-      }           
+      if(!strstr(longline,"$EndEntities"))
+	      printf("$Entities section should end to string $EndEntities:\n%s\n",longline);
     }
 
     else if(strstr(line,"$Elements")) {
-      int numEntityBlocks, numElements, tagEntity, dimEntity, typeEle, NumElements;
-      int minElementTag, maxElementTag;
-      
-      GETLINE;
-      cp = line;
+      size_t numEntityBlocks, minElementTag, maxElementTag;
+      size_t numElementsInBlock;
+      int dimEntity, tagEntity, typeEle, numElements;
 
       k = 0;
-      numEntityBlocks = next_int(&cp);
-      noelements = next_int(&cp);
-      minElementTag = next_int(&cp);
-      maxElementTag = next_int(&cp);
-      
-      if(allocated) printf("Reading %d elements in %d blocks.\n",noelements,numEntityBlocks);
 
-      
-      for(j=1; j<= numEntityBlocks; j++ ) {
-	
-	GETLINE;	
-	cp = line;
-
-	dimEntity = next_int(&cp);
-	tagEntity = next_int(&cp);
-	typeEle = next_int(&cp);
-	numElements = next_int(&cp);
-	
-	elementtype = GmshToElmerType(typeEle);
-	elemnodes = elementtype % 100;
-	maxelemtype = MAX(maxelemtype,elementtype);
-
-	if(!allocated) meshdim = MAX(meshdim, GetElementDimension(elementtype));
-		
-	if( allocated ) {
-	  if(0) printf("Reading %d elements with tag %d of type %d\n", numElements, tagEntity, elementtype);
-	  if( tagsize > 0 ) {
-	    if( tagmap[dimEntity][tagEntity] ) {
-	      printf("Mapping mesh tag %d to physical tag %d in %dDIM\n",tagEntity,tagmap[dimEntity][tagEntity],dimEntity);	    
-	      tagEntity = tagmap[dimEntity][tagEntity] + phystagoffset[dimEntity];
-	    }
-	    else {
-	      tagEntity += tagoffset[dimEntity];
-	    }
-	  }
-	  else {
-	    tagEntity += tagoffset[dimEntity];
-	  }
-	}
-	  
-	
-	for(i=1; i <= numElements; i++) {
-	  GETLINE;	
-	  cp = line;
-
-	  k += 1;
-	  	  
-	  elemno = next_int(&cp);
-	  
-	  if(allocated) {
-	    data->elementtypes[k] = elementtype;
-	    data->material[k] = tagEntity;
-	    for(l=0;l<elemnodes;l++)
-	      elemind[l] = next_int(&cp);
-
-	    GmshToElmerIndx(elementtype,elemind);	  
-
-	    for(l=0;l<elemnodes;l++)
-	      data->topology[k][l] = elemind[l];
-	  }	
-	}
+      if(gmshbinary) {
+        size_t data[4], totalNumElements;
+        frcount = fread(data, sizeof(size_t), 4, in);
+        if(frcount != 4)
+          printf("17 fread error, frcount = %d, not equal to %d\n",frcount,4);
+        numEntityBlocks = data[0];
+        totalNumElements = data[1];
+        noelements = (int) totalNumElements;
+        minElementTag = data[2];
+        maxElementTag = data[3];
+      }
+      else {
+        GETLINE;
+        cp = line;
+        numEntityBlocks = next_int(&cp);
+        noelements = next_int(&cp);
+        minElementTag = next_int(&cp);
+        maxElementTag = next_int(&cp);
       }
 
+      if(allocated) printf("Reading %d elements in %lu blocks.\n",noelements,(unsigned long) numEntityBlocks);
+
+      for(j=1; j<= (int) numEntityBlocks; j++ ) {
+
+        if(gmshbinary) {
+          int data[3];
+          frcount = fread(data, sizeof(int), 3, in);
+          if(frcount != 3)
+            printf("18 fread error, frcount = %d, not equal to %d\n",frcount,3);
+          dimEntity = data[0];
+          tagEntity = data[1];
+          typeEle   = data[2];
+          frcount = fread(&numElementsInBlock, sizeof(size_t), 1, in);
+          if(frcount != 1)
+            printf("19 fread error, frcount = %d, not equal to %d\n",frcount,1);
+          numElements = (int) numElementsInBlock;
+        }
+        else {
+          GETLINE;
+	        cp = line;
+	        dimEntity = next_int(&cp);
+	        tagEntity = next_int(&cp);
+	        typeEle = next_int(&cp);
+	        numElements = next_int(&cp);
+        }
+
+        elementtype = GmshToElmerType(typeEle);
+        if(!elementtype)
+          bigerror("Gmsh element type does not have an Elmer counterpart!\n");
+        elemnodes = elementtype % 100;
+        maxelemtype = MAX(maxelemtype,elementtype);
+
+        if(!allocated) meshdim = MAX(meshdim, GetElementDimension(elementtype));
+
+        if( allocated ) {
+           if( tagsize > 0 ) {
+            if( tagmap[dimEntity][tagEntity] ) {
+              printf("Mapping mesh tag %d to physical tag %d in %dDIM\n",
+                     tagEntity,tagmap[dimEntity][tagEntity],dimEntity);
+              tagEntity = tagmap[dimEntity][tagEntity] + phystagoffset[dimEntity];
+            }
+            else {
+              tagEntity += tagoffset[dimEntity];
+            }
+          }
+          else {
+            tagEntity += tagoffset[dimEntity];
+          }
+        }
+
+        size_t elementTag, nodeTag[126];
+        // nodeTag size is based on gmsh element type 93, 125-node fourth order hexahedron
+        // if newer and larger elements are added, then increase nodeTag size to match
+        if(elemnodes > 125) {
+          printf("error: number of nodes per element of %d, exceeds 125\n",elemnodes);
+          printf("increase size of nodeTag and recompile. Exiting!\n");
+          bigerror("number of nodes per element exceeds 125. Exiting!");
+        }
+
+        for(int m=1; m <= numElements; m++) {
+          if(gmshbinary) {
+            frcount = fread(&elementTag, sizeof(size_t), 1, in);
+            if(frcount != 1)
+              printf("20 fread error, frcount = %d, not equal to %d\n",frcount,1);
+            elemno = (int) elementTag;
+
+            k += 1;
+
+            if(allocated) {
+              data->elementtypes[k] = elementtype;
+              data->material[k] = tagEntity;
+              frcount = fread(nodeTag, sizeof(size_t), elemnodes, in);
+              if(frcount != elemnodes)
+                printf("21 fread error, frcount = %d, not equal to %d\n",frcount,elemnodes);
+
+              for(l=0; l<elemnodes; l++){
+                elemind[l] = (int) nodeTag[l];
+              }
+
+              GmshToElmerIndx(elementtype,elemind);
+
+              for(l=0; l<elemnodes; l++)
+                data->topology[k][l] = elemind[l];
+            }
+            else {
+              frcount = fread(nodeTag, sizeof(size_t), elemnodes, in);
+              if(frcount != elemnodes)
+                printf("22 fread error, frcount = %d, not equal to %d\n",frcount,elemnodes);
+            }
+          }
+          else {
+            GETLINE;
+            cp = line;
+            elemno = next_int(&cp);
+
+            k += 1;
+
+            if(allocated) {
+              data->elementtypes[k] = elementtype;
+              data->material[k] = tagEntity;
+              for(l=0; l<elemnodes; l++)
+                elemind[l] = next_int(&cp);
+
+              GmshToElmerIndx(elementtype,elemind);
+
+              for(l=0; l<elemnodes; l++)
+                data->topology[k][l] = elemind[l];
+            }
+          }
+        }
+      }
+
+      if(gmshbinary) GETLINE;
       GETLINE;
-      if(!strstr(line,"$EndElements")) {
-	printf("$Elements section should end to string $EndElements:\n%s\n",line);
-      }   
+      if(!strstr(line,"$EndElements"))
+        printf("$Elements section should end to string $EndElements:\n%s\n",line);
     }
 
     else if(strstr(line,"$PhysicalNames")) {
       int entdim;
       entdim = dim;
+
       GETLINE;
       cp = line;
       nophysical = next_int(&cp);
-      for(i=0;i<nophysical;i++) {
-	GETLINE;
-	cp = line;
-	tagdim = next_int(&cp);	
-	tagphys = next_int(&cp);
+      for(i=0; i<nophysical; i++) {
+        GETLINE;
+        cp = line;
+        tagdim = next_int(&cp);
+        tagphys = next_int(&cp);
 
-	if(!allocated) {
-	  maxphystag[tagdim] = MAX( maxphystag[tagdim], tagphys );
-	  if( minphystag[tagdim] == -1 ) {
-	    minphystag[tagdim] = tagphys;
-	  }
-	  else {
-	    minphystag[tagdim] = MIN( minphystag[tagdim], tagphys );
-	  }
-	}
-	else if(allocated) {
-	  // We must not let different tags be overrun
-	  l = phystagoffset[tagdim]; 
-	  
-	  if(tagdim < meshdim) {
-	    physsurfexist = TRUE;
-	    if(tagphys+l < MAXBCS)  {
-	      data->boundarynamesexist = TRUE;
-	      if(!data->boundaryname[tagphys+l]) data->boundaryname[tagphys+l] = Cvector(0,MAXNAMESIZE);
-	      sscanf(cp," \"%[^\"]\"",data->boundaryname[tagphys+l]);
-	      printf("BC name for physical group %d is: %s\n",tagphys,data->boundaryname[tagphys+l]);
-	    }
-	    else {
-	      printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[tagdim],cp+1);
-	    }	    
-	  }
-	  else if(tagdim == meshdim) {
-	    physvolexist = TRUE;
-	    if(tagphys < MAXBODIES) {
-	      data->bodynamesexist = TRUE;
-	      if(!data->bodyname[tagphys]) data->bodyname[tagphys] = Cvector(0,MAXNAMESIZE);
-	      sscanf(cp," \"%[^\"]\"",data->bodyname[tagphys]);
-	      printf("Body name for physical group %d is: %s\n",tagphys,data->bodyname[tagphys]);
-	    }
-	    else {
-	      printf("Index %d too large: ignoring physical %s %s",tagphys,manifoldname[tagdim],cp+1);
-	    }
-	  }
+        if(!allocated) {
+          maxphystag[tagdim] = MAX( maxphystag[tagdim], tagphys );
+          if( minphystag[tagdim] == -1 ) {
+            minphystag[tagdim] = tagphys;
+          }
+          else {
+            minphystag[tagdim] = MIN( minphystag[tagdim], tagphys );
+          }
+        }
+        else if(allocated) {
+          // We must not let different tags be overrun
+          l = phystagoffset[tagdim];
+
+          if(tagdim < meshdim) {
+            physsurfexist = TRUE;
+            if(tagphys+l < MAXBCS) {
+              data->boundarynamesexist = TRUE;
+              if(!data->boundaryname[tagphys+l]) data->boundaryname[tagphys+l] = Cvector(0,MAXNAMESIZE);
+              sscanf(cp," \"%[^\"]\"",data->boundaryname[tagphys+l]);
+              printf("BC name for physical group %d is: %s\n",tagphys,data->boundaryname[tagphys+l]);
+            }
+            else {
+              printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[tagdim],cp+1);
+            }
+          }
+          else if(tagdim == meshdim) {
+            physvolexist = TRUE;
+            if(tagphys < MAXBODIES) {
+              data->bodynamesexist = TRUE;
+              if(!data->bodyname[tagphys]) data->bodyname[tagphys] = Cvector(0,MAXNAMESIZE);
+              sscanf(cp," \"%[^\"]\"",data->bodyname[tagphys]);
+              printf("Body name for physical group %d is: %s\n",tagphys,data->bodyname[tagphys]);
+            }
+            else {
+              printf("Index %d too large: ignoring physical %s %s",tagphys,manifoldname[tagdim],cp+1);
+            }
+          }
         }
       }
 
       GETLINE;
-      if(!strstr(line,"$EndPhysicalNames")) {
-	printf("$PhysicalNames section should end to string $EndPhysicalNames:\n%s\n",line);
-      }   
+      if(!strstr(line,"$EndPhysicalNames"))
+        printf("$PhysicalNames section should end to string $EndPhysicalNames:\n%s\n",line);
     }
     else if(strstr(line,"$Periodic")) {
       int numPeriodicLinks;
       if(allocated) printf("Reading periodic links but doing nothing with them!\n");
 
       if(1) {
-	numPeriodicLinks = 0;
-	for(;;) {
-	  GETLINE;
-	  if(strstr(line,"$EndPeriodic")) {
-	    if(allocated) printf("Number of lines for periodic stuff: %d\n",numPeriodicLinks);
-	    break;
-	  }
-	  numPeriodicLinks++;
-	}
+        numPeriodicLinks = 0;
+        for(;;) {
+          GETLINE;
+          if(strstr(line,"$EndPeriodic")) {
+            if(allocated) printf("Number of lines for periodic stuff: %d\n",numPeriodicLinks);
+            break;
+          }
+          numPeriodicLinks++;
+        }
       }
-      else {	      
-	GETLINE;
-	cp = line;
-	numPeriodicLinks = next_int(&cp);
-	for(i=1; i <= numPeriodicLinks; i++) {
-	  GETLINE;
-	}     
-	GETLINE;
-	if(!strstr(line,"$EndPeriodic")) {
-	  printf("$Periodic section should end to string $EndPeriodic:\n%s\n",line);
-	}
+      else {
+        GETLINE;
+        cp = line;
+        numPeriodicLinks = next_int(&cp);
+        for(i=1; i <= numPeriodicLinks; i++) {
+          GETLINE;
+        }
+        GETLINE;
+        if(!strstr(line,"$EndPeriodic")) {
+          printf("$Periodic section should end to string $EndPeriodic:\n%s\n",line);
+        }
       }
     }
 
     else if(strstr(line,"$PartitionedEntities")) {
-      if(allocated) printf("Reading partitioned entities but doing nothing with them!\n");      
+      if(allocated) printf("Reading partitioned entities but doing nothing with them!\n");
       for(;;) {
-	GETLINE;
-	if(strstr(line,"$EndPartitionedEntities")) break;
+        GETLINE;
+        if(strstr(line,"$EndPartitionedEntities")) break;
       }
     }
     else if(strstr(line,"$NodeData")) {
-      if(allocated) printf("Reading node data but doing nothing with them!\n");      
+      if(allocated) printf("Reading node data but doing nothing with them!\n");
       for(;;) {
-	GETLINE;
-	if(strstr(line,"$EndNodeData")) break;
+        GETLINE;
+        if(strstr(line,"$EndNodeData")) break;
       }
     }
     else if(strstr(line,"$ElementData")) {
-      if(allocated) printf("Reading element data but doing nothing with them!\n");      
+      if(allocated) printf("Reading element data but doing nothing with them!\n");
       for(;;) {
-	GETLINE;
-	if(strstr(line,"$EndElementData")) break;
+        GETLINE;
+        if(strstr(line,"$EndElementData")) break;
       }
     }
     else if(strstr(line,"$ElementNodeData")) {
-      if(allocated) printf("Reading element node data but doing nothing with them!\n");      
+      if(allocated) printf("Reading element node data but doing nothing with them!\n");
       for(;;) {
-	GETLINE;
-	if(strstr(line,"$EndElementNodeData")) break;
+        GETLINE;
+        if(strstr(line,"$EndElementNodeData")) break;
       }
     }
     else if(strstr(line,"$GhostElements")) {
-      if(allocated) printf("Reading ghost elements data but doing nothing with them!\n");      
-      for(;;) {
-	GETLINE;
-	if(strstr(line,"$EndGhostElements")) break;
+      if(allocated) printf("Reading ghost elements data but doing nothing with them!\n");
+      for(;;){
+        GETLINE;
+        if(strstr(line,"$EndGhostElements")) break;
       }
     }
     else if(strstr(line,"$InterpolationScheme")) {
-      if(allocated) printf("Reading interpolation scheme but doing nothing with them!\n");      
+      if(allocated) printf("Reading interpolation scheme but doing nothing with them!\n");
       for(;;) {
-	GETLINE;
-	if(strstr(line,"$EndInterpolationScheme")) break;
+        GETLINE;
+        if(strstr(line,"$EndInterpolationScheme")) break;
       }
-    }    
+    }
     else {
       if(allocated) printf("Untreated command: %s",line);
     }
-
   }
 
  end:
@@ -5226,17 +5421,17 @@ omstart:
 
     for(i=1; i <= noelements; i++) {
       elementtype = data->elementtypes[i];
-      elemnodes = elementtype % 100; 
+      elemnodes = elementtype % 100;
 
-      for(j=0;j<elemnodes;j++) {
-	k = data->topology[i][j];
-	if(k <= 0 || k > maxindx) 
-	  printf("index out of bounds %d\n",k);
-	else if(revindx[k] <= 0) 
-	  printf("unknown node %d %d in element %d\n",k,revindx[k],i);
-	else 
-	  data->topology[i][j] = revindx[k];
-      }      
+      for(j=0; j<elemnodes; j++) {
+        k = data->topology[i][j];
+        if(k <= 0 || k > maxindx)
+          printf("index out of bounds %d\n",k);
+        else if(revindx[k] <= 0)
+          printf("unknown node %d %d in element %d\n",k,revindx[k],i);
+        else
+          data->topology[i][j] = revindx[k];
+      }
     }
     free_Ivector(revindx,1,maxindx);
   }
@@ -5248,11 +5443,10 @@ omstart:
   
   if( tagsize > 0 ) free_Imatrix(tagmap,0,3,1,tagsize);
   
-  if(info) printf("Successfully read the mesh from the Gmsh input file.\n");
+  if(info) printf("Successfully read the mesh from the Gmsh input file %s\n",filename);
 
   return(0);
 }
-
 
 int LoadGmshInput(struct FemType *data,struct BoundaryType *bound,
 		  char *prefix,int keeporphans,int info)
@@ -5297,38 +5491,36 @@ int LoadGmshInput(struct FemType *data,struct BoundaryType *bound,
     if(gmshversion < 2.99) {
       if(gmshbinary) {
         printf("Gmsh input file format is type %5.1f, binary is not supported.\n",gmshversion);
-        printf("Please use Gmsh 2 or 4 ASCII versions for output from Gmsh\n");
-        bigerror("Gmsh input file in binary is not supported!");
+        printf("If binary is needed, use Gmsh format 4.1 for output from Gmsh\n");
+        bigerror("Gmsh input file in format 2.x, binary is not supported!");
       } else {
         printf("Gmsh input file format is type %5.1f in ASCII.\n",gmshversion);
         errnum = LoadGmshInput2(data,bound,filename,usetaggeom,keeporphans,info);
       }
     } else if(gmshversion < 3.99) {
       printf("Gmsh input file of format type %5.1f, is not supported. Exiting!\n",gmshversion);
-      printf("Please use Gmsh 2 or 4 ASCII versions for output from Gmsh\n");
+      printf("Please use Gmsh 4 versions for output from Gmsh\n");
       bigerror("Gmsh input file format is not supported!");
     } else if(gmshversion < 4.09) {
       printf("Gmsh input file format is type %5.1f in ASCII.\n",gmshversion);
       errnum = LoadGmshInput4(data,bound,filename,usetaggeom,keeporphans,info);
     } else if(gmshversion < 5.0) {
       if(gmshbinary) {
-        printf("Gmsh input file format is type %5.1f, binary is not supported.\n",gmshversion);
-        printf("Please use Gmsh 2 or 4 ASCII versions for output from Gmsh\n");
-        bigerror("Gmsh input file in binary is not supported!");
+        printf("Gmsh input file format is type %5.1f in binary.\n",gmshversion);
       } else {
         printf("Gmsh input file format is type %5.1f in ASCII.\n",gmshversion);
-        errnum = LoadGmshInput41(data,bound,filename,usetaggeom,keeporphans,info);
       }
+      errnum = LoadGmshInput41(data,bound,filename,usetaggeom,keeporphans,gmshbinary,info);
     } else {
       printf("Gmsh input file of format type %5.1f, is not supported. Exiting!\n",gmshversion);
-      printf("Please use Gmsh 2 or 4 ASCII versions for output from Gmsh\n");
+      printf("Please use Gmsh 4 versions for output from Gmsh\n");
       bigerror("Gmsh input file format is not supported!");
     }
   } else {
     printf("*****************************************************\n");
     printf("The first line did not start with $MeshFormat, assuming Gmsh 1 format\n");
     printf("This version of Gmsh format is no longer supported\n");
-    printf("Please use Gmsh 2 or 4 ASCII versions for output from Gmsh\n");
+    printf("Please use Gmsh 4 versions for output from Gmsh\n");
     printf("*****************************************************\n");
     
     errnum = LoadGmshInput1(data,bound,filename,info);

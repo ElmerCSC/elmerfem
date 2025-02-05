@@ -1,3 +1,7 @@
+! Test case for setting nodal load for pressure.
+! This is actually a volume source for flow.
+! Probably does not make much physical sense but technically works. 
+
 Header
   CHECK KEYWORDS Warn
   Mesh DB "." "square"
@@ -6,21 +10,18 @@ Header
 End
 
 Simulation
-  Max Output Level = 15
+  Max Output Level = 20
   Coordinate System = Cartesian
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Steady state
   Steady State Max Iterations = 1
   Output Intervals = 1
-!  Post File = case.vtu
+  Post File = case.vtu
+  Ascii Output = Logical True
 End
 
 Constants
   Gravity(4) = 0 -1 0 9.82
-  Stefan Boltzmann = 5.67e-08
-  Unit Charge = 1.602e-19
-  Boltzmann Constant = 1.3807e-23
-  Permittivity of Vacuum = 8.8542e-12
 End
 
 Body 1
@@ -36,17 +37,21 @@ Solver 1
   Procedure = "FlowSolve" "FlowSolver"
   Variable = Flow Solution[Velocity:2 Pressure:1]
 
+  Flow Model = "stokes"
+
   Stabilize = True
-  Steady State Convergence Tolerance = 1.0e-5
 
-  Nonlinear System Convergence Tolerance = 1.0e-8
   Nonlinear System Max Iterations = 1
-  Nonlinear System Newton After Iterations = 3
-  Nonlinear System Newton After Tolerance = 1.0e-3
-  Nonlinear System Relaxation Factor = 1
-
+ 
   Linear System Solver = Direct
   Linear System Direct Method = UMFPack
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStabl"
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU1"
 End
 
 Equation 1
@@ -74,7 +79,7 @@ End
 
 Boundary Condition 3
   Name = "PointSource"
-!  Target Nodes(2) = 200 300
+
   Target Coordinates(1,2) = 0.5 0.5 
   Pressure Load = Real 1.0 
 
@@ -82,6 +87,5 @@ Boundary Condition 3
   Velocity 2 = 0.0
 End
 
-
-Solver 1 :: Reference Norm = Real 0.72547626961324641
-Solver 1 :: Reference Norm Tolerance = Real 1.0e-4
+Solver 1 :: Reference Norm = 6.11611472E-01
+Solver 1 :: Reference Norm Tolerance = 1.0e-4

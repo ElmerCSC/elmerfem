@@ -416,7 +416,10 @@
          ! Optionally perform simple extrusion to increase the dimension of the mesh
          !----------------------------------------------------------------------------------
          CALL CreateExtrudedMesh() 
-
+         DO j=1,CurrentModel % NumberOfSolvers
+           CALL CreateExtrudedMesh(j) 
+         END DO
+         
          !----------------------------------------------------------------------------------
          ! If requested perform coordinate transformation directly after is has been obtained.
          ! Don't maintain the original mesh. 
@@ -843,30 +846,69 @@
      
      ! Optionally create extruded mesh on-the-fly.
      !--------------------------------------------------------------------
-     SUBROUTINE CreateExtrudedMesh()
-
-       LOGICAL :: SliceVersion
-
-       IF(.NOT. ListCheckPrefix(CurrentModel % Simulation,'Extruded Mesh') ) RETURN
+     SUBROUTINE CreateExtrudedMesh(SolverId)
+       INTEGER, OPTIONAL :: SolverId
        
-       SliceVersion = GetLogical(CurrentModel % Simulation,'Extruded Mesh Slices',Found )              
-       IF( SliceVersion ) THEN
-         ExtrudedMesh => MeshExtrudeSlices(CurrentModel % Meshes, CurrentModel % Simulation )
+       LOGICAL :: SliceVersion
+       TYPE(ValueList_t), POINTER :: VList
+       TYPE(Mesh_t), POINTER :: Mesh_in, pMesh, prevMesh
+       LOGICAL :: PrimaryMesh
+       
+       IF(PRESENT(SolverId)) THEN
+         Vlist => CurrentModel % Solvers(SolverId) % Values
+         Mesh_in => CurrentModel % Solvers(SolverId) % Mesh
+         PrimaryMesh = .FALSE.
        ELSE
-         ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, CurrentModel % Simulation)
+         Vlist => CurrentModel % Simulation
+         Mesh_in => CurrentModel % Meshes
+         PrimaryMesh = .TRUE.
+       END IF
+                  
+       IF(.NOT. ListCheckPrefix(VList,'Extruded Mesh') ) RETURN
+       IF(.NOT. PrimaryMesh) THEN
+         CALL Info('CreateExtrudedMesh','Extruding mesh associated to solver '//I2S(SolverId))
+       END IF
+       
+       SliceVersion = GetLogical(Vlist,'Extruded Mesh Slices',Found )              
+       IF( SliceVersion ) THEN
+         ExtrudedMesh => MeshExtrudeSlices(Mesh_in, Vlist ) 
+       ELSE
+         ExtrudedMesh => MeshExtrude(Mesh_in, Vlist )
        END IF
          
        ! Make the solvers point to the extruded mesh, not the original mesh
        !-------------------------------------------------------------------
        DO i=1,CurrentModel % NumberOfSolvers
-         IF(ASSOCIATED(CurrentModel % Solvers(i) % Mesh,CurrentModel % Meshes)) &
-             CurrentModel % Solvers(i) % Mesh => ExtrudedMesh 
+         IF(ASSOCIATED(CurrentModel % Solvers(i) % Mesh,Mesh_in)) THEN
+           CALL Info('CreateExtrudedMesh','Pointing solver '//I2S(i)//' to the new extruded mesh!')
+           CurrentModel % Solvers(i) % Mesh => ExtrudedMesh
+         END IF
        END DO
-       ExtrudedMesh % Next => CurrentModel % Meshes % Next
-       CurrentModel % Meshes => ExtrudedMesh
 
+       ! Put the extruded mesh in a correct place in the list of meshes.
+       i = 0
+       NULLIFY(prevMesh) 
+       pMesh => CurrentModel % Meshes
+       DO WHILE(ASSOCIATED(pMesh))
+         i = i+1
+         IF(ASSOCIATED(pMesh,Mesh_in)) EXIT
+         prevMesh => pMesh
+         pMesh => pMesh % Next 
+       END DO
+       CALL Info('CreateExtrduedMesh','Extruded mesh order is '//I2S(i),Level=25)
+
+       ExtrudedMesh % Next => Mesh_in % Next
+       IF(ASSOCIATED(prevMesh)) THEN
+         prevMesh % Next => ExtrudedMesh
+       ELSE
+         CurrentModel % Meshes => ExtrudedMesh
+       END IF
+         
        ! If periodic BC given, compute boundary mesh projector:
+       ! but only for the primary mesh.
        ! ------------------------------------------------------
+       IF(.NOT. PrimaryMesh) RETURN
+       
        DO i = 1,CurrentModel % NumberOfBCs
          IF(ASSOCIATED(CurrentModel % Bcs(i) % PMatrix)) &
              CALL FreeMatrix( CurrentModel % BCs(i) % PMatrix )

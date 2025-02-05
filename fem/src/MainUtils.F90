@@ -3236,9 +3236,11 @@ CONTAINS
 
           IF ( NeedSol .AND. n > 0 ) THEN
             Stat = ASSOCIATED(Solver % Variable % SteadyValues)
-            IF(Stat .AND. SIZE(Solver % Variable % SteadyValues) /= n) THEN
-              DEALLOCATE(Solver % Variable % SteadyValues)
-              Stat = .FALSE.
+            IF(Stat) THEN
+              IF(SIZE(Solver % Variable % SteadyValues) /= n) THEN
+                DEALLOCATE(Solver % Variable % SteadyValues)
+                Stat = .FALSE.
+              END IF
             END IF
             IF(.NOT. Stat) THEN
               ALLOCATE( Solver % Variable % SteadyValues(n), STAT=istat ) 

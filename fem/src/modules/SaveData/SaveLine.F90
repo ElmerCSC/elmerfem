@@ -1094,9 +1094,9 @@ CONTAINS
           tmpResultData = 0.0_dp
           
           IF( nold > 0 ) THEN
-            tmpPosData = PosData
-            tmpResultData = ResultData
-            tmpLabelData = LabelData
+            tmpPosData(1:nold) = PosData
+            tmpLabelData(1:nold,1:NoLabels) = LabelData
+            tmpResultData(1:nold,1:NoResults) = ResultData
             DEALLOCATE(PosData, ResultData, LabelData,STAT=istat)
             IF(istat /= 0) THEN
               CALL Fatal(Caller,'Problems deallocating some too small workspace')
