@@ -3042,10 +3042,10 @@ CONTAINS
                IF (LEN_TRIM(Model % Solvers(s) % Mesh % Name) > 0) THEN
                  IF(TRIM(Model % Solvers(s) % Mesh % Name) .NE. TRIM(TargetMesh(2:))) THEN
                    CYCLE
-                 ELSE
-                   inDofs(j,i) = MAX(Indofs(j,i),MAXVAL(Model % Solvers(s) % Def_Dofs(j,:,i)))
                  END IF
                END IF
+             ELSE
+               inDofs(j,i) = MAX(Indofs(j,i),MAXVAL(Model % Solvers(s) % Def_Dofs(j,:,i)))
              END IF
            END DO
          END DO
