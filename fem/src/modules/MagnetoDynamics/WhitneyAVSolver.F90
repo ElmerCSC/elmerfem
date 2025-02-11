@@ -367,7 +367,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   CHARACTER(LEN=MAX_NAME_LEN):: CoilCurrentName
   TYPE(Variable_t), POINTER :: CoilCurrentVar
   REAL(KIND=dp) :: CurrAmp
-  LOGICAL :: UseCoilCurrent, ElemCurrent, ElectroDynamics, EigenSystem
+  LOGICAL :: UseCoilCurrent, ElemCurrent, ElectroDynamics, Darwin, EigenSystem
 
   TYPE(ValueHandle_t), SAVE :: mu_h 
   TYPE(Solver_t), POINTER :: pSolver
@@ -395,6 +395,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   pSolver => Solver
 
   ElectroDynamics = ListGetLogical( SolverParams, 'Electrodynamics model', Found )
+  Darwin = ListGetLogical( SolverParams, 'Darwin model', Found )
   EigenSystem = ListGetLogical( SolverParams, 'Eigen Analysis', Found )
   
   CALL EdgeElementStyle(SolverParams, PiolaVersion, SecondOrder )
@@ -2154,7 +2155,7 @@ END SUBROUTINE LocalConstraintMatrix
          ! All terms that are added here depend on the electrical conductivity or permittivity,
          ! so they have an effect on a conductor only.
          ! --------------------------------------------------------
-         CONDUCTOR: IF ( SUM(ABS(C)) > AEPS .OR. ElectroDynamics ) THEN
+         CONDUCTOR: IF ( SUM(ABS(C)) > AEPS .OR. ElectroDynamics .OR. Darwin) THEN
            IF ( Transient.OR.EigenSystem ) THEN
              DO p=1,np
                DO q=1,np
@@ -2166,6 +2167,9 @@ END SUBROUTINE LocalConstraintMatrix
                  STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(q,:)) * dBasisdx(p,:))*detJ*IP % s(t)
                  IF(ElectroDynamics) THEN
                    DAMP(p,q) = DAMP(p,q) + P_ip*SUM( dBasisdx(q,:)*dBasisdx(p,:) )*detJ*IP % s(t)
+                 END IF
+                 IF (Darwin) THEN
+                   MASS(p,q) = MASS(p,q) + P_ip*SUM( dBasisdx(q,:)*dBasisdx(p,:) )*detJ*IP % s(t)
                  END IF
                END DO
                DO j=1,nd-np
@@ -2187,6 +2191,9 @@ END SUBROUTINE LocalConstraintMatrix
                  STIFF(q,p) = STIFF(q,p) + SUM(MATMUL(C, dBasisdx(p,:))*WBasis(j,:))*detJ*IP % s(t)
                  IF(ElectroDynamics) THEN
                    DAMP(q,p) = DAMP(q,p) + P_ip*SUM( dBasisdx(p,:)*WBasis(j,:) )*detJ*IP % s(t)
+                 END IF
+                 IF (Darwin) THEN
+                   MASS(q,p) = MASS(q,p) + P_ip*SUM( dBasisdx(p,:)*WBasis(j,:) )*detJ*IP % s(t)
                  END IF
                END DO
              END DO
