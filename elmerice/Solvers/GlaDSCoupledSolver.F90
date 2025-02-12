@@ -2817,18 +2817,20 @@ RECURSIVE SUBROUTINE GroundedMelt( Model,Solver,Timestep,TransientSimulation )
   !    Local variables
   !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER  :: SolverParams, Material
-  TYPE(Variable_t), POINTER   :: MeltVar, WeightsVar, HeatVar, GHFVar, Ceffvar, UbVar 
+  TYPE(Variable_t), POINTER   :: MeltVar, WeightsVar, HeatVar, GHFVar, Ceffvar, UbVar, SheetVar, NVar 
   LOGICAL, SAVE               :: FirstTime = .TRUE., UseGHF = .FALSE.
-  LOGICAL                     :: Found
+  LOGICAL                     :: Found, WaterSheetSwitch, EffectivePressureSwitch
   CHARACTER(LEN=MAX_NAME_LEN) :: MyName = 'Grounded Melt solver', HeatVarName, WeightsVarName, GHFvarName
-  CHARACTER(LEN=MAX_NAME_LEN) :: MeltMode, CeffVarName, UbVarName
+  CHARACTER(LEN=MAX_NAME_LEN) :: MeltMode, CeffVarName, UbVarName, WaterSheetName, EffectivePressureName
   REAL(KIND=dp)               :: rho_fw ! density of fresh water
   REAL(KIND=dp),PARAMETER     :: threshold = 0.001_dp ! threshold friction melt rate for including GHF in melt calc
   REAL(KIND=dp), POINTER      :: WtVals(:), HeatVals(:), MeltVals(:), GHFVals(:), Ceffvals(:), UbVals(:)
-  REAL(KIND=dp)               :: LatHeat, GHFscaleFactor, Ub
+  REAL(KIND=dp), POINTER      :: SheetVals(:), NVals(:)
+  REAL(KIND=dp)               :: LatHeat, GHFscaleFactor, Ub, WaterSheetLimit, EffectivePressureLimit
   INTEGER, POINTER            :: WtPerm(:), HeatPerm(:), MeltPerm(:), GHFPerm(:), Ceffperm(:), UbPerm(:)
+  INTEGER, POINTER            :: SheetPerm(:), NPerm(:)
   INTEGER                     :: nn
-  
+
 
   rho_fw = ListGetConstReal( Model % Constants, 'Fresh Water Density', Found )
   IF (.NOT.Found) CALL FATAL(MyName, 'Constant >Fresh Water Density< not found')
@@ -2843,6 +2845,23 @@ RECURSIVE SUBROUTINE GroundedMelt( Model,Solver,Timestep,TransientSimulation )
 
   MeltMode = GetString(SolverParams,'Melt mode', Found)
   IF(.NOT.Found) CALL Fatal(MyName, '>Melt mode< not found in solver params')
+  
+  WaterSheetLimit = ListGetConstReal(SolverParams,'Water Sheet Limit', WaterSheetSwitch)
+  WaterSheetName = "Sheet Thickness"
+  IF (WaterSheetSwitch) THEN
+     SheetVar    => VariableGet(Model % Variables, WaterSheetName, ThisOnly = .TRUE., UnfoundFatal = .TRUE.)
+     SheetVals   => SheetVar%Values 
+     SheetPerm   => SheetVar%Perm
+  END IF
+
+  EffectivePressureLimit = ListGetConstReal(SolverParams,'Effective Pressure Limit', EffectivePressureSwitch)
+  EffectivePressureName = "Effective Pressure"
+  IF (EffectivePressureSwitch) THEN
+     NVar    => VariableGet(Model % Variables, EffectivePressureName, ThisOnly = .TRUE., UnfoundFatal = .TRUE.)
+     NVals   => NVar%Values 
+     NPerm   => NVar%Perm
+  END IF
+
   
   SELECT CASE (MeltMode)
 
@@ -2861,6 +2880,7 @@ RECURSIVE SUBROUTINE GroundedMelt( Model,Solver,Timestep,TransientSimulation )
     WtPerm     => WeightsVar%Perm
 
   CASE ("friction")
+
     UbVarName = GetString(SolverParams,'Ub variable name', Found)
     IF (.NOT.Found) UbVarName = "SSAVelocity"
     CeffVarName = GetString(SolverParams,'Ceff variable name', Found)
@@ -2924,6 +2944,7 @@ RECURSIVE SUBROUTINE GroundedMelt( Model,Solver,Timestep,TransientSimulation )
          END IF
          
          MeltVals(MeltPerm(nn)) = (Ub**2 * CeffVals(CeffPerm(nn)) ) / ( rho_fw * LatHeat )
+
       END SELECT
       
       IF (UseGHF) THEN
@@ -2931,7 +2952,20 @@ RECURSIVE SUBROUTINE GroundedMelt( Model,Solver,Timestep,TransientSimulation )
         MeltVals(MeltPerm(nn)) = MeltVals(MeltPerm(nn)) + &
              ( GHFVals(GHFPerm(nn))*GHFscaleFactor*1.0e6 ) / ( rho_fw*LatHeat )
       END IF
-    END IF
+
+      IF (WaterSheetSwitch) THEN
+         IF (SheetVals(SheetPerm(nn)) .GT. WaterSheetLimit) THEN
+            MeltVals(MeltPerm(nn)) = 0.0
+         END IF
+      END IF
+
+      IF (EffectivePressureSwitch) THEN
+         IF (NVals(NPerm(nn)) .LT. EffectivePressureLimit) THEN
+            MeltVals(MeltPerm(nn)) = 0.0
+         END IF
+      END IF
+
+   END IF
 
   END DO LoopAllNodes
   
