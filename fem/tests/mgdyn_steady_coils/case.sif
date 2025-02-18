@@ -1,0 +1,190 @@
+! Test case for CoilSolver + WhitneyAVSolver in case of two coils.
+!
+! P.R. 24.5.2024
+
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "coils"
+End
+
+Simulation
+  Coordinate System = Cartesian
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+  Max Output Level = 20
+End
+
+Constants
+  Stefan Boltzmann = 5.67e-08
+  Permittivity of Vacuum = 8.8542e-12
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Air"
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Target Bodies(1) = 2
+  Name = "CoilA"
+  Equation = 2
+  Material = 2
+  Body Force = 1
+End
+
+Body 3
+  Target Bodies(1) = 3
+  Name = "CoilB"
+  Equation = 2
+  Material = 2
+  Body Force = 1
+End
+
+
+Solver 1
+  Equation = "CoilSolver"
+  Procedure = "CoilSolver" "CoilSolver"
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = ILU2
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1e-8
+  Linear System Iterative Method = BiCGStab
+  Linear System Residual Output = 20
+
+  Coil Closed = Logical True
+  Narrow Interface = Logical True
+  Save Coil Set = Logical True
+  Save Coil Index = Logical True
+  Calculate Elemental Fields = Logical True
+
+  Fix Input Current Density = True
+End
+
+
+Solver 2
+  Equation = MGDynamics
+  Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+
+! Not active when using potential as source
+  Fix Input Current density = True
+  jfix: linear system iterative method = idrs
+  jfix: Linear System Preconditioning = ILU1
+
+
+  Use Elemental CoilCurrent = True
+
+  Nonlinear System Max Iterations = 1
+
+  Linear System Solver = iterative
+  Linear System Iterative Method = BiCGStabl 
+
+  Linear System GCR Restart = 100
+  BiCGStabl Polynomial Degree = 6
+  Idrs Parameter = Integer 6
+  Linear System Robust = Logical True
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = none
+  Linear System Residual Output = 10
+  Linear System Abort Not Converged = False
+!  Edge Basis = True
+End
+
+
+Solver 3
+  Equation = MGDynamicsCalc
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+
+  Steady State Convergence Tolerance = 1.0e-5
+  Nonlinear System Convergence Tolerance = 1.0e-8
+  Nonlinear System Max Iterations = 20
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 1
+
+  Linear System Solver = Iterative
+  Linear System Symmetric = True
+  Linear System Iterative Method = CG
+  Linear System Max Iterations = 5000
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU0
+  Linear System ILUT Tolerance = 1.0e-3
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 1
+  Linear System Precondition Recompute = 1
+
+  Nonlinear System Consistent Norm = Logical True
+  Discontinuous Bodies = True
+End
+
+
+Solver 4
+  Exec Solver = after all
+  Equation = "ResultOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = case
+  Vtu format = Logical True
+  Discontinuous Bodies = Logical True
+  Save Geometry Ids = True
+  Save Bulk Only = True
+  Vtu Part Collection = True
+  Ascii Output = True
+End
+
+Equation 1
+  Name = "MGDyn for air"
+  Active Solvers(2) = 2 3
+End
+
+Equation 2
+  Name = "MGDyn for coils"
+  Active Solvers(3) = 1 2 3
+End
+
+
+Material 1
+  Name = "Space"
+  Permeability = 1.0
+  Relative Permittivity = 1.0
+End
+
+Material 2
+  Name = "Conductor"
+  Permeability = 1.0
+  Relative Permittivity = 1.0
+  Electric Conductivity = 1.0
+End
+
+! The coils 
+Component 1 
+  Name = String "CoilA"
+  Coil Type = String "test"
+  Master Bodies(1) = Integer 2
+  Desired Current Density = Real 1.0
+  Coil Normal(3) = 0 0 1
+End 
+
+Component 2 
+  Name = String "CoilB"
+  Coil Type = String "test"
+  Master Bodies(1) = Integer 3
+  Desired Current Density = Real -1.0
+  Coil Normal(3) = 0 0 1
+End 
+
+Boundary Condition 1
+  Target Boundaries(3) = 1 2 3
+  Name = "far"
+  AV {e} = 0.0
+  AV = 0.0
+  jfix = Real 0.0
+End
+
+
+Solver 1 :: Reference Norm = 7.91423369E+01
+Solver 2 :: Reference Norm = 1.33989643E-01
+Solver 3 :: Reference Norm = 2.28759224E-01

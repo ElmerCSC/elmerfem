@@ -1,0 +1,26 @@
+## default file to generate documentation from .md files using pandoc
+# run: pandoc -d MakeDoc_CovarianceUtils.yml 
+from: markdown
+to: pdf
+
+output-file: Documentation_CovarianceUtils.pdf
+
+top-level-division: part
+
+input-files:
+- Covariance.md
+- BackgroundErrorCostSolver.md
+- GaussianSimulationSolver.md 
+- CovarianceVectorMultiplySolver.md 
+- CovarianceUtilsModule.md
+
+standalone: true
+
+table-of-contents: true
+
+number-sections: true
+
+variables:
+  documentclass: scrreprt
+  urlcolor: cyan
+  #documentclass: report 

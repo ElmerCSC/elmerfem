@@ -1,5 +1,5 @@
 # Inverse methods test cases
-- Modification date : 28/02/2023
+- Modification date : 04/07/2024
 
 This test cases for the adjoint inverse methods have been updated 
 in April 2020 from the material presented for the 
@@ -9,6 +9,8 @@ The description of the test cases can be found in the associated presentation av
 http://elmerfem.org/elmerice/wiki/lib/exe/fetch.php?media=courses:2016_oslo_shallow_inverse.pdf).
 Note that the solvers have been updated so that the implementation differs and use the new solvers 
 for the inverse methods (see documentation [here](https://github.com/ElmerCSC/elmerfem/tree/elmerice/elmerice/Solvers/Documentation)).
+
+A new *Regularisation* solver that can be used to prescribed prior error statistics under the form of a covariance matrix has been introduced in 07/2024. The documentation is available [here](https://github.com/ElmerCSC/elmerfem/blob/elmerice/elmerice/Solvers/Documentation/BackgroundErrorCostSolver.md). A test case for the Mass conservation Method can be found [here](https://gricad-gitlab.univ-grenoble-alpes.fr/gilletcf/CovarianceUtils).  
 
 - Content of this directory:
 
@@ -29,3 +31,5 @@ TEST CASES USING THE STOKES SOLVER:
 
 TEST CASES FOR THE THICKNESS SOLVER:
    - MassConservation: Validation of the adjoint of the steady state thickness solver; i.e. the mass conservation method.
+
+

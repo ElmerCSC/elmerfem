@@ -1,0 +1,122 @@
+! This is a test case for fitting a polynom to a quadrilateral patch
+! and using that polynom to maintain the curvature of the mesh after
+! mesh refiment.
+!
+! P.R. 2.11.23
+
+
+$pn=1
+$mn=3
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "sinus3d"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 7
+  
+  Coordinate System = "Cartesian"
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+
+  Post File = "case-b.vtu"
+  Ascii Output = Logical True
+
+  Mesh Levels = $mn
+End
+
+Constants
+$L=0.5
+$a=0.5
+$b=1.0
+! Note: this is funny choice because I wanted to see the comparison directly.
+! The eqution is linear so it does not matter by what we multiply it with.
+  Permittivity Of Vacuum = $ln(b/a)/(2*pi*L)
+End 
+
+Body 1
+  Name = "Inner"
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Name = "Outer"
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equations"
+  Active Solvers(1) = 1 
+End
+
+Solver 1
+  Equation = Electrostatics
+  Procedure = "StatElecSolveVec" "StatElecSolver"
+  Variable = Potential
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Consistent Norm = True
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabl
+  Linear System Max Iterations = 5000
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 10
+  Linear System Preconditioning = ILU0
+  Linear System Refactorize = False
+
+  Vector Assembly = True
+!  Element = p:$pn
+
+! Should we set the p-coordinates such that curved shapes are honored? 
+!  Follow P curvature = Logical True
+End
+
+Solver 2
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+
+  Expression 1 = Real $pn
+  Expression 2 = Real $mn
+
+  File Append = True
+  Filename = f.dat
+
+  Show Norm Index = 1
+  Parallel Reduce = True
+End
+
+Material 1
+  Name = "Material"
+  Density = 1
+  Relative Permittivity = 1
+End
+
+Boundary Condition 1
+  Name = "Bot"
+  Target Boundaries(1) = 1
+  Potential = 0
+
+! Fitting sixth order quadrilateral p-element to the origonal mesh nodes.
+  Follow Polynom Boundary = Integer 6
+End
+
+Boundary Condition 2
+  Name = "Top"
+  Target Boundaries(1) = 3
+  Potential = 1
+
+  Follow Polynom Boundary = Integer 4
+End
+
+Solver 1::Reference Norm = 5.78353512E-01
+
+!End Of File

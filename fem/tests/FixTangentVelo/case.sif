@@ -13,7 +13,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 7
+  Max Output Level = 20
 
   Coordinate System = "Cartesian"
   Simulation Type = "Steady State"
@@ -66,7 +66,7 @@ Solver 3
 
 ! This is also the default. Applicable only in 3D. 
   Active Coordinate = 3
-  Fix Downstream Only = Logical True
+!  Fix Downstream Only = Logical True
 
 ! Also really apply i.e. alter flow solution?
   Fix Tangent Velocity = Logical True
@@ -130,6 +130,12 @@ Boundary Condition 6
 End 
 
 Solver 2 :: Reference Norm = 6.21121718E-01
-Solver 3 :: Reference Norm = 8.90248501E-02
+! downstream only = true
+!Solver 3 :: Reference Norm = 8.90248501E-02  
+! downstream only = false
+Solver 3 :: Reference Norm = 9.78244220E-02
 Solver 3 :: Reference Norm Tolerance = 0.02
+
+
+
 !End Of File

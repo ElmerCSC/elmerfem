@@ -15,18 +15,20 @@ IF(NOT CMAKE_BUILD_TYPE)
   SET(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Build type (Release, Debug, RelWithDebugInfo, MinSizeRel)")
 ENDIF()
 
+CMAKE_MINIMUM_REQUIRED(VERSION 3.10)
+
 PROJECT(Elmer Fortran C CXX)
 
-# CMAKE_VERSION seems to require this in minimum
-CMAKE_MINIMUM_REQUIRED(VERSION 1.0.2)
-
 IF(APPLE)
-  SET(CMAKE_MACOSX_RPATH 1) 
+  SET(CMAKE_MACOSX_RPATH 1)
 ENDIF()
+
+# Allow users to ignore package managers on macOS
+option(USE_MACOS_PACKAGE_MANAGER "Search for packages that are installed with Homebrew or MacPorts on macOS" ON)
 
 #shamelessly borrowed from FreeCAD project: https://github.com/FreeCAD/FreeCAD/blob/master/cMake/FreeCAD_Helpers/SetupPython.cmake
 # For building on OS X
-if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND USE_MACOS_PACKAGE_MANAGER)
 
   # If the user doesn't tell us which package manager they're using
   if(NOT DEFINED MACPORTS_PREFIX AND NOT DEFINED HOMEBREW_PREFIX)
@@ -67,6 +69,12 @@ SET(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/Modules;${CMAKE_ROOT}/Modules
 SET(CMAKE_Fortran_MODULE_DIRECTORY
   ${PROJECT_BINARY_DIR}/fmodules CACHE PATH "Directory for Fortran modules")
 
+# Require minimum standard version
+SET(CMAKE_C_STANDARD 99)
+SET(CMAKE_C_STANDARD_REQUIRED ON)
+SET(CMAKE_CXX_STANDARD 11)
+SET(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 # Defaults to cache variables
 SET(WITH_MPI TRUE CACHE BOOL "Use MPI parallelization")
 SET(MPI_TEST_MAXPROC 8 CACHE STRING "Maximum number of tasks used in parallel tests")
@@ -76,6 +84,7 @@ SET(WITH_MKL FALSE CACHE BOOL "Use Intel Math Kernel library")
 SET(WITH_Mumps FALSE CACHE BOOL "Use Mumps sparse direct solver")
 SET(WITH_Hypre FALSE CACHE BOOL "Use Hypre linear algebra library")
 SET(WITH_CHOLMOD FALSE CACHE BOOL "Use CHOLMOD linear algebra library")
+SET(WITH_UMFPACK TRUE CACHE BOOL "Use UMFPACK for LU factorization")
 SET(WITH_ELMERGUI FALSE CACHE BOOL "Include ElmerGUI")
 SET(WITH_ElmerIce FALSE CACHE BOOL "Include ElmerIce")
 SET(WITH_XIOS FALSE CACHE BOOL "Include XIOS")
@@ -89,8 +98,12 @@ SET(WITH_CONTRIB FALSE CACHE BOOL "Include contributed solvers")
 
 SET(WITH_LUA FALSE CACHE BOOL "Include LUA extensions.")
 SET(WITH_MMG FALSE CACHE BOOL "Compile with MMG library.")
+SET(WITH_ROCALUTION FALSE CACHE BOOL "Compile with Rocalution library.")
 
 SET(WITH_Zoltan FALSE CACHE BOOL "Link in Zoltan mesh repartitioning library.")
+SET(USE_SYSTEM_ZOLTAN FALSE CACHE BOOL "Use system Zoltan library")
+
+SET(INCLUDE_ELMER_MODULES "" CACHE STRING "Semicolon separated list of solver modules to be compiled. If empty compile all.")
 
 # Let user select if the contiguous attribute is used or not
 SET(USE_CONTIGUOUS FALSE CACHE BOOL "Use contiguous attribute")
@@ -108,7 +121,7 @@ ENDIF()
 
 MARK_AS_ADVANCED(ELMER_INSTALL_LIB_DIR)
 
-ENABLE_TESTING()
+INCLUDE(CTest)
 
 SET(ELMER_FEM_MAJOR_VERSION 9)
 SET(ELMER_FEM_MINOR_VERSION 0)
@@ -164,46 +177,18 @@ IF(WITH_EXTOPTIM)
 ENDIF()
 
 IF(WITH_OpenMP)
-  # Advanced properties
-  MARK_AS_ADVANCED(
-    OpenMP_C_FLAGS
-    OpenMP_Fortran_FLAGS
-    OpenMP_CXX_FLAGS
-    )
   FIND_PACKAGE(OpenMP REQUIRED)
 
-  # Add OpenMP flags to compilation flags
-  # if(APPLE)
-  #   if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
-  #     set(OpenMP_C "${CMAKE_C_COMPILER}")
-  #     set(OpenMP_C_FLAGS "-fopenmp=libomp -Wno-unused-command-line-argument")
-  #     set(OpenMP_C_LIB_NAMES "libomp" "libgomp" "libiomp5")
-  #     set(OpenMP_libomp_LIBRARY ${OpenMP_C_LIB_NAMES})
-  #     set(OpenMP_libgomp_LIBRARY ${OpenMP_C_LIB_NAMES})
-  #     set(OpenMP_libiomp5_LIBRARY ${OpenMP_C_LIB_NAMES})
-  #   endif()
-  #   if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
-  #     set(OpenMP_CXX "${CMAKE_CXX_COMPILER}")
-  #     set(OpenMP_CXX_FLAGS "-fopenmp=libomp -Wno-unused-command-line-argument")
-  #     set(OpenMP_CXX_LIB_NAMES "libomp" "libgomp" "libiomp5")
-  #     set(OpenMP_libomp_LIBRARY ${OpenMP_CXX_LIB_NAMES})
-  #     set(OpenMP_libgomp_LIBRARY ${OpenMP_CXX_LIB_NAMES})
-  #     set(OpenMP_libiomp5_LIBRARY ${OpenMP_CXX_LIB_NAMES})
-  #   endif()
-  # else()
-    SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
-    SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${OpenMP_Fortran_FLAGS}")
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-  # endif()
+  # FIXME: Should link to the CMake targets instead
+  SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+  SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${OpenMP_Fortran_FLAGS}")
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
 
-  # Test compiler support for OpenMP 4.0 features used
-  INCLUDE(testOpenMP40)
-  IF(CMAKE_Fortran_COMPILER_SUPPORTS_OPENMP40)
+  # Set variables for supported OpenMP version
+  IF(OpenMP_Fortran_VERSION VERSION_GREATER_EQUAL 4.0)
     SET(HAVE_OPENMP40 TRUE)
     MARK_AS_ADVANCED(HAVE_OPENMP40)
-    # Test compiler support for advanced OpenMP 4.5 features used
-    INCLUDE(testOpenMP45)
-    IF(CMAKE_Fortran_COMPILER_SUPPORTS_OPENMP45)
+    IF(OpenMP_Fortran_VERSION VERSION_GREATER_EQUAL 4.5)
       SET(HAVE_OPENMP45 TRUE)
       MARK_AS_ADVANCED(HAVE_OPENMP45)
     ENDIF()
@@ -212,13 +197,17 @@ ENDIF()
 
 # Get rid of the annoying rank mismatch warning
 IF("${CMAKE_Fortran_COMPILER_ID}" MATCHES "GNU")
-  IF(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 9.9)
+  IF(CMAKE_Fortran_COMPILER_VERSION VERSION_GREATER 9.9)
     SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -fallow-argument-mismatch")
 #    SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -std=legacy")
   ENDIF()
 ENDIF()
 
 
+# Import targets with information for using MPI or the MPI stub
+ADD_LIBRARY(Elmer::MPI_Fortran INTERFACE IMPORTED)
+ADD_LIBRARY(Elmer::MPI_C INTERFACE IMPORTED)
+ADD_LIBRARY(Elmer::MPI_CXX INTERFACE IMPORTED)
 IF(WITH_MPI)
   # Advanced properties
   MARK_AS_ADVANCED(
@@ -227,15 +216,38 @@ IF(WITH_MPI)
     )
 
   FIND_PACKAGE(MPI REQUIRED)
-  # Workaround if MPI is found but MPI_FOUND is not set (windows+msmpi+findmpi)
-  SET(MPI_FOUND TRUE CACHE BOOL "")
-  MARK_AS_ADVANCED(MPI_FOUND)
-  INCLUDE_DIRECTORIES(${MPI_Fortran_INCLUDE_PATH})
-  # MPI libraries may be needed for testing
-  SET(CMAKE_C_REQUIRED_LIBRARIES ${MPI_C_LIBRARIES})
-  SET(CMAKE_CXX_REQUIRED_LIBRARIES ${MPI_CXX_LIBRARIES})
-  SET(CMAKE_Fortran_REQUIRED_LIBRARIES ${MPI_Fortran_LIBRARIES})
+
+  # Check features of found MPI
+  INCLUDE(testMPIcapabilities)
+  IF(ELMER_BROKEN_MPI_IN_PLACE)
+    ADD_DEFINITIONS(-DELMER_BROKEN_MPI_IN_PLACE)
+  ENDIF()
+
+  TARGET_LINK_LIBRARIES(Elmer::MPI_Fortran INTERFACE MPI::MPI_Fortran)
+  TARGET_LINK_LIBRARIES(Elmer::MPI_C INTERFACE MPI::MPI_C)
+  TARGET_LINK_LIBRARIES(Elmer::MPI_CXX INTERFACE MPI::MPI_CXX)
 ENDIF(WITH_MPI)
+
+
+IF (WITH_ROCALUTION)
+
+  IF(NOT WITH_MPI)
+    MESSAGE(FATAL_ERROR "Building with rocALUTION requires MPI")
+  ENDIF()
+
+  MESSAGE(STATUS "------------------------------------------------")
+  MESSAGE(STATUS "Looking for rocALUTION installation")
+
+  FIND_PACKAGE(rocalution REQUIRED)
+
+  MESSAGE(STATUS "  rocALUTION:     " "${rocalution_FOUND}")
+  MESSAGE(STATUS "  rocALUTION_INC: " "${ROCALUTION_INCLUDE_DIR}")
+  MESSAGE(STATUS "  rocALUTION_LIB: " "${ROCALUTION_LIBRARY}")
+
+  SET(HAVE_ROCALUTION TRUE CACHE BOOL "")
+  MARK_AS_ADVANCED(HAVE_ROCALUTION)
+ENDIF()
+
 
 IF(WITH_AMGX)
   FIND_PACKAGE(AMGX)
@@ -243,6 +255,7 @@ ENDIF()
 
 IF(WITH_CHOLMOD)
   FIND_PACKAGE(CHOLMOD)
+  FIND_PACKAGE(SPQR)
 ENDIF()
 
 # if(APPLE)
@@ -306,6 +319,9 @@ ENDIF()
 
 # MARK_AS_ADVANCED(WITH_Trilinos)
 IF(WITH_Trilinos)
+  IF(NOT WITH_MPI)
+    MESSAGE(FATAL_ERROR "Building with Trilinos requires MPI.")
+  ENDIF()
   FIND_PACKAGE(ML REQUIRED PATHS ${TRILINOS_PATH}/lib/cmake/ML ${TRILINOS_PATH})
   FIND_PACKAGE(Trilinos REQUIRED PATHS ${TRILINOS_PATH}/lib/cmake/Trilinos ${TRILINOS_PATH})
   FIND_PACKAGE(Belos REQUIRED PATHS ${TRILINOS_PATH}/lib/cmake/Belos ${TRILINOS_PATH})
@@ -317,40 +333,25 @@ ENDIF()
 IF(WITH_Zoltan)
   # ZOLTAN Remeshing
   MESSAGE(STATUS "------------------------------------------------")
-
-  SET(USE_SYSTEM_ZOLTAN FALSE CACHE BOOL "Use system Zoltan library")
-  IF(NOT ${USE_SYSTEM_ZOLTAN})
+  IF(NOT USE_SYSTEM_ZOLTAN)
     MESSAGE(STATUS "Building Zoltan mesh repartitioner")
     ADD_SUBDIRECTORY(contrib/Zoltan_v3.83)
     SET(HAVE_ZOLTAN TRUE CACHE BOOL "Has Zoltan tools for mesh (re)partitioning" )
     MARK_AS_ADVANCED(HAVE_ZOLTAN)
-    MESSAGE(STATUS "  Zoltan_LIB:      " "${ZOLTAN_LIBRARY}")
+    MESSAGE(STATUS "  Zoltan library:      " "${ZOLTAN_LIBRARY}")
     MESSAGE(STATUS "------------------------------------------------")
   ELSE()
     FIND_PACKAGE(Zoltan)
-
-    IF(ZOLTAN_FOUND)
-
+    IF(Zoltan_FOUND)
       SET(HAVE_ZOLTAN TRUE CACHE BOOL "Has Zoltan tools for mesh (re)partitioning" )
-      GET_FILENAME_COMPONENT(ZOLTAN_LIBDIR ${ZOLTAN_LIBRARY} DIRECTORY)
-
-      MARK_AS_ADVANCED(HAVE_ZOLTAN)
-      MESSAGE(STATUS "  Zoltan:           " "${ZOLTAN_FOUND}")
-      MESSAGE(STATUS "  Zoltan_INC:       " "${ZOLTAN_INCLUDE_DIR}")
-      MESSAGE(STATUS "  Zoltan_LIB:      " "${ZOLTAN_LIBRARY}")
-      MESSAGE(STATUS "  Zoltan_LIBDIR:      " "${ZOLTAN_LIBDIR}")
-
       INCLUDE_DIRECTORIES(${ZOLTAN_INCLUDE_DIR})
       MESSAGE(STATUS "------------------------------------------------")
-
     ELSE()
-      MESSAGE(STATUS "  Library not found: >ZOLTAN_FOUND< ")
-      MESSAGE(STATUS "    Missing: >ZOLTAN_INCLUDE_DIR< , >ZOLTAN_LIBRARY< for mesh (re)partitioning")
-    ENDIF(ZOLTAN_FOUND)
-
+      MESSAGE(STATUS "  Zoltan library not found. ")
+      MESSAGE(STATUS "  Missing: <ZOLTAN_INCLUDE_DIR> or <ZOLTAN_LIBRARY>")
+    ENDIF(Zoltan_FOUND)
     MESSAGE(STATUS "------------------------------------------------")
   ENDIF()
-  FIND_PACKAGE(ParMetis)
 ENDIF(WITH_Zoltan)
 
 
@@ -360,20 +361,20 @@ IF(WITH_NETCDF)
   #----------------------- #
   MESSAGE(STATUS "------------------------------------------------")
   MESSAGE(STATUS "Elmer/Ice package: Looking for [NETCDF] & [NETCDF Fortran] libraries")
-  
-  
+
+
   FIND_PACKAGE(NETCDF)
-  
+
   IF(NETCDF_FOUND)
-  
+
     SET(HAVE_NETCDF TRUE CACHE BOOL "Has NETCDF for Elmer/Ice Output" )
     GET_FILENAME_COMPONENT(NETCDF_LIBDIR ${NETCDF_LIBRARY} DIRECTORY)
     GET_FILENAME_COMPONENT(NETCDFF_LIBDIR ${NETCDFF_LIBRARY} DIRECTORY)
-  
+
     MARK_AS_ADVANCED(HAVE_NETCDF)
     INCLUDE_DIRECTORIES(${NETCDF_INCLUDE_DIR})
     ADD_DEFINITIONS(-DHAVE_NETCDF)
-  
+
     MESSAGE(STATUS "  NETCDF:           " "${NETCDF_FOUND}")
     MESSAGE(STATUS "  NETCDF_INC:       " "${NETCDF_INCLUDE_DIR}")
     MESSAGE(STATUS "  NETCDF_LIBS:     " "${NETCDF_LIBRARIES}")
@@ -381,26 +382,26 @@ IF(WITH_NETCDF)
     MESSAGE(STATUS "Library not found: >NETCDF_FOUND< ")
     MESSAGE(WARNING "  \n Missing: >NETCDF_INCLUDE_DIR< , >NETCDF_LIBRARY<,  >NETCDFF_LIBRARY< \n some functionalities will be disabled")
   ENDIF(NETCDF_FOUND)
-  
+
   IF(NETCDF_FOUND)
     # ---------------------- #
     # -- HDF5 libraries -- #
     #----------------------- #
     MESSAGE(STATUS "------------------------------------------------")
     MESSAGE(STATUS "Elmer/Ice package: Looking for [HDF5] & [HDF5 Fortran] libraries")
-  
+
     FIND_PACKAGE(PHDF5)
-    
+
     IF(PHDF5_FOUND)
-    
+
       SET(HAVE_HDF5 TRUE CACHE BOOL "Has HDF5 for Elmer/Ice Output" )
       GET_FILENAME_COMPONENT(PHDF5_LIBDIR ${PHDF5_LIBRARY} DIRECTORY)
       GET_FILENAME_COMPONENT(PHDF5HL_LIBDIR ${PHDF5HL_LIBRARY} DIRECTORY)
-    
+
       MARK_AS_ADVANCED(HAVE_HDF5)
       INCLUDE_DIRECTORIES(${PHDF5_INCLUDE_DIR})
       ADD_DEFINITIONS(-DHAVE_HDF5)
-    
+
       MESSAGE(STATUS "  HDF5:           " "${PHDF5_FOUND}")
       MESSAGE(STATUS "  HDF5_INC:       " "${PHDF5_INCLUDE_DIR}")
       MESSAGE(STATUS "  HDF5_LIBS:     " "${PHDF5_LIBRARIES}")
@@ -409,7 +410,7 @@ IF(WITH_NETCDF)
       MESSAGE(WARNING "  \n Missing: >HDF5_INCLUDE_DIR< , >HDF5_LIBRARY<,  >HDF5F_LIBRARY< \n some functionalities will be disabled")
     ENDIF(PHDF5_FOUND)
   ENDIF(NETCDF_FOUND)
-  
+
 ENDIF(WITH_NETCDF)
 
 # MMG Remeshing
@@ -443,13 +444,13 @@ IF(WITH_MMG)
 
   MESSAGE(STATUS "------------------------------------------------")
 
-  IF (WITH_PARMMG) 
+  IF (WITH_PARMMG)
     FIND_PACKAGE(PARMMG)
     IF(PARMMG_FOUND)
 
       SET(HAVE_PARMMG TRUE CACHE BOOL "Has ParMmg tools for Elmer/Ice Mesh adaptation" )
       GET_FILENAME_COMPONENT(PARMMG_LIBDIR ${PARMMG_LIBRARY} DIRECTORY)
-      
+
       MARK_AS_ADVANCED(HAVE_PARMMG)
       MESSAGE(STATUS "  ParMmg:           " "${PARMMG_FOUND}")
       MESSAGE(STATUS "  ParMmg_INC:       " "${PARMMG_INCLUDE_DIR}")
@@ -471,7 +472,7 @@ IF(WITH_MMG)
   # INCLUDE_DIRECTORIES(${PARMMG_INCLUDE_DIR})
   # TARGET_LINK_LIBRARIES( ${YOUR_TARGET} ${PARMMG_LIBRARY})
   #  SET(HAVE_PARMMG FALSE)
-  ENDIF(WITH_PARMMG) 
+  ENDIF(WITH_PARMMG)
 ELSE()
   SET(HAVE_MMG FALSE)
   SET(HAVE_PARMMG FALSE)
@@ -499,6 +500,7 @@ IF (WITH_XIOS)
 
   MESSAGE(STATUS "------------------------------------------------")
 ENDIF()
+
 
 MESSAGE(STATUS "------------------------------------------------")
 
@@ -551,13 +553,11 @@ IF (AMGX_FOUND)
   LINK_DIRECTORIES(${CUDA_LIBDIR})
 ENDIF()
 
-IF (CHOLMOD_FOUND)
+IF (CHOLMOD_FOUND AND SPQR_FOUND)
   SET(HAVE_CHOLMOD TRUE)
   MARK_AS_ADVANCED(HAVE_CHOLMOD)
-  INCLUDE_DIRECTORIES(${CHOLMOD_INCLUDE_DIR})
-  #LINK_DIRECTORIES(${})
 ENDIF()
-  
+
 # Check if Fortran compiler supports procedure pointer
 INCLUDE(testProcedurePointer)
 IF(NOT CMAKE_Fortran_COMPILER_SUPPORTS_PROCEDUREPOINTER)
@@ -621,17 +621,63 @@ ENDIF()
 ADD_SUBDIRECTORY(matc)
 
 IF(WITH_ElmerIce)
+  IF(NOT WITH_MPI)
+    MESSAGE(FATAL_ERROR "Building ElmerIce requires MPI.")
+  ENDIF()
   MESSAGE(STATUS "Adding optional package ElmerIce")
   ADD_SUBDIRECTORY(elmerice)
 ENDIF(WITH_ElmerIce)
 
-IF (EXTERNAL_UMFPACK)
+IF (WITH_UMFPACK)
+  IF (EXTERNAL_UMFPACK)
     MESSAGE(STATUS "Using external UMFPACK instead of built-in")
-    FIND_PACKAGE(UMFPACK REQUIRED)    
+    FIND_PACKAGE(UMFPACK REQUIRED)
+
+    # Check for size of "SuiteSparse_long"
+    INCLUDE(CheckTypeSize)
+    SET(old_CMAKE_REQUIRED_INCLUDES ${CMAKE_REQUIRED_INCLUDES})
+    SET(old_CMAKE_EXTRA_INCLUDE_FILES ${CMAKE_EXTRA_INCLUDE_FILES})
+    LIST(APPEND CMAKE_REQUIRED_INCLUDES "${UMFPACK_INCLUDE_DIR}")
+    LIST(APPEND CMAKE_EXTRA_INCLUDE_FILES "umfpack.h")
+    CHECK_TYPE_SIZE("SuiteSparse_long" SIZEOF_SUITESPARSE_LONG LANGUAGE C)
+    SET(CMAKE_REQUIRED_INCLUDES ${old_CMAKE_REQUIRED_INCLUDES})
+    SET(CMAKE_EXTRA_INCLUDE_FILES ${old_CMAKE_EXTRA_INCLUDE_FILES})
+    IF (HAVE_SIZEOF_SUITESPARSE_LONG)
+      IF (SIZEOF_SUITESPARSE_LONG EQUAL 4)
+        SET(UMFPACK_LONG_FORTRAN_TYPE "C_INT32_T")
+      ELSE()
+        SET(UMFPACK_LONG_FORTRAN_TYPE "C_INT64_T")
+      ENDIF()
+    ENDIF()
+  ELSE()
+    MESSAGE(STATUS "Using built-in UMFPACK")
+    ADD_SUBDIRECTORY(umfpack)
+  ENDIF()
+  SET(HAVE_UMFPACK ON)
+  MARK_AS_ADVANCED(HAVE_UMFPACK)
 ELSE()
-  MESSAGE(STATUS "Using built-in UMFPACK")
-  ADD_SUBDIRECTORY(umfpack)
+  MESSAGE(STATUS "Building without UMFPACK")
 ENDIF()
+IF(NOT DEFINED UMFPACK_LONG_FORTRAN_TYPE)
+  # Old versions of UMFPACK before "SuiteSparse_long" was defined used "long"
+  SET(UMFPACK_LONG_FORTRAN_TYPE "C_LONG")
+ENDIF()
+
+# Find external arpack and parpack
+IF(EXTERNAL_ARPACK)
+  MESSAGE(STATUS "Using external arpack library instead of built-in")
+  FIND_PACKAGE(ARPACK REQUIRED)
+  SET(CMAKE_REQUIRED_LIBRARIES
+    ${CMAKE_REQUIRED_LIBRARIES} ${ARPACK_LIBRARIES})
+ENDIF()
+
+IF(MPI_FOUND AND EXTERNAL_PARPACK)
+  MESSAGE(STATUS "Using external parpack library instead of built-in")
+  FIND_PACKAGE(PARPACK REQUIRED)
+  SET(CMAKE_REQUIRED_LIBRARIES
+    ${CMAKE_REQUIRED_LIBRARIES} ${PARPACK_LIBRARIES})
+ENDIF()
+
 ADD_SUBDIRECTORY(fhutiter)
 ADD_SUBDIRECTORY(meshgen2d)
 ADD_SUBDIRECTORY(fem)
@@ -670,19 +716,49 @@ MESSAGE(STATUS "------------------------------------------------")
 MESSAGE(STATUS "  BLAS library:   " "${BLAS_LIBRARIES}")
 MESSAGE(STATUS "  LAPACK library: " "${LAPACK_LIBRARIES}")
 MESSAGE(STATUS "------------------------------------------------")
-IF(UMFPACK_FOUND)
-  MESSAGE(STATUS " UMFPACK library: " "${UMFPACK_LIBRARIES}")
-  MESSAGE(STATUS " UMFPACK headers: " "${UMFPACK_INCLUDE_DIR}")
-  MARK_AS_ADVANCED(HAVE_UMFPACK)
-  MESSAGE(STATUS "------------------------------------------------")
+IF(WITH_UMFPACK)
+  IF(UMFPACK_FOUND)
+    MESSAGE(STATUS " UMFPACK library: " "${UMFPACK_LIBRARIES}")
+    MESSAGE(STATUS " UMFPACK headers: " "${UMFPACK_INCLUDE_DIR}")
+    MESSAGE(STATUS "------------------------------------------------")
+  ELSE()
+    MESSAGE(STATUS " UMFPACK library: Using internal Elmer library")
+  ENDIF()
 ELSE()
-  MESSAGE(STATUS " UMFPACK library: Using internal Elmer library")
+  MESSAGE(STATUS " UMFPACK library: Building without UMFPACK")
 ENDIF()
-IF(CHOLMOD_FOUND)
+IF(CHOLMOD_FOUND AND SPQR_FOUND)
   MESSAGE(STATUS " CHOLMOD library: " "${CHOLMOD_LIBRARIES}")
   MESSAGE(STATUS " CHOLMOD headers: " "${CHOLMOD_INCLUDE_DIR}")
+  MESSAGE(STATUS " SPQR library:    " "${SPQR_LIBRARIES}")
+  MESSAGE(STATUS " SPQR headers:    " "${SPQR_INCLUDE_DIR}")
   MESSAGE(STATUS "------------------------------------------------")
   MARK_AS_ADVANCED(HAVE_CHOLMOD)
+ENDIF()
+IF(ARPACK_FOUND)
+  MESSAGE(STATUS " ARPACK library:  " "${ARPACK_LIBRARIES}")
+  MESSAGE(STATUS " ARPACK headers:  " "${ARPACK_INCLUDE_DIR}")
+ELSE()
+  MESSAGE(STATUS " ARPACK library: Using internal Elmer library")
+ENDIF()
+IF(PARPACK_FOUND)
+  MESSAGE(STATUS " PARPACK library: " "${PARPACK_LIBRARIES}")
+  MESSAGE(STATUS " PARPACK headers: " "${PARPACK_INCLUDE_DIR}")
+  MESSAGE(STATUS "------------------------------------------------")
+ELSE()
+  MESSAGE(STATUS " PARPACK library: Using internal Elmer library")
+  MESSAGE(STATUS "------------------------------------------------")
+ENDIF()
+IF(WITH_Zoltan AND NOT USE_SYSTEM_ZOLTAN)
+  MESSAGE(STATUS " Zoltan: building bundled code")
+  MESSAGE(STATUS "------------------------------------------------")
+ELSEIF(WITH_Zoltan AND HAVE_ZOLTAN)
+  MESSAGE(STATUS " Zoltan library: " "${ZOLTAN_LIBRARY}")
+  MESSAGE(STATUS " Zoltan headers: " "${ZOLTAN_INCLUDE_DIR}")
+  MESSAGE(STATUS "------------------------------------------------")
+ELSEIF(WITH_Zoltan AND NOT Zoltan_FOUND)
+  MESSAGE(STATUS " Zoltan system library not found")
+  MESSAGE(STATUS "------------------------------------------------")
 ENDIF()
 MESSAGE(STATUS "  Fortran compiler:        " "${CMAKE_Fortran_COMPILER}")
 MESSAGE(STATUS "  Fortran flags:           " "${CMAKE_Fortran_FLAGS} ${CMAKE_Fortran_FLAGS_${CMAKE_BUILD_TYPE_UPCASE}}")
@@ -760,6 +836,10 @@ IF(HAVE_EXTOPTIM)
   MESSAGE(STATUS "------------------------------------------------")
 ENDIF(HAVE_EXTOPTIM)
 
+IF(NOT HAVE_UMFPACK AND NOT HAVE_MUMPS)
+  MESSAGE(WARNING "Elmer is configured without backend for direct solvers (UMFPACK or MUMPS).\n"
+                  "Are you sure this is intended?")
+ENDIF()
 
 
 # Packaging

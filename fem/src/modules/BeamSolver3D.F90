@@ -170,7 +170,7 @@ SUBROUTINE TimoshenkoSolver(Model, Solver, dt, TransientSimulation)
 
     CALL DefaultFinishBulkAssembly()
 
-    !CALL DefaultFinishBoundaryAssembly()
+    CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()
 

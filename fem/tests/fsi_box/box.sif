@@ -75,7 +75,7 @@ Solver 1
   Linear System Solver = String Direct
   Linear System Direct Method = umfpack
 
-  Linear System Iterative Method = String BiCGstab
+  Linear System Iterative Method = String BiCGstabL
   Linear System Preconditioning = String ILU2
   Linear System Convergence Tolerance = Real 1.0e-10
   Linear System Max Iterations = Integer 200

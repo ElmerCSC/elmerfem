@@ -5,4 +5,4 @@ CONFIGURE_FILE( cooksmembrane.sif cooksmembrane.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO body3d DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(SD_CooksMembrane3D LABELS elasticsolve serendipity)
+ADD_ELMER_TEST(SD_CooksMembrane3D LABELS elasticsolve serendipity slow)

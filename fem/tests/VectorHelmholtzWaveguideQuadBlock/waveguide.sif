@@ -91,7 +91,7 @@ include block.sif
 !include reim.sif
 
   Linear System Timing = Logical True
-  Calculate Energy Norm = Logical True
+  Calculate Energy Inner Product = Logical True
 End
 
 Solver 2

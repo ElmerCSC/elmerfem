@@ -9,7 +9,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 7
 
   Coordinate System = "Cartesian"
   Simulation Type = Steady
@@ -61,18 +61,19 @@ Solver 1
 
   Block 11: Linear System Solver = Iterative
 
-!  Block 11: Linear System Preconditioning = BoomerAMG
-!  Block 11: Linear System Use Hypre = True
+  Block 11: Linear System Preconditioning = BoomerAMG
+  Block 11: Linear System Use Hypre = True
   Block 11: Linear System Iterative Method = BiCGStab
 ! Block 11: Linear System Use Backward Error Estimate = Logical True
 
   Block 22: Linear system Solver = Iterative
-!  Block 22: Linear System Preconditioning = AMS
+  Block 22: Linear System Preconditioning = AMS
   Block 22: Linear System Use Hypre = True
-  Block 22: Linear System Iterative Method = BiCGStabL
+  Block 22: Linear System Iterative Method = BiCGStab
 ! Block 22: Linear System Use Backward Error Estimate = Logical True
 
   Steady State Convergence Tolerance = 1e-6
+  Nonlinear System Consistent Norm = True
 End
 
 Solver 2
@@ -89,6 +90,7 @@ Solver 2
   Linear System Max Iterations = 5000
   Linear System Iterative Method = CG
   Linear System Convergence Tolerance = 1.0e-8
+  Nonlinear System Consistent Norm = True
 End
 
 Solver 3
@@ -171,7 +173,7 @@ Boundary Condition 5
   Air Gap Relative Permeability = Real 0.1
 End
 
-Solver 1 :: Reference Norm = 7.08538965E-05
+!Solver 1 :: Reference Norm = 7.08538965E-05
 Solver 2 :: Reference Norm = 3063.3440
 Solver 3 :: Reference Norm = 9.922767E-02
 

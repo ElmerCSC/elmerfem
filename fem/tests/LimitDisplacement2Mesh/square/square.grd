@@ -1,0 +1,14 @@
+#####  ElmerGrid input file for structured grid generation  ######
+Version = 210903
+Coordinate System = Cartesian 2D
+Subcell Divisions in 2D = 1 1
+Subcell Limits 1 = -6 6
+Subcell Limits 2 = -6 6
+Material Structure in 2D
+  2
+End
+Materials Interval = 2 2
+Element Degree = 1
+Triangles = False 
+Element Divisions 1 = 50
+Element Divisions 2 = 50

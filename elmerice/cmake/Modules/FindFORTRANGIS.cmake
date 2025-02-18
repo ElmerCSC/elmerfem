@@ -11,9 +11,7 @@
 
 # # handle the QUIETLY and REQUIRED arguments and set FORTRANGIS_FOUND to TRUE
 # if all listed variables are TRUE
-INCLUDE(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
-
-CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
+INCLUDE(FindPackageHandleStandardArgs)
 
 # If libraries are already defined, do nothing 
 IF(FORTRANGIS_LIBRARY AND FORTRANGIS_INCLUDE_DIR)

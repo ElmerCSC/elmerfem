@@ -114,6 +114,7 @@ CONTAINS
     !------------------------------------------------------------------------------
 
     Debug = .FALSE.
+    Var => VariableGet( NewMesh % Variables, HeightName, ThisOnly = .TRUE. )
 
     ALLOCATE( FoundNodes(NewMesh % NumberOfNodes),&
          PointLocalDistance(NewMesh % NumberOfNodes))
@@ -465,15 +466,15 @@ CONTAINS
           SendLocalDistance = WorkReal
           DEALLOCATE(WorkReal)
 
-          CALL MPI_BSEND( SendLocalDistance, nfound,MPI_DOUBLE_PRECISION, proc, &
-               2100, ELMER_COMM_WORLD,ierr )
+          CALL MPI_BSEND( SendLocalDistance, nfound, MPI_DOUBLE_PRECISION, proc, &
+               2100, ELMER_COMM_WORLD, ierr )
 
           CALL MPI_BSEND( vperm, nfound, MPI_INTEGER, proc, &
-               2102, ELMER_COMM_WORLD, status, ierr )
+               2102, ELMER_COMM_WORLD, ierr )
 
           DO j=1,nvars
-            CALL MPI_BSEND( vstore(:,j), nfound,MPI_DOUBLE_PRECISION, proc, &
-                       2103+j, ELMER_COMM_WORLD,ierr )
+            CALL MPI_BSEND( vstore(:,j), nfound, MPI_DOUBLE_PRECISION, proc, &
+                       2103+j, ELMER_COMM_WORLD, ierr )
           END DO
 
           DEALLOCATE(vstore, vperm)
@@ -614,6 +615,7 @@ CONTAINS
        DEALLOCATE(astore,vperm,RecvLocalDistance, BetterFound, ProcSend(proc+1) % perm)
 
     END DO
+    Var => VariableGet( NewMesh % Variables, HeightName, ThisOnly = .TRUE. )
 
     DEALLOCATE(PointLocalDistance)
     IF ( ALLOCATED(Perm) ) DEALLOCATE(Perm,ProcSend)

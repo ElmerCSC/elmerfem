@@ -12,21 +12,19 @@ SET(parpack_SRCS pcgetv0.f pclarnv.f pcnaitr.f pcnapps.f pcnaup2.f
 	pdmout.f pdvout.f pivout.f psmout.f psvout.f pzmout.f pzvout.f
 	stat.h)
 
-ADD_DEFINITIONS(${MPI_Fortran_COMPILE_FLAGS})
-INCLUDE_DIRECTORIES(${MPI_Fortran_INCLUDE_PATH})
-LINK_DIRECTORIES(${MPI_Fortran_LIBRARIES})
-
 ADD_LIBRARY(parpack SHARED ${parpack_SRCS})
 
 ADD_DEPENDENCIES(parpack arpack)
 
+TARGET_LINK_LIBRARIES(parpack Elmer::MPI_Fortran)
+
 IF(WIN32)
-  TARGET_LINK_LIBRARIES(parpack arpack ${MPI_Fortran_LIBRARIES} ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
+  TARGET_LINK_LIBRARIES(parpack arpack ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
   INSTALL(TARGETS parpack DESTINATION "bin")
 ENDIF()
 
 IF(APPLE)
-  TARGET_LINK_LIBRARIES(parpack arpack ${MPI_Fortran_LIBRARIES} ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
+  TARGET_LINK_LIBRARIES(parpack arpack ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
 ENDIF()
 
 IF(NOT(WIN32))

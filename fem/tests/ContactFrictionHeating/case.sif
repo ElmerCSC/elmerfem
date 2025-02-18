@@ -32,7 +32,7 @@ Simulation
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Steady State
   Steady State Max Iterations = 1
-  Post File = case.vtu
+  Post File = b.vtu
 
 ! The ElasticSolver does not really like the Dirichlet conditions at the start 
 ! of the nonlinear iteration. 
@@ -85,6 +85,7 @@ Solver 1
 !  Elasticity Solver Linear = Logical True
 
   Apply Limiter = Logical True
+  Apply Limiter Loads After = Logical True
 
 !  Calculate Stresses = Logical True
 End
@@ -97,7 +98,7 @@ Solver 2
 
   Stabilize = Logical True
 
-  Nonlinear System Convergence Tolerance = 1.0e-8
+  Nonlinear System Convergence Tolerance = 1.0e-6
   Nonlinear System Max Iterations = 50
   Nonlinear System Relaxation Factor = 1.0
 

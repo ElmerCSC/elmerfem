@@ -5,9 +5,9 @@ c\Name: psngets
 c
 c Message Passing Layer: MPI
 c
-c\Description: 
+c\Description:
 c  Given the eigenvalues of the upper Hessenberg matrix H,
-c  computes the NP shifts AMU that are zeros of the polynomial of 
+c  computes the NP shifts AMU that are zeros of the polynomial of
 c  degree NP which filters out components of the unwanted eigenvectors
 c  corresponding to the AMU's based on some given criteria.
 c
@@ -46,12 +46,12 @@ c           OUTPUT: Possibly decreases NP by one to keep complex conjugate
 c           pairs together.
 c
 c  RITZR,  Real array of length KEV+NP.  (INPUT/OUTPUT)
-c  RITZI   On INPUT, RITZR and RITZI contain the real and imaginary 
+c  RITZI   On INPUT, RITZR and RITZI contain the real and imaginary
 c          parts of the eigenvalues of H.
 c          On OUTPUT, RITZR and RITZI are sorted so that the unwanted
 c          eigenvalues are in the first NP locations and the wanted
-c          portion is in the last KEV locations.  When exact shifts are 
-c          selected, the unwanted part corresponds to the shifts to 
+c          portion is in the last KEV locations.  When exact shifts are
+c          selected, the unwanted part corresponds to the shifts to
 c          be applied. Also, if ISHIFT .eq. 1, the unwanted eigenvalues
 c          are further sorted so that the ones with largest Ritz values
 c          are first.
@@ -60,7 +60,7 @@ c  BOUNDS  Real array of length KEV+NP.  (INPUT/OUTPUT)
 c          Error bounds corresponding to the ordering in RITZ.
 c
 c  SHIFTR, SHIFTI  *** USE deprecated as of version 2.1. ***
-c  
+c
 c
 c\EndDoc
 c
@@ -80,8 +80,8 @@ c     Danny Sorensen               Phuong Vu
 c     Richard Lehoucq              CRPC / Rice University
 c     Dept. of Computational &     Houston, Texas
 c     Applied Mathematics
-c     Rice University           
-c     Houston, Texas    
+c     Rice University
+c     Houston, Texas
 c
 c\Parallel Modifications
 c     Kristi Maschhoff
@@ -89,8 +89,8 @@ c
 c\Revision history:
 c     Starting Point: Serial Code FILE: ngets.F   SID: 2.2
 c
-c\SCCS Information: 
-c FILE: ngets.F   SID: 1.2   DATE OF SID: 2/22/96   
+c\SCCS Information:
+c FILE: ngets.F   SID: 1.2   DATE OF SID: 2/22/96
 c
 c\Remarks
 c     1. xxxx
@@ -99,8 +99,8 @@ c\EndLib
 c
 c-----------------------------------------------------------------------
 c
-      subroutine psngets 
-     &                 ( comm, ishift, which, kev, np, ritzr, ritzi, 
+      subroutine psngets
+     &                 ( comm, ishift, which, kev, np, ritzr, ritzi,
      &                   bounds, shiftr, shifti )
 c
 c     %--------------------%
@@ -128,7 +128,7 @@ c     | Array Arguments |
 c     %-----------------%
 c
       Real
-     &           bounds(kev+np), ritzr(kev+np), ritzi(kev+np), 
+     &           bounds(kev+np), ritzr(kev+np), ritzi(kev+np),
      &           shiftr(1), shifti(1)
 c
 c     %------------%
@@ -165,10 +165,10 @@ c     %-------------------------------%
 c     | Initialize timing statistics  |
 c     | & message level for debugging |
 c     %-------------------------------%
-c 
+c
       call second (t0)
       msglvl = mngets
-c 
+c
 c     %----------------------------------------------------%
 c     | LM, SM, LR, SR, LI, SI case.                       |
 c     | Sort the eigenvalues of H into the desired order   |
@@ -192,16 +192,16 @@ c
       else if (which .eq. 'SI') then
          call ssortc ('SM', .true., kev+np, ritzr, ritzi, bounds)
       end if
-c      
+c
       call ssortc (which, .true., kev+np, ritzr, ritzi, bounds)
-c     
+c
 c     %-------------------------------------------------------%
 c     | Increase KEV by one if the ( ritzr(np),ritzi(np) )    |
 c     | = ( ritzr(np+1),-ritzi(np+1) ) and ritz(np) .ne. zero |
 c     | Accordingly decrease NP by one. In other words keep   |
 c     | complex conjugate pairs together.                     |
 c     %-------------------------------------------------------%
-c     
+c
       if (       ( ritzr(np+1) - ritzr(np) ) .eq. zero
      &     .and. ( ritzi(np+1) + ritzi(np) ) .eq. zero ) then
          np = np - 1
@@ -209,7 +209,7 @@ c
       end if
 c
       if ( ishift .eq. 1 ) then
-c     
+c
 c        %-------------------------------------------------------%
 c        | Sort the unwanted Ritz values used as shifts so that  |
 c        | the ones with largest Ritz estimates are first        |
@@ -218,28 +218,28 @@ c        | forward instability of the iteration when they shifts |
 c        | are applied in subroutine psnapps.                    |
 c        | Be careful and use 'SR' since we want to sort BOUNDS! |
 c        %-------------------------------------------------------%
-c     
+c
          call ssortc ( 'SR', .true., np, bounds, ritzr, ritzi )
       end if
-c     
+c
       call second (t1)
       tngets = tngets + (t1 - t0)
 c
       if (msglvl .gt. 0) then
-         call pivout (comm, logfil, 1, kev, ndigit, '_ngets: KEV is')
-         call pivout (comm, logfil, 1, np, ndigit, '_ngets: NP is')
+         call pivout (comm, logfil, 1, [kev], ndigit, '_ngets: KEV is')
+         call pivout (comm, logfil, 1, [np], ndigit, '_ngets: NP is')
          call psvout (comm, logfil, kev+np, ritzr, ndigit,
      &        '_ngets: Eigenvalues of current H matrix -- real part')
          call psvout (comm, logfil, kev+np, ritzi, ndigit,
      &        '_ngets: Eigenvalues of current H matrix -- imag part')
-         call psvout (comm, logfil, kev+np, bounds, ndigit, 
+         call psvout (comm, logfil, kev+np, bounds, ndigit,
      &      '_ngets: Ritz estimates of the current KEV+NP Ritz values')
       end if
-c     
+c
       return
-c     
+c
 c     %----------------%
 c     | End of psngets |
 c     %----------------%
-c     
+c
       end

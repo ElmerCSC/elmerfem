@@ -58,8 +58,10 @@ SUBROUTINE ElementStats( Model,Solver,dt,TransientSimulation )
   TYPE(ValueList_t), POINTER :: Params
   INTEGER :: ElementCount(1000), LocalElementCount(1000)
   CHARACTER(MAX_NAME_LEN) :: Str, OperName
-  LOGICAL :: Found, DoCohorts, DoingCohorts, IsParallel, SkipBoundaries, ApplyWarn, WarnFatal
+  LOGICAL :: Found, DoCohorts, DoingCohorts, IsParallel, SkipBoundaries, ApplyWarn, &
+      WarnFatal, HaveNan, StopAtNans
   INTEGER :: NoCohorts, OperNo, bc_max
+  INTEGER :: NanCount(3)
   INTEGER, ALLOCATABLE :: CohortCount(:,:)
 !------------------------------------------------------------------------------
   
@@ -88,6 +90,10 @@ SUBROUTINE ElementStats( Model,Solver,dt,TransientSimulation )
   ! inquire warnsize
   WarnSize = GetConstReal( Params,'Element Warn Size', ApplyWarn )
   WarnFatal = GetLogical( Params,'Stop Below Warn Size', Found )
+
+  StopAtNans = GetLogical( Params,'Stop At Nans', Found )
+
+  NanCount = 0
   
   ! Go through bulk and boundary elements separately
   DO is_bc = 0, bc_max
@@ -133,15 +139,20 @@ SUBROUTINE ElementStats( Model,Solver,dt,TransientSimulation )
 
         SELECT CASE(OperNo)
         CASE( 1 ) 
-          CALL ElementSizeStudy( Element, n, f )
+          CALL ElementSizeStudy( Element, n, f, HaveNan )
           
         CASE(2)
-          CALL ElementSkewStudy( Element, n, f )
+          CALL ElementSkewStudy( Element, n, f, HaveNan )
           
         CASE(3)
-          CALL ElementRatioStudy( Element, n, f )
+          CALL ElementRatioStudy( Element, n, f, HaveNan )
           
         END SELECT
+
+        IF(HaveNan) THEN
+          NanCount( OperNo ) = NanCount( OperNo ) + 1
+          CYCLE
+        END IF
         
         IF( .NOT. DoingCohorts ) THEN        
           LocalMinF( OperNo ) = MIN( f, LocalMinF( OperNo ) )
@@ -154,10 +165,14 @@ SUBROUTINE ElementStats( Model,Solver,dt,TransientSimulation )
         END IF
       END DO
     END DO
-
+   
+    
     LocalElmntCnt = LastElem - FirstElem + 1
     
     IF (IsParallel) THEN
+      NanCount(1) = ParallelReduction( NanCount(1) )
+      NanCount(2) = ParallelReduction( NanCount(2) )
+
       CALL MPI_ALLREDUCE(LocalMinF,MinF,3,&
            MPI_DOUBLE_PRECISION,MPI_MIN,ELMER_COMM_WORLD,ierr)
       CALL MPI_ALLREDUCE(LocalMaxF,MaxF,3,&
@@ -173,6 +188,14 @@ SUBROUTINE ElementStats( Model,Solver,dt,TransientSimulation )
       ElmntCnt = LocalElmntCnt
     END IF
 
+    IF(NanCount(1) > 0 ) THEN
+      CALL Info('ElementStats','***** Number of NaN sized elements: '//I2S(NanCount(1)),Level=3)
+    END IF
+    IF(NanCount(3) > 0 ) THEN
+      CALL Info('ElementStats','***** Number of extreme element edge ratios: '//I2S(NanCount(3)),Level=3)
+    END IF
+    
+    
     ! If we study cohorst we need a second sweep over the elements
     IF( DoCohorts .AND. .NOT. DoingCohorts ) THEN
       DoingCohorts = .TRUE.
@@ -195,7 +218,7 @@ SUBROUTINE ElementStats( Model,Solver,dt,TransientSimulation )
       CASE(3)
         OperName = 'Element ratio'
       END SELECT
-      IF (ParEnv % MyPE == 0 .OR. .NOT.(IsParallel)) THEN
+      IF (ParEnv % MyPE == 0 ) THEN
         PRINT *,'Statistics for mesh operator: '//TRIM(OperName)//' on ',Str
         PRINT *,'Minimum values '//TRIM(OperName)//': ',MinF(OperNo)
         PRINT *,'Maximum values '//TRIM(OperName)//': ',MaxF(OperNo)
@@ -220,27 +243,32 @@ SUBROUTINE ElementStats( Model,Solver,dt,TransientSimulation )
     END DO
 
     ! Warning/Stopping in case of Minf falling below threshold
-    IF (ApplyWarn .AND. (MinF(1) .LE. WarnSize) .AND. (ParEnv % MyPE == 0 .OR. .NOT.(IsParallel))) THEN
+    IF (ApplyWarn .AND. (MinF(1) <= WarnSize) .AND. ParEnv % MyPE == 0 ) THEN
       WRITE(Message,*) 'Minimum Element size ', Minf(1),' below given threshold', WarnSize
       IF (WarnFatal) THEN        
-        CALL FATAL('ElementStats',Message)
+        CALL Fatal('ElementStats',Message)
       ELSE
-        CALL WARN('ElementStats',Message)
+        CALL Warn('ElementStats',Message)
       END IF
     END IF
   END DO
 
+  IF( StopAtNans .AND. SUM(NanCount) > 0 )  THEN
+    CALL Fatal('ElementStats','Mesh has elements of invalid sized or proportion')
+  END IF
+  
   CALL Info('ElementStats','------------------------------',Level=6)
 
 
 CONTAINS
 
 !------------------------------------------------------------------------------
-  SUBROUTINE ElementSizeStudy( Element, n, ElemSize )
+  SUBROUTINE ElementSizeStudy( Element, n, ElemSize, HaveNan )
 !------------------------------------------------------------------------------
     INTEGER :: n
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp) :: ElemSize
+    LOGICAL :: HaveNan
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Weight
     REAL(KIND=dp) :: Basis(n),DetJ
@@ -256,6 +284,7 @@ CONTAINS
     IP = GaussPoints( Element )
 
     ElemSize = 0.0_dp
+    HaveNan = .FALSE.
 
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
@@ -265,11 +294,19 @@ CONTAINS
 
       Weight = IP % s(t) * DetJ
       ElemSize = ElemSize + Weight
-    END DO
 
-    IF( ElemSize < EPSILON( ElemSize ) ) THEN
-      PRINT *,'Element too small: ',Element % ElementIndex, ElemSize
+      IF(.NOT. Stat) EXIT
+    END DO
+    
+    IF(.NOT. (ElemSize == ElemSize ) .OR. ElemSize >= HUGE(ElemSize) .OR. .NOT. Stat ) THEN
+      !PRINT *,'Element too small: ',Element % ElementIndex, ElemSize
+      HaveNan = .TRUE.
+      ElemSize = 0.0_dp
     END IF
+    
+    !IF( ElemSize < EPSILON( ElemSize ) ) THEN
+    !  PRINT *,'Element too small: ',Element % ElementIndex, ElemSize
+    !END IF
       
 !------------------------------------------------------------------------------
   END SUBROUTINE ElementSizeStudy
@@ -278,11 +315,12 @@ CONTAINS
 
 
   !------------------------------------------------------------------------------
-  SUBROUTINE ElementRatioStudy( Element, n, q )
+  SUBROUTINE ElementRatioStudy( Element, n, q, HaveNan )
 !------------------------------------------------------------------------------
     INTEGER :: n
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp) :: q
+    LOGICAL :: HaveNan 
 !------------------------------------------------------------------------------
     INTEGER :: ElemFamily
     INTEGER, POINTER :: EdgeMap(:,:)
@@ -298,6 +336,8 @@ CONTAINS
     
     s2max = 0.0_dp
     s2min = HUGE( s2min ) 
+    HaveNan = .FALSE.
+    q = 0.0_dp
     
     DO k=1,Element % Type % NumberOfEdges
       i1 = EdgeMap(k,1)
@@ -308,13 +348,18 @@ CONTAINS
       ri(3) = Nodes % z(i2) - Nodes % z(i1)
       
       s2 = SQRT( SUM( ri * ri ) )
-
+      
       s2max = MAX( s2max, s2 )
       s2min = MIN( s2min, s2 )
     END DO
 
     ! Compute the elementanl max ratio
     q = SQRT( s2max / s2min )
+
+    IF(.NOT. (q == q) .OR. q>=HUGE(q) ) THEN
+      HaveNan = .TRUE.
+      q = 0.0_dp
+    END IF
     
 !------------------------------------------------------------------------------
   END SUBROUTINE ElementRatioStudy
@@ -322,11 +367,12 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE ElementSkewStudy( Element, n, alpha )
+  SUBROUTINE ElementSkewStudy( Element, n, alpha, HaveNan )
 !------------------------------------------------------------------------------
     INTEGER :: n
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp) :: alpha
+    LOGICAL :: HaveNan 
 !------------------------------------------------------------------------------
     INTEGER :: ElemFamily
     INTEGER, POINTER :: EdgeMap(:,:)
@@ -344,7 +390,7 @@ CONTAINS
     
 
     Alpha = 0.0_dp
-
+    HaveNan = .FALSE.
     
     SELECT CASE ( ElemFamily )
       

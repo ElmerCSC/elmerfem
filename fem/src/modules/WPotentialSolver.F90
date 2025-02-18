@@ -564,8 +564,8 @@ CONTAINS
   DO t=1,n
     IF (ASSOCIATED(wpotvar)) THEN
       DO k=1,wpotvar % DOFs
+        IF( CoilType/='stranded' ) Wnorm = 1._dp
         IF (Wnorm > EPSILON(Wnorm)) THEN
-          IF( CoilType/='stranded' ) Wnorm = 1._dp
 !          print *, ParEnv % MyPe, "Wnorm:", Wnorm
           wpotvar % Values( wpotvar % DOFs*(wpotvar % Perm( &
               Element % DGIndexes(t))-1)+k) = wpot(t)/Wnorm

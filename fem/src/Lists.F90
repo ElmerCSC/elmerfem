@@ -117,13 +117,25 @@ CONTAINS
      REAL(KIND=dp) :: params(:)
      CHARACTER(*), OPTIONAL :: resul
 
-     INTEGER :: i,l
+     INTEGER :: i,j,l
      CHARACTER(LEN=1024) :: pcmd,res
  
      IF(nparams==0) THEN
        pcmd = "tx=0"
      ELSE
+#if 0
        WRITE(pcmd,*)  [(params(i),i=1,nparams)]
+#else
+       ! cray ftn output from above can be somewhat convoluted, do this instead
+       j = 1
+       DO i=1,nparams
+         WRITE(pcmd(j:), *) params(i)
+         DO WHILE(pcmd(j:j) == ' '); j=j+1; END DO
+         DO WHILE(pcmd(j:j) /= ' '); j=j+1; END DO
+         IF(pcmd(j-1:j-1)=='.') pcmd(j-1:j-1) = ' '
+         j = j + 1
+       END DO
+#endif
        IF(PRESENT(resul)) THEN
          pcmd = TRIM(resul)//'='//TRIM(pcmd)
        ELSE
@@ -206,11 +218,11 @@ CONTAINS
      CHARACTER(LEN=*) :: Equation
      LOGICAL, OPTIONAL :: DGSolver, GlobalBubbles
 !------------------------------------------------------------------------------
-     INTEGER i,j,l,t,n,e,k,k1, MaxNDOFs, MaxEDOFs, MaxFDOFs, BDOFs, ndofs, el_id
+     INTEGER i,j,l,t,n,m,e,k,k1, MaxNDOFs, MaxEDOFs, MaxFDOFs, BDOFs, ndofs, el_id
      INTEGER :: NodalIndexOffset, EdgeIndexOffset, FaceIndexOffset, Indexes(128)
      INTEGER, POINTER :: Def_Dofs(:)
      INTEGER, ALLOCATABLE :: EdgeDOFs(:), FaceDOFs(:)
-     LOGICAL :: FoundDG, DG, DB, GB, Found, Radiation
+     LOGICAL :: FoundDG, DG, DB, GB, Bubbles, Found, Radiation
      TYPE(Element_t),POINTER :: Element, Edge, Face
      CHARACTER(*), PARAMETER :: Caller = 'InitialPermutation'
 !------------------------------------------------------------------------------
@@ -243,6 +255,7 @@ CONTAINS
          INTEGER :: body_id, MaxGroup, group0, group
          INTEGER, POINTER :: DgMap(:), DgMaster(:), DgSlave(:)
          LOGICAL :: GotDgMap, GotMaster, GotSlave
+!------------------------------------------------------------------------------
          
          DgMap => ListGetIntegerArray( Solver % Values,'DG Reduced Basis Mapping',GotDgMap )
          DgMaster => ListGetIntegerArray( Solver % Values,'DG Reduced Basis Master Bodies',GotMaster )
@@ -326,7 +339,8 @@ CONTAINS
              ' db nodes from bulk hits',Level=15)
 
          IF ( FoundDG ) THEN
-           RETURN ! Discontinuous bodies !!!
+           GOTO 10
+!          RETURN ! Discontinuous bodies !!!
          END IF
        END BLOCK
      END IF
@@ -408,7 +422,8 @@ CONTAINS
            ' nodes from bulk hits',Level=15)
        
        IF ( FoundDG ) THEN
-          RETURN ! Discontinuous galerkin !!!
+          GOTO 10
+!         RETURN ! Discontinuous galerkin !!!
        END IF
      END IF
 
@@ -560,13 +575,19 @@ CONTAINS
          BDOFs = Def_Dofs(5)
          j = Def_Dofs(6)
          IF (BDOFs >= 0 .OR. j >= 1) THEN
+           ! Apparently an "Element" command has been given so we use
+           ! the given definition
            IF (j > 1) ndofs = GetBubbleDOFs(Element, j)
            ndofs = MAX(BDOFs, ndofs) 
          ELSE
-           ! The following is not an ideal way to obtain the bubble count
-           ! in order to support solverwise definitions, but we are not expected 
-           ! to end up in this branch anyway:
-           ndofs = Element % BDOFs
+           ! Apparently no "Element" command has been given which should
+           ! activate the use of bubbles. Then the only way to activate the use of
+           ! bubbles seems to be "Bubbles" command. If this is not present, we 
+           ! see no reason to add the indexes for bubble DOFs
+           Bubbles = ListGetLogical(Solver % Values, 'Bubbles', Found )
+           ! The following is not a right way to obtain the bubble count
+           ! in order to support solverwise definitions
+           IF (Bubbles) ndofs = SIZE(Element % BubbleIndexes)
          END IF
 
          DO i=1,ndofs
@@ -628,7 +649,9 @@ CONTAINS
          ELSE       
            Solver % PeriodicFlipActive = .FALSE.
            n = SIZE( Mesh % PeriodicPerm )
-           IF( n < SIZE( Perm ) ) THEN
+           m = SIZE( Perm )
+           
+           IF( n < m ) THEN
              CALL Info(Caller,'Increasing size of periodic tables from '&
                  //I2S(n)//' to '//I2S(SIZE(Perm))//'!',Level=7)
              ALLOCATE( TmpPerm(SIZE(Perm)) )
@@ -649,17 +672,17 @@ CONTAINS
            n = 0
            IF( ASSOCIATED( Mesh % PeriodicPerm ) ) THEN
              ! Set the eliminated dofs to zero and renumber
-             WHERE( Mesh % PeriodicPerm > 0 ) Perm = -Perm
+             WHERE( Mesh % PeriodicPerm(1:m) > 0 ) Perm = -Perm
              
              k = 0                  
-             DO i=1,SIZE( Perm )
+             DO i=1,m
                IF( Perm(i) > 0 ) THEN
                  k = k + 1
                  Perm(i) = k
                END IF
              END DO
              
-             DO i=1,SIZE( Mesh % PeriodicPerm )
+             DO i=1,m
                j = Mesh % PeriodicPerm(i)
                IF( j > 0 ) THEN
                  IF( Perm(i) /= 0 ) THEN             
@@ -678,6 +701,9 @@ CONTAINS
     
      IF ( ALLOCATED(EdgeDOFs) ) DEALLOCATE(EdgeDOFs)
      IF ( ALLOCATED(FaceDOFs) ) DEALLOCATE(FaceDOFs)
+
+10   CONTINUE
+
 !------------------------------------------------------------------------------
    END FUNCTION InitialPermutation
 !------------------------------------------------------------------------------
@@ -847,8 +873,12 @@ CONTAINS
       TYPE(Solver_t), POINTER :: VSolver
 !------------------------------------------------------------------------------
 
-      CALL Info('VariableAdd','Adding variable > '//TRIM(Name)//&
-          ' < of size '//I2S(SIZE(Values)),Level=15)
+      IF(ASSOCIATED(Values)) THEN
+        CALL Info('VariableAdd','Adding variable > '//TRIM(Name)//&
+            ' < of size '//I2S(SIZE(Values)),Level=15)
+      ELSE
+        CALL Info('VariableAdd','Adding variable > '//TRIM(Name), Level=15)
+      END IF
 
       NULLIFY(VSolver)
       IF (PRESENT(Solver)) VSolver => Solver
@@ -2193,9 +2223,46 @@ CONTAINS
    END SUBROUTINE ListRenameAllBC
 !------------------------------------------------------------------------------
 
-   
-  
+   !------------------------------------------------------------------------------
+!> Rename all given keywords in body force section.
+!------------------------------------------------------------------------------
+   SUBROUTINE ListRenameAllBodyForce( Model, Name, Name2 ) 
+!------------------------------------------------------------------------------
+     TYPE(Model_t) :: Model
+     CHARACTER(LEN=*) :: Name, Name2
+     LOGICAL :: Found
+     INTEGER :: bc, n
 
+     n = 0
+     DO bc = 1,Model % NumberOfBodyForces
+       CALL ListRename( Model % BodyForces(bc) % Values, Name, Name2, Found )
+       IF( Found ) n = n + 1
+     END DO
+     IF( n > 0 ) CALL Info('ListRenameAllBodyForces',&
+         '"'//TRIM(Name)//'" renamed to "'//TRIM(Name2)//'" on '//I2S(n)//' BCs',Level=6)
+     
+!------------------------------------------------------------------------------
+   END SUBROUTINE ListRenameAllBodyForce
+!------------------------------------------------------------------------------
+
+   
+!------------------------------------------------------------------------------
+!> Just checks if a entry is present in the list.
+!------------------------------------------------------------------------------
+   FUNCTION ListCheckPresent( List,Name ) RESULT(Found)
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: Name
+     LOGICAL :: Found
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr
+!------------------------------------------------------------------------------
+     ptr => ListFind(List,Name,Found)
+!------------------------------------------------------------------------------
+   END FUNCTION ListCheckPresent
+!------------------------------------------------------------------------------
+
+   
 !-----------------------------------------------------------------------------
 !> Finds an entry in the list by its name and returns a handle to it.
 !> This one just finds a keyword with the same start as specified by 'name'.
@@ -2322,7 +2389,6 @@ CONTAINS
    END FUNCTION ListCheckSuffix
 !------------------------------------------------------------------------------
   
-
 
 !------------------------------------------------------------------------------
 !> Check if the keyword is with the given suffix is present in any boundary condition.
@@ -3094,19 +3160,26 @@ CONTAINS
 !> Checks two lists for a given keyword. If it is given then 
 !> copy it as it is to the 2nd list.
 !------------------------------------------------------------------------------
-   SUBROUTINE ListCompareAndCopy( list, listb, name, Found, remove )
+   SUBROUTINE ListCompareAndCopy( list, listb, name, Found, remove, nooverwrite)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: list, listb
      CHARACTER(LEN=*) :: name
-     LOGICAL :: Found
+     LOGICAL, OPTIONAL :: Found
      LOGICAL, OPTIONAL :: remove
+     LOGICAL, OPTIONAL :: nooverwrite 
 !------------------------------------------------------------------------------
      TYPE(ValueListEntry_t), POINTER :: ptr
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
      INTEGER :: k, n
 
      k = StringToLowerCase( str,Name,.TRUE. )
-     Found = .FALSE.
+     IF(PRESENT(Found)) Found = .FALSE.
+
+     IF(PRESENT(nooverwrite)) THEN
+       IF(nooverwrite) THEN
+         IF( ListCheckPresent( listb, str ) ) RETURN
+       END IF
+     END IF
 
      ! Find the keyword from the 1st list 
      Ptr => List % Head
@@ -3122,7 +3195,7 @@ CONTAINS
      
      ! Add the same entry to the 2nd list 
      CALL ListCopyItem( ptr, listb ) 
-     Found = .TRUE.
+     IF(PRESENT(Found)) Found = .TRUE.
 
      IF( PRESENT(remove) ) THEN
        IF( remove ) CALL ListRemove( list, name)
@@ -3200,23 +3273,6 @@ CONTAINS
      
    END SUBROUTINE ListCopyAllKeywords
  
- 
-!------------------------------------------------------------------------------
-!> Just checks if a entry is present in the list.
-!------------------------------------------------------------------------------
-   FUNCTION ListCheckPresent( List,Name ) RESULT(Found)
-!------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: List
-     CHARACTER(LEN=*) :: Name
-     LOGICAL :: Found
-!------------------------------------------------------------------------------
-     TYPE(ValueListEntry_t), POINTER :: ptr
-!------------------------------------------------------------------------------
-     ptr => ListFind(List,Name,Found)
-!------------------------------------------------------------------------------
-   END FUNCTION ListCheckPresent
-!------------------------------------------------------------------------------
-
 
 !------------------------------------------------------------------------------
 !> Check that obsolite keyword is not used instead of the new one.
@@ -4261,7 +4317,7 @@ CONTAINS
 !> Returns a scalar real value, that may depend on other scalar values such as 
 !> time or timestep size etc.
 !------------------------------------------------------------------------------
-  RECURSIVE FUNCTION ListGetCReal( List, Name, Found, minv, maxv, UnfoundFatal) RESULT(s)
+  RECURSIVE FUNCTION ListGetCReal( List, Name, Found, minv, maxv, UnfoundFatal, DefValue ) RESULT(s)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name
@@ -4269,28 +4325,33 @@ CONTAINS
      LOGICAL, OPTIONAL :: Found,UnfoundFatal
      INTEGER, TARGET :: Dnodes(1)
      INTEGER, POINTER :: NodeIndexes(:)
-
+     REAL(KIND=dp), OPTIONAL :: DefValue
+     
      REAL(KIND=dp) :: s
      REAL(KIND=dp) :: x(1)
      TYPE(Element_t), POINTER :: Element
-
+     LOGICAL :: LFound 
+     
      INTEGER :: n, istat
 
-     IF ( PRESENT( Found ) ) Found = .FALSE.
-
+     LFound = .FALSE.
      NodeIndexes => Dnodes
      n = 1
      NodeIndexes(n) = 1
 
      x = 0.0_dp
      IF ( ASSOCIATED(List % head) ) THEN
-        IF ( PRESENT( Found ) ) THEN
-           x(1:n) = ListGetReal( List, Name, n, NodeIndexes, Found, minv=minv, maxv=maxv, UnfoundFatal=UnfoundFatal )
-        ELSE
-           x(1:n) = ListGetReal( List, Name, n, NodeIndexes, minv=minv, maxv=maxv, UnfoundFatal=UnfoundFatal)
-        END IF
+       x(1:n) = ListGetReal( List, Name, n, NodeIndexes, LFound, minv=minv, maxv=maxv, &
+           UnfoundFatal=UnfoundFatal )
      END IF
      s = x(1)
+
+     IF( PRESENT( DefValue ) ) THEN
+       IF(.NOT. LFound ) s = DefValue
+     END IF
+
+     IF ( PRESENT( Found ) ) Found = LFound
+     
 !------------------------------------------------------------------------------
   END FUNCTION ListGetCReal
 !------------------------------------------------------------------------------
@@ -6008,7 +6069,7 @@ CONTAINS
      Handle % List => NULL()
      Handle % Element => NULL()
      Handle % Unfoundfatal = .FALSE.
-     IF (.NOT. ASSOCIATED( Ptr ) ) THEN
+     IF (.NOT. ASSOCIATED( Handle % Ptr ) ) THEN
        Handle % Ptr => ListAllocate()
      END IF
 
@@ -8654,8 +8715,11 @@ CONTAINS
      
      Val3D = 0.0_dp
 
-     IF( .NOT. ASSOCIATED( Handle % Variable ) ) RETURN
-     
+     IF( .NOT. ASSOCIATED( Handle % Variable ) ) THEN
+       IF(PRESENT(Found)) Found = .FALSE.
+       RETURN
+     END IF
+       
      IF( PRESENT( dofs ) ) THEN
        Ldofs = dofs
      ELSE

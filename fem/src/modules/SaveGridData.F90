@@ -1166,7 +1166,7 @@ END SUBROUTINE SaveGridData
           END DO ! k
 
           IF(Parallel) THEN
-            CALL MPI_REDUCE(Array,PArray,nx*ny*nz,MPI_DOUBLE,MPI_MAX,0,ELMER_COMM_WORLD, ierr)
+            CALL MPI_REDUCE(Array,PArray,nx*ny*nz,MPI_DOUBLE_PRECISION,MPI_MAX,0,ELMER_COMM_WORLD, ierr)
             IF(Part == 0) Array=PArray
           END IF
         

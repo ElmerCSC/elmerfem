@@ -942,7 +942,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 
-    CHARACTER(LEN=MAX_NAME_LEN), INTENT(IN) :: MeshName
+    CHARACTER(LEN=*), INTENT(IN) :: MeshName
     INTEGER, INTENT(IN) :: NumberOfNodes
     TYPE(ValueList_t), POINTER, INTENT(IN) :: SolverPars
     TYPE(Variable_t), POINTER, INTENT(IN) :: Director
@@ -954,7 +954,8 @@ CONTAINS
     REAL(KIND=dp), POINTER :: NodalDirector(:,:)  
     REAL(KIND=dp), POINTER :: DirectorValues(:)
     REAL(KIND=dp) :: ElementDirectors(3*MaxBGElementNodes)
-    CHARACTER(LEN=MAX_NAME_LEN) :: DirectorFile, FormatString
+    CHARACTER(LEN=MAX_PATH_LEN) :: DirectorFile
+    CHARACTER(LEN=MAX_NAME_LEN) :: FormatString
     !------------------------------------------------------------------------------
     ReadNodalDirectors = .FALSE.
 

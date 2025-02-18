@@ -6,5 +6,5 @@ CONFIGURE_FILE(case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO shoebox2d.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(ShoeboxFsiEigen2D LABELS fsi block quick)
+ADD_ELMER_TEST(ShoeboxFsiEigen2D LABELS fsi block quick complex_eigen)
 ENDIF()

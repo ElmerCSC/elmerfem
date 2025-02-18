@@ -50,7 +50,8 @@ MODULE Adaptive
   USE LoadMod
   USE MeshUtils
   USE MeshRemeshing
-
+  USE SaveUtils
+  
   IMPLICIT NONE
 
   
@@ -115,7 +116,7 @@ CONTAINS
 
     LOGICAL :: BandwidthOptimize, Found, Coarsening, GlobalBubbles, &
         MeshNumbering, DoFinalRef
-    INTEGER :: MaxDepth, MinDepth, NLen
+    INTEGER :: MaxDepth, MinDepth, NLen, MeshDim
     CHARACTER(:), ALLOCATABLE :: Path, VarName
     REAL(KIND=dp), POINTER  :: Time(:), NodalError(:), PrevValues(:), &
          Hvalue(:), HValue1(:), PrevNodalError(:), PrevHValue(:), hConvergence(:), ptr(:), tt(:)
@@ -123,6 +124,9 @@ CONTAINS
     LOGICAL :: NoInterp, Parallel, AdaptiveOutput, AdaptInit
     TYPE(ValueList_t), POINTER :: Params
     CHARACTER(*), PARAMETER :: Caller = 'RefineMesh'
+    REAL(KIND=dp), POINTER :: Wrk(:,:)
+    REAL(KIND=dp) :: CoordScale(3)
+
 
     
     SAVE DoFinalRef
@@ -503,9 +507,7 @@ CONTAINS
       t = RealTime()
       IF( ListGetLogical( Params,'Adaptive Remesh Use MMG', Found ) ) THEN
 #ifdef HAVE_MMG
-        CALL Info(Caller,'Using MMG library for mesh refinement', Level=5)
-
-
+        CALL Info(Caller,'Using MMG library for mesh refinement', Level=5)        
         NewMesh => MMG_ReMesh( RefMesh, ErrorLimit/3, HValue, &
             NodalError, hConvergence, minH, maxH, MaxChangeFactor, Coarsening )         
 #else
@@ -721,7 +723,8 @@ CONTAINS
 !   Try to account for the reordering of DOFs
 !   due to bandwidth optimization:
     !   -----------------------------------------
-
+    
+    CALL Info(Caller,'Updating solver mesh to reflect the new adaptive mesh!',Level=12)
     CALL UpdateSolverMesh( Solver, NewMesh, NoInterp )
     CALL SetActiveElementsTable( Model, Solver )
           
@@ -776,12 +779,10 @@ CONTAINS
     CALL SetCurrentMesh( Model, RefMesh )
     DEALLOCATE( ErrorIndicator, PrevHvalue )
     
-    WRITE( Message, * ) 'Mesh refine took in total (cpu-secs):           ', &
-        CPUTIme() - TotalTime 
-    CALL Info( Caller, Message, Level=6 )
     IF ( RemeshTime > 0 ) THEN
-      WRITE( Message, * ) 'Remeshing took in total (real-secs):            ', &
-          RemeshTime
+      WRITE( Message, * ) 'Mesh refine took in total (cpu-secs):  ', CPUTIme() - TotalTime 
+      CALL Info( Caller, Message, Level=6 )
+      WRITE( Message, * ) 'Remeshing took in total (real-secs):   ',RemeshTime
       CALL Info( Caller, Message, Level=6 )
     END IF
     CALL Info( Caller,'----------- E N D   M E S H   R E F I N E M E N T --------------', Level=5 )
@@ -1081,11 +1082,18 @@ CONTAINS
     LOGICAL :: Coarsening
     TYPE(Mesh_t), POINTER :: NewMesh, RefMesh
 !------------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: Mesh, TmpMesh
-    INTEGER :: i,j,k,n
+    TYPE(Mesh_t), POINTER :: Mesh, TmpMesh, GatheredMesh
+    INTEGER :: i,j,k,n,ierr
     REAL(KIND=dp) :: Lambda
-    CHARACTER(LEN=MAX_NAME_LEN) :: MeshCommand, Name, MeshInputFile
-    LOGICAL :: Success, Rebalance
+    CHARACTER(LEN=MAX_NAME_LEN) :: MeshCommand, Name
+    CHARACTER(LEN=MAX_PATH_LEN) :: MeshInputFile
+    LOGICAL :: Success, Rebalance, EnforceSerial
+    REAL(KIND=dp) :: xmax, xmin, ymax, ymin, zmax, zmin, cscale
+    LOGICAL :: ScaleCoord
+    INTEGER :: DoerPart
+    REAL(KIND=dp), POINTER :: NodalVals(:,:)
+    CHARACTER(*), PARAMETER :: Caller = 'MMG_ReMesh'
+        
 !------------------------------------------------------------------------------
 
 #if 0
@@ -1125,18 +1133,15 @@ CONTAINS
 
     IF( RefMesh % MeshDim == 2 ) THEN
       IF( ParEnv % PEs > 1 ) THEN
-        CALL Fatal('MMG_Remesh','2D remeshing not available in parallel!')
+        CALL Fatal(Caller,'2D remeshing not available in parallel!')
       ELSE
-        CALL Info('MMG_Remesh','Calling serial remeshing routines in 2D',Level=10)
+        CALL Info(Caller,'Calling serial remeshing routines in 2D',Level=10)
         NewMesh => MMG2D_ReMesh( RefMesh, Var )
       END IF
     ELSE
-      IF( ParEnv % PEs > 1 ) THEN
-        CALL Info('MMG_Remesh','Calling parallel remeshing routines in 3D',Level=10)
-
-BLOCK
-        REAL(KIND=dp) :: xmax, xmin, ymax, ymin, zmax, zmin, cscale
-        LOGICAL :: ScaleCoord
+      EnforceSerial = ListGetLogical( Params,'Adaptive Remesh Serial',Found )  
+      IF( ParEnv % PEs > 1 .AND. .NOT. EnforceSerial ) THEN
+        CALL Info(Caller,'Calling parallel remeshing routines in 3D',Level=10)
 
         ScaleCoord = ListGetLogical(Params, 'Adaptive Scale Coordinates for MMG', Found)
 
@@ -1150,7 +1155,7 @@ BLOCK
           zmin = ParallelReduction( MINVAL(refmesh % nodes % z), 1)
           zmax = ParallelReduction( MAXVAL(refmesh % nodes % z), 2)
 
-          cscale = 10 * MAX( xmax - xmin, MAX( ymax - ymin, zmax - zmin)  )
+          cscale = 1 * MAX( xmax - xmin, MAX( ymax - ymin, zmax - zmin)  )
 
           refmesh % nodes % x = cscale * refmesh % nodes % x
           refmesh % nodes % y = cscale * refmesh % nodes % y
@@ -1173,7 +1178,6 @@ BLOCK
           refmesh % nodes % z = cscale * refmesh % nodes % z
           var % values = cscale * var % values
         END IF
-END BLOCK
 
         CALL RenumberGElems(TmpMesh)
 
@@ -1185,12 +1189,83 @@ END BLOCK
         ELSE
           NewMesh => TmpMesh          
         END IF
+      ELSE IF( ParEnv % PEs > 1 .AND. EnforceSerial ) THEN
+        CALL Info(Caller,'Calling serial remeshing routines for parallel 3D run',Level=10)
+
+        n = RefMesh % NumberOfBulkElements + RefMesh % NumberOfBoundaryElements
+        IF(.NOT. ASSOCIATED(RefMesh % Repartition)) THEN
+          ALLOCATE(RefMesh % Repartition(n), STAT=ierr)
+          IF(ierr /= 0) CALL Fatal(Caller,'Could not ALLOCATE RefMesh % Repartition')
+        END IF               
+        ! For now, set to target with all to 1st partition
+        DoerPart = ListGetInteger( Params,'Adaptive Remesh Owner',Found ) 
+
+        RefMesh % Repartition = DoerPart + 1
+
+        PRINT *,'RefMesh: ',ParEnv % MyPe, &
+            RefMesh % NumberOfBulkElements, RefMesh % NumberOfBoundaryElements
+
+        IF( ASSOCIATED( Var % Perm ) ) THEN
+          DO i=1,SIZE(Var % Perm)
+            IF(i /= Var % Perm(i)) THEN
+              CALL Fatal(Caller,'H field should have unity perm at this stage!')
+            END IF
+          END DO
+        END IF
+          
+        ALLOCATE(NodalVals(Refmesh % NumberOfNodes,1))
+        NodalVals(:,1) = Var % Values
+        GatheredMesh => RedistributeMesh(Model, RefMesh, .TRUE., .FALSE., NodalVals)
+!        GatheredMesh => RedistributeMesh(Model, RefMesh, .TRUE., .FALSE.)
+        
+        PRINT *,'GatheredMesh: ',ParEnv % MyPe, &
+            gatheredMesh % NumberOfBulkElements, gatheredMesh % NumberOfBoundaryElements
+
+        IF( ParEnv % MyPe == DoerPart ) THEN
+#if 0 
+          ! Save the gathered serial mesh for debugging porposes
+          CALL WriteMeshToDisk2(Model, GatheredMesh,'gathered')
+#endif
+
+          DEALLOCATE(Var % Values)
+          ALLOCATE(Var % Values(GatheredMesh % NumberOfNodes))
+          Var % Values = NodalVals(:,1)
+          IF(ASSOCIATED(Var % Perm)) DEALLOCATE(Var % Perm)
+          ALLOCATE(Var % Perm(GatheredMesh % NumberOfNodes))
+          DO i=1,GatheredMesh % NumberOfNodes
+            Var % Perm(i) = i
+          END DO
+
+          ! Here do the adaptive remeshing with serial MMG3D since the parallel one is not very robust. 
+          CALL RemeshMMG3D(Model, GatheredMesh, TmpMesh,Params = Solver % Values, &
+              HVar = Var, Success = Success )
+
+          ! Thereafter partition the mesh in a serial manner. 
+          IF( ListGetString( Solver % Values,'Partitioning method',Found) == 'zoltan') THEN
+            CALL Zoltan_Interface( Model, TmpMesh, SerialMode = .TRUE., NoPartitions = ParEnv % PEs, &
+                StartImbalanceTol=1.1_dp, TolChange=0.02_dp, MinElems=10 )
+          ELSE
+            CALL PartitionMeshSerial( Model, TmpMesh, Solver % Values )
+          END IF
+
+#if 0 
+          ! Save the remeshed serial mesh for debugging porposes
+          CALL WriteMeshToDisk2(Model, TmpMesh,'remeshed')
+#endif
+        ELSE
+          TmpMesh => AllocateMesh()
+          TmpMesh % MeshDim = RefMesh % MeshDim
+        END IF
+        !CALL RenumberGElems(TmpMesh)
+
+        NewMesh => RedistributeMesh(Model, TmpMesh, .TRUE., .FALSE.)
+        CALL ReleaseMesh(TmpMesh)
       ELSE              
-        CALL Info('MMG_Remesh','Calling serial remeshing routines in 3D',Level=10)
+        CALL Info(Caller,'Calling serial remeshing routines in 3D',Level=10)
         CALL RemeshMMG3D(Model, RefMesh, NewMesh,Params = Solver % Values, &
             HVar = Var, Success = Success )
       END IF
-      CALL Info('MMG_Remesh','Finished MMG remeshing',Level=20)      
+      CALL Info(Caller,'Finished MMG remeshing',Level=20)      
     END IF
 
 !------------------------------------------------------------------------------
@@ -1209,114 +1284,197 @@ END BLOCK
     TYPE(Mesh_t), POINTER :: NewMesh, RefMesh
 !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh
-    INTEGER :: i,j,k,n
+    INTEGER :: i,j,k,n,dim
     REAL(KIND=dp) :: Lambda
+    REAL(KIND=dp), POINTER :: HValueF(:)
     CHARACTER(:), ALLOCATABLE :: MeshCommand, Name, MeshInputFile
+    LOGICAL :: GmshFormat
+    LOGICAL :: GmshPosFormat
 !------------------------------------------------------------------------------
 
-    OPEN( 11, STATUS='UNKNOWN', FILE='bgmesh' )
-    WRITE( 11,* ) COUNT( NodalError > 100*AEPS )
+    dim = CoordinateSystemDimension()
 
+    ! Create a temporal field that includes the desired mesh density where Hvalue has been computed. 
+    ! This is in terms of desired mesh density, currently -1 value is given if the nodal error is zero
+    ! implying that nothing is computed here. 
+    ALLOCATE(HvalueF(SIZE(HValue)))
+    HValueF = -1.0_dp
     DO i=1,RefMesh % NumberOfNodes
-       IF ( NodalError(i) > 100*AEPS ) THEN
-          Lambda = ( ErrorLimit / NodalError(i) ) ** ( 1.0d0 / hConvergence(i) )
+      IF ( NodalError(i) > 100*AEPS ) THEN
+        Lambda = ( ErrorLimit / NodalError(i) ) ** ( 1.0d0 / hConvergence(i) )        
+        IF ( RefMesh % AdaptiveDepth < 1 ) THEN
+          Lambda = HValue(i) * MAX( MIN( Lambda, 1.33d0), 0.75d0)
+        ELSE
+          Lambda = HValue(i) * MAX(MIN(Lambda, MaxChange), 1.0d0/MaxChange)
+        END IF        
+        IF( .NOT.Coarsening ) Lambda = MIN( Lambda, Hvalue(i) )        
 
-          IF ( RefMesh % AdaptiveDepth < 1 ) THEN
-             Lambda = HValue(i) * MAX( MIN( Lambda, 1.33d0), 0.75d0)
-          ELSE
-             Lambda = HValue(i) * MAX(MIN(Lambda, MaxChange), 1.0d0/MaxChange)
-          END IF
-
-          IF( .NOT.Coarsening ) Lambda = MIN( Lambda, Hvalue(i) )
-
-          IF ( maxH > 0 ) Lambda = MIN( Lambda, maxH )
-          IF ( minH > 0 ) Lambda = MAX( Lambda, minH )
-
-          IF ( CoordinateSystemDimension() == 2 ) THEN
-             WRITE(11,'(3e23.15)') RefMesh % Nodes % x(i), &
-                  RefMesh % Nodes % y(i), Lambda
-          ELSE
-             WRITE(11,'(4e23.15)') RefMesh % Nodes % x(i), &
-                  RefMesh % Nodes % y(i), &
-                  RefMesh % Nodes % z(i), Lambda
-          END IF
-       ELSE
-          IF ( CoordinateSystemDimension() == 2 ) THEN
-             WRITE(11,'(3e23.15)') RefMesh % Nodes % x(i), &
-                                   RefMesh % Nodes % y(i), HValue(i)
-          ELSE
-             WRITE(11,'(4e23.15)') RefMesh % Nodes % x(i), &
-                                   RefMesh % Nodes % y(i), &
-                                   RefMesh % Nodes % z(i), HValue(i)
-          END IF
-       END IF
+        IF ( maxH > 0 ) Lambda = MIN( Lambda, maxH )
+        IF ( minH > 0 ) Lambda = MAX( Lambda, minH )        
+        HValueF(i) = Lambda
+      END IF
     END DO
-    
-    WRITE(11,*) 0
-    CLOSE(11)
 
+    ! Save the current mesh in Elmer mesh format 
     Path = ListGetString( Params, 'Adaptive Mesh Name', Found )
-    IF ( .NOT. Found ) Path = 'RefinedMesh'
-
-    i = RefMesh % AdaptiveDepth + 1
     nLen = LEN_TRIM(Path)
-    Path = Path(1:nlen) // I2S(i)
+   
+    IF ( .NOT. Found ) THEN
+      i = RefMesh % AdaptiveDepth + 1
+      Path = 'RefinedMesh'//I2S(i)
+    END IF
 
     nLen = LEN_TRIM(OutputPath)
     IF ( nlen > 0 ) THEN
-       Path = OutputPath(1:nlen) // '/' // TRIM(Path)
+      Path = OutputPath(1:nlen) // '/' // TRIM(Path)
     ELSE
-       Path = TRIM(Path)
+      Path = TRIM(Path)
     END IF
+    
+    GmshFormat = ListGetLogical( Params,'Adaptive Remesh Use Gmsh', Found )
 
-    CALL MakeDirectory( TRIM(Path) // CHAR(0) )
-    CALL WriteMeshToDisk( RefMesh, Path )
+    IF( GmshFormat ) THEN
+
+      GmshPosFormat = ListGetLogical( Params,'Adaptive Remesh Gmsh Use Pos Format', Found )
+      ! write the bacground mesh in .pos format if user requested it.
+      IF( GmshPosFormat) THEN
+      
+        ! Get the coordinate scaling. This is used to scale the background mesh coordinates according to the original mesh.
+        MeshDim = RefMesh % MaxDim
+
+        Wrk => ListGetConstRealArray( Model % Simulation,'Coordinate Scaling',Found )
+        CoordScale = 1.0_dp    
+        IF( Found ) THEN            
+        DO i=1, MeshDim
+          j = MIN( i, SIZE(Wrk,1) )
+          CoordScale(i) = Wrk(j,1)
+        END DO
+        WRITE(Message,'(A,3ES10.3)') 'Scaling the background mesh coordinates:',CoordScale(1:3)
+        CALL Info(Caller ,Message, Level=10)
+        END IF 
+        
+        ! write the bacground mesh in .pos format
+        CALL Info( Caller,'Saving background mesh density in gmsh .pos format' )
+        OPEN( 11, STATUS='UNKNOWN',FILE='gmsh_bgmesh.pos' )
+        WRITE( 11,* ) 'View "mesh size field" {'           
+        DO i=1,RefMesh % NumberOfNodes
+          IF(.NOT. (HValueF(i) > 0.0_dp )) CYCLE
+          IF (dim == 2 ) THEN
+            WRITE( 11,* ) 'SP(', (RefMesh % Nodes % x(i)) / CoordScale(1), &
+                        ', ', (RefMesh % Nodes % y(i)) / CoordScale(2), ') {', &
+                        HValueF(i) / MIN(CoordScale(1), CoordScale(2)), '};'
+          ELSE
+            WRITE( 11,* ) 'SP(', (RefMesh % Nodes % x(i)) / CoordScale(1), &
+                        ', ', (RefMesh % Nodes % y(i)) / CoordScale(2), &
+                        ', ', (RefMesh % Nodes % z(i)) / CoordScale(3), ') {', &
+                        HValueF(i) / MIN(CoordScale(1), MIN(CoordScale(2), CoordScale(3))), '};'
+          END IF
+        END DO
+        WRITE( 11,* ) '};'
+        CLOSE(11)
+      ELSE
+
+        CALL Info( Caller,'Saving background mesh density in gmsh 2.0 (.msh) format' )
+
+        ! A cludge to change the pointer and save results in Gmsh format.
+        BLOCK
+          REAL(KIND=dp), POINTER :: PtoHvalue(:)
+          TYPE(Variable_t), POINTER :: HVar
+          HVar => VariableGet( RefMesh % Variables,'Hvalue')
+          pToHvalue => HVar % Values
+          HVar % Values => HvalueF        
+          CALL ListAddString(Solver % Values,'Scalar Field 1','Hvalue')
+          CALL ListAddLogical(Solver % Values,'File Append',.FALSE.)
+          CALL ListAddLogical(Solver % Values,'Alter Topology',.TRUE.) 
+          CALL ListAddNewString(Solver % Values, 'Output File Name', 'gmsh_bgmesh.msh')        
+          CALL SaveGmshOutput( Model,Solver,0.0_dp,.FALSE.)
+          HVar % Values => PtoHvalue
+        END BLOCK
+      END IF
+    ELSE      
+      CALL Info( Caller,'Saving background mesh density in point cloud format' )
+
+      OPEN( 11, STATUS='UNKNOWN', FILE='bgmesh.nodes' )
+      WRITE( 11,* ) COUNT( HValueF > 0.0_dp )           
+      DO i=1,RefMesh % NumberOfNodes
+        IF(.NOT. (HValueF(i) > 0.0_dp )) CYCLE
+        IF (dim == 2 ) THEN
+          WRITE(11,'(3e23.15)') RefMesh % Nodes % x(i), &
+              RefMesh % Nodes % y(i), HValueF(i)
+        ELSE
+          WRITE(11,'(4e23.15)') RefMesh % Nodes % x(i), &
+              RefMesh % Nodes % y(i), &
+              RefMesh % Nodes % z(i), HValueF(i)
+        END IF
+      END DO
+      WRITE(11,*) 0
+      CLOSE(11)
+
+      CALL MakeDirectory( TRIM(Path) // CHAR(0) )
+      CALL WriteMeshToDisk( RefMesh, Path )
+    END IF
 
     Mesh => RefMesh
     DO WHILE( ASSOCIATED( Mesh ) )
-       IF ( Mesh % AdaptiveDepth == 0 ) EXIT
-       Mesh => Mesh % Parent
+      IF ( Mesh % AdaptiveDepth == 0 ) EXIT
+      Mesh => Mesh % Parent
     END DO
 
-    MeshInputFile = ListGetString( Params, 'Mesh Input File', Found )
+    MeshCommand = ListGetString( Solver % Values,'Mesh Command',Found) 
+    IF(.NOT. Found ) THEN
+      IF( GmshFormat ) THEN
+        CALL Fatal('ReMesh','For now, provide "Mesh Command" for Gmsh meshing!')
+      END IF
 
-    IF ( .NOT. Found ) THEN
-       MeshInputFile = ListGetString( Model % Simulation, 'Mesh Input File' )
+      MeshInputFile = ListGetString( Params, 'Mesh Input File', Found )
+      IF ( .NOT. Found ) THEN
+        MeshInputFile = ListGetString( Model % Simulation, 'Mesh Input File' )
+      END IF
+
+      MeshCommand = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/' // &
+          TRIM( MeshInputFile )
+
+      SELECT CASE( dim )
+      CASE(2)
+        ! Legacy mesh generator from the Elmer suite.
+        MeshCommand = 'Mesh2D '//TRIM(MeshCommand)//' '//TRIM(Path)// ' --bgmesh=bgmesh.nodes'
+      CASE(3)
+        MeshCommand = 'Mesh3D '//TRIM(MeshCommand)//' '//TRIM(Path)//' bgmesh.nodes'
+      END SELECT
     END IF
 
-    MeshCommand = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/' // &
-                          TRIM( MeshInputFile )
-
-    SELECT CASE( CoordinateSystemDimension() )
-    CASE(2)
-       MeshCommand = 'Mesh2D ' // TRIM(MeshCommand) // ' ' // &
-                      TRIM(Path) // ' --bgmesh=bgmesh'
-
-    CASE(3)
-       MeshCommand = 'Mesh3D ' // TRIM(MeshCommand) // ' ' // &
-                      TRIM(Path) // ' bgmesh'
-    END SELECT
-
-    CALL Info('ReMesh','System command: '//TRIM(MeshCommand),Level=10)
+    ! Remeshing command. 
+    CALL Info('ReMesh','Meshing command: '//TRIM(MeshCommand),Level=10)
     CALL SystemCommand( MeshCommand )
 
+    ! Check if also conversion command is given. 
+    MeshCommand = ListGetString( Solver % Values,'Mesh Conversion Command',Found)
+    IF( Found ) THEN
+      ! add the output path to the command. 
+      MeshCommand = MeshCommand // ' -out ' // TRIM(Path)
+      CALL Info('ReMesh','Conversion command: '//TRIM(MeshCommand),Level=10)
+      CALL SystemCommand( MeshCommand )
+    END IF    
+
+    ! Read the new mesh. 
     NewMesh => LoadMesh2( Model, OutPutPath, Path, .FALSE., 1, 0 )
 
+    ! Loading Gebhart factors is more or less obsolite. 
     IF ( Solver % Variable % Name == 'temperature' ) THEN
        Name = ListGetString( Model % Simulation, 'Gebhart Factors', Found )
        IF ( Found ) THEN
           MeshCommand = 'View ' // TRIM(OutputPath) // &
                 '/' // TRIM(Mesh % Name) // ' ' // TRIM(Path)
-
           CALL SystemCommand( MeshCommand )
 
           Name = TRIM(OutputPath) // '/' // &
-                       TRIM(Mesh % Name) // '/' // TRIM(Name)
-
+              TRIM(Mesh % Name) // '/' // TRIM(Name)
           CALL LoadGebhartFactors( NewMesh, TRIM(Name) )
        END IF
     END IF
 
+    DEALLOCATE(HvalueF)
+    
 !------------------------------------------------------------------------------
   END FUNCTION External_ReMesh
 !------------------------------------------------------------------------------

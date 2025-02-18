@@ -742,7 +742,7 @@ CONTAINS
     REAL(KIND=dp) :: SlipCoeff(3), SurfaceTraction(3), Normal(3), &
         Velo(3), TanFrictionCoeff, DummyVals(1)
     TYPE(Nodes_t), SAVE :: Nodes
-    TYPE(ValueHandle_t), SAVE :: ExtPressure_h, SurfaceTraction_h, SlipCoeff_h, &
+    TYPE(ValueHandle_t), SAVE :: ExtPressure_h, IntPressure_h, SurfaceTraction_h, SlipCoeff_h, &
         WeertmanCoeff_h, WeertmanExp_h, FrictionUt0_h, FrictionCoeff_h
     TYPE(VariableHandle_t), SAVE :: Velo_v
     TYPE(Variable_t), POINTER, SAVE :: NrmSol, HeightVar
@@ -761,6 +761,7 @@ CONTAINS
       IF( .NOT. ListGetElementSomewhere( ExtPressure_h) ) THEN
         CALL ListInitElementKeyword( ExtPressure_h,'Boundary Condition','External Pressure')      
       END IF
+      CALL ListInitElementKeyword( IntPressure_h,'Boundary Condition','Internal Pressure')      
       CALL ListInitElementKeyword( SurfaceTraction_h,'Boundary Condition','Surface Traction',InitVec3D=.TRUE.)
       CALL ListInitElementKeyword( SlipCoeff_h,'Boundary Condition','Slip Coefficient',InitVec3D=.TRUE.)
 
@@ -856,9 +857,12 @@ CONTAINS
       SurfaceTraction = ListGetElementReal3D( SurfaceTraction_h, Basis, Element, HaveForce, GaussPoint = t )      
 
       ! Given force to the normal direction
-      !------------------------------------
-      ExtPressure = ListGetElementReal( ExtPressure_h, Basis, Element, HavePres, GaussPoint = t )      
-
+      ! We have a special internal pressure bacause the hydrostatic version is different from the standard version. 
+      !-----------------------------------------------------------------------------------------------------------
+      ExtPressure = ListGetElementReal( ExtPressure_h, Basis, Element, HavePres, GaussPoint = t ) &
+          - ListGetElementReal( IntPressure_h, Basis, Element, Found, GaussPoint = t )
+      HavePres = HavePres .OR. Found
+      
       ! Slip coefficient
       !----------------------------------
       SlipCoeff = ListGetElementReal3D( SlipCoeff_h, Basis, Element, HaveSlip, GaussPoint = t )      

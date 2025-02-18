@@ -458,7 +458,7 @@ CONTAINS
 
       ! then the rest of them....
       !--------------------------
-      ALLOCATE(CHARACTER(MAX_STRING_LEN)::elmer_home)
+      ALLOCATE(CHARACTER(MAX_PATH_LEN)::elmer_home)
 
       tstr = 'ELMER_LIB'
       CALL envir( tstr,elmer_home,k ) 
@@ -2567,8 +2567,16 @@ CONTAINS
 
        BodyId = Element % BodyId
        IF (BodyId==0 .AND. ASSOCIATED(Element % BoundaryInfo)) THEN
-         Parent => Element % PDefs % LocalParent
+         Parent => Element % PDefs % LocalParent         
          IF(ASSOCIATED(Parent)) BodyId = Parent % BodyId
+         IF( BodyId == 0 ) THEN
+           Parent => Element % BoundaryInfo % Left
+           IF( ASSOCIATED(Parent)) BodyId = Parent % BodyId
+         END IF
+         IF(BodyId == 0) THEN
+           Parent => Element % BoundaryInfo % Right
+           IF( ASSOCIATED(Parent)) BodyId = Parent % BodyId
+         END IF
        END IF
        IF (BodyId==0) THEN
          CALL Warn('ElementBasisDegree', 'Element '//I2S(Element % ElementIndex)//' of type '//&
@@ -3252,11 +3260,20 @@ CONTAINS
 
       BodyId = Element % BodyId
       IF (BodyId==0 .AND. ASSOCIATED(Element % BoundaryInfo)) THEN
-        Parent => Element % PDefs % LocalParent
+        Parent => Element % PDefs % LocalParent         
         IF(ASSOCIATED(Parent)) BodyId = Parent % BodyId
+        IF( BodyId == 0 ) THEN
+          Parent => Element % BoundaryInfo % Left
+          IF( ASSOCIATED(Parent)) BodyId = Parent % BodyId
+        END IF
+        IF(BodyId == 0) THEN
+          Parent => Element % BoundaryInfo % Right
+          IF( ASSOCIATED(Parent)) BodyId = Parent % BodyId
+        END IF
       END IF
+
       IF (BodyId==0) THEN
-        CALL Warn('ElementBasisDegree', 'Element '//I2S(Element % ElementIndex)//' of type '//&
+        CALL Warn('ElementInfo', 'Element '//I2S(Element % ElementIndex)//' of type '//&
             I2S(Element % TYPE % ElementCode)//' has 0 BodyId, assuming index 1')
         BodyId = 1
       END IF
@@ -4521,7 +4538,7 @@ CONTAINS
      END IF
 
      IF (BodyId==0) THEN
-       CALL Warn('ElementBasisDegree', 'Element '//I2S(Element % ElementIndex)//' of type '//&
+       CALL Warn('ElementInfoVec', 'Element '//I2S(Element % ElementIndex)//' of type '//&
            I2S(Element % TYPE % ElementCode)//' has 0 BodyId, assuming index 1')
        BodyId = 1
      END IF
@@ -4680,8 +4697,13 @@ CONTAINS
            p = getEffectiveBubbleP(element,p,bdofs)
 
            IF(nbmax-nbp<getBubbleDOFs(Element,p)) THEN
-             CALL Fatal("ElementInfoVec", &
-               "Quad bubble scheme has changed, number of bubbles is now (p-1)^2 (0,1,4,9,16,25,...)")
+             IF(SerendipityPBasis) THEN
+               CALL Fatal("ElementInfoVec", &
+                 "Not enough space for storing bubble basis, check your #bubbles: i*(i-1)/2 (0,1,3,6,10,15,...)")
+             ELSE
+               CALL Fatal("ElementInfoVec", &
+                 "Not enough space for storing bubble basis, check your #bubbles: i^2 (0,1,4,9,16,25,...)")
+             END IF
            END IF
 
            ! For first round of blocked loop, compute polynomial degrees and 
@@ -5069,8 +5091,13 @@ CONTAINS
            p = getEffectiveBubbleP(element,p,bdofs)
 
            IF(nbmax-nbp<getBubbleDOFs(Element,p)) THEN
-             CALL Fatal("ElementInfoVec", &
-                "Brick bubble scheme has changed, number of bubbles is now (p-1)^3 (1,8,27,64,125,...)")
+             IF(SerendipityPBasis) THEN
+               CALL Fatal("ElementInfoVec", &
+                 "Not enough space for storing bubble basis, check your #bubbles: i*(i-1)*(i-1)/2 (0,1,4,10,16,...)")
+             ELSE
+               CALL Fatal("ElementInfoVec", &
+                 "Not enough space for storing bubble basis, check your #bubbles: i^3: (0,1,8,27,64,...)")
+             END IF
            END IF
 
            IF(SerendipityPBasis) THEN
@@ -5360,7 +5387,7 @@ CONTAINS
        REAL(KIND=dp), OPTIONAL :: DivFBasis(:)   !< The divergence of basis functions with respect to the local coordinates
        LOGICAL, OPTIONAL :: BDM                  !< If .TRUE., a basis for BDM space is constructed
        LOGICAL, OPTIONAL :: Dual                 !< If .TRUE., create an alternate dual basis
-       INTEGER, OPTIONAL :: BasisDegree(:)       !< This a dummy parameter at the moment
+       INTEGER, OPTIONAL :: BasisDegree          !< This has limited functionality at the moment
        LOGICAL, OPTIONAL :: ApplyPiolaTransform  !< If  .TRUE., perform the Piola transform so that, instead of b
                                                  !< and Div b, return  B(f(p)) and (div B)(f(p)) with B(x) the basis 
                                                  !< functions on the physical element and div the spatial divergence operator.
@@ -5376,9 +5403,10 @@ CONTAINS
        INTEGER :: DOFs
        INTEGER :: n, dim, q, i, j, k, ni, nj, nk, I1, I2
        INTEGER :: FDofMap(6,4), DofsPerFace, FaceIndices(4)
+       INTEGER :: Family, RTDegree
        REAL(KIND=dp) :: LF(3,3)
        REAL(KIND=dp) :: DivBasis(MaxDOFs)
-       REAL(KIND=dp) :: dLbasisdx(MAX(SIZE(Nodes % x),SIZE(Basis)),3), S, D1, D2, fun, dfun
+       REAL(KIND=dp) :: dLbasisdx(MAX(SIZE(Nodes % x),SIZE(Basis)),3), S, D1, D2, fun, dfun, wfun(2)
        REAL(KIND=dp) :: WorkBasis(24,3), WorkDivBasis(24)
 
        LOGICAL :: ReverseSign(6), CreateBDMBasis, Parallel
@@ -5394,6 +5422,11 @@ CONTAINS
        !---------------------------------------------------------------------
        CreateBDMBasis = .FALSE.
        IF ( PRESENT(BDM) ) CreateBDMBasis = BDM
+       RTDegree = 0
+       IF (PRESENT(BasisDegree)) THEN
+         RTDegree = BasisDegree - 1
+         IF (BasisDegree > 2) CALL Fatal('ElementDescription::FaceElementInfo', 'Unsupported element degree')
+       END IF
        CreateDualBasis = .FALSE.
        IF ( PRESENT(Dual) ) CreateDualBasis = Dual
        PerformPiolaTransform = .FALSE.
@@ -5409,6 +5442,7 @@ CONTAINS
        dLbasisdx = 0.0d0      
        n = Element % TYPE % NumberOfNodes
        dim = Element % TYPE % DIMENSION
+       ! cdim = CoordinateSystemDimension()
        
        IF ( Element % TYPE % ElementCode == 101 ) THEN
           detF = 1.0d0
@@ -5424,7 +5458,20 @@ CONTAINS
        ! Remark: Using reference elements having the faces of the same area
        ! simplifies the implementation of element assembly procedures.
        !-----------------------------------------------------------------------
-       SELECT CASE(Element % TYPE % ElementCode / 100)
+       Family = Element % TYPE % ElementCode / 100
+       SELECT CASE(Family)
+       CASE(2)
+         DO q=1,2
+           Basis(q) = LineNodalPBasis(q, u)
+           dLBasisdx(q,1) = dLineNodalPBasis(q, u)
+         END DO
+         IF (RTDegree == 1) THEN
+           DOFs = 3
+           ! Basis(3) = LineBubblePBasis(2, u)
+           ! dLBasisdx(q,1) = dLineBubblePBasis(2, u)
+         ELSE
+           DOFs = 2
+         END IF
        CASE(3)
           DO q=1,n
              Basis(q) = TriangleNodalPBasis(q, u, v)
@@ -5471,6 +5518,17 @@ CONTAINS
        !---------------------------------------------------------------------------
 
        SELECT CASE(Element % TYPE % ElementCode / 100)
+       CASE(2)
+         ! TO DO: Implement possible sign reversions
+         FBasis(1,1) = -Basis(1)
+         DivBasis(1) = -dLBasisdx(q,1)
+         FBasis(2,1) = Basis(2)
+         DivBasis(2) = -dLBasisdx(q,2)
+         IF (RTDegree > 0) THEN
+           FBasis(3,1) = 4.0d0 * Basis(1) * Basis(2)
+           DivBasis(2) = 4.0d0 * dLBasisdx(1,1) * Basis(2) + 4.0d0 * Basis(1) * dLBasisdx(2,1)
+         END IF
+        
        CASE(3)
           !----------------------------------------------------------------
           ! Note that the global orientation of face normal is taken to be
@@ -5546,32 +5604,213 @@ CONTAINS
              END DO
 
           ELSE
-             DOFs = 3             
+             SELECT CASE (RTDegree)
+             CASE(0) 
+               DOFs = 3
 
-             FBasis(1,1) = SQRT(3.0d0)/6.0d0 * u
-             FBasis(1,2) = -0.5d0 + SQRT(3.0d0)/6.0d0 * v
-             DivBasis(1) =  SQRT(3.0d0)/3.0d0
-             IF (ReverseSign(1)) THEN
-               FBasis(1,:) = -FBasis(1,:)
-               DivBasis(1) = -DivBasis(1)
-             END IF
+               FBasis(1,1) = SQRT(3.0d0)/6.0d0 * u
+               FBasis(1,2) = -0.5d0 + SQRT(3.0d0)/6.0d0 * v
+               DivBasis(1) =  SQRT(3.0d0)/3.0d0
+               IF (ReverseSign(1)) THEN
+                 FBasis(1,:) = -FBasis(1,:)
+                 DivBasis(1) = -DivBasis(1)
+               END IF
 
-             FBasis(2,1) = SQRT(3.0d0)/6.0d0 * (1.0d0 + u)
-             FBasis(2,2) = SQRT(3.0d0)/6.0d0 * v
-             DivBasis(2) =  SQRT(3.0d0)/3.0d0        
-             IF (ReverseSign(2)) THEN
-               FBasis(2,:) = -FBasis(2,:)
-               DivBasis(2) = -DivBasis(2)
-             END IF
+               FBasis(2,1) = SQRT(3.0d0)/6.0d0 * (1.0d0 + u)
+               FBasis(2,2) = SQRT(3.0d0)/6.0d0 * v
+               DivBasis(2) =  SQRT(3.0d0)/3.0d0        
+               IF (ReverseSign(2)) THEN
+                 FBasis(2,:) = -FBasis(2,:)
+                 DivBasis(2) = -DivBasis(2)
+               END IF
 
-             FBasis(3,1) = SQRT(3.0d0)/6.0d0 * (-1.0d0 + u)
-             FBasis(3,2) = SQRT(3.0d0)/6.0d0 * v
-             DivBasis(3) =  SQRT(3.0d0)/3.0d0          
-             IF (ReverseSign(3)) THEN
-               FBasis(3,:) = -FBasis(3,:)
-               DivBasis(3) = -DivBasis(3)
-             END IF
+               FBasis(3,1) = SQRT(3.0d0)/6.0d0 * (-1.0d0 + u)
+               FBasis(3,2) = SQRT(3.0d0)/6.0d0 * v
+               DivBasis(3) =  SQRT(3.0d0)/3.0d0          
+               IF (ReverseSign(3)) THEN
+                 FBasis(3,:) = -FBasis(3,:)
+                 DivBasis(3) = -DivBasis(3)
+               END IF
 
+             CASE(1)
+               !
+               ! We use a non-hierarchic basis which is motivated by flux reconstruction.
+               ! The degrees of freedom associated with the element faces (edges) can be
+               ! integrated for a given flux q as (q.n,w) where the weights are the Lagrange
+               ! basis functions.
+               DOFs = 8
+               !-------------------------------------------------
+               ! Two basis functions defined on the face 12.
+               !-------------------------------------------------
+               WorkBasis(3,1) = SQRT(3.0d0)/6.0d0 * u
+               WorkBasis(3,2) = -0.5d0 + SQRT(3.0d0)/6.0d0 * v
+               WorkDivBasis(3) = SQRT(3.0d0)/3.0d0
+               IF (ReverseSign(1)) THEN
+                 WorkBasis(3,:) = -WorkBasis(3,:)
+                 WorkDivBasis(3) = -WorkDivBasis(3)
+               END IF
+
+               wfun(1) = 4.0d0 * Basis(1) - 2.0d0 * Basis(2)
+               wfun(2) = 4.0d0 * Basis(2) - 2.0d0 * Basis(1)
+               WorkBasis(1,1:2) = wfun(1) * WorkBasis(3,1:2)
+               WorkBasis(2,1:2) = wfun(2) * WorkBasis(3,1:2)
+               WorkDivBasis(1) = wfun(1) * WorkDivBasis(3) + &
+                   SUM(WorkBasis(3,1:2) * (4.0d0 * dLBasisdx(1,1:2) - 2.0d0 * dLBasisdx(2,1:2)))
+               WorkDivBasis(2) = wfun(2) * WorkDivBasis(3) + &
+                   SUM(WorkBasis(3,1:2) * (4.0d0 * dLBasisdx(2,1:2) - 2.0d0 * dLBasisdx(1,1:2)))
+               
+               i = EdgeMap(1,1)
+               j = EdgeMap(1,2)
+               ni = Element % NodeIndexes(i)
+               IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)             
+               nj = Element % NodeIndexes(j)
+               IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+               IF (nj<ni) THEN
+                 FBasis(1,1:2) = WorkBasis(2,1:2)
+                 DivBasis(1) = WorkDivBasis(2) 
+                 FBasis(2,1:2) = WorkBasis(1,1:2)
+                 DivBasis(2) = WorkDivBasis(1)  
+               ELSE
+                 FBasis(1,1:2) = WorkBasis(1,1:2)
+                 DivBasis(1) = WorkDivBasis(1)
+                 FBasis(2,1:2) = WorkBasis(2,1:2)
+                 DivBasis(2) = WorkDivBasis(2)
+               END IF
+
+               !-------------------------------------------------
+               ! Two basis functions defined on the face 23.
+               !-------------------------------------------------
+               WorkBasis(3,1) = SQRT(3.0d0)/6.0d0 * (1.0d0 + u)
+               WorkBasis(3,2) = SQRT(3.0d0)/6.0d0 * v
+               WorkDivBasis(3) =  SQRT(3.0d0)/3.0d0        
+               IF (ReverseSign(2)) THEN
+                 WorkBasis(3,:) = -WorkBasis(3,:)
+                 WorkDivBasis(3) = -WorkDivBasis(3)
+               END IF
+
+               wfun(1) = 4.0d0 * Basis(2) - 2.0d0 * Basis(3)
+               wfun(2) = 4.0d0 * Basis(3) - 2.0d0 * Basis(2)
+               WorkBasis(1,1:2) = wfun(1) * WorkBasis(3,1:2)
+               WorkBasis(2,1:2) = wfun(2) * WorkBasis(3,1:2)
+               WorkDivBasis(1) = wfun(1) * WorkDivBasis(3) + &
+                   SUM(WorkBasis(3,1:2) * (4.0d0 * dLBasisdx(2,1:2) - 2.0d0 * dLBasisdx(3,1:2)))
+               WorkDivBasis(2) = wfun(2) * WorkDivBasis(3) + &
+                   SUM(WorkBasis(3,1:2) * (4.0d0 * dLBasisdx(3,1:2) - 2.0d0 * dLBasisdx(2,1:2)))
+
+               i = EdgeMap(2,1)
+               j = EdgeMap(2,2)
+               ni = Element % NodeIndexes(i)
+               IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+               nj = Element % NodeIndexes(j)
+               IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+
+               IF (nj<ni) THEN
+                 FBasis(3,1:2) = WorkBasis(2,1:2)
+                 DivBasis(3) = WorkDivBasis(2) 
+                 FBasis(4,1:2) = WorkBasis(1,1:2)
+                 DivBasis(4) = WorkDivBasis(1)  
+               ELSE
+                 FBasis(3,1:2) = WorkBasis(1,1:2)
+                 DivBasis(3) = WorkDivBasis(1)
+                 FBasis(4,1:2) = WorkBasis(2,1:2)
+                 DivBasis(4) = WorkDivBasis(2)
+               END IF
+               
+               !-------------------------------------------------
+               ! Two basis functions defined on the face 31.
+               !-------------------------------------------------
+               WorkBasis(3,1) = SQRT(3.0d0)/6.0d0 * (-1.0d0 + u)
+               WorkBasis(3,2) = SQRT(3.0d0)/6.0d0 * v
+               WorkDivBasis(3) =  SQRT(3.0d0)/3.0d0          
+               IF (ReverseSign(3)) THEN
+                 WorkBasis(3,:) = -WorkBasis(3,:)
+                 WorkDivBasis(3) = -WorkDivBasis(3)
+               END IF
+               
+               wfun(1) = 4.0d0 * Basis(3) - 2.0d0 * Basis(1)
+               wfun(2) = 4.0d0 * Basis(1) - 2.0d0 * Basis(3)
+               WorkBasis(1,1:2) = wfun(1) * WorkBasis(3,1:2)
+               WorkBasis(2,1:2) = wfun(2) * WorkBasis(3,1:2)
+               WorkDivBasis(1) = wfun(1) * WorkDivBasis(3) + &
+                   SUM(WorkBasis(3,1:2) * (4.0d0 * dLBasisdx(3,1:2) - 2.0d0 * dLBasisdx(1,1:2)))
+               WorkDivBasis(2) = wfun(2) * WorkDivBasis(3) + &
+                   SUM(WorkBasis(3,1:2) * (4.0d0 * dLBasisdx(1,1:2) - 2.0d0 * dLBasisdx(3,1:2)))
+               
+               i = EdgeMap(3,1)
+               j = EdgeMap(3,2)
+               ni = Element % NodeIndexes(i)
+               IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)             
+               nj = Element % NodeIndexes(j)
+               IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+               IF (nj<ni) THEN
+                 FBasis(5,1:2) = WorkBasis(2,1:2)
+                 DivBasis(5) = WorkDivBasis(2) 
+                 FBasis(6,1:2) = WorkBasis(1,1:2)
+                 DivBasis(6) = WorkDivBasis(1)  
+               ELSE
+                 FBasis(5,1:2) = WorkBasis(1,1:2)
+                 DivBasis(5) = WorkDivBasis(1)
+                 FBasis(6,1:2) = WorkBasis(2,1:2)
+                 DivBasis(6) = WorkDivBasis(2)
+               END IF
+
+               !-------------------------------------------------
+               ! Two basis functions defined on the interior 123.
+               ! Note: The ordering of these functions is not specified,
+               !       although the choice is made unique.
+               !-------------------------------------------------               
+               WorkBasis(1,1) = SQRT(3.0d0)/6.0d0 * u
+               WorkBasis(1,2) = -0.5d0 + SQRT(3.0d0)/6.0d0 * v
+               WorkDivBasis(1) = Basis(3) * SQRT(3.0d0)/3.0d0 + SUM(WorkBasis(1,1:2) * dLBasisdx(3,1:2))
+               WorkBasis(1,1:2) = Basis(3) * WorkBasis(1,1:2)
+               
+               WorkBasis(2,1) = SQRT(3.0d0)/6.0d0 * (1.0d0 + u)
+               WorkBasis(2,2) = SQRT(3.0d0)/6.0d0 * v
+               WorkDivBasis(2) = Basis(1) * SQRT(3.0d0)/3.0d0 + SUM(WorkBasis(2,1:2) * dLBasisdx(1,1:2))
+               WorkBasis(2,1:2) = Basis(1) * WorkBasis(2,1:2)
+               
+               WorkBasis(3,1) = SQRT(3.0d0)/6.0d0 * (-1.0d0 + u)
+               WorkBasis(3,2) = SQRT(3.0d0)/6.0d0 * v
+               WorkDivBasis(3) = Basis(2) * SQRT(3.0d0)/3.0d0 + SUM(WorkBasis(3,1:2) * dLBasisdx(2,1:2))
+               WorkBasis(3,1:2) = Basis(2) * WorkBasis(3,1:2)
+               
+               DO j=1,3
+                 FaceIndices(j) = Element % NodeIndexes(j)
+               END DO
+               IF (Parallel) THEN
+                 DO j=1,3
+                   FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
+                 END DO
+               END IF
+               
+               IF ( FaceIndices(1) < FaceIndices(2) ) THEN
+                 k = 1
+               ELSE
+                 k = 2
+               END IF
+               IF ( FaceIndices(k) > FaceIndices(3) ) THEN
+                 k = 3
+               END IF
+
+               SELECT CASE(k)
+               CASE(1)
+                 FBasis(7,1:2) = WorkBasis(1,1:2)
+                 DivBasis(7) = WorkDivBasis(1)
+                 FBasis(8,1:2) = WorkBasis(3,1:2)
+                 DivBasis(8) = WorkDivBasis(3)
+               CASE(2)
+                 FBasis(7,1:2) = WorkBasis(1,1:2)
+                 DivBasis(7) = WorkDivBasis(1)
+                 FBasis(8,1:2) = WorkBasis(2,1:2)
+                 DivBasis(8) = WorkDivBasis(2)
+               CASE(3)
+                 FBasis(7,1:2) = WorkBasis(2,1:2)
+                 DivBasis(7) = WorkDivBasis(2)
+                 FBasis(8,1:2) = WorkBasis(3,1:2)
+                 DivBasis(8) = WorkDivBasis(3)
+               END SELECT
+               
+             END SELECT
           END IF
           
        CASE(4)
@@ -7350,9 +7589,9 @@ END SUBROUTINE PickActiveFace
 
                IF (RedefineFaceBasis) THEN
                  EdgeBasis(7,:) = 0.5d0 * D1 * WorkBasis(I1,:) + 0.5d0 * D2 * WorkBasis(I2,:)
-                 CurlBasis(7,:) = 0.5d0 * D1 * WorkCurlBasis(I1,:) + 0.5d0 * D2 * WorkCurlBasis(I2,:)
+                 CurlBasis(7,3) = 0.5d0 * D1 * WorkCurlBasis(I1,3) + 0.5d0 * D2 * WorkCurlBasis(I2,3)
                  EdgeBasis(8,:) = 0.5d0 * D2 * WorkBasis(I2,:) - 0.5d0 * D1 * WorkBasis(I1,:)
-                 CurlBasis(8,:) = 0.5d0 * D2 * WorkCurlBasis(I2,:) - 0.5d0 * D1 * WorkCurlBasis(I1,:)
+                 CurlBasis(8,3) = 0.5d0 * D2 * WorkCurlBasis(I2,3) - 0.5d0 * D1 * WorkCurlBasis(I1,3)
                ELSE
                  EdgeBasis(7,:) = D1 * WorkBasis(I1,:)
                  CurlBasis(7,3) = D1 * WorkCurlBasis(I1,3)
@@ -7364,8 +7603,8 @@ END SUBROUTINE PickActiveFace
                IF (ScaleFaceBasis) THEN
                  EdgeBasis(7,:) = sqrt(fs1) * EdgeBasis(7,:)
                  EdgeBasis(8,:) = sqrt(fs2) * EdgeBasis(8,:)
-                 CurlBasis(7,:) = sqrt(fs1) * CurlBasis(7,:)
-                 CurlBasis(8,:) = sqrt(fs2) * CurlBasis(8,:)
+                 CurlBasis(7,3) = sqrt(fs1) * CurlBasis(7,3)
+                 CurlBasis(8,3) = sqrt(fs2) * CurlBasis(8,3)
                END IF
              END IF
            END IF

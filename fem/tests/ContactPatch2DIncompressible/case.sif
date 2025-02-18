@@ -1,0 +1,157 @@
+!------------------------------------------------------------------
+! 2d patch test.
+! Variation for incompressible case with dofs=dim+1.
+!
+! Peter Råback / 7.11.2024
+!------------------------------------------------------------------
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "squares"
+  Include Path ""
+  Results Directory ""
+End
+
+$fileid="b"
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady State
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+  ascii output = true
+  Post File = case_$fileid$.vtu
+  Save Geometry Ids = Logical True
+
+! The ElasticSolver does not really like the Dirichlet conditions at the start 
+! of the nonlinear iteration. 
+  Initialize Dirichlet Conditions = False
+End
+
+Equation 1
+  Name = "Deformation"
+  Active Solvers(1) = 1
+End
+
+Body 1
+  Name = "Lower block"
+  Target Bodies(1) = 1
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Name = "Upper block"
+  Target Bodies(1) = 2
+  Equation = 1
+  Material = 1
+End
+
+Material 1
+  Name = "Ideal"
+  Youngs modulus = 90.0
+  Density = 10.0
+  Poisson ratio = 0.25
+End
+
+Solver 1
+  Equation = "Nonlinear elasticity"
+  Procedure = "ElasticSolve" "ElasticSolver"
+!  Variable = -dofs 2 Displacement
+
+! Have pressure as variable also!
+  Mixed Formulation = Logical True
+  Neo-Hookean Material = Logical True
+  Bubbles in Global System = False
+
+  Element = p:1 b:3
+
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Max Iterations = 10
+  Nonlinear System Relaxation Factor = 1.0
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU2"
+  Linear System Residual Output = 100
+  Linear System Max Iterations = 5000
+  BiCGStabl Polynomial Degree = 4
+  
+  Linear System Convergence Tolerance = 1.0e-10
+
+  Apply Contact BCs = Logical True
+! Save Contact = Logical True
+
+! Restore the linear solution
+! Elasticity Solver Linear = Logical True
+
+  Calculate Stresses = Logical True
+! Optimize Bandwidth = False
+
+  Displace Mesh = Logical True
+
+! Do not include constraints when analyzing the convergence and norm of a solution
+  Nonlinear System Convergence Without Constraints = Logical True
+End
+
+Solver 2
+  Exec Solver = never
+  Equation = "SaveLine"
+  Procedure = "SaveData" "SaveLine"
+  Filename = f_$fileid$.dat
+End
+
+Boundary Condition 1
+  Name = "Support"
+  Target Boundaries(1) = 1
+  Displacement 2 = Real 0.0
+  Disp 2 = Real 0.0
+End
+
+Boundary Condition 2
+  Name = "Lower surface of upper block"
+  Target Boundaries(1) = 5
+
+  Mortar BC = Integer 3
+  Mortar BC Nonlinear = Logical True
+  Contact Depth Offset Initial = Real 1.0e-3
+  !Contact Active Set Minimum = Integer 1
+  !Contact No-Slip = Logical True
+
+! Create a strong projector for the line setting y-coordinate to zero
+  Flat Projector = Logical True
+
+! a) Use weak projector or not
+  Galerkin Projector = Logical True
+
+! b) Use more tailored projector able to do accurate integration
+  Level Projector = Logical True
+  Level Projector Generic = True
+End
+
+Boundary Condition 3
+  Name = "Upper surface of lower block"
+  Target Boundaries(1) = 3
+End
+
+Boundary Condition 4
+  Name = "Pressure load the upper surface of upper block"
+  Target Boundaries(1) = 7
+  Normal Surface Traction = -1.0
+End
+
+Boundary Condition 5
+  Name = "Symmetry"
+  Target Boundaries(2) = 4 8
+  Displacement 1 = 0.0
+  Disp 1 = Real 0.0
+End
+
+Solver 1 :: Reference Norm = 1.44268191E-01
+Solver 1 :: Reference Norm Tolerance = 1.0e-5
+

@@ -121,9 +121,9 @@ int FuseSolutionElmerPartitioned(char *prefix,char *outfile,int decimals,int par
   }
   totknots = sumknots;
   totelements = sumelements;
-  res = Rvector(1,novctrs);
+  if(novctrs) res = Rvector(1,novctrs);
 
-  if(info) printf("There are altogether %d nodes and %d elements.\n",totknots,sumelements);
+  if(info) printf("There are %d nodes, %d elements and %d vectors.\n",totknots,sumelements,novctrs);
 
 
   AddExtension(outfile,filename,"ep");
@@ -192,6 +192,8 @@ int FuseSolutionElmerPartitioned(char *prefix,char *outfile,int decimals,int par
   }
 
   if(info) printf("Reading and writing %d degrees of freedom.\n",novctrs);
+  if(!novctrs) goto skip;
+  
   sprintf(outstyle,"%%.%dg ",decimals);
 
   activestep = FALSE;
@@ -233,6 +235,7 @@ int FuseSolutionElmerPartitioned(char *prefix,char *outfile,int decimals,int par
   }
 
 
+ skip:
   for(i=0;i<nofiles;i++) 
     fclose(in[i]);
   fclose(out);
@@ -2392,7 +2395,7 @@ int PartitionMetisMesh(struct FemType *data,struct ElmergridType *eg,
    used. If the elements are higher order nodal elements then use only the linear basis. */
 {
   int i,j,k,periodic, noelements, noknots, sides, highorder;
-  int nodesd2, etype, numflag,mintype,maxtype,elemtype,minnodes;
+  int nodesd2, etype, numflag,mintype,maxtype,elemtype,minnodes,ninv;
   int *neededby,*indxper,*inpart;
   idx_t *metistopo,*eptr,*npart,*epart;
   idx_t ne,nn,ncommon,edgecut,nparts;
@@ -2560,12 +2563,19 @@ int PartitionMetisMesh(struct FemType *data,struct ElmergridType *eg,
   }
 
   /* Set the partition given by Metis for each element. */
+  ninv = 0;
   for(i=1;i<=noelements;i++) {
     inpart[i] = epart[i-1]+1;
-    if(inpart[i] < 1 || inpart[i] > partitions) 
-      printf("Invalid partition %d for element %d\n",inpart[i],i);
+    if(inpart[i] < 1 || inpart[i] > partitions) {
+      if(ninv < 10 ) printf("Invalid partition %d for element %d\n",inpart[i],i);
+      ninv++;
+    }
   }
-
+  if(ninv) {
+    printf("Number of invalid element partitions by Metis %d\n",ninv);
+    bigerror("Cannot continue with invalid partitioning!");
+  }
+	     
   if( highorder ) {
     PartitionNodesByElements(data,info);
   }
@@ -2580,11 +2590,17 @@ int PartitionMetisMesh(struct FemType *data,struct ElmergridType *eg,
 	j = i;
       if(!j) printf("Cannot set partitioning for node %d\n",i);
       data->nodepart[i] = npart[j-1]+1;
-      if(data->nodepart[i] < 1 || data->nodepart[i] > partitions) 
-        printf("Invalid partition %d for node %d\n",data->nodepart[i],i);
+      if(data->nodepart[i] < 1 || data->nodepart[i] > partitions) {
+        if(ninv < 10) printf("Invalid partition %d for node %d\n",data->nodepart[i],i);
+	ninv++;
+      }
+    }
+    if(ninv) {
+      printf("Number of invalid node partitions by Metis %d\n",ninv);
+      bigerror("Cannot continue with invalid partitioning!");
     }
   }
-
+  
   free_Ivector(neededby,1,noknots);
   free_Ivector(metistopo,0,k-1);
   free_Ivector(epart,0,noelements-1);

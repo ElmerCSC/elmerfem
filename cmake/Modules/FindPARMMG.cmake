@@ -9,9 +9,7 @@
 #  PARMMG_LIBRARY            - mmg library is
 #  PARMMG_INCLUDE_DIR       - mmg include dir.
 
-INCLUDE(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
-
-CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
+INCLUDE(FindPackageHandleStandardArgs)
 
 # If MMG_LIBRARY and MMG_INCLUDE_DIR  are already defined, do nothing
 IF(PARMMG_LIBRARY AND PARMMG_INCLUDE_DIR)

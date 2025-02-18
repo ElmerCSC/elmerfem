@@ -84,7 +84,8 @@ SUBROUTINE Weertman2CoulombSolver( Model,Solver,dt,TransientSimulation )
        tangentialvelocity(3), tangentialvelocitysquared, normal(3), velo(3), MinAs
   REAL(KIND=dp), POINTER     :: CoulombParam(:), lwcValues(:), AsValues(:), EPvalues(:), &
        FlowValues(:), CValues(:), NormalValues(:)
-  LOGICAL                    :: GotIt, UseNormal
+  REAL(KIND=dp)              :: limit, factor
+  LOGICAL                    :: GotIt, UseNormal, AsScaling
   CHARACTER(LEN=MAX_NAME_LEN):: FlowSolverName, Cname, Asname, CoulombVarName, LWCname
   CHARACTER(LEN=MAX_NAME_LEN):: ConversionMode
 
@@ -157,6 +158,9 @@ SUBROUTINE Weertman2CoulombSolver( Model,Solver,dt,TransientSimulation )
   IF (.NOT.GotIt) &
        CALL FATAL("Weertman2Coulomb",'No "Conversion mode" found')
   !
+  AsScaling = GetLogical(SolverParams, "As Scaling", GotIt)
+  IF (.NOT.GotIt) &
+      AsScaling = .TRUE. 
   IF (ConversionMode.EQ."Threshold") THEN
      BetaSwitch = GetConstReal(SolverParams, "Threshold Sliding Coefficient", GotIt)
      IF (.NOT.GotIt) &
@@ -183,8 +187,7 @@ SUBROUTINE Weertman2CoulombSolver( Model,Solver,dt,TransientSimulation )
        CALL FATAL("Weertman2Coulomb",'Variable "FlowVariable" not found')
   FlowPerm    => FlowVariable % Perm
   FlowValues  => FlowVariable % Values
-
-
+  
   ! Loop over all nodes
   DO nn = 1, Solver % Mesh % Nodes % NumberOfNodes
      
@@ -200,7 +203,6 @@ SUBROUTINE Weertman2CoulombSolver( Model,Solver,dt,TransientSimulation )
         END IF
      END DO
 
-     
      IF (UseNormal) THEN
         normalvelocity = SUM(normal(1:DIM)*velo(1:DIM))*normal
         tangentialvelocity = velo - normalvelocity
@@ -208,7 +210,7 @@ SUBROUTINE Weertman2CoulombSolver( Model,Solver,dt,TransientSimulation )
         tangentialvelocity = velo
      END IF
      tangentialvelocitysquared = SUM(tangentialvelocity(1:DIM)*tangentialvelocity(1:DIM))
-     
+
      SELECT CASE(ConversionMode)
 
      CASE("Threshold","threshold")
@@ -236,13 +238,33 @@ SUBROUTINE Weertman2CoulombSolver( Model,Solver,dt,TransientSimulation )
         ! (assuming n = 3)
         AsValues(AsPerm(nn)) = &
              tangentialvelocitysquared**(-1) * lwcValues(lwcPerm(nn))**(-3.0_dp)
-        CoulombParam(CoulombPerm(nn)) = tanh(2.0_dp*EPvalues(EPperm(nn)))
-        AsValues(AsPerm(nn)) = CoulombParam(CoulombPerm(nn)) * AsValues(AsPerm(nn)) 
+        IF (AsScaling) THEN
+          CoulombParam(CoulombPerm(nn)) = tanh(2.0_dp*EPvalues(EPperm(nn)))
+          AsValues(AsPerm(nn)) = CoulombParam(CoulombPerm(nn)) * AsValues(AsPerm(nn)) 
+        END IF
 
-        ! C = u_b.beta.N^(-1).(1 - beta^3.u_b^2.A_s)^(-1/3)   
-        CValues(CPerm(nn)) = SQRT(tangentialvelocitysquared) * lwcValues(lwcPerm(nn))           &
-             * EPvalues(EPperm(nn))**(-1.0_dp) * (1.0_dp - lwcValues(lwcPerm(nn))**(3.0_dp)     &
-             * SQRT(tangentialvelocitysquared)**2.0_dp * AsValues(AsPerm(nn)) )**(-1.0_dp/3.0_dp) 
+        ! Figuring out how to stop C going negative in a consistent way...
+        ! (in this case modifying As to stop C going negative)
+        ! Impose this inequality:
+        !     lwc^3 ub^2 As < 1
+        ! =>  As            < 1/(lwc^3 ub^2)
+        ! Safer... (limit is almost 1)
+        !     As            < limit/(lwc^3 ub^2)
+        limit = 0.99999999999999_dp
+        factor = limit/(lwcValues(lwcPerm(nn))**(3.0_dp) * SQRT(tangentialvelocitysquared)**2.0_dp )
+        IF ( AsValues(AsPerm(nn)).GT.factor ) THEN
+          AsValues(AsPerm(nn)) = factor
+        END IF
+          
+        ! now use factor for something slightly different... (the full lwc^3 ub^2 As)
+        factor = ( lwcValues(lwcPerm(nn))**(3.0_dp)     &
+             * SQRT(tangentialvelocitysquared)**2.0_dp * AsValues(AsPerm(nn)) )
+        ! C = u_b.beta.N^(-1).(1 - beta^3.u_b^2.A_s)^(-1/3)
+        CValues(CPerm(nn)) = SQRT(tangentialvelocitysquared) * lwcValues(lwcPerm(nn))    &
+             * EPvalues(EPperm(nn))**(-1.0_dp) * (1.0_dp - factor)**(-1.0_dp/3.0_dp) 
+
+        ! The older way to stop C oging negative (potentialy inconsistent As & C values):
+        !        IF (factor.GT.limit) factor = limit
 
      CASE DEFAULT
         CALL FATAL("Weertman2Coulomb",'Conversion mode not recognised')

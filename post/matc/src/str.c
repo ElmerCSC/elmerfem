@@ -3,7 +3,7 @@
  *  Elmer, A Finite Element Software for Multiphysical Problems
  *
  *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
- * 
+ *
  *  This program is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU General Public License
  *  as published by the Free Software Foundation; either version 2
@@ -15,8 +15,8 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with this program (in file fem/GPL-2); if not, write to the 
- *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
+ *  along with this program (in file fem/GPL-2); if not, write to the
+ *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
  *  Boston, MA 02110-1301, USA.
  *
  *****************************************************************************/
@@ -45,7 +45,7 @@
  ******************************************************************************/
 
 /*
- * $Id: str.c,v 1.1.1.1 2005/04/14 13:29:14 vierinen Exp $ 
+ * $Id: str.c,v 1.1.1.1 2005/04/14 13:29:14 vierinen Exp $
  *
  * $Log: str.c,v $
  * Revision 1.1.1.1  2005/04/14 13:29:14  vierinen
@@ -54,33 +54,33 @@
  * Revision 1.2  1998/08/01 12:34:55  jpr
  *
  * Added Id, started Log.
- * 
+ *
  *
  */
 
 #include "elmer/matc.h"
 #include "str.h"
 
-VARIABLE *str_sprintf(var) VARIABLE *var;
+VARIABLE *str_sprintf(VARIABLE *var)
 {
   char *fmt = var_to_string(var);
   VARIABLE *res;
   int i;
- 
+
   if (NEXT(var) != NULL)
   {
     for(i = 0; i < NCOL(NEXT(var)); i++)
     {
       str_p[i] = M(NEXT(var),0,i);
     }
-    sprintf(str_pstr, fmt, 
+    sprintf(str_pstr, fmt,
             str_p[0],  str_p[1],  str_p[2],  str_p[3],  str_p[4],  str_p[5],
             str_p[6],  str_p[7],  str_p[8],  str_p[9],  str_p[10], str_p[11],
             str_p[12], str_p[13], str_p[14], str_p[15], str_p[16], str_p[17],
             str_p[18], str_p[19], str_p[20], str_p[21], str_p[22], str_p[23],
             str_p[24], str_p[25], str_p[26], str_p[27], str_p[28], str_p[29]);
   }
-  else 
+  else
   {
     sprintf(str_pstr, fmt, NULL);
   }
@@ -88,7 +88,6 @@ VARIABLE *str_sprintf(var) VARIABLE *var;
   FREEMEM(fmt);
 
   res = var_temp_new(TYPE_STRING,1,strlen(str_pstr));
-
   for(i = 0; i < NCOL(res); i++)
   {
     M(res,0,i) = str_pstr[i];
@@ -97,14 +96,14 @@ VARIABLE *str_sprintf(var) VARIABLE *var;
   return res;
 }
 
-VARIABLE *str_sscanf(var) VARIABLE *var;
+VARIABLE *str_sscanf(VARIABLE *var)
 {
   char *fmt = var_to_string(NEXT(var));
   char *str = var_to_string(var);
   VARIABLE *res;
   int i, got;
- 
-  got = sscanf(str, fmt, 
+
+  got = sscanf(str, fmt,
       &str_p[0],  &str_p[1],  &str_p[2],  &str_p[3],  &str_p[4],  &str_p[5],
       &str_p[6],  &str_p[7],  &str_p[8],  &str_p[9],  &str_p[10], &str_p[11],
       &str_p[12], &str_p[13], &str_p[14], &str_p[15], &str_p[16], &str_p[17],
@@ -126,7 +125,7 @@ VARIABLE *str_sscanf(var) VARIABLE *var;
   return res;
 }
 
-VARIABLE *str_matcvt(var) VARIABLE *var;
+VARIABLE *str_matcvt(VARIABLE *var)
 {
   VARIABLE *res = NULL;
 
@@ -142,7 +141,7 @@ VARIABLE *str_matcvt(var) VARIABLE *var;
     rlen = (MATSIZE(var)/2+7)/8;
     res = var_temp_new(TYPE(var), 1, rlen);
     f = (float *)MATR(res);
-  
+
     for(i = 0; i < NCOL(var)*NROW(var); i++)
     {
       *f++ = (float)*d++;
@@ -155,7 +154,7 @@ VARIABLE *str_matcvt(var) VARIABLE *var;
     rlen = (MATSIZE(var)/2+7)/8;
     res = var_temp_new(TYPE(var), 1, rlen);
     n = (int *)MATR(res);
-  
+
     for(i = 0; i < NCOL(var)*NROW(var); i++)
     {
       *n++ = (int)*d++;
@@ -168,13 +167,13 @@ VARIABLE *str_matcvt(var) VARIABLE *var;
     rlen = (MATSIZE(var)/8+7)/8;
     res = var_temp_new(TYPE(var), 1, rlen);
     c = (char *)MATR(res);
-  
+
     for(i = 0; i < NCOL(var)*NROW(var); i++)
     {
       *c++ = (char)*d++;
     }
   }
-  else 
+  else
   {
     fprintf(math_err, "matcvt: unknown result type specified.\n");
   }
@@ -184,7 +183,7 @@ VARIABLE *str_matcvt(var) VARIABLE *var;
   return res;
 }
 
-VARIABLE *str_cvtmat(var) VARIABLE *var;
+VARIABLE *str_cvtmat(VARIABLE *var)
 {
   VARIABLE *res = NULL;
   double *d;
@@ -197,10 +196,10 @@ VARIABLE *str_cvtmat(var) VARIABLE *var;
   {
     float *f = (float *)MATR(var);
 
-    rlen = MATSIZE(var)/4; 
+    rlen = MATSIZE(var)/4;
     res = var_temp_new(TYPE(var), 1, rlen);
     d = MATR(res);
-  
+
     for(i = 0; i < rlen; i++)
     {
       *d++ = (double)*f++;
@@ -213,7 +212,7 @@ VARIABLE *str_cvtmat(var) VARIABLE *var;
     rlen = MATSIZE(var)/4;
     res = var_temp_new(TYPE(var), 1, rlen);
     d = MATR(res);
-  
+
     for(i = 0; i < rlen; i++)
     {
       *d++ = (double)*n++;
@@ -226,13 +225,13 @@ VARIABLE *str_cvtmat(var) VARIABLE *var;
     rlen = MATSIZE(var);
     res = var_temp_new(TYPE(var), 1, rlen);
     d = MATR(res);
-  
+
     for(i = 0; i < rlen; i++)
     {
       *d++ = (double)*c++;
     }
   }
-  else 
+  else
   {
     fprintf(math_err, "matcvt: unknown result type specified.\n");
   }
@@ -243,7 +242,27 @@ VARIABLE *str_cvtmat(var) VARIABLE *var;
 }
 
 
-void str_com_init()
+
+VARIABLE *str_env(VARIABLE *var)
+{
+  VARIABLE *res = NULL;
+  int i;
+  char *name = var_to_string(var), *str;
+
+  str = getenv(name);
+
+  if ( str ) {
+    res = var_temp_new(TYPE_STRING,1,strlen(str));
+    for(i = 0; i < NCOL(res); i++)
+    {
+      M(res,0,i) = str[i];
+    }
+  }
+
+  return res;
+}
+
+void str_com_init(void)
 {
   static char *sprintfHelp =
   {
@@ -277,8 +296,15 @@ void str_com_init()
      "SEE ALSO: fread, matcvt.\n"
   };
 
+  static char *envHelp =
+  {
+     "str = env(name)\n"
+     "return environment variable value.\n"
+  };
+
   com_init( "sprintf", FALSE, TRUE, str_sprintf, 1, 2, sprintfHelp );
   com_init( "sscanf",  FALSE, TRUE, str_sscanf,  2, 2, sscanfHelp  );
   com_init( "matcvt",  FALSE, TRUE, str_matcvt,  2, 2, matcvtHelp  );
   com_init( "cvtmat",  FALSE, TRUE, str_cvtmat,  2, 2, cvtmatHelp  );
+  com_init( "env",     FALSE, TRUE, str_env,  1, 1, envHelp  );
 }

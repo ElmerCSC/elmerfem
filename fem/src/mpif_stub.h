@@ -1,5 +1,5 @@
 !
-! stub header for disabled mpi 
+! stub header for disabled mpi
 !
        INTEGER MPI_COMM_WORLD
        PARAMETER (MPI_COMM_WORLD=1)
@@ -42,3 +42,5 @@
        PARAMETER (MPI_THREAD_FUNNELED=1)
        INTEGER MPI_IN_PLACE
        PARAMETER (MPI_IN_PLACE=1)
+       INTEGER MPI_SUCCESS
+       PARAMETER (MPI_SUCCESS=0)

@@ -57,7 +57,7 @@ SUBROUTINE bedrock( Model,Solver,dt,TransientSimulation )
             y = Model % Nodes % y(Element % NodeIndexes(ii))
             VariableValues(Permutation(Element % NodeIndexes(ii))) = fbed(x,y) 
       ELSE IF (DIM==2) THEN
-            VariableValues(Permutation(Element % NodeIndexes(ii))) = fbed(x,0.0)
+            VariableValues(Permutation(Element % NodeIndexes(ii))) = fbed(x,0.0_dp)
       END IF
 
     END DO

@@ -142,6 +142,7 @@ CONTAINS
        NT => CurrentModel % Solver % NormalTangential
        NT % NormalTangentialNOFNodes = 0
        NT % NormalTangentialName = TRIM(str)
+
        CALL CheckNormalTangentialBoundary( CurrentModel, NT % NormalTangentialName, &
            NT % NormalTangentialNOFNodes, NT % BoundaryReorder, &
            NT % BoundaryNormals, NT % BoundaryTangent1, NT % BoundaryTangent2, dim )
@@ -509,10 +510,14 @@ CONTAINS
 
 !------------------------------------------------------------------------------
      Order = MIN(Solver % DoneTime, Solver % Order)
+     IF(Order == 0 ) THEN
+       CALL Info('Add1stOrderTime_CRS','Zeroth order, nothing to do!',Level=20)
+       RETURN
+     END IF
+     
      Method = ListGetString( Solver % Values, 'Timestepping Method', GotIt )
      CurrSol => Solver % Variable % Values
      PrevSol => Solver % Variable % PrevValues
-
      
      SELECT CASE( Method )
        
@@ -539,12 +544,18 @@ CONTAINS
      CASE('runge-kutta')
        CALL RungeKutta_CRS( dt, Matrix, Force, PrevSol(:,1), CurrSol )
 
+     CASE('adams-bashforth')
+       CALL Fatal('Add1stOrderTime_CRS','Not implemented for method: '//TRIM(Method))
+       
+     CASE('adams-moulton')
+       CALL Fatal('Add1stOrderTime_CRS','Not implemented for method: '//TRIM(Method))
+       
      CASE DEFAULT
        CALL NewmarkBeta_CRS( dt, Matrix, Force, PrevSol(:,1), &
              Solver % Beta )
 
      END SELECT
-
+     
 !------------------------------------------------------------------------------
    END SUBROUTINE Add1stOrderTime_CRS
 !------------------------------------------------------------------------------
@@ -680,7 +691,26 @@ CONTAINS
    END SUBROUTINE Add2ndOrderTime
 !------------------------------------------------------------------------------
 
+   
+   SUBROUTINE Add2ndOrderTime_CRS( Matrix, Force, &
+       dt, PrevValues, Solver )
+!------------------------------------------------------------------------------
+     TYPE(Matrix_t), POINTER :: Matrix  !< Global matrix (including stiffness and mass)
+     REAL(KIND=dp) :: Force(:)          !< Global right-hand-side vector.
+     REAL(KIND=dp) :: dt                !< Simulation timestep size
+     REAL(KIND=dp), POINTER :: PrevValues(:,:)
+     TYPE(Solver_t), POINTER :: Solver
+     
+     IF( Matrix % Lumped ) THEN
+       CALL Fatal('Add2ndOrderTime_CRS','Implement matrix lumping for this!')
+     END IF
 
+     CALL Time2ndOrder_CRS(dt, Matrix, Force, Solver % Alpha, Solver % Beta, PrevValues )
+     
+   END SUBROUTINE Add2ndOrderTime_CRS
+     
+
+   
 !------------------------------------------------------------------------------
 !> Update the right-hand-side of the global equation by adding the local entry. 
 !------------------------------------------------------------------------------
@@ -752,13 +782,17 @@ CONTAINS
        Rotate = ( NT % NormalTangentialNOFNodes > 0 )
      END IF
 
-     
      IF ( Rotate ) THEN
        NormalIndexes = 0
 
        np = mGetElementDOFs(pIndexes,Element)
-       np = MIN(np,n)
-       NormalIndexes(1:np) = NT % BoundaryReorder(pIndexes(1:np))
+       np = MIN(np, n)
+       DO i=1,np
+         j = pIndexes(i)
+         IF(j>0 .AND. j<= SIZE(NT % BoundaryReorder)) THEN
+           NormalIndexes(i) = NT % BoundaryReorder(j)
+         END IF
+       END DO
        
        CALL RotateMatrix( LocalStiffMatrix, LocalForce, n, dim, NDOFs, &
           NormalIndexes, NT % BoundaryNormals, NT % BoundaryTangent1, NT % BoundaryTangent2 )
@@ -812,9 +846,9 @@ CONTAINS
 
      ! Local variables
      INTEGER :: dim, i,j,k,np
-     INTEGER :: Ind(n*NDOFs),pIndexes(64)
+     INTEGER :: NormalIndexes(n),pIndexes(64)
      REAL(KIND=dp) :: Vals(n*NDOFs)
-!DIR$ ATTRIBUTES ALIGN:64::Ind, Vals
+!DIR$ ATTRIBUTES ALIGN:64::Vals
 
      TYPE(Element_t), POINTER :: Element
      LOGICAL :: Rotate
@@ -842,16 +876,22 @@ CONTAINS
        NT => CurrentModel % Solver % NormalTangential
        Rotate = ( NT % NormalTangentialNOFNodes > 0 )
      END IF
-     
+
      IF ( Rotate ) THEN
-       Ind = 0
+       NormalIndexes = 0
 
        np = mGetElementDOFs(pIndexes,Element)
        np = MIN(np,n)
-       Ind(1:np) = NT % BoundaryReorder(pIndexes(1:np))
+
+       DO i=1,np
+         j = pIndexes(i)
+         IF(j>0 .AND. j<= SIZE(NT % BoundaryReorder)) THEN
+           NormalIndexes(i) = NT % BoundaryReorder(j)
+         END IF
+       END DO
        
        ! TODO: See that RotateMatrix is vectorized
-       CALL RotateMatrix( Lmtr, Lvec, n, dim, NDOFs, Ind, NT % BoundaryNormals, &
+       CALL RotateMatrix( Lmtr, Lvec, n, dim, NDOFs, NormalIndexes, NT % BoundaryNormals, &
                     NT % BoundaryTangent1, NT % BoundaryTangent2 )
 
        !IF ( Rotate .AND. NormalTangentialNOFNodes > 0 .AND. ndofs>=dim) THEN
@@ -977,7 +1017,13 @@ CONTAINS
 
        np = mGetElementDOFs(pIndexes,Element)
        np = MIN(np,n)
-       NormalIndexes(1:np) = NT % BoundaryReorder(pIndexes(1:np))
+
+       DO i=1,np
+         j = pIndexes(i)
+         IF(j>0 .AND. j<= SIZE(NT % BoundaryReorder)) THEN
+           NormalIndexes(i) = NT % BoundaryReorder(j)
+         END IF
+       END DO
 
        CALL RotateMatrix( LocalStiffMatrix, LocalForce, n, dim, NDOFs, &
           NormalIndexes, NT % BoundaryNormals, NT % BoundaryTangent1, NT % BoundaryTangent2 )
@@ -1203,7 +1249,8 @@ CONTAINS
          ElemFirst, ElemLast, totsize, i2, j2, ind2
      REAL(KIND=dp), POINTER :: FieldValues(:), LoadValues(:), &
          ElemLimit(:),ElemInit(:), ElemActive(:)
-     REAL(KIND=dp) :: LimitSign, EqSign, ValEps, LoadEps, val
+     REAL(KIND=dp) :: LimitSign, EqSign, ValEps, LoadEps, ValEps0, LoadEps0, &
+         MaxValue, MaxLoad, val
      INTEGER, POINTER :: FieldPerm(:), NodeIndexes(:)
      LOGICAL :: Found,AnyLimitBC, AnyLimitBF, GotInit, GotActive
      LOGICAL, ALLOCATABLE :: LimitDone(:)
@@ -1211,18 +1258,17 @@ CONTAINS
      TYPE(ValueList_t), POINTER :: Params, Entity
      LOGICAL, ALLOCATABLE :: InterfaceDof(:)
      INTEGER :: ConservativeAfterIters, NonlinIter, CoupledIter, DownStreamDirection
-     LOGICAL :: Conservative, ConservativeAdd, ConservativeRemove, &
+     LOGICAL :: Conservative, ConservativeAdd, ConservativeRemove, RelativeEps, &
          DoAdd, DoRemove, DirectionActive, FirstTime, DownStreamRemove
      TYPE(Mesh_t), POINTER :: Mesh
 
      CHARACTER(:), ALLOCATABLE :: Name,LimitName, InitName, ActiveName
      CHARACTER(*), PARAMETER :: Caller = 'DetermineSoftLimiter'
-     
+
      Model => CurrentModel
      Var => Solver % Variable
      Mesh => Solver % Mesh
      
-
      ! Check the iterations counts and determine whether this is the first 
      ! time with this solver. 
      !------------------------------------------------------------------------
@@ -1238,7 +1284,11 @@ CONTAINS
        CoupledIter = NINT( iterV % Values(1) )
        IF( CoupledIter > 1 ) FirstTime = .FALSE.
      END IF
-          
+     IF( FirstTime ) THEN
+       CALL Info(Caller,'Initializing soft limiter for solver',Level=10)
+     END IF
+
+     
      ! Determine variable for computing the contact load used to determine the 
      ! soft limit set.
      !------------------------------------------------------------------------
@@ -1253,7 +1303,6 @@ CONTAINS
        RETURN
      END IF
      LoadValues => LoadVar % Values
-
 
      ! The variable to be constrained by the soft limiters
      FieldValues => Var % Values
@@ -1292,12 +1341,16 @@ CONTAINS
        IF(.NOT. Found ) DownStreamDirection = 1
      END IF
        
-     LoadEps = ListGetConstReal(Params,'Limiter Load Tolerance',Found ) 
-     IF(.NOT. Found ) LoadEps = EPSILON( LoadEps )
-         
-     ValEps = ListGetConstReal(Params,'Limiter Value Tolerance',Found ) 
-     IF(.NOT. Found ) ValEps = EPSILON( ValEps )
+     LoadEps0 = ListGetConstReal(Params,'Limiter Load Tolerance',Found ) 
+     IF(.NOT. Found ) LoadEps0 = 1.0e-8_dp
+     LoadEps = LoadEps0
+     
+     ValEps0 = ListGetConstReal(Params,'Limiter Value Tolerance',Found ) 
+     IF(.NOT. Found ) ValEps0 = 1.0e-8_dp
+     ValEps = ValEps0
 
+     RelativeEps = ListGetLogical(Params,'Limiter Relative Tolerance', Found ) 
+     
      ! The user may want to toggle the sign for various kinds of equations
      ! The default sign that come from standard formulation of Laplace equation.
      !---------------------------------------------------------------------------       
@@ -1366,7 +1419,7 @@ CONTAINS
          IF( AnyLimitBF ) ElemFirst = 1
          IF( AnyLimitBC ) ElemLast = Model % NumberOfBulkElements + &
              Model % NumberOfBoundaryElements 
-         
+
          IF(.NOT. ALLOCATED( LimitDone) ) THEN
            n = Model % MaxElementNodes
            ALLOCATE( LimitDone( totsize ), ElemLimit(n), ElemInit(n), ElemActive(n) )
@@ -1397,6 +1450,25 @@ CONTAINS
            LimitDone = .FALSE.
          END IF
 
+         IF( RelativeEps ) THEN         
+           IF( dofs == 1 ) THEN
+             MaxLoad = MAXVAL( ABS( LoadValues ) )
+             MaxValue = MAXVAL( ABS( Var % Values ) ) 
+           ELSE
+             MaxLoad = MAXVAL( ABS( LoadValues(dof::dofs ) ) )
+             MaxValue = MAXVAL( ABS( Var % Values(dof::dofs) ) ) 
+           END IF
+           MaxLoad = ParallelReduction(MaxLoad)
+           MaxValue = ParallelReduction(MaxValue)
+           IF( InfoActive(20) ) THEN
+             WRITE(Message,'(A,ES12.3)') 'Using load maximum for scaling: ',MaxLoad
+             CALL Info(Caller,Message)
+             WRITE(Message,'(A,ES12.3)') 'Using value maximum for scaling: ',MaxValue
+             CALL Info(Caller,Message)
+           END IF
+           LoadEps = LoadEps0 * MaxLoad
+           ValEps = ValEps0 * MaxValue 
+         END IF
 
          IF( FirstTime ) THEN
            ! In the first time set the initial set 
@@ -1651,7 +1723,7 @@ CONTAINS
                  ! This means that set is released only at the boundaries. 
                  IF( ConservativeRemove ) DoRemove = InterfaceDof( ind ) 
                  IF( DoRemove ) THEN
-                   IF(LimitActive(ind)) THEN
+                   IF(LimitActive(ind)) THEN                     
                      removed = removed + 1
                      LimitActive(ind) = .FALSE.
                    END IF
@@ -1678,10 +1750,13 @@ CONTAINS
                END IF
              END IF
 
-             ! Enforce the values to limits because nonlinear material models
-             ! may otherwise lead to divergence of the iteration
-             !--------------------------------------------------------------
              IF( LimitActive(ind) ) THEN
+               ! Set the Dirichlet conditions already here!
+               Solver % Matrix % DValues(ind) = ElemLimit(i)
+               Solver % Matrix % ConstrainedDOF(ind) = .TRUE.
+
+               ! Enforce the values to limits because nonlinear material models
+               ! may otherwise lead to divergence of the iteration
                IF( Upper == 0 ) THEN
                  Var % Values(ind) = MAX( Var % Values(ind), ElemLimit(i) )
                ELSE
@@ -1698,30 +1773,18 @@ CONTAINS
          ! Output some information before exiting
          !---------------------------------------------------------------------
          IF( Upper == 0 ) THEN
-           CALL Info(Caller,'Determined lower soft limit set',Level=6)
+           WRITE(Message,'(A,I0)') 'Number of lower limited dofs for '&
+               //TRIM(GetVarName(Var))//': ',COUNT( LimitActive )
          ELSE
-           CALL Info(Caller,'Determined upper soft limit set',Level=6)
+           WRITE(Message,'(A,I0)') 'Number of upper limited dofs for '&
+               //TRIM(GetVarName(Var))//': ',COUNT( LimitActive )
          END IF
-
-         WRITE(Message,'(A,I0)') 'Number of limited dofs for '&
-             //TRIM(GetVarName(Var))//': ',COUNT( LimitActive )
          CALL Info(Caller,Message,Level=5)
          
-         IF(added >= 0) THEN
-           WRITE(Message,'(A,I0,A)') 'Added ',added,' dofs to the set'
-           CALL Info(Caller,Message,Level=6)
+         IF(added + removed >= 0) THEN
+           CALL Info(Caller,'Added '//I2S(added)//' and removed '&
+               //I2S(removed)//' dofs in contact set',Level=6)
          END IF
-         
-         IF(removed >= 0) THEN
-           WRITE(Message,'(A,I0,A)') 'Removed ',removed,' dofs from the set'
-           CALL Info(Caller,Message,Level=6)
-         END IF
-
-         ! Set the Dirichlet conditions already here!
-         WHERE( LimitActive )
-           Solver % Matrix % ConstrainedDOF = .TRUE.
-           Solver % Matrix % DValues = Var % Values
-         END WHERE
        END IF
          
      END DO
@@ -1735,23 +1798,28 @@ CONTAINS
        IF(.NOT. ASSOCIATED( LimitVar ) ) THEN
          CALL Info(Caller,'Creating field for contact: '//TRIM(GetVarName(Var)),Level=7)
          CALL VariableAddVector( Model % Variables, Solver % Mesh, Solver,&
-             GetVarName(Var) //' Contact Active', Perm = FieldPerm )
+             GetVarName(Var) //' Contact Active', Var % Dofs, Perm = FieldPerm )
          LimitVar => VariableGet( Model % Variables, &
              GetVarName(Var) // ' Contact Active',ThisOnly = .TRUE. )
        END IF
-
-       ! Currently the visulized limit is always scalar even though the limited field could be a vector!
-       DO i = 1, SIZE( LimitVar % Values ) 
-         LimitVar % Values(i) = 0.0_dp
-         DO j=1,Var % Dofs
-           IF( ASSOCIATED( Var % LowerLimitActive ) ) THEN
-             IF( Var % LowerLimitActive(Var%Dofs*(i-1)+j) ) LimitVar % Values(i) = -1.0_dp
-           END IF
-           IF( ASSOCIATED( Var % UpperLimitActive ) ) THEN
-             IF( Var % UpperLimitActive(Var%Dofs*(i-1)+j) ) LimitVar % Values(i) = 1.0_dp
-           END IF
-         END DO
-       END DO
+              
+       LimitVar % Values = 0.0_dp
+       IF( ASSOCIATED( Var % LowerLimitActive ) ) THEN
+         IF(SIZE(LimitVar % Values) /= SIZE(Var % LowerLimitActive)) THEN
+           CALL Fatal(Caller,'Mismatch in size for LimitVar values!')
+         END IF
+         WHERE( Var % LowerLimitActive ) 
+           LimitVar % Values = -1.0_dp
+         END WHERE           
+       END IF
+       IF( ASSOCIATED( Var % UpperLimitActive ) ) THEN
+         IF(SIZE(LimitVar % Values) /= SIZE(Var % UpperLimitActive)) THEN
+           CALL Fatal(Caller,'Mismatch in size for LimitVar values!')
+         END IF
+         WHERE( Var % UpperLimitActive ) 
+           LimitVar % Values = 1.0_dp
+         END WHERE           
+       END IF
      END IF
 
      IF( ALLOCATED( LimitDone ) ) THEN
@@ -1807,7 +1875,7 @@ CONTAINS
          WeightVar, NormalActiveVar, StickActiveVar, GapVar, ContactLagrangeVar
      TYPE(Element_t), POINTER :: Element
      TYPE(Mesh_t), POINTER :: Mesh
-     INTEGER :: i,j,k,l,n,m,t,ind,dofs, bf, Upper, &
+     INTEGER :: i,j,k,l,n,m,t,ind,dofs,cdofs,dim, bf, Upper, &
          ElemFirst, ElemLast, totsize, i2, j2, ind2, bc_ind, master_ind, &
          DistSign, LimitSign, DofN, DofT1, DofT2, Limited, LimitedMin, TimeStep
      REAL(KIND=dp), POINTER :: FieldValues(:), LoadValues(:), ElemLimit(:),pNormal(:,:),&
@@ -1859,12 +1927,29 @@ CONTAINS
      FieldPerm => Var % Perm
      totsize = SIZE( FieldValues )
      dofs = Var % Dofs
+     dim = Mesh % MeshDim 
      Params => Solver % Values
 
+     IF(dofs == dim) THEN
+       cdofs = dim
+     ELSE IF(dofs == dim+1) THEN
+       CALL Info(Caller,'We seem to have mixed formulation, ignoring pressure!',Level=7)
+       cdofs = dim
+     ELSE 
+       CALL Fatal(Caller,'Invalid number of dofs for contact problem: '//I2S(dofs))
+     END IF     
+
      pContact = IsPelement(Mesh % Elements(1) )
+     IF( pContact ) THEN
+       ! We only have to deal with the middle dofs if they are not condensated away!
+       IF( .NOT. ListGetLogical( Params,'Bubbles in Global System',Found ) ) THEN
+         IF(Found) pContact = .FALSE.   
+       END IF
+     END IF
      IF( ListGetLogical( Params,'Contact Linear Basis',Found ) ) THEN
        pContact = .FALSE.
      END IF
+    
      IF( pContact ) THEN
        CALL Info(Caller,'Using p-elements for contact, if available in projector!',Level=8)
      END IF
@@ -1978,7 +2063,7 @@ CONTAINS
 
        IF( FlatProjector ) THEN
          ActiveDirection = ListGetInteger( BC, 'Flat Projector Coordinate',Found )
-         IF( .NOT. Found ) ActiveDirection = dofs       
+         IF( .NOT. Found ) ActiveDirection = cdofs       
        ELSE IF( PlaneProjector ) THEN
          pNormal => ListGetConstRealArray( BC,'Plane Projector Normal',Found)
          IF( ThisRotatedContact ) THEN
@@ -2034,7 +2119,7 @@ CONTAINS
 
        ! Get the degrees of freedom related to the normal and tangential directions
        DofT1 = 0; DofT2 = 0
-       DO i=1,dofs
+       DO i=1,cdofs
          IF( i == DofN ) CYCLE
          IF( DofT1 == 0 ) THEN
            DofT1 = i 
@@ -2253,12 +2338,12 @@ CONTAINS
          IF( m == 0 ) CYCLE
          
          RotVec = 0._dp
-         DO k=1,Var % DOFs
-           RotVec(k) = RotatedField(Var % DOfs*(j-1)+k)
+         DO k=1,cdofs
+           RotVec(k) = RotatedField(dofs*(j-1)+k)
          END DO
          CALL RotateNTSystem( RotVec, i )
-         DO k=1,Var % DOFs
-           RotatedField(Var % Dofs*(j-1)+k) = RotVec( k )
+         DO k=1,cdofs
+           RotatedField(dofs*(j-1)+k) = RotVec( k )
          END DO
        END DO
 
@@ -2297,7 +2382,7 @@ CONTAINS
          TempX => FieldValues
        END IF
 
-       CALL CalculateLoads( Solver, Solver % Matrix, TempX, Var % DOFs, .FALSE., LoadVar ) 
+       CALL CalculateLoads( Solver, Solver % Matrix, TempX, dofs, .FALSE., LoadVar ) 
 
        IF( InfoActive(30) ) THEN
          CALL VectorValuesRange(LoadVar % Values, SIZE(LoadVar % Values),'ContactLoad')
@@ -2312,7 +2397,7 @@ CONTAINS
      SUBROUTINE PickLagrangeMultiplier( ) 
 
        TYPE(Variable_t), POINTER :: LinSysVar, ContactSysVar, ActiveVar
-       INTEGER :: i,j,k,l,n,dofs
+       INTEGER :: i,j,k,l,n
        INTEGER, POINTER :: InvPerm(:)
        
        CALL Info(Caller,'Pick lagrange coefficient from the active set to whole set',Level=10)
@@ -2340,7 +2425,6 @@ CONTAINS
        
        InvPerm => Solver % Matrix % ConstraintMatrix % InvPerm
        n = Solver % Matrix % ConstraintMatrix % NumberOfRows
-       dofs = Solver % Variable % dofs
        
        DO i=1,SIZE(InvPerm)
          ! This is related to the full matrix equation
@@ -2443,7 +2527,7 @@ CONTAINS
              TRIM(VarName)//' Contact Stick',1,Perm = BoundaryPerm )
          IF( CalculateVelocity ) THEN
            CALL VariableAddVector( Model % Variables,Mesh,Solver,&
-               TRIM(VarName)//' Contact Velocity',Dofs,Perm = BoundaryPerm )
+               TRIM(VarName)//' Contact Velocity',cDofs,Perm = BoundaryPerm )
          END IF
          CALL VariableAddVector( Model % Variables,Mesh,Solver,&
              TRIM(VarName)//' Lagrange Multiplier',1,Perm = BoundaryPerm )
@@ -2491,7 +2575,7 @@ CONTAINS
        LOGICAL :: SamePerm, SameSize
        
        onesize = Projector % NumberOfRows
-       totsize = Dofs * onesize
+       totsize = cDofs * onesize
 
        IF( .NOT. AddDiag .AND. ASSOCIATED(MortarBC % Diag) ) THEN
          DEALLOCATE( MortarBC % Diag ) 
@@ -2557,8 +2641,8 @@ CONTAINS
          k = MortarBC % Perm(i)
          IF( k == 0 ) CYCLE
 
-         DO l=1,Dofs
-           Active(Dofs*(j-1)+l) = MortarBC % Active(Dofs*(k-1)+l)
+         DO l=1,cDofs
+           Active(cDofs*(j-1)+l) = MortarBC % Active(cDofs*(k-1)+l)
          END DO
        END DO
 
@@ -2619,9 +2703,9 @@ CONTAINS
              IF( j2 == 0 ) CYCLE
              k2 = MortarBC % perm( Indexes(i2) )
              
-             DO l=1,Dofs             
-               ind = Dofs * ( k - 1 ) + l
-               ind2 = Dofs * ( k2 - 1) + l
+             DO l=1,cDofs             
+               ind = cDofs * ( k - 1 ) + l
+               ind2 = cDofs * ( k2 - 1) + l
                
                IF( MortarBC % Active(ind) .NEQV. MortarBC % Active(ind2) ) THEN
                  InterfaceDof(ind) = .TRUE.
@@ -2762,11 +2846,11 @@ CONTAINS
            LocalNormal = NTT(:,1)
            LocalNormal0 = LocalNormal
            LocalT1 = NTT(:,2)
-           IF( Dofs == 3 ) LocalT2 = NTT(:,3)
+           IF( cDofs == 3 ) LocalT2 = NTT(:,3)
          ELSE
            LocalNormal = ContactNormal
            LocalT1 = ContactT1
-           IF( Dofs == 3 ) LocalT2 = ContactT2 
+           IF( cDofs == 3 ) LocalT2 = ContactT2 
          END IF
 
          ! Compute normal of the master surface from the average sum of normals
@@ -2787,13 +2871,13 @@ CONTAINS
              ! Weighted direction for the unit vectors
              LocalNormal = LocalNormal + coeff * NTT(:,1)
              LocalT1 = LocalT1 + coeff * NTT(:,2)
-             IF( Dofs == 3 ) LocalT2 = LocalT2 + coeff * NTT(:,3)
+             IF( cDofs == 3 ) LocalT2 = LocalT2 + coeff * NTT(:,3)
            END DO
 
            ! Normalize the unit vector length to one
            LocalNormal = LocalNormal / SQRT( SUM( LocalNormal**2 ) )
            LocalT1 = LocalT1 / SQRT( SUM( LocalT1**2 ) )
-           IF( Dofs == 3 ) LocalT2 = LocalT2 / SQRT( SUM( LocalT1**2 ) )
+           IF( cDofs == 3 ) LocalT2 = LocalT2 / SQRT( SUM( LocalT1**2 ) )
 
            !PRINT *,'NodalNormal:',i,j,LocalNormal0,LocalNormal
          END IF
@@ -2877,14 +2961,12 @@ CONTAINS
              IF( ThisRotatedContact ) CoeffSign = -1
            END IF
            
-           IF( dofs == 2 ) THEN
-             disp(1) = DispVals( 2 * l - 1)
-             disp(2) = DispVals( 2 * l )
+           disp(1) = DispVals( dofs * (l-1) + 1)
+           disp(2) = DispVals( dofs * (l-1) + 2 )
+           IF( cdofs == 2 ) THEN
              disp(3) = 0.0_dp
            ELSE
-             disp(1) = DispVals( 3 * l - 2)
-             disp(2) = DispVals( 3 * l - 1 )
-             disp(3) = DispVals( 3 * l )
+             disp(3) = DispVals( dofs * (l-1) + 3 )
            END IF
 
            ! If nonlinear analysis is used we may need to cancel the introduced gap due to numerical errors 
@@ -2892,11 +2974,11 @@ CONTAINS
              IF( ThisRotatedContact ) THEN
                ContactVec(1) = ContactVec(1) + coeff * SUM( LocalNormal * Disp )
                ContactVec(2) = ContactVec(2) + coeff * SUM( LocalT1 * Disp )
-               IF( Dofs == 3) ContactVec(3) = ContactVec(3) + coeff * SUM( LocalT2 * Disp )
+               IF( cDofs == 3) ContactVec(3) = ContactVec(3) + coeff * SUM( LocalT2 * Disp )
              ELSE
                ContactVec(1) = ContactVec(1) + coeff * SUM( ContactNormal * Disp )
                ContactVec(2) = ContactVec(2) + coeff * SUM( ContactT1 * Disp )
-               IF( Dofs == 3 ) ContactVec(3) = ContactVec(3) + coeff * SUM( ContactT2 * Disp ) 
+               IF( cDofs == 3 ) ContactVec(3) = ContactVec(3) + coeff * SUM( ContactT2 * Disp ) 
              END IF
              CYCLE
            END IF
@@ -2905,15 +2987,14 @@ CONTAINS
            coord(2) = Mesh % Nodes % y( k ) 
            coord(3) = Mesh % Nodes % z( k ) 
 
+           PrevDisp = 0._dp
            IF( CalculateVelocity ) THEN
-             IF( dofs == 2 ) THEN
-               PrevDisp(1) = PrevDispVals( 2 * l - 1)
-               PrevDisp(2) = PrevDispVals( 2 * l )
+             PrevDisp(1) = PrevDispVals( dofs * (l-1) + 1)
+             PrevDisp(2) = PrevDispVals( dofs * (l-1) + 2 )
+             IF( cdofs == 2 ) THEN
                PrevDisp(3) = 0.0_dp
              ELSE
-               PrevDisp(1) = PrevDispVals( 3 * l - 2)
-               PrevDisp(2) = PrevDispVals( 3 * l - 1 )
-               PrevDisp(3) = PrevDispVals( 3 * l )
+               PrevDisp(3) = PrevDispVals( dofs * (l-1) + 3 )
              END IF
            END IF
 
@@ -2939,10 +3020,10 @@ CONTAINS
 
              IF( ThisRotatedContact ) THEN
                ContactVec(2) = ContactVec(2) + coeff * SUM( LocalT1 * SlipCoord )
-               IF( Dofs == 3) ContactVec(3) = ContactVec(3) + coeff * SUM( LocalT2 * SlipCoord )
+               IF( cDofs == 3) ContactVec(3) = ContactVec(3) + coeff * SUM( LocalT2 * SlipCoord )
              ELSE
                ContactVec(2) = ContactVec(2) + coeff * SUM( ContactT1 * SlipCoord )
-               IF( Dofs == 3 ) ContactVec(3) = ContactVec(3) + coeff * SUM( ContactT2 * SlipCoord )
+               IF( cDofs == 3 ) ContactVec(3) = ContactVec(3) + coeff * SUM( ContactT2 * SlipCoord )
              END IF
            END IF
 
@@ -2980,11 +3061,11 @@ CONTAINS
          
 200      IF( IsSlave ) THEN
 
-           MortarBC % Rhs(Dofs*(i-1)+DofN) = -ContactVec(1)
+           MortarBC % Rhs(cDofs*(i-1)+DofN) = -ContactVec(1)
            IF( StickContact .OR. TieContact ) THEN
-             MortarBC % Rhs(Dofs*(i-1)+DofT1) = -ContactVec(2) 
-             IF( Dofs == 3 ) THEN
-               MortarBC % Rhs(Dofs*(i-1)+DofT2) = -ContactVec(3)
+             MortarBC % Rhs(cDofs*(i-1)+DofT1) = -ContactVec(2) 
+             IF( cDofs == 3 ) THEN
+               MortarBC % Rhs(cDofs*(i-1)+DofT2) = -ContactVec(3)
              END IF
            END IF
            
@@ -3006,8 +3087,8 @@ CONTAINS
          GapVar % Values( j ) = ContactVec(1)
 
          IF( CalculateVelocity ) THEN
-           DO k=1,Dofs             
-             VeloVar % Values( Dofs*(j-1)+k ) = ContactVelo(k) 
+           DO k=1,cDofs             
+             VeloVar % Values( cDofs*(j-1)+k ) = ContactVelo(k) 
            END DO
          END IF
        END DO
@@ -3051,8 +3132,8 @@ CONTAINS
                  DistVar % Values(j) = 0.0_dp
                  GapVar % Values(j) = 0.0_dp
                  IF( CalculateVelocity ) THEN
-                   DO k=1,Dofs
-                     VeloVar % Values( Dofs*(j-1)+k ) = 0.0_dp
+                   DO k=1,cDofs
+                     VeloVar % Values( cDofs*(j-1)+k ) = 0.0_dp
                    END DO
                  END IF
                ELSE
@@ -3067,9 +3148,9 @@ CONTAINS
                      ( GapVar % Values(j1) + GapVar % Values(j2))
                  
                  IF( CalculateVelocity ) THEN
-                   DO k=1,Dofs
-                     VeloVar % Values( Dofs*(j-1)+k ) = 0.5_dp * &
-                         ( VeloVar % Values(Dofs*(j1-1)+k) + VeloVar % Values(Dofs*(j2-1)+k))  
+                   DO k=1,cDofs
+                     VeloVar % Values( cDofs*(j-1)+k ) = 0.5_dp * &
+                         ( VeloVar % Values(cDofs*(j1-1)+k) + VeloVar % Values(cDofs*(j2-1)+k))  
                    END DO
                  END IF
                END IF
@@ -3085,8 +3166,8 @@ CONTAINS
                  DistVar % Values(j) = 0.0_dp
                  GapVar % Values(j) = 0.0_dp
                  IF( CalculateVelocity ) THEN
-                   DO k=1,Dofs
-                     VeloVar % Values( Dofs*(j-1)+k ) = 0.0_dp
+                   DO k=1,cDofs
+                     VeloVar % Values( cDofs*(j-1)+k ) = 0.0_dp
                    END DO
                  END IF
                ELSE
@@ -3102,9 +3183,9 @@ CONTAINS
                      ( GapVar % Values(j1) + GapVar % Values(j2))
                  
                  IF( CalculateVelocity ) THEN
-                   DO k=1,Dofs
-                     VeloVar % Values( Dofs*(j-1)+k ) = 0.5_dp * &
-                         ( VeloVar % Values(Dofs*(j1-1)+k) + VeloVar % Values(Dofs*(j2-1)+k))  
+                   DO k=1,cDofs
+                     VeloVar % Values( cDofs*(j-1)+k ) = 0.5_dp * &
+                         ( VeloVar % Values(cDofs*(j1-1)+k) + VeloVar % Values(cDofs*(j2-1)+k))  
                    END DO
                  END IF
                END IF
@@ -3237,7 +3318,7 @@ CONTAINS
              k = FieldPerm( Indexes(i) )
              IF( k == 0 ) CYCLE
              
-             DO l=1,dofs
+             DO l=1,cdofs
                NodalForce(l) = LoadValues(dofs*(k-1)+l)
              END DO
 
@@ -3389,7 +3470,7 @@ CONTAINS
          IF( k == 0 ) CYCLE
          k = UseLoadVar % Perm(j)
 
-         ind = Dofs * (i-1) + DofN
+         ind = cDofs * (i-1) + DofN
 
          ! Tie contact should always be in contact - if we have found a counterpart
          IF( TieContact ) THEN
@@ -3491,7 +3572,7 @@ CONTAINS
        ! Nothing to do 
        IF( LimitedMin <= 0 ) RETURN
 
-       LimitedNow = COUNT( MortarBC % active(DofN::Dofs) )      
+       LimitedNow = COUNT( MortarBC % active(DofN::cDofs) )      
        NewNodes = LimitedMin - LimitedNow
        IF( NewNodes <= 0 ) RETURN
 
@@ -3508,7 +3589,7 @@ CONTAINS
 
        ! Find additional contact nodes from the closest non-contact nodes
        DO i = 1,Projector % NumberOfRows
-         ind = Dofs * (i-1) + DofN
+         ind = cDofs * (i-1) + DofN
          IF( MortarBC % Active(ind)  ) CYCLE
 
          IF( Projector % InvPerm(i) == 0 ) CYCLE
@@ -3541,7 +3622,7 @@ CONTAINS
        WRITE(Message,'(A,ES12.4)') 'Maximum distance needed for new nodes:',DistArray(NewNodes)
        CALL Info(Caller,Message,Level=8)
 
-       MortarBC % Active( Dofs*(IndArray-1)+DofN ) = .TRUE.
+       MortarBC % Active( cDofs*(IndArray-1)+DofN ) = .TRUE.
 
        DEALLOCATE( DistArray, IndArray ) 
 
@@ -3575,7 +3656,7 @@ CONTAINS
            k = UseLoadVar % Perm(j)
                       
            ! If there is no contact there can be no stick either
-           indN = Dofs * (i-1) + DofN
+           indN = cDofs * (i-1) + DofN
            IF( .NOT. MortarBC % Active(indN) ) CYCLE
 
            NodeLoad = UseLoadVar % Values(k)
@@ -3602,15 +3683,15 @@ CONTAINS
        
        ! For stick and tie contact inherit the active flag from the normal component
        IF( SlipContact ) THEN
-         MortarBC % Active( DofT1 :: Dofs ) = .FALSE.
-         IF( Dofs == 3 ) THEN
-            MortarBC % Active( DofT2 :: Dofs ) = .FALSE.
+         MortarBC % Active( DofT1 :: cDofs ) = .FALSE.
+         IF( cDofs == 3 ) THEN
+            MortarBC % Active( DofT2 :: cDofs ) = .FALSE.
           END IF
           GOTO 100 
        ELSE IF( StickContact .OR. TieContact ) THEN
-         MortarBC % Active( DofT1 :: Dofs ) = MortarBC % Active( DofN :: Dofs )
-         IF( Dofs == 3 ) THEN
-           MortarBC % Active( DofT2 :: Dofs ) = MortarBC % Active( DofN :: Dofs ) 
+         MortarBC % Active( DofT1 :: cDofs ) = MortarBC % Active( DofN :: cDofs )
+         IF( cDofs == 3 ) THEN
+           MortarBC % Active( DofT2 :: cDofs ) = MortarBC % Active( DofN :: cDofs ) 
          END IF
          GOTO 100
        END IF
@@ -3629,16 +3710,16 @@ CONTAINS
          IF( k == 0 ) CYCLE
          k = UseLoadVar % Perm(j)
 
-         indN = Dofs * (i-1) + DofN
+         indN = cDofs * (i-1) + DofN
          indT1 = ind - DofN + DofT1
-         IF(Dofs == 3 ) indT2 = ind - DofN + DofT2
+         IF(cDofs == 3 ) indT2 = ind - DofN + DofT2
 
          ! If there is no contact there can be no stick either
          IF( .NOT. MortarBC % Active(indN) ) THEN
            IF( MortarBC % Active(indT1) ) THEN
              removed0 = removed0 + 1
              MortarBC % Active(indT1) = .FALSE.
-             IF( Dofs == 3 ) MortarBC % Active(indT2) = .FALSE.
+             IF( cDofs == 3 ) MortarBC % Active(indT2) = .FALSE.
            END IF
            CYCLE
          END IF
@@ -3650,7 +3731,7 @@ CONTAINS
          IF( Found .AND. coeff > 0.0_dp ) THEN
            IF( .NOT. MortarBC % Active(indT1) ) added = added + 1
            MortarBC % Active(indT1) = .TRUE.
-           IF( Dofs == 3 ) MortarBC % Active(indT2) = .TRUE.
+           IF( cDofs == 3 ) MortarBC % Active(indT2) = .TRUE.
            CYCLE
          END IF
 
@@ -3660,7 +3741,7 @@ CONTAINS
          IF( Found .AND. coeff > 0.0_dp ) THEN
            IF( MortarBC % Active(IndT1) ) removed = removed + 1
            MortarBC % Active(indT1) = .FALSE.
-           IF( Dofs == 3 ) MortarBC % Active(indT2) = .FALSE.
+           IF( cDofs == 3 ) MortarBC % Active(indT2) = .FALSE.
            CYCLE
          END IF
 
@@ -3681,15 +3762,15 @@ CONTAINS
            IF( TangentLoad > mustatic * ABS( NodeLoad ) ) THEN
              removed = removed + 1
              MortarBC % Active(indT1) = .FALSE.
-             IF( Dofs == 3 ) MortarBC % Active(indT2) = .FALSE.
+             IF( cDofs == 3 ) MortarBC % Active(indT2) = .FALSE.
            END IF
          ELSE              
            stickcoeff = ListGetRealAtNode( BC,'Stick Contact Coefficient', j, Found )
            IF( Found ) THEN
-             DO l=1,Dofs             
-               du(l) = VeloVar % Values( Dofs*(k-1)+l ) 
+             DO l=1,cDofs             
+               du(l) = VeloVar % Values( cDofs*(k-1)+l ) 
              END DO
-             IF( Dofs == 3 ) THEN
+             IF( cDofs == 3 ) THEN
                Slip = SQRT(du(dofT1)**2 + du(DofT2)**2)
              ELSE
                Slip = ABS( du(dofT1) )
@@ -3697,7 +3778,7 @@ CONTAINS
              IF( stickcoeff * slip  < mudynamic * ABS( NodeLoad ) ) THEN
                added = added + 1
                MortarBC % Active(indT1) = .TRUE.
-               IF( Dofs == 3 ) MortarBC % Active(indT2) = .TRUE.
+               IF( cDofs == 3 ) MortarBC % Active(indT2) = .TRUE.
              END IF
            END IF
          END IF
@@ -3726,13 +3807,13 @@ CONTAINS
          IF( j == 0 ) CYCLE
          k = NormalActiveVar % Perm(j)
 
-         IF( MortarBC % Active(Dofs*(i-1)+DofN) ) THEN
+         IF( MortarBC % Active(cDofs*(i-1)+DofN) ) THEN
            NormalActiveVar % Values(k) = 1.0_dp
          ELSE
            NormalActiveVar % Values(k) = -1.0_dp
          END IF
 
-         IF( MortarBC % Active(Dofs*(i-1)+DofT1) ) THEN
+         IF( MortarBC % Active(cDofs*(i-1)+DofT1) ) THEN
            StickActiveVar % Values(k) = 1.0_dp
          ELSE
            StickActiveVar % Values(k) = -1.0_dp
@@ -3769,9 +3850,9 @@ CONTAINS
          IF( k == 0 ) CYCLE
          k = UseLoadVar % Perm(j)
 
-         indN = Dofs * (i-1) + DofN
-         indT1 = Dofs * (i-1) + DofT1
-         IF(Dofs == 3 ) indT2 = Dofs * (i-1) + DofT2
+         indN = cDofs * (i-1) + DofN
+         indT1 = cDofs * (i-1) + DofT1
+         IF(cDofs == 3 ) indT2 = cDofs * (i-1) + DofT2
 
          IF( .NOT. MortarBC % Active(indN) ) THEN
            ! If there is no contact there can be no stick either
@@ -3785,7 +3866,7 @@ CONTAINS
          END IF
 
          MortarBC % Diag(indT1) = coeff
-         IF( Dofs == 3 ) MortarBC % Diag(indT2) = coeff
+         IF( cDofs == 3 ) MortarBC % Diag(indT2) = coeff
        END DO
 
        IF(InfoActive(30)) THEN
@@ -3824,7 +3905,7 @@ CONTAINS
          DO i=1,n
            ElemActive(i) = MortarBC % Active( ElemInds(i) ) 
            IF(j>0) THEN
-             ElemInds(i) = Dofs * ( j - 1) + DofN
+             ElemInds(i) = cDofs * ( j - 1) + DofN
              ElemActive(i) = MortarBC % Active( ElemInds(i) ) 
            ELSE
              ElemActive(i) = .FALSE.
@@ -4015,8 +4096,8 @@ CONTAINS
              NormalLoadVar % Values( l2 ) = 0.0_dp
              SlipLoadVar % Values( l2 ) = 0.0_dp
              IF( CalculateVelocity ) THEN
-               DO k=1,Dofs             
-                 VeloVar % Values( Dofs*(l2-1)+k ) = 0.0_dp
+               DO k=1,cDofs             
+                 VeloVar % Values( cDofs*(l2-1)+k ) = 0.0_dp
                END DO
              END IF
              NodeDone( l2 ) = .TRUE.
@@ -4030,9 +4111,9 @@ CONTAINS
            NormalLoadVar % Values( l2 ) = NormalLoadVar % Values( l2 ) + coeff * NormalLoadVar % Values( l ) 
            SlipLoadVar % Values( l2 ) = SlipLoadVar % Values( l2 ) + coeff * SlipLoadVar % Values( l ) 
            IF( CalculateVelocity ) THEN
-             DO k=1,Dofs             
-               VeloVar % Values( Dofs*(l2-1)+k ) = VeloVar % Values( Dofs*(l2-1)+k ) + &
-                   coeff * VeloVar % Values( Dofs*(l-1)+k)
+             DO k=1,cDofs             
+               VeloVar % Values( cDofs*(l2-1)+k ) = VeloVar % Values( cDofs*(l2-1)+k ) + &
+                   coeff * VeloVar % Values( cDofs*(l-1)+k)
              END DO
            END IF
          END DO
@@ -4050,16 +4131,16 @@ CONTAINS
              NormalLoadVar % Values( i ) = NormalLoadVar % Values( i ) / CoeffTable( i ) 
              SlipLoadVar % Values( i ) = SlipLoadVar % Values( i ) / CoeffTable( i ) 
              IF( CalculateVelocity ) THEN
-               DO k=1,Dofs
-                 VeloVar % Values( Dofs*(i-1)+k ) = VeloVar % Values( Dofs*(i-1)+k ) / CoeffTable( i ) 
+               DO k=1,cDofs
+                 VeloVar % Values( cDofs*(i-1)+k ) = VeloVar % Values( cDofs*(i-1)+k ) / CoeffTable( i ) 
                END DO
              END IF
            ELSE
              NormalLoadVar % Values( i ) = 0.0_dp
              SlipLoadVar % Values( i ) = 0.0_dp
              IF( CalculateVelocity ) THEN
-               DO k=1,Dofs
-                 VeloVar % Values( Dofs*(i-1)+k ) = 0.0_dp
+               DO k=1,cDofs
+                 VeloVar % Values( cDofs*(i-1)+k ) = 0.0_dp
                END DO
              END IF             
            END IF
@@ -4079,8 +4160,8 @@ CONTAINS
          
          IF( NormalActiveVar % Values( k ) < 0.0_dp ) THEN
            IF( CalculateVelocity ) THEN
-             DO l=1,Dofs
-               VeloVar % Values( Dofs*(k-1)+l ) = 0.0_dp
+             DO l=1,cDofs
+               VeloVar % Values( cDofs*(k-1)+l ) = 0.0_dp
              END DO
            END IF
          END IF
@@ -4200,12 +4281,12 @@ CONTAINS
              Rotated = GetSolutionRotation(NTT, j )
              LocalNormal = NTT(:,1)
              LocalT1 = NTT(:,2)
-             IF( Dofs == 3 ) LocalT2 = NTT(:,3)
+             IF( cDofs == 3 ) LocalT2 = NTT(:,3)
            ELSE
              Rotated = .FALSE.
              LocalNormal = ContactNormal
              LocalT1 = ContactT1
-             IF( Dofs == 3 ) LocalT2 = ContactT2 
+             IF( cDofs == 3 ) LocalT2 = ContactT2 
            END IF
            
            VeloCoeff = 0.0_dp           
@@ -4223,12 +4304,12 @@ CONTAINS
                END IF
              END IF
              VeloCoeff(DofT1) = SUM( VeloDir(1:3,1) * LocalT1 )
-             IF( Dofs == 3 ) THEN
+             IF( cDofs == 3 ) THEN
                VeloCoeff(DofT2) = SUM( VeloDir(1:3,1) * LocalT2 )
              END IF
            ELSE
-             VeloCoeff(DofT1) = VeloVar % Values(Dofs*(k-1)+DofT1) 
-             IF(Dofs==3) VeloCoeff(DofT2) = VeloVar % Values(Dofs*(k-1)+DofT2) 
+             VeloCoeff(DofT1) = VeloVar % Values(cDofs*(k-1)+DofT1) 
+             IF(cDofs==3) VeloCoeff(DofT2) = VeloVar % Values(cDofs*(k-1)+DofT2) 
              IF( .NOT. Slave .AND. .NOT. Rotated ) THEN
                VeloSign = -1
              END IF
@@ -4246,13 +4327,13 @@ CONTAINS
            VeloCoeff = Coeff * VeloCoeff 
 
            j = FieldPerm( j ) 
-           k = DOFs * (j-1) + DofN 
+           k = cDOFs * (j-1) + DofN 
 
-           k2 = DOFs * (j-1) + DofT1 
+           k2 = cDOFs * (j-1) + DofT1 
            A % Rhs(k2) = A % Rhs(k2) - VeloCoeff(DofT1) * A % Rhs(k)
 
-           IF( Dofs == 3 ) THEN
-             k3 = DOFs * (j-1) + DofT2
+           IF( cDofs == 3 ) THEN
+             k3 = cDOFs * (j-1) + DofT2
              A % Rhs(k3) = A % Rhs(k3) - VeloCoeff(DofT2) * A % Rhs(k)             
            END IF
 
@@ -4263,7 +4344,7 @@ CONTAINS
 
              A % Values(l2) = A % Values(l2) - VeloCoeff(DofT1) * A % Values(l)
              
-             IF( Dofs == 3 ) THEN
+             IF( cDofs == 3 ) THEN
                DO l3 = A % Rows(k3), A % Rows(k3+1)-1
                  IF( A % Cols(l3) == A % Cols(l) ) EXIT
                END DO
@@ -4448,7 +4529,7 @@ CONTAINS
     INTEGER :: np
     REAL(KIND=dp) :: s(3)
     LOGICAL :: Parallel, Found
-    
+
     Parallel = ( ParEnv % PEs > 1)
     IF( Parallel ) Parallel = .NOT. CurrentModel % Mesh % SingleMesh 
     IF( Parallel ) THEN
@@ -4489,7 +4570,7 @@ CONTAINS
     ELSE
       !s(3) = s(3) / np
       !WRITE(Message,*) '[min,max,ave] for '//TRIM(str)//':', s
-      WRITE(Message,*) '[min,max,sum] for '//TRIM(str)//':', s
+      WRITE(Message,*) '[size,min,max,sum] for '//TRIM(str)//': '//I2S(np)//' ', s
       CALL Info('VectorValuesRange',Message)
     END IF
         
@@ -4578,7 +4659,7 @@ CONTAINS
         IF(n>1) THEN         
           ! Of the sharing partitions who owns this
           DO i=1,n
-            IF(ParEnv % Active(neigh(i))) EXIT
+            IF(ParEnv % Active(neigh(i)+1)) EXIT
           END DO
           ! And if it is not in this partition then skip it
           IF(i<n) THEN
@@ -4601,6 +4682,9 @@ CONTAINS
     !PRINT *,'MinNode:',MinNode, ParEnv % MyPe
     
     CALL Info('FindClosestNode','Closest node found to be: '//I2S(MinNode),Level=20)
+    
+    WRITE(Message,'(A,ES12.5)') 'Closest node distance: ',MinDist
+    CALL Info('FindClosestNode',Message,Level=20)
     
   END SUBROUTINE FindClosestNode
 
@@ -4702,7 +4786,7 @@ CONTAINS
 
     LOGICAL :: Conditional
     LOGICAL, ALLOCATABLE :: DonePeriodic(:)
-    CHARACTER(:), ALLOCATABLE :: CondName, DirName, PassName, PassCondName
+    CHARACTER(:), ALLOCATABLE :: CondName, DirName, PassName, PassCondName, EqName
 
     INTEGER :: NoNodes,NoDims,bf_id,nlen, NOFNodesFound, dim, &
         bndry_start, bndry_end, Upper
@@ -4716,7 +4800,7 @@ CONTAINS
 
     TYPE(Element_t), POINTER :: Parent
 
-    INTEGER :: ind, ElemFirst, ElemLast, bf, BCstr, BCend, BCinc
+    INTEGER :: ind, ElemFirst, ElemLast, bf, BCstr, BCend, BCinc, dgind
     REAL(KIND=dp) :: SingleVal
     LOGICAL :: AnySingleBC, AnySingleBF
     LOGICAL, ALLOCATABLE :: LumpedNodeSet(:)
@@ -4724,6 +4808,7 @@ CONTAINS
     INTEGER :: DirCount
     CHARACTER(*), PARAMETER :: Caller = 'SetDirichletBoundaries'
     LOGICAL, ALLOCATABLE :: CandNodes(:)
+    INTEGER, ALLOCATABLE :: LumpedIndx(:)
     INTEGER, POINTER :: PlaneInds(:)
     LOGICAL :: Parallel
 
@@ -4731,7 +4816,7 @@ CONTAINS
     LOGICAL, ALLOCATABLE, SAVE :: NTzeroing_done(:,:)
     INTEGER, ALLOCATABLE, SAVE :: NTelement(:,:)
 
-    REAL(KIND=dp) :: Mult(Model % MaxElementNodes), MaxMult, ParMaxMult
+    REAL(KIND=dp) :: Mult(Model % MaxElementNodes), MaxMult, ParMaxMult, MoveCoeff
     LOGICAL :: GotMult
     INTEGER :: maxind
     
@@ -5004,8 +5089,7 @@ CONTAINS
             Conditional = ActiveCond(BC)
             
             Element => Mesh % Elements(t)
-            IF ( Element % BoundaryInfo % Constraint /= &
-                Model % BCs(BC) % Tag ) CYCLE
+            IF ( Element % BoundaryInfo % Constraint /= Model % BCs(BC) % Tag ) CYCLE
             
             Model % CurrentElement => Element
             IF ( ActivePart(BC) ) THEN
@@ -5031,8 +5115,6 @@ CONTAINS
         END DO
       END IF
     END IF
-
-
 
     BLOCK
       INTEGER,ALLOCATABLE :: ChildBCs(:)
@@ -5090,19 +5172,23 @@ CONTAINS
 
       Passive = Passive .OR. ListCheckPresent(ValueList, PassName)
     END DO
-    
+       
     IF ( ANY(ActivePart) .OR. ANY(ActivePartAll) ) THEN
       Solver => Model % Solver
       Mesh   => Solver % Mesh
+      EqName = ListGetString( Solver % Values, 'Equation', GotIt )
 
-      ALLOCATE(PassPerm(Mesh % NumberOfNodes),NodeIndexes(1));PassPerm=0
-      DO i=0,Mesh % PassBCCnt-1
-        j=Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements-i
-        PassPerm(Mesh % Elements(j) % NodeIndexes)=1
-      END DO
-
-      DO t=1,Solver % NumberOfActiveElements
-        Element => Mesh % Elements(Solver % ActiveElements(t))
+      IF( Passive ) THEN
+        ALLOCATE(PassPerm(Mesh % NumberOfNodes),NodeIndexes(1))
+        PassPerm = 0
+        DO i=0,Mesh % PassBCCnt-1
+          j=Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements-i
+          PassPerm(Mesh % Elements(j) % NodeIndexes)=1
+        END DO
+      END IF
+        
+      DO t=1,Solver % Mesh % NumberOfBulkElements
+        Element => Mesh % Elements(t)
         IF( Element % BodyId <= 0 .OR. Element % BodyId > Model % NumberOfBodies ) THEN
           CALL Warn(Caller,'Element body id beyond body table!')
           CYCLE
@@ -5115,13 +5201,11 @@ CONTAINS
         Conditional = ActiveCond(bf_id)
 
         Model % CurrentElement => Element
+
+        GotIt = CheckElementEquation( Model, Element, EqName ) 
         
-        IF ( ActivePart(bf_id) ) THEN
-          n = Element % TYPE % NumberOfNodes
-          Indexes(1:n) = Element % NodeIndexes
-        ELSE
-          n = mGetElementDOFs( Indexes )
-        END IF
+        n = Element % TYPE % NumberOfNodes
+        Indexes(1:n) = Element % NodeIndexes
 
         ValueList => Model % BodyForces(bf_id) % Values
         IF(.NOT. ASSOCIATED( ValueList ) ) CYCLE
@@ -5150,9 +5234,17 @@ CONTAINS
           CALL SetElementValues(n)
         END IF
         
+        ! Set the higher p-dofs related to Dirichlet BC's to zero. 
+        IF ( isActivePElement(Element, Solver) ) THEN
+          nd = mGetElementDOFs( Indexes, Uelement = Element, USolver = Model % Solver )
+          DO i=n+1,nd            
+            CALL SetSinglePoint(Indexes(i),DOF,0.0_dp,.TRUE.)            
+          END DO
+        END IF
+        
       END DO
       
-      DEALLOCATE(NodeIndexes,PassPerm)
+      IF(Passive) DEALLOCATE(PassPerm,NodeIndexes)
     END IF
     
     DEALLOCATE(ActivePart, ActiveCond)
@@ -5192,67 +5284,6 @@ CONTAINS
       END IF
     END DO
 
-#if 0
-    ! Obsolibe code!
-    ! Go through soft upper and lower limits
-    ! This is no longer needed since the ConstrainedDOF and DValues include
-    ! all necessary information!
-    !-----------------------------------------------------------------
-    Params => Model % Solver % Values
-    ApplyLimiter = ListGetLogical( Params,'Apply Limiter',GotIt) 
-
-    IF( Dof/=0 .AND. ApplyLimiter ) THEN
-      CALL Info(Caller,'Applying limiters',Level=10)
-
-      DO Upper=0,1
-        
-        ! The limiters have been implemented only componentwise
-        !-------------------------------------------------------
-        
-        NULLIFY( LimitActive ) 
-        Var => Model % Solver % Variable
-        IF( Upper == 0 ) THEN
-          IF( ASSOCIATED( Var % LowerLimitActive ) ) &
-              LimitActive => Var % LowerLimitActive
-        ELSE
-          IF( ASSOCIATED( Var % UpperLimitActive ) ) &
-              LimitActive => Var % UpperLimitActive
-        END IF
-        
-        IF( .NOT. ASSOCIATED( LimitActive ) ) CYCLE
-        
-        IF( Upper == 0 ) THEN
-          CondName = TRIM(name)//' Lower Limit' 
-        ELSE
-          CondName = TRIM(name)//' Upper Limit' 
-        END IF
-        
-        ! Set the soft limiter values.
-        ! --------------------------------------------------------------
-        DO t = 1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
-          Element => Mesh % Elements(t)
-          Model % CurrentElement => Element
-          n = Element % TYPE % NumberOfNodes
-          NodeIndexes => Element % NodeIndexes
-          
-          IF( t > Mesh % NumberOfBulkElements ) THEN
-            DO bc = 1,Model % NumberOfBCs
-              IF ( Element % BoundaryInfo % Constraint /= Model % BCs(bc) % Tag ) CYCLE
-              ValueList => Model % BCs(BC) % Values
-              CALL SetLimiterValues(n)
-            END DO
-          ELSE             
-            bf_id = ListGetInteger( Model % Bodies(Element % bodyid) % Values, &
-                'Body Force', GotIt)
-            IF(.NOT. GotIt ) CYCLE
-            ValueList => Model % Bodyforces(bf_id) % Values
-            CALL SetLimiterValues(n)
-          END IF
-        END DO
-      END DO
-    END IF
-#endif    
-    
     ! Check the boundaries and body forces for possible single nodes BCs that are used to fixed 
     ! the domain for undetermined equations. The loop is slower than optimal in the case that there is 
     ! a large amount of different boundaries that have a node to set. 
@@ -5288,8 +5319,7 @@ CONTAINS
         ! On the first time find a one single uniquely defined node for setting 
         ! the value. In parallel it will be an unshared node with the highest possible 
         ! node number 
-        IF( .NOT. GotIt ) THEN        
-          
+        IF(.NOT. GotIt ) THEN                  
           ind = 0
           DO t = ElemFirst, ElemLast
             Element => Mesh % Elements(t)
@@ -5358,7 +5388,6 @@ CONTAINS
       END DO
     END IF
 
-    
 !------------------------------------------------------------------------------
 !   Take care of the matrix entries of passive elements
 !------------------------------------------------------------------------------
@@ -5413,19 +5442,18 @@ CONTAINS
       DEALLOCATE(PassPerm,NodeIndexes)
     END IF
 
-
     ! Check the boundaries and body forces for possible single nodes BCs that must have a constant
     ! value on that boundary / body force.
     !--------------------------------------------------------------------------------------------
     NeedListMatrix = .FALSE.
-
+    
     DO l = 0, 1
       IF( l == 0 ) THEN
         DirName = TRIM(Name)//' Constant'
       ELSE
         DirName = TRIM(Name)//' Profile'
       END IF
-
+      
       AnySingleBC = ListCheckPresentAnyBC( Model, DirName )
       AnySingleBF = ListCheckPresentAnyBodyForce( Model, DirName )
 
@@ -5466,26 +5494,31 @@ CONTAINS
           END IF
 
           IF(GotMult) THEN
-            IF(.NOT. ListCheckPresent( ValueList,DirName) ) CYCLE 
-          ELSE
+            IF(.NOT. ListCheckPresent( ValueList,DirName) ) CYCLE
+          ELSE            
             IF(.NOT. ListGetLogical( ValueList,DirName, GotIt) ) CYCLE
           END IF
-          
-          ! This tells us that this has been visited before            
-          ind = ListGetInteger( ValueList,TRIM(DirName)//' Node Index',GotIt )     
+                    
+          MoveCoeff = ListGetCReal( ValueList,TRIM(DirName)//' Resistance',GotIt)
+          IF(.NOT. GotIt) MoveCoeff = 1.0_dp
 
+          ! This tells us that this has been visited before            
+          ind = ListGetInteger( ValueList,TRIM(DirName)//' Node Index',GotIt )               
+         
           ! On the first time find a one single uniquely defined node for setting 
           ! the value. In parallel it will be an unshared node with the highest possible 
           ! node number 
           IF( GotIt ) THEN        
+            dgind = ListGetInteger( ValueList,TRIM(DirName)//' DG Node Index',GotIt )               
             IF( GotMult ) THEN
               MaxMult = ListGetConstReal( ValueList,TRIM(DirName)//' Max Value',UnfoundFatal=.TRUE.) 
             END IF
           ELSE
             MaxMult = 0.0_dp          
             ind = 0
+            dgind = 0
             maxind = 0
-
+            
             DO t = ElemFirst, ElemLast
               Element => Mesh % Elements(t)
 
@@ -5498,14 +5531,21 @@ CONTAINS
 
               n = Element % TYPE % NumberOfNodes
               NodeIndexes => Element % NodeIndexes
-
+                
               IF(GotMult) THEN
                 Mult(1:n) = ListGetReal( ValueList,TRIM(DirName),n,NodeIndexes,UnfoundFatal=.TRUE.)
               END IF
 
               DO i=1,n
                 j = NodeIndexes(i)
-                IF( Perm(j) == 0) CYCLE
+
+                IF(Model % Solver % DG) THEN                                   
+                  CALL PickDgIndexes(Element,Indexes)                  
+                  IF( Perm(Indexes(i)) == 0) CYCLE
+                ELSE
+                  IF( Perm(j) == 0) CYCLE
+                END IF
+                  
                 IF( Parallel ) THEN
                   IF( SIZE( Mesh % ParallelInfo % NeighbourList(j) % Neighbours) > 1 ) CYCLE               
                   IF( Mesh % ParallelInfo % NeighbourList(j) % Neighbours(1) /= ParEnv % MyPe ) CYCLE               
@@ -5518,6 +5558,7 @@ CONTAINS
                   END IF
                 ELSE
                   ind = j 
+                  IF( Model % Solver % DG ) dgind = Indexes(i)
                   EXIT
                 END IF
               END DO
@@ -5527,7 +5568,7 @@ CONTAINS
             IF(GotMult) ind = maxind
 
             ! Find the maximum partition that owns the node. 
-            ! It could be minimum also, just some convection is needed. 
+            ! It could be minimum also, just some convention is needed. 
             IF( Parallel ) THEN
               IF( GotMult ) THEN
                 ParMaxMult = ABS(MaxMult)
@@ -5540,7 +5581,17 @@ CONTAINS
               IF( k == -1 ) THEN
                 CALL Warn(Caller,'Could not find node to set: '//TRIM(DirName))
               END IF
-              IF( k /= ParEnv % MyPe ) ind = 0
+              j = 0
+              IF( k /= ParEnv % MyPe .AND. ind > 0) THEN
+                ind = 0
+                dgind = 0
+                j = 1 
+              END IF
+              ! Just a counter for partitions that have hits but do not own the index.
+              j = ParallelReduction(j)
+              IF(j>0) THEN
+                CALL Warn(Caller,'Problems: boundary extends over '//I2S(j+1)//' partitions')
+              END IF
             ELSE
               IF( ind == 0 ) THEN
                 CALL Warn(Caller,'Could not find node to set: '//TRIM(DirName))
@@ -5548,6 +5599,10 @@ CONTAINS
             END IF
 
             CALL ListAddInteger( ValueList,TRIM(DirName)//' Node Index', ind )
+            IF( Model % Solver % DG ) THEN
+              CALL ListAddInteger( ValueList,TRIM(DirName)//' DG Node Index', dgind )
+            END IF
+
             IF(GotMult) THEN
               CALL ListAddConstReal( ValueList,TRIM(DirName)//' Max Value', MaxMult )
             END IF
@@ -5557,15 +5612,42 @@ CONTAINS
             NeedListMatrix = .TRUE.
           END IF
 
-          IF( Parallel ) CALL Warn(Caller,'Node index not set properly in parallel')
+          ! This is probably in parallel a passive partition. 
           IF( ind == 0 ) CYCLE
 
           ! Ok, now sum up the rows to the corresponding nodal index
+          ! We go through elements and need to mark the nodes in order not to visit them twice. 
           LumpedNodeSet = .FALSE.
 
-          ! Don't lump the "supernode" and therefore mark it set already
-          LumpedNodeSet(ind) = .TRUE.
+          ! Actually from this on we do not need the node index if we have a DG field.
+          ! Replace it with the DG index.
+          IF( Model % Solver % DG ) THEN
+            IF( dgind == 0 ) THEN
+              CALL Fatal(Caller,'Could not determine DG index associated to node index!')
+            END IF
+            ind = dgind
+          END IF
 
+          ! If we need to do scaling then play with the supernode too!
+          IF( Ndofs == 1 ) THEN
+            BLOCK
+              INTEGER :: k0
+              k0 = Offset + NDOFs * (Perm(ind)-1) + DOF
+              IF(ABS(MoveCoeff-1.0) > EPSILON(MoveCoeff)) THEN
+                CALL MoveRow( A, k0, k0, MoveCoeff )
+                b(k0) = MoveCoeff * b(k0)
+              END IF
+            END BLOCK
+          END IF
+          ! Supernode has been set, if needed. 
+          LumpedNodeSet(ind) = .TRUE.
+                    
+          IF(.NOT. ALLOCATED(LumpedIndx)) THEN
+            ALLOCATE(LumpedIndx(Model % NumberOfBCs + Model % NumberOfBodyForces))
+            LumpedIndx = 0
+          END IF
+          LumpedIndx(bc) = ind
+            
           DO t = ElemFirst, ElemLast
             Element => Mesh % Elements(t)
 
@@ -5577,10 +5659,15 @@ CONTAINS
             END IF
 
             n = Element % TYPE % NumberOfNodes
-            Indexes(1:n) = Element % NodeIndexes
-
-            IF(GotMult) Mult(1:n) = ListGetReal( ValueList,TRIM(Name)//' Profile',n,Indexes,UnfoundFatal=.TRUE.)
-
+            IF ( Model % Solver % DG ) THEN              
+              CALL PickDgIndexes(Element,Indexes)                  
+            ELSE
+              Indexes(1:n) = Element % NodeIndexes
+            END IF
+                
+            IF(GotMult) Mult(1:n) = ListGetReal( ValueList,TRIM(Name)//' Profile',n,&
+                Element % NodeIndexes,UnfoundFatal=.TRUE.)
+                       
             CALL SetLumpedRows(ind,n)
           END DO
 
@@ -5595,7 +5682,7 @@ CONTAINS
             IF( GotIt ) THEN                        
               t = Offset + Perm(ind)
               CALL AddToMatrixElement(A,t,t,SingleVal) 
-            END IF
+            END IF                        
           END IF
 
           n = COUNT( LumpedNodeSet ) 
@@ -5610,11 +5697,43 @@ CONTAINS
       ! Revert back to CRS matrix and change to the new topology. 
       CALL List_ToCRSMatrix(A)
       CALL CRS_ChangeTopology(A, Init=.FALSE.)
-      
+
       CALL Info(Caller,'Modified matrix non-zeros: '&
           //I2S(SIZE( A % Cols )),Level=8)
     END IF
+      
+    ! We are back to CRS matrix.
+    ! If we have a fixed point iteration we may add the flux multiplied by resistance to rhs as well. 
+    BLOCK
+      INTEGER :: k0
+      REAL(KIND=dp) :: prevFlux
+      TYPE(ValueList_t), POINTER :: vList
+      IF(ALLOCATED(LumpedIndx) ) THEN
+        DO bc = 1,SIZE(LumpedIndx) 
+          ind = LumpedIndx(bc)
+          IF(ind>0) THEN
+            k0 = Offset + NDOFs * (Perm(ind)-1) + DOF
+            prevFlux = CRS_MatrixRowVectorMultiply(A,Model % Solver % Variable % Values,k0)            
 
+            ! In case this was added, remove it from the flux.
+            SingleVal = ListGetCReal( ValueList,TRIM(Name)//' Constant Coefficient',GotIt)
+            prevFlux = prevFlux - SingleVal * Model % Solver % Variable % Values(k0)
+            
+            IF( bc <= Model % NumberOfBCs ) THEN
+              Vlist => Model % BCs(bc) % Values
+              WRITE(Message,'(A,ES12.3)') 'Previous bc '//I2S(bc)//' lumped flux: ',prevFlux 
+            ELSE
+              i = bc-Model % NumberOfBCs
+              Vlist => Model % BodyForces(i) % Values
+              WRITE(Message,'(A,ES12.3)') 'Previous bf '//I2S(i)//' lumped flux: ',prevFlux 
+            END IF            
+            CALL Info(Caller,Message)
+            DirName = TRIM(Name)//' Constant Prev Flux'
+            CALL ListAddConstReal(Vlist, DirName, prevFlux )
+          END IF
+        END DO
+      END IF
+    END BLOCK
 
     ! Check the boundaries for a curve bc.
     !--------------------------------------------------------------------------------------------
@@ -5818,7 +5937,6 @@ CONTAINS
       
     END BLOCK
 
-
     ! Check the boundaries and body forces for possible single nodes BCs that must have a constant
     ! value on that boundary / body force.
     !--------------------------------------------------------------------------------------------
@@ -5924,11 +6042,59 @@ CONTAINS
           //I2S(DirCount),Level=12)
     END IF
       
-    
 !------------------------------------------------------------------------------
 
   CONTAINS
 
+    ! For boundary element in a DG mesh get the DG indexes from itself, or
+    ! from the parent elements.
+    !-------------------------------------------------------------------------
+    SUBROUTINE PickDgIndexes(Element,DgIndexes)
+      TYPE(Element_t), POINTER :: Element
+      INTEGER :: DGIndexes(:)
+      
+      TYPE(Element_t), POINTER :: Parent
+      INTEGER :: i,j,lr,n,m
+
+      n = Element % Type % NumberOfNodes
+       
+      IF( ASSOCIATED( Element % DgIndexes ) ) THEN
+        DGIndexes(1:n) = Element % DGIndexes(1:n)
+        IF(ANY(DgIndexes(1:n) == 0) ) THEN
+          ! If this fails, maybe used the 2nd strategy always...
+          CALL Fatal('PickDgIndexes','Some of BC element DG indexes is zero!')
+        END IF
+      ELSE IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN
+        m = 0
+        DO lr=1,2
+          IF(lr==1) THEN
+            Parent => Element % BoundaryInfo % Left
+          ELSE
+            Parent => Element % BoundaryInfo % Right
+          END IF
+          IF(.NOT. ASSOCIATED( Parent ) ) CYCLE
+          IF(.NOT. ASSOCIATED( Parent % DGIndexes ) ) CYCLE
+          IF(ANY(Perm(Parent % DGIndexes) == 0)) CYCLE
+          
+          DO i=1,Element % TYPE % NumberOfNodes
+            DO j=1,Parent % TYPE % NumberOfNodes
+              IF( Element % NodeIndexes(i) == Parent % NodeIndexes(j) ) THEN
+                DGIndexes(i) = Parent % DGIndexes(j)
+                m = m+1
+                EXIT
+              END IF
+            END DO
+          END DO
+          EXIT
+        END DO
+        IF(m /= n) THEN
+          CALL Fatal('PickDgIndexes','Could not find all DG Indexes for BC element')
+        END IF
+      END IF
+      
+    END SUBROUTINE PickDgIndexes
+
+    
      ! Check n-t node setting element
      !-------------------------------
     SUBROUTINE CheckNTElement(n,elno)
@@ -6025,7 +6191,9 @@ CONTAINS
         END IF
         
         DO j=1,n
-          IF ( Conditional .AND. Condition(j) < 0.0d0 ) CYCLE
+          IF ( Conditional ) THEN
+            IF( Condition(j) < 0.0_dp ) CYCLE
+          END IF
 
           k = Perm(Indexes(j))
           IF ( k > 0 ) THEN
@@ -6095,7 +6263,6 @@ CONTAINS
       INTEGER :: ind,i,j,k,k0,l
       REAL(KIND=dp) :: Coeff
       ! -------------------------------------------------------------------        
-
       
       DO j=1,n
         ind = Indexes(j)
@@ -6112,9 +6279,9 @@ CONTAINS
           ELSE
             Coeff = 1.0_dp
           END IF
-            
-          CALL MoveRow( A, k, k0, 1.0_dp )
-          b(k0) = b(k0) + 1.0_dp * b(k)
+          
+          CALL MoveRow( A, k, k0, MoveCoeff )
+          b(k0) = b(k0) + MoveCoeff * b(k)
 
           CALL AddToMatrixElement( A, k, k, 1.0_dp )
           CALL AddToMatrixElement( A, k, k0, -Coeff )
@@ -6462,8 +6629,8 @@ CONTAINS
       IF( .NOT. ASSOCIATED( Model % Solver % MortarBCs ) ) THEN
         CALL Info('SetPeriodicBoundariesPass1',&
             'Allocating mortar BCs for solver',Level=8)
-        ALLOCATE( Model % Solver % MortarBCs( Model % NumberOfBCs ) )
-        DO i=1, Model % NumberOfBCs
+        ALLOCATE( Model % Solver % MortarBCs( Model % NumberOfBCs + Model % NumberOfBodyForces ) )
+        DO i=1, Model % NumberOfBCs + Model % NumberOfBodyForces
           Model % Solver % MortarBCs(i) % Projector => NULL()
         END DO
       END IF
@@ -7402,8 +7569,8 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE SetNodalSources( Model, Mesh, SourceName, dofs, Perm, GotSrc, SrcVec )
 !------------------------------------------------------------------------------
-    TYPE(Model_t), POINTER :: Model  !< The current model structure
-    TYPE(Mesh_t), POINTER :: Mesh    !< The current mesh structure
+    TYPE(Model_t) :: Model  !< The current model structure
+    TYPE(Mesh_t)  :: Mesh    !< The current mesh structure
     CHARACTER(LEN=*) :: SourceName   !< Name of the keyword setting the source term
     INTEGER :: DOFs                  !< The total number of DOFs for this equation
     INTEGER :: Perm(:)               !< The node reordering info
@@ -7411,7 +7578,7 @@ CONTAINS
     REAL(KIND=dp) :: SrcVec(:)       !< The assemblied source vector
 !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: Element
-    INTEGER :: i,t,n,bc,bf,FirstElem,LastElem,nlen
+    INTEGER :: i,j,k,t,n,bc,bf,FirstElem,LastElem,nlen
     LOGICAL :: Found,AnyBC,AnyBF,Axisymmetric
     REAL(KIND=dp) :: Coeff
     REAL(KIND=dp), ALLOCATABLE :: FORCE(:,:)
@@ -7426,8 +7593,7 @@ CONTAINS
     CALL Info(Caller,'Checking for generalized source terms: '&
         //SourceName(1:nlen),Level=15)
 
-    ALLOCATE( ActiveBC(Model % NumberOfBCs ), &
-        ActiveBF(Model % NumberOfBodyForces) )
+    ALLOCATE( ActiveBC(Model % NumberOfBCs), ActiveBF(Model % NumberOfBodyForces) )
     
     ! First make a quick test going through the short boundary condition and
     ! body force lists.
@@ -7476,6 +7642,7 @@ CONTAINS
     DO t=FirstElem, LastElem 
       Element => Mesh % Elements(t)
       Indexes => Element % NodeIndexes
+      n = Element % Type % NumberOfNodes
 
       IF( t > Mesh % NumberOfBulkElements ) THEN
         Found = .FALSE.
@@ -7502,8 +7669,7 @@ CONTAINS
       CALL LocalSourceAssembly(Element, dofs, FORCE )
 
       DO i=1,dofs
-        SrcVec(dofs*(Perm(Indexes)-1)+i) = SrcVec(dofs*(Perm(Indexes)-1)+i) + &
-            Coeff * FORCE(i,1:n)
+        SrcVec(dofs*(Perm(Indexes)-1)+i) = SrcVec(dofs*(Perm(Indexes)-1)+i) + FORCE(i,1:n)
       END DO
     END DO
       
@@ -7664,7 +7830,7 @@ END SUBROUTINE SetNodalSources
     LoadName = TRIM(Name) // ' Load'
     nlen = LEN_TRIM(LoadName)
     
-    CALL Info(Caller,'Checking for nodal loads for variable: '//TRIM(Name),Level=12)
+    CALL Info(Caller,'Checking for nodal loads for variable: '//TRIM(Name),Level=20)
 
     n = MAX(Model % NumberOfBCs, Model % NumberOFBodyForces) 
     ALLOCATE( ActivePart(n), ActivePartAll(n) )
@@ -7679,10 +7845,16 @@ END SUBROUTINE SetNodalSources
     ActivePart = .FALSE.
     ActivePartAll = .FALSE.
     DO BC=1,Model % NumberOfBCs
-      IF(.NOT. ListCheckPresent( Model % BCs(BC) % Values,'Target Boundaries')) CYCLE
-      ActivePart(BC) = ListCheckPresent( Model % BCs(BC) % Values, LoadName )
-      ActivePartAll(BC) = ListCheckPresent( &
-          Model % BCs(BC) % Values, LoadName(1:nlen) // ' DOFs' )
+      ValueList => Model % BCs(BC) % Values    
+      IF (ListCheckPresent(ValueList,'Target Nodes') .OR. &
+          ListCheckPresent(ValueList,'Target Coordinates')) CYCLE
+
+      IF(ListCheckPresent(ValueList,'Target Boundaries') .OR. &
+          ListCheckPresent(ValueList,'Name') ) THEN
+        ActivePart(BC) = ListCheckPresent( Model % BCs(BC) % Values, LoadName )
+        ActivePartAll(BC) = ListCheckPresent( &
+            Model % BCs(BC) % Values, LoadName(1:nlen) // ' DOFs' )
+      END IF
     END DO
 
     IF ( ANY(ActivePart) .OR. ANY(ActivePartAll) ) THEN
@@ -7766,10 +7938,8 @@ END SUBROUTINE SetNodalSources
 
       ! At the first calling the list of coordinates is transformed to list of nodes.
       IF(.NOT. NodesFound) THEN
-        IF(.NOT. NodesFound) THEN
-          IF( ListCheckPresent( ValueList,'Target Coordinates' ) ) THEN
-            CALL TargetCoordinatesToTargetNodes( Model % Mesh, ValueList, NodesFound )
-          END IF
+        IF( ListCheckPresent( ValueList,'Target Coordinates' ) ) THEN
+          CALL TargetCoordinatesToTargetNodes( Model % Mesh, ValueList, NodesFound )
         END IF
       END IF
       
@@ -8486,6 +8656,8 @@ CONTAINS
     IF( n == 0 ) THEN
       CALL Info(Caller,'No Dirichlet conditions to enforce, exiting!',Level=10)
       RETURN
+    ELSE
+      CALL Info(Caller,'Enforcing total of '//I2S(n)//' Dirichlet conditions.',Level=10)
     END IF    
         
     ! Communicate the Dirichlet conditions for parallel cases since there may be orphans      
@@ -8986,10 +9158,11 @@ CONTAINS
 !------------------------------------------------------------------------------
 !   Compute sum of elementwise normals for nodes on boundaries
 !------------------------------------------------------------------------------
-      ALLOCATE( n_comp(SIZE(BoundaryReorder)) )
-      n_comp = 0
       
       IF ( NumberOfBoundaryNodes>0 ) THEN
+        ALLOCATE( n_comp(SIZE(BoundaryReorder)) )
+        n_comp = 0
+
         BoundaryNormals = 0._dp
         ConflictCount = 0
 
@@ -9310,8 +9483,6 @@ CONTAINS
         END DO
         DEALLOCATE( n_index, n_count )
       END IF
-
-      DEALLOCATE(n_comp)
     END IF
 
 !------------------------------------------------------------------------------
@@ -9620,7 +9791,7 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
 
      IF ( .NOT. ASSOCIATED( Solver % Matrix ) .OR. &
-          .NOT. ASSOCIATED( Solver % Variable % Values ) ) RETURN
+          .NOT. ASSOCIATED( Solver % Variable ) ) RETURN
           
      IF ( Solver % TimeOrder <= 0 ) RETURN
 !------------------------------------------------------------------------------
@@ -10149,7 +10320,7 @@ END FUNCTION SearchNodeL
     INTEGER, POINTER :: Perm(:)
     
     CALL Info('ComputeNorm','Computing norm of solution',Level=10)
-    
+
     IF(PRESENT(values)) THEN
       x => values
     ELSE
@@ -10283,8 +10454,10 @@ END FUNCTION SearchNodeL
           totn = totn + 1
         END DO
       END SELECT
-
+      
       totn = ParallelReduction(totn) 
+      IF(totn == 0) GOTO 10
+
       nscale = 1.0_dp * totn
       
       SELECT CASE(NormDim)
@@ -10299,9 +10472,11 @@ END FUNCTION SearchNodeL
       END SELECT
     
     ELSE IF( NormDofs < Dofs ) THEN
-      totn = ParallelReduction(n) 
-      nscale = NormDOFs*totn/(1._dp*DOFs)
       Norm = 0.0_dp
+      totn = ParallelReduction(n) 
+      IF(totn == 0) GOTO 10
+
+      nscale = NormDOFs*totn/(1._dp*DOFs)
 
       SELECT CASE(NormDim)
       CASE(0)
@@ -10369,7 +10544,9 @@ END FUNCTION SearchNodeL
       END IF
 
     ELSE
-      val = 0.0_dp
+      Norm = 0.0_dp
+      IF(n==0) GOTO 10 
+      
       SELECT CASE(NormDim)
       CASE(0)
         Norm = MAXVAL(ABS(x(1:n)))
@@ -10382,7 +10559,7 @@ END FUNCTION SearchNodeL
       END SELECT
     END IF
     
-    IF( ComponentsAllocated ) THEN
+10  IF( ComponentsAllocated ) THEN
       DEALLOCATE( NormComponents ) 
     END IF
 !------------------------------------------------------------------------------
@@ -10540,6 +10717,12 @@ END FUNCTION SearchNodeL
     
     Parallel = Solver % Parallel
       
+    IF(PRESENT(Matrix)) THEN
+      A => Matrix
+    ELSE
+      A => Solver % Matrix
+    END IF
+            
     IF(SteadyState) THEN	
       Skip = ListGetLogical( SolverParams,'Skip Compute Steady State Change',Stat)
       IF( Skip ) THEN
@@ -10605,7 +10788,7 @@ END FUNCTION SearchNodeL
       END IF
         
       ResidualMode = ListGetLogical( SolverParams,'Linear System Residual Mode',Stat)
-
+      
       ConvergenceType = ListGetString(SolverParams,&
           'Nonlinear System Convergence Measure',Stat)
       IF(.NOT. stat) ConvergenceType = 'norm' 
@@ -10663,7 +10846,7 @@ END FUNCTION SearchNodeL
     END IF
     
     IF( SkipConstraints ) THEN
-      n = MIN( n, Solver % Matrix % NumberOfRows )
+      n = MIN( n, A % NumberOfRows )
     END IF
       
     ! If requested (for p-elements) only use the dofs associated to nodes. 
@@ -10739,6 +10922,7 @@ END FUNCTION SearchNodeL
     ! The norm should be bounded in order to reach convergence
     !--------------------------------------------------------------------------
     IF( Norm /= Norm ) THEN
+      PRINT *,'Norm:',Norm,PrevNorm, n
       CALL NumericalError(Caller,'Norm of solution appears to be NaN')
     END IF
 
@@ -10762,16 +10946,10 @@ END FUNCTION SearchNodeL
       ! x is solution of A(x0)x=b(x0) thus residual should really be r=b(x)-A(x)x
       ! Instead we use r=b(x0)-A(x0)x0 which unfortunately is one step behind.
       !--------------------------------------------------------------------------
-      IF(PRESENT(Matrix)) THEN
-        A => Matrix
-      ELSE
-        A => Solver % Matrix
-      END IF
-
       IF(PRESENT(RHS)) THEN
         b => RHS
       ELSE
-        b => Solver % Matrix % rhs
+        b => A % rhs
       END IF
       
       ALLOCATE(r(n))
@@ -10818,8 +10996,7 @@ END FUNCTION SearchNodeL
       ! Here the true linear system residual r=b(x0)-A(x0)x is computed.
       ! This option is useful for certain special solvers.  
       !--------------------------------------------------------------------------
-      A => Solver % Matrix
-      b => Solver % Matrix % rhs     
+      b => A % rhs     
       
       IF (Parallel) THEN
 
@@ -12364,7 +12541,7 @@ END FUNCTION SearchNodeL
     CHARACTER(*), OPTIONAL :: VarName
     TYPE(Variable_t), POINTER, OPTIONAL :: Var
 !------------------------------------------------------------------------------
-    CHARACTER(:), ALLOCATABLE :: IntVarName
+    CHARACTER(:), ALLOCATABLE :: IntVarName, MaskName
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Variable_t), POINTER :: WeightsVar
     TYPE(ValueList_t), POINTER :: ElemParams
@@ -12393,14 +12570,20 @@ END FUNCTION SearchNodeL
     END IF
     WeightsVar => VariableGet( Mesh % Variables, IntVarName )
 
+    IF( PRESENT( VarName ) ) THEN
+      MaskName = TRIM(VarName)
+    ELSE
+      MaskName = "Calculate " // TRIM(IntVarName)
+    END IF
+      
     IF( WeightAtBoundary ) THEN
       ElemStart = Mesh % NumberOfBulkElements + 1
       ElemFin = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
-      UseMask = ListCheckPresentAnyBC( CurrentModel, IntVarName )
+      UseMask = ListCheckPresentAnyBC( CurrentModel, MaskName )
     ELSE
       ElemStart = 1
       ElemFin = Mesh % NumberOfBulkElements 
-      UseMask = ListCheckPresentAnyBodyForce( CurrentModel, IntVarName )
+      UseMask = ListCheckPresentAnyBodyForce( CurrentModel, MaskName )
     END IF
 
     RequireLogical = .FALSE.
@@ -12472,7 +12655,7 @@ END FUNCTION SearchNodeL
         IF( RequireLogical ) THEN
           IF( .NOT. ListGetLogical( ElemParams, IntVarName, Stat ) ) CYCLE
         ELSE
-          IF( .NOT. ListCheckPresent( ElemParams, IntVarName ) ) CYCLE
+          IF( .NOT. ListCheckPresent( ElemParams, MaskName ) ) CYCLE
         END IF
       END IF
 
@@ -12812,24 +12995,21 @@ END FUNCTION SearchNodeL
       REAL(KIND=dp), POINTER  :: Diag(:)      
       TYPE(Matrix_t), POINTER :: CM
 
-      IF( Parallel ) THEN
-        CALL Info('ScaleLinearSystem','Scaling diagonal entries to unity in parallel',Level=10)
-      ELSE
-        CALL Info('ScaleLinearSystem','Scaling diagonal entries to unity in serial',Level=10)
-      END IF
-
+      
       A % ScalingMethod = 1                
       
       IF( PRESENT( DiagScaling ) ) THEN
         CALL Info('ScaleLinearSystem','Reusing existing > DiagScaling < vector',Level=12)
         Diag => DiagScaling 
       ELSE
-        CALL Info('ScaleLinearSystem','Computing > DiagScaling < vector',Level=12)
         IF(.NOT. ASSOCIATED(A % DiagScaling)) THEN
+        CALL Info('ScaleLinearSystem','Creating > DiagScaling < vector of size '//I2S(n),Level=10)
           ALLOCATE( A % DiagScaling(n) ) 
+        ELSE
+          CALL Info('ScaleLinearSystem','Recomputing > DiagScaling < vector of size '//I2S(n),Level=12)
         END IF
         Diag => A % DiagScaling
-        Diag = 0._dp
+        Diag(1:n) = 0._dp
 
         IF ( ComplexMatrix ) THEN
           CALL Info('ScaleLinearSystem','Assuming complex matrix while scaling',Level=20)
@@ -12863,7 +13043,10 @@ END FUNCTION SearchNodeL
           !$OMP END PARALLEL DO
         END IF
 
-        IF ( Parallel ) CALL ParallelSumVector(A, Diag)
+        IF ( Parallel ) THEN
+          CALL Info('ScaleLinearSystem','Performing parallel summation of > DiagScaling < vector',Level=20)
+          CALL ParallelSumVector(A, Diag)
+        END IF
 
         IF ( ComplexMatrix ) THEN
           !$OMP PARALLEL DO &
@@ -12920,7 +13103,10 @@ END FUNCTION SearchNodeL
       ! Optionally we may just create the diag and leave the scaling undone
       !--------------------------------------------------------------------
       IF( PRESENT( ApplyScaling ) ) THEN
-        IF(.NOT. ApplyScaling ) RETURN
+        IF(.NOT. ApplyScaling ) THEN
+          CALL Info('ScaleLinearSystem','Application of scaling skipped!',Level=20)
+          RETURN
+        END IF
       END IF
 
       CALL Info('ScaleLinearSystem','Scaling matrix values',Level=20)
@@ -13127,7 +13313,7 @@ END FUNCTION SearchNodeL
         DoRHS = .TRUE.
         IF (PRESENT(RhsScaling)) DoRHS = RhsScaling
         IF (DoRHS) THEN          
-          bsum = SUM( ABS( b ) ) 
+          bsum = SUM( ABS( b(1:n) ) ) 
           nSum = n
           
           IF ( Parallel ) THEN
@@ -13465,8 +13651,12 @@ END FUNCTION SearchNodeL
       END IF
 
       A % RhsScaling=1._dp
-      DEALLOCATE(A % DiagScaling); A % DiagScaling=>NULL()
 
+      IF(.NOT. PRESENT(DiagScaling) ) THEN
+        DEALLOCATE(A % DiagScaling)
+        A % DiagScaling=>NULL()
+      END IF
+        
     END SUBROUTINE BackScaleLinearSystemDiagonal
 
 
@@ -13602,7 +13792,7 @@ END FUNCTION SearchNodeL
     INTEGER, ALLOCATABLE :: BoundaryShared(:),BoundaryActive(:),DofSummed(:),BufInteg(:)
     TYPE(Element_t), POINTER :: Element
     INTEGER :: bc, ind, NoBoundaryActive, NoBCs, ierr
-    LOGICAL :: OnlyGivenBCs
+    LOGICAL :: OnlyGivenBCs, IgnorePeriodic
     LOGICAL :: UseVar, Parallel
 
 
@@ -13627,23 +13817,29 @@ END FUNCTION SearchNodeL
     ALLOCATE( TempVector(Aaid % NumberOfRows) )
 
     IF( UseBulkValues ) THEN
-      SaveValues => Aaid % Values
+      IF(.NOT. ASSOCIATED(Aaid % BulkValues)) THEN
+        CALL Fatal('CalculateLoads','"BulkValues" are not associated!')
+      END IF
+      SaveValues => Aaid % Values      
       Aaid % Values => Aaid % BulkValues
       Rhs => Aaid % BulkRHS
     ELSE
       Rhs => Aaid % Rhs
     END IF
-
+    
     IF ( Parallel ) THEN
-      ALLOCATE(TempRHS(SIZE(Rhs)))
-      TempRHS = Rhs 
-      CALL ParallelInitSolve( Aaid, x, TempRHS, Tempvector )
+      IF( ASSOCIATED( Rhs ) ) THEN
+        ALLOCATE(TempRHS(SIZE(Rhs)))
+        TempRHS = Rhs 
+        CALL ParallelInitSolve( Aaid, x, TempRHS, Tempvector )
+      END IF
       CALL ParallelMatrixVector( Aaid, x, TempVector, .TRUE. )
     ELSE
       CALL MatrixVectorMultiply( Aaid, x, TempVector )
     END IF
 
-    IF( ListGetLogical(Solver % Values, 'Calculate Energy Norm', Found) ) THEN
+    IF(ListGetLogical(Solver % Values, 'Calculate Energy Inner Product', Found) .OR. &
+        ListGetLogical(Solver % Values, 'Calculate Energy Norm', Found) ) THEN
       Energy = 0._dp
       IF( ListGetLogical(Solver % Values, 'Linear System Complex', Found) ) THEN
         Energy_im = 0._dp
@@ -13658,16 +13854,16 @@ END FUNCTION SearchNodeL
         Energy    = ParallelReduction(Energy)
         Energy_im = ParallelReduction(Energy_im)
 
-        CALL ListAddConstReal( Solver % Values, 'Energy norm', Energy)
-        CALL ListAddConstReal( Solver % Values, 'Energy norm im', Energy_im)
+        CALL ListAddConstReal( Solver % Values, 'Energy inner product', Energy)
+        CALL ListAddConstReal( Solver % Values, 'Energy inner product im', Energy_im)
 
-        WRITE( Message,'(A,A,A)') 'res: ',GetVarname(Solver % Variable),' Energy Norm'
+        WRITE( Message,'(A,A,A)') 'res: ',GetVarname(Solver % Variable),' Energy inner product'
         CALL ListAddConstReal( CurrentModel % Simulation, Message, Energy )
 
-        WRITE( Message,'(A,A,A)') 'res: ',GetVarname(Solver % Variable),' Energy Norm im'
+        WRITE( Message,'(A,A,A)') 'res: ',GetVarname(Solver % Variable),' Energy inner product im'
         CALL ListAddConstReal( CurrentModel % Simulation, Message, Energy_im )
 
-        WRITE( Message, * ) 'Energy Norm (Energy Functional): ', Energy, Energy_im
+        WRITE( Message, * ) 'Energy inner product: ', Energy, Energy_im
         CALL Info( 'CalculateLoads', Message, Level=5)
       ELSE 
         DO i=1,Aaid % NumberOfRows
@@ -13678,57 +13874,63 @@ END FUNCTION SearchNodeL
           Energy = Energy + x(i)*TempVector(i)
         END DO
         Energy = ParallelReduction(Energy)
-        CALL ListAddConstReal( Solver % Values, 'Energy norm', Energy )
+        CALL ListAddConstReal( Solver % Values, 'Energy inner product', Energy )
 
-        WRITE( Message,'(A,A,A)') 'res: ',GetVarname(Solver % Variable),' Energy Norm'
+        WRITE( Message,'(A,A,A)') 'res: ',GetVarname(Solver % Variable),' Energy inner product'
         CALL ListAddConstReal( CurrentModel % Simulation, Message, Energy )
 
-        WRITE( Message, * ) '(The square of) Energy Norm: ', Energy
+        WRITE( Message, * ) 'Energy inner product: ', Energy
         CALL Info( 'CalculateLoads', Message, Level=5)
       END IF
     END IF
 
-    IF ( Parallel ) THEN
-      DO i=1,Aaid % NumberOfRows
-        IF ( AAid % ParallelInfo % NeighbourList(i) % Neighbours(1) == ParEnv % Mype ) THEN
-          TempVector(i) = TempVector(i) - TempRHS(i)
-        ELSE
-          TempVector(i) = 0
-        END IF
-      END DO
-      CALL ParallelSumVector( AAid, Tempvector )
-      DEALLOCATE( TempRhs ) 
-    ELSE
-      TempVector = TempVector - RHS
+    IF( ASSOCIATED( Rhs ) ) THEN
+      IF ( Parallel ) THEN
+        DO i=1,Aaid % NumberOfRows
+          IF ( AAid % ParallelInfo % NeighbourList(i) % Neighbours(1) == ParEnv % Mype ) THEN
+            TempVector(i) = TempVector(i) - TempRHS(i)
+          ELSE
+            TempVector(i) = 0
+          END IF
+        END DO
+        CALL ParallelSumVector( AAid, Tempvector )
+        DEALLOCATE( TempRhs ) 
+      ELSE
+        TempVector = TempVector - RHS
+      END IF
     END IF
-
-
+          
+    IgnorePeriodic = ListGetLogical( Solver % Values,'Calculate Loads Ignore Periodic',Found )
+    
     NoBCs = CurrentModel % NumberOfBCs
-    DO This=1,NoBCs
-      Projector => CurrentModel  % BCs(This) % PMatrix
-      IF (ASSOCIATED(Projector)) THEN
-        DO DOF=1,DOFs
-          DO i=1,Projector % NumberOfRows
-            ii = Projector % InvPerm(i)
-            IF( ii == 0 ) CYCLE
-            k = Solver % Variable % Perm(ii)
-            IF(k<=0) CYCLE
-            k = DOFs * (k-1) + DOF
-            TempVector(k)=0
 
-            DO l = Projector % Rows(i), Projector % Rows(i+1)-1
-              IF ( Projector % Cols(l) <= 0 ) CYCLE
-              m = Solver % Variable % Perm( Projector % Cols(l) )
-              IF ( m > 0 ) THEN
-                m = DOFs * (m-1) + DOF
-                TempVector(k) = TempVector(k) + Projector % Values(l)*TempVector(m)
-              END IF
+    IF( IgnorePeriodic ) THEN
+      DO This=1,NoBCs
+        Projector => CurrentModel  % BCs(This) % PMatrix
+        IF (ASSOCIATED(Projector)) THEN
+          DO DOF=1,DOFs
+            DO i=1,Projector % NumberOfRows
+              ii = Projector % InvPerm(i)
+              IF( ii == 0 ) CYCLE
+              k = Solver % Variable % Perm(ii)
+              IF(k<=0) CYCLE
+              k = DOFs * (k-1) + DOF
+              TempVector(k)=0
+
+              DO l = Projector % Rows(i), Projector % Rows(i+1)-1
+                IF ( Projector % Cols(l) <= 0 ) CYCLE
+                m = Solver % Variable % Perm( Projector % Cols(l) )
+                IF ( m > 0 ) THEN
+                  m = DOFs * (m-1) + DOF
+                  TempVector(k) = TempVector(k) + Projector % Values(l)*TempVector(m)
+                END IF
+              END DO
             END DO
           END DO
-        END DO
-      END IF
-    END DO
-
+        END IF
+      END DO
+    END IF
+      
     IF( UseVar ) THEN
       DO i=1,SIZE( NodalLoads % Perm )
         j = NodalLoads % Perm(i)
@@ -14086,7 +14288,7 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
 !> Prints the values of the CRS matrix to standard output.
 !------------------------------------------------------------------------------
-  SUBROUTINE PrintMatrix( A, Parallel, CNumbering,SaveMass, SaveDamp, SaveStiff)
+  SUBROUTINE PrintMatrix( A, Parallel, CNumbering,SaveMass, SaveDamp, SaveStiff, SkipZeros )
 !------------------------------------------------------------------------------
     TYPE(Matrix_t) :: A            !< Structure holding matrix
     LOGICAL :: Parallel    !< are we in parallel mode?
@@ -14094,10 +14296,11 @@ END FUNCTION SearchNodeL
     LOGICAL, OPTIONAL :: SaveMass  !< Should we save the mass matrix
     LOGICAL, OPTIONAL :: SaveDamp  !< Should we save the damping matrix
     LOGICAL, OPTIONAL :: SaveStiff !< Should we save the stiffness matrix
+    LOGICAL, OPTIONAL :: SkipZeros !< Should we write zeros or not
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,n,IndMass,IndDamp,IndStiff,IndMax,row,col
-    LOGICAL :: DoMass, DoDamp, DoStiff, Found
-    REAL(KIND=dp) :: Vals(3)
+    LOGICAL :: DoMass, DoDamp, DoStiff, Found, Skip0
+    REAL(KIND=dp) :: Vals(3), val
     INTEGER, ALLOCATABLE :: Owner(:)
 
     DoMass = .FALSE.
@@ -14121,6 +14324,9 @@ END FUNCTION SearchNodeL
       DoStiff = .FALSE. 
     END IF
 
+    Skip0 = .FALSE.
+    IF(PRESENT(SkipZeros)) Skip0 = SkipZeros
+        
     IF(.NOT. (DoStiff .OR. DoDamp .OR. DoMass ) ) THEN
       CALL Warn('CRS_PrintMatrix','Saving just the topology!')
     END IF
@@ -14162,8 +14368,6 @@ END FUNCTION SearchNodeL
           END IF
         END IF
 
-        WRITE(1,'(I0,A,I0,A)',ADVANCE='NO') row,' ',col,' '
-
         IF( DoStiff ) THEN
           Vals(IndStiff) = A % Values(j)
         END IF
@@ -14174,6 +14378,11 @@ END FUNCTION SearchNodeL
           Vals(IndMass) = A % MassValues(j)
         END IF
 
+        IF( Skip0 ) THEN
+          IF(SUM(ABS(Vals(1:IndMax))) < EPSILON(val)) CYCLE
+        END IF
+          
+        WRITE(1,'(I0,A,I0,A)',ADVANCE='NO') row,' ',col,' '
         IF( IndMax > 0 ) THEN
           WRITE(1,*) Vals(1:IndMax)          
         ELSE
@@ -14242,13 +14451,13 @@ END FUNCTION SearchNodeL
     TYPE(Mesh_t), POINTER :: Mesh
     LOGICAL :: Relax,GotIt,Stat,ScaleSystem, EigenAnalysis, HarmonicAnalysis,&
                BackRotation, ApplyRowEquilibration, ApplyLimiter, Parallel, &
-               SkipZeroRhs, ComplexSystem, ComputeChangeScaled, &
+               SkipZeroRhs, SkipLoads, ComplexSystem, ComputeChangeScaled, &
                RecursiveAnalysis, CalcLoads
-    INTEGER :: n,i,j,k,l,ii,m,DOF,istat,this,mn
+    INTEGER :: n,i,j,k,l,ii,m,DOF,istat,this,mn, AllocStat
     CHARACTER(:), ALLOCATABLE :: Method, Prec, SaveSlot
     INTEGER(KIND=AddrInt) :: Proc
     REAL(KIND=dp), ALLOCATABLE, TARGET :: Px(:), &
-                TempVector(:), TempRHS(:), NonlinVals(:)
+                TempRHS(:), NonlinVals(:)
     REAL(KIND=dp), POINTER :: Diag(:)
     REAL(KIND=dp) :: s,Relaxation,Beta,Gamma,bnorm,Energy,xn,bn
     TYPE(ValueList_t), POINTER :: Params
@@ -14258,6 +14467,7 @@ END FUNCTION SearchNodeL
     LOGICAL :: NormalizeToUnity, AndersonAcc, AndersonScaled, NoSolve, Found
     REAL(KIND=dp), POINTER :: pv(:)
     CHARACTER(*), PARAMETER :: Caller = 'SolveLinearSystem'
+    CHARACTER(LEN=MAX_NAME_LEN) :: str
 
     
     TARGET b, x 
@@ -14290,7 +14500,7 @@ END FUNCTION SearchNodeL
        END SUBROUTINE BlockSolveExt
     END INTERFACE
 !------------------------------------------------------------------------------
-    
+
     Params => Solver % Values
      
     IF( ListGetLogical( Params,'Linear System Skip Complex',GotIt ) ) THEN
@@ -14309,7 +14519,10 @@ END FUNCTION SearchNodeL
       ScaleSystem = ListGetLogical( Params, 'Linear System Scaling', GotIt )
       IF ( .NOT. GotIt  ) ScaleSystem = .TRUE.
     END IF
-   
+
+    SkipLoads = ListGetLogical( Params,'Linear System Skip Loads',GotIt)
+    
+    
     IF( A % COMPLEX ) THEN
       CALL Info(Caller,'Assuming complex valued linear system',Level=6)
     ELSE
@@ -14387,16 +14600,17 @@ END FUNCTION SearchNodeL
     Solver % MultiGridLevel = Solver % MultigridTotal
 !------------------------------------------------------------------------------
 
-    EigenAnalysis = Solver % NOFEigenValues > 0 .AND. &
-        ListGetLogical( Params, 'Eigen Analysis',GotIt )
-
-    
+    EigenAnalysis = .FALSE.
+    IF(.NOT. ListGetLogical( Params,'Skip Eigen Analysis',GotIt)) THEN
+      EigenAnalysis = Solver % NOFEigenValues > 0 .AND. &
+          ListGetLogical( Params, 'Eigen Analysis',GotIt )
+    END IF
+          
     HarmonicAnalysis = ( Solver % NOFEigenValues > 0 ) .AND. &
         ListGetLogical( Params, 'Harmonic Analysis',GotIt )
-
+    
     ! These analyses types may require recursive strategies and may also have zero rhs
-    RecursiveAnalysis = HarmonicAnalysis .OR. EigenAnalysis 
-
+    RecursiveAnalysis = HarmonicAnalysis .OR. EigenAnalysis     
 
     ApplyLimiter = ListGetLogical( Params,'Apply Limiter',GotIt ) 
     SkipZeroRhs = ListGetLogical( Params,'Skip Zero Rhs Test',GotIt )
@@ -14468,6 +14682,42 @@ END FUNCTION SearchNodeL
             SIZE(Solver % Variable % EigenValues), NormalizeToUnity ) 
       END IF
 
+      CALL Info(Caller, 'Repointing '//I2S(Solver % Variable % DOFs)//&
+          ' eigenvalue components for: '//TRIM(Solver % Variable % Name))
+
+      IF (A % Complex) THEN
+        DO k=1,Solver % Variable % DOFs
+          str = ComponentName( Solver % Variable % Name, k )
+          Var => VariableGet( Solver % Mesh % Variables, str, .TRUE. )
+
+          IF( ASSOCIATED( Var ) ) THEN
+            IF (Solver % Variable % DOFs == 2) THEN
+              CALL Info('SolveEigenSystem', 'Eigenvalue component ' &
+                  //I2S(k)//': '//TRIM(str))
+              Var % EigenValues => Solver % Variable % EigenValues
+              IF (.NOT. ASSOCIATED(Var % EigenVectors)) THEN
+                ALLOCATE(Var % EigenVectors(SIZE(Var % EigenValues), &
+                    SIZE(Solver % Variable % EigenVectors,2)), STAT=AllocStat)
+              END IF
+
+              DO i=1,SIZE(Var % EigenVectors,2)
+                SELECT CASE(k)
+                CASE(1)
+                  Var % EigenVectors(:,i) = &
+                      CMPLX(REAL(Solver % Variable % EigenVectors(:,i)), 0.0_dp, kind=dp)
+                CASE(2)
+                  ! This is the imaginary component as a real-valued array: 
+                  Var % EigenVectors(:,i) = &
+                      CMPLX(AIMAG(Solver % Variable % EigenVectors(:,i)), 0.0_dp, kind=dp)
+                END SELECT
+              END DO
+            ELSE
+              CALL Warn(Caller, 'A complex-valued system should have 2 DOFs')
+            END IF
+          END IF
+        END DO
+      END IF
+      
       ! This is temporal (?) fix for a glitch where the complex eigen vector
       ! is expanded to one where real and complex parts follow each other. 
       IF( ListGetLogical( Solver % Values,'Expand Eigen Vectors', Stat ) ) THEN
@@ -14542,45 +14792,8 @@ END FUNCTION SearchNodeL
       IF( NoSolve ) GOTO 110
     END IF
     
-    ! Sometimes the r.h.s. may abruptly diminish in value resulting to significant 
-    ! convergence issues or it may be that the system scales linearly with the source. 
-    ! This flag tries to improve on the initial guess of the linear solvers, and may 
-    ! sometimes even result to the exact solution.
     IF( ListGetLogical( Params,'Linear System Normalize Guess',GotIt ) ) THEN
-      CALL Info(Caller,'Normalizing initial guess!',Level=30)
-
-      ALLOCATE( TempVector(A % NumberOfRows) )
-
-      IF ( Parallel ) THEN
-        IF( .NOT. ALLOCATED( TempRHS ) ) THEN
-          ALLOCATE( TempRHS(A % NumberOfRows) ); TempRHS=0._dp
-        END IF
-
-        Tempvector = 0._dp
-        TempRHS(1:n) = b(1:n)
-        CALL ParallelInitSolve( A, x, TempRHS, Tempvector )
-
-        MP => ParallelMatrix(A,mx,mb,mr)
-        mn = MP % NumberOfRows
-
-        TempVector = 0._dp
-        CALL ParallelMatrixVector( A, mx, TempVector )
-
-        bn = ParallelDot( mn, TempVector, mb )
-        xn = ParallelDot( mn, TempVector, TempVector )
-        DEALLOCATE( TempRHS )
-      ELSE
-        CALL MatrixVectorMultiply( A, x, TempVector )
-        xn = SUM( TempVector(1:n)**2 )
-        bn = SUM( TempVector(1:n) * b(1:n) )
-      END IF
-
-      IF( xn > TINY( xn ) ) THEN
-        x(1:n) = x(1:n) * ( bn / xn )
-        WRITE( Message,'(A,ES12.3)') 'Linear System Normalizing Factor: ',bn/xn
-        CALL Info(Caller,Message,Level=6) 
-      END IF
-      DEALLOCATE( TempVector )
+      CALL NormalizeInitialGuess() 
     END IF
 
     IF( ListGetLogical( Params,'Linear System Nullify Guess',GotIt ) ) THEN
@@ -14597,14 +14810,17 @@ END FUNCTION SearchNodeL
       Prec = ListGetString(Params,'Linear System Preconditioning',GotIt)
       IF( GotIt ) THEN
         CALL Info(Caller,'Linear System Preconditioning: '//TRIM(Prec),Level=8)
+        CALL ResetTimer("Prec0-"//TRIM(Prec))
         IF( SEQL(Prec,'vanka') ) THEN
           IF(LEN(Prec)>=6) THEN
             i = ICHAR(Prec(6:6)) - ICHAR('0')
             CALL ListAddNewInteger( Params,'Vanka Mode',i) 
           END IF
           CALL VankaCreate(A,Solver)
+        ELSE IF ( Prec=='circuit' ) THEN
+          CALL CircuitPrecCreate(A,Solver)
         END IF
-        IF ( Prec=='circuit' ) CALL CircuitPrecCreate(A,Solver)
+        CALL CheckTimer("Prec0-"//TRIM(Prec),Level=8,Delete=.TRUE.)                  
       END IF
     END IF
 
@@ -14627,9 +14843,14 @@ END FUNCTION SearchNodeL
       pv => b
       CALL VectorValuesRange(pv,SIZE(pv),'b')
     END IF
-      
+
+
+    IF(ListGetLogical(Params, 'Linear System Use Rocalution', Found)) &
+      Method = 'rocalution'
     
     IF ( .NOT. Parallel ) THEN
+      IF(ListGetLogical(Params, 'Linear System Use Hypre', Found)) Method = 'hypre'
+
       CALL Info(Caller,'Serial linear System Solver: '//TRIM(Method),Level=8)
       
       SELECT CASE(Method)
@@ -14639,12 +14860,15 @@ END FUNCTION SearchNodeL
       CASE('iterative')
         CALL IterSolver( A, x, b, Solver )
       CASE('feti')
-        CALL Fatal(Caller, &
-            'Feti solver available only in parallel.')
+        CALL Fatal(Caller,'Feti solver available only in parallel.')
       CASE('block')
         CALL BlockSolveExt( A, x, b, Solver )
       CASE('amgx')
         CALL AMGXSolver( A, x, b, Solver )
+      CASE('rocalution')
+        CALL ROCSolver( A, x, b, Solver )
+      CASE('hypre')
+        CALL SolveHypre( A, x, b, Solver )
       CASE('direct')
         CALL DirectSolver( A, x, b, Solver )        
       CASE DEFAULT        
@@ -14666,6 +14890,8 @@ END FUNCTION SearchNodeL
         CALL BlockSolveExt( A, x, b, Solver )
       CASE('amgx')
         CALL AMGXSolver( A, x, b, Solver )
+      CASE('rocalution')
+        CALL ROCSolver( A, x, b, Solver )
       CASE('direct')
         CALL DirectSolver( A, x, b, Solver )
       CASE DEFAULT        
@@ -14700,20 +14926,23 @@ END FUNCTION SearchNodeL
       IF (ASSOCIATED(BulkMatrix) ) Aaid=>BulkMatrix
     END IF
 
-    NodalLoads => VariableGet( Solver % Mesh % Variables, &
-        GetVarName(Solver % Variable) // ' Loads' )
-    IF( ASSOCIATED( NodalLoads ) ) THEN
-      ! Nodal loads may be allocated but the user may have toggled
-      ! the 'calculate loads' flag such that no load computation should be performed.
-      CalcLoads = ListGetLogical( Solver % Values,'Calculate Loads',GotIt )
-      IF( .NOT. GotIt ) CalcLoads = .TRUE.
-      IF( CalcLoads ) THEN
-        CALL Info(Caller,'Calculating nodal loads for: '//&
-            GetVarName(Solver % Variable),Level=6)
-        CALL CalculateLoads( Solver, Aaid, x, Dofs, .TRUE., NodalLoads ) 
+    NodalLoads => NULL()
+    IF(.NOT. SkipLoads ) THEN
+      NodalLoads => VariableGet( Solver % Mesh % Variables, &
+          GetVarName(Solver % Variable) // ' Loads' )
+      IF( ASSOCIATED( NodalLoads ) ) THEN
+        ! Nodal loads may be allocated but the user may have toggled
+        ! the 'calculate loads' flag such that no load computation should be performed.
+        CalcLoads = ListGetLogical( Solver % Values,'Calculate Loads',GotIt )
+        IF( .NOT. GotIt ) CalcLoads = .TRUE.
+        IF( CalcLoads ) THEN
+          CALL Info(Caller,'Calculating nodal loads for: '//&
+              GetVarName(Solver % Variable),Level=6)
+          CALL CalculateLoads( Solver, Aaid, x, Dofs, .TRUE., NodalLoads ) 
+        END IF
       END IF
     END IF
-
+      
     IF (BackRotation) THEN
       CALL BackRotateNTSystem( x, Solver % Variable % Perm, DOFs )
       IF( ASSOCIATED( NodalLoads ) ) THEN
@@ -14730,18 +14959,19 @@ END FUNCTION SearchNodeL
       CALL ComputeChange(Solver,.FALSE.,n, x, Matrix=A, RHS=b )
     END IF
     Norm = Solver % Variable % Norm
-    
-    NodalLoads => VariableGet( Solver % Mesh % Variables, &
-        GetVarName(Solver % Variable) // ' Residual' )
-    IF( ASSOCIATED( NodalLoads ) ) THEN
-      CalcLoads = ListGetLogical( Solver % Values,'Calculate Residual',GotIt )
-      IF( .NOT. GotIt ) CalcLoads = .TRUE.
-      IF( CalcLoads ) THEN
-        CALL Info(Caller,'Calculating nodal residual',Level=6)
-        CALL CalculateLoads( Solver, Aaid, x, Dofs, .FALSE., NodalLoads ) 
+
+    IF(.NOT. SkipLoads ) THEN
+      NodalLoads => VariableGet( Solver % Mesh % Variables, &
+          GetVarName(Solver % Variable) // ' Residual' )
+      IF( ASSOCIATED( NodalLoads ) ) THEN
+        CalcLoads = ListGetLogical( Solver % Values,'Calculate Residual',GotIt )
+        IF( .NOT. GotIt ) CalcLoads = .TRUE.
+        IF( CalcLoads ) THEN
+          CALL Info(Caller,'Calculating nodal residual',Level=6)
+          CALL CalculateLoads( Solver, Aaid, x, Dofs, .FALSE., NodalLoads ) 
+        END IF
       END IF
     END IF
-
     
 !------------------------------------------------------------------------------
  
@@ -14783,6 +15013,58 @@ END FUNCTION SearchNodeL
      END IF
    END IF
 
+ CONTAINS
+
+
+   ! Sometimes the r.h.s. may abruptly diminish in value resulting to significant 
+   ! convergence issues or it may be that the system scales linearly with the source. 
+   ! This flag tries to improve on the initial guess of the linear solvers, and may 
+   ! sometimes even result to the exact solution.
+   !--------------------------------------------------------------------------------
+   SUBROUTINE NormalizeInitialGuess()
+     REAL(KIND=dp) :: xn, bn
+     REAL(KIND=dp), ALLOCATABLE, TARGET :: TempVector(:)
+
+     
+     CALL Info(Caller,'Normalizing initial guess!',Level=30)
+
+     ALLOCATE( TempVector(A % NumberOfRows) )
+
+     IF ( Parallel ) THEN
+       IF( .NOT. ALLOCATED( TempRHS ) ) THEN
+         ALLOCATE( TempRHS(A % NumberOfRows) ); TempRHS=0._dp
+       END IF
+
+       Tempvector = 0._dp
+       TempRHS(1:n) = b(1:n)
+       CALL ParallelInitSolve( A, x, TempRHS, Tempvector )
+
+       MP => ParallelMatrix(A,mx,mb,mr)
+       mn = MP % NumberOfRows
+
+       TempVector = 0._dp
+       CALL ParallelMatrixVector( A, mx, TempVector )
+
+       bn = ParallelDot( mn, TempVector, mb )
+       xn = ParallelDot( mn, TempVector, TempVector )
+       DEALLOCATE( TempRHS )
+     ELSE
+       CALL MatrixVectorMultiply( A, x, TempVector )
+       xn = SUM( TempVector(1:n)**2 )
+       bn = SUM( TempVector(1:n) * b(1:n) )
+     END IF
+
+     IF( xn > TINY( xn ) ) THEN
+       x(1:n) = x(1:n) * ( bn / xn )
+       WRITE( Message,'(A,ES12.3)') 'Linear System Normalizing Factor: ',bn/xn
+       CALL Info(Caller,Message,Level=6) 
+     END IF
+     DEALLOCATE( TempVector )
+
+   END SUBROUTINE NormalizeInitialGuess
+
+
+   
 !------------------------------------------------------------------------------
   END SUBROUTINE SolveLinearSystem
 !------------------------------------------------------------------------------
@@ -14963,21 +15245,21 @@ END FUNCTION SearchNodeL
           DO i=1,ParEnV % PEs
             IF(i-1==me .OR. .NOT. ParEnv % IsNeighbour(i)) CYCLE
 
-            CALL MPI_BSEND(SendTo(i),1,MPI_INTEGER,i-1,1200,ELMER_COMM_WORLD,status, ierr)
+            CALL MPI_BSEND(SendTo(i),1,MPI_INTEGER,i-1,1200,ELMER_COMM_WORLD, ierr)
             IF(Sendto(i)==0) CYCLE
 
             CALL MPI_BSEND(APerm(SendStuff(i) % Rows),SendTo(i),MPI_INTEGER,i-1, &
-                          1201,ELMER_COMM_WORLD,status,ierr )
+                          1201,ELMER_COMM_WORLD,ierr )
   
             CALL MPI_BSEND( SendStuff(i) % Size,SendTo(i),MPI_INTEGER,i-1, &
-                          1202,ELMER_COMM_WORLD,status,ierr )
+                          1202,ELMER_COMM_WORLD,ierr )
             DO j=1,SendTo(i)
               k = SendStuff(i) % Rows(j)
               CALL MPI_BSEND(APerm(A % Cols(A % Rows(k):A % Rows(k+1)-1)),SendStuff(i) % Size(j), &
-                         MPI_INTEGER,i-1, 1203,ELMER_COMM_WORLD, status, ierr )
+                         MPI_INTEGER,i-1, 1203,ELMER_COMM_WORLD, ierr )
 
               CALL MPI_BSEND(A % Values(A % Rows(k):A % Rows(k+1)-1),SendStuff(i) % Size(j), &
-                      MPI_DOUBLE_PRECISION,i-1,1204,ELMER_COMM_WORLD, status, ierr )
+                      MPI_DOUBLE_PRECISION,i-1,1204,ELMER_COMM_WORLD, ierr )
             END DO
           END DO
 
@@ -15065,6 +15347,351 @@ END FUNCTION SearchNodeL
 
 
 !------------------------------------------------------------------------------
+  SUBROUTINE ROCSolver( A, x, b, Solver )
+!------------------------------------------------------------------------------
+    TYPE(Solver_t) :: Solver
+    TYPE(Matrix_t), POINTER :: A
+    REAL(KIND=dp) :: x(:), b(:)
+
+#ifdef HAVE_ROCALUTION
+
+    ! Interfaces to c++ code calling ROCalution library
+    ! -------------------------------------------------
+    INTERFACE
+      SUBROUTINE ROCSerialSolve(n, rows, cols, vals, b, x, nonlin_update, &
+                  imethod, prec, maxiter, tol) BIND(C, Name="ROCSerialSolve")
+        USE Types
+        USE ISO_C_BINDING, ONLY: C_CHAR, C_INTPTR_T
+
+        IMPLICIT NONE
+        REAL(KIND=dp) :: vals(*), b(*), x(*), tol
+        INTEGER :: rows(*), cols(*), nonlin_update, n, imethod, prec, maxiter
+      END SUBROUTINE ROCSerialSolve
+
+
+      SUBROUTINE ROCParallelSolve(gn, n, rows, cols, vals, b, x, bnrm, goffset, &
+         fcomm, imethod, prec, maxiter, tol) BIND(C, Name="ROCParallelSolve")
+        USE Types
+        USE ISO_C_BINDING, ONLY: C_CHAR, C_INTPTR_T
+
+        IMPLICIT NONE
+        REAL(KIND=dp) :: vals(*), b(*), x(*), bnrm, tol
+        INTEGER :: gn, n, rows(*), cols(*), goffset(*), fcomm, imethod, prec, maxiter
+      END SUBROUTINE ROCParallelSolve
+    END INTERFACE
+
+    ! local variables:
+    ! ----------------
+    LOGICAL :: found, isParallel 
+    INTEGER :: nonlin_update, i, j, k,l,n, gn, me
+
+    TYPE(Matrix_t), POINTER ::Rmatrix
+
+    INTEGER, POINTER ::  aPerm(:), iLperm(:), gOffset(:)
+    REAL(KIND=dp), ALLOCATABLE :: dBuf(:)
+    INTEGER, ALLOCATABLE :: Owner(:), SendTo(:), iBuf(:), tOffset(:), rRows(:), rSize(:)
+
+    INTEGER :: status(MPI_STATUS_SIZE),ierr,lrow,you,rcnt,proc
+
+    INTEGER :: buf_size, procs
+
+    ! Define these to get somewhat shorter MPI subroutine calls:
+    ! -----------------------------------------------------------
+    INTEGER :: xmpi_comm
+    INTEGER :: xmpi_src  = MPI_ANY_SOURCE
+    INTEGER :: xmpi_max  = MPI_MAX
+    INTEGER :: xmpi_int  = MPI_INTEGER
+    INTEGER :: xmpi_dbl  = MPI_DOUBLE_PRECISION
+
+
+    REAL(KIND=dp) :: TOL
+    INTEGER :: Imethod, Prec, MaxIter, ILULevel, own_n
+
+    TYPE(ValueList_t), POINTER :: Params
+
+    TYPE SendStuff_t
+      INTEGER, ALLOCATABLE :: Size(:), Rows(:)
+    END TYPE SendStuff_t
+    TYPE(SendStuff_t), ALLOCATABLE :: SendStuff(:)
+
+    Params => Solver % Values
+
+    ! Extract some controls to ROCalution from the simulation control info:
+    ! ---------------------------------------------------------------------
+    nonlin_update = 1
+    IF ( .NOT. ListGetLogical( Params, 'Linear System Refactorize', Found ) ) &
+      nonlin_update = 0;
+
+    SELECT CASE(ListGetString(Params,'Linear System Iterative Method',Found))
+      CASE('cg')
+         Imethod = 0;
+      CASE('bicgstab')
+         Imethod = 1;
+      CASE('bicgstabl')
+         Imethod = 2;
+      CASE('gmres')
+         Imethod = 3;
+      CASE('fgmres')
+         Imethod = 4;
+      CASE DEFAULT
+         Imethod = 0;
+    END SELECT
+
+    SELECT CASE(ListGetString(Params,'Linear System Preconditioning',Found))
+      CASE('jacobi')
+        Prec = 0;
+      CASE('sgs')
+        Prec = 1;
+      CASE('ilu')
+        Prec = 2; ILULevel = 0
+      CASE('ilu0')
+       Prec = 2; ILULevel = 0
+      CASE('ilu1')
+       Prec = 2; ILULevel = 1
+      CASE('ilu2')
+       Prec = 2; ILULevel = 2
+      CASE DEFAULT
+       Prec = 0;
+    END SELECT
+
+    MaxIter = ListGetInteger(Params,'Linear System Max Iterations')
+    TOL = ListGetCReal(Params,'Linear System Convergence Tolerance')
+
+    ! ---------------------------------------------------------------------
+
+    n = A % NumberOfRows
+
+    procs =  Parenv % PEs
+    isParallel = procs>1
+
+    IF(isParallel) THEN
+      me    =  Parenv % MyPe
+      xmpi_comm = ELMER_COMM_WORLD
+
+      IF (.NOT.ASSOCIATED(A % ParMatrix)) CALL ParallelInitMatrix(Solver,A)
+
+      ParEnv => A % ParMatrix % ParEnv
+      ParEnv % ActiveComm = A % Comm
+
+      ! Enforce continuous ascending numbering as required by ROCalution 
+      ! ----------------------------------------------------------------
+      IF (.NOT. ASSOCIATED(A % RocParams % Rmatrix)) THEN
+        n = SIZE(A % ParallelInfo % GlobalDOFs)
+        ALLOCATE( Owner(n), Aperm(n), tOffset(0:procs), gOffset(0:procs) )
+
+        tOffset = -1
+        CALL ContinuousNumbering(A % ParallelInfo,A % Perm,aPerm,Owner,gStart=tOffset(me))
+
+        gOffset = -1
+        CALL MPI_ALLREDUCE(tOffset,gOffset,procs,xmpi_int,xmpi_max,xmpi_comm,ierr)
+
+        own_n = SUM(Owner)
+        gOffset(procs) = ParallelReduction(own_n)
+
+        ALLOCATE(iLPerm(A % NumberOfRows))
+
+        Rmatrix => AllocateMatrix();
+        Rmatrix % Format = MATRIX_LIST
+        Rmatrix % ListMatrix => List_AllocateMatrix(own_n)
+
+        A % RocParams % Rmatrix => Rmatrix
+        A % RocParams % CntPerm => aPerm
+        A % RocParams % LocPerm => iLperm
+        A % RocParams % gOffset => gOffset
+      ELSE
+        Rmatrix => A % RocParams % Rmatrix
+        aPerm   => A % RocParams % CntPerm
+        iLPerm  => A % RocParams % LocPerm
+        gOffset => A % RocParams % gOffset
+      END IF
+
+      ! Complete the matrix rows such that each partition has full rows of the 'owned' dofs
+      ! -----------------------------------------------------------------------------------
+      IF( Rmatrix % Format == MATRIX_LIST .OR. nonlin_update==1 ) THEN
+ 
+        IF (Rmatrix % Format == MATRIX_CRS  ) Rmatrix % Values = 0._dp
+
+        ! Create inside matrix + count rows with values to send for each neighbour
+        ! -------------------------------------------------------------------------
+        ALLOCATE(SendTo(procs))
+        iLPerm = 0
+        LRow = 0
+        SendTo = 0
+        DO i=1,A % NumberofRows
+          you = A % ParallelInfo % NeighbourList(i) % Neighbours(1)
+          IF ( you == me ) THEN
+            lRow = lRow + 1
+            iLPerm(lRow) = i
+            DO j=A % Rows(i+1)-1, A % Rows(i),-1
+              CALL AddToMatrixElement(Rmatrix, lRow, aPerm(A  % Cols(j)), A % Values(j))
+            END DO
+          ELSE
+            SendTo(you+1) = SendTo(you+1)+1
+          END IF
+        END DO
+
+        ALLOCATE(SendStuff(ParEnv % Pes))
+        DO i=1,ParEnv % PEs
+          IF( i-1==me ) CYCLE
+          IF(.NOT.ParEnv % IsNeighbour(i))  CYCLE
+
+          ALLOCATE( SendStuff(i) % Rows(SendTo(i)) )
+          ALLOCATE( SendStuff(i) % Size(SendTo(i)) )
+        END DO
+ 
+        ! Count number of columns of each neighbour's rows to be sent
+        ! -----------------------------------------------------------
+        SendTo   = 0
+        buf_size = 0
+        DO i=1,a % NumberOfRows
+          you = A % ParallelInfo % NeighbourList(i) % Neighbours(1)
+          IF ( you /= me ) THEN
+            SendTo(you+1) = SendTo(you+1)+1
+            SendStuff(you+1) % Size(Sendto(you+1))  = A % Rows(i+1)-A % Rows(i)
+            SendStuff(you+1) % Rows(Sendto(you+1))  = i
+            buf_size = buf_size + A % Rows(i+1) - A % Rows(i)
+          END IF
+        END DO
+        CALL CheckBuffer(ParEnv % PEs*(4+4*MPI_BSEND_OVERHEAD) + 4*buf_size)
+
+        ! Send data to neighbours
+        ! -----------------------
+        DO i=1,ParEnV % PEs
+          IF(i-1==me .OR. .NOT. ParEnv % IsNeighbour(i)) CYCLE
+
+          CALL MPI_BSEND(SendTo(i),1,xmpi_int,i-1,1200,xmpi_comm,ierr)
+          IF(Sendto(i)==0) CYCLE
+
+          ibuf = aPerm(SendStuff(i) % Rows)
+          CALL MPI_BSEND(ibuf,SendTo(i),xmpi_int,i-1,1201,xmpi_comm,ierr)
+
+          ibuf = SendStuff(i) % Size
+          CALL MPI_BSEND(ibuf,SendTo(i),xmpi_int,i-1,1202,xmpi_comm,ierr)
+
+          DO j=1,SendTo(i)
+            k = SendStuff(i) % Rows(j)
+            l = SendStuff(i) % Size(j)
+            dBuf =  A % Values(A % Rows(k):A % Rows(k+1)-1)
+            iBuf =  aPerm(A % Cols(A % Rows(k):A % Rows(k+1)-1))
+            CALL MPI_BSEND(iBuf,l,xmpi_int,i-1,1203,xmpi_comm,ierr)
+            CALL MPI_BSEND(dBuf,l,xmpi_dbl,i-1,1204,xmpi_comm,ierr)
+          END DO
+        END DO
+
+        ! receive data from neighbours
+        ! ----------------------------
+        ALLOCATE( rRows(100), rSize(100) )
+        DO i=0,procs-1
+          IF(i==me .OR. .NOT. ParEnv % IsNeighbour(i+1)) CYCLE
+
+          CALL MPI_RECV(rcnt,1,xmpi_int,xmpi_src,1200,xmpi_comm,status,ierr)
+          IF(rcnt==0) CYCLE
+
+          IF(rcnt > SIZE(rRows)) THEN
+            DEALLOCATE(rRows,Rsize)
+            ALLOCATE( rRows(rcnt), rSize(rcnt) )
+          END IF
+
+          proc = status(MPI_SOURCE)
+          CALL MPI_RECV(rRows,rcnt,xmpi_int,proc,1201,xmpi_comm,status,ierr)
+          CALL MPI_RECV(rSize,rcnt,xmpi_int,proc,1202,xmpi_comm,status,ierr)
+          DO j=1,rcnt
+            k = rRows(j)
+
+            IF ( k<= gOffset(me) .OR. k> gOffset(me+1) ) THEN
+              PRINT*,Parenv % MyPE,proc, 'not mine then ?', rRows(j), gOffset(me), gOffset(me+1)
+              CYCLE
+            END IF
+
+            IF(rSize(j) > SIZE(iBuf)) THEN
+              DEALLOCATE(iBuf,dBuf)
+              ALLOCATE( iBuf(rSize(j)), dBuf(rSize(j)) )
+            END IF
+
+            CALL MPI_RECV(iBuf,rSize(j),xmpi_int,proc,1203,xmpi_comm,status,ierr)
+            CALL MPI_RECV(dBuf,rSize(j),xmpi_dbl,proc,1204,xmpi_comm,status,ierr)
+
+            DO l=1,rSize(j)
+              CAll AddToMatrixElement(Rmatrix,k-gOffset(me),iBuf(l),dBuf(l))
+            END DO
+          END DO
+        END DO
+        ! ----------
+
+        CALL MPI_BARRIER(A % Comm,ierr)
+ 
+        IF(Rmatrix % Format == MATRIX_LIST) CALL List_toCRSMatrix(Rmatrix)
+        n = Rmatrix % NumberOfRows
+        gn = ParallelReduction(n);
+      END IF
+
+
+      !  the linear solver
+      ! ----------------------
+      BLOCK
+        REAL(KIND=dp), ALLOCATABLE :: pb(:),px(:), r(:)
+        REAL(KIND=dp) :: bnrm
+
+        n = Rmatrix % NumberOfRows
+        j = A  % NumberOfRows
+        ALLOCATE(pb(n), px(n), r(j) )
+
+        ! complete the RHS of the partition dofs
+        !---------------------------------------
+        r = b(1:j)
+        CALL ParallelSumVector(A, r)
+
+        ! Extract 'owned' dofs
+        !---------------------
+        DO i=1,n
+          pb(i) = r(iLPerm(i))
+          px(i) = x(iLPerm(i))
+        END DO
+
+        bnrm = SQRT(ParallelReduction(SUM(pb**2)))
+        IF(bnrm <AEPS) bnrm=1;
+
+        !  call ROCalution
+        ! ----------------
+        CALL ROCParallelSolve( gn, n, Rmatrix % Rows-1, Rmatrix % Cols-1, &
+             Rmatrix % Values, pb, px, bnrm, gOffset, A % comm, imethod, prec, maxiter, tol )
+
+        ! distribute the result such that all dofs present (even shared and not 'owned')
+        ! in a partition have consistent values
+        ! ------------------------------------------------------------------------------
+        x = 0
+        DO i=1,n
+          x(iLPerm(i)) = px(i)
+        END DO
+        CALL ParallelSumVector(A, x)
+      END BLOCK
+
+      ! Cleanup, remains to be reconsidered for optimizations
+      ! -----------------------------------------------------
+      CALL FreeMatrix(Rmatrix);
+      DEALLOCATE(APerm,ILperm,gOffset)
+
+      A % RocParams % Rmatrix => Null()
+      A % RocParams % CntPerm => Null()
+      A % RocParams % LocPerm => Null()
+      A % RocParams % gOffset => Null()
+    ELSE
+      ! Serial case: call the linear solver
+      ! -----------------------------------
+      CALL ROCSerialSolve( n, A % Rows-1, A % Cols-1, A % Values, b, x, &
+              nonlin_update, imethod, prec, maxiter, tol )
+    END IF
+#else
+    CALL Fatal('ROCSolver', "Rocalution doesn't seem to be included.")
+#endif
+!------------------------------------------------------------------------------
+  END SUBROUTINE ROCSolver
+!------------------------------------------------------------------------------
+
+
+
+
+!------------------------------------------------------------------------------
 !> Given a linear system Ax=b make a change of variables such that we will 
 !> be solving for the residual Adx=b-Ax0 where dx=x-x0.
 !------------------------------------------------------------------------------
@@ -15141,7 +15768,7 @@ END FUNCTION SearchNodeL
 
 
 
-  FUNCTION HaveConstraintMatrix( A ) RESULT( HaveConstraint ) 
+  FUNCTION HaveRestrictionMatrix( A ) RESULT( HaveConstraint ) 
 
     TYPE(Matrix_t), POINTER :: A
     LOGICAL :: HaveConstraint
@@ -15149,7 +15776,7 @@ END FUNCTION SearchNodeL
     INTEGER :: n
 
     IF( .NOT. ASSOCIATED( A ) ) THEN
-      CALL Fatal('HaveConstraintMatrix','Matrix A not associated!')
+      CALL Fatal('HaveRestrictionMatrix','Matrix A not associated!')
     END IF
 
     n = 0
@@ -15164,7 +15791,7 @@ END FUNCTION SearchNodeL
     n = ParallelReduction(n)
     HaveConstraint = ( n > 0 ) 
     
-  END FUNCTION HaveConstraintMatrix
+  END FUNCTION HaveRestrictionMatrix
 
   
   
@@ -15186,7 +15813,7 @@ END FUNCTION SearchNodeL
     TYPE(Variable_t), POINTER :: Var, NodalLoads
     TYPE(Mesh_t), POINTER :: Mesh, SaveMEsh
     LOGICAL :: Relax, Found, NeedPrevSol, Timing, ResidualMode, &
-        RestrictionMode, BlockMode, GloNum
+        RestrictionMode, BlockMode, GloNum, FirstLoop
     INTEGER :: n,i,j,k,l,m,istat,nrows,ncols,colsj,rowoffset
     CHARACTER(:), ALLOCATABLE :: Method, VariableName
     INTEGER(KIND=AddrInt) :: Proc
@@ -15220,8 +15847,10 @@ END FUNCTION SearchNodeL
 
     n = A % NumberOfRows
 
-    ResidualMode = ListGetLogical( Params,'Linear System Residual Mode',Found )
-    
+    RestrictionMode = HaveRestrictionMatrix( A ) 
+
+    ResidualMode = ListGetLogical( Params,'Linear System Residual Mode',Found )      
+      
     BlockMode = ListGetLogical( Params,'Linear System Block Mode',Found ) 
     
 !------------------------------------------------------------------------------
@@ -15229,7 +15858,7 @@ END FUNCTION SearchNodeL
 ! work properly with the Dirichlet elimination.
 !------------------------------------------------------------------------------
     NeedPrevSol = ResidualMode
-
+    
     IF(.NOT. NeedPrevSol ) THEN
       Relaxation = ListGetCReal( Params, &
           'Nonlinear System Relaxation Factor', Found )
@@ -15284,19 +15913,41 @@ END FUNCTION SearchNodeL
       bb => b
     END IF
 
-    RestrictionMode = HaveConstraintMatrix( A ) 
-    
+    FirstLoop = .TRUE.
     Nmode = 0
-20  CALL ConstraintModesDriver( A, x, b, Solver, .TRUE., Nmode, LinModes )  
+20  CALL ConstraintModesDriver( A, x, b, Solver, .TRUE., Nmode, LinModes, FirstLoop = FirstLoop )  
     
-    ! Here activate constraint solve only if constraints are not treated as blocks
-    IF( BlockMode .AND. RestrictionMode ) THEN
-      CALL Warn(Caller,'Matrix is restricted and block matrix, giving precedence to block nature!')
-    END IF
     
     IF( BlockMode ) THEN
       CALL Info(Caller,'Solving linear system with block strategy',Level=10)
-      CALL BlockSolveExt( A, x, bb, Solver )
+      ! Here activate constraint solve only if constraints are not treated as blocks
+      IF( RestrictionMode .AND. &
+          ListGetLogical( Params, 'Eliminate Linear Constraints', Found) ) THEN
+        BLOCK 
+          TYPE(Matrix_t), POINTER :: Acoll      
+          Acoll  => AllocateMatrix()
+          Acoll % FORMAT = MATRIX_LIST        
+          CALL Info(Caller,'Eliminating constraints before going into block matrix!')
+          CALL EliminateLinearRestriction( A, bb, A % ConstraintMatrix, Acoll, Solver, .TRUE. )
+          CALL List_ToCRSMatrix(Acoll)
+
+          Acoll % Comm = A % Comm 
+          Acoll % AddMatrix => A % AddMatrix
+          CALL ParallelInitMatrix(Solver, Acoll)
+          
+          CALL BlockSolveExt( Acoll, x, Acoll % rhs, Solver )
+
+          CALL Info(Caller,'Freeing collection matrix after solution',Level=10)
+          NULLIFY( Acoll % AddMatrix )         
+
+          CALL FreeMatrix(Acoll)
+          ParEnv => A % ParMatrix % ParEnv
+
+          Acoll => NULL()
+        END BLOCK
+      ELSE
+        CALL BlockSolveExt( A, x, bb, Solver )
+      END IF
     ELSE IF ( RestrictionMode ) THEN
       CALL Info(Caller,'Solving linear system with linear restrictions!',Level=10)
       IF( ListGetLogical( Params,'Save Constraint Matrix',Found ) ) THEN
@@ -15311,8 +15962,9 @@ END FUNCTION SearchNodeL
     CALL Info(Caller,'System solved',Level=12)
 
     
-    IF( Nmode > 0 ) THEN
-      CALL ConstraintModesDriver( A, x, b, Solver, .FALSE. ) 
+    IF( LinModes > 0 .OR. Nmode > 0 ) THEN
+      CALL ConstraintModesDriver( A, x, b, Solver, .FALSE., FirstLoop = FirstLoop ) 
+      FirstLoop = .FALSE.
       IF( Nmode < LinModes ) GOTO 20
     END IF
     
@@ -15397,9 +16049,11 @@ SUBROUTINE SolveEigenSystem( StiffMatrix, NOFEigen, &
     !------------------------------------------------------------------------------
     COMPLEX(KIND=dp), POINTER :: dvecs(:,:), evecs(:,:)
     REAL(KIND=dp), POINTER :: p(:)
-    INTEGER :: i,j,k,n
+    INTEGER :: i,j,k,n, AllocStat
     TYPE(Matrix_t), POINTER :: A
+    TYPE(Variable_t), POINTER :: Var 
     LOGICAL :: Damped, Direct, Found
+    CHARACTER(LEN=MAX_NAME_LEN) :: str
     !------------------------------------------------------------------------------
     n = StiffMatrix % NumberOfRows
     EVecs => EigenVectors
@@ -15535,13 +16189,15 @@ END SUBROUTINE SolveEigenSystem
 !------------------------------------------------------------------------------
 !> Compute lumped fluxes, for example for capacitance or impedance matrices. 
 !------------------------------------------------------------------------------
-SUBROUTINE StoreLumpedFluxes( Solver, NoModes, iMode, FluxesRow, FluxesRowIm, FluxesRhs, FluxesRhsIm )
+SUBROUTINE StoreLumpedFluxes( Solver, NoModes, iMode, FluxesRow, FluxesRowIm, &
+    FluxesRhs, FluxesRhsIm, ImpRe, ImpIm ) 
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   INTEGER :: NoModes, iMode
   REAL(KIND=dp) :: FluxesRow(:)
   REAL(KIND=dp), OPTIONAL :: FluxesRowIm(:)
   REAL(KIND=dp), OPTIONAL :: FluxesRhs, FluxesRhsIm
+  REAL(KIND=dp), OPTIONAL :: ImpRe, ImpIm
 !------------------------------------------------------------------------------
   REAL(KIND=dp), POINTER :: FluxesMatrix(:,:), FluxesMatrixIm(:,:)
   INTEGER :: i,j,k,n,Nmode,Mmode
@@ -15576,6 +16232,14 @@ SUBROUTINE StoreLumpedFluxes( Solver, NoModes, iMode, FluxesRow, FluxesRowIm, Fl
       ALLOCATE( Lumped % CRhsIm( NoModes ) )
       Lumped % CrhsIm = 0.0_dp
     END IF
+    IF( PRESENT(ImpRe) ) THEN
+      ALLOCATE( Lumped % ImpRe( NoModes ) )
+      Lumped % ImpRe = 0.0_dp
+    END IF
+    IF( PRESENT(ImpIm) ) THEN
+      ALLOCATE( Lumped % ImpIm( NoModes ) )
+      Lumped % ImpIm = 0.0_dp
+    END IF
   END IF
 
   IF( Lumped % IsComplex ) FluxesMatrixIm => Solver % Lumped % CMatrixIm
@@ -15590,7 +16254,13 @@ SUBROUTINE StoreLumpedFluxes( Solver, NoModes, iMode, FluxesRow, FluxesRowIm, Fl
   IF(PRESENT(FluxesRhsIm) ) THEN
     Lumped % CRhsIm(iMode) = FluxesRhsIm
   END IF
-
+  IF( PRESENT(ImpRe) ) THEN
+    Lumped % ImpRe(iMode) = ImpRe
+  END IF
+  IF( PRESENT(ImpIm) ) THEN
+    Lumped % ImpIm(iMode) = ImpIm
+  END IF
+        
   Lumped % CntModes = iMode
 
   BLOCK
@@ -15666,8 +16336,7 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
     ! Normalize by the source    
     BLOCK
       
-      LOGICAL :: DoPoynt, FixIt      
-      DoPoynt = ListGetLogical(Solver % Values,'Normalize by Poynting Vector',Found )     
+      LOGICAL :: FixIt      
       FixIt =  ListGetLogical( Solver % Values,'Enforce Unity rowsum',Found )
 
       IF( InfoActive(20) ) THEN        
@@ -15685,17 +16354,11 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
       END IF      
    
       DO i=1,NoModes
-        IF( DoPoynt ) THEN
-          nrm = Lumped % Crhs(i) 
-          FluxesMatrix(i,:) = FluxesMatrix(i,:) / Nrm
-          FluxesMatrixIm(i,:) = FluxesMatrixIm(i,:) / Nrm
-        ELSE          
-          DO j=1,NoModes         
-            nrm = SQRT(Lumped % Crhs(j) * Lumped % Crhs(i))                               
-            FluxesMatrix(i,j) = FluxesMatrix(i,j) / nrm
-            FluxesMatrixIm(i,j) = FluxesMatrixIm(i,j) / nrm
-          END DO
-        END IF
+        DO j=1,NoModes         
+          nrm = SQRT(Lumped % Crhs(j) * Lumped % Crhs(i))                               
+          FluxesMatrix(i,j) = FluxesMatrix(i,j) / nrm
+          FluxesMatrixIm(i,j) = FluxesMatrixIm(i,j) / nrm
+        END DO
       END DO
         
       IF( FixIt ) THEN
@@ -15755,7 +16418,7 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
       CALL Info( Caller, Message, Level=5 )
     END DO
   END DO
-  
+
   MatrixFile = ListGetString(Solver % Values,'Constraint Modes Fluxes Filename',Found )
   IF(.NOT. Found) MatrixFile = ListGetString(Solver % Values,'Constraint Modes Matrix Filename',Found )
   IF( Found ) THEN
@@ -15782,11 +16445,25 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
           CheckSum(i) = SUM(FluxesMatrix(i,:)**2+FluxesMatrixIm(i,:)**2) 
         END DO
         CLOSE(11)
+
+        OPEN( 11, FILE=TRIM(MatrixFile)//'_angle')
+        DO i=1,NoModes
+          WRITE (11,*) ( 180.0_dp / PI ) * ATAN2(FluxesMatrixIm(i,:),FluxesMatrix(i,:))           
+        END DO
+        CLOSE(11)
+
+        IF( ASSOCIATED( Lumped % ImpRe ) ) THEN
+          OPEN( 11, FILE=TRIM(MatrixFile)//'_Z')
+          DO i=1,NoModes
+            WRITE (11,*) Lumped % ImpRe(i), Lumped % ImpIm(i) 
+          END DO
+          CLOSE(11)
+        END IF
+
+        WRITE(Message,*) 'Normalization checksum: ',CheckSum
+        CALL Info(Caller,Message) 
       END IF
       CALL Info( Caller,'Constraint modes fluxes was saved to file '//TRIM(MatrixFile),Level=5)
-
-      WRITE(Message,*) 'Normalization checksum: ',CheckSum
-      CALL Info(Caller,Message) 
     END IF
   END IF
   
@@ -15977,13 +16654,14 @@ END SUBROUTINE BoundaryCirculation
 !------------------------------------------------------------------------------
 !> Solve a linear system with permutated constraints.
 !------------------------------------------------------------------------------
-SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysModes )
+SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysModes, FirstLoop )
 !------------------------------------------------------------------------------
     TYPE(Matrix_t), POINTER :: A
     TYPE(Solver_t), TARGET :: Solver
     REAL(KIND=dp) CONTIG :: x(:),b(:)
     LOGICAL :: PreSolve
     INTEGER, OPTIONAL :: ThisMode, LinSysModes
+    LOGICAL, OPTIONAL :: FirstLoop
 !------------------------------------------------------------------------------
     TYPE(Variable_t), POINTER :: Var
     INTEGER :: i,j,k,n,NoModes,Mmode,ierr
@@ -15991,40 +16669,47 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
         IsComplex, Parallel, ConsiderP, RhsMode, EmWaveMode, CoilMode, GaussLaw
     REAL(KIND=dp), ALLOCATABLE :: Fluxes(:), b0(:), A0(:), TempRhs(:)
     REAL(KIND=dp), ALLOCATABLE :: FluxesRow(:), FluxesRowIm(:)
-    REAL(KIND=dp) :: FluxesRhs, FluxesRhsIm
+    REAL(KIND=dp) :: FluxesRhs, FluxesRhsIm, ImpRe, ImpIm
     LOGICAL, ALLOCATABLE :: ConstrainedDOF0(:)
     REAL(KIND=dp) :: flux
-    CHARACTER(:), ALLOCATABLE :: MatrixFile
-    CHARACTER(*), PARAMETER :: Caller = 'ConstraintModesDriver'
-    INTEGER :: NMode = 0
+    CHARACTER(:), ALLOCATABLE :: MatrixFile, BCName
+    INTEGER :: NMode = 0, dof
     TYPE(Variable_t), POINTER :: pVar
     TYPE(ValueList_t), POINTER :: Params
-    LOGICAL :: LinsysMode 
+    LOGICAL :: LinsysMode, EigenMode, GotBC, LumpedMode 
+    CHARACTER(*), PARAMETER :: Caller = 'ConstraintModesDriver'
 
     SAVE FluxesRow, FluxesRowIm, Fluxes, TempRhs, A0, b0, ConstrainedDOF0, LinsysMode, NMode
 
     
     !------------------------------------------------------------------------------
-    !NMode = 0
     IF(PRESENT(LinSysModes)) LinSysModes = 0
     NoModes = Solver % NumberOfConstraintModes 
 
     IF(NoModes <= 0) RETURN    
     Params => Solver % Values
-    
+
     ! We can also have a combination of standard analysis + constraint modes
     ! analysis of the frozen state. Then the default solution slot should really do
     ! the standard analysis.
     IF( ListGetLogical( Params,'Constraint Modes Analysis Frozen',Found ) ) THEN
+      Solver % Variable % FrozenMode = .TRUE.
       RETURN
     END IF
 
+    EigenMode = ListgetLogical( Solver % Values, 'Eigen Analysis', Found ) 
+    
     Var => Solver % Variable
     n = A % NumberOfRows        
     Parallel = Solver % Parallel
     
     IsComplex = ListGetLogical( Params,'Linear System Complex',Found)
 
+
+    ! If the mode is nodal it is not lumped
+    ! If it relates to whole boundary it is. 
+    LumpedMode = ListGetLogical( Params,'Constraint Modes Lumped',Found )
+    
     ! This is to my understanding not needed. To estimate the fluxes we
     ! basically integrate over basis functions that estimate unity.
     ! For p-elements this means using the linear nodal basis only, not any
@@ -16050,7 +16735,7 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
     
     IF( PreSolve ) THEN
       CALL Info(Caller,'Number of constraint modes is: '//I2S(NoModes),Level=8)
-      
+          
       ! We loop over the mode if it is not given in some external loop.
       !---------------------------------------------------------------------
       pVar => NULL()
@@ -16064,14 +16749,21 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
       LinSysMode = .NOT. ASSOCIATED(pVar)
       
       IF(LinSysMode) THEN
-        Nmode = ThisMode + 1
         LinSysModes = NoModes
+        ! If we combined eigen analysis base + constraint modes base do an empty
+        ! cycle that does the eigenmodes first without updating the counter. 
+        IF( PRESENT( FirstLoop ) ) THEN
+          IF( FirstLoop .AND. EigenMode ) RETURN
+        END IF        
+        Nmode = ThisMode + 1
       ELSE
         Nmode = NINT( pVar % Values(1) ) 
         LinSysModes = 0
       END IF
       ThisMode = Nmode
       
+      IF(EigenMode) CALL ListAddLogical( Solver % Values,'Skip Eigen Analysis',.TRUE.)
+
       IF( SIZE(x) /= n ) THEN
         CALL Fatal(Caller,'Conflicting sizes for matrix and variable! ('//I2S(SIZE(x))//','//I2S(n)//')')
       END IF
@@ -16099,7 +16791,18 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
 
       CALL Info(Caller,'Setting up constrained mode: '//I2S(NMode),Level=6)
       i = Nmode
-      
+
+
+      ! By default constraint modes are set to 0/1.
+      ! However, we can also set the BC's in some other way using prefix "mode 1:" etc.  
+      GotBC = .FALSE.
+      IF( LumpedMode ) THEN
+        DO dof=1,Var % dofs
+          BcName = 'mode '//I2S(Nmode)//': '//ComponentName(Var % name,dof)
+          IF(ListCheckPresentAnyBC(CurrentModel, BcName ) ) GotBC = .TRUE.
+        END DO
+      END IF
+        
       ! The matrix has been manipulated already before. This ensures
       ! that the system has values 1 at the constraint mode i.
       IF( CoilMode ) THEN                
@@ -16129,36 +16832,76 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
           END WHERE
         END IF
       ELSE        
-        IF( IsComplex ) THEN       
-          A % Values = A0
-          b = b0
-          A % ConstrainedDOF = ConstrainedDOF0
+        IF( IsComplex ) THEN
+          ! Quick and a little dirty fix for complex capacitance matrix.
+          IF( ListGetLogical( Solver % Values,'Calculate Capacitance Matrix',Found ) ) THEN
+            WHERE( Var % ConstraintModesIndeces /= 0 ) 
+              A % ConstrainedDOF = .TRUE.
+              A % DValues = 0.0_dp
+            END WHERE
+            WHERE( Var % ConstraintModesIndeces == 2*Nmode-1 )
+              A % DValues = 1.0_dp
+            END WHERE
+          ELSE
+            A % Values = A0
+            b = b0
+            A % ConstrainedDOF = ConstrainedDOF0
 
-          WHERE( Var % ConstraintModesIndeces == 2*Nmode-1 )
-            A % ConstrainedDOF = .TRUE.
-            A % DValues = 1.0_dp
-          END WHERE
-          WHERE( Var % ConstraintModesIndeces == 2*Nmode ) 
-            A % ConstrainedDOF = .TRUE.
-            A % DValues = 0.0_dp
-          END WHERE
+            WHERE( Var % ConstraintModesIndeces == 2*Nmode-1 )
+              A % ConstrainedDOF = .TRUE.
+              A % DValues = 1.0_dp
+            END WHERE
+            WHERE( Var % ConstraintModesIndeces == 2*Nmode ) 
+              A % ConstrainedDOF = .TRUE.
+              A % DValues = 0.0_dp
+            END WHERE
+          END IF
           CALL EnforceDirichletConditions( Solver, A, b )
-        ELSE       
+
+        ELSE IF( GotBC ) THEN
+          
+          IF( Nmode > 1 .AND. LinSysMode ) THEN
+            DO dof=1,Var % dofs
+              WHERE( Var % ConstraintModesIndeces == Var % Dofs*(Nmode-2)+dof ) 
+                A % DValues = 0.0_dp
+              END WHERE
+            END DO
+          END IF
+          
+          DO dof=1,Var % dofs
+            BcName = 'mode '//I2S(Nmode)//': '//ComponentName(Var % name,dof)
+            IF(ListCheckPresentAnyBC(CurrentModel, BcName ) ) THEN            
+              CALL Info(Caller,"Setting constraint for: "//TRIM(BCName),Level=7)
+              CALL SetDirichletBoundaries( CurrentModel, A, b, &
+                  BcName, dof, Var % DOFs, Var % Perm )
+            END IF
+          END DO
+
+          CALL EnforceDirichletConditions( Solver, A, b )
+          
+        ELSE
+          
           IF( Nmode > 1 .AND. LinSysMode ) THEN
             WHERE( Var % ConstraintModesIndeces == Nmode-1 ) 
               A % DValues = 0.0_dp
             END WHERE
           END IF
+
           WHERE( Var % ConstraintModesIndeces == Nmode ) 
             A % DValues = 1.0_dp
           END WHERE
-          CALL EnforceDirichletConditions( Solver, A, b )
+
+          CALL EnforceDirichletConditions( Solver, A, b )                    
         END IF
       END IF
       CALL ListAddLogical( Params,'Skip Zero Rhs Test',.TRUE. )
     END IF
       
     IF( .NOT. PreSolve ) THEN 
+      IF( PRESENT( FirstLoop ) ) THEN
+        IF( FirstLoop .AND. EigenMode ) RETURN
+      END IF
+
       CALL Info(Caller,'Mode '//I2S(NMode)//' computed, doing some postprocessing',Level=10)
 
       IF( .NOT. ( IsComplex .OR. CoilMode ) ) THEN
@@ -16188,7 +16931,11 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
         END IF
         
         IF( IsComplex ) THEN
-          CALL StoreLumpedFluxes(Solver, NoModes, NMode, FluxesRow, FluxesRowIm, FluxesRhs, FluxesRhsIm)
+          IF(EmWaveMode ) THEN
+            CALL StoreLumpedFluxes(Solver, NoModes, NMode, FluxesRow, FluxesRowIm, FluxesRhs, FluxesRhsIm, ImpRe, ImpIm)
+          ELSE
+            CALL StoreLumpedFluxes(Solver, NoModes, NMode, FluxesRow, FluxesRowIm, FluxesRhs, FluxesRhsIm)
+          END IF
         ELSE
           CALL StoreLumpedFluxes(Solver, NoModes, NMode, FluxesRow ) 
         END IF
@@ -16214,8 +16961,16 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
       END IF
 
       CALL ListAddLogical( Params,'Skip Zero Rhs Test',.FALSE. )
+
+      IF(EigenMode) THEN
+        CALL ListAddLogical( Solver % Values,'Skip Eigen Analysis',.FALSE.)
+      END IF
+
+
     END IF
-      
+
+
+    
   CONTAINS
 
     SUBROUTINE MagneticEnergies()
@@ -16263,16 +17018,10 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
       TYPE(Variable_t), POINTER :: AVar
       TYPE(ValueList_t), POINTER :: Vlist
       INTEGER, POINTER :: MasterEntities(:)
-      COMPLEX(KIND=dp) :: OutFlux,InFlux,PortFlux
+      COMPLEX(KIND=dp) :: OutFlux,InFlux,PortFlux,InImp,PortImp
       INTEGER :: i,j,k,n,port,alloc     
-      LOGICAL :: DoPoynt
-
-      DoPoynt = ListGetLogical(Solver % Values,'Normalize by Poynting Vector',Found ) 
-      IF( DoPoynt ) THEN
-        CALL Info(Caller,'Using Poynting vector for lumping',Level=10)
-      ELSE
-        CALL Info(Caller,'Using <Ej,Ej> for lumping',Level=10)
-      END IF
+      
+      CALL Info(Caller,'Using <Ej,Ej> for lumping',Level=10)
       
       Mesh => Solver % Mesh
       AVar => Solver % Variable      
@@ -16297,8 +17046,7 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
           ALLOCATE(MasterEntities(n))
         END DO
 
-        OutFlux = BoundaryWaveFlux(CurrentModel, Mesh, MasterEntities, Avar, &
-            PortFlux, DoPoynt, port==NMode )
+        OutFlux = BoundaryWaveFlux(CurrentModel, Mesh, MasterEntities, Avar, PortFlux, PortImp, port==NMode )
           
         ! Memorize the coefficient for normalization: <Ec,Ej>/<Ei,Ei>                
         ! Real and imag part of: <Ec,Ej>
@@ -16306,13 +17054,18 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
         FluxesRowIm(port) = AIMAG(OutFlux) 
 
         ! Memorize diagonal entry <Ej,Ej*> for future normalization
-        IF(port==NMode) InFlux = PortFlux
-
+        IF(port==NMode) THEN
+          InFlux = PortFlux
+          InImp = PortImp
+        END IF
+               
         DEALLOCATE(MasterEntities)                
       END DO
 
       FluxesRhs = REAL(InFlux)      
       FluxesRhsIm = AIMAG(InFlux)
+      ImpRe = REAL(InImp)
+      ImpIm = AIMAG(InImp)
       
     END SUBROUTINE EMWaveFluxes
 
@@ -17419,6 +18172,7 @@ CONTAINS
     
     IF(.NOT. ASSOCIATED(A % rhs)) THEN
       ALLOCATE(A % rhs(A % NumberOfRows))
+      A % RHS = 0._dp
     END IF
 
     IF(ASSOCIATED(betaVar)) THEN
@@ -17635,6 +18389,7 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   ! Set the harmonic system matrix
   IF( EigenMode ) THEN
     ALLOCATE(Aharm % MassValues(SIZE(Aharm % Values)))
+    Aharm % MassValues = 0.0_dp
 
     DO k=1,n
       kr = Aharm % Rows(2*(k-1)+1)
@@ -17829,19 +18584,389 @@ END SUBROUTINE ChangeToHarmonicSystem
 !------------------------------------------------------------------------------
 
 
+
+!------------------------------------------------------------------------------
+!> Eliminate linear restriction only using the ListMatrix structure.
+!> This is placed in a separate routine such that it can be called
+!> when solving with and without block matrix being active.
+!------------------------------------------------------------------------------
+SUBROUTINE EliminateLinearRestriction( StiffMatrix, ForceVector, RestMatrix, &
+    CollectionMatrix, Solver, CopyStiffMatrix, ExportUsePerm, ExportUseIPerm, ExportUseDiag )
+  IMPLICIT NONE
+  TYPE(Matrix_t) :: StiffMatrix
+  REAL(KIND=dp) :: ForceVector(:) 
+  TYPE(Matrix_t), POINTER :: RestMatrix
+  TYPE(Matrix_t) :: CollectionMatrix  
+  TYPE(Solver_t) :: Solver
+  LOGICAL, OPTIONAL :: CopyStiffMatrix
+  INTEGER, POINTER, OPTIONAL :: ExportUsePerm(:), ExportUseIPerm(:)
+  REAL(KIND=dp), POINTER, OPTIONAL :: ExportUseDiag(:)
+  
+  INTEGER :: m,n,i,j,k,l,ix,p,q,Loop
+  INTEGER, ALLOCATABLE, TARGET :: SlavePerm(:),MasterPerm(:),SlaveIPerm(:),MasterIPerm(:)
+  REAL(KIND=dp), ALLOCATABLE, TARGET :: SlaveDiag(:), MasterDiag(:), DiagDiag(:)
+  INTEGER, POINTER :: UsePerm(:), UseIPerm(:)
+  REAL(KIND=dp), POINTER :: UseDiag(:)
+  REAL(KIND=dp) :: scl
+  REAL(KIND=dp), POINTER :: TVals(:), Vals(:)
+  REAL(KIND=dp), POINTER :: CollectionVector(:), RestVector(:)
+  TYPE(ListMatrix_t), POINTER :: Lmat(:)
+  TYPE(Matrix_t), POINTER :: Xmat, Tmat
+  TYPE(ListMatrixEntry_t), POINTER :: cTmp
+  LOGICAL :: Found, EliminateSlave, EliminateFromMaster, UseTranspose
+  TYPE(ValueList_t), POINTER :: Params
+  CHARACTER(*), PARAMETER :: Caller = 'EliminateLinearRestriction'
+  
+
+  CALL Info(Caller,'Eliminating Constraints from CollectionMatrix',Level=12)
+
+  Params => Solver % Values
+
+
+  EliminateSlave = ListGetLogical( Params, 'Eliminate Slave',Found )
+  EliminateFromMaster = ListGetLogical( Params, 'Eliminate From Master',Found )
+
+  UseTranspose = ListGetLogical(Params, 'Use Transpose values', Found)
+  IF( UseTranspose ) THEN
+    CALL Info(Caller,'Using transpose values in elimination',Level=15)            
+  END IF
+
+  
+  n = StiffMatrix % NumberOfRows
+  m = RestMatrix % NumberOfRows
+
+  RestVector => NULL()
+  IF(ASSOCIATED(RestMatrix)) RestVector => RestMatrix % RHS
+
+  IF(.NOT. ASSOCIATED(CollectionMatrix % Rhs) ) THEN
+    ALLOCATE(CollectionMatrix % Rhs(n) )
+    CollectionMatrix % Rhs = 0.0_dp
+  END IF    
+  CollectionVector => CollectionMatrix % RHS  
+
+  ! We may optionally ask that the stiffness matrix is copied to the base.
+  IF( PRESENT(CopyStiffMatrix)) THEN
+    IF(CopyStiffMatrix) THEN
+      DO i=StiffMatrix % NumberOfRows,1,-1
+        DO j=StiffMatrix % Rows(i+1)-1,StiffMatrix % Rows(i),-1
+          CALL AddToMatrixElement( CollectionMatrix, &
+              i, StiffMatrix % Cols(j), StiffMatrix % Values(j) )
+        END DO
+        CollectionVector(i) = CollectionVector(i) + ForceVector(i)
+      END DO
+    END IF
+  END IF
+    
+  
+  ALLOCATE(SlaveDiag(m),MasterDiag(m),SlavePerm(n),MasterPerm(n),&
+      SlaveIPerm(m),MasterIPerm(m),DiagDiag(m))
+  SlavePerm  = 0; SlaveIPerm  = 0; 
+  MasterPerm = 0; MasterIPerm = 0
+  SlaveDiag = 0.0_dp; MasterDiag = 0.0_dp
+  DiagDiag = 0.0_dp
+  
+  Tvals => RestMatrix % TValues
+  IF (.NOT.ASSOCIATED(Tvals)) Tvals => RestMatrix % Values 
+
+  ! Extract diagonal entries for constraints:
+  !------------------------------------------
+  CALL Info(Caller,'Extracting diagonal entries for constraints',Level=15)
+
+  DO i=1, RestMatrix % NumberOfRows
+    m = RestMatrix % InvPerm(i)
+
+    IF( m == 0 ) THEN
+      PRINT *,'InvPerm is zero:',ParEnv % MyPe, i
+      CYCLE
+    END IF
+
+    m = MOD(m-1,n) + 1
+    SlavePerm(m)  = i
+    SlaveIperm(i) = m
+
+    DO j=RestMatrix % Rows(i), RestMatrix % Rows(i+1)-1
+      k = RestMatrix % Cols(j)
+      IF(k>n) THEN
+        DiagDiag(i) = Tvals(j)
+        CYCLE
+      END IF
+
+      IF( ABS( TVals(j) ) < TINY( 1.0_dp ) ) THEN
+        PRINT *,'Tvals too small',ParEnv % MyPe,j,i,k,RestMatrix % InvPerm(i),Tvals(j)
+      END IF
+
+      IF(k == RestMatrix % InvPerm(i)) THEN
+        SlaveDiag(i) = Tvals(j)
+      ELSE
+        MasterDiag(i) = Tvals(j)
+        MasterPerm(k)  = i
+        MasterIperm(i) = k
+      END IF
+    END DO
+  END DO
+
+  IF(InfoActive(25)) THEN
+    PRINT *,'SlaveSum:',SUM(SlaveDiag)
+    PRINT *,'MasterSum:',SUM(MasterDiag) 
+    PRINT *,'SlaveSum abs:',SUM(ABS(SlaveDiag))
+    PRINT *,'MasterSum abs:',SUM(ABS(MasterDiag))
+  END IF
+
+  IF(EliminateFromMaster) THEN
+    CALL Info(Caller,'Eliminating from master',Level=15)      
+    UsePerm  => MasterPerm 
+    UseDiag  => MasterDiag
+    UseIPerm => MasterIPerm 
+  ELSE
+    CALL Info(Caller,'Eliminating from slave',Level=15)            
+    UsePerm  => SlavePerm
+    UseDiag  => SlaveDiag
+    UseIPerm => SlaveIPerm
+  END IF
+      
+  IF(UseTranspose) THEN
+    Vals => Tvals
+  ELSE
+    Vals => RestMatrix % Values
+  END IF
+
+  ! The rest is done in List Matrix format so move to that in case not yet!
+  IF( CollectionMatrix % FORMAT /= MATRIX_LIST ) THEN
+    CALL List_ToListMatrix(CollectionMatrix)
+  END IF
+
+  ! Replace elimination equations by the constraints (could done be as a postprocessing
+  ! step, if eq's totally eliminated from linsys.)
+  ! ----------------------------------------------------------------------------------
+  CALL Info(Caller,'Deleting rows from equation to be eliminated',Level=15)
+
+  Lmat => CollectionMatrix % ListMatrix
+  DO m=1,RestMatrix % NumberOfRows
+    i = UseIPerm(m)
+    CALL List_DeleteRow(Lmat, i, Keep=.TRUE.)
+  END DO
+
+  CALL Info(Caller,'Copying rows from constraint matrix to eliminate dofs',Level=15)
+  DO m=1,RestMatrix % NumberOfRows
+    i = UseIPerm(m)
+    DO l=RestMatrix % Rows(m+1)-1, RestMatrix % Rows(m), -1
+      j = RestMatrix % Cols(l)
+
+      ! skip l-coefficient entries, handled separately afterwards:
+      ! --------------------------------------------------------
+      IF(j > n) CYCLE
+      CALL List_AddToMatrixElement( Lmat, i, j, Vals(l) )
+    END DO
+    CollectionVector(i) = RestVector(m)
+  END DO
+
+  ! Eliminate slave dof cycles:
+  ! ---------------------------
+  Xmat => RestMatrix
+  Found = .TRUE.
+  Loop = 0
+  DO WHILE(Found)
+    DO i=Xmat % NumberofRows,1,-1
+      q = 0
+      DO j = Xmat % Rows(i+1)-1, Xmat % Rows(i),-1
+        k = Xmat % Cols(j)
+        IF(k>n) CYCLE
+        IF(UsePerm(k)>0 .AND. ABS(TVals(j))>AEPS) q=q+1
+      END DO
+      IF(q>1) EXIT
+    END DO
+    Found = (q>1)
+
+    Tmat => Xmat
+    IF(Found) THEN
+      Loop = Loop + 1
+      CALL Info(Caller,'Recursive elimination round: '//I2S(Loop),Level=15)
+
+      Tmat => AllocateMatrix()
+      Tmat % Format = MATRIX_LIST
+
+      DO i=Xmat % NumberofRows,1,-1
+        DO j = Xmat % Rows(i+1)-1, Xmat % Rows(i),-1
+          k = Xmat % Cols(j)
+          IF ( ABS(Tvals(j))>AEPS ) &
+              CALL List_AddToMatrixElement(Tmat % ListMatrix, i, k, TVals(j))
+        END DO
+      END DO
+
+      DO m=1,Xmat % NumberOfRows
+        i = UseIPerm(m)
+        DO j=Xmat % Rows(m), Xmat % Rows(m+1)-1
+          k = Xmat % Cols(j)
+
+          ! The size of SlavePerm is often exceeded but I don't really undersrtand the operation...
+          ! so this is just a dirty fix.
+          IF( k > SIZE( SlavePerm ) ) CYCLE
+
+          l = SlavePerm(k)
+
+          IF(l>0 .AND. k/=i) THEN
+            IF(ABS(Tvals(j))<AEPS) CYCLE
+            scl = -TVals(j) / SlaveDiag(l)
+
+            CALL List_DeleteMatrixElement( Tmat % ListMatrix, m, k )
+
+            DO q=Xmat % Rows(l+1)-1, Xmat % Rows(l),-1
+              IF(ABS(Tvals(q))<AEPS) CYCLE
+              ix = Xmat % Cols(q)
+              IF ( ix/=k ) &
+                  CALL List_AddToMatrixElement( Tmat % ListMatrix, m, ix, scl * TVals(q) )
+            END DO
+          END IF
+        END DO
+      END DO
+
+      CALL List_ToCRSMatrix(Tmat)
+      Tvals => Tmat % Values
+      IF(.NOT.ASSOCIATED(Xmat,RestMatrix)) CALL FreeMatrix(Xmat)
+    END IF
+    Xmat => TMat
+  END DO
+
+  ! Eliminate Lagrange Coefficients:
+  ! --------------------------------
+  CALL Info(Caller,'Eliminating Lagrange Coefficients',Level=15)
+
+  DO m=1,Tmat % NumberOfRows
+    i = UseIPerm(m)
+    IF( ABS( UseDiag(m) ) < TINY( 1.0_dp ) ) THEN
+      PRINT *,'UseDiag too small:',m,ParEnv % MyPe,UseDiag(m)
+      CYCLE
+    END IF
+
+    DO j=TMat % Rows(m), TMat % Rows(m+1)-1
+      k = TMat % Cols(j)
+      IF(k<=n) THEN
+        IF(UsePerm(k)/=0) CYCLE
+        scl = -Tvals(j) / UseDiag(m)
+      ELSE
+        k = UseIPerm(k-n)
+        scl = -Tvals(j) / UseDiag(m)
+      END IF
+
+      DO l=StiffMatrix % Rows(i+1)-1, StiffMatrix % Rows(i),-1
+        CALL List_AddToMatrixElement( Lmat, k, &
+            StiffMatrix % Cols(l), scl * StiffMatrix % Values(l) )
+      END DO
+      CollectionVector(k) = CollectionVector(k) + scl * ForceVector(i)
+    END DO
+  END DO
+
+  IF ( .NOT.ASSOCIATED(Tmat, RestMatrix ) ) CALL FreeMatrix(Tmat)
+
+  ! Eliminate slave dofs, using the constraint equations:
+  ! -----------------------------------------------------
+  IF ( EliminateSlave ) THEN
+    CALL Info(Caller,'Eliminate slave dofs using constraint equations',Level=15)
+
+    CALL List_ToCRSMatrix(CollectionMatrix)
+    Tmat => AllocateMatrix()
+    Tmat % Format = MATRIX_LIST
+
+    DO i=1,StiffMatrix % NumberOfRows
+      IF(UsePerm(i)/=0) CYCLE
+
+      DO m = CollectionMatrix % Rows(i), CollectionMatrix % Rows(i+1)-1
+        j = SlavePerm(CollectionMatrix % Cols(m))
+
+        IF(j==0) THEN
+          CYCLE
+        END IF
+        IF( ABS( SlaveDiag(j) ) < TINY( 1.0_dp ) ) THEN
+          PRINT *,'SlaveDiag too small:',j,ParEnv % MyPe,SlaveDiag(j)
+          CYCLE
+        END IF
+
+        scl = -CollectionMatrix % Values(m) / SlaveDiag(j)
+        CollectionMatrix % Values(m) = 0._dp
+
+        ! ... and add replacement values:
+        ! -------------------------------
+        k = UseIPerm(j)
+        DO p=CollectionMatrix % Rows(k+1)-1, CollectionMatrix % Rows(k), -1
+          l = CollectionMatrix % Cols(p)
+          IF ( l /= SlaveIPerm(j) ) &
+              CALL List_AddToMatrixElement( Tmat % listmatrix, i, l, scl*CollectionMatrix % Values(p) )
+        END DO
+        CollectionVector(i) = CollectionVector(i) + scl * CollectionVector(k)
+      END DO
+    END DO
+
+    CALL List_ToListMatrix(CollectionMatrix)
+    Lmat => CollectionMatrix % ListMatrix
+
+    CALL List_ToCRSMatrix(Tmat)
+    DO i=TMat % NumberOfRows,1,-1
+      DO j=TMat % Rows(i+1)-1,TMat % Rows(i),-1
+        CALL List_AddToMatrixElement( Lmat, i, TMat % cols(j), TMat % Values(j) )
+      END DO
+    END DO
+    CALL FreeMatrix(Tmat)
+  END IF
+
+  ! Optimize bandwidth, if needed:
+  ! ------------------------------
+  IF(EliminateFromMaster) THEN
+    CALL Info(Caller,'Optimizing bandwidth after elimination',Level=15)
+    DO i=1,RestMatrix % NumberOfRows
+      j = SlaveIPerm(i)
+      k = MasterIPerm(i)
+
+      Ctmp => Lmat(j) % Head
+      Lmat(j) % Head => Lmat(k) % Head
+      Lmat(k) % Head => Ctmp
+
+      l = Lmat(j) % Degree
+      Lmat(j) % Degree = Lmat(k) % Degree
+      Lmat(k) % Degree = l
+
+      scl = CollectionVector(j)
+      CollectionVector(j) = CollectionVector(k)
+      CollectionVector(k) = scl
+    END DO
+  END IF
+
+  IF( PRESENT(ExportUsePerm) ) THEN
+    CALL Info(Caller,'Export UsePerm outside elimination',Level=20) 
+    ALLOCATE(ExportUsePerm(SIZE(UsePerm)))
+    ExportUsePerm = UsePerm
+  END IF
+  IF( PRESENT(ExportUseIPerm) ) THEN
+    CALL Info(Caller,'Export UseIPerm outside elimination',Level=20) 
+    ALLOCATE(ExportUseIPerm(SIZE(UseIPerm)))
+    ExportUseIPerm = UseIPerm
+  END IF
+  IF( PRESENT(ExportUseDiag) ) THEN
+    CALL Info(Caller,'Export UseDiag outside elimination',Level=20) 
+    ALLOCATE(ExportUseDiag(SIZE(UseDiag)))
+    ExportUseDiag = UseDiag
+  END IF
+
+  IF(PRESENT(CopyStiffMatrix)) THEN
+    IF(CopyStiffMatrix) CALL List_ToCRSMatrix(CollectionMatrix)
+  END IF
+      
+  CALL Info(Caller,'Finished Eliminating Restrictions',Level=12)
+
+END SUBROUTINE EliminateLinearRestriction
+
+  
+
 !------------------------------------------------------------------------------
 !>  This subroutine will solve the system with some linear restriction.
 !>  The restriction matrix is assumed to be in the ConstraintMatrix-field of 
 !>  the StiffMatrix. The restriction vector is the RHS-field of the
 !>  ConstraintMatrix.
-!>  NOTE: Only serial solver implemented so far ...
 !------------------------------------------------------------------------------
 RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
-                 Solution, Norm, DOFs, Solver )
+    Solution, Norm, DOFs, Solver )
 !------------------------------------------------------------------------------  
   IMPLICIT NONE
   TYPE(Matrix_t), POINTER :: StiffMatrix !< Linear equation matrix information. 
-                                         !< The restriction matrix is assumed to be in the EMatrix-field
   REAL(KIND=dp),TARGET :: ForceVector(:) !< The right hand side of the linear equation
   REAL(KIND=dp),TARGET :: Solution(:)    !< Previous solution as input, new solution as output.
   REAL(KIND=dp) :: Norm                  !< The L2 norm of the solution.
@@ -17849,48 +18974,51 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
   TYPE(Solver_t), TARGET :: Solver       !< Linear equation solver options.
 !------------------------------------------------------------------------------
   TYPE(Solver_t), POINTER :: SolverPointer
-  TYPE(Matrix_t), POINTER :: CollectionMatrix, RestMatrix, AddMatrix, &
-       RestMatrixTranspose, TMat, XMat
-  REAL(KIND=dp), POINTER CONTIG :: CollectionVector(:), RestVector(:),&
-     AddVector(:), Tvals(:), Vals(:)
-  REAL(KIND=dp), POINTER  :: MultiplierValues(:), pSol(:)
-  REAL(KIND=dp), ALLOCATABLE, TARGET :: CollectionSolution(:), TotValues(:)
+  TYPE(Matrix_t), POINTER :: CollectionMatrix, RestMatrix, AddMatrix, RestMatrixTranspose 
+  REAL(KIND=dp), POINTER CONTIG :: CollectionVector(:), RestVector(:), AddVector(:) 
+  REAL(KIND=dp), POINTER  :: MultiplierValues(:), pSol(:),DiagScaling(:)
+  REAL(KIND=dp), ALLOCATABLE, TARGET :: CollectionSolution(:)
   INTEGER :: NumberOfRows, NumberOfValues, MultiplierDOFs, istat, NoEmptyRows 
-  INTEGER :: i, j, k, l, m, n, p,q, ix, Loop, colj
-  TYPE(Variable_t), POINTER :: MultVar
+  INTEGER :: i, j, k, l, m, n, p,q, ix, Loop, colj, nIter
+  TYPE(Variable_t), POINTER :: MultVar, iterV
   REAL(KIND=dp) :: scl, rowsum, Relax, val
-  LOGICAL :: Found, ExportMultiplier, NotExplicit, Refactorize, EnforceDirichlet, EliminateDiscont, &
-              NonEmptyRow, ComplexSystem, ConstraintScaling, UseTranspose, EliminateConstraints, &
-              SkipConstraints
-  SAVE MultiplierValues, SolverPointer
-
-  TYPE(ListMatrix_t), POINTER :: cList
-  TYPE(ListMatrixEntry_t), POINTER :: cPtr, cPrev, cTmp
-
-  INTEGER, ALLOCATABLE, TARGET :: SlavePerm(:), SlaveIPerm(:), MasterPerm(:), MasterIPerm(:)
-  INTEGER, POINTER :: UsePerm(:), UseIPerm(:)
-  REAL(KIND=dp), POINTER :: UseDiag(:), svals(:)
-  TYPE(ListMatrix_t), POINTER :: Lmat(:)
-  LOGICAL  :: EliminateFromMaster, EliminateSlave, Parallel, UseTreeGauge, NeedMassDampValues
-  REAL(KIND=dp), ALLOCATABLE, TARGET :: SlaveDiag(:), MasterDiag(:), DiagDiag(:)
+  LOGICAL :: Found, ExportMultiplier, NotExplicit, Refactorize, EnforceDirichlet, &
+      NonEmptyRow, ComplexSystem, ConstraintScaling, UseTranspose, EliminateConstraints, &
+      SkipConstraints, ResidualMode
+  INTEGER, POINTER :: UseIPerm(:), UsePerm(:)
+  REAL(KIND=dp), POINTER :: UseDiag(:) 
+  LOGICAL  :: Parallel, UseTreeGauge, NeedMassDampValues, DoOwnScaling
   LOGICAL, ALLOCATABLE :: TrueDof(:)
   INTEGER, ALLOCATABLE :: Iperm(:)
-
+  REAL(KIND=dp) :: t0,rt0,st,rst
   CHARACTER(:), ALLOCATABLE :: str,MultiplierName
+  TYPE(ValueList_t), POINTER :: Params
   CHARACTER(*), PARAMETER :: Caller = 'SolveWithLinearRestriction'
 
+  TYPE(ParEnv_t), POINTER :: ParEnvSave
+
+  SAVE MultiplierValues, SolverPointer
   
 !------------------------------------------------------------------------------
   CALL Info( Caller, ' ', Level=12 )
+  ParEnvSave => ParEnv
 
   SolverPointer => Solver  
+  Params => Solver % Values
 
+  t0 = CPUTime()
+  rt0 = RealTime()
+    
   Parallel = Solver % Parallel
-  
-  NotExplicit = ListGetLogical(Solver % Values,'No Explicit Constrained Matrix',Found)
+
+  ResidualMode = ListGetLogical( Params,'Restriction System Residual Mode',Found )    
+  iterV => VariableGet(Solver % Mesh % Variables,'nonlin iter')
+  nIter = NINT(iterV % Values(1))
+    
+  NotExplicit = ListGetLogical(Params,'No Explicit Constrained Matrix',Found)
   IF(.NOT. Found) NotExplicit=.FALSE.
 
-  NeedMassDampValues = ListGetLogical( Solver % Values, 'Eigen Analysis', Found )
+  NeedMassDampValues = ListGetLogical(Params, 'Eigen Analysis', Found )
 
   RestMatrix => NULL()
   IF(.NOT.NotExplicit) RestMatrix => StiffMatrix % ConstraintMatrix
@@ -17901,19 +19029,24 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
   AddVector => NULL()
   IF(ASSOCIATED(AddMatrix)) AddVector => AddMatrix % RHS
 
+  EliminateConstraints = ListGetLogical( Params, 'Eliminate Linear Constraints', Found)
+  
   NumberOfRows = StiffMatrix % NumberOfRows
   
   CollectionMatrix => StiffMatrix % CollectionMatrix
-  Refactorize = ListGetLogical(Solver % Values,'Linear System Refactorize',Found)
-  IF(.NOT.Found) Refactorize = .TRUE.
+  Refactorize = ListGetLogical(Params,'Linear System Refactorize',Found)
+  IF(.NOT.Found) THEN
+    Refactorize = .NOT. ( ResidualMode .AND. nIter > 1) 
+  END IF
 
   IF(ASSOCIATED(CollectionMatrix)) THEN
-    IF(Refactorize.AND..NOT.NotExplicit) THEN
+    IF(Refactorize .AND. .NOT.NotExplicit) THEN
       CALL Info( Caller,'Freeing previous collection matrix structures',Level=10)
       CALL FreeMatrix(CollectionMatrix)
       CollectionMatrix => NULL()
+      CALL Info( Caller,'Refactoring requested, creating fully new matrix',Level=10)
     ELSE
-      CALL Info( Caller,'Keeping previous collection matrix structures',Level=10)
+      CALL Info( Caller,'Trying to keep previous collection matrix structures',Level=10)
     END IF
   END IF
 
@@ -17933,7 +19066,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
   
   NumberOfRows = StiffMatrix % NumberOfRows
   IF(ASSOCIATED(AddMatrix)) NumberOfRows = MAX(NumberOfRows,AddMatrix % NumberOfRows)
-  EliminateConstraints = ListGetLogical( Solver % Values, 'Eliminate Linear Constraints', Found)
   IF(ASSOCIATED(RestMatrix)) THEN
     IF(.NOT.EliminateConstraints) NumberOfRows = NumberOFRows + RestMatrix % NumberOfRows
   END IF
@@ -17947,83 +19079,86 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
   CollectionSolution = 0.0_dp
 
   ComplexSystem = StiffMatrix % COMPLEX .OR. &
-      ListGetLogical( Solver % Values,'Linear System Complex', Found )
+      ListGetLogical(Params,'Linear System Complex', Found )
   
 !------------------------------------------------------------------------------
 ! If multiplier should be exported,  allocate memory and export the variable.
 !------------------------------------------------------------------------------
 
-  ExportMultiplier = ListGetLogical( Solver % Values, 'Export Lagrange Multiplier', Found )
+  ExportMultiplier = ListGetLogical(Params, 'Export Lagrange Multiplier', Found )
   IF ( ExportMultiplier ) THEN
-     MultiplierName = LagrangeMultiplierName( Solver )
-     MultVar => VariableGet(Solver % Mesh % Variables, MultiplierName)
-     j = 0
-     IF(ASSOCIATED(RestMatrix)) j = RestMatrix % NumberofRows
-     IF(ASSOCIATED(AddMatrix))  j = j+MAX(0,AddMatrix % NumberofRows-StiffMatrix % NumberOfRows)
+    MultiplierName = LagrangeMultiplierName( Solver )
+    MultVar => VariableGet(Solver % Mesh % Variables, MultiplierName)
+    j = 0
+    IF(ASSOCIATED(RestMatrix)) j = RestMatrix % NumberofRows
+    IF(ASSOCIATED(AddMatrix))  j = j+MAX(0,AddMatrix % NumberofRows-StiffMatrix % NumberOfRows)
 
-     IF ( .NOT. ASSOCIATED(MultVar) ) THEN
-       CALL Info(Caller,'Creating variable for Lagrange multiplier',Level=8)
-       ALLOCATE( MultiplierValues(j), STAT=istat )
-       IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error.')
+    IF ( .NOT. ASSOCIATED(MultVar) ) THEN
+      CALL Info(Caller,'Creating variable for Lagrange multiplier',Level=8)
+      ALLOCATE( MultiplierValues(j), STAT=istat )
+      IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error.')
 
-       MultiplierValues = 0.0_dp
-       IF( ComplexSystem ) THEN
-         CALL VariableAddVector(Solver % Mesh % Variables, Solver % Mesh, SolverPointer, &
-             MultiplierName, 2, MultiplierValues)               
-       ELSE
-         CALL VariableAdd(Solver % Mesh % Variables, Solver % Mesh, SolverPointer, &
-             MultiplierName, 1, MultiplierValues)      
-       END IF
-       MultVar => VariableGet(Solver % Mesh % Variables, MultiplierName)
-     END IF
+      MultiplierValues = 0.0_dp
+      IF( ComplexSystem ) THEN
+        CALL VariableAddVector(Solver % Mesh % Variables, Solver % Mesh, SolverPointer, &
+            MultiplierName, 2, MultiplierValues)               
+      ELSE
+        CALL VariableAdd(Solver % Mesh % Variables, Solver % Mesh, SolverPointer, &
+            MultiplierName, 1, MultiplierValues)      
+      END IF
+      MultVar => VariableGet(Solver % Mesh % Variables, MultiplierName)
+    END IF
 
-     IF( InfoActive( 20 ) ) THEN
-       CALL VectorValuesRange(MultVar % Values,SIZE(MultVar % Values),TRIM(MultVar % Name))
-     END IF
-          
-     MultiplierValues => MultVar % Values
+    IF( InfoActive( 20 ) ) THEN
+      CALL VectorValuesRange(MultVar % Values,SIZE(MultVar % Values),TRIM(MultVar % Name))
+    END IF
 
-     IF (j > SIZE(MultiplierValues)) THEN
-       CALL Info(Caller,'Increasing Lagrange multiplier size to: '//I2S(j),Level=8)
-       ALLOCATE(MultiplierValues(j)); MultiplierValues=0._dp       
-       MultiplierValues(1:SIZE(MultVar % Values)) = MultVar % Values     
+    MultiplierValues => MultVar % Values
 
-       ! If the Lagrange variable includes history also change its size.
-       IF( ASSOCIATED( MultVar % PrevValues ) ) THEN
-         MultVar % Values = MultVar % PrevValues(:,1)
-         DEALLOCATE( MultVar % PrevValues )
-         ALLOCATE( MultVar % PrevValues(j,1) )
-         MultVar % PrevValues = 0.0_dp
-         MultVar % PrevValues(:,1) = MultVar % Values
-       END IF
+    IF (j > SIZE(MultiplierValues)) THEN
+      CALL Info(Caller,'Increasing Lagrange multiplier size to: '//I2S(j),Level=8)
+      ALLOCATE(MultiplierValues(j)); MultiplierValues=0._dp       
+      MultiplierValues(1:SIZE(MultVar % Values)) = MultVar % Values     
 
-       DEALLOCATE(MultVar % Values)
-       MultVar % Values => MultiplierValues
-     END IF
+      ! If the Lagrange variable includes history also change its size.
+      IF( ASSOCIATED( MultVar % PrevValues ) ) THEN
+        MultVar % Values = MultVar % PrevValues(:,1)
+        DEALLOCATE( MultVar % PrevValues )
+        ALLOCATE( MultVar % PrevValues(j,1) )
+        MultVar % PrevValues = 0.0_dp
+        MultVar % PrevValues(:,1) = MultVar % Values
+      END IF
 
-     IF( InfoActive(25) ) THEN
-       CALL VectorValuesRange(MultVar % values,SIZE(MultVar % values),'MultVar')
-     END IF
+      DEALLOCATE(MultVar % Values)
+      MultVar % Values => MultiplierValues
+    END IF
+
+    IF( InfoActive(25) ) THEN
+      CALL VectorValuesRange(MultVar % values,SIZE(MultVar % values),'MultVar')
+    END IF
   ELSE
-     MultiplierValues => NULL()
+    MultiplierValues => NULL()
   END IF
 
-  UseTreeGauge = ListGetlogical( Solver % Values, 'Use Tree Gauge', Found )
+  UseTreeGauge = ListGetlogical(Params, 'Use Tree Gauge', Found )
 
 !------------------------------------------------------------------------------
 ! Put the RestMatrix to lower part of CollectionMatrix
 !------------------------------------------------------------------------------
 
-  EnforceDirichlet = ListGetLogical( Solver % Values, 'Enforce Exact Dirichlet BCs',Found)
+  EnforceDirichlet = ListGetLogical(Params, 'Enforce Exact Dirichlet BCs',Found)
   IF(.NOT.Found) EnforceDirichlet = .TRUE.
   EnforceDirichlet = EnforceDirichlet .AND. ALLOCATED(StiffMatrix % ConstrainedDOF)
 
-  UseTranspose = ListGetLogical( Solver % Values, 'Use Transpose values', Found)
-  
+  UseTranspose = ListGetLogical(Params, 'Use Transpose values', Found)
+  IF( UseTranspose ) THEN
+    CALL Info(Caller,'Using transpose values in elimination',Level=15)            
+  END IF
+    
   CALL Info(Caller,'Number of Rows / Nonzeros in original matrix: '&
       //I2S(StiffMatrix % NumberOfRows)//' / '//I2S(SIZE(StiffMatrix % Values)),Level=22) 
   
-  IF(ASSOCIATED(RestMatrix).AND..NOT.EliminateConstraints) THEN
+  IF(ASSOCIATED(RestMatrix) .AND. .NOT. EliminateConstraints) THEN
 
     CALL Info(Caller,'Adding ConstraintMatrix into CollectionMatrix',Level=10)
 
@@ -18031,9 +19166,9 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
       //I2S(RestMatrix % NumberOfRows)//' / '//I2S(SIZE(RestMatrix % Values)),Level=12) 
 
     NoEmptyRows = 0
-    ConstraintScaling = ListGetLogical(Solver % Values, 'Constraint Scaling',Found)
+    ConstraintScaling = ListGetLogical(Params, 'Constraint Scaling',Found)
     IF(ConstraintScaling) THEN
-      rowsum = ListGetConstReal( Solver % Values, 'Constraint Scale', Found)
+      rowsum = ListGetConstReal(Params, 'Constraint Scale', Found)
       IF(Found) RestMatrix % Values = RestMatrix % Values * rowsum
     END IF
 
@@ -18226,336 +19361,23 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
 ! Assumes biorthogonal basis for Lagrange coefficient interpolation, but not
 ! necessarily biorthogonal constraint equation test functions.
 !------------------------------------------------------------------------------
-  IF (ASSOCIATED(RestMatrix).AND.EliminateConstraints) THEN
-    CALL Info(Caller,'Eliminating Constraints from CollectionMatrix',Level=12)
-
-    n = StiffMatrix % NumberOfRows
-    m = RestMatrix % NumberOfRows
-
-    ALLOCATE(SlaveDiag(m),MasterDiag(m),SlavePerm(n),MasterPerm(n),&
-        SlaveIPerm(m),MasterIPerm(m),DiagDiag(m))
-    SlavePerm  = 0; SlaveIPerm  = 0; 
-    MasterPerm = 0; MasterIPerm = 0
-
-    Tvals => RestMatrix % TValues
-    IF (.NOT.ASSOCIATED(Tvals)) Tvals => RestMatrix % Values 
-
-    ! Extract diagonal entries for constraints:
-    !------------------------------------------
-    CALL Info(Caller,'Extracting diagonal entries for constraints',Level=15)
-    DO i=1, RestMatrix % NumberOfRows
-      m = RestMatrix % InvPerm(i)
-
-      IF( m == 0 ) THEN
-        PRINT *,'InvPerm is zero:',ParEnv % MyPe, i
-        CYCLE
-      END IF
-
-      m = MOD(m-1,n) + 1
-      SlavePerm(m)  = i
-      SlaveIperm(i) = m
-
-      DO j=RestMatrix % Rows(i), RestMatrix % Rows(i+1)-1
-        k = RestMatrix % Cols(j)
-        IF(k>n) THEN
-           DiagDiag(i) = Tvals(j)
-           CYCLE
-        END IF
-
-        IF( ABS( TVals(j) ) < TINY( 1.0_dp ) ) THEN
-          PRINT *,'Tvals too small',ParEnv % MyPe,j,i,k,RestMatrix % InvPerm(i),Tvals(j)
-        END IF
-
-        IF(k == RestMatrix % InvPerm(i)) THEN
-           SlaveDiag(i) = Tvals(j)
-        ELSE
-           MasterDiag(i) = Tvals(j)
-           MasterPerm(k)  = i
-           MasterIperm(i) = k
-        END IF
-      END DO
-    END DO
-  END IF
-
-  IF (ASSOCIATED(RestMatrix).AND.EliminateConstraints) THEN
-    EliminateSlave = ListGetLogical( Solver % values, 'Eliminate Slave',Found )
-    EliminateFromMaster = ListGetLogical( Solver % values, 'Eliminate From Master',Found )
-
-    IF(EliminateFromMaster) THEN
-      CALL Info(Caller,'Eliminating from master',Level=15)      
-      UsePerm  => MasterPerm 
-      UseDiag  => MasterDiag
-      UseIPerm => MasterIPerm 
+  IF (ASSOCIATED(RestMatrix) .AND. EliminateConstraints) THEN
+    IF ( ExportMultiplier ) THEN
+      ! With the multiplier active we need to use it also for elimination in case the
+      ! constraint shares some dofs with the multiplier. 
+      CALL EliminateLinearRestriction( StiffMatrix, ForceVector, RestMatrix, &
+          CollectionMatrix, Solver, ExportUseIPerm = UseIPerm, ExportUseDiag = UseDiag )
     ELSE
-      CALL Info(Caller,'Eliminating from slave',Level=15)            
-      UsePerm  => SlavePerm
-      UseDiag  => SlaveDiag
-      UseIPerm => SlaveIPerm
-    END IF
-
-    IF(UseTranspose) THEN
-      Vals => Tvals
-    ELSE
-      Vals => RestMatrix % Values
+      CALL EliminateLinearRestriction( StiffMatrix, ForceVector, RestMatrix, &
+        CollectionMatrix, Solver )
     END IF
   END IF
-
-  IF ( Parallel ) THEN
-    EliminateDiscont =  ListGetLogical( Solver % values, 'Eliminate Discont',Found )
-    IF( EliminateDiscont ) THEN
-      CALL totv( StiffMatrix, SlaveDiag, SlaveIPerm )
-      CALL totv( StiffMatrix, DiagDiag, SlaveIPerm )
-      CALL totv( StiffMatrix, MasterDiag, MasterIPerm )
-      CALL tota( StiffMatrix, TotValues, SlavePerm )
-    END IF
-  ELSE
-    EliminateDiscont = .FALSE.
+  
+  IF(CollectionMatrix % FORMAT==MATRIX_LIST) THEN
+    CALL Info(Caller,'Reverting CollectionMatrix back to CRS matrix',Level=10)
+    CALL List_toCRSMatrix(CollectionMatrix)
   END IF
-
-  IF (ASSOCIATED(RestMatrix).AND.EliminateConstraints) THEN
-    ! Replace elimination equations by the constraints (could done be as a postprocessing
-    ! step, if eq's totally eliminated from linsys.)
-    ! ----------------------------------------------------------------------------------
-    CALL Info(Caller,'Deleting rows from equation to be eliminated',Level=15)
-
-    Lmat => CollectionMatrix % ListMatrix
-    DO m=1,RestMatrix % NumberOfRows
-      i = UseIPerm(m)
-      CALL List_DeleteRow(Lmat, i, Keep=.TRUE.)
-    END DO
-
-    CALL Info(Caller,'Copying rows from constraint matrix to eliminate dofs',Level=15)
-    DO m=1,RestMatrix % NumberOfRows
-      i = UseIPerm(m)
-      DO l=RestMatrix % Rows(m+1)-1, RestMatrix % Rows(m), -1
-        j = RestMatrix % Cols(l)
-
-        ! skip l-coefficient entries, handled separately afterwards:
-        ! --------------------------------------------------------
-        IF(j > n) CYCLE
-
-        CALL List_AddToMatrixElement( Lmat, i, j, Vals(l) )
-      END DO
-      CollectionVector(i) = RestVector(m)
-    END DO
-
-    ! Eliminate slave dof cycles:
-    ! ---------------------------
-    Xmat => RestMatrix
-    Found = .TRUE.
-    Loop = 0
-    DO WHILE(Found)
-      DO i=Xmat % NumberofRows,1,-1
-        q = 0
-        DO j = Xmat % Rows(i+1)-1, Xmat % Rows(i),-1
-          k = Xmat % Cols(j)
-          IF(k>n) CYCLE
-          IF(UsePerm(k)>0 .AND. ABS(TVals(j))>AEPS) q=q+1
-        END DO
-        IF(q>1) EXIT
-      END DO
-      Found = q>1
-
-      Tmat => Xmat
-      IF(Found) THEN
-        Loop = Loop + 1
-        CALL Info(Caller,'Recursive elimination round: '//I2S(Loop),Level=15)
-
-        Tmat => AllocateMatrix()
-        Tmat % Format = MATRIX_LIST
-
-        DO i=Xmat % NumberofRows,1,-1
-          DO j = Xmat % Rows(i+1)-1, Xmat % Rows(i),-1
-            k = Xmat % Cols(j)
-            IF ( ABS(Tvals(j))>AEPS ) &
-              CALL List_AddToMatrixElement(Tmat % ListMatrix, i, k, TVals(j))
-          END DO
-        END DO
-
-        DO m=1,Xmat % NumberOfRows
-          i = UseIPerm(m)
-          DO j=Xmat % Rows(m), Xmat % Rows(m+1)-1
-            k = Xmat % Cols(j)
-
-            ! The size of SlavePerm is often exceeded but I don't really undersrtand the operation...
-            ! so this is just a dirty fix.
-            IF( k > SIZE( SlavePerm ) ) CYCLE
-
-            l = SlavePerm(k)
-
-            IF(l>0 .AND. k/=i) THEN
-              IF(ABS(Tvals(j))<AEPS) CYCLE
-              scl = -TVals(j) / SlaveDiag(l)
-
-              CALL List_DeleteMatrixElement( Tmat % ListMatrix, m, k )
-
-              DO q=Xmat % Rows(l+1)-1, Xmat % Rows(l),-1
-                IF(ABS(Tvals(q))<AEPS) CYCLE
-                ix = Xmat % Cols(q)
-                IF ( ix/=k ) &
-                  CALL List_AddToMatrixElement( Tmat % ListMatrix, m, ix, scl * TVals(q) )
-              END DO
-            END IF
-          END DO
-        END DO
-
-        CALL List_ToCRSMatrix(Tmat)
-        Tvals => Tmat % Values
-        IF(.NOT.ASSOCIATED(Xmat,RestMatrix)) CALL FreeMatrix(Xmat)
-      END IF
-      Xmat => TMat
-    END DO
-
-    ! Eliminate Lagrange Coefficients:
-    ! --------------------------------
-    CALL Info(Caller,'Eliminating Largrange Coefficients',Level=15)
-
-    DO m=1,Tmat % NumberOfRows
-      i = UseIPerm(m)
-      IF( ABS( UseDiag(m) ) < TINY( 1.0_dp ) ) THEN
-        PRINT *,'UseDiag too small:',m,ParEnv % MyPe,UseDiag(m)
-        CYCLE
-      END IF
-
-      DO j=TMat % Rows(m), TMat % Rows(m+1)-1
-        k = TMat % Cols(j)
-        IF(k<=n) THEN
-          IF(UsePerm(k)/=0) CYCLE
-
-          IF ( EliminateDiscont ) THEN
-            IF (EliminateFromMaster) THEN
-              scl = -SlaveDiag(SlavePerm(k)) / UseDiag(m)
-            ELSE
-              scl = -MasterDiag(MasterPerm(k)) / UseDiag(m)
-            END IF
-          ELSE
-            scl = -Tvals(j) / UseDiag(m)
-          END IF
-        ELSE
-          k = UseIPerm(k-n)
-          IF (EliminateDiscont) THEN
-            scl = -DiagDiag(m) / UseDiag(m)
-          ELSE
-            scl = -Tvals(j) / UseDiag(m)
-          END IF
-        END IF
-
-        DO l=StiffMatrix % Rows(i+1)-1, StiffMatrix % Rows(i),-1
-          CALL List_AddToMatrixElement( Lmat, k, &
-              StiffMatrix % Cols(l), scl * StiffMatrix % Values(l) )
-        END DO
-        CollectionVector(k) = CollectionVector(k) + scl * ForceVector(i)
-      END DO
-    END DO
-
-    IF ( .NOT.ASSOCIATED(Tmat, RestMatrix ) ) CALL FreeMatrix(Tmat)
-
-    ! Eliminate slave dofs, using the constraint equations:
-    ! -----------------------------------------------------
-    IF ( EliminateSlave ) THEN
-      CALL Info(Caller,'Eliminate slave dofs using constraint equations',Level=15)
-
-      IF(EliminateDiscont) THEN
-        DO i=1,StiffMatrix % NumberOfRows
-          IF ( UsePerm(i)/=0 ) CYCLE
-
-          DO m=StiffMatrix % Rows(i), StiffMatrix % Rows(i+1)-1
-             j = SlavePerm(StiffMatrix % Cols(m))
-             IF ( j==0 ) CYCLE
-             scl = -TotValues(m) / SlaveDiag(j)
-
-             ! Delete elimination entry:
-             ! -------------------------
-             CALL List_DeleteMatrixElement(Lmat,i,StiffMatrix % Cols(m))
-
-             k = UseIPerm(j)
-             cTmp => Lmat(k) % Head
-             DO WHILE(ASSOCIATED(cTmp))
-                l = cTmp % Index
-                IF ( l /= SlaveIPerm(j) ) &
-                   CALL List_AddToMatrixElement( Lmat, i, l, scl*cTmp % Val )
-              cTmp => cTmp % Next
-            END DO
-            CollectionVector(i) = CollectionVector(i) + scl * CollectionVector(k)
-          END DO
-        END DO
-      ELSE
-        CALL List_ToCRSMatrix(CollectionMatrix)
-        Tmat => AllocateMatrix()
-        Tmat % Format = MATRIX_LIST
-
-        DO i=1,StiffMatrix % NumberOfRows
-          IF(UsePerm(i)/=0) CYCLE
-
-          DO m = CollectionMatrix % Rows(i), CollectionMatrix % Rows(i+1)-1
-            j = SlavePerm(CollectionMatrix % Cols(m))
-
-            IF(j==0) THEN
-              CYCLE
-            END IF
-            IF( ABS( SlaveDiag(j) ) < TINY( 1.0_dp ) ) THEN
-              PRINT *,'SlaveDiag too small:',j,ParEnv % MyPe,SlaveDiag(j)
-              CYCLE
-            END IF
-
-            scl = -CollectionMatrix % Values(m) / SlaveDiag(j)
-            CollectionMatrix % Values(m) = 0._dp
-
-            ! ... and add replacement values:
-            ! -------------------------------
-            k = UseIPerm(j)
-            DO p=CollectionMatrix % Rows(k+1)-1, CollectionMatrix % Rows(k), -1
-               l = CollectionMatrix % Cols(p)
-               IF ( l /= SlaveIPerm(j) ) &
-                 CALL List_AddToMatrixElement( Tmat % listmatrix, i, l, scl*CollectionMatrix % Values(p) )
-            END DO
-            CollectionVector(i) = CollectionVector(i) + scl * CollectionVector(k)
-          END DO
-        END DO
-
-        CALL List_ToListMatrix(CollectionMatrix)
-        Lmat => CollectionMatrix % ListMatrix
-
-        CALL List_ToCRSMatrix(Tmat)
-        DO i=TMat % NumberOfRows,1,-1
-          DO j=TMat % Rows(i+1)-1,TMat % Rows(i),-1
-            CALL List_AddToMatrixElement( Lmat, i, TMat % cols(j), TMat % Values(j) )
-          END DO
-        END DO
-        CALL FreeMatrix(Tmat)
-      END IF
-    END IF
-
-    ! Optimize bandwidth, if needed:
-    ! ------------------------------
-    IF(EliminateFromMaster) THEN
-      CALL Info(Caller,&
-          'Optimizing bandwidth after elimination',Level=15)
-      DO i=1,RestMatrix % NumberOfRows
-        j = SlaveIPerm(i)
-        k = MasterIPerm(i)
-
-        Ctmp => Lmat(j) % Head
-        Lmat(j) % Head => Lmat(k) % Head
-        Lmat(k) % Head => Ctmp
-
-        l = Lmat(j) % Degree
-        Lmat(j) % Degree = Lmat(k) % Degree
-        Lmat(k) % Degree = l
-
-        scl = CollectionVector(j)
-        CollectionVector(j) = CollectionVector(k)
-        CollectionVector(k) = scl
-      END DO
-    END IF
-
-    CALL Info(Caller,'Finished Adding ConstraintMatrix',Level=12)
-  END IF
-
-  CALL Info(Caller,'Reverting CollectionMatrix back to CRS matrix',Level=10)
-  IF(CollectionMatrix % FORMAT==MATRIX_LIST) &
-      CALL List_toCRSMatrix(CollectionMatrix)
-
+    
   ! CRS-format matrix needed here
   IF ( NeedMassDampValues ) THEN  ! Doesn't work with constraints, "AddMatrix" only !!
     CALL CopyMassDampValues(CollectionMatrix, StiffMatrix, AddMatrix)
@@ -18572,8 +19394,10 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
   
   i = StiffMatrix % NumberOfRows+1
   j = SIZE(CollectionSolution)
-  CollectionSolution(i:j) = 0._dp
-  IF(ExportMultiplier) CollectionSolution(i:j) = MultiplierValues(1:j-i+1)
+  IF( j >= i) THEN
+    CollectionSolution(i:j) = 0._dp
+    IF(ExportMultiplier) CollectionSolution(i:j) = MultiplierValues(1:j-i+1)
+  END IF
 
   IF( InfoActive(30) ) THEN
     pSol => CollectionSolution
@@ -18582,7 +19406,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
   
   CollectionMatrix % ExtraDOFs = CollectionMatrix % NumberOfRows - &
                   StiffMatrix % NumberOfRows
-
 
   CollectionMatrix % ParallelDOFs = 0
   IF(ASSOCIATED(AddMatrix)) &
@@ -18597,64 +19420,104 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
 
 ! Collectionmatrix % Complex = StiffMatrix % Complex
 
-  ! We may want to skip the constraints for norm if we use certain other options
-  SkipConstraints = ListGetLogical( Solver % values, &
-      'Nonlinear System Convergence Without Constraints',Found )
-  IF(.NOT. Found ) THEN
-    SkipConstraints = ListGetLogical( Solver % values, 'Linear System Residual Mode',Found ) 
-    IF( SkipConstraints ) THEN
-      CALL Info(Caller,'Linear system residual mode must skip constraints',Level=10)
-    ELSE
-      SkipConstraints = ListGetLogical( Solver % values, 'NonLinear System Consistent Norm',Found ) 
-      IF( SkipConstraints ) THEN
-        CALL Info(Caller,'Nonlinear system consistent norm must skip constraints',Level=10)
-      END IF
-    END IF
-    str = ListGetString( Solver % values, 'NonLinear System Convergence Measure',Found )
-    IF( str == 'solution' ) THEN
-      SkipConstraints = .TRUE.
-      CALL Info(Caller,&
-          'Nonlinear system convergence measure == "solution" must skip constraints',Level=10)
-    END IF
-    IF( SkipConstraints ) THEN
-      CALL Info(Caller,'Enforcing convergence without constraints to True',Level=10)
-      CALL ListAddLogical( Solver % Values, &
-           'Nonlinear System Convergence Without Constraints',.TRUE.)
-    END IF
-  END IF
-
-  !------------------------------------------------------------------------------
-  ! Look at the nonlinear system previous values again, not taking the constrained
-  ! system into account...
-  !------------------------------------------------------------------------------
-  Found = ASSOCIATED(Solver % Variable % NonlinValues)
-  IF( Found .AND. .NOT. SkipConstraints ) THEN
-    k = CollectionMatrix % NumberOfRows
-    IF ( SIZE(Solver % Variable % NonlinValues) /= k) THEN
-      DEALLOCATE(Solver % Variable % NonlinValues)
-      ALLOCATE(Solver % Variable % NonlinValues(k))
-    END IF
-    Solver % Variable % NonlinValues(1:k) = CollectionSolution(1:k)
-  END IF
 
   CollectionMatrix % Comm = StiffMatrix % Comm
 
-  CALL Info(Caller,'Now going for the coupled linear system',Level=10)
-
+  
+  st  = CPUTime() - t0;
+  rst = RealTime() - rt0  
+  WRITE(Message,'(a,f8.2,f8.2,a)') 'Collection matrix creation time (CPU,REAL): ',st,rst,' (s)'
+  CALL Info(Caller,Message,Level=6)    
+  
+  i = CollectionMatrix % NumberOfRows - StiffMatrix % NumberOfRows
+  j = SIZE(CollectionMatrix % Values) - SIZE(StiffMatrix % Values )
+  CALL Info(Caller,'Collection matrix increased with '//I2S(i)//&
+      ' rows and '//I2S(j)//' non-zeros',Level=8)
+    
   IF( InfoActive( 30 ) ) THEN
     CALL VectorValuesRange(CollectionMatrix % Values,SIZE(CollectionMatrix % Values),'A')       
     CALL VectorValuesRange(CollectionMatrix % rhs,SIZE(CollectionMatrix % rhs),'b')       
   END IF
+      
+  IF( ResidualMode ) THEN
+    BLOCK
+      REAL(KIND=dp), POINTER :: Res(:)      
+      ! If residual mode is requested make change of variables:
+      ! Ax=b -> Adx = b-Ax0 = r
+      IF( niter > 1 ) THEN
+        CALL Info(Caller,'Changing the equation to residual based mode',Level=10)
+        ALLOCATE( Res(SIZE(CollectionSolution)) ) 
+        CALL LinearSystemResidual( CollectionMatrix, CollectionVector, CollectionSolution, res )
+        CollectionVector = Res
+        CollectionSolution = 0.0_dp
+        DEALLOCATE(Res)
+      END IF
+    END BLOCK
+  END IF
+  
+  ! We may want to skip ComputeChange including the constraints if we use certain other options
+  SkipConstraints = ResidualMode .OR. &
+      ListGetLogical( Params, 'Nonlinear System Convergence Without Constraints',Found ) .OR. &
+      ListGetLogical( Params, 'NonLinear System Consistent Norm',Found )   
+  str = ListGetString( Params, 'NonLinear System Convergence Measure',Found )
+  IF( str == 'solution' ) THEN
+    SkipConstraints = .TRUE.
+    CALL Info(Caller,&
+        'Nonlinear system convergence measure == "solution" must skip constraints',Level=10)
+  END IF
+  IF( SkipConstraints ) THEN
+    CALL ListAddLogical( Params,'Skip Compute Nonlinear Change',.TRUE.)
+    CALL ListAddLogical( Params,'Skip Advance Nonlinear iter',.TRUE.)
+  END IF
+
+  DoOwnScaling = ListGetLogical( Params,'Linear System Scaling',Found)
+  IF(.NOT. Found) DoOwnScaling = .TRUE.
+  IF(.NOT. ResidualMode) DoOwnScaling = .FALSE.
+  IF(DoOwnScaling) THEN   
+    CALL Info(Caller,'Performing special scaling with constraints',Level=10)
+    DiagScaling => CollectionMatrix % DiagScaling
+    IF(Niter == 1 ) THEN
+      IF(.NOT. ASSOCIATED(DiagScaling) ) THEN
+        ALLOCATE( DiagScaling(SIZE(CollectionVector)))
+        CollectionMatrix % DiagScaling => DiagScaling
+      END IF
+
+      ! Should we scale only part or the full matrix? 
+      IF(.FALSE.) THEN
+        DiagScaling = 1.0_dp
+        StiffMatrix % DiagScaling => DiagScaling
+        ! Just build the scaling matrix using only the original stiffness matrix.
+        CALL ScaleLinearSystem(Solver,StiffMatrix,ApplyScaling=.FALSE.)     
+        CollectionMatrix % ScalingMethod = StiffMatrix % ScalingMethod    
+        StiffMatrix % DiagScaling => NULL()      
+      ELSE
+        CALL ScaleLinearSystem(Solver,CollectionMatrix,ApplyScaling=.FALSE.)     
+      END IF        
+    END IF
     
+    CALL ScaleLinearSystem(Solver,CollectionMatrix,CollectionVector,&
+        CollectionSolution,DiagScaling=CollectionMatrix % DiagScaling)
+    CALL ListAddLogical( Params,'Linear System Skip Scaling',.TRUE. ) 
+  END IF
+  
+  CALL Info(Caller,'Now solving the linear system with constraints!',Level=10)
+  Collectionmatrix % DGMatrix = StiffMatrix %  DGMatrix
   CALL SolveLinearSystem( CollectionMatrix, CollectionVector, &
-      CollectionSolution, Norm, DOFs, Solver, StiffMatrix )
-    
+     CollectionSolution, Norm, DOFs, Solver, StiffMatrix )
+
+
+  IF(DoOwnScaling) THEN
+    CALL BackScaleLinearSystem( Solver,CollectionMatrix,CollectionVector,&
+        CollectionSolution,CollectionMatrix % DiagScaling)
+    CALL ListAddLogical( Params,'Linear System Skip Scaling',.FALSE. ) 
+  END IF
+
   !-------------------------------------------------------------------------------
   ! For restricted systems study the norm without some block components.
   ! For example, excluding gauge constraints may give valuable information
   ! of the real accuracy of the unconstrained system. Currently just for info.
   !-------------------------------------------------------------------------------
-  IF( ListGetLogical( Solver % Values,'Restricted System Norm',Found ) ) THEN
+  IF( ListGetLogical( Params,'Restricted System Norm',Found ) ) THEN
     ALLOCATE( TrueDof( CollectionMatrix % NumberOfRows ) )
     TrueDof = .TRUE.
     
@@ -18664,14 +19527,14 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
     WRITE( Message,'(A,ES13.6)') 'Residual norm of the original system:',Norm
     CALL Info(Caller,Message, Level = 5 )
     
-    IF( ListGetLogical( Solver % Values,'Restricted System Norm Skip Nodes',Found ) ) THEN
+    IF( ListGetLogical( Params,'Restricted System Norm Skip Nodes',Found ) ) THEN
       i = 1
       j = MAXVAL( Solver % Variable % Perm(1:Solver % Mesh % NumberOfNodes) )
       CALL Info(Caller,'Skipping nodal dof range: '//I2S(i)//'-'//I2S(j),Level=8)
       TrueDof(i:j) = .FALSE.
     END IF
 
-    IF( ListGetLogical( Solver % Values,'Restricted System Norm Skip Constraints',Found ) ) THEN
+    IF( ListGetLogical( Params,'Restricted System Norm Skip Constraints',Found ) ) THEN
       i = StiffMatrix % NumberOfRows + 1
       j = CollectionMatrix % NumberOfRows      
       CALL Info(Caller,'Skipping constraints dof range: '&
@@ -18694,19 +19557,18 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
 !------------------------------------------------------------------------------
     CALL Info(Caller,'Picking solution from collection solution',Level=10)
 
-    Solution = 0.0_dp
-    i = 1
     j = StiffMatrix % NumberOfRows
-    Solution(i:j) = CollectionSolution(i:j)
 
+    IF( ResidualMode .AND. nIter > 1) THEN
+      Solution(1:j) = Solution(1:j) + CollectionSolution(1:j)
+    ELSE
+      Solution(1:j) = CollectionSolution(1:j)
+    END IF
+    
     IF ( ExportMultiplier ) THEN
-      i = StiffMatrix % NumberOfRows
-      j=0
-      IF(ASSOCIATED(RestMatrix)) j = RestMatrix % NumberOfRows
-      IF(ASSOCIATED(AddMatrix)) &
-        j=j+MAX(0,AddMatrix % NumberOfRows - StiffMatrix % NumberOFRows)
-
-      IF(ASSOCIATED(RestMatrix).AND.EliminateConstraints) THEN        
+      CALL Info(Caller,'Separating Lagrange multiplier from collection solution',Level=10)
+      
+      IF(ASSOCIATED(RestMatrix) .AND. EliminateConstraints) THEN        
         ! Compute eliminated l-coefficient values:
         ! ---------------------------------------
         MultiplierValues = 0.0_dp
@@ -18716,224 +19578,55 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
           MultiplierValues(i) = scl * ForceVector(m)
           DO j=StiffMatrix % Rows(m), StiffMatrix % Rows(m+1)-1
             MultiplierValues(i) = MultiplierValues(i) - &
-              scl * StiffMatrix % Values(j) * Solution(StiffMatrix % Cols(j))
+                scl * StiffMatrix % Values(j) * Solution(StiffMatrix % Cols(j))
           END DO
         END DO
-      ELSE
-        Relax = ListGetCReal( Solver % Values,'Lagrange Multiplier Relaxation Factor', Found )
-        IF( Found ) THEN          
-          MultiplierValues(1:j) = (1-Relax) * MultiplierValues(1:j) + &
-              Relax * CollectionSolution(i+1:i+j)
-        ELSE       
-          MultiplierValues(1:j) = CollectionSolution(i+1:i+j)
-        END IF
-      END IF
 
-      IF(EliminateConstraints.AND.EliminateDiscont) THEN
-        IF (EliminateFromMaster) THEN
-          CALL totv(StiffMatrix,MultiplierValues,MasterIPerm)
+        DEALLOCATE( UseIPerm, UseDiag )
+      ELSE
+        i = StiffMatrix % NumberOfRows
+        j=0
+        IF(ASSOCIATED(RestMatrix)) j = RestMatrix % NumberOfRows
+        IF(ASSOCIATED(AddMatrix)) &
+            j=j+MAX(0,AddMatrix % NumberOfRows - StiffMatrix % NumberOFRows)
+
+        Relax = ListGetCReal( Params,'Lagrange Multiplier Relaxation Factor', Found )
+        IF( ResidualMode .AND. nIter > 1 ) THEN
+          IF( Found ) THEN          
+            MultiplierValues(1:j) = MultiplierValues(1:j) + &
+                Relax * CollectionSolution(i+1:i+j)
+          ELSE
+            MultiplierValues(1:j) = MultiplierValues(1:j) + CollectionSolution(i+1:i+j)
+          END IF
         ELSE
-          CALL totv(StiffMatrix,MultiplierValues,SlaveIPerm)
+          IF( Found ) THEN          
+            MultiplierValues(1:j) = (1-Relax) * MultiplierValues(1:j) + &
+                Relax * CollectionSolution(i+1:i+j)
+          ELSE       
+            MultiplierValues(1:j) = CollectionSolution(i+1:i+j)
+          END IF
         END IF
-      END IF
+                
+      END IF      
     END IF
 
+      
 !------------------------------------------------------------------------------
 
-    StiffMatrix % CollectionMatrix => CollectionMatrix
+    IF( SkipConstraints ) THEN
+      CALL ListAddLogical( Params,'Skip Advance Nonlinear iter',.FALSE.)
+      CALL ListAddLogical( Params,'Skip Compute Nonlinear Change',.FALSE.)
+      CALL ComputeChange(Solver,.FALSE.,StiffMatrix % NumberOfRows,Matrix=StiffMatrix,Rhs=ForceVector)
+    END IF
+        
     DEALLOCATE(CollectionSolution)
     CollectionMatrix % ConstraintMatrix => NULL()
+    StiffMatrix % CollectionMatrix => CollectionMatrix
 
-    CALL Info( Caller, 'All done', Level=10 )
-
-CONTAINS
-
-  SUBROUTINE totv( A, totvalues, perm )
-    type(matrix_t), pointer :: A
-    real(kind=dp) :: totvalues(:)
-    integer, allocatable :: perm(:)
-
-    real(kind=dp), ALLOCATABLE :: x(:),r(:)
-    INTEGER :: i,j,ng
-
-    ng = A % NumberOfRows
-!   ng = ParallelReduction(MAXVAL(A % ParallelInfo % GLobalDOfs))
-    ALLOCATE(x(ng),r(ng))
-
-    x = 0._dp
-    IF(ALLOCATED(perm)) THEN
-      DO i=1,SIZE(perm)
-        j = Perm(i)
-        !j = a % parallelinfo % globaldofs(j)
-        x(j) = totvalues(i)
-      END DO
-    END IF
-
-    IF( Parallel ) THEN
-      CALL ParallelSumVector(A, x)
-    END IF
-!   CALL MPI_ALLREDUCE( x,r, ng, MPI_DOUBLE_PRECISION, MPI_SUM, ELMER_COMM_WORLD, i ); x=r
-
-    IF(ALLOCATED(perm)) THEN
-      DO i=1,SIZE(perm)
-        j = Perm(i)
-        !j = A % parallelinfo % globaldofs(j)
-        totvalues(i) = x(j)
-      END DO
-    END IF
-  END SUBROUTINE Totv
+    ParEnv => ParEnvSave
     
-
-  SUBROUTINE Tota( A, TotValues, cperm )
-     type(matrix_t), pointer :: A
-     integer, allocatable :: cperm(:)
-     real(kind=dp), ALLOCATABLE :: totvalues(:)
-
-     INTEGER, POINTER :: Diag(:), Rows(:), Cols(:)
-     LOGICAL ::  found
-     INTEGER :: status(MPI_STATUS_SIZE)
-     REAL(KIND=dp), ALLOCATABLE, TARGET :: rval(:)
-     INTEGER, ALLOCATABLE :: cnt(:), rrow(:),rcol(:), perm(:)
-     INTEGER :: i,j,k,l,m,ii,jj,proc,rcnt,nn, dof, dofs, Active, n, nm,ierr
-
-     TYPE Buf_t
-        REAL(KIND=dp), ALLOCATABLE :: gval(:)
-        INTEGER, ALLOCATABLE :: grow(:),gcol(:)
-     END TYPE Buf_t
-     TYPE(Buf_t), POINTER :: buf(:)
-
-     Diag => A % Diag
-     Rows => A % Rows
-     Cols => A % Cols
-
-     n = A % NumberOfRows
-
-     ALLOCATE(TotValues(SIZE(A % Values))); TotValues=A % Values
-
-     IF ( Parallel ) THEN
-       ALLOCATE(cnt(0:ParEnv % PEs-1))
-       cnt = 0
-       DO i=1,n
-         DO j=Rows(i),Rows(i+1)-1
-!          IF(Cols(j)<=nm .OR. Cols(j)>nm+n) CYCLE
-           iF ( ALLOCATED(CPerm)) THEN
-             IF(cperm(Cols(j))==0) CYCLE
-           END IF
-           IF(TotValues(j)==0) CYCLE
-
-           IF ( A % ParallelInfo % GInterface(Cols(j)) ) THEN
-             DO k=1,SIZE(A % ParallelInfo % NeighbourList(Cols(j)) % Neighbours)
-               m = A % ParallelInfo % NeighbourList(Cols(j)) % Neighbours(k)
-               IF ( m==ParEnv % myPE ) CYCLE
-               cnt(m) = cnt(m)+1
-             END DO 
-           END IF
-         END DO
-       END DO
-
-       ALLOCATE( buf(0:ParEnv % PEs-1) )
-       DO i=0,ParEnv % PEs-1
-         IF ( cnt(i) > 0 ) &
-           ALLOCATE( Buf(i) % gval(cnt(i)), Buf(i) % grow(cnt(i)), Buf(i) % gcol(cnt(i)) )
-       END DO
-
-       cnt = 0
-       DO i=1,n
-         DO j=Rows(i),Rows(i+1)-1
-!          IF(Cols(j)<=nm .OR. Cols(j)>nm+n) CYCLE
-           iF ( ALLOCATED(CPerm)) THEN
-             IF(cperm(Cols(j))==0) CYCLE
-           END IF
-           IF(TotValues(j)==0) CYCLE
-
-           IF ( A % ParallelInfo % GInterface(Cols(j)) ) THEN
-             DO k=1,SIZE(A % ParallelInfo % NeighbourList(Cols(j)) % Neighbours)
-               m = A % ParallelInfo % NeighbourList(Cols(j)) % Neighbours(k)
-               IF ( m==ParEnv % myPE ) CYCLE
-               cnt(m) = cnt(m)+1
-               Buf(m) % gcol(cnt(m)) = A % ParallelInfo % GlobalDOFs(Cols(j))
-               Buf(m) % gval(cnt(m)) = TotValues(j)
-               Buf(m) % grow(cnt(m)) = A % ParallelInfo % GlobalDOFs(i)
-             END DO
-           END IF
-         END DO
-       END DO
-
-       DO i=0,ParEnv % PEs-1
-         IF ( ParEnv % IsNeighbour(i+1) ) THEN
-           CALL MPI_BSEND( cnt(i), 1, MPI_INTEGER, i, 7001, ELMER_COMM_WORLD, status, ierr )
-           IF ( cnt(i)>0 ) THEN
-             CALL MPI_BSEND( Buf(i) % grow, cnt(i), MPI_INTEGER, &
-                 i, 7002, ELMER_COMM_WORLD, status, ierr )
-
-             CALL MPI_BSEND( Buf(i) % gcol, cnt(i), MPI_INTEGER, &
-                 i, 7003, ELMER_COMM_WORLD, status, ierr )
-
-             CALL MPI_BSEND( Buf(i) % gval, cnt(i), MPI_DOUBLE_PRECISION, &
-                 i, 7004, ELMER_COMM_WORLD, status, ierr )
-           END IF
-         END IF
-       END DO
-
-       DO i=0,ParEnv % PEs-1
-         IF ( cnt(i)>0 ) &
-           DEALLOCATE( Buf(i) % gval, Buf(i) % grow, Buf(i) % gcol )
-       END DO
-       DEALLOCATE( cnt,Buf )
-
-       DO i=1,ParEnv % NumOfNeighbours
-         CALL MPI_RECV( rcnt, 1, MPI_INTEGER, &
-           MPI_ANY_SOURCE, 7001, ELMER_COMM_WORLD, status, ierr )
-
-         IF ( rcnt>0 ) THEN
-           IF(.NOT.ALLOCATED(rrow)) THEN
-             ALLOCATE( rrow(rcnt), rcol(rcnt), rval(rcnt) )
-           ELSE IF(SIZE(rrow)<rcnt) THEN
-             DEALLOCATE(rrow,rcol,rval)
-             ALLOCATE( rrow(rcnt), rcol(rcnt), rval(rcnt) )
-           ENDIF
-
-           proc = status(MPI_SOURCE)
-           CALL MPI_RECV( rrow, rcnt, MPI_INTEGER, &
-              proc, 7002, ELMER_COMM_WORLD, status, ierr )
-
-           CALL MPI_RECV( rcol, rcnt, MPI_INTEGER, &
-              proc, 7003, ELMER_COMM_WORLD, status, ierr )
-
-           CALL MPI_RECV( rval, rcnt, MPI_DOUBLE_PRECISION, &
-              proc, 7004, ELMER_COMM_WORLD, status, ierr )
-
-           DO j=1,rcnt
-             l = SearchNode(A % ParallelInfo,rcol(j),Order=A % ParallelInfo % Gorder )
-             IF ( l>0 ) THEN
-               k = SearchNode(A % ParallelInfo,rrow(j),Order=A % ParallelInfo % Gorder )
-               IF ( k>0 ) THEN
-                 IF ( l>=k ) THEN
-                   DO m=Diag(k),Rows(k+1)-1
-                     IF ( Cols(m) == l ) THEN
-                       TotValues(m) = TotValues(m) + rval(j)
-                       EXIT
-                     ELSE IF( Cols(m)>l) THEN
-                       EXIT
-                     END IF
-                   END DO
-                 ELSE
-                   DO m=Rows(k),Diag(k)-1
-                     IF ( Cols(m)==l ) THEN
-                       TotValues(m) = TotValues(m) + rval(j)
-                       EXIT
-                     ELSE IF( Cols(m)>l) THEN
-                       EXIT
-                     END IF
-                   END DO
-                 END IF
-               END IF
-             END IF
-           END DO
-         END IF
-       END DO
-     END IF
-   END SUBROUTINE tota
+    CALL Info( Caller, 'All done', Level=10 )
+CONTAINS
 
 
 !------------------------------------------------------------------------------
@@ -19245,21 +19938,20 @@ CONTAINS
         ! We need to add the control source here in order to be able to use
         ! standard means for convergence monitoring. 
         CALL Info(Caller,'Computing source term for: '//TRIM(str),Level=7)
-        CALL SetNodalSources( CurrentModel,Mesh,str, &
-            dofs, Perm, GotF, f(:,iControl) )
+        CALL SetNodalSources( CurrentModel,Mesh,str,dofs, Perm, GotF, f(:,iControl) )
 
-       ! The additional source needs to be nullified for Dirichlet conditions
-       IF( ALLOCATED( A % ConstrainedDOF ) ) THEN
-         WHERE( A % ConstrainedDOF ) f(:,iControl) = 0.0_dp
-       END IF
+        ! The additional source needs to be nullified for Dirichlet conditions
+        IF( ALLOCATED( A % ConstrainedDOF ) ) THEN
+          WHERE( A % ConstrainedDOF ) f(:,iControl) = 0.0_dp
+        END IF
 
-       IF(InfoActive(10)) THEN
-         DO i=1,dofs
-           PRINT *,'ranges b:',i,MINVAL(b(i::dofs)),MAXVAL(b(i::dofs)),SUM(b(i::dofs))
-           PRINT *,'ranges f:',i,MINVAL(f(i::dofs,iControl)),&
-               MAXVAL(f(i::dofs,iControl)),SUM(f(i::dofs,iControl))
-         END DO
-       END  IF
+        IF(InfoActive(10)) THEN
+          DO i=1,dofs
+            PRINT *,'ranges b:',i,MINVAL(b(i::dofs)),MAXVAL(b(i::dofs)),SUM(b(i::dofs))
+            PRINT *,'ranges f:',i,MINVAL(f(i::dofs,iControl)),&
+                MAXVAL(f(i::dofs,iControl)),SUM(f(i::dofs,iControl))
+          END DO
+        END  IF
        
         IF( ABS(cAmp(iControl)) > 1.0e-20 ) THEN
           b(1:nsize) = b(1:nsize) + cAmp(iControl) * f(1:nsize,iControl)
@@ -19652,7 +20344,7 @@ CONTAINS
     INTEGER, POINTER :: Perm(:)
     REAL(KIND=dp), POINTER :: Sol(:)
     INTEGER :: i
-    LOGICAL :: SaveMass, SaveDamp, SavePerm, SaveSol, Found , Parallel, CNumbering
+    LOGICAL :: SaveMass, SaveDamp, SavePerm, SaveSol, Found , Parallel, CNumbering, SkipZeros
     CHARACTER(*), PARAMETER :: Caller = 'SaveLinearSystem'
 !------------------------------------------------------------------------------
 
@@ -19681,6 +20373,8 @@ CONTAINS
 
     SaveDamp = ListGetLogical( Params,'Linear System Save Damp',Found)   
 
+    SkipZeros = ListGetLogical( Params,'Linear System Save Skip Zeros', Found ) 
+    
     IF( PRESENT( LinSysName ) ) THEN
       dumpprefix = TRIM(LinSysName) 
     ELSE
@@ -19692,7 +20386,7 @@ CONTAINS
     IF(Parallel) dumpfile = TRIM(dumpfile)//'.'//I2S(ParEnv % myPE)
     CALL Info(Caller,'Saving matrix to: '//TRIM(dumpfile),Level=5)
     OPEN(1,FILE=dumpfile, STATUS='Unknown')
-    CALL PrintMatrix(A,Parallel,Cnumbering,SaveMass=SaveMass,SaveDamp=SaveDamp)
+    CALL PrintMatrix(A,Parallel,Cnumbering,SaveMass=SaveMass,SaveDamp=SaveDamp,SkipZeros=SkipZeros)
     CLOSE(1)
 
     dumpfile = TRIM(dumpprefix)//'_b.dat'
@@ -19791,7 +20485,7 @@ CONTAINS
     CHARACTER(:), ALLOCATABLE :: BoundaryName
     TYPE(Nodes_t) :: Nodes
     REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:)
-    REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:)
+    REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:), rhs(:)
     REAL(KIND=dp) :: detJ, val
     LOGICAL :: Stat
     
@@ -19802,6 +20496,9 @@ CONTAINS
     ALLOCATE( Basis(n), dBasisdx(n, 3), FORCE(N), STIFF(N,N), &
         Nodes % x(n), Nodes % y(n), Nodes % z(n), &
         STAT=istat)
+
+    ALLOCATE( rhs(A % NumberOfRows) )
+    rhs = 0.0_dp
     
     IF(.FALSE.) THEN
       N = Mesh % NumberOfNodes
@@ -19855,11 +20552,12 @@ CONTAINS
         END DO
       END DO
       
-      CALL UpdateGlobalEquations( A,STIFF,A % rhs,FORCE,n,1,Perm(Indexes(1:n)) )
+      CALL UpdateGlobalEquations( A,STIFF,rhs,FORCE,n,1,Perm(Indexes(1:n)) )
     END DO
     
     DEALLOCATE( Basis, dBasisdx, FORCE, STIFF, & 
         Nodes % x, Nodes % y, Nodes % z)
+    DEALLOCATE( rhs ) 
 
   END SUBROUTINE LaplaceMatrixAssembly
 
@@ -19884,7 +20582,6 @@ CONTAINS
     REAL(KIND=dp), POINTER :: Basis(:),rhs(:)
     REAL(KIND=dp) :: detJ, val
     LOGICAL :: Stat
-    
     
     Mesh => Solver % Mesh
         
@@ -19937,6 +20634,11 @@ CONTAINS
         Nodes % x, Nodes % y, Nodes % z)
     DEALLOCATE( rhs )
 
+    ! We don't currently need to do this as we copy the ParallelInfo from primary matrix.
+    IF ( Parenv  % PEs > 1 ) THEN
+      ! CALL ParallelInitMatrix( Solver, A )
+    END IF
+    
   END SUBROUTINE MassMatrixAssembly
 
 
@@ -22618,7 +23320,8 @@ CONTAINS
 
      LOGICAL :: IsNonlinear,IsSteadyState,Timing, RequireNonlinear, ContactBC, &
          MortarBC, IntegralBC
-     LOGICAL :: ApplyMortar, ApplyContact, ApplyIntegral, StoreCyclic, Found, StaticProj
+     LOGICAL :: ApplyMortar, ApplyContact, ApplyIntegral, StoreCyclic, Found, &
+         StaticProj, IsBodyForce
      INTEGER :: i,j,k,l,n,dsize,size0,col,row,dim
      TYPE(ValueList_t), POINTER :: BC
      TYPE(Matrix_t), POINTER :: CM, CMP, CM0, CM1
@@ -22661,28 +23364,40 @@ CONTAINS
      IsSteadyState = .NOT. IsNonlinear
 
      IF( .NOT. ASSOCIATED( Solver % MortarBCs ) ) THEN
-       ALLOCATE( Solver % MortarBCs( Model % NumberOfBCs ) )
-       DO i=1, Model % NumberOfBCs
+       ALLOCATE( Solver % MortarBCs( Model % NumberOfBCs + Model % NumberOfBodyForces ) )
+       DO i=1, Model % NumberOfBCs + Model % NumberOfBodyForces
          Solver % MortarBCs(i) % Projector => NULL()
        END DO
      END IF
      
      dim = CoordinateSystemDimension()
 
-     DO i=1,Model % NumberOFBCs
-       BC => Model % BCs(i) % Values
-       
+     DO i=1,Model % NumberOFBCs + Model % NumberOfBodyForces
+       IF(i > Model % NumberOfBCs ) THEN
+         BC => Model % BodyForces(i-Model % NumberOfBCs) % Values
+         IsBodyForce = .TRUE.
+       ELSE         
+         BC => Model % BCs(i) % Values
+         IsBodyForce = .FALSE.
+       END IF
+         
        k = 0
        j = ListGetInteger( BC,'Mortar BC',MortarBC)       
        j = j + ListGetInteger( BC,'Contact BC',ContactBC)       
        IntegralBC = ListGetLogical( BC,'Integral BC',Found ) 
+
        IF( MortarBC ) k = k+1
        IF( ContactBC ) k = k+1
        IF( IntegralBC ) k = k+1
+       IF(k==0) CYCLE
+         
        IF( k > 1 ) THEN
          CALL Fatal(Caller,'Boundary '//I2S(i)//' can only be one of mortar, contact and integral!')
        END IF     
-       IF(k==0) CYCLE
+
+       IF(IsBodyForce .AND. .NOT. IntegralBC ) THEN
+         CALL Fatal(Caller,'Body Force '//I2S(i)//' can only have integral bc!')
+       END IF     
 
        IF( InfoActive(10) ) THEN
          IF( MortarBC ) CALL Info(Caller,'Generating mortar conditions for BC: '//I2S(i))
@@ -22728,7 +23443,7 @@ CONTAINS
 
        ! Compute new projector
        IF( IntegralBC ) THEN         
-         Proj => IntegralProjector(Model,Solver % Mesh, i ) 
+         Proj => IntegralProjector(Model,Solver % Mesh, i, IsBodyForce ) 
        ELSE
          ! This is the same for mortar and contact!
          Proj => PeriodicProjector(Model,Solver % Mesh,i,j,dim,.TRUE.)
@@ -22789,7 +23504,7 @@ CONTAINS
 
      TYPE(Solver_t), POINTER :: PSolver
      INTEGER :: i
-     LOGICAL :: Found, GotSome 
+     LOGICAL :: Found, GotSome, DoIt, IsBodyForce
      CHARACTER(*), PARAMETER :: Caller="GenerateRobinProjector"
 
      
@@ -22797,12 +23512,18 @@ CONTAINS
 
      PSolver => Solver
      GotSome = .FALSE.
-     DO i=1,Model % NumberOFBCs
-       IF(ListGetLogical( Model % BCs(i) % Values,'Flux Integral BC',Found ) ) THEN
-         CALL Info(Caller,'Generating flux integral conditions for BC: '//I2S(i))
-         CALL RobinProjector(Model,PSolver, i ) 
-         GotSome = .TRUE.
+     DO i=1,Model % NumberOFBCs + Model % NumberOfBodyForces
+       IF(i<=Model % NumberOfBCs) THEN
+         IF(.NOT. ListGetLogical( Model % BCs(i) % Values,'Flux Integral BC',Found ) ) CYCLE
+         IsBodyForce = .FALSE.
+       ELSE
+         IF(.NOT. ListGetLogical( Model % BodyForces(i-Model % NumberOfBCs) % Values,'Flux Integral BC',Found ) ) CYCLE
+         IsBodyForce = .TRUE.
        END IF
+       
+       CALL Info(Caller,'Generating flux integral conditions for BC: '//I2S(i))
+       CALL RobinProjector(Model,PSolver, i, IsBodyForce) 
+       GotSome = .TRUE.
      END DO
 
      IF( GotSome ) THEN
@@ -22818,11 +23539,12 @@ CONTAINS
    ! This creates a projector that integrates over the BCs on the boundary such that
    ! an integral constraint for Robin type of BCs may be applied.
    !--------------------------------------------------------------------------------------
-   SUBROUTINE RobinProjector(Model, Solver, BCInd ) 
+   SUBROUTINE RobinProjector(Model, Solver, BCInd, IsBodyForce ) 
 
      TYPE(Model_t) :: Model
      TYPE(Solver_t), POINTER :: Solver    
-     INTEGER :: BCInd    
+     INTEGER :: BCInd
+     LOGICAL :: IsBodyForce
 
      TYPE(Matrix_t), POINTER :: Proj        
      TYPE(Mesh_t), POINTER :: Mesh
@@ -22832,7 +23554,11 @@ CONTAINS
      TYPE(MortarBC_t), POINTER :: MortarBC
      CHARACTER(*), PARAMETER :: Caller="RobinProjector"
 
-     BC => Model % BCs(BCInd) % Values
+     IF(IsBodyForce) THEN
+       BC => Model % BodyForces(BCind-Model % NumberOfBCs) % Values
+     ELSE
+       BC => Model % BCs(BCInd) % Values
+     END IF
      IF( .NOT. ListGetLogical( BC,'Flux Integral BC', Found ) ) RETURN
 
      Proj => Solver % MortarBCs(BCInd) % Projector
@@ -22877,7 +23603,7 @@ CONTAINS
 
      SUBROUTINE CreateRobinProjector()
 
-       INTEGER :: i,j,k,n,t,dofs,idof
+       INTEGER :: i,j,k,n,t,dofs,idof,t1,t2
        REAL(KIND=dp) :: dval
        TYPE(Matrix_t), POINTER :: A
        TYPE(Variable_t), POINTER :: Var
@@ -22894,14 +23620,26 @@ CONTAINS
          CALL Fatal(Caller,'BulkValues are needed to aveluate Robin terms!')
        END IF
 
+       IF(IsBodyForce) THEN
+         t1 = 1
+         t2 = Mesh % NumberOfBulkElements 
+       ELSE
+         t1 = Mesh % NumberOfBulkElements + 1
+         t2 = (t1-1) + Mesh % NumberOfBoundaryElements
+       END IF
        
        ! Mark the dofs of the matrix that are on the boundary.
        ! ActiveDof table will directly refer to the indexes of the matrix.
        ALLOCATE(ActiveDof(n))
        ActiveDof = .FALSE.       
-       DO t = 1, Mesh % NumberOfBoundaryElements
-         Element => Mesh % Elements(Mesh % NumberOfBulkElements + t )
-         IF ( Element % BoundaryInfo % Constraint /= Model % BCs(BCInd) % Tag ) CYCLE
+       DO t = t1, t2
+         Element => Mesh % Elements(t)
+         IF(IsBodyForce) THEN
+           i = ListGetInteger( Model % Bodies(Element % BodyId) % Values,'Body Force',Found)
+           IF(i /= BCind - Model % NumberOfBCs) CYCLE
+         ELSE
+           IF ( Element % BoundaryInfo % Constraint /= Model % BCs(BCInd) % Tag ) CYCLE
+         END IF
          Indexes => Element % NodeIndexes      
 
          IF(ANY(Var % Perm(Indexes) == 0 ) ) CYCLE
@@ -22940,7 +23678,8 @@ CONTAINS
      TYPE(Solver_t) :: Solver
 
      INTEGER, POINTER :: Perm(:)
-     INTEGER :: i,j,j2,k,k2,l,l2,dofs,maxperm,permsize,bc_ind,constraint_ind,row,col,col2,mcount,bcount,kk
+     INTEGER :: i,j,j2,k,k2,l,l2,dofs,maxperm,permsize,bc_ind,constraint_ind,row,col,col2,&
+         mcount,bcount,kk,cdofs,dim
      TYPE(Matrix_t), POINTER :: Atmp,Btmp, Ctmp
      LOGICAL :: AllocationsDone, CreateSelf, ComplexMatrix, TransposePresent, Found, &
          SetDof, SomeSet, SomeSkip, SumProjectors, NewRow, SumThis
@@ -22968,14 +23707,21 @@ CONTAINS
      TYPE(Variable_t), POINTER :: Var
      CHARACTER(:), ALLOCATABLE :: Str,MultName
      REAL(KIND=dp), ALLOCATABLE :: rsum(:)
+     LOGICAL :: IsDg, IsBodyForce
+     INTEGER, ALLOCATABLE :: DgSome(:)
+     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Element_t), POINTER :: Element
      
      ! Should we genarete the matrix
      NeedToGenerate = Solver % MortarBCsChanged
+     
+     Mesh => Solver % Mesh 
+     IsDg = Solver % DG     
 
      PerFlipActive = Solver % PeriodicFlipActive
      IF( PerFlipActive ) THEN
        CALL Info(Caller,'Periodic flip is active',Level=8)
-       PerFlip => Solver % Mesh % PeriodicFlip           
+       PerFlip => Mesh % PeriodicFlip           
      END IF
      
      ! Set pointers to save the initial constraint matrix
@@ -22996,7 +23742,7 @@ CONTAINS
        CALL Info(Caller,'Nothing to do for now',Level=12)
        RETURN
      END IF
-       
+
      
      ! Compute the number and size of initial constraint matrices
      !-----------------------------------------------------------
@@ -23026,8 +23772,8 @@ CONTAINS
      ! Compute the number and size of mortar matrices
      !-----------------------------------------------
      IF( ASSOCIATED( Solver % MortarBCs ) ) THEN
-       DO bc_ind=1,Model % NumberOFBCs
-         Atmp => Solver % MortarBCs(bc_ind) % Projector
+       DO bc_ind=1,Model % NumberOFBCs + Model % NumberOfBodyForces
+         Atmp => Solver % MortarBCs(bc_ind) % Projector         
          IF( .NOT. ASSOCIATED( Atmp ) ) CYCLE
          bcount = bcount + 1
          row = row + Atmp % NumberOfRows
@@ -23076,14 +23822,12 @@ CONTAINS
      IF( .NOT. Found ) THEN
        IF( bcount > 1 .AND. ListGetLogical( Solver % Values, &
            'Eliminate Linear Constraints',Found ) ) THEN
-         CALL Info(Caller,&
-             'Enforcing > Mortar BCs Additive < to True to enable elimination',Level=8)
+         CALL Info(Caller,'Enforcing > Mortar BCs Additive < to True to enable elimination',Level=8)
          SumProjectors = .TRUE.
        END IF       
        IF( .NOT. SumProjectors .AND. ListGetLogical( Solver % Values, &
            'Apply Conforming BCs',Found ) ) THEN
-         CALL Info(Caller,&
-             'Enforcing > Mortar BCs Additive < to True because of conforming BCs',Level=8)
+         CALL Info(Caller,'Enforcing > Mortar BCs Additive < to True because of conforming BCs',Level=8)
          SumProjectors = .TRUE.
        END IF
      END IF
@@ -23091,23 +23835,33 @@ CONTAINS
 
      CALL Info(Caller,'There are '&
          //I2S(row)//' initial rows in constraint matrices',Level=10)
-     
+
+     dim = Mesh % MeshDim              
      dofs = Solver % Variable % DOFs
+     
      Perm => Solver % Variable % Perm
      permsize = SIZE( Perm )
      maxperm  = MAXVAL( Perm )
      AllocationsDone = .FALSE.
      arows = Solver % Matrix % NumberOfRows
-     
-     ALLOCATE( ActiveComponents(dofs), SetDefined(dofs), rsum(dofs) ) 
-     
-     IF( SumProjectors ) THEN
-       ALLOCATE( SumPerm( dofs * permsize ) )
-       SumPerm = 0
-       ALLOCATE( SumCount( arows ) )
-       SumCount = 0
+
+     ! Create a table that shows one way how continuous nodal dofs maps to
+     ! DG nodal dofs. Only one is needed since we assume reduced basis!
+     IF( IsDG ) THEN
+       ALLOCATE(DgSome(permsize))
+       DgSome = 0
+
+       DO i=1,Mesh % NumberOfBulkElements
+         Element => Mesh % Elements(i)
+         DO j=1,Element % TYPE % NumberOfNodes
+           k = Element % NodeIndexes(j)
+           k2 = Element % DGIndexes(j)
+           DgSome(k) = k2
+         END DO
+       END DO       
      END IF
-     
+
+       
      ComplexMatrix = Solver % Matrix % Complex
      ComplexSumRow = .FALSE.
      
@@ -23118,10 +23872,39 @@ CONTAINS
        ! Currently complex matrix is enforced if there is an even number of 
        ! entries since it seems that we cannot rely on the flag to be set.
        ComplexMatrix = ListGetLogical( Solver % Values,'Linear System Complex',Found )
-       IF( .NOT. Found ) ComplexMatrix = ( MODULO( Dofs,2 ) == 0 )
+       IF( .NOT. Found ) ComplexMatrix = ( Dofs == 2*dim) 
      END IF
 
+     IF( ComplexMatrix ) THEN
+       IF(dofs==dim .OR. dofs == 2) THEN
+         cdofs = dofs
+       ELSE
+         CALL Fatal(Caller,'Invalid number of dofs for field: '//I2S(dofs))
+       END IF
+     ELSE     
+       IF(dofs==dim .OR. dofs == 1) THEN
+         cdofs = dofs
+       ELSE IF(dofs==dim+1) THEN
+         ! For contact mechanics we want to ignore the pressure. 
+         IF( ListGetLogical( Solver % Values,'Apply Contact BCs',Found ) ) THEN
+           cdofs = dim
+         ELSE
+           cdofs = dofs
+         END IF
+       ELSE
+         CALL Fatal(Caller,'Invalid number of dofs for field: '//I2S(dofs))
+       END IF
+     END IF
      
+     ALLOCATE( ActiveComponents(dofs), SetDefined(dofs), rsum(dofs) ) 
+     
+     IF( SumProjectors ) THEN
+       ALLOCATE( SumPerm( dofs * permsize ) )
+       SumPerm = 0
+       ALLOCATE( SumCount( arows ) )
+       SumCount = 0
+     END IF
+          
      AnyPriority = ListCheckPresentAnyBC( Model,'Projector Priority') 
      IF( AnyPriority ) THEN
        IF(.NOT. SumProjectors ) THEN
@@ -23153,13 +23936,13 @@ CONTAINS
      TransposePresent = .FALSE.
      Ctmp => Solver % ConstraintMatrix
 
-     DO constraint_ind = Model % NumberOFBCs+mcount,1,-1
+     DO constraint_ind = Model % NumberOFBCs + Model % NumberOfBodyForces + mcount,1,-1
        
        ! This is the default i.e. all components are applied mortar BCs
        ActiveComponents = .TRUE.
        ThisIsRobin = .FALSE.
        
-       IF(constraint_ind > Model % NumberOfBCs) THEN
+       IF(constraint_ind > Model % NumberOfBCs + Model % NumberOfBodyForces ) THEN
          ThisIsMortar = .FALSE.
          Reorder = .FALSE.                
          SumThis = .FALSE.
@@ -23181,12 +23964,16 @@ CONTAINS
          Reorder = ThisIsMortar
 
          SumThis = SumProjectors
-         IF( AnyPriority ) THEN
+         IsBodyForce = .FALSE.
+         IF( constraint_ind > Model % NumberOfBCs ) THEN
+           IsBodyForce = .TRUE.
+           bc_ind = constraint_ind
+         ELSE IF( AnyPriority ) THEN           
            bc_ind = BCOrdering(constraint_ind)
          ELSE
            bc_ind = constraint_ind 
          END IF
-
+         
          MortarBC => Solver % MortarBCs(bc_ind) 
          Atmp => MortarBC % Projector
 
@@ -23196,11 +23983,16 @@ CONTAINS
 
          IF( .NOT. ASSOCIATED( Atmp ) ) CYCLE
 
-         BC => Model % BCs(bc_ind) % Values         
-         IF( AnyPriority ) THEN
-           Priority = ListGetInteger( BC,'Projector Priority',Found)
+         IF(IsBodyForce ) THEN
+           BC => Model % BodyForces(bc_ind - Model % NumberOfBCs) % Values
+           Priority = 0
+         ELSE
+           BC => Model % BCs(bc_ind) % Values         
+           IF( AnyPriority ) THEN
+             Priority = ListGetInteger( BC,'Projector Priority',Found)
+           END IF
          END IF
-
+           
          IntegralBC = ListGetLogical( BC,'Integral BC',Found ) 
 
          IF( Atmp % ProjectorType == PROJECTOR_TYPE_ROBIN ) THEN
@@ -23227,8 +24019,8 @@ CONTAINS
          ! or skip some field components. 
          SomeSet = .FALSE.
          SomeSkip = .FALSE.
-         DO i=1,Dofs
-           IF( Dofs > 1 ) THEN
+         DO i=1,cDofs
+           IF( cDofs > 1 ) THEN
              str = ComponentName( Solver % Variable, i )
            ELSE
              str = TRIM(Solver % Variable % Name)
@@ -23254,12 +24046,12 @@ CONTAINS
          
          ! By default all components are applied mortar BC and some are turned off.
          ! If the user does the opposite then the default for other components is True.
-         IF( SomeSet .AND. .NOT. ALL(SetDefined) ) THEN
+         IF( SomeSet .AND. .NOT. ALL(SetDefined(1:cdofs)) ) THEN
            IF( SomeSkip ) THEN
-             CALL Fatal(Caller,'Do not know what to do with all components')
+             CALL Fatal(Caller,'Do not know what to do with all '//I2S(cdofs)//' components')
            ELSE
              CALL Info(Caller,'Unspecified components will not be set for BC '//I2S(bc_ind),Level=10)
-             DO i=1,Dofs
+             DO i=1,cDofs
                IF( .NOT. SetDefined(i) ) ActiveComponents(i) = .FALSE.
              END DO
            END IF
@@ -23268,6 +24060,11 @@ CONTAINS
 
        TransposePresent = TransposePresent .OR. ASSOCIATED(Atmp % Child)
        IF( TransposePresent ) THEN
+         IF(ASSOCIATED(Atmp % Child) ) THEN
+           IF(.NOT. ASSOCIATED(Atmp % Child % Values)) THEN
+             CALL Fatal(Caller,'Atmp has Child which has no values!')
+           END IF
+         END IF
          CALL Info(Caller,'Transpose matrix is present',Level=8)
        END IF
 
@@ -23284,7 +24081,8 @@ CONTAINS
          ComplexSumRow = ( dofs == 2 .AND. ComplexMatrix .AND. .NOT. CreateSelf .AND. &
              SumThis .AND. .NOT. (ASSOCIATED( MortarBC % Diag ) .OR. HaveMortarDiag ) )
        END IF
-
+       
+       
        ! We deal with the Robin Flux cBC's here even though they would be associated 
        ! to vector or complex valued field. 
        IF( Dofs == 1 .OR. ThisIsRobin ) THEN         
@@ -23318,7 +24116,11 @@ CONTAINS
 
              kk = k             
              IF( Reorder ) THEN
-               kk = Perm(k)
+               IF(IsDG) THEN
+                 kk = Perm(DgSome(k))
+               ELSE
+                 kk = Perm(k)
+               END IF
                IF( kk == 0 ) CYCLE
              END IF
              
@@ -23334,10 +24136,13 @@ CONTAINS
                END IF
              END IF
            END DO
+           CALL Info(Caller,'Number of rows: '//I2S(sumrow),Level=20)         
          END IF
          
          IF( ASSOCIATED( MortarBC % Diag ) .OR. HaveMortarDiag) THEN
+           CALL Info(Caller,'MotarBC diag exists!',Level=30)
            IF( ASSOCIATED(Atmp % InvPerm) ) THEN
+             CALL Info(Caller,'MotarBC InvPerm exists!',Level=30)
              IF( .NOT. ASSOCIATED( MortarBC % Perm ) ) THEN                   
                k = MAXVAL( Atmp % Cols )
                ALLOCATE( MortarBC % Perm(k) )
@@ -23349,9 +24154,10 @@ CONTAINS
              END IF
            END IF
          END IF
-         
-         DO i=1,Atmp % NumberOfRows           
 
+
+         DO i=1,Atmp % NumberOfRows                     
+           
            IF( Atmp % Rows(i) >= Atmp % Rows(i+1) ) CYCLE ! skip empty rows
 
            ! If the mortar boundary is not active at this round don't apply it
@@ -23367,10 +24173,14 @@ CONTAINS
            ELSE
              k = i
            END IF
-            
+           
            kk = k
            IF( Reorder ) THEN
-             kk = Perm(k) 
+             IF(IsDg) THEN
+               kk = Perm(DgSome(k)) 
+             ELSE
+               kk = Perm(k)
+             END IF
              IF( kk == 0 ) CYCLE
            END IF
              
@@ -23413,9 +24223,13 @@ CONTAINS
 
              IF( ABS( val ) < EpsVal * valsum ) CYCLE
              
-             IF( Reorder ) THEN
+             IF( Reorder ) THEN               
                IF( col <= permsize ) THEN
-                 col2 = Perm(col)
+                 IF(IsDg) THEN
+                   col2 = Perm(DgSome(col))
+                 ELSE
+                   col2 = Perm(col)
+                 END IF
                  IF( col2 == 0 ) CYCLE
                ELSE
                  CALL Fatal(Caller,'col index too large: '//I2S(col)//' vs '//I2S(permsize))
@@ -23486,7 +24300,11 @@ CONTAINS
            IF( CreateSelf ) THEN
              k2 = k2 + 1
              IF( AllocationsDone ) THEN
-               Btmp % Cols(k2) = Perm( Atmp % InvPerm(i) )
+               IF(IsDG) THEN
+                 Btmp % Cols(k2) = Perm( DGSome( Atmp % InvPerm(i) ) )
+               ELSE
+                 Btmp % Cols(k2) = Perm( Atmp % InvPerm(i) )
+               END IF
                Btmp % Values(k2) = MortarBC % SlaveScale * wsum
              ELSE               
                IF( SumThis) SumCount(row) = SumCount(row) + 1
@@ -23532,7 +24350,11 @@ CONTAINS
                        PRINT *,'col too large',col,permsize
                        CYCLE
                      END IF
-                     col2 = Perm(col)
+                     IF(IsDg) THEN
+                       col2 = Perm(DgSome(col))
+                     ELSE
+                       col2 = Perm(col)
+                     END IF
                    ELSE
                      col2 = col
                    END IF                     
@@ -23584,6 +24406,8 @@ CONTAINS
          
        ELSE IF( ComplexSumRow ) THEN
 
+         IF(IsDG) CALL Fatal(Caller,'DG not implemented for complex systems!')
+         
          CALL Info(Caller,'Using simplified complex summing!',Level=8)
          ComplexSumRow = .TRUE.
          
@@ -23737,12 +24561,15 @@ CONTAINS
          END DO
          
        ELSE
+
+         IF(IsDG) CALL Fatal(Caller,'DG not implemented for vector systems!')
+
          
          ! dofs > 1
          ! In case of a vector valued problem create a projector that acts on all 
          ! components of the vector. Otherwise follow the same logic.
          DO i=1,Atmp % NumberOfRows           
-           DO j=1,Dofs
+           DO j=1,cDofs
              
              IF( .NOT. ActiveComponents(j) ) THEN
                CALL Info(Caller,'Skipping component: '//I2S(j),Level=12)
@@ -23763,7 +24590,7 @@ CONTAINS
 
              IF( ThisIsMortar ) THEN
                IF( ASSOCIATED( MortarBC % Active ) ) THEN
-                 IF( .NOT. MortarBC % Active(Dofs*(i-1)+j) ) CYCLE
+                 IF( .NOT. MortarBC % Active(cDofs*(i-1)+j) ) CYCLE
                END IF
              END IF
 
@@ -23781,19 +24608,19 @@ CONTAINS
              END IF
 
              IF( SumThis ) THEN
-               IF( Dofs*(k-1)+j > SIZE(SumPerm) ) THEN
+               IF( cDofs*(k-1)+j > SIZE(SumPerm) ) THEN
                  CALL Fatal(Caller,'Index out of range')
                END IF
-               NewRow = ( SumPerm(Dofs*(kk-1)+j) == 0 )
+               NewRow = ( SumPerm(cDofs*(kk-1)+j) == 0 )
                IF( NewRow ) THEN
                  sumrow = sumrow + 1                
                  IF( Priority /= 0 ) THEN
                    ! Use negative sign to show that this has already been set by priority
-                   SumPerm(Dofs*(kk-1)+j) = -sumrow 
+                   SumPerm(cDofs*(kk-1)+j) = -sumrow 
                  ELSE
-                   SumPerm(Dofs*(kk-1)+j) = sumrow 
+                   SumPerm(cDofs*(kk-1)+j) = sumrow 
                  END IF
-               ELSE IF( Priority /= PrevPriority .AND. SumPerm(Dofs*(kk-1)+j) < 0 ) THEN
+               ELSE IF( Priority /= PrevPriority .AND. SumPerm(cDofs*(kk-1)+j) < 0 ) THEN
                  IF(.NOT. AllocationsDone ) THEN
                    NeglectedRows = NeglectedRows + 1
                  END IF                 
@@ -23803,7 +24630,7 @@ CONTAINS
                    EliminatedRows = EliminatedRows + 1
                  END IF
                END IF
-               row = ABS( SumPerm(Dofs*(kk-1)+j) )
+               row = ABS( SumPerm(cDofs*(kk-1)+j) )
              ELSE
                sumrow = sumrow + 1
                row = sumrow
@@ -23921,7 +24748,7 @@ CONTAINS
              IF( ThisIsMortar ) THEN
                IF( ASSOCIATED( MortarBC % Diag ) .OR. HaveMortarDiag ) THEN
                  IF( .NOT. HaveMortarDiag ) THEN
-                   MortarDiag = MortarBC % Diag(Dofs*(i-1)+j)
+                   MortarDiag = MortarBC % Diag(cDofs*(i-1)+j)
                    LumpedDiag = MortarBC % LumpedDiag
                  END IF
 
@@ -23964,7 +24791,7 @@ CONTAINS
                  Btmp % Rhs(row) = SetVal(j)
                ELSE IF( ThisIsMortar ) THEN
                  IF( ASSOCIATED( MortarBC % Rhs ) ) THEN
-                   Btmp % Rhs(row) = wsum * MortarBC % rhs(Dofs*(i-1)+j)
+                   Btmp % Rhs(row) = wsum * MortarBC % rhs(cDofs*(i-1)+j)
                  END IF
                END IF
                IF(.NOT. SumThis ) THEN
@@ -24145,114 +24972,6 @@ CONTAINS
    END SUBROUTINE ReleaseProjectors
 
 
-   !> Defines and potentially creates output directory.
-   !> The output directory may given in different ways, and even be part of the
-   !> filename, or be relative to home directory. We try to parse every possible
-   !> scenario here that user might have in mind.
-   !-----------------------------------------------------------------------------
-   SUBROUTINE SolverOutputDirectory( Solver, Filename, OutputDirectory, &
-       MakeDir, UseMeshDir  )
-
-     TYPE(Solver_t) :: Solver
-     LOGICAL, OPTIONAL :: MakeDir, UseMeshDir
-     CHARACTER(*) :: Filename
-     CHARACTER(:), ALLOCATABLE :: OutputDirectory
-
-     LOGICAL :: Found, AbsPathInName, DoDir, PartitioningSubDir
-     INTEGER :: nd, nf, n
-     CHARACTER(LEN=MAX_NAME_LEN) :: Str
-
-     IF( PRESENT( MakeDir ) ) THEN
-       DoDir = MakeDir
-     ELSE
-       DoDir = ( Solver % TimesVisited == 0 ) .AND. ( ParEnv % MyPe == 0 )
-     END IF
-
-     ! Output directory is obtained in order
-     ! 1) solver section
-     ! 2) simulation section
-     ! 3) header section
-     OutputDirectory = ListGetString( Solver % Values,'Output Directory',Found) 
-     IF(.NOT. Found) OutputDirectory = ListGetString( CurrentModel % Simulation,&
-         'Output Directory',Found) 
-     IF(.NOT. Found) OutputDirectory = TRIM(OutputPath)          
-     nd = LEN_TRIM(OutputDirectory)
-
-     ! If the path is just working directory then that is not an excude
-     ! to not use the mesh name, or directory that comes with the filename 
-     IF(.NOT. Found .AND. nd == 1 .AND. OutputDirectory(1:1)=='.') nd = 0
-
-     ! If requested by the optional parameter use the mesh directory when
-     ! no results directory given. This is an old convection used in some solvers. 
-     IF( nd == 0 .AND. PRESENT( UseMeshDir ) ) THEN
-       IF( UseMeshDir ) THEN
-         OutputDirectory = TRIM(CurrentModel % Mesh % Name)
-         nd = LEN_TRIM(OutputDirectory)       
-       END IF
-     END IF
-     
-     ! Use may have given part or all of the path in the filename.
-     ! This is not preferred, but we cannot trust the user.
-     nf = LEN_TRIM(Filename)        
-     n = INDEX(Filename(1:nf),'/')
-     AbsPathInName = INDEX(FileName,':')>0 .OR. (Filename(1:1)=='/') &
-         .OR. (Filename(1:1)==Backslash)
-
-     IF( nd > 0 .AND. .NOT. AbsPathInName ) THEN
-       ! Check that we have not given the path relative to home directory
-       ! because the code does not understand the meaning of tilde.
-       IF( OutputDirectory(1:2) == '~/') THEN
-         CALL GETENV('HOME',Str)
-         OutputDirectory = TRIM(Str)//'/'//OutputDirectory(3:nd)
-         nd = LEN_TRIM(OutputDirectory)
-       END IF
-       ! To be on the safe side create the directory. If it already exists no harm done.
-       ! Note that only one directory may be created. Hence if there is a path with many subdirectories
-       ! that will be a problem. Fortran does not have a standard ENQUIRE for directories hence
-       ! we just try to make it. 
-       IF( DoDir ) THEN
-         CALL Info('SolverOutputDirectory','Creating directory: '//TRIM(OutputDirectory(1:nd)),Level=8)
-         CALL MakeDirectory( OutputDirectory(1:nd) // CHAR(0) )      
-       END IF
-     END IF
-
-     ! In this case the filename includes also path and we remove it from there and
-     ! add it to the directory. 
-     IF( n > 2 ) THEN    
-       CALL Info('SolverOutputDirectory','Parcing path from filename: '//TRIM(Filename(1:n)),Level=10)
-       IF( AbsPathInName .OR. nd == 0) THEN
-         ! If the path is absolute then it overruns the given path!
-         OutputDirectory = Filename(1:n-1)
-         nd = n-1
-       ELSE
-         ! If path is relative we add it to the OutputDirectory and take it away from Filename
-         OutputDirectory = OutputDirectory(1:nd)//'/'//Filename(1:n-1)        
-         nd = nd + n 
-       END IF
-       Filename = Filename(n+1:nf)      
-
-       IF( DoDir ) THEN
-         CALL Info('SolverOutputDirectory','Creating directory: '//TRIM(OutputDirectory(1:nd)),Level=8)
-         CALL MakeDirectory( OutputDirectory(1:nd) // CHAR(0) )
-       END IF
-     END IF
-
-     ! Finally, on request save each partitioning to different directory.
-     PartitioningSubDir = ListGetLogical( Solver % Values,'Output Partitioning Directory',Found)
-     IF(.NOT. Found ) THEN
-       PartitioningSubDir = ListGetLogical( CurrentModel % Simulation,'Output Partitioning Directory',Found)
-     END IF
-     IF( PartitioningSubDir ) THEN
-       OutputDirectory = TRIM(OutputDirectory)//'/np'//I2S(ParEnv % PEs)
-       nd = LEN_TRIM(OutputDirectory)             
-       IF( DoDir ) THEN
-         CALL Info('SolverOutputDirectory','Creating directory: '//TRIM(OutputDirectory(1:nd)),Level=8)
-         CALL MakeDirectory( OutputDirectory(1:nd) // CHAR(0) )
-       END IF
-      END IF
-
-   END SUBROUTINE SolverOutputDirectory
-   !-----------------------------------------------------------------------------
 
    ! This routine changes the IP field to DG field just while the results are being written.
    !---------------------------------------------------------------------------------------
@@ -24674,6 +25393,17 @@ CONTAINS
    ! dg, or gauss point field. Perhaps even edge or face element field.
    !-------------------------------------------------------------------------------------
    FUNCTION EvalFieldAtElem( Mesh, Var, Element, Basis, dofi, eigeni, imVal, GotVal ) RESULT ( Val )
+
+     INTERFACE 
+       SUBROUTINE Ip2DgFieldInElement( Mesh, Parent, nip, fip, np, fdg )
+         USE Types
+         IMPLICIT NONE
+         TYPE(Mesh_t), POINTER :: Mesh
+         TYPE(Element_t), POINTER :: Parent
+         INTEGER :: nip, np
+         REAL(KIND=dp) :: fip(:), fdg(:)
+       END SUBROUTINE Ip2DgFieldInElement
+     END INTERFACE
 
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(Variable_t), POINTER :: Var
@@ -25375,7 +26105,6 @@ CONTAINS
      DEALLOCATE( NodeDone )
 
    END SUBROUTINE SetImplicitFriction
-
    
 END MODULE SolverUtils
 

@@ -50,6 +50,9 @@ SUBROUTINE CheckFlowConvergence( Model, Solver, dt, Transient )
        NSDiverge, NSFail, NSTooFast
   REAL(KIND=dp) :: SaveNewtonTol, MaxNSDiverge, MaxNSValue, FirstMaxNSValue, FlowMax,&
   SaveFlowMax, Mag, NSChange, SaveDt, SaveRelax,SaveMeshMinLC,SaveMeshRmLC,SaveMeshRmThresh
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+  REAL(KIND=dp) :: buffer
+#endif
   REAL(KIND=dp), POINTER :: TimestepSizes(:,:)
   INTEGER :: i,j,SaveNewtonIter,Num, ierr, FailCount, ier
   CHARACTER(MAX_NAME_LEN) :: FlowVarName, SolverName, EqName, RemeshEqName
@@ -145,7 +148,13 @@ SUBROUTINE CheckFlowConvergence( Model, Solver, dt, Transient )
       FlowMax = MAX(FlowMax, Mag)
     END DO
 
-    CALL MPI_AllReduce(MPI_IN_PLACE, FlowMax, 1, MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD, ierr)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+    buffer = FlowMax
+    CALL MPI_AllReduce(buffer, &
+#else
+    CALL MPI_AllReduce(MPI_IN_PLACE, &
+#endif
+         FlowMax, 1, MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD, ierr)
   END IF
 
   IF(CheckFlowDiverge) THEN
@@ -993,6 +1002,13 @@ CONTAINS
           DO i=2,PEs
              disps(i) = disps(i-1) + PFaceNodeCount(i-1)
           END DO
+       END IF
+
+       IF(.NOT. Boss) THEN
+         ALLOCATE(FaceNodesT % x(1), FaceNodesT % y(1), FaceNodesT % z(1))
+         FaceNodesT % x(1) = 0
+         FaceNodesT % y(1) = 0
+         FaceNodesT % z(1) = 0
        END IF
 
        !Global NodeNumbers
@@ -2031,9 +2047,16 @@ CONTAINS
     !----------------------------------------------
 
     ExtrudeLevels = ListGetInteger(Model % Simulation, "Remesh Extruded Mesh Levels", Found, UnfoundFatal=.TRUE.)
-    ExtrudedMesh => NULL()
-    ExtrudedMesh => MeshExtrude(FootprintMesh, ExtrudeLevels-2)
 
+    ! The dirty ListAdd/ListRemove stuff is due to changed API of the ExtrudedMesh routine.
+    i = ListGetInteger( Model % Simulation,'Extruded Mesh Layers',Found)
+    CALL ListAddInteger( Model % Simulation,'Extruded Mesh Layers',ExtrudeLevels-1) 
+    ExtrudedMesh => MeshExtrude(FootprintMesh, Model % Simulation)
+    IF(i>0) THEN
+      CALL ListAddInteger( Model % Simulation,'Extruded Mesh Layers',i)
+    ELSE
+      CALL ListRemove( Model % Simulation,'Extruded Mesh Layers')
+    END IF
     !----------------------------------------------------
     ! Interp front position from squished front nodes
     ! onto freshly extruded footprint mesh

@@ -115,44 +115,48 @@ include(FindPackageHandleStandardArgs)
 FIND_PACKAGE_HANDLE_STANDARD_ARGS(OCC REQUIRED_VARS OCC_INCLUDE_DIR VERSION_VAR OCC_VERSION_STRING)
 
 if(OCC_FOUND)
-  set(OCC_LIBRARIES
-    TKFillet
-    TKMesh
-    TKernel
-    TKG2d
-    TKG3d
-    TKMath
-    TKIGES
-    TKSTL
-    TKShHealing
-    TKXSBase
-    TKBin
-    TKBool
-    TKBO
-    TKCDF
-    TKBRep
-    TKTopAlgo
-    TKGeomAlgo
-    TKGeomBase
-    TKOffset
-    TKPrim
-    TKSTEP
-    TKSTEPBase
-    TKSTEPAttr
-    TKHLR
-    TKFeat
-  )
-  set(OCC_OCAF_LIBRARIES
-    TKCAF
-    TKXCAF
-    TKLCAF
-    TKXDESTEP
-    TKXDEIGES
-    TKMeshVS
-  )
-  if(OCC_VERSION_STRING VERSION_LESS 6.7.3)
-    list(APPEND OCC_OCAF_LIBRARIES TKAdvTools)
-  endif(OCC_VERSION_STRING VERSION_LESS 6.7.3)
+  if(NOT DEFINED OCC_LIBRARIES)
+    set(OCC_LIBRARIES
+      TKFillet
+      TKMesh
+      TKernel
+      TKG2d
+      TKG3d
+      TKMath
+      TKIGES
+      TKSTL
+      TKShHealing
+      TKXSBase
+      TKBin
+      TKBool
+      TKBO
+      TKCDF
+      TKBRep
+      TKTopAlgo
+      TKGeomAlgo
+      TKGeomBase
+      TKOffset
+      TKPrim
+      TKSTEP
+      TKSTEPBase
+      TKSTEPAttr
+      TKHLR
+      TKFeat
+    )
+  endif()
+  if(NOT DEFINED OCC_OCAF_LIBRARIES)
+    set(OCC_OCAF_LIBRARIES
+      TKCAF
+      TKXCAF
+      TKLCAF
+      TKXDESTEP
+      TKXDEIGES
+      TKMeshVS
+    )
+    if(OCC_VERSION_STRING VERSION_LESS 6.7.3)
+      list(APPEND OCC_OCAF_LIBRARIES TKAdvTools)
+    endif(OCC_VERSION_STRING VERSION_LESS 6.7.3)
+  endif()
   message(STATUS "-- Found OCE/OpenCASCADE version: ${OCC_VERSION_STRING}")
   message(STATUS "-- OCE/OpenCASCADE include directory: ${OCC_INCLUDE_DIR}")
   message(STATUS "-- OCE/OpenCASCADE shared libraries directory: ${OCC_LIBRARY_DIR}")

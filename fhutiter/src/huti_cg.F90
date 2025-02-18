@@ -208,7 +208,8 @@ contains
 
     if ( HUTI_DBUGLVL .ne. HUTI_NO_DEBUG ) then
        if ( mod(iter_count, HUTI_DBUGLVL) .eq. 0 ) then
-          write (*, '(I8, E11.4)') iter_count, residual
+         WRITE (*, '(I8, E11.4)') iter_count, residual
+         CALL FLUSH(6)
        end if
     end if
 
@@ -242,7 +243,8 @@ contains
 
 1000 continue
     if ( HUTI_DBUGLVL .ne. HUTI_NO_DEBUG ) then
-       write (*, '(I8, E11.4)') iter_count, residual
+      WRITE (*, '(I8, E11.4)') iter_count, residual
+      CALL FLUSH(6)
     end if
 
     HUTI_ITERS = iter_count
@@ -467,7 +469,8 @@ contains
 
     if ( HUTI_DBUGLVL .ne. HUTI_NO_DEBUG ) then
        if ( mod(iter_count, HUTI_DBUGLVL) .eq. 0 ) then
-          write (*, '(I8, E11.4)') iter_count, residual
+         WRITE (*, '(I8, E11.4)') iter_count, residual
+         CALL FLUSH(6)
        end if
     end if
 
@@ -501,9 +504,10 @@ contains
     !
 
 1000 continue
-    if ( HUTI_DBUGLVL .ne. HUTI_NO_DEBUG ) then
-       write (*, '(I8, E11.4)') iter_count, residual
-    end if
+    IF ( HUTI_DBUGLVL .NE. HUTI_NO_DEBUG ) THEN
+      WRITE (*, '(I8, E11.4)') iter_count, residual
+      CALL FLUSH(6)
+    END IF
 
     HUTI_ITERS = iter_count
     return
@@ -656,7 +660,8 @@ contains
 
     if ( HUTI_DBUGLVL .ne. HUTI_NO_DEBUG ) then
        if ( mod(iter_count, HUTI_DBUGLVL) .eq. 0 ) then
-          write (*, '(I8, E11.4)') iter_count, residual
+         WRITE (*, '(I8, E11.4)') iter_count, residual
+         CALL FLUSH(6)
        end if
     end if
 
@@ -691,7 +696,8 @@ contains
 
 1000 continue
     if ( HUTI_DBUGLVL .ne. HUTI_NO_DEBUG ) then
-       write (*, '(I8, E11.4)') iter_count, residual
+      WRITE (*, '(I8, E11.4)') iter_count, residual
+      call flush(6)
     end if
 
     HUTI_ITERS = iter_count
@@ -845,7 +851,8 @@ contains
 
     if ( HUTI_DBUGLVL .ne. HUTI_NO_DEBUG ) then
        if ( mod(iter_count, HUTI_DBUGLVL) .eq. 0 ) then
-          write (*, '(I8, E11.4)') iter_count, residual
+         WRITE (*, '(I8, E11.4)') iter_count, residual
+         call flush(6)
        end if
     end if
 
@@ -879,7 +886,8 @@ contains
 
 1000 continue
     if ( HUTI_DBUGLVL .ne. HUTI_NO_DEBUG ) then
-       write (*, '(I8, E11.4)') iter_count, residual
+      WRITE (*, '(I8, E11.4)') iter_count, residual
+      CALL FLUSH(6)
     end if
 
     HUTI_ITERS = iter_count

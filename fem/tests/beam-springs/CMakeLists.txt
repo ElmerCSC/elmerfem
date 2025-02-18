@@ -1,9 +1,11 @@
-INCLUDE(test_macros)
-INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
+IF(HAVE_UMFPACK OR HAVE_MUMPS)
+  INCLUDE(test_macros)
+  INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
 
-CONFIGURE_FILE( beam.sif beam.sif COPYONLY)
+  CONFIGURE_FILE( beam.sif beam.sif COPYONLY)
 
-file(COPY ELMERSOLVER_STARTINFO temp.log  beam3d.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+  file(COPY ELMERSOLVER_STARTINFO temp.log  beam3d.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(beam-springs)
-ADD_ELMER_LABEL(beam-springs quick)
+  ADD_ELMER_TEST(beam-springs)
+  ADD_ELMER_LABEL(beam-springs quick)
+ENDIF()

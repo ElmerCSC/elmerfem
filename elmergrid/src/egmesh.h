@@ -8,6 +8,10 @@
 int GetElementDimension(int elementtype);
 int GetMaxElementType(struct FemType *data);
 int GetMinElementType(struct FemType *data);
+
+int GetMaxBodyIndex(struct FemType *data);
+int GetMaxBCIndex(struct BoundaryType *bound);
+
 int GetMaxElementDimension(struct FemType *data);
 int GetCoordinateDimension(struct FemType *data,int info);
 void GetElementInfo(int element,struct FemType *data,
@@ -108,3 +112,4 @@ int DestroyDualGraph(struct FemType *data,int info);
 int CreateInverseTopology(struct FemType *data,int info);
 int DestroyInverseTopology(struct FemType *data,int info);
 int MeshTypeStatistics(struct FemType *data,int info);
+int BoundingBox(struct FemType *data,int nomesh,int nomeshes,int info);

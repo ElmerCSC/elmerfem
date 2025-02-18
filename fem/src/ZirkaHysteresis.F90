@@ -878,8 +878,10 @@ SUBROUTINE InitHysteresis(Model,Solver) ! {{{
     allocate(ABCParams)
     zirkamodel % ABCParams => ABCParams
     call GetConstRealArray(Material,  zcoeff, 'Zirka model coefficients', found)
-    if(Found .and. size(zcoeff,1) == 4) then
-      ABCparams % coeffs(1:4) = zcoeff(1:4,1)
+    if(Found) THEN
+      IF (size(zcoeff,1) == 4) then
+       ABCparams % coeffs(1:4) = zcoeff(1:4,1)
+       end if
     end if
     
     b_mult = GetCReal(Material, 'Zirka model b multiplier', found)

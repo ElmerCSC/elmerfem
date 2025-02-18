@@ -1,8 +1,10 @@
-INCLUDE(test_macros)
-INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
+IF(HAVE_UMFPACK OR HAVE_MUMPS)
+  INCLUDE(test_macros)
+  INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
 
-CONFIGURE_FILE( case.sif case.sif COPYONLY)
+  CONFIGURE_FILE( case.sif case.sif COPYONLY)
 
-file(COPY ELMERSOLVER_STARTINFO mortar.msh extrude.eg DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+  file(COPY ELMERSOLVER_STARTINFO mortar.msh extrude.eg DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(BlockRotatingBCPoisson3D LABELS block mortar namespace)
+  ADD_ELMER_TEST(BlockRotatingBCPoisson3D LABELS block mortar namespace)
+ENDIF()

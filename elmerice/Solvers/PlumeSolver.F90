@@ -35,7 +35,7 @@
 ! ******************************************************************************
 ! *
 ! *  Authors: Joe Todd, Samuel Cook
-! *  Email:   samuel.cook@univ-grenoble-alpes.fr
+! *  Email:   samuel.cook@fau.de
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
@@ -75,14 +75,17 @@
         Basis(Model % MaxElementNodes), TotalArea, TotalPMelt, TotalBMelt, &
         ElemPMelt, ElemBMelt, ElemToeMelt, Target_PMelt_Average, TotalToeMelt, &
         Target_BMelt_Average, BMelt_Average, PMelt_Average, scale, NodeElev, BMSummerStop, &
-        BMSummerStart, Season, aboveMelt, meMelt, Dist, MinDist, ChannelQ,&
+        BMSummerStart, Season, aboveMelt, meMelt, Dist, MinDist,&
         Q0, Plume1MR, Plume2MR, PlProp, Node, NearestNode(3),&
         TargetNode(3), MaxX, MinX, MaxY, MinY, PlDist(2), MeshRes, BMRDist,&
         BMRMinDist, PlDepth, SStart, SStop
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+  REAL(KIND=dp) :: buffer
+#endif
 
    REAL(KIND=dp), ALLOCATABLE :: Xs(:), Ys(:), DwDz(:), W0(:), DmDz(:), MMR(:), MME(:), &
         PlumePoints(:,:,:), PlStart(:,:),PlStop(:,:), PointStore(:),&
-        DistArray(:), PlInQ(:), SheetQ(:), PlFinalQ(:), Zi(:), Xi(:), Ta(:),&
+        DistArray(:), PlInQ(:), PlFinalQ(:), Zi(:), Xi(:), Ta(:),&
         Sa(:), PlAxis(:), PlPos(:,:), NearestFrontNodes(:,:),&
         XArray(:), YArray(:), ZArray(:), PlCoordArray(:,:),&
         Plz(:), PlMR(:), Row(:), PlZArray(:,:), PlMRArray(:,:),&
@@ -224,7 +227,7 @@
    ElevVar => VariableGet(Mesh % Variables, "Elevation", .TRUE.)
    IF(.NOT. ASSOCIATED(ElevVar)) CALL Fatal(SolverName,"Couldn't find 'Elevation' variable &
         &needed to compute background melt rate")
-
+ 
    Material => GetMaterial()
    SeaLevel = GetCReal(Material, 'Sea Level', Found)
    IF(.NOT. Found) SeaLevel = 0.0_dp
@@ -397,38 +400,22 @@
      !running along the GL itself (i.e., edges with both nodes on the GL),
      !but these a) should be prohibited by the BCs and b) are probably
      !negligible anyway
-     ALLOCATE(PlInQ(SIZE(HydroGLNodes)), SheetQ(3))
-     WorkVar => VariableGet(HydroMesh % Variables, 'channel flux', ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
-     WorkVar2 => VariableGet(HydroMesh % Variables, 'sheet discharge', ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
-     WorkVar3 => VariableGet(HydroMesh % Variables, 'sheet thickness', ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
+     ALLOCATE(PlInQ(SIZE(HydroGLNodes)))
+     WorkVar => VariableGet(HydroMesh % Variables, 'GlaDS GL Flux', ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
      j=1
      DO i=1, SIZE(HydroGLNodes)
-       SheetQ = 0.0_dp
-       ChannelQ = 0.0
        IF(HydroGLNodes(i) == 0) THEN
          PlInQ(i) = 0.0
          CYCLE
        END IF
-       DO j=1,HydroMesh % NumberOfEdges
-         Edge => HydroMesh % Edges(j)
-         IF(ANY(Edge % NodeIndexes(1:2) == HydroGLNodes(i))) THEN
-           ChannelQ = ChannelQ + WorkVar % Values(WorkVar % Perm(HydroMesh % NumberOfNodes+j))
-         ELSE
-           CYCLE
-         END IF
-       END DO
-       DO j=1,2
-         SheetQ(j) = SheetQ(j) + (WorkVar2 % Values(2*(WorkVar2 % Perm(HydroGLNodes(i))-1)+j))
-       END DO
-       SheetQ(3) = SQRT((SheetQ(1)**2)+(SheetQ(2)**2))*WorkVar3 % Values(WorkVar3 % Perm(HydroGLNodes(i)))
-       PlInQ(i) = ChannelQ + SheetQ(3)
+       PlInQ(i) = WorkVar % Values(WorkVar % Perm(HydroGLNodes(i)))
      END DO
 
      !Check for multiple entries that have same NearestFrontNode and combine Q
      k=1
      PlCount = 0
      ALLOCATE(PlPos(SIZE(NearestFrontNodes,1),3), PlFinalQ(SIZE(PlInQ)))
-     PlPos = 0.0_dp
+     PlPos = -1E12
      PlFinalQ = 0.0_dp
      DO i=1, SIZE(NearestFrontNodes,1)
        IF(HydroGLNodes(i) == 0.0) CYCLE
@@ -570,14 +557,14 @@
        TempPlZArray(:) = 9999.0
        PlMR(:) = -10000.0
        TempPlMRArray(:) = -1.0
-       PlAxis(:) = 0.0_dp
+       PlAxis(:) = -1E12
 
        MaxX = -1E16
        MaxY = -1E16
        MinX = 1E16
        MinY = 1E16
        DO i=1, SIZE(PlPos,1)
-         IF(PlPos(i,1) == 0.0) CYCLE
+         IF(PlPos(i,1) == -1E12) CYCLE
          IF(PlPos(i,1)>MaxX) MaxX = PlPos(i,1)
          IF(PlPos(i,1)<MinX) MinX = PlPos(i,1)
          IF(PlPos(i,2)>MaxY) MaxY = PlPos(i,2)
@@ -586,6 +573,14 @@
        x = MaxX - MinX
        y = MaxY - MinY
 
+       !There is an implicit assumption here that all your partitions will pick
+       !the same axis, because tidewater glacier fronts are usually pretty sub-
+       !linear. However, if the length scale of your partitions is very small
+       !relative to the scale of variability in the calving front, you might get
+       !partitions choosing different axes, which will break things. I might
+       !eventually sort this out properly, but, in the meantime, best thing to
+       !do is just run on fewer partitions so that each one sees a longer length
+       !of calving front
        IF(PlCount>0) THEN
          IF(x>y) THEN
            PlAxis(1:PlCount) = PlPos(1:PlCount,1)
@@ -602,9 +597,10 @@
            PlMR(1+((i-1)*OutputSize):OutputSize*i) = MROutput(1:OutputSize)
          END DO
        ELSE 
-         PlAxis(:) = 0.0
+         PlAxis(:) = -1E12
          PlZ(:) = 9999.0
          PlMR(:) = -10000.0
+         AxisIndex = 0
        END IF
        !PRINT *, 'P5',ParEnv % myPE
        !CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
@@ -626,9 +622,8 @@
 
        IF(ParEnv % myPE == 0) THEN
          j=1
-         PRINT *, 'Debug0: ',TempPlCoordArray
          DO i=1,SIZE(TempPlCoordArray)
-           IF(TempPlCoordArray(i)==0.0) CYCLE
+           IF(TempPlCoordArray(i)==-1E12) CYCLE
            !IF(TempPlCoordArray(i)<1E-16 .AND. TempPlCoordArray(i)>-1E-16) CYCLE
            PlCoordArray(j,1) = TempPlCoordArray(i)
            PlCoordArray(j,2) = j
@@ -659,7 +654,6 @@
          END DO
          DEALLOCATE(Row)
        END IF
-       IF(ParEnv % myPE == 0) PRINT *, 'Debug00: ',PlCoordArray
        !CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
        !MPI call to send full final plume arrays to every partition
@@ -684,7 +678,6 @@
    BMFromFile = ListGetLogical( Params, "Background Melt From File", Found)
    IF(.NOT. Found) BMFromFile = .FALSE.
    AverageMelt = GetLogical( Params, "Scale Melt To Average", Found)
-   IF(.NOT. Found) AverageMelt = .FALSE.
 
    IF(Calving .AND. TotalPlCount > 0) THEN
      !PRINT *, 'P7',ParEnv % myPE
@@ -699,8 +692,10 @@
        END IF
        IF(AxisIndex==1) THEN
          Node = Mesh % Nodes % x(i)
-       ELSE
+       ELSE IF(AxisIndex==2) THEN
          Node = Mesh % Nodes % y(i)
+       ELSE
+         CYCLE
        END IF   
        SearchIndex = 0.0_dp
        PlDist = 0.0_dp
@@ -727,7 +722,6 @@
          END IF
          EXIT
        END DO
-       PRINT *, 'Debug1: ',SearchIndex,PlCoordArray(1,2)
        
        IF(ALL(SearchIndex == 0.0)) THEN
          !If cycles through whole array without finding plumes to be between;
@@ -741,7 +735,6 @@
 
        Node = ABS(Mesh % Nodes % z(i))
       
-       PRINT *, 'Debug2: ',SearchIndex,PlCoordArray !(TotalPlCount,2) 
        FPOLZ(:) = ABS(PlZArray(:,SearchIndex(1)))
        FPOLMR(:) = PlMRArray(:,SearchIndex(1))
        ZPointer => FPOLZ
@@ -923,11 +916,35 @@
          END IF
       END IF
 
-      CALL MPI_AllReduce(MPI_IN_PLACE, TotalArea, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD, ierr)
-      CALL MPI_AllReduce(MPI_IN_PLACE, TotalPMelt, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD, ierr)
-      CALL MPI_AllReduce(MPI_IN_PLACE, TotalBMelt, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD, ierr)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+      buffer = TotalArea
+      CALL MPI_AllReduce(buffer, &
+#else
+      CALL MPI_AllReduce(MPI_IN_PLACE, &
+#endif
+           TotalArea, 1, MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+      buffer = TotalPMelt
+      CALL MPI_AllReduce(buffer, &
+#else
+      CALL MPI_AllReduce(MPI_IN_PLACE, &
+#endif
+           TotalPMelt, 1, MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+      buffer = TotalBMelt
+      CALL MPI_AllReduce(buffer, &
+#else
+      CALL MPI_AllReduce(MPI_IN_PLACE, &
+#endif
+           TotalBMelt, 1, MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
       IF(RemoveToe) THEN
-        CALL MPI_AllReduce(MPI_IN_PLACE, TotalToeMelt, 1, MPI_DOUBLE, &
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+        buffer = TotalToeMelt
+        CALL MPI_AllReduce(buffer, &
+#else
+        CALL MPI_AllReduce(MPI_IN_PLACE, &
+#endif
+             TotalToeMelt, 1, MPI_DOUBLE_PRECISION, &
              MPI_SUM, MPI_COMM_WORLD, ierr)
       END IF
 
@@ -973,7 +990,7 @@
                  &Total Melt (m^3)"
           END IF
         ELSE
-          OPEN( UNIT=OutFileUnit, File=OutfileName, STATUS='UNKNOWN', ACCESS='APPEND' )
+          OPEN( UNIT=OutFileUnit, File=OutfileName, STATUS='UNKNOWN', POSITION='APPEND' )
         END IF
 
         IF(RemoveToe) THEN

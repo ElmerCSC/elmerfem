@@ -27,6 +27,7 @@
 
 
 #include <sys/types.h>
+#include <stdio.h>
 
 
 
@@ -73,3 +74,9 @@ void STDCALLBULL FC_FUNC(flush,FLUSH) (int n)
   /*  might as well flush a toilet...? */
 }
 #endif
+
+void rename_c(const char *old, const char *new)
+{
+  int rc = rename(old,new);
+  (void) rc;
+}

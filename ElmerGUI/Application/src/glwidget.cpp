@@ -680,7 +680,7 @@ void GLWidget::mousePressEvent(QMouseEvent *event)
 //-----------------------------------------------------------------------------
 void GLWidget::mouseReleaseEvent(QMouseEvent *event)
 {
-  if(event->button() == Qt::RightButton & event->pos() == lastPressPos){
+  if((event->button() == Qt::RightButton) && (event->pos() == lastPressPos)) {
 #if WITH_QT6
     ((MainWindow*)parent())->showContextMenu(event->globalPosition().toPoint());
 #else

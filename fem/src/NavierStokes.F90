@@ -1086,7 +1086,7 @@ MODULE NavierStokes
     ELSE IF ( Vms ) THEN
       DO i=1,dim
         DO p=1,NBasis
-          !omp simd
+          !$omp simd
           DO q=1,NBasis
             !M => MassMatrixTrabsp ( p:NBasis*c: NBasis, q:NBasis*c: NBasis )
             !M(dim+1,i) = M(dim+1,i) &
@@ -1096,7 +1096,7 @@ MODULE NavierStokes
         END DO ! Q nbasis
         DO k=1,dim+1
           DO q=1,NBasis
-            !omp simd
+            !$omp simd
             DO p=1,NBasis
               !A => StiffMatrixTrabsp( p:NBasis*c: NBasis, q:NBasis*c: NBasis )
               !A(dim+1,k) = A(dim+1,k) &
@@ -1107,7 +1107,7 @@ MODULE NavierStokes
         END DO ! k dim+1
         DO j=1,dim
           DO q=1,NBasis
-            !omp simd
+            !$omp simd
             DO p=1,NBasis
               !M => MassMatrixTrabsp ( p:NBasis*c: NBasis, q:NBasis*c: NBasis )
               !A => StiffMatrixTrabsp( p:NBasis*c: NBasis, q:NBasis*c: NBasis )
@@ -1157,7 +1157,7 @@ MODULE NavierStokes
           END DO ! Q nbasis
           DO k=1,dim+1
             DO q=1,NBasis
-              !omp simd
+              !$omp simd
               DO p=1,NBasis
                 !A => StiffMatrixTrabsp( p:NBasis*c: NBasis, q:NBasis*c: NBasis )
                 !A(i,k) = A(i,k) &

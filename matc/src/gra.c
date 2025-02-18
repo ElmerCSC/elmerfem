@@ -67,7 +67,7 @@ static double gra_vsx, gra_vsy,
 void gra_mult(GMATRIX gm1, GMATRIX gm2);
 void gra_ident(GMATRIX gm);
 
-void gra_init_matc(devtype, name) int devtype; char *name; 
+void gra_init_matc(int devtype, char *name)
 {
   if ( gra_state.driver != 0 )
   {
@@ -189,7 +189,7 @@ void gra_init_matc(devtype, name) int devtype; char *name;
   gra_state.pratio = 0.0;
 }
 
-void gra_close_sys()
+void gra_close_sys(void)
 {
   int i;
 
@@ -207,14 +207,14 @@ void gra_close_sys()
   gra_state.driver = 0;
 }
 
-void gra_dbuffer_null() {};
+void gra_dbuffer_null(void) {};
 
-void gra_getmatrix(gm) GMATRIX gm;
+void gra_getmatrix(GMATRIX gm)
 {
   memcpy((char *)gm, (char *)gra_state.transfm,sizeof(GMATRIX));
 }
 
-void gra_setmatrix(gm) GMATRIX gm;
+void gra_setmatrix(GMATRIX gm)
 {
   memcpy((char *)gra_state.transfm,(char *)gm,sizeof(GMATRIX));
   gra_ident(gra_state.modelm);
@@ -222,7 +222,7 @@ void gra_setmatrix(gm) GMATRIX gm;
   gra_ident(gra_state.viewm);
 }
 
-void gra_set_transfm()
+void gra_set_transfm(void)
 {
   int i,j;
 
@@ -236,7 +236,7 @@ void gra_set_transfm()
   gra_mult(gra_state.transfm,gra_state.projm); 
 }
 
-void gra_mult(gm1, gm2) GMATRIX gm1, gm2;
+void gra_mult(GMATRIX gm1, GMATRIX gm2)
 {
   int i,j,k;
   double s[4];
@@ -256,7 +256,7 @@ void gra_mult(gm1, gm2) GMATRIX gm1, gm2;
   }
 }
 
-void gra_ident(gm) GMATRIX gm;
+void gra_ident(GMATRIX gm)
 {
   gm[0][0] = 1; gm[0][1] = 0; gm[0][2] = 0; gm[0][3] = 0;
   gm[1][0] = 0; gm[1][1] = 1; gm[1][2] = 0; gm[1][3] = 0;
@@ -264,7 +264,8 @@ void gra_ident(gm) GMATRIX gm;
   gm[3][0] = 0; gm[3][1] = 0; gm[3][2] = 0; gm[3][3] = 1;
 }
 
-void gra_viewpoint(xf,yf,zf,xt,yt,zt) double xf,yf,zf,xt,yt,zt;
+void gra_viewpoint(double xf, double yf, double zf,
+    double xt, double yt, double zt)
 {
   GMATRIX gvm;
 
@@ -321,7 +322,7 @@ void gra_viewpoint(xf,yf,zf,xt,yt,zt) double xf,yf,zf,xt,yt,zt;
   gra_set_transfm();
 }
 
-void gra_rotate(rx, ry, rz) double rx, ry, rz;
+void gra_rotate(double rx, double ry, double rz)
 {
   static double pip180 = 3.1415926535898/180.0;
 #pragma omp threadprivate (pip180)
@@ -354,7 +355,7 @@ void gra_rotate(rx, ry, rz) double rx, ry, rz;
   gra_set_transfm();
 }
 
-void gra_scale(sx, sy, sz) double sx, sy, sz;
+void gra_scale(double sx, double sy, double sz)
 {
   GMATRIX gsm;
 
@@ -367,7 +368,7 @@ void gra_scale(sx, sy, sz) double sx, sy, sz;
   gra_set_transfm();
 }
 
-void gra_translate(tx, ty, tz) double tx, ty, tz;
+void gra_translate(double tx, double ty, double tz)
 {
   GMATRIX gtm;
 
@@ -380,7 +381,7 @@ void gra_translate(tx, ty, tz) double tx, ty, tz;
   gra_set_transfm();
 }
 
-void gra_perspective(r) double r;
+void gra_perspective(double r)
 {
   gra_ident(gra_state.projm);
   gra_state.projm[0][0] = r;
@@ -389,7 +390,7 @@ void gra_perspective(r) double r;
   gra_set_transfm();
 }
 
-void gra_set_proj()
+void gra_set_proj(void)
 {
   gra_vsx = (gra_state.viewport.xhigh -
             gra_state.viewport.xlow) / 2;
@@ -401,7 +402,8 @@ void gra_set_proj()
   gra_vty = gra_state.viewport.ylow + gra_vsy;
 } 
 
-void gra_set_window(x1,x2,y1,y2,z1,z2) double x1,x2,y1,y2,z1,z2;
+void gra_set_window(double x1, double x2, double y1, double y2,
+    double z1, double z2)
 {
   GMATRIX gvm;
 
@@ -427,7 +429,7 @@ void gra_set_window(x1,x2,y1,y2,z1,z2) double x1,x2,y1,y2,z1,z2;
   gra_set_transfm();
 }
 
-void gra_set_viewport(x1,x2,y1,y2) double x1, x2, y1, y2;
+void gra_set_viewport(double x1, double x2, double y1, double y2)
 {
   gra_state.viewport.xlow  = x1;
   gra_state.viewport.xhigh = x2;
@@ -436,7 +438,8 @@ void gra_set_viewport(x1,x2,y1,y2) double x1, x2, y1, y2;
   gra_set_proj();
 } 
 
-void gra_mtrans(x,y,z,xe,ye,ze) double x,y,z,*xe,*ye,*ze;
+void gra_mtrans(double x, double y, double z,
+    double *xe, double *ye, double *ze)
 {
   *xe = x * gra_state.transfm[0][0] +
         y * gra_state.transfm[1][0] + 
@@ -466,7 +469,7 @@ void gra_mtrans(x,y,z,xe,ye,ze) double x,y,z,*xe,*ye,*ze;
  * ScaleX = (vp.xmax - vp.xmin) / (w.xmax - w.xmin)
  * TransX = (vp.xmin - ScaleX * w.xmin)
  */
-void gra_window_to_viewport(x, y, z, xs, ys) double x, y, z, *xs, *ys;
+void gra_window_to_viewport(double x, double y, double z, double *xs, double *ys)
 {
 /*
   double xe, ye, ze;
@@ -477,7 +480,7 @@ void gra_window_to_viewport(x, y, z, xs, ys) double x, y, z, *xs, *ys;
   *ys = gra_vsy * y + gra_vty;
 }
 
-void gra_error()
+void gra_error(void)
 {
   error("gra: graphics package not initialized\n");
 }

@@ -64,6 +64,8 @@ Solver 2
    Exported Variable 1 = StressAna    
    Exported Variable 1 DOFS = Integer 1
 
+   Nonlinear System Consistent Norm = True
+
    Linear System Solver = Direct         
    Linear System Direct Method = umfpack
 End
@@ -130,5 +132,5 @@ Boundary Condition 5
       Real MATC "100.0*(cos(6.0*pi*tx(0)))*(cos(6.0*pi*tx(1)))"
 End
 
-Solver 2 :: Reference Norm = Real 52.6214356 
+Solver 2 :: Reference Norm = Real 52.380952
 Solver 2 :: Reference Norm Tolerance = Real 1E-06

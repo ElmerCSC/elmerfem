@@ -1,0 +1,142 @@
+!#####################################################################
+!# Test covariance vector product
+!# Here the vector is initailised to 1 in (0.0,0.0)
+!# The result should be the coraviance as a function of the distance 
+!# (0.0,0.0)
+!# The Matern function with nu \to \infty whith a rage given by
+!# range=l/sqrt(2*(nu+1)-1)
+!# should converge to the gaussian correlation c(d)=exp(-d^2/(2l^2)
+!#
+!# Rq.: Use different ElmerIceSolvers library files if using the same
+!# solver several times as initialised variables are saved
+!####################################################################
+!###################################################################
+!# Covariance paramteres
+!###################################################################
+$std=1.0
+$range=0.2
+
+$nu=10
+$rangem=range/sqrt(2*(nu+1)-1)
+
+!#####################################################################
+!# 
+!####################################################################
+Header :: Mesh DB "." "rectangle"
+
+!#####################################################################
+!# 
+!####################################################################
+Simulation
+  Max Output Level = 3
+  Coordinate System = Cartesian
+  Simulation Type = Steady
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+!  Post File   = "impulse1.vtu"
+End
+
+!#####################################################################
+!# 
+!####################################################################
+Body 1
+  Equation = 1
+  Initial Condition = 1
+End
+
+!#####################################################################
+!# 
+!####################################################################
+Initial Condition 1
+  impulse = Variable Coordinate 1, Coordinate 2, "0.0", "0.0"
+     Real procedure "Init" "Init"
+End
+
+!#################################################################
+!# Equations
+!#################################################################
+Equation 1 :: Active Solvers(3) = 1 2 3
+
+!#################################################################
+!# Full-Matrix Gaussian correlation function
+!#################################################################
+Solver 1
+  Equation = "MaternPCovariance"
+  Variable = "CorrGaussian"
+  Procedure = "ElmerIceSolvers" "CovarianceVectorMultiplySolver"
+
+  input variable = string "impulse"
+
+  Covariance type = string "Full matrix"
+
+  correlation type = String "gaussian"
+  correlation range = Real $range
+  standard deviation = Real $std
+
+  Exported Variable 1 = string "impulse"
+End
+
+!#################################################################
+!# Full-Matrix Matern correlation nu=Integer
+!#################################################################
+Solver 2
+  Equation = "MaternICovariance"
+  Variable = "CorrMI"
+  Procedure = "ElmerIceSolvers2" "CovarianceVectorMultiplySolver"
+
+  input variable = string "impulse"
+
+  Covariance type = string "Full matrix"
+
+  correlation type = String "MaternI"
+  MaternI order = Integer $nu
+
+  correlation range = Real $rangem
+  standard deviation = Real $std
+
+
+End
+
+!#################################################################
+!#  diffusion operator
+!#################################################################
+Solver 3
+  Equation = "MaternOpCovariance"
+  Variable = "Corrdo"
+  Procedure = "ElmerIceSolvers3" "CovarianceVectorMultiplySolver"
+
+  input variable = string "impulse"
+
+  Covariance type = String "diffusion operator"
+
+  Matern exponent m = Integer $nu+1
+  correlation range = Real $rangem
+  standard deviation = Real $std
+
+
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+
+  Linear System Refactorize = Logical False
+  Linear System Symmetric = Logical True
+  Linear System Positive Definite = Logical True
+
+
+End
+!####################################################################
+!# Boundary condition
+!####################################################################
+Boundary Condition 1
+  Target Boundaries(4) = 1 2 3 4
+End
+
+Solver 1 :: Reference Norm = Real 0.16880513
+Solver 1 :: Reference Norm Tolerance = Real 1.0e-4
+
+Solver 2 :: Reference Norm = Real 0.16076679
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-4
+
+Solver 3 :: Reference Norm = Real 0.16342618
+Solver 3 :: Reference Norm Tolerance = Real 1.0e-4
+
+

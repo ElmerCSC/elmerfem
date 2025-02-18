@@ -145,8 +145,10 @@ Solver 2
   Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
 
   Stokes Flow = logical true
-
-  Relative Integration Order = -1
+  
+  Div-Curl Discretization = Logical False
+  Element = "p:1 b:10"
+  !Relative Integration Order = -1
 
   !linear settings:
   !------------------------------

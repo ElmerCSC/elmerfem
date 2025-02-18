@@ -15,8 +15,8 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with this program (in file fem/GPL-2); if not, write to the 
- *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
+ *  along with this program (in file fem/GPL-2); if not, write to the
+ *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
  *  Boston, MA 02110-1301, USA.
  *
  *****************************************************************************/
@@ -45,7 +45,7 @@
  ******************************************************************************/
 
 /*
- * $Id: jacobi.c,v 1.1.1.1 2005/04/14 13:29:14 vierinen Exp $ 
+ * $Id: jacobi.c,v 1.1.1.1 2005/04/14 13:29:14 vierinen Exp $
  *
  * $Log: jacobi.c,v $
  * Revision 1.1.1.1  2005/04/14 13:29:14  vierinen
@@ -54,42 +54,14 @@
  * Revision 1.2  1998/08/01 12:34:43  jpr
  *
  * Added Id, started Log.
- * 
+ *
  *
  */
 
 #include "elmer/matc.h"
 
-VARIABLE *mtr_jacob(a) VARIABLE *a;
-{
-  VARIABLE *x, *ev;
-
-  double *b, *d, rtol;
-  int i, n;
-
-  if (NROW(a) != NCOL(a))
-    error("Jacob: Matrix must be square.\n");
-
-  b = MATR(NEXT(a));
-  n = NROW(a);
-
-  if (NROW(NEXT(a)) != NCOL(NEXT(a)) || n != NROW(NEXT(a))) 
-    error("Jacob: Matrix dimensions incompatible.\n");
-
-  rtol = *MATR(NEXT(NEXT(a)));
-
-  x  = var_new("eigv", TYPE_DOUBLE, NROW(a), NCOL(a));
-  d  = (double *)ALLOCMEM(n * sizeof(double));
-  ev = var_temp_new(TYPE_DOUBLE, 1, n);
-
-  jacobi(MATR(a), b, MATR(x), MATR(ev), d, n, rtol);
-  FREEMEM((char *)d);
-
-  return ev;
-};
-
 /************************************************************************
-  P R O G R A M 
+  P R O G R A M
   To solve the generalized eigenproblem using the
   generalized Jacobi iteration
 
@@ -113,14 +85,13 @@ VARIABLE *mtr_jacob(a) VARIABLE *a;
 
 *************************************************************************/
 
-int jacobi(a,b,x,eigv,d,n,rtol)
-  double a[],b[],x[],eigv[],d[],rtol;
-  int n;
+int matc_jacobi(double a[], double b[], double x[], double eigv[], double d[],
+    int n, double rtol)
 {
   register int i,j,k,ii,jj;
   int    nsmax=50,        /* Max number of sweeps */
          nsweep,          /* Current sweep number */
-         nr,           
+         nr,
          jp1,jm1,kp1,km1,
          convergence;
 
@@ -137,7 +108,7 @@ int jacobi(a,b,x,eigv,d,n,rtol)
          bb;              /* Scale mass matrix */
 
 /************************************************************************
-  Initialize eigenvalue and eigenvector matrices 
+  Initialize eigenvalue and eigenvector matrices
 *************************************************************************/
   for( i=0 ; i<n ; i++)
   {
@@ -249,7 +220,7 @@ int jacobi(a,b,x,eigv,d,n,rtol)
                 b[i*n+k] = bk+ca*bj;
               };
           };
-   
+
           ak = a[k*n+k];
           bk = b[k*n+k];
           a[k*n+k] = ak+2.0*ca*a[j*n+k]+ca*ca*a[j*n+j];
@@ -340,4 +311,32 @@ int jacobi(a,b,x,eigv,d,n,rtol)
   };
   PrintOut( "jacobi: nsweeps %d\n", nsweep );
   return 1 ;
+}
+
+VARIABLE *mtr_jacob(VARIABLE *a)
+{
+  VARIABLE *x, *ev;
+
+  double *b, *d, rtol;
+  int i, n;
+
+  if (NROW(a) != NCOL(a))
+    error("Jacob: Matrix must be square.\n");
+
+  b = MATR(NEXT(a));
+  n = NROW(a);
+
+  if (NROW(NEXT(a)) != NCOL(NEXT(a)) || n != NROW(NEXT(a)))
+    error("Jacob: Matrix dimensions incompatible.\n");
+
+  rtol = *MATR(NEXT(NEXT(a)));
+
+  x  = var_new("eigv", TYPE_DOUBLE, NROW(a), NCOL(a));
+  d  = (double *)ALLOCMEM(n * sizeof(double));
+  ev = var_temp_new(TYPE_DOUBLE, 1, n);
+
+  (void)matc_jacobi(MATR(a), b, MATR(x), MATR(ev), d, n, rtol);
+  FREEMEM((char *)d);
+
+  return ev;
 }

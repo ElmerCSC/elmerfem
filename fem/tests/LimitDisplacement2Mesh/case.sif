@@ -1,0 +1,138 @@
+! This is a test case for soft limiters that mimics test case "LimitDisplacement2" except the
+! limit is obtained from a 2nd mesh. This generalizes the use of soft limiters a great deal since
+! the other mesh may be arbitrary almost.
+!
+! P.R. 10.7.2024
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "cube"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = Cartesian
+  Simulation Type = Steady state
+  Steady State Max Iterations = 1
+  
+  Output Intervals = 0
+  Post File = case.vtu
+  Ascii Output = True
+
+! Parameters for the User Defined Function, SphereBottom
+! These are now given in the deformed sqaure geometry.
+!  Sphere Radius = Real 2.0
+!  Sphere Z = Real 1.0
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Equation = 2
+End
+
+
+Solver 1
+  Equation = Linear elasticity
+  Procedure = "StressSolve" "StressSolver"
+  Variable = -dofs 3 Disp
+  Steady State Convergence Tolerance = 1.0e-8
+  Nonlinear System Convergence Tolerance = 1.0e-8
+  Nonlinear System Max Iterations = 30
+  Nonlinear System Min Iterations = 2
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = "BiCGStabl"
+  BiCgStabl Polynomial Degree = 4
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "none"
+  Linear System Residual Output = 20
+  Linear System Precondition Recompute = 1
+
+! These work as well and could be useful when linear system is hard to solve
+!  Linear System Residual Mode = True
+!  Linear System Convergence Tolerance = 1.0e-04
+
+  Apply Limiter = Logical True
+End
+
+
+Solver 2
+  Equation = AllocateBC
+  Procedure = "AllocateSolver" "AllocateSolver" 
+  Variable = height
+End 
+
+
+! Map the 2D height from square
+Solver 3
+  Equation = "InterpolateSolver"
+
+! Perform the interpolation solver before all other solvers, only once.
+  Exec Solver = Before all
+  Procedure = "Mesh2MeshSolver" "Mesh2MeshSolver"
+
+! We cannot use the "Coordinate 3" as the target variable since it would overwrite the coordinate.
+! Hence we map the result to variable "height" that is only allocated on the boundary where we
+! want to study the contact.
+  Variable 1 = "Coordinate 3" 
+  Target Variable 1 = "Height"
+
+! The height is obtained as the z-coordinate of the mesh "square".
+  Mesh = "square"  
+  Target Mesh Solver Index = Integer 1
+
+! We interpolate the height from the xy-plane ignoring the z-coordinate. 
+  Interpolation Passive Coordinate = Integer 3
+
+! In transient cases we could add movement of the mesh before timestep also... 
+  Exec Solver = before timestep
+End
+
+Equation 1
+  Name = "Elasticity"
+  Active Solvers(1) = 1 
+End
+
+Equation 2
+  Name = "Boundary"
+  Active Solvers(1) = 2
+End
+
+Material 1
+  Youngs modulus = 1.0e3
+  Density = 1.0
+  Poisson ratio = 0.3
+End
+
+Boundary Condition 1
+  Name = "Natural" 
+  Target Boundaries(4) = 1 2 3 4
+End 
+
+Boundary Condition 2
+  Name = "Contact"
+  Target Boundaries(1) = 6
+
+  Disp 3 Upper Limit = Equals "Height"
+  Body Id = 2
+End
+
+Boundary Condition 3
+  Name = "Bottom"
+  Target Boundaries(1) = 5
+  Disp 1 = Real 0.0
+  Disp 2 = Real 0.0
+  Disp 3 = Real 0.0
+End
+
+Solver 1 :: Reference Norm = 1.30327470E-01

@@ -1,12 +1,14 @@
-INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/../test_macros.cmake)
+IF(HAVE_UMFPACK OR HAVE_MUMPS)
+  INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/../test_macros.cmake)
 
-CONFIGURE_FILE(calving2d.sif calving2d.sif COPYONLY)
+  CONFIGURE_FILE(calving2d.sif calving2d.sif COPYONLY)
 
-ADD_ELMERICETEST_MODULE(Calving2D bedrockfunction_flat ./PROG/bedrockfunction_flat.f90)
+  ADD_ELMERICETEST_MODULE(Calving2D bedrockfunction_flat ./PROG/bedrockfunction_flat.f90)
 
-FILE(COPY ELMERSOLVER_STARTINFO block_helheim.msh PROG DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+  FILE(COPY ELMERSOLVER_STARTINFO block_helheim.msh PROG DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-FILE(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/Results/block_helheim")
+  FILE(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/Results/block_helheim")
 
-ADD_ELMERICE_TEST(Calving2D)
-ADD_ELMERICE_LABEL(Calving2D slow)
+  ADD_ELMERICE_TEST(Calving2D)
+  ADD_ELMERICE_LABEL(Calving2D slow)
+ENDIF()

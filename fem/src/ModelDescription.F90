@@ -72,7 +72,7 @@ CONTAINS
 
     INTEGER(KIND=AddrInt) :: Proc
     INTEGER   :: i,j,slen,q,a
-    CHARACTER :: Libname(MAX_NAME_LEN),Procname(MAX_NAME_LEN)
+    CHARACTER :: Libname(MAX_PATH_LEN),Procname(MAX_NAME_LEN)
 !------------------------------------------------------------------------------
 
     DO slen=LEN(str),1,-1
@@ -115,7 +115,10 @@ CONTAINS
        IF ( .NOT. abort ) a=0
     END IF
 
-    Proc = LoadFunction( q,a,Libname,Procname )
+    Proc = LoadFunction( q,0,Libname,Procname,1 )
+
+    ! if no luck, try without fortran name mangling
+    IF(Proc==0) Proc = LoadFunction( q,a,Libname,Procname,0 )
   END FUNCTION GetProcAddr
 !------------------------------------------------------------------------------
 
@@ -276,7 +279,7 @@ CONTAINS
 
     INTEGER :: pos, posn
     INTEGER :: iostat
-    CHARACTER(LEN=MAX_NAME_LEN) :: MeshDir, MeshName
+    CHARACTER(LEN=MAX_PATH_LEN) :: MeshDir, MeshName
     
     IF( PRESENT( RewindFile ) ) THEN
       IF( RewindFile ) THEN
@@ -550,6 +553,18 @@ CONTAINS
       ELSE IF ( Section == 'run' ) THEN
          IF ( PRESENT(runc) ) runc=.TRUE.
          EXIT
+      ELSE IF ( Section == 'stop' ) THEN
+        CALL Warn(Caller,'Encountered "STOP" in sif, rest will be ignored!')
+        EXIT
+      ELSE IF( Section == '/*' ) THEN
+        CALL Info(Caller,'Starting comment section!')
+        DO WHILE( ReadAndTrim( InFileUnit, Section, Echo ) )
+          IF ( Section == '*/' ) THEN
+            CALL Info(Caller,'Finished comment section!')
+            EXIT                      
+          END IF
+        END DO
+        CYCLE        
       END IF
 
       FreeNames = ( CheckAbort <= 0 )
@@ -2067,15 +2082,17 @@ CONTAINS
                  k = 0
                  DO i=1,N1
                    ! Find first empty space at "k"
+                   k = k + 1
                    DO WHILE( k <= slen )
-                     k = k + 1
                      IF ( str(k:k) == ' ') EXIT
+                     k = k + 1
                    END DO
 
                    ! Find first non-empty space at "k"
+                   k = k + 1
                    DO WHILE( k <= slen )
-                     k = k + 1
                      IF ( str(k:k) /= ' ') EXIT
+                     k = k + 1
                    END DO
 
                    IF ( k > slen ) THEN
@@ -2091,10 +2108,10 @@ CONTAINS
                    END IF
 
                    ! Find first empty space at "k2"
-                   k2 = k 
+                   k2 = k + 1
                    DO WHILE( k2 <= slen )
-                     k2 = k2 + 1
                      IF ( str(k2:k2) == ' ') EXIT
+                     k2 = k2 + 1
                    END DO
                    k2 = k2-1
 
@@ -2130,10 +2147,10 @@ CONTAINS
                  k = str_beg
 
                  ! Find first empty space at "k2"
-                 k2 = k 
+                 k2 = k + 1
                  DO WHILE( k2 <= slen )
-                   k2 = k2 + 1
                    IF ( str(k2:k2) == ' ') EXIT
+                   k2 = k2 + 1
                  END DO
                  k2 = k2-1
                                  
@@ -2518,15 +2535,15 @@ CONTAINS
     TYPE(Model_t), POINTER :: Model
 !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh,Mesh1,NewMesh,OldMesh,SerialMesh
-    INTEGER :: i,j,k,s,nlen,eqn,MeshKeep,MeshLevels,nprocs,ModuloMesh,iostat
+    INTEGER :: i,j,k,s,nlen,eqn,MeshKeep,MeshLevels,nprocs,ModuloMesh,iostat,iLevel
     LOGICAL :: GotIt,GotMesh,found,OneMeshName, OpenFile, Transient
-    LOGICAL :: stat, single, MeshGrading
+    LOGICAL :: stat, single, MeshGrading, Split
     TYPE(Solver_t), POINTER :: Solver
     INTEGER(KIND=AddrInt) :: InitProc
     INTEGER, TARGET :: Def_Dofs(10,6)
     REAL(KIND=dp) :: MeshPower
     REAL(KIND=dp), POINTER :: h(:)
-    CHARACTER(LEN=MAX_NAME_LEN) :: MeshDir,MeshName
+    CHARACTER(LEN=MAX_PATH_LEN) :: MeshDir,MeshName
     CHARACTER(:), ALLOCATABLE :: Name, ElementDef, str
     LOGICAL :: Parallel
     TYPE(valuelist_t), POINTER :: lst
@@ -2572,9 +2589,9 @@ CONTAINS
       CHARACTER(LEN=256) :: txcmd
 
       character(len=256) :: elmer_home_env
-      CALL getenv("ELMER_HOME", elmer_home_env)
+      CALL get_environment_variable("ELMER_HOME", elmer_home_env)
 
-      !$OMP PARALLEL Shared(parenv, ModelName, elmer_home_env) Private(txcmd, ompthread, lstat) Default(none)
+      !$OMP PARALLEL Shared(mype, ModelName, elmer_home_env) Private(txcmd, ompthread, lstat) Default(none)
       !$OMP CRITICAL
       LuaState = lua_init()
       IF(.NOT. LuaState % Initialized) THEN
@@ -2583,7 +2600,7 @@ CONTAINS
 
       ! Store mpi task and omp thread ids in a table
       LSTAT = lua_dostring(LuaState, 'ELMER_PARALLEL = {}' // c_null_char)
-      write(txcmd,'(A,I0)') 'ELMER_PARALLEL["pe"] = ', parenv % mype
+      write(txcmd,'(A,I0)') 'ELMER_PARALLEL["pe"] = ',  mype
       lstat = lua_dostring(LuaState, txcmd // c_null_char)
 
       ompthread = 1
@@ -2692,6 +2709,10 @@ CONTAINS
         ELSE
           MeshSolvers(j, i) = .TRUE.
         END IF
+        !This seems to be necessary to force DefDofs for the global mesh to not
+        !update if you have multiple solvers all pointing at the same solver-
+        !specific mesh
+        GotMesh = .TRUE.
 
       END IF
 
@@ -2765,6 +2786,7 @@ CONTAINS
         END IF
         !  Calling GetDefs fills Def_Dofs arrays:
         CALL GetDefs( ElementDef, Solver % Def_Dofs, Def_Dofs(:,:), .NOT. GotMesh )
+
         IF(j>0) THEN
           ElementDef0 = ElementDef0(j+1:)
         ELSE
@@ -2907,7 +2929,9 @@ CONTAINS
       MeshPower   = ListGetConstReal( Model % Simulation, 'Mesh Grading Power',GotIt)
       MeshGrading = ListGetLogical( Model % Simulation, 'Mesh Keep Grading', GotIt)
 
-      DO i=2,MeshLevels
+      DO iLevel=2,MeshLevels
+        CALL Info('LoadModel','Performing splitting at level: '//I2S(iLevel))
+
         OldMesh => Model % Meshes
 
         IF (MeshGrading) THEN
@@ -2920,6 +2944,7 @@ CONTAINS
           NewMesh => SplitMeshEqual(OldMesh)
         END IF
 
+#if 0
         IF(ASSOCIATED(OldMesh % Faces)) THEN
           CALL FindMeshEdges(NewMesh)
 
@@ -2936,8 +2961,12 @@ CONTAINS
         ELSE
           CALL SetMeshMaxDofs(NewMesh)
         END IF
-
-        IF ( i>MeshLevels-MeshKeep+1 ) THEN
+#endif
+        
+        IF ( iLevel >= MeshLevels-MeshKeep ) THEN
+          ! Prepare mesh only for those meshes that are kept.
+          CALL PrepareMesh( Model, NewMesh, ParEnv % PEs > 1 )
+        
           NewMesh % Next => OldMesh
           NewMesh % Parent => OldMesh
           OldMesh % Child  => NewMesh
@@ -2946,30 +2975,21 @@ CONTAINS
         ELSE
           CALL ReleaseMesh(OldMesh)
         END IF
-        Model % Meshes => NewMesh
-
-        IF( ListCheckPresentAnyBC( Model,'Conforming BC' ) ) THEN
-          CALL GeneratePeriodicProjectors( Model, NewMesh ) 
-        END IF
-                    
+       
+        Model % Meshes => NewMesh                    
       END DO
 
-
-      IF( ListGetLogical( Model % Simulation,'Mesh Split Levelset', GotIt) ) THEN
+      Split = ListGetLogical( Model % Simulation,'Mesh Split Levelset', GotIt)
+      IF( Split ) THEN
         OldMesh => Model % Meshes      
         NewMesh => SplitMeshLevelset(OldMesh,Model % Simulation)
         IF(ASSOCIATED(NewMesh) ) THEN
           CALL SetMeshMaxDofs(NewMesh)
           CALL ReleaseMesh(OldMesh)
           Model % Meshes => NewMesh
+          CALL PrepareMesh( Model, NewMesh, ParEnv % PEs > 1 )
         END IF
-      END IF
-
-      IF( MeshLevels > 1 ) THEN
-        ! This has been commented out, but is needed. There may be some issues in parallel still...
-        CALL PrepareMesh( Model, NewMesh, ParEnv % PEs > 1 )        
-      END IF
-    
+      END IF    
       
       IF ( OneMeshName ) THEN
          i = 0
@@ -2982,12 +3002,21 @@ CONTAINS
       END IF
 
       i = i + 1
+      k = i
+      j = 0
+      DO WHILE( MeshName(i:i) /= CHAR(0) )
+        i = i + 1
+        j = j + 1
+      END DO
+
+      IF(ALLOCATED(Model % Meshes % Name)) DEALLOCATE(Model % Meshes % Name)
+      ALLOCATE(CHARACTER(j)::Model % Meshes % Name)
+      i = k
       k = 1
-      Model % Meshes % Name = ' '
       DO WHILE( MeshName(i:i) /= CHAR(0) )
         Model % Meshes % Name(k:k) = MeshName(i:i)
-        k = k + 1
         i = i + 1
+        k = k + 1
       END DO
 
       ! Ok, give name also to the parent meshes as they might be saved too
@@ -3050,24 +3079,36 @@ CONTAINS
         i = 1
         nlen = LEN_TRIM(name)
         MeshName = ' '
-        DO WHILE( k<=nlen .AND. name(k:k) /= ' ' )
-          MeshDir(i:i)  = name(k:k)
-          Meshname(i:i) = name(k:k)
-          k = k + 1
-          i = i + 1
+        DO WHILE ( k<=nlen)
+          IF( name(k:k) /= ' ' ) THEN
+            MeshDir(i:i)  = name(k:k)
+            Meshname(i:i) = name(k:k)
+            k = k + 1
+            i = i + 1
+          ELSE
+            EXIT
+          END IF
         END DO
 
-        DO WHILE( k<=nlen .AND. Name(k:k) == ' ' )
-          k = k + 1
+        DO WHILE( k<=nlen)
+          IF(Name(k:k) == ' ') THEN
+            k = k + 1
+          ELSE
+            EXIT
+          END IF
         END DO
 
         IF ( k<=nlen ) THEN
           MeshName(i:i) = '/'
           i = i + 1
-          DO WHILE( name(k:k) /= ' ' )
-            MeshName(i:i) = Name(k:k)
-            k = k + 1
-            i = i + 1
+          DO WHILE (k<=nlen) 
+            IF( name(k:k) /= ' ' ) THEN
+              MeshName(i:i) = Name(k:k)
+              k = k + 1
+              i = i + 1
+            ELSE
+              EXIT
+            END IF
           END DO
         ELSE
           OneMeshName = .TRUE.
@@ -3161,7 +3202,7 @@ CONTAINS
         MeshPower   = ListGetConstReal( Model % Simulation, 'Mesh Grading Power',GotIt)
         MeshGrading = ListGetLogical( Model % Simulation, 'Mesh Keep Grading', GotIt)
 
-        DO i=2,MeshLevels
+        DO iLevel=2,MeshLevels
           OldMesh => Solver % Mesh
 
           IF (MeshGrading) THEN
@@ -3174,6 +3215,7 @@ CONTAINS
             NewMesh => SplitMeshEqual(OldMesh)
           END IF
 
+#if 0 
           IF(ASSOCIATED(OldMesh % Faces)) THEN
             CALL FindMeshEdges(NewMesh)
 
@@ -3192,8 +3234,12 @@ CONTAINS
           ELSE
             CALL SetMeshMaxDofs(NewMesh)
           END IF
-
-          IF ( i>MeshLevels-MeshKeep+1 ) THEN
+#endif
+          
+          IF ( iLevel >= MeshLevels-MeshKeep ) THEN
+            ! Prepare mesh only for those meshes that are kept.
+            CALL PrepareMesh( Model, NewMesh, ParEnv % PEs > 1 )
+            
             NewMesh % Next => OldMesh
             NewMesh % Parent => OldMesh
             OldMesh % Child  => NewMesh
@@ -3208,9 +3254,18 @@ CONTAINS
 
         IF ( OneMeshName ) i = 0
 
-        k = 1
         i = i + 1
-        Solver % Mesh % Name = ' '
+        k = i
+        j = 0
+        DO WHILE( MeshName(i:i) /= CHAR(0) )
+          j = j + 1
+          i = i + 1
+        END DO
+
+        IF(ALLOCATED(Solver % Mesh % Name)) DEALLOCATE(Solver % Mesh % Name)
+        ALLOCATE(CHARACTER(j)::Solver % Mesh % Name)
+        i = k
+        k = 1
         DO WHILE( MeshName(i:i) /= CHAR(0) )
           Solver % Mesh % Name(k:k) = MeshName(i:i)
           k = k + 1
@@ -3232,7 +3287,7 @@ CONTAINS
     CALL SetCoordinateSystem( Model )
   
     IF ( OutputPath == ' ' ) THEN
-      DO i=1,MAX_NAME_LEN
+      DO i=1,MAX_PATH_LEN
         IF ( MeshDir(i:i) == CHAR(0) ) EXIT
         OutputPath(i:i) = MeshDir(i:i)
       END DO
@@ -4222,6 +4277,8 @@ CONTAINS
       CALL Info(Caller,'Skipping restart for child mesh',Level=4)
       RETURN
     END IF
+
+    ALLOCATE(CHARACTER(MAX_STRING_LEN)::Row)
     
     ! This routine may be called either in Simulation section or from Solver section
     IF( PRESENT( SolverId ) ) THEN
@@ -4268,6 +4325,7 @@ CONTAINS
       CALL Info(Caller,'Number of variable to read is: '//I2S(j),Level=10)
       IF( ALLOCATED( ListVariableFound ) ) DEALLOCATE( ListVariableFound ) 
       ALLOCATE( ListVariableFound(j) )
+      ListVariableFound = .FALSE.
       CALL Info(Caller,'Reading only '//I2S(j)//' variables given by: "Restart Variable i"',Level=10)
     ELSE
       CALL Info(Caller,'Reading all variables (if not wanted use "Restart Variable i" )',Level=10)      
@@ -4332,7 +4390,6 @@ CONTAINS
     
     RestartFileOpen = .TRUE.
 
-    ALLOCATE(CHARACTER(MAX_STRING_LEN)::Row)
     READ( RestartUnit, '(A)', IOSTAT=iostat ) Row
     IF( iostat /= 0 ) THEN
       CALL Fatal(Caller,'Error reading header line!')
@@ -4552,7 +4609,7 @@ CONTAINS
       !-------------------------------
       LoadThis = .TRUE.
       
-      ! If list is give check that variable is on the list.
+      ! If list is given check that variable is on the list.
       !---------------------------------------------------------------------------
       IF( ListVariableCount > 0  ) THEN
         DO j=1,ListVariableCount
@@ -5113,11 +5170,13 @@ CONTAINS
 
       IF( ALLOCATED( Perm ) ) THEN
         IF( SIZE( Perm ) < nPerm ) THEN
-          CALL Warn(Caller,'Permutation vector too small?')
+          CALL Warn(Caller,'Permutation vector too small: '&
+              //I2S(SIZE(Perm))//' vs. '//I2S(nPerm))
           DEALLOCATE( Perm ) 
         END IF
         IF( SIZE( Perm ) > nPerm ) THEN
-          CALL Info(Caller,'Permutation vector too large?',Level=15)
+          CALL Info(Caller,'Permutation vector too large: '&
+              //I2S(SIZE(Perm))//' vs. '//I2S(nPerm),Level=15)
         END IF
       END IF
       IF( .NOT. ALLOCATED( Perm ) ) THEN
@@ -6131,7 +6190,7 @@ SUBROUTINE GetNodalElementSize(Model,expo,noweight,h)
 
       Solver % Matrix % ParMatrix % ParEnv % ActiveComm = &
                  Solver % Matrix % Comm
-      ParEnv = Solver % Matrix % ParMatrix % ParEnv
+      ParEnv => Solver % Matrix % ParMatrix % ParEnv
     END IF
   END IF
 

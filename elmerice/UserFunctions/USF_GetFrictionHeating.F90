@@ -227,7 +227,7 @@ FUNCTION getFrictionLoads(  Model, Node, DummyInput )RESULT(frictionLoad)
     IF (UseMask) THEN
       WRITE (Message, '(A,A)') '>Friction Load Mask< found and set to ', &
            TRIM(MaskName)
-      CALL INFO(FunctionName, Message, Level=1)
+      CALL INFO(FunctionName, Message, Level=20)
     END IF
   END IF
   IF (Warned .AND. FirstTime) &

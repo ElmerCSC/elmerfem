@@ -1,5 +1,5 @@
+CMAKE_MINIMUM_REQUIRED(VERSION 3.10)
 PROJECT(ElmerTests Fortran C)
-CMAKE_MINIMUM_REQUIRED(VERSION 2.8.9)
 
 #ADD_EXECUTABLE(findnorm findnorm_cmake.c)
 
@@ -90,11 +90,13 @@ ADD_CUSTOM_TARGET(ElmerTests_package
 FOREACH(_file ${ELMER_TEST_FILES})
   IF(NOT(IS_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/${_file}))
     ADD_CUSTOM_COMMAND(TARGET ElmerTests
+      POST_BUILD
       COMMAND "${CMAKE_COMMAND}" "-E" "copy"
       "${CMAKE_CURRENT_SOURCE_DIR}/${_file}"
       "${CMAKE_BINARY_DIR}/elmerfem-tests/${_file}")
   ELSE()
     ADD_CUSTOM_COMMAND(TARGET ElmerTests
+      POST_BUILD
       COMMAND "${CMAKE_COMMAND}" "-E" "copy_directory"
       "${CMAKE_CURRENT_SOURCE_DIR}/${_file}"
       "${CMAKE_BINARY_DIR}/elmerfem-tests/${_file}")

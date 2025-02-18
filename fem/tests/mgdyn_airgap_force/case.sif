@@ -11,7 +11,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 20
   Simulation type = steady state
   mesh levels = 1
 End

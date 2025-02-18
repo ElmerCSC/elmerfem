@@ -75,7 +75,7 @@ Material 1
   Viscosity Exponent = Real $1.0/n                
   Critical Shear Rate = Real 1.0e-10
 
-  Cauchy = Logical False
+  Cauchy = Logical True
 End
  
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -124,6 +124,9 @@ Solver 3
 
   Linear System Solver = Direct         
   Linear System Direct Method = umfpack
+  
+  Compute von Mises Stress = Logical True
+  Exported Variable 2 = -dofs 1 "Von Mises Stress"
 End
 
 Solver 4
@@ -148,7 +151,10 @@ Solver 4
   Variable 7 = String "Stress"
   Operator 7 = String "min"
 
-  Variable 8 = String "cpu time"
+  Variable 8 = String "Von Mises Stress"
+  Operator 8 = String "max"
+
+  Variable 9 = String "cpu time"
 End
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 

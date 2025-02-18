@@ -2594,12 +2594,13 @@ CONTAINS
    REAL(KIND=dp) :: InnerTol, tottime
 
    COMPLEX(KIND=dp) :: zzero, zone, t(m/2), kappa0, kappal
-   REAL(KIND=dp) :: dznrm2, rnrm0, bnrm, rnrm, mxnrmx, mxnrmr, errorind, &
+   REAL(KIND=dp) :: rnrm0, bnrm, rnrm, mxnrmx, mxnrmr, errorind, &
        delta = 1.0d-2
    INTEGER :: i, j, rr, r, u, xp, bp, z, zz, y0, yl, y, k, iwork(l-1), stat, Round
    COMPLEX(KIND=dp) :: work(m/2,3+2*(l+1)), rwork(l+1,3+2*(l+1)), &
-       alpha, beta, omega, rho0, rho1, sigma, zdotc, varrho, hatgamma
-   LOGICAL rcmp, xpdt 
+       alpha, beta, omega, rho0, rho1, sigma, varrho, hatgamma
+   LOGICAL rcmp, xpdt
+   
 !------------------------------------------------------------------------------
 
    tottime = CPUTime()
@@ -3655,12 +3656,12 @@ CONTAINS
     INTEGER, OPTIONAL :: StoppingCriterionType 
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp) :: zzero, zone, t(n), kappa0, kappal 
-    REAL(KIND=dp) :: dznrm2, rnrm0, rnrm, mxnrmx, mxnrmr, errorind, &
+    REAL(KIND=dp) :: rnrm0, rnrm, mxnrmx, mxnrmr, errorind, &
         delta = 1.0d-2, bnrm, bw_errorind, tottime
     INTEGER :: i, j, rr, r, u, xp, bp, z, zz, y0, yl, y, k, iwork(l-1), stat, Round, &
         IluOrder
     COMPLEX(KIND=dp) :: work(n,3+2*(l+1)), rwork(l+1,3+2*(l+1)), &
-        alpha, beta, omega, rho0, rho1, sigma, zdotc, varrho, hatgamma
+        alpha, beta, omega, rho0, rho1, sigma, varrho, hatgamma
     LOGICAL rcmp, xpdt, GotIt, BackwardError  
     CHARACTER(LEN=MAX_NAME_LEN) :: str
 !------------------------------------------------------------------------------
@@ -4153,12 +4154,12 @@ CONTAINS
     INTEGER, OPTIONAL :: StoppingCriterionType 
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp) :: zzero, zone, t(n), kappa0, kappal 
-    REAL(KIND=dp) :: dznrm2, rnrm0, rnrm, mxnrmx, mxnrmr, errorind, &
+    REAL(KIND=dp) :: rnrm0, rnrm, mxnrmx, mxnrmr, errorind, &
         delta = 1.0d-2, bnrm, bw_errorind, tottime
     INTEGER :: i, j, rr, r, u, xp, bp, z, zz, y0, yl, y, k, iwork(l-1), stat, Round, &
         IluOrder
     COMPLEX(KIND=dp) :: work(n,3+2*(l+1)), rwork(l+1,3+2*(l+1)), &
-        alpha, beta, omega, rho0, rho1, sigma, zdotc, varrho, hatgamma
+        alpha, beta, omega, rho0, rho1, sigma, varrho, hatgamma
     LOGICAL rcmp, xpdt, GotIt, BackwardError  
     CHARACTER(LEN=MAX_NAME_LEN) :: str
 !------------------------------------------------------------------------------

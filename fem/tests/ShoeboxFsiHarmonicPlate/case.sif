@@ -167,7 +167,7 @@ Solver 2
 !  Linear System Scaling = False
 
 ! We may toggle the system to be solved as a real one
-! For hamonic mode the default is True
+! For harmonic mode the default is True
 !  Linear System Complex = False
   !block: Linear System Complex = Logical True
 

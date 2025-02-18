@@ -1,10 +1,10 @@
 c\BeginDoc
 c
-c\Name: pdseupd 
+c\Name: pdseupd
 c
-c Message Passing Layer: MPI 
+c Message Passing Layer: MPI
 c
-c\Description: 
+c\Description:
 c
 c  This subroutine returns the converged approximations to eigenvalues
 c  of A*z = lambda*B*z and (optionally):
@@ -17,22 +17,22 @@ c
 c      (3) Both.
 c
 c  There is negligible additional cost to obtain eigenvectors.  An orthonormal
-c  (Lanczos) basis is always computed.  There is an additional storage cost 
-c  of n*nev if both are requested (in this case a separate array Z must be 
+c  (Lanczos) basis is always computed.  There is an additional storage cost
+c  of n*nev if both are requested (in this case a separate array Z must be
 c  supplied).
 c
 c  These quantities are obtained from the Lanczos factorization computed
 c  by PSSAUPD for the linear operator OP prescribed by the MODE selection
 c  (see IPARAM(7) in PSSAUPD documentation.)  PSSAUPD must be called before
-c  this routine is called. These approximate eigenvalues and vectors are 
-c  commonly called Ritz values and Ritz vectors respectively.  They are 
-c  referred to as such in the comments that follow.   The computed orthonormal 
-c  basis for the invariant subspace corresponding to these Ritz values is 
+c  this routine is called. These approximate eigenvalues and vectors are
+c  commonly called Ritz values and Ritz vectors respectively.  They are
+c  referred to as such in the comments that follow.   The computed orthonormal
+c  basis for the invariant subspace corresponding to these Ritz values is
 c  referred to as a Lanczos basis.
 c
-c  See documentation in the header of the subroutine PSSAUPD for a definition 
-c  of OP as well as other terms and the relation of computed Ritz values 
-c  and vectors of OP with respect to the given problem  A*z = lambda*B*z.  
+c  See documentation in the header of the subroutine PSSAUPD for a definition
+c  of OP as well as other terms and the relation of computed Ritz values
+c  and vectors of OP with respect to the given problem  A*z = lambda*B*z.
 c
 c  The approximate eigenvalues of the original problem are returned in
 c  ascending algebraic order.  The user may elect to call this routine
@@ -41,22 +41,22 @@ c  There is also the option of computing a selected set of these vectors
 c  with a single call.
 c
 c\Usage:
-c  call pdseupd  
+c  call pdseupd
 c     ( COMM, RVEC, HOWMNY, SELECT, D, Z, LDZ, SIGMA, BMAT, N, WHICH, NEV, TOL,
 c       RESID, NCV, V, LDV, IPARAM, IPNTR, WORKD, WORKL, LWORKL, INFO )
 c
 c\Arguments
 c  COMM    MPI  Communicator for the processor grid.  (INPUT)
 c
-c  RVEC    LOGICAL  (INPUT) 
-c          Specifies whether Ritz vectors corresponding to the Ritz value 
+c  RVEC    LOGICAL  (INPUT)
+c          Specifies whether Ritz vectors corresponding to the Ritz value
 c          approximations to the eigenproblem A*z = lambda*B*z are computed.
 c
 c             RVEC = .FALSE.     Compute Ritz values only.
 c
 c             RVEC = .TRUE.      Compute Ritz vectors.
 c
-c  HOWMNY  Character*1  (INPUT) 
+c  HOWMNY  Character*1  (INPUT)
 c          Specifies how many Ritz vectors are wanted and the form of Z
 c          the matrix of Ritz vectors. See remark 1 below.
 c          = 'A': compute NEV Ritz vectors;
@@ -66,7 +66,7 @@ c
 c  SELECT  Logical array of dimension NCV.  (INPUT/WORKSPACE)
 c          If HOWMNY = 'S', SELECT specifies the Ritz vectors to be
 c          computed. To select the Ritz vector corresponding to a
-c          Ritz value D(j), SELECT(j) must be set to .TRUE.. 
+c          Ritz value D(j), SELECT(j) must be set to .TRUE..
 c          If HOWMNY = 'A' , SELECT is used as workspace.
 c
 c  D       Double precision  array of dimension NEV.  (OUTPUT)
@@ -74,8 +74,8 @@ c          On exit, D contains the Ritz value approximations to the
 c          eigenvalues of A*z = lambda*B*z. The values are returned
 c          in ascending order. If IPARAM(7) = 3,4,5 then D represents
 c          the Ritz values of OP computed by pdsaupd  transformed to
-c          those of the original eigensystem A*z = lambda*B*z. If 
-c          IPARAM(7) = 1,2 then the Ritz values of OP are the same 
+c          those of the original eigensystem A*z = lambda*B*z. If
+c          IPARAM(7) = 1,2 then the Ritz values of OP are the same
 c          as the those of A*z = lambda*B*z.
 c
 c  Z       Double precision  N by NEV array if HOWMNY = 'A'.  (OUTPUT)
@@ -83,7 +83,7 @@ c          On exit, Z contains the B-orthonormal Ritz vectors of the
 c          eigensystem A*z = lambda*B*z corresponding to the Ritz
 c          value approximations.
 c          If  RVEC = .FALSE. then Z is not referenced.
-c          NOTE: The array Z may be set equal to first NEV columns of the 
+c          NOTE: The array Z may be set equal to first NEV columns of the
 c          Arnoldi/Lanczos basis array V computed by PSSAUPD.
 c
 c  LDZ     Integer.  (INPUT)
@@ -157,7 +157,7 @@ c\References:
 c  1. D.C. Sorensen, "Implicit Application of Polynomial Filters in
 c     a k-Step Arnoldi Method", SIAM J. Matr. Anal. Apps., 13 (1992),
 c     pp 357-385.
-c  2. R.B. Lehoucq, "Analysis and Implementation of an Implicitly 
+c  2. R.B. Lehoucq, "Analysis and Implementation of an Implicitly
 c     Restarted Arnoldi Iteration", Rice University Technical Report
 c     TR95-13, Department of Computational and Applied Mathematics.
 c  3. B.N. Parlett, "The Symmetric Eigenvalue Problem". Prentice-Hall,
@@ -167,19 +167,19 @@ c     Computer Physics Communications, 53 (1989), pp 169-179.
 c  5. B. Nour-Omid, B.N. Parlett, T. Ericson, P.S. Jensen, "How to
 c     Implement the Spectral Transformation", Math. Comp., 48 (1987),
 c     pp 663-673.
-c  6. R.G. Grimes, J.G. Lewis and H.D. Simon, "A Shifted Block Lanczos 
-c     Algorithm for Solving Sparse Symmetric Generalized Eigenproblems", 
+c  6. R.G. Grimes, J.G. Lewis and H.D. Simon, "A Shifted Block Lanczos
+c     Algorithm for Solving Sparse Symmetric Generalized Eigenproblems",
 c     SIAM J. Matr. Anal. Apps.,  January (1993).
 c  7. L. Reichel, W.B. Gragg, "Algorithm 686: FORTRAN Subroutines
 c     for Updating the QR decomposition", ACM TOMS, December 1990,
 c     Volume 16 Number 4, pp 369-377.
 c
 c\Remarks
-c  1. The converged Ritz values are always returned in increasing 
+c  1. The converged Ritz values are always returned in increasing
 c     (algebraic) order.
 c
 c  2. Currently only HOWMNY = 'A' is implemented. It is included at this
-c     stage for the user who wants to incorporate it. 
+c     stage for the user who wants to incorporate it.
 c
 c\Routines called:
 c     dsesrt   ARPACK routine that sorts an array X, and applies the
@@ -204,10 +204,10 @@ c\Authors
 c     Danny Sorensen               Phuong Vu
 c     Richard Lehoucq              CRPC / Rice University
 c     Chao Yang                    Houston, Texas
-c     Dept. of Computational & 
+c     Dept. of Computational &
 c     Applied Mathematics
-c     Rice University           
-c     Houston, Texas            
+c     Rice University
+c     Houston, Texas
 c
 c\Parallel Modifications
 c     Kristi Maschhoff
@@ -221,7 +221,7 @@ c
 c\EndLib
 c
 c-----------------------------------------------------------------------
-      subroutine pdseupd  
+      subroutine pdseupd
      &    (comm  , rvec  , howmny, select, d    ,
      &     z     , ldz   , sigma , bmat  , n    ,
      &     which , nev   , tol   , resid , ncv  ,
@@ -248,7 +248,7 @@ c
       character  bmat, howmny, which*2
       logical    rvec
       integer    info, ldz, ldv, lworkl, n, ncv, nev
-      Double precision      
+      Double precision
      &           sigma, tol
 c
 c     %-----------------%
@@ -257,15 +257,15 @@ c     %-----------------%
 c
       integer    iparam(7), ipntr(11)
       logical    select(ncv)
-      Double precision 
-     &           d(nev), resid(n), v(ldv,ncv), z(ldz, nev), 
+      Double precision
+     &           d(nev), resid(n), v(ldv,ncv), z(ldz, nev),
      &           workd(2*n), workl(lworkl)
 c
 c     %------------%
 c     | Parameters |
 c     %------------%
 c
-      Double precision 
+      Double precision
      &           one, zero
       parameter (one = 1.0 , zero = 0.0 )
 c
@@ -279,7 +279,7 @@ c
      &           ldq    , mode   , msglvl, nconv , next  ,
      &           ritz   , irz    , ibd   , np    , ishift,
      &           leftptr, rghtptr, numcnv, jj
-      Double precision 
+      Double precision
      &           bnorm2, rnorm, temp, temp1, eps23
       logical    reord
 c
@@ -287,14 +287,14 @@ c     %----------------------%
 c     | External Subroutines |
 c     %----------------------%
 c
-      external   dcopy  , dger   , dgeqr2 , dlacpy , dorm2r , dscal , 
-     &           dsesrt , dsteqr , dswap  , pdvout , pivout, dsortr 
+      external   dcopy  , dger   , dgeqr2 , dlacpy , dorm2r , dscal ,
+     &           dsesrt , dsteqr , dswap  , pdvout , pivout, dsortr
 c
 c     %--------------------%
 c     | External Functions |
 c     %--------------------%
 c
-      Double precision 
+      Double precision
      &           pdnorm2 , pdlamch10
       external   pdnorm2 , pdlamch10
 c
@@ -307,7 +307,7 @@ c
 c     %-----------------------%
 c     | Executable Statements |
 c     %-----------------------%
-c 
+c
 c     %------------------------%
 c     | Set default parameters |
 c     %------------------------%
@@ -324,7 +324,7 @@ c
       if (nconv .eq. 0) go to 9000
       ierr = 0
 c
-      if (nconv .le. 0)                        ierr = -14 
+      if (nconv .le. 0)                        ierr = -14
       if (n .le. 0)                            ierr = -1
       if (nev .le. 0)                          ierr = -2
       if (ncv .le. nev)                        ierr = -3
@@ -336,12 +336,12 @@ c
       if (bmat .ne. 'I' .and. bmat .ne. 'G')   ierr = -6
       if ( (howmny .ne. 'A' .and.
      &           howmny .ne. 'P' .and.
-     &           howmny .ne. 'S') .and. rvec ) 
+     &           howmny .ne. 'S') .and. rvec )
      &                                         ierr = -15
       if (rvec .and. howmny .eq. 'S')           ierr = -16
 c
       if (rvec .and. lworkl .lt. ncv**2+8*ncv) ierr = -7
-c     
+c
       if (mode .eq. 1 .or. mode .eq. 2) then
          type = 'REGULR'
       else if (mode .eq. 3 ) then
@@ -350,7 +350,7 @@ c
          type = 'BUCKLE'
       else if (mode .eq. 5 ) then
          type = 'CAYLEY'
-      else 
+      else
                                                ierr = -10
       end if
       if (mode .eq. 1 .and. bmat .eq. 'G')     ierr = -11
@@ -364,7 +364,7 @@ c
          info = ierr
          go to 9000
       end if
-c     
+c
 c     %-------------------------------------------------------%
 c     | Pointer into WORKL for address of H, RITZ, BOUNDS, Q  |
 c     | etc... and the remaining workspace.                   |
@@ -439,7 +439,7 @@ c     %---------------------------------%
 c     | Set machine dependent constant. |
 c     %---------------------------------%
 c
-      eps23 = pdlamch10(comm, 'Epsilon-Machine') 
+      eps23 = pdlamch10(comm, 'Epsilon-Machine')
       eps23 = eps23**(2.0  / 3.0 )
 c
 c     %---------------------------------------%
@@ -487,7 +487,7 @@ c        %-------------------------------------%
 c
          np     = ncv - nev
          ishift = 0
-         call pdsgets (comm         , ishift, which     , 
+         call pdsgets (comm         , ishift, which     ,
      &                nev          , np    , workl(irz),
      &                workl(bounds), workl , workl(np+1))
 c
@@ -523,9 +523,9 @@ c        | caused by incorrect passing of the _saupd data.           |
 c        %-----------------------------------------------------------%
 c
          if (msglvl .gt. 2) then
-             call pivout(comm, logfil, 1, numcnv, ndigit,
+             call pivout(comm, logfil, 1, [numcnv], ndigit,
      &            '_neupd: Number of specified eigenvalues')
-             call pivout(comm, logfil, 1, nconv, ndigit,
+             call pivout(comm, logfil, 1, [nconv], ndigit,
      &            '_neupd: Number of "converged" eigenvalues')
          end if
 c
@@ -663,8 +663,8 @@ c
             call dcopy (ncv, workl(bounds), 1, workl(ihb), 1)
          end if
 c
-      else 
-c 
+      else
+c
 c        %-------------------------------------------------------------%
 c        | *  Make a copy of all the Ritz values.                      |
 c        | *  Transform the Ritz values back to the original system.   |
@@ -681,13 +681,13 @@ c        |  They are only reordered.                                   |
 c        %-------------------------------------------------------------%
 c
          call dcopy  (ncv, workl(ihd), 1, workl(iw), 1)
-         if (type .eq. 'SHIFTI') then 
+         if (type .eq. 'SHIFTI') then
             do 40 k=1, ncv
                workl(ihd+k-1) = one / workl(ihd+k-1) + sigma
   40        continue
          else if (type .eq. 'BUCKLE') then
             do 50 k=1, ncv
-               workl(ihd+k-1) = sigma * workl(ihd+k-1) / 
+               workl(ihd+k-1) = sigma * workl(ihd+k-1) /
      &                          (workl(ihd+k-1) - one)
   50        continue
          else if (type .eq. 'CAYLEY') then
@@ -696,7 +696,7 @@ c
      &                          (workl(ihd+k-1) - one)
   60        continue
          end if
-c 
+c
 c        %-------------------------------------------------------------%
 c        | *  Store the wanted NCONV lambda values into D.             |
 c        | *  Sort the NCONV wanted lambda in WORKL(IHD:IHD+NCONV-1)   |
@@ -722,8 +722,8 @@ c
             call dsortr ('LA', .true., nconv, d, workl(ihb))
          end if
 c
-      end if 
-c 
+      end if
+c
 c     %------------------------------------------------%
 c     | Compute the Ritz vectors. Transform the wanted |
 c     | eigenvectors of the symmetric tridiagonal H by |
@@ -731,25 +731,25 @@ c     | the Lanczos basis matrix V.                    |
 c     %------------------------------------------------%
 c
       if (rvec .and. howmny .eq. 'A') then
-c    
+c
 c        %----------------------------------------------------------%
 c        | Compute the QR factorization of the matrix representing  |
 c        | the wanted invariant subspace located in the first NCONV |
 c        | columns of workl(iq,ldq).                                |
 c        %----------------------------------------------------------%
-c     
+c
          call dgeqr2 (ncv, nconv        , workl(iq) ,
      &               ldq, workl(iw+ncv), workl(ihb),
      &               ierr)
-c     
+c
 c        %--------------------------------------------------------%
-c        | * Postmultiply V by Q.                                 |   
+c        | * Postmultiply V by Q.                                 |
 c        | * Copy the first NCONV columns of VQ into Z.           |
 c        | The N by NCONV matrix Z is now a matrix representation |
 c        | of the approximate invariant subspace associated with  |
 c        | the Ritz values in workl(ihd).                         |
 c        %--------------------------------------------------------%
-c     
+c
          call dorm2r ('Right'      , 'Notranspose', n        ,
      &                ncv          , nconv        , workl(iq),
      &                ldq          , workl(iw+ncv), v        ,
@@ -795,10 +795,10 @@ c        | *  Determine Ritz estimates of the lambda.      |
 c        %-------------------------------------------------%
 c
          call dscal  (ncv, bnorm2, workl(ihb), 1)
-         if (type .eq. 'SHIFTI') then 
+         if (type .eq. 'SHIFTI') then
 c
             do 80 k=1, ncv
-               workl(ihb+k-1) = abs( workl(ihb+k-1) ) 
+               workl(ihb+k-1) = abs( workl(ihb+k-1) )
      &                        / workl(iw+k-1)**2
  80         continue
 c
@@ -823,15 +823,15 @@ c
       if (type .ne. 'REGULR' .and. msglvl .gt. 1) then
          call pdvout  (comm, logfil, nconv, d, ndigit,
      &          '_seupd: Untransformed converged Ritz values')
-         call pdvout  (comm, logfil, nconv, workl(ihb), ndigit, 
+         call pdvout  (comm, logfil, nconv, workl(ihb), ndigit,
      &     '_seupd: Ritz estimates of the untransformed Ritz values')
       else if (msglvl .gt. 1) then
          call pdvout  (comm, logfil, nconv, d, ndigit,
      &          '_seupd: Converged Ritz values')
-         call pdvout  (comm, logfil, nconv, workl(ihb), ndigit, 
+         call pdvout  (comm, logfil, nconv, workl(ihb), ndigit,
      &     '_seupd: Associated Ritz estimates')
       end if
-c 
+c
 c     %-------------------------------------------------%
 c     | Ritz vector purification step. Formally perform |
 c     | one of inverse subspace iteration. Only used    |
@@ -841,7 +841,7 @@ c
       if (rvec .and. (type .eq. 'SHIFTI' .or. type .eq. 'CAYLEY')) then
 c
          do 110 k=0, nconv-1
-            workl(iw+k) = workl(iq+k*ldq+ncv-1) 
+            workl(iw+k) = workl(iq+k*ldq+ncv-1)
      &                  / workl(iw+k)
  110     continue
 c
@@ -852,7 +852,7 @@ c
      &                  / (workl(iw+k)-one)
  120     continue
 c
-      end if 
+      end if
 c
       if (type .ne. 'REGULR')
      &   call dger (n, nconv, one, resid, 1, workl(iw), 1, z, ldz)

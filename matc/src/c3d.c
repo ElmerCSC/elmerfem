@@ -3,7 +3,7 @@
  *  Elmer, A Finite Element Software for Multiphysical Problems
  *
  *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
- * 
+ *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
- * License along with this library (in file ../LGPL-2.1); if not, write 
- * to the Free Software Foundation, Inc., 51 Franklin Street, 
+ * License along with this library (in file ../LGPL-2.1); if not, write
+ * to the Free Software Foundation, Inc., 51 Franklin Street,
  * Fifth Floor, Boston, MA  02110-1301  USA
  *
  *****************************************************************************/
@@ -50,7 +50,7 @@
 |
 *  File: c3d
 ^
-|  USING THE C3D (preliminary) 
+|  USING THE C3D (preliminary)
 |
 |  Full usage will be included later!
 |
@@ -58,7 +58,7 @@
 
 
 /*
- * $Id: c3d.c,v 1.2 2005/05/27 12:26:14 vierinen Exp $ 
+ * $Id: c3d.c,v 1.2 2005/05/27 12:26:14 vierinen Exp $
  *
  * $Log: c3d.c,v $
  * Revision 1.2  2005/05/27 12:26:14  vierinen
@@ -70,7 +70,7 @@
  * Revision 1.2  1998/08/01 12:34:30  jpr
  *
  * Added Id, started Log.
- * 
+ *
  *
  */
 
@@ -86,11 +86,11 @@ struct node
 {
   int x, y, z, d;
 };
- 
+
 struct element
 {
   struct node *node[4];
-  int d, z; 
+  int d, z;
 };
 
 struct el_tree
@@ -100,7 +100,7 @@ struct el_tree
 };
 
 void C3D_Contour(double *, int, int);
-void C3D_Levels(int); 
+void C3D_Levels(int);
 
 void C3D_Show_Tri(int *, int *, int *d);
 void C3D_Show_Elem(struct element *el);
@@ -112,13 +112,13 @@ void C3D_Add_El_Tree(struct el_tree *head, struct el_tree *add);
 void C3D_Pcalc(int, int, int, int, int, int, int *, int *, int *,int  *);
 void C3D_AreaFill(int, int, int *, int *);
 
-VARIABLE *c3d_gc3d(var) VARIABLE *var;
+VARIABLE *c3d_gc3d(VARIABLE *var)
 {
   C3D_Contour(MATR(var), NROW(var), NCOL(var));
   return (VARIABLE *)NULL;
-}  
+}
 
-VARIABLE *c3d_gc3dlevels(var) VARIABLE *var;
+VARIABLE *c3d_gc3dlevels(VARIABLE *var)
 {
   C3D_Levels((int)*MATR(var));
   return (VARIABLE *)NULL;
@@ -157,8 +157,8 @@ void C3D_Contour(double *matrix, int nr, int nc)
 
   GMATRIX gm;
 
-  static GMATRIX ident = 
-         { 
+  static GMATRIX ident =
+         {
             1, 0, 0, 0,
             0, 1, 0, 0,
             0, 0, 1, 0,
@@ -173,12 +173,12 @@ void C3D_Contour(double *matrix, int nr, int nc)
   xmin = ymin = dmin =  1.0e20;
   xmax = ymax = dmax = -1.0e20;
 
-  for(i = 0, n = 0; i < nr; i++) 
+  for(i = 0, n = 0; i < nr; i++)
     for(j = 0; j < nc; j++, n++) {
       z = matrix[n]; dmin = min(dmin, z);  dmax = max(dmax, z);
     }
 
-  for(i = 0, n = 0; i < nr; i++) 
+  for(i = 0, n = 0; i < nr; i++)
     for(j = 0; j < nc; j++, n++)
     {
       x = 2 * (double)i / (double)nr - 1;
@@ -199,11 +199,11 @@ void C3D_Contour(double *matrix, int nr, int nc)
       ymax = max(ymax, ys);
     }
 
-  for(i = 0, n = 0; i < nr; i++) 
+  for(i = 0, n = 0; i < nr; i++)
     for(j = 0; j < nc; j++, n++)
     {
-      nodes[n].x = 4095 * (nodes[n].x-xmin) / (xmax-xmin); 
-      nodes[n].y = 4095 * (nodes[n].y-ymin) / (ymax-ymin); 
+      nodes[n].x = 4095 * (nodes[n].x-xmin) / (xmax-xmin);
+      nodes[n].y = 4095 * (nodes[n].y-ymin) / (ymax-ymin);
     }
 
   elements = (struct element *)
@@ -249,20 +249,20 @@ void C3D_Contour(double *matrix, int nr, int nc)
   FREEMEM(nodes);
 }
 
-void C3D_Levels(levels) int levels; 
+void C3D_Levels(int levels)
 /***********************************************************************
 |  Set the number of colorlevels to be used in coloring
 |  use 0 for singlecolor hidden surface plot
 !  Number of levels must be between 0 - 13
 ^**********************************************************************/
 {
-  if (levels >= 0) 
+  if (levels >= 0)
     c3d_clevels = levels;
   else
     error("C3D_Levels: level parameter negative, not changed.\n");
 }
 
-void C3D_Persp(tf) int tf; 
+void C3D_Persp(int tf)
 /***********************************************************************
 |  Use perspective or orthogonal transformation ?
 !  Number of levels must be between 0 - 13
@@ -271,7 +271,7 @@ void C3D_Persp(tf) int tf;
   c3d_perspective = tf;
 }
 
-void C3D_Add_El_Tree(head, add) struct el_tree *head, *add;
+void C3D_Add_El_Tree(struct el_tree *head, struct el_tree *add)
 /***********************************************************************
 |  Add a single element into the current leaf of the element tree
 |  Only internal use
@@ -280,7 +280,7 @@ void C3D_Add_El_Tree(head, add) struct el_tree *head, *add;
   if (add -> entry -> z > head -> entry -> z) {
     if (head -> left == NULL) {
       head -> left = add;
-    } 
+    }
     else {
       C3D_Add_El_Tree(head -> left, add);
     }
@@ -297,9 +297,9 @@ void C3D_Add_El_Tree(head, add) struct el_tree *head, *add;
     add -> left = head -> left;
     head -> left = add;
   }
-}   
+}
 
-void C3D_Show_El_Tree(head) struct el_tree *head;
+void C3D_Show_El_Tree(struct el_tree *head)
 /***********************************************************************
 |  Display the contents of the current leaf of the element tree
 |  Only internal use
@@ -311,7 +311,7 @@ void C3D_Show_El_Tree(head) struct el_tree *head;
   C3D_Show_El_Tree(head->right);
 }
 
-void C3D_Free_El_Tree(head) struct el_tree *head;
+void C3D_Free_El_Tree(struct el_tree *head)
 /***********************************************************************
 |  Free the memory allocated to the current leaf of the element tree
 |  Only internal use
@@ -323,7 +323,7 @@ void C3D_Free_El_Tree(head) struct el_tree *head;
   FREEMEM(head);
 }
 
-int C3D_Convex_Test(x, y) int x[], y[];
+int C3D_Convex_Test(int x[], int y[])
 /***********************************************************************
 |  Test four-node polygon
 |  Only internal use
@@ -338,19 +338,19 @@ int C3D_Convex_Test(x, y) int x[], y[];
 
    a1 = amax + at1;
 
-   if (at1 > amax) { 
-     amax = at1; aind = 1; 
+   if (at1 > amax) {
+     amax = at1; aind = 1;
    }
 
    at1 = abs(y[1]*(x[3]-x[2])+y[2]*(x[1]-x[3])+y[3]*(x[2]-x[1]));
 
-   if (at1 > amax) { 
+   if (at1 > amax) {
      amax = at1; aind = 0;
    }
- 
+
    at2 = abs(y[3]*(x[1]-x[0])+y[0]*(x[3]-x[1])+y[1]*(x[0]-x[3]));
 
-   if (at2 > amax) { 
+   if (at2 > amax) {
      aind = 2;
    }
 
@@ -361,7 +361,7 @@ int C3D_Convex_Test(x, y) int x[], y[];
    return aind;
 }
 
-void C3D_Show_Elem(el) struct element *el;
+void C3D_Show_Elem(struct element *el)
 /***********************************************************************
 |  Display a single element by coloring and transformation
 |  Only internal use
@@ -380,12 +380,12 @@ void C3D_Show_Elem(el) struct element *el;
     d[i] = el -> node[i] -> d;
   }
 
-  if ((d[0]>>C3D_MASK) == (d[1]>>C3D_MASK) && 
-      (d[0]>>C3D_MASK) == (d[2]>>C3D_MASK) && 
+  if ((d[0]>>C3D_MASK) == (d[1]>>C3D_MASK) &&
+      (d[0]>>C3D_MASK) == (d[2]>>C3D_MASK) &&
       (d[0]>>C3D_MASK) == (d[3]>>C3D_MASK))
   {
     C3D_SelCol(d[0]>>C3D_MASK);
-    C3D_AreaFill(4, TRUE, x, y); 
+    C3D_AreaFill(4, TRUE, x, y);
     return;
   }
 
@@ -437,18 +437,18 @@ void C3D_Show_Elem(el) struct element *el;
       col[0] = d[0]; col[1] = d[1]; col[2] = zp;
       C3D_Show_Tri(xi, yi, col);
 
-      xi[0]  = x[1]; xi[1]  = x[2]; 
-      yi[0]  = y[1]; yi[1]  = y[2]; 
+      xi[0]  = x[1]; xi[1]  = x[2];
+      yi[0]  = y[1]; yi[1]  = y[2];
       col[0] = d[1]; col[1] = d[2];
       C3D_Show_Tri(xi, yi, col);
- 
+
       xi[0]  = x[2]; xi[1]  = x[3];
-      yi[0]  = y[2]; yi[1]  = y[3]; 
+      yi[0]  = y[2]; yi[1]  = y[3];
       col[0] = d[2]; col[1] = d[3];
       C3D_Show_Tri(xi, yi, col);
-  
+
       xi[0]  = x[3]; xi[1]  = x[0];
-      yi[0]  = y[3]; yi[1]  = y[0]; 
+      yi[0]  = y[3]; yi[1]  = y[0];
       col[0] = d[3]; col[1] = d[0];
       C3D_Show_Tri(xi, yi, col);
       break;
@@ -460,10 +460,10 @@ void C3D_Show_Elem(el) struct element *el;
   p[3].x = (int)(x[3]+0.5); p[3].y = (int)(y[3]+0.5); p[3].z = 0.0;
   p[4].x = (int)(x[0]+0.5); p[4].y = (int)(y[0]+0.5); p[4].z = 0.0;
   GRA_COLOR(1);
-  GRA_POLYLINE(5, p); 
+  GRA_POLYLINE(5, p);
 }
 
-void C3D_Show_Tri(x, y, d) int x[3], y[3], d[3];
+void C3D_Show_Tri(int x[3], int y[3], int d[3])
 /***********************************************************************
 |  Only internal use
 ^**********************************************************************/
@@ -471,10 +471,10 @@ void C3D_Show_Tri(x, y, d) int x[3], y[3], d[3];
   int xx[128], yy[128], dd[128], px[7], py[7];
   int i, j, k, n = 0;
 
-  if ((d[0] >> C3D_MASK) == (d[1] >> C3D_MASK) && 
+  if ((d[0] >> C3D_MASK) == (d[1] >> C3D_MASK) &&
       (d[0] >> C3D_MASK) == (d[2] >> C3D_MASK))
   {
-    C3D_SelCol(d[0] >> C3D_MASK); 
+    C3D_SelCol(d[0] >> C3D_MASK);
     C3D_AreaFill(3, FALSE, x, y);
     return;
   }
@@ -486,7 +486,7 @@ void C3D_Show_Tri(x, y, d) int x[3], y[3], d[3];
   for(i = 0; i < 2; i++)
   {
     xx[n+i] = xx[i];
-    yy[n+i] = yy[i]; 
+    yy[n+i] = yy[i];
     dd[n+i] = dd[i];
   }
 
@@ -494,7 +494,7 @@ void C3D_Show_Tri(x, y, d) int x[3], y[3], d[3];
   {
     px[k] = xx[i];   py[k++] = yy[i];
     px[k] = xx[i+1]; py[k++] = yy[i+1];
- 
+
     if (dd[i] == dd[i+1]) {
       i++; px[k] = xx[i+1]; py[k++] = yy[i+1];
     }
@@ -516,13 +516,13 @@ void C3D_Show_Tri(x, y, d) int x[3], y[3], d[3];
     if (k > 2) {
       C3D_SelCol(dd[i]);
       C3D_AreaFill(k, FALSE, px, py);
-    }  
+    }
 
-  }  
+  }
 }
 
-void C3D_Pcalc(x0, y0, d0, x1, y1, d1, n, xx, yy, dd) 
-/**/ int x0, y0, d0, x1, y1, d1, *n, xx[], yy[], dd[];
+void C3D_Pcalc(int x0, int y0, int d0, int x1, int y1, int d1,
+    int *n, int xx[], int yy[], int dd[])
 /***********************************************************************
 |  Only internal use
 ^**********************************************************************/
@@ -578,7 +578,7 @@ void C3D_Pcalc(x0, y0, d0, x1, y1, d1, n, xx, yy, dd)
   }
 }
 
-void C3D_SelCol(col) int col;
+void C3D_SelCol(int col)
 /***********************************************************************
 |  Only internal use
 ^**********************************************************************/
@@ -586,7 +586,7 @@ void C3D_SelCol(col) int col;
   GRA_COLOR(++col);
 }
 
-void C3D_AreaFill(n, border, x, y) int x[], y[], n, border;
+void C3D_AreaFill(int n, int border, int x[], int y[])
 /***********************************************************************
 |  Only internal use
 ^**********************************************************************/

@@ -3,7 +3,7 @@
  *  Elmer, A Finite Element Software for Multiphysical Problems
  *
  *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
- * 
+ *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
- * License along with this library (in file ../LGPL-2.1); if not, write 
- * to the Free Software Foundation, Inc., 51 Franklin Street, 
+ * License along with this library (in file ../LGPL-2.1); if not, write
+ * to the Free Software Foundation, Inc., 51 Franklin Street,
  * Fifth Floor, Boston, MA  02110-1301  USA
  *
  *****************************************************************************/
@@ -66,7 +66,7 @@ $  usage of the function and type of the parameters
 
 
 /*
- * $Id: parser.c,v 1.5 2006/11/22 10:57:14 jpr Exp $ 
+ * $Id: parser.c,v 1.5 2006/11/22 10:57:14 jpr Exp $
  *
  * $Log: parser.c,v $
  * Revision 1.5  2006/11/22 10:57:14  jpr
@@ -84,7 +84,7 @@ $  usage of the function and type of the parameters
  * Revision 1.2  1998/08/01 12:34:54  jpr
  *
  * Added Id, started Log.
- * 
+ *
  *
  */
 
@@ -97,24 +97,24 @@ static char *str, csymbol[4096], buf[4096];
 int char_in_list(int ch, char *list)
 {
   char *p;
-  
+
   for(p = list; *p != '\0'; p++)
     if (*p == ch) return TRUE;
-  
+
   return FALSE;
 }
 
-void scan() 
+void scan(void)
 {
   char *p, ch;
   int i;
-  
+
   symbol = nullsym;
-  if ( *str == '\0' ) return; 
-  
+  if ( *str == '\0' ) return;
+
   while( isspace(*str) ) str++;
-  if (*str == '\0') return; 
-  
+  if (*str == '\0') return;
+
   p = str;
 
   if (isdigit(*str) || (*str == '.' && isdigit(*(str+1))))
@@ -123,14 +123,14 @@ void scan()
 
     if (*str == '.')
     {
-      str++; 
+      str++;
       if (isdigit(*str))
       {
-	while(isdigit(*str)) str++;
+        while(isdigit(*str)) str++;
       }
       else if ( *str != '\0' && *str != 'e' && *str != 'E' && *str != 'd' && *str != 'D'  )
       {
-	error("Badly formed number.\n");
+        error("Badly formed number.\n");
       }
     }
 
@@ -138,7 +138,7 @@ void scan()
 
     if (*str == 'e' || *str=='E' )
     {
-      str++; 
+      str++;
       if (isdigit(*str))
       {
         while(isdigit(*str)) str++;
@@ -159,10 +159,10 @@ void scan()
       {
         error("Badly formed number.\n");
       }
-    }  
+    }
     symbol = number;
   }
-  
+
   else if (isalpha(*str) || char_in_list(*str, symchars))
   {
     while(isalnum(*str) || char_in_list(*str, symchars)) str++;
@@ -177,7 +177,7 @@ void scan()
 
     *str = ch;
   }
-  
+
   else if (*str == '"')
   {
     str++;
@@ -192,12 +192,12 @@ void scan()
     }
     str++; symbol = string;
   }
-  
+
   else if (char_in_list(*str, csymbols))
-  {  
+  {
     for(i = 0; *str != csymbols[i]; i++);
     symbol = ssymbols[i];
-    
+
     str++;
 
     if (*str == '=')
@@ -218,14 +218,14 @@ void scan()
       default:
         error("Syntax error.\n");
       }
-    
+
     if (*str == '>')
       if (symbol == lt)
       {
         symbol = neq; str++;
       }
   }
-  
+
   else
   {
     error("Syntax error.\n");
@@ -240,17 +240,16 @@ void scan()
   return;
 }
 
-TREE *newtree()
+TREE *newtree(void)
 {
   return (TREE *)ALLOCMEM(sizeof(TREE));
 }
 
-TREE *args(minp, maxp)
-     int minp, maxp;
+TREE *args(int minp, int maxp)
 {
   TREE *treeptr, *root;
   int numgot = 0;
-  
+
   root = treeptr = equation();
   numgot++;
 
@@ -258,25 +257,25 @@ TREE *args(minp, maxp)
   {
     scan();
     NEXT(treeptr) = equation();
-    treeptr = NEXT(treeptr); 
+    treeptr = NEXT(treeptr);
     numgot++;
     if (numgot > maxp) error("Too many parameters.\n");
   }
-  
+
   if (numgot < minp) error("Too few parameters.\n");
-  
+
   return root;
 }
-      
 
-TREE *nameorvar()
+
+TREE *nameorvar(void)
 {
   TREE *root, *treeptr, *prevtree, *tp;
 
   SYMTYPE sym = nullsym;
 
   int i, slen;
- 
+
   char *tstr;
 
   root = treeptr = prevtree = newtree();
@@ -287,13 +286,13 @@ TREE *nameorvar()
     sym = minus; scan();
   }
 
-  if (symbol != name   && symbol != number  && 
+  if (symbol != name   && symbol != number  &&
       symbol != string && symbol != leftpar)
   {
     error("Expecting identifier, constant or leftpar.\n");
   }
 
-  while(symbol == name   || symbol == number  || 
+  while(symbol == name   || symbol == number  ||
         symbol == string || symbol == leftpar)
   {
 
@@ -317,7 +316,7 @@ TREE *nameorvar()
       tstr[strlen(tstr)-1] = '\0';
       slen = strlen(tstr);
       for(i = 0; i < strlen(tstr); i++)
-        if (tstr[i] == '\\') 
+        if (tstr[i] == '\\')
           switch(tstr[++i])
           {
             case 'n': break;
@@ -330,32 +329,32 @@ TREE *nameorvar()
           switch(*++tstr)
           {
             case 'n':
-              SDATA(treeptr)[i++] = '\r'; 
-              SDATA(treeptr)[i]   = '\n'; 
+              SDATA(treeptr)[i++] = '\r';
+              SDATA(treeptr)[i]   = '\n';
             break;
 
             case 't':
-              SDATA(treeptr)[i]   = '\t'; 
+              SDATA(treeptr)[i]   = '\t';
             break;
 
             case 'v':
-              SDATA(treeptr)[i]   = '\v'; 
+              SDATA(treeptr)[i]   = '\v';
             break;
 
             case 'b':
-              SDATA(treeptr)[i]   = '\b'; 
+              SDATA(treeptr)[i]   = '\b';
             break;
 
             case 'r':
-              SDATA(treeptr)[i]   = '\r'; 
+              SDATA(treeptr)[i]   = '\r';
             break;
 
             case 'f':
-              SDATA(treeptr)[i]   = '\f'; 
+              SDATA(treeptr)[i]   = '\f';
             break;
 
             case 'e':
-              SDATA(treeptr)[i]   = 27; 
+              SDATA(treeptr)[i]   = 27;
             break;
 
             default:
@@ -399,7 +398,7 @@ TREE *nameorvar()
       LEFT(tp) = treeptr;
       if (root == treeptr)
         root = treeptr = tp;
-      else 
+      else
         LINK(prevtree) = treeptr = tp;
     }
 
@@ -415,19 +414,19 @@ TREE *nameorvar()
       {
         break;
       }
-      else if (*str == '-') 
+      else if (*str == '-')
         error("Syntax error.\n");
 
       scan();
 
-      if (symbol != name   && symbol != number  && 
+      if (symbol != name   && symbol != number  &&
           symbol != string && symbol != leftpar)
       {
         error("Expecting identifier, constant or leftpar.\n");
       }
     }
 
-    if (symbol == name   || symbol == number || 
+    if (symbol == name   || symbol == number ||
         symbol == string || symbol == leftpar)
     {
       prevtree = treeptr; LINK(treeptr) = newtree(); treeptr = LINK(treeptr);
@@ -437,15 +436,14 @@ TREE *nameorvar()
   return root;
 }
 
-TREE *par_apply(root)
-	TREE *root;
-{ 
+TREE *par_apply(TREE *root)
+{
   TREE *newroot;
 
   newroot = newtree();
 
   switch(symbol)
-  { 
+  {
     case apply:
       VDATA(newroot) = opr_apply;
     break;
@@ -461,15 +459,14 @@ TREE *par_apply(root)
   if (symbol == apply || symbol == not)
     LEFT(newroot) = par_apply(newroot);
   else
-    LEFT(newroot) = nameorvar(); 
+    LEFT(newroot) = nameorvar();
 
   return newroot;
 }
 
 
-TREE *par_trans(root)
-	TREE *root;
-{ 
+TREE *par_trans(TREE *root)
+{
   TREE *newroot;
 
   while(symbol == transpose)
@@ -485,15 +482,14 @@ TREE *par_trans(root)
   return newroot;
 }
 
-TREE *par_pow(root)
-	TREE *root;
+TREE *par_pow(TREE *root)
 {
   TREE *newroot;
 
   while(symbol == power)
   {
     newroot = newtree();
-    LEFT(newroot) = root; 
+    LEFT(newroot) = root;
     VDATA(newroot) = opr_pow;
     ETYPE(newroot) = ETYPE_OPER;
     root = newroot;
@@ -515,8 +511,7 @@ TREE *par_pow(root)
   return newroot;
 }
 
-TREE *par_timesdivide(root)
-	TREE *root;
+TREE *par_timesdivide(TREE *root)
 {
   TREE *newroot;
 
@@ -539,7 +534,7 @@ TREE *par_timesdivide(root)
       break;
     }
     ETYPE(newroot) = ETYPE_OPER;
-    root = newroot;    
+    root = newroot;
 
     scan(); RIGHT(newroot) = nameorvar();
 
@@ -558,13 +553,12 @@ TREE *par_timesdivide(root)
       break;
     }
   }
-  
+
   return newroot;
 }
 
 
-TREE *par_plusminus(root)
-	TREE *root;
+TREE *par_plusminus(TREE *root)
 {
   TREE *newroot;
 
@@ -576,11 +570,11 @@ TREE *par_plusminus(root)
     switch(symbol)
     {
       case plus:
-        VDATA(newroot) = opr_add; 
+        VDATA(newroot) = opr_add;
       break;
 
       case minus:
-        VDATA(newroot) = opr_subs; 
+        VDATA(newroot) = opr_subs;
       break;
     }
     ETYPE(newroot) = ETYPE_OPER;
@@ -607,15 +601,14 @@ TREE *par_plusminus(root)
       break;
     }
   }
-  
+
   return newroot;
 }
 
-TREE *par_compare(root)
-	TREE *root;
+TREE *par_compare(TREE *root)
 {
   TREE *newroot;
-  
+
   while(symbol == eq  || symbol == neq || symbol == lt ||
         symbol == gt  || symbol ==  le || symbol == ge)
   {
@@ -625,27 +618,27 @@ TREE *par_compare(root)
     switch(symbol)
     {
       case eq:
-        VDATA(newroot) = opr_eq; 
+        VDATA(newroot) = opr_eq;
       break;
 
       case lt:
-        VDATA(newroot) = opr_lt; 
+        VDATA(newroot) = opr_lt;
       break;
 
       case gt:
-        VDATA(newroot) = opr_gt; 
+        VDATA(newroot) = opr_gt;
       break;
 
       case neq:
-        VDATA(newroot) = opr_neq; 
+        VDATA(newroot) = opr_neq;
       break;
 
       case le:
-        VDATA(newroot) = opr_le; 
+        VDATA(newroot) = opr_le;
       break;
 
       case ge:
-        VDATA(newroot) = opr_ge; 
+        VDATA(newroot) = opr_ge;
       break;
     }
     ETYPE(newroot) = ETYPE_OPER;
@@ -660,15 +653,15 @@ TREE *par_compare(root)
       break;
 
       case times: case ptimes: case divide:
-        RIGHT(newroot) = par_timesdivide(RIGHT(newroot)); 
+        RIGHT(newroot) = par_timesdivide(RIGHT(newroot));
       break;
 
       case power:
-        RIGHT(newroot) = par_pow(RIGHT(newroot)); 
+        RIGHT(newroot) = par_pow(RIGHT(newroot));
       break;
 
       case transpose:
-        RIGHT(newroot) = par_trans(RIGHT(newroot)); 
+        RIGHT(newroot) = par_trans(RIGHT(newroot));
       break;
 
       case apply: case not:
@@ -676,20 +669,19 @@ TREE *par_compare(root)
       break;
     }
   }
-  
+
   return newroot;
 }
 
-TREE *par_vector(root)
-	TREE *root;
+TREE *par_vector(TREE *root)
 {
   TREE *newroot;
-  
+
   while(symbol == vector)
   {
     newroot = newtree();
     LEFT(newroot) = root;
-    VDATA(newroot) = opr_vector; 
+    VDATA(newroot) = opr_vector;
     ETYPE(newroot) = ETYPE_OPER;
     root = newroot;
     scan();
@@ -698,7 +690,7 @@ TREE *par_vector(root)
     switch(symbol)
     {
       case eq: case neq: case lt: case gt: case le: case ge:
-        RIGHT(newroot) = par_compare(RIGHT(newroot)); 
+        RIGHT(newroot) = par_compare(RIGHT(newroot));
       break;
 
       case plus: case minus:
@@ -706,15 +698,15 @@ TREE *par_vector(root)
       break;
 
       case times: case ptimes: case divide:
-        RIGHT(newroot) = par_timesdivide(RIGHT(newroot)); 
+        RIGHT(newroot) = par_timesdivide(RIGHT(newroot));
       break;
 
       case power:
-        RIGHT(newroot) = par_pow(RIGHT(newroot)); 
+        RIGHT(newroot) = par_pow(RIGHT(newroot));
       break;
 
       case transpose:
-        RIGHT(newroot) = par_trans(RIGHT(newroot)); 
+        RIGHT(newroot) = par_trans(RIGHT(newroot));
       break;
 
       case apply: case not:
@@ -722,15 +714,14 @@ TREE *par_vector(root)
       break;
     }
   }
-  
+
   return newroot;
 }
 
-TREE *par_logical(root)
-	TREE *root;
+TREE *par_logical(TREE *root)
 {
   TREE *newroot;
-  
+
   while(symbol == and  || symbol == or)
   {
 
@@ -739,11 +730,11 @@ TREE *par_logical(root)
     switch(symbol)
     {
       case and:
-        VDATA(newroot) = opr_and; 
+        VDATA(newroot) = opr_and;
       break;
 
       case or:
-        VDATA(newroot) = opr_or; 
+        VDATA(newroot) = opr_or;
       break;
     }
     ETYPE(newroot) = ETYPE_OPER;
@@ -753,11 +744,11 @@ TREE *par_logical(root)
     switch(symbol)
     {
       case vector:
-        RIGHT(newroot) = par_vector(RIGHT(newroot)); 
+        RIGHT(newroot) = par_vector(RIGHT(newroot));
       break;
 
       case eq: case neq: case lt: case gt: case le: case ge:
-        RIGHT(newroot) = par_compare(RIGHT(newroot)); 
+        RIGHT(newroot) = par_compare(RIGHT(newroot));
       break;
 
       case plus: case minus:
@@ -765,15 +756,15 @@ TREE *par_logical(root)
       break;
 
       case times: case ptimes: case divide:
-        RIGHT(newroot) = par_timesdivide(RIGHT(newroot)); 
+        RIGHT(newroot) = par_timesdivide(RIGHT(newroot));
       break;
 
       case power:
-        RIGHT(newroot) = par_pow(RIGHT(newroot)); 
+        RIGHT(newroot) = par_pow(RIGHT(newroot));
       break;
 
       case transpose:
-        RIGHT(newroot) = par_trans(RIGHT(newroot)); 
+        RIGHT(newroot) = par_trans(RIGHT(newroot));
       break;
 
       case apply: case not:
@@ -781,12 +772,11 @@ TREE *par_logical(root)
       break;
     }
   }
-  
+
   return newroot;
 }
 
-TREE *par_reduction(root)
-	TREE *root;
+TREE *par_reduction(TREE *root)
 {
   TREE *newroot;
 
@@ -806,40 +796,39 @@ TREE *par_reduction(root)
       break;
 
       case vector:
-        RIGHT(newroot) = par_vector(RIGHT(newroot)); 
+        RIGHT(newroot) = par_vector(RIGHT(newroot));
       break;
 
       case eq: case neq: case lt: case gt: case le: case ge:
-        RIGHT(newroot) = par_compare(RIGHT(newroot)); 
+        RIGHT(newroot) = par_compare(RIGHT(newroot));
       break;
 
       case plus: case minus:
-        RIGHT(newroot) = par_plusminus(RIGHT(newroot)); 
+        RIGHT(newroot) = par_plusminus(RIGHT(newroot));
       break;
 
       case times: case ptimes: case divide:
-        RIGHT(newroot) = par_timesdivide(RIGHT(newroot)); 
+        RIGHT(newroot) = par_timesdivide(RIGHT(newroot));
       break;
 
       case power:
-        RIGHT(newroot) = par_pow(RIGHT(newroot)); 
+        RIGHT(newroot) = par_pow(RIGHT(newroot));
       break;
 
       case transpose:
-        RIGHT(newroot) = par_trans(RIGHT(newroot)); 
+        RIGHT(newroot) = par_trans(RIGHT(newroot));
       break;
 
       case apply: case not:
         RIGHT(newroot) = par_apply(RIGHT(newroot));
       break;
-    } 
+    }
   }
-  
+
   return newroot;
 }
 
-TREE *par_resize(root)
-	TREE *root;
+TREE *par_resize(TREE *root)
 {
   TREE *newroot;
 
@@ -863,38 +852,38 @@ TREE *par_resize(root)
       break;
 
       case vector:
-        LEFT(newroot) = par_vector(LEFT(newroot)); 
+        LEFT(newroot) = par_vector(LEFT(newroot));
       break;
 
       case eq: case neq: case lt: case gt: case le: case ge:
-        LEFT(newroot) = par_compare(LEFT(newroot)); 
+        LEFT(newroot) = par_compare(LEFT(newroot));
       break;
 
       case plus: case minus:
-        LEFT(newroot) = par_plusminus(LEFT(newroot)); 
+        LEFT(newroot) = par_plusminus(LEFT(newroot));
       break;
 
       case times: case ptimes: case divide:
-        LEFT(newroot) = par_timesdivide(LEFT(newroot)); 
+        LEFT(newroot) = par_timesdivide(LEFT(newroot));
       break;
 
       case power:
         LEFT(newroot) = par_pow(LEFT(newroot)); break;
 
       case transpose:
-        LEFT(newroot) = par_trans(LEFT(newroot)); 
+        LEFT(newroot) = par_trans(LEFT(newroot));
       break;
 
       case apply: case not:
         LEFT(newroot) = par_apply(LEFT(newroot));
       break;
-    } 
+    }
   }
-  
+
   return newroot;
 }
 
-TREE *equation()
+TREE *equation(void)
 {
   TREE *treeptr;
 
@@ -907,7 +896,7 @@ TREE *equation()
       treeptr = nameorvar();
     break;
   }
-  
+
   while(TRUE)
   {
     switch(symbol)
@@ -916,7 +905,7 @@ TREE *equation()
         treeptr = par_resize(treeptr);
       break;
 
-      case reduction: 
+      case reduction:
         treeptr = par_reduction(treeptr);
       break;
 
@@ -929,7 +918,7 @@ TREE *equation()
       break;
 
       case eq: case neq: case lt: case gt: case le: case ge:
-        treeptr = par_compare(treeptr); 
+        treeptr = par_compare(treeptr);
       break;
 
       case plus: case minus:
@@ -940,11 +929,11 @@ TREE *equation()
         treeptr = par_timesdivide(treeptr);
       break;
 
-      case power: 
+      case power:
         treeptr = par_pow(treeptr);
       break;
 
-      case transpose: 
+      case transpose:
         treeptr = par_trans(treeptr);
       break;
 
@@ -952,18 +941,18 @@ TREE *equation()
         treeptr = par_apply(treeptr);
       break;
 
-      default: 
+      default:
         return treeptr;
-    }    
+    }
   }
 }
- 
-CLAUSE *commentparse()
+
+CLAUSE *commentparse(void)
 {
   char *p = str;
 
   CLAUSE *root = NULL;
-   
+
   while( *str!='\n' && *str!='\0' ) str++;
   scan();
 
@@ -975,10 +964,10 @@ CLAUSE *scallparse()
   char *p = str;
 
   CLAUSE *root = NULL;
-   
+
   while( *str!='\n' && *str != ';' && *str!='\0' ) str++;
   if ( *str ) *str++ = '\0';
- 
+
   if ( *p )
   {
       root = (CLAUSE *)ALLOCMEM(sizeof(CLAUSE));
@@ -994,7 +983,7 @@ CLAUSE *scallparse()
   return root;
 }
 
-CLAUSE *statement()
+CLAUSE *statement(void)
 {
   char *csymbcopy, *p;
 
@@ -1002,7 +991,7 @@ CLAUSE *statement()
 
   if (symbol == name)
   {
-    p = str; 
+    p = str;
     csymbcopy = STRCOPY(csymbol);
 
     do
@@ -1018,7 +1007,7 @@ CLAUSE *statement()
     {
       symbol = name; root -> this = nameorvar(); scan();
     }
-    else 
+    else
       symbol = name;
   }
 
@@ -1030,7 +1019,7 @@ CLAUSE *statement()
   return root;
 }
 
-CLAUSE *blockparse()
+CLAUSE *blockparse(void)
 {
   CLAUSE *root, *ptr;
 
@@ -1071,14 +1060,14 @@ CLAUSE *blockparse()
       }
     }
   }
-         
+
   bendsym = symbol;
   scan();
 
   return root;
 }
 
-CLAUSE *funcparse()
+CLAUSE *funcparse(void)
 {
   CLAUSE *root, *ptr;
   SYMTYPE sym;
@@ -1112,7 +1101,7 @@ CLAUSE *funcparse()
           ch = *str;
           if ( *str ) *++str = '\0';
           *str = ch;
-          SDATA(help) = STRCOPY( p ); 
+          SDATA(help) = STRCOPY( p );
 
           p = str;
       }
@@ -1120,7 +1109,7 @@ CLAUSE *funcparse()
 
   while(symbol == import || symbol == export)
   {
-    if (symbol == import) 
+    if (symbol == import)
       lptr = LEFT(root->this);
     else
       lptr = RIGHT(root->this);
@@ -1130,8 +1119,8 @@ CLAUSE *funcparse()
     rptr = args(1,1000);
 
     if (lptr == NULL)
-    { 
-      if (sym == import) 
+    {
+      if (sym == import)
         LEFT(root->this) = rptr;
       else
         RIGHT(root->this) = rptr;
@@ -1161,7 +1150,7 @@ CLAUSE *funcparse()
   return root;
 }
 
-CLAUSE *ifparse()
+CLAUSE *ifparse(void)
 {
   CLAUSE *root, *ptr, *parse();
   int block = FALSE;
@@ -1173,7 +1162,7 @@ CLAUSE *ifparse()
   }
 
   root = ptr = (CLAUSE *)ALLOCMEM(sizeof(CLAUSE));
-  ptr->data = ifsym; 
+  ptr->data = ifsym;
 
   scan();
   ptr -> this = equation();
@@ -1192,7 +1181,7 @@ CLAUSE *ifparse()
     scan();
   }
 
-  if (symbol == beginsym) 
+  if (symbol == beginsym)
   {
     block = TRUE;
     LINK(ptr) = blockparse();
@@ -1207,13 +1196,13 @@ CLAUSE *ifparse()
 
   root->jmp = LINK(ptr) = (CLAUSE *)ALLOCMEM(sizeof(CLAUSE));
   ptr = LINK(ptr); ptr->data = endsym;
-  
-  if (symbol == elsesym || bendsym == elsesym)
-  { 
-    root -> jmp = LINK(ptr) = (CLAUSE *)ALLOCMEM(sizeof(CLAUSE));
-    ptr = LINK(ptr); ptr->data = elsesym; 
 
-    if (symbol == elsesym) scan();  
+  if (symbol == elsesym || bendsym == elsesym)
+  {
+    root -> jmp = LINK(ptr) = (CLAUSE *)ALLOCMEM(sizeof(CLAUSE));
+    ptr = LINK(ptr); ptr->data = elsesym;
+
+    if (symbol == elsesym) scan();
 
     if (symbol == nullsym)
     {
@@ -1241,7 +1230,7 @@ CLAUSE *ifparse()
   return root;
 }
 
-CLAUSE *whileparse()
+CLAUSE *whileparse(void)
 {
   CLAUSE *root, *ptr;
 
@@ -1253,7 +1242,7 @@ CLAUSE *whileparse()
   }
 
   root = ptr = (CLAUSE *)ALLOCMEM(sizeof(CLAUSE));
-  ptr->data = whilesym; 
+  ptr->data = whilesym;
 
   scan();
   ptr->this = equation();
@@ -1273,7 +1262,7 @@ CLAUSE *whileparse()
   if (symbol == beginsym)
   {
     LINK(ptr) = blockparse();
-    if (bendsym != endsym) 
+    if (bendsym != endsym)
       error("while: missing end.\n");
   }
   else
@@ -1290,7 +1279,7 @@ CLAUSE *whileparse()
   return root;
 }
 
-CLAUSE *forparse()
+CLAUSE *forparse(void)
 {
   CLAUSE *root, *ptr;
 
@@ -1302,7 +1291,7 @@ CLAUSE *forparse()
   }
 
   root = ptr = (CLAUSE *)ALLOCMEM(sizeof(CLAUSE));
-  ptr->data = forsym; 
+  ptr->data = forsym;
 
   scan();
   ptr -> this = nameorvar();
@@ -1329,7 +1318,7 @@ CLAUSE *forparse()
   if (symbol == beginsym)
   {
     LINK(ptr) = blockparse();
-    if (bendsym != endsym) 
+    if (bendsym != endsym)
       error("for: missing end.\n");
   }
   else
@@ -1346,7 +1335,7 @@ CLAUSE *forparse()
   return root;
 }
 
-CLAUSE *parse()
+CLAUSE *parse(void)
 {
   CLAUSE *ptr = (CLAUSE *)NULL;
 
@@ -1395,8 +1384,7 @@ CLAUSE *parse()
   return ptr;
 }
 
-void free_treeentry(root)
-   TREEENTRY *root;
+void free_treeentry(TREEENTRY *root)
 {
    if (root == NULL) return;
 
@@ -1409,8 +1397,7 @@ void free_treeentry(root)
         var_delete_temp(root->entrydata.c_data);
 }
 
-void free_tree(root)
-   TREE *root;
+void free_tree(TREE *root)
 {
    if (root == NULL) return;
 
@@ -1422,8 +1409,7 @@ void free_tree(root)
    FREEMEM((char *)root);
 }
 
-void free_clause(root)
-    CLAUSE *root;
+void free_clause(CLAUSE *root)
 {
     if (root == NULL) return;
 
@@ -1432,8 +1418,7 @@ void free_clause(root)
     FREEMEM((char *)root);
 }
 
-VARIABLE *doit(line)
-	char *line;
+VARIABLE *doit(char *line)
 {
   CLAUSE *ptr, *root;
   VARIABLE *res;

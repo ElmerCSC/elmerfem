@@ -32,6 +32,7 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 
   USE DefUtils
+  USE SaveUtils
   USE AscBinOutputUtils
   
   IMPLICIT NONE
@@ -271,7 +272,8 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
       IF( SaveGmsh ) THEN
         CALL Info( Caller,'Saving in gmsh 2.0 (.msh) format' )
         CALL ListAddInteger( Params,'Output Count',OutputCount(2))      
-        CALL GmshOutputSolver( Model,Solver,dt,TransientSimulation )
+        ! For other call uses this recides in SaveUtils.
+        CALL SaveGmshOutput( Model,Solver,dt,TransientSimulation )
       END IF
       IF( SaveVTK ) THEN
         CALL Info( Caller,'Saving in legacy VTK (.vtk) format' )

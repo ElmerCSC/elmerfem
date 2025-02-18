@@ -5,4 +5,4 @@ CONFIGURE_FILE( openhemisphere.sif openhemisphere.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO OpenHemisphere.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(Shell_OpenHemisphere_High_Order LABELS shell)
+ADD_ELMER_TEST(Shell_OpenHemisphere_High_Order LABELS shell slow)

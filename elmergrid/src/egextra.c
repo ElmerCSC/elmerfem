@@ -456,30 +456,6 @@ int SaveSubcellForm(struct FemType *data,struct CellType *cell,
 
 
 
-int ShowCorners(struct FemType *data,int variable,Real offset)
-{
-  int i,ind,unknowns;
-  Real *solution;
-
-  if(data->nocorners < 1) 
-    return(1);
-
-  unknowns = data->edofs[variable];
-  if(unknowns == 0) return(2);
-
-  solution = data->dofs[variable];
-
-  printf("Variable %s at free corners:\n",data->dofname[variable]);
-  for(i=1;i<=data->nocorners;i++) {
-    ind = data->topology[data->corners[2*i-1]][data->corners[2*i]];
-    if(data->order[variable][(ind-1)*unknowns+1])
-       printf("\t%-2d: %-7.1f  at (%.1f , %.1f )\n",
-	      i,solution[(ind-1)*unknowns+1]-offset,
-	      data->x[ind],data->y[ind]);
-  }
-  return(0);
-}
-
 
 int InspectElement(struct FemType *data,int idx)
 {
@@ -844,7 +820,111 @@ int SaveSizeInfo(struct FemType *data,struct BoundaryType *bound,
   return(0);
 }
 
+int MeshPieces(struct FemType *data,int nomesh,int nomeshes,int info)
+{
+  int i,j,k,n;
+  int MinIndex,MaxIndex,NoPieces,NoCorners,Loop,Ready;
+  int *MeshPiece=NULL,*PiecePerm=NULL;
+  // Indexes only needs to hold the max number of dofs per element
+  int Indexes[100];
 
+  if(nomeshes > 1) {
+    printf("Calculate Mesh Pieces in mesh[%d] of [%d] meshes:\n",nomesh,nomeshes);
+  } else {
+    printf("Calculate Mesh Pieces in mesh:\n");
+  }
+
+  n = data->noknots;
+  MeshPiece = Ivector(1,n);
+  for(i=1;i<=n;i++) MeshPiece[i] = 0;
+  
+  /*  Only set the piece for the nodes that are used by some element
+      For others the marker will remain zero. */
+  for(i=1; i<=data->noelements; i++) {
+    NoCorners = data->elementtypes[i]%100;
+    for(j=0; j<NoCorners; j++) {
+      MeshPiece[data->topology[i][j]] = 1;
+    }
+  }
+
+  j = 0;
+  for(i=1; i<=n; i++) {
+    if(MeshPiece[i] > 0) {
+      j++;
+      MeshPiece[i] = j;
+    }
+  }
+  if( n > j) {
+    printf("Number of non-body (hanging) nodes in mesh is %d\n", n-j );
+    printf("Consider running ElmerGrid with -autoclean command\n");
+  }
+
+  /* We go through the elements and set all the piece indexes to minimum index
+     until the mesh is unchanged. Thereafter the whole piece will have the minimum index
+     of the piece.  */
+  Ready = FALSE;
+  Loop = 0;
+
+  while(!Ready) {
+    Ready = TRUE;
+    for(i=1; i<=data->noelements; i++) {
+      MaxIndex = 0;
+      MinIndex = n;
+
+      NoCorners = data->elementtypes[i]%100;
+      for(j=0; j<NoCorners; j++) {
+        Indexes[j] = data->topology[i][j];
+      }
+      for(j=0; j<NoCorners; j++) {
+        for(k=0; k<NoCorners; k++) {
+          if(MaxIndex <  MeshPiece[Indexes[k]] )
+            MaxIndex = MeshPiece[Indexes[k]];
+          if(MinIndex >= MeshPiece[Indexes[k]] )
+            MinIndex = MeshPiece[Indexes[k]];
+        }
+        if(MaxIndex > MinIndex) {
+          MeshPiece[Indexes[j]] = MinIndex;
+          Ready = FALSE;
+        }
+      }
+    }
+    Loop++;
+  }
+/*  printf("Mesh coloring loops: %d\n",Loop); */
+
+  MaxIndex = 0;
+  for(i=1; i<=n; i++)
+    if(MeshPiece[i] > MaxIndex) MaxIndex = MeshPiece[i];
+
+  /*  Compute the true number of different pieces  */
+  if(MaxIndex == 1) {
+    NoPieces = 1;
+  } else {
+    NoPieces = 0;
+    PiecePerm = Ivector(1,MaxIndex);
+    for(i=1;i<=MaxIndex;i++) 
+      PiecePerm[i] = 0;    
+      
+    for(i=1; i<=n; i++) {
+      j = MeshPiece[i];
+      if( j == 0) continue;
+      if(PiecePerm[j] == 0) {
+        NoPieces++;
+        PiecePerm[j] = NoPieces;
+      }
+    }
+    free_Ivector(PiecePerm,1,MaxIndex);
+  }
+  if(NoPieces == 1) {
+    printf("There is a single piece in the mesh, so the mesh is conforming.\n");
+  } else {
+    printf("Number of separate pieces in mesh is %d\n", NoPieces);
+    printf("The mesh is non-conforming. If not expecting a non-conforming\n");
+    printf("mesh, then refer to the Elmer User Forum for help.\n");
+  }
+  free_Ivector(MeshPiece,1,n);
+  return(0);
+}
 
 int SaveElmerInputFemBem(struct FemType *data,struct BoundaryType *bound,
 			 char *prefix,int decimals,int info)
@@ -1090,172 +1170,6 @@ int SaveElmerInputFemBem(struct FemType *data,struct BoundaryType *bound,
 }
 
 
-int SolutionFromMeshToMesh(struct CellType *cell1, struct GridType *grid1, 
-			   struct FemType *data1,
-			   struct CellType *cell2, struct GridType *grid2, 
-			   struct FemType *data2,
-			   int mapgeo,int variable,int info)
-/* Copies variable values from data1 to data2 for two meshes that have similar
-   geometry, but different number of elements. Its assumed that all the 
-   elements are rectangular in shape. The subroutine may, however, be 
-   applied to nonrectangular geometries also, but then the accuracy is 
-   difficult to estimate. Note that this subroutine holds only for 
-   linear elements.
-   */
-{
-  int xcell,ycell,i1,j1,i2,j2,no1,no2;
-  int ind1[MAXNODESD2],ind2,k;
-  int nonodes1,nonodes2,unknowns;
-  int elem1,elem2,mapres,fast;
-  Real coord1[DIM*MAXNODESD2],x2,y2,rx,ry;
-  Real epsilon=1.0e-20;
-  Real *vector1=NULL,*vector2=NULL;
-  
-  if(!data1->edofs[variable] || !data2->edofs[variable])
-    return(1);
-
-  unknowns = data1->edofs[variable];
-  vector1 = data1->dofs[variable];
-  vector2 = data2->dofs[variable];
-
-  nonodes1 = grid1->nonodes;
-  nonodes2 = grid2->nonodes;
-
-  if(nonodes1 != 4 || nonodes2 != 4) {
-    if(info) printf("SolutionFromMeshToMesh: algorithm defined only for 4-node elements\n");
-    return(2);
-  }
-
-  if(mapgeo && data2->mapgeo < data1->mapgeo) 
-    data2->mapgeo = data1->mapgeo;
-  else 
-    mapgeo = FALSE;
-
-  if(data2->iterdofs[variable] < data1->iterdofs[variable]) {
-    mapres = TRUE;
-    data2->iterdofs[variable] = data1->iterdofs[variable];
-  }
-  else
-    mapres = FALSE;
-      
-  if(!mapres && !mapgeo) {
-    if(info) 
-      printf("SolutionFromMeshToMesh: no mapping for geometry or variable %s (%d vs. %d)!\n",
-	     data1->dofname[variable],data1->iterdofs[variable],data2->iterdofs[variable]);
-    return(0);
-  }
-
-  if(grid1->noknots == data1->noknots && grid2->noknots == data2->noknots) 
-    fast = TRUE;
-  else
-    fast = FALSE;
-
-  for(xcell=1;xcell<=MAXCELLS;xcell++)
-    for(ycell=1;ycell<=MAXCELLS;ycell++) 
-
-      /* Go through cells that are common to both grids. */
-      if( (no1= grid1->numbered[ycell][xcell]) && (no2= grid2->numbered[ycell][xcell]) ) {
-
-	if(0) printf("xcell=%d  ycell=%d  no1=%d  no=%d\n",xcell,ycell,no1,no2); 
-
-        j1 = 1;
-        for(j2=0; j2 <= cell2[no2].yelem; j2++) {
-	  i1 = 1;
-          for(i2=0; i2 <= cell2[no2].xelem; i2++) {
-	    
-	    /* ind2 is the original node number for the node */
-	    ind2 = GetKnotCoordinate(&(cell2)[no2],i2,j2,&x2,&y2);
-	    GetElementCoordinates(&(cell1)[no1],i1,j1,coord1,ind1);
-
-	    /* Find j1 and i1 in the rectangular mesh so that 
-	       the node ind2 lies in the element */
-	    if(coord1[TOPRIGHT+nonodes1]+epsilon < y2 && j1 < cell1[no1].yelem)
-	      do {
-	        j1++;
-	        GetElementCoordinates(&(cell1)[no1],i1,j1,coord1,ind1);
-	      } while(j1 < cell1[no1].yelem  &&  coord1[TOPRIGHT+nonodes1] < y2);
-	    
- 	    if(coord1[TOPRIGHT]+epsilon < x2 && i1 < cell1[no1].xelem)
-	      do {
-	        i1++;
-	        GetElementCoordinates(&(cell1)[no1],i1,j1,coord1,ind1);
-	      } while(i1 < cell1[no1].xelem  &&  coord1[TOPRIGHT] < x2);
-	    
-	    if(0) printf("j2=%d  i2=%d  j1=%d  i1=%d\n",j2,i2,j1,i1);
-
-	    rx = (coord1[BOTRIGHT]-x2) 
-	      / (coord1[BOTRIGHT]-coord1[BOTLEFT]);
-
-	    ry = (coord1[TOPLEFT+nonodes1]-y2) 
-	      / (coord1[TOPLEFT+nonodes1]-coord1[BOTLEFT+nonodes1]);
-
-	    rx = MIN(rx,1.0);
-	    rx = MAX(rx,0.0);
-	    ry = MIN(ry,1.0);
-	    ry = MAX(ry,0.0);
-
-	    /* Find the new indices. If there are no discontinuous 
-	       boundaries they are the same as the old ones. */
-	    if(!fast) {
-	      elem1=GetElementIndex(&(cell1)[no1],i1,j1);
-	      for(k=0;k<4;k++)
-		ind1[k] = data1->topology[elem1][k];
-
-	      if(0) printf("elem1=%d  ind1=[%d %d %d %d]\n",elem1,ind1[0],ind1[1],ind1[2],ind1[3]);
-	      
-	      if(i2>0 && j2>0) {
-		elem2 = GetElementIndex(&(cell2)[no2],i2,j2);
-		ind2 = data2->topology[elem2][TOPRIGHT];
-	      }
-	      else if(i2==0 && j2>0) {
-		elem2 = GetElementIndex(&(cell2)[no2],i2+1,j2);
-		ind2 = data2->topology[elem2][TOPLEFT];
-	      }
-	      else if(i2>0 && j2==0) {
-		elem2 = GetElementIndex(&(cell2)[no2],i2,j2+1);
-		ind2 = data2->topology[elem2][BOTRIGHT];
-	      }
-	      else {
-		elem2 = GetElementIndex(&(cell2)[no2],i2+1,j2+1);
-		ind2 = data2->topology[elem2][BOTLEFT];
-	      }
-	    }
-
-	    if(mapgeo) {
-	      data2->x[ind2] 
-		= data1->x[ind1[BOTLEFT]] * rx * ry
-		+ data1->x[ind1[BOTRIGHT]] * (1.-rx) * ry
-		+ data1->x[ind1[TOPLEFT]] * rx * (1.-ry)
-		+ data1->x[ind1[TOPRIGHT]] * (1.-rx) * (1.-ry);
-	      data2->y[ind2] 
-		= data1->y[ind1[BOTLEFT]] * rx * ry
-		+ data1->y[ind1[BOTRIGHT]] * (1.-rx) * ry
-		+ data1->y[ind1[TOPLEFT]] * rx * (1.-ry)
-		+ data1->y[ind1[TOPRIGHT]] * (1.-rx) * (1.-ry);
-	    }
-	    
-	    if(mapres) 
-	      for(k=1;k<=unknowns;k++) {
-		vector2[unknowns*(ind2-1)+k] 
-		  = vector1[unknowns*(ind1[BOTLEFT]-1)+k] * rx * ry
-		  + vector1[unknowns*(ind1[BOTRIGHT]-1)+k]* (1.-rx) * ry
-		  + vector1[unknowns*(ind1[TOPLEFT]-1)+k] * rx * (1.-ry)
-		  + vector1[unknowns*(ind1[TOPRIGHT]-1)+k]* (1.-rx) * (1.-ry);
-	      }
-	  }
-        }
-      }
-  
-  if(info) {
-    if(mapgeo) 
-      printf("Geometry was mapped from one mesh to another!\n");
-    if(mapres) 
-      printf("Results of %s was mapped from one mesh to another!\n",
-	     data1->dofname[variable]);
-  }  
-
-  return(0);
-}
 
 void InspectVector(Real *vector,int first,int last,Real *min,
 		    Real *max,int *mini,int *maxi)

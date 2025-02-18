@@ -4,7 +4,7 @@
 ! the box to shrink in size. As an effect there is a counterforce due to ideal
 ! gas acting as a spring to the other direction.
 !
-! The harmonic gas is presented by the Helmholtz eequation.
+! The harmonic gas is presented by the Helmholtz equation.
 ! For the elasticity equation the stress solver is used in a harmonic mode.
 ! Still the system of equations is solved as a real system, for now.
 !

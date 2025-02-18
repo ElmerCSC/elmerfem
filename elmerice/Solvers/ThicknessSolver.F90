@@ -193,24 +193,24 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
           'Using residual squared-stabilized formulation.',Level=6 )
   END IF
 
-!  Sub - element melting
-  Material => GetMaterial()
-  MeltParam = ListGetString(Material, 'SSA Melt Param',Found, UnFoundFatal=.FALSE.)
-  IF (Found) THEN
-     SEM = .TRUE.
-  ELSE
-     SEM = .FALSE.
-  END IF
+!  Sub - element melting (THIS DOESN'T WORK BECAUSE NO ELEMENT IS SET UP TO THIS TIME)
+!  Material => GetMaterial()
+!  MeltParam = ListGetString(Material, 'SSA Melt Param',Found, UnFoundFatal=.FALSE.)
+!  IF (Found) THEN
+!     SEM = .TRUE.
+!  ELSE
+!     SEM = .FALSE.
+!  END IF
 
   !SEM=GetLogical( Solver % Values, 'Sub-Element GL melting',Found)
   !IF (.NOT.Found) SEM=.False.
 
-  IF (SEM) THEN
-     GLnIP=ListGetInteger( Solver % Values, &
-         'GL integration points number',UnFoundFatal=.TRUE. )
-     WRITE(Message,'(A,I0)') 'Using SEM with num IPs: ', GLnIP
-     CALL Info( SolverName, Message, Level=6 )
-  END IF
+ ! IF (SEM) THEN
+  GLnIP=ListGetInteger( Solver % Values, &
+       'GL integration points number',SEM )
+  WRITE(Message,'(A,I0)') 'Using SEM with num IPs: ', GLnIP
+  CALL Info( SolverName, Message, Level=6 )
+  !END IF
 
   WRITE(Message,'(A,I0)') 'Mesh dimension: ', DIM
   CALL Info( SolverName, Message, Level=6 )
@@ -364,7 +364,8 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
         Passive=CheckPassiveElement(CurrentElement)
         n = GetElementNOFNodes()
         NodeIndexes => CurrentElement % NodeIndexes
-
+        
+        
         ! set coords of highest occurring dimension to zero (to get correct path element)
         !-------------------------------------------------------------------------------
         ElementNodes % x(1:n) = Solver % Mesh % Nodes % x(NodeIndexes)
@@ -382,6 +383,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
            STOP   
         END IF
 
+        
 
         ! get pointers on Equation, Material and body-Force section input
         !----------------------------------------------------------------
@@ -389,7 +391,13 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
         Material => GetMaterial()
         BodyForce => GetBodyForce()
 
-
+        IF (SEM) THEN
+          MeltParam = ListGetString(Material, 'SSA Melt Param',Found, UnFoundFatal=.FALSE.)
+          IF (.NOT.Found) THEN
+            SEM = .FALSE.
+          END IF
+        END IF
+          
         ! get lower limit for solution 
         !-----------------------------
         LowerLimit(CurrentElement % Nodeindexes(1:N)) = &
@@ -706,10 +714,15 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
        INTEGER       :: i,j,t,p,q, n,FIPcount
        REAL(KIND=dp) :: smbE, bmbE, area, MinH
        REAL(KIND=dp) :: smbAtIP, bmbAtIP, GMatIP, rho, rhow, hh, sealevel,FFI
+       TYPE(ValueList_t), POINTER  :: Constants
+       CHARACTER(LEN=MAX_NAME_LEN) :: MaskName
        !------------------------------------------------------------------------------
        
        IF (SEM) THEN
-          GMSol => VariableGet( CurrentModel % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
+          Constants => GetConstants()
+          MaskName = ListGetString(Constants,'Grounded Mask Variable Name',UnFoundFatal=.FALSE.,DefValue='GroundedMask')
+          GMSol => VariableGet( CurrentModel % Variables,MaskName,UnFoundFatal=.TRUE. )
+!          GMSol => VariableGet( CurrentModel % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
           CALL GetLocalSolution( NodalGM,UElement=Element,UVariable=GMSol)
           PartlyGroundedElement=(ANY(NodalGM(1:nCoord).GE.0._dp).AND.ANY(NodalGM(1:nCoord).LT.0._dp))
           IF (PartlyGroundedElement) THEN
@@ -791,7 +804,8 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
        !      Numerical integration:
        !      ----------------------
        IF (SEM) THEN
-         GMSol => VariableGet( CurrentModel % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
+         GMSol => VariableGet( CurrentModel % Variables,MaskName,UnFoundFatal=.TRUE. )
+!         GMSol => VariableGet( CurrentModel % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
          CALL GetLocalSolution( NodalGM,UElement=Element,UVariable=GMSol)
          CALL GetLocalSolution( NodalThick,UElement=Element,UVariable=Solver % Variable)
          PartlyGroundedElement=(ANY(NodalGM(1:nCoord).GE.0._dp).AND.ANY(NodalGM(1:nCoord).LT.0._dp))

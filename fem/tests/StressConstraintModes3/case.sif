@@ -20,7 +20,6 @@ End
 Simulation
   Max Output Level = 5
   Coordinate System = "Cartesian"
-  Coordinate Mapping(3) = 1 2 3
   Simulation Type = "Steady State"
   Steady State Max Iterations = 1
   Output Intervals = 1
@@ -47,7 +46,6 @@ Solver 1
   Variable = "Displacement"
   Variable Dofs = 3
 
-
   Constraint Modes Analysis = Logical True
   Constraint Modes Mass Lumping = Logical True
 
@@ -55,15 +53,15 @@ Solver 1
   Eigen System Values = 12
   Eigen System Convergence Tolerance = Real 1.0e-6
   Eigen System Normalize To Unity = Logical True
+  Eigen System Max Iterations = 50
 
   Linear System Solver = string "Iterative"
   Linear System Convergence Tolerance = real 1e-8
   Linear System Iterative Method = BiCGStabl
   BiCGStabl Polynomial Degree = 4
-  Linear System Residual Output = integer 1
-  Linear System Max Iterations = integer 2000
+  Linear System Max Iterations = 2000
   Linear System Preconditioning = BILU1
-  Linear System Residual Output = 50
+  Linear System Residual Output = 0
 
 !  Linear System Scaling = Logical True
 !  Linear System Symmetric = Logical True
@@ -90,6 +88,15 @@ Solver 2
 End
 
 Solver 3
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+ 
+  Filename = f.dat
+  Save Eigenvalues = Logical True
+  Show Norm Index = 1
+End
+
+Solver 4
   Equation = "CB"
   Procedure = "CraigBamptonSolver" "CraigBamptonSolver"
   Elasticity Solver Name = String "Stress Analysis"
@@ -123,4 +130,5 @@ Boundary Condition 3
 End 
 
 Solver 1 :: Reference Norm = 2.18487357E-02
-Solver 3 :: Reference Norm = 9.07012850E+09
+Solver 3 :: Reference Norm = 3336422.8
+Solver 4 :: Reference Norm = 9.07012850E+09

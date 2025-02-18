@@ -1,0 +1,151 @@
+!#####################################################################
+!####################################################################
+!# Test BackgroundErrorCostSolver
+!###################################################################
+!# Covariance parameters
+!###################################################################
+$std=1.0
+$range=0.1
+$nu=1
+
+!#####################################################################
+!# 
+!####################################################################
+Header :: Mesh DB "." "rectangle"
+
+!#####################################################################
+!# 
+!####################################################################
+Simulation
+  Max Output Level = 3
+  Coordinate System = Cartesian
+  Simulation Type = Steady
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+
+  !Post File   = "case.vtu"
+End
+
+!#####################################################################
+!# 
+!####################################################################
+Body 1
+  Equation = 1
+  Initial Condition = 1
+End
+
+!#####################################################################
+!# 
+!####################################################################
+Initial Condition 1
+  x = Variable Coordinate 1, Coordinate 2
+    REAL MATC "sin(2*pi*tx[0])*sin(2*pi*tx[1])"
+  xb = Real 0.0
+End
+
+!#################################################################
+!# Equations
+!#################################################################
+Equation 1 :: Active Solvers(3) = 1 2 3
+
+!#################################################################
+!# Full-Matrix Matern correlation nu=Integer
+!#################################################################
+Solver 1
+  Equation = String "CostReg1"
+  procedure = "ElmerIceSolvers" "BackgroundErrorCostSolver"
+  Variable = -nooutput "dumy"
+
+  Variable Name = String "x"
+  Gradient Variable Name = String "dJdx"
+  Background Variable Name = String "xb"
+  Cost Variable Name = String "CostValue"
+
+  !# True if cost function and gradient must be initialised to 0 in this solve
+  Reset Cost Value = Logical True
+
+  Cost Filename = File "Cost1.dat"
+
+
+  Covariance type = String "full matrix"
+  correlation type = String "MaternI"
+  MaternI order = Integer $nu
+
+  correlation range = Real $range
+  standard deviation = Real $std
+
+  Exported Variable 1 = "x"
+  Exported Variable 2 = "dJdx"
+  Exported Variable 3 = "xb"
+  Exported Variable 4 = -global "CostValue"
+
+End
+
+!#################################################################
+!#  diffusion operator
+!#################################################################
+Solver 2
+   Equation = String "CostReg2"
+  procedure = "ElmerIceSolvers2" "BackgroundErrorCostSolver"
+  Variable = -nooutput "dumy"
+
+  Variable Name = String "x"
+  Gradient Variable Name = String "dJdx"
+  Background Variable Name = String "xb"
+  Cost Variable Name = String "CostValue"
+
+  !# True if cost function and gradient must be initialised to 0 in this solve
+  Reset Cost Value = Logical True
+
+  Cost Filename = File "Cost2.dat"
+
+
+  Covariance type = String "diffusion operator"
+
+  Matern exponent m = Integer $nu+1
+  correlation range = Real $range
+  standard deviation = Real $std
+
+
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+
+  Linear System Refactorize = Logical False
+  Linear System Symmetric = Logical True
+  Linear System Positive Definite = Logical True
+
+End
+
+Solver 3
+  Equation = SaveScalars
+  Procedure =  "SaveData" "SaveScalars"
+
+  Show Norm Index = Integer 1
+  Variable 1 = String "dJdx"
+  Operator 1 = rms
+End
+
+!####################################################################
+!# Boundary condition
+!####################################################################
+Boundary Condition 1
+  Target Boundaries(4) = 1 2 3 4
+End
+
+Solver 3 :: Reference Norm = Real 0.15364309
+Solver 3 :: Reference Norm Tolerance = Real 1E-06
+
+Solver 1 :: Exec Solver = always
+Solver 2 :: Exec Solver = never
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.15364309,EPS:1E-06\n" );
+
+Solver 3 :: Reference Norm = Real 2.14108182E-01
+Solver 3 :: Reference Norm Tolerance = Real 1E-06
+
+Solver 1 :: Exec Solver = never
+Solver 2 :: Exec Solver = always
+$fprintf( stderr, "TEST CASE 2\n");
+RUN
+$fprintf( stderr, "END TEST CASE 2: Target NRM=2.14108182E-01,EPS:1E-06\n" );

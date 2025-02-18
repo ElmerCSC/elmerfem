@@ -458,15 +458,19 @@ CONTAINS
     DO i=1,Mesh % NumberOfBulkElements
        DO j=1,SIZE(Mesh % Elements(i) % NodeIndexes)
           IF(RemoveNode(Mesh % Elements(i) % NodeIndexes(j))) THEN
-            IF(PRESENT(OnLeft) .AND. OnLeft(Mesh % Elements(i) % NodeIndexes(j))) THEN
-              OnLeft(Mesh % Elements(i) % NodeIndexes(j)) = .FALSE.
-              OnLeft(ReplaceWithNode(Mesh % Elements(i) % NodeIndexes(j))) = .TRUE.
+            IF(PRESENT(OnLeft)) THEN
+              IF(OnLeft(Mesh % Elements(i) % NodeIndexes(j))) THEN
+                OnLeft(Mesh % Elements(i) % NodeIndexes(j)) = .FALSE.
+                OnLeft(ReplaceWithNode(Mesh % Elements(i) % NodeIndexes(j))) = .TRUE.
+              END IF
             END IF
-            IF(PRESENT(OnRight) .AND. OnRight(Mesh % Elements(i) % NodeIndexes(j))) THEN
-              PRINT*, 'replace', Mesh % Elements(i) % NodeIndexes(j),&
-              ReplaceWithNode(Mesh % Elements(i) % NodeIndexes(j))
-              OnRight(Mesh % Elements(i) % NodeIndexes(j)) = .FALSE.
-              OnRight(ReplaceWithNode(Mesh % Elements(i) % NodeIndexes(j))) = .TRUE.
+            IF(PRESENT(OnRight)) THEN
+              IF(OnRight(Mesh % Elements(i) % NodeIndexes(j))) THEN
+                PRINT*, 'replace', Mesh % Elements(i) % NodeIndexes(j),&
+                ReplaceWithNode(Mesh % Elements(i) % NodeIndexes(j))
+                OnRight(Mesh % Elements(i) % NodeIndexes(j)) = .FALSE.
+                OnRight(ReplaceWithNode(Mesh % Elements(i) % NodeIndexes(j))) = .TRUE.
+              END IF
             END IF
             Mesh % Elements(i) % NodeIndexes(j) = &
             ReplaceWithNode(Mesh % Elements(i) % NodeIndexes(j))
@@ -1451,15 +1455,15 @@ CONTAINS
     windingnumber=100
     DO i=1, n-1
       ! polygon y i <= point y
-      IF(ZPolygon(2,i) <= ZPoint(2)) THEN !start with y<=P.y
-        IF(ZPolygon(2, i+1) > ZPoint(2)) THEN !upward crossing
+      IF(ZPolygon(2,i) <= ZPoint(2) + buf) THEN !start with y<=P.y
+        IF(ZPolygon(2, i+1) > ZPoint(2) - buf) THEN !upward crossing
           left=IsLeft(ZPolygon(:, i), ZPolygon(:, i+1), ZPoint(:))
           IF(left > buf) THEN !p is to left of intersect
             windingnumber=windingnumber+1 !valid up intersect
           END IF
         END IF
       ELSE    !start at y> point y
-        IF(ZPolygon(2, i+1) <= ZPoint(2)) THEN ! downward crossing
+        IF(ZPolygon(2, i+1) <= ZPoint(2) + buf) THEN ! downward crossing
           Left = IsLeft(ZPolygon(:, i), ZPolygon(:, i+1), ZPoint(:))
           IF(left < buf) THEN ! p right of edge
             windingnumber=windingnumber-1
@@ -1499,41 +1503,62 @@ CONTAINS
   ! Constructs groups of nodes which fall below a given threshold for some variable
   ! Used with the result of ProjectCalving, it groups nodes which have crevasse 
   ! penetration beyond the threshold.
+  !
+  ! Added August 2024 (RupertGladstone1972@gmail.com):
+  ! Default is that valid mask values are only below the given threshold (e.g. shelf
+  ! only).  New logical optional argument AboveThreshold_Optional allows this to be
+  ! reversed such that valid mask values are above the threshold (e.g. grounded) 
   !-----------------------------------------------------------------------------
-  SUBROUTINE FindCrevasseGroups(Mesh, Variable, Neighbours, Threshold, Groups)
+  SUBROUTINE FindCrevasseGroups(Mesh, Variable, Neighbours, Threshold, Groups, AboveThreshold_Optional)
     IMPLICIT NONE
 
-    TYPE(Mesh_t), POINTER :: Mesh
-    TYPE(Variable_t), POINTER :: Variable
-    INTEGER, POINTER :: Neighbours(:,:)
-    TYPE(CrevasseGroup3D_t), POINTER :: Groups, CurrentGroup
-    REAL(KIND=dp) :: Threshold
+    TYPE(Mesh_t), POINTER            :: Mesh
+    TYPE(Variable_t), POINTER        :: Variable
+    INTEGER, POINTER                 :: Neighbours(:,:)
+    TYPE(CrevasseGroup3D_t), POINTER :: Groups
+    REAL(KIND=dp), INTENT(IN)        :: Threshold
+    LOGICAL, INTENT(IN),OPTIONAL     :: AboveThreshold_Optional
     !---------------------------------------
+    TYPE(CrevasseGroup3D_t), POINTER :: CurrentGroup
     INTEGER :: i, ID
     REAL(KIND=dp), POINTER :: Values(:)
     INTEGER, POINTER :: VPerm(:)
     INTEGER, ALLOCATABLE :: WorkInt(:)
     LOGICAL, ALLOCATABLE :: Condition(:)
-    LOGICAL :: First, Debug
+    LOGICAL :: First, Debug, AboveThreshold
     
     Debug = .FALSE.
 
+    IF (PRESENT(AboveThreshold_Optional)) THEN
+       AboveThreshold = AboveThreshold_Optional
+    ELSE
+       AboveThreshold = .FALSE.
+    END IF
+    
     Values => Variable % Values
     VPerm => Variable % Perm
 
     ALLOCATE(Condition(Mesh % NumberOfNodes))
     DO i=1, Mesh % NumberOfNodes
-
        IF(VPerm(i) <= 0) THEN
           Condition(i) = .FALSE.
-       ELSE IF(Values(VPerm(i)) < Threshold) THEN
-          Condition(i) = .TRUE.
        ELSE
-          Condition(i) = .FALSE.
+          IF (AboveThreshold) THEN
+             IF (Values(VPerm(i)) .GT. Threshold) THEN
+                Condition(i) = .TRUE.
+             ELSE
+                Condition(i) = .FALSE.
+             END IF
+          ELSE
+             IF (Values(VPerm(i)) .LT. Threshold) THEN
+                Condition(i) = .TRUE.
+             ELSE
+                Condition(i) = .FALSE.
+             END IF
+          END IF
        END IF
-
     END DO
-
+    
     First = .TRUE.
     ID = 1
     DO i=1,Mesh % NumberOfNodes
@@ -2407,7 +2432,15 @@ CONTAINS
        ! Gather node coords from all partitions
        ! Note, they're going into 'UnorderedNodes': though they are ordered
        ! within their partition, the partitions aren't ordered...
+       ! For some reason, need to allocate coord lists in non-boss PEs
        !-----------------------------------------------------------
+
+       IF(.NOT. Boss) THEN
+         ALLOCATE(UnorderedNodes % x(1), UnorderedNodes % y(1), UnorderedNodes % z(1))
+         UnorderedNodes % x(1) = 0
+         UnorderedNodes % y(1) = 0
+         UnorderedNodes % z(1) = 0
+       END IF
 
        !Global Node Numbers
        CALL MPI_GATHERV(Mesh % ParallelInfo % GlobalDOFs(OrderedNodeNums),&
@@ -2830,7 +2863,7 @@ CONTAINS
 
     !------------ DEALLOCATIONS ------------------
 
-    DEALLOCATE(OnEdge, UnorderedNodeNums, GlobalCorners, CornerParts, PCornerCounts)
+    DEALLOCATE(OnEdge, UnorderedNodeNums, GlobalCorners, CornerParts, PCornerCounts, OrderedNodeNums)
 
     IF(Boss .AND. Parallel) THEN !Deallocations
        DEALLOCATE(UnorderedNodes % x, &
@@ -2842,6 +2875,8 @@ CONTAINS
             UOGlobalNodeNums, &
             OrderedGlobalNodeNums)
     END IF
+
+    IF(.NOT. Boss) DEALLOCATE(UnorderedNodes % x, UnorderedNodes % y, UnorderedNodes % z)
 
   END SUBROUTINE GetDomainEdge
 
@@ -3489,14 +3524,15 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: WorkMatrix=>NULL()
     LOGICAL :: Found, Global, GlobalBubbles, Debug, DoPrevValues, &
          NoMatrix, DoOptimizeBandwidth, PrimaryVar, HasValuesInPartition, &
-         PrimarySolver
+         PrimarySolver,CreatedParMatrix
     LOGICAL, POINTER :: UnfoundNodes(:)=>NULL(), BulkUnfoundNodes(:)=>NULL()
-    INTEGER :: i,j,k,DOFs, nrows,n, dummyint
+    INTEGER :: i,j,k,DOFs, nrows,n, dummyint, ierr
     INTEGER, POINTER :: WorkPerm(:)=>NULL(), SolversToIgnore(:)=>NULL(), &
          SurfaceMaskPerm(:)=>NULL(), BottomMaskPerm(:)=>NULL()
     REAL(KIND=dp), POINTER :: WorkReal(:)=>NULL(), WorkReal2(:)=>NULL(), PArray(:,:) => NULL()
     REAL(KIND=dp) :: FrontOrientation(3), RotationMatrix(3,3), UnRotationMatrix(3,3), &
          globaleps, localeps
+    LOGICAL, ALLOCATABLE :: PartActive(:)
     CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, WorkName
 
     INTERFACE
@@ -3555,6 +3591,10 @@ CONTAINS
     !----------------------------------------------
 
     Var => OldMesh % Variables
+
+    ALLOCATE(PartActive(ParEnv % PEs))
+    CreatedParMatrix = .FALSE.
+
     DO WHILE( ASSOCIATED(Var) )
 
        DoPrevValues = ASSOCIATED(Var % PrevValues)
@@ -3633,6 +3673,9 @@ CONTAINS
                 END IF
              END IF
 
+             IF(.NOT. CreatedParMatrix) &
+              CALL MPI_AllGather(.NOT. NoMatrix, 1, MPI_LOGICAL, PartActive, 1, MPI_LOGICAL, ELMER_COMM_WORLD, ierr)
+
              IF ( ASSOCIATED(Var % EigenValues) ) THEN
                 n = SIZE(Var % EigenValues)
 
@@ -3675,6 +3718,20 @@ CONTAINS
              !Deallocate the old matrix & repoint
              IF(ASSOCIATED(WorkSolver % Matrix)) CALL FreeMatrix(WorkSolver % Matrix)
              WorkSolver % Matrix => WorkMatrix
+
+             ! bit of a hack
+             ! since ParEnv become a pointer to ParMatrix we need to ensure one ParMatrix is formed
+             ! it needs to be from a solver present on all parts hence the all gather further up.
+             ! it seems we only need to this once per timestep/interpolation as ParEnv will have some thing
+             ! to point to. If we don't do this ParEnv % PEs, % MyPE etc. all become nans mucking eveything up!
+             IF ( ASSOCIATED(WorkSolver % Matrix) .and. ALL(PartActive) .and. .NOT. CreatedParMatrix) THEN
+                IF (.NOT. ASSOCIATED(WorkSolver % Matrix % ParMatrix) ) THEN
+                  WorkSolver % Mesh => NewMesh
+
+                  CALL ParallelInitMatrix( WorkSolver, WorkSolver % Matrix, WorkPerm)
+                  CreatedParMatrix = .TRUE.
+                END IF
+             END IF
 
              NULLIFY(WorkMatrix)
 
@@ -3949,6 +4006,9 @@ CONTAINS
     INTEGER :: i,j,dummyint,BCTag
     REAL(KIND=dp) :: geps,leps
     LOGICAL :: Debug, skip, PartMask, Complete, ThisBC, Found
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+    LOGICAL :: buffer
+#endif
     LOGICAL, POINTER :: OldMaskLogical(:), NewMaskLogical(:), UnfoundNodes(:)=>NULL(), OldElemMask(:)
     LOGICAL, ALLOCATABLE :: PartsMask(:), FoundNode(:)
     CHARACTER(LEN=MAX_NAME_LEN) :: HeightName, Solvername
@@ -4154,7 +4214,13 @@ CONTAINS
         END IF
       END DO
       IF(COUNT(FoundNode) == UnfoundCount) Complete = .TRUE.
-      CALL MPI_AllReduce(MPI_IN_PLACE, Complete, 1, MPI_LOGICAL, MPI_LAND, ELMER_COMM_WORLD, ierr)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+      buffer = Complete
+      CALL MPI_AllReduce(buffer, &
+#else
+      CALL MPI_AllReduce(MPI_IN_PLACE, &
+#endif
+          Complete, 1, MPI_LOGICAL, MPI_LAND, ELMER_COMM_WORLD, ierr)
     END DO
 
     DEALLOCATE(OldMaskLogical, &
@@ -4639,27 +4705,28 @@ CONTAINS
 
    END SUBROUTINE GetCalvingEdgeNodes
 
-   SUBROUTINE MeshVolume(Mesh, Parallel, Volume, ElemMask)
+   SUBROUTINE MeshVolume(Mesh, Parallel, Volume, ElemMask, Centroid)
 
       TYPE(Mesh_t), POINTER :: Mesh
       LOGICAL :: Parallel
       REAL(kind=dp) :: Volume
       LOGICAL, OPTIONAL :: ElemMask(:)
+      REAL(kind=dp), OPTIONAL :: Centroid(3)
       !-----------------------------
       TYPE(Element_t), POINTER :: Element
       INTEGER :: i, j, NBdry, NBulk, n, ierr
       INTEGER, ALLOCATABLE :: ElementNodes(:)
       REAL(kind=dp), ALLOCATABLE :: Vertices(:,:), Vectors(:,:), PartVolume(:)
-      REAL(kind=dp) :: det, det1, det2, det3
+      REAL(kind=dp) :: det, Centre(3)
 
       NBdry = Mesh % NumberOfBoundaryElements
       NBulk = Mesh % NumberOfBulkElements
 
       ALLOCATE(Vertices(4,3), Vectors(3,3))
 
-
       ! calculate volume of each bulk tetra. Add these together to get mesh volume
       Volume = 0.0_dp
+      IF(PRESENT(Centroid)) Centroid = 0.0_dp
       DO, i=1, NBulk
         IF(PRESENT(ElemMask)) THEN
           IF(.NOT. ElemMask(i)) CYCLE
@@ -4688,10 +4755,16 @@ CONTAINS
                 - Vectors(1,2) * (Vectors(2,1)*Vectors(3,3) - Vectors(2,3)*Vectors(3,1)) &
                 + Vectors(1,3) * (Vectors(2,1)*Vectors(3,2) - Vectors(2,2)*Vectors(3,1)))
 
+        Centre(1) = SUM(Vertices(:,1))/4
+        Centre(2) = SUM(Vertices(:,2))/4
+        Centre(3) = SUM(Vertices(:,3))/4
+
         ! tetra volume = det/6
         Volume = Volume + Det/6
-
+        IF(PRESENT(Centroid)) Centroid = Centroid + Det/6 * Centre
       END DO
+
+      IF(PRESENT(Centroid)) Centroid = Centroid / Volume
 
       ! if parallel calculate total mesh volume over all parts
       IF(Parallel) THEN
@@ -5310,7 +5383,7 @@ CONTAINS
     ! all parallel communication changed to use NoUsedNeighbours so neighbouring procs
     ! of those with zero suppnodes (no info) do not over allocate (eg allocate nans)
     !share SuppNodeMask
-    ALLOCATE(PartSuppNodeMask(NoUsedNeighbours+1, 25, MaskCount))
+    ALLOCATE(PartSuppNodeMask(NoUsedNeighbours+1, 50, MaskCount))
     PartSuppNodeMask = .FALSE.
     PartSuppNodeMask(1,:NoSuppNodes,:) = SuppNodeMask
     counter=0
@@ -5329,7 +5402,7 @@ CONTAINS
     END DO
 
     !share SuppNodePMask for prevvalues
-    ALLOCATE(PartSuppNodePMask(NoUsedNeighbours+1, 25, PMaskCount))
+    ALLOCATE(PartSuppNodePMask(NoUsedNeighbours+1, 50, PMaskCount))
     PartSuppNodePMask = .FALSE.
     PartSuppNodePMask(1,:NoSuppNodes,:) = SuppNodePMask
     counter=0
@@ -6208,6 +6281,8 @@ CONTAINS
       NULLIFY(SidePerm)
     END DO
 
+    DEALLOCATE(FrontPerm, TopPerm, LeftPerm, RightPerm)
+
   END SUBROUTINE GetFrontCorners
 
   SUBROUTINE ValidateNPCrevassePaths(Mesh, CrevassePaths, OnLeft, OnRight, FrontLeft, FrontRight, &
@@ -6224,7 +6299,8 @@ CONTAINS
     REAL(KIND=dp) :: RotationMatrix(3,3), UnRotationMatrix(3,3), FrontDist, MaxDist, &
          ShiftTo, Dir1(2), Dir2(2), CCW_value,a1(2),a2(2),b1(2),b2(2),intersect(2), &
          StartX, StartY, EndX, EndY, Orientation(3), temp, NodeHolder(3), err_buffer,&
-         yy, zz, gradient, c, intersect_z, SideCorner(3), MinDist, TempDist, IsBelowMean
+         yy, zz, gradient, c, intersect_z, SideCorner(3), MinDist, TempDist, IsBelowMean,&
+         PolyMin, PolyMax
     REAL(KIND=dp), ALLOCATABLE :: ConstrictDirection(:,:), REdge(:,:), Polygons(:,:)
     REAL(KIND=dp), POINTER :: WorkReal(:)
     TYPE(CrevassePath_t), POINTER :: CurrentPath, OtherPath, WorkPath, LeftPath, RightPath
@@ -6245,6 +6321,13 @@ CONTAINS
     rt0 = RealTime()
     Debug = .FALSE.
     Snakey = .TRUE.
+
+    IF(PRESENT(GridSize)) THEN
+      err_buffer = GridSize/1000.0
+    ELSE
+      err_buffer = AEPS
+    END IF
+    IF( err_buffer < AEPS) err_buffer = AEPS
 
     ! if on lateral margin need to make sure that glacier corner is within crev.
     ! if it lies outside the crev then the crev isn't really on front but on the lateral corner
@@ -6286,6 +6369,8 @@ CONTAINS
       CurrentPath => WorkPath
     END DO
 
+    DEALLOCATE(Polygons, PolyStart, PolyEnd)
+    CALL GetCalvingPolygons(Mesh, CrevassePaths, EdgeX, EdgeY, Polygons, PolyStart, PolyEnd, GridSize)
     ! invalid lateral crevs must first be removed before this subroutine
     CurrentPath => CrevassePaths
     path=0
@@ -6329,7 +6414,7 @@ CONTAINS
       IF(Onside /= 0 .AND. LatCalvMargins) AddLateralMargins = .TRUE.
 
       orientation(3) = 0.0_dp
-      IF( ABS(StartX-EndX) < AEPS) THEN
+      IF( ABS(StartX-EndX) < err_buffer) THEN
         ! front orientation is aligned with y-axis
         Orientation(2) =  0.0_dp
         IF(EndY > StartY) THEN
@@ -6337,7 +6422,7 @@ CONTAINS
         ELSE
           Orientation(1)=-1.0_dp
         END IF
-      ELSE IF (ABS(StartY-EndY)<AEPS) THEN
+      ELSE IF (ABS(StartY-EndY)< err_buffer) THEN
         ! front orientation is aligned with x-axis
         Orientation(1) = 0.0_dp
         IF(EndX > StartX) THEN
@@ -6349,11 +6434,15 @@ CONTAINS
         CALL ComputePathExtent(CrevassePaths, Mesh % Nodes, .TRUE.)
         ! endx always greater than startx
         ! check if yextent min smaller than starty
-        IF(CurrentPath % Right ==  StartY .OR. &
-          CurrentPath % Right == EndY) THEN
-          Orientation(2)=1.0_dp
-        ELSE
+
+        PolyMin = MINVAL(Polygons(2,PolyStart(path):PolyEnd(path)))
+        PolyMax = MAXVAL(Polygons(2,PolyStart(path):PolyEnd(path)))
+
+        IF(ABS(CurrentPath % Right - PolyMax) > &
+          CurrentPath % Left - PolyMin) THEN
           Orientation(2)=-1.0_dp
+        ELSE
+          Orientation(2)=1.0_dp
         END IF
         Orientation(1)=Orientation(2)*(EndY-StartY)/(StartX-EndX)
       END IF
@@ -6386,12 +6475,6 @@ CONTAINS
         REdge(2,i) = NodeHolder(2)
         REdge(3,i) = NodeHolder(3)
       END DO
-
-      IF(PRESENT(GridSize)) THEN
-        err_buffer = GridSize/10
-      ELSE
-        err_buffer = 0.0_dp
-      END IF
 
       ! crop edge around crev ends
       crop=0
@@ -7606,9 +7689,6 @@ CONTAINS
       xx = Mesh % Nodes % x(i)
       yy = Mesh % Nodes % y(i)
 
-      inside = PointInPolygon2D(RailPoly, (/xx,yy/))
-      IF(inside) CYCLE
-
       IF(LeftPerm(i) > 0) THEN ! check if on left side
         mindist = HUGE(1.0_dp)
         DO j=1, Nl-1
@@ -7644,6 +7724,9 @@ CONTAINS
       END IF
 
       IF(FrontPerm(i) > 0) THEN ! check if front is on rail eg advance on narrowing rails
+        inside = PointInPolygon2D(RailPoly, (/xx,yy/))
+        IF(inside) CYCLE
+
         mindist = HUGE(1.0_dp)
         DO j=1, Nr-1
           tempdist = PointLineSegmDist2D((/xR(j), yR(j)/),(/xR(j+1), yR(j+1)/), (/xx, yy/))
@@ -7842,8 +7925,8 @@ CONTAINS
     LOGICAL, ALLOCATABLE :: FoundNode(:), UsedElem(:), IcebergElem(:), GotNode(:), &
         NodeCount(:)
     CHARACTER(LEN=MAX_NAME_LEN) :: Filename
-    REAL(kind=dp), ALLOCATABLE :: BergVolumes(:), BergExtents(:)
-    REAL(kind=dp) :: BergVolume, extent(4)
+    REAL(kind=dp), ALLOCATABLE :: BergVolumes(:), BergExtents(:), BergCentroids(:)
+    REAL(kind=dp) :: BergVolume, extent(4), Centroid(3)
 
     Filename = ListGetString(Params,"Calving Stats File Name", Found)
     IF(.NOT. Found) THEN
@@ -7858,7 +7941,7 @@ CONTAINS
     !limit here of 10 possible mesh 'islands'
     ALLOCATE(FoundNode(NNodes), NodeCount(NNodes), ElNodes(4), &
               UsedElem(NBulk), IceBergElem(NBulk), BergVolumes(100), &
-              BergExtents(100 * 4))
+              BergExtents(100 * 4), BergCentroids(100*3))
     FoundNode = .FALSE.
     NodeCount = .NOT. Mask
     UsedElem = .FALSE. !count of elems used
@@ -7898,7 +7981,7 @@ CONTAINS
           IcebergElem(i) = .TRUE.
         END DO
         iceberg = iceberg + 1
-        CALL MeshVolume(Mesh, .FALSE., BergVolume, IcebergElem)
+        CALL MeshVolume(Mesh, .FALSE., BergVolume, IcebergElem, Centroid)
         CALL IcebergExtent(Mesh, IcebergElem, Extent)
 
         IF(SIZE(BergVolumes) < Iceberg) CALL DoubleDPVectorSize(BergVolumes)
@@ -7907,8 +7990,11 @@ CONTAINS
         IF(SIZE(BergExtents) < Iceberg*4) CALL DoubleDPVectorSize(BergExtents)
         BergExtents(iceberg*4-3:iceberg*4) = Extent
 
+        IF(SIZE(BergCentroids) < Iceberg*3) CALL DoubleDPVectorSize(BergCentroids)
+        BergCentroids(iceberg*3-2:iceberg*3) = Centroid
+
         IF(Iceberg > 0) THEN ! not first time
-          PRINT*, 'Iceberg no.', Iceberg, BergVolume, 'extent', extent
+          PRINT*, 'Iceberg no.', Iceberg, BergVolume, 'extent', extent, 'centroid', centroid
         END IF
       END IF
     END DO
@@ -7917,7 +8003,7 @@ CONTAINS
 
     ! write to file
     IF(FileCreated) THEN
-      OPEN( 36, FILE=filename, STATUS='UNKNOWN', ACCESS='APPEND')
+      OPEN( 36, FILE=filename, STATUS='UNKNOWN', POSITION='APPEND')
     ELSE
         OPEN( 36, FILE=filename, STATUS='UNKNOWN')
         WRITE(36, '(A)') "Calving Stats Output File"
@@ -7931,8 +8017,9 @@ CONTAINS
 
     DO i=1,iceberg
 
-        WRITE(36, '(A,i0,A,F20.0,A,F12.4,F12.4,F12.4,F12.4)') 'Iceberg ',i, ' Volume ', BergVolumes(i),&
-          ' Extent ', BergExtents(i*4-3:i*4)
+        WRITE(36, '(A,i0,A,F20.0,A,F20.4,F20.4,F20.4,F20.4,A,F20.4,F20.4,F20.4)') &
+          'Iceberg ',i, ' Volume ', BergVolumes(i),&
+          ' Extent ', BergExtents(i*4-3:i*4), ' Centroid ', BergCentroids(i*3-2:i*3)
 
     END DO
 
@@ -8077,6 +8164,8 @@ CONTAINS
         DO j=1, SIZE(ElNodes)
           IF(TopPerm(ElNodes(j)) /= 0) CYCLE
           IF(BottomPerm(ElNodes(j)) /= 0) CYCLE
+          IF(LeftPerm(ElNodes(j)) /= 0) CYCLE
+          IF(RightPerm(ElNodes(j)) /= 0) CYCLE
           Neighbours => Mesh % ParallelInfo % NeighbourList(ElNodes(j)) % Neighbours
           DO k=1, SIZE(Neighbours)
             IF(Neighbours(k) == ParEnv % MyPE) CYCLE
@@ -8797,6 +8886,7 @@ CONTAINS
       FirstTime=.TRUE.
       GotNode = .FALSE.
       counter = 0
+      LastNode = 0
       DO WHILE(LastNode /= FrontRight(1))
         Found = .FALSE.
         IF(FirstTime) THEN
@@ -8845,7 +8935,7 @@ CONTAINS
 
         ! write to file
         IF(FileCreated) THEN
-          OPEN( 37, FILE=filename, STATUS='UNKNOWN', ACCESS='APPEND')
+          OPEN( 37, FILE=filename, STATUS='UNKNOWN', POSITION='APPEND')
         ELSE
           OPEN( 37, FILE=filename, STATUS='UNKNOWN')
           WRITE(37, '(A)') "Terminus Position File"

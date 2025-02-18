@@ -288,19 +288,21 @@ CONTAINS
     BC => GetBC()
     IF (.NOT.ASSOCIATED(BC)) RETURN
 
+    OutflowBC = GetLogical(BC, 'Plane Wave BC', Found)
+    IF (.NOT. Found) OutflowBC = GetLogical(BC, 'Outflow Boundary', Found)
     IF (InitHandles) THEN
       CALL ListInitElementKeyword(Flux_h, 'Boundary Condition', &
           'Source Acceleration')
+    END IF    
+    IF (.NOT. OutflowBC .AND. Flux_h % NotPresentAnywhere) RETURN
+
+    IF (InitHandles) THEN
       CALL ListInitElementKeyword(SoundSpeed_h, 'Material', 'Sound speed', &
           UnfoundFatal=.TRUE.)
       CALL ListInitElementKeyword(Density_h, 'Material', 'Density', &
           UnfoundFatal=.TRUE.)
       InitHandles = .FALSE.
     END IF
-
-    OutflowBC = GetLogical(BC, 'Plane Wave BC', Found)
-    IF (.NOT. Found) OutflowBC = GetLogical(BC, 'Outflow Boundary', Found)
-    IF (.NOT. OutflowBC .AND. Flux_h % NotPresentAnywhere) RETURN
     
     CALL GetElementNodes( Nodes )
 

@@ -45,20 +45,20 @@ MODULE SSAMaterialModels
 !--------------------------------------------------------------------------------
 !>  Return the effective friction coefficient
 !--------------------------------------------------------------------------------
-   FUNCTION SSAEffectiveFriction(Element,n,Basis,ub,SEP,PartlyGrounded,h,rho,rhow,sealevel,SlipDer) RESULT(Slip)
+   FUNCTION SSAEffectiveFriction(Element,nn,Basis,ub,SEP,PartlyGrounded,h,rho,rhow,sealevel,SlipDer) RESULT(Slip)
+
    IMPLICIT NONE
    REAL(KIND=dp) :: Slip ! the effective friction coefficient
    TYPE(Element_t), POINTER :: Element ! the current element
-   INTEGER :: n ! number of nodes
+   INTEGER :: nn ! number of nodes
    REAL(KIND=dp) :: Basis(:) ! basis functions
    REAL(KIND=dp) :: ub  ! the velocity for non-linear friction laws
    LOGICAL :: SEP ! Sub-Element Parametrisation of the friction
    LOGICAL :: PartlyGrounded ! is the GL within the current element?
+   LOGICAL :: FirstTime = .TRUE.
    REAL(KIND=dp) :: h ! for SEP: the ice thickness at current location
    REAL(KIND=dp) :: rho,rhow,sealevel ! density, sea-water density, sea-level
    REAL(KIND=dp),OPTIONAL :: SlipDer ! dSlip/du=dSlip/dv if ub=(u^2+v^2)^1/2 ! required to compute the Jacobian
-
-
 
    INTEGER            :: iFriction
    INTEGER, PARAMETER :: LINEAR = 1
@@ -66,32 +66,45 @@ MODULE SSAMaterialModels
    INTEGER, PARAMETER :: BUDD = 5
    INTEGER, PARAMETER :: REG_COULOMB_GAG = 3 ! Schoof 2005 & Gagliardini 2007
    INTEGER, PARAMETER :: REG_COULOMB_JOU = 4 ! Joughin 2019
+   INTEGER, PARAMETER :: REG_COULOMB_HYB = 6 ! Rupert's Hybrid
    
    TYPE(ValueList_t), POINTER :: Material, Constants
    TYPE(Variable_t), POINTER :: GMSol,BedrockSol,NSol
    INTEGER, POINTER :: NodeIndexes(:)
-   CHARACTER(LEN=MAX_NAME_LEN) :: Friction
+   CHARACTER(LEN=MAX_NAME_LEN) :: Friction, MaskName
    REAL(KIND=dp) :: Slip2, gravity, qq, hafq
-   REAL(KIND=dp) :: fm,fq,MinN,U0
+   REAL(KIND=dp) :: fm,fq,MinN,MaxN,U0
    REAL(KIND=dp) :: alpha,beta,fB
-   INTEGER :: GLnIP
+   INTEGER :: GLnIP,ii
 
-   REAL(KIND=dp),DIMENSION(n) :: NodalBeta, NodalGM, NodalBed, NodalLinVelo,NodalC,NodalN
+   REAL(KIND=dp),DIMENSION(nn) :: NodalBeta, NodalGM, NodalBed, NodalLinVelo,NodalC,NodalN
    REAL(KIND=dp) :: bedrock,Hf,fC,fN,LinVelo
 
-   LOGICAL :: Found
+   LOGICAL :: Found, NeedN
 
-!  Sub - element GL parameterisation
+   
+   SAVE FirstTime
+
+   Material => GetMaterial(Element)
+
+   ! Allow user-named grounded mask
+   Constants => GetConstants()
+   MaskName = ListGetString(Constants,'Grounded Mask Variable Name',UnFoundFatal=.FALSE.,DefValue='GroundedMask')
+   IF (FirstTime) THEN
+      WRITE( Message, * ) 'Grounded mask name for SSA friction is:', MaskName
+      CALL INFO("SSAEffectiveFriction", Message, level=5)
+   END IF
+   
+   !  Sub - element GL parameterisation
    IF (SEP) THEN
-     GMSol => VariableGet( CurrentModel % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
+     GMSol => VariableGet( CurrentModel % Variables, MaskName,UnFoundFatal=.TRUE. )
      CALL GetLocalSolution( NodalGM,UElement=Element,UVariable=GMSol)
 
      BedrockSol => VariableGet( CurrentModel % Variables, 'bedrock',UnFoundFatal=.TRUE. )
      CALL GetLocalSolution( NodalBed,UElement=Element,UVariable= BedrockSol)
    END IF
 
-! Friction law
-   Material => GetMaterial(Element)
+   ! Friction law
    NodeIndexes => Element % NodeIndexes
 
    Friction = ListGetString(Material, 'SSA Friction Law',Found, UnFoundFatal=.TRUE.)
@@ -107,14 +120,16 @@ MODULE SSAMaterialModels
        iFriction = REG_COULOMB_GAG
      CASE('regularized coulomb')
        iFriction = REG_COULOMB_JOU
+     CASE('regularized coulomb hybrid')
+       iFriction = REG_COULOMB_HYB
      CASE DEFAULT
        CALL FATAL("SSAEffectiveFriction",'Friction choice not recognised')
     END SELECT
 
     ! coefficient for all friction parameterisations
     NodalBeta = 0.0_dp
-    NodalBeta(1:n) = ListGetReal( &
-           Material, 'SSA Friction Parameter', n, NodeIndexes(1:n), Found,&
+    NodalBeta(1:nn) = ListGetReal( &
+           Material, 'SSA Friction Parameter', nn, NodeIndexes(1:nn), Found,&
            UnFoundFatal=.TRUE.)
 
     ! for nonlinear powers of sliding velocity
@@ -122,54 +137,72 @@ MODULE SSAMaterialModels
     CASE(REG_COULOMB_JOU,REG_COULOMB_GAG,WEERTMAN,BUDD)
       fm = ListGetConstReal( Material, 'SSA Friction Exponent', Found , UnFoundFatal=.TRUE.)
       NodalLinVelo = 0.0_dp
-      NodalLinVelo(1:n) = ListGetReal( &
-           Material, 'SSA Friction Linear Velocity', n, NodeIndexes(1:n), Found,&
+      NodalLinVelo(1:nn) = ListGetReal( &
+           Material, 'SSA Friction Linear Velocity', nn, NodeIndexes(1:nn), Found,&
            UnFoundFatal=.TRUE.)
     CASE DEFAULT
     END SELECT
 
     ! where explicit dependence on effective pressure is present...
+    NeedN = .FALSE.
     SELECT CASE (iFriction)
-    CASE(REG_COULOMB_GAG,BUDD)
+    CASE(REG_COULOMB_JOU)
+      ! This is Eliot Jager's suggested modification to the Joughin form of
+      ! regularised Coulomb sliding, where the initial coefficient is now
+      ! multiplied by effective pressure, N 
+      NeedN = ListGetLogical( Material, 'SSA Friction need N', Found)
+      IF (.NOT. Found) THEN
+         IF (FirstTime) THEN
+            CALL INFO("SSAEffectiveFriction","> SSA Friction need N < not found, assuming false",level=3)
+         END IF
+         NeedN = .FALSE.
+      END IF
+    CASE(REG_COULOMB_GAG,REG_COULOMB_HYB,BUDD)
+      NeedN = .TRUE.
+    END SELECT
+
+    IF (NeedN) THEN 
       NSol => VariableGet( CurrentModel % Variables, 'Effective Pressure', UnFoundFatal=.TRUE. )
       CALL GetLocalSolution( NodalN,UElement=Element, UVariable=NSol)
       MinN = ListGetConstReal( Material, 'SSA Min Effective Pressure', Found, UnFoundFatal=.TRUE.)
-      fN = SUM( NodalN(1:n) * Basis(1:n) )
-      ! Effective pressure should be >0 (for the friction law)
-      fN = MAX(fN, MinN)
-    END SELECT
+      fN = SUM( NodalN(1:nn) * Basis(1:nn) )
+      fN = MAX(fN, MinN) ! Effective pressure should be >0 (for the friction law)
+      MaxN = ListGetConstReal( Material, 'SSA Max Effective Pressure', Found, UnFoundFatal=.FALSE.)
+      IF (Found) fN = MIN(fN, MaxN)
+    END If
     
     ! parameters unique to one sliding parameterisation
     SELECT CASE (iFriction)
 
     CASE(BUDD)
-      Constants => GetConstants()
       gravity = ListGetConstReal( Constants, 'Gravity Norm', UnFoundFatal=.TRUE. )
       ! calculate haf from N = rho_i g z*
       qq = ListGetConstReal( Material, 'SSA Haf Exponent', Found, UnFoundFatal=.TRUE.)
-      hafq = fN / (gravity * rho) ** qq
+      hafq = ( fN / (gravity * rho) ) ** qq
       
-    CASE(REG_COULOMB_GAG)
-      fq = ListGetConstReal( Material, 'SSA Friction Post-Peak', Found, UnFoundFatal=.TRUE. )
-      NodalC = 0.0_dp
-      NodalC(1:n) = ListGetReal( &
-          Material, 'SSA Friction Maximum Value', n, NodeIndexes(1:n), Found,&
-          UnFoundFatal=.TRUE.)
-      fC = SUM( NodalC(1:n) * Basis(1:n) )
-
-    CASE(REG_COULOMB_JOU)
-      U0 = ListGetConstReal( Material, 'SSA Friction Threshold Velocity', Found, UnFoundFatal=.TRUE.)
+    CASE(REG_COULOMB_GAG,REG_COULOMB_HYB,REG_COULOMB_JOU)
+      IF (iFriction .NE. REG_COULOMB_JOU) THEN
+         fq = ListGetConstReal( Material, 'SSA Friction Post-Peak', Found, UnFoundFatal=.TRUE. )
+         NodalC = 0.0_dp
+         NodalC(1:nn) = ListGetReal( &
+              Material, 'SSA Friction Maximum Value', nn, NodeIndexes(1:nn), Found,&
+              UnFoundFatal=.TRUE.)
+         fC = SUM( NodalC(1:nn) * Basis(1:nn) )
+      END IF
+      IF (iFriction .NE. REG_COULOMB_GAG) THEN
+         U0 = ListGetConstReal( Material, 'SSA Friction Threshold Velocity', Found, UnFoundFatal=.TRUE.)
+      END IF
 
     END SELECT
 
-    Beta=SUM(Basis(1:n)*NodalBeta(1:n))
+    Beta=SUM(Basis(1:nn)*NodalBeta(1:nn))
 
     IF (SEP) THEN
       ! Floating
-      IF (ALL(NodalGM(1:n).LT.0._dp)) THEN
+      IF (ALL(NodalGM(1:nn).LT.0._dp)) THEN
         beta=0._dp
       ELSE IF (PartlyGrounded) THEN
-        bedrock = SUM( NodalBed(1:n) * Basis(1:n) )
+        bedrock = SUM( NodalBed(1:nn) * Basis(1:nn) )
         Hf= rhow * (sealevel-bedrock) / rho
         if (h.lt.Hf) beta=0._dp
       END IF
@@ -177,7 +210,7 @@ MODULE SSAMaterialModels
 
    Slip2=0.0_dp
    IF (iFriction .NE. LINEAR) THEN
-     LinVelo = SUM( NodalLinVelo(1:n) * Basis(1:n) )
+     LinVelo = SUM( NodalLinVelo(1:nn) * Basis(1:nn) )
      IF ((iFriction == WEERTMAN).AND.(fm==1.0_dp)) iFriction=LINEAR
      Slip2=1.0_dp
      IF (ub < LinVelo) then
@@ -212,13 +245,27 @@ MODULE SSAMaterialModels
      IF (PRESENT(SlipDer)) SlipDer  = Slip2 * Slip * ((fm-1.0_dp) / (ub*ub) - &
          fm*fq*fB*ub**(fq-2.0_dp)/(1.0_dp+fB*ub**fq))
 
+   CASE(REG_COULOMB_HYB)
+     ! The sandard "SSA friction parameter" is taken as the effective pressure threshold.
+     ! Max val is same as REG_COULMB_GAG
+     ! Threshold vel is same as REG_COULOMB_JOU
+     IF (fq.NE.1.0_dp) THEN
+        CALL Fatal('SSAEffectiveFriction','Expecting unity post peak exponent')
+     END IF     
+     Slip = fC * fN * ub**(fm-1.0_dp) / (ub + (fN/beta)*U0)**fm
+     ! TODO:
+     !     IF (PRESENT(SlipDer)) SlipDer = 
+     
    CASE(REG_COULOMB_JOU)
      Slip = beta * ub**(fm-1.0_dp) / (ub + U0)**fm
+     IF (NeedN) Slip = Slip * fN
      IF (PRESENT(SlipDer)) SlipDer = Slip2 * Slip * ((fm-1.0_dp) / (ub*ub) - &
          fm*ub**(-1.0_dp)/(ub+U0))
 
    END SELECT
-
+   
+   FirstTime = .FALSE.
+   
   END FUNCTION SSAEffectiveFriction
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -237,6 +284,8 @@ MODULE SSAMaterialModels
   INTEGER :: GLnIP
   REAL(KIND=dp) :: sealevel,rhow
 
+  TYPE(ValueList_t), POINTER :: Material, Constants
+  CHARACTER(LEN=MAX_NAME_LEN) :: MaskName
   LOGICAL :: PartlyGroundedElement
   TYPE(Variable_t),POINTER :: GMSol
   REAL(KIND=dp) :: NodalGM(n)
@@ -245,12 +294,25 @@ MODULE SSAMaterialModels
   REAL(KIND=dp) :: h,ub,rho,Velo(2)
   REAL(KIND=dp) :: area,tb
   REAL(KIND=dp) :: Ceff
-  LOGICAL :: stat
+  LOGICAL :: stat, Found
   INTEGER :: t
+  LOGICAL :: FirstTime = .TRUE.
 
+  SAVE FirstTime
+
+  ! Allow user-named grounded mask
+  Material => GetMaterial(Element)
+
+  Constants => GetConstants()
+  MaskName = ListGetString(Constants,'Grounded Mask Variable Name',UnFoundFatal=.FALSE.,DefValue='GroundedMask')
+  IF (FirstTime) THEN
+     WRITE( Message, * ) 'Grounded mask name for SSA friction is:', MaskName
+     CALL INFO("ComputeMeanFriction", Message, level=5)
+  END IF
+  
   strbasemag=0._dp
   IF (SEP) THEN
-     GMSol => VariableGet( CurrentModel % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
+     GMSol => VariableGet( CurrentModel % Variables, MaskName,UnFoundFatal=.TRUE. )
      CALL GetLocalSolution( NodalGM,UElement=Element,UVariable=GMSol)
      PartlyGroundedElement=(ANY(NodalGM(1:n).GE.0._dp).AND.ANY(NodalGM(1:n).LT.0._dp))
      IF (PartlyGroundedElement) THEN
@@ -286,6 +348,8 @@ MODULE SSAMaterialModels
 
    strbasemag=tb/area
 
+   FirstTime = .FALSE.
+   
    END FUNCTION ComputeMeanFriction
 
 !--------------------------------------------------------------------------------
@@ -310,24 +374,36 @@ MODULE SSAMaterialModels
      REAL(KIND=dp),INTENT(IN),OPTIONAL :: rho,rhow,sealevel ! to calculate floatation for SEM3
      REAL(KIND=dp),INTENT(IN),OPTIONAL :: FAF ! Floating area fraction for SEM1
      
-     TYPE(ValueList_t), POINTER  :: Material
+     TYPE(ValueList_t), POINTER  :: Material, Constants
      TYPE(Variable_t), POINTER   :: GMSol,BedrockSol
-     CHARACTER(LEN=MAX_NAME_LEN) :: MeltParam
+     CHARACTER(LEN=MAX_NAME_LEN) :: MeltParam, MaskName
      
      REAL(KIND=dp),DIMENSION(nn) :: NodalBeta, NodalGM, NodalBed, NodalLinVelo,NodalC
      REAL(KIND=dp) :: bedrock,Hf
      
+     LOGICAL :: FirstTime = .TRUE.
      LOGICAL :: Found
+
+     SAVE FirstTime
+
+     Material => GetMaterial(Element)     
+     
+     ! Allow user-named grounded mask
+     Constants => GetConstants()
+     MaskName = ListGetString(Constants,'Grounded Mask Variable Name',UnFoundFatal=.FALSE.,DefValue='GroundedMask')
+     IF (FirstTime) THEN
+        WRITE( Message, * ) 'Grounded mask name for SSA BMB is:', MaskName
+        CALL INFO("SSAEffectiveBMB", Message, level=5)
+     END IF
      
      !  Sub - element GL parameterisation
      IF (SEM) THEN
-        GMSol => VariableGet( CurrentModel % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
+        GMSol => VariableGet( CurrentModel % Variables, MaskName,UnFoundFatal=.TRUE. )
         CALL GetLocalSolution( NodalGM,UElement=Element,UVariable=GMSol )
         BedrockSol => VariableGet( CurrentModel % Variables, 'bedrock',UnFoundFatal=.TRUE. )
         CALL GetLocalSolution( NodalBed,UElement=Element,UVariable= BedrockSol )
      END IF
      
-     Material => GetMaterial(Element)     
      MeltParam = ListGetString(Material, 'SSA Melt Param',Found, UnFoundFatal=.TRUE.)
 
      BMBatIP=SUM(Basis(1:nn)*BMB(1:nn))
@@ -366,6 +442,8 @@ MODULE SSAMaterialModels
         CALL FATAL("SSAEffectiveBMB",Message)
         
      END SELECT
+
+     FirstTime = .FALSE.
      
    END FUNCTION SSAEffectiveBMB
    

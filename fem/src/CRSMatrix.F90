@@ -138,6 +138,7 @@ CONTAINS
     LOGICAL :: isMass, isDamp, EigenAnalysis, DampedAnalysis, HarmonicAnalysis, Found
 
     EigenAnalysis=.FALSE.; HarmonicAnalysis=.FALSE.
+    DampedAnalysis = .FALSE.
     IF(ASSOCIATED(A % Solver)) THEN
        EigenAnalysis = A % Solver % NOFEigenValues > 0 .AND. &
            ListGetLogical( A % Solver % Values, 'Eigen Analysis',Found)
@@ -355,11 +356,12 @@ CONTAINS
     INTEGER, POINTER :: Cols(:),Rows(:),Diag(:)
 !------------------------------------------------------------------------------
     IF(i>A % NumberOfRows) THEN
-      CALL Warn('CRS_AddToMatrixElement','Matrix element is to be added to a nonexistent position')
+      WRITE(Message,'(A,ES12.3)') 'Nonexistent row index for matrix entry:',val
+      CALL Warn('CRS_AddToMatrixElement',Message)
       CALL Warn('CRS_AddToMatrixElement','Row: '//i2s(i)//' Col: '//i2s(j))
       CALL Warn('CRS_AddToMatrixElement','Number of Matrix rows:'//i2s(A % NumberOfRows))
       CALL Warn('CRS_AddToMatrixElement','Converting CRS to list')
-      A % FORMAT=MATRIX_LIST; RETURN
+      A % FORMAT = MATRIX_LIST; RETURN
     END IF
 
     Rows   => A % Rows
@@ -379,7 +381,8 @@ CONTAINS
       ELSE
         k = CRS_Search( Rows(i+1)-Rows(i),Cols(Rows(i):Rows(i+1)-1),j )
         IF ( k==0 .AND. val/=0 ) THEN
-          CALL Warn('CRS_AddToMatrixElement','Matrix element is to be added to a nonexistent position')
+          WRITE(Message,'(A,ES12.3)') 'Nonexistent col index for matrix entry:',val
+          CALL Warn('CRS_AddToMatrixElement',Message)
           CALL Warn('CRS_AddToMatrixElement','Row: '//i2s(i)//' Col: '//i2s(j))
           CALL Warn('CRS_AddToMatrixElement','Number of Matrix rows:'//i2s(A % NumberOfRows))
           CALL Warn('CRS_AddToMatrixElement','Converting CRS to list')
@@ -398,7 +401,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> Check existance of a matrix element.
+!> Check existence of a matrix element.
 !------------------------------------------------------------------------------
   FUNCTION CRS_CheckMatrixElement( A,i,j ) RESULT ( Found ) 
 !------------------------------------------------------------------------------
@@ -1661,6 +1664,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
    END SUBROUTINE CRS_AdditiveMatrixVectorMultiply
 !------------------------------------------------------------------------------
 
+   
 !------------------------------------------------------------------------------
 !> Matrix vector product (v = Au) for a matrix given in CRS format
 !> This one only applies to the active elements of u. The idea is that
@@ -1704,6 +1708,40 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
   END SUBROUTINE CRS_MaskedMatrixVectorMultiply
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+!> Matrix vector product (v = Au) for a matrix given in CRS format
+!> This one only applies to the active elements of u. The idea is that
+!> we may look at the partial matrix norm, for example. 
+!------------------------------------------------------------------------------
+  FUNCTION CRS_MatrixRowVectorMultiply( A,u,i) RESULT ( rsum )
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t), INTENT(IN) :: A                !< Structure holding matrix
+    REAL(KIND=dp), DIMENSION(*), INTENT(IN) :: u   !< Vector to be multiplied
+    INTEGER :: i                                   !< Row of matrix
+    REAL(KIND=dp) :: rsum                          !< Matrix row x vector sum. 
+    !------------------------------------------------------------------------------
+    INTEGER, POINTER  CONTIG :: Cols(:),Rows(:)
+    REAL(KIND=dp), POINTER  CONTIG :: Values(:)
+    INTEGER :: j,n
+    !------------------------------------------------------------------------------
+
+    IF(i<1 .OR. i>A % NumberOfRows) THEN
+      CALL Fatal('CRS_MatrixRowVectorMultiply','Invalid row number '//I2S(i))
+    END IF
+    Rows   => A % Rows
+    Cols   => A % Cols
+    Values => A % Values
+
+    rsum = 0.0_dp
+    DO j=Rows(i),Rows(i+1)-1
+      rsum = rsum + Values(j) * u(Cols(j))
+    END DO 
+!------------------------------------------------------------------------------
+  END FUNCTION CRS_MatrixRowVectorMultiply
+!------------------------------------------------------------------------------
+
+  
   
 !------------------------------------------------------------------------------
 !>  Matrix-vector product v = |A|u with A a matrix in the CRS format and
@@ -1769,7 +1807,11 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
        CALL Info('CRS_Transpose','Creating a transpose of matrix',Level=20)
        
        B => AllocateMatrix()
-       
+
+       IF(.NOT. ASSOCIATED(A) ) THEN
+         CALL Fatal('CRS_Transpose','Matrix not associated!')
+       END IF
+         
        na = A % NumberOfRows
        IF( na == 0 ) THEN
          B % NumberOfRows = 0
@@ -1788,12 +1830,14 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
          ALLOCATE( B % Diag(nb) )       
          B % Diag = 0
        END IF
-         
+
+       ! Count how many hits there are in A for each column
        Row = 0       
        DO i = 1, NVals
          Row( A % Cols(i) ) = Row( A % Cols(i) ) + 1
        END DO
-       
+
+       ! For transpose the column hits are row hits
        B % Rows = 0
        B % Rows(1) = 1
        DO i = 1, nB
@@ -1801,10 +1845,8 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
        END DO
        B % Cols = 0
        
-       DO i = 1, nB
-         Row(i) = B % Rows(i)
-       END DO
-
+       ! Location of 1st entry in each row
+       Row(1:nB) = B % Rows(1:nB)
        
        DO i = 1, nA
 
@@ -1816,7 +1858,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
              B % Values( Row(k) ) = A % Values(j)
              Row(k) = Row(k) + 1
            ELSE
-             WRITE( Message, * ) 'Trying to access non-existent column', i,k,j
+             WRITE( Message, * ) 'Trying to access column beyond allocation: ', i,k,j
              CALL Error( 'CRS_Transpose', Message )
              RETURN
            END IF
@@ -2341,7 +2383,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
 
 !------------------------------------------------------------------------------
-!>    Pics the block diagonal entries from matrix A to build matrix B.
+!> Picks the block diagonal entries from matrix A to build matrix B.
 !------------------------------------------------------------------------------
   SUBROUTINE CRS_BlockDiagonal(A,B,Blocks) 
 !------------------------------------------------------------------------------
@@ -2548,6 +2590,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !------------------------------------------------------------------------------
   SUBROUTINE CRS_FCTLowOrder( A )
     USE SparIterGlobals
+#if defined(ELMER_HAVE_MPI_MODULE)
+    USE mpi
+#endif
 !------------------------------------------------------------------------------
     TYPE(Matrix_t) :: A           !< Initial higher order matrix
 !------------------------------------------------------------------------------
@@ -2562,8 +2607,10 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     LOGICAL, ALLOCATABLE :: ActiveNodes(:), RowFound(:)
 
     TYPE(Matrix_t), POINTER :: im
-    
+
+#if defined(ELMER_HAVE_MPIF_HEADER)
     INCLUDE "mpif.h"
+#endif
 
     CALL Info('CRS_FCTLowOrder','Making low order FCT correction to matrix',Level=5)
 
@@ -2742,7 +2789,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
 
 !------------------------------------------------------------------------------
-!>    Pics a block from matrix A to build matrix B. It is assumed that the 
+!> Picks a block from matrix A to build matrix B. It is assumed that the 
 !> matrix is split into given number of equally sized blocks.
 !------------------------------------------------------------------------------
   SUBROUTINE CRS_BlockMatrixPick(A,B,Blocks,Nrow,Ncol,PickPrec)
@@ -2857,8 +2904,8 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
 
 !------------------------------------------------------------------------------
-!> Pics a block from matrix A to build matrix B. It is assumed that the 
-!> matrix is split by intervals given by the users. For example for AV matris
+!> Picks a block from matrix A to build matrix B. It is assumed that the 
+!> matrix is split by intervals given by the users. For example for AV matrix
 !> the user would give the size of V as the input and choose then blocks
 !> (1,1), (1,2), (2,1) or (2,2). This logic assumes that nodes are numbered
 !> first, followed by other dofs. 
@@ -3014,7 +3061,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
 
 !------------------------------------------------------------------------------
-!> Pics a block from matrix A to build matrix B. 
+!> Picks a block from matrix A to build matrix B. 
 !> This subroutine enables the use of 
 !> nontrivial block decompositions. 
 !------------------------------------------------------------------------------
@@ -3441,7 +3488,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     ELSE
       Values => A % Values
     END IF
-
+    
     IF ( .NOT. ASSOCIATED(A % ILUValues) ) THEN
 
        IF ( ILUn == 0 ) THEN
@@ -3636,7 +3683,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     CALL Info( 'CRS_IncompleteLU', Message, Level=6 )
 
     WRITE(Message,'(A,I1,A,F8.2)') 'ILU(',ILUn, &
-        ') (Real), Factorization ready at (s): ', CPUTime()-st
+        ') (Real), Factorization time (s): ', CPUTime()-st
     CALL Info( 'CRS_IncompleteLU', Message, Level=6 )
 
     Status = .TRUE.
@@ -4703,8 +4750,8 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
   SUBROUTINE CRS_MatrixVectorProd( u,v,ipar )
 !------------------------------------------------------------------------------
     INTEGER, DIMENSION(*), INTENT(IN) :: ipar  !< Structure holding info HUTIter-iterative solver package
-    REAL(KIND=dp), INTENT(IN) :: u(HUTI_NDIM)  !< vector to multiply u
-    REAL(KIND=dp) :: v(HUTI_NDIM)              !< result vector
+    REAL(KIND=dp), INTENT(IN) :: u(*)  !< vector to multiply u
+    REAL(KIND=dp) :: v(*)              !< result vector
 
 !------------------------------------------------------------------------------
     INTEGER, POINTER  CONTIG :: Cols(:),Rows(:)
@@ -4940,10 +4987,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     RowMax = MAXVAL( Rows )
     RowN = SIZE( Rows )
 
-    PRINT *,'Rows:'
-    PRINT *,'size:',RowN
-    PRINT *,'min:',RowMin
-    PRINT *,'max:',RowMax
+    PRINT *,'Rows (size '//I2S(RowN)//') range:',RowMin, RowMax
 
     IF( RowMin < 1 ) THEN
       PRINT *,'Outliers:'
@@ -4962,12 +5006,8 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     ColMin = MINVAL( Cols )
     ColMax = MAXVAL( Cols )
     ColN = SIZE( Cols )
-
-    PRINT *,'Cols:'
-    PRINT *,'size:',ColN
-    PRINT *,'min:',ColMin
-    PRINT *,'max:',ColMax
-
+    PRINT *,'Cols (size '//I2S(ColN)//') range:',ColMin, ColMax
+    
     IF( ColMin < 1 ) THEN
       PRINT *,'Outliers:'
       j = 0
@@ -4987,11 +5027,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     ValN = SIZE( Values )
     TotalSum = SUM( Values )
 
-    PRINT *,'Values:'
-    PRINT *,'size:',ValN
-    PRINT *,'min:',ValMin
-    PRINT *,'max:',ValMax
-    PRINT *,'sum:',TotalSum
+    PRINT *,'Values (size '//I2S(ValN)//') range:',ValMin,ValMax,TotalSum
     
     IF( ColN /= RowMax - 1  ) THEN
       PRINT *,'Conflicting max row index :',n,RowMax-1
@@ -5136,7 +5172,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !> At first call register the matrix topology.
 !> At second round change the matrix topology of the vectors.
 !> Without change in topology all matrix operations with BulkValues,
-!> MassValues, and DampValues would break down. 
+!> MassValues, DampValues etc. would break down. 
 !------------------------------------------------------------------------------
   SUBROUTINE CRS_ChangeTopology( A, Init )
 !------------------------------------------------------------------------------
@@ -5182,7 +5218,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       
       CALL Info('CRS_ChangeTopology','New matrix non-zeros: '//I2S(n),Level=12)
       
-      DO ivec=1,3
+      DO ivec=1,5
         NULLIFY(Aold)
         SELECT CASE(ivec)
         CASE( 1 )
@@ -5191,6 +5227,10 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
           Aold => A % MassValues
         CASE( 3 )
           Aold => A % DampValues
+        CASE( 4 )
+          Aold => A % BulkMassValues
+        CASE( 5 )
+          Aold => A % BulkDampValues
         END SELECT
         
         IF( .NOT. ASSOCIATED(Aold) ) CYCLE
@@ -5221,7 +5261,14 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
           A % MassValues => Anew
         CASE( 3 )
           A % DampValues => Anew 
+        CASE( 4 )
+          A % BulkMassValues => Anew
+        CASE( 5 )
+          A % BulkDampValues => Anew 
         END SELECT
+
+        CALL Info('CRS_ChangeTopology','Done changing matrix '//I2S(n)//' topology',Level=20)
+
         
       END DO
             

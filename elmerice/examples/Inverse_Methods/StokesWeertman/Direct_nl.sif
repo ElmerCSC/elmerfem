@@ -80,9 +80,13 @@ Solver 2
   Equation = "Stokes-Vec"
   Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
 
+  Div-Curl Discretization = Logical False
+  Element = "p:1 b:4"
+
+  Flow Model = Stoke
   Stokes Flow = logical true
 
-   Relative Integration Order = -1
+  !Relative Integration Order = -1
 
   !linear settings:
   !------------------------------
@@ -152,7 +156,7 @@ Boundary Condition 5
   Velocity 1 = Real 0.0e0
 
   Weertman Friction Coefficient = Equals C
-  Weertman Exponent = Real 0.3333333333333333333
+  Weertman Exponent = Real $1.0/3.0
 ! Cut-off such that argument is not smaller than this
   Friction Linear Velocity = Real 1.0e-4
 

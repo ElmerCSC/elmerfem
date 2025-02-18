@@ -1,3 +1,4 @@
+IF(WITH_LUA)
 INCLUDE(test_macros)
 INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
 
@@ -6,4 +7,5 @@ ADD_ELMERTEST_MODULE(VolumeProbe ModelPDEevol ModelPDEevol.F90)
 
 file(COPY square.grd ELMERSOLVER_STARTINFO ModelPDEevol.F90 DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(VolumeProbe LABELS threaded)
+ADD_ELMER_TEST(VolumeProbe LABELS threaded lua)
+ENDIF(WITH_LUA)

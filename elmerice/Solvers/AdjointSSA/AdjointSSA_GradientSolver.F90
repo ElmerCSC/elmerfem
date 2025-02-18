@@ -155,7 +155,7 @@ SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
            NodalEtaDer(:),NodalBetaDer(:)
 
   INTEGER :: iFriction
-  REAL(KIND=dp) :: fm
+  REAL(KIND=dp) :: fm,U0
   CHARACTER(LEN=MAX_NAME_LEN) :: Friction
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName='AdjointSSA_GradientSolver'
 #ifdef USE_ISO_C_BINDINGS
@@ -406,8 +406,10 @@ SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
          fm = 1.0_dp
        CASE('weertman')
         iFriction = 2
+       CASE('regularized coulomb')
+        iFriction = 3
        CASE DEFAULT
-         CALL FATAL(SolverName,'Friction should be linear or Weertman')
+         CALL FATAL(SolverName,'Friction should be linear or Weertman or regularized coulomb')
    END SELECT
 
 
@@ -419,6 +421,11 @@ SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
         LocalLinVelo = 0.0_dp
         LocalLinVelo(1:n) = ListGetReal(Material, 'SSA Friction Linear Velocity', n, NodeIndexes,UnFoundFatal=.TRUE.)
    END IF
+
+   IF (iFriction == 3) THEN
+        U0 = ListGetConstReal( Material, 'SSA Friction Threshold Velocity', Found, UnFoundFatal=.TRUE.)
+   END IF
+
 
    IF (SEP) THEN
      NodalGM(1:n)=GMSol%Values(GMSol%Perm(NodeIndexes(1:n)))
@@ -689,7 +696,7 @@ CONTAINS
          END DO !i
        END DO !p
 
-       IF ((iFriction == 2).AND.(fm==1.0_dp)) iFriction=1
+       IF ((iFriction == 2).AND.(fm==1.0_dp)) iFriction=1 !linear
        IF (iFriction > 1) THEN
            LinVelo = SUM( LocalLinVelo(1:n) * Basis(1:n) )
            Velo = 0.0_dp
@@ -699,7 +706,11 @@ CONTAINS
            IF (ub < LinVelo) then 
               ub = LinVelo
            ENDIF
-           betab = betab * ub**(fm-1.0_dp)
+           IF (iFriction == 2) THEN !Weertman
+             betab = betab * ub**(fm-1.0_dp)           
+           ELSE IF (iFriction == 3) THEN !regularized coulomb
+             betab = betab * ub**(fm-1.0_dp) / (ub + U0)**fm           
+           END IF
        END IF
 
        IF (SEP) THEN
@@ -834,4 +845,3 @@ CONTAINS
   END SUBROUTINE LocalMatrixBCSSA
 
 END SUBROUTINE AdjointSSA_GradientSolver
-

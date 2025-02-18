@@ -285,7 +285,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
       OutputMeshes, ParallelDofsNodes, LagN
   INTEGER, POINTER :: ActiveModes(:), ActiveModes2(:)
   LOGICAL :: GotActiveModes, GotActiveModes2, EigenAnalysis, &
-      WriteIds, SaveLinear, &
+      WriteIds, SaveLinear, SaveMetainfo, &
       NoPermutation, SaveElemental, SaveNodal, NoInterp
   LOGICAL, ALLOCATABLE :: ActiveElem(:)
   INTEGER, ALLOCATABLE :: GeometryBodyMap(:),GeometryBCMap(:)
@@ -355,6 +355,10 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
     BinaryOutput = .NOT. AsciiOutput
   END IF
 
+  ! Do not save metainfo if we use the results of saving for consistency test.
+  SaveMetainfo = .NOT. ( GetLogical( Params,'Skip Metainfo',GotIt ) .OR. &
+      ListCheckPresent( Params,'Reference Values') )
+  
   ParallelBase = GetLogical( Params,'Partition Numbering',GotIt )
   
   IF( BinaryOutput ) THEN
@@ -478,9 +482,19 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
     END IF
   END IF
 
+  ! Sometimes we may want to ignore eigenmodes completely.
+  !--------------------------------------------------------------
+  IF( ListGetLogical( Params,'Ignore Eigenmodes',GotIt) ) THEN
+    EigenAnalysis = .FALSE.
+    EigenVectorMode = 0
+    MaxModes = 0
+    MaxModes2 = 0
+    GOTO 1 
+  END IF
+  
   !------------------------------------------------------------------------------
   ! Check whether we have nodes coming from different reasons
-  !------------------------------------------------------------------------------  
+  !------------------------------------------------------------------------------       
   ActiveModes => ListGetIntegerArray( Params,'Active EigenModes',GotActiveModes ) 
   IF( GotActiveModes ) THEN
     MaxModes = SIZE( ActiveModes )
@@ -498,7 +512,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
               GetInteger( Model % Solvers(i) % Values,'Scanning Loops', GotIt ) )
         END IF
       END DO
-    END IF     
+    END IF
   END IF
   EigenVectorMode = 0
   IF( MaxModes > 0 ) THEN
@@ -527,8 +541,8 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
     MaxModes2 = 0
     DO i=1,Model % NumberOfSolvers
       IF( .NOT. ASSOCIATED( Model % Solvers(i) % Variable ) ) CYCLE
-      MaxModes2 = MAX( MaxModes2, &
-          Model % Solvers(i) % Variable % NumberOfConstraintModes )
+      j = Model % Solvers(i) % Variable % NumberOfConstraintModes
+      MaxModes2 = MAX( MaxModes2, j ) 
     END DO
   END IF
   IF( MaxModes2 > 0 ) THEN
@@ -543,6 +557,9 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
     FileIndex = 1
   END IF
 
+  ! Let's jump here if we ignore all modes. 
+1 CONTINUE
+  
   BcOffset = 0
   WriteIds = GetLogical( Params,'Save Geometry Ids',GotIt)  
   IF( WriteIds ) THEN
@@ -693,7 +710,7 @@ CONTAINS
     LOGICAL, INTENT(IN) :: RemoveDisp
     INTEGER, PARAMETER :: VtuUnit = 58
     INTEGER :: i,ii,j,jj,k,dofs,Rank,n,m,dim,vari,sdofs,dispdofs, dispBdofs, Offset, &
-        NoFields, NoFields2, IndField, iField, NoModes, NoModes2, NoFieldsWritten, &
+        NoFields, NoFields2, IndField, iField, iField0, NoModes, NoModes2, NoFieldsWritten, &
         cumn, iostat
     CHARACTER(LEN=1024) :: Txt, ScalarFieldName, VectorFieldName, TensorFieldName, &
         FieldName, FieldNameB, OutStr
@@ -767,6 +784,37 @@ CONTAINS
       OutStr = '<VTKFile type="UnstructuredGrid" version="0.1" byte_order="BigEndian">'//lf
     END IF
     CALL AscBinStrWrite( OutStr )
+
+    IF( SaveMetainfo ) THEN
+      IF( FileIndex == 1 .AND. ParEnv % MyPe == 0 ) THEN
+        Txt = GetVersion()
+        WRITE( OutStr,'(A)') '<!-- Elmer version: '//TRIM(Txt)//' -->'//lf     
+        CALL AscBinStrWrite( OutStr )
+
+        Txt = GetRevision( Found )
+        IF( Found ) THEN
+          WRITE( OutStr,'(A)') '<!-- Elmer revision: '//TRIM(Txt)//' -->'//lf
+          CALL AscBinStrWrite( OutStr )
+        END IF
+
+        Txt = GetCompilationDate( Found )
+        IF( Found ) THEN
+          WRITE( OutStr,'(A)') '<!-- Elmer compilation date: '//TRIM(Txt)//' -->'//lf
+          CALL AscBinStrWrite( OutStr )
+        END IF
+
+        Txt = GetSifName( Found) 
+        IF( Found ) THEN
+          WRITE( OutStr,'(A)') '<!-- Solver input file: '//TRIM(Txt)//' -->'//lf
+          CALL AscBinStrWrite( OutStr )
+        END IF
+
+        Txt = FormatDate()      
+        WRITE( OutStr,'(A)') '<!-- File started at: '//TRIM(Txt)//' -->'//lf
+        CALL AscBinStrWrite( OutStr )
+      END IF
+    END IF
+      
     WRITE( OutStr,'(A)') '  <UnstructuredGrid>'//lf
     CALL AscBinStrWrite( OutStr )
     WRITE( OutStr,'(A,I0,A,I0,A)') '    <Piece NumberOfPoints="',NumberOfDofNodes,&
@@ -817,8 +865,17 @@ CONTAINS
           CoordScale(i) = 1.0_dp / TmpArray(j,1)
         END DO
       END IF
+    ELSE
+      ! Enable local coordinate scaling for convenience. 
+      TmpArray => ListGetConstRealArray( Params,'Coordinate Scaling',Found )    
+      IF( Found ) THEN            
+        DO i=1,Model % Mesh % MaxDim 
+          j = MIN( i, SIZE(TmpArray,1) )
+          CoordScale(i) = TmpArray(j,1)
+        END DO
+      END IF
     END IF
-
+      
     CoordOffset = 0.0_dp
     TmpArray => ListGetConstRealArray( Params,'Mesh Translate',Found )    
     IF( Found ) THEN            
@@ -928,13 +985,23 @@ CONTAINS
           Values => Solution % Values
           IF ( ASSOCIATED(Solution2) ) Values2 => Solution2 % Values
           IF ( ASSOCIATED(Solution3) ) Values3 => Solution3 % Values
-          
-          EigenVectors => Solution % EigenVectors
-          IF(ASSOCIATED(Solution2) ) EigenVectors2 => Solution2 % EigenVectors
-          IF(ASSOCIATED(Solution3) ) EigenVectors3 => Solution3 % EigenVectors
-          
-          ConstraintModes => Solution % ConstraintModes
-         
+
+          IF( MaxModes == 0 ) THEN
+            EigenVectors => NULL()
+            EigenVectors2 => NULL()
+            EigenVectors3 => NULL()            
+          ELSE
+            EigenVectors => Solution % EigenVectors
+            IF(ASSOCIATED(Solution2) ) EigenVectors2 => Solution2 % EigenVectors
+            IF(ASSOCIATED(Solution3) ) EigenVectors3 => Solution3 % EigenVectors
+          END IF
+
+          IF( MaxModes2 == 0 ) THEN
+            ConstraintModes => NULL()
+          ELSE
+            ConstraintModes => Solution % ConstraintModes
+          END IF
+            
           ! Default is to save the field only once
           NoFields = 0
           NoFields2 = 0
@@ -1019,7 +1086,7 @@ CONTAINS
               IF(.NOT. ASSOCIATED( Solution ) ) THEN
                 Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldNameB)//' 1',ThisOnly=NoInterp)
                 ComponentVectorB = ASSOCIATED(Solution)
-                EigenVectorsB => Solution % EigenVectors
+                IF(NoModes>0) EigenVectorsB => Solution % EigenVectors
               END IF
               
               IF( ASSOCIATED(Solution)) THEN 
@@ -1029,12 +1096,12 @@ CONTAINS
                   Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldNameB)//' 2',ThisOnly=NoInterp)
                   IF( ASSOCIATED(Solution)) THEN
                     ValuesB2 => Solution % Values
-                    EigenVectorsB2 => Solution % EigenVectors
+                    IF(NoModes>0) EigenVectorsB2 => Solution % EigenVectors
                   END IF
                   Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldNameB)//' 3',ThisOnly=NoInterp)
                   IF( ASSOCIATED(Solution)) THEN
                     ValuesB3 => Solution % Values
-                    EigenVectorsB3 => Solution % EigenVectors
+                    IF(NoModes>0) EigenVectorsB3 => Solution % EigenVectors
                   END IF
                 END IF
                 ComplementExists = .TRUE.
@@ -1051,10 +1118,17 @@ CONTAINS
           END IF
 
           !---------------------------------------------------------------------
-          ! Finally save the field values 
+          ! Finally save the nodal field values 
           !---------------------------------------------------------------------
           DoIm = 0
-300       DO iField = 1, NoFields + NoFields2          
+
+          IF(Solution % FrozenMode ) THEN
+            iField0 = 0
+          ELSE
+            iField0 = 1
+          END IF
+          
+300       DO iField = iField0, NoFields + NoFields2          
 
             IF( ( DG .OR. DN ) .AND. VarType == Variable_on_nodes_on_elements ) THEN
               CALL Info(Caller,'Setting field type to discontinuous',Level=12)
@@ -1089,7 +1163,7 @@ CONTAINS
             IF( WriteXML ) THEN
               NoFieldsWritten = NoFieldsWritten + 1
 
-              IF( NoModes + NoModes2 == 0 .OR. EigenAnalysis ) THEN
+              IF( iField==0 .OR. NoModes + NoModes2 == 0 .OR. EigenAnalysis ) THEN
                 WRITE( OutStr,'(A,I0,A)') '        <DataArray type="Float',PrecBits,'" Name="'//TRIM(FieldName)
               ELSE IF( iField <= NoFields ) THEN
                 IF( IsHarmonic ) THEN
@@ -1160,6 +1234,28 @@ CONTAINS
                 DO k=1,sdofs              
                   IF(j==0 .OR. k > dofs) THEN
                     val = 0.0_dp
+                  ELSE IF( NoModes + NoModes2 == 0  .OR. iField == 0 ) THEN 
+                    IF( Use2 ) THEN
+                      IF( ComponentVectorB ) THEN
+                        IF( k == 1 ) val = ValuesB(j)
+                        IF( k == 2 ) val = ValuesB2(j)
+                        IF( k == 3 ) val = ValuesB3(j)
+                      ELSE
+                        val = ValuesB(dofs*(j-1)+k)              
+                      END IF
+                    ELSE
+                      IF( ComponentVector ) THEN
+                        IF( k == 1 ) val = Values(j)
+                        IF( k == 2 ) val = Values2(j)
+                        IF( k == 3 ) val = Values3(j)
+                      ELSE
+                        IF(dofs*(j-1)+k > SIZE(Values) .OR. dofs*(j-1)+k < 1 ) THEN
+                          PRINT *,'vtu:',dofs,j,k,SIZE(values),dofs*(j-1)+k
+                          call flush(6)
+                        END IF
+                        val = Values(dofs*(j-1)+k)              
+                      END IF
+                    END IF
                   ELSE IF( NoModes > 0 .AND. iField <= NoFields ) THEN
                     IF( Use2 ) THEN
                       IF( ComponentVectorB ) THEN
@@ -1182,29 +1278,7 @@ CONTAINS
 
                   ELSE IF( NoModes2 > 0 ) THEN
                     val = ConstraintModes(IndField,dofs*(j-1)+k)
-                  ELSE
-                    IF( Use2 ) THEN
-                      IF( ComponentVectorB ) THEN
-                        IF( k == 1 ) val = ValuesB(j)
-                        IF( k == 2 ) val = ValuesB2(j)
-                        IF( k == 3 ) val = ValuesB3(j)
-                      ELSE
-                        val = ValuesB(dofs*(j-1)+k)              
-                      END IF
-                    ELSE
-                      IF( ComponentVector ) THEN
-                        IF( k == 1 ) val = Values(j)
-                        IF( k == 2 ) val = Values2(j)
-                        IF( k == 3 ) val = Values3(j)
-                      ELSE
-                        IF(dofs*(j-1)+k > SIZE(Values) .OR. dofs*(j-1)+k < 1 ) THEN
-                          PRINT *,'vtu:',dofs,j,k,SIZE(values),dofs*(j-1)+k
-                          call flush(6)
-                        END IF
-                        val = Values(dofs*(j-1)+k)              
-                      END IF
-                    END IF
-                  END IF
+                   END IF
 
                   IF( FlipActive ) THEN
                     IF( Model % Mesh % PeriodicFlip(i) ) val = -val
@@ -1323,13 +1397,23 @@ CONTAINS
               dofs = 3
             END IF
           END IF
-          
-          EigenVectors => Solution % EigenVectors
-          IF(ASSOCIATED(Solution2) ) EigenVectors2 => Solution2 % EigenVectors
-          IF(ASSOCIATED(Solution3) ) EigenVectors3 => Solution3 % EigenVectors
-          
-          ConstraintModes => Solution % ConstraintModes
-         
+
+          IF( MaxModes == 0 ) THEN
+            EigenVectors => NULL()
+            EigenVectors2 => NULL()
+            EigenVectors3 => NULL()
+          ELSE
+            EigenVectors => Solution % EigenVectors
+            IF(ASSOCIATED(Solution2) ) EigenVectors2 => Solution2 % EigenVectors
+            IF(ASSOCIATED(Solution3) ) EigenVectors3 => Solution3 % EigenVectors
+          END IF
+            
+          IF( MaxModes2 == 0 ) THEN
+            ConstraintModes => NULL()
+          ELSE
+            ConstraintModes => Solution % ConstraintModes
+          END IF
+            
           ! Default is to save the field only once
           NoFields = 0
           NoFields2 = 0
@@ -1339,7 +1423,7 @@ CONTAINS
           IF( EigenAnalysis ) THEN
             IF( MaxModes > 0 .AND. FileIndex <= MaxModes .AND. &
                 ASSOCIATED(EigenVectors) ) THEN  
-              NoModes = SIZE( Solution % EigenVectors, 1 )
+              NoModes = SIZE( EigenVectors, 1 )
               
               IF( GotActiveModes ) THEN
                 IndField = ActiveModes( FileIndex ) 
@@ -1373,8 +1457,8 @@ CONTAINS
               NoFields2 = 1
             END IF
           ELSE
-            IF( MaxModes > 0 .AND. ASSOCIATED(Solution % EigenVectors) ) THEN  
-              NoModes = SIZE( Solution % EigenVectors, 1 )
+            IF( MaxModes > 0 .AND. ASSOCIATED(EigenVectors) ) THEN  
+              NoModes = SIZE( EigenVectors, 1 )
               IF( MaxModes > 0 ) NoModes = MIN( MaxModes, NoModes )
               NoFields = NoModes
             END IF
@@ -1395,7 +1479,7 @@ CONTAINS
           END IF
           
           !---------------------------------------------------------------------
-          ! Finally save the field values 
+          ! Finally save the elemental field values 
           !---------------------------------------------------------------------
           DoIm = 0
 400       DO iField = 1, NoFields + NoFields2          
@@ -1424,7 +1508,7 @@ CONTAINS
               NoFieldsWritten = NoFieldsWritten + 1
 
               CALL Info(Caller,'Writing variable: '//TRIM(FieldName),Level=20)
-              IF( NoModes + NoModes2 == 0 .OR. EigenAnalysis ) THEN
+              IF( iField == 0 .OR. NoModes + NoModes2 == 0 .OR. EigenAnalysis ) THEN
                 WRITE( OutStr,'(A,I0,A)') '        <DataArray type="Float',PrecBits,'" Name="'//TRIM(FieldName)
               ELSE IF( iField <= NoFields ) THEN
                 IF( IsHarmonic ) THEN
@@ -1542,7 +1626,7 @@ CONTAINS
                   DO k=1,sdofs
                     IF( k > dofs ) THEN
                       val = 0.0_dp
-
+                      
                     ELSE IF( NoModes > 0 .AND. iField <= NoFields ) THEN
                       IF( ComponentVector ) THEN
                         IF( k == 1 ) zval = SUM(EigenVectors(IndField,ElemInd(1:n)))/n
@@ -2076,7 +2160,8 @@ CONTAINS
     LOGICAL :: ScalarsExist, VectorsExist, Found, ComponentVector, AllActive, ThisActive
     LOGICAL, POINTER :: ActivePartition(:)
     TYPE(Variable_t), POINTER :: Solution, Solution2, Solution3
-    INTEGER :: Active, NoActive, ierr, NoFields, NoFields2, NoModes, NoModes2, IndField, iField, VarType
+    INTEGER :: Active, NoActive, ierr, NoFields, NoFields2, NoModes, NoModes2, &
+        IndField, iField, iField0, VarType
     INTEGER, DIMENSION(MPI_STATUS_SIZE) :: status
     
 
@@ -2219,9 +2304,15 @@ CONTAINS
           ELSE
             sdofs = 1
           END IF
+
+          IF(Solution % FrozenMode ) THEN
+            iField0 = 0
+          ELSE
+            iField0 = 1
+          END IF
           
-          DO iField = 1, NoFields 
-            IF( NoModes + NoModes2 == 0 .OR. EigenAnalysis ) THEN
+          DO iField = iField0, NoFields 
+            IF( iField == 0 .OR. NoModes + NoModes2 == 0 .OR. EigenAnalysis ) THEN
               FullName = TRIM( FieldName ) 
             ELSE          
               IF( GotActiveModes ) THEN
@@ -2328,9 +2419,15 @@ CONTAINS
             ELSE
               sdofs = 1
             END IF
-
-            DO iField = 1, NoFields
-              IF( NoModes + NoModes2 == 0 .OR. EigenAnalysis ) THEN
+            
+            IF(Solution % FrozenMode ) THEN
+              iField0 = 0
+            ELSE
+              iField0 = 1
+            END IF
+            
+            DO iField = iField0, NoFields
+              IF( iField == 0 .OR. NoModes + NoModes2 == 0 .OR. EigenAnalysis ) THEN
                 FullName = TRIM( FieldName ) 
               ELSE          
                 IF( NoModes > 0 ) THEN

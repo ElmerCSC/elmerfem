@@ -1,0 +1,168 @@
+!
+! This is a verification case of an electromagnetic port model to obtain
+! a propagation parameter. A waveguide having a rectangular cross section of
+! size a x 2a and consisting of two materials is modelled. This problem has been
+! discussed for example in
+!
+! [ZR18] A. Zdunek and W. Rachowicz. Inhomogeneous lossy waveguide mode
+!        analysis. Computers & Mathematics with Applications, 75(3):798-808,
+!        2018.
+!
+! Here a dimensionless form of the model is used and the second-order
+! approximation is applied. The four eigenvalues having
+! the smallest real part give the following values for a scaled propagation
+! parameter (see [ZR18])
+!
+!            1.27576
+!            0.97154
+!            0.72865
+!            0.59390
+!
+! which are in good agreement with the results given in the literature.
+!
+! The original author of Elmer case: M.M. 
+!
+
+Check Keywords "Warn"
+
+$ epsr = 2.25
+$ wref = 3
+
+Header
+  Mesh DB "." "port"
+End
+
+Simulation
+  Coordinate System = "Cartesian"
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Max Output Level = 5
+End
+
+Constants
+  Permeability of Vacuum = 1.0
+  Permittivity of Vacuum = 1.0
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Equation = 1
+  Material = 2
+End
+
+Material 1
+  Name = "higher_eps"
+  Relative Reluctivity = 1.0
+  Relative Permittivity = $ epsr
+End 
+
+Material 2
+  Name = "Vacuum"
+  Relative Reluctivity = 1.0
+  Relative Permittivity = 1.0
+End 
+
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+Solver 1
+  Equation = "Port mode"
+  Procedure = "EMPort" "EMPortSolver"
+
+  Variable Output = False
+
+  Angular Frequency = $wref
+  Use Piola Transform = True
+  Quadratic Approximation = True
+  Steady State Convergence Tolerance = 1e-09
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = Umfpack
+
+!  Linear System Scaling = Logical True
+!  Linear System Symmetric = Logical True
+!  Linear System Solver = string "Iterative"
+!  Linear System Convergence Tolerance = real 1e-8
+!  Linear System Iterative Method = BiCGStabl
+!  BiCGStabl Polynomial Degree = 2
+!  Linear System Residual Output = integer 1
+!  Linear System Max Iterations = integer 2000
+!  Linear System Preconditioning = ILU2
+!  Linear System Residual Output = 50
+
+  Eigen System Shift = -1.0
+  Eigen System Shift Im = Real 0
+  Eigen Analysis = True
+  Eigen System Values = 30
+  Eigen System Convergence Tolerance = Real 1.0e-10
+  Eigen System Compute Residuals = True
+
+!  Eigen System Select = smallest real part
+!  Eigen System Select = largest real part
+!  Eigen System Select = smallest imag part
+!  Eigen System Select = largest imag part
+!  Eigen System Select = smallest magnitude
+!  Eigen System Select = largest magnitude
+!  Eigen System Lanczos Vectors = 180
+!  Eigen System Max Iterations = 1
+End
+
+Solver 2
+  Equation = "postprocess"
+  Procedure = "EMPort" "EMPortSolver_post"
+  Variable = postfield[Electric Field Re:3 Electric Field Im:3]
+  Variable DOFs = 6
+
+  Mode Index = Integer 8
+  
+  Linear System Solver = Iterative
+  Linear System Convergence Tolerance = real 1e-8
+  Linear System Iterative Method = CG
+  Linear System Residual Output = integer 10
+  Linear System Max Iterations = integer 2000
+  Linear System Preconditioning = ILU0
+End
+
+
+Solver 3
+!  Exec Solver = never
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = eigenvalues
+  Vtu Format = Logical True
+  Save Geometry IDs = True
+  Ascii Output = True
+  Single Precision = Logical True 
+
+  Vector Field 1 = Electric Field Re
+  Vector Field 2 = Electric Field Im
+
+  Eigen Analysis = False
+End
+
+
+Solver 4
+  Equation = "SaveScalars"
+!  Filename = f.dat
+
+  Procedure = "SaveData" "SaveScalars"
+  Save EigenValues = True
+
+! Compare the norm of the 8th eigenvalue
+  Show Norm Index = 8 
+End
+
+Boundary Condition 1
+  Target Boundaries(6) = 1 2 3 4 5 6
+  E re = Real 0
+  E im = Real 0
+  E re {e} = Real 0.0
+  E im {e} = Real 0.0
+End
+
+Solver 4 :: Reference Norm = Real 14.647970391372228

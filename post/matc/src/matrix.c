@@ -15,8 +15,8 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with this program (in file fem/GPL-2); if not, write to the 
- *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
+ *  along with this program (in file fem/GPL-2); if not, write to the
+ *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
  *  Boston, MA 02110-1301, USA.
  *
  *****************************************************************************/
@@ -85,13 +85,21 @@ $  usage of the function and type of the parameters
 #define MB(i,j) b[(i) * ncolb + (j)]
 #define MC(i,j) c[(i) * ncolc + (j)]
 
-double func_abs(arg) 
-     double arg;
+double func_abs(double arg) 
 {
   return abs(arg);
 }
 
-VARIABLE *mtr_sum(A) VARIABLE *A;
+double func_mod(double x, double y)
+{
+  int ix, iy;
+
+  ix = x + 0.5;
+  iy = y + 0.5;
+  return (double)(ix % iy);
+}
+
+VARIABLE *mtr_sum(VARIABLE *A)
 {
    VARIABLE *C;
 
@@ -118,7 +126,7 @@ VARIABLE *mtr_sum(A) VARIABLE *A;
    return C;
 }
 
-VARIABLE *mtr_trace(A) VARIABLE *A;
+VARIABLE *mtr_trace(VARIABLE *A)
 {
   VARIABLE *C;
 
@@ -137,7 +145,7 @@ VARIABLE *mtr_trace(A) VARIABLE *A;
   return C;
 }
 
-VARIABLE *mtr_zeros(A) VARIABLE *A;
+VARIABLE *mtr_zeros(VARIABLE *A)
 {
   VARIABLE *C;
 
@@ -160,7 +168,7 @@ VARIABLE *mtr_zeros(A) VARIABLE *A;
   return C;
 }
 
-VARIABLE *mtr_ones(A) VARIABLE *A;
+VARIABLE *mtr_ones(VARIABLE *A)
 {
   VARIABLE *C;
   double *c;
@@ -174,11 +182,12 @@ VARIABLE *mtr_ones(A) VARIABLE *A;
   return C;
 }
 
-VARIABLE *mtr_rand(A) VARIABLE *A;
+VARIABLE *mtr_rand(VARIABLE *A)
 {
   VARIABLE *C;
 
   static int seed = 0;
+#pragma omp threadprivate (seed)
   int i, n;
 
   double *c;
@@ -192,7 +201,7 @@ VARIABLE *mtr_rand(A) VARIABLE *A;
   return C;
 }
 
-VARIABLE *mtr_resize(A) VARIABLE *A;
+VARIABLE *mtr_resize(VARIABLE *A)
 {
   VARIABLE *C;
 
@@ -223,7 +232,7 @@ VARIABLE *mtr_resize(A) VARIABLE *A;
   return C;
 }
 
-VARIABLE *mtr_vector(A) VARIABLE *A;
+VARIABLE *mtr_vector(VARIABLE *A)
 {
   VARIABLE *C;
 
@@ -255,7 +264,7 @@ VARIABLE *mtr_vector(A) VARIABLE *A;
   return C;
 }
 
-VARIABLE *mtr_eye(A) VARIABLE *A;
+VARIABLE *mtr_eye(VARIABLE *A)
 {
   VARIABLE *C;
   double *c;
@@ -276,7 +285,7 @@ VARIABLE *mtr_eye(A) VARIABLE *A;
   return C;
 }
 
-VARIABLE *mtr_size(A) VARIABLE *A;
+VARIABLE *mtr_size(VARIABLE *A)
 {  
   VARIABLE *C;
   double *c;
@@ -287,7 +296,7 @@ VARIABLE *mtr_size(A) VARIABLE *A;
   return C;
 }
 
-VARIABLE *mtr_min(A) VARIABLE *A;
+VARIABLE *mtr_min(VARIABLE *A)
 {
    VARIABLE *C;
 
@@ -315,7 +324,7 @@ VARIABLE *mtr_min(A) VARIABLE *A;
    return C;
 }
 
-VARIABLE *mtr_max(A) VARIABLE *A;
+VARIABLE *mtr_max(VARIABLE *A)
 {
    VARIABLE *C;
 
@@ -343,7 +352,7 @@ VARIABLE *mtr_max(A) VARIABLE *A;
    return C;
 }
 
-VARIABLE *mtr_diag(A) VARIABLE *A;
+VARIABLE *mtr_diag(VARIABLE *A)
 {
    VARIABLE *C;
 
@@ -369,7 +378,7 @@ VARIABLE *mtr_diag(A) VARIABLE *A;
    return C;
 }
 
-VARIABLE *mtr_pow(A) VARIABLE *A;
+VARIABLE *mtr_pow(VARIABLE *A)
 {
    VARIABLE *B = NEXT(A), *C;
    double *a = MATR(A), b = M(B,0,0), *c;
@@ -385,7 +394,7 @@ VARIABLE *mtr_pow(A) VARIABLE *A;
    return C;
 }
 
-VARIABLE *mtr_where(A) VARIABLE *A;
+VARIABLE *mtr_where(VARIABLE *A)
 {
    VARIABLE *C;
 
@@ -405,7 +414,7 @@ VARIABLE *mtr_where(A) VARIABLE *A;
    return C;
 }
 
-void mtr_com_init()
+void mtr_com_init(void)
 {
   static char *minHelp =
   {
@@ -536,6 +545,7 @@ void mtr_com_init()
   com_init( "asin"   , TRUE,  TRUE,  (VARIABLE *(*)())asin   , 1, 1, "r=asin(x)" );
   com_init( "acos"   , TRUE,  TRUE,  (VARIABLE *(*)())acos   , 1, 1, "r=acos(x)" );
   com_init( "atan"   , TRUE,  TRUE,  (VARIABLE *(*)())atan   , 1, 1, "r=atan(x)" );
+  com_init( "atan2"  , TRUE,  TRUE,  (VARIABLE *(*)())atan2  , 2, 2, "r=atan2(y,x)" );
   com_init( "sinh"   , TRUE,  TRUE,  (VARIABLE *(*)())sinh   , 1, 1, "r=sinh(x)" );
   com_init( "cosh"   , TRUE,  TRUE,  (VARIABLE *(*)())cosh   , 1, 1, "r=cosh(x)" );
   com_init( "tanh"   , TRUE,  TRUE,  (VARIABLE *(*)())tanh   , 1, 1, "r=tanh(x)" );
@@ -546,6 +556,7 @@ void mtr_com_init()
   com_init( "ceil"   , TRUE,  TRUE,  (VARIABLE *(*)())ceil   , 1, 1, "r=ceil(x)\nSmallest integer not less than x." );
   com_init( "floor"  , TRUE,  TRUE,  (VARIABLE *(*)())floor  , 1, 1, "r=floor(x)\nLargest integer not more than x." );
   com_init( "abs"    , TRUE,  TRUE,  (VARIABLE *(*)())func_abs   , 1, 1,"r=abs(x)");
+  com_init( "mod"    , TRUE,  TRUE,  (VARIABLE *(*)())func_mod   , 2, 2,"r=mod(x,y)");
   com_init( "pow"    , FALSE, TRUE,  mtr_pow,     2, 2, "r=pow(x,y)" );
   com_init( "min"    , FALSE, TRUE,  mtr_min,     1, 1, minHelp    );
   com_init( "max"    , FALSE, TRUE,  mtr_max,     1, 1, maxHelp    );

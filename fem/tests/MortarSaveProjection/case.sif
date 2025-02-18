@@ -1,0 +1,154 @@
+! Test case for just applying projectors to map stuff without enforcing
+! any kind of continuity.
+!
+! P.R. 1.10.2024
+
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "squares"
+  Include Path ""
+  Results Directory ""
+End
+  
+Simulation
+  Max Output Level = 10
+  Coordinate System = "Cartesian 2D"
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+  
+  Output Intervals = 0
+
+!  Post File = case.vtu
+!  Ascii Output = True
+End 
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Target Bodies(1) = 2
+  Name = "Body2"
+  Equation = 1
+  Material = 1
+End
+
+Solver 1
+  Equation = Heat Equation
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = Temperature
+
+  Nonlinear System Max Iterations = 1
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabl
+  Linear System Max Iterations = 5000
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 20
+  Linear System Precondition Recompute = 1
+
+! We do not apply, only do afterwords projection.
+!  Apply Mortar BCs = Logical True
+End
+
+
+Solver 2
+! Settings mainly for timing and verification
+!  Exec Solver = never
+
+  Equation = SaveProject
+  Procedure = "SaveData" "SaveProjection"
+
+! Projector is Pu=0 <=> Qu_s=-Ru_m
+! This gives Pu
+! For weak projector this is the result of Galerkin intergral over u_s-u_m.
+  Variable 1 = Temperature
+  Target Variable 1 = Proj Temperature
+  Normalize 1 = Logical False
+
+! This gives normalized projection u_s=-Ru_m/rowsum(Q)
+  Variable 2 = Temperature
+  Target Variable 2 = Proj S Temperature
+  Project To Slave 2 = Logical True
+  Project To Master 2 = Logical False
+
+! This gives normalized projection for u_m
+  Variable 3 = Temperature
+  Target Variable 3 = Proj M Temperature
+  Project To Slave 3 = Logical False
+  Project To Master 3 = Logical True
+
+! This gives both u_s and u_m
+  Variable 4 = Temperature
+  Target Variable 4 = Proj SM Temperature
+  Project To Slave 4 = Logical True
+  Project To Master 4 = Logical True
+
+  Variable 5 = Coordinate 1
+  Target Variable 5 = Proj X
+  Project To Slave 5 = Logical True
+  Project To Master 5 = Logical True
+
+  Variable 6 = Coordinate 2
+  Target Variable 6 = Proj Y
+  Project To Slave 6 = Logical True
+  Project To Master 6 = Logical True
+
+  Apply Mortar BCs = Logical True
+End 
+
+
+Equation 1
+  Name = "Heat"
+  Active Solvers(2) = 1 2
+End
+
+Material 1
+  Name = "Ideal"
+  Heat Conductivity = 1
+  Heat Capacity = 1
+  Density = 1
+End
+
+Body Force 1
+  Name = "Heating"
+  Heat Source = 1.0
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 4
+  Name = "Left-left"
+  Temperature = 1.0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 6
+  Name = "Right-Right"
+  Temperature = 2.0
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 2
+  Name = "Left-Right"
+  Mortar BC = Integer 4 
+  Galerkin Projector = Logical True
+  Plane Projector = Logical True
+End
+
+Boundary Condition 4
+  Target Boundaries(1) = 8
+  Name = "Right-Left"  
+End
+
+
+Solver 1 :: Reference Norm = 1.78949575E+00
+Solver 2 :: Reference Norm = 1.33772301E+01
+

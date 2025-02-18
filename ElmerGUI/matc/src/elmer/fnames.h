@@ -78,7 +78,7 @@ void fnc_com_init( void);
 
 /* jacobi.c */
 
-VARIABLE *mtr_jacob();
+VARIABLE *mtr_jacob(VARIABLE *);
 int jacobi( double *, double *, double *, double *, double *, int, double);
 
 /* lists.c */
@@ -217,53 +217,60 @@ void var_delete( char *);
 char *var_to_string( VARIABLE *);
 
 /* str.c */
-void str_com_init();
-VARIABLE *str_sprintf();
-VARIABLE *str_sscanf();
-VARIABLE *str_matcvt();
-VARIABLE *str_cvtmat();
+void str_com_init(void);
+VARIABLE *str_sprintf(VARIABLE *);
+VARIABLE *str_sscanf(VARIABLE *);
+VARIABLE *str_matcvt(VARIABLE *);
+VARIABLE *str_cvtmat(VARIABLE *);
 
 /* gra.c */
-void gra_init();
-void gra_close_sys();
-void gra_set_viewport();
-void gra_set_window();
-void gra_perspective();
-void gra_error();
-void gra_window_to_viewport();
-void gra_translate();
-void gra_rotate();
-void gra_scale();
-void gra_viewpoint();
-void gra_getmatrix();
-void gra_setmatrix();
-void gra_dbuffer_null();
+void gra_init(void);
+void gra_close_sys(void);
+void gra_set_viewport(double, double, double, double);
+void gra_set_window(double, double, double, double, double, double);
+void gra_perspective(double);
+void gra_error(void);
+void gra_window_to_viewport(double, double, double, double *, double *);
+void gra_translate(double, double, double);
+void gra_rotate(double, double, double);
+void gra_scale(double, double, double);
+void gra_viewpoint(double, double, double, double, double, double);
+void gra_dbuffer_null(void);
 void gra_com_init(void);
 void gra_init_matc(int devtype, char *name);
 void gra_mtrans(double,double,double,double *,double *,double *);
+
+/*******************************************************************
+                  graphics package definitions
+*******************************************************************/ 
+#include "gra.h"
+
+/* gra.c */
+void gra_getmatrix(GMATRIX);
+void gra_setmatrix(GMATRIX);
 
 /* clip.c */
 int clip_poly(int *,double *,double *);
 int clip_line(int *,double *,double *);
 
 /* c3d.c */
-VARIABLE *c3d_gc3d();
-VARIABLE *c3d_gc3dlevels();
+VARIABLE *c3d_gc3d(VARIABLE *);
+VARIABLE *c3d_gc3dlevels(VARIABLE *);
 
 /* dri/dri_ps.c */
 
-void gra_ps_open();
-void gra_ps_close();
-void gra_ps_clear();
-void gra_ps_defcolor();
-void gra_ps_color();
-void gra_ps_polyline();
-void gra_ps_draw();
-void gra_ps_move();
-void gra_ps_polymarker();
-void gra_ps_marker();
-void gra_ps_areafill();
-void gra_ps_image();
-void gra_ps_text();
-void gra_ps_flush();
-void gra_ps_reset();
+void gra_ps_open(int);
+void gra_ps_close(void);
+void gra_ps_clear(void);
+void gra_ps_defcolor(int, double, double, double);
+void gra_ps_color(int);
+void gra_ps_polyline(int, Point *);
+void gra_ps_draw(Point *);
+void gra_ps_move(Point *);
+void gra_ps_polymarker(int, int, Point *);
+void gra_ps_marker(int, Point *);
+void gra_ps_areafill(int, Point *);
+void gra_ps_image(int, int, int, unsigned char *);
+void gra_ps_text(double, double, char *);
+void gra_ps_flush(void);
+void gra_ps_reset(void);

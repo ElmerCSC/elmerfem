@@ -15,8 +15,8 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with this program (in file fem/GPL-2); if not, write to the 
- *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
+ *  along with this program (in file fem/GPL-2); if not, write to the
+ *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
  *  Boston, MA 02110-1301, USA.
  *
  *****************************************************************************/
@@ -55,7 +55,7 @@
 |
 |  List structure is currently as follows
 |
-|       struct list 
+|       struct list
 |       {
 |         struct list *next;
 |         char *name;
@@ -82,7 +82,7 @@ $  usage of the function and type of the parameters
 
 
 /*
- * $Id: lists.c,v 1.1.1.1 2005/04/14 13:29:14 vierinen Exp $ 
+ * $Id: lists.c,v 1.1.1.1 2005/04/14 13:29:14 vierinen Exp $
  *
  * $Log: lists.c,v $
  * Revision 1.1.1.1  2005/04/14 13:29:14  vierinen
@@ -91,13 +91,13 @@ $  usage of the function and type of the parameters
  * Revision 1.2  1998/08/01 12:34:44  jpr
  *
  * Added Id, started Log.
- * 
+ *
  *
  */
 
 #include "elmer/matc.h"
 
-void lst_addtail(list, item) int list; LIST *item;
+void lst_addtail(int list, LIST *item)
 /*======================================================================
 ?  Add specified item to end of a list given.
 ^=====================================================================*/
@@ -114,9 +114,9 @@ void lst_addtail(list, item) int list; LIST *item;
    * else look for current last item in list
    */
    else
-   { 
+   {
      for(lst = listheaders[list].next; NEXT(lst); lst = NEXT(lst));
- 
+
      /*
       *  and make the link
       */
@@ -124,7 +124,7 @@ void lst_addtail(list, item) int list; LIST *item;
    }
 }
 
-void lst_addhead(list, item) int list; LIST *item;
+void lst_addhead(int list, LIST *item)
 /*======================================================================
 ?  add specified item to start of list given.
 ^=====================================================================*/
@@ -136,7 +136,7 @@ void lst_addhead(list, item) int list; LIST *item;
    listheaders[list].next = item;
 }
 
-void lst_add(list, item) int list; LIST *item;
+void lst_add(int list, LIST *item)
 /*======================================================================
 ?  add item to lexically right place in the list.
 |
@@ -144,8 +144,8 @@ void lst_add(list, item) int list; LIST *item;
 ^=====================================================================*/
 {
    LIST *lst, *lstn;
-   
-   /* 
+
+   /*
     *  if the list is empty make this item first and return.
     */
    if ((lst = listheaders[list].next) == (LIST *)NULL)
@@ -153,8 +153,8 @@ void lst_add(list, item) int list; LIST *item;
      lst_addhead(list, item); return;
    }
 
-   /* 
-    *  if the name of the new item is lexically 
+   /*
+    *  if the name of the new item is lexically
     *  smaller than first item in the list, add it
     *  to beginning of the list.
     */
@@ -162,26 +162,26 @@ void lst_add(list, item) int list; LIST *item;
    {
      lst_addhead(list, item); return;
    }
- 
+
    /*
     *  look for right place to add.
     */
-   for(; NEXT(lst); lst = NEXT(lst)) 
+   for(; NEXT(lst); lst = NEXT(lst))
      if (strcmp(NAME(NEXT(lst)), NAME(item)) > 0)
      {
-       lstn = NEXT(lst); 
-       NEXT(lst) = item; 
+       lstn = NEXT(lst);
+       NEXT(lst) = item;
        NEXT(item) = lstn;
        return;
      }
- 
+
    /*
     *  fell of the loop. item should be added to the tail of the list.
     */
-   NEXT(lst) = item; 
+   NEXT(lst) = item;
 }
 
-void lst_unlink(list, item) int list; LIST *item;
+void lst_unlink(int list, LIST *item)
 /*======================================================================
 ?  unlink specified item from a list given.
 ^=====================================================================*/
@@ -192,9 +192,9 @@ void lst_unlink(list, item) int list; LIST *item;
    *  if the list is empty return
    */
   if ((lst = listheaders[list].next) == (LIST *)NULL) return;
- 
+
   /*
-   *  it's not the header, look if it is in list at all  
+   *  it's not the header, look if it is in list at all
    */
   if (lst != item)
   {
@@ -216,13 +216,13 @@ void lst_unlink(list, item) int list; LIST *item;
   }
 
   /*
-   *  item was the header, unlink it    
+   *  item was the header, unlink it
    */
   else
     listheaders[list].next = NEXT(item);
 }
 
-void lst_free(list, item) int list; LIST *item;
+void lst_free(int list, LIST *item)
 /*======================================================================
 ?  Unlink item from list and free memory used by it.
 |
@@ -235,7 +235,7 @@ void lst_free(list, item) int list; LIST *item;
    FREEMEM((char *)item);
 }
 
-LIST *lst_find(list, name) int list; char *name;
+LIST *lst_find(int list, char *name)
 /*======================================================================
 ?  Look for a named item from given list.
 |
@@ -255,7 +255,7 @@ LIST *lst_find(list, name) int list; char *name;
   return lst;
 }
 
-void lst_purge(list) int list;
+void lst_purge(int list)
 /*======================================================================
 ?  Delete list and free memory allocated to it.
 |
@@ -278,7 +278,7 @@ void lst_purge(list) int list;
   listheaders[list].next = (LIST *)NULL;  /* security */
 }
 
-VARIABLE *lst_print(list) int list;
+VARIABLE *lst_print(int list)
 /*======================================================================
 ?  Print list name and item names from given list
 |
@@ -288,10 +288,10 @@ VARIABLE *lst_print(list) int list;
 &  fprintf(), strlen()
 ^=====================================================================*/
 {
-   LIST *lst;      
+   LIST *lst;
 
    int i, spc, len;
-  
+
    /*
     *  if empty list return.
     */
@@ -329,6 +329,6 @@ VARIABLE *lst_print(list) int list;
       }
     }
     PrintOut("\n");
- 
+
     return (VARIABLE *)NULL;
 }

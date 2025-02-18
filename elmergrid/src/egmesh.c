@@ -132,6 +132,32 @@ int GetMaxElementDimension(struct FemType *data)
 }
 
 
+int GetMaxBodyIndex(struct FemType *data) {
+  int i,maxind;
+  
+  maxind = 0;
+  for(i=1; i <= data->noelements; i++) 
+    maxind = MAX(maxind, data->material[i]);
+  return(maxind);
+}
+
+int GetMaxBCIndex(struct BoundaryType *bound) {
+  int i,j,maxind;
+  
+  maxind = 0;
+  for(j=0;j < MAXBOUNDARIES;j++) {
+    if(bound[j].created == FALSE) continue;
+    if(bound[j].nosides == 0) continue;
+    
+    for(i=1; i <= bound[j].nosides; i++) 
+      maxind = MAX(maxind, bound[j].types[i]);
+  }
+  return(maxind);
+}
+
+
+
+
 int GetCoordinateDimension(struct FemType *data,int info)
 {
   int i,j,noknots,coorddim;
@@ -898,7 +924,8 @@ void InitializeKnots(struct FemType *data)
   data->nodalexists = FALSE;
   /* data->invtopoexists = FALSE; */
   data->partitiontableexists = FALSE;
-
+  data->maxpartitiontable = 0;
+  
   data->invtopo.created = FALSE;
   data->nodalgraph2.created = FALSE;
   data->dualgraph.created = FALSE;
@@ -907,7 +934,6 @@ void InitializeKnots(struct FemType *data)
   for(i=0;i<MAXDOFS;i++) {
     data->edofs[i] = 0;
     data->bandwidth[i] = 0;
-    data->iterdofs[i] = 0;
     strcpy(data->dofname[i],""); 
   }
 
@@ -1299,15 +1325,8 @@ void CreateKnots(struct GridType *grid,struct CellType *cell,
   data->numbering = grid->numbering;
   data->indexwidth = grid->maxwidth;
   data->noknots = MAX(noknots,grid->noknots);
-
   data->noboundaries = grid->noboundaries;
-  for(i=0;i<MAXBOUNDARIES;i++) {
-    data->boundint[i] = grid->boundint[i];
-    data->boundext[i] = grid->boundext[i];
-    data->boundsolid[i] = grid->boundsolid[i];
-    data->boundtype[i] = grid->boundtype[i];
-  }
-
+  
   AllocateKnots(data);
   minsize = 1.0e20;
 
@@ -1323,7 +1342,7 @@ void CreateKnots(struct GridType *grid,struct CellType *cell,
   for(cellj=1;cellj<= grid->ycells ;cellj++) {        /* cells direction up     */
     for(j=1; j<=grid->yelems[cellj]; j++)             /* lines inside cells     */
       for(celli=1;celli<= grid->xcells; celli++)      /* cells direction right  */
-	if(k=grid->numbered[cellj][celli]) {
+	if((k=grid->numbered[cellj][celli])) {
 	  material = cell[k].material;
 	  for(i=1; i<=grid->xelems[celli]; i++) {
 
@@ -1526,7 +1545,6 @@ int CreateVariable(struct FemType *data,int variable,int unknowns,
 		    dofname,data->alldofs[variable]);
     for(i=1;i<=data->alldofs[variable]*timesteps;i++)
       data->dofs[variable][i] = value;  
-    data->iterdofs[variable] = 1;
   }
   else if (data->edofs[variable] == unknowns) {
     if(info) printf("CreateVariable: Variable %d exists with correct number of dofs!\n",
@@ -1537,18 +1555,7 @@ int CreateVariable(struct FemType *data,int variable,int unknowns,
 		    variable);
     return(2);
   }  
-
-
-  if(eorder) {
-    if (data->eorder[variable] == FALSE) {
-      data->eorder[variable] = TRUE;
-      data->order[variable] = Ivector(1,data->alldofs[variable]);
-      for(i=1;i<=data->alldofs[variable];i++)
-	data->order[variable][i] = i;
-    }
-    if(info) printf("Created index for variable %s.\n",dofname);
-  }
-
+  
   strcpy(data->dofname[variable],dofname);
 
   return(0);
@@ -1823,30 +1830,6 @@ int DestroyBoundary(struct BoundaryType *bound)
 
 
 
-int CreateBoundaries(struct CellType *cell,struct FemType *data,
-		     struct BoundaryType *boundaries,int info)
-{
-  int i,j;
- 
-  j = 0;
-  if(data->noboundaries > 0) 
-    for(i=0;i<data->noboundaries;i++) {
-      while(boundaries[j].created) {
-	j++;
-	if(j >= MAXBOUNDARIES) {
-	  printf("CreateBoundaries: too many boundaries %d\n",j);
-	  return(1);
-	}
-      } 
-      CreateBoundary(cell,data,&boundaries[j],
-		     data->boundext[i],data->boundint[i],
-		     data->boundsolid[i],data->boundtype[i],info);
-    }
-  return(0);
-}
-
-
-
 int CreatePoints(struct CellType *cell,struct FemType *data,
 		 struct BoundaryType *bound,
 		 int param1,int param2,int pointmode,int pointtype,int info)
@@ -1975,7 +1958,7 @@ int CreateNewNodes(struct FemType *data,int *order,int material,int newknots)
     newz[j] = data->z[i];
 
     for(k=1;k<MAXDOFS;k++) {
-      if(lmax = data->edofs[k])
+      if((lmax = data->edofs[k]))
 	for(l=1;l<=lmax;l++) 
 	  newdofs[k][lmax*(j-1)+l] = data->dofs[k][lmax*(i-1)+l];
     }
@@ -1988,7 +1971,7 @@ int CreateNewNodes(struct FemType *data,int *order,int material,int newknots)
       newz[j] = data->z[i];
 
       for(k=1;k<MAXDOFS;k++) {
-	if(lmax = data->edofs[k])
+	if((lmax = data->edofs[k]))
 	  for(l=1;l<=lmax;l++) 
 	    newdofs[k][lmax*(j-1)+l] = data->dofs[k][lmax*(i-1)+l];
       }
@@ -2475,19 +2458,19 @@ omstart:
 	continue;
 
       /* point (i,j) must now be a corner */
-      if(cellno = grid->numbered[j][i]) {
+      if((cellno = grid->numbered[j][i])) {
 	elem = GetElementIndex(&(cell)[cellno],1,1);
 	ind  = BOTLEFT;
       } 
-      else if(cellno = grid->numbered[j][i-1]) {
+      else if((cellno = grid->numbered[j][i-1])) {
 	elem = GetElementIndex(&(cell)[cellno],cell[cellno].xelem,1);
 	ind  = BOTRIGHT;
       } 
-      else if(cellno = grid->numbered[j-1][i]) {
+      else if((cellno = grid->numbered[j-1][i])) {
 	elem = GetElementIndex(&(cell)[cellno],1,cell[cellno].yelem);
 	ind  = TOPLEFT;
       } 
-      else if(cellno = grid->numbered[j-1][i-1]) {
+      else if((cellno = grid->numbered[j-1][i-1])) {
 	elem = GetElementIndex(&(cell)[cellno],cell[cellno].xelem,cell[cellno].yelem);
 	ind  = TOPRIGHT;
       }
@@ -3690,7 +3673,7 @@ static void ReorderAutomatic(struct FemType *data,int iterations,
     dz = 0.0;
 
     for(l=1;l<=maxnodes;l++){
-      if(ind = neighbours[j][l]) {
+      if((ind = neighbours[j][l])) {
 	nolocal++;
 	localtmp[l] = ind;
 	dx = data->x[l] - data->x[ind];
@@ -4117,7 +4100,7 @@ void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
 	  boundaryname0[j] = NULL;
 	
 	/* We need some temporal place is name mapping might not be unique */
-	for(j=minbc;j<=MIN(maxbc,MAXBODIES-1);j++) {
+	for(j=minbc;j<=MIN(maxbc,MAXBCS-1);j++) {
 	  k = 0;
 	  for(elemdim=2;elemdim>=0;elemdim--) {	    
 	    k = mapbc[j][elemdim];
@@ -4133,7 +4116,7 @@ void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
 	  }
 	}
 	
-	for(j=minbc;j<=MIN(maxbc,MAXBODIES-1);j++) {
+	for(j=minbc;j<=MIN(maxbc,MAXBCS-1);j++) {
 	  k = 0;
 	  for(elemdim=2;elemdim>=0;elemdim--) {	    	   	    
 	    k = mapbc[j][elemdim];
@@ -4160,7 +4143,7 @@ void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
 	bound[j].types[i] += bcoffset;
     }
     if(data->boundarynamesexist) {
-      for(j=MAXBOUNDARIES-bcoffset-1;j>=0;j--) {
+      for(j=MAXBCS-bcoffset-1;j>=0;j--) {
 	k = j+bcoffset;
 	if(!data->boundaryname[k]) data->boundaryname[k] = Cvector(0,MAXNAMESIZE);
 	strcpy(data->boundaryname[k],data->boundaryname[j]);
@@ -6069,7 +6052,7 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
 	z = grid->z[cellk-1] + k*grid->dz[cellk];
       }
       else {
-	if(k<=grid->zelems[cellk]/2) {
+	if((k<=grid->zelems[cellk]/2)) {
 	  z = grid->z[cellk-1] + grid->dz[cellk] *
 	    (1.- pow(grid->zratios[cellk],(Real)(k))) / (1.-grid->zratios[cellk]);
 	}
@@ -6212,7 +6195,7 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
 	strcpy(data->bodyname[i],dataxy->bodyname[i]);
       }
     }
-    for(i=1;i< MAXBOUNDARIES;i++) { 
+    for(i=1;i< MAXBCS;i++) { 
       if(dataxy->boundaryname[i]) {
 	if(!data->boundaryname[i]) data->boundaryname[i] = Cvector(0,MAXNAMESIZE);
 	strcpy(data->boundaryname[i],dataxy->boundaryname[i]);
@@ -7289,7 +7272,7 @@ void ElementsToBoundaryConditions(struct FemType *data,
 	  }		
 	  if(movenames) {
 	    data->boundarynamesexist = TRUE;
-	    if(material < MAXBODIES && material < MAXBOUNDARIES) {
+	    if(material < MAXBODIES && material < MAXBCS) {
 	      if(!data->boundaryname[material]) {
 		data->boundaryname[material] = Cvector(0,MAXNAMESIZE);
 		if(data->bodyname[material]) {
@@ -7479,7 +7462,7 @@ int SideAndBulkMappings(struct FemType *data,struct BoundaryType *bound,struct E
       if(!bound[j].created) continue;
 	
 	for(i=1; i <= bound[j].nosides; i++) {
-	  if(currenttype = bound[j].types[i]) {
+	  if((currenttype = bound[j].types[i])) {
 	    for(l=0;l<eg->sidemappings;l++) {
 	      if(currenttype >= eg->sidemap[3*l] && currenttype <= eg->sidemap[3*l+1]) {
 		bound[j].types[i] = eg->sidemap[3*l+2];
@@ -8135,7 +8118,7 @@ omstart:
 
 	    if(data->material[parent] == layerparents[k])
 	      dolayer = k + 1;
-	    else if(parent = bound[j].parent2[i]) {
+	    else if((parent = bound[j].parent2[i])) {
 	      if(data->material[parent] == layerparents[k]) {
 		use2 = TRUE;
 		dolayer = k + 1;
@@ -8259,7 +8242,7 @@ omstart:
 	    parent = bound[j].parent[i];
 	    if(data->material[parent] == layerparents[k])
 	      dolayer = TRUE;
-	    else if(parent = bound[j].parent2[i]) {
+	    else if((parent = bound[j].parent2[i])) {
 	      if(data->material[parent] == layerparents[k]) {
 		dolayer = TRUE;
 	      }
@@ -9924,7 +9907,7 @@ int CreateDualGraph(struct FemType *data,int unconnected,int info)
   int *invrow,*invcol;
   struct CRSType *dualgraph;
 
-  printf("Creating a dual graph of the finite element mesh\n");  
+  if(info) printf("Creating a dual graph of the finite element mesh\n");  
 
   dualgraph = &data->dualgraph;
   if(dualgraph->created) {
@@ -9942,7 +9925,7 @@ int CreateDualGraph(struct FemType *data,int unconnected,int info)
   /* If a dual graph only for the unconnected nodes is requested do that.
      Basically the connected nodes are omitted in the graph. */
   if( unconnected ) {
-    printf("Removing connected nodes from the dual graph\n");
+    if(info) printf("Removing connected nodes from the dual graph\n");
     if( data->nodeconnectexist ) {
       if(info) printf("Creating connected elements list from the connected nodes\n");
       SetConnectedElements(data,info);
@@ -10052,6 +10035,7 @@ int CreateDualGraph(struct FemType *data,int unconnected,int info)
   }
   else {
     dualsize = freeelements;
+    if(info) printf("Allocating for the dual graph for %d with %d connections\n",dualsize,totcon);
     dualrow = Ivector(0,dualsize);
     for(i=1;i<=dualsize;i++) 
       dualrow[i] = 0;
@@ -10071,7 +10055,7 @@ int CreateDualGraph(struct FemType *data,int unconnected,int info)
     goto omstart;
   } 
 
-  if( orphanelements ) {
+  if( orphanelements && info ) {
     printf("There are %d elements in the dual mesh that are not connected!\n",orphanelements);
     if(unconnected) printf("The orphan elements are likely caused by the hybrid partitioning\n");
   }
@@ -10178,3 +10162,51 @@ int MeshTypeStatistics(struct FemType *data,int info)
   return(0);
 }
 
+int BoundingBox(struct FemType *data,int nomesh,int nomeshes,int info)
+{
+  int i;
+  Real xmin, xmax, ymin, ymax, zmin, zmax, sidemax;
+
+  xmin = xmax = data->x[1];
+  ymin = ymax = data->y[1];
+  zmin = zmax = data->z[1];
+
+  for(i=1; i<=data->noknots; i++){
+    xmax = MAX( xmax, data->x[i] );
+    xmin = MIN( xmin, data->x[i] );
+    ymax = MAX( ymax, data->y[i] );
+    ymin = MIN( ymin, data->y[i] );
+    zmax = MAX( zmax, data->z[i] );
+    zmin = MIN( zmin, data->z[i] );
+  }
+  sidemax = MAX(xmax-xmin,ymax-ymin);
+  sidemax = MAX(sidemax,zmax-zmin);
+
+  if(nomeshes > 1)  {
+    printf("Bounding box of all nodes in mesh[%d] of [%d] meshes:\n",nomesh,nomeshes);
+  }
+  else  {
+    printf("Bounding box of all nodes in mesh:\n");
+  }
+
+  printf("X:[%g,%g] ",xmin,xmax);
+  printf("Y:[%g,%g] ",ymin,ymax);
+  printf("Z:[%g,%g]\n",zmin,zmax);
+
+  if(sidemax > 49.9)  {
+    printf("\nNotice: the longest bounding box side length of [%g] is greater than 50.\n",sidemax);
+    printf("ElmerGUI includes a library of material properties, defined in SI units.  If using ElmerGUI, \n");
+    printf("then the geometry is expected to have meters as length.  Geometry that exceeds 50 meters \n");
+    printf("in length or width or height may not be intended.  Many Geometry generators assume \n");
+    printf("millimeters as the basic unit of length.  Scaling the geometry from millimeters to meters \n");
+    printf("may be the desired action.  For more help, search the Elmer users forum for posts \n");
+    printf("about SI units, or for posts about Coordinate Scaling.\n");
+    printf("Scaling can be accomplished in at least three ways, as follows:\n");
+    printf(" 1. Define the original geometry in meters, not millimeters.\n");
+    printf(" 2. Call ElmerGrid with -scale 0.001 0.001 0.001 as an option.\n");
+    printf(" 3. Add Coordinate Scaling = 0.001 to the simulation section of the sif file.\n");
+    printf("If using Elmer to analyze large geometry, such as a glacier, then ignore this notice.\n\n");
+  }
+
+  return(0);
+}

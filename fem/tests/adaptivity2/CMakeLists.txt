@@ -5,5 +5,4 @@ CONFIGURE_FILE( Ldomain.sif Ldomain.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO Ldomain.grd Ldomain  DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(adaptivity2)
-ADD_ELMER_LABEL(adaptivity2 quick)
+ADD_ELMER_TEST(adaptivity2 LABELS quick amr)

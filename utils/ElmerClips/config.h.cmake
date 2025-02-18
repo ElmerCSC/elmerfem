@@ -1,1 +1,0 @@
-#cmakedefine CodecID @CodecID@

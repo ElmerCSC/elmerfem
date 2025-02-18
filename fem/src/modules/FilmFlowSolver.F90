@@ -379,18 +379,19 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
 
   BLOCK
     REAL(KIND=dp), POINTER :: Comp(:)
-    DO i=1, Solver % Variable % dofs
-      Comp => Solver % Variable % Values(i::Solver % Variable % Dofs)      
-      PRINT *,'SolRange:',i,MINVAL(Comp),MAXVAL(Comp),SUM(Comp)/SIZE(Comp)
-    END DO
 
-    IF(GotAc) THEN
-      i = SIZE(PrevPressure)
-      CALL VectorValuesRange(PrevPressure,i,'Pressure0')       
-      CALL VectorValuesRange(pVar % Values,i,'Pressure1')       
-      CALL VectorValuesRange(pVar % Values - PrevPressure,i,'PressureDiff '//I2S(CoupledIter))       
-    END IF
-
+    IF( InfoActive(10) ) THEN
+      n = SIZE(pVar % Values)
+      DO i=1, Solver % Variable % dofs
+        Comp => Solver % Variable % Values(i::Solver % Variable % Dofs)      
+        CALL VectorValuesRange(Comp,n,'Velocity '//I2S(i))       
+      END DO
+      CALL VectorValuesRange(pVar % Values,n,'Pressure')       
+      IF(GotAc) THEN
+        CALL VectorValuesRange(PrevPressure,n,'Pressure0')       
+        CALL VectorValuesRange(pVar % Values - PrevPressure,n,'PressureDiff '//I2S(CoupledIter))       
+      END IF
+    END IF      
   END BLOCK
   
   CALL Info(Caller,'All done',Level=12)

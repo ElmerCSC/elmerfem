@@ -327,6 +327,7 @@
            CALL DefaultUpdateEquations( STIFF, FORCE )
         END DO
 
+        CALL DefaultFinishBoundaryAssembly()
         CALL DefaultFinishAssembly()
 
         !------------------------------------------------------------------------------

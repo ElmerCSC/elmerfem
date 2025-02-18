@@ -5,5 +5,4 @@ CONFIGURE_FILE( Step.sif Step.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO Step.grd  DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(adaptivity3)
-ADD_ELMER_LABEL(adaptivity3 quick)
+ADD_ELMER_TEST(adaptivity3 LABELS quick amr)

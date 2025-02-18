@@ -85,14 +85,12 @@ $  usage of the function and type of the parameters
 #define MB(i,j) b[(i) * ncolb + (j)]
 #define MC(i,j) c[(i) * ncolc + (j)]
 
-double func_abs(arg) 
-     double arg;
+double func_abs(double arg) 
 {
   return abs(arg);
 }
 
-double func_mod(x,y)
-     double x,y;
+double func_mod(double x, double y)
 {
   int ix, iy;
 
@@ -101,7 +99,7 @@ double func_mod(x,y)
   return (double)(ix % iy);
 }
 
-VARIABLE *mtr_sum(A) VARIABLE *A;
+VARIABLE *mtr_sum(VARIABLE *A)
 {
    VARIABLE *C;
 
@@ -128,7 +126,7 @@ VARIABLE *mtr_sum(A) VARIABLE *A;
    return C;
 }
 
-VARIABLE *mtr_trace(A) VARIABLE *A;
+VARIABLE *mtr_trace(VARIABLE *A)
 {
   VARIABLE *C;
 
@@ -147,7 +145,7 @@ VARIABLE *mtr_trace(A) VARIABLE *A;
   return C;
 }
 
-VARIABLE *mtr_zeros(A) VARIABLE *A;
+VARIABLE *mtr_zeros(VARIABLE *A)
 {
   VARIABLE *C;
 
@@ -170,7 +168,7 @@ VARIABLE *mtr_zeros(A) VARIABLE *A;
   return C;
 }
 
-VARIABLE *mtr_ones(A) VARIABLE *A;
+VARIABLE *mtr_ones(VARIABLE *A)
 {
   VARIABLE *C;
   double *c;
@@ -184,7 +182,7 @@ VARIABLE *mtr_ones(A) VARIABLE *A;
   return C;
 }
 
-VARIABLE *mtr_rand(A) VARIABLE *A;
+VARIABLE *mtr_rand(VARIABLE *A)
 {
   VARIABLE *C;
 
@@ -203,7 +201,7 @@ VARIABLE *mtr_rand(A) VARIABLE *A;
   return C;
 }
 
-VARIABLE *mtr_resize(A) VARIABLE *A;
+VARIABLE *mtr_resize(VARIABLE *A)
 {
   VARIABLE *C;
 
@@ -234,7 +232,7 @@ VARIABLE *mtr_resize(A) VARIABLE *A;
   return C;
 }
 
-VARIABLE *mtr_vector(A) VARIABLE *A;
+VARIABLE *mtr_vector(VARIABLE *A)
 {
   VARIABLE *C;
 
@@ -266,7 +264,7 @@ VARIABLE *mtr_vector(A) VARIABLE *A;
   return C;
 }
 
-VARIABLE *mtr_eye(A) VARIABLE *A;
+VARIABLE *mtr_eye(VARIABLE *A)
 {
   VARIABLE *C;
   double *c;
@@ -287,7 +285,7 @@ VARIABLE *mtr_eye(A) VARIABLE *A;
   return C;
 }
 
-VARIABLE *mtr_size(A) VARIABLE *A;
+VARIABLE *mtr_size(VARIABLE *A)
 {  
   VARIABLE *C;
   double *c;
@@ -298,7 +296,7 @@ VARIABLE *mtr_size(A) VARIABLE *A;
   return C;
 }
 
-VARIABLE *mtr_min(A) VARIABLE *A;
+VARIABLE *mtr_min(VARIABLE *A)
 {
    VARIABLE *C;
 
@@ -326,7 +324,7 @@ VARIABLE *mtr_min(A) VARIABLE *A;
    return C;
 }
 
-VARIABLE *mtr_max(A) VARIABLE *A;
+VARIABLE *mtr_max(VARIABLE *A)
 {
    VARIABLE *C;
 
@@ -354,7 +352,7 @@ VARIABLE *mtr_max(A) VARIABLE *A;
    return C;
 }
 
-VARIABLE *mtr_diag(A) VARIABLE *A;
+VARIABLE *mtr_diag(VARIABLE *A)
 {
    VARIABLE *C;
 
@@ -380,7 +378,7 @@ VARIABLE *mtr_diag(A) VARIABLE *A;
    return C;
 }
 
-VARIABLE *mtr_pow(A) VARIABLE *A;
+VARIABLE *mtr_pow(VARIABLE *A)
 {
    VARIABLE *B = NEXT(A), *C;
    double *a = MATR(A), b = M(B,0,0), *c;
@@ -396,7 +394,7 @@ VARIABLE *mtr_pow(A) VARIABLE *A;
    return C;
 }
 
-VARIABLE *mtr_where(A) VARIABLE *A;
+VARIABLE *mtr_where(VARIABLE *A)
 {
    VARIABLE *C;
 
@@ -416,7 +414,7 @@ VARIABLE *mtr_where(A) VARIABLE *A;
    return C;
 }
 
-void mtr_com_init()
+void mtr_com_init(void)
 {
   static char *minHelp =
   {

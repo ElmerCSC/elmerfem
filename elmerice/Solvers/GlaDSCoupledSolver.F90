@@ -72,13 +72,15 @@
      TYPE(Nodes_t) :: ElementNodes, EdgeNodes
      TYPE(Element_t), POINTER :: Element, Edge, Face, Bulk
      TYPE(ValueList_t), POINTER :: Equation, Material, SolverParams, BodyForce, BC, Constants
-     TYPE(Variable_t), POINTER :: WorkVar, WorkVar2
+     TYPE(Variable_t), POINTER :: ChannelAreaVar, ChannelFluxVar, SheetThicknessVar, &
+          GroundedMaskVar, HydPotVar
      TYPE(Mesh_t), POINTER :: Mesh 
      
      INTEGER :: i, j, k, l, m, n, t, iter, body_id, eq_id, material_id, &
           istat, LocalNodes,bf_id, bc_id,  DIM, dimSheet, iterC, &
           NSDOFs, NonlinearIter, GhostNodes, NonlinearIterMin, Ne, BDForder, &
-          CoupledIter, Nel, ierror, ChannelSolver, FluxVariable, ThicknessSolver, ierr
+          MinCoupledIter, MaxCoupledIter, Nel, ierror, ChannelSolver, FluxVariable, &
+          ThicknessSolver, ierr
 
      TYPE(Variable_t), POINTER :: HydPotSol
      TYPE(Variable_t), POINTER :: ThickSol, AreaSol, VSol, WSol, NSol,  &
@@ -95,17 +97,24 @@
             qSolution(:), hstoreSolution(:), QcSolution(:), QmSolution(:),&
             CAValues(:), CFValues(:), SHValues(:)
 
-     CHARACTER(LEN=MAX_NAME_LEN) :: VariableName, SolverName
+     CHARACTER(LEN=MAX_NAME_LEN) :: VariableName, SolverName, MaskName
      CHARACTER(LEN=MAX_NAME_LEN) :: SheetThicknessName, ChannelAreaName, ZbName
      CHARACTER(LEN=MAX_NAME_LEN) :: methodSheet, methodChannels 
 
      LOGICAL :: Found, FluxBC, Channels, Storage, FirstTime = .TRUE., &
-          AllocationsDone = .FALSE.,  SubroutineVisited = .FALSE., &
+          AllocationsDone = .FALSE., &
           meltChannels = .TRUE., NeglectH = .TRUE., Calving = .FALSE., &
           CycleElement=.FALSE., MABool = .FALSE., MaxHBool = .FALSE., LimitEffPres=.FALSE., &
-          MinHBool=.FALSE.
+          MinHBool=.FALSE., CycleNode=.FALSE.
+     LOGICAL, SAVE :: UseGM, AllowSheetAtGL, ZeroSheetWithHP
      LOGICAL, ALLOCATABLE ::  IsGhostNode(:), NoChannel(:), NodalNoChannel(:)
 
+     ! For use in masking GlaDS floating shelves.  "MASK_HP" is for situations where
+     ! Hydraulic potential should be set to zero but not the sheet thickness.  This is
+     ! to allow non zero sheet outflow across the grounding line.
+     INTEGER :: MaskStatus
+     INTEGER, PARAMETER :: MASK_ALL = 0, MASK_NONE = 1, MASK_HP = 2
+     
      REAL(KIND=dp) :: NonlinearTol, dt, CumulativeTime, RelativeChange, &
           Norm, PrevNorm, S, C, Qc, MaxArea, MaxH, MinH
      REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), &
@@ -152,7 +161,7 @@
           CCw, lc, Lw, NoChannel, NodalNoChannel, &
           Channels, meltChannels, NeglectH, BDForder, &
           Vvar, ublr, hr2, Refq, Nel,&
-          Calving, Load_h, LimitEffPres
+          Calving, Load_h, LimitEffPres, MaskName
 
       
      totst = 0.0_dp
@@ -185,7 +194,7 @@
      Mesh => Solver % Mesh
      DIM = Mesh % MeshDim
      M = Mesh % NumberOfNodes
-
+   
 !------------------------------------------------------------------------------
 !    Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
@@ -293,11 +302,11 @@
         AllocationsDone = .TRUE.
      END IF
 
-
+     SolverParams => GetSolverParams()
 !------------------------------------------------------------------------------
 !    Read physical and numerical constants and initialize 
 !------------------------------------------------------------------------------
-     IF (FirstTime) THEN
+     IfFirstTime: IF (FirstTime) THEN
         FirstTime = .FALSE.
         Constants => GetConstants()
 
@@ -340,42 +349,79 @@
            WRITE(ZbName,'(A)') 'Zb'
         END IF
 
-        !CHANGE - to get Channel variables added to this solver mesh if
-        !doing calving and hydrology and consequently having many meshes
+        ! To get Channel variables added to this solver mesh if doing
+        ! calving and hydrology and consequently having many meshes
         Calving = ListGetLogical(Model % Simulation, 'Calving', Found)
         IF(.NOT.Found) Calving = .FALSE.
-        IF(Calving) THEN
+
+        ! Default behaviour relating to marine ice sheets and unglaciated grounded areas is to set the
+        ! following switches to false. The defaults change to true when using Samuel Cook's "Calving" 
+        ! (set in simulation section of sif).  The defaults will be overwritten for each of the switches
+        ! that are specified in the solver section of the sif.      
+
+        UseGM = GetLogical( SolverParams,'Use GroundedMask', Found )
+        IF (.NOT. Found) THEN
+           IF (Calving) THEN              
+              UseGM = .TRUE.
+           ELSE
+              UseGM = .FALSE.
+           END IF
+        END IF
+
+        IF (UseGM) THEN
+           MaskName = GetString( SolverParams, 'Mask Name', Found )
+           IF (.NOT. Found) THEN
+              MaskName = "GroundedMask"
+           END IF
+        END IF
+        
+        AllowSheetAtGL = GetLogical( SolverParams,'Allow Sheet At GL', Found )
+        IF (.NOT. Found) THEN
+           AllowSheetAtGL = .TRUE.
+        END IF
+        ZeroSheetWithHP = GetLogical( SolverParams,'Zero Sheet With HP', Found )
+        IF (.NOT. Found) THEN
+          IF (Calving) THEN              
+            ZeroSheetWithHP = .TRUE.
+          ELSE
+            ZeroSheetWithHP = .FALSE.
+          END IF
+        END IF
+
+        IfCalving: IF(Calving) THEN
           DO i=1,Model % NumberOfSolvers
             IF(Model % Solvers(i) % Variable % Name == ChannelAreaName) THEN 
               ChannelSolver = i
               EXIT
             END IF
           END DO
-          WorkVar => VariableGet(Model % Solvers(ChannelSolver) % Mesh&
+          ChannelAreaVar => VariableGet(Model % Solvers(ChannelSolver) % Mesh&
                      % Variables, ChannelAreaName, ThisOnly=.TRUE.)
-          ALLOCATE(CAPerm(SIZE(WorkVar % Perm)), CAValues(SIZE(WorkVar % Values)))
-          CAPerm = WorkVar % Perm
-          CAValues = WorkVar % Values
+          ALLOCATE(CAPerm(SIZE(ChannelAreaVar % Perm)), CAValues(SIZE(ChannelAreaVar % Values)))
+          CAPerm = ChannelAreaVar % Perm
+          CAValues = ChannelAreaVar % Values
           CALL VariableAdd(Mesh % Variables, Mesh, Solver,&
                'Channel Area', 1, CAValues, CAPerm)
-          WorkVar => VariableGet(Mesh % Variables, 'Channel Area',&
+          ChannelAreaVar => VariableGet(Mesh % Variables, 'Channel Area',&
                       ThisOnly=.TRUE.)
-          ALLOCATE(WorkVar % PrevValues(SIZE(WorkVar % Values),MAX(Solver&
+          ALLOCATE(ChannelAreaVar % PrevValues(SIZE(ChannelAreaVar % Values),MAX(Solver&
                    % Order, Solver % TimeOrder)))
-          WorkVar % PrevValues(:,1) = WorkVar % Values
+          ChannelAreaVar % PrevValues(:,1) = ChannelAreaVar % Values
+          NULLIFY(ChannelAreaVar)
             
-          WorkVar => VariableGet(Model % Solvers(ChannelSolver) % Mesh&
+          ChannelFluxVar => VariableGet(Model % Solvers(ChannelSolver) % Mesh&
                      % Variables, 'Channel Flux', ThisOnly=.TRUE.)
-          ALLOCATE(CFPerm(SIZE(WorkVar % Perm)), CFValues(SIZE(WorkVar % Values)))
-          CFPerm = WorkVar % Perm
-          CFValues = WorkVar % Values
+          ALLOCATE(CFPerm(SIZE(ChannelFluxVar % Perm)), CFValues(SIZE(ChannelFluxVar % Values)))
+          CFPerm = ChannelFluxVar % Perm
+          CFValues = ChannelFluxVar % Values
           CALL VariableAdd(Mesh % Variables, Mesh, Solver,&
                'Channel Flux', 1, CFValues, CFPerm) 
-          WorkVar => VariableGet(Mesh % Variables, 'Channel Flux',&
+          ChannelFluxVar => VariableGet(Mesh % Variables, 'Channel Flux',&
                       ThisOnly=.TRUE.)
-          ALLOCATE(WorkVar % PrevValues(SIZE(WorkVar % Values),MAX(Solver&
+          ALLOCATE(ChannelFluxVar % PrevValues(SIZE(ChannelFluxVar % Values),MAX(Solver&
                    % Order, Solver % TimeOrder)))
-          WorkVar % PrevValues(:,1) = WorkVar % Values
+          ChannelFluxVar % PrevValues(:,1) = ChannelFluxVar % Values
+          NULLIFY(ChannelFluxVar)
 
           !The same for sheet thickness
           DO i=1,Model % NumberOfSolvers
@@ -384,22 +430,22 @@
               EXIT
             END IF
           END DO
-          WorkVar => VariableGet(Model % Solvers(ThicknessSolver) % Mesh&
+          SheetThicknessVar => VariableGet(Model % Solvers(ThicknessSolver) % Mesh&
                      % Variables, SheetThicknessName, ThisOnly=.TRUE.)
-          ALLOCATE(SHPerm(SIZE(WorkVar % Perm)), SHValues(SIZE(WorkVar % Values)))
-          SHPerm = WorkVar % Perm
-          SHValues = WorkVar % Values !Needed to reflect initial condition
+          ALLOCATE(SHPerm(SIZE(SheetThicknessVar % Perm)), SHValues(SIZE(SheetThicknessVar % Values)))
+          SHPerm = SheetThicknessVar % Perm
+          SHValues = SheetThicknessVar % Values !Needed to reflect initial condition
           CALL VariableAdd(Mesh % Variables, Mesh, Solver,&
                'Sheet Thickness', 1, SHValues, SHPerm)
-          WorkVar => VariableGet(Mesh % Variables, 'Sheet Thickness',&
+          SheetThicknessVar => VariableGet(Mesh % Variables, 'Sheet Thickness',&
                       ThisOnly=.TRUE.)
-          ALLOCATE(WorkVar % PrevValues(SIZE(WorkVar % Values),MAX(Solver&
+          ALLOCATE(SheetThicknessVar % PrevValues(SIZE(SheetThicknessVar % Values),MAX(Solver&
                    % Order, Solver % TimeOrder)))
-          WorkVar % PrevValues(:,1) = WorkVar % Values
+          SheetThicknessVar % PrevValues(:,1) = SheetThicknessVar % Values
           !Necessary to ensure initial condition value reflected in PrevValues
-          WorkVar % PrevValues(:,1) = WorkVar % Values
-          NULLIFY(WorkVar)
-        END IF
+          SheetThicknessVar % PrevValues(:,1) = SheetThicknessVar % Values
+          NULLIFY(SheetThicknessVar)
+        END IF IfCalving
 
         ! TODO : implement higher order BDF method
         BDForder = GetInteger(GetSimulation(),'BDF Order', Found)
@@ -408,9 +454,7 @@
            WRITE(Message,'(a)') 'Only working for BDF = 1' 
            CALL FATAL(SolverName, Message)
         END IF
-     END IF ! FirstTime
-
-     SolverParams => GetSolverParams()
+     END IF IfFirstTime
 
      NeglectH = GetLogical( SolverParams,'Neglect Sheet Thickness in Potential', Found )
      IF ( .NOT.Found ) THEN
@@ -477,13 +521,17 @@
           'Nonlinear System Convergence Tolerance',    Found )
      IF ((.Not.Found).AND.(NonlinearIter>1)) CALL FATAL(SolverName,'Need >Nonlinear System Convergence Tolerance<')
 
-     CoupledIter = GetInteger( SolverParams, &
+     MaxCoupledIter = GetInteger( SolverParams, &
                     'Coupled Max Iterations', Found)
-     IF ( .NOT.Found ) CoupledIter = 1
+     IF ( .NOT.Found ) MaxCoupledIter = 1
+
+     MinCoupledIter = GetInteger( SolverParams, &
+                    'Coupled Min Iterations', Found)
+     IF ( .NOT.Found ) MinCoupledIter = 2
 
      CoupledTol  = GetConstReal( SolverParams, &
           'Coupled Convergence Tolerance',    Found )
-     IF ((.Not.Found).AND.(CoupledIter>1)) CALL FATAL(SolverName,'Need >Nonlinear System Convergence Tolerance<')
+     IF ((.Not.Found).AND.(MaxCoupledIter>1)) CALL FATAL(SolverName,'Need >Nonlinear System Convergence Tolerance<')
      
      ThickSol => VariableGet( Mesh % Variables, SheetThicknessName, UnfoundFatal = .TRUE. )
      ThickPerm     => ThickSol % Perm
@@ -565,7 +613,7 @@
     PrevCoupledNorm = ComputeNorm( Solver, SIZE(HydPot), HydPot ) 
 
     
-    DO iterC = 1, CoupledIter
+    DO iterC = 1, MaxCoupledIter
 
 !------------------------------------------------------------------------------
 !       non-linear system iteration loop
@@ -1045,7 +1093,7 @@
 !------------------------------------------------------------------------------
 !       Update the Sheet Thickness                 
 !------------------------------------------------------------------------------
-           DO t=1,Solver % NumberOfActiveElements
+           Elements: DO t=1,Solver % NumberOfActiveElements
               Element => GetActiveElement(t,Solver)
               IF (ParEnv % myPe  /=  Element % partIndex) CYCLE
 
@@ -1074,44 +1122,32 @@
               N = GetElementNOFNodes(Element)
               CALL GetElementNodes( ElementNodes )
 
-              !CHANGE
-              !If calving, cycle elements with ungrounded nodes and zero all
-              !hydrology variables
-              IF(Calving) THEN
+              
+              IF (UseGM) THEN
+                ! Cycle elements with ungrounded nodes and zero all hydrology variables
                 CycleElement = .FALSE.
-                WorkVar => VariableGet(Mesh % Variables, "gmcheck", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
-                WorkVar2 => VariableGet(Mesh % Variables, "groundedmask", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
-                IF(ASSOCIATED(WorkVar)) THEN
-                  DO i=1, N
-                    IF(WorkVar % Values(WorkVar % Perm(Element % NodeIndexes(i)))>0.0) THEN
-                      !IF(WorkVar2 % Values(WorkVar2 % Perm(Element % NodeIndexes(i)))<0.0) THEN
-                        CycleElement = .TRUE.
 
-                        WSolution(WPerm(Element % NodeIndexes(i))) = 0.0
-                        Vvar(Element % NodeIndexes(i)) = 0.0
-                        NSolution(NPerm(Element % NodeIndexes(i))) = 0.0
-                        !PwSolution(PwPerm(Element % NodeIndexes(i))) = 0.0
-                        hstoreSolution(hstorePerm(Element % NodeIndexes(i))) = 0.0
-                      !END IF
-                    END IF
-                  END DO
+                DO i=1, N
+                  MaskStatus = ProcessMask(MaskName, AllowSheetAtGL, Element % NodeIndexes(i))
+                  SELECT CASE (MaskStatus)
+                  CASE (MASK_ALL)
+                    CycleElement = .TRUE.
+                    WSolution(WPerm(Element % NodeIndexes(i))) = 0.0
+                    Vvar(Element % NodeIndexes(i)) = 0.0
+                    NSolution(NPerm(Element % NodeIndexes(i))) = 0.0
+                    hstoreSolution(hstorePerm(Element % NodeIndexes(i))) = 0.0
+                  CASE (MASK_HP)
+                    NSolution(NPerm(Element % NodeIndexes(i))) = 0.0
+                  CASE (MASK_NONE)
+                  CASE DEFAULT
+                    WRITE(Message,'(A)') "MaskStatus not recognised"
+                    CALL FATAL( SolverName, Message)
+                  END SELECT
+                END DO
+                IF (CycleElement) THEN
+                  CYCLE
                 END IF
-                IF(ASSOCIATED(WorkVar2) .AND. .NOT. ASSOCIATED(WorkVar)) THEN
-                  DO i=1, N
-                    IF(WorkVar2 % Values(WorkVar2 % Perm(Element % NodeIndexes(i)))<0.0) THEN 
-                      CycleElement = .TRUE.
-
-                      WSolution(WPerm(Element % NodeIndexes(i))) = 0.0
-                      Vvar(Element % NodeIndexes(i)) = 0.0
-                      NSolution(NPerm(Element % NodeIndexes(i))) = 0.0
-                      !PwSolution(PwPerm(Element % NodeIndexes(i))) = 0.0
-                      hstoreSolution(hstorePerm(Element % NodeIndexes(i))) = 0.0
-                    END IF
-                  END DO
-                END IF
-                NULLIFY(WorkVar, WorkVar2)
-                IF(CycleElement) CYCLE
-              END IF              
+              END IF
 
               CALL GetParametersSheet( Element, Material, N, SheetConductivity, alphas, &
                   betas, Ev, ub, Snn, lr, hr, Ar, ng ) 
@@ -1143,13 +1179,11 @@
                  ublr(j) = ub(i)/lr(i)
                  hr2(j) = hr(i)
 
-                 !CHANGE
                  !To stop it working out values for non-ice covered parts of a
                  !hydromesh in a coupled calving-hydro simulation
-                 IF(Calving) THEN
+                 IF ( ZeroSheetWithHP ) THEN
                    IF(Snn(i)==0.0) THEN
                      Np = 0.0
-                     !pw = 0.0
                      he = 0.0
                    END IF
                  END IF 
@@ -1160,53 +1194,37 @@
                  IF (ASSOCIATED(PwSol)) PwSolution(PwPerm(j)) = pw
                  IF (ASSOCIATED(hstoreSol)) hstoreSolution(hstorePerm(j)) = he
               END DO
-           END DO     !  Bulk elements
+           END DO Elements     !  Bulk elements
+
            ! Loop over all nodes to update ThickSolution
            DO j = 1, Mesh % NumberOfNodes
               k = ThickPerm(j)
               IF (k==0) CYCLE
-              !CHANGE
-              !If calving, cycle elements with ungrounded nodes and zero all
-              !hydrology variables
-              IF(Calving) THEN
-                CycleElement = .FALSE.
-                WorkVar => VariableGet(Mesh % Variables, "gmcheck", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
-                WorkVar2 => VariableGet(Mesh % Variables, "groundedmask", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
-                IF(ASSOCIATED(WorkVar)) THEN
-                  IF(WorkVar % Values(k)>0.0) THEN !.AND. WorkVar2 % Values(k)<0.0) THEN
-                      CycleElement = .TRUE.
-                      ThickSolution(k) = 0.0
-                      ThickPrev(k,1) = 0.0
-                  END IF
-                END IF
-                IF(ASSOCIATED(WorkVar2) .AND. .NOT. ASSOCIATED(WorkVar)) THEN
-                  IF(WorkVar2 % Values(k)<0.0) THEN 
-                    CycleElement = .TRUE.
-                    ThickSolution(k) = 0.0
-                    ThickPrev(k,1) = 0.0
-                  END IF
-                END IF
-                WorkVar => VariableGet(Mesh % Variables, "hydraulic potential", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
-                IF(WorkVar % Values(k)==0.0) THEN
-                  ThickSolution(k) = 0.0
-                  ThickPrev(k,1) = 0.0
-                  CycleElement = .TRUE.
-                END IF
-                NULLIFY(WorkVar, WorkVar2)
-                IF(CycleElement) CYCLE
-              END IF
 
-              IF(MaxHBool) THEN
-                IF (ThickSolution(k)>MaxH) THEN
-                  ThickSolution(k) = MaxH
-                  !ThickPrev(k,1) = 0.0
-                END IF
+              CycleNode = .FALSE.
+              IF (UseGM) THEN
+                ! Cycle ungrounded nodes and zero hydrology variables
+                MaskStatus = ProcessMask(MaskName, AllowSheetAtGL, j)
+                SELECT CASE (MaskStatus)
+                CASE (MASK_ALL)
+                  CycleNode = .TRUE.
+                CASE (MASK_HP, MASK_NONE)
+                CASE DEFAULT
+                  WRITE(Message,'(A)') "MaskStatus not recognised"
+                  CALL FATAL( SolverName, Message)
+                END SELECT
               END IF
-
-              IF(MinHBool) THEN
-                IF (ThickSolution(k)<MinH) THEN
-                  ThickSolution(k) = MinH
+              IF (ZeroSheetWithHP) THEN
+                HydPotVar => VariableGet(Mesh % Variables, "hydraulic potential", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
+                IF(HydPotVar % Values( HydPotVar % perm(j) ).EQ.0.0) THEN
+                  CycleNode = .TRUE.
                 END IF
+                NULLIFY(HydPotVar)
+              END IF
+              IF (CycleNode) THEN
+                ThickSolution(k) = 0.0
+                ThickPrev(k,1) = 0.0
+                CYCLE
               END IF
               
               SELECT CASE(methodSheet)
@@ -1234,6 +1252,20 @@
               ! Update Vvar
               Vvar(j) = Vvar(j) * ThickSolution(k)
 
+              IF(MaxHBool) THEN
+                 IF (ThickSolution(k)>MaxH) THEN
+                    ThickSolution(k) = MaxH
+                  !ThickPrev(k,1) = 0.0
+                 END IF
+              END IF
+
+              IF(MinHBool) THEN
+                IF (ThickSolution(k)<MinH) THEN
+                  ThickSolution(k) = MinH
+                END IF
+              END IF
+              
+
            END DO 
 !------------------------------------------------------------------------------
 !       Update the Channels Area                 
@@ -1245,7 +1277,7 @@
         PrevNorm = ChannelAreaNorm()
         
         DO iter = 1, NonlinearIter
-              DO t=1, Mesh % NumberOfEdges 
+              Edges: DO t=1, Mesh % NumberOfEdges 
                  Edge => Mesh % Edges(t)
                  IF (.NOT.ASSOCIATED(Edge)) CYCLE
                  IF (ParEnv % PEs > 1) THEN
@@ -1255,37 +1287,27 @@
                  IF (ANY(HydPotPerm(Edge % NodeIndexes(1:n))==0)) CYCLE
                  IF (ALL(NoChannel(Edge % NodeIndexes(1:n)))) CYCLE
 
-                 !CHANGE
-                 !If calving, cycle elements with ungrounded nodes and zero all
-                 !hydrology variables
-                 IF(Calving) THEN
+                 IF (UseGM) THEN
+                   ! Cycle ungrounded nodes and zero hydrology variables
                    CycleElement = .FALSE.
-                   WorkVar => VariableGet(Mesh % Variables, "gmcheck", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
-                   WorkVar2 => VariableGet(Mesh % Variables, "groundedmask", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
-                   IF(ASSOCIATED(WorkVar)) THEN
-                     DO i=1, n
-                       IF(WorkVar % Values(WorkVar % Perm(Edge % NodeIndexes(i)))>0.0) THEN
-                         !IF(WorkVar2 % Values(WorkVar2 % Perm(Edge % NodeIndexes(i)))<0.0) THEN
-                           CycleElement = .TRUE.
-                           AreaSolution(AreaPerm(M+t)) = 0.0
-                           QcSolution(QcPerm(M+t)) = 0.0
-                         !END IF
-                       END IF
-                     END DO
+                   DO i=1, n
+                     MaskStatus = ProcessMask(MaskName, AllowSheetAtGL, Edge % NodeIndexes(i))
+                     SELECT CASE (MaskStatus)
+                     CASE (MASK_ALL)
+                       CycleElement = .TRUE.
+                     CASE (MASK_HP, MASK_NONE)
+                     CASE DEFAULT
+                       WRITE(Message,'(A)') "MaskStatus not recognised"
+                       CALL FATAL( SolverName, Message)
+                     END SELECT
+                   END DO
+                   IF(CycleElement) THEN
+                     AreaSolution(AreaPerm(M+t)) = 0.0
+                     QcSolution(QcPerm(M+t)) = 0.0
+                     CYCLE
                    END IF
-                   IF(ASSOCIATED(WorkVar2) .AND. .NOT. ASSOCIATED(WorkVar)) THEN
-                     DO i=1,n
-                       IF(WorkVar2 % Values(WorkVar2 % Perm(Edge % NodeIndexes(i)))<0.0) THEN 
-                         CycleElement = .TRUE.
-                         AreaSolution(AreaPerm(M+t)) = 0.0
-                         QcSolution(QcPerm(M+t)) = 0.0
-                       END IF
-                     END DO
-                   END IF
-                   NULLIFY(WorkVar, WorkVar2)
-                   IF(CycleElement) CYCLE
-                 END IF              
-
+                 END IF
+                 
                  EdgeNodes % x(1:n) = Mesh % Nodes % x(Edge % NodeIndexes(1:n))
                  EdgeNodes % y(1:n) = Mesh % Nodes % y(Edge % NodeIndexes(1:n))
                  EdgeNodes % z(1:n) = Mesh % Nodes % z(Edge % NodeIndexes(1:n))
@@ -1405,8 +1427,8 @@
                     IF ( QcPerm(M+t) <= 0 ) CYCLE
                     QcSolution(QcPerm(M+t)) = Qc
                  END IF
-              END DO
-
+              END DO Edges
+              
            Norm = ChannelAreaNorm()              
            t = Mesh % NumberOfEdges 
 
@@ -1451,7 +1473,8 @@
       WRITE( Message, * ) 'COUPLING LOOP (NRM,RELC) : ',iterC, CoupledNorm, RelativeChange
       CALL Info( SolverName, Message, Level=3 )
 
-      IF ((RelativeChange < CoupledTol).AND. (iterC > 1)) EXIT 
+      IF ((RelativeChange < CoupledTol) .AND. (iterC .GE. MinCoupledIter)) EXIT 
+
    END DO ! iterC
 
 !--------------------------------------------------------------------------------------------
@@ -1471,7 +1494,7 @@
       qSolution = 0.0_dp
 
       ! Loop over all elements are we need to compute grad(Phi)
-      DO t=1,Solver % NumberOfActiveElements
+      ElementsLoop: DO t=1,Solver % NumberOfActiveElements
          !CHANGE - necessary if using a 2D mesh as is otherwise set to 1 as
          !boundary elements are last in first loop where it's set
          dimSheet = Element % TYPE % DIMENSION
@@ -1496,43 +1519,28 @@
 
          n = GetElementNOFNodes(Element)
          CALL GetElementNodes( ElementNodes )
-         !If calving, cycle elements with ungrounded nodes and zero all
-         !hydrology variables
-         IF(Calving) THEN
+
+         IF (UseGM) THEN
+           ! Cycle ungrounded nodes and zero hydrology variables
            CycleElement = .FALSE.
-           WorkVar => VariableGet(Mesh % Variables, "gmcheck", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
-           WorkVar2 => VariableGet(Mesh % Variables, "groundedmask", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
-           IF(ASSOCIATED(WorkVar)) THEN
-             DO i=1, n
-               IF(WorkVar % Values(WorkVar % Perm(Element % NodeIndexes(i)))>0.0) THEN
-                 !IF(WorkVar2 % Values(WorkVar2 % Perm(Element % NodeIndexes(i)))<0.0) THEN
-                   CycleElement = .TRUE.
-                   DO j=1,dimSheet
-                     k = dimSheet*(qPerm(Element % NodeIndexes(i))-1)+j
-                     qSolution(k) = 0.0
-                     Refq(k) = 0.0
-                   END DO
-                   EXIT
-                 !END IF
-               END IF
-             END DO
-           END IF
-           IF(ASSOCIATED(WorkVar2) .AND. .NOT. ASSOCIATED(WorkVar)) THEN
-             DO i=1,n
-               IF(WorkVar2 % Values(WorkVar2 % Perm(Element % NodeIndexes(i)))<0.0) THEN 
-                 CycleElement = .TRUE.
-                 DO j=1,dimSheet
-                   k = dimSheet*(qPerm(Element % NodeIndexes(i))-1)+j
-                   qSolution(k) = 0.0
-                   Refq(k) = 0.0
-                 END DO
-                 EXIT
-               END IF
-             END DO
-           END IF
-           NULLIFY(WorkVar, WorkVar2)
+           DO i=1, n
+             MaskStatus = ProcessMask(MaskName, AllowSheetAtGL, Element % NodeIndexes(i))
+             SELECT CASE (MaskStatus)
+             CASE (MASK_ALL)
+               CycleElement = .TRUE.
+               DO j=1,dimSheet
+                 k = dimSheet*(qPerm(Element % NodeIndexes(i))-1)+j
+                 qSolution(k) = 0.0
+                 Refq(k) = 0.0
+               END DO
+             CASE (MASK_HP, MASK_NONE)
+             CASE DEFAULT
+               WRITE(Message,'(A)') "MaskStatus not recognised"
+               CALL FATAL( SolverName, Message)
+             END SELECT
+           END DO
            IF(CycleElement) CYCLE
-         END IF             
+         END IF
  
          ! we need the SheetConductivity, alphas, betas
          CALL GetParametersSheet( Element, Material, n, SheetConductivity, alphas, &
@@ -1554,33 +1562,60 @@
                 qSolution(k) = qSolution(k) + Discharge(j)
              END DO  
           END DO
-      END DO
 
-      ! Mean nodal value
-      DO i=1,n
-         DO j=1,dimSheet
-            k = dimSheet*(qPerm(Element % NodeIndexes(i))-1)+j
-            IF ( Refq(k) > 0.0_dp ) THEN 
-              qSolution(k) = qSolution(k)/Refq(k) 
-            END IF
-         END DO  
-      END DO
+      END DO ElementsLoop
 
+      DO k=1,SIZE(qSolution)
+         IF ( Refq(k) > 0.0_dp ) THEN 
+            qSolution(k) = qSolution(k)/Refq(k) 
+         END IF
+      END DO
+         
    END IF
-
-   SubroutineVisited = .TRUE.
 
    !CHANGE - to make sure PrevValues for added variables in calving updated
    IF(Calving) THEN
-     WorkVar => VariableGet(Mesh % Variables, 'Sheet Thickness',ThisOnly=.TRUE.)
-     WorkVar % PrevValues(:,1) = WorkVar % Values
-     WorkVar => VariableGet(Mesh % Variables, 'Channel Area',ThisOnly=.TRUE.)
-     WorkVar % PrevValues(:,1) = WorkVar % Values
-     NULLIFY(WorkVar)
+     SheetThicknessVar => VariableGet(Mesh % Variables, 'Sheet Thickness',ThisOnly=.TRUE.)
+     SheetThicknessVar % PrevValues(:,1) = SheetThicknessVar % Values
+     ChannelAreaVar => VariableGet(Mesh % Variables, 'Channel Area',ThisOnly=.TRUE.)
+     ChannelAreaVar % PrevValues(:,1) = ChannelAreaVar % Values
+     NULLIFY(SheetThicknessVar, ChannelAreaVar)
    END IF
 
 CONTAINS    
 
+  ! Use the grounded mask to decide how to mask the current node.
+  !----------------------------------------------------------------------------------------------------------
+  FUNCTION ProcessMask(MaskName, AllowSheetAtGL, ii) RESULT( MaskStatus_local )
+
+    CHARACTER(LEN=MAX_NAME_LEN), INTENT(IN) :: MaskName
+    LOGICAL, INTENT(IN)                     :: AllowSheetAtGL
+    INTEGER, INTENT(IN)                     :: ii ! node index
+
+    INTEGER :: MaskStatus_local
+
+    MaskStatus_local = MASK_NONE
+    
+    GroundedMaskVar => VariableGet(Mesh % Variables, MaskName, ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
+
+    IF (GroundedMaskVar % Values(GroundedMaskVar % Perm(ii)).LT.0.0) THEN 
+       MaskStatus_local = MASK_ALL
+    ELSEIF (GroundedMaskVar % Values(GroundedMaskVar % Perm(ii)).EQ.0.0) THEN
+       IF (AllowSheetAtGL) THEN
+          MaskStatus_local = MASK_HP
+       ELSE
+          MaskStatus_local = MASK_ALL
+       END IF
+    END IF
+
+!    MaskStatus_local = MASK_NONE
+
+    NULLIFY(GroundedMaskVar)
+  
+  END FUNCTION ProcessMask
+
+
+  
   ! Compute consistent channel norm only considering the edges that also have hydrology defined on the nodes.
   ! In parallel only consider the edges in the partition where it is active.
   !----------------------------------------------------------------------------------------------------------
@@ -2417,3 +2452,532 @@ RECURSIVE SUBROUTINE GlaDSsheetThickDummy( Model,Solver,Timestep,TransientSimula
      RETURN 
 END SUBROUTINE GlaDSsheetThickDummy
 !------------------------------------------------------------------------------
+
+! ******************************************************************************
+! *
+! *  Authors: Rupert Gladstone
+! *  Email:   RupertGladstone972@gmail.com
+! *  Web: 
+! *
+! *  Original Date: 
+! *   2022/03/06
+! *****************************************************************************
+!> Solver GlaDS_GLflux
+!> 
+!> Take GlaDS standard output and a grounded mask and calculate the total
+!> subglacial outflow across the grounding line on grounding line nodes.
+!> 
+!> The grounded mask is assumed to exist and to have the following properties:
+!>  Variable name is GroundedMask
+!>  GroundedMask==1 only on fully grounded nodes
+!>  GroundedMask==0 only on grounding line nodes
+!> 
+!> GlaDS variable names can be given as follows (default to these values if
+!> not prescribed):
+!>  subglac sheet thickness variable = String "Sheet Thickness"
+!>  subglac sheet discharge variable = String "Sheet Discharge"
+!>  subglac channel flux variable = String "Channel Flux"
+!> 
+!> In any case, the above variables need to exist!
+!> 
+!> Limitations:
+!> Note that the code currently calculates the flux at the GL based on the 
+!> assumption that the subglacial water is always flowing from grounded to ocean 
+!> nodes.  If there is inflow from ocean to the subglacial system the cross-GL
+!> flux will be overestimated. This could be verified for the channel flux by
+!> checking the hydraulic potential at both ends of the edges that are included 
+!> in the calculation.  If the grounded node has a higher value than the GL 
+!> node then the flow is from grounded to ocean. 
+!> Checking that sheet discharge is flowing from grounded to ocean nodes is 
+!> more awkward because we'd need to calculate the direction of the normal to 
+!> the grounding line.
+!> 
+SUBROUTINE GlaDS_GLflux( Model,Solver,dt,TransientSimulation )
+
+  USE DefUtils
+  USE SolverUtils
+  IMPLICIT NONE
+
+  ! intent in
+  TYPE(Model_t)  :: Model
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp)  :: dt
+  LOGICAL        :: TransientSimulation
+
+  ! local variables
+  TYPE(ValueList_t), POINTER :: SolverParams
+
+  TYPE(Element_t), POINTER   :: Edge
+  TYPE(Variable_t), POINTER  :: gmVar, channelVar, sheetThickVar, sheetDisVar
+  LOGICAL                    :: GotIt, ValidEdge
+  CHARACTER(LEN=MAX_NAME_LEN):: channelVarName, sheetThickVarName, sheetDisVarName, SolverName
+  CHARACTER(LEN=MAX_NAME_LEN):: MaskName
+  REAL(KIND=dp), POINTER     :: gmVals(:), channelVals(:), sheetThickVals(:), sheetDisVals(:)
+  REAL(KIND=dp), POINTER     :: GLfluxVals(:)
+  REAL(KIND=dp)              :: x1,x2,y1,y2
+  REAL(KIND=dp)              :: volFluxSheet, volFluxChannel, sheetDisMag
+  INTEGER, POINTER           :: gmPerm(:), channelPerm(:), sheetThickPerm(:), sheetDisPerm(:)
+  INTEGER, POINTER           :: GLfluxPerm(:)
+  INTEGER                    :: nn, ee, numNodes
+
+  TYPE(Variable_t), POINTER  :: cglfVar, sglfVar
+  REAL(KIND=dp), POINTER     :: cglfVals(:), sglfVals(:)
+  REAL(KIND=dp)              :: EdgeVec(3),SDVec(3),SDVec1(3),SDVec2(3),EdgeSD
+  INTEGER, POINTER           :: cglfPerm(:), sglfPerm(:)
+
+
+  SolverName = "GlaDS_GLflux"
+
+  CALL Info(SolverName,'Starting subglacial outflow calculation',Level=4)
+
+  SolverParams => GetSolverParams()
+  
+  !--------------------------------------------------------------------------------------------
+  ! The solver variable will contain the total subglacial outflow on nodes.
+  ! Units (assuming Elmer/Ice defaults) m^3/a
+  GLfluxVals => Solver % Variable % Values
+  GLfluxPerm => Solver % Variable % Perm
+
+  !--------------------------------------------------------------------------------------------
+  ! Variables containing the GlaDS sheet thickness and discharge and channel flux
+
+  channelVarName = GetString( SolverParams , 'subglac channel flux variable', GotIt )
+  IF (.NOT.GotIt) THEN
+     CALL Info(SolverName,'>subglac channel flux variable< not found, assuming >Channel Flux<',Level=4)
+     channelVarName = "Channel Flux"
+  END IF
+  channelVar =>  VariableGet(Solver % mesh % Variables,TRIM(channelVarName),UnFoundFatal=.TRUE.)
+  IF (.NOT.ASSOCIATED(channelVar)) &
+       CALL FATAL(SolverName,"Variable "//TRIM(channelVarName)//" not found")
+  channelPerm => channelVar % Perm
+  channelVals => channelVar % Values
+  
+  sheetThickVarName = GetString( SolverParams , 'subglac sheet thickness variable', GotIt )
+  IF (.NOT.GotIt) THEN
+     CALL Info(SolverName,'>subglac sheet thickness variable< not found, assuming >sheet thickness<',Level=4)
+     sheetThickVarName = "Sheet thickness"
+  END IF
+  sheetThickVar =>  VariableGet(Solver % mesh % Variables,TRIM(sheetThickVarName),UnFoundFatal=.TRUE.)
+  IF (.NOT.ASSOCIATED(sheetThickVar)) &
+       CALL FATAL(SolverName,"Variable "//TRIM(sheetThickVarName)//" not found")
+  sheetThickPerm => sheetThickVar % Perm
+  sheetThickVals => sheetThickVar % Values
+
+  sheetDisVarName = GetString( SolverParams , 'subglac sheet discharge variable', GotIt )
+  IF (.NOT.GotIt) THEN
+     CALL Info(SolverName,'>subglac sheet discharge variable< not found, assuming >sheet discharge<',Level=4)
+     sheetDisVarName = "sheet discharge"
+  END IF
+  sheetDisVar =>  VariableGet(Solver % mesh % Variables,TRIM(sheetDisVarName),UnFoundFatal=.TRUE.)
+  IF (.NOT.ASSOCIATED(sheetDisVar)) &
+       CALL FATAL(SolverName,"Variable "//TRIM(sheetDisVarName)//" not found")
+  sheetDisPerm => sheetDisVar % Perm
+  sheetDisVals => sheetDisVar % Values
+
+  ! grounded mask  
+  MaskName = GetString( SolverParams , 'grounded mask variable', GotIt )
+  IF (.NOT.GotIt) THEN
+     CALL Info(SolverName,'>grounded mask variable< not found, assuming >GroundedMask<',Level=4)
+     MaskName = "GroundedMask"
+  END IF
+  gmVar =>  VariableGet(Solver % mesh % Variables,TRIM(MaskName),UnFoundFatal=.TRUE.)
+  IF (.NOT.ASSOCIATED(gmVar)) &
+       CALL FATAL(SolverName,"Variable >GroundedMask< not found")
+  gmPerm => gmVar % Perm
+  gmVals => gmVar % Values
+
+  ! The two variables that will contain the sheet and channel fluxes on the GL are also
+  ! hard coded (well, their names anyway).
+  sglfVar =>  VariableGet(Solver % mesh % Variables,TRIM("Sheet GL flux"),UnFoundFatal=.TRUE.)
+  IF (.NOT.ASSOCIATED(sglfVar)) &
+       CALL FATAL(SolverName,"Variable >Sheet GL flux< not found")
+  sglfPerm => sglfVar % Perm
+  sglfVals => sglfVar % Values
+  cglfVar =>  VariableGet(Solver % mesh % Variables,TRIM("Channel GL flux"),UnFoundFatal=.TRUE.)
+  IF (.NOT.ASSOCIATED(cglfVar)) &
+       CALL FATAL(SolverName,"Variable >Channel GL flux< not found")
+  cglfPerm => cglfVar % Perm
+  cglfVals => cglfVar % Values
+  
+  ! set to zero to ensure old values at previous GL are not kept.
+  cglfVals = 0.0
+  sglfVals = 0.0
+
+  ! Sheet flux strategy:
+  ! We take the cross product of the sheet discharge vector with the edge vector for edges
+  ! that represent a section of grounding line.
+  ! We assign half of this value to the nodes at either end.
+  ! Note: sheet discharge needs to be multiplied by a suitable width to give a volume flux,
+  ! and the above approach provides this.
+  ! Note that the direction for the GL edge element is arbitrary.  We first take the dot product
+  ! to ascertain whether the angle between the two vectors is less than 90 degrees, and reverse
+  ! the direction of the GL edge if it isn't.
+  ! This presumes that the sheet discharge is always going from grounded ice into the ocean.
+  volFluxSheet = 0.0
+  sglfVals = 0.0
+  
+  EdgeLoopForSD: DO ee=1, Solver % Mesh % NumberOfEdges 
+     Edge => Solver % Mesh % Edges(ee)
+     IF (.NOT.ASSOCIATED(Edge)) CYCLE
+     ! ...ignoring edges not entirely on the lower surface...
+     IF (ANY(gmPerm(Edge % NodeIndexes(1:2)).EQ.0)) CYCLE
+     ! ... and check whether the edge contains 2 GL nodes.
+     ! If yes, the edge is valid for calculating GL sheet flux.
+     ValidEdge = .FALSE.
+     IF ( (gmVals(gmPerm(Edge % NodeIndexes(1))).EQ.0.0) .AND.      & 
+          (gmVals(gmPerm(Edge % NodeIndexes(2))).EQ.0.0)  ) THEN
+        ValidEdge = .TRUE.
+     END IF
+     IF (ValidEdge) THEN
+        ! compose edge vector:
+        x1 = Solver % Mesh % Nodes % x(Edge % NodeIndexes(1))
+        y1 = Solver % Mesh % Nodes % y(Edge % NodeIndexes(1))
+        x2 = Solver % Mesh % Nodes % x(Edge % NodeIndexes(2))
+        y2 = Solver % Mesh % Nodes % y(Edge % NodeIndexes(2))
+        EdgeVec(:) = (/x2-x1,y2-y1,0.0_dp/)
+        ! compose mean sheet dischagre vector (based on nodes at either end):
+        SDVec1(:)  = (/                                                    &
+             sheetDisVals( 2*(sheetDisPerm(Edge % NodeIndexes(1))-1)+1 ),  &
+             sheetDisVals( 2*(sheetDisPerm(Edge % NodeIndexes(1))-1)+2 ),  &
+             0.0_dp /)
+        SDVec2(:)  = (/                                                    &
+             sheetDisVals( 2*(sheetDisPerm(Edge % NodeIndexes(2))-1)+1 ),  &
+             sheetDisVals( 2*(sheetDisPerm(Edge % NodeIndexes(2))-1)+2 ),  &
+             0.0_dp /)
+        SDVec = (SDVec1 + SDVec2) * 0.5
+        ! Check vectors are within 90 degrees of each other:
+        IF (DOT_PRODUCT(EdgeVec,SDVec).LT.0.0) THEN
+           EdgeVec(:) = (/x1-x2,y1-y2,0.0_dp/)
+        END IF
+        ! Make scalar product of vectors; add half of this to sheet discharge flux for each node
+        EdgeSD = CROSS_PRODUCT_MAGNITUDE(EdgeVec,SDVec)
+        sglfVals(sglfPerm(Edge % NodeIndexes(1))) = sglfVals(sglfPerm(Edge % NodeIndexes(1))) + 0.5*EdgeSD
+        sglfVals(sglfPerm(Edge % NodeIndexes(2))) = sglfVals(sglfPerm(Edge % NodeIndexes(2))) + 0.5*EdgeSD
+     END IF
+  END DO EdgeLoopForSD
+  
+  ! Loop over all nodes
+  numNodes = Solver % Mesh % Nodes % NumberOfNodes
+  NodesLoop: DO nn = 1, numNodes
+
+     ! We're interested in nodes where the grounded mask is both defined (non-zero permutation)
+     ! and has value set to zero (the grounding line).
+     IF (gmPerm(nn).le.0) CYCLE
+     IF (gmVals(gmPerm(nn)).eq.0) THEN
+
+! Old code based on wrong assumption about sheet discharge:
+!        ! Sheet discharge multiplied by sheet thickness gives the volume flux from the sheet.
+!        ! We're hard coding the assumption that the sheet discharge is always a 2D vector,
+!        ! which should be safe so long as we always run GlaDS in 2D.
+!        sheetDisMag = ( sheetDisVals( 2*(sheetDisPerm(nn)-1)+1 )**2.0 +      &
+!                        sheetDisVals( 2*(sheetDisPerm(nn)-1)+2 )**2.0  )**0.5
+!        volFluxSheet = sheetThickVals(sheetThickPerm(nn)) * sheetDisMag
+        
+        volFluxChannel = 0.0
+
+        ! work out channel flux.
+        ! loop over all edges...
+        DO ee=1, Solver % Mesh % NumberOfEdges 
+           Edge => Solver % Mesh % Edges(ee)
+           IF (.NOT.ASSOCIATED(Edge)) CYCLE
+           ! ...ignoring edges not entirely on the lower surface...
+           IF (ANY(gmPerm(Edge % NodeIndexes(1:2)).EQ.0)) CYCLE
+           ! ... and check whether the edge contains the current node. If so, check whether the
+           ! other node is grounded. If yes, the edge is valid for calculating GL flux.
+           ValidEdge = .FALSE.
+           IF (Edge % NodeIndexes(1).EQ.nn) THEN
+             IF (gmVals(gmPerm(Edge % NodeIndexes(2))).EQ.1) ValidEdge = .TRUE.
+           ELSEIF (Edge % NodeIndexes(2).EQ.nn) THEN
+              IF (gmVals(gmPerm(Edge % NodeIndexes(1))).EQ.1) ValidEdge = .TRUE.
+           END IF
+           ! Sum channel flux over valid edges
+           IF (ValidEdge) THEN
+              IF (Solver % Mesh % ParallelInfo % EdgeInterface(ee)) THEN 
+                 ! halve value for edges at partition boundaries because these will be 
+                 ! counted twice 
+                 volFluxChannel = volFluxChannel + 0.5*channelVals(channelPerm(numNodes+ee))
+              ELSE
+                 volFluxChannel = volFluxChannel + channelVals(channelPerm(numNodes+ee))
+              END IF
+           END IF
+        END DO
+        
+        cglfVals(cglfPerm(nn)) = volFluxChannel
+!        sglfVals(sglfPerm(nn)) = volFluxSheet
+
+     END IF
+     
+  END DO NodesLoop
+
+  ! Sum nodal values for nodes that exist on multiple partitions
+  CALL ParallelSumVector(Solver % Matrix, cglfVals)
+  CALL ParallelSumVector(Solver % Matrix, sglfVals)
+
+  GLfluxVals = 0.0
+  
+  DO nn = 1, numNodes
+     IF (gmPerm(nn).le.0) CYCLE
+     IF (gmVals(gmPerm(nn)).eq.0) THEN
+        GLfluxVals(GLfluxPerm(nn)) =  cglfVals(cglfPerm(nn)) + sglfVals(sglfPerm(nn))
+     END IF
+  END DO
+  
+  NULLIFY(cglfVals)
+  NULLIFY(sglfVals)
+  NULLIFY(SolverParams)
+  NULLIFY(GLfluxVals)
+  NULLIFY(GLfluxPerm)
+  NULLIFY(gmVals)
+  NULLIFY(gmPerm)
+  NULLIFY(sheetDisVals)
+  NULLIFY(sheetDisPerm)
+  NULLIFY(sheetThickVals)
+  NULLIFY(sheetThickPerm)
+  NULLIFY(channelVals)
+  NULLIFY(channelPerm)
+
+CONTAINS
+
+  FUNCTION CROSS_PRODUCT_MAGNITUDE(aa, bb)
+    REAL(KIND=dp)               :: CROSS_PRODUCT_MAGNITUDE
+    REAL(KIND=dp), DIMENSION(3) :: xx
+    REAL(KIND=dp), DIMENSION(3), INTENT(IN) :: aa, bb
+
+    xx = CROSS_PRODUCT(aa, bb)
+    CROSS_PRODUCT_MAGNITUDE = ( xx(1)**2.0 + xx(2)**2.0 + xx(3)**2.0 )**0.5
+
+  END FUNCTION CROSS_PRODUCT_MAGNITUDE
+
+  FUNCTION CROSS_PRODUCT(aa, bb)
+    REAL(KIND=dp), DIMENSION(3) :: CROSS_PRODUCT
+    REAL(KIND=dp), DIMENSION(3), INTENT(IN) :: aa, bb
+    
+    CROSS_PRODUCT(1) = aa(2) * bb(3) - aa(3) * bb(2)
+    CROSS_PRODUCT(2) = aa(3) * bb(1) - aa(1) * bb(3)
+    CROSS_PRODUCT(3) = aa(1) * bb(2) - aa(2) * bb(1)
+  END FUNCTION CROSS_PRODUCT
+  
+END SUBROUTINE GlaDS_GLflux
+
+! Different ways of calculating a grounded melt rate to pass to GlaDS as a
+! volume source.
+!
+! Notes when using this with a 3D Stokes setup:
+! 
+! Convert a nodal heat to a melt rate at the lower surface of an ice body.  
+! Uses nodal weights (area weighting) to convert the nodal heat to heat per 
+! unit area, then convert this to a melt rate.  This solver should run on the 
+! lower surface only. The calculated melt rate is in m/a water equivalent (so 
+! if you want to use this as a normal velocity condition on the lower surface 
+! of the ice body you need to use rho_i to convert to m/a ice equivalent).
+!
+! Note that the nodal heat could be the residual from the temperate ice solver
+! or it could come from the friction load (though this ignores GHF and heat
+! conducted into the ice, which may approximately balance each other out...).
+!
+! [Edit: CalculateNodalWeights gives partition boundary artefacts, but the 
+!  forcetostress solver seems to produce weights without these artefacts]
+!
+! Different modes of operation.
+! "heat"     - a variable providing nodal heat (e.g. could be residual from temperate ice solver) is used
+!              to calculate the melt rate.  Weights (based on area) are also needed in this case.
+!
+! MeltRate = Heat / (area * density * latent_heat)
+!
+! "friction" - a sliding velocity variable is provided and used by this routine to calculate basal shear
+!              stress, which is then used (along with the effective linear sliding coefficient ("ceff",
+!              see SSASolver.F90), to calculate melt based on friction heat.
+!
+! Example .sif parameters:
+! 
+! Constants:
+!  Latent Heat = 334000.0 ! Joules per kg
+!
+! example solver params:
+!  variable = GroundedMeltRate
+!  Mode = "heat"
+!  heat variable name = String "Friction Load"
+!  Weights variable name = String "Friction heating boundary weights"
+!
+
+RECURSIVE SUBROUTINE GroundedMelt( Model,Solver,Timestep,TransientSimulation )
+
+  USE DefUtils
+  
+  IMPLICIT NONE
+  !------------------------------------------------------------------------------
+  !    External variables
+  !------------------------------------------------------------------------------
+  TYPE(Model_t)          :: Model
+  TYPE(Solver_t), TARGET :: Solver
+  LOGICAL                :: TransientSimulation
+  REAL(KIND=dp)          :: Timestep
+
+  !------------------------------------------------------------------------------
+  !    Local variables
+  !------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER  :: SolverParams, Material
+  TYPE(Variable_t), POINTER   :: MeltVar, WeightsVar, HeatVar, GHFVar, Ceffvar, UbVar, SheetVar, NVar 
+  LOGICAL, SAVE               :: FirstTime = .TRUE., UseGHF = .FALSE.
+  LOGICAL                     :: Found, WaterSheetSwitch, EffectivePressureSwitch
+  CHARACTER(LEN=MAX_NAME_LEN) :: MyName = 'Grounded Melt solver', HeatVarName, WeightsVarName, GHFvarName
+  CHARACTER(LEN=MAX_NAME_LEN) :: MeltMode, CeffVarName, UbVarName, WaterSheetName, EffectivePressureName
+  REAL(KIND=dp)               :: rho_fw ! density of fresh water
+  REAL(KIND=dp),PARAMETER     :: threshold = 0.001_dp ! threshold friction melt rate for including GHF in melt calc
+  REAL(KIND=dp), POINTER      :: WtVals(:), HeatVals(:), MeltVals(:), GHFVals(:), Ceffvals(:), UbVals(:)
+  REAL(KIND=dp), POINTER      :: SheetVals(:), NVals(:)
+  REAL(KIND=dp)               :: LatHeat, GHFscaleFactor, Ub, WaterSheetLimit, EffectivePressureLimit
+  INTEGER, POINTER            :: WtPerm(:), HeatPerm(:), MeltPerm(:), GHFPerm(:), Ceffperm(:), UbPerm(:)
+  INTEGER, POINTER            :: SheetPerm(:), NPerm(:)
+  INTEGER                     :: nn
+
+
+  rho_fw = ListGetConstReal( Model % Constants, 'Fresh Water Density', Found )
+  IF (.NOT.Found) CALL FATAL(MyName, 'Constant >Fresh Water Density< not found')
+  LatHeat = ListGetConstReal( Model % Constants, 'Latent Heat', Found)
+  IF (.NOT.Found) CALL Fatal(MyName, '>Latent Heat< not found in constants')
+
+  MeltVar    => Solver%Variable
+  MeltVals   => MeltVar%Values 
+  MeltPerm   => MeltVar%Perm
+
+  SolverParams => GetSolverParams()
+
+  MeltMode = GetString(SolverParams,'Melt mode', Found)
+  IF(.NOT.Found) CALL Fatal(MyName, '>Melt mode< not found in solver params')
+  
+  WaterSheetLimit = ListGetConstReal(SolverParams,'Water Sheet Limit', WaterSheetSwitch)
+  WaterSheetName = "Sheet Thickness"
+  IF (WaterSheetSwitch) THEN
+     SheetVar    => VariableGet(Model % Variables, WaterSheetName, ThisOnly = .TRUE., UnfoundFatal = .TRUE.)
+     SheetVals   => SheetVar%Values 
+     SheetPerm   => SheetVar%Perm
+  END IF
+
+  EffectivePressureLimit = ListGetConstReal(SolverParams,'Effective Pressure Limit', EffectivePressureSwitch)
+  EffectivePressureName = "Effective Pressure"
+  IF (EffectivePressureSwitch) THEN
+     NVar    => VariableGet(Model % Variables, EffectivePressureName, ThisOnly = .TRUE., UnfoundFatal = .TRUE.)
+     NVals   => NVar%Values 
+     NPerm   => NVar%Perm
+  END IF
+
+  
+  SELECT CASE (MeltMode)
+
+  CASE ("heat")      
+    HeatVarName = GetString(SolverParams,'heat variable name', Found)
+    IF(.NOT.Found) CALL Fatal(MyName, '>Heat variable name< not found in solver params')
+    WeightsVarName = GetString(SolverParams,'Weights variable name', Found)
+    IF(.NOT.Found) CALL Fatal(MyName, '>Weights variable name< not found in solver params')
+
+    HeatVar    => VariableGet(Model % Variables, HeatVarName, ThisOnly = .TRUE., UnfoundFatal = .TRUE.)
+    HeatVals   => HeatVar%Values 
+    HeatPerm   => HeatVar%Perm
+
+    WeightsVar => VariableGet(Model % Variables, WeightsVarName, ThisOnly = .TRUE., UnfoundFatal = .TRUE.)
+    WtVals     => WeightsVar%Values 
+    WtPerm     => WeightsVar%Perm
+
+  CASE ("friction")
+
+    UbVarName = GetString(SolverParams,'Ub variable name', Found)
+    IF (.NOT.Found) UbVarName = "SSAVelocity"
+    CeffVarName = GetString(SolverParams,'Ceff variable name', Found)
+    IF (.NOT.Found) CeffVarName = "Ceff"
+
+    CeffVar    => VariableGet(Model % Variables, CeffVarName, ThisOnly = .TRUE., UnfoundFatal = .TRUE.)
+    CeffVals   => CeffVar%Values 
+    CeffPerm   => CeffVar%Perm
+
+    UbVar      => VariableGet(Model % Variables, UbVarName, ThisOnly = .TRUE., UnfoundFatal = .TRUE.)
+    UbVals     => UbVar%Values 
+    UbPerm     => UbVar%Perm
+
+!    IF (UbVar % DOFS .NE. 2) THEN
+!      CALL Fatal(MyName, 'Expecting Ub variable to be 2D')
+!    END IF
+!    !    Material => GetMaterial() ! get sliding velocity from material
+
+  CASE DEFAULT
+    CALL Fatal(MyName, 'MeltMode not recognised')
+
+  END SELECT
+   
+  GHFvarName = GetString(SolverParams,'GHF variable name', Found)
+  IF (Found) THEN
+    UseGHF = .TRUE.
+    GHFscaleFactor = GetConstReal( Model % Constants, 'GHF scale factor', Found)
+    IF(.NOT.Found) GHFscaleFactor = 1.0
+  ELSE
+    UseGHF = .FALSE.
+  END IF
+       
+  IF (UseGHF) THEN
+    GHFVar     => VariableGet(Model % Variables, GHFvarName, ThisOnly = .TRUE., UnfoundFatal = .TRUE.)
+    GHFVals    => GHFVar%Values 
+    GHFPerm    => GHFVar%Perm
+  END IF
+
+  LoopAllNodes: DO nn=1,Solver % Mesh % NumberOfNodes
+
+    IF (MeltPerm(nn).GT.0) THEN
+
+      ! Heat is assumed to be in units of Mega Joules per year.
+      ! We multiply by 10^6 to convert from Mega Joules to Joules.
+      ! (Melt is calculated in m/year).
+      SELECT CASE (MeltMode)
+      CASE ("heat")      
+        MeltVals(MeltPerm(nn)) = ABS( 1.0e6 * HeatVals(HeatPerm(nn)) ) / ( WtVals(WtPerm(nn)) * rho_fw * LatHeat )
+      CASE ("friction")
+!        Ub = (UbVals(2*(UbPerm(nn)-1)+1)**2 + UbVals(2*(UbPerm(nn)-1)+2)**2)**0.5
+!        Ub(1:1) = ListGetReal( Material, 'Sliding Velocity', 1, [nn], Found, UnfoundFatal = .TRUE. )
+         IF (UbVar % DOFS .EQ. 2) THEN
+            Ub = (UbVals(2*(UbPerm(nn)-1)+1)**2 + UbVals(2*(UbPerm(nn)-1)+2)**2)**0.5
+         ELSE IF (UbVar % DOFS .EQ. 3) THEN
+            Ub = (UbVals(3*(UbPerm(nn)-1)+1)**2 + UbVals(3*(UbPerm(nn)-1)+2)**2 + UbVals(3*(UbPerm(nn)-1)+3)**2)**0.5
+         ELSE IF (UbVar % DOFS .EQ. 4) THEN
+            Ub = (UbVals(4*(UbPerm(nn)-1)+1)**2 + UbVals(4*(UbPerm(nn)-1)+2)**2 + UbVals(4*(UbPerm(nn)-1)+3)**2)**0.5
+           CALL INFO(MyName, 'Sliding velocity is 4D. Ignoring 4th dimension.', level=5 )
+         ELSE
+            CALL Fatal(MyName, 'Expecting Ub variable to be 2D or 3D (or 4D flow solution)')
+         END IF
+         
+         MeltVals(MeltPerm(nn)) = (Ub**2 * CeffVals(CeffPerm(nn)) ) / ( rho_fw * LatHeat )
+
+      END SELECT
+      
+      IF (UseGHF) THEN
+        ! Scaled GHF is assumed to be given in Mega Joules per m^2 per year.
+        MeltVals(MeltPerm(nn)) = MeltVals(MeltPerm(nn)) + &
+             ( GHFVals(GHFPerm(nn))*GHFscaleFactor*1.0e6 ) / ( rho_fw*LatHeat )
+      END IF
+
+      IF (WaterSheetSwitch) THEN
+         IF (SheetVals(SheetPerm(nn)) .GT. WaterSheetLimit) THEN
+            MeltVals(MeltPerm(nn)) = 0.0
+         END IF
+      END IF
+
+      IF (EffectivePressureSwitch) THEN
+         IF (NVals(NPerm(nn)) .LT. EffectivePressureLimit) THEN
+            MeltVals(MeltPerm(nn)) = 0.0
+         END IF
+      END IF
+
+   END IF
+
+  END DO LoopAllNodes
+  
+  SELECT CASE(MeltMode)
+  CASE("heat")
+    NULLIFY(HeatVar, HeatVals, HeatPerm, WeightsVar, WtVals, WtPerm)
+  CASE("friction")
+    NULLIFY(CeffVar, CeffVals, CeffPerm)
+  END SELECT
+  NULLIFY(MeltVar, MeltVals, MeltPerm)
+  IF (UseGHF) THEN
+     NULLIFY(GHFVar, GHFVals, GHFPerm)
+  END IF
+  
+END SUBROUTINE GroundedMelt

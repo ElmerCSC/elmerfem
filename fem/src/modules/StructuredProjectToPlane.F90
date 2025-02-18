@@ -193,9 +193,18 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
       END IF
       NoLayers = NoLayers + 1
     END DO
+    CALL Info(Caller,'Number of bot nodes: '//I2S(BotNodes),Level=10)
+    IF(BotNodes == 0) CALL Fatal(Caller,'Cannot continue with zero BotNodes!')
+    
     NoLayers = NoLayers / BotNodes 
     CALL Info(Caller,'Number of node layers: '//I2S(NoLayers),Level=10)
+    IF(NoLayers < 2) THEN
+      CALL Fatal(Caller,'Solver does not makse sense with '//I2S(NoLayers)//' layers!')
+    END IF
+    
     CALL Info(Caller,'Number of bot nodes: '//I2S(BotNodes),Level=10)
+    IF(BotNodes /= TopNodes) CALL Warn(Caller,'Conflicting BotNodes vs. TopNodes: '&
+        //I2S(BotNodes)//' - '//I2S(TopNodes))
     
     IF( MidLayerExists ) THEN
       MidNodes = 0
@@ -213,6 +222,8 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
         END IF
       END DO
       CALL Info(Caller,'Number of mid nodes: '//I2S(MidNodes),Level=10)
+      IF(BotNodes /= MidNodes) CALL Warn(Caller,'Conflicting BotNodes vs. MidNodes: '&
+          //I2S(BotNodes)//' - '//I2S(MidNodes))
     END IF
   END IF
   at0 = CPUTime()
@@ -671,6 +682,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
             END IF
             l = Dofs*(l-1) + dof
             lup = Dofs*(lup-1) + dof
+            IF( ABS(dx) < EPSILON(dx)) CALL Fatal(Caller,'dx smaller than machine Epsilon!')
             q = ABS(Levelset(jup)-Level) / dx          
             TopField(TopPerm(itop)) = q * FieldIn(l) + (1-q) * FieldIn(lup) 
           END IF
@@ -718,7 +730,8 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
           ELSE
             dx = 0.5*(Coord(iup) - Coord(idown))
           END IF
-          dx = ABS( dx ) / height 
+          IF( ABS(height) < EPSILON(height)) CALL Fatal(Caller,'height smaller than machine Epsilon!')          
+          dx = ABS( dx ) / height          
           k = i
           IF(ASSOCIATED(PermIn)) k = PermIn(k) 
             
