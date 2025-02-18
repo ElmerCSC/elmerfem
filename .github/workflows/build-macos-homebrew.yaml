@@ -86,6 +86,7 @@ jobs:
             -DCMAKE_Fortran_COMPILER=gfortran \
             -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/usr" \
             -DBLA_VENDOR="OpenBLAS" \
+            -DUSE_MACOS_PACKAGE_MANAGER=OFF \
             -DCMAKE_PREFIX_PATH="$( [ "${{ matrix.openmp }}" == "with" ] && echo "${HOMEBREW_PREFIX}/opt/libomp;")${HOMEBREW_PREFIX}/opt/openblas;${HOMEBREW_PREFIX}/opt/qt;${HOMEBREW_PREFIX}/opt/qwt" \
             ${{ matrix.openmp == 'with'
               && '-DWITH_OpenMP=ON \

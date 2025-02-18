@@ -1085,7 +1085,8 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh, TmpMesh, GatheredMesh
     INTEGER :: i,j,k,n,ierr
     REAL(KIND=dp) :: Lambda
-    CHARACTER(LEN=MAX_NAME_LEN) :: MeshCommand, Name, MeshInputFile
+    CHARACTER(LEN=MAX_NAME_LEN) :: MeshCommand, Name
+    CHARACTER(LEN=MAX_PATH_LEN) :: MeshInputFile
     LOGICAL :: Success, Rebalance, EnforceSerial
     REAL(KIND=dp) :: xmax, xmin, ymax, ymin, zmax, zmin, cscale
     LOGICAL :: ScaleCoord

@@ -936,7 +936,7 @@ CONTAINS
 
     INTEGER, PARAMETER :: LENGTH = 1024
     CHARACTER(LEN=LENGTH) :: Txt, FieldName, CompName
-    CHARACTER(MAX_NAME_LEN) :: OutputFile
+    CHARACTER(MAX_PATH_LEN) :: OutputFile
     CHARACTER(:), ALLOCATABLE :: OutputDirectory
     INTEGER :: GmshUnit
     CHARACTER(*), PARAMETER :: Caller = 'SaveGmshOutput'

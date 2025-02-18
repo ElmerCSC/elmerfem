@@ -23,9 +23,12 @@ IF(APPLE)
   SET(CMAKE_MACOSX_RPATH 1)
 ENDIF()
 
+# Allow users to ignore package managers on macOS
+option(USE_MACOS_PACKAGE_MANAGER "Search for packages that are installed with Homebrew or MacPorts on macOS" ON)
+
 #shamelessly borrowed from FreeCAD project: https://github.com/FreeCAD/FreeCAD/blob/master/cMake/FreeCAD_Helpers/SetupPython.cmake
 # For building on OS X
-if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND USE_MACOS_PACKAGE_MANAGER)
 
   # If the user doesn't tell us which package manager they're using
   if(NOT DEFINED MACPORTS_PREFIX AND NOT DEFINED HOMEBREW_PREFIX)

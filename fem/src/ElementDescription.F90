@@ -458,7 +458,7 @@ CONTAINS
 
       ! then the rest of them....
       !--------------------------
-      ALLOCATE(CHARACTER(MAX_STRING_LEN)::elmer_home)
+      ALLOCATE(CHARACTER(MAX_PATH_LEN)::elmer_home)
 
       tstr = 'ELMER_LIB'
       CALL envir( tstr,elmer_home,k ) 

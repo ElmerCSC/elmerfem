@@ -150,6 +150,10 @@ SUBROUTINE TopoOpt( Model,Solver,dt,Transient )
     ! This is not generic. We assume the stress solver to be the 1st solver for now. 
     i = ListGetInteger( Params,'Primary Solver Index' )
     PhysSolver => Model % Solvers(i)
+    IF(.NOT. ListGetLogical(PhysSolver % Values,'Local Matrix Storage',Found ) ) THEN
+      CALL Fatal(Caller,'Primary solver should have active "Local Matrix Storage"')
+    END IF
+      
     uVar => PhysSolver % Variable
     dofs = uVar % dofs
 
@@ -450,7 +454,8 @@ CONTAINS
       m = dofs*n
 
       ! Get the local stiffness matrix as saved by the primary solver
-      CALL GetLocalMatrixStorage( PhysSolver, m, Stiff, Force, Found, ActiveInd = i )       
+      CALL GetLocalMatrixStorage( PhysSolver, m, Stiff, Force, Found, &
+          ElemInd = Element % ElementIndex ) 
       IF(.NOT. Found) CALL Fatal(Caller,'Could not find local stiffness matrix!')
 
       ! Get the solution from stress solver 

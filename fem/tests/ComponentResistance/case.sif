@@ -79,7 +79,6 @@ End
 Material 1
   Density = 1.0
   Electric Conductivity = Real 1.0e3
-  Elecric Conductivity = Real 1.0e3
 End
 
 Component 1 

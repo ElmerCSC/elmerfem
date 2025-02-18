@@ -363,14 +363,14 @@ SUBROUTINE IsosurfaceSolver( Model,Solver,dt,Transient )
   NoEdges = 0
   CALL Info('IsosurfaceSolver','Creating mesh edges',Level=9)
   IF (.NOT.ASSOCIATED(Mesh % Edges)) THEN
+    NoOrigBoundaryElements = Mesh % NumberOfBoundaryElements
+    Mesh % NumberOfBoundaryElements = 0
     IF( dim == 2 ) THEN
-      NoOrigBoundaryElements = Mesh % NumberOfBoundaryElements
-      Mesh % NumberOfBoundaryElements = 0
       CALL FindMeshEdges2D(Mesh)
-      Mesh % NumberOfBoundaryElements = NoOrigBoundaryElements
     ELSE
       CALL FindMeshEdges3D(Mesh)
     END IF
+    Mesh % NumberOfBoundaryElements = NoOrigBoundaryElements
   END IF
   NoEdges = Mesh % NumberOfEdges
 

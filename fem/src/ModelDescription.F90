@@ -72,7 +72,7 @@ CONTAINS
 
     INTEGER(KIND=AddrInt) :: Proc
     INTEGER   :: i,j,slen,q,a
-    CHARACTER :: Libname(MAX_NAME_LEN),Procname(MAX_NAME_LEN)
+    CHARACTER :: Libname(MAX_PATH_LEN),Procname(MAX_NAME_LEN)
 !------------------------------------------------------------------------------
 
     DO slen=LEN(str),1,-1
@@ -279,7 +279,7 @@ CONTAINS
 
     INTEGER :: pos, posn
     INTEGER :: iostat
-    CHARACTER(LEN=MAX_NAME_LEN) :: MeshDir, MeshName
+    CHARACTER(LEN=MAX_PATH_LEN) :: MeshDir, MeshName
     
     IF( PRESENT( RewindFile ) ) THEN
       IF( RewindFile ) THEN
@@ -2543,7 +2543,7 @@ CONTAINS
     INTEGER, TARGET :: Def_Dofs(10,6)
     REAL(KIND=dp) :: MeshPower
     REAL(KIND=dp), POINTER :: h(:)
-    CHARACTER(LEN=MAX_NAME_LEN) :: MeshDir,MeshName
+    CHARACTER(LEN=MAX_PATH_LEN) :: MeshDir,MeshName
     CHARACTER(:), ALLOCATABLE :: Name, ElementDef, str
     LOGICAL :: Parallel
     TYPE(valuelist_t), POINTER :: lst
@@ -3002,12 +3002,21 @@ CONTAINS
       END IF
 
       i = i + 1
+      k = i
+      j = 0
+      DO WHILE( MeshName(i:i) /= CHAR(0) )
+        i = i + 1
+        j = j + 1
+      END DO
+
+      IF(ALLOCATED(Model % Meshes % Name)) DEALLOCATE(Model % Meshes % Name)
+      ALLOCATE(CHARACTER(j)::Model % Meshes % Name)
+      i = k
       k = 1
-      Model % Meshes % Name = ' '
       DO WHILE( MeshName(i:i) /= CHAR(0) )
         Model % Meshes % Name(k:k) = MeshName(i:i)
-        k = k + 1
         i = i + 1
+        k = k + 1
       END DO
 
       ! Ok, give name also to the parent meshes as they might be saved too
@@ -3245,9 +3254,18 @@ CONTAINS
 
         IF ( OneMeshName ) i = 0
 
-        k = 1
         i = i + 1
-        Solver % Mesh % Name = ' '
+        k = i
+        j = 0
+        DO WHILE( MeshName(i:i) /= CHAR(0) )
+          j = j + 1
+          i = i + 1
+        END DO
+
+        IF(ALLOCATED(Solver % Mesh % Name)) DEALLOCATE(Solver % Mesh % Name)
+        ALLOCATE(CHARACTER(j)::Solver % Mesh % Name)
+        i = k
+        k = 1
         DO WHILE( MeshName(i:i) /= CHAR(0) )
           Solver % Mesh % Name(k:k) = MeshName(i:i)
           k = k + 1
@@ -3269,7 +3287,7 @@ CONTAINS
     CALL SetCoordinateSystem( Model )
   
     IF ( OutputPath == ' ' ) THEN
-      DO i=1,MAX_NAME_LEN
+      DO i=1,MAX_PATH_LEN
         IF ( MeshDir(i:i) == CHAR(0) ) EXIT
         OutputPath(i:i) = MeshDir(i:i)
       END DO

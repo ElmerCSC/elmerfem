@@ -112,13 +112,13 @@ SUBROUTINE StatElecSolver_init( Model,Solver,dt,Transient )
     PostActive = .TRUE.
   END IF
 
-  IF( ListGetLogical(Params,'Calculate Elecric Flux',Found) ) THEN
+  IF( ListGetLogical(Params,'Calculate Electric Flux',Found) ) THEN
     IF( CalculateElemental ) & 
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-        '-dg Elecric Flux e[Elecric Flux e:'//I2S(dim)//']' )
+        '-dg Electric Flux e[Electric Flux e:'//I2S(dim)//']' )
     IF( CalculateNodal ) &
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-        'Elecric Flux[Elecric Flux:'//I2S(dim)//']' )       
+        'Electric Flux[Electric Flux:'//I2S(dim)//']' )       
     PostActive = .TRUE.
   END IF
 
@@ -170,7 +170,7 @@ SUBROUTINE StatElecSolver_init( Model,Solver,dt,Transient )
   CALL ListWarnUnsupportedKeyword('solver','adaptive mesh redinement',FatalFound=.TRUE.)
   CALL ListWarnUnsupportedKeyword('body force','piezo material',FatalFound=.TRUE.)
   IF( ListCheckPresentAnyBC(Model,'infinity bc') ) THEN
-    CALL Fatal('StatElecSolver_init','Use "Elecric Infinity BC" instead of "Infinity BC"')
+    CALL Fatal('StatElecSolver_init','Use "Electric Infinity BC" instead of "Infinity BC"')
   END IF
   
   ! If no fields need to be computed do not even call the _post solver!
@@ -807,8 +807,8 @@ SUBROUTINE StatElecSolver_post( Model,Solver,dt,Transient )
   ! Electric current: type 2, components 2:4
   PostVars(4) % Var => VariableGet( Mesh % Variables, 'Nodal Electric Flux')
   PostVars(4) % NodalField = .TRUE.
-  PostVars(5) % Var => VariableGet( Mesh % Variables, 'Elecric Flux')
-  PostVars(6) % Var => VariableGet( Mesh % Variables, 'Elecric Flux e')
+  PostVars(5) % Var => VariableGet( Mesh % Variables, 'Electric Flux')
+  PostVars(6) % Var => VariableGet( Mesh % Variables, 'Electric Flux e')
   PostVars(4:6) % FieldType = 2 
 
   ! Electric field: type 3, components 5-7

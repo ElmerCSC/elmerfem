@@ -99,8 +99,8 @@
 
      TYPE(ParEnv_t), POINTER :: ParallelEnv
 
-     CHARACTER(LEN=MAX_NAME_LEN) :: ModelName, eq
-     CHARACTER(LEN=MAX_STRING_LEN) :: OptionString
+     CHARACTER(LEN=MAX_PATH_LEN) :: ModelName
+     CHARACTER(LEN=MAX_STRING_LEN) :: OptionString, eq
 
      CHARACTER(:), ALLOCATABLE :: str, PostFile, ExecCommand, OutputFile, RestartFile, &
           OutputName, PostName, When
@@ -125,7 +125,7 @@
      INTEGER :: nr,ni,ExtMethod
      INTEGER, ALLOCATABLE :: ipar(:)
      REAL(KIND=dp), ALLOCATABLE :: rpar(:)
-     CHARACTER(LEN=MAX_NAME_LEN) :: MeshDir, MeshName
+     CHARACTER(LEN=MAX_PATH_LEN) :: MeshDir, MeshName
      
 #ifdef HAVE_TRILINOS
      INTERFACE
@@ -3760,7 +3760,7 @@
     LOGICAL :: EigAnal = .FALSE., Found
     INTEGER :: i, j,k,l,n,q,CurrentStep,nlen,nlen2,timesteps,SavedEigenValues
     CHARACTER(LEN=MAX_NAME_LEN) :: Simul, SaveWhich
-    CHARACTER(MAX_NAME_LEN) :: OutputDirectory
+    CHARACTER(MAX_PATH_LEN) :: OutputDirectory
     TYPE(Solver_t), POINTER :: pSolver
     
     Simul = ListGetString( CurrentModel % Simulation,'Simulation Type' )

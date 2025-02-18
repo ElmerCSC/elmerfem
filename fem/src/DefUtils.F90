@@ -3613,6 +3613,7 @@ CONTAINS
          IF(SIZE(Solver % LocalSystem) < n ) DEALLOCATE(Solver % LocalSystem)
        END IF
        IF(.NOT. ASSOCIATED(Solver % LocalSystem ) ) THEN
+         CALL Info('DefaultStart','Allocating local storage of size: '//I2S(n),Level=7)
          ALLOCATE( Solver % LocalSystem(n) )
          Solver % LocalSystem(1:n) % eind = 0         
          ! If the stiffness matrix is constant the 1st element gives stiffness matrix for all!

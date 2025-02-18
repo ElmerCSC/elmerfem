@@ -3488,7 +3488,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     ELSE
       Values => A % Values
     END IF
-
+    
     IF ( .NOT. ASSOCIATED(A % ILUValues) ) THEN
 
        IF ( ILUn == 0 ) THEN
@@ -4987,10 +4987,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     RowMax = MAXVAL( Rows )
     RowN = SIZE( Rows )
 
-    PRINT *,'Rows:'
-    PRINT *,'size:',RowN
-    PRINT *,'min:',RowMin
-    PRINT *,'max:',RowMax
+    PRINT *,'Rows (size '//I2S(RowN)//') range:',RowMin, RowMax
 
     IF( RowMin < 1 ) THEN
       PRINT *,'Outliers:'
@@ -5009,12 +5006,8 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     ColMin = MINVAL( Cols )
     ColMax = MAXVAL( Cols )
     ColN = SIZE( Cols )
-
-    PRINT *,'Cols:'
-    PRINT *,'size:',ColN
-    PRINT *,'min:',ColMin
-    PRINT *,'max:',ColMax
-
+    PRINT *,'Cols (size '//I2S(ColN)//') range:',ColMin, ColMax
+    
     IF( ColMin < 1 ) THEN
       PRINT *,'Outliers:'
       j = 0
@@ -5034,11 +5027,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     ValN = SIZE( Values )
     TotalSum = SUM( Values )
 
-    PRINT *,'Values:'
-    PRINT *,'size:',ValN
-    PRINT *,'min:',ValMin
-    PRINT *,'max:',ValMax
-    PRINT *,'sum:',TotalSum
+    PRINT *,'Values (size '//I2S(ValN)//') range:',ValMin,ValMax,TotalSum
     
     IF( ColN /= RowMax - 1  ) THEN
       PRINT *,'Conflicting max row index :',n,RowMax-1

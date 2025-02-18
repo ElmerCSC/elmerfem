@@ -15245,21 +15245,21 @@ END FUNCTION SearchNodeL
           DO i=1,ParEnV % PEs
             IF(i-1==me .OR. .NOT. ParEnv % IsNeighbour(i)) CYCLE
 
-            CALL MPI_BSEND(SendTo(i),1,MPI_INTEGER,i-1,1200,ELMER_COMM_WORLD,status, ierr)
+            CALL MPI_BSEND(SendTo(i),1,MPI_INTEGER,i-1,1200,ELMER_COMM_WORLD, ierr)
             IF(Sendto(i)==0) CYCLE
 
             CALL MPI_BSEND(APerm(SendStuff(i) % Rows),SendTo(i),MPI_INTEGER,i-1, &
-                          1201,ELMER_COMM_WORLD,status,ierr )
+                          1201,ELMER_COMM_WORLD,ierr )
   
             CALL MPI_BSEND( SendStuff(i) % Size,SendTo(i),MPI_INTEGER,i-1, &
-                          1202,ELMER_COMM_WORLD,status,ierr )
+                          1202,ELMER_COMM_WORLD,ierr )
             DO j=1,SendTo(i)
               k = SendStuff(i) % Rows(j)
               CALL MPI_BSEND(APerm(A % Cols(A % Rows(k):A % Rows(k+1)-1)),SendStuff(i) % Size(j), &
-                         MPI_INTEGER,i-1, 1203,ELMER_COMM_WORLD, status, ierr )
+                         MPI_INTEGER,i-1, 1203,ELMER_COMM_WORLD, ierr )
 
               CALL MPI_BSEND(A % Values(A % Rows(k):A % Rows(k+1)-1),SendStuff(i) % Size(j), &
-                      MPI_DOUBLE_PRECISION,i-1,1204,ELMER_COMM_WORLD, status, ierr )
+                      MPI_DOUBLE_PRECISION,i-1,1204,ELMER_COMM_WORLD, ierr )
             END DO
           END DO
 

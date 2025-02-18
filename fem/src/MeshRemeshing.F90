@@ -1634,12 +1634,12 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,&
     END IF
     
     IF(SaveMMGMeshes) THEN
-      WRITE(MeshName, '(A,i0,A)') TRIM(premmg_meshfile), time, '.mesh'
+      MeshName = TRIM(premmg_meshfile) // I2S(time) // '.mesh'
       CALL MMG3D_SaveMesh(mmgMesh,MeshName,LEN(TRIM(MeshName)),ierr)
     END IF
     
     IF(SaveMMGSols) THEN
-      WRITE(SolName, '(A,i0,A)') TRIM(premmg_solfile), time, '.sol'
+      SolName =  TRIM(premmg_solfile) // I2S(time) // '.sol'
       CALL MMG3D_SaveSol(mmgMesh, mmgSol,SolName,LEN(TRIM(SolName)),ierr)
     END IF
     
@@ -3072,7 +3072,7 @@ END SUBROUTINE DistributedRemeshParMMG
     ! Initialize the new mesh stucture
     NewMesh => AllocateMesh(nt + nt0,na + na0,np + np0,ParEnv%PEs > 1)
     IF (MeshNumber > 0 ) THEN
-      WRITE(NewMesh % Name,'(A,A,I0)') TRIM(OutPutFileName),'_N',MeshNumber
+      NewMesh % Name = TRIM(OutPutFileName) // '_N' // I2S(MeshNumber)
     ELSE
       NewMesh % Name = TRIM(OutPutFileName)
     END IF
