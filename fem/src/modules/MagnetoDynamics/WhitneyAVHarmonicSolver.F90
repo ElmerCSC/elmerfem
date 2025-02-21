@@ -417,6 +417,18 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: Diag(:)
     LOGICAL  :: FoundMagnetization, Found, ConstraintActive, GotCoil, CircuitDrivenBC
 !---------------------------------------------------------------------------------------------
+    REAL(dp) :: maxval_cd
+    CHARACTER(LEN=MAX_NAME_LEN) :: CurrVarName
+
+    BLOCK
+    TYPE(Variable_t), POINTER :: CD
+    CurrVarName="Current Density"
+    CD => VariableGet( Model % Mesh % Variables, 'Current Density' )
+    maxval_cd=MAXVAL(ABS(CD % Values))
+    maxval_cd=ParallelReduction(maxval_cd)
+    !print*,"whitney maxval_cd", maxval_cd
+    END BLOCK
+
     ! System assembly:
     !-----------------
     CALL DefaultInitialize()
@@ -524,6 +536,22 @@ CONTAINS
          Tcoef = GetCMPLXElectricConductivityTensor(Element, n, CoilBody, CoilType) 
 
          LaminateStackModel = GetString( Material, 'Laminate Stack Model', LaminateStack )
+
+         BLOCK
+           REAL(dp) :: cond_regulation_limit
+           REAL(dp) :: SOL(6,n)
+           REAL(dp) :: cond_regulation_value
+           CALL GetLocalSolution(SOL,CurrVarName)
+           if (maxval_cd /= 0._dp) then
+             cond_regulation_value=MAXVAL(ABS(SOL))/maxval_cd
+           else
+             cond_regulation_value=0._dp
+           end if
+           cond_regulation_limit=1._dp - GetConstReal(GetMaterial( Element ), 'Electric Conductivity Regulation',  Found)
+           if (.false. .and. found .and. (cond_regulation_limit<cond_regulation_value .or. cond_regulation_value==0._dp)) THEN
+             Tcoef = Tcoef/1e4_dp
+           end if
+         END BLOCK
        END IF
 
        LamThick=0d0

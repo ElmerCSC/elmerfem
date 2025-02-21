@@ -518,6 +518,7 @@ CONTAINS
           END IF
           
           Tcoef = GetElectricConductivityTensor(Element, nn, 're', .TRUE., CoilType)
+
           SELECT CASE(CoilType)
           CASE ('stranded')
             CALL Add_stranded(Element,Tcoef,Comp,nn,nd,dt,CompParams)
@@ -1321,10 +1322,22 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), POINTER :: px(:)
   CHARACTER(LEN=MAX_NAME_LEN) :: sname
   CHARACTER(*), PARAMETER :: Caller = 'CircuitsAndDynamicsHarmonic'
+  REAL(dp) :: maxval_cd
+  CHARACTER(LEN=MAX_NAME_LEN) :: CurrVarName
   
   SAVE First, Parallel
   
 !------------------------------------------------------------------------------
+
+
+    BLOCK
+    TYPE(Variable_t), POINTER :: CD
+    CurrVarName="Current Density"
+    CD => VariableGet( Model % Mesh % Variables, 'Current Density' )
+    maxval_cd=MAXVAL(ABS(CD % Values))
+    maxval_cd=ParallelReduction(maxval_cd)
+    !print*,"circuits maxval_cd", maxval_cd
+    END BLOCK
 
 
   CALL DefaultStart()
@@ -1563,6 +1576,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
     LOGICAL :: Found
 
+
     Circuit => CurrentModel % Circuits(p)
     nm = Asolver % Matrix % NumberOfRows
     CM => CurrentModel%CircuitMatrix
@@ -1732,6 +1746,25 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       CASE ('massive')
         IF (HasSupport(Element,nn_elem)) THEN
           Tcoef = GetCMPLXElectricConductivityTensor(Element, nn_elem, .TRUE., CoilType) 
+
+         BLOCK
+           REAL(dp) :: cond_regulation_limit
+           REAL(dp) :: SOL(6,nn_elem)
+           REAL(dp) :: cond_regulation_value
+           CALL GetLocalSolution(SOL,CurrVarName)
+           if (maxval_cd /= 0._dp) then
+             cond_regulation_value=MAXVAL(ABS(SOL))/maxval_cd
+           else
+             cond_regulation_value=0._dp
+           end if
+           cond_regulation_limit=1._dp - GetConstReal(GetMaterial( Element ), 'Electric Conductivity Regulation',  Found)
+           if (found .and. (cond_regulation_limit<cond_regulation_value .or. cond_regulation_value==0._dp)) THEN
+           print*, "cond_regulation_limit", cond_regulation_limit,&
+             "cond_regulation_value", cond_regulation_value,"maxval_cd", maxval_cd,"MAXVAL(ABS(SOL))",MAXVAL(ABS(SOL))
+             Tcoef = Tcoef/1e4_dp
+           end if
+         END BLOCK
+
           CALL Add_massive(Element,Tcoef,Comp,nn_elem,nd_elem)
         END IF
       CASE ('foil winding')
