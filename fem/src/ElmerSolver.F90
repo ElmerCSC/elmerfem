@@ -1801,6 +1801,7 @@
        CALL Restart()
      END IF
 
+     CALL Info('SetInitialConditions','Initial conditions set',Level=20)
          
 !------------------------------------------------------------------------------
 !    Make sure that initial values at boundaries are set correctly.
@@ -1993,6 +1994,10 @@
          Mesh => Mesh % Next
        END DO
      END IF
+
+     CALL Info('SetInitialConditions','Initial values for boundaries set',Level=20)
+
+     
 !------------------------------------------------------------------------------
    END SUBROUTINE SetInitialConditions
 !------------------------------------------------------------------------------

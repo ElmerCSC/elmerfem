@@ -135,6 +135,7 @@ MODULE Types
     REAL(KIND=dp), ALLOCATABLE :: rhs(:)
     REAL(KIND=dp), ALLOCATABLE :: DiagScaling(:)
     TYPE(Solver_t), POINTER :: Solver => NULL()
+    LOGICAL :: AddVector = .FALSE.
   END TYPE SubVector_t
 
   TYPE SubMatrix_t

@@ -52,7 +52,7 @@ MODULE ModelDescription
  
     IMPLICIT NONE
 
-    CHARACTER(LEN=1024) :: IncludePath = ' ', OutputPath = ' ', SimulationId=' '
+    CHARACTER(LEN=MAX_PATH_LEN) :: IncludePath = ' ', OutputPath = ' ', SimulationId=' '
 
     INTEGER, PARAMETER :: PosUnit = 32, OutputUnit = 31, RestartUnit = 30,&
                           PostFileUnit = 29, InFileUnit = 28

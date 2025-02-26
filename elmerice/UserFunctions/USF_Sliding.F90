@@ -393,8 +393,10 @@ FUNCTION Friction_Coulomb (Model, nodenumber, y) RESULT(Bdrag)
      Xi = ut / (As * (C*Ne)**m ) 
      Xi = MIN(Xi,1.0e20_dp)
   ELSE
-     Xi = 1.0e20_dp 
-     write(*,*)'!!! Ne <=0, nodenumber',nodenumber, Ne
+     Xi = 1.0e20_dp
+     WRITE(Message,*) '!!! Ne <=0, nodenumber',nodenumber, Ne
+     CALL INFO ("Friction_Coulomb", Message, Level=9)
+!     write(*,*)'!!! Ne <=0, nodenumber',nodenumber, Ne
      Ne = 0.0       
   END IF
   

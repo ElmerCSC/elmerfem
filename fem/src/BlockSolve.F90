@@ -522,6 +522,7 @@ CONTAINS
     REAL(KIND=dp), POINTER :: Vals(:)
     INTEGER, POINTER :: VarPerm(:)
     TYPE(Matrix_t), POINTER :: B  
+    LOGICAL :: AddVector
     
     Params => Solver % Values
     Mesh => Solver % Mesh
@@ -537,9 +538,17 @@ CONTAINS
       
       BlockMatrix % Offset(i+1) = BlockMatrix % Offset(i) + n
       BlockMatrix % MaxSize = MAX( BlockMatrix % MaxSize, n )
-      
-      VarName = ComponentName("Block variable",i)            
+
+      ! Is this inherited from AddMatrix ?
+      AddVector = BlockMatrix % Subvector(i) % AddVector 
+
+      IF(AddVector) THEN
+        VarName = LagrangeMultiplierName( Solver )
+      ELSE
+        VarName = ComponentName("Block variable",i)            
+      END IF
       Var => VariableGet( Mesh % Variables, VarName )
+      
       IF(.NOT. ASSOCIATED( Var ) ) THEN
         CALL Info('BlockInitVar','Variable > '//VarName//' < for size '&
             //I2S(n)//' does not exist, creating')
@@ -547,8 +556,12 @@ CONTAINS
         NULLIFY( Vals )
         ALLOCATE( Vals(n) )
         Vals = 0.0_dp
+
+        IF(AddVector) THEN
+          CALL VariableAddVector( Mesh % Variables,Mesh,PSolver,VarName,Solver % Variable % Dofs,Vals,&
+              Output = .FALSE. )
         
-        IF( PRESENT(BlockIndex) ) THEN
+        ELSE IF( PRESENT(BlockIndex) ) THEN
           CALL Info('BlockInitVar','Using BlockIndex to pick variable and perm',Level=20)
           NULLIFY(VarPerm)
           m = SIZE(Solver % Variable % Values)
@@ -579,12 +592,12 @@ CONTAINS
         B => BlockMatrix % SubMatrix(i,i) % Mat
 
         IF( ParEnv % PEs == 1 ) THEN        
-          IF(.NOT. ASSOCIATED(B % InvPerm) ) CALL Fatal('BlockInitVar','InvPerm not present!')
+          IF(.NOT. ASSOCIATED(B % InvPerm) ) CALL Fatal('BlockInitVar','InvPerm not present for block '//I2S(11*i))
           IF(ASSOCIATED(B % InvPerm ) ) THEN
             Var % Values = Solver % Variable % Values(B % InvPerm)
           END IF
         ELSE
-          IF(.NOT. ASSOCIATED(B % Perm) ) CALL Fatal('BlockInitVar','Perm not present!')
+          IF(.NOT. ASSOCIATED(B % Perm) ) CALL Fatal('BlockInitVar','Perm not present for block '//I2S(11*i))
           DO j=1,SIZE(B % Perm)
             k = B % Perm(j)
             IF(k==0) CYCLE
@@ -1032,10 +1045,12 @@ CONTAINS
     IF(dofs > 1) THEN
       SplitComplex = ListGetLogical( Solver % Values,'Block Split Complex',Found ) 
       IF(SplitComplex) THEN
+        CALL Info('BlockPickAV','Applying different block numbering to Re/Im dofs',Level=8)
         BlockIndex = 2 * BlockIndex
         BlockIndex(1::2) = BlockIndex(2::2)-1
         NoVar = 2*NoVar
       ELSE
+        CALL Info('BlockPickAV','Applying same block numbering to Re/Im dofs',Level=8)
         BlockIndex(1::2) = BlockIndex(2::2)
       END IF
     END IF
@@ -1086,7 +1101,7 @@ CONTAINS
     LOGICAL :: SplitComplex, CreatePermPar, Found
     REAL(KIND=dp) :: Coeff, Coeff0
     
-    CALL Info('BlockPickMatrixPerm','Picking indexed  block matrix from monolithic one',Level=10)
+    CALL Info('BlockPickMatrixPerm','Picking indexed block matrix from monolithic one',Level=10)
 
     A => Solver % Matrix 
     
@@ -1188,7 +1203,7 @@ CONTAINS
 
     NoBlock = NoVar
     IF( DoAddMatrix ) THEN
-      CALL Info('BlockPickMatrixPerm','Adding add matrix to submatrices of block system!',Level=10)
+      CALL Info('BlockPickMatrixPerm','Creating additional submatrices from AddMatrix block system!',Level=10)
       C => Solver % Matrix % AddMatrix 
       NoBlock = NoVar+1 
       
@@ -1197,6 +1212,10 @@ CONTAINS
       n = C % NumberOfRows - A % NumberOfRows 
       offset(i+1) = offset(i) + n
 
+      CALL Info('BlockPickMatrixPerm','Number of new rows from AddMatix: '//I2S(n),Level=20)
+
+      TotMatrix % Subvector(i) % AddVector = .TRUE.
+      
       IF(ASSOCIATED(B % rhs)) THEN
         IF(SIZE(B % Rhs) /= n) DEALLOCATE( B % rhs)
       END IF
@@ -1204,7 +1223,15 @@ CONTAINS
         ALLOCATE(B % Rhs(n))
       END IF
       B % rhs = 0.0_dp
-           
+
+      IF(ASSOCIATED(B % InvPerm)) THEN
+        IF(SIZE(B % InvPerm) /= n) DEALLOCATE( B % InvPerm)
+      END IF
+      IF(.NOT. ASSOCIATED(B % InvPerm)) THEN
+        ALLOCATE(B % InvPerm(n))
+      END IF
+      B % InvPerm = 0
+      
       DO i=1,C % NumberOfRows 
         IF(i <= A % NumberOfRows ) THEN
           brow = BlockIndex(i)
@@ -1215,10 +1242,13 @@ CONTAINS
         END IF
                    
         B => TotMatrix % SubMatrix(brow,brow) % Mat
-        B % Rhs(bi) = C % Rhs(i)
-        
-        !B % InvPerm(bi) = i        
-        !TotMatrix % BlockPerm(offset(brow)+bi) = i
+        B % Rhs(bi) = B % Rhs(bi) + C % Rhs(i)
+
+        !      IF( CreatePermPar )        
+        IF(i> A % NumberOfRows ) THEN
+          B % InvPerm(bi) = i
+          TotMatrix % BlockPerm(offset(brow)+bi) = i
+        END IF
         
         DO j=C % Rows(i+1)-1,C % Rows(i),-1
           
@@ -1236,7 +1266,7 @@ CONTAINS
           CALL AddToMatrixElement(B,bi,bk,A % Values(j))
         END DO
       END DO    
-    END IF      
+    END IF
     
     DO i = 1, NoBlock
       DO j = 1, NoBlock
@@ -1299,6 +1329,13 @@ CONTAINS
         END DO
       END DO
     END IF
+
+    DO i = 1, NoBlock
+      IF( ListGetLogical( Solver % Values,'Block '//I2S(11*i)//': Linear System Save',Found ) ) THEN
+        B => TotMatrix % SubMatrix(i,i) % Mat
+        CALL SaveLinearSystem( Solver, B,'Block'//I2S(11*i) )
+      END IF
+    END DO
       
     
   END SUBROUTINE BlockPickMatrixPerm

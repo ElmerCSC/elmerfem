@@ -2581,7 +2581,7 @@ CONTAINS
          DEALLOCATE( MortarBC % Diag ) 
        END IF
 
-       ! Create the permutation that is later need in putting the diag and rhs to correct position
+       ! Create the permutation that is later needed in putting the diag and rhs to correct position.
        ALLOCATE( Perm( SIZE( FieldPerm ) ) )
        Perm = 0
        DO i=1,SIZE( Projector % InvPerm )
@@ -2608,8 +2608,7 @@ CONTAINS
 
        
        ! If permutation has changed we need to change the vectors also
-       SamePerm = ANY( Perm /= MortarBC % Perm )
-       SameSize = ( SIZE(MortarBC % Rhs) == totsize )
+       SamePerm = ALL( Perm == MortarBC % Perm )
 
        ! Permutation unchanged, just return
        IF( SamePerm ) THEN
@@ -2617,7 +2616,8 @@ CONTAINS
          RETURN
        END IF
        
-       ! Permutation changes, and also sizes changed
+       ! Permutation changes, and also sizes changed?
+       SameSize = ( SIZE(MortarBC % Rhs) == totsize )
        IF(.NOT. SameSize ) THEN
          DEALLOCATE( MortarBC % Rhs )
          ALLOCATE( MortarBC % Rhs( totsize ) )
@@ -14803,7 +14803,7 @@ END FUNCTION SearchNodeL
     
     Method = ListGetString(Params,'Linear System Solver',GotIt)
     IF(.NOT. GotIt) THEN
-      CALL Fatal(Caller,'Give "Linear System Solver", e.g. "linear" or "direct"')
+      CALL Fatal(Caller,'Give "Linear System Solver", e.g. "iterative" or "direct"')
     END IF
     
     IF (Method=='multigrid' .OR. Method=='iterative' ) THEN

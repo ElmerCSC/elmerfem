@@ -197,7 +197,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), ALLOCATABLE :: DesiredCoilCurrent(:), DesiredCurrentDensity(:),&
       CoilHelicity(:),CoilNormals(:,:)
   LOGICAL :: Found, CoilClosed, CoilAnisotropic, UseDistance, FixConductivity, &
-      FitCoil, SelectNodes, CalcCurr, UseUnityCond
+      FitCoil, SelectNodes, CalcCurr, UseUnityCond, ThisIsCoil
   LOGICAL, ALLOCATABLE :: GotCurr(:), GotDens(:), NormalizeCoil(:), CoilBodies(:)
   REAL(KIND=dp) :: CoilCenter(3), CoilNormal(3), CoilTangent1(3), CoilTangent2(3), &
       MinCurr(3),MaxCurr(3),TmpCurr(3)
@@ -349,7 +349,11 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
     IF( i <= Model % NumberOfComponents ) THEN
       CoilList => Model % Components(i) % Values
 
-      IF(.NOT. ListCheckPresent( CoilList,'Coil Type' ) ) CYCLE      
+      ! Currently we assume that we have an active coil if any keyword starting with
+      ! "coil" is found. This used to be more stringent criteria requiring "coil type". 
+      ThisIsCoil = ListCheckPrefix( CoilList,'Coil' )
+      IF(.NOT. ThisIsCoil) CYCLE
+      
       TargetBodies => ListGetIntegerArray( CoilList,'Master Bodies',Found )
       IF( .NOT. Found ) TargetBodies => ListGetIntegerArray( CoilList,'Body',Found )
       IF( .NOT. Found ) CALL Fatal(Caller,'Coil fitting requires > Master Bodies <') 
