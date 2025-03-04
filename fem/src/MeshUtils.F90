@@ -3007,7 +3007,7 @@ CONTAINS
 
      INTEGER, POINTER :: EdgeDofs(:), FaceDofs(:)
      INTEGER :: i, j, k, k2, l, s, n, DGIndex, body_id, body_id0, eq_id, solver_id, el_id, &
-         mat_id
+         mat_id, TargetMeshIndex
      LOGICAL :: NeedEdges, Found, FoundDef0, FoundDef, FoundEq, GotIt, MeshDeps, &
          FoundEqDefs, FoundSolverDefs(Model % NumberOfSolvers), &
          FirstOrderElements, InheritDG, Hit, Stat, &
@@ -3035,12 +3035,13 @@ CONTAINS
        DO s=1,Model % NumberOfSolvers
          !Need to only look at solvers that are going to run on this mesh
          TargetMesh = ListGetString(Model % Solvers(s) % Values, 'Mesh', GotIt)
+	 TargetMeshIndex = INDEX(Model % Solvers(s) % Mesh % Name, " ")
          DO i=1,6
            DO j=1,10
              IF(GotIt) THEN
                !This assumes your meshes all start '. '
                IF (LEN_TRIM(Model % Solvers(s) % Mesh % Name) > 0) THEN
-                 IF(TRIM(Model % Solvers(s) % Mesh % Name) .NE. TRIM(TargetMesh(2:))) THEN
+                 IF(TRIM(Model % Solvers(s) % Mesh % Name) .NE. TRIM(TargetMesh(TargetMeshIndex:))) THEN
                    CYCLE
                  END IF
                END IF
