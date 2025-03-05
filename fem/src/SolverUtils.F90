@@ -9792,7 +9792,7 @@ END FUNCTION SearchNodeL
 
      IF ( .NOT. ASSOCIATED( Solver % Matrix ) .OR. &
           .NOT. ASSOCIATED( Solver % Variable ) ) RETURN
-     IF(.NOT. ASSOCIATED(Solver % Variable Values) ) RETURN
+     IF(.NOT. ASSOCIATED(Solver % VariableValues) ) RETURN
           
      IF ( Solver % TimeOrder <= 0 ) RETURN
 !------------------------------------------------------------------------------
