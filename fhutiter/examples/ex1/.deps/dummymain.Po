@@ -1,1 +1,0 @@
-dummymain.o dummymain.o: dummymain.c
