@@ -1,0 +1,64 @@
+Check Keywords "Warn"
+
+Header :: Mesh DB "." "strip4"
+
+Simulation
+  Max Output Level = 8
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+!  Post File   = "case.vtu"
+  Serendipity P Elements = False
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Material 1
+  diffusion coefficient = Variable "Coordinate 1"
+    MATC "1.0 + tx"
+  time derivative coefficient = 0.0
+End
+
+Body Force 1
+  Field Source = Variable "Coordinate 1"
+    MATC "2.0/9.0 * (1.0 + 2.0 * tx)"
+End
+
+Equation 1 :: Active Solvers(2) = 1 2
+
+Solver 1
+  Equation = "ModelPDE"
+  Variable = "Field"
+  Procedure = "./ModelFluxReconstruction" "AdvDiffSolver"
+!  Element = "p:1"
+  Linear System Solver = Direct
+  Steady State Convergence Tolerance = 1e-9
+!  Bubbles in Global System = True
+  Calculate Loads = True
+  Flux Recovery = Logical True
+End
+
+Solver 2
+  Equation = "Flux reconstruction"
+  No Matrix = True
+!!  Exec Solver = Never
+  Procedure = "./ModelFluxReconstruction" "FluxEquilibration_Dummy"
+  Variable = RTFlux
+  Variable Output = False
+  Second Kind Basis = False
+  Element = "n:0 e:2 b:2"
+!  Element = "n:0 e:2"
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 2
+  Field = 0.0
+End
+
+Solver 1 :: Reference Norm = 0.72987714
+Solver 2 :: Reference Norm = 6.68363080E-02

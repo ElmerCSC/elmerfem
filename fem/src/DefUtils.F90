@@ -49,7 +49,6 @@ MODULE DefUtils
 
 #include "../config.h"
 
-   USE Adaptive
    USE MeshGenerate 
    USE ElementUtils
    USE SolverUtils
@@ -2213,7 +2212,7 @@ CONTAINS
 ! -----------------------------------------------------------------------------
     INTEGER :: n
     TYPE(Element_t), OPTIONAL :: Element
-    TYPE(Solver_t), OPTIONAL, POINTER :: USolver
+    TYPE(Solver_t), OPTIONAL, TARGET :: USolver
     LOGICAL, OPTIONAL :: Update
 
     TYPE(Element_t), POINTER  :: CurrElement

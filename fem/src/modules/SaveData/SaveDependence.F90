@@ -80,6 +80,7 @@ SUBROUTINE SaveDependence( Model,Solver,dt,TransientSimulation )
   USE Types
   USE Lists
   USE DefUtils
+  USE SaveUtils, ONLY : SolverOutputDirectory
 
   IMPLICIT NONE
 !------------------------------------------------------------------------------

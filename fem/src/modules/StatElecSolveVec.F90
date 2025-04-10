@@ -191,6 +191,7 @@ END SUBROUTINE StatElecSolver_Init
 SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE DefUtils
+  USE Adaptive
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver

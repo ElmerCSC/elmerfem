@@ -45,12 +45,17 @@
 MODULE Adaptive
 
   USE GeneralUtils
-  USE SolverUtils
+  USE SolverUtils, ONLY : VectorValuesRange
+  USE ElementUtils, ONLY : ElementArea
   USE ModelDescription
-  USE LoadMod
   USE MeshUtils
   USE MeshRemeshing
-  USE SaveUtils
+  USE SaveUtils, ONLY : SaveGmshOutput
+  USE DefUtils, ONLY: GetMaterial, GetReal, GetBodyForce, GetSolverParams, GetLogical, &
+      GetNofActive, GetActiveElement, GetElementNofBDOFs, GetBoundaryElement, &
+      ActiveBoundaryElement, GetNofBoundaryElements, GetElementFamily, GetElementNodes
+  USE ElementDescription, ONLY: GetEdgeMap
+  USE MainUtils, ONLY : AddEquationSolution
   
   IMPLICIT NONE
 
@@ -63,11 +68,10 @@ CONTAINS
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 
-    TYPE(Solver_t), TARGET :: Solver
-    INTEGER :: Perm(:)
-    REAL(KIND=dp) :: Quant(:)
     TYPE( Model_t ) :: Model
-
+    TYPE(Solver_t), TARGET :: Solver
+    REAL(KIND=dp) :: Quant(:)
+    INTEGER :: Perm(:)
 
     INTERFACE
        FUNCTION BoundaryResidual( Model,Edge,Mesh,Quant,Perm,Gnorm ) RESULT(Indicator)
@@ -101,33 +105,32 @@ CONTAINS
     END INTERFACE
 !------------------------------------------------------------------------------
 
-    TYPE(Mesh_t), POINTER   :: RefMesh,NewMesh, Mesh, sMesh
+    TYPE(Mesh_t), POINTER :: RefMesh, NewMesh, Mesh, sMesh
     TYPE( Nodes_t ) :: Nodes
-    TYPE( Matrix_t ), POINTER :: NewMatrix
+    TYPE(Solver_t), POINTER :: SolverPtr
     INTEGER, POINTER :: Permutation(:)
-    LOGICAL, POINTER       :: EdgeSplitted(:)
-    INTEGER, POINTER       :: Referenced(:)
+    LOGICAL, POINTER :: EdgeSplitted(:)
+    INTEGER, POINTER :: Referenced(:)
     TYPE( Element_t ), POINTER :: RefElement
     INTEGER :: i,j,k,n,nn,MarkedElements
-    TYPE( Variable_t ), POINTER :: Var, Var1, NewVar
+    TYPE( Variable_t ), POINTER :: Var, Var1, NewVar, RTFlux
     REAL(KIND=dp) :: MaxError, ErrorLimit, minH, maxH, MaxChangeFactor, &
         LocalIndicator,ErrorEstimate,t,TotalTime,RemeshTime,s,FinalRef,&
-        MaxScale,AveScale,OutFrac,MaxFrac, NodalMaxError, mError
+        MaxScale,AveScale,OutFrac,MaxFrac, NodalMaxError, mError, SolNorm
 
-    LOGICAL :: BandwidthOptimize, Found, Coarsening, GlobalBubbles, &
+    LOGICAL :: BandwidthOptimize, Found, Coarsening, &
         MeshNumbering, DoFinalRef
     INTEGER :: MaxDepth, MinDepth, NLen, MeshDim
     CHARACTER(:), ALLOCATABLE :: Path, VarName
     REAL(KIND=dp), POINTER  :: Time(:), NodalError(:), PrevValues(:), &
          Hvalue(:), HValue1(:), PrevNodalError(:), PrevHValue(:), hConvergence(:), ptr(:), tt(:)
     REAL(KIND=dp), POINTER  :: ErrorIndicator(:), eRef(:), hRef(:), Work(:)
-    LOGICAL :: NoInterp, Parallel, AdaptiveOutput, AdaptInit
+    LOGICAL :: AdaptiveInterp, Parallel, AdaptiveOutput, AdaptInit
+    LOGICAL :: WithRecovery, ConvCond
     TYPE(ValueList_t), POINTER :: Params
     CHARACTER(*), PARAMETER :: Caller = 'RefineMesh'
     REAL(KIND=dp), POINTER :: Wrk(:,:)
     REAL(KIND=dp) :: CoordScale(3)
-
-
     
     SAVE DoFinalRef
     
@@ -147,44 +150,49 @@ CONTAINS
       CALL Fatal(Caller,'Adaptive refinement not possible for discontinuous mesh!')
     END IF
 
-    Params => Solver % Values 
+    Params => Solver % Values
+    SolverPtr => Solver
     
     MinDepth = ListGetInteger( Params, 'Adaptive Min Depth', Found )
 
     MaxDepth = ListGetInteger( Params, 'Adaptive Max Depth', Found )
-    IF ( Found .AND. Refmesh % AdaptiveDepth > MaxDepth ) THEN
-      ! Setting this flag will override convergence for this equation on steady-state level.
-      Solver % Mesh % AdaptiveFinished = .TRUE.
-      CALL Info( Caller,'Max adaptive depth reached! Doing nothing!', Level = 5 )
-      RETURN
+    IF (Found) THEN
+      IF ( Refmesh % AdaptiveDepth > MaxDepth ) THEN
+        ! Setting this flag will override convergence for this equation on steady-state level.
+        Solver % Mesh % AdaptiveFinished = .TRUE.
+        CALL Info( Caller,'Max adaptive depth reached! Doing nothing!', Level = 5 )
+        RETURN
+
+        IF( MinDepth > MaxDepth ) THEN
+          CALL Warn(Caller,'"Adaptive Min Depth" greater than Max!' )
+        END IF
+      END IF
     END IF
 
-    IF( Found .AND. MinDepth > MaxDepth ) THEN
-      CALL Warn(Caller,'"Adaptive Min Depth" greater than Max!' )
-    END IF
     AdaptInit = ( RefMesh % AdaptiveDepth == 0 ) 
 
     IF( AdaptInit ) THEN
-      CALL Info(Caller,'Initializing stuff on coarsest level!')
+      CALL Info(Caller,'Initializing stuff on the coarsest level!')
       DoFinalRef = .FALSE.
     END IF
 
     IF( DoFinalRef ) THEN
       CALL Info( Caller, 'Final refinement done. Nothing to do!', Level=6 )
-      RefMesh % OUtputActive = .TRUE.      
+      RefMesh % OutputActive = .TRUE.      
       RefMesh % Parent % OutputActive = .FALSE.      
       CALL Info(Caller,'Setting adaptive restart to True!',Level=12)
       RefMesh % AdaptiveFinished = .TRUE.
       RETURN
     ELSE
+      RefMesh % OutputActive = .TRUE.
       RefMesh % AdaptiveFinished = .FALSE.
     END IF
         
     
     ! Interpolation is costly in parallel. Do it by default only in serial. 
     Parallel = ( ParEnv % PEs > 1 )
-    NoInterp = ListGetLogical( Params,'Adaptive Interpolate',Found )
-!   IF(.NOT. Found) NoInterp = Parallel 
+    AdaptiveInterp = ListGetLogical( Params,'Adaptive Interpolate',Found,DefValue=.TRUE. )
+!   IF(.NOT. Found) AdaptiveInterp = Parallel 
     
     AdaptiveOutput = ListGetLogical( Params,'Adaptive Output',Found )
     
@@ -197,22 +205,31 @@ CONTAINS
     t = CPUTime()
     CALL AllocateVector( ErrorIndicator, RefMesh % NumberOfBulkElements )
 
-    MaxError = ComputeError( Model, ErrorIndicator, RefMesh, &
-      Quant, Perm, InsideResidual, EdgeResidual, BoundaryResidual )
-
-    WRITE( Message, * ) 'Error computation time (cpu-secs):               ',CPUTime()-t
-    CALL Info( Caller, Message, Level = 6 )
-
+    WithRecovery = ListGetLogical(Params, 'Flux Recovery', Found) 
+    IF (WithRecovery) THEN
+      CALL FluxRecovery(Model, Solver, RefMesh, ErrorIndicator, MaxError)
+      RTFlux => VariableGet(RefMesh % Variables, 'RTFlux')
+    ELSE
+      MaxError = ComputeError( Model, ErrorIndicator, RefMesh, &
+          Quant, Perm, InsideResidual, EdgeResidual, BoundaryResidual )
+    END IF
+    !
     !   Global error estimate:
     !   ----------------------
     ErrorEstimate = SUM( ErrorIndicator**2) 
-    n = SIZE(ErrorIndicator)
-    IF( Parallel ) THEN
-      ErrorEstimate = ParallelReduction(ErrorEstimate)
-      n = ParallelReduction(n)
-    END IF        
-    ErrorEstimate =  SQRT( ErrorEstimate / n )
-
+    IF (Parallel) ErrorEstimate = ParallelReduction(ErrorEstimate)
+    
+    IF (WithRecovery) THEN
+      ErrorEstimate =  SQRT(ErrorEstimate)
+    ELSE
+      n = SIZE(ErrorIndicator)
+      IF (Parallel) n = ParallelReduction(n)
+      ErrorEstimate =  SQRT( ErrorEstimate / n )
+    END IF
+    
+    WRITE( Message, * ) 'Error computation time (cpu-secs):               ',CPUTime()-t
+    CALL Info( Caller, Message, Level = 6 )
+    
     IF(ListGetLogical(Params,'Adaptive Error Histogram',Found ) ) THEN
       CALL ShowVectorHistogram(ErrorIndicator,SIZE(ErrorIndicator))
     END IF
@@ -300,7 +317,7 @@ CONTAINS
       Var => VariableGet( RefMesh % Variables, 'hConvergence', ThisOnly=.TRUE. )
     END IF
 
-!   Add nodal average of the computed estimate to the
+!   Add nodal average of the computed estimate for the
 !   solution error to the mesh variable list:
 !   --------------------------------------------------
     VarName = GetVarName(Solver % Variable)
@@ -424,6 +441,13 @@ CONTAINS
 !   ----------------------
     ErrorLimit = ListGetConstReal( Params,'Adaptive Error Limit', Found )
     IF ( .NOT.Found ) ErrorLimit = 0.5d0
+    IF (WithRecovery) THEN
+      ConvCond = ErrorEstimate < ErrorLimit
+      n = SIZE(ErrorIndicator)
+      IF (Parallel) n = ParallelReduction(n)
+      ! The target element error if the error were evenly distributed:
+      ErrorLimit =  ErrorLimit / SQRT(REAL(n))
+    END IF
 
     MaxScale = ListGetConstReal( Params,'Adaptive Max Error Scale', Found )
     IF(.NOT. Found) MaxScale = 1.0_dp
@@ -442,26 +466,31 @@ CONTAINS
       OutFrac = 0.0_dp
     END IF
             
-    !PRINT *,'Check for convergece:'
-    !PRINT *,'MaxError:',MaxError, MaxScale* ErrorLimit, MaxError < MaxScale*ErrorLimit
-    !PRINT *,'AveError:',ErrorEstimate, AveScale* ErrorLimit, ErrorEstimate < AveScale*ErrorLimit
+    !PRINT *,'Check for convergence:'
+    !PRINT *,'MaxError, MaxScale*ErrorLimit:', MaxError,MaxScale*ErrorLimit 
+    !PRINT *,'MaxError < MaxScale*ErrorLimit :', MaxError < MaxScale*ErrorLimit
+    !PRINT *,'ErrorEstimate, AveScale*ErrorLimit', ErrorEstimate, AveScale*ErrorLimit
+    !PRINT *,'ErrorEstimate < AveScale*ErrorLimit', ErrorEstimate < AveScale*ErrorLimit
     !PRINT *,'OutFrac:',OutFrac,MaxFrac, OutFrac < MaxFrac
     !PRINT *,'Depth:',RefMesh % AdaptiveDepth, MinDepth
     
     IF( RefMesh % AdaptiveDepth > MinDepth ) THEN
       mError = MaxError
       IF(ListGetLogical(Params, 'Adaptive Use Nodal Error As Limit', Found)) mError = NodalMaxError
-
-      IF ( mError < MaxScale * ErrorLimit .AND. ErrorEstimate < AveScale * ErrorLimit .AND. OutFrac < MaxFrac ) THEN
+      IF (.NOT. WithRecovery) THEN
+        ConvCond = ErrorEstimate < AveScale * ErrorLimit
+      END IF
+        
+      IF ( mError < MaxScale * ErrorLimit .AND. ConvCond .AND. OutFrac < MaxFrac ) THEN
         FinalRef = ListGetConstReal( Params,'Adaptive Final Refinement', DoFinalRef ) 
         IF(DoFinalRef ) THEN      
           CALL Info( Caller, 'Performing one final refinement',Level=6)
           ErrorLimit = FinalRef * ErrorLimit 
         ELSE
           CALL Info( Caller, 'Mesh convergence limit reached. Nothing to do!', Level=6 )
-          RefMesh % OUtputActive = .TRUE.      
           RefMesh % Parent % OutputActive = .FALSE.      
           RefMesh % AdaptiveFinished = .TRUE.
+          IF (WithRecovery) RTFlux % SteadyConverged = 1 
           GOTO 10
         END IF
       END IF
@@ -531,11 +560,11 @@ CONTAINS
 
     IF ( .NOT.ASSOCIATED( NewMesh ) ) THEN
       CALL Info( Caller,'Current mesh seems fine. Nothing to do.', Level=6 )
-      RefMesh % OutputActive = .TRUE.
-      IF (ASSOCIATED(Refmesh % Parent)) RefMesh % Parent % OutputActive = .FALSE.
+      IF (ASSOCIATED(RefMesh % Parent)) RefMesh % Parent % OutputActive = .FALSE.
+      IF (WithRecovery) RTFlux % SteadyConverged = 1
       GOTO 10
     ELSE
-      CALL SetMeshMaxDofs(NewMesh)
+      CALL PrepareMesh(Model, NewMesh, ParEnv % PEs>1)
     END IF
 
     CALL Info( Caller,'The new mesh consists of: ', Level=5 )
@@ -561,8 +590,6 @@ CONTAINS
     RefMesh % Child  => NewMesh
     NewMesh % Parent => RefMesh
     NewMesh % Child => NULL()
-
-    NewMesh % MaxBDOFs = RefMesh % MaxBDOFs
 
     NewMesh % Name = ListGetString( Params, &
          'Adaptive Mesh Name', Found )
@@ -598,6 +625,17 @@ CONTAINS
     NULLIFY( NewMesh % Variables )
     
     CALL TransferCoordAndTime( RefMesh, NewMesh ) 
+
+    IF (WithRecovery) THEN
+      ! The following calls SetCurrentMesh( CurrentModel, NewMesh ),
+      ! adds the variable of the solver so that its associated with
+      ! the new mesh
+      CALL UpdateSolverMesh( Solver, NewMesh, .TRUE. )
+      ! The following is needed so that the "variable loads" is also created
+      CALL AddEquationSolution(SolverPtr, Solver % TimeOrder > 0)
+    ELSE
+      CALL SetCurrentMesh( Model, NewMesh )
+    END IF
     
     ! Initialize the field variables for the new mesh. These are
     ! interpolated from the old meshes variables. Vector variables
@@ -605,8 +643,6 @@ CONTAINS
     ! vector components. We MUST update the vectors (i.e. DOFs>1)
     ! first!!!!!
     ! -----------------------------------------------------------
-    CALL SetCurrentMesh( Model, NewMesh )
-
     CALL Info(Caller,'Interpolate vectors from old mesh to new mesh!',Level=7)    
     Var => RefMesh % Variables
     DO WHILE( ASSOCIATED( Var ) )
@@ -657,12 +693,25 @@ CONTAINS
       CASE( 'coordinate 1', 'coordinate 2', 'coordinate 3' )
         CONTINUE
 
+      CASE('rtflux')
+        !
+        ! We skip the recovery variable
+        !
+        CONTINUE
+        
       CASE DEFAULT
-        IF ( Var % DOFs == 1 ) THEN
-
+        IF (WithRecovery .AND. Var % Name == Solver % Variable % Name .OR. &
+            WithRecovery .AND. Var % Name == Solver % Variable % Name // ' ' // 'loads') THEN
+          ! The variable of the solver should already exist, just check this:
+          NewVar => VariableGet( NewMesh % Variables, Var % Name, .TRUE., UnfoundFatal = .TRUE. )
+          IF (Var % Name == Solver % Variable % Name) THEN
+            NewVar % PrevNorm = Var % Norm
+          END IF
+        ELSE IF ( Var % DOFs == 1 ) THEN
+          
           ! Skip the fields related to adaptivity since they are specific to each mesh 
           Found = .FALSE.
-          Found = Found .OR. INDEX( Var % Name, 'ave test' ) > 0 
+!          Found = Found .OR. INDEX( Var % Name, 'ave test' ) > 0 
           Found = Found .OR. INDEX( Var % Name, '.error'  ) > 0
           Found = Found .OR. INDEX( Var % Name, '.eref'   ) > 0
           Found = Found .OR. INDEX( Var % Name, '.perror' ) > 0
@@ -674,7 +723,7 @@ CONTAINS
             END IF
           END IF
 
-          IF( NoInterp ) THEN
+          IF( .NOT. AdaptiveInterp ) THEN
             ! Add field without interpolation
             NewVar => VariableGet( NewMesh % Variables, Var % Name, .TRUE. )
             IF(.NOT. ASSOCIATED(NewVar) ) THEN
@@ -682,7 +731,7 @@ CONTAINS
                   Var % Name,Var % DOFs)
               NewVar => VariableGet( NewMesh % Variables, Var % Name, .TRUE. )
             END IF
-            NewVar % Norm = Var % Norm
+            NewVar % PrevNorm = Var % Norm
           ELSE
             ! Interpolate scalar variables using automatic internal interpolation 
             NewVar => VariableGet( NewMesh % Variables, Var % Name, .FALSE. )
@@ -692,7 +741,6 @@ CONTAINS
             END IF
             NewVar % Norm = SQRT(SUM(NewVar % Values**2)/k)
           END IF
-
         END IF
       END SELECT
       Var => Var % Next
@@ -725,11 +773,22 @@ CONTAINS
     !   -----------------------------------------
     
     CALL Info(Caller,'Updating solver mesh to reflect the new adaptive mesh!',Level=12)
-    CALL UpdateSolverMesh( Solver, NewMesh, NoInterp )
+
+    IF (.NOT. WithRecovery) THEN
+      CALL UpdateSolverMesh( Solver, NewMesh, .TRUE. )
+    END IF
+    
     CALL SetActiveElementsTable( Model, Solver )
           
     CALL ParallelInitMatrix( Solver, Solver % Matrix )
 
+    IF (WithRecovery) THEN
+      CALL Info(Caller, 'UpdateSolverMesh for RTFlux solver', Level=12)
+      CALL UpdateSolverMesh(RTFlux % Solver, NewMesh, .TRUE.)
+      CALL Info(Caller, 'UpdateSolverMesh ready', Level=12)
+      CALL SetActiveElementsTable( Model, RTFlux % Solver )
+    END IF
+      
     WRITE( Message, * ) 'Matrix structures update time (cpu-secs):        ',CPUTime()-t
     CALL Info( Caller, Message, Level=6 )
 
@@ -769,14 +828,16 @@ CONTAINS
 
 10  CONTINUE
 
-!   Comment the next calls, if you want to keep the edge tables:
-!   ------------------------------------------------------------
-    IF(.NOT.isPelement(RefMesh % Elements(1))) THEN
-      CALL ReleaseMeshEdgeTables( RefMesh )
-      CALL ReleaseMeshFaceTables( RefMesh )
+    IF (.NOT. WithRecovery) THEN
+      !   Comment the next calls, if you want to keep the edge tables:
+      !   ------------------------------------------------------------
+      IF(.NOT.isPelement(RefMesh % Elements(1))) THEN
+        CALL ReleaseMeshEdgeTables( RefMesh )
+        CALL ReleaseMeshFaceTables( RefMesh )
+      END IF
     END IF
     
-    CALL SetCurrentMesh( Model, RefMesh )
+    IF (.NOT. ASSOCIATED(Model % Mesh, RefMesh)) CALL SetCurrentMesh( Model, RefMesh )
     DEALLOCATE( ErrorIndicator, PrevHvalue )
     
     IF ( RemeshTime > 0 ) THEN
@@ -787,7 +848,7 @@ CONTAINS
     END IF
     CALL Info( Caller,'----------- E N D   M E S H   R E F I N E M E N T --------------', Level=5 )
     
-    
+
 CONTAINS
 
   SUBROUTINE ShowVectorHistogram(x,n)
@@ -1063,9 +1124,9 @@ CONTAINS
       CALL Info('ParallelAverageHvalue','Nodes '//TRIM(I2S(n))//' surrounded by orphans only again!')        
     END IF
     
-    IF( InfoActive(20) ) THEN
-      CALL VectorValuesRange(Hvalue,SIZE(Hvalue),'Hvalue')             
-    END IF
+!    IF( InfoActive(20) ) THEN
+!      CALL VectorValuesRange(Hvalue,SIZE(Hvalue),'Hvalue')             
+!    END IF
     
   END SUBROUTINE ParallelAverageHvalue
 
@@ -2615,6 +2676,827 @@ CONTAINS
     DEALLOCATE( TempIndicator )
 !------------------------------------------------------------------------------
   END FUNCTION ComputeError
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+SUBROUTINE FluxRecovery(Model, Solver, Mesh, ErrorIndicator, MaxError)
+!------------------------------------------------------------------------------
+! Flux recovery & a posteriori error estimation
+! The author of the flux recovery part: mika.malinen@csc.fi
+!------------------------------------------------------------------------------
+  IMPLICIT NONE
+  TYPE(Model_t) :: Model
+  TYPE(Solver_t) :: Solver
+  TYPE(Mesh_t), POINTER :: Mesh
+  REAL(KIND=dp) :: ErrorIndicator(:), MaxError
+!------------------------------------------------------------------------------
+  TYPE(Element_t),POINTER :: Element
+  TYPE(Variable_t), POINTER :: RTFlux, NodalLoads
+  TYPE(ValueList_t), POINTER :: RTSolverPars
+  TYPE(Element_t), POINTER :: Parent, Face
+  INTEGER, ALLOCATABLE :: VisitsCounter(:)
+  INTEGER, ALLOCATABLE, SAVE :: Indices(:), RT_Indices(:)
+  INTEGER, POINTER :: FaceMap(:,:)
+  LOGICAL, SAVE :: AllocationsDone = .FALSE.
+  LOGICAL :: Found, UseReactions, Parallel, PostSmoothing, BDM
+  LOGICAL :: ReverseSign(3), OrientationsMatch
+  INTEGER :: n, nb, nd, t, active  
+  INTEGER :: i, j, k, m, p, ni, nj, nd_rt, istat, ActiveFaceId
+  INTEGER :: i_r, j_r
+  REAL(KIND=dp) :: UK(3), s, R1, R2, w1, w2, detw, r_i, r_j, hK
+  REAL(KIND=dp) :: LinFun(8)   ! The size corresponds to RT_1(K)
+  REAL(KIND=dp) :: Err, SolNorm, SolNormEst, Est, APostEst, Est_K
+  REAL(KIND=dp), ALLOCATABLE :: RTFluxPost(:), ReactionWeights(:)
+  CHARACTER(LEN=:), ALLOCATABLE :: matpar_name, force_name 
+!------------------------------------------------------------------------------  
+
+  ! We need a variable 'RTFlux' that is constructed as an approximation in RT_1/BDM
+  !
+  RTFlux => VariableGet(Mesh % Variables, 'RTFlux')
+
+  IF (ASSOCIATED(RTFlux)) THEN
+    IF (.NOT. ASSOCIATED(RTFlux % Solver)) &
+        CALL Fatal('FluxRecovery', 'RTFlux variable is not associated with any solver')
+
+    RTSolverPars => GetSolverParams(RTFlux % Solver)
+    BDM = GetLogical(RTSolverPars, 'Second Kind Basis', Found)
+
+    ALLOCATE(CHARACTER(MAX_NAME_LEN)::force_name)
+    ALLOCATE(CHARACTER(MAX_NAME_LEN)::matpar_name)
+
+    matpar_name = ListGetString(RTSolverPars, 'Material Parameter Name', Found)
+    force_name = ListGetString(RTSolverPars, 'Body Force Name', Found)
+
+    n = SIZE(RTFlux % Values)
+    ALLOCATE( VisitsCounter(n), STAT=istat )
+    VisitsCounter = 0
+    RTFlux % Values(:) = 0.0d0
+
+    IF (.NOT. AllocationsDone) THEN
+      N = Mesh % MaxElementDOFs
+      ALLOCATE(Indices(N), RT_Indices(N), STAT=istat)
+      AllocationsDone = .TRUE.
+    ELSE
+      IF (SIZE(Indices) < Mesh % MaxElementDOFs) THEN
+        CALL Fatal('FluxRecovery', 'Mesh changed, the maximun counts of element DOFs are different?')
+      END IF
+    END IF
+  ELSE
+    CALL Fatal('FluxRecovery', 'RTFlux variable cannot be found')
+  END IF
+
+  
+  !------------------------------------------------------------------------------
+  ! Step I: 
+  ! Compute the values of linear functionals (that is, DOFs) to obtain the elementwise
+  ! representation of the flux (stress resultant) in RT_1(K) (or BDM(K)). We add the computed values
+  ! to entries of the variable which is suitable for defining a conforming approximation
+  ! in RT_1. A later averaging may be applied to ensure that a conforming approximation
+  ! in RT_1 is obtained.
+  !------------------------------------------------------------------------------
+  Active = GetNOFActive()
+  DO K=1,Active
+    Element => GetActiveElement(K)
+    IF (.NOT.(GetElementFamily(Element) == 3)) CYCLE
+
+    n  = Element % Type % NumberOfNodes
+    nd = MGetElementDOFs(Indices, Element, Solver)
+    nb = GetElementNOFBDOFs(Element, Solver)
+
+    IF (nb > 0) CALL Fatal('FluxRecovery', 'Bubbles in Global System = True assumed')
+    
+    UK(1:nd) = Solver % Variable % Values(Solver % Variable % Perm(Indices(1:nd)))
+
+    nd_rt = MGetElementDOFs(RT_Indices, Element, USolver = RTFlux % Solver)
+
+    ! Compute the values of DOFs for the representation in RT_1(K)
+    !
+    CALL EstimateError(UK, Element, n, nd, LinFun = LinFun, MatParName = matpar_name, &
+        ForceName = force_name)
+
+    DO i=1,nd_rt
+      j = RTFlux % Solver % Variable % Perm(RT_Indices(i))
+      RTFlux % Values(j) = RTFlux % Values(j) + LinFun(i)
+      VisitsCounter(j) = VisitsCounter(j) + 1
+    END DO
+  END DO
+
+  ! Averaging and applying the know constraints related to BCs. First, average:
+  !
+  DO i=1,SIZE(RTFlux % Values)
+    IF (VisitsCounter(i) > 1) THEN
+      RTFlux % Values(i) = RTFlux % Values(i) / VisitsCounter(i)
+    END IF
+  END DO
+
+  NodalLoads => NULL()
+  NodalLoads => VariableGet(Mesh % Variables, &      
+      GetVarName(Solver % Variable) // ' Loads' )
+
+  IF (.NOT. ASSOCIATED(NodalLoads)) THEN
+    UseReactions = .FALSE.
+  ELSE  
+    ! First, check whether there are reactions caused by BCs
+    !
+    IF (ALLOCATED(Solver % Matrix % ConstrainedDOF)) THEN
+      IF (COUNT(Solver % Matrix % ConstrainedDOF) > 0) THEN
+        UseReactions = .TRUE.
+      ELSE
+        UseReactions = .FALSE.
+      END IF
+    END IF
+  END IF
+
+  Apply_reactions: IF (UseReactions) THEN
+    !
+    ! Create data in order to average reactions 
+    !
+    ! First we tag DOFs on the model boundary by computing suitable weights
+    ! for averaging
+    ! TO DO: This should also be done for the DOFs which are associated with
+    !        point loads. They need not necessarily be on the boundary.
+    !        Smaller arrays could also be allocated by revising the code.
+    !
+    ALLOCATE(ReactionWeights(SIZE(Solver % Variable % Values)), STAT=istat)
+    ReactionWeights = 0
+    Parallel = ASSOCIATED(Mesh % ParallelInfo % GInterface)
+
+!    m = 0
+    count_shared_nodes: DO K=1, GetNOFBoundaryElements()
+      Element => GetBoundaryElement(K)
+      IF (.NOT.(GetElementFamily(Element) == 2)) CYCLE
+      IF (ActiveBoundaryElement()) THEN
+        n = Element % Type % NumberOfNodes
+        nd = MGetElementDOFs(Indices)
+        
+        IF (COUNT(Solver % Matrix % ConstrainedDOF(Solver % Variable % Perm(Indices(1:n)))) == n) THEN
+!          m = m + 1
+          hK = SQRT((Mesh % Nodes % x(Indices(2)) - Mesh % Nodes % x(Indices(1)))**2 + &
+              (Mesh % Nodes % y(Indices(2)) - Mesh % Nodes % y(Indices(1)))**2)
+          DO i=1,n
+            ReactionWeights(Indices(i)) = ReactionWeights(Indices(i)) + hK
+          END DO
+        END IF
+      END IF
+    END DO count_shared_nodes
+
+    ! Now, loop again to create the values of DOFs using the reactions. We already know what elements
+    ! should be inspected, so this could be made more efficient ...
+    !
+    w1 = 0.5d0 * (1.0d0 + 1.0d0/sqrt(3.0d0))
+    w2 = 0.5d0 * (1.0d0 - 1.0d0/sqrt(3.0d0))
+    detw = w1**2 - w2**2
+    
+    replace_boundary_dofs: DO K=1, GetNOFBoundaryElements()
+      Element => GetBoundaryElement(K)
+      IF (.NOT.(GetElementFamily(Element) == 2)) CYCLE
+      IF (ActiveBoundaryElement()) THEN
+        n = Element % Type % NumberOfNodes
+        nd = MGetElementDOFs(Indices)
+        
+        IF (COUNT(Solver % Matrix % ConstrainedDOF(Solver % Variable % Perm(Indices(1:n)))) == n) THEN
+          !
+          ! We need the parent to check the sign reversion
+          !
+          Parent => Element % BoundaryInfo % Left
+          IF (.NOT. ASSOCIATED(Parent)) THEN
+            Parent => Element % BoundaryInfo % Right
+          END IF
+          IF (.NOT. ASSOCIATED(Parent)) Call Fatal('FluxRecovery', 'A parent element is not defined')  
+          !
+          ! Identify the face representing the element among the faces of 
+          ! the parent element:
+          !
+          CALL PickActiveFace(Mesh, Parent, Element, Face, ActiveFaceId)
+          IF (ActiveFaceId == 0) Call Fatal('FluxRecovery', 'Cannot determine an element face')
+
+          CALL FaceElementOrientation(Parent, ReverseSign, ActiveFaceId)
+          
+          IF (IsLeftHanded(Parent)) THEN
+            IF (ReverseSign(ActiveFaceId)) THEN
+              s = 1.0d0
+            ELSE
+              s = -1.0d0
+            END IF
+          ELSE
+            IF (ReverseSign(ActiveFaceId)) THEN
+              s = -1.0d0
+            ELSE
+              s = 1.0d0
+            END IF
+          END IF
+          
+          FaceMap => GetEdgeMap(GetElementFamily(Parent))
+          i_r = Element % NodeIndexes(1)
+          j_r = Element % NodeIndexes(2)
+          IF (ReverseSign(ActiveFaceId)) THEN
+            i = Parent % NodeIndexes(FaceMap(ActiveFaceId,2))
+          ELSE
+            i = Parent % NodeIndexes(FaceMap(ActiveFaceId,1))
+          END IF
+          OrientationsMatch = i_r == i
+
+          hK = SQRT((Mesh % Nodes % x(Indices(2)) - Mesh % Nodes % x(Indices(1)))**2 + &
+              (Mesh % Nodes % y(Indices(2)) - Mesh % Nodes % y(Indices(1)))**2)
+          
+          IF (OrientationsMatch) THEN
+            R1 = s * NodalLoads % Values(Solver % Variable % Perm(i_r)) * hk / ReactionWeights(i_r)
+            R2 = s * NodalLoads % Values(Solver % Variable % Perm(j_r)) * hk / ReactionWeights(j_r)
+          ELSE
+            R1 = s * NodalLoads % Values(Solver % Variable % Perm(j_r)) * hK / ReactionWeights(j_r)
+            R2 = s * NodalLoads % Values(Solver % Variable % Perm(i_r)) * hK / ReactionWeights(i_r)
+          END IF
+
+          nd_rt = MGetElementDOFs(RT_Indices, Parent, USolver = RTFlux % Solver)
+
+!          print *, '=== the first DOF now/before', R1, &
+!              RTFlux % Values(RTFlux % Solver % Variable % Perm(RT_Indices(2*ActiveFaceId - 1)))
+!          print *, '=== the second DOF now/before', R2, &
+!              RTFlux % Values(RTFlux % Solver % Variable % Perm(RT_Indices(2*ActiveFaceId)))
+
+          ! Finally use the reactions to replace the values of DOFs on the boundary
+          !
+          IF (BDM) THEN
+            RTFlux % Values(RTFlux % Solver % Variable % Perm(RT_Indices(2*ActiveFaceId - 1))) = &
+                1.0d0/detw * (w1*R1 - w2*R2)
+            RTFlux % Values(RTFlux % Solver % Variable % Perm(RT_Indices(2*ActiveFaceId))) = &
+                1.0d0/detw * (-w2*R1 + w1*R2)
+          ELSE
+            RTFlux % Values(RTFlux % Solver % Variable % Perm(RT_Indices(2*ActiveFaceId - 1))) = R1
+            RTFlux % Values(RTFlux % Solver % Variable % Perm(RT_Indices(2*ActiveFaceId))) = R2
+          END IF
+        END IF
+      END IF
+    END DO replace_boundary_dofs
+  END IF Apply_reactions
+
+  !------------------------------------------------------------------------------
+  ! Step II: 
+  ! Equilibrate fluxes (stress resultants). This brings us back to the recovery
+  ! which is defined only in the local RT space.
+  ! Here the exact solution is also used to study the accuracy.
+  !------------------------------------------------------------------------------
+
+  PostSmoothing = .FALSE. ! Eliminated as this doesn't seem to be beneficial
+  IF (PostSmoothing) THEN
+    ALLOCATE(RTFluxPost(SIZE(RTFlux % Values)))
+    RTFluxPost(:) = 0.0d0
+    VisitsCounter(:) = 0
+  END IF
+  
+  Err = 0.0d0
+  SolNorm = 0.0d0
+  Est = 0.0d0
+  APostEst = 0.0d0
+  SolNormEst = 0.0d0
+  
+  Elementwise_equilibration: DO K=1,Active
+    Element => GetActiveElement(K)
+    IF (.NOT. (GetElementFamily(Element) == 3)) CYCLE
+
+    n  = Element % Type % NumberOfNodes
+    nd = MGetElementDOFs(Indices)
+    nb = GetElementNOFBDOFs()
+    IF (nb > 0) CALL Fatal('FluxRecovery', 'Bubbles in Global System = True assumed')
+    
+    UK(1:nd) = Solver % Variable % Values( Solver % Variable % Perm(Indices(1:nd)) )
+
+    nd_rt = MGetElementDOFs(RT_Indices, Element, USolver = RTFlux % Solver)
+
+    ! At the calling time, we still have the RT DOFs respecting the global continuity requirements
+    !
+    DO i=1,nd_rt
+      j = RTFlux % Solver % Variable % Perm(RT_Indices(i))
+      LinFun(i) = RTFlux % Values(j)
+    END DO
+    
+    CALL EstimateError(UK, Element, n, nd, PostLinFun = LinFun, &
+        APostEst_K = Est_K, SolNormEst=SolNormEst, MatParName = matpar_name, &
+        ForceName = force_name)
+
+    ! The following call could be used to run a verification case:
+!    CALL EstimateError(UK, Element, n, nd, Err, SolNorm, Est, APostEst, PostLinFun = LinFun, &
+!        APostEst_K = Est_K, SolNormEst=SolNormEst, MatParName = matpar_name, &
+!        ForceName = force_name)
+
+    ErrorIndicator(K) = SQRT(Est_K)
+
+    IF (PostSmoothing) THEN
+      DO i=1,nd_rt
+        j = RTFlux % Solver % Variable % Perm(RT_Indices(i))
+        RTFluxPost(j) = RTFluxPost(j) + LinFun(i)
+        VisitsCounter(j) = VisitsCounter(j) + 1
+      END DO
+    END IF
+    
+  END DO Elementwise_equilibration
+
+  IF (SolNormEst > AEPS) ErrorIndicator = (1.0d0 / SQRT(SolNormEst)) * ErrorIndicator
+  MaxError = MAXVAL(ErrorIndicator)
+  IF (ParEnv % PEs>1) MaxError = ParallelReduction(MaxError,2)
+  
+!  WRITE (*, '(A,E16.8)') 'Solution Norm = ', SQRT(ParallelReduction(SolNorm))
+!  WRITE (*, '(A,E16.8)') 'Error Norm = ', SQRT(ParallelReduction(Err))/SQRT(ParallelReduction(SolNorm))
+!  WRITE (*, '(A,E16.8)') 'Recovery Error Norm = ', SQRT(ParallelReduction(Est))/SQRT(ParallelReduction(SolNorm))
+!  WRITE (*, '(A,E16.8)') 'A posteriori Error = ', SQRT(ParallelReduction(APostEst))/SQRT(ParallelReduction(SolNorm))
+!  WRITE (*, '(A,E16.8)') 'A posteriori Error Est = ', SQRT(SUM(ErrorIndicator**2)) 
+!  WRITE (*, '(A,E16.8)') 'Efficiency Factor = ', SQRT(ParallelReduction(APostEst))/SQRT(ParallelReduction(Err))
+
+  
+  !
+  ! The following computation would average again to obtain the recovery field in the global RT_1 space
+  !
+  post_smoothing: IF (PostSmoothing) THEN
+
+    Err = 0.0d0
+    Est = 0.0d0
+    APostEst = 0.0d0
+    SolNorm = 0.0d0
+
+    ! Post averaging
+    !
+    DO i=1,SIZE(RTFlux % Values)
+      IF (VisitsCounter(i) > 1) THEN
+        RTFluxPost(i) = RTFluxPost(i) / VisitsCounter(i)
+      END IF
+    END DO
+
+    Err = 0.0d0
+    Est = 0.0d0
+    APostEst = 0.0d0
+    SolNorm = 0.0d0
+
+    DO K=1,Active
+      Element => GetActiveElement(K)
+      IF ( .NOT. (GetElementFamily(Element) == 3) ) CYCLE
+
+      n  = Element % Type % NumberOfNodes
+      nd = MGetElementDOFs(Indices)
+      nb = GetElementNOFBDOFs()
+      IF (nb > 0) CALL Fatal('FluxRecovery', 'Bubbles in Global System = True assumed')
+
+      UK(1:nd) = Solver % Variable % Values( Solver % Variable % Perm(Indices(1:nd)) )
+
+      nd_rt = MGetElementDOFs(RT_Indices, Element, USolver = RTFlux % Solver)
+
+      DO i=1,nd_rt
+        j = RTFlux % Solver % Variable % Perm(RT_Indices(i))
+        LinFun(i) = RTFluxPost(j)
+      END DO
+
+      CALL EstimateError(UK, Element, n, nd, Err, SolNorm, Est, APostEst, PostLinFun = LinFun, &
+          UseGiven = .TRUE., MatParName = matpar_name, ForceName = force_name)
+
+    END DO
+
+    WRITE (*, '(A,E16.8)') 'Solution Norm = ', SQRT(ParallelReduction(SolNorm))
+    WRITE (*, '(A,E16.8)') 'Error Norm = ', SQRT(ParallelReduction(Err))/SQRT(ParallelReduction(SolNorm))
+    WRITE (*, '(A,E16.8)') 'Estimated Error Norm = ', SQRT(ParallelReduction(Est))/SQRT(ParallelReduction(SolNorm))
+    WRITE (*, '(A,E16.8)') 'A posteriori Error Est = ', SQRT(ParallelReduction(APostEst))/SQRT(ParallelReduction(SolNorm))
+    WRITE (*, '(A,E16.8)') 'Efficiency Factor = ', SQRT(ParallelReduction(APostEst))/SQRT(ParallelReduction(Err))
+
+  END IF post_smoothing
+
+  
+CONTAINS
+
+!------------------------------------------------------------------------------
+  SUBROUTINE EstimateError(UK, Element, n, nd, Err, SolNorm, Est, APostEst, &
+      LinFun, PostLinFun, UseGiven, APostEst_K, SolNormEst, &
+      MatParName, ForceName)
+!------------------------------------------------------------------------------
+    REAL(KIND=dp), INTENT(IN) :: UK(:)
+    TYPE(Element_t), POINTER, INTENT(IN) :: Element    
+    INTEGER, INTENT(IN) :: n, nd
+    ! The following four arguments are related only to running a code verification case:
+    REAL(KIND=dp), OPTIONAL, INTENT(INOUT) :: Err, SolNorm, Est, APostEst
+    REAL(KIND=dp), OPTIONAL, INTENT(INOUT) :: LinFun(8)
+    REAL(KIND=dp), OPTIONAL, INTENT(INOUT) :: PostLinFun(8)
+    LOGICAL, OPTIONAL, INTENT(IN) :: UseGiven
+    REAL(KIND=dp), OPTIONAL, INTENT(INOUT) :: APostEst_K, SolNormEst
+    CHARACTER(LEN=*) :: MatParName, ForceName
+!--------------------------------------------------------------------------------
+    TYPE(ValueList_t), POINTER :: BodyForce, Material
+    
+    REAL(KIND=dp) :: FBasis(8,3), DivFBasis(8), Mass(11,11), RHS(11), c(11), d(11), s
+    REAL(KIND=dp) :: Basis(nd), dBasis(nd,3), DetJ, xt, uq, vq, weight, EA, f
+    REAL(KIND=dp) :: U, gradU(3), Uh, gradUh(3), Nh(3), intf, divN, totflux, dc
+    REAL(KIND=dp) :: testfun(2), diff_coeff(n), Load(n)
+    REAL(KIND=dp) :: faceflux(3), faceweights(3), facedelta(3)
+    REAL(KIND=dp) :: w1, w2
+    LOGICAL :: Stat, Found
+    LOGICAL :: ReverseSign(3), LeftHanded, Parallel, UseLM
+    LOGICAL :: FirstOrderEquilibration 
+    INTEGER, POINTER :: EdgeMap(:,:)
+    INTEGER :: t, i, j, p, q, ni, nj, np, FDOFs, DOFs, ElementOrder
+    TYPE(GaussIntegrationPoints_t) :: IP
+
+    TYPE(Nodes_t), SAVE :: Nodes
+!------------------------------------------------------------------------------
+    IF (BDM) THEN
+      FDOFs = 6
+      ElementOrder = 1
+      FirstOrderEquilibration = .FALSE.
+    ELSE
+      FDOFs = 8
+      ElementOrder = 2
+      FirstOrderEquilibration = .TRUE.
+    END IF
+
+    UseLM = .TRUE.
+    IF (UseLM) THEN
+      IF (BDM) THEN
+        DOFs = FDOFs + 1
+      ELSE
+        DOFs = FDOFs + 3
+      END IF
+    ELSE
+      DOFs = FDOFs
+    END IF
+       
+    CALL GetElementNodes( Nodes )
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=.TRUE., EdgeBasisDegree=2)
+
+    Material => GetMaterial()
+    diff_coeff(1:n) = GetReal(Material, MatParName)
+
+    IF (PRESENT(APostEst_K)) APostEst_K = 0.0d0
+    
+    c = 0.0d0
+    IF (PRESENT(UseGiven) .AND. PRESENT(PostLinFun)) THEN
+      IF (UseGiven) THEN
+        c(1:FDOFs) = PostLinFun(1:FDOFs)
+        GOTO 303
+      END IF
+    END IF
+
+    Load = 0.0d0
+    BodyForce => GetBodyForce()
+    IF (ASSOCIATED(BodyForce)) &
+        Load(1:n) = GetReal(BodyForce, ForceName, Found)
+    
+    IF (PRESENT(LinFun)) THEN
+      !
+      ! Compute a local representation of the flux in the elementwise RT_1(K) space.
+      ! The elementwise weak formulation is of the form
+      !           1/k (N,v) = -(u,div v) + <u,v.n> 
+      !
+      Parallel = ASSOCIATED(Mesh % ParallelInfo % GInterface)
+      EdgeMap => GetEdgeMap(3)
+      CALL FaceElementOrientation(Element, ReverseSign)
+
+      Mass = 0.0_dp
+      RHS = 0.0_dp
+      IF (BDM) THEN 
+        w1 = 0.5d0 * (1.0d0 + 1.0d0/sqrt(3.0d0))
+        w2 = 0.5d0 * (1.0d0 - 1.0d0/sqrt(3.0d0))
+      !ELSE
+      !  w1 = 1.0d0
+      !  w2 = 0.0d0
+      END IF
+      
+      DO t=1,IP % n
+
+        stat = FaceElementInfo(Element, Nodes, IP % U(t), IP % V(t), &
+            IP % W(t), detF=detJ, Basis=Basis, FBasis=FBasis, &
+            DivFBasis=DivFBasis, BDM=BDM, BasisDegree=ElementOrder, ApplyPiolaTransform=.TRUE., &
+            LeftHanded=LeftHanded)
+
+        Weight = IP % s(t) * DetJ
+
+        Uh = SUM(UK(1:nd) * Basis(1:nd))
+        EA = SUM(diff_coeff(1:n) * Basis(1:n))
+        
+        DO p=1,FDOFs
+          DO q=1,FDOFs
+            Mass(p,q) = Mass(p,q) + SUM(FBasis(q,1:2) * FBasis(p,1:2)) * Weight / EA
+          END DO
+          RHS(p) = RHS(p) - Weight * Uh * DivFBasis(p)
+        END DO
+        
+        IF (UseLM) THEN
+          !
+          ! Enforce the zeroth-order equilibration by using a Lagrange multiplier
+          !
+          f = SUM(Load(1:n) * Basis(1:n))
+          RHS(FDOFs+1) = RHS(FDOFs+1) + Weight * f
+
+          IF (FirstOrderEquilibration) THEN
+            !
+            ! Enforce the first-order equilibration by using a Lagrange multiplier
+            !
+            testfun(1) = Basis(2) - Basis(1)
+            testfun(2) = Basis(3) - Basis(1)
+            DO p=1,FDOFs
+              Mass(10,p)= Mass(10,p) - divFBasis(p) * testfun(1) * Weight
+              Mass(11,p)= Mass(11,p) - divFBasis(p) * testfun(2) * Weight
+              RHS(10) = RHS(10) + f * testfun(1) * Weight
+              RHS(11) = RHS(11) + f * testfun(2) * Weight
+              Mass(p,10)= Mass(p,10) - divFBasis(p) * testfun(1) * Weight
+              Mass(p,11)= Mass(p,11) - divFBasis(p) * testfun(2) * Weight
+            END DO
+          END IF
+        END IF
+      END DO
+
+      ! Assemble the boundary terms:
+      ! Loop over all faces (here edges)
+      !
+      DO p=1,3
+        ! Check whether the sign is reversed
+        IF (LeftHanded) THEN
+          IF (ReverseSign(p)) THEN
+            s = 1.0d0
+          ELSE
+            s = -1.0d0
+          END IF
+        ELSE
+          IF (ReverseSign(p)) THEN
+            s = -1.0d0
+          ELSE
+            s = 1.0d0
+          END IF
+        END IF
+        ! Check the order of basis functions
+        i = EdgeMap(p,1)
+        j = EdgeMap(p,2)
+        ni = Element % NodeIndexes(i)
+        IF (Parallel) ni = Mesh % ParallelInfo % GlobalDOFs(ni)             
+        nj = Element % NodeIndexes(j)
+        IF (Parallel) nj = Mesh % ParallelInfo % GlobalDOFs(nj)
+
+        IF (BDM) THEN
+          IF (nj<ni) THEN
+            RHS(2*p-1) = RHS(2*p-1) + s * (w2 * UK(i) + w1 * UK(j))
+            RHS(2*p) = RHS(2*p) + s * (w1 * UK(i) + w2 * UK(j))
+          ELSE
+            RHS(2*p-1) = RHS(2*p-1) + s * (w1 * UK(i) + w2 * UK(j))
+            RHS(2*p) = RHS(2*p) + s * (w2 * UK(i) + w1 * UK(j))
+          END IF
+        ELSE
+          ! The value of RHS vector is just the nodal DOF up to the sign
+          IF (nj<ni) THEN
+            ! The first weight function is s * basis(j)
+            RHS(2*p-1) = RHS(2*p-1) + s * UK(j)
+            RHS(2*p) = RHS(2*p) + s * UK(i)
+          ELSE
+            RHS(2*p-1) = RHS(2*p-1) + s * UK(i)
+            RHS(2*p) = RHS(2*p) + s * UK(j)
+          END IF
+        END IF
+          
+        IF (UseLM) THEN
+          Mass(FDOFs+1,2*p-1) = -s
+          Mass(FDOFs+1,2*p) = -s
+          Mass(2*p-1,FDOFs+1) = -s
+          Mass(2*p,FDOFs+1) = -s
+        END IF
+        
+      END DO
+
+      ! Finally solve the local representation of the flux
+      CALL InvertMatrix(Mass(1:DOFs,1:DOFs), DOFs)
+      c(1:DOFs) = MATMUL(MASS(1:DOFs,1:DOFs), RHS(1:DOFs))
+      LinFun(1:FDOFs) = c(1:FDOFs)
+      RETURN
+    END IF
+
+    IF (PRESENT(PostLinFun)) THEN
+      c(1:FDOFs) = PostLinFun(1:FDOFs)
+
+      EdgeMap => GetEdgeMap(3)
+      CALL FaceElementOrientation(Element, ReverseSign)
+      Parallel = ASSOCIATED(Mesh % ParallelInfo % GInterface)
+      
+      IF (.NOT. BDM) THEN
+        !
+        ! Perform the zeroth-order equilibration (note that BDM does not seem to benefit
+        ! from this):
+        !
+        intf = 0.0d0
+        divN = 0.0d0
+        
+        DO t=1,IP % n
+
+          stat = FaceElementInfo(Element, Nodes, IP % U(t), IP % V(t), &
+              IP % W(t), detF=detJ, Basis=Basis, FBasis=FBasis, &
+              DivFBasis=DivFBasis, BDM=BDM, BasisDegree=ElementOrder, ApplyPiolaTransform=.TRUE., &
+              LeftHanded=LeftHanded)
+
+          Weight = IP % s(t) * DetJ
+          f = SUM(Load(1:n) * Basis(1:n))
+          intf = intf + f * Weight
+        END DO
+
+        ! Loop over all faces (here edges)
+        !
+        totflux = 0.0d0
+        faceflux = 0.0d0
+        DO p=1,3
+          IF (LeftHanded) THEN
+            IF (ReverseSign(p)) THEN
+              s = 1.0d0
+            ELSE
+              s = -1.0d0
+            END IF
+          ELSE
+            IF (ReverseSign(p)) THEN
+              s = -1.0d0
+            ELSE
+              s = 1.0d0
+            END IF
+          END IF
+          totflux = totflux + s*(c(2*p-1)+c(2*p))
+          faceflux(p) = faceflux(p) + s*(c(2*p-1)+c(2*p))
+!          IF (c(2*p-1)*c(2*p) < 0.0 .AND. -c(2*p-1)*c(2*p)/(MAXVAL(ABS(c(:))))**2 > 1.0d-16) THEN
+!            CALL Warn('FluxRecovery', 'No consensus on flux sign')
+!            print *, 'c1', c(2*p-1)
+!            print *, 'c2', c(2*p)
+!          END IF
+        END DO
+
+        DO p=1,3
+          FaceWeights(p) = abs(faceflux(p))/sum(abs(faceflux(:)))
+        END DO
+        
+!        print *, 'total flux out', totflux
+!        print *, 'sources tot', -intf
+!        print *, 'change flux out by an amount', -intf - totflux
+!        dc = (-intf - totflux)/6.0d0
+        
+        DO p=1,3
+          facedelta(p) = FaceWeights(p) * (-intf - totflux)   
+        END DO        
+        !
+        ! The redefinition to ensure the zeroth-order equilibration:
+        !
+        DO p=1,3
+          IF (LeftHanded) THEN
+            IF (ReverseSign(p)) THEN
+              s = 1.0d0
+            ELSE
+              s = -1.0d0
+            END IF
+          ELSE
+            IF (ReverseSign(p)) THEN
+              s = -1.0d0
+            ELSE
+              s = 1.0d0
+            END IF
+          END IF
+          
+!          d(2*p-1) = c(2*p-1) + s*dc
+!          d(2*p) = c(2*p) + s*dc
+          d(2*p-1) = c(2*p-1) + s*facedelta(p)*0.5d0
+          d(2*p) = c(2*p) + s*facedelta(p)*0.5d0
+        END DO
+
+        post_check: IF (.TRUE.) THEN
+          totflux = 0.0d0
+          DO p=1,3
+            IF (LeftHanded) THEN
+              IF (ReverseSign(p)) THEN
+                s = 1.0d0
+              ELSE
+                s = -1.0d0
+              END IF
+            ELSE
+              IF (ReverseSign(p)) THEN
+                s = -1.0d0
+              ELSE
+                s = 1.0d0
+              END IF
+            END IF
+            
+            totflux = totflux + s*(d(2*p-1)+d(2*p))
+          END DO
+
+          IF (ABS(intf + totflux) > 1.0d1 * AEPS) THEN 
+            print *, 'Warning: change flux out by an amount', -intf - totflux
+          END IF
+        END IF post_check
+
+        c(1:6) = d(1:6)
+      END IF
+
+      ! Apply the first-order equilibration
+      !
+      IF (FirstOrderEquilibration) THEN
+        Mass = 0.0_dp
+        RHS = 0.0_dp
+        
+        DO t=1,IP % n
+          
+          stat = FaceElementInfo(Element, Nodes, IP % U(t), IP % V(t), &
+              IP % W(t), detF=detJ, Basis=Basis, FBasis=FBasis, &
+              DivFBasis=DivFBasis, BasisDegree=2, ApplyPiolaTransform=.TRUE.)
+
+          Weight = IP % s(t) * DetJ
+          f = SUM(Load(1:n) * Basis(1:n))
+          
+          testfun(1) = Basis(2) - Basis(1)
+          testfun(2) = Basis(3) - Basis(1)
+
+          DO p=1,2
+            DO q=1,2
+              Mass(p,q) = Mass(p,q) - divFBasis(6+q) * testfun(p) * Weight
+            END DO
+            RHS(p) = RHS(p) + f * testfun(p) * Weight
+            DO q=1,6
+              RHS(p) = RHS(p) + c(q) * divFBasis(q) * testfun(p) * Weight
+            END DO
+          END DO
+        END DO
+        
+        CALL InvertMatrix(Mass(1:2,1:2),2)
+        c(7:8) = MATMUL(MASS(1:2,1:2), RHS(1:2))
+      END IF
+      PostLinFun(1:FDOFs) = c(1:FDOFs)
+    END IF
+    
+    ! Compute a posteriori estimate:
+303 CONTINUE
+    DO t=1,IP % n
+
+      ! Now get the face basis functions so that we can evaluate
+      ! the flux in terms of them
+      !
+      stat = FaceElementInfo(Element, Nodes, IP % U(t), IP % V(t), &
+            IP % W(t), detF=detJ, Basis=Basis, FBasis=FBasis, &
+            DivFBasis=DivFBasis, dBasisdx=dBasis, BDM=BDM, BasisDegree=ElementOrder, &
+            ApplyPiolaTransform=.TRUE.)
+
+      Weight = IP % s(t) * DetJ
+      
+      !  The exact solution:
+      IF (PRESENT(Err) .OR. PRESENT(SolNorm)) THEN
+        xt = SUM(Basis(1:n) * Nodes % x(1:n))
+        U = 1.0d0 - xt**2/9.0d0
+        gradU(:) = 0.0
+        gradU(1) = -2.0d0 * xt/9.0d0
+      END IF
+
+      Uh = SUM(UK(1:nd) * Basis(1:nd))
+      DO i=1,2
+        gradUh(i) = SUM(UK(1:nd) * dBasis(1:nd,i))
+      END DO
+      gradUh(3) = 0.0d0
+
+      EA = SUM(diff_coeff(1:n) * Basis(1:n))
+      Nh = 0.0d0
+      DO i=1,2
+        Nh(i) = SUM( c(1:FDOFs) * FBasis(1:FDOFs,i) )
+      END DO
+      
+      IF (.TRUE.) THEN
+        ! The error of flux
+        IF (PRESENT(Err)) Err = Err + &
+            SUM((EA * gradU(1:2) - EA * gradUh(1:2))**2) * Weight
+        IF (PRESENT(SolNorm)) SolNorm = SolNorm + &
+            SUM((EA * gradU(1:2))**2) * Weight
+        IF (PRESENT(SolNormEst)) SolNormEst = SolNormEst + &
+            SUM((Nh(1:2))**2) * Weight
+        
+        ! A posteriori estimate based on the recovery:
+        !
+        IF (PRESENT(Est)) Est = Est + SUM((EA * gradU(1:2) - Nh(1:2))**2) * Weight
+        IF (PRESENT(APostEst)) APostEst = APostEst + SUM((EA * gradUh(1:2) - Nh(1:2))**2) * Weight
+        IF (PRESENT(APostEst_K)) APostEst_K = APostEst_K + SUM((EA * gradUh(1:2) - Nh(1:2))**2) * Weight
+      ELSE
+        ! The error of the field
+        IF (PRESENT(Err)) Err = Err + &
+            (U - Uh)**2 * Weight
+        IF (PRESENT(SolNorm)) SolNorm = SolNorm + &
+            U**2 * Weight
+      END IF
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE EstimateError
+!------------------------------------------------------------------------------
+  
+!------------------------------------------------------------------------------
+  FUNCTION IsLeftHanded(Element) RESULT(LeftHanded)
+!------------------------------------------------------------------------------
+    TYPE(Element_t), POINTER, INTENT(IN) :: Element
+    LOGICAL :: LeftHanded
+!------------------------------------------------------------------------------
+    TYPE(Nodes_t), SAVE :: Nodes
+    LOGICAL :: Stat
+    REAL(KIND=dp) :: Basis(Element % Type % NumberOfNOdes), DetJ
+    REAL(KIND=dp) :: FBasis(8,3)
+!------------------------------------------------------------------------------
+    CALL GetElementNodes(Nodes, Element)    
+    
+    stat = FaceElementInfo(Element, Nodes, 0.0d0, SQRT(3.0d0)/3.0d0, &
+            0.0d0, detF=detJ, Basis=Basis, FBasis=FBasis, &
+            BasisDegree=1, ApplyPiolaTransform=.TRUE., &
+            LeftHanded=LeftHanded)
+!------------------------------------------------------------------------------    
+  END FUNCTION IsLeftHanded
+!------------------------------------------------------------------------------  
+
+!------------------------------------------------------------------------------
+END SUBROUTINE FluxRecovery
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------

@@ -47,7 +47,9 @@ MODULE MainUtils
   Use BlockSolve
   USE IterSolve, ONLY : NumericalError
   USE LoadMod
-
+#ifdef LIBRARY_ADAPTIVITY
+  USE Adaptivity, ONLY : RefineMesh
+#endif  
 !------------------------------------------------------------------------------
   IMPLICIT NONE
 !------------------------------------------------------------------------------
@@ -2184,7 +2186,7 @@ CONTAINS
 
       IF ( ListGetLogical( Solver % Values,'Calculate '//TRIM(str), Found ) ) THEN
         Var_name = GetVarName(Solver % Variable) // ' '//TRIM(str)
-        Var => VariableGet( Solver % Mesh % Variables, var_name )
+        Var => VariableGet( Solver % Mesh % Variables, var_name, .TRUE. )
         IF ( .NOT. ASSOCIATED(Var) ) THEN
           ALLOCATE( Solution(SIZE(Solver % Variable % Values)), STAT = AllocStat )
           IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for '//TRIM(str))
@@ -5543,7 +5545,7 @@ END BLOCK
        rt0 = RealTime()
      END IF
 
-     Solver % Mesh % OutputActive = .TRUE.
+     IF (.NOT. Solver % Mesh % AdaptiveDepth > 0) Solver % Mesh % OutputActive = .TRUE.
      TimeDerivativeActive = TransientSimulation
 
 !----------------------------------------------------------------------

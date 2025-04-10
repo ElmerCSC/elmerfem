@@ -44,12 +44,14 @@
 MODULE MeshUtils
 
     USE LoadMod
-    USE ElementUtils
+    USE BandwidthOptimize
     USE ElementDescription
     USE Interpolation
     USE ParallelUtils
     USE Types
-    USE ElementUtils, ONLY : mGetBoundaryIndexesFromParent, mGetElementDofs
+    USE ElementUtils, ONLY : mGetBoundaryIndexesFromParent, mGetElementDofs, &
+        NormalDirection, CreateMatrix, CopyElementNodesFromMesh, TangentDirections, &
+        FreeMatrix
     IMPLICIT NONE
 
 CONTAINS
@@ -21756,7 +21758,7 @@ END SUBROUTINE FindNeighbourNodes
      Solver % Variable % Solver => Solver
 
 
-     CALL AllocateVector( Matrix % RHS, Matrix % NumberOfRows )
+     IF (ASSOCIATED(Matrix)) CALL AllocateVector( Matrix % RHS, Matrix % NumberOfRows )
 
      IF ( ASSOCIATED(SaveVar % EigenValues) ) THEN
        n = SIZE(SaveVar % EigenValues)
@@ -21782,8 +21784,10 @@ END SUBROUTINE FindNeighbourNodes
          Solver % Variable % EigenValues  = 0.0d0
          Solver % Variable % EigenVectors = 0.0d0
 
-         CALL AllocateVector( Matrix % MassValues, SIZE(Matrix % Values) )
-         Matrix % MassValues = 0.0d0
+         IF (ASSOCIATED(Matrix)) THEN
+           CALL AllocateVector( Matrix % MassValues, SIZE(Matrix % Values) )
+           Matrix % MassValues = 0.0d0
+         END IF
        END IF
      ELSE IF ( ASSOCIATED( Solver % Matrix ) ) THEN
        IF( ASSOCIATED( Solver % Matrix % Force) ) THEN
@@ -21794,7 +21798,11 @@ END SUBROUTINE FindNeighbourNodes
        END IF
      END IF
 
-     Solver % Matrix => Matrix
+     IF (ASSOCIATED(Matrix)) THEN
+       Solver % Matrix => Matrix
+     ELSE
+       NULLIFY(Solver % Matrix)
+     END IF
      Solver % Mesh % Changed = .TRUE.
 
 !------------------------------------------------------------------------------

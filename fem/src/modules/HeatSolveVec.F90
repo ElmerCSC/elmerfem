@@ -160,6 +160,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE DefUtils
   USE Radiation
+  USE Adaptive
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
