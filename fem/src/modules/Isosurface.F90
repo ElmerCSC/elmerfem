@@ -68,6 +68,7 @@ SUBROUTINE IsosurfaceSolver( Model,Solver,dt,Transient )
 
   USE CoordinateSystems
   USE DefUtils
+  USE SaveUtils
 
   IMPLICIT NONE
 !------------------------------------------------------------------------------
