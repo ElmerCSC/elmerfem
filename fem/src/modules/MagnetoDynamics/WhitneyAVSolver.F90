@@ -2148,7 +2148,7 @@ END SUBROUTINE LocalConstraintMatrix
        ! Compute element stiffness matrix and force vector.
        ! If we calculate a coil, the nodal degrees of freedom are not used.
        ! ------------------------------------------------------------------
-       IF ( ConstraintActive ) THEN
+       NONCOIL_CONDUCTOR: IF ( ConstraintActive ) THEN
          ! --------------------------------------------------------
          ! The constraint equation involving the scalar potential:
          !     -div(C*(dA/dt+grad(V)))=0
@@ -2224,7 +2224,7 @@ END SUBROUTINE LocalConstraintMatrix
              END IF
            END IF
          END IF CONDUCTOR
-       END IF ! (.NOT. CoilBody)
+       END IF NONCOIL_CONDUCTOR
 
        LORENTZ_EFFECT: IF ( HasVelocity .AND. .NOT. Transient) THEN
          !

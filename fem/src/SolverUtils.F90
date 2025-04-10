@@ -1429,12 +1429,22 @@ CONTAINS
          ! Check that active set vectors for limiters exist, otherwise allocate
          !---------------------------------------------------------------------
          IF( Upper == 0 ) THEN
+           IF(ASSOCIATED(Var % LowerLimitActive)) THEN
+             IF(SIZE(Var % LowerLimitActive) /= totsize) THEN
+               DEALLOCATE(Var % LowerLimitActive)
+             END IF
+           END IF
            IF( .NOT. ASSOCIATED(Var % LowerLimitActive ) ) THEN
              ALLOCATE( Var % LowerLimitActive( totsize ) )
              Var % LowerLimitActive = .FALSE.
            END IF
            LimitActive => Var % LowerLimitActive
          ELSE
+           IF(ASSOCIATED(Var % UpperLimitActive)) THEN
+             IF(SIZE(Var % UpperLimitActive) /= totsize) THEN
+               DEALLOCATE(Var % UpperLimitActive)
+             END IF
+           END IF
            IF( .NOT. ASSOCIATED( Var % UpperLimitActive ) ) THEN
              ALLOCATE( Var % UpperLimitActive( totsize ) )
              Var % UpperLimitActive = .FALSE.
@@ -1491,12 +1501,13 @@ CONTAINS
                  END IF
                END DO
                IF(.NOT. Found ) CYCLE
-             ELSE             
+             ELSE
+               IF(Element % BodyId == 0) CYCLE
                bf = ListGetInteger( Model % Bodies(Element % bodyid) % Values, &
                    'Body Force', Found)
-               IF(.NOT. Found ) CYCLE
-               Entity => Model % BodyForces(bf) % Values
-             END IF          
+               IF(.NOT. Found ) CYCLE               
+               Entity => Model % BodyForces(bf) % Values               
+             END IF
 
              ElemLimit(1:n) = ListGetReal( Entity, &
                  LimitName, n, NodeIndexes, Found)             
@@ -1688,6 +1699,7 @@ CONTAINS
              END DO
              IF(.NOT. Found ) CYCLE
            ELSE             
+             IF(Element % BodyId == 0) CYCLE
              bf = ListGetInteger( Model % Bodies(Element % bodyid) % Values, &
                  'Body Force', Found)
              IF(.NOT. Found ) CYCLE
@@ -6442,14 +6454,13 @@ CONTAINS
         END IF
 
         DO j=1,n
+          ! This can (for example) happen with "Target Node" - keyword used in parallel...
+          IF(NodeIndexes(j)>SIZE(Perm) .OR. NodeIndexes(j)<=0) CYCLE
+
           k = Perm(NodeIndexes(j))
           IF( k == 0 ) CYCLE
 
           IF ( Conditional .AND. Condition(j) < 0.0d0 ) CYCLE
-          IF ( NodeIndexes(j) > SIZE(Perm) .OR. NodeIndexes(j) < 1 ) THEN
-            CALL Warn(Caller,'Invalid Node Number')
-            CYCLE
-          END IF
 
           IF ( DOF>0 ) THEN
             CALL SetSinglePoint(k,DOF,Work(j),.FALSE.)
@@ -14400,14 +14411,17 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
 !> Prints the values of the right-hand-side vector to standard output.
 !------------------------------------------------------------------------------
-  SUBROUTINE PrintRHS( A, Parallel, CNumbering )
+  SUBROUTINE PrintRHS( A, Parallel, CNumbering, SaveSum )
 !------------------------------------------------------------------------------
     TYPE(Matrix_t) :: A  !< Structure holding matrix
-    LOGICAL :: Parallel, CNumbering
+    LOGICAL :: Parallel, CNumbering, SaveSum
 !------------------------------------------------------------------------------
-    INTEGER :: i, row
-    REAL(KIND=dp) :: Val
+    INTEGER :: i, j, row
+    REAL(KIND=dp) :: val, asum, rsum
+    LOGICAL :: SaveRhs
 
+    SaveRhs = ASSOCIATED(A % rhs)
+    
     DO i=1,A % NumberOfRows
       row = i
       IF(Parallel) THEN
@@ -14418,13 +14432,28 @@ END FUNCTION SearchNodeL
         END IF
       END IF
 
-      Val = A % Rhs(i)
+      IF(SaveRhs) val = A % rhs(i)
+
+      IF(SaveSum) THEN
+        rsum = 0.0_dp
+        asum = 0.0_dp
+        DO j = A % Rows(i),A % Rows(i+1)-1
+          rsum = rsum + A % Values(j)
+          asum = asum + ABS(A % Values(j))
+        END DO
+      END IF
+      
       WRITE(1,'(I0,A)',ADVANCE='NO') row,' '
-      IF( ABS( Val ) <= TINY( Val ) ) THEN
+      IF( SaveRhs .AND. SaveSum ) THEN
+        WRITE(1,*) Val, rsum, asum
+      ELSE IF( .NOT. SaveRhs .AND. SaveSum ) THEN
+        WRITE(1,*) rsum, asum
+      ELSE IF( ABS( Val ) <= TINY( val ) ) THEN
         WRITE(1,'(A)') '0.0'
       ELSE
         WRITE(1,*) Val
       END IF
+
     END DO
 
   END SUBROUTINE PrintRHS
@@ -14820,6 +14849,16 @@ END FUNCTION SearchNodeL
           CALL VankaCreate(A,Solver)
         ELSE IF ( Prec=='circuit' ) THEN
           CALL CircuitPrecCreate(A,Solver)
+#if 0 
+          IF( ListGetLogical(Params,'Linear System Save', GotIt) ) THEN
+            IF( ASSOCIATED( A % CircuitMatrix ) ) THEN
+              CALL SaveLinearSystem(Solver, Ain = A % CircuitMatrix, LinSysName = "circuit")
+            END IF
+            IF( ASSOCIATED( Solver % Matrix % AddMatrix ) ) THEN
+              CALL SaveLinearSystem(Solver, Ain = Solver % Matrix % AddMatrix, LinSysName = "addmatrix")
+            END IF
+          END IF
+#endif
         END IF
         CALL CheckTimer("Prec0-"//TRIM(Prec),Level=8,Delete=.TRUE.)                  
       END IF
@@ -15138,7 +15177,7 @@ END FUNCTION SearchNodeL
 
     CHARACTER(KIND=C_CHAR) :: cfg(MAX_NAME_LEN)
     CHARACTER(LEN=MAX_NAME_LEN) :: config
-    LOGICAL :: found, isparallel 
+    LOGICAL :: found, isparallel , nlin
     INTEGER :: nonlin_update, i, j, n, lrow, me, you
     REAL(KIND=dp)  :: bnrm
 
@@ -15146,9 +15185,12 @@ END FUNCTION SearchNodeL
     INTEGER, SAVE :: ng
     INTEGER, ALLOCATABLE, SAVE :: Owner(:), APerm(:), part_vec(:), iLPerm(:)
 
-    nonlin_update = 1
-    IF ( .NOT. ListGetLogical( Solver % Values, 'Linear System Refactorize', Found ) ) &
-      nonlin_update = 0;
+    nlin = ListGetLogical( Solver % Values, 'Linear System Refactorize', Found )
+    IF ( nlin .OR. .NOT. Found ) THEN
+      nonlin_update = 1
+    ELSE
+      nonlin_update = 0
+    END IF
 
     config = ListGetString( Solver % Values, 'AMGX Config')
     DO i=1,LEN_TRIM(config)
@@ -19501,6 +19543,12 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
     CALL ListAddLogical( Params,'Linear System Skip Scaling',.TRUE. ) 
   END IF
   
+  
+  !IF( ListGetLogical( Params,'Linear System Save',Found ) ) THEN        
+  !  CALL SaveLinearSystem( Solver, CollectionMatrix,'RestrictedMat')
+  !END IF
+  
+
   CALL Info(Caller,'Now solving the linear system with constraints!',Level=10)
   Collectionmatrix % DGMatrix = StiffMatrix %  DGMatrix
   CALL SolveLinearSystem( CollectionMatrix, CollectionVector, &
@@ -20345,7 +20393,7 @@ CONTAINS
     INTEGER, POINTER :: Perm(:)
     REAL(KIND=dp), POINTER :: Sol(:)
     INTEGER :: i
-    LOGICAL :: SaveMass, SaveDamp, SavePerm, SaveSol, Found , Parallel, CNumbering, SkipZeros
+    LOGICAL :: SaveMass, SaveDamp, SavePerm, SaveSol, Found , Parallel, CNumbering, SkipZeros, SaveSum
     CHARACTER(*), PARAMETER :: Caller = 'SaveLinearSystem'
 !------------------------------------------------------------------------------
 
@@ -20370,6 +20418,8 @@ CONTAINS
       CALL Fatal(Caller,'Matrix not associated!')
     END IF
 
+    SaveSum = ListGetLogical( Params,'Linear System Save Sum',Found)
+
     SaveMass = ListGetLogical( Params,'Linear System Save Mass',Found)
 
     SaveDamp = ListGetLogical( Params,'Linear System Save Damp',Found)   
@@ -20390,13 +20440,15 @@ CONTAINS
     CALL PrintMatrix(A,Parallel,Cnumbering,SaveMass=SaveMass,SaveDamp=SaveDamp,SkipZeros=SkipZeros)
     CLOSE(1)
 
-    dumpfile = TRIM(dumpprefix)//'_b.dat'
-    IF(Parallel) dumpfile = TRIM(dumpfile)//'.'//I2S(ParEnv % myPE)
-    CALL Info(Caller,'Saving matrix rhs to: '//TRIM(dumpfile),Level=5)
-    OPEN(1,FILE=dumpfile, STATUS='Unknown')
-    CALL PrintRHS(A, Parallel, CNumbering)
-    CLOSE(1)
-    
+    IF( ASSOCIATED(A % rhs) .OR. SaveSum ) THEN
+      dumpfile = TRIM(dumpprefix)//'_b.dat'
+      IF(Parallel) dumpfile = TRIM(dumpfile)//'.'//I2S(ParEnv % myPE)
+      CALL Info(Caller,'Saving matrix rhs to: '//TRIM(dumpfile),Level=5)
+      OPEN(1,FILE=dumpfile, STATUS='Unknown')
+      CALL PrintRHS(A, Parallel, CNumbering, SaveSum )
+      CLOSE(1)
+    END IF
+      
     SavePerm = ListGetLogical( Params,'Linear System Save Perm',Found)
     IF( SavePerm ) THEN
       Perm => Solver % Variable % Perm

@@ -331,6 +331,8 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
            CALL FATAL(SolverName,"libmassbf type should be on_elements")
   ENDIF
 
+  CALL DefaultStart()
+  
   !------------------------------------------------------------------------------
   ! Non-linear iteration loop
   !------------------------------------------------------------------------------
@@ -359,7 +361,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
      !------------------------------------------------------------------------------
      !    Do the assembly
      !------------------------------------------------------------------------------
-     DO t=1,Solver % NumberOfActiveElements
+100  DO t=1,Solver % NumberOfActiveElements
         CurrentElement => GetActiveElement(t)
         Passive=CheckPassiveElement(CurrentElement)
         n = GetElementNOFNodes()
@@ -381,9 +383,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
                 NSDOFs, ' . Aborting'
            CALL Fatal( SolverName, Message) 
            STOP   
-        END IF
-
-        
+        END IF        
 
         ! get pointers on Equation, Material and body-Force section input
         !----------------------------------------------------------------
@@ -439,7 +439,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
        ELSE
           IF (ASSOCIATED( BodyForce ) ) THEN
                Velo(1,1:n) = GetReal( BodyForce, 'Convection Velocity 1',Found )
-               if (NSDOFs.eq.2) Velo(2,1:n) = GetReal( BodyForce, 'Convection Velocity 2',Found )
+               if (NSDOFs == 2) Velo(2,1:n) = GetReal( BodyForce, 'Convection Velocity 2',Found )
           END IF
         END IF
         !------------------------------------------------------------------------------
@@ -513,6 +513,11 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
      !    Dirichlet boundary settings. Actually no need to call it except for
      !    transient simulations.
      !------------------------------------------------------------------------------
+
+     ! Tentative code for dealing with calving front using cutFEM. 
+     IF(DefaultCutFEM()) GOTO 100
+     
+
      CALL DefaultFinishAssembly()
      CALL DefaultDirichletBCs()
 
@@ -660,7 +665,12 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
         ELSE
 
         END IF
-     END DO ! End loop non-linear iterations
+      END DO ! End loop non-linear iterations
+
+      
+      CALL DefaultFinish()
+
+      
      !------------------------------------------------------------------------------
    CONTAINS
 

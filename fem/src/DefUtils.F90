@@ -49,16 +49,16 @@ MODULE DefUtils
 
 #include "../config.h"
 
-   USE Adaptive
    USE MeshGenerate 
    USE ElementUtils
    USE SolverUtils
+   USE CutFEMUtils
 
    IMPLICIT NONE
 
    INTERFACE DefaultUpdateEquations
      MODULE PROCEDURE DefaultUpdateEquationsR, DefaultUpdateEquationsC, &
-         DefaultUpdateEquationsDiagC, DefaultUpdateEquationsCutFemR
+         DefaultUpdateEquationsDiagC
    END INTERFACE 
    
    INTERFACE DefaultUpdatePrec
@@ -1764,12 +1764,12 @@ CONTAINS
 
      Solver => CurrentModel % Solver
      IF ( PRESENT( USolver ) ) Solver => USolver
-
+         
      Element => GetCurrentElement(UElement)
-
+     
      Indexes => GetIndexStore()
      n = GetElementDOFs( Indexes, Element, Solver )
-
+     
      DGb = Solver % DG .AND. PRESENT(DGboundary)
      IF(DGb) DGb = DGboundary
 
@@ -2212,7 +2212,7 @@ CONTAINS
 ! -----------------------------------------------------------------------------
     INTEGER :: n
     TYPE(Element_t), OPTIONAL :: Element
-    TYPE(Solver_t), OPTIONAL, POINTER :: USolver
+    TYPE(Solver_t), OPTIONAL, TARGET :: USolver
     LOGICAL, OPTIONAL :: Update
 
     TYPE(Element_t), POINTER  :: CurrElement
@@ -2316,7 +2316,7 @@ CONTAINS
      END IF
              
      n = MAX(Mesh % MaxElementNodes,Mesh % MaxElementDOFs)
-
+     
      IF ( .NOT. ASSOCIATED( ElementNodes % x ) ) THEN
        ALLOCATE( ElementNodes % x(n), ElementNodes % y(n),ElementNodes % z(n) )
      ELSE IF ( SIZE(ElementNodes % x)<n ) THEN
@@ -3568,6 +3568,7 @@ CONTAINS
      LOGICAL :: Found
      TYPE(ValueList_t), POINTER :: Params
      INTEGER :: i,j,n
+     TYPE(Matrix_t), POINTER :: pMatrix
      
      IF ( PRESENT( USolver ) ) THEN
        Solver => USolver
@@ -3579,7 +3580,19 @@ CONTAINS
      
      CALL Info('DefaultStart','Starting solver: '//&
         GetString(Params,'Equation'),Level=10)
-          
+
+     ! Code for splitting the mesh to be able to integrate accurately over discontinuous
+     ! fields defined by zero levelset.     
+     IF( ListGetLogical( Params,'CutFEM',Found ) ) THEN
+       pMatrix => Solver % Matrix
+       CALL CreateCutFEMPerm(Solver,.TRUE.)
+       Solver % Matrix => CreateCutFEMMatrix(Solver,Solver % Variable % Perm, pMatrix )
+       CALL FreeMatrix(pMatrix)
+       IF(.NOT. ListGetLogical( Params,'CutFEM Solver',Found ) ) THEN
+         CALL CreateCutFEMAddMesh(Solver) 
+       END IF
+     END IF
+     
      ! When Newton linearization is used we may reset it after previously visiting the solver
      IF( Solver % NewtonActive ) THEN
        IF( ListGetLogical( Params,'Nonlinear System Reset Newton', Found) ) Solver % NewtonActive = .FALSE.
@@ -3652,6 +3665,7 @@ CONTAINS
      TYPE(Solver_t), OPTIONAL, TARGET, INTENT(IN) :: USolver
      TYPE(Solver_t), POINTER :: Solver
      TYPE(ValueList_t), POINTER :: Params
+     TYPE(Mesh_t), POINTER :: Mesh
      CHARACTER(:), ALLOCATABLE :: str
      LOGICAL :: Found
      
@@ -3714,6 +3728,35 @@ CONTAINS
        END IF
      END IF
 
+
+     
+     IF( ListGetLogical( Params,'CutFEM',Found ) ) THEN
+       Mesh => Solver % Mesh
+       
+       ! We do not need the old meshes. When we reach a new timestep
+       ! they have already been saved. 
+       IF(ASSOCIATED(Solver % Mesh % Next % Next ) ) THEN
+         CALL FreeMesh(Solver % Mesh % Next % Next )
+       END IF
+       IF(ASSOCIATED(Solver % Mesh % Next ) ) THEN
+         CALL FreeMesh(Solver % Mesh % Next)
+       END IF
+       
+       ! Updates Level-set and creates 1D mesh that becomes "Mesh % Next"
+       ! The Mesh % Next is saved normally in the VTU files etc. 
+       CALL LevelSetUpdate(Solver,Solver % Mesh)
+       
+       ! We do not need to create the actual CutFEM Mesh, but we might want to have it
+       ! for visualization purposes. 
+       IF( ListGetLogical( Solver % Values,'CutFEM Mesh Save', Found ) )  THEN
+         ! This 2D mesh becomes Mesh % Next % Next
+         Solver % Mesh % Next % Next => CreateCutFEMMesh(Solver,Mesh,Solver % Variable % Perm,&
+             .TRUE.,.TRUE.,.FALSE.,Solver % Values,'project variable') 
+       END IF
+      
+       CALL CutFEMVariableFinalize(Solver)         
+     END IF
+     
      IF( ListGetLogical( Params,'MMG Remesh', Found ) ) THEN
        CALL Remesh(CurrentModel,Solver)
      END IF
@@ -3724,6 +3767,48 @@ CONTAINS
    END SUBROUTINE DefaultFinish
 !------------------------------------------------------------------------------
 
+   FUNCTION DefaultCutFEM(Solver) RESULT( Swap ) 
+     TYPE(Solver_t), TARGET, OPTIONAL :: Solver
+
+     TYPE(Solver_t), POINTER :: pSolver
+     LOGICAL :: Swap, Found
+     INTEGER :: i,n,Counter=0
+
+     SAVE Counter 
+     
+     Swap = .FALSE.
+
+     IF(PRESENT(Solver)) THEN
+       pSolver => Solver
+     ELSE
+       pSolver => CurrentModel % Solver
+     END IF
+       
+     
+     ! Nothing to do. 
+     IF(.NOT. ListGetLogical( pSolver % Values,'CutFEM',Found ) ) RETURN
+     
+     ! If we have special solver where we use the on-the-fly splitting do not swap the mesh.
+     IF(ListGetLogical( pSolver % Values,'CutFEM Solver',Found ) ) THEN
+       CALL Info('DefaultCutFEM','Skipping mesh swapping for modified CutFEM solver!',Level=10)
+       RETURN
+     END IF
+
+     Counter = Counter+1
+
+     IF(MODULO(Counter,2) == 1 ) THEN
+       ! We start with the original mesh, then swap to AddMesh.
+       Swap = .TRUE. 
+       CALL CutFEMSetAddMesh(pSolver)
+     ELSE
+       ! Nothing to swap this time. 
+       CALL CutFEMSetOrigMesh(pSolver)
+     END IF
+     
+   END FUNCTION DefaultCutFEM
+   
+
+   
 
 !> Solver the matrix equation related to the active solver
 !------------------------------------------------------------------------------
@@ -4162,55 +4247,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateEquationsR
 !------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-  SUBROUTINE DefaultUpdateEquationsCutFemR( G, F, CutElem, Element, USolver )
-!------------------------------------------------------------------------------
-     REAL(KIND=dp) :: G(:,:), f(:)
-     LOGICAL :: CutElem
-     TYPE(Element_t) :: Element
-     TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
-     
-     TYPE(Solver_t), POINTER   :: Solver
-     TYPE(Matrix_t), POINTER   :: A
-     TYPE(Variable_t), POINTER :: x
-     TYPE(Element_t), POINTER  :: CurrElement
-     REAL(KIND=dp), POINTER CONTIG   :: b(:)
-     REAL(KIND=dp), ALLOCATABLE :: Gsum(:,:), fsum(:) 
-     INTEGER, ALLOCATABLE :: iorder(:), sumIndexes(:)
-     INTEGER :: nsum , n0          
-     LOGICAL :: Found 
-     INTEGER :: i, j, k, n, m, nd, nn
-     INTEGER, POINTER CONTIG :: PermIndexes(:)
-
-     SAVE :: Gsum, Fsum, nsum, n0, iorder, nn, sumIndexes
-     
-     IF ( PRESENT( USolver ) ) THEN
-       Solver => USolver
-     ELSE
-       Solver => CurrentModel % Solver
-     END IF
-     
-     A => Solver % Matrix
-     x => Solver % Variable
-     b => A % RHS
-
-     n = Element % Type % NumberOfNodes     
-     PermIndexes => GetPermIndexStore()
-     
-     PermIndexes(1:n) = x % Perm(Element % NodeIndexes(1:n))
-     IF(ANY(PermIndexes(1:n) == 0)) THEN
-       CALL Fatal('DefaultUpdateEquationsCutFemR','Zero PermIndexes in piece element?')
-     END IF
-     CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs, &
-         PermIndexes(1:n), UElement=Element )            
-     RETURN
-          
-!------------------------------------------------------------------------------
-   END SUBROUTINE DefaultUpdateEquationsCutFemR
-!------------------------------------------------------------------------------
-  
 
 
   SUBROUTINE DefaultUpdateEquationsIm( G, F, UElement, USolver, VecAssembly )     

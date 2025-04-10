@@ -267,6 +267,14 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
         CALL ListAddConstReal( BC,Solver % Variable % Name, 0.0_dp )
       END IF
     END DO
+    DO i=1,Model % NumberOFBodyForces
+      BC => Model % BodyForces(i) % Values
+      IF ( GetLogical(  BC, 'Moving Body', Found ) ) THEN
+        CALL ListAddConstReal( BC,Solver % Variable % Name, 1.0_dp )
+      ELSE IF ( GetLogical(  BC, 'Fixed Body', Found ) ) THEN
+        CALL ListAddConstReal( BC,Solver % Variable % Name, 0.0_dp )
+      END IF
+    END DO
 
     CALL Info(Caller,'Solving mesh relaxation field using Laplace',Level=6)
     

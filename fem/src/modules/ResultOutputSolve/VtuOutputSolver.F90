@@ -265,8 +265,8 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   
   INTEGER, SAVE :: nTime = 0
   LOGICAL :: GotIt, Parallel, FixedMesh, DG, DN, DoAve
-  CHARACTER(MAX_NAME_LEN) :: FilePrefix
-  CHARACTER(MAX_NAME_LEN) :: BaseFile, VtuFile, PvtuFile, PvdFile, DataSetFile
+  CHARACTER(MAX_PATH_LEN) :: FilePrefix
+  CHARACTER(MAX_PATH_LEN) :: BaseFile, VtuFile, PvtuFile, PvdFile, DataSetFile
   TYPE(Mesh_t), POINTER :: Mesh
   INTEGER :: i, j, k, l, n, m, Partitions, Part, ExtCount, FileindexOffSet, MeshDim, PrecBits, &
              PrecSize, IntSize, FileIndex

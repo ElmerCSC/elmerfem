@@ -244,7 +244,11 @@ function lua_tolstring(L, n, slen) result(sp)
   type(c_ptr) :: c_s
   integer(kind=c_int) :: slen
 
+  sp => null()
+
   c_s = lua_tolstring_c(L, n, slen)
+  if ( slen <= 0 ) return
+
   call c_f_pointer(c_s, sp_arr, shape=[slen])
   call char_c_f(slen, sp_arr, sp)
 end function

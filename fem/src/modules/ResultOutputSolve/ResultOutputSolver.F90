@@ -42,15 +42,15 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: TransientSimulation
 
   LOGICAL :: SaveGid, SaveVTK, SaveOpenDx, SaveGmsh, &
-      SaveVTU, SaveEP, SaveAny, ListSet = .FALSE., ActiveMesh, &
+      SaveVTU, SaveEP, SaveSTL, SaveAny, ListSet = .FALSE., ActiveMesh, &
       SomeMeshSaved, SaveAllMeshes
-  INTEGER :: i,nInterval=1, nstep=0, OutputCount(6) = 0, MeshDim,&
+  INTEGER :: i,nInterval=1, nstep=0, OutputCount(7) = 0, MeshDim,&
       MinMeshDim,MaxMeshDim,MeshLevel,nlen,NoMeshes, m
   INTEGER, POINTER :: OutputIntervals(:), TimeSteps(:)
 
   TYPE(Mesh_t), POINTER :: Mesh, iMesh, MyMesh
   CHARACTER(10) :: OutputFormat
-  CHARACTER(LEN=MAX_NAME_LEN) :: FilePrefix, MeshName, iMeshName, ListMeshName
+  CHARACTER(LEN=MAX_PATH_LEN) :: FilePrefix, MeshName, iMeshName, ListMeshName
   LOGICAL :: SubroutineVisited=.FALSE.,Found, SaveThisMesh, NowSave
   TYPE(ValueList_t), POINTER :: Params
   TYPE(Variable_t), POINTER :: ModelVariables
@@ -85,6 +85,7 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   SaveVTU = GetLogical(Params,'VTU Format',Found)
   SaveOpenDx = GetLogical(Params,'Dx Format',Found)
   SaveEP = GetLogical(Params,'Elmerpost Format',Found)
+  SaveSTL = GetLogical(Params,'STL Format',Found)
 
   OutputFormat = GetString( Params, 'Output Format', Found )
   IF(Found) THEN
@@ -100,6 +101,8 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
       SaveGmsh = .TRUE.
     ELSE IF( OutputFormat == "elmerpost" )THEN
       SaveEP = .TRUE.
+    ELSE IF( OutputFormat == "stl" )THEN
+      SaveSTL = .TRUE.
     ELSE
       CALL Warn( Caller, &
                  'Unknown output format "' // TRIM(OutputFormat) // '"' )
@@ -141,6 +144,7 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   IF(SaveEp)   OutputCount(4) = OutputCount(4) + 1
   IF(SaveGid)  OutputCount(5) = OutputCount(5) + 1
   IF(SaveOpenDx) OutputCount(6) = OutputCount(6) + 1
+  IF(SaveSTL) OutputCount(7) = OutputCount(7) + 1
   
   ! Finally go for it and write desired data
   ! Some formats requite that the list of variables is explicitly given
@@ -294,6 +298,11 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
         CALL Info( Caller,'Saving in OpenDX (.dx) format' )
         CALL ListAddInteger( Params,'Output Count',OutputCount(6))
         CALL DXOutputSolver( Model,Solver,dt,TransientSimulation )
+      END IF
+      IF( SaveSTL ) THEN
+        CALL Info( Caller,'Saving surface mesh in STL format' )
+        CALL ListAddInteger( Params,'Output Count',OutputCount(7))
+        CALL SaveSTLSurface( Mesh, Params )
       END IF
 
       CALL Info( Caller, '-------------------------------------')

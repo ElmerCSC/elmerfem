@@ -164,5 +164,7 @@ Boundary Condition 3
    Target Boundaries(7) = 10 13 14 17 18 19 27
    Infinity BC = Logical True
 End
-Solver 3 :: Reference Norm = 2.14412262E-03
+
+Solver 2 :: Reference Norm = 6.98326923E-02
+Solver 3 :: Reference Norm = 2.51191847E-03
 Solver 3 :: Reference Norm Tolerance = Real 1E-03

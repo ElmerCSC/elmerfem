@@ -144,7 +144,7 @@ SUBROUTINE HeatSolver_init( Model,Solver,dt,Transient )
   END IF
 
   ! If library adaptivity is compiled with, use that by default.
-#ifdef LIBRARY_ADAPTIVIVTY
+#ifdef LIBRARY_ADAPTIVITY
   CALL ListAddNewLogical(Params,'Library Adaptivity',.TRUE.)
 #endif
   
@@ -160,6 +160,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE DefUtils
   USE Radiation
+  USE Adaptive
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver

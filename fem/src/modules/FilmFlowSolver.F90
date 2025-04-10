@@ -146,21 +146,24 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
   LOGICAL :: AllocationsDone = .FALSE., Newton = .FALSE., Found, Convect, CSymmetry
   TYPE(Element_t),POINTER :: Element
   INTEGER :: i,n, nb, nd, t, istat, dim, mdim, BDOFs=1,Active,iter,maxiter,CoupledIter
-  REAL(KIND=dp) :: Norm = 0, mingap
+  REAL(KIND=dp) :: Norm = 0, mingap, Grav
   TYPE(ValueList_t), POINTER :: Params, BodyForce, Material, BC
   TYPE(Mesh_t), POINTER :: Mesh
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), LOAD(:,:), &
       FORCE(:), rho(:), gap(:), gap0(:), mu(:), ac(:), Pres(:), Velocity(:,:), MASS(:,:),&
       PrevPressure(:), FsiRhs(:,:), PrevGap(:)
-  LOGICAL :: GradP, LateralStrain, GotAc, SurfAc, UsePrevGap
+  REAL(KIND=dp), POINTER :: gWork(:,:)
+  LOGICAL :: GradP, LateralStrain, GotAc, SurfAc, UsePrevGap, GotGrav
   TYPE(Variable_t), POINTER :: pVar, thisVar
-  INTEGER :: GapDirection
-  REAL(KIND=dp) :: GapFactor
+  INTEGER :: GapDirection, FrictionModel 
+  REAL(KIND=dp) :: GapFactor, Nm
+  CHARACTER(:), ALLOCATABLE :: str
   CHARACTER(*), PARAMETER :: Caller = 'FilmFlowSolver'
   LOGICAL :: Debug
   
   SAVE STIFF, MASS, LOAD, FORCE, rho, ac, gap, gap0, mu, Pres, Velocity, &
-      PrevPressure, AllocationsDone, pVar, GotAc, SurfAC, FsiRhs, PrevGap
+      PrevPressure, AllocationsDone, pVar, GotAc, SurfAC, FsiRhs, PrevGap, &
+      FrictionModel 
 !------------------------------------------------------------------------------
 
   CALL Info(Caller,'Computing reduced dimensional Navier-Stokes equations!')
@@ -193,13 +196,39 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
       CALL Warn(Caller,'"Gap Addition Factor" greater to unity does not make sense!')
     END IF
   END IF
-  
+
   CSymmetry = ListGetLogical( Params,'Axi Symmetric',Found )
   IF(.NOT. Found ) THEN 
     CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
         CurrentCoordinateSystem() == CylindricSymmetric ) 
   END IF
 
+  FrictionModel = 0
+  str = ListGetString( Params,'Friction model',Found )
+  IF(Found ) THEN
+    IF(str == 'laminar' ) THEN
+      FrictionModel = 0
+    ELSE IF( str == 'darcy' ) THEN
+      FrictionModel = 1
+    ELSE IF( str == 'manning' ) THEN
+      FrictionModel = 2
+    ELSE
+      CALL Fatal(Caller,'Uknown friction model: '//TRIM(str))
+    END IF
+  END IF
+
+  grav = 0.0_dp
+  gWork => ListGetConstRealArray( CurrentModel % Constants,'Gravity',GotGrav)
+  IF(GotGrav) THEN
+    grav = ABS(gWork(SIZE(gWork,1),1))
+  END IF
+
+  IF( FrictionModel == 2 ) THEN
+    IF(GotGrav) CALL Fatal(Caller,'Manning equation not possible without gravity!')
+    IF(CSymmetry) CALL Fatal(Caller,'Manning equation not applicable to axial symmetry!')
+  END IF
+    
+  
   ! Allocate some permanent storage, this is done first time only:
   !--------------------------------------------------------------
   IF ( .NOT. AllocationsDone ) THEN
@@ -244,8 +273,7 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
   maxiter = ListGetInteger( Params,'Nonlinear System Max Iterations',Found,minv=1)
   IF(.NOT. Found ) maxiter = 1
 
-  DO iter=1,maxiter
-    
+  DO iter=1,maxiter    
     !Initialize the system and do the assembly:
     !----------------
     CALL DefaultInitialize()
@@ -265,7 +293,7 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
       LOAD = 0.0d0
       IF ( ASSOCIATED(BodyForce) ) THEN
         Load(1,1:n) = GetReal( BodyForce, 'Flow Bodyforce 1', Found )
-        IF(mdim==2) Load(2,1:n) = GetReal( BodyForce, 'Flow Bodyforce 2', Found )
+        IF(mdim>1) Load(2,1:n) = GetReal( BodyForce, 'Flow Bodyforce 2', Found )
         Load(mdim+1,1:n) = GetReal( BodyForce, 'Normal Velocity', Found )
         Load(mdim+2,1:n) = GetReal( BodyForce, 'Fsi Velocity', Found )
       END IF
@@ -277,6 +305,11 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
       mu(1:n)  = GetReal( Material, 'Viscosity' )
       gap(1:n) = GetReal( Material, 'Gap Height' )
 
+      IF(FrictionModel == 2 ) THEN
+        nm = ListGetCReal( Material,'Manning coefficient')
+      END IF
+
+      
       WHERE(gap(1:n) < mingap )
         gap(1:n) = mingap
       END WHERE
@@ -293,12 +326,14 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
         ac(1:n) = GetReal( Material,'Artificial Compressibility',Found )
         Pres(1:n) = PrevPressure(pVar % Perm(Element % NodeIndexes))
       END IF
-            
+
       ! Get previous elementwise velocity iterate:
       ! Note: pressure is the dim+1 component here!
       !-------------------------------------------
-      IF ( Convect ) CALL GetVectorLocalSolution( Velocity )
-
+      IF ( Convect ) THEN
+        CALL GetVectorLocalSolution( Velocity )
+      END IF
+        
       ! Get element local matrix and rhs vector:
       !-----------------------------------------
       CALL LocalBulkMatrix(  MASS, STIFF, FORCE, LOAD, rho, gap, gap0, mu, &
@@ -374,7 +409,6 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
     IF( Solver % Variable % NonlinConverged == 1 ) EXIT    
   END DO
 
-
   CALL DefaultFinish()
 
   BLOCK
@@ -399,7 +433,45 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
   
 CONTAINS
 
+  ! Eq (29) in:
+  ! P. Praks and D. Brkić, Review of new flow friction equations:
+  ! Constructing Colebrook’s explicit correlations accurately, Rev. int. métodos numér. cálc. diseño ing. (2020).
+  ! Vol. 36, (3), 41 URL https://www.scipedia.com/PUBLIC/Praks_Brkic_2020a
+  ! https://en.wikipedia.org/wiki/Darcy_friction_factor_formulae
+  !--------------------------------------------------------------------------------------
+  FUNCTION FrictionLawPraks(v,rho,nu,D,eps) RESULT (f)
+    REAL(KIND=dp) :: v, rho, nu, D, eps, f
+    REAL(KIND=dp) :: Re, A, B, C, x
+    REAL(KIND=dp) :: MinRe
+    LOGICAL :: Visited = .FALSE.
 
+    SAVE Visited, MinRe
+
+    IF(.NOT. Visited) THEN
+      MinRe = ListGetCReal( Params,'Min Reynolds Number',Found )
+      IF(.NOT. Found) MinRe = 4000.0_dp
+      Visited = .TRUE.
+    END IF
+    
+    Re = v*D*rho/nu
+
+    IF(Re < MinRe) THEN
+      Re = MinRe
+      ! Enforce also the speed to be compatible with the min Re number!
+      ! Note: this has effect also outside this routine!
+      v = Re * nu / (D * rho) 
+    END IF      
+    
+    A = Re * eps / 8.0897
+    B = LOG(Re) - 0.779626
+    x = A+B
+    C = LOG(x)
+
+    f = (0.8685972*(B-C+C/(x-0.5588*C+1.2079)))**(-0.5_dp)
+    
+  END FUNCTION FrictionLawPraks
+    
+  
 !------------------------------------------------------------------------------
   SUBROUTINE LocalBulkMatrix(  MASS, STIFF, FORCE, LOAD, Nodalrho, NodalGap, &
       NodalGap0, Nodalmu, NodalAC, NodalVelo, NodalPres, Element, n, nd, &
@@ -412,16 +484,18 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(ntot),dBasisdx(ntot,3)
-    REAL(KIND=dp) :: DetJ,LoadAtIP(mdim+2),Velo(mdim), VeloGrad(mdim,mdim), gapGrad(mdim) 
+    REAL(KIND=dp) :: DetJ,LoadAtIP(mdim+2),Velo(mdim), VeloGrad(mdim,mdim), gapGrad(mdim), &
+        hGrad(mdim), presGrad(mdim)
     REAL(KIND=dp), POINTER :: A(:,:),F(:),M(:,:)
     LOGICAL :: Stat
     INTEGER :: t, i, j, k, l, p, q, geomc
     TYPE(GaussIntegrationPoints_t) :: IP
-    REAL(KIND=dp) :: mu = 1.0d0, rho = 1.0d0, pres, gap, gap0, gap2, ac, s, s0, s1, MinPres
+    REAL(KIND=dp) :: mu = 1.0d0, rho = 1.0d0, pres, gap, gap0, gap2, gapi, &
+        ac, s, s0, s1, MinPres, MuCoeff, MinSpeed
     LOGICAL :: Visited = .FALSE.
     
     TYPE(Nodes_t) :: Nodes
-    SAVE Nodes, Visited, MinPres
+    SAVE Nodes, Visited, MinPres, MinSpeed
 !------------------------------------------------------------------------------
 
     
@@ -444,7 +518,9 @@ CONTAINS
     MASS  = 0.0d0
     FORCE = 0.0d0
     gapGrad = 0.0_dp
-        
+    hGrad = 0.0_dp
+    presGrad = 0.0_dp
+    
     ! To my understanding we want to include the gap height to weight
     IF( Csymmetry ) THEN
       geomc = 2
@@ -462,6 +538,8 @@ CONTAINS
       CALL Info(Caller,'Number of integration points: '//I2S(IP % n))
       MinPres = ListGetConstReal( Params,'Min FilmPressure',Found )
       IF(.NOT. Found) MinPres = -HUGE(MinPres)
+      MinSpeed = ListGetConstReal( Params,'Min Speed',Found )
+      IF(.NOT. Found) MinSpeed = 1.0e-6
       Visited = .TRUE.
     END IF
     
@@ -475,8 +553,7 @@ CONTAINS
 
        s1 = s 
        s0 = s 
-       
-       
+              
        ! Material parameters at the integration point:
        !----------------------------------------------      
        mu  = SUM( Basis(1:n) * Nodalmu(1:n) )
@@ -484,9 +561,18 @@ CONTAINS
        gap = SUM( Basis(1:n) * NodalGap(1:n) ) 
        gap0 = SUM( Basis(1:n) * NodalGap0(1:n) ) 
        
+       Pres = SUM( NodalPres(1:n) * Basis(1:n) )
+       Pres = MAX(MinPres,Pres)
+
        DO i=1,mdim
          gapGrad(i) = SUM( NodalGap(1:nd) * dBasisdx(1:nd,i) )
+         presGrad(i) = SUM( NodalPres(1:nd) * dBasisdx(1:nd,i) )
        END DO
+      
+       hGrad(1) = SUM( Nodes % x(1:n) * dBasisdx(1:n,1) ) 
+       IF(mdim > 1) THEN
+         hGrad(2) = SUM( Nodes % y(1:n) * dBasisdx(1:n,2) ) 
+       END IF
        
        ! Previous velocity at the integration point:
        !--------------------------------------------
@@ -494,8 +580,6 @@ CONTAINS
        VeloGrad = MATMUL( NodalVelo(1:mdim,1:nd), dBasisdx(1:nd,1:mdim) )
        
        IF( GotAC ) THEN
-         Pres = SUM( NodalPres(1:n) * Basis(1:n) )
-         Pres = MAX(MinPres,Pres)
          ac = SUM( NodalAC(1:n) * Basis(1:n) ) / dt
          !IF(.NOT. SurfAc) ac = ac * gap
        END IF
@@ -512,7 +596,50 @@ CONTAINS
        LoadAtIp(mdim+1) = geomc * LoadAtIp(mdim+1) 
        ! Fsi velocity
        LoadAtIp(mdim+2) = geomc * LoadAtIp(mdim+2) 
-         
+
+
+       ! This is the Poisseille flow resistance
+       IF(UsePrevGap) THEN
+         ! This takes the analytical average when going from 1/d_0^2 to 1/d^2. 
+         gap2 = gap*gap0
+         gapi = SQRT(gap2)
+       ELSE
+         gap2 = gap**2
+         gapi = gap
+       END IF
+
+       SELECT CASE( FrictionModel )
+       CASE( 1 ) 
+         BLOCK
+           REAL(KIND=dp) :: Speed, D, R, fd, eps=0.01
+           Speed = MAX(MinSpeed,SQRT(SUM(Velo**2)))
+           IF( CSymmetry ) THEN                   
+             D = 2 * gapi
+           ELSE
+             D = gapi / 2
+           END IF
+           fd = FrictionLawPraks(Speed,rho,mu,D,eps)
+           MuCoeff = fd * rho * Speed / (2*D)
+         END BLOCK
+
+       CASE( 2 ) 
+         BLOCK
+           REAL(KIND=dp) :: GradZphi2
+           GradZphi2 = SUM((hGrad(1:mdim) + presGrad(1:mdim)/(rho*Grav))**2)
+           MuCoeff = nm * rho * Grav * (gapi/2)**(-2.0/3) * GradZphi2**(1.0/4.0)
+         END BLOCK
+                    
+       CASE DEFAULT 
+         IF( CSymmetry ) THEN
+           ! Note: gap is here the radius!
+           MuCoeff = 8 * mu / gap2 
+         ELSE
+           MuCoeff = 12 * mu / gap2
+         END IF
+
+       END SELECT
+                 
+       
        ! Finally, the elemental matrix & vector:
        !----------------------------------------       
        DO p=1,ntot
@@ -526,6 +653,8 @@ CONTAINS
              IF( Transient ) THEN
                M(i,i) = M(i,i) + s * rho * Basis(q) * Basis(p)
              END IF
+
+             A(i,i) = A(i,i) + s * MuCoeff * Basis(q) * Basis(p)              
 
              DO j = 1,mdim
                IF( LateralStrain ) THEN 
@@ -541,20 +670,6 @@ CONTAINS
                END IF
              END DO
              
-             ! This is the Poisseille flow resistance
-             IF(UsePrevGap) THEN
-               ! This takes the analytical average when going from 1/d_0^2 to 1/d^2. 
-               gap2 = gap*gap0
-             ELSE
-               gap2 = gap**2
-             END IF
-
-             IF( CSymmetry ) THEN
-               A(i,i) = A(i,i) + s * ( 8 * mu / gap2 ) * Basis(q) * Basis(p)  
-             ELSE
-               A(i,i) = A(i,i) + s * ( 12 * mu / gap2 ) * Basis(q) * Basis(p)  
-             END IF
-               
              ! Note that here the gap height must be included in the continuity equation
              IF( GradP ) THEN
                A(i,mdim+1) = A(i,mdim+1) + s * dBasisdx(q,i) * Basis(p)
@@ -583,6 +698,11 @@ CONTAINS
          ! Body force for velocity components and pressure
          F(1:mdim+1) = F(1:mdim+1) + s * rho * Basis(p) * LoadAtIp(1:mdim+1)
 
+         ! Gravity for the slope
+         IF(GotGrav) THEN
+           F(1:mdim) = F(1:mdim) - s * rho * Grav * Basis(p) * hGrad(1:mdim)
+         END IF
+         
          ! Additional body force from FSI velocity
          F(mdim+1) = F(mdim+1) - s * rho * Basis(p) * LoadAtIp(mdim+2) 
        END DO

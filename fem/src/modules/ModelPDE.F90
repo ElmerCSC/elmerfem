@@ -68,7 +68,9 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
     ! System assembly:
     !----------------
     CALL DefaultInitialize()
-    Active = GetNOFActive()
+
+1   Active = GetNOFActive()
+
     DO t=1,Active
       Element => GetActiveElement(t)
       n  = GetElementNOFNodes()
@@ -89,6 +91,8 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
       END IF
     END DO
 
+    IF(DefaultCutFEM()) GOTO 1
+    
     CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()

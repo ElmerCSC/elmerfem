@@ -124,7 +124,7 @@
   DIM = CoordinateSystemDimension()
 
   ! IF DIM = STDOFs+1  Normal-Tangential can not be used => trick temporary set Model Dimension to STDOFs
-  IF (DIM.eq.(STDOFs+1)) CurrentModel % Dimension = STDOFs
+  IF (DIM == (STDOFs+1)) CurrentModel % Dimension = STDOFs
 
   SolverParams => GetSolverParams()
 
@@ -227,7 +227,10 @@
        'Nonlinear System Newton After Iterations', GotIt )
   if (.NOT.Gotit) NewtonIter = NonlinearIter + 1
 
-  Newton=.False.
+  Newton=.FALSE.
+
+  CALL DefaultStart()
+  
   !------------------------------------------------------------------------------
   DO iter=1,NonlinearIter
 
@@ -252,10 +255,10 @@
 
     !Initialize the system and do the assembly:
     !------------------------------------------
-500 CALL DefaultInitialize()
+100 CALL DefaultInitialize()
 
     ! bulk assembly
-    DO t=1,Solver % NumberOfActiveElements
+200 DO t=1,Solver % NumberOfActiveElements
       Element => GetActiveElement(t)
       !IF (ParEnv % myPe .NE. Element % partIndex) CYCLE
       n = GetElementNOFNodes()
@@ -316,7 +319,7 @@
       ! Previous Velocity 
       NodalU(1:n) = VariableValues(STDOFs*(Permutation(NodeIndexes(1:n))-1)+1)
       NodalV = 0.0_dp
-      IF (STDOFs.EQ.2) NodalV(1:n) = VariableValues(STDOFs*(Permutation(NodeIndexes(1:n))-1)+2)
+      IF (STDOFs == 2) NodalV(1:n) = VariableValues(STDOFs*(Permutation(NodeIndexes(1:n))-1)+2)
 
       CALL LocalMatrixUVSSA (  STIFF, FORCE, Element, n, ElementNodes, NodalGravity, &
            NodalDensity, NodalViscosity, NodalZb, NodalZs, NodalU, NodalV, &
@@ -413,6 +416,9 @@
       END IF
     END DO
 
+    ! Tentative code for dealing with calving front using cutFEM. 
+    IF(DefaultCutFEM()) GOTO 200
+    
     CALL DefaultFinishAssembly()
 
     ! Dirichlet 
@@ -421,7 +427,7 @@
     !------------------------------------------------------------------------------
     !     Check stepsize for nonlinear iteration
     !------------------------------------------------------------------------------
-    IF( DefaultLinesearch( Converged ) ) GOTO 500
+    IF( DefaultLinesearch( Converged ) ) GOTO 100
     IF( Converged ) EXIT
 
     
@@ -516,7 +522,7 @@
 
       NodalU(1:n) = VariableValues(STDOFs*(Permutation(NodeIndexes(1:n))-1)+1)
       NodalV = 0.0_dp
-      IF (STDOFs.EQ.2) NodalV(1:n) = VariableValues(STDOFs*(Permutation(NodeIndexes(1:n))-1)+2)
+      IF (STDOFs == 2) NodalV(1:n) = VariableValues(STDOFs*(Permutation(NodeIndexes(1:n))-1)+2)
 
 
       IF (ASSOCIATED(strbasemag)) THEN
@@ -575,9 +581,12 @@
     End do
   END IF
 
+  CALL DefaultFinish()
+  
 !!! reset Model Dimension to dim
-  IF (DIM.eq.(STDOFs+1)) CurrentModel % Dimension = DIM
+  IF (DIM == (STDOFs+1)) CurrentModel % Dimension = DIM
 
+  
 CONTAINS
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   !  bulk rigidity matrix
@@ -665,7 +674,7 @@ CONTAINS
         Exx = SUM(LocalU(1:n)*dBasisdx(1:n,1))
         Eyy = 0.0_dp
         Exy = 0.0_dp
-        IF (STDOFs.EQ.2) THEN
+        IF (STDOFs == 2) THEN
           Eyy = SUM(LocalV(1:n)*dBasisdx(1:n,2))
           Ezz = -Exx - Eyy
           Exy = SUM(LocalU(1:n)*dBasisdx(1:n,2))
@@ -687,7 +696,7 @@ CONTAINS
       IF (NewtonLin) THEN
         StrainA(1,1)=SUM(2.0_dp*dBasisdx(1:n,1)*LocalU(1:n))
 
-        IF (STDOFs.EQ.2) THEN
+        IF (STDOFs == 2) THEN
           StrainB(1,1)=SUM(0.5_dp*dBasisdx(1:n,2)*LocalU(1:n))
 
           StrainA(1,2)=SUM(dBasisdx(1:n,2)*LocalV(1:n))
@@ -705,7 +714,7 @@ CONTAINS
       DO p=1,n
         DO q=1,n
           A(1,1) = 2.0_dp*dBasisdx(q,1)*dBasisdx(p,1)  
-          IF (STDOFs.EQ.2) THEN
+          IF (STDOFs == 2) THEN
             A(1,1) = A(1,1) + 0.5_dp*dBasisdx(q,2)*dBasisdx(p,2)
             A(1,2) = dBasisdx(q,2)*dBasisdx(p,1) + &
                  0.5_dp*dBasisdx(q,1)*dBasisdx(p,2)
@@ -734,11 +743,11 @@ CONTAINS
           END IF
 
           IF (NewtonLin) then
-            IF (STDOFs.EQ.1) THEN
+            IF (STDOFs == 1) THEN
               Jac((STDOFs)*(p-1)+1,(STDOFs)*(q-1)+1) = Jac((STDOFs)*(p-1)+1,(STDOFs)*(q-1)+1) +&
                    IP % S(t) * detJ * 2.0_dp * h * StrainA(1,1)*dBasisdx(p,1) * &
                    muder * 2.0_dp * Exx*dBasisdx(q,1) 
-            ELSE IF (STDOFs.EQ.2) THEN
+            ELSE IF (STDOFs == 2) THEN
               Jac((STDOFs)*(p-1)+1,(STDOFs)*(q-1)+1) = Jac((STDOFs)*(p-1)+1,(STDOFs)*(q-1)+1) +&
                    IP % S(t) * detJ * 2.0_dp * h * ((StrainA(1,1)+StrainA(1,2))*dBasisdx(p,1)+ &
                    (StrainB(1,1)+StrainB(1,2))*dBasisdx(p,2)) * muder *((2.0_dp*Exx+Eyy)*dBasisdx(q,1)+Exy*dBasisdx(q,2)) 
@@ -776,7 +785,7 @@ CONTAINS
 
     IF (NewtonLin) THEN
       SOL(1:STDOFs*n:STDOFs)=LocalU(1:n)
-      IF (STDOFs.EQ.2) SOL(2:STDOFs*n:STDOFs)=LocalV(1:n)
+      IF (STDOFs == 2) SOL(2:STDOFs*n:STDOFs)=LocalV(1:n)
 
       STIFF(1:STDOFs*n,1:STDOFs*n) = STIFF(1:STDOFs*n,1:STDOFs*n) + &
            Jac(1:STDOFs*n,1:STDOFs*n)
@@ -1481,7 +1490,7 @@ SUBROUTINE SSASolver( Model,Solver,dt,TransientSimulation )
     j=0
 
     DO i = 1, SIZE(Coupled)/NSDOFs !goes through rows in flowsolution
-      IF (Mask(MaskPerm(i)) .EQ. -1) THEN !SSA
+      IF (Mask(MaskPerm(i)) ==  -1) THEN !SSA
         DO j=1,NSDOFs
           Coupled(NSDOFs*(CoupledPerm(i)-1)+j)= Velocity(NSDOFs*(VeloPerm(i)-1)+j)
         END DO

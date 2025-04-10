@@ -1,0 +1,186 @@
+! Test case for a cut-fem type of machinery.
+! Here simple 2d triangle mesh is split for using a circular zero levelset.
+!
+! P.R. 24.2.2025
+
+Header
+  Mesh DB "." "square-tri"
+!  Mesh DB "." "square-quad"
+End
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = String Cartesian
+  Simulation Type = Transient 
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+! reduce timesteps for testing
+  Timestep Intervals = 3 !100
+  Timestep Sizes = 1.0
+  Timestepping Method = implicit euler
+
+  Post File = File "case-2d.vtu"
+  Ascii Output = True
+!  vtu: Save Bulk Only = Logical True
+
+  Mesh Levels = 3
+End
+
+Body 1
+  Name = String "inside"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+
+!Body 2
+!  Name = String "outside"
+!  Equation = 1
+!  Material = 2
+!  Body Force = 2
+!  Initial Condition = 1
+!End
+
+
+Initial Condition 1
+  Name = "InitSurface"
+$Rad=0.7
+  Surface = Variable "Coordinate"
+    Real MATC "tx(0)^2+tx(1)^2-Rad^2"
+End
+
+Equation 1
+  Name = String "Equation1"
+  Active Solvers(1) = 1 
+End
+
+
+Solver 1
+  Equation = "CutFem"
+  Variable = Potential
+  Procedure = "ModelPDECutFEM" "AdvDiffSolver"
+
+  Time Derivative Order = 1
+  Time Order = 1
+
+  Nonlinear System Max Iterations = 1
+
+  Optimize Bandwidth = False
+
+  Linear System Solver = iterative
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = "ILU0"
+  Linear System Residual Output = 20
+
+! We define a levelset to be used.
+  Exported Variable 1 = Surface
+  Levelset Variable = String "Surface"
+
+! This should be generalized. 
+  Levelset Velocity 1 = Real $0.006
+  Levelset Velocity 2 = Real $0.002
+  
+  CutFem = logical True
+  CutFem Epsilon = Real 1.0e-3
+!  CutFem Epsilon Absolute = Logical True
+
+! What BC index will be given for on-the-fly BC. 
+  CutFem Interface BC = Integer 4
+! What index will be given for negative levelset.
+  CutFEM inside body = integer 1
+! for positive levelset.   
+  CutFEM outside body = integer 0
+
+! Should we extend using FEM
+  CutFem extend = logical true
+! Should be extrapolate using edges (alternative). 
+!  CutFEM extrapolate = Logical True
+
+! Which variables to project to isoline
+  Isoline Variable 1 = String "Potential"
+  Isoline Variable 2 = String "Surface"
+
+! Which variables to project to 2D viz. mesh.
+  Project Variable 1 = Potential
+  Project Variable 2 = Surface
+
+! Should we save the actural splitted mesh in 2D? 
+  CutFEM Mesh Save = Logical True
+
+! If we want to eliminate "locking"
+!  CutFEM Signed Distance Nonzero = Logical True
+End
+
+
+Solver 2
+  Equation = "SaveScalars"
+  Exec Solver = After Timestep
+  Procedure = "SaveData" "SaveScalars"
+  Filename = "f.dat"
+  Variable 1 = time
+  Variable 2 = potential
+  Operator 2 = min
+  Operator 3 = max
+
+  Show Norm Index = 3
+End
+
+
+Material 1
+  Name = "ideal"
+  Diffusion Coefficient = 1.0
+End
+
+!Material 2
+!  Name = "ideal2"
+!  Diffusion Coefficient = 2.0
+!End
+
+Body Force 1
+  Name = "InsideSource"
+  Field Source = Real 1.0
+End 
+
+Body Force 2
+  Name = "OutsideSource"
+  Field Source = Real 0.0
+End 
+
+Boundary Condition 1
+  Name = String "Bot"
+  Target Boundaries(1) = 1  
+!  Potential = 1.0
+End
+
+Boundary Condition 2
+  Name = String "Top"
+  Target Boundaries(1) = 3
+!  Field Flux = Real 1.0
+!  Potential = 1.0
+End
+
+Boundary Condition 3
+  Name = String "Sides"
+  Target Boundaries(2) = 2 4
+!  CutFEM Forbidden Boundary = Logical True
+End
+
+Boundary Condition 4
+  Name = String "CutFEM"
+!  Field Flux = Real 1.0
+  Robin Coefficient = Real 1.0
+  External Field = Real 0.0
+!  Potential = 0.0
+End
+
+! after 100 timesteps x mesh levels 5
+!Solver 1 :: Reference Norm = 4.93622297E-01
+!Solver 2 :: Reference Norm = 5.96345919E-01
+
+! after 3 timesteps x mesh levels 3
+Solver 1 :: Reference Norm = 3.74375920E-01
+Solver 2 :: Reference Norm = 4.64944891E-01

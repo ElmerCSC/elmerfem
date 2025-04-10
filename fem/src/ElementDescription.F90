@@ -3154,7 +3154,7 @@ CONTAINS
      TYPE(Element_t) :: Bubble
      TYPE(Element_t), POINTER :: Parent, Edge, Face
      INTEGER :: EdgeBasisDegree
-     LOGICAL :: PerformPiolaTransform, Found, DesignedBubbles, SerendipityPBasis
+     LOGICAL :: PerformPiolaTransform, Found, SerendipityPBasis
      LOGICAL :: SecondFamily
      
      SAVE PrevSolver, EdgeBasisDegree, PerformPiolaTransform, SecondFamily
@@ -5371,7 +5371,8 @@ CONTAINS
 !>    The implementation is not yet complete as all element shapes are not supported. 
 !---------------------------------------------------------------------------------
      RECURSIVE FUNCTION FaceElementInfo( Element, Nodes, u, v, w, F, detF, &
-          Basis, FBasis, DivFBasis, BDM, Dual, BasisDegree, ApplyPiolaTransform) RESULT(stat)
+         Basis, FBasis, DivFBasis, dBasisdx, BDM, Dual, BasisDegree, &
+         ApplyPiolaTransform, LeftHanded) RESULT(stat)
 !------------------------------------------------------------------------------
        IMPLICIT NONE
 
@@ -5381,16 +5382,18 @@ CONTAINS
        REAL(KIND=dp) :: v                        !< 2nd reference element coordinate
        REAL(KIND=dp) :: w                        !< 3rd reference element coordinate
        REAL(KIND=dp), OPTIONAL :: F(3,3)         !< The gradient F=Grad f, with f the element map f:k->K
-       REAL(KIND=dp) :: detF                     !< The determinant of the gradient matrix F
+       REAL(KIND=dp) :: detF                     !< The absolute value of the determinant of the gradient matrix F
        REAL(KIND=dp) :: Basis(:)                 !< Standard nodal basis functions evaluated at (u,v,w)
        REAL(KIND=dp) :: FBasis(:,:)              !< Face element basis functions b spanning the reference element space   
        REAL(KIND=dp), OPTIONAL :: DivFBasis(:)   !< The divergence of basis functions with respect to the local coordinates
+       REAL(KIND=dp), OPTIONAL :: dBasisdx(:,:)  !< The first derivatives of the H1-conforming basis functions at (u,v,w)
        LOGICAL, OPTIONAL :: BDM                  !< If .TRUE., a basis for BDM space is constructed
        LOGICAL, OPTIONAL :: Dual                 !< If .TRUE., create an alternate dual basis
        INTEGER, OPTIONAL :: BasisDegree          !< This has limited functionality at the moment
        LOGICAL, OPTIONAL :: ApplyPiolaTransform  !< If  .TRUE., perform the Piola transform so that, instead of b
                                                  !< and Div b, return  B(f(p)) and (div B)(f(p)) with B(x) the basis 
                                                  !< functions on the physical element and div the spatial divergence operator.
+       LOGICAL, OPTIONAL :: LeftHanded           !< Indicates whether detF is negative
        LOGICAL :: Stat                           !< Should be .FALSE. for a degenerate element but this is not yet checked
 !-----------------------------------------------------------------------------------------------------------------
 !      Local variables
@@ -5401,10 +5404,10 @@ CONTAINS
        INTEGER, POINTER :: EdgeMap(:,:), FaceMap(:,:), Ind(:)
        INTEGER :: SquareFaceMap(4)
        INTEGER :: DOFs
-       INTEGER :: n, dim, q, i, j, k, ni, nj, nk, I1, I2
+       INTEGER :: n, dim, cdim, q, i, j, k, ni, nj, nk, I1, I2
        INTEGER :: FDofMap(6,4), DofsPerFace, FaceIndices(4)
        INTEGER :: Family, RTDegree
-       REAL(KIND=dp) :: LF(3,3)
+       REAL(KIND=dp) :: LF(3,3), LG(3,3)
        REAL(KIND=dp) :: DivBasis(MaxDOFs)
        REAL(KIND=dp) :: dLbasisdx(MAX(SIZE(Nodes % x),SIZE(Basis)),3), S, D1, D2, fun, dfun, wfun(2)
        REAL(KIND=dp) :: WorkBasis(24,3), WorkDivBasis(24)
@@ -5435,18 +5438,19 @@ CONTAINS
        stat = .TRUE.
        Basis = 0.0d0
        FBasis = 0.0d0
-       DivFBasis = 0.0d0
+       IF (PRESENT(DivFBasis)) DivFBasis = 0.0d0
        DivBasis = 0.0d0
        LF = 0.0d0
 
        dLbasisdx = 0.0d0      
        n = Element % TYPE % NumberOfNodes
        dim = Element % TYPE % DIMENSION
-       ! cdim = CoordinateSystemDimension()
+       cdim = CoordinateSystemDimension()
        
        IF ( Element % TYPE % ElementCode == 101 ) THEN
           detF = 1.0d0
           Basis(1) = 1.0d0
+          IF (PRESENT(dBasisdx)) dBasisdx(1,:) = 0.0d0
           RETURN
        END IF
 
@@ -5516,7 +5520,24 @@ CONTAINS
        ! it generalizes to other cases. For example general quadrilaterals may now 
        ! be handled in the same way.
        !---------------------------------------------------------------------------
-
+       IF (PRESENT(dBasisdx) .AND. cdim == dim) THEN
+         LG = 0.0d0
+         IF (cdim == dim) THEN
+           SELECT CASE(Element % TYPE % ElementCode / 100)
+           CASE(3,4)
+             LG(1,1) = 1.0d0/detF * LF(2,2)
+             LG(1,2) = -1.0d0/detF * LF(1,2)
+             LG(2,1) = -1.0d0/detF * LF(2,1)
+             LG(2,2) = 1.0d0/detF * LF(1,1)
+           CASE(5,6,7,8)
+             CALL InvertMatrix3x3(LF,LG,detF)       
+           CASE DEFAULT
+             CALL Fatal('ElementDescription::FaceElementInfo','Unsupported element type')
+           END SELECT
+           LG(1:dim,1:dim) = TRANSPOSE( LG(1:dim,1:dim) )
+         END IF
+       END IF
+       
        SELECT CASE(Element % TYPE % ElementCode / 100)
        CASE(2)
          ! TO DO: Implement possible sign reversions
@@ -6292,9 +6313,31 @@ CONTAINS
            
            DivBasis(j) = 1.0d0/DetF * DivBasis(j)
          END DO
-         ! DetF = ABS(DetF)
+         ! Make the returned value DetF to act as a metric term for integration
+         ! over the volume of the element:
+         IF (PRESENT(LeftHanded)) LeftHanded = detF < 0.0d0
+         DetF = ABS(DetF)
        END IF
 
+       ! ----------------------------------------------------------------------
+       ! Get global first derivatives of the nodal basis functions if wanted:
+       ! ----------------------------------------------------------------------
+       IF ( PRESENT(dBasisdx) ) THEN
+         dBasisdx = 0.0d0
+         IF (cdim == dim) THEN       
+           DO i=1,n
+             DO j=1,dim
+               DO k=1,dim
+                 dBasisdx(i,j) = dBasisdx(i,j) + dLBasisdx(i,k)*LG(j,k)
+               END DO
+             END DO
+           END DO
+         ELSE
+           CALL Warn('ElementDescription::FaceElementInfo', &
+               'Cannot return gradient for elements embedded in a higher-dimensional space')
+         END IF
+       END IF
+       
        IF (PRESENT(F)) F = LF
        IF (PRESENT(DivFBasis)) DivFBasis(1:DOFs) = DivBasis(1:DOFs)
 !-----------------------------------------------------------------------------

@@ -243,7 +243,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   CHARACTER(LEN=MAX_NAME_LEN):: CoilCurrentName
   TYPE(Variable_t), POINTER :: CoilCurrentVar
   REAL(KIND=dp) :: CurrAmp
-  LOGICAL :: UseCoilCurrent, ElemCurrent, ElectroDynamics, EigenSystem
+  LOGICAL :: UseCoilCurrent, ElemCurrent, ElectroDynamics, Darwin, EigenSystem
   TYPE(Solver_t), POINTER :: pSolver 
 
   
@@ -261,6 +261,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   
   EigenSystem = GetLogical( SolverParams, 'Eigen Analysis', Found )
   ElectroDynamics = GetLogical( SolverParams, 'Electrodynamics Model', Found )
+  Darwin = ListGetLogical( SolverParams, 'Darwin model', Found )
 
   CALL EdgeElementStyle(SolverParams, PiolaVersion, QuadraticApproximation = SecondOrder )
   
@@ -496,7 +497,6 @@ CONTAINS
          END IF
          ConstraintActive = GetLogical( CompParams, 'Activate Constraint', Found)
 !        IF(.NOT.Found .AND. CoilType /= 'stranded') ConstraintActive = .TRUE.
-         IF(.NOT.Found ) ConstraintActive = .FALSE.
        END IF
 
        LaminateStack = .FALSE.
@@ -1503,20 +1503,21 @@ END BLOCK
 
        ! If we calculate a coil, user can request that the nodal degrees of freedom are not used
        ! --------------------------------------------------------------------------------------------
-       NONCOIL_CONDUCTOR: IF (ConstraintActive .AND. (SUM(ABS(C)) > AEPS .OR. ElectroDynamics) ) THEN
+       NONCOIL_CONDUCTOR: IF (ConstraintActive .AND. (SUM(ABS(C)) > AEPS .OR. ElectroDynamics .OR. &
+           Darwin) ) THEN
           !
-          ! The constraint equation: -div(C*(j*omega*A+grad(V)))=0
+          ! The constraint equation: in the basic case -div(C*(j*omega*A+grad(V)))=0
           ! --------------------------------------------------------
           DO i=1,np
             p = i
             DO q=1,np
-
+              IF(ElectroDynamics .OR. Darwin) THEN             
+                DAMP(p,q) = DAMP(p,q) + P_ip*SUM(dBasisdx(q,:)*dBasisdx(p,:))*detJ*IP % s(t)
+              END IF
+              
               ! Compute the conductivity term <C grad V,grad v> for stiffness 
               ! matrix (anisotropy taken into account)
               ! -------------------------------------------
-              IF(ElectroDynamics) THEN             
-                DAMP(p,q) = DAMP(p,q) + P_ip*SUM(dBasisdx(q,:)*dBasisdx(p,:))*detJ*IP % s(t)
-              END IF
               STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(q,:)) * dBasisdx(p,:))*detJ*IP % s(t)
             END DO
             DO j=1,nd-np
@@ -1537,7 +1538,7 @@ END BLOCK
               ! ------------------------------------------------
               STIFF(q,p) = STIFF(q,p) + SUM(MATMUL(C, dBasisdx(i,:))*WBasis(j,:))*detJ*IP % s(t)
 
-              IF(ElectroDynamics) THEN             
+              IF(ElectroDynamics .OR. Darwin) THEN             
                 DAMP(q,p) = DAMP(q,p) + &
                        P_ip * SUM( WBasis(j,:)*dBasisdx(i,:) )*detJ*IP % s(t)
               END IF

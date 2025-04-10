@@ -573,7 +573,7 @@ CONTAINS
 
       ELSE
         PCondType = PRECOND_NONE
-        CALL Warn( 'IterSolve', 'Unknown preconditioner type, feature disabled.' )
+        CALL Warn( 'IterSolve', 'Unknown preconditioner type: '//TRIM(str)//', feature disabled.' )
       END IF
       
       IF ( .NOT. ListGetLogical( Params, 'No Precondition Recompute',GotIt ) ) THEN

@@ -193,7 +193,6 @@ Boundary Condition 5
    alpha = Real 1
 End
 
-Solver 3 :: Reference Norm = Real 6.77909816E+01
-Solver 3 :: Reference Norm Tolerance = Real 1e-3 
-$fprintf( stderr, "TEST CASE 1\n");
-RUN
+Solver 1 :: Reference Norm = 6.01689265E-01
+Solver 3 :: Reference Norm = 7.28274249E+01
+Solver 3 :: Reference Norm Tolerance = 1e-3 

@@ -788,6 +788,10 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    str = LagrangeMultiplierName( pSolver )
    LagrangeVar => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE.)
 
+   IF(ASSOCIATED(LagrangeVar) ) THEN
+     CALL Info('MagnetoDynamicsCalcFields','Using Lagrange multiplier: '//TRIM(LagrangeVar % Name),Level=20)
+   END IF
+   
    MFD => VariableGet( Mesh % Variables, 'Magnetic Flux Density' )
    EL_MFD => VariableGet( Mesh % Variables, 'Magnetic Flux Density E' )
 

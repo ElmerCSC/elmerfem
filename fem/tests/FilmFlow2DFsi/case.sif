@@ -40,7 +40,8 @@ Simulation
 End
 
 Constants
-  Gravity(4) = 0 -1 0 9.82
+! Not active in the test.
+!  Gravity(4) = 0 -1 0 9.82
 End
 
 Body 1

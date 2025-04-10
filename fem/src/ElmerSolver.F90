@@ -61,6 +61,7 @@
      USE MainUtils
      USE OptimizationUtils
      USE SolverUtils, ONLY: GetControlValue
+     USE ElementUtils, ONLY: FreeMatrix, TangentDirections
     
 !------------------------------------------------------------------------------
      IMPLICIT NONE

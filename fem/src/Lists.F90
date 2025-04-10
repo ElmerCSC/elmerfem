@@ -942,8 +942,17 @@ CONTAINS
         ptr % Secondary = Secondary
       END IF
       
-      IF ( PRESENT( TYPE ) ) ptr % TYPE = TYPE
+      IF ( PRESENT( TYPE ) ) THEN
+        ptr % TYPE = TYPE
+      ELSE
+        IF(.NOT. PRESENT(Perm)) THEN
+          IF(SIZE(Values) == DOFs ) ptr % Type = Variable_global
+        END IF
+      END IF
+        
       IF ( PRESENT( Output ) ) ptr % Output = Output
+
+      
 !------------------------------------------------------------------------------
     END SUBROUTINE VariableAdd
 !------------------------------------------------------------------------------
@@ -1472,6 +1481,23 @@ CONTAINS
          RETURN
       END IF
 
+      ! If the variable is of type "global" do not do all the stupid hazzle to interpolate it. 
+      IF( pVar % TYPE == Variable_global ) THEN
+        IF(.NOT. ASSOCIATED(Var)) THEN
+          ALLOCATE(Var)
+        END IF
+        IF(.NOT. ASSOCIATED(Var % Values)) THEN
+          ALLOCATE(Var % Values(SIZE(pVar % Values)))
+          Var % Values = pVar % Values
+          CALL VariableAdd( Variables, PVar % PrimaryMesh, PVar % Solver, &
+              PVar % Name, PVar % DOFs, Var % Values, &
+              Output = PVar % Output, TYPE = pVar % TYPE ) 
+          Var => VariableGet( Variables, Name, ThisOnly=.TRUE. )
+        END IF
+        Var % Values = pVar % Values
+        RETURN
+      END IF
+              
 !------------------------------------------------------------------------------
       IF ( .NOT.ASSOCIATED( Tmp ) ) THEN
          GlobalBubbles = .FALSE.

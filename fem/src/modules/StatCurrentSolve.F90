@@ -77,7 +77,7 @@ SUBROUTINE StatCurrentSolver_Init( Model,Solver,dt,TransientSimulation)
     END IF
 
     ! If library adaptivity is compiled with, use that by default.
-#ifdef LIBRARY_ADAPTIVIVTY
+#ifdef LIBRARY_ADAPTIVITY
     CALL ListAddNewLogical(Params,'Library Adaptivity',.TRUE.)
 #endif
         

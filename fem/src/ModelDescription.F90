@@ -3137,7 +3137,11 @@ CONTAINS
             k = 1
             j = i+1
             DO WHILE( MeshName(j:j) /= CHAR(0) )
-              IF ( Mesh % Name(k:k) /= MeshName(j:j) ) THEN
+              IF ( k>LEN(Mesh % Name) ) THEN
+                Found = .FALSE.
+                EXIT
+              END IF
+              IF (Mesh % Name(k:k) /= MeshName(j:j) ) THEN
                 Found = .FALSE.
                 EXIT
               END IF

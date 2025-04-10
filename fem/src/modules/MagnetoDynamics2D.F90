@@ -242,17 +242,16 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
 !$omp parallel do private(Element, n, nd, BC,Found, t)
     DO t=1,active
       Element => GetBoundaryElement(t)
-      BC=>GetBC( Element )
+      BC => GetBC( Element )
       IF(.NOT.ASSOCIATED(BC)) CYCLE
 
+      n  = GetElementNOFNodes( Element )
+      nd = GetElementNOFDOFs( Element )
+
       IF(GetLogical(BC,'Infinity BC',Found)) THEN
-         n  = GetElementNOFNodes( Element )
-         nd = GetElementNOFDOFs( Element )
-         CALL LocalMatrixInfinityBC(Element, n, nd)
-      ELSE IF(GetLogical(BC,'Air Gap',Found)) THEN
-         n  = GetElementNOFNodes( Element )
-         nd = GetElementNOFDOFs( Element )
-         CALL LocalMatrixAirGapBC(Element, BC, n, nd)
+        CALL LocalMatrixInfinityBC(Element, n, nd)
+      ELSE 
+        CALL LocalMatrixBC(Element, BC, n, nd)
       END IF
     END DO
 !$omp end parallel do
@@ -1364,31 +1363,39 @@ END SUBROUTINE ! }}}
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixAirGapBC(Element, BC, n, nd )
+  SUBROUTINE LocalMatrixBC(Element, BC, n, nd )
 !------------------------------------------------------------------------------
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ
-    LOGICAL :: Stat, Found
+    LOGICAL :: Stat, Found, GotAirGap, GotSurfCurr
     INTEGER :: t
     TYPE(GaussIntegrationPoints_t) :: IP
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), &
-            mu,AirGapLength(nd), AirGapMu(nd), AirGapL
+            mu,AirGapLength(nd), AirGapMu(nd), SurfCurr(nd), AirGapL, SurfC, x
     TYPE(ValueList_t), POINTER :: BC
     TYPE(Nodes_t) :: Nodes
     SAVE Nodes
     !$OMP THREADPRIVATE(Nodes)
 !------------------------------------------------------------------------------
+
+    GotAirGap = ListGetLogical( BC,'Air Gap', Found ) 
+    SurfCurr = GetReal( BC, 'Surface Current', GotSurfCurr )
+
+    IF(.NOT. (GotAirGap .OR. GotSurfCurr)) RETURN
+
+    IF( GotAirGap ) THEN
+      AirGapLength = GetReal( BC, 'Air Gap Length',Found) 
+      IF(.NOT. Found) CALL Fatal('LocalMatrixBC', '"Air Gap Length" not found!')
+      AirGapMu = GetReal( BC, 'Air Gap Relative Permeability', Found)
+      IF (.NOT. Found) AirGapMu = 1.0_dp
+    END IF
+    
     CALL GetElementNodes( Nodes, Element )
     STIFF = 0._dp
     FORCE = 0._dp
-
-    AirGapLength = ListGetConstReal( BC, 'Air Gap Length', UnfoundFatal = .TRUE.)
-
-    AirGapMu = ListGetConstReal( BC, 'Air Gap Relative Permeability', Found)
-    IF (.NOT. Found) AirGapMu=1.0_dp
-
+      
     !Numerical integration:
     !----------------------
     IP = GaussPoints( Element )
@@ -1398,16 +1405,26 @@ END SUBROUTINE ! }}}
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
               IP % W(t), detJ, Basis, dBasisdx )
 
-      mu = 4*pi*1d-7*SUM(Basis(1:n)*AirGapMu(1:n))
-      AirGapL = SUM(Basis(1:n)*AirGapLength(1:n))
-
-      STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + IP % s(t) * DetJ * &
-          AirGapL/mu*MATMUL(dBasisdx, TRANSPOSE(dBasisdx))
-
+      IF ( CSymmetry ) THEN
+        x = SUM( Basis(1:n) * Nodes % x(1:n) )
+        detJ = detJ * x
+      END IF
+      
+      IF( GotAirGap ) THEN
+        mu = 4*pi*1d-7*SUM(Basis(1:n)*AirGapMu(1:n))
+        AirGapL = SUM(Basis(1:n)*AirGapLength(1:n))
+        STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + IP % s(t) * DetJ * &
+            AirGapL/mu*MATMUL(dBasisdx, TRANSPOSE(dBasisdx))
+      END IF
+      
+      IF( GotSurfCurr ) THEN
+        SurfC = SUM(Basis(1:n)*SurfCurr(1:n))
+        FORCE(1:nd) = FORCE(1:nd) + IP % s(t) * DetJ * SurfC * Basis(1:nd) 
+      END IF        
     END DO
     CALL DefaultUpdateEquations( STIFF, FORCE, UElement=Element )
 !------------------------------------------------------------------------------
-  END SUBROUTINE LocalMatrixAirGapBC
+  END SUBROUTINE LocalMatrixBC
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
@@ -1668,10 +1685,10 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
       
       IF(GetLogical(BC,'Infinity BC',Found)) THEN
         CALL LocalMatrixInfinityBC(  Element, n, nd )
-      ELSE IF(GetLogical(BC,'Air Gap',Found)) THEN
-        CALL LocalMatrixAirGapBC(Element, BC, n, nd)
       ELSE IF( ListCheckPresent( BC,'Layer Electric Conductivity' ) ) THEN
         CALL LocalMatrixSkinBC(Element, BC, n, nd)
+      ELSE 
+        CALL LocalMatrixBC(Element, BC, n, nd)
       END IF
     END DO
 !$omp end parallel do
@@ -2433,32 +2450,43 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixAirGapBC(Element, BC, n, nd )
+  SUBROUTINE LocalMatrixBC(Element, BC, n, nd )
 !------------------------------------------------------------------------------
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ
-    LOGICAL :: Stat, Found
+    LOGICAL :: Stat, Found, GotSurfCurr, GotAirGap
     INTEGER :: i,t
     TYPE(GaussIntegrationPoints_t) :: IP
-    COMPLEX(KIND=dp) :: STIFF(nd,nd), FORCE(nd)
-    REAL(KIND=dp) :: mu,x,AirGapLength(nd), AirGapMu(nd), AirGapL
+    COMPLEX(KIND=dp) :: STIFF(nd,nd), FORCE(nd), SurfC
+    REAL(KIND=dp) :: mu,x,AirGapLength(nd), AirGapMu(nd), SurfCurr(nd), &
+        SurfCurrIm(nd), AirGapL
     TYPE(ValueList_t), POINTER :: BC
     TYPE(Nodes_t) :: Nodes
     SAVE Nodes
     !$OMP THREADPRIVATE(Nodes)
 !------------------------------------------------------------------------------
+
+    GotAirGap = GetLogical( BC,'Air Gap', Found ) 
+    SurfCurr = GetReal( BC, 'Surface Current', GotSurfCurr )
+    SurfCurrIm = GetReal( BC, 'Surface Current Im', Found )
+    GotSurfCurr = GotSurfCurr .OR. Found
+    
+    IF(.NOT. (GotSurfCurr .OR. GotAirGap) ) RETURN
+    
     CALL GetElementNodes( Nodes, Element )
     STIFF = 0._dp
     FORCE = 0._dp
 
-    AirGapLength=GetConstReal( BC, 'Air Gap Length', Found)
-    IF (.NOT. Found) CALL Fatal('LocalMatrixAirGapBC', 'Air Gap Length not found!')
-
-    AirGapMu=GetConstReal( BC, 'Air Gap Relative Permeability', Found)
-    IF (.NOT. Found) AirGapMu=1.0_dp
-
+    IF( GotAirGap ) THEN
+      AirGapLength = GetReal( BC, 'Air Gap Length',Found )
+      IF(.NOT. Found) CALL Fatal('LocalMatrixBC', '"Air Gap Length" not found!')
+      AirGapMu = GetReal( BC, 'Air Gap Relative Permeability', Found)
+      IF (.NOT. Found) AirGapMu = 1.0_dp
+    END IF
+           
+    
     !Numerical integration:
     !----------------------
     IP = GaussPoints( Element )
@@ -2472,17 +2500,23 @@ CONTAINS
         x = SUM( Basis(1:n) * Nodes % x(1:n) )
         detJ = detJ * x
       END IF
-      
-      mu = 4*pi*1d-7*SUM(Basis(1:n)*AirGapMu(1:n))
-      AirGapL = SUM(Basis(1:n)*AirGapLength(1:n))
 
-      STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + IP % s(t) * DetJ * &
-          AirGapL/mu*MATMUL(dBasisdx, TRANSPOSE(dBasisdx))
-      
+      IF( GotAirGap ) THEN
+        mu = 4*pi*1d-7*SUM(Basis(1:n)*AirGapMu(1:n))
+        AirGapL = SUM(Basis(1:n)*AirGapLength(1:n))        
+        STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + IP % s(t) * DetJ * &
+            AirGapL/mu*MATMUL(dBasisdx, TRANSPOSE(dBasisdx))
+      END IF
+
+      IF( GotSurfCurr ) THEN
+        SurfC = CMPLX( SUM(Basis(1:n)*SurfCurr(1:n)), SUM(Basis(1:n)*SurfCurrIm(1:n)))
+        FORCE(1:nd) = FORCE(1:nd) + IP % s(t) * DetJ * SurfC * Basis(1:nd) 
+      END IF        
     END DO
+    
     CALL DefaultUpdateEquations( STIFF, FORCE, UElement=Element )
 !------------------------------------------------------------------------------
-  END SUBROUTINE LocalMatrixAirGapBC
+  END SUBROUTINE LocalMatrixBC
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------

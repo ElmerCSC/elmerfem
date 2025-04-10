@@ -60,7 +60,8 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND USE_MACOS_PACKAGE_MANAGER)
   elseif(NOT DEFINED MACPORTS_PREFIX AND NOT DEFINED HOMEBREW_PREFIX)
     message(SEND_ERROR "No package manager detected - install MacPorts or Homebrew")
   endif()
-endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND USE_MACOS_PACKAGE_MANAGER)
+# endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 
 
 # SET(CMAKE_MODULE_PATH "${CMAKE_ROOT}/Modules;${PROJECT_SOURCE_DIR}/cmake/Modules")

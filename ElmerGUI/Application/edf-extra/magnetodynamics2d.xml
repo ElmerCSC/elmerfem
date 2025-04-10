@@ -96,6 +96,10 @@
          </Parameter>
 
          <Parameter Widget="Label" > <Name> Neumann conditions </Name> </Parameter>
+         <Parameter  Widget="Edit">
+           <Name> Surface Current </Name>
+           <Whatis> Give surface current (per unit lenght) for this boundary. </Whatis>
+         </Parameter>
 
 		 <Parameter Widget="CheckBox" >
             <Name> Infinity BC </Name>
@@ -240,7 +244,16 @@
          </Parameter>
 
          <Parameter Widget="Label" > <Name> Neumann conditions </Name> </Parameter>
-	    <Parameter Widget="CheckBox" >
+         <Parameter  Widget="Edit">
+           <Name> Surface Current </Name>
+           <Whatis> Give surface current (per unit lenght) for this boundary. </Whatis>
+         </Parameter>
+         <Parameter  Widget="Edit">
+           <Name> Surface Current Im </Name>
+           <Whatis> Give imaginary surface current (per unit lenght) for this boundary. </Whatis>
+         </Parameter>
+
+	 <Parameter Widget="CheckBox" >
             <Name> Infinity BC </Name>
             <Type> Logical </Type>
             <Whatis> Use a farfield condition for the vector potential. </Whatis>

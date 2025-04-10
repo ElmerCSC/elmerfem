@@ -2281,7 +2281,7 @@ SUBROUTINE SolveHypre(Matrix, XVec, RHSVec, Solver, ParallelInfo, SplittedMatrix
 
     IF( DoAMS ) THEN
       IF(Matrix % NumberOfRows > Solver % Mesh % NumberOfEdges ) THEN
-        CALL Fatal(Caller,'More unknowns that edges, current Hypre AMS can not be used!')
+!       CALL Fatal(Caller,'More unknowns that edges, current Hypre AMS can not be used!')
       END IF
 
       CALL PrepareHypreAMS() 
@@ -2368,12 +2368,20 @@ CONTAINS
           k=ind(1); ind(1)=ind(2);ind(2)=k
         END IF
       END IF        
-      CALL List_AddToMatrixElement(gm % listmatrix,i,ind(1),-1._dp)
-      CALL List_AddToMatrixElement(gm % listmatrix,i,ind(2), 1._dp)
+      IF(Matrix % Complex) THEN
+        CALL List_AddToMatrixElement(gm % listmatrix,2*i-1,ind(1),-1._dp)
+        CALL List_AddToMatrixElement(gm % listmatrix,2*i-1,ind(2), 1._dp)
+        CALL List_AddToMatrixElement(gm % listmatrix,2*i,ind(1),-1._dp)
+        CALL List_AddToMatrixElement(gm % listmatrix,2*i,ind(2), 1._dp)
+      ELSE
+        CALL List_AddToMatrixElement(gm % listmatrix,i,ind(1),-1._dp)
+        CALL List_AddToMatrixElement(gm % listmatrix,i,ind(2), 1._dp)
+      END IF
     END DO
     CALL List_tocrsMatrix(gm)
     
     nnd = Mesh % NumberOfEdges
+    IF(Matrix % Complex) nnd=nnd*2
     ALLOCATE(xx_d(nnd),yy_d(nnd),zz_d(nnd) )
     CALL CRS_MatrixVectorMultiply(gm,Mesh % Nodes % x,xx_d)
     CALL CRS_MatrixVectorMultiply(gm,Mesh % Nodes % y,yy_d)

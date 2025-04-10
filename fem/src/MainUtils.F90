@@ -47,7 +47,9 @@ MODULE MainUtils
   Use BlockSolve
   USE IterSolve, ONLY : NumericalError
   USE LoadMod
-
+#ifdef LIBRARY_ADAPTIVITY
+  USE Adaptivity, ONLY : RefineMesh
+#endif  
 !------------------------------------------------------------------------------
   IMPLICIT NONE
 !------------------------------------------------------------------------------
@@ -2184,7 +2186,7 @@ CONTAINS
 
       IF ( ListGetLogical( Solver % Values,'Calculate '//TRIM(str), Found ) ) THEN
         Var_name = GetVarName(Solver % Variable) // ' '//TRIM(str)
-        Var => VariableGet( Solver % Mesh % Variables, var_name )
+        Var => VariableGet( Solver % Mesh % Variables, var_name, .TRUE. )
         IF ( .NOT. ASSOCIATED(Var) ) THEN
           ALLOCATE( Solution(SIZE(Solver % Variable % Values)), STAT = AllocStat )
           IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for '//TRIM(str))
@@ -5076,7 +5078,6 @@ CONTAINS
      Parallel = Solver % Parallel 
      !------------------------------------------------------------------------------
 
-
      IF( Solver % Mesh % Changed .OR. Solver % NumberOfActiveElements <= 0 ) THEN
        Solver % NumberOFActiveElements = 0
        EquationName = ListGetString( Solver % Values, 'Equation', Found)
@@ -5143,9 +5144,15 @@ BLOCK
          END IF
        END IF
 
+       IF ( ASSOCIATED(Solver  % Matrix) ) THEN
+          IF ( ASSOCIATED(Solver  % Matrix % ParMatrix) ) THEN
+            ParEnv => Solver % Matrix % ParMatrix % ParEnv
+          END IF
+       END IF
+
        CALL ParallelActive( MeActive )
        n = COUNT(ParEnv % Active)
-       
+
        IF ( n>0 .AND. n<ParEnv % PEs ) THEN
          IF ( ASSOCIATED(Solver % Matrix) ) THEN
            IF ( Solver % Matrix % Comm /= ELMER_COMM_WORLD .AND. Solver % Matrix % Comm /= MPI_COMM_NULL ) &
@@ -5217,11 +5224,11 @@ BLOCK
        ! IF (.NOT. ASSOCIATED(Solver % Matrix) ) RETURN
        ! or some such .... )
 
-       IF(.NOT. MeActive .AND. ChangedActiveParts) RETURN
+       IF(.NOT. MeActive .AND. n>0) RETURN
 END BLOCK
      END IF
 
-       
+
      IF ( ASSOCIATED(Solver % Matrix) ) THEN
        IF ( Parallel .AND. MeActive ) THEN
          IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % GInterface) ) THEN
@@ -5256,6 +5263,7 @@ END BLOCK
      ELSE IF (.NOT.SlaveNotParallel) THEN
        Parenv % ActiveComm = ELMER_COMM_WORLD
      END IF
+
 
      ! This is more featured version than the original one with just one flag.
      ! This way different solvers can detect when their mesh has been updated. 
@@ -5537,7 +5545,7 @@ END BLOCK
        rt0 = RealTime()
      END IF
 
-     Solver % Mesh % OutputActive = .TRUE.
+     IF (.NOT. Solver % Mesh % AdaptiveDepth > 0) Solver % Mesh % OutputActive = .TRUE.
      TimeDerivativeActive = TransientSimulation
 
 !----------------------------------------------------------------------
