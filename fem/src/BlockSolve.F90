@@ -30,8 +30,20 @@
 
 MODULE BlockSolve
 
- USE DefUtils
+ USE ParallelUtils 
+ USE Integration
+ USE IterativeMethods, ONLY : PseudoZDotProd
+ USE IterSolve, ONLY : IterSolver
+ USE ElementDescription, ONLY : ElementInfo, EdgeElementInfo
+ USE SolverUtils, ONLY : LagrangeMultiplierName, SolveLinearSystem, ScaleLinearSystem, &
+     BackScaleLinearSystem, AMGXMatrixVectorMultiply, AMGXSolver, DiagonalMatrixSumming, &
+     StructureCouplingAssembly, FSICouplingAssembly, SaveLinearSystem, &
+     MassMatrixAssembly, VectorValuesRange, LaplaceMatrixAssembly
+ USE MeshUtils, ONLY : SaveProjector   
+ USE DefUtils, ONLY : DefaultSolve, GetElementDOFs, GetElementNodes, GetLogical
  USE ListMatrix
+ USE ElementUtils, ONLY : FreeMatrix
+ USE MatrixAssembly, ONLY : AddToMatrixElement
  
  IMPLICIT NONE
 
@@ -5166,8 +5178,11 @@ END MODULE BlockSolve
 !------------------------------------------------------------------------------
 SUBROUTINE BlockSolveExt(A,x,b,Solver)
 !------------------------------------------------------------------------------
-    USE BlockSolve
-
+    USE Types
+    USE BlockSolve, ONLY: BlockSolveInt 
+    USE Lists, ONLY : ListGetLogical, ListAddLogical
+    IMPLICIT NONE
+    
     TYPE(Matrix_t), POINTER :: A
     TYPE(Solver_t) :: Solver
     REAL(KIND=dp) :: x(:),b(:)

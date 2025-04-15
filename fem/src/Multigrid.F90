@@ -53,6 +53,15 @@ MODULE Multigrid
    
    IMPLICIT NONE
 
+   INTERFACE
+     SUBROUTINE BlockSolveExt(A,x,b,Solver)
+       USE Types
+       TYPE(Matrix_t), POINTER :: A
+       TYPE(Solver_t) :: Solver
+       REAL(KIND=dp) :: x(:),b(:)
+     END SUBROUTINE BlockSolveExt
+   END INTERFACE
+   
 
 CONTAINS
 
@@ -907,14 +916,14 @@ CONTAINS
        TYPE(Element_t), POINTER :: Element
        TYPE(ValueList_t), POINTER :: Params
 
-       INTERFACE
-         SUBROUTINE BlockSolveExt(A,x,b,Solver)
-           USE Types
-           TYPE(Matrix_t), POINTER :: A
-           TYPE(Solver_t) :: Solver
-           REAL(KIND=dp) :: x(:),b(:)
-         END SUBROUTINE BlockSolveExt 
-       END INTERFACE
+ !      INTERFACE
+ !        SUBROUTINE BlockSolveExt(A,x,b,Solver)
+ !          USE Types
+ !          TYPE(Matrix_t), POINTER :: A
+ !          TYPE(Solver_t) :: Solver
+ !          REAL(KIND=dp) :: x(:),b(:)
+ !        END SUBROUTINE BlockSolveExt 
+ !      END INTERFACE
 !------------------------------------------------------------------------------
        tt = CPUTime()
 

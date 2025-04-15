@@ -59,6 +59,7 @@
 
      USE Lists
      USE MainUtils
+     USE DefUtils, ONLY : GetSimulation, GetCompilationDate, GetRevision, GetVersion
      USE OptimizationUtils
      USE SolverUtils, ONLY: GetControlValue
      USE ElementUtils, ONLY: FreeMatrix, TangentDirections

@@ -855,18 +855,18 @@ CONTAINS
 !> The structures need to be allocated externally beforehand. 
 !------------------------------------------------------------------------------
     SUBROUTINE VariableAdd( Variables,Mesh,Solver,Name,DOFs,Values,&
-      Perm,Output,Secondary, TYPE )
+      Perm,Output,Secondary,TYPE )
 !------------------------------------------------------------------------------
       TYPE(Variable_t), POINTER :: Variables
       TYPE(Mesh_t),   TARGET :: Mesh
       TYPE(Solver_t), TARGET, OPTIONAL :: Solver
       CHARACTER(LEN=*) :: Name
       INTEGER :: DOFs
-      INTEGER, OPTIONAL :: TYPE
       REAL(KIND=dp), POINTER :: Values(:)
-      LOGICAL, OPTIONAL :: Output
       INTEGER, OPTIONAL, POINTER :: Perm(:)
+      LOGICAL, OPTIONAL :: Output
       LOGICAL, OPTIONAL :: Secondary
+      INTEGER, OPTIONAL :: TYPE
 !------------------------------------------------------------------------------
       LOGICAL :: stat
       TYPE(Variable_t), POINTER :: ptr,ptr1,ptr2

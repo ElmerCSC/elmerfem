@@ -38,7 +38,7 @@
 !> \{
 
 !--------------------------------------------------------------------------------------------------------
-!> Module for determinishting meshing routines without adaptivivity.
+!> Module for deterministic meshing routines without adaptivity.
 !--------------------------------------------------------------------------------------------------------
 MODULE MeshGenerate
 
