@@ -58,13 +58,30 @@
 !------------------------------------------------------------------------------
 
      USE Lists
-     USE MainUtils
-     USE DefUtils, ONLY : GetSimulation, GetCompilationDate, GetRevision, GetVersion
-     USE OptimizationUtils
-     USE SolverUtils, ONLY: GetControlValue
-     USE ElementUtils, ONLY: FreeMatrix, TangentDirections
-    
-!------------------------------------------------------------------------------
+     USE SParIterGlobals
+     USE ParallelUtils, ONLY : ParallelInit, ParallelFinalize 
+     USE ElementUtils, ONLY: FreeMatrix, TangentDirections, CreateMatrix
+     USE ElementDescription, ONLY : InitializeElementDescriptions
+#ifdef HAVE_EXTOPTIM
+     USE OptimizationUtils, ONLY : ControlParameters, ControlResetMesh, &
+         ExternalOptimization_minpack, ExternalOptimization_newuoa, &
+         ExternalOptimization_bobyqa
+#else
+     USE OptimizationUtils, ONLY : ControlParameters, ControlResetMesh
+#endif
+     USE ModelDescription , ONLY : SaveResult, OutputPath, InFileUnit, LoadInputFile, &
+         ReloadInputFile, LoadRestartFile, GetProcAddr, LoadModel, FreeModel, WritePostFile, &
+         CompleteModelKeywords, SetIntegerParametersMatc, SetRealParametersMatc
+     USE SolverUtils, ONLY: GetControlValue, FinalizeLumpedMatrix, UpdateExportedVariables
+     USE MeshUtils, ONLY : MeshExtrude, MeshExtrudeSlices, PeriodicProjector, &
+         CoordinateTransformation, InitializeElementDescriptions, ReleaseMesh, &
+         CalculateMeshPieces, SetActiveElementsTable, SetCurrentMesh
+     USE MainUtils, ONLY : AddEquationBasics, AddEquationSolution, AddExecWhenFlag, &
+         PredictorCorrectorControl, SingleSolver, SolveEquations, SolverActivate, &
+         SwapMesh
+     USE DefUtils, ONLY : GetSimulation, GetCompilationDate, GetRevision, GetVersion, &
+         GetCReal, GetLogical
+
      IMPLICIT NONE
 !------------------------------------------------------------------------------
 
@@ -2622,10 +2639,12 @@
 !> Execute the individual solvers in defined sequence. 
 !------------------------------------------------------------------------------
    SUBROUTINE ExecSimulation(TimeIntervals,  CoupledMinIter, &
-              CoupledMaxIter, OutputIntervals, Transient, Scanning)
+       CoupledMaxIter, OutputIntervals, Transient, Scanning)
+!------------------------------------------------------------------------------     
+     USE Integration, ONLY : GaussPointsInitialized, GaussPointsInit
      IMPLICIT NONE
-      INTEGER :: TimeIntervals,CoupledMinIter, CoupledMaxIter,OutputIntervals(:)
-      LOGICAL :: Transient,Scanning
+     INTEGER :: TimeIntervals,CoupledMinIter, CoupledMaxIter,OutputIntervals(:)
+     LOGICAL :: Transient,Scanning
 !------------------------------------------------------------------------------
      INTEGER :: interval, timestep, i, j, k, n
      REAL(KIND=dp) :: dt, ddt, dtfunc, timeleft

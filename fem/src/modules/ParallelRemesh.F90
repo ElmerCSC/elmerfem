@@ -46,6 +46,7 @@ SUBROUTINE ParallelRemesh( Model,Solver,dt,TransientSimulation )
   USE MeshPartition
   USE MeshRemeshing
   USE MainUtils
+  USE DefUtils, ONLY : GetSolverParams
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Model_t)  :: Model
