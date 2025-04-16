@@ -3869,6 +3869,8 @@ RETURN
   SUBROUTINE LocateParticleInMeshMarch( ElementIndex, Rinit, Rfin, Init, &
       ParticleStatus, AccurateAtFace, StopFaceIndex, Lambda, Velo, &
       No, ParticleWallKernel, Particles )
+
+    USE LinearAlgebra, ONLY : SolveLinsys2x2, SolveLinsys3x3
     
     TYPE(Particle_t), POINTER :: Particles
     INTEGER :: ElementIndex

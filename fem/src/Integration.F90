@@ -44,7 +44,6 @@
 MODULE Integration
    USE Types
    USE LoadMod
-   USE LinearAlgebra
 
    IMPLICIT NONE
 

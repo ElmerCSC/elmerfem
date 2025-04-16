@@ -47,8 +47,11 @@
 
 MODULE LumpingUtils
 
+   USE Lists
    USE ElementUtils
-   USE ModelDescription
+   USE ElementDescription
+   USE ParallelUtils
+
    IMPLICIT NONE
 
  CONTAINS

@@ -947,8 +947,8 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE Direct1dSmoother( n, A, M, x, b, r, f, Rounds )
 !------------------------------------------------------------------------------
-        USE DirectSolve
-        USE MeshUtils
+        USE DirectSolve, ONLY : DirectSolver
+        USE MeshUtils, ONLY : DetectExtrudedStructure
 !------------------------------------------------------------------------------
         TYPE(Matrix_t), POINTER :: A, M
         INTEGER :: Rounds
@@ -1309,8 +1309,6 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE Uzawa( n, A, M, x, b, r, Rounds )
 !------------------------------------------------------------------------------
-        USE LinearAlgebra
-
         TYPE(Matrix_t), POINTER :: A,M
         INTEGER :: Rounds, n
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
@@ -1591,7 +1589,6 @@ END DO
 !------------------------------------------------------------------------------
       SUBROUTINE Vanka( n, A, M, x, b, r, Rounds )
 !------------------------------------------------------------------------------
-USE linearalgebra
         TYPE(Matrix_t), POINTER :: A,M
         INTEGER :: Rounds
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)

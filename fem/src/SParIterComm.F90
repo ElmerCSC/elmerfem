@@ -47,7 +47,7 @@
 MODULE SParIterComm
 
   USE Types
-  USE LoadMod
+  USE LoadMod, ONLY : RealTime
   USE SParIterGlobals
 
 #ifdef HAVE_XIOS

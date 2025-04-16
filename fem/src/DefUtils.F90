@@ -5534,6 +5534,7 @@ CONTAINS
   SUBROUTINE DefaultDirichletBCs( USolver,Ux,UOffset,OffDiagonalMatrix)
 !------------------------------------------------------------------------------------------
      USE ElementDescription, ONLY: FaceElementOrientation
+     USE LinearAlgebra, ONLY : SolveLinSys
      IMPLICIT NONE
 
      INTEGER, OPTIONAL :: UOffset

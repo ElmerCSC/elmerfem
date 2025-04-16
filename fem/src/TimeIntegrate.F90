@@ -618,7 +618,6 @@ CONTAINS
    SUBROUTINE FractionalStep( N, dt, MassMatrix, StiffMatrix, &
                    Force, PrevSolution, Beta, Solver )
 !------------------------------------------------------------------------------
-     USE Types
      USE Lists
 
      TYPE(Solver_t) :: Solver
@@ -1097,7 +1096,6 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE FractionalStep_CRS( dt, Matrix, Force, PrevSolution, Solver )
 !------------------------------------------------------------------------------
-     USE Types
      USE Lists
 
      TYPE(Solver_t) :: Solver    

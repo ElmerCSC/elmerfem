@@ -34,7 +34,7 @@
 MODULE ClusteringMethods
   
   USE Lists
-!  USE CRSMatrix
+  USE SParIterGlobals
   USE ElementUtils, ONLY : TangentDirections
   
   IMPLICIT NONE
@@ -730,7 +730,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE ChooseClusterNodes(Amat, Solver, Components, EliminateDir, CF)
 
-    USE MeshUtils    
+    USE MeshUtils, ONLY : DetectExtrudedStructure, DetectExtrudedElements
     
     TYPE(Matrix_t), POINTER  :: Amat
     TYPE(solver_t), TARGET :: Solver

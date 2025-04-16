@@ -50,6 +50,9 @@ MODULE Multigrid
    USE Smoothers
    USE ClusteringMethods
    USE ElementUtils, ONLY : mGetElementDofs
+   USE ElementDescription, ONLY : ElementBasisDegree
+   USE MeshUtils, ONLY : LoadMesh2
+   USE ModelDescription, ONLY : FreeMatrix, UpdateSolverMesh, SetCurrentMesh
    
    IMPLICIT NONE
 
@@ -73,7 +76,6 @@ CONTAINS
     RECURSIVE SUBROUTINE MultiGridSolve( Matrix1, Solution, &
         ForceVector, DOFs, Solver, Level, NewSystem )
 !------------------------------------------------------------------------------
-       USE ModelDescription
        IMPLICIT NONE
 
        TYPE(Matrix_t), POINTER :: Matrix1
@@ -129,7 +131,7 @@ CONTAINS
     RECURSIVE SUBROUTINE GMGSolve( Matrix1, Solution, &
         ForceVector, DOFs, Solver, Level, NewSystem )
 !------------------------------------------------------------------------------
-       USE ModelDescription
+       USE ModelDescription, ONLY : OutputPath
        IMPLICIT NONE
 
        TYPE(Matrix_t), POINTER :: Matrix1
@@ -879,7 +881,7 @@ CONTAINS
     RECURSIVE SUBROUTINE PMGSolve( Matrix1, Solution, &
         ForceVector, DOFs, Solver, Level, NewSystem )
 !------------------------------------------------------------------------------
-       USE ModelDescription
+
        IMPLICIT NONE
 
        TYPE(Matrix_t), POINTER :: Matrix1
@@ -1471,7 +1473,6 @@ CONTAINS
   RECURSIVE SUBROUTINE AMGSolve( Matrix1, Solution, &
     ForceVector, DOFs, Solver, Level, NewSystem )
 !------------------------------------------------------------------------------
-    USE ModelDescription
     IMPLICIT NONE
     
     TYPE(Matrix_t), POINTER :: Matrix1
@@ -5058,7 +5059,6 @@ CONTAINS
   RECURSIVE SUBROUTINE CMGSolve( Matrix1, Solution, &
     ForceVector, DOFs, Solver, Level, NewSystem )
 !------------------------------------------------------------------------------
-    USE ModelDescription
     USE Smoothers
 
     IMPLICIT NONE

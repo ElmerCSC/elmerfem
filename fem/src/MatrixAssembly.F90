@@ -747,7 +747,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 SUBROUTINE NSCondensate( N, Nb, dim, K, F, F1 )
 !------------------------------------------------------------------------------
-    USE LinearAlgebra
+    USE LinearAlgebra, ONLY : InvertMatrix
     INTEGER :: N, Nb, dim
     REAL(KIND=dp) :: K(:,:), F(:)
     REAL(KIND=dp), OPTIONAL :: F1(:)
@@ -800,7 +800,6 @@ END SUBROUTINE NSCondensate
 !------------------------------------------------------------------------------
 SUBROUTINE Condensate( N, K, F, F1 )
 !------------------------------------------------------------------------------
-    USE LinearAlgebra
     INTEGER :: N
     REAL(KIND=dp) :: K(:,:),F(:)
     REAL(KIND=dp), OPTIONAL :: F1(:)
@@ -820,7 +819,7 @@ END SUBROUTINE Condensate
 !------------------------------------------------------------------------------
 SUBROUTINE CondensatePR( N, Nb, K, F, F1 )
 !------------------------------------------------------------------------------
-    USE LinearAlgebra
+    USE LinearAlgebra, ONLY : InvertMatrix
     INTEGER :: N               !< The count of nodal, edge and face degrees of freedom.
     INTEGER :: Nb              !< The count of internal (bubble) degrees of freedom.
     REAL(KIND=dp) :: K(:,:)    !< Local stiffness matrix.
@@ -859,7 +858,7 @@ END SUBROUTINE CondensatePR
 !------------------------------------------------------------------------------
 SUBROUTINE CondensatePC( N, Nb, K, F, F1 )
 !------------------------------------------------------------------------------
-    USE LinearAlgebra
+    USE LinearAlgebra, ONLY : ComplexInvertMatrix
     INTEGER :: N               !< The count of nodal, edge and face degrees of freedom.
     INTEGER :: Nb              !< The count of internal (bubble) degrees of freedom.
     COMPLEX(KIND=dp) :: K(:,:)    !< Local stiffness matrix.
