@@ -37,6 +37,7 @@ MODULE CalvingGeometry
   USE Types
   USE SParIterComm
   USE MainUtils
+  USE DefUtils
 
   IMPLICIT NONE
 
