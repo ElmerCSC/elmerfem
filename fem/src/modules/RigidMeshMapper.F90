@@ -50,6 +50,7 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
   USE ParallelUtils
   USE Types
   USE Lists
+  USE MeshUtils, ONLY: SetMeshSkew, StoreOriginalCoordinates
   USE DefUtils
 
   

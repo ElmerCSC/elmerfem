@@ -47,7 +47,8 @@ MODULE ParticleUtils
   
   USE DefUtils
   USE Lists
-  USE MeshUtils
+  USE ElementUtils, ONLY : FreeMatrix, CopyElementNodesFromMesh
+  USE MeshUtils, ONLY : FindMeshEdges
   USE GeneralUtils
   USE SaveUtils
   
@@ -7206,7 +7207,6 @@ RETURN
 !------------------------------------------------------------------------------
 
     USE DefUtils 
-    USE MeshUtils
     USE ElementDescription
     USE AscBinOutputUtils
     

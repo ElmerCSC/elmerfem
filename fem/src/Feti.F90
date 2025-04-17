@@ -45,6 +45,7 @@
 
 MODULE FetiSolve
 
+  USE MeshUtils, ONLY : FindRigidBodyFixingNodes
   USE DefUtils
   IMPLICIT NONE
 

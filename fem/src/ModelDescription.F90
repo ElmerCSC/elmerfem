@@ -44,7 +44,12 @@
 
 MODULE ModelDescription
 
-    USE MeshUtils
+    USE SParIterGlobals
+    USE ParallelUtils, ONLY : ParallelReduction, ParallelIter, ParallelInitMatrix
+    USE ElementUtils, ONLY : CreateMatrix, FreeMatrix
+    USE MeshUtils, ONLY : AllocateMesh, DetectMortarPairs, Graph_deallocate, &
+        Loadmesh2, MeshStabParams, PrepareMesh, ReleaseMesh, SetMeshDimension, &
+        SetMeshMaxDOFs, SetMeshPartitionOffSet, SplitMeshEqual, SplitMeshLevelSet
     USE LoadMod
     USE BinIO
     USE Messages
@@ -3709,11 +3714,11 @@ CONTAINS
 
     DO i=1,Model % NumberOfBCs
       List => Model % BCs(i) % Values
-      CALL ListObsoliteFatal( List,'Transmittivity','Transmissivity') 
+      CALL ListObsoleteFatal( List,'Transmittivity','Transmissivity') 
     END DO
     DO i=1,Model % NumberOfMaterials
       List => Model % Materials(i) % Values
-      CALL ListObsoliteFatal( List,'Transmittivity','Transmissivity') 
+      CALL ListObsoleteFatal( List,'Transmittivity','Transmissivity') 
     END DO
           
 

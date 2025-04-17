@@ -120,6 +120,7 @@ END SUBROUTINE VectorHelmholtzNodal_Init
 !------------------------------------------------------------------------------
 SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
+  USE MeshUtils, ONLY : FollowCurvedBoundary
   USE DefUtils
   IMPLICIT NONE
 !------------------------------------------------------------------------------

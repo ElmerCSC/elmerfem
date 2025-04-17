@@ -39,33 +39,32 @@
 
 #include "../config.h"
 !------------------------------------------------------------------------------
-!>  Utility routines for the elmer main program.
+!>  Utility routines for the Elmer main program.
 !------------------------------------------------------------------------------
 MODULE MainUtils
-
 !------------------------------------------------------------------------------
   USE BlockSolve
   USE IterSolve, ONLY : NumericalError
-  USE LoadMod, ONLY : execlocalassembly, execsolver
+  USE LoadMod, ONLY : ExecLocalAssembly, ExecSolver
   USE ModelDescription, ONLY : GetProcAddr
-  USE MeshUtils, ONLY : backcoordinatetransformation, colouring_deallocate, &
-      coordinatetransformation, creatediscontmesh, elmercolouringtograph, &
-      elmergraphcolour, elmermeshtodualgraph, graph_deallocate, loadmesh2, &
-      makepermusingmask, meshstabparams, releasemesh, setactiveelementstable, &
-      setcurrentmesh, setmeshmaxdofs, splitmeshequal, transfercoordandtime, &
-      updatesolvermesh
-
   USE MatrixAssembly, ONLY : CreateChildMatrix, GlueLocalSubMatrix, MoveRow, &
       SetMatrixElement
   USE ElementDescription, ONLY : SwapRefElemNodes
   USE ElementUtils, ONLY : CreateOdeMatrix, CreateMatrix
   
-  USE SolverUtils, ONLY : calculateentityweights, &
-      calculatenodalweights, checkstepsize, computechange, &
-      computenorm, createipperm, generateprojectors, getpassiveboundary, &
-      initializetimestep, initializetozero, invalidatevariable, &
-      matrixvectormultiply, updatedependentobjects, updateexportedvariables, &
-      finalizelumpedmatrix
+  USE MeshUtils, ONLY : BackCoordinateTransformation, Colouring_deallocate, &
+      CoordinateTransformation, CreateDiscontMesh, ElmerColouringToGraph, &
+      ElmerGraphColour, ElmerMeshToDualGraph, Graph_deallocate, LoadMesh2, &
+      MakePermUsingMask, MeshStabParams, ReleaseMesh, SetActivEelementsTable, &
+      SetCurrentMesh, SetMeshMaxDOFs, SplitMeshEqual, TransferCoordAndTime, &
+      UpdateSolverMesh
+  
+  USE SolverUtils, ONLY : CalculateEntityWeights, &
+      CalculateNodalWeights, CheckStepSize, ComputeChange, &
+      ComputeNorm, CreateIpPerm, GenerateProjectors, GetPassiveBoundary, &
+      InitializeTimestep, InitializeToZero, InvalidateVariable, &
+      MatrixVectorMultiply, UpdateDependentObjects, UpdateExportedVariables, &
+      FinalizeLumpedMatrix
 
   USE DefUtils, ONLY : GetString, GetCReal, GetElementNOFNodes, GetLogical, &
       DefaultDirichletBCs, GetMesh, GetInteger, GetMatrix, GetElementNOFNodes, &

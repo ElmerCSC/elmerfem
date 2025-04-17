@@ -32,6 +32,9 @@ MODULE BlockSolve
 
  USE ParallelUtils 
  USE Integration
+ USE ListMatrix
+ USE ElementUtils, ONLY : FreeMatrix
+ USE MatrixAssembly, ONLY : AddToMatrixElement
  USE IterativeMethods, ONLY : PseudoZDotProd
  USE IterSolve, ONLY : IterSolver
  USE ElementDescription, ONLY : ElementInfo, EdgeElementInfo
@@ -41,9 +44,6 @@ MODULE BlockSolve
      MassMatrixAssembly, VectorValuesRange, LaplaceMatrixAssembly
  USE MeshUtils, ONLY : SaveProjector   
  USE DefUtils, ONLY : DefaultSolve, GetElementDOFs, GetElementNodes, GetLogical
- USE ListMatrix
- USE ElementUtils, ONLY : FreeMatrix
- USE MatrixAssembly, ONLY : AddToMatrixElement
  
  IMPLICIT NONE
 

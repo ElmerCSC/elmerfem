@@ -46,9 +46,13 @@ MODULE Adaptive
 
   USE GeneralUtils
   USE SolverUtils, ONLY : VectorValuesRange
-  USE ElementUtils, ONLY : ElementArea
+  USE ElementUtils, ONLY : ElementArea, mGetElementDOFs
   USE ModelDescription
-  USE MeshUtils
+  USE MeshUtils, ONLY : AllocateMesh, AllocatePDefinitions, FindMeshEdges, &
+      LoadMesh2, MeshStabParams, PrepareMesh, ReleaseMesh, &
+      ReleaseMeshEdgeTables, ReleaseMeshFaceTables, SetActiveElementsTable, &
+      SetCurrentMesh, TransferCoordAndTime, UpdateSolverMesh, WriteMeshToDisk, &
+      WriteMeshToDisk2
   USE MeshRemeshing
   USE SaveUtils, ONLY : SaveGmshOutput
   USE DefUtils, ONLY: GetMaterial, GetReal, GetBodyForce, GetSolverParams, GetLogical, &

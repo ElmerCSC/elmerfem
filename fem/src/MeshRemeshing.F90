@@ -35,7 +35,7 @@ MODULE MeshRemeshing
 USE Types
 USE Lists
 USE Messages
-USE MeshUtils
+USE MeshUtils, ONLY : PrepareMesh
 USE MeshPartition
 USE SparIterComm
 
@@ -291,7 +291,7 @@ SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount, Solver)
 END SUBROUTINE Set_MMG3D_Mesh
 
 
-SUBROUTINE Check_Parameters_Obsolite(SolverParams)
+SUBROUTINE Check_Parameters_Obsolete(SolverParams)
 
   TYPE(ValueList_t), POINTER :: SolverParams
   LOGICAL :: Checked = .FALSE.
@@ -299,25 +299,25 @@ SUBROUTINE Check_Parameters_Obsolite(SolverParams)
   IF(Checked) RETURN
   
   IF( ListCheckPrefix( SolverParams,'RemeshMMG3D') ) THEN
-    CALL Fatal('Check_Parameters_Obsolite','Use "MMG" as prefix instead of "RemeshMMG3D"')
+    CALL Fatal('Check_Parameters_Obsolete','Use "MMG" as prefix instead of "RemeshMMG3D"')
   END IF
-  CALL ListObsoliteFatal(SolverParams,'hmin','MMG hmin')
-  CALL ListObsoliteFatal(SolverParams,'hmax','MMG hmax')
-  CALL ListObsoliteFatal(SolverParams,'hsiz','MMG hsiz')
-  CALL ListObsoliteFatal(SolverParams,'hausd','MMG hausd')
-  CALL ListObsoliteFatal(SolverParams,'hgrad','MMG hgrad')
-  CALL ListObsoliteFatal(SolverParams,'verbosity','MMG verbosity')
-  CALL ListObsoliteFatal(SolverParams,'angle detection','MMG angle detection')
-  CALL ListObsoliteFatal(SolverParams,'no angle detection','MMG no angle detection')
-  CALL ListObsoliteFatal(SolverParams,'increase memory','MMG increase memory')
-  CALL ListObsoliteFatal(SolverParams,'no insert','MMG noinsert')
-  CALL ListObsoliteFatal(SolverParams,'no swap','MMG no swap')
-  CALL ListObsoliteFatal(SolverParams,'no move','MMG no move')
-  CALL ListObsoliteFatal(SolverParams,'no surf','MMG no surf')
+  CALL ListObsoleteFatal(SolverParams,'hmin','MMG hmin')
+  CALL ListObsoleteFatal(SolverParams,'hmax','MMG hmax')
+  CALL ListObsoleteFatal(SolverParams,'hsiz','MMG hsiz')
+  CALL ListObsoleteFatal(SolverParams,'hausd','MMG hausd')
+  CALL ListObsoleteFatal(SolverParams,'hgrad','MMG hgrad')
+  CALL ListObsoleteFatal(SolverParams,'verbosity','MMG verbosity')
+  CALL ListObsoleteFatal(SolverParams,'angle detection','MMG angle detection')
+  CALL ListObsoleteFatal(SolverParams,'no angle detection','MMG no angle detection')
+  CALL ListObsoleteFatal(SolverParams,'increase memory','MMG increase memory')
+  CALL ListObsoleteFatal(SolverParams,'no insert','MMG noinsert')
+  CALL ListObsoleteFatal(SolverParams,'no swap','MMG no swap')
+  CALL ListObsoleteFatal(SolverParams,'no move','MMG no move')
+  CALL ListObsoleteFatal(SolverParams,'no surf','MMG no surf')
 
   Checked = .TRUE.
   
-END SUBROUTINE Check_Parameters_Obsolite
+END SUBROUTINE Check_Parameters_Obsolete
   
   
 
@@ -339,7 +339,7 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams, ReTrial)
     CALL Fatal(FuncName,'"SolverParams" is not associated!')
   END IF
 
-  CALL Check_Parameters_Obsolite(SolverParams)
+  CALL Check_Parameters_Obsolete(SolverParams)
   
   ! Minimal mesh size:  hmin
   hmin = ListGetCReal( SolverParams,'adaptive min h', Found ) 
@@ -502,7 +502,7 @@ SUBROUTINE Set_PMMG_Parameters(SolverParams, ReTrial )
   LOGICAL :: Found,Debug=.FALSE.,ParMMG
   CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="Set_PMMG_Parameters"
 
-  CALL Check_Parameters_Obsolite(SolverParams)
+  CALL Check_Parameters_Obsolete(SolverParams)
   
   ! Minimal mesh size:  hmin
   hmin = ListGetCReal( SolverParams,'adaptive min h', Found ) 
@@ -3665,7 +3665,7 @@ CONTAINS
 
     CALL Info(FuncName,'Setting MMG2D Parameters',Level=20)
 
-    CALL Check_Parameters_Obsolite(SolverParams)
+    CALL Check_Parameters_Obsolete(SolverParams)
     
     ! Minimal mesh size:  hmin
     Hmin = ListGetConstReal( SolverParams, 'mmg hmin', Found)

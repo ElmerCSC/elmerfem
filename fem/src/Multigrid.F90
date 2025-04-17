@@ -49,10 +49,9 @@ MODULE Multigrid
    USE DirectSolve
    USE Smoothers
    USE ClusteringMethods
-   USE ElementUtils, ONLY : mGetElementDofs
+   USE ElementUtils, ONLY : FreeMatrix, mGetElementDofs
    USE ElementDescription, ONLY : ElementBasisDegree
-   USE MeshUtils, ONLY : LoadMesh2
-   USE ModelDescription, ONLY : FreeMatrix, UpdateSolverMesh, SetCurrentMesh
+   USE MeshUtils, ONLY : LoadMesh2, UpdateSolverMesh, SetCurrentmesh
    
    IMPLICIT NONE
 
@@ -6091,9 +6090,8 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE MSolverActivate( Model, Solver, dt, TransientSimulation )
 !------------------------------------------------------------------------------
-     USE MeshUtils
-     TYPE(Model_t)  :: Model
-     TYPE(Solver_t),TARGET :: Solver
+     TYPE(Model_t) :: Model
+     TYPE(Solver_t), TARGET :: Solver
      LOGICAL :: TransientSimulation
      REAL(KIND=dp) :: dt, OrigDT, DTScal
 !------------------------------------------------------------------------------

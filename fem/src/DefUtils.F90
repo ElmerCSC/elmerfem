@@ -49,7 +49,8 @@ MODULE DefUtils
 
 #include "../config.h"
 
-   USE MeshGenerate 
+   USE MeshGenerate
+   USE MeshUtils, ONLY : AllocateElement, SaveParallelInfo
    USE ElementUtils
    USE SolverUtils
    USE CutFEMUtils

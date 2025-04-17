@@ -3301,9 +3301,9 @@ CONTAINS
  
 
 !------------------------------------------------------------------------------
-!> Check that obsolite keyword is not used instead of the new one.
+!> Check that obsolete keyword is not used instead of the new one.
 !------------------------------------------------------------------------------
-   SUBROUTINE ListObsoliteWarn( List,OldName,NewName ) 
+   SUBROUTINE ListObsoleteWarn( List,OldName,NewName ) 
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: OldName,NewName
@@ -3313,17 +3313,17 @@ CONTAINS
 !------------------------------------------------------------------------------
      ptr => ListFind(List,OldName,Found)
      IF( Found ) THEN
-       CALL Warn('ListFatalObsolite',&
+       CALL Warn('ListFatalObsolete',&
            'Use keyword "'//TRIM(NewName)//'" instead of "'//TRIM(OldName)//'"')
      END IF
 !------------------------------------------------------------------------------
-   END SUBROUTINE ListObsoliteWarn
+   END SUBROUTINE ListObsoleteWarn
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-!> Check that obsolite keyword is not used instead of the new one.
+!> Check that obsolete keyword is not used instead of the new one.
 !------------------------------------------------------------------------------
-   SUBROUTINE ListObsoliteFatal( List,OldName,NewName ) 
+   SUBROUTINE ListObsoleteFatal( List,OldName,NewName ) 
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: OldName,NewName
@@ -3333,11 +3333,11 @@ CONTAINS
 !------------------------------------------------------------------------------
      ptr => ListFind(List,OldName,Found)
      IF( Found ) THEN
-       CALL Fatal('ListFatalObsolite',&
+       CALL Fatal('ListFatalObsolete',&
            'Use keyword "'//TRIM(NewName)//'" instead of "'//TRIM(OldName)//'"')
      END IF
 !------------------------------------------------------------------------------
-   END SUBROUTINE ListObsoliteFatal
+   END SUBROUTINE ListObsoleteFatal
 !------------------------------------------------------------------------------
 
    
@@ -10295,7 +10295,7 @@ SUBROUTINE ElmerEvalLuaT(L, ptr, T, F, varcount)
 #endif
   
 !-------------------------------------------------------------------------------
-END SUBROUTINE
+END SUBROUTINE ElmerEvalLuaT
 !-------------------------------------------------------------------------------
 
 !-------------------------------------------------------------------------------
@@ -10320,7 +10320,7 @@ SUBROUTINE ElmerEvalLuaV(L, ptr, T, F, varcount)
 #endif
   
 !-------------------------------------------------------------------------------
-END SUBROUTINE
+END SUBROUTINE ElmerEvalLuaV
 !-------------------------------------------------------------------------------
 
 !-------------------------------------------------------------------------------
@@ -10344,7 +10344,7 @@ SUBROUTINE ElmerEvalLuaS(L, ptr, T, F, varcount)
   CALL Fatal('ElmerEvalLuaV', 'Lua not compiled in.')
 #endif
 !-------------------------------------------------------------------------------
-END SUBROUTINE
+END SUBROUTINE ElmerEvalLuaS
 !-------------------------------------------------------------------------------
 
 

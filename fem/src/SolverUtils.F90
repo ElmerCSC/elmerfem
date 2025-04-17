@@ -57,7 +57,9 @@ MODULE SolverUtils
    USE LumpingUtils
    USE TimeIntegrate
    USE ModelDescription
-   USE MeshUtils
+   USE MeshUtils, ONLY : CommunicateParallelSystemTag, CylinderFit, &
+       DisplaceMesh, FindExtremumNodes, FindMeshEdges, GetLagrangeIndexes, &
+       IntegralProjector, PeriodicProjector, SaveProjector, MakePermUsingMask
    USE ParallelUtils
    USE ParallelEigenSolve
    USE ListMatrix

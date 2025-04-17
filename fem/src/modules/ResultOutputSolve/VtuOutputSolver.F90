@@ -83,7 +83,7 @@ CONTAINS
   ! and honoring discontinuities. 
   !-----------------------------------------------------------------------
   SUBROUTINE AverageBodyFields( Mesh ) 
-    
+    USE MeshUtils, ONLY : CalculateBodyAverage    
     TYPE(Mesh_t), POINTER :: Mesh
 
     TYPE(Variable_t), POINTER :: Var, Var1
@@ -256,6 +256,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 
   USE VtuXMLFile
+  USE MeshUtils, ONLY : CalculateBodyAverage
     
   IMPLICIT NONE
   TYPE(Solver_t) :: Solver

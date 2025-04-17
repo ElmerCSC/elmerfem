@@ -46,7 +46,13 @@
 MODULE MeshPartition
 
   USE Types
-  USE MeshUtils
+  USE ParallelUtils
+  USE CoordinateSystems
+  USE ElementDescription, ONLY : GetElementType
+  USE MeshUtils, ONLY : AllocateMesh, BackCoordinateTransformation, &
+      ComputeCRSIndexes, CoordinateTransformation, FindMeshEdges, &
+      FindMeshEdges2D, FindMeshEdges3D, FindMeshFaces3D, PrepareMesh, &
+      ReleaseMesh, ReleaseMeshEdgeTables, ReleaseMeshFaceTables
   USE ClusteringMethods
   
 #ifdef HAVE_ZOLTAN
@@ -84,9 +90,8 @@ CONTAINS
   SUBROUTINE Zoltan_Interface( Model, Mesh, SerialMode, NoPartitions, PartitionCand, &
                                 StartImbalanceTol, TolChange, MinElems )
 
-    USE MeshUtils
-
 #ifdef HAVE_ZOLTAN
+    USE MeshUtils
     USE Zoltan
 #endif
 
