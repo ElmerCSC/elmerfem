@@ -20,6 +20,7 @@ SUBROUTINE LinearFormsAssembly( Model,Solver,dt,TransientSimulation )
 !     INPUT: Steady state or transient simulation
 !
 !******************************************************************************
+    USE MeshUtils, ONLY : AllocatePDefinitions
     USE DefUtils
     USE LinearForms
     USE ISO_C_BINDING

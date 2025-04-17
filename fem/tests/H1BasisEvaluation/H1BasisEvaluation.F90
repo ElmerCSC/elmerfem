@@ -19,6 +19,7 @@ SUBROUTINE H1BasisEvaluation( Model,Solver,dt,TransientSimulation )
 !     INPUT: Steady state or transient simulation
 !
 !******************************************************************************
+    USE MeshUtils, ONLY : AllocatePDefinitions
     USE DefUtils
     USE ISO_C_BINDING
 !------------------------------------------------------------------------------
