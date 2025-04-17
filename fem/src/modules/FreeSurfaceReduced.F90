@@ -42,6 +42,7 @@
 !------------------------------------------------------------------------------
 SUBROUTINE FreeSurfaceReduced( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
+     USE MeshUtils, ONLY : FindNeighbourNodes
      USE DefUtils
 
      IMPLICIT NONE
