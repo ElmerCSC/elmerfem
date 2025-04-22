@@ -46,7 +46,6 @@ SUBROUTINE ParallelRemesh( Model,Solver,dt,TransientSimulation )
   USE MeshPartition
   USE MeshRemeshing
   USE MainUtils
-  USE DefUtils, ONLY : GetSolverParams
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Model_t)  :: Model
@@ -54,7 +53,6 @@ SUBROUTINE ParallelRemesh( Model,Solver,dt,TransientSimulation )
   LOGICAL ::  TransientSimulation
   REAL(KIND=dp) :: dt
 !------------------------------------------------------------------------------
-!-----------------------------------------------
   TYPE(Mesh_t), POINTER :: Mesh, OutMesh, FinalMesh
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Variable_t), POINTER :: TimeVar
@@ -78,7 +76,7 @@ SUBROUTINE ParallelRemesh( Model,Solver,dt,TransientSimulation )
   END IF
 
   Mesh => Model % Mesh
-  SolverParams => GetSolverParams()
+  SolverParams => ListGetSolverParams()
 
   Rebalance = ListGetLogical(SolverParams, "Rebalance", Found, DefValue = .TRUE.)
   IF(.NOT. Found) CALL INFO(SolverName, "Option 'Rebalance' not found. DefValue is TRUE")
