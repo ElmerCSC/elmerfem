@@ -13807,7 +13807,7 @@ END FUNCTION SearchNodeL
       CALL Fatal('ReverseRowEquilibration','Diag of wrong size!')
     END IF 
 
-    IF PRESENT(f) f(1:n) = f(1:n) / Diag(1:n)
+    IF (PRESENT(f)) f(1:n) = f(1:n) / Diag(1:n)
     DO i=1,n    
       DO j = Rows(i), Rows(i+1)-1
         Values(j) = Values(j) / Diag(i)
