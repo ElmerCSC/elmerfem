@@ -13038,8 +13038,12 @@ END FUNCTION SearchNodeL
   CONTAINS
 
     !-------------------------------------------------------------
-    !>  Scale system Ax = b as:
-    !>  (DAD)y = Db, where D = 1/SQRT(Diag(A)), and y = D^-1 x
+    !> Scale system Ax = b as (DAD)y = Db, where
+    !> D = 1/SQRT(Diag(A)) and y = D^-1 x. By default, if the scaled
+    !> system is rewritten as A'y = b' this subroutine also performs
+    !> an additional scaling so that the final form is given by
+    !> A'(y/|b'|) = b'/|b'|. Whether the last step is taken depends
+    !> on the optional argument RhsScaling.
     !-------------------------------------------------------------    
     SUBROUTINE ScaleLinearSystemDiagonal()
 
@@ -13265,14 +13269,13 @@ END FUNCTION SearchNodeL
             CALL Info('ScaleLinearSystem','Rhs vector is almost zero, skipping rhs scaling!',Level=20)
           ELSE
             A % RhsScaling = bnorm
-            Diag(1:n) = Diag(1:n) * bnorm
             b(1:n) = b(1:n) / bnorm
           END IF
         END IF
       END IF
       
       IF( PRESENT(x) ) THEN
-        x(1:n) = x(1:n) / Diag(1:n)
+        x(1:n) = x(1:n) / (Diag(1:n) * A % RhsScaling) 
       END IF
       
     END SUBROUTINE ScaleLinearSystemDiagonal
@@ -13580,7 +13583,6 @@ END FUNCTION SearchNodeL
     SUBROUTINE BackScaleLinearSystemDiagonal()
 
       REAL(KIND=dp), POINTER :: Diag(:)
-      REAL(KIND=dp) :: bnorm
       INTEGER :: i,j
       LOGICAL :: doCM      
       TYPE(Matrix_t), POINTER :: CM
@@ -13605,13 +13607,11 @@ END FUNCTION SearchNodeL
       !      Solve x:  INV(D)x = y
       !      -------------------------------------------
       IF( PRESENT( x ) ) THEN
-        x(1:n) = x(1:n) * Diag(1:n)
+        x(1:n) = x(1:n) * Diag(1:n) * A % RhsScaling
       END IF
       
       IF( PRESENT( b ) ) THEN
-        bnorm = A % RhsScaling
-        Diag(1:n) = Diag(1:n) / bnorm
-        b(1:n) = b(1:n) / Diag(1:n) * bnorm
+        b(1:n) = b(1:n) / Diag(1:n) * A % RhsScaling 
       END IF
 
       IF( PRESENT( EigenScaling ) ) THEN

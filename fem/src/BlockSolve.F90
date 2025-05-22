@@ -3781,7 +3781,7 @@ CONTAINS
 
       ! The special preconditioning matrices have not been scaled with the monolithic system.
       ! So we need to transfer the (x,b) of this block to the unscaled system before going
-      ! going to solve it. It is probably desirable to use separate scaling for this system. 
+      ! to solve it. It is probably desirable to use separate scaling for this system. 
       DoPrecScaling = DoDiagScaling .AND. UsePrecMat
       IF( DoPrecScaling ) THEN
         n = A % NumberOfRows
@@ -3806,8 +3806,8 @@ CONTAINS
         diagtmp(1:n) = Solver % Matrix % DiagScaling(k::l)
 
         ! Scale x & b to the unscaled system of the tailored preconditioning matrix for given block.
-        x(1:n) = x(1:n) * diagtmp(1:n)
-        btmp(1:n) = b(1:n) / diagtmp(1:n) * Solver % Matrix % RhsScaling**2
+        x(1:n) = x(1:n) * diagtmp(1:n) * Solver % Matrix % RhsScaling
+        btmp(1:n) = b(1:n) / diagtmp(1:n) * Solver % Matrix % RhsScaling
       ELSE
         btmp => b
         IF( NoNestedScaling ) THEN
