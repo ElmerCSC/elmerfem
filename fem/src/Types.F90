@@ -156,16 +156,15 @@ MODULE Types
     TYPE(Solver_t), POINTER :: Solver => NULL()
     REAL(KIND=dp) :: rnorm, bnorm, xnorm
     TYPE(SubMatrix_t), ALLOCATABLE :: SubMatrix(:,:)
-    LOGICAL, ALLOCATABLE :: SubMatrixActive(:,:)
     TYPE(SubVector_t), POINTER :: SubVector(:) => NULL()
     INTEGER, POINTER :: BlockStruct(:) => NULL()
     INTEGER, POINTER :: InvBlockStruct(:) => NULL()
     TYPE(Matrix_t), POINTER :: ParentMatrix => NULL()
-    LOGICAL :: GotBlockStruct
-    LOGICAL, ALLOCATABLE :: SubMatrixTranspose(:,:)
+    LOGICAL :: GotBlockStruct = .FALSE.
     INTEGER :: NoIters = 0
   END TYPE BlockMatrix_t
 
+  
 #if defined(HAVE_MKL) && defined(HAVE_CPARDISO)                                 
   TYPE CPardiso_struct                                                          
     INTEGER :: n                                                                
@@ -931,6 +930,7 @@ MODULE Types
       INTEGER, ALLOCATABLE ::  Def_Dofs(:,:,:)
 
       TYPE(BlockMatrix_t), POINTER :: BlockMatrix => NULL()
+
       TYPE(Matrix_t),   POINTER :: Matrix => NULL()
       TYPE(Variable_t), POINTER :: Variable => NULL()
 

@@ -14567,6 +14567,13 @@ END FUNCTION SearchNodeL
           TYPE(Solver_t) :: Solver
           REAL(KIND=dp) :: x(:), b(:)
        END SUBROUTINE BlockSolveExt
+
+       SUBROUTINE DDSolveExt(A,x,b,Solver)
+          USE Types
+          TYPE(Matrix_t), POINTER :: A
+          TYPE(Solver_t) :: Solver
+          REAL(KIND=dp) :: x(:), b(:)
+        END SUBROUTINE DDSolveExt
     END INTERFACE
 !------------------------------------------------------------------------------
 
@@ -14942,6 +14949,8 @@ END FUNCTION SearchNodeL
         CALL Fatal(Caller,'Feti solver available only in parallel.')
       CASE('block')
         CALL BlockSolveExt( A, x, b, Solver )
+      CASE('dd')
+        CALL DDSolveExt( A, x, b, Solver )
       CASE('amgx')
         CALL AMGXSolver( A, x, b, Solver )
       CASE('rocalution')
@@ -14951,7 +14960,7 @@ END FUNCTION SearchNodeL
       CASE('direct')
         CALL DirectSolver( A, x, b, Solver )        
       CASE DEFAULT        
-        CALL Fatal(Caller,'Unknown "Linear System Solver": '//TRIM(Method))
+        CALL Fatal(Caller,'Unknown "Linear System Solver" in serial: '//TRIM(Method))
       END SELECT
     ELSE
       CALL Info(Caller,'Parallel linear System Solver: '//TRIM(Method),Level=8)
@@ -14974,7 +14983,7 @@ END FUNCTION SearchNodeL
       CASE('direct')
         CALL DirectSolver( A, x, b, Solver )
       CASE DEFAULT        
-        CALL Fatal(Caller,'Unknown "Linear System Solver": '//TRIM(Method))
+        CALL Fatal(Caller,'Unknown "Linear System Solver" in parallel: '//TRIM(Method))
       END SELECT
     END IF
 
@@ -15895,7 +15904,7 @@ END FUNCTION SearchNodeL
     TYPE(Variable_t), POINTER :: Var, NodalLoads
     TYPE(Mesh_t), POINTER :: Mesh, SaveMEsh
     LOGICAL :: Relax, Found, NeedPrevSol, Timing, ResidualMode, &
-        RestrictionMode, BlockMode, GloNum, FirstLoop
+        RestrictionMode, BlockMode, DDMode, GloNum, FirstLoop
     INTEGER :: n,i,j,k,l,m,istat,nrows,ncols,colsj,rowoffset
     CHARACTER(:), ALLOCATABLE :: Method, VariableName
     INTEGER(KIND=AddrInt) :: Proc
@@ -15914,6 +15923,13 @@ END FUNCTION SearchNodeL
         TYPE(Solver_t) :: Solver
         REAL(KIND=dp) :: x(:), b(:)
       END SUBROUTINE BlockSolveExt
+
+      SUBROUTINE DDSolveExt(A,x,b,Solver)
+        USE Types
+        TYPE(Matrix_t), POINTER :: A
+        TYPE(Solver_t) :: Solver
+        REAL(KIND=dp) :: x(:), b(:)
+      END SUBROUTINE DDSolveExt
     END INTERFACE   
 
 
@@ -15934,6 +15950,7 @@ END FUNCTION SearchNodeL
     ResidualMode = ListGetLogical( Params,'Linear System Residual Mode',Found )      
       
     BlockMode = ListGetLogical( Params,'Linear System Block Mode',Found ) 
+    DDMode = ListGetLogical( Params,'Linear System DD Mode',Found ) 
     
 !------------------------------------------------------------------------------
 ! The allocation of previous values has to be here in order to 
@@ -16030,6 +16047,8 @@ END FUNCTION SearchNodeL
       ELSE
         CALL BlockSolveExt( A, x, bb, Solver )
       END IF
+    ELSE IF ( DDMode ) THEN
+      CALL DDSolveExt( A, x, bb, Solver )
     ELSE IF ( RestrictionMode ) THEN
       CALL Info(Caller,'Solving linear system with linear restrictions!',Level=10)
       IF( ListGetLogical( Params,'Save Constraint Matrix',Found ) ) THEN

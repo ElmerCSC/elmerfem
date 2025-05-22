@@ -23,7 +23,7 @@ SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
   PElementBase.F90 ElementDescription.F90 Integration.F90 ListMatrixArray.F90
   ModelDescription.F90 GeneralUtils.F90 Stress.F90 StressGeneral.F90
   LinearAlgebra.F90 CoordinateSystems.F90 ListMatrix.F90 CRSMatrix.F90
-  BandMatrix.F90 BandwidthOptimize.F90 BlockSolve.F90
+  BandMatrix.F90 BandwidthOptimize.F90 BlockSolve.F90 DDSolve.F90
   MaterialModels.F90 DirectSolve.F90 IterSolve.F90
   IterativeMethods.F90 TimeIntegrate.F90 Types.F90 SolveBand.F90
   ElementUtils.F90 Radiation.F90 fft.c Load.c Differentials.F90

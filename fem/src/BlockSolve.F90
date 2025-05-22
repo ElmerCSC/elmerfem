@@ -388,9 +388,6 @@ CONTAINS
       END DO
     END DO
     
-    ALLOCATE( BlockMatrix % SubMatrixActive(NoVar,NoVar) )
-    BlockMatrix % SubMatrixActive = .FALSE.
-
     ALLOCATE( BlockMatrix % SubVector(NoVar))
     DO i=1,NoVar
       BlockMatrix % Subvector(i) % Var => NULL()
@@ -2169,7 +2166,6 @@ CONTAINS
     TotMatrix % SubMatrix(1,NoVar+1) % Mat => CRS_Transpose( C1 )
     IF( BlockAV ) THEN
       TotMatrix % SubMatrix(1,NoVar+2) % Mat => CRS_Transpose( C2 )
-      TotMatrix % SubMatrixActive(1,NoVar+2) = .TRUE.
     END IF
     TotMatrix % SubMatrix(1,NoVar+1) % ParallelIsolatedMatrix = &
         TotMatrix % SubMatrix(NoVar+1,1) % ParallelIsolatedMatrix
