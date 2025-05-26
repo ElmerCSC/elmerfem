@@ -266,27 +266,8 @@ CONTAINS
     INTEGER :: i,m
     REAL(KIND=dp) :: s,stot,ntot
 
-    IF( ParEnv % PEs > 1 .AND. PRESENT( A ) ) THEN
-      m = 0
-      s = 0.0_dp
-      DO i=1,A % NumberOfRows
-        IF (Parenv % MyPE /= A % ParallelInfo % NeighbourList(i) % Neighbours(1)) CYCLE
-        m = m+1
-        s = s + x(i)**2
-      END DO
-    ELSE
-      IF( ParEnv % PEs > 1 .AND. PRESENT( npar ) ) THEN
-        m = npar
-      ELSE
-        m = n
-      END IF
-      s = SUM(x(1:m)**2)
-    END IF
-          
-    stot = ParallelReduction(s)
-    ntot = ParallelReduction(m)
-    
-    nrm = SQRT( stot / ntot )
+    s = SUM(x(1:n)**2)          
+    nrm = SQRT( s / n )
     
   END FUNCTION CompNorm
   
@@ -585,10 +566,6 @@ CONTAINS
     CALL ListAddLogical( Params,'Linear System Skip Complex',.FALSE.) 
     CALL ListAddLogical( Params,'Linear System Skip Loads',.TRUE.)
 
-!    IF (isParallel) THEN
-!      ALLOCATE( xi(TotMatrix % MaxSize), b(TotMatrix % MaxSize) )
-!    END IF
-
     ! Initial guess:
     !-----------------------------------------
     u(1:n) = 0.0_dp
@@ -627,13 +604,6 @@ CONTAINS
       xi => Var % Values
       
         
-      IF (isParallel) THEN
-        ! copy part of full solution to block solution
-!        x = 0.0_dp
-!        b = 0.0_dp
-!        ParPerm => TotMatrix % Submatrix(i,i) % ParPerm
-      END IF
-
       IF( InfoActive(25) ) THEN
         nrm = CompNorm(b,offset(i+1)-offset(i))
         WRITE( Message,'(A,ES12.5)') 'Rhs '//I2S(i)//' norm: ',nrm
@@ -670,8 +640,6 @@ CONTAINS
     ! From domains take average and create an average global solution. 
     CALL DDCopyDomains( Solver, TotMatrix, u(1:n), FromPieces=.TRUE., ToPieces=.TRUE.)
         
-!    IF (isParallel) DEALLOCATE(x,b)
-
     CALL ListPopNameSpace('inner:') ! inner:
 
     CALL ListAddLogical( Params,'Linear System Refactorize',.FALSE. )
@@ -895,7 +863,7 @@ CONTAINS
     INTEGER :: NoVar, ndim, maxsize
     LOGICAL :: Converged, Diverged
     INTEGER :: Rounds, OutputInterval, PolynomialDegree
-    INTEGER, POINTER :: Offset(:),poffset(:),BlockStruct(:),ParPerm(:)
+    INTEGER, POINTER :: BlockStruct(:),ParPerm(:)
     INTEGER :: i,j,k,l,ia,ib,istat
     LOGICAL :: LS, BlockAV,Found, UseMono
     CHARACTER(:), ALLOCATABLE :: VarName
@@ -911,14 +879,6 @@ CONTAINS
     NoVar = TotMatrix % NoVar
 
     TotMatrix % NoIters = 0
-
-    isParallel = (ParEnv % PEs > 1)
-    offset => TotMatrix % Offset
-    IF(isParallel) THEN
-      poffset => TotMatrix % ParOffset
-    ELSE
-      poffset => offset
-    END IF
 
     ! Just do some error checks
     DO i=1,NoVar
@@ -947,49 +907,10 @@ CONTAINS
     b => A % RHS 
 
     r = 0.0_dp
-    
-    IF (isParallel) THEN
-      CALL Info(Caller,'Performing parallel initializations!',Level=18)
-      DO i=1,NoVar
-        A => TotMatrix % SubMatrix(i,i) % Mat          
-        ! ParallelInitSolve expects full vectors
-        CALL Info(Caller,'Initializing submatrix '//I2S(11*i),Level=20)
-        IF (ASSOCIATED(A % ParMatrix % SplittedMatrix % InsideMatrix % PrecValues)) THEN
-          IF (.NOT. ASSOCIATED(A % PrecValues)) & 
-              NULLIFY(A % ParMatrix % SplittedMatrix % InsideMatrix % PrecValues)
-        END IF
-        CALL ParallelInitSolve(A, TotMatrix % Subvector(i) % Var % Values, A % rhs, r )
-        IF( ASSOCIATED(SolverMatrix)) THEN
-          x(offset(i)+1:offset(i+1)) = TotMatrix % SubVector(i) % Var % Values        
-          IF(ASSOCIATED(A % rhs)) b(offset(i)+1:offset(i+1)) = A % rhs
-        END IF
-        CALL Info(Caller,'Done initializing submatrix '//I2S(11*i),Level=20)
-      END DO
-      DO i=1,NoVar
-        DO j=1,NoVar
-          A => TotMatrix % SubMatrix(i,j) % Mat          
-          IF(.NOT. ASSOCIATED(A)) CYCLE
-          IF(i==j) CYCLE
-          CALL Info(Caller,'Initializing submatrix '//I2S(10*i+j),Level=20)
-          IF(ASSOCIATED(A % ParMatrix)) CALL ParallelInitSolve(A,r,r,r)
-        END DO
-      END DO
-      IF(ASSOCIATED(SolverMatrix)) THEN
-        CALL Info(Caller,'Initializing SolverMatrix',Level=20)
-        CALL ParallelInitSolve( SolverMatrix, x, b, r )      
-        x = 0.0_dp
-        b = 0.0_dp
-      END IF
-      CALL Info(Caller,'Parallel initializations done!',Level=25)
-    END IF
-      
+          
     CALL Info(Caller,'Initializing monolithic system vectors',Level=18)
 
-    
-    ! Parallel block system only solves for its own variables.
-    IF (isParallel) THEN
-      ndim = poffset(NoVar+1)
-    END IF
+   
     
     !----------------------------------------------------------------------
     ! Solve matrix equation solver with the redefined block matrix operations
@@ -1025,27 +946,7 @@ CONTAINS
 
     !IF( ListGetLogical( Solver % Values,'Linear System Complex', Found ) ) A % COMPLEX = .TRUE.
 
-    IF (isParallel) THEN
-      ! Note that at this stage we work with the packed vectors x and b
-      A => A % ParMatrix % SplittedMatrix % InsideMatrix
-      CALL IterSolver( A,x,b,&
-          Solver,ndim=ndim,PrecF=precProc,&
-          DotF=AddrFunc(SParDotProd), NormF=AddrFunc(SParNorm))
-
-      DO i=1,NoVar
-        TotMatrix % SubMatrix(i,i) % Mat % ParMatrix % SplittedMatrix % &
-            TmpXvec = x(poffset(i)+1:poffset(i+1))
-      END DO
-
-      ! Communicate blockwise information.
-      ! After this the packed x is again a full vector with redundant shared dofs
-      DO i=1,NoVar
-        CALL ParallelUpdateResult(TotMatrix % SubMatrix(i,i) % Mat, &
-            x(offset(i)+1:offset(i+1)), r )
-      END DO
-    ELSE
-      CALL IterSolver( A,x,b,Solver,ndim=ndim,PrecF=precProc) 
-    END IF
+    CALL IterSolver( A,x,b,Solver,ndim=ndim,PrecF=precProc) 
     CALL info(Caller,'Finished block system iteration',Level=18)
     
     CALL ListAddLogical(Params,'Linear System Refactorize',.TRUE.)
@@ -1109,8 +1010,6 @@ CONTAINS
     PSolver => Solver
 
     SolverRef => Solver
-
-    isParallel = ( ParEnv % PEs > 1 )
     
     OldMatrix = ASSOCIATED( Solver % BlockMatrix )
     IF( OldMatrix ) THEN
@@ -1232,12 +1131,15 @@ CONTAINS
 END MODULE DDSolve
 
 
+
+
 !------------------------------------------------------------------------------
 !> Just a handle for SolveLinearSystem():
 !------------------------------------------------------------------------------
 SUBROUTINE DDSolveExt(A,x,b,Solver)
 !------------------------------------------------------------------------------
     USE Types
+    USE ParallelUtils
     USE DDSolve, ONLY: DDSolveInt 
     USE Lists, ONLY : ListGetLogical, ListAddLogical
     IMPLICIT NONE
@@ -1254,8 +1156,12 @@ SUBROUTINE DDSolveExt(A,x,b,Solver)
     IF(Found) &
       CALL ListAddLogical(Solver % Values,'Linear System DD Mode',.FALSE.)
 
-    CALL DDSolveInt(A,x,b,Solver)
-
+    IF( ParEnv % PEs == 1 ) THEN
+      CALL DDSolveInt(A,x,b,Solver)
+    ELSE
+      CALL Fatal('DDSolveExt','Implemented currently only in serial!')
+    END IF
+      
     IF(Found) &
       CALL ListAddLogical(Solver % Values,'Linear System DD Mode',bm )
 !------------------------------------------------------------------------------
