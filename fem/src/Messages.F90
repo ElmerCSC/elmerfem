@@ -74,6 +74,14 @@ MODULE Messages
    LOGICAL :: USE_XIOS = .FALSE. 
 #endif
 
+#ifdef HAVE_YAC
+   USE elmer_coupling
+   USE elmer_icon_coupling
+#endif   
+
+#ifdef HAVE_YAC
+   LOGICAL :: USE_YAC = .FALSE.
+#endif   
 
 CONTAINS
 
@@ -334,7 +342,14 @@ CONTAINS
        CALL xios_context_finalize()
        CALL xios_finalize()
      ENDIF
-#endif 
+#endif
+
+
+#ifdef HAVE_YAC
+     IF (USE_YAC) THEN
+       CALL coupling_finalize()
+     END IF
+#endif
 !-----------------------------------------------------------------------
    END SUBROUTINE Fatal
 !-----------------------------------------------------------------------

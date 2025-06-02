@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Jouni Malinen, Juha Ruokolainen
+! *  Authors: Jouni Malinen, Juha Ruokolainen, Thomas Zwinger
 ! *  Email:   Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -52,6 +52,12 @@ MODULE SParIterComm
 #ifdef HAVE_XIOS
   USE XIOS
 #endif
+  
+#ifdef HAVE_YAC
+   USE elmer_coupling
+   USE elmer_icon_coupling
+#endif   
+  
 
 #ifndef HAVE_PARMMG
 #  if defined(ELMER_HAVE_MPI_MODULE)
@@ -236,6 +242,17 @@ CONTAINS
       CALL MPI_COMM_SPLIT(MPI_COMM_WORLD,ELMER_COLOUR,&
            ParEnv % MyPE,ELMER_COMM_WORLD,ierr) 
     ENDIF
+#elif defined(HAVE_YAC) 
+    INQUIRE(FILE="coupling.yaml", EXIST=USE_YAC)
+    IF (USE_YAC) THEN
+      CALL coupling_init(config_file, ELMER_COMM_WORLD)
+    ELSE
+#ifndef ELMER_COLOUR
+#define ELMER_COLOUR 0
+#endif
+      CALL MPI_COMM_SPLIT(MPI_COMM_WORLD,ELMER_COLOUR,&
+           ParEnv % MyPE,ELMER_COMM_WORLD,ierr) 
+    ENDIF
 #else
     ! The colour could be set to be some different if we want to couple ElmerSolver with some other
     ! software having MPI colour set to zero. 
@@ -245,6 +262,17 @@ CONTAINS
     CALL MPI_COMM_SPLIT(MPI_COMM_WORLD,ELMER_COLOUR,&
          ParEnv % MyPE,ELMER_COMM_WORLD,ierr) 
 #endif  
+
+
+! Use YAC library for coupling
+!
+#ifdef HAVE_YAC
+    INQUIRE(FILE="coupling.yaml", EXIST=USE_YAC)
+    IF (USE_YAC) THEN
+      CALL coupling_init(config_file, ELMER_COMM_WORLD)
+    END IF
+#endif    
+    
     ParEnv % ActiveComm = ELMER_COMM_WORLD
 
 !ELMER_COMM_WORLD=MPI_COMM_WORLD
@@ -4971,7 +4999,12 @@ SUBROUTINE ParEnvFinalize()
 
   !*********************************************************************
   CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
-
+#ifdef HAVE_YAC
+  IF (USE_YAC) THEN
+    CALL coupling_finalize()
+  END IF
+#endif
+  
 #ifdef HAVE_XIOS
   IF (USE_XIOS) THEN
     CALL xios_context_finalize()
