@@ -189,7 +189,9 @@ CONTAINS
 
     INTEGER :: ierr
     INTEGER :: req, prov
+    CHARACTER(LEN=1024) :: config_file
 
+    
     !******************************************************************
 
     ParallelEnv => ParEnv
@@ -242,7 +244,8 @@ CONTAINS
       CALL MPI_COMM_SPLIT(MPI_COMM_WORLD,ELMER_COLOUR,&
            ParEnv % MyPE,ELMER_COMM_WORLD,ierr) 
     ENDIF
-#elif defined(HAVE_YAC) 
+#elif defined(HAVE_YAC)
+    WRITE (config_file,*) "coupling.yaml"
     INQUIRE(FILE="coupling.yaml", EXIST=USE_YAC)
     IF (USE_YAC) THEN
       CALL coupling_init(config_file, ELMER_COMM_WORLD)
@@ -262,7 +265,6 @@ CONTAINS
     CALL MPI_COMM_SPLIT(MPI_COMM_WORLD,ELMER_COLOUR,&
          ParEnv % MyPE,ELMER_COMM_WORLD,ierr) 
 #endif  
-
 
 ! Use YAC library for coupling
 !
