@@ -1641,7 +1641,7 @@ CONTAINS
 
     t = CPUTime()
     CALL FindMeshEdges( RefMesh )
-    WRITE( Message, * ) 'Find mesh edges time (cpu-secs):                 ',CPUTime()-t
+    WRITE( Message,'(A,ES12.3)') 'Find mesh edges time (cpu-secs):                ',CPUTime()-t
     CALL Info( 'SplitOneLevel', Message, Level=6 )
 
 !   RGB Refinement:
@@ -1649,7 +1649,7 @@ CONTAINS
     t = CPUTime()
     CALL AllocateVector( EdgeSplitted, RefMesh % NumberOfEdges )
     MarkedEdges = RGBRefinement( EdgeSplitted,RefMesh )
-    WRITE( Message, * ) 'RGB Refinement time (cpu-secs):                  ',CPUTime()-t
+    WRITE( Message,'(A,ES12.3)') 'RGB Refinement time (cpu-secs):                 ',CPUTime()-t
     CALL Info( 'SplitOneLevel', Message, Level=6 )
 
 !   Initialize the new mesh:
@@ -1693,7 +1693,7 @@ CONTAINS
           NewMesh % Nodes % z(NewNodeCnt) = 0.0d0
        END IF
     END DO
-    WRITE( Message, * ) 'Node tables generation time (cpu-secs):          ',CPUTime()-t
+    WRITE( Message,'(A,ES12.3)') 'Node tables generation time (cpu-secs):         ',CPUTime()-t
     CALL Info( 'SplitOneLevel', Message, Level=6 )
 
 !   Count the new number of bulk elements:
@@ -2044,7 +2044,7 @@ CONTAINS
     END DO
 
 
-    WRITE( Message, * ) 'Bulk element tables generation time (cpu-secs):  ',CPUTime()-t
+    WRITE( Message,'(A,ES12.3)') 'Bulk element tables generation time (cpu-secs): ',CPUTime()-t
     CALL Info( 'SplitOneLevel', Message, Level=6 )
     
 !
@@ -2205,7 +2205,7 @@ CONTAINS
       CALL UpdateGebhartFactors( RefMesh, NewMesh, Children )
     END IF
       
-    WRITE( Message, * ) 'Bndry element tables generation time (cpu-secs): ',CPUTime()-t
+    WRITE( Message,'(A,ES12.3)') 'Bndry element tables generation time (cpu-secs):',CPUTime()-t
     CALL Info( 'SplitOneLevel', Message, Level=6 )
 
     DEALLOCATE( EdgeSplitted, MarkedOrder, Children )
@@ -2728,8 +2728,8 @@ SUBROUTINE FluxRecovery(Model, Solver, Mesh, ErrorIndicator, MaxError)
     ALLOCATE(CHARACTER(MAX_NAME_LEN)::force_name)
     ALLOCATE(CHARACTER(MAX_NAME_LEN)::matpar_name)
 
-    matpar_name = ListGetString(RTSolverPars, 'Material Parameter Name', Found)
-    force_name = ListGetString(RTSolverPars, 'Body Force Name', Found)
+    matpar_name = ListGetString(RTSolverPars, 'Material Parameter Name', UnfoundFatal=.TRUE.)
+    force_name = ListGetString(RTSolverPars, 'Body Force Name', UnfoundFatal=.TRUE.)
 
     n = SIZE(RTFlux % Values)
     ALLOCATE( VisitsCounter(n), STAT=istat )

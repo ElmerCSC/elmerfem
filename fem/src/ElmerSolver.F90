@@ -71,7 +71,8 @@
 #endif
      USE ModelDescription , ONLY : SaveResult, OutputPath, InFileUnit, LoadInputFile, &
          ReloadInputFile, LoadRestartFile, GetProcAddr, LoadModel, FreeModel, WritePostFile, &
-         CompleteModelKeywords, SetIntegerParametersMatc, SetRealParametersMatc
+         CompleteModelKeywords, SetIntegerParametersMatc, SetRealParametersMatc, &
+         AppendNewSolver
      USE SolverUtils, ONLY: GetControlValue, FinalizeLumpedMatrix, UpdateExportedVariables, &
          UpdateIpPerm, VectorValuesRange
      USE MeshUtils, ONLY : MeshExtrude, MeshExtrudeSlices, PeriodicProjector, &
@@ -411,7 +412,6 @@
          CurrentModel => LoadModel(ModelName,.FALSE.,ParEnv % PEs,ParEnv % MyPE,MeshIndex)
          IF(.NOT.ASSOCIATED(CurrentModel)) EXIT
 
-
          IF( nthreads > 1 ) THEN
            MaxOutputThread = ListGetInteger( CurrentModel % Simulation,'Max Output Thread',GotIt)
            IF(.NOT. GotIt) MaxOutputThread = 1
@@ -432,7 +432,7 @@
          ! it may be just as simple to add them directly. 
          !------------------------------------------------------------------------------
          CALL CompleteModelKeywords( )
-         
+
          !----------------------------------------------------------------------------------
          ! Optionally perform simple extrusion to increase the dimension of the mesh
          !----------------------------------------------------------------------------------
@@ -505,7 +505,6 @@
 ! Support easily saving scalars to a file activated by "Scalars File" keyword.
 !-----------------------------------------------------------------------------
        CALL AddSaveScalarsHack()
-
 
 !------------------------------------------------------------------------------
 !      Add coordinates such that if there is a solver that is run on creation
@@ -1310,69 +1309,6 @@
      END SUBROUTINE CompareToReferenceSolution
 
 
-     SUBROUTINE AppendNewSolver(Model,pSolver)
-       TYPE(Model_t) :: Model
-       TYPE(Solver_t), POINTER :: pSolver
-       
-       TYPE(Solver_t), POINTER :: OldSolvers(:),NewSolvers(:)
-       INTEGER :: i, j,j2,j3,n, AllocStat
-       
-       n = Model % NumberOfSolvers+1
-       ALLOCATE( NewSolvers(n), STAT = AllocStat )
-       IF( AllocStat /= 0 ) CALL Fatal('AppendNewSolver','Allocation error 1')
-
-       OldSolvers => Model % Solvers
-       
-       CALL Info('AppendNewSolver','Increasing number of solvers to: '&
-           //I2S(n),Level=8)
-       DO i=1,n-1
-         ! Def_Dofs is the only allocatable structure within Solver_t:
-         IF( ALLOCATED( OldSolvers(i) % Def_Dofs ) ) THEN
-           j = SIZE(OldSolvers(i) % Def_Dofs,1)
-           j2 = SIZE(OldSolvers(i) % Def_Dofs,2)
-           j3 = SIZE(OldSolvers(i) % Def_Dofs,3)
-           ALLOCATE( NewSolvers(i) % Def_Dofs(j,j2,j3), STAT = AllocStat )
-           IF( AllocStat /= 0 ) CALL Fatal('AppendNewSolver','Allocation error 2')           
-         END IF
-
-         ! Copy the content of the Solver structure
-         NewSolvers(i) = OldSolvers(i)
-
-         ! Nullify the old structure since otherwise bad things may happen at deallocation
-         NULLIFY( OldSolvers(i) % ActiveElements )
-         NULLIFY( OldSolvers(i) % Mesh )
-         NULLIFY( OldSolvers(i) % BlockMatrix )
-         NULLIFY( OldSolvers(i) % Matrix )
-         NULLIFY( OldSolvers(i) % Variable )
-       END DO
-
-       ! Deallocate the old structure and set the pointer to the new one
-       DEALLOCATE( Model % Solvers )
-       Model % Solvers => NewSolvers
-       Model % NumberOfSolvers = n
-
-       pSolver => NewSolvers(n)
-
-       NULLIFY( pSolver % Matrix )
-       NULLIFY( pSolver % Mesh ) 
-       NULLIFY( pSOlver % BlockMatrix )
-       NULLIFY( pSolver % Variable )
-       NULLIFY( pSolver % ActiveElements )
-       
-       pSolver % PROCEDURE = 0
-       pSolver % NumberOfActiveElements = 0
-       j = CurrentModel % NumberOfBodies
-       ALLOCATE( pSolver % Def_Dofs(10,j,6),STAT=AllocStat)       
-       IF( AllocStat /= 0 ) CALL Fatal('AppendNewSolver','Allocation error 3')
-       pSolver % Def_Dofs = -1
-       pSolver % Def_Dofs(:,:,1) =  1
-       
-       ! Create empty list to add some keywords to 
-       pSolver % Values => ListAllocate()
-       
-     END SUBROUTINE AppendNewSolver
-     
-
      !------------------------------------------------------------------------
      !> Given name of a solver module find it among the active solvers and
      !> upon success return its index. 
@@ -1406,7 +1342,6 @@
        
      END FUNCTION FindSolverByProcName
      !------------------------------------------------------------------------------
-
 
      
      ! This is a dirty hack that adds an instance of ResultOutputSolver to the list of Solvers.

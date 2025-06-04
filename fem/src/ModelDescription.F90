@@ -2523,6 +2523,74 @@ CONTAINS
    END SUBROUTINE SetCoordinateSystem
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+!> This routine allows to add new solver such that a larger array is allocated and
+!> the existing solvers are copied to the start and one empty slot is created. 
+!------------------------------------------------------------------------------
+   SUBROUTINE AppendNewSolver(Model,pSolver)
+     TYPE(Model_t) :: Model
+     TYPE(Solver_t), POINTER :: pSolver
+
+     TYPE(Solver_t), POINTER :: OldSolvers(:),NewSolvers(:)
+     INTEGER :: i, j,j2,j3,n, AllocStat
+
+     n = Model % NumberOfSolvers+1
+     ALLOCATE( NewSolvers(n), STAT = AllocStat )
+     IF( AllocStat /= 0 ) CALL Fatal('AppendNewSolver','Allocation error 1')
+
+     OldSolvers => Model % Solvers
+
+     CALL Info('AppendNewSolver','Increasing number of solvers to: '&
+         //I2S(n),Level=8)
+     DO i=1,n-1
+       ! Def_Dofs is the only allocatable structure within Solver_t:
+       IF( ALLOCATED( OldSolvers(i) % Def_Dofs ) ) THEN
+         j = SIZE(OldSolvers(i) % Def_Dofs,1)
+         j2 = SIZE(OldSolvers(i) % Def_Dofs,2)
+         j3 = SIZE(OldSolvers(i) % Def_Dofs,3)
+         ALLOCATE( NewSolvers(i) % Def_Dofs(j,j2,j3), STAT = AllocStat )
+         IF( AllocStat /= 0 ) CALL Fatal('AppendNewSolver','Allocation error 2')           
+       END IF
+
+       ! Copy the content of the Solver structure
+       NewSolvers(i) = OldSolvers(i)
+
+       ! Nullify the old structure since otherwise bad things may happen at deallocation
+       NULLIFY( OldSolvers(i) % ActiveElements )
+       NULLIFY( OldSolvers(i) % Mesh )
+       NULLIFY( OldSolvers(i) % BlockMatrix )
+       NULLIFY( OldSolvers(i) % Matrix )
+       NULLIFY( OldSolvers(i) % Variable )
+     END DO
+
+     ! Deallocate the old structure and set the pointer to the new one
+     DEALLOCATE( Model % Solvers )
+     Model % Solvers => NewSolvers
+     Model % NumberOfSolvers = n
+
+     pSolver => NewSolvers(n)
+
+     NULLIFY( pSolver % Matrix )
+     NULLIFY( pSolver % Mesh ) 
+     NULLIFY( pSOlver % BlockMatrix )
+     NULLIFY( pSolver % Variable )
+     NULLIFY( pSolver % ActiveElements )
+
+     pSolver % PROCEDURE = 0
+     pSolver % NumberOfActiveElements = 0
+     j = CurrentModel % NumberOfBodies
+     ALLOCATE( pSolver % Def_Dofs(10,j,6),STAT=AllocStat)       
+     IF( AllocStat /= 0 ) CALL Fatal('AppendNewSolver','Allocation error 3')
+     pSolver % Def_Dofs = -1
+     pSolver % Def_Dofs(:,:,1) =  1
+
+     ! Create empty list to add some keywords to 
+     pSolver % Values => ListAllocate()
+
+   END SUBROUTINE AppendNewSolver
+
+
    
 !------------------------------------------------------------------------------
 !> Function to read the complete Elmer model: sif file and mesh files.
@@ -2663,6 +2731,13 @@ CONTAINS
 
     CALL InitializeOutputLevel( Model % Simulation )
 
+    
+    ! Support adaptive error computation.
+    !-----------------------------------------------------------------------------
+    CALL AddFluxRecoveryHack()
+
+
+    
     Transient=ListGetString(Model % Simulation, &
         'Simulation Type',Found)=='transient'
 
@@ -3344,6 +3419,73 @@ CONTAINS
       END DO
 
     END SUBROUTINE TagRadiationSolver
+
+    
+    ! This is a dirty hack that adds an instance of FluxRecovery to the list of Solvers.
+    ! This is needed in the solution of adaptive problems. 
+    !----------------------------------------------------------------------------------------------
+    SUBROUTINE AddFluxRecoveryHack()     
+      TYPE(Solver_t), POINTER :: PSolver
+      CHARACTER(:), ALLOCATABLE :: str
+      INTEGER :: i,j,k
+      TYPE(ValueList_t), POINTER :: Params
+      LOGICAL :: Found, DoIt
+      INTEGER :: AllocStat
+      LOGICAL, SAVE :: Visited = .FALSE.
+      INTEGER, POINTER :: ActiveSolvers(:)
+
+      ! No use to create the same solver twice
+      IF( Visited ) RETURN
+      Visited = .TRUE.              
+
+      j = 0
+      k = 0
+      DO i=1,SIZE(CurrentModel % Solvers)
+        IF(ListGetLogical( CurrentModel % Solvers(i) % Values,'Flux Recovery',Found )) j=i
+        IF(ListGetString( CurrentModel % Solvers(i) % Values,'Variable',Found ) == &
+            'rtflux') k=i
+      END DO
+      IF(j==0 .OR. k>0) RETURN
+
+      CALL Info('AddFluxRecoveryHack','Adding "FluxRecovery" solver' )
+
+      ! Allocate one new solver to the end of list and get pointer to it
+      CALL AppendNewSolver(CurrentModel,pSolver)
+
+
+      ! Add some keywords to the list
+      Params => pSolver % Values
+      ! Add a few often needed keywords also if they are given in simulation section
+      CALL ListCopyPrefixedKeywords( CurrentModel % Solvers(j) % Values, Params, 'fr:' )
+
+      ! Add FluxRecovery as active solver. 
+      CALL ListAddNewString(Params,'Equation','InternalFluxRecovery')
+      str = ListGetString( CurrentModel % Solvers(j) % Values,'Equation')
+
+      DO i=1,SIZE(CurrentModel % Equations)
+        IF( ListGetLogical( CurrentModel % Equations(i) % Values, str, Found ) ) THEN
+          DoIt = .TRUE.
+        END IF
+        ActiveSolvers => ListGetIntegerArray( CurrentModel % Equations(i) % Values,'Active Solver',Found )
+        IF( Found ) THEN
+          IF( ANY(ActiveSolvers == j ) ) DoIt = .TRUE.
+        END IF
+        IF( DoIt ) THEN           
+          CALL ListAddLogical( CurrentModel % Equations(i) % Values,'InternalFluxRecovery',.TRUE.)             
+        END IF
+      END DO
+
+      CALL ListAddNewString(Params,'Procedure','AllocateSolver AllocateSolver',.FALSE.)
+      CALL ListAddNewString(Params,'Variable','RTFlux')
+      CALL ListAddNewLogical(Params,'Variable Output',.FALSE.)
+      CALL ListAddNewLogical(Params,'No Matrix',.TRUE.)
+      CALL ListAddNewLogical(Params,'Skip Compute Steady State Change',.TRUE.)
+      CALL ListAddNewString(Params,'Element','n:0 e:2')
+      CALL ListAddNewLogical(Params,'Second Kind Basis',.TRUE.)
+
+      CALL Info('AddSaveScalarsHack','Finished appending FluxRecovery solver',Level=12)
+
+    END SUBROUTINE AddFluxRecoveryHack
 
     
 !------------------------------------------------------------------------------
