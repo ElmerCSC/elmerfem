@@ -3483,7 +3483,7 @@ CONTAINS
       CALL ListAddNewString(Params,'Element','n:0 e:2')
       CALL ListAddNewLogical(Params,'Second Kind Basis',.TRUE.)
 
-      CALL Info('AddSaveScalarsHack','Finished appending FluxRecovery solver',Level=12)
+      CALL Info('AddFluxRecoveryHack','Finished appending FluxRecovery solver',Level=12)
 
     END SUBROUTINE AddFluxRecoveryHack
 
