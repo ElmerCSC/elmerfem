@@ -316,7 +316,7 @@ SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
   END DO ! compi
 
   EdgeSolVar => NULL()
-  sname = ListGetString( Params,'Edge Solution Name',Found)
+  sname = ListGetString( Params,'Edge Update Name',Found)
   IF(Found) THEN
     EdgeSolVar => VariableGet( Mesh % Variables, sname )
     IF(.NOT. ASSOCIATED(EdgeSolVar)) THEN
@@ -705,7 +705,7 @@ CONTAINS
     REAL(KIND=dp) :: PiMat(2,6), ri
 !------------------------------------------------------------------------------
     IF (.NOT. ASSOCIATED(Mesh % Edges)) THEN
-      CALL Fatal('NodalToNedelecInterpolation', 'Mesh edges not associated!')
+      CALL Fatal('NedelecToNodalResidual', 'Mesh edges not associated!')
     END IF
 
     IF (PRESENT(cdim)) THEN
@@ -728,7 +728,7 @@ CONTAINS
     
     ndofs = 6   ! This is correct for the 3-D monolithic version only!
     
-    IF (ndofs /= dim * VectorElementRes % DOFs) CALL Fatal('NodalToNedelecInterpolation', &
+    IF (ndofs /= dim * VectorElementRes % DOFs) CALL Fatal('NedelecToNodalResidual', &
         'Coordinate system dimension and DOF counts are not as expected')
     
     IF (.NOT. ALLOCATED(Ind)) THEN

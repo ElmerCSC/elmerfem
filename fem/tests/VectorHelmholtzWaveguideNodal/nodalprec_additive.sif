@@ -34,10 +34,11 @@ $ mu0=4e-7*pi
 
 Material 1
   Relative Permittivity = Real 1
+  AMatrix = Real -2184683276.1547537
 End
 
 Equation 1
-  Active Solvers(3) = 1 2 3 
+  Active Solvers(4) = 1 2 3 4 
   Angular Frequency = Real $w
 End
 
@@ -64,12 +65,15 @@ Solver 1
   Exported Variable 1 = -dofs 2 e res
   Exported Variable 2 = -dofs 2 e update
   Prec Solvers(1) = Integer 2
+  Additive Prec Solvers(1) = Integer 3	
   Preconditioning Residual = String "e res"
   Preconditioning Update = String "e update"
 
   MG Smoother = csgs
   MG Post Smoothing Iterations = 7
   MG Smoother Relaxation Factor = Real 1.0
+
+  Additive Preconditioning = Logical False
 End
 
 Solver 2
@@ -102,6 +106,38 @@ Solver 2
 End
 
 Solver 3
+! used as slave solver only  
+  exec solver = never
+
+  Equation = "Complex Poisson"
+  Procedure = "DCRComplexSolve" "DCRComplexSolver"
+
+  Variable = "Prec Scalar[ps re:1 ps im:1]"
+!  Variable DOFs = 2
+
+  Preconditioning Solver = Logical True
+  Edge Residual Name = String "e res"
+  Edge Update Name = String "e update"
+
+  Linear System Symmetric = False
+  Linear System Scaling = True
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = String "bicgstab2"
+  Linear System Complex = True
+  BiCGstabl polynomial degree = Integer 4  
+  Linear System Preconditioning = String "ILU1"
+  Linear System Max Iterations = Integer 1000
+  Linear System Convergence Tolerance = 1.0e-7
+  Linear system abort not converged = false
+  Linear System Residual Output = 1
+
+  Nonlinear System Max Iterations = 1
+
+  Skip Compute Nonlinear Change = True
+End
+
+
+Solver 4
   Equation = "calcfields"
 
   Procedure = "VectorHelmholtz" "VectorHelmholtzCalcFields"
@@ -122,7 +158,7 @@ Solver 3
   Linear System Convergence Tolerance = 1.0e-9
 End
 
-Solver 4
+Solver 5
   Equation = "VtuOutput"
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
   Output File Name = nodal-prec
@@ -138,12 +174,18 @@ Boundary Condition 1
   Electric Robin Coefficient im = Real $ beta0
   Magnetic Boundary Load Im 2 = Variable Coordinate 1
     Real MATC "2*beta0*sin(kc*tx)"
+
+  ps re = Real 0.0
+  ps im = Real 0.0
 End
 
 Boundary Condition 2
   Name = "Outlet"
   Target Boundaries(1) = 6
   Absorbing BC = Logical True
+
+  ps re = Real 0.0
+  ps im = Real 0.0
 End
 
 Boundary Condition 3
@@ -155,6 +197,9 @@ Boundary Condition 3
   PEZ re = Real 0
   PEX im = Real 0
   PEZ im = Real 0
+
+  ps re = Real 0.0
+  ps im = Real 0.0
 End
 
 Boundary Condition 4
@@ -168,6 +213,9 @@ Boundary Condition 4
   PEX im = Real 0
   PEY im = Real 0
   PEZ im = Real 0
+
+  ps re = Real 0.0
+  ps im = Real 0.0
 End
 
 

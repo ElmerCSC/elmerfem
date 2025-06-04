@@ -40,13 +40,8 @@
 !------------------------------------------------------------------------------
 SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
-  USE Types
-  USE Lists
+  USE DefUtils
   USE Adaptive
-  USE Integration
-  USE ElementDescription
-  USE SolverUtils
-
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
@@ -57,18 +52,22 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  TYPE(Matrix_t),POINTER  :: StiffMatrix
+  TYPE(Matrix_t), POINTER  :: StiffMatrix
   TYPE(Nodes_t) :: ElementNodes
-  TYPE(Element_t),POINTER :: CurrentElement
-
+  TYPE(Element_t), POINTER :: CurrentElement
+  TYPE(Variable_t), POINTER :: EdgeResVar, EdgeSolVar
+  TYPE(ValueList_t), POINTER :: Params, EdgeSolverParams
+  TYPE(Mesh_t), POINTER :: Mesh
+  
   INTEGER, POINTER :: NodeIndexes(:)
 
-  LOGICAL :: AllocationsDone = .FALSE., Bubbles, GotIt, notScalar = .TRUE., stat
-
+  LOGICAL :: AllocationsDone = .FALSE., Bubbles, GotIt, notScalar = .TRUE., stat, &
+      PrecUse, Found, SecondOrder, PiolaVersion, SecondFamily, UseEdgeResidual
+  
   INTEGER, POINTER :: PressurePerm(:)
   REAL(KIND=dp), POINTER :: Pressure(:), ForceVector(:)
 
-  INTEGER :: iter, i, j, k, n, t, istat, eq, LocalNodes
+  INTEGER :: dim, iter, i, j, k, n, t, istat, eq, LocalNodes
   REAL(KIND=dp) :: Norm, PrevNorm, RelativeChange
 
   TYPE(ValueList_t), POINTER :: Material
@@ -81,13 +80,13 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
        Amatrix(:,:,:), AvectorReal(:,:), AvectorImag(:,:), AscalarReal(:), &
        AscalarImag(:), Bvector(:,:), BscalarReal(:), BscalarImag(:)
 
-  CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
+  CHARACTER(LEN=MAX_NAME_LEN) :: EquationName, sname
 
   SAVE LocalStiffMatrix, Work, Load, LocalForce, ElementNodes, &
        AllocationsDone, &
        Amatrix, AvectorReal, AvectorImag, AscalarReal, AscalarImag, &
        Bvector, BscalarReal, BscalarImag
-   REAL(KIND=dp) :: at,at0,totat,st,totst,t1
+  REAL(KIND=dp) :: at0
 !------------------------------------------------------------------------------
      INTERFACE
         SUBROUTINE DCRComplexSolver_Boundary_Residual( Model,Edge,Mesh,Quant,Perm,Gnorm,Indicator)
@@ -124,6 +123,10 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
   IF ( .NOT.ASSOCIATED( Solver % Matrix ) ) RETURN
   Solver % Matrix % Complex = .TRUE.
 
+  Params => GetSolverParams()
+  Mesh => GetMesh()
+  dim = CoordinateSystemDimension()
+  
   Pressure     => Solver % Variable % Values
   PressurePerm => Solver % Variable % Perm
 
@@ -172,7 +175,31 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
      AllocationsDone = .TRUE.
   END IF
 !------------------------------------------------------------------------------
-
+  PrecUse = ListGetLogical(Solver % Values, 'Preconditioning Solver', GotIt)
+  UseEdgeResidual = .FALSE.
+  IF (PrecUse) THEN
+    EdgeResVar => NULL()  
+    sname = ListGetString(Params, 'Edge Residual Name', Found)
+    IF (Found) THEN
+      EdgeResVar => VariableGet(Mesh % Variables, sname, ThisOnly = .TRUE., UnfoundFatal = .TRUE.)
+      EdgeSolverParams => GetSolverParams(EdgeResVar % Solver)
+      
+      SecondOrder = ListGetLogical(EdgeSolverParams, 'Quadratic Approximation', Found)
+      IF (SecondOrder) THEN
+        PiolaVersion = .TRUE.
+        SecondFamily = .FALSE.
+        CALL Fatal('DCRComplexSolve', 'The lowest-order basis assumed') 
+      ELSE
+        SecondFamily = ListGetLogical(EdgeSolverParams, "Second Kind Basis", Found)
+        PiolaVersion = ListGetLogical(EdgeSolverParams, 'Use Piola Transform', Found ) .OR. &
+            SecondFamily    
+      END IF
+      
+      UseEdgeResidual = .TRUE.
+    ELSE
+      CALL Fatal('DCRComplexSolve', 'Give Edge Residual Name to enable the use as a preconditioner')
+    END IF
+  END IF
 !------------------------------------------------------------------------------
 ! Do some additional initialization, and go for it
 !------------------------------------------------------------------------------
@@ -191,12 +218,9 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Iterate over any nonlinearity of material or source
 !------------------------------------------------------------------------------
-  totat = 0.0d0
-  totst = 0.0d0
 
   DO iter=1,NonlinearIter
 !------------------------------------------------------------------------------
-     at  = CPUTime()
      at0 = RealTime()
 
      CALL Info( 'DCRComplexSolve', ' ', Level=4 )
@@ -298,6 +322,16 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
      END DO
 !------------------------------------------------------------------------------
+     CALL DefaultFinishBulkAssembly()
+     IF (UseEdgeResidual) THEN
+       !
+       ! Now EdgeResVar represents the residual with respect
+       ! to the basis for H(curl). We need to apply a transformation so that
+       ! we may solve a residual correction by using the nodal basis.
+       !
+       CALL NedelecToNodalResidual(Solver % Matrix % RHS, EdgeResVar, cdim=dim, &
+           SecondFamily = SecondFamily)
+     END IF
 
 !
 !    Neumann & Newton BCs:
@@ -366,56 +400,33 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
      END DO
 !------------------------------------------------------------------------------
-
-     CALL FinishAssembly( Solver, ForceVector )
+     CALL DefaultFinishBoundaryAssembly()
+     CALL DefaultFinishAssembly()
+     CALL Info( 'DCRComplexSolve', 'Assembly done', Level=4 )
 !
 !    Dirichlet BCs:
 !    --------------
-     CALL SetDirichletBoundaries( Model, StiffMatrix, ForceVector, &
-          ComponentName(Solver % Variable,1), 1, &
-             Solver % Variable % DOFs, PressurePerm )
-
-     CALL SetDirichletBoundaries( Model, StiffMatrix, ForceVector, &
-          ComponentName(Solver % Variable,2), 2, &
-             Solver % Variable % DOFs, PressurePerm )
-
-     CALL Info( 'DCRComplexSolve', 'Assembly done', Level=4 )
+     CALL DefaultDirichletBCs()
 
 !
 !    Solve the system and we are done:
 !    ---------------------------------
-     PrevNorm = Norm
-     at = CPUTime() - at
-     st = CPUTime()
-
-     CALL SolveSystem( StiffMatrix, ParMatrix, ForceVector, &
-          Pressure, Norm, Solver % Variable % DOFs, Solver )
-
-     st = CPUTIme()-st
-     totat = totat + at
-     totst = totst + st
-     WRITE(Message,'(a,i4,a,F8.2,F8.2)') 'iter: ',iter,' Assembly: (s)', at, totat
-     CALL Info( 'DCRComplexSolve', Message, Level=4 )
-     WRITE(Message,'(a,i4,a,F8.2,F8.2)') 'iter: ',iter,' Solve:    (s)', st, totst
-     CALL Info( 'DCRComplexSolve', Message, Level=4 )
-
+     Norm = DefaultSolve()
+     IF( DefaultConverged() ) EXIT
 !------------------------------------------------------------------------------
-     IF ( PrevNorm + Norm /= 0.0d0 ) THEN
-        RelativeChange = 2*ABS(PrevNorm - Norm) / (PrevNorm + Norm)
-     ELSE
-        RelativeChange = 0.0d0
-     END IF
-
-     CALL Info( 'DCRComplexSolve', ' ', Level=4 )
-     WRITE( Message, * ) 'Result Norm    : ',Norm
-     CALL Info( 'DCRComplexSolve', Message, Level=4 )
-     WRITE( Message, * ) 'Relative Change: ',RelativeChange
-     CALL Info( 'DCRComplexSolve', Message, Level=4 )
-
-     IF ( RelativeChange < NonlinearTol ) EXIT
+   END DO ! of nonlinear iteration
 !------------------------------------------------------------------------------
-  END DO ! of nonlinear iteration
-!------------------------------------------------------------------------------
+   CALL DefaultFinish()
+
+   EdgeSolVar => NULL()
+   sname = ListGetString(Params, 'Edge Update Name', Found)
+   IF (Found) THEN
+     EdgeSolVar => VariableGet( Mesh % Variables, sname, ThisOnly = .TRUE., UnfoundFatal = .TRUE. )
+     CALL Info('DCRComplexSolve', 'Projecting nodal solution to vector element space', Level=6)
+     CALL NodalGradientToNedelecInterpolation(Solver % Variable, EdgeSolVar, cdim=dim, &
+         SecondFamily = SecondFamily)
+   END IF
+   
    IF ( ListGetLogical( Solver % Values, 'Adaptive Mesh Refinement', GotIt ) ) THEN
      IF ( .NOT. ListGetLogical( Solver % Values, 'Library Adaptivity', GotIt ) ) THEN
        CALL RefineMesh( Model,Solver,Pressure,PressurePerm, &
@@ -613,7 +624,6 @@ CONTAINS
           end do
        end do
 
-
 !      Stiffness matrix and load vector
 !      --------------------------------
        DO p=1,NBasis
@@ -777,6 +787,170 @@ CONTAINS
   END SUBROUTINE LocalMatrixBoundary
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> Apply the Nedelec interpolation to a vector field represented in terms of
+!> the gradients of Lagrange (nodal) basis functions. The result of the interpolation
+!> is returned by substituting the values of the DOFs into the FE variable
+!> describing the vector element field. The current implementation assumes that
+!> all DOFs are associated with edges.  
+!------------------------------------------------------------------------------
+  SUBROUTINE NodalGradientToNedelecInterpolation(NodalVar, VectorElementVar, cdim, &
+      SecondFamily)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Variable_t), POINTER, INTENT(IN) :: NodalVar
+    TYPE(Variable_t), POINTER, INTENT(INOUT) :: VectorElementVar
+    INTEGER, OPTIONAL :: cdim         !< The number of spatial coordinates 
+    LOGICAL, OPTIONAL :: SecondFamily !< To select the element family
+!------------------------------------------------------------------------------
+    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Element_t), POINTER :: Edge
+    LOGICAL :: SecondKindBasis
+    INTEGER, ALLOCATABLE, SAVE :: Ind(:)
+    INTEGER :: dim, istat, EDOFs, i, j, k, i1, i2, k1, k2, nd, dof
+    REAL(KIND=dp) :: PiMat(2,2), x(2), D
+!------------------------------------------------------------------------------
+    IF (.NOT. ASSOCIATED(Mesh % Edges)) THEN
+      CALL Fatal('NodalGradientToNedelecInterpolation', 'Mesh edges not associated!')
+    END IF
+
+    IF (PRESENT(cdim)) THEN
+      dim = cdim
+    ELSE
+      dim = 3
+    END IF
+    
+    IF (PRESENT(SecondFamily)) THEN
+      SecondKindBasis = SecondFamily
+    ELSE
+      SecondKindBasis = .FALSE.
+    END IF
+
+    IF (SecondKindBasis) THEN
+      EDOFs = 2
+    ELSE
+      EDOFs = 1  
+    END IF
+
+    IF (NodalVar % DOFs /= VectorElementVar % DOFs) CALL Fatal('NodalGradientToNedelecInterpolation', &
+        'Coordinate system dimension and DOF counts are not as expected')
+    
+    IF (.NOT. ALLOCATED(Ind)) THEN
+      ALLOCATE( Ind(Mesh % MaxElementDOFs), stat=istat )
+    END IF
+    
+    ! Here we assume that all DOFs are associated with edges, so it suffices
+    ! to loop over all the edges
+    !
+    DO j=1, Mesh % NumberOfEdges      
+      Edge => Mesh % Edges(j)
+
+      ! Create the matrix representation of the Nedelec interpolation operator 
+      CALL NodalGradientToNedelecPiMatrix(PiMat, Edge, Mesh, dim, SecondKindBasis)
+
+      ! Finally apply the interpolation operator to a nodal variable
+      ! which may consist of both real and imaginary components
+      !
+      nd = GetElementDOFs(Ind, Edge, VectorElementVar % Solver)
+
+      i1 = Edge % NodeIndexes(1)
+      i2 = Edge % NodeIndexes(2)
+      k1 = NodalVar % Perm(i1)
+      k2 = NodalVar % Perm(i2)
+
+      DO dof=1, VectorElementVar % DOFs
+        x(1) = NodalVar % Values(dof*(k1-1) + dof)
+        x(2) = NodalVar % Values(dof*(k2-1) + dof)
+
+        DO i=1,EDOFs
+          D = SUM(PiMat(i,1:2) * x(1:2))
+          k = VectorElementVar % Perm(Ind(i)) 
+          VectorElementVar % Values(VectorElementVar % DOFs*(k-1)+dof) = D     
+        END DO
+      END DO
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE NodalGradientToNedelecInterpolation
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  SUBROUTINE NedelecToNodalResidual(RHSVector, VectorElementRes, cdim, &
+      SecondFamily)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    REAL(KIND=dp), INTENT(INOUT) :: RHSVector(:) 
+    TYPE(Variable_t), POINTER, INTENT(IN) :: VectorElementRes
+    INTEGER, OPTIONAL :: cdim         !< The number of spatial coordinates 
+    LOGICAL, OPTIONAL :: SecondFamily !< To select the element family
+!------------------------------------------------------------------------------
+    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Element_t), POINTER :: Edge
+    TYPE(GaussIntegrationPoints_t) :: IP
+    LOGICAL :: SecondKindBasis, GradientMatrix, stat
+    INTEGER, ALLOCATABLE, SAVE :: Ind(:)
+    INTEGER :: dim, istat, EDOFs, i, j, k, m, p, q, nd, dof, ndofs
+    REAL(KIND=dp) :: PiMat(2,2), ri
+!------------------------------------------------------------------------------
+    IF (.NOT. ASSOCIATED(Mesh % Edges)) THEN
+      CALL Fatal('NedelecToNodalResidual', 'Mesh edges not associated!')
+    END IF
+
+    IF (PRESENT(cdim)) THEN
+      dim = cdim
+    ELSE
+      dim = 3
+    END IF
+    
+    IF (PRESENT(SecondFamily)) THEN
+      SecondKindBasis = SecondFamily
+    ELSE
+      SecondKindBasis = .FALSE.
+    END IF
+
+    IF (SecondKindBasis) THEN
+      EDOFs = 2
+    ELSE
+      EDOFs = 1  
+    END IF
+
+    ndofs = 2   ! This is correct for the 3-D monolithic version only!
+    
+    IF (ndofs /= VectorElementRes % DOFs) CALL Fatal('NedelecToNodalResidual', &
+        'Coordinate system dimension and DOF counts are not as expected')
+    
+    IF (.NOT. ALLOCATED(Ind)) THEN
+      ALLOCATE( Ind(Mesh % MaxElementDOFs), stat=istat )
+    END IF
+    
+    ! Here we assume that all DOFs are associated with edges, so it suffices
+    ! to loop over all the edges
+    !
+    DO j=1, Mesh % NumberOfEdges      
+      Edge => Mesh % Edges(j)
+
+      ! Create the matrix representation of the Nedelec interpolation operator 
+      CALL NodalGradientToNedelecPiMatrix(PiMat, Edge, Mesh, dim, SecondKindBasis)
+
+      nd = GetElementDOFs(Ind, Edge, VectorElementRes % Solver)
+
+      DO dof=1, VectorElementRes % DOFs
+        DO i=1,2
+          ri = 0.0_dp    
+          DO p=1,EDOFs
+            q = VectorElementRes % Perm(Ind(p))
+            ri = ri + PiMat(p,i) * &
+                VectorElementRes % Values(VectorElementRes % DOFs*(q-1)+dof)
+          END DO
+          m = Solver % Variable % Perm(Edge % NodeIndexes(i))
+          RHSVector(ndofs*(m-1) + dof) = &
+              RHSVector(ndofs*(m-1) + dof) + ri
+        END DO
+      END DO
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE NedelecToNodalResidual
+!------------------------------------------------------------------------------
+  
 !------------------------------------------------------------------------------
 END SUBROUTINE DCRComplexSolver
 !------------------------------------------------------------------------------
