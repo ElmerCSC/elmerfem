@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Module for computing component-wise the electric field from the wave
+! *  Module for computing the electric field from the component-wise wave
 ! *  equation by using nodal finite finite elements. This only works when
 ! *  the permeability is constant and the boundaries are Cartesian. 
 ! *
@@ -195,6 +195,7 @@ SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
       IF( SecondOrder ) THEN
         PiolaVersion = .TRUE.
         SecondFamily = .FALSE.
+        CALL Fatal(Caller, 'The lowest-order basis assumed') 
       ELSE
         SecondFamily = ListGetLogical(EdgeSolverParams, "Second Kind Basis", Found)
         PiolaVersion = ListGetLogical(EdgeSolverParams, 'Use Piola Transform', Found ) .OR. &
@@ -315,19 +316,15 @@ SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
   END DO ! compi
 
   EdgeSolVar => NULL()
-  sname = ListGetString( Params,'Edge Solution Name',Found)
+  sname = ListGetString( Params,'Edge Update Name',Found)
   IF(Found) THEN
     EdgeSolVar => VariableGet( Mesh % Variables, sname )
     IF(.NOT. ASSOCIATED(EdgeSolVar)) THEN
       CALL Fatal(Caller,'Edge solution not found: '//TRIM(sname))
     END IF
     CALL Info(Caller,'Projecting nodal solution to vector element space', Level=6)
-!    IF (.FALSE.) THEN
-!      CALL NodeToEdgeProject()
-!    ELSE
     CALL NodalToNedelecInterpolation(EF, EdgeSolVar, cdim=3, &
         SecondFamily = SecondFamily)
-!    END IF
   END IF
     
   !IF( Solver % Variable % NonlinConverged == 1 ) EXIT
@@ -708,7 +705,7 @@ CONTAINS
     REAL(KIND=dp) :: PiMat(2,6), ri
 !------------------------------------------------------------------------------
     IF (.NOT. ASSOCIATED(Mesh % Edges)) THEN
-      CALL Fatal('NodalToNedelecInterpolation', 'Mesh edges not associated!')
+      CALL Fatal('NedelecToNodalResidual', 'Mesh edges not associated!')
     END IF
 
     IF (PRESENT(cdim)) THEN
@@ -731,7 +728,7 @@ CONTAINS
     
     ndofs = 6   ! This is correct for the 3-D monolithic version only!
     
-    IF (ndofs /= dim * VectorElementRes % DOFs) CALL Fatal('NodalToNedelecInterpolation', &
+    IF (ndofs /= dim * VectorElementRes % DOFs) CALL Fatal('NedelecToNodalResidual', &
         'Coordinate system dimension and DOF counts are not as expected')
     
     IF (.NOT. ALLOCATED(Ind)) THEN
@@ -770,67 +767,9 @@ CONTAINS
 !------------------------------------------------------------------------------
 
   
-  ! Project nodal field to be an edge field.
-  !-------------------------------------------------------
-  SUBROUTINE NodeToEdgeProject()
-    INTEGER :: i,k,k1,k2,i1,i2,j,j1,j2,n0,dofi
-    REAL(KIND=dp) :: NodalSol(3), EdgeVector(3)
-    TYPE(Element_t), POINTER :: Edge
-
-    IF(EdgeSolVar % Dofs /= 2) THEN
-      CALL Fatal(Caller,'We should have 2 dofs for edge field!')
-    END IF
-    IF(.NOT. ASSOCIATED( Mesh % Edges ) ) THEN
-      CALL Fatal(Caller,'Mesh edges not associated!')
-    END IF
-   
-    n0 = Mesh % NumberOfNodes
-
-    DO j=1, Mesh % NumberOfEdges      
-      Edge => Mesh % Edges(j)
-
-      i1 = Edge % NodeIndexes(1)
-      i2 = Edge % NodeIndexes(2)
-
-      ! Vector in the direction of the edge
-      EdgeVector(1) = Mesh % Nodes % x(i2) - Mesh % Nodes % x(i1)
-      EdgeVector(2) = Mesh % Nodes % y(i2) - Mesh % Nodes % y(i1)
-      EdgeVector(3) = Mesh % Nodes % z(i2) - Mesh % Nodes % z(i1)
-       
-      IF( ParEnv % PEs > 1 ) THEN                            
-        j1 = Mesh % ParallelInfo % GlobalDOFs(i1)             
-        j2 = Mesh % ParallelInfo % GlobalDOFs(i2)             
-      ELSE
-        j1 = i1
-        j2 = i2
-      END IF
-        
-      ! There is an ordering convention that determines the direction of the edge vector
-      IF( j2 < j1) EdgeVector = -EdgeVector
-      
-      k1 = EF % Perm(i1)
-      k2 = EF % Perm(i2)
-      k = EdgeSolVar % Perm(n0+j)
-
-      ! Integration using the mid-point rule:
-      i1 = 6*(k1 - 1)
-      i2 = 6*(k2 - 1)
-      DO dofi=1,EdgeSolVar % dofs
-        DO i=1,3
-          ! Value at center of edge
-          NodalSol(i) = ( EF % Values(i1+2*(i-1)+dofi) + EF % Values(i2+2*(i-1)+dofi) ) / 2
-        END DO
-
-        ! We could add this one direction at the time but here we have the full vector
-        ! that we project to Re and Im parts.  
-        EdgeSolVar % Values(2*(k-1)+dofi) = SUM(NodalSol*EdgeVector) 
-      END DO
-    END DO
-    
-  END SUBROUTINE NodeToEdgeProject
-    
 !------------------------------------------------------------------------------
 ! Project edge residual to nodal residual.
+! NOTE: Consider using NedelecToNodalResidual instead
 !------------------------------------------------------------------------------
   SUBROUTINE EdgeToNodeProject()
 !------------------------------------------------------------------------------

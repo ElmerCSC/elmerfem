@@ -727,6 +727,14 @@ CONTAINS
          Matrix % ParMatrix => ParInitMatrix( Matrix, Matrix % ParallelInfo, SkipActiveCheck)
        END BLOCK
 
+
+       ! We can make many routines quicker if we know there is nothing to share.
+       ! Still we might want to operate in parallel using parallel norms etc. 
+       i = COUNT( Matrix % ParallelInfo % GInterface )
+       CALL MPI_ALLREDUCE( i, j, 1, MPI_INTEGER, MPI_SUM, Matrix % comm, ierr )
+       Matrix % ParallelInfo % NothingShared = (j==0)
+       
+       
 !if(parenv%mype==0) print*,'MATRIX INIT TIME: ', realtime()-tt
 #endif
 CONTAINS
@@ -761,7 +769,7 @@ CONTAINS
      END DO
      CALL MPI_ALLREDUCE(L1, L, np, MPI_LOGICAL, MPI_LAND, comm ,ierr)
 
-
+     
      IF(ANY(L(0:np-1))) THEN
 
        IF(L(imemb(ParEnv % MyPE))) THEN
@@ -864,12 +872,14 @@ CONTAINS
        INTEGER, OPTIONAL :: op
        REAL(KIND=dp) CONTIG :: x(:)
 !-------------------------------------------------------------------------------
+       IF(Matrix % ParallelInfo % NothingShared ) RETURN
+
        ParEnv => Matrix % ParMatrix % ParEnv
        IF(.NOT.ASSOCIATED(Parenv % Active)) THEN
          ParEnv = ParEnv_Common
        END IF
        ParEnv % ActiveComm = Matrix % Comm
-
+       
        CALL ExchangeSourceVec( Matrix, Matrix % ParMatrix % SplittedMatrix, &
               Matrix % ParallelInfo, x, op )
 !-------------------------------------------------------------------------------
@@ -884,6 +894,8 @@ CONTAINS
        INTEGER, OPTIONAL :: op
        INTEGER CONTIG :: x(:)
 !-------------------------------------------------------------------------------
+       IF(Matrix % ParallelInfo % NothingShared ) RETURN
+
        ParEnv => Matrix % ParMatrix % ParEnv
        ParEnv % ActiveComm = Matrix % Comm
 
@@ -902,6 +914,8 @@ CONTAINS
       TYPE(Matrix_t), OPTIONAL :: Matrix
       INTEGER, OPTIONAL :: op
 !-------------------------------------------------------------------------------
+
+      IF(Mesh % ParallelInfo % NothingShared ) RETURN
 
       ! We can inherit the ParEnv from the primary matrix even
       ! though the variable is not directly associated to it!

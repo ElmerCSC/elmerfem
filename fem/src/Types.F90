@@ -783,6 +783,7 @@ MODULE Types
 
      LOGICAL, POINTER               :: EdgeInterface(:) => NULL()
      TYPE(NeighbourList_t),POINTER  :: EdgeNeighbourList(:) => NULL()
+     LOGICAL                        :: NothingShared = .FALSE.
    END TYPE ParallelInfo_t
 
 !------------------------------------------------------------------------------

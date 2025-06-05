@@ -708,6 +708,97 @@ MODULE Interpolation
   END SUBROUTINE NodalToNedelecPiMatrix
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> Create a matrix representation of the Nedelec interpolation operator which 
+!> operates on a gradient field expressed in terms of the nodal basis functions
+!> and gives the values of DOFs for obtaining its vector element (Nedelec)
+!> interpolant. The current implementation assumes that all DOFs are associated
+!> with edges, so that the geometric domain of the finite element given as input
+!> is supposed to be one-dimensional.  
+!------------------------------------------------------------------------------
+  SUBROUTINE NodalGradientToNedelecPiMatrix(PiMat, Edge, Mesh, dim, SecondFamily)
+!------------------------------------------------------------------------------
+    REAL(KIND=dp), INTENT(OUT) :: PiMat(2,2)      !< The interpolation operator as a matrix 
+    TYPE(Element_t), POINTER, INTENT(IN) :: Edge  !< The element for which the operator is created
+    TYPE(Mesh_t), POINTER, INTENT(IN) :: Mesh     !< The Edge should belong to the mesh given
+    INTEGER, INTENT(IN) :: dim                    !< The number of components of the vector field  
+    LOGICAL, OPTIONAL, INTENT(IN) :: SecondFamily !< To select the Nedelec family    
+!------------------------------------------------------------------------------
+    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(GaussIntegrationPoints_t) :: IP
+    LOGICAL :: SecondKindBasis, stat
+    INTEGER, ALLOCATABLE, SAVE :: Ind(:)
+    
+    INTEGER :: EDOFs, i, k, p, i1, i2, j1, j2, n
+    REAL(KIND=dp) :: dBasis(2,3), Basis(2), detJ, s, e(3), t(3), fun(3), u, v
+!------------------------------------------------------------------------------
+    IF ((Edge % Type % ElementCode / 100) /= 2) THEN
+      CALL Warn('NodalGradientToNedelecPiMatrix', 'A 1-dimensional element expected')
+      RETURN
+    END IF
+        
+    IF (.NOT. ASSOCIATED(Mesh % Edges)) THEN
+      CALL Fatal('NodalGradientToNedelecPiMatrix', 'Mesh edges are not associated!')
+    END IF
+
+    n = Edge % Type % NumberOfNodes
+    IF (n /= 2) CALL Fatal('NodalGradientToNedelecPiMatrix', &
+        'A 2-node element expected ')
+
+    IF (PRESENT(SecondFamily)) THEN
+      SecondKindBasis = SecondFamily
+    ELSE
+      SecondKindBasis = .FALSE.
+    END IF
+
+    IF (SecondKindBasis) THEN
+      EDOFs = 2
+    ELSE
+      EDOFs = 1  
+    END IF
+
+    CALL CopyElementNodesFromMesh(Nodes, Mesh, n,  Edge % NodeIndexes)
+
+    t(1) = Nodes % x(2) - Nodes % x(1)
+    t(2) = Nodes % y(2) - Nodes % y(1)
+    t(3) = Nodes % z(2) - Nodes % z(1)
+      
+    i1 = Edge % NodeIndexes(1)
+    i2 = Edge % NodeIndexes(2)
+    IF (ParEnv % PEs > 1) THEN                            
+      j1 = Mesh % ParallelInfo % GlobalDOFs(i1)             
+      j2 = Mesh % ParallelInfo % GlobalDOFs(i2)             
+    ELSE
+      j1 = i1
+      j2 = i2
+    END IF
+
+    IF (j2 < j1) t = -t      
+    t = t/SQRT(SUM(t**2))
+
+    PiMat = 0.0_dp
+    IP = GaussPoints(Edge)
+    DO p=1,IP % n
+      stat = ElementInfo(Edge, Nodes, IP % u(p), IP % v(p), IP % w(p), DetJ, Basis, dBasis)
+      s = IP % s(p) * DetJ        
+
+      DO i=1,n
+        fun(:) = dBasis(i,:)
+        IF (SecondKindBasis) THEN
+          u = IP % u(p)
+          v = 0.5d0*(1.0d0-sqrt(3.0d0)*u)
+          PiMat(1,i) = PiMat(1,i) + s * SUM(fun*t)*v
+          v = 0.5d0*(1.0d0+sqrt(3.0d0)*u)
+          PiMat(2,i) = PiMat(2,i) + s * SUM(fun*t)*v
+        ELSE
+          PiMat(1,i) = PiMat(1,i) + s * SUM(fun*t)  
+        END IF
+      END DO
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE NodalGradientToNedelecPiMatrix
+!------------------------------------------------------------------------------
+  
 !-------------------------------------------------------------------------------
 END MODULE Interpolation
 !-------------------------------------------------------------------------------

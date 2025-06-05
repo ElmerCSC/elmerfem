@@ -1418,8 +1418,14 @@
              IF(IterSolveFactors) THEN
                Solver % Matrix => G
                IF(UseFullMatrix) THEN
-                 fm_G => G_full
-                 CALL IterSolver( G, SOL, RHS, Solver, MatVecF=AddrFunc(fm_Matvec) )
+                 BLOCK
+                   TYPE(Matrix_t), POINTER :: Gm
+                   Gm => AllocateMatrix()
+                   Gm % NumberOfRows = RadiationSurfaces
+                   fm_G => G_full
+                   CALL IterSolver( Gm, SOL, RHS, Solver, MatVecF=AddrFunc(fm_Matvec) )
+                   DEALLOCATE(Gm)
+                 END BLOCK
                ELSE
                  CALL IterSolver( G, SOL, RHS, Solver )
                END IF

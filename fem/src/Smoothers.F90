@@ -78,9 +78,8 @@ CONTAINS
       TYPE( IfLColsT), POINTER :: IfL, IfO
       INTEGER :: row
       TYPE (BasicMatrix_t), POINTER :: CurrIf
+!      SAVE Z, Pr, Q, Ri, T, T1, T2, S, V
 !------------------------------------------------------------------------------
-      
-      SAVE Z, Pr, Q, Ri, T, T1, T2, S, V
 
       Parallel = ParEnv % PEs > 1
 
@@ -123,7 +122,6 @@ CONTAINS
 #endif
       END IF
       
-      n = M % NumberOfRows
       InvLevel = MAX(1,1 + Solver % MultiGridTotal - Level)
 
       Lowest = .FALSE.
@@ -132,6 +130,29 @@ CONTAINS
       Pre = .FALSE.
       IF( PRESENT( PreSmooth ) ) Pre = PreSmooth
 
+      Rounds = 0
+      IF(Lowest) THEN
+        Rounds = ListGetInteger( Solver % Values,'MG Lowest Smoothing Iterations',Found)
+      ELSE IF( Pre ) THEN
+        Iters => ListGetIntegerArray( Solver % Values,'MG Pre Smoothing Iterations',Found)
+        IF(Found) THEN
+          Rounds = Iters(MIN(InvLevel,SIZE(Iters)))
+        ELSE        
+          Rounds = 1
+        END IF
+      ELSE
+        Iters => ListGetIntegerArray( Solver % Values,'MG Post Smoothing Iterations',Found)
+        IF(Found) THEN
+          Rounds = Iters(MIN(InvLevel,SIZE(Iters)))
+        ELSE        
+          Rounds = 1
+        END IF
+      END IF
+
+      IF( Rounds <= 0 ) THEN
+        CALL Info('MGSmooth','Zero smoothing rounds given, doing nothing.')
+        GOTO 10
+      END IF
 
 !      Smoothing iterative method:
 !      ---------------------------
@@ -155,30 +176,6 @@ CONTAINS
         END IF
       END IF
 
-      Rounds = 0
-      IF(Lowest) THEN
-        Rounds = ListGetInteger( Solver % Values,'MG Lowest Smoothing Iterations',Found)
-      ELSE IF( Pre ) THEN
-        Iters => ListGetIntegerArray( Solver % Values,'MG Pre Smoothing Iterations',Found)
-        IF(Found) THEN
-          Rounds = Iters(MIN(InvLevel,SIZE(Iters)))
-        ELSE        
-          Rounds = 1
-        END IF
-      ELSE
-        Iters => ListGetIntegerArray( Solver % Values,'MG Post Smoothing Iterations',Found)
-        IF(Found) THEN
-          Rounds = Iters(MIN(InvLevel,SIZE(Iters)))
-        ELSE        
-          Rounds = 1
-        END IF
-      END IF
-
-      IF( Rounds == 0 ) THEN
-        CALL Info('MGSmooth','Zero smoothing rounds given, doing nothing.')
-        GOTO 10
-      END IF
-
       IF( IterMethod == 'direct1d' .OR. IterMethod == 'psgs' ) THEN
         IF( .NOT. PRESENT( CF ) ) THEN
           CALL Fatal('MGSmooth','Smoother requires CF clustering info: '//TRIM(IterMethod))
@@ -186,20 +183,6 @@ CONTAINS
       END IF
 
       TOL = ListGetConstReal( Solver % Values, 'MG Smoother Reduction TOL',Found)
-
-      RNorm = MGnorm( n, Mr ) 
-      IF ( Rounds <= 0 ) RETURN
-
-      SELECT CASE( IterMethod )
-      CASE( 'cg' )
-        ALLOCATE( Z(n), Pr(n), Q(n) )
-        
-      CASE( 'bicgstab' )
-        ALLOCATE( Pr(n), Ri(n), T(n), T1(n), T2(n), S(n), V(n) )
-
-      CASE( 'direct1d' ) 
-        ALLOCATE( dx(n) )
-      END SELECT
 
       TmpArray => ListGetConstRealArray(Solver % Values,'MG Smoother Relaxation Factor',Found)
       IF( ASSOCIATED(TmpArray)) THEN
@@ -218,7 +201,7 @@ CONTAINS
       SELECT CASE( IterMethod )
       CASE( 'jacobi' ) 
         CALL Jacobi( n, A, M, Mx, Mb, Mr, Rounds )
-        
+       
       CASE( 'gs' )                         
         CALL GS( n, A, M, Mx, Mb, Mr, Rounds )
 
@@ -262,16 +245,22 @@ CONTAINS
         CALL PostSGS( n, A, M, Mx, Mb, Mr, CF, Rounds)
 
       CASE( 'direct1d' )                                     
+        ALLOCATE( dx(n) )
         CALL Direct1dSmoother( n, A, M, Mx, Mb, Mr, CF, Rounds)
-
+        DEALLOCATE(dx)
+        
       CASE( 'cg' )
+        ALLOCATE( Z(n), Pr(n), Q(n) )
         CALL CG( n, A, M, Mx, Mb, Mr, Rounds )
-
+        DEALLOCATE( Z, Pr, Q)
+        
       CASE( 'ccg' )
         CALL CCG( n, A, M, Mx, Mb, Mr, Rounds )
        
       CASE( 'bicgstab' )
-       CALL BiCG( n, A, M, Mx, Mb, Mr, Rounds )
+        ALLOCATE( Pr(n), Ri(n), T(n), T1(n), T2(n), S(n), V(n) )
+        CALL BiCG( n, A, M, Mx, Mb, Mr, Rounds )
+        DEALLOCATE( Pr, Ri, T, T1, T2, S, V )
 
       CASE( 'uzawa' )                                   
         CALL Uzawa( n, A, M, Mx, Mb, Mr, Rounds )
@@ -285,15 +274,6 @@ CONTAINS
       CASE DEFAULT
         CALL Warn('MGSmooth','Unknown smoother - '//TRIM(IterMethod)//' using Jacobi')
         CALL Jacobi( n, A, M, Mx, Mb, Mr, Rounds )
-      END SELECT
-
-
-      SELECT CASE( Itermethod )
-      CASE( 'cg' )
-        DEALLOCATE( Z, Pr, Q)
-        
-      CASE( 'bicgstab' )
-        DEALLOCATE( Pr, Ri, T, T1, T2, S, V )
       END SELECT
 
 10    CONTINUE
@@ -385,11 +365,11 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-      SUBROUTINE MGCmv( A, x, b, Update )
+      SUBROUTINE MGCmv( A, x, b )
 !------------------------------------------------------------------------------
-        COMPLEX(KIND=dp) CONTIG :: x(:), b(:)
-        LOGICAL, OPTIONAL :: Update
-        TYPE(Matrix_t), POINTER :: A
+        TYPE(Matrix_t), POINTER, INTENT(IN) :: A
+        COMPLEX(KIND=dp) CONTIG, INTENT(IN) :: x(:)
+        COMPLEX(KIND=dp) CONTIG, INTENT(OUT) :: b(:)
 !------------------------------------------------------------------------------
         CALL CRS_ComplexMatrixVectorMultiply( A, x, b )
 !------------------------------------------------------------------------------
@@ -445,16 +425,17 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE CJacobi( n, A, M, rx, rb, rr, Rounds )
 !------------------------------------------------------------------------------
-        TYPE(Matrix_t), POINTER :: A, M
-        INTEGER :: n,Rounds
-        REAL(KIND=dp) CONTIG :: rx(:),rb(:),rr(:)
+        TYPE(Matrix_t), POINTER, INTENT(IN) :: A, M
+        INTEGER, INTENT(IN) :: n, Rounds
+        REAL(KIND=dp) CONTIG, INTENT(INOUT) :: rx(:)
+        REAL(KIND=dp) CONTIG, INTENT(IN) :: rb(:)
+        REAL(KIND=dp) CONTIG, INTENT(OUT) :: rr(:)
 !------------------------------------------------------------------------------
         COMPLEX(KIND=dp) :: x(n/2),b(n/2),r(n/2)
         INTEGER :: i,j,diag
 !------------------------------------------------------------------------------
 
         DO i=1,n/2
-          r(i) = CMPLX( rr(2*i-1), rr(2*i),KIND=dp )
           x(i) = CMPLX( rx(2*i-1), rx(2*i),KIND=dp )
           b(i) = CMPLX( rb(2*i-1), rb(2*i),KIND=dp )
         END DO
@@ -475,8 +456,6 @@ CONTAINS
           rr(2*i-0) =  AIMAG( r(i) )
           rx(2*i-1) =  REAL( x(i) )
           rx(2*i-0) =  AIMAG( x(i) )
-          rb(2*i-1) =  REAL( b(i) )
-          rb(2*i-0) =  AIMAG( b(i) )
         END DO
 
 !------------------------------------------------------------------------------
@@ -497,7 +476,6 @@ CONTAINS
         REAL(KIND=dp), POINTER :: Values(:)
 !------------------------------------------------------------------------------
      
-        n = M % NumberOfRows
         Rows   => M % Rows
         Cols   => M % Cols
         Values => M % Values
@@ -533,7 +511,6 @@ CONTAINS
         REAL(KIND=dp), POINTER :: Values(:)
 !------------------------------------------------------------------------------
      
-        n = M % NumberOfRows
         Rows   => M % Rows
         Cols   => M % Cols
         Values => M % Values
@@ -571,7 +548,6 @@ CONTAINS
         REAL(KIND=dp), POINTER CONTIG :: Values(:)
 !------------------------------------------------------------------------------
      
-        n = M % NumberOfRows
         Rows   => M % Rows
         Cols   => M % Cols
         Values => M % Values
@@ -612,7 +588,6 @@ CONTAINS
         REAL(KIND=dp), POINTER CONTIG :: Values(:)
 !------------------------------------------------------------------------------
      
-        n = M % NumberOfRows
         Rows   => M % Rows
         Cols   => M % Cols
         Values => M % Values
@@ -732,7 +707,6 @@ CONTAINS
         INTEGER, POINTER CONTIG  :: Cols(:),Rows(:)
         REAL(KIND=dp), POINTER CONTIG :: Values(:)
         
-        n = M % NumberOfRows
         Rows   => M % Rows
         Cols   => M % Cols
         Values => M % Values
@@ -784,7 +758,6 @@ CONTAINS
         INTEGER, POINTER CONTIG :: Cols(:),Rows(:)
         REAL(KIND=dp), POINTER CONTIG :: Values(:)
         
-        n = M % NumberOfRows
         Rows   => M % Rows
         Cols   => M % Cols
         Values => M % Values
@@ -815,17 +788,19 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE CSGS( n, A, M, rx, rb, rr, w, Rounds )
 !------------------------------------------------------------------------------
-        TYPE(Matrix_t), POINTER :: A, M
-        INTEGER :: Rounds
-        REAL(KIND=dp) :: w
-        REAL(KIND=dp) CONTIG :: rx(:),rb(:),rr(:)
+        TYPE(Matrix_t), POINTER, INTENT(IN) :: A, M
+        INTEGER, INTENT(IN) :: Rounds
+        REAL(KIND=dp), INTENT(IN) :: w
+        REAL(KIND=dp) CONTIG, INTENT(INOUT) :: rx(:)
+        REAL(KIND=dp) CONTIG, INTENT(IN) :: rb(:)
+        REAL(KIND=dp) CONTIG, INTENT(OUT) :: rr(:)
+!------------------------------------------------------------------------------        
         INTEGER :: i,j,k,n,l
         INTEGER, POINTER CONTIG :: Cols(:),Rows(:)
         REAL(KIND=dp), POINTER CONTIG :: Values(:)
         COMPLEX(KIND=dp) :: r(n/2),b(n/2),x(n/2),s
-        
+!------------------------------------------------------------------------------
         DO i=1,n/2
-          r(i) = CMPLX( rr(2*i-1), rr(2*i), KIND=dp )
           x(i) = CMPLX( rx(2*i-1), rx(2*i), KIND=dp )
           b(i) = CMPLX( rb(2*i-1), rb(2*i), KIND=dp )
         END DO
@@ -866,8 +841,6 @@ CONTAINS
           rr(2*i-0) =  AIMAG( r(i) )
           rx(2*i-1) =  REAL( x(i) )
           rx(2*i-0) =  AIMAG( x(i) )
-          rb(2*i-1) =  REAL( b(i) )
-          rb(2*i-0) =  AIMAG( b(i) )
         END DO
         
       END SUBROUTINE CSGS
@@ -886,7 +859,6 @@ CONTAINS
         INTEGER, POINTER CONTIG :: Cols(:),Rows(:)
         REAL(KIND=dp), POINTER CONTIG :: Values(:)
         
-        n = M % NumberOfRows
         Rows   => M % Rows
         Cols   => M % Cols
         Values => M % Values
@@ -968,7 +940,7 @@ CONTAINS
 
         SAVE :: Acluster, NodeLayer, NoLayers
 
-        n = A % NumberOfRows
+        n = A % NumberOfRows ! Why not M % NumberOfRows ?
         Rows   => A % Rows
         Cols   => A % Cols
         Values => A % Values
@@ -1689,7 +1661,6 @@ END DO
         REAL(KIND=dp), POINTER CONTIG :: Values(:)
 !------------------------------------------------------------------------------
      
-        n = A % NumberOfRows
         Rows   => A % Rows
         Cols   => A % Cols
         Values => A % Values

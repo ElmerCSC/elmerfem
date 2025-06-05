@@ -3400,7 +3400,7 @@ CONTAINS
 !> One can enforce weak coupling by calling a dependent solver a.k.a. slave solver
 !> at different stages of the master solver: e.g. before and after the solver.
 !> The strategy can be particularly efficient for nonlinear problems when the
-!> slave solver is cheap and a stepsize control is applied
+!> slave solver is cheap and a stepsize control is applied.
 !> Also one can easily make postprocessing steps just at the correct slot.
 !-----------------------------------------------------------------------------
   RECURSIVE SUBROUTINE DefaultSlaveSolvers( Solver, SlaveSolverStr)

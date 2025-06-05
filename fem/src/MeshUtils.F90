@@ -2325,6 +2325,7 @@ CONTAINS
 
    IF(ParEnv % PEs <= 1) RETURN
 
+
    ! Get surface elements participating in radiative heat transfer
    ! -------------------------------------------------------------
    ntot = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
@@ -2384,6 +2385,8 @@ CONTAINS
        n_NodeInd = n_NodeInd + n
      END DO
      CALL CheckBuffer(ParEnv % PEs*(3*RadiationSurfaces+n_NodeInd+8*n_Coord+MPI_BSEND_OVERHEAD))
+   ELSE
+     CALL CheckBuffer(1024+MPI_BSEND_OVERHEAD) ! just something
    END IF
 
    ! Distribute the extracted information
@@ -18942,8 +18945,9 @@ CONTAINS
     TYPE(ParallelInfo_t), POINTER :: PI_in, PI_out
     TYPE(Element_t), POINTER :: Element
     INTEGER :: nnodes,gnodes,gelements,ierr,nlev,ilev,&
-        nParMesh,nParExt,OrigPart,ElemCode,bodyid
-    LOGICAL :: isParallel, SingleIn, Found, TopBC, BotBC, CollectExtrudedBCs
+        nParMesh,nParExt,OrigPart,ElemCode,bodyid, newbcs
+    LOGICAL :: isParallel, SingleIn, Found, TopBC, BotBC, &
+        CollectExtrudedBCs, SeparateSlices, CreateInternalBCs, InternalBC
     INTEGER,ALLOCATABLE :: ChildBCs(:)
     REAL(KIND=dp)::CurrCoord 
     REAL(KIND=dp), POINTER :: ActiveCoord(:)
@@ -19014,6 +19018,8 @@ CONTAINS
     gelements = Mesh_in % NumberOfBulkElements
 
     Mesh_out % SingleMesh = .FALSE.
+    SeparateSlices = .FALSE.
+    CreateInternalBCs = .FALSE.
     
     ExtrudedCoord = ListGetInteger( CurrentModel % Simulation,'Extruded Coordinate Index', &
         Found, minv=1,maxv=3 )
@@ -19028,7 +19034,7 @@ CONTAINS
     END IF
 
     CollectExtrudedBCs = ListGetLogical( CurrentModel % Simulation,'Extruded BCs Collect',Found )
-     
+    
     IF (isParallel) THEN
       PI_in  => Mesh_in % ParallelInfo
       PI_out => Mesh_out % ParallelInfo
@@ -19036,17 +19042,19 @@ CONTAINS
       IF(.NOT. ASSOCIATED( PI_in ) ) CALL Fatal(Caller,'PI_in not associated!')
       IF(.NOT. ASSOCIATED( PI_out ) ) CALL Fatal(Caller,'PI_out not associated!')
             
+      SeparateSlices = ListGetLogical( CurrentModel % Simulation,'Extruded Mesh Slices Separate',Found )
+      CreateInternalBCs = ListGetLogical( CurrentModel % Simulation,'Extruded BCs Internal',Found ) 
+      IF(.NOT. Found) CreateInternalBCs = SeparateSlices 
+      
       ALLOCATE(PI_out % NeighbourList(nnodes))
       ALLOCATE(PI_out % GInterface(nnodes))
       ALLOCATE(PI_out % GlobalDOFs(nnodes))
 
       IF(.NOT. SingleIn ) THEN
         IF(.NOT. ASSOCIATED( PI_in % NeighbourList ) ) THEN
-          CALL Fatal(Caller,'Neighnours not associated!')
+          CALL Fatal(Caller,'Neighnours not associated in initial mesh!')
         END IF
-      END IF
-        
-      IF(.NOT. SingleIn ) THEN
+
         ! Count own nodes
         j=0
         DO i=1,Mesh_in % NumberOfNodes
@@ -19070,6 +19078,8 @@ CONTAINS
 
         !PRINT *,'nParExt:',ParEnv % Mype, nParExt, nParMesh, gnodes,gelements        
       END IF
+
+      Mesh_out % ParallelInfo % NothingShared = ( SingleIn .AND. SeparateSlices )
     END IF
 
     CALL Info(Caller,'Number of nodes in layer: '//I2S(gnodes),Level=12)
@@ -19098,7 +19108,9 @@ CONTAINS
               m = SIZE(PI_in % NeighbourList(j) % Neighbours)
             END IF
           END IF
-          IF(i==0 .AND. ParEnv % MyPe > (nParMesh-1) ) THEN            
+          IF( SeparateSlices ) THEN
+            k = m
+          ELSE IF(i==0 .AND. ParEnv % MyPe > (nParMesh-1) ) THEN            
             k = 2*m
           ELSE IF(i==nlev .AND. ParEnv % MyPe < ParEnv % PEs- nParMesh ) THEN
             k = 2*m
@@ -19108,7 +19120,7 @@ CONTAINS
 
           ALLOCATE(PI_out % NeighbourList(cnt) % Neighbours(k))
           PI_out % GInterface(cnt) = (k>1)
-        
+                    
           DO k=1,m
             IF(m>1) THEN
               OrigPart = PI_in % NeighbourList(j) % Neighbours(k)
@@ -19116,14 +19128,22 @@ CONTAINS
               OrigPart = ParEnv % MyPe
             END IF                       
 
-            IF(SingleIn) THEN
-              l = j + (ilev+i) * gnodes
+            IF( SeparateSlices ) THEN
+              l = ( ParEnv % MyPe / nParMesh ) * ( nlev + 1 ) * gnodes
             ELSE
-              l = MODULO(PI_in % GlobalDOFs(j)-1,gnodes)+1 + (ilev+i) * gnodes 
+              l = ilev * gnodes
+            END IF
+                            
+            IF(SingleIn) THEN
+              l = l + j + i * gnodes
+            ELSE
+              l = l + MODULO(PI_in % GlobalDOFs(j)-1,gnodes)+1 + i * gnodes 
             END IF
             PI_out % GlobalDOFs(cnt) = l
-                                     
-            IF(i==0 .AND. ParEnv % MyPe > nParMesh-1 ) THEN
+
+            IF( SeparateSlices ) THEN
+              PI_out % NeighbourList(cnt) % Neighbours(k) = OrigPart               
+            ELSE IF(i==0 .AND. ParEnv % MyPe > nParMesh-1 ) THEN
               PI_out % NeighbourList(cnt) % Neighbours(2*k-1) = OrigPart
               PI_out % NeighbourList(cnt) % Neighbours(2*k) = OrigPart-1            
             ELSE IF(i==nlev .AND. ParEnv % MyPe < ParEnv % PEs-nParMesh ) THEN
@@ -19144,10 +19164,16 @@ CONTAINS
     ! Calculate exactly and allocate the number of extruded elements
     n = Mesh_in % NumberOfBulkElements + Mesh_in % NumberOfBoundaryElements
     totalnumberofelements = n*nlev
-    IF( ParEnv % MyPe < nParMesh ) totalnumberofelements = &
-        totalnumberofelements + Mesh_in % NumberOfBulkElements 
-    IF( ParEnv % MyPe >= ParEnv % PEs-nParMesh ) totalnumberofelements = &
-        totalnumberofelements + Mesh_in % NumberOfBulkElements 
+
+    IF( CreateInternalBCs ) THEN
+      totalnumberofelements = &
+          totalnumberofelements + 2 * Mesh_in % NumberOfBulkElements 
+    ELSE
+      IF( ParEnv % MyPe < nParMesh ) totalnumberofelements = &
+          totalnumberofelements + Mesh_in % NumberOfBulkElements 
+      IF( ParEnv % MyPe >= ParEnv % PEs-nParMesh ) totalnumberofelements = &
+          totalnumberofelements + Mesh_in % NumberOfBulkElements 
+    END IF
       
     ALLOCATE(Mesh_out % Elements(totalnumberofelements))
 
@@ -19276,13 +19302,25 @@ CONTAINS
     ELSE
       CALL Info(Caller,'Number of new BCs for each layer: '//I2S(max_body),Level=6)
     END IF
+    
+    IF( CollectExtrudedBCs ) THEN
+      newbcs = 2
+    ELSE
+      newbcs = 2 * max_body
+    END IF
 
+    IF( CreateInternalBCs ) THEN
+      CALL Info(Caller,'Internal bottom boundary: '//I2S(max_bid+newbcs+1),Level=6)
+      CALL Info(Caller,'Internal top boundary: '//I2S(max_bid+newbcs+2),Level=6)
+    END IF
+    
     ALLOCATE(ChildBCs(2*max_body))
     ChildBCs = -1
            
     ! Add bottom boundary:
     ! --------------------
-    IF( ParEnv % PEs == 1 .OR. ParEnv % MyPe < nParMesh ) THEN  
+    IF( ParEnv % PEs == 1 .OR. ParEnv % MyPe < nParMesh .OR. CreateInternalBCs ) THEN  
+      InternalBC = (ParEnv % PEs > 1 .AND. ParEnv % MyPe >= nParMesh )
       DO i=1,Mesh_in % NumberOfBulkElements
         cnt=cnt+1
         Element => Mesh_out % Elements(cnt) 
@@ -19297,14 +19335,16 @@ CONTAINS
         Element % BoundaryInfo % Right => NULL()
 
         bodyid = Mesh_in % Elements(i) % BodyId                
-        IF( CollectExtrudedBCs ) THEN
+        IF( InternalBC ) THEN
+          bcid = max_bid + newbcs + 1
+        ELSE IF( CollectExtrudedBCs ) THEN
           bcid = max_bid + 1
         ELSE
           bcid = max_bid + bodyid
         END IF
         Element % BoundaryInfo % Constraint = bcid
 
-        ChildBCs(2*bodyid-1) = bcid 
+        IF(.NOT. InternalBC) ChildBCs(2*bodyid-1) = bcid
         lastbc = MAX(lastbc,bcid)
 
         Element % BodyId = 0
@@ -19323,7 +19363,8 @@ CONTAINS
     
     ! Add top boundary:
     ! -----------------
-    IF( ParEnv % PEs == 1 .OR. ParEnv % MyPe >= ParEnv % PEs - nParMesh ) THEN
+    IF( ParEnv % PEs == 1 .OR. ParEnv % MyPe >= ParEnv % PEs - nParMesh .OR. CreateInternalBCs ) THEN
+      InternalBC = (ParEnv % PEs > 1 .AND. ParEnv % MyPe < ParEnv % PEs - nParMesh )
       DO i=1,Mesh_in % NumberOfBulkElements
         cnt=cnt+1
         Element => Mesh_out % Elements(cnt) 
@@ -19339,14 +19380,16 @@ CONTAINS
         Element % BoundaryInfo % Right => NULL()
         
         bodyid = Mesh_in % Elements(i) % BodyId                
-        IF( CollectExtrudedBCs ) THEN
+        IF( InternalBC ) THEN
+          bcid = max_bid + newbcs + 2
+        ELSE IF( CollectExtrudedBCs ) THEN
           bcid = max_bid + 2
         ELSE
           bcid = max_bid + bodyid + max_body
         END IF
         Element % BoundaryInfo % Constraint = bcid
 
-        ChildBCs(2*bodyid) = bcid 
+        IF(.NOT. InternalBC) ChildBCs(2*bodyid) = bcid 
         lastbc = MAX(lastbc,bcid)
         
         Element % BodyId = 0

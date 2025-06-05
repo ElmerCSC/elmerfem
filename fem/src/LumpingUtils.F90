@@ -1769,8 +1769,8 @@ MODULE LumpingUtils
         CASE( 3 )
           Aip = MATMUL(Aelem(1:3,1:n),Basis(1:n))
         CASE( 6 ) 
-          Aip = CMPLX( MATMUL(Aelem(1:2:5,1:n),Basis(1:n)), &
-              MATMUL(Aelem(2:2:6,1:n),Basis(1:n)) )
+          Aip = CMPLX( MATMUL(Aelem(1:5:2,1:n),Basis(1:n)), &
+              MATMUL(Aelem(2:6:2,1:n),Basis(1:n)) )
         END SELECT
 
         ! Current density at IP

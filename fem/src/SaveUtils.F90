@@ -1490,8 +1490,9 @@ CONTAINS
     ELSE
       t_start = 1
       t_end = Mesh % NumberOfBulkElements
+      ! We just need some value such that looping over [MinBody,MaxBody] results to one cycle only.
       MinBody = 1
-      MaxBody = MaxBody
+      MaxBody = MinBody
       ! Use global center to define normal direction. 
       n = Mesh % NumberOfNodes
       MeshCenter(1) = SUM(Mesh % Nodes % x(1:n)) / n

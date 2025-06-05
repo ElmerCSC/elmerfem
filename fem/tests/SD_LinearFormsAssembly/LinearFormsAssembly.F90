@@ -429,15 +429,17 @@ CONTAINS
     REAL(kind=dp), INTENT(IN) :: tol
     INTEGER :: nerror
 
-    INTEGER :: i, j, dim
-
+    INTEGER :: i, j, dim, ntot=0
+    SAVE ntot
+    
     nerror = 0
     ! Test element of local matrix 
     DO j=1,nbasis
       DO i=1,nbasis
         IF (ABS(STIFF1(i,j)-STIFF2(i,j)) >= tol) THEN
           nerror = nerror + 1
-          WRITE (*,*) 'STIFF:', i,j,STIFF1(i,j), STIFF2(i,j)
+          ntot = ntot + 1
+          IF(ntot <= 100) WRITE (*,*) 'STIFF:', i,j,STIFF1(i,j), STIFF2(i,j)
         END IF
       END DO
     END DO
@@ -451,14 +453,16 @@ CONTAINS
     REAL(kind=dp), INTENT(IN) :: tol
     INTEGER :: nerror
 
-    INTEGER :: i, dim
+    INTEGER :: i, dim, ntot=0
+    SAVE ntot
 
     nerror = 0
     ! Test element of local force vector
     DO i=1,nbasis
       IF (ABS(FORCE1(i)-FORCE2(i)) >= tol) THEN
         nerror = nerror + 1
-        WRITE (*,*) 'FORCE:', i, FORCE1(i), FORCE2(i)
+        ntot = ntot + 1
+        IF(ntot <= 100) WRITE (*,*) 'FORCE:', i, FORCE1(i), FORCE2(i)
       END IF
     END DO
   END FUNCTION TestLocalForce

@@ -614,7 +614,7 @@ CONTAINS
       ELSE IF ( SEQL(str,'vanka') ) THEN
         PCondType = PRECOND_VANKA
         
-      ELSE IF ( str == 'slave' ) THEN
+      ELSE IF ( str == 'auxiliary space solver' .OR. str == 'slave' ) THEN
         PCondType = PRECOND_SLAVE
         
       ELSE IF ( str == 'circuit' ) THEN

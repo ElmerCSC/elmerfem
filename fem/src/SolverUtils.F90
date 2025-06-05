@@ -8586,7 +8586,8 @@ CONTAINS
      INTEGER :: i,j,k,l,n,nn,ii(ParEnv % PEs), ierr, status(MPI_STATUS_SIZE)
 
      IF( ParEnv % PEs<=1 ) RETURN
-
+     IF( A % ParallelInfo % NothingShared ) RETURN
+     
      ALLOCATE( fneigh(ParEnv % PEs), ineigh(ParEnv % PEs) )
 
      nn = 0
@@ -13038,8 +13039,12 @@ END FUNCTION SearchNodeL
   CONTAINS
 
     !-------------------------------------------------------------
-    !>  Scale system Ax = b as:
-    !>  (DAD)y = Db, where D = 1/SQRT(Diag(A)), and y = D^-1 x
+    !> Scale system Ax = b as (DAD)y = Db, where
+    !> D = 1/SQRT(Diag(A)) and y = D^-1 x. By default, if the scaled
+    !> system is rewritten as A'y = b', this subroutine also performs
+    !> an additional scaling so that the final form is given by
+    !> A'(y/|b'|) = b'/|b'|. Whether the last step is taken depends
+    !> on the optional argument RhsScaling.
     !-------------------------------------------------------------    
     SUBROUTINE ScaleLinearSystemDiagonal()
 
@@ -13265,22 +13270,25 @@ END FUNCTION SearchNodeL
             CALL Info('ScaleLinearSystem','Rhs vector is almost zero, skipping rhs scaling!',Level=20)
           ELSE
             A % RhsScaling = bnorm
-            Diag(1:n) = Diag(1:n) * bnorm
             b(1:n) = b(1:n) / bnorm
           END IF
         END IF
       END IF
       
       IF( PRESENT(x) ) THEN
-        x(1:n) = x(1:n) / Diag(1:n)
+        x(1:n) = x(1:n) / (Diag(1:n) * A % RhsScaling) 
       END IF
       
     END SUBROUTINE ScaleLinearSystemDiagonal
 
 
     !-------------------------------------------------------------
-    !>  Scale system Ax = b as:
-    !>  (A/Ascl)(Ascl*x/bscl) = (b/bscl)
+    !>  Scale system Ax = b as (A/Ascl)y = b, with y = Ascl x.
+    !>  By default, if the scaled system is rewritten as A'y = b',
+    !>  this subroutine also perform an additional scaling, so that
+    !>  the final form is given by A'(y/bscl) = b'/bscl, i.e.
+    !>  (A/Ascl)(Ascl*x/bscl) = (b/bscl). Whether the last step is
+    !>  taken depends on the optional argument RhsScaling.
     !-------------------------------------------------------------    
     SUBROUTINE ScaleLinearSystemConstant()
 
@@ -13381,7 +13389,7 @@ END FUNCTION SearchNodeL
       END IF
       
       IF( PRESENT(x) ) THEN
-        Xscl = Bscl / Ascl
+        Xscl = A % RhsScaling / Ascl
         x(1:n) = x(1:n) / Xscl 
       END IF
 
@@ -13400,7 +13408,7 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
     TYPE(Solver_t) :: Solver
     TYPE(Matrix_t), TARGET :: A
-    REAL(KIND=dp) :: f(:)
+    REAL(KIND=dp), OPTIONAL :: f(:)
     LOGICAL :: Parallel
     LOGICAL, OPTIONAL :: ApplyScaling 
 !-----------------------------------------------------------------------------
@@ -13520,9 +13528,14 @@ END FUNCTION SearchNodeL
       DO j=Rows(i),Rows(i+1)-1
         Values(j) = Values(j) * Diag(i)
       END DO
-      f(i) = Diag(i) * f(i)
     END DO
 
+    IF (PRESENT(f)) THEN
+      DO i=1,n    
+        f(i) = Diag(i) * f(i)
+      END DO
+    END IF
+    
     IF ( ASSOCIATED( A % PrecValues ) ) THEN
       IF (SIZE(A % Values) == SIZE(A % PrecValues)) THEN
         DO i=1,n
@@ -13580,7 +13593,6 @@ END FUNCTION SearchNodeL
     SUBROUTINE BackScaleLinearSystemDiagonal()
 
       REAL(KIND=dp), POINTER :: Diag(:)
-      REAL(KIND=dp) :: bnorm
       INTEGER :: i,j
       LOGICAL :: doCM      
       TYPE(Matrix_t), POINTER :: CM
@@ -13605,13 +13617,11 @@ END FUNCTION SearchNodeL
       !      Solve x:  INV(D)x = y
       !      -------------------------------------------
       IF( PRESENT( x ) ) THEN
-        x(1:n) = x(1:n) * Diag(1:n)
+        x(1:n) = x(1:n) * Diag(1:n) * A % RhsScaling
       END IF
       
       IF( PRESENT( b ) ) THEN
-        bnorm = A % RhsScaling
-        Diag(1:n) = Diag(1:n) / bnorm
-        b(1:n) = b(1:n) / Diag(1:n) * bnorm
+        b(1:n) = b(1:n) / Diag(1:n) * A % RhsScaling 
       END IF
 
       IF( PRESENT( EigenScaling ) ) THEN
@@ -13778,7 +13788,7 @@ END FUNCTION SearchNodeL
   SUBROUTINE ReverseRowEquilibration( A, f )
 !------------------------------------------------------------------------------
     TYPE(Matrix_t) :: A
-    REAL(KIND=dp) :: f(:)
+    REAL(KIND=dp), OPTIONAL :: f(:)
 !-----------------------------------------------------------------------------
     INTEGER :: i, j, n
     INTEGER, POINTER :: Rows(:)
@@ -13798,7 +13808,7 @@ END FUNCTION SearchNodeL
       CALL Fatal('ReverseRowEquilibration','Diag of wrong size!')
     END IF 
 
-    f(1:n) = f(1:n) / Diag(1:n)
+    IF (PRESENT(f)) f(1:n) = f(1:n) / Diag(1:n)
     DO i=1,n    
       DO j = Rows(i), Rows(i+1)-1
         Values(j) = Values(j) / Diag(i)
@@ -13822,6 +13832,64 @@ END FUNCTION SearchNodeL
   END SUBROUTINE ReverseRowEquilibration
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> A simplified subroutine for scaling vectors so that they are transformed
+!> in the same way as the RHS and the solution vector of the linear system
+!> associated with the given matrix A.  
+!------------------------------------------------------------------------------
+  SUBROUTINE ScaleLinearSystemVectors(A, b, n, x, BackScaling)
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t), POINTER, INTENT(IN) :: A
+    REAL(KIND=dp), POINTER, INTENT(INOUT) :: b(:)
+    INTEGER, INTENT(IN) :: n
+    REAL(KIND=dp), POINTER, OPTIONAL, INTENT(INOUT) :: x(:)
+    LOGICAL, OPTIONAL, INTENT(IN) :: BackScaling
+!------------------------------------------------------------------------------
+    LOGICAL :: Backwards
+!------------------------------------------------------------------------------    
+    IF (PRESENT(BackScaling)) THEN
+      Backwards = BackScaling
+    ELSE
+      Backwards = .FALSE.
+    END IF
+
+    IF (Backwards) THEN
+      !
+      ! Perform back-scaling
+      !
+      SELECT CASE(A % ScalingMethod)
+      CASE(1)
+        b(1:n) = b(1:n) / A % DiagScaling(1:n) * A % RhsScaling
+        IF (PRESENT(x)) x(1:n) = x(1:n) * A % DiagScaling(1:n) * A % RhsScaling
+      CASE(2)
+        b(1:n) = b(1:n) / A % DiagScaling(1:n)
+      CASE(3)
+        b(1:n) = A % RhsScaling * b(1:n)
+        IF (PRESENT(x)) x(1:n) = (A % RhsScaling / A % AveScaling) * x(1:n) 
+      CASE DEFAULT
+        CALL Fatal('ScaleLinearSystemVectors', 'Unknown method for back-scaling') 
+      END SELECT
+    ELSE
+      !
+      ! Transform the vectors so that they correspond to the scaled version of linear system
+      !
+      SELECT CASE(A % ScalingMethod)
+      CASE(1)
+        b(1:n) = A % DiagScaling(1:n) * b(1:n) / A % RhsScaling
+        IF (PRESENT(x)) x(1:n) = x(1:n) / (A % DiagScaling(1:n) * A % RhsScaling)
+      CASE(2)
+        b(1:n) = A % DiagScaling(1:n) * b(1:n)
+      CASE(3)
+        b(1:n) = b(1:n) / A % RhsScaling
+        IF (PRESENT(x)) x(1:n) = A % AveScaling * x(1:n) / A % RhsScaling
+      CASE DEFAULT
+        CALL Fatal('ScaleLinearSystemVectors', 'Unknown method for scaling') 
+      END SELECT
+    END IF
+!------------------------------------------------------------------------------
+  END SUBROUTINE ScaleLinearSystemVectors
+!------------------------------------------------------------------------------
+  
 
   SUBROUTINE CalculateLoads( Solver, Aaid, x, DOFs, UseBulkValues, NodalLoads, NodalValues ) 
 
@@ -14605,8 +14673,8 @@ END FUNCTION SearchNodeL
       CALL Info(Caller,'Assuming real valued linear system',Level=8)
     END IF
 
-    Parallel = Solver % Parallel
-    
+    Parallel = Solver % Parallel 
+      
 !------------------------------------------------------------------------------
 !   If parallel execution, check for parallel matrix initializations
 !------------------------------------------------------------------------------
@@ -14614,6 +14682,9 @@ END FUNCTION SearchNodeL
       IF( .NOT. ASSOCIATED(A % ParMatrix) ) THEN
         CALL Info(Caller,'Creating parallel matrix structures',Level=8)
         CALL ParallelInitMatrix( Solver, A )
+        IF(A % ParallelInfo % NothingShared ) THEN
+          CALL Info(Caller,'No dofs shared in paralell matrix!',Level=6)
+        END IF
       ELSE
         CALL Info(Caller,'Using previously created parallel matrix structures!',Level=15)
       END IF      
@@ -14857,10 +14928,10 @@ END FUNCTION SearchNodeL
     IF(.NOT.GotIt) ComputeChangeScaled = .FALSE.
 
     IF(ComputeChangeScaled) THEN
-       ALLOCATE(NonlinVals(SIZE(x)))
-       NonlinVals = x
-       IF (ASSOCIATED(Solver % Variable % Perm)) & 
-           CALL RotateNTSystemAll(NonlinVals, Solver % Variable % Perm, DOFs)
+      ALLOCATE(NonlinVals(SIZE(x)))
+      NonlinVals = x
+      IF (ASSOCIATED(Solver % Variable % Perm)) & 
+          CALL RotateNTSystemAll(NonlinVals, Solver % Variable % Perm, DOFs)
     END IF
 
     IF( AndersonAcc .AND. AndersonScaled ) THEN
@@ -14933,8 +15004,8 @@ END FUNCTION SearchNodeL
 
     IF(ListGetLogical(Params, 'Linear System Use Rocalution', Found)) &
       Method = 'rocalution'
-    
-    IF ( .NOT. Parallel ) THEN
+
+    IF ( .NOT. Parallel .OR. A % ParallelInfo % NothingShared ) THEN
       IF(ListGetLogical(Params, 'Linear System Use Hypre', Found)) Method = 'hypre'
 
       CALL Info(Caller,'Serial linear System Solver: '//TRIM(Method),Level=8)
