@@ -477,8 +477,9 @@ CONTAINS
     INTEGER, INTENT(in) :: n
     REAL(KIND=dp), INTENT(inout) :: v(n)
 
-    INTEGER :: i
+    INTEGER :: i,j
     INTEGER, POINTER :: inds(:)
+    REAL(KIND=dp), ALLOCATABLE :: x(:)
 
 !$omp parallel do private(i)
      DO i=1,n
@@ -486,10 +487,17 @@ CONTAINS
      END DO
 !$omp end parallel do
 
-!$omp parallel do private(i,inds) reduction(+:v)
+!$omp parallel do private(i,j,inds,x)
      DO i=1,SIZE(ed)
        inds => ed(i)  % dofIndeces
-       v(inds) = v(inds) + MATMUL(ed(i) % stiff,u(inds))
+       x = MATMUL(ed(i) % stiff, u(inds))
+!      DO j=1,SIZE(inds)
+!!omp atomic
+!        v(inds(j)) = v(inds(j)) + x(j)
+!      END DO
+!$omp critical
+       v(inds) = v(inds) + x
+!$omp end critical
      END DO
 !$omp end parallel do
 !------------------------------------------------------------------------------
