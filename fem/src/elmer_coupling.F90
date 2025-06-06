@@ -1,0 +1,512 @@
+
+!/*****************************************************************************/
+! *
+! *  Elmer, A Finite Element Software for Multiphysical Problems
+! *
+! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
+! * 
+! * This library is free software; you can redistribute it and/or
+! * modify it under the terms of the GNU Lesser General Public
+! * License as published by the Free Software Foundation; either
+! * version 2.1 of the License, or (at your option) any later version.
+! *
+! * This library is distributed in the hope that it will be useful,
+! * but WITHOUT ANY WARRANTY; without even the implied warranty of
+! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! * Lesser General Public License for more details.
+! * 
+! * You should have received a copy of the GNU Lesser General Public
+! * License along with this library (in file ../LGPL-2.1); if not, write 
+! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * Fifth Floor, Boston, MA  02110-1301  USA
+! *
+! *****************************************************************************/
+!
+!/******************************************************************************
+! *
+! *  Authors: Moritz Hanke (DKRZ), adapted by Thomas Zwinger
+!    original code provided by Moritz Hanke (DKRZ) in the frame of the TerraDT project
+! *  Email:   thomas.zwinger@csc.fi
+! *  Web:     http://www.csc.fi/elmer
+! *  Address: CSC - IT Center for Science Ltd.
+! *           Keilaranta 14
+! *           02101 Espoo, Finland 
+! *
+! *  Original Date: 01 Oct 1996
+! *
+! *****************************************************************************/
+
+!> \ingroup ElmerLib
+!> \{
+
+!------------------------------------------------------------------------------
+!> definitions for Elmer YAC coupling.
+!------------------------------------------------------------------------------
+#include "yac_config.h"
+
+MODULE elmer_coupling
+
+  USE mpi
+  USE yac
+
+  IMPLICIT NONE
+
+  PRIVATE
+
+  PUBLIC :: coupling_init, coupling_finalize
+  PUBLIC :: coupling_setup
+
+  CHARACTER(LEN=*), PARAMETER :: ELMER_COMP_NAME = "elmer"
+  CHARACTER(LEN=*), PARAMETER :: ELMER_GRID_NAME = "elmer_grid"
+
+  INTEGER :: comp_id
+  INTEGER :: comm_rank, comm_size
+
+CONTAINS
+
+  SUBROUTINE coupling_init(coupling_config_file, elmer_comm)
+
+    IMPLICIT NONE
+
+    CHARACTER(LEN=1024), INTENT(IN) :: coupling_config_file
+    INTEGER, INTENT(OUT) :: elmer_comm
+
+    INTEGER :: ierror
+
+
+    ! initialise YAC
+    ! * is collective operation on MPI_COMM_WORLD
+    ! * should be called as early as possible
+    ! * in case not all Elmer processes want to take part in the coupling
+    !   this has to be modified
+    !   (see:
+    !     https://dkrz-sw.gitlab-pages.dkrz.de/yac/d4/d40/init_yac_detail.html)
+    ! * will call MPI_Init, if not yet called by the user
+    CALL yac_finit ( )
+
+    ! read configuration file
+    ! * contains calendar, start- and end-date
+    ! * defines couplings
+    CALL yac_fread_config_yaml(coupling_config_file)
+
+    ! define component
+    ! * is collective operation for all processes that initialised YAC
+    CALL yac_fdef_comp(ELMER_COMP_NAME, comp_id)
+
+    ! get communicator for all processes that are part of the Elmer component
+    ! * this is a collective operation for all processes in the component
+    ! * Elmer should only use this communicator internally and access
+    !   MPI_COMM_WORLD at all
+    CALL yac_fget_comp_comm(comp_id, elmer_comm)
+
+    ! get number of ranks for the elmer component
+    ! (required for reading in the grid data)
+    CALL MPI_Comm_rank(elmer_comm, comm_rank, ierror)
+    CALL MPI_Comm_size(elmer_comm, comm_size, ierror)
+
+  END SUBROUTINE coupling_init
+
+  SUBROUTINE coupling_setup(grid_dir, num_parts)
+
+    USE :: elmer_icon_coupling
+    USE, INTRINSIC :: iso_c_binding
+
+    IMPLICIT NONE
+
+    CHARACTER(LEN=1024), INTENT(IN) :: grid_dir
+    INTEGER, INTENT(IN) :: num_parts
+
+    INTEGER :: grid_id, corner_point_id, cell_point_id
+
+    INTEGER(KIND=C_INT) :: nbr_vertices
+    INTEGER(KIND=C_INT) :: nbr_cells
+    TYPE(C_PTR)         :: num_vertices_per_cell_c_ptr ! int **
+    TYPE(C_PTR)         :: x_vertices_c_ptr ! double **
+    TYPE(C_PTR)         :: y_vertices_c_ptr ! double **
+    TYPE(C_PTR)         :: x_cells_c_ptr ! double **
+    TYPE(C_PTR)         :: y_cells_c_ptr ! double **
+    TYPE(C_PTR)         :: cell_ids_c_ptr ! int **
+    TYPE(C_PTR)         :: vertex_ids_c_ptr ! int **
+    TYPE(C_PTR)         :: cell_to_vertex_c_ptr ! int **
+
+    INTEGER(KIND=C_INT), POINTER :: num_vertices_per_cell_c(:)
+    REAL(KIND=C_DOUBLE), POINTER :: x_vertices_c(:)
+    REAL(KIND=C_DOUBLE), POINTER :: y_vertices_c(:)
+    REAL(KIND=C_DOUBLE), POINTER :: x_cells_c(:)
+    REAL(KIND=C_DOUBLE), POINTER :: y_cells_c(:)
+    INTEGER(KIND=C_INT), POINTER :: cell_ids_c(:)
+    INTEGER(KIND=C_INT), POINTER :: vertex_ids_c(:)
+    INTEGER(KIND=C_INT), POINTER :: cell_to_vertex_c(:)
+
+    INTEGER, ALLOCATABLE          :: num_vertices_per_cell(:)
+    DOUBLE PRECISION, ALLOCATABLE :: x_vertices(:)
+    DOUBLE PRECISION, ALLOCATABLE :: y_vertices(:)
+    DOUBLE PRECISION, ALLOCATABLE :: x_cells(:)
+    DOUBLE PRECISION, ALLOCATABLE :: y_cells(:)
+    INTEGER, ALLOCATABLE          :: cell_ids(:)
+    INTEGER, ALLOCATABLE          :: vertex_ids(:)
+    INTEGER, ALLOCATABLE          :: cell_to_vertex(:)
+
+    INTERFACE
+
+      SUBROUTINE read_grid_c(grid_dir, rank, size, num_parts, &
+                             nbr_vertices, nbr_cells, num_vertices_per_cell, &
+                             x_vertices, y_vertices, x_cells, y_cells, &
+                             cell_ids, vertex_ids, cell_to_vertex) &
+        bind ( C, name='read_grid' )
+
+        USE, INTRINSIC :: iso_c_binding
+
+        CHARACTER(KIND=C_CHAR) :: grid_dir(*)
+        INTEGER(KIND=C_INT), VALUE :: rank
+        INTEGER(KIND=C_INT), VALUE :: size
+        INTEGER(KIND=C_INT), VALUE :: num_parts
+        INTEGER(KIND=C_INT)        :: nbr_vertices
+        INTEGER(KIND=C_INT)        :: nbr_cells
+        TYPE(C_PTR)                :: num_vertices_per_cell ! int **
+        TYPE(C_PTR)                :: x_vertices ! double **
+        TYPE(C_PTR)                :: y_vertices ! double **
+        TYPE(C_PTR)                :: x_cells ! double **
+        TYPE(C_PTR)                :: y_cells ! double **
+        TYPE(C_PTR)                :: cell_ids ! int **
+        TYPE(C_PTR)                :: vertex_ids ! int **
+        TYPE(C_PTR)                :: cell_to_vertex ! int **
+
+      END SUBROUTINE read_grid_c
+
+      SUBROUTINE free_c ( ptr ) bind ( c, NAME='free' )
+
+       USE, INTRINSIC :: iso_c_binding
+
+       TYPE(C_PTR), VALUE :: ptr
+
+      END SUBROUTINE free_c
+
+    END INTERFACE
+
+    ! get grid data from elmer component
+    ! in the case of the dummy, we have to read it from file
+
+    ! read grid data from file
+    ! * each process only reads in its local part of the grid
+    ! * in Elmer this information probably already available and does not have
+    !   to be read from file
+    CALL read_grid_c( &
+      TRIM(grid_dir) // c_null_char, comm_rank, comm_size, num_parts, &
+      nbr_vertices, nbr_cells, num_vertices_per_cell_c_ptr, &
+      x_vertices_c_ptr, y_vertices_c_ptr, x_cells_c_ptr, y_cells_c_ptr, &
+      cell_ids_c_ptr, vertex_ids_c_ptr, cell_to_vertex_c_ptr)
+
+    CALL C_F_POINTER( &
+      num_vertices_per_cell_c_ptr, num_vertices_per_cell_c, shape=[nbr_cells])
+    CALL C_F_POINTER(x_vertices_c_ptr, x_vertices_c, shape=[nbr_vertices])
+    CALL C_F_POINTER(y_vertices_c_ptr, y_vertices_c, shape=[nbr_vertices])
+    CALL C_F_POINTER(x_cells_c_ptr, x_cells_c, shape=[nbr_cells])
+    CALL C_F_POINTER(y_cells_c_ptr, y_cells_c, shape=[nbr_cells])
+    CALL C_F_POINTER(cell_ids_c_ptr, cell_ids_c, shape=[nbr_cells])
+    CALL C_F_POINTER(vertex_ids_c_ptr, vertex_ids_c, shape=[nbr_vertices])
+    CALL C_F_POINTER( &
+      cell_to_vertex_c_ptr, cell_to_vertex_c, shape=[SUM(num_vertices_per_cell_c)])
+
+    num_vertices_per_cell = num_vertices_per_cell_c
+    x_vertices = x_vertices_c
+    y_vertices = y_vertices_c
+    x_cells = x_cells_c
+    y_cells = y_cells_c
+    cell_ids = cell_ids_c
+    vertex_ids = vertex_ids_c
+    cell_to_vertex = cell_to_vertex_c + 1
+
+    CALL free_c(num_vertices_per_cell_c_ptr)
+    CALL free_c(x_vertices_c_ptr)
+    CALL free_c(y_vertices_c_ptr)
+    CALL free_c(x_cells_c_ptr)
+    CALL free_c(y_cells_c_ptr)
+    CALL free_c(cell_ids_c_ptr)
+    CALL free_c(vertex_ids_c_ptr)
+    CALL free_c(cell_to_vertex_c_ptr)
+
+    ! register Elmer grid in YAC
+    ! * is defined as an unstructured grid
+    CALL yac_fdef_grid( &
+      ELMER_GRID_NAME, nbr_vertices, nbr_cells, SUM(num_vertices_per_cell), &
+      num_vertices_per_cell, x_vertices, y_vertices, cell_to_vertex, grid_id)
+
+    ! define global ids for all cells and vertices
+    ! * this information is used to identify cells/vertice between processes
+    ! * if this information is not provided, YAC will generate it (resulting
+    !   IDs then depend on the number of processes)
+    CALL yac_fset_global_index(cell_ids, YAC_LOCATION_CELL, grid_id)
+    CALL yac_fset_global_index(vertex_ids, YAC_LOCATION_CORNER, grid_id)
+
+    ! define location at which field data will be provided
+    ! * an arbitrary number of locations can be defined (e.g. at vertices,
+    !   cell centers, edge middle points)
+    CALL yac_fdef_points( &
+      grid_id, nbr_vertices, YAC_LOCATION_CORNER, x_vertices, y_vertices, &
+      corner_point_id)
+    CALL yac_fdef_points( &
+      grid_id, nbr_cells, YAC_LOCATION_CELL, x_cells, y_cells, cell_point_id)
+
+    ! construct coupling between Elmer/Ice and ICON
+    CALL construct_elmer_icon_coupling(comp_id, corner_point_id, cell_point_id)
+
+    ! sychronizes all definitions between all components
+    ! * afterwards the exchange information can be queried
+    ! * this is optional
+    CALL yac_fsync_def()
+
+    ! construct coupling between Elmer/Ice and ICON (using sychronized
+    ! information from all components)
+    CALL construct_elmer_icon_coupling_post_sync( &
+      comm_rank, ELMER_COMP_NAME, ELMER_GRID_NAME)
+
+    ! end of definition phase
+    ! * collective operation for all processes that initialised YAC
+    ! * exchanges information between all processes (various query routines are
+    !   available to access this data; also from other components)
+    ! * computes weights required for all defined couples
+    CALL yac_fenddef()
+
+  END SUBROUTINE coupling_setup
+
+  SUBROUTINE coupling_finalize()
+
+    USE elmer_icon_coupling
+
+    IMPLICIT NONE
+
+    CALL destruct_elmer_icon_coupling()
+
+    ! finalise YAC
+    ! * if user has called MPI_Init, he also has to call MPI_Finalize afterwards
+    CALL yac_ffinalize()
+
+  END SUBROUTINE coupling_finalize
+
+END MODULE elmer_coupling
+
+
+
+
+
+
+MODULE elmer_icon_coupling
+
+  USE yac
+
+  IMPLICIT NONE
+
+  PRIVATE
+
+  PUBLIC :: construct_elmer_icon_coupling
+  PUBLIC :: construct_elmer_icon_coupling_post_sync
+  PUBLIC :: destruct_elmer_icon_coupling
+  PUBLIC :: elmer_icon_interface
+
+  INTEGER :: clt_field_id = -1
+  CHARACTER(LEN=*), PARAMETER :: clt_field_name = "clt"
+  INTEGER :: clt_collection_size = 1
+  CHARACTER(LEN=*), PARAMETER :: clt_field_timestep = "P1M"
+  DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: clt_field(:,:)
+
+  INTEGER :: pr_field_id = -1
+  CHARACTER(LEN=*), PARAMETER :: pr_field_name = "pr"
+  INTEGER :: pr_collection_size = 1
+  CHARACTER(LEN=*), PARAMETER :: pr_field_timestep = "P1M"
+  DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: pr_field(:,:)
+
+CONTAINS
+
+  SUBROUTINE construct_elmer_icon_coupling( &
+    comp_id, corner_point_id, cell_point_id)
+
+    INTEGER, INTENT(IN) :: comp_id
+    INTEGER, INTENT(IN) :: corner_point_id
+    INTEGER, INTENT(IN) :: cell_point_id
+
+    INTEGER :: nbr_vertices, nbr_cells
+    INTEGER :: i
+
+    nbr_vertices = yac_fget_points_size(corner_point_id)
+    nbr_cells = yac_fget_points_size(cell_point_id)
+
+    ! register total cloud cover field in YAC
+    CALL yac_fdef_field( &
+      clt_field_name, comp_id, (/corner_point_id/), 1, clt_collection_size, &
+      clt_field_timestep, YAC_TIME_UNIT_ISO_FORMAT, clt_field_id);
+
+    ! allocate and initialise total cloud cover field buffer
+    ALLOCATE(clt_field(nbr_vertices, clt_collection_size))
+    clt_field = 0.0
+
+    ! register precipitation flux field in YAC
+    CALL yac_fdef_field( &
+      pr_field_name, comp_id, (/cell_point_id/), 1, pr_collection_size, &
+      pr_field_timestep, YAC_TIME_UNIT_ISO_FORMAT, pr_field_id)
+
+    ! allocate and initialise precipitation flux field buffer
+    ALLOCATE(pr_field(nbr_cells, pr_collection_size))
+    pr_field = 0.0
+
+  END SUBROUTINE construct_elmer_icon_coupling
+
+  SUBROUTINE construct_elmer_icon_coupling_post_sync( &
+    comm_rank, elmer_comp_name, elmer_grid_name)
+
+    INTEGER, INTENT(IN) :: comm_rank
+    CHARACTER(LEN=*), INTENT(IN) :: elmer_comp_name
+    CHARACTER(LEN=*), INTENT(IN) :: elmer_grid_name
+
+    ! after synchronisation or the end of the definition phase YAC can be
+    ! queried about various information
+
+    IF (comm_rank /= 0) RETURN
+
+    CALL print_field_info(elmer_comp_name, elmer_grid_name, pr_field_name)
+    CALL print_field_info(elmer_comp_name, elmer_grid_name, clt_field_name)
+
+  CONTAINS
+
+    SUBROUTINE print_field_info(elmer_comp_name, elmer_grid_name, field_name)
+
+      CHARACTER(LEN=*), INTENT(IN) :: elmer_comp_name
+      CHARACTER(LEN=*), INTENT(IN) :: elmer_grid_name
+      CHARACTER(LEN=*), INTENT(IN) :: field_name
+
+      CHARACTER(LEN=:), ALLOCATABLE :: src_comp_name
+      CHARACTER(LEN=:), ALLOCATABLE :: src_grid_name
+      CHARACTER(LEN=:), ALLOCATABLE :: src_field_name
+      CHARACTER(LEN=:), ALLOCATABLE :: src_field_timestep
+      CHARACTER(LEN=:), ALLOCATABLE :: src_field_metadata
+
+      IF (yac_fget_field_role( &
+            elmer_comp_name, elmer_grid_name, field_name) == &
+            YAC_EXCHANGE_TYPE_TARGET) THEN
+
+#if (YAC_VERSION_MAJOR >= 3) && (YAC_VERSION_MINOR >= 6)
+        CALL yac_fget_field_source( &
+          elmer_comp_name, elmer_grid_name, field_name, &
+          src_comp_name, src_grid_name, src_field_name);
+#else
+        src_comp_name = "icon"
+        src_grid_name = "icon_grid"
+        src_field_name = field_name
+#endif
+        src_field_timestep = &
+          yac_fget_field_timestep(src_comp_name, src_grid_name, src_field_name)
+        src_field_metadata = &
+          yac_fget_field_metadata(src_comp_name, src_grid_name, src_field_name)
+
+        
+
+        
+        PRINT *, "field ", field_name, ":"
+        PRINT *, " - source:"
+        PRINT *, "   - component: ", src_comp_name
+        PRINT *, "   - grid:      ", src_grid_name
+        PRINT *, "   - timestep:  ", src_field_timestep
+        PRINT *, "   - metadata:  ", src_field_metadata
+
+      END IF
+
+    END SUBROUTINE print_field_info
+
+  END SUBROUTINE construct_elmer_icon_coupling_post_sync
+
+  SUBROUTINE elmer_icon_interface(comm_rank)
+
+    INTEGER, INTENT(IN) :: comm_rank
+
+    INTEGER :: info, err
+
+    ! checks whether the total cloud cover field is defined as a target
+    ! in a couple
+    IF (yac_fget_role_from_field_id(clt_field_id) == &
+        YAC_EXCHANGE_TYPE_TARGET) THEN
+
+      IF (comm_rank == 0) THEN
+
+        ! get the action executed by YAC in the next get operation called for
+        ! the total cloud cover field and print out some information
+        CALL yac_fget_action(clt_field_id, info)
+        PRINT *, "call get for field: ", TRIM(clt_field_name), &
+                 " datatime: ", TRIM(yac_fget_field_datetime(clt_field_id)), &
+                 "action: ", &
+                 TRIM( &
+                  MERGE( &
+                    "coupling","none    ", &
+                    (info == YAC_ACTION_COUPLING) .OR. &
+                    (info == YAC_ACTION_GET_FOR_RESTART)))
+      END IF
+
+      ! execute get operation for total cloud cover field
+      ! * if this is a coupling timestep, this will block until the data has
+      !   been received
+      ! * if this is not a coupling timestep, total cloud cover field buffer
+      !   is left untouched and routine will return immediately
+      CALL yac_fget( &
+        clt_field_id, SIZE(clt_field, 1), SIZE(clt_field, 2), clt_field, &
+        info, err)
+
+      ! if this was a coupling timestep
+      IF ((info == YAC_ACTION_COUPLING) .OR. &
+          (info == YAC_ACTION_GET_FOR_RESTART)) THEN
+
+        ! prepare received data for elmer
+
+        ! update elmer internal total cloud cover field
+
+      END IF
+    END IF
+
+    ! checks whether the precipitation flux field is defined as a target
+    ! in a couple
+    IF (yac_fget_role_from_field_id(pr_field_id) == &
+        YAC_EXCHANGE_TYPE_TARGET) THEN
+
+      IF (comm_rank == 0) THEN
+
+        ! get the action executed by YAC in the next get operation called for
+        ! the precipitation flux field and print out some information
+        CALL yac_fget_action(pr_field_id, info)
+        PRINT *, "call get for field: ", TRIM(pr_field_name), &
+                 " datatime: ", TRIM(yac_fget_field_datetime(pr_field_id)), &
+                 "action: ", &
+                 TRIM( &
+                  MERGE( &
+                    "coupling","none    ", &
+                    (info == YAC_ACTION_COUPLING) .OR. &
+                    (info == YAC_ACTION_GET_FOR_RESTART)))
+      END IF
+
+      ! execute get operation for precipitation flux field
+      ! * if this is a coupling timestep, this will block until the data has
+      !   been received
+      ! * if this is not a coupling timestep, precipitation flux field buffer
+      !   is left untouched and routine will return immediately
+      CALL yac_fget( &
+        pr_field_id, SIZE(pr_field, 1), SIZE(pr_field, 2), pr_field, &
+        info, err)
+
+      ! if this was a coupling timestep
+      IF ((info == YAC_ACTION_COUPLING) .OR. &
+          (info == YAC_ACTION_GET_FOR_RESTART)) THEN
+
+        ! prepare received data for elmer
+
+        ! update elmer internal precipitation flux field
+
+      END IF
+    END IF
+
+  END SUBROUTINE elmer_icon_interface
+
+  SUBROUTINE destruct_elmer_icon_coupling()
+
+    ! clean up
+    DEALLOCATE(pr_field, clt_field)
+
+  END SUBROUTINE destruct_elmer_icon_coupling
+
+END MODULE elmer_icon_coupling
