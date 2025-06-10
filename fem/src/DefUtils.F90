@@ -6200,6 +6200,8 @@ CONTAINS
                    EDOFs = Edge % BDOFs     ! The number of DOFs associated with edges
                    IF (EDOFs < 1) CYCLE
 
+                   Edge % BodyId = Parent % BodyId
+                   
                    AugmentedEigenSystem = ListGetLogical(Params, 'Eigen System Augmentation', Found) 
                    IF (AugmentedEigenSystem) THEN
                      EDOFs = EDOFs/2
@@ -6246,7 +6248,9 @@ CONTAINS
                    DO l=1,Face % TYPE % NumberOfEdges
                      Edge => Solver % Mesh % Edges(Face % EdgeIndexes(l))
                      EDOFs = Edge % BDOFs
-                     IF (EDOFs < 1) CYCLE                     
+                     IF (EDOFs < 1) CYCLE
+
+                     Edge % BodyId = Parent % BodyId
                      n = Edge % TYPE % NumberOfNodes
 
                      CALL VectorElementEdgeDOFs(BC, Edge, n, Parent, np, Name//' {e}', &
@@ -6285,6 +6289,8 @@ CONTAINS
                      CALL SolveLocalFaceDOFs(BC, Face, n, Name//' {e}', Work, EDOFs, &
                          Face % BDOFs, QuadraticApproximation)
 
+                     Face % BodyId = Parent % BodyId
+                     
                      n = GetElementDOFs(GInd,Face)
                      DO j=1,Face % BDOFs
                        nb = x % Perm(GInd(n-Face % BDOFs+j)) ! The last entries should be face-DOF indices
@@ -6316,6 +6322,7 @@ CONTAINS
                EDOFs = Edge % BDOFs     ! The number of DOFs associated with edges
 
                IF (EDOFs < 1) CYCLE
+               Edge % BodyId = Parent % BodyId
 
                n = Edge % TYPE % NumberOfNodes
                CALL VectorElementEdgeDOFs(BC,Edge,n,Parent,np,Name//' {f}',Work, &
@@ -6352,6 +6359,7 @@ CONTAINS
                  IF (SecondKindBasis) &
                      CALL FaceElementBasisOrdering(Parent, FDofMap, ActiveFaceId)
                  n = Face % TYPE % NumberOfNodes
+                 Face % BodyId = Parent % BodyId  
 
                  CALL FaceElementDOFs(BC, Face, n, Parent, ActiveFaceId, &
                      Name//' {f}', Work, FDOFs, SecondKindBasis)
@@ -6423,6 +6431,7 @@ CONTAINS
                IF (FDOFs > 0) THEN
                  CALL FaceElementBasisOrdering(Parent, FDofMap, ActiveFaceId, ReverseSign)
                  n = Face % TYPE % NumberOfNodes
+                 Face % BodyId = Parent % BodyId
 
                  CALL FaceElementDOFs(BC, Face, n, Parent, ActiveFaceId, &
                      Name//' {f}', Work, FDOFs)
