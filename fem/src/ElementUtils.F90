@@ -3987,8 +3987,14 @@ CONTAINS
        IF ( ASSOCIATED(Element % BoundaryInfo % Right) ) &
            id = Element % BoundaryInfo % Right % BodyId
      END IF
-     IF (id==0) id=1
+     IF (id==0) THEN
+       CALL Fatal('mGetElementDOFS', 'No body associated with the element?')
+       id=1
+     END IF
 
+     IF (SIZE(Solver % Def_Dofs,2) < id) CALL Fatal('mGetElementDOFS', &
+         'Indexing outside array bounds')
+     
      IF (.NOT.ASSOCIATED(Mesh)) THEN
        IF ( Solver % Def_Dofs(ElemFamily,id,1)>0 ) THEN  
          CALL Warn('mGetElementDOFS', &
