@@ -5772,8 +5772,7 @@ CONTAINS
          SaveElement => GetCurrentElement() 
          DO i=1,Solver % Mesh % NumberOfBoundaryElements
            Element => GetBoundaryElement(i)
-           IF ( .NOT. ActiveBoundaryElement(Element) ) CYCLE
-
+           
            ! Get parent element:
            ! -------------------
            Parent => Element % BoundaryInfo % Left
@@ -5784,6 +5783,8 @@ CONTAINS
 
            BC => GetBC(Element)
            IF ( .NOT.ASSOCIATED(BC) ) CYCLE
+           
+           IF ( .NOT. ActiveBoundaryElement(Element) ) CYCLE
 
            ptr => ListFind(BC, Name,Found )
            IF ( .NOT. ASSOCIATED(ptr) ) CYCLE
@@ -5904,11 +5905,8 @@ CONTAINS
          SaveElement => GetCurrentElement()
          DO i=1,Solver % Mesh % NumberOfBoundaryElements
            Element => GetBoundaryElement(i)
-           IF ( .NOT. ActiveBoundaryElement(Element) ) CYCLE
-
            BC => GetBC()
            IF ( .NOT.ASSOCIATED(BC) ) CYCLE
-           IF ( .NOT. ListCheckPresent(BC, Name) ) CYCLE
 
            ! Get parent element:
            ! -------------------
@@ -5917,6 +5915,10 @@ CONTAINS
              Parent => Element % BoundaryInfo % Right
            END IF
            IF ( .NOT. ASSOCIATED( Parent ) )   CYCLE
+           
+           IF ( .NOT. ActiveBoundaryElement(Element) ) CYCLE
+
+           IF ( .NOT. ListCheckPresent(BC, Name) ) CYCLE
 
            ! Here set constraints for p-approximation only: 
            ! -----------------------------------------------------
