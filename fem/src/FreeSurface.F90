@@ -471,11 +471,11 @@ print*,'----------------------'
     Mesh => Model % Solver % Mesh
     DO t = 1,Mesh % NumberOfBoundaryElements
       Boundary => GetBoundaryElement(t)
-      IF ( .NOT. ActiveBoundaryElement() ) CYCLE
-
       BC => GetBC()
+      
       IF ( .NOT. ASSOCIATED(BC) ) CYCLE
       IF ( .NOT.GetLogical(BC, 'Free Surface',L) ) CYCLE
+      IF ( .NOT. ActiveBoundaryElement() ) CYCLE
 
       n = GetElementNOFNodes()
       CALL GetElementNodes( BoundaryNodes )
