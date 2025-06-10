@@ -49,7 +49,7 @@ SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
 #	COMPILE_DEFINITIONS FULL_INDUCTION)
 
 IF(WITH_YAC)
-  LIST(APPEND solverlib_SOURCES elmer_coupling.F90)
+  LIST(APPEND solverlib_SOURCES elmer_grid.c elmer_coupling.F90)
 ENDIF()
 
 
