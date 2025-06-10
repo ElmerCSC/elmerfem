@@ -87,7 +87,10 @@ CONTAINS
     ! read configuration file
     ! * contains calendar, start- and end-date
     ! * defines couplings
-    CALL yac_fread_config_yaml(coupling_config_file)
+    !PRINT *,TRIM(coupling_config_file)
+    !PRINT *,"------------------"
+    
+    CALL yac_fread_config_yaml(TRIM(coupling_config_file))
 
     ! define component
     ! * is collective operation for all processes that initialised YAC

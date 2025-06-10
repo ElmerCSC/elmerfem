@@ -235,6 +235,8 @@ CONTAINS
 #ifdef HAVE_XIOS
     INQUIRE(FILE="iodef.xml", EXIST=USE_XIOS)
     IF (USE_XIOS) THEN
+      WRITE(Message,*) "Using XIOS with config-file: iodef.xml"
+      CALL INFO("SparIterComm",Message,Level=25)
       CALL SetExecID()
       CALL xios_initialize(TRIM(ExecID),return_comm=ELMER_COMM_WORLD)
     ELSE
@@ -245,10 +247,12 @@ CONTAINS
            ParEnv % MyPE,ELMER_COMM_WORLD,ierr) 
     ENDIF
 #elif defined(HAVE_YAC)
-    WRITE (config_file,*) "coupling.yaml"
+    WRITE(config_file,*) "coupling.yaml"
     INQUIRE(FILE="coupling.yaml", EXIST=USE_YAC)
     IF (USE_YAC) THEN
-      CALL coupling_init(config_file, ELMER_COMM_WORLD)
+      WRITE(Message,*) "Using YAC coupler with config-file:",TRIM(config_file)
+      CALL INFO("SparIterComm",Message,Level=25)
+      CALL coupling_init("coupling.yaml", ELMER_COMM_WORLD)
     ELSE
 #ifndef ELMER_COLOUR
 #define ELMER_COLOUR 0
