@@ -121,11 +121,11 @@ void read_grid(
 
     // open files of current grid partition
 
-    sprintf(header_filename, "%s/partitioning.%d/part.%d.header", grid_dir, next_start_part_idx, part_idx+1);
+    sprintf(header_filename, "%s/partitioning.%d/part.%d.header", grid_dir, num_parts, part_idx+1);
     FILE * header_file = fopen(header_filename, "r");
-    sprintf(nodes_filename, "%s/partitioning.%d/part.%d.nodes", grid_dir, next_start_part_idx, part_idx+1);
+    sprintf(nodes_filename, "%s/partitioning.%d/part.%d.nodes", grid_dir, num_parts, part_idx+1);
     FILE * nodes_file = fopen(nodes_filename, "r");
-    sprintf(elements_filename, "%s/partitioning.%d/part.%d.elements", grid_dir, next_start_part_idx, part_idx+1);
+    sprintf(elements_filename, "%s/partitioning.%d/part.%d.elements", grid_dir, num_parts, part_idx+1);
     FILE * elements_file = fopen(elements_filename, "r");
 
     if (!header_file || !nodes_file || !elements_file) {
