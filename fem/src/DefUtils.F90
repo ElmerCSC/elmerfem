@@ -2315,7 +2315,7 @@ CONTAINS
      ELSE
        Mesh => CurrentModel % Solver % Mesh
      END IF
-             
+
      n = MAX(Mesh % MaxElementNodes,Mesh % MaxElementDOFs)
      
      IF ( .NOT. ASSOCIATED( ElementNodes % x ) ) THEN
@@ -2326,7 +2326,7 @@ CONTAINS
      END IF
 
      n = Element % TYPE % NumberOfNodes
-     
+
      ElementNodes % x(1:n) = Mesh % Nodes % x(Element % NodeIndexes(1:n))
      ElementNodes % y(1:n) = Mesh % Nodes % y(Element % NodeIndexes(1:n))
      ElementNodes % z(1:n) = Mesh % Nodes % z(Element % NodeIndexes(1:n))
@@ -3597,7 +3597,7 @@ CONTAINS
          CALL CreateCutFEMAddMesh(Solver) 
        END IF
      END IF
-     
+
      ! When Newton linearization is used we may reset it after previously visiting the solver
      IF( Solver % NewtonActive ) THEN
        IF( ListGetLogical( Params,'Nonlinear System Reset Newton', Found) ) Solver % NewtonActive = .FALSE.
@@ -5783,7 +5783,7 @@ CONTAINS
 
            BC => GetBC(Element)
            IF ( .NOT.ASSOCIATED(BC) ) CYCLE
-           
+!           Element % BodyId = Parent % BodyId
            IF ( .NOT. ActiveBoundaryElement(Element) ) CYCLE
 
            ptr => ListFind(BC, Name,Found )
@@ -5914,15 +5914,16 @@ CONTAINS
            IF ( .NOT. ASSOCIATED( Parent ) ) THEN
              Parent => Element % BoundaryInfo % Right
            END IF
-           IF ( .NOT. ASSOCIATED( Parent ) )   CYCLE
-           
-           IF ( .NOT. ActiveBoundaryElement(Element) ) CYCLE
-
-           IF ( .NOT. ListCheckPresent(BC, Name) ) CYCLE
+           IF ( .NOT. ASSOCIATED( Parent ) ) CYCLE
 
            ! Here set constraints for p-approximation only: 
            ! -----------------------------------------------------
-           IF (.NOT.isActivePElement(Parent)) CYCLE
+           IF (.NOT.isActivePElement(Parent, Solver)) CYCLE
+
+!           Element % BodyId = Parent % BodyId
+           IF ( .NOT. ActiveBoundaryElement(Element) ) CYCLE
+
+           IF ( .NOT. ListCheckPresent(BC, Name) ) CYCLE
 
            ptr => ListFind(BC, Name,Found )
            Constantvalue = Ptr % Type /= LIST_TYPE_CONSTANT_SCALAR_PROC
@@ -6099,6 +6100,7 @@ CONTAINS
            CALL PickActiveFace(Solver % Mesh, Parent, Element, Face, j)
 
            IF (.NOT. ASSOCIATED(Face)) CYCLE
+           Face % BodyId = Parent % BodyId
            IF ( .NOT. ActiveBoundaryElement(Face) ) CYCLE
 
            DO l=1,Face % TYPE % NumberOfEdges
@@ -6106,6 +6108,7 @@ CONTAINS
              EDOFs = Edge % BDOFs
              IF (EDOFs == 0) CYCLE
 
+             Edge % BodyId = Parent % BodyId
              n = GetElementDOFs(gInd,Edge)
 
              IF (Solver % Def_Dofs(2,Parent % BodyId,1) > 0) THEN
@@ -6197,12 +6200,11 @@ CONTAINS
                    CALL PickActiveFace(Solver % Mesh, Parent, Element, Edge, j)
 
                    IF ( .NOT. ASSOCIATED(Edge) ) CYCLE
+                   Edge % BodyId = Parent % BodyId
                    IF ( .NOT. ActiveBoundaryElement(Edge) ) CYCLE                  
 
                    EDOFs = Edge % BDOFs     ! The number of DOFs associated with edges
                    IF (EDOFs < 1) CYCLE
-
-                   Edge % BodyId = Parent % BodyId
                    
                    AugmentedEigenSystem = ListGetLogical(Params, 'Eigen System Augmentation', Found) 
                    IF (AugmentedEigenSystem) THEN
@@ -6239,6 +6241,7 @@ CONTAINS
                    CALL PickActiveFace(Solver % Mesh, Parent, Element, Face, j)
 
                    IF (.NOT. ASSOCIATED(Face)) CYCLE
+                   Face % BodyId = Parent % BodyId
                    IF ( .NOT. ActiveBoundaryElement(Face) ) CYCLE
 
                    ! ---------------------------------------------------------------------
@@ -6319,12 +6322,12 @@ CONTAINS
                CALL PickActiveFace(Solver % Mesh, Parent, Element, Edge, j)
 
                IF (.NOT. ASSOCIATED(Edge)) CYCLE
+               Edge % BodyId = Parent % BodyId
                IF ( .NOT. ActiveBoundaryElement(Edge) ) CYCLE                  
 
                EDOFs = Edge % BDOFs     ! The number of DOFs associated with edges
 
                IF (EDOFs < 1) CYCLE
-               Edge % BodyId = Parent % BodyId
 
                n = Edge % TYPE % NumberOfNodes
                CALL VectorElementEdgeDOFs(BC,Edge,n,Parent,np,Name//' {f}',Work, &
@@ -6352,6 +6355,7 @@ CONTAINS
                CALL PickActiveFace(Solver % Mesh, Parent, Element, Face, ActiveFaceId)
 
                IF (.NOT. ASSOCIATED(Face)) CYCLE
+               Face % BodyId = Parent % BodyId
                IF ( .NOT. ActiveBoundaryElement(Face) ) CYCLE
 
                FDOFs = Face % BDOFs
@@ -6361,7 +6365,6 @@ CONTAINS
                  IF (SecondKindBasis) &
                      CALL FaceElementBasisOrdering(Parent, FDofMap, ActiveFaceId)
                  n = Face % TYPE % NumberOfNodes
-                 Face % BodyId = Parent % BodyId  
 
                  CALL FaceElementDOFs(BC, Face, n, Parent, ActiveFaceId, &
                      Name//' {f}', Work, FDOFs, SecondKindBasis)
@@ -6426,6 +6429,7 @@ CONTAINS
                CALL PickActiveFace(Solver % Mesh, Parent, Element, Face, ActiveFaceId)
 
                IF (.NOT. ASSOCIATED(Face)) CYCLE
+               Face % BodyId = Parent % BodyId
                IF ( .NOT. ActiveBoundaryElement(Face) ) CYCLE
 
                FDOFs = Face % BDOFs
@@ -6433,7 +6437,6 @@ CONTAINS
                IF (FDOFs > 0) THEN
                  CALL FaceElementBasisOrdering(Parent, FDofMap, ActiveFaceId, ReverseSign)
                  n = Face % TYPE % NumberOfNodes
-                 Face % BodyId = Parent % BodyId
 
                  CALL FaceElementDOFs(BC, Face, n, Parent, ActiveFaceId, &
                      Name//' {f}', Work, FDOFs)
