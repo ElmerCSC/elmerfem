@@ -3987,10 +3987,15 @@ CONTAINS
        IF ( ASSOCIATED(Element % BoundaryInfo % Right) ) &
            id = Element % BoundaryInfo % Right % BodyId
      END IF
-     IF (id==0) THEN
-       CALL Fatal('mGetElementDOFS', 'No body associated with the element?')
-       id=1
-     END IF
+     !
+     ! In some cases it may happen that this function
+     ! is called although the BodyId of the element structure hasn't
+     ! been set. The following "guess" would be risky if the element
+     ! definition depended on body index. It's desirable that
+     ! the caller takes care of the creation of the body index so that
+     ! the following row need not be considered.
+     IF (id==0) id=1
+
 
      IF (SIZE(Solver % Def_Dofs,2) < id) CALL Fatal('mGetElementDOFS', &
          'Indexing outside array bounds')
