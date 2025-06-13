@@ -847,3 +847,11 @@ ENDIF()
 if(NOT BYPASS_CPACK)
   INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/cpack/ElmerCPack.cmake)
 endif(NOT BYPASS_CPACK)
+
+# Testing
+
+configure_file(
+    "${CMAKE_SOURCE_DIR}/cmake/TestConfigs/CTestScript.cmake.in"
+    "${CMAKE_BINARY_DIR}/CTestScript.cmake"
+    @ONLY
+)
