@@ -77,7 +77,7 @@ where *alpha = {(q - 1)^{q-1}}/{q^q}* and *chi = {u_b}/{C^n N^n A_s}*
 The latter are non-linear and a Newton linearisation can be used. 
 When *u_b = (u^2+v^2)^{1/2}< u_min*, *u_b* in the previous equations is replaced by *u_min*.
 
-The friction law is chosen using the keyword SSA Friction Law, which takes the value Linear, Weertman, coulomb, regularised Coulomb. The other keywords are:  
+The friction law is chosen using the keyword SSA Friction Law, which takes the value "Linear", "Weertman", "Budd", "regularised Coulomb" (Joughin's version of regularised Coulomb), "coulomb" (Schoof/Gagliardini's original version of regularised Coulomb). The other keywords are:  
 
 a linear friction law  
   - SSA Friction Parameter → *beta*  
@@ -92,7 +92,6 @@ a Budd type friction law
   - SSA Friction Exponent → *m*  
   - SSA Friction Linear Velocity → *u_lin*  
   - SSA Haf Exponent → *q*  
-  - SSA Min Effective Pressure → *N_{min}*, such that *N >= N_{min}*  
   - gravity norm → *g*  
 
 a regularised Coulomb friction law without explicit effective pressure dependence  
@@ -100,6 +99,7 @@ a regularised Coulomb friction law without explicit effective pressure dependenc
   - SSA Friction Exponent → *m*  
   - SSA Friction Linear Velocity → *u_lin*  
   - SSA Friction Threshold Velocity → *u_0*  
+  - SSA Friction need N = Logical (default false)
 
 a regularised Coulomb type friction law  
   - SSA Friction Parameter → *beta= {A_s}^{-m}*  
@@ -107,11 +107,18 @@ a regularised Coulomb type friction law
   - SSA Friction Linear Velocity → *u_lin*  
   - SSA Friction Post-Peak → *q >= 1*  
   - SSA Friction Maximum Value → *C ~ max bed slope*  
-  - SSA Min Effective Pressure → *N_{min}*, such that *N >= N_{min}*  
 
 The keywords above that start with "SSA" are set in the material section of the .sif.
 "gravity norm" is set in the constants section (same usage as for GlaDS).
-The Budd paramerisation and the Gagliardini version of the regularised Coulomb sliding parameterisation require the variable "effective pressure" to be present. 
+The Budd paramerisation and the Gagliardini version of the regularised Coulomb sliding parameterisation require the variable "effective pressure" to be present.
+There is also a variant of the Joughin regularised Coulomb sliding law in which effective pressure is required (if SSA Friction need N is set to true).
+
+Constraining effective pressure
+  - SSA Min Effective Pressure → *N_{min}*, such that *N >= N_{min}*  
+  - SSA Max Effective Pressure → *N_{max}*, such that *N <= N_{max}*  
+
+Where  "effective pressure" is required, the min value above must also be specified and the
+max value may optionally be specified.
 
 
 #### Sub-Element grounding line parametrisation

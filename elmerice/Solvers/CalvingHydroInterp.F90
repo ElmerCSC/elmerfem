@@ -414,10 +414,10 @@
       !END DO
     !END DO
     DO i=1, SIZE(WorkVar % Perm)
-      IF(WorkVar2 % Values(WorkVar2 % Perm(i)) .NE. 0.0) THEN
+      IF(WorkVar % Perm(i) > 0.0 .AND. WorkVar2 % Perm(i) > 0.0) THEN
         WorkVar % Values(WorkVar % Perm(i)) = WorkVar % Values(WorkVar % Perm(i))/WorkVar2 % Values(WorkVar2 % Perm(i))
-      ELSE
-        WorkVar % Values(WorkVar % Perm(i)) = 0.0
+      !ELSE
+        !WorkVar % Values(WorkVar % Perm(i)) = 0.0
       END IF
     END DO
 
@@ -452,12 +452,14 @@
         IF(.NOT. Found) Threshold = 10000.0
 
         DO i=1, SIZE(WorkVar % Perm)
-          Dist = (HydroSolver % Mesh % Nodes % x(WorkVar % Perm(i)) -&
+          IF(WorkVar % Perm(i) > 0.0) THEN
+            Dist = (HydroSolver % Mesh % Nodes % x(WorkVar % Perm(i)) -&
                   RefNode(1))**2
-          Dist = Dist + (HydroSolver % Mesh % Nodes % y(WorkVar % Perm(i)) -&
-                  RefNode(2))**2
-          Dist = SQRT(Dist)
-          IF(Dist > Threshold) WorkVar % Values(WorkVar % Perm(i)) = 1.0
+            Dist = Dist + (HydroSolver % Mesh % Nodes % y(WorkVar % Perm(i)) -&
+                    RefNode(2))**2
+            Dist = SQRT(Dist)
+            IF(Dist > Threshold) WorkVar % Values(WorkVar % Perm(i)) = 1.0
+          END IF
         END DO
       END IF
 
@@ -592,6 +594,22 @@
     !Temp residual needs to be conserved. Here, just integrate across all
     !elements and compare totals, then scale values on hydromesh uniformly to
     !bring in line with ice mesh
+    !This first section is due to SolveLinearSystem invalidating the
+    !temp variables on the hydro mesh. Not really
+    !sure why it does this, but this fix seems to work without any knock-on
+    !effects.
+    WorkVar2 => HydroSolver % Mesh % Variables
+    DO WHILE (ASSOCIATED(WorkVar2))
+      IF (TRIM(WorkVar2 % Name) == 'temp residual') THEN
+        IF (.NOT. WorkVar2 % Valid) THEN
+          WorkVar2 % Valid = .TRUE.
+          WorkVar2 % PrimaryMesh => HydroSolver % Mesh
+        END IF
+        EXIT
+      END IF
+      WorkVar2 => WorkVar2 % Next
+    END DO
+
     WorkVar => VariableGet(Model % Mesh % Variables, "temp residual", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
 
     IceTempResSum = 0.0_dp
@@ -605,6 +623,7 @@
     WorkVar2 => VariableGet(HydroSolver % Mesh % Variables, "HydroWeights", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
     !IF(ParEnv % PEs > 1) CALL ParallelSumVector(HydroSolver % Matrix, WorkVar2 % Values)
     DO i=1,SIZE(WorkVar % Perm)
+      IF(WorkVar % Perm(i) > 0.0 .AND. WorkVar2 % Perm(i) > 0.0) THEN
       !Element => HydroSolver % Mesh % Elements(i)
       !n = GetElementNOFNodes(Element)
       !DO j=1, n
@@ -612,8 +631,9 @@
         !WorkVar % Values(WorkVar % Perm(Element % NodeIndexes(j)))*&
         !WorkVar2 % Values(WorkVar2 % Perm(Element % NodeIndexes(j)))
       !END DO
-      WorkVar % Values(WorkVar % Perm(i)) =&
-      WorkVar % Values(WorkVar % Perm(i))*WorkVar2 % Values(WorkVar2 % Perm(i))
+        WorkVar % Values(WorkVar % Perm(i)) =&
+        WorkVar % Values(WorkVar % Perm(i))*WorkVar2 % Values(WorkVar2 % Perm(i))
+      END IF
     END DO
     HydroTempResSum = 0.0_dp
     HydroTempResSum = SUM(WorkVar % Values)
@@ -627,8 +647,10 @@
       CALL MPI_Gather(IceTempResSum, 1, MPI_DOUBLE_PRECISION, ParITRS, 1, MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
       CALL MPI_Gather(HydroTempResSum, 1, MPI_DOUBLE_PRECISION, ParHTRS, 1, MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
       IF(ParEnv % myPE == 0) THEN
-        IF(ANINT(SUM(ParITRS)) .NE. ANINT(SUM(ParHTRS))) THEN
+        IF(INT(ANINT(SUM(ParITRS))) .NE. INT(ANINT(SUM(ParHTRS)))) THEN
           ScaleFactor = SUM(ParITRS)/SUM(ParHTRS)
+        ELSE
+          ScaleFactor = 1.0
         END IF
       END IF
       CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
@@ -637,7 +659,7 @@
         WorkVar % Values(i) = WorkVar % Values(i)*ScaleFactor
       END DO
     ELSE
-      IF(ANINT(IceTempResSum) .NE. ANINT(HydroTempResSum)) THEN
+      IF(INT(ANINT(IceTempResSum)) .NE. INT(ANINT(HydroTempResSum))) THEN
         ScaleFactor = IceTempResSum/HydroTempResSum
         DO i=1, SIZE(WorkVar % Values)
           WorkVar % Values(i) = WorkVar % Values(i)*ScaleFactor

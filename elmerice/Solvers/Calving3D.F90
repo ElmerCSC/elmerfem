@@ -361,6 +361,13 @@
           END DO
        END IF
 
+       IF(.NOT. Boss) THEN
+         ALLOCATE(FaceNodesT % x(1), FaceNodesT % y(1), FaceNodesT % z (1))
+         FaceNodesT % x(1) = 0
+         FaceNodesT % y(1) = 0
+         FaceNodesT % z(1) = 0
+       END IF
+
        !Global NodeNumbers
        CALL MPI_GATHERV(Mesh % ParallelInfo % GlobalDOFs(MyFaceNodeNums),&
             FaceNodeCount,MPI_INTEGER,&
@@ -826,6 +833,7 @@
 
     CrevVar => VariableGet(PlaneMesh % Variables, "ave_cindex", .TRUE.)
     PCSolver % Variable => CrevVar
+    PCSolver % Variable % Values => CrevVar % Values
     PCSolver % Matrix % Perm => CrevVar % Perm
 
     !----------------------------------------------------
@@ -1728,6 +1736,7 @@
 
     FirstTime = .FALSE.
 
+    PCSolver % Variable % Values => NULL()
     PCSolver % Variable => NULL()
     PCSolver % Matrix % Perm => NULL()
     CALL FreeMatrix(PCSolver % Matrix)

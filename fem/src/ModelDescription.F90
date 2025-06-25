@@ -2714,6 +2714,10 @@ CONTAINS
         ELSE
           MeshSolvers(j, i) = .TRUE.
         END IF
+        !This seems to be necessary to force DefDofs for the global mesh to not
+        !update if you have multiple solvers all pointing at the same solver-
+        !specific mesh
+        GotMesh = .TRUE.
 
       END IF
 
@@ -2787,6 +2791,7 @@ CONTAINS
         END IF
         !  Calling GetDefs fills Def_Dofs arrays:
         CALL GetDefs( ElementDef, Solver % Def_Dofs, Def_Dofs(:,:), .NOT. GotMesh )
+
         IF(j>0) THEN
           ElementDef0 = ElementDef0(j+1:)
         ELSE
