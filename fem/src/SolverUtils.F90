@@ -15917,7 +15917,7 @@ END FUNCTION SearchNodeL
           CALL FreeMatrix( Schur)
         ELSE
           CALL ROCSerialSolve( n, A % Rows-1, A % Cols-1, A % Values, b, x, &
-             0*nonlin_update, imethod, prec, maxiter, tol, 0, idum, idum, ddum, dofs)
+              nonlin_update, imethod, prec, maxiter, tol, 0, idum, idum, ddum, dofs)
         END IF
       END BLOCK
     END IF
