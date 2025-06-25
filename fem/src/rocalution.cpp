@@ -467,6 +467,8 @@ extern "C" void ROCParallelSolve( int *gn, int *n, int *rows, int *cols, double 
     for(i=0; i<*n; i++ ) x_inout[i]=x[i];
 
     ls->Clear();
+
+    stop_rocalution();
 }
 
 
@@ -580,6 +582,7 @@ extern "C" void ROCSerialSolve(int *n, int *rows, int *cols, double *vals, doubl
       }
       rhs.CopyFromData(bb);
       x.CopyFromData(xx);
+      delete xx, bb;
     } else {
       rhs.CopyFromData(b);
       x.CopyFromData(x_inout);
@@ -606,6 +609,7 @@ extern "C" void ROCSerialSolve(int *n, int *rows, int *cols, double *vals, doubl
         break;
       case(3):
 
+#ifdef  HAVE_SETSCHURCOMPLEMENT
 	if ( *schur_n > 0 ) {
           int *Srows = new int[*schur_n+1];
           int *Scols = new int[schur_rows[*schur_n]];
@@ -618,11 +622,10 @@ extern "C" void ROCSerialSolve(int *n, int *rows, int *cols, double *vals, doubl
           schurComplement.SetDataPtrCSR(&Srows, &Scols, &Svals, "SchurComplement", Srows[*schur_n], *schur_n, *schur_n);
           schurComplement.Info();
           schurComplement.MoveToAccelerator();
-#ifdef HAVE_SETSCHURCOMPLEMENT
           prec_dj.SetSchurComplement(schurComplement);
-#endif
           delete Srows, Scols, Svals;
 	}
+#endif
 
         int level=0;
         prec_dj_a.Set(level);
@@ -634,7 +637,8 @@ extern "C" void ROCSerialSolve(int *n, int *rows, int *cols, double *vals, doubl
     }
 
 
-    double bnrm = 0.0;
+    double bnrm;
+    bnrm = 0;
     for(i=0; i<*n; i++ ) bnrm += b[i]*b[i];
     bnrm = sqrt(bnrm);
     if (bnrm<1e-16) bnrm = 1;

@@ -15550,6 +15550,12 @@ END FUNCTION SearchNodeL
 
     INTEGER :: buf_size, procs
 
+    TYPE Matrix_arr_t
+        TYPE(Matrix_t), POINTER :: M
+    END TYPE Matrix_arr_t
+
+    TYPE(Matrix_arr_t), ALLOCATABLE, SAVE :: FMatrix(:)
+
     ! Define these to get somewhat shorter MPI subroutine calls:
     ! -----------------------------------------------------------
     INTEGER :: xmpi_comm
@@ -15568,6 +15574,8 @@ END FUNCTION SearchNodeL
       INTEGER, ALLOCATABLE :: Size(:), Rows(:)
     END TYPE SendStuff_t
     TYPE(SendStuff_t), ALLOCATABLE :: SendStuff(:)
+
+    REAL(KIND=dp)  :: rt
 
     Params => Solver % Values
 
@@ -15622,10 +15630,12 @@ END FUNCTION SearchNodeL
     isParallel = procs>1
 
     IF(isParallel) THEN
+            rt = RealTime()
       me    =  Parenv % MyPe
       xmpi_comm = ELMER_COMM_WORLD
 
       IF (.NOT.ASSOCIATED(A % ParMatrix)) CALL ParallelInitMatrix(Solver,A)
+
 
       ParEnv => A % ParMatrix % ParEnv
       ParEnv % ActiveComm = A % Comm
@@ -15735,6 +15745,14 @@ END FUNCTION SearchNodeL
           END DO
         END DO
 
+        IF ( .NOT.ALLOCATED(FMatrix) ) THEN
+          ALLOCATE(FMatrix(0:ParEnv % PEs-1))
+          DO proc=0,ParEnv % PEs-1
+            FMatrix(proc) % M => AllocateMatrix()
+            Fmatrix(proc) % M % Format = MATRIX_LIST
+          END DO
+        END IF
+
         ! receive data from neighbours
         ! ----------------------------
         ALLOCATE( rRows(100), rSize(100) )
@@ -15765,21 +15783,56 @@ END FUNCTION SearchNodeL
               ALLOCATE( iBuf(rSize(j)), dBuf(rSize(j)) )
             END IF
 
-            CALL MPI_RECV(iBuf,rSize(j),xmpi_int,proc,1203,xmpi_comm,status,ierr)
             CALL MPI_RECV(dBuf,rSize(j),xmpi_dbl,proc,1204,xmpi_comm,status,ierr)
+            CALL MPI_RECV(iBuf,rSize(j),xmpi_int,proc,1203,xmpi_comm,status,ierr)
+            CALL Sortf(rSize(j), ibuf, dbuf )
 
-            DO l=1,rSize(j)
-              CAll AddToMatrixElement(Rmatrix,k-gOffset(me),iBuf(l),dBuf(l))
-            END DO
+            IF ( RMatrix % Format == MATRIX_LIST ) THEN
+              DO l=1,rSize(j)
+                CAll AddToMatrixElement(Rmatrix,k-gOffset(me),iBuf(l),dBuf(l))
+                CAll AddToMatrixElement(FMatrix(proc) % M,k-gOffset(me),iBuf(l),dBuf(l))
+              END DO
+            ELSE
+              l = k-Goffset(me)
+              ibuf = FMatrix(proc) % M % Cols(FMatrix(proc) % M % Rows(l):FMatrix(proc) % M % Rows(l+1)-1)
+              Rmatrix % Values(ibuf) = RMatrix % Values(ibuf) + dBuf(1:rSize(j))
+            END IF
           END DO
         END DO
         ! ----------
 
         CALL MPI_BARRIER(A % Comm,ierr)
  
-        IF(Rmatrix % Format == MATRIX_LIST) CALL List_toCRSMatrix(Rmatrix)
+        IF(Rmatrix % Format == MATRIX_LIST) THEN
+          CALL List_toCRSMatrix(Rmatrix)
+
+          DO proc=0,ParEnv % Pes-1
+            CALL List_toCRSMatrix(FMatrix(proc) % M)
+          END DO
+
+          DO proc=0,ParEnv % PEs-1
+            IF ( FMatrix(proc) % M % NumberOfRows <= 0 ) CYCLE
+
+            DO i=1,FMatrix(proc) % M % NumberOfRows
+              IF ( FMatrix(proc) % M % Rows(i) >= FMatrix(proc) % M % Rows(i+1) ) CYCLE
+
+              DO k=1,RMatrix % NumberOfRows
+                IF (k==i) EXIT
+              END DO
+              k = RMatrix % Rows(k)
+              DO j=FMatrix(proc) % M % Rows(i), FMatrix(proc) % M % Rows(i+1)-1
+                DO WHILE(RMatrix % Cols(k) /= FMatrix(proc) % M % Cols(j))
+                   k=k+1 
+                END DO
+                Fmatrix(proc) % M % Cols(j) = k
+              END DO
+            END DO
+          END DO
+        END IF
         n = Rmatrix % NumberOfRows
         gn = ParallelReduction(n);
+
+        print*,'ct time: ', realtime()-rt
       END IF
 
 
@@ -15825,21 +15878,26 @@ END FUNCTION SearchNodeL
 
       ! Cleanup, remains to be reconsidered for optimizations
       ! -----------------------------------------------------
-      CALL FreeMatrix(Rmatrix);
-      DEALLOCATE(APerm,ILperm,gOffset)
+      !CALL FreeMatrix(Rmatrix);
+      !DEALLOCATE(APerm,ILperm,gOffset)
 
-      A % RocParams % Rmatrix => Null()
-      A % RocParams % CntPerm => Null()
-      A % RocParams % LocPerm => Null()
-      A % RocParams % gOffset => Null()
+      !A % RocParams % Rmatrix => Null()
+      !A % RocParams % CntPerm => Null()
+      !A % RocParams % LocPerm => Null()
+      !A % RocParams % gOffset => Null()
+
+       A % RocParams % Rmatrix => RMatrix
+       A % RocParams % CntPerm => APerm
+       A % RocParams % LocPerm => ILperm
+       A % RocParams % gOffset => gOffset
     ELSE
       ! Serial case: call the linear solver
       ! -----------------------------------
       BLOCK
         TYPE(Variable_t), POINTER :: SchurV
         TYPE(Matrix_t), POINTER :: Schur 
-        INTEGER :: dofs, idum(1)
         REAL(KIND=dp) :: ddum(1)
+        INTEGER :: i, j, k, l, dofs, idum(1)
 
         Schur => NULL()
         dofs = Solver % Variable % DOFs
@@ -15859,7 +15917,7 @@ END FUNCTION SearchNodeL
           CALL FreeMatrix( Schur)
         ELSE
           CALL ROCSerialSolve( n, A % Rows-1, A % Cols-1, A % Values, b, x, &
-             nonlin_update, imethod, prec, maxiter, tol, 0, idum, idum, ddum, dofs)
+             0*nonlin_update, imethod, prec, maxiter, tol, 0, idum, idum, ddum, dofs)
         END IF
       END BLOCK
     END IF
