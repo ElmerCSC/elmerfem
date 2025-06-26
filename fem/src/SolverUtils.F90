@@ -15538,11 +15538,11 @@ END FUNCTION SearchNodeL
     ! local variables:
     ! ----------------
     LOGICAL :: found, isParallel 
-    INTEGER :: nonlin_update, i, j, k,l,n, gn, me
+    INTEGER :: nonlin_update, i, j, k,l, m, n, p,q,gn, me
 
     TYPE(Matrix_t), POINTER ::Rmatrix
 
-    INTEGER, POINTER ::  aPerm(:), iLperm(:), gOffset(:)
+    INTEGER, POINTER ::  aPerm(:), iLperm(:), gOffset(:), fRows(:), fCols(:)
     REAL(KIND=dp), ALLOCATABLE :: dBuf(:)
     INTEGER, ALLOCATABLE :: Owner(:), SendTo(:), iBuf(:), tOffset(:), rRows(:), rSize(:)
 
@@ -15740,8 +15740,11 @@ END FUNCTION SearchNodeL
             l = SendStuff(i) % Size(j)
             dBuf =  A % Values(A % Rows(k):A % Rows(k+1)-1)
             iBuf =  aPerm(A % Cols(A % Rows(k):A % Rows(k+1)-1))
-            CALL MPI_BSEND(iBuf,l,xmpi_int,i-1,1203,xmpi_comm,ierr)
-            CALL MPI_BSEND(dBuf,l,xmpi_dbl,i-1,1204,xmpi_comm,ierr)
+            CALL Sortf(l, ibuf, dbuf )
+            CALL MPI_BSEND(dBuf,l,xmpi_dbl,i-1,1203,xmpi_comm,ierr)
+            IF (Rmatrix % Format == MATRIX_LIST ) THEN
+              CALL MPI_BSEND(iBuf,l,xmpi_int,i-1,1204,xmpi_comm,ierr)
+            END IF
           END DO
         END DO
 
@@ -15750,6 +15753,7 @@ END FUNCTION SearchNodeL
           DO proc=0,ParEnv % PEs-1
             FMatrix(proc) % M => AllocateMatrix()
             Fmatrix(proc) % M % Format = MATRIX_LIST
+            Fmatrix(proc) % M % ListMatrix => List_AllocateMatrix(gOffSet(me+1)-gOffset(me))
           END DO
         END IF
 
@@ -15782,20 +15786,29 @@ END FUNCTION SearchNodeL
               DEALLOCATE(iBuf,dBuf)
               ALLOCATE( iBuf(rSize(j)), dBuf(rSize(j)) )
             END IF
-
-            CALL MPI_RECV(dBuf,rSize(j),xmpi_dbl,proc,1204,xmpi_comm,status,ierr)
-            CALL MPI_RECV(iBuf,rSize(j),xmpi_int,proc,1203,xmpi_comm,status,ierr)
-            CALL Sortf(rSize(j), ibuf, dbuf )
+            CALL MPI_RECV(dBuf,rSize(j),xmpi_dbl,proc,1203,xmpi_comm,status,ierr)
 
             IF ( RMatrix % Format == MATRIX_LIST ) THEN
-              DO l=1,rSize(j)
-                CAll AddToMatrixElement(Rmatrix,k-gOffset(me),iBuf(l),dBuf(l))
-                CAll AddToMatrixElement(FMatrix(proc) % M,k-gOffset(me),iBuf(l),dBuf(l))
-              END DO
+              CALL MPI_RECV(iBuf,rSize(j),xmpi_int,proc,1204,xmpi_comm,status,ierr)
+
+              CALL List_AddMatrixRow(Rmatrix % ListMatrix,k-gOffset(me), &
+                       rSize(j),iBuf,dBuf,SortedInput=.TRUE.)
+
+              CALL List_AddMatrixRow(FMatrix(proc) % M % ListMatrix,k-gOffset(me), &
+                       rSize(j),iBuf,dBuf,SortedInput=.TRUE.)
+
+!             DO l=1,rSize(j)
+!               CAll AddToMatrixElement(Rmatrix,k-gOffset(me),iBuf(l),dBuf(l))
+!               CAll AddToMatrixElement(FMatrix(proc) % M,k-gOffset(me),iBuf(l),dBuf(l))
+!             END DO
             ELSE
-              l = k-Goffset(me)
-              ibuf = FMatrix(proc) % M % Cols(FMatrix(proc) % M % Rows(l):FMatrix(proc) % M % Rows(l+1)-1)
-              Rmatrix % Values(ibuf) = RMatrix % Values(ibuf) + dBuf(1:rSize(j))
+              p = k-Goffset(me)
+              q = 0
+              DO l=fMatrix(proc) % M % Rows(p), Fmatrix(proc) % M % Rows(p+1)-1
+                q = q + 1
+                m = Fmatrix(proc) % M % Cols(l)
+                Rmatrix % Values(m) = RMatrix % Values(m) + dBuf(q)
+              END DO
             END IF
           END DO
         END DO
@@ -15807,24 +15820,28 @@ END FUNCTION SearchNodeL
           CALL List_toCRSMatrix(Rmatrix)
 
           DO proc=0,ParEnv % Pes-1
-            CALL List_toCRSMatrix(FMatrix(proc) % M)
+            CALL List_toCRSMatrix(Fmatrix(proc) % M)
           END DO
 
           DO proc=0,ParEnv % PEs-1
-            IF ( FMatrix(proc) % M % NumberOfRows <= 0 ) CYCLE
+            IF ( Fmatrix(proc) % M % NumberOfRows <= 0 ) CYCLE
 
-            DO i=1,FMatrix(proc) % M % NumberOfRows
-              IF ( FMatrix(proc) % M % Rows(i) >= FMatrix(proc) % M % Rows(i+1) ) CYCLE
+            DO i=1,Fmatrix(proc) % M % NumberOfRows
+              IF ( Fmatrix(proc) % M % Rows(i) >= Fmatrix(proc) % M % Rows(i+1) ) CYCLE
 
               DO k=1,RMatrix % NumberOfRows
                 IF (k==i) EXIT
               END DO
-              k = RMatrix % Rows(k)
-              DO j=FMatrix(proc) % M % Rows(i), FMatrix(proc) % M % Rows(i+1)-1
-                DO WHILE(RMatrix % Cols(k) /= FMatrix(proc) % M % Cols(j))
-                   k=k+1 
+
+              fRows => Fmatrix(proc) % M % Rows
+              fCols => Fmatrix(proc) % M % Cols
+
+              l = RMatrix % Rows(k)
+              DO j=fRows(i), fRows(i+1)-1
+                DO WHILE(Rmatrix % Cols(l) /= fCols(j))
+                   l=l+1 
                 END DO
-                Fmatrix(proc) % M % Cols(j) = k
+                fCols(j) = l
               END DO
             END DO
           END DO
