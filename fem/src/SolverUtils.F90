@@ -15685,7 +15685,7 @@ END FUNCTION SearchNodeL
 
         ! Create inside matrix + count rows with values to send for each neighbour
         ! -------------------------------------------------------------------------
-        ALLOCATE(SendTo(procs))
+        ALLOCATE(SendTo(0:procs-1))
         iLPerm = 0
         LRow = 0
         SendTo = 0
@@ -15706,17 +15706,15 @@ END FUNCTION SearchNodeL
               END DO
             ENDIF
           ELSE
-            SendTo(you+1) = SendTo(you+1)+1
+            SendTo(you) = SendTo(you)+1
           END IF
         END DO
 
-        ALLOCATE(SendStuff(ParEnv % Pes))
-        DO i=1,ParEnv % PEs
-          IF( i-1==me ) CYCLE
-          IF(.NOT.ParEnv % IsNeighbour(i))  CYCLE
-
-          ALLOCATE( SendStuff(i) % Rows(SendTo(i)) )
-          ALLOCATE( SendStuff(i) % Size(SendTo(i)) )
+        ALLOCATE(SendStuff(0:procs-1))
+        DO proc=0,procs-1
+          IF( proc==me .OR. .NOT. ParEnv % IsNeighbour(proc+1) ) CYCLE
+          ALLOCATE( SendStuff(proc) % Rows(SendTo(proc)) )
+          ALLOCATE( SendStuff(proc) % Size(SendTo(proc)) )
         END DO
  
         ! Count number of columns of each neighbour's rows to be sent
@@ -15726,9 +15724,9 @@ END FUNCTION SearchNodeL
         DO i=1,a % NumberOfRows
           you = A % ParallelInfo % NeighbourList(i) % Neighbours(1)
           IF ( you /= me ) THEN
-            SendTo(you+1) = SendTo(you+1)+1
-            SendStuff(you+1) % Size(Sendto(you+1))  = A % Rows(i+1)-A % Rows(i)
-            SendStuff(you+1) % Rows(Sendto(you+1))  = i
+            SendTo(you) = SendTo(you)+1
+            SendStuff(you) % Size(Sendto(you))  = A % Rows(i+1)-A % Rows(i)
+            SendStuff(you) % Rows(Sendto(you))  = i
             buf_size = buf_size + A % Rows(i+1) - A % Rows(i)
           END IF
         END DO
@@ -15736,27 +15734,27 @@ END FUNCTION SearchNodeL
 
         ! Send data to neighbours
         ! -----------------------
-        DO i=1,ParEnV % PEs
-          IF(i-1==me .OR. .NOT. ParEnv % IsNeighbour(i)) CYCLE
+        DO proc=0,procs-1
+          IF(proc==me .OR. .NOT. ParEnv % IsNeighbour(proc+1)) CYCLE
 
-          CALL MPI_BSEND(SendTo(i),1,xmpi_int,i-1,1200,xmpi_comm,ierr)
-          IF(Sendto(i)==0) CYCLE
+          CALL MPI_BSEND(SendTo(proc),1,xmpi_int,proc,1200,xmpi_comm,ierr)
+          IF(Sendto(proc)==0) CYCLE
 
-          ibuf = aPerm(SendStuff(i) % Rows)
-          CALL MPI_BSEND(ibuf,SendTo(i),xmpi_int,i-1,1201,xmpi_comm,ierr)
+          ibuf = aPerm(SendStuff(proc) % Rows)
+          CALL MPI_BSEND(ibuf,SendTo(proc),xmpi_int,proc,1201,xmpi_comm,ierr)
 
-          ibuf = SendStuff(i) % Size
-          CALL MPI_BSEND(ibuf,SendTo(i),xmpi_int,i-1,1202,xmpi_comm,ierr)
+          ibuf = SendStuff(proc) % Size
+          CALL MPI_BSEND(ibuf,SendTo(proc),xmpi_int,proc,1202,xmpi_comm,ierr)
 
-          DO j=1,SendTo(i)
-            k = SendStuff(i) % Rows(j)
-            l = SendStuff(i) % Size(j)
+          DO j=1,SendTo(proc)
+            k = SendStuff(proc) % Rows(j)
+            l = SendStuff(proc) % Size(j)
             dBuf =  A % Values(A % Rows(k):A % Rows(k+1)-1)
             iBuf =  aPerm(A % Cols(A % Rows(k):A % Rows(k+1)-1))
             CALL Sortf(l, ibuf, dbuf )
-            CALL MPI_BSEND(dBuf,l,xmpi_dbl,i-1,1203,xmpi_comm,ierr)
+            CALL MPI_BSEND(dBuf,l,xmpi_dbl,proc,1203,xmpi_comm,ierr)
             IF (Rmatrix % Format == MATRIX_LIST ) THEN
-              CALL MPI_BSEND(iBuf,l,xmpi_int,i-1,1204,xmpi_comm,ierr)
+              CALL MPI_BSEND(iBuf,l,xmpi_int,proc,1204,xmpi_comm,ierr)
             END IF
           END DO
         END DO
@@ -15823,24 +15821,18 @@ END FUNCTION SearchNodeL
         IF(Rmatrix % Format == MATRIX_LIST) THEN
           CALL List_toCRSMatrix(Rmatrix)
 
-          DO proc=0,ParEnv % Pes-1
+          DO proc=0,procs-1
             CALL List_toCRSMatrix(iMatrix(proc) % M)
           END DO
 
-          DO proc=0,ParEnv % PEs-1
+          DO proc=0,procs-1
             IF ( iMatrix(proc) % M % NumberOfRows <= 0 ) CYCLE
 
+            iRows => iMatrix(proc) % M % Rows
+            iCols => iMatrix(proc) % M % Cols
+
             DO i=1,iMatrix(proc) % M % NumberOfRows
-              IF ( iMatrix(proc) % M % Rows(i) >= iMatrix(proc) % M % Rows(i+1) ) CYCLE
-
-              DO k=1,RMatrix % NumberOfRows
-                IF (k==i) EXIT
-              END DO
-
-              iRows => iMatrix(proc) % M % Rows
-              iCols => iMatrix(proc) % M % Cols
-
-              l = RMatrix % Rows(k)
+              l = RMatrix % Rows(i)
               DO j=iRows(i), iRows(i+1)-1
                 DO WHILE(Rmatrix % Cols(l) /= iCols(j))
                    l=l+1 
