@@ -15543,6 +15543,7 @@ END FUNCTION SearchNodeL
     TYPE(Matrix_t), POINTER ::Rmatrix
 
     INTEGER, POINTER ::  aPerm(:), iLperm(:), gOffset(:), iRows(:), iCols(:)
+    REAL(KIND=dp), POINTER :: iVals(:)
     REAL(KIND=dp), ALLOCATABLE :: dBuf(:)
     INTEGER, ALLOCATABLE :: Owner(:), SendTo(:), iBuf(:), tOffset(:), rRows(:), rSize(:)
 
@@ -15632,7 +15633,6 @@ END FUNCTION SearchNodeL
 
       IF (.NOT.ASSOCIATED(A % ParMatrix)) CALL ParallelInitMatrix(Solver,A)
 
-
       ParEnv => A % ParMatrix % ParEnv
       ParEnv % ActiveComm = A % Comm
 
@@ -15661,7 +15661,7 @@ END FUNCTION SearchNodeL
         DO proc=0,ParEnv % PEs-1
           iMatrix(proc) % M => AllocateMatrix()
           iMatrix(proc) % M % Format = MATRIX_LIST
-          iMatrix(proc) % M % ListMatrix => List_AllocateMatrix(gOffSet(me+1)-gOffset(me))
+          iMatrix(proc) % M % ListMatrix => List_AllocateMatrix(own_n)
         END DO
 
         A % RocParams % Rmatrix => Rmatrix
@@ -15751,7 +15751,7 @@ END FUNCTION SearchNodeL
             l = SendStuff(proc) % Size(j)
             dBuf =  A % Values(A % Rows(k):A % Rows(k+1)-1)
             iBuf =  aPerm(A % Cols(A % Rows(k):A % Rows(k+1)-1))
-            CALL Sortf(l, ibuf, dbuf )
+            CALL SortF(l, ibuf, dbuf )
             CALL MPI_BSEND(dBuf,l,xmpi_dbl,proc,1203,xmpi_comm,ierr)
             IF (Rmatrix % Format == MATRIX_LIST ) THEN
               CALL MPI_BSEND(iBuf,l,xmpi_int,proc,1204,xmpi_comm,ierr)
@@ -15793,8 +15793,8 @@ END FUNCTION SearchNodeL
             IF ( RMatrix % Format == MATRIX_LIST ) THEN
               CALL MPI_RECV(iBuf,rSize(j),xmpi_int,proc,1204,xmpi_comm,status,ierr)
 
-              CALL List_AddMatrixRow(Rmatrix % ListMatrix,k-gOffset(me), &
-                       rSize(j),iBuf,dBuf,SortedInput=.TRUE.)
+!             CALL List_AddMatrixRow(Rmatrix % ListMatrix,k-gOffset(me), &
+!                      rSize(j),iBuf,dBuf,SortedInput=.TRUE.)
 
               CALL List_AddMatrixRow(iMatrix(proc) % M % ListMatrix,k-gOffset(me), &
                        rSize(j),iBuf,dBuf,SortedInput=.TRUE.)
@@ -15815,15 +15815,28 @@ END FUNCTION SearchNodeL
           END DO
         END DO
         ! ----------
+!       CALL MPI_BARRIER(A % Comm,ierr)
 
-        CALL MPI_BARRIER(A % Comm,ierr)
- 
         IF(Rmatrix % Format == MATRIX_LIST) THEN
-          CALL List_toCRSMatrix(Rmatrix)
 
           DO proc=0,procs-1
+            IF ( proc==me .OR. .NOT. ParEnv % IsNeighbour(proc+1)) CYCLE
+
             CALL List_toCRSMatrix(iMatrix(proc) % M)
+            DO i=1,iMatrix(proc) % M % NumberOfRows
+              iRows => iMatrix(proc) % M % Rows
+              iCols => iMatrix(proc) % M % Cols
+              iVals => iMatrix(proc) % M % Values
+
+              l = iRows(i+1) - iRows(i)
+              IF (l>0) THEN
+                CALL List_AddMatrixRow( Rmatrix % ListMatrix,i,l, &
+                   iCols(iRows(i):iRows(i+1)-1), iVals(iRows(i):iRows(i+1)-1), SortedInput=.TRUE.)
+              END IF
+            END DO
           END DO
+
+          CALL List_toCRSMatrix(Rmatrix)
 
           DO proc=0,procs-1
             IF ( iMatrix(proc) % M % NumberOfRows <= 0 ) CYCLE
