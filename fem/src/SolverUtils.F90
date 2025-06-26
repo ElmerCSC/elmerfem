@@ -15542,7 +15542,7 @@ END FUNCTION SearchNodeL
 
     TYPE(Matrix_t), POINTER ::Rmatrix
 
-    INTEGER, POINTER ::  aPerm(:), iLperm(:), gOffset(:), fRows(:), fCols(:)
+    INTEGER, POINTER ::  aPerm(:), iLperm(:), gOffset(:), iRows(:), iCols(:)
     REAL(KIND=dp), ALLOCATABLE :: dBuf(:)
     INTEGER, ALLOCATABLE :: Owner(:), SendTo(:), iBuf(:), tOffset(:), rRows(:), rSize(:)
 
@@ -15550,11 +15550,7 @@ END FUNCTION SearchNodeL
 
     INTEGER :: buf_size, procs
 
-    TYPE Matrix_arr_t
-        TYPE(Matrix_t), POINTER :: M
-    END TYPE Matrix_arr_t
-
-    TYPE(Matrix_arr_t), ALLOCATABLE, SAVE :: FMatrix(:)
+    TYPE(Matrix_arr_t), POINTER :: iMatrix(:)
 
     ! Define these to get somewhat shorter MPI subroutine calls:
     ! -----------------------------------------------------------
@@ -15661,15 +15657,24 @@ END FUNCTION SearchNodeL
         Rmatrix % Format = MATRIX_LIST
         Rmatrix % ListMatrix => List_AllocateMatrix(own_n)
 
+        ALLOCATE(iMatrix(0:ParEnv % PEs-1))
+        DO proc=0,ParEnv % PEs-1
+          iMatrix(proc) % M => AllocateMatrix()
+          iMatrix(proc) % M % Format = MATRIX_LIST
+          iMatrix(proc) % M % ListMatrix => List_AllocateMatrix(gOffSet(me+1)-gOffset(me))
+        END DO
+
         A % RocParams % Rmatrix => Rmatrix
         A % RocParams % CntPerm => aPerm
         A % RocParams % LocPerm => iLperm
         A % RocParams % gOffset => gOffset
+        A % RocParams % iMatrix => iMatrix
       ELSE
         Rmatrix => A % RocParams % Rmatrix
         aPerm   => A % RocParams % CntPerm
         iLPerm  => A % RocParams % LocPerm
         gOffset => A % RocParams % gOffset
+        iMatrix => A % RocParams % iMatrix
       END IF
 
       ! Complete the matrix rows such that each partition has full rows of the 'owned' dofs
@@ -15748,15 +15753,6 @@ END FUNCTION SearchNodeL
           END DO
         END DO
 
-        IF ( .NOT.ALLOCATED(FMatrix) ) THEN
-          ALLOCATE(FMatrix(0:ParEnv % PEs-1))
-          DO proc=0,ParEnv % PEs-1
-            FMatrix(proc) % M => AllocateMatrix()
-            Fmatrix(proc) % M % Format = MATRIX_LIST
-            Fmatrix(proc) % M % ListMatrix => List_AllocateMatrix(gOffSet(me+1)-gOffset(me))
-          END DO
-        END IF
-
         ! receive data from neighbours
         ! ----------------------------
         ALLOCATE( rRows(100), rSize(100) )
@@ -15794,19 +15790,19 @@ END FUNCTION SearchNodeL
               CALL List_AddMatrixRow(Rmatrix % ListMatrix,k-gOffset(me), &
                        rSize(j),iBuf,dBuf,SortedInput=.TRUE.)
 
-              CALL List_AddMatrixRow(FMatrix(proc) % M % ListMatrix,k-gOffset(me), &
+              CALL List_AddMatrixRow(iMatrix(proc) % M % ListMatrix,k-gOffset(me), &
                        rSize(j),iBuf,dBuf,SortedInput=.TRUE.)
 
 !             DO l=1,rSize(j)
 !               CAll AddToMatrixElement(Rmatrix,k-gOffset(me),iBuf(l),dBuf(l))
-!               CAll AddToMatrixElement(FMatrix(proc) % M,k-gOffset(me),iBuf(l),dBuf(l))
+!               CAll AddToMatrixElement(iMatrix(proc) % M,k-gOffset(me),iBuf(l),dBuf(l))
 !             END DO
             ELSE
               p = k-Goffset(me)
               q = 0
-              DO l=fMatrix(proc) % M % Rows(p), Fmatrix(proc) % M % Rows(p+1)-1
+              DO l=iMatrix(proc) % M % Rows(p), iMatrix(proc) % M % Rows(p+1)-1
                 q = q + 1
-                m = Fmatrix(proc) % M % Cols(l)
+                m = iMatrix(proc) % M % Cols(l)
                 Rmatrix % Values(m) = RMatrix % Values(m) + dBuf(q)
               END DO
             END IF
@@ -15820,28 +15816,28 @@ END FUNCTION SearchNodeL
           CALL List_toCRSMatrix(Rmatrix)
 
           DO proc=0,ParEnv % Pes-1
-            CALL List_toCRSMatrix(Fmatrix(proc) % M)
+            CALL List_toCRSMatrix(Imatrix(proc) % M)
           END DO
 
           DO proc=0,ParEnv % PEs-1
-            IF ( Fmatrix(proc) % M % NumberOfRows <= 0 ) CYCLE
+            IF ( Imatrix(proc) % M % NumberOfRows <= 0 ) CYCLE
 
-            DO i=1,Fmatrix(proc) % M % NumberOfRows
-              IF ( Fmatrix(proc) % M % Rows(i) >= Fmatrix(proc) % M % Rows(i+1) ) CYCLE
+            DO i=1,Imatrix(proc) % M % NumberOfRows
+              IF ( Imatrix(proc) % M % Rows(i) >= Imatrix(proc) % M % Rows(i+1) ) CYCLE
 
               DO k=1,RMatrix % NumberOfRows
                 IF (k==i) EXIT
               END DO
 
-              fRows => Fmatrix(proc) % M % Rows
-              fCols => Fmatrix(proc) % M % Cols
+              iRows => Imatrix(proc) % M % Rows
+              iCols => Imatrix(proc) % M % Cols
 
               l = RMatrix % Rows(k)
-              DO j=fRows(i), fRows(i+1)-1
-                DO WHILE(Rmatrix % Cols(l) /= fCols(j))
+              DO j=iRows(i), iRows(i+1)-1
+                DO WHILE(Rmatrix % Cols(l) /= iCols(j))
                    l=l+1 
                 END DO
-                fCols(j) = l
+                iCols(j) = l
               END DO
             END DO
           END DO
@@ -15907,6 +15903,7 @@ END FUNCTION SearchNodeL
        A % RocParams % CntPerm => APerm
        A % RocParams % LocPerm => ILperm
        A % RocParams % gOffset => gOffset
+       A % RocParams % iMatrix => iMatrix
     ELSE
       ! Serial case: call the linear solver
       ! -----------------------------------

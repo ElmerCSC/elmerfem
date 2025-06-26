@@ -184,8 +184,13 @@ MODULE Types
 
 
 #ifdef HAVE_ROCALUTION
+  TYPE Matrix_arr_t
+     TYPE(Matrix_t), POINTER :: M
+  END TYPE Matrix_arr_t
+
   TYPE RocParams_t
     TYPE(Matrix_t), POINTER :: Rmatrix => Null()
+    TYPE(Matrix_arr_t), POINTER :: IMatrix(:) => Null()
     INTEGER, POINTER :: CntPerm(:)=> Null(), LocPerm(:) => Null(), gOffset(:) => Null()
   END TYPE RocParams_t
 #endif
