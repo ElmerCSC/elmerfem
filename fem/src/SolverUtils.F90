@@ -15749,9 +15749,9 @@ END FUNCTION SearchNodeL
           DO j=1,SendTo(proc)
             k = SendStuff(proc) % Rows(j)
             l = SendStuff(proc) % Size(j)
-            dBuf =  A % Values(A % Rows(k):A % Rows(k+1)-1)
-            iBuf =  aPerm(A % Cols(A % Rows(k):A % Rows(k+1)-1))
-            CALL SortF(l, ibuf, dbuf )
+            dBuf = A % Values(A % Rows(k):A % Rows(k+1)-1)
+            iBuf = aPerm(A % Cols(A % Rows(k):A % Rows(k+1)-1))
+            CALL SortF(l, ibuf, dbuf)
             CALL MPI_BSEND(dBuf,l,xmpi_dbl,proc,1203,xmpi_comm,ierr)
             IF (Rmatrix % Format == MATRIX_LIST ) THEN
               CALL MPI_BSEND(iBuf,l,xmpi_int,proc,1204,xmpi_comm,ierr)
@@ -15862,8 +15862,8 @@ END FUNCTION SearchNodeL
       END IF
 
 
-      !  the linear solver
-      ! ----------------------
+      !  the linear equation solver
+      ! ---------------------------
       BLOCK
         REAL(KIND=dp), ALLOCATABLE :: pb(:),px(:), r(:)
         REAL(KIND=dp) :: bnrm
