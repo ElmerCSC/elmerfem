@@ -15694,9 +15694,17 @@ END FUNCTION SearchNodeL
           IF ( you == me ) THEN
             lRow = lRow + 1
             iLPerm(lRow) = i
-            DO j=A % Rows(i+1)-1, A % Rows(i),-1
-              CALL AddToMatrixElement(Rmatrix, lRow, aPerm(A  % Cols(j)), A % Values(j))
-            END DO
+            IF ( Rmatrix % Format == MATRIX_LIST ) THEN
+              l = A % Rows(i+1) - A % Rows(i)
+              dbuf = A % Values(A % Rows(i):A % Rows(i+1)-1)
+              ibuf = aPerm(A % Cols(A % Rows(i):A % Rows(i+1)-1))
+              CALL List_AddMatrixRow(Rmatrix % ListMatrix, lRow, l, &
+                       ibuf, dbuf, SortedInput=.FALSE.)
+            ELSE
+              DO j=A % Rows(i+1)-1, A % Rows(i),-1
+                CALL AddToMatrixElement(Rmatrix, lRow, aPerm(A  % Cols(j)), A % Values(j))
+              END DO
+            ENDIF
           ELSE
             SendTo(you+1) = SendTo(you+1)+1
           END IF
@@ -15816,21 +15824,21 @@ END FUNCTION SearchNodeL
           CALL List_toCRSMatrix(Rmatrix)
 
           DO proc=0,ParEnv % Pes-1
-            CALL List_toCRSMatrix(Imatrix(proc) % M)
+            CALL List_toCRSMatrix(iMatrix(proc) % M)
           END DO
 
           DO proc=0,ParEnv % PEs-1
-            IF ( Imatrix(proc) % M % NumberOfRows <= 0 ) CYCLE
+            IF ( iMatrix(proc) % M % NumberOfRows <= 0 ) CYCLE
 
-            DO i=1,Imatrix(proc) % M % NumberOfRows
-              IF ( Imatrix(proc) % M % Rows(i) >= Imatrix(proc) % M % Rows(i+1) ) CYCLE
+            DO i=1,iMatrix(proc) % M % NumberOfRows
+              IF ( iMatrix(proc) % M % Rows(i) >= iMatrix(proc) % M % Rows(i+1) ) CYCLE
 
               DO k=1,RMatrix % NumberOfRows
                 IF (k==i) EXIT
               END DO
 
-              iRows => Imatrix(proc) % M % Rows
-              iCols => Imatrix(proc) % M % Cols
+              iRows => iMatrix(proc) % M % Rows
+              iCols => iMatrix(proc) % M % Cols
 
               l = RMatrix % Rows(k)
               DO j=iRows(i), iRows(i+1)-1
@@ -15898,12 +15906,6 @@ END FUNCTION SearchNodeL
       !A % RocParams % CntPerm => Null()
       !A % RocParams % LocPerm => Null()
       !A % RocParams % gOffset => Null()
-
-       A % RocParams % Rmatrix => RMatrix
-       A % RocParams % CntPerm => APerm
-       A % RocParams % LocPerm => ILperm
-       A % RocParams % gOffset => gOffset
-       A % RocParams % iMatrix => iMatrix
     ELSE
       ! Serial case: call the linear solver
       ! -----------------------------------
