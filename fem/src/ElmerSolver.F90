@@ -161,6 +161,9 @@
      RT0 = RealTime()
      CT0 = CPUTime()
 
+     #ifdef __NVCOMPILER
+    ParEnv => ParEnv_Common
+    #endif
      ! If parallel execution requested, initialize parallel environment:
      !------------------------------------------------------------------
      IF(FirstTime)  ParallelEnv => ParallelInit()

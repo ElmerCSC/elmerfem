@@ -11485,7 +11485,8 @@ BLOCK
      INTEGER :: cdim,dim,i,j,k,n,imin,jmin
      REAL(KIND=dp), DIMENSION(:), POINTER :: x,y,z
 
-     INTEGER, PARAMETER :: qp = SELECTED_REAL_KIND(24)     
+     ! INTEGER, PARAMETER :: qp = SELECTED_REAL_KIND(24)     
+     INTEGER, PARAMETER :: qp = dp
 
      REAL(KIND=qp) :: dp_dx(3,3),dp_G(3,3),dp_GI(3,3),dp_s, dp_DetG
      REAL(KIND=dp) :: qp_dx(3,3),qp_G(3,3),qp_GI(3,3),qp_s, qp_DetG, eps
@@ -11762,7 +11763,8 @@ BLOCK
      INTEGER :: cdim,dim,i,j,k,n
 
 ! Local Quadratic precision variables     
-     INTEGER, PARAMETER :: qp = SELECTED_REAL_KIND(24)     
+     ! INTEGER, PARAMETER :: qp = SELECTED_REAL_KIND(24)     
+     INTEGER, PARAMETER :: qp = dp
      REAL(KIND=qp) :: dx(3,3),G(3,3),GI(3,3),s,DetGqp
 !------------------------------------------------------------------------------
      success = .FALSE.

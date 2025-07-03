@@ -1258,7 +1258,7 @@ CONTAINS
           ! Weertman friction law computed internally
           wcoeff = ListGetElementReal( WeertmanCoeff_h, Basis, Element, GaussPoint = t )
           wexp = ListGetElementReal( WeertmanExp_h, Basis, Element, GaussPoint = t )
-          TanFrictionCoeff = MIN(wcoeff * ut**(wexp-1.0_dp),1.0e20)
+          TanFrictionCoeff = MIN(wcoeff * ut**(wexp-1.0_dp),1.0e20_dp)
           ! dTanFrictionCoeff/dut for Newton
           IF(FrictionNewton ) THEN
             TanFder=0._dp

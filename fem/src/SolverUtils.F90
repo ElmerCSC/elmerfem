@@ -14700,10 +14700,11 @@ END FUNCTION SearchNodeL
     TYPE(Matrix_t), POINTER :: Aaid, Projector, MP
     REAL(KIND=dp), POINTER :: mx(:), mb(:), mr(:)
     TYPE(Variable_t), POINTER :: IterV
-    LOGICAL :: NormalizeToUnity, AndersonAcc, AndersonScaled, NoSolve, Found
+    LOGICAL :: NormalizeToUnity, AndersonAcc, AndersonScaled, NoSolve, Found, DoSerial
     REAL(KIND=dp), POINTER :: pv(:)
     CHARACTER(*), PARAMETER :: Caller = 'SolveLinearSystem'
     CHARACTER(LEN=MAX_NAME_LEN) :: str
+
 
     
     TARGET b, x 
@@ -15097,9 +15098,18 @@ END FUNCTION SearchNodeL
     IF(ListGetLogical(Params, 'Linear System Use Rocalution', Found)) &
       Method = 'rocalution'
 
-    IF ( .NOT. Parallel .OR. A % ParallelInfo % NothingShared ) THEN
-      IF(ListGetLogical(Params, 'Linear System Use Hypre', Found)) Method = 'hypre'
+    IF ( .NOT. Parallel) THEN
+      DoSerial = .true.
+    end if
 
+    IF (associated(A % ParallelInfo)) then 
+      if (a % parallelinfo % NothingShared ) DoSerial=.true.
+    endif
+
+    if (DoSerial) then
+      IF(ListGetLogical(Params, 'Linear System Use Hypre', Found)) THEN
+        Method = 'hypre'
+      endif
       CALL Info(Caller,'Serial linear System Solver: '//TRIM(Method),Level=8)
       
       SELECT CASE(Method)

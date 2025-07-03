@@ -556,7 +556,8 @@ MODULE LinearAlgebra
 !------------------------------------------------------------------------------
   SUBROUTINE InvertMatrix3x3QP( G,GI,detG )
 !------------------------------------------------------------------------------
-    INTEGER, PARAMETER :: qp = SELECTED_REAL_KIND(24)     
+    !INTEGER, PARAMETER :: qp = SELECTED_REAL_KIND(24)     
+    INTEGER, PARAMETER :: qp = dp
     REAL(KIND=qp) :: G(3,3),GI(3,3)
     REAL(KIND=qp) :: detG, s
 !------------------------------------------------------------------------------

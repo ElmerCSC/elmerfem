@@ -43,10 +43,12 @@
 MODULE VecUtils
  
   USE DefUtils
+  USE ieee_arithmetic, only: isnan => ieee_is_nan
   IMPLICIT NONE
  
   CONTAINS
  
+
     FUNCTION norm2(a)
       IMPLICIT NONE
       REAL(KIND=dp) :: norm2(3)

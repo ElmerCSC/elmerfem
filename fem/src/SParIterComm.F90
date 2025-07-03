@@ -186,8 +186,6 @@ CONTAINS
 
     !******************************************************************
 
-    ParallelEnv => ParEnv
-
     ParEnv % MyPE = 0
     ParEnv % PEs  = 1
     ParEnv % ActiveComm = 0

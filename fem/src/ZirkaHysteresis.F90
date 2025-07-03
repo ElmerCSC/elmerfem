@@ -549,7 +549,11 @@ FUNCTION RecurEvalCurve(rc, B) result (H) ! {{{
   rc_p => rc
   d = rc_p % depth
   rc_p => RecurseDepth(rc_p, B)
+#ifdef __NVCOMPILER
+  H = rc_p % simple_eval(rc_p, B)
+#else
   H = rc_p % simple_eval(B)
+#endif
 
 END FUNCTION ! }}}
 
@@ -673,7 +677,11 @@ SUBROUTINE AddStack(parent, master, B) ! {{{
   x % dBrev = x%Bq - x%Bp
   dBout = x % Bq - parent % parent % Bp
   call master % ABCparams % GetABC(abs(dBout), abs(x % dBrev), x%a, x%b, x%c)
+#ifdef __NVCOMPILER
+  Hpp = x % parent % parent % simple_eval(x % parent % parent, B)
+#else
   Hpp = x % parent % parent % simple_eval(B)
+#endif
   Hp = x % parent % simple_eval(B)
   x % dHrev = Hpp - Hp;
   ! parent => x
@@ -752,7 +760,12 @@ SUBROUTINE rc_printeval(rc, B, rc0) ! {{{
   if (present(rc0)) rc0_p => rc0
   k = rc_p % depth
   do while (.not. associated(rc_p, rc_p % parent % parent))
+
+#ifdef __NVCOMPILER
+    if(present(rc0)) X0 = rc0_p % simple_eval(rc0_p, B)
+#else
     if(present(rc0)) X0 = rc0_p % simple_eval(B)
+#endif
     X = rc_p % simple_eval(B)
     if (present(rc0)) print *, X, X0, X-X0
     if (.not. present(rc0)) print *, X, rc_p % depth ! , c_loc(rc_p), c_loc(rc_p % parent)

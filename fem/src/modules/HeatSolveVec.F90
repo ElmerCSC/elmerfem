@@ -469,6 +469,7 @@ CONTAINS
   SUBROUTINE LocalMatrixVec( Element, n, nd, nb, VecAsm, InitHandles )
 !------------------------------------------------------------------------------
     USE LinearForms
+    USE SolverUtils
     IMPLICIT NONE
     INTEGER, INTENT(IN) :: n, nd, nb
     TYPE(Element_t), POINTER :: Element
@@ -519,7 +520,7 @@ CONTAINS
         CALL ListInitElementKeyword( ConvVelo_h(i),'Material','Convection Velocity '//I2S(i))
       END DO
 
-      str = GetString( Params, 'Temperature Convection Field', Found )
+      str = ListGetString( Params, 'Temperature Convection Field', Found )
       IF(.NOT. Found ) str = 'Flow Solution'
       CALL ListInitElementVariable( ConvField_h, str )
       
