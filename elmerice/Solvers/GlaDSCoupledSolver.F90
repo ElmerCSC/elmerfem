@@ -1302,9 +1302,12 @@
                      END SELECT
                    END DO
                    IF(CycleElement) THEN
-                     AreaSolution(AreaPerm(M+t)) = 0.0
-                     QcSolution(QcPerm(M+t)) = 0.0
-                     CYCLE
+                      ! TODO:
+                      ! The folowing two lines were commented to prevent GL retreat causing instant channel closure.
+                      ! But we need a better solution to this (extrapolate channels from grounded to floating?).
+                      !AreaSolution(AreaPerm(M+t)) = 0.0
+                      !QcSolution(QcPerm(M+t)) = 0.0
+                      CYCLE
                    END IF
                  END IF
                  
