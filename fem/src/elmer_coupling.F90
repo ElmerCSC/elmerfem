@@ -44,6 +44,226 @@
 !------------------------------------------------------------------------------
 #include "yac_config.h"
 
+MODULE elmer_icon_coupling
+
+  USE yac
+
+  IMPLICIT NONE
+
+  PRIVATE
+
+  PUBLIC :: construct_elmer_icon_coupling
+  PUBLIC :: construct_elmer_icon_coupling_post_sync
+  PUBLIC :: destruct_elmer_icon_coupling
+  PUBLIC :: elmer_icon_interface
+
+  INTEGER :: clt_field_id = -1
+  CHARACTER(LEN=*), PARAMETER :: clt_field_name = "tas"
+  INTEGER :: clt_collection_size = 1
+  CHARACTER(LEN=*), PARAMETER :: clt_field_timestep = "P1M"
+  DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: clt_field(:,:)
+
+  INTEGER :: pr_field_id = -1
+  CHARACTER(LEN=*), PARAMETER :: pr_field_name = "pr_snow"
+  INTEGER :: pr_collection_size = 1
+  CHARACTER(LEN=*), PARAMETER :: pr_field_timestep = "P1M"
+  DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: pr_field(:,:)
+
+CONTAINS
+
+  SUBROUTINE construct_elmer_icon_coupling( &
+    comp_id, corner_point_id, cell_point_id)
+
+    INTEGER, INTENT(IN) :: comp_id
+    INTEGER, INTENT(IN) :: corner_point_id
+    INTEGER, INTENT(IN) :: cell_point_id
+
+    INTEGER :: nbr_vertices, nbr_cells
+    INTEGER :: i
+
+    nbr_vertices = yac_fget_points_size(corner_point_id)
+    nbr_cells = yac_fget_points_size(cell_point_id)
+
+    ! register total cloud cover field in YAC
+    CALL yac_fdef_field( &
+      clt_field_name, comp_id, (/corner_point_id/), 1, clt_collection_size, &
+      clt_field_timestep, YAC_TIME_UNIT_ISO_FORMAT, clt_field_id);
+
+    ! allocate and initialise total cloud cover field buffer
+    ALLOCATE(clt_field(nbr_vertices, clt_collection_size))
+    clt_field = 0.0
+
+    ! register precipitation flux field in YAC
+    CALL yac_fdef_field( &
+      pr_field_name, comp_id, (/cell_point_id/), 1, pr_collection_size, &
+      pr_field_timestep, YAC_TIME_UNIT_ISO_FORMAT, pr_field_id)
+
+    ! allocate and initialise precipitation flux field buffer
+    ALLOCATE(pr_field(nbr_cells, pr_collection_size))
+    pr_field = 0.0
+
+  END SUBROUTINE construct_elmer_icon_coupling
+
+  SUBROUTINE construct_elmer_icon_coupling_post_sync( &
+    comm_rank, elmer_comp_name, elmer_grid_name)
+
+    INTEGER, INTENT(IN) :: comm_rank
+    CHARACTER(LEN=*), INTENT(IN) :: elmer_comp_name
+    CHARACTER(LEN=*), INTENT(IN) :: elmer_grid_name
+
+    ! after synchronisation or the end of the definition phase YAC can be
+    ! queried about various information
+
+    IF (comm_rank /= 0) RETURN
+
+    CALL print_field_info(elmer_comp_name, elmer_grid_name, pr_field_name)
+    CALL print_field_info(elmer_comp_name, elmer_grid_name, clt_field_name)
+
+  CONTAINS
+
+    SUBROUTINE print_field_info(elmer_comp_name, elmer_grid_name, field_name)
+
+      CHARACTER(LEN=*), INTENT(IN) :: elmer_comp_name
+      CHARACTER(LEN=*), INTENT(IN) :: elmer_grid_name
+      CHARACTER(LEN=*), INTENT(IN) :: field_name
+
+      CHARACTER(LEN=:), ALLOCATABLE :: src_comp_name
+      CHARACTER(LEN=:), ALLOCATABLE :: src_grid_name
+      CHARACTER(LEN=:), ALLOCATABLE :: src_field_name
+      CHARACTER(LEN=:), ALLOCATABLE :: src_field_timestep
+      CHARACTER(LEN=:), ALLOCATABLE :: src_field_metadata
+
+      IF (yac_fget_field_role( &
+            elmer_comp_name, elmer_grid_name, field_name) == &
+            YAC_EXCHANGE_TYPE_TARGET) THEN
+
+#if (YAC_VERSION_MAJOR >= 3) && (YAC_VERSION_MINOR >= 6)
+        CALL yac_fget_field_source( &
+          elmer_comp_name, elmer_grid_name, field_name, &
+          src_comp_name, src_grid_name, src_field_name);
+#else
+        src_comp_name = "icon"
+        src_grid_name = "icon_grid"
+        src_field_name = field_name
+#endif
+        src_field_timestep = &
+          yac_fget_field_timestep(src_comp_name, src_grid_name, src_field_name)
+        src_field_metadata = &
+          yac_fget_field_metadata(src_comp_name, src_grid_name, src_field_name)
+
+        
+
+        
+        PRINT *, "field ", field_name, ":"
+        PRINT *, " - source:"
+        PRINT *, "   - component: ", src_comp_name
+        PRINT *, "   - grid:      ", src_grid_name
+        PRINT *, "   - timestep:  ", src_field_timestep
+        PRINT *, "   - metadata:  ", src_field_metadata
+
+      END IF
+
+    END SUBROUTINE print_field_info
+
+  END SUBROUTINE construct_elmer_icon_coupling_post_sync
+
+  SUBROUTINE elmer_icon_interface(comm_rank)
+
+    INTEGER, INTENT(IN) :: comm_rank
+
+    INTEGER :: info, err
+
+    ! checks whether the total cloud cover field is defined as a target
+    ! in a couple
+    IF (yac_fget_role_from_field_id(clt_field_id) == &
+        YAC_EXCHANGE_TYPE_TARGET) THEN
+
+      IF (comm_rank == 0) THEN
+
+        ! get the action executed by YAC in the next get operation called for
+        ! the total cloud cover field and print out some information
+        CALL yac_fget_action(clt_field_id, info)
+        PRINT *, "call get for field: ", TRIM(clt_field_name), &
+                 " datatime: ", TRIM(yac_fget_field_datetime(clt_field_id)), &
+                 "action: ", &
+                 TRIM( &
+                  MERGE( &
+                    "coupling","none    ", &
+                    (info == YAC_ACTION_COUPLING) .OR. &
+                    (info == YAC_ACTION_GET_FOR_RESTART)))
+      END IF
+
+      ! execute get operation for total cloud cover field
+      ! * if this is a coupling timestep, this will block until the data has
+      !   been received
+      ! * if this is not a coupling timestep, total cloud cover field buffer
+      !   is left untouched and routine will return immediately
+      CALL yac_fget( &
+        clt_field_id, SIZE(clt_field, 1), SIZE(clt_field, 2), clt_field, &
+        info, err)
+
+      ! if this was a coupling timestep
+      IF ((info == YAC_ACTION_COUPLING) .OR. &
+          (info == YAC_ACTION_GET_FOR_RESTART)) THEN
+
+        ! prepare received data for elmer
+
+        ! update elmer internal total cloud cover field
+
+      END IF
+    END IF
+
+    ! checks whether the precipitation flux field is defined as a target
+    ! in a couple
+    IF (yac_fget_role_from_field_id(pr_field_id) == &
+        YAC_EXCHANGE_TYPE_TARGET) THEN
+
+      IF (comm_rank == 0) THEN
+
+        ! get the action executed by YAC in the next get operation called for
+        ! the precipitation flux field and print out some information
+        CALL yac_fget_action(pr_field_id, info)
+        PRINT *, "call get for field: ", TRIM(pr_field_name), &
+                 " datatime: ", TRIM(yac_fget_field_datetime(pr_field_id)), &
+                 "action: ", &
+                 TRIM( &
+                  MERGE( &
+                    "coupling","none    ", &
+                    (info == YAC_ACTION_COUPLING) .OR. &
+                    (info == YAC_ACTION_GET_FOR_RESTART)))
+      END IF
+
+      ! execute get operation for precipitation flux field
+      ! * if this is a coupling timestep, this will block until the data has
+      !   been received
+      ! * if this is not a coupling timestep, precipitation flux field buffer
+      !   is left untouched and routine will return immediately
+      CALL yac_fget( &
+        pr_field_id, SIZE(pr_field, 1), SIZE(pr_field, 2), pr_field, &
+        info, err)
+
+      ! if this was a coupling timestep
+      IF ((info == YAC_ACTION_COUPLING) .OR. &
+          (info == YAC_ACTION_GET_FOR_RESTART)) THEN
+
+        ! prepare received data for elmer
+
+        ! update elmer internal precipitation flux field
+
+      END IF
+    END IF
+
+  END SUBROUTINE elmer_icon_interface
+
+  SUBROUTINE destruct_elmer_icon_coupling()
+
+    ! clean up
+    DEALLOCATE(pr_field, clt_field)
+
+  END SUBROUTINE destruct_elmer_icon_coupling
+
+END MODULE elmer_icon_coupling
+
 MODULE elmer_coupling
 
   USE mpi
@@ -294,222 +514,4 @@ END MODULE elmer_coupling
 
 
 
-MODULE elmer_icon_coupling
 
-  USE yac
-
-  IMPLICIT NONE
-
-  PRIVATE
-
-  PUBLIC :: construct_elmer_icon_coupling
-  PUBLIC :: construct_elmer_icon_coupling_post_sync
-  PUBLIC :: destruct_elmer_icon_coupling
-  PUBLIC :: elmer_icon_interface
-
-  INTEGER :: clt_field_id = -1
-  CHARACTER(LEN=*), PARAMETER :: clt_field_name = "tas"
-  INTEGER :: clt_collection_size = 1
-  CHARACTER(LEN=*), PARAMETER :: clt_field_timestep = "P1M"
-  DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: clt_field(:,:)
-
-  INTEGER :: pr_field_id = -1
-  CHARACTER(LEN=*), PARAMETER :: pr_field_name = "pr_snow"
-  INTEGER :: pr_collection_size = 1
-  CHARACTER(LEN=*), PARAMETER :: pr_field_timestep = "P1M"
-  DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: pr_field(:,:)
-
-CONTAINS
-
-  SUBROUTINE construct_elmer_icon_coupling( &
-    comp_id, corner_point_id, cell_point_id)
-
-    INTEGER, INTENT(IN) :: comp_id
-    INTEGER, INTENT(IN) :: corner_point_id
-    INTEGER, INTENT(IN) :: cell_point_id
-
-    INTEGER :: nbr_vertices, nbr_cells
-    INTEGER :: i
-
-    nbr_vertices = yac_fget_points_size(corner_point_id)
-    nbr_cells = yac_fget_points_size(cell_point_id)
-
-    ! register total cloud cover field in YAC
-    CALL yac_fdef_field( &
-      clt_field_name, comp_id, (/corner_point_id/), 1, clt_collection_size, &
-      clt_field_timestep, YAC_TIME_UNIT_ISO_FORMAT, clt_field_id);
-
-    ! allocate and initialise total cloud cover field buffer
-    ALLOCATE(clt_field(nbr_vertices, clt_collection_size))
-    clt_field = 0.0
-
-    ! register precipitation flux field in YAC
-    CALL yac_fdef_field( &
-      pr_field_name, comp_id, (/cell_point_id/), 1, pr_collection_size, &
-      pr_field_timestep, YAC_TIME_UNIT_ISO_FORMAT, pr_field_id)
-
-    ! allocate and initialise precipitation flux field buffer
-    ALLOCATE(pr_field(nbr_cells, pr_collection_size))
-    pr_field = 0.0
-
-  END SUBROUTINE construct_elmer_icon_coupling
-
-  SUBROUTINE construct_elmer_icon_coupling_post_sync( &
-    comm_rank, elmer_comp_name, elmer_grid_name)
-
-    INTEGER, INTENT(IN) :: comm_rank
-    CHARACTER(LEN=*), INTENT(IN) :: elmer_comp_name
-    CHARACTER(LEN=*), INTENT(IN) :: elmer_grid_name
-
-    ! after synchronisation or the end of the definition phase YAC can be
-    ! queried about various information
-
-    IF (comm_rank /= 0) RETURN
-
-    CALL print_field_info(elmer_comp_name, elmer_grid_name, pr_field_name)
-    CALL print_field_info(elmer_comp_name, elmer_grid_name, clt_field_name)
-
-  CONTAINS
-
-    SUBROUTINE print_field_info(elmer_comp_name, elmer_grid_name, field_name)
-
-      CHARACTER(LEN=*), INTENT(IN) :: elmer_comp_name
-      CHARACTER(LEN=*), INTENT(IN) :: elmer_grid_name
-      CHARACTER(LEN=*), INTENT(IN) :: field_name
-
-      CHARACTER(LEN=:), ALLOCATABLE :: src_comp_name
-      CHARACTER(LEN=:), ALLOCATABLE :: src_grid_name
-      CHARACTER(LEN=:), ALLOCATABLE :: src_field_name
-      CHARACTER(LEN=:), ALLOCATABLE :: src_field_timestep
-      CHARACTER(LEN=:), ALLOCATABLE :: src_field_metadata
-
-      IF (yac_fget_field_role( &
-            elmer_comp_name, elmer_grid_name, field_name) == &
-            YAC_EXCHANGE_TYPE_TARGET) THEN
-
-#if (YAC_VERSION_MAJOR >= 3) && (YAC_VERSION_MINOR >= 6)
-        CALL yac_fget_field_source( &
-          elmer_comp_name, elmer_grid_name, field_name, &
-          src_comp_name, src_grid_name, src_field_name);
-#else
-        src_comp_name = "icon"
-        src_grid_name = "icon_grid"
-        src_field_name = field_name
-#endif
-        src_field_timestep = &
-          yac_fget_field_timestep(src_comp_name, src_grid_name, src_field_name)
-        src_field_metadata = &
-          yac_fget_field_metadata(src_comp_name, src_grid_name, src_field_name)
-
-        
-
-        
-        PRINT *, "field ", field_name, ":"
-        PRINT *, " - source:"
-        PRINT *, "   - component: ", src_comp_name
-        PRINT *, "   - grid:      ", src_grid_name
-        PRINT *, "   - timestep:  ", src_field_timestep
-        PRINT *, "   - metadata:  ", src_field_metadata
-
-      END IF
-
-    END SUBROUTINE print_field_info
-
-  END SUBROUTINE construct_elmer_icon_coupling_post_sync
-
-  SUBROUTINE elmer_icon_interface(comm_rank)
-
-    INTEGER, INTENT(IN) :: comm_rank
-
-    INTEGER :: info, err
-
-    ! checks whether the total cloud cover field is defined as a target
-    ! in a couple
-    IF (yac_fget_role_from_field_id(clt_field_id) == &
-        YAC_EXCHANGE_TYPE_TARGET) THEN
-
-      IF (comm_rank == 0) THEN
-
-        ! get the action executed by YAC in the next get operation called for
-        ! the total cloud cover field and print out some information
-        CALL yac_fget_action(clt_field_id, info)
-        PRINT *, "call get for field: ", TRIM(clt_field_name), &
-                 " datatime: ", TRIM(yac_fget_field_datetime(clt_field_id)), &
-                 "action: ", &
-                 TRIM( &
-                  MERGE( &
-                    "coupling","none    ", &
-                    (info == YAC_ACTION_COUPLING) .OR. &
-                    (info == YAC_ACTION_GET_FOR_RESTART)))
-      END IF
-
-      ! execute get operation for total cloud cover field
-      ! * if this is a coupling timestep, this will block until the data has
-      !   been received
-      ! * if this is not a coupling timestep, total cloud cover field buffer
-      !   is left untouched and routine will return immediately
-      CALL yac_fget( &
-        clt_field_id, SIZE(clt_field, 1), SIZE(clt_field, 2), clt_field, &
-        info, err)
-
-      ! if this was a coupling timestep
-      IF ((info == YAC_ACTION_COUPLING) .OR. &
-          (info == YAC_ACTION_GET_FOR_RESTART)) THEN
-
-        ! prepare received data for elmer
-
-        ! update elmer internal total cloud cover field
-
-      END IF
-    END IF
-
-    ! checks whether the precipitation flux field is defined as a target
-    ! in a couple
-    IF (yac_fget_role_from_field_id(pr_field_id) == &
-        YAC_EXCHANGE_TYPE_TARGET) THEN
-
-      IF (comm_rank == 0) THEN
-
-        ! get the action executed by YAC in the next get operation called for
-        ! the precipitation flux field and print out some information
-        CALL yac_fget_action(pr_field_id, info)
-        PRINT *, "call get for field: ", TRIM(pr_field_name), &
-                 " datatime: ", TRIM(yac_fget_field_datetime(pr_field_id)), &
-                 "action: ", &
-                 TRIM( &
-                  MERGE( &
-                    "coupling","none    ", &
-                    (info == YAC_ACTION_COUPLING) .OR. &
-                    (info == YAC_ACTION_GET_FOR_RESTART)))
-      END IF
-
-      ! execute get operation for precipitation flux field
-      ! * if this is a coupling timestep, this will block until the data has
-      !   been received
-      ! * if this is not a coupling timestep, precipitation flux field buffer
-      !   is left untouched and routine will return immediately
-      CALL yac_fget( &
-        pr_field_id, SIZE(pr_field, 1), SIZE(pr_field, 2), pr_field, &
-        info, err)
-
-      ! if this was a coupling timestep
-      IF ((info == YAC_ACTION_COUPLING) .OR. &
-          (info == YAC_ACTION_GET_FOR_RESTART)) THEN
-
-        ! prepare received data for elmer
-
-        ! update elmer internal precipitation flux field
-
-      END IF
-    END IF
-
-  END SUBROUTINE elmer_icon_interface
-
-  SUBROUTINE destruct_elmer_icon_coupling()
-
-    ! clean up
-    DEALLOCATE(pr_field, clt_field)
-
-  END SUBROUTINE destruct_elmer_icon_coupling
-
-END MODULE elmer_icon_coupling
