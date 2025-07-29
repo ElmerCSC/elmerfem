@@ -60,13 +60,13 @@ MODULE elmer_icon_coupling
   INTEGER :: clt_field_id = -1
   CHARACTER(LEN=*), PARAMETER :: clt_field_name = "tas"
   INTEGER :: clt_collection_size = 1
-  CHARACTER(LEN=*), PARAMETER :: clt_field_timestep = "P1M"
+  CHARACTER(LEN=*), PARAMETER :: clt_field_timestep = "PT1H"
   DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: clt_field(:,:)
 
   INTEGER :: pr_field_id = -1
   CHARACTER(LEN=*), PARAMETER :: pr_field_name = "pr_snow"
   INTEGER :: pr_collection_size = 1
-  CHARACTER(LEN=*), PARAMETER :: pr_field_timestep = "P1M"
+  CHARACTER(LEN=*), PARAMETER :: pr_field_timestep = "PT1H"
   DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: pr_field(:,:)
 
 CONTAINS
