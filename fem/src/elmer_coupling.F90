@@ -66,17 +66,18 @@ MODULE elmer_icon_coupling
   INTEGER :: pr_field_id = -1
   CHARACTER(LEN=*), PARAMETER :: pr_field_name = "pr_snow"
   INTEGER :: pr_collection_size = 1
-  CHARACTER(LEN=*), PARAMETER :: pr_field_timestep = "PT1H"
+  CHARACTER(LEN=*), PARAMETER :: pr_field_timestep = "1"
   DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: pr_field(:,:)
 
 CONTAINS
 
   SUBROUTINE construct_elmer_icon_coupling( &
-    comp_id, corner_point_id, cell_point_id)
+        comp_id, corner_point_id, timestepstring, cell_point_id)
 
     INTEGER, INTENT(IN) :: comp_id
     INTEGER, INTENT(IN) :: corner_point_id
     INTEGER, INTENT(IN) :: cell_point_id
+    CHARACTER(LEN=*), INTENT(IN) :: timestepstring
 
     INTEGER :: nbr_vertices, nbr_cells
     INTEGER :: i
@@ -87,16 +88,18 @@ CONTAINS
     ! register total cloud cover field in YAC
     CALL yac_fdef_field( &
       clt_field_name, comp_id, (/corner_point_id/), 1, clt_collection_size, &
-      clt_field_timestep, YAC_TIME_UNIT_ISO_FORMAT, clt_field_id);
+      timestepstring, YAC_TIME_UNIT_HOUR, clt_field_id);
 
     ! allocate and initialise total cloud cover field buffer
     ALLOCATE(clt_field(nbr_vertices, clt_collection_size))
     clt_field = 0.0
 
+    PRINT *, "PRECIP TIMESTEP in HOURS", pr_field_timestep
+    PRINT *, "PRECIP TIMESTEP in HOURS", timestepstring
     ! register precipitation flux field in YAC
     CALL yac_fdef_field( &
       pr_field_name, comp_id, (/cell_point_id/), 1, pr_collection_size, &
-      pr_field_timestep, YAC_TIME_UNIT_ISO_FORMAT, pr_field_id)
+      timestepstring, YAC_TIME_UNIT_HOUR, pr_field_id)
 
     ! allocate and initialise precipitation flux field buffer
     ALLOCATE(pr_field(nbr_cells, pr_collection_size))
@@ -284,11 +287,12 @@ MODULE elmer_coupling
 
 CONTAINS
 
-  SUBROUTINE coupling_init(coupling_config_file, elmer_comm)
+  SUBROUTINE coupling_init(coupling_config_file, elmer_comm, timestepstring)
 
     IMPLICIT NONE
 
     CHARACTER(LEN=1024), INTENT(IN) :: coupling_config_file
+    CHARACTER(LEN=*), INTENT(OUT) :: timestepstring
     INTEGER, INTENT(OUT) :: elmer_comm
 
     INTEGER :: ierror
@@ -329,7 +333,7 @@ CONTAINS
 
   END SUBROUTINE coupling_init
 
-  SUBROUTINE coupling_setup(grid_dir, num_parts)
+  SUBROUTINE coupling_setup(grid_dir, num_parts, timestepstring)
 
     USE :: elmer_icon_coupling
     USE, INTRINSIC :: iso_c_binding
@@ -337,6 +341,7 @@ CONTAINS
     IMPLICIT NONE
 
     CHARACTER(LEN=1024), INTENT(IN) :: grid_dir
+    CHARACTER(LEN=*), INTENT(IN) :: timestepstring
     INTEGER, INTENT(IN) :: num_parts
 
     INTEGER :: grid_id, corner_point_id, cell_point_id
@@ -471,8 +476,9 @@ CONTAINS
     CALL yac_fdef_points( &
       grid_id, nbr_cells, YAC_LOCATION_CELL, x_cells, y_cells, cell_point_id)
 
+    PRINT *, "PRECIP TIMESTEP in HOURS", timestepstring
     ! construct coupling between Elmer/Ice and ICON
-    CALL construct_elmer_icon_coupling(comp_id, corner_point_id, cell_point_id)
+    CALL construct_elmer_icon_coupling(comp_id, corner_point_id, timestepstring, cell_point_id)
 
     ! sychronizes all definitions between all components
     ! * afterwards the exchange information can be queried
