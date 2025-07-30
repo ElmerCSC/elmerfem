@@ -190,7 +190,6 @@ CONTAINS
     INTEGER :: ierr
     INTEGER :: req, prov
     CHARACTER(LEN=1024) :: config_file
-    CHARACTER(LEN=1024) :: timestepstring
 
     
     !******************************************************************
@@ -253,9 +252,7 @@ CONTAINS
     IF (USE_YAC) THEN
       WRITE(Message,*) "Using YAC coupler with config-file:",TRIM(config_file)
       CALL INFO("SparIterComm",Message,Level=25)
-      !WRITE(Message,*) "PRECIP TIMESTEP in HOURS:",TRIM(timestepstring)
-      !CALL INFO("SparIterComm",Message,Level=25)
-      CALL coupling_init("coupling.yaml", ELMER_COMM_WORLD, timestepstring)
+      CALL coupling_init("coupling.yaml", ELMER_COMM_WORLD)
     ELSE
 #ifndef ELMER_COLOUR
 #define ELMER_COLOUR 0

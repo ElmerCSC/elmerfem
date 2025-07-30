@@ -60,13 +60,11 @@ MODULE elmer_icon_coupling
   INTEGER :: clt_field_id = -1
   CHARACTER(LEN=*), PARAMETER :: clt_field_name = "tas"
   INTEGER :: clt_collection_size = 1
-  CHARACTER(LEN=*), PARAMETER :: clt_field_timestep = "PT1H"
   DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: clt_field(:,:)
 
   INTEGER :: pr_field_id = -1
   CHARACTER(LEN=*), PARAMETER :: pr_field_name = "pr_snow"
   INTEGER :: pr_collection_size = 1
-  CHARACTER(LEN=*), PARAMETER :: pr_field_timestep = "1"
   DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: pr_field(:,:)
 
 CONTAINS
@@ -94,8 +92,6 @@ CONTAINS
     ALLOCATE(clt_field(nbr_vertices, clt_collection_size))
     clt_field = 0.0
 
-    PRINT *, "PRECIP TIMESTEP in HOURS", pr_field_timestep
-    PRINT *, "PRECIP TIMESTEP in HOURS", timestepstring
     ! register precipitation flux field in YAC
     CALL yac_fdef_field( &
       pr_field_name, comp_id, (/cell_point_id/), 1, pr_collection_size, &
@@ -287,12 +283,11 @@ MODULE elmer_coupling
 
 CONTAINS
 
-  SUBROUTINE coupling_init(coupling_config_file, elmer_comm, timestepstring)
+  SUBROUTINE coupling_init(coupling_config_file, elmer_comm)
 
     IMPLICIT NONE
 
     CHARACTER(LEN=1024), INTENT(IN) :: coupling_config_file
-    CHARACTER(LEN=*), INTENT(OUT) :: timestepstring
     INTEGER, INTENT(OUT) :: elmer_comm
 
     INTEGER :: ierror
