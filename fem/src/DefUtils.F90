@@ -54,9 +54,9 @@ MODULE DefUtils
    USE ElementUtils
    USE SolverUtils
    USE CutFEMUtils
-   #ifdef __NVCOMPILER
+#ifdef __NVCOMPILER
    use ieee_arithmetic, only : isnan => ieee_is_nan
-   #endif
+#endif
 
    IMPLICIT NONE
 
