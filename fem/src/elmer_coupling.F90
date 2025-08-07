@@ -44,6 +44,12 @@
 !------------------------------------------------------------------------------
 #include "yac_config.h"
 
+#define YAC_VERSION_GREATER_EQUAL(major, minor, patch) ( \
+    (YAC_VERSION_MAJOR > major) || \
+    (YAC_VERSION_MAJOR == major && YAC_VERSION_MINOR > minor) || \
+    (YAC_VERSION_MAJOR == major && YAC_VERSION_MINOR == minor && YAC_VERSION_PATCH >= patch) \
+)
+
 MODULE elmer_icon_coupling
 
   USE yac
@@ -70,6 +76,18 @@ MODULE elmer_icon_coupling
   DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: pr_field(:,:)
 
 CONTAINS
+
+  SUBROUTINE coupler_get_code_id(label)
+    CHARACTER(len=MAX_CHARLEN), INTENT(OUT) :: label
+
+#if YAC_VERSION_GREATER_EQUAL(3, 9, 0)
+    ! YAC >= 3.9 provides a function to get the label from the YAC API
+    label = yac_fget_mpi_handshake_group_name()
+#else
+    ! YAC < 3.9 does not provide this function, so we have to set it manually
+    label = "yac"
+#endif
+  END SUBROUTINE coupler_get_code_id
 
   SUBROUTINE construct_elmer_icon_coupling( &
     comp_id, corner_point_id, cell_point_id)
@@ -275,6 +293,7 @@ MODULE elmer_coupling
 
   PUBLIC :: coupling_init, coupling_finalize
   PUBLIC :: coupling_setup
+  PUBLIC :: coupler_get_code_id
 
   CHARACTER(LEN=*), PARAMETER :: ELMER_COMP_NAME
   CHARACTER(LEN=*), PARAMETER :: ELMER_GRID_NAME = "elmer_grid"
