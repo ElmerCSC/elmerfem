@@ -77,18 +77,6 @@ MODULE elmer_icon_coupling
 
 CONTAINS
 
-  SUBROUTINE coupler_get_code_id(label)
-    CHARACTER(len=MAX_CHARLEN), INTENT(OUT) :: label
-
-#if YAC_VERSION_GREATER_EQUAL(3, 9, 0)
-    ! YAC >= 3.9 provides a function to get the label from the YAC API
-    label = yac_fget_mpi_handshake_group_name()
-#else
-    ! YAC < 3.9 does not provide this function, so we have to set it manually
-    label = "yac"
-#endif
-  END SUBROUTINE coupler_get_code_id
-
   SUBROUTINE construct_elmer_icon_coupling( &
     comp_id, corner_point_id, cell_point_id)
 
@@ -155,7 +143,7 @@ CONTAINS
             elmer_comp_name, elmer_grid_name, field_name) == &
             YAC_EXCHANGE_TYPE_TARGET) THEN
 
-#if (YAC_VERSION_MAJOR >= 3) && (YAC_VERSION_MINOR >= 6)
+#if YAC_VERSION_GREATER_EQUAL(3, 6, 0)
         CALL yac_fget_field_source( &
           elmer_comp_name, elmer_grid_name, field_name, &
           src_comp_name, src_grid_name, src_field_name);
@@ -295,13 +283,36 @@ MODULE elmer_coupling
   PUBLIC :: coupling_setup
   PUBLIC :: coupler_get_code_id
 
-  CHARACTER(LEN=*), PARAMETER :: ELMER_COMP_NAME
-  CHARACTER(LEN=*), PARAMETER :: ELMER_GRID_NAME = "elmer_grid"
+  INTEGER, PARAMETER, PRIVATE :: MAX_CHARLEN = 132
+  INTEGER, PARAMETER, PUBLIC :: MAX_GROUPNAME_LEN = MAX_CHARLEN
+
+  CHARACTER(LEN=MAX_CHARLEN), PARAMETER :: ELMER_COMP_NAME
+  CHARACTER(LEN=MAX_CHARLEN), PARAMETER :: ELMER_GRID_NAME = "elmer_grid"
 
   INTEGER :: comp_id
   INTEGER :: comm_rank, comm_size
 
 CONTAINS
+
+  ! Wrapper for yac_fmpi_handshake
+  SUBROUTINE mpi_handshake(comm, group_names, group_comms)
+    INTEGER, INTENT(IN) :: comm
+    CHARACTER(len=*), INTENT(IN) :: group_names(:)
+    INTEGER, INTENT(OUT) :: group_comms(:)
+    CALL yac_fmpi_handshake(comm, group_names, group_comms)
+  END SUBROUTINE mpi_handshake
+
+  SUBROUTINE coupler_get_code_id(label)
+    CHARACTER(len=MAX_GROUPNAME_LEN), INTENT(OUT) :: label
+
+#if YAC_VERSION_GREATER_EQUAL(3, 9, 0)
+    ! YAC >= 3.9 provides a function to get the label from the YAC API
+    label = yac_fget_mpi_handshake_group_name()
+#else
+    ! YAC < 3.9 does not provide this function, so we have to set it manually
+    label = "yac"
+#endif
+  END SUBROUTINE coupler_get_code_id
 
   SUBROUTINE coupling_init(coupling_config_file, elmer_comm, yac_comm, comp_name)
 
@@ -310,7 +321,8 @@ CONTAINS
     CHARACTER(LEN=1024), INTENT(IN) :: coupling_config_file
     INTEGER, INTENT(IN) :: elmer_comm
     INTEGER, INTENT(IN) :: yac_comm
-    CHARACTER(LEN=MAX_CHARLEN), INTENT(IN) :: comp_name
+
+    CHARACTER(LEN=MAX_GROUPNAME_LEN), INTENT(IN) :: comp_name
 
 
     INTEGER :: ierror

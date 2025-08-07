@@ -54,9 +54,13 @@ MODULE SParIterComm
 #endif
   
 #ifdef HAVE_YAC
-   USE elmer_coupling
-   USE elmer_icon_coupling
-#endif   
+  USE elmer_coupling, ONLY: coupling_init, coupling_finalize, coupling_setup, &
+                    mpi_handshake, MAX_GROUPNAME_LEN
+  USE elmer_icon_coupling
+#else
+  ! If YAC is not used, use the mpi_handshake from mo_mpi_handshake.F90
+  USE mo_mpi_handshake, ONLY: mpi_handshake, MAX_GROUPNAME_LEN
+#endif
   
 
 #ifndef HAVE_PARMMG
@@ -64,7 +68,6 @@ MODULE SParIterComm
   USE mpi
 #  endif
 #endif
-
 
   IMPLICIT NONE
 
@@ -93,7 +96,7 @@ MODULE SParIterComm
   ! Classify communicator groups with labels
   INTEGER :: num_groups = 0
   INTEGER :: GROUP_IDX
-  CHARACTER(LEN=1024) :: GROUP_NAMES(3)
+  CHARACTER(LEN=MAX_GROUPNAME_LEN) :: GROUP_NAMES(3)
   INTEGER :: GROUP_COMMS(3)
 
   ! Group for ranks using Elmer, i.e. only Elmer
@@ -101,11 +104,11 @@ MODULE SParIterComm
 
   ! Group for ranks using Coupler, i.e. Elmer + ICON
   INTEGER :: COUPLER_GROUP_IDX = -1
-  CHARACTER(LEN=1024) :: COUPLER_LABEL
+  CHARACTER(LEN=MAX_GROUPNAME_LEN) :: COUPLER_LABEL
 
     ! Group for ranks using XIOS, i.e. only Elmer (XIOS clients) + XIOS server
   INTEGER :: XIOS_GROUP_IDX = -1
-  CHARACTER(LEN=1024) :: XIOS_LABEL
+  CHARACTER(LEN=MAX_GROUPNAME_LEN) :: XIOS_LABEL
 
 
   TYPE Buff_t
@@ -249,8 +252,8 @@ CONTAINS
     CALL MPI_COMM_SIZE( MPI_COMM_WORLD, ParEnv % PEs, ierr )
     CALL MPI_COMM_RANK( MPI_COMM_WORLD, ParEnv % MyPE, ierr )
 
-! Use MPI_handshake for comm splitting
-! TODO how to make sure that MPI_handshake does not conflict with MPI_COMM_SPLIT based on ELMER_COLOUR?
+! Use mpi_handshake for comm splitting
+! TODO how to make sure that mpi_handshake does not conflict with MPI_COMM_SPLIT based on ELMER_COLOUR?
 
 
 ! Add Elmer group for comm splitting
@@ -278,7 +281,7 @@ GROUP_NAMES(ELMER_GROUP_IDX) = TRIM(ExecID)
     INQUIRE(FILE="coupling.yaml", EXIST=USE_YAC)
     ! add YAC group for comm splitting
     IF (USE_YAC) THEN
-      ! Query MPI_handshake group label from coupler
+      ! Query mpi_handshake group label from coupler
       CALL coupler_get_code_id(COUPLER_LABEL)
       ! Add Group for coupler
       NUM_GROUPS = NUM_GROUPS + 1
@@ -288,9 +291,9 @@ GROUP_NAMES(ELMER_GROUP_IDX) = TRIM(ExecID)
 #endif
 
 ! Do comm splitting using handshake
-CALL MPI_Handshake(MPI_COMM_WORLD, GROUP_NAMES(1:NUM_GROUPS), GROUP_COMMS(1:NUM_GROUPS))
+CALL mpi_handshake(MPI_COMM_WORLD, GROUP_NAMES(1:NUM_GROUPS), GROUP_COMMS(1:NUM_GROUPS))
 
-ELMER_COMM_WORLD = GROUP_COMMS(ELMER_GROUP_IDX)  ! Set ELMER_COMM_WORLD determined through MPI_Handshake
+ELMER_COMM_WORLD = GROUP_COMMS(ELMER_GROUP_IDX)  ! Set ELMER_COMM_WORLD determined through mpi_handshake
 
 ! Use XIOS library for IO
 ! Must have xios and iodef.xml present
