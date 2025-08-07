@@ -480,13 +480,13 @@ CONTAINS
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,Weight,LoadAtIP,StiffPQ,elevationAtIp
     REAL(KIND=dp) :: TemperatureAtIP,PorosityAtIP,KPorosityAtIP,SalinityAtIP,PressureAtIP
     REAL(KIND=dp) :: TemperatureDtAtIP,SalinityDtAtIP,PressureDtAtIP,StressInvDtAtIP
-    REAL(KIND=dp) :: Swres=1.0_dp, IFdeltaT=0.5_dp
+    REAL(KIND=dp) :: Swres=1.0_dp, IFdeltaT=0.5_dp, IFcomp=1.0d-08
     REAL(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd), LOAD(n)
     REAL(KIND=dp) , POINTER :: gWork(:,:)
     !REAL(KIND=dp) , ALLOCATABLE :: CgwpI1AtNodes(:)
     INTEGER :: i,t,p,q,DIM, RockMaterialID, FluxDOFs,IPPerm,IPPermRhogw,IPPermFreshwaterHead
     LOGICAL :: Stat,Found, ConstantsRead=.FALSE., ConstVal=.FALSE., ConstantDispersion=.FALSE.,&
-         ConstantDiffusion=.FALSE., CryogenicSuction=.FALSE., swaptensor=.FALSE.
+         ConstantDiffusion=.FALSE., CryogenicSuction=.FALSE., swaptensor=.FALSE., Interfrost=.FALSE.
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BodyForce, Material
     TYPE(Nodes_t) :: Nodes
@@ -567,6 +567,7 @@ CONTAINS
 
     Swres = GetConstReal( Material, "Interfrost Swres", Found)
     IFdeltaT = GetConstReal( Material, "Interfrost deltaT", Found)
+    IFcomp = GetConstReal( Material, "Interfrost Beta", Found)
     
     swaptensor = GetLogical(Material,'Swap Tensor',Found)
     
@@ -684,7 +685,8 @@ CONTAINS
       CASE('interfrost') ! simple Interfrost model
         XiAtIP(IPPerm) = GetXiInterfrost(T0,TemperatureAtIP,Swres,IFdeltaT)
         XiTAtIP = XiInterfrostT(T0,TemperatureAtIP,Swres,IFdeltaT)
-        XiPAtIP = 0.0_dp 
+        XiPAtIP = 0.0_dp
+        InterFrost = .TRUE.
       CASE DEFAULT ! Hartikainen model
         CALL  GetXiHartikainen(RockMaterialID,&
              CurrentSoluteMaterial,CurrentSolventMaterial,&
@@ -732,6 +734,7 @@ CONTAINS
         rhogwYcAtIP = rhogwYc(rhowAtIP, rhocAtIP, rhowYcAtIP,rhocYcAtIP,XiAtIP(IPPerm),SalinityAtIP)
       END IF
       rhogwAtIP = rhogw(rhowAtIP,rhocAtIP,XiAtIP(IPPerm),SalinityAtIP)
+      !PRINT *, "rhogwAtIP", rhogwAtIP,rhocAtIP,XiAtIP(IPPerm),SalinityAtIP
       IF (OffsetDensity) THEN
 
         IPPermRhogw = RhoOffsetAtIPPerm(ElementID) + t
@@ -796,6 +799,9 @@ CONTAINS
       ! capacities at IP
       IF (HydroGeo) THEN   ! Simplifications: Xip=0 Xi=1 kappas=0
         CgwppAtIP = PorosityAtIP * rhogwPAtIP + rhogwAtIP * kappaGAtIP
+      ELSE IF (Interfrost) THEN
+        CgwppAtIP =  PorosityAtIP * rhogwAtIP * IFComp * XiAtIP(IPPerm)
+        PRINT *, "CgwppAtIP (Interfrost)", CgwppAtIP,"por", PorosityAtIP, "rhogw", rhogwAtIP, "beta", IFComp, "Xi", XiAtIP(IPPerm)
       ELSE
         CgwppAtIP = GetCgwpp(rhogwAtIP,rhoiAtIP,rhosAtIP,rhogwPAtIP,rhoiPAtIP,rhosPAtIP,&
              kappaGAtIP,XiAtIP(IPPerm),XiPAtIP,&
