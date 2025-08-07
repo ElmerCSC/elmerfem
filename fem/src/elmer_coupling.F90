@@ -276,7 +276,7 @@ MODULE elmer_coupling
   PUBLIC :: coupling_init, coupling_finalize
   PUBLIC :: coupling_setup
 
-  CHARACTER(LEN=*), PARAMETER :: ELMER_COMP_NAME = "elmer"
+  CHARACTER(LEN=*), PARAMETER :: ELMER_COMP_NAME
   CHARACTER(LEN=*), PARAMETER :: ELMER_GRID_NAME = "elmer_grid"
 
   INTEGER :: comp_id
@@ -284,36 +284,37 @@ MODULE elmer_coupling
 
 CONTAINS
 
-  SUBROUTINE coupling_init(coupling_config_file, elmer_comm)
+  SUBROUTINE coupling_init(coupling_config_file, elmer_comm, yac_comm, comp_name)
 
     IMPLICIT NONE
 
     CHARACTER(LEN=1024), INTENT(IN) :: coupling_config_file
-    INTEGER, INTENT(OUT) :: elmer_comm
+    INTEGER, INTENT(IN) :: elmer_comm
+    INTEGER, INTENT(IN) :: yac_comm
+    CHARACTER(LEN=MAX_CHARLEN), INTENT(IN) :: comp_name
+
 
     INTEGER :: ierror
 
 
     ! initialise YAC
-    ! * is collective operation on MPI_COMM_WORLD
+    ! * is collective operation on yac_comm
     ! * should be called as early as possible
     ! * in case not all Elmer processes want to take part in the coupling
     !   this has to be modified
     !   (see:
     !     https://dkrz-sw.gitlab-pages.dkrz.de/yac/d4/d40/init_yac_detail.html)
     ! * will call MPI_Init, if not yet called by the user
-    CALL yac_finit ( )
+    CALL yac_finit_comm (yac_comm)
 
     ! read configuration file
     ! * contains calendar, start- and end-date
     ! * defines couplings
-    !PRINT *,TRIM(coupling_config_file)
-    !PRINT *,"------------------"
-    
     CALL yac_fread_config_yaml(TRIM(coupling_config_file))
 
     ! define component
     ! * is collective operation for all processes that initialised YAC
+    ELMER_COMP_NAME = comp_name
     CALL yac_fdef_comp(ELMER_COMP_NAME, comp_id)
 
     ! get communicator for all processes that are part of the Elmer component
