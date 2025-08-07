@@ -94,10 +94,11 @@ MODULE SParIterComm
 
   ! Used for MPI_handshake
   ! Classify communicator groups with labels
-  INTEGER :: num_groups = 0
+  INTEGER, PARAMETER :: MAX_NUM_GROUPS = 3
+  INTEGER :: NUM_GROUPS = 0
   INTEGER :: GROUP_IDX
-  CHARACTER(LEN=MAX_GROUPNAME_LEN) :: GROUP_NAMES(3)
-  INTEGER :: GROUP_COMMS(3)
+  CHARACTER(LEN=MAX_GROUPNAME_LEN) :: GROUP_NAMES(MAX_NUM_GROUPS)
+  INTEGER :: GROUP_COMMS(MAX_NUM_GROUPS)
 
   ! Group for ranks using Elmer, i.e. only Elmer
   INTEGER :: ELMER_GROUP_IDX = -1
@@ -255,7 +256,6 @@ CONTAINS
 ! Use mpi_handshake for comm splitting
 ! TODO how to make sure that mpi_handshake does not conflict with MPI_COMM_SPLIT based on ELMER_COLOUR?
 
-
 ! Add Elmer group for comm splitting
 NUM_GROUPS = NUM_GROUPS + 1
 ELMER_GROUP_IDX = NUM_GROUPS
@@ -270,8 +270,8 @@ GROUP_NAMES(ELMER_GROUP_IDX) = TRIM(ExecID)
       CALL xios_get_global_id(XIOS_LABEL)
       ! Add Group XIOS
       NUM_GROUPS = NUM_GROUPS + 1
-      XIOS_GROUP_IDS = NUM_GROUPS
-      GROUP_NAMES(XIOS_GROUP_IDS) = XIOS_LABEL
+      XIOS_GROUP_IDX = NUM_GROUPS
+      GROUP_NAMES(XIOS_GROUP_IDX) = XIOS_LABEL
     ELSE
 #endif
 
@@ -289,6 +289,10 @@ GROUP_NAMES(ELMER_GROUP_IDX) = TRIM(ExecID)
       GROUP_NAMES(COUPLER_GROUP_IDX) = COUPLER_LABEL
     ELSE
 #endif
+
+IF (NUM_GROUPS > MAX_NUM_GROUPS) THEN
+  CALL ERROR("Too many communication groups defined.")
+ENDIF
 
 ! Do comm splitting using handshake
 CALL mpi_handshake(MPI_COMM_WORLD, GROUP_NAMES(1:NUM_GROUPS), GROUP_COMMS(1:NUM_GROUPS))
