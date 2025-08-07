@@ -89,6 +89,25 @@ MODULE SParIterComm
   INCLUDE "mpif.h"
 #endif
 
+  ! Used for MPI_handshake
+  ! Classify communicator groups with labels
+  INTEGER :: num_groups = 0
+  INTEGER :: GROUP_IDX
+  CHARACTER(LEN=1024) :: GROUP_NAMES(3)
+  INTEGER :: GROUP_COMMS(3)
+
+  ! Group for ranks using Elmer, i.e. only Elmer
+  INTEGER :: ELMER_GROUP_IDX = -1
+
+  ! Group for ranks using Coupler, i.e. Elmer + ICON
+  INTEGER :: COUPLER_GROUP_IDX = -1
+  CHARACTER(LEN=1024) :: COUPLER_LABEL
+
+    ! Group for ranks using XIOS, i.e. only Elmer (XIOS clients) + XIOS server
+  INTEGER :: XIOS_GROUP_IDX = -1
+  CHARACTER(LEN=1024) :: XIOS_LABEL
+
+
   TYPE Buff_t
     REAL(KIND=dp), ALLOCATABLE :: rbuf(:)
   END TYPE Buff_t
@@ -230,6 +249,49 @@ CONTAINS
     CALL MPI_COMM_SIZE( MPI_COMM_WORLD, ParEnv % PEs, ierr )
     CALL MPI_COMM_RANK( MPI_COMM_WORLD, ParEnv % MyPE, ierr )
 
+! Use MPI_handshake for comm splitting
+! TODO how to make sure that MPI_handshake does not conflict with MPI_COMM_SPLIT based on ELMER_COLOUR?
+
+
+! Add Elmer group for comm splitting
+NUM_GROUPS = NUM_GROUPS + 1
+ELMER_GROUP_IDX = NUM_GROUPS
+CALL SetExecID()
+GROUP_NAMES(ELMER_GROUP_IDX) = TRIM(ExecID)
+
+#ifdef HAVE_XIOS
+    INQUIRE(FILE="iodef.xml", EXIST=USE_XIOS)
+    ! add XIOS group for comm splitting
+    IF (USE_XIOS) THEN
+      ! Query handshake group label from xios
+      CALL xios_get_global_id(XIOS_LABEL)
+      ! Add Group XIOS
+      NUM_GROUPS = NUM_GROUPS + 1
+      XIOS_GROUP_IDS = NUM_GROUPS
+      GROUP_NAMES(XIOS_GROUP_IDS) = XIOS_LABEL
+    ELSE
+#endif
+
+#ifdef HAVE_YAC
+    ! check config file and set flag USE_YAC
+    WRITE(config_file,*) "coupling.yaml"
+    INQUIRE(FILE="coupling.yaml", EXIST=USE_YAC)
+    ! add YAC group for comm splitting
+    IF (USE_YAC) THEN
+      ! Query MPI_handshake group label from coupler
+      CALL coupler_get_code_id(COUPLER_LABEL)
+      ! Add Group for coupler
+      NUM_GROUPS = NUM_GROUPS + 1
+      COUPLER_GROUP_IDX = NUM_GROUPS
+      GROUP_NAMES(COUPLER_GROUP_IDX) = COUPLER_LABEL
+    ELSE
+#endif
+
+! Do comm splitting using handshake
+CALL MPI_Handshake(MPI_COMM_WORLD, GROUP_NAMES(1:NUM_GROUPS), GROUP_COMMS(1:NUM_GROUPS))
+
+ELMER_COMM_WORLD = GROUP_COMMS(ELMER_GROUP_IDX)  ! Set ELMER_COMM_WORLD determined through MPI_Handshake
+
 ! Use XIOS library for IO
 ! Must have xios and iodef.xml present
 #ifdef HAVE_XIOS
@@ -238,21 +300,20 @@ CONTAINS
       WRITE(Message,*) "Using XIOS with config-file: iodef.xml"
       CALL INFO("SparIterComm",Message,Level=25)
       CALL SetExecID()
-      CALL xios_initialize(TRIM(ExecID),return_comm=ELMER_COMM_WORLD)
+      CALL xios_initialize(TRIM(ExecID), global_comm=GROUP_COMMS(XIOS_GROUP_IDX))
     ELSE
 #ifndef ELMER_COLOUR
 #define ELMER_COLOUR 0
 #endif
+  ! TODO potential incompatibility with MPI_Handshake
       CALL MPI_COMM_SPLIT(MPI_COMM_WORLD,ELMER_COLOUR,&
            ParEnv % MyPE,ELMER_COMM_WORLD,ierr) 
     ENDIF
 #elif defined(HAVE_YAC)
-    WRITE(config_file,*) "coupling.yaml"
-    INQUIRE(FILE="coupling.yaml", EXIST=USE_YAC)
     IF (USE_YAC) THEN
       WRITE(Message,*) "Using YAC coupler with config-file:",TRIM(config_file)
       CALL INFO("SparIterComm",Message,Level=25)
-      CALL coupling_init("coupling.yaml", ELMER_COMM_WORLD)
+      CALL coupling_init("coupling.yaml", ELMER_COMM_WORLD, GROUP_COMMS(COUPLER_GROUP_IDX), GROUP_NAMES(ELMER_GROUP_IDX))
     ELSE
 #ifndef ELMER_COLOUR
 #define ELMER_COLOUR 0
