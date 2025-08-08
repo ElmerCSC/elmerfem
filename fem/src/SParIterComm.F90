@@ -67,8 +67,8 @@ MODULE SParIterComm
   ! If YAC is not used, use the mpi_handshake from mo_mpi_handshake.F90
   USE mo_mpi_handshake, ONLY: mpi_handshake, MAX_GROUPNAME_LEN
 #else
-  ! TODO: need to implement mpi_handshake stubs?
-  USE mo_mpi_handshake_stubs, ONLY: mpi_handshake, MAX_GROUPNAME_LEN
+  ! If no MPI is present use a stub
+  USE mo_mpi_handshake_stub, ONLY: mpi_handshake, MAX_GROUPNAME_LEN
 #endif
 
   IMPLICIT NONE
