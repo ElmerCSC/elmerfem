@@ -52,7 +52,13 @@ MODULE SParIterComm
 #ifdef HAVE_XIOS
   USE XIOS
 #endif
-  
+
+#ifndef HAVE_PARMMG
+#  if defined(ELMER_HAVE_MPI_MODULE)
+  USE mpi
+#  endif
+#endif
+
 #ifdef HAVE_YAC
   USE elmer_coupling, ONLY: coupling_init, coupling_finalize, coupling_setup, &
                     mpi_handshake, MAX_GROUPNAME_LEN
@@ -60,13 +66,6 @@ MODULE SParIterComm
 #else
   ! If YAC is not used, use the mpi_handshake from mo_mpi_handshake.F90
   USE mo_mpi_handshake, ONLY: mpi_handshake, MAX_GROUPNAME_LEN
-#endif
-  
-
-#ifndef HAVE_PARMMG
-#  if defined(ELMER_HAVE_MPI_MODULE)
-  USE mpi
-#  endif
 #endif
 
   IMPLICIT NONE
