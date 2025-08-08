@@ -272,7 +272,7 @@ GROUP_NAMES(ELMER_GROUP_IDX) = TRIM(ExecID)
       NUM_GROUPS = NUM_GROUPS + 1
       XIOS_GROUP_IDX = NUM_GROUPS
       GROUP_NAMES(XIOS_GROUP_IDX) = XIOS_LABEL
-    ELSE
+    ENDIF
 #endif
 
 #ifdef HAVE_YAC
@@ -287,11 +287,12 @@ GROUP_NAMES(ELMER_GROUP_IDX) = TRIM(ExecID)
       NUM_GROUPS = NUM_GROUPS + 1
       COUPLER_GROUP_IDX = NUM_GROUPS
       GROUP_NAMES(COUPLER_GROUP_IDX) = COUPLER_LABEL
-    ELSE
+    ENDIF
 #endif
 
 IF (NUM_GROUPS > MAX_NUM_GROUPS) THEN
-  CALL ERROR("Too many communication groups defined.")
+    WRITE( Message, * ) 'Too many communication groups defined.'
+    CALL Fatal( 'ParCommInit', Message )
 ENDIF
 
 ! Do comm splitting using handshake
