@@ -282,11 +282,12 @@ MODULE elmer_coupling
   PUBLIC :: coupling_init, coupling_finalize
   PUBLIC :: coupling_setup
   PUBLIC :: coupler_get_code_id
+  PUBLIC :: mpi_handshake
 
   INTEGER, PARAMETER, PRIVATE :: MAX_CHARLEN = 132
   INTEGER, PARAMETER, PUBLIC :: MAX_GROUPNAME_LEN = MAX_CHARLEN
 
-  CHARACTER(LEN=MAX_CHARLEN), PARAMETER :: ELMER_COMP_NAME
+  CHARACTER(LEN=MAX_CHARLEN) :: ELMER_COMP_NAME
   CHARACTER(LEN=MAX_CHARLEN), PARAMETER :: ELMER_GRID_NAME = "elmer_grid"
 
   INTEGER :: comp_id
@@ -347,12 +348,6 @@ CONTAINS
     ! * is collective operation for all processes that initialised YAC
     ELMER_COMP_NAME = comp_name
     CALL yac_fdef_comp(ELMER_COMP_NAME, comp_id)
-
-    ! get communicator for all processes that are part of the Elmer component
-    ! * this is a collective operation for all processes in the component
-    ! * Elmer should only use this communicator internally and access
-    !   MPI_COMM_WORLD at all
-    CALL yac_fget_comp_comm(comp_id, elmer_comm)
 
     ! get number of ranks for the elmer component
     ! (required for reading in the grid data)
