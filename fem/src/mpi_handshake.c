@@ -36,7 +36,13 @@
 #include <limits.h>
 #include <stdint.h>
 #include <string.h>
+
+#ifdef PARALLEL
 #include <mpi.h>
+// TODO: part below (or similar) also needed?
+// #else
+// #include <mpi_stubs.c>
+#endif
 
 //taken from http://beige.ucs.indiana.edu/I590/node85.html
 static void mh_mpi_error(int error_code, MPI_Comm comm) {
