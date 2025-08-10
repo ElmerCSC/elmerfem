@@ -777,7 +777,7 @@ CONTAINS
       mugwAtIP = mugw(CurrentSolventMaterial,CurrentSoluteMaterial,&
            XiAtIP(IPPerm),T0,SalinityAtIP,TemperatureAtIP,ConstVal)
       KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
-           mugwAtIP,XiAtIP(IPPerm),MinKgw)
+           mugwAtIP,XiAtIP(IPPerm),MinKgw,InterFrost)
       KgwpTAtIP = 0.0_dp
       KgwppAtIP = 0.0_dp
       IF (CryogenicSuction) THEN
@@ -801,7 +801,7 @@ CONTAINS
         CgwppAtIP = PorosityAtIP * rhogwPAtIP + rhogwAtIP * kappaGAtIP
       ELSE IF (Interfrost) THEN
         CgwppAtIP =  PorosityAtIP * rhogwAtIP * IFComp * XiAtIP(IPPerm)
-        PRINT *, "CgwppAtIP (Interfrost)", CgwppAtIP,"por", PorosityAtIP, "rhogw", rhogwAtIP, "beta", IFComp, "Xi", XiAtIP(IPPerm)
+        !PRINT *, "CgwppAtIP (Interfrost)", CgwppAtIP,"por", PorosityAtIP, "rhogw", rhogwAtIP, "beta", IFComp, "Xi", XiAtIP(IPPerm)
       ELSE
         CgwppAtIP = GetCgwpp(rhogwAtIP,rhoiAtIP,rhosAtIP,rhogwPAtIP,rhoiPAtIP,rhosPAtIP,&
              kappaGAtIP,XiAtIP(IPPerm),XiPAtIP,&

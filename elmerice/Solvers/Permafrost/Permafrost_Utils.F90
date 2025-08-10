@@ -868,12 +868,13 @@ CONTAINS
          TemperatureAtIP,PorosityAtIP,PressureAtIP,SalinityAtIP,&
          PressureVeloAtIP,SalinityVeloAtIP,&
          StiffPQ, meanfactor, vstarAtIP(3), auxtensor(3,3)
+    REAL(KIND=dp) :: Swres=1.0_dp, IFdeltaT=0.5_dp, IFcomp=1.0d-08
     REAL(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd), LOAD(n)
     REAL(KIND=dp), POINTER :: gWork(:,:)
     INTEGER :: i,j,k,t,p,q,IPPerm,DIM, RockMaterialID, FluxDOFs
     LOGICAL :: Stat,Found, ConstantsRead=.FALSE.,ConstVal=.FALSE.,&
          CryogenicSuction=.FALSE.,HydroGeo=.FALSE.,ComputeFlux=.TRUE.,&
-         NoSalinity=.FALSE.
+         NoSalinity=.FALSE., InterFrost=.FALSE.
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BodyForce, Material
     TYPE(Nodes_t) :: Nodes
@@ -990,6 +991,9 @@ CONTAINS
          'Hydraulic Conductivity Limit', Found)
     IF (.NOT.Found .OR. (MinKgw <= 0.0_dp))  &
          MinKgw = 1.0D-14
+    Swres = GetConstReal( Material, "Interfrost Swres", Found)
+    IFdeltaT = GetConstReal( Material, "Interfrost deltaT", Found)
+    IFcomp = GetConstReal( Material, "Interfrost Beta", Found)
 
     deltaInElement = delta(CurrentSolventMaterial,eps,DeltaT,T0,GasConstant)
 
@@ -1044,7 +1048,12 @@ CONTAINS
         XiPAtIP   = &
              XiAndersonP(XiAtIp(IPPerm),0.011_dp,-0.66_dp,9.8d-08,&
              CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
-             T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)        
+             T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
+      CASE('interfrost') ! simple Interfrost model
+        XiAtIP(IPPerm) = GetXiInterfrost(T0,TemperatureAtIP,Swres,IFdeltaT)
+        XiTAtIP = XiInterfrostT(T0,TemperatureAtIP,Swres,IFdeltaT)
+        XiPAtIP = 0.0_dp
+        InterFrost = .TRUE.
       CASE DEFAULT ! Hartikainen model
         CALL  GetXiHartikainen(RockMaterialID,&
              CurrentSoluteMaterial,CurrentSolventMaterial,&
@@ -1074,7 +1083,7 @@ CONTAINS
       END IF
       IF (WriteIPVar(3)) THEN
         auxtensor = &
-                 GetKGpe(RockMaterialID,CurrentSolventMaterial,XiAtIp(IPPerm))
+                 GetKGpe(RockMaterialID,CurrentSolventMaterial,XiAtIp(IPPerm),InterFrost)
         K = 0
         DO I=1,DIM
           DO J=1,DIM
@@ -1109,7 +1118,7 @@ CONTAINS
       END IF
       IF (WriteIPVar(5)) THEN
         auxtensor = &
-             GetXikG0hy(RockMaterialID,XiAtIp(IPPerm))
+             GetXikG0hy(RockMaterialID,XiAtIp(IPPerm),InterFrost)
         !PRINT *, "XikG0hy", auxtensor
         K = 0
         DO I=1,DIM
@@ -1289,7 +1298,8 @@ CONTAINS
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,Weight,LoadAtIP,&
          TemperatureAtIP,PorosityAtIP,PressureAtIP,SalinityAtIP,&
          PressureVeloAtIP,SalinityVeloAtIP,&
-         StiffPQ, meanfactor, vstarAtIP(3)
+         StiffPQ,meanfactor,vstarAtIP(3)
+    REAL(KIND=dp) :: Swres=1.0_dp, IFdeltaT=0.5_dp, IFcomp=1.0d-08
     REAL(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd), LOAD(n)
     REAL(KIND=dp), POINTER :: gWork(:,:)
     INTEGER :: i,t,p,q,IPPerm,DIM, RockMaterialID, FluxDOFs
@@ -1352,7 +1362,10 @@ CONTAINS
          'Hydraulic Conductivity Limit', Found)
     IF (.NOT.Found .OR. (MinKgw <= 0.0_dp))  &
          MinKgw = 1.0D-14
-
+    Swres = GetConstReal( Material, "Interfrost Swres", Found)
+    IFdeltaT = GetConstReal( Material, "Interfrost deltaT", Found)
+    IFcomp = GetConstReal( Material, "Interfrost Beta", Found)
+    
     deltaInElement = delta(CurrentSolventMaterial,eps,DeltaT,T0,GasConstant)
 
     ! Numerical integration:
@@ -1398,7 +1411,11 @@ CONTAINS
         XiPAtIP   = &
              XiAndersonP(XiAtIp(IPPerm),0.011_dp,-0.66_dp,9.8d-08,&
              CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
-             T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)       
+             T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
+      CASE('interfrost') ! simple Interfrost model
+        XiAtIP(IPPerm) = GetXiInterfrost(T0,TemperatureAtIP,Swres,IFdeltaT)
+        XiTAtIP = XiInterfrostT(T0,TemperatureAtIP,Swres,IFdeltaT)
+        XiPAtIP = 0.0_dp
       CASE DEFAULT ! Hartikainen model
         CALL  GetXiHartikainen (RockMaterialID,&
              CurrentSoluteMaterial,CurrentSolventMaterial,&

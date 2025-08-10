@@ -322,7 +322,8 @@ CONTAINS
     INTEGER :: i,j,t,p,q,DIM, RockMaterialID, IPPerm
     INTEGER, POINTER :: XiAtIPPerm(:)
     LOGICAL :: Stat,Found, ConstantsRead=.FALSE.,ConstVal=.FALSE.,&
-         ConstantDispersion=.FALSE.,ConstantDiffusion=.FALSE.,CryogenicSuction=.FALSE.
+         ConstantDispersion=.FALSE.,ConstantDiffusion=.FALSE.,CryogenicSuction=.FALSE.,&
+         InterFrost=.FALSE.
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BodyForce, Material
     TYPE(Nodes_t) :: Nodes
@@ -449,7 +450,8 @@ CONTAINS
       CASE('interfrost') ! simple Interfrost model
         XiAtIP(IPPerm) = GetXiInterfrost(T0,TemperatureAtIP,Swres,IFdeltaT)
         XiTAtIP = XiInterfrostT(T0,TemperatureAtIP,Swres,IFdeltaT)
-        XiPAtIP = 0.0_dp  
+        XiPAtIP = 0.0_dp
+        InterFrost = .TRUE.
       CASE DEFAULT ! Hartikainen model
         XiBefore =  XiAtIP(IPPerm)
         CALL  GetXiHartikainen(RockMaterialID,&
@@ -483,7 +485,7 @@ CONTAINS
       mugwAtIP = mugw(CurrentSolventMaterial,CurrentSoluteMaterial,&
            XiAtIP(IPPerm),T0,SalinityAtIP,TemperatureAtIP,ConstVal)
       KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
-           mugwAtIP,XiAtIP(IPPerm),MinKgw)
+           mugwAtIP,XiAtIP(IPPerm),MinKgw,InterFrost)
       !PRINT *, "Solute: Kgw", KgwAtIP(1,1)
       fwAtIP = fw(RockMaterialID,CurrentSolventMaterial,&
            Xi0tilde,rhowAtIP,XiAtIP(IPPerm),GasConstant,TemperatureAtIP)

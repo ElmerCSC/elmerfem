@@ -2368,12 +2368,13 @@ CONTAINS
     END IF
   END FUNCTION mugw
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetKGpe( RockMaterialID,CurrentSolventMaterial,Xi)RESULT(KGpe)
+  FUNCTION GetKGpe( RockMaterialID,CurrentSolventMaterial,Xi,InterFrost)RESULT(KGpe)
     IMPLICIT NONE
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     INTEGER, INTENT(IN) :: RockMaterialID 
     REAL(KIND=dp), INTENT(IN) :: Xi
     REAL(KIND=dp) :: KGpe(3,3)
+    LOGICAL :: InterFrost
 !--------------------------
     REAL(KIND=dp) :: muw0,rhow0,qexp,Kgwh0(3,3),factor, relativepermeability
     REAL(KIND=dp), PARAMETER :: gval=9.81_dp !hard coded, so match Kgwh0 with this value
@@ -2381,13 +2382,16 @@ CONTAINS
     !-------------------------
     muw0 = CurrentSolventMaterial % muw0
     rhow0 = CurrentSolventMaterial % rhow0
-    qexp = GlobalRockMaterial % qexp(RockMaterialID)
+   
     Kgwh0(1:3,1:3) = GlobalRockMaterial % Kgwh0(1:3,1:3,RockMaterialID) ! hydro-conductivity
     ! transformation factor from hydr. conductivity to permeability hydr. conductivity tensor
     factor = muw0/(rhow0*gval)
-    relativepermeability = (Xi**qexp)
-    ! interfrost
-    !relativepermeability = MAX(10.0_dp**(-50.0_dp*(1.0_dp - Xi)),1.0d-06)
+    IF (InterFrost) THEN
+      relativepermeability = MAX(10.0_dp**(-50.0_dp*(1.0_dp - Xi)),1.0d-06)
+    ELSE
+      qexp = GlobalRockMaterial % qexp(RockMaterialID)
+      relativepermeability = (Xi**qexp)
+    END IF
     DO I=1,3
       DO J=1,3
         KGpe(i,j) = Kgwh0(i,j)*factor*relativepermeability
@@ -2395,30 +2399,37 @@ CONTAINS
     END DO
   END FUNCTION GetKGpe
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetXikG0hy(RockMaterialID,Xi)RESULT(XikG0hy)
+  FUNCTION GetXikG0hy(RockMaterialID,Xi,InterFrost)RESULT(XikG0hy)
      IMPLICIT NONE
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     INTEGER, INTENT(IN) :: RockMaterialID 
     REAL(KIND=dp), INTENT(IN) :: Xi
     REAL(KIND=dp) :: XikG0hy(3,3)
+    LOGICAL :: InterFrost
     !--------------------------
-    REAL(KIND=dp) :: Kgwh0(3,3), qexp
+    REAL(KIND=dp) :: Kgwh0(3,3), qexp,relativepermeability
     Kgwh0(1:3,1:3) = GlobalRockMaterial % Kgwh0(1:3,1:3,RockMaterialID) ! hydro-conductivity
-    qexp = GlobalRockMaterial % qexp(RockMaterialID)
-    XikG0hy = (Xi**qexp) * Kgwh0
+    IF (InterFrost) THEN
+      relativepermeability = MAX(10.0_dp**(-50.0_dp*(1.0_dp - Xi)),1.0d-06)
+    ELSE
+      qexp = GlobalRockMaterial % qexp(RockMaterialID)
+      relativepermeability = (Xi**qexp)
+    END IF
+    XikG0hy = relativepermeability * Kgwh0
     !PRINT *,  "GetXikG0hy", XikG0hy, Xi,qexp,Kgwh0(1:3,1:3)
   END FUNCTION GetXikG0hy
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetKgw(RockMaterialID,CurrentSolventMaterial,mugw,Xi,MinKgw) RESULT(Kgw)
+  FUNCTION GetKgw(RockMaterialID,CurrentSolventMaterial,mugw,Xi,MinKgw,InterFrost) RESULT(Kgw)
     
     IMPLICIT NONE
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     INTEGER, INTENT(IN) :: RockMaterialID
     REAL(KIND=dp), INTENT(IN) :: Xi,MinKgw,mugw
     REAL(KIND=dp) :: Kgw(3,3)
+    LOGICAL :: InterFrost
  
     !--------------------------
-    REAL(KIND=dp) :: muw0,rhow0,qexp,Kgwh0(3,3),factor
+    REAL(KIND=dp) :: muw0,rhow0,qexp,Kgwh0(3,3),factor,relativePermeability
     REAL(KIND=dp), PARAMETER :: gval=9.81_dp !hard coded, so match Kgwh0 with this value
     INTEGER :: I, J
     !-------------------------
@@ -2426,18 +2437,22 @@ CONTAINS
          CALL FATAL("PermafrostMaterials(GetKgw)","Unphysical viscosity detected")
     muw0 = CurrentSolventMaterial % muw0
     rhow0 = CurrentSolventMaterial % rhow0
-    qexp = GlobalRockMaterial % qexp(RockMaterialID)
-        ! this is OK
-    !PRINT *,"Kgw:",muw0,mugw,rhow0,Kgwh0,Xi,factor
 
+    IF (InterFrost) THEN
+      relativepermeability = MAX(10.0_dp**(-50.0_dp*(1.0_dp - Xi)),1.0d-06)
+    ELSE
+      qexp = GlobalRockMaterial % qexp(RockMaterialID)
+      relativepermeability=(Xi**qexp)
+    END IF
+      
     Kgwh0(1:3,1:3) = GlobalRockMaterial % Kgwh0(1:3,1:3,RockMaterialID) ! hydro-conductivity
     ! transformation factor from hydr. conductivity to permeability hydr. conductivity tensor
-    factor = (muw0/mugw)*(Xi**qexp)/(rhow0*gval)
+    factor = (muw0/mugw)/(rhow0*gval)
 
     Kgw = 0.0_dp
     DO I=1,3
       DO J=1,3
-        Kgw(i,j) = Kgwh0(i,j)*factor
+        Kgw(i,j) = Kgwh0(i,j)*factor*relativepermeability
       END DO
     END DO
     DO I=1,3
