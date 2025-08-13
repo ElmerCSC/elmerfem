@@ -28,11 +28,19 @@ SET(XIOSINCLUDE
   "$ENV{XIOS_ROOT}/include"
   INTERNAL
   )
+SET(XIOSINC
+  "${XIOSROOT}/inc"
+  "$ENV{XIOSROOT}/inc"
+  "${XIOS_ROOT}/inc"
+  "$ENV{XIOS_ROOT}/inc"
+  INTERNAL
+  )
 
 FIND_PATH(XIOS_INCLUDE_DIR
-  xios.h 
+  xios.h xios.hpp
   HINTS 
   ${XIOSINCLUDE}
+  ${XIOSINC}
   )
 
 SET(XIOSLIB 
