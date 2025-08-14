@@ -359,7 +359,7 @@ CONTAINS
   SUBROUTINE coupling_setup(grid_dir, num_parts)
 
     USE :: elmer_icon_coupling
-    USE, INTRINSIC :: iso_c_binding
+    USE, INTRINSIC :: iso_c_binding, ONLY: C_INT, C_DOUBLE, C_PTR, C_F_POINTER
 
     IMPLICIT NONE
 
@@ -405,7 +405,7 @@ CONTAINS
                              cell_ids, vertex_ids, cell_to_vertex) &
         bind ( C, name='read_grid' )
 
-        USE, INTRINSIC :: iso_c_binding
+        USE, INTRINSIC :: iso_c_binding, ONLY: C_INT, C_PTR, C_CHAR
 
         CHARACTER(KIND=C_CHAR) :: grid_dir(*)
         INTEGER(KIND=C_INT), VALUE :: rank
@@ -426,7 +426,7 @@ CONTAINS
 
       SUBROUTINE free_c ( ptr ) bind ( c, NAME='free' )
 
-       USE, INTRINSIC :: iso_c_binding
+       USE, INTRINSIC :: iso_c_binding, ONLY: C_PTR
 
        TYPE(C_PTR), VALUE :: ptr
 
