@@ -1892,7 +1892,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE DetermineContact( Solver )
 !------------------------------------------------------------------------------
-     TYPE(Solver_t) :: Solver
+     TYPE(Solver_t), POINTER :: Solver
 !-----------------------------------------------------------------------------
      TYPE(Model_t), POINTER :: Model
      TYPE(variable_t), POINTER :: Var, LoadVar, IterVar
@@ -1964,7 +1964,7 @@ CONTAINS
        CALL Fatal(Caller,'Invalid number of dofs for contact problem: '//I2S(dofs))
      END IF     
 
-     pContact = IsPelement(Mesh % Elements(1) )
+     pContact = IsActivePelement(Mesh % Elements(1), Solver)
      IF( pContact ) THEN
        ! We only have to deal with the middle dofs if they are not condensated away!
        IF( .NOT. ListGetLogical( Params,'Bubbles in Global System',Found ) ) THEN

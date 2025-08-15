@@ -1847,10 +1847,10 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!>   Given element structure return value of the second partial derivatives with
-!>   respect to local coordinates of i quantity x given at element nodes at local
-!>   coordinate point u,v inside the element. Element basis functions are used to
-!>   compute the value. 
+!>   Given the element structure return the second partial derivatives of 
+!>   a quantity x given at element nodes with respect to local coordinates
+!>   at a point with local coordinates (u,v,w) inside the element. Element basis
+!>   functions are used to compute the value. 
 !------------------------------------------------------------------------------
    FUNCTION SecondDerivatives3D( element,x,u,v,w ) RESULT(ddx)
 !------------------------------------------------------------------------------
@@ -1862,7 +1862,7 @@ CONTAINS
 !    REAL(KIND=dp) :: x(:)
 !     INPUT: Nodal values of the quantity whose partial derivatives we want to know
 !
-!    REAL(KIND=dp) :: u,v
+!    REAL(KIND=dp) :: u,v,w
 !     INPUT: Point at which to evaluate the partial derivative
 !
 !  FUNCTION VALUE:
@@ -3210,13 +3210,13 @@ CONTAINS
          CASE(3)
            SELECT CASE(Element % Type % ElementCode)
            CASE(605)
-             IF(isPElement(Element)) THEN
+             IF(isActivePElement(Element,pSolver)) THEN
                ddLBasisddx(i,:,:) = ddPyramidNodalPBasis(i,u,v,w)
              ELSE
                ddLBasisddx(i,:,:) = SecondDerivatives3D(element,basis,u,v,w)
              END IF
            CASE(706)
-             IF(isPElement(element)) THEN
+             IF(isActivePElement(element,pSolver)) THEN
                ddLBasisddx(i,:,:) = ddWedgeNodalPBasis(i,u,v,w)
              ELSE
                ddLBasisddx(i,:,:) = SecondDerivatives3D(element,basis,u,v,w)
@@ -4417,7 +4417,7 @@ CONTAINS
      IF(PRESENT(dBasisdx))  &
        dBasisdx = 0._dp ! avoid uninitialized stuff depending on coordinate dimension...
 
-     IF( isPelement(Element) ) THEN
+     IF( isActivePelement(Element) ) THEN
        retval =  ElementInfoVec_ComputePElementBasis(Element,Nodes,nc,u,v,w,detJ,nbmax,Basis,&
              uWrk,vWrk,wWrk,BasisWrk,dBasisdxWrk,DetJWrk,LtoGmapsWrk,dBasisdx,USolver)
      ELSE

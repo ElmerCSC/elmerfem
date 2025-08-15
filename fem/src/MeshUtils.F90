@@ -7750,7 +7750,7 @@ CONTAINS
       ! We assume that the 1st element may be used to determine whether the mesh is a p-element
       ! mesh or not.
       Element => BMesh1 % Elements(1)        
-      pElemBasis = isPElement(Element) 
+      pElemBasis = isActivePElement(Element, CurrentModel % Solver) 
       pElemProj = pElemBasis
       IF( pElemProj ) THEN
         IF( ListGetLogical( BC,'Projector Linear Basis',Found ) ) pElemProj = .FALSE.
@@ -9295,7 +9295,7 @@ CONTAINS
     ! We assume that the 1st element may be used to determine whether the mesh is a p-element
     ! mesh or not.
     Element => BMesh1 % Elements(1)        
-    pElemBasis = isPElement(Element) 
+    pElemBasis = isActivePElement(Element, CurrentModel % Solver) 
     pElemProj = pElemBasis
     IF( pElemProj ) THEN
       IF( ListGetLogical( BC,'Projector Linear Basis',Found ) ) pElemProj = .FALSE.
@@ -17235,7 +17235,7 @@ CONTAINS
           ! Ensure that there is no p-elements that made us think that we have edges
           ! Here we assume that if there is any p-element then also the 1st element is such
           IF( DoEdges ) THEN
-            IF(isPelement(Mesh % Elements(1))) THEN
+            IF(isActivePelement(Mesh % Elements(1), Model % Solver)) THEN
               DoEdges = .FALSE.
               CALL Info(Caller,'Edge projector will not be created for p-element mesh',Level=10)
             END IF
@@ -17508,7 +17508,7 @@ CONTAINS
     ! Ensure that there is no p-elements that made us think that we have edges
     ! Here we assume that if there is any p-element then also the 1st element is such
     IF( DoEdges ) THEN
-      IF(isPelement(Mesh % Elements(1))) THEN
+      IF(isActivePelement(Mesh % Elements(1))) THEN
         DoEdges = .FALSE.
         CALL Info(Caller,'Edge projector will not be created for p-element mesh',Level=10)
       END IF
@@ -21093,7 +21093,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE FindMeshFaces3D( Mesh, BulkMask)
     USE PElementMaps, ONLY : GetElementFaceMap
-    USE PElementBase, ONLY : isPTetra
 
     IMPLICIT NONE
 !------------------------------------------------------------------------------
@@ -21517,7 +21516,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE FindMeshEdges3D( Mesh )
     USE PElementMaps, ONLY : GetElementEdgeMap, GetElementFaceEdgeMap
-    USE PElementBase, ONLY : isPPyramid
 
     IMPLICIT NONE
 !------------------------------------------------------------------------------

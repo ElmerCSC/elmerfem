@@ -1356,7 +1356,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      
      ! Calculate nodal fields:
      ! -----------------------
-     pRef = ( dim==3 .AND. PiolaVersion ) .OR. isPelement(element)
+     pRef = ( dim==3 .AND. PiolaVersion ) .OR. isActivePelement(element, pSolver)
      IF( ElementalMode >= 3 ) THEN
        IF( ElementalMode == 3 ) THEN
          IP = CornerGaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=pRef)
