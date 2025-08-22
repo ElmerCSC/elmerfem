@@ -93,6 +93,7 @@ SET(WITH_UMFPACK TRUE CACHE BOOL "Use UMFPACK for LU factorization")
 SET(WITH_ELMERGUI FALSE CACHE BOOL "Include ElmerGUI")
 SET(WITH_ElmerIce FALSE CACHE BOOL "Include ElmerIce")
 SET(WITH_XIOS FALSE CACHE BOOL "Include XIOS")
+SET(WITH_NETCDF FALSE CACHE BOOL "Include NetCDF")
 SET(WITH_ELMERGUITESTER FALSE CACHE BOOL "Include ElmerGUI tester")
 SET(WITH_ELMERGUILOGGER FALSE CACHE BOOL "Include ElmerGUI logger")
 SET(ELMER_INSTALL_LIB_DIR "lib/elmersolver" CACHE PATH "Location of elmer shared libraries relative to prefix.")
@@ -485,6 +486,10 @@ ENDIF()
 
 # XIOS
 IF (WITH_XIOS)
+  IF (NOT WITH_NETCDF)
+    MESSAGE(FATAL_ERROR "Building with XIOS requires NetCDF.")
+  ENDIF()
+
   MESSAGE(STATUS "------------------------------------------------")
   MESSAGE(STATUS "  Looking for XIOS ")
 
