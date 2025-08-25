@@ -229,7 +229,7 @@ Solver 6
   Exported Variable 1 DOFs = 1
 
   Procedure = "FreeSurfaceSolver" "FreeSurfaceSolver"
-  Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
+! Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
 
   Linear System Solver = Iterative
   Linear System Max Iterations = 1500
@@ -267,7 +267,7 @@ Solver 7
   Exported Variable 1 DOFs = 1
 
   Procedure = "FreeSurfaceSolver" "FreeSurfaceSolver"
-  Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
+! Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
 
   Linear System Solver = Iterative
   Linear System Max Iterations = 1500

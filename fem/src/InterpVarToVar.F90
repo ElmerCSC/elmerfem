@@ -693,7 +693,7 @@ CONTAINS
        ! Only actually for if new mesh has bigger perm than old mesh
        ! Which crashes on result output
        ! If inequality other way round, standard routine works fine
-       IF(NewMesh % NumberOfNodes .NE.  OldMesh % NumberOfNodes .OR. NewMesh % MeshDim .NE. OldMesh % MeshDim) THEN
+       IF(NewMesh % NumberOfNodes /=  OldMesh % NumberOfNodes .OR. NewMesh % MeshDim /= OldMesh % MeshDim) THEN
          !Special case for my calvinghydrointerp stuff
          PermVar => VariableGet( NewMesh % Variables, 'hydroweights', ThisOnly = .TRUE. )
          !On the assumption you'll have some velocity

@@ -90,6 +90,8 @@ static int elm_4node_tetra_triangulate( geometry_t *geom,element_t *tetra )
 {
     element_t triangle;
     int i,j;
+    int geo_add_edge();
+    int elm_3node_triangle_triangulate();
 
 
     if ( GlobalOptions.VolumeSides )
@@ -109,7 +111,6 @@ static int elm_4node_tetra_triangulate( geometry_t *geom,element_t *tetra )
           if ( !elm_3node_triangle_triangulate( geom, &triangle, tetra ) ) return FALSE;
       }
     } else {
-      if ( !geo_add_edge( geom, tetra->Topology[0],tetra->Topology[1],tetra ) ) return FALSE;
       if ( !geo_add_edge( geom, tetra->Topology[0],tetra->Topology[2],tetra ) ) return FALSE;
       if ( !geo_add_edge( geom, tetra->Topology[1],tetra->Topology[2],tetra ) ) return FALSE;
       if ( !geo_add_edge( geom, tetra->Topology[0],tetra->Topology[3],tetra ) ) return FALSE;
@@ -240,6 +241,7 @@ static int elm_4node_tetra_isoline
     double f[3],c[3],x[3],y[3],z[3];
 
     int i, j, k, n=0, above=0;
+    int elm_3node_triangle_isoline();
 
     for( i=0; i<4; i++ ) above += F[i]>K;
     if ( above == 0 || above == 4 ) return 0;
@@ -817,6 +819,7 @@ int elm_4node_tetra_initialize()
      static char *Name = "ELM_4NODE_TETRA";
 
      element_type_t ElementDef;
+     int elm_add_element_type();
 
      elm_4node_tetra_shape_functions();
 

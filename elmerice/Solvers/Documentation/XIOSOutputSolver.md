@@ -12,7 +12,7 @@
 
 ## General Description
 
-Interface to [XIOS](https://forge.ipsl.jussieu.fr/ioserver), a library designed to manage NETCDF outputs of climate models.
+Interface to [XIOS](https://forge.ipsl.fr/ioserver), a library designed to manage NETCDF outputs of climate models.
 
 XIOS supports writing unstructured data using the [UGRID convention](http://ugrid-conventions.github.io/ugrid-conventions/#ugrid-conventions-v10). This is currently restricted to 2D.
 
@@ -20,7 +20,7 @@ XIOS supports writing unstructured data using the [UGRID convention](http://ugri
 
 1. Get the **trunk** version of XIOS (Elmer does not work with the latest 2.5 release):
 ```
-svn co https://forge.ipsl.jussieu.fr/ioserver/svn/XIOS/trunk XIOS
+svn co https://forge.ipsl.fr/ioserver/svn/XIOS/trunk XIOS
 ```
 
 2. Compile XIOS (please refer to its documentation), but note that:

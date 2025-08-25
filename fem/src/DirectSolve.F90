@@ -1757,7 +1757,7 @@ CONTAINS
       CALL pardiso(A % PardisoId, maxfct, mnum, mtype, phase, n, &
             values, rows, cols, idum, nrhs, iparm, msglvl, ddum, ddum, ierror)
 
-      IF (ierror .NE. 0) THEN
+      IF (ierror /= 0) THEN
         WRITE(*,'(A,I0)') 'MKL Pardiso: ERROR=', ierror
         CALL Fatal('Pardiso_SolveSystem','Error during analysis phase')
       END IF
@@ -1767,7 +1767,7 @@ CONTAINS
       CALL pardiso (A % pardisoId, maxfct, mnum, mtype, phase, n, &
            values, rows, cols, idum, nrhs, iparm, msglvl, ddum, ddum, ierror)
 
-      IF (ierror .NE. 0) THEN
+      IF (ierror /= 0) THEN
         WRITE(*,'(A,I0)') 'MKL Pardiso: ERROR=', ierror
         CALL Fatal('Pardiso_SolveSystem','Error during factorization phase')
       END IF
@@ -1778,7 +1778,7 @@ CONTAINS
     CALL pardiso(A % PardisoId, maxfct, mnum, mtype, phase, n, &
                 values, rows, cols, idum, nrhs, iparm, msglvl, b, x, ierror)
 
-    IF (ierror .NE. 0) THEN
+    IF (ierror /= 0) THEN
       WRITE(*,'(A,I0)') 'MKL Pardiso: ERROR=', ierror
       CALL Fatal('Pardiso_SolveSystem','Error during solve phase')
     END IF
@@ -1936,7 +1936,7 @@ CONTAINS
         CALL pardiso(A % PardisoId, maxfct, mnum, mtype, phase, n, &
           values, rows, cols, idum, nrhs, iparm, msglvl, ddum, ddum, ierror, dparm)
 
-        IF (ierror .NE. 0) THEN
+        IF (ierror /= 0) THEN
           WRITE(*,*) 'The following ERROR was detected: ', ierror
           STOP EXIT_ERROR
         END IF
@@ -1946,7 +1946,7 @@ CONTAINS
         CALL pardiso (A % pardisoId, maxfct, mnum, mtype, phase, n, &
          values, rows, cols, idum, nrhs, iparm, msglvl, ddum, ddum, ierror, dparm)
 
-        IF (ierror .NE. 0) THEN
+        IF (ierror /= 0) THEN
            WRITE(*,*) 'The following ERROR was detected: ', ierror
           STOP EXIT_ERROR
         ENDIF
@@ -2361,7 +2361,7 @@ CONTAINS
           aa, ia, ja, idum, A % CPardisoId % nrhs, iparm, &
           A % CPardisoId % msglvl, &
           ddum, ddum,  A % Comm, ierror)
-    IF (ierror .NE. 0) THEN
+    IF (ierror /= 0) THEN
         WRITE(*,'(A,I0)') 'MKL CPardiso: ERROR=', ierror
         CALL Fatal('CPardiso_SolveSystem','Error during factorization phase')
     END IF

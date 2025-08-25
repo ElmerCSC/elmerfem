@@ -145,12 +145,7 @@
          BoundaryTangent1(:,:), BoundaryTangent2(:,:)
      CHARACTER(LEN=MAX_NAME_LEN) :: viscosityFile
      REAL(KIND=dp) :: Radius
-
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: at, at0
-#else
-     REAL(KIND=dp) :: CPUTime, RealTime
-#endif
 !------------------------------------------------------------------------------
      SAVE NumberOfBoundaryNodes,BoundaryReorder,BoundaryNormals, &
               BoundaryTangent1, BoundaryTangent2, FabricGrid, viscosityFile

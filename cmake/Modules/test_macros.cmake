@@ -168,6 +168,18 @@ MACRO(RUN_ELMER_TEST)
   ENDIF()
   IF(NOT RES EQUAL "1")
     MESSAGE(FATAL_ERROR "Test failed")
+  ELSE()
+    STRING(REGEX MATCH
+      "SOLVER TOTAL TIME\\(CPU,REAL\\):[ \t]*([0-9]+\\.[0-9]+)[ \t]+([0-9]+\\.[0-9]+)" 
+      SOLVERTIMELINE_MATCH "${TEST_STDOUT_VARIABLE}")
+    STRING(REGEX REPLACE 
+      "SOLVER TOTAL TIME\\(CPU,REAL\\):[ \t]*([0-9]+\\.[0-9]+)[ \t]+([0-9]+\\.[0-9]+)" 
+      "\\1" TIME_CPU "${SOLVERTIMELINE_MATCH}")
+    STRING(REGEX REPLACE 
+      "SOLVER TOTAL TIME\\(CPU,REAL\\):[ \t]*([0-9]+\\.[0-9]+)[ \t]+([0-9]+\\.[0-9]+)" 
+      "\\2" TIME_REAL "${SOLVERTIMELINE_MATCH}")
+    message("<DartMeasurement name=\"CPU_Time\" type=\"numeric/double\"> ${TIME_CPU} </DartMeasurement>")
+    message("<DartMeasurement name=\"REAL_Time\" type=\"numeric/double\"> ${TIME_REAL} </DartMeasurement>")
   ENDIF()
 ENDMACRO()
 

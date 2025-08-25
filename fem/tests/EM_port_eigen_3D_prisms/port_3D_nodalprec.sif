@@ -1,0 +1,461 @@
+!
+! This problem is basically the same as EM_port_eigen_3D, but here prismatic
+! finite elements are used and a nodal finite discretization is used for
+! the preconditioning of the approximation in H(curl). 
+!
+! The original author: M.M. 
+!
+
+Check Keywords "Warn"
+
+$ epsr = 2.25
+$ wref = 3
+
+Header
+  Mesh DB "." "waveguide3D"
+End
+
+Simulation
+  Coordinate System = "Cartesian 3D"
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Max Output Level = 5
+End
+
+Constants
+  Permeability of Vacuum = 1.0
+  Permittivity of Vacuum = 1.0
+End
+
+Body 1
+  Equation = 2
+  Material = 1
+End
+
+Body 2
+  Equation = 2
+  Material = 2
+End
+
+Body 3
+  Equation = 1
+  Material = 1
+End
+
+Body 4
+  Equation = 1
+  Material = 2
+End
+
+Material 1
+  Name = "higher_eps"
+  Relative Reluctivity = 1.0
+  Relative Permittivity = $ epsr
+  AMatrix = Real $ -epsr * wref^2
+End 
+
+Material 2
+  Name = "Vacuum"
+  Relative Reluctivity = 1.0
+  Relative Permittivity = 1.0
+  AMatrix = Real $ -wref^2
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+Equation 2
+  Active Solvers(4) = 3 4 7 8
+End
+
+Solver 1
+  Equation = "Port mode"
+  Procedure = "EMPort" "EMPortSolver"
+
+  Variable Output = False
+
+  Angular Frequency = $wref
+  Use Piola Transform = True
+  Steady State Convergence Tolerance = 1e-09
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = Umfpack
+
+!  Linear System Scaling = Logical True
+!  Linear System Symmetric = Logical True
+!  Linear System Solver = string "Iterative"
+!  Linear System Convergence Tolerance = real 1e-8
+!  Linear System Iterative Method = BiCGStabl
+!  BiCGStabl Polynomial Degree = 2
+!  Linear System Residual Output = integer 1
+!  Linear System Max Iterations = integer 2000
+!  Linear System Preconditioning = ILU2
+!  Linear System Residual Output = 50
+
+  Eigen System Shift = -1.0
+  Eigen System Shift Im = Real 0
+  Eigen Analysis = True
+  Eigen System Values = 30
+  Eigen System Convergence Tolerance = Real 1.0e-10
+  Eigen System Compute Residuals = True
+
+!  Eigen System Select = smallest real part
+!  Eigen System Select = largest real part
+!  Eigen System Select = smallest imag part
+!  Eigen System Select = largest imag part
+!  Eigen System Select = smallest magnitude
+!  Eigen System Select = largest magnitude
+!  Eigen System Lanczos Vectors = 180
+!  Eigen System Max Iterations = 1
+End
+
+Solver 2
+  Equation = "postprocess"
+  Procedure = "EMPort" "EMPortSolver_post"
+  Variable = postfield[EF2D Re:3 EF2D Im:3]
+  Variable DOFs = 6
+
+  Mode Index = Integer 7
+  
+  Linear System Solver = Iterative
+  Linear System Convergence Tolerance = real 1e-8
+  Linear System Iterative Method = CG
+  Linear System Residual Output = integer 10
+  Linear System Max Iterations = integer 2000
+  Linear System Preconditioning = ILU0
+End
+
+Solver 3
+  Equation = "VectorHelmholtz"
+  Use Piola Transform = Logical True
+  Procedure = "VectorHelmholtz" "VectorHelmholtzSolver"
+
+  Angular Frequency = $wref
+
+  ! Command to seek for a lower-dimensional eigenfunction
+  ! so that BCs based on it can be constructed:
+  !
+  Eigenfunction Source = Logical True
+  Variable = EF[EF re:1 EF im:1]
+
+  Linear System Symmetric = False
+  Linear System Scaling = True
+  Linear System Row Equilibration = True
+
+  Linear System Solver = String "Iterative"
+  Linear System Iterative Method = String "gcr"
+  Linear System Convergence Tolerance = 1.0e-5
+  Linear System Residual Output = 1
+  Linear system abort not converged = false
+  Linear System Max Iterations = 150
+  Linear System Complex = True
+  Linear System Preconditioning = "auxiliary space solver"
+
+! Needed for auxiliary space preconditioning
+  Exported Variable 1 = -dofs 2 e res
+  Exported Variable 2 = -dofs 2 e update
+  Prec Solvers(1) = Integer 8
+  Additive Prec Solvers(1) = Integer 7	
+  Preconditioning Residual = String "e res"
+  Preconditioning Update = String "e update"
+  Additive Preconditioning = Logical True
+  Additive Pre-Smoothing = Logical False
+
+  MG Smoother = csgs
+!  MG Pre Smoothing Iterations = 7
+  MG Post Smoothing Iterations = 3
+  MG Smoother Relaxation Factor = Real 1.0
+
+  Steady State Convergence Tolerance = 1e-9
+
+!  Calculate Loads = Logical True
+!  Calculate Energy Inner Product = Logical True
+
+End
+
+Solver 4
+  Equation = "calcfields"
+
+  Procedure = "VectorHelmholtz" "VectorHelmholtzCalcFields"
+
+  Calculate Elemental Fields = Logical False
+  Calculate Magnetic Field Strength = Logical False
+  Calculate Magnetic Flux Density = Logical False
+  Calculate Poynting vector = Logical False
+  !Calculate Div of Poynting Vector = Logical True
+  Calculate Electric field = Logical True
+  !Calculate Energy Functional = Logical True
+
+  Steady State Convergence Tolerance = 1
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = None
+  Linear System Residual Output = 10
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = CG
+  Linear System Convergence Tolerance = 1.0e-9
+End
+
+Solver 5
+!  Exec Solver = never
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = eigenvalues
+  Vtu Format = Logical True
+  Save Geometry IDs = True
+  Ascii Output = True
+
+  Vector Field 1 = EF2D Re
+  Vector Field 2 = EF2D Im
+  Vector Field 3 = Electric Field Re
+  Vector Field 4 = Electric Field Im  
+
+  Eigen Analysis = False
+End
+
+Solver 6
+  Equation = "SaveScalars"
+!  Filename = f.dat
+
+  Procedure = "SaveData" "SaveScalars"
+  Save EigenValues = True
+
+! Compare the norm of the 7th eigenvalue
+  Show Norm Index = 7 
+End
+
+Solver 7
+  exec solver = never
+
+  Equation = "VectorHelmholtzNodal"
+  Procedure = "VectorHelmholtzNodal" "VectorHelmholtzNodal"
+  Angular Frequency = $wref
+
+  Preconditioning Solver = Logical True
+  Monolithic Solver = Logical True
+  Edge Residual Name = String "e res"
+  Edge Update Name = String "e update"
+
+  curl-curl Form = Logical True
+  Linear System Preconditioning Damp Coefficient im = -1.0
+
+  Linear System Symmetric = False
+  Linear System Scaling = True
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = String "bicgstab2"
+  Linear System Complex = True
+!  BiCGstabl polynomial degree = Integer 4  
+  Linear System Preconditioning = String "ILU1"
+  Linear System Max Iterations = Integer 1000
+  Linear System Convergence Tolerance = 1.0e-3
+  Linear system abort not converged = false
+  Linear System Residual Output = 1
+
+  Nonlinear System Max Iterations = 1
+
+  Skip Compute Nonlinear Change = True
+End
+
+Solver 8
+! used as slave solver only  
+  exec solver = never
+
+  Equation = "Complex Poisson"
+  Procedure = "DCRComplexSolve" "DCRComplexSolver"
+
+  Variable = "Prec Scalar[ps re:1 ps im:1]"
+!  Variable DOFs = 2
+
+  Preconditioning Solver = Logical True
+  Edge Residual Name = String "e res"
+  Edge Update Name = String "e update"
+
+  Linear System Symmetric = False
+  Linear System Scaling = True
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = String "bicgstab2"
+  Linear System Complex = True
+  BiCGstabl polynomial degree = Integer 4  
+  Linear System Preconditioning = String "ILU1"
+  Linear System Max Iterations = Integer 1000
+  Linear System Convergence Tolerance = 1.0e-7
+  Linear system abort not converged = false
+  Linear System Residual Output = 1
+
+  Nonlinear System Max Iterations = 1
+
+  Skip Compute Nonlinear Change = True
+End
+
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  EF re {e} = Real 0.0
+  EF im {e} = Real 0.0
+
+  PEX re = Real 0
+  PEZ re = Real 0
+  PEX im = Real 0
+  PEZ im = Real 0
+
+  ps re = Real 0.0
+  ps im = Real 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 2
+  EF re {e} = Real 0.0
+  EF im {e} = Real 0.0
+  
+  PEX re = Real 0
+  PEZ re = Real 0
+  PEX im = Real 0
+  PEZ im = Real 0
+
+
+  ps re = Real 0.0
+  ps im = Real 0.0
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 3
+  EF re {e} = Real 0.0
+  EF im {e} = Real 0.0
+  
+  PEY re = Real 0
+  PEZ re = Real 0
+  PEY im = Real 0
+  PEZ im = Real 0
+
+  ps re = Real 0.0
+  ps im = Real 0.0
+End
+
+Boundary Condition 4
+  Target Boundaries(1) = 4
+  EF re {e} = Real 0.0
+  EF im {e} = Real 0.0
+  
+  PEX re = Real 0
+  PEZ re = Real 0
+  PEX im = Real 0
+  PEZ im = Real 0
+
+  ps re = Real 0.0
+  ps im = Real 0.0
+End
+
+Boundary Condition 5
+  Target Boundaries(1) = 5
+  EF re {e} = Real 0.0
+  EF im {e} = Real 0.0
+  
+  PEX re = Real 0
+  PEZ re = Real 0
+  PEX im = Real 0
+  PEZ im = Real 0
+
+  ps re = Real 0.0
+  ps im = Real 0.0
+End
+
+Boundary Condition 6
+  Target Boundaries(1) = 6
+  EF re {e} = Real 0.0
+  EF im {e} = Real 0.0
+    
+  PEY re = Real 0
+  PEZ re = Real 0
+  PEY im = Real 0
+  PEZ im = Real 0
+
+  ps re = Real 0.0
+  ps im = Real 0.0
+End
+
+Boundary Condition 7
+  Target Boundaries(1) = 7
+  Body Id = 3
+  Eigenfunction BC = Logical True
+  Eigenfunction Index = Integer 7
+  Incident Wave = Logical True
+  Bscalar 1 = Real 0.0  
+  Bscalar 2 = Real -2.9152713305134146
+End
+
+Boundary Condition 8
+  Target Boundaries(1) = 8
+  Body Id = 4
+  Eigenfunction BC = Logical True
+  Eigenfunction Index = Integer 7
+  Incident Wave = Logical True
+  Bscalar 1 = Real 0.0  
+  Bscalar 2 = Real -2.9152713305134146
+End
+
+Boundary Condition 9
+  Intersection BC(2) = 1 7
+  E re = Real 0
+  E im = Real 0
+  E re {e} = Real 0.0
+  E im {e} = Real 0.0
+End
+
+Boundary Condition 10
+  Intersection BC(2) = 2 8
+  E re = Real 0
+  E im = Real 0
+  E re {e} = Real 0.0
+  E im {e} = Real 0.0
+End
+
+Boundary Condition 11
+  Intersection BC(2) = 3 8
+  E re = Real 0
+  E im = Real 0
+  E re {e} = Real 0.0
+  E im {e} = Real 0.0
+End
+
+Boundary Condition 12
+  Intersection BC(2) = 4 8
+  E re = Real 0
+  E im = Real 0
+  E re {e} = Real 0.0
+  E im {e} = Real 0.0
+End
+
+Boundary Condition 13
+  Intersection BC(2) = 5 7
+  E re = Real 0
+  E im = Real 0
+  E re {e} = Real 0.0
+  E im {e} = Real 0.0
+End
+
+Boundary Condition 14
+  Intersection BC(2) = 6 7
+  E re = Real 0
+  E im = Real 0
+  E re {e} = Real 0.0
+  E im {e} = Real 0.0
+End
+
+Boundary Condition 15
+  Target Boundaries(1) = 9
+  Eigenfunction BC = Logical True
+  Eigenfunction Index = Integer 7
+  Bscalar 1 = Real 0.0  
+  Bscalar 2 = Real -2.9152713305134146
+End
+
+Boundary Condition 16
+  Target Boundaries(1) = 10
+  Eigenfunction BC = Logical True
+  Eigenfunction Index = Integer 7
+  Bscalar 1 = Real 0.0  
+  Bscalar 2 = Real -2.9152713305134146
+End
+
+Solver 3 :: Reference Norm = Real 0.31546722E-01
+Solver 6 :: Reference Norm = Real 8.498806930513

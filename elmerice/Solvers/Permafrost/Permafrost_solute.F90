@@ -196,7 +196,7 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
           FirstTime = .FALSE.
         END IF
         CALL ReadPermafrostSoluteMaterial( Material,Model % Constants,CurrentSoluteMaterial )
-        CALL SetPermafrostSolventMaterial( CurrentSolventMaterial )        
+        CALL ReadPermafrostSolventMaterial( Material, CurrentSolventMaterial )        
       END IF
 
       n  = GetElementNOFNodes()
@@ -316,6 +316,7 @@ CONTAINS
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,Weight,LoadAtIP,&
          TemperatureAtIP,PorosityAtIP,PressureAtIP,SalinityAtIP,&
          StiffPQ, meanfactor
+    REAL(KIND=dp) :: Swres=1.0_dp, IFdeltaT=0.5_dp
     REAL(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd), LOAD(n), XiBefore
     REAL(KIND=dp), POINTER :: gWork(:,:), XiAtIp(:)
     INTEGER :: i,j,t,p,q,DIM, RockMaterialID, IPPerm
@@ -369,11 +370,14 @@ CONTAINS
     IF (ConstVal) &
         CALL INFO(FunctionName,'"Constant Permafrost Properties" set to true',Level=9)
 
-    meanfactor = GetConstReal(Material,"Conductivity Arithmetic Mean Weight",Found)
-    IF (.NOT.Found) THEN
-      CALL INFO(FunctionName,'"Conductivity Arithmetic Mean Weight" not found. Using default unity value.',Level=9)
-      meanfactor = 1.0_dp
-    END IF
+    Swres = GetConstReal( Material, "Interfrost Swres", Found)
+    IFdeltaT = GetConstReal( Material, "Interfrost deltaT", Found)
+    
+    !meanfactor = GetConstReal(Material,"Conductivity Arithmetic Mean Weight",Found)
+    !IF (.NOT.Found) THEN
+    !  CALL INFO(FunctionName,'"Conductivity Arithmetic Mean Weight" not found. Using default unity value.',Level=9)
+    !  meanfactor = 1.0_dp
+    !END IF
     MinKgw = GetConstReal( Material, &
          'Hydraulic Conductivity Limit', Found)
     IF (.NOT.Found .OR. (MinKgw <= 0.0_dp))  &
@@ -441,7 +445,15 @@ CONTAINS
         XiPAtIP   = &
              XiAndersonP(XiAtIp(IPPerm),0.011_dp,-0.66_dp,9.8d-08,&
              CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
-             T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)       
+             T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
+      CASE('interfrost') ! simple Interfrost model
+        XiAtIP(IPPerm) = GetXiInterfrost(T0,TemperatureAtIP,Swres,IFdeltaT)
+        XiTAtIP = XiInterfrostT(T0,TemperatureAtIP,Swres,IFdeltaT)
+        XiPAtIP = 0.0_dp
+      CASE('interfrostTH1') ! simple Interfrost model for TH1
+        XiAtIP(IPPerm) = GetXiInterfrost(T0,TemperatureAtIP,Swres,IFdeltaT,.TRUE.)
+        XiTAtIP = XiInterfrostT(T0,TemperatureAtIP,Swres,IFdeltaT,.TRUE.)
+        XiPAtIP = 0.0_dp   
       CASE DEFAULT ! Hartikainen model
         XiBefore =  XiAtIP(IPPerm)
         CALL  GetXiHartikainen(RockMaterialID,&

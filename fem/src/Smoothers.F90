@@ -1638,7 +1638,7 @@ END DO
         INTEGER  N,IPIV(N),LDa,info
         DOUBLE PRECISION  A(LDa,*),x(n)
 
-        IF ( N .LE. 0 ) RETURN
+        IF ( N <= 0 ) RETURN
         CALL DGETRF( N,N,A,LDa,IPIV,INFO )
         CALL DGETRS( 'N',N,1,A,LDa,IPIV,X,N,INFO )
 !------------------------------------------------------------------------------

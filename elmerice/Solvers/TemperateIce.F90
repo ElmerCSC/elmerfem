@@ -113,11 +113,7 @@ RECURSIVE SUBROUTINE TemperateIceSolver( Model,Solver,Timestep,TransientSimulati
        TransferCoeff(:), LocalTemp(:), Work(:), C1(:), C0(:), CT(:), Zero(:), Viscosity(:),&
        UpperLimit(:), HeatCapacity(:),  Density(:), TempExt(:), &
        StiffVector(:), OldValues(:), OldRHS(:), DummyRealArray(:)
-#ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: at,at0,totat,st,totst,t1
-#else
-  REAL(KIND=dp) :: at,at0,totat,st,totst,t1,CPUTime,RealTime
-#endif
 
   SAVE &
        OldValues,             &

@@ -79,11 +79,7 @@
         buffer, gridmesh_dx, FrontLeft(2), FrontRight(2), ElemEdge(2,5), &
         CalvingLimit, CrevPenetration, PrevValue, PartMinDist, &
         Calv_delta_t, Calv_dmax, Calv_k, RandomNumber, x, maxprob, Mu, Prob, calv_f, &
-#ifdef USE_ISO_C_BINDINGS
         rt0, rt
-#else
-        rt0, rt, RealTime
-#endif
 
    REAL(KIND=dp), POINTER :: DistValues(:), SignDistValues(:), WorkReal(:), &
         CalvingValues(:)

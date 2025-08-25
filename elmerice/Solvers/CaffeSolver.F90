@@ -125,11 +125,7 @@
   REAL(KIND=dp), POINTER :: PrevFabric(:),CurrFabric(:),TempFabVal(:)
 
   SAVE  PrevFabric, CurrFabric,TempFabVal
-#ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: at, at0
-#else
-  REAL(KIND=dp) :: at, at0, CPUTime, RealTime
-#endif
                                                 
 !--------------------------------------------------------------------------------
  CALL Info( 'CaffeSolveFabric', 'version 4.0', Level=4 )

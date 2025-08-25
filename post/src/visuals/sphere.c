@@ -108,6 +108,8 @@ static int vis_sphere( geometry_t *geometry, element_model_t *model, sphere_t *S
     double *C=NULL, *R=NULL, *T=NULL;
     double CScl=1.0,CAdd=0.0,RScl=1.0,RAdd=0.0,Rad=1.0,Col=1.0;
 
+    void gra_set_colormap(), gra_sphere_quality(), gra_set_material(), gra_point(), gra_sphere();
+
     if ( !GlobalOptions.StereoMode )
       if ( Sphere->Material->Diffuse[3]  < 1.0 )
       {

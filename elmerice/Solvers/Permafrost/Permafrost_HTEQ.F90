@@ -240,7 +240,7 @@ SUBROUTINE PermafrostHeatTransfer( Model,Solver,dt,TransientSimulation )
           FirstTime = .FALSE.
         END IF
         CALL ReadPermafrostSoluteMaterial( Material,Model % Constants,CurrentSoluteMaterial )
-        CALL SetPermafrostSolventMaterial( CurrentSolventMaterial )
+        CALL ReadPermafrostSolventMaterial( Material, CurrentSolventMaterial )
       END IF
 
       n  = GetElementNOFNodes()
@@ -319,6 +319,7 @@ CONTAINS
          TemperatureAtIP,PorosityAtIP,PressureAtIP,SalinityAtIP,&
          PressureVeloAtIP,SalinityVeloAtIP,&
          StiffPQ, meanfactor, vstarAtIP(3)
+    REAL(KIND=dp) :: Swres=1.0_dp, IFdeltaT=0.5_dp
     REAL(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd), LOAD(n)
     REAL(KIND=dp), POINTER :: gWork(:,:)
     INTEGER :: i,t,p,q,IPPerm,DIM, RockMaterialID, FluxDOFs
@@ -339,9 +340,13 @@ CONTAINS
     !------------------------------------------------------------------------------
     gradTAtIP = 0.0_dp
     gradPAtIP = 0.0_dp
+    Material => GetMaterial(Element)   ! Get stuff from SIF Material section
     IF(.NOT.ConstantsRead) THEN
       ConstantsRead = &
            ReadPermafrostConstants(Model, FunctionName, DIM, GasConstant, N0, DeltaT, T0, p0, eps, Gravity)
+      ConstVal = GetLogical(Material,'Constant Permafrost Properties',Found)
+      IF (ConstVal) &
+           CALL INFO(FunctionName,'"Constant Permafrost Properties" set to true',Level=3)
     END IF
 
     CALL GetElementNodes( Nodes )
@@ -369,8 +374,7 @@ CONTAINS
       END IF
     END IF
 
-    ! Get stuff from SIF Material section
-    Material => GetMaterial(Element)
+ 
 
     NoSalinity = GetLogical(Material,'No Salinity',Found)
     IF (ElementWiseRockMaterial) THEN
@@ -381,15 +385,18 @@ CONTAINS
 
     HydroGeo = GetLogical(Material,'Hydrogeological Model',Found)
 
-    ConstVal = GetLogical(Material,'Constant Permafrost Properties',Found)
-    IF (ConstVal) &
-        CALL INFO(FunctionName,'"Constant Permafrost Properties" set to true',Level=9)
+ 
 
     meanfactor = GetConstReal(Material,"Conductivity Arithmetic Mean Weight",Found)
     IF (.NOT.Found) THEN
       CALL INFO(FunctionName,'"Conductivity Arithmetic Mean Weight" not found. Using default unity value.',Level=9)
       meanfactor = 1.0_dp
     END IF
+    
+    Swres = GetConstReal( Material, "Interfrost Swres", Found)
+    IFdeltaT = GetConstReal( Material, "Interfrost deltaT", Found)
+    
+    
     MinKgw = GetConstReal( Material, &
          'Hydraulic Conductivity Limit', Found)
     IF (.NOT.Found .OR. (MinKgw <= 0.0_dp))  &
@@ -478,7 +485,15 @@ CONTAINS
         XiPAtIP   = &
              XiAndersonP(XiAtIp(IPPerm),0.011_dp,-0.66_dp,9.8d-08,&
              CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
-             T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)       
+             T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
+      CASE('interfrost') ! simple Interfrost model
+        XiAtIP(IPPerm) = GetXiInterfrost(T0,TemperatureAtIP,Swres,IFdeltaT)
+        XiTAtIP = XiInterfrostT(T0,TemperatureAtIP,Swres,deltaT)
+        XiPAtIP = 0.0_dp
+      CASE('interfrostTH1') ! simple Interfrost model for TH1
+        XiAtIP(IPPerm) = GetXiInterfrost(T0,TemperatureAtIP,Swres,IFdeltaT,.TRUE.)
+        XiTAtIP = XiInterfrostT(T0,TemperatureAtIP,Swres,IFdeltaT,.TRUE.)
+        XiPAtIP = 0.0_dp   
       CASE DEFAULT ! Hartikainen model
         CALL  GetXiHartikainen (RockMaterialID,&
              CurrentSoluteMaterial,CurrentSolventMaterial,&

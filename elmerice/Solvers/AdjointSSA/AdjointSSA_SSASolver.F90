@@ -96,11 +96,7 @@ SUBROUTINE AdjointSSA_SSASolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp) :: fm
   CHARACTER(LEN=MAX_NAME_LEN) :: Friction
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName
-#ifdef USE_ISO_C_BINDINGS
-    REAL(KIND=dp) :: at, at0
-#else
-    REAL(KIND=dp) :: at, at0, CPUTime, RealTime
-#endif 
+  REAL(KIND=dp) :: at, at0
   LOGICAL :: SEP ! Sub-element parametrization for Grounding line
   INTEGER :: GLnIP ! number of Integ. Points for GL Sub-element parametrization
   TYPE(Variable_t), POINTER :: GMSol,BedrockSol

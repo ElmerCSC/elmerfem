@@ -115,6 +115,8 @@ static int vis_arrow( geometry_t *geometry, element_model_t *model, arrow_t *Arr
     double LScl,CScl,CAdd,vx,vy,vz,co;
     double R,RadiusScale,L,LengthScale;
 
+    void gra_set_colormap(), gra_sphere_quality(), gra_set_material(), gra_arrow() ;
+
     if ( !Arrows->VectorData ||
          !Arrows->VectorData[1]->f || !Arrows->VectorData[2]->f || !Arrows->VectorData[3]->f
         )

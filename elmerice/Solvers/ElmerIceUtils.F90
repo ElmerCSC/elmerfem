@@ -74,12 +74,7 @@ SUBROUTINE  ComputeWeight(Model, Solver, VarName, WeightIn)
 
      LOGICAL :: UnFoundFatal=.TRUE. 
      INTEGER :: nlen
-
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: at, at0
-#else
-     REAL(KIND=dp) :: at, at0, CPUTime, RealTime
-#endif
 
         FunctionName='ComputeWeight'
 
@@ -145,12 +140,7 @@ SUBROUTINE  UpdatePartitionWeight(Model, Solver, VarName, Force, Force_tmp)
      CHARACTER(LEN=MAX_NAME_LEN) :: FunctionName
 
      LOGICAL :: UnFoundFatal=.TRUE. 
-
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: at, at0
-#else
-     REAL(KIND=dp) :: at, at0, CPUTime, RealTime
-#endif
 
         FunctionName='UpdatePartitionWeight'
 
@@ -242,12 +232,7 @@ SUBROUTINE  UpdatePeriodicNodes(Model, Solver, VarName, WeightIn, ThisDim)
      REAL(KIND=dp) :: isPeriodic, tmpValue
 
      LOGICAL :: UnFoundFatal=.TRUE., GotIt  
-
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: at, at0
-#else
-     REAL(KIND=dp) :: at, at0, CPUTime, RealTime
-#endif
 
      FunctionName='UpdatePeriodicNodes'
 
@@ -362,12 +347,7 @@ SUBROUTINE  SetZeroAtPeriodicNodes(Model, Solver, VarName, WeightValues, WeightP
      REAL(KIND=dp) :: isPeriodic
 
      LOGICAL ::  GotIt  
-
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: at, at0
-#else
-     REAL(KIND=dp) :: at, at0, CPUTime, RealTime
-#endif
 
      FunctionName='SetZeroAtPeriodicNodes'
 

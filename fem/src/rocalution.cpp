@@ -372,7 +372,7 @@ void elmer_distribute_matrix(const MPI_Comm*    comm,
 }
 
 
-extern "C" void ROCParallelSolve( int *gn, int *n, int *rows, int *cols, double *vals, double *b, double *x_out, 
+extern "C" void ROCParallelSolve( int *gn, int *n, int *rows, int *cols, double *vals, double *b, double *x_inout, 
    double *bnrm, int *gOffset,int *fcomm, int *imethod, int *prec, int *maxiter, double *TOL )
 {
     int i, *Lrows, *Lcols, rank, nranks;
@@ -416,7 +416,7 @@ extern "C" void ROCParallelSolve( int *gn, int *n, int *rows, int *cols, double 
     x.Allocate("x", gmat.GetN());
     rhs.Allocate("rhs", gmat.GetM());
 
-    for(i=0; i<*n; i++ ) x[i]=x_out[i];
+    for(i=0; i<*n; i++ ) x[i]=x_inout[i];
     for(i=0; i<*n; i++ ) rhs[i]=b[i];
 
     // Move objects to accelerator
@@ -464,39 +464,103 @@ extern "C" void ROCParallelSolve( int *gn, int *n, int *rows, int *cols, double 
     // move solution back from device to host
     x.MoveToHost();
     
-    for(i=0; i<*n; i++ ) x_out[i]=x[i];
+    for(i=0; i<*n; i++ ) x_inout[i]=x[i];
 
     ls->Clear();
+
+    stop_rocalution();
 }
 
-extern "C" void ROCSerialSolve(int *n, int *rows, int *cols, double *vals, double *b, double *x_out,
-      int *nonlin_update, int *imethod, int *prec, int *maxiter, double *TOL)
+
+extern "C" void ROCSerialSolve(int *n, int *rows, int *cols, double *vals, double *b, double *x_inout,
+      int *nonlin_update, int *imethod, int *prec, int *maxiter, double *TOL, int *schur_n,
+                int *schur_rows, int *schur_cols, double *schur_vals, int *dofs)
 {
 
-    int i, *Lrows, *Lcols, rank, nranks;
-    double *Lvals;
-
+    int i, j, k, l, m, rank, nranks;
 
     // Initialize rocALUTION
     init_rocalution();
+    info_rocalution();
 
     // Start time measurement
     double tick, tack;
     tick = rocalution_time();
 
-
     LocalMatrix<double> mat;
+    LocalMatrix<double> schurComplement;
+
     LocalVector<double> x, rhs;
 
-    Lrows = (int *)malloc((*n+1)*sizeof(int));
-    Lcols = (int *)malloc((rows[*n])*sizeof(int));
-    Lvals= (double *)malloc((rows[*n])*sizeof(double));
+    // Preconditioner
+    DiagJacobiSaddlePointPrecond<LocalMatrix<double>, LocalVector<double>, double> prec_dj;
+    MultiColoredILU<LocalMatrix<double>, LocalVector<double>, double> prec_dj_a;
+    MultiColoredILU<LocalMatrix<double>, LocalVector<double>, double> prec_dj_b;
 
-    for(i=0; i<=*n; i++ ) Lrows[i] = rows[i];
-    for(i=0; i<rows[*n]; i++ ) Lcols[i] = cols[i];
-    for(i=0; i<rows[*n]; i++ ) Lvals[i] = vals[i];
+    Jacobi<LocalMatrix<double>, LocalVector<double>, double> prec_j;
+    SGS<LocalMatrix<double>, LocalVector<double>, double> prec_g;
+    ILU<LocalMatrix<double>, LocalVector<double>, double> prec_i;
+
+    // Linear Solver
+    IterativeLinearSolver<LocalMatrix<double>, LocalVector<double>, double> *ls;
+    BiCGStab<LocalMatrix<double>, LocalVector<double>, double> ls_bcg;
+    GMRES<LocalMatrix<double>, LocalVector<double>, double> ls_gmres;
+    CG<LocalMatrix<double>, LocalVector<double>, double> ls_cg;
+    FGMRES<LocalMatrix<double>, LocalVector<double>, double> ls_fgmres;
+    BiCGStabl<LocalMatrix<double>, LocalVector<double>, double> ls_bcgl;
+
+    int *iCols = new int[*n];
+    int *Lcols = new int[rows[*n]];
+    int *Lrows = new int[*n+1];
+    double *Lvals = new double[rows[*n]];
+
+    if ( *prec==3 ) {
+      int r,s,nv=*dofs;
+
+#if 1
+      for(i=0; i<*n/nv; i++ )
+        for(j=0; j<nv; j++ ) iCols[nv*i+j] = i + j* *n/nv;
+
+      k = 0;
+      m = 0;
+      Lrows[0] = 0;
+      for( r=0; r<nv; r++)
+        for( i=0; i<*n/nv; i++ ) {
+  	  for( s=0; s<nv; s++ )
+            for( j=rows[nv*i+r]+s; j<rows[nv*i+1+r]; j+=nv ) {
+              if ( r==nv-1 && s==nv-1 ) continue;
+              Lvals[k] = vals[j];
+              Lcols[k++] = iCols[cols[j]];
+            }
+	  Lrows[++m] =  k;
+        }
+      fprintf( stderr, "X: %d %d %d %d\n", m, rows[*n], Lrows[*n], *n );
+#else
+      for(i=0; i<*n/nv; i++ )
+        for(j=0; j<nv; j++ ) iCols[nv*i+j] = nv*i+j;
+
+      k = 0;
+      m = 0;
+      Lrows[0] = 0;
+        for( i=0; i<*n; i++ ) {
+          for( j=rows[i]; j<rows[i+1]; j++ ) {
+    	    if (i % 3==0 && j % 3==0 ) continue;
+            Lvals[k] = vals[j];
+            Lcols[k++] = iCols[cols[j]];
+          }
+	  Lrows[++m] =  k;
+        }
+      fprintf( stderr, "X: %d %d %d %d\n", m, rows[*n], Lrows[*n], *n );
+
+#endif
+    } else {
+      for(i=0; i<=*n; i++ ) Lrows[i] = rows[i];
+      for(i=0; i<rows[*n]; i++ ) Lcols[i] = cols[i];
+      for(i=0; i<rows[*n]; i++ ) Lvals[i] = vals[i];
+    }
 
     mat.SetDataPtrCSR(&Lrows, &Lcols, &Lvals, "A", Lrows[*n], *n, *n);
+    delete Lcols, Lrows, Lvals;
 
     // Move objects to accelerator
     mat.MoveToAccelerator();
@@ -507,17 +571,22 @@ extern "C" void ROCSerialSolve(int *n, int *rows, int *cols, double *vals, doubl
     x.Allocate("x", mat.GetN());
     rhs.Allocate("rhs", mat.GetM());
 
-    rhs.CopyFromData(b);
-    x.CopyFromData(x_out);
+    if ( *prec==3 ) {
+      double *xx = new double[*n];
+      double *bb = new double[*n];
 
-    // Linear Solver
-    IterativeLinearSolver<LocalMatrix<double>, LocalVector<double>, double> *ls;
-
-    CG<LocalMatrix<double>, LocalVector<double>, double> ls_cg;
-    BiCGStab<LocalMatrix<double>, LocalVector<double>, double> ls_bcg;
-    BiCGStabl<LocalMatrix<double>, LocalVector<double>, double> ls_bcgl;
-    GMRES<LocalMatrix<double>, LocalVector<double>, double> ls_gmres;
-    FGMRES<LocalMatrix<double>, LocalVector<double>, double> ls_fgmres;
+      for(i=0; i<*n; i++ )
+      {
+         bb[iCols[i]] = b[i];
+         xx[iCols[i]] = x_inout[i];
+      }
+      rhs.CopyFromData(bb);
+      x.CopyFromData(xx);
+      delete xx, bb;
+    } else {
+      rhs.CopyFromData(b);
+      x.CopyFromData(x_inout);
+    }
 
     switch(*imethod) {
       case(0): ls = &ls_cg;  break;
@@ -527,21 +596,7 @@ extern "C" void ROCSerialSolve(int *n, int *rows, int *cols, double *vals, doubl
       case(4): ls = &ls_fgmres; ls_fgmres.SetBasisSize(50); break;
       default: ls = &ls_bcg; break;
     }
-
-    {
-      double bnrm;
-      bnrm = 0.0;
-      for(i=0; i<*n; i++ ) bnrm += b[i]*b[i];
-      bnrm = sqrt(bnrm);
-      if (bnrm<1e-16) bnrm = 1;
-      ls->Init(*TOL*bnrm,1e-20,1e20,*maxiter);
-    }
-
-    // Preconditioner
-    Jacobi<LocalMatrix<double>, LocalVector<double>, double> prec_j;
-    SGS<LocalMatrix<double>, LocalVector<double>, double> prec_g;
-    ILU<LocalMatrix<double>, LocalVector<double>, double> prec_i;
-
+     
     switch(*prec) {
       case(0): ls->SetPreconditioner(prec_j); break;
       case(1): ls->SetPreconditioner(prec_g); break;
@@ -552,14 +607,59 @@ extern "C" void ROCSerialSolve(int *n, int *rows, int *cols, double *vals, doubl
           prec_i.Set(level);
         }
         break;
+      case(3):
+
+#ifdef  HAVE_SETSCHURCOMPLEMENT
+	if ( *schur_n > 0 ) {
+          int *Srows = new int[*schur_n+1];
+          int *Scols = new int[schur_rows[*schur_n]];
+          double *Svals = new double[schur_rows[*schur_n]];
+
+          for(i=0; i<=*schur_n; i++ ) Srows[i] = schur_rows[i];
+          for(i=0; i<schur_rows[*schur_n]; i++ ) Scols[i] = schur_cols[i];
+          for(i=0; i<schur_rows[*schur_n]; i++ ) Svals[i] = schur_vals[i];
+
+          schurComplement.SetDataPtrCSR(&Srows, &Scols, &Svals, "SchurComplement", Srows[*schur_n], *schur_n, *schur_n);
+          schurComplement.Info();
+          schurComplement.MoveToAccelerator();
+          prec_dj.SetSchurComplement(schurComplement);
+          delete Srows, Scols, Svals;
+	}
+#endif
+
+        int level=0;
+        prec_dj_a.Set(level);
+        prec_dj_b.Set(level);
+        prec_dj.Set(prec_dj_a, prec_dj_b);
+
+        ls->SetPreconditioner(prec_dj);
+        break;
     }
+
+
+    double bnrm;
+    bnrm = 0;
+    for(i=0; i<*n; i++ ) bnrm += b[i]*b[i];
+    bnrm = sqrt(bnrm);
+    if (bnrm<1e-16) bnrm = 1;
+    ls->Init(*TOL*bnrm,1e-20,1e20,*maxiter);
 
     ls->SetOperator(mat);
     ls->Build();
     ls->Verbose(2);
     mat.Info();
     ls->Solve(rhs, &x);
-    x.CopyToData(x_out);
+
+    if ( *prec == 3 ) {
+      double *xx = new double[*n];
+      x.CopyToData(xx);
+      for(i=0; i<*n; i++ ) {
+        x_inout[i] = xx[iCols[i]];
+      }
+      delete xx;
+    } else {
+      x.CopyToData(x_inout);
+    }
 
     ls->Clear();
 
@@ -569,19 +669,17 @@ extern "C" void ROCSerialSolve(int *n, int *rows, int *cols, double *vals, doubl
 
     // Stop rocALUTION platform
     stop_rocalution();
-
-    free(Lrows); free(Lcols); free(Lvals);
 } 
 #else
 #include <stdio.h>
 #include <stdlib.h>
-extern "C" void ROCSerialSolve(int *n, int *rows, int *cols, double *vals, double *b, double *x_out, int *nonlin_update)
+extern "C" void ROCSerialSolve(int *n, int *rows, int *cols, double *vals, double *b, double *x_inout, int *nonlin_update)
 {
   fprintf( stderr, "No serial ROCALUTION library included.\n" );
   exit(0);
 }
 
-extern "C" void ROCParallelSolve( int *gn, int *n, int *rows, int *cols, double *vals, double *b, double *x_out, 
+extern "C" void ROCParallelSolve( int *gn, int *n, int *rows, int *cols, double *vals, double *b, double *x_inout, 
 		          int *gOffset,int *fcomm )
 {
   fprintf( stderr, "No parallel ROCALUTION library included.\n" );

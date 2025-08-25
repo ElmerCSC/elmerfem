@@ -90,6 +90,8 @@ static int elm_8node_brick_triangulate( geometry_t *geom,element_t *brick )
 {
     element_t quad;
     int i,j;
+    int geo_add_edge();
+    int elm_4node_quad_triangulate();
 
     if ( GlobalOptions.VolumeSides )
     {
@@ -339,6 +341,7 @@ int elm_8node_brick_point_inside
         { 0,1,2 }, { 0,2,3 }, { 4,5,6 }, { 4,6,7 }, { 3,2,6 }, { 3,6,7 },
         { 1,5,6 }, { 1,6,2 }, { 0,4,7 }, { 0,7,3 }, { 0,1,5 }, { 0,5,4 },
     };
+    int elm_4node_tetra_point_inside();
 
     maxx = minx = nx[0];
     maxy = miny = ny[0];
@@ -410,6 +413,7 @@ int elm_8node_brick_isoline
     double f[4],c[4],x[4],y[4],z[4];
 
     int i, j, k, n=0, above=0;
+    int elm_4node_quad_isoline();
 
     for( i=0; i<8; i++ ) above += F[i]>K;
     if ( above == 0 || above == 8 ) return 0;
@@ -460,6 +464,8 @@ int elm_8node_brick_isosurface
     int i,j,n;
 
     int above = 0, below = 0;
+
+    int elm_4node_tetra_isosurface();
 
     for( i=0; i<8; i++ ) above += F[i]>K;
     for( i=0; i<8; i++ ) below += F[i]<K;
@@ -585,6 +591,8 @@ int elm_8node_brick_isosurface1
 
     int above = 0, below = 0;
 
+    int elm_4node_tetra_isosurface();
+
     for( i=0; i<8; i++ ) above += F[i]>K;
     for( i=0; i<8; i++ ) below += F[i]<K;
     if ( below == 8 || above == 8 ) return 0;
@@ -640,6 +648,8 @@ int elm_8node_brick_initialize()
      static char *Name = "ELM_8NODE_BRICK";
 
      element_type_t ElementDef;
+
+     int elm_add_element_type();
 
      elm_8node_brick_shape_functions();
 

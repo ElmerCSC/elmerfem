@@ -1295,7 +1295,7 @@ CONTAINS
 
   
 !------------------------------------------------------------------------------
-!> Computes the rowsoum of a given row in a CRS matrix.
+!> Computes the rowsum of a given row in a CRS matrix.
 !------------------------------------------------------------------------------
 FUNCTION CRS_RowSum( A,k ) RESULT(rsum)
 !------------------------------------------------------------------------------
@@ -1311,6 +1311,25 @@ FUNCTION CRS_RowSum( A,k ) RESULT(rsum)
    END DO
 !------------------------------------------------------------------------------
 END FUNCTION CRS_RowSum
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Computes the absolute rowsum of a given row in a CRS matrix.
+!------------------------------------------------------------------------------
+FUNCTION CRS_RowSumAbs( A,k ) RESULT(rsum)
+!------------------------------------------------------------------------------
+  TYPE(Matrix_t), INTENT(IN) :: A       !< Structure holding matrix
+  INTEGER, INTENT(IN) :: k              !< Row index 
+  REAL(KIND=dp) :: rsum                 !< Sum of the entries on the row
+!------------------------------------------------------------------------------
+  INTEGER :: i
+
+  rsum = 0.0D0
+  DO i=A % Rows(k), A % Rows(k+1)-1
+    rsum  = rsum + ABS( A % Values( i ) ) 
+  END DO
+!------------------------------------------------------------------------------
+END FUNCTION CRS_RowSumAbs
 !------------------------------------------------------------------------------
 
 
@@ -1884,7 +1903,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
      INTEGER, POINTER  CONTIG :: Cols(:),Rows(:)
      REAL(KIND=dp), POINTER  CONTIG :: Values(:)
 
-     INTEGER :: i,j,k,n
+     INTEGER :: i,j,k,n,m
      REAL(KIND=dp) :: rsum
 #ifdef HAVE_MKL
 	INTERFACE
@@ -1903,13 +1922,14 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
      n = A % NumberOfRows
      Rows   => A % Rows
      Cols   => A % Cols
-     Values => A % Values
-
-	! Use MKL to perform mvp if it is available
+     Values => A % Values     
+          
+     ! Use MKL to perform mvp if it is available
 #ifdef HAVE_MKL
-	CALL mkl_dcsrgemv('T', n, Values, Rows, Cols, u, v)
+     CALL mkl_dcsrgemv('T', n, Values, Rows, Cols, u, v)
 #else
-     v(1:n) = 0.0_dp
+     m = MAXVAL(Cols)
+     v(1:m) = 0.0_dp
      DO i=1,n
 !DIR$ IVDEP
        DO j=Rows(i),Rows(i+1)-1

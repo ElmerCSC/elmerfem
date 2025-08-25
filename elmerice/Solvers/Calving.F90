@@ -87,11 +87,7 @@ SUBROUTINE Find_Calving (Model, Solver, dt, TransientSimulation )
         CornerNormal(3), BedSecond, BedSecondDiff, beddiff, BedToler, dx, dy, &
         LocalDist, LocalDistNode, PropDistNode, normalcond, ForceCalveSize, &
         localM(2,2), EigValues(2), EI(2), dumy, dumy2, work(8),YieldStress, &
-#ifdef USE_ISO_C_BINDINGS
         rt0, rt
-#else
-        rt0, rt, RealTime
-#endif
    REAL (KIND=DP), POINTER :: DepthValues(:), StressValues(:), Stress1Values(:), Stress4Values(:), &
         Calving1Values(:), DistanceValues(:), WPressureValues(:), FrontValues(:), &
         CSurfIndexValues(:), CBasalIndexValues(:), CIndexValues(:), CrevasseGroupValues(:), &

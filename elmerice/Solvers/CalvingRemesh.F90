@@ -741,11 +741,7 @@ CONTAINS
          ColMin(3), ColMax(3), p1(2), p2(2), q1(2), q2(2), intersect(2), &
          BotDisplacement, TopDisplacement, Displacement, prop, x,dx,maxdz,maxdzdx,DzDxThresh,&
          DzDxMaxDev,ThisDzDxMaxDev,dist,detJ,ShiftBuffer,&
-#ifdef USE_ISO_C_BINDINGS
         rt0, rt
-#else
-        rt0, rt, RealTime
-#endif
 
     REAL(KIND=dp), POINTER :: TopVarValues(:), BottomVarValues(:), ZeroOneHeight(:),&
          ActualHeight(:), WorkReal(:), WorkReal2(:), ForceVector(:),Basis(:)

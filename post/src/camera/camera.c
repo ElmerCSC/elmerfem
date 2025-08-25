@@ -367,6 +367,7 @@ int cam_display_list( camera_t *camera, object_t *object )
 
     int FitToPage = 0, nofcameras;
     camera_t *cam;
+    void initglp(), stopglp(), gra_set_projection();
 
     if ( GlobalOptions.OutputPS ) {
        initglp( Tcl_GetVar( TCLInterp, "PSFileName", TCL_GLOBAL_ONLY ), 

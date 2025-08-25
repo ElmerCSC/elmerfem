@@ -49,8 +49,8 @@ MODULE MeshUtils
     USE ParallelUtils
     USE Lists
     USe ListMatrix
-    USE ElementUtils, ONLY : mGetBoundaryIndexesFromParent, mGetElementDofs, &
-        NormalDirection, CreateMatrix, CopyElementNodesFromMesh, TangentDirections, &
+    USE ElementUtils, ONLY : mGetBoundaryIndexesFromParent, &
+        NormalDirection, CreateMatrix, TangentDirections, &
         FreeMatrix
     IMPLICIT NONE
 
@@ -7750,7 +7750,7 @@ CONTAINS
       ! We assume that the 1st element may be used to determine whether the mesh is a p-element
       ! mesh or not.
       Element => BMesh1 % Elements(1)        
-      pElemBasis = isPElement(Element) 
+      pElemBasis = isActivePElement(Element, CurrentModel % Solver) 
       pElemProj = pElemBasis
       IF( pElemProj ) THEN
         IF( ListGetLogical( BC,'Projector Linear Basis',Found ) ) pElemProj = .FALSE.
@@ -8282,12 +8282,13 @@ CONTAINS
     LOGICAL, OPTIONAL :: AntiPeriodic 
     !---------------------------------------------------------------------------------      
     INTEGER :: n, ind, indm, e, em, eind, eindm, k1, k2, km1, km2, sgn0, sgn, i1, i2, &
-        noedges, noedgesm, Nundefined, n0
+        noedges, noedgesm, Nundefined, n0, dim
     TYPE(Element_t), POINTER :: Edge, EdgeM
     INTEGER, POINTER :: Indexes(:), IndexesM(:)
-    REAL(KIND=dp) :: xm1, xm2, ym1, ym2, x1, y1, x2, y2, y2m, nrow
+    REAL(KIND=dp) :: xm1, xm2, ym1, ym2, x1, y1, x2, y2, y2m, z1, zm1, z2, zm2, nrow
     INTEGER, ALLOCATABLE :: PeriodicEdge(:), EdgeInds(:), EdgeIndsM(:)
-    REAL(KIND=dp), ALLOCATABLE :: EdgeX(:,:), EdgeY(:,:), EdgeMX(:,:), EdgeMY(:,:)
+    REAL(KIND=dp), ALLOCATABLE :: EdgeX(:,:), EdgeY(:,:), EdgeZ(:,:), &
+        EdgeMX(:,:), EdgeMY(:,:), EdgeMZ(:,:)
     REAL(KIND=dp) :: coordprod, indexprod, ss, minss, maxminss
     INTEGER :: minuscount, samecount, mini, doubleusecount
     LOGICAL :: Parallel, AntiPer
@@ -8302,10 +8303,18 @@ CONTAINS
     AntiPer = .FALSE.
     IF( PRESENT( AntiPeriodic ) ) AntiPer = AntiPeriodic
 
-    CALL CreateEdgeCenters( Mesh, BMesh1, noedges, EdgeInds, EdgeX, EdgeY ) 
+    dim = 2
+    BLOCK
+      REAL(KIND=dp) :: maxz, minz
+      maxz = MAXVAL(BMesh1 % Nodes % z)
+      minz = MINVAL(BMesh1 % Nodes % z)
+      IF(maxz-minz > EPSILON(maxz)) dim=3
+    END BLOCK
+      
+    CALL CreateEdgeCenters( Mesh, BMesh1, noedges, EdgeInds, EdgeX, EdgeY, EdgeZ )       
     CALL Info(Caller,'Number of edges in slave mesh: '//I2S(noedges),Level=10)
 
-    CALL CreateEdgeCenters( Mesh, BMesh2, noedgesm, EdgeIndsM, EdgeMX, EdgeMY )
+    CALL CreateEdgeCenters( Mesh, BMesh2, noedgesm, EdgeIndsM, EdgeMX, EdgeMY, EdgeMZ )
     CALL Info(Caller,'Number of edges in master mesh: '//I2S(noedgesm),Level=10)
 
     IF( noedges == 0 ) RETURN
@@ -8324,7 +8333,8 @@ CONTAINS
     DO i1=1,noedges
       x1 = EdgeX(3,i1)
       y1 = EdgeY(3,i1)
-
+      IF(dim==3) z1 = EdgeZ(3,i1)
+      
       IF( PerPerm( EdgeInds(i1) + n0 ) > 0 ) CYCLE
 
       minss = HUGE(minss)
@@ -8333,8 +8343,14 @@ CONTAINS
       DO i2=1,noedgesm
         x2 = EdgeMX(3,i2)
         y2 = EdgeMY(3,i2)
-
-        ss = (x1-x2)**2 + (y1-y2)**2
+        
+        IF(dim==3) THEN
+          z2 = EdgeMZ(3,i2)
+          ss = (x1-x2)**2 + (y1-y2)**2 + (z1-z2)**2        
+        ELSE
+          ss = (x1-x2)**2 + (y1-y2)**2 
+        END IF
+          
         IF( ss < minss ) THEN
           minss = ss
           mini = i2
@@ -8388,7 +8404,11 @@ CONTAINS
       x2 = EdgeX(2,e)
       y1 = EdgeY(1,e)
       y2 = EdgeY(2,e)
-
+      IF(dim==3) THEN
+        z1 = EdgeZ(1,e)
+        z2 = EdgeZ(2,e)
+      END IF
+        
       ! Get the coordinates and indexes of the 2nd edge
       EdgeM => Mesh % Edges(eindm)
       km1 = EdgeM % NodeIndexes( 1 )
@@ -8402,8 +8422,14 @@ CONTAINS
       xm2 = EdgeMX(2,em)
       ym1 = EdgeMY(1,em)
       ym2 = EdgeMY(2,em)
-
-      coordprod = (x1-x2)*(xm1-xm2) + (y1-y2)*(ym1-ym2) 
+      IF(dim==3) THEN
+        zm1 = EdgeMZ(1,em)
+        zm2 = EdgeMZ(2,em)
+        coordprod = (x1-x2)*(xm1-xm2) + (y1-y2)*(ym1-ym2) + (z1-z1)*(zm1-zm2)
+      ELSE
+        coordprod = (x1-x2)*(xm1-xm2) + (y1-y2)*(ym1-ym2) 
+      END IF
+        
       indexprod = (k1-k2)*(km1-km2)
 
       IF( coordprod * indexprod < 0 ) THEN
@@ -8421,9 +8447,8 @@ CONTAINS
       PerPerm(eind+n0) = eindm + n0
     END DO
 
-    DEALLOCATE( EdgeInds, EdgeX, EdgeY ) 
-    DEALLOCATE( EdgeIndsM, EdgeMX, EdgeMY )
-    DEALLOCATE( PeriodicEdge )
+    DEALLOCATE( EdgeInds, EdgeX, EdgeY, EdgeIndsM, EdgeMX, EdgeMY, PeriodicEdge )
+    IF(dim==3) DEALLOCATE( EdgeZ, EdgeMZ )
 
     IF( samecount > 0 ) THEN
       CALL Info(Caller,'Number of edges are the same: '//I2S(samecount),Level=8)
@@ -8446,25 +8471,24 @@ CONTAINS
     
     ! Create edge centers for the mapping routines.
     !------------------------------------------------------------------------------
-    SUBROUTINE CreateEdgeCenters( Mesh, EdgeMesh, noedges, EdgeInds, EdgeX, EdgeY ) 
+    SUBROUTINE CreateEdgeCenters( Mesh, EdgeMesh, noedges, EdgeInds, EdgeX, EdgeY, EdgeZ ) 
 
       TYPE(Mesh_t), POINTER :: Mesh
       TYPE(Mesh_t), POINTER :: EdgeMesh
       INTEGER :: noedges
       INTEGER, ALLOCATABLE :: EdgeInds(:)
-      REAL(KIND=dp), ALLOCATABLE :: EdgeX(:,:), EdgeY(:,:)
+      REAL(KIND=dp), ALLOCATABLE :: EdgeX(:,:), EdgeY(:,:), EdgeZ(:,:)
 
       LOGICAL, ALLOCATABLE :: EdgeDone(:)
       INTEGER :: ind, eind, i, i1, i2, k1, k2, ktmp
       TYPE(Element_t), POINTER :: Element
       INTEGER, POINTER :: EdgeMap(:,:), Indexes(:)
       LOGICAL :: AllocationsDone 
-
+      
 
       ALLOCATE( EdgeDone( Mesh % NumberOfEdges ) )
       AllocationsDone = .FALSE.
-
-
+      
 100   noedges = 0
       EdgeDone = .FALSE.
 
@@ -8514,6 +8538,12 @@ CONTAINS
             EdgeX(3,noedges) = EdgeX(1,noedges) + EdgeX(2,noedges)
             EdgeY(3,noedges) = EdgeY(1,noedges) + EdgeY(2,noedges)
 
+            IF(dim == 3 ) THEN
+              EdgeZ(1,noedges) = EdgeMesh % Nodes % z(k1)
+              EdgeZ(2,noedges) = EdgeMesh % Nodes % z(k2)
+              EdgeZ(3,noedges) = EdgeZ(1,noedges) + EdgeZ(2,noedges)
+            END IF
+              
             EdgeInds(noedges) = eind
           END IF
         END DO
@@ -8522,6 +8552,7 @@ CONTAINS
       IF(noedges > 0 .AND. .NOT. AllocationsDone ) THEN
         CALL Info(Caller,'Allocating stuff for edges',Level=20)
         ALLOCATE( EdgeInds(noedges), EdgeX(3,noedges), EdgeY(3,noedges) )
+        IF(dim==3) ALLOCATE(EdgeZ(3,noedges) )
         AllocationsDone = .TRUE.
         GOTO 100
       END IF
@@ -9044,7 +9075,7 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: Cond(:)
     TYPE(Matrix_t), POINTER :: DualProjector    
     LOGICAL :: DualMaster, DualSlave, DualLCoeff, BiorthogonalBasis
-    LOGICAL :: SecondOrder, pElemProj, pElemBasis
+    LOGICAL :: SecondFamily, SecondOrder, pElemProj, pElemBasis
     CHARACTER(*), PARAMETER :: Caller = "LevelProjector"
 
     CALL Info(Caller,'Creating projector for a levelized mesh',Level=7)
@@ -9286,16 +9317,13 @@ CONTAINS
       CALL Info(Caller,'Using biorthogonal basis for weak projectors, as requested',Level=8)      
     END IF
 
-
-    PiolaVersion = ListGetLogical( CurrentModel % Solver % Values, &
-        'Use Piola Transform', Found)
-    SecondOrder = ListGetLogical( CurrentModel % Solver % Values, &
-        'Quadratic Approximation', Found)
-      
+    CALL EdgeElementStyle(CurrentModel % Solver % Values, PiolaVersion, SecondFamily, SecondOrder)  
+    IF (SecondFamily) CALL Fatal(Caller, 'No ready functionality for the 2nd kind basis')
+    
     ! We assume that the 1st element may be used to determine whether the mesh is a p-element
     ! mesh or not.
     Element => BMesh1 % Elements(1)        
-    pElemBasis = isPElement(Element) 
+    pElemBasis = isActivePElement(Element, CurrentModel % Solver) 
     pElemProj = pElemBasis
     IF( pElemProj ) THEN
       IF( ListGetLogical( BC,'Projector Linear Basis',Found ) ) pElemProj = .FALSE.
@@ -9577,7 +9605,8 @@ CONTAINS
         IF( StrongConformingEdges ) THEN
           CALL AddEdgeProjectorStrongConforming()
         ELSE         
-          IF( ListGetLogical( BC,'Level Projector Edges Generic', Found ) ) THEN
+          IF( ListGetLogical( BC,'Level Projector Edges Generic', Found ) .OR. &
+              ListGetLogical( BC,'Level Projector Generic', Found ) ) THEN
             CALL AddEdgeProjectorStrongGeneric()
           ELSE         
             CALL AddEdgeProjectorStrongStrides()
@@ -10720,7 +10749,7 @@ CONTAINS
 
         n = Element % TYPE % NumberOfNodes
         ne = Element % TYPE % NumberOfEdges
-        IF( PiolaVersion ) THEN
+        IF( PiolaVersion .AND. n==4) THEN
           nf = 2
         ELSE
           nf = 0
@@ -12507,7 +12536,7 @@ CONTAINS
       TYPE(Element_t), POINTER :: Edge
       TYPE(EdgeHelper_t), ALLOCATABLE :: EdgeHelper(:)
       INTEGER, ALLOCATABLE :: Eperm1(:), Eperm2(:)      
-      INTEGER :: DebugInd, Nslave, Nmaster, symmCount, DebugEdge, ipi
+      INTEGER :: DebugInd, Nslave, Nmaster, symmCount, DebugEdge, ipi, LeftCnt, RedCuts
       LOGICAL :: SaveElem, DebugElem, SaveErr, symmX, symmY
       CHARACTER(*), PARAMETER :: Caller = "AddEdgeProjectorStrongGeneric"
       
@@ -12574,6 +12603,8 @@ CONTAINS
       ZeroCuts = 0
       IpHit = 0
       IpCount = 0 
+      LeftCnt = 0
+      RedCuts = 0
       
       AnyQuad = .FALSE.
       DO ind=1,BMesh1 % NumberOfBulkElements 
@@ -12595,6 +12626,8 @@ CONTAINS
       ELSE
         IP = GaussPoints1D( 1 )
       END IF
+
+      CALL Info(Caller,'Total number of edge dofs: '//I2S(TotalEdges),Level=10)
       
       ALLOCATE( EdgeHelper(TotalEdges) )
       EdgeHits = 0
@@ -12652,7 +12685,9 @@ CONTAINS
         ! Even for quadratic elements only work with corner nodes (n >= ne)        
         IF( FaceEdge > 0 ) THEN
           IF( n == 3 ) CYCLE
-          ! The two additonal edge dofs are spanned between the corners. 
+          ! The two additional edge dofs may be associated with virtual edges between
+          ! the mid-points of the opposite edges
+          
           IF( MODULO(FaceEdge,2) == 0 ) THEN
             Nodes % x(1) = SUM(Nodes % x(1:2))/2
             Nodes % y(1) = SUM(Nodes % y(1:2))/2
@@ -12675,6 +12710,7 @@ CONTAINS
             DO j=1,n
               IF( Alpha(j) < 0.0 ) Alpha(j) = Alpha(j) + ArcCoeff * 360.0_dp
             END DO
+            LeftCnt = LeftCnt + 1
           END IF
         END IF
 
@@ -12825,7 +12861,7 @@ CONTAINS
         PRINT *,'ArcCoeff:',ArcCoeff
       END IF
 
-      ! 2) The we loop over elements and tag the edge when a projector has been created to it. 
+      ! 2) Then we loop over elements and tag the edge when a projector has been created to it. 
       ! We need elements (not just edges) so that we can properly create the Hcurl base.
       !---------------------------------------------------------------------------------------
       DO ind=1,BMesh1 % NumberOfBulkElements 
@@ -12875,7 +12911,7 @@ CONTAINS
             x2 = Nodes % x(i2) 
             y2 = Nodes % y(i2)            
           ELSE
-            ! Fictive edges spanning from corner to corner.
+            ! Fictive edges spanning from center-of-edge to center-of-opposite-edge 
             jj = BMesh1 % NumberOfEdges + 2*(ind-1)+(j-ne)
             IF(j-ne == 2 ) THEN
               x1 = SUM(Nodes % x(1:2))/2
@@ -12920,8 +12956,11 @@ CONTAINS
           ! Go through the pieces of each egde and apply numerical integration to each of them.
           DO ic=1,k+1
             ! We may have cut at almost the same coordinate. 
-            IF( ABS(Cuts(ic)-Cuts(ic+1)) < 1.0e-6 ) CYCLE
-
+            IF( ABS(Cuts(ic)-Cuts(ic+1)) < 1.0e-8 ) THEN
+              RedCuts = RedCuts + 1
+              CYCLE
+            END IF
+              
             ! Numerical integration rule.
             DO ipi = 1, IP % n
               ! set local coordinate to [0,1]
@@ -12945,7 +12984,9 @@ CONTAINS
               CALL GlobalToLocal( u, v, w, xc, yc, zc, Element, Nodes )              
               stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )                                            
 
-              IF( DebugOn ) THEN              
+              IF( DebugOn ) THEN                              
+                PRINT *,'IP:',IP % n, IP % u(1:IP % n), IP % v(1:IP % n)
+                PRINT *,'ds:',u,v,ips,ds
                 PRINT *,'Find inds',ind,c(1),k,ic
                 PRINT *,'Find Coord:',u,v,xc,yc              
               END IF
@@ -13007,13 +13048,8 @@ CONTAINS
                   Nrange2 = FLOOR( (xc-xminm+ArcTol) / ArcRange )                  
                   IF( Nrange1 /= 0 ) THEN
                     NodesM % x(1:nM) = NodesM % x(1:nM) - NRange1 * ArcRange 
-                    xminm = MINVAL( NodesM % x(1:nM) )
-                    xmaxm = MAXVAL( NodesM % x(1:nM) )
                   END IF
                   Nrange = Nrange1
-                ELSE
-                  xminm = MINVAL( NodesM % x(1:neM) )
-                  xmaxm = MAXVAL( NodesM % x(1:neM) )
                 END IF
                 
 200             ymaxm = MAXVAL( NodesM % y(1:nM) )
@@ -13034,8 +13070,8 @@ CONTAINS
                   END DO
                 END IF
 
-                !xmaxm = MAXVAL( NodesM % x(1:nM) )
-                !xminm = MINVAL( NodesM % x(1:nM) )
+                xmaxm = MAXVAL( NodesM % x(1:nM) )
+                xminm = MINVAL( NodesM % x(1:nM) )
 
                 ! Eliminate this special case since it could otherwise give a faulty hit
                 IF( FullCircle .AND. .NOT. LeftCircle ) THEN
@@ -13136,8 +13172,10 @@ CONTAINS
                 IpHit = IpHit + 1
                 Hit = .TRUE.
                 EXIT
+
+100             CONTINUE
                 
-100             IF( Repeating ) THEN
+                IF( Repeating ) THEN
                   IF( NRange2 /= Nrange ) THEN
                     xminm = xminm + ArcCoeff * ( Nrange1 - Nrange2 ) * ArcRange
                     xmaxm = xmaxm + ArcCoeff * ( Nrange1 - Nrange2 ) * ArcRange
@@ -13176,8 +13214,11 @@ CONTAINS
           Basis, BasisM, dBasisdx, WBasis, WBasisM, RotWBasis )
 
       CALL Info(Caller,'Number of IP points: '//I2S(IpCount),Level=6)
-      CALL Info(Caller,'Number of IP misses: '//I2S(IpCount-IpHit),Level=6)
-      
+      CALL Info(Caller,'Number of Zero length segments: '//I2S(RedCuts),Level=6)
+
+      IF(IpCount > IpHit) CALL Info(Caller,'Number of IP misses: '//I2S(IpCount-IpHit),Level=6)      
+      IF(LeftCnt > 0) CALL Info(Caller,'Number of edge dofs on left side: '//I2S(LeftCnt),Level=12)
+
       WRITE( Message,'(A,ES12.5)') 'Total slave sum:',SlaveSum
       CALL Info(Caller,Message,Level=8)
       WRITE( Message,'(A,ES12.5)') 'Total master sum:',MasterSum
@@ -17235,7 +17276,7 @@ CONTAINS
           ! Ensure that there is no p-elements that made us think that we have edges
           ! Here we assume that if there is any p-element then also the 1st element is such
           IF( DoEdges ) THEN
-            IF(isPelement(Mesh % Elements(1))) THEN
+            IF(isActivePelement(Mesh % Elements(1), Model % Solver)) THEN
               DoEdges = .FALSE.
               CALL Info(Caller,'Edge projector will not be created for p-element mesh',Level=10)
             END IF
@@ -17508,7 +17549,7 @@ CONTAINS
     ! Ensure that there is no p-elements that made us think that we have edges
     ! Here we assume that if there is any p-element then also the 1st element is such
     IF( DoEdges ) THEN
-      IF(isPelement(Mesh % Elements(1))) THEN
+      IF(isActivePelement(Mesh % Elements(1))) THEN
         DoEdges = .FALSE.
         CALL Info(Caller,'Edge projector will not be created for p-element mesh',Level=10)
       END IF
@@ -18331,7 +18372,7 @@ CONTAINS
 
     ExtrudedCoord = ListGetInteger( CurrentModel % Simulation,'Extruded Coordinate Index', &
         Found, minv=1,maxv=3 )
-    IF(.NOT. Found) ExtrudedCoord = Mesh_in % MeshDim + 1 
+    IF(.NOT. Found) ExtrudedCoord = MIN(3,Mesh_in % MeshDim + 1)
     CALL Info(Caller,'Extrusion in direction of dimension: '//I2S(ExtrudedCoord),Level=12)
     
     IF( ExtrudedCoord == 1 ) THEN
@@ -18849,7 +18890,7 @@ CONTAINS
     Mesh_out % MaxElementDOFs  = Mesh_out % MaxElementNodes
     Mesh_out % Stabilize = Mesh_in % Stabilize
 
-    Mesh_out % MeshDim = Mesh_in % MeshDim + 1
+    Mesh_out % MeshDim = MIN(3, Mesh_in % MeshDim + 1)
     CurrentModel % Dimension = MIN( CurrentModel % Dimension+1, 3 )
    
     DEALLOCATE( BCLayers ) 
@@ -18945,8 +18986,9 @@ CONTAINS
     TYPE(ParallelInfo_t), POINTER :: PI_in, PI_out
     TYPE(Element_t), POINTER :: Element
     INTEGER :: nnodes,gnodes,gelements,ierr,nlev,ilev,&
-        nParMesh,nParExt,OrigPart,ElemCode,bodyid
-    LOGICAL :: isParallel, SingleIn, Found, TopBC, BotBC, CollectExtrudedBCs
+        nParMesh,nParExt,OrigPart,ElemCode,bodyid, newbcs
+    LOGICAL :: isParallel, SingleIn, Found, TopBC, BotBC, &
+        CollectExtrudedBCs, SeparateSlices, CreateInternalBCs, InternalBC
     INTEGER,ALLOCATABLE :: ChildBCs(:)
     REAL(KIND=dp)::CurrCoord 
     REAL(KIND=dp), POINTER :: ActiveCoord(:)
@@ -19017,6 +19059,8 @@ CONTAINS
     gelements = Mesh_in % NumberOfBulkElements
 
     Mesh_out % SingleMesh = .FALSE.
+    SeparateSlices = .FALSE.
+    CreateInternalBCs = .FALSE.
     
     ExtrudedCoord = ListGetInteger( CurrentModel % Simulation,'Extruded Coordinate Index', &
         Found, minv=1,maxv=3 )
@@ -19031,7 +19075,7 @@ CONTAINS
     END IF
 
     CollectExtrudedBCs = ListGetLogical( CurrentModel % Simulation,'Extruded BCs Collect',Found )
-     
+    
     IF (isParallel) THEN
       PI_in  => Mesh_in % ParallelInfo
       PI_out => Mesh_out % ParallelInfo
@@ -19039,17 +19083,19 @@ CONTAINS
       IF(.NOT. ASSOCIATED( PI_in ) ) CALL Fatal(Caller,'PI_in not associated!')
       IF(.NOT. ASSOCIATED( PI_out ) ) CALL Fatal(Caller,'PI_out not associated!')
             
+      SeparateSlices = ListGetLogical( CurrentModel % Simulation,'Extruded Mesh Slices Separate',Found )
+      CreateInternalBCs = ListGetLogical( CurrentModel % Simulation,'Extruded BCs Internal',Found ) 
+      IF(.NOT. Found) CreateInternalBCs = SeparateSlices 
+      
       ALLOCATE(PI_out % NeighbourList(nnodes))
       ALLOCATE(PI_out % GInterface(nnodes))
       ALLOCATE(PI_out % GlobalDOFs(nnodes))
 
       IF(.NOT. SingleIn ) THEN
         IF(.NOT. ASSOCIATED( PI_in % NeighbourList ) ) THEN
-          CALL Fatal(Caller,'Neighnours not associated!')
+          CALL Fatal(Caller,'Neighnours not associated in initial mesh!')
         END IF
-      END IF
-        
-      IF(.NOT. SingleIn ) THEN
+
         ! Count own nodes
         j=0
         DO i=1,Mesh_in % NumberOfNodes
@@ -19073,6 +19119,8 @@ CONTAINS
 
         !PRINT *,'nParExt:',ParEnv % Mype, nParExt, nParMesh, gnodes,gelements        
       END IF
+
+      Mesh_out % ParallelInfo % NothingShared = ( SingleIn .AND. SeparateSlices )
     END IF
 
     CALL Info(Caller,'Number of nodes in layer: '//I2S(gnodes),Level=12)
@@ -19101,7 +19149,9 @@ CONTAINS
               m = SIZE(PI_in % NeighbourList(j) % Neighbours)
             END IF
           END IF
-          IF(i==0 .AND. ParEnv % MyPe > (nParMesh-1) ) THEN            
+          IF( SeparateSlices ) THEN
+            k = m
+          ELSE IF(i==0 .AND. ParEnv % MyPe > (nParMesh-1) ) THEN            
             k = 2*m
           ELSE IF(i==nlev .AND. ParEnv % MyPe < ParEnv % PEs- nParMesh ) THEN
             k = 2*m
@@ -19111,7 +19161,7 @@ CONTAINS
 
           ALLOCATE(PI_out % NeighbourList(cnt) % Neighbours(k))
           PI_out % GInterface(cnt) = (k>1)
-        
+                    
           DO k=1,m
             IF(m>1) THEN
               OrigPart = PI_in % NeighbourList(j) % Neighbours(k)
@@ -19119,14 +19169,22 @@ CONTAINS
               OrigPart = ParEnv % MyPe
             END IF                       
 
-            IF(SingleIn) THEN
-              l = j + (ilev+i) * gnodes
+            IF( SeparateSlices ) THEN
+              l = ( ParEnv % MyPe / nParMesh ) * ( nlev + 1 ) * gnodes
             ELSE
-              l = MODULO(PI_in % GlobalDOFs(j)-1,gnodes)+1 + (ilev+i) * gnodes 
+              l = ilev * gnodes
+            END IF
+                            
+            IF(SingleIn) THEN
+              l = l + j + i * gnodes
+            ELSE
+              l = l + MODULO(PI_in % GlobalDOFs(j)-1,gnodes)+1 + i * gnodes 
             END IF
             PI_out % GlobalDOFs(cnt) = l
-                                     
-            IF(i==0 .AND. ParEnv % MyPe > nParMesh-1 ) THEN
+
+            IF( SeparateSlices ) THEN
+              PI_out % NeighbourList(cnt) % Neighbours(k) = OrigPart               
+            ELSE IF(i==0 .AND. ParEnv % MyPe > nParMesh-1 ) THEN
               PI_out % NeighbourList(cnt) % Neighbours(2*k-1) = OrigPart
               PI_out % NeighbourList(cnt) % Neighbours(2*k) = OrigPart-1            
             ELSE IF(i==nlev .AND. ParEnv % MyPe < ParEnv % PEs-nParMesh ) THEN
@@ -19147,10 +19205,16 @@ CONTAINS
     ! Calculate exactly and allocate the number of extruded elements
     n = Mesh_in % NumberOfBulkElements + Mesh_in % NumberOfBoundaryElements
     totalnumberofelements = n*nlev
-    IF( ParEnv % MyPe < nParMesh ) totalnumberofelements = &
-        totalnumberofelements + Mesh_in % NumberOfBulkElements 
-    IF( ParEnv % MyPe >= ParEnv % PEs-nParMesh ) totalnumberofelements = &
-        totalnumberofelements + Mesh_in % NumberOfBulkElements 
+
+    IF( CreateInternalBCs ) THEN
+      totalnumberofelements = &
+          totalnumberofelements + 2 * Mesh_in % NumberOfBulkElements 
+    ELSE
+      IF( ParEnv % MyPe < nParMesh ) totalnumberofelements = &
+          totalnumberofelements + Mesh_in % NumberOfBulkElements 
+      IF( ParEnv % MyPe >= ParEnv % PEs-nParMesh ) totalnumberofelements = &
+          totalnumberofelements + Mesh_in % NumberOfBulkElements 
+    END IF
       
     ALLOCATE(Mesh_out % Elements(totalnumberofelements))
 
@@ -19279,13 +19343,25 @@ CONTAINS
     ELSE
       CALL Info(Caller,'Number of new BCs for each layer: '//I2S(max_body),Level=6)
     END IF
+    
+    IF( CollectExtrudedBCs ) THEN
+      newbcs = 2
+    ELSE
+      newbcs = 2 * max_body
+    END IF
 
+    IF( CreateInternalBCs ) THEN
+      CALL Info(Caller,'Internal bottom boundary: '//I2S(max_bid+newbcs+1),Level=6)
+      CALL Info(Caller,'Internal top boundary: '//I2S(max_bid+newbcs+2),Level=6)
+    END IF
+    
     ALLOCATE(ChildBCs(2*max_body))
     ChildBCs = -1
            
     ! Add bottom boundary:
     ! --------------------
-    IF( ParEnv % PEs == 1 .OR. ParEnv % MyPe < nParMesh ) THEN  
+    IF( ParEnv % PEs == 1 .OR. ParEnv % MyPe < nParMesh .OR. CreateInternalBCs ) THEN  
+      InternalBC = (ParEnv % PEs > 1 .AND. ParEnv % MyPe >= nParMesh )
       DO i=1,Mesh_in % NumberOfBulkElements
         cnt=cnt+1
         Element => Mesh_out % Elements(cnt) 
@@ -19300,14 +19376,16 @@ CONTAINS
         Element % BoundaryInfo % Right => NULL()
 
         bodyid = Mesh_in % Elements(i) % BodyId                
-        IF( CollectExtrudedBCs ) THEN
+        IF( InternalBC ) THEN
+          bcid = max_bid + newbcs + 1
+        ELSE IF( CollectExtrudedBCs ) THEN
           bcid = max_bid + 1
         ELSE
           bcid = max_bid + bodyid
         END IF
         Element % BoundaryInfo % Constraint = bcid
 
-        ChildBCs(2*bodyid-1) = bcid 
+        IF(.NOT. InternalBC) ChildBCs(2*bodyid-1) = bcid
         lastbc = MAX(lastbc,bcid)
 
         Element % BodyId = 0
@@ -19326,7 +19404,8 @@ CONTAINS
     
     ! Add top boundary:
     ! -----------------
-    IF( ParEnv % PEs == 1 .OR. ParEnv % MyPe >= ParEnv % PEs - nParMesh ) THEN
+    IF( ParEnv % PEs == 1 .OR. ParEnv % MyPe >= ParEnv % PEs - nParMesh .OR. CreateInternalBCs ) THEN
+      InternalBC = (ParEnv % PEs > 1 .AND. ParEnv % MyPe < ParEnv % PEs - nParMesh )
       DO i=1,Mesh_in % NumberOfBulkElements
         cnt=cnt+1
         Element => Mesh_out % Elements(cnt) 
@@ -19342,14 +19421,16 @@ CONTAINS
         Element % BoundaryInfo % Right => NULL()
         
         bodyid = Mesh_in % Elements(i) % BodyId                
-        IF( CollectExtrudedBCs ) THEN
+        IF( InternalBC ) THEN
+          bcid = max_bid + newbcs + 2
+        ELSE IF( CollectExtrudedBCs ) THEN
           bcid = max_bid + 2
         ELSE
           bcid = max_bid + bodyid + max_body
         END IF
         Element % BoundaryInfo % Constraint = bcid
 
-        ChildBCs(2*bodyid) = bcid 
+        IF(.NOT. InternalBC) ChildBCs(2*bodyid) = bcid 
         lastbc = MAX(lastbc,bcid)
         
         Element % BodyId = 0
@@ -21053,7 +21134,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE FindMeshFaces3D( Mesh, BulkMask)
     USE PElementMaps, ONLY : GetElementFaceMap
-    USE PElementBase, ONLY : isPTetra
 
     IMPLICIT NONE
 !------------------------------------------------------------------------------
@@ -21477,7 +21557,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE FindMeshEdges3D( Mesh )
     USE PElementMaps, ONLY : GetElementEdgeMap, GetElementFaceEdgeMap
-    USE PElementBase, ONLY : isPPyramid
 
     IMPLICIT NONE
 !------------------------------------------------------------------------------

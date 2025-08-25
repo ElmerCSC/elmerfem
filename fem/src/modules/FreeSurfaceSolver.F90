@@ -589,7 +589,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
         ElementNodes % z(1:n) = 0.0_dp
         IF (DIM == 2) THEN
            ElementNodes % y(1:n) = 0.0
-        ELSE IF(DIM .NE. 3) THEN
+        ELSE IF(DIM /= 3) THEN
            WRITE(Message,'(a,i0,a)')&
                 'It is not possible to compute free-surface problems in DIM=',&
                 DIM, ' dimensions. Aborting'
@@ -1130,7 +1130,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
           END IF
 
           UNorm = SQRT( SUM( Vgauss(1:dim-1)**2 ) )
-          IF (UNorm .NE. 0.0_dp) THEN
+          IF (UNorm /= 0.0_dp) THEN
              Tau = hK / ( 2*Unorm )
           ELSE
              Tau = 0.0_dp

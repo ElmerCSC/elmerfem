@@ -2879,7 +2879,9 @@ CONTAINS
     DO i=1,n
       IF( ABS(RefResults(i) ) > EPSILON(c) ) THEN
         c = ThisResults(i)/RefResults(i)
-        c = MAX( c, 1.0_dp /c ) 
+        IF( ABS(ThisResults(i) ) > EPSILON(c) ) THEN
+          c = MAX( c, 1.0_dp /c )
+        END IF
       ELSE
         c = 1.0_dp + ABS(ThisResults(i))
       END IF

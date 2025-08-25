@@ -67,6 +67,8 @@ SUBROUTINE  Flotation_init( Model,Solver,dt,TransientSimulation )
   
   SolverParams => Solver % Values 
 
+  CALL ListAddLogical( SolverParams,'No Matrix',.TRUE.)
+  
   ZbName = GetString(SolverParams, 'Bottom Surface Name', GotIt)
   IF (.NOT.GotIt) THEN
     CALL INFO(SolverName, 'Bottom Surface Name not found - using default Zb', level=3)
@@ -218,7 +220,7 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
   ENDIF
 
 !!! Do some initialisation/allocation
-  IF ((.NOT.Initialized).OR.Mesh%Changed) THEN
+  IF ((.NOT.Initialized) .OR. Mesh % Changed) THEN
 
     ActiveDirection = ListGetInteger(Params,'Active Coordinate',ExtrudedMesh)
     IF (ExtrudedMesh) THEN
@@ -284,7 +286,7 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
       IF (.NOT.Gotit) &
        MinH = ListGetConstReal(Material,'Min '//TRIM(HName), Gotit)
       IF (.NOT.GotIt) CALL FATAL(SolverName,TRIM(HName)//" not found...but was supposed to be limited")
-      IF (ALL((NodalH(1:n)-MinH(1:n)).LE.EPS)) IceFree=.TRUE.
+      IF (ALL((NodalH(1:n)-MinH(1:n)) < EPS)) IceFree=.TRUE.
     END IF
 
     Density(1:n) = ListGetReal( Material, 'SSA Mean Density',n, NodeIndexes,UnFoundFatal=.TRUE.)
@@ -298,16 +300,16 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
        zb=zsea-H*rhoi/rhow
       ! if bedrock defined check flotation criterion
        IF(ASSOCIATED(BedVar)) THEN
-          bedrock=BedVar%Values(BedVar%Perm(NodeIndexes(i)))
-          IF (zb.LE.bedrock) THEN
-             zb=bedrock
-             GL(i)=1
-             GroundedNode=GroundedNode+1
-             IF (ASSOCIATED(HafVar)) THEN
-                Hf=max(zsea-bedrock,0._dp)*rhow/rhoi
-                HafVar%Values(HafVar%Perm(NodeIndexes(i)))=H-Hf
-             END IF
-          END IF
+         bedrock=BedVar%Values(BedVar%Perm(NodeIndexes(i)))
+         IF (zb < bedrock) THEN
+           zb=bedrock
+           GL(i)=1
+           GroundedNode=GroundedNode+1
+         END IF
+         IF (ASSOCIATED(HafVar)) THEN
+           Hf=MAX(zsea-bedrock,0._dp)*rhow/rhoi
+           HafVar%Values(HafVar%Perm(NodeIndexes(i)))=H-Hf
+         END IF
        END IF
 
        zs=zb+H
@@ -322,24 +324,24 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
 
     End do
     IF (ASSOCIATED(GLMask)) THEN
-       IF ((GroundedNode.GT.0).AND.(GroundedNode.LT.n)) THEN
-           WHERE(GL.GT.0._dp) GL=0._dp
+       IF ((GroundedNode > 0).AND.(GroundedNode < n)) THEN
+           WHERE(GL > 0._dp) GL=0._dp
        END IF
        GLMask%Values(GLMask%Perm(NodeIndexes(1:n)))= GL(1:n) * ABS(GLMask%Values(GLMask%Perm(NodeIndexes(1:n))))
     END IF
 
 
     IF (ComputeIceMasks) THEN
-      IF (GroundedNode.EQ.0) THEN
+      IF (GroundedNode == 0) THEN
           !floating element
           IF (sftgrf % Perm(Eindex) > 0 ) &
            sftgrf % Values ( sftgrf % Perm(Eindex)) = 0._dp
           IF (sftflf % Perm(Eindex) > 0 ) &
            sftflf % Values ( sftflf % Perm(Eindex)) = 1._dp
-      ELSEIF (GroundedNode.LT.n) THEN
+      ELSEIF (GroundedNode < n) THEN
          !partly grounded
          CALL GetElementNodes( ElementNodes, Element )
-         IF (SEP) THEN
+         IF (SEP .AND. GLnIP > 0 ) THEN
            IP = GaussPoints( Element ,np=GLnIP )
          ELSE
            IP = GaussPoints( Element )
@@ -355,7 +357,7 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
            bedrock=SUM(BedVar%Values(BedVar%Perm(NodeIndexes(1:n)))*Basis(1:n))
            Hf=(zsea-bedrock)*rhow/rhoi
            IParea=detJ*IP % s(ll)
-           IF (H.LT.Hf) THEN
+           IF (H < Hf) THEN
              flarea=flarea+IParea
            ELSE
              grarea=grarea+IParea

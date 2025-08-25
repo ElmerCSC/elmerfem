@@ -171,11 +171,7 @@
         END SUBROUTINE EnthalpySolver_Inside_Residual
      END INTERFACE
 
-#ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: at,at0,totat,st,totst,t1
-#else
-  REAL(KIND=dp) :: at,at0,totat,st,totst,t1,CPUTime,RealTime
-#endif
 
 !------------------------------------------------------------------------------
 !    The View and Gebhart factors may change. If this is necessary, this is 

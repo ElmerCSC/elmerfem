@@ -79,6 +79,7 @@ static double NodeU[] = { 0.0, 1.0, 0.5 };
  ******************************************************************************/
 int elm_3node_bar_triangulate( geometry_t *geom, element_t *Elm, element_t *Parent)
 {
+    int geo_add_edge();
     geo_add_edge( geom, Elm->Topology[0],Elm->Topology[2],Parent );
     return geo_add_edge( geom, Elm->Topology[2],Elm->Topology[1],Parent );
 }
@@ -151,6 +152,7 @@ int elm_3node_bar_initialize()
      static char *Name = "ELM_3NODE_LINE";
 
      element_type_t ElementDef;
+     int elm_add_element_type();
 
      ElementDef.ElementName = Name;
      ElementDef.ElementCode = 203;

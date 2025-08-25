@@ -47,7 +47,8 @@ MODULE ParticleUtils
   
   USE DefUtils
   USE Lists
-  USE ElementUtils, ONLY : FreeMatrix, CopyElementNodesFromMesh
+  USE ElementUtils, ONLY : FreeMatrix
+  USE Interpolation, ONLY : CopyElementNodesFromMesh
   USE MeshUtils, ONLY : FindMeshEdges
   USE GeneralUtils
   USE SaveUtils

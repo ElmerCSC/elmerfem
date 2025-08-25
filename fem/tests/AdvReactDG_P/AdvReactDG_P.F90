@@ -62,13 +62,8 @@
      INTEGER :: Active, DIM,NonLinearIterMin,NonlinearIterMax,iter,&
           CorrectedLowerLimit,CorrectedUpperLimit
      INTEGER :: n1,nd1,nd2,n2, k, n, nd,t, istat, i, j, dummyInt, NumberOfFAces, Indexes(128)
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: Norm,RelativeChange,at,at0,totat,st,totst,&
           OriginalValue 
-#else
-     REAL(KIND=dp) :: Norm,RelativeChange,at,at0,totat,st,totst,CPUTime,RealTime,&
-          OriginalValue 
-#endif
      REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), STIFF(:,:), LOAD(:), &
               FORCE(:), Velo(:,:), MeshVelo(:,:), Gamma(:), Ref(:), &
               UpperLimit(:), LowerLimit(:)

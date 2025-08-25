@@ -193,6 +193,7 @@ int obj_display_list( object_t *object,double t )
 {
     extern double XMin,XMax,YMin,YMax,ZMin,ZMax;
     int i;
+    void gra_clip_plane(), gra_bbox(), obj_set_matrix(), gra_disable_clip();
 
     for( ; object != NULL; object = object->Next )
     {

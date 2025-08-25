@@ -92,10 +92,10 @@ CONTAINS
     DO i=1,n
       DO j=P % Rows(i),P % Rows(i+1)-1
         k = P % Cols(j)
-        val = P % Values(k) / A % Values(A % Diag(k))        
+        val = P % Values(j) / A % Values(A % Diag(k))        
         DO j2= Q % Rows(k),Q % Rows(k+1)-1
           k2 = Q % Cols(j2)
-          CALL List_AddToMatrixElement(S % ListMatrix, i, k2, -val * Q % Values(k2) )
+          CALL List_AddToMatrixElement(S % ListMatrix, i, k2, -val * Q % Values(j2) )
         END DO
       END DO
     END DO

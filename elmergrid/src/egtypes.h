@@ -369,7 +369,8 @@ struct ElmergridType {
     timeron,
     nosave,
     nooverwrite,
-    unitenooverlap;
+    unitenooverlap,
+    filerenamed;
 
   Real cscale[3], 
     corder[3],

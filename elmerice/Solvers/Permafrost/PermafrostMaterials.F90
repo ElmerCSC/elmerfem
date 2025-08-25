@@ -56,7 +56,8 @@ MODULE PermafrostMaterials
           muw0,nu10,anw(0:5),bnw(0:5)
      INTEGER :: &
           acwl,bcwl,aawl,bzwl,ckwl,&
-          acil,aail,ckil,anwl,bnwl 
+          acil,aail,ckil,anwl,bnwl
+     CHARACTER(LEN=MAX_NAME_LEN) :: SolventName
   END type SolventMaterial_t
   
   !---------------------------------
@@ -98,108 +99,184 @@ CONTAINS
   ! I/O related functions
   !-------------------------------------------------
 
-  SUBROUTINE SetPermafrostSolventMaterial( CurrentSolventMaterial)
+  SUBROUTINE ReadPermafrostSolventMaterial( Params, CurrentSolventMaterial)
     IMPLICIT NONE
-    TYPE(ValueList_t), POINTER :: Params, Constants
+    TYPE(ValueList_t), POINTER :: Params
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     ! ----------- local
+    INTEGER,PARAMETER :: io=20
+    INTEGER :: OK
     TYPE(SolventMaterial_t), TARGET :: LocalSolventMaterial
-    LOGICAL :: FirstTime=.TRUE.
-    CHARACTER(LEN=MAX_NAME_LEN) :: SubroutineName='SetPermafrostSolventMaterial'
-    SAVE LocalSolventMaterial, FirstTime
+    LOGICAL :: DataRead=.FALSE., Found
+    CHARACTER(LEN=MAX_NAME_LEN) :: SubroutineName='ReadPermafrostSolventMaterial', SolventMaterialFileName, Comment
+    SAVE LocalSolventMaterial, DataRead
 
-    IF (FirstTime) THEN
-      !------------------------------------------------------------------------------
-      ! set constants for water and ice 
-      ! Mw,rhow0,rhoi0,hw0,hi0,vi0,cw0,ci0,acw(3),bcw(0:2),aci(0:1),kw0th,ki0th, bi, bw
-      !------------------------------------------------------------------------------
-      LocalSolventMaterial % Mw =    1.8015d-2      
-      LocalSolventMaterial % hw0 =   0.0_dp      
-      LocalSolventMaterial % hi0 =  -333360.0_dp !!
-      
-      ! --------------------- polynomials
 
-      !!! water !!!
-      
-      ! heat capacity water      
-      LocalSolventMaterial % cw0  = 4207.7_dp
-      LocalSolventMaterial % acw(0:5) = &
-           RESHAPE([1.0_dp,-0.0887_dp,0.2859_dp,0.0_dp,0.0_dp,0.0_dp], &
-           SHAPE(LocalSolventMaterial % acw))
-      LocalSolventMaterial % acwl=2      
-      LocalSolventMaterial % bcw(0:5) = &
-           RESHAPE([1.0_dp,1.5852_dp,8.0686_dp,0.0_dp,0.0_dp,0.0_dp],&
-           SHAPE(LocalSolventMaterial % bcw))
-      LocalSolventMaterial % bcwl=2
 
-      !heat conductivity of water
-      LocalSolventMaterial % kw0th = 0.56_dp 
-      LocalSolventMaterial % bw = 0.0_dp
-      
-      ! density water
-      LocalSolventMaterial % rhow0 = 999.9_dp ! density at reference temperature
-      LocalSolventMaterial % kw0  = 4.4534d-10 ! Isothermal compressibility
+    IF (DataRead) THEN
+      CurrentSolventMaterial => LocalSolventMaterial
+    ELSE
+      SolventMaterialFileName = GetString( Params, 'Solvent Material File', Found )
+      IF (Found) THEN
+        OPEN(unit = io, file = TRIM(SolventMaterialFileName), status = 'old',iostat = ok)
+        IF (ok /= 0) THEN
+          WRITE(Message,'(A,A)') 'Unable to open file ',TRIM(SolventMaterialFileName)
+          CALL FATAL(TRIM(SubroutineName),TRIM(message))
+        END IF
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % SolventName
+        WRITE(Message,'(A,A,A,A)') 'Reading from file ',TRIM(SolventMaterialFileName),&
+             '. Solvent name: ', TRIM(LocalSolventMaterial % SolventName)
+        CALL INFO(Trim(SubroutineName),Trim(Message),Level=3)
+        !------------------------------------------------------------------------------
+        ! Read in information for solvent material
+        !    
+        !------------------------------------------------------------------------------
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % Mw, Comment     
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % hw0, Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % hi0, Comment
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % cw0, Comment
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % acw(0:5), Comment
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % acwl, Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % bcw(0:5), Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % bcwl, Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % kw0th, Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % bw, Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % rhow0, Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % kw0, Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % ckw(0:5), Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % ckwl, Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % aw0, Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % aaw(0:5), Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % aawl, Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % zw0, Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % bzw(0:5), Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % bzwl, Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % muw0, Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % nu10, Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % anw(0:5), Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % anwl, Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % bnw(0:5), Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % bnwl , Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % rhoi0, Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % ki0, Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % cki(0:5), Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % ckil, Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % ai0, Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % aai(0:5), Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % aail, Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % ki0th, Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % bi, Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % ci0, Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % aci(0:5), Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % acil, Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % Ei0, Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % nui0, Comment  
+        READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSolventMaterial % betai, Comment
+        DataRead=.TRUE.
+        CALL INFO(Trim(SubroutineName),"All solvent components read in",Level=3)
+10      CLOSE(io)
+        IF (.NOT.DataRead) THEN
+          WRITE(Message,'(A,A,A)')  'Not all entries in "Solvent material File" ',TRIM(SolventMaterialFileName),' found.'
+          CALL FATAL(TRIM(SubroutineName),TRIM(message))
+        END IF
+        IF (LocalSolventMaterial % rhoi0 .LE. 0.0) &
+             CALL FATAL(SubroutineName,"rhoi0 is smaller or equal 0")
+        LocalSolventMaterial % vi0 = 1.0_dp/(LocalSolventMaterial % rhoi0)
+        
+      ELSE
+        LocalSolventMaterial % SolventName = "Water"
+        !------------------------------------------------------------------------------
+        ! set constants for water and ice 
+        ! Mw,rhow0,rhoi0,hw0,hi0,vi0,cw0,ci0,acw(0:2),acwl,bcw(0:2),bcwl,aci(0:1),kw0th,ki0th, bi, bw
+        !------------------------------------------------------------------------------
+        LocalSolventMaterial % Mw =    1.8015d-2      
+        LocalSolventMaterial % hw0 =   0.0_dp      
+        LocalSolventMaterial % hi0 =  -333360.0_dp !!
 
-      LocalSolventMaterial % ckw(0:5) = &
-           RESHAPE([1.0_dp,0.0_dp,0.0_dp,0.0_dp,0.0_dp,0.0_dp],&
-           SHAPE(LocalSolventMaterial % ckw))
-      LocalSolventMaterial % ckwl=0      
-      LocalSolventMaterial % aw0  = -5.3358d-05 ! Isobaric thermal expansion
-      LocalSolventMaterial % aaw(0:5) = &
-           RESHAPE([1.0_dp,-79.1305_dp,207.4836_dp,-403.8270_dp,395.5347_dp,-166.1466_dp],&
-           SHAPE(LocalSolventMaterial % aaw))
-      LocalSolventMaterial % aawl=5
-      LocalSolventMaterial % zw0  = -2.0217d-01 ! Isothermal chemical compaction
-      LocalSolventMaterial % bzw(0:5) = &
-           RESHAPE([1.0_dp,12.8298_dp,0.0_dp,0.0_dp,0.0_dp,0.0_dp],&
-           SHAPE(LocalSolventMaterial % bzw))
-      LocalSolventMaterial % bzwl=1
+        ! --------------------- polynomials !!! water !!!
 
-      !viscosity water
-      LocalSolventMaterial % muw0 = 1.7914d-03   ! viscosity at reference temperature
-      LocalSolventMaterial % nu10 = -0.034376_dp ! temperature dependence of viscosity
-      LocalSolventMaterial % anw(0:5) = &
-           RESHAPE([1.0_dp,-2.3302_dp,4.0084_dp,-2.9697_dp,0.0_dp,0.0_dp],&
-           SHAPE(LocalSolventMaterial % anw))
-      LocalSolventMaterial % anwl=3
-      LocalSolventMaterial % bnw(0:5) = &
-           RESHAPE([1.0_dp,0.0_dp,0.0_dp,0.0_dp,0.0_dp,0.0_dp],&
-           SHAPE(LocalSolventMaterial % bnw))
-      LocalSolventMaterial % bnwl=0
+        !!!! water !!!!
+        
+        ! heat capacity water      
+        LocalSolventMaterial % cw0  = 4207.7_dp
+        LocalSolventMaterial % acw(0:5) = &
+             RESHAPE([1.0_dp,-0.0887_dp,0.2859_dp,0.0_dp,0.0_dp,0.0_dp], &
+             SHAPE(LocalSolventMaterial % acw))
+        LocalSolventMaterial % acwl=2      
+        LocalSolventMaterial % bcw(0:5) = &
+             RESHAPE([1.0_dp,1.5852_dp,8.0686_dp,0.0_dp,0.0_dp,0.0_dp],&
+             SHAPE(LocalSolventMaterial % bcw))
+        LocalSolventMaterial % bcwl=2
 
-      !!!!! ice !!!!!!
-      
-      ! density ice
-      LocalSolventMaterial % rhoi0 = 916.8_dp !reference density
-      LocalSolventMaterial % ki0  = 1.1417d-10 ! Isothermal compressibility
-      LocalSolventMaterial % cki(0:5) = &
-           RESHAPE([1.0_dp,0.0_dp,0.0_dp,0.0_dp,0.0_dp,0.0_dp],&
-	    SHAPE(LocalSolventMaterial % cki))
-      LocalSolventMaterial % ckil=0
-      LocalSolventMaterial % ai0  = 1.6781d-04 ! Isobaric thermal expansion
-      LocalSolventMaterial % aai(0:5) = &
-           RESHAPE([1.0_dp,1.1923_dp,0.0_dp,0.0_dp,0.0_dp,0.0_dp], &
-	   SHAPE(LocalSolventMaterial % aai))
-      LocalSolventMaterial % aail=1
-      
-      ! specivic volume ice
-      LocalSolventMaterial % vi0 = 1.0_dp/(LocalSolventMaterial % rhoi0) ! reference specific volume
-      
-      ! heat conductivity ice
-      LocalSolventMaterial % ki0th = 2.24_dp!!      
-      LocalSolventMaterial % bi = 0.0_dp
+        !heat conductivity of water
+        LocalSolventMaterial % kw0th = 0.56_dp 
+        LocalSolventMaterial % bw = 0.0_dp
 
-      ! heat capacity     
-      LocalSolventMaterial % ci0  = 2088.8_dp ! reference value
-      LocalSolventMaterial % aci(0:5) = &
-           RESHAPE([1.0_dp,0.9557_dp,0.0_dp,0.0_dp,0.0_dp,0.0_dp], &
-	   SHAPE(LocalSolventMaterial % aci))
-      LocalSolventMaterial % acil=1
+        ! density water
+        LocalSolventMaterial % rhow0 = 999.9_dp ! density at reference temperature
+        LocalSolventMaterial % kw0  = 4.4534d-10 ! Isothermal compressibility
 
-      ! elastic properties
-      LocalSolventMaterial % Ei0 = 9.33d09
-      LocalSolventMaterial % nui0= 0.325_dp
-      LocalSolventMaterial % betai = 0.0_dp  ! CHANGE
+        LocalSolventMaterial % ckw(0:5) = &
+             RESHAPE([1.0_dp,0.0_dp,0.0_dp,0.0_dp,0.0_dp,0.0_dp],&
+             SHAPE(LocalSolventMaterial % ckw))
+        LocalSolventMaterial % ckwl=0      
+        LocalSolventMaterial % aw0  = -5.3358d-05 ! Isobaric thermal expansion
+        LocalSolventMaterial % aaw(0:5) = &
+             RESHAPE([1.0_dp,-79.1305_dp,207.4836_dp,-403.8270_dp,395.5347_dp,-166.1466_dp],&
+             SHAPE(LocalSolventMaterial % aaw))
+        LocalSolventMaterial % aawl=5
+        LocalSolventMaterial % zw0  = -2.0217d-01 ! Isothermal chemical compaction
+        LocalSolventMaterial % bzw(0:5) = &
+             RESHAPE([1.0_dp,12.8298_dp,0.0_dp,0.0_dp,0.0_dp,0.0_dp],&
+             SHAPE(LocalSolventMaterial % bzw))
+        LocalSolventMaterial % bzwl=1
+
+        !viscosity water
+        LocalSolventMaterial % muw0 = 1.7914d-03   ! viscosity at reference temperature
+        LocalSolventMaterial % nu10 = -0.034376_dp ! temperature dependence of viscosity
+        LocalSolventMaterial % anw(0:5) = &
+             RESHAPE([1.0_dp,-2.3302_dp,4.0084_dp,-2.9697_dp,0.0_dp,0.0_dp],&
+             SHAPE(LocalSolventMaterial % anw))
+        LocalSolventMaterial % anwl=3
+        LocalSolventMaterial % bnw(0:5) = &
+             RESHAPE([1.0_dp,0.0_dp,0.0_dp,0.0_dp,0.0_dp,0.0_dp],&
+             SHAPE(LocalSolventMaterial % bnw))
+        LocalSolventMaterial % bnwl=0
+
+        !!!!! ice !!!!!!
+
+        ! density ice
+        LocalSolventMaterial % rhoi0 = 916.8_dp !reference density
+        LocalSolventMaterial % ki0  = 1.1417d-10 ! Isothermal compressibility
+        LocalSolventMaterial % cki(0:5) = &
+             RESHAPE([1.0_dp,0.0_dp,0.0_dp,0.0_dp,0.0_dp,0.0_dp],&
+             SHAPE(LocalSolventMaterial % cki))
+        LocalSolventMaterial % ckil=0
+        LocalSolventMaterial % ai0  = 1.6781d-04 ! Isobaric thermal expansion
+        LocalSolventMaterial % aai(0:5) = &
+             RESHAPE([1.0_dp,1.1923_dp,0.0_dp,0.0_dp,0.0_dp,0.0_dp], &
+             SHAPE(LocalSolventMaterial % aai))
+        LocalSolventMaterial % aail=1
+
+        ! specivic volume ice
+        LocalSolventMaterial % vi0 = 1.0_dp/(LocalSolventMaterial % rhoi0) ! reference specific volume
+
+        ! heat conductivity ice
+        LocalSolventMaterial % ki0th = 2.24_dp!!      
+        LocalSolventMaterial % bi = 0.0_dp
+
+        ! heat capacity     
+        LocalSolventMaterial % ci0  = 2088.8_dp ! reference value
+        LocalSolventMaterial % aci(0:5) = &
+             RESHAPE([1.0_dp,0.9557_dp,0.0_dp,0.0_dp,0.0_dp,0.0_dp], &
+             SHAPE(LocalSolventMaterial % aci))
+        LocalSolventMaterial % acil=1
+
+        ! elastic properties
+        LocalSolventMaterial % Ei0 = 9.33d09
+        LocalSolventMaterial % nui0= 0.325_dp
+        LocalSolventMaterial % betai = 0.0_dp  ! CHANGE
+      END IF
 
       CALL INFO(SubroutineName,"-----------------------------------------------------------------",Level=9)
       CALL INFO(SubroutineName,"Solvent related constants",Level=9)
@@ -212,10 +289,14 @@ CONTAINS
            "bw",LocalSolventMaterial % bw
       CALL INFO(SubroutineName,Message,Level=9)
       CALL INFO(SubroutineName,"-----------------------------------------------------------------",Level=9)
-      FirstTime = .FALSE.
+      DataRead = .TRUE.
+      CurrentSolventMaterial => LocalSolventMaterial
     END IF
-    CurrentSolventMaterial => LocalSolventMaterial
-  END SUBROUTINE SetPermafrostSolventMaterial
+    RETURN
+20  WRITE(Message,'(A,A,A)')  'Not all entries in "Solvent material File" ',TRIM(SolventMaterialFileName),' found.'
+    CLOSE(io)
+    CALL FATAL(TRIM(SubroutineName),TRIM(Message))
+  END SUBROUTINE ReadPermafrostSolventMaterial
   
   !---------------------------------------------------------------------------------------------
   SUBROUTINE ReadPermafrostSoluteMaterial( Params,Constants,CurrentSoluteMaterial )
@@ -225,7 +306,7 @@ CONTAINS
     ! ----------- local
     TYPE(SoluteMaterial_t), TARGET :: LocalSoluteMaterial
     INTEGER :: i,j,k,l, n,t, active, DIM, ok,InitialNumerOfSoluteRecords, EntryNumber
-    INTEGER,parameter :: io=20
+    INTEGER,parameter :: io=21
     LOGICAL :: Found, DataRead=.FALSE.
     CHARACTER(LEN=MAX_NAME_LEN) ::  SoluteFileName, Comment
     CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SubroutineName='ReadPermafrostSoluteMaterial'
@@ -299,7 +380,7 @@ CONTAINS
           !------------------------------------------------------------------------------
           ! Read in the number of records in file (first line integer)
           !------------------------------------------------------------------------------
-          READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSoluteMaterial % SoluteName
+          READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalSoluteMaterial % SoluteName
           WRITE(Message,'(A,A)') 'Reading entry', TRIM(LocalSoluteMaterial % SoluteName)
           CALL INFO(Trim(SubroutineName),Trim(Message),Level=3)
           !------------------------------------------------------------------------------
@@ -309,34 +390,34 @@ CONTAINS
           !     vc0,cc0,acc(0:2),bcc(0:2)
           !     kc0th,muw0,d1,d2,bc
           !------------------------------------------------------------------------------
-          READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSoluteMaterial % Mc, Comment 
-          READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSoluteMaterial % vc0, Comment
-          READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSoluteMaterial % kc0th, Comment
-          READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSoluteMaterial % d1, Comment
-          READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSoluteMaterial % d2, Comment
-          READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSoluteMaterial % bc, Comment
-          READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSoluteMaterial % cc0, Comment
-          READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSoluteMaterial % acc(0:5), Comment
-          READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSoluteMaterial % accl, Comment	
-          READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSoluteMaterial % bcc(0:5), Comment
-          READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSoluteMaterial % bccl, Comment	
-          READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSoluteMaterial % rhoc0, Comment
-          READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSoluteMaterial % ac0, Comment	
-          READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSoluteMaterial % kc0, Comment	
-          READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSoluteMaterial % zc0 , Comment 
-          READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSoluteMaterial % aac(0:5), Comment
-          READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSoluteMaterial % aacl, Comment
-          READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSoluteMaterial % ckc(0:5), Comment
-          READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSoluteMaterial % ckcl, Comment
-          READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSoluteMaterial % bzc(0:5), Comment
-          READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSoluteMaterial % bzcl , Comment
-          READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSoluteMaterial % nu20, Comment
-          READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSoluteMaterial % anc(0:5), Comment
-          READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSoluteMaterial % ancl , Comment
-          READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSoluteMaterial % bnc(0:5), Comment
-          READ (io, *, END=10, IOSTAT=OK, ERR=20) LocalSoluteMaterial % bncl, Comment
+          READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalSoluteMaterial % Mc, Comment 
+          READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalSoluteMaterial % vc0, Comment
+          READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalSoluteMaterial % kc0th, Comment
+          READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalSoluteMaterial % d1, Comment
+          READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalSoluteMaterial % d2, Comment
+          READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalSoluteMaterial % bc, Comment
+          READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalSoluteMaterial % cc0, Comment
+          READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalSoluteMaterial % acc(0:5), Comment
+          READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalSoluteMaterial % accl, Comment	
+          READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalSoluteMaterial % bcc(0:5), Comment
+          READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalSoluteMaterial % bccl, Comment	
+          READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalSoluteMaterial % rhoc0, Comment
+          READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalSoluteMaterial % ac0, Comment	
+          READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalSoluteMaterial % kc0, Comment	
+          READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalSoluteMaterial % zc0 , Comment 
+          READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalSoluteMaterial % aac(0:5), Comment
+          READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalSoluteMaterial % aacl, Comment
+          READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalSoluteMaterial % ckc(0:5), Comment
+          READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalSoluteMaterial % ckcl, Comment
+          READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalSoluteMaterial % bzc(0:5), Comment
+          READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalSoluteMaterial % bzcl , Comment
+          READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalSoluteMaterial % nu20, Comment
+          READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalSoluteMaterial % anc(0:5), Comment
+          READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalSoluteMaterial % ancl , Comment
+          READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalSoluteMaterial % bnc(0:5), Comment
+          READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalSoluteMaterial % bncl, Comment
           DataRead=.TRUE.
-10        CLOSE(io)
+30        CLOSE(io)
           IF (.NOT.DataRead) THEN
             WRITE(Message,'(A,A,A)')  'Not all entries in "Solute material File" ',TRIM(SoluteFileName),' found.'
             CALL FATAL(Trim(SubroutineName),Trim(message))
@@ -371,7 +452,7 @@ CONTAINS
     CALL INFO(SubroutineName,Message,Level=9)
     CALL INFO(SubroutineName,"-----------------------------------------------------------------",Level=9)
     RETURN
-20  WRITE(Message,'(A,A,A)')  'Not all entries in "Solute material File" ',TRIM(SoluteFileName),' found.'
+40  WRITE(Message,'(A,A,A)')  'Not all entries in "Solute material File" ',TRIM(SoluteFileName),' found.'
     CLOSE(io)
     CALL FATAL(Trim(SubroutineName),Trim(message))
   END SUBROUTINE ReadPermafrostSoluteMaterial
@@ -383,7 +464,7 @@ CONTAINS
     INTEGER :: NumberOfRockRecords
     !--------------
     INTEGER :: I,J,K, n,t, RockMaterialID, active, DIM, ok,InitialNumberOfRockRecords, EntryNumber
-    INTEGER,parameter :: io=21
+    INTEGER,parameter :: io=22
     LOGICAL :: Found, fexist, FirstTime=.TRUE., AllocationsDone=.FALSE., DataRead=.FALSE.,&
          dimensionalTensorReduction = .FALSE.
     CHARACTER(LEN=MAX_NAME_LEN) ::  MaterialFileName, NewMaterialFileName, str, Comment
@@ -405,22 +486,15 @@ CONTAINS
       IF (.NOT.Found) THEN
         CALL INFO(FunctionName," 'Rock Material File' keyword not found - looking for default DB!")
         fexist = .FALSE.
-#ifdef USE_ISO_C_BINDINGS
         str = 'ELMER_LIB'
-#else
-        str = 'ELMER_LIB'//CHAR(0)
-#endif
+
         CALL envir( str,MaterialFileName,k ) 
         IF ( k > 0  ) THEN
           MaterialFileName = MaterialFileName(1:k) // '/permafrostmaterialdb.dat'
           INQUIRE(FILE=TRIM(MaterialFileName), EXIST=fexist)
         END IF
         IF (.NOT. fexist) THEN
-#ifdef USE_ISO_C_BINDINGS
           str = 'ELMER_HOME'
-#else
-          str = 'ELMER_HOME'//CHAR(0)
-#endif
           CALL envir( str,MaterialFileName,k ) 
           IF ( k > 0 ) THEN
             MaterialFileName = MaterialFileName(1:k) // '/share/elmersolver/lib/' // 'permafrostmaterialdb.dat'
@@ -445,7 +519,7 @@ CONTAINS
         !------------------------------------------------------------------------------
         ! Read in the number of records in file (first line integer)
         !------------------------------------------------------------------------------
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) NumberOfRockRecords, Comment
+        READ (io, *, END=50, IOSTAT=OK, ERR=60) NumberOfRockRecords, Comment
         WRITE (Message,*) "Attempting to read ",NumberOfRockRecords," ",&
              TRIM(Comment)," records from data file ",TRIM(MaterialFileName)        
         CALL INFO(FunctionName,Message,level=3)
@@ -518,7 +592,7 @@ CONTAINS
       END IF
       
       DO RockMaterialID=1,NumberOfRockRecords
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % VariableBaseName(RockMaterialID), EntryNumber
+        READ (io, *, END=50, IOSTAT=OK, ERR=60) GlobalRockMaterial % VariableBaseName(RockMaterialID), EntryNumber
         IF (EntryNumber /= RockMaterialID) THEN
           WRITE(Message,'(A,I3,A,I3)') &
                "Entry number", EntryNumber, "does not match expected number ",I
@@ -533,18 +607,18 @@ CONTAINS
         WRITE(Message,'(A,I2,A,A)') "Input for Variable No.",RockMaterialID,": ",&
              GlobalRockMaterial % VariableBaseName(RockMaterialID)
         CALL INFO(FunctionName,Message,Level=9)
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % Xi0(RockMaterialID), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % eta0(RockMaterialID), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % etak(RockMaterialID), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % ks0th(RockMaterialID), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % e1(RockMaterialID), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % bs(RockMaterialID), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % rhos0(RockMaterialID), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % cs0(RockMaterialID), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % hs0(RockMaterialID), Comment
+        READ (io, *, END=50, IOSTAT=OK, ERR=60) GlobalRockMaterial % Xi0(RockMaterialID), Comment
+        READ (io, *, END=50, IOSTAT=OK, ERR=60) GlobalRockMaterial % eta0(RockMaterialID), Comment
+        READ (io, *, END=50, IOSTAT=OK, ERR=60) GlobalRockMaterial % etak(RockMaterialID), Comment
+        READ (io, *, END=50, IOSTAT=OK, ERR=60) GlobalRockMaterial % ks0th(RockMaterialID), Comment
+        READ (io, *, END=50, IOSTAT=OK, ERR=60) GlobalRockMaterial % e1(RockMaterialID), Comment
+        READ (io, *, END=50, IOSTAT=OK, ERR=60) GlobalRockMaterial % bs(RockMaterialID), Comment
+        READ (io, *, END=50, IOSTAT=OK, ERR=60) GlobalRockMaterial % rhos0(RockMaterialID), Comment
+        READ (io, *, END=50, IOSTAT=OK, ERR=60) GlobalRockMaterial % cs0(RockMaterialID), Comment
+        READ (io, *, END=50, IOSTAT=OK, ERR=60) GlobalRockMaterial % hs0(RockMaterialID), Comment
         DO I=1,3
           DO J=1,3
-            READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % Kgwh0(I,J,RockMaterialID), Comment
+            READ (io, *, END=50, IOSTAT=OK, ERR=60) GlobalRockMaterial % Kgwh0(I,J,RockMaterialID), Comment
           END DO
         END DO
         IF ((DIM == 2) .AND. dimensionalTensorReduction) THEN
@@ -556,24 +630,24 @@ CONTAINS
           GlobalRockMaterial % Kgwh0(3,1:3,RockMaterialID) = 0.0_dp
           GlobalRockMaterial % Kgwh0(1:3,3,RockMaterialID) = 0.0_dp
         END IF
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % qexp(RockMaterialID), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % alphaL(RockMaterialID), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % alphaT(RockMaterialID), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % RadGen(RockMaterialID), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % acs(0:5,RockMaterialID),  Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % as0(RockMaterialID),  Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % aas(0:5,RockMaterialID),  Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % ks0(RockMaterialID),  Comment
+        READ (io, *, END=50, IOSTAT=OK, ERR=60) GlobalRockMaterial % qexp(RockMaterialID), Comment
+        READ (io, *, END=50, IOSTAT=OK, ERR=60) GlobalRockMaterial % alphaL(RockMaterialID), Comment
+        READ (io, *, END=50, IOSTAT=OK, ERR=60) GlobalRockMaterial % alphaT(RockMaterialID), Comment
+        READ (io, *, END=50, IOSTAT=OK, ERR=60) GlobalRockMaterial % RadGen(RockMaterialID), Comment
+        READ (io, *, END=50, IOSTAT=OK, ERR=60) GlobalRockMaterial % acs(0:5,RockMaterialID),  Comment
+        READ (io, *, END=50, IOSTAT=OK, ERR=60) GlobalRockMaterial % as0(RockMaterialID),  Comment
+        READ (io, *, END=50, IOSTAT=OK, ERR=60) GlobalRockMaterial % aas(0:5,RockMaterialID),  Comment
+        READ (io, *, END=50, IOSTAT=OK, ERR=60) GlobalRockMaterial % ks0(RockMaterialID),  Comment
         !--------------------
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % cks(0:5,RockMaterialID),  Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % Es0(RockMaterialID), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % nuS0(RockMaterialID), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % acsl(RockMaterialID),  Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % aasl(RockMaterialID),  Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % cksl(RockMaterialID),  Comment
+        READ (io, *, END=50, IOSTAT=OK, ERR=60) GlobalRockMaterial % cks(0:5,RockMaterialID),  Comment
+        READ (io, *, END=50, IOSTAT=OK, ERR=60) GlobalRockMaterial % Es0(RockMaterialID), Comment
+        READ (io, *, END=50, IOSTAT=OK, ERR=60) GlobalRockMaterial % nuS0(RockMaterialID), Comment
+        READ (io, *, END=50, IOSTAT=OK, ERR=60) GlobalRockMaterial % acsl(RockMaterialID),  Comment
+        READ (io, *, END=50, IOSTAT=OK, ERR=60) GlobalRockMaterial % aasl(RockMaterialID),  Comment
+        READ (io, *, END=50, IOSTAT=OK, ERR=60) GlobalRockMaterial % cksl(RockMaterialID),  Comment
       END DO
       !CALL INFO(FunctionName,Message,Level=1)
-30    CLOSE(io)
+50    CLOSE(io)
       IF (RockMaterialID < NumberOfRockRecords) THEN
         WRITE(Message,'(I3,A,I3)') RockMaterialID,"records read, which is smaller than given number ", NumberOfRockRecords
         CALL FATAL(FunctionName,Message)
@@ -584,7 +658,7 @@ CONTAINS
       RETURN
     END IF
 
-40  CALL WARN(FunctionName,"I/O error! Last successfully read variable:")
+60  CALL WARN(FunctionName,"I/O error! Last successfully read variable:")
     CALL WARN(FunctionName,Comment)
     CALL FATAL(FunctionName,"Stopping simulation")    
   END FUNCTION ReadPermafrostRockMaterial
@@ -604,7 +678,7 @@ CONTAINS
     INTEGER, ALLOCATABLE :: GlobalToLocalPerm(:)
     INTEGER :: OK, CurrentNo, I, J, NoElements, LocalNoElements, &
          minglobalelementnumber, maxglobalelementnumber, mmaxglobalelementnumber, ierr
-    INTEGER, PARAMETER :: io=21
+    INTEGER, PARAMETER :: io=22
     REAL(KIND=dp) :: ReceivingArray(50)    
 
     SAVE LocalRockMaterial, FirstTime, Parallel, minglobalelementnumber, maxglobalelementnumber,&
@@ -692,7 +766,7 @@ CONTAINS
         CALL INFO(SubroutineName,Message,level=3)
         LocalNoElements = 0
         DO J=1,maxglobalelementnumber                             
-          READ (io, *, END=50, ERR=60, IOSTAT=OK) CurrentNo, ReceivingArray(1:50)
+          READ (io, *, END=70, ERR=80, IOSTAT=OK) CurrentNo, ReceivingArray(1:50)
           IF ( Parallel ) THEN
             IF (J < minglobalelementnumber) CYCLE
             I = GlobalToLocalPerm(J - minglobalelementnumber +1)
@@ -772,7 +846,7 @@ CONTAINS
         END DO
         GlobalRockMaterial % NumberOfRockRecords = NoElements
         NumberOfRockRecords = NoElements
-50      CLOSE(io)
+70      CLOSE(io)
         IF (LocalNoElements < NoElements) THEN
           IF (Parallel) THEN
             WRITE (Message,*) 'Parallel proc.', ParEnv % myPe, '. Found ONLY ',&
@@ -800,7 +874,7 @@ CONTAINS
             NumberOfRockRecords = NoElements
     END IF
     RETURN
-60  WRITE (Message,*) 'I/O error at entry ',CurrentNo,' of file ',TRIM(MaterialFileName)
+80  WRITE (Message,*) 'I/O error at entry ',CurrentNo,' of file ',TRIM(MaterialFileName)
     CALL FATAL(TRIM(SubroutineName),Message)
   END FUNCTION ReadPermafrostElementRockMaterial
   
@@ -1075,6 +1149,42 @@ CONTAINS
     !END DO
     GeneralIntegral = prefactor * summation
   END FUNCTION GeneralIntegral
+  !---------------------------------------------------------------------------------------------
+  ! functions specific to heat transfer and phase change in InterFrost suite
+  !---------------------------------------------------------------------------------------------
+  FUNCTION GetXiInterfrost(T0,Temperature,Swres, deltaT, TH1) RESULT(XiInterfrost)
+    REAL(KIND=dp), INTENT(IN) ::T0,Temperature,Swres,deltaT
+    REAL(KIND=dp) :: XiInterfrost
+    REAL(KIND=dp) :: slopefreezing
+    LOGICAL, OPTIONAL :: TH1
+    IF (TH1) THEN
+      IF (Temperature < (T0 - deltaT)) THEN
+        XiInterfrost = Swres
+      ELSE
+        slopefreezing = (1.0_dp - Swres)/(T0 - deltaT)
+        XiInterfrost = 1.0_dp + slopefreezing*(MIN(Temperature,T0) - T0)
+      END IF
+    ELSE
+      XiInterfrost = (1.0_dp - Swres)*EXP(-((MIN(Temperature,T0) - T0)/deltaT)**2.0_dp) + Swres
+    END IF
+  END FUNCTION GetXiInterfrost
+  !---------------------------------------------------------------------------------------------
+  REAL (KIND=dp) FUNCTION XiInterfrostT(T0,Temperature,Swres, deltaT, TH1)
+    REAL(KIND=dp), INTENT(IN) ::T0,Temperature,Swres,deltaT
+    REAL(KIND=dp) :: slopefreezing
+    LOGICAL, OPTIONAL :: TH1
+    IF (TH1) THEN      
+      IF ((Temperature < (T0 - deltaT)) .OR. (Temperature > T0)) THEN
+        XiInterfrostT = 0.0
+      ELSE
+        slopefreezing = (1.0_dp - Swres)/(T0 - deltaT)
+        XiInterfrostT = slopefreezing
+      END IF
+    ELSE
+      XiInterfrostT = -(1.0_dp - Swres) &
+           * EXP(-((MIN(Temperature,T0) -T0)/deltaT)**2.0_dp) * 2.0_dp*(MIN(Temperature,T0) -T0)/(deltaT*deltaT)
+    END IF
+  END FUNCTION XiInterfrostT
   !---------------------------------------------------------------------------------------------
   ! functions specific to heat transfer and phase change
   !---------------------------------------------------------------------------------------------
@@ -2287,7 +2397,7 @@ CONTAINS
     REAL(KIND=dp), INTENT(IN) :: Xi
     REAL(KIND=dp) :: KGpe(3,3)
 !--------------------------
-    REAL(KIND=dp) :: muw0,rhow0,qexp,Kgwh0(3,3),factor
+    REAL(KIND=dp) :: muw0,rhow0,qexp,Kgwh0(3,3),factor, relativepermeability
     REAL(KIND=dp), PARAMETER :: gval=9.81_dp !hard coded, so match Kgwh0 with this value
     INTEGER :: I, J
     !-------------------------
@@ -2296,10 +2406,13 @@ CONTAINS
     qexp = GlobalRockMaterial % qexp(RockMaterialID)
     Kgwh0(1:3,1:3) = GlobalRockMaterial % Kgwh0(1:3,1:3,RockMaterialID) ! hydro-conductivity
     ! transformation factor from hydr. conductivity to permeability hydr. conductivity tensor
-    factor = (muw0)*(Xi**qexp)/(rhow0*gval)
+    factor = muw0/(rhow0*gval)
+    relativepermeability = (Xi**qexp)
+    ! interfrost
+    !relativepermeability = MAX(10.0_dp**(-50.0_dp*(1.0_dp - Xi)),1.0d-06)
     DO I=1,3
       DO J=1,3
-        KGpe(i,j) = Kgwh0(i,j)*factor
+        KGpe(i,j) = Kgwh0(i,j)*factor*relativepermeability
       END DO
     END DO
   END FUNCTION GetKGpe

@@ -331,6 +331,7 @@ int elm_5node_quad_point_inside
         double px, double py, double pz, double *u,double *v,double *w
    )
 {
+    int elm_4node_quad_point_inside();
     return elm_4node_quad_point_inside( nx,ny,nz,px,py,pz,u,v,w );
 }
 
@@ -365,6 +366,8 @@ int elm_5node_quad_isoline
     {
        { 0,1 }, { 1,2 }, { 2,3 }, { 3,0 }
     };
+    
+    int elm_3node_triangle_isoline();
 
     for( i=0; i<5; i++ ) above += F[i]>K;
     if ( above == 0 || above == 5 ) return 0;
@@ -415,6 +418,8 @@ int elm_5node_quad_initialize()
 
      static char *Name = "ELM_5NODE_QUAD";
 
+     int elm_add_element_type();
+
      elm_5node_quad_shape_functions();
 
      ElementDef.ElementName = Name;
@@ -428,7 +433,7 @@ int elm_5node_quad_initialize()
      ElementDef.PartialU = (double (*)())elm_5node_quad_dndu_fvalue;
      ElementDef.PartialV = (double (*)())elm_5node_quad_dndv_fvalue;
      ElementDef.PartialW = NULL;
-     ElementDef.SecondPartials = (void (*)())elm_5node_quad_ddu;
+     ElementDef.SecondPartials = (double (*)())elm_5node_quad_ddu;
 
      ElementDef.FunctionValue = (double (*)())elm_5node_quad_fvalue;
 

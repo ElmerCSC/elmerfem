@@ -96,6 +96,8 @@ static int vis_colscale( geometry_t *geometry, element_model_t *model,
 
     float coords[4][3];
 
+    void gra_set_colormap(), gra_set_material(), gra_flat_quad(), PrintString();
+
     if ( epMouseDown && epMouseDownTakesTooLong ) return TRUE;
 
 #if 0
@@ -194,7 +196,7 @@ static int vis_colscale( geometry_t *geometry, element_model_t *model,
       }
 
       if ( ColorScale->ColorData->name ) {
-         xl =  strlen(ColorScale->ColorData-name) * ColorScale->FontSize / (double)GraphicsXSize;
+         xl =  strlen((char *)ColorScale->ColorData-name) * ColorScale->FontSize / (double)GraphicsXSize;
 #ifndef WIN32
          if ( CurrentXFont ) {
            xl = (XTextWidth( CurrentXFont, str, strlen(ColorScale->ColorData->name)))/(double)GraphicsXSize;

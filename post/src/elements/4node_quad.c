@@ -416,6 +416,7 @@ int elm_4node_quad_isoline
     double f[3],c[3],x[3],y[3],z[3];
 
     int i, n=0, above=0;
+    int elm_3node_triangle_isoline();
 
     for( i=0; i<4; i++ ) above += F[i]>K;
     if ( above == 0 || above == 4 ) return 0;
@@ -473,6 +474,7 @@ int elm_4node_quad_initialize()
      element_type_t ElementDef;
 
      static char *Name = "ELM_4NODE_QUAD";
+     int elm_add_element_type();
 
      ElementDef.ElementName = Name;
      ElementDef.ElementCode = 404;

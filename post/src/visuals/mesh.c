@@ -102,6 +102,7 @@ void vis_polygon( polygon_t *poly)
 {
     int n=3;
 
+    void gra_poly3();
     gra_poly3( n,poly->x,poly->y,poly->z,poly->u,poly->v,poly->w,poly->c );
 }
 
@@ -134,6 +135,7 @@ void vis_triangle
 {
     float x[3][3],n[3][3],c[3];
     int j,k;
+    void gra_triangle();
 
     for( j=0; j<3; j++ )
     {
@@ -179,6 +181,7 @@ static void vis_draw_edge(vertex_t *vertex,int v0,int v1,double *color,double CS
                        double CAdd,line_style_t style,double width)
 {
     double c0=0.0,c1=1.0;
+    void gra_line();
 
     /*
      *  if color function given scale values to 0-1
@@ -225,6 +228,8 @@ static int vis_mesh( geometry_t *geometry, element_model_t *model, mesh_t *Mesh,
     element_t *elements = model->Elements;
 
     static char str[100];
+
+    void gra_set_material(), gra_set_colormap(), gra_sphere_quality(), PrintString() ;
 
     if ( !GlobalOptions.StereoMode )
       if ( Mesh->Material->Diffuse[3]  < 1.0 )

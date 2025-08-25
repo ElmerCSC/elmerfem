@@ -90,6 +90,9 @@ static int elm_15node_wedge_triangulate( geometry_t *geom,element_t *wedge )
 {
     element_t element;
     int i,j;
+    int elm_8node_quad_triangulate();
+    int geo_add_edge();
+    int elm_6node_triangle_triangulate();
 
 
     if ( GlobalOptions.VolumeSides )
@@ -365,6 +368,7 @@ int elm_15node_wedge_point_inside
         { 4,3,2,0 }, { 4,2,1,0 }, { 4,5,3,2 } 
     };
 
+    int elm_4node_tetra_point_inside();
     maxx = minx = nx[0];
     maxy = miny = ny[0];
     maxz = minz = nz[0];
@@ -431,6 +435,9 @@ int elm_15node_wedge_isoline
     double f[8],c[8],x[8],y[8],z[8];
 
     int i, j, k, n=0, above=0;
+
+    int elm_8node_quad_isoline();
+    int elm_6node_triangle_isoline();
 
     for( i=0; i<15; i++ ) above += F[i]>K;
     if ( above == 0 || above == 15 ) return 0;
@@ -500,6 +507,7 @@ int elm_15node_wedge_isosurface
      { 
          { 4,3,2,0 }, { 4,2,1,0 }, { 4,5,3,2 } 
      };
+     int elm_4node_tetra_isosurface();
 
     for( i=0; i<15; i++ ) above += F[i]>K;
     for( i=0; i<15; i++ ) below += F[i]<K;
@@ -546,6 +554,7 @@ int elm_15node_wedge_initialize()
      static char *Name = "ELM_15NODE_WEDGE";
 
      element_type_t ElementDef;
+     int elm_add_element_type();
 
      elm_15node_wedge_shape_functions();
 

@@ -73,11 +73,7 @@ SUBROUTINE ProjectCalving( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), POINTER :: Basis(:)
   REAL(KIND=dp), POINTER :: PlaneX(:), PlaneY(:), PlaneZ(:)
   REAL(KIND=dp), POINTER :: VolumeX(:), VolumeY(:), VolumeZ(:)
-#ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: at, totcpu
-#else
-  REAL(KIND=dp) :: CPUTime, at, totcpu
-#endif
   REAL(KIND=dp) :: x0,y0,z0,xmin,xmax,ymin,ymax,zmin,zmax
   REAL(KIND=dp) :: scale, eps, x1,x2,y1,y2,z1,z2,r1,r2
   REAL(KIND=dp) :: up,vp,wp,cp,cf,MaxRelativeRadius,detJ

@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Mikko Byckling
+! *  Authors: Mikko Byckling, Juha Ruokolainen
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
@@ -381,7 +381,7 @@ CONTAINS
     !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,nbasis+1,1) = -c
-      grad(j,nbasis+2,1) = c
+      grad(j,nbasis+2,1) =  c
     END DO
     nbasis = nbasis + 2
   END SUBROUTINE H1Basis_dLineNodal
@@ -525,33 +525,34 @@ CONTAINS
     REAL(Kind=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax,3), INTENT(INOUT) :: grad
     INTEGER, INTENT(INOUT) :: nbasis
     INTEGER :: j
+    REAL(KIND=dp), PARAMETER :: half=1._dp/2, a=1/SQRT(3._dp), b=-a/2
 !DIR$ ASSUME_ALIGNED u:64, v:64, grad:64
 
     ! First coordinate (xi)
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,nbasis+1,1) = -1d0/2
+      grad(j,nbasis+1,1) = -half
     END DO
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,nbasis+2,1) = 1d0/2
+      grad(j,nbasis+2,1) =  half
     END DO
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,nbasis+3,1) = REAL(0,dp)
+      grad(j,nbasis+3,1) = 0
     END DO
     ! Second coordinate (eta)
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,nbasis+1,2) = -SQRT(3d0)/6
+      grad(j,nbasis+1,2) = b
     END DO
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,nbasis+2,2) = -SQRT(3d0)/6
+      grad(j,nbasis+2,2) = b
     END DO
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,nbasis+3,2) = SQRT(3d0)/3
+      grad(j,nbasis+3,2) = a
     END DO
     nbasis = nbasis + 3
   END SUBROUTINE H1Basis_dTriangleNodalP
@@ -637,11 +638,9 @@ CONTAINS
           dVPhi = H1Basis_dVarPhi(j+1,Lb-La)
 
           grad(k, nbasis+j, 1) = dLa(1)*Lb*vPhi+ &
-                  La*dLb(1)*vPhi +&
-                  La*Lb*dVPhi*(dLb(1)-dLa(1))
+                  La*dLb(1)*vPhi + La*Lb*dVPhi*(dLb(1)-dLa(1))
           grad(k, nbasis+j, 2) = dLa(2)*Lb*vPhi+ &
-                  La*dLb(2)*vPhi +&
-                  La*Lb*dVPhi*(dLb(2)-dLa(2))
+                  La*dLb(2)*vPhi + La*Lb*dVPhi*(dLb(2)-dLa(2))
         END DO
       END DO
       ! nbasis = nbasis + (pmax(i)-2) + 1
@@ -677,7 +676,7 @@ CONTAINS
             Lc = H1Basis_TriangleL(3,u(k),v(k))
           
             fval(k,nbasis+j) = La*Lb*Lc*(H1Basis_PowInt((Lb-La),i))*&
-                    H1Basis_PowInt((2D0*Lc-1),j-1)
+                    H1Basis_PowInt((2*Lc-1),j-1)
           END DO
         END DO
         ! nbasis = nbasis + (pmax-i-3) + 1
@@ -732,14 +731,14 @@ CONTAINS
             Lc = H1Basis_TriangleL(3,u(k),v(k))
             
             Lb_Lai = H1Basis_PowInt((Lb-La), i)
-            Lc_1n = H1Basis_PowInt((2D0*Lc-1), j-1)
+            Lc_1n = H1Basis_PowInt((2*Lc-1), j-1)
             
             ! Calculate value of function from general form
             grad(k,nbasis+j,1) = -c*Lb*Lc*Lb_Lai*Lc_1n + La*c*Lc*Lb_Lai*Lc_1n + &
                     La*Lb*Lc*i*(H1Basis_PowInt((Lb-La),i-1))*Lc_1n
             grad(k,nbasis+j,2) = d*Lb*Lc*Lb_Lai*Lc_1n + La*d*Lc*Lb_Lai*Lc_1n + &
                     La*Lb*e*Lb_Lai*Lc_1n + &
-                    La*Lb*Lc*Lb_Lai*(j-1)*(H1Basis_PowInt((2D0*Lc-1),j-2))*2D0*e
+                    La*Lb*Lc*Lb_Lai*(j-1)*(H1Basis_PowInt((2*Lc-1),j-2))*2*e
           END DO
         END DO
         ! nbasis = nbasis + (pmax-i-3) + 1
@@ -842,8 +841,8 @@ CONTAINS
     !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,nbasis+1,1) = -c*(1-v(j))
-      grad(j,nbasis+2,1) = c*(1-v(j))
-      grad(j,nbasis+3,1) = c*(1+v(j))
+      grad(j,nbasis+2,1) =  c*(1-v(j))
+      grad(j,nbasis+3,1) =  c*(1+v(j))
       grad(j,nbasis+4,1) = -c*(1+v(j))
     END DO
     
@@ -852,8 +851,8 @@ CONTAINS
     DO j=1,nvec
       grad(j,nbasis+1,2) = -c*(1-u(j))
       grad(j,nbasis+2,2) = -c*(1+u(j))
-      grad(j,nbasis+3,2) = c*(1+u(j))
-      grad(j,nbasis+4,2) = c*(1-u(j))
+      grad(j,nbasis+3,2) =  c*(1+u(j))
+      grad(j,nbasis+4,2) =  c*(1-u(j))
     END DO
     
     nbasis = nbasis + 4
@@ -1115,8 +1114,6 @@ CONTAINS
           Nb  = N(k,node2)
           dNa = grad(k,node1,1:2)
           dNb = grad(k,node2,1:2)
-!         dNa = dN(k,node1,1:2)
-!         dNb = dN(k,node2,1:2)
 
           Phi = H1Basis_varPhi(j+1, Lb-La)
           dPhi = H1Basis_dvarPhi(j+1,Lb-La)
@@ -1259,13 +1256,13 @@ CONTAINS
     
     SELECT CASE (node)
     CASE (1)
-      fval = c*(2d0-u-v)
+      fval = c*(2-u-v)
     CASE (2)
-      fval = c*(2d0+u-v)
+      fval = c*(2+u-v)
     CASE (3)
-      fval = c*(2d0+u+v)
+      fval = c*(2+u+v)
     CASE (4)
-      fval = c*(2d0-u+v)
+      fval = c*(2-u+v)
     END SELECT
   END FUNCTION H1Basis_QuadL
 
@@ -1303,7 +1300,7 @@ CONTAINS
     INTEGER :: j
 
     REAL(KIND=dp), PARAMETER :: c = 1D0/2D0, d = 1D0/SQRT(3D0), &
-            e = 1D0/SQRT(6D0), f = 1D0/SQRT(8D0)
+            e = 1D0/SQRT(6D0), f = 1D0/SQRT(8D0), g = SQRT(3D0)*f
 !DIR$ ASSUME_ALIGNED u:64, v:64, w:64, fval:64
 
     !_ELMER_OMP_SIMD
@@ -1313,9 +1310,9 @@ CONTAINS
       ! Node 2
       fval(j,nbasis+2) = c*(1+u(j)-d*v(j)-e*w(j))
       ! Node 3
-      fval(j,nbasis+3) = SQRT(3d0)/3*(v(j)-f*w(j))
+      fval(j,nbasis+3) = d*(v(j)-f*w(j))
       ! Node 4
-      fval(j,nbasis+4) = SQRT(3d0/8d0)*w(j)
+      fval(j,nbasis+4) = g*w(j)
     END DO
     nbasis = nbasis + 4
   END SUBROUTINE H1Basis_TetraNodalP
@@ -1329,7 +1326,7 @@ CONTAINS
     ! Result
     REAL(KIND=dp) :: fval
     REAL(KIND=dp), PARAMETER :: c = 1D0/2D0, d = 1D0/SQRT(3D0), &
-            e = 1D0/SQRT(6D0), f = 1D0/SQRT(8D0)
+            e = 1D0/SQRT(6D0), f = 1D0/SQRT(8D0), g = SQRT(3D0)*f
     !_ELMER_OMP_DECLARE_SIMD UNIFORM(node) &
     !_ELMER_OMP _ELMER_LINEAR_REF(u) _ELMER_LINEAR_REF(v) _ELMER_LINEAR_REF(w) NOTINBRANCH
     
@@ -1339,9 +1336,9 @@ CONTAINS
     CASE(2)
       fval = c*(1+u-d*v-e*w)
     CASE(3)
-      fval = SQRT(3d0)/3*(v-f*w)
+      fval = d*(v-f*w)
     CASE(4)
-      fval = SQRT(3d0/8d0)*w      
+      fval = g*w      
     END SELECT
   END FUNCTION H1Basis_TetraL
   
@@ -1356,60 +1353,62 @@ CONTAINS
     REAL(Kind=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax,3), INTENT(INOUT) :: grad
     INTEGER, INTENT(INOUT) :: nbasis
     INTEGER :: j
+    REAL(KIND=dp), PARAMETER :: half=1d0/2, a = 1/SQRT(3._dp), b=-a/2, c = -SQRT(6._dp)/12, &
+                  d = -3*c
 !DIR$ ASSUME_ALIGNED u:64, v:64, w:64, grad:64
 
     ! First coordinate (xi)
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,nbasis+1,1)=-1d0/2
+      grad(j,nbasis+1,1) =-half
     END DO
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,nbasis+2,1)=1d0/2
+      grad(j,nbasis+2,1) = half
     END DO
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,nbasis+3,1)=REAL(0,dp)
+      grad(j,nbasis+3,1) = 0
     END DO
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,nbasis+4,1)=REAL(0,dp)
+      grad(j,nbasis+4,1) = 0
     END DO
     
     ! Second coordinate (eta)
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,nbasis+1,2)=-SQRT(3d0)/6
+      grad(j,nbasis+1,2) = b
     END DO
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,nbasis+2,2)=-SQRT(3d0)/6
+      grad(j,nbasis+2,2) = b
     END DO
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,nbasis+3,2)=SQRT(3d0)/3
+      grad(j,nbasis+3,2) = a
     END DO
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,nbasis+4,2)=REAL(0,dp)
+      grad(j,nbasis+4,2) = 0
     END DO
     
     ! Third coordinate (zeta)
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,nbasis+1,3)=-SQRT(6d0)/12
+      grad(j,nbasis+1,3) = c
     END DO
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,nbasis+2,3)=-SQRT(6d0)/12
+      grad(j,nbasis+2,3) = c
     END DO
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,nbasis+3,3)=-SQRT(6d0)/12
+      grad(j,nbasis+3,3) = c
     END DO
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,nbasis+4,3)=SQRT(6d0)/4
+      grad(j,nbasis+4,3) = d
     END DO
     nbasis = nbasis + 4
   END SUBROUTINE H1Basis_dTetraNodalP
@@ -1422,7 +1421,7 @@ CONTAINS
     ! Result
     REAL(KIND=dp) :: grad(3)
     REAL(KIND=dp), PARAMETER :: c = 1D0/2D0, d = 1D0/SQRT(3D0), &
-            e = 1D0/SQRT(6D0), f = 1D0/SQRT(8D0)
+            e = 1D0/SQRT(6D0), f = 1D0/SQRT(8D0), g = SQRT(3._dp)*f
     !_ELMER_OMP_DECLARE_SIMD UNIFORM(node) NOTINBRANCH
     
     SELECT CASE(node)
@@ -1433,7 +1432,7 @@ CONTAINS
     CASE(3)
       grad = d*[0D0, 1D0, -f]
     CASE(4)
-      grad = [0D0, 0D0, SQRT(3d0/8d0)]
+      grad = [0D0, 0D0, g]
     END SELECT
   END FUNCTION H1Basis_dTetraL
 
@@ -1495,15 +1494,12 @@ CONTAINS
           vPhi = H1Basis_varPhi(j+1,Lb-La)
           dVPhi = H1Basis_dVarPhi(j+1,Lb-La)
 
-          grad(k, nbasis+j, 1) = dLa(1)*Lb*vPhi+ &
-                  La*dLb(1)*vPhi +&
-                  La*Lb*dVPhi*(dLb(1)-dLa(1))
+          grad(k, nbasis+j, 1) = dLa(1)*Lb*vPhi + &
+                  La*dLb(1)*vPhi + La*Lb*dVPhi*(dLb(1)-dLa(1))
           grad(k, nbasis+j, 2) = dLa(2)*Lb*vPhi+ &
-                  La*dLb(2)*vPhi +&
-                  La*Lb*dVPhi*(dLb(2)-dLa(2))
+                  La*dLb(2)*vPhi + La*Lb*dVPhi*(dLb(2)-dLa(2))
           grad(k, nbasis+j, 3) = dLa(3)*Lb*vPhi+ &
-                  La*dLb(3)*vPhi +&
-                  La*Lb*dVPhi*(dLb(3)-dLa(3))
+                  La*dLb(3)*vPhi + La*Lb*dVPhi*(dLb(3)-dLa(3))
         END DO
       END DO
       ! nbasis = nbasis + (pmax(i)-2) + 1
@@ -1778,17 +1774,11 @@ CONTAINS
           vPhi=H1Basis_varPhi(j+1,Lb-La)
           dVPhi=H1Basis_dVarPhi(j+1,Lb-La)
           NaNb=1+Na+Nb
-          ! fval(k, nbasis+j-1) = c*La*Lb*H1Basis_varPhi(j,Lb-La)*(1+Na+Nb)
           grad(k, nbasis+j,1) = c*dLa(1)*Lb*vPhi*NaNb + &
                 c*La*dLb(1)*vPhi*NaNb + c*La*Lb*dVPhi*(dLb(1)-dLa(1))*NaNb
-                ! + c*La*Lb*vPhi*(dNb(1)+dNa(1)) ! Last term zero
           grad(k, nbasis+j,2) = c*dLa(2)*Lb*vPhi*NaNb + &
                 c*La*dLb(2)*vPhi*NaNb + c*La*Lb*dVPhi*(dLb(2)-dLa(2))*NaNb
-                ! c*La*Lb*vPhi*(dNb(2)+dNa(2)) ! Last term zero
           grad(k, nbasis+j,3) = c*La*Lb*vPhi*(dNb(3)+dNa(3))
-                ! c*dLa(3)*Lb*vPhi*NaNb + ! First term zero
-                ! c*La*dLb(3)*vPhi*NaNb + ! Second term zero
-                ! c*La*Lb*dVPhi*(dLb(3)-dLa(3))*NaNb ! Third term zero
         END DO
       END DO
       ! nbasis = nbasis + (pmax(i)-2) + 1
@@ -1937,20 +1927,12 @@ CONTAINS
                     cNa*La*Lb*dLc(1)*LegPLbLa*LegP2Lc1 + &
                     cNa*La*Lb*Lc*H1Basis_dLegendreP(j, Lb-La)*(dLb(1)-dLa(1))*LegP2Lc1 + &
                     cNa*La*Lb*Lc*LegPLbLa*H1Basis_dLegendreP(k-1, 2*Lc-1)*(2*dLc(1))
-            ! + 2*c*dNa(1)*La*Lb*Lc*LegPLbLa*LegP2Lc1 ! Term always zero
             grad(l,nbasis+k,2) = cNa*dLa(2)*Lb*Lc*LegPLbLa*LegP2Lc1 + &
                     cNa*La*dLb(2)*Lc*LegPLbLa*LegP2Lc1 + &
                     cNa*La*Lb*dLc(2)*LegPLbLa*LegP2Lc1 + &
                     cNa*La*Lb*Lc*H1Basis_dLegendreP(j, Lb-La)*(dLb(2)-dLa(2))*LegP2Lc1 + &
                     cNa*La*Lb*Lc*LegPLbLa*H1Basis_dLegendreP(k-1, 2*Lc-1)*(2*dLc(2))
-            ! + 2*c*dNa(2)*La*Lb*Lc*LegPLbLa*LegP2Lc1 ! Term always zero
             grad(l,nbasis+k,3) = 2*c*dNa(3)*La*Lb*Lc*LegPLbLa*LegP2Lc1
-            ! Rest of the terms always zero
-            ! cNa*dLa(3)*Lb*Lc*LegPLbLa*LegP2Lc1 + &
-            ! cNa*La*dLb(3)*Lc*LegPLbLa*LegP2Lc1 + &
-            ! cNa*La*Lb*dLc(3)*LegPLbLa*LegP2Lc1 + &
-            ! cNa*La*Lb*Lc*H1Basis_dLegendreP(j, Lb-La)*(dLb(3)-dLa(3))*LegP2Lc1 + &
-            ! cNa*La*Lb*Lc*LegPLbLa*H1Basis_dLegendreP(k, 2*Lc-1)*(2*dLc(3))
           END DO
         END DO
         ! nbasis = nbasis + (p-j-3) + 1
@@ -1990,21 +1972,11 @@ CONTAINS
               vPhi = H1Basis_varPhi(j, Lb-La)
               Phi = H1Basis_Phi(k+1, Nc-Na)
 
-              ! fval(l,nbasis+k-1) = La*Lb*H1Basis_varPhi(j, Lb-La)* &
-              !                            H1Basis_Phi(k, Nc-Na)
-              grad(l,nbasis+k,1) = dLa(1)*Lb*vPhi*Phi+ &
-                      La*dLb(1)*vPhi*Phi + &
+              grad(l,nbasis+k,1) = dLa(1)*Lb*vPhi*Phi + La*dLb(1)*vPhi*Phi + &
                       La*Lb*H1Basis_dVarPhi(j, Lb-La)*(dLb(1)-dLa(1))*Phi
-              ! La*Lb*vPhi*H1Basis_dPhi(k, Nc-Na)*(dNc(1)-dNa(1)) ! Term always zero
-              grad(l,nbasis+k,2) = dLa(2)*Lb*vPhi*Phi+ &
-                      La*dLb(2)*vPhi*Phi + &
+              grad(l,nbasis+k,2) = dLa(2)*Lb*vPhi*Phi + La*dLb(2)*vPhi*Phi + &
                       La*Lb*H1Basis_dVarPhi(j, Lb-La)*(dLb(2)-dLa(2))*Phi
-              ! La*Lb*vPhi*H1Basis_dPhi(k, Nc-Na)*(dNc(2)-dNa(2)) ! Term always zero
               grad(l,nbasis+k,3) = La*Lb*vPhi*H1Basis_dPhi(k+1, Nc-Na)*(dNc(3)-dNa(3))
-              ! Rest of the terms always zero
-              ! dLa(3)*Lb*vPhi*Phi+ &
-              ! La*dLb(3)*vPhi*Phi + &
-              ! La*Lb*H1Basis_dVarPhi(j, Lb-La)*(dLb(3)-dLa(3))*Phi
             END DO
           ELSE
             !_ELMER_OMP_SIMD PRIVATE(La,Lb,Na,Nc,vPhi,Phi)
@@ -2018,21 +1990,11 @@ CONTAINS
               vPhi = H1Basis_varPhi(k+1, Lb-La)
               Phi = H1Basis_Phi(j, Nc-Na)
 
-              ! fval(l,nbasis+k-1) = La*Lb*H1Basis_varPhi(k, Lb-La)* &
-              !                            H1Basis_Phi(j, Nc-Na)
-              grad(l,nbasis+k,1) = dLa(1)*Lb*vPhi*Phi+ &
-                      La*dLb(1)*vPhi*Phi + &
+              grad(l,nbasis+k,1) = dLa(1)*Lb*vPhi*Phi + La*dLb(1)*vPhi*Phi + &
                       La*Lb*H1Basis_dVarPhi(k+1, Lb-La)*(dLb(1)-dLa(1))*Phi
-              ! La*Lb*vPhi*H1Basis_dPhi(j, Nc-Na)*(dNc(1)-dNa(1)) ! Term always zero
-              grad(l,nbasis+k,2) = dLa(2)*Lb*vPhi*Phi+ &
-                      La*dLb(2)*vPhi*Phi + &
+              grad(l,nbasis+k,2) = dLa(2)*Lb*vPhi*Phi + La*dLb(2)*vPhi*Phi + &
                       La*Lb*H1Basis_dVarPhi(k+1, Lb-La)*(dLb(2)-dLa(2))*Phi
-              ! La*Lb*vPhi*H1Basis_dPhi(j, Nc-Na)*(dNc(2)-dNa(2)) ! Term always zero
               grad(l,nbasis+k,3) = La*Lb*vPhi*H1Basis_dPhi(j, Nc-Na)*(dNc(3)-dNa(3))
-              ! Rest of the terms always zero
-              ! dLa(3)*Lb*vPhi*Phi+ &
-              ! La*dLb(3)*vPhi*Phi + &
-              ! La*Lb*H1Basis_dVarPhi(k, Lb-La)*(dLb(3)-dLa(3))*Phi
             END DO
           END IF
         END DO
@@ -2065,7 +2027,7 @@ CONTAINS
             L2 = H1Basis_WedgeL(2,u(l),v(l))
             L3 = H1Basis_WedgeL(3,u(l),v(l))
             L2_L1 = L2-L1
-            L3_1 = 2d0*L3-1
+            L3_1 = 2*L3-1
 
             ! Get value of bubble function
             fval(l,nbasis+k) = L1*L2*L3*H1Basis_LegendreP(i,L2_L1)*&
@@ -2151,15 +2113,15 @@ CONTAINS
     !_ELMER_OMP_SIMD
     DO j=1,nvec
       ! Node 1
-      fval(j,nbasis+1) = c*(1d0-u(j)-d*v(j))*(1d0-w(j))
+      fval(j,nbasis+1) = c*(1-u(j)-d*v(j))*(1-w(j))
       ! Node 2
-      fval(j,nbasis+2) = c*(1d0+u(j)-d*v(j))*(1d0-w(j))
+      fval(j,nbasis+2) = c*(1+u(j)-d*v(j))*(1-w(j))
       ! Node 3
       fval(j,nbasis+3) = e*v(j)*(1-w(j))
       ! Node 4
-      fval(j,nbasis+4) = c*(1d0-u(j)-d*v(j))*(1d0+w(j))
+      fval(j,nbasis+4) = c*(1-u(j)-d*v(j))*(1+w(j))
       ! Node 5
-      fval(j,nbasis+5) = c*(1d0+u(j)-d*v(j))*(1d0+w(j))
+      fval(j,nbasis+5) = c*(1+u(j)-d*v(j))*(1+w(j))
       ! Node 6
       fval(j,nbasis+6) = e*v(j)*(1+w(j))
     END DO
@@ -2186,33 +2148,33 @@ CONTAINS
     !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,nbasis+1,1) = -c*(1-w(j))
-      grad(j,nbasis+2,1) = c*(1-w(j))  
-      grad(j,nbasis+3,1) = REAL(0, dp)
+      grad(j,nbasis+2,1) =  c*(1-w(j))  
+      grad(j,nbasis+3,1) =  0
       grad(j,nbasis+4,1) = -c*(1+w(j))
-      grad(j,nbasis+5,1) = c*(1+w(j))
-      grad(j,nbasis+6,1) = REAL(0, dp)
+      grad(j,nbasis+5,1) =  c*(1+w(j))
+      grad(j,nbasis+6,1) =  0
     END DO
     
     ! Second coordinate (eta)
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,nbasis+1,2)= -f*(1-w(j))
+      grad(j,nbasis+1,2)=  -f*(1-w(j))
       grad(j,nbasis+2,2) = -f*(1-w(j))
-      grad(j,nbasis+3,2) = e*(1-w(j))
+      grad(j,nbasis+3,2) =  e*(1-w(j))
       grad(j,nbasis+4,2) = -f*(1+w(j))
       grad(j,nbasis+5,2) = -f*(1+w(j))
-      grad(j,nbasis+6,2) = e*(1+w(j))
+      grad(j,nbasis+6,2) =  e*(1+w(j))
     END DO
     
     ! Third coordinate (zeta)
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,nbasis+1,3) = -c*(1d0-u(j)-d*v(j))
-      grad(j,nbasis+2,3) = -c*(1d0+u(j)-d*v(j))
+      grad(j,nbasis+1,3) = -c*(1-u(j)-d*v(j))
+      grad(j,nbasis+2,3) = -c*(1+u(j)-d*v(j))
       grad(j,nbasis+3,3) = -e*v(j)
-      grad(j,nbasis+4,3) = c*(1d0-u(j)-d*v(j))
-      grad(j,nbasis+5,3) = c*(1d0+u(j)-d*v(j))
-      grad(j,nbasis+6,3) = e*v(j)
+      grad(j,nbasis+4,3) =  c*(1-u(j)-d*v(j))
+      grad(j,nbasis+5,3) =  c*(1+u(j)-d*v(j))
+      grad(j,nbasis+6,3) =  e*v(j)
     END DO
         nbasis = nbasis + 6
   END SUBROUTINE H1Basis_dWedgeNodalP
@@ -2225,16 +2187,17 @@ CONTAINS
     REAL(KIND=dp), INTENT(IN) :: u,v
     ! Result
     REAL(KIND=dp) :: fval
+    REAL(KIND=dp), PARAMETER :: a=1/SQRT(3.0_dp)
     !_ELMER_OMP_DECLARE_SIMD UNIFORM(node) &
     !_ELMER_OMP _ELMER_LINEAR_REF(u) _ELMER_LINEAR_REF(v) NOTINBRANCH
     
     SELECT CASE(node)
     CASE (1,4)
-      fval = 1d0/2*(1d0-u-v/SQRT(3d0))
+      fval = (1-u-a*v)/2
     CASE (2,5)
-      fval = 1d0/2*(1d0+u-v/SQRT(3d0))
+      fval = (1+u-a*v)/2
     CASE (3,6)
-      fval = SQRT(3d0)/3*v
+      fval = a*v
     END SELECT
   END FUNCTION H1Basis_WedgeL
 
@@ -2254,7 +2217,7 @@ CONTAINS
     CASE(2,5)
       grad = c*[REAL(1,dp), REAL(-d,dp), 0D0]
     CASE(3,6)
-      grad = [REAL(0,dp), REAL(d,dp), 0D0]
+      grad =   [REAL(0,dp), REAL(d,dp), 0D0]
     END SELECT    
   END FUNCTION H1Basis_dWedgeL
 
@@ -2270,9 +2233,9 @@ CONTAINS
     
     SELECT CASE(node)
     CASE (1,2,3)
-      fval = -w/2d0
+      fval = -w/2
     CASE (4,5,6)
-      fval = w/2d0
+      fval =  w/2
     END SELECT
   END FUNCTION H1Basis_WedgeH
 
@@ -2290,7 +2253,7 @@ CONTAINS
     CASE (1,2,3)
       grad = [0D0, 0D0, -c]
     CASE (4,5,6)
-      grad = [0D0, 0D0, c]
+      grad = [0D0, 0D0,  c]
     END SELECT
   END FUNCTION H1Basis_dWedgeH
   
@@ -3191,7 +3154,7 @@ CONTAINS
             dLegj = H1Basis_dLegendreP(k-1,Lc-La)*(dLc-dLa)
  
             grad(l,nbasis+k,:) = dPa*Pb*Legi*Legj + Pa*dPb*Legi*Legj + &
-                                   Pa*Pb*dLegi*Legj + Pa*Pb*Legi*dLegj
+                       Pa*Pb*dLegi*Legj + Pa*Pb*Legi*dLegj
           END DO
         END DO
         nbasis = nbasis + pmax(i)-1
@@ -3230,8 +3193,7 @@ CONTAINS
             dLegj = H1Basis_dLegendreP(k-1,2*Lc-1)*2*dLc
  
             grad(l,nbasis+k,:) = dPa*Pb*Pc*Legi*Legj + Pa*dPb*Pc*Legi*Legj + &
-                                   Pa*Pb*dPc*Legi*Legj + Pa*Pb*Pc*dLegi*Legj + &
-                                   Pa*Pb*Pc*Legi*dLegj
+               Pa*Pb*dPc*Legi*Legj + Pa*Pb*Pc*dLegi*Legj + Pa*Pb*Pc*Legi*dLegj
           END DO
         END DO
         nbasis = nbasis + MAX(pmax(i)-j-2,0)
@@ -3290,6 +3252,7 @@ CONTAINS
     REAL(KIND=dp) :: La, Lb, Lc, Pa, Pb, Pc, Legi, Legj, Legk, s
     REAL(KIND=dp), DIMENSION(3) :: dLa, dLb, dLc, dPa, dPb, dPc, dLegi, dLegj, dLegk
     INTEGER :: i,j,k,l, node1, node2, node3, node4, nnb
+    REAL(KIND=dp), PARAMETER :: a = 1/SQRT(2._dp)
 !DIR$ ASSUME_ALIGNED u:64, v:64, w:64
 
 
@@ -3301,7 +3264,7 @@ CONTAINS
           nbasis = nbasis + 1
           !_ELMER_OMP_SIMD PRIVATE(Pa, Pb, Pc, Legi, Legj, Legk, dPa, dPb, dPc, dLegi, dLegj, dLegk, s)
           DO l=1,nvec
-             s = w(l) / SQRT(2._dp)
+             s = a * w(l)
              Pa = N(l,1)
              Pb = N(l,3)
              Pc = N(l,5)
@@ -3317,7 +3280,7 @@ CONTAINS
              dLegi = 0; dLegj=0; dLegk=0
              dLegi(1) = H1Basis_dLegendreP(i,u(l))
              dLegj(2) = H1Basis_dLegendreP(j,v(l))
-             dLegk(3) = H1Basis_dLegendreP(k-1,2*s-1)*2/SQRT(2._dp)
+             dLegk(3) = H1Basis_dLegendreP(k-1,2*s-1)*2*a
 
              grad(l,nbasis,:) = dPa*Pb*Pc*Legi*Legj*Legk + Pa*dPb*Pc*Legi*Legj*Legk + &
                                 Pa*Pb*dPc*Legi*Legj*Legk + Pa*Pb*Pc*dLegi*Legj*Legk + &
@@ -3384,12 +3347,12 @@ CONTAINS
     !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,nbasis+1,1) = -c*(1-v(j))*(1-w(j))
-      grad(j,nbasis+2,1) = c*(1-v(j))*(1-w(j))
-      grad(j,nbasis+3,1) = c*(1+v(j))*(1-w(j))
+      grad(j,nbasis+2,1) =  c*(1-v(j))*(1-w(j))
+      grad(j,nbasis+3,1) =  c*(1+v(j))*(1-w(j))
       grad(j,nbasis+4,1) = -c*(1+v(j))*(1-w(j))
       grad(j,nbasis+5,1) = -c*(1-v(j))*(1+w(j))
-      grad(j,nbasis+6,1) = c*(1-v(j))*(1+w(j))
-      grad(j,nbasis+7,1) = c*(1+v(j))*(1+w(j))
+      grad(j,nbasis+6,1) =  c*(1-v(j))*(1+w(j))
+      grad(j,nbasis+7,1) =  c*(1+v(j))*(1+w(j))
       grad(j,nbasis+8,1) = -c*(1+v(j))*(1+w(j))
     END DO
     
@@ -3398,12 +3361,12 @@ CONTAINS
     DO j=1,nvec
       grad(j,nbasis+1,2) = -c*(1-u(j))*(1-w(j))
       grad(j,nbasis+2,2) = -c*(1+u(j))*(1-w(j))
-      grad(j,nbasis+3,2) = c*(1+u(j))*(1-w(j))
-      grad(j,nbasis+4,2) = c*(1-u(j))*(1-w(j))
+      grad(j,nbasis+3,2) =  c*(1+u(j))*(1-w(j))
+      grad(j,nbasis+4,2) =  c*(1-u(j))*(1-w(j))
       grad(j,nbasis+5,2) = -c*(1-u(j))*(1+w(j))
       grad(j,nbasis+6,2) = -c*(1+u(j))*(1+w(j))
-      grad(j,nbasis+7,2) = c*(1+u(j))*(1+w(j))
-      grad(j,nbasis+8,2) = c*(1-u(j))*(1+w(j))
+      grad(j,nbasis+7,2) =  c*(1+u(j))*(1+w(j))
+      grad(j,nbasis+8,2) =  c*(1-u(j))*(1+w(j))
     END DO
     
     ! Third coordinate (zeta)
@@ -3413,10 +3376,10 @@ CONTAINS
       grad(j,nbasis+2,3) = -c*(1+u(j))*(1-v(j))
       grad(j,nbasis+3,3) = -c*(1+u(j))*(1+v(j))
       grad(j,nbasis+4,3) = -c*(1-u(j))*(1+v(j))
-      grad(j,nbasis+5,3) = c*(1-u(j))*(1-v(j))
-      grad(j,nbasis+6,3) = c*(1+u(j))*(1-v(j))
-      grad(j,nbasis+7,3) = c*(1+u(j))*(1+v(j))
-      grad(j,nbasis+8,3) = c*(1-u(j))*(1+v(j))
+      grad(j,nbasis+5,3) =  c*(1-u(j))*(1-v(j))
+      grad(j,nbasis+6,3) =  c*(1+u(j))*(1-v(j))
+      grad(j,nbasis+7,3) =  c*(1+u(j))*(1+v(j))
+      grad(j,nbasis+8,3) =  c*(1-u(j))*(1+v(j))
     END DO
         nbasis = nbasis + 8
   END SUBROUTINE H1Basis_dBrickNodal
@@ -3433,21 +3396,21 @@ CONTAINS
     
     SELECT CASE (node)
     CASE (1)
-      fval = c*(3D0-u-v-w)
+      fval = c*(3-u-v-w)
     CASE (2)
-      fval = c*(3D0+u-v-w)
+      fval = c*(3+u-v-w)
     CASE (3)
-      fval = c*(3D0+u+v-w)
+      fval = c*(3+u+v-w)
     CASE (4)
-      fval = c*(3D0-u+v-w)
+      fval = c*(3-u+v-w)
     CASE (5)
-      fval = c*(3D0-u-v+w)
+      fval = c*(3-u-v+w)
     CASE (6)
-      fval = c*(3D0+u-v+w)
+      fval = c*(3+u-v+w)
     CASE (7)
-      fval = c*(3D0+u+v+w)
+      fval = c*(3+u+v+w)
     CASE (8)
-      fval = c*(3D0-u+v+w)
+      fval = c*(3-u+v+w)
     END SELECT
   END FUNCTION H1Basis_BrickL
 
@@ -3645,14 +3608,11 @@ CONTAINS
           dPhi = H1Basis_dPhi(j+1, Lb-La)
 
           grad(k,nbasis+j,1) = c*dPhi*(dLb(1)-dLa(1))*Aa*Ba +&
-                  c*Phi*dAa(1)*Ba +&
-                  c*Phi*Aa*dBa(1)
+                  c*Phi*dAa(1)*Ba + c*Phi*Aa*dBa(1)
           grad(k,nbasis+j,2) = c*dPhi*(dLb(2)-dLa(2))*Aa*Ba +&
-                  c*Phi*dAa(2)*Ba +&
-                  c*Phi*Aa*dBa(2)
+                  c*Phi*dAa(2)*Ba + c*Phi*Aa*dBa(2)
           grad(k,nbasis+j,3) = c*dPhi*(dLb(3)-dLa(3))*Aa*Ba +&
-                  c*Phi*dAa(3)*Ba +&
-                  c*Phi*Aa*dBa(3)
+                  c*Phi*dAa(3)*Ba + c*Phi*Aa*dBa(3)
         END DO
       END DO
       ! nbasis = nbasis + (pmax(i)-2) + 1
@@ -3672,7 +3632,7 @@ CONTAINS
     INTEGER, DIMENSION(:,:) CONTIG, INTENT(IN) :: facedir
 
     REAL(KIND=dp) :: La, Lb, Lc, Ld
-    REAL(KIND=dp), PARAMETER :: a=1D0/4D0
+    REAL(KIND=dp), PARAMETER :: a = 1D0/4
     INTEGER :: i,j,k,l
 !DIR$ ASSUME_ALIGNED u:64, v:64, w:64, fval:64
 
@@ -3688,7 +3648,7 @@ CONTAINS
             Ld=H1Basis_BrickL(facedir(4,i), u(l), v(l), w(l))
             
             fval(l, nbasis+k) = (a*(La+Lb+Lc+Ld)-1)*H1Basis_Phi(j, Lb-La) &
-                                                     *H1Basis_Phi(k+1, Ld-La)
+                               *H1Basis_Phi(k+1, Ld-La)
           END DO
         END DO
         ! nbasis = nbasis + (pmax(i)-j-2) + 1
@@ -3904,10 +3864,8 @@ CONTAINS
 
           grad(k,nbasis+j,1) = dPhi*(dLb(1)-dLa(1))*Na*Nb + &
                   Phi*dNa(1)*Nb + Phi*Na*dNb(1)
-
           grad(k,nbasis+j,2) = dPhi*(dLb(2)-dLa(2))*Na*Nb + &
                   Phi*dNa(2)*Nb + Phi*Na*dNb(2)
-
           grad(k,nbasis+j,3) = dPhi*(dLb(3)-dLa(3))*Na*Nb + &
                   Phi*dNa(3)*Nb + Phi*Na*dNb(3)
         END DO
@@ -4159,52 +4117,6 @@ CONTAINS
               (-0.2078505D7 / 0.4096D4 * SQRT(0.6D1) + (0.2909907D7 / 0.4096D4 * SQRT(0.6D1) +&
               (-0.2028117D7 / 0.4096D4 * SQRT(0.6D1) + 0.557175D6 / 0.4096D4 * SQRT(0.6D1) &
               * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2
-!!!      CASE(15)
-!!!        fval = (-0.429D3 / 0.4096D4 * sqrt(0.58D2) + (0.15015D5 / 0.4096D4 * sqrt(0.58D2) +&
-!!!                (-0.153153D6 / 0.4096D4 * sqrt(0.58D2) + (0.692835D6 / 0.4096D4 * sqrt(0.58D2) +&
-!!!                (-0.1616615D7 / 0.4096D4 * sqrt(0.58D2) + (0.2028117D7 / 0.4096D4 * sqrt(0.58D2) +&
-!!!                (-0.1300075D7 / 0.4096D4 * sqrt(0.58D2) + 0.334305D6 / 0.4096D4 * sqrt(0.58D2) &
-!!!                * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x
-!!!      CASE(16)
-!!!        fval = 0.429D3 / 0.65536D5 * sqrt(0.62D2) + (-0.6435D4 / 0.8192D4 * sqrt(0.62D2) +&
-!!!                (0.255255D6 / 0.16384D5 * sqrt(0.62D2) + (-0.969969D6 / 0.8192D4 * sqrt(0.62D2) +&
-!!!                (0.14549535D8 / 0.32768D5 * sqrt(0.62D2) + (-0.7436429D7 / 0.8192D4 * &
-!!!                sqrt(0.62D2) + (0.16900975D8 / 0.16384D5 * sqrt(0.62D2) + (-0.5014575D7 / 0.8192D4 &
-!!!                * sqrt(0.62D2) + 0.9694845D7 / 0.65536D5 * sqrt(0.62D2) * x ** 2) * x ** 2) * &
-!!!                x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2
-!!!      CASE(17)
-!!!        fval = (0.6435D4 / 0.65536D5 * sqrt(0.66D2) + (-0.36465D5 / 0.8192D4 * sqrt(0.66D2) +&
-!!!                (0.969969D6 / 0.16384D5 * sqrt(0.66D2) + (-0.2909907D7 / 0.8192D4 * sqrt(0.66D2) +&
-!!!                (0.37182145D8 / 0.32768D5 * sqrt(0.66D2) + (-0.16900975D8 / 0.8192D4 * &
-!!!                sqrt(0.66D2)  + (0.35102025D8 / 0.16384D5 * sqrt(0.66D2) + &
-!!!                (-0.9694845D7 / 0.8192D4 * sqrt(0.66D2) + 0.17678835D8 / 0.65536D5 * sqrt(0.66D2) &
-!!!                * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x
-!!!      CASE(18)
-!!!        fval = -0.715D3 / 0.131072D6 * sqrt(0.70D2) + (0.109395D6 / 0.131072D6 * sqrt(0.70D2) +&
-!!!                (-0.692835D6 / 0.32768D5 * sqrt(0.70D2) + (0.6789783D7 / 0.32768D5 * &
-!!!                sqrt(0.70D2) + (-0.66927861D8 / 0.65536D5 * sqrt(0.70D2) + (0.185910725D9 / &
-!!!                0.65536D5 * sqrt(0.70D2) + (-0.152108775D9 / 0.32768D5 * sqrt(0.70D2) + &
-!!!                (0.145422675D9 / 0.32768D5 * sqrt(0.70D2) + (-0.300540195D9 / 0.131072D6 * &
-!!!                sqrt(0.70D2) + 0.64822395D8 / 0.131072D6 * sqrt(0.70D2) * x ** 2) * x ** 2) &
-!!!                * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2
-!!!      CASE(19)
-!!!        fval = (-0.12155D5 / 0.131072D6 * sqrt(0.74D2) + (0.692835D6 / 0.131072D6 * &
-!!!                sqrt(0.74D2) + (-0.2909907D7 / 0.32768D5 * sqrt(0.74D2) + (0.22309287D8 /&
-!!!                0.32768D5 * sqrt(0.74D2) + (-0.185910725D9 / 0.65536D5 * sqrt(0.74D2) + &
-!!!                (0.456326325D9 / 0.65536D5 * sqrt(0.74D2) + (-0.339319575D9 / 0.32768D5 * &
-!!!                sqrt(0.74D2) + (0.300540195D9 / 0.32768D5 * sqrt(0.74D2) + (-0.583401555D9 / &
-!!!                0.131072D6 * sqrt(0.74D2) + 0.119409675D9 / 0.131072D6 * sqrt(0.74D2) * &
-!!!                x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * &
-!!!                x ** 2) * x ** 2) * x
-!!!      CASE(20)
-!!!        fval = 0.2431D4 / 0.524288D6 * sqrt(0.78D2) + (-0.230945D6 / 0.262144D6 * sqrt(0.78D2) + &
-!!!                (0.14549535D8 / 0.524288D6 * sqrt(0.78D2) + (-0.22309287D8 / 0.65536D5 * &
-!!!                sqrt(0.78D2) + (0.557732175D9 / 0.262144D6 * sqrt(0.78D2) + (-0.1003917915D10 / &
-!!!                0.131072D6 * sqrt(0.78D2) + (0.4411154475D10 / 0.262144D6 * sqrt(0.78D2) + &
-!!!                (-0.1502700975D10 / 0.65536D5 * sqrt(0.78D2) + (0.9917826435D10 / 0.524288D6 *&
-!!!                sqrt(0.78D2) + (-0.2268783825D10 / 0.262144D6 * sqrt(0.78D2) + 0.883631595D9 / &
-!!!                0.524288D6 * sqrt(0.78D2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) &
-!!!                * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2
     CASE DEFAULT
       ! TODO: Handle error somehow
     END SELECT
@@ -4258,34 +4170,6 @@ CONTAINS
       fval = 0.3D1 / 0.2048D4 * DBLE(3003 + (-90090 + (765765 + (-2771340 + &
               (4849845 + (1300075 * x ** 2 - 4056234) * x ** 2) * x ** 2) * &
               x ** 2) * x ** 2) * x ** 2) * DBLE(x) * SQRT(0.6D1)
-!!!      CASE(15)
-!!!        fval = dble(-429 + (45045 + (-765765 + (4849845 + (-14549535 + &
-!!!                (22309287 + (5014575 * x ** 2 - 16900975) * x ** 2) * &
-!!!                x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * sqrt(0.58D2) / 0.4096D4
-!!!      CASE(16)
-!!!        fval = dble(-6435 + (255255 + (-2909907 + (14549535 + (-37182145 + &
-!!!                (50702925 + (9694845 * x ** 2 - 35102025) * x ** 2) * x ** 2) &
-!!!                * x ** 2) * x ** 2) * x ** 2) * x ** 2) * dble(x) * sqrt(0.62D2) / 0.4096D4
-!!!      CASE(17)
-!!!        fval = dble(6435 + (-875160 + (19399380 + (-162954792 + (669278610 + &
-!!!                (-1487285800 + (1825305300 + (300540195 * x ** 2 - 1163381400) * &
-!!!                x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) *&
-!!!                sqrt(0.66D2) / 0.65536D5
-!!!      CASE(18)
-!!!        fval = dble(109395 + (-5542680 + (81477396 + (-535422888 + (1859107250 + &
-!!!                (-3650610600 + (4071834900 + (583401555 * x ** 2 - 2404321560) * &
-!!!                x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) *&
-!!!                dble(x) * sqrt(0.70D2) / 0.65536D5
-!!!      CASE(19)
-!!!        fval = dble(-12155 + (2078505 + (-58198140 + (624660036 + (-3346393050 + &
-!!!                (10039179150 + (-17644617900 + (18032411700 + (2268783825 * x ** 2 -&
-!!!                9917826435) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * &
-!!!                x ** 2) * x ** 2) * x ** 2) * sqrt(0.74D2) / 0.131072D6
-!!!      CASE(20)
-!!!        fval = dble(-230945 + (14549535 + (-267711444 + (2230928700 + (-10039179150 +&
-!!!                (26466926850 + (-42075627300 + (39671305740 + (4418157975 * x ** 2 -&
-!!!                20419054425) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * &
-!!!                x ** 2) * x ** 2) * x ** 2) * dble(x) * sqrt(0.78D2) / 0.131072D6
     CASE DEFAULT
       ! TODO: Handle error somehow
     END SELECT
@@ -4338,33 +4222,6 @@ CONTAINS
       fval = -0.3D1 / 0.1024D4 * DBLE(33 + (-2970 + (42075 + (-213180 + &
               (479655 + (185725 * x ** 2 - 490314) * x ** 2) * x ** 2) *&
               x ** 2) * x ** 2) * x ** 2) * SQRT(0.6D1)
-!!!      CASE(15)
-!!!        fval = -dble(429 + (-14586 + (138567 + (-554268 + (1062347 + (334305 *&
-!!!                x ** 2 - 965770) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * &
-!!!                x ** 2) * dble(x) * sqrt(0.58D2) / 0.1024D4
-!!!      CASE(16)
-!!!        fval = -dble(-429 + (51051 + (-969969 + (6789783 + (-22309287 + &
-!!!                (37182145 + (9694845 * x ** 2 - 30421755) * x ** 2) * x ** 2) *&
-!!!                x ** 2) * x ** 2) * x ** 2) * x ** 2) * sqrt(0.62D2) / 0.16384D5
-!!!      CASE(17)
-!!!        fval = -dble(-6435 + (285285 + (-3594591 + (19684665 + (-54679625 + &
-!!!                (80528175 + (17678835 * x ** 2 - 59879925) * x ** 2) * x ** 2) *&
-!!!                x ** 2) * x ** 2) * x ** 2) * x ** 2) * dble(x) * sqrt(0.66D2) / 0.16384D5
-!!!      CASE(18)
-!!!        fval = -dble(715 + (-108680 + (2662660 + (-24496472 + (109359250 + &
-!!!                (-262462200 + (345972900 + (64822395 * x ** 2 - 235717800) * &
-!!!                x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * &
-!!!                x ** 2) * sqrt(0.70D2) / 0.32768D5
-!!!      CASE(19)
-!!!        fval = -dble(12155 + (-680680 + (10958948 + (-78278200 + (293543250 + &
-!!!                (-619109400 + (738168900 + (119409675 * x ** 2 - 463991880) * &
-!!!                x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * &
-!!!                x ** 2) * dble(x) * sqrt(0.74D2) / 0.32768D5
-!!!      CASE(20)
-!!!        fval = -dble(-2431 + (459459 + (-14090076 + (164384220 + (-951080130 + &
-!!!                (3064591530 + (-5757717420 + (6263890380 + (883631595 * x ** 2 - &
-!!!                3653936055) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * &
-!!!                x ** 2) * x ** 2) * x ** 2) * sqrt(0.78D2) / 0.131072D6
     CASE DEFAULT
       ! TODO: Handle error somehow
     END SELECT
@@ -4415,32 +4272,6 @@ CONTAINS
     CASE(14)
       fval = -0.45D2 / 0.256D3 * DBLE(x) * SQRT(0.6D1) * DBLE(-99 + (2805 + (-21318 + &
               (63954 + (37145 * x ** 2 - 81719) * x ** 2) * x ** 2) * x ** 2) * x ** 2)
-!!!      CASE(15)
-!!!        fval = -0.13D2 / 0.1024D4 * sqrt(0.58D2) * dble(33 + (-3366 + (53295 + &
-!!!                (-298452 + (735471 + (334305 * x ** 2 - 817190) * x ** 2) * x ** 2) * &
-!!!                x ** 2) * x ** 2) * x ** 2)
-!!!      CASE(16)
-!!!        fval = -0.119D3 / 0.8192D4 * sqrt(0.62D2) * dble(x) * dble(429 + (-16302 + &
-!!!                (171171 + (-749892 + (1562275 + (570285 * x ** 2 - 1533870) * x ** 2) *&
-!!!                x ** 2) * x ** 2) * x ** 2) * x ** 2)
-!!!      CASE(17)
-!!!        fval = -0.45D2 / 0.16384D5 * sqrt(0.66D2) * dble(-143 + (19019 + (-399399 + &
-!!!                (3062059 + (-10935925 + (19684665 + (5892945 * x ** 2 - 17298645) * &
-!!!                x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2)
-!!!      CASE(18)
-!!!        fval = -0.19D2 / 0.2048D4 * sqrt(0.70D2) * dble(x) * dble(-715 + (35035 + &
-!!!                (-483483 + (2877875 + (-8633625 + (13656825 + (3411705 * x ** 2 - &
-!!!                10855425) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2)
-!!!      CASE(19)
-!!!        fval = -0.85D2 / 0.32768D5 * sqrt(0.74D2) * dble(143 + (-24024 + (644644 + &
-!!!                (-6446440 + (31081050 + (-80120040 + (112896420 + (23881935 * x ** 2 - &
-!!!                81880920) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) *&
-!!!                x ** 2)
-!!!      CASE(20)
-!!!        fval = -0.63D2 / 0.65536D5 * sqrt(0.78D2) * dble(x) * dble(7293 + (-447304 + &
-!!!                (7827820 + (-60386040 + (243221550 + (-548354040 + (695987820 + &
-!!!                (126233085 * x ** 2 - 463991880) * x ** 2) * x ** 2) * x ** 2) * x ** 2) *&
-!!!                x ** 2) * x ** 2) * x ** 2)
     CASE DEFAULT
       ! TODO: Handle error somehow
     END SELECT
@@ -4512,45 +4343,6 @@ CONTAINS
               (0.4849845D7 / 0.2048D4 + (-0.14549535D8 / 0.2048D4 + (0.22309287D8 / &
               0.2048D4 + (-0.16900975D8 / 0.2048D4 + 0.5014575D7 / 0.2048D4 * x ** 2) *&
               x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2
-!!!      CASE(15)
-!!!        fval = (-0.6435D4 / 0.2048D4 + (0.255255D6 / 0.2048D4 + (-0.2909907D7 / 0.2048D4 + &
-!!!                (0.14549535D8 / 0.2048D4 + (-0.37182145D8 / 0.2048D4 + (0.50702925D8 / &
-!!!                0.2048D4 + (-0.35102025D8 / 0.2048D4 + 0.9694845D7 / 0.2048D4 * x ** 2) * &
-!!!                x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x
-!!!      CASE(16)
-!!!        fval = 0.6435D4 / 0.32768D5 + (-0.109395D6 / 0.4096D4 + (0.4849845D7 / 0.8192D4 + &
-!!!                (-0.20369349D8 / 0.4096D4 + (0.334639305D9 / 0.16384D5 + (-0.185910725D9 / &
-!!!                0.4096D4 + (0.456326325D9 / 0.8192D4 + (-0.145422675D9 / 0.4096D4 + &
-!!!                0.300540195D9 / 0.32768D5 * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) &
-!!!                * x ** 2) * x ** 2) * x ** 2
-!!!      CASE(17)
-!!!        fval = (0.109395D6 / 0.32768D5 + (-0.692835D6 / 0.4096D4 + (0.20369349D8 / 0.8192D4 + &
-!!!                (-0.66927861D8 / 0.4096D4 + (0.929553625D9 / 0.16384D5 + (-0.456326325D9 / &
-!!!                0.4096D4 + (0.1017958725D10 / 0.8192D4 + (-0.300540195D9 / 0.4096D4 + &
-!!!                0.583401555D9 / 0.32768D5 * x ** 2) * x ** 2) * x ** 2) * x ** 2) * &
-!!!                x ** 2) * x ** 2) * x ** 2) * x ** 2) * x
-!!!      CASE(18)
-!!!        fval = -0.12155D5 / 0.65536D5 + (0.2078505D7 / 0.65536D5 + (-0.14549535D8 / &
-!!!                0.16384D5 + (0.156165009D9 / 0.16384D5 + (-0.1673196525D10 / 0.32768D5 + &
-!!!                (0.5019589575D10 / 0.32768D5 + (-0.4411154475D10 / 0.16384D5 + &
-!!!                (0.4508102925D10 / 0.16384D5 + (-0.9917826435D10 / 0.65536D5 + &
-!!!                0.2268783825D10 / 0.65536D5 * x ** 2) * x ** 2) * x ** 2) * x ** 2) * &
-!!!                x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2
-!!!      CASE(19) 
-!!!        fval = (-0.230945D6 / 0.65536D5 + (0.14549535D8 / 0.65536D5 + (-0.66927861D8 / &
-!!!                0.16384D5 + (0.557732175D9 / 0.16384D5 + (-0.5019589575D10 / 0.32768D5 + &
-!!!                (0.13233463425D11 / 0.32768D5 + (-0.10518906825D11 / 0.16384D5 + &
-!!!                (0.9917826435D10 / 0.16384D5 + (-0.20419054425D11 / 0.65536D5 + &
-!!!                0.4418157975D10 / 0.65536D5 * x ** 2) * x ** 2) * x ** 2) * x ** 2) * &
-!!!                x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x
-!!!      CASE(20)
-!!!        fval = 0.46189D5 / 0.262144D6 + (-0.4849845D7 / 0.131072D6 + (0.334639305D9 / &
-!!!                0.262144D6 + (-0.557732175D9 / 0.32768D5 + (0.15058768725D11 / 0.131072D6 +&
-!!!                (-0.29113619535D11 / 0.65536D5 + (0.136745788725D12 / 0.131072D6 + &
-!!!                (-0.49589132175D11 / 0.32768D5 + (0.347123925225D12 / 0.262144D6 + &
-!!!                (-0.83945001525D11 / 0.131072D6 + 0.34461632205D11 / 0.262144D6 * x ** 2) * &
-!!!                x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * &
-!!!                x ** 2) * x ** 2
     CASE DEFAULT
       ! TODO: Handle error somehow
     END SELECT
@@ -4608,37 +4400,6 @@ CONTAINS
     CASE(14)
       fval = 0.105D3 / 0.1024D4 * DBLE(429 + (-14586 + (138567 + (-554268 + (1062347 + (334305 *&
               x ** 2 - 965770) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * DBLE(x)
-!!!      CASE(15)
-!!!        fval = -0.6435D4 / 0.2048D4 + (0.765765D6 / 0.2048D4 + (-0.14549535D8 / 0.2048D4 +&
-!!!                (0.101846745D9 / 0.2048D4 + (-0.334639305D9 / 0.2048D4 + (0.557732175D9 / &
-!!!                0.2048D4 + (-0.456326325D9 / 0.2048D4 + 0.145422675D9 / 0.2048D4 * x ** 2) *&
-!!!                x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2
-!!!      CASE(16)
-!!!        fval = 0.17D2 / 0.2048D4 * dble(-6435 + (285285 + (-3594591 + (19684665 + (-54679625 +&
-!!!                (80528175 + (17678835 * x ** 2 - 59879925) * x ** 2) * x ** 2) * x ** 2) * &
-!!!                x ** 2) * x ** 2) * x ** 2) * dble(x)
-!!!      CASE(17)
-!!!        fval = 0.109395D6 / 0.32768D5 + (-0.2078505D7 / 0.4096D4 + (0.101846745D9 / 0.8192D4 +&
-!!!                (-0.468495027D9 / 0.4096D4 + (0.8365982625D10 / 0.16384D5 + (-0.5019589575D10 /&
-!!!                0.4096D4 + (0.13233463425D11 / 0.8192D4 + (-0.4508102925D10 / 0.4096D4 + &
-!!!                0.9917826435D10 / 0.32768D5 * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) *&
-!!!                x ** 2) * x ** 2) * x ** 2
-!!!      CASE(18)
-!!!        fval = 0.171D3 / 0.32768D5 * dble(12155 + (-680680 + (10958948 + (-78278200 + &
-!!!                (293543250 + (-619109400 + (738168900 + (119409675 * x ** 2 - 463991880) *&
-!!!                x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * dble(x)
-!!!      CASE(19)
-!!!        fval = -0.230945D6 / 0.65536D5 + (0.43648605D8 / 0.65536D5 + (-0.334639305D9 / 0.16384D5 +&
-!!!                (0.3904125225D10 / 0.16384D5 + (-0.45176306175D11 / 0.32768D5 + &
-!!!                (0.145568097675D12 / 0.32768D5 + (-0.136745788725D12 / 0.16384D5 + &
-!!!                (0.148767396525D12 / 0.16384D5 + (-0.347123925225D12 / 0.65536D5 + &
-!!!                0.83945001525D11 / 0.65536D5 * x ** 2) * x ** 2) * x ** 2) * x ** 2) *&
-!!!                x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2
-!!!    CASE(20)
-!!!      fval = 0.105D3 / 0.65536D5 * dble(-46189 + (3187041 + (-63740820 + (573667380 + &
-!!!              (-2772725670 + (7814045070 + (-13223768580 + (13223768580 + (1641030105 *&
-!!!              x ** 2 - 7195285845) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * x ** 2) * &
-!!!              x ** 2) * x ** 2) * x ** 2) * dble(x)
     CASE DEFAULT
       ! TODO: Handle error somehow
     END SELECT
@@ -4684,29 +4445,29 @@ CONTAINS
     ! First coordinate (xi)
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,1,1) = -1D0
+      grad(j,1,1) = -1
     END DO
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,2,1) = 1D0
+      grad(j,2,1) =  1
     END DO
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,3,1) = 0D0
+      grad(j,3,1) =  0
     END DO
     
     ! Second coordinate (eta)
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,1,2) = -1D0
+      grad(j,1,2) = -1
     END DO
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,2,2) = 0D0
+      grad(j,2,2) =  0
     END DO
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,3,2) = 1D0
+      grad(j,3,2) =  1
     END DO
   END SUBROUTINE H1Basis_dTriangleNodal
   
@@ -4750,55 +4511,55 @@ CONTAINS
     ! First coordinate (xi)
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,1,1) = -1D0
+      grad(j,1,1) = -1
     END DO
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,2,1) = 1D0
+      grad(j,2,1) =  1
     END DO
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,3,1) = 0D0
+      grad(j,3,1) =  0
     END DO
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,4,1) = 0D0
+      grad(j,4,1) =  0
     END DO
     
     ! Second coordinate (eta)
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,1,2) = -1D0
+      grad(j,1,2) = -1
     END DO
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,2,2) = 0D0
+      grad(j,2,2) =  0
     END DO
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,3,2) = 1D0
+      grad(j,3,2) =  1
     END DO
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,4,2) = 0D0
+      grad(j,4,2) =  0
     END DO
     
     ! Third coordinate (zeta)
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,1,3) = -1D0
+      grad(j,1,3) = -1
     END DO
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,2,3) = 0D0
+      grad(j,2,3) =  0
     END DO
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,3,3) = 0D0
+      grad(j,3,3) =  0
     END DO
     !_ELMER_OMP_SIMD
     DO j=1,nvec
-      grad(j,4,3) = 1D0
+      grad(j,4,3) =  1
     END DO
   END SUBROUTINE H1Basis_dTetraNodal
 
@@ -4812,7 +4573,7 @@ CONTAINS
     INTEGER, INTENT(IN) :: nbasismax
     ! Variables
     REAL(Kind=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax), INTENT(INOUT) :: fval
-    REAL(Kind=dp), PARAMETER :: c = 1D0/2D0
+    REAL(Kind=dp), PARAMETER :: c = 1D0/2
     INTEGER :: j
 
     !_ELMER_OMP_SIMD
@@ -4842,29 +4603,29 @@ CONTAINS
     INTEGER, INTENT(IN) :: nbasismax
     ! Variables
     REAL(Kind=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax,3), INTENT(INOUT) :: grad
-    REAL(Kind=dp), PARAMETER :: c = 1D0/2D0
+    REAL(Kind=dp), PARAMETER :: c = 1D0/2
     INTEGER :: j
 
     ! First coordinate (xi)
     !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,1,1) = -c*(1-w(j))
-      grad(j,2,1) = c*(1-w(j))
-      grad(j,3,1) = 0D0
+      grad(j,2,1) =  c*(1-w(j))
+      grad(j,3,1) =  0
       grad(j,4,1) = -c*(1+w(j))
-      grad(j,5,1) = c*(1+w(j))
-      grad(j,6,1) = 0D0
+      grad(j,5,1) =  c*(1+w(j))
+      grad(j,6,1) =  0
     END DO
     
     ! Second coordinate (eta)
     !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,1,2) = -c*(1-w(j))
-      grad(j,2,2) = 0D0
-      grad(j,3,2) = c*(1-w(j))
+      grad(j,2,2) =  0
+      grad(j,3,2) =  c*(1-w(j))
       grad(j,4,2) = -c*(1+w(j))
-      grad(j,5,2) = 0D0
-      grad(j,6,2) = c*(1+w(j))
+      grad(j,5,2) =  0
+      grad(j,6,2) =  c*(1+w(j))
     END DO
     
     ! Third coordinate (zeta)
@@ -4873,9 +4634,9 @@ CONTAINS
       grad(j,1,3) = -c*(1-u(j)-v(j))
       grad(j,2,3) = -c*u(j)
       grad(j,3,3) = -c*v(j)
-      grad(j,4,3) = c*(1-u(j)-v(j))
-      grad(j,5,3) = c*u(j)
-      grad(j,6,3) = c*v(j)
+      grad(j,4,3) =  c*(1-u(j)-v(j))
+      grad(j,5,3) =  c*u(j)
+      grad(j,6,3) =  c*v(j)
     END DO
   END SUBROUTINE H1Basis_dWedgeNodal
 

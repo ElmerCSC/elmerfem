@@ -347,6 +347,7 @@ int elm_4node_triangle_initialize()
      static char *Name = "ELM_4NODE_TRIANGLE";
 
      element_type_t ElementDef;
+     int elm_add_element_type();
 
      ElementDef.ElementName = Name;
      ElementDef.ElementCode = 304;
