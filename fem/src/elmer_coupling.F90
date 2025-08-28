@@ -526,14 +526,6 @@ CONTAINS
 
     IMPLICIT NONE
 
-! This is a dirty fix for Windows compiler (msys2+gfortran+MSMPI) where this
-! caused problems. However, likelihood of this having to be used under
-! Windows is close to zero.
-#ifndef WIN32
-    CALL MPI_INITIALIZED(ParEnv % ExternalInit, ierr)
-    IF ( ierr /= 0 ) RETURN
-#endif
-
     CALL destruct_elmer_icon_coupling()
 
     ! finalise YAC

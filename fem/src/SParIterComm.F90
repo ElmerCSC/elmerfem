@@ -239,13 +239,6 @@ CONTAINS
     END IF
 #else
 
-! This is a dirty fix for Windows compiler (msys2+gfortran+MSMPI) where this
-! caused problems. However, likelihood of this having to be used under
-! Windows is close to zero. 
-#ifndef WIN32
-    CALL MPI_INITIALIZED(ParEnv % ExternalInit, ierr)
-    IF ( ierr /= 0 ) RETURN
-#endif
     IF (.NOT. ParEnv % ExternalInit) THEN
         CALL MPI_INIT( ierr )
     END IF
@@ -293,7 +286,7 @@ GROUP_NAMES(ELMER_GROUP_IDX) = TRIM(ExecID)
 #endif
 
 IF (NUM_GROUPS > MAX_NUM_GROUPS) THEN
-    WRITE( Message, * ) 'Too many communication groups defined.'
+    WRITE( Message,'(A)') 'Too many communication groups defined.'
     CALL Fatal( 'ParCommInit', Message )
 ENDIF
 
@@ -307,7 +300,7 @@ ELMER_COMM_WORLD = GROUP_COMMS(ELMER_GROUP_IDX)  ! Set ELMER_COMM_WORLD determin
 #ifdef HAVE_XIOS
     INQUIRE(FILE="iodef.xml", EXIST=USE_XIOS)
     IF (USE_XIOS) THEN
-      WRITE(Message,*) "Using XIOS with config-file: iodef.xml"
+      WRITE(Message,'(A)') "Using XIOS with config-file: iodef.xml"
       CALL INFO("SparIterComm",Message,Level=25)
       CALL SetExecID()
       CALL xios_initialize(TRIM(ExecID), global_comm=GROUP_COMMS(XIOS_GROUP_IDX))
