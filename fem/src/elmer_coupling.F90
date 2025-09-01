@@ -397,55 +397,14 @@ CONTAINS
     INTEGER, ALLOCATABLE          :: vertex_ids(:)
     INTEGER, ALLOCATABLE          :: cell_to_vertex(:)
 
-    INTERFACE
-
-      SUBROUTINE read_grid_c(grid_dir, rank, size, num_parts, &
-                             nbr_vertices, nbr_cells, num_vertices_per_cell, &
-                             x_vertices, y_vertices, x_cells, y_cells, &
-                             cell_ids, vertex_ids, cell_to_vertex) &
-        bind ( C, name='read_grid' )
-
-        USE, INTRINSIC :: iso_c_binding, ONLY: C_INT, C_PTR, C_CHAR
-
-        CHARACTER(KIND=C_CHAR) :: grid_dir(*)
-        INTEGER(KIND=C_INT), VALUE :: rank
-        INTEGER(KIND=C_INT), VALUE :: size
-        INTEGER(KIND=C_INT), VALUE :: num_parts
-        INTEGER(KIND=C_INT)        :: nbr_vertices
-        INTEGER(KIND=C_INT)        :: nbr_cells
-        TYPE(C_PTR)                :: num_vertices_per_cell ! int **
-        TYPE(C_PTR)                :: x_vertices ! double **
-        TYPE(C_PTR)                :: y_vertices ! double **
-        TYPE(C_PTR)                :: x_cells ! double **
-        TYPE(C_PTR)                :: y_cells ! double **
-        TYPE(C_PTR)                :: cell_ids ! int **
-        TYPE(C_PTR)                :: vertex_ids ! int **
-        TYPE(C_PTR)                :: cell_to_vertex ! int **
-
-      END SUBROUTINE read_grid_c
-
-      SUBROUTINE free_c ( ptr ) bind ( c, NAME='free' )
-
-       USE, INTRINSIC :: iso_c_binding, ONLY: C_PTR
-
-       TYPE(C_PTR), VALUE :: ptr
-
-      END SUBROUTINE free_c
-
-    END INTERFACE
-
     ! get grid data from elmer component
     ! in the case of the dummy, we have to read it from file
 
-    ! read grid data from file
+    ! TODO
+    ! Get grid data from file
     ! * each process only reads in its local part of the grid
     ! * in Elmer this information probably already available and does not have
     !   to be read from file
-    CALL read_grid_c( &
-      TRIM(grid_dir) // c_null_char, comm_rank, comm_size, num_parts, &
-      nbr_vertices, nbr_cells, num_vertices_per_cell_c_ptr, &
-      x_vertices_c_ptr, y_vertices_c_ptr, x_cells_c_ptr, y_cells_c_ptr, &
-      cell_ids_c_ptr, vertex_ids_c_ptr, cell_to_vertex_c_ptr)
 
     CALL C_F_POINTER( &
       num_vertices_per_cell_c_ptr, num_vertices_per_cell_c, shape=[nbr_cells])
