@@ -511,7 +511,6 @@ CONTAINS
     ! information from all components)
     CALL construct_elmer_icon_coupling_post_sync( &
       comm_rank, ELMER_COMP_NAME, ELMER_GRID_NAME)
-    PRINT *, "AFTER construct_elmer_icon_coupling_post_sync"
 
     ! end of definition phase
     ! * collective operation for all processes that initialised YAC
