@@ -265,6 +265,8 @@ NUM_GROUPS = NUM_GROUPS + 1
 ELMER_GROUP_IDX = NUM_GROUPS
 CALL SetExecID()
 GROUP_NAMES(ELMER_GROUP_IDX) = TRIM(ExecID)
+      WRITE(Message,*) "EXECID", TRIM(ExecID)
+      CALL Info( 'ParCommInit', Message)
 
 #ifdef HAVE_XIOS
     INQUIRE(FILE="iodef.xml", EXIST=USE_XIOS)

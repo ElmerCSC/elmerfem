@@ -269,8 +269,13 @@
            CALL xios_get_time_origin(date_origin)
            ! n time-steps per time_units
            ndt=1/dt
+           WRITE( Message, *) "NDT: ", ndt, " DTIME: ", dtime, &
+           " TIME_UNITS: ",  time_units
+           CALL INFO(Caller,Message)
            dt1=xios_date_convert_to_seconds(date_origin+time_units)
            dt2=xios_date_convert_to_seconds(date_origin+dtime*ndt)
+           WRITE( Message, *) "DT1: ", dt1, " DT2: ", dt2
+           CALL INFO(Caller,Message)
            IF (abs(dt1-dt2).GT.tol) THEN
              WRITE( Message,'(A,ES12.3)') & 
                      "timestep difference (s) :",dt1-dt2
