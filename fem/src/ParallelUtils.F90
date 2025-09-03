@@ -59,11 +59,15 @@ CONTAINS
     TYPE (ParEnv_t), POINTER :: ParallelEnv
 
 #ifdef PARALLEL_FOR_REAL
+    CALL Info( 'BEFORE ParCommInit()', ' ')
     ParallelEnv => ParCommInit( )
+    CALL Info( 'After ParCommInit()', ' ')
 #else
+    CALL Info( 'BEFORE ParEnv', ' ')
     ParEnv % MyPE = 0
     ParEnv % PEs  = 1
     ParallelEnv => ParEnv
+    CALL Info( 'AFTER ParEnv', ' ')
 #endif
 !-------------------------------------------------------------------------------
   END FUNCTION ParallelInit

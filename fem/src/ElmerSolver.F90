@@ -156,6 +156,7 @@
      END INTERFACE
 #endif
 
+     CALL Info( 'BEFORE TIMER', ' ')
      ! Start the watches, store later
      !--------------------------------
      RT0 = RealTime()
@@ -163,7 +164,9 @@
 
      ! If parallel execution requested, initialize parallel environment:
      !------------------------------------------------------------------
+     CALL Info( 'BEFORE PARALLELInit', ' ')
      IF(FirstTime)  ParallelEnv => ParallelInit()
+     CALL Info( 'AFTER PARALLELInit', ' ')
 
      OutputPE = -1
      IF( ParEnv % MyPe == 0 ) THEN

@@ -217,6 +217,7 @@ CONTAINS
     
     !******************************************************************
 
+    CALL Info( 'IN ParCommInit()', ' ')
     ParallelEnv => ParEnv
 
     ParEnv % MyPE = 0
@@ -250,8 +251,11 @@ CONTAINS
 #endif
     IF ( ierr /= 0 ) RETURN
 
+    CALL Info( 'BEFORE MPI_COMM_SIZE()', ' ')
     CALL MPI_COMM_SIZE( MPI_COMM_WORLD, ParEnv % PEs, ierr )
+    CALL Info( 'AFTER MPI_COMM_SIZE()', ' ')
     CALL MPI_COMM_RANK( MPI_COMM_WORLD, ParEnv % MyPE, ierr )
+    CALL Info( 'AFTER MPI_COMM_RANK()', ' ')
 
 ! Use mpi_handshake for comm splitting
 ! TODO how to make sure that mpi_handshake does not conflict with MPI_COMM_SPLIT based on ELMER_COLOUR?
@@ -302,41 +306,23 @@ ELMER_COMM_WORLD = GROUP_COMMS(ELMER_GROUP_IDX)  ! Set ELMER_COMM_WORLD determin
 
 ! Use XIOS library for IO
 ! Must have xios and iodef.xml present
+    CALL Info( 'BEFORE XIOS()', ' ')
 #ifdef HAVE_XIOS
+    CALL Info( 'IN XIOS()', ' ')
     INQUIRE(FILE="iodef.xml", EXIST=USE_XIOS)
     IF (USE_XIOS) THEN
       WRITE(Message,*) "Using XIOS with config-file: iodef.xml"
       CALL INFO("SparIterComm",Message,Level=25)
       CALL SetExecID()
       CALL xios_initialize(TRIM(ExecID), global_comm=GROUP_COMMS(XIOS_GROUP_IDX))
-    ELSE
-#ifndef ELMER_COLOUR
-#define ELMER_COLOUR 0
-#endif
-  ! TODO potential incompatibility with MPI_Handshake
-      CALL MPI_COMM_SPLIT(MPI_COMM_WORLD,ELMER_COLOUR,&
-           ParEnv % MyPE,ELMER_COMM_WORLD,ierr) 
     ENDIF
-#elif defined(HAVE_YAC)
+#endif
+#ifdef HAVE_YAC
     IF (USE_YAC) THEN
       WRITE(Message,*) "Using YAC coupler with config-file:",TRIM(config_file)
       CALL INFO("SparIterComm",Message,Level=25)
       CALL coupling_init("coupling.yaml", ELMER_COMM_WORLD, GROUP_COMMS(COUPLER_GROUP_IDX), GROUP_NAMES(ELMER_GROUP_IDX))
-    ELSE
-#ifndef ELMER_COLOUR
-#define ELMER_COLOUR 0
-#endif
-      CALL MPI_COMM_SPLIT(MPI_COMM_WORLD,ELMER_COLOUR,&
-           ParEnv % MyPE,ELMER_COMM_WORLD,ierr) 
     ENDIF
-#else
-    ! The colour could be set to be some different if we want to couple ElmerSolver with some other
-    ! software having MPI colour set to zero. 
-#ifndef ELMER_COLOUR
-#define ELMER_COLOUR 0
-#endif
-    CALL MPI_COMM_SPLIT(MPI_COMM_WORLD,ELMER_COLOUR,&
-         ParEnv % MyPE,ELMER_COMM_WORLD,ierr) 
 #endif  
 
     
