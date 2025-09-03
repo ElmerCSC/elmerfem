@@ -823,7 +823,7 @@ SUBROUTINE PermafrostIPOutput( Model,Solver,dt,TransientSimulation )
           FirstTime = .FALSE.
         END IF
         CALL ReadPermafrostSoluteMaterial( Material,Model % Constants,CurrentSoluteMaterial )
-        CALL ReadPermafrostSolventMaterial( Material, CurrentSolventMaterial )
+        CALL SetPermafrostSolventMaterial( CurrentSolventMaterial )
       END IF
 
       n  = GetElementNOFNodes()
@@ -1230,7 +1230,7 @@ SUBROUTINE InitiliazeXi( Model,Solver,dt,TransientSimulation )
         FirstTime = .FALSE.
       END IF
       CALL ReadPermafrostSoluteMaterial( Material,Model % Constants,CurrentSoluteMaterial )
-      CALL ReadPermafrostSolventMaterial( Material, CurrentSolventMaterial )
+      CALL SetPermafrostSolventMaterial( CurrentSolventMaterial )
     END IF
 
     n  = GetElementNOFNodes()

@@ -67,7 +67,7 @@ MODULE SSAMaterialModels
    INTEGER, PARAMETER :: REG_COULOMB_GAG = 3 ! Schoof 2005 & Gagliardini 2007
    INTEGER, PARAMETER :: REG_COULOMB_JOU = 4 ! Joughin 2019
    
-   TYPE(ValueList_t), POINTER :: Material, Constants, pMaterial
+   TYPE(ValueList_t), POINTER :: Material, Constants
    TYPE(Variable_t), POINTER :: GMSol,BedrockSol,NSol
    INTEGER, POINTER :: NodeIndexes(:)
    CHARACTER(LEN=MAX_NAME_LEN) :: Friction
@@ -78,26 +78,15 @@ MODULE SSAMaterialModels
 
    REAL(KIND=dp),DIMENSION(n) :: NodalBeta, NodalGM, NodalBed, NodalLinVelo,NodalC,NodalN
    REAL(KIND=dp) :: bedrock,Hf,fC,fN,LinVelo
-   LOGICAL :: Found
-   TYPE(Solver_t), POINTER :: pSolver => NULL()
 
-   SAVE :: GLnIP, GMSol, BedRockSol, pSolver
-   
+   LOGICAL :: Found
+
 !  Sub - element GL parameterisation
    IF (SEP) THEN
-     ! If we have adaptive rule then GLnIP keyword is not given. 
-     IF(.NOT. ASSOCIATED(pSolver, CurrentModel % Solver ) ) THEN
-       pSolver => CurrentModel % Solver 
-       GLnIP=ListGetInteger( pSolver % Values, &
-           'GL integration points number',Found)
-       IF(GLnIP > 0) THEN
-         GMSol => VariableGet( CurrentModel % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
-       END IF
-       BedrockSol => VariableGet( CurrentModel % Variables, 'bedrock',UnFoundFatal=.TRUE. )
-     END IF
-     IF(GLnIP > 0) THEN
-       CALL GetLocalSolution( NodalGM,UElement=Element,UVariable=GMSol)
-     END IF
+     GMSol => VariableGet( CurrentModel % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
+     CALL GetLocalSolution( NodalGM,UElement=Element,UVariable=GMSol)
+
+     BedrockSol => VariableGet( CurrentModel % Variables, 'bedrock',UnFoundFatal=.TRUE. )
      CALL GetLocalSolution( NodalBed,UElement=Element,UVariable= BedrockSol)
    END IF
 
@@ -123,6 +112,7 @@ MODULE SSAMaterialModels
     END SELECT
 
     ! coefficient for all friction parameterisations
+    NodalBeta = 0.0_dp
     NodalBeta(1:n) = ListGetReal( &
            Material, 'SSA Friction Parameter', n, NodeIndexes(1:n), Found,&
            UnFoundFatal=.TRUE.)
@@ -131,6 +121,7 @@ MODULE SSAMaterialModels
     SELECT CASE (iFriction)
     CASE(REG_COULOMB_JOU,REG_COULOMB_GAG,WEERTMAN,BUDD)
       fm = ListGetConstReal( Material, 'SSA Friction Exponent', Found , UnFoundFatal=.TRUE.)
+      NodalLinVelo = 0.0_dp
       NodalLinVelo(1:n) = ListGetReal( &
            Material, 'SSA Friction Linear Velocity', n, NodeIndexes(1:n), Found,&
            UnFoundFatal=.TRUE.)
@@ -175,12 +166,12 @@ MODULE SSAMaterialModels
 
     IF (SEP) THEN
       ! Floating
-      IF (PartlyGrounded .OR. GLnIP==0) THEN
+      IF (ALL(NodalGM(1:n).LT.0._dp)) THEN
+        beta=0._dp
+      ELSE IF (PartlyGrounded) THEN
         bedrock = SUM( NodalBed(1:n) * Basis(1:n) )
-        Hf = rhow * (sealevel-bedrock) / rho
-        if (h < Hf) beta = 0._dp
-      ELSE IF (ALL(NodalGM(1:n) < 0._dp)) THEN
-        beta = 0._dp
+        Hf= rhow * (sealevel-bedrock) / rho
+        if (h.lt.Hf) beta=0._dp
       END IF
    END IF
 
@@ -261,8 +252,8 @@ MODULE SSAMaterialModels
   IF (SEP) THEN
      GMSol => VariableGet( CurrentModel % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
      CALL GetLocalSolution( NodalGM,UElement=Element,UVariable=GMSol)
-     PartlyGroundedElement=(ANY(NodalGM(1:n).GE.0._dp).AND.ANY(NodalGM(1:n) < 0._dp))
-     IF (PartlyGroundedElement .AND. GLnIP > 0 ) THEN
+     PartlyGroundedElement=(ANY(NodalGM(1:n).GE.0._dp).AND.ANY(NodalGM(1:n).LT.0._dp))
+     IF (PartlyGroundedElement) THEN
         IP = GaussPoints( Element , np=GLnIP )
      ELSE
         IP = GaussPoints( Element )
@@ -364,7 +355,7 @@ MODULE SSAMaterialModels
      CASE('SEM3','sem3')
         bedrock = SUM( NodalBed(1:nn) * Basis(1:nn) )
         Hf= rhow * (sealevel-bedrock) / rho
-        IF (hh > Hf) THEN
+        IF (hh.GT.Hf) THEN
            BMBatIP = 0.0_dp
         ELSE
            IF (PRESENT(FIPcount)) FIPcount = FIPcount + 1
@@ -421,44 +412,44 @@ MODULE SSAMaterialModels
      nn = GetElementNOFNodes()
      NumFLoatingNodes = -SUM(NodalGM(1:nn))
 
-     IF (ANY(NodalGM(1:nn) > 0._dp)) THEN
+     IF (ANY(NodalGM(1:nn).GT.0._dp)) THEN
         CALL Fatal('CalcFloatingAreaFraction','Fully grounded nodes found!')
      END IF
 
-     IF (NumFLoatingNodes < 1) THEN
+     IF (NumFLoatingNodes.LT.1) THEN
         CALL Fatal('CalcFloatingAreaFraction','Not enough floating nodes!')
 
-     ELSEIF (NumFLoatingNodes == 1) THEN
-        IF (NodalGM(1) == -1) THEN
+     ELSEIF (NumFLoatingNodes.EQ.1) THEN
+        IF (NodalGM(1).EQ.-1) THEN
            NI2 = element % NodeIndexes(1)
            NI1 = element % NodeIndexes(2)
            NI3 = element % NodeIndexes(3)
-        ELSEIF (NodalGM(2) == -1) THEN
+        ELSEIF (NodalGM(2).EQ.-1) THEN
            NI2 = element % NodeIndexes(2)
            NI1 = element % NodeIndexes(1)
            NI3 = element % NodeIndexes(3)
-        ELSEIF (NodalGM(3) == -1) THEN
+        ELSEIF (NodalGM(3).EQ.-1) THEN
            NI2 = element % NodeIndexes(3)
            NI1 = element % NodeIndexes(1)
            NI3 = element % NodeIndexes(2)
         END IF
 
-     ELSEIF (NumFLoatingNodes == 2) THEN
-        IF (NodalGM(1) == 0) THEN
+     ELSEIF (NumFLoatingNodes.EQ.2) THEN
+        IF (NodalGM(1).EQ.0) THEN
            NI2 = element % NodeIndexes(1)
            NI1 = element % NodeIndexes(2)
            NI3 = element % NodeIndexes(3)
-        ELSEIF (NodalGM(2) == 0) THEN
+        ELSEIF (NodalGM(2).EQ.0) THEN
            NI2 = element % NodeIndexes(2)
            NI1 = element % NodeIndexes(1)
            NI3 = element % NodeIndexes(3)
-        ELSEIF (NodalGM(3) == 0) THEN
+        ELSEIF (NodalGM(3).EQ.0) THEN
            NI2 = element % NodeIndexes(3)
            NI1 = element % NodeIndexes(1)
            NI3 = element % NodeIndexes(2)
         END IF
 
-     ELSEIF (NumFLoatingNodes > 2) THEN
+     ELSEIF (NumFLoatingNodes.GT.2) THEN
         CALL Fatal('CalcFloatingAreaFraction','Too many floating nodes!')
 
      END IF
@@ -492,7 +483,7 @@ MODULE SSAMaterialModels
 
      FAF = A2/A1
      
-     IF (NumFLoatingNodes == 2) FAF = 1.0_dp - FAF  ! Needed because FAF was grounded fraction
+     IF (NumFLoatingNodes.EQ.2) FAF = 1.0_dp - FAF  ! Needed because FAF was grounded fraction
 
    END FUNCTION CalcFloatingAreaFraction
    

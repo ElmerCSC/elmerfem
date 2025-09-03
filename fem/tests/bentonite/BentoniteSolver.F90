@@ -87,8 +87,12 @@ RECURSIVE SUBROUTINE BentoniteSolver( Model,Solver,dt,TransientSimulation )
                  Xi, Temp, Eta, AllocationsDone
 
   TYPE(Mesh_t), POINTER :: Mesh
-  REAL(KIND=dp) :: at,at0,totat,st,totst,t1
 
+#ifdef USE_ISO_C_BINDINGS
+  REAL(KIND=dp) :: at,at0,totat,st,totst,t1
+#else
+  REAL(KIND=dp) :: at,at0,totat,st,totst,t1,CPUTime,RealTime
+#endif
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------

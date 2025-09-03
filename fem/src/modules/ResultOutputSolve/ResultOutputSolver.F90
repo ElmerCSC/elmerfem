@@ -242,13 +242,12 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
     ModelVariables => Model % Variables
     Model % Variables => iMesh % variables 
 
-    
     IF( .NOT. ListSet ) THEN
-      CALL Info(Caller,'Creating list for saving - if not present',Level=7)
+      CALL Info(Caller,'Creating list for saving - if not present')
       CALL CreateListForSaving( Model, Params,.TRUE. )    
       ListSet = .TRUE.
-    ELSE IF( MeshDim /= Model % Mesh % MeshDim .OR. (iMeshName(1:nlen) /= TRIM(ListMeshName))) THEN
-      CALL Info(Caller,'Mesh name changed - recreating list for saving',Level=7)
+    ELSE IF( MeshDim /= Model % Mesh % MeshDim .OR. (iMeshName(1:nlen) /= ListMeshName(1:nlen))) THEN
+      CALL Info(Caller,'Recreating list for saving')
       CALL CreateListForSaving( Model, Params,.TRUE.,.TRUE.)
     END IF
 

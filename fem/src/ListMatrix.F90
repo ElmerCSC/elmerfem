@@ -254,7 +254,6 @@ CONTAINS
 !-------------------------------------------------------------------------------
 
 
-
 !-------------------------------------------------------------------------------
 !> Convert CRS matrix to list matrix
 !-------------------------------------------------------------------------------
@@ -502,14 +501,13 @@ CONTAINS
 
 
 !-------------------------------------------------------------------------------
-   SUBROUTINE List_AddMatrixRow(List,k1,nk2,Ind,Vals,SortedInput)
+   SUBROUTINE List_AddMatrixRow(List,k1,nk2,Ind,Vals)
    ! Add an array of sorted indeces to a row in ListMatrix_t. "ind" may
    ! contain duplicate entries.
 !-------------------------------------------------------------------------------
      IMPLICIT NONE
 
      TYPE(ListMatrix_t) :: List(:)
-     LOGICAL, INTENT(IN), OPTIONAL :: SortedInput
      INTEGER, INTENT(IN) :: k1, nk2
      INTEGER, INTENT(INOUT) :: Ind(nk2)
      REAL(KIND=dp), INTENT(INOUT) :: Vals(nk2)
@@ -522,12 +520,7 @@ CONTAINS
        CALL Fatal('List_AddMatrixIndexes','Row index out of bounds: '//TRIM(I2S(k1)))
      END IF
 
-     IF( PRESENT(SortedInput) ) THEN
-        IF ( .NOT. SortedInput  ) CALL SortF(nk2, Ind, Vals)
-     ELSE
-        CALL SortF(nk2, Ind, Vals)
-     END IF
-
+     CALL SortF(nk2, Ind, Vals)
      
      ! Add each element in Ind to the row list
      RowPtr => List(k1) % Head
@@ -548,11 +541,10 @@ CONTAINS
        List(k1) % Degree = List(k1) % Degree + 1
        List(k1) % Head => Entry
        k2i = 2
-       prevind = IND(1)
+       prevind = ind(1)
      ELSE IF (RowPtr % Index == Ind(1)) THEN
         k2i = 2
         prevind = ind(1)
-        RowPtr % Val = RowPtr % Val + Vals(1)
      ELSE
        k2i = 1
        prevind = -1
@@ -563,9 +555,7 @@ CONTAINS
 
      DO i=k2i,nk2
        k2 = Ind(i)
-       IF(k2 == prevind) THEN
-          CYCLE
-       END IF
+       if (k2 == prevind) cycle
 
        ! Find a correct place place to add index to
        DO WHILE( ASSOCIATED(RowPtr) )
@@ -600,9 +590,7 @@ CONTAINS
 
      DO j=i,nk2
        k2 = Ind(j)
-       IF (k2 == prevind) THEN
-         cycle
-       END IF
+       if (k2 == prevind) cycle
        prevind = k2
 
        Dummy => NULL()

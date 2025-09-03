@@ -48,35 +48,40 @@
 #
 
 #
+#
 # 22 Apr 1996
 #
 
-global MeshColor MeshColorMin MeshColorMax
 set MeshStyle     0
 set MeshLineStyle 0
 set MeshEdgeStyle 1
 set MeshQuality   1
 set MeshRadius    1
+set MeshColor     "none"
 set MeshColorMin  0.0
 set MeshColorMax  1.0
-set MeshColor     "none"
 set MeshColorSetMinMax 0
 
 set ScalarVariableNames(0) none
 set NumberOfScalarVariables 1
 
-proc mesh_update { amin amax } {
+proc mesh_update {} {
+
    .mesh.set.min delete 0 end
    .mesh.set.max delete 0 end
 
-   .mesh.set.min insert end [format "%-10.5g" $amin] 
-   .mesh.set.max insert end [format "%-10.5g" $amax]
+   global MeshColor MeshColorMin MeshColorMax
+
+   UpdateVariable MeshColor
+
+   .mesh.set.min insert end [format %-10.5g $MeshColorMin]
+   .mesh.set.max insert end [format %-10.5g $MeshColorMax]
 }
 
 proc mesh_edit { } {
 
     global MeshStyle MeshLineStyle MeshEdgeStyle MeshQuality MeshRadius
-    global  MeshColorSetMinMax MeshColor MeshColorMin MeshColorMax
+    global MeshColor MeshColorMin MeshColorMax MeshColorSetMinMax
 
     if { [winfo exists .mesh] } {
         wm iconify .mesh
@@ -142,8 +147,7 @@ proc mesh_edit { } {
 #
     frame .mesh.vari
     label .mesh.vari.label -text "Color Variable: "
-    button .mesh.vari.but -textvariable MeshColor \
-	     -command { set MeshColor [make_scalar_list]; UpdateVariable MeshColor; mesh_update $MeshColorMin $MeshColorMax}
+    button .mesh.vari.but -textvariable MeshColor -command { set MeshColor [make_scalar_list]; mesh_update; }
 
     pack .mesh.vari -side top
     pack .mesh.vari.label -side left
@@ -155,14 +159,14 @@ proc mesh_edit { } {
 
     label .mesh.set.min_lab -text "Min: "
     entry .mesh.set.min -width 10 -textvariable MeshColorMin
-    bind .mesh.set.min <Return> { mesh_update $MeshColorMin $MeshColorMax }
+    bind .mesh.set.min <Return> mesh_update
 
     label .mesh.set.max_lab -text "Max: "
     entry .mesh.set.max -width 10 -textvariable MeshColorMax
-    bind .mesh.set.max <Return> { mesh_update $MeshColorMin $MeshColorMax }
+    bind .mesh.set.max <Return> mesh_update
 
     checkbutton .mesh.set.keep -text "Keep" -variable MeshColorSetMinMax \
-          -command { mesh_update $MeshColorMin $MeshColorMax }
+          -command mesh_update
 
     pack .mesh.set.min_lab -side left
     pack .mesh.set.min -side left
@@ -170,6 +174,7 @@ proc mesh_edit { } {
     pack .mesh.set.max -side left
     pack .mesh.set.keep -side left
     pack .mesh.set -side top
+    
 #
 # buttons
 #

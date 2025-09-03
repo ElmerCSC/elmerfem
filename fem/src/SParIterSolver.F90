@@ -87,36 +87,28 @@ CONTAINS
     LOGICAL, OPTIONAL :: SkipActiveCheck
 
     TYPE (ParEnv_t), POINTER :: ParallelEnv
-    INTEGER :: pes
     !******************************************************************
 
-    pes = ParEnv % PEs
     ALLOCATE( SParMatrixDesc )
+
     SParMatrixDesc % ParEnv = ParEnv
-           
     ALLOCATE(SParMatrixDesc % ParEnv % Active(ParEnv % PEs))
     SParMatrixDesc % ParEnv % Active = ParEnv % Active
     SParMatrixDesc % ParEnv % IsNeighbour => Null()
     ParEnv => SParMatrixDesc % ParEnv
-    
-    IF( ParEnv % PEs /= pes ) THEN
-      WRITE(Message,'(A,I0,A,I0)') '#np changed during simulation from ',pes,' to ',ParEnv % PEs
-      CALL Fatal('ParInitMatrix',Message)
-    END IF
-    
+
     CALL ParEnvInit(SParMatrixDesc, ParallelInfo, SourceMatrix, &
-        SkipActiveCheck )
+            SkipActiveCheck )
 
     SParMatrixDesc % Matrix => SourceMatrix
     SParMatrixDesc % DOFs = 1
     SParMatrixDesc % ParallelInfo => ParallelInfo
-    
+
     ParEnv % ActiveComm = SourceMatrix % Comm
-    
+
     SParMatrixDesc % SplittedMatrix => &
                         SplitMatrix( SourceMatrix, ParallelInfo )
 
-    
   END FUNCTION ParInitMatrix
 
 
@@ -162,9 +154,6 @@ CONTAINS
     CHARACTER(:), ALLOCATABLE :: Prec
     REAL(kind=dp) :: st
   !******************************************************************
-
-    CALL Info('SplitMatrix','Splitting parallel matrix',Level=15)
-
     st = realtime()
     ALLOCATE( SplittedMatrix )
     SplittedMatrix % InsideMatrix => AllocateMatrix()
@@ -204,8 +193,6 @@ CONTAINS
   !
   !----------------------------------------------------------------------
 
-    CALL Info('SplitMatrix','Allocating split stuff for '//I2S(ParEnv % PEs)//' partitions!',Level=12)
-    
     ALLOCATE( OwnIfMRows(ParEnv % PEs) )
     ALLOCATE( OwnIfMCols(ParEnv % PEs) )
     ALLOCATE( NbsIfMRows(ParEnv % PEs) )
@@ -215,7 +202,7 @@ CONTAINS
     ALLOCATE( OwnOldCols(ParEnv % PEs) )
     ALLOCATE( NbsOldCols(ParEnv % PEs) )
     OwnIfMRows(:) = 0; OwnIfMCols(:) = 0; NbsIfMRows(:) = 0; NbsIfMCols(:) = 0
-    
+
     j = 0
     k = SIZE(ParallelInfo % NeighbourList) 
     DO i=1,k
@@ -225,7 +212,9 @@ CONTAINS
         j = j+1
       END IF
     END DO
-    IF(j>0) CALL Info('SplitMatrix','Added mention to self in '//I2S(j)//' neighbours ouf of '//TRIM(I2S(k)))
+    IF( j > 0 ) THEN
+      CALL Info('SplitMatrix','Added mention to self in '//I2S(j)//' neighbours ouf of '//TRIM(I2S(k)))
+    END IF
     
   !----------------------------------------------------------------------
   !
@@ -469,9 +458,10 @@ CONTAINS
               ! Connection is local-if
               !
               !----------------------------------------------------------
+
               currifi = ParallelInfo % NeighbourList(Colind) % Neighbours(1) + 1
-              
-              NbsIfMatrix(currifi) % Cols(NbsIfMcols(currifi)) =  &  
+
+              NbsIfMatrix(currifi) % Cols(NbsIfMcols(currifi)) =  &
                   ParallelInfo  % GlobalDOFs(ColInd)
               NbsIfMcols(currifi) = NbsIfMcols(currifi) + 1
               NbsOCOR(currifi) = 1
@@ -502,6 +492,7 @@ CONTAINS
               !----------------------------------------------------------
 
               currifi = ParallelInfo % NeighbourList(RowInd) % Neighbours(1) + 1
+
               OwnIfMatrix(currifi) % Cols(OwnIfMcols(currifi)) =  &
                   ParallelInfo  % GlobalDOFs(ColInd)
               SplittedMatrix % GlueTable % Inds(j) = -currifi
@@ -516,7 +507,8 @@ CONTAINS
               !
               !----------------------------------------------------------
               currifi = ParallelInfo % NeighbourList(ColInd) % Neighbours(1) + 1
-              NbsIfMatrix(currifi) % Cols(NbsIfMcols(currifi)) =  & 
+
+              NbsIfMatrix(currifi) % Cols(NbsIfMcols(currifi)) =  &
                 ParallelInfo  % GlobalDOFs(ColInd)
               SplittedMatrix % GlueTable % Inds(j) = -(ParEnv % PEs + currifi)
               NbsOCOR(currifi) = 1
@@ -2144,7 +2136,7 @@ SUBROUTINE SolveHypre(Matrix, XVec, RHSVec, Solver, ParallelInfo, SplittedMatrix
   INTEGER :: nrows, ncols, nnz
   TYPE(ValueList_t), POINTER :: Params
 
-  TYPE(Matrix_t), POINTER :: GM, PiM
+  TYPE(Matrix_t), POINTER :: GM
   INTEGER:: nnd,ind(2), precond
   REAL(KIND=dp), POINTER :: PrecVals(:)
   REAL(KIND=dp), ALLOCATABLE :: xx_d(:),yy_d(:),zz_d(:)  
@@ -2185,17 +2177,17 @@ SUBROUTINE SolveHypre(Matrix, XVec, RHSVec, Solver, ParallelInfo, SplittedMatrix
       INTEGER(KIND=c_int) :: verbosity
     END SUBROUTINE SolveHYPRE4
     
-    SUBROUTINE CreateHypreAMS(nrows,rows,cols,vals,n,grows,gcols,gvals, pirows, picols, pivals, &
+    SUBROUTINE CreateHypreAMS(nrows,rows,cols,vals,n,grows,gcols,gvals, &
         perm, invperm, globaldofs, owner, Bperm,nodeowner,xvec, rhsvec, pe, ILUn, rounds, &
         TOL, xx_d, yy_d, zz_d, hypremethod, hypre_intpara, hypre_dppara,verbosity,hyprecontainer,fcomm ) & 
         BIND(C,name="createhypreams")
       
       USE, INTRINSIC :: iso_c_binding
       INTEGER(KIND=c_int) :: nrows, n, Rows(*), Cols(*), Perm(*), INVPerm(*), &
-          Grows(*), gcols(*), PE, Owner(*), Rounds, ILUn, hypremethod, fcomm, pirows(*), picols(*), &
+          Grows(*), gcols(*), PE, Owner(*), Rounds, ILUn, hypremethod, fcomm, &
           symmetry, maxlevel, hypre_intpara(20),bperm(*),nodeOwner(*),globaldofs(*),verbosity
       REAL(KIND=c_double) :: Vals(*),Xvec(*),RHSvec(*),TOL,threshold,filter, &
-          hypre_dppara(10), Gvals(*), xx_d(*), yy_d(*), zz_d(*), pivals(*)
+          hypre_dppara(10), Gvals(*), xx_d(*), yy_d(*), zz_d(*)
       INTEGER(KIND=C_INTPTR_T) :: hypreContainer
     END SUBROUTINE CreateHypreAMS
 
@@ -2291,10 +2283,10 @@ SUBROUTINE SolveHypre(Matrix, XVec, RHSVec, Solver, ParallelInfo, SplittedMatrix
       CALL PrepareHypreAMS() 
       nnd = Solver % Mesh % NumberOfNodes      
       CALL CreateHYPREAMS( Matrix % NumberOfRows, Rows, Cols, Vals, &
-          nnd,GM % Rows,GM % Cols,GM % Values,PiM % Rows, PiM % Cols, PiM % Values, &
-           Aperm,Aperm,Aperm,Owner, Bperm,NodeOwner,Xvec,RHSvec,ParEnv % myPE, ILUn, Rounds,TOL,  &
-            xx_d,yy_d,zz_d,hypremethod,hypre_intpara, hypre_dppara,verbosity, &
-             Matrix % Hypre, Matrix % Comm)
+          nnd,GM % Rows,GM % Cols,GM % Values,Aperm,Aperm,Aperm,Owner, &
+          Bperm,NodeOwner,Xvec,RHSvec,ParEnv % myPE, ILUn, Rounds,TOL,  &
+          xx_d,yy_d,zz_d,hypremethod,hypre_intpara, hypre_dppara,verbosity, &
+          Matrix % Hypre, Matrix % Comm)
       CALL CleanHypreAMS() 
     END IF
     CALL SolveHYPRE1( Matrix % NumberOfRows, Rows, Cols, Vals, Precond, &
@@ -2347,40 +2339,58 @@ CONTAINS
 
     IF( Parallel ) THEN
       NodeOwner = 0
-      CALL ContinuousNumbering( Mesh % ParallelInfo, NodePerm, BPerm, NodeOwner, nnd, Mesh)
-      bPerm = bPerm
+      CALL ContinuousNumbering( Mesh % ParallelInfo, &
+          NodePerm, BPerm, NodeOwner, nnd, Mesh)
+      bPerm = bPerm-1 
     ELSE
       NodeOwner = 1
       DO i=1,nnd
-        bperm(i) = i
+        bperm(i) = i-1
       END DO
     END IF
 
-BLOCK
-    USE Interpolation
-    TYPE(Variable_t), POINTER :: Nvar
+    GM => AllocateMatrix()
+    GM % FORMAT = MATRIX_LIST
 
-    Nvar => VariableGet( Solver % Mesh % Variables, 'ams nodal var' )
-    IF(.NOT. ASSOCIATED(NVar)) CALL Fatal(Caller,'Variable "ams nodal var" does not exist!')
+    DO i=Mesh % NumberofEdges,1,-1
+      ind = Mesh % Edges(i) % NodeIndexes
+      IF( Parallel ) THEN
+        IF (Mesh % ParallelInfo % GlobalDOFs(ind(1))> &
+            Mesh % ParallelInfo % GlobalDOFs(ind(2))) THEN
+          k=ind(1); ind(1)=ind(2);ind(2)=k
+        END IF
+      ELSE
+        IF (ind(1)> ind(2)) THEN
+          k=ind(1); ind(1)=ind(2);ind(2)=k
+        END IF
+      END IF        
+      IF(Matrix % Complex) THEN
+        CALL List_AddToMatrixElement(gm % listmatrix,2*i-1,ind(1),-1._dp)
+        CALL List_AddToMatrixElement(gm % listmatrix,2*i-1,ind(2), 1._dp)
+        CALL List_AddToMatrixElement(gm % listmatrix,2*i,ind(1),-1._dp)
+        CALL List_AddToMatrixElement(gm % listmatrix,2*i,ind(2), 1._dp)
+      ELSE
+        CALL List_AddToMatrixElement(gm % listmatrix,i,ind(1),-1._dp)
+        CALL List_AddToMatrixElement(gm % listmatrix,i,ind(2), 1._dp)
+      END IF
+    END DO
+    CALL List_tocrsMatrix(gm)
     
-    PiM => Null()
-    CALL NodalToNedelecInterpolation_GlobalMatrix(Mesh, Nvar, Solver % Variable, PiM, &
-             cdim=CurrentModel % Dimension, UseNodalPermArg=.FALSE. )
-
-    GM => Null()
-    CALL NodalGradientToNedelecInterpolation_GlobalMatrix(Mesh, Nvar, Solver % Variable, GM, &
-             cdim=CurrentModel % Dimension, UseNodalPermArg=.FALSE. )
-
-    Bperm = Bperm - 1
+    nnd = Mesh % NumberOfEdges
+    IF(Matrix % Complex) nnd=nnd*2
+    ALLOCATE(xx_d(nnd),yy_d(nnd),zz_d(nnd) )
+    CALL CRS_MatrixVectorMultiply(gm,Mesh % Nodes % x,xx_d)
+    CALL CRS_MatrixVectorMultiply(gm,Mesh % Nodes % y,yy_d)
+    CALL CRS_MatrixVectorMultiply(gm,Mesh % Nodes % z,zz_d)
+    
     nnd = Mesh % NumberOfNodes
-END BLOCK
   END SUBROUTINE PrepareHypreAMS
 
 
   SUBROUTINE CleanHypreAMS() 
     
-    IF(.NOT. ASSOCIATED(GM) .OR. .NOT. ASSOCIATED(PiM)) THEN
-      CALL Fatal(Caller,'Matrices "GM" and "PiM" should be allocated!')
+    IF(.NOT. ASSOCIATED(GM)) THEN
+      CALL Fatal(Caller,'Matrix "GM" should be allocated!')
     END IF
     
     DEALLOCATE(GM % Rows) 
@@ -2388,12 +2398,6 @@ END BLOCK
     DEALLOCATE(GM % Diag) 
     DEALLOCATE(GM % Values) 
     DEALLOCATE(GM)
-
-    DEALLOCATE(PiM % Rows) 
-    DEALLOCATE(PiM % Cols) 
-    DEALLOCATE(PiM % Diag) 
-    DEALLOCATE(PiM % Values) 
-    DEALLOCATE(PiM)
 
   END SUBROUTINE CleanHypreAMS
 
@@ -3071,13 +3075,7 @@ SUBROUTINE CountNeighbourConns( SourceMatrix, SplittedMatrix, ParallelInfo )
   ResEPerNB = 0; RHSEPerNB = 0
 
   DO i = 1, SourceMatrix % NumberOfRows
-    IF(.NOT. ASSOCIATED(ParallelInfo % NeighbourList(i) % Neighbours)) THEN
-      ! It seems that there can be a legit reason for this...
-      CYCLE
-      !CALL Fatal('CountNeighbourConns','Neighbours not associated: '//I2S(i))
-    END IF
-    
-    !    IF ( ParallelInfo % GInterface(i) ) THEN
+!    IF ( ParallelInfo % GInterface(i) ) THEN
         IF ( ParallelInfo % NeighbourList(i) % Neighbours(1) == ParEnv % MyPE ) THEN
            DO j = 1, SIZE( ParallelInfo % NeighbourList(i) % Neighbours )
                IF ( ParallelInfo % NeighbourList(i) % Neighbours(j)/=ParEnv % MyPE ) THEN
@@ -3091,7 +3089,7 @@ SUBROUTINE CountNeighbourConns( SourceMatrix, SplittedMatrix, ParallelInfo )
         END IF
 !    END IF
   END DO
-  
+
   !----------------------------------------------------------------------
   !
   ! Allocate some buffers for communication

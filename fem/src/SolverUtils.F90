@@ -1255,9 +1255,9 @@ CONTAINS
      LOGICAL, POINTER :: LimitActive(:)
      TYPE(ValueList_t), POINTER :: Params, Entity
      LOGICAL, ALLOCATABLE :: InterfaceDof(:)
-     INTEGER :: ConservativeAfterIters, NonlinIter, CoupledIter, timeIter, DownStreamDirection
+     INTEGER :: ConservativeAfterIters, NonlinIter, CoupledIter, DownStreamDirection
      LOGICAL :: Conservative, ConservativeAdd, ConservativeRemove, RelativeEps, &
-         DoAdd, DoRemove, DirectionActive, FirstTime, DownStreamRemove, LimitFreeze
+         DoAdd, DoRemove, DirectionActive, FirstTime, DownStreamRemove
      TYPE(Mesh_t), POINTER :: Mesh
 
      CHARACTER(:), ALLOCATABLE :: Name,LimitName, InitName, ActiveName
@@ -1270,36 +1270,22 @@ CONTAINS
      ! Check the iterations counts and determine whether this is the first 
      ! time with this solver. 
      !------------------------------------------------------------------------
+     FirstTime = .TRUE.
      iterV => VariableGet( Mesh % Variables,'nonlin iter')
      IF( ASSOCIATED( iterV ) ) THEN
        NonlinIter =  NINT( iterV % Values(1) ) 
-     ELSE
-       NonlinIter = 1
+       IF( NonlinIter > 1 ) FirstTime = .FALSE.
      END IF
 
      iterV => VariableGet( Mesh % Variables,'coupled iter')
      IF( ASSOCIATED( iterV ) ) THEN
        CoupledIter = NINT( iterV % Values(1) )
-     ELSE
-       CoupledIter = 1
+       IF( CoupledIter > 1 ) FirstTime = .FALSE.
      END IF
-
-     iterV => VariableGet( Mesh % Variables,'timestep')
-     IF( ASSOCIATED( iterV ) ) THEN
-       timeIter = NINT( iterV % Values(1) )
-     ELSE
-       timeIter = 1
-     END IF
-
-     FirstTime = (nonliniter <= 1) .AND. (coupledIter <= 1) .AND. (timeIter == 1)
-     LimitFreeze = (nonliniter <= 1) .AND. (coupledIter <= 1) .AND. (timeIter > 1)
-
      IF( FirstTime ) THEN
-       CALL Info(Caller,'Initializing soft limiter for solver',Level=7)
+       CALL Info(Caller,'Initializing soft limiter for solver',Level=10)
      END IF
-     IF( LimitFreeze ) THEN
-       CALL Info(Caller,'Keeping soft limiter fixed at start of timestep',Level=7)
-     END IF
+
      
      ! Determine variable for computing the contact load used to determine the 
      ! soft limit set.
@@ -1579,6 +1565,7 @@ CONTAINS
              ALLOCATE( InterfaceDof( totsize ) )
              InterfaceDof = .FALSE. 
            END IF
+
            
            ! Mark limited and unlimited neighbours and thereby make a 
            ! list of interface dofs. 
@@ -1733,9 +1720,7 @@ CONTAINS
              
              ! Go through the active set and free nodes with wrong sign in contact force
              !--------------------------------------------------------------------------       
-             IF( LimitFreeze ) THEN
-               CONTINUE
-             ELSE IF( GotActive .AND. ElemActive(i) > 0.0_dp ) THEN
+             IF( GotActive .AND. ElemActive(i) > 0.0_dp ) THEN
                IF(.NOT. LimitActive( ind ) ) THEN
                  added = added + 1
                  LimitActive(ind) = .TRUE. 
@@ -1892,7 +1877,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE DetermineContact( Solver )
 !------------------------------------------------------------------------------
-     TYPE(Solver_t), POINTER :: Solver
+     TYPE(Solver_t) :: Solver
 !-----------------------------------------------------------------------------
      TYPE(Model_t), POINTER :: Model
      TYPE(variable_t), POINTER :: Var, LoadVar, IterVar
@@ -1964,7 +1949,7 @@ CONTAINS
        CALL Fatal(Caller,'Invalid number of dofs for contact problem: '//I2S(dofs))
      END IF     
 
-     pContact = IsActivePelement(Mesh % Elements(1), Solver)
+     pContact = IsPelement(Mesh % Elements(1) )
      IF( pContact ) THEN
        ! We only have to deal with the middle dofs if they are not condensated away!
        IF( .NOT. ListGetLogical( Params,'Bubbles in Global System',Found ) ) THEN
@@ -8601,8 +8586,7 @@ CONTAINS
      INTEGER :: i,j,k,l,n,nn,ii(ParEnv % PEs), ierr, status(MPI_STATUS_SIZE)
 
      IF( ParEnv % PEs<=1 ) RETURN
-     IF( A % ParallelInfo % NothingShared ) RETURN
-     
+
      ALLOCATE( fneigh(ParEnv % PEs), ineigh(ParEnv % PEs) )
 
      nn = 0
@@ -10756,13 +10740,11 @@ END FUNCTION SearchNodeL
     INTEGER :: ipar(1)
     TYPE(ValueList_t), POINTER :: SolverParams
     CHARACTER(*), PARAMETER :: Caller = 'ComputeChange'
-    LOGICAL :: Parallel, SingleMesh, x0Allocated, LimitRelax
-    LOGICAL, ALLOCATABLE :: LimitMask(:)
+    LOGICAL :: Parallel, SingleMesh, x0Allocated
     
     SolverParams => Solver % Values
     RelativeP = .FALSE.
     SingleMesh = Solver % Mesh % SingleMesh
-    LimitRelax = .FALSE.
 
     IF(.NOT. ASSOCIATED(Solver % Variable) ) THEN
       CALL Info(Caller,'Solver variable not found for: '&
@@ -10815,10 +10797,8 @@ END FUNCTION SearchNodeL
         RelaxBefore = ListGetLogical( SolverParams, &
             'Steady State Relaxation Before', Stat )      
         IF (.NOT. Stat ) RelaxBefore = .TRUE.
-        LimitRelax = ASSOCIATED(Solver % Variable % LowerLimitActive) .OR. &
-            ASSOCIATED(Solver % Variable % UpperLimitActive)
       END IF
-     
+
       ! Steady state system has never any constraints
       SkipConstraints = .FALSE.
       
@@ -10969,36 +10949,17 @@ END FUNCTION SearchNodeL
     END IF
 
     
-    IF(LimitRelax) THEN
-      ! If we do steady-state relaxation then the soft limiters might not be honored.
-      ! This is a trial to fix this but still not quite there. Better to do relaxation
-      ! on nonlinear system level when having soft limiters. 
-      ALLOCATE(LimitMask(n))
-      LimitMask = .FALSE.
-      IF(ASSOCIATED(Solver % Variable % LowerLimitActive)) &
-          LimitMask = Solver % Variable % LowerLimitActive 
-      IF(ASSOCIATED(Solver % Variable % UpperLimitActive)) &
-          LimitMask = LimitMask .OR. Solver % Variable % UpperLimitActive 
-    END IF
-    
     IF( ResidualMode ) THEN
-      IF(LimitRelax) THEN
-        CALL Fatal(Caller,'Residual mode and limited relaxation cannot be combined!')
-      END IF
       IF(Relax .AND. RelaxBefore) THEN
         x(1:n) = x0(1:n) + Relaxation*x(1:n)
       ELSE
         x(1:n) = x0(1:n) + x(1:n)
       END IF
-    ELSE IF(Relax .AND. RelaxBefore) THEN
-      IF(LimitRelax) THEN
-        WHERE(.NOT. LimitMask)
-          x(1:n) = (1-Relaxation)*x0(1:n) + Relaxation*x(1:n)
-        END WHERE          
-      ELSE
+    ELSE 
+      IF(Relax .AND. RelaxBefore) THEN
         x(1:n) = (1-Relaxation)*x0(1:n) + Relaxation*x(1:n)
+        IF( RelativeP ) x(dofs:n:dofs) = x(dofs:n:dofs) + Poffset
       END IF
-      IF( RelativeP ) x(dofs:n:dofs) = x(dofs:n:dofs) + Poffset
     END IF
 
     IF(SteadyState) THEN
@@ -11253,17 +11214,10 @@ END FUNCTION SearchNodeL
 
     
     IF(Relax .AND. .NOT. RelaxBefore) THEN
-      IF(LimitRelax) THEN
-        WHERE(.NOT. LimitMask)
-          x(1:n) = (1-Relaxation)*x0(1:n) + Relaxation*x(1:n)
-        END WHERE          
-      ELSE        
-        x(1:n) = (1-Relaxation)*x0(1:n) + Relaxation*x(1:n)
-      END IF
+      x(1:n) = (1-Relaxation)*x0(1:n) + Relaxation*x(1:n)
       IF( RelativeP ) x(dofs:n:dofs) = x(dofs:n:dofs) + Poffset
       Solver % Variable % Norm = ComputeNorm(Solver,n,x)
     END IF
-    IF(LimitRelax) DEALLOCATE(LimitMask)
     
     ! Steady state output is done in MainUtils
     SolverName = ListGetString( SolverParams, 'Equation',Stat)
@@ -11441,15 +11395,12 @@ END FUNCTION SearchNodeL
     INTEGER :: AdaptOrder, AdaptNp, Np, RelOrder
     REAL(KIND=dp) :: MinLim, MaxLim, MinV, MaxV, V
     LOGICAL :: UseAdapt, Found,ElementalRule
-    INTEGER :: i,j,n,ElementalNp(8),prevVisited = -1
-    LOGICAL :: Debug, InitDone, pRef, IsBC, prevIsBC, AdaptSplit 
+    INTEGER :: i,n,ElementalNp(8),prevVisited = -1
+    LOGICAL :: Debug, InitDone, pRef, IsBC, prevIsBC 
     INTEGER :: EdgeBasisDegree
-    REAL(KIND=dp) :: ElemPhi(27)
-    LOGICAL :: ElemCut(8)
-    TYPE(Nodes_t) :: ElemNodes
     
     SAVE prevSolver, UseAdapt, MinLim, MaxLim, IntegVar, AdaptOrder, AdaptNp, RelOrder, Np, &
-        ElementalRule, ElementalNp, prevVisited, pRef, prevIsBC, AdaptSplit, ElemPhi, ElemNodes
+        ElementalRule, ElementalNp, prevVisited, pRef, prevIsBC 
 
     IF( PRESENT( Solver ) ) THEN
       pSolver => Solver
@@ -11464,11 +11415,10 @@ END FUNCTION SearchNodeL
         ( prevVisited == pSolver % TimesVisited ) .AND. (.NOT. (IsBC .NEQV. PrevIsBC) )
     
     IF( .NOT. InitDone ) THEN
-      PrevIsBC = IsBC
+      PrevIsBC = IsBC 
 
       RelOrder = ListGetInteger( pSolver % Values,'Relative Integration Order',Found )
       AdaptNp = 0
-      AdaptSplit = .FALSE.
       Np = ListGetInteger( pSolver % Values,'Number of Integration Points',Found )
 
       ! Elemental explicit rule will dominate over all other rules
@@ -11479,7 +11429,7 @@ END FUNCTION SearchNodeL
       
       VarName = ListGetString( pSolver % Values,'Adaptive Integration Variable',UseAdapt )
       IF( UseAdapt ) THEN
-        CALL Info('GaussPointsAdapt','Using adaptive gaussian integration rules',Level=10)
+        CALL Info('GaussPointsAdapt','Using adaptive gaussian integration rules',Level=7)
         IntegVar => VariableGet( pSolver % Mesh % Variables, VarName )
         IF( .NOT. ASSOCIATED( IntegVar ) ) THEN
           CALL Fatal('GaussPointsAdapt','> Adaptive Integration Variable < does not exist')
@@ -11487,14 +11437,8 @@ END FUNCTION SearchNodeL
         IF( IntegVar % TYPE /= Variable_on_nodes ) THEN
           CALL Fatal('GaussPointsAdapt','Wrong type of integration variable!')
         END IF
-        AdaptSplit = ListGetLogical( pSolver % Values,'Adaptive Integration Split',Found )  
-        IF( AdaptSplit ) THEN
-          MinLim = ListGetCReal( pSolver % Values,'Adaptive Integration Split Limit', Found )
-          MaxLim = MinLim
-        ELSE
-          MinLim = ListGetCReal( pSolver % Values,'Adaptive Integration Lower Limit' )
-          MaxLim = ListGetCReal( pSolver % Values,'Adaptive Integration Upper Limit' )
-        END IF
+        MinLim = ListGetCReal( pSolver % Values,'Adaptive Integration Lower Limit' )
+        MaxLim = ListGetCReal( pSolver % Values,'Adaptive Integration Upper Limit' )
         AdaptNp = ListGetInteger( pSolver % Values,'Adaptive Integration Points',Found )
         IF(.NOT. Found ) THEN
           AdaptOrder = ListGetInteger( pSolver % Values,'Adaptive Integration Order',Found )        
@@ -11566,131 +11510,13 @@ END FUNCTION SearchNodeL
       RelOrder = 0
       Np = 0
 
-      n = Element % TYPE % NumberOfNodes
+      n = Element % TYPE % NumberOfNodes        
+      MinV = MINVAL( IntegVar % Values( IntegVar % Perm( Element % NodeIndexes(1:n) ) ) )
+      MaxV = MAXVAL( IntegVar % Values( IntegVar % Perm( Element % NodeIndexes(1:n) ) ) )
       
-      BLOCK
-        INTEGER :: nn,j1,j2
-        REAL(KIND=dp) :: r
-
-        ElemPhi(1:n) = 0.0_dp
-        
-        DO i=1,n
-          j = Element % NodeIndexes(i)
-          IF ( j>0 .AND. j<=SIZE(IntegVar % Perm) ) THEN
-            j = IntegVar % Perm(j)
-            IF ( j>0 ) THEN
-              ElemPhi(i) = IntegVar % Values(j)
-            END IF
-          ELSE IF( ASSOCIATED( Solver % CutInterp ) ) THEN
-            nn = SIZE(IntegVar % Perm)
-            j1 = IntegVar % Perm(Solver % Mesh % Edges(j-nn) % NodeIndexes(1))
-            j2 = IntegVar % Perm(Solver % Mesh % Edges(j-nn) % NodeIndexes(2))
-            IF(j1 > 0 .AND. j2 > 0) THEN
-              r = Solver % CutInterp(j-nn)
-              ElemPhi(i) = r*IntegVar % Values(j1) + (1-r)*IntegVar % Values(j2)
-            END IF
-          END IF
-        END DO
-        
-        MinV = MINVAL(ElemPhi(1:n))           
-        MaxV = MAXVAL(ElemPhi(1:n))
-      END BLOCK
-
-        
       IF( .NOT. ( MaxV < MinLim .OR. MinV > MaxLim ) ) THEN
-        IF( AdaptSplit ) THEN
-          ElemPhi(1:n) = ElemPhi(1:n) - MinLim 
-          IF(.NOT. ASSOCIATED(ElemNodes % x)) THEN
-            ALLOCATE(ElemNodes % x(2*n),ElemNodes % y(2*n), ElemNodes % z(2*n))
-          END IF
-          ElemNodes % x(1:n) = pSolver % Mesh % Nodes % x(Element % NodeIndexes(1:n) )
-          ElemNodes % y(1:n) = pSolver % Mesh % Nodes % y(Element % NodeIndexes(1:n) )
-          ElemNodes % z(1:n) = pSolver % Mesh % Nodes % z(Element % NodeIndexes(1:n) )
-            
-          ElemCut = .FALSE.
-          CALL CutSingleElement(Element, ElemNodes, ElemPhi, ElemCut )
-
-          IF(COUNT(ElemCut(1:n)) > 1) THEN
-            BLOCK
-              LOGICAL :: IsCut, IsMore, stat
-              INTEGER :: SgnNode, CutCnt, LocalInds(4), m, t
-              TYPE(Element_t), TARGET, SAVE :: PieceElement
-              TYPE(Element_t), POINTER :: pElement
-              REAL(KIND=dp) :: Ssum0, Ssum, u, v, w, x, y, z, Basis(4), detJ
-              REAL(KIND=dp), ALLOCATABLE, SAVE :: IPtmp(:,:)
-              TYPE( GaussIntegrationPoints_t ) :: IP
-              TYPE( Nodes_t ), SAVE :: PieceNodes
-              
-              IF(.NOT. ASSOCIATED(PieceElement % NodeIndexes)) THEN
-                ALLOCATE(PieceElement % NodeIndexes(4),IpTmp(4,20), &
-                    PieceNodes % x(4), PieceNodes % y(4), PieceNodes % z(n) )
-              END IF
-              
-              IntegStuff = GaussPoints( Element, PReferenceElement = .FALSE. )
-              Ssum0 = SUM(IntegStuff % s(1:IntegStuff % n))
-
-              i = 0
-              DO CutCnt=1,10           
-                CALL SplitSingleElement(Element, ElemCut, ElemNodes, CutCnt, &
-                    IsCut, IsMore, LocalInds, SgnNode )
-                IF(.NOT. IsCut) THEN
-                  PRINT *,'ElemCut: ',ElemCut(1:n),CutCnt,IsCut,IsMore
-                  CALL Warn('GaussPointsAdapt','This should be cut?')
-                  RETURN
-                END IF
-                  
-                m = COUNT(LocalInds > 0)
-                IF(m<3 .OR. m>4) CALL Fatal('GaussPointsAdapt','This is neither triange or quad?')
-                
-                PieceElement % TYPE => GetElementType( 101*m )   
-                IP = GaussPoints( PieceElement, PReferenceElement = .FALSE. )
-
-                PieceNodes % x(1:m) = ElemNodes % x(LocalInds(1:m))
-                PieceNodes % y(1:m) = ElemNodes % y(LocalInds(1:m))
-                PieceNodes % z(1:m) = ElemNodes % z(LocalInds(1:m))
-                
-                DO t=1,IP % n        
-                  i = i+1
-                  stat = ElementInfo( PieceElement, PieceNodes, &
-                      IP % u(t), IP % v(t), IP % w(t), detJ, Basis )
-                  
-                  x = SUM(Basis(1:m)*PieceNodes % x(1:m))
-                  y = SUM(Basis(1:m)*PieceNodes % y(1:m))
-                  z = SUM(Basis(1:m)*PieceNodes % z(1:m))
-
-                  pElement => PieceElement
-                  CALL GlobalToLocal( u, v, w, x, y, z, pElement, ElemNodes ) 
-
-                  ! We need temporal space since IP and IntegStuff refer to the same arrays!
-                  IpTmp(1,i) = u
-                  IpTmp(2,i) = v
-                  IpTmp(3,i) = w
-                  IpTmp(4,i) = detJ * IP % s(t)
-                END DO
-
-                ! No more element needed to split the reference element.
-                IF(.NOT. IsMore) EXIT                                
-              END DO
-
-              IntegStuff % n = i
-              ssum = SUM(IPtmp(4,1:i))
-
-              IntegStuff % u(1:i) = IPtmp(1,1:i) 
-              IntegStuff % v(1:i) = IPtmp(2,1:i) 
-              IntegStuff % w(1:i) = IPtmp(3,1:i) 
-              IntegStuff % s(1:i) = IPtmp(4,1:i) * (ssum0 / ssum )
-              
-              IF(i>0) THEN
-                !PRINT *,'detJ orig:',CutCnt,i,ssum0,ssum,IP % n
-              END IF
-              RETURN
-              
-            END BLOCK
-          END IF
-        ELSE
-          RelOrder = AdaptOrder
-          Np = AdaptNp
-        END IF
+        RelOrder = AdaptOrder
+        Np = AdaptNp
       END IF
     END IF
 
@@ -14839,8 +14665,8 @@ END FUNCTION SearchNodeL
       CALL Info(Caller,'Assuming real valued linear system',Level=8)
     END IF
 
-    Parallel = Solver % Parallel 
-      
+    Parallel = Solver % Parallel
+    
 !------------------------------------------------------------------------------
 !   If parallel execution, check for parallel matrix initializations
 !------------------------------------------------------------------------------
@@ -14848,9 +14674,6 @@ END FUNCTION SearchNodeL
       IF( .NOT. ASSOCIATED(A % ParMatrix) ) THEN
         CALL Info(Caller,'Creating parallel matrix structures',Level=8)
         CALL ParallelInitMatrix( Solver, A )
-        IF(A % ParallelInfo % NothingShared ) THEN
-          CALL Info(Caller,'No dofs shared in paralell matrix!',Level=6)
-        END IF
       ELSE
         CALL Info(Caller,'Using previously created parallel matrix structures!',Level=15)
       END IF      
@@ -15094,10 +14917,10 @@ END FUNCTION SearchNodeL
     IF(.NOT.GotIt) ComputeChangeScaled = .FALSE.
 
     IF(ComputeChangeScaled) THEN
-      ALLOCATE(NonlinVals(SIZE(x)))
-      NonlinVals = x
-      IF (ASSOCIATED(Solver % Variable % Perm)) & 
-          CALL RotateNTSystemAll(NonlinVals, Solver % Variable % Perm, DOFs)
+       ALLOCATE(NonlinVals(SIZE(x)))
+       NonlinVals = x
+       IF (ASSOCIATED(Solver % Variable % Perm)) & 
+           CALL RotateNTSystemAll(NonlinVals, Solver % Variable % Perm, DOFs)
     END IF
 
     IF( AndersonAcc .AND. AndersonScaled ) THEN
@@ -15170,8 +14993,8 @@ END FUNCTION SearchNodeL
 
     IF(ListGetLogical(Params, 'Linear System Use Rocalution', Found)) &
       Method = 'rocalution'
-
-    IF ( .NOT. Parallel .OR. A % ParallelInfo % NothingShared ) THEN
+    
+    IF ( .NOT. Parallel ) THEN
       IF(ListGetLogical(Params, 'Linear System Use Hypre', Found)) Method = 'hypre'
 
       CALL Info(Caller,'Serial linear System Solver: '//TRIM(Method),Level=8)
@@ -15685,15 +15508,13 @@ END FUNCTION SearchNodeL
     ! -------------------------------------------------
     INTERFACE
       SUBROUTINE ROCSerialSolve(n, rows, cols, vals, b, x, nonlin_update, &
-            imethod, prec, maxiter, tol, schur_n, schur_rows, schur_cols, &
-            schur_vals, dofs ) BIND(C, Name="ROCSerialSolve")
+                  imethod, prec, maxiter, tol) BIND(C, Name="ROCSerialSolve")
         USE Types
         USE ISO_C_BINDING, ONLY: C_CHAR, C_INTPTR_T
 
         IMPLICIT NONE
-        REAL(KIND=dp) :: vals(*), b(*), x(*), tol, schur_vals(*)
+        REAL(KIND=dp) :: vals(*), b(*), x(*), tol
         INTEGER :: rows(*), cols(*), nonlin_update, n, imethod, prec, maxiter
-        INTEGER :: schur_n, schur_rows(*), schur_cols(*), dofs
       END SUBROUTINE ROCSerialSolve
 
 
@@ -15710,21 +15531,18 @@ END FUNCTION SearchNodeL
 
     ! local variables:
     ! ----------------
-    LOGICAL :: Found, isParallel, Refactorize
-    INTEGER :: nonlin_update, i, j, k,l, m, n, p,q,gn, me
+    LOGICAL :: found, isParallel 
+    INTEGER :: nonlin_update, i, j, k,l,n, gn, me
 
     TYPE(Matrix_t), POINTER ::Rmatrix
 
-    INTEGER, POINTER ::  aPerm(:), iLperm(:), gOffset(:), iRows(:), iCols(:)
-    REAL(KIND=dp), POINTER :: iVals(:)
+    INTEGER, POINTER ::  aPerm(:), iLperm(:), gOffset(:)
     REAL(KIND=dp), ALLOCATABLE :: dBuf(:)
     INTEGER, ALLOCATABLE :: Owner(:), SendTo(:), iBuf(:), tOffset(:), rRows(:), rSize(:)
 
     INTEGER :: status(MPI_STATUS_SIZE),ierr,lrow,you,rcnt,proc
 
     INTEGER :: buf_size, procs
-
-    TYPE(Matrix_arr_t), POINTER :: iMatrix(:)
 
     ! Define these to get somewhat shorter MPI subroutine calls:
     ! -----------------------------------------------------------
@@ -15745,15 +15563,13 @@ END FUNCTION SearchNodeL
     END TYPE SendStuff_t
     TYPE(SendStuff_t), ALLOCATABLE :: SendStuff(:)
 
-    REAL(KIND=dp)  :: rt
-
     Params => Solver % Values
 
     ! Extract some controls to ROCalution from the simulation control info:
     ! ---------------------------------------------------------------------
     nonlin_update = 1
-    Refactorize = ListGetLogical( Params, 'Linear System Refactorize', Found )
-    IF ( Found .AND. .NOT. Refactorize ) nonlin_update = 0
+    IF ( .NOT. ListGetLogical( Params, 'Linear System Refactorize', Found ) ) &
+      nonlin_update = 0;
 
     SELECT CASE(ListGetString(Params,'Linear System Iterative Method',Found))
       CASE('cg')
@@ -15783,8 +15599,6 @@ END FUNCTION SearchNodeL
        Prec = 2; ILULevel = 1
       CASE('ilu2')
        Prec = 2; ILULevel = 2
-      CASE('schur')
-       Prec = 3; ILULevel = 0
       CASE DEFAULT
        Prec = 0;
     END SELECT
@@ -15800,7 +15614,6 @@ END FUNCTION SearchNodeL
     isParallel = procs>1
 
     IF(isParallel) THEN
-            rt = RealTime()
       me    =  Parenv % MyPe
       xmpi_comm = ELMER_COMM_WORLD
 
@@ -15830,24 +15643,15 @@ END FUNCTION SearchNodeL
         Rmatrix % Format = MATRIX_LIST
         Rmatrix % ListMatrix => List_AllocateMatrix(own_n)
 
-        ALLOCATE(iMatrix(0:ParEnv % PEs-1))
-        DO proc=0,ParEnv % PEs-1
-          iMatrix(proc) % M => AllocateMatrix()
-          iMatrix(proc) % M % Format = MATRIX_LIST
-          iMatrix(proc) % M % ListMatrix => List_AllocateMatrix(own_n)
-        END DO
-
         A % RocParams % Rmatrix => Rmatrix
         A % RocParams % CntPerm => aPerm
         A % RocParams % LocPerm => iLperm
         A % RocParams % gOffset => gOffset
-        A % RocParams % iMatrix => iMatrix
       ELSE
         Rmatrix => A % RocParams % Rmatrix
         aPerm   => A % RocParams % CntPerm
         iLPerm  => A % RocParams % LocPerm
         gOffset => A % RocParams % gOffset
-        iMatrix => A % RocParams % iMatrix
       END IF
 
       ! Complete the matrix rows such that each partition has full rows of the 'owned' dofs
@@ -15858,7 +15662,7 @@ END FUNCTION SearchNodeL
 
         ! Create inside matrix + count rows with values to send for each neighbour
         ! -------------------------------------------------------------------------
-        ALLOCATE(SendTo(0:procs-1))
+        ALLOCATE(SendTo(procs))
         iLPerm = 0
         LRow = 0
         SendTo = 0
@@ -15867,40 +15671,21 @@ END FUNCTION SearchNodeL
           IF ( you == me ) THEN
             lRow = lRow + 1
             iLPerm(lRow) = i
-
-            l = A % Rows(i+1) - A % Rows(i)
-            dbuf = A % Values(A % Rows(i):A % Rows(i+1)-1)
-            ibuf = aPerm(A % Cols(A % Rows(i):A % Rows(i+1)-1))
-            CALL SortF(l, ibuf, dbuf)
-
-            IF ( Rmatrix % Format == MATRIX_LIST ) THEN
-              CALL List_AddMatrixRow(Rmatrix % ListMatrix, lRow, l, &
-                       ibuf, dbuf, SortedInput=.TRUE. )
-            ELSE
-!             DO j=A % Rows(i+1)-1, A % Rows(i),-1
-!               CALL AddToMatrixElement(Rmatrix, lRow, aPerm(A  % Cols(j)), A % Values(j))
-!             END DO
-              l = 0
-              k = RMatrix % Rows(lRow)
-              DO j = A % Rows(i), A % Rows(i+1)-1
-                l = l + 1
-                DO WHILE( ibuf(l) /= RMatrix % Cols(k) )
-                  k = k + 1
-                END DO
-                RMatrix % Values(k) = dbuf(l)
-                k = k + 1
-              END DO
-            ENDIF
+            DO j=A % Rows(i+1)-1, A % Rows(i),-1
+              CALL AddToMatrixElement(Rmatrix, lRow, aPerm(A  % Cols(j)), A % Values(j))
+            END DO
           ELSE
-            SendTo(you) = SendTo(you)+1
+            SendTo(you+1) = SendTo(you+1)+1
           END IF
         END DO
 
-        ALLOCATE(SendStuff(0:procs-1))
-        DO proc=0,procs-1
-          IF( proc==me .OR. .NOT. ParEnv % IsNeighbour(proc+1) ) CYCLE
-          ALLOCATE( SendStuff(proc) % Rows(SendTo(proc)) )
-          ALLOCATE( SendStuff(proc) % Size(SendTo(proc)) )
+        ALLOCATE(SendStuff(ParEnv % Pes))
+        DO i=1,ParEnv % PEs
+          IF( i-1==me ) CYCLE
+          IF(.NOT.ParEnv % IsNeighbour(i))  CYCLE
+
+          ALLOCATE( SendStuff(i) % Rows(SendTo(i)) )
+          ALLOCATE( SendStuff(i) % Size(SendTo(i)) )
         END DO
  
         ! Count number of columns of each neighbour's rows to be sent
@@ -15910,9 +15695,9 @@ END FUNCTION SearchNodeL
         DO i=1,a % NumberOfRows
           you = A % ParallelInfo % NeighbourList(i) % Neighbours(1)
           IF ( you /= me ) THEN
-            SendTo(you) = SendTo(you)+1
-            SendStuff(you) % Size(Sendto(you))  = A % Rows(i+1)-A % Rows(i)
-            SendStuff(you) % Rows(Sendto(you))  = i
+            SendTo(you+1) = SendTo(you+1)+1
+            SendStuff(you+1) % Size(Sendto(you+1))  = A % Rows(i+1)-A % Rows(i)
+            SendStuff(you+1) % Rows(Sendto(you+1))  = i
             buf_size = buf_size + A % Rows(i+1) - A % Rows(i)
           END IF
         END DO
@@ -15920,28 +15705,25 @@ END FUNCTION SearchNodeL
 
         ! Send data to neighbours
         ! -----------------------
-        DO proc=0,procs-1
-          IF(proc==me .OR. .NOT. ParEnv % IsNeighbour(proc+1)) CYCLE
+        DO i=1,ParEnV % PEs
+          IF(i-1==me .OR. .NOT. ParEnv % IsNeighbour(i)) CYCLE
 
-          CALL MPI_BSEND(SendTo(proc),1,xmpi_int,proc,1200,xmpi_comm,ierr)
-          IF(Sendto(proc)==0) CYCLE
+          CALL MPI_BSEND(SendTo(i),1,xmpi_int,i-1,1200,xmpi_comm,ierr)
+          IF(Sendto(i)==0) CYCLE
 
-          ibuf = aPerm(SendStuff(proc) % Rows)
-          CALL MPI_BSEND(ibuf,SendTo(proc),xmpi_int,proc,1201,xmpi_comm,ierr)
+          ibuf = aPerm(SendStuff(i) % Rows)
+          CALL MPI_BSEND(ibuf,SendTo(i),xmpi_int,i-1,1201,xmpi_comm,ierr)
 
-          ibuf = SendStuff(proc) % Size
-          CALL MPI_BSEND(ibuf,SendTo(proc),xmpi_int,proc,1202,xmpi_comm,ierr)
+          ibuf = SendStuff(i) % Size
+          CALL MPI_BSEND(ibuf,SendTo(i),xmpi_int,i-1,1202,xmpi_comm,ierr)
 
-          DO j=1,SendTo(proc)
-            k = SendStuff(proc) % Rows(j)
-            l = SendStuff(proc) % Size(j)
-            dBuf = A % Values(A % Rows(k):A % Rows(k+1)-1)
-            iBuf = aPerm(A % Cols(A % Rows(k):A % Rows(k+1)-1))
-            CALL SortF(l, ibuf, dbuf)
-            CALL MPI_BSEND(dBuf,l,xmpi_dbl,proc,1203,xmpi_comm,ierr)
-            IF (Rmatrix % Format == MATRIX_LIST ) THEN
-              CALL MPI_BSEND(iBuf,l,xmpi_int,proc,1204,xmpi_comm,ierr)
-            END IF
+          DO j=1,SendTo(i)
+            k = SendStuff(i) % Rows(j)
+            l = SendStuff(i) % Size(j)
+            dBuf =  A % Values(A % Rows(k):A % Rows(k+1)-1)
+            iBuf =  aPerm(A % Cols(A % Rows(k):A % Rows(k+1)-1))
+            CALL MPI_BSEND(iBuf,l,xmpi_int,i-1,1203,xmpi_comm,ierr)
+            CALL MPI_BSEND(dBuf,l,xmpi_dbl,i-1,1204,xmpi_comm,ierr)
           END DO
         END DO
 
@@ -15963,9 +15745,9 @@ END FUNCTION SearchNodeL
           CALL MPI_RECV(rRows,rcnt,xmpi_int,proc,1201,xmpi_comm,status,ierr)
           CALL MPI_RECV(rSize,rcnt,xmpi_int,proc,1202,xmpi_comm,status,ierr)
           DO j=1,rcnt
-            k = rRows(j) - gOffset(me)
+            k = rRows(j)
 
-            IF ( k<=0 .OR. k>gOffset(me+1)-gOffset(me) ) THEN
+            IF ( k<= gOffset(me) .OR. k> gOffset(me+1) ) THEN
               PRINT*,Parenv % MyPE,proc, 'not mine then ?', rRows(j), gOffset(me), gOffset(me+1)
               CYCLE
             END IF
@@ -15974,73 +15756,27 @@ END FUNCTION SearchNodeL
               DEALLOCATE(iBuf,dBuf)
               ALLOCATE( iBuf(rSize(j)), dBuf(rSize(j)) )
             END IF
-            CALL MPI_RECV(dBuf,rSize(j),xmpi_dbl,proc,1203,xmpi_comm,status,ierr)
 
-            IF ( RMatrix % Format == MATRIX_LIST ) THEN
-              CALL MPI_RECV(iBuf,rSize(j),xmpi_int,proc,1204,xmpi_comm,status,ierr)
-              CALL List_AddMatrixRow(iMatrix(proc) % M % ListMatrix,k, &
-                       rSize(j),iBuf,dBuf,SortedInput=.TRUE.)
-            ELSE
-              q = 0
-              DO l=iMatrix(proc) % M % Rows(k), iMatrix(proc) % M % Rows(k+1)-1
-                q = q + 1
-                m = iMatrix(proc) % M % Cols(l)
-                Rmatrix % Values(m) = RMatrix % Values(m) + dBuf(q)
-              END DO
-            END IF
+            CALL MPI_RECV(iBuf,rSize(j),xmpi_int,proc,1203,xmpi_comm,status,ierr)
+            CALL MPI_RECV(dBuf,rSize(j),xmpi_dbl,proc,1204,xmpi_comm,status,ierr)
+
+            DO l=1,rSize(j)
+              CAll AddToMatrixElement(Rmatrix,k-gOffset(me),iBuf(l),dBuf(l))
+            END DO
           END DO
         END DO
-
         ! ----------
 
-        IF(Rmatrix % Format == MATRIX_LIST) THEN
-
-          DO proc=0,procs-1
-            IF ( proc==me .OR. .NOT. ParEnv % IsNeighbour(proc+1)) CYCLE
-
-            CALL List_toCRSMatrix(iMatrix(proc) % M)
-            DO i=1,iMatrix(proc) % M % NumberOfRows
-              iRows => iMatrix(proc) % M % Rows
-              iCols => iMatrix(proc) % M % Cols
-              iVals => iMatrix(proc) % M % Values
-
-              l = iRows(i+1) - iRows(i)
-              IF (l>0) THEN
-                CALL List_AddMatrixRow( Rmatrix % ListMatrix,i,l, &
-                   iCols(iRows(i):iRows(i+1)-1), iVals(iRows(i):iRows(i+1)-1), SortedInput=.TRUE.)
-              END IF
-            END DO
-          END DO
-
-          CALL List_toCRSMatrix(Rmatrix)
-
-          DO proc=0,procs-1
-            IF ( iMatrix(proc) % M % NumberOfRows <= 0 ) CYCLE
-
-            iRows => iMatrix(proc) % M % Rows
-            iCols => iMatrix(proc) % M % Cols
-
-            DO i=1,iMatrix(proc) % M % NumberOfRows
-              l = RMatrix % Rows(i)
-              DO j=iRows(i), iRows(i+1)-1
-                DO WHILE(Rmatrix % Cols(l) /= iCols(j))
-                   l=l+1 
-                END DO
-                iCols(j) = l
-              END DO
-            END DO
-          END DO
-        END IF
-
-!       print*,'ct time: ', realtime()-rt
+        CALL MPI_BARRIER(A % Comm,ierr)
+ 
+        IF(Rmatrix % Format == MATRIX_LIST) CALL List_toCRSMatrix(Rmatrix)
+        n = Rmatrix % NumberOfRows
+        gn = ParallelReduction(n);
       END IF
 
-      n = Rmatrix % NumberOfRows
-      gn = ParallelReduction(n);
 
-
-      !  the linear equation solver
-      ! ---------------------------
+      !  the linear solver
+      ! ----------------------
       BLOCK
         REAL(KIND=dp), ALLOCATABLE :: pb(:),px(:), r(:)
         REAL(KIND=dp) :: bnrm
@@ -16081,43 +15817,18 @@ END FUNCTION SearchNodeL
 
       ! Cleanup, remains to be reconsidered for optimizations
       ! -----------------------------------------------------
-      !CALL FreeMatrix(Rmatrix);
-      !DEALLOCATE(APerm,ILperm,gOffset)
+      CALL FreeMatrix(Rmatrix);
+      DEALLOCATE(APerm,ILperm,gOffset)
 
-      !A % RocParams % Rmatrix => Null()
-      !A % RocParams % CntPerm => Null()
-      !A % RocParams % LocPerm => Null()
-      !A % RocParams % gOffset => Null()
+      A % RocParams % Rmatrix => Null()
+      A % RocParams % CntPerm => Null()
+      A % RocParams % LocPerm => Null()
+      A % RocParams % gOffset => Null()
     ELSE
       ! Serial case: call the linear solver
       ! -----------------------------------
-      BLOCK
-        TYPE(Variable_t), POINTER :: SchurV
-        TYPE(Matrix_t), POINTER :: Schur 
-        REAL(KIND=dp) :: ddum(1)
-        INTEGER :: i, j, k, l, dofs, idum(1)
-
-        Schur => NULL()
-        dofs = Solver % Variable % DOFs
-        IF (prec==3) THEN
-          IF ( ListGetLogical( Solver % Values, 'Create Schur Approximation Matrix', Found) ) THEN
-            Schur => XCreateSchurApproximation(A)
-          ELSE
-            SchurV => VariableGet( Solver % Mesh % Variables, 'Schur' )          
-            IF ( ASSOCIATED(SchurV) ) Schur => SchurV % Solver % Matrix
-          END IF
-        END IF
-
-        IF ( ASSOCIATED(Schur) ) THEN
-          CALL ROCSerialSolve( n, A % Rows-1, A % Cols-1, A % Values, b, x, &
-              nonlin_update, imethod, prec, maxiter, tol, Schur % numberOfRows, &
-              Schur % Rows-1, Schur % cols-1, Schur % Values, dofs )
-          CALL FreeMatrix( Schur)
-        ELSE
-          CALL ROCSerialSolve( n, A % Rows-1, A % Cols-1, A % Values, b, x, &
-              nonlin_update, imethod, prec, maxiter, tol, 0, idum, idum, ddum, dofs)
-        END IF
-      END BLOCK
+      CALL ROCSerialSolve( n, A % Rows-1, A % Cols-1, A % Values, b, x, &
+              nonlin_update, imethod, prec, maxiter, tol )
     END IF
 #else
     CALL Fatal('ROCSolver', "Rocalution doesn't seem to be included.")
@@ -16125,62 +15836,6 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
   END SUBROUTINE ROCSolver
 !------------------------------------------------------------------------------
-
-
-  ! Create matrix S=P((diag(A))^-1)Q
-  !------------------------------------------------------------------------  
-  FUNCTION XCreateSchurApproximation(A) RESULT ( S ) 
-
-    TYPE(Matrix_t), POINTER :: A, P, Q
-    TYPE(Matrix_t), POINTER :: S
-
-    INTEGER :: n, nc, i, j, k, l, j2, k2
-    REAL(KIND=dp) :: val
-    LOGICAL :: Found
-    
-    CALL Info('CreateSchurApproximation','Creating Shcur complement for preconditioning!',Level=20)
-
-    NULLIFY(S)
-!   IF(.NOT. ASSOCIATED(P) .OR. .NOT. ASSOCIATED(Q)) THEN
-!     CALL Info('CreateSchurApproximation','Constraint matrix not associated!')
-!     RETURN
-!   END IF
-    S => AllocateMatrix()
-    
-    nc = CoordinateSystemDimension() + 1
-    n = A % NumberOfRows / nc
-    IF(n == 0) THEN
-      CALL Info('CreateSchurApproximation','No rows in Constraint matrix!')
-      RETURN
-    END IF
-
-    S % FORMAT = MATRIX_LIST
-      
-    ! Add the corner entry to give the max size for list.  
-    CALL List_AddToMatrixElement(S % ListMatrix, n, n, 0.0_dp ) 
-
-    l = 0
-    DO i=nc,n*nc,nc
-      l = l + 1
-      DO j=A % Rows(i),A % Rows(i+1)-1
-        k = A % Cols(j)
-        IF (MOD(k,nc)==0) CYCLE
-
-        val = A % Values(j) / A % Values(A % Diag(k))
-        DO j2=A % Rows(k)+nc-1,A % Rows(k+1)-1,nc
-          k2 = A % Cols(j2)
-          CALL List_AddToMatrixElement(S % ListMatrix, l, (k2-1)/nc+1, -val * A % Values(j2) )
-        END DO
-      END DO
-    END DO
-
-    CALL List_toCRSMatrix(S)
-    
-    val = 1.0_dp ! SIZE(S % Values) / SIZE(P % Values)
-    WRITE(Message,*) 'Schur matrix increase factor: ',val, S % NumberOfrows, SUM(S % Values)
-    CALL Info('CreateSchurApproximation',Message)
-  END FUNCTION XCreateSchurApproximation
-
 
 
 
@@ -16341,11 +15996,6 @@ END FUNCTION SearchNodeL
 
     n = A % NumberOfRows
 
-    IF(A % FORMAT < 1 .OR. A % FORMAT > 3 ) THEN
-      CALL Fatal( Caller,'Not implemented for matrix format: '//I2S(A % format))
-    END IF
-      
-    
     RestrictionMode = HaveRestrictionMatrix( A ) 
 
     ResidualMode = ListGetLogical( Params,'Linear System Residual Mode',Found )      

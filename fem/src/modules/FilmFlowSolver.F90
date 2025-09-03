@@ -39,7 +39,7 @@
 ! * This module has been defived from a historical Navier-Stokes solver and
 ! * updated much later for problems involving challel flows.
 ! *
-! *  Authors: Juha Ruokolainen, Peter Råback, Thomas Zwinger, Tómas Jóhannesson
+! *  Authors: Juha Ruokolainen, Peter Råback
 ! *  Email:   elmeradm@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -176,12 +176,12 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
   REAL(KIND=dp) :: GapFactor, Nm, TotHeating
   CHARACTER(:), ALLOCATABLE :: str
   CHARACTER(*), PARAMETER :: Caller = 'FilmFlowSolver'
-  LOGICAL :: Debug, FirstRound=.TRUE.
+  LOGICAL :: Debug
   
   SAVE STIFF, MASS, LOAD, FORCE, rho, ac, gap, gap0, mu, height, AcPres, Velocity, &
       AcPrevPressure, AllocationsDone, pVar, GotAc, SurfAC, FsiRhs, PrevGap, &
       FrictionModel, time0, hVar, HeatingEnergy, FrictionHeatFlux, PressureHeatFlux, &
-      HeatingW, FirstRound
+      HeatingW
 !------------------------------------------------------------------------------
 
   CALL Info(Caller,'Computing reduced dimensional Navier-Stokes equations!')
@@ -232,8 +232,6 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
       FrictionModel = 2
     ELSE IF( str == 'manning' ) THEN
       FrictionModel = 3
-    ELSE IF (str == 'manning2' ) THEN
-      FrictionModel = 4
     ELSE
       CALL Fatal(Caller,'Uknown friction model: '//TRIM(str))
     END IF
@@ -316,15 +314,11 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
     ! If we are visiting the same timestep several times only compute the nodal heat flux once.
     time = GetTime()
     IF(ABS(time-time0) < TINY(time)) THEN
-      IF (CalcFrictionHeating .AND. CalcPressureHeating) THEN        
-        HeatingEnergy = HeatingEnergy - dt * MAX(FrictionHeatFlux  + PressureHeatFlux, 0.0_dp)
-      ELSE
-        IF(CalcFrictionHeating) THEN
-          HeatingEnergy = HeatingEnergy - dt * FrictionHeatFlux 
-        END IF
-        IF( CalcPressureHeating ) THEN
-          HeatingEnergy = HeatingEnergy - dt * PressureHeatFlux
-        END IF
+      IF(CalcFrictionHeating) THEN
+        HeatingEnergy = HeatingEnergy - dt * FrictionHeatFlux 
+      END IF
+      IF( CalcPressureHeating ) THEN
+        HeatingEnergy = HeatingEnergy - dt * PressureHeatFlux
       END IF
     END IF
     IF( CalcFrictionHeating ) FrictionHeatFlux = 0.0_dp
@@ -422,7 +416,7 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
       !-----------------------------------------
       CALL LocalBulkMatrix(  MASS, STIFF, FORCE, LOAD, rho, gap, gap0, height, &
           mu, ac, Velocity, AcPres, Element, n, nd, nd+nb, &
-          dim, mdim, FirstRound )
+          dim, mdim )
       
       IF ( nb>0 ) THEN
         CALL NSCondensate( nd, nb, mdim, STIFF, FORCE )
@@ -492,8 +486,7 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
     
     Norm = DefaultSolve()
     
-    IF( Solver % Variable % NonlinConverged == 1 ) EXIT
-    FirstRound = .FALSE.
+    IF( Solver % Variable % NonlinConverged == 1 ) EXIT    
   END DO
 
   CALL DefaultFinish()
@@ -538,19 +531,11 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
         FrictionHeatFlux = FrictionHeatFlux + cfix
       END IF
 
-      ! Total dissipated heat over time.
-      IF (CalcFrictionHeating .AND. CalcPressureHeating) THEN        
-        HeatingEnergy = HeatingEnergy + dt * MAX(FrictionHeatFlux  + PressureHeatFlux, 0.0_dp)
-      ELSE
-        IF(CalcFrictionHeating) THEN
-          HeatingEnergy = HeatingEnergy + dt * FrictionHeatFlux 
-        END IF
-        IF( CalcPressureHeating ) THEN
-          HeatingEnergy = HeatingEnergy + dt * PressureHeatFlux
-        END IF
-      END IF
-    
-      
+      ! Total dissipated heat over time.       
+      IF( CalcFrictionHeating ) &
+        HeatingEnergy = HeatingEnergy + dt * FrictionHeatFlux 
+      IF( CalcPressureHeating ) &
+        HeatingEnergy = HeatingEnergy + dt * PressureHeatFlux 
         
       WRITE(Message,'(A,ES12.5)') 'Total heating power: ',TotFlux
       CALL Info(Caller, Message, Level=7)
@@ -623,14 +608,13 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LocalBulkMatrix(  MASS, STIFF, FORCE, LOAD, Nodalrho, NodalGap, &
       NodalGap0, NodalH, Nodalmu, NodalAC, NodalVelo, NodalAcPres, &
-      Element, n, nd, ntot, dim, mdim , FirstRound)
+      Element, n, nd, ntot, dim, mdim )
 !------------------------------------------------------------------------------
     REAL(KIND=dp), TARGET :: MASS(:,:), STIFF(:,:), FORCE(:), LOAD(:,:)
     REAL(KIND=dp) :: Nodalmu(:), NodalAC(:), Nodalrho(:), &
         NodalGap(:), NodalGap0(:), NodalH(:), NodalAcPres(:), NodalVelo(:,:)
     INTEGER :: dim, mdim, n, nd, ntot
     TYPE(Element_t), POINTER :: Element
-    LOGICAL :: FirstRound
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(ntot),dBasisdx(ntot,3)
     REAL(KIND=dp) :: DetJ,LoadAtIP(mdim+2),Velo(mdim), VeloGrad(mdim,mdim), gapGrad(mdim), &
@@ -793,7 +777,7 @@ CONTAINS
            IF( FrictionModel == 1 ) THEN
              MuCoeff = fd * rho * Speed / (2*D)
            ELSE
-             GradZphi2 =  MAX(SUM((hGrad(1:mdim) + presGrad(1:mdim)/(rho*Grav))**2), 1.0E-09)
+             GradZphi2 = SUM((hGrad(1:mdim) + presGrad(1:mdim)/(rho*Grav))**2)
              MuCoeff = rho * SQRT(fd*Grav) * (2*gap)**(-1.0/2.0) * GradZphi2**(1.0/4.0)
            END IF
          END BLOCK
@@ -801,14 +785,9 @@ CONTAINS
        CASE( 3 ) 
          BLOCK
            REAL(KIND=dp) :: GradZphi2
-           GradZphi2 = MAX(SUM((hGrad(1:mdim) + presGrad(1:mdim)/(rho*Grav))**2), 1.0E-09)
+           GradZphi2 = SUM((hGrad(1:mdim) + presGrad(1:mdim)/(rho*Grav))**2)
            MuCoeff = nm * rho * Grav * (gapi/2)**(-2.0/3) * GradZphi2**(1.0/4.0)
          END BLOCK
-
-       CASE( 4)
-         BLOCK
-           MuCoeff = rho * Grav * nm**2 * (gapi/2)**(-4.0/3) * Speed 
-       END BLOCK
                     
        CASE DEFAULT 
          IF( CSymmetry ) THEN
@@ -821,19 +800,14 @@ CONTAINS
        END SELECT
 
        IF( CalcFrictionHeating ) THEN
-         q_f = MuCoeff * gapi * Speed**2
+         q_f = MuCoeff * Speed
        END IF
          
        IF( CalcPressureHeating ) THEN
          PrevPres = SUM(NodalPrevPres(1:n) * Basis(1:n))
-         q_p = rho * gapi * Cp * Ct * ((Pres-PrevPres)/dt + SUM(Velo(1:mdim)*presGrad(1:mdim)))
-         
+         q_p = -rho * h * Cp * Ct * ((Pres-PrevPres)/dt + SUM(Velo(1:mdim)*presGrad(1:mdim)))
        END IF
-       IF (FirstRound) THEN
-         q_f = 0.0_dp
-         q_p = 0.0_dp
-       END IF
-       
+              
        ! Finally, the elemental matrix & vector:
        !----------------------------------------       
        DO p=1,ntot
@@ -902,9 +876,7 @@ CONTAINS
 
          IF(UseHeating) THEN
            ! Additional source term from friction melting.
-           ! Continuity equation is weighted by gap so the BC term need not be divided by it
-           ! as is the case for momentum equation.
-           F(1:mdim+1) = F(1:mdim+1) + s * Basis(p) * MAX(q_f + q_p,0.0_dp) / (MeltHeat * rho)
+           F(1:mdim+1) = F(1:mdim+1) + s * Basis(p) * (q_f + q_p ) / MeltHeat 
          END IF
        END DO
          

@@ -1112,13 +1112,12 @@ END SUBROUTINE HeatSolver_Init
       DO bc_elem = 1, Solver % Mesh % NumberOfBoundaryElements
         
         Element => GetBoundaryElement(bc_elem)
-        BC => GetBC()
-        IF ( .NOT. ASSOCIATED(BC) ) CYCLE
-        
         IF ( .NOT. ActiveBoundaryElement() ) CYCLE
 
         n = GetElementNOFNodes()
 
+        BC => GetBC()
+        IF ( .NOT. ASSOCIATED(BC) ) CYCLE
 
         ! This checks whether there are any Dirichlet conditions on the 
         ! smart heater boundary. If there are the r.h.s. must be zero as 

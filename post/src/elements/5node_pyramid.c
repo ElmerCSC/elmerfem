@@ -78,10 +78,7 @@ static int elm_5node_pyramid_triangulate( geometry_t *geom,element_t *pyramid )
     int i,j;
 
     int PyramidFace[5][4] = { { 0,1,2,3 }, { 0,1,4,0 }, { 1,2,4,0 }, { 2,3,4,0 }, { 3,0,4,0 } };
-    
-    int elm_4node_quad_triangulate();
-    int geo_add_edge();
-    int elm_3node_triangle_triangulate();
+
 
     if ( GlobalOptions.VolumeSides )
     {
@@ -103,8 +100,8 @@ static int elm_5node_pyramid_triangulate( geometry_t *geom,element_t *pyramid )
            {
                element.Topology[j] = pyramid->Topology[PyramidFace[i][j]];
            }
-        }
            if ( !elm_3node_triangle_triangulate( geom, &element, pyramid ) ) return FALSE;
+        }
     } else {
        if ( !geo_add_edge( geom, pyramid->Topology[0], pyramid->Topology[1],pyramid ) ) return FALSE;
        if ( !geo_add_edge( geom, pyramid->Topology[1], pyramid->Topology[2],pyramid ) ) return FALSE;
@@ -323,7 +320,6 @@ int elm_5node_pyramid_initialize()
      static char *Name = "ELM_5NODE_PYRAMID";
 
      element_type_t ElementDef;
-     int elm_add_element_type();
 
      elm_5node_pyramid_shape_functions();
 

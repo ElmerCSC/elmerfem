@@ -546,21 +546,20 @@ CONTAINS
      INTEGER, POINTER :: Indexes(:)
      LOGICAL :: Found0
      
-     IF ( PRESENT(USolver) ) THEN
-       Solver => USolver
-     ELSE
-       Solver => CurrentModel % Solver
-     END IF
-       
-     x = 0.0_dp
+     Solver => CurrentModel % Solver
+     IF ( PRESENT(USolver) ) Solver => USolver
+
+     x = 0.0d0
      IF(PRESENT(Found)) Found = .FALSE.
 
-     IF(PRESENT(UVariable)) THEN
-       Variable => UVariable
-     ELSE IF( PRESENT(name) ) THEN
-       Variable => VariableGet( Solver % Mesh % Variables, name )
-     ELSE
+     IF(.NOT. PRESENT(UVariable)) THEN
        Variable => Solver % Variable
+     ELSE
+       Variable => UVariable
+     END IF
+     
+     IF ( PRESENT(name) ) THEN
+        Variable => VariableGet( Solver % Mesh % Variables, name )
      END IF
      IF ( .NOT. ASSOCIATED( Variable ) ) RETURN
 
@@ -629,42 +628,6 @@ CONTAINS
        END IF
        IF(PRESENT(Found)) Found = Found0
        RETURN       
-     ELSE IF( ASSOCIATED(Solver % CutInterp) ) THEN
-       ! This is a special case associated to CutFEM. Only nodal fields can be mapped this way!
-
-       n = Element % TYPE % NumberOfNodes
-       Indexes => Element % NodeIndexes
-
-       BLOCK
-         INTEGER :: nn,j1,j2
-         REAL(KIND=dp) :: r
-         nn = SIZE(Variable % Perm)
-         
-         DO i=1,n
-           j = Indexes(i)
-           IF ( j>0 .AND. j<=nn ) THEN
-             ! This is an original node.
-             j = Variable % Perm(j)
-             IF ( j>0 ) THEN
-               Found0 = .TRUE.
-               x(i) = Values(j)
-             END IF
-           ELSE
-             ! This is an additional node of the fictious domain method. 
-             ! When we know where the isoline cuts the edge we can use linear iterpolation
-             ! on the edge to get the value at the intersetion on-the-fly.
-             r = Solver % CutInterp(j-nn)
-             j1 = Variable % Perm(Solver % Mesh % Edges(j-nn) % NodeIndexes(1))
-             j2 = Variable % Perm(Solver % Mesh % Edges(j-nn) % NodeIndexes(2))
-             IF(j1 > 0 .AND. j2 > 0) THEN
-               Found0 = .TRUE.
-               x(i) = r*Variable % Values(j1) + (1-r)*Variable % Values(j2)
-               !PRINT *,'interp:',j,j1,j2,r,x(i)
-             END IF
-           END IF
-         END DO
-       END BLOCK
-       RETURN
      END IF
 
      Indexes => GetIndexStore()
@@ -702,19 +665,19 @@ CONTAINS
          END DO
        END IF
      ELSE
-       DO i=1,n
-         j = Indexes(i)
-         IF ( j>0 .AND. j<=SIZE(Variable % Values) ) THEN
-           Found0 = .TRUE.
-           x(i) = Values(Indexes(i))
-         END IF
-       END DO
-     END IF
-     
-     IF(PRESENT(Found)) Found = Found0 
-     
-   END SUBROUTINE GetScalarLocalSolution
-   
+        DO i=1,n
+          j = Indexes(i)
+          IF ( j>0 .AND. j<=SIZE(Variable % Values) ) THEN
+            Found0 = .TRUE.
+            x(i) = Values(Indexes(i))
+          END IF
+        END DO
+      END IF
+
+      IF(PRESENT(Found)) Found = Found0 
+      
+  END SUBROUTINE GetScalarLocalSolution
+
 
 
 !> Returns a vector field in the nodes of the element
@@ -834,8 +797,6 @@ CONTAINS
        END IF
        IF(PRESENT(Found)) Found = Found0
        RETURN       
-     ELSE IF( ASSOCIATED(Solver % CutInterp) ) THEN
-       CALL Fatal('GetVectorLocalSolution','Not associated for CutFEM yet!')
      END IF
 
      
@@ -2225,13 +2186,13 @@ CONTAINS
   END FUNCTION GetElementNOFDOFs
 
 
-!> In addition to returning the elementwise number of degrees of freedom
-!> the indexes of the degrees of freedom for a particular solver are also returned
+!> In addition to returning the number of degrees of freedom associated with 
+!> the element, the indexes of the degrees of freedom are also returned.
 !-------------------------------------------------------------------------
   FUNCTION GetElementDOFs( Indexes, UElement, USolver, NotDG )  RESULT(NB)
-     INTEGER :: Indexes(:)
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
-     TYPE(Solver_t), OPTIONAL, TARGET :: USolver
+     TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
+     INTEGER :: Indexes(:)
      LOGICAL, OPTIONAL  ::  NotDG
      INTEGER :: NB
      
@@ -2354,7 +2315,7 @@ CONTAINS
      ELSE
        Mesh => CurrentModel % Solver % Mesh
      END IF
-
+             
      n = MAX(Mesh % MaxElementNodes,Mesh % MaxElementDOFs)
      
      IF ( .NOT. ASSOCIATED( ElementNodes % x ) ) THEN
@@ -2365,7 +2326,7 @@ CONTAINS
      END IF
 
      n = Element % TYPE % NumberOfNodes
-
+     
      ElementNodes % x(1:n) = Mesh % Nodes % x(Element % NodeIndexes(1:n))
      ElementNodes % y(1:n) = Mesh % Nodes % y(Element % NodeIndexes(1:n))
      ElementNodes % z(1:n) = Mesh % Nodes % z(Element % NodeIndexes(1:n))
@@ -3636,7 +3597,7 @@ CONTAINS
          CALL CreateCutFEMAddMesh(Solver) 
        END IF
      END IF
-
+     
      ! When Newton linearization is used we may reset it after previously visiting the solver
      IF( Solver % NewtonActive ) THEN
        IF( ListGetLogical( Params,'Nonlinear System Reset Newton', Found) ) Solver % NewtonActive = .FALSE.
@@ -3851,10 +3812,10 @@ CONTAINS
        
        ! We do not need the old meshes. When we reach a new timestep
        ! they have already been saved. 
+       IF(ASSOCIATED(Solver % Mesh % Next % Next ) ) THEN
+         CALL FreeMesh(Solver % Mesh % Next % Next )
+       END IF
        IF(ASSOCIATED(Solver % Mesh % Next ) ) THEN
-         IF(ASSOCIATED(Solver % Mesh % Next % Next ) ) THEN
-           CALL FreeMesh(Solver % Mesh % Next % Next )
-         END IF
          CALL FreeMesh(Solver % Mesh % Next)
        END IF
        
@@ -5811,7 +5772,8 @@ CONTAINS
          SaveElement => GetCurrentElement() 
          DO i=1,Solver % Mesh % NumberOfBoundaryElements
            Element => GetBoundaryElement(i)
-           
+           IF ( .NOT. ActiveBoundaryElement(Element) ) CYCLE
+
            ! Get parent element:
            ! -------------------
            Parent => Element % BoundaryInfo % Left
@@ -5822,8 +5784,6 @@ CONTAINS
 
            BC => GetBC(Element)
            IF ( .NOT.ASSOCIATED(BC) ) CYCLE
-!           Element % BodyId = Parent % BodyId
-           IF ( .NOT. ActiveBoundaryElement(Element) ) CYCLE
 
            ptr => ListFind(BC, Name,Found )
            IF ( .NOT. ASSOCIATED(ptr) ) CYCLE
@@ -5944,8 +5904,11 @@ CONTAINS
          SaveElement => GetCurrentElement()
          DO i=1,Solver % Mesh % NumberOfBoundaryElements
            Element => GetBoundaryElement(i)
+           IF ( .NOT. ActiveBoundaryElement(Element) ) CYCLE
+
            BC => GetBC()
            IF ( .NOT.ASSOCIATED(BC) ) CYCLE
+           IF ( .NOT. ListCheckPresent(BC, Name) ) CYCLE
 
            ! Get parent element:
            ! -------------------
@@ -5953,16 +5916,11 @@ CONTAINS
            IF ( .NOT. ASSOCIATED( Parent ) ) THEN
              Parent => Element % BoundaryInfo % Right
            END IF
-           IF ( .NOT. ASSOCIATED( Parent ) ) CYCLE
+           IF ( .NOT. ASSOCIATED( Parent ) )   CYCLE
 
            ! Here set constraints for p-approximation only: 
            ! -----------------------------------------------------
-           IF (.NOT.isActivePElement(Parent, Solver)) CYCLE
-
-!           Element % BodyId = Parent % BodyId
-           IF ( .NOT. ActiveBoundaryElement(Element) ) CYCLE
-
-           IF ( .NOT. ListCheckPresent(BC, Name) ) CYCLE
+           IF (.NOT.isActivePElement(Parent)) CYCLE
 
            ptr => ListFind(BC, Name,Found )
            Constantvalue = Ptr % Type /= LIST_TYPE_CONSTANT_SCALAR_PROC
@@ -6139,7 +6097,6 @@ CONTAINS
            CALL PickActiveFace(Solver % Mesh, Parent, Element, Face, j)
 
            IF (.NOT. ASSOCIATED(Face)) CYCLE
-           Face % BodyId = Parent % BodyId
            IF ( .NOT. ActiveBoundaryElement(Face) ) CYCLE
 
            DO l=1,Face % TYPE % NumberOfEdges
@@ -6147,7 +6104,6 @@ CONTAINS
              EDOFs = Edge % BDOFs
              IF (EDOFs == 0) CYCLE
 
-             Edge % BodyId = Parent % BodyId
              n = GetElementDOFs(gInd,Edge)
 
              IF (Solver % Def_Dofs(2,Parent % BodyId,1) > 0) THEN
@@ -6239,12 +6195,11 @@ CONTAINS
                    CALL PickActiveFace(Solver % Mesh, Parent, Element, Edge, j)
 
                    IF ( .NOT. ASSOCIATED(Edge) ) CYCLE
-                   Edge % BodyId = Parent % BodyId
                    IF ( .NOT. ActiveBoundaryElement(Edge) ) CYCLE                  
 
                    EDOFs = Edge % BDOFs     ! The number of DOFs associated with edges
                    IF (EDOFs < 1) CYCLE
-                   
+
                    AugmentedEigenSystem = ListGetLogical(Params, 'Eigen System Augmentation', Found) 
                    IF (AugmentedEigenSystem) THEN
                      EDOFs = EDOFs/2
@@ -6280,7 +6235,6 @@ CONTAINS
                    CALL PickActiveFace(Solver % Mesh, Parent, Element, Face, j)
 
                    IF (.NOT. ASSOCIATED(Face)) CYCLE
-                   Face % BodyId = Parent % BodyId
                    IF ( .NOT. ActiveBoundaryElement(Face) ) CYCLE
 
                    ! ---------------------------------------------------------------------
@@ -6292,9 +6246,7 @@ CONTAINS
                    DO l=1,Face % TYPE % NumberOfEdges
                      Edge => Solver % Mesh % Edges(Face % EdgeIndexes(l))
                      EDOFs = Edge % BDOFs
-                     IF (EDOFs < 1) CYCLE
-
-                     Edge % BodyId = Parent % BodyId
+                     IF (EDOFs < 1) CYCLE                     
                      n = Edge % TYPE % NumberOfNodes
 
                      CALL VectorElementEdgeDOFs(BC, Edge, n, Parent, np, Name//' {e}', &
@@ -6333,8 +6285,6 @@ CONTAINS
                      CALL SolveLocalFaceDOFs(BC, Face, n, Name//' {e}', Work, EDOFs, &
                          Face % BDOFs, QuadraticApproximation)
 
-                     Face % BodyId = Parent % BodyId
-                     
                      n = GetElementDOFs(GInd,Face)
                      DO j=1,Face % BDOFs
                        nb = x % Perm(GInd(n-Face % BDOFs+j)) ! The last entries should be face-DOF indices
@@ -6361,7 +6311,6 @@ CONTAINS
                CALL PickActiveFace(Solver % Mesh, Parent, Element, Edge, j)
 
                IF (.NOT. ASSOCIATED(Edge)) CYCLE
-               Edge % BodyId = Parent % BodyId
                IF ( .NOT. ActiveBoundaryElement(Edge) ) CYCLE                  
 
                EDOFs = Edge % BDOFs     ! The number of DOFs associated with edges
@@ -6394,7 +6343,6 @@ CONTAINS
                CALL PickActiveFace(Solver % Mesh, Parent, Element, Face, ActiveFaceId)
 
                IF (.NOT. ASSOCIATED(Face)) CYCLE
-               Face % BodyId = Parent % BodyId
                IF ( .NOT. ActiveBoundaryElement(Face) ) CYCLE
 
                FDOFs = Face % BDOFs
@@ -6468,7 +6416,6 @@ CONTAINS
                CALL PickActiveFace(Solver % Mesh, Parent, Element, Face, ActiveFaceId)
 
                IF (.NOT. ASSOCIATED(Face)) CYCLE
-               Face % BodyId = Parent % BodyId
                IF ( .NOT. ActiveBoundaryElement(Face) ) CYCLE
 
                FDOFs = Face % BDOFs

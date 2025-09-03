@@ -40,8 +40,13 @@
 !------------------------------------------------------------------------------
 SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
-  USE DefUtils
+  USE Types
+  USE Lists
   USE Adaptive
+  USE Integration
+  USE ElementDescription
+  USE SolverUtils
+
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
@@ -52,39 +57,37 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
+  TYPE(Matrix_t),POINTER  :: StiffMatrix
   TYPE(Nodes_t) :: ElementNodes
-  TYPE(Element_t), POINTER :: CurrentElement
-  TYPE(Variable_t), POINTER :: EdgeResVar, EdgeSolVar
-  TYPE(ValueList_t), POINTER :: Params, EdgeSolverParams
-  TYPE(Mesh_t), POINTER :: Mesh
-  TYPE(Matrix_t), POINTER, SAVE :: Proj => NULL()
-  TYPE(ValueList_t), POINTER :: Material, BodyForce, BC
-  
-  LOGICAL :: AllocationsDone = .FALSE., Bubbles, GotIt, notScalar = .TRUE., stat, &
-      PrecUse, Found, SecondOrder, PiolaVersion, SecondFamily
-  
-  INTEGER, POINTER :: NodeIndexes(:)
-  INTEGER, POINTER :: PressurePerm(:)
-  INTEGER :: dim, iter, i, j, k, n, t, istat, eq, LocalNodes
-  INTEGER :: NonlinearIter
+  TYPE(Element_t),POINTER :: CurrentElement
 
-  REAL(KIND=dp), POINTER :: Pressure(:)
+  INTEGER, POINTER :: NodeIndexes(:)
+
+  LOGICAL :: AllocationsDone = .FALSE., Bubbles, GotIt, notScalar = .TRUE., stat
+
+  INTEGER, POINTER :: PressurePerm(:)
+  REAL(KIND=dp), POINTER :: Pressure(:), ForceVector(:)
+
+  INTEGER :: iter, i, j, k, n, t, istat, eq, LocalNodes
   REAL(KIND=dp) :: Norm, PrevNorm, RelativeChange
+
+  TYPE(ValueList_t), POINTER :: Material
+
+  INTEGER :: NonlinearIter
   REAL(KIND=dp) :: NonlinearTol,s
-  REAL(KIND=dp) :: at0
-  
+
   REAL(KIND=dp), ALLOCATABLE :: LocalStiffMatrix(:,:), Load(:,:), Work(:), &
        LocalForce(:), &
        Amatrix(:,:,:), AvectorReal(:,:), AvectorImag(:,:), AscalarReal(:), &
        AscalarImag(:), Bvector(:,:), BscalarReal(:), BscalarImag(:)
 
-  CHARACTER(LEN=MAX_NAME_LEN) :: EquationName, sname
+  CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
 
   SAVE LocalStiffMatrix, Work, Load, LocalForce, ElementNodes, &
        AllocationsDone, &
        Amatrix, AvectorReal, AvectorImag, AscalarReal, AscalarImag, &
        Bvector, BscalarReal, BscalarImag
-
+   REAL(KIND=dp) :: at,at0,totat,st,totst,t1
 !------------------------------------------------------------------------------
      INTERFACE
         SUBROUTINE DCRComplexSolver_Boundary_Residual( Model,Edge,Mesh,Quant,Perm,Gnorm,Indicator)
@@ -121,15 +124,16 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
   IF ( .NOT.ASSOCIATED( Solver % Matrix ) ) RETURN
   Solver % Matrix % Complex = .TRUE.
 
-  Params => GetSolverParams()
-  Mesh => GetMesh()
-  dim = CoordinateSystemDimension()
-  
   Pressure     => Solver % Variable % Values
   PressurePerm => Solver % Variable % Perm
 
   LocalNodes = COUNT( PressurePerm > 0 )
   IF ( LocalNodes <= 0 ) RETURN
+
+  StiffMatrix => Solver % Matrix
+  ForceVector => StiffMatrix % RHS
+
+  Norm = Solver % Variable % Norm
 
 !------------------------------------------------------------------------------
 ! Allocate some permanent storage, this is done first time only
@@ -168,28 +172,7 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
      AllocationsDone = .TRUE.
   END IF
 !------------------------------------------------------------------------------
-  PrecUse = ListGetLogical(Solver % Values, 'Preconditioning Solver', GotIt)
-  IF (PrecUse) THEN
-    EdgeSolVar => NULL()
-    sname = ListGetString(Params, 'Edge Update Name', Found)
-    IF (Found) THEN
-      EdgeSolVar => VariableGet( Mesh % Variables, sname, ThisOnly = .TRUE., UnfoundFatal = .TRUE. )
-    ELSE
-      CALL Fatal('DCRComplexSolve', 'Give Edge Update Name to enable the use as a preconditioner')
-    END IF
-    
-    EdgeResVar => NULL()  
-    sname = ListGetString(Params, 'Edge Residual Name', Found)
-    IF (Found) THEN
-      EdgeResVar => VariableGet(Mesh % Variables, sname, ThisOnly = .TRUE., UnfoundFatal = .TRUE.)
-      EdgeSolverParams => GetSolverParams(EdgeResVar % Solver)
 
-      CALL EdgeElementStyle(EdgeSolverParams, PiolaVersion, SecondFamily, SecondOrder, Check = .TRUE.)
-      IF (SecondOrder) CALL Fatal('DCRComplexSolve', 'The lowest-order edge basis assumed') 
-    ELSE
-      CALL Fatal('DCRComplexSolve', 'Give Edge Residual Name to enable the use as a preconditioner')
-    END IF
-  END IF
 !------------------------------------------------------------------------------
 ! Do some additional initialization, and go for it
 !------------------------------------------------------------------------------
@@ -205,20 +188,15 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
 
   Bubbles = ListGetLogical( Solver % Values, 'Bubbles', GotIt )
 
-  IF( PrecUse ) THEN
-    IF (.NOT. ASSOCIATED(Proj)) THEN
-      CALL Info('DCRComplexSolve', &
-          'Creating projection matrix to map a nodal solution into vector element space', Level=6)
-      CALL NodalGradientToNedelecInterpolation_GlobalMatrix(Mesh, Solver % Variable, EdgeResVar, Proj)
-    END IF
-  END IF
-  
 !------------------------------------------------------------------------------
 ! Iterate over any nonlinearity of material or source
 !------------------------------------------------------------------------------
+  totat = 0.0d0
+  totst = 0.0d0
 
   DO iter=1,NonlinearIter
 !------------------------------------------------------------------------------
+     at  = CPUTime()
      at0 = RealTime()
 
      CALL Info( 'DCRComplexSolve', ' ', Level=4 )
@@ -229,7 +207,7 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
      CALL Info( 'DCRComplexSolve', ' ', Level=4 )
      CALL Info( 'DCRComplexSolve', 'Starting Assembly', Level=4 )
 
-     CALL DefaultInitialize()
+     CALL InitializeToZero( StiffMatrix, ForceVector )
 !
 !    Do the bulk assembly:
 !    ---------------------
@@ -246,15 +224,31 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
           at0 = RealTime()
         END IF
 !------------------------------------------------------------------------------
-        CurrentElement => GetActiveElement(t)
+!       Check if this element belongs to a body where this equation
+!       should be computed
+!------------------------------------------------------------------------------
+        CurrentElement => Solver % Mesh % Elements(Solver % ActiveElements(t))
+
+!       IF ( .NOT. CheckElementEquation( Model, &
+!            CurrentElement, EquationName ) ) CYCLE
+!------------------------------------------------------------------------------
+        Model % CurrentElement => CurrentElement
+
         n = CurrentElement % Type % NumberOfNodes
         NodeIndexes => CurrentElement % NodeIndexes
 
-        CALL CopyElementNodesFromMesh(ElementNodes, Solver % Mesh, n, NodeIndexes)
+        ElementNodes % x(1:n) = Solver % Mesh % Nodes % x(NodeIndexes)
+        ElementNodes % y(1:n) = Solver % Mesh % Nodes % y(NodeIndexes)
+        ElementNodes % z(1:n) = Solver % Mesh % Nodes % z(NodeIndexes)
+
 !------------------------------------------------------------------------------
 !       Get equation & material parameters
 !------------------------------------------------------------------------------
-        Material => GetMaterial()
+        k = ListGetInteger( Model % Bodies( CurrentElement % &
+         Bodyid ) % Values, 'Material',minv=1,maxv=Model % NumberOfMaterials )
+
+        Material => Model % Materials(k) % Values
+
 !------------------------------------------------------------------------------
 !       Second and first order time derivative term coefficients on nodes
 !------------------------------------------------------------------------------
@@ -276,14 +270,15 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 !       The source term on nodes
 !------------------------------------------------------------------------------
-        Load = 0.0d0
-        BodyForce => GetBodyForce()
+        k = ListGetInteger( Model % Bodies( CurrentElement % BodyId ) % &
+              Values, 'Body Force', GotIt, 1, Model % NumberOFBodyForces )
 
-        IF (ASSOCIATED(BodyForce)) THEN
-           Load(1,1:n) = ListGetReal( BodyForce, &
+        Load = 0.0d0
+        IF ( k > 0 ) THEN
+           Load(1,1:n) = ListGetReal( Model % BodyForces(k) % Values, &
                 'Pressure Source 1', n, NodeIndexes, GotIt )
 
-           Load(2,1:n) = ListGetReal( BodyForce, &
+           Load(2,1:n) = ListGetReal( Model % BodyForces(k) % Values, &
                 'Pressure Source 2', n, NodeIndexes, GotIt )
         END IF
 
@@ -293,89 +288,134 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
         CALL LocalMatrix(  LocalStiffMatrix, LocalForce, & 
            Load, Bubbles, CurrentElement, n, ElementNodes, &
            Amatrix, AvectorReal, AvectorImag, AscalarReal, AscalarImag )
+
+!------------------------------------------------------------------------------
+!       Update global matrix and rhs vector from local matrix & vector
+!------------------------------------------------------------------------------
+        CALL UpdateGlobalEquations( StiffMatrix, LocalStiffMatrix, &
+             ForceVector, LocalForce, n, Solver % Variable % DOFs, &
+                  PressurePerm(NodeIndexes) )
 !------------------------------------------------------------------------------
      END DO
 !------------------------------------------------------------------------------
-     CALL DefaultFinishBulkAssembly()
-     IF (PrecUse) THEN
-       !
-       ! Now EdgeResVar represents the residual with respect
-       ! to the basis for H(curl). We need to apply a transformation so that
-       ! we may solve a residual correction by using the nodal basis.
-       !
-       CALL CRS_TransposeMatrixVectorMultiply(Proj, EdgeResVar % Values, Solver % Matrix % rhs)
-     END IF
 
 !
 !    Neumann & Newton BCs:
+!    ---------------------
+
 !------------------------------------------------------------------------------
-     DO t = 1, GetNOFBoundaryElements()
+     DO t = Solver % Mesh % NumberOfBulkElements + 1,  &
+               Solver % Mesh % NumberOfBulkElements +  &
+                  Solver % Mesh % NumberOfBoundaryElements
 !------------------------------------------------------------------------------
-        CurrentElement => GetBoundaryElement(t)
+        CurrentElement => Solver % Mesh % Elements(t)
+        Model % CurrentElement => CurrentElement
+
 !------------------------------------------------------------------------------
 !       The element type 101 (point element) can only be used
-!       to set Dirichlet BCs, so skip 'em at this stage.
+!       to set Dirichlet BCs, so skip em at this stage.
 !------------------------------------------------------------------------------
         IF ( CurrentElement % Type % ElementCode == 101 ) CYCLE
+
 !------------------------------------------------------------------------------
-        BC => GetBC()
-        IF ( ASSOCIATED( BC ) ) THEN
-          IF ( .NOT.ActiveBoundaryElement() ) CYCLE
+        DO i=1,Model % NumberOfBCs
+           IF ( CurrentElement % BoundaryInfo % Constraint == &
+                Model % BCs(i) % Tag ) THEN
+!------------------------------------------------------------------------------
+              n = CurrentElement % Type % NumberOfNodes
+              NodeIndexes => CurrentElement % NodeIndexes
 
-          n = CurrentElement % Type % NumberOfNodes
-          NodeIndexes => CurrentElement % NodeIndexes
+              IF ( ANY( PressurePerm(NodeIndexes) == 0 ) ) CYCLE
 
-          CALL CopyElementNodesFromMesh(ElementNodes, Solver % Mesh, n, NodeIndexes)
+              ElementNodes % x(1:n) = Solver % Mesh % Nodes % x(NodeIndexes)
+              ElementNodes % y(1:n) = Solver % Mesh % Nodes % y(NodeIndexes)
+              ElementNodes % z(1:n) = Solver % Mesh % Nodes % z(NodeIndexes)
 
-          Load(1,1:n) = ListGetReal( BC, &
+              Load(1,1:n) = ListGetReal( Model % BCs(i) % Values, &
                    'Wave Flux 1', n, NodeIndexes, GotIt )
 
-          Load(2,1:n) = ListGetReal( BC, &
+              Load(2,1:n) = ListGetReal( Model % BCs(i) % Values, &
                    'Wave Flux 2', n, NodeIndexes, GotIt )
 
-          CALL InputVector( Bvector, notScalar, &
-              'Bvector', BC,  n, NodeIndexes )
+              CALL InputVector( Bvector, notScalar, &
+                   'Bvector', Model % BCs(i) % Values,  n, NodeIndexes )
 
-          BscalarReal(1:n) = ListGetReal( BC, &
-              'Bscalar 1', n, NodeIndexes, GotIt)
+              BscalarReal(1:n) = ListGetReal( Model % BCs(i) % Values, &
+                   'Bscalar 1', n, NodeIndexes, GotIt)
               
-          BscalarImag(1:n) = ListGetReal( BC, &
-              'Bscalar 2', n, NodeIndexes, GotIt)
-          
+              BscalarImag(1:n) = ListGetReal( Model % BCs(i) % Values, &
+                   'Bscalar 2', n, NodeIndexes, GotIt)
+
 !------------------------------------------------------------------------------
-!         Get element local matrix and rhs vector
+!             Get element local matrix and rhs vector
 !------------------------------------------------------------------------------
-          CALL LocalMatrixBoundary( LocalStiffMatrix, LocalForce, &
-              Load, CurrentElement, n, ElementNodes, & 
-              Amatrix, AvectorReal, AvectorImag, AscalarReal, AscalarImag, &
-              Bvector, BscalarReal, BscalarImag )
-        END IF
+              CALL LocalMatrixBoundary(  LocalStiffMatrix, LocalForce, &
+                   Load, CurrentElement, n, ElementNodes, & 
+                   Amatrix, AvectorReal, AvectorImag, AscalarReal, AscalarImag, &
+                   Bvector, BscalarReal, BscalarImag )
+
+!------------------------------------------------------------------------------
+!             Update global matrix and rhs vector from local matrix & vector
+!------------------------------------------------------------------------------
+              CALL UpdateGlobalEquations( StiffMatrix, LocalStiffMatrix, &
+                  ForceVector, LocalForce, n, Solver % Variable % DOFs,  &
+                      PressurePerm(NodeIndexes) )
+!------------------------------------------------------------------------------
+           END IF
+        END DO
 !------------------------------------------------------------------------------
      END DO
 !------------------------------------------------------------------------------
-     CALL DefaultFinishBoundaryAssembly()
-     CALL DefaultFinishAssembly()
-     CALL Info( 'DCRComplexSolve', 'Assembly done', Level=4 )
+
+     CALL FinishAssembly( Solver, ForceVector )
 !
 !    Dirichlet BCs:
 !    --------------
-     CALL DefaultDirichletBCs()
+     CALL SetDirichletBoundaries( Model, StiffMatrix, ForceVector, &
+          ComponentName(Solver % Variable,1), 1, &
+             Solver % Variable % DOFs, PressurePerm )
+
+     CALL SetDirichletBoundaries( Model, StiffMatrix, ForceVector, &
+          ComponentName(Solver % Variable,2), 2, &
+             Solver % Variable % DOFs, PressurePerm )
+
+     CALL Info( 'DCRComplexSolve', 'Assembly done', Level=4 )
 
 !
 !    Solve the system and we are done:
 !    ---------------------------------
-     Norm = DefaultSolve()
-     IF( DefaultConverged() ) EXIT
-!------------------------------------------------------------------------------
-   END DO ! of nonlinear iteration
-!------------------------------------------------------------------------------
-   CALL DefaultFinish()
+     PrevNorm = Norm
+     at = CPUTime() - at
+     st = CPUTime()
 
-   IF (PrecUse) THEN
-     CALL Info('DCRComplexSolve', 'Projecting nodal solution to vector element space', Level=6)
-     CALL CRS_MatrixVectorMultiply(Proj, Solver % Variable % Values, EdgeSolVar % Values ) 
-   END IF
-   
+     CALL SolveSystem( StiffMatrix, ParMatrix, ForceVector, &
+          Pressure, Norm, Solver % Variable % DOFs, Solver )
+
+     st = CPUTIme()-st
+     totat = totat + at
+     totst = totst + st
+     WRITE(Message,'(a,i4,a,F8.2,F8.2)') 'iter: ',iter,' Assembly: (s)', at, totat
+     CALL Info( 'DCRComplexSolve', Message, Level=4 )
+     WRITE(Message,'(a,i4,a,F8.2,F8.2)') 'iter: ',iter,' Solve:    (s)', st, totst
+     CALL Info( 'DCRComplexSolve', Message, Level=4 )
+
+!------------------------------------------------------------------------------
+     IF ( PrevNorm + Norm /= 0.0d0 ) THEN
+        RelativeChange = 2*ABS(PrevNorm - Norm) / (PrevNorm + Norm)
+     ELSE
+        RelativeChange = 0.0d0
+     END IF
+
+     CALL Info( 'DCRComplexSolve', ' ', Level=4 )
+     WRITE( Message, * ) 'Result Norm    : ',Norm
+     CALL Info( 'DCRComplexSolve', Message, Level=4 )
+     WRITE( Message, * ) 'Relative Change: ',RelativeChange
+     CALL Info( 'DCRComplexSolve', Message, Level=4 )
+
+     IF ( RelativeChange < NonlinearTol ) EXIT
+!------------------------------------------------------------------------------
+  END DO ! of nonlinear iteration
+!------------------------------------------------------------------------------
    IF ( ListGetLogical( Solver % Values, 'Adaptive Mesh Refinement', GotIt ) ) THEN
      IF ( .NOT. ListGetLogical( Solver % Values, 'Library Adaptivity', GotIt ) ) THEN
        CALL RefineMesh( Model,Solver,Pressure,PressurePerm, &
@@ -389,14 +429,14 @@ CONTAINS
    SUBROUTINE InputTensor( Tensor, IsScalar, Name, Material, n, NodeIndexes )
 !------------------------------------------------------------------------------
       REAL(KIND=dp) :: Tensor(:,:,:)
+      INTEGER :: i, n, NodeIndexes(:)
       LOGICAL :: IsScalar
       CHARACTER(LEN=*) :: Name
       TYPE(ValueList_t), POINTER :: Material
-      INTEGER :: n, NodeIndexes(:)
 !------------------------------------------------------------------------------
       LOGICAL :: FirstTime = .TRUE., stat
       REAL(KIND=dp), POINTER :: Hwrk(:,:,:)
-      INTEGER :: i,n1,n2,t1
+      INTEGER :: n1,n2,t1
       SAVE FirstTime, Hwrk
 !------------------------------------------------------------------------------
       IF ( FirstTime ) THEN
@@ -405,14 +445,13 @@ CONTAINS
       END IF
 
       Tensor = 0.0d0
-      IsScalar = .TRUE.
 
       CALL ListGetRealArray( Material, Name, Hwrk, n, NodeIndexes, stat )
-      IF ( .NOT. stat ) RETURN
-      
       n1 = MIN(SIZE(HWrk,1),3)
       n2 = MIN(SIZE(Hwrk,2),3)
       IsScalar = (n1==1 .AND. n2==1) 
+
+      IF ( .NOT. stat ) RETURN
 
       IF ( IsScalar ) THEN
         t1 = SIZE(Tensor,1)
@@ -445,10 +484,10 @@ CONTAINS
    SUBROUTINE InputVector( Tensor, IsScalar, Name, Material, n, NodeIndexes )
 !------------------------------------------------------------------------------
       REAL(KIND=dp) :: Tensor(:,:)
+      INTEGER :: n, NodeIndexes(:)
       LOGICAL :: IsScalar
       CHARACTER(LEN=*) :: Name
       TYPE(ValueList_t), POINTER :: Material
-      INTEGER :: n, NodeIndexes(:)
 !------------------------------------------------------------------------------
       LOGICAL :: FirstTime = .TRUE., stat
       REAL(KIND=dp), POINTER :: Hwrk(:,:,:)
@@ -485,6 +524,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+
   SUBROUTINE LocalMatrix(  StiffMatrix, Force, Load, Bubbles, Element, n, &
        Nodes, Amatrix, AvectorReal, AvectorImag, AscalarReal, AscalarImag )
 !------------------------------------------------------------------------------
@@ -572,7 +612,8 @@ CONTAINS
              A2(i,j) = A2(i,j) + SUM( Amatrix(i,j,1:n) * Basis(1:n) )
           end do
        end do
-       
+
+
 !      Stiffness matrix and load vector
 !      --------------------------------
        DO p=1,NBasis
@@ -597,7 +638,17 @@ CONTAINS
        CALL CondensateP( n, n, LSTIFF, LFORCE )
     END IF
 
-    CALL DefaultUpdateEquations(LSTIFF, LFORCE)
+    DO i=1,n
+       Force( 2*(i-1)+1 ) = REAL( LFORCE(i) )
+       Force( 2*(i-1)+2 ) = AIMAG( LFORCE(i) )
+
+       DO j=1,n
+         StiffMatrix( 2*(i-1)+1, 2*(j-1)+1 ) =  REAL( LSTIFF(i,j) )
+         StiffMatrix( 2*(i-1)+1, 2*(j-1)+2 ) = -AIMAG( LSTIFF(i,j) )
+         StiffMatrix( 2*(i-1)+2, 2*(j-1)+1 ) =  AIMAG( LSTIFF(i,j) )
+         StiffMatrix( 2*(i-1)+2, 2*(j-1)+2 ) =  REAL( LSTIFF(i,j) )
+       END DO
+    END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------
@@ -651,24 +702,13 @@ CONTAINS
 
        s = s * SqrtElementMetric
 
-       B0r = SUM( BscalarReal(1:n) * Basis(1:n) )
-       B0i = SUM( BscalarImag(1:n) * Basis(1:n) )
-
-       IF (PrecUse) THEN
-         DO p = 1,n
-           DO q = 1,n
-             LSTIFF(p,q) = LSTIFF(p,q) + CMPLX( B0r, B0i, KIND=dp ) * &
-                 SUM(dBasisdx(p,:) * dBasisdx(q,:)) * s
-           END DO
-         END DO
-         CYCLE
-       END IF
-       
        Normal = Normalvector(Element, Nodes, U, V, .TRUE.)
 
        A2 = 0.0d0
        A1r = 0.0d0
        A1i = 0.0d0
+       A0r = 0.0d0
+       A0i = 0.0d0
 
        A0r = SUM( AscalarReal(1:n) * Basis(1:n) )
        A0i = SUM( AscalarImag(1:n) * Basis(1:n) )
@@ -681,11 +721,17 @@ CONTAINS
        end do
 
        B1 = 0.0d0
+       B0r = 0.0d0
+       B0i = 0.0d0
+
+       B0r = SUM( BscalarReal(1:n) * Basis(1:n) )
+       B0i = SUM( BscalarImag(1:n) * Basis(1:n) )
        do i = 1,dim
           B1(i) = B1(i) + SUM( Bvector(i,1:n) * Basis(1:n) )
        end do
        B1(1:dim) = B1(1:dim) + Normal(1:dim)
        
+       C1 = 0.0d0
        C0 = 0.0d0
        do i = 1,dim
           do j = 1,dim
@@ -700,6 +746,7 @@ CONTAINS
           end do
        end do
 
+
 !------------------------------------------------------------------------------
        L1 = SUM( Load(1,1:n) * Basis )
        L2 = SUM( Load(2,1:n) * Basis )
@@ -712,12 +759,24 @@ CONTAINS
           END DO
           LFORCE(p) = LFORCE(p) + s * Basis(p) * C0 * CMPLX( L1, L2, KIND=dp ) 
        END DO
+!------------------------------------------------------------------------------
     END DO
-    CALL DefaultUpdateEquations(LSTIFF, LFORCE)
+!------------------------------------------------------------------------------
+    DO i=1,n
+       Force( 2*(i-1)+1 ) =  REAL( LFORCE(i) )
+       Force( 2*(i-1)+2 ) = AIMAG( LFORCE(i) )
+
+       DO j=1,n
+         StiffMatrix( 2*(i-1)+1, 2*(j-1)+1 ) =  REAL( LSTIFF(i,j) )
+         StiffMatrix( 2*(i-1)+1, 2*(j-1)+2 ) = -AIMAG( LSTIFF(i,j) )
+         StiffMatrix( 2*(i-1)+2, 2*(j-1)+1 ) =  AIMAG( LSTIFF(i,j) )
+         StiffMatrix( 2*(i-1)+2, 2*(j-1)+2 ) =  REAL( LSTIFF(i,j) )
+       END DO
+    END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBoundary
 !------------------------------------------------------------------------------
-  
+
 !------------------------------------------------------------------------------
 END SUBROUTINE DCRComplexSolver
 !------------------------------------------------------------------------------

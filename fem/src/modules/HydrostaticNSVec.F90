@@ -521,7 +521,7 @@ CONTAINS
 
     ! Numerical integration:
     !-----------------------
-    IsPelem = isActivePElement(Element, CurrentModel % Solver)
+    IsPelem = isPElement(Element)
 
     IP = GaussPointsAdapt(Element, PReferenceElement = isPelem )
     ngp = IP % n

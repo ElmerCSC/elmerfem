@@ -157,11 +157,11 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
 
     
     IF( GetString(SolverParams,'Linear System Solver',Found) == 'block' ) THEN
-!     IF ( PiolaVersion ) THEN
-!       CALL Fatal('WhitneyAVSolver_Init0','Block strategy not applicable to piola version!')
-!     ELSE
+      IF ( PiolaVersion ) THEN
+        CALL Fatal('WhitneyAVSolver_Init0','Block strategy not applicable to piola version!')
+      ELSE
         CALL ListAddLogical( SolverParams, "Optimize Bandwidth", .FALSE.)
-!     END IF
+      END IF
     END IF
   END IF
 
@@ -180,28 +180,6 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
       ListCheckPrefixAnyBC( Model, "Mortar BC" ) ) THEN
     CALL Info("WhitneyAVSolver_Init0", "Gauge field is not projected across mortar boundaries.") 
   END IF  
-
-  BLOCK
-    LOGICAL :: FoundAMS
-
-    FoundAMS = ListGetString( SolverParams, 'Linear System Preconditioning', Found ) == 'ams' 
-    IF (.NOT.FoundAMS) THEN
-      DO i=1,4
-        FoundAMS = ListGetString( SolverParams, 'Block '//I2S(i)//I2S(i)//': Linear System Preconditioning', Found) == 'ams' 
-        IF (FoundAMS) EXIT
-      END DO
-      IF (.NOT.FoundAMS) THEN
-        FoundAMS = ListGetInteger( SolverParams, 'Linear System Method Hypre Index', Found) == 2
-      END IF
-    END IF
-
-    IF ( FoundAMS ) THEN
-      DO i=1,100
-        IF ( .NOT.ListCheckPresent( SolverParams, 'Exported Variable '//I2S(i) ) ) EXIT
-      END DO
-      CALL ListAddString( SolverParams, 'Exported Variable '//I2S(i), '-nodal -dofs 3 -nooutput ams nodal var' )
-    END IF
-  END BLOCK
   
   ! THIS ENFORCES THE NEW STRATEGY !!!!
   CALL ListAddLogical( SolverParams,'Generic Source Fixing',.TRUE.)
@@ -2023,7 +2001,7 @@ END SUBROUTINE LocalConstraintMatrix
         JFixPot(1:n) = JFixVar % Values(JFixVar % Perm(Element % NodeIndexes))
       END IF
     END IF
-
+      
     HasVelocity = .FALSE.
     LocalGauge = .FALSE.
     IF(ASSOCIATED(BodyForce)) THEN

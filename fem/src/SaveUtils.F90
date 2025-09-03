@@ -47,8 +47,7 @@ MODULE SaveUtils
   USE Lists
   USE Messages
   USE MeshUtils, ONLY: GetLagrangeIndexes
-  USE ElementUtils, ONLY: FindParentUVW
-  USE Interpolation, ONLY: CopyElementNodesFromMesh
+  USE ElementUtils, ONLY: FindParentUVW, CopyElementNodesFromMesh
   USE ElementDescription
   
   IMPLICIT NONE
@@ -386,7 +385,7 @@ CONTAINS
       IF( ASSOCIATED(MaskVar)) MaskPerm => MaskVar % Perm
       MaskExists = ASSOCIATED(MaskPerm)
       IF( MaskExists ) THEN
-        CALL Info(Caller,'Using > '// TRIM(Str) // ' < as mask variable',Level=8)
+        CALL Info(Caller,'Using > '// TRIM(Str) // ' < as mask variable')
       END IF
     ELSE
       ! Check if there is an additional mask name given
@@ -398,9 +397,6 @@ CONTAINS
       END IF
       IF(.NOT. GotIt) MaskName = ListGetString( Params,'Mask Name',GotIt) 
       GotMaskName = GotIt
-      IF(GotMaskName) THEN
-        CALL Info(Caller,'Using "Mask Name" to select elements: '//TRIM(MaskName),Level=8)
-      END IF
     END IF
 
     GotMaskCond = .FALSE.
@@ -423,9 +419,9 @@ CONTAINS
     NumberOfGeomNodes = Mesh % NumberOfNodes
     IF( MaskExists ) THEN
       NumberOfGeomNodes = COUNT( MaskPerm(1:NumberOfGeomNodes) > 0 ) 
-      CALL Info(Caller,'Mask is positive for nodes: '//I2S(NumberOfGeomNodes),Level=15)      
+      CALL Info(Caller,'Mask is positive for nodes: '//I2S(NumberOfGeomNodes),Level=15)
       IF( NumberOfGeomNodes == 0 ) THEN
-        CALL Info(Caller,'Leaving early since mask not active anywhere')
+        CALL Info(Caller,'Leaving early since mask is negative everywhere')
         RETURN
       END IF
     END IF
@@ -584,7 +580,7 @@ CONTAINS
 
     NumberOfGeomNodes = COUNT( NodePerm > 0 ) 
     IF( NumberOfElements == 0 ) THEN
-      CALL Info(Caller,'No active elements for this mask',Level=12)
+      CALL Info(Caller,'No active elements forthis mask',Level=12)
     ELSE
       CALL Info(Caller,'Number of active elements '//I2S(NumberOfElements)//&
           ' out of '//I2S(Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements),Level=10)      

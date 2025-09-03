@@ -44,14 +44,12 @@
 MODULE CutFemUtils
   USE Types
   USE Lists
-  USE ElementUtils, ONLY : FreeMatrix
-  USE Interpolation, ONLY : CopyElementNodesFromMesh
+  USE ElementUtils, ONLY : FreeMatrix, CopyElementNodesFromMesh
   USE ElementDescription
   USE MatrixAssembly
   USE MeshUtils, ONLY : AllocateMesh, FindMeshEdges, MeshStabParams
   USE ModelDescription, ONLY : FreeMesh
-  USE SolverUtils, ONLY : GaussPointsAdapt, SolveLinearSystem, VectorValuesRange
-  USE ParallelUtils
+  USE SolverUtils, ONLY : GaussPointsAdapt, SolveLinearSystem
   
   IMPLICIT NONE
 
@@ -65,11 +63,9 @@ MODULE CutFemUtils
       ExtendValues(:) => NULL(), PhiValues(:) => NULL(), &
       OrigPrevMeshValues(:,:) => NULL(), PrevCutValues(:,:) => NULL()
   INTEGER, POINTER :: OrigActiveElements(:), AddActiveElements(:), UnsplitActiveElements(:)
-  REAL(KIND=dp), ALLOCATABLE, TARGET :: CutInterp(:)
+  REAL(KIND=dp), ALLOCATABLE :: CutInterp(:)
   TYPE(Matrix_t), POINTER :: NodeMatrix
   INTEGER :: CutFemBody
-  CHARACTER(:), ALLOCATABLE :: CutStr
-  INTEGER :: CutDofs = 0
   INTEGER :: nCase(20)
 
 #define DEBUG_ORIENT 0
@@ -82,11 +78,11 @@ MODULE CutFemUtils
       CutFEMVariableFinalize, CutFEMSetOrigMesh, CutFEMSetAddMesh, LevelSetUpdate, &
       CutInterfaceBC, CutInterfaceBulk, CutInterfaceCheck
 
-  PUBLIC :: CutInterp
-  
   TYPE(Mesh_t), POINTER :: CutFEMOrigMesh => NULL(), CutFEMAddMesh => NULL()
   
-    
+  
+  
+  
 CONTAINS
 
 
@@ -101,7 +97,7 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(ValueList_t), POINTER :: Params
 
-    INTEGER :: i,j,k,nn,ne,body_in,body_out,body_cut,InsideCnt(3),dofs
+    INTEGER :: i,j,k,nn,ne,body_in,body_out,body_cut,InsideCnt(3)
     REAL(KIND=dp) :: h1,h2,hprod,Eps,r,MaxRat
     INTEGER, POINTER :: NodeIndexes(:)
     TYPE(Variable_t), POINTER :: Var, PhiVar
@@ -126,8 +122,6 @@ CONTAINS
         OrigMeshPerm => Solver % Variable % Perm
         OrigPrevMeshValues => Solver % Variable % PrevValues
       END IF
-      CutDofs = Solver % Variable % dofs
-      dofs = CutDofs
     END IF
     
     CutFEMOrigMesh => Solver % Mesh 
@@ -140,27 +134,17 @@ CONTAINS
     UpdateOrigCoords = ListGetLogical( Params,'CutFEM bodyfitted',Found )
 
     ! We always need mesh edges since the new dofs are created in intersections of levelset and edge. 
-    IF(ASSOCIATED(Mesh % edges)) THEN
-      CALL Info(Caller,'Mesh edges already created!',Level=12)
-    ELSE
+    IF(.NOT. ASSOCIATED(Mesh % edges)) THEN
       CALL Info(Caller,'Create element edges',Level=10)
       CALL FindMeshEdges( Mesh )
-      
-      ! We need global numbering for the edges that we use for the unique numbering of new nodes
-      IF( ParEnv % PEs > 1 ) THEN
-        CALL Info(Caller,'Numbering Mesh edges in parallel')
-        CALL SParEdgeNumbering(Mesh)
-      END IF
     END IF
 
     nn = Mesh % NumberOfNodes
     ne = Mesh % NumberOfEdges
 
     IF( UpdateCoords ) THEN
-      i = SIZE(Mesh % Nodes % x)
-      IF(i < nn + ne ) THEN
-        CALL Info(Caller,'Enlarging node coordinates for edge cuts from '&
-            //I2S(i)//' to '//I2S(nn+ne),Level=7)
+      IF(SIZE(Mesh % Nodes % x) < nn + ne ) THEN
+        CALL Info(Caller,'Enlarging node coordinates for edge cuts',Level=7)
         ALLOCATE(xtmp(nn))
         xtmp = Mesh % Nodes % x(1:nn)
         DEALLOCATE(Mesh % Nodes % x)
@@ -181,24 +165,22 @@ CONTAINS
     END IF
 
     IF(.NOT. ALLOCATED(CutDof) ) THEN
-      CALL Info(Caller,'Allocating "CutDof" field to indicate levelset cuts!',Level=20)
       ALLOCATE( CutDof(nn+ne) ) 
     END IF      
     CutDof = .FALSE.  
 
     ! We store the cut for future interpolation. 
     IF(.NOT. ALLOCATED(CutInterp)) THEN
-      CALL Info(Caller,'Allocating "CutInterp" for edge related interpolation!',Level=20)
       ALLOCATE(CutInterp(ne))
     END IF
     CutInterp = 0.0_dp
-          
-    CutStr = ListGetString( Params,'Levelset Variable', Found)
-    IF( .NOT. Found ) CutStr = "surface"
-
-    PhiVar => VariableGet(Mesh % Variables, CutStr, ThisOnly=.TRUE.)
+      
+    
+    str = ListGetString( Params,'Levelset Variable', Found)
+    IF( .NOT. Found ) str = "surface"
+    PhiVar => VariableGet(Mesh % Variables, str,ThisOnly=.TRUE.)
     IF(.NOT. ASSOCIATED(PhiVar) ) THEN
-      CALL Fatal(Caller,'"Levelset Variable" not available: '//TRIM(CutStr))
+      CALL Fatal(Caller,'"Levelset Variable" not available: '//TRIM(str))
     END IF
     PhiValues => PhiVar % Values
     PhiPerm => PhiVar % Perm
@@ -252,36 +234,6 @@ CONTAINS
         IF(ABS(h2) < 1.0e-20) CutDof(NodeIndexes(2)) = .TRUE.
       END IF
     END DO
-
-    
-    IF(ParEnv % PEs > 1 ) THEN
-      BLOCK 
-        INTEGER, POINTER :: Perm(:)
-        INTEGER :: ni
-        REAL(KIND=dp), POINTER :: CutDofR(:)
-
-        ni = COUNT( CutDof(1:nn) .AND. Mesh % ParallelInfo % GInterface(1:nn) )
-        ni = ParallelReduction( ni ) 
-
-        IF( ni > 0 ) THEN
-          ALLOCATE(CutDofR(nn),Perm(nn))
-          CutDofR = 0.0_dp
-          DO i=1,nn
-            Perm(i) = i
-          END DO
-
-          WHERE( CutDof(1:nn) )
-            CutDofR = 1.0_dp
-          END WHERE
-          CALL ExchangeNodalVec( Mesh % ParallelInfo, Perm, CutDofR, op = 2)
-          DO i=1,nn
-            IF(CutDofR(i) > 0.5_dp ) CutDof(i) = .TRUE.
-          END DO
-          DEALLOCATE(CutDofR, Perm )
-        END IF
-      END BLOCK
-    END IF
-    
     
     ! Then mark the edges trying to avoid nearby cuts.  
     InsideCnt = 0
@@ -493,15 +445,13 @@ CONTAINS
     ! If there is a primary variable associated to the original mesh copy that to the new mesh.
     IF(ASSOCIATED(OrigMeshValues)) THEN
       IF(ASSOCIATED(CutValues)) DEALLOCATE(CutValues)
-      ALLOCATE(CutValues(dofs*j))
+      ALLOCATE(CutValues(j))
       CutValues = 0.0_dp
 
-      DO i=1,dofs
-        WHERE(CutPerm(1:nn) > 0 )        
-          CutValues(dofs*(CutPerm-1)+i) = OrigMeshValues(dofs*(OrigMeshPerm-1)+i) 
-        END WHERE
-      END DO
-        
+      WHERE(CutPerm(1:nn) > 0 )        
+        CutValues(CutPerm) = OrigMeshValues(OrigMeshPerm) 
+      END WHERE
+      
       ! Point the permutation and values to the newly allocated vectors.
       ! This way 
       Solver % Variable % Perm => CutPerm
@@ -511,29 +461,14 @@ CONTAINS
       IF(ASSOCIATED(OrigPrevMeshValues)) THEN
         IF(ASSOCIATED(PrevCutValues)) DEALLOCATE(PrevCutValues)      
         i = SIZE(OrigPrevMeshValues,2)
-        ALLOCATE(PrevCutValues(dofs*j,i))
+        ALLOCATE(PrevCutValues(j,i))
         PrevCutValues = 0.0_dp
 
         ! Copy nodal values as initial guess to cut fem values. 
-#if 0
-        ! fix this
-        DO l=1,dofs
-          DO i=1,nn
-            j = CutPerm(i)
-            k = OrigMeshPerm(i)
-            IF(j==0 .OR. k==0) CYCLE
-            OrigMeshValues(dofs*(k-1)+l) = CutValues(dofs*(j-1)+l)
-          END DO
-        END DO
-#endif
-
         DO i=1,SIZE(OrigPrevMeshValues,2)
-          DO j=1,dofs
-            WHERE(CutPerm(1:nn) > 0 )        
-              PrevCutValues(dofs*(CutPerm(1:nn)-1)+j,i) = &
-                  OrigPrevMeshValues(dofs*(OrigMeshPerm(1:nn)-1)+j,i) 
-            END WHERE
-          END DO
+          WHERE(CutPerm(1:nn) > 0 )        
+            PrevCutValues(CutPerm(1:nn),i) = OrigPrevMeshValues(OrigMeshPerm(1:nn),i) 
+          END WHERE
         END DO
         Solver % Variable % PrevValues => PrevCutValues
       END IF
@@ -542,9 +477,6 @@ CONTAINS
     ! This in an optional routine if we want to extend the field values outside
     ! active domain. The reason might be to provide better initial values for the new territory. 
     IF(CutExtend) THEN
-      CALL Info(Caller,'Extending field outside the active domain!',Level=20)
-      r = ListGetCReal( Params,'CutFEM extend width',Found )
-
       IF(.NOT. ASSOCIATED(ExtendPerm)) THEN
         ALLOCATE(ExtendPerm(nn+ne))
       END IF
@@ -635,8 +567,6 @@ CONTAINS
     ! This is just counter for different split cases while developing the code. 
     nCase = 0
 
-    Solver % CutInterp => CutInterp 
-    
   END SUBROUTINE CreateCutFEMPerm
 
 
@@ -658,22 +588,15 @@ CONTAINS
     CHARACTER(*), PARAMETER :: Caller = 'CreateCutFemMatrix'
 
     Mesh => Solver % Mesh
-    CutDofs = Solver % Variable % Dofs
-    dofs = CutDofs
-    
+    dofs = Solver % Variable % Dofs
+
     ! Create new matrix
     A => AllocateMatrix()
     A % FORMAT = MATRIX_LIST
 
     ! Add extreme entry since list matrix likes to be allocated at once. 
     n = dofs * MAXVAL(Perm)
-    IF(n==0) THEN
-      CALL Warn(Caller,'CutFEM matrix size is zero?')
-      A % NumberOfRows = 0
-      RETURN
-    END IF
-      
-    CALL Info(Caller,'Size of CutFEM matrix with '//I2S(dofs)//' dofs is: '//I2S(n),Level=10)
+    IF(n==0) CALL Fatal(Caller,'n is zero?')
     
 
     CALL List_AddToMatrixElement(A % ListMatrix, n, n, 0.0_dp ) 
@@ -712,7 +635,7 @@ CONTAINS
         DofInds(1:m) = BlockInds(1:m)
       ELSE
         DO i=0,dofs-1
-          DofInds(m*i+1:(m+1)*i) = dofs*(BlockInds(1:m)-1)+(i+1)
+          DofInds(dofs*i+1:dofs*i+m) = dofs*(BlockInds(1:m)-1)+i
         END DO
         m = m*dofs
       END IF
@@ -800,7 +723,7 @@ CONTAINS
 
   END SUBROUTINE CutInterfaceCheck
       
-  
+
   ! Given Element, levelset function and the CutDof field return information whether the element
   ! is cut and if it, should we call the routine again for the next split. 
   !----------------------------------------------------------------------------------------------
@@ -810,34 +733,27 @@ CONTAINS
     LOGICAL :: IsMore
 
     TYPE(Element_t), TARGET :: Elem303, Elem404, Elem706, Elem808
-    TYPE(Element_t), POINTER :: prevElement
-    INTEGER :: SgnNode, i, n, nn, ElemType, body_out, body_in, CutCnt
-    LOGICAL :: Found
+    TYPE(Element_t), POINTER, SAVE :: prevElement
+    INTEGER, SAVE :: m, n_split, n_cut, SgnNode, body_in, body_out, SplitCase, iCase,mmax
+    INTEGER :: i,j,j2,j3,j4,nn,ne,subcase
+    INTEGER, POINTER :: nIndexes(:), eIndexes(:)
+    LOGICAL :: isActive, Found
+    LOGICAL :: Visited = .FALSE.
+    REAL(KIND=dp) :: s1,s2
     REAL(KIND=dp), POINTER :: x(:), y(:), z(:)
     CHARACTER(:), ALLOCATABLE :: str       
-    TYPE(Variable_t), POINTER :: PhiVar !Var
+    TYPE(Variable_t), POINTER :: Var, PhiVar
     TYPE(Mesh_t), POINTER :: Mesh
-    TYPE(Solver_t), POINTER :: Solver => NULL()
+    TYPE(Solver_t), POINTER :: Solver
     CHARACTER(*), PARAMETER :: Caller = 'CutInterfaceBulk'
-    TYPE(Nodes_t) :: ElemNodes
-    INTEGER, ALLOCATABLE :: LocalInds(:), ElemInds(:)
-    LOGICAL, ALLOCATABLE :: ElemCut(:)
     
-        
-    SAVE Mesh, Solver, x, y, z, Elem303, Elem404, body_in, body_out, &
-        nn, CutCnt, PhiVar, ElemNodes, ElemInds, ElemCut, ElemType, LocalInds, &
-        prevElement
+    SAVE Visited, Mesh, Solver, x, y, z, Elem303, Elem404, Elem706, Elem808, &
+        nn, s1, s2, j, j2, j3, j4, PhiVar, subcase
     
-    IF(.NOT. ASSOCIATED( Solver, CurrentModel % Solver ) ) THEN
+    IF(.NOT. Visited) THEN
       Mesh => CurrentModel % Solver % Mesh
       Solver => CurrentModel % Solver
 
-      IF(.NOT. ASSOCIATED(ElemNodes % x)) THEN
-        n = 8
-        ALLOCATE( ElemNodes % x(n), ElemNodes % y(n), ElemNodes % z(n), ElemInds(n), &
-            ElemCut(n), LocalInds(4))        
-      END IF
-              
       nn = Mesh % NumberOfNodes
       x => Mesh % Nodes % x
       y => Mesh % Nodes % y
@@ -852,54 +768,315 @@ CONTAINS
       ALLOCATE(Elem404 % NodeIndexes(4))      
       Elem404 % NodeIndexes = 0
 
-      PhiVar => VariableGet(Mesh % Variables, CutStr, ThisOnly=.TRUE.)
+      str = ListGetString( Solver % Values,'Levelset variable', Found)
+      IF( .NOT. Found ) str = "surface"
+      PhiVar => VariableGet(Mesh % Variables, str, ThisOnly=.TRUE.)
       IF(.NOT. ASSOCIATED(PhiVar) ) THEN
-        CALL Fatal(Caller,'"Levelset Variable" not available: '//TRIM(CutStr))
+        CALL Fatal(Caller,'"Levelset Variable" not available: '//TRIM(str))
       END IF
 
       body_in = ListGetInteger( Solver % Values,'CutFEm Inside Body',Found )
       IF(.NOT. Found) body_in = CurrentModel % NumberOfBodies
       body_out = ListGetInteger( Solver % Values,'CutFem Outside Body',Found )
       IF(.NOT. Found) body_out = body_in+1
+
+      Visited = .TRUE.
     END IF
 
     
     ! This is the counter for splitting.
     IF(.NOT. ASSOCIATED(prevElement,Element)) THEN
-      CutCnt = 1
+      m = 1
       prevElement => Element
-      ElemType = Element % Type % ElementCode
-      n = ElemType / 100
-
-      ! For triangles & quads these are true, not for others...
-      ElemInds(1:n) = Element % NodeIndexes(1:n)
-      ElemInds(n+1:2*n) = nn + Element % EdgeIndexes(1:n)
-
-      ElemCut(1:2*n) = CutDof(ElemInds(1:2*n))
-
-      ElemNodes % x(1:2*n) = x(ElemInds(1:2*n))
-      ElemNodes % y(1:2*n) = y(ElemInds(1:2*n))
-      ElemNodes % z(1:2*n) = z(ElemInds(1:2*n))      
+      n_split = COUNT( CutDof(nn + Element % EdgeIndexes) )
+      n_cut = COUNT( CutDof(Element % NodeIndexes) )
     ELSE
-      CutCnt = CutCnt+1
+      m = m+1
     END IF
 
-    pElement => Element
-    CALL SplitSingleElement(Element, ElemCut, ElemNodes, CutCnt, &
-        IsCut, IsMore, LocalInds, SgnNode )
-    IF(.NOT. IsCut) RETURN
+    nIndexes => Element % NodeIndexes
+    eIndexes => Element % EdgeIndexes
     
-    i = COUNT(LocalInds > 0)
-    SELECT CASE(i)
-    CASE(3) 
+    IsMore = .FALSE.
+    IsActive = .TRUE.
+    
+    IF(n_split == 0) THEN
+      IsCut = .FALSE.
+      pElement => Element
+      RETURN
+    END IF
+
+    isCut = .TRUE.
+
+    ! This allows use case to deal with element types, edge splits and node splits at the same time. 
+    ! It is a matter of taste if this is ok or not...
+    SplitCase = 100 * Element % TYPE % ElementCode + 10 * n_split + n_cut
+    iCase = 0
+
+    SELECT CASE( SplitCase ) 
+
+      
+    CASE( 30320, 30321 ) 
+      ! Triangle being cut on two edges.
       pElement => Elem303
-    CASE(4)
-      pElement => Elem404
-    CASE DEFAULT
-      CALL Fatal('CutInterfaceBulk','Impossible number of nodes!')
-    END SELECT
-    pElement % NodeIndexes(1:i) = ElemInds(LocalInds(1:i)) 
+      
+      IF( m == 1 ) THEN
+        ! Find the only edge that is not cut
+        DO j=1,3
+          IF( .NOT. CutDof( nn + eIndexes(j) ) ) EXIT
+        END DO
+        j2 = MODULO(j,3)+1
+        j3 = MODULO(j+1,3)+1
+        mmax = 3
+        
+        ! There are two ways to split the triangle.
+        ! Choose the one with shorter diameter.
+        s1 = (x(nIndexes(j)) - x(nn + eIndexes(j2)))**2 + &
+            (y(nIndexes(j)) - y(nn + eIndexes(j2)))**2 + &
+            (z(nIndexes(j)) - z(nn + eIndexes(j2)))**2
+        s2 = (x(nIndexes(j2)) - x(nn + eIndexes(j3)))**2 + &
+            (y(nIndexes(j2)) - y(nn + eIndexes(j3)))**2 + &
+            (z(nIndexes(j2)) - z(nn + eIndexes(j3)))**2
+
+        pElement % NodeIndexes(1) = nIndexes(j)
+        pElement % NodeIndexes(2) = nIndexes(j2)                 
+        IF( s1 < s2 ) THEN
+          pElement % NodeIndexes(3) = nn + eIndexes(j2)
+        ELSE
+          pElement % NodeIndexes(3) = nn + eIndexes(j3)
+        END IF
+        SgnNode = 1
+        iCase = 1
+      ELSE IF(m==2) THEN
+        IF( s1 < s2 ) THEN
+          pElement % NodeIndexes(1) = nIndexes(j)
+        ELSE
+          pElement % NodeIndexes(1) = nIndexes(j2)                   
+        END IF
+        pElement % NodeIndexes(2) = nn + eIndexes(j2)
+        pElement % NodeIndexes(3) = nn + eIndexes(j3)
+
+        SgnNode = 1
+        iCase = 2
+      ELSE IF(m==3) THEN
+        pElement % NodeIndexes(1) = nn + eIndexes(j3)
+        pElement % NodeIndexes(2) = nn + eIndexes(j2)
+        pElement % NodeIndexes(3) = nIndexes(j3)
+
+        SgnNode = 3
+        iCase = 3
+      END IF
+
+    CASE( 30311 ) 
+      ! Triangle being cut on one edge and one node. 
+      IF( m == 1 ) THEN
+        ! Find the only edge that is cut
+        DO j=1,3
+          IF( CutDof( nn + eIndexes(j) ) ) EXIT
+        END DO
+        j2 = MODULO(j,3)+1
+        j3 = MODULO(j+1,3)+1
+      END IF
+      pElement => Elem303
+      
+      ! One cut result to splitted elements only if the opposing node is cut through
+      IF( CutDof(nIndexes(j3)) ) THEN
+        IF(m==1) THEN
+          pElement % NodeIndexes(1) = nn + eIndexes(j)
+          pElement % NodeIndexes(2) = nIndexes(j2)
+          pElement % NodeIndexes(3) = nIndexes(j3)
           
+          SgnNode = 2
+          iCase = 4
+          mmax = 2
+        ELSE IF(m==2) THEN
+          pElement % NodeIndexes(1) = nn + eIndexes(j)
+          pElement % NodeIndexes(2) = nIndexes(j3)
+          pElement % NodeIndexes(3) = nIndexes(j)
+          
+          sgnNode = 3
+          iCase = 5
+        END IF
+      ELSE IF(CutDof(nIndexes(j)) .OR. CutDof(nIndexes(j2))) THEN
+        pElement => Elem303
+        pElement % NodeIndexes(1:3) = nIndexes(1:3)          
+        
+        iCase = 6
+        SgnNode = j3          
+        mmax = 1
+      END IF
+
+    CASE( 40420, 40421 ) 
+      ! Quadrilateral being cut on two edges. 
+
+      
+      IF( m == 1 ) THEN
+        subcase = 0
+        IF( ALL( CutDof( nn + eIndexes([1,3])) ) ) THEN
+          subcase = 1
+          j = 1
+          mmax = 2
+        ELSE IF( ALL( CutDof( nn + eIndexes([2,4])) ) ) THEN            
+          subcase = 1
+          j = 2
+          mmax = 2
+        ELSE
+          DO j=1,4
+            j2 = MODULO(j,4)+1
+            IF(ALL( CutDof( nn + eIndexes([j,j2]) ) ) ) THEN
+              subcase = 2 
+              mmax = 3
+              EXIT
+            END IF
+          END DO
+        END IF
+        IF( subcase == 0 ) THEN
+          CALL Fatal(Caller,'This case not treated yet for 404!')
+        END IF
+      END IF
+
+      
+      IF( subcase == 1 ) THEN        
+        pElement => Elem404
+        mmax = 2
+        
+        IF( m == 1 ) THEN
+          j2 = MODULO(j,4)+1
+          j3 = MODULO(j+1,4)+1
+          j4 = MODULO(j+2,4)+1
+          
+          pElement % NodeIndexes(1) = nIndexes(j)
+          pElement % NodeIndexes(2) = nn + eIndexes(j)
+          pElement % NodeIndexes(3) = nn + eIndexes(j3)
+          pElement % NodeIndexes(4) = nIndexes(j4)          
+          
+          SgnNode = 1
+          iCase = 7
+        ELSE IF(m==2) THEN
+          pElement % NodeIndexes(1) = nIndexes(j2)
+          pElement % NodeIndexes(2) = nIndexes(j3)
+          pElement % NodeIndexes(3) = nn + eIndexes(j3)
+          pElement % NodeIndexes(4) = nn + eIndexes(j)
+          
+          SgnNode = 1
+          iCase = 8
+        END IF
+
+      ELSE IF( subcase == 2 ) THEN
+        pElement => Elem303
+        mmax = 4
+
+        IF( m == 1 ) THEN
+          j2 = MODULO(j,4)+1
+          j3 = MODULO(j+1,4)+1
+          j4 = MODULO(j+2,4)+1
+
+          pElement % NodeIndexes(1) = nn + eIndexes(j)
+          pElement % NodeIndexes(2) = nIndexes(j2)
+          pElement % NodeIndexes(3) = nn + eIndexes(j2)
+
+          SgnNode = 2
+          iCase = 9
+        ELSE IF(m==2) THEN
+          pElement % NodeIndexes(1) = nIndexes(j)
+          pElement % NodeIndexes(2) = nn + eIndexes(j)
+          pElement % NodeIndexes(3) = nIndexes(j4)
+
+          SgnNode = 3
+          iCase = 10
+        ELSE IF(m==3) THEN
+          pElement % NodeIndexes(1) = nn + eIndexes(j)
+          pElement % NodeIndexes(2) = nn + eIndexes(j2)
+          pElement % NodeIndexes(3) = nIndexes(j4)
+
+          SgnNode = 3
+          iCase = 11
+        ELSE IF(m==4) THEN
+          pElement % NodeIndexes(1) = nn + eIndexes(j2)
+          pElement % NodeIndexes(2) = nIndexes(j3)
+          pElement % NodeIndexes(3) = nIndexes(j4)
+
+          SgnNode = 3
+          iCase = 12
+        END IF
+
+      END IF
+
+    CASE( 40411 ) 
+      ! Quadrilateral being cut on one edge and one node.  
+
+      ! Find the only edge that is cut
+      DO j=1,4
+        IF( CutDof( nn + eIndexes(j) ) ) EXIT
+      END DO
+      j2 = MODULO(j,4)+1
+      j3 = MODULO(j+1,4)+1
+      j4 = MODULO(j+2,4)+1
+
+      ! IF we cut node associated to the same edge, we don't really have a split element,
+      IF(CutDof(nIndexes(j)) .OR. CutDof(nIndexes(j2))) THEN
+        pElement => Elem404
+        pElement % NodeIndexes(1:4) = nIndexes(1:4)          
+        iCase = 13
+        SgnNode = j3          
+        mmax = 1
+      ELSE
+        mmax = 2
+        IF( CutDof(nIndexes(j3)) ) THEN
+          IF(m==1) THEN
+            pElement => Elem404
+            pElement % NodeIndexes(1) = nn + eIndexes(j)
+            pElement % NodeIndexes(2) = nIndexes(j2)
+            pElement % NodeIndexes(3) = nIndexes(j3)
+            pElement % NodeIndexes(4) = nIndexes(j4)
+
+            iCase = 14
+            SgnNode = 3
+          ELSE IF(m==2) THEN
+            pElement => Elem303
+            pElement % NodeIndexes(1) = nIndexes(j)
+            pElement % NodeIndexes(2) = nn + eIndexes(j)
+            pElement % NodeIndexes(3) = nIndexes(j4)
+
+            iCase = 15
+            SgnNode = 1
+          END IF
+
+        ELSE IF( CutDof(nIndexes(j4))) THEN
+          IF(m==1) THEN
+            pElement => Elem404
+            pElement % NodeIndexes(1) = nIndexes(j)
+            pElement % NodeIndexes(2) = nn + eIndexes(j)
+            pElement % NodeIndexes(3) = nIndexes(j3)
+            pElement % NodeIndexes(4) = nIndexes(j4)
+
+            iCase = 16
+            SgnNode = 4
+          ELSE IF(m==2) THEN
+            pElement => Elem303
+            pElement % NodeIndexes(1) = nn + eIndexes(j)
+            pElement % NodeIndexes(2) = nIndexes(j2)
+            pElement % NodeIndexes(3) = nIndexes(j3)
+
+            iCase = 17
+            SgnNode = 2
+          END IF
+        END IF
+      END IF
+      
+    CASE DEFAULT
+      PRINT *,'EdgeCut:',CutDof(nn + Element % EdgeIndexes) 
+      PRINT *,'NodeCut:',CutDof(Element % NodeIndexes)
+      PRINT *,'Phi:',PhiVar % Values(PhiVar % Perm(Element % NodeIndexes))
+      s1 = MAXVAL(PhiVar % Values(PhiVar % Perm(Element % NodeIndexes))) &
+          - MINVAL(PhiVar % Values(PhiVar % Perm(Element % NodeIndexes))) 
+      PRINT *,'RelativePhi:',PhiVar % Values(PhiVar % Perm(Element % NodeIndexes))/s1          
+      CALL Fatal(Caller,'Unknown split case in element divisions: '//I2S(SplitCase))
+    END SELECT
+    
+    IsMore = (m < mmax ) 
+    IF(iCase>0) nCase(iCase) = nCase(iCase) + 1
+
     ! This circumwents some rare case when node is cut.
     IF( body_out == 0 ) THEN
       IF( ALL( CutPerm(pElement % NodeIndexes) > 0) ) THEN
@@ -934,7 +1111,7 @@ CONTAINS
     INTEGER :: m, n, n_split, n_cut, i, j, j2, j3, j4, nn, SplitCase
     INTEGER, POINTER :: nIndexes(:), eIndexes(:)
     TYPE(Mesh_t), POINTER :: Mesh
-    LOGICAL :: Visited = .FALSE., Found, VerticalCut
+    LOGICAL :: isActive, Visited = .FALSE., Found, VerticalCut
     REAL(KIND=dp), POINTER :: x(:), y(:), z(:)
     TYPE(Solver_t), POINTER :: Solver
     CHARACTER(*), PARAMETER :: Caller = 'CutInterfaceBC'
@@ -1002,6 +1179,7 @@ CONTAINS
     END IF
 
     IsMore = .FALSE.
+    IsActive = .TRUE.
 
     IF( n_split == 0 .AND. n_cut <= 1 ) THEN
       isCut = .FALSE.
@@ -1449,9 +1627,7 @@ CONTAINS
     INTEGER :: Sweep, t, n, i
     LOGICAL :: IsActive, IsCut
     TYPE(Element_t), POINTER :: Element
-
-    CALL Info('CreateCutFEMAddMesh','Creating interface mesh from split element',Level=10)
-    
+        
     DO Sweep = 0,1 
       n = 0      
       DO t=1,CutFEMOrigMesh % NumberOfBulkElements
@@ -1488,7 +1664,7 @@ CONTAINS
     Solver % ActiveElements => UnsplitActiveElements
     Solver % NumberOfActiveElements = SIZE(UnsplitActiveElements)
 
-    CALL Info('CreateCutFEMAddMesh','Add mesh created with '//I2S(i)//' active elements!',Level=10)
+
     
   END SUBROUTINE CreateCutFEMAddMesh
     
@@ -1499,8 +1675,6 @@ CONTAINS
     CurrentModel % Mesh => CutFEMAddMesh
     Solver % ActiveElements => AddActiveElements
     Solver % NumberOfActiveElements = SIZE(Solver % ActiveElements)
-    Solver % Mesh % Edges => CutFemOrigMesh % Edges
-
     CALL Info('CutFEMSetAddMesh','Swapping CutFEM original mesh to interface mesh!',Level=10)
     
   END SUBROUTINE CutFEMSetAddMesh
@@ -1512,9 +1686,6 @@ CONTAINS
     CurrentModel % Mesh => CutFEMOrigMesh 
     Solver % ActiveElements => UnsplitActiveElements
     Solver % NumberOfActiveElements = SIZE(Solver % ActiveElements)
-
-    NULLIFY(CutFEMAddMesh % Edges) 
-
     CALL Info('CutFEMSetOrigMesh','Swapping CutFEM interface mesh to original mesh!',Level=10)
     
   END SUBROUTINE CutFEMSetOrigMesh
@@ -1581,7 +1752,7 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: B
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Element_t), POINTER :: pElement, Element
-    INTEGER :: i,j,k,l,n,t,active,nn,ne,i1,i2,dofs
+    INTEGER :: i,j,k,n,t,active,nn,ne,i1,i2
     LOGICAL :: IsCut, IsMore, Found
     REAL(KIND=dp) :: s, r, dval, norm
     REAL(KIND=dp), ALLOCATABLE :: NodeWeigth(:)
@@ -1590,31 +1761,23 @@ CONTAINS
     Mesh => Solver % Mesh
     nn = Mesh % NumberOfNodes
     ne = Mesh % NumberOfEdges
-    dofs = CutDofs 
-    
+
     ! If we solve some other equation in between store the original norm.
     Norm = Solver % Variable % Norm
 
-    ! Set values at shared nodes that have been computed. 
-    CALL Info('CutFEMVariableFinalize','Copying values at shared nodes to the original mesh!',Level=10)
-    DO l=1,dofs
-      DO i=1,nn
-        j = CutPerm(i)
-        k = OrigMeshPerm(i)
-        IF(j==0 .OR. k==0) CYCLE
-        OrigMeshValues(dofs*(k-1)+l) = CutValues(dofs*(j-1)+l)
-      END DO
-    END DO
+    ! Set values at shared nodes. 
+    WHERE(CutPerm(1:nn)>0)
+      OrigMeshValues(OrigMeshPerm(1:nn)) = CutValues(CutPerm(1:nn))
+    ELSEWHERE           
+      OrigMeshValues = 0.0_dp
+    END WHERE
 
-    
     ! We can only extrapolate using the edges that are cut since they have also one
     ! known nodal value. 
     IF(CutExtrapolate) THEN
-      CALL Info('CutFEMVariableFinalize','Extrapolating values with split elements!',Level=10)
-      
       ! Extrapolated nodes may have more than one hit. Hence use weigted average.
       ! This is the weight.
-      ALLOCATE(NodeWeigth(nn))
+      ALLOCATE(NodeWeigth(SIZE(OrigMeshValues)))
       NodeWeigth = 0.0_dp
 
       k = 0
@@ -1628,37 +1791,27 @@ CONTAINS
 
         IF(CutPerm(i1) > 0 .AND. CutPerm(i2) == 0 ) THEN
           s = (1-r)
-          DO k=1,dofs
-            OrigMeshValues(dofs*(OrigMeshPerm(i2)-1)+k) = OrigMeshValues(dofs*(OrigMeshPerm(i2)-1)+k) + &
-                s*CutValues(dofs*(CutPerm(i1)-1)+k) + (CutValues(dofs*(j-1)+k)-CutValues(dofs*(CutPerm(i1)-1)+k))
-          END DO
+          OrigMeshValues(OrigMeshPerm(i2)) = OrigMeshValues(OrigMeshPerm(i2)) + s*CutValues(CutPerm(i1)) + &
+              (CutValues(j)-CutValues(CutPerm(i1)))
           NodeWeigth(OrigMeshPerm(i2)) = NodeWeigth(OrigMeshPerm(i2)) + s
         ELSE IF(CutPerm(i1) == 0 .AND. CutPerm(i2) > 0) THEN
           s = r
-          DO k=1,dofs
-            OrigMeshValues(dofs*(OrigMeshPerm(i1)-1)+k) = OrigMeshValues(dofs*(OrigMeshPerm(i1)-1)+k) + &
-                s*CutValues(dofs*(CutPerm(i2)-1)+k) + (CutValues(dofs*(j-1)+k)-CutValues(dofs*(CutPerm(i2)-1)+k))
-          END DO
+          OrigMeshValues(OrigMeshPerm(i1)) = OrigMeshValues(OrigMeshPerm(i1)) + s*CutValues(CutPerm(i2)) + &
+              (CutValues(j)-CutValues(CutPerm(i2)))
           NodeWeigth(OrigMeshPerm(i1)) = NodeWeigth(OrigMeshPerm(i1)) + s
         END IF
       END DO
       
-      DO k=1,dofs
-        WHERE( NodeWeigth(1:nn) > EPSILON(s)) 
-          OrigMeshValues(k::dofs) = OrigMeshValues(k::dofs) / NodeWeigth(1:nn)
-        END WHERE
-      END DO
+      WHERE( NodeWeigth > EPSILON(s)) 
+        OrigMeshValues = OrigMeshValues / NodeWeigth
+      END WHERE
     END IF
+
 
     
     ! Entend values using FEM strategies beyond value set above. 
     ! We can extrapolate much but the extrapolation method is nonhysical.
     IF( CutExtend ) THEN
-      CALL Info('CutFEMVariableFinalize','Extending values from inside to outside using FEM!',Level=10)
-      IF(dofs > 1) THEN
-        CALL Fatal('CutFEMVariableFinalize','Extending values only coded for one dofs!')        
-      END IF
-      
       B => CreateCutFEMMatrix(Solver,ExtendPerm)      
       ALLOCATE(ExtendValues(B % NumberOfRows))
       ExtendValues = 0.0_dp
@@ -1810,15 +1963,13 @@ CONTAINS
     
     IF( AddMeshMode ) THEN
       ! In add mesh mode we retain the nodes and coordinates of the original mesh
-      ! and just create the elements and their topologies.
-      ! This saves work and memory. 
+      ! and just create the elements and their topologies. 
       NewMesh % Name = TRIM(Mesh % Name)//'-addmesh'
       NodeCnt = Mesh % NumberOfNodes
       NewMesh % Nodes % x => Mesh % Nodes % x
       NewMesh % Nodes % y => Mesh % Nodes % y
       NewMesh % Nodes % z => Mesh % Nodes % z
     ELSE
-      ! This mode is intended for the isoline that is created at the levelset.
       NewMesh % Name = TRIM(Mesh % Name)//'-cutfem'
       NodeCnt = MAXVAL(MeshPerm)
       NewMesh % OutputActive = .TRUE.
@@ -1827,7 +1978,6 @@ CONTAINS
       CALL AllocateVector( NewMesh % Nodes % y, NodeCnt ) 
       CALL AllocateVector( NewMesh % Nodes % z, NodeCnt ) 
 
-      ! This includes already the nodes created at the intersections. 
       DO i=1,nn+ne
         j = MeshPerm(i)
         IF(j==0) CYCLE      
@@ -1914,11 +2064,6 @@ CONTAINS
 
     END DO
 
-#if 0
-    IF( ParEnv % PEs > 1 ) CALL CutFEMParallelMesh()
-#endif
-      
-    
     ! If we create interface only then we have original numbering and may use 
     IF(.NOT. AddMeshMode ) THEN 
       CALL InterpolateLevelsetVariables()
@@ -1930,156 +2075,47 @@ CONTAINS
     CALL Info(Caller,'Zero levelset mesh was created',Level=8)
 
   CONTAINS
-
-#if 0 
-    ! We do not need to update the Mesh % ParallelInfo, only Matrix % ParallelInfo!
-    
-    SUBROUTINE CutFEMParallelMesh()
-
-      INTEGER :: istat,n0,n
-          
-      CALL Info(Caller,'Creating ParallelInfo for CutFEM mesh structures!',Level=10)      
-      IF(.NOT. ASSOCIATED(Mesh % ParallelInfo % GlobalDOFS) ) THEN
-        CALL Fatal(Caller,'Original mesh has no GlobalDOFs numbering!')
-      END IF
-      IF(.NOT. ASSOCIATED(Mesh % Edges) ) THEN
-        CALL Fatal(Caller,'Original mesh requires edges!')
-      END IF
-      
-      ! Use maximum nodal index as the offset for nodes defined on cut edges.
-      n0 = MAXVAL( Mesh % ParallelInfo % GlobalDOFs )
-      n0 = ParallelReduction(n0,2)
-
-      n = NewMesh % NumberOfNodes
-      CALL Info(Caller,'Allocating parallel structures for '//I2S(n)//' nodes',Level=10)
-
-      ALLOCATE(NewMesh % ParallelInfo % GlobalDOFs(n), STAT=istat )
-      IF ( istat /= 0 ) &
-          CALL Fatal( Caller, 'Unable to allocate NewMesh % ParallelInfo % NeighbourList' )
-      NewMesh % ParallelInfo % GlobalDOFs = 0
-      ALLOCATE(NewMesh % ParallelInfo % GInterface(n), STAT=istat )
-      IF ( istat /= 0 ) &
-          CALL Fatal( Caller, 'Unable to allocate NewMesh % ParallelInfo % NeighbourList' )
-      NewMesh % ParallelInfo % GInterface = .FALSE.
-
-      ALLOCATE(NewMesh % ParallelInfo % NeighbourList(n), STAT=istat )
-      IF ( istat /= 0 ) &
-          CALL Fatal( Caller, 'Unable to allocate NewMesh % ParallelInfo % NeighbourList' )
-      DO i=1,n
-        NULLIFY(NewMesh % ParallelInfo % NeighbourList(i) % Neighbours)
-      END DO      
-      
-      DO i=1,nn+ne
-        j = MeshPerm(i)
-        IF(j<=0) CYCLE
-        
-        IF(i<=nn) THEN
-          NewMesh % ParallelInfo % GInterface(j) = Mesh % ParallelInfo % GInterface(i)
-          NewMesh % ParallelInfo % GlobalDOFs(j) = Mesh % ParallelInfo % GlobalDOFs(i)
-          k = SIZE(Mesh % ParallelInfo % NeighbourList(i) % Neighbours)
-          ALLOCATE(NewMesh % ParallelInfo % NeighbourList(j) % Neighbours(k))
-          NewMesh % ParallelInfo % NeighbourList(j) % Neighbours = &
-              Mesh % ParallelInfo % NeighbourList(i) % Neighbours            
-        ELSE
-          NewMesh % ParallelInfo % GInterface(j) = Mesh % ParallelInfo % EdgeInterface(i-nn)
-          NewMesh % ParallelInfo % GlobalDOFs(j) = n0 + Mesh % Edges(i-nn) % GElementIndex         
-
-          k = SIZE(Mesh % ParallelInfo % EdgeNeighbourList(i-nn) % Neighbours)
-          PRINT *,'ass1 vals:',ParEnv % MyPe, k,j,Mesh % ParallelInfo % EdgeNeighbourList(i-nn) % Neighbours          
-          ALLOCATE(NewMesh % ParallelInfo % NeighbourList(j) % Neighbours(k))
-          NewMesh % ParallelInfo % NeighbourList(j) % Neighbours = &
-              Mesh % ParallelInfo % EdgeNeighbourList(i-nn) % Neighbours                                
-        END IF
-      END DO
-
-      
-      DO i = 1, NewMesh % NumberOfNodes
-        IF(.NOT. ASSOCIATED(NewMesh % ParallelInfo % NeighbourList(i) % Neighbours)) THEN
-          PRINT *,'nn:',nn,ne, MAXVAL(MeshPerm), NewMesh % NumberOfNodes, &
-              SIZE(MeshPerm)
-          CALL Fatal('CutFEMParallelMesh','Neighbours not associated: '//I2S(i))
-        END IF
-      END DO
-      
-    END SUBROUTINE CutFEMParallelMesh
-
-#endif        
-
-    
+   
     ! We can easily interpolate any variable on the new nodes created on the edge. 
     ! if we know values on both nodes. 
     !-----------------------------------------------------------------------------
     SUBROUTINE InterpolateLevelsetVariables()
 
-      INTEGER :: iVar, dofs, l
+      INTEGER :: iVar
       TYPE(Variable_t), POINTER :: Var
       REAL(KIND=dp), POINTER :: Values(:)
       INTEGER, POINTER :: Perm(:)
-      LOGICAL :: IsCutVar
       
-      DO iVar = -1,100    
-        
-        IF(iVar == -1) THEN
-          ! We want to always interpolate the primary variable!
-          ! This is the only variable living in the "CutFEM" universe.
-          Var => Solver % Variable
-          VarName = Solver % Variable % name
-          IsCutVar = .TRUE.
-        ELSE
-          IF(iVar == 0) THEN
-            ! We also want to interpolate the levelset variable. 
-            VarName = CutStr
-          ELSE                       
-            VarName = ListGetString( Vlist,TRIM(ProjectPrefix)//' '//I2S(iVar), Found )
-            IF(.NOT. Found ) EXIT    
+      DO iVar = 1,100    
+        VarName = ListGetString( Vlist,TRIM(ProjectPrefix)//' '//I2S(iVar), Found )
+        IF(.NOT. Found ) EXIT    
 
-            ! These are cases "-1" and "-0" that are always done!
-            IF(VarName == Solver % Variable % Name ) CYCLE
-            IF(VarName == CutStr ) CYCLE
-          END IF
-            
-          Var => VariableGet( Mesh % Variables, VarName, ThisOnly = .TRUE. )
-          IF(.NOT. ASSOCIATED(Var)) THEN
-            CALL Fatal('InterpolateLevelsetVariable','Could not find variable in 2D mesh: '//TRIM(VarName))
-          END IF
-          IsCutVar = .FALSE.
-        END IF
-          
+        Var => VariableGet( Mesh % Variables, VarName, ThisOnly = .TRUE. )
+        IF(.NOT. ASSOCIATED(Var)) CYCLE
+
         CALL Info('InterpolateLevelsetVariable','Doing field: '//TRIM(Var % Name))
-
-        dofs = Var % dofs
+        
         NULLIFY(Values)        
-        ALLOCATE(Values(dofs*NodeCnt))
+        ALLOCATE(Values(NodeCnt))
         Values = 0.0_dp
 
-        ! Create unity permutation vector. 
         NULLIFY(Perm)
         ALLOCATE(Perm(NodeCnt))
         DO i=1,NodeCnt
           Perm(i) = i
         END DO
-          
-        ! If the size of permutation is nn+ne it is a sign that the field is associated
-        ! to the CutFEM field.
-        IF(IsCutVar) THEN
-          ntot = nn + ne
-        ELSE
-          ntot = nn 
-        END IF
         
+        ntot = nn
+        IF(SIZE(Var % Perm) == nn+ne ) ntot = nn+ne
+
         DO i=1,ntot
           j = Var % Perm(i)
           k = MeshPerm(i)
           IF(j==0 .OR. k==0) CYCLE
-          DO l=1,dofs
-            Values(dofs*(k-1)+l) = Var % Values(dofs*(j-1)+l)
-          END DO
+          Values(k) = Var % Values(j)
         END DO
 
-        ! We do not want to interpolate the cut var that has been computed exactly to the new virtual nodes.
-        ! The interpolated values would be worse than the computed ones. 
-        IF(.NOT. IsCutVar ) THEN
-          CALL Info(Caller,'Interpolating values: '//TRIM(VarName),Level=10)
+        IF(ntot == nn ) THEN
           DO i=1,ne
             k = MeshPerm(nn+i)
             IF(k==0) CYCLE
@@ -2088,29 +2124,21 @@ CONTAINS
             Values(k) = 0.0_dp
 
             j = Var % Perm(Mesh % Edges(i) % NodeIndexes(1))
-            IF(j>0) THEN
-              DO l=1,dofs
-                Values(dofs*(k-1)+l) = r*Var % Values(dofs*(j-1)+l)
-              END DO
-            END IF
-              
+            IF(j>0) Values(k) = r*Var % Values(j)
+
             j = Var % Perm(Mesh % Edges(i) % NodeIndexes(2))
-            IF(j>0) THEN
-              DO l=1,dofs
-                Values(dofs*(k-1)+l) = Values(dofs*(k-1)+l) + (1-r)*Var % Values(dofs*(j-1)+l)
-              END DO
-            END IF
+            IF(j>0) Values(k) = Values(k) + (1-r)*Var % Values(j)
           END DO
         END IF
 
         CALL Info(Caller,'Projected variable: '//TRIM(VarName),Level=10)
-        CALL VariableAddVector( NewMesh % Variables, NewMesh, Solver, VarName, Var % Dofs, Values, Perm )
-        
+        CALL VariableAdd( NewMesh % Variables, NewMesh, Solver, VarName, Var % Dofs, Values, Perm )
+
         IF(InfoActive(25)) THEN
           PRINT *,'Range:',MINVAL(Values),MAXVAL(Values),SIZE(Values), Var % Dofs, SIZE(Values)
         END IF
       END DO
-      
+
     END SUBROUTINE InterpolateLevelsetVariables
 
 
@@ -2146,9 +2174,6 @@ CONTAINS
         ALLOCATE(Enew % BoundaryInfo)
         Enew % BoundaryInfo % Constraint = BCTag
       END IF
-
-      ! This effects only parallel runs, but testing parallel costs more...      
-      Enew % PartIndex = ParEnv % MyPe
       
     END SUBROUTINE AddelementData
 
@@ -2170,17 +2195,9 @@ CONTAINS
     REAL(KIND=dp), POINTER :: x(:), y(:)
     REAL(KIND=dp) :: val, Vx, Vy, dt, VPhi, PhiMax, BW
     CHARACTER(:), ALLOCATABLE :: str       
-    LOGICAL :: Found, Nonzero, MovingLevelset
-    INTEGER :: nVar,i,j,iAvoid,iSolver
-    
-    TYPE PolylineData_t
-      INTEGER :: nLines = 0, nNodes = 0
-      REAL(KIND=dp), ALLOCATABLE :: Vals(:,:)
-      REAL(KIND=dp) :: IsoLineBB(4), MeshBB(4)      
-    END TYPE PolylineData_t
-    TYPE(PolylineData_t),  ALLOCATABLE, TARGET, SAVE :: PolylineData(:)
-    
-    
+    LOGICAL :: Found, Nonzero
+    INTEGER :: i,j
+
     SAVE IsoMesh
 
     IsoMesh => CreateCutFEMMesh(Solver,Mesh,Solver % Variable % Perm,&
@@ -2190,49 +2207,31 @@ CONTAINS
     pVar => VariableGet( Mesh % Variables,'timestep size' )
     dt = pVar % Values(1)
     
-    phiVar1D => VariableGet( IsoMesh % Variables, CutStr, ThisOnly = .TRUE.)
+    phiVar1D => VariableGet( IsoMesh % Variables,'surface', ThisOnly = .TRUE.)
     IF(.NOT. ASSOCIATED(PhiVar1D)) THEN
-      CALL Fatal('LevelSetUpdate','Levelset function ("'//TRIM(CutStr)//'") needed in 1D mesh!')
+      CALL Fatal('LevelSetUpdate','Levelset function needed in 1D mesh!')
     END IF
 
-
-    ! This should be ok by construction but some testing does not hurt...
-    DO i=1,SIZE(phiVar1D % Perm)
-      IF(i /= PhiVar1D % Perm(i) ) THEN
-        CALL Fatal('LevelSetUpdate','PhiVar1D permutation not unity map')
-      END IF
-    END DO
+    !PRINT *,'Phi1D range:',MINVAL(PhiVar1D % Values), MAXVAL(PhiVar1D % Values)
     
-    phiVar2D => VariableGet( Mesh % Variables, CutStr, ThisOnly = .TRUE.)
+    phiVar2D => VariableGet( Mesh % Variables,'surface', ThisOnly = .TRUE.)
     IF(.NOT. ASSOCIATED(PhiVar2D)) THEN
       CALL Fatal('LevelSetUpdate','Levelset function needed in 2D mesh!')
     END IF
     
     x => Isomesh % Nodes % x    
     y => Isomesh % Nodes % y
-    
-    MovingLevelset = .FALSE.
 
     ! This assumes constant levelset convection. Mainly for testing.
     Vx = ListGetCReal( Solver % Values,'Levelset Velocity 1',Found )
-    IF(Found) THEN
-      IF(ABS(Vx) > EPSILON(Vx)) MovingLevelset = .TRUE.
-      x = x + Vx * dt
-    END IF
-      
+    IF(Found) x = x + Vx * dt       
     Vy = ListGetCReal( Solver % Values,'Levelset Velocity 2',Found )
-    IF(Found) THEN
-      IF(ABS(Vy) > EPSILON(Vy)) MovingLevelset = .TRUE.
-      y = y + Vy * dt 
-    END IF
+    IF(Found) y = y + Vy * dt 
 
     ! This assumes constant calving speed. Mainly for testing.
     VPhi = ListGetCReal( Solver % Values,'Levelset Calving',Found )
-    IF(Found) THEN
-      MovingLevelset = .TRUE.
-      PhiVar1D % Values = PhiVar1D % Values + VPhi * dt 
-    END IF
-      
+    IF(Found) PhiVar1D % Values = PhiVar1D % Values + VPhi * dt 
+
     Nonzero = ListGetLogical( Solver % Values,'CutFEM signed distance nonzero',Found ) 
     PRINT *,'Move:',Vx,Vy,VPhi,dt,Nonzero
     
@@ -2243,7 +2242,6 @@ CONTAINS
       x = x + pVar % Values * dt
       pVar => VariableGet( Mesh % Variables,TRIM(str)//' 2',UnfoundFatal=.TRUE.) 
       y = y + pVar % Values * dt
-      MovingLevelset = .TRUE.
     END IF
       
     str = ListGetString( Solver % Values,'Levelset Calving Variable',Found )
@@ -2255,12 +2253,6 @@ CONTAINS
     PhiMax = MAXVAL(ABS(PhiVar1D % Values)) 
     PhiMax = 1.01 * ( PhiMax + SQRT(Vx**2+Vy**2)*dt )
 
-    IF(.NOT. ALLOCATED(PolylineData)) THEN
-      ALLOCATE(PolylineData(ParEnv % PEs))
-    END IF
-    CALL PopulatePolyline()
-
-
     DO i=1, Mesh % NumberOfNodes
       j = PhiVar2D % Perm(i)
       IF(j==0) CYCLE
@@ -2271,225 +2263,19 @@ CONTAINS
       ELSE IF(val < -BW ) THEN
         val = val + BW
       ELSE        
-        val = SignedDistance(i)
+        val = SignedDistance(i,nonzero)
       END IF
 #else
       val = SignedDistance(i) 
 #endif
-
-      IF(MovingLevelset) THEN
-        PhiVar2D % Values(j) = val
-      END IF
+      
+      PhiVar2D % Values(j) = val
     END DO
 
-    ! Deallocate data, next time this will be different.
-    DO i=1,ParEnv % PEs 
-      IF(PolylineData(i) % nLines > 0) THEN
-        DEALLOCATE(PolylineData(i) % Vals)
-      END IF
-    END DO
-    
     Solver % Mesh % Next => IsoMesh
+
     
   CONTAINS
-
-    !------------------------------------------------------------------------------
-    !> Computes the signed distance to zero levelset. 
-    !------------------------------------------------------------------------------
-    SUBROUTINE PopulatePolyline()
-      !------------------------------------------------------------------------------      
-      REAL(KIND=dp) :: x0,y0,x1,y1,ss,TotLineLen
-      INTEGER :: i,j,k,n,m,i0,i1,nCol,dofs,k2
-      TYPE(Variable_t), POINTER :: Var1D
-      INTEGER :: iVar, MyPe, PEs, Phase
-      !------------------------------------------------------------------------------
-
-      nCol = 6
-
-      nVar = 0
-      iAvoid = 0
-      iSolver = 0
-      TotLineLen = 0.0_dp
-      
-      DO k = 1,100    
-        str = ListGetString( Solver % Values,'isoline variable '//I2S(k), Found )
-        IF(.NOT. Found ) EXIT            
-
-        ! The levelset is really computed, do not interpolate it. 
-        IF(str == CutStr) iAvoid = k 
-        IF(str == Solver % Variable % Name) iSolver = k
-
-        Var1D => VariableGet( IsoMesh % Variables, str, ThisOnly = .TRUE. )
-        IF(.NOT. ASSOCIATED(Var1D)) EXIT
-        nVar = k
-        nCol = nCol + 2 * Var1D % Dofs
-        
-        IF(InfoActive(25)) THEN
-          PRINT *,'Mesh1D Range for '//TRIM(Var1D % Name)//': ',&
-              MINVAL(Var1D % Values), MAXVAL(Var1D % Values) 
-        END IF
-      END DO
-
-      m = Isomesh % NumberOfBulkElements
-      MyPe = ParEnv % MyPe + 1
-      PEs = ParEnv % PEs
-
-      ! We may find use for bounding boxes later on. 
-#if 0
-      PolylineData(MyPe) % IsoLineBB(1) = MINVAL(IsoMesh % Nodes % x)
-      PolylineData(MyPe) % IsoLineBB(2) = MAXVAL(IsoMesh % Nodes % x)
-      PolylineData(MyPe) % IsoLineBB(3) = MINVAL(IsoMesh % Nodes % y)
-      PolylineData(MyPe) % IsoLineBB(4) = MAXVAL(IsoMesh % Nodes % y)
-
-      PolylineData(MyPe) % MeshBB(1) = MINVAL(Mesh % Nodes % x)
-      PolylineData(MyPe) % MeshBB(2) = MAXVAL(Mesh % Nodes % x)
-      PolylineData(MyPe) % MeshBB(3) = MINVAL(Mesh % Nodes % y)
-      PolylineData(MyPe) % MeshBB(4) = MAXVAL(Mesh % Nodes % y)
-#endif
-      
-      DO Phase=0,1
-        m = 0
-        DO i=1,IsoMesh % NumberOfBulkElements        
-          i0 = IsoMesh % Elements(i) % NodeIndexes(1)
-          i1 = IsoMesh % Elements(i) % NodeIndexes(2)
-          
-          x0 = x(i0); y0 = y(i0)
-          x1 = x(i1); y1 = y(i1)
-          
-          ss = (x0-x1)**2 + (y0-y1)**2
-          
-          ! This is too short for anything useful...
-          ! Particularly difficult it is to decide on left/right if the segment is a stub.
-          IF(ss < EPSILON(ss) ) CYCLE        
-          
-          m = m+1
-          IF(Phase==0) CYCLE
-
-          TotLineLen = TotLineLen + SQRT(ss)
-
-          
-          ! Coordinates for the polyline. 
-          PolylineData(MyPe) % Vals(m,1) = x0
-          PolylineData(MyPe) % Vals(m,2) = x1
-          PolylineData(MyPe) % Vals(m,3) = y0
-          PolylineData(MyPe) % Vals(m,4) = y1
-
-          ! Levelset values for the polyline. 
-          PolylineData(MyPe) % Vals(m,5) = PhiVar1D % Values(i0)
-          PolylineData(MyPe) % Vals(m,6) = PhiVar1D % Values(i1)
-          j = 7
-
-          DO k = 1,nVar
-            IF(k==iAvoid) CYCLE
-
-            str = ListGetString( Solver % Values,'isoline variable '//I2S(k), Found )
-            Var1D => VariableGet( IsoMesh % Variables, str, ThisOnly = .TRUE. )
-
-            dofs = Var1D % Dofs
-            DO k2=1,dofs              
-              PolylineData(MyPe) % Vals(m,j)   = Var1D % Values(dofs*(Var1D % Perm(i0)-1)+k2)
-              PolylineData(MyPe) % Vals(m,j+1) = Var1D % Values(dofs*(Var1D % Perm(i1)-1)+k2)
-              j = j+2
-            END DO
-          END DO
-        END DO
-
-        
-        IF(Phase==0) THEN
-          CALL Info('LevelsetUpdate','Allocating PolylineData of size '//I2S(m)//' x '//I2S(nCol),Level=8)
-          PolylineData(MyPe) % nLines = m
-          PolylineData(MyPe) % nNodes = Mesh % NumberOfNodes
-          ALLOCATE(PolylineData(MyPe) % Vals(m,nCol))
-          PolylineData(MyPe) % Vals = 0.0_dp
-        END IF
-        
-      END DO
-
-       
-      IF(PEs > 1 ) THEN        
-        BLOCK
-          INTEGER, ALLOCATABLE :: nPar(:)
-          INTEGER :: comm, ierr, status(MPI_STATUS_SIZE)
-          
-          ALLOCATE(nPar(PEs))
-          comm = Solver % Matrix % Comm
-
-          nPar = 0
-          nPar(MyPe) = PolylineData(MyPe) % nLines
-          CALL MPI_ALLREDUCE(MPI_IN_PLACE, nPar, PEs, MPI_INTEGER, MPI_MAX, comm, ierr)
-          DO i=1,PEs
-            PolylineData(i) % nLines = nPar(i)
-          END DO
-          
-          nPar = 0
-          nPar(MyPe) = Mesh % NumberOfNodes
-          CALL MPI_ALLREDUCE(MPI_IN_PLACE, nPar, PEs, MPI_INTEGER, MPI_MAX, comm, ierr)
-          DO i=1,PEs
-            PolylineData(i) % nNodes = nPar(i)
-          END DO
-          CALL MPI_BARRIER( comm, ierr )
-          
-          IF( PolylineData(MyPe) % nNodes > 1) THEN
-            DO i=1,PEs            
-              IF(i==MyPe) CYCLE
-              m = PolylineData(i) % nLines
-              IF(m>0) ALLOCATE(PolylineData(i) % Vals(m,nCol))            
-            END DO
-          END IF
-                     
-          DO i=1,PEs
-            IF(i==MyPe) CYCLE              
-            IF(PolylineData(MyPe) % nLines == 0 .OR. PolylineData(i) % nNodes == 0 ) CYCLE
-
-            ! Sent data from partition MyPe to i           
-            k = PolylineData(MyPe) % nLines * nCol
-            CALL MPI_BSEND( PolylineData(MyPe) % Vals, k, MPI_DOUBLE_PRECISION,i-1, &
-                1001, comm, ierr )
-          END DO
-            
-          DO i=1,PEs
-            IF(i==MyPe) CYCLE              
-            IF(PolylineData(i) % nLines == 0 .OR. PolylineData(MyPe) % nNodes == 0 ) CYCLE
-            
-            ! Recieve data from partition i to MyPe
-            k = PolylineData(i) % nLines * nCol
-            CALL MPI_RECV( PolylineData(i) % Vals, k, MPI_DOUBLE_PRECISION,i-1, &
-                1001, comm, status, ierr )
-          END DO
-
-          CALL MPI_BARRIER( comm, ierr )          
-
-          k = SUM( PolylineData(1:PEs) % nLines ) 
-          CALL Info('LevelSetUpdate','Number of line segments in parallel system: '//I2S(k),Level=7)
-          
-          CALL MPI_ALLREDUCE(MPI_IN_PLACE, TotLineLen, PEs, MPI_DOUBLE_PRECISION, MPI_SUM, comm, ierr)                
-        END BLOCK
-      END IF
-
-      WRITE(Message,'(A,ES12.3)') 'Cutfem isoline length:',TotLineLen
-      CALL Info('LevelSetUpdate',Message,Level=6)
-
-      CALL ListAddConstReal(CurrentModel % Simulation,'res: cutfem isoline length',TotLineLen )
-      
-      
-      IF(InfoActive(25)) THEN
-        CALL Info('LevelSetUpdate','Polyline interval for Isoline variables')
-
-        j = SIZE(PolylineData(MyPe) % Vals(:,1))
-        CALL VectorValuesRange(PolylineData(MyPe) % Vals(:,1),j,'x')
-        CALL VectorValuesRange(PolylineData(MyPe) % Vals(:,3),j,'y')
-        CALL VectorValuesRange(PolylineData(MyPe) % Vals(:,5),j,'phi')
-        i = 7
-        DO k = 1,nVar
-          str = ListGetString( Solver % Values,'isoline variable '//I2S(k), Found )          
-          CALL VectorValuesRange(PolylineData(MyPe) % Vals(:,i),j,TRIM(str))
-          i = i+2
-        END DO
-      END IF
-      
-    END SUBROUTINE PopulatePolyline
-    !------------------------------------------------------------------------------
-
 
     !------------------------------------------------------------------------------
     !> Computes the signed distance to zero levelset. 
@@ -2499,13 +2285,12 @@ CONTAINS
       INTEGER :: node
       REAL(KIND=dp) :: phip
       !------------------------------------------------------------------------------
-      REAL(KIND=dp) :: xp,yp
+      REAL(KIND=dp) :: xp,yp,zp
       REAL(KIND=dp) :: x0,y0,x1,y1,xm,ym,a,b,c,d,s,dir1,&
           dist2,mindist2,dist,mindist,smin,ss,phim
-      INTEGER :: i,i0,i1,j,k,n,sgn,m,imin,kmin,dofs,k2
+      INTEGER :: i,i0,i1,j,k,n,sgn,m,imin
       TYPE(Variable_t), POINTER :: Var1D, Var2D
-      INTEGER :: nCol, nLines
-      REAL(KIND=dp), POINTER :: pValues(:)
+      INTEGER :: iVar
       !------------------------------------------------------------------------------
       mindist2 = HUGE(mindist2)
       mindist = HUGE(mindist)
@@ -2513,131 +2298,115 @@ CONTAINS
       
       xp = Mesh % Nodes % x(node)
       yp = Mesh % Nodes % y(node)
+      zp = 0.0_dp
+
       
       m = 0
-      nCol = 7
-            
-      DO k = 1, ParEnv % PEs
-        nLines = PolylineData(k) % nLInes
-        IF(nLines == 0) CYCLE
+      
+      DO i=1,IsoMesh % NumberOfBulkElements
+        i0 = IsoMesh % Elements(i) % NodeIndexes(1)
+        i1 = IsoMesh % Elements(i) % NodeIndexes(2)
 
-        DO i=1,nLines
-          x0 = PolylineData(k) % Vals(i,1)
-          x1 = PolylineData(k) % Vals(i,2)
-          y0 = PolylineData(k) % Vals(i,3)
-          y1 = PolylineData(k) % Vals(i,4)
+        x0 = x(i0); y0 = y(i0)
+        x1 = x(i1); y1 = y(i1)
 
-          a = xp - x0
-          b = x0 - x1
-          d = y0 - y1
-          c = yp - y0
-          ss = b**2 + d**2
+        a = xp - x0
+        b = x0 - x1
+        d = y0 - y1
+        c = yp - y0
+        ss = b**2 + d**2
 
-          s = MIN( MAX( -(a*b + c*d) / ss, 0.0d0), 1.0d0 )
-          xm = (1-s) * x0 + s * x1
-          ym = (1-s) * y0 + s * y1
-          dist2 = (xp - xm)**2 + (yp - ym)**2
+        ! This is too short for anything usefull...
+        ! Particularly difficult it is to decide on left/right if the segment is a stub.
+        IF(ss < EPSILON(ss) ) CYCLE        
+        
+        s = MIN( MAX( -(a*b + c*d) / ss, 0.0d0), 1.0d0 )
+        xm = (1-s) * x0 + s * x1
+        ym = (1-s) * y0 + s * y1
+        dist2 = (xp - xm)**2 + (yp - ym)**2
 
-          IF(nonzero) THEN
-            ! We need true distances since the offset cannot be added otherwise.
-            dist2 = SQRT(dist2)
+        IF(nonzero) THEN
+          ! We need true distances since the offset cannot be added otherwise.
+          dist2 = SQRT(dist2)
 
-            ! The line segment including the zero levelset might not be exactly zero...
-            ! By definition we don't have permutation here!
-            phim = (1-s) * PolylineData(k) % Vals(i,5) + s * PolylineData(k) % Vals(i,6)
+          ! The line segment including the zero levelset might not be exactly zero...
+          ! By definition we don't have permutation here!
+          phim = (1-s) * PhiVar1D % Values(i0) + s * PhiVar1D % Values(i1)
+          
+          ! In order to test when need to be close enough.
+          IF(dist2 > mindist2 + ABS(phim) ) CYCLE
 
-            ! In order to test when need to be close enough.
-            IF(dist2 > mindist2 + ABS(phim) ) CYCLE
+          ! Dir is an indicator one which side of the line segment the point lies. 
+          ! We have ordered the edges soe that "dir1" should be consistent.
+          dir1 = (x1 - x0) * (yp - y0) - (y1 - y0) * (xp - x0)
 
-            ! Dir is an indicator one which side of the line segment the point lies. 
-            ! We have ordered the edges soe that "dir1" should be consistent.
-            dir1 = (x1 - x0) * (yp - y0) - (y1 - y0) * (xp - x0)
-
-            ! If the control point and found point lie on the same side they are inside. 
-            IF(dir1 < 0.0_dp ) THEN
-              sgn = -1
-            ELSE
-              sgn = 1
-            END IF
-
-            dist = sgn * dist2 + phim
-            ! Ok, close but no honey. 
-            IF( ABS(dist) > ABS(mindist) ) CYCLE
-
-            mindist = dist
+          ! If the control point and found point lie on the same side they are inside. 
+          IF(dir1 < 0.0_dp ) THEN
+            sgn = -1
           ELSE
-            ! Here we can compare the squares saving one expensive operation.
-            IF(dist2 > mindist2 ) CYCLE
-
-            ! Dir is an indicator one which side of the line segment the point lies. 
-            ! We have ordered the edges soe that "dir1" should be consistent.
-            dir1 = (x1 - x0) * (yp - y0) - (y1 - y0) * (xp - x0)
-
-            ! If the control point and found point lie on the same side they are inside. 
-            IF(dir1 < 0.0_dp ) THEN
-              sgn = -1
-            ELSE
-              sgn = 1
-            END IF
+            sgn = 1
           END IF
 
-          ! Save these values for interpolation.
-          m = m+1
-          mindist2 = dist2          
-          smin = s
-          imin = i
-          kmin = k
-        END DO
-      END DO
+          dist = sgn * dist2 + phim
+          ! Ok, close but no honey. 
+          IF( ABS(dist) > ABS(mindist) ) CYCLE
+
+          mindist = dist
+        ELSE
+          ! Here we can compare the squares saving one expensive operation.
+          IF(dist2 > mindist2 ) CYCLE
+
+          ! Dir is an indicator one which side of the line segment the point lies. 
+          ! We have ordered the edges soe that "dir1" should be consistent.
+          dir1 = (x1 - x0) * (yp - y0) - (y1 - y0) * (xp - x0)
         
+          ! If the control point and found point lie on the same side they are inside. 
+          IF(dir1 < 0.0_dp ) THEN
+            sgn = -1
+          ELSE
+            sgn = 1
+          END IF
+        END IF
+        
+          
+        ! Save these values for interpolation.
+        m = m+1
+        mindist2 = dist2          
+        smin = s
+        imin = i
+      END DO
+
       IF(nonzero) THEN
         phip = mindist        
       ELSE
         phip = sgn * SQRT(mindist2)
       END IF
-
+        
       ! We can carry the fields with the zero levelset. This is like pure advection.
       ! We should make this less laborious my fecthing the pointers first...
-      IF( nVar > 0 .AND. CutPerm(node) == 0 ) THEN                
+      IF( CutPerm(node) == 0 ) THEN                
         i0 = IsoMesh % Elements(imin) % NodeIndexes(1)
         i1 = IsoMesh % Elements(imin) % NodeIndexes(2)
 
-        DO i = 1,nVar
-          IF(i==iAvoid) CYCLE
-          str = ListGetString( Solver % Values,'isoline variable '//I2S(i), Found )
+        DO iVar = 1,100    
+          str = ListGetString( Solver % Values,'isoline variable '//I2S(iVar), Found )
+          IF(.NOT. Found ) EXIT    
 
-          IF(i==iSolver) THEN
-            j = OrigMeshPerm(node)
-            dofs = Solver % Variable % Dofs
-            pValues => OrigMeshValues
-          ELSE
-            Var2D => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE. )
-            j = Var2D % Perm(node)
-            dofs = Var2D % dofs
-            pValues => Var2D % Values
-          END IF
-            
-          IF(j==0) THEN
-            nCol = nCol+2*dofs
-            PRINT *,'cycling:',TRIM(str)
-            STOP
-            CYCLE
-          END IF
-            
+          Var2D => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE. )
+          IF(Var2D % Perm(node) == 0) CYCLE
+                    
+          Var1D => VariableGet( IsoMesh % Variables, str, ThisOnly = .TRUE. )
+
           ! Interpolate from the closest distance.
           ! This is done similarly as the interpolation of coordinates. 
-          DO k2 = 1,dofs          
-            pValues(dofs*(j-1)+k2) = &
-                (1-smin) * PolylineData(kmin) % Vals(imin,nCol) + &
-                smin * PolylineData(kmin) % Vals(imin,nCol+1)             
-            nCol = nCol+2
-          END DO
+          Var2D % Values(Var2D % Perm(node)) = &
+              (1-smin) * Var1D % Values(i0) + smin * Var1D % Values(i1)
         END DO
       END IF
       
       !PRINT *,'phip:',phip, m      
       
-      END FUNCTION SignedDistance
+    END FUNCTION SignedDistance
     !------------------------------------------------------------------------------
 
   END SUBROUTINE LevelSetUpdate

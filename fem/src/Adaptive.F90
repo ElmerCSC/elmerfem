@@ -46,7 +46,7 @@ MODULE Adaptive
 
   USE GeneralUtils
   USE SolverUtils, ONLY : VectorValuesRange
-  USE ElementUtils, ONLY : ElementArea
+  USE ElementUtils, ONLY : ElementArea, mGetElementDOFs
   USE ModelDescription
   USE MeshUtils, ONLY : AllocateMesh, AllocatePDefinitions, FindMeshEdges, &
       LoadMesh2, MeshStabParams, PrepareMesh, ReleaseMesh, &
@@ -58,7 +58,7 @@ MODULE Adaptive
   USE DefUtils, ONLY: GetMaterial, GetReal, GetBodyForce, GetSolverParams, GetLogical, &
       GetNofActive, GetActiveElement, GetElementNofBDOFs, GetBoundaryElement, &
       ActiveBoundaryElement, GetNofBoundaryElements, GetElementFamily, GetElementNodes
-  USE ElementDescription, ONLY: GetEdgeMap, mGetElementDOFs
+  USE ElementDescription, ONLY: GetEdgeMap
   USE MainUtils, ONLY : AddEquationSolution
   
   IMPLICIT NONE
@@ -930,7 +930,6 @@ CONTAINS
     hLimitScale = ListGetConstReal( Params,'Adaptive H Limit Scale', Found )
     IF ( .NOT.Found ) hLimitScale = 1.0d0
 
-    
     DO i=1,RefMesh % NumberOfNodes      
       IF ( NodalError(i) < 100*AEPS ) CYCLE 
 
@@ -949,89 +948,6 @@ CONTAINS
 
       HValue(i) = Lambda * hLimitScale
     END DO
-
-    IF(.NOT. ListCheckPresent(CurrentModel % Solver % Values,'Adaptive Element Count') ) RETURN
-
-    
-    BLOCK
-      TYPE(Element_t), POINTER :: Element
-      TYPE(Nodes_t) :: Nodes
-      REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:)
-      REAL(KIND=dp) :: h, Weight, detJ, CountInteg, CountInteg0=-1.0, &
-          CountDesired, Cfix, HScale, Vol
-      TYPE(GaussIntegrationPoints_t) :: IP
-      INTEGER :: dim,i,t
-      LOGICAL :: stat
-      INTEGER :: TimesVisited = 0
-
-      SAVE CountInteg0, Cfix, Nodes, TimesVisited
-      
-      n = RefMesh % MaxElementNodes      
-      IF ( .NOT. ASSOCIATED( Nodes % x ) ) THEN
-        ALLOCATE( Nodes % x(n), Nodes % y(n),Nodes % z(n), Basis(n) )
-      END IF
-      
-      dim = RefMesh % MeshDim
-      TimesVisited = TimesVisited + 1
-
-      IF(TimesVisited == 1) THEN
-        ! These fits are experimental ones in simple geometry using MMG2D and MMG3D
-        ! rounded to the closest integer. 
-        IF( dim == 2 ) THEN
-          Cfix = 2.0_dp
-        ELSE
-          Cfix = 12.0_dp
-        END IF
-      ELSE
-        Cfix = Cfix * RefMesh % NumberOfBulkElements / CountInteg0
-      END IF
-              
-      CountInteg = 0.0_dp
-      Vol = 0.0_dp
-      
-      DO i=1,RefMesh % NumberOfBulkElements
-        Element => RefMesh % Elements(i)
-        
-        n = Element % TYPE % NumberOfNodes
-        Nodes % x(1:n) = RefMesh % Nodes % x(Element % NodeIndexes(1:n))
-        Nodes % y(1:n) = RefMesh % Nodes % y(Element % NodeIndexes(1:n))
-        Nodes % z(1:n) = RefMesh % Nodes % z(Element % NodeIndexes(1:n))
-        
-        IP = GaussPoints( Element )
-        DO t=1,IP % n
-          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-              IP % W(t), detJ, Basis )          
-          Weight = IP % s(t) * DetJ
-          
-          h = SUM(Basis(1:n)*HValue(Element % NodeIndexes(1:n)))          
-
-          CountInteg = CountInteg + Weight * h**(-dim)
-          Vol = Vol + Weight
-        END DO
-      END DO
-
-      CountInteg = Cfix * CountInteg
-      
-      CountDesired = ListGetFun(CurrentModel % Solver % Values,'Adaptive Element Count',&
-          1.0_dp*TimesVisited,Found)      
-      IF( Found .AND. CountDesired > 0.0_dp ) THEN
-        Hscale = (CountInteg/CountDesired)**(1.0_dp/dim)
-        HValue = Hscale * Hvalue
-        CountInteg0 = CountDesired
-      ELSE
-        Hscale = 1.0_dp
-        CountInteg0 = CountInteg
-      END IF
-      
-      IF( InfoActive(10)) THEN
-        PRINT *,'AdaptiveCount: ',CountInteg0, CountInteg, RefMesh % NumberOfBulkElements, &
-            Cfix, Hscale, Vol
-      END IF
-        
-    END BLOCK
-
-
-    
   END SUBROUTINE ComputeDesiredHvalue
 
 
@@ -1272,9 +1188,10 @@ CONTAINS
       CALL VectorValuesRange(Hvalue,SIZE(Hvalue),'Ave Test')             
     END IF
 #endif
-
+    
     CALL ComputeDesiredHvalue( RefMesh, ErrorLimit, Hvalue, NodalError, &
         hConvergence, minH, maxH, MaxChange, Coarsening ) 
+
     CALL ParallelAverageHvalue( RefMesh, Hvalue ) 
     
     Var => VariableGet( RefMesh % Variables, 'Hvalue', ThisOnly=.TRUE. )      

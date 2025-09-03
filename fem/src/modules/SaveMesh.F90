@@ -43,7 +43,9 @@ SUBROUTINE SaveMesh( Model,Solver,dt,TransientSimulation )
 
   USE DefUtils
   USE MeshUtils
+#ifdef USE_ISO_C_BINDINGS
   USE LoadMod
+#endif
 
   IMPLICIT NONE
 

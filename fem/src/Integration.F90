@@ -1760,7 +1760,7 @@ CONTAINS
 
       IF ( n < 1 .OR. n > MAXN ) THEN
         p % n = 0
-        WRITE( Message,'(A,I0,A,I0)') 'Invalid number of points (max=',MAXN,'): ', n
+        WRITE( Message, * ) 'Invalid number of points: ', n
         CALL Fatal( 'GaussPointsQuad', Message )
       END IF
 

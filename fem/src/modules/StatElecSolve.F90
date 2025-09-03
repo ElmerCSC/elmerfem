@@ -804,10 +804,9 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
        DO t= 1, Mesh % NumberOfBoundaryElements
 
          CurrentElement => GetBoundaryElement(t)
-         BC => GetBC(CurrentElement)
-         IF ( .NOT.ASSOCIATED( BC ) ) CYCLE          
-
          IF ( .NOT. ActiveBoundaryElement(CurrentElement) ) CYCLE 
+         BC => GetBC(CurrentElement)
+         IF ( .NOT.ASSOCIATED( BC ) ) CYCLE 
 
          n = GetElementNOFNodes(CurrentElement)
          ntot = GetElementNOFDOFs(CurrentElement)

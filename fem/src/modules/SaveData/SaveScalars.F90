@@ -1142,9 +1142,6 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     END IF
 
 
-    GotEigen = .FALSE.
-    GotEdge  = .FALSE.
-
     Var => Model % Variables
     DO WHILE( ASSOCIATED( Var ) )
 
