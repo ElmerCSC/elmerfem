@@ -118,11 +118,7 @@ RECURSIVE SUBROUTINE ComputeDevStress( Model,Solver,dt,TransientSimulation )
        BoundaryTangent1(:,:), BoundaryTangent2(:,:)
   CHARACTER(LEN=MAX_NAME_LEN) :: FlowSolverName, StressSolverName, TempName, DensityName, VMisesName
   
-#ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: at, at0
-#else
-  REAL(KIND=dp) :: at, at0, CPUTime, RealTime
-#endif
 !------------------------------------------------------------------------------
   SAVE NumberOfBoundaryNodes, BoundaryReorder, BoundaryNormals, &
        BoundaryTangent1, BoundaryTangent2

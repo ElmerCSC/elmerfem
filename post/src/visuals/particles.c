@@ -257,6 +257,8 @@ int vis_particle( geometry_t *geometry, element_model_t *model, particle_t *part
 
     float pnt[3], vec[3];
 
+    void gra_set_material(), gra_set_colormap(), gra_sphere_quality(), gra_arrow(), gra_sphere();
+
     if ( !GlobalOptions.StereoMode )
       if ( particles->Material->Diffuse[3]  < 1.0 )
       {

@@ -1,0 +1,26 @@
+Metadata for SaveScalars file: 1962/dat/1962.dat
+Elmer version: 9.0
+Elmer revision: d5c22a8e5
+Elmer compilation date: 2025-05-17
+Solver input file: sif/1962.sif
+File started at: 2025/05/17 12:58:25
+ 
+Variables in columns of matrix: 
+   1: res: eddy current power
+   2: res: electromagnetic field energy
+   3: res: harmonic loss linear
+   4: res: harmonic loss quadratic
+   5: res: joule loss
+   6: res: time
+   7: res: i_testsource re
+   8: res: i_testsource im
+   9: res: v_testsource re
+  10: res: v_testsource im
+  11: res: i_component(1) re
+  12: res: i_component(1) im
+  13: res: v_component(1) re
+  14: res: v_component(1) im
+  15: res: r_component(1)
+  16: res: p_dc_component(1)
+  17: component 1: res: flux linkage re
+  18: component 1: res: flux linkage im

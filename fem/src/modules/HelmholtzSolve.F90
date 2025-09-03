@@ -371,13 +371,14 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
 
      DO t=1, Solver % Mesh % NumberOfBoundaryElements
         Element => GetBoundaryElement(t)
-        IF ( .NOT.ActiveBoundaryElement() ) CYCLE
-
-        n  = GetElementNOFNodes()
-        nd = GetElementNOFDOFs()
 
         BC => GetBC()
         IF ( ASSOCIATED( BC ) ) THEN
+          IF ( .NOT.ActiveBoundaryElement() ) CYCLE
+
+          n  = GetElementNOFNodes()
+          nd = GetElementNOFDOFs()
+          
           Load(1,1:n) = GetReal( BC, 'Wave Flux 1', Found )
           Load(2,1:n) = GetReal( BC, 'Wave Flux 2', Found )
           Impedance(1,1:n) = GetReal( BC, 'Wave Impedance 1', Found )

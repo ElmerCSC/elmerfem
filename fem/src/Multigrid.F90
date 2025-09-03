@@ -49,8 +49,8 @@ MODULE Multigrid
    USE DirectSolve
    USE Smoothers
    USE ClusteringMethods
-   USE ElementUtils, ONLY : FreeMatrix, mGetElementDofs
-   USE ElementDescription, ONLY : ElementBasisDegree
+   USE ElementUtils, ONLY : FreeMatrix
+   USE ElementDescription, ONLY : ElementBasisDegree, mGetElementDofs
    USE MeshUtils, ONLY : LoadMesh2, UpdateSolverMesh, SetCurrentmesh
    
    IMPLICIT NONE

@@ -186,6 +186,7 @@ int elm_6node_triangle_point_inside
          double px, double py, double pz, double *u,double *v,double *w
    )
 {
+    int elm_3node_triangle_point_inside();
     return elm_3node_triangle_point_inside( nx,ny,nz,px,py,pz,u,v,w );
 }
 
@@ -318,6 +319,8 @@ int elm_6node_triangle_isoline
          { 0,3 }, { 3,1 }, { 1,4 }, { 4,2 }, { 2,5 }, { 5,0 }
       };
 
+    int elm_3node_triangle_isoline();
+
     for( i=0; i<6; i++ ) above += F[i]>K;
     if ( above == 0 || above == 6 ) return 0;
 
@@ -366,6 +369,7 @@ int elm_6node_triangle_initialize()
      static char *Name = "ELM_6NODE_TRIANGLE";
 
      element_type_t ElementDef;
+     int elm_add_element_type();
 
      elm_6node_triangle_shape_functions();
 

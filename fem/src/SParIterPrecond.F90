@@ -260,7 +260,7 @@ CONTAINS
           ! Check for small pivot
 
           IF ( ABS(Matrix % ILUValues( Matrix % Diag( Matrix % Cols(k) ))) &
-               .LT. tl ) THEN
+               < tl ) THEN
              PRINT *, 'Small pivot : ', &
                   Matrix % ILUValues( Matrix % Diag( Matrix % Cols(k) ))
           END IF
@@ -277,7 +277,7 @@ CONTAINS
              DO l = Matrix % Rows(Matrix % Cols(k)), &
                   Matrix % Rows(Matrix % Cols(k) + 1) - 1
 
-                IF (Matrix % Cols(l) .EQ. Matrix % Cols(j) ) THEN
+                IF (Matrix % Cols(l) == Matrix % Cols(j) ) THEN
                    Matrix % ILUValues(j) = Matrix % ILUValues(j) - &
                         Matrix % ILUValues(k) * Matrix % ILUValues(l)
                    EXIT

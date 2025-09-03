@@ -4492,11 +4492,11 @@ omstart:
 	  printf("Reading %d elements with tag %d of type %d\n", numElements, tagEntity, elementtype);
 	  if( tagsize > 0 ) {
 	    if( tagmap[dimEntity][tagEntity] ) {
-	      printf("Mapping mesh tag %d to physical tag %d in %dDIM\n",tagEntity,tagmap[dimEntity][tagEntity],dimEntity);	    
+	      printf("  Mapping mesh tag %d to physical tag %d in %dDIM\n",tagEntity,tagmap[dimEntity][tagEntity],dimEntity);	    
 	      tagEntity = tagmap[dimEntity][tagEntity];
 	    }
 	    else {
-	      printf("Mesh tag %d is not associated to any physical tag!\n",tagEntity);
+	      printf("   Mesh tag %d is not associated to any physical tag!\n",tagEntity);
 	    }
 	  }
 	}
@@ -4749,7 +4749,7 @@ omstart:
       GETLINE;
       if(gmshbinary){
         int one;
-        fread(&one, sizeof(int), 1, in);
+        frcount = fread(&one, sizeof(int), 1, in);
         if(one != 1) {
           printf("Gmsh binary file needs to swap bytes, not implemented in ElmerGrid. Exiting!\n");
           bigerror("Gmsh binary file needs to swap bytes, not implemented in ElmerGrid. Exiting!");
@@ -4964,7 +4964,7 @@ omstart:
               if(frcount != 1)
                 printf("9 fread error, frcount = %d, not equal to %d\n",frcount,1);
               if(nophys > 0) {
-                fread(&phystag, sizeof(int), nophys, in);
+                frcount = fread(&phystag, sizeof(int), nophys, in);
                 if(frcount != (int) nophys)
                   printf("9 fread error, frcount = %d, not equal to %lu\n",
                          frcount,(unsigned long) nophys);
@@ -5176,7 +5176,7 @@ omstart:
         if( allocated ) {
            if( tagsize > 0 ) {
             if( tagmap[dimEntity][tagEntity] ) {
-              printf("Mapping mesh tag %d to physical tag %d in %dDIM\n",
+              printf("   Mapping mesh tag %d to physical tag %d in %dDIM\n",
                      tagEntity,tagmap[dimEntity][tagEntity],dimEntity);
               tagEntity = tagmap[dimEntity][tagEntity] + phystagoffset[dimEntity];
             }
@@ -5417,22 +5417,42 @@ omstart:
   }
 
   if(maxindx > noknots) {
+    int cnt1,cnt2,cnt3,cnt4;
     printf("Renumbering the Gmsh nodes from %d to %d\n",maxindx,noknots);
 
+    cnt1 = cnt2 = cnt3 = cnt4 = 0;
+
+    for(i=1;i<=maxindx;i++)
+      if(revindx[i]) cnt1++;
+    printf("   Number of tagged nodes in reverse index table (out of %d): %d\n",maxindx,cnt1);
+    
+    
     for(i=1; i <= noelements; i++) {
       elementtype = data->elementtypes[i];
       elemnodes = elementtype % 100;
 
       for(j=0; j<elemnodes; j++) {
         k = data->topology[i][j];
-        if(k <= 0 || k > maxindx)
-          printf("index out of bounds %d\n",k);
-        else if(revindx[k] <= 0)
-          printf("unknown node %d %d in element %d\n",k,revindx[k],i);
-        else
+        if(k <= 0 || k > maxindx) {
+	  if(cnt2<10) printf("   index out of bounds %d\n",k);
+	  if(cnt2==10) printf("  ...\n");
+	  cnt2++;
+	}
+	else if(revindx[k] <= 0) {	  
+          if(cnt3<10) printf("   node %d (local node %d in element %d of type %d) not found in revindx!\n",k,j+1,i,elementtype);
+	  if(cnt3==10) printf("  ...\n");
+	  cnt3++;
+	}
+        else {
+	  cnt4++;
           data->topology[i][j] = revindx[k];
+	}
       }
     }
+    if(cnt2) printf("   Number of node indexes out of bounds [0 %d]: %d\n",maxindx,cnt2);
+    if(cnt3) printf("   Number of node indexes not found in inverse index table: %d\n",cnt3);
+    if(cnt4) printf("   Number of node indexes found in inverse index table: %d\n",cnt4);
+
     free_Ivector(revindx,1,maxindx);
   }
 
@@ -5449,11 +5469,11 @@ omstart:
 }
 
 int LoadGmshInput(struct FemType *data,struct BoundaryType *bound,
-		  char *prefix,int keeporphans,int info)
+		  char *prefix,int keeporphans,int dim,int info)
 {
   FILE *in;
   char line[MAXLINESIZE],filename[MAXFILESIZE];
-  int errnum,usetaggeom;
+  int errnum,usetaggeom,i;
 
   /* keeprophans - Should we keep lower order elements not associated to any 
      higher order entity? ElmerGUI certainly does not like it. */
@@ -5532,6 +5552,11 @@ int LoadGmshInput(struct FemType *data,struct BoundaryType *bound,
     else
       printf("Using physical numbering of entities\n");
   }
+
+  if(dim < 3) 
+    for(i=1;i<=data->noknots;i++) data->z[i] = 0.0;
+  if(dim < 2) 
+    for(i=1;i<=data->noknots;i++) data->y[i] = 0.0;
   
   return(errnum);
 }

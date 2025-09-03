@@ -123,6 +123,8 @@ static int elm_20node_brick_triangulate( geometry_t *geom,element_t *brick )
 {
     element_t quad;
     int i,j;
+    int geo_add_edge();
+    int elm_4node_quad_triangulate();
 
     if ( GlobalOptions.VolumeSides )
     {
@@ -435,6 +437,7 @@ int elm_20node_brick_point_inside
         double px, double py, double pz, double *u,double *v,double *w
    )
 {
+    int elm_8node_brick_point_inside();
     return elm_8node_brick_point_inside( nx,ny,nz,px,py,pz,u,v,w );
 }
 
@@ -464,6 +467,7 @@ static int elm_20node_brick_isoline
     double f[8],c[8],x[8],y[8],z[8];
 
     int i, j, k, n=0, above=0;
+    int elm_8node_quad_isoline();
 
     for( i=0; i<20; i++ ) above += F[i]>K;
     if ( above == 0 || above == 20 ) return 0;
@@ -518,6 +522,7 @@ int elm_20node_brick_isosurface
 {
     double f[8],c[8],x[8],y[8],z[8],u[8],v[8],w[8];
     int i,j,k, n=0, above = 0;
+    int elm_8node_brick_isosurface();
 
     for( i=0; i<20; i++ ) above += F[i]>K;
     if ( above == 0 || above == 20 ) return 0;
@@ -548,6 +553,7 @@ int elm_20node_brick_initialize()
      static char *Name = "ELM_20NODE_BRICK";
 
      element_type_t ElementDef;
+     int elm_add_element_type();
 
      elm_20node_brick_shape_functions();
 

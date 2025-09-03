@@ -167,6 +167,7 @@ int elm_initialize_element_types()
 
 void elm_force_load(int stat)
 {
+    void elm_divergence(), elm_gradient(), elm_rotor_3D();
     if ( stat ) {
       elm_divergence();
       elm_gradient();

@@ -3326,6 +3326,7 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
     bound[bndr].parent2 = vparent2;
     bound[bndr].types = vtypes;
     bound[bndr].material = vmaterial;
+    bound[bndr].normal = vnormal;
     if(bound[bndr].ediscont) 
       bound[bndr].discont = vdiscont;
   }
@@ -3531,6 +3532,7 @@ int MirrorMeshes(struct FemType *data,struct BoundaryType *bound,
     bound[bndr].parent2 = vparent2;
     bound[bndr].types = vtypes;
     bound[bndr].material = vmaterial;
+    bound[bndr].normal = vnormal;
     if(bound[bndr].ediscont) 
       bound[bndr].discont = vdiscont;
   }
@@ -3942,11 +3944,16 @@ int RemoveUnusedNodes(struct FemType *data,int info)
   }
   
   activeknots = 0;
+  j = 0;
   for(i=1;i<=noknots;i++) {
     if(indx[i]) {
       activeknots += 1;
       indx[i] = activeknots;
-    }  
+    }
+    else  {
+      j++;
+      if(j<=5) printf("Unused node index in mesh: %d\n",i);
+    }
   }
   
   if( noknots == activeknots) {
@@ -5907,6 +5914,8 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
 	bound[j].material[i] = 0;
 	bound[j].normal[i] = 1;
       }
+      bound[j].echain = FALSE;
+      bound[j].ediscont = FALSE;
     }
   }
   if(info) printf("Allocated for %d new BC lists\n",j);
@@ -10189,12 +10198,12 @@ int BoundingBox(struct FemType *data,int nomesh,int nomeshes,int info)
     printf("Bounding box of all nodes in mesh:\n");
   }
 
-  printf("X:[%g,%g] ",xmin,xmax);
-  printf("Y:[%g,%g] ",ymin,ymax);
-  printf("Z:[%g,%g]\n",zmin,zmax);
+  printf("X:[%lg,%lg] ",xmin,xmax);
+  printf("Y:[%lg,%lg] ",ymin,ymax);
+  printf("Z:[%lg,%lg]\n",zmin,zmax);
 
   if(sidemax > 49.9)  {
-    printf("\nNotice: the longest bounding box side length of [%g] is greater than 50.\n",sidemax);
+    printf("\nNotice: the longest bounding box side length of [%lg] is greater than 50.\n",sidemax);
     printf("ElmerGUI includes a library of material properties, defined in SI units.  If using ElmerGUI, \n");
     printf("then the geometry is expected to have meters as length.  Geometry that exceeds 50 meters \n");
     printf("in length or width or height may not be intended.  Many Geometry generators assume \n");

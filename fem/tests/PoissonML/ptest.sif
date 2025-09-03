@@ -10,16 +10,10 @@ Simulation
   Simulation Type = Steady
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
-   Post File   = "ptest.ep"
 ! Output File = "ptest.dat"
 End
 
 Body 1
-  Equation = 1
-  Body Force = 1
-End
-
-Body 2
   Equation = 1
   Body Force = 1
 End
@@ -31,11 +25,9 @@ Solver 1
   Equation = "Poisson"
 
   Variable = "Potential"
-
   Procedure = "PoissonML" "PoissonSolver"
 
   Element = "p:9"
-
   No Matrix = True
 
   Linear System Solver = "Iterative"
@@ -43,7 +35,7 @@ Solver 1
   Linear System Max Iterations = 1000
   Linear System Convergence Tolerance = 1e-8
   Linear System Timing = True
-  Linear System Residual Output = 10
+  Linear System Residual Output = 1
   Steady State Convergence Tolerance = 1e-09
 End
 

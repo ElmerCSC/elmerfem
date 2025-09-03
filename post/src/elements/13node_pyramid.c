@@ -81,6 +81,11 @@ static int elm_13node_pyramid_triangulate( geometry_t *geom,element_t *pyramid )
                                                  { 1,2,4,6,11,10, 0, 0 },
                                                  { 2,3,4,7,12,11, 0, 0 },
                                                  { 3,0,4,8, 9,12, 0, 0 } };
+
+     int elm_8node_quad_triangulate();
+     int geo_add_edge();
+     int elm_6node_triangle_triangulate();
+
     if ( GlobalOptions.VolumeSides )
     {
        int topo[8];
@@ -402,6 +407,8 @@ int elm_13node_pyramid_initialize()
      static char *Name = "ELM_13NODE_PYRAMID";
 
      element_type_t ElementDef;
+
+     int elm_add_element_type();
 
      elm_13node_pyramid_shape_functions();
 

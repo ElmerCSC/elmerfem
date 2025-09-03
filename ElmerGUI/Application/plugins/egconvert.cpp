@@ -5449,11 +5449,11 @@ omstart:
 }
 
 int LoadGmshInput(struct FemType *data,struct BoundaryType *bound,
-		  char *prefix,int keeporphans,int info)
+		  char *prefix,int keeporphans,int dim,int info)
 {
   FILE *in;
   char line[MAXLINESIZE],filename[MAXFILESIZE];
-  int errnum,usetaggeom;
+  int errnum,usetaggeom,i;
 
   /* keeprophans - Should we keep lower order elements not associated to any 
      higher order entity? ElmerGUI certainly does not like it. */
@@ -5532,6 +5532,11 @@ int LoadGmshInput(struct FemType *data,struct BoundaryType *bound,
     else
       printf("Using physical numbering of entities\n");
   }
+
+  if(dim < 3) 
+    for(i=1;i<=data->noknots;i++) data->z[i] = 0.0;
+  if(dim < 2) 
+    for(i=1;i<=data->noknots;i++) data->y[i] = 0.0;
   
   return(errnum);
 }

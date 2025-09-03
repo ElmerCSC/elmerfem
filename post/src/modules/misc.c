@@ -63,7 +63,7 @@
 #include <tcl.h>
 #include <tk.h>
 
-static int LineSmooth(ClientData cl,Tcl_Interp *interp,int argc,char **argv)
+static int *LineSmooth(ClientData cl,Tcl_Interp *interp,int argc,char **argv)
 {
    if ( argc>1 )
    {
@@ -95,8 +95,8 @@ static int GraphicsClear( ClientData cl,Tcl_Interp *interp,int argc,char **argv 
 
 int Misc_Init( Tcl_Interp *interp )
 {
-   Tcl_CreateCommand( interp,"linesmooth",LineSmooth,(ClientData)NULL,(Tcl_CmdDeleteProc *)NULL);
-   Tcl_CreateCommand( interp,"gclear",GraphicsClear,(ClientData)NULL,(Tcl_CmdDeleteProc *)NULL);
+   Tcl_CreateCommand( interp,"linesmooth",(void *)LineSmooth,(ClientData)NULL,(Tcl_CmdDeleteProc *)NULL);
+   Tcl_CreateCommand( interp,"gclear",(void *)GraphicsClear,(ClientData)NULL,(Tcl_CmdDeleteProc *)NULL);
 
    return TCL_OK;
 }

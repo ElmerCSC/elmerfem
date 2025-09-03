@@ -156,6 +156,7 @@ static int vis_get_isolines
 static void vis_draw_line( line_t *line, int quick, double width )
 {
     float x[2][3],c0,c1;
+    void gra_line(), gra_sphere();
 
     x[0][0] = line->x[0]; 
     x[0][1] = line->y[0]; 
@@ -212,6 +213,8 @@ static int vis_contour_lines( geometry_t *geometry, element_model_t *model, cont
     static line_t Lines[1000];
 
     element_t *elements = model->Elements;
+
+    void gra_set_colormap(), gra_sphere_quality(), gra_set_material();
 
     if ( !ContourData || !ContourData->f ) return TRUE;
     

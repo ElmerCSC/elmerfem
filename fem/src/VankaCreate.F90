@@ -59,7 +59,7 @@
       SaveValues => A % Values
       A % Values => A % ILUValues
 
-      IF (ParEnv % Pes <= 1 ) THEN
+      IF (ParEnv % Pes <= 1 .OR. A % ParallelInfo % NothingShared ) THEN
         IF( ASSOCIATED( A % ILUCols ) ) THEN
           pCols => A % Cols
           pRows => A % Rows
@@ -150,7 +150,7 @@
        TotValues = A % Values
      END IF
 
-     IF ( ParEnv  % PEs>1 ) THEN
+     IF ( ParEnv  % PEs>1 .AND. .NOT. A % ParallelInfo % NothingShared ) THEN
        ALLOCATE(cnt(0:ParEnv % PEs))
        cnt = 0
        DO i=1,A % NumberOfRows
@@ -1062,10 +1062,16 @@
 
 
 !-------------------------------------------------------------------------------
-!> Assumes another solver being used for the preconditioning.
+!> This assumes that another solver is used for the preconditioning.
 !> Given a residual "v" this solves Au=v (usually in an approximate manner),
 !> where A is the matrix of the solver specified by using the keyword
-!> "Prec Solvers".  
+!> "Prec Solvers". The preconditioning solver must be able to read as input
+!> the residual variable (whose name is here specified with the keyword
+!> "Preconditioning Residual") and produce the correction variable (whose name 
+!> is here specified as the value of the keyword "Preconditioning Update").
+!> If the discretizations are incompatible, a transformation of the equations
+!> must also be made outside this subroutine so that the equation "Au=v" can
+!> be thought.  
 !-------------------------------------------------------------------------------
   SUBROUTINE SlavePrec(u,v,ipar)
 !-------------------------------------------------------------------------------
@@ -1086,15 +1092,15 @@
     CHARACTER(MAX_NAME_LEN) :: str   
     INTEGER :: n
 !-------------------------------------------------------------------------------
-
+    
     Solver => CurrentModel % Solver
     Params => Solver % Values
     Mesh => Solver % Mesh 
     Amat => Solver % Matrix
     
-    str = ListGetString( Params,'Slave Prec Residual',UnfoundFatal=.TRUE.)
-    pVar => VariableGet( Mesh % Variables, str )
-    IF(.NOT. ASSOCIATED(pVar)) CALL Fatal('SlavePrec','Could not find: '//TRIM(str))
+    str = ListGetString( Params,'Preconditioning Residual',UnfoundFatal=.TRUE.)
+    pVar => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE., UnfoundFatal=.TRUE. )
+
     n = SIZE(pVar % Values)
     b => pVar % Values
 
@@ -1111,9 +1117,9 @@
     
     CALL DefaultSlaveSolvers( Solver, 'Prec Solvers' )
 
-    str = ListGetString( Params,'Slave Prec Update',UnfoundFatal=.TRUE.)
-    pVar => VariableGet( Mesh % Variables, str )
-    IF(.NOT. ASSOCIATED(pVar)) CALL Fatal('SlavePrec','Could not find: '//TRIM(str))
+    str = ListGetString( Params,'Preconditioning Update',UnfoundFatal=.TRUE.)
+    pVar => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE., UnfoundFatal=.TRUE. )
+
     n = SIZE(pVar % Values)
     x => pVar % Values
 
@@ -1180,24 +1186,25 @@
     TYPE(Matrix_t), POINTER :: Amat
     REAL(KIND=dp), POINTER :: res(:), dx(:), r(:), z(:)
     REAL(KIND=dp) :: rnorm
-    LOGICAL :: Found, ScaleRHS
+    LOGICAL :: Found, ScaleRHS, AdditivePrec, Smoothing, PostSmoothing
     CHARACTER(MAX_NAME_LEN) :: str   
-    INTEGER :: n
+    INTEGER :: n, DOFs
 !-------------------------------------------------------------------------------
 
     Solver => CurrentModel % Solver
     Params => Solver % Values
     Mesh => Solver % Mesh
     Amat => Solver % Matrix
+    n = SIZE(Solver % Variable % Values)
+    DOFs = Solver % Variable % dofs
+    
+    str = ListGetString( Params,'Preconditioning Residual', UnfoundFatal=.TRUE.)
+    pVar => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE., UnfoundFatal=.TRUE. )
 
-    str = ListGetString( Params,'Slave Prec Residual',UnfoundFatal=.TRUE.)
-    pVar => VariableGet( Mesh % Variables, str )
-    IF(.NOT. ASSOCIATED(pVar)) CALL Fatal('SlavePrecComplex','Could not find: '//TRIM(str))
-    n = SIZE(pVar % Values)   
-    IF(pVar % Dofs /= Solver % Variable % dofs ) THEN
+    IF(pVar % Dofs /= dofs ) THEN
       CALL Fatal('SlavePrecComplex','Residual should have the same count of DOFs as primary variable!')
     END IF
-    IF(n /= SIZE(Solver % Variable % Values) ) THEN
+    IF(n /= SIZE(pVar % Values) ) THEN
       CALL Fatal('SlavePrecComplex','Residual should have same size as primary variable!')
     END IF
     res => pVar % Values
@@ -1205,6 +1212,18 @@
     res(1:n:2) = REAL(v(1:n/2))
     res(2:n:2) = AIMAG(v(1:n/2))
 
+    str = ListGetString( Params,'Preconditioning Update', UnfoundFatal=.TRUE.)
+    pVar => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE., UnfoundFatal=.TRUE. )    
+
+    IF(pVar % Dofs /= dofs ) THEN
+      CALL Fatal('SlavePrecComplex','Update should have the same count of DOFs as primary variable!')
+    END IF
+    IF(n /= SIZE(pVar % Values) ) THEN
+      CALL Fatal('SlavePrecComplex','Update should have same size as primary variable!')
+    END IF
+    dx => pVar % Values
+
+    
     ! Check whether the residual corresponds to a scaled linear system
     ScaleRHS = ListGetLogical(Params, 'Linear System Scaling', Found, DefValue = .TRUE.)
     IF (ScaleRHS) THEN
@@ -1215,28 +1234,23 @@
     END IF
     
     CALL DefaultSlaveSolvers( Solver, 'Prec Solvers' )
-    
-    str = ListGetString( Params,'Slave Prec Update',UnfoundFatal=.TRUE.)
-    pVar => VariableGet( Mesh % Variables, str )    
-    IF(.NOT. ASSOCIATED(pVar)) CALL Fatal('SlavePrec','Could not find: '//TRIM(str))
-    IF(pVar % Dofs /= Solver % Variable % dofs ) THEN
-      CALL Fatal('SlavePrecComplex','Update should have the same count of DOFs as primary variable!')
-    END IF
-    n = SIZE(pVar % Values)
-    IF(n /= SIZE(Solver % Variable % Values) ) THEN
-      CALL Fatal('SlavePrecComplex','Update should have same size as primary variable!')
-    END IF
-
-    dx => pVar % Values
-
+ 
     IF (ScaleRHS) THEN
       !
       ! Transform the search direction so that it corresponds to the scaled linear system
       !
       CALL ScaleLinearSystemVectors(AMat, res, n, dx)
     END IF
-    
-    IF( ListCheckPresent( Params,'MG Smoother') ) THEN      
+
+    AdditivePrec = ListGetLogical(Params, 'Additive Preconditioning', Found)
+    IF (AdditivePrec) THEN
+      Smoothing = ListGetLogical(Params, 'Additive Pre-Smoothing', Found)
+      PostSmoothing = ListCheckPresent(Params, 'MG Smoother')
+    ELSE
+      Smoothing = ListCheckPresent(Params, 'MG Smoother')
+    END IF
+
+    IF (Smoothing) THEN
       ALLOCATE(r(n))
       
       CALL ExperimentalStuffZ()
@@ -1245,14 +1259,13 @@
       ! is returned via r but its initial value does not change the result 
       r(:) = 0.0_dp
       RNorm = MGSmooth( Solver, Amat, Mesh, dx, res, r, &
-          1, pVar % dofs, PreSmooth = .FALSE.)
+          1, dofs, PreSmooth = AdditivePrec)
 
       DEALLOCATE(r)
     END IF
 
-    IF (ListGetLogical(Params, 'Additive Preconditioning', Found)) THEN
+    IF (AdditivePrec) THEN
       ALLOCATE(r(n), z(n))
-!      CALL ListAddLogical(Params, 'Gradient Matrix', .TRUE.)
       
       CALL MatrixVectorMultiply(Amat, dx, r)
       res(1:n) = res(1:n) - r(1:n)
@@ -1271,15 +1284,14 @@
 
       dx(1:n) = dx(1:n) + z(1:n)
 
-      IF (ListCheckPresent(Params, 'MG Smoother')) THEN
+      IF (PostSmoothing) THEN
         res(1:n:2) = REAL(v(1:n/2))
         res(2:n:2) = AIMAG(v(1:n/2))
         r(:) = 0.0_dp
         RNorm = MGSmooth(Solver, Amat, Mesh, dx, res, r, &
-            1, pVar % dofs, PreSmooth = .FALSE.)
+            1, dofs, PreSmooth = .FALSE.)
       END IF
       
-!      CALL ListAddLogical(Params, 'Gradient Matrix', .FALSE.)
       DEALLOCATE(r, z)
     END IF
     
@@ -1310,7 +1322,7 @@
           dx(1:n) = dx(1:n) * bnre
 #endif
           WRITE( Message,'(A,2ES12.3)') 'Preconditioning Normalizing Factor: ',bnre,bnim
-          CALL Info('SlavePrec',Message,Level=6) 
+          CALL Info('SlavePrecComplex',Message,Level=6) 
         END IF
       END IF
 

@@ -23,9 +23,16 @@
 !
 !/******************************************************************************
 ! *
-! *  Module for computing the electric field from the component-wise wave
-! *  equation by using nodal finite finite elements. This only works when
-! *  the permeability is constant and the boundaries are Cartesian. 
+! *  Module for computing the electric field from the time-harmonic wave equation
+! *  by using nodal finite finite elements. Although the use of the nodal finite
+! *  elements is not generally recommended for this problem, this approximation
+! *  might be utilized as a preconditioner for a truthful discretization based on
+! *  curl-conforming finite elements. This solver can handle the equations 
+! *  either in the curl-curl form, which couples the solution
+! *  components, or in the component-wise manner, which requires that
+! *  the permeability is constant and the boundaries are Cartesian planes. 
+! *  More flexibility in regard to setting BCs is obtained by using the curl-curl
+! *  form.
 ! *
 ! *  Authors: Peter Råback + later edits by Mika Malinen
 ! *  Email:   elmeradm@csc.fi
@@ -55,14 +62,22 @@ SUBROUTINE VectorHelmholtzNodal_init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   CHARACTER(*), PARAMETER :: Caller = 'VectorHelmholtzNodal_init'
   TYPE(ValueList_t), POINTER :: Params
-  LOGICAL :: Found, PrecUse, Monolithic
-  !INTEGER :: dim
-   
+  LOGICAL :: Found, PrecUse, CurlCurlForm, Monolithic
+  INTEGER :: soln, i, j
+  CHARACTER(LEN=MAX_NAME_LEN) :: sname
+!------------------------------------------------------------------------------
+  
   Params => GetSolverParams()
   !dim = CoordinateSystemDimension()
 
-  PrecUse = ListGetLogical( Params,'Preconditioning Solver',Found )  
+  PrecUse = ListGetLogical( Params,'Preconditioning Solver',Found )
   Monolithic = ListGetLogical( Params,'Monolithic Solver',Found )
+  
+  CurlCurlForm = ListGetLogical( Params,'curl-curl Form',Found )
+  IF (CurlCurlForm .AND. .NOT. Monolithic) THEN
+    CALL ListAddLogical(Params, 'Monolithic Solver', .TRUE.)
+    Monolithic = .TRUE.
+  END IF
   
   IF( Monolithic ) THEN
     ! We use different naming convention if this is used as preconditioner.
@@ -94,7 +109,29 @@ SUBROUTINE VectorHelmholtzNodal_init( Model,Solver,dt,Transient )
   END IF
 
   CALL ListAddNewLogical( Params, "Linear System Complex", .TRUE.)  
+  CALL ListAddInteger( Params,'Time Derivative Order', 0 )  
+  
+  !
+  ! The following is for creating sources from pre-computed eigenfunctions:
+  !
+  IF (ListGetLogicalAnyBC(Model, 'Eigenfunction BC')) THEN
+    soln = 0
+    DO i=1,Model % NumberOfSolvers
+      sname = GetString(Model % Solvers(i) % Values, 'Procedure', Found)
+      j = INDEX(sname, 'EMPortSolver')
+      IF (j > 0) THEN
+        soln = i
+        EXIT
+      END IF
+    END DO
 
+    IF( soln == 0 ) THEN
+      CALL Fatal('VectorHelmholtzNodal_Init','Eigenfunction BC given without solving a port model')      
+    ELSE
+      CALL Info('VectorHelmholtzNodal_Init','The eigensolver index is: '//I2S(soln), Level=12)
+      CALL ListAddInteger(Params, 'Eigensolver Index', soln)
+    END IF
+  END IF  
     
   !IF (ListGetLogical(Params,'Calculate Electric Energy',Found)) THEN
   !  CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
@@ -112,7 +149,6 @@ SUBROUTINE VectorHelmholtzNodal_init( Model,Solver,dt,Transient )
   !      'Nodal Energy Density' )
   !END IF
 
-  CALL ListAddInteger( Params,'Time Derivative Order', 0 )  
   
 END SUBROUTINE VectorHelmholtzNodal_Init
 
@@ -124,29 +160,34 @@ END SUBROUTINE VectorHelmholtzNodal_Init
 SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE MeshUtils, ONLY : FollowCurvedBoundary
+  USE CRSMatrix, ONLY : CRS_TransposeMatrixVectorMultiply
   USE DefUtils
   IMPLICIT NONE
 !------------------------------------------------------------------------------
-  TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
+  TYPE(Solver_t) :: Solver
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  TYPE(Element_t),POINTER :: Element
-  REAL(KIND=dp) :: Norm(3)
-  INTEGER :: i, n, nb, nd, t, active, dim, RelOrder
+  TYPE(Element_t), POINTER :: Element
+  INTEGER :: i, n, nb, nd, t, active, dim, RelOrder, soln
   INTEGER :: iter, maxiter, compi, compn, compj, dofs
   LOGICAL :: Found, VecAsm, InitHandles, &
-      PrecUse, PiolaVersion, SecondOrder, SecondFamily, UseEdgeResidual, &
-      Monolithic, Segregated 
+      PrecUse, PiolaVersion, SecondOrder, SecondFamily, &
+      Monolithic, Segregated, CurlCurlForm, HasPrecDampCoeff, &
+      EigenfunctionSource
   TYPE(ValueList_t), POINTER :: Params, EdgeSolverParams
+  TYPE(Solver_t), POINTER :: Eigensolver => NULL()
   TYPE(Mesh_t), POINTER :: Mesh
-  TYPE(Variable_t), POINTER :: EF, EiVar, EdgeLoadVar, EdgeSolVar
+  TYPE(Variable_t), POINTER :: EF, EiVar, EdgeResVar, EdgeSolVar
+  REAL(KIND=dp) :: Norm(3)
   REAL(KIND=dp) :: mu0inv, eps0, rob0, omega
+  COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
+  COMPLEX(KIND=dp) :: PrecDampCoeff
+  TYPE(Matrix_t), POINTER, SAVE :: Proj => NULL()
   CHARACTER(LEN=MAX_NAME_LEN) :: sname
-  COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)   
   CHARACTER(*), PARAMETER :: Caller = 'VectorHelmholtzNodal'
 !------------------------------------------------------------------------------
   CALL Info(Caller,'',Level=8)
@@ -162,57 +203,78 @@ SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
   Mesh => GetMesh()
   Params => GetSolverParams()
 
+  Monolithic = ListGetLogical(Params, 'Monolithic Solver', Found)
+  
   EiVar => Solver % Variable
   dofs = EiVar % Dofs / 2 
   IF( dofs == 1 ) THEN
-    Monolithic = .FALSE.
+    IF (Monolithic) CALL Fatal(Caller, 'Variable DOFs incompatible with the segregated solution')
     CALL Info(Caller,'Treating the equation in segregated manner!')
+    compn = dim
   ELSE IF( dofs == dim ) THEN
-    Monolithic = .TRUE.
+    IF (.NOT. Monolithic) CALL Fatal(Caller, 'Variable DOFs incompatible with the monolithic solution')
     CALL Info(Caller,'Treating the equation in monolithic manner!')
+    compn = 1
   ELSE
-    CALL Fatal(Caller,'Invalid number of dofs in solver variable: '//I2S(dofs))
+    CALL Fatal(Caller,'Invalid number of dofs for the solver variable: '//I2S(dofs))
   END IF
   Segregated = .NOT. Monolithic
 
   PrecUse = ListGetLogical( Params,'Preconditioning Solver',Found ) 
-  UseEdgeResidual = .FALSE.
+  CurlCurlForm = ListGetLogical( Params,'curl-curl Form',Found )
   
   IF( PrecUse ) THEN
-!    IF(Monolithic) THEN
-!      CALL Fatal(Caller,'You cannot combine monolithic and preconditioning use!')
-!    END IF
-    EdgeLoadVar => NULL()  
+    IF (.NOT. Monolithic) CALL Fatal(Caller, 'The use as a preconditioner needs Monolithic Solver = True')
+    
     EF => VariableGet( Mesh % Variables,'Prec ElField')        
+
+    EdgeSolVar => NULL()
+    sname = ListGetString(Params, 'Edge Update Name', Found)
+    IF (Found) THEN
+      EdgeSolVar => VariableGet(Mesh % Variables, sname)
+      IF (.NOT. ASSOCIATED(EdgeSolVar)) CALL Fatal(Caller, 'Could not found field: '//TRIM(sname))
+    ELSE
+      CALL Warn(Caller, 'Give Edge Update Name to enable the use as a preconditioner')
+      PrecUse = .FALSE.
+    END IF
+    
+    EdgeResVar => NULL()  
     sname = ListGetString( Params,'Edge Residual Name',Found)
     IF(Found) THEN
-      EdgeLoadVar => VariableGet( Mesh % Variables, sname )
-      IF(.NOT. ASSOCIATED( EdgeLoadVar ) ) CALL Fatal(Caller,'Could not find field: '//TRIM(sname))
+      EdgeResVar => VariableGet( Mesh % Variables, sname )
+      IF(.NOT. ASSOCIATED( EdgeResVar ) ) CALL Fatal(Caller,'Could not find field: '//TRIM(sname))
 
-      EdgeSolverParams => GetSolverParams(EdgeLoadVar % Solver)
-      
-      SecondOrder = ListGetLogical(EdgeSolverParams, 'Quadratic Approximation', Found)
-      IF( SecondOrder ) THEN
-        PiolaVersion = .TRUE.
-        SecondFamily = .FALSE.
-        CALL Fatal(Caller, 'The lowest-order basis assumed') 
-      ELSE
-        SecondFamily = ListGetLogical(EdgeSolverParams, "Second Kind Basis", Found)
-        PiolaVersion = ListGetLogical(EdgeSolverParams, 'Use Piola Transform', Found ) .OR. &
-            SecondFamily    
-      END IF
-      
-      UseEdgeResidual = .TRUE.
+      EdgeSolverParams => GetSolverParams(EdgeResVar % Solver)
+
+      CALL EdgeElementStyle(EdgeSolverParams, PiolaVersion, SecondFamily, SecondOrder, Check = .TRUE.)
+      IF (SecondOrder) CALL Fatal(Caller, 'The lowest-order edge basis assumed') 
+
     ELSE
       CALL Warn(Caller, 'Give Edge Residual Name to enable the use as a preconditioner')
+      PrecUse = .FALSE.
+    END IF
+    IF (PrecUse) THEN
+      PrecDampCoeff = GetCReal(Params, 'Linear System Preconditioning Damp Coefficient', HasPrecDampCoeff)
+      PrecDampCoeff = CMPLX(REAL(PrecDampCoeff), &
+          GetCReal(Params, 'Linear System Preconditioning Damp Coefficient im', Found), kind=dp)
+      HasPrecDampCoeff = HasPrecDampCoeff .OR. Found
     END IF
   ELSE
     EF => VariableGet( Mesh % Variables,'ElField')
   END IF
-    
+  
   IF(.NOT. ASSOCIATED(EF) ) THEN
     CALL Fatal(Caller,'Variable for Electric field not found!')
   END IF  
+
+  EigenfunctionSource = ListGetLogicalAnyBC(Model, 'Eigenfunction BC')
+  IF (EigenfunctionSource) THEN
+    soln = ListGetInteger(Params, 'Eigensolver Index', Found) 
+    IF (soln == 0) THEN
+      CALL Fatal(Caller, 'We should know > Eigensolver Index <')
+    END IF
+    Eigensolver => Model % Solvers(soln)
+  END IF
   
   IF( ListGetLogical( Params,'Follow P Curvature', Found )  ) THEN
     CALL FollowCurvedBoundary( Model, Mesh, .TRUE. ) 
@@ -226,14 +288,13 @@ SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
   RelOrder = GetInteger( Params,'Relative Integration Order',Found ) 
   CALL InitStuff()
 
-  IF( Monolithic ) THEN
-    compn = 1
-  ELSE
-    compn = dim
+  IF (PrecUse .AND. .NOT. ASSOCIATED(Proj)) THEN
+    CALL Info(Caller,'Creating projection matrix to map a nodal solution into vector element space', Level=6)
+    CALL NodalToNedelecInterpolation_GlobalMatrix(Mesh, EF, EdgeSolVar, Proj, cdim=3)
   END IF
-    
+  
   DO compi=1,compn
-    IF( .NOT. Monolithic ) THEN
+    IF( Segregated ) THEN
       CALL Info(Caller,'Solving for component '//I2S(compi),Level=6)
     END IF
       
@@ -251,34 +312,36 @@ SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
     END DO
     
     CALL DefaultFinishBulkAssembly()
-    IF( UseEdgeResidual ) THEN
+    IF( PrecUse ) THEN
       !
-      ! Now EdgeLoadVar represents the residual with respect
+      ! Now EdgeResVar represents the residual with respect
       ! to the basis for H(curl). We need to apply a transformation so that
       ! we may solve the residual correction equation by using the nodal basis.
       !
       IF (Monolithic) THEN
-        CALL NedelecToNodalResidual(Solver % Matrix % RHS, EdgeLoadVar, cdim=3, &
-            SecondFamily = SecondFamily)        
+        CALL Info(Caller,'Using Transposed Projection Matrix: H(curl) -> H1', Level=6)
+!          PRINT *,'sizes:',MAXVAL(Proj % Cols),MINVAL(Proj % Cols),Proj % NumberOfRows, &
+!              SIZE(EdgeResVar % Values), SIZE(Solver % Matrix % rhs)
+        CALL CRS_TransposeMatrixVectorMultiply(Proj, EdgeResVar % Values, Solver % Matrix % rhs )           
       ELSE
-        CALL EdgeToNodeProject()
+        ! TO DO: Add the transformation of the residual for the component-wise wave equation 
       END IF
     END IF
-    
+
     IF( InfoActive(20) ) THEN
       CALL VectorValuesRange(Solver % Matrix % Values,SIZE(Solver % Matrix % Values),'A0')       
     END IF
         
     CALL Info(Caller,'Performing boundary element assembly',Level=12)
     Active = GetNOFBoundaryActive(Solver)
+
     InitHandles = .TRUE.
     DO t=1,Active
       Element => GetBoundaryElement(t)
       IF(ActiveBoundaryElement(Element)) THEN
         n  = GetElementNOFNodes(Element)
         nd = GetElementNOFDOFs(Element)
-        nb = GetElementNOFBDOFs(Element)
-        CALL LocalMatrixBC(  Element, n, nd+nb, nb, InitHandles )
+        CALL LocalMatrixBC(  Element, n, nd, InitHandles )
       END IF
     END DO
 
@@ -315,16 +378,10 @@ SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
     END IF
   END DO ! compi
 
-  EdgeSolVar => NULL()
-  sname = ListGetString( Params,'Edge Solution Name',Found)
-  IF(Found) THEN
-    EdgeSolVar => VariableGet( Mesh % Variables, sname )
-    IF(.NOT. ASSOCIATED(EdgeSolVar)) THEN
-      CALL Fatal(Caller,'Edge solution not found: '//TRIM(sname))
-    END IF
+  IF (PrecUse) THEN
     CALL Info(Caller,'Projecting nodal solution to vector element space', Level=6)
-    CALL NodalToNedelecInterpolation(EF, EdgeSolVar, cdim=3, &
-        SecondFamily = SecondFamily)
+    CALL Info(Caller,'Using Projection Matrix: H1 -> H(curl)',Level=6)
+    CALL CRS_MatrixVectorMultiply(Proj, EF % Values, EdgeSolVar % Values ) 
   END IF
     
   !IF( Solver % Variable % NonlinConverged == 1 ) EXIT
@@ -380,8 +437,8 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:),dBasisdx(:,:)
     COMPLEX(KIND=dp), ALLOCATABLE, SAVE :: STIFF(:,:,:), FORCE(:,:)
     REAL(KIND=dp) :: weight, DetJ, CondAtIp
-    COMPLEX(KIND=dp) :: muinvAtIp, EpsAtIp, CurrAtIp(3)
-    LOGICAL :: Stat,Found
+    COMPLEX(KIND=dp) :: muinvAtIp, EpsAtIp, CurrAtIp(3), kappa
+    LOGICAL :: Stat,Found, WithConductivity
     INTEGER :: i,j,k,t,p,q,m,allocstat
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
@@ -406,12 +463,24 @@ CONTAINS
     ! Allocate storage if needed
     IF (.NOT. ALLOCATED(Basis)) THEN
       m = Mesh % MaxElementDofs
-      ALLOCATE(Basis(m), dBasisdx(m,3), STIFF(m,m,3), FORCE(m,3), STAT=allocstat)      
+      IF (CurlCurlForm) THEN
+        k = 1
+        q = 3*m
+      ELSE
+        k = 3
+        q = m
+      END IF
+      ALLOCATE(Basis(m), dBasisdx(m,3), STIFF(q,q,k), FORCE(q,k), STAT=allocstat)      
       IF (allocstat /= 0) CALL Fatal(Caller,'Local storage allocation failed')
     END IF
 
     CALL GetElementNodes( Nodes, UElement=Element )
 
+    kappa = CMPLX(1.0_dp, 0.0_dp, kind=dp)
+    IF (PrecUse) THEN
+      IF (HasPrecDampCoeff) kappa = kappa - PrecDampCoeff
+    END IF
+      
     ! Initialize
     STIFF = 0._dp
     FORCE = 0._dp
@@ -423,24 +492,13 @@ CONTAINS
           IP % W(t), detJ, Basis, dBasisdx )
       Weight = IP % s(t) * DetJ
 
-      ! diffusion term (D*grad(u),grad(v)):
-      ! -----------------------------------      
       muinvAtIp = ListGetElementComplex( MuCoeff_h, Basis, Element, Found, GaussPoint = t )      
       IF( Found ) THEN
         muinvAtIp = muinvAtIp * mu0inv
       ELSE
         muinvAtIp = mu0inv
       END IF
-      STIFF(1:nd,1:nd,1) = STIFF(1:nd,1:nd,1) + Weight * &
-          MuinvAtIp * MATMUL( dBasisdx(1:nd,:), TRANSPOSE( dBasisdx(1:nd,:) ) )
-
-      CondAtIp = ListGetElementReal( CondCoeff_h, Basis, Element, Found, GaussPoint = t )      
-      IF( Found ) THEN
-        DO p=1,nd
-          STIFF(p,1:nd,1) = STIFF(p,1:nd,1) - im * Weight * Omega * CondAtIP * Basis(p) * Basis(1:nd)
-        END DO
-      END IF
-              
+      
       EpsAtIp = ListGetElementComplex( EpsCoeff_h, Basis, Element, Found, GaussPoint = t )      
       IF( Found ) THEN
         EpsAtIp = EpsAtIp * eps0
@@ -448,33 +506,96 @@ CONTAINS
         epsAtIp = eps0
       END IF        
 
-      ! This is the same for each component with isotropic materials!
-      DO p=1,nd
-        STIFF(p,1:nd,1) = STIFF(p,1:nd,1) - Weight * Omega**2 * epsAtIP * Basis(p) * Basis(1:nd)
-      END DO
+      CondAtIp = ListGetElementReal( CondCoeff_h, Basis, Element, WithConductivity, GaussPoint = t )
+      
+      IF (CurlCurlForm) THEN
+        DO p=1,nd
+          DO j=1,dim
+            DO q=1,nd
+              STIFF(dim*(p-1)+j,dim*(q-1)+j,1) = STIFF(dim*(p-1)+j,dim*(q-1)+j,1) - &
+                  Weight * kappa * Omega**2 * epsAtIP * Basis(q) * Basis(p)
 
-      IF(.NOT. UseEdgeResidual ) THEN
-        CurrAtIP = ListGetElementComplex3D( CurrDens_h, Basis, Element, Found )                 
-        IF( Found ) THEN
-          IF( Monolithic ) THEN
-            DO i=1,dofs
-              FORCE(1:nd,i) = FORCE(1:nd,i) + Weight * CurrAtIp(i) * Basis(1:nd)
+              IF (WithConductivity) THEN
+                STIFF(dim*(p-1)+j,dim*(q-1)+j,1) = STIFF(dim*(p-1)+j,dim*(q-1)+j,1) - &
+                    im * Weight * Omega * CondAtIP * Basis(q) * Basis(p)
+              END IF
+              
+              IF (j==1) THEN
+                STIFF(dim*(p-1)+j,dim*(q-1)+1,1) = STIFF(dim*(p-1)+j,dim*(q-1)+1,1) + Weight * MuinvAtIp * ( &
+                    dBasisdx(q,3) * dBasisdx(p,3) + dBasisdx(q,2) * dBasisdx(p,2) )
+                STIFF(dim*(p-1)+j,dim*(q-1)+2,1) = STIFF(dim*(p-1)+j,dim*(q-1)+2,1) - Weight * MuinvAtIp * &
+                    dBasisdx(q,1) * dBasisdx(p,2)
+                STIFF(dim*(p-1)+j,dim*(q-1)+3,1) = STIFF(dim*(p-1)+j,dim*(q-1)+3,1) - Weight * MuinvAtIp * &
+                    dBasisdx(q,1) * dBasisdx(p,3)
+              END IF
+
+              IF (j==2) THEN
+                STIFF(dim*(p-1)+j,dim*(q-1)+1,1) = STIFF(dim*(p-1)+j,dim*(q-1)+1,1) - Weight * MuinvAtIp * &
+                    dBasisdx(q,2) * dBasisdx(p,1)
+                STIFF(dim*(p-1)+j,dim*(q-1)+2,1) = STIFF(dim*(p-1)+j,dim*(q-1)+2,1) + Weight * MuinvAtIp * ( &
+                    dBasisdx(q,3) * dBasisdx(p,3) + dBasisdx(q,1) * dBasisdx(p,1) )
+                STIFF(dim*(p-1)+j,dim*(q-1)+3,1) = STIFF(dim*(p-1)+j,dim*(q-1)+3,1) - Weight * MuinvAtIp * &
+                    dBasisdx(q,2) * dBasisdx(p,3)
+              END IF
+
+              IF (j==3) THEN
+                STIFF(dim*(p-1)+j,dim*(q-1)+1,1) = STIFF(dim*(p-1)+j,dim*(q-1)+1,1) - Weight * MuinvAtIp * &
+                    dBasisdx(q,3) * dBasisdx(p,1)
+                STIFF(dim*(p-1)+j,dim*(q-1)+2,1) = STIFF(dim*(p-1)+j,dim*(q-1)+2,1) - Weight * MuinvAtIp * &
+                    dBasisdx(q,3) * dBasisdx(p,2)
+                STIFF(dim*(p-1)+j,dim*(q-1)+3,1) = STIFF(dim*(p-1)+j,dim*(q-1)+3,1) + Weight * MuinvAtIp * ( &
+                    dBasisdx(q,2) * dBasisdx(p,2) + dBasisdx(q,1) * dBasisdx(p,1) )
+              END IF
+
             END DO
-          ELSE
-            FORCE(1:nd,1) = FORCE(1:nd,1) + Weight * CurrAtIP(compi) * Basis(1:nd)
+          END DO
+        END DO
+        ! TO DO: add the integration of RHS if not used as a preconditioner
+      ELSE
+        
+        ! "diffusion" term (D*grad(u),grad(v)):
+        ! -----------------------------------      
+        STIFF(1:nd,1:nd,1) = STIFF(1:nd,1:nd,1) + Weight * &
+            MuinvAtIp * MATMUL( dBasisdx(1:nd,:), TRANSPOSE( dBasisdx(1:nd,:) ) )
+
+        IF( WithConductivity ) THEN
+          DO p=1,nd
+            STIFF(p,1:nd,1) = STIFF(p,1:nd,1) - im * Weight * Omega * CondAtIP * Basis(p) * Basis(1:nd)
+          END DO
+        END IF
+
+        ! This is the same for each component with isotropic materials!
+        DO p=1,nd
+          STIFF(p,1:nd,1) = STIFF(p,1:nd,1) - Weight * kappa * Omega**2 * epsAtIP * Basis(p) * Basis(1:nd)
+        END DO
+
+        IF(.NOT. PrecUse ) THEN
+          CurrAtIP = ListGetElementComplex3D( CurrDens_h, Basis, Element, Found )                 
+          IF( Found ) THEN
+            IF( Monolithic ) THEN
+              DO i=1,dofs
+                FORCE(1:nd,i) = FORCE(1:nd,i) + Weight * CurrAtIp(i) * Basis(1:nd)
+              END DO
+            ELSE
+              FORCE(1:nd,1) = FORCE(1:nd,1) + Weight * CurrAtIP(compi) * Basis(1:nd)
+            END IF
           END IF
         END IF
       END IF
     END DO
-    
-    IF( Monolithic ) THEN
-      DO i=2,dofs
-        STIFF(1:nd,1:nd,i) = STIFF(1:nd,1:nd,1)
-      END DO
-      ! Note that we use diagonal form for this!
-      CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element)
+
+    IF (CurlCurlForm) THEN
+      CALL DefaultUpdateEquations(STIFF(1:dim*nd,1:dim*nd,1),FORCE(1:dim*nd,1),UElement=Element)
     ELSE
-      CALL DefaultUpdateEquations(STIFF(:,:,1),FORCE(:,1),UElement=Element)
+      IF( Monolithic ) THEN
+        DO i=2,dofs
+          STIFF(1:nd,1:nd,i) = STIFF(1:nd,1:nd,1)
+        END DO
+        ! Note that we use diagonal form for this!
+        CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element)
+      ELSE
+        CALL DefaultUpdateEquations(STIFF(:,:,1),FORCE(:,1),UElement=Element)
+      END IF
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
@@ -483,24 +604,27 @@ CONTAINS
 
 ! Assembly of the matrix entries arising from the Neumann and Robin conditions.
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixBC( Element, n, nd, nb, InitHandles )
+  SUBROUTINE LocalMatrixBC( Element, n, nd, InitHandles )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    INTEGER :: n, nd, nb
+    INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
     LOGICAL, INTENT(INOUT) :: InitHandles
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: F,C,Ext, Weight, coeff
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3), DetJ,Coord(3),Normal(3)
-    COMPLEX(KIND=dp) :: STIFF(nd,nd,3), FORCE(nd,3)
+    REAL(KIND=dp) :: TestVec(3), TrialVec(3)
+!    COMPLEX(KIND=dp) :: STIFF(nd,nd,3), FORCE(nd,3)
+    COMPLEX(KIND=dp), ALLOCATABLE, SAVE :: STIFF(:,:,:), FORCE(:,:)
     COMPLEX(KIND=dp) :: muInvAtIp, TemGrad(3), L(3), B 
-    LOGICAL :: Stat,Found,RobinBC,NT
-    INTEGER :: i,t,p,q
+    LOGICAL :: Stat,Found,RobinBC,NT,EigenBC
+    INTEGER :: i,j,k,m,p,q,t,allocstat,EigenInd
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BC       
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(Element_t), POINTER :: Parent
     TYPE(ValueHandle_t), SAVE :: ElRobin_h, MagLoad_h, Absorb_h, TemRe_h, TemIm_h, MuCoeff_h
+    TYPE(ValueHandle_t), SAVE :: EigenvectorSource, EigenvectorInd
     
     BC => GetBC(Element)
     IF (.NOT.ASSOCIATED(BC) ) RETURN
@@ -511,19 +635,42 @@ CONTAINS
       CALL ListInitElementKeyword( Absorb_h,'Boundary Condition','Absorbing BC')
       CALL ListInitElementKeyword( TemRe_h,'Boundary Condition','TEM Potential')
       CALL ListInitElementKeyword( TemIm_h,'Boundary Condition','TEM Potential Im')
-      CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)      
+      CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)
+      CALL ListInitElementKeyword( EigenvectorSource,'Boundary Condition','Eigenfunction BC')
+      CALL ListInitElementKeyword( EigenvectorInd,'Boundary Condition','Eigenfunction Index')
       InitHandles = .FALSE.
     END IF
     
     CALL GetElementNodes( Nodes, UElement=Element )
+
+    IF (.NOT. ALLOCATED(STIFF)) THEN
+      m = Mesh % MaxElementDofs
+      IF (CurlCurlForm) THEN
+        k = 1
+        q = 3*m
+      ELSE
+        k = 3
+        q = m
+      END IF
+      ALLOCATE(STIFF(q,q,k), FORCE(q,k), STAT=allocstat)      
+      IF (allocstat /= 0) CALL Fatal(Caller,'Local storage allocation failed')
+    END IF
     STIFF = 0._dp
     FORCE = 0._dp
 
-    Normal = NormalVector( Element, Nodes )
+    IF (.NOT. CurlCurlForm) Normal = NormalVector( Element, Nodes )
     NT = ListGetLogical( BC,'Normal-Tangential '//GetVarName(Solver % Variable), Found )
     IF(NT .AND. .NOT. Monolithic) THEN
       CALL Fatal(Caller,'Normal-tangential conditions require monolithic solver!')
     END IF
+
+    ! Check whether BC should be created in terms of pre-computed eigenfunction:
+    EigenBC = ListGetElementLogical(EigenvectorSource, Element, Found)
+    IF (EigenBC) THEN
+      EigenInd = ListGetElementInteger(EigenvectorInd, Element, Found)
+      IF (EigenInd < 1) CALL Fatal(Caller, 'Eigenfunction Index must be positive')
+    END IF
+
     
     ! Numerical integration:
     !-----------------------
@@ -548,7 +695,7 @@ CONTAINS
         muinvAtIp = mu0inv
       END IF
 
-      IF( .NOT. UseEdgeResidual ) THEN
+      IF( .NOT. PrecUse ) THEN
         L = ListGetElementComplex3D( MagLoad_h, Basis, Element, Found, GaussPoint = t )
         TemGrad = CMPLX( ListGetElementRealGrad( TemRe_h,dBasisdx,Element,Found), &
             ListGetElementRealGrad( TemIm_h,dBasisdx,Element,Found) )
@@ -557,329 +704,75 @@ CONTAINS
           FORCE(1:nd,i) = FORCE(1:nd,i) - muinvAtIp * L(i) * Basis(1:nd) * Weight
         END DO
       END IF
-        
-      IF( ListGetElementLogical( Absorb_h, Element, Found ) ) THEN
-        B = CMPLX(0.0_dp, rob0 ) 
+
+      IF (EigenBC) THEN
+        B = CMPLX(0.0_dp, 1.0_dp, kind=dp) * SQRT(-Eigensolver % Variable % Eigenvalues(EigenInd))
+        Found = .TRUE.
       ELSE
-        B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
+        IF( ListGetElementLogical( Absorb_h, Element, Found ) ) THEN
+          B = CMPLX(0.0_dp, rob0 ) 
+        ELSE
+          B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
+        END IF
       END IF
 
       IF( Found ) THEN
-        DO i=1,dim
-          IF( NT ) THEN
-            IF(i==1) CYCLE
-            coeff = 1.0_dp
-          ELSE          
-            coeff = 1.0_dp - Normal(i)**2
-            IF(coeff <= 0.0_dp ) THEN
-              coeff = 0.0_dp
-            ELSE
-              coeff = SQRT(coeff)
-            END IF
-          END IF          
-          DO p = 1,nd
-            STIFF(p,1:nd,i) = STIFF(p,1:nd,i) - coeff * muinvAtIp * B * &
-                Basis(p) * Basis(1:nd) * detJ * IP % s(t)
+        IF (CurlCurlForm) THEN
+          Normal = Normalvector(Element, Nodes, IP % U(t), IP % V(t), .TRUE.)
+          DO p=1,nd
+            DO j=1,dim
+              TestVec = 0.0d0
+              TestVec(j) = Basis(p)
+              TestVec = CrossProduct(TestVec, Normal)
+              DO q=1,nd
+                DO i=1,dim
+                  TrialVec = 0.0d0
+                  TrialVec(i) = Basis(q)
+                  TrialVec = CrossProduct(TrialVec, Normal)
+
+                  STIFF(dim*(p-1)+j, dim*(q-1)+i,1) = STIFF(dim*(p-1)+j, dim*(q-1)+i,1) - &
+                      muinvAtIp * B * SUM(TestVec(:) * TrialVec(:)) * Weight 
+                END DO
+              END DO
+            END DO
           END DO
-        END DO
+        ELSE
+          DO i=1,dim
+            IF( NT ) THEN
+              IF(i==1) CYCLE
+              coeff = 1.0_dp
+            ELSE          
+              coeff = 1.0_dp - Normal(i)**2
+              IF(coeff <= 0.0_dp ) THEN
+                coeff = 0.0_dp
+              ELSE
+                coeff = SQRT(coeff)
+              END IF
+            END IF
+            DO p = 1,nd
+              STIFF(p,1:nd,i) = STIFF(p,1:nd,i) - coeff * muinvAtIp * B * &
+                  Basis(p) * Basis(1:nd) * Weight
+            END DO
+          END DO
+        END IF
       END IF
     END DO
-    
-    IF( Monolithic ) THEN
-      ! For normal-tangential coordinate system the slip 
-      CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element)
+
+    IF (CurlCurlForm) THEN
+      CALL DefaultUpdateEquations(STIFF(1:dim*nd,1:dim*nd,1),FORCE(1:dim*nd,1),UElement=Element)      
     ELSE
-      CALL DefaultUpdateEquations(STIFF(:,:,compi),FORCE(:,compi),UElement=Element)
+      IF( Monolithic ) THEN
+        ! For normal-tangential coordinate system the slip 
+        CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element)
+      ELSE
+        CALL DefaultUpdateEquations(STIFF(:,:,compi),FORCE(:,compi),UElement=Element)
+      END IF
     END IF
       
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBC
 !------------------------------------------------------------------------------
 
-
-!------------------------------------------------------------------------------
-!> Apply the Nedelec interpolation to a vector field represented in terms of
-!> the Lagrange (nodal) basis functions. The result of the interpolation is
-!> returned by substituting the values of the DOFs into the FE variable
-!> describing the vector element field. The current implementation assumes that
-!> all DOFs are associated with edges.
-!------------------------------------------------------------------------------
-  SUBROUTINE NodalToNedelecInterpolation(NodalVar, VectorElementVar, cdim, &
-      SecondFamily)
-!------------------------------------------------------------------------------
-    IMPLICIT NONE
-    TYPE(Variable_t), POINTER, INTENT(IN) :: NodalVar
-    TYPE(Variable_t), POINTER, INTENT(INOUT) :: VectorElementVar
-    INTEGER, OPTIONAL :: cdim         !< The number of spatial coordinates 
-    LOGICAL, OPTIONAL :: SecondFamily !< To select the element family
-!------------------------------------------------------------------------------
-    TYPE(Nodes_t), SAVE :: Nodes
-    TYPE(Element_t), POINTER :: Edge
-    LOGICAL :: SecondKindBasis
-    INTEGER, ALLOCATABLE, SAVE :: Ind(:)
-    INTEGER :: dim, istat, EDOFs, i, j, k, i1, i2, k1, k2, nd, dofi
-    REAL(KIND=dp) :: PiMat(2,6), x(6), D
-!------------------------------------------------------------------------------
-    IF (.NOT. ASSOCIATED(Mesh % Edges)) THEN
-      CALL Fatal('NodalToNedelecInterpolation', 'Mesh edges not associated!')
-    END IF
-
-    IF (PRESENT(cdim)) THEN
-      dim = cdim
-    ELSE
-      dim = 3
-    END IF
-    
-    IF (PRESENT(SecondFamily)) THEN
-      SecondKindBasis = SecondFamily
-    ELSE
-      SecondKindBasis = .FALSE.
-    END IF
-
-    IF (SecondKindBasis) THEN
-      EDOFs = 2
-    ELSE
-      EDOFs = 1  
-    END IF
-    
-    IF (NodalVar % DOFs /= dim * VectorElementVar % DOFs) CALL Fatal('NodalToNedelecInterpolation', &
-        'Coordinate system dimension and DOF counts are not as expected')
-    
-    IF (.NOT. ALLOCATED(Ind)) THEN
-      ALLOCATE( Ind(Mesh % MaxElementDOFs), stat=istat )
-    END IF
-    
-    ! Here we assume that all DOFs are associated with edges, so it suffices
-    ! to loop over all the edges
-    !
-    DO j=1, Mesh % NumberOfEdges      
-      Edge => Mesh % Edges(j)
-
-      ! Create the matrix representation of the Nedelec interpolation operator 
-      CALL NodalToNedelecPiMatrix(PiMat, Edge, Mesh, dim, SecondKindBasis)
-
-      ! Finally apply the interpolation operator to a nodal variable
-      ! which may consist of both real and imaginary components
-      !
-      nd = GetElementDOFs(Ind, Edge, VectorElementVar % Solver)
-
-      i1 = Edge % NodeIndexes(1)
-      i2 = Edge % NodeIndexes(2)
-      k1 = NodalVar % Perm(i1)
-      k2 = NodalVar % Perm(i2)
-
-      x(:) = 0.0_dp 
-      DO dofi=1, VectorElementVar % DOFs
-        DO i=1,dim
-          x(i) = NodalVar % Values(6*(k1-1) + 2*(i-1) + dofi)
-          x(3+i) = NodalVar % Values(6*(k2-1) + 2*(i-1) + dofi)
-        END DO
-
-        DO i=1,EDOFs
-          D = SUM(PiMat(i,1:6) * x(1:6))
-          k = VectorElementVar % Perm(Ind(i)) 
-          VectorElementVar % Values(VectorElementVar % DOFs*(k-1)+dofi) = D     
-        END DO
-      END DO
-    END DO
-!------------------------------------------------------------------------------
-  END SUBROUTINE NodalToNedelecInterpolation
-!------------------------------------------------------------------------------
-    
-!------------------------------------------------------------------------------
-  SUBROUTINE NedelecToNodalResidual(RHSVector, VectorElementRes, cdim, &
-      SecondFamily)
-!------------------------------------------------------------------------------
-    IMPLICIT NONE
-    REAL(KIND=dp), INTENT(INOUT) :: RHSVector(:) 
-    TYPE(Variable_t), POINTER, INTENT(IN) :: VectorElementRes
-    INTEGER, OPTIONAL :: cdim         !< The number of spatial coordinates 
-    LOGICAL, OPTIONAL :: SecondFamily !< To select the element family
-!------------------------------------------------------------------------------
-    TYPE(Nodes_t), SAVE :: Nodes
-    TYPE(Element_t), POINTER :: Edge
-    TYPE(GaussIntegrationPoints_t) :: IP
-    LOGICAL :: SecondKindBasis, stat
-    INTEGER, ALLOCATABLE, SAVE :: Ind(:)
-    INTEGER :: dim, istat, EDOFs, i, j, k, m, p, q, nd, dofi, ndofs
-    REAL(KIND=dp) :: PiMat(2,6), ri
-!------------------------------------------------------------------------------
-    IF (.NOT. ASSOCIATED(Mesh % Edges)) THEN
-      CALL Fatal('NodalToNedelecInterpolation', 'Mesh edges not associated!')
-    END IF
-
-    IF (PRESENT(cdim)) THEN
-      dim = cdim
-    ELSE
-      dim = 3
-    END IF
-    
-    IF (PRESENT(SecondFamily)) THEN
-      SecondKindBasis = SecondFamily
-    ELSE
-      SecondKindBasis = .FALSE.
-    END IF
-
-    IF (SecondKindBasis) THEN
-      EDOFs = 2
-    ELSE
-      EDOFs = 1  
-    END IF
-    
-    ndofs = 6   ! This is correct for the 3-D monolithic version only!
-    
-    IF (ndofs /= dim * VectorElementRes % DOFs) CALL Fatal('NodalToNedelecInterpolation', &
-        'Coordinate system dimension and DOF counts are not as expected')
-    
-    IF (.NOT. ALLOCATED(Ind)) THEN
-      ALLOCATE( Ind(Mesh % MaxElementDOFs), stat=istat )
-    END IF
-    
-    ! Here we assume that all DOFs are associated with edges, so it suffices
-    ! to loop over all the edges
-    !
-    DO j=1, Mesh % NumberOfEdges      
-      Edge => Mesh % Edges(j)
-
-      ! Create the matrix representation of the Nedelec interpolation operator 
-      CALL NodalToNedelecPiMatrix(PiMat, Edge, Mesh, dim, SecondKindBasis)
-      
-      nd = GetElementDOFs(Ind, Edge, VectorElementRes % Solver)
-      
-      DO dofi=1, VectorElementRes % DOFs
-        DO k=1,dim
-          DO i=1,2
-            ri = 0.0_dp    
-            DO p=1,EDOFs
-              q = VectorElementRes % Perm(Ind(p))
-              ri = ri + PiMat(p,3*(i-1)+k) * &
-                  VectorElementRes % Values(VectorElementRes % DOFs*(q-1)+dofi)
-            END DO
-            m = Solver % Variable % Perm(Edge % NodeIndexes(i))
-            RHSVector(ndofs*(m-1) + 2*(k-1) + dofi) = &
-                RHSVector(ndofs*(m-1)+ 2*(k-1) + dofi) + ri
-          END DO
-        END DO
-      END DO
-    END DO
-!------------------------------------------------------------------------------
-  END SUBROUTINE NedelecToNodalResidual
-!------------------------------------------------------------------------------
-
-  
-!------------------------------------------------------------------------------
-! Project edge residual to nodal residual.
-! NOTE: Consider using NedelecToNodalResidual instead
-!------------------------------------------------------------------------------
-  SUBROUTINE EdgeToNodeProject()
-!------------------------------------------------------------------------------
-    IMPLICIT NONE
-    INTEGER :: n, nd, nb
-    TYPE(Element_t), POINTER :: Element, Edge
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:),dBasisdx(:,:), WBasis(:,:), RotWBasis(:,:)
-    COMPLEX(KIND=dp), ALLOCATABLE, SAVE :: STIFF(:,:), FORCE(:)
-    REAL(KIND=dp) :: weight, DetJ, Coord(3), s1, s2
-    LOGICAL :: Stat,Found,NormLoop
-    INTEGER :: i,j,k,t,p,q,m,ipi,i1,i2,allocstat
-    TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(Nodes_t), SAVE :: Nodes
-    INTEGER :: n0, nedge
-    REAL(KIND=dp), ALLOCATABLE :: EdgeWeight(:), NodeWeight(:)
-    REAL(KIND=dp), SAVE :: EdgeVector(3)
-    COMPLEX(KIND=dp) :: c
- !------------------------------------------------------------------------------
-
-    ! Allocate storage if needed
-    IF (.NOT. ALLOCATED(Basis)) THEN
-      m = MAX(Mesh % MaxElementDofs,20)
-      ALLOCATE(Basis(m), dBasisdx(m,3), RotWBasis(m,3), Wbasis(m,3), &
-          STIFF(m,m), FORCE(m), STAT=allocstat)      
-      IF (allocstat /= 0) CALL Fatal(Caller,'Local storage allocation failed')
-    END IF
-    STIFF = 0._dp
-    
-    Active = GetNOFActive(Solver)
-    NormLoop = .TRUE.
-
-    ALLOCATE(EdgeWeight(Mesh % NumberOfEdges))
-    EdgeWeight = 0.0_dp
-    n0 = Mesh % NumberOfNodes
-    
-1   CONTINUE
-    
-    DO t=1,Active
-      Element => GetActiveElement(t)
-      n  = GetElementNOFNodes(Element)
-      nd = GetElementNOFDOFs(Element)
-      nb = GetElementNOFBDOFs(Element)
-
-      IF( RelOrder /= 0 ) THEN
-        IP = GaussPoints( Element, RelOrder = RelOrder)
-      ELSE
-        IP = GaussPoints( Element )
-      END IF
-
-      CALL GetElementNodes( Nodes, UElement=Element )
-
-      ! Initialize
-      IF (.NOT. NormLoop) THEN
-        FORCE = 0._dp
-      END IF
-
-      DO ipi=1,IP % n
-        ! Basis function values & derivatives at the integration point:
-        !--------------------------------------------------------------
-
-        stat = ElementInfo( Element, Nodes, IP % U(ipi), IP % V(ipi), &
-            IP % W(ipi), detJ, Basis, dBasisdx, EdgeBasis = Wbasis, &
-            RotBasis = RotWBasis ) !, USolver = pSolver )
-
-        nedge = Element % TYPE % NumberOfEdges        
-        DO i=1,nedge
-          j = Element % EdgeIndexes(i)                    
-          
-          IF( NormLoop ) THEN
-            s2 = SQRT(SUM(WBasis(i,:)**2))
-            weight = IP % s(ipi) * s2
-            EdgeWeight(j) = EdgeWeight(j) + Weight 
-          ELSE
-            Edge => Mesh % Edges(j)
-            k = EdgeLoadVar % Perm(n0 + j)
-          
-            i1 = Edge % NodeIndexes(1)
-            i2 = Edge % NodeIndexes(2)
-          
-            ! Vector in the direction of the edge
-            EdgeVector(1) = Mesh % Nodes % x(i2) - Mesh % Nodes % x(i1)
-            EdgeVector(2) = Mesh % Nodes % y(i2) - Mesh % Nodes % y(i1)
-            EdgeVector(3) = Mesh % Nodes % z(i2) - Mesh % Nodes % z(i1)
-          
-            ! Integration length of the edge
-            s1 = SQRT(SUM(EdgeVector**2))
-            
-            weight = IP % s(ipi) / EdgeWeight(j)            
-            c = Wbasis(i,compi) * &
-                s1 * CMPLX(EdgeLoadVar % Values(2*k-1), EdgeLoadVar % Values(2*k))           
-            FORCE(1:nd) = FORCE(1:nd) + Basis(1:nd) * weight * c  
-          END IF
-        END DO
-      END DO
-
-      IF(.NOT. NormLoop ) THEN
-        CALL CondensateP( nd-nb, nb, STIFF, FORCE )    
-        CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element)
-      END IF
-    END DO
-    
-    IF( NormLoop ) THEN
-      NormLoop = .FALSE.
-      GOTO 1 
-    END IF
-       
-!------------------------------------------------------------------------------
-  END SUBROUTINE EdgeToNodeProject
-!------------------------------------------------------------------------------
-  
 !------------------------------------------------------------------------------
 END SUBROUTINE VectorHelmholtzNodal
 !------------------------------------------------------------------------------

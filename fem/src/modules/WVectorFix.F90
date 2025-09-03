@@ -137,7 +137,7 @@ SUBROUTINE WVectorFix( Model,Solver,dt,TransientSimulation )
   DO varindex = 1, 2
     GradV => VariableGet( Mesh % Variables,FluxVarname(varindex))  
     IF( .NOT. ( ASSOCIATED( GradV ) ) ) THEN
-      IF (varindex .EQ. 2) CYCLE
+      IF (varindex == 2) CYCLE
       CALL Fatal('WVectorFix','Fixing is done currently only for '//TRIM(FluxVarname(varindex))//&
         '! I cannot find it.')
     END IF    

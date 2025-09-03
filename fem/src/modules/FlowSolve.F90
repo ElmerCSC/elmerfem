@@ -1103,6 +1103,8 @@
       DO t = 1,NoActive
 
         Element => GetBoundaryElement(t)
+        BC => GetBC()
+        IF ( .NOT. ASSOCIATED(BC) ) CYCLE
         IF ( .NOT. ActiveBoundaryElement() ) CYCLE
 
         IF( dim - GetElementDim(Element) > 1 ) CYCLE
@@ -1112,8 +1114,6 @@
         CALL GetElementNodes( ElementNodes )
         NodeIndexes => Element % NodeIndexes
 
-        BC => GetBC()
-        IF ( .NOT. ASSOCIATED(BC) ) CYCLE
 
 !------------------------------------------------------------------------------
         GotForceBC = GetLogical( BC, 'Flow Force BC',gotIt )

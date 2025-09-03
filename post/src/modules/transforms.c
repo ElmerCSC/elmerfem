@@ -128,6 +128,8 @@ static int Rotate(ClientData cl,Tcl_Interp *interp,int argc,char **argv)
     static int first=TRUE,n;
     double x=0,y=0,z=0;
 
+    void opengl_draw();
+
     if ( argc != 4 )
     {
         sprintf( interp->result, "cRotate: wrong number of parameters\n" );
@@ -153,6 +155,7 @@ static int Scale(ClientData cl,Tcl_Interp *interp,int argc,char **argv)
 {
     static int n,first=TRUE;
     double x,y,z;
+    void opengl_draw();
 
     if ( argc != 4 )
     {
@@ -179,6 +182,7 @@ static int Translate(ClientData cl,Tcl_Interp *interp,int argc,char **argv)
 {
     static int n,first=TRUE;
     double x=0,y=0,z=0;
+    void opengl_draw(), obj_translate();
 
     if ( argc != 4 )
     {
@@ -201,11 +205,11 @@ static int Translate(ClientData cl,Tcl_Interp *interp,int argc,char **argv)
 
 int Transforms_Init( Tcl_Interp *interp )
 {
-    Tcl_CreateCommand( interp,"cTranslate",Translate,(ClientData)NULL,(Tcl_CmdDeleteProc *)NULL);
-    Tcl_CreateCommand( interp,"cScale",Scale,(ClientData)NULL,(Tcl_CmdDeleteProc *)NULL);
-    Tcl_CreateCommand( interp,"cRotate",Rotate,(ClientData)NULL,(Tcl_CmdDeleteProc *)NULL);
-    Tcl_CreateCommand( interp,"cRotPriority",RotPriority,(ClientData)NULL,(Tcl_CmdDeleteProc *)NULL);
-    Tcl_CreateCommand( interp,"cTrnPriority",TrnPriority,(ClientData)NULL,(Tcl_CmdDeleteProc *)NULL);
+    Tcl_CreateCommand( interp,"cTranslate",(void *)Translate,(ClientData)NULL,(Tcl_CmdDeleteProc *)NULL);
+    Tcl_CreateCommand( interp,"cScale",(void *)Scale,(ClientData)NULL,(Tcl_CmdDeleteProc *)NULL);
+    Tcl_CreateCommand( interp,"cRotate",(void *)Rotate,(ClientData)NULL,(Tcl_CmdDeleteProc *)NULL);
+    Tcl_CreateCommand( interp,"cRotPriority",(void *)RotPriority,(ClientData)NULL,(Tcl_CmdDeleteProc *)NULL);
+    Tcl_CreateCommand( interp,"cTrnPriority",(void *)TrnPriority,(ClientData)NULL,(Tcl_CmdDeleteProc *)NULL);
 
     return TCL_OK;
 }

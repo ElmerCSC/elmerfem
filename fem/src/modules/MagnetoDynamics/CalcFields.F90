@@ -656,7 +656,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
               CalcFluxLogical, CoilBody, PreComputedElectricPot, ImposeCircuitCurrent, &
               ItoJCoeffFound, ImposeBodyForceCurrent, HasVelocity, HasAngularVelocity, &
               HasLorenzVelocity, HaveAirGap, UseElementalNF, HasTensorReluctivity, &
-              ImposeBodyForcePotential, JouleHeatingFromCurrent, HasZirka, DoAve, HomogenizationModel
+              ImposeBodyForcePotential, JouleHeatingFromCurrent, HasZirka, DoAve, &
+              HomogenizationModel, CalculateFluxLinkage
    LOGICAL :: PiolaVersion, ElementalFields, NodalFields, RealField, pRef
    LOGICAL :: CSymmetry, HasHBCurve, LorentzConductivity, HasThinLines=.FALSE., NewMaterial
    
@@ -672,6 +673,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    TYPE(Mesh_t), POINTER :: Mesh
    REAL(KIND=dp), ALLOCATABLE, TARGET :: Gforce(:,:), MASS(:,:), FORCE(:,:)
    REAL(KIND=dp), ALLOCATABLE :: BodyLoss(:,:), RotM(:,:,:), Torque(:)
+   REAL(KIND=dp), ALLOCATABLE :: ComponentFluxLinkage(:,:)
 
    REAL(KIND=dp), ALLOCATABLE :: ThinLineCrossect(:),ThinLineCond(:),SheetThickness(:)
 
@@ -691,8 +693,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    LOGICAL, SAVE :: ConstantMassMatrixInUse = .FALSE.
    LOGICAL :: Parallel, Erroneous
    LOGICAL :: CoilUseWvec, WvecInitHandle=.TRUE.
+   LOGICAL :: FluxLinkUseCur, FLCurInitHandle=.TRUE.
    CHARACTER(LEN=MAX_NAME_LEN) :: CoilWVecVarname
+   CHARACTER(LEN=MAX_NAME_LEN) :: FluxLinkCurName
    TYPE(VariableHandle_t), SAVE :: Wvec_h
+   TYPE(VariableHandle_t), SAVE :: FLCur_h
    INTEGER, POINTER, SAVE :: SetPerm(:) => NULL()
    LOGICAL :: LayerBC, CircuitDrivenBC
    REAL(KIND=dp) :: SurfPower
@@ -1004,6 +1009,21 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      ALLOCATE( BodyLoss(3,Model % NumberOfBodies) )
      BodyLoss = 0.0_dp
      TotalLoss = 0._dp
+   END IF
+
+   CalculateFluxLinkage = ListGetLogical( SolverParams,'Calculate Flux Linkage', Found )
+   FluxLinkUseCur=.FALSE.
+   IF (CalculateFluxLinkage) THEN
+     IF (.NOT. ((ASSOCIATED(VP).OR.ASSOCIATED(EL_VP)).AND.(ASSOCIATED(CD).OR.ASSOCIATED(EL_CD)))) &
+       CALL Warn('CalcFields','Calculate Flux Linkage requested but Vector Potential and/or Current Density missing!')
+     ALLOCATE( ComponentFluxLinkage(2,Model % NumberOfComponents) )
+     ComponentFluxLinkage = 0.0_dp
+
+     FluxLinkCurName = GetString(SolverParams, 'Flux Linkage Current Name', FluxLinkUseCur)
+     IF ( FluxLinkUseCur ) THEN
+       IF ( FLCurInitHandle ) CALL ListInitElementVariable( FLCur_h, FluxLinkCurName )
+       FLCurInitHandle=.FALSE.
+     END IF
    END IF
 
    HomogenizationLoss = ASSOCIATED(PL) .OR. ASSOCIATED(EL_PL)
@@ -1336,7 +1356,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      
      ! Calculate nodal fields:
      ! -----------------------
-     pRef = ( dim==3 .AND. PiolaVersion ) .OR. isPelement(element)
+     pRef = ( dim==3 .AND. PiolaVersion ) .OR. isActivePelement(element, pSolver)
      IF( ElementalMode >= 3 ) THEN
        IF( ElementalMode == 3 ) THEN
          IP = CornerGaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=pRef)
@@ -2146,6 +2166,48 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            END IF
            k = k + fdim
          END IF
+
+         CompParams => GetComponentParams( Element )
+         IF (ASSOCIATED(CompParams)) THEN
+           IF ( CalculateFluxLinkage ) THEN
+             BLOCK
+               INTEGER :: CompId
+               REAL :: virtual_current(3)
+               REAL :: electrode_area
+               COMPLEX(KIND=dp) :: curdens(3)
+               LOGICAL :: UseVirtualCurrent
+               UseVirtualCurrent=.false.
+               IF (FluxLinkUseCur) THEN
+                 virtual_current(1:3) = ListGetElementVectorSolution( FLCur_h, Basis, Element, dofs = dim ) 
+                 UseVirtualCurrent=(sum(abs(virtual_current))>0._dp)
+               END IF
+               use_virtual_current: IF (UseVirtualCurrent) THEN
+                 electrode_area = GetConstReal(CompParams, 'Electrode Area', Found)
+                 if (.not.Found) then
+                   call warn('CalcFields','Calculate Flux Linkage set true with virtual current but &
+                 & Electrode Area not set - using a factor of 1!')
+                   electrode_area=1
+                 end if
+                 curdens(1:3) = virtual_current(1:3)/electrode_area
+               ELSE
+                 curdens(1:3) = JatIP(1,1:3) + im*JatIP(2,1:3)
+               END IF use_virtual_current
+               CompId = GetComponentId(Element)
+               IF (Vdofs == 1) THEN
+                 ComponentFluxLinkage(1,CompId)=ComponentFluxLinkage(1,CompId)+&
+                   s * Basis(p) * SUM(curdens(1:3)*VP_ip(1,1:3))
+               ELSE
+               BLOCK
+                 COMPLEX(KIND=dp) :: vecpot(3), fluxlink
+                 vecpot(1:3) = VP_ip(1,1:3) + im*VP_ip(2,1:3)
+                 fluxlink = s*Basis(p) * sum(vecpot*conjg(curdens))
+                 ComponentFluxLinkage(1,CompId)=ComponentFluxLinkage(1,CompId)+REAL(fluxlink)
+                 ComponentFluxLinkage(2,CompId)=ComponentFluxLinkage(2,CompId)+AIMAG(fluxlink)
+               END BLOCK
+               END IF
+             END Block
+           END IF 
+         END IF
        END DO ! p
      END DO ! j
 
@@ -2607,6 +2669,13 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          TotalLoss(j) = SUM( BodyLoss(j,:) )
        END DO
      END IF
+
+     IF (CalculateFluxLinkage) THEN
+       DO i=1,Model % NumberOfComponents
+         ComponentFluxLinkage(1,i) = ParallelReduction(ComponentFluxLinkage(1,i)) / NoSlices
+         ComponentFluxLinkage(2,i) = ParallelReduction(ComponentFluxLinkage(2,i)) / NoSlices
+       END DO
+     END IF
    END IF
 
    IF( HbIntegProblem ) THEN
@@ -2710,6 +2779,19 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      END IF
 
      DEALLOCATE( BodyLoss )      
+   END IF
+
+   IF (CalculateFluxLinkage) THEN
+     DO j=1,Model % NumberOfComponents
+       CompParams => Model % Components(j) % Values
+       IF( vdofs == 1 ) THEN
+         CALL ListAddConstReal( CompParams,'res: Flux Linkage',ComponentFluxLinkage(1,j) )
+       ELSE
+         CALL ListAddConstReal( CompParams,'res: Flux Linkage Re',ComponentFluxLinkage(1,j) )
+         CALL ListAddConstReal( CompParams,'res: Flux Linkage Im',ComponentFluxLinkage(2,j) )
+       END IF
+     END DO
+     DEALLOCATE( ComponentFluxLinkage )
    END IF
 
    IF (GetLogical(SolverParams,'Show Angular Frequency',Found)) THEN

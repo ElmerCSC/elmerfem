@@ -147,11 +147,7 @@
        TimeForce(:), RefS(:), RefD(:), RefSpin(:), &
        LocalVelo(:,:), LocalFluidity(:)
 
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: at, at0
-#else
-     REAL(KIND=dp) :: at, at0, CPUTime, RealTime
-#endif
 
 !------------------------------------------------------------------------------
 

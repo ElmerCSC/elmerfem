@@ -57,15 +57,14 @@ MODULE BlockSolve
 
 CONTAINS
 
-
-  ! Create matrix S=P((diag(A))^-1)Q
+! Create matrix S=P((diag(A))^-1)Q
   !------------------------------------------------------------------------  
   FUNCTION CreateSchurApproximation(A,P,Q) RESULT ( S ) 
 
     TYPE(Matrix_t), POINTER :: A, P, Q
-    TYPE(Matrix_t), POINTER :: S
+    TYPE(Matrix_t), POINTER :: S, R
 
-    INTEGER :: n, i, j, k, j2, k2
+    INTEGER :: n, i, j, k, l, j2, k2
     REAL(KIND=dp) :: val
     LOGICAL :: Found
     
@@ -85,6 +84,8 @@ CONTAINS
     END IF
 
     S % FORMAT = MATRIX_LIST
+
+    print*,n, MAXVAL(p % cols), Q % numberofrows, MAXVAL(q % cols), A % Numberofrows, MAXVAL(a % cols)
           
     ! Add the corner entry to give the max size for list.  
     CALL List_AddToMatrixElement(S % ListMatrix, n, n, 0.0_dp ) 
@@ -92,16 +93,16 @@ CONTAINS
     DO i=1,n
       DO j=P % Rows(i),P % Rows(i+1)-1
         k = P % Cols(j)
-        val = P % Values(k) / A % Values(A % Diag(k))        
+        val = P % Values(j) / A % Values(A % Diag(k))        
         DO j2= Q % Rows(k),Q % Rows(k+1)-1
           k2 = Q % Cols(j2)
-          CALL List_AddToMatrixElement(S % ListMatrix, i, k2, -val * Q % Values(k2) )
+          CALL List_AddToMatrixElement(S % ListMatrix, i, k2, -val * Q % Values(j2) )
         END DO
       END DO
     END DO
 
     CALL List_toCRSMatrix(S)
-    
+
     val = 1.0_dp * SIZE(S % Values) / SIZE(P % Values)
     WRITE(Message,'(A,ES12.3)') 'Schur matrix increase factor: ',val
     CALL Info('CreateSchurApproximation',Message)
@@ -260,7 +261,7 @@ CONTAINS
     nsize = j
     
 100 IF( nsize == 0 ) THEN
-      CALL Fatal('CreateBlockVariable','Variable '//TRIM(VarName)//' cannot be created')      
+      CALL Info('CreateBlockVariable','Variable '//TRIM(VarName)//' of size zero.', Level=10 )
     END IF
 
     CALL Info('CreateBlockVariable','Creating variable: '//TRIM(VarName), Level=6 )
@@ -484,8 +485,8 @@ CONTAINS
       ! pointers to the components of the full vector.
       !-----------------------------------------------------------------------------------
       IF(ASSOCIATED( Var ) ) THEN
-        CALL Info(Caller,'Using existing variable > '//VarName//' <')		
-      ELSE		
+        CALL Info(Caller,'Using existing variable > '//VarName//' <')
+      ELSE
         PSolver => Solver
         IF( BlockMatrix % GotBlockStruct ) THEN
           CALL Info(Caller,'Variable > '//VarName//' < does not exist, creating from existing Perm')
@@ -549,7 +550,7 @@ CONTAINS
       IF(n == 0) THEN
         CALL Info('BlockInitVar','Zero rows, skipping...')
       END IF
-      
+
       BlockMatrix % Offset(i+1) = BlockMatrix % Offset(i) + n
       BlockMatrix % MaxSize = MAX( BlockMatrix % MaxSize, n )
 
@@ -609,7 +610,7 @@ CONTAINS
         B => BlockMatrix % SubMatrix(i,i) % Mat
 
         IF( ParEnv % PEs == 1 ) THEN        
-          IF(.NOT. ASSOCIATED(B % InvPerm) ) CALL Fatal('BlockInitVar','InvPerm not present for block '//I2S(11*i))
+!         IF(.NOT. ASSOCIATED(B % InvPerm) ) CALL Fatal('BlockInitVar','InvPerm not present for block '//I2S(11*i))
           IF(ASSOCIATED(B % InvPerm ) ) THEN
             Var % Values = Solver % Variable % Values(B % InvPerm)
           END IF
@@ -1031,7 +1032,7 @@ CONTAINS
     Perm => Solver % Variable % Perm 
     n = SIZE( Perm ) 
     BlockIndex = 0
-    
+   
     dofs = Solver % Variable % Dofs
     IF(dofs > 2) THEN
       CALL Fatal('BlockPickAV','Only implemented for 1 or 2 dofs: '//I2S(dofs))
@@ -1146,7 +1147,7 @@ CONTAINS
       NoBlock = NoVar
       n = Solver % Matrix % NumberOfRows      
     END IF
-            
+
     ALLOCATE( BlockNumbering( n ), rowcount(NoVar), offset(NoBlock+1), STAT=istat )
     IF(istat /= 0) THEN
       CALL Fatal('BlockPickMatrixPerm','Allocation error for BlockNumbering etc.')
@@ -1207,12 +1208,14 @@ CONTAINS
 
       offset(i+1) = offset(i) + n
     END DO
+
     
-    DO i=1,A % NumberOfRows 
+    n = Solver % Matrix % NumberOfRows      
+    DO i=1, A % NumberOfRows 
       
       brow = BlockIndex(i)
       bi = BlockNumbering(i)
-     
+
       B => TotMatrix % SubMatrix(brow,brow) % Mat
       B % Rhs(bi) = A % Rhs(i)
 
@@ -1233,6 +1236,7 @@ CONTAINS
       DO j=A % Rows(i+1)-1,A % Rows(i),-1
 
         k = A % Cols(j)
+!       IF ( k>n) CYCLE
         
         bcol = BlockIndex(k)
         bk = BlockNumbering(k)
@@ -1332,12 +1336,11 @@ CONTAINS
           CALL Info('BlockPickMatrixPerm','Transforming submatrix '//I2S(10*i+j)//' to CRS format',Level=12)
           CALL List_toCRSMatrix(B)
         END IF
+      
+        IF( i==j .AND. ParEnv % PEs > 1 ) THEN
+          CALL ParallelInitMatrix( Solver, B )
+        END IF
       END DO
-      
-      IF( i==j .AND. ParEnv % PEs > 1 ) THEN
-        CALL ParallelInitMatrix( Solver, B )
-      END IF
-      
     END DO
 
     IF( ASSOCIATED(A % PrecValues) ) THEN
@@ -1962,25 +1965,29 @@ CONTAINS
     INTEGER::i,j,k,l,n,i1,i2,i3,rowi,colj,NoCon,rb,cb
     TYPE(Matrix_t), POINTER :: A,CM,C1,C2,C3,C1prec,C2prec,C3prec
     REAL(KIND=dp) :: PrecCoeff,val
-    INTEGER, POINTER :: ConsPerm(:)
+    INTEGER, POINTER :: ConsPerm(:), ConsPerm2(:)
     INTEGER :: DoPrec
     CHARACTER(:), ALLOCATABLE :: VarName
     TYPE(Variable_t), POINTER :: Var
     TYPE(Solver_t), POINTER :: PSolver
     LOGICAL :: InheritCM, PrecTrue 
+     
+    LOGICAL, ALLOCATABLE :: vflag(:)
+
+    INTEGER, ALLOCATABLE :: REdgePerm(:), RNodePerm(:), BlockNumbering(:), InvPerm(:)
     
     CALL Info('BlockPickConstraint','Picking constraints to block matrix',Level=10)
 
     
     SolverMatrix => Solver % Matrix 
     Params => Solver % Values
-       
     BlockAV = ListGetLogical( Params,'Block A-V System Old', Found)
 
     A => SolverMatrix
     n = Solver % Mesh % NumberOfNodes
-    
+
     PrecCoeff = ListGetConstReal( Params,'Block Diag Coeff',Found)
+    
     IF(.NOT. Found ) PrecCoeff = 1.0_dp
 
     PrecTrue = ListGetLogical( Params,'Block Diag True',Found ) 
@@ -2025,8 +2032,6 @@ CONTAINS
       END IF
 
     ELSE IF(BlockAV) THEN          
-      C1 => TotMatrix % SubMatrix(NoVar+1,1) % Mat
-      C2 => TotMatrix % Submatrix(NoVar+2,2) % Mat
       IF( PrecTrue ) THEN
         C1prec => TotMatrix % Submatrix(NoVar+1,NoVar+1) % Mat
         C2prec => TotMatrix % Submatrix(NoVar+2,NoVar+2) % Mat
@@ -2034,21 +2039,86 @@ CONTAINS
         C1prec => TotMatrix % Submatrix(NoVar+1,NoVar+1) % PrecMat
         C2prec => TotMatrix % Submatrix(NoVar+2,NoVar+2) % PrecMat
       END IF
+      C1 => TotMatrix % SubMatrix(NoVar+1,1) % Mat
+      C2 => TotMatrix % SubMatrix(NoVar+2,2) % Mat
     ELSE
       CALL Fatal('BlockPickConstraint','Not done for vectors!')
     END IF
     
-    n = Solver % Mesh % NumberOfNodes
     CM => A % ConstraintMatrix
+    n = Solver % Mesh % NumberOfNodes
     DO WHILE(ASSOCIATED(CM)) 
-      n = MAX( n, MAXVAL( CM % InvPerm ) )
+      IF(.NOT.BlockAV ) n = MAX( n, MAXVAL(MOD(CM % InvPerm-1,A % NumberOfRows)+1) )
       CM => CM % ConstraintMatrix
     END DO
+    CM => A % ConstraintMatrix
 
-    
-    ALLOCATE( ConsPerm( n ) ) 
-    ConsPerm = 0
-    
+    ALLOCATE( ConsPerm( A % NumberOfRows) )
+    ConsPerm = 0;
+    IF ( BlockAV )  THEN
+      ALLOCATE( ConsPerm2(A % NumberofRows) )
+      ConsPerm2 = 0
+    END IF
+
+    IF ( BlockAV ) THEN
+      ALLOCATE( InvPerm(MAXVAL(Solver % Variable % Perm)))
+      InvPerm = 0
+      DO i=1,SIZE(Solver % Variable % Perm)
+        j = Solver % Variable % Perm(i)
+        IF ( j>0 ) InvPerm(j) = i
+      END DO
+
+      j = CM % NumberOfRows
+      ALLOCATE( rEdgePerm(j), rNodePerm(j) )
+      rEdgePerm = 0
+      rNodePerm = 0
+      i1 = 0
+      i2 = 0
+      DO i=1,CM % NumberOFRows
+        j = CM % InvPerm(i)
+        j = MOD(j-1,A % NumberOfRows)+1
+        j = InvPerm(j)
+        IF ( j >  n ) THEN
+           i2 = i2+1
+           rEdgePerm(i) = i2
+        ELSE IF ( j>0 .AND. j <= n ) THEN
+           i1 = i1 +1 
+           rNodePerm(i) = i1
+        ELSE
+          stop 'cm invperm'
+        END IF
+      END DO
+!     print*, 'edges: ', i2, 'nodes: ', i1, cm % numberofrows
+    END IF
+
+    j = Solver % Matrix % NumberOfRows
+    ALLOCATE( vFlag(j), BlockNumbering(j) )
+    IF (BlockAV) THEN
+      i1 = 0; i2 = 0
+      k = SIZE(Solver % Variable % Perm)
+      DO i=1,k
+        j = Solver % variable % Perm(i)
+        IF ( j<= 0 ) CYCLE
+        vFlag(j) = i <= n
+      END DO
+    ELSE
+      vFlag = .TRUE.
+    END IF
+!   print*, 'edges: ', COUNT(.NOT. vFlag), 'nodes: ', COUNT(vFlag), solver %  matrix % numberofrows
+
+
+    k = Solver % Matrix % NumberOfRows
+    i1 = 0; i2=0
+    BlockNumbering = 0
+    DO i=1,k
+      IF ( vFlag(i) ) THEN
+        i1 = i1 + 1
+        BlockNumbering(i) = i1
+      ELSE
+        i2 = i2 + 1
+        BlockNumbering(i) = i2
+      END IF
+    END DO
 
     DO DoPrec = 0, 1
       IF( DoPrec == 1 .AND. SkipPrec ) CYCLE
@@ -2061,36 +2131,37 @@ CONTAINS
 
         DO i=1,CM % NumberOFRows
 
-          rowi = CM % Cols(CM % Rows(i))
+          rowi = MOD(CM % InvPerm(i)-1, A % NumberOfRows)+1
 
           rb = 1          
+          i1 = i1 + 1
           IF( BlockAV ) THEN
-            IF( rowi > n ) rb = 2
-          END  IF
-
-          IF( rb == 1 ) THEN
-            i1 = i1 + 1
-          ELSE
-            i2 = i2 + 1
+            IF( rEdgePerm(i)>0 ) rb = 2
+            IF( rb == 1 ) THEN
+              i1 = rNodePerm(i)
+            ELSE
+              i2 = rEdgePerm(i)
+            END IF
           END IF
 
           ! First round initialize the ConsPerm
           IF( DoPrec == 0 ) THEN
-            j = CM % InvPerm(i)
-            ConsPerm( j ) = i
+            IF ( rb == 1 ) THEN
+              ConsPerm(rowi)  = i1
+            ELSE
+              ConsPerm2(rowi) = i2
+            END IF
           END IF
                       
           DO j=CM % Rows(i),CM % Rows(i+1)-1
             IF (CM % Values(j)==0._dp) CYCLE
 
-            colj = CM % Cols(j) 
+            colj = CM % Cols(j)
             cb = 1
             IF( BlockAV ) THEN
-              IF( colj > n ) THEN
-                cb = 2
-                colj = colj - n 
-              END IF
+              IF( .NOT. vFlag(colj) ) cb = 2
             END IF
+            colj = BlockNumbering(colj)
 
             val = CM % Values(j)
 
@@ -2101,13 +2172,13 @@ CONTAINS
                 IF ( cb == 1 ) THEN
                   CALL AddToMatrixElement(C1prec,i1,ConsPerm(colj),val)
                 ELSE
-                  CALL AddToMatrixElement(C2prec,i2,ConsPerm(colj),val)
+                  CALL AddToMatrixElement(C2prec,i2,ConsPerm2(colj),val)
                 END IF
               END IF                
             ELSE IF( .NOT. InheritCM ) THEN
               IF ( cb == 1 ) THEN
                 CALL AddToMatrixElement(C1,i1,colj,val)
-             ELSE
+              ELSE
                 CALL AddToMatrixElement(C2,i2,colj,val)
               END IF
             END IF
@@ -2123,7 +2194,6 @@ CONTAINS
         CALL AddToMatrixElement(C1prec,i1,i1,0.0_dp)
       END IF
 #endif
-      
     END DO
       
     CALL Info('BlockPickConstraint','Setting format of constraint blocks to CRS',Level=20)
@@ -2136,22 +2206,21 @@ CONTAINS
       CALL List_toCRSMatrix(C2)    
       IF(.NOT. SkipPrec) CALL List_toCRSMatrix(C2prec)
     END IF
-
     
     IF( ListGetLogical( Solver % Values,'Save Prec Matrix', Found ) ) THEN   
       CALL SaveProjector(C1prec,.TRUE.,"CM")
     END IF
         
-    VarName = "lambda"
+    VarName = "lambda_n"
     Var => VariableGet( Solver % Mesh % Variables, VarName )
     IF(ASSOCIATED( Var ) ) THEN
       n = SIZE( Var % Values ) 
-      CALL Info('BlockPickConstraint','Using existing variable > '//VarName//' <')		      
-    ELSE		
+      CALL Info('BlockPickConstraint','Using existing variable > '//VarName//' <')
+    ELSE
       CALL Info('BlockPickConstraint','Variable > '//VarName//' < does not exist, creating')
+      n = MAXVAL(ConsPerm)
       PSolver => Solver      
-      n = i1
-      Var => CreateBlockVariable(PSolver, NoVar+1, VarName, 1, ConsPerm )      
+      Var => CreateBlockVariable(PSolver, NoVar+1, VarName, 1, ConsPerm )
     END IF
     
     TotMatrix % SubVector(NoVar+1) % Var => Var      
@@ -2159,25 +2228,39 @@ CONTAINS
     TotMatrix % MaxSize = MAX( TotMatrix % MaxSize, n )
     TotMatrix % TotSize = TotMatrix % TotSize + n
 
-    IF(ASSOCIATED(TotMatrix % SubMatrix(1,NoVar+1) % Mat)) & 
-        CALL FreeMatrix(TotMatrix % SubMatrix(1,NoVar+1) % Mat)
-    IF( BlockAV ) THEN
-      IF(ASSOCIATED(TotMatrix % SubMatrix(1,NoVar+2) % Mat)) & 
-          CALL FreeMatrix(TotMatrix % SubMatrix(1,NoVar+2) % Mat)
-    END IF
-        
-    TotMatrix % SubMatrix(1,NoVar+1) % Mat => CRS_Transpose( C1 )
-    IF( BlockAV ) THEN
-      TotMatrix % SubMatrix(1,NoVar+2) % Mat => CRS_Transpose( C2 )
-      TotMatrix % SubMatrixActive(1,NoVar+2) = .TRUE.
-    END IF
+    TotMatrix % SubMatrix(NoVar+1,1) % Mat => C1
+    TotMatrix % SubMatrix(1,NoVar+1) % Mat => CRS_Transpose(C1)
+
     TotMatrix % SubMatrix(1,NoVar+1) % ParallelIsolatedMatrix = &
         TotMatrix % SubMatrix(NoVar+1,1) % ParallelIsolatedMatrix
-    IF( BlockAV ) THEN
-      TotMatrix % SubMatrix(1,NoVar+2) % ParallelIsolatedMatrix = &
-          TotMatrix % SubMatrix(NoVar+2,1) % ParallelIsolatedMatrix 
+
+    IF ( BlockAV ) THEN
+      VarName = "lambda_a"
+      Var => VariableGet( Solver % Mesh % Variables, VarName )
+      IF(ASSOCIATED( Var ) ) THEN
+        n = SIZE( Var % Values ) 
+        CALL Info('BlockPickConstraint','Using existing variable > '//VarName//' <')
+      ELSE
+        CALL Info('BlockPickConstraint','Variable > '//VarName//' < does not exist, creating')
+        n = MAXVAL(ConsPerm2)
+        Var => CreateBlockVariable(PSolver, NoVar+2, VarName, 1, ConsPerm2 )
+      END IF
+
+      TotMatrix % SubVector(NoVar+2) % Var => Var      
+      TotMatrix % Offset(NoVar+3) = TotMatrix % Offset(NoVar+2) + n
+      TotMatrix % MaxSize = MAX( TotMatrix % MaxSize, n )
+      TotMatrix % TotSize = TotMatrix % TotSize + n
+
+      TotMatrix % SubMatrix(NoVar+2,2) % Mat => C2
+      TotMatrix % SubMatrix(2,NoVar+2) % Mat => CRS_Transpose(C2)
+
+      TotMatrix % SubMatrixActive(2,NoVar+2) = .TRUE.
+      TotMatrix % SubMatrixActive(NoVar+2,2) = .TRUE.
+
+      TotMatrix % SubMatrix(2,NoVar+2) % ParallelIsolatedMatrix = &
+          TotMatrix % SubMatrix(NoVar+2,2) % ParallelIsolatedMatrix 
     END IF
-    
+
   END SUBROUTINE BlockPickConstraint
 
 
@@ -2327,11 +2410,25 @@ CONTAINS
       IF(NoVar == 1) THEN
         CALL Fatal('BlockPrecMatrix','We should have more than one block')
       END IF
-      Pmat => CreateSchurApproximation( &
-          TotMatrix % Submatrix(1,1) % Mat, &
-          TotMatrix % Submatrix(NoVar,1) % Mat, &
-          TotMatrix % Submatrix(1,NoVar) % Mat )
-      TotMatrix % Submatrix(NoVar,NoVar) % PrecMat => Pmat
+      IF ( NoVar == 4 ) THEN
+        Pmat => CreateSchurApproximation( &
+            TotMatrix % Submatrix(1,1) % Mat, &
+            TotMatrix % Submatrix(3,1) % Mat, &
+            TotMatrix % Submatrix(1,3) % Mat )
+        TotMatrix % Submatrix(3,3) % PrecMat => Pmat
+
+        Pmat => CreateSchurApproximation( &
+            TotMatrix % Submatrix(2,2) % Mat, &
+            TotMatrix % Submatrix(4,2) % Mat, &
+            TotMatrix % Submatrix(2,4) % Mat )
+        TotMatrix % Submatrix(4,4) % PrecMat => Pmat
+      ELSE
+        Pmat => CreateSchurApproximation( &
+            TotMatrix % Submatrix(1,1) % Mat, &
+            TotMatrix % Submatrix(2,1) % Mat, &
+            TotMatrix % Submatrix(1,2) % Mat )
+        TotMatrix % Submatrix(2,2) % PrecMat => Pmat
+      END IF
       NULLIFY(Pmat)
     END IF
 
@@ -2820,7 +2917,6 @@ CONTAINS
     
     v(1:offset(NoVar+1)) = 0
     
-
     DO i=1,NoVar
       DO j=1,NoVar
         s = 0._dp
@@ -2828,9 +2924,10 @@ CONTAINS
         j1 = offset(j)+1
         j2 = offset(j+1)
 
+        IF ( ListGetLogical(SolverRef % Values, 'Dummy block'//I2S(i), Found) ) CYCLE
         A => TotMatrix % SubMatrix(i,j) % Mat
-                
-        IF( A % NumberOfRows == 0) CYCLE
+        IF ( .NOT. ASSOCIATED(A) )  CYCLE
+        IF ( A % NumberOfRows == 0) CYCLE
         Isolated = TotMatrix % SubMatrix(i,j) % ParallelIsolatedMatrix 
         
         CALL Info('BlockMatrixVectorProd','Multiplying with submatrix ('&
@@ -3705,16 +3802,20 @@ CONTAINS
     END IF
     
     CALL ListPushNameSpace('block:')
-    
+
     DO j=1,NoVar
       IF( GotOrder ) THEN
         i = BlockOrder(j)
       ELSE
         i = j
       END IF
-      
+
       WRITE(Message,'(A,I0)') 'Solving block: ',i
       CALL Info('BlockMatrixPrec',Message,Level=8)
+
+      IF ( ListGetLogical( Solver % Values, 'Dymmy block '//I2S(i), Found) ) THEN
+         u(offset(i)+1:offset(i+1)) = v(offset(i)+1:offset(i+1)); cycle
+      end if
 
       ! We do probably not want to compute the change within each iteration
       CALL ListAddLogical( Params,'Skip Advance Nonlinear iter',.TRUE.)         
@@ -3739,6 +3840,8 @@ CONTAINS
         END IF      
         ASolver => Solver
       END IF      
+
+      IF ( A % NumberOfRows == 0 ) CYCLE
         
       IF (isParallel) THEN
         ! copy part of full solution to block solution
@@ -3888,6 +3991,7 @@ CONTAINS
         IF(DoAMGXMv) THEN
           ScaleSystem = ListGetLogical( Params,'Linear System Scaling', Found )
           IF(.NOT. Found) ScaleSystem = .TRUE.
+
           IF ( ScaleSystem ) CALL ScaleLinearSystem(ASolver, A,btmp,x )
           CALL AMGXSolver( A, x, btmp, ASolver )
           IF( ScaleSystem ) CALL BackScaleLinearSystem(ASolver,A,btmp,x)
@@ -4320,6 +4424,11 @@ CONTAINS
       IF (.NOT.isParallel) THEN
         x(offset(i)+1:offset(i+1)) = TotMatrix % SubVector(i) % Var % Values        
         IF(ASSOCIATED(A % rhs)) b(offset(i)+1:offset(i+1)) = A % rhs
+
+
+
+
+
       ELSE 
         ParPerm => TotMatrix % SubMatrix(i,i) % ParPerm
         x(poffset(i)+1:poffset(i+1)) = TotMatrix % SubVector(i) % Var % Values(ParPerm)        
@@ -4924,9 +5033,13 @@ CONTAINS
     END IF
     
     IF( HaveConstraint > 0 ) THEN
-      i = A % ConstraintMatrix % NumberOfRows 
+      i = 0
+      IF ( ASSOCIATED(A % ConstraintMatrix) ) THEN
+        i = A % ConstraintMatrix % NumberOfRows 
+      END IF
       CALL Info('BlockSolveInt','Block system has ConstraintMatrix with '//I2S(i)//' rows!',Level=10)
       BlockDofs = BlockDofs + 1
+      IF (BlockAV) BlockDofs = BlockDofs + 1
     END IF
 
     IF( HaveAdd > 0 ) THEN
@@ -4989,6 +5102,7 @@ CONTAINS
     IF( HaveConstraint > 0 ) THEN
       ! Do not try to create preconditioner if we have Schur operator requested. 
       SkipPrec =  ListCheckPrefix( Params,'Schur Operator' )
+      SkipPrec =  SkipPrec .OR. ListGetLogical( Params,'Skip Constraint Prec', Found )
       CALL BlockPickConstraint( Solver, VarDofs, SkipPrec )
       ! Storing pointer to CM so that the SolverMatrix won't be treated with the constraints
       SaveCM => Solver % Matrix % ConstraintMatrix
@@ -5190,7 +5304,6 @@ SUBROUTINE BlockSolveExt(A,x,b,Solver)
 !------------------------------------------------------------------------------
     LOGICAL :: Found, bm
 !------------------------------------------------------------------------------
-
     ! Eliminate recursion for block solvers. 
     bm = ListGetLogical(  Solver % Values, 'Linear System Block Mode', Found)
     IF(Found) &

@@ -548,10 +548,10 @@ CONTAINS
       Active = GetNOFBoundaryElements()
       DO i=1,Active
         Element => GetBoundaryElement(i)
-        IF (.NOT. ActiveBoundaryElement()) CYCLE
-
         BC => GetBC()
+        
         IF (.NOT.ASSOCIATED(BC)) CYCLE
+        IF (.NOT. ActiveBoundaryElement()) CYCLE
 
         n = GetElementNOFNodes()
         DO j=1,d

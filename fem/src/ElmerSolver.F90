@@ -65,13 +65,17 @@
 #ifdef HAVE_EXTOPTIM
      USE OptimizationUtils, ONLY : ControlParameters, ControlResetMesh, &
          ExternalOptimization_minpack, ExternalOptimization_newuoa, &
-         ExternalOptimization_bobyqa
+         ExternalOptimization_bobyqa, GetCostFunction
+     USE ModelDescription , ONLY : SaveResult, OutputPath, InFileUnit, LoadInputFile, &
+         ReloadInputFile, LoadRestartFile, GetProcAddr, LoadModel, FreeModel, WritePostFile, &
+         CompleteModelKeywords, SetIntegerParametersMatc, SetRealParametersMatc, &
+         SetRealParametersKeywordCoeff
 #else
-     USE OptimizationUtils, ONLY : ControlParameters, ControlResetMesh
-#endif
+     USE OptimizationUtils, ONLY : ControlParameters, ControlResetMesh, GetCostFunction
      USE ModelDescription , ONLY : SaveResult, OutputPath, InFileUnit, LoadInputFile, &
          ReloadInputFile, LoadRestartFile, GetProcAddr, LoadModel, FreeModel, WritePostFile, &
          CompleteModelKeywords, SetIntegerParametersMatc, SetRealParametersMatc
+#endif
      USE SolverUtils, ONLY: GetControlValue, FinalizeLumpedMatrix, UpdateExportedVariables, &
          UpdateIpPerm, VectorValuesRange
      USE MeshUtils, ONLY : MeshExtrude, MeshExtrudeSlices, PeriodicProjector, &
@@ -919,7 +923,7 @@
          prevMesh => pMesh
          pMesh => pMesh % Next 
        END DO
-       CALL Info('CreateExtrduedMesh','Extruded mesh order is '//I2S(i),Level=25)
+       CALL Info('CreateExtrudedMesh','Extruded mesh order is '//I2S(i),Level=25)
 
        ExtrudedMesh % Next => Mesh_in % Next
        IF(ASSOCIATED(prevMesh)) THEN

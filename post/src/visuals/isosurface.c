@@ -189,6 +189,8 @@ static int vis_isosurface( geometry_t *geometry, element_model_t *model, isosurf
 
     element_t *elements = model->Elements;
 
+    void gra_set_colormap(), gra_sphere_quality(), gra_set_material(), vis_polygon();
+
     if ( !ContourData || !ContourData->f ) return TRUE;
 
     if ( !GlobalOptions.StereoMode )

@@ -322,8 +322,11 @@ static int GetColorMap(ClientData cl,Tcl_Interp *interp,int argc,char **argv)
         def_map.NumberOfEntries = n;
     }
 
-    UpdateObject();
-    DrawItSomeTimeWhenIdle();
+    {
+      void UpdateObject(), DrawItSomeTimeWhenIdle();
+      UpdateObject();
+      DrawItSomeTimeWhenIdle();
+    }
 
     return TCL_OK;
 }
@@ -514,8 +517,11 @@ static int UpdateColor(ClientData cl,Tcl_Interp *interp,int argc,char **argv)
     mat->Changed  = TRUE;
 
 
-    UpdateObject();
-    DrawItSomeTimeWhenIdle();
+    {
+      void UpdateObject(), DrawItSomeTimeWhenIdle();
+      UpdateObject();
+      DrawItSomeTimeWhenIdle();
+    }
 
     return TCL_OK;
 }
@@ -1176,6 +1182,9 @@ static int MathCommand(ClientData cl,Tcl_Interp *interp,int argc,char **argv)
 
     element_model_t *ElementModel = CurrentObject->ElementModel;
 
+    void var_reset_status();
+    int var_get_status();
+
     /*
      * do the given math command first ...
      *
@@ -1527,6 +1536,8 @@ void MakeRasterFont( char *name )
 void PrintString( char *s )
 {
     double param[4],rgba[4];
+    void OutputPSString();
+
     if ( GlobalOptions.OutputPS ) {
        glGetDoublev( GL_CURRENT_COLOR, rgba );
        glGetDoublev( GL_CURRENT_RASTER_POSITION, param );
@@ -1602,7 +1613,7 @@ static int SetFont( ClientData cl,Tcl_Interp *interp,int argc,char **argv )
 }
 
 
-int UpdateObject( ClientData cl,Tcl_Interp *interp,int argc,char **argv)
+void UpdateObject( ClientData cl,Tcl_Interp *interp,int argc,char **argv)
 {
     static double L[1024],I[256];
     int i;
@@ -1612,7 +1623,7 @@ int UpdateObject( ClientData cl,Tcl_Interp *interp,int argc,char **argv)
     char *str;
 
     model = CurrentObject->ElementModel;
-    if ( !model ) return TCL_OK;
+    if ( !model ) return;
 
     vis_delete_visual( CurrentObject->VisualList );
     CurrentObject->VisualList = NULL;
@@ -1881,7 +1892,7 @@ int UpdateObject( ClientData cl,Tcl_Interp *interp,int argc,char **argv)
         vis_set_param( VL, "Decimals",  ColorScaleDecimals, 0.0, NULL );
     }
 
-    return TCL_OK;
+//   return TCL_OK;
 }
 
 void opengl_draw()
@@ -2244,6 +2255,8 @@ int main(int argc,char **argv)
   static char szAppPath[512] = "";
   static char szAppDirectory[512] = "";
   char *exeName;
+
+  void mtc_init(), Misc_Init(), Transforms_Init(), Readfile_Init(), Matctcl_Init();
     
     if((argc > 1) && (!strcmp(argv[1], "-v"))) {
       fprintf(stdout, "ElmerPost v.5.4\n");

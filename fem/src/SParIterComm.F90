@@ -326,10 +326,7 @@ ELMER_COMM_WORLD = GROUP_COMMS(ELMER_GROUP_IDX)  ! Set ELMER_COMM_WORLD determin
       CALL coupling_init("coupling.yaml", ELMER_COMM_WORLD, GROUP_COMMS(COUPLER_GROUP_IDX), GROUP_NAMES(ELMER_GROUP_IDX))
     ENDIF
 #endif  
-
-    
     ParEnv % ActiveComm = ELMER_COMM_WORLD
-
 
 !ELMER_COMM_WORLD=MPI_COMM_WORLD
 
@@ -340,11 +337,13 @@ ELMER_COMM_WORLD = GROUP_COMMS(ELMER_GROUP_IDX)  ! Set ELMER_COMM_WORLD determin
        CALL MPI_COMM_RANK( ELMER_COMM_WORLD, ParEnv % MyPE, ierr )
        OutputPE = ParEnv % MyPe
 
-       WRITE( Message, * ) 'Initialize #PEs: ', ParEnv % PEs
-       CALL Info( 'ParCommInit', Message, Level=5 )
-    
+       IF( ParEnv % MyPe < 2 .OR. ParEnv % MyPe >= ParEnv % PEs - 2 ) THEN
+         WRITE( Message,'(A,I0)') 'Initialize #PEs: ', ParEnv % PEs
+         CALL Info( 'ParCommInit',Message, Level=5 )
+       END IF
+         
        IF ( ierr /= 0 ) THEN
-          WRITE( Message, * ) 'MPI Initialization failed ! (ierr=', ierr, ')'
+          WRITE( Message,'(A,I0,A)') 'MPI Initialization failed ! (ierr=', ierr, ')'
           CALL Fatal( 'ParCommInit', Message )
        END IF
 
@@ -563,6 +562,7 @@ ELMER_COMM_WORLD = GROUP_COMMS(ELMER_GROUP_IDX)  ! Set ELMER_COMM_WORLD determin
         Active(ii) = HUGE(i)
         IF ( ParallelInfo % GInterface(ii) ) THEN
           sz = SIZE(ParallelInfo % NeighbourList(ii) % Neighbours)
+
           DO j=1,sz
             k = ParallelInfo % NeighbourList(ii) % Neighbours(j)
             IF ( k == ParEnv % Mype ) THEN
@@ -848,7 +848,7 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element
      real(kind=dp) :: tt
 !-------------------------------------------------------------------------------
-
+     
     IF ( .NOT. ASSOCIATED(Mesh % Edges) ) RETURN
     IF ( Mesh % NumberOfEdges <= 0 ) RETURN
 
@@ -868,11 +868,11 @@ CONTAINS
     n = Mesh % NumberOfEdges
 
     ALLOCATE(  &
-         Edgen(n), parentnodes(n,2),   &
-         owned_edges ( ParEnv % PEs ), &
-         owned_edges2( ParEnv % PEs ), &
-         tosend( ParEnv % PEs ),       &
-         toreceive( ParEnv % PEs ) )
+        Edgen(n), parentnodes(n,2),   &
+        owned_edges ( ParEnv % PEs ), &
+        owned_edges2( ParEnv % PEs ), &
+        tosend( ParEnv % PEs ),       &
+        toreceive( ParEnv % PEs ) )
 
     owned_edges  = 0
     owned_edges2 = 0
@@ -1720,7 +1720,7 @@ CONTAINS
 
          DO m = 2,SIZE(Facen(l) % Neighbours)
             mm = Facen(l) %  Neighbours(m)
-            IF( mm+1 .NE. i ) CYCLE
+            IF( mm+1 /= i ) CYCLE
             gindices(k) = facen(l) % n
             gindices(k+1) = gdofs(parentnodes(l,1))
             gindices(k+2) = gdofs(parentnodes(l,2))
@@ -2351,7 +2351,7 @@ tstart = realtime()
 
            DO m = 2,SIZE( Mesh % ParallelInfo % NeighbourList(l) % Neighbours )
               mm = Mesh % ParallelInfo % NeighbourList(l) % Neighbours(m)
-              IF( mm+1 .NE. i ) CYCLE
+              IF( mm+1 /= i ) CYCLE
               gindices(k) = Mesh % ParallelInfo % GlobalDOFs(l)
               gindices(k+1) = Mesh % ParallelInfo % GlobalDOFs(parentnodes(l,1))
               gindices(k+2) = Mesh % ParallelInfo % GlobalDOFs(parentnodes(l,2))

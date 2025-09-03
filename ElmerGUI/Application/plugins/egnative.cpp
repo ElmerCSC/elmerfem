@@ -3610,6 +3610,7 @@ void InitParameters(struct ElmergridType *eg)
   eg->metis_volcut = FALSE;
   eg->metis_seed = 0;
   eg->metis_ncuts = 1;
+  eg->metis_minconn = FALSE;
   eg->partopt = 0;
   eg->partoptim = FALSE;
   eg->partbcoptim = TRUE;
@@ -3657,6 +3658,7 @@ void InitParameters(struct ElmergridType *eg)
   eg->bulkmappings = 0;
   eg->coordinatemap[0] = eg->coordinatemap[1] = eg->coordinatemap[2] = 0;
   eg->clone[0] = eg->clone[1] = eg->clone[2] = 0;
+  eg->clonesize[0] = eg->clonesize[1] = eg->clonesize[2] = 0.0;
   eg->mirror[0] = eg->mirror[1] = eg->mirror[2] = 0;
   eg->cloneinds = FALSE;
   eg->mirrorbc = 0;
@@ -3664,12 +3666,13 @@ void InitParameters(struct ElmergridType *eg)
   eg->discont = 0;
   eg->connect = 0;
   eg->connectboundsnosets = 0;
-
+  
   eg->rotatecurve = FALSE;
   eg->curverad = 0.5;
   eg->curveangle = 90.0;
   eg->curvezet = 0.0;
   eg->parttol = 0.0;
+  eg->filerenamed = FALSE;
   
   for(i=0;i<MAXSIDEBULK;i++) 
     eg->sidebulk[i] = 0;
@@ -3750,6 +3753,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
       }
       else {
 	strcpy(eg->filesout[0],argv[arg+1]);
+	eg->filerenamed = TRUE;
       }
     }
     else if(strcmp(argv[arg],"-decimals") == 0) {
@@ -4446,6 +4450,7 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
 
       else if(strstr(command,"OUTPUT FILE")) {
 	sscanf(params,"%s",eg->filesout[0]);
+	eg->filerenamed = TRUE;
       }
 
       else if(strstr(command,"INPUT MODE")) {

@@ -52,7 +52,7 @@
 
       INTEGER :: IPIV(N),iINFO
 
-      IF ( N .LE. 0 ) RETURN
+      IF ( N <= 0 ) RETURN
 
       iINFO = 0
       CALL DGBTRF( N,N,Subband,Subband,A,Band,IPIV,iINFO )
@@ -81,7 +81,7 @@
 
       INTEGER :: IPIV(N),iINFO
 
-      IF ( N .LE. 0 ) RETURN
+      IF ( N <= 0 ) RETURN
 
       iINFO = 0
       CALL ZGBTRF( N,N,Subband,Subband,A,Band,IPIV,iINFO )

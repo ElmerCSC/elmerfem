@@ -29,9 +29,6 @@ SUBROUTINE KeywordCompare( Model,Solver,dt,TransientSimulation )
 
   INTEGER :: i, TimeSweeps
   INTEGER :: OldCounter(4),NewCounter(4)
-#ifndef USE_ISO_C_BINDINGS
-  REAL(KIND=dp) :: CPUTime,RealTime
-#endif
   REAL(KIND=dp) :: OldTimes(4), NewTimes(4), PseudoNorm
   
   ! Allocate some permanent storage, this is done first time only:

@@ -29,6 +29,7 @@ void STDCALLBULL FC_FUNC(postgrid,POSTGRID) (float  *xi, /* unscaled x coordinat
   float actual_scaled_coord[3];
   char  groupid[4], filename[80], yes_no, *suffix=".ep";
   FILE  *ptFile;
+  int get_grid_map();
   
   /* constants */
   imax= *imax_in;
@@ -546,6 +547,7 @@ void STDCALLBULL FC_FUNC(elmerdata,ELMERDATA) (int   *imax_in, /* grid steps in 
   float *array_for_output, *array_for_interpolation, *age, *temperature, *flux[2], *velocity[3], *height, *drainage, *melt, *ice_land_sea, *type_of_base, *float_cts, *float_maske;
   char data_filename[80], *suffix=".dat";
   FILE  *ptFile;
+  int get_grid_map();
   /* constants */
   imax=*imax_in;
   jmax=*jmax_in;
@@ -897,6 +899,7 @@ void STDCALLBULL FC_FUNC(pregrid,PREGRID) (float  *xi, /* unscaled x coordinate 
   float actual_scaled_coord[3];
   char  groupid[4], filename[80], yes_no, *suffix=".ep";
   FILE  *ptFile;
+  int get_grid_map();
   
   /* constants */
   imax= *imax_in;
@@ -1409,6 +1412,7 @@ void STDCALLBULL FC_FUNC(asciidata,ASCIIDATA) (float  *xi, /* unscaled x coordin
   struct stat buf;
   time_t  how_late_is_it;
   FILE  *ptFile;
+  int cuserid();
   /* constants */
   imax=*imax_in;
   jmax=*jmax_in;

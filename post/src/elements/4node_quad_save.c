@@ -316,6 +316,7 @@ int elm_4node_quad_point_inside
    )
 {
     double x[3],y[3],z[3],r,s,t;
+    int elm_3node_triangle_point_inside();
 
     if ( px > MAX(MAX(MAX( nx[0],nx[1] ),nx[2] ),nx[3] ) ) return FALSE;
     if ( px < MIN(MIN(MIN( nx[0],nx[1] ),nx[2] ),nx[3] ) ) return FALSE;
@@ -467,6 +468,7 @@ int elm_4node_quad_initialize()
      element_type_t ElementDef;
 
      static char *Name = "ELM_4NODE_QUAD";
+     int elm_add_element_type();
 
      ElementDef.ElementName = Name;
      ElementDef.ElementCode = 404;

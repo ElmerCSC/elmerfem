@@ -28,12 +28,12 @@
        INTEGER  N, IPIV(N), iinfo
        COMPLEX(KIND=dp) A(n*n), x(n)
 
-       IF ( N .LE. 0 ) RETURN
+       IF ( N <= 0 ) RETURN
        CALL ZGETRF( N,N,A,N,IPIV,iINFO )
-       IF ( iinfo .NE. 0 ) PRINT*,'ZGETRF: ', iinfo
+       IF ( iinfo /= 0 ) PRINT*,'ZGETRF: ', iinfo
 
        CALL ZGETRS( 'N',N,1,A,N,IPIV,X,N,iINFO )
-       IF ( iinfo .NE. 0 ) PRINT*,'ZGETRS: ', iinfo
+       IF ( iinfo /= 0 ) PRINT*,'ZGETRS: ', iinfo
 
        END
 

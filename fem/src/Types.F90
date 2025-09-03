@@ -184,8 +184,13 @@ MODULE Types
 
 
 #ifdef HAVE_ROCALUTION
+  TYPE Matrix_arr_t
+     TYPE(Matrix_t), POINTER :: M
+  END TYPE Matrix_arr_t
+
   TYPE RocParams_t
     TYPE(Matrix_t), POINTER :: Rmatrix => Null()
+    TYPE(Matrix_arr_t), POINTER :: IMatrix(:) => Null()
     INTEGER, POINTER :: CntPerm(:)=> Null(), LocPerm(:) => Null(), gOffset(:) => Null()
   END TYPE RocParams_t
 #endif
@@ -784,6 +789,7 @@ MODULE Types
 
      LOGICAL, POINTER               :: EdgeInterface(:) => NULL()
      TYPE(NeighbourList_t),POINTER  :: EdgeNeighbourList(:) => NULL()
+     LOGICAL                        :: NothingShared = .FALSE.
    END TYPE ParallelInfo_t
 
 !------------------------------------------------------------------------------
@@ -956,6 +962,8 @@ MODULE Types
 
       INTEGER :: LocalSystemMode = -1
       TYPE(LocalSystemStorage_t), POINTER :: LocalSystem(:) => NULL()
+
+      REAL(KIND=dp), POINTER :: CutInterp(:) => NULL()
     END TYPE Solver_t
 
 !------------------------------------------------------------------------------

@@ -85,6 +85,8 @@ static int epReadFile( ClientData cl,Tcl_Interp *interp,int argc,char **argv )
     group_t *group;
     extern Tcl_Interp *TCLInterp;
 
+    int geo_group_id();
+
     if ( argc < 2 ) return TCL_ERROR;
 
     fp = fopen( argv[1], "r" ); 
@@ -516,18 +518,18 @@ exit_loop:
          if ( t > 0 ) {
            if ( variable[i].type == 1 )
            {
-             Var1 = lst_find( VARIABLES, variable[i].name );
+             Var1 = (VARIABLE *)lst_find( VARIABLES, variable[i].name );
 #if 0
              NCOL(Var1) = t*NV;
 #endif
  
              strcpy( str, variable[i].name ); strcat( str, "_abs" );
-             Var1 = lst_find( VARIABLES, str );
+             Var1 = (VARIABLE *)lst_find( VARIABLES, str );
 #if 0
              NCOL(Var1) = t*NV;
 #endif
            } else {
-             Var1 = lst_find( VARIABLES, variable[i].name );
+             Var1 = (VARIABLE *)lst_find( VARIABLES, variable[i].name );
 #if 0
              NCOL(Var1) = t*NV;
 #endif
@@ -628,8 +630,11 @@ exit_loop:
 
     CurrentTimeStep = 0;
 
+    {
+    void UpdateObject(), DrawItSomeTimeWhenIdle();
     UpdateObject( 0,NULL,0,NULL );
     DrawItSomeTimeWhenIdle();
+    }
 
     free( str );
 
@@ -780,7 +785,7 @@ static VARIABLE *SetModel( VARIABLE *ptr )
 
 int Readfile_Init( Tcl_Interp *interp )
 {
-    Tcl_CreateCommand( interp,"cReadFile",epReadFile,(ClientData)NULL,(Tcl_CmdDeleteProc *)NULL);
+    Tcl_CreateCommand( interp,"cReadFile",(void *)epReadFile,(ClientData)NULL,(Tcl_CmdDeleteProc *)NULL);
 #if 0
     com_init
         (

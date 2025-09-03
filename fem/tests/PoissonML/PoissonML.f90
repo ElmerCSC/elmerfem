@@ -35,7 +35,8 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Element_t),POINTER :: Element
 
   REAL(KIND=dp) :: Norm, d_val, diag, rt, ct, eps, f
-  INTEGER :: sz, i, j, k, l, m, n, nelem, nb, nd, t, istat, Active, bActive, maxi
+  INTEGER :: sz, i, j, k, l, m, n, nelem, nb, nd, t, istat, Active, bActive, maxi,maxnd
+
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(ValueList_t), POINTER :: BodyForce, BC
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), LOAD(:), FORCE(:)
@@ -89,6 +90,7 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
 
    !System assembly:
    !----------------
+   maxnd = 0
 !$omp parallel do private(t,i,n,nb,nd,element,load,stiff,force,bodyforce,found)
    DO t=1,Active
      Element => GetActiveElement(t)
@@ -107,6 +109,8 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
      CALL LocalMatrix(  STIFF, FORCE, LOAD, Element, n, nd+nb )
      CALL LCondensate( nd, nb, STIFF, FORCE )
 
+     ed(t) % nd = nd
+     maxnd = MAX(maxnd,nd)
      ed(t) % Stiff = STIFF(1:nd,1:nd)
      ed(t) % Force = FORCE(1:nd)
      ed(t) % dofIndeces = [(i,i=1,nd)]
@@ -134,6 +138,7 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
      END IF
 
      j = t + Active
+     ed(j) % nd = nd
      ed(j) % Stiff = STIFF(1:nd,1:nd)
      ed(j) % Force = FORCE(1:nd)
      ed(j) % dofIndeces = [(i,i=1,nd)]
@@ -192,7 +197,7 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
          DO l=1,SIZE(ed(m) % dofIndeces)
            IF(ed(m) % dofIndeces(l)==inds(j)) EXIT
          END DO
-         IF(l>SIZE(ed(m) % dofIndeces)) stop 'l'
+         IF(l>SIZE(ed(m) % dofIndeces)) STOP 'l'
 
          IF (j<=n) THEN
            ed(m) % force = ed(m) % force - ed(m) % stiff(:,l)*d_val
@@ -323,18 +328,18 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE  PCG( n, x, b, eps, maxiter )
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: x(n),b(n), eps
+    IMPLICIT NONE
+
     INTEGER :: n, maxiter
-    TYPE(Matrix_t), POINTER :: A
+    REAL(KIND=dp) :: x(n),b(n), eps
+    REAL(KIND=dp) :: r(n), p(n), q(n), z(n)
 
-    REAL(KIND=dp):: alpha, beta, rho, oldrho
-    REAL(KIND=dp) :: r(n), p(n), q(n), z(n), s
-    INTEGER :: iter, i, j, k
-    REAL(KIND=dp) :: residual, eps2,st
-
+    REAL(KIND=dp):: alpha, beta, rho, oldrho, residual, eps2, bnrm
+    INTEGER :: iter
     REAL(KIND=dp), PARAMETER :: one = 1
 
-    eps2 = eps*eps
+    bnrm = rnrm(n,b)  ! bnrm = SUM(b*b)
+    eps2 = eps**2*bnrm**2
 
     call rmv(n,x,r)         ! r = Ax
     CALL rsumb(n,r,-one,b)  ! r = b - r
@@ -356,18 +361,18 @@ CONTAINS
       call rmv(n,p,q)             ! q = Ap
       alpha = rho/rdot(n,p,q)     ! alpha = rho/SUM(p*q)
 
-      CALL rsuma( n,x,alpha,p )   ! x = x + alpha*p
-      CALL rsuma( n,r,-alpha,q )  ! r = r - alpha*q
+      CALL rsuma(n,x,alpha,p)     ! x = x + alpha*p
+      CALL rsuma(n,r,-alpha,q)    ! r = r - alpha*q
 
       residual = rnrm(n,r)        ! residual = SUM(r*r)
-      IF(MOD(iter,25)==0) WRITE (*, '(I8, E11.4)') iter, SQRT(residual)
+      IF(MOD(iter,25)==0) WRITE (*, '(I8, E11.4)') iter, SQRT(residual/bnrm**2)
       IF (residual < eps2) EXIT
     END DO
 
     call rmv(n,x,r)               ! r = Ax
     CALL rsumb(n,r,-one,b)        ! r = b - r
     residual = SQRT(rnrm(n,r))    ! residual = SUM(r*r)
-    WRITE (*, '(I8, E11.4)') iter, residual
+    WRITE (*, *) iter, residual/bnrm
 !------------------------------------------------------------------------------
   END SUBROUTINE PCG
 !------------------------------------------------------------------------------
@@ -477,21 +482,27 @@ CONTAINS
     INTEGER, INTENT(in) :: n
     REAL(KIND=dp), INTENT(inout) :: v(n)
 
-    INTEGER :: i
+    REAL(KIND=dp), ALLOCATABLE :: x(:)
+    INTEGER :: i,nd
     INTEGER, POINTER :: inds(:)
 
-!$omp parallel do private(i)
+!$omp parallel
+!$omp do private(i)
      DO i=1,n
        v(i) = 0
      END DO
-!$omp end parallel do
+!$omp end do
 
-!$omp parallel do private(i,inds) reduction(+:v)
+!$omp do private(i,inds,x)
      DO i=1,SIZE(ed)
-       inds => ed(i)  % dofIndeces
-       v(inds) = v(inds) + MATMUL(ed(i) % stiff,u(inds))
+       inds => ed(i) % dofIndeces
+       x = MATMUL(ed(i) % stiff, u(inds))
+!$omp critical
+       v(inds) = v(inds) + x
+!$omp end critical
      END DO
-!$omp end parallel do
+!$omp end do
+!$omp end parallel
 !------------------------------------------------------------------------------
   END SUBROUTINE rmv
 !------------------------------------------------------------------------------

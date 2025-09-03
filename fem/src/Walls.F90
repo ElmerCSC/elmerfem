@@ -78,7 +78,7 @@
          DFX = D_WALL_LAW( UFRIC,UT,DENSIT,VISCOS,DIST,ROUGH )
 
 ! Newton step:
-         IF (DFX.EQ.0.0d0) THEN
+         IF (DFX == 0.0d0) THEN
             PRINT*,'Walls:: SOLVE_UFRIC: dfx = 0'
             STOP 1
          END IF
@@ -123,7 +123,7 @@
 
 ! Log-law:
 !      RAJA=11.2658567D0 
-!      IF(YPLUS.GE.RAJA) THEN
+!      IF(YPLUS >= RAJA) THEN
 !         WALL_LAW=(UFRIC/DKAPPA)*DLOG(ROUGH*YPLUS)-UT
 !      ELSE
 !         WALL_LAW=UFRIC*YPLUS-UT
@@ -168,7 +168,7 @@
 
 ! Log-law:
 !      RAJA=11.2658567D0 
-!      IF(YPLUS.GE.RAJA) THEN
+!      IF(YPLUS >= RAJA) THEN
 !         D_WALL_LAW=(1.0D0/DKAPPA)* &
 !             ( DLOG(ROUGH*DENSIT*UFRIC*DIST/VISCOS) + 1.0D0 ) 
 !      ELSE

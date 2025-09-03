@@ -696,7 +696,7 @@ FUNCTION GetKGuu(Model,IPNo,PorosityAtIP) RESULT(KGuuAtIP)
       CALL INFO(FunctionName,'Permafrost Rock Material read',Level=6)
       FirstTime = .FALSE.
     END IF
-    CALL SetPermafrostSolventMaterial( CurrentSolventMaterial )
+    CALL ReadPermafrostSolventMaterial( Material, CurrentSolventMaterial )
   END IF
 
   IF (ElementWiseRockMaterial) THEN
@@ -758,7 +758,7 @@ FUNCTION GetBetaG(Model,DummyIPNo,ArgumentsAtIP) RESULT(betaGAtIP)
       CALL INFO(FunctionName,'Permafrost Rock Material read',Level=6)
       FirstTime = .FALSE.
     END IF
-    CALL SetPermafrostSolventMaterial( CurrentSolventMaterial )
+    CALL ReadPermafrostSolventMaterial( Material, CurrentSolventMaterial )
   END IF
 
   IF (ElementWiseRockMaterial) THEN
@@ -824,7 +824,7 @@ FUNCTION GetNuG(Model,DummyIPNo,ArgumentsAtIP) RESULT(nuGAtIP)
       CALL INFO(FunctionName,'Permafrost Rock Material read',Level=6)
       FirstTime = .FALSE.
     END IF
-    CALL SetPermafrostSolventMaterial( CurrentSolventMaterial )
+    CALL ReadPermafrostSolventMaterial( Material, CurrentSolventMaterial )
   END IF
 
   IF (ElementWiseRockMaterial) THEN
@@ -890,7 +890,7 @@ FUNCTION GetEG(Model,DummyIPNo,ArgumentsAtIP) RESULT(EGAtIP)
       CALL INFO(FunctionName,'Permafrost Rock Material read',Level=6)
       FirstTime = .FALSE.
     END IF
-    CALL SetPermafrostSolventMaterial( CurrentSolventMaterial )
+    CALL ReadPermafrostSolventMaterial( Material, CurrentSolventMaterial )
   END IF
 
   IF (ElementWiseRockMaterial) THEN
@@ -991,7 +991,7 @@ FUNCTION GetElasticityForce(Model,IPNo,ArgumentsAtIP) RESULT(EforceAtIP) ! needs
       FirstTime = .FALSE.
     END IF
     CALL ReadPermafrostSoluteMaterial( Material,Model % Constants,CurrentSoluteMaterial )
-    CALL SetPermafrostSolventMaterial( CurrentSolventMaterial )
+    CALL ReadPermafrostSolventMaterial( Material, CurrentSolventMaterial )
   END IF
 
   IF (ElementWiseRockMaterial) THEN

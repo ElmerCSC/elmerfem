@@ -247,7 +247,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   TYPE(Solver_t), POINTER :: pSolver 
 
   
-  SAVE MASS, STIFF, LOAD, FORCE, Tcoef, JFixVec, JFixFORCE, Acoef, Acoef_t, &
+  SAVE MASS, STIFF, LOAD, ReLOAD, FORCE, Tcoef, JFixVec, JFixFORCE, Acoef, Acoef_t, &
      Cwrk, Cwrk_im, LamCond, LamThick, AllocationsDone, RotM, GapLength, MuParameter, SkinCond
 !------------------------------------------------------------------------------
   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN

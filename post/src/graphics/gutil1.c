@@ -560,6 +560,7 @@ void gra_flat_quad( float coords[4][3],double color )
  ******************************************************************************/
 void gra_line(float *x0,double c0,float *x1,double c1,line_style_t style,double width)
 {
+    void gra_cylinder();
     if ( style == line_style_line )
     {
         if ( GlobalOptions.OutputPS ) 
@@ -612,6 +613,7 @@ void gra_arrow(float From[3],float Vector[3],double color,line_style_t line_styl
 
     float r,g,b;
     int ncolor;
+    void gra_cone(), gra_cylinder();
 
     x += xo;
     y += yo;

@@ -5137,6 +5137,7 @@ CONTAINS
        EquationName = ListGetString( Solver % Values, 'Equation', Found)
 
        IF ( Found ) THEN
+
          CALL SetActiveElementsTable( Model, Solver, MaxDim  ) 
          CALL ListAddInteger( Solver % Values, 'Active Mesh Dimension', Maxdim )
          
@@ -5156,7 +5157,7 @@ CONTAINS
              END IF
            END IF
          END IF
-                  
+         
          IF(DoBulk) CALL CalculateNodalWeights(Solver,.FALSE.)
          IF(DoBC) CALL CalculateNodalWeights(Solver,.TRUE.) 
        END IF
@@ -5174,7 +5175,7 @@ CONTAINS
        Mesh % Nodes => Mesh % NodesOrig
        CALL Info('SingleSolver','Using stored original coordinate in solver')
      END IF
-     
+
      SlaveNotParallel = ListGetLogical( Solver % Values, 'Slave not parallel',Found )
 
      IF ( Parallel .AND. .NOT. SlaveNotParallel ) THEN
@@ -5282,6 +5283,7 @@ BLOCK
 END BLOCK
      END IF
 
+     IF( ListGetLogical( Solver % Values,'CutFEM',Found ) ) GOTO 1
 
      IF ( ASSOCIATED(Solver % Matrix) ) THEN
        IF ( Parallel .AND. MeActive ) THEN
@@ -5321,7 +5323,7 @@ END BLOCK
 
      ! This is more featured version than the original one with just one flag.
      ! This way different solvers can detect when their mesh has been updated. 
-     Solver % MeshChanged = Solver % Mesh % Changed
+1    Solver % MeshChanged = Solver % Mesh % Changed
      IF( Solver % MeshTag /= Solver % Mesh % MeshTag ) THEN
        Solver % MeshChanged = .TRUE.
        Solver % MeshTag = Solver % Mesh % MeshTag
@@ -5926,7 +5928,7 @@ END BLOCK
 
       REAL(KIND=dp) :: gfactor
 
-      IF ((eta .NE. 0.0_dp) .AND. (etaOld .NE. 0.0_dp)) THEN 
+      IF ((eta /= 0.0_dp) .AND. (etaOld /= 0.0_dp)) THEN 
         gfactor = ((epsilon/eta)**beta1) * ((epsilon/etaOld)**beta2)
         CALL TimeStepLimiter(dtOld, dt, gfactor)
       ELSE 

@@ -23,9 +23,6 @@ SUBROUTINE KeywordCompare( Model,Solver,dt,TransientSimulation )
   TYPE(ValueHandle_t) :: RealVal_h
   INTEGER :: i, TimeSweeps, key
   REAL(KIND=dp) :: OldCounter(10),NewCounter(10)
-#ifndef USE_ISO_C_BINDINGS
-  REAL(KIND=dp) :: CPUTime,RealTime
-#endif
   REAL(KIND=dp) :: OldTimes(10), NewTimes(10), PseudoNorm, Val
   
   

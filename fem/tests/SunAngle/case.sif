@@ -1,0 +1,87 @@
+!-------------------------------------------------------------
+! Test case for artificial mountain where a critical sun angle
+! is computed. Could be used to estimate incoming radiation from
+! sun. 
+!
+! P.R. 18.7.2025
+!--------------------------------------------------------------
+
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "square"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 7
+
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Scanning"
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+! Increase stesp for nicer animation.
+$nsteps=4
+  Timestep Intervals = $nsteps
+!  Post File = "case.vtu"
+  Ascii Output = True
+
+  Mesh Levels = 2
+End
+
+
+Body 1
+  Name = "Body1"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+
+Equation 1
+  Name = "Equations"
+  Active Solvers(1) = 1 
+End
+
+Solver 1
+  Exec Solver = "Always"
+  Equation = "Heat"
+
+  Procedure = "./SunAngle" "SunAngleSolver"
+  Variable = "SunAngle"
+
+  Optimize Bandwidth = False
+
+  Test Angle = Variable "time"
+    Real MATC "(tx-1)*2*pi/nsteps"
+
+  Exported Variable 1 = Height
+End
+
+
+Material 1
+  Name = "Material"
+
+$c=10.0
+  Test Height = Equals "Height"
+End 
+
+
+Initial Condition 1
+  Height = Variable "Coordinate"
+    Real MATC "0.5*exp(-c*(tx(0)*tx(0)+tx(1)*tx(1)))+0.1*sin(pi*tx(0))*sin(2*pi*tx(1))"
+End
+
+
+Boundary Condition 1
+  Name = "BCs"
+  Target Boundaries(4) = 1 2 3 4  
+End
+
+Solver 1 :: Reference Norm = 4.06987290E-01
+!End Of File

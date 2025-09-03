@@ -66,7 +66,7 @@
      TYPE(Element_t),POINTER :: Element
 
      REAL(KIND=dp) :: RelativeChange,UNorm,PrevUNorm,Gravity(3), &
-         Tdiff,Normal(3),s,r,NonlinearTol
+         Tdiff,Normal(3),s,r,NonlinearTol,mu0
 
      TYPE(Variable_t), POINTER :: ElectricSol, ForceSol, ElecFieldSol
      INTEGER :: NSDOFs,NonlinearIter, dim
@@ -124,6 +124,12 @@
 
      LocalNodes = COUNT( Solver % Variable % Perm>0 )
 
+     IF(ListCheckPresentAnyMaterial( Model,'Relative Permeability' ) ) THEN
+       mu0 = GetConstReal( Model % Constants,'Permeability of Vacuum', GotIt )
+       IF(.NOT. GotIt ) CALL Fatal('MagneticSolve','> Permeability of Vacuum < is required')
+     END IF
+            
+     
      UNorm = Solver % Variable % Norm
 !------------------------------------------------------------------------------
 !    Allocate some permanent storage, this is done first time only
@@ -238,7 +244,11 @@
 
          Material => GetMaterial()
 
-         Permeability(1:n) = GetReal(Material, 'Magnetic Permeability'   )
+         Permeability(1:n) = GetReal(Material, 'Magnetic Permeability',GotIt)
+         IF(.NOT. GotIt) THEN
+           Permeability(1:n) = mu0 * GetReal(Material, 'Relative Permeability')
+         END IF
+
          Conductivity(1:n) = GetReal(Material, 'Electrical Conductivity',GotIt )
          IF( GotIt ) THEN
            CALL Warn('MagneticSolve','Use electric conductivity instead of electrical')

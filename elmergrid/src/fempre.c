@@ -38,7 +38,7 @@
 *                                                                           *
 *  Note: this software was initially part of my first fem implementation    *
 *  the Pirfem code, then later called Quickmesh, and finally renamed to     *
-*  Elmergrid. The code has never been designed and with new features the    *
+*  ElmerGrid. The code has never been designed and with new features the    *
 *  code has eventually become very dirty and does not present my view of    *
 *  good programming.                                                        *
 *                                                                           *
@@ -132,6 +132,15 @@ int main(int argc, char *argv[])
   inmethod = eg.inmethod;
   outmethod = eg.outmethod;
 
+  if(eg.nooverwrite && !eg.filerenamed) {
+    if( eg.partitions == 1 || eg.metis == 1 ) {
+      if(inmethod == outmethod) {
+	printf("Nothing to do, one partition, same input/output format and no overwriting allowed!\n");
+	Goodbye();
+	return(0);
+      }
+    }
+  }
 
  read_another_file:    
 
@@ -294,14 +303,14 @@ int main(int argc, char *argv[])
   case 14:
     boundaries[nofile] = (struct BoundaryType*)
       malloc((size_t) (MAXBOUNDARIES)*sizeof(struct BoundaryType)); 	
-    data[nofile].dim = (eg.dim >= 1 && eg.dim <= 3) ? eg.dim : 3; /* default dim 3 with gmsh*/
+    data[nofile].dim = (eg.dim >= 1 && eg.dim <= 3) ? eg.dim : 3; /* default dim 3 with gmsh if not given! */
     for(i=0;i<MAXBOUNDARIES;i++) {
       boundaries[nofile][i].created = FALSE; 
       boundaries[nofile][i].nosides = 0;
     }
-
+    
     if (LoadGmshInput(&(data[nofile]),boundaries[nofile],eg.filesin[nofile],
-		      eg.multidim,TRUE))
+		      eg.multidim,eg.dim,TRUE)) 
       Goodbye();
     nomeshes++;    
     break;
@@ -701,7 +710,6 @@ int main(int argc, char *argv[])
 	eg.partitions = 0;
       }
     }
-
 
     partoptim = eg.partoptim;
     partbcoptim = eg.partbcoptim;

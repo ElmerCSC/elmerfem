@@ -29,6 +29,7 @@ void jooMakeRasterFont( char *name )
     static char str[32], here = 0;
 
     char **FontNames;
+    void glXUseXFont();
     
     fontInfo = XLoadQueryFont( auxXDisplay(),name );
     if ( fontInfo == NULL )
@@ -119,7 +120,7 @@ static int Teksti( ClientData cl,Tcl_Interp *interp,int argc,char **argv )
 
 int Teksti_Init( Tcl_Interp *interp )
 {
-   Tcl_CreateCommand( interp,"teksti",Teksti,(ClientData)NULL,(Tcl_CmdDeleteProc *)NULL);
+   Tcl_CreateCommand( interp,"teksti",(void *)Teksti,(ClientData)NULL,(Tcl_CmdDeleteProc *)NULL);
 
    return TCL_OK;
 }

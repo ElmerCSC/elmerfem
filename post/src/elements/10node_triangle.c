@@ -189,6 +189,7 @@ int elm_10node_triangle_point_inside
          double px, double py, double pz, double *u,double *v,double *w
    )
 {
+    int elm_3node_triangle_point_inside();
     return elm_3node_triangle_point_inside( nx,ny,nz,px,py,pz,u,v,w );
 }
 
@@ -335,6 +336,7 @@ int elm_10node_triangle_isoline
 
     for( i=0; i<9; i++ )
     {
+	int elm_3node_triangle_isoline();
         for( j=0; j<3; j++ )
         {
             k = map[i][j-1];
@@ -372,6 +374,8 @@ int elm_10node_triangle_initialize()
      static char *Name = "ELM_10NODE_TRIANGLE";
 
      element_type_t ElementDef;
+
+     int elm_add_element_type();
 
      elm_10node_triangle_shape_functions();
 

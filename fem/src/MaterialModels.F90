@@ -324,9 +324,9 @@ this ise not in USE
               CALL INFO('EffectiveViscosity','Activation Energy 2 not found. Setting to 139.0d03', Level=5)
            END IF
         
-           IF (Temp.LE. Tlimit) THEN
+           IF (Temp <=  Tlimit) THEN
               ArrheniusFactor = A1 * EXP( -Q1/(R * (273.15_dp + Temp)))
-           ELSE IF((Tlimit<Temp) .AND. (Temp .LE. 0.0_dp)) THEN
+           ELSE IF((Tlimit<Temp) .AND. (Temp <= 0.0_dp)) THEN
               ArrheniusFactor = A2 * EXP( -Q2/(R * (273.15_dp + Temp)))
            ELSE
               ArrheniusFactor = A2 * EXP( -Q2/(R * (273.15_dp)))

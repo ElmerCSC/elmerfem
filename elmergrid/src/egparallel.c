@@ -3913,6 +3913,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
   for(i=1;i<=noknots;i++)
     bcnode[i] = FALSE;
   for(j=0;j < MAXBOUNDARIES;j++) {
+    if(!bound[j].created) continue;
     for(i=1; i <= bound[j].nosides; i++) {		
       GetBoundaryElement(i,&bound[j],data,sideind,&sideelemtype); 
       nodesd1 = sideelemtype%100;
@@ -4458,6 +4459,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
     /* Loop over boundaries and boundary elements therein. */
     for(j=0;j < MAXBOUNDARIES;j++) {
 
+      if(!bound[j].created) continue;
       if(bound[j].nosides == 0 ) continue;
 
       /* Normal boundary conditions */
@@ -4560,6 +4562,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
     /* The second side for discontinuous boundary conditions.
        Note that this has not been treated for orphan control. */
     for(j=0;j < MAXBOUNDARIES;j++) {
+      if(!bound[j].created) continue;
       for(i=1; i <= bound[j].nosides; i++) {
 	if(bound[j].ediscont) 
 	  discont = bound[j].discont[i];

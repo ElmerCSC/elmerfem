@@ -88,6 +88,7 @@ static int elm_10node_tetra_triangulate( geometry_t *geom,element_t *tetra )
 
       for( i=0; i<4; i++ )
       {
+	  int elm_6node_triangle_triangulate();
           for( j=0; j<6; j++ )
           {
               triangle.Topology[j] = tetra->Topology[ElmTetraFace[i][j]];
@@ -95,6 +96,7 @@ static int elm_10node_tetra_triangulate( geometry_t *geom,element_t *tetra )
           if ( !elm_6node_triangle_triangulate( geom, &triangle, tetra ) ) return FALSE;
       }
     } else {
+      int geo_add_edge();
       if ( !geo_add_edge( geom, tetra->Topology[0],tetra->Topology[4],tetra ) ) return FALSE;
       if ( !geo_add_edge( geom, tetra->Topology[4],tetra->Topology[1],tetra ) ) return FALSE;
       if ( !geo_add_edge( geom, tetra->Topology[1],tetra->Topology[5],tetra ) ) return FALSE;
@@ -143,6 +145,7 @@ int elm_10node_tetra_point_inside
          double px, double py, double pz, double *u,double *v,double *w
    )
 {
+    int elm_4node_tetra_point_inside();
     return elm_4node_tetra_point_inside( nx,ny,nz,px,py,pz,u,v,w );
 }
 
@@ -171,6 +174,7 @@ int elm_10node_tetra_isosurface
        double *U,double *V,double *W, polygon_t *Polygon
    )
 {
+     int elm_4node_tetra_isosurface();
      return elm_4node_tetra_isosurface( K,F,C,X,Y,Z,U,V,W,Polygon );
 }
 
@@ -395,6 +399,7 @@ static int elm_10node_tetra_isoline
 
     for( i=0; i<4; i++ )
     {
+	int elm_6node_triangle_isoline();
         for( j=0; j<6; j++ )
         {
             k = ElmTetraFace[i][j];
@@ -432,6 +437,8 @@ int elm_10node_tetra_initialize()
      static char *Name = "ELM_10NODE_TETRA";
 
      element_type_t ElementDef;
+
+     int elm_add_element_type();
 
      elm_10node_tetra_shape_functions();
 
