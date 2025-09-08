@@ -17,6 +17,10 @@ ENDIF()
 
 CMAKE_MINIMUM_REQUIRED(VERSION 3.10)
 
+if(POLICY CMP0074)
+    cmake_policy(SET CMP0074 NEW)
+endif()
+
 PROJECT(Elmer Fortran C CXX)
 
 IF(APPLE)
