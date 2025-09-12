@@ -286,7 +286,7 @@ MODULE elmer_coupling
   INTEGER, PARAMETER, PRIVATE :: MAX_CHARLEN = 132
   INTEGER, PARAMETER, PUBLIC :: MAX_GROUPNAME_LEN = MAX_CHARLEN
 
-  CHARACTER(LEN=MAX_CHARLEN) :: ELMER_COMP_NAME
+  CHARACTER(LEN=MAX_CHARLEN), PARAMETER :: ELMER_COMP_NAME = "elmerice"
   CHARACTER(LEN=MAX_CHARLEN), PARAMETER :: ELMER_GRID_NAME = "elmer_grid"
 
   INTEGER :: comp_id
@@ -314,15 +314,13 @@ CONTAINS
 #endif
   END SUBROUTINE coupler_get_code_id
 
-  SUBROUTINE coupling_init(coupling_config_file, elmer_comm, yac_comm, comp_name)
+  SUBROUTINE coupling_init(coupling_config_file, elmer_comm, yac_comm)
 
     IMPLICIT NONE
 
     CHARACTER(LEN=1024), INTENT(IN) :: coupling_config_file
     INTEGER, INTENT(IN) :: elmer_comm
     INTEGER, INTENT(IN) :: yac_comm
-
-    CHARACTER(LEN=MAX_GROUPNAME_LEN), INTENT(IN) :: comp_name
 
 
     INTEGER :: ierror
@@ -336,7 +334,7 @@ CONTAINS
     !   (see:
     !     https://dkrz-sw.gitlab-pages.dkrz.de/yac/d4/d40/init_yac_detail.html)
     ! * will call MPI_Init, if not yet called by the user
-    PRINT *, "Elmer comp name", comp_name
+    PRINT *, "Elmer comp name ", ELMER_COMP_NAME
     CALL yac_finit_comm (yac_comm)
 
     ! read configuration file
@@ -346,7 +344,6 @@ CONTAINS
 
     ! define component
     ! * is collective operation for all processes that initialised YAC
-    ELMER_COMP_NAME = comp_name
     CALL yac_fdef_comp(ELMER_COMP_NAME, comp_id)
 
     ! get number of ranks for the elmer component

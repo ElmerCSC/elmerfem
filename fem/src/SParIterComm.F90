@@ -264,7 +264,7 @@ CONTAINS
 NUM_GROUPS = NUM_GROUPS + 1
 ELMER_GROUP_IDX = NUM_GROUPS
 CALL SetExecID()
-GROUP_NAMES(ELMER_GROUP_IDX) = "elmerice"
+GROUP_NAMES(ELMER_GROUP_IDX) = TRIM(ExecID)
 
 #ifdef HAVE_XIOS
     INQUIRE(FILE="iodef.xml", EXIST=USE_XIOS)
@@ -321,7 +321,7 @@ ELMER_COMM_WORLD = GROUP_COMMS(ELMER_GROUP_IDX)  ! Set ELMER_COMM_WORLD determin
     IF (USE_YAC) THEN
       WRITE(Message,*) "Using YAC coupler with config-file:",TRIM(config_file)
       CALL INFO("SparIterComm",Message,Level=25)
-      CALL coupling_init("coupling.yaml", ELMER_COMM_WORLD, GROUP_COMMS(COUPLER_GROUP_IDX), GROUP_NAMES(ELMER_GROUP_IDX))
+      CALL coupling_init("coupling.yaml", ELMER_COMM_WORLD, GROUP_COMMS(COUPLER_GROUP_IDX))
     ENDIF
 #endif  
 
