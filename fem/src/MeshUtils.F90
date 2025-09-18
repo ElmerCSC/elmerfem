@@ -5459,11 +5459,11 @@ CONTAINS
 
   
 !------------------------------------------------------------------------------
-!> Create master and slave mesh for the interface in order to at a later 
-!> stage create projector matrix to implement periodicity or mortar elements.
+!> Create master and slave meshes for the interface in order to create projector 
+!> matrix for implementing periodicity or mortar elements at a later stage.
 !> The idea is to use a reduced set of elements and thereby speed up the 
 !> mapping process. Also this gives more flexibility in transformation
-!> operations since the nodes may be ereased after use. 
+!> operations since the nodes may be erased after use. 
 !------------------------------------------------------------------------------
   SUBROUTINE CreateInterfaceMeshes( Model, Mesh, This, Trgt, BMesh1, BMesh2, &
       Success ) 
@@ -5681,8 +5681,13 @@ CONTAINS
     CALL AllocateVector( EPerm1, Mesh % NumberOfEdges )
     CALL AllocateVector( EPerm2, Mesh % NumberOfEdges )
 
-    CALL AllocateVector( BPerm1, Mesh % NumberOfEdges )
-    CALL AllocateVector( BPerm2, Mesh % NumberOfEdges )
+    IF (ASSOCIATED(Mesh % Faces)) THEN
+      CALL AllocateVector( BPerm1, Mesh % NumberOfFaces )
+      CALL AllocateVector( BPerm2, Mesh % NumberOfFaces )
+    ELSE
+      CALL AllocateVector( BPerm1, Mesh % NumberOfEdges )
+      CALL AllocateVector( BPerm2, Mesh % NumberOfEdges )
+    END IF
 
     IF( TagNormalFlip ) THEN
       ALLOCATE( BMesh1 % PeriodicFlip(n1) )
@@ -5873,26 +5878,9 @@ CONTAINS
         END IF
                   
         CALL AllocateVector(PMesh % Elements(ind) % NodeIndexes,n )
-      
-        IF( Mesh % NumberOfFaces == 0 .OR. Mesh % NumberOfEdges == 0 ) THEN
-          PMesh % Elements(ind) % NodeIndexes(1:n) = Element % NodeIndexes(1:n)
-          PPerm( Element % NodeIndexes(1:n) ) = 1
 
-          IF(Element % Type % ElementCode==202 .AND. isPelement(Element) ) THEN
-            Parent => Element % BoundaryInfo % Left
-            IF(.NOT. ASSOCIATED( Parent ) ) THEN
-              Parent => Element % BoundaryInfo % Right
-            END IF
-            q => Find_Edge(Mesh,Parent,Element)
-
-            Pmesh % Elements(ind) % ElementIndex = q % ElementIndex
-            BPerm(q % ElementIndex) = 1
-            Pmesh % Elements(ind) % EdgeIndexes => NULL()
-            Pmesh % Elements(ind) % FaceIndexes => NULL()
-          END IF
-
-        ELSE
-          ! If we have edge dofs we want the face element be associated with the 
+        IF (ASSOCIATED(Mesh % Faces)) THEN
+          ! If we have edge dofs, we want the face element be associated with the 
           ! face list since that only has properly defined edge indexes.
           Parent => Element % BoundaryInfo % Left
           IF(.NOT. ASSOCIATED( Parent ) ) THEN
@@ -5900,14 +5888,17 @@ CONTAINS
           END IF
 
           q => Find_Face(Mesh,Parent,Element)                   
+          IF (q % BodyId < 1) q % BodyId = Parent % BodyId  
           PMesh % Elements(ind) % NodeIndexes(1:n) = q % NodeIndexes(1:n)
-
-          ! set the elementindex to be faceindex as it may be needed
+          PMesh % Elements(ind) % BoundaryInfo % Left => Parent
+          PMesh % Elements(ind) % BoundaryInfo % Right => NULL()
+          
+          ! Set the elementindex to be faceindex as it may be needed
           ! for the edge elements.
           PMesh % Elements(ind) % ElementIndex = q % ElementIndex
 
-          IF(ASSOCIATED(q % Pdefs)) THEN
-            ALLOCATE(Pmesh % Elements(ind) % Pdefs)
+          IF (IsPElement(q)) THEN
+            ALLOCATE(PMesh % Elements(ind) % Pdefs)
             PMesh % Elements(ind) % PDefs = q % Pdefs
           END IF
 
@@ -5917,6 +5908,34 @@ CONTAINS
           Pmesh % Elements(ind) % FaceIndexes => Null()
           EPerm( q % EdgeIndexes(1:en) ) = 1
           PPerm( q % NodeIndexes(1:n) )  = 1
+          BPerm( q % ElementIndex ) = 1
+        ELSE
+          PMesh % Elements(ind) % NodeIndexes(1:n) = Element % NodeIndexes(1:n)
+          PPerm( Element % NodeIndexes(1:n) ) = 1
+
+          IF (ASSOCIATED(Mesh % Edges)) THEN
+            Parent => Element % BoundaryInfo % Left
+            IF(.NOT. ASSOCIATED( Parent ) ) THEN
+              Parent => Element % BoundaryInfo % Right
+            END IF
+            q => Find_Edge(Mesh,Parent,Element)
+            IF (q % BodyId < 1) q % BodyId = Parent % BodyId
+
+            PMesh % Elements(ind) % BoundaryInfo % Left => Parent
+            PMesh % Elements(ind) % BoundaryInfo % Right => NULL()
+            Pmesh % Elements(ind) % ElementIndex = q % ElementIndex
+            
+            IF (IsPElement(q)) THEN
+              ALLOCATE(PMesh % Elements(ind) % Pdefs)
+              PMesh % Elements(ind) % PDefs = q % Pdefs
+            END IF
+            
+            IF (Element % Type % ElementCode == 202) THEN
+              BPerm(q % ElementIndex) = 1              
+              Pmesh % Elements(ind) % EdgeIndexes => NULL()
+              Pmesh % Elements(ind) % FaceIndexes => NULL()
+            END IF
+          END IF
         END IF
       END IF       
     END DO
@@ -5956,9 +5975,11 @@ CONTAINS
 
     n = BMesh1 % NumberOfNodes + e1 + COUNT(BPerm1>0)
     CALL AllocateVector(Bmesh1 % InvPerm, n)
+    Bmesh1 % InvPerm = 0
 
     n = BMesh2 % NumberOfNodes + e2 + COUNT(BPerm2>0)
     CALL AllocateVector(Bmesh2 % InvPerm, n)
+    Bmesh2 % InvPerm = 0
 
     ! Now, create the master and target meshes that only include the active elements
     !---------------------------------------------------------------------------
@@ -6014,23 +6035,47 @@ CONTAINS
       END IF
     END DO
 
-    k1 = 0; k2 = 0
-    DO i=1,Mesh % NumberOfEdges
-      IF (BPerm1(i)>0) THEN
-        k1 = k1 + 1
-        BMesh1 % InvPerm(k1+k) = i+j
-      END IF
+    IF (ASSOCIATED(Mesh % Faces)) THEN
+      ! If the implementation was done in the original style, something should be done here,
+      ! but we now try to implement the process such that the array InvPerm is not needed
+      CONTINUE
+    ELSE
+      ! If the interface is 1-dimensional, we may have internal (bubble) DOFs 
+      k1 = 0; k2 = 0
+      DO i=1,Mesh % NumberOfEdges
+        IF (BPerm1(i)>0) THEN
+          k1 = k1 + 1
+          BMesh1 % InvPerm(k1+k) = i+j
+        END IF
 
-      IF (BPerm2(i)>0) THEN
-        k2 = k2 + 1
-        BMesh2 % InvPerm(k2+l) = i+j
-      END IF
-    END DO
-
-
-!   Finally, Renumber the element node & edge pointers to use only boundary nodes:
-!   ------------------------------------------------------------------------------
-
+        IF (BPerm2(i)>0) THEN
+          k2 = k2 + 1
+          BMesh2 % InvPerm(k2+l) = i+j
+        END IF
+      END DO
+    END IF
+    
+    ! The following can be used to check how the interface was re-indexed: 
+    IF (.FALSE. .AND. ASSOCIATED(Mesh % Faces)) THEN
+      DO i=1,n1
+        print *, '======='
+        print *, 'reindexing face', BMesh1 % Elements(i) % NodeIndexes(1: BMesh1 % Elements(i) % type % numberofnodes)
+        print *, 'indexed as', Perm1(BMesh1 % Elements(i) % NodeIndexes(1: BMesh1 % Elements(i) % type % numberofnodes))
+        element => Mesh % Faces(BMesh1 % Elements(i) % ElementIndex)
+        print *, 'mesh faces indexing', element % NodeIndexes(1: element % type % numberofnodes)
+        parent => BMesh1 % Elements(i) % BoundaryInfo % Left
+        print *, 'parent', parent % NodeIndexes(1:parent % type % numberofnodes)
+        q => Find_Face(Mesh,Parent,Element)
+        if (.not. associated(q)) then
+          call fatal('check', 'face not found?')
+        else
+          print *, 'face found', q % NodeIndexes(1: q % type % numberofnodes)
+        end if
+      end DO
+    END IF
+    
+!   Finally, renumber the element node & edge pointers to use only boundary nodes:
+!   ------------------------------------------------------------------------------      
     DO i=1,n1
       BMesh1 % Elements(i) % NodeIndexes = Perm1(BMesh1 % Elements(i) % NodeIndexes)
     END DO
@@ -7070,7 +7115,7 @@ CONTAINS
 
       CHARACTER(*), PARAMETER :: Caller='NormalProjectorWeak'
 
-      CALL Info(Caller,'Creating weak constraints using a generic integrator',Level=8)      
+      CALL Info(Caller,'Creating weak constraints using a normal integrator',Level=8)      
 
       Mesh => CurrentModel % Solver % Mesh 
       
@@ -9048,7 +9093,7 @@ CONTAINS
   !---------------------------------------------------------------------------
   !> Create a projector for mixed nodal / edge problems assuming constant level
   !> in the 2nd direction. This kind of projector is suitable for 2D meshes where
-  !> the mortar line is effectively 1D, or to 3D cases that have been created by
+  !> the mortar line is effectively 1D, or for 3D cases that have been created by
   !> extrusion. 
   !---------------------------------------------------------------------------
   FUNCTION LevelProjector( BMesh1, BMesh2, Repeating, AntiRepeating, &
@@ -9344,7 +9389,8 @@ CONTAINS
     ! this way we can eliminate unneeded rows. 
     ! For the weak projector there is no need to eliminate rows. 
     IF( DoNodes ) THEN      
-      ALLOCATE( NodePerm( MAX(Mesh % NumberOfNodes,SIZE(Mesh % Nodes % x))+Mesh% NumberOfEdges ) )
+      ALLOCATE( NodePerm( MAX(Mesh % NumberOfNodes,SIZE(Mesh % Nodes % x))+Mesh % NumberOfEdges + &
+          Mesh % NumberOfFaces) )
       NodePerm = 0      
       
       ! in parallel only consider nodes that truly are part of this partition
@@ -9380,7 +9426,9 @@ CONTAINS
         ! Now eliminate the nodes which also occur in the other mesh
         ! These must be redundant edges
         DO i=1, SIZE(InvPerm2)
-           j = InvPerm2(i) 
+          j = InvPerm2(i)
+          IF (j == 0) CYCLE
+
           IF( NodePerm(j) /= 0 ) THEN
             NodePerm(j) = 0
             !PRINT *,'Removing node:',j,Mesh % Nodes % x(j), Mesh % Nodes % y(j)
@@ -10651,7 +10699,7 @@ CONTAINS
     END SUBROUTINE AddEdgeProjectorStrongConforming
 
     !---------------------------------------------------------------------------------
-    ! Create a strong projector for edges in a conforming case.
+    ! Create a strong projector for nodal DOFs in a conforming case.
     ! We create a periodic permutation first instead of creating a matrix directly.
     ! This enables that we can recycle some code. 
     !---------------------------------------------------------------------------------
@@ -10660,7 +10708,7 @@ CONTAINS
       INTEGER :: nn, i, nrow, ind, indm, sgn
       INTEGER, POINTER :: PerPerm(:)
       
-      CALL Info('AddNodeProjectorStrongConforming','Creating strong projector for conforming edges',Level=8)
+      CALL Info('AddNodeProjectorStrongConforming','Creating strong projector for conforming nodal DOFs',Level=8)
 
 
       nn = Mesh % NumberOfNodes            
@@ -11218,12 +11266,12 @@ CONTAINS
       INTEGER, TARGET :: IndexesT(3)
       INTEGER :: Indexes(256), IndexesM(256)
 
-      INTEGER :: jj,ii,sgn0,k,kmax,ind,indM,nip,nd,ndM,nn,ne,nf,inds(10),nM,neM,nfM,iM,i2,i2M
+      INTEGER :: jj,ii,sgn0,k,kmax,ind,indM,nip,nd,ndM,ndtot,nn,ne,nf,inds(10),nM,neM,nfM,iM,i2,i2M
       INTEGER :: edge, edof, fdof
       INTEGER :: ElemCands, TotCands, ElemHits, TotHits, EdgeHits, CornerHits, &
           MaxErrInd, MinErrInd, InitialHits, ActiveHits, TimeStep, Nrange1, NoGaussPoints, &
           Centeri, CenteriM, CenterJ, CenterJM, AllocStat, NrangeAve
-      TYPE(Element_t), POINTER :: Element, ElementM, ElementP, TrueElement
+      TYPE(Element_t), POINTER :: Element, ElementM, ElementP, TrueElement, TrueElementM
       INTEGER :: ElemCode, LinCode, ElemCodeM, LinCodeM
       TYPE(Element_t) :: ElementT
       TYPE(Element_t), TARGET :: ElementLin
@@ -11383,10 +11431,19 @@ CONTAINS
           PRINT *,'Debug element turned on:',ind
         END IF
 
-        Element => BMesh1 % Elements(ind)        
-        nd = mGetElementDOFs(Indexes,Element)
+        Element => BMesh1 % Elements(ind)
+
+        IF (ASSOCIATED(Mesh % Faces)) THEN
+          ! We need a face element as indexed in the original mesh so that
+          ! the subroutine mGetElementDOFs works as expected 
+          TrueElement => Mesh % Faces(Element % ElementIndex)
+          nd = mGetElementDOFs(Indexes,TrueElement)
+        ELSE
+          nd = mGetElementDOFs(Indexes,Element)
+        END IF
 
         n = Element % TYPE % NumberOfNodes
+        ndtot = nd
         IF(DoNodes .AND. .NOT. pElemBasis) nd = n
 
         ! We use 'ne' also to indicate number of corners since for triangles and quads these are the same
@@ -11529,13 +11586,28 @@ CONTAINS
 
         IF( DoNodes .AND. .NOT. StrongNodes ) THEN
           DO i=1,n
-            j = Element % NodeIndexes(i)
-            j = InvPerm1(j)
+
+            IF (ASSOCIATED(Mesh % Faces)) THEN
+              j = Indexes(i)
+            ELSE
+              j = Element % NodeIndexes(i)
+              j = InvPerm1(j)
+            END IF
+
             nrow = NodePerm(j)
             IF( nrow == 0 ) CYCLE
+
+            if (ANY(invperm1(Element % NodeIndexes(1:n)) == j)) then
+              continue
+            else
+              print *, 'i,n', i, n
+              print *, 'InvPerm1(Element % NodeIndexes(1:n))', InvPerm1(Element % NodeIndexes(1:n))
+              call Fatal('Check', 'Inconsistent indexing 3')
+            end if
+            
             CALL List_AddMatrixIndex(Projector % ListMatrix, nrow, j ) 
-             IF(ASSOCIATED(Projector % Child)) &
-               CALL List_AddMatrixIndex(Projector % Child % ListMatrix, nrow, j ) 
+            IF(ASSOCIATED(Projector % Child)) &
+                CALL List_AddMatrixIndex(Projector % Child % ListMatrix, nrow, j ) 
           END DO
           IF( pElemProj ) THEN
             DO i=n+1,nd
@@ -11543,8 +11615,8 @@ CONTAINS
               nrow = NodePerm(j)
               IF( nrow == 0 ) CYCLE
               CALL List_AddMatrixIndex(Projector % ListMatrix, nrow, j ) 
-               IF(ASSOCIATED(Projector % Child)) &
-                 CALL List_AddMatrixIndex(Projector % Child % ListMatrix, nrow, j ) 
+              IF(ASSOCIATED(Projector % Child)) &
+                  CALL List_AddMatrixIndex(Projector % Child % ListMatrix, nrow, j ) 
             END DO
           END IF
         END IF
@@ -11557,12 +11629,17 @@ CONTAINS
 
         DO indM=1,BMesh2 % NumberOfBulkElements
 
-          ElementM => BMesh2 % Elements(indM)        
-
+          ElementM => BMesh2 % Elements(indM)
+          IF (ASSOCIATED(Mesh % Faces)) THEN
+            TrueElementM => Mesh % Faces(ElementM % ElementIndex)
+            ndM = mGetElementDOFs(IndexesM,TrueElementM)
+          ELSE
+            ndM =  mGetElementDOFs(IndexesM,ElementM)
+          END IF
+          
           neM = ElementM % TYPE % ElementCode / 100
           nM  = ElementM % TYPE % NumberOfNodes
-
-          ndM =  mGetElementDOFs(IndexesM,ElementM)
+          
           IF(DoNodes .AND. .NOT. pElemBasis) ndM = nM
 
           ElemCodeM = Element % TYPE % ElementCode 
@@ -12146,16 +12223,29 @@ CONTAINS
 
                 DO j=1,nd
                   IF(pElemBasis) THEN
-                    jj = Indexes(j)                                    
                     IF(.NOT. pElemProj .AND. j > n ) CYCLE
+                    jj = Indexes(j)                                    
                   ELSE
-                    jj = Element % NodeIndexes(j)
+                    IF (ASSOCIATED(Mesh % Faces)) THEN
+                      jj = Indexes(j)
+                    ELSE
+                      jj = Element % NodeIndexes(j)
+                      IF (j<=n) jj=InvPerm1(jj)                      
+                    END IF
                   END IF
-                  IF (j<=n) jj=InvPerm1(jj)
                   
                   nrow = NodePerm(jj)
                   IF( nrow == 0 ) CYCLE
 
+                  IF (j<=n) THEN
+                    if (ANY(invperm1(Element % NodeIndexes(1:n)) == jj)) then
+                      continue
+                    else
+                      print *,'j,nd', j,nd
+                      call fatal('Check', 'Inconsistent indexing 1')
+                    end if
+                  end IF
+                  
                   Projector % InvPerm(nrow) = jj
 
                   val = Basis(j) * Wtemp
@@ -12170,10 +12260,14 @@ CONTAINS
                       IF(.NOT. pElemProj .AND. i > n ) CYCLE
                       ii = Indexes(i)                      
                     ELSE
-                      ii = Element % NodeIndexes(i)
+                      IF (ASSOCIATED(Mesh % Faces)) THEN
+                        ii = Indexes(i)
+                      ELSE
+                        ii = Element % NodeIndexes(i)
+                        IF(i<=n) ii=InvPerm1(ii)
+                      END IF
                     END IF
-                    IF(i<=n) ii=InvPerm1(ii)
-
+                    
                     CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                                ii, NodeCoeff * Basis(i) * val ) 
 
@@ -12190,10 +12284,22 @@ CONTAINS
                       IF(.NOT. pElemProj .AND. i > nM ) CYCLE
                       ii = IndexesM(i)
                     ELSE
-                      ii = ElementM % NodeIndexes(i)
+                      IF (ASSOCIATED(Mesh % Faces)) THEN
+                        ii = IndexesM(i)
+                      ELSE
+                        ii = ElementM % NodeIndexes(i)
+                        IF(i<=nM) ii=InvPerm2(ii)
+                      END IF
                     END IF
-                    IF(i<=nM) ii=InvPerm2(ii)
 
+                    IF (i<=nm) THEN
+                      if (ANY(invperm2(ElementM % NodeIndexes(1:nm)) == ii)) then
+                        continue
+                      else
+                        call Fatal('Check', 'Inconsistent indexing 2')
+                      end if
+                    end if
+                    
                     Nmaster = Nmaster + 1
                     CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                         ii, -sgn0 * NodeScale * NodeCoeff * BasisM(i) * val )                   
@@ -12317,6 +12423,15 @@ CONTAINS
                         CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                             ii, EdgeCoeff * val ) 
                       END IF
+
+                      if (ANY(Indexes(1:ndtot) == ii)) then
+                        continue
+                      else
+                        print *, 'ii,ne,nf', ii,ne,nf
+                        print *, 'i, ndtot', i, ndtot
+                        print *, Indexes(1:ndtot)
+                        call fatal('Check', 'Inconsistent indexing')
+                      end if
                     END DO
                       
                     DO i=1,neM+nfM
@@ -12509,8 +12624,7 @@ CONTAINS
 
 
     !----------------------------------------------------------------------
-    ! Create weak projector for the remaining nodes and edges
-    ! using generic algo that can deal with triangles and quadrilaterals.
+    ! Create a strong projector by using a generic approach
     !----------------------------------------------------------------------
     SUBROUTINE AddEdgeProjectorStrongGeneric()
 

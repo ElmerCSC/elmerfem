@@ -277,7 +277,7 @@ Boundary Condition 4
 
   Level Projector = Logical True
   Level Projector Generic = Logical True
-  Level Projector Nodes Strong = Logical True
+  Projector Skip Nodes = Logical True  
 
 !  Save Projector = Logical True
 End
