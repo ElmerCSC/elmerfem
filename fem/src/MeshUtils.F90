@@ -11266,7 +11266,8 @@ CONTAINS
       INTEGER, TARGET :: IndexesT(3)
       INTEGER :: Indexes(256), IndexesM(256)
 
-      INTEGER :: jj,ii,sgn0,k,kmax,ind,indM,nip,nd,ndM,ndtot,nn,ne,nf,inds(10),nM,neM,nfM,iM,i2,i2M
+      INTEGER :: jj,ii,sgn0,k,kmax,ind,indM,nip,nd,ndM,nn,ne,nf,inds(10),nM,neM,nfM,iM,i2,i2M
+      INTEGER :: nnM, ndtot, ndtotM, vecdofs, vecdofsM
       INTEGER :: edge, edof, fdof
       INTEGER :: ElemCands, TotCands, ElemHits, TotHits, EdgeHits, CornerHits, &
           MaxErrInd, MinErrInd, InitialHits, ActiveHits, TimeStep, Nrange1, NoGaussPoints, &
@@ -11444,6 +11445,8 @@ CONTAINS
 
         n = Element % TYPE % NumberOfNodes
         ndtot = nd
+        nn = n * MAXVAL(CurrentModel % Solver % Def_Dofs(Element % Type % ElementCode/100,:,1))
+        
         IF(DoNodes .AND. .NOT. pElemBasis) nd = n
 
         ! We use 'ne' also to indicate number of corners since for triangles and quads these are the same
@@ -11639,6 +11642,9 @@ CONTAINS
           
           neM = ElementM % TYPE % ElementCode / 100
           nM  = ElementM % TYPE % NumberOfNodes
+
+          ndtotM = ndM
+          nnM = nM * MAXVAL(CurrentModel % Solver % Def_Dofs(ElementM % Type % ElementCode/100,:,1))
           
           IF(DoNodes .AND. .NOT. pElemBasis) ndM = nM
 
@@ -12318,6 +12324,9 @@ CONTAINS
               END IF
 
               IF( DoEdges ) THEN
+                vecdofs = ndtot - nn
+                vecdofsM = ndtotM - nnM
+
                 IF (SecondOrder) THEN
 
                   DO j=1,2*ne+nf   ! for all slave dofs
@@ -12384,14 +12393,12 @@ CONTAINS
                   ! + ( 1 ... number of edges )
                   ! + ( 1 ... 2 x number of faces )
                   !-------------------------------------------
-                  DO j=1,ne+nf
+                  DO j=1,vecdofs
 
                     IF( j <= ne ) THEN
                       jj = Element % EdgeIndexes(j) 
                       IF( EdgePerm(jj) == 0 ) CYCLE
                       nrow = EdgeRow0 + EdgePerm(jj)
-                      jj = jj + EdgeCol0
-                      Projector % InvPerm( nrow ) = Element % EdgeIndexes(j) + EdgeCol0
                     ELSE
                       IF( Parallel ) THEN
                         IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE
@@ -12399,23 +12406,13 @@ CONTAINS
 
                       jj = 2 * ( ind - 1 ) + ( j - ne )
                       nrow = FaceRow0 + jj
-                      jj = 2 * ( Element % ElementIndex - 1) + ( j - ne ) 
-                      Projector % InvPerm( nrow ) = FaceCol0 + jj
                     END IF
+                    Projector % InvPerm( nrow ) = Indexes(nn+j)
 
+!                    nrow = Indexes(nn+j)
 
-                    DO i=1,ne+nf
-                      IF( i <= ne ) THEN
-                        ii = EdgeCol0 + Element % EdgeIndexes(i)
-                      ELSE
-                        ii = 2 * ( Element % ElementIndex - 1 ) + ( i - ne ) + FaceCol0
-                      END IF
-
-                      IF( DebugEdge ) THEN
-                        ci = cFact(i)
-                        sums = sums + ci * EdgeCoeff * val                         
-                        EdgeProj(1:2) = EdgeProj(1:2) + ci * Wtemp * Wbasis(i,1:2)
-                      END IF
+                    DO i=1,vecdofs
+                      ii = Indexes(nn+i)
                         
                       val = Wtemp * SUM( WBasis(j,:) * Wbasis(i,:) ) 
                       IF( ABS( val ) > 1.0d-12 ) THEN
@@ -12423,24 +12420,24 @@ CONTAINS
                         CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                             ii, EdgeCoeff * val ) 
                       END IF
-
-                      if (ANY(Indexes(1:ndtot) == ii)) then
-                        continue
-                      else
-                        print *, 'ii,ne,nf', ii,ne,nf
-                        print *, 'i, ndtot', i, ndtot
-                        print *, Indexes(1:ndtot)
-                        call fatal('Check', 'Inconsistent indexing')
-                      end if
+                      
+                      IF( DebugEdge ) THEN
+                        ci = cFact(i)
+                        sums = sums + ci * EdgeCoeff * val                         
+                        EdgeProj(1:2) = EdgeProj(1:2) + ci * Wtemp * Wbasis(i,1:2)
+                      END IF
                     END DO
                       
-                    DO i=1,neM+nfM
-                      IF( i <= neM ) THEN
-                        ii = EdgeCol0 + ElementM % EdgeIndexes(i)
-                      ELSE
-                        ii = 2 * ( ElementM % ElementIndex - 1 ) + ( i - neM ) + FaceCol0
+                    DO i=1,vecdofsM
+                      ii = IndexesM(nnM+i)
+                        
+                      val = -Wtemp * sgn0 * SUM( WBasis(j,:) * WBasisM(i,:) ) 
+                      IF( ABS( val ) > 1.0d-12 ) THEN
+                        Nmaster = Nmaster + 1
+                        CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
+                            ii, EdgeScale * EdgeCoeff * val  ) 
                       END IF
-
+                      
                       IF( DebugEdge ) THEN
                         ci = cFactM(i)
                         summ = summ + ci * EdgeScale * EdgeCoeff * val
@@ -12449,13 +12446,6 @@ CONTAINS
                           summ2 = summ2 + ci * EdgeScale * EdgeCoeff * val
                         END IF                        
                         EdgeProjM(1:2) = EdgeProjM(1:2) + ci * Wtemp * sgn0 * WbasisM(i,1:2)
-                      END IF
-                        
-                      val = -Wtemp * sgn0 * SUM( WBasis(j,:) * WBasisM(i,:) ) 
-                      IF( ABS( val ) > 1.0d-12 ) THEN
-                        Nmaster = Nmaster + 1
-                        CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-                            ii, EdgeScale * EdgeCoeff * val  ) 
                       END IF
                     END DO
                   END DO
