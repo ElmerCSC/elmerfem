@@ -11438,7 +11438,7 @@ CONTAINS
           ! We need a face element as indexed in the original mesh so that
           ! the subroutine mGetElementDOFs works as expected 
           TrueElement => Mesh % Faces(Element % ElementIndex)
-          nd = mGetElementDOFs(Indexes,TrueElement)
+          nd = mGetElementDOFs(Indexes, TrueElement, notDG = .TRUE.)
         ELSE
           nd = mGetElementDOFs(Indexes,Element)
         END IF
@@ -11635,7 +11635,7 @@ CONTAINS
           ElementM => BMesh2 % Elements(indM)
           IF (ASSOCIATED(Mesh % Faces)) THEN
             TrueElementM => Mesh % Faces(ElementM % ElementIndex)
-            ndM = mGetElementDOFs(IndexesM,TrueElementM)
+            ndM = mGetElementDOFs(IndexesM,TrueElementM, notDG = .TRUE.)
           ELSE
             ndM =  mGetElementDOFs(IndexesM,ElementM)
           END IF
@@ -12408,8 +12408,6 @@ CONTAINS
                       nrow = FaceRow0 + jj
                     END IF
                     Projector % InvPerm( nrow ) = Indexes(nn+j)
-
-!                    nrow = Indexes(nn+j)
 
                     DO i=1,vecdofs
                       ii = Indexes(nn+i)
