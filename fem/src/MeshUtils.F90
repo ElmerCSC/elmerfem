@@ -11267,7 +11267,7 @@ CONTAINS
       INTEGER :: Indexes(256), IndexesM(256)
 
       INTEGER :: jj,ii,sgn0,k,kmax,ind,indM,nip,nd,ndM,nn,ne,nf,inds(10),nM,neM,nfM,iM,i2,i2M
-      INTEGER :: nnM, ndtot, ndtotM, vecdofs, vecdofsM
+      INTEGER :: nnM, ndtot, ndtotM, vecdofs, vecdofsM, bdofs, edofs
       INTEGER :: edge, edof, fdof
       INTEGER :: ElemCands, TotCands, ElemHits, TotHits, EdgeHits, CornerHits, &
           MaxErrInd, MinErrInd, InitialHits, ActiveHits, TimeStep, Nrange1, NoGaussPoints, &
@@ -12158,7 +12158,6 @@ CONTAINS
               END IF
 
               IF( EdgeBasis ) THEN
-                TrueElement => Mesh % Faces(Element % ElementIndex)
                 IF (PiolaVersion) THEN
                   IF (SecondOrder) THEN
                     stat = EdgeElementInfo( TrueElement, Nodes, u, v, w, &
@@ -12196,20 +12195,19 @@ CONTAINS
               END IF
 
               IF( EdgeBasis ) THEN
-                TrueElement => Mesh % Faces(ElementM % ElementIndex)
                 IF (PiolaVersion) THEN
                   IF (SecondOrder) THEN
-                    stat = EdgeElementInfo( TrueElement, NodesM, um, vm, wm, &
+                    stat = EdgeElementInfo( TrueElementM, NodesM, um, vm, wm, &
                         DetF=detJ, Basis=BasisM, EdgeBasis=WBasisM, &
                         BasisDegree = 2, ApplyPiolaTransform = .TRUE.)                   
                   ELSE
-                    stat = ElementInfo( TrueElement, NodesM, um, vm, wm, &
+                    stat = ElementInfo( TrueElementM, NodesM, um, vm, wm, &
                         detJ, BasisM, dBasisdx, EdgeBasis=WBasisM)
                   END IF
                 ELSE
-                  stat = ElementInfo( TrueElement, NodesM, um, vm, wm, &
+                  stat = ElementInfo( TrueElementM, NodesM, um, vm, wm, &
                       detJ, BasisM, dBasisdx )
-                  CALL GetEdgeBasis(TrueElement,WBasisM,RotWBasis,BasisM,dBasisdx)
+                  CALL GetEdgeBasis(TrueElementM,WBasisM,RotWBasis,BasisM,dBasisdx)
                 END IF
               ELSE
                 stat = ElementInfo( ElementM, NodesM, um, vm, wm, detJ, BasisM )
@@ -12388,14 +12386,11 @@ CONTAINS
                   END DO
 
                 ELSE
-                  ! Dofs are numbered as follows:
-                  ! 1....number of nodes
-                  ! + ( 1 ... number of edges )
-                  ! + ( 1 ... 2 x number of faces )
-                  !-------------------------------------------
-                  DO j=1,vecdofs
+                  bdofs = TrueElement % bdofs ! The count of facewise DOFs
+                  edofs = vecdofs - bdofs     ! The count of edge DOFS
 
-                    IF( j <= ne ) THEN
+                  DO j=1,vecdofs
+                    IF( j <= edofs ) THEN
                       jj = Element % EdgeIndexes(j) 
                       IF( EdgePerm(jj) == 0 ) CYCLE
                       nrow = EdgeRow0 + EdgePerm(jj)
@@ -12404,7 +12399,7 @@ CONTAINS
                         IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE
                       END IF
 
-                      jj = 2 * ( ind - 1 ) + ( j - ne )
+                      jj = bdofs * ( ind - 1 ) + ( j - edofs )
                       nrow = FaceRow0 + jj
                     END IF
                     Projector % InvPerm( nrow ) = Indexes(nn+j)
