@@ -12038,7 +12038,7 @@ CONTAINS
 
           
           ! Deal the case with multiple corners by making 
-          ! triangulariation using one corner point.
+          ! triangularization using one corner point.
           ! This should be ok as the polygon is always convex.
           NodesT % x(1) = x(1)
           NodesT % y(1) = y(1)
@@ -12052,7 +12052,7 @@ CONTAINS
           
           DO k=1,kmax-2                         
             
-            ! This check over area also automatically elimiates redundant nodes
+            ! This check over area also automatically eliminates redundant nodes
             ! that were detected twice.
             dArea = 0.5_dp*ABS( (x(k+1)-x(1))*(y(k+2)-y(1)) -(x(k+2)-x(1))*(y(k+1)-y(1)))
 
@@ -12151,22 +12151,13 @@ CONTAINS
 
               ! Take into account that the reference elements are different:
               IF( ne == 3 .AND. ( pElemBasis .OR. (EdgeBasis .AND. PiolaVersion ))) THEN
-                uq = u
-                vq = v
-                u = -1.0d0 + 2.0d0*uq + vq
-                v = SQRT(3.0d0)*vq
+                CALL ConvertToPReference(303, u, v, w)
               END IF
 
               IF( EdgeBasis ) THEN
                 IF (PiolaVersion) THEN
-                  IF (SecondOrder) THEN
-                    stat = EdgeElementInfo( TrueElement, Nodes, u, v, w, &
-                        DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
-                        BasisDegree = 2, ApplyPiolaTransform = .TRUE.)
-                  ELSE
-                    stat = ElementInfo( TrueElement, Nodes, u, v, w, &
-                        detJ, Basis, dBasisdx,EdgeBasis=WBasis)
-                  END IF
+                  stat = ElementInfo(TrueElement, Nodes, u, v, w, &
+                      DetJ, Basis, EdgeBasis = WBasis, USolver = CurrentModel % Solver)
                 ELSE
                   stat = ElementInfo( TrueElement, Nodes, u, v, w, &
                       detJ, Basis, dBasisdx )
@@ -12188,22 +12179,13 @@ CONTAINS
 
               ! Take into account that the reference elements are different:
               IF( neM == 3 .AND. ( pElemBasis .OR. (EdgeBasis .AND. PiolaVersion ))) THEN
-                uq = um
-                vq = vm
-                um = -1.0d0 + 2.0d0*uq + vq
-                vm = SQRT(3.0d0)*vq
+                CALL ConvertToPReference(303, um, vm, wm)
               END IF
 
               IF( EdgeBasis ) THEN
                 IF (PiolaVersion) THEN
-                  IF (SecondOrder) THEN
-                    stat = EdgeElementInfo( TrueElementM, NodesM, um, vm, wm, &
-                        DetF=detJ, Basis=BasisM, EdgeBasis=WBasisM, &
-                        BasisDegree = 2, ApplyPiolaTransform = .TRUE.)                   
-                  ELSE
-                    stat = ElementInfo( TrueElementM, NodesM, um, vm, wm, &
-                        detJ, BasisM, dBasisdx, EdgeBasis=WBasisM)
-                  END IF
+                  stat = ElementInfo(TrueElementM, NodesM, um, vm, wm, &
+                      DetJ, BasisM, EdgeBasis = WBasisM, USolver = CurrentModel % Solver)
                 ELSE
                   stat = ElementInfo( TrueElementM, NodesM, um, vm, wm, &
                       detJ, BasisM, dBasisdx )
@@ -12234,7 +12216,7 @@ CONTAINS
                       jj = Indexes(j)
                     ELSE
                       jj = Element % NodeIndexes(j)
-                      IF (j<=n) jj=InvPerm1(jj)                      
+                      jj=InvPerm1(jj)                      
                     END IF
                   END IF
                   
@@ -12268,7 +12250,7 @@ CONTAINS
                         ii = Indexes(i)
                       ELSE
                         ii = Element % NodeIndexes(i)
-                        IF(i<=n) ii=InvPerm1(ii)
+                        ii=InvPerm1(ii)
                       END IF
                     END IF
                     
@@ -12292,7 +12274,7 @@ CONTAINS
                         ii = IndexesM(i)
                       ELSE
                         ii = ElementM % NodeIndexes(i)
-                        IF(i<=nM) ii=InvPerm2(ii)
+                        ii=InvPerm2(ii)
                       END IF
                     END IF
 
