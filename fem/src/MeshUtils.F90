@@ -11267,7 +11267,7 @@ CONTAINS
       INTEGER :: Indexes(256), IndexesM(256)
 
       INTEGER :: jj,ii,sgn0,k,kmax,ind,indM,nip,nd,ndM,nn,ne,nf,inds(10),nM,neM,nfM,iM,i2,i2M
-      INTEGER :: nnM, ndtot, ndtotM, vecdofs, vecdofsM, bdofs, edofs
+      INTEGER :: nnM, ndtot, ndtotM, vecdofs, vecdofsM, bdofs, edofs, bdofsM, edofsM
       INTEGER :: edge, edof, fdof
       INTEGER :: ElemCands, TotCands, ElemHits, TotHits, EdgeHits, CornerHits, &
           MaxErrInd, MinErrInd, InitialHits, ActiveHits, TimeStep, Nrange1, NoGaussPoints, &
@@ -12324,125 +12324,74 @@ CONTAINS
               IF( DoEdges ) THEN
                 vecdofs = ndtot - nn
                 vecdofsM = ndtotM - nnM
+                
+                bdofs = TrueElement % bdofs ! The count of facewise DOFs
+                edofs = vecdofs - bdofs     ! The count of edge DOFS
+                
+                bdofsM = TrueElementM % bdofs
+                edofsM = vecdofsM - bdofsM
 
-                IF (SecondOrder) THEN
-
-                  DO j=1,2*ne+nf   ! for all slave dofs
-                    IF (j<=2*ne) THEN
+                DO j=1,vecdofs
+                  ! First decide what row is to be written:
+                  IF( j <= edofs ) THEN
+                    IF (SecondOrder) THEN
                       edge = 1+(j-1)/2    ! The edge to which the dof is associated
-                      edof = j-2*(edge-1) ! The edge-wise index of the dof
                       jj = Element % EdgeIndexes(edge) 
                       IF( EdgePerm(jj) == 0 ) CYCLE
-                      nrow = EdgeRow0 + 2*(EdgePerm(jj)-1) + edof  ! The row to be written
-                      jj = EdgeCol0 + 2*(jj-1) + edof              ! The index of the corresponding DOF
-                      Projector % InvPerm( nrow ) = jj
+                      edof = j-2*(edge-1) ! The edge-wise index of the dof
+                      nrow = EdgeRow0 + 2*(EdgePerm(jj)-1) + edof  ! The row to be written                      
                     ELSE
-                      IF( Parallel ) THEN
-                        IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE
-                      END IF
-                      fdof = j-2*ne ! The face-wise index of the dof
-                      nrow = FaceRow0 + nf * ( ind - 1 ) + fdof
-                      jj = FaceCol0 + nf * ( Element % ElementIndex - 1) + fdof
-                      Projector % InvPerm( nrow ) = jj
-                    END IF
-
-                    DO i=1,2*ne+nf ! for all slave dofs
-                      IF( i <= 2*ne ) THEN
-                        edge = 1+(i-1)/2    ! The edge to which the dof is associated
-                        edof = i-2*(edge-1) ! The edge-wise index of the dof
-                        ii = Element % EdgeIndexes(edge)
-                        ii = EdgeCol0 + 2*(ii - 1) + edof
-                      ELSE
-                        fdof = i-2*ne ! The face-wise index of the dof
-                        ii = FaceCol0 + nf * ( Element % ElementIndex - 1) + fdof
-                      END IF
-
-                      val = Wtemp * SUM( WBasis(j,:) * Wbasis(i,:) ) 
-                      IF( ABS( val ) > 1.0d-12 ) THEN
-                        Nslave = Nslave + 1
-                        CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-                            ii, EdgeCoeff * val ) 
-                      END IF
-                    END DO
-                    
-                    DO i=1,2*neM+nfM ! for all master dofs
-                      IF( i <= 2*neM ) THEN
-                        edge = 1+(i-1)/2    ! The edge to which the dof is associated
-                        edof = i-2*(edge-1) ! The edge-wise index of the dof
-                        ii = ElementM % EdgeIndexes(edge)
-                        ii = EdgeCol0 + 2*(ii - 1) + edof
-                      ELSE
-                        fdof = i-2*neM ! The face-wise index of the dof
-                        ii = FaceCol0 + nfM * ( ElementM % ElementIndex - 1) + fdof
-                      END IF
-
-                      val = -Wtemp * sgn0 * SUM( WBasis(j,:) * WBasisM(i,:) ) 
-                      IF( ABS( val ) > 1.0d-12 ) THEN
-                        Nmaster = Nmaster + 1
-                        CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-                            ii, EdgeScale * EdgeCoeff * val  ) 
-                      END IF
-                    END DO
-                  END DO
-
-                ELSE
-                  bdofs = TrueElement % bdofs ! The count of facewise DOFs
-                  edofs = vecdofs - bdofs     ! The count of edge DOFS
-
-                  DO j=1,vecdofs
-                    IF( j <= edofs ) THEN
                       jj = Element % EdgeIndexes(j) 
                       IF( EdgePerm(jj) == 0 ) CYCLE
                       nrow = EdgeRow0 + EdgePerm(jj)
-                    ELSE
-                      IF( Parallel ) THEN
-                        IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE
-                      END IF
-
-                      jj = bdofs * ( ind - 1 ) + ( j - edofs )
-                      nrow = FaceRow0 + jj
                     END IF
-                    Projector % InvPerm( nrow ) = Indexes(nn+j)
+                  ELSE
+                    IF( Parallel ) THEN
+                      IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE
+                    END IF
+                    fdof = j - edofs ! The face-wise index of the dof
+                    nrow = FaceRow0 + bdofs * ( ind - 1 ) + fdof
+                  END IF
+                  Projector % InvPerm( nrow ) = Indexes(nn+j)
 
-                    DO i=1,vecdofs
-                      ii = Indexes(nn+i)
-                        
-                      val = Wtemp * SUM( WBasis(j,:) * Wbasis(i,:) ) 
-                      IF( ABS( val ) > 1.0d-12 ) THEN
-                        Nslave = Nslave + 1                          
-                        CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-                            ii, EdgeCoeff * val ) 
-                      END IF
-                      
-                      IF( DebugEdge ) THEN
-                        ci = cFact(i)
-                        sums = sums + ci * EdgeCoeff * val                         
-                        EdgeProj(1:2) = EdgeProj(1:2) + ci * Wtemp * Wbasis(i,1:2)
-                      END IF
-                    END DO
-                      
-                    DO i=1,vecdofsM
-                      ii = IndexesM(nnM+i)
-                        
-                      val = -Wtemp * sgn0 * SUM( WBasis(j,:) * WBasisM(i,:) ) 
-                      IF( ABS( val ) > 1.0d-12 ) THEN
-                        Nmaster = Nmaster + 1
-                        CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-                            ii, EdgeScale * EdgeCoeff * val  ) 
-                      END IF
-                      
-                      IF( DebugEdge ) THEN
-                        ci = cFactM(i)
-                        summ = summ + ci * EdgeScale * EdgeCoeff * val
-                        summabs = summabs + ABS( ci * EdgeScale * EdgeCoeff * val )                        
-                        IF( NRange /= NRange1 ) THEN
-                          summ2 = summ2 + ci * EdgeScale * EdgeCoeff * val
-                        END IF                        
-                        EdgeProjM(1:2) = EdgeProjM(1:2) + ci * Wtemp * sgn0 * WbasisM(i,1:2)
-                      END IF
-                    END DO
+                  DO i=1,vecdofs
+                    ii = Indexes(nn+i)
+
+                    val = Wtemp * SUM( WBasis(j,:) * Wbasis(i,:) ) 
+                    IF( ABS( val ) > 1.0d-12 ) THEN
+                      Nslave = Nslave + 1                          
+                      CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
+                          ii, EdgeCoeff * val ) 
+                    END IF
+
+                    IF( DebugEdge .AND. .NOT. SecondOrder) THEN
+                      ci = cFact(i)
+                      sums = sums + ci * EdgeCoeff * val                         
+                      EdgeProj(1:2) = EdgeProj(1:2) + ci * Wtemp * Wbasis(i,1:2)
+                    END IF
                   END DO
-                END IF
+
+                  DO i=1,vecdofsM
+                    ii = IndexesM(nnM+i)
+
+                    val = -Wtemp * sgn0 * SUM( WBasis(j,:) * WBasisM(i,:) ) 
+                    IF( ABS( val ) > 1.0d-12 ) THEN
+                      Nmaster = Nmaster + 1
+                      CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
+                          ii, EdgeScale * EdgeCoeff * val  ) 
+                    END IF
+
+                    IF( DebugEdge .AND. .NOT. SecondOrder) THEN
+                      ci = cFactM(i)
+                      summ = summ + ci * EdgeScale * EdgeCoeff * val
+                      summabs = summabs + ABS( ci * EdgeScale * EdgeCoeff * val )                        
+                      IF( NRange /= NRange1 ) THEN
+                        summ2 = summ2 + ci * EdgeScale * EdgeCoeff * val
+                      END IF
+                      EdgeProjM(1:2) = EdgeProjM(1:2) + ci * Wtemp * sgn0 * WbasisM(i,1:2)
+                    END IF
+                  END DO
+                END DO
               END IF
             END DO
 
