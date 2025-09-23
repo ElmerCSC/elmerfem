@@ -5520,7 +5520,7 @@ CONTAINS
         'Quadratic elements will be split',Level=7)
 
 
-    ! If the target is larger than number of BCs given then
+    ! If the target is larger than the number of BCs given, then
     ! it has probably been created on-the-fly from a discontinuous boundary.
     OnTheFlyBC = ( Trgt > Model % NumberOfBCs )
 
@@ -9385,8 +9385,8 @@ CONTAINS
     END IF
        
     ! At the 1st stage determine the maximum size of the projector
-    ! If the strong projector is used then the numbering is done as we go
-    ! this way we can eliminate unneeded rows. 
+    ! If the strong projector is used, then the numbering is done as we go.
+    ! In this way we can eliminate unneeded rows. 
     ! For the weak projector there is no need to eliminate rows. 
     IF( DoNodes ) THEN      
       ALLOCATE( NodePerm( MAX(Mesh % NumberOfNodes,SIZE(Mesh % Nodes % x))+Mesh % NumberOfEdges + &
@@ -11440,7 +11440,12 @@ CONTAINS
           TrueElement => Mesh % Faces(Element % ElementIndex)
           nd = mGetElementDOFs(Indexes, TrueElement, notDG = .TRUE.)
         ELSE
-          nd = mGetElementDOFs(Indexes,Element)
+          IF (ASSOCIATED(Mesh % Edges)) THEN
+            TrueElement => Mesh % Edges(Element % ElementIndex)
+            nd = mGetElementDOFs(Indexes, TrueElement, notDG = .TRUE.)
+          ELSE
+            nd = mGetElementDOFs(Indexes,Element)
+          END IF
         END IF
 
         n = Element % TYPE % NumberOfNodes
@@ -11588,18 +11593,24 @@ CONTAINS
         END IF
 
         IF( DoNodes .AND. .NOT. StrongNodes ) THEN
-          DO i=1,n
+          DO i=1,nd
+            IF (i > n .AND. .NOT. pElemProj) CYCLE
 
             IF (ASSOCIATED(Mesh % Faces)) THEN
               j = Indexes(i)
             ELSE
-              j = Element % NodeIndexes(i)
-              j = InvPerm1(j)
+              IF (ASSOCIATED(Mesh % Edges)) THEN
+                j = Indexes(i)
+              ELSE
+                j = Element % NodeIndexes(i)
+                j = InvPerm1(j)
+              END IF
             END IF
 
             nrow = NodePerm(j)
             IF( nrow == 0 ) CYCLE
 
+            IF (i <= n) THEN
             if (ANY(invperm1(Element % NodeIndexes(1:n)) == j)) then
               continue
             else
@@ -11607,21 +11618,12 @@ CONTAINS
               print *, 'InvPerm1(Element % NodeIndexes(1:n))', InvPerm1(Element % NodeIndexes(1:n))
               call Fatal('Check', 'Inconsistent indexing 3')
             end if
+            END IF
             
             CALL List_AddMatrixIndex(Projector % ListMatrix, nrow, j ) 
             IF(ASSOCIATED(Projector % Child)) &
                 CALL List_AddMatrixIndex(Projector % Child % ListMatrix, nrow, j ) 
           END DO
-          IF( pElemProj ) THEN
-            DO i=n+1,nd
-              j = Indexes(i)
-              nrow = NodePerm(j)
-              IF( nrow == 0 ) CYCLE
-              CALL List_AddMatrixIndex(Projector % ListMatrix, nrow, j ) 
-              IF(ASSOCIATED(Projector % Child)) &
-                  CALL List_AddMatrixIndex(Projector % Child % ListMatrix, nrow, j ) 
-            END DO
-          END IF
         END IF
 
 
@@ -11637,7 +11639,12 @@ CONTAINS
             TrueElementM => Mesh % Faces(ElementM % ElementIndex)
             ndM = mGetElementDOFs(IndexesM,TrueElementM, notDG = .TRUE.)
           ELSE
-            ndM =  mGetElementDOFs(IndexesM,ElementM)
+            IF (ASSOCIATED(Mesh % Edges)) THEN
+              TrueElementM => Mesh % Edges(ElementM % ElementIndex)
+              ndM = mGetElementDOFs(IndexesM, TrueElementM, notDG = .TRUE.)
+            ELSE
+              ndM =  mGetElementDOFs(IndexesM,ElementM)
+            END IF
           END IF
           
           neM = ElementM % TYPE % ElementCode / 100
@@ -13306,7 +13313,7 @@ CONTAINS
     
     !----------------------------------------------------------------------
     ! Create weak projector for the nodes and p:2 elements in 1D mesh.
-    ! Accurate integration is used. For the purpose a intermediate mesh
+    ! Accurate integration is used. For the purpose an intermediate mesh
     ! consisting of several element segments is used. 
     !----------------------------------------------------------------------
     SUBROUTINE AddProjectorWeak1D()
