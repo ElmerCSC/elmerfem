@@ -11659,16 +11659,6 @@ CONTAINS
             nrow = NodePerm(j)
             IF( nrow == 0 ) CYCLE
 
-            IF (i <= n) THEN
-            if (ANY(invperm1(Element % NodeIndexes(1:n)) == j)) then
-              continue
-            else
-              print *, 'i,n', i, n
-              print *, 'InvPerm1(Element % NodeIndexes(1:n))', InvPerm1(Element % NodeIndexes(1:n))
-              call Fatal('Check', 'Inconsistent indexing 3')
-            end if
-            END IF
-            
             CALL List_AddMatrixIndex(Projector % ListMatrix, nrow, j ) 
             IF(ASSOCIATED(Projector % Child)) &
                 CALL List_AddMatrixIndex(Projector % Child % ListMatrix, nrow, j ) 
@@ -12278,15 +12268,6 @@ CONTAINS
                   
                   nrow = NodePerm(jj)
                   IF( nrow == 0 ) CYCLE
-
-                  IF (j<=n) THEN
-                    if (ANY(invperm1(Element % NodeIndexes(1:n)) == jj)) then
-                      continue
-                    else
-                      print *,'j,nd', j,nd
-                      call fatal('Check', 'Inconsistent indexing 1')
-                    end if
-                  end IF
                   
                   Projector % InvPerm(nrow) = jj
 
@@ -12333,14 +12314,6 @@ CONTAINS
                         ii=InvPerm2(ii)
                       END IF
                     END IF
-
-                    IF (i<=nm) THEN
-                      if (ANY(invperm2(ElementM % NodeIndexes(1:nm)) == ii)) then
-                        continue
-                      else
-                        call Fatal('Check', 'Inconsistent indexing 2')
-                      end if
-                    end if
                     
                     Nmaster = Nmaster + 1
                     CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
