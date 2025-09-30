@@ -5897,9 +5897,10 @@ CONTAINS
           ! for the edge elements.
           PMesh % Elements(ind) % ElementIndex = q % ElementIndex
 
-          IF (IsPElement(q)) THEN
+          IF (IsActivePElement(q, CurrentModel % Solver)) THEN            
             ALLOCATE(PMesh % Elements(ind) % Pdefs)
             PMesh % Elements(ind) % PDefs = q % Pdefs
+            IF (q % BDOFs > 0) BPerm(q % ElementIndex) = 1
           END IF
 
           en = q % TYPE % NumberOfEdges
@@ -5908,12 +5909,16 @@ CONTAINS
           Pmesh % Elements(ind) % FaceIndexes => Null()
           EPerm( q % EdgeIndexes(1:en) ) = 1
           PPerm( q % NodeIndexes(1:n) )  = 1
-          BPerm( q % ElementIndex ) = 1
         ELSE
           PMesh % Elements(ind) % NodeIndexes(1:n) = Element % NodeIndexes(1:n)
           PPerm( Element % NodeIndexes(1:n) ) = 1
 
           IF (ASSOCIATED(Mesh % Edges)) THEN
+            IF (Element % Type % ElementCode / 100 < 2) CYCLE
+            IF (Element % Type % ElementCode / 100 > 2) THEN
+              CALL Fatal(Caller, 'Cannot yet handle a 3-D case without Mesh % Faces')
+            END IF
+            
             Parent => Element % BoundaryInfo % Left
             IF(.NOT. ASSOCIATED( Parent ) ) THEN
               Parent => Element % BoundaryInfo % Right
@@ -5925,19 +5930,17 @@ CONTAINS
             PMesh % Elements(ind) % BoundaryInfo % Right => NULL()
             Pmesh % Elements(ind) % ElementIndex = q % ElementIndex
             
-            IF (IsPElement(q)) THEN
+            IF (IsActivePElement(q, CurrentModel % Solver)) THEN
               ALLOCATE(PMesh % Elements(ind) % Pdefs)
               PMesh % Elements(ind) % PDefs = q % Pdefs
+              IF (q % BDOFs > 0) BPerm(q % ElementIndex) = 1
             END IF
             
-            IF (Element % Type % ElementCode == 202) THEN
-              BPerm(q % ElementIndex) = 1              
-              Pmesh % Elements(ind) % EdgeIndexes => NULL()
-              Pmesh % Elements(ind) % FaceIndexes => NULL()
-            END IF
+            Pmesh % Elements(ind) % EdgeIndexes => NULL()
+            Pmesh % Elements(ind) % FaceIndexes => NULL()
           END IF
         END IF
-      END IF       
+      END IF
     END DO
 
 !   Fill in the mesh node structures with the
@@ -5956,7 +5959,7 @@ CONTAINS
     ! As there were some active boundary elements this condition should 
     ! really never be possible   
     IF (BMesh1 % NumberOfNodes==0 .OR. BMesh2 % NumberOfNOdes==0) THEN
-      CALL Fatal(Caller,'No active nodes on periodic boundary!')
+      CALL Fatal(Caller,'No active nodes on the interface!')
     END IF
 
     WRITE(Message,'(A,I0,A,I0)') 'Number of interface nodes: ',&
@@ -6015,33 +6018,9 @@ CONTAINS
     l = BMesh2 % NumberOfNodes
 
     k1 = 0; k2 = 0
-    DO i=1,Mesh % NumberOfEdges
-      IF ( EPerm1(i)>0 ) THEN
-        k1 = k1 + 1
-        BMesh1 % InvPerm(k1+k) = i+j
-        BMesh1 % Edges(k1) % TYPE => Mesh % Edges(i) % TYPE
-        ALLOCATE(BMesh1 % Edges(k1) % NodeIndexes(SIZE(Mesh % Edges(i) % NodeIndexes)))
-        BMesh1 % Edges(k1) % NodeIndexes = Perm1(Mesh % Edges(i) % NodeIndexes)
-        BMesh1 % Edges(k1) % ElementIndex = i
-      END IF
-
-      IF ( EPerm2(i)>0 ) THEN
-        k2 = k2 + 1
-        BMesh2 % InvPerm(k2+l) = i+j
-        BMesh2 % Edges(k2) % TYPE => Mesh % Edges(i) % TYPE
-        ALLOCATE(BMesh2 % Edges(k2) % NodeIndexes(SIZE(Mesh % Edges(i) % NodeIndexes)))
-        BMesh2 % Edges(k2) % NodeIndexes = Perm2(Mesh % Edges(i) % NodeIndexes)
-        BMesh2 % Edges(k2) % ElementIndex = i
-      END IF
-    END DO
-
-    IF (ASSOCIATED(Mesh % Faces)) THEN
-      ! If the implementation was done in the original style, something should be done here,
-      ! but we now try to implement the process such that the array InvPerm is not needed
-      CONTINUE
-    ELSE
-      ! If the interface is 1-dimensional, we may have internal (bubble) DOFs 
-      k1 = 0; k2 = 0
+    IF (e1 == 0 .AND. e2 == 0 .AND. ASSOCIATED(Mesh % Edges)) THEN
+      ! This has to be the case of p-elements over 1-dimensional interface.
+      ! Now we may have internal (bubble) DOFs 
       DO i=1,Mesh % NumberOfEdges
         IF (BPerm1(i)>0) THEN
           k1 = k1 + 1
@@ -6052,7 +6031,47 @@ CONTAINS
           k2 = k2 + 1
           BMesh2 % InvPerm(k2+l) = i+j
         END IF
+      END DO     
+    ELSE
+      DO i=1,Mesh % NumberOfEdges
+        IF ( EPerm1(i)>0 ) THEN
+          k1 = k1 + 1
+          BMesh1 % InvPerm(k1+k) = i+j ! H(curl) wouldn't need this
+          BMesh1 % Edges(k1) % TYPE => Mesh % Edges(i) % TYPE
+          ALLOCATE(BMesh1 % Edges(k1) % NodeIndexes(SIZE(Mesh % Edges(i) % NodeIndexes)))
+          BMesh1 % Edges(k1) % NodeIndexes = Perm1(Mesh % Edges(i) % NodeIndexes)
+          BMesh1 % Edges(k1) % ElementIndex = i
+        END IF
+
+        IF ( EPerm2(i)>0 ) THEN
+          k2 = k2 + 1
+          BMesh2 % InvPerm(k2+l) = i+j
+          BMesh2 % Edges(k2) % TYPE => Mesh % Edges(i) % TYPE
+          ALLOCATE(BMesh2 % Edges(k2) % NodeIndexes(SIZE(Mesh % Edges(i) % NodeIndexes)))
+          BMesh2 % Edges(k2) % NodeIndexes = Perm2(Mesh % Edges(i) % NodeIndexes)
+          BMesh2 % Edges(k2) % ElementIndex = i
+        END IF
       END DO
+    END IF
+
+    IF (ASSOCIATED(Mesh % Faces)) THEN
+      ! The following is intended for the p-elements of order 2
+      k1 = 0; k2 = 0
+      DO i=1,Mesh % NumberOfFaces
+        IF (BPerm1(i)>0) THEN
+          k1 = k1 + 1
+          BMesh1 % InvPerm(k1 + k + e1) =  j + Mesh % NumberOfEdges + i
+        END IF
+
+        IF (BPerm2(i)>0) THEN
+          k2 = k2 + 1
+          BMesh1 % InvPerm(k2 + l + e2) =  j + Mesh % NumberOfEdges + i
+        END IF
+      END DO
+        
+      ! Although a basis for H(curl) may have face DOFs, they are handled such that
+      ! the array InvPerm is not needed
+      ! CONTINUE
     END IF
     
     ! The following can be used to check how the interface was re-indexed: 
@@ -6706,7 +6725,8 @@ CONTAINS
     INTEGER :: NoGaussPoints
     TYPE(Matrix_t) :: Projector
     REAL(KIND=dp) :: NodeCoeff, ArcCoeff, NodeScale, SumArea
-    INTEGER :: NodePerm(:), DualNodePerm(:)
+    INTEGER :: NodePerm(:)
+    INTEGER, ALLOCATABLE :: DualNodePerm(:)
     INTEGER, POINTER :: InvPerm(:), InvPermM(:)
     !----------------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IPT
@@ -9118,11 +9138,12 @@ CONTAINS
     REAL(KIND=dp) :: XmaxAll, XminAll, YminAll, YmaxAll, Xrange, Yrange, &
         RelTolX, RelTolY, XTol, YTol, RadTol, MaxSkew1, MaxSkew2, SkewTol, &
         ArcCoeff, EdgeCoeff, NodeCoeff, MaxDistance, val
+    INTEGER :: Indexes(256)
     INTEGER :: NoNodes1, NoNodes2, MeshDim
     INTEGER :: i,j,k,n,m,Nrange,Nrange2, nrow, Naxial
     INTEGER, ALLOCATABLE :: EdgePerm(:),NodePerm(:),DualNodePerm(:)
     INTEGER :: EdgeRow0, FaceRow0, EdgeCol0, FaceCol0, ProjectorRows
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), POINTER :: Element, TrueElement
     INTEGER, POINTER :: NodeIndexes(:)
     REAL(KIND=dp), ALLOCATABLE :: Cond(:)
     TYPE(Matrix_t), POINTER :: DualProjector    
@@ -9388,24 +9409,33 @@ CONTAINS
     ! If the strong projector is used, then the numbering is done as we go.
     ! In this way we can eliminate unneeded rows. 
     ! For the weak projector there is no need to eliminate rows. 
-    IF( DoNodes ) THEN      
-      ALLOCATE( NodePerm( MAX(Mesh % NumberOfNodes,SIZE(Mesh % Nodes % x))+Mesh % NumberOfEdges + &
-          Mesh % NumberOfFaces) )
+    IF( DoNodes ) THEN
+      IF (pElemProj) THEN
+        ALLOCATE( NodePerm(SIZE(Mesh % Nodes % x)) )
+      ELSE
+        ALLOCATE( NodePerm(Mesh % NumberOfNodes + Mesh % MaxEdgeDOFs * Mesh % NumberOfEdges + &
+            Mesh % MaxFaceDOFs * Mesh % NumberOfFaces) )
+      END IF
       NodePerm = 0      
       
-      ! in parallel only consider nodes that truly are part of this partition
       DO i=1,BMesh1 % NumberOfBulkElements
         Element => BMesh1 % Elements(i)        
+        ! in parallel only consider nodes that truly are part of this partition
         IF( Parallel ) THEN
           IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE          
         END IF        
-        NodePerm(InvPerm1(Element % NodeIndexes)) = 1
-        IF( pElemProj ) THEN
-          IF (Element % TYPE % ElementCode==202) THEN
-            NodePerm(Element % ElementIndex+Mesh % NumberOfNodes) = 1
-          ELSE IF(ASSOCIATED(Element % EdgeIndexes)) THEN
-            NodePerm(Element % EdgeIndexes+Mesh % NumberOfNodes) = 1
+
+        IF (pElemProj) THEN
+          IF (ASSOCIATED(Mesh % Faces)) THEN
+            TrueElement => Mesh % Faces(BMesh1 % Elements(i) % ElementIndex)
+            n = mGetElementDOFs(Indexes, TrueElement, notDG = .TRUE.)
+          ELSE IF (ASSOCIATED(Mesh % Edges)) THEN
+            TrueElement => Mesh % Edges(BMesh1 % Elements(i) % ElementIndex)
+            n = mGetElementDOFs(Indexes, TrueElement, notDG = .TRUE.)
           END IF
+          NodePerm(Indexes(1:n)) = 1
+        ELSE
+          NodePerm(InvPerm1(Element % NodeIndexes)) = 1  
         END IF
       END DO
 
@@ -9415,7 +9445,7 @@ CONTAINS
       ! Eliminate the redundant nodes by default. 
       ! These are noded that depend on themselves.
       EliminateUnneeded = ListGetLogical( BC,&
-          'Level Projector Eliminate Redundant Nodes',Found ) 
+          'Level Projector Eliminate Redundant Nodes',Found )
       IF(.NOT. Found ) EliminateUnneeded = .TRUE.
 
       IF( EliminateUnneeded ) THEN
@@ -9425,16 +9455,35 @@ CONTAINS
             'Number of potential dofs in projector: '//I2S(n),Level=10)        
         ! Now eliminate the nodes which also occur in the other mesh
         ! These must be redundant edges
-        DO i=1, SIZE(InvPerm2)
-          j = InvPerm2(i)
-          IF (j == 0) CYCLE
 
-          IF( NodePerm(j) /= 0 ) THEN
-            NodePerm(j) = 0
-            !PRINT *,'Removing node:',j,Mesh % Nodes % x(j), Mesh % Nodes % y(j)
-            m = m + 1
+        DO i=1,BMesh2 % NumberOfBulkElements
+          Element => BMesh2 % Elements(i)
+
+          IF (pElemProj) THEN
+            IF (ASSOCIATED(Mesh % Faces)) THEN
+              TrueElement => Mesh % Faces(BMesh2 % Elements(i) % ElementIndex)
+              n = mGetElementDOFs(Indexes, TrueElement, notDG = .TRUE.)
+            ELSE IF (ASSOCIATED(Mesh % Edges)) THEN
+              TrueElement => Mesh % Edges(BMesh2 % Elements(i) % ElementIndex)
+              n = mGetElementDOFs(Indexes, TrueElement, notDG = .TRUE.)
+            END IF
+            DO j=1,n
+              IF (NodePerm(Indexes(j)) /= 0) THEN
+                NodePerm(Indexes(j)) = 0
+                m = m + 1
+              END IF
+            END DO
+          ELSE
+            DO j=1, Element % Type % NumberOfNodes
+              k = InvPerm2(Element % NodeIndexes(j))
+              IF (NodePerm(k) /= 0) THEN
+                NodePerm(k) = 0
+                m = m + 1
+              END IF
+            END DO
           END IF
         END DO
+
         IF( m > 0 ) THEN
           CALL Info(Caller,&
               'Eliminating redundant nodes from projector: '//I2S(m),Level=10)
@@ -13390,7 +13439,7 @@ CONTAINS
         SaveElem = ( SaveInd == ind )
 
         Element => BMesh1 % Elements(ind)        
-        
+
         nd = mGetElementDOFs(Indexes,Element)
         n = Element % TYPE % NumberOfNodes
         IF(.NOT. pElemBasis) nd = n
@@ -13437,26 +13486,18 @@ CONTAINS
           CLOSE( 10 )
         END IF
 
-        ! Set the values to maintain the size of the matrix
+        ! Set the values to maintain the size of the matrix.
         ! The size of the matrix is used when allocating for utility vectors of contact algo.
         ! This does not set the Projector % InvPerm to nonzero value that is used to 
         ! determine whether there really is a projector. 
-        DO i=1,n
+        DO i=1,nd
+          IF (i > n .AND. .NOT. pElemProj) CYCLE
           j = InvPerm1(Indexes(i))
+          IF (i > n) j = Indexes(i)
           nrow = NodePerm(j)
           IF( nrow == 0 ) CYCLE
           CALL List_AddMatrixIndex(Projector % ListMatrix, nrow, j ) 
-
         END DO
-
-        IF(pElemProj) THEN 
-          DO i=n+1,nd
-            j = Indexes(i)
-            nrow = NodePerm(j)
-            IF( nrow == 0 ) CYCLE
-            CALL List_AddMatrixIndex(Projector % ListMatrix, nrow, j ) 
-          END DO
-        END IF
 
         ! Currently a n^2 loop but it could be improved
         !--------------------------------------------------------------------
@@ -17104,8 +17145,8 @@ CONTAINS
   
 !------------------------------------------------------------------------------
 !> Create a projector between Master and Target boundaries.
-!> The projector may be a nodal projector x=Px or a weigted 
-!> Galerking projector such that Qx=Px. In the first case the projector 
+!> The projector may be a nodal projector x=Px or a weighted 
+!> Galerkin projector such that Qx=Px. In the first case the projector 
 !> will be P and in the second case [Q-P]. 
 !------------------------------------------------------------------------------
   FUNCTION PeriodicProjector( Model, Mesh, This, Trgt, cdim, &

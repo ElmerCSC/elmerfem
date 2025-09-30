@@ -235,5 +235,5 @@ Boundary Condition 8
 End 
 
 
-Solver 2 :: Reference Norm = 7.53682555E-01
+Solver 2 :: Reference Norm = 6.14777349E-01
 Solver 2 :: Reference Norm Tolerance = 1.0e-4
