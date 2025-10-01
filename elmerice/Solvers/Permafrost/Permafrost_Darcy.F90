@@ -480,7 +480,7 @@ CONTAINS
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,Weight,LoadAtIP,StiffPQ,elevationAtIp
     REAL(KIND=dp) :: TemperatureAtIP,PorosityAtIP,KPorosityAtIP,SalinityAtIP,PressureAtIP
     REAL(KIND=dp) :: TemperatureDtAtIP,SalinityDtAtIP,PressureDtAtIP,StressInvDtAtIP
-    REAL(KIND=dp) :: Swres=1.0_dp, IFdeltaT=0.5_dp, IFcomp=1.0d-08
+    REAL(KIND=dp) :: Swres=1.0_dp, IFdeltaT=0.5_dp, IFcomp=1.0d-08, impedancefactor=50.0_dp
     REAL(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd), LOAD(n)
     REAL(KIND=dp) , POINTER :: gWork(:,:)
     !REAL(KIND=dp) , ALLOCATABLE :: CgwpI1AtNodes(:)
@@ -568,6 +568,7 @@ CONTAINS
     Swres = GetConstReal( Material, "Interfrost Swres", Found)
     IFdeltaT = GetConstReal( Material, "Interfrost deltaT", Found)
     IFcomp = GetConstReal( Material, "Interfrost Beta", Found)
+    impedancefactor = GetConstReal( Material, "Interfrost Impedance", Found)
     
     swaptensor = GetLogical(Material,'Swap Tensor',Found)
     
@@ -776,8 +777,13 @@ CONTAINS
       ! conductivities at IP
       mugwAtIP = mugw(CurrentSolventMaterial,CurrentSoluteMaterial,&
            XiAtIP(IPPerm),T0,SalinityAtIP,TemperatureAtIP,ConstVal)
-      KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
-           mugwAtIP,XiAtIP(IPPerm),MinKgw,InterFrost)
+      IF (Interfrost) THEN
+        KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
+             mugwAtIP,XiAtIP(IPPerm),MinKgw,InterFrost, impedancefactor=impedancefactor)
+      ELSE
+        KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
+             mugwAtIP,XiAtIP(IPPerm),MinKgw,InterFrost)
+      END IF
       KgwpTAtIP = 0.0_dp
       KgwppAtIP = 0.0_dp
       IF (CryogenicSuction) THEN

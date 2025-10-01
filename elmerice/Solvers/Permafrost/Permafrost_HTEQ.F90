@@ -319,7 +319,7 @@ CONTAINS
          TemperatureAtIP,PorosityAtIP,PressureAtIP,SalinityAtIP,&
          PressureVeloAtIP,SalinityVeloAtIP,&
          StiffPQ, meanfactor, vstarAtIP(3)
-    REAL(KIND=dp) :: Swres=1.0_dp, IFdeltaT=0.5_dp
+    REAL(KIND=dp) :: Swres=1.0_dp, IFdeltaT=0.5_dp, impedancefactor=50.0_dp
     REAL(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd), LOAD(n)
     REAL(KIND=dp), POINTER :: gWork(:,:)
     INTEGER :: i,t,p,q,IPPerm,DIM, RockMaterialID, FluxDOFs
@@ -395,6 +395,7 @@ CONTAINS
     
     Swres = GetConstReal( Material, "Interfrost Swres", Found)
     IFdeltaT = GetConstReal( Material, "Interfrost deltaT", Found)
+    impedancefactor = GetConstReal( Material, "Interfrost Impedance", Found)
     
     
     MinKgw = GetConstReal( Material, &
@@ -559,8 +560,13 @@ CONTAINS
         mugwAtIP = mugw(CurrentSolventMaterial,CurrentSoluteMaterial,&
              XiAtIP(IPPerm),T0,SalinityAtIP,TemperatureAtIP,ConstVal)
         KgwAtIP = 0.0_dp
-        KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
-             mugwAtIP,XiAtIP(IPPerm),MinKgw,InterFrost)
+        IF (Interfrost) THEN
+          KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
+               mugwAtIP,XiAtIP(IPPerm),MinKgw,InterFrost, impedancefactor=impedancefactor)
+        ELSE
+          KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
+               mugwAtIP,XiAtIP(IPPerm),MinKgw,InterFrost)
+        END IF
         fwAtIP = fw(RockMaterialID,CurrentSolventMaterial,&
              Xi0tilde,rhowAtIP,XiAtIP(IPPerm),GasConstant,TemperatureAtIP)
         KgwpTAtIP = GetKgwpT(fwAtIP,XiTAtIP,KgwAtIP)
