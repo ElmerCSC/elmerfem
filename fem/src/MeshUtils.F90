@@ -6009,6 +6009,10 @@ CONTAINS
       END IF
     END DO
 
+    ! NOTE: In the following the InvPerm array of the mesh structure is written for
+    !       nonstandard DOFs, although the generic weak version of the mortar method
+    !       has been revised such that it works without referring to these entries.
+    !       Anyhow, the code cannot be cleaned as InvPerm may still be used elsewhere.
 
     IF( e1 > 0 ) ALLOCATE( BMesh1 % Edges(e1) )
     IF( e2 > 0 ) ALLOCATE( BMesh2 % Edges(e2) )
@@ -11315,7 +11319,7 @@ CONTAINS
       INTEGER, TARGET :: IndexesT(3)
       INTEGER :: Indexes(256), IndexesM(256)
 
-      INTEGER :: jj,ii,sgn0,k,kmax,ind,indM,nip,nd,ndM,nn,ne,nf,inds(10),nM,neM,nfM,iM,i2,i2M
+      INTEGER :: jj,ii,sgn0,k,kmax,ind,indM,nip,nd,ndM,nn,ne,inds(10),nM,neM,iM,i2,i2M
       INTEGER :: nnM, ndtot, ndtotM, vecdofs, vecdofsM, bdofs, edofs, bdofsM, edofsM
       INTEGER :: edge, edof, fdof
       INTEGER :: ElemCands, TotCands, ElemHits, TotHits, EdgeHits, CornerHits, &
@@ -11389,6 +11393,8 @@ CONTAINS
       NodesM % x = 0
       NodesM % y = 0
       NodesM % z = 0
+        
+      NodesT % z = 0.0_dp
       
       IF( Naxial > 1 ) THEN
         ALLOCATE( Alpha(n), AlphaM(n) )
@@ -11407,16 +11413,11 @@ CONTAINS
         ALLOCATE( WBasis(n,3), WBasisM(n,3), RotWBasis(n,3), STAT=AllocStat )
         IF( AllocStat /= 0 ) CALL Fatal(Caller,'Allocation error 3')
       END IF
-        
-      Nodes % z  = 0.0_dp
-      NodesM % z = 0.0_dp
-      NodesT % z = 0.0_dp
 
       MaxErr = 0.0_dp
       MinErr = HUGE( MinErr )
       MaxErrInd = 0
       MinErrInd = 0
-      zt = 0.0_dp
       LeftCircle = .FALSE.
 
       ArcTol = ArcCoeff * Xtol
@@ -11501,11 +11502,17 @@ CONTAINS
         ndtot = nd
         nn = n * MAXVAL(CurrentModel % Solver % Def_Dofs(Element % Type % ElementCode/100,:,1))
         
-        IF(DoNodes .AND. .NOT. pElemBasis) nd = n
+        IF (DoNodes) THEN
+          IF (pElemBasis) THEN
+            Nodes % x(n+1:nd) = 0
+            Nodes % y(n+1:nd) = 0
+          ELSE
+            nd = n
+          END IF
+        END IF
 
         ! We use 'ne' also to indicate number of corners since for triangles and quads these are the same
         ne = Element % TYPE % NumberOfEdges  ! #(SLAVE EDGES)
-        nf = Element % BDOFs                 ! #(SLAVE FACE DOFS)
 
         ElemCode = Element % TYPE % ElementCode 
         LinCode = 101 * ne
@@ -11514,11 +11521,6 @@ CONTAINS
 
         Nodes % x(1:n) = ArcCoeff * BMesh1 % Nodes % x(Element % NodeIndexes(1:n))
         Nodes % y(1:n) = BMesh1 % Nodes % y(Element % NodeIndexes(1:n))
-
-        IF (DoNodes .AND. pElemBasis ) THEN
-          Nodes % x(n+1:nd) = 0
-          Nodes % y(n+1:nd) = 0
-        END IF
 
         ! For axial projector the angle is neither of the coordinates
         IF( Naxial > 1 ) THEN
@@ -11602,7 +11604,7 @@ CONTAINS
         END IF
         
         IF( DebugEdge ) THEN
-          CALL LocalEdgeSolutionCoeffs( BC, Element, Nodes, ne, nf, &
+          CALL LocalEdgeSolutionCoeffs( BC, Element, Nodes, ne, Element % BDOFs, &
               PiolaVersion, SecondOrder, 2, cFact )
           EdgeProj = 0.0_dp; EdgeProjM = 0.0_dp
         END IF
@@ -11645,15 +11647,11 @@ CONTAINS
           DO i=1,nd
             IF (i > n .AND. .NOT. pElemProj) CYCLE
 
-            IF (ASSOCIATED(Mesh % Faces)) THEN
+            IF (ASSOCIATED(Mesh % Faces) .OR. ASSOCIATED(Mesh % Edges)) THEN
               j = Indexes(i)
             ELSE
-              IF (ASSOCIATED(Mesh % Edges)) THEN
-                j = Indexes(i)
-              ELSE
-                j = Element % NodeIndexes(i)
-                j = InvPerm1(j)
-              END IF
+              j = Element % NodeIndexes(i)
+              j = InvPerm1(j)
             END IF
 
             nrow = NodePerm(j)
@@ -11868,7 +11866,6 @@ CONTAINS
           END IF
 
           neM = ElementM % TYPE % NumberOfEdges 
-          nfM = ElementM % BDOFs
 
           k = 0
           ElemCands = ElemCands + 1
@@ -12000,7 +11997,7 @@ CONTAINS
           IF( kmax < 3 ) GOTO 100
 
           IF( DebugEdge ) THEN          
-            CALL LocalEdgeSolutionCoeffs( BC, ElementM, NodesM, neM, nfM, &
+            CALL LocalEdgeSolutionCoeffs( BC, ElementM, NodesM, neM, ElementM % BDOFs, &
                 PiolaVersion, SecondOrder, 2, cFactM )
           END IF
           
@@ -12501,7 +12498,11 @@ CONTAINS
       IF(BiOrthogonalBasis) THEN
         DEALLOCATE(CoeffBasis, MASS )
       END IF
-       
+      IF( Naxial > 1 ) THEN
+        DEALLOCATE( Alpha, AlphaM )
+      END IF
+
+      
       CALL Info(Caller,'Number of integration pair candidates: '&
           //I2S(TotCands),Level=10)
       CALL Info(Caller,'Number of integration pairs: '&
