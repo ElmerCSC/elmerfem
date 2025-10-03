@@ -325,7 +325,7 @@ CONTAINS
     INTEGER :: i,t,p,q,IPPerm,DIM, RockMaterialID, FluxDOFs
     LOGICAL :: Stat,Found, ConstantsRead=.FALSE.,ConstVal=.FALSE.,&
          CryogenicSuction=.FALSE.,HydroGeo=.FALSE.,ComputeFlux=.TRUE.,&
-         NoSalinity=.FALSE.,InterFrost=.FALSE.
+         NoSalinity=.FALSE.,InterFrost=.FALSE.,Lunardini=.FALSE.
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BodyForce, Material
     TYPE(Nodes_t) :: Nodes
@@ -396,7 +396,7 @@ CONTAINS
     Swres = GetConstReal( Material, "Interfrost Swres", Found)
     IFdeltaT = GetConstReal( Material, "Interfrost deltaT", Found)
     impedancefactor = GetConstReal( Material, "Interfrost Impedance", Found)
-    
+    lunardini = GetLogical( Material, "Linear freezing", Found)
     
     MinKgw = GetConstReal( Material, &
          'Hydraulic Conductivity Limit', Found)
@@ -488,10 +488,15 @@ CONTAINS
              CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
              T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
       CASE('interfrost') ! simple Interfrost model
-        XiAtIP(IPPerm) = GetXiInterfrost(T0,TemperatureAtIP,Swres,IFdeltaT)
-        XiTAtIP = XiInterfrostT(T0,TemperatureAtIP,Swres,deltaT)
+        IF (.NOT.Lunardini) THEN
+          XiAtIP(IPPerm) = GetXiInterfrost(T0,TemperatureAtIP,Swres,IFdeltaT)
+          XiTAtIP = XiInterfrostT(T0,TemperatureAtIP,Swres,deltaT)
+        ELSE
+          XiAtIP(IPPerm) = GetXiLunardini(T0,TemperatureAtIP,Swres,IFdeltaT)
+          XiTAtIP = XiLunardiniT(T0,TemperatureAtIP,Swres,deltaT)
+        END IF
         XiPAtIP = 0.0_dp
-        InterFrost = .True.
+        InterFrost = .TRUE.
       CASE DEFAULT ! Hartikainen model
         CALL  GetXiHartikainen (RockMaterialID,&
              CurrentSoluteMaterial,CurrentSolventMaterial,&
@@ -528,18 +533,25 @@ CONTAINS
       ksthAtIP = GetKalphath(GlobalRockMaterial % ks0th(RockMaterialID),&
            GlobalRockMaterial % bs(RockMaterialID),T0,TemperatureAtIP)
       !IF (ksthAtIP > 3.01_dp) &
-!     PRINT *,GlobalRockMaterial % ks0th(RockMaterialID), RockMaterialID, ElementID
+      !     PRINT *,GlobalRockMaterial % ks0th(RockMaterialID), RockMaterialID, ElementID
       kwthAtIP = GetKalphath(CurrentSolventMaterial % kw0th,CurrentSolventMaterial % bw,T0,TemperatureAtIP)
-      kithAtIP = GetKalphath(CurrentSolventMaterial % ki0th,CurrentSolventMaterial % bi,T0,TemperatureAtIP)
+      kithAtIP = GetKalphath(CurrentSolventMaterial % ki0th,CurrentSolventMaterial % bi,T0,TemperatureAtIP)      
       kcthAtIP = GetKalphath(CurrentSoluteMaterial % kc0th,CurrentSoluteMaterial % bc,T0,TemperatureAtIP)
-      KGTTAtIP = GetKGTT(ksthAtIP,kwthAtIP,kithAtIP,kcthAtIP,XiAtIP(IPPerm),&
-           SalinityATIP,PorosityAtIP,meanfactor)
-
+      IF (Lunardini) THEN
+        KGTTAtIP = GetKGTTLunardini(XiAtIP(IPPerm),Swres)
+      ELSE
+        KGTTAtIP = GetKGTT(ksthAtIP,kwthAtIP,kithAtIP,kcthAtIP,XiAtIP(IPPerm),&
+             SalinityATIP,PorosityAtIP,meanfactor)
+      END IF
       ! heat capacities at IP
-      CGTTAtIP = &
-           GetCGTT(XiAtIP(IPPerm),XiTAtIP,rhosAtIP,rhowAtIP,rhoiAtIP,rhocAtIP,&
-           cwAtIP,ciAtIP,csAtIP,ccAtIP,hiAtIP,hwAtIP,&
-           PorosityAtIP,SalinityAtIP)
+      IF (Lunardini) THEN
+        CGTTAtIP = 690360.0_dp
+      ELSE
+        CGTTAtIP = &
+             GetCGTT(XiAtIP(IPPerm),XiTAtIP,rhosAtIP,rhowAtIP,rhoiAtIP,rhocAtIP,&
+             cwAtIP,ciAtIP,csAtIP,ccAtIP,hiAtIP,hwAtIP,&
+             PorosityAtIP,SalinityAtIP)
+      END IF
       CgwTTAtIP = GetCgwTT(rhowAtIP,rhocAtIP,cwAtIP,ccAtIP,XiAtIP(IPPerm),SalinityAtIP)
 
       ! compute groundwater flux for advection term

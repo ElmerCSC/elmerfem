@@ -1158,11 +1158,29 @@ CONTAINS
     XiInterfrost = (1.0_dp - Swres)*EXP(-((MIN(Temperature,T0) - T0)/deltaT)**2.0_dp) + Swres
   END FUNCTION GetXiInterfrost
   !---------------------------------------------------------------------------------------------
-  REAL (KIND=dp) FUNCTION XiInterfrostT(T0,Temperature,Swres, deltaT)
+  REAL (KIND=dp) FUNCTION XiInterfrostT(T0,Temperature,Swres, deltaT) 
     REAL(KIND=dp), INTENT(IN) ::T0,Temperature,Swres,deltaT
     XiInterfrostT = -(1.0_dp - Swres) &
          * EXP(-((MIN(Temperature,T0) -T0)/deltaT)**2.0_dp) * 2.0_dp*(MIN(Temperature,T0) -T0)/(deltaT*deltaT)
   END FUNCTION XiInterfrostT
+  !---------------------------------------------------------------------------------------------
+  FUNCTION GetXiLunardini(T0,Temperature,Swres, deltaT) RESULT(XiLunardini)
+    REAL(KIND=dp), INTENT(IN) ::T0,Temperature,Swres,deltaT
+    REAL(KIND=dp) :: XiLunardini, mpar
+    mpar = (Swres - 1.0_dp)/deltaT
+    XiLunardini = MAX(mpar*(MIN(Temperature,T0) - T0),Swres)
+  END FUNCTION GetXiLunardini
+  !---------------------------------------------------------------------------------------------
+  REAL (KIND=dp) FUNCTION XiLunardiniT(T0,Temperature,Swres, deltaT)
+    REAL(KIND=dp), INTENT(IN) ::T0,Temperature,Swres,deltaT
+    REAL(KIND=dp) ::  mpar
+    mpar = (Swres - 1.0_dp)/deltaT
+    IF ((Temperature - T0 > -deltaT) .AND. (Temperature <= T0) )THEN 
+      XiLunardiniT = mpar
+    ELSE
+      XiLunardiniT = 0.0_dp
+    END IF
+  END FUNCTION XiLunardiniT
   !---------------------------------------------------------------------------------------------
   ! functions specific to heat transfer and phase change
   !---------------------------------------------------------------------------------------------
@@ -2252,6 +2270,20 @@ CONTAINS
          + xc*Porosity*kcth + (1.0_dp - Xi)*Porosity*kith
     KGTT = unittensor*((1.0_dp - meanfactor)*KGhTT + meanfactor * KGaTT)
   END FUNCTION GetKGTT
+  !---------------------------------------------------------------------------------------------
+  FUNCTION GetKGTTLunardini(Xi,Swres)RESULT(KGTT) ! All state variables or derived values
+    IMPLICIT NONE
+    REAL(KIND=dp), INTENT(IN) :: Xi, Swres
+    REAL(KIND=dp) :: KGTT(3,3), unittensor(3,3)
+    unittensor=RESHAPE([1.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,1.0], SHAPE(unittensor))
+    IF (Xi > 0.999_dp) THEN
+      KGTT = unittensor*2.418352_dp
+    ELSE IF (Xi <= Swres) THEN
+      KGTT = unittensor*3.464352_dp
+    ELSE
+      KGTT = unittensor*2.941352_dp
+    END IF
+  END FUNCTION GetKGTTLunardini
   !---------------------------------------------------------------------------------------------
   FUNCTION  GetDtd(RockMaterialID,Xi,Porosity,JgwD)RESULT(Dtd)
     IMPLICIT NONE
