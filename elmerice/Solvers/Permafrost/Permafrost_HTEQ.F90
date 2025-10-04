@@ -513,33 +513,27 @@ CONTAINS
       rhocAtIP = rhoc(CurrentSoluteMaterial,T0,p0,XiAtIP(IPPerm),TemperatureAtIP,PressureAtIP,SalinityAtIP,ConstVal)
       !PRINT *,"HTEQ: rhowAtIP, rhoiAtIP, rhosAtIP", rhowAtIP, rhoiAtIP, rhosAtIP
 
-      ! heat capacities
-      csAtIP   = cs(RockMaterialID,&
-           T0,TemperatureAtIP,ConstVal)
-      cwAtIP   = cw(CurrentSolventMaterial,&
-           T0,XiAtIP(IPPerm),TemperatureAtIP,SalinityAtIP,ConstVal)
-      ciAtIP   = ci(CurrentSolventMaterial,&
-           T0,TemperatureAtIP,ConstVal)
-      ccAtIP   = cc(CurrentSoluteMaterial,&
-           T0,TemperatureAtIP,SalinityAtIP,ConstVal)
+
 
       ! latent heat
-      hiAtIP = hi(CurrentSolventMaterial,&
-           T0,TemperatureAtIP,ConstVal)
-      hwAtIP = hw(CurrentSolventMaterial,&
-           T0,XiAtIP(IPPerm),TemperatureAtIP,SalinityAtIP,ConstVal)
-
+      IF (Lunardini) THEN
+      ELSE
+        hiAtIP = hi(CurrentSolventMaterial,&
+             T0,TemperatureAtIP,ConstVal)
+        hwAtIP = hw(CurrentSolventMaterial,&
+             T0,XiAtIP(IPPerm),TemperatureAtIP,SalinityAtIP,ConstVal)
+      END IF
       ! heat conductivity at IP
-      ksthAtIP = GetKalphath(GlobalRockMaterial % ks0th(RockMaterialID),&
-           GlobalRockMaterial % bs(RockMaterialID),T0,TemperatureAtIP)
-      !IF (ksthAtIP > 3.01_dp) &
-      !     PRINT *,GlobalRockMaterial % ks0th(RockMaterialID), RockMaterialID, ElementID
-      kwthAtIP = GetKalphath(CurrentSolventMaterial % kw0th,CurrentSolventMaterial % bw,T0,TemperatureAtIP)
-      kithAtIP = GetKalphath(CurrentSolventMaterial % ki0th,CurrentSolventMaterial % bi,T0,TemperatureAtIP)      
-      kcthAtIP = GetKalphath(CurrentSoluteMaterial % kc0th,CurrentSoluteMaterial % bc,T0,TemperatureAtIP)
       IF (Lunardini) THEN
         KGTTAtIP = GetKGTTLunardini(XiAtIP(IPPerm),Swres)
       ELSE
+        ksthAtIP = GetKalphath(GlobalRockMaterial % ks0th(RockMaterialID),&
+             GlobalRockMaterial % bs(RockMaterialID),T0,TemperatureAtIP)
+        !IF (ksthAtIP > 3.01_dp) &
+        !     PRINT *,GlobalRockMaterial % ks0th(RockMaterialID), RockMaterialID, ElementID
+        kwthAtIP = GetKalphath(CurrentSolventMaterial % kw0th,CurrentSolventMaterial % bw,T0,TemperatureAtIP)
+        kithAtIP = GetKalphath(CurrentSolventMaterial % ki0th,CurrentSolventMaterial % bi,T0,TemperatureAtIP)      
+        kcthAtIP = GetKalphath(CurrentSoluteMaterial % kc0th,CurrentSoluteMaterial % bc,T0,TemperatureAtIP)     
         KGTTAtIP = GetKGTT(ksthAtIP,kwthAtIP,kithAtIP,kcthAtIP,XiAtIP(IPPerm),&
              SalinityATIP,PorosityAtIP,meanfactor)
       END IF
@@ -547,6 +541,14 @@ CONTAINS
       IF (Lunardini) THEN
         CGTTAtIP = 690360.0_dp
       ELSE
+        csAtIP   = cs(RockMaterialID,&
+             T0,TemperatureAtIP,ConstVal)
+        cwAtIP   = cw(CurrentSolventMaterial,&
+             T0,XiAtIP(IPPerm),TemperatureAtIP,SalinityAtIP,ConstVal)
+        ciAtIP   = ci(CurrentSolventMaterial,&
+             T0,TemperatureAtIP,ConstVal)
+        ccAtIP   = cc(CurrentSoluteMaterial,&
+             T0,TemperatureAtIP,SalinityAtIP,ConstVal)
         CGTTAtIP = &
              GetCGTT(XiAtIP(IPPerm),XiTAtIP,rhosAtIP,rhowAtIP,rhoiAtIP,rhocAtIP,&
              cwAtIP,ciAtIP,csAtIP,ccAtIP,hiAtIP,hwAtIP,&
