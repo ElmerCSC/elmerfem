@@ -516,13 +516,11 @@ CONTAINS
 
 
       ! latent heat
-      IF (Lunardini) THEN
-      ELSE
-        hiAtIP = hi(CurrentSolventMaterial,&
-             T0,TemperatureAtIP,ConstVal)
-        hwAtIP = hw(CurrentSolventMaterial,&
-             T0,XiAtIP(IPPerm),TemperatureAtIP,SalinityAtIP,ConstVal)
-      END IF
+      hiAtIP = hi(CurrentSolventMaterial,&
+           T0,TemperatureAtIP,ConstVal)
+      hwAtIP = hw(CurrentSolventMaterial,&
+           T0,XiAtIP(IPPerm),TemperatureAtIP,SalinityAtIP,ConstVal)
+      
       ! heat conductivity at IP
       IF (Lunardini) THEN
         KGTTAtIP = GetKGTTLunardini(XiAtIP(IPPerm),Swres)
@@ -539,7 +537,7 @@ CONTAINS
       END IF
       ! heat capacities at IP
       IF (Lunardini) THEN
-        CGTTAtIP = 690360.0_dp
+        CGTTAtIP = 690360.0_dp - 334720.0_dp*rhoiAtIP*PorosityAtIp*XiTAtIP
       ELSE
         csAtIP   = cs(RockMaterialID,&
              T0,TemperatureAtIP,ConstVal)
