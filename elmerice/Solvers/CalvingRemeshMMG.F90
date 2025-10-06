@@ -575,9 +575,9 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       mmgLs  = 0
       mmgMet  = 0
 
-      CALL MMG3D_Init_mesh(MMG5_ARG_start, &
-          MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppLs,mmgLs, &
-          MMG5_ARG_end)
+      CALL MMG3D_Init_mesh((/MMG5_ARG_start, &
+          MMG5_ARG_ppMesh,LOC(mmgMesh),MMG5_ARG_ppLs,LOC(mmgLs), &
+          MMG5_ARG_end/), ierr)
 
       !  now Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
       CALL Set_MMG3D_Mesh(GatheredMesh, .TRUE., EdgePairs, PairCount)
@@ -674,9 +674,9 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       IF ( ierr == MMG5_STRONGFAILURE ) THEN
         PRINT*,"BAD ENDING OF MMG3DLS: UNABLE TO SAVE MESH", Time
         !! Release mmg mesh
-        CALL MMG3D_Free_all(MMG5_ARG_start, &
-            MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &
-            MMG5_ARG_end)
+        CALL MMG3D_Free_all((/MMG5_ARG_start, &
+            MMG5_ARG_ppMesh,LOC(mmgMesh),MMG5_ARG_ppMet,LOC(mmgSol), &
+            MMG5_ARG_end/), ierr)
         WRITE(Message, '(A,F10.5,A,F10.5)') 'Levelset failed with Hmin ',Hmin, ' and Hausd ', Hausd
         CALL WARN(SolverName, Message)
         IF(mmgloops==MaxLsetIter) THEN
@@ -709,9 +709,9 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       IF ( Counter > 0 ) THEN
         PRINT*,"Bad elements detected - reruning levelset"
         !! Release mmg mesh
-        CALL MMG3D_Free_all(MMG5_ARG_start, &
-            MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &
-            MMG5_ARG_end)
+        CALL MMG3D_Free_all((/MMG5_ARG_start, &
+            MMG5_ARG_ppMesh,LOC(mmgMesh),MMG5_ARG_ppMet,LOC(mmgSol), &
+            MMG5_ARG_end/), ierr)
           WRITE(Message, '(A,F10.5,A,F10.5)') 'Levelset failed with Hmin ',Hmin, ' and Hausd ', Hausd
         CALL WARN(SolverName, Message)
         IF(mmgloops==MaxLsetIter) THEN
@@ -838,9 +838,9 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       END DO
 
       !! Release mmg mesh
-      CALL MMG3D_Free_all(MMG5_ARG_start, &
-          MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppLs,mmgLs, &
-          MMG5_ARG_end)
+      CALL MMG3D_Free_all((/MMG5_ARG_start, &
+          MMG5_ARG_ppMesh,LOC(mmgMesh),MMG5_ARG_ppLs,LOC(mmgLs), &
+          MMG5_ARG_end/), ierr)
 
       !MMG3DLS returns constraint = 10 on newly formed boundary elements
       !(i.e. the new calving front). Here it is set to front_BC_id

@@ -176,9 +176,9 @@
       CALL Info('MMGSolver','Initialization of MMG',Level=20)
       mmgMesh = 0
       mmgSol  = 0
-      CALL MMG2D_Init_mesh(MMG5_ARG_start, &
-             MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &
-             MMG5_ARG_end)
+      CALL MMG2D_Init_mesh((/MMG5_ARG_start, &
+             MMG5_ARG_ppMesh,LOC(mmgMesh),MMG5_ARG_ppMet,LOC(mmgSol), &
+             MMG5_ARG_end/), ier)
       
       ! SET PARAMETERS 
       CALL Info('MMGSolver','Set MMG2D Parameters',Level=20)
@@ -324,9 +324,9 @@
       CALL INFO('MMGSolver',trim(Message),level=5)
       
 !!!! Free the MMG3D5 structures
-      CALL MMG2D_Free_all(MMG5_ARG_start, &
-          MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &
-          MMG5_ARG_end)      
+      CALL MMG2D_Free_all((/MMG5_ARG_start, &
+          MMG5_ARG_ppMesh,LOC(mmgMesh),MMG5_ARG_ppMet,LOC(mmgSol), &
+          MMG5_ARG_end/), ier)      
      
 
 !-------------------------------------

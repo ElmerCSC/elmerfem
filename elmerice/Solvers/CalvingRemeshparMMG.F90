@@ -458,9 +458,9 @@ SUBROUTINE CalvingRemeshParMMG( Model, Solver, dt, Transient )
 
       CALL MeshVolume(GatheredMesh, .FALSE., PreCalveVolume)
 
-      CALL MMG3D_Init_mesh(MMG5_ARG_start, &
-          MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppLs,mmgLs, &
-          MMG5_ARG_end)
+      CALL MMG3D_Init_mesh((/MMG5_ARG_start, &
+          MMG5_ARG_ppMesh,LOC(mmgMesh),MMG5_ARG_ppLs,LOC(mmgLs), &
+          MMG5_ARG_end/), ierr)
 
       CALL GetCalvingEdgeNodes(GatheredMesh, .FALSE., EdgePairs, PairCount)
       !  now Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
@@ -670,9 +670,9 @@ SUBROUTINE CalvingRemeshParMMG( Model, Solver, dt, Transient )
       END DO
 
       !! Release mmg mesh
-      CALL MMG3D_Free_all(MMG5_ARG_start, &
-          MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppLs,mmgLs, &
-          MMG5_ARG_end)
+      CALL MMG3D_Free_all((/MMG5_ARG_start, &
+          MMG5_ARG_ppMesh, LOC(mmgMesh),MMG5_ARG_ppLs, LOC(mmgLs), &
+          MMG5_ARG_end/), ierr)
 
       !MMG3DLS returns constraint = 10 on newly formed boundary elements
       !(i.e. the new calving front). Here it is set to front_BC_id
