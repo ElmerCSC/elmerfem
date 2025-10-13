@@ -35,8 +35,7 @@ MODULE MeshRemeshing
 USE Types
 USE Lists
 USE Messages
-USE MeshUtils, ONLY : PrepareMesh, MarkSharpEdges, MarkSharpNodes
-USE ModelDescription, ONLY : GetDefs
+USE MeshUtils, ONLY : PrepareMesh, MarkSharpEdges, MarkSharpNodes, GetDefs
 USE MeshPartition
 USE SparIterComm
 

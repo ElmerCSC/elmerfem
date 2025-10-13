@@ -48,11 +48,10 @@ MODULE MeshPartition
   USE ParallelUtils
   USE CoordinateSystems
   USE ElementDescription, ONLY : GetElementType
-  USE ModelDescription, ONLY : GetDefs
   USE MeshUtils, ONLY : AllocateMesh, BackCoordinateTransformation, &
       ComputeCRSIndexes, CoordinateTransformation, FindMeshEdges, &
       FindMeshEdges2D, FindMeshEdges3D, FindMeshFaces3D, PrepareMesh, &
-      ReleaseMesh, ReleaseMeshEdgeTables, ReleaseMeshFaceTables
+      ReleaseMesh, ReleaseMeshEdgeTables, ReleaseMeshFaceTables, GetDefs
   USE ClusteringMethods
   
 #ifdef HAVE_ZOLTAN
