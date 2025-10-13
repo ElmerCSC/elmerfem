@@ -486,8 +486,13 @@ ENDIF()
 
 # XIOS
 IF (WITH_XIOS)
-  IF (NOT WITH_NETCDF)
-    MESSAGE(FATAL_ERROR "Building with XIOS requires NetCDF.")
+  MESSAGE(STATUS "------------------------------------------------")
+  MESSAGE(STATUS "  Checking for XIOS-related dependencies")
+  MESSAGE(STATUS "  NETCDF:                 " "${NETCDF_FOUND}")
+
+  IF (NOT NETCDF_FOUND)
+    MESSAGE(FATAL_ERROR "Building with XIOS requires NetCDF. Please configure "
+                        "with -DWITH_NETCDF=ON and make sure NetCDF is found.")
   ENDIF()
 
   MESSAGE(STATUS "------------------------------------------------")
@@ -495,18 +500,18 @@ IF (WITH_XIOS)
 
   FIND_PACKAGE(XIOS)
 
+  MESSAGE(STATUS "  XIOS_FOUND:             " "${XIOS_FOUND}")
+  MESSAGE(STATUS "  XIOS_INC:               " "${XIOS_INCLUDE_DIR}")
+  MESSAGE(STATUS "  XIOS_LIB :              " "${XIOS_LIBRARIES}")
   IF(XIOS_FOUND)
     SET(HAVE_XIOS TRUE)
     MARK_AS_ADVANCED(HAVE_XIOS)
     INCLUDE_DIRECTORIES(${XIOS_INCLUDE_DIR})
     LINK_DIRECTORIES(${XIOS_LIBRARIES})
     ADD_DEFINITIONS(-DHAVE_XIOS)
-    MESSAGE(STATUS "  XIOS:           " "${XIOS_FOUND}")
-    MESSAGE(STATUS "  XIOS_INC:       " "${XIOS_INCLUDE_DIR}")
-    MESSAGE(STATUS "  XIOS_LIB :      " "${XIOS_LIBRARIES}")
-  ELSE()
-    MESSAGE(STATUS "  XIOS not found ")
-  ENDIF()
+  ELSE(XIOS_FOUND)
+    MESSAGE(STATUS "  ${XIOS_FAILMSG}")
+  ENDIF(XIOS_FOUND)
 
   MESSAGE(STATUS "------------------------------------------------")
 ENDIF()
