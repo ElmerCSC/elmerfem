@@ -2776,6 +2776,11 @@ CONTAINS
       ElementDef0 = ElementDef
       DO WHILE(.TRUE.)
         j = INDEX( ElementDef0, '-' )
+        IF (j == 1) THEN
+          ElementDef0 = ElementDef0(2:)
+          j = INDEX( ElementDef0, '-' )
+        END IF
+        
         IF (j>0) THEN
           !
           ! Read the element definition up to the next flag which specifies the
@@ -2786,7 +2791,8 @@ CONTAINS
           ElementDef = ElementDef0
         END IF
         !  Calling GetDefs fills Def_Dofs arrays:
-        CALL GetDefs( ElementDef, Solver % Def_Dofs, Def_Dofs(:,:), .NOT. GotMesh )
+        CALL GetDefs( ElementDef, Solver % Def_Dofs, Def_Dofs(:,:), .NOT. GotMesh, &
+            Solver % DG)
         IF(j>0) THEN
           ElementDef0 = ElementDef0(j+1:)
         ELSE
@@ -3344,8 +3350,11 @@ CONTAINS
       END DO
 
     END SUBROUTINE TagRadiationSolver
-
     
+!------------------------------------------------------------------------------
+  END FUNCTION LoadModel
+!------------------------------------------------------------------------------
+
 !------------------------------------------------------------------------------
 !> This subroutine is used to fill Def_Dofs array of the solver structure.
 !> Note that this subroutine makes no attempt to figure out the index of
@@ -3354,12 +3363,14 @@ CONTAINS
 !> the maximal-complexity definition over all solvers which use the same
 !> global mesh.
 !------------------------------------------------------------------------------
-    SUBROUTINE GetDefs(ElementDef, Solver_Def_Dofs, Def_Dofs, Def_Dofs_Update)
+    SUBROUTINE GetDefs(ElementDef, Solver_Def_Dofs, Def_Dofs, &
+        Def_Dofs_Update, DG)
 !------------------------------------------------------------------------------
       CHARACTER(LEN=*), INTENT(IN) :: ElementDef     !< an element definition string
       INTEGER, INTENT(OUT) :: Solver_Def_Dofs(:,:,:) !< Def_Dofs of the solver structure
       INTEGER, INTENT(INOUT) :: Def_Dofs(:,:)        !< holds the maximal-complexity definition on global mesh
       LOGICAL, INTENT(IN) :: Def_Dofs_Update         !< is .TRUE. when the definition refers to the global mesh
+      LOGICAL, INTENT(IN) :: DG
 !------------------------------------------------------------------------------
       INTEGER, POINTER :: ind(:)
       INTEGER, TARGET :: Family(10)
@@ -3423,8 +3434,7 @@ CONTAINS
         Solver_Def_Dofs(ind,:,4) = l
         IF ( Def_Dofs_Update ) Def_Dofs(ind,4) = MAX(Def_Dofs(ind,4), l )
       ELSE 
-        IF ( ListGetLogical( Solver % Values, &
-            'Discontinuous Galerkin', stat ) ) THEN
+        IF (DG) THEN
           Solver_Def_Dofs(ind,:,4) = 0
           IF ( Def_Dofs_Update ) Def_Dofs(ind,4) = MAX(Def_Dofs(ind,4),0 )
         END IF
@@ -3456,12 +3466,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     END SUBROUTINE GetDefs
 !------------------------------------------------------------------------------
-
     
-!------------------------------------------------------------------------------
-  END FUNCTION LoadModel
-!------------------------------------------------------------------------------
-
 !------------------------------------------------------------------------------
 !> Some keywords automatically require other keywords to be set
 !> We could complain on the missing keywords later on, but sometimes 
