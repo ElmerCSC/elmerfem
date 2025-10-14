@@ -237,7 +237,7 @@ SUBROUTINE PermafrostHeatTransfer( Model,Solver,dt,TransientSimulation )
           CALL FATAL(SolverName,'No Rock Material specified')
         ELSE
           CALL INFO(SolverName,'Permafrost Rock Material read',Level=6)
-          FirstTime = .FALSE.
+          
         END IF
         CALL ReadPermafrostSoluteMaterial( Material,Model % Constants,CurrentSoluteMaterial )
         CALL ReadPermafrostSolventMaterial( Material, CurrentSolventMaterial )
@@ -258,6 +258,7 @@ SUBROUTINE PermafrostHeatTransfer( Model,Solver,dt,TransientSimulation )
            CurrentSoluteMaterial, CurrentSolventMaterial,&
            NumberOfRockRecords, PhaseChangeModel,ElementWiseRockMaterial,&
            ActiveMassMatrix,FluxOutput)
+      FirstTime = .FALSE.
     END DO
 
     CALL DefaultFinishBulkAssembly()
@@ -313,6 +314,7 @@ CONTAINS
     REAL(KIND=dp) ::  gradTAtIP(3),gradPAtIP(3),JgwDAtIP(3),KgwAtIP(3,3),KgwpTAtIP(3,3),MinKgw,&
          KgwppAtIP(3,3),fwAtIP,mugwAtIP,DtdAtIP(3,3)!  JgwD stuff
     REAL(KIND=dp) :: deltaInElement,D1AtIP,D2AtIP
+    REAL(KIND=dp) :: k1,k2,k3,c1,c2,c3
     REAL(KIND=dp) :: GasConstant, N0, DeltaT, T0, p0, eps, Gravity(3) ! constants read only once
     REAL(KIND=dp) :: rhosAtIP,rhowAtIP,rhoiAtIP,rhocAtIP,rhogwAtIP,csAtIP,cwAtIP,ciAtIP,ccAtIP ! material properties at IP
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,Weight,LoadAtIP,&
@@ -325,7 +327,7 @@ CONTAINS
     INTEGER :: i,t,p,q,IPPerm,DIM, RockMaterialID, FluxDOFs
     LOGICAL :: Stat,Found, ConstantsRead=.FALSE.,ConstVal=.FALSE.,&
          CryogenicSuction=.FALSE.,HydroGeo=.FALSE.,ComputeFlux=.TRUE.,&
-         NoSalinity=.FALSE.,InterFrost=.FALSE.,Lunardini=.FALSE.
+         NoSalinity=.FALSE.,InterFrost=.FALSE.,Lunardini=.FALSE., LunardiniParamsFound=.TRUE.
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BodyForce, Material
     TYPE(Nodes_t) :: Nodes
@@ -396,8 +398,30 @@ CONTAINS
     Swres = GetConstReal( Material, "Interfrost Swres", Found)
     IFdeltaT = GetConstReal( Material, "Interfrost deltaT", Found)
     impedancefactor = GetConstReal( Material, "Interfrost Impedance", Found)
-    lunardini = GetLogical( Material, "Linear freezing", Found)
-    
+    Lunardini = GetLogical( Material, "Linear freezing", Found)
+
+    IF (Lunardini) THEN
+      k1 =GetConstReal(Material, "Lunardini k1", Found)
+      LunardiniParamsFound = (Found .AND. LunardiniParamsFound)
+      k2 =GetConstReal(Material, "Lunardini k2", Found)
+      LunardiniParamsFound = (Found .AND. LunardiniParamsFound)
+      k3 =GetConstReal(Material, "Lunardini k3", Found)
+      LunardiniParamsFound = (Found .AND. LunardiniParamsFound)
+      c1 =GetConstReal(Material, "Lunardini c1", Found)
+      LunardiniParamsFound = (Found .AND. LunardiniParamsFound)
+      c2 =GetConstReal(Material, "Lunardini c2", Found)
+      LunardiniParamsFound = (Found .AND. LunardiniParamsFound)
+      c3 =GetConstReal(Material, "Lunardini c3", Found)
+      LunardiniParamsFound = (Found .AND. LunardiniParamsFound)
+      IF (.NOT.LunardiniParamsFound) &
+           CALL FATAL(FunctionName,"Linear freezing switched on, but not all 3 zone values (Lunardini) found")
+      IF(FirstTime) THEN
+        WRITE(Message,*) 'Read in Lunardini zone-wise parameters (k1..3) ', &
+           k1, ',',k2, ',',k3, ', (c1..c3) ',c1, ',',c2, ',',c3
+        CALL INFO(FunctionName,Message,Level=3)
+      END IF
+    END IF
+      
     MinKgw = GetConstReal( Material, &
          'Hydraulic Conductivity Limit', Found)
     IF (.NOT.Found .OR. (MinKgw <= 0.0_dp))  &
@@ -523,7 +547,7 @@ CONTAINS
       
       ! heat conductivity at IP
       IF (Lunardini) THEN
-        KGTTAtIP = GetKGTTLunardini(XiAtIP(IPPerm),Swres)
+        KGTTAtIP = GetKGTTLunardini(XiAtIP(IPPerm),Swres,k1,k2,k3)
       ELSE
         ksthAtIP = GetKalphath(GlobalRockMaterial % ks0th(RockMaterialID),&
              GlobalRockMaterial % bs(RockMaterialID),T0,TemperatureAtIP)
@@ -537,7 +561,9 @@ CONTAINS
       END IF
       ! heat capacities at IP
       IF (Lunardini) THEN
-        CGTTAtIP = 690360.0_dp - 334720.0_dp*rhoiAtIP*PorosityAtIp*XiTAtIP
+        !CGTTAtIP = 690360.0_dp - 334720.0_dp*rhoiAtIP*PorosityAtIp*XiTAtIP
+        CGTTAtIP = GetCGTTLunardini(c1,c2,c3,XiAtIP(IPPerm),Swres,XiTAtIP,rhoiAtIP,PorosityAtIP,hiAtIP,hwAtIP)
+                   
       ELSE
         csAtIP   = cs(RockMaterialID,&
              T0,TemperatureAtIP,ConstVal)

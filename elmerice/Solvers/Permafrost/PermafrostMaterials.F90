@@ -2212,6 +2212,21 @@ CONTAINS
          + (1.0_dp - Xi)*Porosity*rhoi*ci &
          + rhoi*(hw - hi)*Porosity*XiT
   END FUNCTION GetCGTT
+    !---------------------------------------------------------------------------------------------
+  FUNCTION GetCGTTLunardini(c1,c2,c3,Xi,Swres,XiT,rhoi,Porosity,hi,hw)RESULT(CGTT)
+    IMPLICIT NONE
+    REAL(KIND=dp), INTENT(IN) :: c1,c2,c3,Xi,Swres,XiT,rhoi,Porosity,hi,hw
+    REAL(KIND=dp) :: CGTT
+    !-------------------------
+    IF (Xi > 0.999_dp) THEN
+      CGTT = c3
+    ELSE IF (Xi <= Swres) THEN
+      CGTT = c1
+    ELSE
+     CGTT  = c2
+    END IF
+    CGTT = CGTT - (hw - hi)*rhoi*Porosity*XiT
+  END FUNCTION GetCGTTLunardini
   !---------------------------------------------------------------------------------------------
   FUNCTION GetCGTp(rhoi,hi,hw,XiP,Porosity)RESULT(CGTp)! All state variables or derived values
     IMPLICIT NONE
@@ -2271,17 +2286,17 @@ CONTAINS
     KGTT = unittensor*((1.0_dp - meanfactor)*KGhTT + meanfactor * KGaTT)
   END FUNCTION GetKGTT
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetKGTTLunardini(Xi,Swres)RESULT(KGTT) ! All state variables or derived values
+  FUNCTION GetKGTTLunardini(Xi,Swres,k1,k2,k3)RESULT(KGTT) ! All state variables or derived values
     IMPLICIT NONE
-    REAL(KIND=dp), INTENT(IN) :: Xi, Swres
+    REAL(KIND=dp), INTENT(IN) :: Xi, Swres, k1, k2, k3
     REAL(KIND=dp) :: KGTT(3,3), unittensor(3,3)
     unittensor=RESHAPE([1.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,1.0], SHAPE(unittensor))
     IF (Xi > 0.999_dp) THEN
-      KGTT = unittensor*2.418352_dp
+      KGTT = unittensor*k3
     ELSE IF (Xi <= Swres) THEN
-      KGTT = unittensor*3.464352_dp
+      KGTT = unittensor*k1
     ELSE
-      KGTT = unittensor*2.941352_dp
+      KGTT = unittensor*k2
     END IF
   END FUNCTION GetKGTTLunardini
   !---------------------------------------------------------------------------------------------
