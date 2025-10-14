@@ -11139,8 +11139,10 @@ END SUBROUTINE PickActiveFace
        IF ( ASSOCIATED(Element % BoundaryInfo % Left) ) &
            id = Element % BoundaryInfo % Left % BodyId
 
-       IF ( ASSOCIATED(Element % BoundaryInfo % Right) ) &
-           id = Element % BoundaryInfo % Right % BodyId
+       IF (id == 0 .OR. id > CurrentModel % NumberOfBodies) THEN
+         IF ( ASSOCIATED(Element % BoundaryInfo % Right) ) &
+             id = Element % BoundaryInfo % Right % BodyId
+       END IF
      END IF
      !
      ! In some cases it may happen that this function
