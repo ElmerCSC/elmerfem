@@ -26,6 +26,17 @@ ELSE()
   MESSAGE(WARNING "  \n Missing: <NETCDF_INCLUDE_DIR> , <NETCDF_LIBRARY>,  <NETCDFF_LIBRARY> \n some functionalities will be disabled")
 ENDIF()
 
+FIND_PACKAGE(YAC)
+
+IF(YAC_FOUND)
+  MESSAGE(STATUS "  YAC:           " "${YAC_FOUND}")
+  MESSAGE(STATUS "  YAC_INC:       " "${YAC_INCLUDE_DIR}")
+  MESSAGE(STATUS "  YAC_LIBS:      " "${YAC_LIBRARIES}")
+  MESSAGE(STATUS "  yac2elmer will be available under ElmerIceSolvers")
+ELSE()
+  MESSAGE(STATUS "  YAC not found ")
+  MESSAGE(STATUS "  No yac2elmer in ElmerIceSolvers")
+ENDIF()
 # ---------------------- #
 # -- HDF5 libraries -- #
 #----------------------- #
@@ -119,6 +130,11 @@ ENDIF()
 IF(HAVE_NETCDF)
   SET(ElmerIce_SRC ${ElmerIce_SRC} UGridDataReader.F90)
 ENDIF()
+
+IF(HAVE_YAC)
+  SET(ElmerIce_SRC ${ElmerIce_SRC} yac2elmer.F90)
+ENDIF()
+
 
 ADD_LIBRARY(ElmerIceSolvers SHARED ${ElmerIce_SRC})
 
