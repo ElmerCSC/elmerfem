@@ -135,12 +135,12 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
 !------------------------------------------------------------------------------
   LOGICAL :: Found
   TYPE(Element_t), POINTER :: Element
-  REAL(KIND=dp) :: Norm
+  REAL(KIND=dp) :: Norm, newton_eps
   INTEGER :: i,j,k,n, nb, nd, t, Active, NonlinIter, iter, tind
   TYPE(ValueList_t), POINTER :: BC
   TYPE(Mesh_t),   POINTER :: Mesh
   TYPE(ValueList_t), POINTER :: SolverParams
-  
+  TYPE(ValueHandle_t), SAVE :: mu_h
   LOGICAL :: NewtonRaphson = .FALSE., CSymmetry, SkipDegenerate, &
       HandleAsm, MassAsm, ConstantMassInUse = .FALSE.
   LOGICAL :: SliceAverage
@@ -185,6 +185,13 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
     CALL Info(Caller,'Performing legacy version of bulk element assembly',Level=7)      
   END IF
 
+  newton_eps = GetCReal(SolverParams, 'Newton epsilon', Found )
+  IF(.NOT. Found) newton_eps = 1.0e-3
+
+  IF( ListCheckPresentAnyMaterial(Model,'Reluctivity Function') ) THEN
+  CALL ListInitElementKeyword(mu_h,'Material','Reluctivity Function',&
+        EvaluateAtIp=.TRUE.,DummyCount=2)
+  END IF
   MassAsm = Transient
   IF( ConstantMassInUse ) MassAsm = .FALSE.
   
@@ -775,11 +782,12 @@ CONTAINS
     REAL(KIND=dp) :: LondonLambda_ip, P_ip, Permittivity(nd)
     REAL(KIND=dp) :: Bt(nd,2), Ht(nd,2)
     REAL(KIND=dp) :: nu_tensor(2,2)
-    REAL(KIND=dp) :: B_ip(2), Alocal, H_ip(2)
+    REAL(KIND=dp), POINTER :: MuTensor(:,:)
+    REAL(KIND=dp) :: B_ip(2), Alocal, H_ip(2), A_t_der(2,2)
 
-    INTEGER :: i,p,q,t
+    INTEGER :: i,p,q,t,k,mudim
 
-    LOGICAL :: HBcurve, WithVelocity, WithAngularVelocity, Found, Stat
+    LOGICAL :: HBcurve, WithVelocity, WithAngularVelocity, Found, Stat, HasReluctivityFunction
     LOGICAL :: CoilBody, StrandedCoil    
 
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
@@ -808,12 +816,12 @@ CONTAINS
 
     HBCurve = ListCheckPresent(Material,'H-B Curve')
     Zirka = ListGetLogical(Material, 'Zirka material', Zirka)
-
+    HasReluctivityFunction = ListCheckPresent(Material,'Reluctivity Function')
     IF (zirka) THEN
       CALL GetLocalSolution(POT,UElement=Element,USolver=Solver)
       zirkamodel => GetZirkaPointer(Material)
       hystvar => GetZirkaVariable(Material)
-    ELSE IF(HBcurve) THEN
+    ELSE IF(HBcurve .OR. HasReluctivityFunction) THEN
       CALL GetLocalSolution(POT,UElement=Element,USolver=Solver)
     ELSE
       CALL GetReluctivity(Material,R,n,Element)
@@ -885,7 +893,7 @@ CONTAINS
 
       nu_tensor = 0.0_dp
 
-      IF(Zirka .OR. HBCUrve) THEN
+      IF(Zirka .OR. HBCUrve .OR. HasReluctivityFunction) THEN
         Agrad = 0.0_dp
         Agrad = MATMUL( POT,dBasisdx )
         Alocal = SUM( POT(1:nd) * Basis(1:nd) )
@@ -913,6 +921,22 @@ CONTAINS
         nu_tensor(2,2) = mu
       ELSE IF(Zirka) THEN
         CALL GetZirkaHBAtIP(t, solver, element, hystvar, zirkamodel, B_ip, H_ip, nu_tensor)
+      ELSE IF (HasReluctivityFunction) THEN
+        Babs = MAX( SQRT(SUM(B_ip**2)), 1.d-8 )
+        mu = ListGetElementReal( mu_h, Basis, Element, &
+             GaussPoint = t, Rdim=mudim, Rtensor=MuTensor, DummyVals = B_ip )
+        IF (mudim < 1) CALL Fatal(Caller, &
+             'Specify Reluctivity Function as a full (2x2)-tensor')
+        IF( NewtonRaphson ) THEN
+           ! Use central differencing
+           mu = ListGetElementReal( mu_h, Basis, Element, &
+               GaussPoint = t, Rdim=mudim, Rtensor=MuTensor, DummyVals = (1+1e-3_dp)*B_ip )
+           A_t_der(1:2,1:2) = MuTensor(1:2,1:2)
+           mu = ListGetElementReal( mu_h, Basis, Element, &
+               GaussPoint = t, Rdim=mudim, Rtensor=MuTensor, DummyVals = (1-1e-3_dp)*B_ip )
+           A_t_der(1:2,1:2) = ( A_t_der(1:2,1:2) - MuTensor(1:2,1:2) ) / ( 2*1e-3_dp*babs)
+         END IF
+        nu_tensor(1:2,1:2) = MuTensor(1:2,1:2)
       ELSE
         muder=0._dp
         DO p=1,2
@@ -982,6 +1006,15 @@ CONTAINS
               muder/babs*SUM(B_ip*Bt(q,:))*SUM(B_ip*Bt(p,:))
           END DO
         END DO
+      ELSE IF (HasReluctivityFunction .AND. NewtonRaphson) THEN
+        DO p=1,nd
+          DO q=1,nd
+            DO k=1,2
+              JAC(p,q) = JAC(p,q) + detJ*IP % s(t) * &
+                SUM(A_t_der(k,:) * B_ip(k) * Bt(q,:)) * SUM(B_ip(:)*Bt(p,:))/Babs
+            END DO
+          END DO
+        END DO
       END IF
 
       IF (WithVelocity .OR. WithAngularVelocity ) THEN
@@ -1026,7 +1059,7 @@ CONTAINS
       END IF
     END DO
 
-    IF (HBcurve .AND. NewtonRaphson) THEN
+    IF ((HBcurve .OR. HasReluctivityFunction) .AND. NewtonRaphson) THEN
       IF(UseNewtonRelax) JAC = JAC * NewtonRelax
       STIFF = STIFF + JAC
       FORCE = FORCE + MATMUL(JAC,POT)
