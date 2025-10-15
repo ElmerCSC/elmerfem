@@ -52,12 +52,11 @@ MODULE Messages
 
 
 #ifdef HAVE_XIOS
-  USE XIOS
+  USE XIOS, ONLY: xios_context_finalize, xios_finalize
 #endif
   
 #ifdef HAVE_YAC
-   USE elmer_coupling
-   USE elmer_icon_coupling
+   USE elmer_coupling, ONLY: coupling_finalize
 #endif
    
    IMPLICIT NONE
@@ -75,13 +74,8 @@ MODULE Messages
    
    INTEGER, PARAMETER :: EXIT_OK=0, EXIT_ERROR=1
 
-#ifdef HAVE_XIOS
    LOGICAL :: USE_XIOS = .FALSE. 
-#endif 
-
-#ifdef HAVE_YAC
    LOGICAL :: USE_YAC = .FALSE.
-#endif   
 
 CONTAINS
 

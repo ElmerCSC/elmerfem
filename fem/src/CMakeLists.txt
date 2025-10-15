@@ -48,12 +48,6 @@ SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
 #SET_PROPERTY(SOURCE MaxwellAxiS.F90 PROPERTY
 #	COMPILE_DEFINITIONS FULL_INDUCTION)
 
-IF(MPI_Fortran_HAVE_F90_MODULE)
-  LIST(APPEND solverlib_SOURCES mo_mpi_handshake.F90 mpi_handshake.c)
-ELSE()
-  LIST(APPEND solverlib_SOURCES mo_mpi_handshake_stub.F90)
-ENDIF()
-
 IF(WITH_YAC)
   LIST(APPEND solverlib_SOURCES elmer_grid.c elmer_coupling.F90)
 ENDIF()
