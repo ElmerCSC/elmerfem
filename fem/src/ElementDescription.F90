@@ -11209,13 +11209,16 @@ END SUBROUTINE PickActiveFace
            DO j=1,Element % TYPE % NumberOfFaces
              Face => Mesh % Faces(Element % FaceIndexes(j))
              face_type = Face % TYPE % ElementCode/100
+             k = 0
              IF (ASSOCIATED(Face % BoundaryInfo % Left)) THEN
                face_id  = Face % BoundaryInfo % Left % BodyId
                k = MAX(0,Solver % Def_Dofs(face_type+6,face_id,5))
              END IF
-             IF (ASSOCIATED(Face % BoundaryInfo % Right)) THEN
-               face_id = Face % BoundaryInfo % Right % BodyId
-               k = MAX(k,Solver % Def_Dofs(face_type+6,face_id,5))
+             IF (k == 0) THEN
+               IF (ASSOCIATED(Face % BoundaryInfo % Right)) THEN
+                 face_id = Face % BoundaryInfo % Right % BodyId
+                 k = MAX(k,Solver % Def_Dofs(face_type+6,face_id,5))
+               END IF
              END IF
              IF (k > 0) THEN
                NeedEdges = .TRUE.
@@ -11293,9 +11296,11 @@ BLOCK
                face_id  = Face % BoundaryInfo % Left % BodyId
                k = MAX(0,Solver % Def_Dofs(face_type+6,face_id,5))
              END IF
-             IF (ASSOCIATED(Face % BoundaryInfo % Right)) THEN
-               face_id = Face % BoundaryInfo % Right % BodyId
-               k = MAX(k,Solver % Def_Dofs(face_type+6,face_id,5))
+             IF (k == 0) THEN
+               IF (ASSOCIATED(Face % BoundaryInfo % Right)) THEN
+                 face_id = Face % BoundaryInfo % Right % BodyId
+                 k = MAX(k,Solver % Def_Dofs(face_type+6,face_id,5))
+               END IF
              END IF
            END IF
 
@@ -11421,9 +11426,11 @@ BLOCK
                    face_id  = Face % BoundaryInfo % Left % BodyId
                    k = MAX(0,Solver % Def_Dofs(face_type+6,face_id,5))
                  END IF
-                 IF (ASSOCIATED(Face % BoundaryInfo % Right)) THEN
-                   face_id = Face % BoundaryInfo % Right % BodyId
-                   k = MAX(k,Solver % Def_Dofs(face_type+6,face_id,5))
+                 IF (k == 0) THEN
+                   IF (ASSOCIATED(Face % BoundaryInfo % Right)) THEN
+                     face_id = Face % BoundaryInfo % Right % BodyId
+                     k = MAX(k,Solver % Def_Dofs(face_type+6,face_id,5))
+                   END IF
                  END IF
                END IF
 
