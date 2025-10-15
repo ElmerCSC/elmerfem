@@ -2,7 +2,7 @@
 
 #  YAC_INCLUDE_DIR  - user modifiable choice of where yac headers are
 #  YAC_LIBRARY      - user modifiable choice of where yac library if
-#  or YAC_LIBRARIES - user modifiable choice of where yac libraries is 
+#  or YAC_LIBRARIES - user modifiable choice of where yac libraries is
 
 # his module returns these variables for the rest of the project to use.
 #
@@ -30,12 +30,12 @@ SET(YACINCLUDE
   )
 
 FIND_PATH(YAC_INCLUDE_DIR
-  yac.h 
-  HINTS 
+  yac.h
+  HINTS
   ${YACINCLUDE}
   )
 
-SET(YACLIB 
+SET(YACLIB
   "${YACROOT}/lib"
   "$ENV{YACROOT}/lib"
   "${YAC_ROOT}/lib"
@@ -46,9 +46,34 @@ FIND_LIBRARY(YAC_LIBRARY yac HINTS ${YACLIB})
 
 IF (YAC_INCLUDE_DIR AND YAC_LIBRARY)
   UNSET(YAC_FAILMSG)
-  SET(YACLIB_FOUND TRUE)
   SET(YAC_INCLUDE_DIR ${YAC_INCLUDE_DIR})
-  SET(YAC_LIBRARIES "${YAC_LIBRARY}")
+
+  # List of YAC static libraries
+  SET(YACLIB_NAMES
+    libyac.a
+    libyac_utils.a
+    libyac_core.a
+    libyac_clapack.a
+    libyac_mci.a
+    libyac_mtime.a
+  )
+
+  # Determine directory of the found YAC library
+  get_filename_component(YACLIB_DIR "${YAC_LIBRARY}" DIRECTORY)
+
+  SET(YAC_LIBRARIES "")
+  FOREACH(LIB ${YACLIB_NAMES})
+    SET(YAC_LIB_PATH "${YACLIB_DIR}/${LIB}")
+    IF (EXISTS "${YAC_LIB_PATH}")
+      LIST(APPEND YAC_LIBRARIES "${YAC_LIB_PATH}")
+    ELSE()
+      # if any of the expected libraries is not found return with error
+      SET(YAC_FAILMSG "YAC:           Expected library not found: ${YAC_LIB_PATH}.")
+      SET(YACLIB_FOUND FALSE)
+      RETURN()
+    ENDIF()
+  ENDFOREACH()
+  SET(YACLIB_FOUND TRUE)
 ELSE()
   SET(YAC_FAILMSG "YAC libraries not found.")
 ENDIF()
@@ -57,8 +82,6 @@ IF (NOT YAC_FAILMSG)
   SET(YAC_FOUND TRUE)
 ENDIF()
 
-
-
 MARK_AS_ADVANCED(
   YACINCLUDE
   YACLIB
@@ -66,5 +89,4 @@ MARK_AS_ADVANCED(
   YAC_INCLUDE_DIR
   YAC_LIBRARIES
   YAC_LIBRARY
-  YACINCLUDE
 )

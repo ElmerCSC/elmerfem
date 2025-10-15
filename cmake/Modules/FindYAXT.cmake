@@ -46,11 +46,32 @@ FIND_LIBRARY(YAXT_LIBRARY yaxt HINTS ${YAXTLIB})
 
 IF (YAXT_INCLUDE_DIR AND YAXT_LIBRARY)
   UNSET(YAXT_FAILMSG)
-  SET(YAXTLIB_FOUND TRUE)
   SET(YAXT_INCLUDE_DIR ${YAXT_INCLUDE_DIR})
-  SET(YAXT_LIBRARIES "${YAXT_LIBRARY}")
+
+  # List of yaxt dynamic libraries
+  SET(YAXTLIB_NAMES
+    libyaxt.so
+    libyaxt_c.so
+  )
+
+  # Determine directory of the found yaxt library
+  get_filename_component(YAXTLIB_DIR "${YAXT_LIBRARY}" DIRECTORY)
+
+  SET(YAXT_LIBRARIES "")
+  FOREACH(LIB ${YAXTLIB_NAMES})
+    SET(YAXT_LIB_PATH "${YAXTLIB_DIR}/${LIB}")
+    IF (EXISTS "${YAXT_LIB_PATH}")
+      LIST(APPEND YAXT_LIBRARIES "${YAXT_LIB_PATH}")
+    ELSE()
+      # if any of the expected libraries is not found return with error
+      SET(YAXT_FAILMSG "YAXT:           Expected library not found: ${YAXT_LIB_PATH}.")
+      SET(YAXTLIB_FOUND FALSE)
+      RETURN()
+    ENDIF()
+  ENDFOREACH()
+  SET(YAXTLIB_FOUND TRUE)
 ELSE()
-  SET(YAXT_FAILMSG "YAXT libraries not found.")
+  SET(YAXT_FAILMSG "yaxt libraries not found.")
 ENDIF()
 
 IF (NOT YAXT_FAILMSG)
