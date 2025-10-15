@@ -319,18 +319,6 @@ ELMER_COMM_WORLD = GROUP_COMMS(ELMER_GROUP_IDX)  ! Set ELMER_COMM_WORLD determin
       CALL MPI_COMM_SPLIT(MPI_COMM_WORLD,ELMER_COLOUR,&
            ParEnv % MyPE,ELMER_COMM_WORLD,ierr) 
     ENDIF
-#elif defined(HAVE_YAC)
-    IF (USE_YAC) THEN
-      WRITE(Message,*) "Using YAC coupler with config-file:",TRIM(config_file)
-      CALL INFO("SparIterComm",Message,Level=25)
-      CALL coupling_init("coupling.yaml", ELMER_COMM_WORLD, GROUP_COMMS(COUPLER_GROUP_IDX), GROUP_NAMES(ELMER_GROUP_IDX))
-    ELSE
-#ifndef ELMER_COLOUR
-#define ELMER_COLOUR 0
-#endif
-      CALL MPI_COMM_SPLIT(MPI_COMM_WORLD,ELMER_COLOUR,&
-           ParEnv % MyPE,ELMER_COMM_WORLD,ierr) 
-    ENDIF
 #else
     ! The colour could be set to be some different if we want to couple ElmerSolver with some other
     ! software having MPI colour set to zero. 
@@ -346,7 +334,9 @@ ELMER_COMM_WORLD = GROUP_COMMS(ELMER_GROUP_IDX)  ! Set ELMER_COMM_WORLD determin
 #ifdef HAVE_YAC
     INQUIRE(FILE="coupling.yaml", EXIST=USE_YAC)
     IF (USE_YAC) THEN
-      CALL coupling_init(config_file, ELMER_COMM_WORLD)
+      WRITE(Message,'(A,A)') "Using YAC coupler with config-file:",TRIM(config_file)
+      CALL INFO("SparIterComm",Message,Level=25)
+      CALL coupling_init(config_file, ELMER_COMM_WORLD, GROUP_COMMS(COUPLER_GROUP_IDX))
     END IF
 #endif    
     
