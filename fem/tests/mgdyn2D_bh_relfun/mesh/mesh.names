@@ -1,0 +1,7 @@
+! ----- names for bodies -----
+$ Material = 1
+$ Left winding = 2
+$ Right winding = 3
+$ Air = 4
+! ----- names for boundaries -----
+$ Boundary = 1
