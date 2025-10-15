@@ -14,12 +14,14 @@ Simulation 1
    Max Output Level = 5
    Coordinate System = Cartesian
    Simulation Type = Scanning
-   Timestep Intervals = 3 
+   Timestep Intervals = 4 !12
    Timestep Sizes = 1 
+   Coordinate Scaling = 1e-3
 
    Steady State Max Iterations = 3
    Steady State Min Iterations = 3
-   $ f = 50 100 150
+   $ f = 0.5e3 10e3 15e3 20e3 ! 30e3 50e3 60e3 70e3 80e3 90e3 100e3 110e3
+
    Angular Frequency = Variable timestep
       Real MATC "2*pi*f(tx-1)"
 
