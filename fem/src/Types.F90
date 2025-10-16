@@ -634,6 +634,7 @@ MODULE Types
           PValues(:) => NULL(), NonlinValues(:) => NULL(), &
           SteadyValues(:) => NULL()
      LOGICAL, POINTER :: UpperLimitActive(:) => NULL(), LowerLimitActive(:) => NULL()
+     REAL(KIND=dp), POINTER :: UpperLimit(:) => NULL(), LowerLimit(:) => NULL()
      COMPLEX(KIND=dp), POINTER :: CValues(:) => NULL()
      TYPE(IntegrationPointsTable_t), POINTER :: IPTable => NULL()
    END TYPE Variable_t
