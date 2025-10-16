@@ -725,13 +725,6 @@ ENDIF()
 
 ADD_SUBDIRECTORY(matc)
 
-IF(WITH_ElmerIce)
-  IF(NOT WITH_MPI)
-    MESSAGE(FATAL_ERROR "Building ElmerIce requires MPI.")
-  ENDIF()
-  MESSAGE(STATUS "Adding optional package ElmerIce")
-  ADD_SUBDIRECTORY(elmerice)
-ENDIF(WITH_ElmerIce)
 
 IF (WITH_UMFPACK)
   IF (EXTERNAL_UMFPACK)
@@ -768,6 +761,7 @@ IF(NOT DEFINED UMFPACK_LONG_FORTRAN_TYPE)
   SET(UMFPACK_LONG_FORTRAN_TYPE "C_LONG")
 ENDIF()
 
+
 # Find external arpack and parpack
 IF(EXTERNAL_ARPACK)
   MESSAGE(STATUS "Using external arpack library instead of built-in")
@@ -789,6 +783,15 @@ ADD_SUBDIRECTORY(fem)
 ADD_SUBDIRECTORY(mathlibs)
 ADD_SUBDIRECTORY(elmergrid)
 ADD_SUBDIRECTORY(license_texts)
+
+IF(WITH_ElmerIce)
+  IF(NOT WITH_MPI)
+    MESSAGE(FATAL_ERROR "Building ElmerIce requires MPI.")
+  ENDIF()
+  MESSAGE(STATUS "Adding optional package ElmerIce")
+  ADD_SUBDIRECTORY(elmerice)
+ENDIF(WITH_ElmerIce)
+
 
 IF(WITH_ELMERGUI)
     MESSAGE(STATUS "  Building ElmerGUI")
