@@ -67,8 +67,6 @@ SUBROUTINE  Flotation_init( Model,Solver,dt,TransientSimulation )
   
   SolverParams => Solver % Values 
 
-  CALL ListAddLogical( SolverParams,'No Matrix',.TRUE.)
-  
   ZbName = GetString(SolverParams, 'Bottom Surface Name', GotIt)
   IF (.NOT.GotIt) THEN
     CALL INFO(SolverName, 'Bottom Surface Name not found - using default Zb', level=3)
