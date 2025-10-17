@@ -115,12 +115,14 @@ CONTAINS
 #ifndef HUTI_IDRS_S
 #define HUTI_IDRS_S ipar(18)
 #endif
-! TODO this throws a a conversion warning, look into it
 #ifndef HUTI_MPRGP_GAMMA
-#define HUTI_MPRGP_GAMMA dpar(4)
+#define HUTI_MPRGP_GAMMA dpar(6)
 #endif
+!#ifndef HUTI_MPRGP_BOUND
+!#define HUTI_MPRGP_BOUND ipar(19)
+!#endif
 #ifndef HUTI_MPRGP_ADAPT
-#define HUTI_MPRGP_ADAPT ipar(20)
+#define HUTI_MPRGP_ADAPT ipar(19)
 #endif
 
 !------------------------------------------------------------------------------
@@ -650,11 +652,17 @@ END FUNCTION MaskedNorm
     CASE (ITER_MPRGP)
       HUTI_WRKDIM = 1
       Internal = .TRUE.
-      HUTI_MPRGP_GAMMA = ListGetConstReal( Params, 'MPRGP Gamma', GotIt )
+      HUTI_MPRGP_GAMMA = ListGetConstReal( Params, 'Linear System MPRGP Gamma', GotIt )
       IF(.NOT. GotIt) HUTI_MPRGP_GAMMA = 1.0_dp
-      HUTI_MPRGP_ADAPT = ListGetLogical( Params, 'MPRGP Adaptive', GotIt )
-      IF(.NOT. GotIt) HUTI_MPRGP_ADAPT = .TRUE.
-      
+      !HUTI_MPRGP_BOUND = ListGetString( Params, 'Linear System MPRGP Bound Type', GotIt )
+      !IF(.NOT. GotIt) HUTI_MPRGP_BOUND = 'lower' ! TODO: should write error if no bounds      
+      HUTI_MPRGP_ADAPT = 1
+      IF( ListGetLogical( Params, 'Linear System MPRGP Adaptive', GotIt ) ) THEN
+        HUTI_MPRGP_ADAPT = 1
+      ELSE
+        IF(GotIt) HUTI_MPRGP_ADAPT = 0
+      END IF
+        
     END SELECT
 !------------------------------------------------------------------------------
     
