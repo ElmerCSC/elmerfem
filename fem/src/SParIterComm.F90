@@ -279,7 +279,7 @@ GROUP_NAMES(ELMER_GROUP_IDX) = TRIM(ExecID)
 
 #ifdef HAVE_YAC
     ! check config file and set flag USE_YAC
-    WRITE(config_file,*) "coupling.yaml"
+    WRITE(config_file,'(A)') "coupling.yaml"
     INQUIRE(FILE="coupling.yaml", EXIST=USE_YAC)
     ! add YAC group for comm splitting
     IF (USE_YAC) THEN
