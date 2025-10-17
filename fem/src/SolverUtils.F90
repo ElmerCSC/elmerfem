@@ -1260,8 +1260,9 @@ CONTAINS
      FieldValues => Var % Values
      FieldPerm => Var % Perm
      totsize = SIZE( FieldValues )
+     dofs = Var % dofs
      
-     n = Model % MaxElementNodes
+     n = Mesh % MaxElementNodes
      ALLOCATE( ElemLimit(n) )
      
      ! Loop through upper and lower limits     
@@ -1274,7 +1275,7 @@ CONTAINS
          
          Name = TRIM(Var % name)
          IF ( Var % DOFs > 1 ) name = ComponentName(name,DOF)
-
+         
          ! The keywords for the correct lower or upper limit of the variable
          !------------------------------------------------------------------
          IF( Upper == 0 ) THEN
@@ -1294,12 +1295,12 @@ CONTAINS
          
          ! Define the range of elements for which the limiters are active
          !---------------------------------------------------------------
-         ElemFirst = Model % NumberOfBulkElements + 1           
-         ElemLast = Model % NumberOfBulkElements 
+         ElemFirst = Mesh % NumberOfBulkElements + 1           
+         ElemLast = Mesh % NumberOfBulkElements 
          
          IF( AnyLimitBF ) ElemFirst = 1
-         IF( AnyLimitBC ) ElemLast = Model % NumberOfBulkElements + &
-             Model % NumberOfBoundaryElements 
+         IF( AnyLimitBC ) ElemLast = Mesh % NumberOfBulkElements + &
+             Mesh % NumberOfBoundaryElements 
          
          ! Check that active set vectors for limiters exist, otherwise allocate
          !---------------------------------------------------------------------
@@ -1310,6 +1311,7 @@ CONTAINS
              END IF
            END IF
            IF( .NOT. ASSOCIATED(Var % LowerLimit ) ) THEN
+             CALL Info(Caller,'Allocating LowerLimit for variable: '//TRIM(Name),Level=10)
              ALLOCATE( Var % LowerLimit( totsize ) )
              Var % LowerLimit = -HUGE(val)
            END IF
@@ -1321,6 +1323,7 @@ CONTAINS
              END IF
            END IF
            IF( .NOT. ASSOCIATED( Var % UpperLimit ) ) THEN
+             CALL Info(Caller,'Allocating UpperLimit for variable: '//TRIM(Name),Level=10)
              ALLOCATE( Var % UpperLimit( totsize ) )
              Var % UpperLimit = HUGE(val)
            END IF
@@ -1338,7 +1341,7 @@ CONTAINS
            NodeIndexes => Element % NodeIndexes
            
            Found = .FALSE.
-           IF( t > Model % NumberOfBulkElements ) THEN
+           IF( t > Mesh % NumberOfBulkElements ) THEN
              DO bc = 1,Model % NumberOfBCs
                IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc) % Tag ) THEN
                  Found = .TRUE.

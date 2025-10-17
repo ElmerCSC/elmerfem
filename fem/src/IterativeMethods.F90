@@ -2150,8 +2150,7 @@ CONTAINS
           pAp = dotprodfun(n, p, 1, Ap, 1)
 
           IF (ABS(pAp) < eps_local) THEN
-            CALL Info('itermethod_mprgp','p''*A*p nearly zero, stopping',Level=5)
-            EXIT
+            CALL Fatal('itermethod_mprgp','p''*A*p nearly zero, stopping')
           END IF
 
           acg = rtp / pAp
