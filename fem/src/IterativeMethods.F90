@@ -1954,24 +1954,13 @@ CONTAINS
     ! MPRGP parameters (passed from calling routine)
     REAL(KIND=dp) :: Gamma
     LOGICAL :: adapt
-    CHARACTER(10) :: bound
+    INTEGER :: bound
 
     TYPE(Matrix_t), POINTER :: A
 
     REAL(KIND=dp), POINTER :: x(:),b(:), c(:)
 
-    ! Variables related to robust mode
-    LOGICAL :: Robust 
-    INTEGER :: BestIter,BadIterCount,MaxBadIter
-    REAL(KIND=dp) :: BestNorm,RobustStep,RobustTol,RobustMaxTol
-    REAL(KIND=dp), ALLOCATABLE :: Bestx(:)
-
-    LOGICAL :: Smoothing 
-
-    A => GlobalMatrix
-    CM => A % ConstraintMatrix
-    Constrained = ASSOCIATED(CM)
-    
+    A => GlobalMatrix    
     ndim = HUTI_NDIM
 
     x => xvec
@@ -1984,61 +1973,43 @@ CONTAINS
     s = HUTI_IDRS_S
     UseStopCFun = HUTI_STOPC == HUTI_USUPPLIED_STOPC
     
-    Robust = ( HUTI_ROBUST == 1 )
-    IF( Robust ) THEN
-      RobustTol = HUTI_ROBUST_TOLERANCE
-      RobustStep = HUTI_ROBUST_STEPSIZE
-      RobustMaxTol = HUTI_ROBUST_MAXTOLERANCE
-      MaxBadIter = HUTI_ROBUST_MAXBADIT
-      BestNorm = SQRT(HUGE(BestNorm))
-      BadIterCount = 0
-      BestIter = 0      
-      ALLOCATE( BestX(ndim))
-    END IF
+    Gamma = HUTI_MPRGP_GAMMA
+    Adapt = ( HUTI_MPRGP_ADAPT > 0 )
 
-    Smoothing = ( HUTI_SMOOTHING == 1) 
-
-    Gamma = dpar(4)
-    adapt = (ipar(20) == 1)
-
-    CALL PopulateLimiterValues(CurrentModel % Solver)
-    
     IF (ASSOCIATED(CurrentModel % Solver % Variable % LowerLimit)) THEN
-      bound = 'lower'
+      bound = 0
       c => CurrentModel % Solver % Variable % LowerLimit
     ELSE IF (ASSOCIATED(CurrentModel % Solver % Variable % UpperLimit)) THEN
-      bound = 'upper'
+      bound = 1
       c => CurrentModel % Solver % Variable % UpperLimit
     ELSE
       CALL Fatal('itermethod_mprgp','No limits found')
     END IF
 
+    ! Scaling here is a little dirty, but this is still under development...
+    IF( ASSOCIATED(A % DiagScaling ) ) THEN
+      c(1:ndim) = c(1:ndim) / (A % DiagScaling(1:ndim) * A % RhsScaling) 
+    END IF
+          
     Converged = .FALSE.
     Diverged = .FALSE.
     n = ndim
     
 !    CALL MPRGP(ndim+nc, A,x,b, Rounds, MinTol, MaxTol, &
 !        Converged, Diverged, OutputInterval, s )
-
-    CALL MPRGP(ndim, x, b, c, MinTol, 500, Gamma, adapt, bound, &
+    CALL MPRGP(ndim, x, b, c, MinTol, Rounds, Gamma, adapt, bound, &
         ncg, ne, np, iters, Converged, final_norm_gp )
-
-    IF(Constrained) THEN
-      xvec=x(1:ndim)
-      rhsvec=b(1:ndim)
-      CM % extraVals = x(ndim+1:ndim+nc)
-      DEALLOCATE(x,b)
-    END IF
-
-    IF( Robust ) THEN
-      DEALLOCATE( BestX )
-    END IF
-    
 
     IF(Converged) HUTI_INFO = HUTI_CONVERGENCE
     IF(Diverged) HUTI_INFO = HUTI_DIVERGENCE
     IF ( (.NOT. Converged) .AND. (.NOT. Diverged) ) HUTI_INFO = HUTI_MAXITER
 
+
+    IF( ASSOCIATED(A % DiagScaling ) ) THEN
+      c(1:ndim) = c(1:ndim) * (A % DiagScaling(1:ndim) * A % RhsScaling) 
+    END IF
+
+    
   CONTAINS
 
 !-----------------------------------------------------------------------------------
@@ -2057,12 +2028,14 @@ CONTAINS
       INTEGER, INTENT(IN) :: maxit
       REAL(KIND=dp), INTENT(IN) :: Gamma
       LOGICAL, INTENT(IN) :: adapt
-      CHARACTER(*), INTENT(IN) :: bound      ! 'lower' or 'upper'
-
+      INTEGER, INTENT(IN) :: bound      ! 'lower' or 'upper'
       INTEGER, INTENT(OUT) :: ncg, ne, np, iters
       LOGICAL, INTENT(OUT) :: converged
       REAL(KIND=dp), INTENT(OUT) :: final_norm_gp
 
+      INTEGER :: itl
+      REAL(KIND=dp) :: normv
+      
       ! ---------------------------
       ! Local declarations (all here)
       ! ---------------------------
@@ -2078,7 +2051,8 @@ CONTAINS
       REAL(KIND=dp) :: eps_local
       TYPE(Matrix_t), POINTER :: MatA
       REAL(KIND=dp) :: tol
-
+      
+      REAL(KIND=dp), ALLOCATABLE :: v(:),w(:)
 
       ! ---------------------------
       ! Allocate scratch vectors
@@ -2094,7 +2068,7 @@ CONTAINS
       eps_local = EPSILON(1.0_dp)
 
       ! set bound sign
-      IF (TRIM(ADJUSTL(bound)) == 'upper') THEN
+      IF (bound == 1) THEN
         bs = -1
       ELSE
         bs = 1
@@ -2104,7 +2078,8 @@ CONTAINS
       ! ---------------------------
       ! Initialization (g = A*x - b)
       ! ---------------------------
-      CALL C_matvec(x, g, ipar, matvecsubr)       ! g = A*x
+      CALL matvecsubr( x, g, ipar )        
+      !CALL C_matvec(x, g, ipar, matvecsubr)       ! g = A*x
 
       g = g - b
 
@@ -2168,7 +2143,9 @@ CONTAINS
 
         IF ( dotprodfun(n, gc, 1, gc, 1) <= (Gamma**2) * dotprodfun(n, gr, 1, gf, 1) ) THEN
           ! CG-like step
-          CALL C_matvec(p, Ap, ipar, matvecsubr)
+
+          !CALL C_matvec(p, Ap, ipar, matvecsubr)
+          CALL matvecsubr( p, Ap, ipar )        
           rtp = dotprodfun(n, z, 1, g, 1) ! residual * p
           pAp = dotprodfun(n, p, 1, Ap, 1)
 
@@ -2232,7 +2209,8 @@ CONTAINS
 
             ! adaptive alpha
             IF (adapt) THEN
-              CALL C_matvec(gr, Agr, ipar, matvecsubr)
+              CALL matvecsubr( gr, Agr, ipar )        
+              !CALL C_matvec(gr, Agr, ipar, matvecsubr)
               grg = dotprodfun(n, gr, 1, g, 1)
               grAgr = dotprodfun(n, gr, 1, Agr, 1)
               IF (ABS(grAgr) < eps_local) THEN
@@ -2253,7 +2231,8 @@ CONTAINS
               END WHERE
             END IF
 
-            CALL C_matvec(x, g, ipar, matvecsubr) !calculate Ax, save it in g
+            CALL matvecsubr( x, g, ipar )        
+            !CALL C_matvec(x, g, ipar, matvecsubr) !calculate Ax, save it in g
             g = g - b
 
             ! recompute z and p
@@ -2286,7 +2265,8 @@ CONTAINS
 
         ELSE
           ! proportioning step
-          CALL C_matvec(gc, Ap, ipar, matvecsubr)
+          CALL matvecsubr( gc, Ap, ipar )        
+          !CALL C_matvec(gc, Ap, ipar, matvecsubr)
           pAp = dotprodfun(n, gc, 1, Ap, 1)
           IF (ABS(pAp) < eps_local) THEN
             CALL Info('itermethod_mprgp','denominator in proportioning nearly zero, stopping',Level=5)
@@ -2342,7 +2322,6 @@ CONTAINS
       IF (ALLOCATED(D)) DEALLOCATE(D)
       DEALLOCATE(g, gf, gc, gr, gp, z, p, Ap, yy, J)
 
-      RETURN      
     !----------------------------------------------------------
     END SUBROUTINE MPRGP
     !----------------------------------------------------------
