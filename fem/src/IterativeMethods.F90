@@ -1946,11 +1946,15 @@ CONTAINS
     INTEGER :: Rounds, OutputInterval, s
     REAL(KIND=dp) :: MinTol, MaxTol, Residual
     LOGICAL :: Converged, Diverged, UseStopCFun
-    REAL(KIND=dp), INTENT(IN) :: Gamma
-    LOGICAL, INTENT(IN) :: adapt
-    CHARACTER(*), INTENT(IN) :: bound      ! 'lower' or 'upper'
-    INTEGER, INTENT(OUT) :: ncg, ne, np, iters
-    REAL(KIND=dp), INTENT(OUT) :: final_norm_gp
+    INTEGER :: ncg, ne, np, iters
+    REAL(KIND=dp) :: final_norm_gp
+    
+    INTEGER :: n
+
+    ! MPRGP parameters (passed from calling routine)
+    REAL(KIND=dp) :: Gamma
+    LOGICAL :: adapt
+    CHARACTER(10) :: bound
 
     TYPE(Matrix_t), POINTER :: A
 
@@ -1994,17 +1998,29 @@ CONTAINS
 
     Smoothing = ( HUTI_SMOOTHING == 1) 
 
-    Gamma = HUTI_MPRGP_GAMMA
-    bound = HUTI_MPRGP_BOUND
-    adapt = HUTI_MPRGP_ADAPT
+    Gamma = dpar(4)
+    adapt = (ipar(20) == 1)
+
+    CALL PopulateLimiterValues(CurrentModel % Solver)
+    
+    IF (ASSOCIATED(CurrentModel % Solver % Variable % LowerLimit)) THEN
+      bound = 'lower'
+      c => CurrentModel % Solver % Variable % LowerLimit
+    ELSE IF (ASSOCIATED(CurrentModel % Solver % Variable % UpperLimit)) THEN
+      bound = 'upper'
+      c => CurrentModel % Solver % Variable % UpperLimit
+    ELSE
+      CALL Fatal('itermethod_mprgp','No limits found')
+    END IF
 
     Converged = .FALSE.
     Diverged = .FALSE.
-    c => work(1:n,1)
+    n = ndim
     
 !    CALL MPRGP(ndim+nc, A,x,b, Rounds, MinTol, MaxTol, &
 !        Converged, Diverged, OutputInterval, s )
-    CALL MPRGP(ndim, x, b, c,MinTol, 500, Gamma, adapt, bound, &
+
+    CALL MPRGP(ndim, x, b, c, MinTol, 500, Gamma, adapt, bound, &
         ncg, ne, np, iters, Converged, final_norm_gp )
 
     IF(Constrained) THEN
@@ -2114,23 +2130,6 @@ CONTAINS
         END WHERE
       END IF
 
-      ! matrix norm estimation
-      ! maybe should be different
-      ALLOCATE(v(n), w(n))
-      v = 1.0_dp / REAL(n, dp)
-      
-      DO itl = 1, 10  ! Power method iterations
-        CALL matvecsubr(v, w, ipar)
-        normv = normfun(n, w, 1)
-        IF (normv <= 0.0_dp) EXIT
-        v = w / normv
-      END DO
-      
-      CALL matvecsubr(v, w, ipar)
-      lAl = normfun(n, w, 1)
-      
-      DEALLOCATE(v, w)
-
       ! estimate matrix norm ||A|| with a small power iteration
       CALL estimate_matrix_norm(n, 10, lAl)
       IF (lAl <= 0.0_dp) lAl = 1.0_dp
@@ -2167,11 +2166,11 @@ CONTAINS
 
         iters = iters + 1
 
-        IF ( dotprodfun(n, 1, gc, 1, gc) <= (Gamma**2) * dotprodfun(n, 1, gr, 1, gf) ) THEN
+        IF ( dotprodfun(n, gc, 1, gc, 1) <= (Gamma**2) * dotprodfun(n, gr, 1, gf, 1) ) THEN
           ! CG-like step
           CALL C_matvec(p, Ap, ipar, matvecsubr)
-          rtp = dotprodfun(n, 1, z, 1, g) ! residual * p
-          pAp = dotprodfun(n, 1, p, 1, Ap)
+          rtp = dotprodfun(n, z, 1, g, 1) ! residual * p
+          pAp = dotprodfun(n, p, 1, Ap, 1)
 
           IF (ABS(pAp) < eps_local) THEN
             CALL Info('itermethod_mprgp','p''*A*p nearly zero, stopping',Level=5)
@@ -2194,7 +2193,7 @@ CONTAINS
               z = 0.0_dp
             END WHERE
 
-            beta = dotprodfun(n, 1, z, 1, Ap) / pAp
+            beta = dotprodfun(n, z, 1, Ap, 1) / pAp
             p = z - beta * p
 
             ! update gf,gc,gr,gp
@@ -2234,8 +2233,8 @@ CONTAINS
             ! adaptive alpha
             IF (adapt) THEN
               CALL C_matvec(gr, Agr, ipar, matvecsubr)
-              grg = dotprodfun(n, 1, gr, 1, g)
-              grAgr = dotprodfun(n, 1, gr, 1, Agr)
+              grg = dotprodfun(n, gr, 1, g, 1)
+              grAgr = dotprodfun(n, gr, 1, Agr, 1)
               IF (ABS(grAgr) < eps_local) THEN
                 alpha = 1.0_dp / lAl
               ELSE
@@ -2288,12 +2287,12 @@ CONTAINS
         ELSE
           ! proportioning step
           CALL C_matvec(gc, Ap, ipar, matvecsubr)
-          pAp = dotprodfun(n, 1, gc, 1, Ap)
+          pAp = dotprodfun(n, gc, 1, Ap, 1)
           IF (ABS(pAp) < eps_local) THEN
             CALL Info('itermethod_mprgp','denominator in proportioning nearly zero, stopping',Level=5)
             EXIT
           END IF
-          acg = dotprodfun(n, 1, gc, 1, g) / pAp
+          acg = dotprodfun(n, gc, 1, g, 1) / pAp
 
           x = x - acg * gc
 
@@ -2307,7 +2306,7 @@ CONTAINS
           J = (bs * x > bs * c)
           g = g - acg * Ap
 
-          CALL my_rpcond(z, g, J)
+          CALL C_rpcond(g, z, ipar, pcondrsubr)
           WHERE (.NOT. J)
             z = 0.0_dp
           END WHERE
@@ -2343,40 +2342,38 @@ CONTAINS
       IF (ALLOCATED(D)) DEALLOCATE(D)
       DEALLOCATE(g, gf, gc, gr, gp, z, p, Ap, yy, J)
 
-      RETURN
-
-      ! power-method norm estimator using A
-      SUBROUTINE estimate_matrix_norm(nloc, niter, out_norm)
-        INTEGER, INTENT(IN) :: nloc, niter
-        REAL(KIND=dp), INTENT(OUT) :: out_norm
-        TYPE(Matrix_t), POINTER :: A
-        REAL(KIND=dp), ALLOCATABLE :: v(:), w(:)
-        INTEGER :: itl, allocstat
-        REAL(KIND=dp) :: normv
-
-        ALLOCATE(v(nloc), w(nloc), STAT=allocstat)
-        IF (allocstat /= 0) THEN
-          CALL Fatal('estimate_matrix_norm','alloc fail')
-        END IF
-
-        v = 1.0_dp / REAL(nloc, dp)
-
-        DO itl = 1, niter
-          CALL C_matvec(v, w, ipar, matvecsubr)
-          normv = normfun(nloc, w, 1)
-          IF (normv <= 0.0_dp) EXIT
-          v = w / normv
-        END DO
-
-        CALL C_matvec(v, w, ipar, matvecsubr)
-        out_norm = normfun(nloc, w, 1)
-        DEALLOCATE(v, w)
-      END SUBROUTINE estimate_matrix_norm
-
-      
+      RETURN      
     !----------------------------------------------------------
     END SUBROUTINE MPRGP
     !----------------------------------------------------------
+
+    ! Estimate matrix norm using power method
+    SUBROUTINE estimate_matrix_norm(nloc, niter, out_norm)
+      INTEGER, INTENT(IN) :: nloc, niter
+      REAL(KIND=dp), INTENT(OUT) :: out_norm
+      TYPE(Matrix_t), POINTER :: A
+      REAL(KIND=dp), ALLOCATABLE :: v(:), w(:)
+      INTEGER :: itl, allocstat
+      REAL(KIND=dp) :: normv
+
+      ALLOCATE(v(nloc), w(nloc), STAT=allocstat)
+      IF (allocstat /= 0) THEN
+        CALL Fatal('estimate_matrix_norm','alloc fail')
+      END IF
+
+      v = 1.0_dp / REAL(nloc, dp)
+
+      DO itl = 1, niter
+        CALL C_matvec(v, w, ipar, matvecsubr)
+        normv = normfun(nloc, w, 1)
+        IF (normv <= 0.0_dp) EXIT
+        v = w / normv
+      END DO
+
+      CALL C_matvec(v, w, ipar, matvecsubr)
+      out_norm = normfun(nloc, w, 1)
+      DEALLOCATE(v, w)
+    END SUBROUTINE estimate_matrix_norm
 
 !--------------------------------------------------------------
   END SUBROUTINE itermethod_mprgp
