@@ -336,7 +336,7 @@ ELMER_COMM_WORLD = GROUP_COMMS(ELMER_GROUP_IDX)  ! Set ELMER_COMM_WORLD determin
     IF (USE_YAC) THEN
       WRITE(Message,'(A,A)') "Using YAC coupler with config-file:",TRIM(config_file)
       CALL INFO("SparIterComm",Message,Level=25)
-      CALL coupling_init(config_file, ELMER_COMM_WORLD, GROUP_COMMS(COUPLER_GROUP_IDX))
+      CALL coupling_init(TRIM(config_file), ELMER_COMM_WORLD, GROUP_COMMS(COUPLER_GROUP_IDX))
     END IF
 #endif    
     
