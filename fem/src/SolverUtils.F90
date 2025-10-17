@@ -1245,7 +1245,7 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element
      INTEGER :: i,j,k,n,t,ind,dofs,dof, bf, bc, Upper, ElemFirst, ElemLast, totsize
      REAL(KIND=dp), POINTER :: FieldValues(:), ElemLimit(:)
-     REAL(KIND=dp) :: val 
+     REAL(KIND=dp) :: val, bigval 
      INTEGER, POINTER :: FieldPerm(:), NodeIndexes(:)
      LOGICAL :: Found,AnyLimitBC, AnyLimitBF !, GotInit, GotActive
      TYPE(ValueList_t), POINTER :: Entity
@@ -1264,6 +1264,8 @@ CONTAINS
      
      n = Mesh % MaxElementNodes
      ALLOCATE( ElemLimit(n) )
+
+     bigval = 1.0_dp / EPSILON(bigval)
      
      ! Loop through upper and lower limits     
      !------------------------------------------------------------------------
@@ -1313,7 +1315,7 @@ CONTAINS
            IF( .NOT. ASSOCIATED(Var % LowerLimit ) ) THEN
              CALL Info(Caller,'Allocating LowerLimit for variable: '//TRIM(Name),Level=10)
              ALLOCATE( Var % LowerLimit( totsize ) )
-             Var % LowerLimit = -HUGE(val)
+             Var % LowerLimit = -bigval
            END IF
            LimitValues => Var % LowerLimit
          ELSE
@@ -1325,7 +1327,7 @@ CONTAINS
            IF( .NOT. ASSOCIATED( Var % UpperLimit ) ) THEN
              CALL Info(Caller,'Allocating UpperLimit for variable: '//TRIM(Name),Level=10)
              ALLOCATE( Var % UpperLimit( totsize ) )
-             Var % UpperLimit = HUGE(val)
+             Var % UpperLimit = bigval
            END IF
            LimitValues => Var % UpperLimit
          END IF
@@ -1368,9 +1370,9 @@ CONTAINS
              ind = Dofs * ( j - 1) + Dof
              
              IF(Upper==0) THEN
-               LimitValues(ind) = MIN( LimitValues(ind), ElemLimit(i))
-             ELSE
                LimitValues(ind) = MAX( LimitValues(ind), ElemLimit(i))
+             ELSE
+               LimitValues(ind) = MIN( LimitValues(ind), ElemLimit(i))
              END IF
            END DO
          END DO
@@ -8923,7 +8925,8 @@ CONTAINS
         
     ! Eliminate all entries in matrix that may be eliminated in one sweep
     ! If this is an offdiagonal entry this cannot be done.  
-    IF ( A % Symmetric .AND. .NOT. NoDiag ) CALL CRS_ElimSymmDirichlet(A,b)
+    !IF ( A % Symmetric .AND. .NOT. NoDiag ) CALL CRS_ElimSymmDirichlet(A,b)
+    IF ( .NOT. NoDiag ) CALL CRS_ElimSymmDirichlet(A,b)
  
     
     DO k=1,A % NumberOfRows
