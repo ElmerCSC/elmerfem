@@ -2361,23 +2361,17 @@ CONTAINS
           CALL Fatal('estimate_matrix_norm','alloc fail')
         END IF
 
-        ! Get matrix pointer from CurrentModel like my_matvec does
-        A => CurrentModel % Solver % Matrix
-
-        DO itl = 1, nloc
-          v(itl) = 1.0_dp / REAL(nloc, dp)
-        END DO
+        v = 1.0_dp / REAL(nloc, dp)
 
         DO itl = 1, niter
-          CALL CRS_MatrixVectorMultiply(A, v, w)
+          CALL C_matvec(v, w, ipar, matvecsubr)
           normv = normfun(nloc, w, 1)
           IF (normv <= 0.0_dp) EXIT
           v = w / normv
         END DO
 
-        CALL CRS_MatrixVectorMultiply(A, v, w)
+        CALL C_matvec(v, w, ipar, matvecsubr)
         out_norm = normfun(nloc, w, 1)
-
         DEALLOCATE(v, w)
       END SUBROUTINE estimate_matrix_norm
 
