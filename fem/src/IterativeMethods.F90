@@ -1919,6 +1919,476 @@ CONTAINS
   END SUBROUTINE itermethod_idrs
 !--------------------------------------------------------------
 
+!-----------------------------------------------------------------------------------
+!>  TODO add description
+!------------------------------------------------------------------------------
+  SUBROUTINE itermethod_mprgp( xvec, rhsvec, &
+      ipar, dpar, work, matvecsubr, pcondlsubr, &
+      pcondrsubr, dotprodfun, normfun, stopcfun )
+!------------------------------------------------------------------------------
+    USE huti_interfaces
+    IMPLICIT NONE
+    PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
+    PROCEDURE( pc_iface_d ), POINTER :: pcondlsubr
+    PROCEDURE( pc_iface_d ), POINTER :: pcondrsubr
+    PROCEDURE( dotp_iface_d ), POINTER :: dotprodfun
+    PROCEDURE( norm_iface_d ), POINTER :: normfun
+    PROCEDURE( stopc_iface_d ), POINTER :: stopcfun
+
+    INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
+    REAL(KIND=dp), TARGET, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
+    ! DOUBLE PRECISION, DIMENSION(HUTI_NDIM), TARGET :: xvec, rhsvec
+    DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
+    REAL(KIND=dp), DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
+    ! DOUBLE PRECISION, DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
+    INTEGER :: ndim,i,j,k
+    INTEGER :: Rounds, OutputInterval, s
+    REAL(KIND=dp) :: MinTol, MaxTol, Residual
+    LOGICAL :: Converged, Diverged, UseStopCFun
+    REAL(KIND=dp), INTENT(IN) :: Gamma
+    LOGICAL, INTENT(IN) :: adapt
+    CHARACTER(*), INTENT(IN) :: bound      ! 'lower' or 'upper'
+    INTEGER, INTENT(OUT) :: ncg, ne, np, iters
+    REAL(KIND=dp), INTENT(OUT) :: final_norm_gp
+
+    TYPE(Matrix_t), POINTER :: A
+
+    REAL(KIND=dp), POINTER :: x(:),b(:), c(:)
+
+    ! Variables related to robust mode
+    LOGICAL :: Robust 
+    INTEGER :: BestIter,BadIterCount,MaxBadIter
+    REAL(KIND=dp) :: BestNorm,RobustStep,RobustTol,RobustMaxTol
+    REAL(KIND=dp), ALLOCATABLE :: Bestx(:)
+
+    LOGICAL :: Smoothing 
+
+    A => GlobalMatrix
+    CM => A % ConstraintMatrix
+    Constrained = ASSOCIATED(CM)
+    
+    ndim = HUTI_NDIM
+
+    x => xvec
+    b => rhsvec
+
+    Rounds = HUTI_MAXIT
+    MinTol = HUTI_TOLERANCE
+    MaxTol = HUTI_MAXTOLERANCE
+    OutputInterval = HUTI_DBUGLVL 
+    s = HUTI_IDRS_S
+    UseStopCFun = HUTI_STOPC == HUTI_USUPPLIED_STOPC
+    
+    Robust = ( HUTI_ROBUST == 1 )
+    IF( Robust ) THEN
+      RobustTol = HUTI_ROBUST_TOLERANCE
+      RobustStep = HUTI_ROBUST_STEPSIZE
+      RobustMaxTol = HUTI_ROBUST_MAXTOLERANCE
+      MaxBadIter = HUTI_ROBUST_MAXBADIT
+      BestNorm = SQRT(HUGE(BestNorm))
+      BadIterCount = 0
+      BestIter = 0      
+      ALLOCATE( BestX(ndim))
+    END IF
+
+    Smoothing = ( HUTI_SMOOTHING == 1) 
+
+    Gamma = HUTI_MPRGP_GAMMA
+    bound = HUTI_MPRGP_BOUND
+    adapt = HUTI_MPRGP_ADAPT
+
+    Converged = .FALSE.
+    Diverged = .FALSE.
+    c => work(1:n,1)
+    
+!    CALL MPRGP(ndim+nc, A,x,b, Rounds, MinTol, MaxTol, &
+!        Converged, Diverged, OutputInterval, s )
+    CALL MPRGP(ndim, x, b, c,MinTol, 500, Gamma, adapt, bound, &
+        ncg, ne, np, iters, Converged, final_norm_gp )
+
+    IF(Constrained) THEN
+      xvec=x(1:ndim)
+      rhsvec=b(1:ndim)
+      CM % extraVals = x(ndim+1:ndim+nc)
+      DEALLOCATE(x,b)
+    END IF
+
+    IF( Robust ) THEN
+      DEALLOCATE( BestX )
+    END IF
+    
+
+    IF(Converged) HUTI_INFO = HUTI_CONVERGENCE
+    IF(Diverged) HUTI_INFO = HUTI_DIVERGENCE
+    IF ( (.NOT. Converged) .AND. (.NOT. Diverged) ) HUTI_INFO = HUTI_MAXITER
+
+  CONTAINS
+
+!-----------------------------------------------------------------------------------
+!   
+!  
+!
+!   TODO add description
+!----------------------------------------------------------------------------------- 
+    SUBROUTINE MPRGP(n, x, b, c, epsr, maxit, Gamma, adapt, bound, &
+                      ncg, ne, np, iters, converged, final_norm_gp)
+!----------------------------------------------------------------------------------- 
+      ! ---------------------------
+      ! Arguments
+      ! ---------------------------
+      INTEGER, INTENT(IN) :: n
+      REAL(KIND=dp), INTENT(INOUT) :: x(n)    ! initial guess in, final solution out
+      REAL(KIND=dp), INTENT(IN) :: b(n), c(n) ! rhs and bound
+      REAL(KIND=dp), INTENT(IN) :: epsr
+      INTEGER, INTENT(IN) :: maxit
+      REAL(KIND=dp), INTENT(IN) :: Gamma
+      LOGICAL, INTENT(IN) :: adapt
+      CHARACTER(*), INTENT(IN) :: bound      ! 'lower' or 'upper'
+
+      INTEGER, INTENT(OUT) :: ncg, ne, np, iters
+      LOGICAL, INTENT(OUT) :: converged
+      REAL(KIND=dp), INTENT(OUT) :: final_norm_gp
+
+      ! ---------------------------
+      ! Local declarations (all here)
+      ! ---------------------------
+      REAL(KIND=dp), ALLOCATABLE :: g(:), gf(:), gc(:), gr(:), gp(:)
+      REAL(KIND=dp), ALLOCATABLE :: z(:), p(:), Ap(:), yy(:), D(:), Agr(:)
+      LOGICAL, ALLOCATABLE :: J(:)
+      LOGICAL, ALLOCATABLE :: p_mask(:)
+      INTEGER :: bs
+      REAL(KIND=dp) :: lAl, alpha, a_f
+      INTEGER :: i, allocstat
+      REAL(KIND=dp) :: rtp, pAp, acg, beta
+      REAL(KIND=dp) :: grg, grAgr
+      REAL(KIND=dp) :: eps_local
+      TYPE(Matrix_t), POINTER :: MatA
+      REAL(KIND=dp) :: tol
+
+
+      ! ---------------------------
+      ! Allocate scratch vectors
+      ! ---------------------------
+      ALLOCATE(g(n), gf(n), gc(n), gr(n), gp(n), z(n), p(n), Ap(n), yy(n), J(n), Agr(n), STAT=allocstat)
+      IF (allocstat /= 0) THEN
+        CALL Fatal('itermethod_mprgp','Allocation failed for scratch vectors')
+      END IF
+
+      ! ---------------------------
+      ! Preliminaries
+      ! ---------------------------
+      eps_local = EPSILON(1.0_dp)
+
+      ! set bound sign
+      IF (TRIM(ADJUSTL(bound)) == 'upper') THEN
+        bs = -1
+      ELSE
+        bs = 1
+      END IF
+
+
+      ! ---------------------------
+      ! Initialization (g = A*x - b)
+      ! ---------------------------
+      CALL C_matvec(x, g, ipar, matvecsubr)       ! g = A*x
+
+      g = g - b
+
+      tol = 1.0e-12_dp
+      IF (bs == 1) THEN
+        J = (x > c + tol) ! J is free set
+      ELSE
+        J = (x < c - tol)
+      END IF
+      gf = MERGE(g, 0.0_dp, J)
+
+      IF (bs == 1) THEN
+        WHERE (.NOT. J)
+          gc = MIN(g, 0.0_dp)
+        ELSEWHERE
+          gc = 0.0_dp
+        END WHERE
+      ELSE
+        WHERE (.NOT. J)  ! WHERE COMMAND FOR vECTORS
+          gc = MAX(g, 0.0_dp)
+        ELSEWHERE
+          gc = 0.0_dp
+        END WHERE
+      END IF
+
+      ! matrix norm estimation
+      ! maybe should be different
+      ALLOCATE(v(n), w(n))
+      v = 1.0_dp / REAL(n, dp)
+      
+      DO itl = 1, 10  ! Power method iterations
+        CALL matvecsubr(v, w, ipar)
+        normv = normfun(n, w, 1)
+        IF (normv <= 0.0_dp) EXIT
+        v = w / normv
+      END DO
+      
+      CALL matvecsubr(v, w, ipar)
+      lAl = normfun(n, w, 1)
+      
+      DEALLOCATE(v, w)
+
+      ! estimate matrix norm ||A|| with a small power iteration
+      CALL estimate_matrix_norm(n, 10, lAl)
+      IF (lAl <= 0.0_dp) lAl = 1.0_dp
+      alpha = 1.0_dp / lAl
+
+      ! reduced free gradient gr
+      IF (bs == 1) THEN
+        gr = MERGE(MIN(lAl * (x - c), gf), 0.0_dp, J) ! this might be wrong,
+      ELSE
+        gr = MERGE(MAX(lAl * (x - c), gf), 0.0_dp, J)
+      END IF
+
+      gp = gf + gc
+
+      ! preconditioning: z = M^{-1} * g on free set
+      CALL C_rpcond(g, z, ipar, pcondrsubr)
+      WHERE (.NOT. J)
+        z = 0.0_dp
+      END WHERE
+
+      p = z
+
+      ! counters
+      ncg = 0
+      ne = 0
+      np = 0
+      iters = 0
+      converged = .FALSE.
+
+      ! ---------------------------
+      ! Main loop
+      ! ---------------------------
+      DO WHILE ( normfun(n, gp, 1) > epsr .AND. iters < maxit )
+
+        iters = iters + 1
+
+        IF ( dotprodfun(n, 1, gc, 1, gc) <= (Gamma**2) * dotprodfun(n, 1, gr, 1, gf) ) THEN
+          ! CG-like step
+          CALL C_matvec(p, Ap, ipar, matvecsubr)
+          rtp = dotprodfun(n, 1, z, 1, g) ! residual * p
+          pAp = dotprodfun(n, 1, p, 1, Ap)
+
+          IF (ABS(pAp) < eps_local) THEN
+            CALL Info('itermethod_mprgp','p''*A*p nearly zero, stopping',Level=5)
+            EXIT
+          END IF
+
+          acg = rtp / pAp
+          yy = x - acg * p
+
+
+          IF (ALL(bs * yy(:) >= bs * c(:))) THEN
+            ! accept full CG step
+            x = yy
+            g = g - acg * Ap
+            J = (bs * x > bs * c)
+
+            ! precondition
+            CALL C_rpcond(g, z, ipar, pcondrsubr)
+            WHERE (.NOT. J)
+              z = 0.0_dp
+            END WHERE
+
+            beta = dotprodfun(n, 1, z, 1, Ap) / pAp
+            p = z - beta * p
+
+            ! update gf,gc,gr,gp
+            gf = MERGE(g, 0.0_dp, J)
+
+            IF (bs == 1) THEN
+              gc = 0.0_dp
+              WHERE (.NOT. J)
+                gc = MIN(g, 0.0_dp)
+              END WHERE
+              gr = MERGE(MIN(lAl * (x - c), gf), 0.0_dp, J)
+            ELSE
+              gc = 0.0_dp
+              WHERE (.NOT. J)
+                gc = MAX(g, 0.0_dp)
+              END WHERE
+              gr = MERGE(MAX(lAl * (x - c), gf), 0.0_dp, J)
+            END IF
+            gp = gf + gc
+            ncg = ncg + 1
+          ELSE
+            ! expansion step (feasible step)
+            p_mask = (bs * p > 0.0_dp) .AND. J ! indexes where p is moving towards the bound
+            a_f = MINVAL((x-c) / p,p_mask)
+            
+            IF (a_f < 0.0_dp) a_f = 0.0_dp
+            ! halfstep
+            IF (bs == 1) THEN
+                x = MAX(x - a_f * p, c)
+            ELSE
+                x = MIN(x - a_f * p, c)
+            END IF
+
+            J = (bs * x > bs * c)
+            g = g - a_f * Ap
+
+            ! adaptive alpha
+            IF (adapt) THEN
+              CALL C_matvec(gr, Agr, ipar, matvecsubr)
+              grg = dotprodfun(n, 1, gr, 1, g)
+              grAgr = dotprodfun(n, 1, gr, 1, Agr)
+              IF (ABS(grAgr) < eps_local) THEN
+                alpha = 1.0_dp / lAl
+              ELSE
+                alpha = grg / grAgr
+                IF (alpha <= 0.0_dp .OR. alpha > 1.0_dp / lAl) alpha = 1.0_dp / lAl
+              END IF
+            END IF
+
+            IF (bs == 1) THEN
+              WHERE (J)
+                x = MAX(x - alpha * g, c)
+              END WHERE
+            ELSE
+              WHERE (J)
+                x = MIN(x - alpha * g, c)
+              END WHERE
+            END IF
+
+            CALL C_matvec(x, g, ipar, matvecsubr) !calculate Ax, save it in g
+            g = g - b
+
+            ! recompute z and p
+            CALL C_rpcond(g, z, ipar, pcondrsubr)
+            WHERE (.NOT. J)
+              z = 0.0_dp
+            END WHERE
+            p = z
+
+            ! update gf,gc,gr,gp
+            gf = MERGE(g, 0.0_dp, J)
+
+            IF (bs == 1) THEN
+              gc = 0.0_dp
+              WHERE (.NOT. J)
+                gc = MIN(g, 0.0_dp)
+              END WHERE
+              gr = MERGE(MIN(lAl * (x - c), gf), 0.0_dp, J)
+            ELSE
+              gc = 0.0_dp
+              WHERE (.NOT. J)
+                gc = MAX(g, 0.0_dp)
+              END WHERE
+              gr = MERGE(MAX(lAl * (x - c), gf), 0.0_dp, J)
+            END IF
+
+            gp = gf + gc
+            ne = ne + 1
+          END IF
+
+        ELSE
+          ! proportioning step
+          CALL C_matvec(gc, Ap, ipar, matvecsubr)
+          pAp = dotprodfun(n, 1, gc, 1, Ap)
+          IF (ABS(pAp) < eps_local) THEN
+            CALL Info('itermethod_mprgp','denominator in proportioning nearly zero, stopping',Level=5)
+            EXIT
+          END IF
+          acg = dotprodfun(n, 1, gc, 1, g) / pAp
+
+          x = x - acg * gc
+
+          ! safeguard if we end up outside the bound
+          IF (bs == 1) THEN
+            x = MAX(x, c)
+          ELSE
+            x = MIN(x, c)
+          END IF
+
+          J = (bs * x > bs * c)
+          g = g - acg * Ap
+
+          CALL my_rpcond(z, g, J)
+          WHERE (.NOT. J)
+            z = 0.0_dp
+          END WHERE
+          p = z
+
+          ! update gf,gc,gr,gp
+          gf = MERGE(g, 0.0_dp, J)
+
+          IF (bs == 1) THEN
+            gc = 0.0_dp
+            WHERE (.NOT. J)
+              gc = MIN(g, 0.0_dp)
+            END WHERE
+            gr = MERGE(MIN(lAl * (x - c), gf), 0.0_dp, J)
+          ELSE
+            gc = 0.0_dp
+            WHERE (.NOT. J)
+              gc = MAX(g, 0.0_dp)
+            END WHERE
+            gr = MERGE(MAX(lAl * (x - c), gf), 0.0_dp, J)
+          END IF
+
+          gp = gf + gc
+          np = np + 1
+        END IF
+
+      END DO  ! main loop
+
+      final_norm_gp = normfun(n, gp, 1)
+      converged = (final_norm_gp <= epsr)
+
+      ! cleanup
+      IF (ALLOCATED(D)) DEALLOCATE(D)
+      DEALLOCATE(g, gf, gc, gr, gp, z, p, Ap, yy, J)
+
+      RETURN
+
+      ! power-method norm estimator using A
+      SUBROUTINE estimate_matrix_norm(nloc, niter, out_norm)
+        INTEGER, INTENT(IN) :: nloc, niter
+        REAL(KIND=dp), INTENT(OUT) :: out_norm
+        TYPE(Matrix_t), POINTER :: A
+        REAL(KIND=dp), ALLOCATABLE :: v(:), w(:)
+        INTEGER :: itl, allocstat
+        REAL(KIND=dp) :: normv
+
+        ALLOCATE(v(nloc), w(nloc), STAT=allocstat)
+        IF (allocstat /= 0) THEN
+          CALL Fatal('estimate_matrix_norm','alloc fail')
+        END IF
+
+        ! Get matrix pointer from CurrentModel like my_matvec does
+        A => CurrentModel % Solver % Matrix
+
+        DO itl = 1, nloc
+          v(itl) = 1.0_dp / REAL(nloc, dp)
+        END DO
+
+        DO itl = 1, niter
+          CALL CRS_MatrixVectorMultiply(A, v, w)
+          normv = normfun(nloc, w, 1)
+          IF (normv <= 0.0_dp) EXIT
+          v = w / normv
+        END DO
+
+        CALL CRS_MatrixVectorMultiply(A, v, w)
+        out_norm = normfun(nloc, w, 1)
+
+        DEALLOCATE(v, w)
+      END SUBROUTINE estimate_matrix_norm
+
+      
+    !----------------------------------------------------------
+    END SUBROUTINE MPRGP
+    !----------------------------------------------------------
+
+!--------------------------------------------------------------
+  END SUBROUTINE itermethod_mprgp
+!--------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 !> This routine provides the complex version to the GCR linear solver.

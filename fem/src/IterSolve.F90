@@ -70,6 +70,7 @@ MODULE IterSolve
    INTEGER, PARAMETER, PRIVATE :: ITER_BICGSTABL    =           400
    INTEGER, PARAMETER, PRIVATE :: ITER_GCR          =           410
    INTEGER, PARAMETER, PRIVATE :: ITER_IDRS         =           420
+   INTEGER, PARAMETER, PRIVATE :: ITER_MPRGP        =           430
 
    !/*
    ! * Preconditioning type code
@@ -113,6 +114,14 @@ CONTAINS
 #endif
 #ifndef HUTI_IDRS_S
 #define HUTI_IDRS_S ipar(18)
+#ifndef HUTI_MPRGP_GAMMA
+#define HUTI_MPRGP_GAMMA dpar(4)
+#endif
+#ifndef HUTI_MPRGP_BOUND
+#define HUTI_MPRGP_BOUND ipar(19)
+#endif
+#ifndef HUTI_MPRGP_ADAPT
+#define HUTI_MPRGP_ADAPT ipar(20)
 #endif
 
 !------------------------------------------------------------------------------
@@ -560,6 +569,8 @@ END FUNCTION MaskedNorm
       IterType = ITER_IDRS
     CASE DEFAULT
       IterType = ITER_BiCGStab
+    CASE('mprgp')
+      IterType = ITER_MPRGP
     END SELECT
     
 !------------------------------------------------------------------------------
@@ -636,6 +647,16 @@ END FUNCTION MaskedNorm
       HUTI_IDRS_S = ListGetInteger( Params,'IDRS parameter',GotIt,minv=1)
       IF(.NOT. GotIt) HUTI_IDRS_S = 4
       Internal = .TRUE.
+    
+    CASE (ITER_MPRGP)
+      HUTI_WRKDIM = 1
+      Internal = .TRUE.
+      HUTI_MPRGP_GAMMA = ListGetConstReal( Params, 'MPRGP Gamma', GotIt )
+      IF(.NOT. GotIt) HUTI_MPRGP_GAMMA = 1.0_dp
+      HUTI_MPRGP_BOUND = ListGetString( Params, 'MPRGP Bound Type', GotIt )
+      IF(.NOT. GotIt) HUTI_MPRGP_BOUND = 'lower' ! TODO: should write error if no bounds
+      HUTI_MPRGP_ADAPT = ListGetLogical( Params, 'MPRGP Adaptive', GotIt )
+      IF(.NOT. GotIt) HUTI_MPRGP_ADAPT = .TRUE.
       
     END SELECT
 !------------------------------------------------------------------------------
@@ -1145,6 +1166,8 @@ END FUNCTION MaskedNorm
         iterProc = AddrFunc( itermethod_bicgstabl )
       CASE (ITER_IDRS)
         iterProc = AddrFunc( itermethod_idrs )
+      CASE (ITER_MPRGP)
+        iterProc = AddrFunc( itermethod_mprgp )
         
       END SELECT
       
