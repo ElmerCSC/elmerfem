@@ -5738,20 +5738,26 @@ CONTAINS
      ! This is done only once for each solver, hence the complex logic. 
      !---------------------------------------------------------------------
      IF( ListGetLogical( Params,'Apply Limiter',Found) ) THEN
-       CALL DetermineSoftLimiter( Solver )	
+       IF( ListGetLogical( Params,'Linear System Limiter',Found) ) THEN               
+         ! This is intended for cases when the linear solver comes with limiters. 
+         CALL PopulateLimiterValues( Solver )	
+       ELSE
+         CALL DetermineSoftLimiter( Solver )	
 
-       ! It is difficult to determine whether loads should be computed before or after setting the limiter.
-       ! There are cases where both alternative are needed.
-       IF(ListGetLogical( Params,'Apply Limiter Loads After',Found) ) THEN         
-         DO DOF=1,x % DOFs
-           name = TRIM(x % name)
-           IF (x % DOFs>1) name=ComponentName(name,DOF)              
-           CALL SetNodalLoads( CurrentModel,A,A % rhs, &
-               Name,DOF,x % DOFs,x % Perm ) 
-         END DO
+         ! It is difficult to determine whether loads should be computed before or after setting the limiter.
+         ! There are cases where both alternative are needed.
+         IF(ListGetLogical( Params,'Apply Limiter Loads After',Found) ) THEN         
+           DO DOF=1,x % DOFs
+             name = TRIM(x % name)
+             IF (x % DOFs>1) name=ComponentName(name,DOF)              
+             CALL SetNodalLoads( CurrentModel,A,A % rhs, &
+                 Name,DOF,x % DOFs,x % Perm ) 
+           END DO
+         END IF
        END IF
      END IF
          
+
      
      Offset = 0
      IF(PRESENT(UOffset)) Offset=UOffset
