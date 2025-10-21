@@ -1919,10 +1919,10 @@ CONTAINS
   END SUBROUTINE itermethod_idrs
 !--------------------------------------------------------------
 
-!-----------------------------------------------------------------------------------
-!>  This routine solves real linear systems Ax = b with inequality constraint by using the MPRGP algorithm 
-!> (Modiﬁed Proportioning and Reduced Gradient Projection).
-!------------------------------------------------------------------------------
+!---------------------------------------------------------------------------------
+!>  This routine solves real linear system Ax = b with inequality constraint using
+!>  the MPRGP algorithm (Modiﬁed Proportioning and Reduced Gradient Projection).
+!---------------------------------------------------------------------------------
   SUBROUTINE itermethod_mprgp( xvec, rhsvec, &
       ipar, dpar, work, matvecsubr, pcondlsubr, &
       pcondrsubr, dotprodfun, normfun, stopcfun )
@@ -2013,7 +2013,8 @@ CONTAINS
   CONTAINS
 
 !-----------------------------------------------------------------------------------
-! Implementation of the MPRGP algorithm.
+!   Implementation of the MPRGP algorithm. 
+!   The subroutine MPRGP was written by D. Reeves during an internship at CSC.
 !----------------------------------------------------------------------------------- 
     SUBROUTINE MPRGP(n, x, b, c, epsr, maxit, Gamma, adapt, bound, &
                       ncg, ne, np, iters, converged, final_norm_gp)
