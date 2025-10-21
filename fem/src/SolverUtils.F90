@@ -8924,10 +8924,11 @@ CONTAINS
     END IF
         
     ! Eliminate all entries in matrix that may be eliminated in one sweep
-    ! If this is an offdiagonal entry this cannot be done.  
-    !IF ( A % Symmetric .AND. .NOT. NoDiag ) CALL CRS_ElimSymmDirichlet(A,b)
-    IF ( .NOT. NoDiag ) CALL CRS_ElimSymmDirichlet(A,b)
- 
+    ! If this is an offdiagonal entry this cannot be done.
+    ! Also, if we want to do swap the Dirichlet conditions without
+    ! rebuilding the matrix (as in capacitance matrix computation) this
+    ! cannot be done. 
+    IF ( A % Symmetric .AND. .NOT. NoDiag ) CALL CRS_ElimSymmDirichlet(A,b)
     
     DO k=1,A % NumberOfRows
 
