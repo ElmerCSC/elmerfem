@@ -76,7 +76,14 @@ SUBROUTINE APrecSolver_Init( Model,Solver,dt,Transient ) ! {{{
       NextFreeKeyword('Exported Variable', Params),'-dofs 3 nodal A rhs')
   CALL ListAddString( Params,&
       NextFreeKeyword('Exported Variable', Params),'-dofs 3 nodal A cum')
-    
+
+  IF( ListGetLogicalAnySolver(Model,'Prec Matrix Cylindrical') ) THEN
+    CALL ListAddString( Params,&
+        NextFreeKeyword('Exported Variable', Params),'-dofs 3 nodal A cyl')
+  END IF
+
+
+  
 !------------------------------------------------------------------------------
 END SUBROUTINE APrecSolver_Init ! }}}
 !------------------------------------------------------------------------------
@@ -265,18 +272,29 @@ SUBROUTINE APrecSolver( Model,Solver,dt,Transient ) ! {{{
     Solver % Variable => SVar
   END IF
 
-  
+  IF(PrecMatCyl) THEN
+    pVar => VariableGet( Mesh % Variables,'nodal a cyl')
+    IF(ASSOCIATED(pVar)) THEN
+      pVar % Values = pVar % Values + AVar % Values
+    END IF
+    CALL CylinderToCartesianProject(SVar % Values)
+  END IF
+    
   pVar => VariableGet( Mesh % Variables,'nodal a cum')
   IF(ASSOCIATED(pVar)) THEN
     pVar % Values = pVar % Values + AVar % Values
   END IF
 
-  IF(PrecMatCyl) THEN
-    CALL CylinderToCartesianProject(SVar % Values)
-  END IF
   
   CALL Info(Caller,'Projecting nodal solution to vector element space', Level=20)
   CALL CRS_MatrixVectorMultiply(Proj, Avar % Values, EdgeSolVar % Values ) 
+
+  IF(InfoActive(20)) THEN
+    CALL VectorValuesRange(Avar % Values,SIZE(Avar % Values),'VecPotNodal')       
+    CALL VectorValuesRange(EdgeSolVar % Values,SIZE(EdgeSolVar % Values),'VecPotEdge')       
+  END IF
+
+
 
   CALL Info(Caller,'Auxiliary space nodal solution finished!',Level=10)
 

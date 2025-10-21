@@ -318,5 +318,4 @@ Boundary Condition 8
 End
 
 Solver 2 :: Reference Norm = Real 0.45867336E-06
-RUN
 

@@ -1,3 +1,9 @@
+! This is a legacy test case for adaptivity for Navier-Stokes equation
+! that utilizes splitting of triangular elements and elimination of hanging
+! nodes as implemented by M. Lyly.
+
+
+
 Header
   Mesh DB "." "Step"
   Include Path ""
@@ -8,13 +14,11 @@ End
 Simulation
   Max Output Level = 5
   Coordinate System =  Cartesian 2D
-  Coordinate Mapping(3) = 1 2 3
-
   Simulation Type = Steady
   Steady State Max Iterations = 20
 
   Output Intervals = 1
-! Post File = "Step.ep"
+! Post File = "Step.vtu"
 ! Output File = "Step.dat"
 End
 
@@ -96,4 +100,4 @@ End
 
 Solver 1 :: Reference Norm = Real 0.450317
 Solver 1 :: Reference Norm Tolerance = Real 5e-3
-RUN
+

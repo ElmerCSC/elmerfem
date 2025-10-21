@@ -62,7 +62,10 @@ Solver 1
 
   Solver Timing = True
 !  Enforce Parallel = Logical True
+!  Enforce Serial = Logical True
 !  SunAngle Search Distance = Real 1.0e6
+
+  Nonlinear System Consistent Norm = True
 End
 
 

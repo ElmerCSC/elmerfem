@@ -2449,19 +2449,23 @@ END SUBROUTINE LocalConstraintMatrix
              DO p = 1,n
                DO q = 1,n
                  Laplace = SUM(dBasisdx(p,:)*dBasisdx(q,:)) * weight
-                 
+
                  ! Equation for: a_r/r
                  nSTIFF(3*p-2,3*q-2) = nSTIFF(3*p-2,3*q-2) + x * mu * Laplace 
                  nSTIFF(3*p-2,3*q-1) = nSTIFF(3*p-2,3*q-1) - y * mu * Laplace 
-                 nSTIFF(3*p-2,3*q-2) = nSTIFF(3*p-2,3*q-2) - mu * Basis(p) * dBasisdx(q,1) * weight
-                 nSTIFF(3*p-2,3*q-1) = nSTIFF(3*p-2,3*q-1) + mu * Basis(p) * dBasisdx(q,2) * weight
-                 
+                 !nSTIFF(3*p-2,3*q-2) = nSTIFF(3*p-2,3*q-2) - mu * Basis(p) * dBasisdx(q,1) * weight
+                 !nSTIFF(3*p-2,3*q-1) = nSTIFF(3*p-2,3*q-1) + mu * Basis(p) * dBasisdx(q,2) * weight
+                 nSTIFF(3*p-2,3*q-2) = nSTIFF(3*p-2,3*q-2) + mu * Basis(q) * dBasisdx(p,1) * weight
+                 nSTIFF(3*p-2,3*q-1) = nSTIFF(3*p-2,3*q-1) - mu * Basis(q) * dBasisdx(p,2) * weight
+
                  ! Equation for: a_phi/r
                  nSTIFF(3*p-1,3*q-1) = nSTIFF(3*p-1,3*q-1) + x * mu * Laplace 
                  nSTIFF(3*p-1,3*q-2) = nSTIFF(3*p-1,3*q-2) + y * mu * Laplace 
-                 nSTIFF(3*p-1,3*q-2) = nSTIFF(3*p-1,3*q-2) - mu * Basis(p) * dBasisdx(q,2) * weight
-                 nSTIFF(3*p-1,3*q-1) = nSTIFF(3*p-1,3*q-1) - mu * Basis(p) * dBasisdx(q,1) * weight
-                 
+                 !nSTIFF(3*p-1,3*q-2) = nSTIFF(3*p-1,3*q-2) - mu * Basis(p) * dBasisdx(q,2) * weight
+                 !nSTIFF(3*p-1,3*q-1) = nSTIFF(3*p-1,3*q-1) - mu * Basis(p) * dBasisdx(q,1) * weight
+                 nSTIFF(3*p-1,3*q-2) = nSTIFF(3*p-1,3*q-2) + mu * Basis(q) * dBasisdx(p,2) * weight
+                 nSTIFF(3*p-1,3*q-1) = nSTIFF(3*p-1,3*q-1) + mu * Basis(q) * dBasisdx(p,1) * weight
+
                  ! Equation for: a_z
                  nSTIFF(3*p,3*q) = nSTIFF(3*p,3*q) + mu * Laplace 
                END DO

@@ -10533,6 +10533,7 @@ END FUNCTION SearchNodeL
     LOGICAL :: Parallel
     LOGICAL, ALLOCATABLE :: PassiveDof(:)
     INTEGER, POINTER :: Perm(:)
+    TYPE(NeighbourList_t),POINTER  :: NeighbourList(:) => NULL()
     
     CALL Info('ComputeNorm','Computing norm of solution',Level=10)
 
@@ -10626,14 +10627,23 @@ END FUNCTION SearchNodeL
       ! In consistent norm we have to skip the dofs not owned by the partition in order
       ! to count each dof only once. 
       Norm = 0.0_dp
+
+      IF( ASSOCIATED(Solver % Matrix) ) THEN
+        ! Usually the neighbours are available in the parallel matrix. 
+        NeighbourList => Solver % Matrix % ParallelInfo % NeighbourList
+      ELSE
+        ! There are some exceptions when no matrix, and hence no associated
+        ! communication has been created and we have to use the communication structure
+        ! of the mesh. Note that this is currently limited to scalar fields!
+        NeighbourList => Solver % Mesh % ParallelInfo % NeighbourList
+      END IF
       
       SELECT CASE(NormDim)
 
       CASE(0) 
         DO j=1,n
           IF(PassiveDof(MODULO(j-1,Dofs))) CYCLE
-          IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
-              /= ParEnv % MyPE ) CYCLE
+          IF( NeighbourList(j) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
           val = x(j)
           Norm = MAX( Norm, ABS( val ) )
           totn = totn + 1
@@ -10642,8 +10652,7 @@ END FUNCTION SearchNodeL
       CASE(1)
         DO j=1,n
           IF(PassiveDof(MODULO(j-1,Dofs))) CYCLE
-          IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
-              /= ParEnv % MyPE ) CYCLE
+          IF( NeighbourList(j) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
           val = x(j)
           Norm = Norm + ABS(val)
           totn = totn + 1
@@ -10652,8 +10661,7 @@ END FUNCTION SearchNodeL
       CASE(2)          
         DO j=1,n
           IF(PassiveDof(MODULO(j-1,Dofs))) CYCLE
-          IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
-              /= ParEnv % MyPE ) CYCLE
+          IF( NeighbourList(j) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
           val = x(j)
           Norm = Norm + val**2
           totn = totn + 1
@@ -10662,8 +10670,7 @@ END FUNCTION SearchNodeL
       CASE DEFAULT
         DO j=1,n
           IF(PassiveDof(MODULO(j-1,Dofs))) CYCLE
-          IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
-              /= ParEnv % MyPE ) CYCLE
+          IF( NeighbourList(j) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
           val = x(j)
           Norm = Norm + val**NormDim 
           totn = totn + 1

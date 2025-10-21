@@ -18,7 +18,7 @@ Simulation
   Output Intervals = 1
 
 ! Output File = "beam3d.dat"
-! Post File = "beam3d.ep"
+! Post File = "beam3d.vtu"
 End
 
 Constants

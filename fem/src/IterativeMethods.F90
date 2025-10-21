@@ -1919,10 +1919,10 @@ CONTAINS
   END SUBROUTINE itermethod_idrs
 !--------------------------------------------------------------
 
-!-----------------------------------------------------------------------------------
-!>  This routine solves real linear systems Ax = b with inequality constraint by using the MPRGP algorithm 
-!> (Modiﬁed Proportioning and Reduced Gradient Projection).
-!------------------------------------------------------------------------------
+!---------------------------------------------------------------------------------
+!>  This routine solves real linear system Ax = b with inequality constraint using
+!>  the MPRGP algorithm (Modiﬁed Proportioning and Reduced Gradient Projection).
+!---------------------------------------------------------------------------------
   SUBROUTINE itermethod_mprgp( xvec, rhsvec, &
       ipar, dpar, work, matvecsubr, pcondlsubr, &
       pcondrsubr, dotprodfun, normfun, stopcfun )
@@ -1994,11 +1994,11 @@ CONTAINS
     Converged = .FALSE.
     Diverged = .FALSE.
     n = ndim
-    
-!    CALL MPRGP(ndim+nc, A,x,b, Rounds, MinTol, MaxTol, &
-!        Converged, Diverged, OutputInterval, s )
     CALL MPRGP(ndim, x, b, c, MinTol, Rounds, Gamma, adapt, bound, &
         ncg, ne, np, iters, Converged, final_norm_gp )
+
+    CALL Info('MPRGPSolver','MPRGP finished: iters='//I2S(iters)// &
+          ', ncg='//I2S(ncg)//', ne='//I2S(ne)//', np='//I2S(np), Level=10)
 
     IF(Converged) HUTI_INFO = HUTI_CONVERGENCE
     IF(Diverged) HUTI_INFO = HUTI_DIVERGENCE
@@ -2013,7 +2013,8 @@ CONTAINS
   CONTAINS
 
 !-----------------------------------------------------------------------------------
-! Implementation of the MPRGP algorithm.
+!   Implementation of the MPRGP algorithm. 
+!   The subroutine MPRGP was written by D. Reeves during an internship at CSC.
 !----------------------------------------------------------------------------------- 
     SUBROUTINE MPRGP(n, x, b, c, epsr, maxit, Gamma, adapt, bound, &
                       ncg, ne, np, iters, converged, final_norm_gp)
@@ -2078,8 +2079,7 @@ CONTAINS
       ! ---------------------------
       ! Initialization (g = A*x - b)
       ! ---------------------------
-      CALL matvecsubr( x, g, ipar )        
-      !CALL C_matvec(x, g, ipar, matvecsubr)       ! g = A*x
+      CALL matvecsubr( x, g, ipar )
 
       g = g - b
 
@@ -2112,19 +2112,18 @@ CONTAINS
 
       ! reduced free gradient gr
       IF (bs == 1) THEN
-        gr = MERGE(MIN(lAl * (x - c), gf), 0.0_dp, J) ! this might be wrong,
+        gr = MERGE(MIN(lAl * (x - c), gf), 0.0_dp, J)
       ELSE
         gr = MERGE(MAX(lAl * (x - c), gf), 0.0_dp, J)
       END IF
 
       gp = gf + gc
-
       ! preconditioning: z = M^{-1} * g on free set
-      CALL C_rpcond(g, z, ipar, pcondrsubr)
+      z = g
+      CALL pcondrsubr( g, z, ipar )
       WHERE (.NOT. J)
         z = 0.0_dp
       END WHERE
-
       p = z
 
       ! counters
@@ -2142,29 +2141,33 @@ CONTAINS
         iters = iters + 1
 
         IF ( dotprodfun(n, gc, 1, gc, 1) <= (Gamma**2) * dotprodfun(n, gr, 1, gf, 1) ) THEN
-          ! CG-like step
+          ! CG step
 
-          !CALL C_matvec(p, Ap, ipar, matvecsubr)
           CALL matvecsubr( p, Ap, ipar )        
           rtp = dotprodfun(n, z, 1, g, 1) ! residual * p
           pAp = dotprodfun(n, p, 1, Ap, 1)
 
           IF (ABS(pAp) < eps_local) THEN
-            CALL Fatal('itermethod_mprgp','p''*A*p nearly zero, stopping')
+            CALL INFO('itermethod_mprgp','p''*A*p nearly zero, stopping')
+            EXIT
           END IF
 
           acg = rtp / pAp
           yy = x - acg * p
 
-
           IF (ALL(bs * yy(:) >= bs * c(:))) THEN
             ! accept full CG step
             x = yy
             g = g - acg * Ap
-            J = (bs * x > bs * c)
+            IF (bs == 1) THEN
+              J = (x > c + tol)
+            ELSE
+              J = (x < c - tol)
+            END IF
 
             ! precondition
-            CALL C_rpcond(g, z, ipar, pcondrsubr)
+            z = g
+            CALL pcondrsubr( g, z, ipar )
             WHERE (.NOT. J)
               z = 0.0_dp
             END WHERE
@@ -2203,7 +2206,11 @@ CONTAINS
                 x = MIN(x - a_f * p, c)
             END IF
 
-            J = (bs * x > bs * c)
+            IF (bs == 1) THEN
+              J = (x > c + tol)
+            ELSE
+              J = (x < c - tol)
+            END IF
             g = g - a_f * Ap
 
             ! adaptive alpha
@@ -2230,12 +2237,12 @@ CONTAINS
               END WHERE
             END IF
 
-            CALL matvecsubr( x, g, ipar )        
-            !CALL C_matvec(x, g, ipar, matvecsubr) !calculate Ax, save it in g
+            CALL matvecsubr( x, g, ipar )
             g = g - b
 
             ! recompute z and p
-            CALL C_rpcond(g, z, ipar, pcondrsubr)
+            z = g
+            CALL pcondrsubr( g, z, ipar )
             WHERE (.NOT. J)
               z = 0.0_dp
             END WHERE
@@ -2282,10 +2289,15 @@ CONTAINS
             x = MIN(x, c)
           END IF
 
-          J = (bs * x > bs * c)
+          IF (bs == 1) THEN
+            J = (x > c + tol)
+          ELSE
+            J = (x < c - tol)
+          END IF
           g = g - acg * Ap
-
-          CALL C_rpcond(g, z, ipar, pcondrsubr)
+          
+          z = g
+          CALL pcondrsubr( g, z, ipar )
           WHERE (.NOT. J)
             z = 0.0_dp
           END WHERE
@@ -2342,13 +2354,15 @@ CONTAINS
       v = 1.0_dp / REAL(nloc, dp)
 
       DO itl = 1, niter
-        CALL C_matvec(v, w, ipar, matvecsubr)
+        !CALL C_matvec(v, w, ipar, matvecsubr)
+        CALL matvecsubr(v, w, ipar)
         normv = normfun(nloc, w, 1)
         IF (normv <= 0.0_dp) EXIT
         v = w / normv
       END DO
 
-      CALL C_matvec(v, w, ipar, matvecsubr)
+      !CALL matvecsubr(v, w, ipar)
+      CALL matvecsubr(v, w, ipar)
       out_norm = normfun(nloc, w, 1)
       DEALLOCATE(v, w)
     END SUBROUTINE estimate_matrix_norm

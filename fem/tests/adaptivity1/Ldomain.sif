@@ -1,3 +1,8 @@
+! This is a legacy test case for adaptivity that utilizes the internal
+! Mesh2D delaynay mesh generator of Elmer (by H. Hakula). It used to have
+! a graphical user interface called ElmerFront (bt M. Verho) but now Mesh2D
+! has no means of creation. 
+
 Header
   Mesh DB "." "Ldomain"
 End
