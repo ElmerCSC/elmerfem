@@ -118,6 +118,9 @@ CONTAINS
 #ifndef HUTI_MPRGP_GAMMA
 #define HUTI_MPRGP_GAMMA dpar(6)
 #endif
+#ifndef HUTI_MPRGP_TOLFACTOR
+#define HUTI_MPRGP_TOLFACTOR dpar(7)
+#endif
 !#ifndef HUTI_MPRGP_BOUND
 !#define HUTI_MPRGP_BOUND ipar(19)
 !#endif
@@ -654,6 +657,8 @@ END FUNCTION MaskedNorm
       Internal = .TRUE.
       HUTI_MPRGP_GAMMA = ListGetConstReal( Params, 'Linear System MPRGP Gamma', GotIt )
       IF(.NOT. GotIt) HUTI_MPRGP_GAMMA = 1.0_dp
+      HUTI_MPRGP_TOLFACTOR = ListGetConstReal( Params, 'Linear System MPRGP TolFactor', GotIt )
+      IF(.NOT. GotIt) HUTI_MPRGP_TOLFACTOR = 5.0_dp
       !HUTI_MPRGP_BOUND = ListGetString( Params, 'Linear System MPRGP Bound Type', GotIt )
       !IF(.NOT. GotIt) HUTI_MPRGP_BOUND = 'lower' ! TODO: should write error if no bounds      
       HUTI_MPRGP_ADAPT = 1
