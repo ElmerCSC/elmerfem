@@ -1952,7 +1952,7 @@ CONTAINS
     INTEGER :: n
 
     ! MPRGP parameters (passed from calling routine)
-    REAL(KIND=dp) :: Gamma
+    REAL(KIND=dp) :: Gamma, TolFactor
     LOGICAL :: adapt
     INTEGER :: bound
 
@@ -1975,6 +1975,7 @@ CONTAINS
     
     Gamma = HUTI_MPRGP_GAMMA
     Adapt = ( HUTI_MPRGP_ADAPT > 0 )
+    TolFactor = HUTI_MPRGP_TOLFACTOR
 
     IF (ASSOCIATED(CurrentModel % Solver % Variable % LowerLimit)) THEN
       bound = 0
@@ -1994,7 +1995,7 @@ CONTAINS
     Converged = .FALSE.
     Diverged = .FALSE.
     n = ndim
-    CALL MPRGP(ndim, x, b, c, MinTol, Rounds, Gamma, adapt, bound, &
+    CALL MPRGP(ndim, x, b, c, MinTol, Rounds, Gamma, adapt, bound, TolFactor, &
         ncg, ne, np, iters, Converged, final_norm_gp )
 
     CALL Info('MPRGPSolver','MPRGP finished: iters='//I2S(iters)// &
@@ -2016,7 +2017,7 @@ CONTAINS
 !   Implementation of the MPRGP algorithm. 
 !   The subroutine MPRGP was written by D. Reeves during an internship at CSC.
 !----------------------------------------------------------------------------------- 
-    SUBROUTINE MPRGP(n, x, b, c, epsr, maxit, Gamma, adapt, bound, &
+    SUBROUTINE MPRGP(n, x, b, c, epsr, maxit, Gamma, adapt, bound, TolFactor, &
                       ncg, ne, np, iters, converged, final_norm_gp)
 !----------------------------------------------------------------------------------- 
       ! ---------------------------
@@ -2030,6 +2031,7 @@ CONTAINS
       REAL(KIND=dp), INTENT(IN) :: Gamma
       LOGICAL, INTENT(IN) :: adapt
       INTEGER, INTENT(IN) :: bound      ! 'lower' or 'upper'
+      REAL(KIND=dp), INTENT(IN) :: TolFactor
       INTEGER, INTENT(OUT) :: ncg, ne, np, iters
       LOGICAL, INTENT(OUT) :: converged
       REAL(KIND=dp), INTENT(OUT) :: final_norm_gp
@@ -2107,6 +2109,7 @@ CONTAINS
 
       ! estimate matrix norm ||A|| with a small power iteration
       CALL estimate_matrix_norm(n, 10, lAl)
+!      lal = 1.0_dp
       IF (lAl <= 0.0_dp) lAl = 1.0_dp
       alpha = 1.0_dp / lAl
 
@@ -2139,16 +2142,20 @@ CONTAINS
       DO WHILE ( normfun(n, gp, 1) > epsr .AND. iters < maxit )
 
         iters = iters + 1
-
         IF ( dotprodfun(n, gc, 1, gc, 1) <= (Gamma**2) * dotprodfun(n, gr, 1, gf, 1) ) THEN
           ! CG step
-
           CALL matvecsubr( p, Ap, ipar )        
           rtp = dotprodfun(n, z, 1, g, 1) ! residual * p
           pAp = dotprodfun(n, p, 1, Ap, 1)
 
           IF (ABS(pAp) < eps_local) THEN
-            CALL INFO('itermethod_mprgp','p''*A*p nearly zero, stopping')
+            ! We don't want to divide by zero, if norm of gp is small enough, we can stop
+            IF (normfun(n, gp, 1) < TolFactor * epsr) THEN
+              converged = .TRUE.
+              CALL Info('itermethod_mprgp','MPRGP converged')
+              EXIT
+            END IF
+            CALL FATAL('itermethod_mprgp','p''*A*p nearly zero, stopping')
             EXIT
           END IF
 
@@ -2271,11 +2278,16 @@ CONTAINS
 
         ELSE
           ! proportioning step
-          CALL matvecsubr( gc, Ap, ipar )        
-          !CALL C_matvec(gc, Ap, ipar, matvecsubr)
+          CALL matvecsubr( gc, Ap, ipar )    ! A*gc
           pAp = dotprodfun(n, gc, 1, Ap, 1)
           IF (ABS(pAp) < eps_local) THEN
-            CALL Info('itermethod_mprgp','denominator in proportioning nearly zero, stopping',Level=5)
+            IF (normfun(n, gp, 1) < TolFactor * epsr) THEN
+              converged = .TRUE.
+              CALL Info('itermethod_mprgp','MPRGP converged')
+              EXIT
+            END IF
+
+            CALL FATAL('itermethod_mprgp','denominator gc*A*gc in proportioning step nearly zero, stopping')
             EXIT
           END IF
           acg = dotprodfun(n, gc, 1, g, 1) / pAp
@@ -2327,7 +2339,10 @@ CONTAINS
       END DO  ! main loop
 
       final_norm_gp = normfun(n, gp, 1)
-      converged = (final_norm_gp <= epsr)
+      
+      IF (.NOT. converged) THEN ! can be set as converged in the main loop
+        converged = (final_norm_gp <= epsr)
+      END IF
 
       ! cleanup
       IF (ALLOCATED(D)) DEALLOCATE(D)
