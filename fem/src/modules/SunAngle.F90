@@ -491,7 +491,7 @@ CONTAINS
      DO i=1,ParEnv % PEs 
        n_recv = RidgeData(i) % n_recv
        IF(n_recv > 0) THEN
-         CALL DEALLOCATE(RidgeData(i) % Coords)
+         DEALLOCATE(RidgeData(i) % Coords)
        END IF
      END DO
      DEALLOCATE(RidgeData)

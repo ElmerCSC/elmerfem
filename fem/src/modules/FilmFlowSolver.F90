@@ -265,7 +265,7 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
     CALL Info(Caller,'Dimension of coordinate system: '//I2S(dim))
 
     n = (mdim+1)*(Mesh % MaxElementDOFs+4*BDOFs)  ! just big enough for elemental arrays
-    ALLOCATE( FORCE(n), LOAD(mdim+2,n), STIFF(n,n), MASS(n,n), &
+    ALLOCATE( FORCE(n), LOAD(mdim+4,n), STIFF(n,n), MASS(n,n), &
         rho(n), ac(n), gap(n), gap0(n), height(n), mu(n), AcPres(n), Velocity(mdim+1,n), STAT=istat )
     Velocity = 0.0_dp
     IF ( istat /= 0 ) THEN
@@ -370,6 +370,10 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
         IF(mdim>1) Load(2,1:n) = GetReal( BodyForce, 'FilmFlow Bodyforce 2', Found )
         Load(mdim+1,1:n) = GetReal( BodyForce, 'Normal Velocity', Found )
         Load(mdim+2,1:n) = GetReal( BodyForce, 'Fsi Velocity', Found )
+
+        ! We are slightly misusing "Load" here to store these quantities. 
+        Load(mdim+3,1:n) = GetReal( BodyForce, 'Flow Admittance', Found)
+        Load(mdim+4,1:n) = GetReal( BodyForce, 'External FilmPressure', Found)
       END IF
 
       ! Material parameters:
@@ -476,7 +480,7 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
       END IF
       
       DO i=1,mdim
-        Load(i,1:n) = GetReal( BC, 'Pressure '//I2S(i), Found ) 
+        Load(i,1:n) = GetReal( BC, 'FilmPressure '//I2S(i), Found ) 
       END DO
       Load(mdim+1,1:n) = GetReal( BC, 'Mass Flux', Found )
       
@@ -633,7 +637,7 @@ CONTAINS
     LOGICAL :: FirstRound
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(ntot),dBasisdx(ntot,3)
-    REAL(KIND=dp) :: DetJ,LoadAtIP(mdim+2),Velo(mdim), VeloGrad(mdim,mdim), gapGrad(mdim), &
+    REAL(KIND=dp) :: DetJ,LoadAtIP(mdim+4),Velo(mdim), VeloGrad(mdim,mdim), gapGrad(mdim), &
         hGrad(mdim), presGrad(mdim)
     REAL(KIND=dp) :: NodalPres(n), NodalPrevPres(n)
     REAL(KIND=dp), POINTER :: A(:,:),F(:),M(:,:)
@@ -641,7 +645,8 @@ CONTAINS
     INTEGER :: t, i, j, k, l, p, q, geomc
     TYPE(GaussIntegrationPoints_t) :: IP
     REAL(KIND=dp) :: mu = 1.0d0, rho = 1.0d0, AcPres, gap, gap0, gap2, gapi, &
-        ac, s, s0, s1, MinPres, MuCoeff, MinSpeed, Speed, h, q_p, q_f, Pres, PrevPres
+        ac, s, s0, s1, MinPres, MuCoeff, MinSpeed, Speed, h, q_p, q_f, Pres, &
+        PrevPres, FlowAdm
     LOGICAL :: Visited = .FALSE.
     
     TYPE(Nodes_t) :: Nodes
@@ -755,18 +760,17 @@ CONTAINS
        
        ! The source term at the integration point:
        !------------------------------------------
-       DO i=1,mdim+2
+       DO i=1,mdim+4
          LoadAtIP(i) = SUM( Basis(1:n) * LOAD(i,1:n) )
        END DO
 
        IF ( Convect .AND. Newton ) THEN
          LoadAtIp(1:mdim) = LoadAtIp(1:mdim) + rho * MATMUL(VeloGrad(1:mdim,1:mdim),Velo(1:mdim))
        END IF
-       LoadAtIp(mdim+1) = geomc * LoadAtIp(mdim+1) 
+
        ! Fsi velocity
-       LoadAtIp(mdim+2) = geomc * LoadAtIp(mdim+2) 
-
-
+       LoadAtIp(mdim+1:mdim+2) = geomc * LoadAtIp(mdim+1:mdim+2) 
+             
        ! This is the Poisseille flow resistance
        IF(UsePrevGap) THEN
          ! This takes the analytical average when going from 1/d_0^2 to 1/d^2. 
@@ -881,6 +885,9 @@ CONTAINS
            ! See Raback et al., CFD Eccomas 2001.
            ! "FLUID-STRUCTURE INTERACTION BOUNDARY CONDITIONS BY ARTIFICIAL COMPRESSIBILITY".
            IF(GotAC) A(mdim+1,mdim+1) = A(mdim+1,mdim+1) + ac * s * rho * Basis(q) * Basis(p)              
+
+           ! The implicit term for weakly enforce incoming flux. 
+           A(mdim+1,mdim+1) = A(mdim+1,mdim+1) + s * rho * LoadAtIP(mdim+3) * Basis(q) * Basis(p)              
          END DO
          
          i = (mdim+1) * (p-1) + 1
@@ -900,6 +907,11 @@ CONTAINS
          ! Additional body force from FSI velocity
          F(mdim+1) = F(mdim+1) - s * rho * Basis(p) * LoadAtIp(mdim+2) 
 
+
+         ! Robin condition for incoming flow in terms of (Flow Admittance) * (p - p_ext)
+         F(mdim+1) = F(mdim+1) + s * rho * Basis(p) * LoadAtIp(mdim+3) * LoadAtIP(mdim+4) 
+
+         
          IF(UseHeating) THEN
            ! Additional source term from friction melting.
            ! Continuity equation is weighted by gap so the BC term need not be divided by it

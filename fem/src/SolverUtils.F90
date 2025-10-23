@@ -24383,7 +24383,9 @@ CONTAINS
      INTEGER, ALLOCATABLE :: BCOrdering(:), BCPriority(:)
      LOGICAL :: NeedToGenerate, ComplexSumRow 
 
-     LOGICAL :: HaveMortarDiag, LumpedDiag, PerFlipActive
+     LOGICAL :: HaveMortarDiag, LumpedDiag, PerFlipActive, SkipConstrained
+     LOGICAL, POINTER :: ConstrainedDof(:)
+             
      REAL(KIND=dp) :: MortarDiag, val, valsum, EpsVal
      LOGICAL, POINTER :: PerFlip(:)
      CHARACTER(*), PARAMETER :: Caller = 'GenerateConstraintMatrix'
@@ -24431,6 +24433,8 @@ CONTAINS
        RETURN
      END IF
 
+     SkipConstrained = ListGetLogical( Solver % Values, 'Skip Already Constrained Dofs', Found)
+     ConstrainedDof => Solver % Matrix % ConstrainedDof
      
      ! Compute the number and size of initial constraint matrices
      !-----------------------------------------------------------
@@ -24870,6 +24874,7 @@ CONTAINS
                kk = Perm(k)
              END IF
              IF( kk == 0 ) CYCLE
+             IF ( SkipConstrained .AND. ConstrainedDof(kk) ) CYCLE
            END IF
              
            IF( SumThis ) THEN             

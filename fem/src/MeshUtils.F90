@@ -32934,6 +32934,83 @@ CONTAINS
           
   END SUBROUTINE TagBCsUsingRule
 
+
+  !> Sometimes the mesh includes bodies different from how we would like to resolve
+  !> the equations. Then an alternative is to use some simple rule to redefine the
+  !> body index.
+  !-------------------------------------------------------------------
+  SUBROUTINE TagBodiesUsingCondition(Model, Mesh)
+
+    TYPE(Model_t) :: Model
+    TYPE(Mesh_t), POINTER :: Mesh
+
+    TYPE(Element_t), POINTER :: Element
+    INTEGER :: i,j,k,n,m,t
+    INTEGER :: body_id
+    REAL(KIND=dp) :: bodyCond(27)
+    LOGICAL :: Found, Parallel, Sloppy, Conservative, Switch
+    CHARACTER(:), ALLOCATABLE :: str
+    CHARACTER(*), PARAMETER :: Caller = 'TagBodiesUsingCondition'
+
+    
+    ! Check that there is something to do, else exit
+    IF(.NOT. ListCheckPrefix(Model % Simulation,'Body Define Condition') ) RETURN
+    
+    Parallel = ( ParEnv % PEs > 1 )
+    IF( Parallel ) THEN
+      IF( ListGetLogical( Model % Simulation,'Single Mesh',Found ) ) THEN
+        Parallel = .FALSE.
+        CALL Info(Caller,'Working on single mesh, so reverting parallel mode to serial!',Level=8)
+      END IF
+    END IF
+    
+    CALL Info(Caller,'Redefining bodies using geometric detection rules')
+            
+    Sloppy = ListGetLogical( Model % Simulation,'Body Define Sloppy', Found ) 
+    Conservative = ListGetLogical( Model % Simulation,'Body Define Conservative', Found ) 
+
+    ! If these are not set we cannot use ListGetReal later on...
+    Model % Mesh => Mesh
+    Model % Variables => Mesh % Variables
+    
+    DO i=1,100       
+      str = 'Body Define Condition '//I2S(i)
+      IF(.NOT. ListCheckPresent(Model % Simulation,str)) EXIT
+      
+      body_id = ListGetInteger(Model % Simulation,'Body Define Index '//I2S(i),UnfoundFatal=.TRUE.)
+      
+      k = 0
+      DO t=1,Mesh % NumberOfBulkElements
+        Element => Mesh % Elements(t)
+        Model % CurrentElement => Element
+        n = Element % Type % NumberOfNodes
+
+        IF(Element % BodyId == body_id) CYCLE
+        
+        bodyCond(1:n) = ListGetReal( Model % Simulation, str, n, Element % NodeIndexes )
+        m = COUNT(bodyCond(1:n) > 0)
+        
+        Switch = .FALSE.
+        IF( Conservative ) THEN
+          Switch = (m==n)
+        ELSE IF( Sloppy ) THEN
+          Switch = (m>0)
+        ELSE
+          Switch = (2*m>n)
+        END IF
+
+        IF(switch) THEN
+          k = k+1
+          Element % BodyId = body_id
+        END IF
+      END DO
+
+      CALL Info(Caller,'Defining body index '//I2S(body_id)//' in '//I2S(k)//' elements')
+      
+    END DO
+      
+  END SUBROUTINE TagBodiesUsingCondition
+  
 !------------------------------------------------------------------------------
 END MODULE MeshUtils
 !------------------------------------------------------------------------------

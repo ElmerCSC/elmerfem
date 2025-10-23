@@ -131,7 +131,7 @@ Boundary Condition 4
   Name = "Left"
 !  FilmVelocity 1 = $v0
 ! This was tuned so that the upper condition is reproduced
-  Pressure 1 = 1.0e3
+  FilmPressure 1 = Real 1.0e3
 End
 
 
