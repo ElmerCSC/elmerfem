@@ -335,7 +335,7 @@ CONTAINS
     !   (see:
     !     https://dkrz-sw.gitlab-pages.dkrz.de/yac/d4/d40/init_yac_detail.html)
     ! * will call MPI_Init, if not yet called by the user
-    !PRINT *, "Elmer comp name ", ELMER_COMP_NAME
+    PRINT *, "HELLO FROM COUPLING INIT", ELMER_COMP_NAME
     CALL yac_finit_comm (yac_comm)
 
     ! read configuration file
@@ -433,6 +433,7 @@ CONTAINS
 
     END INTERFACE
 
+    PRINT *, "READ GRID FROM FILE"
     ! get grid data from elmer component
     ! in the case of the dummy, we have to read it from file
 
@@ -440,12 +441,16 @@ CONTAINS
     ! * each process only reads in its local part of the grid
     ! * in Elmer this information probably already available and does not have
     !   to be read from file
+    PRINT *, "COMM_RANK", comm_rank
+    PRINT *, "COMM_SIZE", comm_size
+    PRINT *, "NUMPARTS", num_parts
     CALL read_grid_c( &
       TRIM(grid_dir) // c_null_char, comm_rank, comm_size, num_parts, &
       nbr_vertices, nbr_cells, num_vertices_per_cell_c_ptr, &
       x_vertices_c_ptr, y_vertices_c_ptr, x_cells_c_ptr, y_cells_c_ptr, &
       cell_ids_c_ptr, vertex_ids_c_ptr, cell_to_vertex_c_ptr)
 
+    PRINT *, "After READINF GRID FROM FILE"
     CALL C_F_POINTER( &
       num_vertices_per_cell_c_ptr, num_vertices_per_cell_c, shape=[nbr_cells])
     CALL C_F_POINTER(x_vertices_c_ptr, x_vertices_c, shape=[nbr_vertices])
@@ -475,8 +480,10 @@ CONTAINS
     CALL free_c(vertex_ids_c_ptr)
     CALL free_c(cell_to_vertex_c_ptr)
 
+
     ! register Elmer grid in YAC
     ! * is defined as an unstructured grid
+    PRINT *, "BEFORE GRID DEF"
     CALL yac_fdef_grid( &
       ELMER_GRID_NAME, nbr_vertices, nbr_cells, SUM(num_vertices_per_cell), &
       num_vertices_per_cell, x_vertices, y_vertices, cell_to_vertex, grid_id)
@@ -497,10 +504,11 @@ CONTAINS
     CALL yac_fdef_points( &
       grid_id, nbr_cells, YAC_LOCATION_CELL, x_cells, y_cells, cell_point_id)
 
-    !PRINT *, "PRECIP TIMESTEP in HOURS", timestepstring
+    PRINT *, "PRECIP TIMESTEP in HOURS", timestepstring
     ! construct coupling between Elmer/Ice and ICON
     CALL construct_elmer_icon_coupling(comp_id, corner_point_id, timestepstring, cell_point_id)
 
+    PRINT *, "AFTER constructing_elmer_icon_coupling", timestepstring
     ! sychronizes all definitions between all components
     ! * afterwards the exchange information can be queried
     ! * this is optional
