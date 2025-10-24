@@ -22,8 +22,24 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   LOGICAL :: Parallel, FirstTime=.TRUE.
   TYPE(Mesh_t),POINTER :: Mesh
   TYPE(Variable_t), POINTER :: cltVar, prVar
+
+  LOGICAL        :: Found
   
   SAVE elmer_mesh_partitions, grid_dir, cltPerm, prPerm
+  ! check if config file exist. Terminate program if it is not found!
+
+  SolverParams => GetSolverParams()
+ 
+  ! read config file
+  config_file = GetString(SolverParams, 'Config File Name',  Found )
+  IF (.NOT. Found) THEN
+     CALL FATAL(SolverName,'No keyword >Config File Name< found in yac2elmer solver')
+  END IF
+  ! check if config file actually exists
+  INQUIRE(FILE=TRIM(config_file), EXIST=USE_YAC)
+  IF (.NOT. USE_YAC) THEN
+    CALL FATAL(SolverName,'Coupling config file not found')
+  END IF
 
   Mesh => Solver % Mesh
   write(model_tstep, *) int(dt * 8760)
@@ -33,7 +49,6 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   !!!!!!!!!! DO WE HAVE TO INITIALIZE WITH EVERY CALL ? !!!!!!!!!!!!!!
   IF (FirstTime) THEN
 
-    SolverParams => GetSolverParams()
 
     ! get mesh
     ThisMesh => GetMesh(Solver)
@@ -50,7 +65,9 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
     END IF
 
     !CALL coupling_setup(TRIM(grid_dir), elmer_mesh_partitions, "1")
+    PRINT *, "BEFORE coupling setup"
     CALL coupling_setup(TRIM(grid_dir), elmer_mesh_partitions, TRIM(model_tstep))
+    PRINT *, "AFTER coupling setup"
 
 
     ! setting up Elmer-side variables for receiving YAC variables
