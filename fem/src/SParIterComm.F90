@@ -214,9 +214,10 @@ CONTAINS
 
     INTEGER :: ierr
     INTEGER :: req, prov
-    CHARACTER(LEN=1024) :: config_file
+    CHARACTER(LEN=*), PARAMETER :: xios_config_file = "iodef.xml"
+    CHARACTER(LEN=*), PARAMETER :: yac_config_file = "coupling.yaml"
 
-    
+
     !******************************************************************
 
     ParallelEnv => ParEnv
@@ -255,6 +256,26 @@ CONTAINS
     CALL MPI_COMM_SIZE( MPI_COMM_WORLD, ParEnv % PEs, ierr )
     CALL MPI_COMM_RANK( MPI_COMM_WORLD, ParEnv % MyPE, ierr )
 
+#ifdef HAVE_XIOS
+    WRITE(Message,'(A,A)') "Check for XIOS config file", xios_config_file
+    INQUIRE(FILE=xios_config_file, EXIST=USE_XIOS)
+    IF (USE_XIOS) THEN
+      WRITE(Message,'(A,A)') "Use XIOS with config file", xios_config_file
+    ELSE
+      WRITE(Message,'(A)') "XIOS config file not found, not using XIOS"
+    END IF
+#endif
+
+#ifdef HAVE_YAC
+    WRITE(Message,'(A,A)') "Check for YAC config file", yac_config_file
+    INQUIRE(FILE=yac_config_file, EXIST=USE_YAC)
+    IF (USE_YAC) THEN
+        WRITE(Message,'(A,A)') "Use YAC with config file", yac_config_file
+    ELSE
+        WRITE(Message,'(A)') "YAC config file not found, not using YAC"
+    END IF
+#endif
+
 ! Use mpi_handshake for comm splitting
 ! TODO how to make sure that mpi_handshake does not conflict with MPI_COMM_SPLIT based on ELMER_COLOUR?
 
@@ -265,7 +286,6 @@ CALL SetExecID()
 GROUP_NAMES(ELMER_GROUP_IDX) = TRIM(ExecID)
 
 #ifdef HAVE_XIOS
-    INQUIRE(FILE="iodef.xml", EXIST=USE_XIOS)
     ! add XIOS group for comm splitting
     IF (USE_XIOS) THEN
       ! Query handshake group label from xios
@@ -278,9 +298,6 @@ GROUP_NAMES(ELMER_GROUP_IDX) = TRIM(ExecID)
 #endif
 
 #ifdef HAVE_YAC
-    ! check config file and set flag USE_YAC
-    WRITE(config_file,'(A)') "coupling.yaml"
-    INQUIRE(FILE="coupling.yaml", EXIST=USE_YAC)
     ! add YAC group for comm splitting
     IF (USE_YAC) THEN
       ! Query mpi_handshake group label from coupler
@@ -303,11 +320,13 @@ CALL mpi_handshake(MPI_COMM_WORLD, GROUP_NAMES(1:NUM_GROUPS), GROUP_COMMS(1:NUM_
 ELMER_COMM_WORLD = GROUP_COMMS(ELMER_GROUP_IDX)  ! Set ELMER_COMM_WORLD determined through mpi_handshake
 
 ! Use XIOS library for IO
-! Must have xios and iodef.xml present
+! Must HAVE_XIOS and xios_config_file present
 #ifdef HAVE_XIOS
-    INQUIRE(FILE="iodef.xml", EXIST=USE_XIOS)
     IF (USE_XIOS) THEN
-      WRITE(Message,*) "Using XIOS with config-file: iodef.xml"
+      WRITE( Message,'(A,A)') &
+        "Using XIOS with config-file:", &
+        TRIM(xios_config_file)
+
       CALL INFO("SparIterComm",Message,Level=25)
       CALL SetExecID()
       CALL xios_initialize(TRIM(ExecID), global_comm=GROUP_COMMS(XIOS_GROUP_IDX))
@@ -332,11 +351,12 @@ ELMER_COMM_WORLD = GROUP_COMMS(ELMER_GROUP_IDX)  ! Set ELMER_COMM_WORLD determin
 ! Use YAC library for coupling
 !
 #ifdef HAVE_YAC
-    INQUIRE(FILE="coupling.yaml", EXIST=USE_YAC)
     IF (USE_YAC) THEN
-      WRITE(Message,'(A,A)') "Using YAC coupler with config-file:",TRIM(config_file)
+      WRITE(Message,'(A,A)') &
+        "Using YAC coupler with config-file:", &
+        TRIM(yac_config_file)
       CALL INFO("SparIterComm",Message,Level=25)
-      CALL coupling_init(TRIM(config_file), ELMER_COMM_WORLD, GROUP_COMMS(COUPLER_GROUP_IDX))
+      CALL coupling_init(TRIM(yac_config_file), ELMER_COMM_WORLD, GROUP_COMMS(COUPLER_GROUP_IDX))
     END IF
 #endif    
     
