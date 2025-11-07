@@ -58,6 +58,7 @@ MODULE Messages
 #ifdef HAVE_YAC
    USE elmer_coupling
    USE elmer_icon_coupling
+   USE elmer_ebfm_coupling
 #endif
    
    IMPLICIT NONE
