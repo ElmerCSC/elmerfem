@@ -63,6 +63,7 @@ MODULE SParIterComm
   USE elmer_coupling, ONLY: coupling_init, coupling_finalize, coupling_setup, &
                     mpi_handshake, MAX_GROUPNAME_LEN
   USE elmer_icon_coupling
+  USE elmer_ebfm_coupling
 #elif defined(ELMER_HAVE_MPI_MODULE)
   ! If YAC is not used, use the mpi_handshake from mo_mpi_handshake.F90
   USE mo_mpi_handshake, ONLY: mpi_handshake, MAX_GROUPNAME_LEN
@@ -258,6 +259,7 @@ CONTAINS
 ! Use mpi_handshake for comm splitting
 ! TODO how to make sure that mpi_handshake does not conflict with MPI_COMM_SPLIT based on ELMER_COLOUR?
 
+PRINT *, "BEFORE ELMER COMMS SPLITTING"
 ! Add Elmer group for comm splitting
 NUM_GROUPS = NUM_GROUPS + 1
 ELMER_GROUP_IDX = NUM_GROUPS
@@ -297,14 +299,18 @@ IF (NUM_GROUPS > MAX_NUM_GROUPS) THEN
     CALL Fatal( 'ParCommInit', Message )
 ENDIF
 
+PRINT *, "BEFORE HANDSHAKE"
 ! Do comm splitting using handshake
 CALL mpi_handshake(MPI_COMM_WORLD, GROUP_NAMES(1:NUM_GROUPS), GROUP_COMMS(1:NUM_GROUPS))
+
+PRINT *, "AFTER HANDSHAKE", ELMER_GROUP_IDX
 
 ELMER_COMM_WORLD = GROUP_COMMS(ELMER_GROUP_IDX)  ! Set ELMER_COMM_WORLD determined through mpi_handshake
 
 ! Use XIOS library for IO
 ! Must have xios and iodef.xml present
 #ifdef HAVE_XIOS
+    PRINT *, "CHECKING XIOS", ELMER_GROUP_IDX
     INQUIRE(FILE="iodef.xml", EXIST=USE_XIOS)
     IF (USE_XIOS) THEN
       WRITE(Message,*) "Using XIOS with config-file: iodef.xml"
@@ -315,9 +321,11 @@ ELMER_COMM_WORLD = GROUP_COMMS(ELMER_GROUP_IDX)  ! Set ELMER_COMM_WORLD determin
 #ifndef ELMER_COLOUR
 #define ELMER_COLOUR 0
 #endif
+    PRINT *, "NO XIOS", ELMER_GROUP_IDX
   ! TODO potential incompatibility with MPI_Handshake
       CALL MPI_COMM_SPLIT(MPI_COMM_WORLD,ELMER_COLOUR,&
            ParEnv % MyPE,ELMER_COMM_WORLD,ierr) 
+    PRINT *, "AFTER COMM SPLIT"
     ENDIF
 #else
     ! The colour could be set to be some different if we want to couple ElmerSolver with some other
@@ -331,6 +339,7 @@ ELMER_COMM_WORLD = GROUP_COMMS(ELMER_GROUP_IDX)  ! Set ELMER_COMM_WORLD determin
 
 ! Use YAC library for coupling
 !
+PRINT *, "BEFORE COUPLING INIT"
 #ifdef HAVE_YAC
     INQUIRE(FILE="coupling.yaml", EXIST=USE_YAC)
     IF (USE_YAC) THEN
