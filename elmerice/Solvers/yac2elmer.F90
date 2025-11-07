@@ -2,7 +2,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   USE DefUtils
   USE SolverUtils
   USE elmer_coupling
-  USE elmer_icon_coupling
+  USE elmer_ebfm_coupling
   
   IMPLICIT NONE
 
@@ -18,14 +18,14 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   CHARACTER(LEN=1024) ::  config_file, grid_dir, model_tstep
   INTEGER :: num_parts, elmer_mesh_partitions, comm_rank, comm_size, ierror
   INTEGER :: I, t, ierr
-  INTEGER, POINTER :: cltPerm(:), prPerm(:)
+  INTEGER, POINTER :: t_icePerm(:), smbPerm(:), runoffPerm(:)
   LOGICAL :: Parallel, FirstTime=.TRUE.
   TYPE(Mesh_t),POINTER :: Mesh
-  TYPE(Variable_t), POINTER :: cltVar, prVar
+  TYPE(Variable_t), POINTER :: t_iceVar, smbVar, runoffVar
 
   LOGICAL        :: Found
   
-  SAVE elmer_mesh_partitions, grid_dir, cltPerm, prPerm
+  SAVE elmer_mesh_partitions, grid_dir, t_icePerm, smbPerm, runoffPerm
   ! check if config file exist. Terminate program if it is not found!
 
   SolverParams => GetSolverParams()
@@ -75,19 +75,29 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
     ! from the coupling-deifnitions
     ! nodal variable
 
-    ALLOCATE(cltPerm(Mesh % NumberOfNodes),prPerm(GetNOFActive(Solver)))
+    ALLOCATE(t_icePerm(Mesh % NumberOfNodes), runoffPerm(Mesh % NumberOfNodes), smbPerm(Mesh % NumberOfNodes))
     DO i=1,Mesh % NumberOfNodes
-      cltPerm(i) = i
+      t_icePerm(i) = i
+      runoffPerm(i) = i
+      smbPerm(i) = t
     END DO
-    DO t=1,GetNOFActive(Solver)
-      prPerm(t) = t
-    END DO
+    ! This would be for a element(cell) variables
+    !DO t=1,GetNOFActive(Solver)
+      !smbPerm(t) = t
+    !END DO
+
+    PRINT *, "AFTER allocation"
     
-    CALL DefaultVariableAdd('tas', dofs=1, Perm = cltPerm)
+    ! nodal variables (everything that is not a flux)
+    CALL DefaultVariableAdd('T_ice', dofs=1, Perm = t_icePerm)
+    CALL DefaultVariableAdd('smb', dofs=1, Perm = smbPerm)
+    CALL DefaultVariableAdd('runoff', dofs=1, Perm = runoffPerm)
  
-    ! element wise (cell) variable
-    CALL DefaultVariableAdd('pr_snow', dofs=1, VariableType = Variable_on_elements, Perm = prPerm)
+    !! element wise (cell) variable
+    !CALL DefaultVariableAdd('smb', dofs=1, VariableType = Variable_on_elements, Perm = smbPerm)
+    !CALL DefaultVariableAdd('runoff', dofs=1, VariableType = Variable_on_elements, Perm = runoffPerm)
   
+    PRINT *, "AFTER variable addition"
     
     
     FirstTime = .FALSE.
@@ -99,36 +109,39 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   END IF
 !!!!!!!!!! DO WE HAVE TO INITIALIZE WITH EVERY CALL ? !!!!!!!!!!!!!!
   
-  WRITE(Message,*) 'BEFORE ELMER ICON INTERFACE'
+  WRITE(Message,*) 'BEFORE ELMER EBFM INTERFACE'
   CALL INFO(SolverName,Message,Level=3)
-  ! couple with ICON
-  CALL elmer_icon_interface(ParEnv % MyPE)
-  WRITE(Message,*) 'AFTER ELMER ICON INTERFACE'
+  ! couple with EBFM
+  CALL elmer_ebfm_interface(ParEnv % MyPE)
+  !CALL elmer_icon_interface(ParEnv % MyPE)
+  WRITE(Message,*) 'AFTER ELMER EBFM INTERFACE'
   CALL INFO(SolverName,Message,Level=3)
 
 
-  cltVar => VariableGet( Mesh % Variables, 'tas' )  
-  prVar => VariableGet( Mesh % Variables, 'pr_snow' )
+  t_iceVar => VariableGet( Mesh % Variables, 'T_ice' )  
+  smbVar => VariableGet( Mesh % Variables, 'smb' )
+  runoffVar => VariableGet( Mesh % Variables, 'runoff' )
   WRITE(Message,*) 'AFTER GETTING VARIABLES'
   CALL INFO(SolverName,Message,Level=3)
-  IF ((.NOT.ASSOCIATED(cltVar)) .OR. (.NOT.ASSOCIATED(prVar))) THEN
+  IF ((.NOT.ASSOCIATED(t_iceVar)) .OR. (.NOT.ASSOCIATED(smbVar)) .OR. (.NOT.ASSOCIATED(runoffVar))) THEN
     CALL FATAL(SolverName,'Elmer variables not associated')
   END IF
   
-  WRITE(Message,*) 'BEFORE WRITING VALUES'
+  WRITE(Message,*) 'BEFORE WRITING NODAL VALUES'
   CALL INFO(SolverName,Message,Level=3)
-  ! write over values for nodes
+   !write over values for nodes
   DO i=1, Mesh % NumberOfNodes
-    !IF (ParEnv % MyPE == 0) PRINT *,i, clt_field(i,1)
-    cltVar % Values(cltVar % Perm(i)) = clt_field(i,1)
-    !prVar  % Values(prVar %  Perm(i)) = pr_field(i,1)
+    t_iceVar % Values(t_iceVar % Perm(i)) = t_ice_field(i,1)
+    smbVar  % Values(smbVar %  Perm(t)) = smb_field(t,1)
+    runoffVar  % Values(runoffVar %  Perm(i)) = runoff_field(i,1)
   END DO
-  WRITE(Message,*) 'BEFORE WRITING SECOND VALUES'
+  WRITE(Message,*) 'BEFORE WRITING CELL VALUES'
   CALL INFO(SolverName,Message,Level=3)
   ! write over values for elements
-  DO t=1, GetNOFActive(Solver)
-     prVar  % Values(prVar %  Perm(t)) = pr_field(t,1)
-  END DO
+  !DO t=1, GetNOFActive(Solver)
+     !smbVar  % Values(smbVar %  Perm(t)) = smb_field(t,1)
+     !!runoffVar  % Values(runoffVar %  Perm(t)) = runoff_field(t,1)
+  !END DO
   !CALL INFO(SolverName, "Test output start", Level=1)
   !PRINT *, "Size of clt_field", SIZE(clt_field, 1),"First entry:", clt_field(1,1)
   !CALL INFO(SolverName, "Test output start", Level=1)
