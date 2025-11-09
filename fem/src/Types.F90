@@ -221,6 +221,7 @@ MODULE Types
     INTEGER, POINTER :: Perm(:)=>NULL(),InvPerm(:)=>NULL(), Gorder(:)=>NULL(), EPerm(:)=>NULL()
     INTEGER, ALLOCATABLE :: GRows(:), RowOwner(:)
     INTEGER, POINTER CONTIG :: Rows(:)=>NULL(),Cols(:)=>NULL(), Diag(:)=>NULL()
+    TYPE(C_PTR) :: Rows_cptr = C_NULL_PTR
 
     REAL(KIND=dp), POINTER CONTIG :: RHS(:)=>NULL(),BulkRHS(:)=>NULL(),RHS_im(:)=>NULL(),Force(:,:)=>NULL()
     REAL(KIND=dp), POINTER CONTIG :: BulkResidual(:)=>NULL()

@@ -1928,6 +1928,7 @@ CONTAINS
       pcondrsubr, dotprodfun, normfun, stopcfun )
 !------------------------------------------------------------------------------
     USE huti_interfaces
+    USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_LOC, C_NULL_PTR, C_F_POINTER, C_PTR, C_INTPTR_T
     IMPLICIT NONE
     PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondlsubr
@@ -1960,9 +1961,49 @@ CONTAINS
 
     REAL(KIND=dp), POINTER :: x(:),b(:),c(:),cser(:)
 
-    A => GlobalMatrix    
+  ! Pointers to internal matrix storage (Rows/Cols/Values)
+  INTEGER, POINTER :: my_rows(:)
+  INTEGER, POINTER :: my_cols(:)
+  REAL(KIND=dp), POINTER :: my_values(:)
+  INTEGER(KIND=C_INTPTR_T) :: addr
+  INTEGER, POINTER :: rows_ptr(:)
+  TYPE(C_PTR) :: tmp_cptr
+
+
+  ! Diagnostic helpers
+  INTEGER :: kmax, kk
+  CHARACTER(LEN=200) :: msg
+
+    A => GlobalMatrix
     ndim = HUTI_NDIM
 
+    ! Make local pointer aliases to the matrix storage (no local allocation)
+    my_rows   => A % Rows
+    my_cols   => A % Cols
+    my_values => A % Values
+!
+! TRY this
+! use iso_c_binding, only: c_ptr, c_loc
+!type Matrix_t
+!  ...
+!  INTEGER, POINTER :: Rows(:) => NULL()
+!  TYPE(c_ptr) :: Rows_cptr = c_null_ptr
+!  ...
+!end type
+!
+!! Make the storage a TARGET that will persist (module-level, component, or owner)
+!integer, target, allocatable :: rows_owner(:)
+!allocate(rows_owner(n))
+!rows_owner = ...
+!A%Rows => rows_owner
+!A%Rows_cptr = c_loc(rows_owner(1))
+!
+! call c_fun(A%Rows_cptr, n)  ! if your Fortran wrapper accepts a C_PTR
+!
+!
+!
+!
+!
     x => xvec
     b => rhsvec
 

@@ -29,6 +29,7 @@ MODULE ListMatrix
 
     USE CRSMatrix
     USE GeneralUtils
+  USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_LOC, C_NULL_PTR
 
     IMPLICIT NONE
 
@@ -163,6 +164,8 @@ CONTAINS
     A % NumberOfRows = n
     A % Rows => Rows
     A % Diag => Diag
+    ! Store C pointer to the underlying Rows target for C interop
+    A % Rows_cptr = C_LOC(Rows(1))
     A % Cols => Cols
     CALL CRS_SortMatrix(A)
     DEALLOCATE(A)
@@ -235,8 +238,10 @@ CONTAINS
     END DO
     
     A % NumberOfRows = n
-    A % Rows => Rows
-    A % Diag => Diag
+  A % Rows => Rows
+  A % Diag => Diag
+  ! Store C pointer to the underlying Rows target for C interop
+  A % Rows_cptr = C_LOC(Rows(1))
     A % Cols => Cols
     A % Values => Values  
   
@@ -331,6 +336,8 @@ CONTAINS
     IF( ASSOCIATED( A % Rows ) ) DEALLOCATE( A % Rows )
     IF( ASSOCIATED( A % Cols ) ) DEALLOCATE( A % Cols )
     IF( ASSOCIATED( A % Diag ) ) DEALLOCATE( A % Diag )
+    ! Clear stored C pointer when deallocating
+    A % Rows_cptr = C_NULL_PTR
     IF( ASSOCIATED( A % Values ) ) DEALLOCATE( A % Values )
 
     A % Rows => Null()  

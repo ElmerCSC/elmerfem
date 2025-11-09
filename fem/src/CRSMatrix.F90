@@ -47,6 +47,7 @@
 MODULE CRSMatrix
 
   USE Lists
+  USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_LOC, C_NULL_PTR
 
   IMPLICIT NONE
 
@@ -1418,6 +1419,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       CALL Fatal( 'CRS_CreateMatrix', 'Memory allocation error for matrix topology of size: '&
           //I2S(n))
     END IF
+
+    ! Expose C pointer to the rows storage for interop
+    A % Rows_cptr = C_LOC( A % Rows(1) )
 
     k = Ndeg*Ndeg*Total
     CALL Info('CRS_CreateMatrix','Creating CRS Matrix with nofs: '//I2S(k),Level=14)
