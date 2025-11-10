@@ -880,7 +880,7 @@ CONTAINS
     IMPLICIT NONE
 
     PRINT *, "DESTRCUTING ELMER_ICON_COUPLING"
-    CALL destruct_elmer_icon_coupling()
+    !CALL destruct_elmer_icon_coupling()
     PRINT *, "DESTRCUTING ELMER_EBFM_COUPLING"
     CALL destruct_elmer_ebfm_coupling()
 
