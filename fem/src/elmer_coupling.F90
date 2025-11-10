@@ -657,7 +657,7 @@ CONTAINS
 
     IMPLICIT NONE
 
-    CHARACTER(LEN=1024), INTENT(IN) :: coupling_config_file
+    CHARACTER(LEN=*), INTENT(IN) :: coupling_config_file
     INTEGER, INTENT(IN) :: elmer_comm
     INTEGER, INTENT(IN) :: yac_comm
 
