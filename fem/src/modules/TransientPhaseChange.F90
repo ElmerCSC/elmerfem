@@ -860,8 +860,7 @@ SUBROUTINE TransientPhaseChange_Init( Model,Solver,dt,Transient)
     CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
         '-nooutput '//TRIM(ComponentName(VariableName))//' Velo' )
 
-    IF(.NOT. ListCheckPresent( Params,'Time Derivative Order') ) &
-        CALL ListAddInteger( Params,'Time Derivative Order',1)
+    CALL ListAddNewInteger( Params,'Time Derivative Order',1)
 
     IF( ListGetLogical( Params,'Pull Rate Control',Found) ) THEN
       CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &

@@ -3695,14 +3695,52 @@ CONTAINS
        
        Solver % LocalSystemMode = 1
      END IF
-
+     
      IF(ListGetLogical( Params,'Solve Adjoint Equation',Found ) ) THEN
        IF(.NOT. ASSOCIATED( Solver % Matrix % RhsAdjoint ) ) THEN
          ALLOCATE( Solver % Matrix % RhsAdjoint(SIZE(Solver % Matrix % Rhs)))
-       END IF     
+       END IF
        CALL ListAddLogical( Params,'Constraint Modes Analysis Frozen',.TRUE.)
-     END IF      
+     END IF
      
+     
+     BLOCK 
+       INTEGER, POINTER :: SlaveSolverIndexes(:)
+       CHARACTER(:), ALLOCATABLE :: str
+       TYPE(Solver_t), POINTER :: SlaveSolver
+       TYPE(NormalTangential_t), POINTER :: NT
+       INTEGER :: dim
+
+       SlaveSolverIndexes =>  ListGetIntegerArray( Params,'prec solvers',Found )     
+
+       IF(ASSOCIATED(SlaveSolverIndexes)) THEN
+         DO i=1,SIZE(SlaveSolverIndexes)
+           j = SlaveSolverIndexes(i)
+           SlaveSolver => CurrentModel % Solvers(j)
+           
+           str = 'Normal-Tangential ' // GetVarName(SlaveSolver % Variable)
+           IF( ListGetLogicalAnyBC( CurrentModel, str ) ) THEN
+             CALL Info('DefaultStart','Generating N-T system for preconditioning solver!')
+
+             dim = SlaveSolver % Mesh % MeshDim
+             NT => SlaveSolver % NormalTangential
+             NT % NormalTangentialNOFNodes = 0
+             NT % NormalTangentialName = TRIM(str)
+             
+             CALL CheckNormalTangentialBoundary( CurrentModel, NT % NormalTangentialName, &
+                 NT % NormalTangentialNOFNodes, NT % BoundaryReorder, &
+                 NT % BoundaryNormals, NT % BoundaryTangent1, NT % BoundaryTangent2, dim )
+             
+             CALL AverageBoundaryNormals( CurrentModel, NT % NormalTangentialName, &
+                 NT % NormalTangentialNOFNodes, NT % BoundaryReorder, &
+                 NT % BoundaryNormals, NT % BoundaryTangent1, NT % BoundaryTangent2, &
+                 dim )
+           END IF
+         END DO
+
+       END IF
+     END BLOCK
+            
 !------------------------------------------------------------------------------
    END SUBROUTINE DefaultStart
 !------------------------------------------------------------------------------
@@ -5738,20 +5776,26 @@ CONTAINS
      ! This is done only once for each solver, hence the complex logic. 
      !---------------------------------------------------------------------
      IF( ListGetLogical( Params,'Apply Limiter',Found) ) THEN
-       CALL DetermineSoftLimiter( Solver )	
+       IF( ListGetLogical( Params,'Linear System Limiter',Found) ) THEN               
+         ! This is intended for cases when the linear solver comes with limiters. 
+         CALL PopulateLimiterValues( Solver )	
+       ELSE
+         CALL DetermineSoftLimiter( Solver )	
 
-       ! It is difficult to determine whether loads should be computed before or after setting the limiter.
-       ! There are cases where both alternative are needed.
-       IF(ListGetLogical( Params,'Apply Limiter Loads After',Found) ) THEN         
-         DO DOF=1,x % DOFs
-           name = TRIM(x % name)
-           IF (x % DOFs>1) name=ComponentName(name,DOF)              
-           CALL SetNodalLoads( CurrentModel,A,A % rhs, &
-               Name,DOF,x % DOFs,x % Perm ) 
-         END DO
+         ! It is difficult to determine whether loads should be computed before or after setting the limiter.
+         ! There are cases where both alternative are needed.
+         IF(ListGetLogical( Params,'Apply Limiter Loads After',Found) ) THEN         
+           DO DOF=1,x % DOFs
+             name = TRIM(x % name)
+             IF (x % DOFs>1) name=ComponentName(name,DOF)              
+             CALL SetNodalLoads( CurrentModel,A,A % rhs, &
+                 Name,DOF,x % DOFs,x % Perm ) 
+           END DO
+         END IF
        END IF
      END IF
          
+
      
      Offset = 0
      IF(PRESENT(UOffset)) Offset=UOffset

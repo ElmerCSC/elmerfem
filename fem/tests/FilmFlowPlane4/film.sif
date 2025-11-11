@@ -50,20 +50,19 @@ Solver 1
   Model Dimension = Integer 2
   Procedure = "FilmFlowSolver" "FilmFlowSolver"
 
-  Nonlinear System Convergence Tolerance = 1.0e-6
+  Nonlinear System Convergence Tolerance = 1.0e-5
   Nonlinear System Max Iterations = 30
   Nonlinear System Newton After Iterations = 30
-  Nonlinear System Relaxation Factor = 0.5
-  Nonlinear System Newton After Tolerance = 0.0e-3
+  Nonlinear System Relaxation Factor = $2.0/3.0
+  Nonlinear System Newton After Tolerance = 1.0e-2
 
   Linear System Solver = Direct
   Linear System Direct Method = umfpack
 
   Friction Model = String "darcy"
 
-  Convect = True
-  Min Reynolds Number = Real 4000.0
-
+! This does not seem to convergen without convection. 
+  Convect = False
 !  Calculate Loads = True
 End
 
@@ -131,10 +130,10 @@ Boundary Condition 4
   Name = "Left"
 !  FilmVelocity 1 = $v0
 ! This was tuned so that the upper condition is reproduced
-  Pressure 1 = 1.0e3
+  FilmPressure 1 = Real 1.0e3
 End
 
 
-Solver 1 :: Reference Norm = 7.77023018E-01
-Solver 3 :: Reference Norm = 9.99511199E+02
+Solver 1 :: Reference Norm = 2.39944967E+00
+Solver 3 :: Reference Norm = 9.99997273E+02
 

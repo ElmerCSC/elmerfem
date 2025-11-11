@@ -123,6 +123,7 @@
 #define HUTI_BICGSTABL_L ipar(16)
 #define HUTI_GCR_RESTART ipar(17)
 #define HUTI_IDRS_S ipar(18)
+#define HUTI_MPRGP_ADAPT ipar(19)
 						
 ! Parallel environment parameters (20-29)
 #define HUTI_MYPROC ipar(20)
@@ -153,7 +154,10 @@
 #define HUTI_ROBUST_TOLERANCE dpar(3)
 #define HUTI_ROBUST_STEPSIZE dpar(4)
 #define HUTI_ROBUST_MAXTOLERANCE dpar(5)  
-!  
+#define HUTI_MPRGP_GAMMA dpar(6)
+#define HUTI_MPRGP_TOLFACTOR dpar(7)
+
+						 !  
 ! End of definitions
 !
 

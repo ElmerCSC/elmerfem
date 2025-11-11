@@ -1,0 +1,79 @@
+! Test case to solve the heat equation with MPRGP iteration method with an upper temperature limit.
+! Currently only upper limit xor lower limit is supported.
+
+Check Keywords "Warn"
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian"
+
+  Simulation Type = Steady
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+!  Post File = case.vtu
+End
+
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Heat"
+  Active Solvers(1) = 1
+End
+
+Body Force 1
+  Heat Source = Variable Coordinate 1
+    Real MATC "100*sin(2*pi*tx)"
+  Temp Upper Limit = Real 1.5
+End
+
+
+Material 1
+  Name = "Ideal"
+  Heat Conductivity = 1.0
+  Density = 1.0
+End 
+
+
+Solver 1
+  Equation = HeatSolver
+  Variable = Temp
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Linear System Limiter = Logical True
+  Apply Limiter = Logical True
+
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Max Iterations = 1 ! should this be enforced in the code?
+
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = MPRGP
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = none ! preconditioning wont work with MPRGP
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 10
+
+  ! MPRGP specific parameters
+  Linear System MPRGP Gamma = Real 1.0
+  Linear System MPRGP Adaptive = Logical False
+  Linear System Symmetric = Logical True
+End 
+
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Temp = Real 0.0
+End
+
+
+Solver 1 :: Reference Norm = Real 1.1791925
+RUN

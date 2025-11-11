@@ -24,7 +24,7 @@ Simulation
   Output Intervals = 1
 
   Extruded Mesh Levels = 9
-! Post File = "DGsolution.ep"
+! Post File = "DGsolution.vtu"
 End
 
 Constants

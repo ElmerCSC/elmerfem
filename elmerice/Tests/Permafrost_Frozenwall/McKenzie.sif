@@ -181,7 +181,7 @@ Boundary Condition 5
   ! natural BC's (no flux, adiabatic)
 End
 
-Solver 2 :: Reference Norm = Real 99017.2259
+Solver 2 :: Reference Norm = Real 99481.7574
 Solver 2 :: Reference Norm Tolerance = Real 1E-02
-Solver 3 :: Reference Norm = Real 159.968008
+Solver 3 :: Reference Norm = Real 161.859949
 Solver 3 :: Reference Norm Tolerance = Real 1E-02

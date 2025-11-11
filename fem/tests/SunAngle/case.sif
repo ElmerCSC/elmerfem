@@ -18,8 +18,6 @@ Simulation
   Max Output Level = 7
 
   Coordinate System = "Cartesian"
-  Coordinate Mapping(3) = 1 2 3
-
   Simulation Type = "Scanning"
   Steady State Max Iterations = 1
   Output Intervals = 1
@@ -50,7 +48,7 @@ End
 
 Solver 1
   Exec Solver = "Always"
-  Equation = "Heat"
+  Equation = "SunAngle"
 
   Procedure = "./SunAngle" "SunAngleSolver"
   Variable = "SunAngle"
@@ -61,6 +59,13 @@ Solver 1
     Real MATC "(tx-1)*2*pi/nsteps"
 
   Exported Variable 1 = Height
+
+  Solver Timing = True
+!  Enforce Parallel = Logical True
+!  Enforce Serial = Logical True
+!  SunAngle Search Distance = Real 1.0e6
+
+  Nonlinear System Consistent Norm = True
 End
 
 

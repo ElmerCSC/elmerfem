@@ -724,14 +724,14 @@ CONTAINS
     CHARACTER(*), PARAMETER :: Caller = 'WriteVtuFile'
     LOGICAL :: ScalarsExist, VectorsExist, Found, &
         ComponentVector, ComponentVectorB, ComplementExists, &
-        Use2, IsHarmonic, FlipActive
+        Use2, IsHarmonic, FlipActive, RotateActive
     INTEGER :: DoIm
     LOGICAL :: WriteData, WriteXML, L, Buffered
     TYPE(Variable_t), POINTER :: Solution, Solution2, Solution3, TmpSolDg, TmpSolDg2, TmpSolDg3
     INTEGER, POINTER :: Perm(:), PermB(:), DispPerm(:), DispBPerm(:)
     REAL(KIND=dp), POINTER :: Values(:), Values2(:), Values3(:), DispValues(:)
     REAL(KIND=dp), POINTER :: ValuesB(:), ValuesB2(:), ValuesB3(:), DispBValues(:)
-    REAL(KIND=dp) :: x,y,z, val,ElemVectVal(3)
+    REAL(KIND=dp) :: x,y,z, val,ElemVectVal(3), vals(50)
     INTEGER, ALLOCATABLE, TARGET :: ElemInd(:)
     INTEGER, PARAMETER :: MAX_LAGRANGE_NODES = 729
     INTEGER :: TmpIndexes(MAX_LAGRANGE_NODES), VarType
@@ -944,7 +944,7 @@ CONTAINS
             END IF
           END IF
 
-          CALL Info(Caller,'Saving variable: '//TRIM(FieldName),Level=10)
+          CALL Info(Caller,'Saving '//I2S(dofs)//'-component variable: '//TRIM(FieldName),Level=10)
           
           VarType = Solution % Type
 
@@ -1074,6 +1074,17 @@ CONTAINS
           
           Perm => Solution % Perm
           FlipActive = Solution % PeriodicFlipActive 
+
+          RotateActive = .FALSE.
+          IF(dofs==3) THEN
+            IF(ASSOCIATED(Model % Mesh % PeriodicPerm)) THEN
+              IF( Solution % Solver % NormalTangential % NormalTangentialNOFNodes > 0 ) THEN
+                RotateActive = ListGetLogical( Solution %  Solver % Values, &
+                    'Apply Conforming BCs',Found )
+                CALL Info(Caller,'Rotate active for variable: '//TRIM(Solution % Name))
+              END IF
+            END IF
+          END IF
           
           !---------------------------------------------------------------------
           ! There may be special complementary variables such as 
@@ -1236,10 +1247,11 @@ CONTAINS
                     j = PermB(i)
                   END IF
                 END IF
+
                 
                 DO k=1,sdofs              
                   IF(j==0 .OR. k > dofs) THEN
-                    val = 0.0_dp
+                    vals(k) = 0.0_dp
                   ELSE IF( NoModes + NoModes2 == 0  .OR. iField == 0 ) THEN 
                     IF( Use2 ) THEN
                       IF( ComponentVectorB ) THEN
@@ -1247,19 +1259,19 @@ CONTAINS
                         IF( k == 2 ) val = ValuesB2(j)
                         IF( k == 3 ) val = ValuesB3(j)
                       ELSE
-                        val = ValuesB(dofs*(j-1)+k)              
+                        vals(k) = ValuesB(dofs*(j-1)+k)              
                       END IF
                     ELSE
                       IF( ComponentVector ) THEN
-                        IF( k == 1 ) val = Values(j)
-                        IF( k == 2 ) val = Values2(j)
-                        IF( k == 3 ) val = Values3(j)
+                        IF( k == 1 ) vals(k) = Values(j)
+                        IF( k == 2 ) vals(k) = Values2(j)
+                        IF( k == 3 ) vals(k) = Values3(j)
                       ELSE
                         IF(dofs*(j-1)+k > SIZE(Values) .OR. dofs*(j-1)+k < 1 ) THEN
                           PRINT *,'vtu:',dofs,j,k,SIZE(values),dofs*(j-1)+k
                           call flush(6)
                         END IF
-                        val = Values(dofs*(j-1)+k)              
+                        vals(k) = Values(dofs*(j-1)+k)              
                       END IF
                     END IF
                   ELSE IF( NoModes > 0 .AND. iField <= NoFields ) THEN
@@ -1280,18 +1292,53 @@ CONTAINS
                         zval = EigenVectors(IndField,dofs*(j-1)+k) 
                       END IF
                     END IF
-                    val = PickComplex(zval,EigenVectorMode+DoIm) 
-
+                    vals(k) = PickComplex(zval,EigenVectorMode+DoIm) 
+                    
                   ELSE IF( NoModes2 > 0 ) THEN
-                    val = ConstraintModes(IndField,dofs*(j-1)+k)
-                   END IF
+                    vals(k) = ConstraintModes(IndField,dofs*(j-1)+k)
+                  END IF
 
                   IF( FlipActive ) THEN
-                    IF( Model % Mesh % PeriodicFlip(i) ) val = -val
+                    IF( Model % Mesh % PeriodicFlip(i) ) vals(k) = -vals(k)
                   END IF
-                  
-                  CALL AscBinRealWrite( val )
                 END DO
+
+                IF(RotateActive) THEN
+                  BLOCK 
+                    TYPE(NormalTangential_t), POINTER :: NT                    
+                    REAL(KIND=dp) :: vals0(dofs), Rot1(dofs,dofs), Rot2(dofs,dofs), r1, r2, x1(dofs), x2(dofs)
+                    INTEGER :: kk,ll
+                    NT => Solution % Solver % NormalTangential
+                    jj = Model % Mesh % PeriodicPerm(i)
+                    IF(jj > 0) THEN
+                      kk = NT % BoundaryReOrder(i)
+                      ll = NT % BoundaryReorder(jj)
+
+                      IF(kk>0 .AND. ll>0) THEN
+                        vals0(1:dofs) = vals(1:dofs)
+                        
+                        Rot1(1:dofs,1) = NT % BoundaryNormals(kk,1:dofs)
+                        Rot1(1:dofs,2) = NT % BoundaryTangent1(kk,1:dofs)
+                        
+                        Rot2(1,1:dofs) = NT % BoundaryNormals(ll,1:dofs)
+                        Rot2(2,1:dofs) = NT % BoundaryTangent1(ll,1:dofs)
+
+                        IF(dofs==3) THEN
+                          Rot1(1:dofs,3) = NT % BoundaryTangent2(kk,1:dofs)                        
+                          Rot2(3,1:dofs) = NT % BoundaryTangent2(ll,1:dofs)
+                        END IF
+                          
+                        vals = MATMUL(Rot1,MATMUL(Rot2,vals0))                        
+                      END IF
+
+                    END IF
+                  END BLOCK
+                END IF
+                
+                DO k=1,sdofs                              
+                  CALL AscBinRealWrite( vals(k) )
+                END DO
+                  
               END DO
 
               CALL AscBinRealWrite( 0.0_dp, .TRUE. )

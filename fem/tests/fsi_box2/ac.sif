@@ -22,7 +22,7 @@ Simulation
 ! this file is needed for the next phase
   Output File = "../ac.result"
 
-!  Post File = "ac.ep"
+!  Post File = "ac.vtu"
 End
 
 Body 1

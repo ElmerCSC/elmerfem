@@ -81,7 +81,7 @@
      USE MeshUtils, ONLY : MeshExtrude, MeshExtrudeSlices, PeriodicProjector, &
          CoordinateTransformation, InitializeElementDescriptions, ReleaseMesh, &
          CalculateMeshPieces, SetActiveElementsTable, SetCurrentMesh, &
-         MarkSharpEdges
+         MarkSharpEdges, TagBodiesUsingCondition
      USE MainUtils, ONLY : AddEquationBasics, AddEquationSolution, AddExecWhenFlag, &
          PredictorCorrectorControl, SingleSolver, SolveEquations, SolverActivate, &
          SwapMesh
@@ -465,7 +465,7 @@
              CALL MarkSharpEdges( CurrentModel % Meshes, SharpEdge, phi )
            END BLOCK
          END IF
-         
+
          IF(.NOT. Silent ) THEN
             CALL Info( 'MAIN', '-------------------------------------')
           END IF 
@@ -526,8 +526,13 @@
 !      Add coordinates such that if there is a solver that is run on creation
 !      the coordinates are already usable then.
 !------------------------------------------------------------------------------
-       IF ( FirstLoad ) CALL AddMeshCoordinates()
+       IF ( FirstLoad ) THEN
+         CALL AddMeshCoordinates()
 
+         ! We can toggle with the body indexes already at this moment.
+         CALL TagBodiesUsingCondition( CurrentModel, CurrentModel % Meshes )
+       END IF
+                
 !------------------------------------------------------------------------------
 !      Figure out what (flow,heat,stress,...) should be computed, and get
 !      memory for the dofs
