@@ -1430,6 +1430,10 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       CALL Fatal( 'CRS_CreateMatrix', 'Memory allocation error for matrix cols of size: '&
           //I2S(k) )
     END IF
+#ifdef HAVE_PERMON
+    ! Expose C pointer to the cols storage for interop
+    A % Cols_cptr = C_LOC( A % Cols(1) )
+#endif
 
     IF ( AllocValues ) THEN
       ALLOCATE( A % Values(k), STAT=istat )
@@ -1437,6 +1441,10 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
         CALL Fatal( 'CRS_CreateMatrix', 'Memory allocation error for matrix values of size: '&
             //I2S(k) )
       END IF
+#ifdef HAVE_PERMON
+      ! Expose C pointer to the values storage for interop
+      A % Values_cptr = C_LOC( A % Values(1) )
+#endif
     END IF
 
     NULLIFY( A % ILUValues )

@@ -1928,7 +1928,7 @@ CONTAINS
       pcondrsubr, dotprodfun, normfun, stopcfun )
 !------------------------------------------------------------------------------
     USE huti_interfaces
-    USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_LOC, C_NULL_PTR, C_F_POINTER, C_PTR, C_INTPTR_T
+    USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_LOC, C_NULL_PTR, C_F_POINTER, C_PTR, C_INTPTR_T, C_INT
     IMPLICIT NONE
     PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondlsubr
@@ -1951,6 +1951,7 @@ CONTAINS
     REAL(KIND=dp) :: final_norm_gp
     
     INTEGER :: n
+    INTEGER :: NumberOfCols
 
     ! MPRGP parameters (passed from calling routine)
     REAL(KIND=dp) :: Gamma, TolFactor
@@ -1960,6 +1961,10 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: A, Aser
 
     REAL(KIND=dp), POINTER :: x(:),b(:),c(:),cser(:)
+#ifdef HAVE_PERMON
+  TYPE(C_PTR) :: rows_cptr, cols_cptr, vals_cptr
+  TYPE(C_PTR) :: b_cptr, c_cptr, limits_cptr
+#endif
 
   ! Pointers to internal matrix storage (Rows/Cols/Values)
   INTEGER, POINTER :: my_rows(:)
@@ -1973,6 +1978,32 @@ CONTAINS
   ! Diagnostic helpers
   INTEGER :: kmax, kk
   CHARACTER(LEN=200) :: msg
+
+  ! C helper interface (prints rows from C side)
+  INTERFACE
+    SUBROUTINE mprgp_print_rows(cptr, addr, n) BIND(C, NAME="mprgp_print_rows")
+      USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_PTR, C_INTPTR_T, C_INT
+      TYPE(C_PTR), VALUE :: cptr
+      INTEGER(C_INTPTR_T), VALUE :: addr
+      INTEGER(C_INT), VALUE :: n
+    END SUBROUTINE mprgp_print_rows
+  END INTERFACE
+
+! TODO, add this into an if HAVE_PERMON block
+! PERMON solver interface
+INTERFACE
+  SUBROUTINE permon_solve(rows, cols, vals, nrows, ncols, b_ptr, limits_ptr) BIND(C, NAME="permon_solve")
+    USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_PTR, C_INT
+    TYPE(C_PTR), VALUE :: rows
+    TYPE(C_PTR), VALUE :: cols
+    TYPE(C_PTR), VALUE :: vals
+    INTEGER(C_INT), VALUE :: nrows
+    INTEGER(C_INT), VALUE :: ncols
+    TYPE(C_PTR), VALUE :: b_ptr
+    TYPE(C_PTR), VALUE :: limits_ptr
+  END SUBROUTINE permon_solve
+END INTERFACE
+
 
     A => GlobalMatrix
     ndim = HUTI_NDIM

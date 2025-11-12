@@ -61,6 +61,7 @@ MODULE SolverUtils
    USE ParallelUtils
    USE ParallelEigenSolve
    USE MatrixAssembly
+   USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_LOC
    
    IMPLICIT NONE
 
@@ -1310,12 +1311,19 @@ CONTAINS
            IF(ASSOCIATED(Var % LowerLimit)) THEN
              IF(SIZE(Var % LowerLimit) /= totsize) THEN
                DEALLOCATE(Var % LowerLimit)
+#ifdef HAVE_PERMON
+               Var % LowerLimit_cptr = C_NULL_PTR
+#endif
              END IF
            END IF
            IF( .NOT. ASSOCIATED(Var % LowerLimit ) ) THEN
              CALL Info(Caller,'Allocating LowerLimit for variable: '//TRIM(Name),Level=10)
              ALLOCATE( Var % LowerLimit( totsize ) )
              Var % LowerLimit = -bigval
+#ifdef HAVE_PERMON
+             ! Expose C pointer to the LowerLimit storage for interop
+             Var % LowerLimit_cptr = C_LOC( Var % LowerLimit(1) )
+#endif
            END IF
            LimitValues => Var % LowerLimit
          ELSE
@@ -1615,6 +1623,9 @@ CONTAINS
              IF(SIZE(Var % LowerLimitActive) /= totsize) THEN
                DEALLOCATE(Var % LowerLimitActive)
                DEALLOCATE(Var % LowerLimit)
+#ifdef HAVE_PERMON
+               Var % LowerLimit_cptr = C_NULL_PTR
+#endif
              END IF
            END IF
            IF( .NOT. ASSOCIATED(Var % LowerLimitActive ) ) THEN
@@ -1622,6 +1633,10 @@ CONTAINS
              Var % LowerLimitActive = .FALSE.
              ALLOCATE( Var % LowerLimit( totsize ) )
              Var % LowerLimit = -HUGE(val)
+#ifdef HAVE_PERMON
+             ! Expose C pointer to the LowerLimit storage for interop
+             Var % LowerLimit_cptr = C_LOC( Var % LowerLimit(1) )
+#endif
            END IF
            LimitActive => Var % LowerLimitActive
          ELSE

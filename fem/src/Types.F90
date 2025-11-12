@@ -221,8 +221,13 @@ MODULE Types
     INTEGER, POINTER :: Perm(:)=>NULL(),InvPerm(:)=>NULL(), Gorder(:)=>NULL(), EPerm(:)=>NULL()
     INTEGER, ALLOCATABLE :: GRows(:), RowOwner(:)
     INTEGER, POINTER CONTIG :: Rows(:)=>NULL(),Cols(:)=>NULL(), Diag(:)=>NULL()
+#ifdef HAVE_PERMON
     TYPE(C_PTR) :: Rows_cptr = C_NULL_PTR
-
+    TYPE(C_PTR) :: Cols_cptr = C_NULL_PTR
+    TYPE(C_PTR) :: Values_cptr = C_NULL_PTR
+    TYPE(C_PTR) :: RHS_cptr = C_NULL_PTR
+    TYPE(C_PTR) :: C_cptr = C_NULL_PTR
+#endif
     REAL(KIND=dp), POINTER CONTIG :: RHS(:)=>NULL(),BulkRHS(:)=>NULL(),RHS_im(:)=>NULL(),Force(:,:)=>NULL()
     REAL(KIND=dp), POINTER CONTIG :: BulkResidual(:)=>NULL()
 
@@ -636,6 +641,9 @@ MODULE Types
           SteadyValues(:) => NULL()
      LOGICAL, POINTER :: UpperLimitActive(:) => NULL(), LowerLimitActive(:) => NULL()
      REAL(KIND=dp), POINTER :: UpperLimit(:) => NULL(), LowerLimit(:) => NULL()
+#ifdef HAVE_PERMON
+     TYPE(C_PTR) :: LowerLimit_cptr = C_NULL_PTR
+#endif
      COMPLEX(KIND=dp), POINTER :: CValues(:) => NULL()
      TYPE(IntegrationPointsTable_t), POINTER :: IPTable => NULL()
    END TYPE Variable_t
