@@ -1963,7 +1963,7 @@ CONTAINS
     REAL(KIND=dp), POINTER :: x(:),b(:),c(:),cser(:)
 #ifdef HAVE_PERMON
   TYPE(C_PTR) :: rows_cptr, cols_cptr, vals_cptr
-  TYPE(C_PTR) :: b_cptr, c_cptr, limits_cptr
+  TYPE(C_PTR) :: b_cptr, limits_cptr, x_cptr
 #endif
 
   ! Pointers to internal matrix storage (Rows/Cols/Values)
@@ -1972,7 +1972,6 @@ CONTAINS
   REAL(KIND=dp), POINTER :: my_values(:)
   INTEGER(KIND=C_INTPTR_T) :: addr
   INTEGER, POINTER :: rows_ptr(:)
-  TYPE(C_PTR) :: tmp_cptr
 
 
   ! Diagnostic helpers
@@ -1992,7 +1991,7 @@ CONTAINS
 ! TODO, add this into an if HAVE_PERMON block
 ! PERMON solver interface
 INTERFACE
-  SUBROUTINE permon_solve(rows, cols, vals, nrows, ncols, b_ptr, limits_ptr) BIND(C, NAME="permon_solve")
+  SUBROUTINE permon_solve(rows, cols, vals, nrows, ncols, b_ptr, limits_ptr, x_ptr) BIND(C, NAME="permon_solve")
     USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_PTR, C_INT
     TYPE(C_PTR), VALUE :: rows
     TYPE(C_PTR), VALUE :: cols
@@ -2001,6 +2000,7 @@ INTERFACE
     INTEGER(C_INT), VALUE :: ncols
     TYPE(C_PTR), VALUE :: b_ptr
     TYPE(C_PTR), VALUE :: limits_ptr
+    TYPE(C_PTR), VALUE :: x_ptr
   END SUBROUTINE permon_solve
 END INTERFACE
 
@@ -2083,15 +2083,23 @@ END INTERFACE
     Converged = .FALSE.
     Diverged = .FALSE.
     n = ndim
+
+#ifdef HAVE_PERMON
+    CALL Info('itermethod_mprgp', 'HAVE_PERMON defined, calling permon_solve', Level=12)
+    CALL permon_solve(A%Rows_cptr, A%Cols_cptr, A%Values_cptr, &
+                INT(A%NumberOfRows, KIND=C_INT), INT(NumberOfCols, KIND=C_INT), &
+                A%RHS_cptr, limits_cptr, x_cptr)
+#endif
+#ifndef HAVE_PERMON
+    CALL Info('itermethod_mprgp', 'HAVE_PERMON not defined, calling MPRGP', Level=12)
     CALL MPRGP(ndim, x, b, c, MinTol, Rounds, Gamma, adapt, bound, TolFactor, &
         ncg, ne, np, iters, Converged, final_norm_gp )
-
     CALL Info('MPRGPSolver','MPRGP finished: iters='//I2S(iters)// &
           ', ncg='//I2S(ncg)//', ne='//I2S(ne)//', np='//I2S(np), Level=10)
-
     IF(Converged) HUTI_INFO = HUTI_CONVERGENCE
     IF(Diverged) HUTI_INFO = HUTI_DIVERGENCE
     IF ( (.NOT. Converged) .AND. (.NOT. Diverged) ) HUTI_INFO = HUTI_MAXITER
+#endif
 
 
     IF( ASSOCIATED(Aser % DiagScaling ) ) THEN
