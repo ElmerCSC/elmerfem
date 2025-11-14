@@ -164,11 +164,9 @@ CONTAINS
     A % NumberOfRows = n
     A % Rows => Rows
     A % Diag => Diag
-    ! Store C pointer to the underlying Rows target for C interop
-    A % Rows_cptr = C_LOC(Rows(1))
     A % Cols => Cols
 #ifdef HAVE_PERMON
-    ! Store C pointer to the underlying Cols target for C interop
+    A % Rows_cptr = C_LOC(Rows(1))
     A % Cols_cptr = C_LOC(Cols(1))
 #endif
     CALL CRS_SortMatrix(A)
@@ -244,17 +242,12 @@ CONTAINS
     A % NumberOfRows = n
   A % Rows => Rows
   A % Diag => Diag
-  ! Store C pointer to the underlying Rows target for C interop
+  A % Cols => Cols
+  A % Values => Values
+#ifdef HAVE_PERMON
   A % Rows_cptr = C_LOC(Rows(1))
-    A % Cols => Cols
-#ifdef HAVE_PERMON
-    ! Store C pointer to the underlying Cols target for C interop
-    A % Cols_cptr = C_LOC(Cols(1))
-#endif
-    A % Values => Values
-#ifdef HAVE_PERMON
-    ! Store C pointer to the underlying Values target for C interop
-    A % Values_cptr = C_LOC(Values(1))
+  A % Cols_cptr = C_LOC(Cols(1))
+  A % Values_cptr = C_LOC(Values(1))
 #endif  
   
     A % Ordered=.FALSE.
@@ -348,9 +341,8 @@ CONTAINS
     IF( ASSOCIATED( A % Rows ) ) DEALLOCATE( A % Rows )
     IF( ASSOCIATED( A % Cols ) ) DEALLOCATE( A % Cols )
     IF( ASSOCIATED( A % Diag ) ) DEALLOCATE( A % Diag )
-    ! Clear stored C pointers when deallocating
-    A % Rows_cptr = C_NULL_PTR
 #ifdef HAVE_PERMON
+    A % Rows_cptr = C_NULL_PTR
     A % Cols_cptr = C_NULL_PTR
     A % Values_cptr = C_NULL_PTR
 #endif

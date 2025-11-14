@@ -1419,10 +1419,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       CALL Fatal( 'CRS_CreateMatrix', 'Memory allocation error for matrix topology of size: '&
           //I2S(n))
     END IF
-
-    ! Expose C pointer to the rows storage for interop
+#ifdef HAVE_PERMON
     A % Rows_cptr = C_LOC( A % Rows(1) )
-
+#endif
     k = Ndeg*Ndeg*Total
     CALL Info('CRS_CreateMatrix','Creating CRS Matrix with nofs: '//I2S(k),Level=14)
     ALLOCATE( A % Cols(k),STAT=istat )
@@ -1431,7 +1430,6 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
           //I2S(k) )
     END IF
 #ifdef HAVE_PERMON
-    ! Expose C pointer to the cols storage for interop
     A % Cols_cptr = C_LOC( A % Cols(1) )
 #endif
 
@@ -1442,7 +1440,6 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
             //I2S(k) )
       END IF
 #ifdef HAVE_PERMON
-      ! Expose C pointer to the values storage for interop
       A % Values_cptr = C_LOC( A % Values(1) )
 #endif
     END IF
