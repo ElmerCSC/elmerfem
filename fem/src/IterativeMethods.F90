@@ -1928,7 +1928,10 @@ CONTAINS
       pcondrsubr, dotprodfun, normfun, stopcfun )
 !------------------------------------------------------------------------------
     USE huti_interfaces
-    USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_LOC, C_NULL_PTR, C_F_POINTER, C_PTR, C_INTPTR_T, C_INT
+#ifdef HAVE_PERMON
+      USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_LOC, C_NULL_PTR, C_F_POINTER, C_PTR, C_INTPTR_T, C_INT
+      USE PermonInterface
+#endif
     IMPLICIT NONE
     PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondlsubr
@@ -1949,6 +1952,7 @@ CONTAINS
     LOGICAL :: Converged, Diverged, UseStopCFun
     INTEGER :: ncg, ne, np, iters
     REAL(KIND=dp) :: final_norm_gp
+    LOGICAL :: Found, UsePermon
     
     INTEGER :: n
     INTEGER :: NumberOfCols
@@ -1966,75 +1970,14 @@ CONTAINS
   TYPE(C_PTR) :: b_cptr, limits_cptr, x_cptr
 #endif
 
-  ! Pointers to internal matrix storage (Rows/Cols/Values)
-  INTEGER, POINTER :: my_rows(:)
-  INTEGER, POINTER :: my_cols(:)
-  REAL(KIND=dp), POINTER :: my_values(:)
-  INTEGER(KIND=C_INTPTR_T) :: addr
-  INTEGER, POINTER :: rows_ptr(:)
-
-
   ! Diagnostic helpers
   INTEGER :: kmax, kk
   CHARACTER(LEN=200) :: msg
 
-  ! C helper interface (prints rows from C side)
-  INTERFACE
-    SUBROUTINE mprgp_print_rows(cptr, addr, n) BIND(C, NAME="mprgp_print_rows")
-      USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_PTR, C_INTPTR_T, C_INT
-      TYPE(C_PTR), VALUE :: cptr
-      INTEGER(C_INTPTR_T), VALUE :: addr
-      INTEGER(C_INT), VALUE :: n
-    END SUBROUTINE mprgp_print_rows
-  END INTERFACE
-
-! TODO, add this into an if HAVE_PERMON block
-! PERMON solver interface
-INTERFACE
-  SUBROUTINE permon_solve(rows, cols, vals, nrows, ncols, b_ptr, limits_ptr, x_ptr) BIND(C, NAME="permon_solve")
-    USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_PTR, C_INT
-    TYPE(C_PTR), VALUE :: rows
-    TYPE(C_PTR), VALUE :: cols
-    TYPE(C_PTR), VALUE :: vals
-    INTEGER(C_INT), VALUE :: nrows
-    INTEGER(C_INT), VALUE :: ncols
-    TYPE(C_PTR), VALUE :: b_ptr
-    TYPE(C_PTR), VALUE :: limits_ptr
-    TYPE(C_PTR), VALUE :: x_ptr
-  END SUBROUTINE permon_solve
-END INTERFACE
-
-
     A => GlobalMatrix
     ndim = HUTI_NDIM
 
-    ! Make local pointer aliases to the matrix storage (no local allocation)
-    my_rows   => A % Rows
-    my_cols   => A % Cols
-    my_values => A % Values
-!
-! TRY this
-! use iso_c_binding, only: c_ptr, c_loc
-!type Matrix_t
-!  ...
-!  INTEGER, POINTER :: Rows(:) => NULL()
-!  TYPE(c_ptr) :: Rows_cptr = c_null_ptr
-!  ...
-!end type
-!
-!! Make the storage a TARGET that will persist (module-level, component, or owner)
-!integer, target, allocatable :: rows_owner(:)
-!allocate(rows_owner(n))
-!rows_owner = ...
-!A%Rows => rows_owner
-!A%Rows_cptr = c_loc(rows_owner(1))
-!
-! call c_fun(A%Rows_cptr, n)  ! if your Fortran wrapper accepts a C_PTR
-!
-!
-!
-!
-!
+
     x => xvec
     b => rhsvec
 
@@ -2077,6 +2020,58 @@ END INTERFACE
           c(j) = cser(i)
         END IF
       END DO
+
+    ! Check if Permon should be used
+    UsePermon = .FALSE.
+#ifdef HAVE_PERMON
+    IF (ListGetLogical(CurrentModel % Solver % Values, 'Linear System Use Permon', Found) .AND. Found) THEN
+      UsePermon = .TRUE.
+    END IF
+#else
+    IF (ListGetLogical(CurrentModel % Solver % Values, 'Linear System Use Permon', Found) .AND. Found) THEN
+      CALL Fatal('itermethod_mprgp','Permon requested but not compiled with!')
+    END IF
+#endif
+
+
+  IF (UsePermon) THEN
+    CALL Info('itermethod_mprgp', 'HAVE_PERMON defined, calling permon_solve', Level=12)
+    ! Compute number of columns: In CRS format, Cols contains column indices (1-based).
+    ! The maximum value in Cols is the maximum column index, which equals the number of columns.
+    ! For square matrices, this should equal NumberOfRows.
+    IF (ASSOCIATED(A%Cols) .AND. SIZE(A%Cols) > 0) THEN
+      NumberOfCols = MAXVAL(A%Cols)  ! Max column index = number of columns (1-based indexing)
+    ELSE
+      CALL FATAL('itermethod_mprgp', 'A%Cols is not associated or empty')
+    END IF
+    ! Convert to C_INT to ensure type compatibility with C function
+    ! Get LowerLimit_cptr from Variable (not Matrix)
+    IF (ASSOCIATED(CurrentModel % Solver % Variable % LowerLimit)) THEN
+      limits_cptr = CurrentModel % Solver % Variable % LowerLimit_cptr
+    ELSE IF (ASSOCIATED(CurrentModel % Solver % Variable % UpperLimit)) THEN
+      ! If LowerLimit not available, use UpperLimit (though permon_solve expects LowerLimit)
+      limits_cptr = C_NULL_PTR  ! Or handle UpperLimit separately if needed
+    ELSE
+      limits_cptr = C_NULL_PTR
+    END IF
+    x_cptr = C_NULL_PTR
+    ! consider associated with x? Not sure if it'll work
+    IF (SIZE(xvec) > 0) THEN 
+      x_cptr = C_LOC(xvec(1))
+    END IF
+
+    IF (ASSOCIATED(b)) THEN
+      kmax = MIN(10, SIZE(b))
+      IF (kmax > 0) THEN
+        WRITE(msg,'(A,I0,A)') 'First ', kmax, ' entries of b:'
+        CALL Info('itermethod_mprgp',TRIM(msg))
+        DO kk = 1, kmax
+          WRITE(msg,'(I3,2X,ES12.5)') kk, b(kk)
+          CALL Info('itermethod_mprgp',TRIM(msg))
+        END DO
+      END IF
+      WRITE(msg,'(A,ES12.5)') 'norm of b = ', normfun(ndim, b, 1)
+      CALL Info('itermethod_mprgp',TRIM(msg)) 
     END IF
       
     
@@ -2084,14 +2079,16 @@ END INTERFACE
     Diverged = .FALSE.
     n = ndim
 
-#ifdef HAVE_PERMON
-    CALL Info('itermethod_mprgp', 'HAVE_PERMON defined, calling permon_solve', Level=12)
+
+  IF (UsePermon) THEN
+    CALL Info('itermethod_mprgp', 'Using Permon solver', Level=12)
     CALL permon_solve(A%Rows_cptr, A%Cols_cptr, A%Values_cptr, &
                 INT(A%NumberOfRows, KIND=C_INT), INT(NumberOfCols, KIND=C_INT), &
                 A%RHS_cptr, limits_cptr, x_cptr)
-#endif
-#ifndef HAVE_PERMON
-    CALL Info('itermethod_mprgp', 'HAVE_PERMON not defined, calling MPRGP', Level=12)
+    ! TODO pass convergence info from Permon to Elmer
+    HUTI_INFO = HUTI_CONVERGENCE
+  ELSE
+    CALL Info('itermethod_mprgp', 'Permon not requested, calling MPRGP', Level=12)
     CALL MPRGP(ndim, x, b, c, MinTol, Rounds, Gamma, adapt, bound, TolFactor, &
         ncg, ne, np, iters, Converged, final_norm_gp )
     CALL Info('MPRGPSolver','MPRGP finished: iters='//I2S(iters)// &
@@ -2099,7 +2096,7 @@ END INTERFACE
     IF(Converged) HUTI_INFO = HUTI_CONVERGENCE
     IF(Diverged) HUTI_INFO = HUTI_DIVERGENCE
     IF ( (.NOT. Converged) .AND. (.NOT. Diverged) ) HUTI_INFO = HUTI_MAXITER
-#endif
+  END IF
 
 
     IF( ASSOCIATED(Aser % DiagScaling ) ) THEN
