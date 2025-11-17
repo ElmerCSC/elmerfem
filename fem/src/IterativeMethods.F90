@@ -2443,60 +2443,32 @@ CONTAINS
 #ifdef HAVE_PERMON
     SUBROUTINE solve_with_permon()
       CALL Info('itermethod_mprgp', 'HAVE_PERMON defined, calling permon_solve', Level=12)
-      ! Compute number of columns: In CRS format, Cols contains column indices (1-based).
-      ! The maximum value in Cols is the maximum column index, which equals the number of columns.
-      ! For square matrices, this should equal NumberOfRows.
       IF (ASSOCIATED(A%Cols) .AND. SIZE(A%Cols) > 0) THEN
         NumberOfCols = MAXVAL(A%Cols)  ! Max column index = number of columns (1-based indexing)
       ELSE
         CALL FATAL('itermethod_mprgp', 'A%Cols is not associated or empty')
       END IF
-      ! Convert to C_INT to ensure type compatibility with C function
-      ! Get LowerLimit_cptr from Variable (not Matrix)
+
       IF (ASSOCIATED(CurrentModel % Solver % Variable % LowerLimit)) THEN
         limits_cptr = CurrentModel % Solver % Variable % LowerLimit_cptr
+      ! TODO check if permon allows upper limit
       ELSE IF (ASSOCIATED(CurrentModel % Solver % Variable % UpperLimit)) THEN
-        ! If LowerLimit not available, use UpperLimit (though permon_solve expects LowerLimit)
-        limits_cptr = C_NULL_PTR  ! Or handle UpperLimit separately if needed
+        !limits_cptr = C_NULL_PTR
+        CALL FATAL('itermethod_mprgp', 'Upper limit not supported by Permon')
       ELSE
-        limits_cptr = C_NULL_PTR
-      END IF
-      ! TODO check if correct
-      b_cptr = get_c_ptr_dp(rhsvec)
-      x_cptr = get_c_ptr_dp(xvec)
-
-      IF (ASSOCIATED(b)) THEN
-        kmax = MIN(10, SIZE(b))
-        IF (kmax > 0) THEN
-          WRITE(msg,'(A,I0,A)') 'First ', kmax, ' entries of b:'
-          CALL Info('itermethod_mprgp',TRIM(msg))
-          DO kk = 1, kmax
-            WRITE(msg,'(I3,2X,ES12.5)') kk, b(kk)
-            CALL Info('itermethod_mprgp',TRIM(msg))
-          END DO
-        END IF
-        WRITE(msg,'(A,ES12.5)') 'norm of b = ', normfun(ndim, b, 1)
-        CALL Info('itermethod_mprgp',TRIM(msg)) 
+        !limits_cptr = C_NULL_PTR
+        CALL FATAL('itermethod_mprgp', 'No limit found')
       END IF
 
-      IF (ASSOCIATED(c)) THEN
-        kmax = MIN(10, SIZE(c))
-        IF (kmax > 0) THEN
-          WRITE(msg,'(A,I0,A)') 'First ', kmax, ' entries of c:'
-          CALL Info('itermethod_mprgp',TRIM(msg))
-          DO kk = 1, kmax
-            WRITE(msg,'(I3,2X,ES12.5)') kk, c(kk)
-            CALL Info('itermethod_mprgp',TRIM(msg))
-          END DO
-        END IF
-        WRITE(msg,'(A,ES12.5)') 'norm of c = ', normfun(ndim, c, 1)
-        CALL Info('itermethod_mprgp',TRIM(msg))
+      x_cptr = C_NULL_PTR
+      IF (SIZE(xvec) > 0) THEN 
+        x_cptr = C_LOC(xvec(1))
       END IF
 
       CALL Info('itermethod_mprgp', 'Using Permon solver', Level=12)
       CALL permon_solve(A%Rows_cptr, A%Cols_cptr, A%Values_cptr, &
                   INT(A%NumberOfRows, KIND=C_INT), INT(NumberOfCols, KIND=C_INT), &
-                  b_cptr, limits_cptr, x_cptr)
+                  A%RHS_cptr, limits_cptr, x_cptr)
       ! TODO pass convergence info from Permon to Elmer
       HUTI_INFO = HUTI_CONVERGENCE
     END SUBROUTINE solve_with_permon
