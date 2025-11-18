@@ -6074,7 +6074,6 @@ SUBROUTINE GetNodalElementSize(Model,expo,noweight,h)
 
   ALLOCATE(A % RHS(Mesh % NumberOfNodes))
 #ifdef HAVE_PERMON
-  ! Expose C pointer to the RHS storage for interop
   A % RHS_cptr = C_LOC( A % RHS(1) )
 #endif
 

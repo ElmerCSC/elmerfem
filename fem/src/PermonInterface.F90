@@ -21,18 +21,4 @@ MODULE PermonInterface
     END SUBROUTINE permon_solve
   END INTERFACE
 
-CONTAINS
-
-  FUNCTION get_c_ptr_dp(vec) RESULT(ptr)
-    REAL(KIND=dp), TARGET, DIMENSION(:), INTENT(INOUT) :: vec
-    TYPE(C_PTR) :: ptr
-
-    IF (SIZE(vec) > 0) THEN
-      ptr = C_LOC(vec(1))
-    ELSE
-      ptr = C_NULL_PTR
-    END IF
-
-  END FUNCTION get_c_ptr_dp
-
 END MODULE PermonInterface

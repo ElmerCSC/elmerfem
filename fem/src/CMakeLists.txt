@@ -314,7 +314,6 @@ IF(WITH_PERMON)
     "${PETSC_DIR}/include"
     "${PETSC_DIR}/${PETSC_ARCH}/include")
   LIST(APPEND ELMERSOLVER_LIBRARIES ${PETSC_LIBRARIES})
-   # Might not need this, it's used in IterativeMethods.F90 to check if PERMON is available 
   TARGET_COMPILE_DEFINITIONS(elmersolver PRIVATE HAVE_PERMON)
   TARGET_LINK_LIBRARIES(elmersolver ${PERMON_LIBRARIES} ${PETSC_LIBRARIES})
 ENDIF()

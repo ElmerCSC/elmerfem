@@ -544,7 +544,7 @@ IF(MPI_FOUND)
 
   IF(WITH_PERMON)
     IF(NOT PERMON_DIR)
-      message(FATAL_ERROR "WITH_PERMON=ON but PERMON_DIR is not set")
+      MESSAGE(FATAL_ERROR "WITH_PERMON=ON but PERMON_DIR is not set")
     ENDIF()
 
     SET(PERMON_INCLUDE_DIR "${PERMON_DIR}/include")
@@ -553,7 +553,7 @@ IF(MPI_FOUND)
     SET(PERMON_LIBRARIES   "${PERMON_LIB_DIR}/libpermon.so")
 
     IF(NOT EXISTS "${PERMON_LIBRARIES}")
-      message(FATAL_ERROR "Could not find libpermon.so at ${PERMON_LIBRARIES}")
+      MESSAGE(FATAL_ERROR "Could not find libpermon.so at ${PERMON_LIBRARIES}")
     ENDIF()
 
     INCLUDE_DIRECTORIES(${PERMON_INCLUDE_DIR})

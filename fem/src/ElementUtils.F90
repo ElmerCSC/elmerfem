@@ -2103,7 +2103,6 @@ CONTAINS
          CALL Fatal(Caller,'Allocation error for CRS matrix topology: '//I2S(n))
        END IF
 #ifdef HAVE_PERMON
-       ! Expose C pointer to the RHS storage for interop
        A % RHS_cptr = C_LOC( A % RHS(1) )
 #endif
 

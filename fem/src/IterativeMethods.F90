@@ -1970,10 +1970,6 @@ CONTAINS
   TYPE(C_PTR) :: b_cptr, limits_cptr, x_cptr
 #endif
 
-  ! Diagnostic helpers
-  INTEGER :: kmax, kk
-  CHARACTER(LEN=200) :: msg
-
     A => GlobalMatrix
     ndim = HUTI_NDIM
 

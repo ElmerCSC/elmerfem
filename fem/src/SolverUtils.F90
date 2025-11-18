@@ -1321,7 +1321,6 @@ CONTAINS
              ALLOCATE( Var % LowerLimit( totsize ) )
              Var % LowerLimit = -bigval
 #ifdef HAVE_PERMON
-             ! Expose C pointer to the LowerLimit storage for interop
              Var % LowerLimit_cptr = C_LOC( Var % LowerLimit(1) )
 #endif
            END IF
@@ -1634,7 +1633,6 @@ CONTAINS
              ALLOCATE( Var % LowerLimit( totsize ) )
              Var % LowerLimit = -HUGE(val)
 #ifdef HAVE_PERMON
-             ! Expose C pointer to the LowerLimit storage for interop
              Var % LowerLimit_cptr = C_LOC( Var % LowerLimit(1) )
 #endif
            END IF

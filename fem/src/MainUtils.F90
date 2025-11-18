@@ -2361,7 +2361,6 @@ CONTAINS
         IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for Rhs')
         Solver % Matrix % RHS = 0.0d0
 #ifdef HAVE_PERMON
-        ! Expose C pointer to the RHS storage for interop
         Solver % Matrix % RHS_cptr = C_LOC( Solver % Matrix % RHS(1) )
 #endif
         
