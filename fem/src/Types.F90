@@ -643,6 +643,7 @@ MODULE Types
      REAL(KIND=dp), POINTER :: UpperLimit(:) => NULL(), LowerLimit(:) => NULL()
 #ifdef HAVE_PERMON
      TYPE(C_PTR) :: LowerLimit_cptr = C_NULL_PTR
+     TYPE(C_PTR) :: UpperLimit_cptr = C_NULL_PTR
 #endif
      COMPLEX(KIND=dp), POINTER :: CValues(:) => NULL()
      TYPE(IntegrationPointsTable_t), POINTER :: IPTable => NULL()

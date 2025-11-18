@@ -5,10 +5,9 @@ MODULE PermonInterface
   PRIVATE
 
   PUBLIC :: permon_solve
-  PUBLIC :: get_c_ptr_dp
 
   INTERFACE
-    SUBROUTINE permon_solve(rows, cols, vals, nrows, ncols, b_ptr, limits_ptr, x_ptr) BIND(C, NAME="permon_solve")
+    SUBROUTINE permon_solve(rows, cols, vals, nrows, ncols, b_ptr, limits_ptr, x_ptr, bound) BIND(C, NAME="permon_solve")
       USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_PTR, C_INT
       TYPE(C_PTR), VALUE :: rows
       TYPE(C_PTR), VALUE :: cols
@@ -18,6 +17,7 @@ MODULE PermonInterface
       TYPE(C_PTR), VALUE :: b_ptr
       TYPE(C_PTR), VALUE :: limits_ptr
       TYPE(C_PTR), VALUE :: x_ptr
+      INTEGER(C_INT), VALUE :: bound
     END SUBROUTINE permon_solve
   END INTERFACE
 

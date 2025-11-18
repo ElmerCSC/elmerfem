@@ -1957,6 +1957,9 @@ CONTAINS
     INTEGER :: n
     INTEGER :: NumberOfCols
 
+    INTEGER :: kmax, kk
+    CHARACTER(LEN=100) :: msg
+
     ! MPRGP parameters (passed from calling routine)
     REAL(KIND=dp) :: Gamma, TolFactor
     LOGICAL :: adapt
@@ -2073,7 +2076,7 @@ CONTAINS
       INTEGER, INTENT(IN) :: maxit
       REAL(KIND=dp), INTENT(IN) :: Gamma
       LOGICAL, INTENT(IN) :: adapt
-      INTEGER, INTENT(IN) :: bound      ! 'lower' or 'upper'
+      INTEGER, INTENT(IN) :: bound      ! 'lower' (0) or 'upper' (1)
       REAL(KIND=dp), INTENT(IN) :: TolFactor
       INTEGER, INTENT(OUT) :: ncg, ne, np, iters
       LOGICAL, INTENT(OUT) :: converged
@@ -2445,26 +2448,39 @@ CONTAINS
         CALL FATAL('itermethod_mprgp', 'A%Cols is not associated or empty')
       END IF
 
-      IF (ASSOCIATED(CurrentModel % Solver % Variable % LowerLimit)) THEN
+      IF (ASSOCIATED(CurrentModel % Solver % Variable % UpperLimit)) THEN
+        limits_cptr = CurrentModel % Solver % Variable % UpperLimit_cptr
+      ELSE IF (ASSOCIATED(CurrentModel % Solver % Variable % LowerLimit)) THEN
         limits_cptr = CurrentModel % Solver % Variable % LowerLimit_cptr
-      ! TODO check if permon allows upper limit
-      ELSE IF (ASSOCIATED(CurrentModel % Solver % Variable % UpperLimit)) THEN
-        !limits_cptr = C_NULL_PTR
-        CALL FATAL('itermethod_mprgp', 'Upper limit not supported by Permon')
       ELSE
-        !limits_cptr = C_NULL_PTR
         CALL FATAL('itermethod_mprgp', 'No limit found')
       END IF
+
+
 
       x_cptr = C_NULL_PTR
       IF (SIZE(xvec) > 0) THEN 
         x_cptr = C_LOC(xvec(1))
       END IF
+      
 
+      IF (ASSOCIATED(c)) THEN
+        kmax = MIN(10, SIZE(c))
+        IF (kmax > 0) THEN
+          WRITE(msg,'(A,I0,A)') 'First ', kmax, ' entries of c:'
+          CALL Info('itermethod_mprgp',TRIM(msg))
+          DO kk = 1, kmax
+            WRITE(msg,'(I3,2X,ES12.5)') kk, c(kk)
+            CALL Info('itermethod_mprgp',TRIM(msg))
+          END DO
+        END IF
+        WRITE(msg,'(A,ES12.5)') 'norm of c = ', normfun(ndim, c, 1)
+        CALL Info('itermethod_mprgp',TRIM(msg))
+      END IF
       CALL Info('itermethod_mprgp', 'Using Permon solver', Level=12)
       CALL permon_solve(A%Rows_cptr, A%Cols_cptr, A%Values_cptr, &
                   INT(A%NumberOfRows, KIND=C_INT), INT(NumberOfCols, KIND=C_INT), &
-                  A%RHS_cptr, limits_cptr, x_cptr)
+                  A%RHS_cptr, limits_cptr, x_cptr, INT(bound, KIND=C_INT))
       ! TODO pass convergence info from Permon to Elmer
       HUTI_INFO = HUTI_CONVERGENCE
     END SUBROUTINE solve_with_permon

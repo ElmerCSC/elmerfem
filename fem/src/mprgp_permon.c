@@ -42,8 +42,10 @@ void mprgp_print_vector(void *cptr, int n, char *name)
 }
 
 // TODO check if the freeing of the arrays is correct
-void permon_solve(void *rows, void *cols, void *vals, int nrows, int ncols, void *b_ptr, void *c_ptr, void *x_ptr){
+int permon_solve(void *rows, void *cols, void *vals, int nrows, int ncols, void *b_ptr, void *c_ptr, void *x_ptr, int bound){
     Vec       b, c, x;
+    Vec       lb_fill = NULL, ub_fill = NULL;
+    Vec       lb = NULL, ub = NULL;
     Mat       A;
     QP        qp;
     QPS       qps;
@@ -58,7 +60,6 @@ void permon_solve(void *rows, void *cols, void *vals, int nrows, int ncols, void
     int nnz = rows_f[nrows] - 1;  /* Number of nonzeros (last element - 1, in 1-based) */
 
     mprgp_print_vector(c_ptr, 15, "c");
-    mprgp_print_vector(b_ptr, 15, "b");
     
     /* Allocate temporary arrays for 0-based indices */
     PetscInt *rows_c, *cols_c;
@@ -120,8 +121,23 @@ void permon_solve(void *rows, void *cols, void *vals, int nrows, int ncols, void
     * THIS VECTOR WILL ALSO HOLD THE SOLUTION OF QP */
     PetscCall(QPSetInitialVector(qp, x));
     /* Set box constraints.
-    * c <= x <= PETSC_INFINITY */
-    PetscCall(QPSetBox(qp, NULL, c, NULL));
+    * For PERMON's QPCBox we must always provide a valid lower bound vector. */
+    if (bound == 0) {
+        /* Lower bound provided, fabricate an upper bound at +infinity. */
+        lb = c;
+        PetscCall(VecDuplicate(c, &ub_fill));
+        PetscCall(VecSet(ub_fill, PETSC_INFINITY));
+        ub = ub_fill;
+    } else if (bound == 1) {
+        /* Upper bound provided, fabricate a lower bound at -infinity. */
+        ub = c;
+        PetscCall(VecDuplicate(c, &lb_fill));
+        PetscCall(VecSet(lb_fill, PETSC_NINFINITY));
+        lb = lb_fill;
+    } else {
+        return -1;
+    }
+    PetscCall(QPSetBox(qp, NULL, lb, ub));
     /* Set runtime options, e.g
     *   -qp_chain_view_kkt */
     PetscCall(QPSetFromOptions(qp));
@@ -149,31 +165,12 @@ void permon_solve(void *rows, void *cols, void *vals, int nrows, int ncols, void
     if (!converged) PetscCall(PetscPrintf(PETSC_COMM_WORLD, "QPS did not converge!\n"));
     if(converged) PetscCall(PetscPrintf(PETSC_COMM_WORLD, "QPS converged!\n"));
 
-    /* Calculate and print vector norms */
-    PetscReal norm;
-    
-    /* Norm of solution vector x */
-    PetscCall(VecNorm(x, NORM_2, &norm));
-    PetscCall(PetscPrintf(PETSC_COMM_WORLD, "||x||_2 = %g\n", (double)norm));
-    
-    PetscCall(VecNorm(x, NORM_INFINITY, &norm));
-    PetscCall(PetscPrintf(PETSC_COMM_WORLD, "||x||_inf = %g\n", (double)norm));
-    
-    if (b_ptr != NULL) {
-        PetscCall(VecNorm(b, NORM_2, &norm));
-        PetscCall(PetscPrintf(PETSC_COMM_WORLD, "||b||_2 = %g\n", (double)norm));
-    }
-    
-    if (c_ptr != NULL) {
-        PetscCall(VecNorm(c, NORM_2, &norm));
-        PetscCall(PetscPrintf(PETSC_COMM_WORLD, "||c||_2 = %g\n", (double)norm));
-    }
-
-
     /* Destroy matrix and vectors - MatCreateSeqAIJWithArrays takes ownership of the arrays
      * and will free them automatically when the matrix is destroyed, so we don't free them here */
     PetscCall(VecDestroy(&x));
     PetscCall(VecDestroy(&c));
+    PetscCall(VecDestroy(&lb_fill));
+    PetscCall(VecDestroy(&ub_fill));
     PetscCall(VecDestroy(&b));
     PetscCall(MatDestroy(&A));
     /* Note: rows_c and cols_c are automatically freed by MatDestroy above */
@@ -182,5 +179,5 @@ void permon_solve(void *rows, void *cols, void *vals, int nrows, int ncols, void
     PetscCall(QPDestroy(&qp));
     PetscCall(PermonFinalize());
 
-
+    return 0;
 }

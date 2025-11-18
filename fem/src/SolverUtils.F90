@@ -1329,14 +1329,21 @@ CONTAINS
            IF(ASSOCIATED(Var % UpperLimit)) THEN
              IF(SIZE(Var % UpperLimit) /= totsize) THEN
                DEALLOCATE(Var % UpperLimit)
+#ifdef HAVE_PERMON
+               Var % UpperLimit_cptr = C_NULL_PTR
+#endif
              END IF
            END IF
            IF( .NOT. ASSOCIATED( Var % UpperLimit ) ) THEN
              CALL Info(Caller,'Allocating UpperLimit for variable: '//TRIM(Name),Level=10)
              ALLOCATE( Var % UpperLimit( totsize ) )
              Var % UpperLimit = bigval
+#ifdef HAVE_PERMON
+             Var % UpperLimit_cptr = C_LOC( Var % UpperLimit(1) )
+#endif
            END IF
            LimitValues => Var % UpperLimit
+
          END IF
  
          ! In the first time set the initial set 
@@ -1642,6 +1649,9 @@ CONTAINS
              IF(SIZE(Var % UpperLimitActive) /= totsize) THEN
                DEALLOCATE(Var % UpperLimitActive)
                DEALLOCATE(Var % UpperLimit)
+#ifdef HAVE_PERMON
+               Var % UpperLimit_cptr = C_NULL_PTR
+#endif
              END IF
            END IF
            IF( .NOT. ASSOCIATED( Var % UpperLimitActive ) ) THEN
@@ -1649,6 +1659,9 @@ CONTAINS
              Var % UpperLimitActive = .FALSE.
              ALLOCATE( Var % UpperLimit( totsize ) )
              Var % UpperLimit = HUGE(val)
+#ifdef HAVE_PERMON
+             Var % UpperLimit_cptr = C_LOC( Var % UpperLimit(1) )
+#endif
            END IF
            LimitActive => Var % UpperLimitActive
          END IF
