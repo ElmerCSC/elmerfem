@@ -41,6 +41,14 @@ void mprgp_print_vector(void *cptr, int n, char *name)
     fflush(stdout);
 }
 
+int permon_init(){
+    return PermonInitialize(NULL, NULL, (char *)0, NULL);
+}
+
+int permon_finalize(){
+    return PermonFinalize();
+}
+
 // TODO check if the freeing of the arrays is correct
 int permon_solve(void *rows, void *cols, void *vals, int nrows, int ncols, void *b_ptr, void *c_ptr, void *x_ptr, int bound){
     Vec       b, c, x;
@@ -76,7 +84,6 @@ int permon_solve(void *rows, void *cols, void *vals, int nrows, int ncols, void 
         cols_c[i] = (PetscInt)(cols_f[i] - 1);
     }
 
-    PetscCall(PermonInitialize(NULL, NULL, (char *)0, NULL));
 
     /* Create matrix directly from arrays (MatCreateSeqAIJWithArrays creates a new matrix) */
     PetscCall(MatCreateSeqAIJWithArrays(PETSC_COMM_SELF, nrows, ncols, rows_c, cols_c, vals, &A));
@@ -177,7 +184,6 @@ int permon_solve(void *rows, void *cols, void *vals, int nrows, int ncols, void 
 
     PetscCall(QPSDestroy(&qps));
     PetscCall(QPDestroy(&qp));
-    PetscCall(PermonFinalize());
 
     return 0;
 }

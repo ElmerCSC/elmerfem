@@ -4,7 +4,7 @@ MODULE PermonInterface
   IMPLICIT NONE
   PRIVATE
 
-  PUBLIC :: permon_solve
+  PUBLIC :: permon_solve, permon_init, permon_finalize
 
   INTERFACE
     SUBROUTINE permon_solve(rows, cols, vals, nrows, ncols, b_ptr, limits_ptr, x_ptr, bound) BIND(C, NAME="permon_solve")
@@ -19,6 +19,12 @@ MODULE PermonInterface
       TYPE(C_PTR), VALUE :: x_ptr
       INTEGER(C_INT), VALUE :: bound
     END SUBROUTINE permon_solve
+
+    SUBROUTINE permon_init() BIND(C, NAME="permon_init")
+    END SUBROUTINE permon_init
+
+    SUBROUTINE permon_finalize() BIND(C, NAME="permon_finalize")
+    END SUBROUTINE permon_finalize
   END INTERFACE
 
 END MODULE PermonInterface

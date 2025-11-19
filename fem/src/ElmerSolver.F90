@@ -62,6 +62,9 @@
      USE ParallelUtils, ONLY : ParallelInit, ParallelFinalize 
      USE ElementUtils, ONLY: FreeMatrix, TangentDirections, CreateMatrix
      USE ElementDescription, ONLY : InitializeElementDescriptions, NormalVector
+#ifdef HAVE_PERMON
+     USE PermonInterface, ONLY : permon_init, permon_finalize
+#endif
 #ifdef HAVE_EXTOPTIM
      USE OptimizationUtils, ONLY : ControlParameters, ControlResetMesh, &
          ExternalOptimization_minpack, ExternalOptimization_newuoa, &
@@ -323,6 +326,9 @@
        IF( Version ) RETURN
        
        CALL InitializeElementDescriptions()
+#ifdef HAVE_PERMON
+       CALL permon_init()
+#endif
      END IF
 
      ! Read input file name either as an argument, or from the default file:
@@ -759,6 +765,9 @@
 
 #ifdef HAVE_TRILINOS
   CALL TrilinosCleanup()
+#endif
+#ifdef HAVE_PERMON
+     IF ( FirstTime ) CALL permon_finalize()
 #endif
 
      IF ( FirstTime ) CALL ParallelFinalize()
