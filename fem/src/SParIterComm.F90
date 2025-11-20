@@ -94,12 +94,12 @@ MODULE SParIterComm
 # endif
 #endif
 
-#ifdef HAVE_XIOS
-  USE XIOS, ONLY: xios_initialize, xios_context_finalize, xios_finalize
-#endif
-
 #ifdef HAVE_YAC
   USE elmer_coupling, ONLY: coupling_init, coupling_finalize, coupling_setup
+#endif
+
+#ifdef HAVE_XIOS
+  USE XIOS, ONLY: xios_initialize, xios_context_finalize, xios_finalize
 #endif
 
   IMPLICIT NONE
