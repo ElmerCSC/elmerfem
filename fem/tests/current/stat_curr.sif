@@ -10,7 +10,7 @@ Simulation
   Simulation Type = Steady
   Steady State Max Iterations = 2
 !  Output File = "current.result"
-!  Post File = "current.ep"
+!  Post File = "current.vtu"
   Output Version Numbers = Logical True
 End
 

@@ -24,7 +24,7 @@
   Linear system abort not converged = True
 
 ! Note: this is tuned so that the solver fails if >5 iterations needed!
-  Linear System Max Iterations = 5 !100
+  Linear System Max Iterations = 10 !100
  
 
 

@@ -1,0 +1,130 @@
+! A simple testcase for testing Reluctivity function for nonlinear anisotropic reluctivity.
+! Author: Kasra Djadidian, Monumo
+! Original date: October 2025
+! kasra.djadidian@monumo.com
+
+Header
+CHECK KEYWORDS WARN
+Mesh DB mesh
+End
+
+Simulation
+Max Output Level = 8
+Coordinate System = "Cartesian 2D"
+Simulation Type = Steady state
+Steady State Max Iterations = 1
+Output Intervals = 1
+Post File = case.vtu
+End
+
+Constants
+Permittivity of Vacuum = 8.8542e-12
+End
+
+
+Solver 1
+Equation = "MGDynamics"
+Procedure = "MagnetoDynamics2D" "MagnetoDynamics2D"
+Exported Variable 1 = -ip "nu"
+Nonlinear System Max Iterations = 10000
+Nonlinear System Convergence Tolerance = 1e-7
+Nonlinear System Relaxation Factor = 1
+
+Linear System Solver = Direct
+Linear System Iterative Method = BiCGStab
+Linear System Direct Method = umfpack
+Linear System Preconditioning = none
+Linear System Convergence Tolerance = 1e-8
+Linear System Residual Output = 200
+Linear System Max Iterations = 30000
+
+Handle Assembly = Logical True !Required for use of reluctivity function
+End
+
+Solver 2
+Equation = "MGDynamicsCalc"
+Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+Exec Solver = Always
+Calculate Nodal Fields = Logical False
+Calculate Nodal Forces = Logical True
+Calculate Elemental Fields = Logical True
+Calculate Magnetic Field Strength = Logical True
+Calculate Magnetic Flux Density = Logical True
+Calculate Current Density = Logical True
+End
+
+
+Equation 1
+Name = "Coupled Equations"
+Active Solvers(2) = 1 2
+End
+
+
+Material 1
+Name = "Air"
+Electric Conductivity = 1.0
+Relative Permeability = 1.0
+relative Permittivity = 1.0
+End
+
+Material 2
+
+Name = "Iron"
+Reluctivity Function (2,2)= variable B1_dummy, B2_dummy
+    real procedure "reluctivity" "reluctfun"
+my h-b Curve = Variable coupled iter
+    Real 
+        include HB.dat
+    End
+
+End
+
+
+Body 1 ! air
+name = "air"
+target bodies(1) = 4
+material = 1
+Equation = 1
+end
+
+Body 2 ! iron
+name = "iron"
+target bodies(1) = 1
+material = 2
+Equation = 1
+end
+
+Body 3
+Target Bodies(1) = 2
+Name = "Left winding"
+Equation = 1
+Material = 1
+Body Force = 1
+End
+
+Body 4
+Target Bodies(1) = 3
+Name = "Right Winding"
+Equation = 1
+Material = 1
+Body Force = 2
+End
+
+Body Force 1
+Name = "winding+"
+Current Density = 4000000
+End
+
+Body Force 2
+Name = "winding-"
+Current Density = -4000000
+End
+
+Boundary Condition 1
+Target Boundaries(1) = 1
+Name = "outerBoundary"
+Potential = Real 0
+End
+
+Solver 1 :: Reference Norm = Real 2.97036857E-01
+Solver 2 :: Reference Norm = Real 0.00000000E+00

@@ -129,7 +129,7 @@ jobs:
       - name: build
         run: |
           cd ${GITHUB_WORKSPACE}/build
-          cmake --build . -j$(nproc)
+          cmake --build .
 
       - name: install
         run: |
@@ -145,7 +145,6 @@ jobs:
           cd ${GITHUB_WORKSPACE}/build
           ctest . \
             -LE slow \
-            -j$(nproc) \
             --timeout 300
 
       - name: re-run tests

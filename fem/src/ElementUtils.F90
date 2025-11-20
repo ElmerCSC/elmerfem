@@ -2297,30 +2297,38 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-
+#if 1
 !------------------------------------------------------------------------------
-  SUBROUTINE RotateMatrix( Matrix,Vector,n,DIM,DOFs,NodeIndexes,  &
-                   Normals,Tangent1,Tangent2 )
+   SUBROUTINE RotateMatrix( Matrix,Vector,n,DIM,DOFs,NodeIndexes,  &
+       Normals,Tangent1,Tangent2 )
 !------------------------------------------------------------------------------
 
     REAL(KIND=dp) :: Matrix(:,:),Vector(:)
     REAL(KIND=dp), POINTER :: Normals(:,:), Tangent1(:,:),Tangent2(:,:)
     INTEGER :: n,DIM,DOFs,NodeIndexes(:)
 !------------------------------------------------------------------------------
-
-    INTEGER :: i,j,k,l
+    INTEGER :: i,j,k,l,ii
     REAL(KIND=dp) :: s,R(n*DOFs,n*DOFs),Q(n*DOFs,n*DOFs),N1(3),T1(3),T2(3)
+    LOGICAL :: Found
 !------------------------------------------------------------------------------
-
     DO i=1,MIN(n,SIZE(NodeIndexes))
-      IF ( NodeIndexes(i)<=0 .OR. NodeIndexes(i)>SIZE(Normals,1) ) CYCLE
+      ii = NodeIndexes(i)
+      IF ( ii<=0 .OR. ii>SIZE(Normals,1) ) CYCLE
 
+      IF(ASSOCIATED(CurrentModel % Mesh % PeriodicPerm)) THEN
+        j = CurrentModel % Mesh % PeriodicPerm(i)
+        IF(j>0) THEN
+          IF( ListGetLogical( CurrentModel % Solver % Values, &
+              'Apply Conforming BCs',Found ) ) ii = NodeIndexes(j)
+        END IF
+      END IF
+      
       R = 0.0d0
       DO j=1,n*DOFs
         R(j,j) = 1.0d0
       END DO
 
-      N1 = Normals( NodeIndexes(i),: )
+      N1 = Normals( ii,: )
 
       SELECT CASE(DIM)
       CASE (2)
@@ -2330,8 +2338,8 @@ CONTAINS
         R(DOFs*(i-1)+2,DOFs*(i-1)+1) = -N1(2)
         R(DOFs*(i-1)+2,DOFs*(i-1)+2) =  N1(1)
       CASE (3)
-        T1 = Tangent1( NodeIndexes(i),: )
-        T2 = Tangent2( NodeIndexes(i),: )
+        T1 = Tangent1( ii,: )
+        T2 = Tangent2( ii,: )
 
         R(DOFs*(i-1)+1,DOFs*(i-1)+1) = N1(1)
         R(DOFs*(i-1)+1,DOFs*(i-1)+2) = N1(2)
@@ -2378,7 +2386,75 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE RotateMatrix
 !------------------------------------------------------------------------------
+#else
 
+! This should be the same as above but more economical but it does not work...
+!------------------------------------------------------------------------------
+  SUBROUTINE RotateMatrix( Matrix,Vector,n,DIM,DOFs,NodeIndexes,  &
+                   Normals,Tangent1,Tangent2 )
+!------------------------------------------------------------------------------
+
+    REAL(KIND=dp) :: Matrix(:,:),Vector(:)
+    REAL(KIND=dp), POINTER :: Normals(:,:), Tangent1(:,:),Tangent2(:,:)
+    INTEGER :: n,DIM,DOFs,NodeIndexes(:)
+!------------------------------------------------------------------------------
+
+    INTEGER :: i,ii,j,k,l
+    REAL(KIND=dp) :: s,R(DOFs,DOFs),Force0(Dofs),Force(Dofs),SubMat(Dofs,Dofs), &
+        SubMat0(Dofs,Dofs),N1(dofs),T1(dofs),T2(dofs)
+    INTEGER :: iInds(n),jInds(n)
+    LOGICAL :: Found
+!------------------------------------------------------------------------------
+    DO i=1,MIN(n,SIZE(NodeIndexes))
+      ii = NodeIndexes(i)
+      IF ( ii <= 0 .OR. ii > SIZE(Normals,1) ) CYCLE
+
+      IF(ASSOCIATED(CurrentModel % Mesh % PeriodicPerm)) THEN
+        j = CurrentModel % Mesh % PeriodicPerm(i)
+        IF(j>0) THEN
+          IF( ListGetLogical( CurrentModel % Solver % Values, &
+              'Apply Conforming BCs',Found ) ) ii = NodeIndexes(j)
+        END IF
+      END IF
+      
+      SELECT CASE(DIM)
+      CASE (2)
+        R(1,1:2) = Normals(ii,1:2)
+        R(2,1) = -R(1,2)
+        R(2,2) = R(1,1)
+      CASE (3)
+        R(1,1:3) = Normals(ii,:)
+        R(2,1:3) = Tangent1(ii,:)
+        R(3,1:3) = Tangent2(ii,:)
+      END SELECT
+
+      DO k=1,Dofs
+        iInds(k) = Dofs*(i-1)+k
+      END DO
+
+      DO j=1,n
+        DO k=1,Dofs
+          jInds(k) = Dofs*(j-1)+k
+        END DO
+
+        SubMat0 = Matrix(iInds,jInds)
+        SubMat = MATMUL(R,SubMat0)
+        Matrix(iInds,jInds) = SubMat
+        
+        SubMat0 = Matrix(jInds,iInds)
+        SubMat = MATMUL(SubMat0,TRANSPOSE(R))
+        Matrix(jInds,iInds) = SubMat
+      END DO
+
+      Force0 = Vector(iInds)
+      Force = MATMUL(R,Force0)
+      Vector(iInds) = Force
+      
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE RotateMatrix
+!------------------------------------------------------------------------------
+#endif
 
 
 !------------------------------------------------------------------------------

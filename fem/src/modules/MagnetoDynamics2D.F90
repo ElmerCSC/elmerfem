@@ -135,7 +135,7 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
 !------------------------------------------------------------------------------
   LOGICAL :: Found
   TYPE(Element_t), POINTER :: Element
-  REAL(KIND=dp) :: Norm
+  REAL(KIND=dp) :: Norm, newton_eps
   INTEGER :: i,j,k,n, nb, nd, t, Active, NonlinIter, iter, tind
   TYPE(ValueList_t), POINTER :: BC
   TYPE(Mesh_t),   POINTER :: Mesh
@@ -184,6 +184,9 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
   ELSE
     CALL Info(Caller,'Performing legacy version of bulk element assembly',Level=7)      
   END IF
+
+  newton_eps = GetCReal(SolverParams, 'Newton epsilon', Found )
+  IF(.NOT. Found) newton_eps = 1.0e-3
 
   MassAsm = Transient
   IF( ConstantMassInUse ) MassAsm = .FALSE.
@@ -1062,24 +1065,25 @@ CONTAINS
     REAL(KIND=dp), POINTER, SAVE :: Basis(:), dBasisdx(:,:)
     REAL(KIND=dp), ALLOCATABLE, SAVE :: MASS(:,:), DAMP(:,:), STIFF(:,:), FORCE(:), POT(:)    
     REAL(KIND=dp) :: Nu0, Nu, weight, SourceAtIp, CondAtIp, DetJ, Mu, MuDer, Babs
-    LOGICAL :: Stat,Found, HBCurve
-    INTEGER :: t,p,q,m,allocstat
+    LOGICAL :: Stat,Found, HBCurve, HasReluctivityFunction
+    INTEGER :: t,p,q,k,m,allocstat, nudim
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(ValueList_t), POINTER :: Material, PrevMaterial => NULL()
     REAL(KIND=dp) :: B_ip(2), Ht(nd,2), Bt(nd,2), Agrad(2), JAC(nd,nd), Alocal, &
-            Permittivity(nd), P_ip
+            Permittivity(nd), P_ip, A_t_der(2,2), nu_tensor(2,2)
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
     LOGICAL :: StrandedCoil
+    REAL(KIND=dp), POINTER :: NuTensor(:,:)
     TYPE(ValueHandle_t), SAVE :: SourceCoeff_h, CondCoeff_h, PermCoeff_h, &
-        RelPermCoeff_h, RelucCoeff_h, Mag1Coeff_h, Mag2Coeff_h, CoilType_h
+        RelPermCoeff_h, RelucCoeff_h, Mag1Coeff_h, Mag2Coeff_h, CoilType_h, nu_h
     INTEGER :: PrevElemInd = HUGE(PrevElemInd)
     
-    SAVE HBCurve, Nu0, PrevMaterial, PrevElemInd
+    SAVE HBCurve, Nu0, PrevMaterial, PrevElemInd, HasReluctivityFunction
     
     !$omp threadprivate(Basis, dBasisdx, MASS, DAMP, STIFF, FORCE, POT, &
-    !$omp               Nodes, Nu0, HBCurve, PrevMaterial, &
-    !$omp               SourceCoeff_h, CondCoeff_h, PermCoeff_h, RelPermCoeff_h, &
+    !$omp               Nodes, Nu0, HBCurve, HasReluctivityFunction,PrevMaterial, &
+    !$omp               SourceCoeff_h, CondCoeff_h, PermCoeff_h,nu_h, RelPermCoeff_h, &
     !$omp               RelucCoeff_h, Mag1Coeff_h, Mag2Coeff_h, CoilType_h, PrevElemInd )
     
 !------------------------------------------------------------------------------
@@ -1094,6 +1098,10 @@ CONTAINS
       CALL ListInitElementKeyword( Mag1Coeff_h,'Material','Magnetization 1')
       CALL ListInitElementKeyword( Mag2Coeff_h,'Material','Magnetization 2')
       CALL ListInitElementKeyword( CoilType_h,'Component','Coil Type')
+      IF( ListCheckPresentAnyMaterial(Model,'Reluctivity Function') ) THEN
+        CALL ListInitElementKeyword(nu_h,'Material','Reluctivity Function',&
+              EvaluateAtIp=.TRUE.,DummyCount=2)
+      END IF
       Found = .FALSE.
       IF( ASSOCIATED( Model % Constants ) ) THEN
         Nu0 = ListGetCReal( Model % Constants,'Permeability of Vacuum',Found)
@@ -1120,6 +1128,7 @@ CONTAINS
     IF( .NOT. ASSOCIATED( Material, PrevMaterial ) ) THEN
       PrevMaterial => Material           
       HbCurve = ListCheckPresent(Material,'H-B Curve')
+      HasReluctivityFunction = ListCheckPresent(Material,'Reluctivity Function')
     END IF
 
     IF(ElectroDynamics) THEN
@@ -1152,7 +1161,7 @@ CONTAINS
       
     CALL GetElementNodes( Nodes, UElement=Element )
 
-    IF(HBcurve) THEN
+    IF(HBcurve.OR. HasReluctivityFunction) THEN
       CALL GetLocalSolution(POT,UElement=Element,USolver=Solver)
       JAC = 0.0_dp
     END IF
@@ -1170,7 +1179,7 @@ CONTAINS
             IP % W(t), detJ, Basis, dBasisdx )
         Weight = IP % s(t) * DetJ
       END IF
-        
+      nu_tensor = 0.0_dp  
       ! diffusion term (D*grad(u),grad(v)):
       ! -----------------------------------
       IF( HBCurve ) THEN
@@ -1187,6 +1196,28 @@ CONTAINS
         ELSE
           mu = ListGetFun( Material,'h-b curve',babs) / Babs
         END IF
+      ELSE IF (HasReluctivityFunction) THEN
+        Agrad(1:2) = MATMUL( POT(1:nd),dBasisdx(1:nd,1:2) )
+        Alocal = SUM( POT(1:nd) * Basis(1:nd) )
+
+        B_ip(1) = Agrad(2) 
+        B_ip(2) = -Agrad(1)         
+        Babs = MAX( SQRT(SUM(B_ip**2)), 1.d-8 )
+        Babs = MAX( SQRT(SUM(B_ip**2)), 1.d-8 )
+        nu = ListGetElementReal( nu_h, Basis, Element, &
+             GaussPoint = t, Rdim=nudim, Rtensor=NuTensor, DummyVals = B_ip )
+        IF (nudim < 2) CALL Fatal(Caller, &
+             'Specify Reluctivity Function as a full (2x2)-tensor')
+        IF( NewtonRaphson ) THEN
+           ! Use central differencing
+          nu = ListGetElementReal( nu_h, Basis, Element, &
+               GaussPoint = t, Rdim=nudim, Rtensor=NuTensor, DummyVals = (1+newton_eps)*B_ip )
+           A_t_der(1:2,1:2) = NuTensor(1:2,1:2)
+           nu = ListGetElementReal( nu_h, Basis, Element, &
+               GaussPoint = t, Rdim=nudim, Rtensor=NuTensor, DummyVals = (1-newton_eps)*B_ip )
+           A_t_der(1:2,1:2) = ( A_t_der(1:2,1:2) - NuTensor(1:2,1:2) ) / ( 2*newton_eps*babs)
+         END IF
+        nu_tensor(1:2,1:2) = NuTensor(1:2,1:2)
       ELSE
         Nu = ListGetElementReal( RelPermCoeff_h, Basis, Element, Found, GaussPoint = t )
         IF( Found ) THEN
@@ -1212,13 +1243,29 @@ CONTAINS
       Bt(1:nd,2) = -dbasisdx(1:nd,1)
 
       ! Here isotrophy is assumed!
-      Ht(1:nd,:) = mu * Bt(1:nd,:)
+      
+      IF (HasReluctivityFunction) THEN
+        DO p = 1,nd
+          Ht(p,:) = MATMUL(nu_tensor, Bt(p,:))
+        END DO
+      ELSE
+        Ht(1:nd,:) = mu * Bt(1:nd,:)
+      END IF
            
       IF ( HBCurve .AND. NewtonRaphson) THEN
         DO p=1,nd
           DO q=1,nd
             JAC(p,q) = JAC(p,q) + Weight * &
                 muder/babs * SUM(B_ip(:) * Bt(q,:)) * SUM(B_ip(:)*Bt(p,:))
+          END DO
+        END DO
+      ELSE IF (HasReluctivityFunction .AND. NewtonRaphson) THEN
+        DO p=1,nd
+          DO q=1,nd
+            DO k=1,2
+              JAC(p,q) = JAC(p,q) + detJ*IP % s(t) * &
+                SUM(A_t_der(k,:) * B_ip(k) * Bt(q,:)) * SUM(B_ip(:)*Bt(p,:))/Babs
+            END DO
           END DO
         END DO
       END IF
@@ -1258,7 +1305,7 @@ CONTAINS
       END IF     
     END DO
 
-    IF (HBcurve .AND. NewtonRaphson) THEN
+    IF ((HBcurve .OR. HasReluctivityFunction) .AND. NewtonRaphson) THEN
       STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + JAC(1:nd,1:nd)
       FORCE(1:nd) = FORCE(1:nd) + MATMUL(JAC(1:nd,1:nd),POT(1:nd))
     END IF

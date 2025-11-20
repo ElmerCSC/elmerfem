@@ -57,9 +57,7 @@ SUBROUTINE OdeSolver_init( Model,Solver,dt,TransientSimulation )
 
   Params => GetSolverParams()
 
-  IF(.NOT. ListCheckPresent( Params,'Time Derivative Order') ) THEN
-    CALL ListAddInteger( Params, 'Time derivative order', 2 )
-  END IF
+  CALL ListAddNewInteger( Params, 'Time derivative order', 2 )
   CALL ListAddLogical( Params, 'Use Global Mass Matrix', .TRUE. )
   CALL ListAddLogical( Params, 'Ode Matrix', .TRUE. )
   CALL ListAddLogical( Params, 'Variable Global', .TRUE. )

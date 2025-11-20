@@ -1,5 +1,5 @@
 ! This is a variation of adaptivity1 test case that was done using
-! ElmerMesh2D & file I/O now done with MMG2D library using API.
+! ElmerMesh2D & file I/O now done with the extental MMG2D library using API.
 
 
 Header
