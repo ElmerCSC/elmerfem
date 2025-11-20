@@ -19869,6 +19869,9 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
   ALLOCATE( CollectionMatrix % RHS( NumberOfRows ), &
        CollectionSolution( NumberOfRows ), STAT = istat )
   IF ( istat /= 0 ) CALL Fatal( Caller, 'Memory allocation error.' )
+#ifdef HAVE_PERMON
+  CollectionMatrix % RHS_cptr = C_LOC( CollectionMatrix % RHS(1) )
+#endif
 
   CollectionVector => CollectionMatrix % RHS
   CollectionVector = 0.0_dp
