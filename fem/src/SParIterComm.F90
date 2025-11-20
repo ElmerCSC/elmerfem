@@ -84,13 +84,14 @@ MODULE SParIterComm
   USE XIOS, ONLY: xios_get_global_id
 # endif
 
-# ifdef HAVE_XIOS
-    ! prefer mpi_handshake from XIOS if XIOS is used
-    USE XIOS, ONLY: mpi_handshake => xios_mpi_handshake, &
-                MAX_GROUPNAME_LEN => xios_MAX_GROUPNAME_LEN
-# elif defined(HAVE_YAC)
-    ! use mpi_handshake from YAC if only HAVE_YAC used without HAVE_XIOS
-    USE elmer_coupling, ONLY: mpi_handshake, MAX_GROUPNAME_LEN
+  ! import mpi_handshake from YAC or XIOS
+# ifdef HAVE_YAC
+  ! prefer mpi_handshake from YAC if HAVE_YAC
+  USE elmer_coupling, ONLY: mpi_handshake, MAX_GROUPNAME_LEN
+# elif defined(HAVE_XIOS)
+  ! use mpi_handshake from XIOS if only HAVE_XIOS used without HAVE_YAC
+  USE XIOS, ONLY: mpi_handshake => xios_mpi_handshake, &
+              MAX_GROUPNAME_LEN => xios_MAX_GROUPNAME_LEN
 # else
 #   error "ELMER_USE_MPI_HANDSHAKE defined without HAVE_YAC or HAVE_XIOS"
 # endif
