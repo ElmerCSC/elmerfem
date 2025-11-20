@@ -75,15 +75,15 @@ MODULE SParIterComm
 #    error "This is incompatible with YAC."
 #  endif
 
-# ifdef HAVE_XIOS
-  USE XIOS, ONLY: xios_get_global_id
-# endif
-
+  ! import APIs to get code_id / global_id if needed
 # ifdef HAVE_YAC
   USE elmer_coupling, ONLY: coupler_get_code_id
 # endif
 
-  ! import mpi_handshake from YAC or XIOS
+# ifdef HAVE_XIOS
+  USE XIOS, ONLY: xios_get_global_id
+# endif
+
 # ifdef HAVE_XIOS
     ! prefer mpi_handshake from XIOS if XIOS is used
     USE XIOS, ONLY: mpi_handshake => xios_mpi_handshake, &
