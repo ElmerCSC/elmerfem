@@ -103,7 +103,6 @@ CONTAINS
     nbr_vertices = yac_fget_points_size(corner_point_id)
     nbr_cells = yac_fget_points_size(cell_point_id)
 
-    PRINT *, "VARIABLE TICE: ", t_ice_field_name
     ! register T_ice field in YAC
     CALL yac_fdef_field( &
       t_ice_field_name, comp_id, (/corner_point_id/), 1, t_ice_collection_size, &
@@ -115,11 +114,11 @@ CONTAINS
 
     ! register smb field in YAC
     CALL yac_fdef_field( &
-      smb_field_name, comp_id, (/corner_point_id/), 1, smb_collection_size, &
+      smb_field_name, comp_id, (/cell_point_id/), 1, smb_collection_size, &
       timestepstring, YAC_TIME_UNIT_HOUR, smb_field_id);
 
     ! allocate and initialise smb field buffer
-    ALLOCATE(smb_field(nbr_vertices, smb_collection_size))
+    ALLOCATE(smb_field(nbr_cells, smb_collection_size))
     smb_field = 0.0
 
     ! register runoff field in YAC
