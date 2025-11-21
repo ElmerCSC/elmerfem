@@ -42,7 +42,8 @@ void mprgp_print_vector(void *cptr, int n, char *name)
 }
 
 int permon_init(){
-    return PermonInitialize(NULL, NULL, (char *)0, NULL);
+    // permonrc - default name for solver options file
+    return PermonInitialize(NULL, NULL, "permonrc", NULL);
 }
 
 int permon_finalize(){

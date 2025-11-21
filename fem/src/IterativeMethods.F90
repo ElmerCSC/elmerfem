@@ -2019,6 +2019,7 @@ CONTAINS
           c(j) = cser(i)
         END IF
       END DO
+    END IF
 
     ! Check if Permon should be used
     UsePermon = .FALSE.
