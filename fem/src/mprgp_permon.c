@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <inttypes.h>
 #include <permonqps.h>
+#include <mpi.h>
 
 
 void mprgp_print_rows(void *cptr, intptr_t addr, int n)
@@ -61,6 +62,12 @@ int permon_solve(void *rows, void *cols, void *vals, int nrows, int ncols, void 
     PetscInt  i;
     PetscBool converged, viewSol = PETSC_FALSE;
     PetscViewer viewer;
+    PetscMPIInt size, rank;
+    PetscScalar *b_local = NULL, *c_local = NULL, *x_local = NULL;
+    PetscScalar *vals_array = (PetscScalar*)vals;
+    PetscScalar *x_global_ptr = NULL;
+    int *recvcounts = NULL, *displs = NULL;
+    const int root = 0;
     
     /* Convert Fortran 1-based indices to C 0-based indices for PETSc */
     int *rows_f = (int*)rows;  /* Fortran 1-based row pointers */
@@ -69,6 +76,7 @@ int permon_solve(void *rows, void *cols, void *vals, int nrows, int ncols, void 
     int nnz = rows_f[nrows] - 1;  /* Number of nonzeros (last element - 1, in 1-based) */
 
     mprgp_print_vector(c_ptr, 15, "c");
+    mprgp_print_vector(b_ptr, 15, "b"); //added to test compilation
     
     /* Allocate temporary arrays for 0-based indices */
     PetscInt *rows_c, *cols_c;
@@ -85,15 +93,73 @@ int permon_solve(void *rows, void *cols, void *vals, int nrows, int ncols, void 
         cols_c[i] = (PetscInt)(cols_f[i] - 1);
     }
 
+    MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+    MPI_Comm_size(PETSC_COMM_WORLD, &size);
+
+    PetscInt rper = nrows / size;
+    PetscInt rem  = nrows % size;
+    PetscInt rstart = rank * rper + (rank < rem ? rank : rem);
+    PetscInt local_nrows = rper + (rank < rem ? 1 : 0);
+
+    PetscCall(PetscMalloc1(size, &recvcounts));
+    PetscCall(PetscMalloc1(size, &displs));
+    PetscInt prefix = 0;
+    for (PetscInt p = 0; p < size; ++p) {
+        PetscInt rows_on_rank = rper + (p < rem ? 1 : 0);
+        recvcounts[p] = (int)rows_on_rank;
+        displs[p] = (int)prefix;
+        prefix += rows_on_rank;
+    }
+
+    PetscInt *d_nnz = NULL, *o_nnz = NULL;
+    PetscCall(PetscMalloc1(local_nrows, &d_nnz));
+    PetscCall(PetscMalloc1(local_nrows, &o_nnz));
+    for (PetscInt i = 0; i < local_nrows; ++i) {
+        PetscInt grow = rstart + i;
+        PetscInt start = rows_c[grow];
+        PetscInt end   = rows_c[grow+1];
+        PetscInt d = 0, o = 0;
+        for (PetscInt jj = start; jj < end; ++jj) {
+            PetscInt col = cols_c[jj];
+            if (col >= rstart && col < rstart + local_nrows) d++;
+            else o++;
+        }
+        d_nnz[i] = d;
+        o_nnz[i] = o;
+    }
+
+    PetscCall(MatCreate(PETSC_COMM_WORLD, &A));
+    PetscCall(MatSetSizes(A, local_nrows, PETSC_DECIDE, nrows, ncols));
+    PetscCall(MatSetType(A, MATMPIAIJ));
+    PetscCall(MatMPIAIJSetPreallocation(A, 0, d_nnz, 0, o_nnz));
+    PetscCall(MatSetUp(A));
+    PetscCall(PetscFree(d_nnz));
+    PetscCall(PetscFree(o_nnz));
+    /* insert local rows by slicing global CRS arrays */
+    for (PetscInt i = 0; i < local_nrows; ++i) {
+        PetscInt grow = rstart + i;                       /* global row index */
+        PetscInt start = rows_c[grow];
+        PetscInt end   = rows_c[grow+1];
+        PetscInt ncols_row = end - start;
+        if (ncols_row > 0) {
+            PetscInt *cols_row = &cols_c[start];
+            PetscScalar *vals_row = &vals_array[start];
+            PetscCall(MatSetValues(A, 1, &grow, ncols_row, cols_row, vals_row, INSERT_VALUES));
+        }
+    }
+
+    PetscCall(MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY));
+    PetscCall(MatAssemblyEnd(A, MAT_FINAL_ASSEMBLY));
 
     /* Create matrix directly from arrays (MatCreateSeqAIJWithArrays creates a new matrix) */
-    PetscCall(MatCreateSeqAIJWithArrays(PETSC_COMM_SELF, nrows, ncols, rows_c, cols_c, vals, &A));
+    // PetscCall(MatCreateSeqAIJWithArrays(PETSC_COMM_SELF, nrows, ncols, rows_c, cols_c, vals, &A));
     
     /* Create vectors from Fortran arrays: b from RHS, c from LowerLimit */
     /* VecCreateSeqWithArray wraps existing array data (doesn't copy) */
     if (b_ptr != NULL) {
         PetscScalar *b_array = (PetscScalar*)b_ptr;
-        PetscCall(VecCreateSeqWithArray(PETSC_COMM_SELF, 1, nrows, b_array, &b)); // does not copy the datam verify this
+        // PetscCall(VecCreateSeqWithArray(PETSC_COMM_SELF, 1, nrows, b_array, &b));
+        PetscCall(VecCreateMPIWithArray(PETSC_COMM_WORLD, 1, local_nrows, nrows, &b_array[rstart], &b));
     } else {
         /* If b_ptr is NULL, create empty vector */
         PetscCall(MatCreateVecs(A, &b, NULL));
@@ -101,7 +167,8 @@ int permon_solve(void *rows, void *cols, void *vals, int nrows, int ncols, void 
     
     if (c_ptr != NULL) {
         PetscScalar *c_array = (PetscScalar*)c_ptr;
-        PetscCall(VecCreateSeqWithArray(PETSC_COMM_SELF, 1, nrows, c_array, &c));
+        // PetscCall(VecCreateSeqWithArray(PETSC_COMM_SELF, 1, nrows, c_array, &c));
+        PetscCall(VecCreateMPIWithArray(PETSC_COMM_WORLD, 1, local_nrows, nrows, &c_array[rstart], &c));
     } else {
         /* If c_ptr is NULL, create empty vector */
         PetscCall(MatCreateVecs(A, NULL, &c));
@@ -109,7 +176,8 @@ int permon_solve(void *rows, void *cols, void *vals, int nrows, int ncols, void 
 
     if (x_ptr != NULL) {
         PetscScalar *x_array = (PetscScalar*)x_ptr;
-        PetscCall(VecCreateSeqWithArray(PETSC_COMM_SELF, 1, nrows, x_array, &x));
+        // PetscCall(VecCreateSeqWithArray(PETSC_COMM_SELF, 1, nrows, x_array, &x));
+        PetscCall(VecCreateMPIWithArray(PETSC_COMM_WORLD, 1, local_nrows, nrows, &x_array[rstart], &x));
     } else {
         /* If x_ptr is NULL, create empty vector */
         PetscCall(MatCreateVecs(A, NULL, &x));
@@ -168,6 +236,18 @@ int permon_solve(void *rows, void *cols, void *vals, int nrows, int ncols, void 
     *  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
     PetscCall(QPSSolve(qps));
 
+    // if (x_ptr != NULL) {
+    //     PetscScalar *gather_source = NULL;
+    //     if (rank == root) {
+    //         gather_source = x_global_ptr;
+    //     }
+    //     PetscCallMPI(MPI_Gatherv(x_local, local_nrows, MPIU_SCALAR,
+    //                              gather_source, recvcounts, displs, MPIU_SCALAR,
+    //                              root, PETSC_COMM_WORLD));
+    //     PetscScalar *full_array = (PetscScalar*)x_ptr;
+    //     PetscCallMPI(MPI_Bcast(full_array, nrows, MPIU_SCALAR, root, PETSC_COMM_WORLD));
+    // }
+
     /* Check that QPS converged */
     PetscCall(QPIsSolved(qp, &converged));
     if (!converged) PetscCall(PetscPrintf(PETSC_COMM_WORLD, "QPS did not converge!\n"));
@@ -182,6 +262,14 @@ int permon_solve(void *rows, void *cols, void *vals, int nrows, int ncols, void 
     PetscCall(VecDestroy(&b));
     PetscCall(MatDestroy(&A));
     /* Note: rows_c and cols_c are automatically freed by MatDestroy above */
+
+    // if (b_local) PetscCall(PetscFree(b_local));
+    // if (c_local) PetscCall(PetscFree(c_local));
+    // if (x_local) PetscCall(PetscFree(x_local));
+    // if (recvcounts) PetscCall(PetscFree(recvcounts));
+    // if (displs) PetscCall(PetscFree(displs));
+    // if (rows_c) PetscCall(PetscFree(rows_c));
+    // if (cols_c) PetscCall(PetscFree(cols_c));
 
     PetscCall(QPSDestroy(&qps));
     PetscCall(QPDestroy(&qp));
