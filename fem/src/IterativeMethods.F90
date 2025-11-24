@@ -1930,8 +1930,8 @@ CONTAINS
 !------------------------------------------------------------------------------
     USE huti_interfaces
 #ifdef HAVE_PERMON
-  USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_LOC, C_NULL_PTR, C_F_POINTER, C_PTR, C_INTPTR_T, C_INT, C_ASSOCIATED
-  USE PermonInterface
+      USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_LOC, C_NULL_PTR, C_F_POINTER, C_PTR, C_INTPTR_T, C_INT, C_ASSOCIATED
+      USE PermonInterface
 #endif
     IMPLICIT NONE
     PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
@@ -2486,49 +2486,18 @@ CONTAINS
         CALL Info('itermethod_mprgp',TRIM(msg))
       END IF
       CALL Info('itermethod_mprgp', 'Using Permon solver', Level=12)
-
-#ifdef HAVE_MPI
-      ierr = 0
-#endif
-
-      nloc = A % NumberOfRows
-      HasParallelInfo = (ParEnv % PEs > 1) .AND. ASSOCIATED(A % ParallelInfo)
-      IF (nloc > 0) THEN
-        ALLOCATE(PermonOwner(nloc), PermonGdofs(nloc))
-        IF (HasParallelInfo) THEN
-          CALL ContinuousNumbering(A % ParallelInfo, A % Perm, PermonGdofs, PermonOwner)
-        ELSE
-          PermonOwner = 1
-          DO i = 1, nloc
-            PermonGdofs(i) = i
-          END DO
-        END IF
-        PermonGdofs = PermonGdofs - 1
-        owner_cptr = C_LOC(PermonOwner(1))
-        gdofs_cptr = C_LOC(PermonGdofs(1))
-      ELSE
-        owner_cptr = C_NULL_PTR
-        gdofs_cptr = C_NULL_PTR
-      END IF
-
-      NumberOfColsGlobal = NumberOfCols
-      IF (ParEnv % PEs > 1) THEN
-        CALL MPI_ALLREDUCE(MPI_IN_PLACE, NumberOfColsGlobal, 1, MPI_INTEGER, MPI_MAX, ParEnv % ActiveComm, ierr)
-      END IF
-
       
+      WRITE(msg,'(A,I0,A,I0)') 'permon_solve: nrows=', A%NumberOfRows, ', ncols=', NumberOfCols
+      CALL Info('itermethod_mprgp', TRIM(msg))
+
       ! Ensure C pointers for CRS arrays are initialized when possible
       IF ( ASSOCIATED(A%Rows) .AND. .NOT. C_ASSOCIATED(A%Rows_cptr) ) A%Rows_cptr = C_LOC(A%Rows(1))
       IF ( ASSOCIATED(A%Cols) .AND. .NOT. C_ASSOCIATED(A%Cols_cptr) ) A%Cols_cptr = C_LOC(A%Cols(1))
       IF ( ASSOCIATED(A%Values) .AND. .NOT. C_ASSOCIATED(A%Values_cptr) ) A%Values_cptr = C_LOC(A%Values(1))
 
       CALL permon_solve(A%Rows_cptr, A%Cols_cptr, A%Values_cptr, &
-                  INT(A%NumberOfRows, KIND=C_INT), INT(NumberOfColsGlobal, KIND=C_INT), &
-                  A%RHS_cptr, limits_cptr, x_cptr, INT(bound, KIND=C_INT), gdofs_cptr, owner_cptr)
-
-      IF (nloc > 0) THEN
-        DEALLOCATE(PermonOwner, PermonGdofs)
-      END IF
+          INT(A%NumberOfRows, KIND=C_INT), INT(NumberOfCols, KIND=C_INT), &
+          A%RHS_cptr, limits_cptr, x_cptr, INT(bound, KIND=C_INT))
       ! TODO pass convergence info from Permon to Elmer
       HUTI_INFO = HUTI_CONVERGENCE
     END SUBROUTINE solve_with_permon
