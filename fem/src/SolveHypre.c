@@ -178,6 +178,7 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
 
    /* Initialize before setting coefficients */
    HYPRE_IJMatrixInitialize(A);
+   // TODO check this, aperm == globaldofs, owner == owner, Use this
 
    /* Now go through my local rows and set the matrix entries.
       Note that here we are setting one row at a time, though

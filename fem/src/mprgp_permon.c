@@ -51,49 +51,160 @@ int permon_finalize(){
 }
 
 // TODO check if the freeing of the arrays is correct
-int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows, int ncols, void *b_ptr, void *c_ptr, void *x_ptr, int bound, int *globaldofs, int *owner){
+int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows, int ncols, void *b_ptr, void *c_ptr, void *x_ptr, int bound, int *globaldofs, int *owner, int *fcomm) {
     Vec       b, c, x;
     Vec       lb_fill = NULL, ub_fill = NULL;
     Vec       lb = NULL, ub = NULL;
     Mat       A;
     QP        qp;
     QPS       qps;
-    PetscInt  i;
+    PetscInt  i, rstart, rend;
     PetscBool converged, viewSol = PETSC_FALSE;
     PetscViewer viewer;
     
+    MPI_Comm comm=MPI_Comm_f2c(*fcomm);
+
+    printf("Communicator in permon_solve: %p\n", (void*)comm);
+    fflush(stdout);
+
+
     /* Convert Fortran 1-based indices to C 0-based indices for PETSc */
     int *rows_f = (int*)rows_local;  /* Fortran 1-based row pointers */
     int *cols_f = (int*)cols_local;  /* Fortran 1-based column indices */
-    int nrows_array = nrows + 1;  /* Rows array has nrows+1 elements */
-    int nnz = rows_f[nrows] - 1;  /* Number of nonzeros (last element - 1, in 1-based) */
+    double *vals = (double*)vals_local; /* matrix values */
+    // int nrows_array = nrows + 1;  /* Rows array has nrows+1 elements */
+    // int nnz = rows_f[nrows] - 1;  /* Number of nonzeros (last element - 1, in 1-based) */
 
-    mprgp_print_vector(c_ptr, 15, "c");
+    int ilower = 1000000000;
+    int iupper = -1;
+
+    for (i = 0; i < nrows; i++) {
+        if (owner[i]) {
+            if (globaldofs[i] < ilower) ilower = globaldofs[i];
+            if (globaldofs[i] > iupper) iupper = globaldofs[i];
+        }
+    }
+    /* handle rank owning no DOFs */
+    if (iupper == -1) { ilower = 1; iupper = 0; }
+
+    /* PETSc uses 0-based indexing normally */
+    ilower--;  
+    iupper--;
+
+
+    // mprgp_print_vector(c_ptr, 15, "c");
+    mprgp_print_vector(b_ptr, 15, "b");
+    // mprgp_print_vector(x_ptr, 15, "x (initial)");
     
     /* Allocate temporary arrays for 0-based indices */
-    PetscInt *rows_c, *cols_c;
-    PetscMalloc1(nrows_array, &rows_c);
-    PetscMalloc1(nnz, &cols_c);
+    // PetscInt *rows_c, *cols_c;
+    // PetscMalloc1(nrows_array, &rows_c);
+    // PetscMalloc1(nnz, &cols_c);
     
-    /* Convert row pointers: subtract 1 from each element */
-    for (i = 0; i < nrows_array; i++) {
-        rows_c[i] = (PetscInt)(rows_f[i] - 1);
-    }
+    // /* Convert row pointers: subtract 1 from each element */
+    // for (i = 0; i < nrows_array; i++) {
+    //     rows_c[i] = (PetscInt)(rows_f[i] - 1);
+    // }
     
-    /* Convert column indices: subtract 1 from each element */
-    for (i = 0; i < nnz; i++) {
-        cols_c[i] = (PetscInt)(cols_f[i] - 1);
-    }
+    // /* Convert column indices: subtract 1 from each element */
+    // for (i = 0; i < nnz; i++) {
+    //     cols_c[i] = (PetscInt)(cols_f[i] - 1);
+    // }
 
 
     /* Create matrix directly from arrays (MatCreateSeqAIJWithArrays creates a new matrix) */
-    PetscCall(MatCreateSeqAIJWithArrays(PETSC_COMM_WORLD, nrows, ncols, rows_c, cols_c, vals_local, &A));
+    // PetscCall(MatCreateSeqAIJWithArrays(PETSC_COMM_WORLD, nrows, ncols, rows_c, cols_c, vals_local, &A));
+    MatCreate(comm, &A);
+    MatSetType(A, MATAIJ);
+    MatSetSizes(A,
+            iupper-ilower+1,  // local rows
+            iupper-ilower+1,  // local cols (square)
+            4160,
+            4160);  // global cols
+    MatSetUp(A);
+
+    for (i = 0; i < nrows; i++) {
+
+        if (!owner[i]) continue;     // skip rows not owned
+
+        int grow = globaldofs[i];   // PETSc row, Global dofs are already 0-based
+
+        int start = rows_f[i]   - 1;  // convert Fortran 1-based → C 0-based
+        int end   = rows_f[i+1] - 1;
+
+        int nnz = end - start;
+
+        /* build column array in global numbering */
+        int colsPETSC[4096];   // (replace with malloc if needed)
+        double valsPETSC[4096];
+        
+        for (int k = 0; k < nnz; k++) {
+            colsPETSC[k] = globaldofs[ cols_f[start+k] - 1 ];  // Global dofs are already 0-based
+            valsPETSC[k] = vals[start + k];
+        }
+
+        MatSetValues(A, 1, &grow, nnz, colsPETSC, valsPETSC, INSERT_VALUES);
+    }
+
+    MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(A,   MAT_FINAL_ASSEMBLY);
+    
+{
+  int myrank = -1;
+  MPI_Comm_rank(comm, &myrank);
+
+  /* make sure everyone reaches here (helps spot hangs) */
+  MPI_Barrier(comm);
+
+  /* Use PETSc synchronized printing so every rank's messages appear in order */
+  PetscSynchronizedPrintf(comm, "=== DIAG: Hello from rank %d ===\n", myrank);
+
+  /* Print PETSc ownership range for this matrix */
+  PetscInt rstart=0, rend=0;
+  MatGetOwnershipRange(A, &rstart, &rend);
+  PetscSynchronizedPrintf(comm, "rank %d: PETSc ownership range = [%lld, %lld) owned = %lld  nslots(local)=%d\n",
+                         myrank, (long long)rstart, (long long)rend, (long long)(rend-rstart), nrows);
+
+  /* Print first few local slots (safe: guard by nrows) */
+  for (int ii=0; ii < PetscMin(8, nrows); ++ii) {
+    /* guard access if arrays might be NULL */
+    int g = (globaldofs ? globaldofs[ii] : -999);
+    int own = (owner ? owner[ii] : -1);
+    double bval = (b_ptr ? ((double*)b_ptr)[ii] : 0.0);
+    PetscSynchronizedPrintf(comm, "rank %d slot %d -> g=%d owner=%d bslot=%g\n",
+                           myrank, ii, g, own, bval);
+  }
+
+  /* Check for NaN/Inf in matrix and print a norm */
+  PetscReal anorm = 0.0;
+  MatNorm(A, NORM_INFINITY, &anorm);
+  PetscSynchronizedPrintf(comm, "rank %d: Mat infinity-norm = %g\n", myrank, (double)anorm);
+
+  /* Check that globaldofs claimed by owner on this rank actually sit in PETSc range */
+  for (int slot = 0; slot < 10; ++slot) {
+    if (!owner[slot]) continue;
+    int g = globaldofs[slot]; /* MUST be 0-based global index */
+    if (g < (int)rstart || g >= (int)rend) {
+      PetscSynchronizedPrintf(comm, "rank %d: WARNING slot %d -> g=%d not in PETSc range [%lld,%lld)\n",
+                             myrank, slot, g, (long long)rstart, (long long)rend);
+    }
+  }
+
+  /* Force flush in rank order so messages appear coherently */
+  PetscSynchronizedFlush(comm, PETSC_STDOUT);
+  MPI_Barrier(comm);  /* extra sync to ensure all ranks printed before proceeding */
+}
+
+
+
+
     
     /* Create vectors from Fortran arrays: b from RHS, c from LowerLimit */
     /* VecCreateSeqWithArray wraps existing array data (doesn't copy) */
     if (b_ptr != NULL) {
         PetscScalar *b_array = (PetscScalar*)b_ptr;
-        PetscCall(VecCreateSeqWithArray(PETSC_COMM_WORLD, 1, nrows, b_array, &b)); // does not copy the datam verify this
+        // PetscCall(VecCreateSeqWithArray(comm, 1, nrows, b_array, &b)); // does not copy the datam verify this
+        PetscCall(VecCreateMPIWithArray(comm, 1, nrows, 4160, b_array, &b));
     } else {
         /* If b_ptr is NULL, create empty vector */
         PetscCall(MatCreateVecs(A, &b, NULL));
@@ -101,7 +212,9 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
     
     if (c_ptr != NULL) {
         PetscScalar *c_array = (PetscScalar*)c_ptr;
-        PetscCall(VecCreateSeqWithArray(PETSC_COMM_WORLD, 1, nrows, c_array, &c));
+        // PetscCall(VecCreateSeqWithArray(comm, 1, nrows, c_array, &c));
+        PetscCall(VecCreateMPIWithArray(comm, 1, nrows, 4160, c_array, &c));
+        
     } else {
         /* If c_ptr is NULL, create empty vector */
         PetscCall(MatCreateVecs(A, NULL, &c));
@@ -109,7 +222,8 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
 
     if (x_ptr != NULL) {
         PetscScalar *x_array = (PetscScalar*)x_ptr;
-        PetscCall(VecCreateSeqWithArray(PETSC_COMM_WORLD, 1, nrows, x_array, &x));
+        // PetscCall(VecCreateSeqWithArray(comm, 1, nrows, x_array, &x));
+        PetscCall(VecCreateMPIWithArray(comm, 1, nrows, 4160, x_array, &x));
     } else {
         /* If x_ptr is NULL, create empty vector */
         PetscCall(MatCreateVecs(A, NULL, &x));
@@ -120,7 +234,7 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
     /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     * Setup QP: argmin 1/2 x'Ax -x'b s.t. c <= x
     *  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-    PetscCall(QPCreate(PETSC_COMM_WORLD, &qp));
+    PetscCall(QPCreate(comm, &qp));
     /* Set matrix representing QP operator */
     PetscCall(QPSetOperator(qp, A));
     /* Set right hand side */

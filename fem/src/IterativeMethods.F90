@@ -1971,6 +1971,9 @@ CONTAINS
 #ifdef HAVE_PERMON
   TYPE(C_PTR) :: rows_cptr, cols_cptr, vals_cptr
   TYPE(C_PTR) :: b_cptr, limits_cptr, x_cptr
+  INTEGER(C_INTPTR_T) :: rhs_addr
+  CHARACTER(LEN=200) :: dbgmsg
+  INTEGER :: iprint
 #endif
 
     A => GlobalMatrix
@@ -2489,10 +2492,11 @@ CONTAINS
       WRITE(msg,'(A,I0,A,I0)') 'permon_solve: nrows=', A%NumberOfRows, ', ncols=', NumberOfCols
       CALL Info('itermethod_mprgp', TRIM(msg))
 
-      ! Ensure C pointers for CRS arrays are initialized when possible
+      ! Ensure C pointers for CRS arrays and RHS are initialized when possible
       IF ( ASSOCIATED(A%Rows) .AND. .NOT. C_ASSOCIATED(A%Rows_cptr) ) A%Rows_cptr = C_LOC(A%Rows(1))
       IF ( ASSOCIATED(A%Cols) .AND. .NOT. C_ASSOCIATED(A%Cols_cptr) ) A%Cols_cptr = C_LOC(A%Cols(1))
       IF ( ASSOCIATED(A%Values) .AND. .NOT. C_ASSOCIATED(A%Values_cptr) ) A%Values_cptr = C_LOC(A%Values(1))
+      IF ( ASSOCIATED(A%RHS) .AND. .NOT. C_ASSOCIATED(A%RHS_cptr) ) A%RHS_cptr = C_LOC(A%RHS(1))
 
       ! Prepare global dofs (APerm) and owner arrays required by Permon
       HasParallelInfo = ASSOCIATED(A%ParallelInfo) .AND. ASSOCIATED(A%ParallelInfo%GlobalDOFs)
@@ -2515,15 +2519,64 @@ CONTAINS
       IF ( .NOT. C_ASSOCIATED(gdofs_cptr) .AND. ALLOCATED(PermonGdofs) ) gdofs_cptr = C_LOC(PermonGdofs(1))
       IF ( .NOT. C_ASSOCIATED(owner_cptr) .AND. ALLOCATED(PermonOwner) ) owner_cptr = C_LOC(PermonOwner(1))
 
-      ! Ensure C pointers for CRS arrays are initialized when possible
+      ! Ensure C pointers for CRS arrays and RHS are initialized when possible
       IF ( ASSOCIATED(A%Rows) .AND. .NOT. C_ASSOCIATED(A%Rows_cptr) ) A%Rows_cptr = C_LOC(A%Rows(1))
       IF ( ASSOCIATED(A%Cols) .AND. .NOT. C_ASSOCIATED(A%Cols_cptr) ) A%Cols_cptr = C_LOC(A%Cols(1))
       IF ( ASSOCIATED(A%Values) .AND. .NOT. C_ASSOCIATED(A%Values_cptr) ) A%Values_cptr = C_LOC(A%Values(1))
-
+!      IF ( ASSOCIATED(A%RHS) .AND. .NOT. C_ASSOCIATED(A%RHS_cptr) ) A%RHS_cptr = C_LOC(A%RHS(1))
+!
+!        ! Prepare b_cptr: prefer ParMatrix inside-matrix RHS (parallel case),
+!        ! then A%RHS_cptr if available, otherwise use rhsvec
+!        b_cptr = C_NULL_PTR
+!        rhs_addr = 0_C_INTPTR_T
+!        IF ( ASSOCIATED(A%ParMatrix) .AND. ASSOCIATED(A%ParMatrix%SplittedMatrix) .AND. &
+!             ASSOCIATED(A%ParMatrix%SplittedMatrix%InsideMatrix%RHS) ) THEN
+!          ! Use the per-process inner RHS created by SParUpdateRHS
+!          b_cptr = C_LOC(A%ParMatrix%SplittedMatrix%InsideMatrix%RHS(1))
+!          rhs_addr = TRANSFER(b_cptr, rhs_addr)
+!          WRITE(dbgmsg,'(A,I0,A,I0)') 'Using ParMatrix InsideMatrix RHS: size=', &
+!                SIZE(A%ParMatrix%SplittedMatrix%InsideMatrix%RHS), ', b_cptr addr=', rhs_addr
+!        ELSEIF ( ASSOCIATED(A%RHS) .AND. C_ASSOCIATED(A%RHS_cptr) ) THEN
+!          b_cptr = A%RHS_cptr
+!          rhs_addr = TRANSFER(b_cptr, rhs_addr)
+!          WRITE(dbgmsg,'(A,I0,A,I0)') 'Using A%RHS: size=', SIZE(A%RHS), ', b_cptr addr=', rhs_addr
+!        ELSE
+!          ! fallback to the rhsvec argument (target array)
+!          b_cptr = C_LOC(rhsvec(1))
+!          rhs_addr = TRANSFER(b_cptr, rhs_addr)
+!          WRITE(dbgmsg,'(A,I0,A,I0)') 'Using rhsvec: size=', SIZE(rhsvec), ', b_cptr addr=', rhs_addr
+!        END IF
+!        IF ( ASSOCIATED(ParEnv) ) THEN
+!          WRITE(*,*) 'permon_diag: Rank=', ParEnv % MyPe, ':', TRIM(dbgmsg)
+!        ELSE
+!          WRITE(*,*) 'permon_diag: Rank=UNKNOWN :', TRIM(dbgmsg)
+!        END IF
+!
+!        ! Also print first few entries of A%RHS (if present) and rhsvec for comparison
+!        IF ( ASSOCIATED(ParEnv) ) THEN
+!          IF ( ASSOCIATED(A%RHS) ) THEN
+!            iprint = MIN(5, SIZE(A%RHS))
+!            WRITE(*,*) 'permon_diag: Rank=', ParEnv % MyPe, ': A%RHS(1:', iprint, ')=', A%RHS(1:iprint)
+!          ELSE
+!            WRITE(*,*) 'permon_diag: Rank=', ParEnv % MyPe, ': A%RHS not associated'
+!          END IF
+!          iprint = MIN(5, SIZE(rhsvec))
+!          WRITE(*,*) 'permon_diag: Rank=', ParEnv % MyPe, ': rhsvec(1:', iprint, ')=', rhsvec(1:iprint)
+!        ELSE
+!          IF ( ASSOCIATED(A%RHS) ) THEN
+!            iprint = MIN(5, SIZE(A%RHS))
+!            WRITE(*,*) 'permon_diag: Rank=UNKNOWN : A%RHS(1:', iprint, ')=', A%RHS(1:iprint)
+!          ELSE
+!            WRITE(*,*) 'permon_diag: Rank=UNKNOWN : A%RHS not associated'
+!          END IF
+!          iprint = MIN(5, SIZE(rhsvec))
+!          WRITE(*,*) 'permon_diag: Rank=UNKNOWN : rhsvec(1:', iprint, ')=', rhsvec(1:iprint)
+!        END IF
+        b_cptr = C_LOC(rhsvec(1))
         CALL permon_solve(A%Rows_cptr, A%Cols_cptr, A%Values_cptr, &
           INT(A%NumberOfRows, KIND=C_INT), INT(NumberOfCols, KIND=C_INT), &
-          A%RHS_cptr, limits_cptr, x_cptr, INT(bound, KIND=C_INT), &
-          gdofs_cptr, owner_cptr)
+          b_cptr, limits_cptr, x_cptr, INT(bound, KIND=C_INT), &
+          gdofs_cptr, owner_cptr, A % Comm)
 
         ! free temporary arrays
         IF (ALLOCATED(PermonGdofs)) DEALLOCATE(PermonGdofs)
