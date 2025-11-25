@@ -51,7 +51,7 @@ int permon_finalize(){
 }
 
 // TODO check if the freeing of the arrays is correct
-int permon_solve(void *rows, void *cols, void *vals, int nrows, int ncols, void *b_ptr, void *c_ptr, void *x_ptr, int bound){
+int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows, int ncols, void *b_ptr, void *c_ptr, void *x_ptr, int bound, int *globaldofs, int *owner){
     Vec       b, c, x;
     Vec       lb_fill = NULL, ub_fill = NULL;
     Vec       lb = NULL, ub = NULL;
@@ -63,8 +63,8 @@ int permon_solve(void *rows, void *cols, void *vals, int nrows, int ncols, void 
     PetscViewer viewer;
     
     /* Convert Fortran 1-based indices to C 0-based indices for PETSc */
-    int *rows_f = (int*)rows;  /* Fortran 1-based row pointers */
-    int *cols_f = (int*)cols;  /* Fortran 1-based column indices */
+    int *rows_f = (int*)rows_local;  /* Fortran 1-based row pointers */
+    int *cols_f = (int*)cols_local;  /* Fortran 1-based column indices */
     int nrows_array = nrows + 1;  /* Rows array has nrows+1 elements */
     int nnz = rows_f[nrows] - 1;  /* Number of nonzeros (last element - 1, in 1-based) */
 
@@ -87,13 +87,13 @@ int permon_solve(void *rows, void *cols, void *vals, int nrows, int ncols, void 
 
 
     /* Create matrix directly from arrays (MatCreateSeqAIJWithArrays creates a new matrix) */
-    PetscCall(MatCreateSeqAIJWithArrays(PETSC_COMM_SELF, nrows, ncols, rows_c, cols_c, vals, &A));
+    PetscCall(MatCreateSeqAIJWithArrays(PETSC_COMM_WORLD, nrows, ncols, rows_c, cols_c, vals_local, &A));
     
     /* Create vectors from Fortran arrays: b from RHS, c from LowerLimit */
     /* VecCreateSeqWithArray wraps existing array data (doesn't copy) */
     if (b_ptr != NULL) {
         PetscScalar *b_array = (PetscScalar*)b_ptr;
-        PetscCall(VecCreateSeqWithArray(PETSC_COMM_SELF, 1, nrows, b_array, &b)); // does not copy the datam verify this
+        PetscCall(VecCreateSeqWithArray(PETSC_COMM_WORLD, 1, nrows, b_array, &b)); // does not copy the datam verify this
     } else {
         /* If b_ptr is NULL, create empty vector */
         PetscCall(MatCreateVecs(A, &b, NULL));
@@ -101,7 +101,7 @@ int permon_solve(void *rows, void *cols, void *vals, int nrows, int ncols, void 
     
     if (c_ptr != NULL) {
         PetscScalar *c_array = (PetscScalar*)c_ptr;
-        PetscCall(VecCreateSeqWithArray(PETSC_COMM_SELF, 1, nrows, c_array, &c));
+        PetscCall(VecCreateSeqWithArray(PETSC_COMM_WORLD, 1, nrows, c_array, &c));
     } else {
         /* If c_ptr is NULL, create empty vector */
         PetscCall(MatCreateVecs(A, NULL, &c));
@@ -109,7 +109,7 @@ int permon_solve(void *rows, void *cols, void *vals, int nrows, int ncols, void 
 
     if (x_ptr != NULL) {
         PetscScalar *x_array = (PetscScalar*)x_ptr;
-        PetscCall(VecCreateSeqWithArray(PETSC_COMM_SELF, 1, nrows, x_array, &x));
+        PetscCall(VecCreateSeqWithArray(PETSC_COMM_WORLD, 1, nrows, x_array, &x));
     } else {
         /* If x_ptr is NULL, create empty vector */
         PetscCall(MatCreateVecs(A, NULL, &x));
@@ -188,3 +188,90 @@ int permon_solve(void *rows, void *cols, void *vals, int nrows, int ncols, void 
 
     return 0;
 }
+
+
+/* ---------- PETSc snippet (compile & run under MPI) ---------- */
+/* Assumptions:
+   - MPI initialized by Fortran and passed to C (comm available).
+   - arrays available: local_size_all (number of local rows in arrays),
+     owner[local_size_all] (0/1), globaldofs[local_size_all],
+     rows[local_size_all+1], cols[nnz_total], vals[nnz_total].
+*/
+
+
+// void build_and_assemble(Mat *A_out, MPI_Comm comm,
+//                         int local_size_all, int *owner, int *globaldofs,
+//                         int *rows, int *cols, double *vals, int nvals_total,
+//                         int global_nrows) {
+//   PetscErrorCode ierr;
+//   Mat A;
+//   int i;
+
+//   /* 1) Count how many actual owned rows this rank will insert */
+//   int owned = 0;
+//   for (i=0;i<local_size_all;i++) if (owner[i]) owned++;
+//   /* Create PETSc matrix: tell PETSc how many local rows we own (owned) */
+//   ierr = MatCreateMPIAIJ(comm, owned, owned, global_nrows, global_nrows, 
+//                          0, NULL, 0, NULL, &A); CHKERRABORT(PETSC_COMM_SELF, ierr);
+
+//   /* 2) Compute d_nnz and o_nnz arrays (per owned row) */
+//   int *d_nnz = (int*)malloc(sizeof(int)*owned);
+//   int *o_nnz = (int*)malloc(sizeof(int)*owned);
+
+//   /* get PETSc ownership range assigned to this rank */
+//   PetscInt rstart, rend;
+//   ierr = MatGetOwnershipRange(A, &rstart, &rend); CHKERRABORT(PETSC_COMM_SELF, ierr);
+
+//   int rowcount = 0;
+//   for (i=0;i<local_size_all;i++) {
+//     if (!owner[i]) continue;
+//     int nnz = rows[i+1] - rows[i];
+//     int dn=0, on=0, j;
+//     for (j = rows[i]; j < rows[i+1]; ++j) {
+//       int local_col_idx = cols[j-1] - 1;       /* if cols were 1-based like in your code */
+//       int gcol = globaldofs[ local_col_idx ];
+//       if (gcol >= rstart && gcol < rend) dn++; else on++;
+//     }
+//     d_nnz[rowcount] = dn;
+//     o_nnz[rowcount] = on;
+//     rowcount++;
+//   }
+
+//   /* 3) Preallocate using per-row arrays */
+//   ierr = MatMPIAIJSetPreallocation(A, 0, NULL, 0, NULL); /* default zero — will be replaced */
+//   /* PETSc expects global preallocation before any MatSetValues,
+//      but convenience: call MatCreateMPIAIJ with zeros above then call MatMPIAIJSetPreallocationCSR
+//      only if providing ai/aj. Simpler is MatSeqAIJSetPreallocation for seq, but here we use:
+//   */
+//   /* Alternatively, provide uniform estimate: */
+//   /* ierr = MatMPIAIJSetPreallocation(A, max_diag_estimate, diag_counts, max_offdiag_estimate, offdiag_counts); */
+//   /* For simplicity in this snippet we skip per-row preallocation call because
+//      MatSetValues will still work; in production you should call MatMPIAIJSetPreallocation
+//      with d_nnz/o_nnz arrays or construct CSR and use MatCreateMPIAIJWithArrays. */
+
+//   /* 4) Insert values: iterate owned rows, map cols -> global columns and call MatSetValues */
+//   rowcount = 0;
+//   for (i=0;i<local_size_all;i++) {
+//     if (!owner[i]) continue;
+//     int grow = globaldofs[i];     /* global row number of this local row */
+//     int nnz = rows[i+1] - rows[i];
+//     int *gcols = (int*)malloc(sizeof(int)*nnz);
+//     int j,k=0;
+//     for (j=rows[i]; j<rows[i+1]; ++j,++k) {
+//       int lcol = cols[j-1]-1;            /* convert 1-based->0-based if needed */
+//       gcols[k] = globaldofs[lcol];
+//     }
+//     ierr = MatSetValues(A, 1, &grow, nnz, gcols, &vals[rows[i]-1], ADD_VALUES);
+//     free(gcols);
+//     rowcount++;
+//   }
+
+//   /* 5) Finalize */
+//   ierr = MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY); CHKERRABORT(PETSC_COMM_WORLD, ierr);
+//   ierr = MatAssemblyEnd(A, MAT_FINAL_ASSEMBLY); CHKERRABORT(PETSC_COMM_WORLD, ierr);
+
+//   free(d_nnz); free(o_nnz);
+//   *A_out = A;
+// }
+
+/* ------------------------------------------------------------------ */

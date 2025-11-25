@@ -2442,6 +2442,12 @@ CONTAINS
 
 #ifdef HAVE_PERMON
     SUBROUTINE solve_with_permon()
+      USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_PTR, C_LOC, C_NULL_PTR
+      INTEGER :: nloc, i
+      LOGICAL :: HasParallelInfo
+      INTEGER, ALLOCATABLE, TARGET :: PermonOwner(:), PermonGdofs(:)
+      TYPE(C_PTR) :: owner_cptr, gdofs_cptr
+
       CALL Info('itermethod_mprgp', 'HAVE_PERMON defined, calling permon_solve', Level=12)
       IF (ASSOCIATED(A%Cols) .AND. SIZE(A%Cols) > 0) THEN
         NumberOfCols = MAXVAL(A%Cols)  ! Max column index = number of columns (1-based indexing)
@@ -2479,9 +2485,49 @@ CONTAINS
         CALL Info('itermethod_mprgp',TRIM(msg))
       END IF
       CALL Info('itermethod_mprgp', 'Using Permon solver', Level=12)
-      CALL permon_solve(A%Rows_cptr, A%Cols_cptr, A%Values_cptr, &
-                  INT(A%NumberOfRows, KIND=C_INT), INT(NumberOfCols, KIND=C_INT), &
-                  A%RHS_cptr, limits_cptr, x_cptr, INT(bound, KIND=C_INT))
+      
+      WRITE(msg,'(A,I0,A,I0)') 'permon_solve: nrows=', A%NumberOfRows, ', ncols=', NumberOfCols
+      CALL Info('itermethod_mprgp', TRIM(msg))
+
+      ! Ensure C pointers for CRS arrays are initialized when possible
+      IF ( ASSOCIATED(A%Rows) .AND. .NOT. C_ASSOCIATED(A%Rows_cptr) ) A%Rows_cptr = C_LOC(A%Rows(1))
+      IF ( ASSOCIATED(A%Cols) .AND. .NOT. C_ASSOCIATED(A%Cols_cptr) ) A%Cols_cptr = C_LOC(A%Cols(1))
+      IF ( ASSOCIATED(A%Values) .AND. .NOT. C_ASSOCIATED(A%Values_cptr) ) A%Values_cptr = C_LOC(A%Values(1))
+
+      ! Prepare global dofs (APerm) and owner arrays required by Permon
+      HasParallelInfo = ASSOCIATED(A%ParallelInfo) .AND. ASSOCIATED(A%ParallelInfo%GlobalDOFs)
+      IF ( HasParallelInfo ) THEN
+        nloc = SIZE(A%ParallelInfo%GlobalDOFs)
+        ALLOCATE(PermonOwner(nloc), PermonGdofs(nloc))
+        CALL ContinuousNumbering(A%ParallelInfo, A%Perm, PermonGdofs, PermonOwner)
+        ! Newer hypre/permon libraries expect zero-based indexing for global dofs
+        PermonGdofs = PermonGdofs - 1
+      ELSE
+        nloc = A%NumberOfRows
+        ALLOCATE(PermonOwner(nloc), PermonGdofs(nloc))
+        DO i = 1, nloc
+          PermonGdofs(i) = i - 1
+        END DO
+        PermonOwner = 1
+      END IF
+
+      ! Ensure C pointers for the global dofs and owner arrays
+      IF ( .NOT. C_ASSOCIATED(gdofs_cptr) .AND. ALLOCATED(PermonGdofs) ) gdofs_cptr = C_LOC(PermonGdofs(1))
+      IF ( .NOT. C_ASSOCIATED(owner_cptr) .AND. ALLOCATED(PermonOwner) ) owner_cptr = C_LOC(PermonOwner(1))
+
+      ! Ensure C pointers for CRS arrays are initialized when possible
+      IF ( ASSOCIATED(A%Rows) .AND. .NOT. C_ASSOCIATED(A%Rows_cptr) ) A%Rows_cptr = C_LOC(A%Rows(1))
+      IF ( ASSOCIATED(A%Cols) .AND. .NOT. C_ASSOCIATED(A%Cols_cptr) ) A%Cols_cptr = C_LOC(A%Cols(1))
+      IF ( ASSOCIATED(A%Values) .AND. .NOT. C_ASSOCIATED(A%Values_cptr) ) A%Values_cptr = C_LOC(A%Values(1))
+
+        CALL permon_solve(A%Rows_cptr, A%Cols_cptr, A%Values_cptr, &
+          INT(A%NumberOfRows, KIND=C_INT), INT(NumberOfCols, KIND=C_INT), &
+          A%RHS_cptr, limits_cptr, x_cptr, INT(bound, KIND=C_INT), &
+          gdofs_cptr, owner_cptr)
+
+        ! free temporary arrays
+        IF (ALLOCATED(PermonGdofs)) DEALLOCATE(PermonGdofs)
+        IF (ALLOCATED(PermonOwner)) DEALLOCATE(PermonOwner)
       ! TODO pass convergence info from Permon to Elmer
       HUTI_INFO = HUTI_CONVERGENCE
     END SUBROUTINE solve_with_permon
