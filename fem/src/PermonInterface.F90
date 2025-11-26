@@ -8,7 +8,7 @@ MODULE PermonInterface
 
   INTERFACE
     SUBROUTINE permon_solve(rows, cols, vals, nrows, ncols, b_ptr, limits_ptr, x_ptr, bound, &
-    gdofs_cptr, owner_cptr, comm) BIND(C, NAME="permon_solve")
+    gdofs_cptr, owner_cptr, comm, nloc) BIND(C, NAME="permon_solve")
       USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_PTR, C_INT
       TYPE(C_PTR), VALUE :: rows
       TYPE(C_PTR), VALUE :: cols
@@ -22,6 +22,7 @@ MODULE PermonInterface
       TYPE(C_PTR), VALUE :: gdofs_cptr
       TYPE(C_PTR), VALUE :: owner_cptr
       INTEGER(C_INT) :: comm
+      INTEGER(C_INT), VALUE :: nloc
     END SUBROUTINE permon_solve
 
     SUBROUTINE permon_init() BIND(C, NAME="permon_init")
