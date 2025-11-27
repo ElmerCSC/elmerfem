@@ -1976,6 +1976,13 @@ CONTAINS
   INTEGER(C_INTPTR_T) :: rhs_addr
   CHARACTER(LEN=200) :: dbgmsg
   INTEGER :: iprint
+  ! Debug dump variables
+  INTEGER(C_INT), POINTER :: rows_from_cptr(:)
+  INTEGER(C_INT), POINTER :: cols_from_cptr(:)
+  INTEGER, POINTER :: rows_fortran(:)
+  INTEGER, POINTER :: cols_fortran(:)
+  INTEGER :: nrowslen, iu, rank, ncolslen, rr
+  CHARACTER(LEN=256) :: fname
 #endif
 
     A => GlobalMatrix
@@ -2105,7 +2112,7 @@ CONTAINS
       REAL(KIND=dp) :: rtp, pAp, acg, beta
       REAL(KIND=dp) :: grg, grAgr
       REAL(KIND=dp) :: eps_local
-      TYPE(Matrix_t), POINTER :: MatA
+      TYPE(Matrix_t), POINTER :: MatA, MatB
       REAL(KIND=dp) :: tol
       
       REAL(KIND=dp), ALLOCATABLE :: v(:),w(:)
@@ -2448,11 +2455,15 @@ CONTAINS
 #ifdef HAVE_PERMON
     SUBROUTINE solve_with_permon()
       USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_PTR, C_LOC, C_NULL_PTR
-      INTEGER :: nloc, i
+      INTEGER :: nloc, i, nrows
       LOGICAL :: HasParallelInfo
       INTEGER, ALLOCATABLE, TARGET :: PermonOwner(:), PermonGdofs(:)
       TYPE(ParallelInfo_t), POINTER :: ParInfo
       TYPE(C_PTR) :: owner_cptr, gdofs_cptr
+      ! Variables for writing PermonGdofs to a file for debugging
+      CHARACTER(len=200) :: permon_fname
+      INTEGER :: permon_unit, ierr, idx
+      TYPE(Matrix_t), POINTER :: MatB
 
       CALL Info('itermethod_mprgp', 'HAVE_PERMON defined, calling permon_solve', Level=12)
       IF (ASSOCIATED(A%Cols) .AND. SIZE(A%Cols) > 0) THEN
@@ -2538,12 +2549,33 @@ CONTAINS
       HasParallelInfo = ASSOCIATED(ParInfo) .AND. ASSOCIATED(ParInfo%GlobalDOFs)
       IF ( HasParallelInfo ) THEN
         nloc = SIZE(ParInfo%GlobalDOFs)
+
+        nrows = CurrentModel % Solver % Matrix % NumberOfRows
+        WRITE(msg,'(A,I0,A,I0)') 'rank=', ParEnv%Mype, ', nrows=', nrows
+        CALL Info('itermethod_mprgp', TRIM(msg), Level=1)
+
         ALLOCATE(PermonOwner(nloc), PermonGdofs(nloc))
         WRITE(msg,'(A,I0,A,I0)') 'rank=', ParEnv%Mype, ', nloc=', nloc
         CALL Info('itermethod_mprgp', TRIM(msg), Level=1)
         CALL ContinuousNumbering(ParInfo, A%Perm, PermonGdofs, PermonOwner)
+
         ! Newer hypre/permon libraries expect zero-based indexing for global dofs
         PermonGdofs = PermonGdofs - 1
+
+        ! Save PermonGdofs to a per-rank text file for debugging
+        WRITE(permon_fname,'(A,I0,A)') 'permonGdofs_rank', ParEnv%Mype, '.txt'
+        OPEN(NEWUNIT=permon_unit, FILE=TRIM(permon_fname), ACTION='write', STATUS='replace', FORM='formatted', IOSTAT=ierr)
+        IF (ierr == 0) THEN
+          WRITE(permon_unit, '(A)') '# PermonGdofs (zero-based) for rank '//I2S(ParEnv%Mype)
+          WRITE(permon_unit, '(I0)') SIZE(PermonGdofs)
+          DO idx = 1, SIZE(PermonGdofs)
+            WRITE(permon_unit,'(I12)') PermonGdofs(idx)
+          END DO
+          CLOSE(permon_unit)
+        ELSE
+          CALL Info('itermethod_mprgp','Failed to write '//TRIM(permon_fname)//' IOSTAT='//I2S(ierr), Level=1)
+        END IF
+
         CALL Info('itermethod_mprgp', 'debug parallel', Level=1)
       ELSE
         nloc = A%NumberOfRows
@@ -2565,9 +2597,124 @@ CONTAINS
       IF ( ASSOCIATED(A%Rows) .AND. .NOT. C_ASSOCIATED(A%Rows_cptr) ) A%Rows_cptr = C_LOC(A%Rows(1))
       IF ( ASSOCIATED(A%Cols) .AND. .NOT. C_ASSOCIATED(A%Cols_cptr) ) A%Cols_cptr = C_LOC(A%Cols(1))
       IF ( ASSOCIATED(A%Values) .AND. .NOT. C_ASSOCIATED(A%Values_cptr) ) A%Values_cptr = C_LOC(A%Values(1))
-        b_cptr = C_LOC(rhsvec(1))
-        CALL permon_solve(A%Rows_cptr, A%Cols_cptr, A%Values_cptr, &
-          INT(A%NumberOfRows, KIND=C_INT), INT(NumberOfCols, KIND=C_INT), &
+      b_cptr = C_LOC(rhsvec(1))
+      ! --- Dump A%Rows and contents pointed by A%Rows_cptr for comparison ---
+      IF (ParEnv%PEs >= 1) THEN
+        nrowslen = A%NumberOfRows + 1
+        rank = ParEnv%Mype
+
+        IF (C_ASSOCIATED(A%Rows_cptr)) THEN
+          CALL C_F_POINTER(A%Rows_cptr, rows_from_cptr, [nrowslen])
+        ELSE
+          NULLIFY(rows_from_cptr)
+        END IF
+
+        IF (ASSOCIATED(A%Rows)) THEN
+          rows_fortran => A%Rows
+        ELSE
+          NULLIFY(rows_fortran)
+        END IF
+
+        ! Map cols C pointer and Fortran cols
+        IF (C_ASSOCIATED(A%Cols_cptr)) THEN
+          ncolslen = 0
+          IF (ASSOCIATED(rows_fortran)) THEN
+            ncolslen = rows_fortran(A%NumberOfRows+1)
+          END IF
+          IF (ncolslen > 0) THEN
+            CALL C_F_POINTER(A%Cols_cptr, cols_from_cptr, [ncolslen])
+          ELSE
+            NULLIFY(cols_from_cptr)
+          END IF
+        ELSE
+          NULLIFY(cols_from_cptr)
+        END IF
+
+        IF (ASSOCIATED(A%Cols)) THEN
+          cols_fortran => A%Cols
+        ELSE
+          NULLIFY(cols_fortran)
+        END IF
+
+        ! write Fortran Rows
+        WRITE(fname, '(A,I0)') 'rows_fortran_rank', rank
+        OPEN(NEWUNIT=iu, FILE=TRIM(fname)//'.txt', STATUS='REPLACE', ACTION='WRITE', IOSTAT=ierr)
+        IF (ierr == 0) THEN
+          IF (ASSOCIATED(rows_fortran)) THEN
+            WRITE(iu, '(A)') '# A%Rows '
+            DO i = 1, nrowslen
+              WRITE(iu, '(I0)') rows_fortran(i)
+            END DO
+          ELSE
+            WRITE(iu, '(A)') '# A%Rows not associated'
+          END IF
+          CLOSE(iu)
+        END IF
+
+        ! write rows from C pointer
+        WRITE(fname, '(A,I0)') 'rows_cptr_rank', rank
+        OPEN(NEWUNIT=iu, FILE=TRIM(fname)//'.txt', STATUS='REPLACE', ACTION='WRITE', IOSTAT=ierr)
+        IF (ierr == 0) THEN
+          IF (ASSOCIATED(rows_from_cptr)) THEN
+            WRITE(iu, '(A)') '# A%Rows_cptr mapped to integer(C_INT)'
+            DO i = 1, nrowslen
+              WRITE(iu, '(I0)') rows_from_cptr(i)
+            END DO
+          ELSE
+            WRITE(iu, '(A)') '# A%Rows_cptr not associated'
+          END IF
+          CLOSE(iu)
+        END IF
+
+        ! --- write Fortran Cols ---
+        WRITE(fname, '(A,I0)') 'cols_fortran_rank', rank
+        OPEN(NEWUNIT=iu, FILE=TRIM(fname)//'.txt', STATUS='REPLACE', ACTION='WRITE', IOSTAT=ierr)
+        IF (ierr == 0) THEN
+          IF (ASSOCIATED(cols_fortran)) THEN
+            WRITE(iu, '(A)') '# A%Cols '
+            IF (ASSOCIATED(rows_fortran)) THEN
+              DO rr = 1, A%NumberOfRows
+                DO j = rows_fortran(rr), rows_fortran(rr+1)-1
+                  WRITE(iu, '(I0)') cols_fortran(j)
+                END DO
+              END DO
+            ELSE
+              WRITE(iu, '(A)') '# A%Rows not associated; cannot iterate'
+            END IF
+          ELSE
+            WRITE(iu, '(A)') '# A%Cols not associated'
+          END IF
+          CLOSE(iu)
+        END IF
+
+        ! --- write Cols from C pointer ---
+        WRITE(fname, '(A,I0)') 'cols_cptr_rank', rank
+        OPEN(NEWUNIT=iu, FILE=TRIM(fname)//'.txt', STATUS='REPLACE', ACTION='WRITE', IOSTAT=ierr)
+        IF (ierr == 0) THEN
+          IF (ASSOCIATED(cols_from_cptr)) THEN
+            WRITE(iu, '(A)') '# A%Cols_cptr mapped to integer(C_INT)'
+            IF (ASSOCIATED(rows_from_cptr)) THEN
+              DO rr = 1, A%NumberOfRows
+                DO j = rows_from_cptr(rr), rows_from_cptr(rr+1)-1
+                  WRITE(iu, '(I0)') cols_from_cptr(j)
+                END DO
+              END DO
+            ELSE
+              WRITE(iu, '(A)') '# A%Rows_cptr not associated; cannot iterate'
+            END IF
+          ELSE
+            WRITE(iu, '(A)') '# A%Cols_cptr not associated'
+          END IF
+          CLOSE(iu)
+        END IF
+
+      END IF
+
+
+
+        MatB => CurrentModel % Solver % Matrix
+        CALL permon_solve(MatB%Rows_cptr, MatB%Cols_cptr, MatB%Values_cptr, &
+          INT(MatB%NumberOfRows, KIND=C_INT), INT(NumberOfCols, KIND=C_INT), &
           b_cptr, limits_cptr, x_cptr, INT(bound, KIND=C_INT), &
           gdofs_cptr, owner_cptr, A % Comm, nloc)
 

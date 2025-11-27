@@ -66,6 +66,8 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
 
     int *rows_f = (int*)rows_local;
     int *cols_f = (int*)cols_local;
+
+    
     double *vals = (double*)vals_local;
 
     // -----------------------------
@@ -75,13 +77,62 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
     PetscInt nlocal = 0;
 
     printf("nloc = %d\n", nloc);
+    /* Dump rows array to a per-rank file for debugging */
+    {
+        int rank = 0;
+        MPI_Comm_rank(comm, &rank);
+        char fname[256];
+        snprintf(fname, sizeof(fname), "rows_dump_rank%d.txt", rank);
+        FILE *fp = fopen(fname, "w");
+        if (fp) {
+            fprintf(fp, "rows_local pointer=%p\n", (void*)rows_local);
+            fprintf(fp, "rows_f pointer=%p\n", (void*)rows_f);
+            fprintf(fp, "nloc=%d\n", nloc);
+            fprintf(fp, "rows_f (0..nloc):\n");
+            for (i = 0; i <= nloc; ++i) {
+                fprintf(fp, "%d\n", rows_f[i]);
+            }
+            fclose(fp);
+        } else {
+            fprintf(stderr, "Failed to open %s for writing\n", fname);
+            fflush(stderr);
+        }
+    }
+    /* Dump cols array to a per-rank file for debugging */
+    // {
+    //     int rank = 0;
+    //     MPI_Comm_rank(comm, &rank);
+    //     char fname[256];
+    //     snprintf(fname, sizeof(fname), "cols_dump_rank%d.txt", rank);
+    //     FILE *fp = fopen(fname, "w");
+    //     if (fp) {
+    //         fprintf(fp, "cols_local pointer=%p\n", (void*)cols_local);
+    //         fprintf(fp, "cols_f pointer=%p\n", (void*)cols_f);
+    //         fprintf(fp, "nloc=%d\n", nloc);
+    //         fprintf(fp, "cols_f (0..nnz-1):\n");
+    //         /* We don't have nnz here; attempt to print a portion around rows if possible */
+    //         for (int rr = 0; rr < nloc; ++rr) {
+    //             if (!owner[rr]) continue;
+    //             int start = rows_f[rr];
+    //             int end = rows_f[rr+1];
+    //             fprintf(fp, "row %d nnz=%d:\n", rr, end - start);
+    //             for (int j = start; j < end; ++j) {
+    //                 fprintf(fp, "%d\n", cols_f[j-1]);
+    //             }
+    //         }
+    //         fclose(fp);
+    //     } else {
+    //         fprintf(stderr, "Failed to open %s for writing\n", fname);
+    //         fflush(stderr);
+    //     }
+    // }
     for (i = 0; i < nloc; i++) {
         if (owner[i]) {
             if (globaldofs[i] < ilower) ilower = globaldofs[i];
             if (globaldofs[i] > iupper) iupper = globaldofs[i];
             nlocal++;
         } else {
-            printf("rank %p: skipping row %d (global %d) not owned\n", comm, i, globaldofs[i]);
+            // printf("rank %p: skipping row %d (global %d) not owned\n", comm, i, globaldofs[i]);
         }
     }
     if (iupper == -1) { ilower = 0; iupper = -1; nlocal = 0; }  // rank owns nothing
@@ -102,19 +153,22 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
       int nnz,irow,i,j,k,*rcols;
 
       rcols = (int *)malloc( csize*sizeof(int) );
-      for (i = 0; i < nloc; i++) {
-	nnz = rows_f[i+1]-rows_f[i];
-	if ( nnz>csize ) {
-	  csize = nnz+csize;
-	  rcols = (int *)realloc( rcols, csize*sizeof(int) );
-	}
-	irow=globaldofs[i];
-	for( k=0,j=rows_f[i]; j<rows_f[i+1]; j++,k++) {
-	  rcols[k] = globaldofs[cols_f[j-1]-1];
-	}
-    MatSetValues(A, 1, &irow, nnz, rcols, &vals[rows_f[i]-1], ADD_VALUES);
-      }
-      free( rcols );
+      for (i = 0; i < nloc ; i++) {
+        
+	    nnz = rows_f[i+1]-rows_f[i];
+        if ( nnz>csize ) {
+            csize = nnz+csize;
+            int *tmp = (int *)realloc(rcols, csize*sizeof(int));
+            if (!tmp) { perror("realloc failed"); exit(1); }
+            rcols = tmp;
+        }
+        irow=globaldofs[i];
+        for( k=0,j=rows_f[i]; j<rows_f[i+1]; j++,k++) {
+	        rcols[k] = globaldofs[cols_f[j-1]-1];
+        }
+        MatSetValues(A, 1, &irow, nnz, rcols, &vals[rows_f[i]-1], ADD_VALUES);
+        }
+        free( rcols );
     }
 
     MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY);
@@ -136,21 +190,21 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
     // -----------------------------
     if (b_ptr) {
         PetscScalar *b_array = (PetscScalar*)b_ptr;
-        PetscCall(VecCreateMPIWithArray(comm, 1, nrows, 4160, b_array, &b));
+        PetscCall(VecCreateMPIWithArray(comm, 1, nlocal, 4160, b_array, &b));
     } else {
         PetscCall(MatCreateVecs(A, &b, NULL));
     }
 
     if (c_ptr) {
         PetscScalar *c_array = (PetscScalar*)c_ptr;
-        PetscCall(VecCreateMPIWithArray(comm, 1, nrows, 4160, c_array, &c));
+        PetscCall(VecCreateMPIWithArray(comm, 1, nlocal, 4160, c_array, &c));
     } else {
         PetscCall(MatCreateVecs(A, NULL, &c));
     }
 
     if (x_ptr) {
         PetscScalar *x_array = (PetscScalar*)x_ptr;
-        PetscCall(VecCreateMPIWithArray(comm, 1, nrows, 4160, x_array, &x));
+        PetscCall(VecCreateMPIWithArray(comm, 1, nlocal, 4160, x_array, &x));
     } else {
         PetscCall(MatCreateVecs(A, NULL, &x));
     }
