@@ -6868,13 +6868,15 @@ END SUBROUTINE PickActiveFace
        REAL(KIND=dp) :: t(3), s(3), v1, v2, v3, h1, h2, h3, dh1, dh2, dh3, grad(2)
        REAL(KIND=dp) :: LBasis(Element % TYPE % NumberOfNodes), Beta(4), EdgeSign(16)
        REAL(KIND=dp) :: fs1, fs2
+       REAL(KIND=dp) :: sfun, tfun, grad_sfun(3), grad_tfun(3)
+       REAL(KIND=dp) :: svec(3), tvec(3), grad_svec(3,3), grad_tvec(3,3), grad_vec(3,3)
        LOGICAL :: Create2ndKindBasis, PerformPiolaTransform, UsePretabulatedBasis, Parallel
        LOGICAL :: SecondOrder, ApplyTraceMapping, Found
        LOGICAL :: ReverseSign(4)
        LOGICAL :: ScaleFaceBasis, RedefineFaceBasis
        INTEGER, POINTER :: EdgeMap(:,:)
        INTEGER :: TriangleFaceMap(3), SquareFaceMap(4), BrickFaceMap(6,4), PrismSquareFaceMap(3,4), DOFs, GIndexes(27)
-       INTEGER :: ActiveFaceId
+       INTEGER :: ActiveFaceId, EDOFs
 !----------------------------------------------------------------------------------------------------------
        RedefineFaceBasis = .TRUE. ! Left as an emergency switch to revert to the original (ill-conditioned) basis
        ScaleFaceBasis = .TRUE.
@@ -7020,7 +7022,11 @@ END SUBROUTINE PickActiveFace
          END IF
        CASE(5)
          IF (SecondOrder) THEN
-           DOFs = 20
+           IF (Create2ndKindBasis) THEN
+             DOFs = 30
+           ELSE
+             DOFs = 20
+           END IF
            IF (n == 10) THEN
              ! Here the element of the background mesh is of type 510.
              ! The Lagrange interpolation basis on the p-approximation reference element:
@@ -7682,7 +7688,159 @@ END SUBROUTINE PickActiveFace
            !--------------------------------------------------------------
            EdgeMap => GetEdgeMap(5)
 
-           IF (Create2ndKindBasis) THEN
+           IF (Create2ndKindBasis .AND. SecondOrder) THEN
+             ! This is still under construction!
+             
+             !EDOFs = 3
+             EDOFs = 2
+             !-------------------------------------------------
+             ! The basis functions associated with the edges
+             !    - here the first basis function is the Whitney form
+             !-------------------------------------------------
+             DO k=1,6
+               
+               i = EdgeMap(k,1)
+               j = EdgeMap(k,2)
+
+               tvec(1:3) = Basis(i) * dLBasisdx(j,1:3)
+               svec(1:3) = Basis(j) * dLBasisdx(i,1:3)
+
+               grad_svec(1,2) = dLBasisdx(j,2) * dLBasisdx(i,1)
+               grad_svec(1,3) = dLBasisdx(j,3) * dLBasisdx(i,1)
+               grad_svec(2,1) = dLBasisdx(j,1) * dLBasisdx(i,2)
+               grad_svec(2,3) = dLBasisdx(j,3) * dLBasisdx(i,2)
+               grad_svec(3,1) = dLBasisdx(j,1) * dLBasisdx(i,3)
+               grad_svec(3,2) = dLBasisdx(j,2) * dLBasisdx(i,3)
+
+               grad_tvec(1,2) = dLBasisdx(i,2) * dLBasisdx(j,1)
+               grad_tvec(1,3) = dLBasisdx(i,3) * dLBasisdx(j,1)
+               grad_tvec(2,1) = dLBasisdx(i,1) * dLBasisdx(j,2)
+               grad_tvec(2,3) = dLBasisdx(i,3) * dLBasisdx(j,2)
+               grad_tvec(3,1) = dLBasisdx(i,1) * dLBasisdx(j,3)
+               grad_tvec(3,2) = dLBasisdx(i,2) * dLBasisdx(j,3)
+
+               DO l=1,EDOFs
+
+                 grad_sfun(:) = 0.0d0
+                 grad_tfun(:) = 0.0d0
+                 
+                 SELECT CASE(l)
+                 CASE(1)
+                   sfun = -1.0d0
+                   tfun = 1.0d0
+                 CASE(2)
+                   sfun = 1.0d0
+                   tfun = 1.0d0
+                 CASE DEFAULT
+                   CALL Fatal('ElementDescription::EdgeElementInfo','sfun/tfun not defined')
+                 END SELECT
+
+                 IF (GIndexes(j) < GIndexes(i)) THEN
+                   sfun = -sfun
+                   tfun = -tfun
+                   grad_sfun(:) = -grad_sfun(:)
+                   grad_tfun(:) = -grad_tfun(:)
+                 END IF
+                 
+                 IF (l <= 2) THEN
+                   EdgeBasis(EDOFs*(k-1)+l,1:3) = sfun * svec(1:3) + tfun * tvec(1:3)
+
+                   CurlBasis(EDOFs*(k-1)+l,1) = sfun * grad_svec(3,2) + tfun * grad_tvec(3,2) - &
+                       sfun * grad_svec(2,3) - tfun * grad_tvec(2,3)
+                   CurlBasis(EDOFs*(k-1)+l,2) = sfun * grad_svec(1,3) + tfun * grad_tvec(1,3) - &
+                       sfun * grad_svec(3,1) - tfun * grad_tvec(3,1)
+                   CurlBasis(EDOFs*(k-1)+l,3) = sfun * grad_svec(2,1) + tfun * grad_tvec(2,1) - &
+                       sfun * grad_svec(1,2) - tfun * grad_tvec(1,2)
+                   
+                 ELSE
+             
+!             grad_vec = grad_sfun * svec + sfun * grad_svec + grad_tfun * tvec + tfun * grad_tvev 
+!             grad_vec = sfun * grad_svec + tfun * grad_tvec
+                   
+                   CALL Fatal('ElementDescription::EdgeElementInfo','gradients of sfun/tfun not defined')
+                 END IF
+               END DO
+             END DO
+           END IF
+             
+           IF (Create2ndKindBasis .AND. .NOT. SecondOrder) THEN
+             IF (.FALSE.) THEN
+               !
+               ! Here the lowest-order Nedelec basis of the second kind is created
+               ! in a hierarchic manner such that the first basis function associated with
+               ! each edge is the lowest-order Nedelec basis function of the first kind.
+               ! The approximation seems to work as expected, but
+               !
+               ! TO DO: - Add 303-version so that the boundary terms can be assembled
+               !        - Enable setting Dirichlet conditions
+               !
+               EDOFs = 2
+               !-------------------------------------------------
+               ! The basis functions associated with the edges
+               !    - here the first basis function is the Whitney form
+               !-------------------------------------------------
+               DO k=1,6
+
+                 i = EdgeMap(k,1)
+                 j = EdgeMap(k,2)
+
+                 tvec(1:3) = Basis(i) * dLBasisdx(j,1:3)
+                 svec(1:3) = Basis(j) * dLBasisdx(i,1:3)
+
+                 grad_svec(1,2) = dLBasisdx(j,2) * dLBasisdx(i,1)
+                 grad_svec(1,3) = dLBasisdx(j,3) * dLBasisdx(i,1)
+                 grad_svec(2,1) = dLBasisdx(j,1) * dLBasisdx(i,2)
+                 grad_svec(2,3) = dLBasisdx(j,3) * dLBasisdx(i,2)
+                 grad_svec(3,1) = dLBasisdx(j,1) * dLBasisdx(i,3)
+                 grad_svec(3,2) = dLBasisdx(j,2) * dLBasisdx(i,3)
+
+                 grad_tvec(1,2) = dLBasisdx(i,2) * dLBasisdx(j,1)
+                 grad_tvec(1,3) = dLBasisdx(i,3) * dLBasisdx(j,1)
+                 grad_tvec(2,1) = dLBasisdx(i,1) * dLBasisdx(j,2)
+                 grad_tvec(2,3) = dLBasisdx(i,3) * dLBasisdx(j,2)
+                 grad_tvec(3,1) = dLBasisdx(i,1) * dLBasisdx(j,3)
+                 grad_tvec(3,2) = dLBasisdx(i,2) * dLBasisdx(j,3)
+
+                 DO l=1,EDOFs
+
+                   grad_sfun(:) = 0.0d0
+                   grad_tfun(:) = 0.0d0
+
+                   SELECT CASE(l)
+                   CASE(1)
+                     sfun = -1.0d0
+                     tfun = 1.0d0
+                   CASE(2)
+                     sfun = 1.0d0
+                     tfun = 1.0d0
+                   CASE DEFAULT
+                     CALL Fatal('ElementDescription::EdgeElementInfo','sfun/tfun not defined')
+                   END SELECT
+
+                   IF (GIndexes(j) < GIndexes(i)) THEN
+                     sfun = -sfun
+                     tfun = -tfun
+                     grad_sfun(:) = -grad_sfun(:)
+                     grad_tfun(:) = -grad_tfun(:)
+                   END IF
+
+                   IF (l <= 2) THEN
+                     EdgeBasis(EDOFs*(k-1)+l,1:3) = sfun * svec(1:3) + tfun * tvec(1:3)
+
+                     CurlBasis(EDOFs*(k-1)+l,1) = sfun * grad_svec(3,2) + tfun * grad_tvec(3,2) - &
+                         sfun * grad_svec(2,3) - tfun * grad_tvec(2,3)
+                     CurlBasis(EDOFs*(k-1)+l,2) = sfun * grad_svec(1,3) + tfun * grad_tvec(1,3) - &
+                         sfun * grad_svec(3,1) - tfun * grad_tvec(3,1)
+                     CurlBasis(EDOFs*(k-1)+l,3) = sfun * grad_svec(2,1) + tfun * grad_tvec(2,1) - &
+                         sfun * grad_svec(1,2) - tfun * grad_tvec(1,2)
+                   ELSE
+                     CALL Fatal('ElementDescription::EdgeElementInfo','gradients of sfun/tfun not defined')
+                   END IF
+                 END DO
+               END DO
+             END IF
+
+             IF (.TRUE.) THEN
              !-------------------------------------------------
              ! Two basis functions defined on the edge 12.
              !-------------------------------------------------
@@ -7942,7 +8100,7 @@ END SUBROUTINE PickActiveFace
                CurlBasis(12,2) = 0.0d0
                CurlBasis(12,3) = 0.0d0
              END IF
-
+             END IF
            ELSE
              
              !-------------------------------------------------------------
@@ -8329,7 +8487,7 @@ END SUBROUTINE PickActiveFace
                END IF
              END IF
            END IF
-           
+
          CASE(6)
            !--------------------------------------------------------------
            ! This branch is for handling pyramidic elements
