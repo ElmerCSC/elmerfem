@@ -1895,6 +1895,17 @@ SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
 #else
     CALL Fatal(Caller,'This version has been compiled without Trilinos!')
 #endif
+  IF (ListGetLogical(Params,'Linear System Use Permon', Found )) THEN
+#ifdef HAVE_PERMON
+    CALL INFO(Caller,'Using permon from sparitersolver',Level=1)
+    CALL SolvePermon(SourceMatrix,XVec,RHSVec,Solver,&
+        ParallelInfo,SplittedMatrix)    
+    RETURN
+#else
+    CALL Fatal(Caller,'This version has been compiled without Permon!')
+#endif
+  END IF
+
   END IF
 
 
@@ -2715,6 +2726,172 @@ SUBROUTINE SolveHutiter( SourceMatrix, SplittedMatrix, ParallelInfo, &
 END SUBROUTINE SolveHutiter
 !----------------------------------------------------------------------
 
+SUBROUTINE SolvePermon(Matrix, XVec, RHSVec, Solver, ParallelInfo, SplittedMatrix )
+
+  USE, INTRINSIC :: iso_c_binding  
+  USE PermonInterface
+
+  TYPE (Matrix_t) :: Matrix
+  REAL(KIND=dp), TARGET, DIMENSION(:) :: XVec, RHSVec
+  TYPE (Solver_t) :: Solver
+  TYPE (ParallelInfo_t), OPTIONAL :: ParallelInfo
+  TYPE (SplittedMatrixT), POINTER, OPTIONAL :: SplittedMatrix
+
+
+  CHARACTER(*), PARAMETER :: Caller = 'HypreSolver' 
+
+#ifndef HAVE_PERMON
+  CALL Fatal(Caller,'Permon requested but the library is not linked in!')
+#else
+    
+  ! Local variables
+  LOGICAL :: Parallel
+  INTEGER :: i, j, k, l, n
+  REAL(KIND=dp) :: TOL, hypre_dppara(10) = 0
+  INTEGER :: ILUn, BILU, Rounds, buf(2), src, status(MPI_STATUS_SIZE), ssz,nob, &
+      hypremethod,  hypre_intpara(20) = 0
+  INTEGER, DIMENSION(:), ALLOCATABLE :: VecEPerNB
+
+  INTEGER, ALLOCATABLE, TARGET :: Owner(:), Aperm(:)
+  REAL(KIND=dp), TARGET :: DummyPrecVals(1)
+  REAL(KIND=dp), POINTER :: Vals(:), c(:), cser(:)
+  INTEGER, POINTER :: Rows(:), Cols(:)
+
+  LOGICAL :: Found, NewSetup, UpdateTolerance, DoAMS
+  INTEGER :: verbosity, myverb
+  INTEGER :: nrows, ncols, nnz
+  TYPE(ValueList_t), POINTER :: Params
+
+  TYPE(Matrix_t), POINTER :: GM, PiM, Aser
+  INTEGER:: nnd,ind(2), precond
+  REAL(KIND=dp), POINTER :: PrecVals(:)
+  REAL(KIND=dp), ALLOCATABLE :: xx_d(:),yy_d(:),zz_d(:)  
+  INTEGER, ALLOCATABLE :: nodeowner(:),nodeperm(:),bperm(:), bowner(:)
+  INTEGER :: bound
+  INTEGER :: ndim
+
+
+  
+  CALL Info(Caller,'Solving linear system using Permon library',Level=6)
+
+  Rows => Matrix % Rows
+  Cols => Matrix % Cols
+  Vals => Matrix % Values
+  Params => Solver % Values
+
+  ! HUTI_NDIM expands to ipar(3) (macro in huti_fdefs.h).  In this
+  ! routine `ipar` is not available, so compute the dimensionality
+  ! from the Solver object instead (number of DOFs times nodes).
+  ndim = Solver % Variable % DOFs * Solver % Mesh % NumberOfNodes
+  
+!  CALL SetHypreParameters(Params, hypremethod, ilun, hypre_dppara, hypre_intpara )
+! TODO set permon parameters from sif file
+
+  TOL = ListGetCReal( Params,'Linear System Convergence Tolerance', Found )
+  IF ( .NOT. Found ) TOL = 1.0d-6
+  
+  Rounds = ListGetInteger( Params,'Linear System Max Iterations', Found )
+  IF ( .NOT. Found ) Rounds = 1000  
+  
+  ! Hypre wants to have a continuous ascending numbering across
+  ! partitions, try creating such a beast:
+  ! ------------------------------------------------------------
+  Parallel = PRESENT(ParallelInfo) 
+  IF( Parallel ) THEN
+    n = SIZE(ParallelInfo % GlobalDOFs)
+    ALLOCATE( Owner(n), Aperm(n) )
+    CALL ContinuousNumbering(ParallelInfo,Matrix % Perm,APerm,Owner)
+    ! Permon/Petsc indexes from 0
+    Aperm = Aperm-1
+  ELSE
+    n = Matrix % NumberOfRows
+    ALLOCATE( Owner(n), Aperm(n) )
+    DO i=1,n
+      Aperm(i) = i-1
+    END DO
+    Owner = 1
+  END IF
+
+  IF (ASSOCIATED(Solver % Variable % LowerLimit)) THEN
+    bound = 0
+    cser => Solver % Variable % LowerLimit
+  ELSE IF (ASSOCIATED(Solver % Variable % UpperLimit)) THEN
+    bound = 1
+    cser => Solver % Variable % UpperLimit
+  ELSE
+    CALL Fatal('itermethod_mprgp','No limits found')
+  END IF
+
+  ! Scaling here is a little dirty, but this is still under development...
+  ! The serial matrix and limiter have different size than the parallel ones.
+  Aser => Solver % Matrix
+  IF( ASSOCIATED(Aser % DiagScaling ) ) THEN
+    cser(1:ndim) = cser(1:ndim) / (Aser % DiagScaling * Aser % RhsScaling) 
+  END IF
+  IF( ParEnv % PEs == 1) THEN
+    c => cser
+  ELSE
+    ALLOCATE(c(ndim))
+    j = 0
+    ! We need to map the bigger limiter to the parallel one where only owned dofs are considered.
+    DO i=1,Aser % NumberOfRows
+      IF (Aser % ParallelInfo % NeighbourList(i) % Neighbours(1) == ParEnv % Mype ) THEN
+        j = j + 1
+        c(j) = cser(i)
+      END IF
+    END DO
+  END IF
+
+  CALL SParIterActiveBarrier()
+! TODO propagate limits and bound
+    ! Pass C interoperable pointers (C_PTR) to the C binding permon_solve.
+    ! Use the Matrix's precomputed C pointer fields if available and
+    ! fall back to `C_LOC` of the Fortran arrays where needed.
+    CALL permon_solve( C_LOC(Rows(1)), C_LOC(Cols(1)),C_LOC(Vals(1)), &
+      INT(Matrix % NumberOfRows, KIND=C_INT), &
+      C_LOC(RHSVec(1)), C_LOC(c(1)), C_LOC(XVec(1)), &
+      INT(bound, KIND=C_INT), &
+      C_LOC(Aperm(1)), C_LOC(Owner(1)), INT(Matrix % Comm, KIND=C_INT) )   
+
+  CALL SParIterActiveBarrier()
+  DEALLOCATE( Owner, Aperm )
+
+  CALL Info(Caller,'Finished solving linear system with HYPRE',Level=12)
+
+
+!CONTAINS
+!
+!  SUBROUTINE ExchangeHypreResults()
+!    INTEGER :: nbind
+!    
+!    ALLOCATE( VecEPerNB( ParEnv % PEs ) )
+!    VecEPerNB = 0
+!    DO i = 1, Matrix % NumberOfRows
+!      IF ( SIZE(ParallelInfo % NeighbourList(i) % Neighbours) > 1 ) THEN
+!        IF ( ParallelInfo % NeighbourList(i) % Neighbours(1) == ParEnv % MyPE ) THEN
+!          DO j = 1, SIZE(ParallelInfo % NeighbourList(i) % Neighbours)
+!            IF (ParallelInfo % NeighbourList(i) % Neighbours(j)/=ParEnv % MyPE) THEN
+!              nbind = ParallelInfo % NeighbourList(i) % Neighbours(j) + 1
+!              VecEPerNB(nbind) = VecEPerNB(nbind) + 1
+!
+!              SplittedMatrix % ResBuf(nbind) % ResVal(VecEPerNB(nbind)) = XVec(i)
+!              SplittedMatrix % ResBuf(nbind) % ResInd(VecEPerNB(nbind)) = &
+!                  ParallelInfo % GlobalDOFs(i)
+!            END IF
+!          END DO
+!        END IF
+!      END IF
+!    END DO
+!
+!    CALL ExchangeResult( Matrix, SplittedMatrix, ParallelInfo, XVec )
+!    DEALLOCATE( VecEPerNB )
+!
+!  END SUBROUTINE ExchangeHypreResults
+
+
+#endif
+  
+END SUBROUTINE SolvePermon
 
 
 !---------------------------------------------------------------------

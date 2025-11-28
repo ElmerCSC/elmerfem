@@ -51,7 +51,7 @@ int permon_finalize(){
 }
 
 // TODO check if the freeing of the arrays is correct
-int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows, int ncols, void *b_ptr, void *c_ptr, void *x_ptr, int bound, int *globaldofs, int *owner, int *fcomm, int nloc) {
+int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows, void *b_ptr, void *c_ptr, void *x_ptr, int bound, int *globaldofs, int *owner, int *fcomm) {
     Vec       b, c, x;
     Vec       lb_fill = NULL, ub_fill = NULL;
     Vec       lb = NULL, ub = NULL;
@@ -76,7 +76,6 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
     PetscInt ilower = PETSC_MAX_INT, iupper = -1;
     PetscInt nlocal = 0;
 
-    printf("nloc = %d\n", nloc);
     /* Dump rows array to a per-rank file for debugging */
     {
         int rank = 0;
@@ -87,9 +86,8 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
         if (fp) {
             fprintf(fp, "rows_local pointer=%p\n", (void*)rows_local);
             fprintf(fp, "rows_f pointer=%p\n", (void*)rows_f);
-            fprintf(fp, "nloc=%d\n", nloc);
             fprintf(fp, "rows_f (0..nloc):\n");
-            for (i = 0; i <= nloc; ++i) {
+            for (i = 0; i <= nrows; ++i) {
                 fprintf(fp, "%d\n", rows_f[i]);
             }
             fclose(fp);
@@ -126,7 +124,8 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
     //         fflush(stderr);
     //     }
     // }
-    for (i = 0; i < nloc; i++) {
+    // TODO check if nrows == local_size
+    for (i = 0; i < nrows; i++) {
         if (owner[i]) {
             if (globaldofs[i] < ilower) ilower = globaldofs[i];
             if (globaldofs[i] > iupper) iupper = globaldofs[i];
@@ -153,7 +152,8 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
       int nnz,irow,i,j,k,*rcols;
 
       rcols = (int *)malloc( csize*sizeof(int) );
-      for (i = 0; i < nloc ; i++) {
+      // todo check if nrows == local_size
+      for (i = 0; i < nrows ; i++) {
         
 	    nnz = rows_f[i+1]-rows_f[i];
         if ( nnz>csize ) {
