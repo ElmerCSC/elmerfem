@@ -59,10 +59,20 @@ MACRO(RUN_ELMERICE_TEST)
     SET(ENV{PATH} "$ENV{ELMER_HOME};$ENV{ELMER_LIB};${BINARY_DIR}/fhutiter/src;${BINARY_DIR}/matc/src;${BINARY_DIR}/mathlibs/src/arpack;${BINARY_DIR}/mathlibs/src/parpack;${COMPILER_DIRECTORY};$ENV{PATH}")
   ENDIF(WIN32)
 
+  # Query number of physical CPU cores of the host
+  cmake_host_system_information(RESULT PHYS_CPU QUERY NUMBER_OF_PHYSICAL_CORES)
+
   # Optional arguments like WITH_MPI
   SET(LIST_VAR "${ARGN}")
   IF(LIST_VAR STREQUAL "")
     FILE(REMOVE "TEST.PASSED")
+
+    # Limit number of OpenMP threads to a sensible value
+    IF(NOT DEFINED ENV{OMP_NUM_THREADS})
+      # set limit
+      SET(ENV{OMP_NUM_THREADS} ${PHYS_CPU})
+    ENDIF()
+
     EXECUTE_PROCESS(COMMAND ${ELMERSOLVER_BIN}
       OUTPUT_FILE "test-stdout.log"
       ERROR_FILE "test-stderr.log")
@@ -71,12 +81,26 @@ MACRO(RUN_ELMERICE_TEST)
     SET(N "${NPROCS}")
     IF("${N}" STREQUAL "")
       MESSAGE(FATAL_ERROR "Test failed:variable <NPROC> not defined. Set <NPROC> in runTest.cmake")
-    ELSE()
-      FILE(REMOVE "TEST.PASSED_${N}")
-      EXECUTE_PROCESS(COMMAND "${MPIEXEC}" ${MPIEXEC_NUMPROC_FLAG} ${N} ${MPIEXEC_PREFLAGS} ${ELMERSOLVER_BIN} ${MPIEXEC_POSTFLAGS}
-        OUTPUT_FILE "test-stdout.log"
-        ERROR_FILE "test-stderr.log")
     ENDIF()
+
+    FILE(REMOVE "TEST.PASSED_${N}")
+
+    IF(NOT DEFINED ENV{OMP_NUM_THREADS})
+      # Limit number of OpenMP threads to a sensible value
+      # Divide by ${NPROCS} and truncate to the nearest lower integer
+      MATH(EXPR n_openmp_threads "${PHYS_CPU} / ${NPROCS}")
+      IF(${n_openmp_threads} LESS 1)
+        # minimum of 1
+        SET(ENV{OMP_NUM_THREADS} 1)
+      ELSE()
+        # set limit
+        SET(ENV{OMP_NUM_THREADS} ${n_openmp_threads})
+      ENDIF()
+    ENDIF()
+
+    EXECUTE_PROCESS(COMMAND "${MPIEXEC}" ${MPIEXEC_NUMPROC_FLAG} ${N} ${MPIEXEC_PREFLAGS} ${ELMERSOLVER_BIN} ${MPIEXEC_POSTFLAGS}
+      OUTPUT_FILE "test-stdout.log"
+      ERROR_FILE "test-stderr.log")
   ENDIF()
 
   IF(NPROCS GREATER "1")
