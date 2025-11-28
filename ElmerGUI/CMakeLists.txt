@@ -144,6 +144,10 @@ ENDIF()
 IF(WITH_VTK)
   FIND_PACKAGE(VTK REQUIRED)
 
+  # We do not use Java wrappings and they make linking very difficult when
+  # building Debian/Ubuntu packages
+  LIST(REMOVE_ITEM VTK_LIBRARIES VTK::Java)
+
   INCLUDE(testVTKcapabilities)
 
   MESSAGE(STATUS "  [ElmerGUI] VTK version:       " ${VTK_VERSION})
