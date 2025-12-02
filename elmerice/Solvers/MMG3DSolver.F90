@@ -29,9 +29,9 @@ SUBROUTINE OptimizeMesh_MMG3D(Model,Solver,dt,TransientSimulation)
   mmgMesh = 0
   mmgSol  = 0
 
-  CALL MMG3D_Init_mesh(MMG5_ARG_start, &
-       MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &
-       MMG5_ARG_end)
+  CALL MMG3D_Init_mesh((/MMG5_ARG_start, &
+       MMG5_ARG_ppMesh,LOC(mmgMesh),MMG5_ARG_ppMet,LOC(mmgSol), &
+       MMG5_ARG_end/), ier)
 
   CALL SET_MMG3D_MESH(Mesh)
 
