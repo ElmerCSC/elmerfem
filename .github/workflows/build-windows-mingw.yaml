@@ -112,7 +112,7 @@ jobs:
             -DParMetis_LIBRARIES="$(pkg-config --libs parmetis)" \
             -DParMetis_INCLUDE_DIR="$(pkg-config --cflags parmetis)" \
             -DWITH_Mumps=ON \
-            -DMumps_LIBRARIES=$(pkg-config -libs mumps-dmo mumps-zmo) \
+            -DMumps_LIBRARIES=$(pkg-config -libs mumps-dmo) \
             -DMumps_INCLUDE_DIR=$(pkg-config --variable=includedir mumps-dmo) \
             -DWITH_CHOLMOD=ON \
             -DWITH_ElmerIce=ON \
