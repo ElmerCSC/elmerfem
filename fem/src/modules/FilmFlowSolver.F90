@@ -174,7 +174,7 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
   TYPE(Variable_t), POINTER :: pVar, thisVar, hVar
   INTEGER :: GapDirection, FrictionModel 
   REAL(KIND=dp) :: GapFactor, Nm, TotHeating
-  CHARACTER(:), ALLOCATABLE :: str
+  CHARACTER(:), ALLOCATABLE :: str, DensityName, ViscosityName 
   CHARACTER(*), PARAMETER :: Caller = 'FilmFlowSolver'
   LOGICAL :: Debug, FirstRound=.TRUE.
   
@@ -205,6 +205,12 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
   Convect = GetLogical( Params, 'Convect', Found )
     
   CoupledIter = GetCoupledIter()
+
+  DensityName = ListGetString( Params,'Density Name',Found )
+  IF(.NOT. Found) DensityName = 'Density'
+
+  ViscosityName = ListGetString( Params,'Viscosity Name',Found )
+  IF(.NOT. Found) ViscosityName = 'Viscosity'
   
   GapDirection = 0
   GapFactor = ListGetCReal( Params,'Gap Addition Factor',Found )
@@ -384,8 +390,8 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
       ! Material parameters:
       !---------------------
       Material => GetMaterial()
-      rho(1:n) = GetReal( Material, 'Density' )
-      mu(1:n)  = GetReal( Material, 'Viscosity' )
+      rho(1:n) = GetReal( Material, DensityName )
+      mu(1:n)  = GetReal( Material, ViscosityName )
       gap(1:n) = GetReal( Material, 'Gap Height' )
 
       height(1:n) = GetReal( Material,'Bedrock Height',GotHeight) 
@@ -472,8 +478,8 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
       BC => GetBC()
       IF ( .NOT. ASSOCIATED(BC) ) CYCLE
 
-      rho(1:n) = GetParentMatProp( 'Density', Element, Found )
-      mu(1:n)  = GetParentMatProp( 'Viscosity', Element, Found )
+      rho(1:n) = GetParentMatProp( DensityName, Element, Found )
+      mu(1:n)  = GetParentMatProp( ViscosityName, Element, Found )
       gap(1:n) = GetParentMatProp( 'Gap Height', Element, Found )
 
       WHERE(gap(1:n) < mingap )

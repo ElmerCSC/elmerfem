@@ -102,8 +102,8 @@ CONTAINS
        END IF
 
        IF( Level == Solver % MultigridLevel ) THEN 
-         CALL Info('MultiGridSolve','*********************************',Level=5)
-         CALL Info('MultiGridSolve','Performing multigrid solution: '//TRIM(MgMethod))
+         CALL Info('MultiGridSolve','*********************************',Level=7)
+         CALL Info('MultiGridSolve','Performing multigrid solution: '//TRIM(MgMethod),Level=7)
        END IF
 
        SELECT CASE( MGMethod )
@@ -1127,7 +1127,7 @@ CONTAINS
 
            IF( EdgeBasis ) THEN
              ! for debugging edge p-strategy
-#if 1
+#if 0
              PRINT *,'edges:',Solver % Mesh % NumberOfEdges
              PRINT *,'elems:',Solver % Mesh % NumberOfBulkElements
              PRINT *,'max perm:',MAXVAL(Permutation)

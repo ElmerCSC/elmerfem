@@ -2337,13 +2337,9 @@ CONTAINS
 !------------------------------------------------------------------------------
         CHARACTER(LEN=*) :: Section, Name, LastString
 
-         CALL Error( 'LoadInputFile', ' ' )
-         WRITE( Message, * ) 'Unknown specifier: [',TRIM(LastString),']'
-         CALL Error( 'LoadInputFile', Message )
-         WRITE( Message, * ) 'In section: [', TRIM(Section), ']'
-         CALL Error( 'LoadInputFile', Message )
-         WRITE( Message, * ) 'For property name:[',TRIM(Name),']'
-         CALL Fatal( 'LoadInputFile', Message )
+         CALL Error( Caller, 'Unknown specifier:['//TRIM(LastString)//']')
+         CALL Error( Caller, '        section:  ['//TRIM(Section)//']')
+         CALL Error( Caller, '        keyword:  ['//TRIM(Name)//']')
 !------------------------------------------------------------------------------
       END SUBROUTINE SyntaxError
 !------------------------------------------------------------------------------
