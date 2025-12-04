@@ -6865,6 +6865,7 @@ END SUBROUTINE PickActiveFace
        REAL(KIND=dp) :: sfun, tfun, hfun, grad_sfun(3), grad_tfun(3), grad_hfun(3)
        REAL(KIND=dp) :: svec(3), tvec(3), hvec(3), grad_svec(3,3), grad_tvec(3,3), grad_hvec(3,3)
        LOGICAL :: Create2ndKindBasis, PerformPiolaTransform, UsePretabulatedBasis, Parallel
+       LOGICAL :: ErvinStyle
        LOGICAL :: SecondOrder, ApplyTraceMapping, Found
        LOGICAL :: ReverseSign(4)
        LOGICAL :: ScaleFaceBasis, RedefineFaceBasis
@@ -6872,6 +6873,7 @@ END SUBROUTINE PickActiveFace
        INTEGER :: TriangleFaceMap(3), SquareFaceMap(4), BrickFaceMap(6,4), PrismSquareFaceMap(3,4), DOFs, GIndexes(27)
        INTEGER :: ActiveFaceId, EDOFs, FDOFs
 !----------------------------------------------------------------------------------------------------------
+       ErvinStyle = .TRUE.
        RedefineFaceBasis = .TRUE. ! Left as an emergency switch to revert to the original (ill-conditioned) basis
        ScaleFaceBasis = .TRUE.
        fs1 = 28.0d0
@@ -6954,8 +6956,13 @@ END SUBROUTINE PickActiveFace
          END DO
        CASE(3)
          IF (SecondOrder) THEN
-           ! DOFs is the number of H(curl)-conforming basis functions: 
-           DOFs = 8
+           ! DOFs is the number of H(curl)-conforming basis functions:
+           IF (Create2ndKindBasis) THEN
+             DOFs = 12
+           ELSE
+             DOFs = 8
+           END IF
+
            IF (n == 6) THEN
              ! Here the element of the background mesh is of type 306.
              ! The Lagrange interpolation basis on the p-approximation reference element:
@@ -7329,7 +7336,130 @@ END SUBROUTINE PickActiveFace
            EdgeMap => GetEdgeMap(3)
            !EdgeMap => GetEdgeMap(GetElementFamily(Element))
 
-           IF (Create2ndKindBasis) THEN
+           IF (Create2ndKindBasis .AND. SecondOrder) THEN
+
+             ! This construction follows Sun, Lee, Cendes. SIAM J. Sci. Comput. 23(4):1053-1076
+ 
+             !-------------------------------------------------
+             ! The basis functions associated with the edges
+             !    - here the first basis function is the Whitney form
+             !-------------------------------------------------
+             EDOFs = 3
+             
+             DO k=1,3
+               
+               i = EdgeMap(k,1)
+               j = EdgeMap(k,2)
+
+               tvec(1:2) = Basis(i) * dLBasisdx(j,1:2)
+               svec(1:2) = Basis(j) * dLBasisdx(i,1:2)
+
+               grad_svec(1,2) = dLBasisdx(j,2) * dLBasisdx(i,1)
+               grad_svec(2,1) = dLBasisdx(j,1) * dLBasisdx(i,2)
+
+               grad_tvec(1,2) = dLBasisdx(i,2) * dLBasisdx(j,1)
+               grad_tvec(2,1) = dLBasisdx(i,1) * dLBasisdx(j,2)
+
+               DO l=1,EDOFs
+
+                 grad_sfun(:) = 0.0d0
+                 grad_tfun(:) = 0.0d0
+                 
+                 SELECT CASE(l)
+                 CASE(1)
+                   sfun = -1.0d0
+                   tfun = 1.0d0
+                 CASE(2)
+                   sfun = 1.0d0
+                   tfun = 1.0d0
+                 CASE(3)
+                   sfun = -2.0d0*Basis(i) + Basis(j)
+                   tfun = 2.0d0*Basis(j) - Basis(i)
+                   grad_sfun(1:2) = -2.0d0*dLBasisdx(i,1:2) + dLBasisdx(j,1:2)
+                   grad_tfun(1:2) = 2.0d0*dLBasisdx(j,1:2) - dLBasisdx(i,1:2)
+                 CASE DEFAULT
+                   CALL Fatal('ElementDescription::EdgeElementInfo','sfun/tfun not defined')
+                 END SELECT
+
+                 IF (GIndexes(j) < GIndexes(i) .AND. .NOT. l==2) THEN
+                   sfun = -sfun
+                   tfun = -tfun
+                   grad_sfun(1:2) = -grad_sfun(1:2)
+                   grad_tfun(1:2) = -grad_tfun(1:2)
+                 END IF
+                 
+                 EdgeBasis(EDOFs*(k-1)+l,1:2) = sfun * svec(1:2) + tfun * tvec(1:2)
+                 
+                 CurlBasis(EDOFs*(k-1)+l,3) = sfun * grad_svec(2,1) + tfun * grad_tvec(2,1) - &
+                     sfun * grad_svec(1,2) - tfun * grad_tvec(1,2)
+                 
+                 IF (l > 2) THEN
+                   CurlBasis(EDOFs*(k-1)+l,3) = CurlBasis(EDOFs*(k-1)+l,3) + &
+                       grad_sfun(1)*svec(2) + grad_tfun(1)*tvec(2) - &
+                       grad_sfun(2)*svec(1) - grad_tfun(2)*tvec(1)
+                 END IF
+               END DO
+             END DO
+
+             ! The basis functions associated with the face ...
+             FDOFs = 3
+             TriangleFaceMap(:) = (/ 1,2,3 /)
+             I1 = 1
+             I2 = 2
+             I3 = 3
+               
+             WorkBasis(1,1:2) = Basis(I2) * Basis(I3) * dLBasisdx(I1,1:2)
+             WorkBasis(2,1:2) = Basis(I1) * Basis(I3) * dLBasisdx(I2,1:2)
+             WorkBasis(3,1:2) = Basis(I1) * Basis(I2) * dLBasisdx(I3,1:2)
+
+             grad_svec(1,2) = (dLBasisdx(I2,2) * Basis(I3) + &
+                 Basis(I2) * dLBasisdx(I3,2)) * dLBasisdx(I1,1)
+             grad_svec(2,1) = (dLBasisdx(I2,1) * Basis(I3) + &
+                 Basis(I2) * dLBasisdx(I3,1)) * dLBasisdx(I1,2)
+
+             grad_tvec(1,2) = (dLBasisdx(I1,2) * Basis(I3)  + &
+                 Basis(I1) * dLBasisdx(I3,2)) * dLBasisdx(I2,1)
+             grad_tvec(2,1) = (dLBasisdx(I1,1) * Basis(I3)  + &
+                 Basis(I1) * dLBasisdx(I3,1)) * dLBasisdx(I2,2)
+               
+             grad_hvec(1,2) = (dLBasisdx(I1,2) * Basis(I2)  + &
+                 Basis(I1) * dLBasisdx(I2,2)) * dLBasisdx(I3,1)
+             grad_hvec(2,1) = (dLBasisdx(I1,1) * Basis(I2)  + &
+                 Basis(I1) * dLBasisdx(I2,1)) * dLBasisdx(I3,2)
+
+             WorkCurlBasis(1,3) = grad_svec(2,1) - grad_svec(1,2)
+             WorkCurlBasis(2,3) = grad_tvec(2,1) - grad_tvec(1,2)
+             WorkCurlBasis(3,3) = grad_hvec(2,1) - grad_hvec(1,2)
+
+             ! Create permutation:
+             FaceIndices(1:3) = GIndexes(TriangleFaceMap(1:3))
+             CALL TriangleFaceDofsOrdering2nd(I1,I2,I3,FaceIndices(1:3))
+               
+             ! Create the basis:
+             DO l=1,FDOFs
+                 
+               SELECT CASE(l)
+               CASE(1)
+                 sfun = 1.0d0
+                 tfun = 1.0d0
+                 hfun = 1.0d0
+               CASE(2)
+                 sfun = 1.0d0
+                 tfun = 1.0d0
+                 hfun = -2.0d0
+               CASE(3)
+                 sfun = 1.0d0
+                 tfun = -1.0d0
+                 hfun = 0.0d0
+               END SELECT
+
+               EdgeBasis(3*EDOFs + l,1:2) = sfun * WorkBasis(I1,1:2) + tfun * WorkBasis(I2,1:2) + &
+                   hfun * WorkBasis(I3,1:2)
+               CurlBasis(3*EDOFs + l,3) = sfun * WorkCurlBasis(I1,3) + tfun * WorkCurlBasis(I2,3) + &
+                     hfun * WorkCurlBasis(I3,3)
+             END DO
+             
+           ELSE IF (Create2ndKindBasis) THEN
              !-------------------------------------------------
              ! Two basis functions defined on the edge 12.
              !-------------------------------------------------
@@ -7876,7 +8006,7 @@ END SUBROUTINE PickActiveFace
              END DO
              
            ELSE IF (Create2ndKindBasis) THEN
-             IF (.FALSE.) THEN
+             IF (.NOT. ErvinStyle) THEN
                !
                ! Here the lowest-order Nedelec basis of the second kind is created
                ! in a hierarchic manner such that the first basis function associated with
@@ -7950,9 +8080,7 @@ END SUBROUTINE PickActiveFace
                    END IF
                  END DO
                END DO
-             END IF
-
-             IF (.TRUE.) THEN
+             ELSE
              !-------------------------------------------------
              ! Two basis functions defined on the edge 12.
              !-------------------------------------------------
@@ -8214,7 +8342,6 @@ END SUBROUTINE PickActiveFace
              END IF
              END IF
            ELSE
-             
              !-------------------------------------------------------------
              ! The optimal/Nedelec basis functions of the first kind. We employ
              ! a hierarchic basis, so the lowest-order basis functions are
