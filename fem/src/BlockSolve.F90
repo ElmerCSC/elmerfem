@@ -1545,7 +1545,7 @@ CONTAINS
       IF(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
     END DO
     
-    CALL Info('BlockPickMatrixAV','Finished picking block martrix!',Level=20)
+    CALL Info('BlockPickMatrixAV','Finished picking block matrix!',Level=20)
 
     
   END SUBROUTINE BlockPickMatrixAV
@@ -1787,11 +1787,11 @@ CONTAINS
     LOGICAL :: DoCmplx
     INTEGER :: BlockTag(:)
 
-    INTEGER :: i,j,k,n,m,n0,dofs,ic,kc
+    INTEGER :: i,j,k,n,m,n0,dofs,EDOFs,ic,kc
     TYPE(Matrix_t), POINTER :: A,B
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Element_t), POINTER :: Element, Edge
-    LOGICAL :: Found
+    LOGICAL :: Found, SecondFamily
     
     Mesh => Solver % Mesh
 
@@ -1803,6 +1803,13 @@ CONTAINS
     END IF        
     CALL Info('BlockPickMatrixHcurl','Arranging a quadratic H(curl) approximation into blocks',Level=10)
 
+    SecondFamily = ListGetLogical( Solver % Values,'Second Kind Basis',Found )
+    IF (SecondFamily) THEN
+      EDOFs = 3
+    ELSE
+      EDOFs = 2
+    END IF
+    
     NoVar = 2
     IF( ListGetLogical( Solver % Values,'Block Quadratic Hcurl Faces',Found ) ) NoVar = 3
     IF(DoCmplx) THEN
@@ -1841,7 +1848,7 @@ CONTAINS
     n0 = Mesh % NumberOfNodes    
     DO i=1, Mesh % NumberOfEdges
       ! This corresponds to the lowest-order DOF over an edge
-      j = n0 + 2*i-1
+      j = n0 + EDOFs*(i-1) + 1
       k = Solver % Variable % Perm(j)
       IF(k==0) CYCLE
 
