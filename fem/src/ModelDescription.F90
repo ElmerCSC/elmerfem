@@ -2643,6 +2643,8 @@ CONTAINS
     CALL LoadInputFile( Model,InFileUnit,ModelName,MeshDir,MeshName, .TRUE., .FALSE. )
     IF ( .NOT. OpenFile ) CLOSE( InFileUnit )
 
+    CALL InitializeOutputLevel( Model % Simulation )
+    
 #ifdef DEVEL_LISTUSAGE 
     ! Switch original keywords from -1 to 0 if in this mode.
     CALL ReportListCounters( Model, 1 )
@@ -2656,8 +2658,6 @@ CONTAINS
     CALL ListTagKeywords( Model,'normalize by volume',.TRUE., Found ) 
            
     CALL ListAddNewString( Model % Simulation,'Solver Input File',ModelName ) 
-
-    CALL InitializeOutputLevel( Model % Simulation )
 
     Transient=ListGetString(Model % Simulation, &
         'Simulation Type',Found)=='transient'

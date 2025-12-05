@@ -2344,7 +2344,7 @@ MODULE LumpingUtils
         PortTypeInd = 2
 
       CASE DEFAULT
-        CALL Warn(Caller,'Port Type "Port Type" defaulted to "rectangular"')
+        CALL Info(Caller,'Port Type "Port Type" defaulted to "rectangular"',Level=4)
         PortTypeInd = 1
       END SELECT
       
