@@ -21,6 +21,11 @@ MACRO(ADD_ELMERICE_TEST test_name)
       -DWITH_MPI=${WITH_MPI}
       -P ${CMAKE_CURRENT_SOURCE_DIR}/runTest.cmake)
   SET_TESTS_PROPERTIES(${test_name} PROPERTIES LABELS "elmerice")
+  IF(WITH_MPI AND DEFINED NPROCS)
+    # Tell ctest how many processors this test requires.
+    SET_TESTS_PROPERTIES(${test_name} PROPERTIES
+      PROCESSORS ${NPROCS})
+  ENDIF()
 ENDMACRO()
 
 MACRO(ADD_ELMERICETEST_MODULE test_name module_name file_name)
