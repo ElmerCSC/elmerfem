@@ -105,8 +105,13 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
       END IF      
     ELSE
       IF( SecondOrder ) THEN
-        CALL ListAddString( SolverParams, "Element", &
-            "n:0 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )
+        IF (SecondFamily) THEN
+          CALL ListAddString( SolverParams, "Element", &
+              "n:0 e:3 -tri b:3 -tri_face b:3" )
+        ELSE
+          CALL ListAddString( SolverParams, "Element", &
+              "n:0 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )
+        END IF
       ELSE IF (SecondFamily) THEN
         CALL ListAddString( SolverParams, "Element", "n:0 e:2" )
       ELSE IF( PiolaVersion ) THEN
