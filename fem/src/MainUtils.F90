@@ -1035,6 +1035,74 @@ CONTAINS
    END SUBROUTINE AddExecWhenFlag
      
 
+   SUBROUTINE PrintProblemSize( Solver )
+     TYPE(Solver_t) :: Solver
+
+     TYPE(Matrix_t), POINTER :: Matrix    
+     INTEGER :: i, nz, nx, no, ns
+     INTEGER :: nzpar(0:2), nxpar(0:2), nopar(0:2), nspar(0:2)
+     LOGICAL :: Parallel, HaveParInfo
+     CHARACTER(*), PARAMETER :: Caller="PrintProblemSize"
+
+     Matrix => Solver % Matrix
+     IF(.NOT. ASSOCIATED(Matrix)) RETURN
+     
+     nx = Matrix % NumberOfRows
+     nz = SIZE(Matrix % Values)
+
+
+     Parallel = ParEnv % PEs > 1 .AND. .NOT. Solver % Mesh % SingleMesh 
+       
+     ! Is there any size info to print?
+     i = ParallelReduction( nx )
+     IF(i==0) THEN
+       CONTINUE
+
+     ELSE IF( Parallel ) THEN
+       no = 0; ns = 0
+
+       IF( Parallel ) HaveParInfo = ASSOCIATED(Matrix % ParallelInfo)
+       IF(HaveParInfo) THEN
+         HaveParInfo = ASSOCIATED(Matrix % ParallelInfo % NeighbourList)
+       END IF
+
+       IF(HaveParInfo) THEN
+         DO i=1,nx
+           IF( Matrix % ParallelInfo % NeighbourList(i) % Neighbours(1) == ParEnv % MyPe) no=no+1
+           IF( SIZE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours) > 1) ns=ns+1
+         END DO
+       END IF
+
+       DO i=0,2
+         nxpar(i) = ParallelReduction(nx,i)
+         nzpar(i) = ParallelReduction(nz,i)
+         IF(HaveParInfo) THEN
+           nopar(i) = ParallelReduction(no,i)
+           nspar(i) = ParallelReduction(ns,i)
+         END IF
+       END DO
+
+       CALL Info(Caller,'Parallel size for Solver:           SUM       MIN       MAX')
+       WRITE(Message,'(A,T30,3I10)') '  Total dofs: ',nxpar
+       CALL Info(Caller,Message,Level=3)
+       IF( HaveParInfo ) THEN
+         WRITE(Message,'(A,T30,3I10)') '  Owned dofs: ',nopar
+         CALL Info(Caller,Message,Level=3)
+         WRITE(Message,'(A,T30,3I10)') '  Shared dofs: ',nspar
+         CALL Info(Caller,Message,Level=3)
+       END IF
+       WRITE(Message,'(A,T30,3I10)') '  Matrix nnz: ',nzpar
+       CALL Info(Caller,Message,Level=3)
+     ELSE
+       CALL Info(Caller,'Serial size for Solver:')
+       WRITE(Message,'(A,T30,1I10)') '  Total dofs: ',nx
+       CALL Info(Caller,Message,Level=3)
+       WRITE(Message,'(A,T30,1I10)') '  Matrix nnz: ',nz
+       CALL Info(Caller,Message,Level=3)
+     END IF
+     
+   END SUBROUTINE PrintProblemSize
+   
    
 !------------------------------------------------------------------------------
 !> Add the generic stuff related to each Solver. 
@@ -2209,6 +2277,7 @@ CONTAINS
     TYPE(Mesh_t),   POINTER :: NewMesh,OldMesh
     TYPE(Element_t), POINTER :: CurrentElement
     TYPE(Matrix_t), POINTER :: NewMatrix, Oldmatrix, SaveMatrix
+    CHARACTER(*), PARAMETER :: Caller="AddEquationSolution"   
 
     !------------------------------------------------------------------------------
     Solver % DoneTime = 0
@@ -2243,7 +2312,7 @@ CONTAINS
         Var => VariableGet( Solver % Mesh % Variables, var_name, .TRUE. )
         IF ( .NOT. ASSOCIATED(Var) ) THEN
           ALLOCATE( Solution(SIZE(Solver % Variable % Values)), STAT = AllocStat )
-          IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for '//TRIM(str))
+          IF( AllocStat /= 0 ) CALL Fatal(Caller,'Allocation error for '//TRIM(str))
 
           DOFs = Solver % Variable % DOFs
           Solution = 0.0d0
@@ -2280,7 +2349,7 @@ CONTAINS
     IF( ASSOCIATED( Solver % Variable ) ) THEN
       DoIt = ListGetLogical( Solver % Values,'Save Global Dofs', Found ) 
       IF( Solver % Variable % TYPE /= Variable_on_nodes_on_elements  ) THEN              
-        CALL Info('AddEquationSolution','Saving of global dof indexes only for DG variable!')
+        CALL Info(Caller,'Saving of global dof indexes only for DG variable!')
         DoIt = .FALSE.
       END IF
     END IF
@@ -2293,7 +2362,7 @@ CONTAINS
         n = SIZE(Solver % Variable % Values) / Solver % Variable % Dofs
         ALLOCATE( Solution(n), STAT = AllocStat )
         Solution = 0.0_dp
-        IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error Gdofs')
+        IF( AllocStat /= 0 ) CALL Fatal(Caller,'Allocation error Gdofs')
         
         Solution = 0.0d0
         Perm => Solver % Variable % Perm
@@ -2319,7 +2388,7 @@ CONTAINS
       Var => VariableGet( Solver % Mesh % Variables, var_name )
       IF ( .NOT. ASSOCIATED(Var) ) THEN
         ALLOCATE( Solution(SIZE(Solver % Variable % Values)), STAT = AllocStat)
-        IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for Contact Loads')
+        IF( AllocStat /= 0 ) CALL Fatal(Caller,'Allocation error for Contact Loads')
 
         DOFs = Solver % Variable % DOFs
         Solution = 0.0d0
@@ -2358,13 +2427,13 @@ CONTAINS
     IF ( ASSOCIATED( Solver % Matrix ) ) THEN
       IF(.NOT. ASSOCIATED(Solver % Matrix % RHS)) THEN
         ALLOCATE( Solver % Matrix % RHS(Solver % Matrix % NumberOFRows), STAT=AllocStat )
-        IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for Rhs')
+        IF( AllocStat /= 0 ) CALL Fatal(Caller,'Allocation error for Rhs')
         Solver % Matrix % RHS = 0.0d0
         
         Solver % Matrix % RHS_im => NULL()
         IF ( HarmonicAnal .OR. HarmonicMode ) THEN
           ALLOCATE( Solver % Matrix % RHS_im(Solver % Matrix % NumberOFRows), STAT=AllocStat)
-          IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for Rhs_im')                  
+          IF( AllocStat /= 0 ) CALL Fatal(Caller,'Allocation error for Rhs_im')                  
           Solver % Matrix % RHS_im = 0.0d0
         END IF
       END IF
@@ -2382,7 +2451,7 @@ CONTAINS
       IF ( ASSOCIATED( Solver % Matrix ) ) THEN
         ALLOCATE( Solver % Matrix % Force(Solver % Matrix % NumberOFRows, &
             Solver % TimeOrder+1), STAT=AllocStat)
-        IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for Force')
+        IF( AllocStat /= 0 ) CALL Fatal(Caller,'Allocation error for Force')
         Solver % Matrix % Force = 0.0d0
       END IF
       
@@ -2397,7 +2466,7 @@ CONTAINS
 
         IF( m > 0 ) THEN
           ALLOCATE(Solver % Variable % PrevValues( n, m ), STAT=AllocStat )
-          IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for PrevValues')
+          IF( AllocStat /= 0 ) CALL Fatal(Caller,'Allocation error for PrevValues')
           Solver % Variable % PrevValues = 0.0d0
           
           IF ( Solver % Variable % DOFs > 1 ) THEN
@@ -2406,7 +2475,7 @@ CONTAINS
                 str = 'Velocity ' // CHAR(k+ICHAR('0'))
                 Var => VariableGet( Solver % Mesh % Variables, str, .TRUE. )
                 IF(.NOT. ASSOCIATED(Var)) THEN
-                  CALL Fatal("AddEquationSolution",&
+                  CALL Fatal(Caller,&
                       "Failed to get variable: "//TRIM(str)//". Try specifying Variable =&
                       & Flow Solution[velocity:DIM pressure:1] in .sif")
                 END IF
@@ -2415,7 +2484,7 @@ CONTAINS
               END DO
               Var => VariableGet( Solver % Mesh % Variables, 'Pressure', .TRUE. )
               IF(.NOT. ASSOCIATED(Var)) THEN
-                CALL Fatal("AddEquationSolution","Failed to get variable: &
+                CALL Fatal(Caller,"Failed to get variable: &
                     &pressure. Try specifying Variable = Flow Solution &
                     &[velocity:DIM pressure:1] in .SIF")
               END IF
@@ -2473,13 +2542,13 @@ CONTAINS
               ALLOCATE( Solver % Variable % EigenVectors(n, &
                   SIZE( Solver % Variable % Values ) ), STAT=AllocStat)
             END IF
-            IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for EigenValues')
+            IF( AllocStat /= 0 ) CALL Fatal(Caller,'Allocation error for EigenValues')
            
             Solver % Variable % EigenValues  = 0.0d0
             Solver % Variable % EigenVectors = 0.0d0
 
             IF( .NOT. ComplexFlag .AND. Solver % Variable % DOFs > 1 ) THEN
-              CALL Info('AddEquationSolution','Repointing '//I2S(Solver % Variable % DOFs)//&
+              CALL Info(Caller,'Repointing '//I2S(Solver % Variable % DOFs)//&
                   ' eigenvalue components for: '//TRIM(Solver % Variable % Name))
               
               DO k=1,Solver % Variable % DOFs
@@ -2487,7 +2556,7 @@ CONTAINS
                 Var => VariableGet( Solver % Mesh % Variables, str, .TRUE. )
                 
                 IF( ASSOCIATED( Var ) ) THEN
-                  CALL Info('AddEquationSolution','Eigenvalue component '&
+                  CALL Info(Caller,'Eigenvalue component '&
                       //I2S(k)//': '//TRIM(str))
                   Var % EigenValues => Solver % Variable % EigenValues
                   Var % EigenVectors =>  & 
@@ -2498,7 +2567,7 @@ CONTAINS
           END IF
             
           ALLOCATE( Solver % Matrix % MassValues(SIZE(Solver % Matrix % Values)), STAT=AllocStat)
-          IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for MassValues')
+          IF( AllocStat /= 0 ) CALL Fatal(Caller,'Allocation error for MassValues')
           
           Solver % Matrix % MassValues = 0.0d0
         END IF
@@ -2509,10 +2578,10 @@ CONTAINS
           freqv => ListGetConstRealArray( Solver % Values, 'Frequency', Found )
           IF(Found ) THEN
             IF( SIZE( Freqv,1) < n ) THEN
-              CALL Fatal( 'AddEquationSolution', 'Frequency must be at least same size as > Harmonic System Values <')
+              CALL Fatal( Caller, 'Frequency must be at least same size as > Harmonic System Values <')
             END IF
           ELSE
-            CALL Fatal( 'AddEquationSolution', '> Frequency < must be given for harmonic analysis.' )
+            CALL Fatal( Caller, '> Frequency < must be given for harmonic analysis.' )
           END IF
         ELSE
           n = 1
@@ -2523,7 +2592,7 @@ CONTAINS
           ALLOCATE( Solver % Variable % EigenValues(n) )
           ALLOCATE( Solver % Variable % EigenVectors(n, &
               SIZE( Solver % Variable % Values ) ), STAT=AllocStat)
-          IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for EigenValues')
+          IF( AllocStat /= 0 ) CALL Fatal(Caller,'Allocation error for EigenValues')
            
           Solver % Variable % EigenValues  = 0.0d0
           Solver % Variable % EigenVectors = 0.0d0
@@ -2540,13 +2609,13 @@ CONTAINS
         END IF
         
         ALLOCATE( Solver % Matrix % MassValues(SIZE(Solver % Matrix % Values)), STAT=AllocStat)
-        IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for MassValues')
+        IF( AllocStat /= 0 ) CALL Fatal(Caller,'Allocation error for MassValues')
         Solver % Matrix % MassValues = 0.0d0
 
       ELSE IF( HarmonicMode ) THEN
 
         ALLOCATE( Solver % Matrix % MassValues(SIZE(Solver % Matrix % Values)), STAT=AllocStat)
-        IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for MassValues')
+        IF( AllocStat /= 0 ) CALL Fatal(Caller,'Allocation error for MassValues')
         Solver % Matrix % MassValues = 0.0d0        
 
       END IF
@@ -2596,7 +2665,7 @@ CONTAINS
            IF( MGAlgebraic ) THEN 
              MgLevels = 10
            ELSE
-             CALL Fatal('AddEquationSolution','> MG Levels < must be defined for geometric multigrid!')
+             CALL Fatal(Caller,'> MG Levels < must be defined for geometric multigrid!')
            END IF
          END IF
          Solver % MultiGridTotal = MgLevels
@@ -2699,15 +2768,19 @@ CONTAINS
          END IF
        END IF
      END IF
-     
-!------------------------------------------------------------------------------
 
+
+     DoIt = ASSOCIATED( Solver % Matrix ) 
+     IF(DoIt) THEN
+       DoIt = InfoActive(20) .OR. ListGetLogical( CurrentModel % Simulation,'Size Info',Found)
+     END IF
+     IF(DoIt) CALL PrintProblemSize( Solver )
+         
 !------------------------------------------------------------------------------
    END SUBROUTINE AddEquationSolution
 !------------------------------------------------------------------------------
 
-
-     
+    
 
 !------------------------------------------------------------------------------
 !> Generate a similar solver instance as for the parent solver.
@@ -4780,6 +4853,7 @@ CONTAINS
     INTEGER(KIND=AddrInt) :: ProcPntr    
     LOGICAL :: BulkMode, AssemblySymmetric, AssemblyAntiSymmetric, IsListMatrix
     LOGICAL :: AllocationsDone = .FALSE., Diagonal
+    CHARACTER(*), PARAMETER :: Caller="BlockSystemAssembly"   
 
     SAVE :: AllocationsDone, AllocCols, AllocRows, &
         FORCE, STIFF, DAMP, MASS, ColInds, RowInds, indexes
@@ -4803,12 +4877,12 @@ CONTAINS
       Var => Solver % Variable
     END IF
     IF( .NOT. ASSOCIATED( Var ) ) THEN
-      CALL Fatal('BlockSystemAssembly','Could not find variable: '//I2S(RowVar))
+      CALL Fatal(Caller,'Could not find variable: '//I2S(RowVar))
     END IF
     RowDofs = Var % Dofs
     RowPerm => Var % Perm
     IF( .NOT. ASSOCIATED( RowPerm ) ) THEN
-      CALL Fatal('BlockSystemAssembly','Could not find permutation: '//I2S(RowVar))
+      CALL Fatal(Caller,'Could not find permutation: '//I2S(RowVar))
     END IF
     
     ! Column variable
@@ -4819,12 +4893,12 @@ CONTAINS
       Var => VariableGet( Mesh % Variables, TRIM(ColName) )
     END IF          
     IF( .NOT. ASSOCIATED( Var ) ) THEN
-      CALL Fatal('BlockSystemAssembly','Could not find variable: '//I2S(ColVar))
+      CALL Fatal(Caller,'Could not find variable: '//I2S(ColVar))
     END IF
     ColDofs = Var % Dofs
     ColPerm => Var % Perm
     IF( .NOT. ASSOCIATED( ColPerm ) ) THEN
-      CALL Fatal('BlockSystemAssembly','Could not find permutation: '//I2S(ColVar))
+      CALL Fatal(Caller,'Could not find permutation: '//I2S(ColVar))
     END IF
 
     ! These could be user provided for each block
@@ -4853,7 +4927,7 @@ CONTAINS
           MASS( AllocRows, AllocCols ), &
           ColInds( N ), RowInds( N ),    &
           STAT=istat )
-      IF ( istat /= 0 ) CALL FATAL('BlockSystemAssembly','Memory allocation error')
+      IF ( istat /= 0 ) CALL FATAL(Caller,'Memory allocation error')
       AllocationsDone = .TRUE.
       STIFF = 0.0_dp
       DAMP = 0.0_dp
@@ -4863,16 +4937,16 @@ CONTAINS
       RowInds = 0
     END IF
       
-    CALL Info('BlockSystemAssembly','Starting block system assembly',Level=8)
+    CALL Info(Caller,'Starting block system assembly',Level=8)
     
     BulkMode = .TRUE.
     
 100 IF(BulkMode) THEN
-      ! CALL Info('BlockSystemAssembly','Starting bulk assembly',Level=5)
+      ! CALL Info(Caller,'Starting bulk assembly',Level=5)
       ElementsFirst = 1
       ElementsLast = Mesh % NumberOFBulkElements
     ELSE
-      ! CALL Info('BlockSystemAssembly','Starting boundary assembly',Level=5)
+      ! CALL Info(Caller,'Starting boundary assembly',Level=5)
       ElementsFirst = Mesh % NumberOFBulkElements+1
       ElementsLast = Mesh % NumberOfBulkElements + &
           Mesh % NumberOFBoundaryElements
@@ -4898,7 +4972,7 @@ CONTAINS
       END IF
       ProcName = ListGetString( SolverParams, TRIM(str), GotIt )
       IF(.NOT. GotIt) THEN
-         CALL Fatal('BlockSystemAssembly','Bulk Assembly Procedure not given!')
+         CALL Fatal(Caller,'Bulk Assembly Procedure not given!')
       END IF
     END IF
 
@@ -4906,16 +4980,16 @@ CONTAINS
     
     IF( .NOT. GotIt ) THEN
       IF( BulkMode .AND. Diagonal ) THEN
-        CALL Warn('BlockSystemAssembly','Diagonal bulk entries should be assembled!')
+        CALL Warn(Caller,'Diagonal bulk entries should be assembled!')
       END IF
       RETURN
     END IF
 
     ProcPntr = GetProcAddr( TRIM(ProcName), abort=.FALSE.)
     IF ( ProcPntr == 0 ) THEN
-      CALL Fatal('BlockSystemAssembly','Assembly routine not found: '//TRIM(ProcName))
+      CALL Fatal(Caller,'Assembly routine not found: '//TRIM(ProcName))
     ELSE
-      CALL Info('BlockSystemAssembly','Using assembly routine: '//TRIM(ProcName),Level=8)
+      CALL Info(Caller,'Using assembly routine: '//TRIM(ProcName),Level=8)
     END IF
     
     ! These may be fetched within the assembly routine, if needed
@@ -5023,11 +5097,11 @@ CONTAINS
     END DO
     
     IF(BulkMode) THEN
-      ! CALL Info( 'BlockSystemAssembly', 'Bulk assembly done for blocks', Level=4 )
+      ! CALL Info( Caller, 'Bulk assembly done for blocks', Level=4 )
       BulkMode = .FALSE.
 !      GOTO 100
     ELSE 
-      ! CALL Info( 'BlockSystemAssembly', 'Boundary assembly done for blocks', Level=4 )
+      ! CALL Info( Caller, 'Boundary assembly done for blocks', Level=4 )
     END IF
 
   END SUBROUTINE BlockSystemAssembly
@@ -5123,8 +5197,9 @@ CONTAINS
      LOGICAL :: ApplyMortar, FoundMortar, SlaveNotParallel, Parallel, UseOrigMesh
      TYPE(Matrix_t), POINTER :: CM, CM0, CM1, CMP
      TYPE(Mesh_t), POINTER :: Mesh
-
      LOGICAL :: DoBC, DoBulk
+     CHARACTER(*), PARAMETER :: Caller="SingleSolver"   
+     
 !------------------------------------------------------------------------------
      MeActive = ASSOCIATED(Solver % Matrix)
      IF ( MeActive ) MeActive = (Solver % Matrix % NumberOfRows > 0)
@@ -5155,7 +5230,7 @@ CONTAINS
                ParEnv => Solver % Matrix % ParMatrix % ParEnv
                ParEnv % ActiveComm = Solver % Matrix % Comm
              END IF
-           END IF
+           END IF           
          END IF
          
          IF(DoBulk) CALL CalculateNodalWeights(Solver,.FALSE.)
@@ -5167,13 +5242,13 @@ CONTAINS
      IF(UseOrigMesh ) THEN
        Mesh => Solver % Mesh
        IF(.NOT. ASSOCIATED(Mesh % NodesOrig)) THEN
-         CALL Fatal('SingleSolver','Cannot toggle between meshes: NodesOrig not associated!')
+         CALL Fatal(Caller,'Cannot toggle between meshes: NodesOrig not associated!')
        END IF
        IF(.NOT. ASSOCIATED(Mesh % NodesMapped)) THEN
-         CALL Fatal('SingleSolver','Cannot toggle between meshes: NodesMapped not associated!')
+         CALL Fatal(Caller,'Cannot toggle between meshes: NodesMapped not associated!')
        END IF
        Mesh % Nodes => Mesh % NodesOrig
-       CALL Info('SingleSolver','Using stored original coordinate in solver')
+       CALL Info(Caller,'Using stored original coordinate in solver')
      END IF
 
      SlaveNotParallel = ListGetLogical( Solver % Values, 'Slave not parallel',Found )
@@ -5333,12 +5408,12 @@ END BLOCK
      ! -----------------------------------
      CALL GenerateProjectors(Model,Solver,Nonlinear = .FALSE. )
 
-     CALL Info("SingleSolver", "Attempting to call solver: "//I2S(Solver % SolverId), level=8)
+     CALL Info(Caller, "Attempting to call solver: "//I2S(Solver % SolverId), level=8)
      SolverParams => ListGetSolverParams(Solver)
      EquationName = GetString(SolverParams, 'Equation', GotIt)
      IF (GotIt) THEN
         Message = 'Solver Equation string is: '//TRIM(EquationName)
-        CALL Info("SingleSolver", Message, level=8)
+        CALL Info(Caller, Message, level=8)
      END IF
 
      IF( Solver % SolverMode == SOLVER_MODE_STEPS ) THEN
@@ -5365,7 +5440,7 @@ END BLOCK
          ProcName = ListGetString( Solver % Values,'Procedure', Found )
          SolverAddr = GetProcAddr( TRIM(ProcName)//'_post', abort=.FALSE. )
          IF( SolverAddr /= 0 ) THEN
-           CALL Info("SingleSolver",'Calling solver for postprocessing',Level=10)
+           CALL Info(Caller,'Calling solver for postprocessing',Level=10)
            CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
          END IF
        END IF
@@ -5480,7 +5555,7 @@ END BLOCK
          END IF
        END BLOCK
 #else
-       CALL Fatal('SingleSolver','Library version of adaptivity residuals not compiled with!')
+       CALL Fatal(Caller,'Library version of adaptivity residuals not compiled with!')
 #endif
      END IF            
 
@@ -5489,7 +5564,7 @@ END BLOCK
      CALL UpdateDependentObjects( Solver, .TRUE. ) 
 
      IF( UseOrigMesh ) THEN
-       CALL Info('SingleSolver','Reverting back to current coordinates',Level=12)
+       CALL Info(Caller,'Reverting back to current coordinates',Level=12)
        Mesh % Nodes => Mesh % NodesMapped
      END IF
 !------------------------------------------------------------------------------
