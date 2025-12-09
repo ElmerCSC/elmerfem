@@ -148,7 +148,7 @@ cholmod STDCALLBULL *FC_FUNC_(spqr_ffactorize,SPQR_FFACTORIZE)(int *n,int *rows,
   handle->qr=SuiteSparseQR_C_factorize(SPQR_ORDERING_DEFAULT,SPQR_DEFAULT_TOL,&handle->a,&handle->c);
 
   rank=handle->c.SPQR_istat[4];
-  fprintf (stderr,"rank %ld %d\n", rank, *n) ;
+  fprintf (stderr,"rank %d %d\n", rank, *n) ;
 
   db = cholmod_l_zeros(handle->a.nrow, 1, handle->a.xtype, &handle->c);
   bb=db->x;
