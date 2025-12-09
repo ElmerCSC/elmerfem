@@ -70,6 +70,7 @@ MODULE IterSolve
    INTEGER, PARAMETER, PRIVATE :: ITER_BICGSTABL    =           400
    INTEGER, PARAMETER, PRIVATE :: ITER_GCR          =           410
    INTEGER, PARAMETER, PRIVATE :: ITER_IDRS         =           420
+   INTEGER, PARAMETER, PRIVATE :: ITER_MPRGP        =           430
 
    !/*
    ! * Preconditioning type code
@@ -113,6 +114,18 @@ CONTAINS
 #endif
 #ifndef HUTI_IDRS_S
 #define HUTI_IDRS_S ipar(18)
+#endif
+#ifndef HUTI_MPRGP_GAMMA
+#define HUTI_MPRGP_GAMMA dpar(6)
+#endif
+#ifndef HUTI_MPRGP_TOLFACTOR
+#define HUTI_MPRGP_TOLFACTOR dpar(7)
+#endif
+!#ifndef HUTI_MPRGP_BOUND
+!#define HUTI_MPRGP_BOUND ipar(19)
+!#endif
+#ifndef HUTI_MPRGP_ADAPT
+#define HUTI_MPRGP_ADAPT ipar(19)
 #endif
 
 !------------------------------------------------------------------------------
@@ -288,9 +301,9 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: BC
     TYPE(Element_t), POINTER :: Element
     TYPE(Mesh_t), POINTER :: Mesh
-    
-    CALL Info('CreateNodeSkipMask','Creating mask for skipping nodes')
 
+    IF(.NOT. ListGetLogicalAnyBC(CurrentModel,'Edge Skip Mask' ) ) RETURN
+    
     Mesh => CurrentModel % Mesh      
     t0 = Mesh % NumberOfBulkElements
     SkipMask = .FALSE.
@@ -313,7 +326,7 @@ CONTAINS
     END DO
 
     n0 = COUNT(SkipMask)
-    CALL Info('CreateNodeSkipMask','Creating mask for skipping nodes: '//I2S(n0),Level=7)
+    CALL Info('CreateNodeSkipMask','Created mask for skipping nodes: '//I2S(n0),Level=7)
     
   END SUBROUTINE CreateNodeSkipMask
 
@@ -391,11 +404,67 @@ FUNCTION MaskedNorm( ndim, x, xind ) RESULT(dres)
 END FUNCTION MaskedNorm
 !----------------------------------------------------------------------
 
-    
-  
-!> \}
-!> \}  
 
+!----------------------------------------------------------------------
+  FUNCTION Otmp_ddot( ndim, x, xind, y, yind ) RESULT(dres)
+!----------------------------------------------------------------------
+    IMPLICIT NONE
+
+    ! Parameters
+    INTEGER :: ndim, xind, yind
+    REAL(KIND=dp) :: x(*)
+    REAL(KIND=dp) :: y(*)
+    REAL(KIND=dp) :: dres
+
+    INTEGER :: i
+
+    IF(  xind/=1 .OR. yind /=1 ) THEN
+       dres = ddot(ndim,x,xind,y,yind)
+       RETURN
+    END IF
+
+    dres = 0
+!$OMP PARALLEL do shared(x,y) reduction(+:dres)
+    DO i=1,ndim
+       dres = dres + x(i) * y(i)
+    END DO
+!$OMP END PARALLEL DO
+
+!----------------------------------------------------------------------
+  END FUNCTION Otmp_ddot
+!----------------------------------------------------------------------
+
+
+!----------------------------------------------------------------------
+  FUNCTION Otmp_zdotc( ndim, x, xind, y, yind ) RESULT(zres)
+!----------------------------------------------------------------------
+    IMPLICIT NONE
+
+    ! Parameters
+    INTEGER :: ndim, xind, yind
+    COMPLEX(KIND=dp) :: x(*)
+    COMPLEX(KIND=dp) :: y(*)
+    COMPLEX(KIND=dp) :: zres
+
+    INTEGER :: i
+
+    IF(  xind/=1 .OR. yind /=1 ) THEN
+       zres = zdotc(ndim,x,xind,y,yind)
+       RETURN
+    END IF
+
+    zres = 0
+!$OMP PARALLEL do shared(x,y) reduction(+:zres)
+    DO i=1,ndim
+       zres = zres + DCONJG(x(i)) * y(i)
+    END DO
+!$OMP END PARALLEL DO
+
+!----------------------------------------------------------------------
+  END FUNCTION Otmp_zdotc
+!----------------------------------------------------------------------
+
+    
 !------------------------------------------------------------------------------
 !> The routine that decides which linear system solver to call, and calls it.
 !> There are two main sources of iterations within Elmer.
@@ -560,6 +629,8 @@ END FUNCTION MaskedNorm
       IterType = ITER_IDRS
     CASE DEFAULT
       IterType = ITER_BiCGStab
+    CASE('mprgp')
+      IterType = ITER_MPRGP
     END SELECT
     
 !------------------------------------------------------------------------------
@@ -636,7 +707,23 @@ END FUNCTION MaskedNorm
       HUTI_IDRS_S = ListGetInteger( Params,'IDRS parameter',GotIt,minv=1)
       IF(.NOT. GotIt) HUTI_IDRS_S = 4
       Internal = .TRUE.
-      
+    
+    CASE (ITER_MPRGP)
+      HUTI_WRKDIM = 1
+      Internal = .TRUE.
+      HUTI_MPRGP_GAMMA = ListGetConstReal( Params, 'Linear System MPRGP Gamma', GotIt )
+      IF(.NOT. GotIt) HUTI_MPRGP_GAMMA = 1.0_dp
+      HUTI_MPRGP_TOLFACTOR = ListGetConstReal( Params, 'Linear System MPRGP TolFactor', GotIt )
+      IF(.NOT. GotIt) HUTI_MPRGP_TOLFACTOR = 5.0_dp
+      !HUTI_MPRGP_BOUND = ListGetString( Params, 'Linear System MPRGP Bound Type', GotIt )
+      !IF(.NOT. GotIt) HUTI_MPRGP_BOUND = 'lower' ! TODO: should write error if no bounds      
+      HUTI_MPRGP_ADAPT = 1
+      IF( ListGetLogical( Params, 'Linear System MPRGP Adaptive', GotIt ) ) THEN
+        HUTI_MPRGP_ADAPT = 1
+      ELSE
+        IF(GotIt) HUTI_MPRGP_ADAPT = 0
+      END IF
+        
     END SELECT
 !------------------------------------------------------------------------------
     
@@ -1145,6 +1232,8 @@ END FUNCTION MaskedNorm
         iterProc = AddrFunc( itermethod_bicgstabl )
       CASE (ITER_IDRS)
         iterProc = AddrFunc( itermethod_idrs )
+      CASE (ITER_MPRGP)
+        iterProc = AddrFunc( itermethod_mprgp )
         
       END SELECT
       
@@ -1163,7 +1252,8 @@ END FUNCTION MaskedNorm
             dotProc = AddrFunc( PseudoZDotProd2 )             
           END IF
         ELSE        
-          IF ( dotProc  == 0 ) dotProc = AddrFunc(ddot)
+          IF ( dotProc  == 0 ) dotProc = AddrFunc(Otmp_ddot)
+!         IF ( dotProc  == 0 ) dotProc = AddrFunc(ddot)
         END IF
         IF ( normProc == 0 ) normproc = AddrFunc(dnrm2)
         IF( HUTI_DBUGLVL == 0) HUTI_DBUGLVL = HUGE( HUTI_DBUGLVL )        
@@ -1201,7 +1291,8 @@ END FUNCTION MaskedNorm
       END SELECT
       
       IF( Internal ) THEN
-        IF ( dotProc  == 0 ) dotProc = AddrFunc(zdotc)
+        IF ( dotProc  == 0 ) dotProc = AddrFunc(Otmp_zdotc)
+!       IF ( dotProc  == 0 ) dotProc = AddrFunc(zdotc)
         IF ( normProc == 0 ) normproc = AddrFunc(dznrm2)
         IF( HUTI_DBUGLVL == 0) HUTI_DBUGLVL = HUGE( HUTI_DBUGLVL )
       END IF

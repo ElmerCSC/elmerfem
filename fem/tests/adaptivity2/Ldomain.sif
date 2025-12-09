@@ -1,3 +1,8 @@
+! This is a legacy test case for adaptivity for heat equation that utilizes
+! splitting of triangular elements and elimination of hanging nodes as
+! implemented by M. Lyly.
+
+
 Header
   Mesh DB "." "Ldomain"
 End
@@ -10,8 +15,7 @@ Simulation
   Coordinate System = Cartesian 2D
   Simulation Type = Steady State
   Steady State Max Iterations = 20
-  Mesh Input File = "Ldomain.mif"
-! Post File = "Ldomain.ep"
+! Post File = "Ldomain.vtu"
 End
 
 Body 1
@@ -52,4 +56,4 @@ Solver 1
 End
 
 Solver 1 :: Reference Norm = Real 348.474631186
-RUN
+

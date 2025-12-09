@@ -334,7 +334,7 @@ CONTAINS
       InitHandles = .FALSE.
     END IF
 
-    imu = CMPLX(0.0_dp, 1.0_dp)
+    imu = CMPLX(0.0_dp, 1.0_dp, KIND=dp)
 
     n = Element % TYPE % NumberOfNodes
     CALL GetElementNodes( Nodes, Element )    
@@ -414,7 +414,7 @@ CONTAINS
       L = ListGetElementComplex3D( MagLoad_h, Basis, Element, Found, GaussPoint = t )
 
       TemGrad = CMPLX( ListGetElementRealGrad( TemRe_h,dBasisdx,Element,Found), &
-          ListGetElementRealGrad( TemIm_h,dBasisdx,Element,Found) )
+          ListGetElementRealGrad( TemIm_h,dBasisdx,Element,Found), KIND=dp )
       L = L + TemGrad
       
       B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
@@ -423,7 +423,7 @@ CONTAINS
 
       IF( NodalMode ) THEN
         DO i=1,3
-          e_ip(i) = CMPLX( SUM( Basis(1:n) * e_local(i,1:n) ), SUM( Basis(1:n) * e_local(i+3,1:n) ) )
+          e_ip(i) = CMPLX( SUM( Basis(1:n) * e_local(i,1:n) ), SUM( Basis(1:n) * e_local(i+3,1:n) ),KIND=dp )
         END DO
       ELSE        
         ! In order to get the normal component of the electric field we must operate on the
@@ -438,7 +438,7 @@ CONTAINS
           stat = ElementInfo( Parent, ParentNodes, u, v, w, detJ, Basis, dBasisdx, &
               EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver )
         END IF
-        e_ip(1:3) = CMPLX(MATMUL(e_local(1,np+1:nd),WBasis(1:nd-np,1:3)), MATMUL(e_local(2,np+1:nd),WBasis(1:nd-np,1:3)))       
+        e_ip(1:3) = CMPLX(MATMUL(e_local(1,np+1:nd),WBasis(1:nd-np,1:3)), MATMUL(e_local(2,np+1:nd),WBasis(1:nd-np,1:3)),KIND=dp)
       END IF
             
       e_ip_norm = SUM(e_ip*Normal)
@@ -456,7 +456,7 @@ CONTAINS
       ! the avarage potential at the surface.
       IF( ASSOCIATED( PotVar ) ) THEN        
         CALL GetVectorLocalSolution( phi_local, uelement = Element, uvariable = potvar )
-        phi = CMPLX( SUM( Basis(1:n) * phi_local(1,1:n) ), SUM( Basis(1:n) * phi_local(2,1:n) ) )
+        phi = CMPLX( SUM( Basis(1:n) * phi_local(1,1:n) ), SUM( Basis(1:n) * phi_local(2,1:n) ),KIND=dp )
         IntPot(jMode,iMode) = IntPot(jMode,iMode) + weight * phi
       END IF
 
@@ -601,7 +601,7 @@ CONTAINS
           j2 = eVar % Perm(i2)          
           DO k=1,3
             gradv(k) = CMPLX(eVar % Values(6*(j1-1)+k) + eVar % Values(6*(j2-1)+k),&
-                eVar % Values(6*(j1-1)+3+k) + eVar % Values(6*(j2-1)+3+k) ) / 2
+                eVar % Values(6*(j1-1)+3+k) + eVar % Values(6*(j2-1)+3+k),KIND=dp ) / 2
           END DO
           Circ = Circ + sgn * SUM(gradv*EdgeVector)
         ELSE        
@@ -613,7 +613,7 @@ CONTAINS
           IF( i1 < i2) sgn = -sgn      
                                       
           j = eVar % Perm(n0 + k)
-          Circ = Circ + s * sgn * CMPLX( eVar % Values(2*j-1),eVar % Values(2*j) )
+          Circ = Circ + s * sgn * CMPLX( eVar % Values(2*j-1),eVar % Values(2*j),KIND=dp )
         END IF
 
         ! Continue from the end point

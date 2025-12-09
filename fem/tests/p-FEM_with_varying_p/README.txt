@@ -28,8 +28,8 @@ The degree of approximation is defined by using a special keyword construct
 
 where the part "a_matc_function" is the name of a MATC function of a 4-tuple.
 The first argument is the identifier of the body while the remaining components
-are the coordinates of the element mid-point. At the time of writing, this
-seems to be the only functional way to get varying p within a single model.
+are the coordinates of the element mid-point. For another way to define a body-
+dependent element definition see the test p-FEM_two_solvers.
 
 The energy norm of the error for different p-element definitions (over the
 same 2 X 2 mesh, with p being fixed as p=8 in the boundary layer and p varying

@@ -152,6 +152,8 @@
 #define HUTI_ROBUST_TOLERANCE dpar(3)
 #define HUTI_ROBUST_STEPSIZE dpar(4)
 #define HUTI_ROBUST_MAXTOLERANCE dpar(5)  
+#define HUTI_MPRGP_GAMMA dpar(6)
+#define HUTI_MPRGP_TOLFACTOR dpar(7)
 !  
 ! End of definitions
 !

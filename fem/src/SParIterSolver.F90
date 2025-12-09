@@ -54,6 +54,12 @@ MODULE SParIterSolve
 
   IMPLICIT NONE
 
+  TYPE OrderList_t
+    INTEGER, ALLOCATABLE :: NbsGorder(:), NbsGrows(:), IfGorder(:), IfGrows(:)
+  END TYPE
+  TYPE(OrderList_t), ALLOCATABLE :: OrderList(:)
+
+
 CONTAINS
 
   
@@ -599,8 +605,8 @@ CONTAINS
   DO i=1,n
     A % Gorder(i) = i
   END DO
-
   CALL SortI( n, A % GRows, A % GOrder )
+
 
   !----------------------------------------------------------------------
   !
@@ -1204,7 +1210,7 @@ END SUBROUTINE ZeroSplittedMatrix
     ! Local variables
 
     REAL(KIND=dp), POINTER :: TmpRHSVec(:)
-    INTEGER :: i, j, k, l, grow, gcol
+    INTEGER :: i, j, k, l, n, grow, gcol
     INTEGER :: nodeind, ifind, dd, rowind, ierr
     TYPE (BasicMatrix_t), POINTER :: CurrIf
     TYPE (GlueTableT), POINTER :: GT
@@ -1240,6 +1246,34 @@ END SUBROUTINE ZeroSplittedMatrix
       ! Copy the Matrix % Values into SplittedMatrix
       !
       !------------------------------------------------------------------
+
+      ! Speed up interface lookup by sorting indeces in advance
+      ! -------------------------------------------------------
+      ALLOCATE(OrderList(ParEnv % PEs))
+
+      DO i=1,ParEnv % PEs
+        CurrIf => SplittedMatrix % NbsIfMatrix(i)
+        n = CurrIf % NumberOfRows
+        IF ( n>0 ) THEN
+          ALLOCATE(OrderList(i) % NbsGorder(n), OrderList(i) % NbsGrows(n))
+          DO j=1,n
+            OrderList(i) % NbsGorder(j) = j
+          END DO
+          OrderList(i) % NbsGrows = CurrIf % GRows
+          CALL SortI(n, OrderList(i) % NbsGRows, OrderList(i) % NbsGorder)
+        END IF
+                
+        CurrIf => SplittedMatrix % IfMatrix(i)
+        n = CurrIf % NumberOfRows
+        IF ( n > 0 )THEN
+          ALLOCATE(OrderList(i) % IfGorder(n), OrderList(i) % IfGrows(n))
+          DO j=1,n
+            OrderList(i) % IfGorder(j) = j
+          END DO
+          OrderList(i) % IfGrows = CurrIf % GRows
+          CALL SortI(n, OrderList(i) % IfGRows, OrderList(i) % IfGorder)
+        END IF
+      END DO
 
       GT => SplittedMatrix % GlueTable
       DO i = 1, SourceMatrix % NumberOfRows
@@ -1278,7 +1312,9 @@ END SUBROUTINE ZeroSplittedMatrix
 
                RowInd = -1
                IF ( CurrIf % NumberOfRows > 0 ) THEN
-                  RowInd = SearchIAItem( CurrIf % NumberOfRows, CurrIf % GRows, GRow )
+                  RowInd = SearchIAItem( CurrIf % NumberOfRows, OrderList(ifind) % IfGRows, &
+                             GRow, OrderList(ifind) % IfGorder )
+!                 RowInd = SearchIAItem( CurrIf % NumberOfRows, CurrIf % GRows, GRow )
                END IF
 
                IF ( RowInd /= -1 ) THEN
@@ -1311,7 +1347,9 @@ END SUBROUTINE ZeroSplittedMatrix
                   
                RowInd = -1
                IF ( CurrIf % NumberOfRows > 0 ) THEN
-                  RowInd = SearchIAItem( CurrIf % NumberOfRows, CurrIf % GRows, GRow )
+                  RowInd = SearchIAItem( CurrIf % NumberOfRows, OrderList(ifind) % NbsGRows, &
+                               GRow, OrderList(ifind) % NbsGorder )
+!                 RowInd = SearchIAItem( CurrIf % NumberOfRows, CurrIf % GRows, GRow )
                END IF
 
                IF ( RowInd /= -1 ) THEN
@@ -1356,6 +1394,8 @@ END SUBROUTINE ZeroSplittedMatrix
                     InsideMatrix % NumberOfRows ) )
          SplittedMAtrix % TmpRVec = 0
       END IF
+
+      DEALLOCATE(OrderList)
     END IF
 
     CALL SParUpdateRHS( SourceMatrix, RHSVec, ParallelInfo )
@@ -1820,7 +1860,7 @@ SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
 #endif
 
   CHARACTER(*), PARAMETER :: Caller = 'SParIterSolver' 
-    
+
   !******************************************************************
   SaveGlobalData => GlobalData
   GlobalData     => SParMatrixDesc
@@ -1880,6 +1920,35 @@ SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
   CALL Info(Caller,'Copying Matrix values into SplittedMatrix',Level=20)
   CALL ResetTimer('SplittedMatrix')
 
+
+  ! Speed up interface lookup by sorting indeces in advance
+  ! -------------------------------------------------------
+  ALLOCATE(OrderList(ParEnv % PEs))
+
+  DO i=1,ParEnv % PEs
+    CurrIf => SplittedMatrix % NbsIfMatrix(i)
+    n = CurrIf % NumberOfRows
+    IF ( n>0 ) THEN
+      ALLOCATE(OrderList(i) % NbsGorder(n), OrderList(i) % NbsGrows(n))
+      DO j=1,n
+        OrderList(i) % NbsGorder(j) = j
+      END DO
+      OrderList(i) % NbsGrows = CurrIf % GRows
+      CALL SortI(n, OrderList(i) % NbsGRows, OrderList(i) % NbsGorder)
+    END IF
+                
+    CurrIf => SplittedMatrix % IfMatrix(i)
+    n = CurrIf % NumberOfRows
+    IF ( n > 0 )THEN
+      ALLOCATE(OrderList(i) % IfGorder(n), OrderList(i) % IfGrows(n))
+      DO j=1,n
+        OrderList(i) % IfGorder(j) = j
+      END DO
+      OrderList(i) % IfGrows = CurrIf % GRows
+      CALL SortI(n, OrderList(i) % IfGRows, OrderList(i) % IfGorder)
+    END IF
+  END DO
+
   
   GT => SplittedMatrix % GlueTable
   DO i = 1, SourceMatrix % NumberOfRows
@@ -1917,10 +1986,12 @@ SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
            CurrIf => SplittedMatrix % IfMatrix(ifind)
 
            RowInd = -1
-           IF ( CurrIf % NumberOfRows > 0 ) THEN
-              RowInd = SearchIAItem( CurrIf % NumberOfRows, CurrIf % GRows, GRow )
-           END IF
 
+           IF ( CurrIf % NumberOfRows > 0 ) THEN
+              RowInd = SearchIAItem( CurrIf % NumberOfRows, OrderList(ifind) % IfGRows, &
+                            GRow, OrderList(ifind) % IfgOrder )
+!             RowInd = SearchIAItem( CurrIf % NumberOfRows, CurrIf % GRows, GRow )
+           END IF
            IF ( RowInd /= -1 ) THEN
               DO l = CurrIf % Rows(rowind), CurrIf % Rows(rowind+1)-1
 
@@ -1946,31 +2017,31 @@ SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
 
         ELSE IF ((GT % Inds(j) + (2*ParEnv % PEs)) >= 0) THEN
 
+
+  ! Sync neighbour information, if changed by the above ^:
+  ! ------------------------------------------------------
            ifind = -ParEnv % PEs + ABS(GT % Inds(j))
            CurrIf => SplittedMatrix % NbsIfMatrix(ifind)
-                
+
            RowInd = -1
            IF ( CurrIf % NumberOfRows > 0 ) THEN
-              RowInd = SearchIAItem( CurrIf % NumberOfRows, CurrIf % GRows, GRow )
+              RowInd = SearchIAItem( CurrIf % NumberOfRows, OrderList(ifind) % NbsGRows, &
+                          GRow, OrderList(ifind) % NbsgOrder )
+!             RowInd = SearchIAItem( CurrIf % NumberOfRows, CurrIf % GRows, GRow )
            END IF
 
            IF ( RowInd /= -1 ) THEN
               DO l = CurrIf % Rows(RowInd), CurrIf % Rows(RowInd+1)-1
                  IF ( GCol == CurrIf % Cols(l) ) THEN
-                    CurrIf % Values(l) = CurrIf % Values(l) + &
-                         SourceMatrix % Values(j)
+                    CurrIf % Values(l) = CurrIf % Values(l) + SourceMatrix % Values(j)
                     IF ( NeedPrec ) &
-                       CurrIf % PrecValues(l) = CurrIf % PrecValues(l) + &
-                            SourceMatrix % PrecValues(j)
+                       CurrIf % PrecValues(l) = CurrIf % PrecValues(l) + SourceMatrix % PrecValues(j)
                     IF ( NeedMass ) &
-                       CurrIf % MassValues(l) = CurrIf % MassValues(l) + &
-                            SourceMatrix % MassValues(j)
+                       CurrIf % MassValues(l) = CurrIf % MassValues(l) + SourceMatrix % MassValues(j)
                     IF ( NeedDamp ) &
-                       CurrIf % DampValues(l) = CurrIf % DampValues(l) + &
-                            SourceMatrix % DampValues(j)
+                       CurrIf % DampValues(l) = CurrIf % DampValues(l) + SourceMatrix % DampValues(j)
                     IF ( NeedILU ) &
-                       CurrIf % ILUValues(l) = CurrIf % ILUValues(l) + &
-                            SourceMatrix % ILUValues(j)
+                       CurrIf % ILUValues(l) = CurrIf % ILUValues(l) + SourceMatrix % ILUValues(j)
                     EXIT
                  END IF
               END DO
@@ -1982,6 +2053,7 @@ SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
   CALL GlueFinalize( SourceMatrix, SplittedMatrix, ParallelInfo )
   CALL CheckTimer('SplittedMatrix',Level=7,Delete=.TRUE.)
 
+  DEALLOCATE(OrderList)
 
   !------------------------------------------------------------------
   ! Call the actual solver routine (based on older design)
@@ -3357,7 +3429,7 @@ SUBROUTINE GlueFinalize( SourceMatrix, SplittedMatrix, ParallelInfo )
 
   TYPE (BasicMatrix_t), POINTER :: CurrIf
   TYPE (Matrix_t), POINTER :: InsideMatrix
-  INTEGER :: i, j, k, l, RowInd, Rows, ColInd, ColIndA
+  INTEGER :: i, j, k, l, RowInd, Rows, ColInd, ColIndA, lstart, lstop
   TYPE (BasicMatrix_t), DIMENSION(:), ALLOCATABLE :: RecvdIfMatrix
 
   LOGICAL :: Found, NeedMass, NeedDamp, NeedPrec, NeedILU
@@ -3411,8 +3483,9 @@ SUBROUTINE GlueFinalize( SourceMatrix, SplittedMatrix, ParallelInfo )
      CurrIf => SplittedMatrix % IfMatrix(i)
      DO j = 1, RecvdIfMatrix(i) % NumberOfRows
 
-        RowInd = SearchIAItem( CurrIf % NumberOfRows, &
-             CurrIf % GRows, RecvdIfMatrix(i) % GRows(j) )
+!       RowInd = SearchIAItem( CurrIf % NumberOfRows, CurrIf % GRows, RecvdIfMatrix(i) % GRows(j) )
+        RowInd = SearchIAItem( CurrIf % NumberOfRows, OrderList(i) % IfGRows, &
+               RecvdIfMatrix(i) % GRows(j), OrderList(i) % IfGorder )
 
         Found=.FALSE.
         IF ( RowInd>0 ) THEN
@@ -3462,22 +3535,22 @@ SUBROUTINE GlueFinalize( SourceMatrix, SplittedMatrix, ParallelInfo )
                  IF ( ColIndA  <= 0 ) CYCLE
 
                  Found = .FALSE.
-                 DO l = InsideMatrix % Rows(RowInd), InsideMatrix % Rows(RowInd+1) - 1
+                 DO l = InsideMatrix % Rows(RowInd), InsideMatrix % Rows(RowInd+1)-1
                      IF ( ColIndA == InsideMatrix % Cols(l) ) THEN
-                        InsideMatrix % Values(l) = InsideMatrix % Values(l) + &
-                                RecvdIfMatrix(i) % Values(k)
+                        InsideMatrix % Values(l) = InsideMatrix % Values(l) + RecvdIfMatrix(i) % Values(k)
+
                        IF ( NeedPrec ) &
-                          InsideMatrix % PrecValues(l) = InsideMatrix % PrecValues(l) + &
-                                   RecvdIfMatrix(i) % PrecValues(k)
+                          InsideMatrix % PrecValues(l) = InsideMatrix % PrecValues(l) + RecvdIfMatrix(i) % PrecValues(k)
+
                        IF ( NeedMass ) &
-                          InsideMatrix % MassValues(l) = InsideMatrix % MassValues(l) + &
-                                   RecvdIfMatrix(i) % MassValues(k)
+                          InsideMatrix % MassValues(l) = InsideMatrix % MassValues(l) + RecvdIfMatrix(i) % MassValues(k)
+
                        IF ( NeedDamp ) &
-                          InsideMatrix % DampValues(l) = InsideMatrix % DampValues(l) + &
-                                   RecvdIfMatrix(i) % DampValues(k)
+                          InsideMatrix % DampValues(l) = InsideMatrix % DampValues(l) + RecvdIfMatrix(i) % DampValues(k)
+
                        IF ( NeedILU ) &
-                          InsideMatrix % ILUValues(l) = InsideMatrix % ILUValues(l) + &
-                                   RecvdIfMatrix(i) % ILUValues(k)
+                          InsideMatrix % ILUValues(l) = InsideMatrix % ILUValues(l) + RecvdIfMatrix(i) % ILUValues(k)
+
                        Found = .TRUE.
                        EXIT
                      END IF

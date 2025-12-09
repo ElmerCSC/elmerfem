@@ -559,7 +559,7 @@ CONTAINS
        ELSE 
          IF ( ListGetLogical( Solver % Values, &
              'Discontinuous Galerkin', stat ) ) THEN
-           Solver % Def_Dofs(ind,BodyId,4) = l
+           Solver % Def_Dofs(ind,BodyId,4) = 0
            Def_Dofs(1:8,4) = MAX(Def_Dofs(1:8,4),0 )
          END IF
        END IF
@@ -3004,7 +3004,7 @@ CONTAINS
    
    CALL PrepareMesh(Model,Mesh,Parallel,Def_Dofs,mySolver)
 
-   CALL Info(Caller,'Preparing mesh done',Level=8)
+   CALL Info(Caller,'Preparing mesh done',Level=10)
 
    IF( Parallel ) CALL RadiationParallelMeshDistribute(Mesh, NumProcs)
    
@@ -3443,7 +3443,7 @@ CONTAINS
    INTEGER, OPTIONAL :: Def_Dofs(:,:), mySolver
    TYPE(ValueList_t), POINTER :: Vlist
 
-   LOGICAL :: Found
+   LOGICAL :: Found, DoIt
    CHARACTER(*),PARAMETER :: Caller='PrepareMesh'      
    
    IF( PRESENT( mySolver ) ) THEN     
@@ -3496,10 +3496,14 @@ CONTAINS
      Mesh % MaxElementNodes = ParallelReduction( Mesh % MaxElementNodes,2 ) 
    END IF
 
-   IF( ListGetLogical( Vlist,'Inspect Mesh',Found ) .OR. &
-       ListGetLogical( Vlist,'Check Mesh',Found ) ) THEN
-     CALL CheckMeshInfo( Mesh ) 
+   DoIt = ListGetLogical( Vlist,'Inspect Mesh',Found ) .OR. &
+       ListGetLogical( Vlist,'Check Mesh',Found ) 
+   
+   IF( InfoActive(20) .OR. DoIt .OR. ListGetLogical( Vlist,'Size Info',Found ) ) THEN
+     CALL PrintMeshSize( Mesh )
    END IF
+
+   IF(DoIt) CALL CheckMeshInfo( Mesh ) 
 
  CONTAINS
      
@@ -4722,7 +4726,7 @@ CONTAINS
      CALL Fatal(Caller,'Requested the use of entity names but this file does not exits: '//TRIM(FileName))
    END IF
    
-   CALL Info(Caller,'Reading names info from file: '//TRIM(FileName))
+   CALL Info(Caller,'Reading names info from file: '//TRIM(FileName),Level=10)
 
    DO WHILE( .TRUE. ) 
      READ(FileUnit,'(A)',IOSTAT=iostat) str
@@ -4804,20 +4808,10 @@ CONTAINS
      END IF
 
    END DO
-
-   IF(DoBodies) THEN
-     CALL Info(Caller,'Mapped '//I2S(BodyMaps)//' body names to indexes')
-   ELSE
-     CALL Info(Caller,'Mapping of body names not requested')
-   END IF   
-   IF(DoBCs) THEN
-     CALL Info(Caller,'Mapped '//I2S(BCMaps)//' bc names to indexes')
-   ELSE
-     CALL Info(Caller,'Mapping of bc names not requested!')
-   END IF
-     
    CLOSE(FileUnit)
-   
+      
+   CALL Info(Caller,'Mapped '//I2S(BodyMaps)//' body names and '//I2S(BCMaps)//' bc names to elements!')
+     
  END SUBROUTINE ReadTargetNames
 
 
@@ -13556,8 +13550,11 @@ CONTAINS
         ! determine whether there really is a projector. 
         DO i=1,nd
           IF (i > n .AND. .NOT. pElemProj) CYCLE
-          j = InvPerm1(Indexes(i))
-          IF (i > n) j = Indexes(i)
+          IF (i > n) THEN
+             j = Indexes(i)
+          ELSE
+            j = InvPerm1(Indexes(i))
+          END IF
           nrow = NodePerm(j)
           IF( nrow == 0 ) CYCLE
           CALL List_AddMatrixIndex(Projector % ListMatrix, nrow, j ) 
@@ -20308,6 +20305,81 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+!> Show mesh size information
+!------------------------------------------------------------------------------
+  SUBROUTINE PrintMeshSize( Mesh )
+!------------------------------------------------------------------------------
+    TYPE(Mesh_t), POINTER :: Mesh
+!------------------------------------------------------------------------------
+    INTEGER :: na, nb, nn, ne, nf, no, ns, i
+    INTEGER :: napar(0:2), nbpar(0:2), nnpar(0:2), nepar(0:2), nfpar(0:2), nopar(0:2), nspar(0:2)
+    CHARACTER(*), PARAMETER :: Caller="PrintMeshSize"   
+!------------------------------------------------------------------------------
+
+    na = Mesh % NumberOfBulkElements
+    nb = Mesh % NumberOfBoundaryElements
+    nn = Mesh % NumberOfNodes
+    ne = Mesh % NumberOfEdges
+    nf = Mesh % NumberOfFaces
+
+    IF( ParEnv % PEs > 1 .AND. .NOT. Mesh % SingleMesh ) THEN
+      no = 0; ns = 0
+      DO i=1,nn
+        IF(Mesh % ParallelInfo % NeighbourList(i) % Neighbours(1) == ParEnv % MyPe) no = no+1
+        IF(SIZE(Mesh % ParallelInfo % NeighbourList(i) % Neighbours) > 1) ns = ns+1
+      END DO
+      DO i=0,2
+        napar(i) = ParallelReduction(na,i)
+        nbpar(i) = ParallelReduction(nb,i)
+        nnpar(i) = ParallelReduction(nn,i)
+        nopar(i) = ParallelReduction(no,i)
+        nspar(i) = ParallelReduction(ns,i)
+        nepar(i) = ParallelReduction(ne,i)
+        nfpar(i) = ParallelReduction(nf,i)
+      END DO
+
+      CALL Info(Caller,'Number of parallel mesh entities:   SUM       MIN       MAX')
+      WRITE(Message,'(A,T30,3I10)') '  Bulk elements: ',napar
+      CALL Info(Caller,Message,Level=3)
+      WRITE(Message,'(A,T30,3I10)') '  Boundary elements: ',nbpar
+      CALL Info(Caller,Message,Level=3)
+      WRITE(Message,'(A,T30,3I10)') '  Total nodes: ',nnpar
+      CALL Info(Caller,Message,Level=3)
+      WRITE(Message,'(A,T30,3I10)') '  Owned nodes: ',nopar
+      CALL Info(Caller,Message,Level=3)
+      WRITE(Message,'(A,T30,3I10)') '  Shared nodes: ',nspar
+      CALL Info(Caller,Message,Level=3)
+      IF(nepar(0) > 0) THEN
+        WRITE(Message,'(A,T30,3I10)') '  Element edges: ',nepar
+        CALL Info(Caller,Message,Level=3)
+      END IF
+      IF(nfpar(0) > 0) THEN
+        WRITE(Message,'(A,T30,3I10)') '  Element faces: ',nfpar
+        CALL Info(Caller,Message,Level=3)
+      END IF
+    ELSE
+      CALL Info(Caller,'Number of serial mesh entities')
+      WRITE(Message,'(A,T30,1I10)') '  Bulk elements: ',na
+      CALL Info(Caller,Message,Level=3)
+      WRITE(Message,'(A,T30,1I10)') '  Boundary elements: ',nb
+      CALL Info(Caller,Message,Level=3)
+      WRITE(Message,'(A,T30,1I10)') '  Element nodes: ',nn
+      CALL Info(Caller,Message,Level=3)
+      IF(ne > 0) THEN
+        WRITE(Message,'(A,T30,1I10)') '  Element edges: ',ne
+        CALL Info(Caller,Message,Level=3)
+      END IF
+      IF(nf > 0) THEN
+        WRITE(Message,'(A,T30,1I10)') '  Element faces: ',nf
+        CALL Info(Caller,Message,Level=3)
+      END IF
+    END IF
+
+  END SUBROUTINE PrintMeshSize
+
+      
+  
+!------------------------------------------------------------------------------
 !> Check mesh for various info. Mainly for debugging.
 !------------------------------------------------------------------------------
   SUBROUTINE CheckMeshInfo( Mesh )
@@ -20331,10 +20403,6 @@ CONTAINS
     nn = Mesh % NumberOfNodes
     Halt = .FALSE.
     
-    CALL Info(Caller,'Number of bulk elements: '//I2S(na))
-    CALL Info(Caller,'Number of boundary elements: '//I2S(nb))
-    CALL Info(Caller,'Number of nodes: '//I2S(nn))
-
     ALLOCATE(TypeHits(827))
     ALLOCATE(NodeHits(nn))
     
@@ -20910,24 +20978,24 @@ CONTAINS
 
      CASE(1)
        IF ( .NOT.ASSOCIATED( Mesh % Edges ) ) THEN
-         CALL Info('FindMeshEdges','Determining edges in 1D mesh',Level=8)
+         CALL Info('FindMeshEdges','Determining edges in 1D mesh',Level=10)
          CALL FindMeshEdges2D( Mesh )
        END IF
 
      CASE(2)
        IF ( .NOT.ASSOCIATED( Mesh % Edges ) ) THEN
-         CALL Info('FindMeshEdges','Determining edges in 2D mesh',Level=8)
+         CALL Info('FindMeshEdges','Determining edges in 2D mesh',Level=10)
          CALL FindMeshEdges2D( Mesh )
        END IF
 
      CASE(3)
        IF ( .NOT.ASSOCIATED(Mesh % Faces) .AND. FindFaces3D ) THEN
-         CALL Info('FindMeshEdges','Determining faces in 3D mesh',Level=8)
+         CALL Info('FindMeshEdges','Determining faces in 3D mesh',Level=10)
          CALL FindMeshFaces3D( Mesh )
        END IF
        IF(FindEdges3D) THEN
          IF ( .NOT.ASSOCIATED( Mesh % Edges) ) THEN
-           CALL Info('FindMeshEdges','Determining edges in 3D mesh',Level=8)
+           CALL Info('FindMeshEdges','Determining edges in 3D mesh',Level=10)
            CALL FindMeshEdges3D( Mesh )
          END IF
        END IF
@@ -32934,6 +33002,83 @@ CONTAINS
           
   END SUBROUTINE TagBCsUsingRule
 
+
+  !> Sometimes the mesh includes bodies different from how we would like to resolve
+  !> the equations. Then an alternative is to use some simple rule to redefine the
+  !> body index.
+  !-------------------------------------------------------------------
+  SUBROUTINE TagBodiesUsingCondition(Model, Mesh)
+
+    TYPE(Model_t) :: Model
+    TYPE(Mesh_t), POINTER :: Mesh
+
+    TYPE(Element_t), POINTER :: Element
+    INTEGER :: i,j,k,n,m,t
+    INTEGER :: body_id
+    REAL(KIND=dp) :: bodyCond(27)
+    LOGICAL :: Found, Parallel, Sloppy, Conservative, Switch
+    CHARACTER(:), ALLOCATABLE :: str
+    CHARACTER(*), PARAMETER :: Caller = 'TagBodiesUsingCondition'
+
+    
+    ! Check that there is something to do, else exit
+    IF(.NOT. ListCheckPrefix(Model % Simulation,'Body Define Condition') ) RETURN
+    
+    Parallel = ( ParEnv % PEs > 1 )
+    IF( Parallel ) THEN
+      IF( ListGetLogical( Model % Simulation,'Single Mesh',Found ) ) THEN
+        Parallel = .FALSE.
+        CALL Info(Caller,'Working on single mesh, so reverting parallel mode to serial!',Level=8)
+      END IF
+    END IF
+    
+    CALL Info(Caller,'Redefining bodies using geometric detection rules')
+            
+    Sloppy = ListGetLogical( Model % Simulation,'Body Define Sloppy', Found ) 
+    Conservative = ListGetLogical( Model % Simulation,'Body Define Conservative', Found ) 
+
+    ! If these are not set we cannot use ListGetReal later on...
+    Model % Mesh => Mesh
+    Model % Variables => Mesh % Variables
+    
+    DO i=1,100       
+      str = 'Body Define Condition '//I2S(i)
+      IF(.NOT. ListCheckPresent(Model % Simulation,str)) EXIT
+      
+      body_id = ListGetInteger(Model % Simulation,'Body Define Index '//I2S(i),UnfoundFatal=.TRUE.)
+      
+      k = 0
+      DO t=1,Mesh % NumberOfBulkElements
+        Element => Mesh % Elements(t)
+        Model % CurrentElement => Element
+        n = Element % Type % NumberOfNodes
+
+        IF(Element % BodyId == body_id) CYCLE
+        
+        bodyCond(1:n) = ListGetReal( Model % Simulation, str, n, Element % NodeIndexes )
+        m = COUNT(bodyCond(1:n) > 0)
+        
+        Switch = .FALSE.
+        IF( Conservative ) THEN
+          Switch = (m==n)
+        ELSE IF( Sloppy ) THEN
+          Switch = (m>0)
+        ELSE
+          Switch = (2*m>n)
+        END IF
+
+        IF(switch) THEN
+          k = k+1
+          Element % BodyId = body_id
+        END IF
+      END DO
+
+      CALL Info(Caller,'Defining body index '//I2S(body_id)//' in '//I2S(k)//' elements')
+      
+    END DO
+      
+  END SUBROUTINE TagBodiesUsingCondition
+  
 !------------------------------------------------------------------------------
 END MODULE MeshUtils
 !------------------------------------------------------------------------------

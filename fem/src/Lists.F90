@@ -7445,7 +7445,7 @@ CONTAINS
 
      IF( Handle % NotPresentAnywhere .AND. Handle % HandleIm % NotPresentAnywhere ) THEN
        IF(PRESENT(Found)) Found = .FALSE.
-       Zvalue = CMPLX( Handle % DefRValue, 0.0_dp )
+       Zvalue = CMPLX( Handle % DefRValue, 0.0_dp, KIND=dp )
        RETURN
      END IF
      
@@ -7455,7 +7455,7 @@ CONTAINS
      Ivalue = ListGetElementReal(Handle % HandleIm,Basis,Element,Found,Indexes,GaussPoint)
      IF( PRESENT( Found ) ) Found = Found .OR. RFound 
 
-     Zvalue = CMPLX( Rvalue, Ivalue ) 
+     Zvalue = CMPLX( Rvalue, Ivalue, KIND=dp ) 
           
    END FUNCTION ListGetElementComplex
        
@@ -7610,7 +7610,7 @@ CONTAINS
      Ivalue3D = ListGetElementReal3D(Handle % HandleIm,Basis,Element,Found,Indexes,GaussPoint)
      IF( PRESENT( Found ) ) Found = Found .OR. RFound
      
-     Zvalue3D = CMPLX( Rvalue3D, Ivalue3D )     
+     Zvalue3D = CMPLX( Rvalue3D, Ivalue3D, KIND=dp )
      
    END FUNCTION ListGetElementComplex3D
 

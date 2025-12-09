@@ -61,6 +61,11 @@ SUBROUTINE StatCurrentSolver_init( Model,Solver,dt,Transient )
   Params => GetSolverParams()
   dim = CoordinateSystemDimension()
   PostActive = .FALSE.
+
+  IF(ListGetLogical(Params,'Harmonic Mode',Found ) ) THEN
+    CALL ListAddLogical( Params,'Use Global Mass Matrix',.TRUE.)
+  END IF
+  CALL ListAddInteger( Params, 'Time derivative order', 1 )
   
   CALL ListAddNewString( Params,'Variable','Potential')
   
@@ -157,7 +162,7 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
   REAL(KIND=dp) :: Norm
   INTEGER :: n, nb, nd, t, active, dim, RelOrder
   INTEGER :: iter, maxiter, nColours, col, totelem, nthr
-  LOGICAL :: Found, VecAsm, InitHandles, AxiSymmetric
+  LOGICAL :: Found, VecAsm, InitHandles, AxiSymmetric, HarmonicMode
   TYPE(ValueList_t), POINTER :: Params 
   TYPE(Mesh_t), POINTER :: Mesh
   CHARACTER(*), PARAMETER :: Caller = 'StatCurrentSolver'
@@ -213,6 +218,8 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
 
   nColours = GetNOFColours(Solver)
 
+  HarmonicMode = ListGetLogical( Params,'Harmonic Mode', Found ) 
+  
   VecAsm = ListGetLogical( Params,'Vector Assembly',Found )
   IF(.NOT. Found ) THEN
     VecAsm = (nColours > 1) .OR. (nthr > 1)
@@ -431,7 +438,7 @@ CONTAINS
     END IF
     
     ! time derivative of potential: MASS=MASS+(eps*grad(u),grad(v))
-    IF( Transient ) THEN
+    IF( Transient .OR. HarmonicMode ) THEN
       EpsAtIpVec => ListGetElementRealVec( EpsCoeff_h, ngp, Basis, Element, Found ) 
       IF( Found ) THEN
         CALL LinearForms_GradUdotGradU(ngp, nd, Element % TYPE % DIMENSION, dBasisdx, DetJVec, MASS, EpsAtIpVec )
@@ -445,7 +452,7 @@ CONTAINS
       CALL LinearForms_UdotF(ngp, nd, Basis, DetJVec, SourceAtIpVec, FORCE)
     END IF
       
-    IF(Transient) CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element)
+    IF(Transient .OR. HarmonicMode ) CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element)
     CALL CondensateP( nd-nb, nb, STIFF, FORCE )
 
     CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element, VecAssembly=VecAsm)
@@ -493,9 +500,9 @@ CONTAINS
       IF( .NOT. Found ) Eps0 = 8.854187817e-12
       InitHandles = .FALSE.
     END IF
-    
+       
     dim = CoordinateSystemDimension()
-
+    
     IF( RelOrder /= 0 ) THEN
       IP = GaussPoints( Element, RelOrder = RelOrder)
     ELSE
@@ -558,7 +565,7 @@ CONTAINS
         END DO
       END IF
 
-      IF( Transient ) THEN
+      IF( Transient .OR. HarmonicMode ) THEN
         EpsAtIp = Eps0 * ListGetElementReal( EpsCoeff_h, Basis, Element, Found )
         IF( Found ) THEN
           MASS(1:nd,1:nd) = MASS(1:nd,1:nd) + Weight * &
@@ -572,7 +579,7 @@ CONTAINS
       END IF
     END DO
     
-    IF(Transient) CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element)
+    IF(Transient .OR. HarmonicMode ) CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element)
     CALL CondensateP( nd-nb, nb, STIFF, FORCE )
     
     CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element, VecAssembly=VecAsm)

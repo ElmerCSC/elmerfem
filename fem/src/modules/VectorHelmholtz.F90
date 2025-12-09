@@ -105,8 +105,13 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
       END IF      
     ELSE
       IF( SecondOrder ) THEN
-        CALL ListAddString( SolverParams, "Element", &
-            "n:0 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )
+        IF (SecondFamily) THEN
+          CALL ListAddString( SolverParams, "Element", &
+              "n:0 e:3 -tri b:3 -tri_face b:3" )
+        ELSE
+          CALL ListAddString( SolverParams, "Element", &
+              "n:0 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )
+        END IF
       ELSE IF (SecondFamily) THEN
         CALL ListAddString( SolverParams, "Element", "n:0 e:2" )
       ELSE IF( PiolaVersion ) THEN
@@ -275,7 +280,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
 
   PrecDampCoeff = GetCReal(SolverParams, 'Linear System Preconditioning Damp Coefficient', HasPrecDampCoeff )
   PrecDampCoeff = CMPLX(REAL(PrecDampCoeff), &
-      GetCReal(SolverParams, 'Linear System Preconditioning Damp Coefficient im', Found ) )
+      GetCReal(SolverParams, 'Linear System Preconditioning Damp Coefficient im', Found ), kind=dp)
   HasPrecDampCoeff = HasPrecDampCoeff .OR. Found 
   IF (HasPrecDampCoeff) THEN
     MassProportional = GetLogical(SolverParams, 'Mass-proportional Damping', Found)
@@ -861,12 +866,12 @@ CONTAINS
     INTEGER :: n, nd
     LOGICAL :: InitHandles
 !------------------------------------------------------------------------------
-    COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:)    
-    COMPLEX(KIND=dp) :: B, L(3), muinv, TemGrad(3), MagLoad(3), BetaPar, jn, Cond, SurfImp, epsr, mur, ep
+    COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:)
+    COMPLEX(KIND=dp) :: ElSurfCurr(3), B, L(3), muinv, TemGrad(3), MagLoad(3), BetaPar, jn, Cond, SurfImp, epsr, mur, ep
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:)
     REAL(KIND=dp), ALLOCATABLE :: Re_Eigenf(:), Im_Eigenf(:)
     REAL(KIND=dp) :: th, DetJ
-    LOGICAL :: Stat, Found, UpdateStiff, WithNdofs, ThinSheet, ConductorBC, EigenBC, PortSource
+    LOGICAL :: Stat, Found, UpdateStiff, WithNdofs, ThinSheet, GoodConductor, Absorb, EigenSource, EigenWave
     LOGICAL :: LineElement, DegenerateElement, Regularize, Consistent
     LOGICAL :: AllocationsDone = .FALSE.
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -874,11 +879,17 @@ CONTAINS
     INTEGER :: nd_eigen
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(Element_t), POINTER :: Parent
-    TYPE(ValueHandle_t), SAVE :: MagLoad_h, ElRobin_h, MuCoeff_h, EpsCoeff_h, Absorb_h, TemRe_h, TemIm_h, ExtPot_h
+    TYPE(ValueHandle_t), SAVE :: ElSurfCurr_h, MagLoad_h, ElRobin_h, MuCoeff_h, EpsCoeff_h, Absorb_h, TemRe_h, TemIm_h, ExtPot_h
     TYPE(ValueHandle_t), SAVE :: TransferCoeff_h, ElCurrent_h
     TYPE(ValueHandle_t), SAVE :: Thickness_h, RelNu_h, CondCoeff_h
-    TYPE(ValueHandle_t), SAVE :: GoodConductor, ChargeConservation
-    TYPE(ValueHandle_t), SAVE :: EigenvectorSource, EigenvectorInd, IncidentWave
+    TYPE(ValueHandle_t), SAVE :: GoodConductor_h, ChargeConservation_h, EigenSource_h, EigenInd_h, EigenWave_h
+
+    TYPE(ValueHandle_t), SAVE :: PortTypeIndex_h, PortZ_h, PortLength_h, PortScale_h, PortDirection_h, PortCenter_h
+    INTEGER :: PortTypeIndex, PortDirection
+    COMPLEX(KIND=dp) :: PortZ
+    REAL(KIND=dp) :: PortLength, PortScale, PortCenter(3)
+    LOGICAL :: GotPort
+
     
     SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, FORCE, STIFF, MASS, Re_Eigenf, Im_Eigenf
 
@@ -893,11 +904,15 @@ CONTAINS
     END IF
 
     IF( InitHandles ) THEN
+      CALL DefinePortParameters(Model, Mesh)
+      
       CALL ListInitElementKeyword( ElRobin_h,'Boundary Condition','Electric Robin Coefficient',InitIm=.TRUE.)
       CALL ListInitElementKeyword( MagLoad_h,'Boundary Condition','Magnetic Boundary Load', InitIm=.TRUE.,InitVec3D=.TRUE.)
+      CALL ListInitElementKeyword( ElSurfCurr_h, 'Boundary Condition', 'Electric Surface Current', &
+        InitIm = .TRUE., InitVec3D=.TRUE.)
       CALL ListInitElementKeyword( Absorb_h,'Boundary Condition','Absorbing BC')
-      CALL ListInitElementKeyword( GoodConductor,'Boundary Condition','Good Conductor BC')
-      CALL ListInitElementKeyword( ChargeConservation,'Boundary Condition','Apply Conservation of Charge')      
+      CALL ListInitElementKeyword( GoodConductor_h,'Boundary Condition','Good Conductor BC')
+      CALL ListInitElementKeyword( ChargeConservation_h,'Boundary Condition','Apply Conservation of Charge')      
       CALL ListInitElementKeyword( TemRe_h,'Boundary Condition','TEM Potential')
       CALL ListInitElementKeyword( TemIm_h,'Boundary Condition','TEM Potential Im')
       CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)      
@@ -911,9 +926,19 @@ CONTAINS
       CALL ListInitElementKeyword( RelNu_h,'Boundary Condition','Layer Relative Reluctivity',InitIm=.TRUE.)
       CALL ListInitElementKeyword( CondCoeff_h,'Boundary Condition','Layer Electric Conductivity',InitIm=.TRUE.)
 
-      CALL ListInitElementKeyword( EigenvectorSource,'Boundary Condition','Eigenfunction BC')
-      CALL ListInitElementKeyword( EigenvectorInd,'Boundary Condition','Eigenfunction Index')
-      CALL ListInitElementKeyword( IncidentWave,'Boundary Condition','Incident Wave')      
+      ! Paramaters related to eigenmode port.
+      CALL ListInitElementKeyword( EigenSource_h,'Boundary Condition','Eigenfunction BC')
+      CALL ListInitElementKeyword( EigenInd_h,'Boundary Condition','Eigenfunction Index')
+      CALL ListInitElementKeyword( EigenWave_h,'Boundary Condition','Incident Wave')      
+
+      ! Lumped ports
+      CALL ListInitElementKeyword( PortTypeIndex_h,'Boundary Condition','Port Type Index')
+      CALL ListInitElementKeyword( PortZ_h,'Boundary Condition','Port Impedance',InitIm=.TRUE.)
+      CALL ListInitElementKeyword( PortLength_h,'Boundary Condition','Port Length')
+      CALL ListInitElementKeyword( PortScale_h,'Boundary Condition','Port Scale')
+      CALL ListInitElementKeyword( PortDirection_h,'Boundary Condition','Port Direction',DefIValue=3)
+      CALL ListInitElementKeyword( PortCenter_h,'Boundary Condition','Port Center',InitVec3D=.TRUE.)
+      
       InitHandles = .FALSE.
     END IF
 
@@ -930,12 +955,15 @@ CONTAINS
     np = n * ndofs
     
     ! Check whether BC should be created in terms of pre-computed eigenfunction:
-    EigenBC = ListGetElementLogical(EigenvectorSource, Element, Found)
-
-    IF (EigenBC) THEN
-      EigenInd = ListGetElementInteger(EigenvectorInd, Element, Found)
+    EigenSource = ListGetElementLogical(EigenSource_h, Element, Found)
+    GoodConductor = ListGetElementLogical(GoodConductor_h, Element, Found)
+    Absorb = ListGetElementLogical(Absorb_h, Element, Found)
+    PortTypeIndex = ListGetElementInteger(PortTypeIndex_h, Element, GotPort)
+    
+    IF (EigenSource) THEN
+      EigenInd = ListGetElementInteger(EigenInd_h, Element, Found)
       IF (EigenInd < 1) CALL Fatal(Caller, 'Eigenfunction Index must be positive')
-      PortSource = ListGetElementLogical(IncidentWave, Element, Found)
+      EigenWave = ListGetElementLogical(EigenWave_h, Element, Found)
 
       CALL GetScalarLocalEigenmode(Re_Eigenf, ComponentName(Eigensolver % Variable, 1), Element, &
           Eigensolver, EigenInd, ComplexPart=.FALSE.)
@@ -953,6 +981,19 @@ CONTAINS
           'The DOFs of the port model are not compatible with the DOFs of this solver')
     END IF
 
+    IF(GotPort) THEN
+      PortTypeIndex = ListGetElementInteger( PortTypeIndex_h, Element ) 
+      PortZ = ListGetElementComplex( PortZ_h, Element = Element )
+      PortScale = ListGetElementReal( PortScale_h, Element = Element )
+      PortLength = ListGetElementReal( PortLength_h, Element = Element )
+      IF( PortTypeIndex == 1 ) THEN
+        PortDirection = ListGetElementInteger( PortDirection_h, Element )
+      ELSE
+        PortCenter = ListGetElementReal( PortCenter_h, Element = Element )
+      END IF
+      !PRINT *,'PortScale:',PortScale, PortZ, PortLength, PortTypeIndex, PortDirection
+    END IF
+      
     
     ! Numerical integration:
     !-----------------------
@@ -960,9 +1001,9 @@ CONTAINS
         EdgeBasisDegree=EdgeBasisDegree )
 
     IF (WithNdofs) THEN
-      Regularize = UseGaussLaw .AND. ListGetElementLogical( ChargeConservation, Element, Found )
+      Regularize = UseGaussLaw .AND. ListGetElementLogical( ChargeConservation_h, Element, Found )
     END IF
-
+    
     LineElement = GetElementFamily(Element) == 2
     DegenerateElement = (CoordinateSystemDimension() == 3) .AND. LineElement
     
@@ -1020,56 +1061,60 @@ CONTAINS
         mur = 1.0_dp
       END IF      
       muinv = mur * mu0inv
+
       
-      ConductorBC = .FALSE.
-      IF (ThinSheet) THEN
-        IF (ListGetElementLogical(GoodConductor, Element, Found)) &
-            CALL Warn(Caller, 'Good Conductor BC neglected, given Layer Thickness used instead')
+      IF( COUNT([EigenSource,GoodConductor,ThinSheet,Absorb,GotPort]) > 1) THEN
+        CALL Fatal(Caller,'Boundary condition not uniquely defined!')
+      END IF
+      
+      L = CMPLX(0.0_dp, 0.0_dp, kind=dp)
+      IF( Absorb ) THEN
+        B = im * rob0 * SQRT( epsr / mur ) 
+      ELSE IF (ThinSheet) THEN
         Cond = ListGetElementComplex(CondCoeff_h, Basis, Element, Found, GaussPoint = t)
         B = th * Cond
-      ELSE
-        IF( ListGetElementLogical( Absorb_h, Element, Found ) ) THEN
-          B = im * rob0 * SQRT( epsr / mur ) 
+        B = im * omega/muinv * B
+      ELSE IF(GoodConductor) THEN
+        Cond = ListGetElementComplex(CondCoeff_h, Basis, Element, Found, GaussPoint = t)
+        muinv = ListGetElementComplex(RelNu_h, Basis, Element, Found, GaussPoint = t)
+        IF ( Found ) THEN
+          muinv = muinv * mu0inv
         ELSE
-          ConductorBC = ListGetElementLogical( GoodConductor, Element, Found )
-          IF (ConductorBC) THEN
-            Cond = ListGetElementComplex(CondCoeff_h, Basis, Element, Found, GaussPoint = t)
-            muinv = ListGetElementComplex(RelNu_h, Basis, Element, Found, GaussPoint = t)
-            IF ( Found ) THEN
-              muinv = muinv * mu0inv
-            ELSE
-              muinv = mu0inv
-            END IF
-            SurfImp = CMPLX(1.0_dp, -1.0_dp) * SQRT(omega/(2.0_dp * Cond * muinv))
-            B = 1.0_dp/SurfImp
-          ELSE
-            B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
-          END IF
+          muinv = mu0inv
         END IF
-      END IF
-
-      IF (EigenBC) THEN
+        SurfImp = CMPLX(1.0_dp, -1.0_dp, KIND=dp) * SQRT(omega/(2.0_dp * Cond * muinv))
+        B = 1.0_dp/SurfImp
+        B = im * omega/muinv * B
+      ELSE IF(EigenSource) THEN
         B = im * SQRT(-Eigensolver % Variable % Eigenvalues(EigenInd))
-        L = CMPLX(0.0_dp, 0.0_dp, kind=dp)
-        IF (PortSource) THEN
+        IF (EigenWave) THEN
           DO p=1,nd
             L(:) = L(:) + CMPLX(Re_Eigenf(n+p) * WBasis(p,:), Im_Eigenf(n+p) * WBasis(p,:), kind=dp) 
           END DO
           L = 2.0_dp * B * L
         END IF
+      ELSE IF(GotPort) THEN
+        IF( PortTypeIndex == 1 ) THEN
+          B = im * ( omega / mu0inv ) / (PortScale * PortZ ) 
+          L(ABS(PortDirection)) = SIGN(1,PortDirection) / PortLength                    
+        END IF
+        L = 2 * B * L
       ELSE
+        B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
+
         MagLoad = ListGetElementComplex3D( MagLoad_h, Basis, Element, Found, GaussPoint = t )           
         TemGrad = CMPLX( ListGetElementRealGrad( TemRe_h,dBasisdx,Element,Found), &
-            ListGetElementRealGrad( TemIm_h,dBasisdx,Element,Found) )
-        L = MagLoad + TemGrad
+            ListGetElementRealGrad( TemIm_h,dBasisdx,Element,Found), KIND=dp )
+
+        ElSurfCurr = ListGetElementComplex3D( ElSurfCurr_h, Basis, Element, Found, GaussPoint = t)
+
+        L = MagLoad + TemGrad - (0_dp, 1_dp)*omega/muinv*ElSurfCurr
       END IF
 
       IF (.NOT. WithNdofs) THEN
         IF (ABS(B) < AEPS .AND. ABS(DOT_PRODUCT(L,L)) < AEPS) CYCLE
       END IF
       UpdateStiff = .TRUE.
-
-      IF (ConductorBC .OR. ThinSheet) B = im * omega/muinv * B
       
       DO i = 1,nd-np
         p = i+np
@@ -1756,7 +1801,7 @@ CONTAINS
           EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
 
       B = CMPLX(MATMUL( SOL(2,np+1:nd), RotWBasis(1:nd-np,:) ) / (Omega), &
-          MATMUL( SOL(1,np+1:nd), RotWBasis(1:nd-np,:) ) / (-Omega))
+          MATMUL( SOL(1,np+1:nd), RotWBasis(1:nd-np,:)) / (-Omega), KIND=dp)
 
       ! The conductivity as a tensor not implemented yet
       !C_ip = ListGetElementReal( CondCoeff_h, Basis, Element, Found, GaussPoint = j )
@@ -1778,11 +1823,11 @@ CONTAINS
         PR_ip = Eps0 
       END IF
 
-      EF_ip=CMPLX(MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:)), MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:)))
+      EF_ip=CMPLX(MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:)), MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:)),KIND=dp)
       IF (LorenzCondition .OR. UseGaussLaw) THEN
         DO k=1,3
           EF_ip(k) = EF_ip(k) - &
-              CMPLX(SUM(SOL(1,1:np:ndofs)*dBasisdx(1:n,k)), SUM(SOL(2,1:np:ndofs)*dBasisdx(1:n,k)))
+              CMPLX(SUM(SOL(1,1:np:ndofs)*dBasisdx(1:n,k)), SUM(SOL(2,1:np:ndofs)*dBasisdx(1:n,k)),KIND=dp)
         END DO
       END IF
       ExHc = ComplexCrossProduct(EF_ip, CONJG(H))
@@ -1864,11 +1909,11 @@ CONTAINS
       stat = ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx, &
           EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
 
-      EF_ip = CMPLX(MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:)), MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:)))
+      EF_ip = CMPLX(MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:)), MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:)),KIND=dp)
       IF (LorenzCondition .OR. UseGaussLaw) THEN
         DO k=1,3
           EF_ip(k) = EF_ip(k) - &
-              CMPLX(SUM(SOL(1,1:np:ndofs)*dBasisdx(1:n,k)), SUM(SOL(2,1:np:ndofs)*dBasisdx(1:n,k)))
+              CMPLX(SUM(SOL(1,1:np:ndofs)*dBasisdx(1:n,k)), SUM(SOL(2,1:np:ndofs)*dBasisdx(1:n,k)),KIND=dp)
         END DO
       END IF
 

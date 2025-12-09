@@ -744,8 +744,7 @@ CONTAINS
    REAL(KIND=dp),  POINTER CONTIG :: SaveValues(:), SaveRHS(:), ConstraintValues(:)
    REAL(KIND=dp) :: PrevTorque, TorqueErr, Torque
    
-   
-   SAVE TmpRHSVec, TmpRVec
+   SAVE TmpRHSVec, TmpRVec, Torque
   !-----------------
   !System assembly:
   !-----------------
@@ -930,7 +929,9 @@ CONTAINS
 
      IF(ASSOCIATED(PrecMat)) THEN
        nFORCE = 0.0_dp
+       CurrentModel % Solver => PrecSolver
        CALL DefaultUpdateEquations(nSTIFF,nFORCE,UElement=Element,USolver=PrecSolver)       
+       CurrentModel % Solver => pSolver
      END IF
      
      ! Memorize stuff for the fixing potential
@@ -1259,14 +1260,15 @@ END BLOCK
   Converged = ( Solver % Variable % NonlinConverged == 1 )
 
   IF( UseTorqueTol ) THEN
+    TorqueErr = 0.0_dp
     PrevTorque = Torque 
     CALL CalculateLumpedParameters(Torque)
     IF( iterNo >= 2 ) THEN
       TorqueErr = 2 * ABS(PrevTorque-Torque) / (ABS(PrevTorque)+ABS(Torque))
-      IF( TorqueErr > TorqueTol ) THEN
+!     IF( TorqueErr > TorqueTol ) THEN
         WRITE(Message,'(A,ES12.3)') 'Torque error at iteration '//I2S(iterNo)//':',TorqueErr
         CALL Info(Caller,Message,Level=6)
-      END IF
+!     END IF
     END IF
   END IF
     
@@ -1274,7 +1276,7 @@ END BLOCK
   IF( Converged ) THEN
     CALL Info(Caller,'System has converged to tolerances after '//I2S(iterNo)//' iterations!',Level=12)
     IF( UseTorqueTol ) THEN
-      IF( TorqueErr > TorqueTol ) THEN
+      IF( IterNo <= 1 .OR. TorqueErr > TorqueTol ) THEN
         CALL Info(Caller,'Nonlinear system tolerance ok after '&
             //I2S(iterNo)//' but torque still wobbly!',Level=7)
         Converged = .FALSE.
@@ -2449,19 +2451,23 @@ END SUBROUTINE LocalConstraintMatrix
              DO p = 1,n
                DO q = 1,n
                  Laplace = SUM(dBasisdx(p,:)*dBasisdx(q,:)) * weight
-                 
+
                  ! Equation for: a_r/r
                  nSTIFF(3*p-2,3*q-2) = nSTIFF(3*p-2,3*q-2) + x * mu * Laplace 
                  nSTIFF(3*p-2,3*q-1) = nSTIFF(3*p-2,3*q-1) - y * mu * Laplace 
-                 nSTIFF(3*p-2,3*q-2) = nSTIFF(3*p-2,3*q-2) - mu * Basis(p) * dBasisdx(q,1) * weight
-                 nSTIFF(3*p-2,3*q-1) = nSTIFF(3*p-2,3*q-1) + mu * Basis(p) * dBasisdx(q,2) * weight
-                 
+                 !nSTIFF(3*p-2,3*q-2) = nSTIFF(3*p-2,3*q-2) - mu * Basis(p) * dBasisdx(q,1) * weight
+                 !nSTIFF(3*p-2,3*q-1) = nSTIFF(3*p-2,3*q-1) + mu * Basis(p) * dBasisdx(q,2) * weight
+                 nSTIFF(3*p-2,3*q-2) = nSTIFF(3*p-2,3*q-2) + mu * Basis(q) * dBasisdx(p,1) * weight
+                 nSTIFF(3*p-2,3*q-1) = nSTIFF(3*p-2,3*q-1) - mu * Basis(q) * dBasisdx(p,2) * weight
+
                  ! Equation for: a_phi/r
                  nSTIFF(3*p-1,3*q-1) = nSTIFF(3*p-1,3*q-1) + x * mu * Laplace 
                  nSTIFF(3*p-1,3*q-2) = nSTIFF(3*p-1,3*q-2) + y * mu * Laplace 
-                 nSTIFF(3*p-1,3*q-2) = nSTIFF(3*p-1,3*q-2) - mu * Basis(p) * dBasisdx(q,2) * weight
-                 nSTIFF(3*p-1,3*q-1) = nSTIFF(3*p-1,3*q-1) - mu * Basis(p) * dBasisdx(q,1) * weight
-                 
+                 !nSTIFF(3*p-1,3*q-2) = nSTIFF(3*p-1,3*q-2) - mu * Basis(p) * dBasisdx(q,2) * weight
+                 !nSTIFF(3*p-1,3*q-1) = nSTIFF(3*p-1,3*q-1) - mu * Basis(p) * dBasisdx(q,1) * weight
+                 nSTIFF(3*p-1,3*q-2) = nSTIFF(3*p-1,3*q-2) + mu * Basis(q) * dBasisdx(p,2) * weight
+                 nSTIFF(3*p-1,3*q-1) = nSTIFF(3*p-1,3*q-1) + mu * Basis(q) * dBasisdx(p,1) * weight
+
                  ! Equation for: a_z
                  nSTIFF(3*p,3*q) = nSTIFF(3*p,3*q) + mu * Laplace 
                END DO

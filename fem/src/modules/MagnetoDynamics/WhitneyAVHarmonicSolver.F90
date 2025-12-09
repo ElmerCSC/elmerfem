@@ -1033,7 +1033,7 @@ END BLOCK
     IF (r<r0.OR.r>r1) RETURN
 
     CALL GetLocalSolution(POT, UElement=Element)
-    POTC = CMPLX( POT(1,1:nd), POT(2,1:nd) )
+    POTC = CMPLX( POT(1,1:nd), POT(2,1:nd), KIND=dp )
   
     !Numerical integration:
     !----------------------
@@ -1056,7 +1056,7 @@ END BLOCK
       Br =  x/r*Bx + y/r*By
       Bp = -y/r*Bx + x/r*By
       U = U + IP % s(t) * detJ * r * &
-           CMPLX(REAL(Br)*REAL(Bp),AIMAG(Br)*AIMAG(Bp))/(PI*4.0d-7*(r1-r0))
+           CMPLX(REAL(Br)*REAL(Bp),AIMAG(Br)*AIMAG(Bp),KIND=dp)/(PI*4.0d-7*(r1-r0))
     END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE Torque
@@ -1092,7 +1092,7 @@ END BLOCK
     IF (r<r0.OR.r>r1) RETURN
 
     CALL GetLocalSolution(POT, UElement=Element)
-    POTC = CMPLX( POT(1,1:nd), POT(2,1:nd) )
+    POTC = CMPLX( POT(1,1:nd), POT(2,1:nd), KIND=dp )
   
     !Numerical integration:
     !----------------------
@@ -1115,7 +1115,7 @@ END BLOCK
       Bz =  SUM(POTC(n+1:nd) * RotWBasis(1:nd-n,3))
       U = U + IP % s(t) * detJ * 1 * &
            CMPLX((REAL(Bx)*REAL(Bz)*x + REAL(By)*REAL(Bz)*y), &
-                (AIMAG(Bx)*AIMAG(Bz)*x + AIMAG(By)*AIMAG(Bz)*y)) &
+                (AIMAG(Bx)*AIMAG(Bz)*x + AIMAG(By)*AIMAG(Bz)*y), KIND=dp) &
                /(PI*4.0d-7*(r1-r0))
     END DO
 !------------------------------------------------------------------------------
@@ -1146,7 +1146,7 @@ END BLOCK
     CALL GetElementNodes( PNodes, Parent )
 
     CALL GetLocalSolution(POT, UElement=Parent )
-    POTC = CMPLX( POT(1,1:nd), POT(2,1:nd) )
+    POTC = CMPLX( POT(1,1:nd), POT(2,1:nd),KIND=dp )
   
     !Numerical integration:
     !----------------------
@@ -1179,7 +1179,7 @@ END BLOCK
       Bz =  SUM(POTC(n+1:nd) * RotWBasis(1:nd-n,3))
       U = U + IP % s(t) * detJ * &
            CMPLX((REAL(Bx)*REAL(Bz)*x + REAL(By)*REAL(Bz)*y), &
-                (AIMAG(Bx)*AIMAG(Bz)*x + AIMAG(By)*AIMAG(Bz)*y)) /(PI*4.0d-7)
+                (AIMAG(Bx)*AIMAG(Bz)*x + AIMAG(By)*AIMAG(Bz)*y), KIND=dp) /(PI*4.0d-7)
     END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE AxialForceSurf
@@ -1208,7 +1208,7 @@ END BLOCK
 
     Omega = GetAngularFrequency(UElement=Element)
     CALL GetLocalSolution(POT,UElement=Element)
-    POTC = Omega*CMPLX( POT(2,1:nd), POT(1,1:nd) )
+    POTC = Omega*CMPLX( POT(2,1:nd), POT(1,1:nd), KIND=dp )
 
     CALL GetLocalSolution(Wpot,'W',UElement=Element)
     W = [0._dp, 0._dp, 1._dp]
@@ -1296,7 +1296,7 @@ END BLOCK
         JfixVec = 0.0_dp
       ELSE
         JfixPot(1:n) = CMPLX( JfixVar % Values( JfixVar % Perm( Element % NodeIndexes ) ), &
-            JfixVarIm % Values( JfixVarIm % Perm( Element % NodeIndexes ) ) )
+            JfixVarIm % Values( JfixVarIm % Perm( Element % NodeIndexes ) ), KIND=dp )
       END IF
     END IF
 
@@ -1649,7 +1649,7 @@ END BLOCK
 
     FORCE = 0.0d0
     JfixPot(1:n) = CMPLX( JfixVar % Values(JfixVar % Perm(Element % NodeIndexes)), &
-        JfixVarIm % Values(JfixVarIm % Perm(Element % NodeIndexes)) )
+        JfixVarIm % Values(JfixVarIm % Perm(Element % NodeIndexes)), KIND=dp )
     
 !    IF( SUM( ABS( JfixPot(1:n) ) ) < TINY( DetJ ) ) RETURN
 

@@ -268,7 +268,7 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
   !-----------------------------------------------------------------------
   ShiftCoeff = GetCReal(SolverParams, 'Linear System Preconditioning Damp Coefficient', UsePrecShift)
   ShiftCoeff = CMPLX(REAL(ShiftCoeff), &
-      GetCReal(SolverParams, 'Linear System Preconditioning Damp Coefficient Im', Found))
+      GetCReal(SolverParams, 'Linear System Preconditioning Damp Coefficient Im', Found),KIND=dp)
   UsePrecShift = UsePrecShift .OR. Found
 
   IF(UsePrecShift) THEN
@@ -447,11 +447,11 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
                IF( DispMode == 1 ) THEN
                  cu = DispEigen( (k-1)*DispDofs + l )
                ELSE IF( DispMode == 2 ) THEN
-                 cu = CMPLX( Disp( (k-1)*DispDofs + 2*l-1 ), Disp( (k-1)*DispDofs + 2*l ) )
+                 cu = CMPLX( Disp( (k-1)*DispDofs + 2*l-1 ), Disp( (k-1)*DispDofs + 2*l ),KIND=dp )
                ELSE IF( DispMode == 3 ) THEN                
-                 cu = CMPLX( Disp( (k-1)*DispDofs + l ), 0.0_dp )
+                 cu = CMPLX( Disp( (k-1)*DispDofs + l ), 0.0_dp,KIND=dp )
                ELSE 
-                 cu = CMPLX( Disp( (k-1)*DispDofs + l ),  DispIm( (k-1)*DispDofs + l ) )
+                 cu = CMPLX( Disp( (k-1)*DispDofs + l ),  DispIm( (k-1)*DispDofs + l ),KIND=dp )
                END IF
 
                WallVelocity(l,j) = cu

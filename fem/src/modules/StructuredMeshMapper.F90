@@ -230,7 +230,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   GotBaseVar = .FALSE.
   VarName = GetString( SolverParams,'Base Displacement Variable',Found)
   IF( Found ) THEN
-    BaseVar => VariableGet( Mesh % Variables, VarName )
+    BaseVar => VariableGet( Mesh % Variables, VarName, ThisOnly=.TRUE. )
     GotBaseVar = ASSOCIATED( BaseVar )
     IF(.NOT. GotBaseVar ) THEN
       CALL Fatal(Caller,'The variable does not exist: '//TRIM(VarName))
@@ -260,7 +260,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
       ! Create full vector if the field is given by component
       IF( VERIFY( VarName(n:n),'123') == 0 ) THEN
         CALL DefaultVariableAdd( VarName(1:n-1), dofs = dim, Perm = MaskPerm )
-        VeloVar => VariableGet( Mesh % Variables, VarName ) 
+        VeloVar => VariableGet( Mesh % Variables, VarName, ThisOnly=.TRUE. ) 
       ELSE
         CALL DefaultVariableAdd( VarName, Perm = MaskPerm, Var = VeloVar ) 
       END IF
@@ -271,7 +271,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   !-------------------------------------------------------------------
   VarName = GetString( SolverParams,'Mesh Update Variable',GotUpdateVar)
   IF( GotUpdateVar ) THEN
-    UpdateVar => VariableGet( Mesh % Variables, VarName ) 
+    UpdateVar => VariableGet( Mesh % Variables, VarName, ThisOnly=.TRUE. ) 
     IF( ASSOCIATED( UpdateVar ) ) THEN
       IF( UpdateVar % Dofs /= 1 ) THEN
         CALL Fatal(Caller,'The size of mesh update must be one')
@@ -284,7 +284,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
       ! Create full vector if the field is given by component
       IF( VERIFY( VarName(n:n),'123') == 0 ) THEN
         CALL DefaultVariableAdd( VarName(1:n-1), dofs = dim, Perm = MaskPerm )
-        UpdateVar => VariableGet( Mesh % Variables, VarName ) 
+        UpdateVar => VariableGet( Mesh % Variables, VarName, ThisOnly=.TRUE. ) 
       ELSE
         CALL DefaultVariableAdd( VarName, Perm = MaskPerm, Var = UpdateVar )
       END IF
@@ -398,7 +398,7 @@ CONTAINS
       
       TangledMaskVarName = GetString(SolverParams,'Correct Surface Mask', ComputeTangledMask)
       IF (ComputeTangledMask) THEN
-        TangledMaskVar => VariableGet( Mesh % Variables,  TRIM(TangledMaskVarName) )
+        TangledMaskVar => VariableGet( Mesh % Variables,  TRIM(TangledMaskVarName), ThisOnly=.TRUE. )
         IF(.NOT. ASSOCIATED( TangledMaskVar ) ) THEN
           CALL Info(Caller,&
               'Given > Correct Surface Mask < variable not present, creating it.')
@@ -431,7 +431,7 @@ CONTAINS
     ELSE
       VarName = GetString(SolverParams,'Top Surface Variable Name',GotIt )
       IF(GotIt) THEN
-        Var => VariableGet( Mesh % Variables,  VarName )
+        Var => VariableGet( Mesh % Variables,  VarName, ThisOnly=.TRUE. )
         IF(ASSOCIATED(Var)) THEN
           IF(Var % DOFs /= 1) THEN
             CALL Fatal(Caller,'Top surface variable should have only 1 dof')
@@ -489,7 +489,7 @@ CONTAINS
     ELSE
       VarName = GetString(SolverParams,'Bottom Surface Variable Name',GotIt )
       IF(GotIt) THEN
-        Var => VariableGet( Mesh % Variables,  VarName )
+        Var => VariableGet( Mesh % Variables,  VarName, ThisOnly=.TRUE. )
         IF(ASSOCIATED(Var)) THEN
           IF( Var % DOFs /= 1) THEN
             CALL Fatal(Caller,'Bottom surface variable should have only 1 dof')

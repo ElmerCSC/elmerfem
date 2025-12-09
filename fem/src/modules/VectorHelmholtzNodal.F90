@@ -616,15 +616,16 @@ CONTAINS
     REAL(KIND=dp) :: TestVec(3), TrialVec(3)
 !    COMPLEX(KIND=dp) :: STIFF(nd,nd,3), FORCE(nd,3)
     COMPLEX(KIND=dp), ALLOCATABLE, SAVE :: STIFF(:,:,:), FORCE(:,:)
-    COMPLEX(KIND=dp) :: muInvAtIp, TemGrad(3), L(3), B 
-    LOGICAL :: Stat,Found,RobinBC,NT,EigenBC
+    COMPLEX(KIND=dp) :: muInvAtIp, muinv, Cond, SurfImp, TemGrad(3), L(3), B 
+    LOGICAL :: Stat,Found,RobinBC,NT,EigenBC,GoodConductor
     INTEGER :: i,j,k,m,p,q,t,allocstat,EigenInd
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BC       
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(Element_t), POINTER :: Parent
     TYPE(ValueHandle_t), SAVE :: ElRobin_h, MagLoad_h, Absorb_h, TemRe_h, TemIm_h, MuCoeff_h
-    TYPE(ValueHandle_t), SAVE :: EigenvectorSource, EigenvectorInd
+    TYPE(ValueHandle_t), SAVE :: GoodConductor_h, EigenvectorSource, EigenvectorInd
+    TYPE(ValueHandle_t), SAVE :: RelNu_h, CondCoeff_h
     
     BC => GetBC(Element)
     IF (.NOT.ASSOCIATED(BC) ) RETURN
@@ -633,9 +634,12 @@ CONTAINS
       CALL ListInitElementKeyword( ElRobin_h,'Boundary Condition','Electric Robin Coefficient',InitIm=.TRUE.)
       CALL ListInitElementKeyword( MagLoad_h,'Boundary Condition','Magnetic Boundary Load', InitIm=.TRUE.,InitVec3D=.TRUE.)
       CALL ListInitElementKeyword( Absorb_h,'Boundary Condition','Absorbing BC')
+      CALL ListInitElementKeyword( GoodConductor_h,'Boundary Condition','Good Conductor BC')
       CALL ListInitElementKeyword( TemRe_h,'Boundary Condition','TEM Potential')
       CALL ListInitElementKeyword( TemIm_h,'Boundary Condition','TEM Potential Im')
       CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)
+      CALL ListInitElementKeyword( CondCoeff_h,'Boundary Condition','Layer Electric Conductivity',InitIm=.TRUE.)
+      CALL ListInitElementKeyword( RelNu_h,'Boundary Condition','Layer Relative Reluctivity',InitIm=.TRUE.)
       CALL ListInitElementKeyword( EigenvectorSource,'Boundary Condition','Eigenfunction BC')
       CALL ListInitElementKeyword( EigenvectorInd,'Boundary Condition','Eigenfunction Index')
       InitHandles = .FALSE.
@@ -664,6 +668,8 @@ CONTAINS
       CALL Fatal(Caller,'Normal-tangential conditions require monolithic solver!')
     END IF
 
+    GoodConductor = ListGetElementLogical(GoodConductor_h, Element, Found)
+    
     ! Check whether BC should be created in terms of pre-computed eigenfunction:
     EigenBC = ListGetElementLogical(EigenvectorSource, Element, Found)
     IF (EigenBC) THEN
@@ -698,7 +704,7 @@ CONTAINS
       IF( .NOT. PrecUse ) THEN
         L = ListGetElementComplex3D( MagLoad_h, Basis, Element, Found, GaussPoint = t )
         TemGrad = CMPLX( ListGetElementRealGrad( TemRe_h,dBasisdx,Element,Found), &
-            ListGetElementRealGrad( TemIm_h,dBasisdx,Element,Found) )
+            ListGetElementRealGrad( TemIm_h,dBasisdx,Element,Found),KIND=dp )
         L = L + TemGrad
         DO i=1,dim
           FORCE(1:nd,i) = FORCE(1:nd,i) - muinvAtIp * L(i) * Basis(1:nd) * Weight
@@ -710,7 +716,17 @@ CONTAINS
         Found = .TRUE.
       ELSE
         IF( ListGetElementLogical( Absorb_h, Element, Found ) ) THEN
-          B = CMPLX(0.0_dp, rob0 ) 
+          B = CMPLX(0.0_dp, rob0, KIND=dp ) 
+        ELSE IF (GoodConductor) THEN
+          Cond = ListGetElementComplex(CondCoeff_h, Basis, Element, Found, GaussPoint = t)
+          muinv = ListGetElementComplex(RelNu_h, Basis, Element, Found, GaussPoint = t)
+          IF ( Found ) THEN
+            muinv = muinv * mu0inv
+          ELSE
+            muinv = mu0inv
+          END IF
+          SurfImp = CMPLX(1.0_dp, -1.0_dp, KIND=dp) * SQRT(omega/(2.0_dp * Cond * muinv))
+          B = 1.0_dp/SurfImp    
         ELSE
           B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
         END IF

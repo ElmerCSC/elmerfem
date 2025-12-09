@@ -15,7 +15,7 @@ Simulation
   Simulation Type = Steady
   Steady State Max Iterations = 100
   Output Intervals = 1
-!  Post File = "periodic_ns.ep"
+!  Post File = "periodic_ns.vtu"
 End
 
 Constants

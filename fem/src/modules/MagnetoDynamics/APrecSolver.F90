@@ -76,7 +76,14 @@ SUBROUTINE APrecSolver_Init( Model,Solver,dt,Transient ) ! {{{
       NextFreeKeyword('Exported Variable', Params),'-dofs 3 nodal A rhs')
   CALL ListAddString( Params,&
       NextFreeKeyword('Exported Variable', Params),'-dofs 3 nodal A cum')
-    
+
+  IF( ListGetLogicalAnySolver(Model,'Prec Matrix Cylindrical') ) THEN
+    CALL ListAddString( Params,&
+        NextFreeKeyword('Exported Variable', Params),'-dofs 3 nodal A cyl')
+  END IF
+
+
+  
 !------------------------------------------------------------------------------
 END SUBROUTINE APrecSolver_Init ! }}}
 !------------------------------------------------------------------------------
@@ -113,7 +120,7 @@ SUBROUTINE APrecSolver( Model,Solver,dt,Transient ) ! {{{
   LOGICAL :: Monolithic, SecondFamily, SecondOrder, PiolaVersion
   TYPE(ValueList_t), POINTER :: EdgeSolverParams
   CHARACTER(LEN=MAX_NAME_LEN) :: sname
-  LOGICAL, SAVE :: Visited = .FALSE., PrecMatCyl, SkipFaces
+  LOGICAL, SAVE :: Visited = .FALSE., PrecMatCyl, PrecMatNt, SkipFaces
   REAL(KIND=dp), POINTER :: allrhs(:) => NULL(), BulkValues(:) => NULL()
   INTEGER :: comps, compi, dofs
   INTEGER :: NoVisited = 0
@@ -138,6 +145,8 @@ SUBROUTINE APrecSolver( Model,Solver,dt,Transient ) ! {{{
   Monolithic = ListGetLogical( SolverParams,'Monolithic Solver', Found )
   NoVisited = NoVisited + 1
 
+  NodeResVar => VariableGet( Mesh % Variables,'nodal a rhs')
+      
   IF(Monolithic) THEN
     ! Solve all 3 components at the same time!
     ! Note that the current assembly in AVSolver is not compatible with this!
@@ -146,7 +155,6 @@ SUBROUTINE APrecSolver( Model,Solver,dt,Transient ) ! {{{
   ELSE   
     ! Solve one component at a time -> faster!
     comps = 3
-    NodeResVar => VariableGet( Mesh % Variables,'nodal a rhs')
     allrhs => NodeResVar % Values
     IF(.NOT. ASSOCIATED(Solver % Matrix % BulkValues)) THEN
       ALLOCATE(Solver % Matrix % BulkValues(SIZE(Solver % Matrix % Values)))
@@ -155,7 +163,7 @@ SUBROUTINE APrecSolver( Model,Solver,dt,Transient ) ! {{{
     BulkValues => Solver % Matrix % BulkValues
   END IF
 
-  
+    
   IF(Monolithic) THEN
     AVar => SVar
     PrecMatCyl = ListGetLogicalAnySolver(Model,'Prec Matrix Cylindrical')
@@ -168,6 +176,7 @@ SUBROUTINE APrecSolver( Model,Solver,dt,Transient ) ! {{{
       CALL Fatal(Caller,'Componentwise solver size should be 1!')
     END IF
     PrecMatCyl = .FALSE.
+    PrecMatNt = .FALSE.
   END IF
   IF(AVar % dofs /= 3) THEN
     CALL Fatal(Caller,'Full solution size should be 3!')
@@ -200,28 +209,37 @@ SUBROUTINE APrecSolver( Model,Solver,dt,Transient ) ! {{{
     CALL NodalToNedelecInterpolation_GlobalMatrix(Mesh, Avar, EdgeSolVar, Proj, cdim=3, SkipFaces = SkipFaces)
   END IF
 
- 
   ! Now EdgeResVar represents the residual with respect
   ! to the basis for H(curl). We need to apply a transformation so that
   ! we may solve the residual correction equation by using the nodal basis.
   !-----------------------------------------------------------------------------
   CALL Info(Caller,'Using Transposed Projection Matrix: H(curl) -> H1', Level=10)
   CALL CRS_TransposeMatrixVectorMultiply(Proj, EdgeResVar % Values, allrhs )           
-
-
+  
   ! Potentially create a mask that avoids residual values being applied on the mortar BC. 
   IF(NoVisited == 1 ) THEN
     n = SIZE(Solver % Matrix % rhs)/dofs
     ALLOCATE(NodeSkip(n))    
+    NodeSkip = .FALSE.
     CALL CreateNodeSkipMask(NodeSkip,Solver % Variable)
     n = COUNT(NodeSkip)
     IF(n==0) DEALLOCATE(NodeSkip)
   END IF
   
   IF(Monolithic) THEN
-    NodeResVar => VariableGet( Mesh % Variables,'nodal a rhs')
-    IF(ASSOCIATED(NodeResVar)) THEN
+    ! If we use N-T coordinate system to make periodic/rotational BC's easier than we must map the
+    ! original residual vector into N-T system. 
+    
+    IF( Solver % NormalTangential % NormalTangentialNOFNodes > 0 ) THEN
+      CALL RotateNtVector( allrhs, Solver )
+    END IF
+
+    IF(ListCheckPrefixAnyBodyForce( Model,'Test Load') ) THEN
+      CALL SetTestRhs()    
       NodeResVar % Values = allrhs
+      PRINT *,'rhs 1:',MINVAL(allrhs(1::3)),MAXVAL(allrhs(1::3))
+      PRINT *,'rhs 2:',MINVAL(allrhs(2::3)),MAXVAL(allrhs(2::3))
+      PRINT *,'rhs 3:',MINVAL(allrhs(3::3)),MAXVAL(allrhs(3::3))
     END IF
     
     ! By construction do not apply any residual to the mortar boundary. 
@@ -265,18 +283,29 @@ SUBROUTINE APrecSolver( Model,Solver,dt,Transient ) ! {{{
     Solver % Variable => SVar
   END IF
 
-  
+  IF(PrecMatCyl) THEN
+    pVar => VariableGet( Mesh % Variables,'nodal a cyl')
+    IF(ASSOCIATED(pVar)) THEN
+      pVar % Values = pVar % Values + AVar % Values
+    END IF
+    CALL CylinderToCartesianProject(SVar % Values)
+  END IF
+    
   pVar => VariableGet( Mesh % Variables,'nodal a cum')
   IF(ASSOCIATED(pVar)) THEN
     pVar % Values = pVar % Values + AVar % Values
   END IF
 
-  IF(PrecMatCyl) THEN
-    CALL CylinderToCartesianProject(SVar % Values)
-  END IF
   
   CALL Info(Caller,'Projecting nodal solution to vector element space', Level=20)
   CALL CRS_MatrixVectorMultiply(Proj, Avar % Values, EdgeSolVar % Values ) 
+
+  IF(InfoActive(20)) THEN
+    CALL VectorValuesRange(Avar % Values,SIZE(Avar % Values),'VecPotNodal')       
+    CALL VectorValuesRange(EdgeSolVar % Values,SIZE(EdgeSolVar % Values),'VecPotEdge')       
+  END IF
+
+
 
   CALL Info(Caller,'Auxiliary space nodal solution finished!',Level=10)
 
@@ -310,6 +339,135 @@ CONTAINS
   END SUBROUTINE CylinderToCartesianProject
     
 
+
+!------------------------------------------------------------------------------
+  SUBROUTINE RotateNtVector( Vector,Solver )
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: Vector(:)
+    TYPE(Solver_t) :: Solver    
+!------------------------------------------------------------------------------
+    INTEGER :: i,j,k,l,m,n,dofs,dim
+    REAL(KIND=dp) :: s,Q(3),N1(3),T1(3),T2(3),R(3,3)
+    REAL(KIND=dp), POINTER :: Normal(:,:), Tangent1(:,:), Tangent2(:,:)
+    !------------------------------------------------------------------------------
+
+    n = Solver % NormalTangential % NormalTangentialNOFNodes
+    IF(n==0) RETURN
+
+    dofs = Solver % Variable % dofs
+    dim = Mesh % MeshDim
+
+    IF(dim /= dofs) CALL Fatal('RotateNtVector','Currently assuming that dim == dofs !')
+    
+    Normal => Solver % NormalTangential % BoundaryNormals
+    Tangent1 => Solver % NormalTangential % BoundaryTangent1
+    Tangent2 => Solver % NormalTangential % BoundaryTangent2
+    
+    DO i=1,Mesh % NumberOfNodes
+      j = Solver % NormalTangential % BoundaryReorder(i)
+      k = Solver % Variable % Perm(i)
+      IF(j==0 .OR. k==0) CYCLE
+
+      ! Eliminate duplicate projection of conforming nodes.
+      IF(ASSOCIATED(Mesh % PeriodicPerm)) THEN
+        IF(Mesh % PeriodicPerm(i) > 0) CYCLE
+      END IF
+
+      ! Create rotation matrix "R" on this node.
+      R = 0.0_dp
+      N1 = Normal( j,: )
+      
+      SELECT CASE(DIM)
+      CASE (2)
+        R(1,1) =  N1(1)
+        R(1,2) =  N1(2)
+        R(2,1) = -N1(2)
+        R(2,2) =  N1(1)
+        R(3,3) = 1.0_dp
+      CASE (3)
+        T1 = Tangent1( j,: )
+        T2 = Tangent2( j,: )
+
+        R(1,1:3) = N1(1:3)
+        R(2,1:3) = T1(1:3)
+        R(3,1:3) = T2(1:3)
+      END SELECT
+
+      ! PRINT *,'NT:',i,j,k,N1,T1,T2
+      
+      ! Rotate the local vector to N-T coordinates. 
+      Q = 0.0_dp
+      DO l=1,DOFs
+        s = 0.0_dp
+        DO m=1,DOFs
+          s = s + R(l,m) * Vector(Dofs*(k-1)+m)
+        END DO
+        Q(l) = s
+      END DO
+      Vector(DOFs*(k-1)+1:Dofs*k) = Q(1:DOFs)
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE RotateNtVector
+!------------------------------------------------------------------------------
+
+
+  SUBROUTINE SetTestRhs()
+
+    INTEGER :: n
+    TYPE(Element_t), POINTER :: Element
+    REAL(KIND=dp) :: DetJ,LoadAtIP,Weight
+    REAL(KIND=dp), ALLOCATABLE :: FORCE(:), LOAD(:,:), Basis(:), dBasisdx(:,:)
+    LOGICAL :: Stat,Found
+    INTEGER :: i,t,p,q,elem
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(ValueList_t), POINTER :: BodyForce
+    TYPE(Nodes_t) :: Nodes
+    LOGICAL :: Visited = .FALSE.
+    SAVE Nodes, Visited, Basis, dBasisdx, FORCE, Load
+!------------------------------------------------------------------------------
+
+    allrhs = 0.0_dp
+
+    IF(.NOT. Visited) THEN
+      n = Mesh % MaxElementNodes
+      ALLOCATE( FORCE(3*n), LOAD(3,n), Basis(n),dBasisdx(n,3) )
+      Visited = .TRUE.
+    END IF
+    
+    DO elem=1,Mesh % NumberOfBulkElements
+      Element => Mesh % Elements(elem)
+
+
+      CALL GetElementNodes( Nodes )
+      FORCE = 0._dp
+      LOAD = 0._dp
+
+      BodyForce => GetBodyForce(Element)
+      IF ( .NOT. ASSOCIATED(BodyForce) ) CYCLE
+
+      Load(1,1:n) = GetReal( BodyForce,'Test Load 1', Found )
+      Load(2,1:n) = GetReal( BodyForce,'Test Load 2', Found )
+      Load(3,1:n) = GetReal( BodyForce,'Test Load 3', Found )
+
+      IP = GaussPoints( Element )
+      
+      DO t=1,IP % n
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+            IP % W(t), detJ, Basis, dBasisdx )
+        Weight = IP % s(t) * DetJ
+        DO i=1,3      
+          LoadAtIP = SUM( Basis(1:n) * LOAD(i,1:n) )
+          FORCE(i:3:3*n) = FORCE(i:3:3*n) + Weight * LoadAtIP * Basis(1:n)
+        END DO
+      END DO
+
+      CALL DefaultUpdateForce(FORCE,Element,Solver)
+
+    END DO
+    
+  END SUBROUTINE SetTestRhs
+
+  
   
 END SUBROUTINE APrecSolver
 !------------------------------------------------------------------------------

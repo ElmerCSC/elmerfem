@@ -105,7 +105,7 @@ jobs:
             -DWITH_OpenMP=ON \
             -DWITH_LUA=ON \
             -DWITH_MPI=ON \
-            -DMPI_TEST_MAXPROC=2 \
+            -DMPI_TEST_MAXPROC=$(nproc) \
             -DMPIEXEC_EXECUTABLE="$(cygpath -m "${MSMPI_BIN}")/mpiexec.exe" \
             -DWITH_Zoltan=ON \
             -DCMAKE_C_FLAGS="-Wno-error=incompatible-pointer-types" \
@@ -129,7 +129,7 @@ jobs:
       - name: build
         run: |
           cd ${GITHUB_WORKSPACE}/build
-          cmake --build . -j$(nproc)
+          cmake --build .
 
       - name: install
         run: |
@@ -141,11 +141,11 @@ jobs:
         timeout-minutes: 150
         env:
           CTEST_OUTPUT_ON_FAILURE: 1
+          OMP_NUM_THREADS: 1
         run: |
           cd ${GITHUB_WORKSPACE}/build
           ctest . \
             -LE slow \
-            -j$(nproc) \
             --timeout 300
 
       - name: re-run tests

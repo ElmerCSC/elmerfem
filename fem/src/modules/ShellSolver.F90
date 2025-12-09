@@ -109,12 +109,12 @@ SUBROUTINE ShellSolver_Init0(Model, Solver, dt, Transient)
     CALL ListAddNewInteger(SolverPars, 'Nonlinear System Max Iterations', 50)
     CALL ListAddNewConstReal(SolverPars, 'Nonlinear System Convergence Tolerance', 1.0d-5)
     IF (Transient) THEN
-      CALL ListAddInteger(SolverPars, 'Time derivative order', 2)
       CALL ListAddString(SolverPars, 'Timestepping Method', 'Bossak')
     END IF
   END IF
+  CALL ListAddNewInteger(SolverPars, 'Time derivative order', 2)
   CALL ListAddNewLogical(SolverPars, 'Skip Compute Nonlinear Change', .TRUE.)
-
+  
   !----------------------------------------------------------------------------
   ! Create variables for saving principal (curvature) directions:
   !----------------------------------------------------------------------------

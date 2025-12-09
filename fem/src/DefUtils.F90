@@ -1637,7 +1637,7 @@ CONTAINS
           CALL ListGetRealvector( List, TRIM(Name)//' im', &
               xr, n, Element % NodeIndexes, lFound )
           IF(PRESENT(Found)) Found=Found.OR.lFound
-          x = CMPLX(REAL(x), xr)
+          x = CMPLX(REAL(x), xr, KIND=dp)
        END IF
      END IF
   END SUBROUTINE GetComplexVector
@@ -3695,14 +3695,52 @@ CONTAINS
        
        Solver % LocalSystemMode = 1
      END IF
-
+     
      IF(ListGetLogical( Params,'Solve Adjoint Equation',Found ) ) THEN
        IF(.NOT. ASSOCIATED( Solver % Matrix % RhsAdjoint ) ) THEN
          ALLOCATE( Solver % Matrix % RhsAdjoint(SIZE(Solver % Matrix % Rhs)))
-       END IF     
+       END IF
        CALL ListAddLogical( Params,'Constraint Modes Analysis Frozen',.TRUE.)
-     END IF      
+     END IF
      
+     
+     BLOCK 
+       INTEGER, POINTER :: SlaveSolverIndexes(:)
+       CHARACTER(:), ALLOCATABLE :: str
+       TYPE(Solver_t), POINTER :: SlaveSolver
+       TYPE(NormalTangential_t), POINTER :: NT
+       INTEGER :: dim
+
+       SlaveSolverIndexes =>  ListGetIntegerArray( Params,'prec solvers',Found )     
+
+       IF(ASSOCIATED(SlaveSolverIndexes)) THEN
+         DO i=1,SIZE(SlaveSolverIndexes)
+           j = SlaveSolverIndexes(i)
+           SlaveSolver => CurrentModel % Solvers(j)
+           
+           str = 'Normal-Tangential ' // GetVarName(SlaveSolver % Variable)
+           IF( ListGetLogicalAnyBC( CurrentModel, str ) ) THEN
+             CALL Info('DefaultStart','Generating N-T system for preconditioning solver!')
+
+             dim = SlaveSolver % Mesh % MeshDim
+             NT => SlaveSolver % NormalTangential
+             NT % NormalTangentialNOFNodes = 0
+             NT % NormalTangentialName = TRIM(str)
+             
+             CALL CheckNormalTangentialBoundary( CurrentModel, NT % NormalTangentialName, &
+                 NT % NormalTangentialNOFNodes, NT % BoundaryReorder, &
+                 NT % BoundaryNormals, NT % BoundaryTangent1, NT % BoundaryTangent2, dim )
+             
+             CALL AverageBoundaryNormals( CurrentModel, NT % NormalTangentialName, &
+                 NT % NormalTangentialNOFNodes, NT % BoundaryReorder, &
+                 NT % BoundaryNormals, NT % BoundaryTangent1, NT % BoundaryTangent2, &
+                 dim )
+           END IF
+         END DO
+
+       END IF
+     END BLOCK
+            
 !------------------------------------------------------------------------------
    END SUBROUTINE DefaultStart
 !------------------------------------------------------------------------------
@@ -3967,6 +4005,10 @@ CONTAINS
       CALL ListPushNamespace('linsys'//I2S(NameSpaceI)//':')
     END IF
 
+    IF( ListGetLogical( Params,'Linear System Remove Zeros',Found ) ) THEN
+      CALL CRS_RemoveZeros( Solver % Matrix )
+    END IF	
+        
     IF ( ListGetLogical( Params,'Linear System Save',Found )) THEN
       saveslot = GetString( Params,'Linear System Save Slot', Found )
       IF(.NOT. Found .OR. saveslot == 'solve') THEN
@@ -5738,20 +5780,26 @@ CONTAINS
      ! This is done only once for each solver, hence the complex logic. 
      !---------------------------------------------------------------------
      IF( ListGetLogical( Params,'Apply Limiter',Found) ) THEN
-       CALL DetermineSoftLimiter( Solver )	
+       IF( ListGetLogical( Params,'Linear System Limiter',Found) ) THEN               
+         ! This is intended for cases when the linear solver comes with limiters. 
+         CALL PopulateLimiterValues( Solver )	
+       ELSE
+         CALL DetermineSoftLimiter( Solver )	
 
-       ! It is difficult to determine whether loads should be computed before or after setting the limiter.
-       ! There are cases where both alternative are needed.
-       IF(ListGetLogical( Params,'Apply Limiter Loads After',Found) ) THEN         
-         DO DOF=1,x % DOFs
-           name = TRIM(x % name)
-           IF (x % DOFs>1) name=ComponentName(name,DOF)              
-           CALL SetNodalLoads( CurrentModel,A,A % rhs, &
-               Name,DOF,x % DOFs,x % Perm ) 
-         END DO
+         ! It is difficult to determine whether loads should be computed before or after setting the limiter.
+         ! There are cases where both alternative are needed.
+         IF(ListGetLogical( Params,'Apply Limiter Loads After',Found) ) THEN         
+           DO DOF=1,x % DOFs
+             name = TRIM(x % name)
+             IF (x % DOFs>1) name=ComponentName(name,DOF)              
+             CALL SetNodalLoads( CurrentModel,A,A % rhs, &
+                 Name,DOF,x % DOFs,x % Perm ) 
+           END DO
+         END IF
        END IF
      END IF
          
+
      
      Offset = 0
      IF(PRESENT(UOffset)) Offset=UOffset
@@ -6252,7 +6300,7 @@ CONTAINS
 
                    n = Edge % TYPE % NumberOfNodes
                    CALL VectorElementEdgeDOFs(BC,Edge,n,Parent,np,Name//' {e}',Work, &
-                       EDOFs, SecondKindBasis)
+                       EDOFs, SecondKindBasis, QuadraticApproximation = QuadraticApproximation)
 
                    n=GetElementDOFs(gInd,Edge)
 
@@ -6298,7 +6346,8 @@ CONTAINS
                      n = Edge % TYPE % NumberOfNodes
 
                      CALL VectorElementEdgeDOFs(BC, Edge, n, Parent, np, Name//' {e}', &
-                         Work(i0+1:i0+EDOFs), EDOFs, SecondKindBasis)
+                         Work(i0+1:i0+EDOFs), EDOFs, SecondKindBasis, &
+                         QuadraticApproximation = QuadraticApproximation)
                      
                      n = GetElementDOFs(gInd,Edge)
 
@@ -6331,7 +6380,7 @@ CONTAINS
                      n = Face % TYPE % NumberOfNodes
 
                      CALL SolveLocalFaceDOFs(BC, Face, n, Name//' {e}', Work, EDOFs, &
-                         Face % BDOFs, QuadraticApproximation)
+                         Face % BDOFs, SecondKindBasis, QuadraticApproximation)
 
                      Face % BodyId = Parent % BodyId
                      
@@ -6589,7 +6638,7 @@ CONTAINS
 !> v is a polynomial on the edge E, and S reverses sign if necessary.
 !------------------------------------------------------------------------------
   SUBROUTINE VectorElementEdgeDOFs(BC, Element, n, Parent, np, Name, Integral, EDOFs, &
-      SecondFamily, FaceElement)
+      SecondFamily, FaceElement, QuadraticApproximation)
 !------------------------------------------------------------------------------
     USE ElementDescription, ONLY: GetEdgeMap
     IMPLICIT NONE
@@ -6604,33 +6653,45 @@ CONTAINS
     INTEGER, OPTIONAL :: EDOFs        !< The number of DOFs
     LOGICAL, OPTIONAL :: SecondFamily !< To select the element family
     LOGICAL, OPTIONAL :: FaceElement  !< If .TRUE., e is normal to the edge
+    LOGICAL, OPTIONAL :: QuadraticApproximation 
 !------------------------------------------------------------------------------
     TYPE(Nodes_t), SAVE :: Nodes, Pnodes
     TYPE(ElementType_t), POINTER :: SavedType
     TYPE(GaussIntegrationPoints_t) :: IP
 
-    LOGICAL :: Lstat, ReverseSign, SecondKindBasis, DivConforming
+    LOGICAL :: Lstat, ReverseSign, SecondKindBasis, DivConforming, SecondOrder
     INTEGER, POINTER :: Edgemap(:,:)
     INTEGER :: i,j,k,p,DOFs
     INTEGER :: i1,i2,i3
 
     REAL(KIND=dp) :: Basis(n),Load(n),Vload(3,n),VL(3),e(3),d(3)
     REAL(KIND=dp) :: E21(3),E32(3) 
-    REAL(KIND=dp) :: u,v,L,s,DetJ
+    REAL(KIND=dp) :: u,v,L,s,DetJ,sgn
 !------------------------------------------------------------------------------
     DOFs = 1
     IF (PRESENT(EDOFs)) THEN
-      IF (EDOFs > 2) THEN
-        CALL Fatal('VectorElementEdgeDOFs','Cannot handle more than 2 DOFs per edge')
+      IF (EDOFs > 3) THEN
+        CALL Fatal('VectorElementEdgeDOFs','Cannot handle more than 3 DOFs per edge')
       ELSE
         DOFs = EDOFs
       END IF
     END IF   
 
+    IF (PRESENT(QuadraticApproximation)) THEN
+      SecondOrder = QuadraticApproximation
+    ELSE
+      SecondOrder = .FALSE.
+    END IF
+    
     IF (PRESENT(SecondFamily)) THEN
       SecondKindBasis = SecondFamily
-      IF (SecondKindBasis .AND. (DOFs /= 2) ) &
-          CALL Fatal('VectorElementEdgeDOFs','2 DOFs per edge expected')
+      IF (SecondKindBasis) THEN
+        IF (SecondOrder) THEN
+          IF (DOFs /= 3) CALL Fatal('VectorElementEdgeDOFs','3 DOFs per edge expected')
+        ELSE
+          IF (DOFs /= 2) CALL Fatal('VectorElementEdgeDOFs','2 DOFs per edge expected')
+        END IF
+      END IF
     ELSE
       SecondKindBasis = .FALSE.
     END IF
@@ -6652,6 +6713,7 @@ CONTAINS
     
     
     ReverseSign = .FALSE.
+    sgn = 1.0d0
     EdgeMap => GetEdgeMap(GetElementFamily(Parent))
     DO i=1,SIZE(EdgeMap,1)
       j=EdgeMap(i,1)
@@ -6664,6 +6726,7 @@ CONTAINS
         ! This is the right edge but has opposite orientation as compared
         ! with the listing of the parent element edges
         ReverseSign = .TRUE.
+        sgn = -1.0d0
         EXIT
       END IF
     END DO
@@ -6698,10 +6761,6 @@ CONTAINS
       e = CrossProduct(e, d)
     END IF
 
-    ! Is this element type stuff needed and for what?
-    SavedType => Element % TYPE
-    IF ( GetElementFamily(Element)==1 ) Element % TYPE=>GetElementType(202)
-      
     Integral = 0._dp
     IP = GaussPoints(Element)
     DO p=1,IP % n
@@ -6714,10 +6773,19 @@ CONTAINS
 
       IF (SecondKindBasis) THEN
         u = IP % u(p)
-        v = 0.5d0*(1.0d0-sqrt(3.0d0)*u)
-        Integral(1)=Integral(1)+s*(L+SUM(VL*e))*v
-        v = 0.5d0*(1.0d0+sqrt(3.0d0)*u)
-        Integral(2)=Integral(2)+s*(L+SUM(VL*e))*v
+        IF (SecondOrder) THEN
+          Integral(1)=Integral(1)+sgn*s*(L+SUM(VL*e))
+          v = -3.0d0 * u
+          ! The odd weight function => no sign changes needed in the integration 
+          Integral(2)=Integral(2)+s*(L+SUM(VL*e))*v
+          v = 2.5d0 * (1.0d0 - 3.0d0 * u**2)
+          Integral(3)=Integral(3)+sgn*s*(L+SUM(VL*e))*v
+        ELSE
+          v = 0.5d0*(1.0d0-sqrt(3.0d0)*u)
+          Integral(1)=Integral(1)+s*(L+SUM(VL*e))*v
+          v = 0.5d0*(1.0d0+sqrt(3.0d0)*u)
+          Integral(2)=Integral(2)+s*(L+SUM(VL*e))*v
+        END IF
       ELSE
         Integral(1)=Integral(1)+s*(L+SUM(VL*e))
 
@@ -6735,7 +6803,6 @@ CONTAINS
         END IF
       END IF
     END DO
-    Element % TYPE => SavedType
 
     j = Parent % NodeIndexes(j)
     IF ( ParEnv % PEs>1 ) &
@@ -6747,8 +6814,13 @@ CONTAINS
 
     IF (k < j) THEN
       IF (SecondKindBasis) THEN
-        Integral(1)=-Integral(1)
-        Integral(2)=-Integral(2)
+        IF (SecondOrder) THEN
+          Integral(1)=-Integral(1)
+          Integral(3)=-Integral(3)
+        ELSE
+          Integral(1)=-Integral(1)
+          Integral(2)=-Integral(2)
+        END IF
       ELSE
         Integral(1)=-Integral(1)
       END IF
@@ -6766,7 +6838,7 @@ CONTAINS
 !> the values of the DOFs associated with edges are given.
 !------------------------------------------------------------------------------
   SUBROUTINE SolveLocalFaceDOFs(BC, Element, n, Name, DOFValues, &
-      EDOFs, FDOFs, QuadraticApproximation)
+      EDOFs, FDOFs, SecondKindBasis, QuadraticApproximation)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 
@@ -6777,6 +6849,7 @@ CONTAINS
     REAL(KIND=dp) :: DOFValues(:)        !< The values of DOFs
     INTEGER :: EDOFs                     !< The number of edge DOFs
     INTEGER :: FDOFs                     !< The number of face DOFs
+    LOGICAL :: SecondKindBasis           !< Use Nedelec's second family 
     LOGICAL :: QuadraticApproximation    !< Use second-order edge element basis
 !------------------------------------------------------------------------------
     TYPE(Nodes_t), SAVE :: Nodes
@@ -6814,8 +6887,8 @@ CONTAINS
     DO p=1,IP % n
 
       Lstat = EdgeElementInfo( Element, Nodes, IP % u(p), IP % v(p), IP % w(p), &
-          DetF=DetJ, Basis=Basis, EdgeBasis=EdgeBasis, BasisDegree=BasisDegree, &
-          ApplyPiolaTransform=.TRUE., TangentialTrMapping=.TRUE.)
+          DetF=DetJ, Basis=Basis, EdgeBasis=EdgeBasis, SecondFamily = SecondKindBasis, &
+          BasisDegree=BasisDegree, ApplyPiolaTransform=.TRUE., TangentialTrMapping=.TRUE.)
 
       Normal = NormalVector(Element, Nodes, IP % u(p), IP % v(p), .FALSE.)
 
@@ -7200,10 +7273,6 @@ CONTAINS
       END IF
     END IF
 
-    IF( ListGetLogical( Params,'Linear System Remove Zeros',Found ) ) THEN
-      CALL CRS_RemoveZeros( PSolver % Matrix )
-    END IF	
-    
     IF( ListGetLogical( PSolver % Values,'Boundary Assembly Timing',Found ) ) THEN 
       CALL ResetTimer('BoundaryAssembly'//GetVarName(PSolver % Variable) ) 
     END IF

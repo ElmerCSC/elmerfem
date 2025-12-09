@@ -17,6 +17,10 @@ ENDIF()
 
 CMAKE_MINIMUM_REQUIRED(VERSION 3.10)
 
+if(POLICY CMP0074)
+    cmake_policy(SET CMP0074 NEW)
+endif()
+
 PROJECT(Elmer Fortran C CXX)
 
 IF(APPLE)
@@ -89,6 +93,7 @@ SET(WITH_UMFPACK TRUE CACHE BOOL "Use UMFPACK for LU factorization")
 SET(WITH_ELMERGUI FALSE CACHE BOOL "Include ElmerGUI")
 SET(WITH_ElmerIce FALSE CACHE BOOL "Include ElmerIce")
 SET(WITH_XIOS FALSE CACHE BOOL "Include XIOS")
+SET(WITH_NETCDF FALSE CACHE BOOL "Include NetCDF")
 SET(WITH_ELMERGUITESTER FALSE CACHE BOOL "Include ElmerGUI tester")
 SET(WITH_ELMERGUILOGGER FALSE CACHE BOOL "Include ElmerGUI logger")
 SET(ELMER_INSTALL_LIB_DIR "lib/elmersolver" CACHE PATH "Location of elmer shared libraries relative to prefix.")
@@ -482,22 +487,31 @@ ENDIF()
 # XIOS
 IF (WITH_XIOS)
   MESSAGE(STATUS "------------------------------------------------")
+  MESSAGE(STATUS "  Checking for XIOS-related dependencies")
+  MESSAGE(STATUS "  NETCDF:                 " "${NETCDF_FOUND}")
+
+  IF (NOT NETCDF_FOUND)
+    MESSAGE(FATAL_ERROR "Building with XIOS requires NetCDF. Please configure "
+                        "with -DWITH_NETCDF=ON and make sure NetCDF is found.")
+  ENDIF()
+
+  MESSAGE(STATUS "------------------------------------------------")
   MESSAGE(STATUS "  Looking for XIOS ")
 
   FIND_PACKAGE(XIOS)
 
+  MESSAGE(STATUS "  XIOS_FOUND:             " "${XIOS_FOUND}")
+  MESSAGE(STATUS "  XIOS_INC:               " "${XIOS_INCLUDE_DIR}")
+  MESSAGE(STATUS "  XIOS_LIB :              " "${XIOS_LIBRARIES}")
   IF(XIOS_FOUND)
     SET(HAVE_XIOS TRUE)
     MARK_AS_ADVANCED(HAVE_XIOS)
     INCLUDE_DIRECTORIES(${XIOS_INCLUDE_DIR})
     LINK_DIRECTORIES(${XIOS_LIBRARIES})
     ADD_DEFINITIONS(-DHAVE_XIOS)
-    MESSAGE(STATUS "  XIOS:           " "${XIOS_FOUND}")
-    MESSAGE(STATUS "  XIOS_INC:       " "${XIOS_INCLUDE_DIR}")
-    MESSAGE(STATUS "  XIOS_LIB :      " "${XIOS_LIBRARIES}")
-  ELSE()
-    MESSAGE(STATUS "  XIOS not found ")
-  ENDIF()
+  ELSE(XIOS_FOUND)
+    MESSAGE(STATUS "  ${XIOS_FAILMSG}")
+  ENDIF(XIOS_FOUND)
 
   MESSAGE(STATUS "------------------------------------------------")
 ENDIF()
@@ -621,13 +635,6 @@ ENDIF()
 
 ADD_SUBDIRECTORY(matc)
 
-IF(WITH_ElmerIce)
-  IF(NOT WITH_MPI)
-    MESSAGE(FATAL_ERROR "Building ElmerIce requires MPI.")
-  ENDIF()
-  MESSAGE(STATUS "Adding optional package ElmerIce")
-  ADD_SUBDIRECTORY(elmerice)
-ENDIF(WITH_ElmerIce)
 
 IF (WITH_UMFPACK)
   IF (EXTERNAL_UMFPACK)
@@ -664,6 +671,7 @@ IF(NOT DEFINED UMFPACK_LONG_FORTRAN_TYPE)
   SET(UMFPACK_LONG_FORTRAN_TYPE "C_LONG")
 ENDIF()
 
+
 # Find external arpack and parpack
 IF(EXTERNAL_ARPACK)
   MESSAGE(STATUS "Using external arpack library instead of built-in")
@@ -685,6 +693,15 @@ ADD_SUBDIRECTORY(fem)
 ADD_SUBDIRECTORY(mathlibs)
 ADD_SUBDIRECTORY(elmergrid)
 ADD_SUBDIRECTORY(license_texts)
+
+IF(WITH_ElmerIce)
+  IF(NOT WITH_MPI)
+    MESSAGE(FATAL_ERROR "Building ElmerIce requires MPI.")
+  ENDIF()
+  MESSAGE(STATUS "Adding optional package ElmerIce")
+  ADD_SUBDIRECTORY(elmerice)
+ENDIF(WITH_ElmerIce)
+
 
 IF(WITH_ELMERGUI)
     MESSAGE(STATUS "  Building ElmerGUI")

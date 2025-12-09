@@ -108,6 +108,7 @@ void STDCALLBULL MPI_Type_free() {}
 void STDCALLBULL MPI_Startall() {}
 void STDCALLBULL MPI_Gather() {}
 void STDCALLBULL MPI_Alltoall() {}
+void STDCALLBULL MPI_Alltoallv() {}
 void STDCALLBULL MPI_Address() {}
 void STDCALLBULL MPI_Allreduce() {}
 void STDCALLBULL MPI_Comm_size() {}
@@ -147,6 +148,7 @@ void STDCALLBULL FC_FUNC_(mpi_pack_size,MPI_PACK_SIZE)(){}
 void STDCALLBULL FC_FUNC_(mpi_ssend,MPI_SSEND)(){}
 void STDCALLBULL FC_FUNC_(mpi_op_free,MPI_OP_FREE)(){}
 void STDCALLBULL FC_FUNC_(mpi_alltoall,MPI_ALLTOALL)(){}
+void STDCALLBULL FC_FUNC_(mpi_alltoallv,MPI_ALLTOALLV)(){}
 void STDCALLBULL FC_FUNC_(mpi_get_processor_name,MPI_GET_PROCESSOR_NAME)(){}
 void STDCALLBULL FC_FUNC_(mpi_comm_dup,MPI_COMM_DUP)(){}
 void STDCALLBULL FC_FUNC_(mpi_abort,MPI_ABORT)(){}

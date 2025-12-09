@@ -4024,6 +4024,8 @@ allocate:
     free_Ivector(revindx,1,maxindx);
   }
 
+  ModifyUnsupportedElements(data);
+  
   ElementsToBoundaryConditions(data,bound,FALSE,info);
 
   printf("Successfully read the mesh from the Gmsh input file.\n");
@@ -4251,6 +4253,8 @@ omstart:
     free_Ivector(revindx,1,maxindx);
   }
 
+  ModifyUnsupportedElements(data);
+  
   ElementsToBoundaryConditions(data,bound,keeporphans,info);
 
   data->bodynamesexist = physvolexist;
@@ -4690,6 +4694,8 @@ omstart:
     free_Ivector(revindx,1,maxindx);
   }
 
+  ModifyUnsupportedElements(data);
+  
   ElementsToBoundaryConditions(data,bound,keeporphans,info);
 
   data->bodynamesexist = physvolexist;
@@ -5462,7 +5468,9 @@ omstart:
 
     free_Ivector(revindx,1,maxindx);
   }
-
+    
+  ModifyUnsupportedElements(data);
+  
   ElementsToBoundaryConditions(data,bound,keeporphans,info);
 
   data->bodynamesexist = physvolexist;

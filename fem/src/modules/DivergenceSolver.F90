@@ -279,16 +279,12 @@ END SUBROUTINE DivergenceSolver
     CALL ListAddInteger( SolverParams, 'Time derivative order', 0 )
 
     ! Add linear system defaults: cg+ILU0
-    IF(.NOT. ListCheckPresent(SolverParams,'Linear System Solver')) &
-      CALL ListAddString(SolverParams,'Linear System Solver','Iterative')
-    IF(.NOT. ListCheckPresent(SolverParams,'Linear System Iterative Method')) &
-      CALL ListAddString(SolverParams,'Linear System Iterative Method','cg')
-    IF(.NOT. ListCheckPresent(SolverParams,'Linear System Preconditioning')) &
-      CALL ListAddString(SolverParams,'Linear System Preconditioning','ILU0')
-    IF(.NOT. ListCheckPresent(SolverParams,'Linear System Max Iterations')) &
-      CALL ListAddInteger(SolverParams,'Linear System Max Iterations',500)
-    IF(.NOT. ListCheckPresent(SolverParams,'Linear System Convergence Tolerance')) &
-      CALL ListAddConstReal(SolverParams,'Linear System Convergence Tolerance',1.0e-8_dp)
+    CALL ListAddNewString(SolverParams,'Linear System Solver','Iterative')
+    CALL ListAddNewString(SolverParams,'Linear System Iterative Method','cg')
+    CALL ListAddNewString(SolverParams,'Linear System Preconditioning','ILU0')
+    
+    CALL ListAddNewInteger(SolverParams,'Linear System Max Iterations',500)
+    CALL ListAddNewConstReal(SolverParams,'Linear System Convergence Tolerance',1.0e-8_dp)
 
 !------------------------------------------------------------------------------
   END SUBROUTINE DivergenceSolver_Init

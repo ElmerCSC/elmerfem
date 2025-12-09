@@ -55,6 +55,8 @@ CONTAINS
     FUNCTION MGSmooth( Solver, A, Mesh, x, b, r, Level, DOFs, &
         PreSmooth, LowestSmooth, CF, SkipMask ) RESULT(RNorm)
 !------------------------------------------------------------------------------
+      IMPLICIT NONE
+
       TYPE(Solver_t), POINTER :: Solver
       TYPE(Matrix_t), POINTER :: A
       TYPE(Mesh_t) :: Mesh
@@ -79,6 +81,9 @@ CONTAINS
       TYPE( IfLColsT), POINTER :: IfL, IfO
       INTEGER :: row
       TYPE (BasicMatrix_t), POINTER :: CurrIf
+
+      REAL(KIND=dp) :: l1,ln
+      COMPLEX(KIND=dp) :: l1c,lnc
 !      SAVE Z, Pr, Q, Ri, T, T1, T2, S, V
 !------------------------------------------------------------------------------
 
@@ -303,6 +308,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       FUNCTION MGnorm( n, x ) RESULT(s)
 !------------------------------------------------------------------------------
+        IMPLICIT NONE
         INTEGER :: n
         REAL(KIND=dp)  :: s
         REAL(KIND=dp) CONTIG :: x(:)
@@ -316,10 +322,28 @@ CONTAINS
       END FUNCTION MGnorm
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+      FUNCTION MGCnorm( n, x ) RESULT(s)
+!------------------------------------------------------------------------------
+        IMPLICIT NONE
+        INTEGER :: n
+        REAL(KIND=dp)  :: s
+        COMPLEX(KIND=dp) CONTIG :: x(:)
+!------------------------------------------------------------------------------
+        IF ( .NOT. Parallel ) THEN
+          s = SQRT( DOT_PRODUCT( x(1:n), x(1:n) ) )
+        ELSE
+          s = ParallelCNorm( n, x )
+        END IF
+!------------------------------------------------------------------------------
+      END FUNCTION MGCnorm
+!------------------------------------------------------------------------------
+
       
 !------------------------------------------------------------------------------
       FUNCTION MGdot( n, x, y ) RESULT(s)
 !------------------------------------------------------------------------------
+        IMPLICIT NONE
         INTEGER :: n
         REAL(KIND=dp)  :: s
         REAL(KIND=dp) CONTIG :: x(:),y(:)
@@ -337,6 +361,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     FUNCTION MGCdot( n, x, y ) RESULT(s)
 !------------------------------------------------------------------------------
+       IMPLICIT NONE
        INTEGER :: n
        COMPLEX(KIND=dp)  :: s
        COMPLEX(KIND=dp) CONTIG :: x(:),y(:)
@@ -350,6 +375,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE MGmv( A, x, b, Update )
 !------------------------------------------------------------------------------
+        IMPLICIT NONE
         REAL(KIND=dp) CONTIG :: x(:), b(:)
         TYPE(Matrix_t), POINTER :: A
         LOGICAL, OPTIONAL :: Update
@@ -374,6 +400,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE MGCmv( A, x, b )
 !------------------------------------------------------------------------------
+        IMPLICIT NONE
         TYPE(Matrix_t), POINTER, INTENT(IN) :: A
         COMPLEX(KIND=dp) CONTIG, INTENT(IN) :: x(:)
         COMPLEX(KIND=dp) CONTIG, INTENT(OUT) :: b(:)
@@ -387,6 +414,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE Jacobi( n, A, M, x, b, r, Rounds)
 !-------------------------------------------------------------------------------
+        IMPLICIT NONE
         TYPE(Matrix_t), POINTER :: A, M
         INTEGER :: Rounds
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
@@ -410,6 +438,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE SmoothedJacobi( n, A, M, x, b, r, w, Rounds )
 !------------------------------------------------------------------------------
+        IMPLICIT NONE
         TYPE(Matrix_t), POINTER :: A, M
         INTEGER :: Rounds
         REAL(KIND=dp) :: w
@@ -432,6 +461,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE CJacobi( n, A, M, rx, rb, rr, Rounds )
 !------------------------------------------------------------------------------
+        IMPLICIT NONE
         TYPE(Matrix_t), POINTER, INTENT(IN) :: A, M
         INTEGER, INTENT(IN) :: n, Rounds
         REAL(KIND=dp) CONTIG, INTENT(INOUT) :: rx(:)
@@ -473,6 +503,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE GS( n, A, M, x, b, r, Rounds )
 !------------------------------------------------------------------------------
+        IMPLICIT NONE
         TYPE(Matrix_t), POINTER :: A, M
         INTEGER :: Rounds
         REAL(KIND=dp) CONTIG  :: x(:),b(:),r(:)
@@ -508,6 +539,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE Richards( n, A, M, x, b, r, Rounds )
 !------------------------------------------------------------------------------
+        IMPLICIT NONE
         TYPE(Matrix_t), POINTER :: A, M
         INTEGER :: Rounds
         REAL(KIND=dp) CONTIG  :: x(:),b(:),r(:)
@@ -545,6 +577,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE BGS( n, A, M, x, b, r, DOFs, Rounds )
 !------------------------------------------------------------------------------
+        IMPLICIT NONE
         TYPE(Matrix_t), POINTER :: A, M
         INTEGER :: DOFs, Rounds
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
@@ -584,6 +617,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE SmoothedGS( n, A, M, x, b, r, w, Rounds )
 !------------------------------------------------------------------------------
+        IMPLICIT NONE
         TYPE(Matrix_t), POINTER :: A, M
         INTEGER :: Rounds
         REAL(KIND=dp) :: w
@@ -618,6 +652,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE SGS( n, A, M, x, b, r, Rounds )
 !------------------------------------------------------------------------------
+        IMPLICIT NONE
         TYPE(Matrix_t), POINTER :: A, M
         INTEGER :: Rounds
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
@@ -657,6 +692,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE InternalSGS( n, A, M, x, b, r, Rounds )
 !------------------------------------------------------------------------------
+        IMPLICIT NONE
         TYPE(Matrix_t), POINTER :: A, M
         INTEGER :: Rounds
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
@@ -707,6 +743,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE MaskedSGS( n, A, M, x, b, r, Mask, Rounds )
 !------------------------------------------------------------------------------
+        IMPLICIT NONE
         TYPE(Matrix_t), POINTER :: A, M
         INTEGER :: Rounds
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
@@ -754,6 +791,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE BSGS( n, A, M, x, b, r, DOFs, Rounds )
 !------------------------------------------------------------------------------
+        IMPLICIT NONE
         TYPE(Matrix_t), POINTER :: A, M
         INTEGER :: DOFs, Rounds
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
@@ -804,6 +842,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE SmoothedSGS( n, A, M, x, b, r, w, Rounds )
 !------------------------------------------------------------------------------
+        IMPLICIT NONE
         TYPE(Matrix_t), POINTER :: A, M
         INTEGER :: Rounds
         REAL(KIND=dp) :: w
@@ -843,6 +882,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE CSGS( n, A, M, rx, rb, rr, w, Rounds )
 !------------------------------------------------------------------------------
+        IMPLICIT NONE
         TYPE(Matrix_t), POINTER, INTENT(IN) :: A, M
         INTEGER, INTENT(IN) :: Rounds
         REAL(KIND=dp), INTENT(IN) :: w
@@ -853,7 +893,7 @@ CONTAINS
         INTEGER :: i,j,k,n,l
         INTEGER, POINTER CONTIG :: Cols(:),Rows(:)
         REAL(KIND=dp), POINTER CONTIG :: Values(:)
-        COMPLEX(KIND=dp) :: r(n/2),b(n/2),x(n/2),s
+        COMPLEX(KIND=dp) :: r(n/2),b(n/2),x(n/2),s, v
 !------------------------------------------------------------------------------
         DO i=1,n/2
           x(i) = CMPLX( rx(2*i-1), rx(2*i), KIND=dp )
@@ -866,26 +906,29 @@ CONTAINS
         
         DO k=1,Rounds
           DO i=1,n/2
-            s = 0.0d0
-            
+
+            s = 0.0_dp
             DO j=Rows(2*i-1),Rows(2*i)-1,2             
-              s = s + x((Cols(j)+1)/2) * CMPLX( Values(j), -Values(j+1),KIND=dp)
+              v = CMPLX(Values(j), -Values(j+1),KIND=dp)
+              s = s + v * x((Cols(j)+1)/2)
             END DO
             
             j = A % Diag(2*i-1)
-            r(i) = (b(i)-s) / CMPLX( Values(j), -Values(j+1),KIND=dp )
+            v = CMPLX(Values(j), -Values(j+1),KIND=dp)
+            r(i) = (b(i)-s) / v
             x(i) = x(i) + w * r(i)
           END DO
           
           DO i=n/2,1,-1
-            s = 0.0d0
-            
+            s = 0.0_dp
             DO j=Rows(2*i-1),Rows(2*i)-1,2             
-              s = s + x((Cols(j)+1)/2) * CMPLX( Values(j), -Values(j+1),KIND=dp)
+              v = CMPLX(Values(j), -Values(j+1),KIND=dp)
+              s = s + v * x((Cols(j)+1)/2)
             END DO
             
             j = A % Diag(2*i-1)
-            r(i) = (b(i)-s) / CMPLX( Values(j), -Values(j+1),KIND=dp )
+            v = CMPLX(Values(j), -Values(j+1),KIND=dp)
+            r(i) = (b(i)-s) / v
             x(i) = x(i) + w * r(i)
           END DO
           
@@ -894,6 +937,7 @@ CONTAINS
         DO i=1,n/2
           rr(2*i-1) =  REAL( r(i) )
           rr(2*i-0) =  AIMAG( r(i) )
+
           rx(2*i-1) =  REAL( x(i) )
           rx(2*i-0) =  AIMAG( x(i) )
         END DO
@@ -905,6 +949,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE PostSGS( n, A, M, x, b, r, f, Rounds )
 !------------------------------------------------------------------------------
+        IMPLICIT NONE
         TYPE(Matrix_t), POINTER :: A, M
         INTEGER :: Rounds
         INTEGER, POINTER :: f(:)
@@ -975,6 +1020,7 @@ CONTAINS
 !------------------------------------------------------------------------------
         USE DirectSolve, ONLY : DirectSolver
         USE MeshUtils, ONLY : DetectExtrudedStructure
+        IMPLICIT NONE
 !------------------------------------------------------------------------------
         TYPE(Matrix_t), POINTER :: A, M
         INTEGER :: Rounds
@@ -1242,6 +1288,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE CG( n, A, M, x, b, r, Rounds )
 !------------------------------------------------------------------------------
+        IMPLICIT NONE
         TYPE(Matrix_t), POINTER :: A,M
         INTEGER :: Rounds
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
@@ -1284,6 +1331,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE CCG( n, A, M, rx, rb, rr, Rounds )
 !------------------------------------------------------------------------------
+        IMPLICIT NONE
         INTEGER :: i,n, Rounds
         TYPE(Matrix_t), POINTER :: A,M
         REAL(KIND=dp) CONTIG :: rx(:),rb(:),rr(:)
@@ -1335,6 +1383,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE Uzawa( n, A, M, x, b, r, Rounds )
 !------------------------------------------------------------------------------
+        IMPLICIT NONE
         TYPE(Matrix_t), POINTER :: A,M
         INTEGER :: Rounds, n
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
@@ -1436,6 +1485,7 @@ END DO
 !------------------------------------------------------------------------------
      SUBROUTINE UzawaMv( A, x, b )
 !------------------------------------------------------------------------------
+        IMPLICIT NONE
         TYPE(Matrix_t) :: A
         INTEGER :: i,j,k,n,q,dofs=3
         REAL(KIND=dp) CONTIG :: x(:),b(:)
@@ -1506,6 +1556,7 @@ END DO
 !------------------------------------------------------------------------------
       SUBROUTINE BiCGUzawa( n, A, M, x, b, r, Rounds, reps )
 !------------------------------------------------------------------------------
+        IMPLICIT NONE
         TYPE(Matrix_t), POINTER :: A,M
         INTEGER :: Rounds
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
@@ -1615,6 +1666,7 @@ END DO
 !------------------------------------------------------------------------------
       SUBROUTINE Vanka( n, A, M, x, b, r, Rounds )
 !------------------------------------------------------------------------------
+        IMPLICIT NONE
         TYPE(Matrix_t), POINTER :: A,M
         INTEGER :: Rounds
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
@@ -1690,6 +1742,7 @@ END DO
 !------------------------------------------------------------------------------
       SUBROUTINE SolveLinSysInt( N,LDa,A,x )
 !------------------------------------------------------------------------------
+        IMPLICIT NONE
         INTEGER  N,IPIV(N),LDa,info
         DOUBLE PRECISION  A(LDa,*),x(n)
 
@@ -1706,6 +1759,7 @@ END DO
 !------------------------------------------------------------------------------
       SUBROUTINE TestGS( n, A, M, x, b, r, Rounds )
 !------------------------------------------------------------------------------
+        IMPLICIT NONE
         TYPE(Matrix_t), POINTER :: A, M
         INTEGER :: Rounds
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)

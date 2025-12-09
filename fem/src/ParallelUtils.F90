@@ -74,10 +74,10 @@ CONTAINS
   SUBROUTINE ParallelFinalize()
 !-------------------------------------------------------------------------------
 #ifdef PARALLEL_FOR_REAL
-    IF( ParEnv % PEs > 1 ) THEN
+!   IF( ParEnv % PEs > 1 ) THEN
       CALL Info('ParallelFinalize','Final synchronization of the MPI system!',Level=12)
       CALL ParEnvFinalize()
-    END IF
+!   END IF
 #endif
 !-------------------------------------------------------------------------------
   END SUBROUTINE ParallelFinalize
@@ -119,7 +119,7 @@ CONTAINS
 #ifdef PARALLEL_FOR_REAL
        IF ( ParEnv % PEs <= 1 .OR. .NOT. ASSOCIATED(Matrix) ) RETURN
 
-       CALL Info('ParallelInitMatrix','Creating communication structures for matrix!',Level=15)
+       CALL Info('ParallelInitMatrix','Creating communication structures for matrix!',Level=5)
        
        Mesh => Solver % Mesh
        DOFs = Solver % Variable % DOFs
@@ -149,6 +149,7 @@ CONTAINS
          GOTO 1
        END IF
 
+       CALL Info('ParallelInitMatrix','Allocating communication structures for matrix!',Level=5)
        j = MAXVAL(Perm)*DOFs + Matrix % ExtraDOFs
        ALLOCATE( Matrix % Perm(k), Matrix % InvPerm(j))
 

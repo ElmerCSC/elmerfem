@@ -5,4 +5,4 @@ CONFIGURE_FILE(case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO hexwire.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(mgdyn_steady_wire_conforming LABELS whitney)
+ADD_ELMER_TEST(mgdyn_steady_wire_conforming LABELS whitney conforming)

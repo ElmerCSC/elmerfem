@@ -109,7 +109,7 @@
 
      REAL(KIND=dp) :: Tref,Tm,P,hm,hi,L_heat,A_cap,B_cap,Ptriple,Psurf,beta
 
-     CHARACTER(LEN=MAX_NAME_LEN) :: PressureName,WaterName,PhaseEnthName,TempName
+     CHARACTER(LEN=MAX_NAME_LEN) :: PressureName,WaterName,PhaseEnthName,TempName,Solvername="EnthalpySolver"
 
      TYPE(Variable_t), POINTER :: PressureVariable,PhaseChangeEnthVar,WaterVar,TemphomoVar
      REAL(KIND=dp), POINTER :: PressureValues(:),PhaseChangeEnthValues(:)
@@ -297,7 +297,7 @@
                  STAT=istat )
 
        IF ( istat /= 0 ) THEN
-         CALL Fatal( 'HeatSolve', 'Memory allocation error' )
+         CALL Fatal( Solvername, 'Memory allocation error' )
        END IF
 
 
@@ -309,7 +309,7 @@
                HeaterScaling(n), HeaterTarget(n), SmartHeaters(n), &
                IntegralHeaters(n) )
           IF ( istat /= 0 ) THEN
-             CALL Fatal( 'HeatSolve', 'Memory allocation error' )
+             CALL Fatal( Solvername, 'Memory allocation error' )
           END IF
           SmartHeaters = .FALSE.
           IntegralHeaters = .FALSE.
@@ -320,7 +320,7 @@
           n = SIZE( Enthalpy_h )
           ALLOCATE( XX( n ), YY(n), ForceHeater( n ), STAT=istat )
           IF ( istat /= 0 ) THEN
-             CALL Fatal( 'HeatSolve', 'Memory allocation error' )
+             CALL Fatal( Solvername, 'Memory allocation error' )
           END IF
           XX = 0.0d0 
           YY = 0.0d0
@@ -438,9 +438,9 @@
          END IF
 
          WRITE(Message,*) 'Found Control Point at distance:',SQRT(mindist)
-         CALL Info('HeatSolve',Message)
+         CALL Info(Solvername,Message)
          WRITE(Message,*) 'Control Point Index:',SmartHeaterNode
-         CALL Info('HeatSolve',Message)        
+         CALL Info(Solvername,Message)        
        END IF
        
        IF( .NOT. GotMeltPoint .OR. SmartHeaterNode == 0) THEN
@@ -465,7 +465,7 @@
            END DO
          END IF
          IF(SmartHeaterBC == 0) THEN
-           CALL Fatal('HeatSolve','Smart Heater Boundary / Phase Change is undefined')
+           CALL Fatal(Solvername,'Smart Heater Boundary / Phase Change is undefined')
          END IF
          
          MeltPoint = GetCReal( Model % BCs(SmartHeaterBC) % Values,&
@@ -477,7 +477,7 @@
              IF(Found) EXIT
            END DO
            IF(.NOT. Found) THEN
-             CALL Fatal('HeatSolver','Smart Heater Enthalpy_h / Melting Point is undefined')
+             CALL Fatal(Solvername,'Smart Heater Enthalpy_h / Melting Point is undefined')
            END IF
          END IF
          
@@ -515,10 +515,10 @@
 
         IF(TransientSimulation .AND. dt < PowerTimeScale) THEN
            TransientHeaterControl = .TRUE.
-           CALL Info( 'HeatSolve', 'Using Transient Heater Control')
+           CALL Info( Solvername, 'Using Transient Heater Control')
         ELSE
            TransientHeaterControl = .FALSE.
-           CALL Info( 'HeatSolve', 'Using Steady-state Heater Control')
+           CALL Info( Solvername, 'Using Steady-state Heater Control')
         END IF
         
         IF(Solver % DoneTime /= DoneTime) THEN
@@ -528,7 +528,7 @@
      END IF
     
      IF( IntegralHeaterControl) THEN
-        CALL Info( 'HeatSolve', 'Using Integral Heater Control')       
+        CALL Info( Solvername, 'Using Integral Heater Control')       
         IntegralHeaters = .FALSE.
         DO i = 1,Model % NumberOfBodyForces
            IntegralHeaters(i) = ListCheckPresent( Model % BodyForces(i) % Values, &
@@ -578,48 +578,48 @@
 
 	  A_cap = GetConstReal(Model % Constants, "Enthalpy Heat Capacity A",GotIt)
       IF (.NOT.GotIt) THEN
-         CALL WARN('EnthalpySolver', 'No Keyword >Enthalpy Heat Capacity A< &
+         CALL WARN(Solvername, 'No Keyword >Enthalpy Heat Capacity A< &
          & defined in model constants. Using >7.253< as default (Paterson, 1994).')
          A_cap = 7.253
       END IF
 	  
 	  B_cap = GetConstReal(Model % Constants, "Enthalpy Heat Capacity B",GotIt)
       IF (.NOT.GotIt) THEN
-         CALL WARN('EnthalpySolver', 'No Keyword >Enthalpy Heat Capacity B< & 
+         CALL WARN(Solvername, 'No Keyword >Enthalpy Heat Capacity B< & 
          & defined in model constants. Using >146.3< as default (Paterson, 1994).')
          B_cap = 146.3
       END IF
 
   PressureName = GetString(Constants,'Pressure Variable', GotIt)
       IF (.NOT.GotIt) THEN
-         CALL WARN('EnthalpySolver', 'No Keyword >Pressure Variable< defined. Using >Pressure< as default.')
+         CALL WARN(Solvername, 'No Keyword >Pressure Variable< defined. Using >Pressure< as default.')
          WRITE(PressureName,'(A)') 'Pressure'
       ELSE
          WRITE(Message,'(a,a)') 'Variable Name for pressure: ', PressureName
-         CALL INFO('EnthalpySolve',Message,Level=12)
+         CALL INFO(Solvername,Message,Level=12)
       END IF
 
       Tref = GetConstReal(Model % Constants, "T_ref_enthalpy",GotIt)
       IF (.NOT.GotIt) THEN
-         CALL WARN('EnthalpySolver', 'No Keyword >Reference Enthalpy< defined. Using >200K< as default.')
+         CALL WARN(Solvername, 'No Keyword >Reference Enthalpy< defined. Using >200K< as default.')
          Tref = 200.0
       END IF
 	  
 	  beta = GetConstReal(Model % Constants, "beta_clapeyron",GotIt)
       IF (.NOT.GotIt) THEN
-         CALL WARN('EnthalpySolver', 'No Keyword >beta_clapeyron< defined. Using >9.74 10-2 K Mpa-1< as default.')
+         CALL WARN(Solvername, 'No Keyword >beta_clapeyron< defined. Using >9.74 10-2 K Mpa-1< as default.')
          beta = 0.0974
       END IF
 	  
 	  Psurf = GetConstReal(Model % Constants, "P_surf",GotIt)
       IF (.NOT.GotIt) THEN
-         CALL WARN('EnthalpySolver', 'No Keyword >Psurf< defined. Using >1.013 10-1 MPa < as default.')
+         CALL WARN(Solvername, 'No Keyword >Psurf< defined. Using >1.013 10-1 MPa < as default.')
          Psurf = 0.1013
       END IF
 	  
 	  Ptriple = GetConstReal(Model % Constants,"P_triple",GotIt)
       IF (.NOT.GotIt) THEN
-         CALL WARN('EnthalpySolver', 'No Keyword >P_triple< defined. Using >0.061173 MPa < as default.')
+         CALL WARN(Solvername, 'No Keyword >P_triple< defined. Using >0.061173 MPa < as default.')
          Ptriple = 0.061173
       END IF
 
@@ -632,7 +632,7 @@
  PhaseEnthName = GetString(SolverParams , 'Exported Variable 1', Found )
 
      IF (.NOT.Found) &
-        CALL FATAL('EnthalpySolver','No value > Exported Variable 1 (enthalpy phase change) < found in Solver')
+        CALL FATAL(Solvername,'No value > Exported Variable 1 (enthalpy phase change) < found in Solver')
 
       WaterVar => VariableGet(Solver % Mesh % Variables, WaterName)
       TemphomoVar => VariableGet(Solver % Mesh % Variables,TempName)
@@ -658,14 +658,14 @@ enddo
        at  = CPUTime()
        at0 = RealTime()
 
-       CALL Info( 'HeatSolve', ' ', Level=4 )
-       CALL Info( 'HeatSolve', ' ', Level=4 )
-       CALL Info( 'HeatSolve', '-------------------------------------',Level=4 )
+       CALL Info( Solvername, ' ', Level=4 )
+       CALL Info( Solvername, ' ', Level=4 )
+       CALL Info( Solvername, '-------------------------------------',Level=4 )
        WRITE( Message,* ) 'Enthalpy_h ITERATION', iter
-       CALL Info( 'HeatSolve', Message, Level=4 )
-       CALL Info( 'HeatSolve', '-------------------------------------',Level=4 )
-       CALL Info( 'HeatSolve', ' ', Level=4 )
-       CALL Info( 'HeatSolve', 'Starting Assembly...', Level=4 )
+       CALL Info( Solvername, Message, Level=4 )
+       CALL Info( Solvername, '-------------------------------------',Level=4 )
+       CALL Info( Solvername, ' ', Level=4 )
+       CALL Info( Solvername, 'Starting Assembly...', Level=4 )
 
        IF ( ConstantBulk .AND. ASSOCIATED(Solver % Matrix % BulkValues) ) THEN
          Solver % Matrix % Values = Solver % Matrix % BulkValues
@@ -733,7 +733,7 @@ enddo
 !------------------------------------------------------------------------------
 !      Bulk elements
 !------------------------------------------------------------------------------
-       CALL StartAdvanceOutput( 'HeatSolve', 'Assembly:' )
+       CALL StartAdvanceOutput( Solvername, 'Assembly:' )
        DO t=1,Solver % NumberOfActiveElements
 
          CALL AdvanceOutput(t,GetNOFActive())
@@ -796,7 +796,7 @@ enddo
  	 WaterDiffusivity(1:n) = GetReal( Material, 'Enthalpy Water Diffusivity', Found )
 
 IF (.NOT.Found) THEN
-         CALL FATAL('EnthalpySolver', 'No value for >Enthalpy Water Diffusivity< defined in material.')
+         CALL FATAL(Solvername, 'No value for >Enthalpy Water Diffusivity< defined in material.')
 ENDIF
 	
 
@@ -960,7 +960,7 @@ ENDIF
              END IF
            END DO
          ELSE IF (ConvectionFlag=='computed' ) THEN
-           CALL Warn( 'HeatSolver', 'Convection model specified ' //  &
+           CALL Warn( Solvername, 'Convection model specified ' //  &
                  'but no associated flow field present?' )
          ELSE
            IF ( ALL(MU==0) ) C1 = 0.0D0 
@@ -1145,7 +1145,7 @@ ENDIF
       IF ( TransientSimulation .AND. ConstantBulk ) CALL AddGlobalTime()
 
       CALL DefaultFinishAssembly()
-      CALL Info( 'HeatSolve', 'Assembly done', Level=4 )
+      CALL Info( Solvername, 'Assembly done', Level=4 )
 
       CALL DefaultDirichletBCs()
 
@@ -1243,27 +1243,27 @@ ENDIF
          
          CALL ListAddConstReal(Model % Simulation,'res: Heater Power Scaling',PowerScaling)
          
-         CALL Info( 'HeatSolve', 'Heater Control Information', Level=4 )
+         CALL Info( Solvername, 'Heater Control Information', Level=4 )
          DO i=1,Model % NumberOfBodyForces
             IF( .NOT. (SmartHeaters(i) .OR. IntegralHeaters(i))) CYCLE
             IF( SmartHeaters(i) )  HeaterScaling(i) = PowerScaling
 
             WRITE( Message, '(A,T35,I15)' ) 'Heater for body: ', i
-            CALL Info( 'HeatSolve', Message, Level=4 )
+            CALL Info( Solvername, Message, Level=4 )
             IF(SmartHeaters(i)) WRITE( Message, '(A,T35,A)' ) 'Heater type:','Smart heater'
             IF(IntegralHeaters(i)) WRITE( Message, '(A,T35,A)' ) 'Heater type:','Integral heater'
-            CALL Info( 'HeatSolve', Message, Level=4 )
+            CALL Info( Solvername, Message, Level=4 )
 
             WRITE( Message,'(A,T35,ES15.4)' ) 'Heater Volume (m^3): ', HeaterArea(i)
-            CALL Info( 'HeatSolve', Message, Level=4 )
+            CALL Info( Solvername, Message, Level=4 )
             s = HeaterSource(i) * HeaterScaling(i)
             WRITE( Message,'(A,T35,ES15.4)' ) 'Heater Power (W): ', s
-            CALL Info( 'HeatSolve', Message, Level=4 )
+            CALL Info( Solvername, Message, Level=4 )
 
             WRITE( Message,'(A,T35,ES15.4)' ) 'Heater scaling: ', HeaterScaling(i)
-            CALL Info( 'HeatSolve', Message, Level=4 )
+            CALL Info( Solvername, Message, Level=4 )
             WRITE( Message, '(A,T35,ES15.4)' ) 'Heater Power Density (W/kg): ', s/(HeaterDensity(i) * HeaterArea(i))
-            CALL Info( 'HeatSolve', Message, Level=4 )
+            CALL Info( Solvername, Message, Level=4 )
             
             IF( SmartHeaters(i)) CALL ListAddConstReal(Model % Simulation,'res: Heater Power Density',&
                  s/(HeaterDensity(i) * HeaterArea(i)))
@@ -1275,9 +1275,9 @@ ENDIF
       totat = totat + at
       totst = totst + st
       WRITE(Message,'(a,i4,a,F8.2,F8.2)') 'iter: ',iter,' Assembly: (s)', at, totat
-      CALL Info( 'HeatSolve', Message, Level=4 )
+      CALL Info( Solvername, Message, Level=4 )
       WRITE(Message,'(a,i4,a,F8.2,F8.2)') 'iter: ',iter,' Solve:    (s)', st, totst
-      CALL Info( 'HeatSolve', Message, Level=4 )
+      CALL Info( Solvername, Message, Level=4 )
 !------------------------------------------------------------------------------
 !     If modelling phase change (and if requested by the user), check if any
 !     node has jumped over the phase change interval, and if so, reduce
@@ -1294,14 +1294,14 @@ ENDIF
             Solver % dt = dt
             WRITE( Message, * ) &
                   'Latent heat release check: reducing timestep to: ',dt
-            CALL Info( 'HeatSolve', Message, Level=4 )
+            CALL Info( Solvername, Message, Level=4 )
           ELSE
             Relax = Relax / 2
             CALL  ListAddConstReal( Solver % Values,  &
                  'Nonlinear System Relaxation Factor', Relax )
             WRITE( Message, * ) &
                  'Latent heat release check: reducing relaxation to: ',Relax
-            CALL Info( 'HeatSolve', Message, Level=4 )
+            CALL Info( Solvername, Message, Level=4 )
           END IF
 
           CYCLE
@@ -1313,9 +1313,9 @@ ENDIF
       RelativeChange = Solver % Variable % NonlinChange
 
       WRITE( Message, * ) 'Result Norm   : ',Norm
-      CALL Info( 'HeatSolve', Message, Level=4 )
+      CALL Info( Solvername, Message, Level=4 )
       WRITE( Message, * ) 'Relative Change : ',RelativeChange
-      CALL Info( 'HeatSolve', Message, Level=4 )
+      CALL Info( Solvername, Message, Level=4 )
 
       IF ( RelativeChange < NewtonTol .OR. iter >= NewtonIter ) &
                NewtonLinearization = .TRUE.
@@ -1353,19 +1353,19 @@ ENDIF
  WaterName = GetString(SolverParams , 'Exported Variable 2', Found )
 
      IF (.NOT.Found) &
-        CALL FATAL('EnthalpySolver','No value > Exported Variable 2 (water content) < found in Solver')
+        CALL FATAL(Solvername,'No value > Exported Variable 2 (water content) < found in Solver')
 
  TempName = GetString(SolverParams , 'Exported Variable 3', Found )
 
      IF (.NOT.Found) &
-        CALL FATAL('EnthalpySolver','No value > Exported Variable 3 (temperature) < found in Solver')
+        CALL FATAL(Solvername,'No value > Exported Variable 3 (temperature) < found in Solver')
 
       WaterVar => VariableGet(Solver % Mesh % Variables, WaterName)
       TemphomoVar => VariableGet(Solver % Mesh % Variables,TempName)
 
       L_heat = GetConstReal(Model % Constants, "L_heat",GotIt)
       IF (.NOT.GotIt) THEN
-         CALL WARN('EnthalpySolver', 'No Keyword >L_heat< defined in model constants. Using >334000Jkg-1< as default.')
+         CALL WARN(Solvername, 'No Keyword >L_heat< defined in model constants. Using >334000Jkg-1< as default.')
          L_heat = 334000.0
       END IF
 	  
@@ -1507,7 +1507,7 @@ CONTAINS
          LatentHeat(1:n) = GetParentMatProp( 'Latent Heat', &
               UElement = Element, UParent = Parent )
          IF(.NOT. ASSOCIATED(Parent) ) THEN
-           CALL Warn('HeatSolve','Parent not associated')
+           CALL Warn(Solvername,'Parent not associated')
          ELSE
            k = GetInteger(Model % Bodies(Parent % BodyId) % Values,'Material')
            Density(1:n) = GetReal( Model % Materials(k) % Values, 'Enthalpy Density' )
@@ -1544,7 +1544,7 @@ CONTAINS
 
 
         IF(.NOT. GotIt) THEN
-          CALL Fatal( 'HeatSolver','Could not find > Heat Conductivity < for parent!' )           
+          CALL Fatal( Solvername,'Could not find > Enthalpy Heat Diffusivity < for parent!' )           
         END IF
       END IF
 
@@ -1557,7 +1557,7 @@ CONTAINS
             Element,n,ElementNodes )
       ELSE
         IF( InfBC ) THEN
-          CALL Fatal('HeatSolver','Infinity BC not implemented only for cartersian case!')
+          CALL Fatal(Solvername,'Infinity BC not implemented only for cartersian case!')
         END IF
         CALL DiffuseConvectiveGenBoundary(STIFF,FORCE,&
             LOAD,HeatTransferCoeff,Element,n,ElementNodes ) 

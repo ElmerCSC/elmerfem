@@ -37,7 +37,8 @@
     SolverParams => GetSolverParams()
     CALL ListAddNewString( SolverParams, 'Variable', '-dofs 3 Deflection' )
        
-    CALL ListAddInteger( SolverParams, 'Time derivative order', 2 )
+    CALL ListAddNewInteger( SolverParams, 'Time derivative order', 2 )
+    CALL ListAddNewLogical( SolverParams, 'Use Global Mass Matrix', .TRUE. )
 
     CALL ListAddNewLogical( SolverParams, 'Plate Solver', .TRUE. )
 
@@ -58,8 +59,7 @@
      IMPLICIT NONE
 !------------------------------------------------------------------------------
      TYPE(Solver_t):: Solver
-     TYPE(Model_t) :: Model
- 
+     TYPE(Model_t) :: Model 
      REAL(KIND=dp) :: dt
      LOGICAL :: TransientSimulation
 !------------------------------------------------------------------------------

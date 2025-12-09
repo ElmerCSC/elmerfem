@@ -1311,7 +1311,7 @@
       DEALLOCATE(r, z)
     END IF
     
-    u(1:n/2) = CMPLX(dx(1:n:2), dx(2:n:2) ) 
+    u(1:n/2) = CMPLX(dx(1:n:2), dx(2:n:2),KIND=dp ) 
 
   CONTAINS
 

@@ -1299,7 +1299,7 @@ END SUBROUTINE CheckResiduals
       IF ( .NOT. Matrix % Lumped ) THEN
         SigmaR = ListGetConstReal( Params,'Eigen System Shift', stat )
         SigmaI = ListGetConstReal( Params,'Eigen System Shift Im', stat )
-        Sigma = CMPLX(SigmaR,SigmaI)
+        Sigma = CMPLX(SigmaR,SigmaI, KIND=dp)
 
         IF ( Sigma /= 0._dp ) THEN
           Matrix % Values = Matrix % Values - Sigma * Matrix % MassValues

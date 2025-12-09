@@ -2145,8 +2145,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                                   CMPLX(B(1,m),B(2,m),KIND=dp)
                END DO
                CST(l,l) = CST(l,l) - &
-                      (PR_ip*SUM(ABS(CMPLX(E(1,:),E(2,:)))**2)+ &
-                        R_ip*SUM(ABS(CMPLX(B(1,:),B(2,:)))**2))/2
+                      (PR_ip*SUM(ABS(CMPLX(E(1,:),E(2,:),KIND=dp))**2)+ &
+                        R_ip*SUM(ABS(CMPLX(B(1,:),B(2,:),KIND=dp))**2))/2
              END DO
              DO l=1,6
                FORCE(p,k+l)=FORCE(p,k+l) + s*REAL(CST(ind1(l),ind2(l)))*Basis(p)
@@ -3645,7 +3645,7 @@ CONTAINS
        IF(MODULO(i,2)==1) THEN
          EigVec(ic::m/2) = Solver % Variable % Values
        ELSE
-         EigVec(ic::m/2) = CMPLX( REAL(EigVec(ic::m/2)), Solver % Variable % Values )
+         EigVec(ic::m/2) = CMPLX( REAL(EigVec(ic::m/2)), Solver % Variable % Values,KIND=dp )
        END IF
      ELSE
        var % Values(i::m) = Solver % Variable % Values
@@ -3697,7 +3697,7 @@ CONTAINS
         IF(MODULO(i,2)==1) THEN
           EigVec(ind(1:n)+ic) = x(1:n)
         ELSE
-          EigVec(ind(1:n)+ic) = CMPLX( REAL(EigVec(ind(1:n)+ic)), x(1:n) )
+          EigVec(ind(1:n)+ic) = CMPLX( REAL(EigVec(ind(1:n)+ic)), x(1:n), KIND=dp )
         END IF
       ELSE      
         Var % Values(ind(1:n)+i) = x(1:n)
