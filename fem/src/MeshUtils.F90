@@ -26436,7 +26436,7 @@ CONTAINS
 
       IsRecursive = ListGetLogical( CurrentModel % Simulation,&
           'Interpolation Search Recursive',Stat )
-!      IF(.NOT. Stat ) IsRecursive = .TRUE.
+      IF(.NOT. Stat ) IsRecursive = .TRUE.
 
       LocalEps = ListGetConstReal( CurrentModel % Simulation,  &
           'Interpolation Local Epsilon', Stat )
