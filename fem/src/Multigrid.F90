@@ -875,7 +875,8 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 !> Multigrid solution in the case when different levels are different 
-!> power of element basis functions. 
+!> power of element basis functions. Applicable to H1 p-elements and
+!> H(curl) elements (Only quadratic supported currently). 
 !------------------------------------------------------------------------------
     RECURSIVE SUBROUTINE PMGSolve( Matrix1, Solution, &
         ForceVector, DOFs, Solver, Level, NewSystem )
@@ -888,7 +889,6 @@ CONTAINS
        LOGICAL, OPTIONAL :: NewSystem
        TYPE(Solver_t), TARGET :: Solver       
        REAL(KIND=dp), TARGET CONTIG :: ForceVector(:), Solution(:)
-
 !------------------------------------------------------------------------------
        TYPE(Variable_t), POINTER :: Variable1, TimeVar, SaveVariable
        TYPE(Mesh_t), POINTER   :: Mesh1, Mesh2, SaveMesh
@@ -918,20 +918,11 @@ CONTAINS
        TYPE(Element_t), POINTER :: Element
        TYPE(ValueList_t), POINTER :: Params
 
- !      INTERFACE
- !        SUBROUTINE BlockSolveExt(A,x,b,Solver)
- !          USE Types
- !          TYPE(Matrix_t), POINTER :: A
- !          TYPE(Solver_t) :: Solver
- !          REAL(KIND=dp) :: x(:),b(:)
- !        END SUBROUTINE BlockSolveExt 
- !      END INTERFACE
 !------------------------------------------------------------------------------
        tt = CPUTime()
 
        CALL Info('PMGSolve','Solving multigrid Level '//I2S(Level),Level=20)
 
-!
 !      Initialize:
 !      -----------
        Parallel = ParEnv % PEs > 1
@@ -1009,8 +1000,7 @@ CONTAINS
             CALL Info('PMGSolve','Applying no solver for coarsest level')
 
           CASE DEFAULT
-             CALL Warn( 'PMGSolve', 'Unknown solver selection for MG lowest level' )
-             CALL Warn( 'PMGSolve', 'Using iterative solver' )
+             CALL Warn( 'PMGSolve', 'Unknown solver selection for MG lowest level, using iterative!' )
 
              IF ( Parallel ) THEN
                CALL ParallelIter( Matrix1, Matrix1 % ParallelInfo, DOFs, &
@@ -1024,7 +1014,7 @@ CONTAINS
 
           RETURN
        END IF
-!
+
        n = Matrix1 % NumberOfRows
        ALLOCATE( Residual(n) )
        Residual = 0.0_dp
@@ -1065,14 +1055,11 @@ CONTAINS
            n2 = Solver % Mesh % MaxElementDOFs
            ALLOCATE(Degree(n), Indexes(n2), Deg(n2))
 
-#define hcurlfix 1
-#if hcurlfix
-           ! This seems to work, the original code not!
            IF( EdgeBasis ) THEN
-             ! Default degree is 2 
+             ! Still experimental, default degree is 2 since no others are possible.
              Degree = 2
              DO i=1,Solver % Mesh % NumberOfNodes
-               ! Set all nodes to 1st degree
+               ! Set all nodal degree of freedom to 1st degree
                j = i
                j2 = Permutation(j)
                IF(j2>0) THEN
@@ -1091,53 +1078,23 @@ CONTAINS
                  END DO
                END IF
              END DO
-           END IF
-#endif
-           
-           DO i=1,Solver % NumberOfActiveElements
-             Element => Solver % Mesh % Elements(Solver % ActiveElements(i))
-
-             n = mGetElementDOFs( Indexes, Element ) 
-             IF(EdgeBasis) THEN
-#ifndef hcurlfix
-               ! This has some issues!
-               l = Solver % Mesh % MaxNDOFs * Element % TYPE % NumberOfNodes               
-               DO k=1,DOFs               
-                 DO j=l+1,l+2*Element % TYPE % NumberOfEdges,2
-                   Degree(DOFs*(Permutation(Indexes(j))-1)+k) = 1
+           ELSE           
+             DO i=1,Solver % NumberOfActiveElements
+               Element => Solver % Mesh % Elements(Solver % ActiveElements(i))
+               
+               n = mGetElementDOFs( Indexes, Element ) 
+               IF(EdgeBasis) THEN
+               ELSE
+                 CALL ElementBasisDegree(Element, Deg)
+                 DO j=1,n
+                   DO k=1,DOFs
+                     Degree(DOFs*(Permutation(Indexes(j))-1)+k) = Deg(j)
+                   END DO
                  END DO
-                 DO j=l+2,l+2*Element % TYPE % NumberOfEdges,2
-                   Degree(DOFs*(Permutation(Indexes(j))-1)+k) = 2
-                 END DO
-                 DO j=l+2*Element % TYPE % NumberOfEdges+1,n
-                   Degree(DOFs*(Permutation(Indexes(j))-1)+k) = 2
-                 END DO
-               END DO
-#endif
-             ELSE
-               CALL ElementBasisDegree(Element, Deg)
-               DO j=1,n
-                 DO k=1,DOFs
-                   Degree(DOFs*(Permutation(Indexes(j))-1)+k) = Deg(j)
-                 END DO
-               END DO
-             END IF
-           END DO
-           DEALLOCATE(Indexes,Deg)
-
-           IF( EdgeBasis ) THEN
-             ! for debugging edge p-strategy
-#if 0
-             PRINT *,'edges:',Solver % Mesh % NumberOfEdges
-             PRINT *,'elems:',Solver % Mesh % NumberOfBulkElements
-             PRINT *,'max perm:',MAXVAL(Permutation)
-             PRINT *,'dofs:',dofs
-             DO i=0,2
-               j = COUNT(Degree==i)
-               IF(j>0) PRINT *,'Degree Count:',i,j,j/Dofs
+               END IF
              END DO
-#endif
            END IF
+           DEALLOCATE(Indexes,Deg)
              
            PatLevel => ListGetIntegerArray( Params,'MG P at Level',Found)
            IF(.NOT.Found) THEN
