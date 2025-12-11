@@ -1787,11 +1787,11 @@ CONTAINS
     LOGICAL :: DoCmplx
     INTEGER :: BlockTag(:)
 
-    INTEGER :: i,j,k,n,m,n0,dofs,EDOFs,ic,kc
+    INTEGER :: i,j,k,l,n,m,n0,dofs,EDOFs,EDOFs_Order1
     TYPE(Matrix_t), POINTER :: A,B
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Element_t), POINTER :: Element, Edge
-    LOGICAL :: Found, SecondFamily
+    LOGICAL :: Found, SecondFamily, PickSimplest
     
     Mesh => Solver % Mesh
 
@@ -1806,10 +1806,18 @@ CONTAINS
     SecondFamily = ListGetLogical( Solver % Values,'Second Kind Basis',Found )
     IF (SecondFamily) THEN
       EDOFs = 3
+      IF (ListGetLogical(Solver % Values, 'Block Quadratic Hcurl Pick Simplest', Found)) THEN
+        ! To select DOFs corresponding to the lowest-order basis of the first kind
+        EDOFs_Order1 = 1
+      ELSE
+        ! To select DOFs corresponding to the lowest-order basis of the second kind
+        EDOFs_Order1 = 2
+      END IF
     ELSE
       EDOFs = 2
+      EDOFs_Order1 = 1
     END IF
-    
+
     NoVar = 2
     IF( ListGetLogical( Solver % Values,'Block Quadratic Hcurl Faces',Found ) ) NoVar = 3
     IF(DoCmplx) THEN
@@ -1847,26 +1855,43 @@ CONTAINS
         
     n0 = Mesh % NumberOfNodes    
     DO i=1, Mesh % NumberOfEdges
-      ! This corresponds to the lowest-order DOF over an edge
-      j = n0 + EDOFs*(i-1) + 1
-      k = Solver % Variable % Perm(j)
-      IF(k==0) CYCLE
+      DO l=1,EDOFs_Order1
+        ! This corresponds to the lowest-order DOF over an edge
+        j = n0 + EDOFs*(i-1) + l
+        k = Solver % Variable % Perm(j)
+        IF(k<1) CYCLE
 
-      ! If BlockTag array were created for all DOFs with DOFs>1,
-      ! it would have a repeated entries occurring in clusters of
-      ! size DOFs. Therefore a smaller array can be used to tag DOFs.
-      IF( dofs == 1 ) THEN
-        BlockTag(k) = 1
-      ELSE IF(dofs == 2 ) THEN
-        BlockTag(2*k-1) = 1
-        IF( DoCmplx ) THEN
-          BlockTag(2*k) = 2 
-        ELSE
-          BlockTag(2*k) = 1
+        ! If BlockTag array were created for all DOFs with DOFs>1,
+        ! it would have a repeated entries occurring in clusters of
+        ! size DOFs. Therefore a smaller array can be used to tag DOFs.
+        IF( dofs == 1 ) THEN
+          BlockTag(k) = 1
+        ELSE IF(dofs == 2 ) THEN
+          BlockTag(2*k-1) = 1
+          IF( DoCmplx ) THEN
+            BlockTag(2*k) = 2 
+          ELSE
+            BlockTag(2*k) = 1
+          END IF
         END IF
-      END IF
+      END DO
     END DO
 
+!    DO i=1,Mesh % NumberOfFaces
+!      DO l=2,3
+!        j = n0 + EDOFs*Mesh % NumberOfEdges + 3*(i-1) + l
+!        k = Solver % Variable % Perm(j)
+!        IF(k<1) CYCLE
+!
+!        IF (dofs == 1) THEN
+!          BlockTag(k) = 1
+!        ELSE IF (dofs == 2) THEN
+!          BlockTag(2*k-1) = 1
+!          BlockTag(2*k) = 1
+!        END IF
+!      END DO
+!    END DO
+      
     IF(NoVar == 3) THEN
       IF( DoCmplx ) THEN
         WHERE( BlockTag > 1 )
