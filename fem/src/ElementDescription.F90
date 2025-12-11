@@ -6864,6 +6864,7 @@ END SUBROUTINE PickActiveFace
        REAL(KIND=dp) :: fs1, fs2
        REAL(KIND=dp) :: sfun, tfun, hfun, grad_sfun(3), grad_tfun(3), grad_hfun(3)
        REAL(KIND=dp) :: svec(3), tvec(3), hvec(3), grad_svec(3,3), grad_tvec(3,3), grad_hvec(3,3)
+       REAL(KIND=dp) :: WorkWeight(2), grad_weight(2,1:3)
        LOGICAL :: Create2ndKindBasis, PerformPiolaTransform, UsePretabulatedBasis, Parallel
        LOGICAL :: ErvinStyle
        LOGICAL :: SecondOrder, ApplyTraceMapping, Found
@@ -7351,8 +7352,8 @@ END SUBROUTINE PickActiveFace
                i = EdgeMap(k,1)
                j = EdgeMap(k,2)
 
-               tvec(1:2) = Basis(i) * dLBasisdx(j,1:2)
                svec(1:2) = Basis(j) * dLBasisdx(i,1:2)
+               tvec(1:2) = Basis(i) * dLBasisdx(j,1:2)
 
                grad_svec(1,2) = dLBasisdx(j,2) * dLBasisdx(i,1)
                grad_svec(2,1) = dLBasisdx(j,1) * dLBasisdx(i,2)
@@ -7360,11 +7361,26 @@ END SUBROUTINE PickActiveFace
                grad_tvec(1,2) = dLBasisdx(i,2) * dLBasisdx(j,1)
                grad_tvec(2,1) = dLBasisdx(i,1) * dLBasisdx(j,2)
 
-               DO l=1,EDOFs
+               WorkBasis(1,1:2) = svec(1:2)
+               WorkBasis(2,1:2) = tvec(1:2)
+               WorkCurlBasis(1,3) = grad_svec(2,1) - grad_svec(1,2)
+               WorkCurlBasis(2,3) = grad_tvec(2,1) - grad_tvec(1,2)
 
-                 grad_sfun(:) = 0.0d0
-                 grad_tfun(:) = 0.0d0
-                 
+               WorkWeight(1) = 2.0d0*Basis(i) - Basis(j)
+               WorkWeight(2) = 2.0d0*Basis(j) - Basis(i)
+
+               grad_weight(1,1:2) = 2.0d0*dLBasisdx(i,1:2) - dLBasisdx(j,1:2)
+               grad_weight(2,1:2) = 2.0d0*dLBasisdx(j,1:2) - dLBasisdx(i,1:2)
+
+               IF (GIndexes(j) < GIndexes(i)) THEN
+                 I1 = 2
+                 I2 = 1
+               ELSE
+                 I1 = 1
+                 I2 = 2
+               END IF
+
+               DO l=1,EDOFs
                  SELECT CASE(l)
                  CASE(1)
                    sfun = -1.0d0
@@ -7373,30 +7389,21 @@ END SUBROUTINE PickActiveFace
                    sfun = 1.0d0
                    tfun = 1.0d0
                  CASE(3)
-                   sfun = -2.0d0*Basis(i) + Basis(j)
-                   tfun = 2.0d0*Basis(j) - Basis(i)
-                   grad_sfun(1:2) = -2.0d0*dLBasisdx(i,1:2) + dLBasisdx(j,1:2)
-                   grad_tfun(1:2) = 2.0d0*dLBasisdx(j,1:2) - dLBasisdx(i,1:2)
+                   sfun = -WorkWeight(I1)
+                   tfun = WorkWeight(I2)
+                   grad_sfun(1:2) = -grad_weight(I1,1:2)
+                   grad_tfun(1:2) = grad_weight(I2,1:2)
                  CASE DEFAULT
                    CALL Fatal('ElementDescription::EdgeElementInfo','sfun/tfun not defined')
                  END SELECT
 
-                 IF (GIndexes(j) < GIndexes(i) .AND. .NOT. l==2) THEN
-                   sfun = -sfun
-                   tfun = -tfun
-                   grad_sfun(1:2) = -grad_sfun(1:2)
-                   grad_tfun(1:2) = -grad_tfun(1:2)
-                 END IF
-                 
-                 EdgeBasis(EDOFs*(k-1)+l,1:2) = sfun * svec(1:2) + tfun * tvec(1:2)
-                 
-                 CurlBasis(EDOFs*(k-1)+l,3) = sfun * grad_svec(2,1) + tfun * grad_tvec(2,1) - &
-                     sfun * grad_svec(1,2) - tfun * grad_tvec(1,2)
-                 
+                 EdgeBasis(EDOFs*(k-1)+l,1:2) = sfun * WorkBasis(I1,1:2) + tfun * WorkBasis(I2,1:2)
+                 CurlBasis(EDOFs*(k-1)+l,3) = sfun * WorkCurlBasis(I1,3) + tfun * WorkCurlBasis(I2,3)
+
                  IF (l > 2) THEN
                    CurlBasis(EDOFs*(k-1)+l,3) = CurlBasis(EDOFs*(k-1)+l,3) + &
-                       grad_sfun(1)*svec(2) + grad_tfun(1)*tvec(2) - &
-                       grad_sfun(2)*svec(1) - grad_tfun(2)*tvec(1)
+                       grad_sfun(1)*WorkBasis(I1,2) + grad_tfun(1)*WorkBasis(I2,2) - &
+                       grad_sfun(2)*WorkBasis(I1,1) - grad_tfun(2)*WorkBasis(I2,1)
                  END IF
                END DO
              END DO
@@ -7844,11 +7851,32 @@ END SUBROUTINE PickActiveFace
                grad_tvec(3,1) = dLBasisdx(i,1) * dLBasisdx(j,3)
                grad_tvec(3,2) = dLBasisdx(i,2) * dLBasisdx(j,3)
 
-               DO l=1,EDOFs
+               WorkBasis(1,1:3) = svec(1:3)
+               WorkBasis(2,1:3) = tvec(1:3)
 
-                 grad_sfun(:) = 0.0d0
-                 grad_tfun(:) = 0.0d0
-                 
+               WorkCurlBasis(1,1) = grad_svec(3,2) - grad_svec(2,3)
+               WorkCurlBasis(1,2) = grad_svec(1,3) - grad_svec(3,1)
+               WorkCurlBasis(1,3) = grad_svec(2,1) - grad_svec(1,2)
+
+               WorkCurlBasis(2,1) = grad_tvec(3,2) - grad_tvec(2,3)
+               WorkCurlBasis(2,2) = grad_tvec(1,3) - grad_tvec(3,1)
+               WorkCurlBasis(2,3) = grad_tvec(2,1) - grad_tvec(1,2)
+
+               WorkWeight(1) = 2.0d0*Basis(i) - Basis(j)
+               WorkWeight(2) = 2.0d0*Basis(j) - Basis(i)
+
+               grad_weight(1,1:3) = 2.0d0*dLBasisdx(i,1:3) - dLBasisdx(j,1:3)
+               grad_weight(2,1:3) = 2.0d0*dLBasisdx(j,1:3) - dLBasisdx(i,1:3)
+
+               IF (GIndexes(j) < GIndexes(i)) THEN
+                 I1 = 2
+                 I2 = 1
+               ELSE
+                 I1 = 1
+                 I2 = 2
+               END IF
+
+               DO l=1,EDOFs
                  SELECT CASE(l)
                  CASE(1)
                    sfun = -1.0d0
@@ -7857,44 +7885,29 @@ END SUBROUTINE PickActiveFace
                    sfun = 1.0d0
                    tfun = 1.0d0
                  CASE(3)
-                   sfun = -2.0d0*Basis(i) + Basis(j)
-                   tfun = 2.0d0*Basis(j) - Basis(i)
-                   grad_sfun(1:3) = -2.0d0*dLBasisdx(i,1:3) + dLBasisdx(j,1:3)
-                   grad_tfun(1:3) = 2.0d0*dLBasisdx(j,1:3) - dLBasisdx(i,1:3)
+                   sfun = -WorkWeight(I1)
+                   tfun = WorkWeight(I2)
+                   grad_sfun(1:3) = -grad_weight(I1,1:3)
+                   grad_tfun(1:3) = grad_weight(I2,1:3)
                  CASE DEFAULT
                    CALL Fatal('ElementDescription::EdgeElementInfo','sfun/tfun not defined')
                  END SELECT
 
-                 IF (GIndexes(j) < GIndexes(i) .AND. .NOT. l==2) THEN
-                   sfun = -sfun
-                   tfun = -tfun
-                   grad_sfun(:) = -grad_sfun(:)
-                   grad_tfun(:) = -grad_tfun(:)
-                 END IF
-                 
-                 EdgeBasis(EDOFs*(k-1)+l,1:3) = sfun * svec(1:3) + tfun * tvec(1:3)
+                 EdgeBasis(EDOFs*(k-1)+l,1:3) = sfun * WorkBasis(I1,1:3) + tfun * WorkBasis(I2,1:3)
+                 CurlBasis(EDOFs*(k-1)+l,1:3) = sfun * WorkCurlBasis(I1,1:3) + tfun * WorkCurlBasis(I2,1:3)
 
-!             grad_vec = grad_sfun * svec + sfun * grad_svec + grad_tfun * tvec + tfun * grad_tvev 
-                 
-                 CurlBasis(EDOFs*(k-1)+l,1) = sfun * grad_svec(3,2) + tfun * grad_tvec(3,2) - &
-                     sfun * grad_svec(2,3) - tfun * grad_tvec(2,3)
-                 CurlBasis(EDOFs*(k-1)+l,2) = sfun * grad_svec(1,3) + tfun * grad_tvec(1,3) - &
-                     sfun * grad_svec(3,1) - tfun * grad_tvec(3,1)
-                 CurlBasis(EDOFs*(k-1)+l,3) = sfun * grad_svec(2,1) + tfun * grad_tvec(2,1) - &
-                     sfun * grad_svec(1,2) - tfun * grad_tvec(1,2)
-                 
                  IF (l > 2) THEN
                    CurlBasis(EDOFs*(k-1)+l,1) = CurlBasis(EDOFs*(k-1)+l,1) + &
-                       grad_sfun(2)*svec(3) + grad_tfun(2)*tvec(3) - &
-                       grad_sfun(3)*svec(2) - grad_tfun(3)*tvec(2)
+                       grad_sfun(2)*WorkBasis(I1,3) + grad_tfun(2)*WorkBasis(I2,3) - &
+                       grad_sfun(3)*WorkBasis(I1,2) - grad_tfun(3)*WorkBasis(I2,2)
 
                    CurlBasis(EDOFs*(k-1)+l,2) = CurlBasis(EDOFs*(k-1)+l,2) + &
-                       grad_sfun(3)*svec(1) + grad_tfun(3)*tvec(1) - &
-                       grad_sfun(1)*svec(3) - grad_tfun(1)*tvec(3)
+                       grad_sfun(3)*WorkBasis(I1,1) + grad_tfun(3)*WorkBasis(I2,1) - &
+                       grad_sfun(1)*WorkBasis(I1,3) - grad_tfun(1)*WorkBasis(I2,3)
 
                    CurlBasis(EDOFs*(k-1)+l,3) = CurlBasis(EDOFs*(k-1)+l,3) + &
-                       grad_sfun(1)*svec(2) + grad_tfun(1)*tvec(2) - &
-                       grad_sfun(2)*svec(1) - grad_tfun(2)*tvec(1)
+                       grad_sfun(1)*WorkBasis(I1,2) + grad_tfun(1)*WorkBasis(I2,2) - &
+                       grad_sfun(2)*WorkBasis(I1,1) - grad_tfun(2)*WorkBasis(I2,1)
                  END IF
                END DO
              END DO
