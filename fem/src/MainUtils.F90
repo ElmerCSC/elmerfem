@@ -57,7 +57,7 @@ MODULE MainUtils
       ElmerGraphColour, ElmerMeshToDualGraph, Graph_deallocate, LoadMesh2, &
       MakePermUsingMask, MeshStabParams, ReleaseMesh, SetActivEelementsTable, &
       SetCurrentMesh, SetMeshMaxDOFs, SplitMeshEqual, TransferCoordAndTime, &
-      UpdateSolverMesh
+      UpdateSolverMesh, WriteMeshToDisk2
   
   USE SolverUtils, ONLY : CalculateEntityWeights, &
       CalculateNodalWeights, CheckStepSize, ComputeChange, &
