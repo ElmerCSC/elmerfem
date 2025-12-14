@@ -25,7 +25,7 @@ SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
   LinearAlgebra.F90 CoordinateSystems.F90 ListMatrix.F90 CRSMatrix.F90
   BandMatrix.F90 BandwidthOptimize.F90 BlockSolve.F90
   MaterialModels.F90 DirectSolve.F90 IterSolve.F90
-  IterativeMethods.F90 TimeIntegrate.F90 Types.F90 SolveBand.F90
+  IterativeMethods.F90 PermonInterface.F90 TimeIntegrate.F90 Types.F90 SolveBand.F90
   ElementUtils.F90 Radiation.F90 fft.c Load.c Differentials.F90
   FreeSurface.F90 
   Walls.F90 SolverUtils.F90 SolveSBand.F90 CPUTime.c Interpolation.F90
@@ -67,6 +67,11 @@ ENDIF()
 
 IF(HAVE_FETI4I)
   LIST(APPEND solverlib_SOURCES ${FETI4I_INTERFACE_SOURCE})
+  # PERMON-related helper: only compile when FETI4I/PERMON support is available
+ENDIF()
+
+IF(WITH_PERMON)
+  LIST(APPEND solverlib_SOURCES mprgp_permon.c)
 ENDIF()
 
 #FILE(GLOB SRC_FILES *.src)
@@ -84,6 +89,10 @@ INCLUDE_DIRECTORIES("${CMAKE_BINARY_DIR}/fem/src")
 INCLUDE_DIRECTORIES("${CMAKE_SOURCE_DIR}/fhutiter/src")
 INCLUDE_DIRECTORIES("${CMAKE_CURRENT_BINARY_DIR}/binio")
 INCLUDE_DIRECTORIES("${PROJECT_BINARY_DIR}/fhutiter/src")
+
+IF(NOT PETSC_LIBRARIES)
+  SET(PETSC_LIBRARIES "${PETSC_DIR}/${PETSC_ARCH}/lib/libpetsc.so")
+ENDIF()
 
 IF(WITH_Trilinos)
   IF(NOT Epetra_INCLUDE_DIRS)
@@ -298,6 +307,16 @@ IF (WITH_CHOLMOD)
   TARGET_INCLUDE_DIRECTORIES(elmersolver PRIVATE "${CHOLMOD_INCLUDE_DIR};${SPQR_INCLUDE_DIR}")
   TARGET_LINK_LIBRARIES(elmersolver "${CHOLMOD_LIBRARIES};${SPQR_LIBRARIES}")
 ENDIF()    
+
+IF(WITH_PERMON)
+  TARGET_INCLUDE_DIRECTORIES(elmersolver PRIVATE
+    "${PERMON_INCLUDE_DIR}"
+    "${PETSC_DIR}/include"
+    "${PETSC_DIR}/${PETSC_ARCH}/include")
+  LIST(APPEND ELMERSOLVER_LIBRARIES ${PETSC_LIBRARIES})
+  TARGET_COMPILE_DEFINITIONS(elmersolver PRIVATE HAVE_PERMON)
+  TARGET_LINK_LIBRARIES(elmersolver ${PERMON_LIBRARIES} ${PETSC_LIBRARIES})
+ENDIF()
 
 # elmersolver -library
 #TARGET_LINK_LIBRARIES(elmersolver ${ELMERSOLVER_LIBRARIES})

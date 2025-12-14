@@ -29,6 +29,7 @@ MODULE ListMatrix
 
     USE CRSMatrix
     USE GeneralUtils
+  USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_LOC, C_NULL_PTR
 
     IMPLICIT NONE
 
@@ -164,6 +165,10 @@ CONTAINS
     A % Rows => Rows
     A % Diag => Diag
     A % Cols => Cols
+#ifdef HAVE_PERMON
+    A % Rows_cptr = C_LOC(Rows(1))
+    A % Cols_cptr = C_LOC(Cols(1))
+#endif
     CALL CRS_SortMatrix(A)
     DEALLOCATE(A)
 !-------------------------------------------------------------------------------
@@ -235,10 +240,15 @@ CONTAINS
     END DO
     
     A % NumberOfRows = n
-    A % Rows => Rows
-    A % Diag => Diag
-    A % Cols => Cols
-    A % Values => Values  
+  A % Rows => Rows
+  A % Diag => Diag
+  A % Cols => Cols
+  A % Values => Values
+#ifdef HAVE_PERMON
+  A % Rows_cptr = C_LOC(Rows(1))
+  A % Cols_cptr = C_LOC(Cols(1))
+  A % Values_cptr = C_LOC(Values(1))
+#endif  
   
     A % Ordered=.FALSE.
     CALL CRS_SortMatrix( A )
@@ -331,6 +341,11 @@ CONTAINS
     IF( ASSOCIATED( A % Rows ) ) DEALLOCATE( A % Rows )
     IF( ASSOCIATED( A % Cols ) ) DEALLOCATE( A % Cols )
     IF( ASSOCIATED( A % Diag ) ) DEALLOCATE( A % Diag )
+#ifdef HAVE_PERMON
+    A % Rows_cptr = C_NULL_PTR
+    A % Cols_cptr = C_NULL_PTR
+    A % Values_cptr = C_NULL_PTR
+#endif
     IF( ASSOCIATED( A % Values ) ) DEALLOCATE( A % Values )
 
     A % Rows => Null()  

@@ -47,6 +47,7 @@
 MODULE CRSMatrix
 
   USE Lists
+  USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_LOC, C_NULL_PTR
 
   IMPLICIT NONE
 
@@ -1418,7 +1419,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       CALL Fatal( 'CRS_CreateMatrix', 'Memory allocation error for matrix topology of size: '&
           //I2S(n))
     END IF
-
+#ifdef HAVE_PERMON
+    A % Rows_cptr = C_LOC( A % Rows(1) )
+#endif
     k = Ndeg*Ndeg*Total
     CALL Info('CRS_CreateMatrix','Creating CRS Matrix with nofs: '//I2S(k),Level=14)
     ALLOCATE( A % Cols(k),STAT=istat )
@@ -1426,6 +1429,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       CALL Fatal( 'CRS_CreateMatrix', 'Memory allocation error for matrix cols of size: '&
           //I2S(k) )
     END IF
+#ifdef HAVE_PERMON
+    A % Cols_cptr = C_LOC( A % Cols(1) )
+#endif
 
     IF ( AllocValues ) THEN
       ALLOCATE( A % Values(k), STAT=istat )
@@ -1433,6 +1439,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
         CALL Fatal( 'CRS_CreateMatrix', 'Memory allocation error for matrix values of size: '&
             //I2S(k) )
       END IF
+#ifdef HAVE_PERMON
+      A % Values_cptr = C_LOC( A % Values(1) )
+#endif
     END IF
 
     NULLIFY( A % ILUValues )

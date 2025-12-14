@@ -54,7 +54,7 @@ MODULE ModelDescription
     USE LoadMod
     USE BinIO
     USE ElementDescription
- 
+    USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_LOC
     IMPLICIT NONE
 
     CHARACTER(LEN=MAX_PATH_LEN) :: IncludePath = ' ', OutputPath = ' ', SimulationId=' '
@@ -6069,6 +6069,9 @@ SUBROUTINE GetNodalElementSize(Model,expo,noweight,h)
   Model % Solver => Solver
 
   ALLOCATE(A % RHS(Mesh % NumberOfNodes))
+#ifdef HAVE_PERMON
+  A % RHS_cptr = C_LOC( A % RHS(1) )
+#endif
 
   Solver % TimeOrder = 0
 
