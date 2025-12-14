@@ -180,6 +180,31 @@
             ];
           };
 
+        par = {doCheck ? false}:
+          basePkg {
+            inherit doCheck;
+            name = "elmer-par";
+
+            buildInputs = with pkgs; [
+              hdf5-mpi
+              metis
+              mumps-mpi
+              scalapack
+            ];
+
+            cmakeFlags = [
+              "-DWITH_NETCDF:BOOL=TRUE"
+              "-DNETCDF_LIBRARY=${pkgs.netcdf-mpi}/lib/libnetcdf${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}"
+              "-DNETCDF_INCLUDE_DIR=${pkgs.netcdf-mpi}/include"
+              "-DNETCDFF_LIBRARY=${pkgs.netcdffortran}/lib/libnetcdff${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}"
+              "-DCMAKE_Fortran_FLAGS=-I${pkgs.netcdffortran}/include"
+
+              "-DWITH_Mumps:BOOL=TRUE"
+
+              "-DWITH_GridDataReader:BOOL=TRUE"
+            ];
+          };
+
         full = {doCheck ? false}:
           basePkg {
             inherit doCheck;
@@ -231,12 +256,14 @@
         checks = {
           default = default {doCheck = true;};
           gui = gui {doCheck = true;};
+          par = par {doCheck = true;};
           full = full {doCheck = true;};
         };
 
         packages = {
           default = default {};
           gui = gui {};
+          par = par {};
           full = full {};
         };
       }
@@ -245,6 +272,7 @@
       overlay = final: prev: {
         elmer = self.packages.${final.system}.default;
         elmer-gui = self.packages.${final.system}.gui;
+        elmer-par = self.packages.${final.system}.par;
         elmer-full = self.packages.${final.system}.full;
       };
     };
