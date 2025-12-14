@@ -98,7 +98,7 @@
                 (liblapack.override {blas64 = true;})
                 tbb
               ]
-              ++ lib.optionals stdenv.isDarwin [pkgs.llvmPackages_12.openmp]
+              ++ lib.optionals stdenv.isDarwin [pkgs.llvmPackages.openmp]
               ++ extraBuildInputs;
 
             cmakeFlags =
@@ -136,6 +136,10 @@
 
             preConfigure = ''
               patchShebangs ./
+            '';
+
+            postInstall = lib.optionalString stdenv.isDarwin ''
+              ln -s $out/lib/elmersolver/* $out/lib/
             '';
 
             nativeCheckInputs = with pkgs; [
@@ -193,9 +197,9 @@
 
             cmakeFlags = [
               "-DWITH_NETCDF:BOOL=TRUE"
-              "-DNETCDF_LIBRARY=${pkgs.netcdf-mpi}/lib/libnetcdf.so"
+              "-DNETCDF_LIBRARY=${pkgs.netcdf-mpi}/lib/libnetcdf${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}"
               "-DNETCDF_INCLUDE_DIR=${pkgs.netcdf-mpi}/include"
-              "-DNETCDFF_LIBRARY=${pkgs.netcdffortran}/lib/libnetcdff.so"
+              "-DNETCDFF_LIBRARY=${pkgs.netcdffortran}/lib/libnetcdff${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}"
               "-DCMAKE_Fortran_FLAGS=-I${pkgs.netcdffortran}/include"
 
               "-DWITH_Hypre:BOOL=TRUE"
@@ -212,11 +216,11 @@
 
               "-DWITH_MMG:BOOL=TRUE"
               "-DMMG_INCLUDE_DIR=${pkgs.mmg}/include"
-              "-DMMG_LIBRARY=${pkgs.mmg}/lib/libmmg.so"
+              "-DMMG_LIBRARY=${pkgs.mmg}/lib/libmmg${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}"
 
               "-DWITH_PARMMG:BOOL=TRUE"
               "-DPARMMG_INCLUDE_DIR=${pkgs.parmmg}/include"
-              "-DPARMMG_LIBRARY=${pkgs.parmmg}/lib/libparmmg.so"
+              "-DPARMMG_LIBRARY=${pkgs.parmmg}/lib/libparmmg${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}"
 
               "-DWITH_GridDataReader:BOOL=TRUE"
 
