@@ -146,6 +146,7 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
   END IF
 
   IF( ListGetLogical( SolverParams,'Constraint Modes Analysis', Found ) ) THEN
+    CALL ListAddNewLogical( SolverParams,'Constraint Modes Constant Matrix',.TRUE.)
     CALL ListAddNewLogical( SolverParams,'Constraint Modes Lumped',.TRUE.)
     CALL ListAddNewLogical( SolverParams,'Constraint Modes Fluxes',.TRUE.)
     !CALL ListAddNewLogical( SolverParams,'Constraint Modes Matrix Results',.TRUE.)
