@@ -118,7 +118,6 @@ CONTAINS
        CASE DEFAULT
          CALL Fatal('MultiGridSolve','Unknown "MG Method" given: '//TRIM(MGMethod))
        END SELECT
-
 !------------------------------------------------------------------------------
     END SUBROUTINE MultiGridSolve
 !------------------------------------------------------------------------------
@@ -896,7 +895,7 @@ CONTAINS
        TYPE(Solver_t), POINTER :: PSolver             
 
        INTEGER :: i,j,j2,k,l,m,n,n2,k1,k2,iter,MaxIter = 100, RDOF, CDOF,ndofs
-       LOGICAL :: Condition, Found, Parallel, Project,Transient, EdgeBasis
+       LOGICAL :: Condition, Found, Parallel, Project,Transient, EdgeBasis, LFact
        CHARACTER(:), ALLOCATABLE :: Path,str,mgname, LowestSolver
 
        TYPE(Matrix_t), POINTER :: ProjPN, ProjQT
@@ -944,7 +943,8 @@ CONTAINS
 
           CALL ListAddLogical( Params,'mglowest: Linear System Free Factorization', .FALSE. )
           IF ( NewLinearSystem ) THEN
-            CALL ListAddLogical( Params,'mglowest: Linear System Refactorize', .TRUE. )
+            Lfact = ListGetLogical(Params, 'Linear System Constant Matrix', Found )
+            CALL ListAddLogical( Params,'mglowest: Linear System Refactorize', .NOT. Lfact)
           ELSE
             CALL ListAddLogical( Params,'mglowest: Linear System Refactorize', .FALSE. )
           END IF
@@ -1052,49 +1052,66 @@ CONTAINS
        IF ( NewLinearSystem ) THEN
          IF ( .NOT. ASSOCIATED(Matrix2) ) THEN
 
-           n2 = Solver % Mesh % MaxElementDOFs
-           ALLOCATE(Degree(n), Indexes(n2), Deg(n2))
+           ALLOCATE(Degree(n))
 
            IF( EdgeBasis ) THEN
-             ! Still experimental, default degree is 2 since no others are possible.
-             Degree = 2
-             DO i=1,Solver % Mesh % NumberOfNodes
-               ! Set all nodal degree of freedom to 1st degree
-               j = i
-               j2 = Permutation(j)
-               IF(j2>0) THEN
-                 DO k=1,DOFs                                  
-                   Degree(DOFs*(j2-1)+k) = 1                   
-                 END DO
-               END IF
-             END DO
-             DO i=1,Solver % Mesh % NumberOfEdges
-               ! Set one dof per each edge to 1st degree
-               j = Solver % Mesh % NumberOfNodes + 2*i-1
-               j2 = Permutation(j)
-               IF(j2>0) THEN
-                 DO k=1,DOFs                                  
-                   Degree(DOFs*(j2-1)+k) = 1                   
-                 END DO
-               END IF
-             END DO
-           ELSE           
+             BLOCK
+               LOGICAL :: SecondKind 
+
+               SecondKind = ListGetLogical(Solver % Values, 'Second Kind Basis', Found)
+
+               ! Default degree is 2 
+               Degree = 2
+
+               DO i=1,Solver % Mesh % NumberOfNodes
+                 ! Set all nodes to 1st degree
+                 j2 = Permutation(i)
+                 IF(j2>0) THEN
+                   DO k=1,DOFs                                  
+                     Degree(DOFs*(j2-1)+k) = 1                   
+                   END DO
+                 END IF
+               END DO
+
+               DO i=1,Solver % Mesh % NumberOfEdges
+                 ! Set one dof per each edge to 1st degree
+                 IF (SecondKind) THEN
+                   DO j=1,2
+                     j2 = Solver % Mesh % NumberOfNodes + 3*(i-1)+j
+                     j2 = Permutation(j2)
+                     IF(j2>0) THEN
+                       DO k=1,DOFs                                  
+                         Degree(DOFs*(j2-1)+k) = 1                   
+                       END DO
+                     END IF
+                   END DO
+                 ELSE
+                   j2 = Solver % Mesh % NumberOfNodes + 2*(i-1)+1
+                   j2 = Permutation(j2)
+                   IF(j2>0) THEN
+                     DO k=1,DOFs                                  
+                       Degree(DOFs*(j2-1)+k) = 1                   
+                     END DO
+                   END IF
+                 END IF
+               END DO
+             END BLOCK
+           ELSE
+             n2 = Solver % Mesh % MaxElementDOFs
+             ALLOCATE( Indexes(n2), Deg(n2))
              DO i=1,Solver % NumberOfActiveElements
                Element => Solver % Mesh % Elements(Solver % ActiveElements(i))
-               
+
                n = mGetElementDOFs( Indexes, Element ) 
-               IF(EdgeBasis) THEN
-               ELSE
-                 CALL ElementBasisDegree(Element, Deg)
-                 DO j=1,n
-                   DO k=1,DOFs
-                     Degree(DOFs*(Permutation(Indexes(j))-1)+k) = Deg(j)
-                   END DO
+               CALL ElementBasisDegree(Element, Deg)
+               DO j=1,n
+                 DO k=1,DOFs
+                   Degree(DOFs*(Permutation(Indexes(j))-1)+k) = Deg(j)
                  END DO
-               END IF
+               END DO
              END DO
+             DEALLOCATE(Indexes,Deg)
            END IF
-           DEALLOCATE(Indexes,Deg)
              
            PatLevel => ListGetIntegerArray( Params,'MG P at Level',Found)
            IF(.NOT.Found) THEN
@@ -1109,6 +1126,7 @@ CONTAINS
            PMatrix => Matrix1
            DO l=level-1,1,-1
              Matrix2 => AllocateMatrix()
+             Matrix2 % Complex = Matrix1 % Complex
              Matrix2 % Parent => Pmatrix
              Pmatrix % Child  => Matrix2
              n2 = COUNT(Degree<=PatLevel(l))

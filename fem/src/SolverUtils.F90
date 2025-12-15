@@ -16658,58 +16658,89 @@ END FUNCTION SearchNodeL
 
     FirstLoop = .TRUE.
     Nmode = 0
-20  CALL ConstraintModesDriver( A, x, b, Solver, .TRUE., Nmode, LinModes, FirstLoop = FirstLoop )  
-    
-    
-    IF( BlockMode ) THEN
-      CALL Info(Caller,'Solving linear system with block strategy',Level=10)
-      ! Here activate constraint solve only if constraints are not treated as blocks
-      IF( RestrictionMode .AND. &
-          ListGetLogical( Params, 'Eliminate Linear Constraints', Found) ) THEN
-        BLOCK 
-          TYPE(Matrix_t), POINTER :: Acoll      
-          Acoll  => AllocateMatrix()
-          Acoll % FORMAT = MATRIX_LIST        
-          CALL Info(Caller,'Eliminating constraints before going into block matrix!')
-          CALL EliminateLinearRestriction( A, bb, A % ConstraintMatrix, Acoll, Solver, .TRUE. )
-          CALL List_ToCRSMatrix(Acoll)
 
-          Acoll % Comm = A % Comm 
-          Acoll % AddMatrix => A % AddMatrix
-          CALL ParallelInitMatrix(Solver, Acoll)
+    BLOCK
+      LOGICAL :: LFact, FreeFact, ConstraintMatrixConstant
+
+      ConstraintMatrixConstant = ListGetLogical( Solver % Values,  &
+          'Constraint Modes Constant Matrix', Found)
+
+      IF(ConstraintMatrixConstant) THEN
+        LFact = ListGetLogical( Solver % Values, 'Linear System Refactorize', Found )
+        IF(.NOT. Found ) LFact = .TRUE.
+      END IF
+
+20    CONTINUE
+ 
+      CALL ConstraintModesDriver( A, x, b, Solver, .TRUE., Nmode, LinModes, FirstLoop = FirstLoop )  
+
+      IF ( LinModes > 0 .AND. ConstraintMatrixConstant ) THEN
+        FreeFact = ListGetLogical( Solver % Values, 'Linear System Free Factorization', Found )
+        IF (.NOT. Found ) FreeFact = .TRUE.
+        CALL ListAddLogical( Solver % Values, 'Linear System Free Factorization', .FALSE. )
+      END IF
+    
+      IF( BlockMode ) THEN
+        CALL Info(Caller,'Solving linear system with block strategy',Level=10)
+        ! Here activate constraint solve only if constraints are not treated as blocks
+        IF( RestrictionMode .AND. &
+            ListGetLogical( Params, 'Eliminate Linear Constraints', Found) ) THEN
+          BLOCK 
+            TYPE(Matrix_t), POINTER :: Acoll      
+            Acoll  => AllocateMatrix()
+            Acoll % FORMAT = MATRIX_LIST        
+            CALL Info(Caller,'Eliminating constraints before going into block matrix!')
+            CALL EliminateLinearRestriction( A, bb, A % ConstraintMatrix, Acoll, Solver, .TRUE. )
+            CALL List_ToCRSMatrix(Acoll)
+
+            Acoll % Comm = A % Comm 
+            Acoll % AddMatrix => A % AddMatrix
+            CALL ParallelInitMatrix(Solver, Acoll)
           
-          CALL BlockSolveExt( Acoll, x, Acoll % rhs, Solver )
+            CALL BlockSolveExt( Acoll, x, Acoll % rhs, Solver )
 
-          CALL Info(Caller,'Freeing collection matrix after solution',Level=10)
-          NULLIFY( Acoll % AddMatrix )         
+            CALL Info(Caller,'Freeing collection matrix after solution',Level=10)
+            NULLIFY( Acoll % AddMatrix )         
 
-          CALL FreeMatrix(Acoll)
-          ParEnv => A % ParMatrix % ParEnv
+            CALL FreeMatrix(Acoll)
+            ParEnv => A % ParMatrix % ParEnv
 
-          Acoll => NULL()
-        END BLOCK
-      ELSE
-        CALL BlockSolveExt( A, x, bb, Solver )
+            Acoll => NULL()
+          END BLOCK
+        ELSE
+          CALL BlockSolveExt( A, x, bb, Solver )
+        END IF
+      ELSE IF ( RestrictionMode ) THEN
+        CALL Info(Caller,'Solving linear system with linear restrictions!',Level=10)
+        IF( ListGetLogical( Params,'Save Constraint Matrix',Found ) ) THEN
+          GloNum = ListGetLogical( Params,'Save Constraint Matrix Global Numbering',Found )
+          CALL SaveProjector(A % ConstraintMatrix,.TRUE.,'cm',Parallel=GloNum)
+        END IF
+        CALL SolveWithLinearRestriction( A,bb,x,Norm,DOFs,Solver )
+      ELSE ! standard mode
+        CALL Info(Caller,'Solving linear system in standard way',Level=12)
+        CALL SolveLinearSystem( A,bb,x,Norm,DOFs,Solver )
       END IF
-    ELSE IF ( RestrictionMode ) THEN
-      CALL Info(Caller,'Solving linear system with linear restrictions!',Level=10)
-      IF( ListGetLogical( Params,'Save Constraint Matrix',Found ) ) THEN
-        GloNum = ListGetLogical( Params,'Save Constraint Matrix Global Numbering',Found )
-        CALL SaveProjector(A % ConstraintMatrix,.TRUE.,'cm',Parallel=GloNum)
-      END IF
-      CALL SolveWithLinearRestriction( A,bb,x,Norm,DOFs,Solver )
-    ELSE ! standard mode
-      CALL Info(Caller,'Solving linear system in standard way',Level=12)
-      CALL SolveLinearSystem( A,bb,x,Norm,DOFs,Solver )
-    END IF
-    CALL Info(Caller,'System solved',Level=12)
-
+      CALL Info(Caller,'System solved',Level=12)
     
-    IF( LinModes > 0 .OR. Nmode > 0 ) THEN
-      CALL ConstraintModesDriver( A, x, b, Solver, .FALSE., FirstLoop = FirstLoop ) 
-      FirstLoop = .FALSE.
-      IF( Nmode < LinModes ) GOTO 20
-    END IF
+      IF( LinModes > 0 .OR. Nmode > 0 ) THEN
+        CALL ConstraintModesDriver( A, x, b, Solver, .FALSE., FirstLoop = FirstLoop ) 
+
+        IF (ConstraintMatrixConstant) THEN
+          CALL ListAddLogical( Solver % Values, 'Linear System Constant Matrix', .TRUE.)
+          CALL ListAddLogical( Solver % Values, 'Linear System Refactorize', .FALSE. )
+        END IF
+
+        FirstLoop = .FALSE.
+        IF( Nmode < LinModes ) GOTO 20
+
+        IF ( ConstraintMatrixConstant ) THEN
+          CALL ListAddLogical( Solver % Values, 'Linear System Constant Matrix', .FALSE.)
+          CALL ListAddLogical( Solver % Values, 'Linear System Refactorize', LFact )
+          CALL ListAddLogical( Solver % Values, 'Linear System Free Factorization', FreeFact )
+        END IF
+      END IF
+    END BLOCK
     
     ! Even in the residual mode the system is reverted back to complete vectors 
     ! and we may forget about the residual.

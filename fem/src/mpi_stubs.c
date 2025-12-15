@@ -98,6 +98,7 @@ void STDCALLBULL FC_FUNC_(mpi_comm_group,MPI_COMM_GROUP) () {}
 void STDCALLBULL FC_FUNC_(mpi_group_incl,MPI_GROUP_INCL) () {}
 
 void STDCALLBULL FC_FUNC(dmumps,DMUMPS) () {}
+void STDCALLBULL FC_FUNC(zmumps,ZMUMPS) () {}
 
 void STDCALLBULL FC_FUNC_(mpi_statuses_ignore,MPI_STATUSES_IGNORE) () {}
 

@@ -101,7 +101,8 @@ CONTAINS
       
       IF( Found ) THEN        
         IF ( Parallel ) THEN
-          IF ( str /= 'mumps' .AND. str /= 'cpardiso' .AND. str /= 'permon' ) THEN
+          IF ( str /= 'smumps' .AND. str /= 'cmumps' .AND. str /= 'dmumps' .AND. str/= 'zmumps' &
+                .AND. str /= 'mumps' .AND. str /= 'cpardiso' .AND. str /= 'permon' ) THEN
             CALL Warn( 'CheckLinearSolverOptions', 'Only MUMPS and CPardiso direct solver' // &
                 ' interface implemented in parallel, trying MUMPS!')
             str = 'mumps' 
@@ -123,7 +124,7 @@ CONTAINS
 #ifndef HAVE_UMFPACK
           CALL Fatal( 'CheckLinearSolverOptions', 'UMFPACK (and MUMPS) solver has not been installed.' )
 #endif
-        CASE( 'mumps', 'mumpslocal' )
+        CASE( 'mumps', 'mumpslocal', 'dmumps', 'zmumps', 'smumps', 'cmumps' )
 #ifndef HAVE_MUMPS
           CALL Fatal( 'CheckLinearSolverOptions', 'MUMPS solver has not been installed.' )
 #endif
