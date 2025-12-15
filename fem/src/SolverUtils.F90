@@ -17110,11 +17110,14 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
     ! Normalize by the source    
     BLOCK
       
-      LOGICAL :: FixIt
-      LOGICAL :: NoNormalize
+      LOGICAL :: FixIt, NoNormalize
+      INTEGER :: NormTest
+      
       FixIt =  ListGetLogical( Solver % Values,'Enforce Unity rowsum',Found )
       NoNormalize = ListGetLogical( Solver % values, 'Skip Normalize fluxes', Found )
 
+      NormTest = ListGetInteger( Solver % Values,'Norm Test',Found )
+      
 
       IF( InfoActive(20) ) THEN        
         CALL Info( Caller,'Showing matrix before normalization!')
@@ -17133,7 +17136,13 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
       IF (.NOT. NoNormalize) THEN
         DO i=1,NoModes
           DO j=1,NoModes         
-            nrm = SQRT(Lumped % Crhs(j) * Lumped % Crhs(i))                               
+            IF(NormTest == 1) THEN                            
+              nrm = Lumped % Crhs(j)
+            ELSE IF(NormTest == 2 ) THEN
+              nrm = Lumped % Crhs(i)
+            ELSE
+              nrm = SQRT(Lumped % Crhs(j) * Lumped % Crhs(i))                               
+            END IF
             FluxesMatrix(i,j) = FluxesMatrix(i,j) / nrm
             FluxesMatrixIm(i,j) = FluxesMatrixIm(i,j) / nrm
           END DO
