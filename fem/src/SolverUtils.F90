@@ -17275,13 +17275,13 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
     CALL Info(Caller,'Adding Constraint Modes Fluxes with "res:" to list',Level=5)
     DO i=1,NoModes
       DO j=1,NoModes
-        CALL ListAddConstReal( CurrentModel % Simulation,'res: CMF '//I2S(10*i+j),FluxesMatrix(i,j))
+        CALL ListAddConstReal( CurrentModel % Simulation,'res: CMF '//I2S(i)//' '//I2S(j),FluxesMatrix(i,j))
       END DO
     END DO
     IF( IsComplex ) THEN
       DO i=1,NoModes
         DO j=1,NoModes
-          CALL ListAddConstReal( CurrentModel % Simulation,'res: CMF Im '//I2S(10*i+j),FluxesMatrixIm(i,j))
+          CALL ListAddConstReal( CurrentModel % Simulation,'res: CMF Im '//I2S(i)//' '//I2S(j),FluxesMatrixIm(i,j))
         END DO
       END DO
     END IF
