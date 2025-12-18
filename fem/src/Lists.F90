@@ -116,7 +116,7 @@ CONTAINS
      CHARACTER(*), OPTIONAL :: resul
 
      INTEGER :: i,j,l
-     CHARACTER(LEN=1024) :: pcmd,res
+     CHARACTER(LEN=MAX_STRING_LEN) :: pcmd,res
  
      IF(nparams==0) THEN
        pcmd = "tx=0"
@@ -153,7 +153,7 @@ CONTAINS
      REAL(KIND=dp), OPTIONAL :: params(:)
 
      INTEGER :: i,j,l
-     CHARACTER(LEN=MAX_NAME_LEN) :: res
+     CHARACTER(LEN=MAX_STRING_LEN) :: res
    
      IF (PRESENT(nparams).AND.PRESENT(params))THEN
        CALL SetGetMatcParams(nparams,params,resul)
@@ -191,7 +191,7 @@ CONTAINS
     CHARACTER(*), OPTIONAL :: resul
     REAL(KIND=dp), OPTIONAL :: params(:)
 
-    CHARACTER(LEN=MAX_NAME_LEN) :: pcmd, res
+    CHARACTER(LEN=MAX_STRING_LEN) :: pcmd, res
     INTEGER :: i,l
 
     IF (PRESENT(nparams).AND.PRESENT(params))THEN
