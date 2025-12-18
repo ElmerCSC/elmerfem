@@ -15464,6 +15464,7 @@ END FUNCTION SearchNodeL
         CALL Fatal(Caller,'Unknown "Linear System Solver": '//TRIM(Method))
       END SELECT
     ELSE
+      IF(ListGetLogical(Params, 'Linear System Use Permon', Found)) Method = 'permon'
       CALL Info(Caller,'Parallel linear System Solver: '//TRIM(Method),Level=8)
 
       SELECT CASE(Method)
@@ -15483,6 +15484,8 @@ END FUNCTION SearchNodeL
         CALL ROCSolver( A, x, b, Solver )
       CASE('direct')
         CALL DirectSolver( A, x, b, Solver )
+      CASE('permon')
+        CALL SolvePermon(A, x, b, Solver)
       CASE DEFAULT        
         CALL Fatal(Caller,'Unknown "Linear System Solver": '//TRIM(Method))
       END SELECT

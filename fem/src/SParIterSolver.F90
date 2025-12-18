@@ -2311,7 +2311,16 @@ SUBROUTINE SolveHypre(Matrix, XVec, RHSVec, Solver, ParallelInfo, SplittedMatrix
   ! Hypre wants to have a continuous ascending numbering across
   ! partitions, try creating such a beast:
   ! ------------------------------------------------------------
-  Parallel = PRESENT(ParallelInfo) 
+  Parallel = PRESENT(ParallelInfo)
+
+  ! Log the Parallel flag so users can verify at runtime whether
+  ! the optional ParallelInfo argument was passed.
+  IF (Parallel) THEN
+    CALL Info(Caller,'Parallel = TRUE (ParallelInfo present)',Level=5)
+  ELSE
+    CALL Info(Caller,'Parallel = FALSE (ParallelInfo absent)',Level=5)
+  END IF
+
   IF( Parallel ) THEN
     n = SIZE(ParallelInfo % GlobalDOFs)
     ALLOCATE( Owner(n), Aperm(n) )
@@ -2796,14 +2805,26 @@ SUBROUTINE SolvePermon(Matrix, XVec, RHSVec, Solver, ParallelInfo, SplittedMatri
   ! Hypre wants to have a continuous ascending numbering across
   ! partitions, try creating such a beast:
   ! ------------------------------------------------------------
-  Parallel = PRESENT(ParallelInfo) 
+  ! TODO this if statement doesnt work, evaluates as serial
+  Parallel = PRESENT(ParallelInfo)
+
+  ! Log the Parallel flag so users can verify at runtime whether
+  ! the optional ParallelInfo argument was passed.
+  IF (Parallel) THEN
+    CALL Info(Caller,'Parallel = TRUE (ParallelInfo present)',Level=5)
+  ELSE
+    CALL Info(Caller,'Parallel = FALSE (ParallelInfo absent)',Level=5)
+  END IF
+
   IF( Parallel ) THEN
+    CALL Info(Caller,'USING PARALLEL PERMON',Level=1)
     n = SIZE(ParallelInfo % GlobalDOFs)
     ALLOCATE( Owner(n), Aperm(n) )
     CALL ContinuousNumbering(ParallelInfo,Matrix % Perm,APerm,Owner)
     ! Permon/Petsc indexes from 0
     Aperm = Aperm-1
   ELSE
+    CALL Info(Caller,'USING SERIAL PERMON',Level=1)
     n = Matrix % NumberOfRows
     ALLOCATE( Owner(n), Aperm(n) )
     DO i=1,n
