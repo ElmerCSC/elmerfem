@@ -1233,10 +1233,6 @@ CONTAINS
 
            ! Initialize variables for each copy of Lua interpreter separately
 
-           !$OMP PARALLEL DEFAULT(NONE) &
-           !$OMP SHARED(copystr, i, matcstr, ninlen, inlen, closed_region, first_bang, j) &
-           !$OMP PRIVATE(tcmdstr, tninlen, lstat, result_len, lua_result) 
-
            tninlen = ninlen
            tcmdstr = copystr(i+1:inlen)
 
@@ -1246,26 +1242,31 @@ CONTAINS
              closed_region = .FALSE.
            END IF
 
+           !$OMP PARALLEL DEFAULT(NONE) &
+           !$OMP FIRSTPRIVATE(tcmdstr, tninlen, lstat) &
+           !$OMP SHARED(lua_result, result_len, closed_region, i, j, inlen, first_bang)
            IF(closed_region) THEN
              lstat = lua_dostring( LuaState, &
                  'return tostring('// tcmdstr(1:tninlen-1) // ')'//c_null_char, 1)
            ELSE
              IF (i == 1 .and. first_bang .and. j == inlen) THEN  ! ' # <luacode>' case, do not do 'return tostring(..)'.
                ! Instead, just execute the line in the lua interpreter
-               lstat = lua_dostring( LuaState, tcmdstr(1:tninlen) // c_null_char, 1)
+
+             lstat = lua_dostring( LuaState, tcmdstr(1:tninlen) // c_null_char, 1)
+
              ELSE ! 'abc = # <luacode>' case, oneliners only
+
                lstat = lua_dostring( LuaState, &
                    'return tostring('// tcmdstr(1:tninlen) // ')'//c_null_char, 1)
              END IF
            END IF
+           !$OMP CRITICAL
            lua_result => lua_popstring(LuaState, result_len)
+           !$OMP END CRITICAL
+           !$OMP END PARALLEL
 
-           !$OMP SINGLE 
            matcstr(1:result_len) = lua_result(1:result_len)
            ninlen = result_len
-           !$OMP END SINGLE
-
-           !$OMP END PARALLEL
 
            DO k=1,ninlen
              readstr(m:m) = matcstr(k:k)
