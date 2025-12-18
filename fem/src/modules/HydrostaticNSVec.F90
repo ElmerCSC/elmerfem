@@ -233,7 +233,7 @@ CONTAINS
 
     ! Allocate storage if needed
     IF (.NOT. ALLOCATED(ss)) THEN
-      ALLOCATE(ss(ngp),s(ngp),ViscVec(ngp),ArrheniusFactorVec(ngp),STAT=allocstat)
+      ALLOCATE(ss(ngp),s(ngp),ViscVec(ngp),ArrheniusFactorVec(ngp) )  ! ,STAT=allocstat)
       IF (allocstat /= 0) THEN
         CALL Fatal(Caller,'Local storage allocation failed')
       END IF
@@ -504,7 +504,7 @@ CONTAINS
 !DIR$ ATTRIBUTES ALIGN:64 :: STIFF, FORCE, weight_1, weight_2, weight_4
 !$OMP THREADPRIVATE(BasisVec, dBasisdxVec, DetJVec, rhoVec, loadAtIpVec, ElemDim )
 !$OMP THREADPRIVATE(ForcePart, weight_1, weight_2, weight_4)
-!$OMP THREADPRIVATE(tauVec, GradVec, Nodes)
+!$OMP THREADPRIVATE(tauVec, GradVec, GradHeight, Nodes)
 
     SAVE Nodes
 !------------------------------------------------------------------------------

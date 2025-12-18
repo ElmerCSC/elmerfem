@@ -250,10 +250,10 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
 
     CALL ResetTimer( Caller//'BulkAssembly' )
 
-    !$OMP PARALLEL &
-    !$OMP SHARED(Solver, Active, nColours, VecAsm) &
-    !$OMP PRIVATE(t, Element, n, nd, nb,col, InitHandles) &
-    !$OMP REDUCTION(+:totelem) DEFAULT(NONE)
+    !!OMP PARALLEL &
+    !!OMP SHARED(Solver, Active, nColours, VecAsm) &
+    !!OMP PRIVATE(t, Element, n, nd, nb,col, InitHandles) &
+    !!OMP REDUCTION(+:totelem) DEFAULT(NONE)
    
     DO col=1,nColours
       
@@ -263,7 +263,7 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
       !$OMP END SINGLE
 
       InitHandles = .TRUE.
-      !$OMP DO
+      !!OMP DO
       DO t=1,Active
         Element => GetActiveElement(t)
         totelem = totelem + 1
@@ -276,9 +276,9 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
           CALL LocalMatrix(  Element, n, nd+nb, nb, InitHandles )
         END IF
       END DO
-      !$OMP END DO
+      !!OMP END DO
     END DO
-    !$OMP END PARALLEL 
+    !!OMP END PARALLEL 
 
     CALL CheckTimer(Caller//'BulkAssembly',Delete=.TRUE.)
     totelem = 0
@@ -290,18 +290,18 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
     CALL Info(Caller,'Performing boundary element assembly',Level=12)
     CALL ResetTimer(Caller//'BCAssembly')
 
-    !$OMP PARALLEL &
-    !$OMP SHARED(Active, Solver, nColours, VecAsm) &
-    !$OMP PRIVATE(t, Element, n, nd, nb, col, InitHandles) & 
-    !$OMP REDUCTION(+:totelem) DEFAULT(NONE)
+    !!OMP PARALLEL &
+    !!OMP SHARED(Active, Solver, nColours, VecAsm) &
+    !!OMP PRIVATE(t, Element, n, nd, nb, col, InitHandles) & 
+    !!OMP REDUCTION(+:totelem) DEFAULT(NONE)
     DO col=1,nColours
-      !$OMP SINGLE
+      !!OMP SINGLE
       CALL Info(Caller,'Assembly of boundary colour: '//I2S(col),Level=10)
       Active = GetNOFBoundaryActive(Solver)
-      !$OMP END SINGLE
+      !!OMP END SINGLE
 
       InitHandles = .TRUE. 
-      !$OMP DO
+      !!OMP DO
       DO t=1,Active
         Element => GetBoundaryElement(t)
         !WRITE (*,*) Element % ElementIndex
@@ -313,9 +313,9 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
           CALL LocalMatrixBC(  Element, n, nd+nb, nb, VecAsm, InitHandles )
         END IF
       END DO
-      !$OMP END DO
+      !!OMP END DO
     END DO
-    !$OMP END PARALLEL
+    !!OMP END PARALLEL
 
     CALL CheckTimer(Caller//'BCAssembly',Delete=.TRUE.)
 

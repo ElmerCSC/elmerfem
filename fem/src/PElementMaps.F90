@@ -1248,23 +1248,25 @@ CONTAINS
 !>     Subroutine for getting reference p element nodes (because these are NOT
 !>     yet defined in element description files)
 !------------------------------------------------------------------------------
-  SUBROUTINE GetRefPElementNodes(Element, U, V, W)
-!------------------------------------------------------------------------------
-    IMPLICIT NONE
-    TYPE(ElementType_t) :: Element
-    REAL(KIND=dp) :: U(:), V(:), W(:)
-!--------------------------------------------------------------------------------
-    INTEGER :: n
-!--------------------------------------------------------------------------------    
-    ! Reserve space for element nodes
-    n = Element % NumberOfNodes
+SUBROUTINE GetRefPElementNodes(Element, U, V, W)
+        !------------------------------------------------------------------------------
+        IMPLICIT NONE
+        TYPE(ElementType_t) :: Element
+        REAL(KIND=dp) :: U(:), V(:), W(:)
+        !--------------------------------------------------------------------------------
+        INTEGER :: n
+        !--------------------------------------------------------------------------------    
+        ! Reserve space for element nodes
+        n = Element % NumberOfNodes
 
-    IF(.NOT.ALLOCATED(element % N_NodeU).AND.ALLOCATED(Element % NodeU) ) THEN
-      ALLOCATE(Element % N_NodeU(n), Element % N_NodeV(n), Element % N_NodeW(n))
-      element % N_NodeU = element % NodeU
-      element % N_NodeV = element % NodeV
-      element % N_NodeW = element % NOdeW
-    END IF
+!$OMP single
+        IF(.NOT.ALLOCATED(element % N_NodeU).AND.ALLOCATED(Element % NodeU) ) THEN
+                ALLOCATE(Element % N_NodeU(n), Element % N_NodeV(n), Element % N_NodeW(n))
+                element % N_NodeU = element % NodeU
+                element % N_NodeV = element % NodeV
+                element % N_NodeW = element % NOdeW
+        END IF
+!$OMP END single
 
     ! Select by element type given
     SELECT CASE(Element % ElementCode / 100)
