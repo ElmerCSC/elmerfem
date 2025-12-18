@@ -1238,7 +1238,6 @@ END FUNCTION MaskedNorm
       END SELECT
       
       IF( Internal ) THEN
-
         IF( ListGetLogical( Params,'Linear System Skip Mask',Found ) ) THEN
           CALL Info('IterSolver','Using skip mask for linear system solver!')
           dotProc = AddrFunc(MaskedDotProd)
@@ -1252,12 +1251,13 @@ END FUNCTION MaskedNorm
             dotProc = AddrFunc( PseudoZDotProd2 )             
           END IF
         ELSE        
-          IF ( dotProc  == 0 ) dotProc = AddrFunc(Otmp_ddot)
 !         IF ( dotProc  == 0 ) dotProc = AddrFunc(ddot)
         END IF
         IF ( normProc == 0 ) normproc = AddrFunc(dnrm2)
         IF( HUTI_DBUGLVL == 0) HUTI_DBUGLVL = HUGE( HUTI_DBUGLVL )        
       END IF
+
+      IF ( dotProc  == 0 ) dotProc = AddrFunc(Otmp_ddot)
       
     ELSE
       HUTI_NDIM = HUTI_NDIM / 2
@@ -1291,11 +1291,12 @@ END FUNCTION MaskedNorm
       END SELECT
       
       IF( Internal ) THEN
-        IF ( dotProc  == 0 ) dotProc = AddrFunc(Otmp_zdotc)
 !       IF ( dotProc  == 0 ) dotProc = AddrFunc(zdotc)
         IF ( normProc == 0 ) normproc = AddrFunc(dznrm2)
         IF( HUTI_DBUGLVL == 0) HUTI_DBUGLVL = HUGE( HUTI_DBUGLVL )
       END IF
+
+      IF ( dotProc  == 0 ) dotProc = AddrFunc(Otmp_zdotc)
       
     END IF
     
