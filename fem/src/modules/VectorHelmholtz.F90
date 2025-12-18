@@ -885,12 +885,11 @@ CONTAINS
     TYPE(ValueHandle_t), SAVE :: Thickness_h, RelNu_h, CondCoeff_h
     TYPE(ValueHandle_t), SAVE :: GoodConductor_h, ChargeConservation_h, EigenSource_h, EigenInd_h, EigenWave_h
 
-    TYPE(ValueHandle_t), SAVE :: PortTypeIndex_h, PortZ_h, PortLength_h, PortScale_h, PortDirection_h, PortCenter_h, &
-        PortField_h
+    TYPE(ValueHandle_t), SAVE :: PortTypeIndex_h, PortZ_h, PortLength_h, PortScale_h, PortDirection_h, PortCenter_h
     INTEGER :: PortTypeIndex, PortDirection
     COMPLEX(KIND=dp) :: PortZ
-    REAL(KIND=dp) :: PortLength, PortScale, PortCenter(3), PortField
-    LOGICAL :: GotPort, GotPortField
+    REAL(KIND=dp) :: PortLength, PortScale, PortCenter(3)
+    LOGICAL :: GotPort
 
     
     SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, FORCE, STIFF, MASS, Re_Eigenf, Im_Eigenf
@@ -936,7 +935,6 @@ CONTAINS
       ! Lumped ports
       CALL ListInitElementKeyword( PortTypeIndex_h,'Boundary Condition','Port Type Index')
       CALL ListInitElementKeyword( PortZ_h,'Boundary Condition','Port Impedance',InitIm=.TRUE.)
-      CALL ListInitElementKeyword( PortField_h,'Boundary Condition','Port Incident Field')
       CALL ListInitElementKeyword( PortLength_h,'Boundary Condition','Port Length')
       CALL ListInitElementKeyword( PortScale_h,'Boundary Condition','Port Scale')
       CALL ListInitElementKeyword( PortDirection_h,'Boundary Condition','Port Direction',DefIValue=3)
@@ -994,7 +992,6 @@ CONTAINS
       ELSE
         PortCenter = ListGetElementReal( PortCenter_h, Element = Element )
       END IF
-      PortField = ListGetElementReal( PortField_h, Element = Element, Found = GotPortField )
       !PRINT *,'PortScale:',PortScale, PortZ, PortLength, PortTypeIndex, PortDirection
     END IF
       
@@ -1100,11 +1097,7 @@ CONTAINS
       ELSE IF(GotPort) THEN
         IF( PortTypeIndex == 1 ) THEN
           B = im * ( omega / mu0inv ) / (PortScale * PortZ ) 
-          IF( GotPortField ) THEN
-            L(ABS(PortDirection)) = SIGN(1,PortDirection) * PortField 
-          ELSE
-            L(ABS(PortDirection)) = SIGN(1,PortDirection) / PortLength
-          END IF
+          L(ABS(PortDirection)) = SIGN(1,PortDirection) / ( PortLength * SQRT(PortScale) )
         END IF
         L = 2 * B * L
       ELSE

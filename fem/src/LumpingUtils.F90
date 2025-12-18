@@ -1946,12 +1946,11 @@ MODULE LumpingUtils
       TYPE(ValueHandle_t), SAVE :: CondCoeff_h, CurrDens_h, EpsCoeff_h
       INTEGER :: nactive
       
-      TYPE(ValueHandle_t), SAVE :: PortTypeIndex_h, PortZ_h, PortLength_h, PortScale_h, PortDirection_h, PortCenter_h, &
-          PortField_h
+      TYPE(ValueHandle_t), SAVE :: PortTypeIndex_h, PortZ_h, PortLength_h, PortScale_h, PortDirection_h, PortCenter_h
       INTEGER :: PortTypeIndex, PortDirection
       COMPLEX(KIND=dp) :: PortZ
-      REAL(KIND=dp) :: PortLength, PortScale, PortCenter(3), PortField
-      LOGICAL :: GotPort, GotPortField
+      REAL(KIND=dp) :: PortLength, PortScale, PortCenter(3)
+      LOGICAL :: GotPort
       
       SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, e_local, mu0inv, eps0
       
@@ -1980,7 +1979,6 @@ MODULE LumpingUtils
         ! Lumped ports
         CALL ListInitElementKeyword( PortTypeIndex_h,'Boundary Condition','Port Type Index')
         CALL ListInitElementKeyword( PortZ_h,'Boundary Condition','Port Impedance',InitIm=.TRUE.)
-        CALL ListInitElementKeyword( PortField_h,'Boundary Condition','Port Incident Field')
         CALL ListInitElementKeyword( PortLength_h,'Boundary Condition','Port Length')
         CALL ListInitElementKeyword( PortScale_h,'Boundary Condition','Port Scale')
         CALL ListInitElementKeyword( PortDirection_h,'Boundary Condition','Port Direction',DefIValue=3)
@@ -2066,7 +2064,6 @@ MODULE LumpingUtils
         ELSE
           PortCenter = ListGetElementReal( PortCenter_h, Element = Element )
         END IF
-        PortField = ListGetElementReal( PortField_h, Element = Element, Found = GotPortField )
       END IF     
       
 #if doparent 
@@ -2100,11 +2097,7 @@ MODULE LumpingUtils
         ELSE IF(GotPort) THEN
           IF( PortTypeIndex == 1 ) THEN
             B = CMPLX(0_dp, 1_dp, KIND=dp) * ( omega / mu0inv ) / (PortScale * PortZ ) 
-            IF( GotPortField ) THEN
-              L(ABS(PortDirection)) = SIGN(1,PortDirection) * PortField 
-            ELSE
-              L(ABS(PortDirection)) = SIGN(1,PortDirection) / PortLength
-            END IF
+            L(ABS(PortDirection)) = SIGN(1,PortDirection) / ( PortLength * SQRT( PortScale ) )
           END IF
         ELSE        
           B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
