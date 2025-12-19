@@ -35,9 +35,9 @@ SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
   Smoothers.F90 ClusteringMethods.F90 ParallelUtils.F90
   ParallelEigenSolve.F90 solve_cmplx.F90 solve_real.F90 MGPrec.F90
   DefUtils.F90 MeshPartition.F90 MeshRemeshing.F90 CutFEMUtils.F90
-  RadiationFactors.F90 f_stubs.c
+  RadiationFactors.F90 
   ExchangeCorrelations.F90 SolveHypre.c amgx.c rocalution.cpp SolverActivate_x.F90
-  SolveTrilinos.cxx SolveSuperLU.c
+  SolveSuperLU.c
   umf4_f77wrapper.c VankaCreate.F90 ParticleUtils.F90 Feti.F90
   cholmod.c InterpolateMeshToMesh.F90 InterpVarToVar.F90
   LinearForms.F90 H1Basis.F90 CircuitUtils.F90 BackwardError.F90
@@ -84,17 +84,6 @@ INCLUDE_DIRECTORIES("${CMAKE_BINARY_DIR}/fem/src")
 INCLUDE_DIRECTORIES("${CMAKE_SOURCE_DIR}/fhutiter/src")
 INCLUDE_DIRECTORIES("${CMAKE_CURRENT_BINARY_DIR}/binio")
 INCLUDE_DIRECTORIES("${PROJECT_BINARY_DIR}/fhutiter/src")
-
-IF(WITH_Trilinos)
-  IF(NOT Epetra_INCLUDE_DIRS)
-    GET_TARGET_PROPERTY(Epetra_INCLUDE_DIRS Epetra::epetra INTERFACE_INCLUDE_DIRECTORIES)
-  ENDIF()
-  IF(NOT ML_INCLUDE_DIRS)
-    GET_TARGET_PROPERTY(ML_INCLUDE_DIRS ML::ml INTERFACE_INCLUDE_DIRECTORIES)
-  ENDIF()
-  INCLUDE_DIRECTORIES("${Epetra_INCLUDE_DIRS}")
-  INCLUDE_DIRECTORIES("${ML_INCLUDE_DIRS}")
-ENDIF()
 
 # Extract additional compile flags
 GET_DIRECTORY_PROPERTY( ELMER_CDEFS COMPILE_DEFINITIONS )
@@ -287,10 +276,6 @@ ENDIF()
 IF(WITH_AMGX)
   TARGET_LINK_LIBRARIES(elmersolver Elmer::MPI_C "${AMGX_LIBRARY};${CUDA_LIBRARIES}")
   TARGET_INCLUDE_DIRECTORIES(elmersolver PRIVATE "${CUDA_INCLUDE_DIRS}")
-ENDIF()
-
-IF(WITH_Trilinos)
-  TARGET_LINK_LIBRARIES(elmersolver Elmer::MPI_CXX "${Trilinos_LIBRARIES};${ML_LIBRARIES};${Epetra_LIBRARIES};${Teuchos_LIBRARIES}")
 ENDIF()
 
 IF (WITH_CHOLMOD)

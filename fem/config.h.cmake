@@ -162,9 +162,6 @@
 /* Shared lib filename extension */
 #cmakedefine SHL_EXTENSION "@SHL_EXTENSION@"
 
-/* Trilinos */
-#cmakedefine HAVE_TRILINOS
-
 /* MMG */
 #if 1
 #cmakedefine HAVE_MMG 

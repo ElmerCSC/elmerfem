@@ -87,17 +87,6 @@ CONTAINS
       END SUBROUTINE SolveHYPRE4
     END INTERFACE
 #endif
-#ifdef HAVE_TRILINOS
-     INTERFACE
-      !! destroy the data structures (should be called when the matrix has
-      !! to be updated and SolveTrilinos1 has to be called again).
-      SUBROUTINE SolveTrilinos4(triliContainer) BIND(C,name='SolveTrilinos4')
-        USE, INTRINSIC :: iso_c_binding
-        INTEGER(KIND=C_INTPTR_T) :: triliContainer
-      END SUBROUTINE SolveTrilinos4
-
-     END INTERFACE
-#endif
 
 !------------------------------------------------------------------------------
 
@@ -326,11 +315,6 @@ CONTAINS
      END IF
 #endif
 
-#ifdef HAVE_TRILINOS
-     IF (Matrix % Trilinos /= 0) THEN
-       CALL SolveTrilinos4(Matrix % Trilinos)
-     END IF
-#endif
      DEALLOCATE( Matrix )
 !------------------------------------------------------------------------------
    END SUBROUTINE FreeMatrix

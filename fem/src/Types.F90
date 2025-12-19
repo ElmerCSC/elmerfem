@@ -275,9 +275,6 @@ MODULE Types
 #ifdef HAVE_HYPRE
     INTEGER(KIND=C_INTPTR_T) :: Hypre=0
 #endif
-#ifdef HAVE_TRILINOS
-    INTEGER(KIND=C_INTPTR_T) :: Trilinos=0
-#endif
 #ifdef HAVE_ROCALUTION
     TYPE(RocParams_t) :: RocParams
 #endif

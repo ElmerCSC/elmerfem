@@ -186,12 +186,7 @@ CONTAINS
 
       IF (ListGetLogical( Params,  &
           'Linear System Use Trilinos', Found )) THEN        
-        IF( .NOT. Parallel ) THEN
-          CALL Fatal('CheckLinearSolverOptions','Trilinos not usable in serial!')
-        END IF
-#ifndef HAVE_TRILINOS
-        CALL Fatal('CheckLinearSolverOptions','Trilinos requested but not compiled with!')
-#endif
+        CALL Fatal('CheckLinearSolverOptions','Trilinos implementation was obsolite and has been romoved!')
       END IF
 
       ! Naming replacement: 'cholesky' for 'symmetric ILU'
