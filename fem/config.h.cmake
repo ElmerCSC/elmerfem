@@ -37,6 +37,10 @@
 /* linking */
 #cmakedefine HAVE_DLOPEN_API
 
+/* Define if you have quad precision real numbers. */
+/* define HAVE_QP */
+#cmakedefine HAVE_QP
+
 /* Define if your system has LoadLibrary API (e.g. WIN32)*/
 #cmakedefine HAVE_LOADLIBRARY_API
 
