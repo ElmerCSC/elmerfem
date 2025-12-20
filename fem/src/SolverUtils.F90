@@ -15006,7 +15006,7 @@ END FUNCTION SearchNodeL
     LOGICAL :: Relax,GotIt,Stat,ScaleSystem, EigenAnalysis, HarmonicAnalysis,&
                BackRotation, ApplyRowEquilibration, ApplyLimiter, Parallel, &
                SkipZeroRhs, SkipLoads, ComplexSystem, ComputeChangeScaled, &
-               RecursiveAnalysis, CalcLoads
+               RecursiveAnalysis, CalcLoads, NotParallel
     INTEGER :: n,i,j,k,l,ii,m,DOF,istat,this,mn, AllocStat
     CHARACTER(:), ALLOCATABLE :: Method, Prec, SaveSlot
     INTEGER(KIND=AddrInt) :: Proc
@@ -15415,7 +15415,12 @@ END FUNCTION SearchNodeL
     IF(ListGetLogical(Params, 'Linear System Use Rocalution', Found)) &
       Method = 'rocalution'
 
-    IF ( .NOT. Parallel .OR. A % ParallelInfo % NothingShared ) THEN
+    NotParallel = .NOT. Parallel
+    IF ( Parallel ) THEN
+       IF ( A % ParallelInfo % NothingShared ) NotParallel = .TRUE.
+    END IF
+
+    IF ( NotParallel ) THEN
       IF(ListGetLogical(Params, 'Linear System Use Hypre', Found)) Method = 'hypre'
 
       CALL Info(Caller,'Serial linear System Solver: '//TRIM(Method),Level=8)
