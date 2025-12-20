@@ -4108,6 +4108,7 @@ CONTAINS
 
      ! Element (contravariant) metric and square root of determinant
      !--------------------------------------------------------------
+#ifdef HAVE_QP
      IF(Element % Status==0) THEN
        stat = CheckMetric(q, Element, Nodes, dLBasisdx)
        IF (stat) THEN
@@ -4116,6 +4117,7 @@ CONTAINS
          Element % Status = 2 ! bad !!
        END IF
      END IF
+#endif
 
      stat = .TRUE.
      IF ( .NOT. ElementMetric( q, Element, Nodes, &
@@ -11973,7 +11975,8 @@ BLOCK
 !------------------------------------------------------------------------------
   END FUNCTION mGetElementDOFs
 !------------------------------------------------------------------------------
-   
+
+#ifdef HAVE_QP  
 !------------------------------------------------------------------------------
 !>    Check element by comparing determinants of the metric tensor computed
 !>    in double and quad precision.
@@ -11994,8 +11997,8 @@ BLOCK
 
      INTEGER, PARAMETER :: qp = SELECTED_REAL_KIND(24)     
 
-     REAL(KIND=qp) :: dp_dx(3,3),dp_G(3,3),dp_GI(3,3),dp_s, dp_DetG
-     REAL(KIND=dp) :: qp_dx(3,3),qp_G(3,3),qp_GI(3,3),qp_s, qp_DetG, eps
+     REAL(KIND=dp) :: dp_dx(3,3),dp_G(3,3),dp_GI(3,3),dp_s, dp_DetG
+     REAL(KIND=qp) :: qp_dx(3,3),qp_G(3,3),qp_GI(3,3),qp_s, qp_DetG, eps
 !------------------------------------------------------------------------------
      success = .TRUE.
 
@@ -12071,7 +12074,8 @@ BLOCK
 !------------------------------------------------------------------------------
    END FUNCTION CheckMetric
 !------------------------------------------------------------------------------
-
+#endif
+   
 !------------------------------------------------------------------------------
 !>    Compute contravariant metric tensor (=J^TJ)^-1 of element coordinate
 !>    system, and square root of determinant of covariant metric tensor
@@ -12104,12 +12108,14 @@ BLOCK
      cdim = CoordinateSystemDimension()
      n = MIN( SIZE(x), nDOFs )
      dim  = elm % TYPE % DIMENSION
-     
+
+#if HAVE_QP     
      IF(Elm % Status == 2) THEN
        IF (ElementMetricQP(nDOFs,Elm,Nodes,Metric,DetG,dLBasisdx,LtoGMap)) RETURN
        GOTO 100
      END IF
-
+#endif
+     
      eps = (EPSILON(eps))**dim
 !------------------------------------------------------------------------------
 !    Partial derivatives of global coordinates with respect to local coordinates
@@ -12197,12 +12203,14 @@ BLOCK
 
 100  CONTINUE
 
+#if HAVE_QP
      ! Try recursively with quadratic precision.
      ! With just double precision for very flat elements the DetJ may be poorly evaluated. 
      IF( Elm % Status /= 2) THEN
        Success = ElementMetricQP(nDOFs,Elm,Nodes,Metric,DetG,dLBasisdx,LtoGMap) 
        IF( Success ) RETURN
      END IF
+#endif
      
      WRITE( Message,'(A,I0,A,I0)') 'Degenerate ',dim,'D element: ',Elm % ElementIndex
      CALL Error( 'ElementMetric', Message )
@@ -12246,7 +12254,7 @@ BLOCK
    END FUNCTION ElementMetric
 !------------------------------------------------------------------------------
 
-
+#ifdef HAVE_QP
 !------------------------------------------------------------------------------
 ! Quadratic precision version of the previous that is called when the DetJ appear
 ! to be close to zero or negative. 
@@ -12361,7 +12369,7 @@ BLOCK
 !------------------------------------------------------------------------------
    END FUNCTION ElementMetricQP
 !------------------------------------------------------------------------------
-
+#endif
    
 !------------------------------------------------------------------------------
    FUNCTION ElementMetricVec( Elm, Nodes, nc, ndof, DetJ, nbmax, dLBasisdx, LtoGMap) RESULT(AllSuccess)
