@@ -2183,11 +2183,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                END IF
                use_virtual_current: IF (UseVirtualCurrent) THEN
                  electrode_area = GetConstReal(CompParams, 'Electrode Area', Found)
-                 if (.not.Found) then
-                   call warn('CalcFields','Calculate Flux Linkage set true with virtual current but &
-                 & Electrode Area not set - using a factor of 1!')
+                 IF (.NOT.Found) THEN
+                   CALL warn('CalcFields','Calculate Flux Linkage set true with virtual current but &
+                       & Electrode Area not set - using a factor of 1!')
                    electrode_area=1
-                 end if
+                 END IF
                  curdens(1:3) = virtual_current(1:3)/electrode_area
                ELSE
                  curdens(1:3) = JatIP(1,1:3) + im*JatIP(2,1:3)
@@ -2197,13 +2197,13 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                  ComponentFluxLinkage(1,CompId)=ComponentFluxLinkage(1,CompId)+&
                    s * Basis(p) * SUM(curdens(1:3)*VP_ip(1,1:3))
                ELSE
-               BLOCK
-                 COMPLEX(KIND=dp) :: vecpot(3), fluxlink
-                 vecpot(1:3) = VP_ip(1,1:3) + im*VP_ip(2,1:3)
-                 fluxlink = s*Basis(p) * sum(vecpot*conjg(curdens))
-                 ComponentFluxLinkage(1,CompId)=ComponentFluxLinkage(1,CompId)+REAL(fluxlink)
-                 ComponentFluxLinkage(2,CompId)=ComponentFluxLinkage(2,CompId)+AIMAG(fluxlink)
-               END BLOCK
+                 BLOCK
+                   COMPLEX(KIND=dp) :: vecpot(3), fluxlink
+                   vecpot(1:3) = VP_ip(1,1:3) + im*VP_ip(2,1:3)
+                   fluxlink = s*Basis(p) * sum(vecpot*conjg(curdens))
+                   ComponentFluxLinkage(1,CompId)=ComponentFluxLinkage(1,CompId)+REAL(fluxlink)
+                   ComponentFluxLinkage(2,CompId)=ComponentFluxLinkage(2,CompId)+AIMAG(fluxlink)
+                 END BLOCK
                END IF
              END Block
            END IF 

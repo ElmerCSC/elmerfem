@@ -3529,13 +3529,13 @@ CONTAINS
 !------------------------------------------------------------------------------      
 
 
-
-
-
-  
-
+!------------------------------------------------------------------------------------------   
+!> Routine for obtaining values at a given point with as many features as required in
+!> SavaScalars, SaveLine etc. solvers. Idea is that the same info is not needed in many
+!> places.
+!------------------------------------------------------------------------------      
   SUBROUTINE EvaluateVariableAtGivenPoint(No,Values,Mesh,Var,Var2,Var3,Element,LocalCoord,&
-      LocalBasis,LocalNode,LocalDGNode,DoGrad,DoDiv,GotEigen,GotEdge,Parent)
+      LocalBasis,LocalNode,LocalDGNode,DoGrad,DoDiv,GotEigen,GotModes,GotEdge,Parent)
 
     INTEGER :: No
     REAL(KIND=dp) :: Values(:)
@@ -3548,13 +3548,13 @@ CONTAINS
     INTEGER, OpTIONAL :: LocalDGNode
     REAL(KIND=dp), OPTIONAL, TARGET :: LocalBasis(:)
     LOGICAL, OPTIONAL :: DoGrad, DoDiv
-    LOGICAL, OPTIONAL :: GotEigen, GotEdge
+    LOGICAL, OPTIONAL :: GotEigen, GotModes, GotEdge
     TYPE(Element_t), POINTER, OPTIONAL :: Parent
     
     LOGICAL :: Found, EdgeBasis, AVBasis, DgVar, IpVar, ElemVar, DoEigen, &
         PiolaVersion, PElem, NeedDerBasis, Stat, UseGivenNode, IsGrad, IsDiv, &
-        IsEigen
-    INTEGER :: i1,i2,ii,i,j,k,l,comps, n, n2, nd, np, NoEigenValues, iMode
+        IsEigen, IsModes
+    INTEGER :: i1,i2,ii,i,j,k,l,comps, n, n2, nd, np, NoEigenValues, NoConstraintModes, iMode
     INTEGER, TARGET :: DGIndexes(27), Indexes(100), DofIndexes(100), NodeIndex(1)
     INTEGER, POINTER :: pToIndexes(:)
     REAL(KIND=dp) :: u,v,w,detJ
@@ -3565,7 +3565,8 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE, SAVE :: fdg(:), fip(:)
     REAL(KIND=dp), POINTER :: pToBasis(:)
     TYPE(Variable_t), POINTER :: pVar
-    TYPE(Element_t), POINTER :: Element2
+    TYPE(Element_t), POINTER :: Element2    
+    REAL(KIND=dp), POINTER :: rValues(:)
     COMPLEX(KIND=dp), POINTER :: cValues(:)
 
     INTERFACE 
@@ -3580,6 +3581,7 @@ CONTAINS
 
     IF(PRESENT(GotEdge)) GotEdge = .FALSE.
     IF(PRESENT(GotEigen)) GotEIgen = .FALSE.
+    IF(PRESENT(GotModes)) GotModes = .FALSE.
         
     IF(.NOT. ASSOCIATED(Var)) RETURN
     IF(.NOT. ASSOCIATED(Var % Values)) RETURN
@@ -3658,10 +3660,21 @@ CONTAINS
       IsEigen = ASSOCIATED( Var % EigenValues )
       IF(IsEigen) NoEigenValues = SIZE( Var % EigenValues )
       IF( comps > 1 .AND. IsEigen ) THEN
-        CALL Warn('EvaluetVariableAtGivenPoint','Eigenmode cannot be given in components!')
+        CALL Warn('EvaluteVariableAtGivenPoint','Eigenmode cannot be given in components!')
         IsEigen = .FALSE.
       END IF
       GotEigen = IsEigen
+    END IF
+
+    IsModes = .FALSE.
+    IF( PRESENT( GotModes ) ) THEN
+      IsModes = ASSOCIATED( Var % ConstraintModes )
+      IF(IsModes) NoConstraintModes = Var % NumberOfConstraintModes
+      IF( comps > 1 .AND. IsEigen ) THEN
+        CALL Fatal('EvaluteVariableAtGivenPoint','Constraint modes cannot be given in components!')
+        IsModes = .FALSE.
+      END IF
+      GotModes = IsModes
     END IF
     
     ! Given node is the quickest way to estimate the values at nodes.
@@ -3789,11 +3802,23 @@ CONTAINS
       DofIndexes(1:nd) = Var % Perm(PToIndexes(1:nd))
       IF( IsEigen ) THEN
         DO iMode = 1, NoEigenValues
+          cValues => Var % EigenVectors(iMode,:)
           DO j=1,3          
             No = No + 1
             IF( ALL(DofIndexes(np+1:nd) > 0 ) ) THEN            
-              cValues => Var % EigenVectors(iMode,:)
               Values(No) = SUM( WBasis(1:nd-np,j) * cValues(DofIndexes(np+1:nd)))
+            ELSE
+              Values(No) = 0.0_dp
+            END IF
+          END DO
+        END DO
+      ELSE IF( IsModes ) THEN
+        DO iMode = 1, NoConstraintModes
+          rValues => Var % ConstraintModes(iMode,:)
+          DO j=1,3          
+            No = No + 1
+            IF( ALL(DofIndexes(np+1:nd) > 0 ) ) THEN            
+              Values(No) = SUM( WBasis(1:nd-np,j) * rValues(DofIndexes(np+1:nd)))
             ELSE
               Values(No) = 0.0_dp
             END IF
@@ -3878,8 +3903,6 @@ CONTAINS
       ELSE
         DofIndexes(1:nd) = PtoIndexes(1:nd)
       END IF
-
-
       
         IF( IsGrad ) THEN          
           IF( Var % Dofs /= 1 ) THEN
@@ -3904,8 +3927,21 @@ CONTAINS
             ELSE
               Values(No+1:No+Var % Dofs)=0._dp      
             END IF
+            No = No + Var % Dofs
           END DO
-          No = No + Var % Dofs
+        ELSE IF( IsModes ) THEN          
+          DO iMode = 1, NoConstraintModes
+            rValues => Var % ConstraintModes(iMode,:)            
+            IF( ALL(Dofindexes(1:nd) > 0 ) ) THEN
+              DO ii=1,Var % DOfs              
+                Values(No+ii) = Values(No+ii) + SUM( PtoBasis(1:nd) * &
+                    rValues(Var%Dofs*(DofIndexes(1:nd)-1)+ii))
+              END DO
+            ELSE
+              Values(No+1:No+Var % Dofs)=0._dp      
+            END IF
+            No = No + Var % Dofs
+          END DO
         ELSE
           IF( ALL(Dofindexes(1:nd) > 0 ) ) THEN
             IF( Var % Dofs > 1 ) THEN
