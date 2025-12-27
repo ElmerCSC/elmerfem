@@ -11976,7 +11976,7 @@ BLOCK
   END FUNCTION mGetElementDOFs
 !------------------------------------------------------------------------------
 
-#ifdef HAVE_QP  
+#ifdef HAVE_QP
 !------------------------------------------------------------------------------
 !>    Check element by comparing determinants of the metric tensor computed
 !>    in double and quad precision.
@@ -12109,13 +12109,13 @@ BLOCK
      n = MIN( SIZE(x), nDOFs )
      dim  = elm % TYPE % DIMENSION
 
-#if HAVE_QP     
+#ifdef HAVE_QP
      IF(Elm % Status == 2) THEN
        IF (ElementMetricQP(nDOFs,Elm,Nodes,Metric,DetG,dLBasisdx,LtoGMap)) RETURN
        GOTO 100
      END IF
 #endif
-     
+
      eps = (EPSILON(eps))**dim
 !------------------------------------------------------------------------------
 !    Partial derivatives of global coordinates with respect to local coordinates
@@ -12203,7 +12203,7 @@ BLOCK
 
 100  CONTINUE
 
-#if HAVE_QP
+#ifdef HAVE_QP
      ! Try recursively with quadratic precision.
      ! With just double precision for very flat elements the DetJ may be poorly evaluated. 
      IF( Elm % Status /= 2) THEN
