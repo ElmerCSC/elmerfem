@@ -194,7 +194,7 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
     PetscInt *rcols = NULL;
 
     for (i = 0; i < nrows; i++) {
-        if (!owner[i]) continue;
+        // if (!owner[i]) continue;
 
         nnz  = rows_f[i+1] - rows_f[i];
         irow = globaldofs[i];
