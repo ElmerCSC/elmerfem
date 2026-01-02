@@ -255,17 +255,11 @@ IF(WITH_MPI)
   ENDIF()
 
   IF(XIOS_LIBRARIES)
-    # XIOS depends on NetCDF (mandatory) and HDF5 (optional), since linking order matters, add all in one go
-    IF(NOT NETCDF_LIBRARIES)
-      message(FATAL_ERROR "XIOS_LIBRARIES is set but NETCDF_LIBRARIES is missing")
-    ENDIF()
+    # XIOS depends on NetCDF (mandatory) and HDF5 (optional), since linking order matters, XIOS must be added before the other two
+    LIST(APPEND ELMERSOLVER_LIBRARIES ${XIOS_LIBRARIES})
+  ENDIF()
 
-    LIST(APPEND ELMERSOLVER_LIBRARIES ${XIOS_LIBRARIES} ${NETCDF_LIBRARIES})
-    IF(PHDF5_LIBRARIES)
-      LIST(APPEND ELMERSOLVER_LIBRARIES ${PHDF5_LIBRARIES})
-    ENDIF()
-  ELSEIF(NETCDF_LIBRARIES)
-    # Without XIOS, NetCDF and HDF5 can be added separately
+  IF(NETCDF_LIBRARIES)
     LIST(APPEND ELMERSOLVER_LIBRARIES ${NETCDF_LIBRARIES})
     IF(PHDF5_LIBRARIES)
       LIST(APPEND ELMERSOLVER_LIBRARIES ${PHDF5_LIBRARIES})
