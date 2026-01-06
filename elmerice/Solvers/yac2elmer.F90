@@ -25,7 +25,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
 
   LOGICAL        :: Found
   
-  SAVE elmer_mesh_partitions, grid_dir, t_icePerm, smbPerm, runoffPerm
+  SAVE elmer_mesh_partitions, grid_dir, t_icePerm, smbPerm, runoffPerm  ! all save variables only inside "IF (FirstTime)"; probably not needed to save them
   ! check if config file exist. Terminate program if it is not found!
 
   SolverParams => GetSolverParams()
