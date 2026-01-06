@@ -706,7 +706,7 @@ CONTAINS
 
     IMPLICIT NONE
 
-    CHARACTER(LEN=1024), INTENT(IN) :: grid_dir
+    CHARACTER(LEN=*), INTENT(IN) :: grid_dir
     CHARACTER(LEN=*), INTENT(IN) :: timestepstring
     INTEGER, INTENT(IN) :: num_parts
 
