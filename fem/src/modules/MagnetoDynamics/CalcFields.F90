@@ -1142,7 +1142,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      END IF
      
      IF( ImposeBodyForcePotential ) THEN
-       ElPotSol(1,:) = GetReal(BodyForce,'Electric Potential',Found)
+       ElPotSol(1,1:n) = GetReal(BodyForce,'Electric Potential',Found)
      END IF
        
      IF ( Transient ) THEN
