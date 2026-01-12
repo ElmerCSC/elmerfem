@@ -618,10 +618,10 @@ MODULE elmer_coupling
   PUBLIC :: coupling_init, coupling_finalize
   PUBLIC :: coupling_setup
   PUBLIC :: coupler_get_code_id
-  PUBLIC :: mpi_handshake
+  PUBLIC :: elmer_coupling_mpi_handshake
 
   INTEGER, PARAMETER, PRIVATE :: MAX_CHARLEN = 132
-  INTEGER, PARAMETER, PUBLIC :: MAX_GROUPNAME_LEN = MAX_CHARLEN
+  INTEGER, PARAMETER, PUBLIC :: elmer_coupling_MAX_GROUPNAME_LEN = MAX_CHARLEN
 
   ! TODO: Allow to set component name from outside
   ! CHARACTER(LEN=MAX_CHARLEN) :: ELMER_COMP_NAME
@@ -635,15 +635,15 @@ MODULE elmer_coupling
 CONTAINS
 
   ! Wrapper for yac_fmpi_handshake
-  SUBROUTINE mpi_handshake(comm, group_names, group_comms)
+  SUBROUTINE elmer_coupling_mpi_handshake(comm, group_names, group_comms)
     INTEGER, INTENT(IN) :: comm
     CHARACTER(len=*), INTENT(IN) :: group_names(:)
     INTEGER, INTENT(OUT) :: group_comms(:)
     CALL yac_fmpi_handshake(comm, group_names, group_comms)
-  END SUBROUTINE mpi_handshake
+  END SUBROUTINE elmer_coupling_mpi_handshake
 
   SUBROUTINE coupler_get_code_id(label)
-    CHARACTER(len=MAX_GROUPNAME_LEN), INTENT(OUT) :: label
+    CHARACTER(len=elmer_coupling_MAX_GROUPNAME_LEN), INTENT(OUT) :: label
 
 #if YAC_VERSION_GREATER_EQUAL(3, 9, 0)
     ! YAC >= 3.9 provides a function to get the label from the YAC API
@@ -664,7 +664,7 @@ CONTAINS
     INTEGER, INTENT(IN) :: elmer_comm
     INTEGER, INTENT(IN) :: yac_comm
 
-    ! CHARACTER(LEN=MAX_GROUPNAME_LEN), INTENT(IN) :: comp_name
+    ! CHARACTER(LEN=elmer_coupling_MAX_GROUPNAME_LEN), INTENT(IN) :: comp_name
 
     INTEGER :: ierror
 
@@ -706,7 +706,7 @@ CONTAINS
 
     IMPLICIT NONE
 
-    CHARACTER(LEN=1024), INTENT(IN) :: grid_dir
+    CHARACTER(LEN=*), INTENT(IN) :: grid_dir
     CHARACTER(LEN=*), INTENT(IN) :: timestepstring
     INTEGER, INTENT(IN) :: num_parts
 
