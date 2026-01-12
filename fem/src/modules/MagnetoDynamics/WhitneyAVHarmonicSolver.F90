@@ -1336,20 +1336,20 @@ END BLOCK
         IF ( StrandedHomogenization ) THEN
           nu_11 = 0._dp
           nuim_11 = 0._dp
-          nu_11 = GetReal(CompParams, 'nu 11', Found)
-          nuim_11 = GetReal(CompParams, 'nu 11 im', FoundIm)
+          nu_11(1:n) = GetReal(CompParams, 'nu 11', Found)
+          nuim_11(1:n) = GetReal(CompParams, 'nu 11 im', FoundIm)
           IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 11 not found!')
 
           nu_22 = 0._dp
           nuim_22 = 0._dp
-          nu_22 = GetReal(CompParams, 'nu 22', Found)
-          nuim_22 = GetReal(CompParams, 'nu 22 im', FoundIm)
+          nu_22(1:n) = GetReal(CompParams, 'nu 22', Found)
+          nuim_22(1:n) = GetReal(CompParams, 'nu 22 im', FoundIm)
           IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 22 not found!')
 
           nu_33 = 0._dp
           nuim_33 = 0._dp
-          nu_33 = GetReal(CompParams, 'nu 33', Found)
-          nuim_33 = GetReal(CompParams, 'nu 33 im', FoundIm)
+          nu_33(1:n) = GetReal(CompParams, 'nu 33', Found)
+          nuim_33(1:n) = GetReal(CompParams, 'nu 33 im', FoundIm)
           IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 33 not found!')
 
           ! Sigma 33 is not needed in because it does not exist in stranded coil
