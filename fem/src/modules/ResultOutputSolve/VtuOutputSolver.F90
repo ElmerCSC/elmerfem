@@ -1329,7 +1329,7 @@ CONTAINS
                           Rot2(3,1:dofs) = NT % BoundaryTangent2(ll,1:dofs)
                         END IF
                           
-                        vals = MATMUL(Rot1,MATMUL(Rot2,vals0))                        
+                        vals(1:dofs) = MATMUL(Rot1,MATMUL(Rot2,vals0))                        
                       END IF
 
                     END IF
