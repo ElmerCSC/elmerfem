@@ -7470,6 +7470,11 @@ END SUBROUTINE PickActiveFace
              
            ELSE IF (Create2ndKindBasis) THEN
              IF (.NOT. ErvinStyle) THEN
+
+               ! Also this construction follows Sun, Lee, Cendes. SIAM J. Sci. Comput. 23(4):1053-1076.
+               ! The first basis function associated with an edge is the Whitney form, while 
+               ! the second basis function corresponds to a gradient field.
+               
                EDOFs = 2
 
                DO k=1,3
@@ -8073,12 +8078,10 @@ END SUBROUTINE PickActiveFace
                ! Here the lowest-order Nedelec basis of the second kind is created
                ! in a hierarchic manner such that the first basis function associated with
                ! each edge is the lowest-order Nedelec basis function of the first kind.
+               ! The second basis function corresponds to a gradient field.
                !
                EDOFs = 2
-               !-------------------------------------------------
-               ! The basis functions associated with the edges
-               !    - here the first basis function is the Whitney form
-               !-------------------------------------------------
+
                DO k=1,6
 
                  i = EdgeMap(k,1)
