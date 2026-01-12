@@ -4094,12 +4094,12 @@ CONTAINS
           !----------------------------------------------------
           IF( ConsType == 'equality') THEN
             Nrow = nd
-            RowInds(1:Nrow) = RowPerm(Indexes)
+            RowInds(1:Nrow) = RowPerm(Indexes(1:nrow))
             IF(.NOT. ALL(RowInds(1:Nrow) > 0)) CYCLE
           END IF
             
           Ncol = nd
-          ColInds(1:n) = ColPerm(Indexes)
+          ColInds(1:n) = ColPerm(Indexes(1:n))
           IF(.NOT. ALL(ColInds(1:Ncol) > 0)) CYCLE                 
 
             
