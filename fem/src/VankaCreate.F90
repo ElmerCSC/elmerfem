@@ -51,6 +51,7 @@
       TYPE(SplittedMatrixT), POINTER :: SP
       TYPE(Matrix_t), POINTER :: A
       INTEGER :: i
+      LOGICAL :: Parallel
       INTEGER, POINTER :: pCols(:), pRows(:)
       REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
       TYPE(BasicMatrix_t), POINTER :: SaveIF(:)
@@ -59,7 +60,10 @@
       SaveValues => A % Values
       A % Values => A % ILUValues
 
-      IF (ParEnv % Pes <= 1 .OR. A % ParallelInfo % NothingShared ) THEN
+      Parallel = ParEnv % Pes > 1
+      IF ( Parallel ) Parallel = Parallel .AND. .NOT. A % ParallelInfo % NothingShared
+
+      IF (.NOT. Parallel ) THEN
         IF( ASSOCIATED( A % ILUCols ) ) THEN
           pCols => A % Cols
           pRows => A % Rows
@@ -114,7 +118,7 @@
      INTEGER, POINTER :: Diag(:), Rows(:), Cols(:), Perm(:), Indexes(:), Ind(:)
      REAL(KIND=dp), POINTER CONTIG :: ILUValues(:), SValues(:), TotValues(:)
      REAL(KIND=dp), ALLOCATABLE :: al(:,:)
-     LOGICAL ::  found
+     LOGICAL ::  found, Parallel
      TYPE(Element_t), POINTER :: Element
      INTEGER :: status(MPI_STATUS_SIZE)
      INTEGER :: i,j,i2,j2,ierr,k,l,m,proc,rcnt,nn, dof, dofs, Active, Totcnt
@@ -150,14 +154,17 @@
        TotValues = A % Values
      END IF
 
-     IF ( ParEnv  % PEs>1 .AND. .NOT. A % ParallelInfo % NothingShared ) THEN
+     Parallel =  ParEnv % PEs > 1
+     IF ( Parallel ) Parallel = Parallel .AND. .NOT. A % ParallelInfo % NothingShared
+
+     IF ( Parallel ) THEN
        ALLOCATE(cnt(0:ParEnv % PEs))
        cnt = 0
        DO i=1,A % NumberOfRows
          DO j=Rows(i),Rows(i+1)-1
            IF ( A % ParallelInfo % GInterface(Cols(j)) ) THEN
-             DO l=1,SIZE(A % ParallelInfo % NeighbourList(Cols(j)) % Neighbours)
-               m = A % ParallelInfo % NeighbourList(Cols(j)) % Neighbours(l)
+              DO l=1,SIZE(A % ParallelInfo % NeighbourList(Cols(j)) % Neighbours)
+                m = A % ParallelInfo % NeighbourList(Cols(j)) % Neighbours(l)
                IF ( m==ParEnv % myPE ) CYCLE
                cnt(m) = cnt(m)+1
              END DO
