@@ -1778,7 +1778,7 @@ CONTAINS
 
 
   !-------------------------------------------------------------------------------------
-  !> Makes a quadratic H(curl) approximation to have a block structure
+  !> Makes a H(curl) approximation to have a block structure
   !-------------------------------------------------------------------------------------
   SUBROUTINE BlockPickMatrixHcurl( Solver, NoVar, DoCmplx, BlockTag )
 
@@ -1791,7 +1791,7 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: A,B
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Element_t), POINTER :: Element, Edge
-    LOGICAL :: Found, SecondFamily, PickSimplest
+    LOGICAL :: Found, SecondFamily, SecondOrder, PickSimplest
     
     Mesh => Solver % Mesh
 
@@ -1801,17 +1801,23 @@ CONTAINS
     IF(.NOT. ASSOCIATED( Mesh % Faces ) ) THEN
       CALL Fatal('BlockPickMatrixHcurl','This subroutine needs Faces!')
     END IF        
-    CALL Info('BlockPickMatrixHcurl','Arranging a quadratic H(curl) approximation into blocks',Level=10)
+    CALL Info('BlockPickMatrixHcurl','Arranging a H(curl) approximation into blocks',Level=10)
 
     SecondFamily = ListGetLogical( Solver % Values,'Second Kind Basis',Found )
     IF (SecondFamily) THEN
-      EDOFs = 3
-      IF (ListGetLogical(Solver % Values, 'Block Quadratic Hcurl Pick Simplest', Found)) THEN
-        ! To select DOFs corresponding to the lowest-order basis of the first kind
+      SecondOrder = ListGetLogical( Solver % Values,'Quadratic Approximation',Found )
+      IF (.NOT. SecondOrder) THEN
+        EDOFs = 2
         EDOFs_Order1 = 1
       ELSE
-        ! To select DOFs corresponding to the lowest-order basis of the second kind
-        EDOFs_Order1 = 2
+        EDOFs = 3
+        IF (ListGetLogical(Solver % Values, 'Block Quadratic Hcurl Pick Simplest', Found)) THEN
+          ! To select DOFs corresponding to the lowest-order basis of the first kind
+          EDOFs_Order1 = 1
+        ELSE
+          ! To select DOFs corresponding to the lowest-order basis of the second kind
+          EDOFs_Order1 = 2
+        END IF
       END IF
     ELSE
       EDOFs = 2
@@ -5035,7 +5041,8 @@ CONTAINS
 
     ! Different strategies on how to split the initial monolithic matrix into blocks
     BlockAV = ListGetLogical( Params,'Block A-V System', GotIt)
-    BlockHcurl = ListGetLogical( Params,'Block Quadratic Hcurl System', GotIt)   
+    BlockHcurl = ListGetLogical( Params,'Block Hcurl System', GotIt) .OR. &
+        ListGetLogical( Params,'Block Quadratic Hcurl System', GotIt)   
     BlockHdiv = ListGetLogical( Params,'Block Hdiv system',GotIt)
     BlockReIm = ListGetLogical( Params,'Block Re-Im system',GotIt)
     BlockNodal = ListGetLogical( Params,'Block Nodal System', GotIt)
