@@ -2853,12 +2853,12 @@ SUBROUTINE SolvePermon(Matrix, XVec, RHSVec, Solver, ParallelInfo, SplittedMatri
     c => cser
   ELSE
     ALLOCATE(c(ndim))
-    j = 0
-    ! We need to map the bigger limiter to the parallel one where only owned dofs are considered.
-    DO i=1,Aser % NumberOfRows
-      IF (Aser % ParallelInfo % NeighbourList(i) % Neighbours(1) == ParEnv % Mype ) THEN
-        j = j + 1
-        c(j) = cser(i)
+    DO i=1, Aser % NumberOfRows
+      ! Matrix % Perm(i) gives the local DOF index for the i-th mesh node. 
+      ! This is because ContinuousNumbering was used
+      j = Aser % Perm(i) 
+      IF (j > 0) THEN
+         c(j) = cser(j) 
       END IF
     END DO
   END IF
