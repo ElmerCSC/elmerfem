@@ -2298,7 +2298,9 @@
                
                IF(ASSOCIATED(Mesh % Edges)) THEN
                  IF ( i<=Mesh % NumberOfBulkElements) THEN
-                   Gotit = ListCheckPresent( IC, TRIM(Var % Name)//' {e}' )
+                   BLOCK
+                     Gotit = ListCheckPresent( IC, Var % Name//' {e}' )
+                   END BLOCK
                    IF ( Gotit ) THEN
                      DO k=1,Element % TYPE % NumberOfedges
                        Edge => Mesh % Edges(Element % EdgeIndexes(k))
