@@ -20,7 +20,7 @@ MODULE PermonInterface
       INTEGER(C_INT), VALUE :: bound
       TYPE(C_PTR), VALUE :: gdofs_cptr
       TYPE(C_PTR), VALUE :: owner_cptr
-      INTEGER(C_INT) :: comm
+      INTEGER(C_INT), VALUE :: comm
     END SUBROUTINE permon_solve
 
     SUBROUTINE permon_init() BIND(C, NAME="permon_init")

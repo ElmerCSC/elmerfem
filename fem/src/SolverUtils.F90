@@ -15485,7 +15485,7 @@ END FUNCTION SearchNodeL
       CASE('direct')
         CALL DirectSolver( A, x, b, Solver )
       CASE('permon')
-        CALL SolvePermon(A, x, b, Solver, A % ParallelInfo)
+        CALL SolvePermon(A, x, b, Solver, A % ParallelInfo, A % ParMatrix % SplittedMatrix)
       CASE DEFAULT        
         CALL Fatal(Caller,'Unknown "Linear System Solver": '//TRIM(Method))
       END SELECT
