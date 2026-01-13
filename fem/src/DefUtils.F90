@@ -6660,6 +6660,7 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t) :: IP
 
     LOGICAL :: Lstat, ReverseSign, SecondKindBasis, DivConforming, SecondOrder
+    LOGICAL :: ErvinStyle = .FALSE.
     INTEGER, POINTER :: Edgemap(:,:)
     INTEGER :: i,j,k,p,DOFs
     INTEGER :: i1,i2,i3
@@ -6781,10 +6782,17 @@ CONTAINS
           v = 2.5d0 * (1.0d0 - 3.0d0 * u**2)
           Integral(3)=Integral(3)+sgn*s*(L+SUM(VL*e))*v
         ELSE
-          v = 0.5d0*(1.0d0-sqrt(3.0d0)*u)
-          Integral(1)=Integral(1)+s*(L+SUM(VL*e))*v
-          v = 0.5d0*(1.0d0+sqrt(3.0d0)*u)
-          Integral(2)=Integral(2)+s*(L+SUM(VL*e))*v
+          IF (ErvinStyle .OR. DivConforming) THEN
+            v = 0.5d0*(1.0d0-sqrt(3.0d0)*u)
+            Integral(1)=Integral(1)+s*(L+SUM(VL*e))*v
+            v = 0.5d0*(1.0d0+sqrt(3.0d0)*u)
+            Integral(2)=Integral(2)+s*(L+SUM(VL*e))*v
+          ELSE
+            Integral(1)=Integral(1)+sgn*s*(L+SUM(VL*e))
+            v = -3.0d0 * u
+            ! The odd weight function => no sign changes needed in the integration 
+            Integral(2)=Integral(2)+s*(L+SUM(VL*e))*v
+          END IF
         END IF
       ELSE
         Integral(1)=Integral(1)+s*(L+SUM(VL*e))
@@ -6818,8 +6826,12 @@ CONTAINS
           Integral(1)=-Integral(1)
           Integral(3)=-Integral(3)
         ELSE
-          Integral(1)=-Integral(1)
-          Integral(2)=-Integral(2)
+          IF (ErvinStyle .OR. DivConforming) THEN
+            Integral(1)=-Integral(1)
+            Integral(2)=-Integral(2)
+          ELSE
+            Integral(1)=-Integral(1)
+          END IF
         END IF
       ELSE
         Integral(1)=-Integral(1)
