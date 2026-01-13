@@ -8,8 +8,8 @@
 !
 ! The case script of this file uses the parameters k_1 = kc and k_3 = beta0.
 !
-! Differences with respect to the original case are that the second-order basis
-! is used and block preconditioning is used.
+! A difference with respect to the original case are that the second-order basis
+! is used.
 
 Check Keywords "Warn"
 
