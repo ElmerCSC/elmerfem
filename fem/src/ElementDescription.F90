@@ -7337,15 +7337,19 @@ END SUBROUTINE PickActiveFace
            EdgeMap => GetEdgeMap(3)
            !EdgeMap => GetEdgeMap(GetElementFamily(Element))
 
-           IF (Create2ndKindBasis .AND. SecondOrder) THEN
+           IF (Create2ndKindBasis) THEN
 
-             ! This construction follows Sun, Lee, Cendes. SIAM J. Sci. Comput. 23(4):1053-1076
- 
-             !-------------------------------------------------
-             ! The basis functions associated with the edges
-             !    - here the first basis function is the Whitney form
-             !-------------------------------------------------
-             EDOFs = 3
+             ! This construction follows Sun, Lee, Cendes. SIAM J. Sci. Comput. 23(4):1053-1076.
+             ! The first basis function associated with an edge is the Whitney form, while 
+             ! the second basis function corresponds to a gradient field.
+
+             IF (SecondOrder) THEN
+               EDOFs = 3
+               FDOFs = 3
+             ELSE
+               EDOFs = 2
+               FDOFs = 0
+             END IF
              
              DO k=1,3
                
@@ -7366,11 +7370,13 @@ END SUBROUTINE PickActiveFace
                WorkCurlBasis(1,3) = grad_svec(2,1) - grad_svec(1,2)
                WorkCurlBasis(2,3) = grad_tvec(2,1) - grad_tvec(1,2)
 
-               WorkWeight(1) = 2.0d0*Basis(i) - Basis(j)
-               WorkWeight(2) = 2.0d0*Basis(j) - Basis(i)
+               IF (SecondOrder) THEN
+                 WorkWeight(1) = 2.0d0*Basis(i) - Basis(j)
+                 WorkWeight(2) = 2.0d0*Basis(j) - Basis(i)
 
-               grad_weight(1,1:2) = 2.0d0*dLBasisdx(i,1:2) - dLBasisdx(j,1:2)
-               grad_weight(2,1:2) = 2.0d0*dLBasisdx(j,1:2) - dLBasisdx(i,1:2)
+                 grad_weight(1,1:2) = 2.0d0*dLBasisdx(i,1:2) - dLBasisdx(j,1:2)
+                 grad_weight(2,1:2) = 2.0d0*dLBasisdx(j,1:2) - dLBasisdx(i,1:2)
+               END IF
 
                IF (GIndexes(j) < GIndexes(i)) THEN
                  I1 = 2
@@ -7408,115 +7414,64 @@ END SUBROUTINE PickActiveFace
                END DO
              END DO
 
-             ! The basis functions associated with the face ...
-             FDOFs = 3
-             TriangleFaceMap(:) = (/ 1,2,3 /)
-             I1 = 1
-             I2 = 2
-             I3 = 3
-               
-             WorkBasis(1,1:2) = Basis(I2) * Basis(I3) * dLBasisdx(I1,1:2)
-             WorkBasis(2,1:2) = Basis(I1) * Basis(I3) * dLBasisdx(I2,1:2)
-             WorkBasis(3,1:2) = Basis(I1) * Basis(I2) * dLBasisdx(I3,1:2)
+             ! The basis functions associated with the faces for the second-order case
+             IF (FDOFs > 0) THEN
+               TriangleFaceMap(:) = (/ 1,2,3 /)
+               I1 = 1
+               I2 = 2
+               I3 = 3
 
-             grad_svec(1,2) = (dLBasisdx(I2,2) * Basis(I3) + &
-                 Basis(I2) * dLBasisdx(I3,2)) * dLBasisdx(I1,1)
-             grad_svec(2,1) = (dLBasisdx(I2,1) * Basis(I3) + &
-                 Basis(I2) * dLBasisdx(I3,1)) * dLBasisdx(I1,2)
+               WorkBasis(1,1:2) = Basis(I2) * Basis(I3) * dLBasisdx(I1,1:2)
+               WorkBasis(2,1:2) = Basis(I1) * Basis(I3) * dLBasisdx(I2,1:2)
+               WorkBasis(3,1:2) = Basis(I1) * Basis(I2) * dLBasisdx(I3,1:2)
 
-             grad_tvec(1,2) = (dLBasisdx(I1,2) * Basis(I3)  + &
-                 Basis(I1) * dLBasisdx(I3,2)) * dLBasisdx(I2,1)
-             grad_tvec(2,1) = (dLBasisdx(I1,1) * Basis(I3)  + &
-                 Basis(I1) * dLBasisdx(I3,1)) * dLBasisdx(I2,2)
-               
-             grad_hvec(1,2) = (dLBasisdx(I1,2) * Basis(I2)  + &
-                 Basis(I1) * dLBasisdx(I2,2)) * dLBasisdx(I3,1)
-             grad_hvec(2,1) = (dLBasisdx(I1,1) * Basis(I2)  + &
-                 Basis(I1) * dLBasisdx(I2,1)) * dLBasisdx(I3,2)
+               grad_svec(1,2) = (dLBasisdx(I2,2) * Basis(I3) + &
+                   Basis(I2) * dLBasisdx(I3,2)) * dLBasisdx(I1,1)
+               grad_svec(2,1) = (dLBasisdx(I2,1) * Basis(I3) + &
+                   Basis(I2) * dLBasisdx(I3,1)) * dLBasisdx(I1,2)
 
-             WorkCurlBasis(1,3) = grad_svec(2,1) - grad_svec(1,2)
-             WorkCurlBasis(2,3) = grad_tvec(2,1) - grad_tvec(1,2)
-             WorkCurlBasis(3,3) = grad_hvec(2,1) - grad_hvec(1,2)
+               grad_tvec(1,2) = (dLBasisdx(I1,2) * Basis(I3)  + &
+                   Basis(I1) * dLBasisdx(I3,2)) * dLBasisdx(I2,1)
+               grad_tvec(2,1) = (dLBasisdx(I1,1) * Basis(I3)  + &
+                   Basis(I1) * dLBasisdx(I3,1)) * dLBasisdx(I2,2)
 
-             ! Create permutation:
-             FaceIndices(1:3) = GIndexes(TriangleFaceMap(1:3))
-             CALL TriangleFaceDofsOrdering2nd(I1,I2,I3,FaceIndices(1:3))
-               
-             ! Create the basis:
-             DO l=1,FDOFs
-                 
-               SELECT CASE(l)
-               CASE(1)
-                 sfun = 1.0d0
-                 tfun = 1.0d0
-                 hfun = 1.0d0
-               CASE(2)
-                 sfun = 1.0d0
-                 tfun = 1.0d0
-                 hfun = -2.0d0
-               CASE(3)
-                 sfun = 1.0d0
-                 tfun = -1.0d0
-                 hfun = 0.0d0
-               END SELECT
+               grad_hvec(1,2) = (dLBasisdx(I1,2) * Basis(I2)  + &
+                   Basis(I1) * dLBasisdx(I2,2)) * dLBasisdx(I3,1)
+               grad_hvec(2,1) = (dLBasisdx(I1,1) * Basis(I2)  + &
+                   Basis(I1) * dLBasisdx(I2,1)) * dLBasisdx(I3,2)
 
-               EdgeBasis(3*EDOFs + l,1:2) = sfun * WorkBasis(I1,1:2) + tfun * WorkBasis(I2,1:2) + &
-                   hfun * WorkBasis(I3,1:2)
-               CurlBasis(3*EDOFs + l,3) = sfun * WorkCurlBasis(I1,3) + tfun * WorkCurlBasis(I2,3) + &
-                     hfun * WorkCurlBasis(I3,3)
-             END DO
-             
-           ELSE IF (Create2ndKindBasis) THEN
-
-             ! Also this construction follows Sun, Lee, Cendes. SIAM J. Sci. Comput. 23(4):1053-1076.
-             ! The first basis function associated with an edge is the Whitney form, while 
-             ! the second basis function corresponds to a gradient field.
-             
-             EDOFs = 2
-
-             DO k=1,3
-
-               i = EdgeMap(k,1)
-               j = EdgeMap(k,2)
-
-               svec(1:2) = Basis(j) * dLBasisdx(i,1:2)
-               tvec(1:2) = Basis(i) * dLBasisdx(j,1:2)
-
-               grad_svec(1,2) = dLBasisdx(j,2) * dLBasisdx(i,1)
-               grad_svec(2,1) = dLBasisdx(j,1) * dLBasisdx(i,2)
-
-               grad_tvec(1,2) = dLBasisdx(i,2) * dLBasisdx(j,1)
-               grad_tvec(2,1) = dLBasisdx(i,1) * dLBasisdx(j,2)
-
-               WorkBasis(1,1:2) = svec(1:2)
-               WorkBasis(2,1:2) = tvec(1:2)
                WorkCurlBasis(1,3) = grad_svec(2,1) - grad_svec(1,2)
                WorkCurlBasis(2,3) = grad_tvec(2,1) - grad_tvec(1,2)
+               WorkCurlBasis(3,3) = grad_hvec(2,1) - grad_hvec(1,2)
 
-               IF (GIndexes(j) < GIndexes(i)) THEN
-                 I1 = 2
-                 I2 = 1
-               ELSE
-                 I1 = 1
-                 I2 = 2
-               END IF
+               ! Create permutation:
+               FaceIndices(1:3) = GIndexes(TriangleFaceMap(1:3))
+               CALL TriangleFaceDofsOrdering2nd(I1,I2,I3,FaceIndices(1:3))
 
-               DO l=1,EDOFs
+               ! Create the basis:
+               DO l=1,FDOFs
+
                  SELECT CASE(l)
                  CASE(1)
-                   sfun = -1.0d0
+                   sfun = 1.0d0
                    tfun = 1.0d0
+                   hfun = 1.0d0
                  CASE(2)
                    sfun = 1.0d0
                    tfun = 1.0d0
-                 CASE DEFAULT
-                   CALL Fatal('ElementDescription::EdgeElementInfo','sfun/tfun not defined')
+                   hfun = -2.0d0
+                 CASE(3)
+                   sfun = 1.0d0
+                   tfun = -1.0d0
+                   hfun = 0.0d0
                  END SELECT
 
-                 EdgeBasis(EDOFs*(k-1)+l,1:2) = sfun * WorkBasis(I1,1:2) + tfun * WorkBasis(I2,1:2)
-                 CurlBasis(EDOFs*(k-1)+l,3) = sfun * WorkCurlBasis(I1,3) + tfun * WorkCurlBasis(I2,3)
+                 EdgeBasis(3*EDOFs + l,1:2) = sfun * WorkBasis(I1,1:2) + tfun * WorkBasis(I2,1:2) + &
+                     hfun * WorkBasis(I3,1:2)
+                 CurlBasis(3*EDOFs + l,3) = sfun * WorkCurlBasis(I1,3) + tfun * WorkCurlBasis(I2,3) + &
+                     hfun * WorkCurlBasis(I3,3)
                END DO
-             END DO
+             END IF
            ELSE
              
              !------------------------------------------------------------
