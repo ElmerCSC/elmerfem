@@ -221,28 +221,30 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
     END IF
 
     tind = 0
-    !!omp parallel do private(Element,n,nd,nb,t)     disable OPENMP use here atm, not working
+    !$omp parallel do private(Element,n,nd,nb,t)
     DO t=1,active
       Element => GetActiveElement(t)
       n  = GetElementNOFNodes(Element)
       nd = GetElementNOFDOFs(Element)
       nb = GetElementNOFBDOFs(Element)
-      IF( SkipDegenerate .AND. DegenerateElement( Element ) ) THEN
+
+      IF( SkipDegenerate .AND. DegenerateElement(Element) ) THEN
         CALL Info(Caller,'Skipping degenerate element:'//I2S(t),Level=12)
         CYCLE
       END IF
+
       IF( HandleAsm ) THEN
         CALL LocalMatrixHandles(  Element, n, nd+nb, nb )
       ELSE
         CALL LocalMatrix(Element, n, nd)
       END IF
     END DO
-    !!omp end parallel do  
+    !$omp end parallel do  
       
     CALL DefaultFinishBulkAssembly()
     
     Active = GetNOFBoundaryElements()
-!!omp parallel do private(Element, n, nd, BC,Found, t)
+!$omp parallel do private(Element, n, nd, BC,Found, t)
     DO t=1,active
       Element => GetBoundaryElement(t)
       BC => GetBC( Element )
@@ -257,7 +259,7 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
         CALL LocalMatrixBC(Element, BC, n, nd)
       END IF
     END DO
-!!omp end parallel do
+!$omp end parallel do
 
     CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
@@ -760,21 +762,22 @@ CONTAINS
 !------------------------------------------------------------------------------
 ! Old style local matrix. 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrix(Element, n, nd)
+  RECURSIVE SUBROUTINE LocalMatrix(Element, n, nd)
 !------------------------------------------------------------------------------
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
-    TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: Material, BodyForce
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: CompParams
+
+    TYPE(Nodes_t), SAVE :: Nodes
 
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,LoadAtIP
     REAL(KIND=dp) :: MASS(nd,nd), DAMP(nd,nd), STIFF(nd,nd), FORCE(nd), &
         LOAD(nd),R(2,2,n),LondonLambda(nd), C(n), mu,muder,Babs,POT(nd), &
-        JAC(nd,nd),Agrad(3),C_ip,M(2,n),M_ip(2),x, y,&
-        Lorentz_velo(3,nd), Velo(3), omega_velo
+        JAC(nd,nd),Agrad(3),C_ip,M(2,n),M_ip(2),x, y, Lorentz_velo(3,nd), Velo(3), omega_velo
+
     REAL(KIND=dp) :: LondonLambda_ip, P_ip, Permittivity(nd)
     REAL(KIND=dp) :: Bt(nd,2), Ht(nd,2)
     REAL(KIND=dp) :: nu_tensor(2,2)
@@ -782,14 +785,14 @@ CONTAINS
 
     INTEGER :: i,p,q,t
 
-    LOGICAL :: HBcurve, WithVelocity, WithAngularVelocity, Found, Stat
     LOGICAL :: CoilBody, StrandedCoil    
+    LOGICAL :: HBcurve, WithVelocity, WithAngularVelocity, Found, Stat
 
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
 
     ! Zirka related
     LOGICAL :: Zirka
-    LOGICAL :: LondonEquations = .TRUE.
+    LOGICAL :: LondonEquations
     TYPE(Variable_t), POINTER :: hystvar
     TYPE(GlobalHysteresisModel_t), pointer :: zirkamodel
 
@@ -1432,7 +1435,7 @@ END SUBROUTINE ! }}}
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixBC(Element, BC, n, nd )
+  RECURSIVE SUBROUTINE LocalMatrixBC(Element, BC, n, nd )
 !------------------------------------------------------------------------------
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
@@ -1444,8 +1447,7 @@ END SUBROUTINE ! }}}
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), &
             mu,AirGapLength(nd), AirGapMu(nd), SurfCurr(nd), AirGapL, SurfC, x
     TYPE(ValueList_t), POINTER :: BC
-    TYPE(Nodes_t) :: Nodes
-    SAVE Nodes
+    TYPE(Nodes_t), SAVE :: Nodes
     !$OMP THREADPRIVATE(Nodes)
 !------------------------------------------------------------------------------
 
@@ -1732,18 +1734,18 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
     ! ----------------
     Active = GetNOFActive()
     CALL DefaultInitialize()
-!!omp parallel do private(Element,n,nd)
+!$omp parallel do private(Element,n,nd)
     DO t=1,active
       Element => GetActiveElement(t)
       n  = GetElementNOFNodes(Element)
       nd = GetElementNOFDOFs(Element)
       CALL LocalMatrix(Element, n, nd)
     END DO
-!!omp end parallel do
+!$omp end parallel do
     CALL DefaultFinishBulkAssembly()
 
     Active = GetNOFBoundaryElements()
-!!omp parallel do private(Element, n, nd, BC, Found)
+!$omp parallel do private(Element, n, nd, BC, Found)
     DO t=1,active
       Element => GetBoundaryElement(t)
       BC=>GetBC(Element)
@@ -1760,7 +1762,7 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
         CALL LocalMatrixBC(Element, BC, n, nd)
       END IF
     END DO
-!!omp end parallel do
+!$omp end parallel do
 
     CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
@@ -2147,7 +2149,7 @@ CONTAINS
 
   
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrix(  Element, n, nd)
+  RECURSIVE SUBROUTINE LocalMatrix(  Element, n, nd)
 !------------------------------------------------------------------------------
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
@@ -2179,9 +2181,9 @@ CONTAINS
 
     LOGICAL :: HBcurve, Found, Stat, StrandedHomogenization
     LOGICAL :: CoilBody    
-    LOGICAL :: InPlaneProximity = .FALSE., WithVelocity, WithAngularVelocity
+    LOGICAL :: InPlaneProximity=.TRUE., WithVelocity, WithAngularVelocity
     LOGICAL :: FoundIm, StrandedCoil
-    LOGICAL :: LondonEquations = .TRUE.
+    LOGICAL :: LondonEquations
     
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
 
@@ -2454,7 +2456,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixInfinityBC(Element, n, nd )
+  RECURSIVE SUBROUTINE LocalMatrixInfinityBC(Element, n, nd )
 !------------------------------------------------------------------------------
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
@@ -2519,7 +2521,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixBC(Element, BC, n, nd )
+  RECURSIVE SUBROUTINE LocalMatrixBC(Element, BC, n, nd )
 !------------------------------------------------------------------------------
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
@@ -2589,7 +2591,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixSkinBC(Element, BC, n, nd )
+  RECURSIVE SUBROUTINE LocalMatrixSkinBC(Element, BC, n, nd )
 !------------------------------------------------------------------------------
     INTEGER :: n, nd
     TYPE(ValueList_t), POINTER :: BC
