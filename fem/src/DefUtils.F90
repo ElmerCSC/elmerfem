@@ -5728,6 +5728,7 @@ CONTAINS
      LOGICAL, ALLOCATABLE :: ReleaseDir(:)
      LOGICAL :: ReleaseAny, NodalBCsWithBraces,AllConstrained
      LOGICAL :: CheckRight, AugmentedEigenSystem
+     LOGICAL :: SimplicialElements
      
      CHARACTER(:), ALLOCATABLE :: Name
 
@@ -6229,6 +6230,8 @@ CONTAINS
      ! ----------------------------------------------------------------------------
      QuadraticApproximation = ListGetLogical(Params, 'Quadratic Approximation', Found)
      SecondKindBasis = ListGetLogical(Params, 'Second Kind Basis', Found)
+     SimplicialElements = ListGetLogical(Params, 'Simplicial Mesh', Found)
+     
      DO DOF=1,x % DOFs
         name = TRIM(x % name)
         IF (x % DOFs>1) name=ComponentName(name,DOF)
@@ -6300,7 +6303,8 @@ CONTAINS
 
                    n = Edge % TYPE % NumberOfNodes
                    CALL VectorElementEdgeDOFs(BC,Edge,n,Parent,np,Name//' {e}',Work, &
-                       EDOFs, SecondKindBasis, QuadraticApproximation = QuadraticApproximation)
+                       EDOFs, SecondKindBasis, QuadraticApproximation = QuadraticApproximation, &
+                       SimplicialMesh = SimplicialElements)
 
                    n=GetElementDOFs(gInd,Edge)
 
@@ -6347,7 +6351,8 @@ CONTAINS
 
                      CALL VectorElementEdgeDOFs(BC, Edge, n, Parent, np, Name//' {e}', &
                          Work(i0+1:i0+EDOFs), EDOFs, SecondKindBasis, &
-                         QuadraticApproximation = QuadraticApproximation)
+                         QuadraticApproximation = QuadraticApproximation, &
+                         SimplicialMesh = SimplicialElements)
                      
                      n = GetElementDOFs(gInd,Edge)
 
@@ -6638,7 +6643,7 @@ CONTAINS
 !> v is a polynomial on the edge E, and S reverses sign if necessary.
 !------------------------------------------------------------------------------
   SUBROUTINE VectorElementEdgeDOFs(BC, Element, n, Parent, np, Name, Integral, EDOFs, &
-      SecondFamily, FaceElement, QuadraticApproximation)
+      SecondFamily, FaceElement, QuadraticApproximation, SimplicialMesh)
 !------------------------------------------------------------------------------
     USE ElementDescription, ONLY: GetEdgeMap
     IMPLICIT NONE
@@ -6653,14 +6658,15 @@ CONTAINS
     INTEGER, OPTIONAL :: EDOFs        !< The number of DOFs
     LOGICAL, OPTIONAL :: SecondFamily !< To select the element family
     LOGICAL, OPTIONAL :: FaceElement  !< If .TRUE., e is normal to the edge
-    LOGICAL, OPTIONAL :: QuadraticApproximation 
+    LOGICAL, OPTIONAL :: QuadraticApproximation
+    LOGICAL, OPTIONAL :: SimplicialMesh
 !------------------------------------------------------------------------------
     TYPE(Nodes_t), SAVE :: Nodes, Pnodes
     TYPE(ElementType_t), POINTER :: SavedType
     TYPE(GaussIntegrationPoints_t) :: IP
 
     LOGICAL :: Lstat, ReverseSign, SecondKindBasis, DivConforming, SecondOrder
-    LOGICAL :: ErvinStyle = .FALSE.
+    LOGICAL :: Simplicial, ErvinStyle = .FALSE.
     INTEGER, POINTER :: Edgemap(:,:)
     INTEGER :: i,j,k,p,DOFs
     INTEGER :: i1,i2,i3
@@ -6703,6 +6709,12 @@ CONTAINS
       DivConforming = .FALSE.
     END IF
 
+    IF (PRESENT(SimplicialMesh)) THEN
+      Simplicial = SimplicialMesh
+    ELSE
+      Simplicial = .FALSE.
+    END IF
+    
     ! Get the nodes of the boundary and parent elements:
     !CALL GetElementNodes(Nodes, Element)
     !CALL GetElementNodes(PNodes, Parent)
@@ -6795,18 +6807,27 @@ CONTAINS
           END IF
         END IF
       ELSE
-        Integral(1)=Integral(1)+s*(L+SUM(VL*e))
+        IF (SecondOrder .AND. Simplicial) THEN
+          ! This is analogous to the case of second-kind basis
+          Integral(1)=Integral(1)+sgn*s*(L+SUM(VL*e))
+          u = IP % u(p)          
+          v = -3.0d0 * u
+          Integral(2)=Integral(2)+s*(L+SUM(VL*e))*v
+        ELSE
+          ! TO DO: Take into account sgn?
+          Integral(1)=Integral(1)+s*(L+SUM(VL*e))
 
-        IF (.NOT. DivConforming) THEN
-          ! This branch is concerned with the second-order curl-conforming elements
-          IF (DOFs>1) THEN
-            v = Basis(2)-Basis(1)
-            ! The parent element must define the default for the positive tangent associated
-            ! with the edge. Thus, if the boundary element handled has an opposite orientation, 
-            ! the sign must be reversed to get the positive coordinate associated with the
-            ! parent element edge.
-            IF (ReverseSign) v = -1.0d0*v
-            Integral(2)=Integral(2)+s*(L+SUM(VL*e))*v
+          IF (.NOT. DivConforming) THEN
+            ! This branch is concerned with the second-order curl-conforming elements
+            IF (DOFs>1) THEN
+              v = Basis(2)-Basis(1)
+              ! The parent element must define the default for the positive tangent associated
+              ! with the edge. Thus, if the boundary element handled has an opposite orientation, 
+              ! the sign must be reversed to get the positive coordinate associated with the
+              ! parent element edge.
+              IF (ReverseSign) v = -1.0d0*v
+              Integral(2)=Integral(2)+s*(L+SUM(VL*e))*v
+            END IF
           END IF
         END IF
       END IF

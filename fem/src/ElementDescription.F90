@@ -3147,6 +3147,7 @@ CONTAINS
      INTEGER :: EdgeBasisDegree
      LOGICAL :: PerformPiolaTransform, Found, SerendipityPBasis
      LOGICAL :: SecondFamily
+     LOGICAL :: SimplicialElements
      
      SAVE PrevSolver, EdgeBasisDegree, PerformPiolaTransform, SecondFamily
 !------------------------------------------------------------------------------
@@ -3163,11 +3164,15 @@ CONTAINS
          CALL EdgeElementStyle(pSolver % Values, PerformPiolaTransform, SecondFamily, &
              BasisDegree = EdgeBasisDegree )
        END IF
-       IF( PerformPiolaTransform ) THEN       
+       IF( PerformPiolaTransform ) THEN
+
+         SimplicialElements = ListGetLogical(pSolver % Values, 'Simplicial Mesh', Found )
+         
          stat = EdgeElementInfo(Element,Nodes,u,v,w,detF=Detj,Basis=Basis, &
              EdgeBasis=EdgeBasis,RotBasis=RotBasis,dBasisdx=dBasisdx,&
              SecondFamily = SecondFamily, BasisDegree = EdgeBasisDegree, &
-             ApplyPiolaTransform = PerformPiolaTransform )
+             ApplyPiolaTransform = PerformPiolaTransform, &
+             SimplicialMesh = SimplicialElements)
        ELSE
          stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis, dBasisdx )
          CALL GetEdgeBasis(Element,EdgeBasis,RotBasis,Basis,dBasisdx)         
@@ -6825,7 +6830,7 @@ END SUBROUTINE PickActiveFace
      FUNCTION EdgeElementInfo( Element, Nodes, u, v, w, F, G, detF, &
           Basis, EdgeBasis, RotBasis, dBasisdx, SecondFamily, BasisDegree, &
           ApplyPiolaTransform, ReadyEdgeBasis, ReadyRotBasis, &
-          TangentialTrMapping) RESULT(stat)
+          TangentialTrMapping, SimplicialMesh) RESULT(stat)
 !------------------------------------------------------------------------------
        IMPLICIT NONE
 
@@ -6851,6 +6856,7 @@ END SUBROUTINE PickActiveFace
        REAL(KIND=dp), OPTIONAL :: ReadyRotBasis(:,:)  !< The preretabulated Curl of the edge basis function
        LOGICAL, OPTIONAL :: TangentialTrMapping  !< To return b x n, with n=(0,0,1) the normal to the 2D reference element.
                                                  !< The Piola transform is then the usual div-conforming version.    
+       LOGICAL, OPTIONAL :: SimplicialMesh       !< Use an alternate basis of the first kind, needs simplicial elements
        LOGICAL :: Stat                           !< .FALSE. for a degenerate element
 !-----------------------------------------------------------------------------------------------------------------
 !      Local variables
@@ -6871,6 +6877,7 @@ END SUBROUTINE PickActiveFace
        LOGICAL :: SecondOrder, ApplyTraceMapping, Found
        LOGICAL :: ReverseSign(4)
        LOGICAL :: ScaleFaceBasis, RedefineFaceBasis
+       LOGICAL :: Simplicial
        INTEGER, POINTER :: EdgeMap(:,:)
        INTEGER :: TriangleFaceMap(3), SquareFaceMap(4), BrickFaceMap(6,4), PrismSquareFaceMap(3,4), DOFs, GIndexes(27)
        INTEGER :: ActiveFaceId, EDOFs, FDOFs
@@ -6911,6 +6918,9 @@ END SUBROUTINE PickActiveFace
        
        ApplyTraceMapping = .FALSE.
        IF ( PRESENT(TangentialTrMapping) ) ApplyTraceMapping = TangentialTrMapping
+
+       Simplicial = .FALSE.
+       IF ( PRESENT(SimplicialMesh) ) Simplicial = SimplicialMesh
        !-------------------------------------------------------------------------------------------
        dLbasisdx = 0.0d0      
        n = Element % TYPE % NumberOfNodes
@@ -7472,6 +7482,113 @@ END SUBROUTINE PickActiveFace
                      hfun * WorkCurlBasis(I3,3)
                END DO
              END IF
+
+!           ELSE IF (SecondOrder) THEN
+           ELSE IF (SecondOrder .AND. Simplicial) THEN
+             !
+             ! An alternate Nd_1(k=2) basis for faster solution with iterative methods. Currently
+             ! this is available only for simplicial elements. 
+             !
+             EDOFs = 2
+             FDOFs = 2
+
+             DO k=1,3
+               
+               i = EdgeMap(k,1)
+               j = EdgeMap(k,2)
+
+               svec(1:2) = Basis(j) * dLBasisdx(i,1:2)
+               tvec(1:2) = Basis(i) * dLBasisdx(j,1:2)
+
+               grad_svec(1,2) = dLBasisdx(j,2) * dLBasisdx(i,1)
+               grad_svec(2,1) = dLBasisdx(j,1) * dLBasisdx(i,2)
+
+               grad_tvec(1,2) = dLBasisdx(i,2) * dLBasisdx(j,1)
+               grad_tvec(2,1) = dLBasisdx(i,1) * dLBasisdx(j,2)
+
+               WorkBasis(1,1:2) = svec(1:2)
+               WorkBasis(2,1:2) = tvec(1:2)
+               WorkCurlBasis(1,3) = grad_svec(2,1) - grad_svec(1,2)
+               WorkCurlBasis(2,3) = grad_tvec(2,1) - grad_tvec(1,2)
+
+               IF (GIndexes(j) < GIndexes(i)) THEN
+                 I1 = 2
+                 I2 = 1
+               ELSE
+                 I1 = 1
+                 I2 = 2
+               END IF
+
+               DO l=1,EDOFs
+                 SELECT CASE(l)
+                 CASE(1)
+                   sfun = -1.0d0
+                   tfun = 1.0d0
+                 CASE(2)
+                   sfun = 1.0d0
+                   tfun = 1.0d0
+                 CASE DEFAULT
+                   CALL Fatal('ElementDescription::EdgeElementInfo','sfun/tfun not defined')
+                 END SELECT
+
+                 EdgeBasis(EDOFs*(k-1)+l,1:2) = sfun * WorkBasis(I1,1:2) + tfun * WorkBasis(I2,1:2)
+                 CurlBasis(EDOFs*(k-1)+l,3) = sfun * WorkCurlBasis(I1,3) + tfun * WorkCurlBasis(I2,3)
+               END DO
+             END DO
+
+             ! The basis functions associated with the faces for the second-order case
+             TriangleFaceMap(:) = (/ 1,2,3 /)
+             I1 = 1
+             I2 = 2
+             I3 = 3
+
+             WorkBasis(1,1:2) = Basis(I2) * Basis(I3) * dLBasisdx(I1,1:2)
+             WorkBasis(2,1:2) = Basis(I1) * Basis(I3) * dLBasisdx(I2,1:2)
+             WorkBasis(3,1:2) = Basis(I1) * Basis(I2) * dLBasisdx(I3,1:2)
+
+             grad_svec(1,2) = (dLBasisdx(I2,2) * Basis(I3) + &
+                 Basis(I2) * dLBasisdx(I3,2)) * dLBasisdx(I1,1)
+             grad_svec(2,1) = (dLBasisdx(I2,1) * Basis(I3) + &
+                 Basis(I2) * dLBasisdx(I3,1)) * dLBasisdx(I1,2)
+
+             grad_tvec(1,2) = (dLBasisdx(I1,2) * Basis(I3)  + &
+                 Basis(I1) * dLBasisdx(I3,2)) * dLBasisdx(I2,1)
+             grad_tvec(2,1) = (dLBasisdx(I1,1) * Basis(I3)  + &
+                 Basis(I1) * dLBasisdx(I3,1)) * dLBasisdx(I2,2)
+
+             grad_hvec(1,2) = (dLBasisdx(I1,2) * Basis(I2)  + &
+                 Basis(I1) * dLBasisdx(I2,2)) * dLBasisdx(I3,1)
+             grad_hvec(2,1) = (dLBasisdx(I1,1) * Basis(I2)  + &
+                 Basis(I1) * dLBasisdx(I2,1)) * dLBasisdx(I3,2)
+
+             WorkCurlBasis(1,3) = grad_svec(2,1) - grad_svec(1,2)
+             WorkCurlBasis(2,3) = grad_tvec(2,1) - grad_tvec(1,2)
+             WorkCurlBasis(3,3) = grad_hvec(2,1) - grad_hvec(1,2)
+
+             ! Create permutation:
+             FaceIndices(1:3) = GIndexes(TriangleFaceMap(1:3))
+             CALL TriangleFaceDofsOrdering2nd(I1,I2,I3,FaceIndices(1:3))
+
+             ! Create the basis:
+             DO l=1,FDOFs
+
+               SELECT CASE(l)
+               CASE(1)
+                 sfun = 1.0d0
+                 tfun = 1.0d0
+                 hfun = -2.0d0
+               CASE(2)
+                 sfun = 1.0d0
+                 tfun = -1.0d0
+                 hfun = 0.0d0
+               END SELECT
+
+               EdgeBasis(3*EDOFs + l,1:2) = sfun * WorkBasis(I1,1:2) + tfun * WorkBasis(I2,1:2) + &
+                   hfun * WorkBasis(I3,1:2)
+               CurlBasis(3*EDOFs + l,3) = sfun * WorkCurlBasis(I1,3) + tfun * WorkCurlBasis(I2,3) + &
+                   hfun * WorkCurlBasis(I3,3)
+             END DO
+             
            ELSE
              
              !------------------------------------------------------------
@@ -7947,6 +8064,173 @@ END SUBROUTINE PickActiveFace
                  END DO
                END DO
              END IF
+
+!           ELSE IF (SecondOrder) THEN
+           ELSE IF (SecondOrder .AND. Simplicial) THEN
+             !
+             ! An alternate Nd_1(k=2) basis for faster solution with iterative methods. Currently
+             ! this is available only for simplicial elements. 
+             !
+             EDOFs = 2
+             FDOFs = 2
+             
+             DO k=1,6
+               
+               i = EdgeMap(k,1)
+               j = EdgeMap(k,2)
+
+               tvec(1:3) = Basis(i) * dLBasisdx(j,1:3)
+               svec(1:3) = Basis(j) * dLBasisdx(i,1:3)
+
+               grad_svec(1,2) = dLBasisdx(j,2) * dLBasisdx(i,1)
+               grad_svec(1,3) = dLBasisdx(j,3) * dLBasisdx(i,1)
+               grad_svec(2,1) = dLBasisdx(j,1) * dLBasisdx(i,2)
+               grad_svec(2,3) = dLBasisdx(j,3) * dLBasisdx(i,2)
+               grad_svec(3,1) = dLBasisdx(j,1) * dLBasisdx(i,3)
+               grad_svec(3,2) = dLBasisdx(j,2) * dLBasisdx(i,3)
+
+               grad_tvec(1,2) = dLBasisdx(i,2) * dLBasisdx(j,1)
+               grad_tvec(1,3) = dLBasisdx(i,3) * dLBasisdx(j,1)
+               grad_tvec(2,1) = dLBasisdx(i,1) * dLBasisdx(j,2)
+               grad_tvec(2,3) = dLBasisdx(i,3) * dLBasisdx(j,2)
+               grad_tvec(3,1) = dLBasisdx(i,1) * dLBasisdx(j,3)
+               grad_tvec(3,2) = dLBasisdx(i,2) * dLBasisdx(j,3)
+
+               WorkBasis(1,1:3) = svec(1:3)
+               WorkBasis(2,1:3) = tvec(1:3)
+
+               WorkCurlBasis(1,1) = grad_svec(3,2) - grad_svec(2,3)
+               WorkCurlBasis(1,2) = grad_svec(1,3) - grad_svec(3,1)
+               WorkCurlBasis(1,3) = grad_svec(2,1) - grad_svec(1,2)
+
+               WorkCurlBasis(2,1) = grad_tvec(3,2) - grad_tvec(2,3)
+               WorkCurlBasis(2,2) = grad_tvec(1,3) - grad_tvec(3,1)
+               WorkCurlBasis(2,3) = grad_tvec(2,1) - grad_tvec(1,2)
+
+               IF (GIndexes(j) < GIndexes(i)) THEN
+                 I1 = 2
+                 I2 = 1
+               ELSE
+                 I1 = 1
+                 I2 = 2
+               END IF
+
+               DO l=1,EDOFs
+                 SELECT CASE(l)
+                 CASE(1)
+                   sfun = -1.0d0
+                   tfun = 1.0d0
+                 CASE(2)
+                   sfun = 1.0d0
+                   tfun = 1.0d0
+                 CASE DEFAULT
+                   CALL Fatal('ElementDescription::EdgeElementInfo','sfun/tfun not defined')
+                 END SELECT
+
+                 EdgeBasis(EDOFs*(k-1)+l,1:3) = sfun * WorkBasis(I1,1:3) + tfun * WorkBasis(I2,1:3)
+                 CurlBasis(EDOFs*(k-1)+l,1:3) = sfun * WorkCurlBasis(I1,1:3) + tfun * WorkCurlBasis(I2,1:3)
+               END DO
+             END DO
+
+             ! The basis functions associated with the faces for the second-order case
+             DO k=1,4
+               SELECT CASE(k)
+               CASE(1)
+                 TriangleFaceMap(:) = (/ 2,1,3 /)
+               CASE(2)
+                 TriangleFaceMap(:) = (/ 1,2,4 /)
+               CASE(3)
+                 TriangleFaceMap(:) = (/ 2,3,4 /)
+               CASE(4)
+                 TriangleFaceMap(:) = (/ 3,1,4 /)
+               END SELECT
+
+               I1 = TriangleFaceMap(1)
+               I2 = TriangleFaceMap(2)
+               I3 = TriangleFaceMap(3)
+
+               WorkBasis(1,1:3) = Basis(I2) * Basis(I3) * dLBasisdx(I1,1:3)
+               WorkBasis(2,1:3) = Basis(I1) * Basis(I3) * dLBasisdx(I2,1:3)
+               WorkBasis(3,1:3) = Basis(I1) * Basis(I2) * dLBasisdx(I3,1:3)
+
+               ! The gradient of each row of WorkBasis:
+
+               grad_svec(1,2) = (dLBasisdx(I2,2) * Basis(I3) + &
+                   Basis(I2) * dLBasisdx(I3,2)) * dLBasisdx(I1,1)
+               grad_svec(1,3) = (dLBasisdx(I2,3) * Basis(I3) + &
+                   Basis(I2) * dLBasisdx(I3,3)) * dLBasisdx(I1,1)
+               grad_svec(2,1) = (dLBasisdx(I2,1) * Basis(I3) + &
+                   Basis(I2) * dLBasisdx(I3,1)) * dLBasisdx(I1,2)
+               grad_svec(2,3) = (dLBasisdx(I2,3) * Basis(I3) + &
+                   Basis(I2) * dLBasisdx(I3,3)) * dLBasisdx(I1,2)
+               grad_svec(3,1) = (dLBasisdx(I2,1) * Basis(I3) + &
+                   Basis(I2) * dLBasisdx(I3,1)) * dLBasisdx(I1,3)
+               grad_svec(3,2) = (dLBasisdx(I2,2) * Basis(I3) + &
+                   Basis(I2) * dLBasisdx(I3,2)) * dLBasisdx(I1,3)
+
+               grad_tvec(1,2) = (dLBasisdx(I1,2) * Basis(I3)  + &
+                   Basis(I1) * dLBasisdx(I3,2)) * dLBasisdx(I2,1)
+               grad_tvec(1,3) = (dLBasisdx(I1,3) * Basis(I3)  + &
+                   Basis(I1) * dLBasisdx(I3,3)) * dLBasisdx(I2,1)
+               grad_tvec(2,1) = (dLBasisdx(I1,1) * Basis(I3)  + &
+                   Basis(I1) * dLBasisdx(I3,1)) * dLBasisdx(I2,2)
+               grad_tvec(2,3) = (dLBasisdx(I1,3) * Basis(I3)  + &
+                   Basis(I1) * dLBasisdx(I3,3)) * dLBasisdx(I2,2)
+               grad_tvec(3,1) = (dLBasisdx(I1,1) * Basis(I3)  + &
+                   Basis(I1) * dLBasisdx(I3,1)) * dLBasisdx(I2,3)
+               grad_tvec(3,2) = (dLBasisdx(I1,2) * Basis(I3)  + &
+                   Basis(I1) * dLBasisdx(I3,2)) * dLBasisdx(I2,3)
+
+               grad_hvec(1,2) = (dLBasisdx(I1,2) * Basis(I2)  + &
+                   Basis(I1) * dLBasisdx(I2,2)) * dLBasisdx(I3,1)
+               grad_hvec(1,3) = (dLBasisdx(I1,3) * Basis(I2)  + &
+                   Basis(I1) * dLBasisdx(I2,3)) * dLBasisdx(I3,1)
+               grad_hvec(2,1) = (dLBasisdx(I1,1) * Basis(I2)  + &
+                   Basis(I1) * dLBasisdx(I2,1)) * dLBasisdx(I3,2)
+               grad_hvec(2,3) = (dLBasisdx(I1,3) * Basis(I2)  + &
+                   Basis(I1) * dLBasisdx(I2,3)) * dLBasisdx(I3,2)
+               grad_hvec(3,1) = (dLBasisdx(I1,1) * Basis(I2)  + &
+                   Basis(I1) * dLBasisdx(I2,1)) * dLBasisdx(I3,3)
+               grad_hvec(3,2) = (dLBasisdx(I1,2) * Basis(I2)  + &
+                   Basis(I1) * dLBasisdx(I2,2)) * dLBasisdx(I3,3)
+
+               WorkCurlBasis(1,1) = grad_svec(3,2) - grad_svec(2,3)
+               WorkCurlBasis(1,2) = grad_svec(1,3) - grad_svec(3,1)
+               WorkCurlBasis(1,3) = grad_svec(2,1) - grad_svec(1,2)
+
+               WorkCurlBasis(2,1) = grad_tvec(3,2) - grad_tvec(2,3)
+               WorkCurlBasis(2,2) = grad_tvec(1,3) - grad_tvec(3,1)
+               WorkCurlBasis(2,3) = grad_tvec(2,1) - grad_tvec(1,2)
+
+               WorkCurlBasis(3,1) = grad_hvec(3,2) - grad_hvec(2,3)
+               WorkCurlBasis(3,2) = grad_hvec(1,3) - grad_hvec(3,1)
+               WorkCurlBasis(3,3) = grad_hvec(2,1) - grad_hvec(1,2)
+
+               ! Create permutation:
+               FaceIndices(1:3) = GIndexes(TriangleFaceMap(1:3))
+               CALL TriangleFaceDofsOrdering2nd(I1,I2,I3,FaceIndices(1:3))
+
+               ! Create the basis:
+               DO l=1,FDOFs
+
+                 SELECT CASE(l)
+                 CASE(1)
+                   sfun = 1.0d0
+                   tfun = 1.0d0
+                   hfun = -2.0d0
+                 CASE(2)
+                   sfun = 1.0d0
+                   tfun = -1.0d0
+                   hfun = 0.0d0
+                 END SELECT
+
+                 EdgeBasis(6*EDOFs + FDOFs*(k-1)+l,1:3) = sfun * WorkBasis(I1,1:3) + tfun * WorkBasis(I2,1:3) + &
+                     hfun * WorkBasis(I3,1:3)
+                 CurlBasis(6*EDOFs + FDOFs*(k-1)+l,1:3) = sfun * WorkCurlBasis(I1,1:3) + tfun * WorkCurlBasis(I2,1:3) + &
+                     hfun * WorkCurlBasis(I3,1:3)
+               END DO
+             END DO
+             
            ELSE
              !-------------------------------------------------------------
              ! The optimal/Nedelec basis functions of the first kind. We employ
