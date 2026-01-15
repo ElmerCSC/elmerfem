@@ -610,13 +610,19 @@ CONTAINS
     ! The division by 2 fixes the inconsistancy between two scientific communities.
     Re = v*(D/2)*rho/nu
     
-    A = Re * eps / 8.0897
-    B = LOG(Re) - 0.779626
+    A = Re * eps / 8.0897_dp
+    B = LOG(Re) - 0.779626_dp
+
     x = A+B
+    IF(x<=AEPS) THEN
+       f =  64._dp / Re
+       RETURN
+    END IF
+
     C = LOG(x)
 
     ! These corrections and extentions by Tómas Jóhannesson
-    lambda = Re*(6.94871*(B-C+C/(x-0.5588*C+1.2079)))**(-2.0_dp) ! original formula for the lambda friction factor
+    lambda = Re*(6.94871_dp*(B-C+C/(x-0.5588_dp*C+1.2079_dp)))**(-2.0_dp) ! original formula for the lambda friction factor
     lambda = MAX(1.0_dp, lambda)                                 ! lambda is 1 for laminar flow
     f = 64.0_dp*lambda/Re                                        ! computation of f after thresholding lambda to 1 (laminar flow)
     
