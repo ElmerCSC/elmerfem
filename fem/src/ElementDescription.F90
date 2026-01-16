@@ -6921,6 +6921,12 @@ END SUBROUTINE PickActiveFace
 
        Simplicial = .FALSE.
        IF ( PRESENT(SimplicialMesh) ) Simplicial = SimplicialMesh
+       IF (Simplicial .AND. .NOT.(Element % TYPE % ElementCode / 100 == 2 .OR. &
+           Element % TYPE % ElementCode / 100 == 3 .OR. &
+           Element % TYPE % ElementCode / 100 == 5)) THEN
+         CALL Fatal('EdgeElementInfo', 'Simplicial Mesh = True, but the element is not simplicial')
+       END IF
+           
        !-------------------------------------------------------------------------------------------
        dLbasisdx = 0.0d0      
        n = Element % TYPE % NumberOfNodes

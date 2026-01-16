@@ -6775,7 +6775,12 @@ CONTAINS
     END IF
 
     Integral = 0._dp
-    IP = GaussPoints(Element)
+    IF (SecondOrder .AND. SecondKindBasis) THEN
+      IP = GaussPoints(Element,3)
+    ELSE
+      IP = GaussPoints(Element)
+    END IF
+
     DO p=1,IP % n
       Lstat = ElementInfo( Element, Nodes, IP % u(p), &
             IP % v(p), IP % w(p), DetJ, Basis )
@@ -6783,16 +6788,15 @@ CONTAINS
 
       L  = SUM(Load(1:n)*Basis(1:n))
       VL = MATMUL(Vload(:,1:n),Basis(1:n))
-
+      
       IF (SecondKindBasis) THEN
         u = IP % u(p)
         IF (SecondOrder) THEN
-          Integral(1)=Integral(1)+sgn*s*(L+SUM(VL*e))
+          Integral(1)=Integral(1)+s*(L+SUM(VL*e))
           v = -3.0d0 * u
-          ! The odd weight function => no sign changes needed in the integration 
-          Integral(2)=Integral(2)+s*(L+SUM(VL*e))*v
+          Integral(2)=Integral(2)+sgn*s*(L+SUM(VL*e))*v
           v = 2.5d0 * (1.0d0 - 3.0d0 * u**2)
-          Integral(3)=Integral(3)+sgn*s*(L+SUM(VL*e))*v
+          Integral(3)=Integral(3)+s*(L+SUM(VL*e))*v
         ELSE
           IF (ErvinStyle .OR. DivConforming) THEN
             v = 0.5d0*(1.0d0-sqrt(3.0d0)*u)
@@ -6800,23 +6804,20 @@ CONTAINS
             v = 0.5d0*(1.0d0+sqrt(3.0d0)*u)
             Integral(2)=Integral(2)+s*(L+SUM(VL*e))*v
           ELSE
-            Integral(1)=Integral(1)+sgn*s*(L+SUM(VL*e))
+            Integral(1)=Integral(1)+s*(L+SUM(VL*e))
             v = -3.0d0 * u
-            ! The odd weight function => no sign changes needed in the integration 
-            Integral(2)=Integral(2)+s*(L+SUM(VL*e))*v
+            Integral(2)=Integral(2)+sgn*s*(L+SUM(VL*e))*v
           END IF
         END IF
       ELSE
         IF (SecondOrder .AND. Simplicial) THEN
           ! This is analogous to the case of second-kind basis
-          Integral(1)=Integral(1)+sgn*s*(L+SUM(VL*e))
+          Integral(1)=Integral(1)+s*(L+SUM(VL*e))
           u = IP % u(p)          
           v = -3.0d0 * u
-          Integral(2)=Integral(2)+s*(L+SUM(VL*e))*v
+          Integral(2)=Integral(2)+sgn*s*(L+SUM(VL*e))*v
         ELSE
-          ! TO DO: Take into account sgn?
           Integral(1)=Integral(1)+s*(L+SUM(VL*e))
-
           IF (.NOT. DivConforming) THEN
             ! This branch is concerned with the second-order curl-conforming elements
             IF (DOFs>1) THEN
@@ -6916,7 +6917,17 @@ CONTAINS
     VLoad(2,1:n)=GetReal(BC,Name(1:i)//' 2',Lstat,element)
     VLoad(3,1:n)=GetReal(BC,Name(1:i)//' 3',Lstat,element)
 
-    IP = GaussPoints(Element)
+    IF (QuadraticApproximation .AND. SecondKindBasis) THEN
+!      SELECT CASE(GetElementFamily(Element))
+!      CASE(3)
+      IP = GaussPoints(Element,6)
+!      CASE(4)
+!        IP = GaussPoints(Element,9)
+!      END SELECT
+    ELSE
+      IP = GaussPoints(Element)
+    END IF
+    
     DO p=1,IP % n
 
       Lstat = EdgeElementInfo( Element, Nodes, IP % u(p), IP % v(p), IP % w(p), &
