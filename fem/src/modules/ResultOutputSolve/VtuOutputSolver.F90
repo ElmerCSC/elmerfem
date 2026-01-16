@@ -1226,6 +1226,7 @@ CONTAINS
               
               IF( BinaryOutput ) WRITE( VtuUnit ) k
 
+              vals = 0
               DO ii = 1, NumberOfDofNodes
 
                 IF( NoPermutation ) THEN
@@ -1328,7 +1329,7 @@ CONTAINS
                           Rot2(3,1:dofs) = NT % BoundaryTangent2(ll,1:dofs)
                         END IF
                           
-                        vals = MATMUL(Rot1,MATMUL(Rot2,vals0))                        
+                        vals(1:dofs) = MATMUL(Rot1,MATMUL(Rot2,vals0))                        
                       END IF
 
                     END IF

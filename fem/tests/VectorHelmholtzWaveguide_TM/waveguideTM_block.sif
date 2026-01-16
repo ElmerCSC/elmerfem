@@ -8,6 +8,8 @@
 !
 ! The case script of this file uses the parameters k_1 = kc and k_3 = beta0.
 !
+! A difference with respect to the original case are that the second-order basis
+! is used.
 
 Check Keywords "Warn"
 
@@ -69,7 +71,7 @@ Solver 1
   Equation = "VectorHelmholtz"
   Use Piola Transform = True
   Second Kind Basis = True
-  Quadratic Approximation = False
+  Quadratic Approximation = True
 
   Procedure = "VectorHelmholtz" "VectorHelmholtzSolver"
 
@@ -77,7 +79,8 @@ Solver 1
   Linear System Residual Mode = True
 
   Linear System Block Mode = True
-  Block Hcurl System = Logical True
+  Block Quadratic Hcurl System = Logical True
+  Block Quadratic Hcurl Pick Simplest = Logical True
   Block Preconditioner = True
   Block Gauss-Seidel = True
   Block Scaling = True
@@ -111,7 +114,7 @@ Solver 1
 !  block 22: Linear System direct method = umfpack ! "mumps"
   block 22: Linear System Solver = "Iterative"
   block 22: Linear System Convergence Tolerance = 1e-8
-  block 22: Linear System Iterative Method = IDRS
+  block 22: Linear System Iterative Method = IDRS !GCR
 !  block 22: BiCGstabl polynomial degree = Integer 8
 !  block 22: Linear System GCR Restart = 100
   block 22: Linear System Preconditioning = diagonal
@@ -159,7 +162,7 @@ Solver 4
   !Equation = VtuOutput
   Equation = "result output"
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
-  Output File Name = TM_2ndkind
+  Output File Name = TM_2ndkind_test
   Vtu Format = Logical True
   Ascii Output = True
   !GMSH Format = Logical True
@@ -193,7 +196,7 @@ End
 ! + the do-nothing BC on the boundaries 2 and 5 to set n x curl E = 0 
 
 
-Solver 1 :: Reference Norm = 2.75603743E-03
+Solver 1 :: Reference Norm = 1.41792461E-03
 Solver 1 :: Reference Norm Tolerance = 1e-4
-Solver 2 :: Reference Norm = 3.44478182E-01
+Solver 2 :: Reference Norm = 3.45565271E-01
 Solver 2 :: Reference Norm Tolerance = 1e-4

@@ -771,6 +771,8 @@ CONTAINS
       BC => GetBC()
       IF ( .NOT. ASSOCIATED( BC ) ) CYCLE
       
+      n  = GetElementNOFNodes()
+
       OpenSide = GetLogical(BC,'Open Side',gotIt) 
       FluxPres(1:n) = GetReal(BC,'Filmpressure Flux',GotFlux)
       VeloPres(1:n) = GetReal(BC,'Filmpressure Velocity',GotVelo)
@@ -783,7 +785,6 @@ CONTAINS
       IF(.NOT. (OpenSide .OR. GotExt .OR. GotFlux .OR. GotVelo ) ) CYCLE
       
 !------------------------------------------------------------------------------
-      n  = GetElementNOFNodes()
       nd = GetElementNOFDOFs()
       IF ( GetElementFamily() == 1 ) CYCLE
       NodeIndexes => Element % NodeIndexes

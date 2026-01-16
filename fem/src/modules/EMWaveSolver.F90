@@ -1094,7 +1094,7 @@ CONTAINS
          Var % EigenVectors(iEigen,i::m/2) = Solver % Variable % Values
        ELSE
          Var % EIgenVectors(iEigen,i-3::m/2) = &
-             CMPLX( REAL(Var % EIgenVectors(iEigen,i-3::m/2)), Solver % Variable % Values )
+             CMPLX( REAL(Var % EIgenVectors(iEigen,i-3::m/2)), Solver % Variable % Values,KIND=dp )
        END IF
      ELSE
        var % Values(i::m) = Solver % Variable % Values
@@ -1128,7 +1128,7 @@ CONTAINS
           Var % EigenVectors(iEigen,ind(1:n)+i) = x
         ELSE
           Var % EIgenVectors(iEigen,ind(1:n)+i-3) = &
-              CMPLX( REAL(Var % EigenVectors(iEigen,ind(1:n)+i-3)), x )
+              CMPLX( REAL(Var % EigenVectors(iEigen,ind(1:n)+i-3)), x,KIND=dp )
         END IF
       ELSE
         Var % Values(ind(1:n)+i) = x

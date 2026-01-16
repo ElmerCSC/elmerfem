@@ -221,16 +221,18 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
     END IF
 
     tind = 0
-    !$omp parallel do private(Element,n,nd,nb,t)   
+    !$omp parallel do private(Element,n,nd,nb,t)
     DO t=1,active
       Element => GetActiveElement(t)
       n  = GetElementNOFNodes(Element)
       nd = GetElementNOFDOFs(Element)
       nb = GetElementNOFBDOFs(Element)
-      IF( SkipDegenerate .AND. DegenerateElement( Element ) ) THEN
+
+      IF( SkipDegenerate .AND. DegenerateElement(Element) ) THEN
         CALL Info(Caller,'Skipping degenerate element:'//I2S(t),Level=12)
         CYCLE
       END IF
+
       IF( HandleAsm ) THEN
         CALL LocalMatrixHandles(  Element, n, nd+nb, nb )
       ELSE
@@ -760,21 +762,22 @@ CONTAINS
 !------------------------------------------------------------------------------
 ! Old style local matrix. 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrix(Element, n, nd)
+  RECURSIVE SUBROUTINE LocalMatrix(Element, n, nd)
 !------------------------------------------------------------------------------
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
-    TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: Material, BodyForce
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: CompParams
+
+    TYPE(Nodes_t), SAVE :: Nodes
 
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,LoadAtIP
     REAL(KIND=dp) :: MASS(nd,nd), DAMP(nd,nd), STIFF(nd,nd), FORCE(nd), &
         LOAD(nd),R(2,2,n),LondonLambda(nd), C(n), mu,muder,Babs,POT(nd), &
-        JAC(nd,nd),Agrad(3),C_ip,M(2,n),M_ip(2),x, y,&
-        Lorentz_velo(3,nd), Velo(3), omega_velo
+        JAC(nd,nd),Agrad(3),C_ip,M(2,n),M_ip(2),x, y, Lorentz_velo(3,nd), Velo(3), omega_velo
+
     REAL(KIND=dp) :: LondonLambda_ip, P_ip, Permittivity(nd)
     REAL(KIND=dp) :: Bt(nd,2), Ht(nd,2)
     REAL(KIND=dp) :: nu_tensor(2,2)
@@ -782,14 +785,14 @@ CONTAINS
 
     INTEGER :: i,p,q,t
 
-    LOGICAL :: HBcurve, WithVelocity, WithAngularVelocity, Found, Stat
     LOGICAL :: CoilBody, StrandedCoil    
+    LOGICAL :: HBcurve, WithVelocity, WithAngularVelocity, Found, Stat
 
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
 
     ! Zirka related
     LOGICAL :: Zirka
-    LOGICAL :: LondonEquations = .TRUE.
+    LOGICAL :: LondonEquations
     TYPE(Variable_t), POINTER :: hystvar
     TYPE(GlobalHysteresisModel_t), pointer :: zirkamodel
 
@@ -1432,7 +1435,7 @@ END SUBROUTINE ! }}}
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixBC(Element, BC, n, nd )
+  RECURSIVE SUBROUTINE LocalMatrixBC(Element, BC, n, nd )
 !------------------------------------------------------------------------------
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
@@ -1444,8 +1447,7 @@ END SUBROUTINE ! }}}
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), &
             mu,AirGapLength(nd), AirGapMu(nd), SurfCurr(nd), AirGapL, SurfC, x
     TYPE(ValueList_t), POINTER :: BC
-    TYPE(Nodes_t) :: Nodes
-    SAVE Nodes
+    TYPE(Nodes_t), SAVE :: Nodes
     !$OMP THREADPRIVATE(Nodes)
 !------------------------------------------------------------------------------
 
@@ -2147,7 +2149,7 @@ CONTAINS
 
   
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrix(  Element, n, nd)
+  RECURSIVE SUBROUTINE LocalMatrix(  Element, n, nd)
 !------------------------------------------------------------------------------
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
@@ -2179,9 +2181,9 @@ CONTAINS
 
     LOGICAL :: HBcurve, Found, Stat, StrandedHomogenization
     LOGICAL :: CoilBody    
-    LOGICAL :: InPlaneProximity = .FALSE., WithVelocity, WithAngularVelocity
+    LOGICAL :: InPlaneProximity=.TRUE., WithVelocity, WithAngularVelocity
     LOGICAL :: FoundIm, StrandedCoil
-    LOGICAL :: LondonEquations = .TRUE.
+    LOGICAL :: LondonEquations
     
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
 
@@ -2454,7 +2456,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixInfinityBC(Element, n, nd )
+  RECURSIVE SUBROUTINE LocalMatrixInfinityBC(Element, n, nd )
 !------------------------------------------------------------------------------
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
@@ -2519,7 +2521,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixBC(Element, BC, n, nd )
+  RECURSIVE SUBROUTINE LocalMatrixBC(Element, BC, n, nd )
 !------------------------------------------------------------------------------
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
@@ -2578,7 +2580,7 @@ CONTAINS
       END IF
 
       IF( GotSurfCurr ) THEN
-        SurfC = CMPLX( SUM(Basis(1:n)*SurfCurr(1:n)), SUM(Basis(1:n)*SurfCurrIm(1:n)))
+        SurfC = CMPLX( SUM(Basis(1:n)*SurfCurr(1:n)), SUM(Basis(1:n)*SurfCurrIm(1:n)),KIND=dp)
         FORCE(1:nd) = FORCE(1:nd) + IP % s(t) * DetJ * SurfC * Basis(1:nd) 
       END IF        
     END DO
@@ -2589,7 +2591,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixSkinBC(Element, BC, n, nd )
+  RECURSIVE SUBROUTINE LocalMatrixSkinBC(Element, BC, n, nd )
 !------------------------------------------------------------------------------
     INTEGER :: n, nd
     TYPE(ValueList_t), POINTER :: BC
@@ -2610,7 +2612,7 @@ CONTAINS
     FORCE = 0._dp
 
     muVacuum = 4 * PI * 1d-7
-    imu = CMPLX(0.0_dp, 1.0_dp)
+    imu = CMPLX(0.0_dp, 1.0_dp,KIND=dp)
     
     SkinCond(1:n) = GetReal( BC,'Layer Electric Conductivity', Found)
     Mu(1:n) = GetReal( BC,'Layer Relative Permeability', Found)
@@ -3481,7 +3483,7 @@ CONTAINS
 
         IF (ComplexPowerCompute) THEN
           cmplx_power = 0._dp
-          imag_value = CMPLX(BAtIp(7), BAtIp(8))
+          imag_value = CMPLX(BAtIp(7), BAtIp(8),KIND=dp)
 
           MuAtIp = SUM( Basis(1:n) * mu(1:n) )
 
@@ -3900,7 +3902,7 @@ CONTAINS
       imag_value = CMPLX(ComplexPower(1), &
                          ComplexPower(2), &
                          KIND=dp)
-      I = CMPLX(Current(1), Current(2))
+      I = CMPLX(Current(1), Current(2),KIND=dp)
       imag_value = imag_value*Volume/ABS(I)**2._dp
       imag_value2 = 1._dp/imag_value
       SkinCond(1) = REAL(imag_value2) 

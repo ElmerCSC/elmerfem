@@ -108,6 +108,7 @@ SUBROUTINE SunAngleSolver( Model,Solver,dt,Transient )
   SunVar => Solver % Variable
   SunAngle => SunVar % Values
   SunPerm => SunVar % Perm
+  dim = Mesh % Meshdim
   dofs = SunVar % dofs
   
   ! Find mesh edges in order to define the intersection points

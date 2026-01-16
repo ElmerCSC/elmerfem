@@ -3049,11 +3049,10 @@ CONTAINS
      LOGICAL :: Found, Quadratic, Second 
      
      Quadratic = ListGetLogical(VList,'Quadratic Approximation', Found )      
+     Second = ListGetLogical(Vlist,'Second Kind Basis', Found )
      IF( Quadratic ) THEN
-       Second = .FALSE.
        PiolaVersion = .TRUE.
      ELSE       
-       Second = ListGetLogical(Vlist,'Second Kind Basis', Found )
        IF(Second) THEN
          PiolaVersion = .TRUE.
        ELSE    
@@ -3088,11 +3087,6 @@ CONTAINS
                    //'Setting "Use Piola Transform = True"')
              END IF
              CALL ListAddLogical(Vlist,'Use Piola Transform',.TRUE.)
-           END IF
-         END IF
-         IF(Quadratic) THEN
-           IF( ListGetLogical(Vlist,'Second Kind Basis', Found ) ) THEN
-             CALL Warn('EdgeElementStyle','"Second Kind Basis" not available as quadratic!')
            END IF
          END IF
        END IF
@@ -4114,6 +4108,7 @@ CONTAINS
 
      ! Element (contravariant) metric and square root of determinant
      !--------------------------------------------------------------
+#ifdef HAVE_QP
      IF(Element % Status==0) THEN
        stat = CheckMetric(q, Element, Nodes, dLBasisdx)
        IF (stat) THEN
@@ -4122,6 +4117,7 @@ CONTAINS
          Element % Status = 2 ! bad !!
        END IF
      END IF
+#endif
 
      stat = .TRUE.
      IF ( .NOT. ElementMetric( q, Element, Nodes, &
@@ -6861,21 +6857,26 @@ END SUBROUTINE PickActiveFace
 !------------------------------------------------------------------------------------------------------------
        TYPE(Mesh_t), POINTER :: Mesh
        TYPE(Element_t), POINTER :: Parent, Face, pElement
-       INTEGER :: n, dim, cdim, q, i, j, k, l, A, I1, I2, FaceIndices(4)
+       INTEGER :: n, dim, cdim, q, i, j, k, l, A, I1, I2, I3, FaceIndices(4)
        REAL(KIND=dp) :: dLbasisdx(MAX(SIZE(Nodes % x),SIZE(Basis)),3), WorkBasis(4,3), WorkCurlBasis(4,3)
        REAL(KIND=dp) :: D1, D2, B(3), curlB(3), GT(3,3), LG(3,3), LF(3,3)
        REAL(KIND=dp) :: ElmMetric(3,3), detJ, CurlBasis(54,3)
        REAL(KIND=dp) :: t(3), s(3), v1, v2, v3, h1, h2, h3, dh1, dh2, dh3, grad(2)
        REAL(KIND=dp) :: LBasis(Element % TYPE % NumberOfNodes), Beta(4), EdgeSign(16)
        REAL(KIND=dp) :: fs1, fs2
+       REAL(KIND=dp) :: sfun, tfun, hfun, grad_sfun(3), grad_tfun(3), grad_hfun(3)
+       REAL(KIND=dp) :: svec(3), tvec(3), hvec(3), grad_svec(3,3), grad_tvec(3,3), grad_hvec(3,3)
+       REAL(KIND=dp) :: WorkWeight(2), grad_weight(2,1:3)
        LOGICAL :: Create2ndKindBasis, PerformPiolaTransform, UsePretabulatedBasis, Parallel
+       LOGICAL :: ErvinStyle
        LOGICAL :: SecondOrder, ApplyTraceMapping, Found
        LOGICAL :: ReverseSign(4)
        LOGICAL :: ScaleFaceBasis, RedefineFaceBasis
        INTEGER, POINTER :: EdgeMap(:,:)
        INTEGER :: TriangleFaceMap(3), SquareFaceMap(4), BrickFaceMap(6,4), PrismSquareFaceMap(3,4), DOFs, GIndexes(27)
-       INTEGER :: ActiveFaceId
+       INTEGER :: ActiveFaceId, EDOFs, FDOFs
 !----------------------------------------------------------------------------------------------------------
+       ErvinStyle = .FALSE.
        RedefineFaceBasis = .TRUE. ! Left as an emergency switch to revert to the original (ill-conditioned) basis
        ScaleFaceBasis = .TRUE.
        fs1 = 28.0d0
@@ -6958,8 +6959,13 @@ END SUBROUTINE PickActiveFace
          END DO
        CASE(3)
          IF (SecondOrder) THEN
-           ! DOFs is the number of H(curl)-conforming basis functions: 
-           DOFs = 8
+           ! DOFs is the number of H(curl)-conforming basis functions:
+           IF (Create2ndKindBasis) THEN
+             DOFs = 12
+           ELSE
+             DOFs = 8
+           END IF
+
            IF (n == 6) THEN
              ! Here the element of the background mesh is of type 306.
              ! The Lagrange interpolation basis on the p-approximation reference element:
@@ -7020,7 +7026,11 @@ END SUBROUTINE PickActiveFace
          END IF
        CASE(5)
          IF (SecondOrder) THEN
-           DOFs = 20
+           IF (Create2ndKindBasis) THEN
+             DOFs = 30
+           ELSE
+             DOFs = 20
+           END IF
            IF (n == 10) THEN
              ! Here the element of the background mesh is of type 510.
              ! The Lagrange interpolation basis on the p-approximation reference element:
@@ -7329,88 +7339,269 @@ END SUBROUTINE PickActiveFace
            EdgeMap => GetEdgeMap(3)
            !EdgeMap => GetEdgeMap(GetElementFamily(Element))
 
-           IF (Create2ndKindBasis) THEN
-             !-------------------------------------------------
-             ! Two basis functions defined on the edge 12.
-             !-------------------------------------------------
-             i = EdgeMap(1,1)
-             j = EdgeMap(1,2)
-             IF(GIndexes(j)<GIndexes(i)) THEN
-               ! The sign and order of basis functions are reversed as
-               ! compared with the other possibility
-               EdgeBasis(1,1) = -(3.0d0 + 3.0d0*Sqrt(3.0d0)*u - Sqrt(3.0d0)*v)/6.0d0
-               EdgeBasis(1,2) = -(3.0d0 + Sqrt(3.0d0)*u - Sqrt(3.0d0)*v)/6.0d0
-               CurlBasis(1,3) = -1.0d0/Sqrt(3.0d0)
+           IF (Create2ndKindBasis .AND. SecondOrder) THEN
 
-               EdgeBasis(2,1) = -(3.0d0 + Sqrt(3.0d0) - 3.0d0*(1.0d0 + Sqrt(3.0d0))*u - &
-                   (1.0d0 + Sqrt(3.0d0))*v)/(2.0d0*(3.0d0 + Sqrt(3.0d0)))
-               EdgeBasis(2,2) = -(-3.0d0 - Sqrt(3.0d0) + u + Sqrt(3.0d0)*u + v + Sqrt(3.0d0)*v)/ &
-                   (2.0d0*(3.0d0 + Sqrt(3.0d0)))
-               CurlBasis(2,3) = -1.0d0/Sqrt(3.0d0)
+             ! This construction follows Sun, Lee, Cendes. SIAM J. Sci. Comput. 23(4):1053-1076
+ 
+             !-------------------------------------------------
+             ! The basis functions associated with the edges
+             !    - here the first basis function is the Whitney form
+             !-------------------------------------------------
+             EDOFs = 3
+             
+             DO k=1,3
+               
+               i = EdgeMap(k,1)
+               j = EdgeMap(k,2)
+
+               svec(1:2) = Basis(j) * dLBasisdx(i,1:2)
+               tvec(1:2) = Basis(i) * dLBasisdx(j,1:2)
+
+               grad_svec(1,2) = dLBasisdx(j,2) * dLBasisdx(i,1)
+               grad_svec(2,1) = dLBasisdx(j,1) * dLBasisdx(i,2)
+
+               grad_tvec(1,2) = dLBasisdx(i,2) * dLBasisdx(j,1)
+               grad_tvec(2,1) = dLBasisdx(i,1) * dLBasisdx(j,2)
+
+               WorkBasis(1,1:2) = svec(1:2)
+               WorkBasis(2,1:2) = tvec(1:2)
+               WorkCurlBasis(1,3) = grad_svec(2,1) - grad_svec(1,2)
+               WorkCurlBasis(2,3) = grad_tvec(2,1) - grad_tvec(1,2)
+
+               WorkWeight(1) = 2.0d0*Basis(i) - Basis(j)
+               WorkWeight(2) = 2.0d0*Basis(j) - Basis(i)
+
+               grad_weight(1,1:2) = 2.0d0*dLBasisdx(i,1:2) - dLBasisdx(j,1:2)
+               grad_weight(2,1:2) = 2.0d0*dLBasisdx(j,1:2) - dLBasisdx(i,1:2)
+
+               IF (GIndexes(j) < GIndexes(i)) THEN
+                 I1 = 2
+                 I2 = 1
+               ELSE
+                 I1 = 1
+                 I2 = 2
+               END IF
+
+               DO l=1,EDOFs
+                 SELECT CASE(l)
+                 CASE(1)
+                   sfun = -1.0d0
+                   tfun = 1.0d0
+                 CASE(2)
+                   sfun = 1.0d0
+                   tfun = 1.0d0
+                 CASE(3)
+                   sfun = -WorkWeight(I1)
+                   tfun = WorkWeight(I2)
+                   grad_sfun(1:2) = -grad_weight(I1,1:2)
+                   grad_tfun(1:2) = grad_weight(I2,1:2)
+                 CASE DEFAULT
+                   CALL Fatal('ElementDescription::EdgeElementInfo','sfun/tfun not defined')
+                 END SELECT
+
+                 EdgeBasis(EDOFs*(k-1)+l,1:2) = sfun * WorkBasis(I1,1:2) + tfun * WorkBasis(I2,1:2)
+                 CurlBasis(EDOFs*(k-1)+l,3) = sfun * WorkCurlBasis(I1,3) + tfun * WorkCurlBasis(I2,3)
+
+                 IF (l > 2) THEN
+                   CurlBasis(EDOFs*(k-1)+l,3) = CurlBasis(EDOFs*(k-1)+l,3) + &
+                       grad_sfun(1)*WorkBasis(I1,2) + grad_tfun(1)*WorkBasis(I2,2) - &
+                       grad_sfun(2)*WorkBasis(I1,1) - grad_tfun(2)*WorkBasis(I2,1)
+                 END IF
+               END DO
+             END DO
+
+             ! The basis functions associated with the face ...
+             FDOFs = 3
+             TriangleFaceMap(:) = (/ 1,2,3 /)
+             I1 = 1
+             I2 = 2
+             I3 = 3
+               
+             WorkBasis(1,1:2) = Basis(I2) * Basis(I3) * dLBasisdx(I1,1:2)
+             WorkBasis(2,1:2) = Basis(I1) * Basis(I3) * dLBasisdx(I2,1:2)
+             WorkBasis(3,1:2) = Basis(I1) * Basis(I2) * dLBasisdx(I3,1:2)
+
+             grad_svec(1,2) = (dLBasisdx(I2,2) * Basis(I3) + &
+                 Basis(I2) * dLBasisdx(I3,2)) * dLBasisdx(I1,1)
+             grad_svec(2,1) = (dLBasisdx(I2,1) * Basis(I3) + &
+                 Basis(I2) * dLBasisdx(I3,1)) * dLBasisdx(I1,2)
+
+             grad_tvec(1,2) = (dLBasisdx(I1,2) * Basis(I3)  + &
+                 Basis(I1) * dLBasisdx(I3,2)) * dLBasisdx(I2,1)
+             grad_tvec(2,1) = (dLBasisdx(I1,1) * Basis(I3)  + &
+                 Basis(I1) * dLBasisdx(I3,1)) * dLBasisdx(I2,2)
+               
+             grad_hvec(1,2) = (dLBasisdx(I1,2) * Basis(I2)  + &
+                 Basis(I1) * dLBasisdx(I2,2)) * dLBasisdx(I3,1)
+             grad_hvec(2,1) = (dLBasisdx(I1,1) * Basis(I2)  + &
+                 Basis(I1) * dLBasisdx(I2,1)) * dLBasisdx(I3,2)
+
+             WorkCurlBasis(1,3) = grad_svec(2,1) - grad_svec(1,2)
+             WorkCurlBasis(2,3) = grad_tvec(2,1) - grad_tvec(1,2)
+             WorkCurlBasis(3,3) = grad_hvec(2,1) - grad_hvec(1,2)
+
+             ! Create permutation:
+             FaceIndices(1:3) = GIndexes(TriangleFaceMap(1:3))
+             CALL TriangleFaceDofsOrdering2nd(I1,I2,I3,FaceIndices(1:3))
+               
+             ! Create the basis:
+             DO l=1,FDOFs
+                 
+               SELECT CASE(l)
+               CASE(1)
+                 sfun = 1.0d0
+                 tfun = 1.0d0
+                 hfun = 1.0d0
+               CASE(2)
+                 sfun = 1.0d0
+                 tfun = 1.0d0
+                 hfun = -2.0d0
+               CASE(3)
+                 sfun = 1.0d0
+                 tfun = -1.0d0
+                 hfun = 0.0d0
+               END SELECT
+
+               EdgeBasis(3*EDOFs + l,1:2) = sfun * WorkBasis(I1,1:2) + tfun * WorkBasis(I2,1:2) + &
+                   hfun * WorkBasis(I3,1:2)
+               CurlBasis(3*EDOFs + l,3) = sfun * WorkCurlBasis(I1,3) + tfun * WorkCurlBasis(I2,3) + &
+                     hfun * WorkCurlBasis(I3,3)
+             END DO
+             
+           ELSE IF (Create2ndKindBasis) THEN
+             IF (.NOT. ErvinStyle) THEN
+
+               ! Also this construction follows Sun, Lee, Cendes. SIAM J. Sci. Comput. 23(4):1053-1076.
+               ! The first basis function associated with an edge is the Whitney form, while 
+               ! the second basis function corresponds to a gradient field.
+               
+               EDOFs = 2
+
+               DO k=1,3
+
+                 i = EdgeMap(k,1)
+                 j = EdgeMap(k,2)
+
+                 svec(1:2) = Basis(j) * dLBasisdx(i,1:2)
+                 tvec(1:2) = Basis(i) * dLBasisdx(j,1:2)
+
+                 grad_svec(1,2) = dLBasisdx(j,2) * dLBasisdx(i,1)
+                 grad_svec(2,1) = dLBasisdx(j,1) * dLBasisdx(i,2)
+
+                 grad_tvec(1,2) = dLBasisdx(i,2) * dLBasisdx(j,1)
+                 grad_tvec(2,1) = dLBasisdx(i,1) * dLBasisdx(j,2)
+
+                 WorkBasis(1,1:2) = svec(1:2)
+                 WorkBasis(2,1:2) = tvec(1:2)
+                 WorkCurlBasis(1,3) = grad_svec(2,1) - grad_svec(1,2)
+                 WorkCurlBasis(2,3) = grad_tvec(2,1) - grad_tvec(1,2)
+
+                 IF (GIndexes(j) < GIndexes(i)) THEN
+                   I1 = 2
+                   I2 = 1
+                 ELSE
+                   I1 = 1
+                   I2 = 2
+                 END IF
+
+                 DO l=1,EDOFs
+                   SELECT CASE(l)
+                   CASE(1)
+                     sfun = -1.0d0
+                     tfun = 1.0d0
+                   CASE(2)
+                     sfun = 1.0d0
+                     tfun = 1.0d0
+                   CASE DEFAULT
+                     CALL Fatal('ElementDescription::EdgeElementInfo','sfun/tfun not defined')
+                   END SELECT
+
+                   EdgeBasis(EDOFs*(k-1)+l,1:2) = sfun * WorkBasis(I1,1:2) + tfun * WorkBasis(I2,1:2)
+                   CurlBasis(EDOFs*(k-1)+l,3) = sfun * WorkCurlBasis(I1,3) + tfun * WorkCurlBasis(I2,3)
+                 END DO
+               END DO
              ELSE
-               EdgeBasis(1,1) = (3.0d0 + Sqrt(3.0d0) - 3.0d0*(1.0d0 + Sqrt(3.0d0))*u - &
-                   (1.0d0 + Sqrt(3.0d0))*v)/(2.0d0*(3.0d0 + Sqrt(3.0d0)))
-               EdgeBasis(1,2) = (-3.0d0 - Sqrt(3.0d0) + u + Sqrt(3.0d0)*u + v + Sqrt(3.0d0)*v)/ &
-                   (2.0d0*(3.0d0 + Sqrt(3.0d0)))
-               CurlBasis(1,3) = 1.0d0/Sqrt(3.0d0)
+               !-------------------------------------------------
+               ! Two basis functions defined on the edge 12.
+               !-------------------------------------------------
+               i = EdgeMap(1,1)
+               j = EdgeMap(1,2)
+               IF(GIndexes(j)<GIndexes(i)) THEN
+                 ! The sign and order of basis functions are reversed as
+                 ! compared with the other possibility
+                 EdgeBasis(1,1) = -(3.0d0 + 3.0d0*Sqrt(3.0d0)*u - Sqrt(3.0d0)*v)/6.0d0
+                 EdgeBasis(1,2) = -(3.0d0 + Sqrt(3.0d0)*u - Sqrt(3.0d0)*v)/6.0d0
+                 CurlBasis(1,3) = -1.0d0/Sqrt(3.0d0)
 
-               EdgeBasis(2,1) = (3.0d0 + 3.0d0*Sqrt(3.0d0)*u - Sqrt(3.0d0)*v)/6.0d0
-               EdgeBasis(2,2) = (3.0d0 + Sqrt(3.0d0)*u - Sqrt(3.0d0)*v)/6.0d0
-               CurlBasis(2,3) = 1.0d0/Sqrt(3.0d0)                 
+                 EdgeBasis(2,1) = -(3.0d0 + Sqrt(3.0d0) - 3.0d0*(1.0d0 + Sqrt(3.0d0))*u - &
+                     (1.0d0 + Sqrt(3.0d0))*v)/(2.0d0*(3.0d0 + Sqrt(3.0d0)))
+                 EdgeBasis(2,2) = -(-3.0d0 - Sqrt(3.0d0) + u + Sqrt(3.0d0)*u + v + Sqrt(3.0d0)*v)/ &
+                     (2.0d0*(3.0d0 + Sqrt(3.0d0)))
+                 CurlBasis(2,3) = -1.0d0/Sqrt(3.0d0)
+               ELSE
+                 EdgeBasis(1,1) = (3.0d0 + Sqrt(3.0d0) - 3.0d0*(1.0d0 + Sqrt(3.0d0))*u - &
+                     (1.0d0 + Sqrt(3.0d0))*v)/(2.0d0*(3.0d0 + Sqrt(3.0d0)))
+                 EdgeBasis(1,2) = (-3.0d0 - Sqrt(3.0d0) + u + Sqrt(3.0d0)*u + v + Sqrt(3.0d0)*v)/ &
+                     (2.0d0*(3.0d0 + Sqrt(3.0d0)))
+                 CurlBasis(1,3) = 1.0d0/Sqrt(3.0d0)
+
+                 EdgeBasis(2,1) = (3.0d0 + 3.0d0*Sqrt(3.0d0)*u - Sqrt(3.0d0)*v)/6.0d0
+                 EdgeBasis(2,2) = (3.0d0 + Sqrt(3.0d0)*u - Sqrt(3.0d0)*v)/6.0d0
+                 CurlBasis(2,3) = 1.0d0/Sqrt(3.0d0)                 
+               END IF
+
+               !-------------------------------------------------
+               ! Two basis functions defined on the edge 23.
+               !-------------------------------------------------
+               i = EdgeMap(2,1)
+               j = EdgeMap(2,2)
+               IF(GIndexes(j)<GIndexes(i)) THEN
+                 ! The sign and order of basis functions are reversed as
+                 ! compared with the other possibility
+                 EdgeBasis(3,1) = ((3.0d0 + Sqrt(3.0d0))*v)/6.0d0
+                 EdgeBasis(3,2) = -(-3.0d0 + Sqrt(3.0d0) + (-3.0d0 + Sqrt(3.0d0))*u + 2.0d0*Sqrt(3.0d0)*v)/6.0d0
+                 CurlBasis(3,3) = -1.0d0/Sqrt(3.0d0)
+
+                 EdgeBasis(4,1) = ((-3.0d0 + Sqrt(3.0d0))*v)/6.0d0
+                 EdgeBasis(4,2) = -(2.0d0 + Sqrt(3.0d0) + (2.0d0 + Sqrt(3.0d0))*u - &
+                     (1.0d0 + Sqrt(3.0d0))*v)/(3.0d0 + Sqrt(3.0d0))
+                 CurlBasis(4,3) = -1.0d0/Sqrt(3.0d0)
+               ELSE
+                 EdgeBasis(3,1) = -((-3.0d0 + Sqrt(3.0d0))*v)/6.0d0
+                 EdgeBasis(3,2) = (2.0d0 + Sqrt(3.0d0) + (2.0d0 + Sqrt(3.0d0))*u - &
+                     (1.0d0 + Sqrt(3.0d0))*v)/(3.0d0 + Sqrt(3.0d0))
+                 CurlBasis(3,3) = 1.0d0/Sqrt(3.0d0)
+
+                 EdgeBasis(4,1) = -((3.0d0 + Sqrt(3.0d0))*v)/6.0d0
+                 EdgeBasis(4,2) = (-3.0d0 + Sqrt(3.0d0) + (-3.0d0 + Sqrt(3.0d0))*u + 2.0d0*Sqrt(3.0d0)*v)/6.0d0
+                 CurlBasis(4,3) = 1.0d0/Sqrt(3.0d0)                 
+               END IF
+
+               !-------------------------------------------------
+               ! Two basis functions defined on the edge 31.
+               !-------------------------------------------------
+               i = EdgeMap(3,1)
+               j = EdgeMap(3,2)
+               IF(GIndexes(j)<GIndexes(i)) THEN
+                 ! The sign and order of basis functions are reversed as
+                 ! compared with the other possibility
+                 EdgeBasis(5,1) = ((-3.0d0 + Sqrt(3.0d0))*v)/6.0d0
+                 EdgeBasis(5,2) = -(-3.0d0 - Sqrt(3.0d0) + (3.0d0 + Sqrt(3.0d0))*u + 2.0d0*Sqrt(3.0d0)*v)/6.0d0
+                 CurlBasis(5,3) = -1.0d0/Sqrt(3.0d0)
+
+                 EdgeBasis(6,1) = ((3.0d0 + 2.0d0*Sqrt(3.0d0))*v)/(3.0d0*(1.0d0 + Sqrt(3.0d0)))
+                 EdgeBasis(6,2) = ((-1.0d0 + u + v + Sqrt(3.0d0)*v)/(3.0d0 + Sqrt(3.0d0)))
+                 CurlBasis(6,3) = -1.0d0/Sqrt(3.0d0)
+               ELSE
+                 EdgeBasis(5,1) = -((3.0d0 + 2.0d0*Sqrt(3.0d0))*v)/(3.0d0*(1.0d0 + Sqrt(3.0d0)))
+                 EdgeBasis(5,2) = -((-1.0d0 + u + v + Sqrt(3.0d0)*v)/(3.0d0 + Sqrt(3.0d0)))
+                 CurlBasis(5,3) = 1.0d0/Sqrt(3.0d0)
+
+                 EdgeBasis(6,1) = -((-3.0d0 + Sqrt(3.0d0))*v)/6.0d0
+                 EdgeBasis(6,2) = (-3.0d0 - Sqrt(3.0d0) + (3.0d0 + Sqrt(3.0d0))*u + 2.0d0*Sqrt(3.0d0)*v)/6.0d0
+                 CurlBasis(6,3) = 1.0d0/Sqrt(3.0d0)                 
+               END IF
              END IF
-
-             !-------------------------------------------------
-             ! Two basis functions defined on the edge 23.
-             !-------------------------------------------------
-             i = EdgeMap(2,1)
-             j = EdgeMap(2,2)
-             IF(GIndexes(j)<GIndexes(i)) THEN
-               ! The sign and order of basis functions are reversed as
-               ! compared with the other possibility
-               EdgeBasis(3,1) = ((3.0d0 + Sqrt(3.0d0))*v)/6.0d0
-               EdgeBasis(3,2) = -(-3.0d0 + Sqrt(3.0d0) + (-3.0d0 + Sqrt(3.0d0))*u + 2.0d0*Sqrt(3.0d0)*v)/6.0d0
-               CurlBasis(3,3) = -1.0d0/Sqrt(3.0d0)
-
-               EdgeBasis(4,1) = ((-3.0d0 + Sqrt(3.0d0))*v)/6.0d0
-               EdgeBasis(4,2) = -(2.0d0 + Sqrt(3.0d0) + (2.0d0 + Sqrt(3.0d0))*u - &
-                   (1.0d0 + Sqrt(3.0d0))*v)/(3.0d0 + Sqrt(3.0d0))
-               CurlBasis(4,3) = -1.0d0/Sqrt(3.0d0)
-             ELSE
-               EdgeBasis(3,1) = -((-3.0d0 + Sqrt(3.0d0))*v)/6.0d0
-               EdgeBasis(3,2) = (2.0d0 + Sqrt(3.0d0) + (2.0d0 + Sqrt(3.0d0))*u - &
-                   (1.0d0 + Sqrt(3.0d0))*v)/(3.0d0 + Sqrt(3.0d0))
-               CurlBasis(3,3) = 1.0d0/Sqrt(3.0d0)
-
-               EdgeBasis(4,1) = -((3.0d0 + Sqrt(3.0d0))*v)/6.0d0
-               EdgeBasis(4,2) = (-3.0d0 + Sqrt(3.0d0) + (-3.0d0 + Sqrt(3.0d0))*u + 2.0d0*Sqrt(3.0d0)*v)/6.0d0
-               CurlBasis(4,3) = 1.0d0/Sqrt(3.0d0)                 
-             END IF
-
-             !-------------------------------------------------
-             ! Two basis functions defined on the edge 31.
-             !-------------------------------------------------
-             i = EdgeMap(3,1)
-             j = EdgeMap(3,2)
-             IF(GIndexes(j)<GIndexes(i)) THEN
-               ! The sign and order of basis functions are reversed as
-               ! compared with the other possibility
-               EdgeBasis(5,1) = ((-3.0d0 + Sqrt(3.0d0))*v)/6.0d0
-               EdgeBasis(5,2) = -(-3.0d0 - Sqrt(3.0d0) + (3.0d0 + Sqrt(3.0d0))*u + 2.0d0*Sqrt(3.0d0)*v)/6.0d0
-               CurlBasis(5,3) = -1.0d0/Sqrt(3.0d0)
-
-               EdgeBasis(6,1) = ((3.0d0 + 2.0d0*Sqrt(3.0d0))*v)/(3.0d0*(1.0d0 + Sqrt(3.0d0)))
-               EdgeBasis(6,2) = ((-1.0d0 + u + v + Sqrt(3.0d0)*v)/(3.0d0 + Sqrt(3.0d0)))
-               CurlBasis(6,3) = -1.0d0/Sqrt(3.0d0)
-             ELSE
-               EdgeBasis(5,1) = -((3.0d0 + 2.0d0*Sqrt(3.0d0))*v)/(3.0d0*(1.0d0 + Sqrt(3.0d0)))
-               EdgeBasis(5,2) = -((-1.0d0 + u + v + Sqrt(3.0d0)*v)/(3.0d0 + Sqrt(3.0d0)))
-               CurlBasis(5,3) = 1.0d0/Sqrt(3.0d0)
-
-               EdgeBasis(6,1) = -((-3.0d0 + Sqrt(3.0d0))*v)/6.0d0
-               EdgeBasis(6,2) = (-3.0d0 - Sqrt(3.0d0) + (3.0d0 + Sqrt(3.0d0))*u + 2.0d0*Sqrt(3.0d0)*v)/6.0d0
-               CurlBasis(6,3) = 1.0d0/Sqrt(3.0d0)                 
-             END IF
-
            ELSE
              
              !------------------------------------------------------------
@@ -7682,269 +7873,534 @@ END SUBROUTINE PickActiveFace
            !--------------------------------------------------------------
            EdgeMap => GetEdgeMap(5)
 
-           IF (Create2ndKindBasis) THEN
+           IF (Create2ndKindBasis .AND. SecondOrder) THEN
+
+             ! Here we follow Sun, Lee, Cendes. SIAM J. Sci. Comput. 23(4):1053-1076
+ 
              !-------------------------------------------------
-             ! Two basis functions defined on the edge 12.
+             ! The basis functions associated with the edges
+             !    - here the first basis function is the Whitney form
              !-------------------------------------------------
-             i = EdgeMap(1,1)
-             j = EdgeMap(1,2)
-             IF(GIndexes(j)<GIndexes(i)) THEN
-               ! The sign and order of basis functions are reversed as
-               ! compared with the other possibility
-               EdgeBasis(1,1) = -(6.0d0 + 6.0d0*Sqrt(3.0d0)*u - 2.0d0*Sqrt(3.0d0)*v - Sqrt(6.0d0)*w)/12.0d0
-               EdgeBasis(1,2) = -(6.0d0 + 2.0d0*Sqrt(3.0d0)*u - 2.0d0*Sqrt(3.0d0)*v - Sqrt(6.0d0)*w)/12.0d0
-               EdgeBasis(1,3) = -(3.0d0*Sqrt(2.0d0) + Sqrt(6.0d0)*u - Sqrt(6.0d0)*v - Sqrt(3.0d0)*w)/12.0d0
-               CurlBasis(1,1) = 0.0d0
-               CurlBasis(1,2) = 1.0d0/Sqrt(6.0d0)
-               CurlBasis(1,3) = -1.0d0/Sqrt(3.0d0)
-
-               EdgeBasis(2,1) = (-6.0d0 - 2.0d0*Sqrt(3.0d0) + 6.0d0*(1.0d0 + Sqrt(3.0d0))*u + &
-                   2.0d0*(1.0d0 + Sqrt(3.0d0))*v + Sqrt(2.0d0)*w + Sqrt(6.0d0)*w)/(4.0d0*(3.0d0 + Sqrt(3.0d0)))
-               EdgeBasis(2,2) = -(-6.0d0 - 2.0d0*Sqrt(3.0d0) + 2.0d0*(1.0d0 + Sqrt(3.0d0))*u + &
-                   2.0d0*(1.0d0 + Sqrt(3.0d0))*v + Sqrt(2.0d0)*w + Sqrt(6.0d0)*w)/(4.0d0*(3.0d0 + Sqrt(3.0d0)))
-               EdgeBasis(2,3) = -(-3.0d0*Sqrt(2.0d0) - Sqrt(6.0d0) + (Sqrt(2.0d0) + Sqrt(6.0d0))*u + &
-                   (Sqrt(2.0d0) + Sqrt(6.0d0))*v + w + Sqrt(3.0d0)*w)/(4.0d0*(3.0d0 + Sqrt(3.0d0)))
-               CurlBasis(2,1) = 0.0d0 
-               CurlBasis(2,2) = (Sqrt(2.0d0) + Sqrt(6.0d0))/(6.0d0 + 2.0d0*Sqrt(3.0d0))
-               CurlBasis(2,3) = -1.0d0/Sqrt(3.0d0)
-             ELSE
-               EdgeBasis(1,1) = -(-6.0d0 - 2.0d0*Sqrt(3.0d0) + 6.0d0*(1.0d0 + Sqrt(3.0d0))*u + &
-                   2.0d0*(1.0d0 + Sqrt(3.0d0))*v + Sqrt(2.0d0)*w + Sqrt(6.0d0)*w)/(4.0d0*(3.0d0 + Sqrt(3.0d0)))
-               EdgeBasis(1,2) = (-6.0d0 - 2.0d0*Sqrt(3.0d0) + 2.0d0*(1.0d0 + Sqrt(3.0d0))*u + &
-                   2.0d0*(1.0d0 + Sqrt(3.0d0))*v + Sqrt(2.0d0)*w + Sqrt(6.0d0)*w)/(4.0d0*(3.0d0 + Sqrt(3.0d0)))
-               EdgeBasis(1,3) = (-3.0d0*Sqrt(2.0d0) - Sqrt(6.0d0) + (Sqrt(2.0d0) + Sqrt(6.0d0))*u + &
-                   (Sqrt(2.0d0) + Sqrt(6.0d0))*v + w + Sqrt(3.0d0)*w)/(4.0d0*(3.0d0 + Sqrt(3.0d0)))
-               CurlBasis(1,1) = 0.0d0
-               CurlBasis(1,2) = -((Sqrt(2.0d0) + Sqrt(6.0d0))/(6.0d0 + 2.0d0*Sqrt(3.0d0)))
-               CurlBasis(1,3) = 1.0d0/Sqrt(3.0d0)
-
-               EdgeBasis(2,1) = (6.0d0 + 6.0d0*Sqrt(3.0d0)*u - 2.0d0*Sqrt(3.0d0)*v - Sqrt(6.0d0)*w)/12.0d0
-               EdgeBasis(2,2) = (6.0d0 + 2.0d0*Sqrt(3.0d0)*u - 2.0d0*Sqrt(3.0d0)*v - Sqrt(6.0d0)*w)/12.0d0
-               EdgeBasis(2,3) = (3.0d0*Sqrt(2.0d0) + Sqrt(6.0d0)*u - Sqrt(6.0d0)*v - Sqrt(3.0d0)*w)/12.0d0 
-               CurlBasis(2,1) = 0.0d0
-               CurlBasis(2,2) = -1.0d0/Sqrt(6.0d0)
-               CurlBasis(2,3) = 1.0d0/Sqrt(3.0d0)
-             END IF
-
-             !-------------------------------------------------
-             ! Two basis functions defined on the edge 23.
-             !-------------------------------------------------
-             i = EdgeMap(2,1)
-             j = EdgeMap(2,2)
-             IF(GIndexes(j)<GIndexes(i)) THEN
-               ! The sign and order of basis functions are reversed as
-               ! compared with the other possibility
-               EdgeBasis(3,1) = (3.0d0 + Sqrt(3.0d0))*(4.0d0*v - Sqrt(2.0d0)*w)/24.0d0
-               EdgeBasis(3,2) = -(4.0d0*(-3.0d0 + Sqrt(3.0d0))*u + 8.0d0*Sqrt(3.0d0)*v + &
-                   (-3.0d0 + Sqrt(3.0d0))*(4.0d0 + Sqrt(2.0d0)*w))/24.0d0
-               EdgeBasis(3,3) = -(3.0d0*Sqrt(2.0d0) - Sqrt(6.0d0) - Sqrt(2.0d0)*(-3.0d0 + Sqrt(3.0d0))*u + &
-                   Sqrt(2.0d0)*(3.0d0 + Sqrt(3.0d0))*v - 2.0d0*Sqrt(3.0d0)*w)/24.0d0
-               CurlBasis(3,1) = -1.0d0/(2.0d0*Sqrt(2.0d0))
-               CurlBasis(3,2) = -1.0d0/(2.0d0*Sqrt(6.0d0))
-               CurlBasis(3,3) = -1.0d0/Sqrt(3.0d0)
-
-               EdgeBasis(4,1) = (-3.0d0 + Sqrt(3.0d0))*(4.0d0*v - Sqrt(2.0d0)*w)/24.0d0
-               EdgeBasis(4,2) = (-4.0d0*(2.0d0 + Sqrt(3.0d0))*u + 4.0d0*(1.0d0 + Sqrt(3.0d0))*v + &
-                   (2.0d0 + Sqrt(3.0d0))*(-4.0d0 + Sqrt(2.0d0)*w))/(4.0d0*(3.0d0 + Sqrt(3.0d0)))
-               EdgeBasis(4,3) = -(-2.0d0*Sqrt(2.0d0) - Sqrt(6.0d0) - Sqrt(2.0d0)*(2.0d0 + Sqrt(3.0d0))*u + &
-                   Sqrt(2.0d0)*v + w + Sqrt(3.0d0)*w)/(4.0d0*(3.0d0 + Sqrt(3.0d0)))
-               CurlBasis(4,1) = -1.0d0/(2.0d0*Sqrt(2.0d0))
-               CurlBasis(4,2) = -(Sqrt(2.0d0) + Sqrt(6.0d0))/(12.0d0 + 4.0d0*Sqrt(3.0d0))
-               CurlBasis(4,3) = -1.0d0/Sqrt(3.0d0)
-             ELSE
-               EdgeBasis(3,1) = -(-3.0d0 + Sqrt(3.0d0))*(4.0d0*v - Sqrt(2.0d0)*w)/24.0d0
-               EdgeBasis(3,2) = -(-4.0d0*(2.0d0 + Sqrt(3.0d0))*u + 4.0d0*(1.0d0 + Sqrt(3.0d0))*v + &
-                   (2.0d0 + Sqrt(3.0d0))*(-4.0d0 + Sqrt(2.0d0)*w))/(4.0d0*(3.0d0 + Sqrt(3.0d0)))
-               EdgeBasis(3,3) = (-2.0d0*Sqrt(2.0d0) - Sqrt(6.0d0) - Sqrt(2.0d0)*(2.0d0 + Sqrt(3.0d0))*u + &
-                   Sqrt(2.0d0)*v + w + Sqrt(3.0d0)*w)/(4.0d0*(3.0d0 + Sqrt(3.0d0)))
-               CurlBasis(3,1) = 1.0d0/(2.0d0*Sqrt(2.0d0))
-               CurlBasis(3,2) = (Sqrt(2.0d0) + Sqrt(6.0d0))/(12.0d0 + 4.0d0*Sqrt(3.0d0))
-               CurlBasis(3,3) = 1.0d0/Sqrt(3.0d0)
-
-               EdgeBasis(4,1) = -((3.0d0 + Sqrt(3.0d0))*(4.0d0*v - Sqrt(2.0d0)*w))/24.0d0
-               EdgeBasis(4,2) = (4.0d0*(-3.0d0 + Sqrt(3.0d0))*u + 8.0d0*Sqrt(3.0d0)*v + &
-                   (-3.0d0 + Sqrt(3.0d0))*(4.0d0 + Sqrt(2.0d0)*w))/24.0d0
-               EdgeBasis(4,3) = (3.0d0*Sqrt(2.0d0) - Sqrt(6.0d0) - Sqrt(2.0d0)*(-3.0d0 + Sqrt(3.0d0))*u + &
-                   Sqrt(2.0d0)*(3.0d0 + Sqrt(3.0d0))*v - 2.0d0*Sqrt(3.0d0)*w)/24.0d0
-               CurlBasis(4,1) = 1.0d0/(2.0d0*Sqrt(2.0d0))
-               CurlBasis(4,2) = 1.0d0/(2.0d0*Sqrt(6.0d0))
-               CurlBasis(4,3) = 1.0d0/Sqrt(3.0d0)
-             END IF
-
-             !-------------------------------------------------
-             ! Two basis functions defined on the edge 31.
-             !-------------------------------------------------
-             i = EdgeMap(3,1)
-             j = EdgeMap(3,2)
-             IF(GIndexes(j)<GIndexes(i)) THEN
-               ! The sign and order of basis functions are reversed as
-               ! compared with the other possibility
-               EdgeBasis(5,1) = ((-3.0d0 + Sqrt(3.0d0))*(4.0d0*v - Sqrt(2.0d0)*w))/24.0d0
-               EdgeBasis(5,2) = -(4.0d0*(3.0d0 + Sqrt(3.0d0))*u + 8.0d0*Sqrt(3.0d0)*v + &
-                   (3.0d0 + Sqrt(3.0d0))*(-4.0d0 + Sqrt(2.0d0)*w))/24.0d0
-               EdgeBasis(5,3) = -(3.0d0*Sqrt(2.0d0) + Sqrt(6.0d0) - Sqrt(2.0d0)*(3.0d0 + Sqrt(3.0d0))*u + &
-                   Sqrt(2.0d0)*(-3.0d0 + Sqrt(3.0d0))*v - 2.0d0*Sqrt(3.0d0)*w)/24.0d0
-               CurlBasis(5,1) = 1.0d0/(2.0d0*Sqrt(2.0d0))
-               CurlBasis(5,2) = -1.0d0/(2.0d0*Sqrt(6.0d0))
-               CurlBasis(5,3) = -1.0d0/Sqrt(3.0d0)
-
-               EdgeBasis(6,1) = ((3.0d0 + 2.0d0*Sqrt(3.0d0))*(4.0d0*v - Sqrt(2.0d0)*w))/ &
-                   (12.0d0*(1.0d0 + Sqrt(3.0d0)))
-               EdgeBasis(6,2) = -(4.0d0 - 4.0d0*u - 4.0d0*(1.0d0 + Sqrt(3.0d0))*v + Sqrt(2.0d0)*w)/ &
-                   (4.0d0*(3.0d0 + Sqrt(3.0d0)))
-               EdgeBasis(6,3) = -(-Sqrt(2.0d0) + Sqrt(2.0d0)*u - Sqrt(2.0d0)*(2.0d0 + Sqrt(3.0d0))*v + &
-                   w + Sqrt(3.0d0)*w)/(4.0d0*(3.0d0 + Sqrt(3.0d0)))
-               CurlBasis(6,1) = 1.0d0/(2.0d0*Sqrt(2.0d0))
-               CurlBasis(6,2) = -1.0d0/(2.0d0*Sqrt(6.0d0))
-               CurlBasis(6,3) = -1.0d0/Sqrt(3.0d0)
-             ELSE
-               EdgeBasis(5,1) = -((3.0d0 + 2.0d0*Sqrt(3.0d0))*(4.0d0*v - Sqrt(2.0d0)*w))/ &
-                   (12.0d0*(1.0d0 + Sqrt(3.0d0)))
-               EdgeBasis(5,2) = (4.0d0 - 4.0d0*u - 4.0d0*(1.0d0 + Sqrt(3.0d0))*v + Sqrt(2.0d0)*w)/ &
-                   (4.0d0*(3.0d0 + Sqrt(3.0d0)))
-               EdgeBasis(5,3) = (-Sqrt(2.0d0) + Sqrt(2.0d0)*u - Sqrt(2.0d0)*(2.0d0 + Sqrt(3.0d0))*v + &
-                   w + Sqrt(3.0d0)*w)/(4.0d0*(3.0d0 + Sqrt(3.0d0)))
-               CurlBasis(5,1) = -1.0d0/(2.0d0*Sqrt(2.0d0))
-               CurlBasis(5,2) = 1.0d0/(2.0d0*Sqrt(6.0d0))
-               CurlBasis(5,3) = 1.0d0/Sqrt(3.0d0)
-
-               EdgeBasis(6,1) = -((-3.0d0 + Sqrt(3.0d0))*(4.0d0*v - Sqrt(2.0d0)*w))/24.0d0
-               EdgeBasis(6,2) = (4.0d0*(3.0d0 + Sqrt(3.0d0))*u + 8.0d0*Sqrt(3.0d0)*v + &
-                   (3.0d0 + Sqrt(3.0d0))*(-4.0d0 + Sqrt(2.0d0)*w))/24.0d0
-               EdgeBasis(6,3) = (3.0d0*Sqrt(2.0d0) + Sqrt(6.0d0) - Sqrt(2.0d0)*(3.0d0 + Sqrt(3.0d0))*u + &
-                   Sqrt(2.0d0)*(-3.0d0 + Sqrt(3.0d0))*v - 2.0d0*Sqrt(3.0d0)*w)/24.0d0
-               CurlBasis(6,1) = -1.0d0/(2.0d0*Sqrt(2.0d0))
-               CurlBasis(6,2) = 1.0d0/(2.0d0*Sqrt(6.0d0))
-               CurlBasis(6,3) = 1.0d0/Sqrt(3.0d0)
-             END IF
-
-             !-------------------------------------------------
-             ! Two basis functions defined on the edge 14.
-             !-------------------------------------------------
-             i = EdgeMap(4,1)
-             j = EdgeMap(4,2)
-             IF(GIndexes(j)<GIndexes(i)) THEN
-               ! The sign and order of basis functions are reversed as
-               ! compared with the other possibility
-               EdgeBasis(7,1) = -((3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(2.0d0))
-               EdgeBasis(7,2) = -((3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(6.0d0))
-               EdgeBasis(7,3) = -(-3.0d0*Sqrt(2.0d0) + Sqrt(6.0d0) - Sqrt(2.0d0)*(-3.0d0 + Sqrt(3.0d0))*u + &
-                   Sqrt(2.0d0)*(-1.0d0 + Sqrt(3.0d0))*v + 2.0d0*Sqrt(3.0d0)*w)/8.0d0
-               CurlBasis(7,1) = 1.0d0/(2.0d0*Sqrt(2.0d0))
-               CurlBasis(7,2) = -Sqrt(1.5d0)/2.0d0
-               CurlBasis(7,3) = 0.0d0
-
-               EdgeBasis(8,1) = -((-3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(2.0d0))
-               EdgeBasis(8,2) = -((-3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(6.0d0))
-               EdgeBasis(8,3) = -((-3.0d0 + Sqrt(3.0d0))*w - (Sqrt(2.0d0)*(3.0d0 + 2.0d0*Sqrt(3.0d0))* &
-                   (-6.0d0 + 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(3.0d0 + Sqrt(3.0d0)))/ &
-                   (8.0d0*Sqrt(3.0d0))
-               CurlBasis(8,1) = 1.0d0/(2.0d0*Sqrt(2.0d0))
-               CurlBasis(8,2) = -(3.0d0*(Sqrt(2.0d0) + Sqrt(6.0d0)))/(4.0d0*(3.0d0 + Sqrt(3.0d0)))
-               CurlBasis(8,3) = 0.0d0 
-             ELSE
-               EdgeBasis(7,1) = ((-3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(2.0d0))
-               EdgeBasis(7,2) = ((-3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(6.0d0))
-               EdgeBasis(7,3) = ((-3.0d0 + Sqrt(3.0d0))*w - (Sqrt(2.0d0)*(3.0d0 + 2.0d0*Sqrt(3.0d0))* &
-                   (-6.0d0 + 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(3.0d0 + Sqrt(3.0d0)))/ &
-                   (8.0d0*Sqrt(3.0d0))
-               CurlBasis(7,1) = -1.0d0/(2.0d0*Sqrt(2.0d0))
-               CurlBasis(7,2) = (3.0d0*(Sqrt(2.0d0) + Sqrt(6.0d0)))/(4.0d0*(3.0d0 + Sqrt(3.0d0)))
-               CurlBasis(7,3) = 0.0d0
-
-               EdgeBasis(8,1) = ((3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(2.0d0))
-               EdgeBasis(8,2) = ((3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(6.0d0))
-               EdgeBasis(8,3) = (-3.0d0*Sqrt(2.0d0) + Sqrt(6.0d0) - Sqrt(2.0d0)*(-3.0d0 + Sqrt(3.0d0))*u + &
-                   Sqrt(2.0d0)*(-1.0d0 + Sqrt(3.0d0))*v + 2.0d0*Sqrt(3.0d0)*w)/8.0d0
-               CurlBasis(8,1) = -1.0d0/(2.0d0*Sqrt(2.0d0))
-               CurlBasis(8,2) = Sqrt(1.5d0)/2.0d0
-               CurlBasis(8,3) = 0.0d0
-             END IF
-
-             !-------------------------------------------------
-             ! Two basis functions defined on the edge 24.
-             !-------------------------------------------------
-             i = EdgeMap(5,1)
-             j = EdgeMap(5,2)
-             IF(GIndexes(j)<GIndexes(i)) THEN
-               ! The sign and order of basis functions are reversed as
-               ! compared with the other possibility
-               EdgeBasis(9,1) = ((3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(2.0d0))
-               EdgeBasis(9,2) = -((3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(6.0d0))
-               EdgeBasis(9,3) = -(-3.0d0*Sqrt(2.0d0) + Sqrt(6.0d0) + Sqrt(2.0d0)*(-3.0d0 + Sqrt(3.0d0))*u + &
-                   Sqrt(2.0d0)*(-1.0d0 + Sqrt(3.0d0))*v + 2.0d0*Sqrt(3.0d0)*w)/8.0d0
-               CurlBasis(9,1) = 1.0d0/(2.0d0*Sqrt(2.0d0))
-               CurlBasis(9,2) = Sqrt(1.5d0)/2.0d0
-               CurlBasis(9,3) = 0.0d0
-
-               EdgeBasis(10,1) = ((-3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(2.0d0))
-               EdgeBasis(10,2) = -((-3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(6.0d0))
-               EdgeBasis(10,3) = -((-3.0d0 + Sqrt(3.0d0))*w - (Sqrt(2.0d0)*(3.0d0 + 2.0d0*Sqrt(3.0d0))*&
-                   (-6.0d0 - 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/&
-                   (3.0d0 + Sqrt(3.0d0)))/(8.0d0*Sqrt(3.0d0))
-               CurlBasis(10,1) = 1.0d0/(2.0d0*Sqrt(2.0d0))
-               CurlBasis(10,2) = -(-3.0d0*(Sqrt(2.0d0) + Sqrt(6.0d0)))/(4.0d0*(3.0d0 + Sqrt(3.0d0)))
-               CurlBasis(10,3) = 0.0d0
-             ELSE
-               EdgeBasis(9,1) = -((-3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(2.0d0))
-               EdgeBasis(9,2) = ((-3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(6.0d0))
-               EdgeBasis(9,3) = ((-3.0d0 + Sqrt(3.0d0))*w - (Sqrt(2.0d0)*(3.0d0 + 2.0d0*Sqrt(3.0d0))*&
-                   (-6.0d0 - 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/&
-                   (3.0d0 + Sqrt(3.0d0)))/(8.0d0*Sqrt(3.0d0))
-               CurlBasis(9,1) = -1.0d0/(2.0d0*Sqrt(2.0d0))
-               CurlBasis(9,2) = (-3.0d0*(Sqrt(2.0d0) + Sqrt(6.0d0)))/(4.0d0*(3.0d0 + Sqrt(3.0d0)))
-               CurlBasis(9,3) = 0.0d0
-
-               EdgeBasis(10,1) = -((3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(2.0d0))
-               EdgeBasis(10,2) = ((3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(6.0d0))
-               EdgeBasis(10,3) = (-3.0d0*Sqrt(2.0d0) + Sqrt(6.0d0) + Sqrt(2.0d0)*(-3.0d0 + Sqrt(3.0d0))*u + &
-                   Sqrt(2.0d0)*(-1.0d0 + Sqrt(3.0d0))*v + 2.0d0*Sqrt(3.0d0)*w)/8.0d0
-               CurlBasis(10,1) = -1.0d0/(2.0d0*Sqrt(2.0d0))
-               CurlBasis(10,2) = -Sqrt(1.5d0)/2.0d0
-               CurlBasis(10,3) = 0.0d0
-             END IF
-
-             !-------------------------------------------------
-             ! Two basis functions defined on the edge 34.
-             !-------------------------------------------------
-             i = EdgeMap(6,1)
-             j = EdgeMap(6,2)
-             IF(GIndexes(j)<GIndexes(i)) THEN
-               ! The sign and order of basis functions are reversed as
-               ! compared with the other possibility
-               EdgeBasis(11,1) = 0.0d0
-               EdgeBasis(11,2) = ((1.0d0 + Sqrt(3.0d0))*w)/(2.0d0*Sqrt(2.0d0))
-               EdgeBasis(11,3) = -(6.0d0*Sqrt(2.0d0)*v - 4.0d0*Sqrt(6.0d0)*v - 3.0d0*w + &
-                   3.0d0*Sqrt(3.0d0)*w)/(12.0d0 - 4.0d0*Sqrt(3.0d0))
-               CurlBasis(11,1) = -1.0d0/Sqrt(2.0d0)
-               CurlBasis(11,2) = 0.0d0
-               CurlBasis(11,3) = 0.0d0
-
-               EdgeBasis(12,1) = 0.0d0
-               EdgeBasis(12,2) = ((-3.0d0 + Sqrt(3.0d0))*w)/(2.0d0*Sqrt(6.0d0))
-               EdgeBasis(12,3) = -((Sqrt(2.0d0) + Sqrt(6.0d0))*v - Sqrt(3.0d0)*w)/4.0d0
-               CurlBasis(12,1) = -1.0d0/Sqrt(2.0d0)
-               CurlBasis(12,2) = 0.0d0
-               CurlBasis(12,3) = 0.0d0
-             ELSE
-               EdgeBasis(11,1) = 0.0d0
-               EdgeBasis(11,2) = -((-3.0d0 + Sqrt(3.0d0))*w)/(2.0d0*Sqrt(6.0d0))
-               EdgeBasis(11,3) = ((Sqrt(2.0d0) + Sqrt(6.0d0))*v - Sqrt(3.0d0)*w)/4.0d0
-               CurlBasis(11,1) = 1.0d0/Sqrt(2.0d0)
-               CurlBasis(11,2) = 0.0d0
-               CurlBasis(11,3) = 0.0d0
-
-               EdgeBasis(12,1) = 0.0d0
-               EdgeBasis(12,2) = -((1.0d0 + Sqrt(3.0d0))*w)/(2.0d0*Sqrt(2.0d0))
-               EdgeBasis(12,3) = (6.0d0*Sqrt(2.0d0)*v - 4.0d0*Sqrt(6.0d0)*v - 3.0d0*w + &
-                   3.0d0*Sqrt(3.0d0)*w)/(12.0d0 - 4.0d0*Sqrt(3.0d0))
-               CurlBasis(12,1) = 1.0d0/Sqrt(2.0d0)
-               CurlBasis(12,2) = 0.0d0
-               CurlBasis(12,3) = 0.0d0
-             END IF
-
-           ELSE
+             EDOFs = 3
              
+             DO k=1,6
+               
+               i = EdgeMap(k,1)
+               j = EdgeMap(k,2)
+
+               tvec(1:3) = Basis(i) * dLBasisdx(j,1:3)
+               svec(1:3) = Basis(j) * dLBasisdx(i,1:3)
+
+               grad_svec(1,2) = dLBasisdx(j,2) * dLBasisdx(i,1)
+               grad_svec(1,3) = dLBasisdx(j,3) * dLBasisdx(i,1)
+               grad_svec(2,1) = dLBasisdx(j,1) * dLBasisdx(i,2)
+               grad_svec(2,3) = dLBasisdx(j,3) * dLBasisdx(i,2)
+               grad_svec(3,1) = dLBasisdx(j,1) * dLBasisdx(i,3)
+               grad_svec(3,2) = dLBasisdx(j,2) * dLBasisdx(i,3)
+
+               grad_tvec(1,2) = dLBasisdx(i,2) * dLBasisdx(j,1)
+               grad_tvec(1,3) = dLBasisdx(i,3) * dLBasisdx(j,1)
+               grad_tvec(2,1) = dLBasisdx(i,1) * dLBasisdx(j,2)
+               grad_tvec(2,3) = dLBasisdx(i,3) * dLBasisdx(j,2)
+               grad_tvec(3,1) = dLBasisdx(i,1) * dLBasisdx(j,3)
+               grad_tvec(3,2) = dLBasisdx(i,2) * dLBasisdx(j,3)
+
+               WorkBasis(1,1:3) = svec(1:3)
+               WorkBasis(2,1:3) = tvec(1:3)
+
+               WorkCurlBasis(1,1) = grad_svec(3,2) - grad_svec(2,3)
+               WorkCurlBasis(1,2) = grad_svec(1,3) - grad_svec(3,1)
+               WorkCurlBasis(1,3) = grad_svec(2,1) - grad_svec(1,2)
+
+               WorkCurlBasis(2,1) = grad_tvec(3,2) - grad_tvec(2,3)
+               WorkCurlBasis(2,2) = grad_tvec(1,3) - grad_tvec(3,1)
+               WorkCurlBasis(2,3) = grad_tvec(2,1) - grad_tvec(1,2)
+
+               WorkWeight(1) = 2.0d0*Basis(i) - Basis(j)
+               WorkWeight(2) = 2.0d0*Basis(j) - Basis(i)
+
+               grad_weight(1,1:3) = 2.0d0*dLBasisdx(i,1:3) - dLBasisdx(j,1:3)
+               grad_weight(2,1:3) = 2.0d0*dLBasisdx(j,1:3) - dLBasisdx(i,1:3)
+
+               IF (GIndexes(j) < GIndexes(i)) THEN
+                 I1 = 2
+                 I2 = 1
+               ELSE
+                 I1 = 1
+                 I2 = 2
+               END IF
+
+               DO l=1,EDOFs
+                 SELECT CASE(l)
+                 CASE(1)
+                   sfun = -1.0d0
+                   tfun = 1.0d0
+                 CASE(2)
+                   sfun = 1.0d0
+                   tfun = 1.0d0
+                 CASE(3)
+                   sfun = -WorkWeight(I1)
+                   tfun = WorkWeight(I2)
+                   grad_sfun(1:3) = -grad_weight(I1,1:3)
+                   grad_tfun(1:3) = grad_weight(I2,1:3)
+                 CASE DEFAULT
+                   CALL Fatal('ElementDescription::EdgeElementInfo','sfun/tfun not defined')
+                 END SELECT
+
+                 EdgeBasis(EDOFs*(k-1)+l,1:3) = sfun * WorkBasis(I1,1:3) + tfun * WorkBasis(I2,1:3)
+                 CurlBasis(EDOFs*(k-1)+l,1:3) = sfun * WorkCurlBasis(I1,1:3) + tfun * WorkCurlBasis(I2,1:3)
+
+                 IF (l > 2) THEN
+                   CurlBasis(EDOFs*(k-1)+l,1) = CurlBasis(EDOFs*(k-1)+l,1) + &
+                       grad_sfun(2)*WorkBasis(I1,3) + grad_tfun(2)*WorkBasis(I2,3) - &
+                       grad_sfun(3)*WorkBasis(I1,2) - grad_tfun(3)*WorkBasis(I2,2)
+
+                   CurlBasis(EDOFs*(k-1)+l,2) = CurlBasis(EDOFs*(k-1)+l,2) + &
+                       grad_sfun(3)*WorkBasis(I1,1) + grad_tfun(3)*WorkBasis(I2,1) - &
+                       grad_sfun(1)*WorkBasis(I1,3) - grad_tfun(1)*WorkBasis(I2,3)
+
+                   CurlBasis(EDOFs*(k-1)+l,3) = CurlBasis(EDOFs*(k-1)+l,3) + &
+                       grad_sfun(1)*WorkBasis(I1,2) + grad_tfun(1)*WorkBasis(I2,2) - &
+                       grad_sfun(2)*WorkBasis(I1,1) - grad_tfun(2)*WorkBasis(I2,1)
+                 END IF
+               END DO
+             END DO
+
+             ! The basis functions associated with the faces
+             FDOFs = 3
+
+             DO k=1,4
+               SELECT CASE(k)
+               CASE(1)
+                 TriangleFaceMap(:) = (/ 2,1,3 /)
+               CASE(2)
+                 TriangleFaceMap(:) = (/ 1,2,4 /)
+               CASE(3)
+                 TriangleFaceMap(:) = (/ 2,3,4 /)
+               CASE(4)
+                 TriangleFaceMap(:) = (/ 3,1,4 /)
+               END SELECT
+
+               I1 = TriangleFaceMap(1)
+               I2 = TriangleFaceMap(2)
+               I3 = TriangleFaceMap(3)
+               
+               WorkBasis(1,1:3) = Basis(I2) * Basis(I3) * dLBasisdx(I1,1:3)
+               WorkBasis(2,1:3) = Basis(I1) * Basis(I3) * dLBasisdx(I2,1:3)
+               WorkBasis(3,1:3) = Basis(I1) * Basis(I2) * dLBasisdx(I3,1:3)
+
+               ! The gradient of each row of WorkBasis:
+
+               grad_svec(1,2) = (dLBasisdx(I2,2) * Basis(I3) + &
+                   Basis(I2) * dLBasisdx(I3,2)) * dLBasisdx(I1,1)
+               grad_svec(1,3) = (dLBasisdx(I2,3) * Basis(I3) + &
+                   Basis(I2) * dLBasisdx(I3,3)) * dLBasisdx(I1,1)
+               grad_svec(2,1) = (dLBasisdx(I2,1) * Basis(I3) + &
+                   Basis(I2) * dLBasisdx(I3,1)) * dLBasisdx(I1,2)
+               grad_svec(2,3) = (dLBasisdx(I2,3) * Basis(I3) + &
+                   Basis(I2) * dLBasisdx(I3,3)) * dLBasisdx(I1,2)
+               grad_svec(3,1) = (dLBasisdx(I2,1) * Basis(I3) + &
+                   Basis(I2) * dLBasisdx(I3,1)) * dLBasisdx(I1,3)
+               grad_svec(3,2) = (dLBasisdx(I2,2) * Basis(I3) + &
+                   Basis(I2) * dLBasisdx(I3,2)) * dLBasisdx(I1,3)
+
+               grad_tvec(1,2) = (dLBasisdx(I1,2) * Basis(I3)  + &
+                   Basis(I1) * dLBasisdx(I3,2)) * dLBasisdx(I2,1)
+               grad_tvec(1,3) = (dLBasisdx(I1,3) * Basis(I3)  + &
+                   Basis(I1) * dLBasisdx(I3,3)) * dLBasisdx(I2,1)
+               grad_tvec(2,1) = (dLBasisdx(I1,1) * Basis(I3)  + &
+                   Basis(I1) * dLBasisdx(I3,1)) * dLBasisdx(I2,2)
+               grad_tvec(2,3) = (dLBasisdx(I1,3) * Basis(I3)  + &
+                   Basis(I1) * dLBasisdx(I3,3)) * dLBasisdx(I2,2)
+               grad_tvec(3,1) = (dLBasisdx(I1,1) * Basis(I3)  + &
+                   Basis(I1) * dLBasisdx(I3,1)) * dLBasisdx(I2,3)
+               grad_tvec(3,2) = (dLBasisdx(I1,2) * Basis(I3)  + &
+                   Basis(I1) * dLBasisdx(I3,2)) * dLBasisdx(I2,3)
+               
+               grad_hvec(1,2) = (dLBasisdx(I1,2) * Basis(I2)  + &
+                   Basis(I1) * dLBasisdx(I2,2)) * dLBasisdx(I3,1)
+               grad_hvec(1,3) = (dLBasisdx(I1,3) * Basis(I2)  + &
+                   Basis(I1) * dLBasisdx(I2,3)) * dLBasisdx(I3,1)
+               grad_hvec(2,1) = (dLBasisdx(I1,1) * Basis(I2)  + &
+                   Basis(I1) * dLBasisdx(I2,1)) * dLBasisdx(I3,2)
+               grad_hvec(2,3) = (dLBasisdx(I1,3) * Basis(I2)  + &
+                   Basis(I1) * dLBasisdx(I2,3)) * dLBasisdx(I3,2)
+               grad_hvec(3,1) = (dLBasisdx(I1,1) * Basis(I2)  + &
+                   Basis(I1) * dLBasisdx(I2,1)) * dLBasisdx(I3,3)
+               grad_hvec(3,2) = (dLBasisdx(I1,2) * Basis(I2)  + &
+                   Basis(I1) * dLBasisdx(I2,2)) * dLBasisdx(I3,3)
+
+               WorkCurlBasis(1,1) = grad_svec(3,2) - grad_svec(2,3)
+               WorkCurlBasis(1,2) = grad_svec(1,3) - grad_svec(3,1)
+               WorkCurlBasis(1,3) = grad_svec(2,1) - grad_svec(1,2)
+
+               WorkCurlBasis(2,1) = grad_tvec(3,2) - grad_tvec(2,3)
+               WorkCurlBasis(2,2) = grad_tvec(1,3) - grad_tvec(3,1)
+               WorkCurlBasis(2,3) = grad_tvec(2,1) - grad_tvec(1,2)
+
+               WorkCurlBasis(3,1) = grad_hvec(3,2) - grad_hvec(2,3)
+               WorkCurlBasis(3,2) = grad_hvec(1,3) - grad_hvec(3,1)
+               WorkCurlBasis(3,3) = grad_hvec(2,1) - grad_hvec(1,2)
+
+               ! Create permutation:
+               FaceIndices(1:3) = GIndexes(TriangleFaceMap(1:3))
+               CALL TriangleFaceDofsOrdering2nd(I1,I2,I3,FaceIndices(1:3))
+               
+               ! Create the basis:
+               DO l=1,FDOFs
+                 
+                 SELECT CASE(l)
+                 CASE(1)
+                   sfun = 1.0d0
+                   tfun = 1.0d0
+                   hfun = 1.0d0
+                 CASE(2)
+                   sfun = 1.0d0
+                   tfun = 1.0d0
+                   hfun = -2.0d0
+                 CASE(3)
+                   sfun = 1.0d0
+                   tfun = -1.0d0
+                   hfun = 0.0d0
+                 END SELECT
+
+                 EdgeBasis(6*EDOFs + FDOFs*(k-1)+l,1:3) = sfun * WorkBasis(I1,1:3) + tfun * WorkBasis(I2,1:3) + &
+                     hfun * WorkBasis(I3,1:3)
+                 CurlBasis(6*EDOFs + FDOFs*(k-1)+l,1:3) = sfun * WorkCurlBasis(I1,1:3) + tfun * WorkCurlBasis(I2,1:3) + &
+                     hfun * WorkCurlBasis(I3,1:3)
+                 
+               END DO
+             END DO
+             
+           ELSE IF (Create2ndKindBasis) THEN
+             IF (.NOT. ErvinStyle) THEN
+               !
+               ! Here the lowest-order Nedelec basis of the second kind is created
+               ! in a hierarchic manner such that the first basis function associated with
+               ! each edge is the lowest-order Nedelec basis function of the first kind.
+               ! The second basis function corresponds to a gradient field.
+               !
+               EDOFs = 2
+
+               DO k=1,6
+
+                 i = EdgeMap(k,1)
+                 j = EdgeMap(k,2)
+
+                 tvec(1:3) = Basis(i) * dLBasisdx(j,1:3)
+                 svec(1:3) = Basis(j) * dLBasisdx(i,1:3)
+
+                 grad_svec(1,2) = dLBasisdx(j,2) * dLBasisdx(i,1)
+                 grad_svec(1,3) = dLBasisdx(j,3) * dLBasisdx(i,1)
+                 grad_svec(2,1) = dLBasisdx(j,1) * dLBasisdx(i,2)
+                 grad_svec(2,3) = dLBasisdx(j,3) * dLBasisdx(i,2)
+                 grad_svec(3,1) = dLBasisdx(j,1) * dLBasisdx(i,3)
+                 grad_svec(3,2) = dLBasisdx(j,2) * dLBasisdx(i,3)
+
+                 grad_tvec(1,2) = dLBasisdx(i,2) * dLBasisdx(j,1)
+                 grad_tvec(1,3) = dLBasisdx(i,3) * dLBasisdx(j,1)
+                 grad_tvec(2,1) = dLBasisdx(i,1) * dLBasisdx(j,2)
+                 grad_tvec(2,3) = dLBasisdx(i,3) * dLBasisdx(j,2)
+                 grad_tvec(3,1) = dLBasisdx(i,1) * dLBasisdx(j,3)
+                 grad_tvec(3,2) = dLBasisdx(i,2) * dLBasisdx(j,3)
+
+                 WorkBasis(1,1:3) = svec(1:3)
+                 WorkBasis(2,1:3) = tvec(1:3)
+
+                 WorkCurlBasis(1,1) = grad_svec(3,2) - grad_svec(2,3)
+                 WorkCurlBasis(1,2) = grad_svec(1,3) - grad_svec(3,1)
+                 WorkCurlBasis(1,3) = grad_svec(2,1) - grad_svec(1,2)
+
+                 WorkCurlBasis(2,1) = grad_tvec(3,2) - grad_tvec(2,3)
+                 WorkCurlBasis(2,2) = grad_tvec(1,3) - grad_tvec(3,1)
+                 WorkCurlBasis(2,3) = grad_tvec(2,1) - grad_tvec(1,2)
+
+                 IF (GIndexes(j) < GIndexes(i)) THEN
+                   I1 = 2
+                   I2 = 1
+                 ELSE
+                   I1 = 1
+                   I2 = 2
+                 END IF
+
+                 DO l=1,EDOFs
+                   SELECT CASE(l)
+                   CASE(1)
+                     sfun = -1.0d0
+                     tfun = 1.0d0
+                   CASE(2)
+                     sfun = 1.0d0
+                     tfun = 1.0d0
+                   CASE DEFAULT
+                     CALL Fatal('ElementDescription::EdgeElementInfo','sfun/tfun not defined')
+                   END SELECT
+
+                   EdgeBasis(EDOFs*(k-1)+l,1:3) = sfun * WorkBasis(I1,1:3) + tfun * WorkBasis(I2,1:3)
+                   CurlBasis(EDOFs*(k-1)+l,1:3) = sfun * WorkCurlBasis(I1,1:3) + tfun * WorkCurlBasis(I2,1:3)
+                 END DO
+               END DO
+             ELSE
+               !-------------------------------------------------
+               ! Two basis functions defined on the edge 12.
+               !-------------------------------------------------
+               i = EdgeMap(1,1)
+               j = EdgeMap(1,2)
+               IF(GIndexes(j)<GIndexes(i)) THEN
+                 ! The sign and order of basis functions are reversed as
+                 ! compared with the other possibility
+                 EdgeBasis(1,1) = -(6.0d0 + 6.0d0*Sqrt(3.0d0)*u - 2.0d0*Sqrt(3.0d0)*v - Sqrt(6.0d0)*w)/12.0d0
+                 EdgeBasis(1,2) = -(6.0d0 + 2.0d0*Sqrt(3.0d0)*u - 2.0d0*Sqrt(3.0d0)*v - Sqrt(6.0d0)*w)/12.0d0
+                 EdgeBasis(1,3) = -(3.0d0*Sqrt(2.0d0) + Sqrt(6.0d0)*u - Sqrt(6.0d0)*v - Sqrt(3.0d0)*w)/12.0d0
+                 CurlBasis(1,1) = 0.0d0
+                 CurlBasis(1,2) = 1.0d0/Sqrt(6.0d0)
+                 CurlBasis(1,3) = -1.0d0/Sqrt(3.0d0)
+
+                 EdgeBasis(2,1) = (-6.0d0 - 2.0d0*Sqrt(3.0d0) + 6.0d0*(1.0d0 + Sqrt(3.0d0))*u + &
+                     2.0d0*(1.0d0 + Sqrt(3.0d0))*v + Sqrt(2.0d0)*w + Sqrt(6.0d0)*w)/(4.0d0*(3.0d0 + Sqrt(3.0d0)))
+                 EdgeBasis(2,2) = -(-6.0d0 - 2.0d0*Sqrt(3.0d0) + 2.0d0*(1.0d0 + Sqrt(3.0d0))*u + &
+                     2.0d0*(1.0d0 + Sqrt(3.0d0))*v + Sqrt(2.0d0)*w + Sqrt(6.0d0)*w)/(4.0d0*(3.0d0 + Sqrt(3.0d0)))
+                 EdgeBasis(2,3) = -(-3.0d0*Sqrt(2.0d0) - Sqrt(6.0d0) + (Sqrt(2.0d0) + Sqrt(6.0d0))*u + &
+                     (Sqrt(2.0d0) + Sqrt(6.0d0))*v + w + Sqrt(3.0d0)*w)/(4.0d0*(3.0d0 + Sqrt(3.0d0)))
+                 CurlBasis(2,1) = 0.0d0 
+                 CurlBasis(2,2) = (Sqrt(2.0d0) + Sqrt(6.0d0))/(6.0d0 + 2.0d0*Sqrt(3.0d0))
+                 CurlBasis(2,3) = -1.0d0/Sqrt(3.0d0)
+               ELSE
+                 EdgeBasis(1,1) = -(-6.0d0 - 2.0d0*Sqrt(3.0d0) + 6.0d0*(1.0d0 + Sqrt(3.0d0))*u + &
+                     2.0d0*(1.0d0 + Sqrt(3.0d0))*v + Sqrt(2.0d0)*w + Sqrt(6.0d0)*w)/(4.0d0*(3.0d0 + Sqrt(3.0d0)))
+                 EdgeBasis(1,2) = (-6.0d0 - 2.0d0*Sqrt(3.0d0) + 2.0d0*(1.0d0 + Sqrt(3.0d0))*u + &
+                     2.0d0*(1.0d0 + Sqrt(3.0d0))*v + Sqrt(2.0d0)*w + Sqrt(6.0d0)*w)/(4.0d0*(3.0d0 + Sqrt(3.0d0)))
+                 EdgeBasis(1,3) = (-3.0d0*Sqrt(2.0d0) - Sqrt(6.0d0) + (Sqrt(2.0d0) + Sqrt(6.0d0))*u + &
+                     (Sqrt(2.0d0) + Sqrt(6.0d0))*v + w + Sqrt(3.0d0)*w)/(4.0d0*(3.0d0 + Sqrt(3.0d0)))
+                 CurlBasis(1,1) = 0.0d0
+                 CurlBasis(1,2) = -((Sqrt(2.0d0) + Sqrt(6.0d0))/(6.0d0 + 2.0d0*Sqrt(3.0d0)))
+                 CurlBasis(1,3) = 1.0d0/Sqrt(3.0d0)
+
+                 EdgeBasis(2,1) = (6.0d0 + 6.0d0*Sqrt(3.0d0)*u - 2.0d0*Sqrt(3.0d0)*v - Sqrt(6.0d0)*w)/12.0d0
+                 EdgeBasis(2,2) = (6.0d0 + 2.0d0*Sqrt(3.0d0)*u - 2.0d0*Sqrt(3.0d0)*v - Sqrt(6.0d0)*w)/12.0d0
+                 EdgeBasis(2,3) = (3.0d0*Sqrt(2.0d0) + Sqrt(6.0d0)*u - Sqrt(6.0d0)*v - Sqrt(3.0d0)*w)/12.0d0 
+                 CurlBasis(2,1) = 0.0d0
+                 CurlBasis(2,2) = -1.0d0/Sqrt(6.0d0)
+                 CurlBasis(2,3) = 1.0d0/Sqrt(3.0d0)
+               END IF
+
+               !-------------------------------------------------
+               ! Two basis functions defined on the edge 23.
+               !-------------------------------------------------
+               i = EdgeMap(2,1)
+               j = EdgeMap(2,2)
+               IF(GIndexes(j)<GIndexes(i)) THEN
+                 ! The sign and order of basis functions are reversed as
+                 ! compared with the other possibility
+                 EdgeBasis(3,1) = (3.0d0 + Sqrt(3.0d0))*(4.0d0*v - Sqrt(2.0d0)*w)/24.0d0
+                 EdgeBasis(3,2) = -(4.0d0*(-3.0d0 + Sqrt(3.0d0))*u + 8.0d0*Sqrt(3.0d0)*v + &
+                     (-3.0d0 + Sqrt(3.0d0))*(4.0d0 + Sqrt(2.0d0)*w))/24.0d0
+                 EdgeBasis(3,3) = -(3.0d0*Sqrt(2.0d0) - Sqrt(6.0d0) - Sqrt(2.0d0)*(-3.0d0 + Sqrt(3.0d0))*u + &
+                     Sqrt(2.0d0)*(3.0d0 + Sqrt(3.0d0))*v - 2.0d0*Sqrt(3.0d0)*w)/24.0d0
+                 CurlBasis(3,1) = -1.0d0/(2.0d0*Sqrt(2.0d0))
+                 CurlBasis(3,2) = -1.0d0/(2.0d0*Sqrt(6.0d0))
+                 CurlBasis(3,3) = -1.0d0/Sqrt(3.0d0)
+
+                 EdgeBasis(4,1) = (-3.0d0 + Sqrt(3.0d0))*(4.0d0*v - Sqrt(2.0d0)*w)/24.0d0
+                 EdgeBasis(4,2) = (-4.0d0*(2.0d0 + Sqrt(3.0d0))*u + 4.0d0*(1.0d0 + Sqrt(3.0d0))*v + &
+                     (2.0d0 + Sqrt(3.0d0))*(-4.0d0 + Sqrt(2.0d0)*w))/(4.0d0*(3.0d0 + Sqrt(3.0d0)))
+                 EdgeBasis(4,3) = -(-2.0d0*Sqrt(2.0d0) - Sqrt(6.0d0) - Sqrt(2.0d0)*(2.0d0 + Sqrt(3.0d0))*u + &
+                     Sqrt(2.0d0)*v + w + Sqrt(3.0d0)*w)/(4.0d0*(3.0d0 + Sqrt(3.0d0)))
+                 CurlBasis(4,1) = -1.0d0/(2.0d0*Sqrt(2.0d0))
+                 CurlBasis(4,2) = -(Sqrt(2.0d0) + Sqrt(6.0d0))/(12.0d0 + 4.0d0*Sqrt(3.0d0))
+                 CurlBasis(4,3) = -1.0d0/Sqrt(3.0d0)
+               ELSE
+                 EdgeBasis(3,1) = -(-3.0d0 + Sqrt(3.0d0))*(4.0d0*v - Sqrt(2.0d0)*w)/24.0d0
+                 EdgeBasis(3,2) = -(-4.0d0*(2.0d0 + Sqrt(3.0d0))*u + 4.0d0*(1.0d0 + Sqrt(3.0d0))*v + &
+                     (2.0d0 + Sqrt(3.0d0))*(-4.0d0 + Sqrt(2.0d0)*w))/(4.0d0*(3.0d0 + Sqrt(3.0d0)))
+                 EdgeBasis(3,3) = (-2.0d0*Sqrt(2.0d0) - Sqrt(6.0d0) - Sqrt(2.0d0)*(2.0d0 + Sqrt(3.0d0))*u + &
+                     Sqrt(2.0d0)*v + w + Sqrt(3.0d0)*w)/(4.0d0*(3.0d0 + Sqrt(3.0d0)))
+                 CurlBasis(3,1) = 1.0d0/(2.0d0*Sqrt(2.0d0))
+                 CurlBasis(3,2) = (Sqrt(2.0d0) + Sqrt(6.0d0))/(12.0d0 + 4.0d0*Sqrt(3.0d0))
+                 CurlBasis(3,3) = 1.0d0/Sqrt(3.0d0)
+
+                 EdgeBasis(4,1) = -((3.0d0 + Sqrt(3.0d0))*(4.0d0*v - Sqrt(2.0d0)*w))/24.0d0
+                 EdgeBasis(4,2) = (4.0d0*(-3.0d0 + Sqrt(3.0d0))*u + 8.0d0*Sqrt(3.0d0)*v + &
+                     (-3.0d0 + Sqrt(3.0d0))*(4.0d0 + Sqrt(2.0d0)*w))/24.0d0
+                 EdgeBasis(4,3) = (3.0d0*Sqrt(2.0d0) - Sqrt(6.0d0) - Sqrt(2.0d0)*(-3.0d0 + Sqrt(3.0d0))*u + &
+                     Sqrt(2.0d0)*(3.0d0 + Sqrt(3.0d0))*v - 2.0d0*Sqrt(3.0d0)*w)/24.0d0
+                 CurlBasis(4,1) = 1.0d0/(2.0d0*Sqrt(2.0d0))
+                 CurlBasis(4,2) = 1.0d0/(2.0d0*Sqrt(6.0d0))
+                 CurlBasis(4,3) = 1.0d0/Sqrt(3.0d0)
+               END IF
+
+               !-------------------------------------------------
+               ! Two basis functions defined on the edge 31.
+               !-------------------------------------------------
+               i = EdgeMap(3,1)
+               j = EdgeMap(3,2)
+               IF(GIndexes(j)<GIndexes(i)) THEN
+                 ! The sign and order of basis functions are reversed as
+                 ! compared with the other possibility
+                 EdgeBasis(5,1) = ((-3.0d0 + Sqrt(3.0d0))*(4.0d0*v - Sqrt(2.0d0)*w))/24.0d0
+                 EdgeBasis(5,2) = -(4.0d0*(3.0d0 + Sqrt(3.0d0))*u + 8.0d0*Sqrt(3.0d0)*v + &
+                     (3.0d0 + Sqrt(3.0d0))*(-4.0d0 + Sqrt(2.0d0)*w))/24.0d0
+                 EdgeBasis(5,3) = -(3.0d0*Sqrt(2.0d0) + Sqrt(6.0d0) - Sqrt(2.0d0)*(3.0d0 + Sqrt(3.0d0))*u + &
+                     Sqrt(2.0d0)*(-3.0d0 + Sqrt(3.0d0))*v - 2.0d0*Sqrt(3.0d0)*w)/24.0d0
+                 CurlBasis(5,1) = 1.0d0/(2.0d0*Sqrt(2.0d0))
+                 CurlBasis(5,2) = -1.0d0/(2.0d0*Sqrt(6.0d0))
+                 CurlBasis(5,3) = -1.0d0/Sqrt(3.0d0)
+
+                 EdgeBasis(6,1) = ((3.0d0 + 2.0d0*Sqrt(3.0d0))*(4.0d0*v - Sqrt(2.0d0)*w))/ &
+                     (12.0d0*(1.0d0 + Sqrt(3.0d0)))
+                 EdgeBasis(6,2) = -(4.0d0 - 4.0d0*u - 4.0d0*(1.0d0 + Sqrt(3.0d0))*v + Sqrt(2.0d0)*w)/ &
+                     (4.0d0*(3.0d0 + Sqrt(3.0d0)))
+                 EdgeBasis(6,3) = -(-Sqrt(2.0d0) + Sqrt(2.0d0)*u - Sqrt(2.0d0)*(2.0d0 + Sqrt(3.0d0))*v + &
+                     w + Sqrt(3.0d0)*w)/(4.0d0*(3.0d0 + Sqrt(3.0d0)))
+                 CurlBasis(6,1) = 1.0d0/(2.0d0*Sqrt(2.0d0))
+                 CurlBasis(6,2) = -1.0d0/(2.0d0*Sqrt(6.0d0))
+                 CurlBasis(6,3) = -1.0d0/Sqrt(3.0d0)
+               ELSE
+                 EdgeBasis(5,1) = -((3.0d0 + 2.0d0*Sqrt(3.0d0))*(4.0d0*v - Sqrt(2.0d0)*w))/ &
+                     (12.0d0*(1.0d0 + Sqrt(3.0d0)))
+                 EdgeBasis(5,2) = (4.0d0 - 4.0d0*u - 4.0d0*(1.0d0 + Sqrt(3.0d0))*v + Sqrt(2.0d0)*w)/ &
+                     (4.0d0*(3.0d0 + Sqrt(3.0d0)))
+                 EdgeBasis(5,3) = (-Sqrt(2.0d0) + Sqrt(2.0d0)*u - Sqrt(2.0d0)*(2.0d0 + Sqrt(3.0d0))*v + &
+                     w + Sqrt(3.0d0)*w)/(4.0d0*(3.0d0 + Sqrt(3.0d0)))
+                 CurlBasis(5,1) = -1.0d0/(2.0d0*Sqrt(2.0d0))
+                 CurlBasis(5,2) = 1.0d0/(2.0d0*Sqrt(6.0d0))
+                 CurlBasis(5,3) = 1.0d0/Sqrt(3.0d0)
+
+                 EdgeBasis(6,1) = -((-3.0d0 + Sqrt(3.0d0))*(4.0d0*v - Sqrt(2.0d0)*w))/24.0d0
+                 EdgeBasis(6,2) = (4.0d0*(3.0d0 + Sqrt(3.0d0))*u + 8.0d0*Sqrt(3.0d0)*v + &
+                     (3.0d0 + Sqrt(3.0d0))*(-4.0d0 + Sqrt(2.0d0)*w))/24.0d0
+                 EdgeBasis(6,3) = (3.0d0*Sqrt(2.0d0) + Sqrt(6.0d0) - Sqrt(2.0d0)*(3.0d0 + Sqrt(3.0d0))*u + &
+                     Sqrt(2.0d0)*(-3.0d0 + Sqrt(3.0d0))*v - 2.0d0*Sqrt(3.0d0)*w)/24.0d0
+                 CurlBasis(6,1) = -1.0d0/(2.0d0*Sqrt(2.0d0))
+                 CurlBasis(6,2) = 1.0d0/(2.0d0*Sqrt(6.0d0))
+                 CurlBasis(6,3) = 1.0d0/Sqrt(3.0d0)
+               END IF
+
+               !-------------------------------------------------
+               ! Two basis functions defined on the edge 14.
+               !-------------------------------------------------
+               i = EdgeMap(4,1)
+               j = EdgeMap(4,2)
+               IF(GIndexes(j)<GIndexes(i)) THEN
+                 ! The sign and order of basis functions are reversed as
+                 ! compared with the other possibility
+                 EdgeBasis(7,1) = -((3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(2.0d0))
+                 EdgeBasis(7,2) = -((3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(6.0d0))
+                 EdgeBasis(7,3) = -(-3.0d0*Sqrt(2.0d0) + Sqrt(6.0d0) - Sqrt(2.0d0)*(-3.0d0 + Sqrt(3.0d0))*u + &
+                     Sqrt(2.0d0)*(-1.0d0 + Sqrt(3.0d0))*v + 2.0d0*Sqrt(3.0d0)*w)/8.0d0
+                 CurlBasis(7,1) = 1.0d0/(2.0d0*Sqrt(2.0d0))
+                 CurlBasis(7,2) = -Sqrt(1.5d0)/2.0d0
+                 CurlBasis(7,3) = 0.0d0
+
+                 EdgeBasis(8,1) = -((-3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(2.0d0))
+                 EdgeBasis(8,2) = -((-3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(6.0d0))
+                 EdgeBasis(8,3) = -((-3.0d0 + Sqrt(3.0d0))*w - (Sqrt(2.0d0)*(3.0d0 + 2.0d0*Sqrt(3.0d0))* &
+                     (-6.0d0 + 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(3.0d0 + Sqrt(3.0d0)))/ &
+                     (8.0d0*Sqrt(3.0d0))
+                 CurlBasis(8,1) = 1.0d0/(2.0d0*Sqrt(2.0d0))
+                 CurlBasis(8,2) = -(3.0d0*(Sqrt(2.0d0) + Sqrt(6.0d0)))/(4.0d0*(3.0d0 + Sqrt(3.0d0)))
+                 CurlBasis(8,3) = 0.0d0 
+               ELSE
+                 EdgeBasis(7,1) = ((-3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(2.0d0))
+                 EdgeBasis(7,2) = ((-3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(6.0d0))
+                 EdgeBasis(7,3) = ((-3.0d0 + Sqrt(3.0d0))*w - (Sqrt(2.0d0)*(3.0d0 + 2.0d0*Sqrt(3.0d0))* &
+                     (-6.0d0 + 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(3.0d0 + Sqrt(3.0d0)))/ &
+                     (8.0d0*Sqrt(3.0d0))
+                 CurlBasis(7,1) = -1.0d0/(2.0d0*Sqrt(2.0d0))
+                 CurlBasis(7,2) = (3.0d0*(Sqrt(2.0d0) + Sqrt(6.0d0)))/(4.0d0*(3.0d0 + Sqrt(3.0d0)))
+                 CurlBasis(7,3) = 0.0d0
+
+                 EdgeBasis(8,1) = ((3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(2.0d0))
+                 EdgeBasis(8,2) = ((3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(6.0d0))
+                 EdgeBasis(8,3) = (-3.0d0*Sqrt(2.0d0) + Sqrt(6.0d0) - Sqrt(2.0d0)*(-3.0d0 + Sqrt(3.0d0))*u + &
+                     Sqrt(2.0d0)*(-1.0d0 + Sqrt(3.0d0))*v + 2.0d0*Sqrt(3.0d0)*w)/8.0d0
+                 CurlBasis(8,1) = -1.0d0/(2.0d0*Sqrt(2.0d0))
+                 CurlBasis(8,2) = Sqrt(1.5d0)/2.0d0
+                 CurlBasis(8,3) = 0.0d0
+               END IF
+
+               !-------------------------------------------------
+               ! Two basis functions defined on the edge 24.
+               !-------------------------------------------------
+               i = EdgeMap(5,1)
+               j = EdgeMap(5,2)
+               IF(GIndexes(j)<GIndexes(i)) THEN
+                 ! The sign and order of basis functions are reversed as
+                 ! compared with the other possibility
+                 EdgeBasis(9,1) = ((3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(2.0d0))
+                 EdgeBasis(9,2) = -((3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(6.0d0))
+                 EdgeBasis(9,3) = -(-3.0d0*Sqrt(2.0d0) + Sqrt(6.0d0) + Sqrt(2.0d0)*(-3.0d0 + Sqrt(3.0d0))*u + &
+                     Sqrt(2.0d0)*(-1.0d0 + Sqrt(3.0d0))*v + 2.0d0*Sqrt(3.0d0)*w)/8.0d0
+                 CurlBasis(9,1) = 1.0d0/(2.0d0*Sqrt(2.0d0))
+                 CurlBasis(9,2) = Sqrt(1.5d0)/2.0d0
+                 CurlBasis(9,3) = 0.0d0
+
+                 EdgeBasis(10,1) = ((-3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(2.0d0))
+                 EdgeBasis(10,2) = -((-3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(6.0d0))
+                 EdgeBasis(10,3) = -((-3.0d0 + Sqrt(3.0d0))*w - (Sqrt(2.0d0)*(3.0d0 + 2.0d0*Sqrt(3.0d0))*&
+                     (-6.0d0 - 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/&
+                     (3.0d0 + Sqrt(3.0d0)))/(8.0d0*Sqrt(3.0d0))
+                 CurlBasis(10,1) = 1.0d0/(2.0d0*Sqrt(2.0d0))
+                 CurlBasis(10,2) = -(-3.0d0*(Sqrt(2.0d0) + Sqrt(6.0d0)))/(4.0d0*(3.0d0 + Sqrt(3.0d0)))
+                 CurlBasis(10,3) = 0.0d0
+               ELSE
+                 EdgeBasis(9,1) = -((-3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(2.0d0))
+                 EdgeBasis(9,2) = ((-3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(6.0d0))
+                 EdgeBasis(9,3) = ((-3.0d0 + Sqrt(3.0d0))*w - (Sqrt(2.0d0)*(3.0d0 + 2.0d0*Sqrt(3.0d0))*&
+                     (-6.0d0 - 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/&
+                     (3.0d0 + Sqrt(3.0d0)))/(8.0d0*Sqrt(3.0d0))
+                 CurlBasis(9,1) = -1.0d0/(2.0d0*Sqrt(2.0d0))
+                 CurlBasis(9,2) = (-3.0d0*(Sqrt(2.0d0) + Sqrt(6.0d0)))/(4.0d0*(3.0d0 + Sqrt(3.0d0)))
+                 CurlBasis(9,3) = 0.0d0
+
+                 EdgeBasis(10,1) = -((3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(2.0d0))
+                 EdgeBasis(10,2) = ((3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(6.0d0))
+                 EdgeBasis(10,3) = (-3.0d0*Sqrt(2.0d0) + Sqrt(6.0d0) + Sqrt(2.0d0)*(-3.0d0 + Sqrt(3.0d0))*u + &
+                     Sqrt(2.0d0)*(-1.0d0 + Sqrt(3.0d0))*v + 2.0d0*Sqrt(3.0d0)*w)/8.0d0
+                 CurlBasis(10,1) = -1.0d0/(2.0d0*Sqrt(2.0d0))
+                 CurlBasis(10,2) = -Sqrt(1.5d0)/2.0d0
+                 CurlBasis(10,3) = 0.0d0
+               END IF
+
+               !-------------------------------------------------
+               ! Two basis functions defined on the edge 34.
+               !-------------------------------------------------
+               i = EdgeMap(6,1)
+               j = EdgeMap(6,2)
+               IF(GIndexes(j)<GIndexes(i)) THEN
+                 ! The sign and order of basis functions are reversed as
+                 ! compared with the other possibility
+                 EdgeBasis(11,1) = 0.0d0
+                 EdgeBasis(11,2) = ((1.0d0 + Sqrt(3.0d0))*w)/(2.0d0*Sqrt(2.0d0))
+                 EdgeBasis(11,3) = -(6.0d0*Sqrt(2.0d0)*v - 4.0d0*Sqrt(6.0d0)*v - 3.0d0*w + &
+                     3.0d0*Sqrt(3.0d0)*w)/(12.0d0 - 4.0d0*Sqrt(3.0d0))
+                 CurlBasis(11,1) = -1.0d0/Sqrt(2.0d0)
+                 CurlBasis(11,2) = 0.0d0
+                 CurlBasis(11,3) = 0.0d0
+
+                 EdgeBasis(12,1) = 0.0d0
+                 EdgeBasis(12,2) = ((-3.0d0 + Sqrt(3.0d0))*w)/(2.0d0*Sqrt(6.0d0))
+                 EdgeBasis(12,3) = -((Sqrt(2.0d0) + Sqrt(6.0d0))*v - Sqrt(3.0d0)*w)/4.0d0
+                 CurlBasis(12,1) = -1.0d0/Sqrt(2.0d0)
+                 CurlBasis(12,2) = 0.0d0
+                 CurlBasis(12,3) = 0.0d0
+               ELSE
+                 EdgeBasis(11,1) = 0.0d0
+                 EdgeBasis(11,2) = -((-3.0d0 + Sqrt(3.0d0))*w)/(2.0d0*Sqrt(6.0d0))
+                 EdgeBasis(11,3) = ((Sqrt(2.0d0) + Sqrt(6.0d0))*v - Sqrt(3.0d0)*w)/4.0d0
+                 CurlBasis(11,1) = 1.0d0/Sqrt(2.0d0)
+                 CurlBasis(11,2) = 0.0d0
+                 CurlBasis(11,3) = 0.0d0
+
+                 EdgeBasis(12,1) = 0.0d0
+                 EdgeBasis(12,2) = -((1.0d0 + Sqrt(3.0d0))*w)/(2.0d0*Sqrt(2.0d0))
+                 EdgeBasis(12,3) = (6.0d0*Sqrt(2.0d0)*v - 4.0d0*Sqrt(6.0d0)*v - 3.0d0*w + &
+                     3.0d0*Sqrt(3.0d0)*w)/(12.0d0 - 4.0d0*Sqrt(3.0d0))
+                 CurlBasis(12,1) = 1.0d0/Sqrt(2.0d0)
+                 CurlBasis(12,2) = 0.0d0
+                 CurlBasis(12,3) = 0.0d0
+               END IF
+             END IF
+           ELSE
              !-------------------------------------------------------------
              ! The optimal/Nedelec basis functions of the first kind. We employ
              ! a hierarchic basis, so the lowest-order basis functions are
@@ -8329,7 +8785,7 @@ END SUBROUTINE PickActiveFace
                END IF
              END IF
            END IF
-           
+
          CASE(6)
            !--------------------------------------------------------------
            ! This branch is for handling pyramidic elements
@@ -10403,10 +10859,22 @@ END SUBROUTINE PickActiveFace
      SUBROUTINE TriangleFaceDofsOrdering(I1,I2,D1,D2,Ind)       
 !-----------------------------------------------------------------------------
 ! This is used for selecting what additional basis functions are associated
-! with a triangular face in the case of second-order approximation.
+! with a triangular face in the case of second-order approximation in H(curl).
+! Given a triangular face [ijk] this subroutine can be used to pick two basis
+! functions from an array of three candidate functions (for Nedelec's first family)
+!
+!    b_1 = L_k W_{ij}
+!    b_2 = L_j W_{ik}
+!    b_3 = L_i W_{jk}       
+!
+! such that the two basis functions are L_C W_{AB} and L_B W_{AC}. Here W_{ij}
+! denotes the Whitney form and {A,B,C} are the global node indices such that
+! A < B < C. D1 and D2 indicate whether sign reversions must be applied to
+! the pre-tabulated basis functions.        
 ! ----------------------------------------------------------------------------
-       INTEGER ::  I1, I2, Ind(4)
-       REAL(KIND=dp) :: D1, D2
+       INTEGER, INTENT(OUT) :: I1, I2
+       REAL(KIND=dp), INTENT(OUT) :: D1, D2
+       INTEGER, INTENT(IN) :: Ind(4)
 !---------------------------------------------------------------------------
        INTEGER ::  k, A
 ! --------------------------------------------------------------------------
@@ -10464,6 +10932,82 @@ END SUBROUTINE PickActiveFace
      END SUBROUTINE TriangleFaceDofsOrdering
 !-----------------------------------------------------------
 
+!----------------------------------------------------------------------------
+     SUBROUTINE TriangleFaceDofsOrdering2nd(I1,I2,I3,Ind)       
+!-----------------------------------------------------------------------------
+! This is used for selecting the order of additional basis functions associated
+! with a triangular face in the case of a higher-order approximation in H(curl) when
+! the Nedelec second family is used. Given a triangular face [ijk] this subroutine
+! can be used to permute an array of three candidate basis functions
+!
+!    b_1 = L_j L_k grad L_i
+!    b_2 = L_i L_k grad L_j
+!    b_3 = L_i L_j grad L_k
+!
+! such that the basis functions are  {L_B L_C grad L_A, L_A L_C grad L_B ,
+! L_A L_B grad L_C}. Here {A,B,C} are the global node indices such that
+! A < B < C. 
+! ----------------------------------------------------------------------------
+       INTEGER, INTENT(OUT) :: I1, I2, I3
+       INTEGER, INTENT(IN) :: Ind(3)
+!---------------------------------------------------------------------------
+       INTEGER ::  k, A
+! --------------------------------------------------------------------------
+       IF ( Ind(1) < Ind(2) ) THEN
+          k = 1
+       ELSE
+          k = 2
+       END IF
+       IF ( Ind(k) > Ind(3) ) THEN
+          k = 3
+       END IF
+       A = k
+
+       SELECT CASE(A)
+       CASE(1)
+          IF (Ind(3) > Ind(2)) THEN
+             ! C = 3
+             I1 = 1
+             I2 = 2
+             I3 = 3
+          ELSE
+             ! C = 2
+             I1 = 1
+             I2 = 3
+             I3 = 2
+          END IF
+       CASE(2)
+         IF (Ind(3) > Ind(1)) THEN
+             ! C = 3
+             I1 = 2
+             I2 = 1
+             I3 = 3
+          ELSE
+             ! C = 1
+             I1 = 2
+             I2 = 3
+             I3 = 1
+          END IF
+       CASE(3)
+          IF (Ind(2) > Ind(1)) THEN
+             ! C = 2
+             I1 = 3
+             I2 = 1
+             I3 = 2
+          ELSE
+             ! C = 1
+             I1 = 3
+             I2 = 2
+             I3 = 1
+          END IF
+       CASE DEFAULT
+          CALL Fatal('ElementDescription::TriangleFaceDofsOrdering2nd','Erratic triangular face Indices')
+       END SELECT
+!---------------------------------------------------------
+     END SUBROUTINE TriangleFaceDofsOrdering2nd
+!-----------------------------------------------------------
+
+     
 
 !-------------------------------------------------------------
      SUBROUTINE TriangleFaceDofsOrdering2(t,s,Ind)       
@@ -11475,7 +12019,8 @@ BLOCK
 !------------------------------------------------------------------------------
   END FUNCTION mGetElementDOFs
 !------------------------------------------------------------------------------
-   
+
+#ifdef HAVE_QP
 !------------------------------------------------------------------------------
 !>    Check element by comparing determinants of the metric tensor computed
 !>    in double and quad precision.
@@ -11496,8 +12041,8 @@ BLOCK
 
      INTEGER, PARAMETER :: qp = SELECTED_REAL_KIND(24)     
 
-     REAL(KIND=qp) :: dp_dx(3,3),dp_G(3,3),dp_GI(3,3),dp_s, dp_DetG
-     REAL(KIND=dp) :: qp_dx(3,3),qp_G(3,3),qp_GI(3,3),qp_s, qp_DetG, eps
+     REAL(KIND=dp) :: dp_dx(3,3),dp_G(3,3),dp_GI(3,3),dp_s, dp_DetG
+     REAL(KIND=qp) :: qp_dx(3,3),qp_G(3,3),qp_GI(3,3),qp_s, qp_DetG, eps
 !------------------------------------------------------------------------------
      success = .TRUE.
 
@@ -11573,7 +12118,8 @@ BLOCK
 !------------------------------------------------------------------------------
    END FUNCTION CheckMetric
 !------------------------------------------------------------------------------
-
+#endif
+   
 !------------------------------------------------------------------------------
 !>    Compute contravariant metric tensor (=J^TJ)^-1 of element coordinate
 !>    system, and square root of determinant of covariant metric tensor
@@ -11606,11 +12152,13 @@ BLOCK
      cdim = CoordinateSystemDimension()
      n = MIN( SIZE(x), nDOFs )
      dim  = elm % TYPE % DIMENSION
-     
+
+#ifdef HAVE_QP
      IF(Elm % Status == 2) THEN
        IF (ElementMetricQP(nDOFs,Elm,Nodes,Metric,DetG,dLBasisdx,LtoGMap)) RETURN
        GOTO 100
      END IF
+#endif
 
      eps = (EPSILON(eps))**dim
 !------------------------------------------------------------------------------
@@ -11699,12 +12247,14 @@ BLOCK
 
 100  CONTINUE
 
+#ifdef HAVE_QP
      ! Try recursively with quadratic precision.
      ! With just double precision for very flat elements the DetJ may be poorly evaluated. 
      IF( Elm % Status /= 2) THEN
        Success = ElementMetricQP(nDOFs,Elm,Nodes,Metric,DetG,dLBasisdx,LtoGMap) 
        IF( Success ) RETURN
      END IF
+#endif
      
      WRITE( Message,'(A,I0,A,I0)') 'Degenerate ',dim,'D element: ',Elm % ElementIndex
      CALL Error( 'ElementMetric', Message )
@@ -11748,7 +12298,7 @@ BLOCK
    END FUNCTION ElementMetric
 !------------------------------------------------------------------------------
 
-
+#ifdef HAVE_QP
 !------------------------------------------------------------------------------
 ! Quadratic precision version of the previous that is called when the DetJ appear
 ! to be close to zero or negative. 
@@ -11863,7 +12413,7 @@ BLOCK
 !------------------------------------------------------------------------------
    END FUNCTION ElementMetricQP
 !------------------------------------------------------------------------------
-
+#endif
    
 !------------------------------------------------------------------------------
    FUNCTION ElementMetricVec( Elm, Nodes, nc, ndof, DetJ, nbmax, dLBasisdx, LtoGMap) RESULT(AllSuccess)
@@ -14042,7 +14592,7 @@ END FUNCTION PointFaceDistance
 !------------------------------------------------------------------------------
     INTEGER, PARAMETER :: MaxIter = 50
     INTEGER :: i,n
-    REAL(KIND=dp) :: r,s,t,delta(3),prevdelta(3),J(3,3),J1(3,2),det,swap,acc,err
+    REAL(KIND=dp) :: r,s,t,delta(3),prevdelta(3),J(3,3),J1(3,2),det,swap,acc,err,scl,eps
     LOGICAL :: Converged
 !------------------------------------------------------------------------------
 
@@ -14052,12 +14602,18 @@ END FUNCTION PointFaceDistance
     IF (Element % TYPE % DIMENSION==0) RETURN
 
     n = Element % TYPE % NumberOfNodes
-
+    scl = MAXVAL(ElementNodes % x(1:n)) - MINVAL(ElementNodes % x(1:n)) + &
+        MAXVAL(ElementNodes % y(1:n)) - MINVAL(ElementNodes % y(1:n)) + &
+        MAXVAL(ElementNodes % z(1:n)) - MINVAL(ElementNodes % z(1:n))
+        
+    
     ! @todo Not supported yet
 !   IF (ASSOCIATED(Element % PDefs)) THEN
 !      CALL Fatal('GlobalToLocal','P elements not supported yet!')
 !   END IF
-    acc = EPSILON(1.0_dp)
+
+    eps = EPSILON(eps)
+    acc = eps * scl**2
     Converged = .FALSE.
 
      delta = 0._dp
@@ -14135,11 +14691,11 @@ END FUNCTION PointFaceDistance
         ! If the same values is suggested over and over again, then exit
         ! This may be a sign that the node is off-plane and cannot be 
         ! described within the element.
-        IF( SUM( ABS( delta - prevdelta ) ) < acc ) EXIT
+        IF( SUM( ABS( delta - prevdelta ) ) < eps ) EXIT
 
         ! Use sloppier criteria when iteration still unsuccessful
         IF( i > 20 ) THEN
-          IF( SUM( ABS( delta - prevdelta ) ) < SQRT( acc ) ) EXIT
+          IF( SUM( ABS( delta - prevdelta ) ) < 1.0e-8 ) EXIT
         END IF
 
         ! If the iteration does not proceed try with some relaxation
@@ -14156,11 +14712,11 @@ END FUNCTION PointFaceDistance
 !------------------------------------------------------------------------------
 
     IF ( .NOT. Converged ) THEN        
-      IF( err > SQRT( acc ) ) THEN
+      IF( err > 1.0e-8 ) THEN
         IF( i > MaxIter ) THEN	
           CALL Warn( 'GlobalToLocal', 'did not converge.')
           PRINT *,'rst',i,r,s,t
-          PRINT *,'err',err,acc,SQRT(acc)
+          PRINT *,'err',err,acc,eps
           PRINT *,'delta',delta,prevdelta
           PRINT *,'uvw',u,v,w
           PRINT *,'code',Element % TYPE % ElementCode

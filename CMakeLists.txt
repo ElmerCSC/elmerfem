@@ -86,6 +86,7 @@ SET(MPI_TEST_MAXPROC 8 CACHE STRING "Maximum number of tasks used in parallel te
 SET(MPI_TEST_MINPROC 1 CACHE STRING "Minimum number of tasks used in parallel tests")
 SET(WITH_OpenMP FALSE CACHE BOOL "Use OpenMP thread and SIMD (if available) parallelization")
 SET(WITH_MKL FALSE CACHE BOOL "Use Intel Math Kernel library")
+OPTION(HAVE_QP "Fortran compiler and runtime support quadruple-precision floating-point numbers" ON)
 SET(WITH_Mumps FALSE CACHE BOOL "Use Mumps sparse direct solver")
 SET(WITH_Hypre FALSE CACHE BOOL "Use Hypre linear algebra library")
 SET(WITH_CHOLMOD FALSE CACHE BOOL "Use CHOLMOD linear algebra library")

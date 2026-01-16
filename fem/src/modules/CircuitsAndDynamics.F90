@@ -2457,7 +2457,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       NULLIFY( Cwrk, Cwrk_im )
     END IF
 
-    Tcoef = cmplx(0.0d0,0.0d0)
+    Tcoef = cmplx(0.0d0,0.0d0,KIND=dp)
     Material => GetMaterial( Element )
     IF (.NOT. ASSOCIATED(Material)) CALL Fatal('Circuits_apply','Material not found.')
 

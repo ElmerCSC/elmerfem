@@ -64,9 +64,10 @@ CONTAINS
     INTEGER :: n, nd, ef, qp
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd)
+    REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:)
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),ddBasisddx(nd,3,3),DetJ,f(nd),diff(3)
-    REAL(KIND=dp) :: dNodal(nd,nd,3),dx(nd,nd,3),ddxFromNodaldx(nd,3,3),ddiff(3,3)
+    REAL(KIND=dp), ALLOCATABLE :: dNodal(:,:,:),dx(:,:,:)
+    REAL(KIND=dp) :: ddxFromNodaldx(nd,3,3),ddiff(3,3)
     REAL(KIND=dp) :: x, y, z, fx, s
     LOGICAL :: Stat
     INTEGER :: i,j,k,t,p,q, edim
@@ -75,6 +76,8 @@ CONTAINS
     TYPE(Nodes_t) :: Nodes
     SAVE Nodes
 !------------------------------------------------------------------------------
+    ALLOCATE( STIFF(nd,nd), FORCE(nd), dNodal(nd,nd,3), dx(nd,nd,3) )
+
     CALL GetElementNodes( Nodes )
     STIFF = 0.0d0
     FORCE = 0.0d0

@@ -203,7 +203,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
     A % Values = 0.0_dp
     A % rhs = 0.0_dp
     IF( ComplexSystem ) THEN
-      JfixRhsC = CMPLX( 0.0_dp, 0.0_dp )
+      JfixRhsC = CMPLX( 0.0_dp, 0.0_dp,KIND=dp )
     END IF
 
     CALL DefaultInitialize()
@@ -227,7 +227,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
       END IF
     END IF
     IF( ComplexSystem ) THEN
-      JfixSurfaceVecC = CMPLX( 0.0_dp, 0.0_dp ) 
+      JfixSurfaceVecC = CMPLX( 0.0_dp, 0.0_dp,KIND=dp ) 
     ELSE
       JfixSurfaceVec = 0.0_dp
     END IF

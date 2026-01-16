@@ -504,7 +504,7 @@ CONTAINS
 !DIR$ ATTRIBUTES ALIGN:64 :: STIFF, FORCE, weight_1, weight_2, weight_4
 !$OMP THREADPRIVATE(BasisVec, dBasisdxVec, DetJVec, rhoVec, loadAtIpVec, ElemDim )
 !$OMP THREADPRIVATE(ForcePart, weight_1, weight_2, weight_4)
-!$OMP THREADPRIVATE(tauVec, GradVec, Nodes)
+!$OMP THREADPRIVATE(tauVec, GradVec, GradHeight, Nodes)
 
     SAVE Nodes
 !------------------------------------------------------------------------------
