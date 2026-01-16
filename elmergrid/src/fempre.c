@@ -62,6 +62,7 @@
 #include "egconvert.h"
 #include "egexport.h"
 
+#include "../config.h"
 
 int main(int argc, char *argv[])
 {
@@ -77,9 +78,19 @@ int main(int argc, char *argv[])
   struct ElmergridType eg;
 
   showmem = TRUE;
-
-  printf("\nStarting program Elmergrid, compiled on %s\n", __DATE__ );
-
+  
+  printf("==================================================================\n");
+  printf("ElmerGrid mesh conversion and manipulation utility, Welcome!\n");
+#ifdef ELMER_FEM_VERSION
+#ifdef ELMER_FEM_REVISION
+  printf("Version: %s (Rev: %s, Compiled: %s)\n",ELMER_FEM_VERSION,ELMER_FEM_REVISION,ELMER_FEM_COMPILATIONDATE);
+#else
+  printf("Version: %s (Rev: NA, Compiled: NA)\n",ELMER_FEM_VERSION);
+#endif
+#endif
+  printf("This program is free software licensed under GPL\n");
+  printf("==================================================================\n");
+  
   InitParameters(&eg);
 
   grids = (struct GridType*)malloc((size_t) (MAXCASES)*sizeof(struct GridType));     

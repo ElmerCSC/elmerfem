@@ -122,7 +122,7 @@ CONTAINS
 
    FUNCTION GetVersion() RESULT(ch)
      CHARACTER(LEN=:), ALLOCATABLE :: ch
-     ch = VERSION
+     ch = ELMER_FEM_VERSION
    END FUNCTION GetVersion
 
    FUNCTION GetSifName(Found) RESULT(ch)
@@ -134,8 +134,8 @@ CONTAINS
    FUNCTION GetRevision(Found) RESULT(ch)
      CHARACTER(LEN=:), ALLOCATABLE :: ch
      LOGICAL, OPTIONAL :: Found
-#ifdef REVISION
-     ch = REVISION
+#ifdef ELMER_FEM_REVISION
+     ch = ELMER_FEM_REVISION
      IF(PRESENT(Found)) Found = .TRUE.
 #else
      ch = "unknown"
@@ -146,8 +146,8 @@ CONTAINS
    FUNCTION GetCompilationDate(Found) RESULT(ch)
      CHARACTER(LEN=:), ALLOCATABLE :: ch
      LOGICAL, OPTIONAL :: Found
-#ifdef COMPILATIONDATE
-     ch = COMPILATIONDATE
+#ifdef ELMER_FEM_COMPILATIONDATE
+     ch = ELMER_FEM_COMPILATIONDATE
      IF(PRESENT(Found)) Found = .TRUE.
 #else
      ch = "unknown"
