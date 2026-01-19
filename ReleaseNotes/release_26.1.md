@@ -8,7 +8,7 @@ These release notes provide information only on the most essential changes. Over
 You can get a complete listing of commit messages, for example, with the command git log --since="2020-11-11"  > log.txt
 
 It is unfortunate that the new release has been lagging. 
-The detail level of release notes had to dropped to get this out. We hope to get back on the phase.
+The detail level of release notes had to be dropped to get this out. We hope to get back on the phase.
 If you want to enhance the release notes feel free to update this file and make a pull request. 
 
 Apart from the core Elmer team at CSC (Juhani K., Mika M., Juha R., Peter R., Thomas Z.) git log shows contributions from Markus Mützel, Saeki T., Fabien G-C, Eelis T., Rich B., Iain W., Matias Z., Rupert G., Julien B., Samuel C., Luz P., Benjamin R., Ladislav M., Monher C., Olivier G., Juris V., Joe T., Bartos Z., E. Albiter, Sergey Al., Cyrille C., Jonas T., Tuomas M., Sami I., Kevin T., Sebastian G., Jonathan V., Alihossein S., Fernando B., Lucas B., Saint W., Sami R., Kasra D., Alessandro G., Andy G., Arno M., Evangelos V., Fredrik R. to this release.    
@@ -17,14 +17,14 @@ Additionally there are many ongoing developments in several branches
 that have not been merged to this release and are not therefore covered here. 
 
 The contributions of all developers are gratefully acknowledged! The work of Markus Mützel, Saeki Takayuki and
-Rich Bayless is particularly appreciated as they have been consistently contributing in the true spirit of open source. Also the humoungous
+Rich Bayless is particularly appreciated as they have been consistently contributing in the true spirit of open source. Also the humongous
 merge coming from univ. of St. Andrews mainly by Iain Wheel and Joe Todd related to remeshing strategies around calving is greatly appreciated.
 The features have opened the door for more extensive use of adaptivity and remeshing in the code. 
 
 
 ### New Versioning Scheme
 
-From this version onwords we migrate to Calender Versioning such that
+From this version onward we migrate to Calendar Versioning such that
 - First number (major) is the year of the 21st century, e.g. 26
 - Second number (minor) is an ordinal number of releases in that year
 - Third number (micro) is a growing number which for releases is always 0 and may be omitted.  
@@ -57,7 +57,7 @@ I. New Solver Modules
 - See Models Manual for more details. 
 
 ### CyclicConvergence.F90
-- This is an auxiliary solver that can be used to study whether transient and cyclic simulation has converged. It is assumed that all the cycles are saved and therefore the values from the current cycle can be compared to the previous cycle. The initial application case for this solver was syncronous electrical machines. 
+- This is an auxiliary solver that can be used to study whether transient and cyclic simulation has converged. It is assumed that all the cycles are saved and therefore the values from the current cycle can be compared to the previous cycle. The initial application case for this solver was synchronous electrical machines. 
 
 ### EMPort.F90
 - Module for computing eigen modes from a special wave equation model posed over a 2-D region, typically corresponding to an electromagnetic port
@@ -75,7 +75,7 @@ I. New Solver Modules
 
 ### SunAngle.F90
 - Simple solver that for each node computes the maximum elevation at which the sun is still seen from a given direction.
-- Intended use is in icesheet
+- Intended use is in ice sheet
 
 ### CahnHilliard.F90
 - New equation for Cahn-Hilliard interface equations (with minimal testing).
@@ -149,7 +149,7 @@ New keywords for creating a local coordinate system without the direction solver
 ### HeatSolveVec.F90
 - Enabled discontinuities between bodies.
 - Enable modeling of radiation heat transfer using the concept of "Radiosity". 
-- Enable computation of diffuse gray radiatiove heat transfer in parallel.
+- Enable computation of diffuse gray radiative heat transfer in parallel.
 - Except for the 1st feature these are available also in the legacy HeatSolve.F90 
 
 ### HelmholtzSolve.F90
@@ -221,8 +221,8 @@ III. ElmerSolver library functionality
   - "Linear System Preconditioning = Cholesky" as a synonym for
     "Linear System Symmetric=True" and "Linear System Symmetric ILU=True"
   - The normwise relative backward error err = ||r||/(||A|| ||x|| + ||b||) may be used as
-    a convergence crriterion also for complex linear systems
-  - New smoothers in conjuntion with multigrid and multilevel methods. 
+    a convergence criterion also for complex linear systems
+  - New smoothers in conjunction with multigrid and multilevel methods. 
 
 ### Solvers for eigenproblems
   - "Linear System Direct Method = cholmod" allowed in the solution of eigenproblems
@@ -304,13 +304,13 @@ III. ElmerSolver library functionality
     that the basic solution cycle is provided as a pointer to a function. See also the compilation
     flag "WITH_EXTOPTIM".
 
-### Miscallenous
+### Miscellaneous
   - Option to use MMG* library internally for adaptive mesh generation
   - Internal extrusion into separate MPI tasks.
   - Internal splitting of prismatic meshes into tetrahedrons. 
   - Tentative machinery for CutFEM without elimination implemented
   - Possibility to create BC's on-the-fly based on geometric detection.
-  - Feature to "calcalate mesh pieces" to ensure conformity of meshes. 
+  - Feature to "calculate mesh pieces" to ensure conformity of meshes. 
 
 
 
@@ -345,7 +345,7 @@ VII. Elmer/Ice
 - New features in Elmer/Ice are documented elsewhere
 
 
-IX. Obsolite code
+IX. Obsolete code
 ------------------
 - ElmerPost moved to separate repository "ElmerPost"
-- Obsolite Trilinos interface removed
+- Obsolete Trilinos interface removed
