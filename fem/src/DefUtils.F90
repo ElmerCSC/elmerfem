@@ -6917,16 +6917,8 @@ CONTAINS
     VLoad(2,1:n)=GetReal(BC,Name(1:i)//' 2',Lstat,element)
     VLoad(3,1:n)=GetReal(BC,Name(1:i)//' 3',Lstat,element)
 
-    IF (QuadraticApproximation .AND. SecondKindBasis) THEN
-!      SELECT CASE(GetElementFamily(Element))
-!      CASE(3)
-      IP = GaussPoints(Element,6)
-!      CASE(4)
-!        IP = GaussPoints(Element,9)
-!      END SELECT
-    ELSE
-      IP = GaussPoints(Element)
-    END IF
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=.TRUE., &
+        EdgeBasisDegree=BasisDegree)
     
     DO p=1,IP % n
 
