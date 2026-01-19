@@ -2874,6 +2874,43 @@ SUBROUTINE SolvePermon(Matrix, XVec, RHSVec, Solver, ParallelInfo, SplittedMatri
       INT(bound, KIND=C_INT), &
       C_LOC(Aperm(1)), C_LOC(Owner(1)), INT(Matrix % Comm, KIND=C_INT) )   
 
+    IF( ASSOCIATED(Aser % DiagScaling ) ) THEN
+      cser(1:ndim) = cser(1:ndim) * (Aser % DiagScaling * Aser % RhsScaling) 
+    END IF
+    IF( ParEnv % PEs > 1) DEALLOCATE(c)
+!
+! Probably not needed
+
+!  !--------------------------------------------------------------------
+!  ! Exchange solved owned DOFs to interface/ghost DOFs so that the
+!  ! parallel result matches the serial run. This mirrors the Hypre
+!  !  and Trilinos paths which explicitly populate SplittedMatrix%ResBuf
+!  ! and call ExchangeResult().
+!  !--------------------------------------------------------------------
+!  IF ( PRESENT(ParallelInfo) .AND. ASSOCIATED(SplittedMatrix) ) THEN
+!    ALLOCATE( VecEPerNB( ParEnv % PEs ) )
+!    VecEPerNB = 0
+!    DO i = 1, Matrix % NumberOfRows
+!      IF ( SIZE(ParallelInfo % NeighbourList(i) % Neighbours) > 1 ) THEN
+!        IF ( ParallelInfo % NeighbourList(i) % Neighbours(1) == ParEnv % MyPE ) THEN
+!          DO j = 1, SIZE(ParallelInfo % NeighbourList(i) % Neighbours)
+!            IF (ParallelInfo % NeighbourList(i) % Neighbours(j)/=ParEnv % MyPE) THEN
+!              nbind = ParallelInfo % NeighbourList(i) % Neighbours(j) + 1
+!              VecEPerNB(nbind) = VecEPerNB(nbind) + 1
+!
+!              SplittedMatrix % ResBuf(nbind) % ResVal(VecEPerNB(nbind)) = XVec(i)
+!              SplittedMatrix % ResBuf(nbind) % ResInd(VecEPerNB(nbind)) = &
+!                  ParallelInfo % GlobalDOFs(i)
+!            END IF
+!          END DO
+!        END IF
+!      END IF
+!    END DO
+!
+!    CALL ExchangeResult( Matrix, SplittedMatrix, ParallelInfo, XVec )
+!    DEALLOCATE( VecEPerNB )
+!  END IF
+!
   CALL SParIterActiveBarrier()
   DEALLOCATE( Owner, Aperm )
 
