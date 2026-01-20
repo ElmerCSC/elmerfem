@@ -48,7 +48,6 @@ revealed for new Solver modules:
 
 - This solver is to be used to output some scalar quantities for a glacier configuration (domain without ice characterised by an IcyMask < 0).
 - The quantities are:
-
       - glacier volume
       - glacier area
       - ablation area
@@ -59,7 +58,6 @@ revealed for new Solver modules:
       - Front elevation
 
 ### UGridDataReader.F90
-
 - This solver reads variables in an unstructured netcdf file (e.g. following the UGRID format) at node and element locations.
 - It can be used to e.g. read variables that have been produced with the XIOSOutPutSolver or that have been conservatively interpolated on the mesh using e.g. cdo.
 - The input file structure should correspond to the current serial mesh, and variables should be arranged using the node and element ordering.
@@ -93,22 +91,17 @@ III. Enhancement of existing solvers
 This is a list of selected improvements to existing solvers/methods
 
 ### Calving
-
 -  stochastic calving CDL /Crevasse Depth Law). Only inserted exponential function so far
 - Add option to remesh full terminus or just area that is calving
 - Account for bedrock when advance. This requires the bedrock to be read as a userfunction so updated positions can be calculated. Does not work when bedrock read as netcdf as bed variable not updated for new node positions
-
-#### Squashed commit of developments related to calving of ice in St.Andrews between in years 2019-2023.
-    ==================================================================================================
-    - see https://github.com/ElmerCSC/elmerfem/commit/a9564a49d0a0e9d478d894886f5390833f28bd48
-    - There are >300 commits over a broad spectrum of features needed in modeling of calving.
-    - Most of the commits related to Iain Wheel's <iw43@st-andrews.ac.uk> work.
-    - Also numerous commits by Joe Todd and Eef van Dongen
-    - This is a huge effort! Thank you!
-    
-    - A squash was done in order not to mess up with the history of devel branch of Elmer over past four years.
-    - The full history is currently available in "calving_meshadapt" branch.
-
+- Squashed commit of developments related to calving of ice in St.Andrews between in years 2019-2023.
+  - see https://github.com/ElmerCSC/elmerfem/commit/a9564a49d0a0e9d478d894886f5390833f28bd48
+  - There are >300 commits over a broad spectrum of features needed in modeling of calving.
+  - Most of the commits related to Iain Wheel's <iw43@st-andrews.ac.uk> work.
+  - Also numerous commits by Joe Todd and Eef van Dongen
+  - This is a huge effort! Thank you!
+  - A squash was done in order not to mess up with the history of devel branch of Elmer over past four years.
+  - The full history is currently available in "calving_meshadapt" branch.
 
 ### Inverse Methods
 - optimisation of the (non-linear) Weertman friction coefficient
@@ -135,13 +128,13 @@ ComputeDevStress is now compatible with both Stokes and Porous. Operations requi
 Operations required to compute effective viscosity and compressibility parameter are now performed in a separated module PorousMaterialModels.F90 through call of function PorousEffectiveViscosity (replacing  fAandfB_in.F90)
 
 ### SSASolver    
-    - enable CutFEM to be used in assembly
-    - added linesearch for non-linear iteration into SSABasalSolver
-    - add support to compute grounding line and calving front fluxes
-    - add post-processing options:
-      1. compute element-average basal stress
-      2. compute nodal effective friction coefficient
-    - Move the friction law in a separate module (SSAMaterialModels) to ease use in other pieces of code
-    - add "regularised coulomb" friction law
-    - read sealevel at each visit so that it can change with time
+- enable CutFEM to be used in assembly
+- added linesearch for non-linear iteration into SSABasalSolver
+- add support to compute grounding line and calving front fluxes
+- add post-processing options:
+  1. compute element-average basal stress
+  2. compute nodal effective friction coefficient
+- Move the friction law in a separate module (SSAMaterialModels) to ease use in other pieces of code
+- add "regularised coulomb" friction law
+- read sealevel at each visit so that it can change with time
     
