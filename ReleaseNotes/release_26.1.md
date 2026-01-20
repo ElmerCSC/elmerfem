@@ -345,7 +345,7 @@ VII. Elmer/Ice
 - New features in Elmer/Ice are documented elsewhere
 
 
-IX. Obsolete code
+VIII. Obsolete code
 ------------------
 - ElmerPost moved to separate repository "ElmerPost"
 - Obsolete Trilinos interface removed
