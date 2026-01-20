@@ -24,13 +24,58 @@ I. Overview of changes
 ---------------------
 Just in time to the previous release the Elmer/Ice community introduced the concept of documentation inside this repository, namely,
 - `elmerice/Solvers/Documentation` for Solvers
--`elmerice/UserFunctions/Documentation`for user-functions
+- `elmerice/UserFunctions/Documentation`for user-functions
 Since then, these directories have been filled with the documents.
 
 
 
 II. New Solver Modules
 ----------------------
+The list obtained with
+```bash
+for i in $(ls *)
+do echo $(git log --diff-filter=A --follow --format=%as -- "$i"), $i
+done |sort
+```
+revealed for new Solver modules:
+
+### IcyMaskSolver.F90
+
+- Solver for creating a mask on whether there is ice-thicknes above a given threshold (H> Hmin) or not (H<Hmin).
+- Similar to the 'groundedmask', we have  +1= glaciated (H>Hmin), -1= Ice Free (H<Hmin), 0=contour of the glacier, plus values <-1 for isolated nodes
+
+### Scalar_OUTPUT_Glacier.F90
+
+- This solver is to be used to output some scalar quantities for a glacier configuration (domain without ice characterised by an IcyMask < 0).
+- The quantities are:
+      - glacier volume
+      - glacier area
+      - ablation area
+      - accumulation area
+      - SMB total
+      - SMB Ablation
+      - SMB Accumulation
+      - Front elevation.
+
+### UGridDataReader.F90
+
+- This solver reads variables in an unstructured netcdf file (e.g. following the UGRID format) at node and element locations.
+- It can be used to e.g. read variables that have been produced with the XIOSOutPutSolver or that have been conservatively interpolated on the mesh using e.g. cdo.
+- The input file structure should correspond to the current serial mesh, and variables should be arranged using the node and element ordering.
+
+### Weertman2Coulomb.F90
+- Converts linear Weertman coefficient (e.g. from inversion) to "Coulomb"
+sliding law parameters
+- The following "Conversion mode" options are available (see above document
+for more info):
+    - "Threshold": A threshold value of the Weertman sliding coefficient is given.  Either side of this threshold one or other of the "Coulomb" coefficients is held constant while the other is derived.
+    -  "Smooth": A Weertman equation is used to calculate the As "Coulomb" coefficient.  This is then scaled toward zero for regions where the Coulomb limit is approached  (currently using a tanh function based on effective pressure).  The `C`-coefficient is then derived as a function of `As.
+    
+### CalvingRemeshparMMG.F90
+- Remesh the calving model using MMG3D
+- runs in parallel but remeshing is serial!
+- Takes a level set which defines a calving event (or multiple calving events). Level
+- set is negative inside a calving event, and positive in the remaining domain. This hasn't actually been implemented yet, we use a test function.
 
 III. Enhancement of existing solvers
 ------------------------------------
