@@ -83,7 +83,8 @@ int main(int argc, char *argv[])
   printf("ElmerGrid mesh conversion and manipulation utility, Welcome!\n");
 #ifdef ELMER_FEM_VERSION
 #ifdef ELMER_FEM_REVISION
-  printf("Version: %s (Rev: %s, Compiled: %s)\n",ELMER_FEM_VERSION,ELMER_FEM_REVISION,ELMER_FEM_COMPILATIONDATE);
+  printf("Version: %s-%s (Rev: %s, Compiled: %s)\n",ELMER_FEM_VERSION,ELMER_FEM_BRANCH,&
+	 ELMER_FEM_REVISION,ELMER_FEM_COMPILATIONDATE);
 #else
   printf("Version: %s (Rev: NA, Compiled: NA)\n",ELMER_FEM_VERSION);
 #endif

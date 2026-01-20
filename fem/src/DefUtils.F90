@@ -143,6 +143,18 @@ CONTAINS
 #endif
    END FUNCTION GetRevision
 
+   FUNCTION GetBranch(Found) RESULT(ch)
+     CHARACTER(LEN=:), ALLOCATABLE :: ch
+     LOGICAL, OPTIONAL :: Found
+#ifdef ELMER_FEM_BRANCH
+     ch = ELMER_FEM_BRANCH
+     IF(PRESENT(Found)) Found = .TRUE.
+#else
+     ch = "unknown"
+     IF(PRESENT(Found)) Found = .FALSE.
+#endif
+   END FUNCTION GetBranch
+
    FUNCTION GetCompilationDate(Found) RESULT(ch)
      CHARACTER(LEN=:), ALLOCATABLE :: ch
      LOGICAL, OPTIONAL :: Found
