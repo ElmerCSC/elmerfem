@@ -48,6 +48,7 @@ revealed for new Solver modules:
 
 - This solver is to be used to output some scalar quantities for a glacier configuration (domain without ice characterised by an IcyMask < 0).
 - The quantities are:
+
       - glacier volume
       - glacier area
       - ablation area
@@ -55,7 +56,7 @@ revealed for new Solver modules:
       - SMB total
       - SMB Ablation
       - SMB Accumulation
-      - Front elevation.
+      - Front elevation
 
 ### UGridDataReader.F90
 
@@ -76,6 +77,16 @@ for more info):
 - runs in parallel but remeshing is serial!
 - Takes a level set which defines a calving event (or multiple calving events). Level
 - set is negative inside a calving event, and positive in the remaining domain. This hasn't actually been implemented yet, we use a test function.
+
+New Elmer/Ice user-functions since last release are
+
+### USF_proj.F90
+- generic user functions to compute longitude and latitude from projected x,y coordinates and conversely
+- relies on generic utilities in the module file projUtils
+
+### USF_GlacierMeshMetric.F90
+- Computes the anisotropic target element size based on distance from calving front
+
 
 III. Enhancement of existing solvers
 ------------------------------------
