@@ -85,7 +85,7 @@
      USE MainUtils, ONLY : AddEquationBasics, AddEquationSolution, AddExecWhenFlag, &
          PredictorCorrectorControl, SingleSolver, SolveEquations, SolverActivate, &
          SwapMesh
-     USE DefUtils, ONLY : GetSimulation, GetCompilationDate, GetRevision, GetVersion, &
+     USE DefUtils, ONLY : GetSimulation, GetCompilationDate, GetRevision, GetVersion, GetBranch, &
          GetReal, GetCReal, GetLogical, GetElementNOFNodes, GetElementDOFs, GetBC, &
          GetElementFamily, GetElementNodes, VectorElementEdgeDOFs
 
@@ -246,7 +246,7 @@
          CALL Info( 'MAIN', 'This program is free software licensed under (L)GPL          ')
          CALL Info( 'MAIN', 'Copyright 1st April 1995 - , CSC - IT Center for Science Ltd.')
          CALL Info( 'MAIN', 'Webpage http://www.csc.fi/elmer, Email elmeradm@csc.fi       ')
-         CALL Info( 'MAIN', 'Version: ' // GetVersion() // ' (Rev: ' // GetRevision() // &
+         CALL Info( 'MAIN', 'Version: ' // GetVersion() //'-'// GetBranch() // ' (Rev: ' // GetRevision() // &
                             ', Compiled: ' // GetCompilationDate() // ')' )
 
          IF ( ParEnv % PEs > 1 ) THEN
