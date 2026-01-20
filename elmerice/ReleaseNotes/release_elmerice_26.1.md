@@ -90,4 +90,58 @@ New Elmer/Ice user-functions since last release are
 
 III. Enhancement of existing solvers
 ------------------------------------
+This is a list of selected improvements to existing solvers/methods
 
+### Calving
+
+-  stochastic calving CDL /Crevasse Depth Law). Only inserted exponential function so far
+- Add option to remesh full terminus or just area that is calving
+- Account for bedrock when advance. This requires the bedrock to be read as a userfunction so updated positions can be calculated. Does not work when bedrock read as netcdf as bed variable not updated for new node positions
+
+#### Squashed commit of developments related to calving of ice in St.Andrews between in years 2019-2023.
+    ==================================================================================================
+    - see https://github.com/ElmerCSC/elmerfem/commit/a9564a49d0a0e9d478d894886f5390833f28bd48
+    - There are >300 commits over a broad spectrum of features needed in modeling of calving.
+    - Most of the commits related to Iain Wheel's <iw43@st-andrews.ac.uk> work.
+    - Also numerous commits by Joe Todd and Eef van Dongen
+    - This is a huge effort! Thank you!
+    
+    - A squash was done in order not to mess up with the history of devel branch of Elmer over past four years.
+    - The full history is currently available in "calving_meshadapt" branch.
+
+
+### Inverse Methods
+- optimisation of the (non-linear) Weertman friction coefficient
+- add Material for the Mass conservation method
+
+### Permafrost model
+-  dissable mass-matrix computation in steady state simulation of PermaFrost model
+- added Interfrost TH1 special case
+- introduced possibility to read solvent database into permafrost model (earlier default to pure water)
+- Add flux relaxation to Darcy solver
+- Added possibility of constant (exported) Temperature in PermafrostPorosityEvolution
+
+### GlaDS
+- allowing GlaDS to prescribe Moulins using a mask variable
+- Changing default water density name in GlaDS from "water density" to "fresh water density" due to naming conflict with floatation code.
+- Added possibility to limit the effective pressure in GlaDS channel evolution to positive values
+- GlaDS volume source is now treated as handle (can alos be elment or IP value)
+- Enable consistent norm for GladsCoupled. This should be consistent for parallel computation and for cases where there is different number of passive nodes and edges in the problem. Also utilize 'Mesh => Solver % Mesh' as it is used tens of times.
+
+### ComputeDevStressNS.F90
+ComputeDevStress is now compatible with both Stokes and Porous. Operations required to compute effective viscosity and compressibility parameter are performed in separated modules  through call of functions EffectiveViscosity PorousEffectiveViscosity
+
+### PorousSolve.F90
+Operations required to compute effective viscosity and compressibility parameter are now performed in a separated module PorousMaterialModels.F90 through call of function PorousEffectiveViscosity (replacing  fAandfB_in.F90)
+
+### SSASolver    
+    - enable CutFEM to be used in assembly
+    - added linesearch for non-linear iteration into SSABasalSolver
+    - add support to compute grounding line and calving front fluxes
+    - add post-processing options:
+      1. compute element-average basal stress
+      2. compute nodal effective friction coefficient
+    - Move the friction law in a separate module (SSAMaterialModels) to ease use in other pieces of code
+    - add "regularised coulomb" friction law
+    - read sealevel at each visit so that it can change with time
+    
