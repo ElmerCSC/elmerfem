@@ -122,7 +122,7 @@
 
         ! we have an edge GL if at least 2 nodes are GL
         ! and we have a least one floating node
-        ngl=COUNT(NodalGM == 0)
+        ngl=COUNT(NodalGM(1:n) == 0)
         IF (ngl < 2) CYCLE
         IF (.NOT.ANY(NodalGM(1:n).LT.0._dp)) CYCLE
 
