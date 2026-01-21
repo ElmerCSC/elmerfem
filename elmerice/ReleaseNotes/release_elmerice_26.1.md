@@ -2,7 +2,7 @@ Elmer/Ice Release Notes for version 26.1
 ========================================
 
 Previous release: **9.0**  
-Period covered: **Nov 11, 2020 - Jan 19, 2025**  
+Period covered: **Nov 11, 2020 - Jan 19, 2026**  
 
 Trying to exclude the for Elmer/Ice relevant commits is difficult. The list obtained with
 ```bash
