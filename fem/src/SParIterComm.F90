@@ -90,7 +90,6 @@ MODULE SParIterComm
   USE elmer_coupling, ONLY: mpi_handshake => elmer_coupling_mpi_handshake, &
                         MAX_GROUPNAME_LEN => elmer_coupling_MAX_GROUPNAME_LEN
 # elif defined(HAVE_XIOS)
-#   error "The mpi_handshake implementation in XIOS currently has a bug."
   ! use mpi_handshake from XIOS if only HAVE_XIOS used without HAVE_YAC
   USE XIOS, ONLY: mpi_handshake => xios_mpi_handshake, &
               MAX_GROUPNAME_LEN => xios_MAX_GROUPNAME_LEN
