@@ -82,8 +82,10 @@ int main(int argc, char *argv[])
   printf("==================================================================\n");
   printf("ElmerGrid mesh conversion and manipulation utility, Welcome!\n");
 #ifdef ELMER_FEM_VERSION
-#ifdef ELMER_FEM_REVISION
-  printf("Version: %s-%s (Rev: %s, Compiled: %s)\n",ELMER_FEM_VERSION,ELMER_FEM_BRANCH,&
+  /* Branch might not exist even though Revision would exist when git is in detached head state.
+     Heance check the branch for existance. */
+#ifdef ELMER_FEM_BRANCH
+  printf("Version: %s-%s (Rev: %s, Compiled: %s)\n",ELMER_FEM_VERSION,ELMER_FEM_BRANCH,
 	 ELMER_FEM_REVISION,ELMER_FEM_COMPILATIONDATE);
 #else
   printf("Version: %s (Rev: NA, Compiled: NA)\n",ELMER_FEM_VERSION);
