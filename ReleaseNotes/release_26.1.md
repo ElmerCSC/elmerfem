@@ -320,6 +320,8 @@ IV. ElmerGrid
 
 V. ElmerGUI
 -----------
+- Users can add their own material libraries by putting xml files in edf-extra directory.
+- Tango-based icons for better visibility in high resolution monitors
 - Numerous small improvement and fixes
 - Library versions updated
 
