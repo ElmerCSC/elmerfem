@@ -4,13 +4,13 @@ Elmer/Ice Release Notes for version 26.1
 Previous release: **9.0**  
 Period covered: **Nov 11, 2020 - Jan 19, 2026**  
 
-Trying to exclude the for Elmer/Ice relevant commits is difficult. The list obtained with
+Trying to select the for Elmer/Ice relevant commits is difficult. The list obtained with
 ```bash
 git log --since="2020-11-11" --stat -- elmerice
 ```
-revealed 371 commits since Nov. 11th, 2020.
+revealed 371 commits since Nov. 11th, 2020. We try to give a summary of the most relevant new developments below.
 
-Apart from the core Elmer team at CSC (Juhani K., Mika M., Juha R., Peter R., Thomas Z.) git log shows contributions from Markus Mützel, Fabien G-C, Iain W.,  Rupert G., Julien B., Samuel C.,  Benjamin R., Mondher C., Olivier G., Joe T.,  Lucas B. to Elmer/Ice related contributions in this release.
+Apart from the core Elmer team at CSC (Juhani K., Mika M., Juha R., Peter R., Thomas Z.) git log shows contributions from Markus Mützel, Fabien G-C, Iain W.,  Rupert G., Julien B., Samuel C.,  Benjamin R., Mondher C., Olivier G., Joe T.,  Eef v.D, and Lucas B. to Elmer/Ice related code in this release. Many thanks to all contributors supporting the open source philosophy of Elmer/Ice!
 
 ### New Versioning Scheme
 
@@ -19,15 +19,12 @@ From this version onward we migrate for Elmer (and hence also Elmer/Ice therein)
 - Second number (minor) is an ordinal number of releases in that year
 - Third number (micro) is a growing number which for releases is always 0 and may be omitted.  
 
-
 I. Overview of changes
 ---------------------
 Just in time to the previous release the Elmer/Ice community introduced the concept of documentation inside this repository, namely,
 - `elmerice/Solvers/Documentation` for Solvers
 - `elmerice/UserFunctions/Documentation`for user-functions
 Since then, these directories have been filled with the documents.
-
-
 
 II. New Solver Modules
 ----------------------
@@ -38,9 +35,25 @@ do echo $(git log --diff-filter=A --follow --format=%as -- "$i"), $i
 done |sort
 ```
 revealed for new Solver modules:
+### CalvingRemeshparMMG.F90
+- Similar to CalvingRemeshMMG.F90 except the second remesh (improvement of element quality) occurs in parallel using ParMMG.
+- First stage of remeshing (element alignment along zero contour) still occurs in serial
+- Takes a level set which defines a calving event (or multiple calving events). Levelset is negative inside a calving event, and positive in the remaining domain.
+- ParMMG is currently no longer being developed  so CalvingRemeshMMG is more stable and actively maintained.
 
+### CovarianceUtils.F90:
+   - The CovarianceUtils module contains routines and functions for the generic operations involving a covariance matrix $C$ or its inverse
+   - In particular an approximation of $B$ for Matérn functions can be obtain in an unstructured mesh by successive applications of a diffusion operator (Guillet et al.,2019)
+   - This is used in:
+     1. **BackgroundErrorCostSolver.F90**:
+        - This solver is mainly intended to be used with the adjoint inverse methods implemented in Elmer/Ice and is an alternative to the regu
+larisation solver
+        - It allows to parametrise background errors with the Matérn correlation functions     
+     2. **GaussianSimulationSolver.F90**:
+         - Generate non-conditionnal realizations of a random variable from a gaussian distribution defined by the covariance matrix $C$
+         - This can be use for, e.g., ensemble uncertainty quantification
+  
 ### IcyMaskSolver.F90
-
 - Solver for creating a mask on whether there is ice-thicknes above a given threshold (H> Hmin) or not (H<Hmin).
 - Similar to the 'groundedmask', we have  +1= glaciated (H>Hmin), -1= Ice Free (H<Hmin), 0=contour of the glacier, plus values <-1 for isolated nodes
 
@@ -70,13 +83,9 @@ for more info):
     - "Threshold": A threshold value of the Weertman sliding coefficient is given.  Either side of this threshold one or other of the "Coulomb" coefficients is held constant while the other is derived.
     -  "Smooth": A Weertman equation is used to calculate the As "Coulomb" coefficient.  This is then scaled toward zero for regions where the Coulomb limit is approached  (currently using a tanh function based on effective pressure).  The `C`-coefficient is then derived as a function of `As.
     
-### CalvingRemeshparMMG.F90
-- Remesh the calving model using MMG3D
-- runs in parallel but remeshing is serial!
-- Takes a level set which defines a calving event (or multiple calving events). Level
-- set is negative inside a calving event, and positive in the remaining domain. This hasn't actually been implemented yet, we use a test function.
 
-New Elmer/Ice user-functions since last release are
+  
+New Elmer/Ice user-functions since last release are:
 
 ### USF_proj.F90
 - generic user functions to compute longitude and latitude from projected x,y coordinates and conversely
@@ -90,22 +99,23 @@ III. Enhancement of existing solvers
 ------------------------------------
 This is a list of selected improvements to existing solvers/methods
 
-### Calving
--  stochastic calving CDL /Crevasse Depth Law). Only inserted exponential function so far
+### Calving (CalvingRemeshMMG, Calving3DLset and CalvingGlacierAdvance3D)
+- Update and production of CalvingRemeshMMG and Calving3DLset as usable solvers. New 3D calving model stable and works for any setup. See Wheel et al., 2024, GMD (https://doi.org/10.5194/gmd-17-5759-2024) for details.
+- CalvingGlacierAdvance3D also now a stable solver.
+- Stochastic calving CDL  (Crevasse Depth Law) added.
 - Add option to remesh full terminus or just area that is calving
-- Account for bedrock when advance. This requires the bedrock to be read as a userfunction so updated positions can be calculated. Does not work when bedrock read as netcdf as bed variable not updated for new node positions
-- Squashed commit of developments related to calving of ice in St.Andrews between in years 2019-2023.
-  - see https://github.com/ElmerCSC/elmerfem/commit/a9564a49d0a0e9d478d894886f5390833f28bd48
+- Squashed commit of developments related to 3D calving of ice in St.Andrews between in years 2019-2023. Most of these updates covered in Wheel et al., (2024).
+see https://github.com/ElmerCSC/elmerfem/commit/a9564a49d0a0e9d478d894886f5390833f28bd48
   - There are >300 commits over a broad spectrum of features needed in modeling of calving.
-  - Most of the commits related to Iain Wheel's <iw43@st-andrews.ac.uk> work.
+  - Most of the commits related to Iain Wheel's iw43@st-andrews.ac.uk work.
   - Also numerous commits by Joe Todd and Eef van Dongen
-  - This is a huge effort! Thank you!
-  - A squash was done in order not to mess up with the history of devel branch of Elmer over past four years.
-  - The full history is currently available in "calving_meshadapt" branch.
+- This is a huge effort! Thank you!
+- A squash was done in order not to mess up with the history of devel branch of Elmer over past four years.
 
 ### Inverse Methods
 - optimisation of the (non-linear) Weertman friction coefficient
 - add Material for the Mass conservation method
+- "Regularisation" using a background error (see new **BackgroundErrorCostSolver.F90**)
 
 ### Permafrost model
 -  dissable mass-matrix computation in steady state simulation of PermaFrost model
