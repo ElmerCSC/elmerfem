@@ -155,6 +155,10 @@ jobs:
             $([ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_MPI=ON -DMPI_TEST_MAXPROC=2 -DMPIEXEC_PREFLAGS=--allow-run-as-root" || echo "-DWITH_MPI=OFF") \
             $([ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_Trilinos=ON" || echo "-DWITH_Trilinos=OFF") \
             ..
+          echo "content of fem/config.h:"
+          cat fem/config.h
+          echo "content of elmergrid/config.h"
+          cat elmergrid/config.h
 
       - name: build
         run: |
