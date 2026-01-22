@@ -310,18 +310,19 @@ III. ElmerSolver library functionality
   - Feature to "calculate mesh pieces" to ensure conformity of meshes. 
 
 
-
 IV. ElmerGrid
 -------------
 - Add reading Gmsh input format 4.1 in binary.  
-- Add calculate mesh pieces function.
-- Report size of bounding box.
+- Add calculate mesh pieces function, which checks for conformity of each mesh.
+- Report size of bounding box, and give hint to user if mesh may be in millimeters.
 - Numerous small fixes.
 
 V. ElmerGUI
 -----------
 - Users can add their own material libraries by putting xml files in edf-extra directory.
 - Tango-based icons for better visibility in high resolution monitors
+- Add reading Gmsh input format 4.1 in binary.
+- Add reading STL input format in binary.
 - Numerous small improvement and fixes
 - Library versions updated
 
