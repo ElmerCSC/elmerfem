@@ -4,23 +4,22 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-!
 !/******************************************************************************
 ! *
 ! *  Authors: Juha Ruokolainen
@@ -1336,20 +1335,20 @@ END BLOCK
         IF ( StrandedHomogenization ) THEN
           nu_11 = 0._dp
           nuim_11 = 0._dp
-          nu_11 = GetReal(CompParams, 'nu 11', Found)
-          nuim_11 = GetReal(CompParams, 'nu 11 im', FoundIm)
+          nu_11(1:n) = GetReal(CompParams, 'nu 11', Found)
+          nuim_11(1:n) = GetReal(CompParams, 'nu 11 im', FoundIm)
           IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 11 not found!')
 
           nu_22 = 0._dp
           nuim_22 = 0._dp
-          nu_22 = GetReal(CompParams, 'nu 22', Found)
-          nuim_22 = GetReal(CompParams, 'nu 22 im', FoundIm)
+          nu_22(1:n) = GetReal(CompParams, 'nu 22', Found)
+          nuim_22(1:n) = GetReal(CompParams, 'nu 22 im', FoundIm)
           IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 22 not found!')
 
           nu_33 = 0._dp
           nuim_33 = 0._dp
-          nu_33 = GetReal(CompParams, 'nu 33', Found)
-          nuim_33 = GetReal(CompParams, 'nu 33 im', FoundIm)
+          nu_33(1:n) = GetReal(CompParams, 'nu 33', Found)
+          nuim_33(1:n) = GetReal(CompParams, 'nu 33 im', FoundIm)
           IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 33 not found!')
 
           ! Sigma 33 is not needed in because it does not exist in stranded coil

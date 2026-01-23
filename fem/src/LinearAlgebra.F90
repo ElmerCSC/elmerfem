@@ -42,6 +42,9 @@
 !>  matrix eigenvalues  (don't use this for anything big, use for example 
 !>  LAPACK routines instead...)
 !------------------------------------------------------------------------------
+
+#include "../config.h"
+
 MODULE LinearAlgebra
 
   USE Types
@@ -550,7 +553,7 @@ MODULE LinearAlgebra
   END SUBROUTINE InvertMatrix3x3
 !------------------------------------------------------------------------------
 
-#ifdef HAVE_QP  
+#ifdef HAVE_QP
 !------------------------------------------------------------------------------
 ! Quadratic precision version of the previous routine!
 !------------------------------------------------------------------------------

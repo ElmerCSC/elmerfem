@@ -1589,14 +1589,23 @@ CONTAINS
       REAL(KIND=dp) :: Tol, MaxTol
 
       ! Local arrays:
-      REAL(kind=dp) :: P(n,s)
-      REAL(kind=dp) :: G(n,s)
-      REAL(kind=dp) :: U(n,s)
-      REAL(kind=dp) :: r(n)
-      REAL(kind=dp) :: v(n)
-      REAL(kind=dp) :: t(n)
-      REAL(kind=dp) :: M(s,s), f(s), mu(s)
-      REAL(kind=dp) :: alpha(s), beta(s), gamma(s)
+!     REAL(kind=dp) :: P(n,s)
+!     REAL(kind=dp) :: G(n,s)
+!     REAL(kind=dp) :: U(n,s)
+!     REAL(kind=dp) :: r(n)
+!     REAL(kind=dp) :: v(n)
+!     REAL(kind=dp) :: t(n)
+!     REAL(kind=dp) :: M(s,s), f(s), mu(s)
+!     REAL(kind=dp) :: alpha(s), beta(s), gamma(s)
+
+      REAL(kind=dp), ALLOCATABLE :: P(:,:)
+      REAL(kind=dp), ALLOCATABLE :: G(:,:)
+      REAL(kind=dp), ALLOCATABLE :: U(:,:)
+      REAL(kind=dp), ALLOCATABLE :: r(:)
+      REAL(kind=dp), ALLOCATABLE :: v(:)
+      REAL(kind=dp), ALLOCATABLE :: t(:)
+      REAL(kind=dp), ALLOCATABLE :: M(:,:), f(:), mu(:)
+      REAL(kind=dp), ALLOCATABLE :: alpha(:), beta(:), gamma(:)
 
       REAL(kind=dp) :: om, tr, tr_s, tt
       REAL(kind=dp) :: nr, nt, rho, kappa
@@ -1610,6 +1619,8 @@ CONTAINS
       REAL(kind=dp) :: normb, normr, errorind ! for tolerance check
       INTEGER :: i,j,k,l                      ! loop counters
 !----------------------------------------------------------------------------------- 
+
+      ALLOCATE( P(n,s), G(n,s), U(n,s), r(n), v(n), t(n), M(s,s), f(s), mu(s), alpha(s), beta(s), gamma(s))
       
       ! Compute initial residual
       normb = normfun(n,b,1)
@@ -3073,15 +3084,25 @@ CONTAINS
 !------------------------------------------------------------------------------
 
       ! Local arrays:
-      REAL(kind=dp) :: Pr(n,s), Pi(n,s) 
-      COMPLEX(kind=dp) :: P(n,s)
-      COMPLEX(kind=dp) :: G(n,s)
-      COMPLEX(kind=dp) :: U(n,s)
-      COMPLEX(kind=dp) :: r(n) 
-      COMPLEX(kind=dp) :: v(n)   
-      COMPLEX(kind=dp) :: t(n)  
-      COMPLEX(kind=dp) :: M(s,s), f(s), mu(s)
-      COMPLEX(kind=dp) :: alpha(s), beta(s), gamma(s)
+!     REAL(kind=dp) :: Pr(n,s), Pi(n,s) 
+!     COMPLEX(kind=dp) :: P(n,s)
+!     COMPLEX(kind=dp) :: G(n,s)
+!     COMPLEX(kind=dp) :: U(n,s)
+!     COMPLEX(kind=dp) :: r(n) 
+!     COMPLEX(kind=dp) :: v(n)   
+!     COMPLEX(kind=dp) :: t(n)  
+!     COMPLEX(kind=dp) :: M(s,s), f(s), mu(s)
+!     COMPLEX(kind=dp) :: alpha(s), beta(s), gamma(s)
+
+      REAL(kind=dp), ALLOCATABLE :: Pr(:,:), Pi(:,:) 
+      COMPLEX(kind=dp), ALLOCATABLE :: P(:,:)
+      COMPLEX(kind=dp), ALLOCATABLE :: G(:,:)
+      COMPLEX(kind=dp), ALLOCATABLE :: U(:,:)
+      COMPLEX(kind=dp), ALLOCATABLE :: r(:) 
+      COMPLEX(kind=dp), ALLOCATABLE :: v(:)   
+      COMPLEX(kind=dp), ALLOCATABLE :: t(:)  
+      COMPLEX(kind=dp), ALLOCATABLE :: M(:,:), f(:), mu(:)
+      COMPLEX(kind=dp), ALLOCATABLE :: alpha(:), beta(:), gamma(:)
 
       COMPLEX(kind=dp) :: om, tr    
       REAL(kind=dp) :: nr, nt, rho, kappa
@@ -3094,6 +3115,8 @@ CONTAINS
 
       UseStopCFun = HUTI_STOPC == HUTI_USUPPLIED_STOPC
       
+      ALLOCATE( Pr(n,s), Pi(n,s), P(n,s), G(n,s), U(n,s), r(n), v(n), t(n), &
+            M(s,s), f(s), mu(s), alpha(s), beta(s), gamma(s))
       U = 0.0d0
 
       ! Compute initial residual, set absolute tolerance

@@ -102,17 +102,18 @@ const char *OutMethods[] = {
 
 void Instructions()
 {
-  printf("****************** Elmergrid ************************\n");
   printf("This program can create simple 2D structured meshes consisting of\n");
   printf("linear, quadratic or cubic rectangles or triangles. The meshes may\n");
   printf("also be extruded and revolved to create 3D forms. In addition many\n");
   printf("mesh formats may be imported into Elmer software. Some options have\n");
-  printf("not been properly tested. Contact the author if you face problems.\n\n");
+  printf("not been properly tested. Contact the author if you face problems.\n");
+  printf("------------------------------------------------------------------\n");
 
   printf("The program has two operation modes\n");
   printf("A) Command file mode which has the command file as the only argument\n");
   printf("   'ElmerGrid commandfile.eg'\n\n");
 
+  printf("------------------------------------------------------------------\n");
   printf("B) Inline mode which expects at least three input parameters\n");
   printf("   'ElmerGrid 1 3 test'\n\n");
   printf("The first parameter defines the input file format:\n");
@@ -151,6 +152,7 @@ void Instructions()
   printf("7)  .fidap    : Fidap format\n");
   printf("18) .ep       : Fastcap input format.\n");
 #endif
+  printf("------------------------------------------------------------------\n");
 
   printf("\nThe third parameter is the name of the input file.\n");
   printf("If the file does not exist, an example with the same name is created.\n");
@@ -245,6 +247,7 @@ void Instructions()
   printf("-nobound             : disable saving of boundary elements in ElmerPost format\n");
 
   if(0) printf("-names               : conserve name information where applicable\n");
+  printf("------------------------------------------------------------------\n");
 }
  
 

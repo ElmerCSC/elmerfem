@@ -29,8 +29,7 @@ jobs:
       fail-fast: false
 
       matrix:
-        # msystem: [MINGW64, CLANG64]
-        msystem: [MINGW64]
+        msystem: [UCRT64]
         dependencies: [bundled, external]
         include:
           - dependencies: external
@@ -69,6 +68,7 @@ jobs:
             qwt-qt6:p
             vtk:p
             adios2:p
+            anari-sdk:p 
             boost:p
             cgns:p
             cli11:p
@@ -78,9 +78,11 @@ jobs:
             gl2ps:p
             liblas:p
             libmariadbclient:p
+            netcdf:p 
             openslide:p
             openvdb:p
             pdal:p
+            scnlib:p 
             unixodbc:p
             utf8cpp:p
             opencascade:p
