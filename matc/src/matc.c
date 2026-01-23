@@ -306,6 +306,12 @@ char * mtc_domath( char *str )
   return math_out_str;
 }
 
+#ifdef _OPENMP
+  /* Data with thread-local storage cannot be reliably accessed across DLL
+     borders.  Use an accessor function instead.  */
+  LIST * mtc_get_listheaders(void) { return listheaders; }
+#endif /* _OPENMP */
+
 char *doread(void)
 /*======================================================================
 ?  doread() is really the main loop of this program. Function reads

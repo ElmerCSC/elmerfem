@@ -3,18 +3,26 @@
 
 extern "C" {
 
+/*******************************************************************
+                 LIST HANDLING DEFINITIONS
+*******************************************************************/
+
 typedef struct list {
   struct list *next;              /* pointer to next item in list */
   char *name;                     /* name of list item            */
 } LIST;
 
-#ifdef _OPENMP
+#ifdef MATC_OPENMP
 /* Move initialization to matc.c::mtc_init() for thread safety */
-extern LIST *listheaders;
+  extern LIST *listheaders;
 #pragma omp threadprivate(listheaders)
+
+  /* Data with thread-local storage cannot be reliably accessed across DLL
+     borders.  Use an accessor function instead.  */
+  LIST * mtc_get_listheaders(void);
 #else
-extern LIST listheaders[];
-#endif /* _OPENMP */
+  extern LIST listheaders[];
+#endif /* MATC_OPENMP */
 
 #define ALLOCATIONS 0
 #define CONSTANTS   1
@@ -22,13 +30,18 @@ extern LIST listheaders[];
 #define COMMANDS    3
 #define FUNCTIONS   4
 
-#define MAX_HEADERS 4
+#define MAX_HEADERS 5
 
-#define ALLOC_HEAD listheaders[ALLOCATIONS].next
-#define CONST_HEAD listheaders[CONSTANTS].next
-#define VAR_HEAD   listheaders[VARIABLES].next
-#define COM_HEAD   listheaders[COMMANDS].next
-#define FUNC_HEAD  listheaders[FUNCTIONS].next
+#ifdef MATC_OPENMP
+#define LISTHEADERS (mtc_get_listheaders())
+#else
+#define LISTHEADERS listheaders
+#endif /* MATC_OPENMP */
+#define ALLOC_HEAD LISTHEADERS[ALLOCATIONS].next
+#define CONST_HEAD LISTHEADERS[CONSTANTS].next
+#define VAR_HEAD   LISTHEADERS[VARIABLES].next
+#define COM_HEAD   LISTHEADERS[COMMANDS].next
+#define FUNC_HEAD  LISTHEADERS[FUNCTIONS].next
 
 #define NEXT(lst) (lst)->next
 #define NAME(lst) (lst)->name
@@ -120,7 +133,7 @@ typedef struct command
 #define COMSIZE sizeof(COMMAND)
 
 #define CMDFLAG_PW 1           /* element by element operation    */
-#define CMDFLAG_CE 2           /* command can be executed when 
+#define CMDFLAG_CE 2           /* command can be executed when
                                   preprocessing if constant
                                   arguments.                      */
 
