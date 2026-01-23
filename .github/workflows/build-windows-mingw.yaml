@@ -29,8 +29,7 @@ jobs:
       fail-fast: false
 
       matrix:
-        # msystem: [MINGW64, CLANG64]
-        msystem: [MINGW64]
+        msystem: [UCRT64]
         dependencies: [bundled, external]
         include:
           - dependencies: external
@@ -69,6 +68,7 @@ jobs:
             qwt-qt6:p
             vtk:p
             adios2:p
+            anari-sdk:p 
             boost:p
             cgns:p
             cli11:p
@@ -78,9 +78,11 @@ jobs:
             gl2ps:p
             liblas:p
             libmariadbclient:p
+            netcdf:p 
             openslide:p
             openvdb:p
             pdal:p
+            scnlib:p 
             unixodbc:p
             utf8cpp:p
             opencascade:p
@@ -105,16 +107,15 @@ jobs:
             -DWITH_OpenMP=ON \
             -DWITH_LUA=ON \
             -DWITH_MPI=ON \
-            -DMPI_TEST_MAXPROC=2 \
+            -DMPI_TEST_MAXPROC=$(nproc) \
             -DMPIEXEC_EXECUTABLE="$(cygpath -m "${MSMPI_BIN}")/mpiexec.exe" \
             -DWITH_Zoltan=ON \
             -DCMAKE_C_FLAGS="-Wno-error=incompatible-pointer-types" \
             -DParMetis_LIBRARIES="$(pkg-config --libs parmetis)" \
             -DParMetis_INCLUDE_DIR="$(pkg-config --cflags parmetis)" \
             -DWITH_Mumps=ON \
-            -DMumps_LIBRARIES=$(pkg-config -libs mumps-dmo) \
-            -DMumps_INCLUDE_DIR=$(pkg-config --variable=includedir mumps-dmo) \
-            -DWITH_CHOLMOD=ON \
+            -DMumps_LIBRARIES="$(pkg-config -libs mumps-dmo);$(pkg-config -libs mumps-zmo);$(pkg-config -libs mumps-smo);$(pkg-config -libs mumps-cmo)" \
+            -DMumps_INCLUDE_DIR="$(pkg-config --variable=includedir mumps-dmo);$(pkg-config --variable=includedir mumps-zmo);$(pkg-config --variable=includedir mumps-smo);$(pkg-config --variable=includedir mumps-cmo)" \
             -DWITH_ElmerIce=ON \
             -DWITH_ELMERGUI=ON \
             -DWITH_QT6=ON \
@@ -141,6 +142,7 @@ jobs:
         timeout-minutes: 150
         env:
           CTEST_OUTPUT_ON_FAILURE: 1
+          OMP_NUM_THREADS: 1
         run: |
           cd ${GITHUB_WORKSPACE}/build
           ctest . \

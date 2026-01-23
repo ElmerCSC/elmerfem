@@ -50,7 +50,7 @@ PROGRAM Solver
 
    IF ( .NOT. Silent ) THEN
      DateStr = FormatDate()
-     WRITE( *,'(A,A)' ) "ELMER SOLVER (v " // VERSION // ") STARTED AT: ", TRIM(DateStr)
+     WRITE( *,'(A,A)' ) "ELMER SOLVER (v " // ELMER_FEM_VERSION // ") STARTED AT: ", TRIM(DateStr)
      CALL FLUSH(6)
    END IF
 

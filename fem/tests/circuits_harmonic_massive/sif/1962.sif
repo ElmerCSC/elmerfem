@@ -54,7 +54,7 @@ Solver 3
    Linear System Solver = Iterative
    Linear System Iterative Method = BicgstabL
    Linear System preconditioning = Circuit
-   Linear System Convergence Tolerance = 1.e-7
+   Linear System Convergence Tolerance = 1.e-9
    Linear System Max Iterations = 3000
    Linear System Residual Output = 1000
    BicgStabL Polynomial Degree = 4
@@ -176,5 +176,5 @@ Boundary Condition 3
 End
 Solver 3 :: Reference Norm = 3.80238394E-05
 Solver 3 :: Reference Norm Tolerance = 1e-03 
-Solver 4 :: Reference Norm = 3.39878576E+04
+Solver 4 :: Reference Norm = 3.40581445E+04
 Solver 4 :: Reference Norm Tolerance = 1e-03 

@@ -2902,25 +2902,33 @@ CONTAINS
 !>  reference element. This option may be useful when the edge basis functions are
 !>  obtained via calling the alternate subroutine GetEdgeBasis.
 !----------------------------------------------------------------------------------------
-   FUNCTION EdgeElementGaussPoints(ElementFamily, PiolaVersion, BasisDegree) RESULT(IP)
+   FUNCTION EdgeElementGaussPoints(ElementFamily, PiolaVersion, BasisDegree, &
+       SecondFamily) RESULT(IP)
 !---------------------------------------------------------------------------------------
      INTEGER :: ElementFamily
      LOGICAL, OPTIONAL :: PiolaVersion
      INTEGER, OPTIONAL :: BasisDegree
+     LOGICAL, OPTIONAL :: SecondFamily
      TYPE(GaussIntegrationPoints_t) :: IP
 !------------------------------------------------------------------------------
-     LOGICAL :: PRefElement, SecondOrder
+     LOGICAL :: PRefElement, SecondOrder, SecondKind
 !------------------------------------------------------------------------------
      PRefElement = .TRUE.
      SecondOrder = .FALSE.
+     SecondKind = .FALSE.
      IF ( PRESENT(PiolaVersion) ) PRefElement = PiolaVersion
      IF ( PRESENT(BasisDegree) ) SecondOrder = BasisDegree > 1
+     IF ( PRESENT(SecondFamily) ) SecondKind = SecondFamily
 
      SELECT CASE(ElementFamily)
-     CASE (1)
+     CASE(1)
         IP = GaussPoints0D(1)
-     CASE (2)
-        IP = GaussPoints1D(2)
+     CASE(2)
+        IF (SecondKind .AND. SecondOrder) THEN
+          IP = GaussPoints1D(3)
+        ELSE
+          IP = GaussPoints1D(2)
+        END IF
      CASE(3)
         IF (SecondOrder) THEN
            IP = GaussPointsTriangle(6, PReferenceElement=PRefElement)

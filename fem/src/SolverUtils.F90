@@ -1700,13 +1700,14 @@ CONTAINS
              ElemLimit(1:n) = ListGetReal( Entity, &
                  LimitName, n, NodeIndexes, Found)             
              IF(.NOT. Found) CYCLE
-             
+
+             ! For the 1st time we can use different limit, if given.
              ElemInit(1:n) = ListGetReal( Entity, &
                  InitName, n, NodeIndexes, GotInit)
+             IF(GotInit) ElemLimit(1:n) = ElemInit(1:n)
+
              ElemActive(1:n) = ListGetReal( Entity, &
                  ActiveName, n, NodeIndexes, GotActive)
-             IF(.NOT. ( GotInit .OR. GotActive ) ) CYCLE
-
 
              DO i=1,n
                j = FieldPerm( NodeIndexes(i) )
@@ -1727,20 +1728,26 @@ CONTAINS
                    removed = removed + 1
                    LimitActive(ind) = .FALSE.
                  END IF                 
-               ELSE IF( (GotInit .AND. ElemInit(i) > 0.0_dp ) ) THEN
-                 IF(.NOT. LimitActive(ind)) THEN
-                   added = added + 1
-                   LimitActive(ind) = .TRUE.
-                 END IF
                ELSE IF( GotActive .AND. ElemActive(i) > 0.0_dp ) THEN
                  IF(.NOT. LimitActive(ind)) THEN
                    added = added + 1
                    LimitActive(ind) = .TRUE.
                  END IF
-               ELSE
-                 LimitActive(ind) = .FALSE.
+               ELSE 
+                 val = Var % Values(ind) 
+                 IF( Upper == 0 ) THEN
+                   DoAdd = ( val < ElemLimit(i) - ValEps )
+                 ELSE
+                   DoAdd = ( val > ElemLimit(i) + ValEps )
+                 END IF
+                 IF(DoAdd) THEN
+                   added = added + 1
+                   LimitActive(ind) = .TRUE.
+                 ELSE
+                   LimitActive(ind) = .FALSE.
+                 END IF
                END IF
-
+                 
                ! Enforce the values to limits because nonlinear material models
                ! may otherwise lead to divergence of the iteration
                !--------------------------------------------------------------
@@ -13089,7 +13096,12 @@ END FUNCTION SearchNodeL
     ALLOCATE(Basis(n), ElementNodes % x(n), ElementNodes % y(n), &
         ElementNodes % z(n), LocalIndexes(n) )
     Weights = 0.0_dp
-
+    Basis = 0.0_dp
+    ElementNodes % x = 0.0_dp
+    ElementNodes % y = 0.0_dp
+    ElementNodes % z = 0.0_dp
+    LocalIndexes = 0
+    
     DO e=ElemStart,ElemFin
 
       Element => Mesh % Elements( e )
@@ -14994,7 +15006,7 @@ END FUNCTION SearchNodeL
     LOGICAL :: Relax,GotIt,Stat,ScaleSystem, EigenAnalysis, HarmonicAnalysis,&
                BackRotation, ApplyRowEquilibration, ApplyLimiter, Parallel, &
                SkipZeroRhs, SkipLoads, ComplexSystem, ComputeChangeScaled, &
-               RecursiveAnalysis, CalcLoads
+               RecursiveAnalysis, CalcLoads, NotParallel
     INTEGER :: n,i,j,k,l,ii,m,DOF,istat,this,mn, AllocStat
     CHARACTER(:), ALLOCATABLE :: Method, Prec, SaveSlot
     INTEGER(KIND=AddrInt) :: Proc
@@ -15403,7 +15415,12 @@ END FUNCTION SearchNodeL
     IF(ListGetLogical(Params, 'Linear System Use Rocalution', Found)) &
       Method = 'rocalution'
 
-    IF ( .NOT. Parallel .OR. A % ParallelInfo % NothingShared ) THEN
+    NotParallel = .NOT. Parallel
+    IF ( Parallel ) THEN
+       IF ( A % ParallelInfo % NothingShared ) NotParallel = .TRUE.
+    END IF
+
+    IF ( NotParallel ) THEN
       IF(ListGetLogical(Params, 'Linear System Use Hypre', Found)) Method = 'hypre'
 
       CALL Info(Caller,'Serial linear System Solver: '//TRIM(Method),Level=8)
@@ -16646,58 +16663,89 @@ END FUNCTION SearchNodeL
 
     FirstLoop = .TRUE.
     Nmode = 0
-20  CALL ConstraintModesDriver( A, x, b, Solver, .TRUE., Nmode, LinModes, FirstLoop = FirstLoop )  
-    
-    
-    IF( BlockMode ) THEN
-      CALL Info(Caller,'Solving linear system with block strategy',Level=10)
-      ! Here activate constraint solve only if constraints are not treated as blocks
-      IF( RestrictionMode .AND. &
-          ListGetLogical( Params, 'Eliminate Linear Constraints', Found) ) THEN
-        BLOCK 
-          TYPE(Matrix_t), POINTER :: Acoll      
-          Acoll  => AllocateMatrix()
-          Acoll % FORMAT = MATRIX_LIST        
-          CALL Info(Caller,'Eliminating constraints before going into block matrix!')
-          CALL EliminateLinearRestriction( A, bb, A % ConstraintMatrix, Acoll, Solver, .TRUE. )
-          CALL List_ToCRSMatrix(Acoll)
 
-          Acoll % Comm = A % Comm 
-          Acoll % AddMatrix => A % AddMatrix
-          CALL ParallelInitMatrix(Solver, Acoll)
+    BLOCK
+      LOGICAL :: LFact, FreeFact, ConstraintMatrixConstant
+
+      ConstraintMatrixConstant = ListGetLogical( Solver % Values,  &
+          'Constraint Modes Constant Matrix', Found)
+
+      IF(ConstraintMatrixConstant) THEN
+        LFact = ListGetLogical( Solver % Values, 'Linear System Refactorize', Found )
+        IF(.NOT. Found ) LFact = .TRUE.
+      END IF
+
+20    CONTINUE
+ 
+      CALL ConstraintModesDriver( A, x, b, Solver, .TRUE., Nmode, LinModes, FirstLoop = FirstLoop )  
+
+      IF ( LinModes > 0 .AND. ConstraintMatrixConstant ) THEN
+        FreeFact = ListGetLogical( Solver % Values, 'Linear System Free Factorization', Found )
+        IF (.NOT. Found ) FreeFact = .TRUE.
+        CALL ListAddLogical( Solver % Values, 'Linear System Free Factorization', .FALSE. )
+      END IF
+    
+      IF( BlockMode ) THEN
+        CALL Info(Caller,'Solving linear system with block strategy',Level=10)
+        ! Here activate constraint solve only if constraints are not treated as blocks
+        IF( RestrictionMode .AND. &
+            ListGetLogical( Params, 'Eliminate Linear Constraints', Found) ) THEN
+          BLOCK 
+            TYPE(Matrix_t), POINTER :: Acoll      
+            Acoll  => AllocateMatrix()
+            Acoll % FORMAT = MATRIX_LIST        
+            CALL Info(Caller,'Eliminating constraints before going into block matrix!')
+            CALL EliminateLinearRestriction( A, bb, A % ConstraintMatrix, Acoll, Solver, .TRUE. )
+            CALL List_ToCRSMatrix(Acoll)
+
+            Acoll % Comm = A % Comm 
+            Acoll % AddMatrix => A % AddMatrix
+            CALL ParallelInitMatrix(Solver, Acoll)
           
-          CALL BlockSolveExt( Acoll, x, Acoll % rhs, Solver )
+            CALL BlockSolveExt( Acoll, x, Acoll % rhs, Solver )
 
-          CALL Info(Caller,'Freeing collection matrix after solution',Level=10)
-          NULLIFY( Acoll % AddMatrix )         
+            CALL Info(Caller,'Freeing collection matrix after solution',Level=10)
+            NULLIFY( Acoll % AddMatrix )         
 
-          CALL FreeMatrix(Acoll)
-          ParEnv => A % ParMatrix % ParEnv
+            CALL FreeMatrix(Acoll)
+            ParEnv => A % ParMatrix % ParEnv
 
-          Acoll => NULL()
-        END BLOCK
-      ELSE
-        CALL BlockSolveExt( A, x, bb, Solver )
+            Acoll => NULL()
+          END BLOCK
+        ELSE
+          CALL BlockSolveExt( A, x, bb, Solver )
+        END IF
+      ELSE IF ( RestrictionMode ) THEN
+        CALL Info(Caller,'Solving linear system with linear restrictions!',Level=10)
+        IF( ListGetLogical( Params,'Save Constraint Matrix',Found ) ) THEN
+          GloNum = ListGetLogical( Params,'Save Constraint Matrix Global Numbering',Found )
+          CALL SaveProjector(A % ConstraintMatrix,.TRUE.,'cm',Parallel=GloNum)
+        END IF
+        CALL SolveWithLinearRestriction( A,bb,x,Norm,DOFs,Solver )
+      ELSE ! standard mode
+        CALL Info(Caller,'Solving linear system in standard way',Level=12)
+        CALL SolveLinearSystem( A,bb,x,Norm,DOFs,Solver )
       END IF
-    ELSE IF ( RestrictionMode ) THEN
-      CALL Info(Caller,'Solving linear system with linear restrictions!',Level=10)
-      IF( ListGetLogical( Params,'Save Constraint Matrix',Found ) ) THEN
-        GloNum = ListGetLogical( Params,'Save Constraint Matrix Global Numbering',Found )
-        CALL SaveProjector(A % ConstraintMatrix,.TRUE.,'cm',Parallel=GloNum)
-      END IF
-      CALL SolveWithLinearRestriction( A,bb,x,Norm,DOFs,Solver )
-    ELSE ! standard mode
-      CALL Info(Caller,'Solving linear system in standard way',Level=12)
-      CALL SolveLinearSystem( A,bb,x,Norm,DOFs,Solver )
-    END IF
-    CALL Info(Caller,'System solved',Level=12)
-
+      CALL Info(Caller,'System solved',Level=12)
     
-    IF( LinModes > 0 .OR. Nmode > 0 ) THEN
-      CALL ConstraintModesDriver( A, x, b, Solver, .FALSE., FirstLoop = FirstLoop ) 
-      FirstLoop = .FALSE.
-      IF( Nmode < LinModes ) GOTO 20
-    END IF
+      IF( LinModes > 0 .OR. Nmode > 0 ) THEN
+        CALL ConstraintModesDriver( A, x, b, Solver, .FALSE., FirstLoop = FirstLoop ) 
+
+        IF (ConstraintMatrixConstant) THEN
+          CALL ListAddLogical( Solver % Values, 'Linear System Constant Matrix', .TRUE.)
+          CALL ListAddLogical( Solver % Values, 'Linear System Refactorize', .FALSE. )
+        END IF
+
+        FirstLoop = .FALSE.
+        IF( Nmode < LinModes ) GOTO 20
+
+        IF ( ConstraintMatrixConstant ) THEN
+          CALL ListAddLogical( Solver % Values, 'Linear System Constant Matrix', .FALSE.)
+          CALL ListAddLogical( Solver % Values, 'Linear System Refactorize', LFact )
+          CALL ListAddLogical( Solver % Values, 'Linear System Free Factorization', FreeFact )
+        END IF
+      END IF
+    END BLOCK
     
     ! Even in the residual mode the system is reverted back to complete vectors 
     ! and we may forget about the residual.
@@ -17067,11 +17115,10 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
     ! Normalize by the source    
     BLOCK
       
-      LOGICAL :: FixIt
-      LOGICAL :: NoNormalize
+      LOGICAL :: FixIt, NoNormalize
+      
       FixIt =  ListGetLogical( Solver % Values,'Enforce Unity rowsum',Found )
       NoNormalize = ListGetLogical( Solver % values, 'Skip Normalize fluxes', Found )
-
 
       IF( InfoActive(20) ) THEN        
         CALL Info( Caller,'Showing matrix before normalization!')
@@ -17223,13 +17270,13 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
     CALL Info(Caller,'Adding Constraint Modes Fluxes with "res:" to list',Level=5)
     DO i=1,NoModes
       DO j=1,NoModes
-        CALL ListAddConstReal( CurrentModel % Simulation,'res: CMF '//I2S(10*i+j),FluxesMatrix(i,j))
+        CALL ListAddConstReal( CurrentModel % Simulation,'res: CMF '//I2S(i)//' '//I2S(j),FluxesMatrix(i,j))
       END DO
     END DO
     IF( IsComplex ) THEN
       DO i=1,NoModes
         DO j=1,NoModes
-          CALL ListAddConstReal( CurrentModel % Simulation,'res: CMF Im '//I2S(10*i+j),FluxesMatrixIm(i,j))
+          CALL ListAddConstReal( CurrentModel % Simulation,'res: CMF Im '//I2S(i)//' '//I2S(j),FluxesMatrixIm(i,j))
         END DO
       END DO
     END IF
@@ -17845,7 +17892,7 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
       IF( EmWaveMode ) THEN
         w = ListGetAngularFrequency( Found = Found )
         IF(.NOT. Found) CALL Fatal(Caller,'Energy mode requires "Angular Frequency"!')
-        cmult = 1.0/(2*w*CMPLX(0.0_dp,1.0_dp)) 
+        cmult = 1.0/(2*w*CMPLX(0.0_dp,1.0_dp,KIND=dp)) 
       END IF
       
       DO j=1,n
@@ -17861,12 +17908,12 @@ SUBROUTINE ConstraintModesDriver( A, x, b, Solver, PreSolve, ThisMode, LinSysMod
             Mmode = (k+1)/2
             IF( MOD(k,2) == 1 ) THEN                
               IF( EmWaveMode ) THEN
-                cx = CMPLX(x(j),x(j+1))
-                cflux = cmult * cx * CONJG(CMPLX(Fluxes(j),Fluxes(j+1)))                
-                crhs = cmult * cx * CONJG(CMPLX(b(j),b(j+1)))
+                cx = CMPLX(x(j),x(j+1),KIND=dp)
+                cflux = cmult * cx * CONJG(CMPLX(Fluxes(j),Fluxes(j+1),KIND=dp))
+                crhs = cmult * cx * CONJG(CMPLX(b(j),b(j+1), KIND=dp))
               ELSE
-                cflux = CMPLX(Fluxes(j),Fluxes(j+1))                            
-                crhs = CMPLX(b(j),b(j+1))
+                cflux = CMPLX(Fluxes(j),Fluxes(j+1),KIND=dp)
+                crhs = CMPLX(b(j),b(j+1),KIND=dp)
               END IF
               IF( Nmode /= Mmode ) THEN
                 FluxesRow(Mmode) = FluxesRow(Mmode) - REAL(cflux)

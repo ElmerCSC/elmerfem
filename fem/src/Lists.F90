@@ -116,7 +116,7 @@ CONTAINS
      CHARACTER(*), OPTIONAL :: resul
 
      INTEGER :: i,j,l
-     CHARACTER(LEN=1024) :: pcmd,res
+     CHARACTER(LEN=MAX_STRING_LEN) :: pcmd,res
  
      IF(nparams==0) THEN
        pcmd = "tx=0"
@@ -153,7 +153,7 @@ CONTAINS
      REAL(KIND=dp), OPTIONAL :: params(:)
 
      INTEGER :: i,j,l
-     CHARACTER(LEN=MAX_NAME_LEN) :: res
+     CHARACTER(LEN=MAX_STRING_LEN) :: res
    
      IF (PRESENT(nparams).AND.PRESENT(params))THEN
        CALL SetGetMatcParams(nparams,params,resul)
@@ -191,7 +191,7 @@ CONTAINS
     CHARACTER(*), OPTIONAL :: resul
     REAL(KIND=dp), OPTIONAL :: params(:)
 
-    CHARACTER(LEN=MAX_NAME_LEN) :: pcmd, res
+    CHARACTER(LEN=MAX_STRING_LEN) :: pcmd, res
     INTEGER :: i,l
 
     IF (PRESENT(nparams).AND.PRESENT(params))THEN
@@ -7445,7 +7445,7 @@ CONTAINS
 
      IF( Handle % NotPresentAnywhere .AND. Handle % HandleIm % NotPresentAnywhere ) THEN
        IF(PRESENT(Found)) Found = .FALSE.
-       Zvalue = CMPLX( Handle % DefRValue, 0.0_dp )
+       Zvalue = CMPLX( Handle % DefRValue, 0.0_dp, KIND=dp )
        RETURN
      END IF
      
@@ -7455,7 +7455,7 @@ CONTAINS
      Ivalue = ListGetElementReal(Handle % HandleIm,Basis,Element,Found,Indexes,GaussPoint)
      IF( PRESENT( Found ) ) Found = Found .OR. RFound 
 
-     Zvalue = CMPLX( Rvalue, Ivalue ) 
+     Zvalue = CMPLX( Rvalue, Ivalue, KIND=dp ) 
           
    END FUNCTION ListGetElementComplex
        
@@ -7610,7 +7610,7 @@ CONTAINS
      Ivalue3D = ListGetElementReal3D(Handle % HandleIm,Basis,Element,Found,Indexes,GaussPoint)
      IF( PRESENT( Found ) ) Found = Found .OR. RFound
      
-     Zvalue3D = CMPLX( Rvalue3D, Ivalue3D )     
+     Zvalue3D = CMPLX( Rvalue3D, Ivalue3D, KIND=dp )
      
    END FUNCTION ListGetElementComplex3D
 

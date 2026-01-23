@@ -452,10 +452,10 @@ void GetElementSide(int element,int side,int normal,
       ind[1] = elemind[(side+1)%3];
       ind[2] = elemind[(side+1)%3+3];
       ind[3] = elemind[side+3];  
-      ind[4] = elemind[6+side];
-      ind[5] = elemind[9+(side+1)%3];
-      ind[6] = elemind[12+side];
-      ind[7] = elemind[9+side];      
+      ind[4] = elemind[6+side];        
+      ind[5] = elemind[12+(side+1)%3];   
+      ind[6] = elemind[9+side];      
+      ind[7] = elemind[12+side];
     }
     else if (side < 5) {
       *sideelemtype = 306;          
@@ -6970,6 +6970,45 @@ void IsoparametricElements(struct FemType *data,struct BoundaryType *bound,
   if(info) printf("The elements were forced to be isoparametric\n");
 }
 
+
+
+void ModifyUnsupportedElements(struct FemType *data) {
+
+  int i,elementtype;  
+  int cnt718=0,cnt614=0,cnt409=0,cnt827=0;
+
+  for(i=1; i <= data->noelements; i++) {
+    elementtype = data->elementtypes[i];
+    if(elementtype == 718) {
+      data->elementtypes[i] = 715;
+      cnt718++;
+    }
+    else if(elementtype == 614) {
+      data->elementtypes[i] = 613;
+      cnt614++;
+    }
+  }
+  
+  if(cnt718 || cnt614) {
+    printf("WARNING: ElmerSolver does not currently support all elements in mesh, dropping center nodes!\n");
+    for(i=1; i <= data->noelements; i++) {
+      elementtype = data->elementtypes[i];
+      if(elementtype == 409) {
+	data->elementtypes[i] = 408;
+	cnt409++;
+      }
+      else if(elementtype == 827) {
+	data->elementtypes[i] = 820;
+	cnt827++;
+      }
+    }    
+    if(cnt718) printf("Element type 718 not supported, dropping centernodes for %d elements\n",cnt718);
+    if(cnt614) printf("Element type 614 not supported, dropping centernodes for %d elements\n",cnt614);
+    if(cnt827) printf("Dropping centernodes in %d elements of type 827 as well!\n",cnt827);
+    if(cnt409) printf("Dropping centernodes in %d elements of type 409 as well!\n",cnt409);
+  }  
+}
+  
 
 
 void ElementsToBoundaryConditions(struct FemType *data,
