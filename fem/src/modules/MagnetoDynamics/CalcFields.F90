@@ -4,23 +4,22 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-!
 !/******************************************************************************
 ! *
 ! *  Authors: Juha Ruokolainen
@@ -1142,7 +1141,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      END IF
      
      IF( ImposeBodyForcePotential ) THEN
-       ElPotSol(1,:) = GetReal(BodyForce,'Electric Potential',Found)
+       ElPotSol(1,1:n) = GetReal(BodyForce,'Electric Potential',Found)
      END IF
        
      IF ( Transient ) THEN
@@ -2145,8 +2144,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                                   CMPLX(B(1,m),B(2,m),KIND=dp)
                END DO
                CST(l,l) = CST(l,l) - &
-                      (PR_ip*SUM(ABS(CMPLX(E(1,:),E(2,:)))**2)+ &
-                        R_ip*SUM(ABS(CMPLX(B(1,:),B(2,:)))**2))/2
+                      (PR_ip*SUM(ABS(CMPLX(E(1,:),E(2,:),KIND=dp))**2)+ &
+                        R_ip*SUM(ABS(CMPLX(B(1,:),B(2,:),KIND=dp))**2))/2
              END DO
              DO l=1,6
                FORCE(p,k+l)=FORCE(p,k+l) + s*REAL(CST(ind1(l),ind2(l)))*Basis(p)
@@ -2183,11 +2182,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                END IF
                use_virtual_current: IF (UseVirtualCurrent) THEN
                  electrode_area = GetConstReal(CompParams, 'Electrode Area', Found)
-                 if (.not.Found) then
-                   call warn('CalcFields','Calculate Flux Linkage set true with virtual current but &
-                 & Electrode Area not set - using a factor of 1!')
+                 IF (.NOT.Found) THEN
+                   CALL warn('CalcFields','Calculate Flux Linkage set true with virtual current but &
+                       & Electrode Area not set - using a factor of 1!')
                    electrode_area=1
-                 end if
+                 END IF
                  curdens(1:3) = virtual_current(1:3)/electrode_area
                ELSE
                  curdens(1:3) = JatIP(1,1:3) + im*JatIP(2,1:3)
@@ -2197,13 +2196,13 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                  ComponentFluxLinkage(1,CompId)=ComponentFluxLinkage(1,CompId)+&
                    s * Basis(p) * SUM(curdens(1:3)*VP_ip(1,1:3))
                ELSE
-               BLOCK
-                 COMPLEX(KIND=dp) :: vecpot(3), fluxlink
-                 vecpot(1:3) = VP_ip(1,1:3) + im*VP_ip(2,1:3)
-                 fluxlink = s*Basis(p) * sum(vecpot*conjg(curdens))
-                 ComponentFluxLinkage(1,CompId)=ComponentFluxLinkage(1,CompId)+REAL(fluxlink)
-                 ComponentFluxLinkage(2,CompId)=ComponentFluxLinkage(2,CompId)+AIMAG(fluxlink)
-               END BLOCK
+                 BLOCK
+                   COMPLEX(KIND=dp) :: vecpot(3), fluxlink
+                   vecpot(1:3) = VP_ip(1,1:3) + im*VP_ip(2,1:3)
+                   fluxlink = s*Basis(p) * sum(vecpot*conjg(curdens))
+                   ComponentFluxLinkage(1,CompId)=ComponentFluxLinkage(1,CompId)+REAL(fluxlink)
+                   ComponentFluxLinkage(2,CompId)=ComponentFluxLinkage(2,CompId)+AIMAG(fluxlink)
+                 END BLOCK
                END IF
              END Block
            END IF 
@@ -3645,7 +3644,7 @@ CONTAINS
        IF(MODULO(i,2)==1) THEN
          EigVec(ic::m/2) = Solver % Variable % Values
        ELSE
-         EigVec(ic::m/2) = CMPLX( REAL(EigVec(ic::m/2)), Solver % Variable % Values )
+         EigVec(ic::m/2) = CMPLX( REAL(EigVec(ic::m/2)), Solver % Variable % Values,KIND=dp )
        END IF
      ELSE
        var % Values(i::m) = Solver % Variable % Values
@@ -3697,7 +3696,7 @@ CONTAINS
         IF(MODULO(i,2)==1) THEN
           EigVec(ind(1:n)+ic) = x(1:n)
         ELSE
-          EigVec(ind(1:n)+ic) = CMPLX( REAL(EigVec(ind(1:n)+ic)), x(1:n) )
+          EigVec(ind(1:n)+ic) = CMPLX( REAL(EigVec(ind(1:n)+ic)), x(1:n), KIND=dp )
         END IF
       ELSE      
         Var % Values(ind(1:n)+i) = x(1:n)

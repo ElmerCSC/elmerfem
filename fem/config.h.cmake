@@ -9,9 +9,10 @@
 #define FC_FUNC_(name, NAME) name
 #endif
 
-#cmakedefine VERSION "${VERSION}"
-#cmakedefine REVISION "${ELMER_FEM_REVISION}"
-#cmakedefine COMPILATIONDATE "${ELMER_FEM_COMPILATIONDATE}"
+#cmakedefine ELMER_FEM_VERSION "${ELMER_FEM_VERSION}"
+#cmakedefine ELMER_FEM_REVISION "${ELMER_FEM_REVISION}"
+#cmakedefine ELMER_FEM_BRANCH "${ELMER_FEM_BRANCH}"
+#cmakedefine ELMER_FEM_COMPILATIONDATE "${ELMER_FEM_COMPILATIONDATE}"
 #cmakedefine HAVE_INTTYPES_H
 #cmakedefine ELMER_SOLVER_HOME "${ELMER_SOLVER_HOME}"
 
@@ -36,6 +37,10 @@
 /* Define if your system has dlopen, dlsym, dlerror, and dlclose for dynamic */
 /* linking */
 #cmakedefine HAVE_DLOPEN_API
+
+/* Define if you have quad precision real numbers. */
+/* define HAVE_QP */
+#cmakedefine HAVE_QP
 
 /* Define if your system has LoadLibrary API (e.g. WIN32)*/
 #cmakedefine HAVE_LOADLIBRARY_API
@@ -161,9 +166,6 @@
 
 /* Shared lib filename extension */
 #cmakedefine SHL_EXTENSION "@SHL_EXTENSION@"
-
-/* Trilinos */
-#cmakedefine HAVE_TRILINOS
 
 /* MMG */
 #if 1

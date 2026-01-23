@@ -116,7 +116,10 @@ MODULE Types
 
 
 #ifdef HAVE_MUMPS
+  INCLUDE 'smumps_struc.h'
+  INCLUDE 'cmumps_struc.h'
   INCLUDE 'dmumps_struc.h'
+  INCLUDE 'zmumps_struc.h'
 #endif
 
 
@@ -243,6 +246,15 @@ MODULE Types
 #ifdef HAVE_MUMPS
     TYPE(dmumps_struc), POINTER :: MumpsID => NULL() ! Global distributed Mumps
     TYPE(dmumps_struc), POINTER :: MumpsIDL => NULL() ! Local domainwise Mumps
+
+    TYPE(zmumps_struc), POINTER :: ZMumpsID => NULL() ! Global distributed Mumps
+    TYPE(zmumps_struc), POINTER :: ZMumpsIDL => NULL() ! Local domainwise Mumps
+
+    TYPE(smumps_struc), POINTER :: SMumpsID => NULL() ! Global distributed Mumps
+    TYPE(smumps_struc), POINTER :: SMumpsIDL => NULL() ! Local domainwise Mumps
+
+    TYPE(cmumps_struc), POINTER :: CMumpsID => NULL() ! Global distributed Mumps
+    TYPE(cmumps_struc), POINTER :: CMumpsIDL => NULL() ! Local domainwise Mumps
 #endif
 #if defined(HAVE_MKL) || defined(HAVE_PARDISO)
     INTEGER, POINTER :: PardisoParam(:) => NULL()
@@ -262,9 +274,6 @@ MODULE Types
 #endif
 #ifdef HAVE_HYPRE
     INTEGER(KIND=C_INTPTR_T) :: Hypre=0
-#endif
-#ifdef HAVE_TRILINOS
-    INTEGER(KIND=C_INTPTR_T) :: Trilinos=0
 #endif
 #ifdef HAVE_ROCALUTION
     TYPE(RocParams_t) :: RocParams

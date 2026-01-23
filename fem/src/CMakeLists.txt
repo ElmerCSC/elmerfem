@@ -37,7 +37,7 @@ SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
   DefUtils.F90 MeshPartition.F90 MeshRemeshing.F90 CutFEMUtils.F90
   RadiationFactors.F90 f_stubs.c
   ExchangeCorrelations.F90 SolveHypre.c amgx.c rocalution.cpp SolverActivate_x.F90
-  SolveTrilinos.cxx SolveSuperLU.c
+  SolveSuperLU.c
   umf4_f77wrapper.c VankaCreate.F90 ParticleUtils.F90 Feti.F90
   cholmod.c InterpolateMeshToMesh.F90 InterpVarToVar.F90
   LinearForms.F90 H1Basis.F90 CircuitUtils.F90 BackwardError.F90
@@ -89,17 +89,6 @@ INCLUDE_DIRECTORIES("${CMAKE_BINARY_DIR}/fem/src")
 INCLUDE_DIRECTORIES("${CMAKE_SOURCE_DIR}/fhutiter/src")
 INCLUDE_DIRECTORIES("${CMAKE_CURRENT_BINARY_DIR}/binio")
 INCLUDE_DIRECTORIES("${PROJECT_BINARY_DIR}/fhutiter/src")
-
-IF(WITH_Trilinos)
-  IF(NOT Epetra_INCLUDE_DIRS)
-    GET_TARGET_PROPERTY(Epetra_INCLUDE_DIRS Epetra::epetra INTERFACE_INCLUDE_DIRECTORIES)
-  ENDIF()
-  IF(NOT ML_INCLUDE_DIRS)
-    GET_TARGET_PROPERTY(ML_INCLUDE_DIRS ML::ml INTERFACE_INCLUDE_DIRECTORIES)
-  ENDIF()
-  INCLUDE_DIRECTORIES("${Epetra_INCLUDE_DIRS}")
-  INCLUDE_DIRECTORIES("${ML_INCLUDE_DIRS}")
-ENDIF()
 
 # Extract additional compile flags
 GET_DIRECTORY_PROPERTY( ELMER_CDEFS COMPILE_DEFINITIONS )
@@ -254,6 +243,11 @@ IF(WITH_MPI)
     LIST(APPEND ELMERSOLVER_LIBRARIES Elmer::MPI_C ${Hypre_LIBRARIES})
   ENDIF()
 
+  IF(XIOS_LIBRARIES)
+    # XIOS depends on NetCDF (mandatory) and HDF5 (optional), since linking order matters, XIOS must be added before the other two
+    LIST(APPEND ELMERSOLVER_LIBRARIES ${XIOS_LIBRARIES})
+  ENDIF()
+
   IF(NETCDF_LIBRARIES)
     LIST(APPEND ELMERSOLVER_LIBRARIES ${NETCDF_LIBRARIES})
     IF(PHDF5_LIBRARIES)
@@ -263,10 +257,6 @@ IF(WITH_MPI)
 
   IF(FETI4I_LIBRARIES)
     LIST(APPEND ELMERSOLVER_LIBRARIES ${FETI4I_LIBRARIES})
-  ENDIF()
-
-  IF(XIOS_LIBRARIES)
-    LIST(APPEND ELMERSOLVER_LIBRARIES ${XIOS_LIBRARIES})
   ENDIF()
 
   IF(YAC_LIBRARIES)
@@ -296,10 +286,6 @@ ENDIF()
 IF(WITH_AMGX)
   TARGET_LINK_LIBRARIES(elmersolver Elmer::MPI_C "${AMGX_LIBRARY};${CUDA_LIBRARIES}")
   TARGET_INCLUDE_DIRECTORIES(elmersolver PRIVATE "${CUDA_INCLUDE_DIRS}")
-ENDIF()
-
-IF(WITH_Trilinos)
-  TARGET_LINK_LIBRARIES(elmersolver Elmer::MPI_CXX "${Trilinos_LIBRARIES};${ML_LIBRARIES};${Epetra_LIBRARIES};${Teuchos_LIBRARIES}")
 ENDIF()
 
 IF (WITH_CHOLMOD)

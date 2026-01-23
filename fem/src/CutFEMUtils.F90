@@ -52,6 +52,7 @@ MODULE CutFemUtils
   USE ModelDescription, ONLY : FreeMesh
   USE SolverUtils, ONLY : GaussPointsAdapt, SolveLinearSystem, VectorValuesRange
   USE ParallelUtils
+  USE MeshUtils, ONLY : PointInMesh
   
   IMPLICIT NONE
 
@@ -1914,8 +1915,9 @@ CONTAINS
 
     END DO
 
-#if 0
-    IF( ParEnv % PEs > 1 ) CALL CutFEMParallelMesh()
+#if 1
+    ! if add mesh mode we can just use oldparallel structures
+    IF( ParEnv % PEs > 1 .AND. .NOT. AddMeshMode ) CALL CutFEMParallelMesh()
 #endif
       
     
@@ -1931,7 +1933,7 @@ CONTAINS
 
   CONTAINS
 
-#if 0 
+#if 1
     ! We do not need to update the Mesh % ParallelInfo, only Matrix % ParallelInfo!
     
     SUBROUTINE CutFEMParallelMesh()
@@ -1985,18 +1987,18 @@ CONTAINS
           NewMesh % ParallelInfo % GlobalDOFs(j) = n0 + Mesh % Edges(i-nn) % GElementIndex         
 
           k = SIZE(Mesh % ParallelInfo % EdgeNeighbourList(i-nn) % Neighbours)
-          PRINT *,'ass1 vals:',ParEnv % MyPe, k,j,Mesh % ParallelInfo % EdgeNeighbourList(i-nn) % Neighbours          
+          !PRINT *,'ass1 vals:',ParEnv % MyPe, k,j,Mesh % ParallelInfo % EdgeNeighbourList(i-nn) % Neighbours
           ALLOCATE(NewMesh % ParallelInfo % NeighbourList(j) % Neighbours(k))
           NewMesh % ParallelInfo % NeighbourList(j) % Neighbours = &
               Mesh % ParallelInfo % EdgeNeighbourList(i-nn) % Neighbours                                
         END IF
       END DO
 
-      
+
       DO i = 1, NewMesh % NumberOfNodes
         IF(.NOT. ASSOCIATED(NewMesh % ParallelInfo % NeighbourList(i) % Neighbours)) THEN
-          PRINT *,'nn:',nn,ne, MAXVAL(MeshPerm), NewMesh % NumberOfNodes, &
-              SIZE(MeshPerm)
+          !PRINT *,ParEnv % MYPE, 'nn:',nn,ne, MAXVAL(MeshPerm), NewMesh % NumberOfNodes, &
+          !    SIZE(MeshPerm)
           CALL Fatal('CutFEMParallelMesh','Neighbours not associated: '//I2S(i))
         END IF
       END DO
@@ -2165,20 +2167,34 @@ CONTAINS
     TYPE(Solver_t) :: Solver
     TYPE(Mesh_t) :: Mesh
 
-    TYPE(Variable_t), POINTER :: PhiVar1D, PhiVar2D, pVar       
+    TYPE(Variable_t), POINTER :: PhiVar1D, PhiVar2D, pVar
     TYPE(Mesh_t), POINTER :: IsoMesh => NULL()
     REAL(KIND=dp), POINTER :: x(:), y(:)
     REAL(KIND=dp) :: val, Vx, Vy, dt, VPhi, PhiMax, BW, cosphi0
+    REAL(KIND=dp), ALLOCATABLE :: NodeDiff(:),ValStore(:)
     CHARACTER(:), ALLOCATABLE :: str       
-    LOGICAL :: Found, Nonzero, MovingLevelset, NormalMove
-    INTEGER :: nVar,i,j,iAvoid,iSolver
+    LOGICAL :: Found, Nonzero, MovingLevelset, NormalMove, NodeHistory, Positive, CheckLS
+    LOGICAL, ALLOCATABLE :: Trust(:), DoesElemIntersect(:)
+    INTEGER :: nVar,i,j,iAvoid,iSolver,k,l,counter,NNeighbours,MyPE
+    INTEGER, ALLOCATABLE :: LocalPerm(:),Neighbours(:),nSend(:),nRecv(:)
+    INTEGER, POINTER :: NodeIndexes(:)
     
     TYPE PolylineData_t
       INTEGER :: nLines = 0, nNodes = 0
       REAL(KIND=dp), ALLOCATABLE :: Vals(:,:)
-      REAL(KIND=dp) :: IsoLineBB(4), MeshBB(4)      
+      INTEGER, ALLOCATABLE :: Prev(:,:), Next(:,:)
+      LOGICAL, ALLOCATABLE :: Intersect(:)
+      REAL(KIND=dp) :: IsoLineBB(4), MeshBB(4)
     END TYPE PolylineData_t
     TYPE(PolylineData_t),  ALLOCATABLE, TARGET, SAVE :: PolylineData(:)
+
+    TYPE Intersects_t
+      INTEGER :: nIntersects = 0, Size = 0
+      REAL(KIND=dp), ALLOCATABLE :: Intersection(:,:), LS(:,:)
+      INTEGER, ALLOCATABLE :: Elements(:,:)
+      LOGICAL, ALLOCATABLE :: Found(:,:)
+    END TYPE Intersects_t
+    TYPE(Intersects_t),  ALLOCATABLE, TARGET, SAVE :: Intersects(:)
     
     
     SAVE IsoMesh
@@ -2215,6 +2231,53 @@ CONTAINS
     
     MovingLevelset = .FALSE.
 
+    ! It turns out that if the polyline is not a zero levelset but something else
+    ! we need to try to ensure that the direction is almost normal to the element segment.
+    VPhi = ListGetCReal( Solver % Values,'CutFEM critical angle',Found )
+    IF(.NOT. Found) Vphi = 60.0_dp
+    cosphi0 = COS(Vphi*PI/180.0_dp)
+
+    Nonzero = ListGetLogical( Solver % Values,'CutFEM signed distance nonzero',Found )
+
+    NormalMove = ListGetLogical( Solver % Values,'CutFEM normal move',Found )
+
+    NodeHistory = ListGetLogical( Solver % Values,'CutFEM node history',Found )
+
+    CheckLS = ListGetLogical( Solver % Values,'CutFEM check ls field',Found )
+
+    ALLOCATE(NodeDiff(Mesh % NumberOfNodes), Trust(Mesh % NumberOfNodes))
+    NodeDiff = 0.0_dp; Trust = .FALSE.
+    IF(NodeHistory) THEN
+      IF(.NOT. ALLOCATED(PolylineData)) THEN
+        ALLOCATE(PolylineData(ParEnv % PEs))
+      END IF
+      CALL PopulatePolyline()
+
+      DO i=1, Mesh % NumberOfNodes
+        j = PhiVar2D % Perm(i)
+        IF(j==0 .AND. .NOT. NonZero) CYCLE
+        IF(j==0) STOP
+
+        val = SignedDistance(i, Trust(i))
+
+        IF(Trust(i)) THEN
+          NodeDiff(i) = PhiVar2D % Values(j) - val
+        ELSE
+          NodeDiff(i) = 0.0_dp
+        END IF
+      END DO
+
+      ! Deallocate data, next time this will be different.
+      DO i=1,ParEnv % PEs
+        IF(PolylineData(i) % nLines > 0) THEN
+          DEALLOCATE(PolylineData(i) % Vals)
+          DEALLOCATE(PolylineData(i) % Prev, &
+              PolylineData(i) % Next)
+        END IF
+      END DO
+    END IF
+
+
     ! This assumes constant levelset convection. Mainly for testing.
     Vx = ListGetCReal( Solver % Values,'Levelset Velocity 1',Found )
     IF(Found) THEN
@@ -2232,15 +2295,6 @@ CONTAINS
       END IF
     END IF
 
-    Nonzero = ListGetLogical( Solver % Values,'CutFEM signed distance nonzero',Found ) 
-
-    NormalMove = ListGetLogical( Solver % Values,'CutFEM normal move',Found ) 
-
-    ! It turns out that if the polyline is not a zero levelset but something else
-    ! we need to try to ensure that the direction is almost normal to the element segment.
-    VPhi = ListGetCReal( Solver % Values,'CutFEM critical angle',Found )
-    IF(.NOT. Found) Vphi = 60.0_dp
-    cosphi0 = COS(Vphi*PI/180.0_dp)
     
     ! This assumes constant calving speed. Mainly for testing.
     VPhi = ListGetCReal( Solver % Values,'Levelset Speed',Found )
@@ -2277,16 +2331,17 @@ CONTAINS
     PhiMax = MAXVAL(ABS(PhiVar1D % Values)) 
     PhiMax = 1.01 * ( PhiMax + SQRT(Vx**2+Vy**2)*dt )
 
-    IF(NormalMove) THEN
+    IF(NormalMove .OR. NonZero) THEN
       CALL LevelsetNormalMove()
       NonZero = .FALSE.
     END IF
-    
+
     IF(.NOT. ALLOCATED(PolylineData)) THEN
       ALLOCATE(PolylineData(ParEnv % PEs))
     END IF
     CALL PopulatePolyline()
-    
+
+    Trust = .FALSE.
     DO i=1, Mesh % NumberOfNodes
       j = PhiVar2D % Perm(i)
       IF(j==0 .AND. .NOT. NonZero) CYCLE
@@ -2301,7 +2356,7 @@ CONTAINS
         val = SignedDistance(i)
       END IF
 #else
-      val = SignedDistance(i) 
+      val = SignedDistance(i, Trust(i))
 #endif
 
       IF(MovingLevelset) THEN
@@ -2309,10 +2364,18 @@ CONTAINS
       END IF
     END DO
 
+    IF(CheckLS) CALL CheckLSField()
+
+    IF(NodeHistory) THEN
+      PhiVar2D % Values(PhiVar2D % Perm) = PhiVar2D % Values(PhiVar2D % Perm) + NodeDiff
+    END IF
+
     ! Deallocate data, next time this will be different.
     DO i=1,ParEnv % PEs 
       IF(PolylineData(i) % nLines > 0) THEN
         DEALLOCATE(PolylineData(i) % Vals)
+        DEALLOCATE(PolylineData(i) % Prev, &
+              PolylineData(i) % Next)
       END IF
     END DO
     
@@ -2380,17 +2443,270 @@ CONTAINS
       DEALLOCATE(dx,dy,NodeWeight)
 
     END SUBROUTINE LevelsetNormalMove
-      
-    
+
+
+! post processing for errors when line segs intersect either at nodes or arbitrary
+! here we assume if previous elem was all +ve or all -ve then no intersection
+! therefore any node that has a different sign to remaining nodes this a dir error
+! modify to use bounding box for triangle-polyline intersects
+
+    SUBROUTINE CheckLSField()
+
+      ALLOCATE(DoesElemIntersect(Mesh % NumberOfBulkElements))
+      CALL GetElemIntersectLogical(DoesElemIntersect)
+
+      DO i=1, Mesh % NumberOfNodes
+        IF(Trust(i)) CYCLE
+
+        FOund = .FALSE.
+        DO j=1, Mesh % NumberOfBulkElements
+          NodeIndexes => Mesh % Elements(j) % NodeIndexes
+          IF(.NOT. ANY(NodeIndexes == i)) CYCLE
+          IF(DoesElemIntersect(j)) CYCLE
+          Found=.TRUE.
+          EXIT
+        END DO
+
+        IF(.NOT. Found) Trust(i) = .TRUE. ! we have no choice but to trust
+      END DO
+
+      counter = 0
+
+      ! allocate boundary nodes
+
+      IF(ParEnv % PEs > 1) THEN
+        NNeighbours = COUNT(ParEnv % IsNeighbour)
+        Neighbours = PACK( (/ (i,i=1,ParEnv % PEs) /), ParEnv % IsNeighbour)
+
+        ALLOCATE(nSend(NNeighbours), nRecv(NNeighbours))
+        MyPE = ParEnv % MyPE + 1
+        ALLOCATE(LocalPerm( MAXVAL(Mesh % ParallelInfo % GlobalDOFs)))
+
+        !local perm gdof>local
+        DO i=1, Mesh % NumberOfNodes
+          LocalPerm(Mesh % ParallelInfo % GlobalDOFs(i)) = i
+        END DO
+      END IF
+
+      ! all reduce trust here
+
+      DO WHILE(.TRUE.)
+
+        IF(ALL(Trust) .AND. ParEnv % PEs == 1) EXIT
+
+        DO i=1, Mesh % NumberOfBulkElements
+          IF(DoesElemIntersect(i)) CYCLE
+
+          NodeIndexes => Mesh % Elements(i) % NodeIndexes
+          !loop elems cycle if intersect
+
+          IF(COUNT(.NOT. Trust(NodeIndexes)) /= 1) CYCLE ! can only correct one at a time
+
+          ! all same signs so we must trust all nodes
+          ! only elems with some trusted nodes make it this for so ok
+          IF(ALL(PhiVar2D % Values(PhiVar2D % Perm(NodeIndexes)) > 0.0_dp) .OR. &
+            ALL(PhiVar2D % Values(PhiVar2D % Perm(NodeIndexes)) < 0.0_dp)) THEN
+              Trust(NodeIndexes) = .TRUE.
+          END IF
+
+          Positive = .FALSE.
+          IF(COUNT(PhiVar2D % Values(PhiVar2D % Perm(NodeIndexes)) > 0.0_dp) > 1) Positive =.TRUE.
+          DO l=1, Mesh % Elements(i) % TYPE % NumberOfNodes
+            IF(Positive .AND. PhiVar2D % Values(PhiVar2D % Perm(NodeIndexes(l))) < 0 .AND. &
+                    .NOT. Trust(NodeIndexes(l))) THEN
+              PhiVar2D % Values(PhiVar2D % Perm(NodeIndexes(l))) = &
+                    -1*PhiVar2D % Values(PhiVar2D % Perm(NodeIndexes(l)))
+              Trust(NodeIndexes(l)) = .TRUE.
+            END IF
+            IF(.NOT. Positive .AND. PhiVar2D % Values(PhiVar2D % Perm(NodeIndexes(l))) > 0 .AND. &
+                    .NOT. Trust(NodeIndexes(l))) THEN
+              PhiVar2D % Values(PhiVar2D % Perm(NodeIndexes(l))) = &
+                    -1*PhiVar2D % Values(PhiVar2D % Perm(NodeIndexes(l)))
+              Trust(NodeIndexes(l)) = .TRUE.
+            END IF
+          END DO
+        END DO
+
+
+        IF(ParEnv % PEs > 1) THEN
+          !parcomm
+          BLOCK
+            INTEGER, ALLOCATABLE :: SendIndices(:,:),PTrustGDOFs(:)
+            REAL(KIND=dp), ALLOCATABLE :: Pvals(:)
+            INTEGER :: comm, ierr, status(MPI_STATUS_SIZE),Phase,cnt
+            LOGICAL :: Finish
+
+            comm = Solver % Matrix % Comm
+
+            ! all trust reduce here
+            Finish = ALL(Trust)
+            CALL MPI_ALLREDUCE(MPI_IN_PLACE, Finish, 1, MPI_LOGICAL, MPI_LAND, comm, ierr)
+
+            IF(Finish) EXIT
+
+            CALL MPI_BARRIER(comm, ierr)
+
+            DO Phase=0,1
+              nSend = 0
+              DO i=1, Mesh % NumberOfNodes
+                IF(.NOT. Trust(i)) CYCLE
+                DO j=1, NNeighbours
+                  IF(ANY(Mesh % ParallelInfo % NeighbourList(i) % Neighbours == Neighbours(j)-1)) THEN
+                    nSend(j) = nSend(j) + 1
+                    IF(Phase == 1) SendIndices(j, nSend(j)) = i
+                  END IF
+                END DO
+              END DO
+
+              IF(Phase == 0) ALLOCATE(SendIndices(NNeighbours, MAXVAL(nSend)))
+            END DO
+
+            DO i=1,NNeighbours
+              j = Neighbours(i)
+
+              CALL MPI_BSEND( nSend(i), 1, MPI_INTEGER,j-1, &
+                1001, comm, ierr )
+
+              IF(nSend(i) == 0) CYCLE
+
+              CALL MPI_BSEND( Mesh % ParallelInfo % GlobalDOFS(SendIndices(i, : nSend(i))), nSend(i), MPI_INTEGER,j-1, &
+                1002, comm, ierr )
+              CALL MPI_BSEND( PhiVar2D % Values(PhiVar2D % Perm(SendIndices(i, : nSend(i)))), nSend(i), MPI_DOUBLE_PRECISION,j-1, &
+                1003, comm, ierr )
+
+            END DO
+
+            DO i=1,NNeighbours
+              j = Neighbours(i)
+
+              CALL MPI_RECV( nRecv(i), 1, MPI_INTEGER,j-1, &
+                1001, comm, status, ierr )
+            END DO
+
+            ALLOCATE(PTrustGDOFs(SUM(nRecv)), Pvals(SUM(nRecv)))
+
+            cnt = 0
+            DO i=1,NNeighbours
+              j = Neighbours(i)
+              IF(nRecv(i) == 0) CYCLE
+
+              CALL MPI_RECV( PTrustGDOFs(cnt+1:cnt+nRecv(i)), nRecv(i), MPI_INTEGER,j-1, &
+                1002, comm, status, ierr )
+              CALL MPI_RECV( Pvals(cnt+1:cnt+nRecv(i)), nRecv(i), MPI_DOUBLE_PRECISION,j-1, &
+                1003, comm, status, ierr )
+              cnt = cnt + nRecv(i)
+            END DO
+
+
+            CALL MPI_BARRIER( comm, ierr )
+
+            Trust(LocalPerm(PTrustGDOFs)) = .TRUE.
+            PhiVar2D % Values(PhiVar2D % Perm(LocalPerm(PTrustGDOFs))) = Pvals
+
+            DEALLOCATE(PTrustGDOFs,Pvals,SendIndices)
+
+          END BLOCK
+        END IF
+
+        counter = counter + 1
+        IF(counter > 10 ) CALL FATAL('CheckLSField','Stuck in loop')
+      END DO
+
+    END SUBROUTINE CheckLSField
+
+    !strategy loop through all and mark elem/polyline intersections
+    ! use dir to get whether inside
+    ! remove all until next intersection
+    SUBROUTINE GetElemIntersectLogical(DoesElemIntersect)
+      !------------------------------------------------------------------------------
+      !TYPE(Mesh_t), POINTER :: Mesh
+      !TYPE(Variable_t), POINTER :: PhiVar2D
+      !TYPE(PolylineData_t), POINTER :: PolylineData
+      LOGICAL :: DoesElemIntersect(:)
+      !------------------------------------------------------------------------------
+      INTEGER :: i,j,k,nLines
+      INTEGER, POINTER :: NodeIndexes(:)
+      REAL(KIND=dp) :: xmin_tri,xmax_tri,ymin_tri,ymax_tri,xmin_seg,xmax_seg,ymin_seg,ymax_seg,&
+        a1(2),a2(2),intersect_p(2),x0,x1,y0,y1
+      LOGICAL :: intersect
+
+      DoesElemIntersect = .FALSE.
+      DO i=1,Mesh % NumberOfBulkElements
+        NodeIndexes => Mesh % Elements(i) % NodeIndexes
+
+        xmin_tri = MINVAL(Mesh % Nodes % x(NodeIndexes))
+        xmax_tri = MAXVAL(Mesh % Nodes % x(NodeIndexes))
+        ymin_tri = MINVAL(Mesh % Nodes % y(NodeIndexes))
+        ymax_tri = MAXVAL(Mesh % Nodes % y(NodeIndexes))
+
+        IF(ALL(PhiVar2D % Values(PhiVar2D % Perm(NodeIndexes)) > 0.0_dp)) CYCLE
+        IF(ALL(PhiVar2D % Values(PhiVar2D % Perm(NodeIndexes)) < 0.0_dp)) CYCLE
+
+        ! can speed this up using local polylines rather than global
+        Intersect = .FALSE.
+        DO k=1,ParEnv % PEs
+          DO j=1, PolylineData(k) % nLines
+
+            x0 = PolylineData(k) % Vals(j,1)
+            x1 = PolylineData(k) % Vals(j,2)
+            y0 = PolylineData(k) % Vals(j,3)
+            y1 = PolylineData(k) % Vals(j,4)
+
+            xmin_seg = MIN(x0, x1)
+            xmax_seg = MAX(x0, x1)
+            ymin_seg = MIN(y0, y1)
+            ymax_seg = MAX(y0, y1)
+
+            ! Quick rejection
+            IF(xmax_seg < xmin_tri .OR. xmax_tri < xmin_seg) CYCLE
+            IF(ymax_seg < ymin_tri .OR. ymax_tri < ymin_seg) CYCLE
+
+            ! do we actually intersect?
+            a1(1) = Mesh % Nodes % x(NodeIndexes(1))
+            a1(2) = Mesh % Nodes % y(NodeIndexes(1))
+            a2(1) = Mesh % Nodes % x(NodeIndexes(2))
+            a2(2) = Mesh % Nodes % y(NodeIndexes(2))
+            CALL LineSegmentsIntersect(a1,a2,(/x0,y0/),(/x1,y1/),intersect_p,intersect)
+
+            IF(.NOT. intersect) THEN !1,3
+              a2(1) = Mesh % Nodes % x(NodeIndexes(3))
+              a2(2) = Mesh % Nodes % y(NodeIndexes(3))
+              CALL LineSegmentsIntersect(a1,a2,(/x0,y0/),(/x1,y1/),intersect_p,intersect)
+            END IF
+
+            IF(.NOT. intersect) THEN !2,3
+              a1(1) = Mesh % Nodes % x(NodeIndexes(2))
+              a1(2) = Mesh % Nodes % y(NodeIndexes(2))
+              CALL LineSegmentsIntersect(a1,a2,(/x0,y0/),(/x1,y1/),intersect_p,intersect)
+            END IF
+
+            IF(Intersect) THEN
+              DoesElemIntersect(i) = .TRUE.
+              EXIT
+            END IF
+
+          END DO
+          IF(Intersect) EXIT
+        END DO
+      END DO
+
+
+    END SUBROUTINE GetElemIntersectLogical
+
     !------------------------------------------------------------------------------
     !> Computes the signed distance to zero levelset. 
     !------------------------------------------------------------------------------
     SUBROUTINE PopulatePolyline()
       !------------------------------------------------------------------------------      
-      REAL(KIND=dp) :: x0,y0,x1,y1,ss,TotLineLen,phi0,phi1
-      INTEGER :: i,j,k,n,m,i0,i1,nCol,dofs,k2
+      REAL(KIND=dp) :: x0,y0,x1,y1,ss,TotLineLen,phi0,phi1,&
+        x2,x3,y2,y3,xmin0,xmax0,ymin0,ymax0,xmin1,xmax1,ymin1,ymax1,intersect_p(2)
+      INTEGER :: i,j,k,n,m,i0,i1,nCol,dofs,k2,m2,i2,i3,NNeighbours,neighbour,p0,p1
+      INTEGER, ALLOCATABLE :: PL_local(:,:),NodeToElem(:,:),NodeElemCount(:),RecvElems(:,:),&
+        rdisps(:),RecvFrom(:),Neighbours(:)
       TYPE(Variable_t), POINTER :: Var1D
-      INTEGER :: iVar, MyPe, PEs, Phase
+      INTEGER :: iVar,MyPe,PEs,Phase,nLines,Next,counter,NInter,SharedCount,NextP,nMax,NPInter,Nexts(2)
+      LOGICAL, ALLOCATABLE :: Skip(:),RemoveLines(:,:)
+      LOGICAL :: intersect
       !------------------------------------------------------------------------------
 
       nCol = 6
@@ -2423,25 +2739,124 @@ CONTAINS
       MyPe = ParEnv % MyPe + 1
       PEs = ParEnv % PEs
 
+      IF(PEs > 1) THEN
+        BLOCK
+          INTEGER, ALLOCATABLE :: SendCount(:),SendElems(:,:)
+          INTEGER :: comm, ierr, status(MPI_STATUS_SIZE)
+
+          comm = Solver % Matrix % Comm
+
+          ALLOCATE(SendCount(PEs))
+
+          ! if a node is at an intersect can be shared with 3+ parts
+          SendCount = 0
+          DO k=1, PEs
+            IF(k==MyPE) CYCLE
+            DO i=1, IsoMesh % NumberOfBulkElements
+              i0 = IsoMesh % Elements(i) % NodeIndexes(1)
+              i1 = IsoMesh % Elements(i) % NodeIndexes(2)
+              IF(.NOT. (IsoMesh % ParallelInfo % GInterface(i0) .OR. &
+                IsoMesh % ParallelInfo % GInterface(i1)) ) CYCLE
+              IF(IsoMesh % ParallelInfo % GInterface(i0)) THEN
+                IF(ANY(IsoMesh % ParallelInfo % NeighbourList(i0) % Neighbours == k-1)) THEN
+                  SendCount(k) = SendCount(k) + 1
+                END IF
+              END IF
+              IF(IsoMesh % ParallelInfo % GInterface(i1)) THEN
+                IF(ANY(IsoMesh % ParallelInfo % NeighbourList(i1) % Neighbours == k-1)) THEN
+                  SendCount(k) = SendCount(k) + 1
+                END IF
+              END IF
+            END DO
+          END DO
+
+          ALLOCATE(SendElems(SUM(SendCount),2))
+
+          counter = 0
+          DO k=1, PEs
+            IF(k==MyPE) CYCLE
+            DO i=1, IsoMesh % NumberOfBulkElements
+              i0 = IsoMesh % Elements(i) % NodeIndexes(1)
+              i1 = IsoMesh % Elements(i) % NodeIndexes(2)
+              IF(.NOT. (IsoMesh % ParallelInfo % GInterface(i0) .OR. &
+                IsoMesh % ParallelInfo % GInterface(i1)) ) CYCLE
+              IF(IsoMesh % ParallelInfo % GInterface(i0)) THEN
+                IF(ANY(IsoMesh % ParallelInfo % NeighbourList(i0) % Neighbours == k-1)) THEN
+                  counter = counter + 1
+                  SendElems(counter,1) = i
+                  SendElems(counter,2) = IsoMesh % ParallelInfo % GlobalDOFS(i0)
+                END IF
+              END IF
+              IF(IsoMesh % ParallelInfo % GInterface(i1)) THEN
+                IF(ANY(IsoMesh % ParallelInfo % NeighbourList(i1) % Neighbours == k-1)) THEN
+                  counter = counter + 1
+                  SendElems(counter,1) = i
+                  SendElems(counter,2) = IsoMesh % ParallelInfo % GlobalDOFS(i1)
+                END IF
+              END IF
+            END DO
+          END DO
+
+          ALLOCATE(rdisps(PEs))
+
+          ! send count should equal recvcount
+          !CALL MPI_ALLTOALL(SendCount, 1, MPI_INTEGER, RecvCount, 1, MPI_INTEGER, comm, ierr)
+
+          rdisps(1) = 0
+          DO i=2, PEs
+            rdisps(i) = rdisps(i-1) + SendCount(i-1)
+          END DO
+
+          SharedCount = SUM(SendCount)
+          ALLOCATE(RecvElems(SharedCount,2))
+
+          ! these can be all gather?!
+          CALL MPI_Alltoallv(SendElems(:,1), SendCount, rdisps, MPI_INTEGER, &
+                            RecvElems(:,1), SendCount, rdisps, MPI_INTEGER, &
+                            comm, ierr)
+          CALL MPI_Alltoallv(SendElems(:,2), SendCount, rdisps, MPI_INTEGER, &
+                            RecvElems(:,2), SendCount, rdisps, MPI_INTEGER, &
+                            comm, ierr)
+
+          ALLOCATE(RecvFrom(SharedCount))
+          counter = 0
+          DO i=1,PEs
+            RecvFrom(counter+1:counter+SendCount(i)) = i
+            counter = counter + SendCount(i)
+          END DO
+
+        END BLOCK
+      END IF
+
       ! We may find use for bounding boxes later on. 
-#if 0
+
       PolylineData(MyPe) % IsoLineBB(1) = MINVAL(IsoMesh % Nodes % x)
       PolylineData(MyPe) % IsoLineBB(2) = MAXVAL(IsoMesh % Nodes % x)
       PolylineData(MyPe) % IsoLineBB(3) = MINVAL(IsoMesh % Nodes % y)
       PolylineData(MyPe) % IsoLineBB(4) = MAXVAL(IsoMesh % Nodes % y)
-
+#if 0
       PolylineData(MyPe) % MeshBB(1) = MINVAL(Mesh % Nodes % x)
       PolylineData(MyPe) % MeshBB(2) = MAXVAL(Mesh % Nodes % x)
       PolylineData(MyPe) % MeshBB(3) = MINVAL(Mesh % Nodes % y)
       PolylineData(MyPe) % MeshBB(4) = MAXVAL(Mesh % Nodes % y)
 #endif
-      
+
+      ALLOCATE(Skip(IsoMesh % NumberOfBulkElements), &
+        NodeToElem(IsoMesh % NumberOfNodes,2), NodeElemCount(IsoMesh % NumberOfNodes))
+
+      IF(.NOT. ALLOCATED(Intersects)) &
+        ALLOCATE(Intersects(PEs))
+      CALL InitialiseIntersects(10)
+
+      Skip = .FALSE.
+      NodeToElem = 0; NodeElemCount = 0
+      NInter = 0
       DO Phase=0,1
         m = 0
         DO i=1,IsoMesh % NumberOfBulkElements        
           i0 = IsoMesh % Elements(i) % NodeIndexes(1)
           i1 = IsoMesh % Elements(i) % NodeIndexes(2)
-          
+
           x0 = x(i0); y0 = y(i0)
           x1 = x(i1); y1 = y(i1)
           
@@ -2449,10 +2864,91 @@ CONTAINS
           
           ! This is too short for anything useful...
           ! Particularly difficult it is to decide on left/right if the segment is a stub.
-          IF(ss < EPSILON(ss) ) CYCLE        
+          IF(ss < EPSILON(ss) ) THEN
+            Skip(i) = .TRUE.
+            CYCLE
+          END IF
                     
           m = m+1
+
+          ! assumption here is there are no divides or intersections at nodes
+          ! should be fine sine this is only used for arbitray intersections
+          ! shared node intersections dealt with later
+          IF(Phase == 0) THEN
+            NodeElemCount(i0) = NodeElemCount(i0) + 1
+            NodeElemCount(i1) = NodeElemCount(i1) + 1
+
+            IF(PEs > 1) THEN
+            ! can't use SIZE(Mesh % ParallelInfo % NeighbourList(i0) % Neighbours)-1
+            ! as this includes all neighbours to the bulk element from Mesh not the ones to CutFEM
+            ! so we have to check against shared globaldofs
+              IF(IsoMesh % ParallelInfo % GInterface(i0) .OR. &
+                  IsoMesh % ParallelInfo % GInterface(i1)) THEN
+                DO j=1, SharedCount
+                  IF(IsoMesh % ParallelInfo % GlobalDOFs(i0) == RecvElems(j,2)) THEN
+                    NodeElemCount(i0) = NodeElemCount(i0) + 1
+                  END IF
+                  IF(IsoMesh % ParallelInfo % GlobalDOFs(i1) == RecvElems(j,2)) THEN
+                    NodeElemCount(i1) = NodeElemCount(i1) + 1
+                  END IF
+                END DO
+              END IF
+            END IF
+
+            IF(NodeToElem(i0,1) == 0) THEN
+              NodeToElem(i0,1) = m
+            ELSE
+              NodeToElem(i0,2) = m
+            END IF
+
+            IF(NodeToElem(i1,1) == 0) THEN
+              NodeToElem(i1,1) = m
+            ELSE
+              NodeToElem(i1,2) = m
+            END IF
+          END IF
+
+
           IF(Phase==0) CYCLE
+
+          !assign neigbours
+          IF(NodeToElem(i0,1) == i) THEN
+            PolylineData(MyPe) % Prev(m,1) = NodeToElem(i0,2)
+          ELSE
+            PolylineData(MyPe) % Prev(m,1) = NodeToElem(i0,1)
+          END IF
+
+          IF(NodeToElem(i1,1) == i) THEN
+            PolylineData(MyPe) % Next(m,1) = NodeToElem(i1,2)
+          ELSE
+            PolylineData(MyPe) % Next(m,1) = NodeToElem(i1,1)
+          END IF
+
+          IF(PEs > 1) THEN
+            IF(IsoMesh % ParallelInfo % GInterface(i0) .OR. &
+                  IsoMesh % ParallelInfo % GInterface(i1)) THEN
+              DO j=1, SharedCount
+                IF(IsoMesh % ParallelInfo % GlobalDOFs(i0) == RecvElems(j,2)) THEN
+                  PolylineData(MyPe) % Prev(m,1) = RecvElems(j,1)
+                  PolylineData(MyPe) % Prev(m,2) = RecvFrom(j)
+                END IF
+                IF(IsoMesh % ParallelInfo % GlobalDOFs(i1) == RecvElems(j,2)) THEN
+                  PolylineData(MyPe) % Next(m,1) = RecvElems(j,1)
+                  PolylineData(MyPe) % Next(m,2) = RecvFrom(j)
+                END IF
+              END DO
+            END IF
+          END IF
+
+          ! node on intersection so mark with negative
+          IF(NodeElemCount(i0) > 2) PolylineData(MyPe) % Prev(m,1) = -1
+          IF(NodeElemCount(i1) > 2) PolylineData(MyPe) % Next(m,1) = -1
+          !IF(NodeElemCount(i0) > 2 .OR. NodeElemCount(i1) > 2) &
+          !  PRINT*, ParEnv % MyPE, 'nodeelemcount', NodeElemCount(i0), NodeElemCount(i1), &
+          !    'indices', i0, i1
+
+          PL_local(m,1) = i0
+          PL_local(m,2) = i1
 
           TotLineLen = TotLineLen + SQRT(ss)
 
@@ -2468,6 +2964,72 @@ CONTAINS
           ! Levelset values for the polyline. 
           PolylineData(MyPe) % Vals(m,5) = phi0
           PolylineData(MyPe) % Vals(m,6) = phi1
+
+
+          ! min/max for bounds check
+          xmax0 = MAX(x0,x1); xmin0 = MIN(x0,x1)
+          ymax0 = MAX(y0,y1); ymin0 = MIN(y0,y1)
+
+          ! check and mark intersections
+          m2 = m
+          DO j=i+1, IsoMesh % NumberOfBulkElements
+            IF(Skip(j)) CYCLE
+            m2 = m2 + 1
+
+            i2 = IsoMesh % Elements(j) % NodeIndexes(1)
+            i3 = IsoMesh % Elements(j) % NodeIndexes(2)
+
+            IF(i2==i0 .OR. i2==i1 .OR. i3==i0 .OR. i3==i1) CYCLE ! share node
+
+            x2 = x(i2); y2 = y(i2)
+            x3 = x(i3); y3 = y(i3)
+
+            xmax1 = MAX(x2,x3); xmin1 = MIN(x2,x3)
+            ymax1 = MAX(y2,y3); ymin1 = MIN(y2,y3)
+
+            ! bounds check can we intersect
+            IF(xmax1 < xmin0 .OR. xmax0 < xmin1) CYCLE
+            IF(ymax1 < ymin0 .OR. ymax0 < ymin1) CYCLE
+
+            ! do we actually intersect?
+            CALL LineSegmentsIntersect((/x2,y2/),(/x3,y3/),(/x0,y0/),(/x1,y1/),intersect_p,intersect)
+
+            IF(Intersect) THEN
+
+              Intersects(MyPE) % nIntersects = Intersects(MyPE) % nIntersects + 1
+              NInter = Intersects(MyPE) % nIntersects
+
+              IF(NInter > Intersects(MyPE) % Size) &
+                  CALL DoubleIntersectsAllocation()
+
+              Intersects(MyPE) % Elements(NInter,1) = m
+              Intersects(MyPE) % Elements(NInter,2) = m2
+              Intersects(MyPE) % Elements(NInter,3) = MyPE
+              Intersects(MyPE) % Elements(NInter,4) = MyPE
+
+              Intersects(MyPE) % Intersection(NInter,1) = intersect_p(1)
+              Intersects(MyPE) % Intersection(NInter,2) = intersect_p(2)
+
+              Found = GetPointLevelset((/x0,y0,0.0_dp/), val)
+              Intersects(MyPE) % Found(NInter,1) = Found
+              IF(Found) Intersects(MyPE) % LS(NInter,1) = val
+
+              Found = GetPointLevelset((/x1,y1,0.0_dp/), val)
+              Intersects(MyPE) % Found(NInter,2) = Found
+              IF(Found) Intersects(MyPE) % LS(NInter,2) = val
+
+              Found = GetPointLevelset((/x2,y2,0.0_dp/), val)
+              Intersects(MyPE) % Found(NInter,3) = Found
+              IF(Found) Intersects(MyPE) % LS(NInter,3) = val
+
+              Found = GetPointLevelset((/x3,y3,0.0_dp/), val)
+              Intersects(MyPE) % Found(NInter,4) = Found
+              IF(Found) Intersects(MyPE) % LS(NInter,4) = val
+
+              EXIT ! assumption is that each line can only have one intersection
+            END IF
+          END DO
+
           j = 7
 
           DO k = 1,nVar
@@ -2490,13 +3052,18 @@ CONTAINS
           CALL Info('LevelsetUpdate','Allocating PolylineData of size '//I2S(m)//' x '//I2S(nCol),Level=8)
           PolylineData(MyPe) % nLines = m
           PolylineData(MyPe) % nNodes = Mesh % NumberOfNodes
-          ALLOCATE(PolylineData(MyPe) % Vals(m,nCol))
+          ALLOCATE(PolylineData(MyPe) % Vals(m,nCol), PolylineData(MyPe) % Next(m,2),&
+              PolylineData(MyPE) % Prev(m,2), PL_local(m,2))
           PolylineData(MyPe) % Vals = 0.0_dp
+          PolylineData(MyPe) % Next(:,1) = 0
+          PolylineData(MyPe) % Prev(:,1) = 0
+          PolylineData(MyPe) % Prev(:,2) = MyPE
+          PolylineData(MyPe) % Next(:,2) = MyPE
         END IF
         
       END DO
 
-       
+      !need to get share local intersects
       IF(PEs > 1 ) THEN        
         BLOCK
           INTEGER, ALLOCATABLE :: nPar(:)
@@ -2524,10 +3091,11 @@ CONTAINS
             DO i=1,PEs            
               IF(i==MyPe) CYCLE
               m = PolylineData(i) % nLines
-              IF(m>0) ALLOCATE(PolylineData(i) % Vals(m,nCol))            
+              IF(m>0) ALLOCATE(PolylineData(i) % Vals(m,nCol), &
+                  PolylineData(i) % Next(m,2), PolylineData(i) % Prev(m,2))
             END DO
           END IF
-                     
+
           DO i=1,PEs
             IF(i==MyPe) CYCLE              
             IF(PolylineData(MyPe) % nLines == 0 .OR. PolylineData(i) % nNodes == 0 ) CYCLE
@@ -2536,6 +3104,11 @@ CONTAINS
             k = PolylineData(MyPe) % nLines * nCol
             CALL MPI_BSEND( PolylineData(MyPe) % Vals, k, MPI_DOUBLE_PRECISION,i-1, &
                 1001, comm, ierr )
+            k = PolylineData(MyPe) % nLines * 2
+            CALL MPI_BSEND( PolylineData(MyPe) % Next, k, MPI_INTEGER,i-1, &
+                1002, comm, ierr )
+            CALL MPI_BSEND( PolylineData(MyPe) % Prev, k, MPI_INTEGER,i-1, &
+                1003, comm, ierr )
           END DO
             
           DO i=1,PEs
@@ -2546,9 +3119,19 @@ CONTAINS
             k = PolylineData(i) % nLines * nCol
             CALL MPI_RECV( PolylineData(i) % Vals, k, MPI_DOUBLE_PRECISION,i-1, &
                 1001, comm, status, ierr )
+            k = PolylineData(i) % nLines * 2
+            CALL MPI_RECV( PolylineData(i) % Next, k, MPI_INTEGER,i-1, &
+                1002, comm, status, ierr )
+            CALL MPI_RECV( PolylineData(i) % Prev, k, MPI_INTEGER,i-1, &
+                1003, comm, status, ierr )
           END DO
 
-          CALL MPI_BARRIER( comm, ierr )          
+          CALL MPI_BARRIER( comm, ierr )
+
+          !comm local intersects
+          nPar = 0
+          nPar(MyPE) = NInter
+          CALL MPI_ALLREDUCE(MPI_IN_PLACE, nPar, PEs, MPI_INTEGER, MPI_MAX, comm, ierr)
 
           k = SUM( PolylineData(1:PEs) % nLines ) 
           CALL Info('LevelSetUpdate','Number of line segments in parallel system: '//I2S(k),Level=7)
@@ -2557,12 +3140,393 @@ CONTAINS
         END BLOCK
       END IF
 
+      ! find local-parallel intersects
+      IF(PEs > 1) THEN
+        ! could instead search through isomesh and get neighbours?
+        NNeighbours = COUNT(ParEnv % IsNeighbour)
+        Neighbours = PACK( (/ (i,i=1,PEs) /), ParEnv % IsNeighbour)
+
+        ! only local to parallel intersections
+        ! then store if smaller part store intersect info
+        ! store intersect direction of local line
+        nLines = PolylineData(MyPE) % nLines
+
+        NPInter = 0
+
+        nLines = PolylineData(MyPE) % nLines
+
+        DO i=1,nLines
+          x0 = PolylineData(MyPE) % Vals(i,1)
+          x1 = PolylineData(MyPE) % Vals(i,2)
+          y0 = PolylineData(MyPE) % Vals(i,3)
+          y1 = PolylineData(MyPE) % Vals(i,4)
+
+          xmax0 = MAX(x0,x1); xmin0 = MIN(x0,x1)
+          ymax0 = MAX(y0,y1); ymin0 = MIN(y0,y1)
+
+          Intersect = .FALSE.
+          DO neighbour = 1, NNeighbours
+
+            IF(MyPE > Neighbours(neighbour)) CYCLE ! only confirm on lowest part
+
+            k = neighbours(neighbour)
+
+            ! part not in BB
+            IF(PolylineData(MyPE) % IsoLineBB(MyPE) < xmin0 .OR. &
+                xmax0 < PolylineData(k) % IsoLineBB(1)) CYCLE
+            IF(PolylineData(MyPe) % IsoLineBB(MyPE) < ymin0 .OR. &
+                ymax0 < PolylineData(k) % IsoLineBB(3)) CYCLE
+
+            DO j=1, PolylineData(k) % NLines
+
+              x2 = PolylineData(k) % Vals(j,1)
+              x3 = PolylineData(k) % Vals(j,2)
+              y2 = PolylineData(k) % Vals(j,3)
+              y3 = PolylineData(k) % Vals(j,4)
+
+              !need to discount if either node is the same
+              IF(ABS(x0-x2) > AEPS .OR. ABS(x0-x3) <  AEPS) CYCLE
+              IF(ABS(x1-x2) > AEPS .OR. ABS(x1-x3) <  AEPS) CYCLE
+              IF(ABS(y0-y2) > AEPS .OR. ABS(y0-y3) <  AEPS) CYCLE
+              IF(ABS(y1-y2) > AEPS .OR. ABS(y1-y3) <  AEPS) CYCLE
+
+              xmax1 = MAX(x2,x3); xmin1 = MIN(x2,x3)
+              ymax1 = MAX(y2,y3); ymin1 = MIN(y2,y3)
+
+              ! bounds check can we intersect
+              IF(xmax1 < xmin0 .OR. xmax0 < xmin1) CYCLE
+              IF(ymax1 < ymin0 .OR. ymax0 < ymin1) CYCLE
+
+              ! do we actually intersect?
+              CALL LineSegmentsIntersect((/x2,y2/),(/x3,y3/),(/x0,y0/),(/x1,y1/),intersect_p,intersect)
+
+              IF(Intersect) THEN
+
+                Intersects(MyPE) % nIntersects = Intersects(MyPE) % nIntersects + 1
+                NInter = Intersects(MyPE) % nIntersects
+
+                IF(NInter > Intersects(MyPE) % Size) &
+                  CALL DoubleIntersectsAllocation()
+
+                Intersects(MyPE) % Elements(NInter,1) = i
+                Intersects(MyPE) % Elements(NInter,2) = j
+                Intersects(MyPE) % Elements(NInter,3) = MyPE
+                Intersects(MyPE) % Elements(NInter,4) = k
+
+                Intersects(MyPE) % Intersection(NInter,1) = intersect_p(1)
+                Intersects(MyPE) % Intersection(NInter,2) = intersect_p(2)
+
+                Found = GetPointLevelset((/x0,y0,0.0_dp/), val)
+                Intersects(MyPE) % Found(NInter,1) = Found
+                IF(Found) Intersects(MyPE) % LS(NInter,1) = val
+
+                Found = GetPointLevelset((/x1,y1,0.0_dp/), val)
+                Intersects(MyPE) % Found(NInter,2) = Found
+                IF(Found) Intersects(MyPE) % LS(NInter,2) = val
+
+                Found = GetPointLevelset((/x2,y2,0.0_dp/), val)
+                Intersects(MyPE) % Found(NInter,3) = Found
+                IF(Found) Intersects(MyPE) % LS(NInter,3) = val
+
+                Found = GetPointLevelset((/x3,y3,0.0_dp/), val)
+                Intersects(MyPE) % Found(NInter,4) = Found
+                IF(Found) Intersects(MyPE) % LS(NInter,4) = val
+
+                EXIT
+              END IF
+            END DO
+
+            IF(Intersect) EXIT
+          END DO
+        END DO
+      END IF ! PES > 1
+
+      CALL ReduceLocalIntersectMemory()
+
+      ! this block breaks complier
+      IF(PEs > 1) THEN
+        !parallel comm
+        ! share intersects_t
+        BLOCK
+          INTEGER, ALLOCATABLE :: nPar(:),UpdateIndices(:,:),AllUpdateIndices(:)
+          REAL(KIND=dp), ALLOCATABLE :: UpdateVals(:),AllUpdateVals(:)
+          INTEGER :: comm, ierr, status(MPI_STATUS_SIZE), Updates
+
+          ALLOCATE(nPar(PEs))
+          comm = Solver % Matrix % Comm
+
+          nPar = 0
+          nPar(MyPe) = Intersects(MyPe) % nIntersects
+          CALL MPI_ALLREDUCE(MPI_IN_PLACE, nPar, PEs, MPI_INTEGER, MPI_MAX, comm, ierr)
+          DO i=1,PEs
+            Intersects(i) % nIntersects = nPar(i)
+          END DO
+
+          IF( PolylineData(MyPe) % nNodes > 1) THEN
+            DO i=1,PEs
+              IF(i==MyPe) CYCLE
+              m = Intersects(i) % nIntersects
+              IF(m>0) ALLOCATE(Intersects(i) % Intersection(m,2), &
+                  Intersects(i) % Elements(m,4), Intersects(i) % Found(m,4), &
+                  Intersects(i) % LS(m,4))
+            END DO
+          END IF
+
+          DO i=1,PEs
+            IF(i==MyPe) CYCLE
+            IF(Intersects(MyPe) % nIntersects == 0 .OR. PolylineData(i) % nNodes == 0 ) CYCLE
+
+            ! Sent data from partition MyPe to i
+            k = Intersects(MyPe) % nIntersects * 2
+            CALL MPI_BSEND( Intersects(MyPe) % Intersection, k, MPI_DOUBLE_PRECISION,i-1, &
+                1004, comm, ierr )
+
+            k = Intersects(MyPe) % nIntersects * 4
+            CALL MPI_BSEND( Intersects(MyPe) % Elements, k, MPI_INTEGER,i-1, &
+                1005, comm, ierr )
+            CALL MPI_BSEND( Intersects(MyPe) % Found, k, MPI_LOGICAL,i-1, &
+                1006, comm, ierr )
+            CALL MPI_BSEND( Intersects(MyPe) % LS, k, MPI_DOUBLE_PRECISION,i-1, &
+                1007, comm, ierr )
+          END DO
+
+          DO i=1,PEs
+            IF(i==MyPe) CYCLE
+            IF(Intersects(i) % nIntersects == 0 .OR. PolylineData(MyPe) % nNodes == 0 ) CYCLE
+
+            ! Receive data from partition i to MyPe
+            k = Intersects(i) % nIntersects * 2
+            CALL MPI_RECV( Intersects(i) % Intersection, k, MPI_DOUBLE_PRECISION,i-1, &
+                1004, comm, status, ierr )
+
+            k = Intersects(i) % nIntersects * 4
+            CALL MPI_RECV( Intersects(i) % Elements, k, MPI_INTEGER,i-1, &
+                1005, comm, status, ierr )
+            CALL MPI_RECV( Intersects(i) % Found, k, MPI_LOGICAL,i-1, &
+                1006, comm, status, ierr )
+            CALL MPI_RECV( Intersects(i) % LS, k, MPI_DOUBLE_PRECISION,i-1, &
+                1007, comm, status, ierr )
+          END DO
+
+          CALL MPI_BARRIER( comm, ierr )
+
+
+          !once parcomm over loop through unfound on neighbours
+          nMax = SUM(Intersects(Neighbours) % nIntersects) ! should be low
+          ALLOCATE(UpdateIndices(nMax,3),UpdateVals(nMax))
+          Updates = 0
+          DO neighbour = 1, NNeighbours
+            k = neighbours(neighbour)
+
+            nInter = Intersects(k) % nIntersects
+
+            IF(nInter == 0) CYCLE
+
+            DO i=1, nInter
+
+              IF(ALL(Intersects(k) % Found(i,:))) CYCLE
+
+              i0 = Intersects(k) % Elements(i,1)
+              p0 = Intersects(k) % Elements(i,3)
+              i1 = Intersects(k) % Elements(i,2)
+              p1 = Intersects(k) % Elements(i,4)
+
+              DO j=1,4
+                IF(Intersects(k) % Found(i,j)) CYCLE
+
+                IF(j > 2) THEN
+                  i0=i1; p0=p1
+                END IF
+
+                IF(j==1 .OR. j==3) THEN
+                  x0 = PolylineData(p0) % vals(i0,1)
+                  y0 = PolylineData(p0) % vals(i0,3)
+                ELSE
+                  x0 = PolylineData(p0) % vals(i0,2)
+                  y0 = PolylineData(p0) % vals(i0,4)
+                END IF
+
+                Found = GetPointLevelset((/x0,y0,0.0_dp/), val)
+
+                IF(Found) THEN
+                  Intersects(k) % Found(i,j) = Found
+                  Intersects(k) % LS(i,j) = val
+
+                  Updates = Updates + 1
+                  UpdateIndices(Updates,1) = k
+                  UpdateIndices(Updates,2) = i
+                  UpdateIndices(Updates,3) = j
+                  UpdateVals(Updates) = val
+
+                  ! need to comm this?
+                END IF
+              END DO
+            END DO
+          END DO
+
+          nPar = 0
+          nPar(MyPE) = Updates
+          CALL MPI_ALLREDUCE(MPI_IN_PLACE, nPar, PEs, MPI_INTEGER, MPI_MAX, comm, ierr)
+
+          rdisps(1) = 0
+          DO i=2,PEs
+            rdisps(i) = rdisps(i-1) + nPar(i-1)
+          END DO
+
+          Updates = SUM(nPar)
+          ALLOCATE(AllUpdateVals(Updates),AllUpdateIndices(Updates*3))
+          CALL MPI_ALLGATHERV(UpdateVals, nPar(MyPE), MPI_DOUBLE_PRECISION, &
+                AllUpdateVals, nPar, rdisps, MPI_DOUBLE_PRECISION, comm, ierr)
+
+          CALL MPI_ALLGATHERV(UpdateIndices, nPar(MyPE)*3, MPI_INTEGER, &
+                AllUpdateIndices, nPar*3, rdisps*3, MPI_INTEGER, comm, ierr)
+
+          CALL MPI_BARRIER(comm, ierr)
+
+          ! update values
+          DO n=1,Updates
+            k = AllUpdateIndices((n-1)*3 + 1)
+            i = AllUpdateIndices((n-1)*3 + 2)
+            j = AllUpdateIndices((n-1)*3 + 3)
+            Intersects(k) % LS(i,j) = AllUpdateVals(n)
+          END DO
+
+        END BLOCK
+      END IF ! parallel
+
+      nMax = 0
+      DO i=1,PEs
+        nLines = PolylineData(i) % nLines
+        ALLOCATE(PolylineData(i) % Intersect(nLines))
+        PolylineData(i) % Intersect = .FALSE.
+        IF(nMax < PolylineData(i) % nLines) nMax = PolylineData(i) % nLines
+      END DO
+
+      DO i=1,PEs
+        nInter = Intersects(i) % nIntersects
+        IF(nInter == 0) CYCLE
+        DO j=1,Ninter
+          i0 = Intersects(i) % Elements(j,1)
+          p0 = Intersects(i) % Elements(j,3)
+          i1 = Intersects(i) % Elements(j,2)
+          p1 = Intersects(i) % Elements(j,4)
+
+          PolylineData(p0) % Intersect(i0) = .TRUE.
+          PolylineData(p1) % Intersect(i1) = .TRUE.
+        END DO
+      END DO
+
+      ALLOCATE(RemoveLines(PEs, nMax))
+      RemoveLines = .FALSE.
+      ! find intersections
+      DO k = 1, ParEnv % PEs
+        nInter = Intersects(k) % nIntersects
+        IF(nInter == 0) CYCLE
+
+        DO i = 1, nInter
+
+          DO phase=1,2
+
+            IF(Phase == 1) THEN
+              i0 = Intersects(k) % Elements(i,1)
+              p0 = Intersects(k) % Elements(i,3)
+              Positive = Intersects(k) % LS(i,1) > Intersects(k) % LS(i,2)
+            ELSE
+              i0 = Intersects(k) % Elements(i,2)
+              p0 = Intersects(k) % Elements(i,4)
+              Positive = Intersects(k) % LS(i,3) > Intersects(k) % LS(i,4)
+            END IF
+
+            IF(Positive) THEN
+              next = PolylineData(p0) % Next(i0,1)
+              nextp = PolylineData(p0) % Next(i0,2)
+              counter = 0
+              DO WHILE(.TRUE.)
+                ! if part of an intersect? hashmap?
+                IF(PolylineData(NextP) % Next(Next,1) > 0 .AND. .NOT. PolylineData(NextP) % Intersect(Next)) THEN
+                  RemoveLines(NextP, Next) = .TRUE.
+                  Nexts = PolylineData(NextP) % Next(Next,:)
+                  !NextP = PolylineData(NextP) % Next(Next,2)
+                  Next = Nexts(1)
+                  NextP = Nexts(2)
+                ELSE
+                  EXIT
+                END IF
+                counter =counter+1
+                IF(counter>10) CALL FATAL('CutFEM', 'stuck in loop')
+              END DO
+
+              ! adjust node
+              PolylineData(p0) % Vals(i0,2) = Intersects(k) % Intersection(i,1)
+              PolylineData(p0) % Vals(i0,4) = Intersects(k) % Intersection(i,2)
+
+              ! adjust mesh for if we want to save
+              ! this shared node could present on multiple parts?
+              IF(p0==MyPe) THEN
+                IsoMesh % Nodes % x(PL_local(i0,2)) = Intersects(k) % Intersection(i,1)
+                IsoMesh % Nodes % y(PL_local(i0,2)) = Intersects(k) % Intersection(i,2)
+              END IF
+
+            ELSE ! negative
+
+              next = PolylineData(p0) % Prev(i0,1)
+              nextp = PolylineData(p0) % Prev(i0,2)
+              !RemoveLines(NextP,Next) = .TRUE.
+              DO WHILE(.TRUE.)
+                IF(PolylineData(NextP) % Prev(Next,1) > 0 .AND. .NOT. PolylineData(NextP) % Intersect(Next)) THEN
+                  RemoveLines(NextP,Next) = .TRUE.
+                  Nexts = PolylineData(NextP) % Prev(Next,:)
+                  ! this is changing as Next changes
+                  !NextP = PolylineData(NextP) % Prev(Next,2)
+                  Next = Nexts(1)
+                  NextP = Nexts(2)
+                ELSE
+                  EXIT
+                END IF
+              END DO
+
+              ! adjust node
+              PolylineData(p0) % Vals(i0,1) = Intersects(k) % Intersection(i,1)
+              PolylineData(p0) % Vals(i0,3) = Intersects(k) % Intersection(i,2)
+
+              ! adjust mesh for if we want to save
+              ! what about shared nodes?
+              IF(p0==MyPe) THEN
+                IsoMesh % Nodes % x(PL_local(i0,1)) = Intersects(k) % Intersection(i,1)
+                IsoMesh % Nodes % y(PL_local(i0,1)) = Intersects(k) % Intersection(i,2)
+              END IF
+
+            END IF
+          END DO
+        END DO
+      END DO
+
+      CALL DeallocateMeshLines(IsoMesh, RemoveLines)
+      CALL DeallocatePolyLines(RemoveLines, nCol)
+
       WRITE(Message,'(A,ES12.3)') 'Cutfem isoline length:',TotLineLen
       CALL Info('LevelSetUpdate',Message,Level=6)
 
       CALL ListAddConstReal(CurrentModel % Simulation,'res: cutfem isoline length',TotLineLen )
       
-      
+      IF(ALLOCATED(Intersects)) THEN
+        DO i=1,PEs
+          IF(ALLOCATED(Intersects(i) % Intersection)) &
+            DEALLOCATE(Intersects(i) % Intersection)
+          IF(ALLOCATED(Intersects(i) % Elements)) &
+            DEALLOCATE(Intersects(i) % Elements)
+          IF(ALLOCATED(Intersects(i) % Found)) &
+            DEALLOCATE(Intersects(i) % Found)
+          IF(ALLOCATED(Intersects(i) % LS)) &
+            DEALLOCATE(Intersects(i) % LS)
+        END DO
+      END IF
+
+      DO i=1, PEs
+        IF(ALLOCATED(PolylineData(i) % Intersect)) &
+          DEALLOCATE(PolylineData(i) % Intersect)
+      END DO
+
       IF(InfoActive(25)) THEN
         CALL Info('LevelSetUpdate','Polyline interval for Isoline variables')
 
@@ -2581,18 +3545,303 @@ CONTAINS
     END SUBROUTINE PopulatePolyline
     !------------------------------------------------------------------------------
 
+    !initialise local intersects
+    SUBROUTINE InitialiseIntersects(Size)
+      INTEGER :: Size
+      !-----------------------------
+      INTEGER :: MyPE
+
+      MyPE = ParEnv % MyPE + 1
+
+      ALLOCATE(Intersects(MyPE) % Intersection(Size,2), &
+              Intersects(MyPE) % Elements(Size,4), &
+              Intersects(MyPE) % Found(Size,4), &
+              Intersects(MyPE) % LS(Size,4))
+
+      Intersects(MyPE) % nIntersects = 0
+      Intersects(MyPE) % Size = Size
+      Intersects(MyPE) % Found = .FALSE.
+    END SUBROUTINE InitialiseIntersects
+
+    ! double local intersect memmory on the fly
+    SUBROUTINE DoubleIntersectsAllocation()
+      !-----------------------------
+      REAL(KIND=dp), ALLOCATABLE :: WorkReal(:,:)
+      LOGICAL, ALLOCATABLE :: WorkLog(:,:)
+      INTEGER, ALLOCATABLE :: WorkInt(:,:)
+      INTEGER :: Size,Size2,MyPE
+
+      MyPE = ParEnv % MyPE + 1
+      Size = Intersects(MyPE) % Size
+      Size2 = Size*2
+
+      ALLOCATE(WorkReal(Size,4))
+      WorkReal = Intersects(MyPE) % LS
+      DEALLOCATE(Intersects(MyPE) % LS)
+      ALLOCATE(Intersects(myPE) % LS(Size2,4))
+      Intersects(MyPE) % LS(:Size,:) = WorkReal
+
+      WorkReal(:,1:2) = Intersects(MyPE) % Intersection
+      DEALLOCATE(Intersects(MyPE) % Intersection)
+      ALLOCATE(Intersects(MyPE) % Intersection(Size2,2))
+      Intersects(MyPE) % Intersection(:Size,:) = WorkReal(:,1:2)
+      DEALLOCATE(WorkReal)
+
+      ALLOCATE(WorkLog(Size,4))
+      WorkLog = Intersects(MyPE) % Found
+      DEALLOCATE(Intersects(MyPE) % Found)
+      ALLOCATE(Intersects(myPE) % Found(Size2,4))
+      Intersects(MyPE) % Found(1:Size,:) = WorkLog
+      DEALLOCATE(WorkLog)
+
+      ALLOCATE(WorkInt(Size,4))
+      WorkInt = Intersects(MyPE) % Elements
+      DEALLOCATE(Intersects(MyPE) % Elements)
+      ALLOCATE(Intersects(MyPE) % Elements(Size2,4))
+      Intersects(MyPE) % Elements(1:Size,:) = WorkInt
+      DEALLOCATE(WorkInt)
+
+      Intersects(MyPE) % Size = Size2
+
+    END SUBROUTINE DoubleIntersectsAllocation
+
+    ! double local intersect memmory on the fly
+    SUBROUTINE ReduceLocalIntersectMemory()
+      !-----------------------------
+      REAL(KIND=dp), ALLOCATABLE :: WorkReal(:,:)
+      LOGICAL, ALLOCATABLE :: WorkLog(:,:)
+      INTEGER, ALLOCATABLE :: WorkInt(:,:)
+      INTEGER :: Size,Size2,MyPE
+
+      MyPE = ParEnv % MyPE + 1
+      Size = Intersects(MyPE) % Size
+      Size2 = Intersects(MyPE) % nIntersects
+
+      ALLOCATE(WorkReal(Size2,4))
+      WorkReal = Intersects(MyPE) % LS(1:Size2,:)
+      DEALLOCATE(Intersects(MyPE) % LS)
+      ALLOCATE(Intersects(myPE) % LS(Size2,4))
+      Intersects(MyPE) % LS = WorkReal
+
+      WorkReal(:,1:2) = Intersects(MyPE) % Intersection(1:Size2,:)
+      DEALLOCATE(Intersects(MyPE) % Intersection)
+      ALLOCATE(Intersects(MyPE) % Intersection(Size2,2))
+      Intersects(MyPE) % Intersection = WorkReal(:,1:2)
+      DEALLOCATE(WorkReal)
+
+      ALLOCATE(WorkLog(Size2,4))
+      WorkLog = Intersects(MyPE) % Found(1:Size2,:)
+      DEALLOCATE(Intersects(MyPE) % Found)
+      ALLOCATE(Intersects(myPE) % Found(Size2,4))
+      Intersects(MyPE) % Found = WorkLog
+      DEALLOCATE(WorkLog)
+
+      ALLOCATE(WorkInt(Size,4))
+      WorkInt = Intersects(MyPE) % Elements(1:Size2,:)
+      DEALLOCATE(Intersects(MyPE) % Elements)
+      ALLOCATE(Intersects(MyPE) % Elements(Size2,4))
+      Intersects(MyPE) % Elements = WorkInt
+      DEALLOCATE(WorkInt)
+
+      Intersects(MyPE) % Size = Size2
+
+    END SUBROUTINE ReduceLocalIntersectMemory
+
+    SUBROUTINE DeallocateMeshLines(Mesh, RemoveLines)
+      TYPE(Mesh_t), POINTER :: Mesh
+      LOGICAL :: RemoveLines(:,:)
+      !------------------------------
+      TYPE(Element_t), POINTER :: Element,WorkElements(:)
+      INTEGER :: i,MyPE,n
+
+      MyPE = ParEnv % MyPE + 1
+      n = Mesh % NumberOfBulkElements
+
+      IF( ALL(.NOT. RemoveLines(MyPe, :n)) ) RETURN ! no change
+
+      ALLOCATE(WorkElements(COUNT(.NOT. RemoveLines(MyPe, :n))))
+      WorkElements = PACK(Mesh % Elements, (.NOT. RemoveLines(MyPe,:n)))
+
+      DO i=1, Mesh % NumberOfBulkElements
+        IF(RemoveLines(MyPE, i)) THEN
+          Element => Mesh % Elements(i)
+          IF ( ASSOCIATED( Element % NodeIndexes ) ) &
+            DEALLOCATE( Element % NodeIndexes )
+          Element % NodeIndexes => NULL()
+        END IF
+      END DO
+
+      IF(ASSOCIATED(Mesh % Elements)) DEALLOCATE(Mesh % Elements)
+      Mesh % Elements => WorkElements
+      Mesh % NumberOfBulkElements = SIZE(WorkElements)
+      NULLIFY(WorkElements)
+
+    END SUBROUTINE DeallocateMeshLines
+
+    SUBROUTINE DeallocatePolyLines(RemoveLines, nCol)
+      LOGICAL :: RemoveLines(:,:)
+      INTEGER :: nCol
+      !------------------------------
+      INTEGER :: i,j,k,p,n,PEs,nMax,counter,nLines,NNeighbours,MyPE
+      REAL(KIND=dp), ALLOCATABLE :: Vals(:,:)
+      INTEGER, ALLOCATABLE :: WorkInt(:,:), WorkInt2(:,:),PToN(:),Neighbours(:),ns(:)
+      LOGICAL, ALLOCATABLE :: WorkLogical(:)
+
+      PEs = ParEnv % PEs
+      MyPE = ParEnv % MyPE + 1
+
+      IF(PEs > 1) THEN
+        ParEnv % IsNeighbour(MyPE) = .TRUE.
+        Neighbours = PACK( (/ (i,i=1,PEs) /), ParEnv % IsNeighbour)
+        ParEnv % IsNeighbour(MyPE) = .FALSE.
+      ELSE
+        ALLOCATE(Neighbours(1))
+        Neighbours = MyPE
+      END IF
+
+      NNeighbours = SIZE(Neighbours)
+
+
+      ALLOCATE(PToN(PEs), Ns(PEs))
+      PToN = 0
+
+      nMax = 0
+      DO i=1, PEs
+        IF(nMax < PolylineData(i) % nLines) nMax = PolylineData(i) % nLines
+        ns(i) = COUNT(.NOT. RemoveLines(i, :PolylineData(i) % nLines))
+        DO j=1,NNeighbours
+          IF(i == Neighbours(j)) THEN
+            PToN(i) = j
+            EXIT
+          END IF
+        END DO
+      END DO
+
+      ALLOCATE(Vals(nMax,nCol), WorkInt(nMax,2), WorkLogical(nMax), &
+        WorkInt2(NNeighbours,nMax))
+
+      WorkInt2 = 0
+      DO i=1, NNeighbours
+        k = Neighbours(i)
+        counter = 0
+        DO j=1, PolylineData(k) % nLines
+          IF(RemoveLines(k,j)) CYCLE
+          counter = counter + 1
+          WorkInt2(k,j) = counter
+        END DO
+      END DO
+
+      DO i=1, PEs
+        nLines = PolylineData(i) % nLines
+
+        n = Ns(i)
+
+        IF(ALL(.NOT. RemoveLines(i,:nLines))) THEN
+          DO j=1, n
+            IF (PolylineData(i) % Prev(j,1) > ns(PolylineData(i) % Prev(j,2)) ) &
+              PolylineData(i) % Prev(j,1) = 0
+            IF (PolylineData(i) % Next(j,1) > ns(PolylineData(i) % Next(j,2)) ) &
+              PolylineData(i) % Next(j,1) = 0
+          END DO
+          CYCLE ! no change
+        END IF
+
+        counter = 0
+        IF(n > 0) THEN
+          IF(PolylineData(i) % nLines > 0) THEN
+
+            DO j=1, nCol
+              Vals(1:n,j) = PACK(PolylineData(i) % Vals(:,j), .NOT. RemoveLines(i,:nLines))
+            END DO
+
+            DEALLOCATE(PolylineData(i) % Vals)
+            ALLOCATE(PolylineData(i) % Vals(n,nCol))
+            PolylineData(i) % Vals = Vals(1:n,:)
+
+            WorkInt(1:n,1) = PACK(PolylineData(i) % Prev(:,1), .NOT. RemoveLines(i,:nLines))
+            WorkInt(1:n,2) = PACK(PolylineData(i) % Prev(:,2), .NOT. RemoveLines(i,:nLines))
+            DEALLOCATE(PolylineData(i) % Prev)
+            ALLOCATE(PolylineData(i) % Prev(n,2))
+            PolylineData(i) % Prev(:,1) = WorkInt(1:n,1)
+            PolylineData(i) % Prev(:,2) = WorkInt(1:n,2)
+
+            WorkInt(1:n,1) = PACK(PolylineData(i) % Next(:,1), .NOT. RemoveLines(i,:nLines))
+            WorkInt(1:n,2) = PACK(PolylineData(i) % Next(:,2), .NOT. RemoveLines(i,:nLines))
+            DEALLOCATE(PolylineData(i) % Next)
+            ALLOCATE(PolylineData(i) % Next(n,2))
+            PolylineData(i) % Next(:,1) = WorkInt(1:n,1)
+            PolylineData(i) % Next(:,2) = WorkInt(1:n,2)
+
+            ! update next and prev
+            DO j=1, n
+              IF(PolylineData(i) % Prev(j,1) == -1) CYCLE ! shared node
+
+              IF(PolylineData(i) % Prev(j,1) /= 0) THEN
+                k = PToN(PolylineData(i) % Prev(j,2))
+                PolylineData(i) % Prev(j,1) = WorkInt2(k, PolylineData(i) % Prev(j,1))
+                IF (PolylineData(i) % Prev(j,1) > ns(PolylineData(i) % Prev(j,2)) ) &
+                  PolylineData(i) % Prev(j,1) = 0
+                !PolylineData(i) % Prev(j,2) = WorkInt2(PolylineData(i) % Prev(j,2))
+              END IF
+              IF(PolylineData(i) % Next(j,1) /= 0) THEN
+                k = PToN(PolylineData(i) % Next(j,2))
+                PolylineData(i) % Next(j,1) = WorkInt2(k, PolylineData(i) % Next(j,1))
+                IF (PolylineData(i) % Next(j,1) > ns(PolylineData(i) % Next(j,2)) ) &
+                  PolylineData(i) % Next(j,1) = 0
+                !PolylineData(i) % Next(j,2) = WorkInt2(PolylineData(i) % Next(j,2))
+              END IF
+            END DO
+
+            PolylineData(i) % nLines = n
+          END IF
+        END IF
+      END DO
+
+    END SUBROUTINE DeallocatePolyLines
+
+
+
+    ! use old ls field to determine which direction to remove
+    ! positive a1 is +ve compared to a2 on old ls field
+    FUNCTION GetPointLevelset(Point, val) RESULT(Found)
+      !----------------------------------------
+      REAL(KIND=dp) :: Point(3),val
+      LOGICAL :: Found
+      !----------------------------------------
+      REAL(KIND=dp) :: LocalCoords(3),ElementValues(3)
+      TYPE(Element_t), POINTER :: HitElement
+      LOGICAL :: FirstTime=.TRUE.
+
+      SAVE :: FirstTime
+
+      Found = PointInMesh(Solver, Point, LocalCoords, HitElement, ExtInitialize=FirstTime)!, &
+          !CandElement, ExtInitialize )
+
+      IF(.NOT. Found) RETURN
+
+      ElementValues = PhiVar2D % Values(PhiVar2D % Perm(HitElement % NodeIndexes))
+
+      val = InterpolateInElement( HitElement, ElementValues, &
+                          LocalCoords(1), LocalCoords(2), LocalCoords(3) )
+
+      FirstTime = .FALSE.
+
+    END FUNCTION GetPointLevelset
 
     !------------------------------------------------------------------------------
     !> Computes the signed distance to zero levelset. 
     !------------------------------------------------------------------------------
-    FUNCTION SignedDistance(node) RESULT(phip)
+    FUNCTION SignedDistance(node, trusted) RESULT(phip)
       !------------------------------------------------------------------------------
       INTEGER :: node
       REAL(KIND=dp) :: phip
+      LOGICAL, INTENT(out) :: trusted
       !-----------------------------------------------------------------------------
       REAL(KIND=dp) :: xp,yp,x0,y0,x1,y1,xm,ym,a,b,c,d,s,dir1,&
-          dist2,mindist2,dist,mindist,smin,ss,phim,cosphi
-      INTEGER :: i,i0,i1,j,k,n,sgn,m,imin,kmin,dofs,k2
+          dist2,mindist2,dist,mindist,smin,ss,phim,cosphi,&
+          x2,x3,y2,y3,denom,ua,ub,xi,yi,dir_int,sgn_sum,seg_vx,seg_vy,&
+          dx,dy,dir_final,dir0
+      INTEGER :: i,i0,i1,j,k,n,sgn,m,imin,kmin,dofs,k2,count,next,nextp
       TYPE(Variable_t), POINTER :: Var1D, Var2D
       INTEGER :: nCol, nLines
       REAL(KIND=dp), POINTER :: pValues(:)
@@ -2606,7 +3855,8 @@ CONTAINS
       
       m = 0
       nCol = 7
-            
+
+
       DO k = 1, ParEnv % PEs
         nLines = PolylineData(k) % nLines
         IF(nLines == 0) CYCLE
@@ -2651,14 +3901,14 @@ CONTAINS
             ! Dir is an indicator one which side of the line segment the point lies. 
             ! We have ordered the edges so that "dir1" should be consistent.
             dir1 = (x1 - x0) * (yp - y0) - (y1 - y0) * (xp - x0)
-            
+
             ! If the control point and found point lie on the same side they are inside. 
             IF(dir1 < 0.0_dp ) THEN
               sgn = -1
             ELSE
               sgn = 1
             END IF
-            
+
             dist = sgn * dist2 + phim
             ! Ok, close but no honey. 
             IF( ABS(dist) > ABS(mindist) ) CYCLE
@@ -2686,6 +3936,7 @@ CONTAINS
           smin = s
           imin = i
           kmin = k
+          dir_final = dir1
         END DO
       END DO
         
@@ -2695,10 +3946,48 @@ CONTAINS
         phip = sgn * SQRT(mindist2)
       END IF
 
+      trusted = .TRUE.
+#if 1
+      ! need to have think about how this works for parallel
+      IF(PolylineData(kmin) % Prev(imin,1) > 0) THEN
+        next = PolylineData(kmin) % Prev(imin,1)
+        nextp = PolylineData(kmin) % Prev(imin,2)
+
+        x0 = PolylineData(nextp) % Vals(next,1)
+        x1 = PolylineData(nextp) % Vals(next,2)
+        y0 = PolylineData(nextp) % Vals(next,3)
+        y1 = PolylineData(nextp) % Vals(next,4)
+        dir0 = (x1 - x0) * (yp - y0) - (y1 - y0) * (xp - x0)
+
+        ! are the signs different?
+        IF (SIGN(1.0_dp, dir0) /= SIGN(1.0_dp, dir_final)) trusted = .FALSE.
+      ELSE
+        trusted = .FALSE.
+      END IF
+
+      IF(trusted) THEN
+        IF(PolylineData(kmin) % Next(imin,1) > 0) THEN
+          next = PolylineData(kmin) % Next(imin,1)
+          nextp = PolylineData(kmin) % Next(imin,2)
+
+          x0 = PolylineData(nextp) % Vals(next,1)
+          x1 = PolylineData(nextp) % Vals(next,2)
+          y0 = PolylineData(nextp) % Vals(next,3)
+          y1 = PolylineData(nextp) % Vals(next,4)
+          dir0 = (x1 - x0) * (yp - y0) - (y1 - y0) * (xp - x0)
+
+          ! are the signs different?
+          IF (SIGN(1.0_dp, dir0) /= SIGN(1.0_dp, dir_final)) trusted = .FALSE.
+        ELSE
+          trusted = .FALSE.
+        END IF
+      END IF
+#endif
+
       ! We can carry the fields with the zero levelset. This is like pure advection.
       ! We should make this less laborious my fetching the pointers first...
       ! Also, do not reinterpolate the nodes that are already ok!
-      IF( nVar > 0 .AND. CutPerm(node) == 0 ) THEN !.AND. PhiVar2D % Perm(node) == 0 ) THEN                
+      IF( nVar > 0 .AND. CutPerm(node) == 0 .AND. kmin == Parenv % MyPE+1) THEN !.AND. PhiVar2D % Perm(node) == 0 ) THEN
 
         i0 = IsoMesh % Elements(imin) % NodeIndexes(1)
         i1 = IsoMesh % Elements(imin) % NodeIndexes(2)
@@ -2734,11 +4023,58 @@ CONTAINS
           END DO
         END DO
       END IF
-      
+
       !PRINT *,'phip:',phip, m      
-      
-      END FUNCTION SignedDistance
+
+    END FUNCTION SignedDistance
     !------------------------------------------------------------------------------
+
+    SUBROUTINE LineSegmentsIntersect ( a1, a2, b1, b2, intersect_point, does_intersect, buffer)
+      ! Find if two 2D line segments intersect
+      ! Line segment 'a' runs from point a1 => a2, same for b
+
+      IMPLICIT NONE
+
+      REAL(KIND=dp) :: a1(2), a2(2), b1(2), b2(2), intersect_point(2)
+      LOGICAL :: does_intersect
+      REAL(KIND=dp), OPTIONAL :: buffer
+      !-----------------------
+      REAL(KIND=dp) :: r(2), s(2), rxs, bma(2), t, u, err_buffer
+
+      does_intersect = .FALSE.
+      intersect_point = 0.0_dp
+
+      r = a2 - a1
+      s = b2 - b1
+
+      rxs = VecCross2D(r,s)
+
+      IF(rxs == 0.0_dp) RETURN
+
+      bma = b1 - a1
+
+      t = VecCross2D(bma,s) / rxs
+      u = VecCross2D(bma,r) / rxs
+
+      IF(PRESENT(Buffer)) THEN
+        err_buffer = Buffer/rxs
+      ELSE
+        err_buffer = AEPS
+      END IF
+      IF(t < 0.0_dp-err_buffer .OR. t > 1.0_dp+err_buffer .OR. &
+          u < 0.0_dp-err_buffer .OR. u > 1.0_dp+err_buffer) RETURN
+
+      intersect_point = a1 + (t * r)
+      does_intersect = .TRUE.
+
+    END SUBROUTINE LineSegmentsIntersect
+
+    FUNCTION VecCross2D(a, b) RESULT (c)
+      REAL(KIND=dp) :: a(2), b(2), c
+
+      c = a(1)*b(2) - a(2)*b(1)
+
+    END FUNCTION VecCross2D
 
   END SUBROUTINE LevelSetUpdate
   

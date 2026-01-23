@@ -80,6 +80,7 @@ void MergeElements(struct FemType *data,struct BoundaryType *bound,
 		   int manual,Real corder[],Real eps,int mergebounds,int info);
 void MergeBoundaries(struct FemType *data,struct BoundaryType *bound,int *doubles,int info);
 void SeparateCartesianBoundaries(struct FemType *data,struct BoundaryType *bound,int info);
+void ModifyUnsupportedElements(struct FemType *data);
 void ElementsToBoundaryConditions(struct FemType *data,
 				  struct BoundaryType *bound,int retainorphans, int info);
 int SideAndBulkMappings(struct FemType *data,struct BoundaryType *bound,struct ElmergridType *eg,int info);

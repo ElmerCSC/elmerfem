@@ -72,7 +72,8 @@ CONTAINS
 
       TYPE(Matrix_t), POINTER :: Matrix, A
       TYPE(Solver_t), TARGET :: Solver
-      INTEGER :: N, NEIG, DPERM(n)
+      INTEGER :: N, NEIG
+      INTEGER, ALLOCATABLE :: dperm(:)
       COMPLEX(KIND=dp) :: EigValues(:), EigVectors(:,:)
 
 #ifdef USE_ARPACK
@@ -81,7 +82,7 @@ CONTAINS
 !     | Local Arrays |
 !     %--------------%
 !
-      REAL(KIND=dp), TARGET :: WORKD(3*N), RESID(N),bb(N),xx(N)
+      REAL(KIND=dp), TARGET, ALLOCATABLE :: WORKD(:), RESID(:),bb(:),xx(:)
       REAL(KIND=dp), POINTER CONTIG :: x(:), b(:)
       INTEGER :: IPARAM(11), IPNTR(14)
       INTEGER, ALLOCATABLE :: Perm(:)
@@ -165,12 +166,13 @@ CONTAINS
                'Number of Lanczos vectors must exceed the number of eigenvalues.' )
       END IF
 
+      ALLOCATE(workd(3*n),resid(n), bb(n), xx(n), stat=istat )
+      IF ( istat /= 0 ) CALL Fatal( Caller, 'Memory allocation error.' )
+
       ALLOCATE( WORKL(3*NCV**2 + 6*NCV), D(NCV,3), &
                 WORKEV(3*NCV), V(n,NCV), CHOOSE(NCV), STAT=istat )
+      IF ( istat /= 0 ) CALL Fatal( Caller, 'Memory allocation error.' )
 
-      IF ( istat /= 0 ) THEN
-         CALL Fatal( Caller, 'Memory allocation error.' )
-      END IF
 !
 !     %--------------------------------------------------%
 !     | The work array WORKL is used in DSAUPD as        |
@@ -773,7 +775,8 @@ END SUBROUTINE CheckResiduals
 
       TYPE(Matrix_t), POINTER :: Matrix
       TYPE(Solver_t), TARGET :: Solver
-      INTEGER :: N, NEIG, DPERM(n)
+      INTEGER :: N, NEIG
+      INTEGER, ALLOCATABLE :: DPERM(:)
       COMPLEX(KIND=dp) :: EigValues(:), EigVectors(:,:)
 
 #ifdef USE_ARPACK
@@ -782,7 +785,7 @@ END SUBROUTINE CheckResiduals
 !     | Local Arrays |
 !     %--------------%
 !
-      REAL(KIND=dp), TARGET :: WORKD(3*N), RESID(N)
+      REAL(KIND=dp), TARGET, ALLOCATABLE :: WORKD(:), RESID(:)
       REAL(KIND=dp), POINTER CONTIG :: x(:), b(:)
       INTEGER :: IPARAM(11), IPNTR(14)
       INTEGER, ALLOCATABLE :: Perm(:)
@@ -834,11 +837,11 @@ END SUBROUTINE CheckResiduals
 
       lWORKL = NCV*(NCV+8)
 
-      ALLOCATE( WORKL(lWORKL), D(NCV,2), V(N,NCV), CHOOSE(NCV), STAT=istat )
+      ALLOCATE(workd(3*n), resid(n), dperm(n), STAT=istat)
+      IF ( istat /= 0 ) CALL Fatal(Caller, 'Memory allocation error.' )
 
-      IF ( istat /= 0 ) THEN
-         CALL Fatal(Caller, 'Memory allocation error.' )
-      END IF
+      ALLOCATE( WORKL(lWORKL), D(NCV,2), V(N,NCV), CHOOSE(NCV), STAT=istat )
+      IF ( istat /= 0 ) CALL Fatal(Caller, 'Memory allocation error.' )
 
       TOL = ListGetConstReal( Solver % Values, 'Eigen System Convergence Tolerance', stat )
       IF ( .NOT. stat ) THEN
@@ -1125,7 +1128,7 @@ END SUBROUTINE CheckResiduals
 
       TYPE(Matrix_t), POINTER :: Matrix, A
       TYPE(Solver_t), TARGET :: Solver
-      INTEGER :: N, NEIG, DPERM(n)
+      INTEGER :: N, NEIG
       COMPLEX(KIND=dp) :: EigValues(:), EigVectors(:,:)
 
 #ifdef USE_ARPACK
@@ -1134,9 +1137,9 @@ END SUBROUTINE CheckResiduals
 !     | Local Arrays |
 !     %--------------%
 !
-      COMPLEX(KIND=dp) :: WORKD(3*N), RESID(N)
+      COMPLEX(KIND=dp), ALLOCATABLE :: WORKD(:), RESID(:)
       INTEGER :: IPARAM(11), IPNTR(14)
-      INTEGER, ALLOCATABLE :: Perm(:)
+      INTEGER, ALLOCATABLE :: Perm(:), dPerm(:)
       LOGICAL, ALLOCATABLE :: Choose(:)
       COMPLEX(KIND=dp), ALLOCATABLE :: WORKL(:), D(:), WORKEV(:), V(:,:)
 
@@ -1153,8 +1156,8 @@ END SUBROUTINE CheckResiduals
 
       CHARACTER(:), ALLOCATABLE :: DirectMethod, Method
       COMPLEX(KIND=dp) :: Sigma = 0.0d0, s
-      REAL(KIND=dp), TARGET :: x(2*n), b(2*n)
-      REAL(KIND=dp) :: SigmaR, SigmaI, TOL, RWORK(N)
+      REAL(KIND=dp), TARGET, ALLOCATABLE :: x(:), b(:), rwork(:)
+      REAL(KIND=dp) :: SigmaR, SigmaI, TOL
 !
       REAL(KIND=dp), POINTER CONTIG :: SaveValues(:), SaveRhs(:)
 
@@ -1191,6 +1194,12 @@ END SUBROUTINE CheckResiduals
       IF ( NCV <=  NEIG ) THEN
         CALL Fatal( 'EigenSolve', & 
             'Number of Lanczos vectors must exceed the number of eigenvalues.' )
+      END IF
+
+      ALLOCATE( workd(3*n), resid(n), dperm(n), x(2*n), b(2*n), rwork(n), STAT=istat)
+
+      IF ( istat /= 0 ) THEN
+         CALL Fatal(Caller, 'Memory allocation error.' )
       END IF
 
       ALLOCATE( WORKL(3*NCV**2 + 6*NCV), D(NCV), &
@@ -1299,7 +1308,7 @@ END SUBROUTINE CheckResiduals
       IF ( .NOT. Matrix % Lumped ) THEN
         SigmaR = ListGetConstReal( Params,'Eigen System Shift', stat )
         SigmaI = ListGetConstReal( Params,'Eigen System Shift Im', stat )
-        Sigma = CMPLX(SigmaR,SigmaI)
+        Sigma = CMPLX(SigmaR,SigmaI, KIND=dp)
 
         IF ( Sigma /= 0._dp ) THEN
           Matrix % Values = Matrix % Values - Sigma * Matrix % MassValues
@@ -1622,7 +1631,7 @@ END SUBROUTINE CheckResidualsComplex
 
       TYPE(Matrix_t), POINTER :: KMatrix
       TYPE(Solver_t), TARGET :: Solver
-      INTEGER :: N, NEIG, DPERM(n)
+      INTEGER :: N, NEIG
       COMPLEX(KIND=dp) :: EigValues(:), EigVectors(:,:)
 
 #ifdef USE_ARPACK
@@ -1632,10 +1641,10 @@ END SUBROUTINE CheckResidualsComplex
 !     %--------------%
 
       TYPE(Matrix_t), POINTER :: MMatrix, BMatrix
-      REAL(KIND=dp), TARGET :: WORKD(3*N), RESID(N)
       REAL(KIND=dp), POINTER CONTIG :: x(:), b(:)
       INTEGER :: IPARAM(11), IPNTR(14)
-      INTEGER, ALLOCATABLE :: Perm(:), kMap(:)
+      REAL(KIND=dp), ALLOCATABLE, TARGET :: WORKD(:), RESID(:)
+      INTEGER, ALLOCATABLE :: Perm(:), kMap(:), dPerm(:)
       LOGICAL, ALLOCATABLE :: Choose(:)
       CHARACTER(:), ALLOCATABLE :: str
       COMPLEX(KIND=dp) :: s, EigTemp(NEIG)
@@ -1700,8 +1709,12 @@ END SUBROUTINE CheckResidualsComplex
 
       NCV = 3 * NEIG + 1
 
+      ALLOCATE( workd(3*n), resid(n), dperm(n), stat=istat )
+      IF ( istat /= 0 ) CALL Fatal( Caller, 'Memory allocation error.' )
+
       ALLOCATE( WORKL(3*NCV**2 + 6*NCV), D(NCV,3), &
          WORKEV(3*NCV), V(n,NCV), CHOOSE(NCV), STAT=istat )
+      IF ( istat /= 0 ) CALL Fatal( Caller, 'Memory allocation error.' )
 
       CHOOSE = .FALSE.
       Workl = 0.0d0
@@ -1709,9 +1722,6 @@ END SUBROUTINE CheckResidualsComplex
       v = 0.0d0
       d = 0.0d0
 
-      IF ( istat /= 0 ) THEN
-         CALL Fatal( Caller, 'Memory allocation error.' )
-      END IF
 
 !     %--------------------------------------------------%
 !     | The work array WORKL is used in DSAUPD as        |
@@ -2108,9 +2118,12 @@ END SUBROUTINE CheckResidualsComplex
 !------------------------------------------------------------------------------
       INTEGER :: i, n
       REAL(KIND=dp) :: alpha, beta, omega, rho, oldrho, bnorm
-      REAL(KIND=dp) :: r(n), Ri(n), P(n), V(n), S(n), &
-           T(n), T1(n), T2(n), Tmp(n/2)
+      REAL(KIND=dp), ALLOCATABLE :: r(:), Ri(:), P(:), V(:), S(:), &
+           T(:), T1(:), T2(:), Tmp(:)
 !------------------------------------------------------------------------------
+
+      ALLOCATE(r(n), Ri(n), P(n), V(n), S(n), T(n), T1(n), t2(n), Tmp(n/2) )
+
       CALL EigenMGmv1( n/2, KMatrix, MMatrix, BMatrix, x, r, UseI, IScale )
       r(1:n) = b(1:n) - r(1:n)
 
@@ -2223,7 +2236,9 @@ END SUBROUTINE CheckResidualsComplex
       REAL(KIND=dp) CONTIG :: x(:), b(:)
       LOGICAL :: UseI
 
-      REAL(KIND=dp) :: Tmp(n)
+      REAL(KIND=dp), ALLOCATABLE :: Tmp(:)
+       
+      ALLOCATE(Tmp(n))
 
       Tmp = 0.0d0
       b = 0.0d0

@@ -51,8 +51,8 @@ Solver 1
 
   Steady State Convergence Tolerance = 1.0e-5
 
-  Nonlinear System Max Iterations = 1 ! should this be enforced in the code?
-
+  Nonlinear System Max Iterations = 1 
+  Nonlinear System Consistent Norm = True
 
   Linear System Solver = Iterative
   Linear System Iterative Method = MPRGP

@@ -1545,7 +1545,7 @@ CONTAINS
       IF(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
     END DO
     
-    CALL Info('BlockPickMatrixAV','Finished picking block martrix!',Level=20)
+    CALL Info('BlockPickMatrixAV','Finished picking block matrix!',Level=20)
 
     
   END SUBROUTINE BlockPickMatrixAV
@@ -1778,7 +1778,7 @@ CONTAINS
 
 
   !-------------------------------------------------------------------------------------
-  !> Makes a quadratic H(curl) approximation to have a block structure
+  !> Makes a H(curl) approximation to have a block structure
   !-------------------------------------------------------------------------------------
   SUBROUTINE BlockPickMatrixHcurl( Solver, NoVar, DoCmplx, BlockTag )
 
@@ -1787,11 +1787,11 @@ CONTAINS
     LOGICAL :: DoCmplx
     INTEGER :: BlockTag(:)
 
-    INTEGER :: i,j,k,n,m,n0,dofs,ic,kc
+    INTEGER :: i,j,k,l,n,m,n0,dofs,EDOFs,EDOFs_Order1
     TYPE(Matrix_t), POINTER :: A,B
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Element_t), POINTER :: Element, Edge
-    LOGICAL :: Found
+    LOGICAL :: Found, SecondFamily, SecondOrder, PickSimplest
     
     Mesh => Solver % Mesh
 
@@ -1801,7 +1801,28 @@ CONTAINS
     IF(.NOT. ASSOCIATED( Mesh % Faces ) ) THEN
       CALL Fatal('BlockPickMatrixHcurl','This subroutine needs Faces!')
     END IF        
-    CALL Info('BlockPickMatrixHcurl','Arranging a quadratic H(curl) approximation into blocks',Level=10)
+    CALL Info('BlockPickMatrixHcurl','Arranging a H(curl) approximation into blocks',Level=10)
+
+    SecondFamily = ListGetLogical( Solver % Values,'Second Kind Basis',Found )
+    IF (SecondFamily) THEN
+      SecondOrder = ListGetLogical( Solver % Values,'Quadratic Approximation',Found )
+      IF (.NOT. SecondOrder) THEN
+        EDOFs = 2
+        EDOFs_Order1 = 1
+      ELSE
+        EDOFs = 3
+        IF (ListGetLogical(Solver % Values, 'Block Quadratic Hcurl Pick Simplest', Found)) THEN
+          ! To select DOFs corresponding to the lowest-order basis of the first kind
+          EDOFs_Order1 = 1
+        ELSE
+          ! To select DOFs corresponding to the lowest-order basis of the second kind
+          EDOFs_Order1 = 2
+        END IF
+      END IF
+    ELSE
+      EDOFs = 2
+      EDOFs_Order1 = 1
+    END IF
 
     NoVar = 2
     IF( ListGetLogical( Solver % Values,'Block Quadratic Hcurl Faces',Found ) ) NoVar = 3
@@ -1840,26 +1861,43 @@ CONTAINS
         
     n0 = Mesh % NumberOfNodes    
     DO i=1, Mesh % NumberOfEdges
-      ! This corresponds to the lowest-order DOF over an edge
-      j = n0 + 2*i-1
-      k = Solver % Variable % Perm(j)
-      IF(k==0) CYCLE
+      DO l=1,EDOFs_Order1
+        ! This corresponds to the lowest-order DOF over an edge
+        j = n0 + EDOFs*(i-1) + l
+        k = Solver % Variable % Perm(j)
+        IF(k<1) CYCLE
 
-      ! If BlockTag array were created for all DOFs with DOFs>1,
-      ! it would have a repeated entries occurring in clusters of
-      ! size DOFs. Therefore a smaller array can be used to tag DOFs.
-      IF( dofs == 1 ) THEN
-        BlockTag(k) = 1
-      ELSE IF(dofs == 2 ) THEN
-        BlockTag(2*k-1) = 1
-        IF( DoCmplx ) THEN
-          BlockTag(2*k) = 2 
-        ELSE
-          BlockTag(2*k) = 1
+        ! If BlockTag array were created for all DOFs with DOFs>1,
+        ! it would have a repeated entries occurring in clusters of
+        ! size DOFs. Therefore a smaller array can be used to tag DOFs.
+        IF( dofs == 1 ) THEN
+          BlockTag(k) = 1
+        ELSE IF(dofs == 2 ) THEN
+          BlockTag(2*k-1) = 1
+          IF( DoCmplx ) THEN
+            BlockTag(2*k) = 2 
+          ELSE
+            BlockTag(2*k) = 1
+          END IF
         END IF
-      END IF
+      END DO
     END DO
 
+!    DO i=1,Mesh % NumberOfFaces
+!      DO l=2,3
+!        j = n0 + EDOFs*Mesh % NumberOfEdges + 3*(i-1) + l
+!        k = Solver % Variable % Perm(j)
+!        IF(k<1) CYCLE
+!
+!        IF (dofs == 1) THEN
+!          BlockTag(k) = 1
+!        ELSE IF (dofs == 2) THEN
+!          BlockTag(2*k-1) = 1
+!          BlockTag(2*k) = 1
+!        END IF
+!      END DO
+!    END DO
+      
     IF(NoVar == 3) THEN
       IF( DoCmplx ) THEN
         WHERE( BlockTag > 1 )
@@ -5003,7 +5041,8 @@ CONTAINS
 
     ! Different strategies on how to split the initial monolithic matrix into blocks
     BlockAV = ListGetLogical( Params,'Block A-V System', GotIt)
-    BlockHcurl = ListGetLogical( Params,'Block Quadratic Hcurl System', GotIt)   
+    BlockHcurl = ListGetLogical( Params,'Block Hcurl System', GotIt) .OR. &
+        ListGetLogical( Params,'Block Quadratic Hcurl System', GotIt)   
     BlockHdiv = ListGetLogical( Params,'Block Hdiv system',GotIt)
     BlockReIm = ListGetLogical( Params,'Block Re-Im system',GotIt)
     BlockNodal = ListGetLogical( Params,'Block Nodal System', GotIt)

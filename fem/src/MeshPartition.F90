@@ -610,7 +610,7 @@ CONTAINS
 
 #else
     CALL FATAL('Zoltan_Interface',&
-         'Repartitioning utility Zoltan (Trilinos) has not been installed')
+         'Repartitioning utility Zoltan has not been installed')
 #endif
   END SUBROUTINE Zoltan_Interface
 

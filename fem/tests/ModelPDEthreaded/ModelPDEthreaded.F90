@@ -222,12 +222,8 @@ CONTAINS
     IF (.NOT. Found) time_coeff = 0._dp
     
     Velo = 0._dp
-    DO i=1,dim
-      ! Velo(1:n,i)=GetReal(Material,'convection velocity '//I2S(i),Found)
-      CALL GetRealValues(Material, 'convection velocity '//I2S(i), Coeffs(1:n,VELO_IND+i-1), &
-           Found, UElement=Element)
-      IF (.NOT. Found) Coeffs(1:n,VELO_IND+i-1) = 0._dp
-    END DO
+    CALL GetRealValues(Material, 'convection velocity 1', Velo(1:n,1),Found, UElement=Element)
+    CALL GetRealValues(Material, 'convection velocity 2', Velo(1:n,2),Found, UElement=Element)
 
     ! Numerical integration:
     ! Compute basis function values and derivatives at integration points

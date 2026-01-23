@@ -179,7 +179,7 @@ CONTAINS
     END IF
       
     !PRINT *,'Curr:',CompId,CurrRe,CurrIm
-    Curr = CMPLX(CurrRe,CurrIm)
+    Curr = CMPLX(CurrRe,CurrIm,KIND=dp)
 
   END FUNCTION GetComponentCurrent
 

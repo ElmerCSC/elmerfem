@@ -4024,6 +4024,8 @@ allocate:
     free_Ivector(revindx,1,maxindx);
   }
 
+  ModifyUnsupportedElements(data);
+  
   ElementsToBoundaryConditions(data,bound,FALSE,info);
 
   printf("Successfully read the mesh from the Gmsh input file.\n");
@@ -4251,6 +4253,8 @@ omstart:
     free_Ivector(revindx,1,maxindx);
   }
 
+  ModifyUnsupportedElements(data);
+  
   ElementsToBoundaryConditions(data,bound,keeporphans,info);
 
   data->bodynamesexist = physvolexist;
@@ -4433,11 +4437,14 @@ omstart:
 	  for(;;) { 
 	    for(l=0;l<LONGLINESIZE;l++) {
 	      if( longline[l] == '\n') {
-		j = l;
+		j = l+1;
 	    	break;	    
 	      }
 	    }
-	    if(j) break;
+	    if(j) {
+	      j--;
+	      break;	      
+	    }
 	    k += LONGLINESIZE;
 	    GETLONGLINE;
 	  }	   	    	      
@@ -4492,11 +4499,11 @@ omstart:
 	  printf("Reading %d elements with tag %d of type %d\n", numElements, tagEntity, elementtype);
 	  if( tagsize > 0 ) {
 	    if( tagmap[dimEntity][tagEntity] ) {
-	      printf("Mapping mesh tag %d to physical tag %d in %dDIM\n",tagEntity,tagmap[dimEntity][tagEntity],dimEntity);	    
+	      printf("  Mapping mesh tag %d to physical tag %d in %dDIM\n",tagEntity,tagmap[dimEntity][tagEntity],dimEntity);	    
 	      tagEntity = tagmap[dimEntity][tagEntity];
 	    }
 	    else {
-	      printf("Mesh tag %d is not associated to any physical tag!\n",tagEntity);
+	      printf("   Mesh tag %d is not associated to any physical tag!\n",tagEntity);
 	    }
 	  }
 	}
@@ -4687,6 +4694,8 @@ omstart:
     free_Ivector(revindx,1,maxindx);
   }
 
+  ModifyUnsupportedElements(data);
+  
   ElementsToBoundaryConditions(data,bound,keeporphans,info);
 
   data->bodynamesexist = physvolexist;
@@ -4749,7 +4758,7 @@ omstart:
       GETLINE;
       if(gmshbinary){
         int one;
-        fread(&one, sizeof(int), 1, in);
+        frcount = fread(&one, sizeof(int), 1, in);
         if(one != 1) {
           printf("Gmsh binary file needs to swap bytes, not implemented in ElmerGrid. Exiting!\n");
           bigerror("Gmsh binary file needs to swap bytes, not implemented in ElmerGrid. Exiting!");
@@ -4964,7 +4973,7 @@ omstart:
               if(frcount != 1)
                 printf("9 fread error, frcount = %d, not equal to %d\n",frcount,1);
               if(nophys > 0) {
-                fread(&phystag, sizeof(int), nophys, in);
+                frcount = fread(&phystag, sizeof(int), nophys, in);
                 if(frcount != (int) nophys)
                   printf("9 fread error, frcount = %d, not equal to %lu\n",
                          frcount,(unsigned long) nophys);
@@ -5077,14 +5086,18 @@ omstart:
             for(;;) {
               for(l=0; l<LONGLINESIZE; l++) {
                 if( longline[l] == '\n') {
-                  j = l;
+		  // we should have positive j even when the newline is the 0th entry!
+                  j = l+1;
                   break;
                 }
               }
-              if(j) break;
-              k += LONGLINESIZE;
+              if(j) {
+		j--;
+		break;
+	      }
+	      k += LONGLINESIZE;
               GETLONGLINE;
-              printf("extra getlongline: %s\n",longline);
+              if(0) printf("extra getlongline: %s\n",longline);
               fflush(stdout);
             }
             if( k > 0 && !allocated) printf("Entity line %d has length %d.\n",i,k+j);
@@ -5176,7 +5189,7 @@ omstart:
         if( allocated ) {
            if( tagsize > 0 ) {
             if( tagmap[dimEntity][tagEntity] ) {
-              printf("Mapping mesh tag %d to physical tag %d in %dDIM\n",
+              printf("   Mapping mesh tag %d to physical tag %d in %dDIM\n",
                      tagEntity,tagmap[dimEntity][tagEntity],dimEntity);
               tagEntity = tagmap[dimEntity][tagEntity] + phystagoffset[dimEntity];
             }
@@ -5417,25 +5430,47 @@ omstart:
   }
 
   if(maxindx > noknots) {
+    int cnt1,cnt2,cnt3,cnt4;
     printf("Renumbering the Gmsh nodes from %d to %d\n",maxindx,noknots);
 
+    cnt1 = cnt2 = cnt3 = cnt4 = 0;
+
+    for(i=1;i<=maxindx;i++)
+      if(revindx[i]) cnt1++;
+    printf("   Number of tagged nodes in reverse index table (out of %d): %d\n",maxindx,cnt1);
+    
+    
     for(i=1; i <= noelements; i++) {
       elementtype = data->elementtypes[i];
       elemnodes = elementtype % 100;
 
       for(j=0; j<elemnodes; j++) {
         k = data->topology[i][j];
-        if(k <= 0 || k > maxindx)
-          printf("index out of bounds %d\n",k);
-        else if(revindx[k] <= 0)
-          printf("unknown node %d %d in element %d\n",k,revindx[k],i);
-        else
+        if(k <= 0 || k > maxindx) {
+	  if(cnt2<10) printf("   index out of bounds %d\n",k);
+	  if(cnt2==10) printf("  ...\n");
+	  cnt2++;
+	}
+	else if(revindx[k] <= 0) {	  
+          if(cnt3<10) printf("   node %d (local node %d in element %d of type %d) not found in revindx!\n",k,j+1,i,elementtype);
+	  if(cnt3==10) printf("  ...\n");
+	  cnt3++;
+	}
+        else {
+	  cnt4++;
           data->topology[i][j] = revindx[k];
+	}
       }
     }
+    if(cnt2) printf("   Number of node indexes out of bounds [0 %d]: %d\n",maxindx,cnt2);
+    if(cnt3) printf("   Number of node indexes not found in inverse index table: %d\n",cnt3);
+    if(cnt4) printf("   Number of node indexes found in inverse index table: %d\n",cnt4);
+
     free_Ivector(revindx,1,maxindx);
   }
-
+    
+  ModifyUnsupportedElements(data);
+  
   ElementsToBoundaryConditions(data,bound,keeporphans,info);
 
   data->bodynamesexist = physvolexist;

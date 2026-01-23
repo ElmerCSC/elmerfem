@@ -49,8 +49,8 @@ MACRO(ADD_ELMER_TEST TestName)
         COMMAND ${CMAKE_COMMAND}
         -DCMAKE_MODULE_PATH=${CMAKE_MODULE_PATH}
         -DELMERGRID_BIN=${ELMERGRID_BIN}
-	-DVIEWFACTORS_BIN=${VIEWFACTORS_BIN}
-	-DRADIATORS_BIN=${RADIATORS_BIN}
+        -DVIEWFACTORS_BIN=${VIEWFACTORS_BIN}
+        -DRADIATORS_BIN=${RADIATORS_BIN}
         -DELMERSOLVER_BIN=${ELMERSOLVER_BIN}
         -DFINDNORM_BIN=${FINDNORM_BIN}
         -DMESH2D_BIN=${MESH2D_BIN}
@@ -73,6 +73,11 @@ MACRO(ADD_ELMER_TEST TestName)
         FOREACH(lbl ${_parsedArgs_LABELS})
           SET_PROPERTY(TEST ${_this_test_name} APPEND PROPERTY LABELS ${lbl})
         ENDFOREACH()
+      ENDIF()
+      IF(WITH_MPI)
+        # Tell ctest how many processors this test requires.
+        SET_TESTS_PROPERTIES(${_this_test_name} PROPERTIES
+          PROCESSORS ${n})
       ENDIF()
       IF(${n} GREATER 0)
         # Avoid running tests using the same directory concurrently.

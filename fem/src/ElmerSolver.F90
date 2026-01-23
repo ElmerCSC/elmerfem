@@ -85,7 +85,7 @@
      USE MainUtils, ONLY : AddEquationBasics, AddEquationSolution, AddExecWhenFlag, &
          PredictorCorrectorControl, SingleSolver, SolveEquations, SolverActivate, &
          SwapMesh
-     USE DefUtils, ONLY : GetSimulation, GetCompilationDate, GetRevision, GetVersion, &
+     USE DefUtils, ONLY : GetSimulation, GetCompilationDate, GetRevision, GetVersion, GetBranch, &
          GetReal, GetCReal, GetLogical, GetElementNOFNodes, GetElementDOFs, GetBC, &
          GetElementFamily, GetElementNodes, VectorElementEdgeDOFs
 
@@ -153,14 +153,6 @@
      REAL(KIND=dp), ALLOCATABLE :: rpar(:)
      CHARACTER(LEN=MAX_PATH_LEN) :: MeshDir, MeshName
      
-#ifdef HAVE_TRILINOS
-     INTERFACE
-       SUBROUTINE TrilinosCleanup() BIND(C,name='TrilinosCleanup')
-         IMPLICIT NONE
-       END SUBROUTINE TrilinosCleanup
-     END INTERFACE
-#endif
-
      ! Start the watches, store later
      !--------------------------------
      RT0 = RealTime()
@@ -254,7 +246,7 @@
          CALL Info( 'MAIN', 'This program is free software licensed under (L)GPL          ')
          CALL Info( 'MAIN', 'Copyright 1st April 1995 - , CSC - IT Center for Science Ltd.')
          CALL Info( 'MAIN', 'Webpage http://www.csc.fi/elmer, Email elmeradm@csc.fi       ')
-         CALL Info( 'MAIN', 'Version: ' // GetVersion() // ' (Rev: ' // GetRevision() // &
+         CALL Info( 'MAIN', 'Version: ' // GetVersion() //'-'// GetBranch() // ' (Rev: ' // GetRevision() // &
                             ', Compiled: ' // GetCompilationDate() // ')' )
 
          IF ( ParEnv % PEs > 1 ) THEN
@@ -277,9 +269,6 @@
 #endif
 #ifdef HAVE_HYPRE
          CALL Info( 'MAIN', ' HYPRE library linked in.')
-#endif
-#ifdef HAVE_TRILINOS
-         CALL Info( 'MAIN', ' Trilinos library linked in.')
 #endif
 #ifdef HAVE_MUMPS
          CALL Info( 'MAIN', ' MUMPS library linked in.')
@@ -757,9 +746,6 @@
      
      IF ( Initialize <= 0 ) CALL FreeModel(CurrentModel)
 
-#ifdef HAVE_TRILINOS
-  CALL TrilinosCleanup()
-#endif
 
      IF ( FirstTime ) CALL ParallelFinalize()
      FirstTime = .FALSE.
@@ -2312,7 +2298,9 @@
                
                IF(ASSOCIATED(Mesh % Edges)) THEN
                  IF ( i<=Mesh % NumberOfBulkElements) THEN
-                   Gotit = ListCheckPresent( IC, TRIM(Var % Name)//' {e}' )
+                   BLOCK
+                     Gotit = ListCheckPresent( IC, Var % Name//' {e}' )
+                   END BLOCK
                    IF ( Gotit ) THEN
                      DO k=1,Element % TYPE % NumberOfedges
                        Edge => Mesh % Edges(Element % EdgeIndexes(k))

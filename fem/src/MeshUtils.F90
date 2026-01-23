@@ -3004,7 +3004,7 @@ CONTAINS
    
    CALL PrepareMesh(Model,Mesh,Parallel,Def_Dofs,mySolver)
 
-   CALL Info(Caller,'Preparing mesh done',Level=8)
+   CALL Info(Caller,'Preparing mesh done',Level=10)
 
    IF( Parallel ) CALL RadiationParallelMeshDistribute(Mesh, NumProcs)
    
@@ -3443,7 +3443,7 @@ CONTAINS
    INTEGER, OPTIONAL :: Def_Dofs(:,:), mySolver
    TYPE(ValueList_t), POINTER :: Vlist
 
-   LOGICAL :: Found
+   LOGICAL :: Found, DoIt
    CHARACTER(*),PARAMETER :: Caller='PrepareMesh'      
    
    IF( PRESENT( mySolver ) ) THEN     
@@ -3496,10 +3496,14 @@ CONTAINS
      Mesh % MaxElementNodes = ParallelReduction( Mesh % MaxElementNodes,2 ) 
    END IF
 
-   IF( ListGetLogical( Vlist,'Inspect Mesh',Found ) .OR. &
-       ListGetLogical( Vlist,'Check Mesh',Found ) ) THEN
-     CALL CheckMeshInfo( Mesh ) 
+   DoIt = ListGetLogical( Vlist,'Inspect Mesh',Found ) .OR. &
+       ListGetLogical( Vlist,'Check Mesh',Found ) 
+   
+   IF( InfoActive(20) .OR. DoIt .OR. ListGetLogical( Vlist,'Size Info',Found ) ) THEN
+     CALL PrintMeshSize( Mesh )
    END IF
+
+   IF(DoIt) CALL CheckMeshInfo( Mesh ) 
 
  CONTAINS
      
@@ -4722,7 +4726,7 @@ CONTAINS
      CALL Fatal(Caller,'Requested the use of entity names but this file does not exits: '//TRIM(FileName))
    END IF
    
-   CALL Info(Caller,'Reading names info from file: '//TRIM(FileName))
+   CALL Info(Caller,'Reading names info from file: '//TRIM(FileName),Level=10)
 
    DO WHILE( .TRUE. ) 
      READ(FileUnit,'(A)',IOSTAT=iostat) str
@@ -4804,20 +4808,10 @@ CONTAINS
      END IF
 
    END DO
-
-   IF(DoBodies) THEN
-     CALL Info(Caller,'Mapped '//I2S(BodyMaps)//' body names to indexes')
-   ELSE
-     CALL Info(Caller,'Mapping of body names not requested')
-   END IF   
-   IF(DoBCs) THEN
-     CALL Info(Caller,'Mapped '//I2S(BCMaps)//' bc names to indexes')
-   ELSE
-     CALL Info(Caller,'Mapping of bc names not requested!')
-   END IF
-     
    CLOSE(FileUnit)
-   
+      
+   CALL Info(Caller,'Mapped '//I2S(BodyMaps)//' body names and '//I2S(BCMaps)//' bc names to elements!')
+     
  END SUBROUTINE ReadTargetNames
 
 
@@ -13495,7 +13489,6 @@ CONTAINS
       AntiPeriodicHits = 0
       TotRefArea = 0.0_dp
       TotSumArea = 0.0_dp
-      
 
       DO ind=1,BMesh1 % NumberOfBulkElements
 
@@ -13509,7 +13502,7 @@ CONTAINS
         IF(.NOT. pElemBasis) nd = n
 
         n = Element % TYPE % NumberOfNodes        
-        Nodes % x(1:n) = BMesh1 % Nodes % x(Indexes(1:n))
+        Nodes % x(1:n) = BMesh1 % Nodes % x(Element % NodeIndexes(1:n))
         IF(pElemBasis) Nodes % x(n+1:) = 0._dp
 
         ! There is a discontinuity of angle at 180 degs
@@ -13531,10 +13524,10 @@ CONTAINS
 
         ! The flattened dimension is always the z-component
         IF( HaveMaxDistance ) THEN
-          zmin = MINVAL( BMesh1 % Nodes % z(Indexes(1:n)) )
-          zmax = MAXVAL( BMesh1 % Nodes % z(Indexes(1:n)) )
+          zmin = MINVAL( BMesh1 % Nodes % z(Element % NodeIndexes(1:n)) )
+          zmax = MAXVAL( BMesh1 % Nodes % z(Element % NodeIndexes(1:n)) )
         END IF
-                        
+
         ! Compute the reference area
         u = 0.0_dp; v = 0.0_dp; w = 0.0_dp;
         stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
@@ -13577,7 +13570,7 @@ CONTAINS
           nM = ElementM % TYPE % NumberOfNodes
           IF(.NOT.pElemBasis) ndM = nM
         
-          NodesM % x(1:nM) = BMesh2 % Nodes % x(IndexesM(1:nM))
+          NodesM % x(1:nM) = BMesh2 % Nodes % x(ElementM % NodeIndexes(1:nM))
           IF(pElemBasis) NodesM % x(nM+1:) = 0._dp
 
           ! Treat the left circle differently. 
@@ -13620,8 +13613,8 @@ CONTAINS
           
           ! This is a cheap test so perform that first, if requested
           IF( HaveMaxDistance ) THEN
-            zminm = MINVAL( BMesh2 % Nodes % z(IndexesM(1:nM)) )
-            zmaxm = MAXVAL( BMesh2 % Nodes % z(IndexesM(1:nM)) )
+            zminm = MINVAL( BMesh2 % Nodes % z(ElementM % NodeIndexes(1:nM)) )
+            zmaxm = MAXVAL( BMesh2 % Nodes % z(ElementM % NodeIndexes(1:nM)) )
             IF( zmaxm < zmin - MaxDistance ) GOTO 100 
             IF( zminm > zmax + MaxDistance ) GOTO 100
           END IF
@@ -13734,7 +13727,7 @@ CONTAINS
           'Minimum relative discrepancy in length (element: ',MinErrInd,'):',MinErr-1.0_dp 
       CALL Info(Caller,Message,Level=8)
 
-
+      
     END SUBROUTINE AddProjectorWeak1D
 
   END FUNCTION LevelProjector
@@ -20311,6 +20304,81 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+!> Show mesh size information
+!------------------------------------------------------------------------------
+  SUBROUTINE PrintMeshSize( Mesh )
+!------------------------------------------------------------------------------
+    TYPE(Mesh_t), POINTER :: Mesh
+!------------------------------------------------------------------------------
+    INTEGER :: na, nb, nn, ne, nf, no, ns, i
+    INTEGER :: napar(0:2), nbpar(0:2), nnpar(0:2), nepar(0:2), nfpar(0:2), nopar(0:2), nspar(0:2)
+    CHARACTER(*), PARAMETER :: Caller="PrintMeshSize"   
+!------------------------------------------------------------------------------
+
+    na = Mesh % NumberOfBulkElements
+    nb = Mesh % NumberOfBoundaryElements
+    nn = Mesh % NumberOfNodes
+    ne = Mesh % NumberOfEdges
+    nf = Mesh % NumberOfFaces
+
+    IF( ParEnv % PEs > 1 .AND. .NOT. Mesh % SingleMesh ) THEN
+      no = 0; ns = 0
+      DO i=1,nn
+        IF(Mesh % ParallelInfo % NeighbourList(i) % Neighbours(1) == ParEnv % MyPe) no = no+1
+        IF(SIZE(Mesh % ParallelInfo % NeighbourList(i) % Neighbours) > 1) ns = ns+1
+      END DO
+      DO i=0,2
+        napar(i) = ParallelReduction(na,i)
+        nbpar(i) = ParallelReduction(nb,i)
+        nnpar(i) = ParallelReduction(nn,i)
+        nopar(i) = ParallelReduction(no,i)
+        nspar(i) = ParallelReduction(ns,i)
+        nepar(i) = ParallelReduction(ne,i)
+        nfpar(i) = ParallelReduction(nf,i)
+      END DO
+
+      CALL Info(Caller,'Number of parallel mesh entities:   SUM       MIN       MAX')
+      WRITE(Message,'(A,T30,3I10)') '  Bulk elements: ',napar
+      CALL Info(Caller,Message,Level=3)
+      WRITE(Message,'(A,T30,3I10)') '  Boundary elements: ',nbpar
+      CALL Info(Caller,Message,Level=3)
+      WRITE(Message,'(A,T30,3I10)') '  Total nodes: ',nnpar
+      CALL Info(Caller,Message,Level=3)
+      WRITE(Message,'(A,T30,3I10)') '  Owned nodes: ',nopar
+      CALL Info(Caller,Message,Level=3)
+      WRITE(Message,'(A,T30,3I10)') '  Shared nodes: ',nspar
+      CALL Info(Caller,Message,Level=3)
+      IF(nepar(0) > 0) THEN
+        WRITE(Message,'(A,T30,3I10)') '  Element edges: ',nepar
+        CALL Info(Caller,Message,Level=3)
+      END IF
+      IF(nfpar(0) > 0) THEN
+        WRITE(Message,'(A,T30,3I10)') '  Element faces: ',nfpar
+        CALL Info(Caller,Message,Level=3)
+      END IF
+    ELSE
+      CALL Info(Caller,'Number of serial mesh entities')
+      WRITE(Message,'(A,T30,1I10)') '  Bulk elements: ',na
+      CALL Info(Caller,Message,Level=3)
+      WRITE(Message,'(A,T30,1I10)') '  Boundary elements: ',nb
+      CALL Info(Caller,Message,Level=3)
+      WRITE(Message,'(A,T30,1I10)') '  Element nodes: ',nn
+      CALL Info(Caller,Message,Level=3)
+      IF(ne > 0) THEN
+        WRITE(Message,'(A,T30,1I10)') '  Element edges: ',ne
+        CALL Info(Caller,Message,Level=3)
+      END IF
+      IF(nf > 0) THEN
+        WRITE(Message,'(A,T30,1I10)') '  Element faces: ',nf
+        CALL Info(Caller,Message,Level=3)
+      END IF
+    END IF
+
+  END SUBROUTINE PrintMeshSize
+
+      
+  
+!------------------------------------------------------------------------------
 !> Check mesh for various info. Mainly for debugging.
 !------------------------------------------------------------------------------
   SUBROUTINE CheckMeshInfo( Mesh )
@@ -20334,10 +20402,6 @@ CONTAINS
     nn = Mesh % NumberOfNodes
     Halt = .FALSE.
     
-    CALL Info(Caller,'Number of bulk elements: '//I2S(na))
-    CALL Info(Caller,'Number of boundary elements: '//I2S(nb))
-    CALL Info(Caller,'Number of nodes: '//I2S(nn))
-
     ALLOCATE(TypeHits(827))
     ALLOCATE(NodeHits(nn))
     
@@ -20913,24 +20977,24 @@ CONTAINS
 
      CASE(1)
        IF ( .NOT.ASSOCIATED( Mesh % Edges ) ) THEN
-         CALL Info('FindMeshEdges','Determining edges in 1D mesh',Level=8)
+         CALL Info('FindMeshEdges','Determining edges in 1D mesh',Level=10)
          CALL FindMeshEdges2D( Mesh )
        END IF
 
      CASE(2)
        IF ( .NOT.ASSOCIATED( Mesh % Edges ) ) THEN
-         CALL Info('FindMeshEdges','Determining edges in 2D mesh',Level=8)
+         CALL Info('FindMeshEdges','Determining edges in 2D mesh',Level=10)
          CALL FindMeshEdges2D( Mesh )
        END IF
 
      CASE(3)
        IF ( .NOT.ASSOCIATED(Mesh % Faces) .AND. FindFaces3D ) THEN
-         CALL Info('FindMeshEdges','Determining faces in 3D mesh',Level=8)
+         CALL Info('FindMeshEdges','Determining faces in 3D mesh',Level=10)
          CALL FindMeshFaces3D( Mesh )
        END IF
        IF(FindEdges3D) THEN
          IF ( .NOT.ASSOCIATED( Mesh % Edges) ) THEN
-           CALL Info('FindMeshEdges','Determining edges in 3D mesh',Level=8)
+           CALL Info('FindMeshEdges','Determining edges in 3D mesh',Level=10)
            CALL FindMeshEdges3D( Mesh )
          END IF
        END IF
@@ -26371,7 +26435,7 @@ CONTAINS
 
       IsRecursive = ListGetLogical( CurrentModel % Simulation,&
           'Interpolation Search Recursive',Stat )
-!      IF(.NOT. Stat ) IsRecursive = .TRUE.
+      IF(.NOT. Stat ) IsRecursive = .TRUE.
 
       LocalEps = ListGetConstReal( CurrentModel % Simulation,  &
           'Interpolation Local Epsilon', Stat )

@@ -4,20 +4,20 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
 !
@@ -174,7 +174,7 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
   TYPE(Variable_t), POINTER :: pVar, thisVar, hVar
   INTEGER :: GapDirection, FrictionModel 
   REAL(KIND=dp) :: GapFactor, Nm, TotHeating
-  CHARACTER(:), ALLOCATABLE :: str
+  CHARACTER(:), ALLOCATABLE :: str, DensityName, ViscosityName 
   CHARACTER(*), PARAMETER :: Caller = 'FilmFlowSolver'
   LOGICAL :: Debug, FirstRound=.TRUE.
   
@@ -205,6 +205,12 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
   Convect = GetLogical( Params, 'Convect', Found )
     
   CoupledIter = GetCoupledIter()
+
+  DensityName = ListGetString( Params,'Density Name',Found )
+  IF(.NOT. Found) DensityName = 'Density'
+
+  ViscosityName = ListGetString( Params,'Viscosity Name',Found )
+  IF(.NOT. Found) ViscosityName = 'Viscosity'
   
   GapDirection = 0
   GapFactor = ListGetCReal( Params,'Gap Addition Factor',Found )
@@ -384,8 +390,8 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
       ! Material parameters:
       !---------------------
       Material => GetMaterial()
-      rho(1:n) = GetReal( Material, 'Density' )
-      mu(1:n)  = GetReal( Material, 'Viscosity' )
+      rho(1:n) = GetReal( Material, DensityName )
+      mu(1:n)  = GetReal( Material, ViscosityName )
       gap(1:n) = GetReal( Material, 'Gap Height' )
 
       height(1:n) = GetReal( Material,'Bedrock Height',GotHeight) 
@@ -472,8 +478,8 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
       BC => GetBC()
       IF ( .NOT. ASSOCIATED(BC) ) CYCLE
 
-      rho(1:n) = GetParentMatProp( 'Density', Element, Found )
-      mu(1:n)  = GetParentMatProp( 'Viscosity', Element, Found )
+      rho(1:n) = GetParentMatProp( DensityName, Element, Found )
+      mu(1:n)  = GetParentMatProp( ViscosityName, Element, Found )
       gap(1:n) = GetParentMatProp( 'Gap Height', Element, Found )
 
       WHERE(gap(1:n) < mingap )
@@ -604,13 +610,19 @@ CONTAINS
     ! The division by 2 fixes the inconsistancy between two scientific communities.
     Re = v*(D/2)*rho/nu
     
-    A = Re * eps / 8.0897
-    B = LOG(Re) - 0.779626
+    A = Re * eps / 8.0897_dp
+    B = LOG(Re) - 0.779626_dp
+
     x = A+B
+    IF(x<=AEPS) THEN
+       f =  64._dp / Re
+       RETURN
+    END IF
+
     C = LOG(x)
 
     ! These corrections and extentions by Tómas Jóhannesson
-    lambda = Re*(6.94871*(B-C+C/(x-0.5588*C+1.2079)))**(-2.0_dp) ! original formula for the lambda friction factor
+    lambda = Re*(6.94871_dp*(B-C+C/(x-0.5588_dp*C+1.2079_dp)))**(-2.0_dp) ! original formula for the lambda friction factor
     lambda = MAX(1.0_dp, lambda)                                 ! lambda is 1 for laminar flow
     f = 64.0_dp*lambda/Re                                        ! computation of f after thresholding lambda to 1 (laminar flow)
     

@@ -1,0 +1,94 @@
+!------------------------------------------------------------------------------
+! Perform an interpolation test to verify that the accuracy is maintained when
+! non-homogeneous BCs are specified for edge finite elements. 
+! The solver employed seeks the best approximation with respect to norm that 
+! can be adjusted (L2 or energy).
+!------------------------------------------------------------------------------
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "mesh3d"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian 3D"
+  Simulation Type = Steady
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+!----------------------------------------------------------
+! Parameter for defining the energy inner product: 
+!----------------------------------------------------------
+Material 1
+  Material Param = Real 0.0e-5
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Solver 1
+  Equation = "Interpolation test"
+  Variable = "P"
+  Variable DOFs = 1
+  Procedure = "EdgeFEInterpolationTest" "BestApproximationSolver"
+  Use Piola Transform = Logical True
+  Quadratic Approximation = Logical True
+  Second Kind Basis = Logical True
+  Simplicial Mesh = Logical True
+
+  Compute Curl Error = Logical False
+  Test Mode = Integer 6
+
+  Optimize Bandwidth = True
+  Bubbles in Global System = Logical True
+  Linear System Solver = Iterative
+  Linear System Iterative Method = bicgstab2
+  Linear System Preconditioning = diagonal
+  Linear System Residual Output = 1
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1e-11
+End
+
+! This is for the test mode 6:
+Boundary Condition 1
+  Target Boundaries(4) = 2 3 4 6  
+  P {e} 1 = Variable Coordinate
+    Real MATC "x=tx(0);y=tx(1); 3*y^2/2"
+  P {e} 2 = Variable Coordinate
+    Real MATC "x=tx(0);y=tx(1); x^2/2"
+  P {e} 3 = Real 0
+End
+
+
+! This is for the test mode 2:
+!Boundary Condition 1
+!  Target Boundaries(4) = 2 3 4 6  
+!  P {e} 1 = Variable Coordinate
+!    Real MATC "1+tx(2)-tx(1)"
+!  P {e} 2 = Variable Coordinate
+!      Real MATC "1-tx(2)+tx(0)"
+!  P {e} 3 = Variable Coordinate
+!      Real MATC "1-tx(0)+tx(1)"
+!End
+
+! This is for the test mode 5:
+!Boundary Condition 1
+!  Target Boundaries(4) = 2 3 4 6  
+!  P {e} 1 = Variable Coordinate
+!    Real MATC "-tx(0)*tx(1)*tx(1)"
+!  P {e} 2 = Variable Coordinate
+!      Real MATC "tx(0)*tx(0)*tx(1)"
+!  P {e} 3 = Real 0
+!End
+
+Solver 1 :: Reference Norm = 9.71732268E-03
+Solver 1 :: Reference Norm Tolerance = 1.0E-5
