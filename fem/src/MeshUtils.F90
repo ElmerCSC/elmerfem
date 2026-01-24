@@ -8943,7 +8943,7 @@ CONTAINS
       minuscount = minuscount + COUNT(swap(1:edofs+fdofs)<0)
     END DO
 
-    PRINT *,'Periodic Perm counts:',cnts
+!    PRINT *,'Periodic Perm counts:',cnts
     
     IF( minuscount == 0 ) THEN
       CALL Info(Caller,'All faces in conforming projector have consistent sign!',Level=8)

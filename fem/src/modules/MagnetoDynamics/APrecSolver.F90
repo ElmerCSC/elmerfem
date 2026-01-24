@@ -81,8 +81,6 @@ SUBROUTINE APrecSolver_Init( Model,Solver,dt,Transient ) ! {{{
         NextFreeKeyword('Exported Variable', Params),'-dofs 3 nodal A cyl')
   END IF
 
-
-  
 !------------------------------------------------------------------------------
 END SUBROUTINE APrecSolver_Init ! }}}
 !------------------------------------------------------------------------------
@@ -116,7 +114,7 @@ SUBROUTINE APrecSolver( Model,Solver,dt,Transient ) ! {{{
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Variable_t), POINTER :: Avar, Svar, NodeResVar, EdgeSolVar, EdgeResVar, pVar
   TYPE(Matrix_t), POINTER, SAVE :: Proj => NULL()
-  LOGICAL :: Monolithic, SecondFamily, SecondOrder, PiolaVersion
+  LOGICAL :: Monolithic, SecondFamily, SecondOrder, PiolaVersion, ExtrudedSol
   TYPE(ValueList_t), POINTER :: EdgeSolverParams
   CHARACTER(LEN=MAX_NAME_LEN) :: sname
   LOGICAL, SAVE :: Visited = .FALSE., PrecMatCyl, PrecMatNt, SkipFaces
@@ -208,6 +206,9 @@ SUBROUTINE APrecSolver( Model,Solver,dt,Transient ) ! {{{
     CALL NodalToNedelecInterpolation_GlobalMatrix(Mesh, Avar, EdgeSolVar, Proj, cdim=3, SkipFaces = SkipFaces)
   END IF
 
+  ExtrudedSol = ListGetLogical( SolverParams,'Extruded Solution',Found ) 
+
+  
   ! Now EdgeResVar represents the residual with respect
   ! to the basis for H(curl). We need to apply a transformation so that
   ! we may solve the residual correction equation by using the nodal basis.
@@ -255,7 +256,12 @@ SUBROUTINE APrecSolver( Model,Solver,dt,Transient ) ! {{{
     CALL DefaultDirichletBCs()
     Norm = DefaultSolve()    
   ELSE
-    DO compi = 1, comps      
+    DO compi = 1, comps
+      IF(ExtrudedSol .AND. compi /= comps ) THEN
+        Solver % Variable % Values = 0.0_dp
+        CYCLE        
+      END IF
+            
       Solver % Matrix % Values = BulkValues
       Solver % Matrix % rhs = allrhs(compi::comps)
 
@@ -270,10 +276,12 @@ SUBROUTINE APrecSolver( Model,Solver,dt,Transient ) ! {{{
       ! Note that Solver % Variable now points to correct component of Avar so there is no
       ! need to copy values to it!
       Solver % Variable => VariableGet( Model % Variables,TRIM(Avar % name)//' '//I2S(compi))
+
       IF(.NOT. ASSOCIATED(Solver % Variable)) THEN
         CALL Fatal(Caller,'Could not find variable for component :'//I2S(compi))
       END IF
-      
+
+      ! Nullify the previous Dirichlet conditions to be on the safe side.
       IF(ALLOCATED(Solver % Matrix % ConstrainedDOF ) ) &
           Solver % Matrix % ConstrainedDOF = .FALSE.
       CALL DefaultDirichletBCs()
@@ -282,6 +290,11 @@ SUBROUTINE APrecSolver( Model,Solver,dt,Transient ) ! {{{
     Solver % Variable => SVar
   END IF
 
+  IF(Monolithic .OR. ExtrudedSol ) THEN
+    CALL ListAddLogical( SolverParams,'Linear System Refactorize',.FALSE.) 
+  END IF
+  CALL ListAddLogical( SolverParams,'Mortar BCs Fixed',.TRUE.)
+  
   IF(PrecMatCyl) THEN
     pVar => VariableGet( Mesh % Variables,'nodal a cyl')
     IF(ASSOCIATED(pVar)) THEN

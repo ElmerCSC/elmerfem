@@ -15020,8 +15020,8 @@ END FUNCTION SearchNodeL
     TYPE(Variable_t), POINTER :: IterV
     LOGICAL :: NormalizeToUnity, AndersonAcc, AndersonScaled, NoSolve, Found
     REAL(KIND=dp), POINTER :: pv(:)
-    CHARACTER(*), PARAMETER :: Caller = 'SolveLinearSystem'
     CHARACTER(LEN=MAX_NAME_LEN) :: str
+    CHARACTER(*), PARAMETER :: Caller = 'SolveLinearSystem'
 
     
     TARGET b, x 
@@ -15351,11 +15351,16 @@ END FUNCTION SearchNodeL
     
     IF( ListGetLogical( Params,'Linear System Normalize Guess',GotIt ) ) THEN
       CALL NormalizeInitialGuess() 
-    END IF
-
-    IF( ListGetLogical( Params,'Linear System Nullify Guess',GotIt ) ) THEN
+    ELSE IF( ListGetLogical( Params,'Linear System Nullify Guess',GotIt ) ) THEN
       CALL Info(Caller,'Nullifying initial guess!',Level=30)
       x(1:n) = 0.0_dp
+    ELSE IF( ListGetLogical( Params,'Linear System Nullify First Guess',GotIt ) ) THEN
+      iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
+      i = NINT(iterV % Values(1))
+      IF(i<=1) THEN
+        CALL Info(Caller,'Nullifying first initial guess!',Level=30)
+        x(1:n) = 0.0_dp
+      END IF        
     END IF
     
     Method = ListGetString(Params,'Linear System Solver',GotIt)

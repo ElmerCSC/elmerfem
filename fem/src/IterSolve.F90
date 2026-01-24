@@ -232,11 +232,12 @@ CONTAINS
       END IF
     END DO
     IF(.NOT. ASSOCIATED(pVar)) THEN
-      CALL Fatal('CreateEdgeSkipMask','Could not find "Edge Basis" variable!')
+      CALL Fatal('CreateEdgeSkipMask','Could not find "Edge Basis" defined in any Solver!')
     END IF
 
     n0 = Mesh % NumberOfNodes
     t0 = Mesh % NumberOfBulkElements
+    e0 = Mesh % NumberOfEdges
 
     Piola = ListGetLogicalAnySolver( CurrentModel,'Use Piola Transform' ) 
 
@@ -257,11 +258,14 @@ CONTAINS
       END IF
     END DO
 
+    n0 = COUNT(SkipMask)
+    CALL Info('CreateEdgeSkipMask','Mask include edges on BC: '//I2S(n0)//' (out of '//I2S(e0)//')',Level=7)   
+
+    
     ! It is not self-evident that we should include the additional Piola nodes
     ! in the set of nodes to be skipped in smoothing / krylov iteration.
     ! Numerical evidence seems to suggest that this is a good idea. 
     IF(Piola) THEN
-      e0 = Mesh % NumberOfEdges
 
       IF(SIZE(pVar % Perm) < n0+e0+2*Mesh % NumberOfFaces) THEN
         CALL Fatal('CreateEdgeSkipMask','Size of Perm too small for Piola!')
@@ -280,14 +284,15 @@ CONTAINS
           END IF
         END IF
       END DO
+      
+      n0 = COUNT(SkipMask)
+      CALL Info('CreateEdgeSkipMask','Mask include total dofs on BC: '//I2S(n0), Level=7)
     END IF
     
-    n0 = COUNT(SkipMask)
-    CALL Info('CreateEdgeSkipMask','Created mask for skipping edges on BC: '//I2S(n0),Level=7)   
 
   END SUBROUTINE CreateEdgeSkipMask
 
-
+  
   !------------------------------------------------------------------------------
   !> Create mask for skipping nodes on a given boundary. 
   !------------------------------------------------------------------------------
@@ -363,7 +368,7 @@ FUNCTION MaskedDotProd( ndim, x, xind, y, yind ) RESULT(dres)
   END DO
   !$OMP END PARALLEL DO 
 !!!CALL SParActiveSUM(dres,0)
-  
+
 !----------------------------------------------------------------------
  END FUNCTION MaskedDotProd
 !----------------------------------------------------------------------
@@ -399,7 +404,7 @@ FUNCTION MaskedNorm( ndim, x, xind ) RESULT(dres)
   !$OMP END PARALLEL DO
 !!!CALL SParActiveSUM(dres,0)
   dres = SQRT(dres)
-  
+
 !----------------------------------------------------------------------
 END FUNCTION MaskedNorm
 !----------------------------------------------------------------------
@@ -1181,6 +1186,9 @@ END FUNCTION MaskedNorm
         pcondProc = AddrFunc( VankaPrec )
 
       CASE (PRECOND_Slave)
+        IF(ListGetLogical( Solver % Values,'Linear System Refactorize First',Found ) ) THEN
+          CALL LIstAddLogical( Solver % Values,'Linear System Refactorize',.TRUE.)
+        END IF        
         IF ( .NOT. ComplexSystem ) THEN
           pcondProc = AddrFunc( SlavePrec )
         ELSE
@@ -1239,7 +1247,7 @@ END FUNCTION MaskedNorm
       
       IF( Internal ) THEN
         IF( ListGetLogical( Params,'Linear System Skip Mask',Found ) ) THEN
-          CALL Info('IterSolver','Using skip mask for linear system solver!')
+          CALL Info('IterSolver','Using edge skip mask for linear system solver!')
           dotProc = AddrFunc(MaskedDotProd)
           normproc = AddrFunc(MaskedNorm)        
         ELSE IF( PseudoComplexSystem ) THEN
