@@ -22,6 +22,7 @@ endif()
 
 if(TARGET FourierLoss)
   ADD_DEPENDENCIES(FourierLoss MagnetoDynamics)
+  TARGET_LINK_LIBRARIES(FourierLoss MagnetoDynamics)
 endif()
 
 
