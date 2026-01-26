@@ -42,6 +42,20 @@ PROGRAM Solver
    CHARACTER(:), ALLOCATABLE :: DateStr
    CHARACTER(LEN=MAX_NAME_LEN) :: toutput
 
+   INTEGER :: iargc, nargs, arglen
+   CHARACTER(LEN=MAX_STRING_LEN) :: buf
+   CHARACTER(LEN=MAX_STRING_LEN), ALLOCATABLE :: args(:)
+
+   INTERFACE
+     SUBROUTINE ElmerSolver(initialize, args, NoArgs)
+       USE Types
+       IMPLICIT NONE
+       INTEGER, INTENT(IN) :: initialize
+       INTEGER, INTENT(IN) :: NoArgs
+       CHARACTER(LEN=*), INTENT(IN) :: args(:)
+     END SUBROUTINE ElmerSolver
+   END INTERFACE
+
    CALL envir( 'ELMERSOLVER_OUTPUT_TOTAL', toutput, tlen )
    Silent = toutput(1:1)=='0' .OR. toutput(1:5)=='false'
 
@@ -54,7 +68,21 @@ PROGRAM Solver
      CALL FLUSH(6)
    END IF
 
-   CALL ElmerSolver(Initialize)
+   ! Get number of command line arguments
+   nargs = COMMAND_ARGUMENT_COUNT()
+   ALLOCATE( args(nargs) )
+
+   ! Collect command line arguments
+   IF( nargs > 0 ) THEN 
+     iargc = 0
+     DO WHILE( iargc < nargs )
+       iargc = iargc + 1 
+       CALL GET_COMMAND_ARGUMENT(iargc, buf, length=arglen)
+       args(iargc) = buf(1:arglen)
+     END DO
+   END IF
+
+   CALL ElmerSolver(Initialize, args, nargs)
 
    IF ( .NOT. Silent ) THEN
      IF ( ParEnv % myPE == 0 ) THEN
