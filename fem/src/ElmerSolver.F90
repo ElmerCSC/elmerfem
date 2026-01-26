@@ -54,7 +54,7 @@
 !------------------------------------------------------------------------------
 !> The main program for Elmer. Solves the equations as defined by the input files.
 !------------------------------------------------------------------------------
-   SUBROUTINE ElmerSolver(initialize)
+   SUBROUTINE ElmerSolver(initialize, args, NoArgs)
 !------------------------------------------------------------------------------
 
      USE Lists
@@ -93,6 +93,8 @@
 !------------------------------------------------------------------------------
 
      INTEGER :: Initialize
+     INTEGER :: NoArgs
+     CHARACTER(LEN=*) :: args(:)
 
 !------------------------------------------------------------------------------
 !    Local variables
@@ -140,7 +142,6 @@
      LOGICAL :: Silent=.FALSE., Version=.FALSE., GotModelName, FinishEarly=.FALSE.
      LOGICAL :: FirstLoad = .TRUE., FirstTime=.TRUE., Found
 
-     INTEGER :: iargc, NoArgs
      INTEGER :: iostat, iSweep = 1, OptimIters
      LOGICAL :: GotOptimIters
      INTEGER :: MeshIndex
@@ -152,7 +153,7 @@
      INTEGER, ALLOCATABLE :: ipar(:)
      REAL(KIND=dp), ALLOCATABLE :: rpar(:)
      CHARACTER(LEN=MAX_PATH_LEN) :: MeshDir, MeshName
-     
+
      ! Start the watches, store later
      !--------------------------------
      RT0 = RealTime()
@@ -171,7 +172,6 @@
        !
        ! Print banner to output:
        ! -----------------------
-       NoArgs = COMMAND_ARGUMENT_COUNT()
        ! Info Level is always true until the model has been read!
        ! This makes it possible to cast something 
        Silent = .FALSE.
@@ -181,16 +181,16 @@
          i = 0
          DO WHILE( i < NoArgs )
            i = i + 1 
-           CALL GET_COMMAND_ARGUMENT(i, OptionString)
+           OptionString = args(i)
            IF( OptionString=='-rpar' ) THEN
              ! Followed by number of parameters + the parameter values
              i = i + 1
-             CALL GET_COMMAND_ARGUMENT(i, OptionString)
-             READ( OptionString,*) nr             
+             OptionString = args(i)
+             READ( OptionString,*) nr
              ALLOCATE( rpar(nr) )
              DO j=1,nr
                i = i + 1
-               CALL GET_COMMAND_ARGUMENT(i, OptionString)
+               OptionString = args(i)
                READ( OptionString,*) rpar(j)
              END DO
              CALL Info('MAIN','Read '//I2S(nr)//' real parameters from command line!')
@@ -200,12 +200,13 @@
            IF( OptionString=='-ipar' ) THEN
              ! Followed by number of parameters + the parameter values
              i = i + 1
-             CALL GET_COMMAND_ARGUMENT(i, OptionString)
-             READ( OptionString,*) ni             
+             OptionString = args(i)
+             PRINT *, OptionString
+             READ( OptionString,*) ni
              ALLOCATE( ipar(nr) )
              DO j=1,ni
                i = i + 1
-               CALL GET_COMMAND_ARGUMENT(i, OptionString)
+               OptionString = args(i)
                READ( OptionString,*) ipar(j)
              END DO
              CALL Info('MAIN','Read '//I2S(ni)//' integer parameters from command line!')
@@ -318,10 +319,10 @@
      !----------------------------------------------------------------------
      GotModelName = .FALSE.
      IF ( NoArgs > 0 ) THEN
-       CALL GET_COMMAND_ARGUMENT(1, ModelName)
+       ModelName = args(1)
        IF( ModelName(1:1) /= '-') THEN 
          GotModelName = .TRUE.
-         IF (NoArgs > 1) CALL GET_COMMAND_ARGUMENT(2, eq)
+         IF (NoArgs > 1) eq = args(2)
        END IF
      END IF
 
