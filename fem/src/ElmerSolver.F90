@@ -128,7 +128,7 @@
      TYPE(ParEnv_t), POINTER :: ParallelEnv
 
      CHARACTER(LEN=MAX_PATH_LEN) :: ModelName
-     CHARACTER(LEN=MAX_STRING_LEN) :: OptionString, eq
+     CHARACTER(LEN=MAX_PATH_LEN) :: OptionString, eq
 
      CHARACTER(:), ALLOCATABLE :: str, PostFile, ExecCommand, OutputFile, RestartFile, &
           OutputName, PostName, When
