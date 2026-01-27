@@ -9,6 +9,7 @@ $refnorm = 3.03677250E+00
 !---LUA END
 
 # materialnum = 1
+#velo_2 = 1
 
 
 Header :: Mesh DB "." "square"
@@ -32,7 +33,8 @@ End
 
 Material 1
   Convection Velocity 1 = 0
-  Convection Velocity 2 = 1
+  Convection Velocity 2 = variable coordinate
+    real lua "velo_2"
   Convection Velocity 3 = 0
 
   diffusion coefficient = 1.0
