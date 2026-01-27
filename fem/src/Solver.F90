@@ -35,6 +35,8 @@ PROGRAM Solver
    USE GeneralUtils
    USE ParallelUtils
 
+   IMPLICIT NONE
+
    REAL(KIND=dp) :: CT, RT
    INTEGER, PARAMETER :: Initialize=0
    INTEGER :: tlen
