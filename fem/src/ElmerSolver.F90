@@ -94,7 +94,7 @@
 
      INTEGER :: Initialize
      INTEGER :: NoArgs
-     CHARACTER(LEN=*) :: args(:)
+     TYPE(ArgStr_t) :: args(:)
 
 !------------------------------------------------------------------------------
 !    Local variables
@@ -127,8 +127,7 @@
 
      TYPE(ParEnv_t), POINTER :: ParallelEnv
 
-     CHARACTER(LEN=MAX_PATH_LEN) :: ModelName
-     CHARACTER(LEN=MAX_PATH_LEN) :: OptionString, eq
+     CHARACTER(:), ALLOCATABLE :: ModelName, OptionString, eq
 
      CHARACTER(:), ALLOCATABLE :: str, PostFile, ExecCommand, OutputFile, RestartFile, &
           OutputName, PostName, When
@@ -181,16 +180,16 @@
          i = 0
          DO WHILE( i < NoArgs )
            i = i + 1 
-           OptionString = args(i)
+           OptionString = args(i) % astr
            IF( OptionString=='-rpar' ) THEN
              ! Followed by number of parameters + the parameter values
              i = i + 1
-             OptionString = args(i)
+             OptionString = args(i) % astr
              READ( OptionString,*) nr
              ALLOCATE( rpar(nr) )
              DO j=1,nr
                i = i + 1
-               OptionString = args(i)
+               OptionString = args(i) % astr
                READ( OptionString,*) rpar(j)
              END DO
              CALL Info('MAIN','Read '//I2S(nr)//' real parameters from command line!')
@@ -200,13 +199,13 @@
            IF( OptionString=='-ipar' ) THEN
              ! Followed by number of parameters + the parameter values
              i = i + 1
-             OptionString = args(i)
+             OptionString = args(i) % astr
              PRINT *, OptionString
              READ( OptionString,*) ni
              ALLOCATE( ipar(nr) )
              DO j=1,ni
                i = i + 1
-               OptionString = args(i)
+               OptionString = args(i) % astr
                READ( OptionString,*) ipar(j)
              END DO
              CALL Info('MAIN','Read '//I2S(ni)//' integer parameters from command line!')
@@ -319,10 +318,10 @@
      !----------------------------------------------------------------------
      GotModelName = .FALSE.
      IF ( NoArgs > 0 ) THEN
-       ModelName = args(1)
+       ModelName = args(1) % astr
        IF( ModelName(1:1) /= '-') THEN 
          GotModelName = .TRUE.
-         IF (NoArgs > 1) eq = args(2)
+         IF (NoArgs > 1) eq = args(2) % astr
        END IF
      END IF
 
@@ -331,6 +330,7 @@
        IF( iostat /= 0 ) THEN
          CALL Fatal( 'MAIN', 'Unable to find ELMERSOLVER_STARTINFO, can not execute.' )
        END IF
+       ALLOCATE(CHARACTER(MAX_PATH_LEN)::ModelName)
        READ(1,'(a)') ModelName
        CLOSE(1)
      END IF

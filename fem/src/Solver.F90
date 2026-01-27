@@ -43,8 +43,8 @@ PROGRAM Solver
    CHARACTER(LEN=MAX_NAME_LEN) :: toutput
 
    INTEGER :: iargc, nargs, arglen
-   CHARACTER(LEN=MAX_PATH_LEN) :: buf
-   CHARACTER(LEN=MAX_PATH_LEN), ALLOCATABLE :: args(:)
+   CHARACTER(:), ALLOCATABLE :: buf
+   TYPE(ArgStr_t), ALLOCATABLE :: args(:)
 
    INTERFACE
      SUBROUTINE ElmerSolver(initialize, args, NoArgs)
@@ -52,7 +52,7 @@ PROGRAM Solver
        IMPLICIT NONE
        INTEGER, INTENT(IN) :: initialize
        INTEGER, INTENT(IN) :: NoArgs
-       CHARACTER(LEN=*), INTENT(IN) :: args(:)
+       TYPE(ArgStr_t), INTENT(IN) :: args(:)
      END SUBROUTINE ElmerSolver
    END INTERFACE
 
@@ -70,17 +70,20 @@ PROGRAM Solver
 
    ! Get number of command line arguments
    nargs = COMMAND_ARGUMENT_COUNT()
-   ALLOCATE( args(nargs) )
-   args = ''
 
    ! Collect command line arguments
    IF( nargs > 0 ) THEN 
+     ALLOCATE(args(nargs))
+     ALLOCATE(CHARACTER(MAX_PATH_LEN)::buf)
+
      iargc = 0
      DO WHILE( iargc < nargs )
        iargc = iargc + 1 
        CALL GET_COMMAND_ARGUMENT(iargc, buf, length=arglen)
-       args(iargc)(1:arglen) = buf(1:arglen)
+       args(iargc) % astr = buf(1:arglen)
      END DO
+
+     DEALLOCATE(buf)
    END IF
 
    CALL ElmerSolver(Initialize, args, nargs)
