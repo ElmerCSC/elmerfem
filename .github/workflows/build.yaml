@@ -171,6 +171,7 @@ jobs:
         timeout-minutes: 150
         env:
           CTEST_OUTPUT_ON_FAILURE: 1
+          OMP_NUM_THREADS: 4
         run: |
           cd ${GITHUB_WORKSPACE}/build
           ctest . \
