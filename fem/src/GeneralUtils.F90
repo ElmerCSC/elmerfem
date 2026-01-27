@@ -1242,9 +1242,7 @@ CONTAINS
              closed_region = .FALSE.
            END IF
 
-           !$OMP PARALLEL DEFAULT(NONE) &
-           !$OMP FIRSTPRIVATE(tcmdstr, tninlen, lstat) &
-           !$OMP SHARED(lua_result, result_len, closed_region, i, j, inlen, first_bang)
+           !$OMP CRITICAL(LuaEval)
            IF(closed_region) THEN
              lstat = lua_dostring( LuaState, &
                  'return tostring('// tcmdstr(1:tninlen-1) // ')'//c_null_char, 1)
@@ -1252,7 +1250,7 @@ CONTAINS
              IF (i == 1 .and. first_bang .and. j == inlen) THEN  ! ' # <luacode>' case, do not do 'return tostring(..)'.
                ! Instead, just execute the line in the lua interpreter
 
-             lstat = lua_dostring( LuaState, tcmdstr(1:tninlen) // c_null_char, 1)
+               lstat = lua_dostring( LuaState, tcmdstr(1:tninlen) // c_null_char, 1)
 
              ELSE ! 'abc = # <luacode>' case, oneliners only
 
@@ -1260,10 +1258,8 @@ CONTAINS
                    'return tostring('// tcmdstr(1:tninlen) // ')'//c_null_char, 1)
              END IF
            END IF
-           !$OMP CRITICAL
            lua_result => lua_popstring(LuaState, result_len)
-           !$OMP END CRITICAL
-           !$OMP END PARALLEL
+           !$OMP END CRITICAL(LuaEval)
 
            matcstr(1:result_len) = lua_result(1:result_len)
            ninlen = result_len
