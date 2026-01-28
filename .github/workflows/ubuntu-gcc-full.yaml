@@ -87,6 +87,8 @@ jobs:
           CTEST_OUTPUT_ON_FAILURE: 1
         run: |
           cd ${GITHUB_WORKSPACE}/build
+          export OMP_NUM_THREADS=$(nproc)
+          echo OMP_NUM_THREADS=${OMP_NUM_THREADS}
           ctest . -j$(nproc)
 
       - name: re-run tests
@@ -127,6 +129,8 @@ jobs:
             echo "::endgroup::"
           done
           echo "::group::Re-run failing tests"
+          export OMP_NUM_THREADS=$(nproc)
+          echo OMP_NUM_THREADS=${OMP_NUM_THREADS}
           ctest --rerun-failed --output-on-failure || true
           echo "::endgroup::"
           echo "::group::Log from these tests"
