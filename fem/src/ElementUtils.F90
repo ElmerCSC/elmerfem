@@ -2369,6 +2369,7 @@ CONTAINS
         R(DOFs*(i-1)+3,DOFs*(i-1)+3) = T2(3)
       END SELECT
 
+            
       DO j=1,n*DOFs
         DO k=1,n*DOFs
           s = 0.0D0
