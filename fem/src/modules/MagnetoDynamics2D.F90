@@ -221,7 +221,7 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
     END IF
 
     tind = 0
-    !$omp parallel do private(Element,n,nd,nb,t)
+    !!omp parallel do private(Element,n,nd,nb,t)
     DO t=1,active
       Element => GetActiveElement(t)
       n  = GetElementNOFNodes(Element)
@@ -239,12 +239,12 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
         CALL LocalMatrix(Element, n, nd)
       END IF
     END DO
-    !$omp end parallel do  
+    !!omp end parallel do  
       
     CALL DefaultFinishBulkAssembly()
     
     Active = GetNOFBoundaryElements()
-!$omp parallel do private(Element, n, nd, BC,Found, t)
+!!omp parallel do private(Element, n, nd, BC,Found, t)
     DO t=1,active
       Element => GetBoundaryElement(t)
       BC => GetBC( Element )
@@ -259,7 +259,7 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
         CALL LocalMatrixBC(Element, BC, n, nd)
       END IF
     END DO
-!$omp end parallel do
+!!omp end parallel do
 
     CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
