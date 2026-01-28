@@ -2534,23 +2534,27 @@ CONTAINS
      INTEGER, OPTIONAL :: EdgeBasisDegree ! The degree of edge elements
      TYPE( GaussIntegrationPoints_t ) :: IntegStuff   !< Structure holding the integration points
 !------------------------------------------------------------------------------
-     LOGICAL :: pElement, UsePRefElement, Economic
+     LOGICAL :: pElement, UsePRefElement, Economic, Hcurl
      INTEGER :: n, eldim, p1d, ntri, nseg, necon
      TYPE(ElementType_t), POINTER :: elmt
 !------------------------------------------------------------------------------
      elmt => elm % TYPE
 
      IF (PRESENT(EdgeBasis)) THEN
-       IF (EdgeBasis) THEN
-         UsePRefElement = .TRUE.
-         IF (PRESENT(PReferenceElement)) UsePRefElement = PReferenceElement
-         IF (PRESENT(EdgeBasisDegree)) THEN
-           IntegStuff = EdgeElementGaussPoints(elmt % ElementCode/100, UsePRefElement, EdgeBasisDegree)
-         ELSE
-           IntegStuff = EdgeElementGaussPoints(elmt % ElementCode/100, UsePRefElement)
-         END IF
-         RETURN
+       Hcurl = EdgeBasis
+     ELSE
+       Hcurl = PRESENT(EdgeBasisDegree)
+     END IF
+     
+     IF (Hcurl) THEN
+       UsePRefElement = .TRUE.
+       IF (PRESENT(PReferenceElement)) UsePRefElement = PReferenceElement
+       IF (PRESENT(EdgeBasisDegree)) THEN
+         IntegStuff = EdgeElementGaussPoints(elmt % ElementCode/100, UsePRefElement, EdgeBasisDegree)
+       ELSE
+         IntegStuff = EdgeElementGaussPoints(elmt % ElementCode/100, UsePRefElement)
        END IF
+       RETURN
      END IF
 
      IF( PRESENT(PReferenceElement)) THEN
@@ -2911,13 +2915,17 @@ CONTAINS
      LOGICAL, OPTIONAL :: SecondFamily
      TYPE(GaussIntegrationPoints_t) :: IP
 !------------------------------------------------------------------------------
-     LOGICAL :: PRefElement, SecondOrder, SecondKind
+     LOGICAL :: PRefElement, SecondOrder, ThirdOrder, SecondKind
 !------------------------------------------------------------------------------
      PRefElement = .TRUE.
      SecondOrder = .FALSE.
+     ThirdOrder = .FALSE.
      SecondKind = .FALSE.
      IF ( PRESENT(PiolaVersion) ) PRefElement = PiolaVersion
-     IF ( PRESENT(BasisDegree) ) SecondOrder = BasisDegree > 1
+     IF ( PRESENT(BasisDegree) ) THEN
+       SecondOrder = BasisDegree == 2
+       IF (.NOT. SecondOrder) ThirdOrder = BasisDegree == 3
+     END IF
      IF ( PRESENT(SecondFamily) ) SecondKind = SecondFamily
 
      SELECT CASE(ElementFamily)
@@ -2930,8 +2938,12 @@ CONTAINS
           IP = GaussPoints1D(2)
         END IF
      CASE(3)
-        IF (SecondOrder) THEN
-           IP = GaussPointsTriangle(6, PReferenceElement=PRefElement)
+        IF (SecondOrder .OR. ThirdOrder) THEN
+           IF (SecondOrder) THEN
+             IP = GaussPointsTriangle(6, PReferenceElement=PRefElement)
+           ELSE
+             IP = GaussPointsTriangle(11, PReferenceElement=PRefElement)
+           END IF
         ELSE
            IP = GaussPointsTriangle(3, PReferenceElement=PRefElement)
         END IF

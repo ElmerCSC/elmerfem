@@ -5732,11 +5732,11 @@ CONTAINS
      INTEGER :: FDofMap(6,4)
      INTEGER :: i, j, k, kk, l, m, n, nd, nb, np, mb, nn, ni, nj, i0
      INTEGER :: NDOFs, EDOFs, FDOFs, DOF, local, numEdgeDofs, istat, n_start, Offset
-     INTEGER :: ActiveFaceId
+     INTEGER :: ActiveFaceId, BasisDegree
 
      LOGICAL :: ReverseSign(6)
      LOGICAL :: Flag,Found, ConstantValue, ScaleSystem, DirichletComm
-     LOGICAL :: PiolaTransform, QuadraticApproximation, SecondKindBasis
+     LOGICAL :: PiolaTransform, SecondKindBasis
      LOGICAL, ALLOCATABLE :: ReleaseDir(:)
      LOGICAL :: ReleaseAny, NodalBCsWithBraces,AllConstrained
      LOGICAL :: CheckRight, AugmentedEigenSystem
@@ -6240,8 +6240,7 @@ CONTAINS
      ! Set Dirichlet BCs for edge and face dofs which arise from approximating with
      ! edge (curl-conforming) or face (div-conforming) elements:
      ! ----------------------------------------------------------------------------
-     QuadraticApproximation = ListGetLogical(Params, 'Quadratic Approximation', Found)
-     SecondKindBasis = ListGetLogical(Params, 'Second Kind Basis', Found)
+     CALL EdgeElementStyle(Params, PiolaTransform, SecondKindBasis, BasisDegree = BasisDegree)
      SimplicialElements = ListGetLogical(Params, 'Simplicial Mesh', Found)
      
      DO DOF=1,x % DOFs
@@ -6315,7 +6314,7 @@ CONTAINS
 
                    n = Edge % TYPE % NumberOfNodes
                    CALL VectorElementEdgeDOFs(BC,Edge,n,Parent,np,Name//' {e}',Work, &
-                       EDOFs, SecondKindBasis, QuadraticApproximation = QuadraticApproximation, &
+                       EDOFs, SecondKindBasis, BasisDegree = BasisDegree, &
                        SimplicialMesh = SimplicialElements)
 
                    n=GetElementDOFs(gInd,Edge)
@@ -6363,7 +6362,7 @@ CONTAINS
 
                      CALL VectorElementEdgeDOFs(BC, Edge, n, Parent, np, Name//' {e}', &
                          Work(i0+1:i0+EDOFs), EDOFs, SecondKindBasis, &
-                         QuadraticApproximation = QuadraticApproximation, &
+                         BasisDegree = BasisDegree, &
                          SimplicialMesh = SimplicialElements)
                      
                      n = GetElementDOFs(gInd,Edge)
@@ -6397,7 +6396,7 @@ CONTAINS
                      n = Face % TYPE % NumberOfNodes
 
                      CALL SolveLocalFaceDOFs(BC, Face, n, Name//' {e}', Work, EDOFs, &
-                         Face % BDOFs, SecondKindBasis, QuadraticApproximation)
+                         Face % BDOFs, SecondKindBasis, BasisDegree)
 
                      Face % BodyId = Parent % BodyId
                      
@@ -6655,7 +6654,7 @@ CONTAINS
 !> v is a polynomial on the edge E, and S reverses sign if necessary.
 !------------------------------------------------------------------------------
   SUBROUTINE VectorElementEdgeDOFs(BC, Element, n, Parent, np, Name, Integral, EDOFs, &
-      SecondFamily, FaceElement, QuadraticApproximation, SimplicialMesh)
+      SecondFamily, FaceElement, BasisDegree, SimplicialMesh)
 !------------------------------------------------------------------------------
     USE ElementDescription, ONLY: GetEdgeMap
     IMPLICIT NONE
@@ -6670,14 +6669,15 @@ CONTAINS
     INTEGER, OPTIONAL :: EDOFs        !< The number of DOFs
     LOGICAL, OPTIONAL :: SecondFamily !< To select the element family
     LOGICAL, OPTIONAL :: FaceElement  !< If .TRUE., e is normal to the edge
-    LOGICAL, OPTIONAL :: QuadraticApproximation
+    INTEGER, OPTIONAL :: BasisDegree
     LOGICAL, OPTIONAL :: SimplicialMesh
 !------------------------------------------------------------------------------
     TYPE(Nodes_t), SAVE :: Nodes, Pnodes
     TYPE(ElementType_t), POINTER :: SavedType
     TYPE(GaussIntegrationPoints_t) :: IP
 
-    LOGICAL :: Lstat, ReverseSign, SecondKindBasis, DivConforming, SecondOrder
+    LOGICAL :: Lstat, ReverseSign, SecondKindBasis, DivConforming
+    LOGICAL :: SecondOrder, ThirdOrder
     LOGICAL :: Simplicial, ErvinStyle = .FALSE.
     INTEGER, POINTER :: Edgemap(:,:)
     INTEGER :: i,j,k,p,DOFs
@@ -6696,10 +6696,13 @@ CONTAINS
       END IF
     END IF   
 
-    IF (PRESENT(QuadraticApproximation)) THEN
-      SecondOrder = QuadraticApproximation
+    SecondOrder = .FALSE.
+    ThirdOrder = .FALSE.
+    IF (PRESENT(BasisDegree)) THEN
+      SecondOrder = BasisDegree == 2
+      IF (.NOT. SecondOrder) ThirdOrder = BasisDegree == 3
     ELSE
-      SecondOrder = .FALSE.
+      
     END IF
     
     IF (PRESENT(SecondFamily)) THEN
@@ -6822,10 +6825,18 @@ CONTAINS
           END IF
         END IF
       ELSE
-        IF (SecondOrder .AND. Simplicial) THEN
+        u = IP % u(p)
+        IF (ThirdOrder .AND. Simplicial) THEN
+          ! This is the same as the case of second-kind basis of degree 2
+          ! TO DO: restructure to avoid repetition
+          Integral(1)=Integral(1)+s*(L+SUM(VL*e))
+          v = -3.0d0 * u
+          Integral(2)=Integral(2)+sgn*s*(L+SUM(VL*e))*v
+          v = 2.5d0 * (1.0d0 - 3.0d0 * u**2)
+          Integral(3)=Integral(3)+s*(L+SUM(VL*e))*v          
+        ELSE IF (SecondOrder .AND. Simplicial) THEN
           ! This is analogous to the case of second-kind basis
           Integral(1)=Integral(1)+s*(L+SUM(VL*e))
-          u = IP % u(p)          
           v = -3.0d0 * u
           Integral(2)=Integral(2)+sgn*s*(L+SUM(VL*e))*v
         ELSE
@@ -6884,7 +6895,7 @@ CONTAINS
 !> the values of the DOFs associated with edges are given.
 !------------------------------------------------------------------------------
   SUBROUTINE SolveLocalFaceDOFs(BC, Element, n, Name, DOFValues, &
-      EDOFs, FDOFs, SecondKindBasis, QuadraticApproximation)
+      EDOFs, FDOFs, SecondKindBasis, BasisDegree)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 
@@ -6896,25 +6907,20 @@ CONTAINS
     INTEGER :: EDOFs                     !< The number of edge DOFs
     INTEGER :: FDOFs                     !< The number of face DOFs
     LOGICAL :: SecondKindBasis           !< Use Nedelec's second family 
-    LOGICAL :: QuadraticApproximation    !< Use second-order edge element basis
+    INTEGER :: BasisDegree               !< The polynomial order of basis
 !------------------------------------------------------------------------------
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
 
     LOGICAL :: Lstat
 
-    INTEGER :: i,j,p,DOFs,BasisDegree
+    INTEGER :: i,j,p,DOFs
 
     REAL(KIND=dp) :: Basis(n),Vload(3,n),VL(3),Normal(3)
     REAL(KIND=dp) :: EdgeBasis(EDOFs+FDOFs,3)
     REAL(KIND=dp) :: Mass(FDOFs,FDOFs), Force(FDOFs)
     REAL(KIND=dp) :: v,s,DetJ
 !------------------------------------------------------------------------------
-    IF (QuadraticApproximation) THEN
-      BasisDegree = 2
-    ELSE
-      BasisDegree = 1
-    END IF
       
     Mass = 0.0d0
     Force = 0.0d0

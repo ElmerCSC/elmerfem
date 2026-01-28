@@ -3046,11 +3046,13 @@ CONTAINS
      INTEGER, OPTIONAL :: BasisDegree
      LOGICAL, OPTIONAL :: Check
      
-     LOGICAL :: Found, Quadratic, Second 
+     LOGICAL :: Found, Quadratic, Cubic, Second 
      
-     Quadratic = ListGetLogical(VList,'Quadratic Approximation', Found )      
+     Quadratic = ListGetLogical(VList,'Quadratic Approximation', Found )
+     Cubic = ListGetLogical(VList,'Cubic Approximation', Found )
+     
      Second = ListGetLogical(Vlist,'Second Kind Basis', Found )
-     IF( Quadratic ) THEN
+     IF( Quadratic .OR. Cubic) THEN
        PiolaVersion = .TRUE.
      ELSE       
        IF(Second) THEN
@@ -3066,7 +3068,11 @@ CONTAINS
      
      IF(PRESENT(BasisDegree)) THEN
        BasisDegree = 1
-       IF(Quadratic) BasisDegree = 2
+       IF(Quadratic) THEN
+         BasisDegree = 2
+       ELSE IF (Cubic) THEN
+         BasisDegree = 3
+       END IF
      END IF
 
      IF(PRESENT(QuadraticApproximation)) THEN
@@ -3074,13 +3080,13 @@ CONTAINS
      END IF
 
      ! When initializing the consistency of the keywords may be checked.
-     ! Also always add the Piola flag since it determines the type of IP's.
+     ! Also always add the Piola flag since it determines the type of IPs.
      IF( PRESENT(Check)) THEN
        IF(Check) THEN
          IF(PiolaVersion) THEN
            IF(.NOT. ListCheckPresent(Vlist,'Use Piola Transform')) THEN
-             IF(Quadratic) THEN
-               CALL Info('EdgeElementStyle','"Quadratic Approximation" requested without Piola. ' &
+             IF(Quadratic .OR. Cubic) THEN
+               CALL Info('EdgeElementStyle','"Quadratic/Cubic Approximation" requested without Piola. ' &
                    //'Setting "Use Piola Transform = True"')
              ELSE IF( Second ) THEN
                CALL Info('EdgeElementStyle','"Second Kind Basis" requested without Piola. ' &
@@ -6874,7 +6880,7 @@ END SUBROUTINE PickActiveFace
        REAL(KIND=dp) :: svec(3), tvec(3), hvec(3), grad_svec(3,3), grad_tvec(3,3), grad_hvec(3,3)
        REAL(KIND=dp) :: WorkWeight(2), grad_weight(2,1:3)
        LOGICAL :: Create2ndKindBasis, PerformPiolaTransform, UsePretabulatedBasis, Parallel
-       LOGICAL :: SecondOrder, ApplyTraceMapping, Found
+       LOGICAL :: SecondOrder, ThirdOrder, ApplyTraceMapping, Found
        LOGICAL :: ReverseSign(4)
        LOGICAL :: ScaleFaceBasis, RedefineFaceBasis
        LOGICAL :: Simplicial
@@ -6910,8 +6916,10 @@ END SUBROUTINE PickActiveFace
        Create2ndKindBasis = .FALSE.
        IF ( PRESENT(SecondFamily) ) Create2ndKindBasis = SecondFamily
        SecondOrder = .FALSE.
+       ThirdOrder = .FALSE.
        IF ( PRESENT(BasisDegree) ) THEN
-         SecondOrder = BasisDegree > 1
+         SecondOrder = BasisDegree == 2
+         IF (.NOT. SecondOrder) ThirdOrder = BasisDegree == 3 
        END IF
        PerformPiolaTransform = .FALSE.
        IF ( PRESENT(ApplyPiolaTransform) ) PerformPiolaTransform = ApplyPiolaTransform
@@ -6972,14 +6980,24 @@ END SUBROUTINE PickActiveFace
            dLBasisdx(q,1) = dLineNodalPBasis(q, u)
          END DO
        CASE(3)
-         IF (SecondOrder) THEN
+         IF (SecondOrder .OR. ThirdOrder) THEN
            ! DOFs is the number of H(curl)-conforming basis functions:
-           IF (Create2ndKindBasis) THEN
-             DOFs = 12
+           IF (SecondOrder) THEN
+             IF (Create2ndKindBasis) THEN
+               DOFs = 12
+             ELSE
+               DOFs = 8
+             END IF
+             IF (.NOT.(n==3 .OR. n==6)) CALL Fatal('EdgeElementInfo', 'A 3-node or 6-node background element expected')
            ELSE
-             DOFs = 8
+             IF (Create2ndKindBasis) THEN
+               DOFs = 20
+             ELSE
+               DOFs = 15
+             END IF
+             IF (.NOT. n==3) CALL Fatal('EdgeElementInfo', 'A 3-node background element expected')
            END IF
-
+             
            IF (n == 6) THEN
              ! Here the element of the background mesh is of type 306.
              ! The Lagrange interpolation basis on the p-approximation reference element:
@@ -7490,14 +7508,22 @@ END SUBROUTINE PickActiveFace
              END IF
 
 !           ELSE IF (SecondOrder) THEN
-           ELSE IF (SecondOrder .AND. Simplicial) THEN
+           ELSE IF (SecondOrder .AND. Simplicial .OR. ThirdOrder .AND. Simplicial) THEN
              !
              ! An alternate Nd_1(k=2) basis for faster solution with iterative methods. Currently
              ! this is available only for simplicial elements. 
              !
-             EDOFs = 2
-             FDOFs = 2
+             IF (SecondOrder) THEN
+               EDOFs = 2
+               FDOFs = 2
+             ELSE
+               ! The case of third-order basis 
+               EDOFs = 3
+               FDOFs = 6
+             END IF
 
+             ! The following loop over the edges is essentially the same as for the second-order basis of
+             ! the second family. TO DO: restructure to avoid the repetition
              DO k=1,3
                
                i = EdgeMap(k,1)
@@ -7517,6 +7543,14 @@ END SUBROUTINE PickActiveFace
                WorkCurlBasis(1,3) = grad_svec(2,1) - grad_svec(1,2)
                WorkCurlBasis(2,3) = grad_tvec(2,1) - grad_tvec(1,2)
 
+               IF (ThirdOrder) THEN
+                 WorkWeight(1) = 2.0d0*Basis(i) - Basis(j)
+                 WorkWeight(2) = 2.0d0*Basis(j) - Basis(i)
+
+                 grad_weight(1,1:2) = 2.0d0*dLBasisdx(i,1:2) - dLBasisdx(j,1:2)
+                 grad_weight(2,1:2) = 2.0d0*dLBasisdx(j,1:2) - dLBasisdx(i,1:2)
+               END IF
+               
                IF (GIndexes(j) < GIndexes(i)) THEN
                  I1 = 2
                  I2 = 1
@@ -7533,12 +7567,23 @@ END SUBROUTINE PickActiveFace
                  CASE(2)
                    sfun = 1.0d0
                    tfun = 1.0d0
+                 CASE(3)
+                   sfun = -WorkWeight(I1)
+                   tfun = WorkWeight(I2)
+                   grad_sfun(1:2) = -grad_weight(I1,1:2)
+                   grad_tfun(1:2) = grad_weight(I2,1:2)                   
                  CASE DEFAULT
                    CALL Fatal('ElementDescription::EdgeElementInfo','sfun/tfun not defined')
                  END SELECT
 
                  EdgeBasis(EDOFs*(k-1)+l,1:2) = sfun * WorkBasis(I1,1:2) + tfun * WorkBasis(I2,1:2)
                  CurlBasis(EDOFs*(k-1)+l,3) = sfun * WorkCurlBasis(I1,3) + tfun * WorkCurlBasis(I2,3)
+                 
+                 IF (l > 2) THEN
+                   CurlBasis(EDOFs*(k-1)+l,3) = CurlBasis(EDOFs*(k-1)+l,3) + &
+                       grad_sfun(1)*WorkBasis(I1,2) + grad_tfun(1)*WorkBasis(I2,2) - &
+                       grad_sfun(2)*WorkBasis(I1,1) - grad_tfun(2)*WorkBasis(I2,1)
+                 END IF
                END DO
              END DO
 
@@ -7587,12 +7632,47 @@ END SUBROUTINE PickActiveFace
                  sfun = 1.0d0
                  tfun = -1.0d0
                  hfun = 0.0d0
+               CASE(3)
+                 sfun = 1.0d0
+                 tfun = 1.0d0
+                 hfun = 1.0d0                                  
+               CASE(4)
+                 sfun = Basis(I2) - Basis(I3)
+                 tfun = Basis(I3) - Basis(I1)
+                 hfun = Basis(I1) - Basis(I2)
+
+                 grad_sfun(1:2) = dLBasisdx(I2,1:2) - dLBasisdx(I3,1:2)
+                 grad_tfun(1:2) = dLBasisdx(I3,1:2) - dLBasisdx(I1,1:2)
+                 grad_hfun(1:2) = dLBasisdx(I1,1:2) - dLBasisdx(I2,1:2)
+               CASE(5)
+                 sfun = 393.0d0 * Basis(I1) + 80.0d0 * Basis(I2) - 212.0d0 * Basis(I3)
+                 tfun = -393.0d0 * Basis(I2) - 80.0d0 * Basis(I1) + 212.0d0 * Basis(I3)
+                 hfun = -313.0d0 * Basis(I1) + 313.0d0 * Basis(I2)
+
+                 grad_sfun(1:2) = 393.0d0 * dLBasisdx(I1,1:2) + 80.0d0 * dLBasisdx(I2,1:2) - 212.0d0 * dLBasisdx(I3,1:2)
+                 grad_tfun(1:2) = -393.0d0 * dLBasisdx(I2,1:2) - 80.0d0 * dLBasisdx(I1,1:2) + 212.0d0 * dLBasisdx(I3,1:2)
+                 grad_hfun(1:2) = -313.0d0 * dLBasisdx(I1,1:2) + 313.0d0 * dLBasisdx(I2,1:2)
+               CASE(6)
+                 sfun = -131.0d0 * Basis(I1) + 168.0d0 * Basis(I2) - 124.0d0 * Basis(I3)
+                 tfun = -131.0d0 * Basis(I2) + 168.0d0 * Basis(I1) - 124.0d0 * Basis(I3)
+                 hfun = -37.0d0 * Basis(I1) - 37.0d0 * Basis(I2) + 248.0d0 * Basis(I3)
+
+                 grad_sfun(1:2) = -131.0d0 * dLBasisdx(I1,1:2) + 168.0d0 * dLBasisdx(I2,1:2) - 124.0d0 * dLBasisdx(I3,1:2)
+                 grad_tfun(1:2) = -131.0d0 * dLBasisdx(I2,1:2) + 168.0d0 * dLBasisdx(I1,1:2) - 124.0d0 * dLBasisdx(I3,1:2)
+                 grad_hfun(1:2) = -37.0d0 * dLBasisdx(I1,1:2) - 37.0d0 * dLBasisdx(I2,1:2) + 248.0d0 * dLBasisdx(I3,1:2)                 
                END SELECT
 
                EdgeBasis(3*EDOFs + l,1:2) = sfun * WorkBasis(I1,1:2) + tfun * WorkBasis(I2,1:2) + &
                    hfun * WorkBasis(I3,1:2)
                CurlBasis(3*EDOFs + l,3) = sfun * WorkCurlBasis(I1,3) + tfun * WorkCurlBasis(I2,3) + &
                    hfun * WorkCurlBasis(I3,3)
+
+               IF (l > 3) THEN
+                 CurlBasis(3*EDOFs+l,3) = CurlBasis(3*EDOFs+l,3) + &
+                     grad_sfun(1)*WorkBasis(I1,2) + grad_tfun(1)*WorkBasis(I2,2) + grad_hfun(1)*WorkBasis(I3,2) - &
+                     grad_sfun(2)*WorkBasis(I1,1) - grad_tfun(2)*WorkBasis(I2,1) - grad_hfun(2)*WorkBasis(I3,1)
+               END IF
+               
              END DO
              
            ELSE
@@ -10781,7 +10861,7 @@ END SUBROUTINE PickActiveFace
 !    b_2 = L_i L_k grad L_j
 !    b_3 = L_i L_j grad L_k
 !
-! such that the basis functions are  {L_B L_C grad L_A, L_A L_C grad L_B ,
+! such that the basis functions are  {L_B L_C grad L_A, L_A L_C grad L_B,
 ! L_A L_B grad L_C}. Here {A,B,C} are the global node indices such that
 ! A < B < C. 
 ! ----------------------------------------------------------------------------
