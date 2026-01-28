@@ -67,7 +67,7 @@ jobs:
             -DHypre_INCLUDE_DIR="/usr/include/hypre" \
             -DWITH_ELMERGUI=ON \
             -DWITH_PARAVIEW=ON \
-            -DWITH_ELMERICE=ON \
+            -DWITH_ElmerIce=ON \
             -DCREATE_PKGCONFIG_FILE=ON \
             -DWITH_MPI=ON \
             -DMPI_TEST_MAXPROC=$(nproc) \
