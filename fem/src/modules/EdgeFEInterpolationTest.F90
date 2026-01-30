@@ -76,21 +76,24 @@ END SUBROUTINE BestApproximationSolver_Init0
 SUBROUTINE BestApproximationSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 !
-!  Solve the best approximation of the vector field
+!  This is a tool for code developers to check the consistency/accuracy of H(curl)
+!  approximations. It solves the best approximation of the vector field
 ! 
 !              U = (1,1,1), or              (Test Mode = Integer 1)   
 !              U = (1+z-y,1-z+x,1-x+y)      (Test Mode = Integer 2)
 !              U = (0,0,-1/2(yx^2+xy^2))    (Test Mode = Integer 3)
 !              U = (xy^2,x^2y,0)            (Test Mode = Integer 4)   
 !              U = (-xy^2,x^2y,0)           (Test Mode = Integer 5)
+!              U = (3/2 y^2,1/2 x^2,0)      (Test Mode = Integer 6)  
 !
 !  with respect to the L2 norm (the default) or an energy norm using 
 !  H(curl)-conforming basis functions. Here the energy norm corresponds to 
 !  the operator I + MatPar * curl curl, with MatPar a scalar field specified
 !  by the user. Additionally, compute the relative error of the solution or 
 !  of the curl field using the L2 norm. This solver can thus be used for checking 
-!  that the convergence rate is correct.
-!
+!  that the convergence rate is correct or that a simple solution lies in the
+!  FE space.
+!  
 !------------------------------------------------------------------------------
   USE DefUtils
 
@@ -122,7 +125,7 @@ SUBROUTINE BestApproximationSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Matrix_t), POINTER :: A
 
   LOGICAL :: stat, PiolaVersion, SecondFamily, ErrorEstimation
-  LOGICAL :: UseCurlNorm
+  LOGICAL :: UseCurlNorm, Simplicial
 
   INTEGER, ALLOCATABLE :: Indices(:)
 
@@ -136,6 +139,7 @@ SUBROUTINE BestApproximationSolver( Model,Solver,dt,TransientSimulation )
     PiolaVersion = .TRUE.
   END IF
   SecondFamily = GetLogical( GetSolverParams(), 'Second Kind Basis', Found)
+  Simplicial = GetLogical( GetSolverParams(), 'Simplicial Mesh', Found)
 
   ErrorEstimation = GetLogical( GetSolverParams(), 'Error Computation', Found)
   IF (.NOT. Found) ErrorEstimation = .TRUE.
@@ -258,7 +262,8 @@ CONTAINS
         stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
             IP % W(t), detF=detJ, Basis=Basis, EdgeBasis=EBasis, &
             RotBasis=CurlEBasis, ApplyPiolaTransform = .TRUE., &
-            SecondFamily=SecondFamily, BasisDegree = ElementOrder)
+            SecondFamily=SecondFamily, BasisDegree = ElementOrder, &
+            SimplicialMesh = Simplicial)
       ELSE
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
             IP % W(t), detJ, Basis, dBasisdx )
@@ -334,7 +339,12 @@ CONTAINS
               MatPar * (0.0d0) * CurlEBasis(p,1) * detJ * IP % s(t) + &
               MatPar * (0.0d0) * CurlEBasis(p,2) * detJ * IP % s(t) + &
               MatPar * (4.0d0*xq*yq) * CurlEBasis(p,3) * detJ * IP % s(t)
- 
+        CASE(6)
+          FORCE(i) = FORCE(i) +  (1.5d0*yq**2) * EBasis(p,1) * detJ * IP % s(t) + &
+              (0.5d0*xq**2)* EBasis(p,2) * detJ * IP % s(t) + &
+              MatPar * (0.0d0) * CurlEBasis(p,1) * detJ * IP % s(t) + &
+              MatPar * (0.0d0) * CurlEBasis(p,2) * detJ * IP % s(t) + &
+              MatPar * (xq - 3.0d0*yq) * CurlEBasis(p,3) * detJ * IP % s(t) 
         END SELECT
       END DO
     END DO
@@ -376,7 +386,8 @@ CONTAINS
       IF (PiolaVersion) THEN
         stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
             IP % W(t), F, G, detJ, Basis, EBasis, CurlEBasis, ApplyPiolaTransform = .TRUE., &
-            SecondFamily=SecondFamily, BasisDegree=ElementOrder)
+            SecondFamily=SecondFamily, BasisDegree=ElementOrder, &
+            SimplicialMesh = Simplicial)
       ELSE
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
             IP % W(t), detJ, Basis, dBasisdx )
@@ -425,6 +436,12 @@ CONTAINS
         sol(3) = 0.0d0
         rotsol(1:3) = 0.0d0
         rotsol(3) = 4.0d0*xq*yq
+      CASE(6)
+        sol(1) = 1.5d0*yq**2
+        sol(2) = 0.5d0*xq**2
+        sol(3) = 0.0d0
+        rotsol(1:3) = 0.0d0
+        rotsol(3) = xq - 3.0d0*yq        
       END SELECT
 
       e(:) = sol(:) - u(:)  

@@ -13489,7 +13489,6 @@ CONTAINS
       AntiPeriodicHits = 0
       TotRefArea = 0.0_dp
       TotSumArea = 0.0_dp
-      
 
       DO ind=1,BMesh1 % NumberOfBulkElements
 
@@ -13503,7 +13502,7 @@ CONTAINS
         IF(.NOT. pElemBasis) nd = n
 
         n = Element % TYPE % NumberOfNodes        
-        Nodes % x(1:n) = BMesh1 % Nodes % x(Indexes(1:n))
+        Nodes % x(1:n) = BMesh1 % Nodes % x(Element % NodeIndexes(1:n))
         IF(pElemBasis) Nodes % x(n+1:) = 0._dp
 
         ! There is a discontinuity of angle at 180 degs
@@ -13525,10 +13524,10 @@ CONTAINS
 
         ! The flattened dimension is always the z-component
         IF( HaveMaxDistance ) THEN
-          zmin = MINVAL( BMesh1 % Nodes % z(Indexes(1:n)) )
-          zmax = MAXVAL( BMesh1 % Nodes % z(Indexes(1:n)) )
+          zmin = MINVAL( BMesh1 % Nodes % z(Element % NodeIndexes(1:n)) )
+          zmax = MAXVAL( BMesh1 % Nodes % z(Element % NodeIndexes(1:n)) )
         END IF
-                        
+
         ! Compute the reference area
         u = 0.0_dp; v = 0.0_dp; w = 0.0_dp;
         stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
@@ -13571,7 +13570,7 @@ CONTAINS
           nM = ElementM % TYPE % NumberOfNodes
           IF(.NOT.pElemBasis) ndM = nM
         
-          NodesM % x(1:nM) = BMesh2 % Nodes % x(IndexesM(1:nM))
+          NodesM % x(1:nM) = BMesh2 % Nodes % x(ElementM % NodeIndexes(1:nM))
           IF(pElemBasis) NodesM % x(nM+1:) = 0._dp
 
           ! Treat the left circle differently. 
@@ -13614,8 +13613,8 @@ CONTAINS
           
           ! This is a cheap test so perform that first, if requested
           IF( HaveMaxDistance ) THEN
-            zminm = MINVAL( BMesh2 % Nodes % z(IndexesM(1:nM)) )
-            zmaxm = MAXVAL( BMesh2 % Nodes % z(IndexesM(1:nM)) )
+            zminm = MINVAL( BMesh2 % Nodes % z(ElementM % NodeIndexes(1:nM)) )
+            zmaxm = MAXVAL( BMesh2 % Nodes % z(ElementM % NodeIndexes(1:nM)) )
             IF( zmaxm < zmin - MaxDistance ) GOTO 100 
             IF( zminm > zmax + MaxDistance ) GOTO 100
           END IF
@@ -13728,7 +13727,7 @@ CONTAINS
           'Minimum relative discrepancy in length (element: ',MinErrInd,'):',MinErr-1.0_dp 
       CALL Info(Caller,Message,Level=8)
 
-
+      
     END SUBROUTINE AddProjectorWeak1D
 
   END FUNCTION LevelProjector
