@@ -2984,8 +2984,12 @@ CONTAINS
      CASE(1)
         IP = GaussPoints0D(1)
      CASE(2)
-        IF (SecondKind .AND. SecondOrder) THEN
-          IP = GaussPoints1D(3)
+        IF (SecondOrder .OR. ThirdOrder) THEN
+          IF (SecondKind .AND. SecondOrder .OR. ThirdOrder) THEN
+            IP = GaussPoints1D(3)
+          ELSE
+            IP = GaussPoints1D(2)
+          END IF
         ELSE
           IP = GaussPoints1D(2)
         END IF
