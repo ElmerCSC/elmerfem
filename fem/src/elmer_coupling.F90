@@ -358,7 +358,8 @@ CONTAINS
 
       ! if this was a coupling timestep
       IF ((info == YAC_ACTION_COUPLING) .OR. &
-          (info == YAC_ACTION_PUT_FOR_RESTART)) THEN
+          (info == YAC_ACTION_PUT_FOR_RESTART) .OR. &
+          (info == YAC_ACTION_REDUCTION)) THEN
 
         ! get data to be sent from elmer
 
@@ -372,11 +373,12 @@ CONTAINS
           surface_height_field_id, SIZE(surface_height_field, 1), SIZE(surface_height_field, 2), surface_height_field, &
           info, err)
         PRINT *, "AFTER FPUT for ICE_SHEET_HEIGHT" , comm_rank
+      ELSE IF (info == YAC_ACTION_NONE) THEN
+        PRINT *, "BEFORE FUPDATE for ICE_SHEET_HEIGHT" , comm_rank
+        CALL yac_fupdate(surface_height_field_id)
+        PRINT *, "AFTER FUPDATE for ICE_SHEET_HEIGHT" , comm_rank
       END IF
-PRINT *, "AFTER FPUT for ICE_SHEET_HEIGHT" , comm_rank
-ELSE
-  CALL yac_fupdate(surface_height_field_id)
-END IF
+    END IF
 
   END SUBROUTINE elmer_ebfm_interface
 
