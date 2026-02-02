@@ -224,7 +224,7 @@ CONTAINS
         CALL yac_fget_action(t_ice_field_id, info)
         PRINT *, "ELMER: call get for field: ", TRIM(t_ice_field_name), &
                  " datatime: ", TRIM(yac_fget_field_datetime(t_ice_field_id)), &
-                 "action: ", &
+                 " action: ", &
                  TRIM( &
                   MERGE( &
                     "coupling","none    ", &
@@ -266,7 +266,7 @@ CONTAINS
         CALL yac_fget_action(smb_field_id, info)
         PRINT *, "ELMER: call get for field: ", TRIM(smb_field_name), &
                  " datatime: ", TRIM(yac_fget_field_datetime(smb_field_id)), &
-                 "action: ", &
+                 " action: ", &
                  TRIM( &
                   MERGE( &
                     "coupling","none    ", &
@@ -306,7 +306,7 @@ CONTAINS
         CALL yac_fget_action(runoff_field_id, info)
         PRINT *, "ELMER: call get for field: ", TRIM(runoff_field_name), &
                  " datatime: ", TRIM(yac_fget_field_datetime(runoff_field_id)), &
-                 "action: ", &
+                 " action: ", &
                  TRIM( &
                   MERGE( &
                     "coupling","none    ", &
@@ -340,14 +340,15 @@ CONTAINS
     IF (yac_fget_role_from_field_id(surface_height_field_id) == &
         YAC_EXCHANGE_TYPE_SOURCE) THEN
 
+      CALL yac_fget_action(surface_height_field_id, info)
+
       IF (comm_rank == 0) THEN
 
         ! get the action executed by YAC in the next put operation called for
         ! the surface_height field and print out some information
-        CALL yac_fget_action(surface_height_field_id, info)
         PRINT *, "ELMER: call put for field: ", TRIM(surface_height_field_name), &
                  " datatime: ", TRIM(yac_fget_field_datetime(surface_height_field_id)), &
-                 "action: ", &
+                 " action: ", &
                  TRIM( &
                   MERGE( &
                     "coupling","none    ", &
@@ -357,7 +358,8 @@ CONTAINS
 
       ! if this was a coupling timestep
       IF ((info == YAC_ACTION_COUPLING) .OR. &
-          (info == YAC_ACTION_GET_FOR_RESTART)) THEN
+          (info == YAC_ACTION_PUT_FOR_RESTART) .OR. &
+          (info == YAC_ACTION_REDUCTION)) THEN
 
         ! get data to be sent from elmer
 
@@ -371,6 +373,10 @@ CONTAINS
           surface_height_field_id, SIZE(surface_height_field, 1), SIZE(surface_height_field, 2), surface_height_field, &
           info, err)
         PRINT *, "AFTER FPUT for ICE_SHEET_HEIGHT" , comm_rank
+      ELSE IF (info == YAC_ACTION_NONE) THEN
+        PRINT *, "BEFORE FUPDATE for ICE_SHEET_HEIGHT" , comm_rank
+        CALL yac_fupdate(surface_height_field_id)
+        PRINT *, "AFTER FUPDATE for ICE_SHEET_HEIGHT" , comm_rank
       END IF
     END IF
 
@@ -527,7 +533,7 @@ CONTAINS
         CALL yac_fget_action(clt_field_id, info)
         PRINT *, "call get for field: ", TRIM(clt_field_name), &
                  " datatime: ", TRIM(yac_fget_field_datetime(clt_field_id)), &
-                 "action: ", &
+                 " action: ", &
                  TRIM( &
                   MERGE( &
                     "coupling","none    ", &
@@ -567,7 +573,7 @@ CONTAINS
         CALL yac_fget_action(pr_field_id, info)
         PRINT *, "call get for field: ", TRIM(pr_field_name), &
                  " datatime: ", TRIM(yac_fget_field_datetime(pr_field_id)), &
-                 "action: ", &
+                 " action: ", &
                  TRIM( &
                   MERGE( &
                     "coupling","none    ", &
