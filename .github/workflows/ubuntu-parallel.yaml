@@ -71,7 +71,7 @@ jobs:
             -DCREATE_PKGCONFIG_FILE=ON \
             -DWITH_MPI=ON \
             -DMPI_TEST_MAXPROC=$(nproc) \
-            -DMPIEXEC_PREFLAGS="--allow-run-as-root --oversubscribe" \
+            -DMPIEXEC_PREFLAGS="--allow-run-as-root;--oversubscribe" \
             ..
 
       - name: build
