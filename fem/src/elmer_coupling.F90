@@ -224,7 +224,7 @@ CONTAINS
         CALL yac_fget_action(t_ice_field_id, info)
         PRINT *, "ELMER: call get for field: ", TRIM(t_ice_field_name), &
                  " datatime: ", TRIM(yac_fget_field_datetime(t_ice_field_id)), &
-                 "action: ", &
+                 " action: ", &
                  TRIM( &
                   MERGE( &
                     "coupling","none    ", &
@@ -266,7 +266,7 @@ CONTAINS
         CALL yac_fget_action(smb_field_id, info)
         PRINT *, "ELMER: call get for field: ", TRIM(smb_field_name), &
                  " datatime: ", TRIM(yac_fget_field_datetime(smb_field_id)), &
-                 "action: ", &
+                 " action: ", &
                  TRIM( &
                   MERGE( &
                     "coupling","none    ", &
@@ -306,7 +306,7 @@ CONTAINS
         CALL yac_fget_action(runoff_field_id, info)
         PRINT *, "ELMER: call get for field: ", TRIM(runoff_field_name), &
                  " datatime: ", TRIM(yac_fget_field_datetime(runoff_field_id)), &
-                 "action: ", &
+                 " action: ", &
                  TRIM( &
                   MERGE( &
                     "coupling","none    ", &
@@ -347,7 +347,7 @@ CONTAINS
         CALL yac_fget_action(surface_height_field_id, info)
         PRINT *, "ELMER: call put for field: ", TRIM(surface_height_field_name), &
                  " datatime: ", TRIM(yac_fget_field_datetime(surface_height_field_id)), &
-                 "action: ", &
+                 " action: ", &
                  TRIM( &
                   MERGE( &
                     "coupling","none    ", &
@@ -527,7 +527,7 @@ CONTAINS
         CALL yac_fget_action(clt_field_id, info)
         PRINT *, "call get for field: ", TRIM(clt_field_name), &
                  " datatime: ", TRIM(yac_fget_field_datetime(clt_field_id)), &
-                 "action: ", &
+                 " action: ", &
                  TRIM( &
                   MERGE( &
                     "coupling","none    ", &
@@ -567,7 +567,7 @@ CONTAINS
         CALL yac_fget_action(pr_field_id, info)
         PRINT *, "call get for field: ", TRIM(pr_field_name), &
                  " datatime: ", TRIM(yac_fget_field_datetime(pr_field_id)), &
-                 "action: ", &
+                 " action: ", &
                  TRIM( &
                   MERGE( &
                     "coupling","none    ", &
