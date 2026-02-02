@@ -10563,7 +10563,7 @@ CONTAINS
       ! These are used temporarily for debugging purposes
       INTEGER :: SaveInd, MaxSubElem, MaxSubTriangles, DebugInd, &
           Nslave, Nmaster, symmCount
-      LOGICAL :: SaveElem, DebugElem, SaveErr, DebugEdge, symmX, symmY
+      LOGICAL :: SaveElem, DebugElem, SaveErr, DebugEdge, symmX, symmY, GotFaces
       REAL(KIND=dp) :: sums, summ, summ2, summabs, EdgeProj(2), EdgeProjM(2), ci, &
           EdgeErr, MaxEdgeErr, cFact(6),cFactM(6)
       CHARACTER(LEN=20) :: FileName
@@ -10574,7 +10574,13 @@ CONTAINS
       CALL Info(Caller,'Creating weak constraints using a generic integrator',Level=8)      
 
       Mesh => CurrentModel % Solver % Mesh 
+            
+      IF (.NOT. ASSOCIATED(Mesh % Faces) .AND. ASSOCIATED(Mesh % Edges) ) THEN
+        CALL Fatal(Caller,'Got Edges but not Faces!?')
+      END IF
+      GotFaces = ASSOCIATED(Mesh % Faces)
 
+      
       SaveInd = ListGetInteger( BC,'Projector Save Element Index',Found )
       DebugInd = ListGetInteger( BC,'Projector Debug Element Index',Found )
       SaveErr = ListGetLogical( BC,'Projector Save Fraction',Found)
@@ -10697,18 +10703,13 @@ CONTAINS
 
         Element => BMesh1 % Elements(ind)
 
-        IF (ASSOCIATED(Mesh % Faces)) THEN
+        IF (GotFaces) THEN
           ! We need a face element as indexed in the original mesh so that
           ! the subroutine mGetElementDOFs works as expected 
           TrueElement => Mesh % Faces(Element % ElementIndex)
           nd = mGetElementDOFs(Indexes, TrueElement, notDG = .TRUE.)
         ELSE
-          IF (ASSOCIATED(Mesh % Edges)) THEN
-            TrueElement => Mesh % Edges(Element % ElementIndex)
-            nd = mGetElementDOFs(Indexes, TrueElement, notDG = .TRUE.)
-          ELSE
-            nd = mGetElementDOFs(Indexes,Element)
-          END IF
+          nd = mGetElementDOFs(Indexes,Element)
         END IF
 
         n = Element % TYPE % NumberOfNodes
@@ -10717,8 +10718,8 @@ CONTAINS
         
         IF (DoNodes) THEN
           IF (pElemBasis) THEN
-            Nodes % x(n+1:nd) = 0
-            Nodes % y(n+1:nd) = 0
+            Nodes % x(n+1:nd) = 0.0_dp
+            Nodes % y(n+1:nd) = 0.0_dp
           ELSE
             nd = n
           END IF
@@ -10860,7 +10861,7 @@ CONTAINS
           DO i=1,nd
             IF (i > n .AND. .NOT. pElemProj) CYCLE
 
-            IF (ASSOCIATED(Mesh % Faces) .OR. ASSOCIATED(Mesh % Edges)) THEN
+            IF(pElemBasis) THEN
               j = Indexes(i)
             ELSE
               j = Element % NodeIndexes(i)
@@ -10885,16 +10886,11 @@ CONTAINS
         DO indM=1,BMesh2 % NumberOfBulkElements
 
           ElementM => BMesh2 % Elements(indM)
-          IF (ASSOCIATED(Mesh % Faces)) THEN
+          IF (GotFaces) THEN
             TrueElementM => Mesh % Faces(ElementM % ElementIndex)
             ndM = mGetElementDOFs(IndexesM,TrueElementM, notDG = .TRUE.)
           ELSE
-            IF (ASSOCIATED(Mesh % Edges)) THEN
-              TrueElementM => Mesh % Edges(ElementM % ElementIndex)
-              ndM = mGetElementDOFs(IndexesM, TrueElementM, notDG = .TRUE.)
-            ELSE
-              ndM =  mGetElementDOFs(IndexesM,ElementM)
-            END IF
+            ndM =  mGetElementDOFs(IndexesM,ElementM)
           END IF
           
           neM = ElementM % TYPE % ElementCode / 100
@@ -10992,18 +10988,18 @@ CONTAINS
           END IF
 
           IF( pElemBasis ) THEN
-            nodesM % x(nM+1:ndM) = 0
-            nodesM % y(nM+1:ndM) = 0
-            nodesM % z(nM+1:ndM) = 0
+            nodesM % x(nM+1:ndM) = 0.0_dp
+            nodesM % y(nM+1:ndM) = 0.0_dp
+            nodesM % z(nM+1:ndM) = 0.0_dp
           END IF
 
           ! Treat the left circle differently. 
           IF( LeftCircle ) THEN
             ! Omit the element if it is definitely on the right circle
             IF( ALL( ABS( AlphaM(1:neM) ) - ArcCoeff * 90.0_dp < ArcTol ) ) CYCLE
-            DO j=1,neM
-              IF( AlphaM(j) < 0.0_dp ) AlphaM(j) = AlphaM(j) + ArcCoeff * 360.0_dp
-            END DO
+            WHERE( AlphaM(1:neM) < 0.0_dp)
+              AlphaM(1:neM) = AlphaM(1:neM) + ArcCoeff * 360.0_dp              
+            END WHERE
           END IF
 
           IF( Repeating ) THEN
@@ -11012,11 +11008,6 @@ CONTAINS
               Nrange1 = FLOOR( Naxial * (amaxm-amin+RelTolX) / 360.0_dp )
               Nrange2 = FLOOR( Naxial * (amax-aminm+RelTolX) / 360.0_dp )
               
-              ! The two ranges could have just offset of 2*PI, eliminate that
-              !Nrange2 = Nrange2 + ((Nrange1 - Nrange2)/Naxial) * Naxial
-              !  Nrange2 = Nrange1
-              !END IF
-
               IF( MODULO( Nrange1 - Nrange2, Naxial ) == 0 )  THEN
                 Nrange2 = Nrange1
               END IF
@@ -11031,12 +11022,6 @@ CONTAINS
                 END DO
               END IF
                 
-              !IF( Nrange2 > Nrange1 + Naxial / 2 ) THEN
-              !  Nrange2 = Nrange2 - Naxial
-              !ELSE IF( Nrange2 < Nrange1 - Naxial / 2 ) THEN
-              !  Nrange2 = Nrange2 + Naxial
-              !END IF
-
               IF( DebugElem) THEN
                 PRINT *,'axial:',ind,indM,amin,aminm,Nrange1,Nrange2
                 PRINT *,'coord:',Nodes % x(1), Nodes % y(1), NodesM % x(1), NodesM % y(1)
@@ -11468,13 +11453,10 @@ CONTAINS
                     IF(.NOT. pElemProj .AND. j > n ) CYCLE
                     jj = Indexes(j)                                    
                   ELSE
-                    IF (ASSOCIATED(Mesh % Faces)) THEN
-                      jj = Indexes(j)
-                    ELSE
-                      jj = Element % NodeIndexes(j)
-                      jj=InvPerm1(jj)                      
-                    END IF
+                    jj = Element % NodeIndexes(j)
+                    jj = InvPerm1(jj)                      
                   END IF
+                  IF(jj==0) CALL Fatal('','jj is zero!')
                   
                   nrow = NodePerm(jj)
                   IF( nrow == 0 ) CYCLE
@@ -11493,13 +11475,9 @@ CONTAINS
                       IF(.NOT. pElemProj .AND. i > n ) CYCLE
                       ii = Indexes(i)                      
                     ELSE
-                      IF (ASSOCIATED(Mesh % Faces)) THEN
-                        ii = Indexes(i)
-                      ELSE
-                        ii = Element % NodeIndexes(i)
-                        ii=InvPerm1(ii)
-                      END IF
+                      ii = InvPerm1( Element % NodeIndexes(i) ) 
                     END IF
+                    IF(ii==0) CALL Fatal('','ii is zero!')
                     
                     CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                                ii, NodeCoeff * Basis(i) * val ) 
@@ -11511,18 +11489,13 @@ CONTAINS
                   END DO
 
                   DO i=1,ndM
-!                   IF( ABS( val * BasisM(i) ) < 1.0d-10 ) CYCLE
+!                    IF( ABS( val * BasisM(i) ) < 1.0d-10 ) CYCLE
 
                     IF(pElemBasis) THEN
                       IF(.NOT. pElemProj .AND. i > nM ) CYCLE
                       ii = IndexesM(i)
                     ELSE
-                      IF (ASSOCIATED(Mesh % Faces)) THEN
-                        ii = IndexesM(i)
-                      ELSE
-                        ii = ElementM % NodeIndexes(i)
-                        ii=InvPerm2(ii)
-                      END IF
+                      ii = InvPerm2( ElementM % NodeIndexes(i) )
                     END IF
                     
                     Nmaster = Nmaster + 1
@@ -12639,10 +12612,9 @@ CONTAINS
         IF( FullCircle ) THEN
           LeftCircle = ( ALL( ABS( Nodes % x(1:n) ) > 90.0_dp ) )
           IF( LeftCircle ) THEN
-            DO j=1,n
-              IF( Nodes % x(j) < 0.0 ) Nodes % x(j) = &
-                  Nodes % x(j) + 360.0_dp
-            END DO
+            WHERE( Nodes % x(1:n) < 0.0_dp)
+              Nodes % x(1:n) = Nodes % x(1:n) + 360.0_dp              
+            END WHERE
           END IF
         END IF
 
@@ -12678,7 +12650,7 @@ CONTAINS
         DO i=1,nd
           IF (i > n .AND. .NOT. pElemProj) CYCLE
           IF (i > n) THEN
-             j = Indexes(i)
+            j = Indexes(i)
           ELSE
             j = InvPerm1(Indexes(i))
           END IF
@@ -12705,10 +12677,9 @@ CONTAINS
           IF( LeftCircle ) THEN
             ! Omit the element if it is definitely on the right circle
             IF( ALL( ABS( NodesM % x(1:nM) ) - 90.0_dp < XTol ) ) CYCLE
-            DO j=1,nM
-              IF( NodesM % x(j) < 0.0_dp ) NodesM % x(j) = &
-                  NodesM % x(j) + 360.0_dp
-            END DO
+            WHERE( NodesM % x(1:nM) < 0.0_dp)
+              NodesM % x(1:nM) = NodesM % x(1:nM) + 360.0_dp              
+            END WHERE
           END IF
           
           xminm = MINVAL( NodesM % x(1:nM))
