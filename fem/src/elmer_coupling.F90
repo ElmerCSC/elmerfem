@@ -353,7 +353,7 @@ CONTAINS
                   MERGE( &
                     "coupling","none    ", &
                     (info == YAC_ACTION_COUPLING) .OR. &
-                    (info == YAC_ACTION_GET_FOR_RESTART)))
+                    (info == YAC_ACTION_PUT_FOR_RESTART)))
       END IF
 
       ! if this was a coupling timestep
