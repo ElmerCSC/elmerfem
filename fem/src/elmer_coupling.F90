@@ -373,7 +373,10 @@ CONTAINS
           info, err)
         PRINT *, "AFTER FPUT for ICE_SHEET_HEIGHT" , comm_rank
       END IF
-    END IF
+PRINT *, "AFTER FPUT for ICE_SHEET_HEIGHT" , comm_rank
+ELSE
+  CALL yac_fupdate(surface_height_field_id)
+END IF
 
   END SUBROUTINE elmer_ebfm_interface
 
