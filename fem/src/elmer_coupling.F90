@@ -340,11 +340,12 @@ CONTAINS
     IF (yac_fget_role_from_field_id(surface_height_field_id) == &
         YAC_EXCHANGE_TYPE_SOURCE) THEN
 
+      CALL yac_fget_action(surface_height_field_id, info)
+
       IF (comm_rank == 0) THEN
 
         ! get the action executed by YAC in the next put operation called for
         ! the surface_height field and print out some information
-        CALL yac_fget_action(surface_height_field_id, info)
         PRINT *, "ELMER: call put for field: ", TRIM(surface_height_field_name), &
                  " datatime: ", TRIM(yac_fget_field_datetime(surface_height_field_id)), &
                  " action: ", &
@@ -357,7 +358,7 @@ CONTAINS
 
       ! if this was a coupling timestep
       IF ((info == YAC_ACTION_COUPLING) .OR. &
-          (info == YAC_ACTION_GET_FOR_RESTART)) THEN
+          (info == YAC_ACTION_PUT_FOR_RESTART)) THEN
 
         ! get data to be sent from elmer
 
