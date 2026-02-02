@@ -14,7 +14,7 @@ on:
 jobs:
 
   ubuntu:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     
     name: ubuntu-parallel (${{ matrix.compiler }})
 
