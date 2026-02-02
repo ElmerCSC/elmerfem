@@ -19,9 +19,9 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   INTEGER :: num_parts, elmer_mesh_partitions, comm_rank, comm_size, ierror
   INTEGER :: I, t, ierr
   INTEGER, POINTER :: t_icePerm(:), smbPerm(:), runoffPerm(:)
-  LOGICAL :: Parallel, FirstTime=.TRUE.
+  LOGICAL :: Parallel, FirstTime=.TRUE., UnFoundFatal=.TRUE.
   TYPE(Mesh_t),POINTER :: Mesh
-  TYPE(Variable_t), POINTER :: t_iceVar, smbVar, runoffVar
+  TYPE(Variable_t), POINTER :: t_iceVar, smbVar, runoffVar, ZsSol
 
   LOGICAL        :: Found
   
@@ -94,8 +94,14 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
     CALL DefaultVariableAdd('smb', dofs=1, VariableType = Variable_on_elements, Perm = smbPerm)
   
     PRINT *, "AFTER variable addition"
+    ZsSol => VariableGet( Model % Mesh % Variables, "Zs" ,UnFoundFatal=UnFoundFatal)
+    DO i=1, Mesh % NumberOfNodes
+      surface_height_field(i,1) = ZsSol % Values(ZsSol % Perm(i))
+    END DO
     
     
+    PRINT *, "SIZE OF ZS" , SIZE(surface_height_field, 1)
+    PRINT *, "SIZE OF ZS" , SIZE(surface_height_field, 2)
     FirstTime = .FALSE.
 
     
@@ -117,6 +123,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   t_iceVar => VariableGet( Mesh % Variables, 'T_ice' )  
   smbVar => VariableGet( Mesh % Variables, 'smb' )
   runoffVar => VariableGet( Mesh % Variables, 'runoff' )
+  ZsSol => VariableGet( Model % Mesh % Variables, "Zs" ,UnFoundFatal=UnFoundFatal)
   WRITE(Message,*) 'AFTER GETTING VARIABLES'
   CALL INFO(SolverName,Message,Level=3)
   IF ((.NOT.ASSOCIATED(t_iceVar)) .OR. (.NOT.ASSOCIATED(smbVar)) .OR. (.NOT.ASSOCIATED(runoffVar))) THEN
@@ -129,6 +136,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   DO i=1, Mesh % NumberOfNodes
     t_iceVar % Values(t_iceVar % Perm(i)) = t_ice_field(i,1)
     runoffVar  % Values(runoffVar %  Perm(i)) = runoff_field(i,1)
+    surface_height_field(i,1) = ZsSol % Values(ZsSol % Perm(i))
   END DO
   !WRITE(Message,*) 'BEFORE WRITING CELL VALUES'
   !PRINT *, "SIZE of SMB FIELD", SIZE(smb_field, 1),"First entry:", smb_field(1,1)
