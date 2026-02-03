@@ -45,9 +45,6 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   couple_to_ebfm = GetLogical(SolverParams, 'couple_to_ebfm',  Found )
   IF (.NOT. Found) THEN
      CALL FATAL(SolverName,'No keyword >couple_to_ebfm< found in yac2elmer solver')
-  ELSE
-     WRITE(Message,'(A,A)') 'couple_to_ebfm is set to: ', couple_to_ebfm
-     CALL INFO(SolverName, Message,Level=2)
   END IF
 
   ! check if it is coupled to ICON
@@ -55,10 +52,8 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   IF (.NOT. Found) THEN
      CALL FATAL(SolverName,'No keyword >couple_to_icon< found in yac2elmer solver')
   ELSE
-     WRITE(Message,'(A,A)') 'couple_to_icon is set to: ', couple_to_icon
-     CALL INFO(SolverName, Message,Level=2)
      IF (couple_to_icon) THEN
-        CALL FATAL(SolverName,'>couple_to_icon< is currently not supported')
+        CALL FATAL(SolverName,'>couple_to_icon< is currently not supported. Please set to FALSE')
      END IF
   END IF
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
