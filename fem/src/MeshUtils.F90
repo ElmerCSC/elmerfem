@@ -6803,10 +6803,7 @@ CONTAINS
       
       ! Take into account that the reference elements are different:
       IF( ne == 3 .AND. pElemBasis ) THEN
-        uq = u
-        vq = v
-        u = -1.0d0 + 2.0d0*uq + vq
-        v = SQRT(3.0d0)*vq
+        CALL ConvertToPReference(303, u, v, w)
       END IF
 
       stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
@@ -6843,10 +6840,7 @@ CONTAINS
       END IF
 
       IF ( neM == 3 .AND. pElemBasis ) THEN
-        uq = um
-        vq = vm
-        um = -1.0d0 + 2.0d0*uq + vq
-        vm = SQRT(3.0d0)*vq
+        CALL ConvertToPReference(303, um, vm, wm)
       END IF
       
       stat = ElementInfo( ElementM, NodesM, um, vm, wm, detJ, BasisM )
@@ -10547,10 +10541,7 @@ CONTAINS
         IF (PiolaVersion) THEN
           ! Take into account that the reference elements are different:
           IF ( ne == 3) THEN
-            uq = u
-            vq = v
-            u = -1.0d0 + 2.0d0*uq + vq
-            v = SQRT(3.0d0)*vq
+            CALL ConvertToPReference(303, u, v, w)
           END IF
           IF (SecondOrder) THEN
             stat = EdgeElementInfo( Element, Nodes, u, v, w, &
