@@ -14,7 +14,14 @@ on:
 jobs:
 
   ubuntu:
-    runs-on: ${{ github.repository == 'ElmerCSC/elmerfem' && 'self-hosted' || 'ubuntu-latest' }}
+    runs-on: |-
+      # Conditional runner selection:
+      # - ElmerCSC/elmerfem repository -> self-hosted
+      # - Forks (default) -> ubuntu-latest
+      ${{ case(
+        github.repository == 'ElmerCSC/elmerfem', 'self-hosted',
+        'ubuntu-latest'                                       
+      ) }}
     
     name: ubuntu-parallel (${{ matrix.compiler }})
 
