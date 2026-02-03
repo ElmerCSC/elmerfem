@@ -14,7 +14,7 @@ on:
 jobs:
 
   ubuntu:
-    if: ${{ github.repository == 'ElmerCSC/elmerfem' }}  # only run job for main repository (forks usually not have self-hosted runners)
+    if: ${{ github.repository == 'ElmerCSC/elmerfem' }}  # only run job for main repository (forks usually cannot access the "self-hosted" runner)
     runs-on: self-hosted
 
     name: ubuntu-parallel (${{ matrix.compiler }})
