@@ -104,7 +104,7 @@
 
                 "-DWITH_ElmerIce:BOOL=TRUE"
 
-                "-DMPIEXEC_PREFLAGS=-oversubscribe"
+                "-DMPIEXEC_PREFLAGS=--oversubscribe"
 
                 "-Wno-dev"
               ]
