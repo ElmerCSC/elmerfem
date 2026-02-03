@@ -50,9 +50,49 @@
     (YAC_VERSION_MAJOR == major && YAC_VERSION_MINOR == minor && YAC_VERSION_PATCH >= patch) \
 )
 
+!> Helper module for YAC utility functions used by Elmer coupling modules
+!> Outside of MODULE elmer_coupling to avoid circular dependencies
+MODULE elmer_coupling_utils
+
+  USE yac
+
+  IMPLICIT NONE
+
+  PUBLIC :: yac_action_to_string
+
+CONTAINS
+
+  !> Convert YAC action code to human-readable string
+  !> @param action_code YAC action code (e.g., YAC_ACTION_COUPLING)
+  !> @return String representation of the action code
+  FUNCTION yac_action_to_string(action_code) RESULT(action_str)
+    INTEGER, INTENT(IN) :: action_code
+    CHARACTER(LEN=30) :: action_str
+
+    SELECT CASE (action_code)
+      CASE (YAC_ACTION_COUPLING)
+        action_str = "YAC_ACTION_COUPLING"
+      CASE (YAC_ACTION_PUT_FOR_RESTART)
+        action_str = "YAC_ACTION_PUT_FOR_RESTART"
+      CASE (YAC_ACTION_GET_FOR_RESTART)
+        action_str = "YAC_ACTION_GET_FOR_RESTART"
+      CASE (YAC_ACTION_REDUCTION)
+        action_str = "YAC_ACTION_REDUCTION"
+      CASE (YAC_ACTION_NONE)
+        action_str = "YAC_ACTION_NONE"
+      CASE (YAC_ACTION_OUT_OF_BOUND)
+        action_str = "YAC_ACTION_OUT_OF_BOUND"
+      CASE DEFAULT
+        action_str = "UNKNOWN_ACTION"
+    END SELECT
+  END FUNCTION yac_action_to_string
+
+END MODULE elmer_coupling_utils
+
 MODULE elmer_ebfm_coupling
 
   USE yac
+  USE elmer_coupling_utils, ONLY: yac_action_to_string
 
   IMPLICIT NONE
 
@@ -348,12 +388,7 @@ CONTAINS
         ! the surface_height field and print out some information
         PRINT *, "ELMER: call put for field: ", TRIM(surface_height_field_name), &
                  " datatime: ", TRIM(yac_fget_field_datetime(surface_height_field_id)), &
-                 " action: ", &
-                 TRIM( &
-                  MERGE( &
-                    "coupling","none    ", &
-                    (info == YAC_ACTION_COUPLING) .OR. &
-                    (info == YAC_ACTION_PUT_FOR_RESTART)))
+                 " action: ", TRIM(yac_action_to_string(info))
       END IF
 
       ! if this was a coupling timestep
