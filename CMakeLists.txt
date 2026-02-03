@@ -538,6 +538,23 @@ IF (WITH_XIOS)
   MESSAGE(STATUS "------------------------------------------------")
 ENDIF()
 
+# Set environment variable ADIOS2_ROOT to point installation directory of adios (e.g. "/opt/adios/2.11")
+IF(WITH_ADIOS2)
+  MESSAGE(STATUS "------------------------------------------------")
+  MESSAGE(STATUS "  Looking for ADIOS2")
+  FIND_PACKAGE(ADIOS2 REQUIRED Fortran)
+  IF(ADIOS2_FOUND)
+    GET_TARGET_PROPERTY(ADIOS2_MOD_DIR adios2::fortran INTERFACE_INCLUDE_DIRECTORIES)
+    INCLUDE_DIRECTORIES(${ADIOS2_MOD_DIR})
+    SET(HAVE_ADIOS2 TRUE)
+    MESSAGE(STATUS "------------------------------------------------")
+    MESSAGE(STATUS "  ADIOS2_FOUND: ${ADIOS2_FOUND}")
+    MESSAGE(STATUS "  ADIOS2_INCLUDE_DIR: ${ADIOS2_MOD_DIR}")
+    MESSAGE(STATUS "  ADIOS2_LIBRARIES: ${ADIOS2_LIBRARIES}")
+    MESSAGE(STATUS "------------------------------------------------")
+  ENDIF(ADIOS2_FOUND)
+
+ENDIF(WITH_ADIOS2)
 
 MESSAGE(STATUS "------------------------------------------------")
 
