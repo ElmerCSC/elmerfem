@@ -1953,8 +1953,11 @@ CONTAINS
    !-----------------------------------------------------------------------
    SUBROUTINE ReadNodesFile()
 
-     REAL(KIND=dp) :: Coords(3)
+     !USE iso_c_binding
+     REAL(c_double) :: Coords(3)
+     REAL(c_float) :: SCoords(3)
      INTEGER :: NodeTag
+     LOGICAL :: Binary, singlePrec
 
      IF( Parallel ) THEN
        FileName = BaseName(1:BaseNameLen)//&
@@ -1964,7 +1967,22 @@ CONTAINS
        FileName = BaseName(1:BaseNameLen)//'/mesh.nodes'
      END IF
 
-     OPEN( Unit=FileUnit, File=FileName, STATUS='OLD', IOSTAT = iostat )
+     Binary = .FALSE.
+     SinglePrec = .FALSE.
+     
+     OPEN( Unit=FileUnit, File=FileName, STATUS='old', ACTION='read', IOSTAT = iostat )
+     IF( iostat /= 0 ) THEN
+       ! ascii file was not successfull, try with binary.
+       Binary = .TRUE.
+       OPEN( Unit=FileUnit, File=TRIM(FileName)//".bin", FORM='unformatted', &
+           ACCESS = 'stream', STATUS='old', ACTION='read', IOSTAT = iostat )
+       IF(iostat /= 0 ) THEN         
+         SinglePrec = .TRUE.
+         OPEN( Unit=FileUnit, File=TRIM(FileName)//".sbin", FORM='unformatted', &
+             ACCESS = 'stream', STATUS='old', ACTION='read', IOSTAT = iostat )
+       END IF
+     END IF
+     
      IF( iostat /= 0 ) THEN
        CALL Fatal('ReadNodesFile','Could not open file: '//TRIM(Filename))
      ELSE
@@ -1976,14 +1994,21 @@ CONTAINS
 
      NodePermutation = .FALSE.
      DO j = 1, Mesh % NumberOfNodes
-       READ(FileUnit,*,IOSTAT=iostat) NodeTag, k, Coords
+       IF(SinglePrec) THEN
+         READ(FileUnit,IOSTAT=iostat) NodeTag, SCoords
+         Coords = SCoords
+       ELSE IF(Binary) THEN
+         READ(FileUnit,IOSTAT=iostat) NodeTag, Coords
+       ELSE
+         READ(FileUnit,*,IOSTAT=iostat) NodeTag, k, Coords
+       END IF
        IF( iostat /= 0 ) THEN
          CALL Fatal('ReadNodesFile','Problem load node '//I2S(j)//' in file: '//TRIM(Filename))
        END IF
 
-       IF( NodeTags(j) /= j ) NodePermutation = .TRUE.
- 
+       IF( NodeTags(j) /= j ) NodePermutation = .TRUE. 
        NodeTags(j) = NodeTag
+       
        Mesh % Nodes % x(j) = Coords(1)
        Mesh % Nodes % y(j) = Coords(2)
        Mesh % Nodes % z(j) = Coords(3)
@@ -2001,7 +2026,7 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element
      INTEGER :: ElemType, Tag, Body, ElemNo, Ivals(64),nread, ioffset, partn
      CHARACTER(256) :: str
-     LOGICAL :: halo
+     LOGICAL :: halo, Binary 
 
 
      CALL AllocateVector( ElementTags, Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements, 'ReadElementsFile')   
@@ -2016,7 +2041,16 @@ CONTAINS
        FileName = BaseName(1:BaseNameLen)//'/mesh.elements'
      END IF
 
-     OPEN( Unit=FileUnit, File=FileName, STATUS='OLD', iostat=IOSTAT )
+     OPEN( Unit=FileUnit, File=FileName, STATUS='old', iostat=IOSTAT )
+     IF( iostat == 0 ) THEN
+       Binary = .FALSE.
+     ELSE
+       ! ascii file was not successfull, try with binary.
+       Binary = .TRUE.       
+       OPEN( Unit=FileUnit, File=TRIM(FileName)//".bin", FORM='unformatted', &
+           ACCESS = 'stream', STATUS='old', ACTION='read', IOSTAT = iostat )
+     END IF
+
      IF( iostat /= 0 ) THEN
        CALL Fatal('ReadElementsFile','Could not open file: '//TRIM(Filename))
      ELSE
@@ -2031,25 +2065,28 @@ CONTAINS
          CALL Fatal('ReadElementsFile','Element '//I2S(i)//' not associated!')
        END IF
 
-       READ(FileUnit, '(a)', IOSTAT=iostat) str
-       IF( iostat /= 0 ) THEN
-         CALL Fatal('ReadElementsFile','Could not read start of element entry: '//I2S(j))
-       END IF
-
-       nread = read_ints(str,ivals,halo)
-
-       tag = ivals(1)
-
-       IF( halo ) THEN
-         ioffset = 1
-         partn = ivals(2) 
+       IF(Binary) THEN
+         READ(FileUnit,IOSTAT=iostat) Tag, PartN, body, elemtype
        ELSE
-         ioffset = 0
-         partn = 0 
-       END IF
-       body = ivals(ioffset+2)
-       ElemType = ivals(ioffset+3)
+         READ(FileUnit, '(a)', IOSTAT=iostat) str
+         IF( iostat /= 0 ) THEN
+           CALL Fatal('ReadElementsFile','Could not read start of element entry: '//I2S(j))
+         END IF
 
+         nread = read_ints(str,ivals,halo)         
+         tag = ivals(1)
+
+         IF( halo ) THEN
+           ioffset = 1
+           partn = ivals(2) 
+         ELSE
+           ioffset = 0
+           partn = 0 
+         END IF
+         body = ivals(ioffset+2)
+         ElemType = ivals(ioffset+3)
+       END IF
+         
        ElementTags(j) = tag
        IF( j /= tag ) ElementPermutation = .TRUE.             
        Element % ElementIndex = j
@@ -2069,13 +2106,16 @@ CONTAINS
        END IF
 
        n = Element % TYPE % NumberOfNodes
-       IF( nread < n + ioffset + 3 ) THEN
-         CALL Fatal('ReadElementsFile','Line '//I2S(j)//' does not contain enough entries')
-       END IF
-
        CALL AllocateVector( Element % NodeIndexes, n )
 
-       Element % NodeIndexes(1:n) = IVals(4+ioffset:nread)
+       IF( Binary ) THEN
+         READ(FileUnit,IOSTAT=iostat) Element % NodeIndexes(1:n)
+       ELSE
+         IF( nread < n + ioffset + 3 ) THEN
+           CALL Fatal('ReadElementsFile','Line '//I2S(j)//' does not contain enough entries')
+         END IF
+         Element % NodeIndexes(1:n) = IVals(4+ioffset:nread)
+       END IF
      END DO
      CLOSE( FileUnit ) 
 
@@ -2092,7 +2132,7 @@ CONTAINS
      INTEGER :: Left, Right, bndry, tag, ElemType, IVals(64), nread, ioffset, partn
      TYPE(Element_t), POINTER :: Element
      CHARACTER(256) :: str
-     LOGICAL :: halo
+     LOGICAL :: halo, Binary
 
      IF( Parallel ) THEN
        FileName = BaseName(1:BaseNameLen)//&
@@ -2122,7 +2162,17 @@ CONTAINS
      END IF
 
 
-     OPEN( Unit=FileUnit, File=FileName, STATUS='OLD', iostat=IOSTAT )
+     OPEN( Unit=FileUnit, File=FileName, STATUS='old', iostat=IOSTAT )
+
+     IF( iostat == 0 ) THEN
+       Binary = .FALSE.
+     ELSE
+       ! ascii file was not successfull, try with binary.
+       Binary = .TRUE.       
+       OPEN( Unit=FileUnit, File=TRIM(FileName)//".bin", FORM='unformatted', &
+           ACCESS = 'stream', STATUS='old', ACTION='read', IOSTAT = iostat )
+     END IF
+
      IF( iostat /= 0 ) THEN
        CALL Fatal('ReadBoundaryFile','Could not open file: '//TRIM(Filename))
      ELSE
@@ -2138,28 +2188,32 @@ CONTAINS
          CALL Fatal('ReadBoundaryFile','Element '//I2S(i)//' not associated!')
        END IF
 
-       READ(FileUnit, '(a)', IOSTAT=iostat) str
-       IF( iostat /= 0 ) THEN
-         CALL Fatal('ReadBoundaryFile','Could not read boundary element entry: '//I2S(j))
-       END IF
-       nread = read_ints(str,ivals,halo)
-       
-       tag = ivals(1)
-       ElementTags(j) = tag
-
-       IF( halo ) THEN
-         partn = ivals(2)
-         ioffset = 1
+       IF(Binary) THEN
+         READ(FileUnit,IOSTAT=iostat) Tag, PartN, bndry, left, right, elemtype
        ELSE
-         partn = 0
-         ioffset = 0
+         READ(FileUnit, '(a)', IOSTAT=iostat) str
+         IF( iostat /= 0 ) THEN
+           CALL Fatal('ReadBoundaryFile','Could not read boundary element entry: '//I2S(j))
+         END IF
+         nread = read_ints(str,ivals,halo)
+         
+         tag = ivals(1)
+         ElementTags(j) = tag
+         
+         IF( halo ) THEN
+           partn = ivals(2)
+           ioffset = 1
+         ELSE
+           partn = 0
+           ioffset = 0
+         END IF
+         
+         bndry = ivals(ioffset+2)
+         left = ivals(ioffset+3)
+         right = ivals(ioffset+4)
+         ElemType = ivals(ioffset+5)
        END IF
-
-       bndry = ivals(ioffset+2)
-       left = ivals(ioffset+3)
-       right = ivals(ioffset+4)
-       ElemType = ivals(ioffset+5)
-       
+         
        Element % ElementIndex = j
        Element % TYPE => GetElementType(ElemType)
        IF ( .NOT. ASSOCIATED(Element % TYPE) ) THEN
@@ -2212,10 +2266,14 @@ CONTAINS
        n = Element % TYPE % NumberOfNodes
        CALL AllocateVector( Element % NodeIndexes, n )
 
-       IF( nread < 5 + n + ioffset ) THEN
-         CALL Fatal('ReadBoundaryFile','Line '//I2S(j)//' does not contain enough entries')
+       IF( binary ) THEN
+         READ(FileUnit,IOSTAT=iostat) Element % NodeIndexes(1:n)
+       ELSE
+         IF( nread < 5 + n + ioffset ) THEN
+           CALL Fatal('ReadBoundaryFile','Line '//I2S(j)//' does not contain enough entries')
+         END IF
+         Element % NodeIndexes(1:n) = Ivals(6+ioffset:nread)
        END IF
-       Element % NodeIndexes(1:n) = Ivals(6+ioffset:nread)
      END DO
      CLOSE( FileUnit )
 
@@ -2333,7 +2391,7 @@ CONTAINS
        '/partitioning.'//I2S(numprocs)//&
          '/part.'//I2S(mype+1)//'.shared'
 
-     OPEN( Unit=FileUnit, File=FileName, STATUS='OLD', IOSTAT = iostat )
+     OPEN( Unit=FileUnit, File=FileName, STATUS='old', IOSTAT = iostat )
      IF( iostat /= 0 ) THEN
        CALL Fatal('ReadSharedFile','Could not open file: '//TRIM(Filename))
      ELSE
@@ -4721,7 +4779,7 @@ CONTAINS
    BodyMaps = 0
    BCMaps = 0
 
-   OPEN( Unit=FileUnit, File=FileName, STATUS='OLD', IOSTAT=iostat )
+   OPEN( Unit=FileUnit, File=FileName, STATUS='old', IOSTAT=iostat )
    IF( iostat /= 0 ) THEN
      CALL Fatal(Caller,'Requested the use of entity names but this file does not exits: '//TRIM(FileName))
    END IF
@@ -4842,7 +4900,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     TYPE(ElementData_t), POINTER :: PD,PD1
 !------------------------------------------------------------------------------
-    OPEN( Unit=FileUnit, File=FileName, STATUS='OLD', ERR=10 )
+    OPEN( Unit=FileUnit, File=FileName, STATUS='old', ERR=10 )
 
     ALLOCATE(CHARACTER(MAX_STRING_LEN)::str)
     DO WHILE( ReadAndTrim(FileUnit,str) )
