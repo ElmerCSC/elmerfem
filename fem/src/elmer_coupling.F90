@@ -704,7 +704,7 @@ CONTAINS
 
   END SUBROUTINE coupling_init
 
-  SUBROUTINE coupling_setup(grid_dir, num_parts, timestepstring)
+  SUBROUTINE coupling_setup(grid_dir, num_parts, timestepstring, couple_to_ebfm, couple_to_icon)
 
     USE :: elmer_ebfm_coupling
     USE :: elmer_icon_coupling
@@ -715,6 +715,7 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN) :: grid_dir
     CHARACTER(LEN=*), INTENT(IN) :: timestepstring
     INTEGER, INTENT(IN) :: num_parts
+    LOGICAL, INTENT(IN) :: couple_to_ebfm, couple_to_icon
 
     INTEGER :: grid_id, corner_point_id, cell_point_id
 
@@ -858,9 +859,10 @@ CONTAINS
     PRINT *, "PRECIP TIMESTEP in HOURS", timestepstring
     ! construct coupling between Elmer/Ice and ICON
     !CALL construct_elmer_icon_coupling(comp_id, corner_point_id, timestepstring, cell_point_id)
-    CALL construct_elmer_ebfm_coupling(comp_id, corner_point_id, timestepstring, cell_point_id)
-
-    PRINT *, "AFTER constructing_elmer_ebfm_coupling", timestepstring
+    IF (couple_to_ebfm) THEN
+        CALL construct_elmer_ebfm_coupling(comp_id, corner_point_id, timestepstring, cell_point_id)
+        PRINT *, "AFTER constructing_elmer_ebfm_coupling", timestepstring
+    END IF
     ! sychronizes all definitions between all components
     ! * afterwards the exchange information can be queried
     ! * this is optional
@@ -871,8 +873,10 @@ CONTAINS
     ! information from all components)
     !CALL construct_elmer_icon_coupling_post_sync( &
       !comm_rank, ELMER_COMP_NAME, ELMER_GRID_NAME)
-    CALL construct_elmer_ebfm_coupling_post_sync( &
-      comm_rank, ELMER_COMP_NAME, ELMER_GRID_NAME)
+    IF (couple_to_ebfm) THEN
+        CALL construct_elmer_ebfm_coupling_post_sync( &
+          comm_rank, ELMER_COMP_NAME, ELMER_GRID_NAME)
+    END IF
 
     ! end of definition phase
     ! * collective operation for all processes that initialised YAC
