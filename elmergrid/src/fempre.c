@@ -830,10 +830,11 @@ int main(int argc, char *argv[])
     for(k=0;k<nomeshes;k++) {
       if(data[k].nopartitions > 1) 
 	SaveElmerInputPartitioned(&data[k],boundaries[k],eg.filesout[k],eg.decimals,
-				  eg.parthalo,eg.partitionindirect,eg.parthypre,
+				  eg.binary,eg.parthalo,eg.parthypre,
 				  MAX(eg.partbcz,eg.partbcr),eg.nooverwrite,info);
       else
-	SaveElmerInput(&data[k],boundaries[k],eg.filesout[k],eg.decimals,eg.nooverwrite,info);
+	SaveElmerInput(&data[k],boundaries[k],eg.filesout[k],eg.decimals,eg.binary,
+		       eg.nooverwrite,info);
     }
     break;
 

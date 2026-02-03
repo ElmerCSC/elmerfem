@@ -154,10 +154,6 @@
      CALL Info('RadiationFactors','Computing radiation factors for heat transfer',       Level=5)
      CALL Info('RadiationFactors','----------------------------------------------------',Level=5)
 
-     ! If we call before "temperature" exists cannot have temperature-depedent emissivity
-     !ConstantEmissivity = TopoCall .AND. &
-     !       ( UpdateGebhartFactors .OR. UpdateViewFactors .OR. UpdateRadiatorFactors )
-
      FullMatrix = GetLogical( Params, 'Radiation Factors Solver Full',Found) 
      IF(.NOT.Found) &
        FullMatrix = GetLogical( Params, 'Gebhart Factors Solver Full',Found) 
@@ -424,22 +420,40 @@
 
        CHARACTER(:), ALLOCATABLE :: OutputName
        LOGICAL :: HasChanged,Found
-       INTEGER :: i,j,k
+       INTEGER :: i,j,k,iostat
        REAL(KIND=dp) :: ds,dx,dy,dz,maxds,refds,maxind,x,y,z
+       LOGICAL :: Binary, SinglePrec
 
+       !USE iso_c_binding
+       REAL(c_double) :: Coords(3)
+       REAL(c_float) :: SCoords(3)
+
+       
        HasChanged = .FALSE.
        
-       ! This is a dirty thrick where the input file is stampered
+       ! This is a dirty thrick where the input file is tampered
        CALL Info('RadiationFactors','Checking changes in mesh.nodes file!',Level=5)
 
        OutputName = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes.new'
-
+       Binary = .FALSE.
+       SinglePrec = .FALSE.
+       
        INQUIRE(FILE=OutputName,EXIST=Found)
        IF(.NOT. Found) THEN
          OutputName = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes'
        END IF
-
-       OPEN( VFUnit,File=OutputName )
+       OPEN( VFUnit,File=OutputName,STATUS='old',ACTION='read',IOSTAT=iostat)
+       IF(iostat /= 0) THEN
+         Binary = .TRUE.
+         OPEN( VFUnit,File=TRIM(OutputName)//'.bin',FORM='unformatted',ACCESS='stream',&
+             STATUS='old',ACTION='read',IOSTAT=iostat)
+         IF(iostat /= 0) THEN
+           SinglePrec = .TRUE.
+           OPEN( VFUnit,File=TRIM(OutputName)//'.sbin',FORM='unformatted',ACCESS='stream',&
+               STATUS='old',ACTION='read',IOSTAT=iostat)
+         END IF
+       END IF
+       
        dx = MAXVAL(Mesh % Nodes % x) - MINVAL(Mesh % Nodes % x)
        dy = MAXVAL(Mesh % Nodes % y) - MINVAL(Mesh % Nodes % y)
        dz = MAXVAL(Mesh % Nodes % z) - MINVAL(Mesh % Nodes % z)
@@ -450,12 +464,22 @@
        Found = .FALSE.
 
        DO i=1,Mesh % NumberOfNodes
-         READ(VFUnit,*,ERR=10,END=10) j,k,x,y,z
+         IF( Binary ) THEN          
+           IF(SinglePrec) THEN
+             READ(VFUnit,ERR=10,END=10) j,SCoords
+             Coords = SCoords
+           ELSE
+             READ(VFUnit,ERR=10,END=10) j,Coords
+           END IF
+         ELSE
+           READ(VFUnit,*,ERR=10,END=10) j,k,Coords
+         END IF
+
          IF(i == Mesh % NumberOfNodes) Found = .TRUE.
          IF(ActiveNodes(i)) THEN
-           dx = Mesh % Nodes % x(i) - x
-           dy = Mesh % Nodes % y(i) - y
-           dz = Mesh % Nodes % z(i) - z
+           dx = Mesh % Nodes % x(i) - Coords(1)
+           dy = Mesh % Nodes % y(i) - Coords(2)
+           dz = Mesh % Nodes % z(i) - Coords(3)
            ds = SQRT(dx*dx+dy*dy+dz*dz)
            IF(ds > maxds) THEN
              maxds = ds
