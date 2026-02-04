@@ -394,7 +394,6 @@ ParEnv % MyPE,ELMER_COMM_WORLD,ierr)
 
 ! Use YAC library for coupling
 !
-PRINT *, "BEFORE COUPLING INIT"
 #ifdef HAVE_YAC
     IF (USE_YAC) THEN
       WRITE(Message,'(A,A)') &
