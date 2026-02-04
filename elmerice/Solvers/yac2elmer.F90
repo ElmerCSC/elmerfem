@@ -82,10 +82,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
       CALL INFO(SolverName,Message,Level=3)
     END IF
 
-    PRINT *, "BEFORE coupling setup"
     CALL coupling_setup(TRIM(grid_dir), elmer_mesh_partitions, TRIM(model_tstep), couple_to_ebfm, couple_to_icon)
-    PRINT *, "AFTER coupling setup"
-
 
     IF (couple_to_ebfm) THEN
         ! setting up Elmer-side variables for receiving YAC variables

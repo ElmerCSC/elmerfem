@@ -261,9 +261,7 @@ CONTAINS
 
     INTEGER :: info, err
 
-    PRINT *, "IN EBFM_INTERFACE" , comm_rank
-    ! checks whether the T_ice field is defined as a target
-    ! in a couple
+    ! checks whether the T_ice field is defined as a target in a couple
     IF (yac_fget_role_from_field_id(t_ice_field_id) == &
         YAC_EXCHANGE_TYPE_TARGET) THEN
 
@@ -282,11 +280,9 @@ CONTAINS
       !   been received
       ! * if this is not a coupling timestep, T_ice field buffer
       !   is left untouched and routine will return immediately
-      PRINT *, "CALLING FGET for TICE" , comm_rank
       CALL yac_fget( &
         t_ice_field_id, SIZE(t_ice_field, 1), SIZE(t_ice_field, 2), t_ice_field, &
         info, err)
-      PRINT *, "AFTER FGET for TICE" , comm_rank
 
       ! if this was a coupling timestep
       IF ((info == YAC_ACTION_COUPLING) .OR. &
@@ -371,7 +367,6 @@ CONTAINS
 
     ! checks whether the surface height field is defined as a source
     ! in a couple
-    PRINT *, "BEFORE ICE_SHEET_HEIGHT" , comm_rank
     IF (yac_fget_role_from_field_id(surface_height_field_id) == &
         YAC_EXCHANGE_TYPE_SOURCE) THEN
 
@@ -398,15 +393,11 @@ CONTAINS
         !   been received
         ! * if this is not a coupling timestep, surface_height field buffer
         !   is left untouched and routine will return immediately
-        PRINT *, "BEFORE FPUT for ICE_SHEET_HEIGHT" , comm_rank
         CALL yac_fput( &
           surface_height_field_id, SIZE(surface_height_field, 1), SIZE(surface_height_field, 2), surface_height_field, &
           info, err)
-        PRINT *, "AFTER FPUT for ICE_SHEET_HEIGHT" , comm_rank
       ELSE IF (info == YAC_ACTION_NONE) THEN
-        PRINT *, "BEFORE FUPDATE for ICE_SHEET_HEIGHT" , comm_rank
         CALL yac_fupdate(surface_height_field_id)
-        PRINT *, "AFTER FUPDATE for ICE_SHEET_HEIGHT" , comm_rank
       END IF
     END IF
 
@@ -537,9 +528,7 @@ CONTAINS
         src_field_metadata = &
           yac_fget_field_metadata(src_comp_name, src_grid_name, src_field_name)
 
-        
 
-        
         PRINT *, "field ", field_name, ":"
         PRINT *, " - source:"
         PRINT *, "   - component: ", src_comp_name
@@ -720,7 +709,6 @@ CONTAINS
     !   (see:
     !     https://dkrz-sw.gitlab-pages.dkrz.de/yac/d4/d40/init_yac_detail.html)
     ! * will call MPI_Init, if not yet called by the user
-    PRINT *, "COUPLING INIT", ELMER_COMP_NAME
     CALL yac_finit_comm (yac_comm)
 
     ! read configuration file
@@ -824,24 +812,18 @@ CONTAINS
     couple_to_ebfm = couple_to_ebfm_in
     couple_to_icon = couple_to_icon_in
 
-    PRINT *, "READ GRID FROM FILE"
     ! get grid data from elmer component
-    ! in the case of the dummy, we have to read it from file
 
     ! read grid data from file
     ! * each process only reads in its local part of the grid
     ! * in Elmer this information probably already available and does not have
     !   to be read from file
-    PRINT *, "COMM_RANK", comm_rank
-    PRINT *, "COMM_SIZE", comm_size
-    PRINT *, "NUMPARTS", num_parts
     CALL read_grid_c( &
       TRIM(grid_dir) // c_null_char, comm_rank, comm_size, num_parts, &
       nbr_vertices, nbr_cells, num_vertices_per_cell_c_ptr, &
       x_vertices_c_ptr, y_vertices_c_ptr, x_cells_c_ptr, y_cells_c_ptr, &
       cell_ids_c_ptr, vertex_ids_c_ptr, cell_to_vertex_c_ptr)
 
-    PRINT *, "After READINF GRID FROM FILE"
     CALL C_F_POINTER( &
       num_vertices_per_cell_c_ptr, num_vertices_per_cell_c, shape=[nbr_cells])
     CALL C_F_POINTER(x_vertices_c_ptr, x_vertices_c, shape=[nbr_vertices])
@@ -874,7 +856,6 @@ CONTAINS
 
     ! register Elmer grid in YAC
     ! * is defined as an unstructured grid
-    PRINT *, "BEFORE GRID DEF"
     CALL yac_fdef_grid( &
       ELMER_GRID_NAME, nbr_vertices, nbr_cells, SUM(num_vertices_per_cell), &
       num_vertices_per_cell, x_vertices, y_vertices, cell_to_vertex, grid_id)
@@ -895,21 +876,17 @@ CONTAINS
     CALL yac_fdef_points( &
       grid_id, nbr_cells, YAC_LOCATION_CELL, x_cells, y_cells, cell_point_id)
 
-    PRINT *, "PRECIP TIMESTEP in HOURS", timestepstring
     ! construct coupling between Elmer/Ice and ICON
     IF (couple_to_icon) THEN
         CALL construct_elmer_icon_coupling(comp_id, corner_point_id, timestepstring, cell_point_id)
-        PRINT *, "AFTER constructing_elmer_icon_coupling", timestepstring
     END IF
     IF (couple_to_ebfm) THEN
         CALL construct_elmer_ebfm_coupling(comp_id, corner_point_id, timestepstring, cell_point_id)
-        PRINT *, "AFTER constructing_elmer_ebfm_coupling", timestepstring
     END IF
     ! sychronizes all definitions between all components
     ! * afterwards the exchange information can be queried
     ! * this is optional
     CALL yac_fsync_def()
-    PRINT *, "AFTER synchronisation", timestepstring
 
     ! construct coupling between Elmer/Ice and ICON (using sychronized
     ! information from all components)
@@ -928,7 +905,6 @@ CONTAINS
     !   available to access this data; also from other components)
     ! * computes weights required for all defined couples
     CALL yac_fenddef()
-    PRINT *, "FINISHED COUPLING SETUP", timestepstring
 
   END SUBROUTINE coupling_setup
 
@@ -937,12 +913,10 @@ CONTAINS
     IMPLICIT NONE
 
     IF (couple_to_ebfm) THEN
-      PRINT *, "DESTRUCTING ELMER_EBFM_COUPLING"
       CALL destruct_elmer_ebfm_coupling()
     END IF
 
     IF (couple_to_icon) THEN
-      PRINT *, "DESTRUCTING ELMER_ICON_COUPLING"
       CALL destruct_elmer_icon_coupling()
     END IF
 
