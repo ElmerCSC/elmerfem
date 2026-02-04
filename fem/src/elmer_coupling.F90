@@ -54,7 +54,9 @@
 !> Outside of MODULE elmer_coupling to avoid circular dependencies
 MODULE elmer_coupling_utils
 
-  USE yac
+  USE yac, ONLY: YAC_ACTION_COUPLING, YAC_ACTION_PUT_FOR_RESTART, &
+    YAC_ACTION_GET_FOR_RESTART, YAC_ACTION_REDUCTION, YAC_ACTION_NONE, &
+    YAC_ACTION_OUT_OF_BOUND
 
   IMPLICIT NONE
 
@@ -91,7 +93,15 @@ END MODULE elmer_coupling_utils
 
 MODULE elmer_ebfm_coupling
 
-  USE yac
+  USE yac, ONLY: yac_fdef_field, yac_fget_role_from_field_id, &
+    yac_fget_field_datetime, yac_fget_field_role, yac_fget_field_timestep, &
+    yac_fget_field_metadata, yac_fget_points_size, &
+    yac_fget_field_source, yac_fget, yac_fput, yac_fupdate, yac_fget_action, &
+    YAC_TIME_UNIT_HOUR, &
+    YAC_ACTION_COUPLING, YAC_ACTION_GET_FOR_RESTART, &
+    YAC_ACTION_PUT_FOR_RESTART, YAC_ACTION_REDUCTION, YAC_ACTION_NONE, &
+    YAC_EXCHANGE_TYPE_SOURCE, YAC_EXCHANGE_TYPE_TARGET
+
   USE elmer_coupling_utils, ONLY: yac_action_to_string
 
   IMPLICIT NONE
@@ -414,7 +424,15 @@ END MODULE elmer_ebfm_coupling
 
 MODULE elmer_icon_coupling
 
-  USE yac
+  USE yac, ONLY: yac_fdef_field, yac_fget_role_from_field_id, &
+    yac_fget_field_datetime, yac_fget_field_role, yac_fget_field_timestep, &
+    yac_fget_field_metadata, yac_fget_points_size, yac_fget_field_source, &
+    yac_fget, yac_fput, yac_fupdate, yac_fget_action, &
+    YAC_TIME_UNIT_HOUR, &
+    YAC_ACTION_COUPLING, YAC_ACTION_GET_FOR_RESTART, &
+    YAC_ACTION_PUT_FOR_RESTART, YAC_ACTION_REDUCTION, YAC_ACTION_NONE, &
+    YAC_EXCHANGE_TYPE_SOURCE, YAC_EXCHANGE_TYPE_TARGET
+
   USE elmer_coupling_utils, ONLY: yac_action_to_string
 
   IMPLICIT NONE
@@ -625,8 +643,11 @@ END MODULE elmer_icon_coupling
 
 MODULE elmer_coupling
 
-  USE mpi
-  USE yac
+  USE mpi, ONLY: MPI_Comm_rank, MPI_Comm_size
+  USE yac, ONLY: yac_fmpi_handshake, yac_fget_mpi_handshake_group_name, &
+    yac_finit_comm, yac_fread_config_yaml, yac_fdef_comp, yac_fdef_grid, &
+    yac_fset_global_index, yac_fdef_points, yac_fsync_def, yac_fenddef, &
+    yac_ffinalize, YAC_LOCATION_CELL, YAC_LOCATION_CORNER
 
   IMPLICIT NONE
 
@@ -901,13 +922,17 @@ CONTAINS
 
   SUBROUTINE coupling_finalize()
 
-    USE elmer_ebfm_coupling
-    USE elmer_icon_coupling
+    USE elmer_ebfm_coupling, ONLY: destruct_elmer_ebfm_coupling
+    ! USE elmer_icon_coupling, ONLY: destruct_elmer_icon_coupling  ! not supported
 
     IMPLICIT NONE
 
-    PRINT *, "DESTRCUTING ELMER_ICON_COUPLING"
-    !CALL destruct_elmer_icon_coupling()
+    ! TODO: should be called IF(couple_to_ebfm) and IF(couple_to_icon)
+    ! respectively, but currently we do not have the information about which
+    ! couplings were set up available here; this has to be refactored
+
+    ! PRINT *, "DESTRCUTING ELMER_ICON_COUPLING"
+    ! CALL destruct_elmer_icon_coupling()
     PRINT *, "DESTRCUTING ELMER_EBFM_COUPLING"
     CALL destruct_elmer_ebfm_coupling()
 

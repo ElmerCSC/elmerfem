@@ -1,8 +1,9 @@
 SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   USE DefUtils
   USE SolverUtils
-  USE elmer_coupling
-  USE elmer_ebfm_coupling
+  USE elmer_coupling, ONLY: coupling_setup
+  USE elmer_ebfm_coupling, ONLY: elmer_ebfm_interface, t_ice_field, smb_field, &
+                                 runoff_field, surface_height_field
   
   IMPLICIT NONE
 
