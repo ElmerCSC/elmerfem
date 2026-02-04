@@ -683,7 +683,7 @@ CONTAINS
     !   (see:
     !     https://dkrz-sw.gitlab-pages.dkrz.de/yac/d4/d40/init_yac_detail.html)
     ! * will call MPI_Init, if not yet called by the user
-    PRINT *, "HELLO FROM COUPLING INIT", ELMER_COMP_NAME
+    PRINT *, "COUPLING INIT", ELMER_COMP_NAME
     CALL yac_finit_comm (yac_comm)
 
     ! read configuration file
