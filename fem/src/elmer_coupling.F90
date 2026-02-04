@@ -669,6 +669,8 @@ MODULE elmer_coupling
 
   INTEGER :: comp_id
   INTEGER :: comm_rank, comm_size
+  LOGICAL :: couple_to_ebfm = .FALSE.
+  LOGICAL :: couple_to_icon = .FALSE.
 
 CONTAINS
 
@@ -736,7 +738,7 @@ CONTAINS
 
   END SUBROUTINE coupling_init
 
-  SUBROUTINE coupling_setup(grid_dir, num_parts, timestepstring, couple_to_ebfm, couple_to_icon)
+  SUBROUTINE coupling_setup(grid_dir, num_parts, timestepstring, couple_to_ebfm_in, couple_to_icon_in)
 
     USE :: elmer_ebfm_coupling
     USE :: elmer_icon_coupling
@@ -747,7 +749,7 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN) :: grid_dir
     CHARACTER(LEN=*), INTENT(IN) :: timestepstring
     INTEGER, INTENT(IN) :: num_parts
-    LOGICAL, INTENT(IN) :: couple_to_ebfm, couple_to_icon
+    LOGICAL, INTENT(IN) :: couple_to_ebfm_in, couple_to_icon_in
 
     INTEGER :: grid_id, corner_point_id, cell_point_id
 
@@ -816,6 +818,10 @@ CONTAINS
       END SUBROUTINE free_c
 
     END INTERFACE
+
+    ! Store coupling flags in module variables for later use
+    couple_to_ebfm = couple_to_ebfm_in
+    couple_to_icon = couple_to_icon_in
 
     PRINT *, "READ GRID FROM FILE"
     ! get grid data from elmer component
