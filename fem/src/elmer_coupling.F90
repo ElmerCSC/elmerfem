@@ -648,6 +648,10 @@ MODULE elmer_coupling
     yac_finit_comm, yac_fread_config_yaml, yac_fdef_comp, yac_fdef_grid, &
     yac_fset_global_index, yac_fdef_points, yac_fsync_def, yac_fenddef, &
     yac_ffinalize, YAC_LOCATION_CELL, YAC_LOCATION_CORNER
+  USE elmer_ebfm_coupling, ONLY: construct_elmer_ebfm_coupling, &
+    construct_elmer_ebfm_coupling_post_sync, destruct_elmer_ebfm_coupling
+  USE elmer_icon_coupling, ONLY: construct_elmer_icon_coupling, &
+    construct_elmer_icon_coupling_post_sync, destruct_elmer_icon_coupling
 
   IMPLICIT NONE
 
@@ -740,8 +744,6 @@ CONTAINS
 
   SUBROUTINE coupling_setup(grid_dir, num_parts, timestepstring, couple_to_ebfm_in, couple_to_icon_in)
 
-    USE :: elmer_ebfm_coupling
-    USE :: elmer_icon_coupling
     USE, INTRINSIC :: iso_c_binding, ONLY: C_INT, C_DOUBLE, C_PTR, C_F_POINTER, C_NULL_CHAR
 
     IMPLICIT NONE
@@ -896,7 +898,10 @@ CONTAINS
 
     PRINT *, "PRECIP TIMESTEP in HOURS", timestepstring
     ! construct coupling between Elmer/Ice and ICON
-    !CALL construct_elmer_icon_coupling(comp_id, corner_point_id, timestepstring, cell_point_id)
+    IF (couple_to_icon) THEN
+        CALL construct_elmer_icon_coupling(comp_id, corner_point_id, timestepstring, cell_point_id)
+        PRINT *, "AFTER constructing_elmer_icon_coupling", timestepstring
+    END IF
     IF (couple_to_ebfm) THEN
         CALL construct_elmer_ebfm_coupling(comp_id, corner_point_id, timestepstring, cell_point_id)
         PRINT *, "AFTER constructing_elmer_ebfm_coupling", timestepstring
@@ -909,8 +914,10 @@ CONTAINS
 
     ! construct coupling between Elmer/Ice and ICON (using sychronized
     ! information from all components)
-    !CALL construct_elmer_icon_coupling_post_sync( &
-      !comm_rank, ELMER_COMP_NAME, ELMER_GRID_NAME)
+    IF (couple_to_icon) THEN
+        CALL construct_elmer_icon_coupling_post_sync( &
+          comm_rank, ELMER_COMP_NAME, ELMER_GRID_NAME)
+    END IF
     IF (couple_to_ebfm) THEN
         CALL construct_elmer_ebfm_coupling_post_sync( &
           comm_rank, ELMER_COMP_NAME, ELMER_GRID_NAME)
@@ -928,19 +935,17 @@ CONTAINS
 
   SUBROUTINE coupling_finalize()
 
-    USE elmer_ebfm_coupling, ONLY: destruct_elmer_ebfm_coupling
-    ! USE elmer_icon_coupling, ONLY: destruct_elmer_icon_coupling  ! not supported
-
     IMPLICIT NONE
 
-    ! TODO: should be called IF(couple_to_ebfm) and IF(couple_to_icon)
-    ! respectively, but currently we do not have the information about which
-    ! couplings were set up available here; this has to be refactored
+    IF (couple_to_ebfm) THEN
+      PRINT *, "DESTRUCTING ELMER_EBFM_COUPLING"
+      CALL destruct_elmer_ebfm_coupling()
+    END IF
 
-    ! PRINT *, "DESTRCUTING ELMER_ICON_COUPLING"
-    ! CALL destruct_elmer_icon_coupling()
-    PRINT *, "DESTRCUTING ELMER_EBFM_COUPLING"
-    CALL destruct_elmer_ebfm_coupling()
+    IF (couple_to_icon) THEN
+      PRINT *, "DESTRUCTING ELMER_ICON_COUPLING"
+      CALL destruct_elmer_icon_coupling()
+    END IF
 
     ! finalise YAC
     ! * if user has called MPI_Init, he also has to call MPI_Finalize afterwards
