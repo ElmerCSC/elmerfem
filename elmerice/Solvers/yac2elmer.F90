@@ -4,6 +4,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   USE elmer_coupling, ONLY: coupling_setup
   USE elmer_ebfm_coupling, ONLY: elmer_ebfm_interface, t_ice_field, smb_field, &
                                  runoff_field, surface_height_field
+  ! USE elmer_icon_coupling, ONLY: elmer_icon_interface, clt_field, pr_field
   
   IMPLICIT NONE
 
@@ -23,9 +24,11 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   INTEGER :: num_parts, elmer_mesh_partitions, comm_rank, comm_size, ierror
   INTEGER :: I, t, ierr
   INTEGER, POINTER :: t_icePerm(:), smbPerm(:), runoffPerm(:)
+  ! INTEGER, POINTER :: cltPerm(:), prPerm(:)  ! ICON is not supported at the moment
   LOGICAL :: Parallel, FirstTime=.TRUE., UnFoundFatal=.TRUE.
   TYPE(Mesh_t),POINTER :: Mesh
   TYPE(Variable_t), POINTER :: t_iceVar, smbVar, runoffVar, ZsSol
+  ! TYPE(Variable_t), POINTER :: cltVar, prVar  ! ICON is not supported at the moment
 
   LOGICAL        :: Found
   
@@ -77,7 +80,6 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
     ELSE
       grid_dir= TRIM(ThisMesh % Name)
       elmer_mesh_partitions = ParEnv % PEs
-      !PRINT *, TRIM(grid_dir), elmer_mesh_partitions
       WRITE(Message,*) 'Running on ', TRIM(grid_dir),' with ',ParEnv % PEs ,' partitions' 
       CALL INFO(SolverName,Message,Level=3)
     END IF
@@ -95,18 +97,20 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
           t_icePerm(i) = i
           runoffPerm(i) = i
         END DO
-         !This is for a element(cell) variables
+
+        ! This is for a element(cell) variables
         DO t=1,GetNOFActive(Solver)
           smbPerm(t) = t
         END DO
+
         ! nodal variables (everything that is not a flux)
         CALL DefaultVariableAdd('T_ice', dofs=1, Perm = t_icePerm)
         CALL DefaultVariableAdd('runoff', dofs=1, Perm = runoffPerm)
      
-        !! element wise (cell) variable
+        ! element wise (cell) variable
         CALL DefaultVariableAdd('smb', dofs=1, VariableType = Variable_on_elements, Perm = smbPerm)
       
-        !! get surface elevation from Elmer for the first time step
+        ! get surface elevation from Elmer for the first time step
         ZsSol => VariableGet( Model % Mesh % Variables, "Zs" ,UnFoundFatal=UnFoundFatal)
         DO i=1, Mesh % NumberOfNodes
           surface_height_field(i,1) = ZsSol % Values(ZsSol % Perm(i))
@@ -128,8 +132,6 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
       CALL elmer_ebfm_interface(ParEnv % MyPE)
       WRITE(Message,*) 'AFTER ELMER EBFM INTERFACE'
       CALL INFO(SolverName,Message,Level=3)
-  !CALL elmer_icon_interface(ParEnv % MyPE)
-
 
       t_iceVar => VariableGet( Mesh % Variables, 'T_ice' )  
       smbVar => VariableGet( Mesh % Variables, 'smb' )
@@ -159,6 +161,15 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
       !CALL INFO(SolverName, "Test output start", Level=1)
       !CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
   END IF
+
+  IF (couple_to_icon) THEN
+      CALL FATAL(SolverName,'ICON coupling not yet implemented')
+      ! TODO: stub implementation for ICON coupling
+      ! CALL elmer_icon_interface(ParEnv % MyPE)
+      ! cltPerm, prPerm, ...
+      ! cltVar, prVar, ...
+  END IF
+
   CALL INFO(SolverName,'Coupling step done', Level=1)
   
 END SUBROUTINE YAC2Elmer
