@@ -43,20 +43,22 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   END IF
 
   ! check if it is coupled to EBFM
-  couple_to_ebfm = GetLogical(SolverParams, 'couple_to_ebfm',  Found )
+  couple_to_ebfm = GetLogical(SolverParams, 'Couple To EBFM',  Found )
   IF (.NOT. Found) THEN
-     CALL FATAL(SolverName,'No keyword >couple_to_ebfm< found in yac2elmer solver')
+     CALL FATAL(SolverName,'No keyword >Couple To EBFM< found in yac2elmer solver')
   END IF
 
   ! check if it is coupled to ICON
-  couple_to_icon = GetLogical(SolverParams, 'couple_to_icon',  Found )
+  couple_to_icon = GetLogical(SolverParams, 'Couple To ICON',  Found )
   IF (.NOT. Found) THEN
-     CALL FATAL(SolverName,'No keyword >couple_to_icon< found in yac2elmer solver')
-  ELSE
-     IF (couple_to_icon) THEN
-        CALL FATAL(SolverName,'>couple_to_icon< is currently not supported. Please set to FALSE')
-     END IF
+     CALL FATAL(SolverName,'No keyword >Couple To ICON< found in yac2elmer solver')
   END IF
+
+  ! TODO: remove this check when ICON coupling is implemented
+  IF (couple_to_icon) THEN
+    CALL FATAL(SolverName,'>Couple To ICON< is currently not supported. Please set to FALSE')
+  END IF
+
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! retrieve the timestep in hours 
   Mesh => Solver % Mesh
