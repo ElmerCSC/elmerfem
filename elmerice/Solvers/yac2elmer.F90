@@ -1,6 +1,9 @@
 SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
-  USE DefUtils
-  USE SolverUtils
+  USE DefUtils, ONLY: GetSolverParams, GetMesh, GetNOFActive, &
+    DefaultVariableAdd, GetLogical, GetLogical, GetString, MAX_NAME_LEN, &
+    VariableGet, ParEnv, variable_on_elements
+  USE Types, ONLY: Model_t, Solver_t, Mesh_t, Variable_t, ValueList_t, dp
+  USE Messages, ONLY: Message, FATAL, INFO, USE_YAC
   USE elmer_coupling, ONLY: coupling_setup
   USE elmer_ebfm_coupling, ONLY: elmer_ebfm_interface, t_ice_field, smb_field, &
                                  runoff_field, surface_height_field
