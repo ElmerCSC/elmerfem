@@ -853,7 +853,6 @@ CONTAINS
     CALL free_c(vertex_ids_c_ptr)
     CALL free_c(cell_to_vertex_c_ptr)
 
-
     ! register Elmer grid in YAC
     ! * is defined as an unstructured grid
     CALL yac_fdef_grid( &
