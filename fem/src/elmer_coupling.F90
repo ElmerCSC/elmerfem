@@ -454,7 +454,6 @@ MODULE elmer_icon_coupling
   INTEGER :: pr_collection_size = 1
   DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: pr_field(:,:)
 
-
 CONTAINS
 
   SUBROUTINE construct_elmer_icon_coupling( &
