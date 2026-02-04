@@ -42,7 +42,7 @@ MODULE BlockSolve
      BackScaleLinearSystem, AMGXMatrixVectorMultiply, AMGXSolver, DiagonalMatrixSumming, &
      StructureCouplingAssembly, FSICouplingAssembly, SaveLinearSystem, &
      MassMatrixAssembly, VectorValuesRange, LaplaceMatrixAssembly
- USE MeshUtils, ONLY : SaveProjector   
+ USE MortarUtils, ONLY : SaveProjector   
  USE DefUtils, ONLY : DefaultSolve, GetElementDOFs, GetElementNodes, GetLogical
  
  IMPLICIT NONE

@@ -3180,6 +3180,9 @@ CONTAINS
              ApplyPiolaTransform = PerformPiolaTransform, &
              SimplicialMesh = SimplicialElements)
        ELSE
+         IF(Element % Type % ElementCode == 504 .AND. ANY([u,v,w] < 0.0) ) THEN
+           PRINT *,'Negative local coordinates for tet:',u,v,w
+         END IF
          stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis, dBasisdx )
          CALL GetEdgeBasis(Element,EdgeBasis,RotBasis,Basis,dBasisdx)         
        END IF

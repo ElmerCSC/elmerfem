@@ -47,10 +47,12 @@ MODULE ModelDescription
     USE SParIterGlobals
     USE ParallelUtils, ONLY : ParallelReduction, ParallelIter, ParallelInitMatrix
     USE ElementUtils, ONLY : CreateMatrix, FreeMatrix
-    USE MeshUtils, ONLY : AllocateMesh, DetectMortarPairs, Graph_deallocate, &
+    USE MeshUtils, ONLY : Graph_deallocate, &
         Loadmesh2, MeshStabParams, PrepareMesh, ReleaseMesh, SetMeshDimension, &
         SetMeshMaxDOFs, SetMeshPartitionOffSet, SplitMeshEqual, SplitMeshLevelSet, &
         RadiationParallelMeshDistribute, GetDefs
+    USE MeshAllocations, ONLY : ReleaseMesh, AllocateMesh
+    USE MortarUtils, ONLY : DetectMortarPairs
     USE LoadMod
     USE BinIO
     USE ElementDescription
@@ -58,10 +60,8 @@ MODULE ModelDescription
     IMPLICIT NONE
 
     CHARACTER(LEN=MAX_PATH_LEN) :: IncludePath = ' ', OutputPath = ' ', SimulationId=' '
-
     INTEGER, PARAMETER :: PosUnit = 32, OutputUnit = 31, RestartUnit = 30,&
                           PostFileUnit = 29, InFileUnit = 28
-
     INTEGER, PARAMETER, PRIVATE :: MAX_OUTPUT_VARS = 1000, MAX_MESHES = 32
 
 CONTAINS
