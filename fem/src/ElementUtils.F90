@@ -4138,6 +4138,56 @@ CONTAINS
    END SUBROUTINE mGetBoundaryIndexesFromParent
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+  FUNCTION Find_Edge(Mesh,Parent,Element) RESULT(ptr)
+!------------------------------------------------------------------------------
+    TYPE(Element_t), POINTER :: Ptr
+    TYPE(Mesh_t) :: Mesh
+    TYPE(Element_t) :: Parent, Element
+
+    INTEGER :: i,j,k,n
+
+    Ptr => NULL()
+    DO i=1,Parent % TYPE % NumberOfEdges
+      Ptr => Mesh % Edges(Parent % EdgeIndexes(i))
+      n=0
+      DO j=1,Ptr % TYPE % NumberOfNodes
+        DO k=1,Element % TYPE % NumberOfNodes
+          IF (Ptr % NodeIndexes(j) == Element % NodeIndexes(k)) n=n+1
+        END DO
+      END DO
+      IF (n==Ptr % TYPE % NumberOfNodes) EXIT
+    END DO
+!------------------------------------------------------------------------------
+  END FUNCTION Find_Edge
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  FUNCTION Find_Face(Mesh,Parent,Element) RESULT(ptr)
+!------------------------------------------------------------------------------
+    TYPE(Element_t), POINTER :: Ptr
+    TYPE(Mesh_t) :: Mesh
+    TYPE(Element_t) :: Parent, Element
+
+    INTEGER :: i,j,k,n
+
+    Ptr => NULL()
+    DO i=1,Parent % TYPE % NumberOfFaces
+      Ptr => Mesh % Faces(Parent % FaceIndexes(i))
+      n=0
+      DO j=1,Ptr % TYPE % NumberOfNodes
+        DO k=1,Element % TYPE % NumberOfNodes
+          IF (Ptr % NodeIndexes(j) == Element % NodeIndexes(k)) n=n+1
+        END DO
+      END DO
+      IF (n==Ptr % TYPE % NumberOfNodes) EXIT
+    END DO
+!------------------------------------------------------------------------------
+  END FUNCTION Find_Face
+!------------------------------------------------------------------------------
+
+
+   
 END MODULE ElementUtils
 
 !> \} ElmerLib

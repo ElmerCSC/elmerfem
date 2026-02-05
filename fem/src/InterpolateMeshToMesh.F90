@@ -1440,7 +1440,7 @@ CONTAINS
       RESULT ( Projector )
   !---------------------------------------------------------------------------
     USE DefUtils
-    USE MeshUtils, ONLY : PreRotationalProjector, PostRotationalProjector
+    USE MortarUtils, ONLY : PreRotationalProjector, PostRotationalProjector
     IMPLICIT NONE
 
     TYPE(Mesh_t), POINTER :: BMesh1, BMesh2

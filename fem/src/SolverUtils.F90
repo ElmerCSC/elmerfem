@@ -57,7 +57,8 @@ MODULE SolverUtils
    USE ModelDescription
    USE MeshUtils, ONLY : CommunicateParallelSystemTag, CylinderFit, &
        DisplaceMesh, FindExtremumNodes, FindMeshEdges, GetLagrangeIndexes, &
-       IntegralProjector, PeriodicProjector, SaveProjector, MakePermUsingMask
+       IntegralProjector, MakePermUsingMask
+   USE MortarUtils, ONLY : PeriodicProjector, SaveProjector
    USE ParallelUtils
    USE ParallelEigenSolve
    USE MatrixAssembly

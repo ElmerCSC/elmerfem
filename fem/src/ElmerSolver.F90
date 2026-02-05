@@ -78,10 +78,11 @@
 #endif
      USE SolverUtils, ONLY: GetControlValue, FinalizeLumpedMatrix, UpdateExportedVariables, &
          UpdateIpPerm, VectorValuesRange
-     USE MeshUtils, ONLY : MeshExtrude, MeshExtrudeSlices, PeriodicProjector, &
+     USE MeshUtils, ONLY : MeshExtrude, MeshExtrudeSlices, &
          CoordinateTransformation, InitializeElementDescriptions, ReleaseMesh, &
          CalculateMeshPieces, SetActiveElementsTable, SetCurrentMesh, &
          MarkSharpEdges, TagBodiesUsingCondition
+     USE MortarUtils, ONLY : PeriodicProjector
      USE MainUtils, ONLY : AddEquationBasics, AddEquationSolution, AddExecWhenFlag, &
          PredictorCorrectorControl, SingleSolver, SolveEquations, SolverActivate, &
          SwapMesh
