@@ -122,6 +122,10 @@ MODULE Types
   INCLUDE 'zmumps_struc.h'
 #endif
 
+  TYPE ArgStr_t
+     CHARACTER(:), ALLOCATABLE :: astr
+  END TYPE ArgStr_t
+
 
   TYPE BasicMatrix_t
     INTEGER :: NumberOfRows

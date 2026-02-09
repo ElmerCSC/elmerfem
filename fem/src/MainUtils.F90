@@ -5402,8 +5402,10 @@ END BLOCK
      
      ! Linear constraints from mortar BCs:
      ! -----------------------------------
-     CALL GenerateProjectors(Model,Solver,Nonlinear = .FALSE. )
-
+     IF(.NOT. ListGetLogical(Solver % Values,'Mortar BCs Fixed', Found ) ) THEN
+       CALL GenerateProjectors(Model,Solver,Nonlinear = .FALSE. )
+     END IF
+       
      CALL Info(Caller, "Attempting to call solver: "//I2S(Solver % SolverId), level=8)
      SolverParams => ListGetSolverParams(Solver)
      EquationName = GetString(SolverParams, 'Equation', GotIt)

@@ -46,13 +46,23 @@ SUBROUTINE BestApproximationSolver_Init0(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: SolverParams
   LOGICAL :: Found, SecondOrder, PiolaVersion, SecondFamily, WithNDOFs, Check
+  INTEGER :: k
 !------------------------------------------------------------------------------  
   SolverParams => GetSolverParams()
 
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
-    CALL EdgeElementStyle(SolverParams, PiolaVersion, SecondFamily, SecondOrder, Check = .TRUE. )
+    CALL EdgeElementStyle(SolverParams, PiolaVersion, SecondFamily, BasisDegree = k, Check = .TRUE. )
 
-    IF ( SecondOrder ) THEN
+    SELECT CASE(k)
+    CASE(3)
+      IF (SecondFamily) THEN
+        CALL Fatal('BestApproximationSolver', 'No ready support for the cubic element of the second kind' )        
+      ELSE
+        CALL ListAddString( SolverParams, "Element", &
+            "n:0 e:3 -tri b:6 -tetra b:3 -tri_face b:6" )
+      END IF      
+      
+    CASE(2)
       IF (SecondFamily) THEN
         CALL ListAddString( SolverParams, "Element", &
             "n:0 e:3 -tri b:3 -tri_face b:3" )
@@ -60,13 +70,17 @@ SUBROUTINE BestApproximationSolver_Init0(Model, Solver, dt, Transient)
         CALL ListAddString( SolverParams, "Element", &
             "n:0 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )
       END IF
-    ELSE IF (SecondFamily) THEN
-      CALL ListAddString( SolverParams, "Element", "n:0 e:2" )
-    ELSE IF( PiolaVersion ) THEN
-      CALL ListAddString( SolverParams, "Element", "n:0 e:1 -quad b:2 -brick b:3 -quad_face b:2" )
-    ELSE
-      CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
-    END IF
+
+    CASE DEFAULT
+      
+      IF (SecondFamily) THEN
+        CALL ListAddString( SolverParams, "Element", "n:0 e:2" )
+      ELSE IF( PiolaVersion ) THEN
+        CALL ListAddString( SolverParams, "Element", "n:0 e:1 -quad b:2 -brick b:3 -quad_face b:2" )
+      ELSE
+        CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
+      END IF
+    END SELECT
   END IF
 !------------------------------------------------------------------------------
 END SUBROUTINE BestApproximationSolver_Init0
@@ -131,14 +145,8 @@ SUBROUTINE BestApproximationSolver( Model,Solver,dt,TransientSimulation )
 
   SAVE STIFF, LOAD, FORCE, Acoef, AllocationsDone, Nodes, Indices
 !------------------------------------------------------------------------------
-  PiolaVersion = GetLogical( GetSolverParams(), 'Optimal Family', Found) .OR. &
-      GetLogical( GetSolverParams(), 'Use Piola Transform', Found)
-  ElementOrder = 1
-  IF ( GetLogical(GetSolverParams(), 'Quadratic Approximation', Found) ) THEN
-    ElementOrder = 2
-    PiolaVersion = .TRUE.
-  END IF
-  SecondFamily = GetLogical( GetSolverParams(), 'Second Kind Basis', Found)
+  CALL EdgeElementStyle(GetSolverParams(), PiolaVersion, SecondFamily, BasisDegree = ElementOrder)
+  
   Simplicial = GetLogical( GetSolverParams(), 'Simplicial Mesh', Found)
 
   ErrorEstimation = GetLogical( GetSolverParams(), 'Error Computation', Found)
@@ -252,23 +260,14 @@ CONTAINS
     !-------------------------------------
     ! Numerical integration over element:
     !-------------------------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
-         EdgeBasisDegree=ElementOrder)    
+    IP = GaussPoints(Element, PReferenceElement=PiolaVersion, EdgeBasisDegree=ElementOrder)    
     
     np = 0  ! Set np = n, if nodal dofs are employed; otherwise set np = 0
 
     DO t=1,IP % n
-      IF (PiolaVersion) THEN
-        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-            IP % W(t), detF=detJ, Basis=Basis, EdgeBasis=EBasis, &
-            RotBasis=CurlEBasis, ApplyPiolaTransform = .TRUE., &
-            SecondFamily=SecondFamily, BasisDegree = ElementOrder, &
-            SimplicialMesh = Simplicial)
-      ELSE
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-            IP % W(t), detJ, Basis, dBasisdx )
-        CALL GetEdgeBasis(Element, EBasis, CurlEBasis, Basis, dBasisdx)
-      END IF
+
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), detJ, &
+          Basis, EdgeBasis = Ebasis, RotBasis = CurlEBasis)
 
       xq = SUM( Nodes % x(1:n) * Basis(1:n) )
       yq = SUM( Nodes % y(1:n) * Basis(1:n) )
@@ -305,7 +304,7 @@ CONTAINS
           j = np + q
           STIFF(i,j) = STIFF(i,j) + 1.0d0 * &
               SUM( EBasis(q,1:dim) * EBasis(p,1:dim) ) * detJ * IP % s(t) + &
-              MatPar * SUM( CurlEBasis(q,1:dim) * CurlEBasis(p,1:dim) ) * detJ * IP % s(t)
+              MatPar * SUM( CurlEBasis(q,1:3) * CurlEBasis(p,1:3) ) * detJ * IP % s(t)
         END DO
 
         !----------------------------------------
@@ -377,22 +376,14 @@ CONTAINS
     !-------------------------------------
     ! Numerical integration over element:
     !-------------------------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, EdgeBasisDegree=ElementOrder) 
+    IP = GaussPoints(Element, PReferenceElement=PiolaVersion, EdgeBasisDegree=ElementOrder) 
 
     np = 0  ! Set np = n, if nodal dofs are employed; otherwise set np = 0
 
     DO t=1,IP % n
 
-      IF (PiolaVersion) THEN
-        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-            IP % W(t), F, G, detJ, Basis, EBasis, CurlEBasis, ApplyPiolaTransform = .TRUE., &
-            SecondFamily=SecondFamily, BasisDegree=ElementOrder, &
-            SimplicialMesh = Simplicial)
-      ELSE
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-            IP % W(t), detJ, Basis, dBasisdx )
-        CALL GetEdgeBasis(Element, EBasis, CurlEBasis, Basis, dBasisdx)
-      END IF
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), detJ, &
+          Basis, EdgeBasis = Ebasis, RotBasis = CurlEBasis)
 
       xq = SUM( Nodes % x(1:n) * Basis(1:n) )
       yq = SUM( Nodes % y(1:n) * Basis(1:n) )

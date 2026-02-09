@@ -1095,7 +1095,7 @@
     TYPE(Matrix_t), POINTER :: Amat
     REAL(KIND=dp), POINTER :: b(:), x(:), r(:)
     REAL(KIND=dp) :: rnorm
-    LOGICAL :: Found, ScaleRHS
+    LOGICAL :: Found, ScaleRHS, DoMask
     CHARACTER(MAX_NAME_LEN) :: str   
     INTEGER :: n
 !-------------------------------------------------------------------------------
@@ -1124,9 +1124,13 @@
     
     CALL DefaultSlaveSolvers( Solver, 'Prec Solvers' )
 
+    IF(ListGetLogical( Solver % Values,'Linear System Refactorize First',Found ) ) THEN
+      CALL LIstAddLogical( Solver % Values,'Linear System Refactorize',.FALSE.)
+    END IF
+    
     str = ListGetString( Params,'Preconditioning Update',UnfoundFatal=.TRUE.)
     pVar => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE., UnfoundFatal=.TRUE. )
-
+       
     n = SIZE(pVar % Values)
     x => pVar % Values
 
@@ -1142,19 +1146,24 @@
 
       ! This is just to test that the suggested search direction is a good one.
       ! Ideally we need to multiply by "1" to get minimum norm. 
-      CALL ExperimentalStuff()
+      ! CALL ExperimentalStuff()
             
       CALL CRS_MatrixVectorMultiply( Amat, x, r )
       !CALL MGmv( Amat, x, r, .TRUE. )
       r(1:n) = b(1:n) - r(1:n)
 
-      IF(LIstGetString(Params,'MG Smoother') == 'masked sgs') THEN
+      DoMask = .FALSE.
+      str = LIstGetString(Params,'MG Smoother')
+      IF(len_TRIM(str) >= 6 ) THEN
+        DoMask = (str(1:6) == 'masked')
+      END IF
+
+      IF(DoMask) THEN
         BLOCK
           LOGICAL, POINTER :: SkipMask(:)
           ALLOCATE(SkipMask(n))
           SkipMask = .FALSE.
           CALL CreateEdgeSkipMask(SkipMask)
-
           RNorm = MGSmooth( Solver, Amat, Mesh, x, b, r, &
               1, pVar % dofs, PreSmooth = .FALSE., SkipMask = SkipMask )
           DEALLOCATE(SkipMask)

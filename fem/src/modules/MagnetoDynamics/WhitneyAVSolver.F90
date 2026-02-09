@@ -156,11 +156,7 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
 
     
     IF( GetString(SolverParams,'Linear System Solver',Found) == 'block' ) THEN
-!     IF ( PiolaVersion ) THEN
-!       CALL Fatal('WhitneyAVSolver_Init0','Block strategy not applicable to piola version!')
-!     ELSE
-        CALL ListAddLogical( SolverParams, "Optimize Bandwidth", .FALSE.)
-!     END IF
+      CALL ListAddLogical( SolverParams, "Optimize Bandwidth", .FALSE.)
     END IF
   END IF
 
@@ -278,6 +274,9 @@ SUBROUTINE WhitneyAVSolver_Init(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   TYPE(Mesh_t), POINTER :: Mesh
   LOGICAL :: Found
+  INTEGER :: i
+  TYPE(ValueList_t), POINTER :: Params
+  CHARACTER(LEN=MAX_NAME_LEN):: sname
   
   Mesh => GetMesh()
   IF( Mesh % MeshDim /= 3 ) THEN
@@ -304,6 +303,20 @@ SUBROUTINE WhitneyAVSolver_Init(Model,Solver,dt,Transient)
       END IF
     END DO
   END BLOCK
+
+  Params => Solver % Values  
+  IF( ListGetString( Params,'Linear System Preconditioning') == "auxiliary space solver" ) THEN
+    IF(.NOT. ListCheckPresent(Params,'Prec Solvers') ) THEN
+      DO i=Model % NumberOfSolvers,1,-1
+        sname = GetString(Model % Solvers(i) % Values, 'Procedure', Found)      
+        IF( INDEX( sname,'APrecSolver') > 0 ) THEN
+          CALL ListAddInteger(Params,'Prec Solvers',i)
+          CALL Info('WhitneyAVSolver_init','Setting "Prec Solvers" to '//I2S(i))
+        END IF
+      END DO
+    END IF
+  END IF
+  
 !------------------------------------------------------------------------------
 END SUBROUTINE WhitneyAVSolver_Init
 !------------------------------------------------------------------------------
@@ -441,6 +454,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
     PrecSolver => Model % Solvers(PrecI)
     PrecMat => Model % Solvers(PrecI) % Matrix    
     PrecMatCyl = ListGetLogicalAnySolver(Model,'Prec Matrix Cylindrical')
+    CALL ListAddLogical(PrecSolver % Values,'Linear System Refactorize',.TRUE.)
+    CALL ListAddLogical(PrecSolver % Values,'Mortar BCs Fixed',.FALSE.)
   END IF
   IF(ASSOCIATED(PrecMat)) THEN
     CALL Info(Caller,'Using special nodal component-wise preconditioning matrix!')
@@ -476,7 +491,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   
   IF (SteadyGauge) THEN
     CALL Info("WhitneyAVSolver", "Utilizing Lagrange multipliers for gauge condition in steady state computation")
-    IF(.not. ListCheckPresent( SolverParams, 'Linear System Refactorize') ) THEN
+    IF(.NOT. ListCheckPresent( SolverParams, 'Linear System Refactorize') ) THEN
       CALL ListAddLogical( SolverParams, 'Linear System Refactorize', .TRUE. )
     END IF
   END IF
@@ -497,7 +512,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
            "Optimize bandwidth and use lagrange gauge in transient is known not to work. ")
     END IF
 
-    IF(.not. ListCheckPresent( SolverParams, 'Linear System Refactorize') ) THEN
+    IF(.NOT. ListCheckPresent( SolverParams, 'Linear System Refactorize') ) THEN
       CALL ListAddLogical( SolverParams, 'Linear System Refactorize', .TRUE. )
     END IF
     ! TODO: Check if there is mortar boundaries and report the above in that case only.
@@ -579,6 +594,9 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
         CALL Fatal( Caller, 'Memory allocation error.' )
      END IF
      IF(ASSOCIATED(PrecMat)) THEN
+       IF(.NOT. ASSOCIATED(PrecSolver)) THEN
+         CALL Fatal(Caller,'PrecMat associated but not PrecSolver!')
+       END IF
        i = PrecSolver % Variable % dofs
        ALLOCATE(nSTIFF(i*n,i*n), nFORCE(i*n))
      END IF
@@ -668,7 +686,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
       'Nonlinear System Newton After Tolerance',Found )
 
 
-! Not refactorizing seems to break things with gauges
+  ! Not refactorizing seems to break things with gauges
   ! IF (SteadyGauge) THEN
   !   IF(.not. ListCheckPresent( SolverParams, 'Linear System Refactorize') ) THEN
   !     CALL ListAddLogical( SolverParams, 'Linear System Refactorize', .TRUE. )
@@ -690,6 +708,10 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
       CALL Info(Caller,'Nonlinear iteration: '//I2S(i),Level=8 )
     END IF
 
+    IF(PrecI > 0) THEN
+      CALL ListAddLogical(PrecSolver % Values,'Linear System Refactorize',.TRUE.)
+    END IF
+      
     IF( DoSolve(i) ) THEN
       IF(i>=NoIterationsMin) EXIT
     END IF

@@ -54,7 +54,7 @@
 !------------------------------------------------------------------------------
 !> The main program for Elmer. Solves the equations as defined by the input files.
 !------------------------------------------------------------------------------
-   SUBROUTINE ElmerSolver(initialize)
+   SUBROUTINE ElmerSolver(initialize, args, NoArgs)
 !------------------------------------------------------------------------------
 
      USE Lists
@@ -78,10 +78,11 @@
 #endif
      USE SolverUtils, ONLY: GetControlValue, FinalizeLumpedMatrix, UpdateExportedVariables, &
          UpdateIpPerm, VectorValuesRange
-     USE MeshUtils, ONLY : MeshExtrude, MeshExtrudeSlices, PeriodicProjector, &
+     USE MeshUtils, ONLY : MeshExtrude, MeshExtrudeSlices, &
          CoordinateTransformation, InitializeElementDescriptions, ReleaseMesh, &
          CalculateMeshPieces, SetActiveElementsTable, SetCurrentMesh, &
          MarkSharpEdges, TagBodiesUsingCondition
+     USE MortarUtils, ONLY : PeriodicProjector
      USE MainUtils, ONLY : AddEquationBasics, AddEquationSolution, AddExecWhenFlag, &
          PredictorCorrectorControl, SingleSolver, SolveEquations, SolverActivate, &
          SwapMesh
@@ -93,6 +94,8 @@
 !------------------------------------------------------------------------------
 
      INTEGER :: Initialize
+     INTEGER :: NoArgs
+     TYPE(ArgStr_t) :: args(:)
 
 !------------------------------------------------------------------------------
 !    Local variables
@@ -125,8 +128,7 @@
 
      TYPE(ParEnv_t), POINTER :: ParallelEnv
 
-     CHARACTER(LEN=MAX_PATH_LEN) :: ModelName
-     CHARACTER(LEN=MAX_STRING_LEN) :: OptionString, eq
+     CHARACTER(:), ALLOCATABLE :: ModelName, OptionString, eq
 
      CHARACTER(:), ALLOCATABLE :: str, PostFile, ExecCommand, OutputFile, RestartFile, &
           OutputName, PostName, When
@@ -140,7 +142,6 @@
      LOGICAL :: Silent=.FALSE., Version=.FALSE., GotModelName, FinishEarly=.FALSE.
      LOGICAL :: FirstLoad = .TRUE., FirstTime=.TRUE., Found
 
-     INTEGER :: iargc, NoArgs
      INTEGER :: iostat, iSweep = 1, OptimIters
      LOGICAL :: GotOptimIters
      INTEGER :: MeshIndex
@@ -152,7 +153,7 @@
      INTEGER, ALLOCATABLE :: ipar(:)
      REAL(KIND=dp), ALLOCATABLE :: rpar(:)
      CHARACTER(LEN=MAX_PATH_LEN) :: MeshDir, MeshName
-     
+
      ! Start the watches, store later
      !--------------------------------
      RT0 = RealTime()
@@ -171,7 +172,6 @@
        !
        ! Print banner to output:
        ! -----------------------
-       NoArgs = COMMAND_ARGUMENT_COUNT()
        ! Info Level is always true until the model has been read!
        ! This makes it possible to cast something 
        Silent = .FALSE.
@@ -181,16 +181,16 @@
          i = 0
          DO WHILE( i < NoArgs )
            i = i + 1 
-           CALL GET_COMMAND_ARGUMENT(i, OptionString)
+           OptionString = args(i) % astr
            IF( OptionString=='-rpar' ) THEN
              ! Followed by number of parameters + the parameter values
              i = i + 1
-             CALL GET_COMMAND_ARGUMENT(i, OptionString)
-             READ( OptionString,*) nr             
+             OptionString = args(i) % astr
+             READ( OptionString,*) nr
              ALLOCATE( rpar(nr) )
              DO j=1,nr
                i = i + 1
-               CALL GET_COMMAND_ARGUMENT(i, OptionString)
+               OptionString = args(i) % astr
                READ( OptionString,*) rpar(j)
              END DO
              CALL Info('MAIN','Read '//I2S(nr)//' real parameters from command line!')
@@ -200,12 +200,13 @@
            IF( OptionString=='-ipar' ) THEN
              ! Followed by number of parameters + the parameter values
              i = i + 1
-             CALL GET_COMMAND_ARGUMENT(i, OptionString)
-             READ( OptionString,*) ni             
+             OptionString = args(i) % astr
+             PRINT *, OptionString
+             READ( OptionString,*) ni
              ALLOCATE( ipar(nr) )
              DO j=1,ni
                i = i + 1
-               CALL GET_COMMAND_ARGUMENT(i, OptionString)
+               OptionString = args(i) % astr
                READ( OptionString,*) ipar(j)
              END DO
              CALL Info('MAIN','Read '//I2S(ni)//' integer parameters from command line!')
@@ -318,10 +319,10 @@
      !----------------------------------------------------------------------
      GotModelName = .FALSE.
      IF ( NoArgs > 0 ) THEN
-       CALL GET_COMMAND_ARGUMENT(1, ModelName)
+       ModelName = args(1) % astr
        IF( ModelName(1:1) /= '-') THEN 
          GotModelName = .TRUE.
-         IF (NoArgs > 1) CALL GET_COMMAND_ARGUMENT(2, eq)
+         IF (NoArgs > 1) eq = args(2) % astr
        END IF
      END IF
 
@@ -330,6 +331,7 @@
        IF( iostat /= 0 ) THEN
          CALL Fatal( 'MAIN', 'Unable to find ELMERSOLVER_STARTINFO, can not execute.' )
        END IF
+       ALLOCATE(CHARACTER(MAX_PATH_LEN)::ModelName)
        READ(1,'(a)') ModelName
        CLOSE(1)
      END IF
