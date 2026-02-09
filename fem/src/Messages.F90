@@ -54,7 +54,7 @@ MODULE Messages
 #ifdef HAVE_XIOS
   USE XIOS, ONLY: xios_context_finalize, xios_finalize
 #endif
-  
+
 #ifdef HAVE_YAC
    USE elmer_coupling, ONLY: coupling_finalize
 #endif
@@ -337,7 +337,6 @@ CONTAINS
        CALL xios_finalize()
      ENDIF
 #endif
-
 
 #ifdef HAVE_YAC
      IF (USE_YAC) THEN

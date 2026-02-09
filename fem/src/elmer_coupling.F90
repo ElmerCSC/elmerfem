@@ -148,7 +148,6 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN) :: timestepstring
 
     INTEGER :: nbr_vertices, nbr_cells
-    INTEGER :: i
 
     nbr_vertices = yac_fget_points_size(corner_point_id)
     nbr_cells = yac_fget_points_size(cell_point_id)
@@ -192,16 +191,16 @@ CONTAINS
   END SUBROUTINE construct_elmer_ebfm_coupling
 
   SUBROUTINE construct_elmer_ebfm_coupling_post_sync( &
-    comm_rank, elmer_comp_name, elmer_grid_name)
+    is_root_rank, elmer_comp_name, elmer_grid_name)
 
-    INTEGER, INTENT(IN) :: comm_rank
+    LOGICAL, INTENT(IN) :: is_root_rank
     CHARACTER(LEN=*), INTENT(IN) :: elmer_comp_name
     CHARACTER(LEN=*), INTENT(IN) :: elmer_grid_name
 
     ! after synchronisation or the end of the definition phase YAC can be
     ! queried about various information
 
-    IF (comm_rank /= 0) RETURN
+    IF (.NOT. is_root_rank) RETURN
 
     CALL print_field_info(elmer_comp_name, elmer_grid_name, t_ice_field_name)
     CALL print_field_info(elmer_comp_name, elmer_grid_name, smb_field_name)
@@ -255,9 +254,9 @@ CONTAINS
 
   END SUBROUTINE construct_elmer_ebfm_coupling_post_sync
 
-  SUBROUTINE elmer_ebfm_interface(comm_rank)
+  SUBROUTINE elmer_ebfm_interface(is_root_rank)
 
-    INTEGER, INTENT(IN) :: comm_rank
+    LOGICAL, INTENT(IN) :: is_root_rank
 
     INTEGER :: info, err
 
@@ -265,7 +264,7 @@ CONTAINS
     IF (yac_fget_role_from_field_id(t_ice_field_id) == &
         YAC_EXCHANGE_TYPE_TARGET) THEN
 
-      IF (comm_rank == 0) THEN
+      IF (is_root_rank) THEN
 
         ! get the action executed by YAC in the next get operation called for
         ! the T_ice field and print out some information
@@ -300,7 +299,7 @@ CONTAINS
     IF (yac_fget_role_from_field_id(smb_field_id) == &
         YAC_EXCHANGE_TYPE_TARGET) THEN
 
-      IF (comm_rank == 0) THEN
+      IF (is_root_rank) THEN
 
         ! get the action executed by YAC in the next get operation called for
         ! the smb field and print out some information
@@ -335,7 +334,7 @@ CONTAINS
     IF (yac_fget_role_from_field_id(runoff_field_id) == &
         YAC_EXCHANGE_TYPE_TARGET) THEN
 
-      IF (comm_rank == 0) THEN
+      IF (is_root_rank) THEN
 
         ! get the action executed by YAC in the next get operation called for
         ! the runoff field and print out some information
@@ -372,7 +371,7 @@ CONTAINS
 
       CALL yac_fget_action(surface_height_field_id, info)
 
-      IF (comm_rank == 0) THEN
+      IF (is_root_rank) THEN
 
         ! get the action executed by YAC in the next put operation called for
         ! the surface_height field and print out some information
@@ -456,7 +455,6 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN) :: timestepstring
 
     INTEGER :: nbr_vertices, nbr_cells
-    INTEGER :: i
 
     nbr_vertices = yac_fget_points_size(corner_point_id)
     nbr_cells = yac_fget_points_size(cell_point_id)
@@ -482,16 +480,16 @@ CONTAINS
   END SUBROUTINE construct_elmer_icon_coupling
 
   SUBROUTINE construct_elmer_icon_coupling_post_sync( &
-    comm_rank, elmer_comp_name, elmer_grid_name)
+    is_root_rank, elmer_comp_name, elmer_grid_name)
 
-    INTEGER, INTENT(IN) :: comm_rank
+    LOGICAL, INTENT(IN) :: is_root_rank
     CHARACTER(LEN=*), INTENT(IN) :: elmer_comp_name
     CHARACTER(LEN=*), INTENT(IN) :: elmer_grid_name
 
     ! after synchronisation or the end of the definition phase YAC can be
     ! queried about various information
 
-    IF (comm_rank /= 0) RETURN
+    IF (.NOT. is_root_rank) RETURN
 
     CALL print_field_info(elmer_comp_name, elmer_grid_name, pr_field_name)
     CALL print_field_info(elmer_comp_name, elmer_grid_name, clt_field_name)
@@ -542,9 +540,9 @@ CONTAINS
 
   END SUBROUTINE construct_elmer_icon_coupling_post_sync
 
-  SUBROUTINE elmer_icon_interface(comm_rank)
+  SUBROUTINE elmer_icon_interface(is_root_rank)
 
-    INTEGER, INTENT(IN) :: comm_rank
+    LOGICAL, INTENT(IN) :: is_root_rank
 
     INTEGER :: info, err
 
@@ -553,7 +551,7 @@ CONTAINS
     IF (yac_fget_role_from_field_id(clt_field_id) == &
         YAC_EXCHANGE_TYPE_TARGET) THEN
 
-      IF (comm_rank == 0) THEN
+      IF (is_root_rank) THEN
 
         ! get the action executed by YAC in the next get operation called for
         ! the total cloud cover field and print out some information
@@ -588,7 +586,7 @@ CONTAINS
     IF (yac_fget_role_from_field_id(pr_field_id) == &
         YAC_EXCHANGE_TYPE_TARGET) THEN
 
-      IF (comm_rank == 0) THEN
+      IF (is_root_rank) THEN
 
         ! get the action executed by YAC in the next get operation called for
         ! the precipitation flux field and print out some information
@@ -653,6 +651,9 @@ MODULE elmer_coupling
   INTEGER, PARAMETER, PRIVATE :: MAX_CHARLEN = 132
   INTEGER, PARAMETER, PUBLIC :: elmer_coupling_MAX_GROUPNAME_LEN = MAX_CHARLEN
 
+  ! ROOT_RANK defines rank of this component taking care of logging.
+  INTEGER, PARAMETER, PRIVATE :: ROOT_RANK = 0
+
   ! TODO: Allow to set component name from outside
   ! CHARACTER(LEN=MAX_CHARLEN) :: ELMER_COMP_NAME
   ! to make sure to have a single YAML file in case of multiple Elmer/Ice domains
@@ -660,7 +661,10 @@ MODULE elmer_coupling
   CHARACTER(LEN=MAX_CHARLEN), PARAMETER :: ELMER_GRID_NAME = "elmer_grid"
 
   INTEGER :: comp_id
-  INTEGER :: comm_rank, comm_size
+
+  ! True if this is the ROOT_RANK of this component.
+  LOGICAL, PUBLIC :: is_root_rank
+
   LOGICAL :: couple_to_ebfm = .FALSE.
   LOGICAL :: couple_to_icon = .FALSE.
 
@@ -687,19 +691,20 @@ CONTAINS
   END SUBROUTINE coupler_get_code_id
 
   ! TODO: Refactor to also accept comp_name here
-  ! SUBROUTINE coupling_init(coupling_config_file, elmer_comm, yac_comm, comp_name)
-  SUBROUTINE coupling_init(coupling_config_file, elmer_comm, yac_comm)
+  ! SUBROUTINE coupling_init(coupling_config_file, elmer_rank, yac_comm, comp_name)
+  SUBROUTINE coupling_init(coupling_config_file, elmer_rank, yac_comm)
 
     IMPLICIT NONE
 
     CHARACTER(LEN=*), INTENT(IN) :: coupling_config_file
-    INTEGER, INTENT(IN) :: elmer_comm
+    INTEGER, INTENT(IN) :: elmer_rank
     INTEGER, INTENT(IN) :: yac_comm
 
     ! CHARACTER(LEN=elmer_coupling_MAX_GROUPNAME_LEN), INTENT(IN) :: comp_name
 
     INTEGER :: ierror
 
+    is_root_rank = (elmer_rank == ROOT_RANK)
 
     ! initialise YAC
     ! * is collective operation on yac_comm
@@ -722,89 +727,53 @@ CONTAINS
     ! ELMER_COMP_NAME = comp_name
     CALL yac_fdef_comp(ELMER_COMP_NAME, comp_id)
 
-    ! get number of ranks for the elmer component
-    ! (required for reading in the grid data)
-    CALL MPI_Comm_rank(elmer_comm, comm_rank, ierror)
-    CALL MPI_Comm_size(elmer_comm, comm_size, ierror)
-
   END SUBROUTINE coupling_init
 
-  SUBROUTINE coupling_setup(grid_dir, num_parts, timestepstring, couple_to_ebfm_in, couple_to_icon_in)
+  SUBROUTINE coupling_setup(grid, timestepstring, couple_to_ebfm_in, couple_to_icon_in)
 
-    USE, INTRINSIC :: iso_c_binding, ONLY: C_INT, C_DOUBLE, C_PTR, C_F_POINTER, C_NULL_CHAR
+    USE, INTRINSIC :: iso_c_binding, ONLY: C_INT, C_DOUBLE
+
+    ! need to use Types_ without Messages because of circular dependency
+    ! originating from coupling_finalize in Messages Fatal
+    USE :: Types_, ONLY: Mesh_t, Element_t, dp
 
     IMPLICIT NONE
 
-    CHARACTER(LEN=*), INTENT(IN) :: grid_dir
+    INTEGER :: i, j, n, vertex_offset, v_end
+    INTEGER, POINTER :: this_cell_ids(:)
+
+    TYPE(Mesh_t), POINTER, INTENT(IN) :: grid
+    TYPE(Element_t), POINTER :: element
     CHARACTER(LEN=*), INTENT(IN) :: timestepstring
-    INTEGER, INTENT(IN) :: num_parts
     LOGICAL, INTENT(IN) :: couple_to_ebfm_in, couple_to_icon_in
 
     INTEGER :: grid_id, corner_point_id, cell_point_id
 
     INTEGER(KIND=C_INT) :: nbr_vertices
     INTEGER(KIND=C_INT) :: nbr_cells
-    TYPE(C_PTR)         :: num_vertices_per_cell_c_ptr ! int **
-    TYPE(C_PTR)         :: x_vertices_c_ptr ! double **
-    TYPE(C_PTR)         :: y_vertices_c_ptr ! double **
-    TYPE(C_PTR)         :: x_cells_c_ptr ! double **
-    TYPE(C_PTR)         :: y_cells_c_ptr ! double **
-    TYPE(C_PTR)         :: cell_ids_c_ptr ! int **
-    TYPE(C_PTR)         :: vertex_ids_c_ptr ! int **
-    TYPE(C_PTR)         :: cell_to_vertex_c_ptr ! int **
 
-    INTEGER(KIND=C_INT), POINTER :: num_vertices_per_cell_c(:)
-    REAL(KIND=C_DOUBLE), POINTER :: x_vertices_c(:)
-    REAL(KIND=C_DOUBLE), POINTER :: y_vertices_c(:)
-    REAL(KIND=C_DOUBLE), POINTER :: x_cells_c(:)
-    REAL(KIND=C_DOUBLE), POINTER :: y_cells_c(:)
-    INTEGER(KIND=C_INT), POINTER :: cell_ids_c(:)
-    INTEGER(KIND=C_INT), POINTER :: vertex_ids_c(:)
-    INTEGER(KIND=C_INT), POINTER :: cell_to_vertex_c(:)
+    REAL(KIND=dp), ALLOCATABLE :: x_vertices(:)
+    REAL(KIND=dp), ALLOCATABLE :: y_vertices(:)
+    REAL(KIND=dp), ALLOCATABLE :: x_cells(:)
+    REAL(KIND=dp), ALLOCATABLE :: y_cells(:)
 
     INTEGER, ALLOCATABLE          :: num_vertices_per_cell(:)
-    DOUBLE PRECISION, ALLOCATABLE :: x_vertices(:)
-    DOUBLE PRECISION, ALLOCATABLE :: y_vertices(:)
-    DOUBLE PRECISION, ALLOCATABLE :: x_cells(:)
-    DOUBLE PRECISION, ALLOCATABLE :: y_cells(:)
     INTEGER, ALLOCATABLE          :: cell_ids(:)
     INTEGER, ALLOCATABLE          :: vertex_ids(:)
     INTEGER, ALLOCATABLE          :: cell_to_vertex(:)
 
     INTERFACE
 
-      SUBROUTINE read_grid_c(grid_dir, rank, size, num_parts, &
-                             nbr_vertices, nbr_cells, num_vertices_per_cell, &
-                             x_vertices, y_vertices, x_cells, y_cells, &
-                             cell_ids, vertex_ids, cell_to_vertex) &
-        bind ( C, name='read_grid' )
+      SUBROUTINE convert_epsg3413_to_lonlat_c(x_vertices, y_vertices, nbr_vertices) &
+        bind ( C, name='convert_epsg3413_to_lonlat' )
 
-        USE, INTRINSIC :: iso_c_binding
+        USE, INTRINSIC :: iso_c_binding, ONLY: C_INT, C_DOUBLE
 
-        CHARACTER(KIND=C_CHAR) :: grid_dir(*)
-        INTEGER(KIND=C_INT), VALUE :: rank
-        INTEGER(KIND=C_INT), VALUE :: size
-        INTEGER(KIND=C_INT), VALUE :: num_parts
-        INTEGER(KIND=C_INT)        :: nbr_vertices
-        INTEGER(KIND=C_INT)        :: nbr_cells
-        TYPE(C_PTR)                :: num_vertices_per_cell ! int **
-        TYPE(C_PTR)                :: x_vertices ! double **
-        TYPE(C_PTR)                :: y_vertices ! double **
-        TYPE(C_PTR)                :: x_cells ! double **
-        TYPE(C_PTR)                :: y_cells ! double **
-        TYPE(C_PTR)                :: cell_ids ! int **
-        TYPE(C_PTR)                :: vertex_ids ! int **
-        TYPE(C_PTR)                :: cell_to_vertex ! int **
+        INTEGER(KIND=C_INT), VALUE, INTENT(IN)    :: nbr_vertices
+        REAL(C_DOUBLE),             INTENT(INOUT) :: x_vertices(*)
+        REAL(C_DOUBLE),             INTENT(INOUT) :: y_vertices(*)
 
-      END SUBROUTINE read_grid_c
-
-      SUBROUTINE free_c ( ptr ) bind ( c, NAME='free' )
-
-       USE, INTRINSIC :: iso_c_binding, ONLY: C_PTR
-
-       TYPE(C_PTR), VALUE :: ptr
-
-      END SUBROUTINE free_c
+      END SUBROUTINE convert_epsg3413_to_lonlat_c
 
     END INTERFACE
 
@@ -812,46 +781,43 @@ CONTAINS
     couple_to_ebfm = couple_to_ebfm_in
     couple_to_icon = couple_to_icon_in
 
-    ! get grid data from elmer component
+    nbr_vertices = grid % NumberOfNodes
+    ALLOCATE(vertex_ids(nbr_vertices))
+    vertex_ids = grid % ParallelInfo % GlobalDofs
 
-    ! read grid data from file
-    ! * each process only reads in its local part of the grid
-    ! * in Elmer this information probably already available and does not have
-    !   to be read from file
-    CALL read_grid_c( &
-      TRIM(grid_dir) // c_null_char, comm_rank, comm_size, num_parts, &
-      nbr_vertices, nbr_cells, num_vertices_per_cell_c_ptr, &
-      x_vertices_c_ptr, y_vertices_c_ptr, x_cells_c_ptr, y_cells_c_ptr, &
-      cell_ids_c_ptr, vertex_ids_c_ptr, cell_to_vertex_c_ptr)
+    nbr_cells = grid % NumberOfBulkElements
+    ALLOCATE(cell_ids(nbr_cells), num_vertices_per_cell(nbr_cells))
+    DO i=1, nbr_cells
+      element => grid % Elements(i)
+      cell_ids(i) = element % GElementIndex
+      num_vertices_per_cell(i) = element % Type % NumberOfNodes
+    END DO
 
-    CALL C_F_POINTER( &
-      num_vertices_per_cell_c_ptr, num_vertices_per_cell_c, shape=[nbr_cells])
-    CALL C_F_POINTER(x_vertices_c_ptr, x_vertices_c, shape=[nbr_vertices])
-    CALL C_F_POINTER(y_vertices_c_ptr, y_vertices_c, shape=[nbr_vertices])
-    CALL C_F_POINTER(x_cells_c_ptr, x_cells_c, shape=[nbr_cells])
-    CALL C_F_POINTER(y_cells_c_ptr, y_cells_c, shape=[nbr_cells])
-    CALL C_F_POINTER(cell_ids_c_ptr, cell_ids_c, shape=[nbr_cells])
-    CALL C_F_POINTER(vertex_ids_c_ptr, vertex_ids_c, shape=[nbr_vertices])
-    CALL C_F_POINTER( &
-      cell_to_vertex_c_ptr, cell_to_vertex_c, shape=[SUM(num_vertices_per_cell_c)])
+    ALLOCATE(cell_to_vertex(SUM(num_vertices_per_cell(:))))
+    vertex_offset = 0
+    DO i=1, nbr_cells
+      element => grid % Elements(i)
+      n = num_vertices_per_cell(i)
+      v_end = vertex_offset+n
+      cell_to_vertex(vertex_offset+1:v_end) = element % NodeIndexes(1:n)
+      vertex_offset = v_end
+    END DO
 
-    num_vertices_per_cell = num_vertices_per_cell_c
-    x_vertices = x_vertices_c
-    y_vertices = y_vertices_c
-    x_cells = x_cells_c
-    y_cells = y_cells_c
-    cell_ids = cell_ids_c
-    vertex_ids = vertex_ids_c
-    cell_to_vertex = cell_to_vertex_c + 1
+    ALLOCATE(x_vertices(nbr_vertices), y_vertices(nbr_vertices))
+    x_vertices(:) = grid % Nodes % x(1:nbr_vertices)
+    y_vertices(:) = grid % Nodes % y(1:nbr_vertices)
 
-    CALL free_c(num_vertices_per_cell_c_ptr)
-    CALL free_c(x_vertices_c_ptr)
-    CALL free_c(y_vertices_c_ptr)
-    CALL free_c(x_cells_c_ptr)
-    CALL free_c(y_cells_c_ptr)
-    CALL free_c(cell_ids_c_ptr)
-    CALL free_c(vertex_ids_c_ptr)
-    CALL free_c(cell_to_vertex_c_ptr)
+    ALLOCATE(x_cells(nbr_cells), y_cells(nbr_cells))
+    DO i=1,nbr_cells
+      element => grid % Elements(i)
+      n = element % Type % NumberOfNodes
+      this_cell_ids => element % NodeIndexes
+      x_cells(i) = SUM(x_vertices(this_cell_ids(1:n))) / n
+      y_cells(i) = SUM(y_vertices(this_cell_ids(1:n))) / n
+    END DO
+
+    CALL convert_epsg3413_to_lonlat_c(x_vertices, y_vertices, nbr_vertices)
+    CALL convert_epsg3413_to_lonlat_c(x_cells, y_cells, nbr_cells)
 
     ! register Elmer grid in YAC
     ! * is defined as an unstructured grid
@@ -891,11 +857,11 @@ CONTAINS
     ! information from all components)
     IF (couple_to_icon) THEN
         CALL construct_elmer_icon_coupling_post_sync( &
-          comm_rank, ELMER_COMP_NAME, ELMER_GRID_NAME)
+          is_root_rank, ELMER_COMP_NAME, ELMER_GRID_NAME)
     END IF
     IF (couple_to_ebfm) THEN
         CALL construct_elmer_ebfm_coupling_post_sync( &
-          comm_rank, ELMER_COMP_NAME, ELMER_GRID_NAME)
+          is_root_rank, ELMER_COMP_NAME, ELMER_GRID_NAME)
     END IF
 
     ! end of definition phase

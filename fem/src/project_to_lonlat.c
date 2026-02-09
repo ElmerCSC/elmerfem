@@ -29,15 +29,33 @@
 
   Original Date: 10.6.2025
 */
+#include <stdlib.h>
+#include <stdio.h>
+#include <mpi.h>
 
-#ifndef ELMER_GRID_H
-#define ELMER_GRID_H
+#include <proj.h>
 
-void read_grid(
-  char const * grid_dir, int rank, int size, int num_parts,
-  int * nbr_vertices, int * nbr_cells, int ** num_vertices_per_cell,
-  double ** x_vertices, double ** y_vertices,
-  double ** x_cells, double ** y_cells,
-  int ** cell_ids, int ** vertex_ids, int ** cell_to_vertex);
+#include "project_to_lonlat.h"
 
-#endif // ELMER_GRID_H
+void convert_epsg3413_to_lonlat(double * x, double * y, int n) {
+  // define transformation
+  PJ * P =
+    proj_create_crs_to_crs(
+      PJ_DEFAULT_CTX, "EPSG:3413", "+proj=longlat +datum=WGS84", NULL);
+
+  if (!P) {
+    fputs("failed to create transformation", stderr);
+    MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+  }
+
+  // transform all vertices
+  for (int i = 0; i < n; ++i) {
+    PJ_COORD src_coord = proj_coord(x[i], y[i], 0, 0);
+    PJ_COORD tgt_coord = proj_trans(P, PJ_FWD, src_coord);
+    x[i] = proj_torad(tgt_coord.lp.lam);
+    y[i] = proj_torad(tgt_coord.lp.phi);
+  }
+
+  // clean up
+  proj_destroy(P);
+}
