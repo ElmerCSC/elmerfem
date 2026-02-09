@@ -50,9 +50,381 @@
     (YAC_VERSION_MAJOR == major && YAC_VERSION_MINOR == minor && YAC_VERSION_PATCH >= patch) \
 )
 
+!> Helper module for YAC utility functions used by Elmer coupling modules
+!> Outside of MODULE elmer_coupling to avoid circular dependencies
+MODULE elmer_coupling_utils
+
+  USE yac, ONLY: YAC_ACTION_COUPLING, YAC_ACTION_PUT_FOR_RESTART, &
+    YAC_ACTION_GET_FOR_RESTART, YAC_ACTION_REDUCTION, YAC_ACTION_NONE, &
+    YAC_ACTION_OUT_OF_BOUND
+
+  IMPLICIT NONE
+
+  PUBLIC :: yac_action_to_string
+
+CONTAINS
+
+  !> Convert YAC action code to human-readable string
+  !> @param action_code YAC action code (e.g., YAC_ACTION_COUPLING)
+  !> @return String representation of the action code
+  FUNCTION yac_action_to_string(action_code) RESULT(action_str)
+    INTEGER, INTENT(IN) :: action_code
+    CHARACTER(LEN=30) :: action_str
+
+    SELECT CASE (action_code)
+      CASE (YAC_ACTION_COUPLING)
+        action_str = "YAC_ACTION_COUPLING"
+      CASE (YAC_ACTION_PUT_FOR_RESTART)
+        action_str = "YAC_ACTION_PUT_FOR_RESTART"
+      CASE (YAC_ACTION_GET_FOR_RESTART)
+        action_str = "YAC_ACTION_GET_FOR_RESTART"
+      CASE (YAC_ACTION_REDUCTION)
+        action_str = "YAC_ACTION_REDUCTION"
+      CASE (YAC_ACTION_NONE)
+        action_str = "YAC_ACTION_NONE"
+      CASE (YAC_ACTION_OUT_OF_BOUND)
+        action_str = "YAC_ACTION_OUT_OF_BOUND"
+      CASE DEFAULT
+        action_str = "UNKNOWN_ACTION"
+    END SELECT
+  END FUNCTION yac_action_to_string
+
+END MODULE elmer_coupling_utils
+
+MODULE elmer_ebfm_coupling
+
+  USE yac, ONLY: yac_fdef_field, yac_fget_role_from_field_id, &
+    yac_fget_field_datetime, yac_fget_field_role, yac_fget_field_timestep, &
+    yac_fget_field_metadata, yac_fget_points_size, &
+    yac_fget_field_source, yac_fget, yac_fput, yac_fupdate, yac_fget_action, &
+    YAC_TIME_UNIT_HOUR, &
+    YAC_ACTION_COUPLING, YAC_ACTION_GET_FOR_RESTART, &
+    YAC_ACTION_PUT_FOR_RESTART, YAC_ACTION_REDUCTION, YAC_ACTION_NONE, &
+    YAC_EXCHANGE_TYPE_SOURCE, YAC_EXCHANGE_TYPE_TARGET
+
+  USE elmer_coupling_utils, ONLY: yac_action_to_string
+
+  IMPLICIT NONE
+
+  PRIVATE
+
+  PUBLIC :: construct_elmer_ebfm_coupling
+  PUBLIC :: construct_elmer_ebfm_coupling_post_sync
+  PUBLIC :: destruct_elmer_ebfm_coupling
+  PUBLIC :: elmer_ebfm_interface
+
+  ! Fields Elmer receives from EBFM
+
+  INTEGER :: t_ice_field_id = -1
+  CHARACTER(LEN=*), PARAMETER :: t_ice_field_name = "T_ice"
+  INTEGER :: t_ice_collection_size = 1
+  DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: t_ice_field(:,:)
+
+  INTEGER :: smb_field_id = -1
+  CHARACTER(LEN=*), PARAMETER :: smb_field_name = "smb"
+  INTEGER :: smb_collection_size = 1
+  DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: smb_field(:,:)
+
+  INTEGER :: runoff_field_id = -1
+  CHARACTER(LEN=*), PARAMETER :: runoff_field_name = "runoff"
+  INTEGER :: runoff_collection_size = 1
+  DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: runoff_field(:,:)
+
+  ! Fields Elmer sends to EBFM
+
+  INTEGER :: surface_height_field_id = -1
+  CHARACTER(LEN=*), PARAMETER :: surface_height_field_name = "h"
+  INTEGER :: surface_height_collection_size = 1
+  DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: surface_height_field(:,:)
+
+CONTAINS
+
+  SUBROUTINE construct_elmer_ebfm_coupling( &
+        comp_id, corner_point_id, timestepstring, cell_point_id)
+
+    INTEGER, INTENT(IN) :: comp_id
+    INTEGER, INTENT(IN) :: corner_point_id
+    INTEGER, INTENT(IN) :: cell_point_id
+    CHARACTER(LEN=*), INTENT(IN) :: timestepstring
+
+    INTEGER :: nbr_vertices, nbr_cells
+    INTEGER :: i
+
+    nbr_vertices = yac_fget_points_size(corner_point_id)
+    nbr_cells = yac_fget_points_size(cell_point_id)
+
+    ! register T_ice field in YAC
+    CALL yac_fdef_field( &
+      t_ice_field_name, comp_id, (/corner_point_id/), 1, t_ice_collection_size, &
+      timestepstring, YAC_TIME_UNIT_HOUR, t_ice_field_id);
+
+    ! allocate and initialise T_ice field buffer
+    ALLOCATE(t_ice_field(nbr_vertices, t_ice_collection_size))
+    t_ice_field = 0.0
+
+    ! register smb field in YAC
+    CALL yac_fdef_field( &
+      smb_field_name, comp_id, (/cell_point_id/), 1, smb_collection_size, &
+      timestepstring, YAC_TIME_UNIT_HOUR, smb_field_id);
+
+    ! allocate and initialise smb field buffer
+    ALLOCATE(smb_field(nbr_cells, smb_collection_size))
+    smb_field = 0.0
+
+    ! register runoff field in YAC
+    CALL yac_fdef_field( &
+      runoff_field_name, comp_id, (/corner_point_id/), 1, runoff_collection_size, &
+      timestepstring, YAC_TIME_UNIT_HOUR, runoff_field_id);
+
+    ! allocate and initialise runoff field buffer
+    ALLOCATE(runoff_field(nbr_vertices, runoff_collection_size))
+    runoff_field = 0.0
+
+    ! register surface_height field in YAC
+    CALL yac_fdef_field( &
+      surface_height_field_name, comp_id, (/corner_point_id/), 1, surface_height_collection_size, &
+      timestepstring, YAC_TIME_UNIT_HOUR, surface_height_field_id);
+
+    ! allocate and initialise surface_height field buffer
+    ALLOCATE(surface_height_field(nbr_vertices, surface_height_collection_size))
+    surface_height_field = 42.0
+
+  END SUBROUTINE construct_elmer_ebfm_coupling
+
+  SUBROUTINE construct_elmer_ebfm_coupling_post_sync( &
+    comm_rank, elmer_comp_name, elmer_grid_name)
+
+    INTEGER, INTENT(IN) :: comm_rank
+    CHARACTER(LEN=*), INTENT(IN) :: elmer_comp_name
+    CHARACTER(LEN=*), INTENT(IN) :: elmer_grid_name
+
+    ! after synchronisation or the end of the definition phase YAC can be
+    ! queried about various information
+
+    IF (comm_rank /= 0) RETURN
+
+    CALL print_field_info(elmer_comp_name, elmer_grid_name, t_ice_field_name)
+    CALL print_field_info(elmer_comp_name, elmer_grid_name, smb_field_name)
+    CALL print_field_info(elmer_comp_name, elmer_grid_name, runoff_field_name)
+    CALL print_field_info(elmer_comp_name, elmer_grid_name, surface_height_field_name)
+
+  CONTAINS
+
+    SUBROUTINE print_field_info(elmer_comp_name, elmer_grid_name, field_name)
+
+      CHARACTER(LEN=*), INTENT(IN) :: elmer_comp_name
+      CHARACTER(LEN=*), INTENT(IN) :: elmer_grid_name
+      CHARACTER(LEN=*), INTENT(IN) :: field_name
+
+      CHARACTER(LEN=:), ALLOCATABLE :: src_comp_name
+      CHARACTER(LEN=:), ALLOCATABLE :: src_grid_name
+      CHARACTER(LEN=:), ALLOCATABLE :: src_field_name
+      CHARACTER(LEN=:), ALLOCATABLE :: src_field_timestep
+      CHARACTER(LEN=:), ALLOCATABLE :: src_field_metadata
+
+      IF (yac_fget_field_role( &
+            elmer_comp_name, elmer_grid_name, field_name) == &
+            YAC_EXCHANGE_TYPE_TARGET) THEN
+
+#if (YAC_VERSION_MAJOR >= 3) && (YAC_VERSION_MINOR >= 6)
+        CALL yac_fget_field_source( &
+          elmer_comp_name, elmer_grid_name, field_name, &
+          src_comp_name, src_grid_name, src_field_name);
+#else
+        src_comp_name = "ebfm"
+        src_grid_name = "ebfm_grid"
+        src_field_name = field_name
+#endif
+        src_field_timestep = &
+          yac_fget_field_timestep(src_comp_name, src_grid_name, src_field_name)
+        src_field_metadata = &
+          yac_fget_field_metadata(src_comp_name, src_grid_name, src_field_name)
+
+        PRINT *, "ELMER: field ", field_name, ":"
+        PRINT *, "ELMER:  - source:"
+        PRINT *, "ELMER:    - component: ", src_comp_name
+        PRINT *, "ELMER:    - grid:      ", src_grid_name
+        PRINT *, "ELMER:    - timestep:  ", src_field_timestep
+        PRINT *, "ELMER:    - metadata:  ", src_field_metadata
+
+      END IF
+
+      ! TODO Add something analogously for fields where Elmer is the source?
+
+    END SUBROUTINE print_field_info
+
+  END SUBROUTINE construct_elmer_ebfm_coupling_post_sync
+
+  SUBROUTINE elmer_ebfm_interface(comm_rank)
+
+    INTEGER, INTENT(IN) :: comm_rank
+
+    INTEGER :: info, err
+
+    ! checks whether the T_ice field is defined as a target in a couple
+    IF (yac_fget_role_from_field_id(t_ice_field_id) == &
+        YAC_EXCHANGE_TYPE_TARGET) THEN
+
+      IF (comm_rank == 0) THEN
+
+        ! get the action executed by YAC in the next get operation called for
+        ! the T_ice field and print out some information
+        CALL yac_fget_action(t_ice_field_id, info)
+        PRINT *, "ELMER: call get for field: ", TRIM(t_ice_field_name), &
+                 " datatime: ", TRIM(yac_fget_field_datetime(t_ice_field_id)), &
+                 " action: ", TRIM(yac_action_to_string(info))
+      END IF
+
+      ! execute get operation for T_ice field
+      ! * if this is a coupling timestep, this will block until the data has
+      !   been received
+      ! * if this is not a coupling timestep, T_ice field buffer
+      !   is left untouched and routine will return immediately
+      CALL yac_fget( &
+        t_ice_field_id, SIZE(t_ice_field, 1), SIZE(t_ice_field, 2), t_ice_field, &
+        info, err)
+
+      ! if this was a coupling timestep
+      IF ((info == YAC_ACTION_COUPLING) .OR. &
+          (info == YAC_ACTION_GET_FOR_RESTART)) THEN
+
+        ! prepare received data for elmer
+
+        ! update elmer internal T_ice field
+
+      END IF
+    END IF
+
+    ! checks whether the smb field is defined as a target
+    ! in a couple
+    IF (yac_fget_role_from_field_id(smb_field_id) == &
+        YAC_EXCHANGE_TYPE_TARGET) THEN
+
+      IF (comm_rank == 0) THEN
+
+        ! get the action executed by YAC in the next get operation called for
+        ! the smb field and print out some information
+        CALL yac_fget_action(smb_field_id, info)
+        PRINT *, "ELMER: call get for field: ", TRIM(smb_field_name), &
+                 " datatime: ", TRIM(yac_fget_field_datetime(smb_field_id)), &
+                 " action: ", TRIM(yac_action_to_string(info))
+      END IF
+
+      ! execute get operation for smb field
+      ! * if this is a coupling timestep, this will block until the data has
+      !   been received
+      ! * if this is not a coupling timestep, smb field buffer
+      !   is left untouched and routine will return immediately
+      CALL yac_fget( &
+        smb_field_id, SIZE(smb_field, 1), SIZE(smb_field, 2), smb_field, &
+        info, err)
+
+      ! if this was a coupling timestep
+      IF ((info == YAC_ACTION_COUPLING) .OR. &
+          (info == YAC_ACTION_GET_FOR_RESTART)) THEN
+
+        ! prepare received data for elmer
+
+        ! update elmer internal smb field
+
+      END IF
+    END IF
+
+    ! checks whether the runoff field is defined as a target
+    ! in a couple
+    IF (yac_fget_role_from_field_id(runoff_field_id) == &
+        YAC_EXCHANGE_TYPE_TARGET) THEN
+
+      IF (comm_rank == 0) THEN
+
+        ! get the action executed by YAC in the next get operation called for
+        ! the runoff field and print out some information
+        CALL yac_fget_action(runoff_field_id, info)
+        PRINT *, "ELMER: call get for field: ", TRIM(runoff_field_name), &
+                 " datatime: ", TRIM(yac_fget_field_datetime(runoff_field_id)), &
+                 " action: ", TRIM(yac_action_to_string(info))
+      END IF
+
+      ! execute get operation for runoff field
+      ! * if this is a coupling timestep, this will block until the data has
+      !   been received
+      ! * if this is not a coupling timestep, runoff field buffer
+      !   is left untouched and routine will return immediately
+      CALL yac_fget( &
+        runoff_field_id, SIZE(runoff_field, 1), SIZE(runoff_field, 2), runoff_field, &
+        info, err)
+
+      ! if this was a coupling timestep
+      IF ((info == YAC_ACTION_COUPLING) .OR. &
+          (info == YAC_ACTION_GET_FOR_RESTART)) THEN
+
+        ! prepare received data for elmer
+
+        ! update elmer internal runoff field
+
+      END IF
+    END IF
+
+    ! checks whether the surface height field is defined as a source
+    ! in a couple
+    IF (yac_fget_role_from_field_id(surface_height_field_id) == &
+        YAC_EXCHANGE_TYPE_SOURCE) THEN
+
+      CALL yac_fget_action(surface_height_field_id, info)
+
+      IF (comm_rank == 0) THEN
+
+        ! get the action executed by YAC in the next put operation called for
+        ! the surface_height field and print out some information
+        PRINT *, "ELMER: call put for field: ", TRIM(surface_height_field_name), &
+                 " datatime: ", TRIM(yac_fget_field_datetime(surface_height_field_id)), &
+                 " action: ", TRIM(yac_action_to_string(info))
+      END IF
+
+      ! if this was a coupling timestep
+      IF ((info == YAC_ACTION_COUPLING) .OR. &
+          (info == YAC_ACTION_PUT_FOR_RESTART) .OR. &
+          (info == YAC_ACTION_REDUCTION)) THEN
+
+        ! get data to be sent from elmer
+
+        ! execute put operation for surface_height field
+        ! * if this is a coupling timestep, this will block until the data has
+        !   been received
+        ! * if this is not a coupling timestep, surface_height field buffer
+        !   is left untouched and routine will return immediately
+        CALL yac_fput( &
+          surface_height_field_id, SIZE(surface_height_field, 1), SIZE(surface_height_field, 2), surface_height_field, &
+          info, err)
+      ELSE IF (info == YAC_ACTION_NONE) THEN
+        CALL yac_fupdate(surface_height_field_id)
+      END IF
+    END IF
+
+  END SUBROUTINE elmer_ebfm_interface
+
+  SUBROUTINE destruct_elmer_ebfm_coupling()
+
+    ! clean up
+    DEALLOCATE(t_ice_field, smb_field, runoff_field, surface_height_field)
+
+  END SUBROUTINE destruct_elmer_ebfm_coupling
+
+END MODULE elmer_ebfm_coupling
+
+
 MODULE elmer_icon_coupling
 
-  USE yac
+  USE yac, ONLY: yac_fdef_field, yac_fget_role_from_field_id, &
+    yac_fget_field_datetime, yac_fget_field_role, yac_fget_field_timestep, &
+    yac_fget_field_metadata, yac_fget_points_size, yac_fget_field_source, &
+    yac_fget, yac_fput, yac_fupdate, yac_fget_action, &
+    YAC_TIME_UNIT_HOUR, &
+    YAC_ACTION_COUPLING, YAC_ACTION_GET_FOR_RESTART, &
+    YAC_ACTION_PUT_FOR_RESTART, YAC_ACTION_REDUCTION, YAC_ACTION_NONE, &
+    YAC_EXCHANGE_TYPE_SOURCE, YAC_EXCHANGE_TYPE_TARGET
+
+  USE elmer_coupling_utils, ONLY: yac_action_to_string
 
   IMPLICIT NONE
 
@@ -156,9 +528,7 @@ CONTAINS
         src_field_metadata = &
           yac_fget_field_metadata(src_comp_name, src_grid_name, src_field_name)
 
-        
 
-        
         PRINT *, "field ", field_name, ":"
         PRINT *, " - source:"
         PRINT *, "   - component: ", src_comp_name
@@ -190,12 +560,7 @@ CONTAINS
         CALL yac_fget_action(clt_field_id, info)
         PRINT *, "call get for field: ", TRIM(clt_field_name), &
                  " datatime: ", TRIM(yac_fget_field_datetime(clt_field_id)), &
-                 "action: ", &
-                 TRIM( &
-                  MERGE( &
-                    "coupling","none    ", &
-                    (info == YAC_ACTION_COUPLING) .OR. &
-                    (info == YAC_ACTION_GET_FOR_RESTART)))
+                 " action: ", TRIM(yac_action_to_string(info))
       END IF
 
       ! execute get operation for total cloud cover field
@@ -230,12 +595,7 @@ CONTAINS
         CALL yac_fget_action(pr_field_id, info)
         PRINT *, "call get for field: ", TRIM(pr_field_name), &
                  " datatime: ", TRIM(yac_fget_field_datetime(pr_field_id)), &
-                 "action: ", &
-                 TRIM( &
-                  MERGE( &
-                    "coupling","none    ", &
-                    (info == YAC_ACTION_COUPLING) .OR. &
-                    (info == YAC_ACTION_GET_FOR_RESTART)))
+                 " action: ", TRIM(yac_action_to_string(info))
       END IF
 
       ! execute get operation for precipitation flux field
@@ -271,8 +631,15 @@ END MODULE elmer_icon_coupling
 
 MODULE elmer_coupling
 
-  USE mpi
-  USE yac
+  USE mpi, ONLY: MPI_Comm_rank, MPI_Comm_size
+  USE yac, ONLY: yac_fmpi_handshake, yac_fget_mpi_handshake_group_name, &
+    yac_finit_comm, yac_fread_config_yaml, yac_fdef_comp, yac_fdef_grid, &
+    yac_fset_global_index, yac_fdef_points, yac_fsync_def, yac_fenddef, &
+    yac_ffinalize, YAC_LOCATION_CELL, YAC_LOCATION_CORNER
+  USE elmer_ebfm_coupling, ONLY: construct_elmer_ebfm_coupling, &
+    construct_elmer_ebfm_coupling_post_sync, destruct_elmer_ebfm_coupling
+  USE elmer_icon_coupling, ONLY: construct_elmer_icon_coupling, &
+    construct_elmer_icon_coupling_post_sync, destruct_elmer_icon_coupling
 
   IMPLICIT NONE
 
@@ -294,6 +661,8 @@ MODULE elmer_coupling
 
   INTEGER :: comp_id
   INTEGER :: comm_rank, comm_size
+  LOGICAL :: couple_to_ebfm = .FALSE.
+  LOGICAL :: couple_to_icon = .FALSE.
 
 CONTAINS
 
@@ -340,7 +709,6 @@ CONTAINS
     !   (see:
     !     https://dkrz-sw.gitlab-pages.dkrz.de/yac/d4/d40/init_yac_detail.html)
     ! * will call MPI_Init, if not yet called by the user
-    !PRINT *, "Elmer comp name ", ELMER_COMP_NAME
     CALL yac_finit_comm (yac_comm)
 
     ! read configuration file
@@ -361,9 +729,8 @@ CONTAINS
 
   END SUBROUTINE coupling_init
 
-  SUBROUTINE coupling_setup(grid_dir, num_parts, timestepstring)
+  SUBROUTINE coupling_setup(grid_dir, num_parts, timestepstring, couple_to_ebfm_in, couple_to_icon_in)
 
-    USE :: elmer_icon_coupling
     USE, INTRINSIC :: iso_c_binding, ONLY: C_INT, C_DOUBLE, C_PTR, C_F_POINTER, C_NULL_CHAR
 
     IMPLICIT NONE
@@ -371,6 +738,7 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN) :: grid_dir
     CHARACTER(LEN=*), INTENT(IN) :: timestepstring
     INTEGER, INTENT(IN) :: num_parts
+    LOGICAL, INTENT(IN) :: couple_to_ebfm_in, couple_to_icon_in
 
     INTEGER :: grid_id, corner_point_id, cell_point_id
 
@@ -440,8 +808,11 @@ CONTAINS
 
     END INTERFACE
 
+    ! Store coupling flags in module variables for later use
+    couple_to_ebfm = couple_to_ebfm_in
+    couple_to_icon = couple_to_icon_in
+
     ! get grid data from elmer component
-    ! in the case of the dummy, we have to read it from file
 
     ! read grid data from file
     ! * each process only reads in its local part of the grid
@@ -504,10 +875,13 @@ CONTAINS
     CALL yac_fdef_points( &
       grid_id, nbr_cells, YAC_LOCATION_CELL, x_cells, y_cells, cell_point_id)
 
-    !PRINT *, "PRECIP TIMESTEP in HOURS", timestepstring
     ! construct coupling between Elmer/Ice and ICON
-    CALL construct_elmer_icon_coupling(comp_id, corner_point_id, timestepstring, cell_point_id)
-
+    IF (couple_to_icon) THEN
+        CALL construct_elmer_icon_coupling(comp_id, corner_point_id, timestepstring, cell_point_id)
+    END IF
+    IF (couple_to_ebfm) THEN
+        CALL construct_elmer_ebfm_coupling(comp_id, corner_point_id, timestepstring, cell_point_id)
+    END IF
     ! sychronizes all definitions between all components
     ! * afterwards the exchange information can be queried
     ! * this is optional
@@ -515,8 +889,14 @@ CONTAINS
 
     ! construct coupling between Elmer/Ice and ICON (using sychronized
     ! information from all components)
-    CALL construct_elmer_icon_coupling_post_sync( &
-      comm_rank, ELMER_COMP_NAME, ELMER_GRID_NAME)
+    IF (couple_to_icon) THEN
+        CALL construct_elmer_icon_coupling_post_sync( &
+          comm_rank, ELMER_COMP_NAME, ELMER_GRID_NAME)
+    END IF
+    IF (couple_to_ebfm) THEN
+        CALL construct_elmer_ebfm_coupling_post_sync( &
+          comm_rank, ELMER_COMP_NAME, ELMER_GRID_NAME)
+    END IF
 
     ! end of definition phase
     ! * collective operation for all processes that initialised YAC
@@ -529,11 +909,15 @@ CONTAINS
 
   SUBROUTINE coupling_finalize()
 
-    USE elmer_icon_coupling
-
     IMPLICIT NONE
 
-    CALL destruct_elmer_icon_coupling()
+    IF (couple_to_ebfm) THEN
+      CALL destruct_elmer_ebfm_coupling()
+    END IF
+
+    IF (couple_to_icon) THEN
+      CALL destruct_elmer_icon_coupling()
+    END IF
 
     ! finalise YAC
     ! * if user has called MPI_Init, he also has to call MPI_Finalize afterwards
