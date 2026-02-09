@@ -55,6 +55,8 @@ MODULE Messages
   USE XIOS
 #endif
 
+   USE Types_  ! Check for circular dependencies
+
    IMPLICIT NONE
    
    CHARACTER(LEN=512) :: Message = ' '
