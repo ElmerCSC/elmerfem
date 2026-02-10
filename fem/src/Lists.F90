@@ -3592,7 +3592,7 @@ CONTAINS
       IF(ALLOCATED(ptr % Name)) DEALLOCATE(ptr % Name)
       ALLOCATE(CHARACTER(n)::ptr % Name)
       ptr % NameLen = StringToLowerCase( ptr % Name,Name )
-    END SUBROUTINE ListAddInteger
+    END SUBROUTINE ListAddAddressInteger
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
@@ -4029,7 +4029,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Gets an address integer value from the list.
 !------------------------------------------------------------------------------
-   RECURSIVE FUNCTION ListGetAddressInteger( List,Name,Found,minv,maxv,UnfoundFatal,DefValue) RESULT(L)
+   RECURSIVE FUNCTION ListGetAddressInteger( List,Name,Found,UnfoundFatal,DefValue) RESULT(L)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name
@@ -4062,9 +4062,8 @@ CONTAINS
      
      L = ptr % PROCEDURE
 
-     END IF
 !------------------------------------------------------------------------------
-   END FUNCTION ListGetInteger
+   END FUNCTION ListGetAddressInteger
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
