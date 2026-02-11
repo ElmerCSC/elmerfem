@@ -2,19 +2,20 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   USE DefUtils, ONLY: GetSolverParams, GetMesh, GetNOFActive, &
     DefaultVariableAdd, GetLogical, GetLogical, GetString, MAX_NAME_LEN, &
     VariableGet, ParEnv, variable_on_elements
+  USE GeneralUtils, ONLY: I2S
   USE Types, ONLY: Model_t, Solver_t, Mesh_t, Variable_t, ValueList_t, dp
   USE Messages, ONLY: Message, FATAL, INFO, USE_YAC
-  USE elmer_coupling, ONLY: coupling_setup
+  USE elmer_coupling, ONLY: coupling_setup, is_root_rank
   USE elmer_ebfm_coupling, ONLY: elmer_ebfm_interface, t_ice_field, smb_field, &
                                  runoff_field, surface_height_field
   ! USE elmer_icon_coupling, ONLY: elmer_icon_interface, clt_field, pr_field
   
   IMPLICIT NONE
 
-  TYPE(Model_t)  :: Model
-  TYPE(Solver_t) :: Solver
-  REAL(KIND=dp)  :: dt
-  LOGICAL        :: TransientSimulation
+  TYPE(Model_t),  INTENT(IN) :: Model
+  TYPE(Solver_t), INTENT(IN) :: Solver
+  REAL(KIND=dp),  INTENT(IN) :: dt
+  LOGICAL,        INTENT(IN) :: TransientSimulation
 
   
   TYPE(ValueList_t), POINTER :: SolverParams
@@ -23,9 +24,8 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   ! parameters to be read in from this solvers section in the sif 
   LOGICAL :: couple_to_ebfm, couple_to_icon         ! define which component is coupled to Elmer 
 
-  CHARACTER(LEN=1024) ::  config_file, grid_dir, model_tstep
-  INTEGER :: num_parts, elmer_mesh_partitions, comm_rank, comm_size, ierror
-  INTEGER :: I, t, ierr
+  CHARACTER(LEN=1024) ::  config_file, model_tstep
+  INTEGER :: I, t, ierr, dt_hours
   INTEGER, POINTER :: t_icePerm(:), smbPerm(:), runoffPerm(:)
   ! INTEGER, POINTER :: cltPerm(:), prPerm(:)  ! ICON is not supported at the moment
   LOGICAL :: Parallel, FirstTime=.TRUE., UnFoundFatal=.TRUE.
@@ -60,6 +60,10 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
      CALL FATAL(SolverName,'No keyword >Couple To ICON< found in yac2elmer solver')
   END IF
 
+  IF (.NOT. (couple_to_ebfm .OR. couple_to_icon)) THEN
+    CALL FATAL(SolverName,'At least one of >Couple To EBFM< or >Couple To ICON< must be TRUE')
+  END IF
+
   ! TODO: remove this check when ICON coupling is implemented
   IF (couple_to_icon) THEN
     CALL FATAL(SolverName,'>Couple To ICON< is currently not supported. Please set to FALSE')
@@ -68,9 +72,11 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! retrieve the timestep in hours 
   Mesh => Solver % Mesh
-  write(model_tstep, *) int(dt * 8760)
-  WRITE(Message,*) 'ELMER timestep size in hours:', TRIM(model_tstep)
-  CALL INFO(SolverName,Message,Level=3)
+
+  dt_hours = int(dt * 8760)
+  write(model_tstep, *) dt_hours
+  CALL INFO(SolverName, &
+    'ELMER timestep size in hours:' // I2S(dt_hours), Level=3)
   IF (FirstTime) THEN
 
 
@@ -81,13 +87,11 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
     IF ((ParEnv % PEs <= 1) .AND. ( .NOT. ThisMesh % SingleMesh )) THEN
       CALL FATAL(SolverName,'Only parallel runs can use this solver')
     ELSE
-      grid_dir= TRIM(ThisMesh % Name)
-      elmer_mesh_partitions = ParEnv % PEs
-      WRITE(Message,*) 'Running on ', TRIM(grid_dir),' with ',ParEnv % PEs ,' partitions' 
-      CALL INFO(SolverName,Message,Level=3)
+      CALL INFO(SolverName, &
+        'Running with ' // I2S(ParEnv % PEs) // ' partitions', Level=3)
     END IF
 
-    CALL coupling_setup(TRIM(grid_dir), elmer_mesh_partitions, TRIM(model_tstep), couple_to_ebfm, couple_to_icon)
+    CALL coupling_setup(ThisMesh, TRIM(model_tstep), couple_to_ebfm, couple_to_icon)
 
     IF (couple_to_ebfm) THEN
       ! setting up Elmer-side variables for receiving YAC variables
@@ -140,39 +144,33 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
 
     FirstTime = .FALSE.
     
-    WRITE(Message,*) "Coupling setup with ",TRIM(grid_dir)," on ",&
-         elmer_mesh_partitions, " partitions for YAC coupling done"
-    CALL INFO(SolverName,Message,Level=1) 
+    CALL INFO(SolverName, "YAC coupling setup done", Level=1)
   END IF
 !!!!!!!!!! DO WE HAVE TO INITIALIZE WITH EVERY CALL ? !!!!!!!!!!!!!!
   
   IF (couple_to_ebfm) THEN
-      WRITE(Message,*) 'BEFORE ELMER EBFM INTERFACE'
-      CALL INFO(SolverName,Message,Level=3)
+      CALL INFO(SolverName, 'BEFORE ELMER EBFM INTERFACE', Level=3)
       ! couple with EBFM
-      CALL elmer_ebfm_interface(ParEnv % MyPE)
-      WRITE(Message,*) 'AFTER ELMER EBFM INTERFACE'
-      CALL INFO(SolverName,Message,Level=3)
+      CALL elmer_ebfm_interface(is_root_rank)
+      CALL INFO(SolverName, 'AFTER ELMER EBFM INTERFACE', Level=3)
 
       t_iceVar => VariableGet( Mesh % Variables, 'T_ice' )  
       smbVar => VariableGet( Mesh % Variables, 'smb' )
       runoffVar => VariableGet( Mesh % Variables, 'runoff' )
       ZsSol => VariableGet( Model % Mesh % Variables, "Zs" ,UnFoundFatal=UnFoundFatal)
-      WRITE(Message,*) 'AFTER GETTING VARIABLES'
-      CALL INFO(SolverName,Message,Level=3)
+      CALL INFO(SolverName, 'AFTER GETTING VARIABLES', Level=3)
       IF ((.NOT.ASSOCIATED(t_iceVar)) .OR. (.NOT.ASSOCIATED(smbVar)) .OR. (.NOT.ASSOCIATED(runoffVar))) THEN
         CALL FATAL(SolverName,'Elmer variables not associated')
       END IF
       
-      WRITE(Message,*) 'BEFORE WRITING NODAL VALUES'
-      CALL INFO(SolverName,Message,Level=3)
+      CALL INFO(SolverName, 'BEFORE WRITING NODAL VALUES', Level=3)
        !write over values for nodes
       DO i=1, Mesh % NumberOfNodes
         t_iceVar % Values(t_iceVar % Perm(i)) = t_ice_field(i,1)
         runoffVar  % Values(runoffVar %  Perm(i)) = runoff_field(i,1)
         surface_height_field(i,1) = ZsSol % Values(ZsSol % Perm(i))
       END DO
-      CALL INFO(SolverName,Message,Level=3)
+      CALL INFO(SolverName, 'BEFORE WRITING ELEMENT VALUES', Level=3)
       ! write over values for elements
       DO t=1, GetNOFActive(Solver)
          smbVar  % Values(smbVar %  Perm(t)) = smb_field(t,1)
@@ -186,7 +184,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   IF (couple_to_icon) THEN
       CALL FATAL(SolverName,'ICON coupling not yet implemented')
       ! TODO: stub implementation for ICON coupling
-      ! CALL elmer_icon_interface(ParEnv % MyPE)
+      ! CALL elmer_icon_interface(is_root_rank)
       ! cltVar => VariableGet( Mesh % Variables, 'tas' )
       ! prVar => VariableGet( Mesh % Variables, 'pr_snow' )
   END IF

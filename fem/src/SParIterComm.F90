@@ -50,6 +50,9 @@ MODULE SParIterComm
 #ifdef HAVE_XIOS
   USE Messages, ONLY: USE_XIOS
 #endif
+#ifdef HAVE_YAC
+  USE Messages, ONLY: USE_YAC
+#endif
   USE LoadMod, ONLY : RealTime
   USE SParIterGlobals
 
@@ -103,7 +106,7 @@ MODULE SParIterComm
 #endif
 
 #ifdef HAVE_YAC
-  USE elmer_coupling, ONLY: coupling_init, coupling_finalize, coupling_setup
+  USE elmer_coupling, ONLY: coupling_init, coupling_finalize
 #endif
 
 #ifdef HAVE_XIOS
@@ -293,6 +296,7 @@ CONTAINS
 #endif
     IF ( ierr /= 0 ) RETURN
 
+    ! Only needed for MPI_COMM_SPLIT if not using mpi_handshake
     CALL MPI_COMM_SIZE( MPI_COMM_WORLD, ParEnv % PEs, ierr )
     CALL MPI_COMM_RANK( MPI_COMM_WORLD, ParEnv % MyPE, ierr )
 
@@ -395,27 +399,9 @@ ParEnv % MyPE,ELMER_COMM_WORLD,ierr)
 #        endif
     END IF
 #endif
-
-! Use YAC library for coupling
-!
-#ifdef HAVE_YAC
-    IF (USE_YAC) THEN
-      WRITE(Message,'(A,A)') &
-        "Using YAC coupler with config-file:", &
-        TRIM(yac_config_file)
-
-      CALL INFO("SparIterComm",Message,Level=25)
-      ! TODO: Refactor to also provide GROUP_NAMES(XIOS_GROUP_IDX) here
-      ! CALL coupling_init(yac_config_file, ELMER_COMM_WORLD,&
-      ! GROUP_COMMS(COUPLER_GROUP_IDX), GROUP_NAMES(ELMER_GROUP_IDX))
-      CALL coupling_init(yac_config_file, ELMER_COMM_WORLD,&
-      GROUP_COMMS(COUPLER_GROUP_IDX))
-    END IF
-#endif
     
+    ! Set ParEnv values according to ELMER_COMM_WORLD
     ParEnv % ActiveComm = ELMER_COMM_WORLD
-
-!ELMER_COMM_WORLD=MPI_COMM_WORLD
 
     CALL MPI_COMM_SIZE( ELMER_COMM_WORLD, ParEnv % PEs, ierr )
     IF ( ierr /= 0 ) THEN
@@ -437,6 +423,28 @@ ParEnv % MyPE,ELMER_COMM_WORLD,ierr)
        Parenv % NumOfNeighbours = 0
        ParEnv % Initialized = .TRUE.
     END IF
+
+    ! Use YAC library for coupling
+    ! Needs initialized  ParEnv % MyPE.
+#ifdef HAVE_YAC
+    IF (USE_YAC) THEN
+      IF ( .NOT. ParEnv % Initialized ) THEN
+        WRITE( Message,'(A)') 'ParEnv not initialized before coupling_init'
+        CALL Fatal( 'ParCommInit', Message )
+      END IF
+
+      WRITE(Message,'(A,A)') &
+        "Using YAC coupler with config-file:", &
+        TRIM(yac_config_file)
+
+      CALL INFO("SparIterComm",Message,Level=25)
+      ! TODO: Refactor to also provide GROUP_NAMES(XIOS_GROUP_IDX) here
+      ! CALL coupling_init(yac_config_file, ParEnv % MyPE ,&
+      ! GROUP_COMMS(COUPLER_GROUP_IDX), GROUP_NAMES(ELMER_GROUP_IDX))
+      CALL coupling_init(yac_config_file, ParEnv % MyPE ,&
+      GROUP_COMMS(COUPLER_GROUP_IDX))
+    END IF
+#endif
 !-----------------------------------------------------------------------
   END FUNCTION ParCommInit
 !-----------------------------------------------------------------------
@@ -4175,7 +4183,7 @@ END SUBROUTINE ExchangeRHSIf
 !> Send parts of the result vector to neighbours
 !----------------------------------------------------------------------
 SUBROUTINE ExchangeResult( SourceMatrix, SplittedMatrix, ParallelInfo, XVec )
-  USE types
+  USE Types
   IMPLICIT NONE
 
   TYPE(SplittedMatrixT) :: SplittedMatrix
@@ -4780,7 +4788,7 @@ END SUBROUTINE Recv_LocIf_size
 !> Receive interface block contributions to vector from neighbours
 !
 SUBROUTINE Recv_LocIf( SplittedMatrix, n, neigh, sizes, requests, buffer )
-  uSE Types
+  USE Types
   IMPLICIT NONE
 
   TYPE (SplittedMatrixT) :: SplittedMatrix
