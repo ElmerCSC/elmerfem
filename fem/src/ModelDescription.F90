@@ -6255,11 +6255,39 @@ END SUBROUTINE GetNodalElementSize
       CALL Graph_Deallocate(Solver % ColourIndexList)
       DEALLOCATE( Solver % ColourIndexList )
     END IF
-        
+
 !------------------------------------------------------------------------------
   END SUBROUTINE FreeSolver
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> Call <SolverName>_Finalize if exists
+!> TODO: Not tested
+!------------------------------------------------------------------------------
+SUBROUTINE FinalizeSolver(model, solver)
+!------------------------------------------------------------------------------
+
+  TYPE(Model_t) :: Model
+  TYPE(Solver_t) :: Solver
+  CHARACTER(:), ALLOCATABLE :: Name
+  LOGICAL :: Found, Transient
+  INTEGER(Kind=AddrInt) :: FinalProc
+!------------------------------------------------------------------------------
+
+  Name = ListGetString( Solver % values, 'Procedure', Found)
+  IF(Found) Then
+    FinalProc = GetProcAddr( Trim(Name)//'_Finalize', abort=.FALSE.)
+
+    IF (FinalProc /= 0) then 
+      Transient = ListGetString(Model % Simulation, 'Simulation Type',Found)=='transient'
+      CALL Info('FreeModel','Finalize Solver: > '//trim(Name) // ' <',Level=20)
+      CALL ExecSolver(FinalProc, Model, Solver, Solver% dt, Transient)
+    END IF
+  END IF
+
+!------------------------------------------------------------------------------
+END SUBROUTINE
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 !> Releases value list which includes all the sif definitions, for example.
@@ -6287,7 +6315,7 @@ END SUBROUTINE GetNodalElementSize
 !------------------------------------------------------------------------------
 !> Releases the whole model. 
 !------------------------------------------------------------------------------
- SUBROUTINE FreeModel(Model)
+  SUBROUTINE FreeModel(Model)
 !------------------------------------------------------------------------------
    TYPE(Model_t), POINTER :: Model
 !------------------------------------------------------------------------------
@@ -6326,6 +6354,7 @@ END SUBROUTINE GetNodalElementSize
    CALL Info('FreeModel','Freeing solvers',Level=15)  
    DO i=1,Model % NumberOfSolvers
      CALL Info('FreeModel','Solver: '//I2S(i),Level=20)
+     CALL FinalizeSolver(Model, Model % Solvers(i))
      CALL FreeSolver(Model % Solvers(i))
    END DO
    DEALLOCATE(Model % Solvers)
