@@ -105,6 +105,14 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
 
   Active = ANY(Permutation > 0)
 
+  ! Initialize GroundedMask for all active DOFs. 
+  ! This avoids leaving halo/ghost nodes with default value 0
+  IF (Active) THEN
+    DO k = 1, SIZE(VariableValues)
+      IF (Permutation(k) > 0) VariableValues(Permutation(k)) = 1.0_dp
+    END DO
+  END IF
+
   CALL INFO(SolverName, 'Computing grounded mask from geometry', level=3)
 
   !--------------------------------------------------------------
