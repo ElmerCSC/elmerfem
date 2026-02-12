@@ -82,7 +82,7 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: AllocationsDone = .FALSE., GotIt, stat,UnFoundFatal=.TRUE.,&
              AllGrounded = .FALSE., useLSvar = .FALSE., Active
 
-  INTEGER :: i, mn, n, t, Nn, istat, DIM, MSum, ZSum, bedrockSource
+  INTEGER :: i, mn, n, t, Nn, istat, DIM, MSum, ZSum, bedrockSource, k
   INTEGER, POINTER :: Permutation(:), bedrockPerm(:), LSvarPerm(:)
 
   REAL(KIND=dp), POINTER :: VariableValues(:)
