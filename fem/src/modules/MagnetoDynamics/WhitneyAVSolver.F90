@@ -412,7 +412,6 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   TYPE(Matrix_t), POINTER :: PrecMat
   TYPE(Solver_t), POINTER :: PrecSolver
   INTEGER :: PrecI
-  LOGICAL :: PrecMatCyl
   
   CHARACTER(*), PARAMETER :: Caller = 'WhitneyAVSolver'
   
@@ -448,20 +447,15 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 
   NULLIFY(PrecMat)
   NULLIFY(PrecSolver)
-  PrecMatCyl = .FALSE.
   PrecI = ListGetInteger(SolverParams,'Prec Solvers',Found )
   IF(PrecI > 0) THEN
     PrecSolver => Model % Solvers(PrecI)
     PrecMat => Model % Solvers(PrecI) % Matrix    
-    PrecMatCyl = ListGetLogicalAnySolver(Model,'Prec Matrix Cylindrical')
     CALL ListAddLogical(PrecSolver % Values,'Linear System Refactorize',.TRUE.)
     CALL ListAddLogical(PrecSolver % Values,'Mortar BCs Fixed',.FALSE.)
   END IF
   IF(ASSOCIATED(PrecMat)) THEN
     CALL Info(Caller,'Using special nodal component-wise preconditioning matrix!')
-    IF(PrecMatCyl) THEN
-      CALL Info(Caller,'Assembling cylindrically symmetric preconditioning matrix!')
-    END IF
   END IF
   
   CoilCurrentName = GetString( SolverParams,'Current Density Name',UseCoilCurrent ) 
@@ -2464,33 +2458,6 @@ END SUBROUTINE LocalConstraintMatrix
                DO q = 1,n
                  Laplace = SUM(dBasisdx(p,:)*dBasisdx(q,:)) * weight
                  nSTIFF(p,q) = nSTIFF(p,q) + mu * Laplace 
-               END DO
-             END DO
-           ELSE IF( PrecMatCyl ) THEN
-             x = SUM(Basis(1:n) * Nodes % x(1:n))
-             y = SUM(Basis(1:n) * Nodes % y(1:n))
-             DO p = 1,n
-               DO q = 1,n
-                 Laplace = SUM(dBasisdx(p,:)*dBasisdx(q,:)) * weight
-
-                 ! Equation for: a_r/r
-                 nSTIFF(3*p-2,3*q-2) = nSTIFF(3*p-2,3*q-2) + x * mu * Laplace 
-                 nSTIFF(3*p-2,3*q-1) = nSTIFF(3*p-2,3*q-1) - y * mu * Laplace 
-                 !nSTIFF(3*p-2,3*q-2) = nSTIFF(3*p-2,3*q-2) - mu * Basis(p) * dBasisdx(q,1) * weight
-                 !nSTIFF(3*p-2,3*q-1) = nSTIFF(3*p-2,3*q-1) + mu * Basis(p) * dBasisdx(q,2) * weight
-                 nSTIFF(3*p-2,3*q-2) = nSTIFF(3*p-2,3*q-2) + mu * Basis(q) * dBasisdx(p,1) * weight
-                 nSTIFF(3*p-2,3*q-1) = nSTIFF(3*p-2,3*q-1) - mu * Basis(q) * dBasisdx(p,2) * weight
-
-                 ! Equation for: a_phi/r
-                 nSTIFF(3*p-1,3*q-1) = nSTIFF(3*p-1,3*q-1) + x * mu * Laplace 
-                 nSTIFF(3*p-1,3*q-2) = nSTIFF(3*p-1,3*q-2) + y * mu * Laplace 
-                 !nSTIFF(3*p-1,3*q-2) = nSTIFF(3*p-1,3*q-2) - mu * Basis(p) * dBasisdx(q,2) * weight
-                 !nSTIFF(3*p-1,3*q-1) = nSTIFF(3*p-1,3*q-1) - mu * Basis(p) * dBasisdx(q,1) * weight
-                 nSTIFF(3*p-1,3*q-2) = nSTIFF(3*p-1,3*q-2) + mu * Basis(q) * dBasisdx(p,2) * weight
-                 nSTIFF(3*p-1,3*q-1) = nSTIFF(3*p-1,3*q-1) + mu * Basis(q) * dBasisdx(p,1) * weight
-
-                 ! Equation for: a_z
-                 nSTIFF(3*p,3*q) = nSTIFF(3*p,3*q) + mu * Laplace 
                END DO
              END DO
            ELSE
