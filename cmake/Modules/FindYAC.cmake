@@ -23,6 +23,13 @@
 #  YAC_FOUND              - True if YAC found including required interfaces (see below)
 #  YAC_LIBRARIES          - All yac related libraries.
 #  YAC_INCLUDE_DIR        - All directories to include.
+#  YAC_VERSION            - Version of YAC found
+
+# Minimum required YAC version (must have CMake config support)
+# Note: Currently a soft requirement with fallback to manual search.
+#       Will become a hard requirement (remove fallback) in the future.
+
+SET(YAC_MINIMUM_VERSION "3.12.0")
 
 # # handle the QUIETLY and REQUIRED arguments and set YAC_FOUND to TRUE
 # if all listed variables are TRUE
@@ -33,6 +40,106 @@ IF(YAC_LIBRARIES AND YAC_INCLUDE_DIR)
    SET(YAC_FOUND TRUE)
    RETURN()
 ENDIF()
+
+# First, try to find YAC using its CMake config files (for modern CMake-based installations)
+SET(YAC_CONFIG_PATHS
+  "${YACROOT}"
+  "$ENV{YACROOT}"
+  "${YAC_ROOT}"
+  "$ENV{YAC_ROOT}"
+)
+
+# Provide glue code for YAC's config mode to find dependencies
+# YAC's CMake config expects specific variable names
+
+# NetCDF mapping
+IF(NETCDF_LIBRARY AND NOT NetCDF_C_LIBRARIES)
+  SET(NetCDF_C_LIBRARIES "${NETCDF_LIBRARY}")
+ENDIF()
+IF(NETCDFF_LIBRARY AND NOT NetCDF_Fortran_LIBRARIES)
+  SET(NetCDF_Fortran_LIBRARIES "${NETCDFF_LIBRARY}")
+ENDIF()
+IF(NETCDF_INCLUDE_DIR AND NOT NetCDF_INCLUDE_DIR)
+  SET(NetCDF_INCLUDE_DIR "${NETCDF_INCLUDE_DIR}")
+ENDIF()
+
+# YAXT mapping
+IF(YAXT_LIBRARY AND NOT YAXT::YAXT_C)
+  # Create imported target for YAXT if it doesn't exist
+  IF(NOT TARGET YAXT::YAXT_C)
+    ADD_LIBRARY(YAXT::YAXT_C UNKNOWN IMPORTED)
+    SET_TARGET_PROPERTIES(YAXT::YAXT_C PROPERTIES
+      IMPORTED_LOCATION "${YAXT_LIBRARY}"
+      INTERFACE_INCLUDE_DIRECTORIES "${YAXT_INCLUDE_DIR}")
+  ENDIF()
+ENDIF()
+
+# libfyaml (YAML) mapping
+IF(YAML_LIBRARY AND NOT libfyaml_LIBRARIES)
+  SET(libfyaml_LIBRARIES "${YAML_LIBRARY}")
+ENDIF()
+IF(YAML_INCLUDE_DIR AND NOT libfyaml_INCLUDE_DIRS)
+  SET(libfyaml_INCLUDE_DIRS "${YAML_INCLUDE_DIR}")
+ENDIF()
+IF(YAML_FOUND AND NOT libfyaml_FOUND)
+  SET(libfyaml_FOUND TRUE)
+ENDIF()
+
+FIND_PACKAGE(YAC CONFIG QUIET HINTS ${YAC_CONFIG_PATHS})
+
+IF(YAC_FOUND)
+  # Check YAC version if available
+  IF(YAC_VERSION)
+    IF(YAC_VERSION VERSION_LESS YAC_MINIMUM_VERSION)
+      message(WARNING "Found YAC version ${YAC_VERSION}, but minimum required is ${YAC_MINIMUM_VERSION}")
+      SET(YAC_FOUND FALSE)
+      # RETURN()  # TODO turn this on when YAC 3.15 with CMake has been released.
+    ENDIF()
+  ENDIF()
+
+  # YAC was found via config mode - collect all YAC component targets
+  SET(YAC_COMPONENT_TARGETS "")
+
+  # YAC exports multiple component targets in the yac:: namespace
+  FOREACH(component yac_core yac_mci yac_utils yac_mtime)
+    IF(TARGET yac::${component})
+      LIST(APPEND YAC_COMPONENT_TARGETS yac::${component})
+    ENDIF()
+  ENDFOREACH()
+
+  IF(YAC_COMPONENT_TARGETS)
+    # For modern CMake, set YAC_LIBRARIES to all component targets
+    # This allows: target_link_libraries(... ${YAC_LIBRARIES}) to work correctly
+    SET(YAC_LIBRARIES ${YAC_COMPONENT_TARGETS})
+
+    # Get include directories from the first component target
+    LIST(GET YAC_COMPONENT_TARGETS 0 FIRST_TARGET)
+    GET_TARGET_PROPERTY(YAC_INCLUDE_DIR ${FIRST_TARGET} INTERFACE_INCLUDE_DIRECTORIES)
+
+    IF(YAC_VERSION)
+      message(STATUS "Found YAC ${YAC_VERSION} via config mode: targets ${YAC_LIBRARIES}")
+    ELSE()
+      message(STATUS "Found YAC via config mode: targets ${YAC_LIBRARIES}")
+    ENDIF()
+    RETURN()
+  ELSE()
+    message(WARNING "FindYAC: YAC config found but no component targets available")
+  ENDIF()
+ENDIF()
+
+message(WARNING "Did not find YAC via config mode. "
+  "YAC >= ${YAC_MINIMUM_VERSION} with CMake config support is required."
+  "Falling back to manual search for older YAC installations without CMake.")
+
+message(WARNING "Fallback to YAC without CMake config support will be removed "
+  "in the future, so please upgrade YAC to a modern version with CMake support.")
+
+# =============================================================================
+# FALLBACK: Manual search for older YAC installations without CMake support
+# =============================================================================
+# TODO: Remove this fallback section when making YAC >= 3.15 a hard requirement.
+#       YAC 3.15+ provides CMake config files and should be found via CONFIG mode above.
+#       The manual search below is only for backwards compatibility with older installations.
 
 SET(YAC_FOUND FALSE)
 
