@@ -605,11 +605,11 @@ IF (WITH_YAC)
 
   FIND_PACKAGE(YAC)
 
-  GET_TARGET_PROPERTY(YAC_INCLUDE_DIR yac::yac_core INTERFACE_INCLUDE_DIRECTORIES)
+  GET_TARGET_PROPERTY(YAC_INCLUDE_DIR YAC::yac_core INTERFACE_INCLUDE_DIRECTORIES)
   SET(YAC_LIBRARIES "")
   FOREACH(component yac_core yac_mci yac_utils yac_mtime)
-    IF(TARGET yac::${component})
-      LIST(APPEND YAC_LIBRARIES yac::${component})
+    IF(TARGET YAC::${component})
+      LIST(APPEND YAC_LIBRARIES YAC::${component})
     ENDIF()
   ENDFOREACH()
 
