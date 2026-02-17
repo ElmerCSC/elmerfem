@@ -658,7 +658,9 @@ IF (WITH_YAC)
     INCLUDE_DIRECTORIES(${YAC_INCLUDE_DIR})
     ADD_DEFINITIONS(-DHAVE_YAC)
   ELSE()
-    MESSAGE(STATUS "  ${YAC_FAILMSG}")
+    MESSAGE(STATUS "YAC not found ")
+    MESSAGE(WARNING "Please be aware that Elmer will only be able to find YAC"
+                    " if YAC has be build with CMake.")
   ENDIF()
 
   MESSAGE(STATUS "------------------------------------------------")
