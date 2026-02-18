@@ -606,12 +606,7 @@ IF (WITH_YAC)
   FIND_PACKAGE(YAC)
 
   GET_TARGET_PROPERTY(YAC_INCLUDE_DIR YAC::yac_core INTERFACE_INCLUDE_DIRECTORIES)
-  SET(YAC_LIBRARIES "")
-  FOREACH(component yac_core yac_mci yac_utils yac_mtime)
-    IF(TARGET YAC::${component})
-      LIST(APPEND YAC_LIBRARIES YAC::${component})
-    ENDIF()
-  ENDFOREACH()
+  SET(YAC_LIBRARIES YAC::yac_mci)
 
   MESSAGE(STATUS "  YAC:           " "${YAC_FOUND}")
   MESSAGE(STATUS "  YAC_INC:       " "${YAC_INCLUDE_DIR}")
