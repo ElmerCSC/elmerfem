@@ -26,22 +26,25 @@ ELSE()
   MESSAGE(WARNING "  \n Missing: <NETCDF_INCLUDE_DIR> , <NETCDF_LIBRARY>,  <NETCDFF_LIBRARY> \n some functionalities will be disabled")
 ENDIF()
 
+# ------------------- #
+# -- YAC libraries -- #
+#-------------------- #
+MESSAGE(STATUS "------------------------------------------------")
+MESSAGE(STATUS "Elmer/Ice package: Looking for YAC libraries")
+
 IF(WITH_YAC)
 
   FIND_PACKAGE(YAC)
 
-  GET_TARGET_PROPERTY(YAC_INCLUDE_DIR YAC::yac_core INTERFACE_INCLUDE_DIRECTORIES)
-
   IF(YAC_FOUND)
     MESSAGE(STATUS "  YAC:           " "${YAC_FOUND}")
-    MESSAGE(STATUS "  YAC_INC:       " "${YAC_INCLUDE_DIR}")
-    MESSAGE(STATUS "  YAC_LIBS:      " "${YAC_LIBRARIES}")
     MESSAGE(STATUS "  yac2elmer will be available under ElmerIceSolvers")
   ELSE()
     MESSAGE(STATUS "  YAC not found ")
     MESSAGE(STATUS "  No yac2elmer in ElmerIceSolvers")
   ENDIF()
 ENDIF()
+
 # ---------------------- #
 # -- HDF5 libraries -- #
 #----------------------- #
