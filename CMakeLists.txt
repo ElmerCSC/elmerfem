@@ -620,7 +620,7 @@ IF (WITH_YAC)
   ELSE()
     MESSAGE(STATUS "YAC not found ")
     MESSAGE(WARNING "Please be aware that Elmer will only be able to find YAC"
-                    " if YAC has be build with CMake.")
+                    " if YAC has been build with CMake.")
   ENDIF()
 
   MESSAGE(STATUS "------------------------------------------------")
