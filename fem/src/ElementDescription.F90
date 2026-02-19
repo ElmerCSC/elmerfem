@@ -6869,7 +6869,7 @@ END SUBROUTINE PickActiveFace
 !------------------------------------------------------------------------------------------------------------
        TYPE(Mesh_t), POINTER :: Mesh
        TYPE(Element_t), POINTER :: Parent, Face, pElement
-       INTEGER :: n, dim, cdim, q, i, j, k, l, A, I1, I2, I3, I4, FaceIndices(4)
+       INTEGER :: n, dim, cdim, q, i, j, k, l, A, I1, I2, I3, I4, FaceIndices(4), A0, B0, C0, J1, J2, J3
        REAL(KIND=dp) :: dLbasisdx(MAX(SIZE(Nodes % x),SIZE(Basis)),3), WorkBasis(4,3), WorkCurlBasis(4,3)
        REAL(KIND=dp) :: D1, D2, B(3), curlB(3), GT(3,3), LG(3,3), LF(3,3)
        REAL(KIND=dp) :: ElmMetric(3,3), detJ, CurlBasis(54,3)
@@ -6881,15 +6881,21 @@ END SUBROUTINE PickActiveFace
        REAL(KIND=dp) :: svec(3), tvec(3), hvec(3), gvec(3)
        REAL(KIND=dp) :: grad_svec(3,3), grad_tvec(3,3), grad_hvec(3,3), grad_gvec(3,3)
        REAL(KIND=dp) :: WorkWeight(2), grad_weight(2,1:3)
+       REAL(KIND=dp) :: Wrk(4,3), WrkCurl(4,3)
        LOGICAL :: Create2ndKindBasis, PerformPiolaTransform, UsePretabulatedBasis, Parallel
        LOGICAL :: SecondOrder, ThirdOrder, ApplyTraceMapping, Found
        LOGICAL :: ReverseSign(4)
-       LOGICAL :: ScaleFaceBasis, RedefineFaceBasis
+       LOGICAL :: ScaleFaceBasis, RedefineFaceBasis, UseWForms = .false.
        LOGICAL :: Simplicial
+       LOGICAL :: InformAboutWForms = .TRUE.
        INTEGER, POINTER :: EdgeMap(:,:)
        INTEGER :: TriangleFaceMap(3), SquareFaceMap(4), BrickFaceMap(6,4), PrismSquareFaceMap(3,4), DOFs, GIndexes(27)
        INTEGER :: ActiveFaceId, EDOFs, FDOFs, BDOFs
 !----------------------------------------------------------------------------------------------------------
+       IF (InformAboutWForms) THEN
+         IF (UseWForms) CALL Info('EdgeElementInfo', 'Expressing basis by using Whitney forms')
+         InformAboutWForms = .FALSE.
+       END IF
        RedefineFaceBasis = .TRUE. ! Left as an emergency switch to revert to the original (ill-conditioned) basis
        ScaleFaceBasis = .TRUE.
        fs1 = 28.0d0
@@ -8040,70 +8046,179 @@ END SUBROUTINE PickActiveFace
                  ! Create the basis:
                  DO l=1,FDOFs
 
+                   IF (UseWForms) THEN
+                     !
+                     ! This allows for an alternate implementation where the basis functions
+                     ! are expressed in terms of Whitney forms. For the third basis function
+                     ! of gradient type the representation in terms of Whitney forms is not
+                     ! yet available.
+                     !
+                     IF (l == 3) THEN
+                       ! Revert to the values before overwriting within this loop:
+                       J1 = TriangleFaceMap(1)
+                       J2 = TriangleFaceMap(2)
+                       J3 = TriangleFaceMap(3)
+
+                       WorkBasis(1,1:3) = Basis(J2) * Basis(J3) * dLBasisdx(J1,1:3)
+                       WorkBasis(2,1:3) = Basis(J1) * Basis(J3) * dLBasisdx(J2,1:3)
+                       WorkBasis(3,1:3) = Basis(J1) * Basis(J2) * dLBasisdx(J3,1:3)
+                       
+                       WorkCurlBasis(1,1) = grad_svec(3,2) - grad_svec(2,3)
+                       WorkCurlBasis(1,2) = grad_svec(1,3) - grad_svec(3,1)
+                       WorkCurlBasis(1,3) = grad_svec(2,1) - grad_svec(1,2)
+
+                       WorkCurlBasis(2,1) = grad_tvec(3,2) - grad_tvec(2,3)
+                       WorkCurlBasis(2,2) = grad_tvec(1,3) - grad_tvec(3,1)
+                       WorkCurlBasis(2,3) = grad_tvec(2,1) - grad_tvec(1,2)
+                       
+                       WorkCurlBasis(3,1) = grad_hvec(3,2) - grad_hvec(2,3)
+                       WorkCurlBasis(3,2) = grad_hvec(1,3) - grad_hvec(3,1)
+                       WorkCurlBasis(3,3) = grad_hvec(2,1) - grad_hvec(1,2)
+
+                       CALL TriangleFaceDofsOrdering2nd(I1,I2,I3,FaceIndices(1:3))
+                     ELSE
+                       CALL WeightedWhitneyForms(WorkBasis(1:3,:), WorkCurlBasis(1:3,:), k, u, v, w)
+                       CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndices,A0,B0,C0)
+                     END IF
+                   END IF
+                   
                    SELECT CASE(l)
                    CASE(1)
-                     sfun = 1.0d0
-                     tfun = 1.0d0
-                     hfun = -2.0d0
+                     !
+                     ! This creates the basis function L_C W_{AB} - 2 L_B W_{AC} 
+                     !
+                     IF (UseWForms) THEN
+                       sfun = 1.0d0
+                       tfun = -2.0d0
+                       hfun = 0.0d0
+                     ELSE
+                       sfun = 1.0d0
+                       tfun = 1.0d0
+                       hfun = -2.0d0
+                     END IF
                    CASE(2)
-                     sfun = 1.0d0
-                     tfun = -1.0d0
-                     hfun = 0.0d0
+                     !
+                     ! This creates the basis function -L_C W_{AB}
+                     !
+                     IF (UseWForms) THEN
+                       sfun = -1.0d0
+                       tfun = 0.0d0
+                       hfun = 0.0d0
+                     ELSE
+                       sfun = 1.0d0
+                       tfun = -1.0d0
+                       hfun = 0.0d0
+                     END IF
                    CASE(3)
                      ! This corresponds to the second-order gradient:
                      sfun = 1.0d0
                      tfun = 1.0d0
                      hfun = 1.0d0
                    CASE(4)
-                     sfun = Basis(I2) - Basis(I3)
-                     tfun = Basis(I3) - Basis(I1)
-                     hfun = Basis(I1) - Basis(I2)
-
-                     grad_sfun(1:3) = dLBasisdx(I2,1:3) - dLBasisdx(I3,1:3)
-                     grad_tfun(1:3) = dLBasisdx(I3,1:3) - dLBasisdx(I1,1:3)
-                     grad_hfun(1:3) = dLBasisdx(I1,1:3) - dLBasisdx(I2,1:3)
+                     !
+                     ! This creates the basis function (L_A - L_B) L_B W_{AC} + (L_C - L_A) L_C W_{AB} 
+                     ! 
+                     IF (UseWForms) THEN
+                       sfun = Basis(C0) - Basis(A0)
+                       tfun = Basis(A0) - Basis(B0)
+                       hfun = 0.0d0
+                       grad_sfun(1:3) = dLBasisdx(C0,1:3) - dLBasisdx(A0,1:3)
+                       grad_tfun(1:3) = dLBasisdx(A0,1:3) - dLBasisdx(B0,1:3)
+                       grad_hfun(1:3) = 0.0d0
+                     ELSE
+                       grad_sfun(1:3) = dLBasisdx(I2,1:3) - dLBasisdx(I3,1:3)
+                       grad_tfun(1:3) = dLBasisdx(I3,1:3) - dLBasisdx(I1,1:3)
+                       grad_hfun(1:3) = dLBasisdx(I1,1:3) - dLBasisdx(I2,1:3)
+                     END IF
                    CASE(5)
-                     ! Note that hfun contains a correction to the basis proposed by Sun, Lee, Cendes
-                     ! so that the weight functions form a partition of the unity
-                     sfun = 393.0d0 * Basis(I1) + 80.0d0 * Basis(I2) - 212.0d0 * Basis(I3)
-                     tfun = -393.0d0 * Basis(I2) - 80.0d0 * Basis(I1) + 212.0d0 * Basis(I3)
-                     hfun = -313.0d0 * Basis(I1) + 313.0d0 * Basis(I2)
+                     !
+                     ! This creates the basis function (-80 L_A - 393 L_B + 212 L_C) L_C W_{AB} + (-313 L_A + 313 L_B) L_B W_{AC} 
+                     !
+                     IF (UseWForms) THEN
+                       sfun = -393.0d0 * Basis(B0) - 80.0d0 * Basis(A0) + 212.0d0 * Basis(C0)
+                       tfun = -313.0d0 * Basis(A0) + 313.0d0 * Basis(B0)
+                       hfun = 0.0d0
+                       
+                       grad_sfun(1:3) = -393.0d0 * dLBasisdx(B0,1:3) - 80.0d0 * dLBasisdx(A0,1:3) + 212.0d0 * dLBasisdx(C0,1:3)
+                       grad_tfun(1:3) = -313.0d0 * dLBasisdx(A0,1:3) + 313.0d0 * dLBasisdx(B0,1:3)
+                       grad_hfun(1:3) = 0.0d0
+                     ELSE
+                       ! Note that hfun contains a correction to the basis proposed by Sun, Lee, Cendes
+                       ! so that the weight functions form a partition of the unity.
+                       sfun = 393.0d0 * Basis(I1) + 80.0d0 * Basis(I2) - 212.0d0 * Basis(I3)
+                       tfun = -393.0d0 * Basis(I2) - 80.0d0 * Basis(I1) + 212.0d0 * Basis(I3)
+                       hfun = -313.0d0 * Basis(I1) + 313.0d0 * Basis(I2)
 
-                     grad_sfun(1:3) = 393.0d0 * dLBasisdx(I1,1:3) + 80.0d0 * dLBasisdx(I2,1:3) - 212.0d0 * dLBasisdx(I3,1:3)
-                     grad_tfun(1:3) = -393.0d0 * dLBasisdx(I2,1:3) - 80.0d0 * dLBasisdx(I1,1:3) + 212.0d0 * dLBasisdx(I3,1:3)
-                     grad_hfun(1:3) = -313.0d0 * dLBasisdx(I1,1:3) + 313.0d0 * dLBasisdx(I2,1:3)
+                       grad_sfun(1:3) = 393.0d0 * dLBasisdx(I1,1:3) + 80.0d0 * dLBasisdx(I2,1:3) - 212.0d0 * dLBasisdx(I3,1:3)
+                       grad_tfun(1:3) = -393.0d0 * dLBasisdx(I2,1:3) - 80.0d0 * dLBasisdx(I1,1:3) + 212.0d0 * dLBasisdx(I3,1:3)
+                       grad_hfun(1:3) = -313.0d0 * dLBasisdx(I1,1:3) + 313.0d0 * dLBasisdx(I2,1:3)
+                     END IF
                    CASE(6)
-                     ! Note that hfun contains a correction to the basis proposed by Sun, Lee, Cendes
-                     ! so that the weight functions form a partition of the unity
-                     sfun = -131.0d0 * Basis(I1) + 168.0d0 * Basis(I2) - 124.0d0 * Basis(I3)
-                     tfun = -131.0d0 * Basis(I2) + 168.0d0 * Basis(I1) - 124.0d0 * Basis(I3)
-                     hfun = -37.0d0 * Basis(I1) - 37.0d0 * Basis(I2) + 248.0d0 * Basis(I3)
+                     !
+                     ! This creates the basis function (168 L_A - 131 L_B - 124 L_C) L_C W_{AB} + (-37 L_A - 37 L_B + 248 L_C) L_B W_{AC} 
+                     !
+                     IF (UseWForms) THEN
+                       sfun = -131.0d0 * Basis(B0) + 168.0d0 * Basis(A0) - 124.0d0 * Basis(C0)
+                       tfun = -37.0d0 * Basis(A0) - 37.0d0 * Basis(B0) + 248.0d0 * Basis(C0)
+                       hfun = 0.0d0
 
-                     grad_sfun(1:3) = -131.0d0 * dLBasisdx(I1,1:3) + 168.0d0 * dLBasisdx(I2,1:3) - 124.0d0 * dLBasisdx(I3,1:3)
-                     grad_tfun(1:3) = -131.0d0 * dLBasisdx(I2,1:3) + 168.0d0 * dLBasisdx(I1,1:3) - 124.0d0 * dLBasisdx(I3,1:3)
-                     grad_hfun(1:3) = -37.0d0 * dLBasisdx(I1,1:3) - 37.0d0 * dLBasisdx(I2,1:3) + 248.0d0 * dLBasisdx(I3,1:3)
+                       grad_sfun(1:3) = -131.0d0 * dLBasisdx(B0,1:3) + 168.0d0 * dLBasisdx(A0,1:3) - 124.0d0 * dLBasisdx(C0,1:3)
+                       grad_tfun(1:3) = -37.0d0 * dLBasisdx(A0,1:3) - 37.0d0 * dLBasisdx(B0,1:3) + 248.0d0 * dLBasisdx(C0,1:3)
+                       grad_hfun(1:3) = 0.0d0
+                     ELSE
+                       ! Note that hfun contains a correction to the basis proposed by Sun, Lee, Cendes
+                       ! so that the weight functions form a partition of the unity
+                       sfun = -131.0d0 * Basis(I1) + 168.0d0 * Basis(I2) - 124.0d0 * Basis(I3)
+                       tfun = -131.0d0 * Basis(I2) + 168.0d0 * Basis(I1) - 124.0d0 * Basis(I3)
+                       hfun = -37.0d0 * Basis(I1) - 37.0d0 * Basis(I2) + 248.0d0 * Basis(I3)
+
+                       grad_sfun(1:3) = -131.0d0 * dLBasisdx(I1,1:3) + 168.0d0 * dLBasisdx(I2,1:3) - 124.0d0 * dLBasisdx(I3,1:3)
+                       grad_tfun(1:3) = -131.0d0 * dLBasisdx(I2,1:3) + 168.0d0 * dLBasisdx(I1,1:3) - 124.0d0 * dLBasisdx(I3,1:3)
+                       grad_hfun(1:3) = -37.0d0 * dLBasisdx(I1,1:3) - 37.0d0 * dLBasisdx(I2,1:3) + 248.0d0 * dLBasisdx(I3,1:3)
+                     END IF
                      
                    END SELECT
 
-                   EdgeBasis(6*EDOFs + FDOFs*(k-1)+l,1:3) = sfun * WorkBasis(I1,1:3) + tfun * WorkBasis(I2,1:3) + &
-                       hfun * WorkBasis(I3,1:3)
-                   CurlBasis(6*EDOFs + FDOFs*(k-1)+l,1:3) = sfun * WorkCurlBasis(I1,1:3) + tfun * WorkCurlBasis(I2,1:3) + &
-                       hfun * WorkCurlBasis(I3,1:3)
-
-                   IF (l > 3) THEN
-                     CurlBasis(6*EDOFs + FDOFs*(k-1)+l,1) = CurlBasis(6*EDOFs + FDOFs*(k-1)+l,1) + &
-                       grad_sfun(2)*WorkBasis(I1,3) + grad_tfun(2)*WorkBasis(I2,3) + grad_hfun(2)*WorkBasis(I3,3) - &
-                       grad_sfun(3)*WorkBasis(I1,2) - grad_tfun(3)*WorkBasis(I2,2) - grad_hfun(3)*WorkBasis(I3,2)
-
-                     CurlBasis(6*EDOFs + FDOFs*(k-1)+l,2) = CurlBasis(6*EDOFs + FDOFs*(k-1)+l,2) + &
-                         grad_sfun(3)*WorkBasis(I1,1) + grad_tfun(3)*WorkBasis(I2,1) + grad_hfun(3)*WorkBasis(I3,1) - &
-                         grad_sfun(1)*WorkBasis(I1,3) - grad_tfun(1)*WorkBasis(I2,3) - grad_hfun(1)*WorkBasis(I3,3)
-
-                     CurlBasis(6*EDOFs + FDOFs*(k-1)+l,3) = CurlBasis(6*EDOFs + FDOFs*(k-1)+l,3) + &
-                         grad_sfun(1)*WorkBasis(I1,2) + grad_tfun(1)*WorkBasis(I2,2) + grad_hfun(1)*WorkBasis(I3,2) - &
-                         grad_sfun(2)*WorkBasis(I1,1) - grad_tfun(2)*WorkBasis(I2,1) - grad_hfun(2)*WorkBasis(I3,1)
+                   IF (UseWForms .AND. l /= 3) THEN
+                     EdgeBasis(6*EDOFs + FDOFs*(k-1)+l,1:3) = sfun * D1 * WorkBasis(I1,1:3) + tfun * D2 * WorkBasis(I2,1:3)
+                     CurlBasis(6*EDOFs + FDOFs*(k-1)+l,1:3) = sfun * D1 * WorkCurlBasis(I1,1:3) + tfun * D2 * WorkCurlBasis(I2,1:3)
+                   ELSE
+                     EdgeBasis(6*EDOFs + FDOFs*(k-1)+l,1:3) = sfun * WorkBasis(I1,1:3) + tfun * WorkBasis(I2,1:3) + &
+                         hfun * WorkBasis(I3,1:3)
+                     CurlBasis(6*EDOFs + FDOFs*(k-1)+l,1:3) = sfun * WorkCurlBasis(I1,1:3) + tfun * WorkCurlBasis(I2,1:3) + &
+                         hfun * WorkCurlBasis(I3,1:3)
                    END IF
                    
+                   IF (l > 3) THEN
+                     IF (UseWForms) THEN
+                       CurlBasis(6*EDOFs + FDOFs*(k-1)+l,1) = CurlBasis(6*EDOFs + FDOFs*(k-1)+l,1) + &
+                           grad_sfun(2)*D1*WorkBasis(I1,3) + grad_tfun(2)*D2*WorkBasis(I2,3) - &
+                           grad_sfun(3)*D1*WorkBasis(I1,2) - grad_tfun(3)*D2*WorkBasis(I2,2)
+
+                       CurlBasis(6*EDOFs + FDOFs*(k-1)+l,2) = CurlBasis(6*EDOFs + FDOFs*(k-1)+l,2) + &
+                           grad_sfun(3)*D1*WorkBasis(I1,1) + grad_tfun(3)*D2*WorkBasis(I2,1) - &
+                           grad_sfun(1)*D1*WorkBasis(I1,3) - grad_tfun(1)*D2*WorkBasis(I2,3)
+
+                       CurlBasis(6*EDOFs + FDOFs*(k-1)+l,3) = CurlBasis(6*EDOFs + FDOFs*(k-1)+l,3) + &
+                           grad_sfun(1)*D1*WorkBasis(I1,2) + grad_tfun(1)*D2*WorkBasis(I2,2) - &
+                           grad_sfun(2)*D1*WorkBasis(I1,1) - grad_tfun(2)*D2*WorkBasis(I2,1)
+                       
+                     ELSE
+                       CurlBasis(6*EDOFs + FDOFs*(k-1)+l,1) = CurlBasis(6*EDOFs + FDOFs*(k-1)+l,1) + &
+                           grad_sfun(2)*WorkBasis(I1,3) + grad_tfun(2)*WorkBasis(I2,3) + grad_hfun(2)*WorkBasis(I3,3) - &
+                           grad_sfun(3)*WorkBasis(I1,2) - grad_tfun(3)*WorkBasis(I2,2) - grad_hfun(3)*WorkBasis(I3,2)
+
+                       CurlBasis(6*EDOFs + FDOFs*(k-1)+l,2) = CurlBasis(6*EDOFs + FDOFs*(k-1)+l,2) + &
+                           grad_sfun(3)*WorkBasis(I1,1) + grad_tfun(3)*WorkBasis(I2,1) + grad_hfun(3)*WorkBasis(I3,1) - &
+                           grad_sfun(1)*WorkBasis(I1,3) - grad_tfun(1)*WorkBasis(I2,3) - grad_hfun(1)*WorkBasis(I3,3)
+
+                       CurlBasis(6*EDOFs + FDOFs*(k-1)+l,3) = CurlBasis(6*EDOFs + FDOFs*(k-1)+l,3) + &
+                           grad_sfun(1)*WorkBasis(I1,2) + grad_tfun(1)*WorkBasis(I2,2) + grad_hfun(1)*WorkBasis(I3,2) - &
+                           grad_sfun(2)*WorkBasis(I1,1) - grad_tfun(2)*WorkBasis(I2,1) - grad_hfun(2)*WorkBasis(I3,1)
+                     END IF
+                   END IF
+
+
                  END DO
                END DO
 
@@ -10701,7 +10816,7 @@ END SUBROUTINE PickActiveFace
      
      
 !----------------------------------------------------------------------------
-     SUBROUTINE TriangleFaceDofsOrdering(I1,I2,D1,D2,Ind)       
+     SUBROUTINE TriangleFaceDofsOrdering(I1,I2,D1,D2,Ind,A,B,C)       
 !-----------------------------------------------------------------------------
 ! This is used for selecting what additional basis functions are associated
 ! with a triangular face in the case of second-order approximation in H(curl).
@@ -10715,56 +10830,63 @@ END SUBROUTINE PickActiveFace
 ! such that the two basis functions are L_C W_{AB} and L_B W_{AC}. Here W_{ij}
 ! denotes the Whitney form and {A,B,C} are the global node indices such that
 ! A < B < C. D1 and D2 indicate whether sign reversions must be applied to
-! the pre-tabulated basis functions.        
+! the pre-tabulated basis functions. The indices corresponding to A, B and C
+! may also be returned.      
 ! ----------------------------------------------------------------------------
        INTEGER, INTENT(OUT) :: I1, I2
        REAL(KIND=dp), INTENT(OUT) :: D1, D2
        INTEGER, INTENT(IN) :: Ind(4)
+       INTEGER, OPTIONAL, INTENT(OUT) :: A, B, C
 !---------------------------------------------------------------------------
-       INTEGER ::  k, A
+       INTEGER ::  i, j, k
 ! --------------------------------------------------------------------------
        D1 = 1.0d0
        D2 = 1.0d0
        IF ( Ind(1) < Ind(2) ) THEN
-          k = 1
+          i = 1
        ELSE
-          k = 2
+          i = 2
        END IF
-       IF ( Ind(k) > Ind(3) ) THEN
-          k = 3
+       IF ( Ind(i) > Ind(3) ) THEN
+          i = 3
        END IF
-       A = k
 
-       SELECT CASE(A)
+       SELECT CASE(i)
        CASE(1)
           IF (Ind(3) > Ind(2)) THEN
-             ! C = 3
+             j = 2
+             k = 3
              I1 = 1
              I2 = 2
           ELSE
-             ! C = 2
+             j = 3
+             k = 2
              I1 = 2
              I2 = 1             
           END IF
        CASE(2)
          IF (Ind(3) > Ind(1)) THEN
-             ! C = 3
+             j = 1
+             k = 3
              I1 = 1
              I2 = 3
              D1 = -1.0d0
           ELSE
-             ! C = 1
+             j = 3
+             k = 1
              I1 = 3
              I2 = 1
              D2 = -1.0d0             
           END IF
        CASE(3)
           IF (Ind(2) > Ind(1)) THEN
-             ! C = 2
+             j = 1
+             k = 2
              I1 = 2
              I2 = 3
           ELSE
-             ! C = 1
+             j = 2
+             k = 1
              I1 = 3
              I2 = 2
           END IF
@@ -10773,6 +10895,9 @@ END SUBROUTINE PickActiveFace
        CASE DEFAULT
           CALL Fatal('ElementDescription::TriangleFaceDofsOrdering','Erratic triangular face Indices')
        END SELECT
+       IF (PRESENT(A)) A = i
+       IF (PRESENT(B)) B = j
+       IF (PRESENT(C)) C = k
 !---------------------------------------------------------
      END SUBROUTINE TriangleFaceDofsOrdering
 !-----------------------------------------------------------
@@ -10791,57 +10916,43 @@ END SUBROUTINE PickActiveFace
 !
 ! such that the basis functions are  {L_B L_C grad L_A, L_A L_C grad L_B,
 ! L_A L_B grad L_C}. Here {A,B,C} are the global node indices such that
-! A < B < C. 
+! A < B < C. These indices are returned as I1 = A, I2 = B and I3 = C.
 ! ----------------------------------------------------------------------------
        INTEGER, INTENT(OUT) :: I1, I2, I3
        INTEGER, INTENT(IN) :: Ind(3)
 !---------------------------------------------------------------------------
-       INTEGER ::  k, A
-! --------------------------------------------------------------------------
-       IF ( Ind(1) < Ind(2) ) THEN
-          k = 1
-       ELSE
-          k = 2
-       END IF
-       IF ( Ind(k) > Ind(3) ) THEN
-          k = 3
-       END IF
-       A = k
 
-       SELECT CASE(A)
+       IF ( Ind(1) < Ind(2) ) THEN
+          I1 = 1
+       ELSE
+          I1 = 2
+       END IF
+       IF ( Ind(I1) > Ind(3) ) THEN
+          I1 = 3
+       END IF
+
+       SELECT CASE(I1)
        CASE(1)
           IF (Ind(3) > Ind(2)) THEN
-             ! C = 3
-             I1 = 1
              I2 = 2
              I3 = 3
           ELSE
-             ! C = 2
-             I1 = 1
              I2 = 3
              I3 = 2
           END IF
        CASE(2)
          IF (Ind(3) > Ind(1)) THEN
-             ! C = 3
-             I1 = 2
              I2 = 1
              I3 = 3
           ELSE
-             ! C = 1
-             I1 = 2
              I2 = 3
              I3 = 1
           END IF
        CASE(3)
           IF (Ind(2) > Ind(1)) THEN
-             ! C = 2
-             I1 = 3
              I2 = 1
              I3 = 2
           ELSE
-             ! C = 1
-             I1 = 3
              I2 = 2
              I3 = 1
           END IF
@@ -11166,7 +11277,144 @@ END SUBROUTINE PickActiveFace
 !----------------------------------------------------------
      END SUBROUTINE ReorderingAndSignReversionsData
 !----------------------------------------------------------
+     
+!------------------------------------------------------------------------
+     SUBROUTINE WeightedWhitneyForms(WorkBasis, WorkCurlBasis, k, u, v, w)
+!------------------------------------------------------------------------
+!    Given the kth face of a tetrahedron this subroutine returns
+!
+!    b_1 = L_k W_{ij}
+!    b_2 = L_j W_{ik}
+!    b_3 = L_i W_{jk}       
+!
+!    and the values of their curl at a given point, with W_{ij} denoting
+!    the Whitney forms. Here the triangular faces [ijk] are indexed as
+!     
+!    k=1  [213]
+!    k=2  [124]
+!    k=3  [234]
+!    k=4  [314]     
+!------------------------------------------------------------------------
+     REAL(KIND=dp), INTENT(OUT) :: WorkBasis(3,3), WorkCurlBasis(3,3)
+     INTEGER, INTENT(IN) :: k
+     REAL(KIND=dp), INTENT(IN) :: u, v, w
+!------------------------------------------------------------------------
+     SELECT CASE(k)
+     CASE(1) !213
+       WorkBasis(1,1) = ((4.0d0*v - Sqrt(2.0d0)*w)*&
+           (-6.0d0 + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(48.0d0*Sqrt(3.0d0))
+       WorkBasis(1,2) = -(u*(4.0d0*v - Sqrt(2.0d0)*w))/24.0d0
+       WorkBasis(1,3) = (u*(-2.0d0*Sqrt(2.0d0)*v + w))/24.0d0
+       WorkCurlBasis(1,1) = -u/(4.0d0*Sqrt(2.0d0))
+       WorkCurlBasis(1,2) = (Sqrt(6.0d0) + 3.0d0*Sqrt(2.0d0)*v - 3.0d0*w)/24.0d0
+       WorkCurlBasis(1,3) = (Sqrt(3.0d0) - 3.0d0*v)/6.0d0
 
+       WorkBasis(2,1) = ((4.0d0*v - Sqrt(2.0d0)*w)*(-6.0d0 + 6.0d0*u + &
+           2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(96.0d0*Sqrt(3.0d0))
+       WorkBasis(2,2) = -((4.0d0*Sqrt(3.0d0) + 4.0d0*Sqrt(3.0d0)*u - 3.0d0*Sqrt(2.0d0)*w)*&
+           (-6.0d0 + 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/288.0d0
+       WorkBasis(2,3) = ((Sqrt(3.0d0) + Sqrt(3.0d0)*u - 3.0d0*v)*&
+           (-6.0d0 + 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(144.0d0*Sqrt(2.0d0))
+       WorkCurlBasis(2,1) = -(-6.0d0 + 2.0d0*u + 2.0d0*Sqrt(3.0d0)*v + &
+           Sqrt(6.0d0)*w)/(16.0d0*Sqrt(2.0d0))
+       WorkCurlBasis(2,2) = (2.0d0*Sqrt(3.0d0) - 6.0d0*Sqrt(3.0d0)*u + &
+           6.0d0*v - 3.0d0*Sqrt(2.0d0)*w)/(48.0d0*Sqrt(2.0d0))
+       WorkCurlBasis(2,3) = (Sqrt(3.0d0) - 3.0d0*Sqrt(3.0d0)*u - 3.0d0*v)/12.0d0
+
+       WorkBasis(3,1) = -((4.0d0*v - Sqrt(2.0d0)*w)*(-6.0d0 - 6.0d0*u + &
+           2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(96.0d0*Sqrt(3.0d0))
+       WorkBasis(3,2) = ((-4.0d0*Sqrt(3.0d0) + 4.0d0*Sqrt(3.0d0)*u + 3.0d0*Sqrt(2.0d0)*w)* &
+           (-6.0d0 - 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/288.0d0
+       WorkBasis(3,3) = -((-Sqrt(3.0d0) + Sqrt(3.0d0)*u + 3.0d0*v)* &
+           (-6.0d0 - 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(144.0d0*Sqrt(2.0d0))
+       WorkCurlBasis(3,1) = -(-6.0d0 - 2.0d0*u + 2.0d0*Sqrt(3.0d0)*v + &
+           Sqrt(6.0d0)*w)/(16.0d0*Sqrt(2.0d0))
+       WorkCurlBasis(3,2) = (-2.0d0*Sqrt(3.0d0) - 6.0d0*Sqrt(3.0d0)*u - 6.0d0*v + &
+           3.0d0*Sqrt(2.0d0)*w)/(48.0d0*Sqrt(2.0d0))
+       WorkCurlBasis(3,3) = (-Sqrt(3.0d0) - 3.0d0*Sqrt(3.0d0)*u + 3.0d0*v)/12.0d0
+       
+     CASE(2) !124
+       WorkBasis(1,1) = -(w*(-6.0d0 + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(8.0d0*Sqrt(6.0d0))
+       WorkBasis(1,2) = (u*w)/(4.0d0*Sqrt(2.0d0))
+       WorkBasis(1,3) = (u*w)/8.0d0
+       WorkCurlBasis(1,1) = -u/(4.0d0*Sqrt(2.0d0))
+       WorkCurlBasis(1,2) = (Sqrt(6.0d0) - Sqrt(2.0d0)*v - 3.0d0*w)/8.0d0
+       WorkCurlBasis(1,3) = w/(2.0d0*Sqrt(2.0d0))
+
+       WorkBasis(2,1) = -(w*(-6.0d0 - 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + &
+           Sqrt(6.0d0)*w))/(16.0d0*Sqrt(6.0d0))
+       WorkBasis(2,2) = (w*(1.0d0 + u - v/Sqrt(3.0d0) - w/Sqrt(6.0d0)))/(8.0d0*Sqrt(2.0d0))
+       WorkBasis(2,3) = ((-Sqrt(3.0d0) + Sqrt(3.0d0)*u + v)* &
+           (-6.0d0 - 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(48.0d0*Sqrt(2.0d0))
+       WorkCurlBasis(2,1) = (-3.0d0*Sqrt(2.0d0) - Sqrt(2.0d0)*u + Sqrt(6.0d0)*v + Sqrt(3.0d0)*w)/16.0d0
+       WorkCurlBasis(2,2) = (Sqrt(6.0d0) + 3.0d0*Sqrt(6.0d0)*u - Sqrt(2.0d0)*v - 3.0d0*w)/16.0d0
+       WorkCurlBasis(2,3) =  w/(4.0d0*Sqrt(2.0d0))
+
+       WorkBasis(3,1) = (w*(-6.0d0 + 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(16.0d0*Sqrt(6.0d0))
+       WorkBasis(3,2) = -(w*(-6.0d0 + 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(48.0d0*Sqrt(2.0d0))
+       WorkBasis(3,3) = -((Sqrt(6.0d0) + Sqrt(6.0d0)*u - Sqrt(2.0d0)*v)*&
+           (-6.0d0 + 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/96.0d0
+       WorkCurlBasis(3,1) = (-3.0d0*Sqrt(2.0d0) + Sqrt(2.0d0)*u + Sqrt(6.0d0)*v + Sqrt(3.0d0)*w)/16.0d0
+       WorkCurlBasis(3,2) = (-Sqrt(6.0d0) + 3.0d0*Sqrt(6.0d0)*u + Sqrt(2.0d0)*v + 3.0d0*w)/16.0d0
+       WorkCurlBasis(3,3) = -w/(4.0d0*Sqrt(2.0d0))
+       
+     CASE(3) ! 234
+       WorkBasis(1,1) = (w*(-2.0d0*Sqrt(2.0d0)*v + w))/16.0d0
+       WorkBasis(1,2) = (w*(4.0d0*Sqrt(3.0d0) + 4.0d0*Sqrt(3.0d0)*u - &
+           3.0d0*Sqrt(2.0d0)*w))/(16.0d0*Sqrt(6.0d0))
+       WorkBasis(1,3) = -((1.0d0 + u - Sqrt(3.0d0)*v)*w)/16.0d0
+       WorkCurlBasis(1,1) = (-2.0d0*Sqrt(2.0d0) - 2.0d0*Sqrt(2.0d0)*u + 3.0d0*Sqrt(3.0d0)*w)/16.0d0
+       WorkCurlBasis(1,2) = (-2.0d0*Sqrt(2.0d0)*v + 3.0d0*w)/16.0d0
+       WorkCurlBasis(1,3) = w/(2.0d0*Sqrt(2.0d0))
+
+       WorkBasis(2,1) = (w*(-2.0d0*Sqrt(2.0d0)*v + w))/16.0d0
+       WorkBasis(2,2) = -(w*(-4.0d0*v + Sqrt(2.0d0)*w))/(16.0d0*Sqrt(6.0d0))
+       WorkBasis(2,3) = -((Sqrt(6.0d0) + Sqrt(6.0d0)*u - Sqrt(2.0d0)*v)*&
+           (-4.0d0*v + Sqrt(2.0d0)*w))/(32.0d0*Sqrt(3.0d0))
+       WorkCurlBasis(2,1) = (2.0d0*Sqrt(2.0d0) + 2.0d0*Sqrt(2.0d0)*u - &
+           2.0d0*Sqrt(6.0d0)*v + Sqrt(3.0d0)*w)/16.0d0
+       WorkCurlBasis(2,2) = (-4.0d0*Sqrt(2.0d0)*v + 3.0d0*w)/16.0d0
+       WorkCurlBasis(2,3) = w/(4.0d0*Sqrt(2.0d0))
+
+       WorkBasis(3,1) = 0.0d0
+       WorkBasis(3,2) = (w*(-6.0d0 - 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(24.0d0*Sqrt(2.0d0))
+       WorkBasis(3,3) = -(v*(-6.0d0 - 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(24.0d0*Sqrt(2.0d0))
+       WorkCurlBasis(3,1) = (2.0d0*Sqrt(2.0d0) + 2.0d0*Sqrt(2.0d0)*u - Sqrt(6.0d0)*v - Sqrt(3.0d0)*w)/8.0d0
+       WorkCurlBasis(3,2) = -v/(4.0d0*Sqrt(2.0d0))
+       WorkCurlBasis(3,3) = -w/(4.0d0*Sqrt(2.0d0))
+
+     CASE(4) ! 314
+       WorkBasis(1,1) = (w*(-2.0d0*Sqrt(2.0d0)*v + w))/16.0d0
+       WorkBasis(1,2) = (w*(-4.0d0*Sqrt(3.0d0) + 4.0d0*Sqrt(3.0d0)*u + &
+           3.0d0*Sqrt(2.0d0)*w))/(16.0d0*Sqrt(6.0d0))
+       WorkBasis(1,3) = -((-1.0d0 + u + Sqrt(3.0d0)*v)*w)/16.0d0
+       WorkCurlBasis(1,1) = (2.0d0*Sqrt(2.0d0) - 2.0d0*Sqrt(2.0d0)*u - 3.0d0*Sqrt(3.0d0)*w)/16.0d0
+       WorkCurlBasis(1,2) = (-2.0d0*Sqrt(2.0d0)*v + 3.0d0*w)/16.0d0
+       WorkCurlBasis(1,3) = w/(2.0d0*Sqrt(2.0d0))
+
+       WorkBasis(2,1) = 0.0d0
+       WorkBasis(2,2) = (w*(-6.0d0 + 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(24.0d0*Sqrt(2.0d0))
+       WorkBasis(2,3) = -(v*(-6.0d0 + 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(24.0d0*Sqrt(2.0d0))
+       WorkCurlBasis(2,1) = (2.0d0*Sqrt(2.0d0) - 2.0d0*Sqrt(2.0d0)*u - Sqrt(6.0d0)*v - Sqrt(3.0d0)*w)/8.0d0
+       WorkCurlBasis(2,2) = v/(4.0d0*Sqrt(2.0d0))
+       WorkCurlBasis(2,3) =  w/(4.0d0*Sqrt(2.0d0))
+
+       WorkBasis(3,1) = ((2.0d0*Sqrt(2.0d0)*v - w)*w)/16.0d0
+       WorkBasis(3,2) = -(w*(-4.0d0*v + Sqrt(2.0d0)*w))/(16.0d0*Sqrt(6.0d0))
+       WorkBasis(3,3) = ((-Sqrt(3.0d0) + Sqrt(3.0d0)*u + v)*&
+           (-4.0d0*v + Sqrt(2.0d0)*w))/(16.0d0*Sqrt(6.0d0))
+       WorkCurlBasis(3,1) = (2.0d0*Sqrt(2.0d0) - 2.0d0*Sqrt(2.0d0)*u - &
+           2.0d0*Sqrt(6.0d0)*v + Sqrt(3.0d0)*w)/16.0d0
+       WorkCurlBasis(3,2) = (4.0d0*Sqrt(2.0d0)*v - 3.0d0*w)/16.0d0
+       WorkCurlBasis(3,3) =  -w/(4.0d0*Sqrt(2.0d0))
+
+     CASE DEFAULT
+       CALL Fatal('WeightedWhitneyForms', 'A wrong face index')       
+     END SELECT
+!------------------------------------------------------------------------
+   END SUBROUTINE WeightedWhitneyForms
+!------------------------------------------------------------------------
+     
 
 ! --------------------------------------------------------------------------------------
 !> This subroutine contains an older design for providing edge element basis functions
