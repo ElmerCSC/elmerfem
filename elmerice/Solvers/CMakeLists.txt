@@ -34,13 +34,14 @@ MESSAGE(STATUS "Elmer/Ice package: Looking for YAC libraries")
 
 IF(WITH_YAC)
 
-  FIND_PACKAGE(YAC)
+  FIND_PACKAGE(YAC CONFIG)
 
   IF(YAC_FOUND)
     MESSAGE(STATUS "  YAC:           " "${YAC_FOUND}")
     MESSAGE(STATUS "  yac2elmer will be available under ElmerIceSolvers")
-  ELSE()
-    MESSAGE(STATUS "  YAC not found ")
+    ELSE()
+    MESSAGE(STATUS "  YAC not found")
+    MESSAGE(WARNING "YAC >= 3.15.0 with CMake support is required")
     MESSAGE(STATUS "  No yac2elmer in ElmerIceSolvers")
   ENDIF()
 ENDIF()
