@@ -603,7 +603,7 @@ IF (WITH_YAC)
   MESSAGE(STATUS "------------------------------------------------")
   MESSAGE(STATUS "  Looking for YAC ")
 
-  FIND_PACKAGE(YAC)
+  FIND_PACKAGE(YAC CONFIG)
 
   GET_TARGET_PROPERTY(YAC_INCLUDE_DIR YAC::yac_mci INTERFACE_INCLUDE_DIRECTORIES)
   SET(YAC_LIBRARIES YAC::yac_mci)
@@ -618,9 +618,8 @@ IF (WITH_YAC)
     INCLUDE_DIRECTORIES(${YAC_INCLUDE_DIR})
     ADD_DEFINITIONS(-DHAVE_YAC)
   ELSE()
-    MESSAGE(STATUS "YAC not found ")
-    MESSAGE(WARNING "Please be aware that Elmer will only be able to find YAC"
-                    " if YAC has been build with CMake.")
+    MESSAGE(STATUS "YAC not found")
+    MESSAGE(WARNING "YAC >= 3.15.0 with CMake support is required")
   ENDIF()
 
   MESSAGE(STATUS "------------------------------------------------")
