@@ -94,6 +94,8 @@ $  usage of the function and type of the parameters
  *
  */
 
+#include <locale.h>
+
 #define MODULE_MATC
 #include "elmer/matc.h"
 #include "str.h"
@@ -245,6 +247,8 @@ void mtc_init( FILE *input_file, FILE *output_file, FILE *error_file )
 
 char * mtc_domath( char *str )
 {
+  setlocale(LC_ALL, "C");
+
   VARIABLE *headsave;            /* this should not be here */
 
   jmp_buf jmp, *savejmp;         /* save program context */
