@@ -80,9 +80,12 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
     // Find number of local rows owned by this rank
     for (i = 0; i < nrows; i++) {
         if (owner[i]) {
+            if (globaldofs[i] < ilower) ilower = globaldofs[i];
+            if (globaldofs[i] > iupper) iupper = globaldofs[i];
             nlocal++;
         }
     }
+    if (iupper == -1) { ilower = 0; iupper = -1; }
     
     // TODO maybe can be done simpler (look at previous code versions)
     ISLocalToGlobalMapping ltog;
@@ -108,8 +111,8 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
     // -----------------------------
     // 2. Create the MPI matrix
     // -----------------------------
+    // TODO probably can be optimized by precomputing row nnz
     PetscCall(MatCreate(comm, &A));
-
     PetscCall(MatSetType(A, MATMPIAIJ));
     PetscCall(MatSetSizes(A, nlocal, nlocal, PETSC_DECIDE, PETSC_DECIDE));
     MatSetFromOptions(A);
@@ -117,15 +120,17 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
     /* Attach local->global mapping so we can insert with local indices */
     PetscCall(MatSetLocalToGlobalMapping(A, ltog, ltog));
 
-
-    PetscInt irow;
-
+    PetscInt maxnnz = 0;
+    for (i = 0; i < nrows; i++) {
+        PetscInt nnz = rows_f[i+1] - rows_f[i];
+        maxnnz = PetscMax(maxnnz, nnz);
+    }
+    PetscInt *rcols;
+    PetscCall(PetscMalloc1(maxnnz, &rcols));
 
     for (i = 0; i < nrows; i++) {
         nnz  = rows_f[i+1] - rows_f[i];
         PetscInt iloc = i; /* local row index */
-        PetscInt *rcols;
-        PetscMalloc1(nnz, &rcols);
 
         for (PetscInt k = 0, j = rows_f[i]; j < rows_f[i+1]; j++, k++) {
             /* Local column index (Fortran->C): cols_f[j-1]-1 */
@@ -134,17 +139,12 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
 
         PetscCall(MatSetValuesLocal(A, 1, &iloc, nnz, rcols,
                 &vals[rows_f[i] - 1], ADD_VALUES));
-
-        PetscFree(rcols);
     }
+    PetscCall(PetscFree(rcols));
 
 
     MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(A, MAT_FINAL_ASSEMBLY);
-
-    PetscViewerASCIIOpen(PETSC_COMM_WORLD, "matrix.txt", &viewer);
-    MatView(A, viewer);
-    PetscViewerDestroy(&viewer);
 
     // -----------------------------
     // 4. Create vectors (b, c, x)
@@ -153,31 +153,22 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
     PetscCall(VecDuplicate(x, &c));
 
     if (b_ptr) {
-        for (PetscInt ii = 0; ii < nrows; ++ii) {
-            PetscScalar v = ((PetscScalar*)b_ptr)[ii];
-            PetscInt g = globaldofs[ii];
-            PetscCall(VecSetValues(b, 1, &g, &v, ADD_VALUES));
-        }
+        PetscCall(VecSetValues(b, nrows, globaldofs,
+                       (PetscScalar*)b_ptr, ADD_VALUES));
         PetscCall(VecAssemblyBegin(b));
         PetscCall(VecAssemblyEnd(b));
     }
 
     if (x_ptr) {
-        for (PetscInt ii = 0; ii < nrows; ++ii) {
-            PetscScalar v = ((PetscScalar*)x_ptr)[ii];
-            PetscInt g = globaldofs[ii];
-            PetscCall(VecSetValues(x, 1, &g, &v, INSERT_VALUES));
-        }
+        PetscCall(VecSetValues(x, nrows, globaldofs,
+                       (PetscScalar*)x_ptr, INSERT_VALUES));
         PetscCall(VecAssemblyBegin(x));
         PetscCall(VecAssemblyEnd(x));
     }
 
     if (c_ptr) {
-        for (PetscInt ii = 0; ii < nrows; ++ii) {
-            PetscScalar v = ((PetscScalar*)c_ptr)[ii];
-            PetscInt g = globaldofs[ii];
-            PetscCall(VecSetValues(c, 1, &g, &v, INSERT_VALUES));
-        }
+        PetscCall(VecSetValues(c, nrows, globaldofs,
+                       (PetscScalar*)c_ptr, INSERT_VALUES));
         PetscCall(VecAssemblyBegin(c));
         PetscCall(VecAssemblyEnd(c));
     }
