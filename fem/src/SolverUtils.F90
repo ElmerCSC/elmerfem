@@ -5029,7 +5029,7 @@ CONTAINS
     REAL(KIND=dp) :: MinDist,Dist, Eps
     LOGICAL, ALLOCATABLE :: ActivePart(:), ActiveCond(:), ActivePartAll(:)
     TYPE(ValueList_t), POINTER :: ValueList, Params
-    LOGICAL :: NodesFound, Passive, OffDiagonal, ApplyLimiter
+    LOGICAL :: NodesFound, Passive, PassiveCond, OffDiagonal, ApplyLimiter
     LOGICAL, POINTER :: LimitActive(:)
     TYPE(Variable_t), POINTER :: Var
 
@@ -5398,6 +5398,7 @@ CONTAINS
     ActiveCond = .FALSE.
     ActivePartAll = .FALSE.
     Passive = .FALSE.
+    PassiveCond = .FALSE.
     DO bf_id=1,Model % NumberOFBodyForces
       ValueList => Model % BodyForces(bf_id) % Values
 
@@ -5406,6 +5407,7 @@ CONTAINS
       ActivePart(bf_id) = ListCheckPresent(ValueList, Name(1:nlen) ) 
 
       Passive = Passive .OR. ListCheckPresent(ValueList, PassName)
+      PassiveCond = PassiveCond .OR. ListCheckPresent(ValueList, PassCondName)
     END DO
        
     IF ( ANY(ActivePart) .OR. ANY(ActivePartAll) ) THEN
@@ -5413,7 +5415,7 @@ CONTAINS
       Mesh   => Solver % Mesh
       EqName = ListGetString( Solver % Values, 'Equation', GotIt )
 
-      IF( Passive ) THEN
+      IF( PassiveCond ) THEN
         ALLOCATE(PassPerm(Mesh % NumberOfNodes),NodeIndexes(1))
         PassPerm = 0
         DO i=0,Mesh % PassBCCnt-1
@@ -5448,6 +5450,10 @@ CONTAINS
         IF (ListGetLogical(ValueList,PassCondName,GotIt)) THEN
           IF (.NOT.CheckPassiveElement(Element)) CYCLE
 
+          IF (ParEnv % PEs > 1) THEN
+             IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE
+          END IF
+
           DO j=1,n
             k=Indexes(j)
             IF (k<=0) CYCLE
@@ -5479,7 +5485,7 @@ CONTAINS
         
       END DO
       
-      IF(Passive) DEALLOCATE(PassPerm,NodeIndexes)
+      IF(PassiveCond) DEALLOCATE(PassPerm,NodeIndexes)
     END IF
     
     DEALLOCATE(ActivePart, ActiveCond)

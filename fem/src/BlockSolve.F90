@@ -4080,7 +4080,8 @@ CONTAINS
       
       ! If this was a special preconditioning matrix then update the solution in the scaled system. 
       IF( DoPrecScaling ) THEN
-        x(1:n) = x(1:n) / diagtmp(1:n)
+        ! This tentatively fixes the issues introduced scaling in May 2025 that made the outer iteration converge slower. 
+        x(1:n) = x(1:n) / ( diagtmp(1:n) * Solver % Matrix % RhsScaling )
         DEALLOCATE( btmp, diagtmp )
       ELSE IF( NoNestedScaling ) THEN
         CALL ListAddLogical( Params,'Linear System Skip Scaling',.FALSE.)

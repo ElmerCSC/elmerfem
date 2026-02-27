@@ -7332,8 +7332,15 @@ void ElementsToBoundaryConditions(struct FemType *data,
 		  sprintf(data->boundaryname[material],"body%d",material);
 	      }
 	    }
-	    if(!strncmp(data->boundaryname[material],"body",4)) {
-	      strncpy(data->boundaryname[material],"bnry",4);
+	    
+	    if(material < MAXBCS ) {
+	      if(!data->boundaryname[material]) data->boundaryname[material] = Cvector(0,MAXNAMESIZE);
+	      if(!strncmp(data->boundaryname[material],"body",4)) {
+		strncpy(data->boundaryname[material],"bnry",4);
+	      }
+	    }
+	    else {
+	      printf("Boundary index %d exceeds the maximum allocated space for names %d\n",material,MAXBCS);
 	    }
 	  }
 

@@ -63,6 +63,7 @@ MODULE Lists
    INTEGER, PARAMETER :: LIST_TYPE_VARIABLE_TENSOR = 10
    INTEGER, PARAMETER :: LIST_TYPE_CONSTANT_TENSOR_STR = 11
    INTEGER, PARAMETER :: LIST_TYPE_VARIABLE_TENSOR_STR = 12
+   INTEGER, PARAMETER :: LIST_TYPE_ADDRINT = 13
 
    INTEGER, PARAMETER :: SECTION_TYPE_BODY = 1
    INTEGER, PARAMETER :: SECTION_TYPE_MATERIAL = 2
@@ -3572,6 +3573,30 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+!> Adds an address integer to the list.
+!------------------------------------------------------------------------------
+    SUBROUTINE ListAddAddressInteger( List,Name,AValue )
+!------------------------------------------------------------------------------
+      TYPE(ValueList_t), POINTER :: List
+      CHARACTER(LEN=*) :: Name
+      INTEGER(kind=AddrInt) :: AValue
+!------------------------------------------------------------------------------
+      INTEGER :: n
+      TYPE(ValueListEntry_t), POINTER :: ptr
+!------------------------------------------------------------------------------
+      ptr => ListAdd( List, Name )
+      ptr % PROCEDURE = Avalue
+
+      ptr % TYPE = LIST_TYPE_ADDRINT
+
+      n = LEN_TRIM(Name)
+      IF(ALLOCATED(ptr % Name)) DEALLOCATE(ptr % Name)
+      ALLOCATE(CHARACTER(n)::ptr % Name)
+      ptr % NameLen = StringToLowerCase( ptr % Name,Name )
+    END SUBROUTINE ListAddAddressInteger
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
 !> Adds an integer to the list.
 !------------------------------------------------------------------------------
     SUBROUTINE ListAddInteger( List,Name,IValue,Proc )
@@ -4002,6 +4027,45 @@ CONTAINS
     END SUBROUTINE ListAddNewString
 !------------------------------------------------------------------------------
       
+!------------------------------------------------------------------------------
+!> Gets an address integer value from the list.
+!------------------------------------------------------------------------------
+   RECURSIVE FUNCTION ListGetAddressInteger( List,Name,Found,UnfoundFatal,DefValue) RESULT(L)
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: Name
+     INTEGER(KIND=AddrInt), OPTIONAL :: DefValue
+     INTEGER(KIND=AddrInt) :: L
+     LOGICAL, OPTIONAL :: Found, UnfoundFatal
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr
+!------------------------------------------------------------------------------
+     IF(PRESENT(DefValue)) THEN
+       L = DefValue
+     ELSE
+       L = 0
+     END IF
+
+     ptr => ListFind(List,Name,Found)
+     IF (.NOT.ASSOCIATED(ptr) ) THEN
+       IF(PRESENT(UnfoundFatal)) THEN
+         IF(UnfoundFatal) THEN
+           WRITE(Message, '(A,A)') "Failed to find integer: ",Name
+           CALL Fatal("ListGetInteger", Message)
+         END IF
+       END IF
+       RETURN
+     END IF
+
+     IF( ptr % type /= LIST_TYPE_ADDRINT ) THEN
+       CALL Fatal('ListGetInteger','Invalid list type for: '//TRIM(Name))
+     END IF
+     
+     L = ptr % PROCEDURE
+
+!------------------------------------------------------------------------------
+   END FUNCTION ListGetAddressInteger
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 !> Gets a integer value from the list.

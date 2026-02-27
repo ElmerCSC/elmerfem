@@ -713,7 +713,7 @@ CONTAINS
         DofInds(1:m) = BlockInds(1:m)
       ELSE
         DO i=0,dofs-1
-          DofInds(m*i+1:(m+1)*i) = dofs*(BlockInds(1:m)-1)+(i+1)
+          DofInds(m*i+1:m*(i+1)) = dofs*(BlockInds(1:m)-1)+(i+1)
         END DO
         m = m*dofs
       END IF

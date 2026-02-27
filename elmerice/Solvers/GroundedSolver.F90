@@ -82,7 +82,7 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: AllocationsDone = .FALSE., GotIt, stat,UnFoundFatal=.TRUE.,&
              AllGrounded = .FALSE., useLSvar = .FALSE., Active
 
-  INTEGER :: i, mn, n, t, Nn, istat, DIM, MSum, ZSum, bedrockSource
+  INTEGER :: i, mn, n, t, Nn, istat, DIM, MSum, ZSum, bedrockSource, k
   INTEGER, POINTER :: Permutation(:), bedrockPerm(:), LSvarPerm(:)
 
   REAL(KIND=dp), POINTER :: VariableValues(:)
@@ -104,6 +104,14 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
   VariableValues => PointerToVariable % Values
 
   Active = ANY(Permutation > 0)
+
+  ! Initialize GroundedMask for all active DOFs. 
+  ! This avoids leaving halo/ghost nodes with default value 0
+  IF (Active) THEN
+    DO k = 1, SIZE(VariableValues)
+      IF (Permutation(k) > 0) VariableValues(Permutation(k)) = 1.0_dp
+    END DO
+  END IF
 
   CALL INFO(SolverName, 'Computing grounded mask from geometry', level=3)
 

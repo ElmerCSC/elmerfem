@@ -284,7 +284,7 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
       IF (.NOT.Gotit) &
        MinH = ListGetConstReal(Material,'Min '//TRIM(HName), Gotit)
       IF (.NOT.GotIt) CALL FATAL(SolverName,TRIM(HName)//" not found...but was supposed to be limited")
-      IF (ALL((NodalH(1:n)-MinH(1:n)) < EPS)) IceFree=.TRUE.
+      IF (ALL((NodalH(1:n)-MinH(1:n)) <= EPS)) IceFree=.TRUE.
     END IF
 
     Density(1:n) = ListGetReal( Material, 'SSA Mean Density',n, NodeIndexes,UnFoundFatal=.TRUE.)
@@ -299,7 +299,7 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
       ! if bedrock defined check flotation criterion
        IF(ASSOCIATED(BedVar)) THEN
          bedrock=BedVar%Values(BedVar%Perm(NodeIndexes(i)))
-         IF (zb < bedrock) THEN
+         IF (zb <= bedrock) THEN
            zb=bedrock
            GL(i)=1
            GroundedNode=GroundedNode+1

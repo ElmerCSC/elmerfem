@@ -76,11 +76,6 @@ SUBROUTINE APrecSolver_Init( Model,Solver,dt,Transient ) ! {{{
   CALL ListAddString( Params,&
       NextFreeKeyword('Exported Variable', Params),'-dofs 3 nodal A cum')
 
-  IF( ListGetLogicalAnySolver(Model,'Prec Matrix Cylindrical') ) THEN
-    CALL ListAddString( Params,&
-        NextFreeKeyword('Exported Variable', Params),'-dofs 3 nodal A cyl')
-  END IF
-
 !------------------------------------------------------------------------------
 END SUBROUTINE APrecSolver_Init ! }}}
 !------------------------------------------------------------------------------
@@ -117,7 +112,7 @@ SUBROUTINE APrecSolver( Model,Solver,dt,Transient ) ! {{{
   LOGICAL :: Monolithic, SecondFamily, SecondOrder, PiolaVersion, ExtrudedSol
   TYPE(ValueList_t), POINTER :: EdgeSolverParams
   CHARACTER(LEN=MAX_NAME_LEN) :: sname
-  LOGICAL, SAVE :: Visited = .FALSE., PrecMatCyl, PrecMatNt, SkipFaces
+  LOGICAL, SAVE :: Visited = .FALSE., PrecMatNt, SkipFaces
   REAL(KIND=dp), POINTER :: allrhs(:) => NULL(), BulkValues(:) => NULL()
   INTEGER :: comps, compi, dofs
   INTEGER :: NoVisited = 0
@@ -162,7 +157,6 @@ SUBROUTINE APrecSolver( Model,Solver,dt,Transient ) ! {{{
     
   IF(Monolithic) THEN
     AVar => SVar
-    PrecMatCyl = ListGetLogicalAnySolver(Model,'Prec Matrix Cylindrical')
   ELSE
     Avar => VariableGet( Mesh % Variables,'Nodal A')        
     IF(.NOT. ASSOCIATED(Avar)) THEN
@@ -171,7 +165,6 @@ SUBROUTINE APrecSolver( Model,Solver,dt,Transient ) ! {{{
     IF(SVar % dofs /= 1) THEN
       CALL Fatal(Caller,'Componentwise solver size should be 1!')
     END IF
-    PrecMatCyl = .FALSE.
     PrecMatNt = .FALSE.
   END IF
   IF(AVar % dofs /= 3) THEN
@@ -290,14 +283,6 @@ SUBROUTINE APrecSolver( Model,Solver,dt,Transient ) ! {{{
   END IF
   CALL ListAddLogical( SolverParams,'Mortar BCs Fixed',.TRUE.)
   
-  IF(PrecMatCyl) THEN
-    pVar => VariableGet( Mesh % Variables,'nodal a cyl')
-    IF(ASSOCIATED(pVar)) THEN
-      pVar % Values = pVar % Values + AVar % Values
-    END IF
-    CALL CylinderToCartesianProject(SVar % Values)
-  END IF
-    
   pVar => VariableGet( Mesh % Variables,'nodal a cum')
   IF(ASSOCIATED(pVar)) THEN
     pVar % Values = pVar % Values + AVar % Values
@@ -317,35 +302,6 @@ SUBROUTINE APrecSolver( Model,Solver,dt,Transient ) ! {{{
   CALL Info(Caller,'Auxiliary space nodal solution finished!',Level=10)
 
 CONTAINS
-
-  SUBROUTINE CylinderToCartesianProject(b)    
-    REAL(KIND=dp) :: b(:)
-    REAL(KIND=dp) :: ar, aphi, x, y
-    INTEGER :: i,j
-    TYPE(Mesh_t), POINTER :: Mesh
-
-    CALL Info(Caller,'Mapping cylindrical vector potential to cartesian!',Level=10)
-    
-    Mesh => Solver % Mesh 
-    
-    DO i=1,Mesh % NumberOfNodes
-      j = Solver % Variable % Perm(i)
-      IF(j==0) CYCLE
-      IF(ASSOCIATED(Mesh % PeriodicPerm)) THEN
-        IF(Mesh % PeriodicPerm(i) > 0) CYCLE
-      END IF
-      ar = Solver % Variable % Values(3*j-2)
-      aphi = Solver % Variable % Values(3*j-1)
-      x = Solver % Mesh % Nodes % x(i)
-      y = Solver % Mesh % Nodes % y(i)
-      Solver % Variable % Values(3*j-2) = x * ar - y * aphi
-      Solver % Variable % Values(3*j-1) = y * ar + x * aphi        
-      ! r3d component remains the same!
-    END DO
-              
-  END SUBROUTINE CylinderToCartesianProject
-    
-
 
 !------------------------------------------------------------------------------
   SUBROUTINE RotateNtVector( Vector,Solver )
