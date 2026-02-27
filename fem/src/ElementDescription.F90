@@ -6939,8 +6939,9 @@ END SUBROUTINE PickActiveFace
        IF ( PRESENT(SimplicialMesh) ) Simplicial = SimplicialMesh
        IF (Simplicial .AND. .NOT.(Element % TYPE % ElementCode / 100 == 2 .OR. &
            Element % TYPE % ElementCode / 100 == 3 .OR. &
+           Element % TYPE % ElementCode / 100 == 4 .OR. &
            Element % TYPE % ElementCode / 100 == 5)) THEN
-         CALL Fatal('EdgeElementInfo', 'Simplicial Mesh = True, but the element is not simplicial')
+         CALL Fatal('EdgeElementInfo', 'Simplicial Mesh = True is not supported for the given element shape')
        END IF
            
        !-------------------------------------------------------------------------------------------
@@ -7685,87 +7686,228 @@ END SUBROUTINE PickActiveFace
            !--------------------------------------------------------------
            EdgeMap => GetEdgeMap(4)
            IF (SecondOrder) THEN
-             !---------------------------------------------------------------
-             ! The second-order element from the Nedelec's first family with
-             ! a hierarchic basis. This element may not be optimally accurate
-             ! if the physical element is not affine.
-             ! First, the eight basis functions associated with the edges:
-             !--------------------------------------------------------------
-             i = EdgeMap(1,1)
-             j = EdgeMap(1,2)
-             EdgeBasis(1,1) = 0.1D1 / 0.4D1 - v / 0.4D1
-             CurlBasis(1,3) = 0.1D1 / 0.4D1
-             IF(GIndexes(j)<GIndexes(i)) THEN
-               EdgeBasis(1,:) = -EdgeBasis(1,:)
-               CurlBasis(1,3) = -CurlBasis(1,3)
+             IF (Simplicial) THEN
+               !
+               ! An alternate basis which is compatible with the basis originally constructed for
+               ! simplicial elements when SimplicialMesh = .TRUE.. Here the basis functions are  
+               ! defined in terms of the Lobatto shape functions Phi(k,.) and the Legendre
+               ! polynomials LegendreP(1,.)
+               !
+               EDOFs = 2
+               FDOFs = 4
+
+               DO k=1,4
+                 i = EdgeMap(k,1)
+                 j = EdgeMap(k,2)
+
+                 SELECT CASE(k)
+                 CASE(1)
+                   ! (u,v) -> 1/2 * P0 * L1(v) * e1
+                   I1 = 1
+                   WorkBasis(1,1) = 0.1D1 / 0.4D1 - v / 0.4D1
+                   WorkCurlBasis(1,3) = 0.1D1 / 0.4D1
+
+                   ! (u,v) -> grad( -1/sqrt(6) * phi_2(u) * L1(v) ) so that the tangential
+                   ! components trace on the edge is given by -1/2 P1(u) * e1 = -1/2 u * e1
+
+                   WorkBasis(2,1) = -1.0d0/sqrt(6.0d0) * dPhi(2,u) * LineNodalPBasis(1,v)
+                   WorkBasis(2,2) = -1.0d0/sqrt(6.0d0) * Phi(2,u) * dLineNodalPBasis(1,v)
+                   WorkCurlBasis(2,3) = 0.0d0
+
+                 CASE(2)
+                   ! (u,v) -> 1/2 * P0 * L2(u) * e2
+                   I1 = 2
+                   WorkBasis(1,2) = 0.1D1 / 0.4D1 + u / 0.4D1
+                   WorkCurlBasis(1,3) = 0.1D1 / 0.4D1
+
+                   ! (u,v) -> grad( -1/sqrt(6) * phi_2(v) * L2(u) ) so that the tangential
+                   ! components trace on the edge is given by -1/2 P1(v) * e2 = -1/2 v * e2
+
+                   WorkBasis(2,1) = -1.0d0/sqrt(6.0d0) * Phi(2,v) * dLineNodalPBasis(2,u)
+                   WorkBasis(2,2) = -1.0d0/sqrt(6.0d0) * dPhi(2,v) * LineNodalPBasis(2,u)
+                   WorkCurlBasis(2,3) = 0.0d0
+
+                 CASE(3)
+                   ! (u,v) -> -1/2 * P0 * L2(v) * e1
+                   I1 = 1
+                   WorkBasis(1,1) = -0.1D1 / 0.4D1 - v / 0.4D1
+                   WorkCurlBasis(1,3) = 0.1D1 / 0.4D1
+
+                   ! (u,v) -> grad( -1/sqrt(6) * phi_2(u) * L2(v) ) ; cf. CASE(1)
+                   WorkBasis(2,1) = -1.0d0/sqrt(6.0d0) * dPhi(2,u) * LineNodalPBasis(2,v)
+                   WorkBasis(2,2) = -1.0d0/sqrt(6.0d0) * Phi(2,u) * dLineNodalPBasis(2,v)
+                   WorkCurlBasis(2,3) = 0.0d0
+
+                 CASE(4)
+                   ! (u,v) -> -1/2 * P0 * L1(u) * e2
+                   I1 = 2
+                   WorkBasis(1,2) = -0.1D1 / 0.4D1 + u / 0.4D1
+                   WorkCurlBasis(1,3) = 0.1D1 / 0.4D1
+
+                   ! (u,v) -> grad( -1/sqrt(6) * phi_2(v) * L1(u) ) ; cf. CASE(2)
+
+                   WorkBasis(2,1) = -1.0d0/sqrt(6.0d0) * Phi(2,v) * dLineNodalPBasis(1,u)
+                   WorkBasis(2,2) = -1.0d0/sqrt(6.0d0) * dPhi(2,v) * LineNodalPBasis(1,u)
+                   WorkCurlBasis(2,3) = 0.0d0
+
+                 END SELECT
+
+                 IF (GIndexes(j) < GIndexes(i)) THEN
+                   WorkBasis(1,I1) = -WorkBasis(1,I1)
+                   WorkCurlBasis(1,3) = -WorkCurlBasis(1,3)
+                 END IF
+
+                 EdgeBasis(EDOFs*(k-1)+1,I1) = WorkBasis(1,I1)
+                 CurlBasis(EDOFs*(k-1)+1,3) = WorkCurlBasis(1,3)
+
+                 !DO l=2,EDOFs 
+                 EdgeBasis(EDOFs*(k-1)+2,1:2) = WorkBasis(2,1:2)
+                 CurlBasis(EDOFs*(k-1)+2,3) = WorkCurlBasis(2,3)
+                 !END DO
+               END DO
+
+               SquareFaceMap(:) = (/ 1,2,3,4 /)
+               FaceIndices(1:4) = GIndexes(SquareFaceMap(1:4))
+               CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
+
+               WorkBasis(1:4,1:2) = 0.0d0
+
+               ! (u,v) ->  P0 * phi_2(v) e1
+               WorkBasis(1,1) = Phi(2,v)
+               WorkCurlBasis(1,3) = -dPhi(2,v)
+
+               ! (u,v) ->  phi_2(u) * P0 e2
+               WorkBasis(2,2) = Phi(2,u)
+               WorkCurlBasis(2,3) = dPhi(2,u)
+
+               ! (u,v) ->  P1(u) * phi_2(v) e1
+               WorkBasis(3,1) = LegendreP(1,u) * Phi(2,v)
+               WorkCurlBasis(3,3) = -LegendreP(1,u) * dPhi(2,v)
+
+               ! (u,v) ->  phi_2(u) * P1(v) e2
+               WorkBasis(4,2) = Phi(2,u) * LegendreP(1,v)
+               WorkCurlBasis(4,3) = dPhi(2,u) * LegendreP(1,v)
+
+               DO l=1,FDOFs
+
+                 SELECT CASE(l)
+                 CASE(1)
+                   ! (u,v) ->  P0 * phi_2(v) e1
+                   sfun = 1.0d0
+                   tfun = 0.0d0
+                   q = 0
+                   EdgeBasis(4*EDOFs + l,1:2) = sfun * D1 * WorkBasis(q+I1,1:2)
+                   CurlBasis(4*EDOFs + l,3) = sfun * D1 * WorkCurlBasis(q+I1,3)
+                 CASE(2)
+                   ! (u,v) ->  phi_2(u) * P0 e2
+                   sfun = 0.0d0
+                   tfun = 1.0d0
+                   q = 0
+                   EdgeBasis(4*EDOFs + l,1:2) = tfun * D2 * WorkBasis(q+I2,1:2)
+                   CurlBasis(4*EDOFs + l,3) = tfun * D2 * WorkCurlBasis(q+I2,3)
+                 CASE(3)
+                   ! (u,v) ->  P1(u) * phi_2(v) e1 - phi_2(u) * P1(v) e2
+                   sfun = 1.0d0
+                   tfun = -1.0d0
+                   q = 2
+                   ! Note that sign changes never happen
+                   EdgeBasis(4*EDOFs + l,1:2) = sfun * WorkBasis(q+I1,1:2) + tfun * WorkBasis(q+I2,1:2)
+                   CurlBasis(4*EDOFs + l,3) = sfun * WorkCurlBasis(q+I1,3) + tfun * WorkCurlBasis(q+I2,3)
+                 CASE(4)
+                   ! (u,v) -> grad( phi_2(u) * phi_2(v) )
+                   !        =  1/||P1|| * P1(u) * phi_2(v) e1 + phi_2(u )* 1/||P1|| * P1(v) e2
+                   !        = sqrt(3/2) * P1(u) * phi_2(v) e1 + sqrt(3/2) * phi_2(u) * P1(v) e2               
+                   !
+                   sfun = sqrt(3.0d0/2.0d0)
+                   tfun = sqrt(3.0d0/2.0d0)
+                   q = 2
+                   ! Note that sign changes never happen
+                   EdgeBasis(4*EDOFs + l,1:2) = sfun * WorkBasis(q+I1,1:2) + tfun * WorkBasis(q+I2,1:2)
+                   CurlBasis(4*EDOFs + l,3) = sfun * WorkCurlBasis(q+I1,3) + tfun * WorkCurlBasis(q+I2,3)
+                 END SELECT
+               END DO
+             ELSE
+               !---------------------------------------------------------------
+               ! The second-order element from the Nedelec's first family with
+               ! a hierarchic basis. This element may not be optimally accurate
+               ! if the physical element is not affine.
+               ! First, the eight basis functions associated with the edges:
+               !--------------------------------------------------------------
+               i = EdgeMap(1,1)
+               j = EdgeMap(1,2)
+               EdgeBasis(1,1) = 0.1D1 / 0.4D1 - v / 0.4D1
+               CurlBasis(1,3) = 0.1D1 / 0.4D1
+               IF(GIndexes(j)<GIndexes(i)) THEN
+                 EdgeBasis(1,:) = -EdgeBasis(1,:)
+                 CurlBasis(1,3) = -CurlBasis(1,3)
+               END IF
+               EdgeBasis(2,1) = 0.3D1 * u * (0.1D1 / 0.4D1 - v / 0.4D1)
+               CurlBasis(2,3) = 0.3D1 / 0.4D1 * u
+
+               i = EdgeMap(2,1)
+               j = EdgeMap(2,2)
+               EdgeBasis(3,2) = 0.1D1 / 0.4D1 + u / 0.4D1 
+               CurlBasis(3,3) = 0.1D1 / 0.4D1
+               IF(GIndexes(j)<GIndexes(i)) THEN
+                 EdgeBasis(3,:) = -EdgeBasis(3,:)
+                 CurlBasis(3,3) = -CurlBasis(3,3)
+               END IF
+               EdgeBasis(4,2) = 0.3D1 * v * (0.1D1 / 0.4D1 + u / 0.4D1)
+               CurlBasis(4,3) = 0.3D1 / 0.4D1 * v
+
+               i = EdgeMap(3,1)
+               j = EdgeMap(3,2)
+               EdgeBasis(5,1) = -0.1D1 / 0.4D1 - v / 0.4D1
+               CurlBasis(5,3) = 0.1D1 / 0.4D1
+               IF(GIndexes(j)<GIndexes(i)) THEN
+                 EdgeBasis(5,:) = -EdgeBasis(5,:)
+                 CurlBasis(5,3) = -CurlBasis(5,3)
+               END IF
+               EdgeBasis(6,1) = -0.3D1 * u * (-0.1D1 / 0.4D1 - v / 0.4D1)
+               CurlBasis(6,3) = -0.3D1 / 0.4D1 * u
+
+               i = EdgeMap(4,1)
+               j = EdgeMap(4,2)
+               EdgeBasis(7,2) = -0.1D1 / 0.4D1 + u / 0.4D1
+               CurlBasis(7,3) = 0.1D1 / 0.4D1
+               IF(GIndexes(j)<GIndexes(i)) THEN
+                 EdgeBasis(7,:) = -EdgeBasis(7,:)
+                 CurlBasis(7,3) = -CurlBasis(7,3)
+               END IF
+               EdgeBasis(8,2) = -0.3D1 * v * (-0.1D1 / 0.4D1 + u / 0.4D1)
+               CurlBasis(8,3) = -0.3D1 / 0.4D1 * v
+
+               !--------------------------------------------------------------------
+               ! Additional four basis functions associated with the element interior
+               !-------------------------------------------------------------------
+               SquareFaceMap(:) = (/ 1,2,3,4 /)          
+               WorkBasis = 0.0d0
+               WorkCurlBasis = 0.0d0
+
+               WorkBasis(1,1) = 0.2D1 * (0.1D1 / 0.2D1 - v / 0.2D1) * (0.1D1 / 0.2D1 + v / 0.2D1)
+               WorkCurlBasis(1,3) = v
+               WorkBasis(2,1) = 0.12D2 * u * (0.1D1 / 0.2D1 - v / 0.2D1) * (0.1D1 / 0.2D1 + v / 0.2D1)
+               WorkCurlBasis(2,3) = 0.6D1 * u * (0.1D1 / 0.2D1 + v / 0.2D1) - &
+                   0.6D1 * u * (0.1D1 / 0.2D1 - v / 0.2D1)
+
+               WorkBasis(3,2) = 0.2D1 * (0.1D1 / 0.2D1 - u / 0.2D1) * (0.1D1 / 0.2D1 + u / 0.2D1)
+               WorkCurlBasis(3,3) = -u
+               WorkBasis(4,2) = 0.12D2 * v * (0.1D1 / 0.2D1 - u / 0.2D1) * (0.1D1 / 0.2D1 + u / 0.2D1)
+               WorkCurlBasis(4,3) = -0.6D1 * v * (0.1D1 / 0.2D1 + u / 0.2D1) + &
+                   0.6D1 * v * (0.1D1 / 0.2D1 - u / 0.2D1)
+
+               FaceIndices(1:4) = GIndexes(SquareFaceMap(1:4))
+               CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
+
+               EdgeBasis(9,:) = D1 * WorkBasis(2*(I1-1)+1,:)
+               CurlBasis(9,:) = D1 * WorkCurlBasis(2*(I1-1)+1,:)
+               EdgeBasis(10,:) = WorkBasis(2*(I1-1)+2,:)
+               CurlBasis(10,:) = WorkCurlBasis(2*(I1-1)+2,:)
+               EdgeBasis(11,:) = D2 * WorkBasis(2*(I2-1)+1,:)
+               CurlBasis(11,:) = D2 * WorkCurlBasis(2*(I2-1)+1,:)
+               EdgeBasis(12,:) = WorkBasis(2*(I2-1)+2,:)
+               CurlBasis(12,:) = WorkCurlBasis(2*(I2-1)+2,:)
              END IF
-             EdgeBasis(2,1) = 0.3D1 * u * (0.1D1 / 0.4D1 - v / 0.4D1)
-             CurlBasis(2,3) = 0.3D1 / 0.4D1 * u
-
-             i = EdgeMap(2,1)
-             j = EdgeMap(2,2)
-             EdgeBasis(3,2) = 0.1D1 / 0.4D1 + u / 0.4D1 
-             CurlBasis(3,3) = 0.1D1 / 0.4D1
-             IF(GIndexes(j)<GIndexes(i)) THEN
-               EdgeBasis(3,:) = -EdgeBasis(3,:)
-               CurlBasis(3,3) = -CurlBasis(3,3)
-             END IF
-             EdgeBasis(4,2) = 0.3D1 * v * (0.1D1 / 0.4D1 + u / 0.4D1)
-             CurlBasis(4,3) = 0.3D1 / 0.4D1 * v
-
-             i = EdgeMap(3,1)
-             j = EdgeMap(3,2)
-             EdgeBasis(5,1) = -0.1D1 / 0.4D1 - v / 0.4D1
-             CurlBasis(5,3) = 0.1D1 / 0.4D1
-             IF(GIndexes(j)<GIndexes(i)) THEN
-               EdgeBasis(5,:) = -EdgeBasis(5,:)
-               CurlBasis(5,3) = -CurlBasis(5,3)
-             END IF
-             EdgeBasis(6,1) = -0.3D1 * u * (-0.1D1 / 0.4D1 - v / 0.4D1)
-             CurlBasis(6,3) = -0.3D1 / 0.4D1 * u
-
-             i = EdgeMap(4,1)
-             j = EdgeMap(4,2)
-             EdgeBasis(7,2) = -0.1D1 / 0.4D1 + u / 0.4D1
-             CurlBasis(7,3) = 0.1D1 / 0.4D1
-             IF(GIndexes(j)<GIndexes(i)) THEN
-               EdgeBasis(7,:) = -EdgeBasis(7,:)
-               CurlBasis(7,3) = -CurlBasis(7,3)
-             END IF
-             EdgeBasis(8,2) = -0.3D1 * v * (-0.1D1 / 0.4D1 + u / 0.4D1)
-             CurlBasis(8,3) = -0.3D1 / 0.4D1 * v
-
-             !--------------------------------------------------------------------
-             ! Additional four basis functions associated with the element interior
-             !-------------------------------------------------------------------
-             SquareFaceMap(:) = (/ 1,2,3,4 /)          
-             WorkBasis = 0.0d0
-             WorkCurlBasis = 0.0d0
-
-             WorkBasis(1,1) = 0.2D1 * (0.1D1 / 0.2D1 - v / 0.2D1) * (0.1D1 / 0.2D1 + v / 0.2D1)
-             WorkCurlBasis(1,3) = v
-             WorkBasis(2,1) = 0.12D2 * u * (0.1D1 / 0.2D1 - v / 0.2D1) * (0.1D1 / 0.2D1 + v / 0.2D1)
-             WorkCurlBasis(2,3) = 0.6D1 * u * (0.1D1 / 0.2D1 + v / 0.2D1) - &
-                 0.6D1 * u * (0.1D1 / 0.2D1 - v / 0.2D1)
-
-             WorkBasis(3,2) = 0.2D1 * (0.1D1 / 0.2D1 - u / 0.2D1) * (0.1D1 / 0.2D1 + u / 0.2D1)
-             WorkCurlBasis(3,3) = -u
-             WorkBasis(4,2) = 0.12D2 * v * (0.1D1 / 0.2D1 - u / 0.2D1) * (0.1D1 / 0.2D1 + u / 0.2D1)
-             WorkCurlBasis(4,3) = -0.6D1 * v * (0.1D1 / 0.2D1 + u / 0.2D1) + &
-                 0.6D1 * v * (0.1D1 / 0.2D1 - u / 0.2D1)
-
-             FaceIndices(1:4) = GIndexes(SquareFaceMap(1:4))
-             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
-
-             EdgeBasis(9,:) = D1 * WorkBasis(2*(I1-1)+1,:)
-             CurlBasis(9,:) = D1 * WorkCurlBasis(2*(I1-1)+1,:)
-             EdgeBasis(10,:) = WorkBasis(2*(I1-1)+2,:)
-             CurlBasis(10,:) = WorkCurlBasis(2*(I1-1)+2,:)
-             EdgeBasis(11,:) = D2 * WorkBasis(2*(I2-1)+1,:)
-             CurlBasis(11,:) = D2 * WorkCurlBasis(2*(I2-1)+1,:)
-             EdgeBasis(12,:) = WorkBasis(2*(I2-1)+2,:)
-             CurlBasis(12,:) = WorkCurlBasis(2*(I2-1)+2,:)
-
            ELSE
              !------------------------------------------------------
              ! The Arnold-Boffi-Falk element of degree k=0 which is
@@ -7836,7 +7978,7 @@ END SUBROUTINE PickActiveFace
              EdgeBasis(5,:) = D1 * WorkBasis(I1,:)
              CurlBasis(5,:) = D1 * WorkCurlBasis(I1,:)
              EdgeBasis(6,:) = D2 * WorkBasis(I2,:)
-             CurlBasis(6,:) = D2 * WorkCurlBasis(I2,:)         
+             CurlBasis(6,:) = D2 * WorkCurlBasis(I2,:)
            END IF
 
          CASE(5)
