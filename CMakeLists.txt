@@ -566,9 +566,6 @@ IF(WITH_ADIOS2)
 
 ENDIF(WITH_ADIOS2)
 
-  MESSAGE(STATUS "------------------------------------------------")
-ENDIF()
-
 # YAC
 IF (WITH_YAC)
   MESSAGE(STATUS "------------------------------------------------")
