@@ -82,10 +82,10 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   ! read grid CRS (coordinate reference system)
   grid_crs = GetString(SolverParams, 'Grid CRS', Found)
   IF (.NOT. Found) THEN
-     grid_crs = "EPSG:3413"  ! default value
-     CALL INFO(SolverName, 'No keyword >Grid CRS< found, using default: EPSG:3413', Level=3)
+     CALL FATAL(SolverName, 'No keyword >Grid CRS< found in yac2elmer solver')
   ELSE
-     CALL INFO(SolverName, 'Using grid projection (CRS): ' // TRIM(grid_crs), Level=3)
+     CALL INFO(SolverName, &
+       'Using coordinate reference system (CRS): ' // TRIM(grid_crs), Level=3)
   END IF
 
   IF (.NOT. (couple_to_ebfm .OR. couple_to_icon)) THEN
