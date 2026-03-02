@@ -52,7 +52,7 @@ MODULE MortarUtils
   USE Lists
   USE ListMatrix
   USE MeshAllocations
-  USE ElementUtils, ONLY : Find_Face, Find_Edge, FreeMatrix, TangentDirections !mGetBoundaryIndexesFromParent, &
+  USE ElementUtils, ONLY : Find_Face, Find_Edge, FreeMatrix, TangentDirections, FindParentUVW 
   USE Interpolation, ONLY : CopyElementNodesFromMesh
   USE GeometryFitting
 
@@ -1179,11 +1179,11 @@ CONTAINS
     TYPE(Element_t), POINTER :: ElementP, ElementLin
     TYPE(GaussIntegrationPoints_t) :: IPT
     REAL(KIND=dp) :: area, xt, yt, zt = 0.0_dp, u, v, w, um, vm, wm, uq, vq, &
-        detJ, val, val_dual, weight
+        detJ, val, val_dual, weight, Lvals(30), LVals2(30)
     REAL(KIND=dp), ALLOCATABLE :: BasisT(:),Basis(:), BasisM(:), MASS(:,:), CoeffBasis(:)
-    INTEGER :: i,j,jj,n,m,ne,nM,neM,nd,ndM,ElemCode,LinCode,ElemCodeM,LinCodeM,nip,nrow,AllocStat
+    INTEGER :: i,j,k,jj,n,m,ne,nM,neM,nd,ndM,ElemCode,LinCode,ElemCodeM,LinCodeM,nip,nrow,AllocStat
     INTEGER, POINTER :: Indexes(:),IndexesM(:)
-    INTEGER, TARGET :: pIndexes(128),pIndexesM(128)
+    INTEGER, TARGET :: pIndexes(128),pIndexesM(128),Linds(30)
     LOGICAL :: Stat, InitPhase, AllocationsDone = .FALSE.
 
     SAVE :: BasisT, Basis, BasisM, CoeffBasis, MASS
@@ -1228,8 +1228,8 @@ CONTAINS
     
     IF(BiOrthogonal) THEN
       InitPhase = .TRUE.
-      MASS  = 0
-      CoeffBasis = 0
+      MASS = 0.0_dp
+      CoeffBasis = 0.0_dp
     ELSE
       InitPhase = .FALSE.
     END IF    
@@ -1320,37 +1320,43 @@ CONTAINS
         Projector % InvPerm(nrow) = InvPerm(jj)
         val = Basis(j) * weight
         IF(Biorthogonal) val_dual = CoeffBasis(j) * weight
-        
+
+        k = 0
         DO i=1,nd
-          IF( ABS( val * Basis(i) ) < 1.0d-10 ) CYCLE
-          
+          !IF( ABS( val * Basis(i) ) < 1.0d-10 ) CYCLE
           !Nslave = Nslave + 1
-          CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-              InvPerm(Indexes(i)), Basis(i) * val ) 
-
-          IF(BiOrthogonal) THEN
-            CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
-                InvPerm(Indexes(i)), Basis(i) * val_dual ) 
-          END IF
+          k = k+1
+          Linds(k) = InvPerm(Indexes(i))
+          Lvals(k) = Basis(i) * val
+          LVals2(k) = Basis(i) * val_dual
         END DO
-        
+
+        CALL List_AddMatrixRow(Projector % ListMatrix, nrow,k,Linds,Lvals,KeepOrder=Biorthogonal)
+        IF(BiOrthogonal) THEN
+          CALL List_AddMatrixRow(Projector % Child % ListMatrix,nrow,k,Linds,Lvals2)
+        END IF
+
+        k = 0
         DO i=1,ndM
-          IF( ABS( val * BasisM(i) ) < 1.0d-12 ) CYCLE
-
+          !IF( ABS( val * BasisM(i) ) < 1.0d-12 ) CYCLE
           !Nmaster = Nmaster + 1
-          CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-              InvPermM(IndexesM(i)), -NodeScale * BasisM(i) * val )                   
-
+          k = k+1
+          Linds(k) = InvPermM(IndexesM(i))
+          Lvals(k) = -NodeScale * BasisM(i) * val
+          
           IF(BiOrthogonal) THEN
             IF(DualMaster .OR. DualLCoeff) THEN
-              CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
-                  InvPermM(IndexesM(i)), -NodeScale * BasisM(i) * val_dual ) 
+              Lvals2(k) = -NodeScale * BasisM(i) * val_dual
             ELSE
-              CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
-                  InvPermM(IndexesM(i)), -NodeScale * BasisM(i) * val ) 
+              Lvals2(k) = Lvals(k)
             END IF
           END IF
         END DO
+        CALL List_AddMatrixRow(Projector % ListMatrix, nrow,k,Linds,Lvals,KeepOrder=Biorthogonal)
+        IF(BiOrthogonal) THEN
+          CALL List_AddMatrixRow(Projector % Child % ListMatrix,nrow,k,Linds,Lvals2)
+        END IF
+
       END DO
     END DO
 
@@ -1392,10 +1398,10 @@ CONTAINS
     INTEGER, POINTER :: InvPerm(:), InvPermM(:)
     !----------------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IPT
-    INTEGER :: i,j,ii,jj,n,nd,nM,ndM,nrow,nip
+    INTEGER :: i,j,ii,jj,n,nd,nM,ndM,nrow,nip,Linds(20)
     INTEGER, TARGET :: pIndexes(24), pIndexesM(24)    
     INTEGER, POINTER :: Indexes(:), IndexesM(:)
-    REAL(KIND=dp) :: val, val_dual, u, v, w, um, vm, wm, xt, yt, zt, wtemp,DetJ
+    REAL(KIND=dp) :: val, val_dual, u, v, w, um, vm, wm, xt, yt, zt, wtemp,DetJ, LVals(20)
     REAL(KIND=dp), ALLOCATABLE :: BasisT(:),Basis(:), BasisM(:), MASS(:,:), CoeffBasis(:)
     LOGICAL :: AllocationsDone = .FALSE.
     TYPE(Matrix_t), POINTER :: DualProjector 
@@ -1500,40 +1506,40 @@ CONTAINS
 
         Projector % InvPerm(nrow) = jj
         val = NodeCoeff * Basis(j) * Wtemp
+
         IF(Biorthogonal) THEN
           val_dual = NodeCoeff * CoeffBasis(j) * Wtemp
         END IF
-        
+
         DO i=1,nd
           ii = Indexes(i)
-          IF(i<=n) ii=InvPerm(ii)
-          
-          CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-              ii, Basis(i) * val )
-          
-          IF(Biorthogonal) THEN
-            CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
-                ii, Basis(i) * val_dual )
-          END IF
+          IF(i<=n) ii=InvPerm(ii)          
+          Linds(i) = ii
         END DO
-        
+          
+        Lvals(1:nd) = Basis(1:nd) * val
+        ! Note that we want to keep the order of Linds and Lvals if we use them again for the
+        ! biorthogonal part.
+        CALL List_AddMatrixRow(Projector % ListMatrix,nrow,nd,Linds,Lvals,KeepOrder=BiOrthogonal)        
+        IF(Biorthogonal) THEN
+          Lvals(1:nd) = Basis(1:nd) * val_dual
+          CALL List_AddMatrixRow(Projector % Child % ListMatrix,nrow,nd,Linds,Lvals)
+        END IF
+          
         DO i=1,ndM
           ii = IndexesM(i)
           IF(i<=nM) ii=InvPermM(ii)
-          
-          CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-              ii, -sgn0 * NodeScale * BasisM(i) * val )
-          
-          IF(Biorthogonal) THEN
-            IF(DualMaster .OR. DualLCoeff) THEN
-              CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
-                  ii, -sgn0 * NodeScale * BasisM(i) * val_dual )
-            ELSE
-              CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
-                  ii, -sgn0 * NodeScale * BasisM(i) * val )
-            END IF
-          END IF
+          Linds(i) = ii
         END DO
+        LVals(1:nd) = -sgn0 * NodeScale * BasisM(1:ndM) * val 
+        CALL List_AddMatrixRow(Projector % ListMatrix,nrow,ndM,Linds,Lvals,KeepOrder=BiOrthogonal)
+        
+        IF(Biorthogonal) THEN
+          IF(DualMaster .OR. DualLCoeff) THEN
+            LVals(1:ndM) = -sgn0 * NodeScale * BasisM(1:ndM) * val_dual 
+          END IF
+          CALL List_AddMatrixRow(Projector % Child % ListMatrix,nrow,ndM,Linds,Lvals)        
+        END IF
       END DO
 
       ! Add the entries to the dual projector 
@@ -1545,17 +1551,14 @@ CONTAINS
           
           DualProjector % InvPerm(nrow) = InvPermM(jj)
           val = NodeCoeff * BasisM(j) * Wtemp
-          
-          DO i=1,nM
-            CALL List_AddToMatrixElement(DualProjector % ListMatrix, nrow, &
-                InvPermM(IndexesM(i)), sgn0 * BasisM(i) * val ) 
-          END DO
-          
-          DO i=1,n
-            !IF( ABS( val * BasisM(i) ) < 1.0d-10 ) CYCLE
-            CALL List_AddToMatrixElement(DualProjector % ListMatrix, nrow, &
-                InvPerm(Indexes(i)), -NodeScale * Basis(i) * val )                   
-          END DO
+
+          Linds(1:nM) = InvPermM(IndexesM(1:nM))
+          Lvals(1:nM) = sgn0 * BasisM(1:nM) * val
+          CALL List_AddMatrixRow(DualProjector % ListMatrix,nrow,nM,Linds,Lvals)
+
+          Linds(1:n) = InvPerm(IndexesM(1:nM))
+          Lvals(1:n) = -NodeScale * Basis(1:n) * val
+          CALL List_AddMatrixRow(DualProjector % ListMatrix,nrow,n,Linds,Lvals)
         END DO
       END IF
     END DO
@@ -1573,6 +1576,263 @@ CONTAINS
     
   END SUBROUTINE TemporalSegmentMortarAssembly
     
+
+  !----------------------------------------------------------------------------------------
+  !> Given a temporal segment "ElementT", calculate mass matrix contributions for projection
+  !> for the slave element "Element" and master element "ElementM".
+  !> This routine implements the Nitsche method for the interface condition. Note that
+  !> the numbering here is that of the initial mesh, not of the temporal interface mesh!
+  !----------------------------------------------------------------------------------------
+ SUBROUTINE TemporalSegmentNitscheAssembly(ElementT, NodesT, Element, Nodes, ElementM, NodesM, &
+     sgn0, pElemBasis, NoGaussPoints, Projector, ArcCoeff, NodeScale, &
+     NodePerm, InvPerm, InvPermM, SumArea, BC ) 
+    !----------------------------------------------------------------------------------------
+    TYPE(Element_t) :: ElementT
+    TYPE(Element_t), POINTER :: Element, ElementM
+    TYPE(Nodes_t) :: NodesT, Nodes, NodesM
+    INTEGER :: sgn0
+    LOGICAL :: pElemBasis
+    INTEGER :: NoGaussPoints
+    TYPE(Matrix_t) :: Projector
+    REAL(KIND=dp) :: ArcCoeff, NodeScale, SumArea
+    INTEGER :: NodePerm(:)
+    INTEGER, ALLOCATABLE :: DualNodePerm(:)
+    INTEGER, POINTER :: InvPerm(:), InvPermM(:)
+    TYPE(ValueList_t), POINTER :: BC
+    !----------------------------------------------------------------------------------------
+    TYPE(GaussIntegrationPoints_t) :: IPT
+    INTEGER :: i,j,ii,jj,n,nd,nM,ndM,nrow,nip
+    INTEGER, POINTER :: Indexes(:), IndexesM(:)
+    REAL(KIND=dp) :: val, val_dual, u, v, w, um, vm, wm, xt, yt, zt, weight,DetJ
+    REAL(KIND=dp), ALLOCATABLE :: BasisT(:),Basis(:), BasisM(:),pBasis(:),pBasisM(:),dBasisdx(:,:), dBasisdxM(:,:)
+    LOGICAL :: AllocationsDone = .FALSE., Found
+    TYPE(Matrix_t), POINTER :: DualProjector 
+    LOGICAL :: Stat
+
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Element_t), POINTER :: TrueElement, TrueElementM, Parent, ParentM
+    TYPE(Nodes_t), SAVE :: TrueNodes, TrueNodesM, ParentNodes, ParentNodesM
+    INTEGER :: np, npM, Lcols(20)
+    REAL(KIND=dp) :: Nrm(3), NrmM(3), Esize, EsizeM, Gamma, Cond, LVals(20)
+    INTEGER, ALLOCATABLE, TARGET :: Ind(:), IndM(:), pIndexes(:), pIndexesM(:)
+    INTEGER, SAVE :: sgns(4), previ=-1
+
+    
+    SAVE :: BasisT, Basis, BasisM, pBasis, pBasisM, dBasisdx, dBasisdxM, Ind, IndM, pIndexes, pIndexesM
+
+    Mesh => CurrentModel % Mesh
+
+    ! Testing to test different sign conventions. 
+    i = NINT( ListGetCReal( CurrentModel % Simulation,'signs', Found ) )
+    sgns = 1
+    IF( Found .AND. i /= previ ) THEN
+      previ = i
+      IF(i>=8) THEN
+        sgns(1) = -1
+        i=i-8
+      END IF
+      IF(i>=4) THEN
+        sgns(2) = -1
+        i=i-4
+      END IF
+      IF(i>=2) THEN
+        sgns(3) = -1
+        i=i-2
+      END IF
+      IF(i>=1) THEN
+        sgns(4) = -1
+        i=i-1
+      END IF
+      PRINT *,'signs:',previ,sgns
+    END IF
+      
+          
+    IF(.NOT. AllocationsDone ) THEN
+      n = CurrentModel % Mesh % MaxElementDofs
+      ALLOCATE(BasisT(n),Basis(n),BasisM(n),pBasis(n),pBasisM(n),dBasisdx(n,3), dBasisdxM(n,3), &
+          Indexes(n), IndexesM(n), Ind(n), IndM(n))
+      AllocationsDone = .TRUE.
+    END IF
+       
+    n = Element % TYPE % NumberOfNodes   
+    IF( pElemBasis ) THEN    
+      nd = mGetElementDOFs(pIndexes,Element)
+      Indexes => pIndexes
+    ELSE
+      nd = n
+      Indexes => Element % NodeIndexes
+    END IF
+
+    nM = ElementM % TYPE % NumberOfNodes      
+    IF( pElemBasis ) THEN    
+      ndM = mGetElementDOFs(pIndexesM,ElementM)
+      IndexesM => pIndexesM
+    ELSE
+      ndM = nM
+      IndexesM => ElementM % NodeIndexes
+    END IF
+
+    IF( NoGaussPoints == 0 ) THEN
+      IPT = GaussPoints( ElementT, ElementT % TYPE % GaussPoints2 ) 
+    ELSE    
+      IPT = GaussPoints( ElementT, NoGaussPoints ) 
+    END IF
+
+    yt = 0.0_dp
+    zt = 0.0_dp
+    Basis = 0.0_dp
+    BasisM = 0.0_dp
+
+    TrueElement => Mesh % Elements(Element % ElementIndex)
+    TrueElementM => Mesh % Elements(ElementM % ElementIndex)
+
+    CALL CopyElementNodesFromMesh(TrueNodes, Mesh, n, TrueElement % NodeIndexes)
+    CALL CopyElementNodesFromMesh(TrueNodesM, Mesh, nM, TrueElementM % NodeIndexes)
+
+    ! We assume that the normal vector on the element segment is constant.
+    Nrm = NormalVector( TrueElement, TrueNodes, Check = .TRUE. )
+    NrmM = NormalVector( TrueElementM, TrueNodesM, Check = .TRUE. )
+
+    Esize = ElementDiameter(TrueElement, TrueNodes)
+    EsizeM = ElementDiameter(TrueElementM, TrueNodesM)
+
+    Parent => Element % BoundaryInfo % Left
+    IF(.NOT. ASSOCIATED(Parent)) THEN
+      Parent => Element % BoundaryInfo % Right
+    END IF
+    ParentM => ElementM % BoundaryInfo % Left
+    IF(.NOT. ASSOCIATED(ParentM)) THEN
+      ParentM => ElementM % BoundaryInfo % Right
+    END IF
+    
+    np = Parent % Type % NumberOfNodes
+    npM = ParentM % Type % NumberOfNodes
+    CALL CopyElementNodesFromMesh(ParentNodes, Mesh, np, Parent % NodeIndexes)
+    CALL CopyElementNodesFromMesh(ParentNodesM, Mesh, npM, ParentM % NodeIndexes)
+        
+    Gamma = ListGetCReal(BC,'Nitsche Penalty',Found)
+    IF(.NOT. Found) Gamma = 1.0e-3
+    Cond = ListGetCReal(BC,'Nitsche Conductivity',Found)
+    IF(.NOT. Found) Cond = 1.0_dp
+
+    
+    DO nip=1, IPT % n 
+      stat = ElementInfo( ElementT,NodesT,IPT % u(nip),&
+          IPT % v(nip),IPT % w(nip),detJ,BasisT)
+      
+      ! Global coordinate of the integration point
+      xt = SUM( BasisT(1:2) * NodesT % x(1:2) )
+      
+      ! Integration weight for current integration point
+      ! Use the real arc length so that this projector weights correctly 
+      ! in rotational case when used with other projectors.
+      Weight = ArcCoeff * DetJ * IPT % s(nip)
+      sumarea = sumarea + Weight
+
+      ! We scale the whole condition with conductivity since all other terms in the stiffness
+      ! matrix are also scaled with this...
+      Weight = Cond * Weight 
+      
+      ! Slave element 
+      ! Integration point, working on 2D plane
+      CALL GlobalToLocal( u, v, w, xt, yt, zt, Element, Nodes )              
+      !stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )      
+      stat = ElementInfo( TrueElement, TrueNodes, u, v, w, detJ, Basis )      
+
+      ! Basis functions at parent element
+      CALL FindParentUVW( TrueElement, n, Parent, np, U, V, W, Basis )
+      stat = ElementInfo( Parent, ParentNodes, U, V, W, detJ, pBasis, dBasisdx )      
+      
+      ! Mapping from boundary local index to parent local index
+      DO i=1,n
+        DO ii=1,np
+          IF ( TrueElement % NodeIndexes(i) == Parent % NodeIndexes(ii) ) THEN
+            Ind(i) = ii; EXIT
+          END IF
+        END DO
+      END DO
+      
+      ! Master element, same steps
+      CALL GlobalToLocal( um, vm, wm, xt, yt, zt, ElementM, NodesM )
+      !stat = ElementInfo( ElementM, NodesM, um, vm, wm, detJ, BasisM )
+      stat = ElementInfo( TrueElementM, TrueNodesM, um, vm, wm, detJ, BasisM )
+      
+      CALL FindParentUVW( TrueElementM, nM, ParentM, npM, Um, Vm, Wm, BasisM )            
+      stat = ElementInfo( ParentM, ParentNodesM, &
+          Um, Vm, Wm, detJ, pBasisM, dBasisdxM )
+      
+      DO i=1,nM
+        DO ii=1,npM
+          IF ( TrueElementM % NodeIndexes(i) == ParentM % NodeIndexes(ii) ) THEN
+            IndM(i) = ii; EXIT
+          END IF
+        END DO
+      END DO
+
+      ! Add the entries to the projector
+      DO j=1,nd
+        ! Testing with Basis(j)
+        jj = Indexes(j)                                    
+        IF (j<=n) jj = InvPerm(jj)
+        
+        DO i=1,nd
+          ii = Indexes(i)
+          IF(i<=n) ii = InvPerm(ii)
+
+          LCols(i) = ii
+          LVals(i) = sgns(1) * SUM(dBasisdx(Ind(j),:)*Nrm) * Basis(i) &   ! consistency term to weakly enforce continuity of solution
+              + sgns(2) * SUM(dBasisdx(Ind(i),:)*Nrm) * Basis(j) &        ! consistency term to weakly enforce continuity of flux
+              + Basis(i) * Basis(j) / Esize / Gamma                       ! penalty term
+        END DO
+
+        DO i=1,ndM
+          ii = IndexesM(i)
+          IF(i<=nM) ii = InvPermM(ii)
+
+          LCols(nd+i) = ii
+          LVals(nd+i) = -NodeScale * ( sgns(3) * SUM(dBasisdx(Ind(j),:)*Nrm) * BasisM(i) &
+              + sgns(4) * SUM(dBasisdxM(IndM(i),:)*NrmM) * Basis(j) &
+              + BasisM(i) * Basis(j) / Esize / Gamma )
+        END DO
+        LVals(1:nd+ndM) = weight * LVals(1:nd+ndM)
+        CALL List_AddMatrixRow(Projector % ListMatrix,jj,nd+ndM,Lcols,Lvals)
+      END DO
+
+      ! Dual projector
+      DO j=1,ndM
+        jj = IndexesM(j)                                    
+        IF (j<=nM) jj = InvPermM(jj)
+
+        DO i=1,ndM
+          ii = IndexesM(i)
+          IF(i<=nM) ii = InvPermM(ii)
+
+          LCols(i) = ii
+          LVals(i) = sgns(1) * SUM(dBasisdxM(Ind(j),:)*NrmM) * BasisM(i) &
+              + sgns(2) * SUM(dBasisdxM(IndM(i),:)*NrmM) * BasisM(j) &
+              + BasisM(i) * BasisM(j) / EsizeM / Gamma 
+        END DO
+        
+        DO i=1,nd
+          ii = Indexes(i)
+          IF(i<=n) ii = InvPerm(ii)
+
+          LCols(ndM+i) = ii
+          LVals(ndM+i) = -NodeScale * ( sgns(3) * SUM(dBasisdxM(Ind(j),:)*NrmM) * Basis(i) &
+              + sgns(4) * SUM(dBasisdx(Ind(i),:)*Nrm) * BasisM(j) &
+              + Basis(i) * BasisM(j) / EsizeM / Gamma )
+        END DO        
+        
+        LVals(1:nd+ndM) = weight * LVals(1:nd+ndM)
+        CALL List_AddMatrixRow(Projector % ListMatrix,jj,ndM+nd,Lcols,Lvals)
+      END DO
+    END DO
+
+    
+  END SUBROUTINE TemporalSegmentNitscheAssembly
+
+
+
   
   !---------------------------------------------------------------------------
   !> Create a projector for mapping between interfaces using the Galerkin method
@@ -1628,9 +1888,10 @@ CONTAINS
     IF( CreateDual ) THEN
       DualProjector => AllocateMatrix()
       DualProjector % FORMAT = MATRIX_LIST
-      DualProjector % ProjectorType = PROJECTOR_TYPE_GALERKIN
+      DualProjector % ProjectorType = Projector % ProjectorType
       Projector % EMatrix => DualProjector
     END IF
+
     
     ! Check whether biorthogonal basis for projectors requested:
     ! ----------------------------------------------------------
@@ -2499,8 +2760,6 @@ CONTAINS
           NodesT % x(n), NodesT % y(n), NodesT % z(n), &
           Basis(n), Indexes(n), IndexesM(n), STAT = allocstat )
       IF( allocstat /= 0 ) CALL Fatal(Caller,'Error in allocation')
-      
- !     IF (BiOrthogonalBasis) ALLOCATE(CoeffBasis(n), MASS(n,n))
 
       Nodes % y  = 0.0_dp
       NodesM % y = 0.0_dp
@@ -2800,10 +3059,16 @@ CONTAINS
           
           ! In order to reuse the innermost assembly loop it has been
           ! restructured into a separate routine. 
-          CALL TemporalSegmentMortarAssembly(ElementT, NodesT, Element, Nodes, ElementM, NodesM, &
-              sgn0, pElemBasis, BiorthogonalBasis, CreateDual, DualMaster, DualLCoeff, 0, &
-              Projector, NodeCoeff, ArcCoeff, NodeScale, NodePerm, DualNodePerm, &
-              InvPerm1, InvPerm2, SumArea )
+          IF( Projector % ProjectorType == PROJECTOR_TYPE_NITSCHE ) THEN
+            CALL TemporalSegmentNitscheAssembly(ElementT, NodesT, Element, Nodes, ElementM, NodesM, &
+                sgn0, pElemBasis, 0, Projector, ArcCoeff, NodeScale, NodePerm, &
+                InvPerm1, InvPerm2, SumArea, BC )
+          ELSE
+            CALL TemporalSegmentMortarAssembly(ElementT, NodesT, Element, Nodes, ElementM, NodesM, &
+                sgn0, pElemBasis, BiorthogonalBasis, CreateDual, DualMaster, DualLCoeff, 0, &
+                Projector, NodeCoeff, ArcCoeff, NodeScale, NodePerm, DualNodePerm, &
+                InvPerm1, InvPerm2, SumArea )
+          END IF
         END DO
         
         IF( SaveElem ) THEN
@@ -3045,7 +3310,7 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: Cond(:)
     TYPE(Matrix_t), POINTER :: DualProjector    
     LOGICAL :: DualMaster, DualSlave, DualLCoeff, BiorthogonalBasis
-    LOGICAL :: SecondFamily, SecondOrder, pElemProj, pElemBasis
+    LOGICAL :: SecondFamily, SecondOrder, pElemProj, pElemBasis, NitscheProjector 
     CHARACTER(*), PARAMETER :: Caller = "LevelProjector"
 
     CALL Info(Caller,'Creating projector for a levelized mesh',Level=7)
@@ -3114,8 +3379,15 @@ CONTAINS
       ArcCoeff = 1.0_dp
     END IF
 
+    
     ! We have a weak projector if it is requested 
-    WeakProjector = ListGetLogical( BC, 'Galerkin Projector', Found )    
+    NitscheProjector = ListGetLogical( BC,'Nitsche Projector', Found )     
+    IF(NitscheProjector) THEN
+      CALL Info(Caller,'Creating an add matrix for Nitshce type of interface conditions!',Level=10)
+      WeakProjector = .TRUE.
+    ELSE      
+      WeakProjector = ListGetLogical( BC, 'Galerkin Projector', Found )
+    END IF
     IF (Found) THEN
       StrongProjector = .NOT. WeakProjector
     ELSE
@@ -3179,12 +3451,19 @@ CONTAINS
     ! structure to be introduced.
     Projector => AllocateMatrix()
     Projector % FORMAT = MATRIX_LIST
-    Projector % ProjectorType = PROJECTOR_TYPE_GALERKIN
 
+    IF( NitscheProjector ) THEN
+      Projector % ProjectorType = PROJECTOR_TYPE_NITSCHE
+    ELSE      
+      Projector % ProjectorType = PROJECTOR_TYPE_GALERKIN
+    END IF
+      
     ! Check whether biorthogonal basis for projectors requested:
     ! If we want to eliminate the constraints we have to have a biortgonal basis
     ! ----------------------------------------------------------
     BiOrthogonalBasis = ListGetLogical( BC, 'Use Biorthogonal Basis', Found)    
+    CreateDual = ListGetLogical( BC,'Create Dual Projector',Found ) 
+    
     IF(.NOT. Found ) THEN
       BiOrthogonalBasis = ListGetLogical( CurrentModel % Solver % Values, &
           'Eliminate Linear Constraints',Found )
@@ -3352,7 +3631,6 @@ CONTAINS
       EdgeRow0 = m
       
       
-      CreateDual = ListGetLogical( BC,'Create Dual Projector',Found ) 
       IF( CreateDual ) THEN
         IF( DoEdges ) THEN
           CALL Fatal(Caller,'Dual projector cannot handle edges!')
@@ -3360,7 +3638,7 @@ CONTAINS
 
         DualProjector => AllocateMatrix()
         DualProjector % FORMAT = MATRIX_LIST
-        DualProjector % ProjectorType = PROJECTOR_TYPE_GALERKIN
+        DualProjector % ProjectorType = Projector % ProjectorType
         Projector % EMatrix => DualProjector
 
         ALLOCATE( DualNodePerm( Mesh % NumberOfNodes ) )
@@ -3465,8 +3743,7 @@ CONTAINS
       END DO
 
       IF( EliminateUnneeded ) THEN
-        CALL Info(Caller,&
-            'Eliminating redundant edges from projector: '//I2S(n-m),Level=10)
+        CALL Info(Caller,'Eliminating redundant edges from projector: '//I2S(n-m),Level=10)
       END IF
       CALL Info(Caller,'Number of active edges in projector: '//I2S(m),Level=8)
       IF (SecondOrder) THEN
@@ -3483,18 +3760,18 @@ CONTAINS
         DO i=1,BMesh1 % NumberOfBulkElements
           m = m + BMesh1 % Elements(i) % BDOFs
         END DO
-        CALL Info(Caller,&
-            'Number of active faces in projector: '//I2S(BMesh1 % NumberOfBulkElements),Level=8)
-        CALL Info(Caller,&
-            'Number of active face DOFs in projector: '//I2S(m),Level=8)
+        CALL Info(Caller,'Number of active faces in projector: '//I2S(BMesh1 % NumberOfBulkElements),Level=8)
+        CALL Info(Caller,'Number of active face DOFs in projector: '//I2S(m),Level=8)
         ProjectorRows = FaceRow0 + m
       END IF
     END IF
 
     CALL Info(Caller,'Max number of rows in projector: '//I2S(ProjectorRows),Level=10)
-    ALLOCATE( Projector % InvPerm(ProjectorRows) )
-    Projector % InvPerm = 0
-
+    IF(.NOT. NitscheProjector ) THEN     
+      ALLOCATE( Projector % InvPerm(ProjectorRows) )
+      Projector % InvPerm = 0
+    END IF
+      
     ! If after strong projectors there are still something undone they must 
     ! be dealt with the weak projectors. 
     SomethingUndone = .FALSE.
@@ -3568,7 +3845,7 @@ CONTAINS
     !--------------------------------------------------------------
     CALL List_toCRSMatrix(Projector)
     CALL CRS_SortMatrix(Projector,.TRUE.)
-
+    
     IF(ASSOCIATED(Projector % Child)) THEN
       CALL List_toCRSMatrix(Projector % Child)
       CALL CRS_SortMatrix(Projector % Child,.TRUE.)
@@ -3583,11 +3860,13 @@ CONTAINS
     IF( CreateDual ) DEALLOCATE( DualNodePerm )
     IF( DoEdges ) DEALLOCATE( EdgePerm )
 
-    m = COUNT( Projector % InvPerm  == 0 ) 
-    IF( m > 0 ) THEN
-      CALL Warn(Caller,'Projector % InvPerm not set in for dofs: '//I2S(m))
+    IF(ASSOCIATED(Projector % InvPerm) ) THEN     
+      m = COUNT( Projector % InvPerm  == 0 ) 
+      IF( m > 0 ) THEN
+        CALL Warn(Caller,'Projector % InvPerm not set in for dofs: '//I2S(m))
+      END IF
     END IF
-
+      
     CALL Info(Caller,'Projector created',Level=10)
     
   CONTAINS
@@ -5203,8 +5482,7 @@ CONTAINS
 
       IF( SaveErr ) CLOSE(11)
 
-      
-      
+           
       DEALLOCATE( Nodes % x, Nodes % y, Nodes % z, &
           NodesM % x, NodesM % y, NodesM % z, &
           NodesT % x, NodesT % y, NodesT % z, &
@@ -6289,10 +6567,16 @@ CONTAINS
 
           ! In order to reuse the innermost assembly loop it has been
           ! restructured into a separate routine. 
-          CALL TemporalSegmentMortarAssembly(ElementT, NodesT, Element, Nodes, ElementM, NodesM, &
-              sgn0, pElemBasis, BiorthogonalBasis, CreateDual, DualMaster, DualLCoeff, 0, &
-              Projector, NodeCoeff, ArcCoeff, NodeScale, NodePerm, DualNodePerm, &
-              InvPerm1, InvPerm2, SumArea )
+          IF( Projector % ProjectorType == PROJECTOR_TYPE_NITSCHE ) THEN
+            CALL TemporalSegmentNitscheAssembly(ElementT, NodesT, Element, Nodes, ElementM, NodesM, &
+                sgn0, pElemBasis, 0, Projector, ArcCoeff, NodeScale, NodePerm, &
+                InvPerm1, InvPerm2, SumArea, BC )            
+          ELSE
+            CALL TemporalSegmentMortarAssembly(ElementT, NodesT, Element, Nodes, ElementM, NodesM, &
+                sgn0, pElemBasis, BiorthogonalBasis, CreateDual, DualMaster, DualLCoeff, 0, &
+                Projector, NodeCoeff, ArcCoeff, NodeScale, NodePerm, DualNodePerm, &
+                InvPerm1, InvPerm2, SumArea )
+          END IF
           
 100       IF( Repeating ) THEN
             IF( NRange2 /= 0 ) THEN
@@ -8230,24 +8514,28 @@ CONTAINS
 
     
     IF( InfoActive(15) .AND. Projector % NumberOfRows > 0 ) THEN
-      val = SUM( Projector % Values )
-      WRITE(Message,'(A,ES12.3)') 'Sum of projector entries:',val
-      CALL Info(Caller,Message)
-      
-      val = MINVAL( Projector % Values )
-      WRITE(Message,'(A,ES12.3)') 'Minimum of projector entries:',val
-      CALL Info(Caller,Message)
-      
-      val = MAXVAL( Projector % Values )
-      WRITE(Message,'(A,ES12.3)') 'Maximum of projector entries:',val
-      CALL Info(Caller,Message)
-      
-      CALL Info(Caller,'Number of rows in projector: '&
-          //I2S(Projector % NumberOfRows))
-      CALL Info(Caller,'Number of entries in projector: '&
-          //I2S(SIZE(Projector % Values)))
+      BLOCK
+        TYPE(Matrix_t), POINTER :: pProj
+        DO i=1,2
+          IF(i==1) THEN
+            pProj => Projector
+            CALL Info(Caller,'Projector Values:')
+          ELSE
+            pProj => Projector % Child            
+            IF(.NOT. ASSOCIATED(pProj)) CYCLE
+            CALL Info(Caller,'Projector Child Values:')            
+          END IF
+                    
+          CALL Info(Caller,'pProj rows and nonzeros: '&
+              //I2S(pProj % NumberOfRows)//' / '//I2S(SIZE(pProj % Values))) 
+          
+          WRITE(Message,'(A,4ES12.3)') 'min, max, sum, abs sum: ', &
+              MINVAL( pProj % Values), MAXVAL( pProj % Values), &
+              SUM( pProj % Values), SUM(ABS(pProj % Values))
+          CALL Info(Caller,Message)
+        END DO
+      END BLOCK
     END IF
-
 
     
     ! Deallocate mesh structures:
