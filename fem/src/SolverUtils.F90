@@ -3100,7 +3100,7 @@ CONTAINS
              k = ActiveProjector % Cols(j)
              IF(DebugNormals) THEN
                IF(k<1 .OR. k>SIZE(FieldPerm)) THEN
-                 PRINT,'k is beyond FieldPerm:',i,j,k,SIZE(FieldPerm)
+                 PRINT *,'k is beyond FieldPerm:',i,j,k,SIZE(FieldPerm)
                  CYCLE
                END IF
              END IF
