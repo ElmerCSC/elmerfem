@@ -20,7 +20,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 30
   Coordinate System = Cartesian 3D
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Steady State
@@ -88,7 +88,7 @@ Solver 1
 !  Optimize Bandwidth = False
 !  Linear System Scaling = False
 
-!  Debug Normals = Logical True
+  Debug Normals = Logical True
 
 !  Use Nodal Normal = Logical True
 End

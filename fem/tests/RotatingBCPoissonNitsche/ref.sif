@@ -7,20 +7,22 @@ Header
   Include Path ""
   Results Directory "results"
 End
-  
+
+$omega = 2.0 
+$phi0 = 17.0
+
 Simulation
   Max Output Level = 5
   Coordinate System = Cartesian
-  Simulation Type = Transient
+  Simulation Type = Scanning 
   Steady State Max Iterations = 1
   Output Intervals = 1
   
-  Timestepping Method = BDF
-  BDF Order = 1
-  Timestep Sizes = 0.1
-  Timestep Intervals = 10
-  Output Intervals = 0
-!  Post File = case.vtu
+  Timestep Intervals = 3 !90
+  Output Intervals = 1
+
+  Post File = ref.vtu
+  Ascii Output = True
 
   Simulation Timing = Logical True
 End 
@@ -140,17 +142,15 @@ Body Force 2
   Name = "Hot Move"
   Heat Source = 100.0
   Mesh Rotate 3 = Variable time 
-    Real MATC "20*tx"
+    Real MATC "omega*tx+phi0"
 End 
 
 Body Force 3
   Name = "Cold Move"
   Heat Source = -100.0
   Mesh Rotate 3 = Variable time 
-    Real MATC "20*tx"
+    Real MATC "omega*tx+phi0"
 End 
-
-
 
 Boundary Condition 1
   Target Boundaries(4) = 10 11 12 13
@@ -169,8 +169,13 @@ Boundary Condition 3
 
   Mortar BC = 2
   Rotational Projector = True
+
+  Galerking Projector = True
+
+!  Nitsche Projector = Logical True
+!  Nitsche Penalty = Real 1.0e-2
+!  Nitsche Condutivity = Real 1.0
 End
 
-
-Solver 2 :: Reference Norm = 6.93769175
+Solver 2 :: Reference Norm = 7.3473363814849684
 

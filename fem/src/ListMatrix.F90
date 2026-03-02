@@ -410,7 +410,7 @@ CONTAINS
 !-------------------------------------------------------------------------------
      IMPLICIT NONE
 
-     TYPE(ListMatrix_t) :: List(:)
+     TYPE(ListMatrix_t), POINTER :: List(:)
      INTEGER, INTENT(IN) :: k1, nk2
      INTEGER, INTENT(IN) :: Ind(nk2)
 
@@ -419,7 +419,8 @@ CONTAINS
      INTEGER :: i,k2,k2i,j, k,prevind
 
      IF (k1>SIZE(List)) THEN
-       CALL Fatal('List_AddMatrixIndexes','Row index out of bounds: '//TRIM(I2S(k1)))
+       List => List_EnlargeMatrix(List,MAX(k1, &
+             SIZE(List)+LISTMATRIX_GROWTH) )
      END IF
      
      ! Add each element in Ind to the row list
@@ -502,36 +503,52 @@ CONTAINS
 
 
 !-------------------------------------------------------------------------------
-   SUBROUTINE List_AddMatrixRow(List,k1,nk2,Ind,Vals,SortedInput)
+   SUBROUTINE List_AddMatrixRow(List,k1,nk2,Ind,Vals,SortedInput,KeepOrder)
    ! Add an array of sorted indeces to a row in ListMatrix_t. "ind" may
    ! contain duplicate entries.
 !-------------------------------------------------------------------------------
      IMPLICIT NONE
 
-     TYPE(ListMatrix_t) :: List(:)
-     LOGICAL, INTENT(IN), OPTIONAL :: SortedInput
+     TYPE(ListMatrix_t), INTENT(INOUT), POINTER :: List(:)
      INTEGER, INTENT(IN) :: k1, nk2
      INTEGER, INTENT(INOUT) :: Ind(nk2)
      REAL(KIND=dp), INTENT(INOUT) :: Vals(nk2)
-
-     TYPE(ListMatrixEntry_t), POINTER :: RowPtr, PrevPtr, Entry, Dummy
+     LOGICAL, INTENT(IN), OPTIONAL :: SortedInput
+     LOGICAL, INTENT(IN), OPTIONAL :: KeepOrder
 !-------------------------------------------------------------------------------
+     TYPE(ListMatrixEntry_t), POINTER :: RowPtr, PrevPtr, ENTRY, Dummy
+     INTEGER, ALLOCATABLE :: OrigInd(:)
+     REAL(KIND=dp), ALLOCATABLE :: OrigVals(:)
+     LOGICAL :: DoSort, DoOrder
      INTEGER :: i,k2,k2i,j, k,prevind
 
-     IF (k1>SIZE(List)) THEN
-       CALL Fatal('List_AddMatrixIndexes','Row index out of bounds: '//TRIM(I2S(k1)))
+     DoSort = .TRUE.
+     DoOrder = .FALSE.
+     IF( PRESENT(SortedInput) ) DoSort = ( .NOT. SortedInput  )
+
+     ! Note that sorting spoils the order of Ind and Vals!
+     IF(DoSort) THEN
+       IF(PRESENT(KeepOrder)) DoOrder = KeepOrder
+       IF( DoOrder ) THEN
+         OrigInd = Ind(1:nk2)
+         OrigVals = Vals(1:nk2)
+       END IF
+       CALL SortF(nk2, Ind, Vals)
      END IF
 
-     IF( PRESENT(SortedInput) ) THEN
-        IF ( .NOT. SortedInput  ) CALL SortF(nk2, Ind, Vals)
+       
+     IF(ASSOCIATED(List)) THEN
+       i = SIZE(List)
      ELSE
-        CALL SortF(nk2, Ind, Vals)
+       i = 0
      END IF
-
      
-     ! Add each element in Ind to the row list
+     IF (k1>i) THEN
+       List => List_EnlargeMatrix(List,MAX(k1, &
+             i+LISTMATRIX_GROWTH) )
+     END IF
      RowPtr => List(k1) % Head
-    
+       
      ! First element needs special treatment as it may modify 
      ! the list starting point
      IF (.NOT. ASSOCIATED(RowPtr)) THEN
@@ -612,6 +629,12 @@ CONTAINS
        PrevPtr => PrevPtr % Next
        List(k1) % Degree = List(k1) % Degree + 1
      END DO
+
+     IF( DoOrder ) THEN
+       Ind(1:nk2) = OrigInd 
+       Vals(1:nk2) = OrigVals 
+     END IF
+     
 !-------------------------------------------------------------------------------
    END SUBROUTINE List_AddMatrixRow
 !-------------------------------------------------------------------------------
