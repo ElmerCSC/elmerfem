@@ -3,9 +3,8 @@
 SUBROUTINE register_coupling_grid(ThisMesh, grid_crs, model_tstep, &
                                    couple_to_ebfm, couple_to_icon)
   USE Types, ONLY: Mesh_t, Element_t, dp
-  USE Messages, ONLY: INFO
-  USE elmer_coupling, ONLY: coupling_setup, is_root_rank
-  USE ProjUtils, ONLY: xy2LonLat
+  USE elmer_coupling, ONLY: coupling_setup
+  USE ProjUtils, ONLY: xy2LonLat, deg2rad
 
   IMPLICIT NONE
 
@@ -26,12 +25,8 @@ SUBROUTINE register_coupling_grid(ThisMesh, grid_crs, model_tstep, &
   INTEGER, ALLOCATABLE :: cell_ids(:), vertex_ids(:)
 
   ! For ProjUtils comparison
-  REAL(KIND=dp), ALLOCATABLE :: lon_vertices_proj(:), lat_vertices_proj(:)
-  REAL(KIND=dp), ALLOCATABLE :: lon_cells_proj(:), lat_cells_proj(:)
-  REAL(KIND=dp) :: max_lon_diff_v, max_lat_diff_v, max_lon_diff_c, max_lat_diff_c
-  REAL(KIND=dp) :: mean_lon_diff_v, mean_lat_diff_v, mean_lon_diff_c, mean_lat_diff_c
-
-  CHARACTER(LEN=*), PARAMETER :: SolverName = 'register_coupling_grid'
+  REAL(KIND=dp), ALLOCATABLE :: lon_vertices(:), lat_vertices(:)
+  REAL(KIND=dp), ALLOCATABLE :: lon_cells(:), lat_cells(:)
 
   ! Extract grid information for coupling
   nbr_vertices = ThisMesh % NumberOfNodes
@@ -69,95 +64,38 @@ SUBROUTINE register_coupling_grid(ThisMesh, grid_crs, model_tstep, &
     y_cells(i) = SUM(y_vertices(this_cell_ids(1:n))) / n
   END DO
 
-  ! Print debug info for first vertex
-  IF (is_root_rank .AND. nbr_vertices > 0) THEN
-    PRINT *, "DEBUG: Original coordinates (first vertex):"
-    PRINT *, "  x = ", x_vertices(1), " m"
-    PRINT *, "  y = ", y_vertices(1), " m"
-  END IF
-
   ! Convert using ProjUtils for comparison (does NOT modify input arrays - INTENT(IN))
   ! Note: ProjUtils returns degrees, need to convert to radians for YAC
-  ALLOCATE(lon_vertices_proj(nbr_vertices), lat_vertices_proj(nbr_vertices))
-  ALLOCATE(lon_cells_proj(nbr_cells), lat_cells_proj(nbr_cells))
+  ALLOCATE(lon_vertices(nbr_vertices), lat_vertices(nbr_vertices))
+  ALLOCATE(lon_cells(nbr_cells), lat_cells(nbr_cells))
   
   DO i = 1, nbr_vertices
     CALL xy2LonLat(x_vertices(i), y_vertices(i), &
-                   lon_vertices_proj(i), lat_vertices_proj(i))
+                   lon_vertices(i), lat_vertices(i))
     ! Convert from degrees to radians
-    lon_vertices_proj(i) = lon_vertices_proj(i) * (ACOS(-1.0_dp) / 180.0_dp)
-    lat_vertices_proj(i) = lat_vertices_proj(i) * (ACOS(-1.0_dp) / 180.0_dp)
+    lon_vertices(i) = lon_vertices(i) * deg2rad
+    lat_vertices(i) = lat_vertices(i) * deg2rad
   END DO
   
   DO i = 1, nbr_cells
     CALL xy2LonLat(x_cells(i), y_cells(i), &
-                   lon_cells_proj(i), lat_cells_proj(i))
+                   lon_cells(i), lat_cells(i))
     ! Convert from degrees to radians
-    lon_cells_proj(i) = lon_cells_proj(i) * (ACOS(-1.0_dp) / 180.0_dp)
-    lat_cells_proj(i) = lat_cells_proj(i) * (ACOS(-1.0_dp) / 180.0_dp)
+    lon_cells(i) = lon_cells(i) * deg2rad
+    lat_cells(i) = lat_cells(i) * deg2rad
   END DO
 
-  ! Print ProjUtils result for first vertex
-  IF (is_root_rank .AND. nbr_vertices > 0) THEN
-    PRINT *, "DEBUG: ProjUtils result (first vertex):"
-    PRINT *, "  lon = ", lon_vertices_proj(1), " radians"
-    PRINT *, "  lat = ", lat_vertices_proj(1), " radians"
-  END IF
-
-  ! Call coupling_setup which will convert coordinates using C function
-  ! (modifies x/y arrays in-place to lon/lat)
-  CALL coupling_setup(x_vertices, y_vertices, x_cells, y_cells, &
+  ! Call coupling_setup with precomputed lon/lat coordinates (radians)
+  CALL coupling_setup(lon_vertices, lat_vertices, lon_cells, lat_cells, &
                       cell_to_vertex, num_vertices_per_cell, &
                       cell_ids, vertex_ids, &
                       TRIM(grid_crs), TRIM(model_tstep), &
                       couple_to_ebfm, couple_to_icon)
 
-  ! Print C function result for first vertex
-  IF (is_root_rank .AND. nbr_vertices > 0) THEN
-    PRINT *, "DEBUG: C function result (first vertex):"
-    PRINT *, "  lon = ", x_vertices(1), " radians"
-    PRINT *, "  lat = ", y_vertices(1), " radians"
-  END IF
-
-  ! Compare C results with ProjUtils results
-  IF (is_root_rank) THEN
-    max_lon_diff_v = MAXVAL(ABS(x_vertices - lon_vertices_proj))
-    max_lat_diff_v = MAXVAL(ABS(y_vertices - lat_vertices_proj))
-    mean_lon_diff_v = SUM(ABS(x_vertices - lon_vertices_proj)) / nbr_vertices
-    mean_lat_diff_v = SUM(ABS(y_vertices - lat_vertices_proj)) / nbr_vertices
-
-    max_lon_diff_c = MAXVAL(ABS(x_cells - lon_cells_proj))
-    max_lat_diff_c = MAXVAL(ABS(y_cells - lat_cells_proj))
-    mean_lon_diff_c = SUM(ABS(x_cells - lon_cells_proj)) / nbr_cells
-    mean_lat_diff_c = SUM(ABS(y_cells - lat_cells_proj)) / nbr_cells
-
-    PRINT *, "========================================"
-    PRINT *, "YAC2Elmer: Coordinate conversion comparison (C vs ProjUtils)"
-    PRINT *, "YAC2Elmer: Vertices:"
-    PRINT *, "YAC2Elmer:   Max Longitude diff: ", max_lon_diff_v, " radians"
-    PRINT *, "YAC2Elmer:   Max Latitude diff:  ", max_lat_diff_v, " radians"
-    PRINT *, "YAC2Elmer:   Mean Longitude diff:", mean_lon_diff_v, " radians"
-    PRINT *, "YAC2Elmer:   Mean Latitude diff: ", mean_lat_diff_v, " radians"
-    PRINT *, "YAC2Elmer: Cells:"
-    PRINT *, "YAC2Elmer:   Max Longitude diff: ", max_lon_diff_c, " radians"
-    PRINT *, "YAC2Elmer:   Max Latitude diff:  ", max_lat_diff_c, " radians"
-    PRINT *, "YAC2Elmer:   Mean Longitude diff:", mean_lon_diff_c, " radians"
-    PRINT *, "YAC2Elmer:   Mean Latitude diff: ", mean_lat_diff_c, " radians"
-    
-    ! Assert that differences are within acceptable tolerance (1e-8 radians ~ 0.6m at equator)
-    IF (max_lon_diff_v > 1.0d-8 .OR. max_lat_diff_v > 1.0d-8 .OR. &
-        max_lon_diff_c > 1.0d-8 .OR. max_lat_diff_c > 1.0d-8) THEN
-      PRINT *, "YAC2Elmer: WARNING: Coordinate conversion differences exceed tolerance!"
-    ELSE
-      PRINT *, "YAC2Elmer: Coordinate conversions match within tolerance."
-    END IF
-    PRINT *, "========================================"
-  END IF
-
   ! Clean up local arrays
   DEALLOCATE(x_vertices, y_vertices, x_cells, y_cells)
   DEALLOCATE(cell_to_vertex, num_vertices_per_cell, cell_ids, vertex_ids)
-  DEALLOCATE(lon_vertices_proj, lat_vertices_proj, lon_cells_proj, lat_cells_proj)
+  DEALLOCATE(lon_vertices, lat_vertices, lon_cells, lat_cells)
 
 END SUBROUTINE register_coupling_grid
 

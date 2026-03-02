@@ -731,10 +731,10 @@ CONTAINS
 
   !> Set up the coupling configuration for YAC
   !>
-  !> @param x_vertices X-coordinates of vertices (will be modified to lon)
-  !> @param y_vertices Y-coordinates of vertices (will be modified to lat)
-  !> @param x_cells X-coordinates of cell centers (will be modified to lon)
-  !> @param y_cells Y-coordinates of cell centers (will be modified to lat)
+  !> @param lon_vertices Longitude coordinates of vertices (radians)
+  !> @param lat_vertices Latitude coordinates of vertices (radians)
+  !> @param lon_cells Longitude coordinates of cell centers (radians)
+  !> @param lat_cells Latitude coordinates of cell centers (radians)
   !> @param cell_to_vertex Connectivity array (which vertices belong to which cell)
   !> @param num_vertices_per_cell Number of vertices for each cell
   !> @param cell_ids Global cell IDs
@@ -743,21 +743,21 @@ CONTAINS
   !> @param timestepstring Timestep configuration string for YAC
   !> @param couple_to_ebfm_in Enable coupling to EBFM
   !> @param couple_to_icon_in Enable coupling to ICON
-  SUBROUTINE coupling_setup(x_vertices, y_vertices, x_cells, y_cells, &
+  SUBROUTINE coupling_setup(lon_vertices, lat_vertices, lon_cells, lat_cells, &
                             cell_to_vertex, num_vertices_per_cell, &
                             cell_ids, vertex_ids, &
                             grid_crs, timestepstring, &
                             couple_to_ebfm_in, couple_to_icon_in)
 
-    USE, INTRINSIC :: iso_c_binding, ONLY: C_INT, C_DOUBLE, C_CHAR, C_NULL_CHAR
+    USE, INTRINSIC :: iso_c_binding, ONLY: C_INT, C_DOUBLE, C_CHAR
 
     IMPLICIT NONE
 
-    ! Input/output arrays (coordinates will be converted in-place)
-    REAL(KIND=C_DOUBLE), INTENT(INOUT) :: x_vertices(:)
-    REAL(KIND=C_DOUBLE), INTENT(INOUT) :: y_vertices(:)
-    REAL(KIND=C_DOUBLE), INTENT(INOUT) :: x_cells(:)
-    REAL(KIND=C_DOUBLE), INTENT(INOUT) :: y_cells(:)
+    ! Input arrays (already converted to lon/lat in radians)
+    REAL(KIND=C_DOUBLE), INTENT(IN) :: lon_vertices(:)
+    REAL(KIND=C_DOUBLE), INTENT(IN) :: lat_vertices(:)
+    REAL(KIND=C_DOUBLE), INTENT(IN) :: lon_cells(:)
+    REAL(KIND=C_DOUBLE), INTENT(IN) :: lat_cells(:)
     INTEGER, INTENT(IN) :: cell_to_vertex(:)
     INTEGER, INTENT(IN) :: num_vertices_per_cell(:)
     INTEGER, INTENT(IN) :: cell_ids(:)
@@ -791,18 +791,14 @@ CONTAINS
     couple_to_icon = couple_to_icon_in
 
     ! Infer sizes from input arrays
-    nbr_vertices = SIZE(x_vertices)
-    nbr_cells = SIZE(x_cells)
-
-    ! Convert projected coordinates to lon/lat using C function (returns radians)
-    CALL convert_to_lonlat_c(x_vertices, y_vertices, nbr_vertices, TRIM(grid_crs)//C_NULL_CHAR)
-    CALL convert_to_lonlat_c(x_cells, y_cells, nbr_cells, TRIM(grid_crs)//C_NULL_CHAR)
+    nbr_vertices = SIZE(lon_vertices)
+    nbr_cells = SIZE(lon_cells)
 
     ! register Elmer grid in YAC
     ! * is defined as an unstructured grid
     CALL yac_fdef_grid( &
       ELMER_GRID_NAME, nbr_vertices, nbr_cells, SUM(num_vertices_per_cell), &
-      num_vertices_per_cell, x_vertices, y_vertices, cell_to_vertex, grid_id)
+      num_vertices_per_cell, lon_vertices, lat_vertices, cell_to_vertex, grid_id)
 
     ! define global ids for all cells and vertices
     ! * this information is used to identify cells/vertice between processes
@@ -815,10 +811,10 @@ CONTAINS
     ! * an arbitrary number of locations can be defined (e.g. at vertices,
     !   cell centers, edge middle points)
     CALL yac_fdef_points( &
-      grid_id, nbr_vertices, YAC_LOCATION_CORNER, x_vertices, y_vertices, &
+      grid_id, nbr_vertices, YAC_LOCATION_CORNER, lon_vertices, lat_vertices, &
       corner_point_id)
     CALL yac_fdef_points( &
-      grid_id, nbr_cells, YAC_LOCATION_CELL, x_cells, y_cells, cell_point_id)
+      grid_id, nbr_cells, YAC_LOCATION_CELL, lon_cells, lat_cells, cell_point_id)
 
     ! construct coupling between Elmer/Ice and ICON
     IF (couple_to_icon) THEN
