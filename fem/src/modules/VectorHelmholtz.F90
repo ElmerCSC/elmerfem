@@ -111,6 +111,7 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
         ELSE
           CALL ListAddString( SolverParams, "Element", &
               "n:0 e:3 -tri b:6 -tetra b:3 -tri_face b:6" )
+          CALL Fatal('VectorHelmholtzSolver_Init0', 'The use of cubic elements is not yet possible' )
         END IF
       CASE(2)
         IF (SecondFamily) THEN
