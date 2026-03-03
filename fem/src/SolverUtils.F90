@@ -2177,9 +2177,7 @@ CONTAINS
      pContact = IsActivePelement(Mesh % Elements(1), Solver)
      IF( pContact ) THEN
        ! We only have to deal with the middle dofs if they are not condensated away!
-       IF( .NOT. ListGetLogical( Params,'Bubbles in Global System',Found ) ) THEN
-         IF(Found) pContact = .FALSE.   
-       END IF
+       pContact = Solver % GlobalBubbles 
      END IF
      IF( ListGetLogical( Params,'Contact Linear Basis',Found ) ) THEN
        pContact = .FALSE.

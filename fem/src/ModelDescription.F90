@@ -2795,11 +2795,6 @@ CONTAINS
           EXIT
         END IF
       END DO
-     
-      !Solver % GlobalBubbles = ListGetLogical(Solver % Values, &
-      !    'Bubbles in Global System', stat)
-      !IF(.NOT. stat) Solver % GlobalBubbles = .TRUE.
-      
       i = i + 1
     END DO
 
@@ -4744,10 +4739,10 @@ CONTAINS
         ! Note that Var % Perm is the permutation associated with the current field
         ! while Perm will be the permutation associated with the saved field. 
         ! They could be different, even though the usually are not!
-        CALL Info(Caller,'Reading permutation order for: '//TRIM(Row),Level=12)
+        CALL Info(Caller,'Reading permutation order for: '//TRIM(Row),Level=20)
         CALL ReadPerm( RestartUnit, Perm, GotPerm )           
         IF( GotPerm ) THEN
-          CALL Info(Caller,'Succesfully read permutation order for: '//TRIM(Row),Level=20)
+          CALL Info(Caller,'Maximum value for permutation order for "'//TRIM(Row)//'" is '//I2S(MAXVAL(Perm)),Level=12)
         END IF
           
         IF( LoadThis ) THEN
@@ -4760,7 +4755,7 @@ CONTAINS
           ELSE
             n = FieldSize
           END IF
-          CALL Info(Caller,'Size of load loop is '//I2S(n),Level=15)
+          CALL Info(Caller,'Size of load loop is '//I2S(n),Level=20)
 
           ! If we are renaming the variable also then do it
           j = FileVariableInfo(i,4) 
