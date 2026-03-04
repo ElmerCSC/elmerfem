@@ -370,13 +370,20 @@ CONTAINS
     IF( NodalMode ) THEN
       IP = GaussPoints(Element)
     ELSE
-      IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+      IP = GaussPoints(Element, PReferenceElement=PiolaVersion, EdgeBasisDegree = EdgeBasisDegree)
     END IF
 
     DO t=1,IP % n  
-      
-      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-          IP % W(t), detJ, Basis, dBasisdx )              
+
+      IF( NodalMode ) THEN
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+            IP % W(t), detJ, Basis, dBasisdx )
+      ELSE
+        ! We need basis functions defined over the p-reference element
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+            IP % W(t), detJ, Basis, dBasisdx, EdgeBasis = Wbasis, &
+            USolver = pSolver )
+      END IF
       weight = IP % s(t) * detJ
 
       B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
