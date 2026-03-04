@@ -30,6 +30,8 @@ Solver 1
   Variable DOFs = 1
   Procedure = "LinearFormsAssembly" "LinearFormsAssembly"
 
+  Bubbles in global system = true
+
   Norm Variable Index = Integer 1
 
   Optimize Bandwidth = False

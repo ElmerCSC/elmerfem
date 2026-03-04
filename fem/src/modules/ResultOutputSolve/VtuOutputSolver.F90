@@ -719,7 +719,7 @@ CONTAINS
     INTEGER, PARAMETER :: VtuUnit = 58
     INTEGER :: i,ii,j,jj,k,dofs,Rank,n,m,dim,vari,sdofs,dispdofs, dispBdofs, Offset, &
         NoFields, NoFields2, IndField, iField, iField0, NoModes, NoModes2, NoFieldsWritten, &
-        cumn, iostat
+        cumn, iostat, NoTooBig, nofs
     CHARACTER(LEN=1024) :: Txt, ScalarFieldName, VectorFieldName, TensorFieldName, &
         FieldName, FieldNameB, OutStr
     CHARACTER :: lf
@@ -1225,10 +1225,11 @@ CONTAINS
                   CALL Fatal(Caller,'InvFieldPerm not associated!')
                 END IF
               END IF
+              NoTooBig = 0
+              nofs = 0
               
               IF( BinaryOutput ) WRITE( VtuUnit ) k
-
-              vals = 0
+              
               DO ii = 1, NumberOfDofNodes
 
                 IF( NoPermutation ) THEN
@@ -1238,11 +1239,18 @@ CONTAINS
                 END IF
 
                 IF( ASSOCIATED( Perm ) .AND. LagN == 0 ) THEN
-                  j = Perm(i)
+                  j = 0
+                  IF(i<1 .OR. i>SIZE(Perm)) THEN
+                    NoTooBig = NoTooBig + 1
+                  ELSE
+                    j = Perm(i)
+                  END IF
                 ELSE
                   j = i
                 END IF
 
+                IF(j>0) nofs = nofs + 1
+                
                 Use2 = .FALSE.
                 IF( ComplementExists ) THEN
                   IF( j == 0 ) THEN
@@ -1250,8 +1258,8 @@ CONTAINS
                     j = PermB(i)
                   END IF
                 END IF
-
                 
+                vals = 0.0_dp
                 DO k=1,sdofs              
                   IF(j==0 .OR. k > dofs) THEN
                     vals(k) = 0.0_dp
@@ -1346,6 +1354,14 @@ CONTAINS
 
               CALL AscBinRealWrite( 0.0_dp, .TRUE. )
 
+              IF(NoTooBig > 0) THEN
+                CALL Fatal(Caller,'Too big index for Perm in '//I2S(NoTooBig)//' nodes for '//TRIM(FieldName))
+              END IF
+              IF(ASSOCIATED(Perm)) THEN
+                CALL Info(Caller,'Number of nonzeros for "'&
+                    //TRIM(FieldName)//'" is '//I2S(nofs)//' of '//I2S(NumberOfDofNodes),Level=15)
+              END IF
+                
             END IF
 
             IF( AsciiOutput ) THEN

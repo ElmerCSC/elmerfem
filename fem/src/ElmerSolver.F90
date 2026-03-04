@@ -85,7 +85,7 @@
      USE MortarUtils, ONLY : PeriodicProjector
      USE MainUtils, ONLY : AddEquationBasics, AddEquationSolution, AddExecWhenFlag, &
          PredictorCorrectorControl, SingleSolver, SolveEquations, SolverActivate, &
-         SwapMesh
+         SetGlobalBubblesFlag, SwapMesh
      USE DefUtils, ONLY : GetSimulation, GetCompilationDate, GetRevision, GetVersion, GetBranch, &
          GetReal, GetCReal, GetLogical, GetElementNOFNodes, GetElementDOFs, GetBC, &
          GetElementFamily, GetElementNodes, VectorElementEdgeDOFs
@@ -826,8 +826,7 @@
            
          CALL FreeMatrix( iSolver % Matrix)
 
-         GB = ListGetLogical( iSolver % Values,'Bubbles in Global System', Found )
-         IF ( .NOT. Found ) GB = .TRUE.
+         GB = SetGlobalBubblesFlag(iSolver)
 
          BO = ListGetLogical( iSolver % Values,'Optimize Bandwidth', Found )
          IF ( .NOT. Found ) BO = .TRUE.
@@ -2072,14 +2071,25 @@
        CALL SetCurrentMesh( CurrentModel, Mesh )
 
        IF( InfoActive( 30 ) ) THEN
+         j = 0
          CALL Info('InitCond','Initial conditions for '//I2S(Mesh % MeshDim)//'D mesh:'//TRIM(Mesh % Name))
          Var => Mesh % Variables
          DO WHILE( ASSOCIATED(Var) ) 
            IF( ListCheckPresentAnyIC( CurrentModel, Var % Name ) ) THEN
-             CALL VectorValuesRange(Var % Values,SIZE(Var % Values),'PreInit: '//TRIM(Var % Name))       
+             !CALL VectorValuesRange(Var % Values,SIZE(Var % Values),'PreInit: '//TRIM(Var % Name))       
+           END IF
+           IF(Var % TYPE == Variable_on_nodes ) THEN
+             IF( ASSOCIATED(Var % Perm) ) THEN
+               IF(MAXVAL(Var % Perm) /= COUNT(Var % Perm > 0) ) THEN
+                 PRINT *,'Perm range for: '//TRIM(Var % Name), MAXVAL(Var % Perm), COUNT(Var % Perm /= 0), &
+                     SIZE(Var % Perm)
+                 j = j+1
+               END IF
+             END IF
            END IF
            Var => Var % Next
          END DO
+         IF(j>0) CALL Fatal('InitCond','Mismatch in '//I2S(j)//' nodal permutations!')         
        END IF
        
        m = Mesh % MaxElementDofs
