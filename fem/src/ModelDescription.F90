@@ -4140,7 +4140,7 @@ CONTAINS
     TYPE(Solver_t),   POINTER :: Solver
     TYPE(Variable_t), POINTER :: TimeVar, tStepVar
 
-    LOGICAL :: RestartFileOpen = .FALSE., Cont, Found, LoadThis, ThisIp, UsePerm
+    LOGICAL :: RestartFileOpen = .FALSE., Cont, Found, LoadThis, ThisIp, UsePerm, NewPerm
     LOGICAL, SAVE :: PosFile = .FALSE.
     LOGICAL, SAVE :: Binary, GotPerm, GotIt, CreateVariables
     INTEGER, SAVE, ALLOCATABLE :: FileVariableInfo(:,:)
@@ -4793,7 +4793,9 @@ CONTAINS
             END IF
           END IF
 
-
+          NewPerm = .FALSE.
+          IF(UsePerm) NewPerm = ALL(Var % Perm == 0)
+          
           DO j=1, n
             CALL GetValue( RestartUnit, Perm, UsePerm, j, k, Val )
 
@@ -4804,11 +4806,11 @@ CONTAINS
                                     
             IF ( .NOT. UsePerm ) THEN
               Var % Values(k) = Val
-            ELSE IF ( Var % Perm(j) > 0 ) THEN
-              Var % Values(Var % Perm(j)) = Val
-            ELSE 
+            ELSE IF(NewPerm) THEN
               Var % Perm(j) = k
               Var % Values(k) = Val
+            ELSE IF ( Var % Perm(j) > 0 ) THEN
+              Var % Values(Var % Perm(j)) = Val
             END IF
           END DO
 
@@ -4985,7 +4987,11 @@ CONTAINS
       REAL(dp), INTENT(OUT) :: Val
 
       IF ( UsePerm ) THEN
-        iPerm = Perm(iNode)
+        IF(iNode > SIZE(Perm)) THEN
+          iPerm = 0
+        ELSE
+          iPerm = Perm(iNode)
+        END IF
       ELSE
         iPerm = iNode
       END IF
