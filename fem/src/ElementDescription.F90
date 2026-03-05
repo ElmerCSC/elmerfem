@@ -8701,185 +8701,39 @@ END SUBROUTINE PickActiveFace
              END IF
 
              IF (SecondOrder) THEN
-               !-------------------------------------------------
-               ! Two basis functions defined on the face 213:
-               !-------------------------------------------------
-               TriangleFaceMap(:) = (/ 2,1,3 /)          
-               FaceIndices(1:3) = GIndexes(TriangleFaceMap(1:3))
-               CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
-               WorkBasis(1,1) = ((4.0d0*v - Sqrt(2.0d0)*w)*&
-                   (-6.0d0 + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(48.0d0*Sqrt(3.0d0))
-               WorkBasis(1,2) = -(u*(4.0d0*v - Sqrt(2.0d0)*w))/24.0d0
-               WorkBasis(1,3) = (u*(-2.0d0*Sqrt(2.0d0)*v + w))/24.0d0
-               WorkCurlBasis(1,1) = -u/(4.0d0*Sqrt(2.0d0))
-               WorkCurlBasis(1,2) = (Sqrt(6.0d0) + 3.0d0*Sqrt(2.0d0)*v - 3.0d0*w)/24.0d0
-               WorkCurlBasis(1,3) = (Sqrt(3.0d0) - 3.0d0*v)/6.0d0
+               DO k=1,4
+                 !
+                 ! Two additional basis functions on each face
+                 !
+                 SELECT CASE(k)
+                 CASE(1)
+                   TriangleFaceMap(:) = (/ 2,1,3 /)
+                 CASE(2)
+                   TriangleFaceMap(:) = (/ 1,2,4 /)
+                 CASE(3)
+                   TriangleFaceMap(:) = (/ 2,3,4 /)
+                 CASE(4)
+                   TriangleFaceMap(:) = (/ 3,1,4 /)
+                 END SELECT
 
-               WorkBasis(2,1) = ((4.0d0*v - Sqrt(2.0d0)*w)*(-6.0d0 + 6.0d0*u + &
-                   2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(96.0d0*Sqrt(3.0d0))
-               WorkBasis(2,2) = -((4.0d0*Sqrt(3.0d0) + 4.0d0*Sqrt(3.0d0)*u - 3.0d0*Sqrt(2.0d0)*w)*&
-                   (-6.0d0 + 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/288.0d0
-               WorkBasis(2,3) = ((Sqrt(3.0d0) + Sqrt(3.0d0)*u - 3.0d0*v)*&
-                   (-6.0d0 + 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(144.0d0*Sqrt(2.0d0))
-               WorkCurlBasis(2,1) = -(-6.0d0 + 2.0d0*u + 2.0d0*Sqrt(3.0d0)*v + &
-                   Sqrt(6.0d0)*w)/(16.0d0*Sqrt(2.0d0))
-               WorkCurlBasis(2,2) = (2.0d0*Sqrt(3.0d0) - 6.0d0*Sqrt(3.0d0)*u + &
-                   6.0d0*v - 3.0d0*Sqrt(2.0d0)*w)/(48.0d0*Sqrt(2.0d0))
-               WorkCurlBasis(2,3) = (Sqrt(3.0d0) - 3.0d0*Sqrt(3.0d0)*u - 3.0d0*v)/12.0d0
+                 FaceIndices(1:3) = GIndexes(TriangleFaceMap(1:3))
+                 CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
-               WorkBasis(3,1) = -((4.0d0*v - Sqrt(2.0d0)*w)*(-6.0d0 - 6.0d0*u + &
-                   2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(96.0d0*Sqrt(3.0d0))
-               WorkBasis(3,2) = ((-4.0d0*Sqrt(3.0d0) + 4.0d0*Sqrt(3.0d0)*u + 3.0d0*Sqrt(2.0d0)*w)* &
-                   (-6.0d0 - 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/288.0d0
-               WorkBasis(3,3) = -((-Sqrt(3.0d0) + Sqrt(3.0d0)*u + 3.0d0*v)* &
-                   (-6.0d0 - 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(144.0d0*Sqrt(2.0d0))
-               WorkCurlBasis(3,1) = -(-6.0d0 - 2.0d0*u + 2.0d0*Sqrt(3.0d0)*v + &
-                   Sqrt(6.0d0)*w)/(16.0d0*Sqrt(2.0d0))
-               WorkCurlBasis(3,2) = (-2.0d0*Sqrt(3.0d0) - 6.0d0*Sqrt(3.0d0)*u - 6.0d0*v + &
-                   3.0d0*Sqrt(2.0d0)*w)/(48.0d0*Sqrt(2.0d0))
-               WorkCurlBasis(3,3) = (-Sqrt(3.0d0) - 3.0d0*Sqrt(3.0d0)*u + 3.0d0*v)/12.0d0
-
-               IF (RedefineFaceBasis) THEN
-                 EdgeBasis(13,:) = 0.5d0 * D1 * WorkBasis(I1,:) + 0.5d0 * D2 * WorkBasis(I2,:)
-                 CurlBasis(13,:) = 0.5d0 * D1 * WorkCurlBasis(I1,:) + 0.5d0 * D2 * WorkCurlBasis(I2,:)
-                 EdgeBasis(14,:) = 0.5d0 * D2 * WorkBasis(I2,:) - 0.5d0 * D1 * WorkBasis(I1,:)
-                 CurlBasis(14,:) = 0.5d0 * D2 * WorkCurlBasis(I2,:) - 0.5d0 * D1 * WorkCurlBasis(I1,:)
-               ELSE
-                 EdgeBasis(13,:) = D1 * WorkBasis(I1,:)
-                 CurlBasis(13,:) = D1 * WorkCurlBasis(I1,:)
-                 EdgeBasis(14,:) = D2 * WorkBasis(I2,:)
-                 CurlBasis(14,:) = D2 * WorkCurlBasis(I2,:)  
-               END IF
+                 CALL WeightedWhitneyForms(WorkBasis(1:3,1:3), WorkCurlBasis(1:3,1:3), k, u, v, w)
                  
-               !-------------------------------------------------
-               ! Two basis functions defined on the face 124:
-               !-------------------------------------------------
-               TriangleFaceMap(:) = (/ 1,2,4 /)          
-               FaceIndices(1:3) = GIndexes(TriangleFaceMap(1:3))
-               CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
-
-               WorkBasis(1,1) = -(w*(-6.0d0 + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(8.0d0*Sqrt(6.0d0))
-               WorkBasis(1,2) = (u*w)/(4.0d0*Sqrt(2.0d0))
-               WorkBasis(1,3) = (u*w)/8.0d0
-               WorkCurlBasis(1,1) = -u/(4.0d0*Sqrt(2.0d0))
-               WorkCurlBasis(1,2) = (Sqrt(6.0d0) - Sqrt(2.0d0)*v - 3.0d0*w)/8.0d0
-               WorkCurlBasis(1,3) = w/(2.0d0*Sqrt(2.0d0))
-
-               WorkBasis(2,1) = -(w*(-6.0d0 - 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + &
-                   Sqrt(6.0d0)*w))/(16.0d0*Sqrt(6.0d0))
-               WorkBasis(2,2) = (w*(1.0d0 + u - v/Sqrt(3.0d0) - w/Sqrt(6.0d0)))/(8.0d0*Sqrt(2.0d0))
-               WorkBasis(2,3) = ((-Sqrt(3.0d0) + Sqrt(3.0d0)*u + v)* &
-                   (-6.0d0 - 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(48.0d0*Sqrt(2.0d0))
-               WorkCurlBasis(2,1) = (-3.0d0*Sqrt(2.0d0) - Sqrt(2.0d0)*u + Sqrt(6.0d0)*v + Sqrt(3.0d0)*w)/16.0d0
-               WorkCurlBasis(2,2) = (Sqrt(6.0d0) + 3.0d0*Sqrt(6.0d0)*u - Sqrt(2.0d0)*v - 3.0d0*w)/16.0d0
-               WorkCurlBasis(2,3) =  w/(4.0d0*Sqrt(2.0d0))
-
-               WorkBasis(3,1) = (w*(-6.0d0 + 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(16.0d0*Sqrt(6.0d0))
-               WorkBasis(3,2) = -(w*(-6.0d0 + 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(48.0d0*Sqrt(2.0d0))
-               WorkBasis(3,3) = -((Sqrt(6.0d0) + Sqrt(6.0d0)*u - Sqrt(2.0d0)*v)*&
-                   (-6.0d0 + 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/96.0d0
-               WorkCurlBasis(3,1) = (-3.0d0*Sqrt(2.0d0) + Sqrt(2.0d0)*u + Sqrt(6.0d0)*v + Sqrt(3.0d0)*w)/16.0d0
-               WorkCurlBasis(3,2) = (-Sqrt(6.0d0) + 3.0d0*Sqrt(6.0d0)*u + Sqrt(2.0d0)*v + 3.0d0*w)/16.0d0
-               WorkCurlBasis(3,3) = -w/(4.0d0*Sqrt(2.0d0))
-               
-               IF (RedefineFaceBasis) THEN
-                 EdgeBasis(15,:) = 0.5d0 * D1 * WorkBasis(I1,:) + 0.5d0 * D2 * WorkBasis(I2,:)
-                 CurlBasis(15,:) = 0.5d0 * D1 * WorkCurlBasis(I1,:) + 0.5d0 * D2 * WorkCurlBasis(I2,:)
-                 EdgeBasis(16,:) = 0.5d0 * D2 * WorkBasis(I2,:) - 0.5d0 * D1 * WorkBasis(I1,:)
-                 CurlBasis(16,:) = 0.5d0 * D2 * WorkCurlBasis(I2,:) - 0.5d0 * D1 * WorkCurlBasis(I1,:)
-               ELSE
-                 EdgeBasis(15,:) = D1 * WorkBasis(I1,:)
-                 CurlBasis(15,:) = D1 * WorkCurlBasis(I1,:)
-                 EdgeBasis(16,:) = D2 * WorkBasis(I2,:)
-                 CurlBasis(16,:) = D2 * WorkCurlBasis(I2,:)  
-               END IF
-                 
-               !-------------------------------------------------
-               ! Two basis functions defined on the face 234:
-               !-------------------------------------------------
-               TriangleFaceMap(:) = (/ 2,3,4 /)          
-               FaceIndices(1:3) = GIndexes(TriangleFaceMap(1:3))
-               CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
-
-               WorkBasis(1,1) = (w*(-2.0d0*Sqrt(2.0d0)*v + w))/16.0d0
-               WorkBasis(1,2) = (w*(4.0d0*Sqrt(3.0d0) + 4.0d0*Sqrt(3.0d0)*u - &
-                   3.0d0*Sqrt(2.0d0)*w))/(16.0d0*Sqrt(6.0d0))
-               WorkBasis(1,3) = -((1.0d0 + u - Sqrt(3.0d0)*v)*w)/16.0d0
-               WorkCurlBasis(1,1) = (-2.0d0*Sqrt(2.0d0) - 2.0d0*Sqrt(2.0d0)*u + 3.0d0*Sqrt(3.0d0)*w)/16.0d0
-               WorkCurlBasis(1,2) = (-2.0d0*Sqrt(2.0d0)*v + 3.0d0*w)/16.0d0
-               WorkCurlBasis(1,3) = w/(2.0d0*Sqrt(2.0d0))
-
-               WorkBasis(2,1) = (w*(-2.0d0*Sqrt(2.0d0)*v + w))/16.0d0
-               WorkBasis(2,2) = -(w*(-4.0d0*v + Sqrt(2.0d0)*w))/(16.0d0*Sqrt(6.0d0))
-               WorkBasis(2,3) = -((Sqrt(6.0d0) + Sqrt(6.0d0)*u - Sqrt(2.0d0)*v)*&
-                   (-4.0d0*v + Sqrt(2.0d0)*w))/(32.0d0*Sqrt(3.0d0))
-               WorkCurlBasis(2,1) = (2.0d0*Sqrt(2.0d0) + 2.0d0*Sqrt(2.0d0)*u - &
-                   2.0d0*Sqrt(6.0d0)*v + Sqrt(3.0d0)*w)/16.0d0
-               WorkCurlBasis(2,2) = (-4.0d0*Sqrt(2.0d0)*v + 3.0d0*w)/16.0d0
-               WorkCurlBasis(2,3) = w/(4.0d0*Sqrt(2.0d0))
-
-               WorkBasis(3,1) = 0.0d0
-               WorkBasis(3,2) = (w*(-6.0d0 - 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(24.0d0*Sqrt(2.0d0))
-               WorkBasis(3,3) = -(v*(-6.0d0 - 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(24.0d0*Sqrt(2.0d0))
-               WorkCurlBasis(3,1) = (2.0d0*Sqrt(2.0d0) + 2.0d0*Sqrt(2.0d0)*u - Sqrt(6.0d0)*v - Sqrt(3.0d0)*w)/8.0d0
-               WorkCurlBasis(3,2) = -v/(4.0d0*Sqrt(2.0d0))
-               WorkCurlBasis(3,3) = -w/(4.0d0*Sqrt(2.0d0))
-
-               IF (RedefineFaceBasis) THEN
-                 EdgeBasis(17,:) = 0.5d0 * D1 * WorkBasis(I1,:) + 0.5d0 * D2 * WorkBasis(I2,:) 
-                 CurlBasis(17,:) = 0.5d0 * D1 * WorkCurlBasis(I1,:) + 0.5d0 * D2 * WorkCurlBasis(I2,:)
-                 EdgeBasis(18,:) = 0.5d0 * D2 * WorkBasis(I2,:) - 0.5d0 * D1 * WorkBasis(I1,:)
-                 CurlBasis(18,:) = 0.5d0 * D2 * WorkCurlBasis(I2,:) - 0.5d0 * D1 * WorkCurlBasis(I1,:)
-               ELSE
-                 EdgeBasis(17,:) = D1 * WorkBasis(I1,:)
-                 CurlBasis(17,:) = D1 * WorkCurlBasis(I1,:)
-                 EdgeBasis(18,:) = D2 * WorkBasis(I2,:)
-                 CurlBasis(18,:) = D2 * WorkCurlBasis(I2,:)  
-               END IF
-               
-               !-------------------------------------------------
-               ! Two basis functions defined on the face 314:
-               !-------------------------------------------------
-               TriangleFaceMap(:) = (/ 3,1,4 /)          
-               FaceIndices(1:3) = GIndexes(TriangleFaceMap(1:3))
-               CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
-
-               WorkBasis(1,1) = (w*(-2.0d0*Sqrt(2.0d0)*v + w))/16.0d0
-               WorkBasis(1,2) = (w*(-4.0d0*Sqrt(3.0d0) + 4.0d0*Sqrt(3.0d0)*u + &
-                   3.0d0*Sqrt(2.0d0)*w))/(16.0d0*Sqrt(6.0d0))
-               WorkBasis(1,3) = -((-1.0d0 + u + Sqrt(3.0d0)*v)*w)/16.0d0
-               WorkCurlBasis(1,1) = (2.0d0*Sqrt(2.0d0) - 2.0d0*Sqrt(2.0d0)*u - 3.0d0*Sqrt(3.0d0)*w)/16.0d0
-               WorkCurlBasis(1,2) = (-2.0d0*Sqrt(2.0d0)*v + 3.0d0*w)/16.0d0
-               WorkCurlBasis(1,3) = w/(2.0d0*Sqrt(2.0d0))
-
-               WorkBasis(2,1) = 0.0d0
-               WorkBasis(2,2) = (w*(-6.0d0 + 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(24.0d0*Sqrt(2.0d0))
-               WorkBasis(2,3) = -(v*(-6.0d0 + 6.0d0*u + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/(24.0d0*Sqrt(2.0d0))
-               WorkCurlBasis(2,1) = (2.0d0*Sqrt(2.0d0) - 2.0d0*Sqrt(2.0d0)*u - Sqrt(6.0d0)*v - Sqrt(3.0d0)*w)/8.0d0
-               WorkCurlBasis(2,2) = v/(4.0d0*Sqrt(2.0d0))
-               WorkCurlBasis(2,3) =  w/(4.0d0*Sqrt(2.0d0))
-
-               WorkBasis(3,1) = ((2.0d0*Sqrt(2.0d0)*v - w)*w)/16.0d0
-               WorkBasis(3,2) = -(w*(-4.0d0*v + Sqrt(2.0d0)*w))/(16.0d0*Sqrt(6.0d0))
-               WorkBasis(3,3) = ((-Sqrt(3.0d0) + Sqrt(3.0d0)*u + v)*&
-                   (-4.0d0*v + Sqrt(2.0d0)*w))/(16.0d0*Sqrt(6.0d0))
-               WorkCurlBasis(3,1) = (2.0d0*Sqrt(2.0d0) - 2.0d0*Sqrt(2.0d0)*u - &
-                   2.0d0*Sqrt(6.0d0)*v + Sqrt(3.0d0)*w)/16.0d0
-               WorkCurlBasis(3,2) = (4.0d0*Sqrt(2.0d0)*v - 3.0d0*w)/16.0d0
-               WorkCurlBasis(3,3) =  -w/(4.0d0*Sqrt(2.0d0))
-
-               IF (RedefineFaceBasis) THEN
-                 EdgeBasis(19,:) = 0.5d0 * D1 * WorkBasis(I1,:) + 0.5d0 * D2 * WorkBasis(I2,:)
-                 CurlBasis(19,:) = 0.5d0 * D1 * WorkCurlBasis(I1,:) + 0.5d0 * D2 * WorkCurlBasis(I2,:)
-                 EdgeBasis(20,:) = 0.5d0 * D2 * WorkBasis(I2,:) - 0.5d0 * D1 * WorkBasis(I1,:)
-                 CurlBasis(20,:) = 0.5d0 * D2 * WorkCurlBasis(I2,:) - 0.5d0 * D1 * WorkCurlBasis(I1,:)
-               ELSE
-                 EdgeBasis(19,:) = D1 * WorkBasis(I1,:)
-                 CurlBasis(19,:) = D1 * WorkCurlBasis(I1,:)
-                 EdgeBasis(20,:) = D2 * WorkBasis(I2,:)
-                 CurlBasis(20,:) = D2 * WorkCurlBasis(I2,:)
-               END IF
+                 IF (RedefineFaceBasis) THEN
+                   EdgeBasis(12+2*(k-1)+1,:) = 0.5d0 * D1 * WorkBasis(I1,:) + 0.5d0 * D2 * WorkBasis(I2,:)
+                   CurlBasis(12+2*(k-1)+1,:) = 0.5d0 * D1 * WorkCurlBasis(I1,:) + 0.5d0 * D2 * WorkCurlBasis(I2,:)
+                   EdgeBasis(12+2*k,:) = 0.5d0 * D2 * WorkBasis(I2,:) - 0.5d0 * D1 * WorkBasis(I1,:)
+                   CurlBasis(12+2*k,:) = 0.5d0 * D2 * WorkCurlBasis(I2,:) - 0.5d0 * D1 * WorkCurlBasis(I1,:)
+                 ELSE
+                   EdgeBasis(12+2*(k-1)+1,:) = D1 * WorkBasis(I1,:)
+                   CurlBasis(12+2*(k-1)+1,:) = D1 * WorkCurlBasis(I1,:)
+                   EdgeBasis(12+2*k,:) = D2 * WorkBasis(I2,:)
+                   CurlBasis(12+2*k,:) = D2 * WorkCurlBasis(I2,:)  
+                 END IF
+               END DO
                  
                ! Finally, scale to reduce ill-conditioning:
                IF (ScaleFaceBasis) THEN
@@ -9640,6 +9494,9 @@ END SUBROUTINE PickActiveFace
            EdgeMap => GetEdgeMap(7)
 
            IF (SecondOrder) THEN
+!             IF (Simplicial) THEN
+
+!             ELSE
              !---------------------------------------------------------------
              ! The second-order element from the Nedelec's first family 
              ! (note that the lowest-order prism element is from a different 
@@ -10015,7 +9872,7 @@ END SUBROUTINE PickActiveFace
                EdgeBasis(35:36,1:2) = sqrt(150.0d0) * EdgeBasis(35:36,1:2)
                CurlBasis(35:36,1:3) = sqrt(150.0d0) * CurlBasis(35:36,1:3)
              END IF
-             
+!             END IF
            ELSE
              !--------------------------------------------------------------
              ! The lowest-order element from the optimal family. The optimal
