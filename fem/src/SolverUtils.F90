@@ -9895,7 +9895,8 @@ CONTAINS
               CALL TangentDirections( BoundaryNormals(k,:),  &
                   BoundaryTangent1(k,:), BoundaryTangent2(k,:) )
               IF( RotSystem ) THEN
-                IF( SUM(BoundaryTangent2(k,:)) < 0.0 ) THEN
+                ! We want to always have n_z as positive in cylinder system.
+                IF( BoundaryTangent2(k,3) < 0.0 ) THEN
                   BoundaryTangent2(k,:) = -BoundaryTangent2(k,:)
                 END IF
               ELSE IF( LhsSystem ) THEN
