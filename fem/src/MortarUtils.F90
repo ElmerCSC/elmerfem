@@ -1201,7 +1201,7 @@ CONTAINS
     ElemCode = Element % TYPE % ElementCode 
     LinCode = 101 * ne
     IF( pElemBasis ) THEN
-      nd = mGetElementDOFs(pIndexes,Element)
+      nd = mGetElementDOFs(pIndexes,Element,notDG=.TRUE.)
       Indexes => pIndexes
     ELSE
       nd = n
@@ -1213,7 +1213,7 @@ CONTAINS
     ElemCodeM = Element % TYPE % ElementCode 
     LinCodeM = 101 * neM
     IF( pElemBasis ) THEN
-      ndM = mGetElementDOFs(pIndexesM,ElementM)
+      ndM = mGetElementDOFs(pIndexesM,ElementM,notDG=.TRUE.)
       Indexes => pIndexesM
     ELSE
       ndM = nM
@@ -1417,7 +1417,7 @@ CONTAINS
        
     n = Element % TYPE % NumberOfNodes   
     IF( pElemBasis ) THEN    
-      nd = mGetElementDOFs(pIndexes,Element)
+      nd = mGetElementDOFs(pIndexes,Element,NotDG=.TRUE.)
       Indexes => pIndexes
     ELSE
       nd = n
@@ -1426,7 +1426,7 @@ CONTAINS
 
     nM = ElementM % TYPE % NumberOfNodes      
     IF( pElemBasis ) THEN    
-      ndM = mGetElementDOFs(pIndexesM,ElementM)
+      ndM = mGetElementDOFs(pIndexesM,ElementM,NotDG=.TRUE.)
       IndexesM => pIndexesM
     ELSE
       ndM = nM
@@ -1656,7 +1656,7 @@ CONTAINS
        
     n = Element % TYPE % NumberOfNodes   
     IF( pElemBasis ) THEN    
-      nd = mGetElementDOFs(pIndexes,Element)
+      nd = mGetElementDOFs(pIndexes,Element,NotDG=.TRUE.)
       Indexes => pIndexes
     ELSE
       nd = n
@@ -1665,7 +1665,7 @@ CONTAINS
 
     nM = ElementM % TYPE % NumberOfNodes      
     IF( pElemBasis ) THEN    
-      ndM = mGetElementDOFs(pIndexesM,ElementM)
+      ndM = mGetElementDOFs(pIndexesM,ElementM,NotDG=.TRUE.)
       IndexesM => pIndexesM
     ELSE
       ndM = nM
@@ -2853,7 +2853,7 @@ CONTAINS
         
         Element => BMesh1 % Elements(ind)        
         
-        nd = mGetElementDOFs(Indexes,Element)
+        nd = mGetElementDOFs(Indexes,Element,NotDG=.TRUE.)
         n = Element % TYPE % NumberOfNodes
         ne = 2
         
@@ -2971,7 +2971,7 @@ CONTAINS
                     
           ElementM => BMesh2 % Elements(indM)
           
-          ndM = mGetElementDOFs(IndexesM,ElementM)
+          ndM = mGetElementDOFs(IndexesM,ElementM,NotDG=.TRUE.)
           nM = ElementM % TYPE % NumberOfNodes
           neM = ElementM % TYPE % ElementCode / 100
           IF(.NOT.pElemBasis) ndM = nM
@@ -6474,7 +6474,7 @@ CONTAINS
         DO indM=1,BMesh2 % NumberOfBulkElements
           
           ElementM => BMesh2 % Elements(indM)        
-          ndM = mGetElementDOFs(IndexesM,ElementM)
+          ndM = mGetElementDOFs(IndexesM,ElementM,NotDG=.TRUE.)
 
           nM = ElementM % TYPE % NumberOfNodes
           IF(.NOT.pElemBasis) ndM = nM
