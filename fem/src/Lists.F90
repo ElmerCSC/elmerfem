@@ -5613,6 +5613,44 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+!> Prepares real valued keyword such that parallel dependencies are treated.
+!> Just checks the dependence similarly as ListGetReal but does not actually
+!> fetch any values, only activate the interpolation when using VariableGet.
+!------------------------------------------------------------------------------
+   SUBROUTINE ListPrepareRealDependence( List,Name ) 
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*)  :: Name
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     TYPE(VariableTable_t) :: VarTable(MAX_FNC)
+     INTEGER :: VarCount
+     LOGICAL :: Found, AllGlobal, SomeAtIp, SomeAtNodes
+!------------------------------------------------------------------------------
+
+     ptr => ListFind(List,Name,Found)
+     IF (.NOT.ASSOCIATED(ptr) ) RETURN
+     
+     
+     SELECT CASE(ptr % TYPE)
+       
+     CASE( LIST_TYPE_VARIABLE_SCALAR, &
+         LIST_TYPE_VARIABLE_SCALAR_STR )
+       
+       CALL ListPushActiveName(Name)
+       
+       CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, Name, VarCount, VarTable, &
+           SomeAtIp, SomeAtNodes, AllGlobal, 0, List )
+       
+       CALL ListPopActiveName()
+     END SELECT
+      
+   END SUBROUTINE ListPrepareRealDependence
+!------------------------------------------------------------------------------
+
+   
+
+!------------------------------------------------------------------------------
 !> Gets a real valued parameter for one node. This is a special
 !> version of this routine only for keywords depending on keywords.
 !------------------------------------------------------------------------------
