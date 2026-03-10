@@ -5200,8 +5200,16 @@ CONTAINS
             Model % BCs(bc) % Values, Name(1:nlen) // ' DOFs' )
       ActivePart(BC) = ListCheckPresent( Model % BCs(bc) % Values, Name ) 
       ActiveCond(BC) = ListCheckPresent( Model % BCs(bc) % Values, CondName )      
+
+      IF(ActivePart(BC)) THEN
+        CALL ListPrepareRealDependence( Model % BCs(bc) % Values, Name ) 
+      END IF
+      IF(ActiveCond(BC)) THEN
+        CALL ListPrepareRealDependence( Model % BCs(bc) % Values, CondName ) 
+      END IF
     END DO
 
+    
     OrderByBCNumbering = ListGetLogical( Model % Simulation, &
        'Set Dirichlet BCs by BC Numbering', gotIt)
 
