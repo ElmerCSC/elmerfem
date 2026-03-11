@@ -4519,7 +4519,7 @@ CONTAINS
           TrueElement => Mesh % Faces(Element % ElementIndex)
           nd = mGetElementDOFs(Indexes, TrueElement, notDG = .TRUE.)
         ELSE
-          nd = mGetElementDOFs(Indexes,Element)
+          nd = mGetElementDOFs(Indexes,Element,NotDG=.TRUE.)
         END IF
 
         n = Element % TYPE % NumberOfNodes
@@ -4700,7 +4700,7 @@ CONTAINS
             TrueElementM => Mesh % Faces(ElementM % ElementIndex)
             ndM = mGetElementDOFs(IndexesM,TrueElementM, notDG = .TRUE.)
           ELSE
-            ndM =  mGetElementDOFs(IndexesM,ElementM)
+            ndM =  mGetElementDOFs(IndexesM,ElementM,NotDG=.TRUE.)
           END IF
           
           neM = ElementM % TYPE % ElementCode / 100
@@ -6407,7 +6407,7 @@ CONTAINS
 
         Element => BMesh1 % Elements(ind)        
 
-        nd = mGetElementDOFs(Indexes,Element)
+        nd = mGetElementDOFs(Indexes,Element,NotDG=.TRUE.)
         n = Element % TYPE % NumberOfNodes
         IF(.NOT. pElemBasis) nd = n
 
