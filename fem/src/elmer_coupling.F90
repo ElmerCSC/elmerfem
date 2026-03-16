@@ -172,11 +172,11 @@ CONTAINS
 
     ! register runoff field in YAC
     CALL yac_fdef_field( &
-      runoff_field_name, comp_id, (/corner_point_id/), 1, runoff_collection_size, &
+      runoff_field_name, comp_id, (/cell_point_id/), 1, runoff_collection_size, &
       timestepstring, YAC_TIME_UNIT_HOUR, runoff_field_id);
 
     ! allocate and initialise runoff field buffer
-    ALLOCATE(runoff_field(nbr_vertices, runoff_collection_size))
+    ALLOCATE(runoff_field(nbr_cells, runoff_collection_size))
     runoff_field = 0.0
 
     ! register surface_height field in YAC

@@ -98,24 +98,25 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
       ! this coul dbe replaced by an automatic picking of the names and the DOFs
       ! from the coupling-deifnitions
       ! nodal variable
-      ALLOCATE(t_icePerm(Mesh % NumberOfNodes), runoffPerm(Mesh % NumberOfNodes), &
+      ALLOCATE(t_icePerm(Mesh % NumberOfNodes), runoffPerm(GetNOFActive(Solver)), &
           smbPerm(GetNOFActive(Solver)))
       DO i=1,Mesh % NumberOfNodes
         t_icePerm(i) = i
-        runoffPerm(i) = i
       END DO
 
       ! This is for a element(cell) variables
       DO t=1,GetNOFActive(Solver)
         smbPerm(t) = t
+        runoffPerm(t) = t
       END DO
 
       ! nodal variables (everything that is not a flux)
       CALL DefaultVariableAdd('T_ice', dofs=1, Perm = t_icePerm)
-      CALL DefaultVariableAdd('runoff', dofs=1, Perm = runoffPerm)
+      !CALL DefaultVariableAdd('runoff', dofs=1, Perm = runoffPerm)
 
       ! element wise (cell) variable
       CALL DefaultVariableAdd('smb', dofs=1, VariableType = Variable_on_elements, Perm = smbPerm)
+      CALL DefaultVariableAdd('runoff', dofs=1, VariableType = Variable_on_elements, Perm = runoffPerm)
 
       ! get surface elevation from Elmer for the first time step
       ZsSol => VariableGet( Model % Mesh % Variables, "Zs" ,UnFoundFatal=UnFoundFatal)
@@ -167,13 +168,13 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
        !write over values for nodes
       DO i=1, Mesh % NumberOfNodes
         t_iceVar % Values(t_iceVar % Perm(i)) = t_ice_field(i,1)
-        runoffVar  % Values(runoffVar %  Perm(i)) = runoff_field(i,1)
         surface_height_field(i,1) = ZsSol % Values(ZsSol % Perm(i))
       END DO
       CALL INFO(SolverName, 'BEFORE WRITING ELEMENT VALUES', Level=3)
       ! write over values for elements
       DO t=1, GetNOFActive(Solver)
          smbVar  % Values(smbVar %  Perm(t)) = smb_field(t,1)
+         runoffVar  % Values(runoffVar %  Perm(t)) = runoff_field(t,1)
       END DO
       !CALL INFO(SolverName, "Test output start", Level=1)
       !PRINT *, "Size of clt_field", SIZE(clt_field, 1),"First entry:", clt_field(1,1)
