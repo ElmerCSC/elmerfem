@@ -550,10 +550,13 @@ IF(MPI_FOUND)
     SET(PERMON_INCLUDE_DIR "${PERMON_DIR}/include")
     SET(PERMON_LIB_DIR     "${PERMON_DIR}/${PETSC_ARCH}/lib")
     MESSAGE(STATUS "DEBUG PERMON_DIR=${PERMON_DIR} PETSC_ARCH=${PETSC_ARCH}")
-    SET(PERMON_LIBRARIES   "${PERMON_LIB_DIR}/libpermon.so")
-
-    IF(NOT EXISTS "${PERMON_LIBRARIES}")
-      MESSAGE(FATAL_ERROR "Could not find libpermon.so at ${PERMON_LIBRARIES}")
+    
+    IF(EXISTS "${PERMON_LIB_DIR}/libpermon.so")
+      SET(PERMON_LIBRARIES "${PERMON_LIB_DIR}/libpermon.so")
+    ELSEIF(EXISTS "${PERMON_LIB_DIR}/libpermon.a")
+      SET(PERMON_LIBRARIES "${PERMON_LIB_DIR}/libpermon.a")
+    ELSE()
+      MESSAGE(FATAL_ERROR "Could not find libpermon.so or libpermon.a at ${PERMON_LIB_DIR}")
     ENDIF()
 
     INCLUDE_DIRECTORIES(${PERMON_INCLUDE_DIR})
