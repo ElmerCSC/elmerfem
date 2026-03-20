@@ -1918,7 +1918,7 @@ CONTAINS
 
        IF ( dofs==1 ) THEN ! Poisson
 
-          val = SUM(Grad2*Nrm) * Phi + SUM(Grad2*Nrm) * Phi2  + Coeff * Phi * Phi2
+          val = SUM(Grad2*Nrm) * Phi + SUM(Grad1*Nrm) * Phi2  + Coeff * Phi * Phi2
           LocalMatrix(j,i) =  LocalMatrix(j,i) + Weight*val
 
        ELSE  ! lin. elast.
