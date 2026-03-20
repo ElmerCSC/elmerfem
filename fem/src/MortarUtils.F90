@@ -1604,7 +1604,9 @@ CONTAINS
     INTEGER :: i,j,ii,jj,n,nd,nM,ndM,nrow,nip
     INTEGER, POINTER :: Indexes(:), IndexesM(:)
     REAL(KIND=dp) :: val, val_dual, u, v, w, um, vm, wm, xt, yt, zt, weight,DetJ
-    REAL(KIND=dp), ALLOCATABLE :: BasisT(:),Basis(:), BasisM(:),pBasis(:),pBasisM(:),dBasisdx(:,:), dBasisdxM(:,:)
+    INTEGER, ALLOCATABLE :: NodeIndexes(:)
+    REAL(KIND=dp), ALLOCATABLE :: BasisT(:),Basis(:), BasisM(:),pBasis(:),pBasisM(:),dBasisdx(:,:), dBasisdxM(:,:), &
+            LocalMatrix(:,:), LocalVector(:)
     LOGICAL :: AllocationsDone = .FALSE., Found
     TYPE(Matrix_t), POINTER :: DualProjector 
     LOGICAL :: Stat
@@ -1612,15 +1614,20 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Element_t), POINTER :: TrueElement, TrueElementM, Parent, ParentM
     TYPE(Nodes_t), SAVE :: TrueNodes, TrueNodesM, ParentNodes, ParentNodesM
-    INTEGER :: np, npM, Lcols(20)
-    REAL(KIND=dp) :: Nrm(3), NrmM(3), Esize, EsizeM, Gamma, Cond, LVals(20)
+    INTEGER :: np, npM, Lcols(32,32), LRows(32)
+    REAL(KIND=dp) :: Nrm(3), NrmM(3), Esize, EsizeM, Gamma, Cond, LVals(32), ud(2,2)
     INTEGER, ALLOCATABLE, TARGET :: Ind(:), IndM(:), pIndexes(:), pIndexesM(:)
     INTEGER, SAVE :: sgns(4), previ=-1
 
-    
-    SAVE :: BasisT, Basis, BasisM, pBasis, pBasisM, dBasisdx, dBasisdxM, Ind, IndM, pIndexes, pIndexesM
+    INTEGER :: dofs, k, l
+    TYPE(Solver_t), POINTER :: Solver
+
+    SAVE :: BasisT, Basis, BasisM, pBasis, pBasisM, dBasisdx, dBasisdxM, Ind, IndM, pIndexes, pIndexesM, &
+                              localmatrix,localvector,nodeindexes
 
     Mesh => CurrentModel % Mesh
+    Solver => CurrentModel % Solver
+    dofs = Solver % Variable % DOFs
 
     ! Testing to test different sign conventions. 
     i = NINT( ListGetCReal( CurrentModel % Simulation,'signs', Found ) )
@@ -1645,14 +1652,16 @@ CONTAINS
       END IF
       PRINT *,'signs:',previ,sgns
     END IF
-      
-          
+
+
     IF(.NOT. AllocationsDone ) THEN
       n = CurrentModel % Mesh % MaxElementDofs
       ALLOCATE(BasisT(n),Basis(n),BasisM(n),pBasis(n),pBasisM(n),dBasisdx(n,3), dBasisdxM(n,3), &
-          Indexes(n), IndexesM(n), Ind(n), IndM(n))
+              Indexes(n), IndexesM(n), Ind(n), IndM(n), NodeIndexes(2*n), &
+                 localmatrix(dofs*2*n,dofs*2*n), localvector(dofs*2*n))
       AllocationsDone = .TRUE.
     END IF
+
        
     n = Element % TYPE % NumberOfNodes   
     IF( pElemBasis ) THEN    
@@ -1683,7 +1692,7 @@ CONTAINS
     Basis = 0.0_dp
     BasisM = 0.0_dp
 
-    TrueElement => Mesh % Elements(Element % ElementIndex)
+    TrueElement  => Mesh % Elements(Element % ElementIndex)
     TrueElementM => Mesh % Elements(ElementM % ElementIndex)
 
     CALL CopyElementNodesFromMesh(TrueNodes, Mesh, n, TrueElement % NodeIndexes)
@@ -1712,13 +1721,15 @@ CONTAINS
         
     Gamma = ListGetCReal(BC,'Nitsche Penalty',Found)
     IF(.NOT. Found) Gamma = 1.0e-3
+
     Cond = ListGetCReal(BC,'Nitsche Conductivity',Found)
     IF(.NOT. Found) Cond = 1.0_dp
 
-    
+    LocalMatrix = 0
+    lcols = 0
+
     DO nip=1, IPT % n 
-      stat = ElementInfo( ElementT,NodesT,IPT % u(nip),&
-          IPT % v(nip),IPT % w(nip),detJ,BasisT)
+      stat = ElementInfo(ElementT,NodesT,IPT % u(nip),IPT % v(nip),IPT % w(nip),detJ,BasisT)
       
       ! Global coordinate of the integration point
       xt = SUM( BasisT(1:2) * NodesT % x(1:2) )
@@ -1758,8 +1769,7 @@ CONTAINS
       stat = ElementInfo( TrueElementM, TrueNodesM, um, vm, wm, detJ, BasisM )
       
       CALL FindParentUVW( TrueElementM, nM, ParentM, npM, Um, Vm, Wm, BasisM )            
-      stat = ElementInfo( ParentM, ParentNodesM, &
-          Um, Vm, Wm, detJ, pBasisM, dBasisdxM )
+      stat = ElementInfo( ParentM, ParentNodesM, Um, Vm, Wm, detJ, pBasisM, dBasisdxM )
       
       DO i=1,nM
         DO ii=1,npM
@@ -1774,64 +1784,164 @@ CONTAINS
         ! Testing with Basis(j)
         jj = Indexes(j)                                    
         IF (j<=n) jj = InvPerm(jj)
+        NodeIndexes(j) = TrueElement % NodeIndexes(j)
+        if ( jj /= Trueelement % nodeindexes(j) ) stop 'j'
+
+        DO k=1,dofs
+          LRows(dofs*(j-1)+k) = dofs*(jj-1)+k
+        END DO
         
         DO i=1,nd
           ii = Indexes(i)
           IF(i<=n) ii = InvPerm(ii)
 
-          LCols(i) = ii
-          LVals(i) = sgns(1) * SUM(dBasisdx(Ind(j),:)*Nrm) * Basis(i) &   ! consistency term to weakly enforce continuity of solution
-              + sgns(2) * SUM(dBasisdx(Ind(i),:)*Nrm) * Basis(j) &        ! consistency term to weakly enforce continuity of flux
-              + Basis(i) * Basis(j) / Esize / Gamma                       ! penalty term
+          DO k=1,dofs
+            DO l=1,dofs
+              lCols(dofs*(j-1) + k, dofs*(i-1) + l) = dofs*(ii-1) + l
+            END DO
+          END DO
+          CALL NitscheLocalMatrix( LocalMatrix, j, Basis(j), dBasisdx(Ind(j),:),  &
+                  i, Basis(i), dBasisdx(Ind(i),:), Nrm, Weight, Gamma/Esize, Dofs ) 
         END DO
 
         DO i=1,ndM
           ii = IndexesM(i)
           IF(i<=nM) ii = InvPermM(ii)
 
-          LCols(nd+i) = ii
-          LVals(nd+i) = -NodeScale * ( sgns(3) * SUM(dBasisdx(Ind(j),:)*Nrm) * BasisM(i) &
-              + sgns(4) * SUM(dBasisdxM(IndM(i),:)*NrmM) * Basis(j) &
-              + BasisM(i) * Basis(j) / Esize / Gamma )
+          DO k=1,dofs
+            DO l=1,dofs
+              lCols(dofs*(j-1) + k, dofs*(nd+i-1) + l) = dofs*(ii-1) + l
+            END DO
+          END DO
+          CALL NitscheLocalMatrix( LocalMatrix, j, Basis(j), dBasisdx(Ind(j),:),  &
+                  nd+i, BasisM(i), dBasisdxM(Ind(i),:), Nrm, -NodeScale*Weight,  Gamma/Esize, Dofs ) 
         END DO
-        LVals(1:nd+ndM) = weight * LVals(1:nd+ndM)
-        CALL List_AddMatrixRow(Projector % ListMatrix,jj,nd+ndM,Lcols,Lvals)
       END DO
+
 
       ! Dual projector
       DO j=1,ndM
         jj = IndexesM(j)                                    
         IF (j<=nM) jj = InvPermM(jj)
+        NodeIndexes(nd+j) = TrueElementM % NodeIndexes(j)
+        if ( jj /= Trueelementm % nodeindexes(j) ) stop 'j2'
+
+        DO k=1,dofs
+          LRows(dofs*(nd+j-1) + k) = dofs*(jj-1)+k
+        END DO
 
         DO i=1,ndM
           ii = IndexesM(i)
           IF(i<=nM) ii = InvPermM(ii)
 
-          LCols(i) = ii
-          LVals(i) = sgns(1) * SUM(dBasisdxM(Ind(j),:)*NrmM) * BasisM(i) &
-              + sgns(2) * SUM(dBasisdxM(IndM(i),:)*NrmM) * BasisM(j) &
-              + BasisM(i) * BasisM(j) / EsizeM / Gamma 
+          DO k=1,dofs
+            DO l=1,dofs
+              lCols(dofs*(nd+j-1) + k, dofs*(nd+i-1) + l) = dofs*(ii-1) + l
+            END DO
+          END DO
+          CALL NitscheLocalMatrix( LocalMatrix, nd+j, BasisM(j), dBasisdxM(IndM(j),:),  &
+                  nd+i, BasisM(i), dBasisdxM(Ind(i),:), Nrm, Weight, Gamma/Esize, Dofs  ) 
         END DO
         
         DO i=1,nd
           ii = Indexes(i)
           IF(i<=n) ii = InvPerm(ii)
 
-          LCols(ndM+i) = ii
-          LVals(ndM+i) = -NodeScale * ( sgns(3) * SUM(dBasisdxM(Ind(j),:)*NrmM) * Basis(i) &
-              + sgns(4) * SUM(dBasisdx(Ind(i),:)*Nrm) * BasisM(j) &
-              + Basis(i) * BasisM(j) / EsizeM / Gamma )
+          DO k=1,dofs
+            DO l=1,dofs
+              lCols(dofs*(nd+j-1) + k, dofs*(i-1) + l) = dofs*(ii-1) + l
+            END DO
+          END DO
+          CALL NitscheLocalMatrix( LocalMatrix, nd+j, BasisM(j), dBasisdxM(IndM(j),:),  &
+                  i, BasisM(i), dBasisdxM(Ind(i),:), Nrm, -NodeScale*Weight, Gamma/Esize, Dofs ) 
         END DO        
-        
-        LVals(1:nd+ndM) = weight * LVals(1:nd+ndM)
-        CALL List_AddMatrixRow(Projector % ListMatrix,jj,ndM+nd,Lcols,Lvals)
       END DO
     END DO
 
-    
+    BLOCK
+      USE ElementUtils
+
+      TYPE(Normaltangential_t), POINTER :: nt
+      INTEGER :: LNodeIndexes(dofs*(nd+ndm))
+      LOGICAL :: Init_done = .FALSE.
+
+      NT => CurrentModel % Solver % NormalTangential
+      NT % NormalTangentialNOFNodes = 0
+
+      IF ( dofs>1 .AND. .NOT. Init_done ) THEN
+        Init_Done = .TRUE.
+
+        NT => Solver % NormalTangential
+        NT % NormalTangentialNOFNodes = 0
+        NT % NormalTangentialName = 'Normal-Tangential ' // TRIM(Solver % Variable % Name)
+
+        CALL CheckNormalTangentialBoundary( CurrentModel, NT % NormalTangentialName, &
+            NT % NormalTangentialNOFNodes, NT % BoundaryReorder, &
+            NT % BoundaryNormals, NT % BoundaryTangent1, NT % BoundaryTangent2, dofs )
+      END IF
+  
+      IF ( NT % NormalTangentialNOFNodes>0 ) THEN
+        CALL AverageBoundaryNormals( CurrentModel, NT % NormalTangentialName, &
+            NT % NormalTangentialNOFNodes, NT % BoundaryReorder, &
+            NT % BoundaryNormals, NT % BoundaryTangent1, NT % BoundaryTangent2, &
+            dofs )
+
+        DO i=1,nd+ndm
+          IF ( NodeIndexes(i) > 0 .AND. NodeiNdexes(i) <= SIZE(NT % BoundaryReorder) ) THEN
+            LNodeIndexes(i) = NT % BoundaryReorder(NodeIndexes(i))
+          ELSE
+            LNodeIndexes(i) = 0
+          END IF
+        END DO
+
+        CALL RotateMatrix( LocalMatrix,LocalVector,nd+ndm,dofs,dofs, LNodeIndexes,  &
+              NT % BoundaryNormals,NT % BoundaryTangent1,NT % BoundaryTangent2 )
+      END IF
+
+      DO i=1,nd+ndm
+        DO j=1,dofs
+          CALL List_AddMatrixRow(Projector % ListMatrix,lRows(dofs*(i-1)+j),&
+                  dofs*(ndM+nd),lCols(dofs*(i-1)+j,:),LocalMatrix(dofs*(i-1)+j,:))
+        END DO
+      END DO
+    END BLOCK
+
   END SUBROUTINE TemporalSegmentNitscheAssembly
 
 
+  SUBROUTINE NitscheLocalMatrix( LocalMatrix, j, Phi, Grad1, i, Phi2, Grad2, Nrm, Coeff, Weight, Dofs )
+       INTEGER :: i,j,dofs
+       REAL(KIND=dp) :: LocalMatrix(:,:), Phi, Grad2(:), Phi2, Grad2(:), Nrm(:), Coeff, Weight
+
+       INTEGER :: l,m,p,q
+       REAL(KIND=dp) :: val, val2(2,2)
+
+       IF ( dofs==1 ) THEN ! Poisson
+
+          val = SUM(Grad2*Nrm) * Phi + SUM(Grad2*Nrm) * Phi2  + Coeff * Phi * Phi2
+          LocalMatrix(j,i) =  LocalMatrix(j,i) + Weight*val
+
+       ELSE  ! lin. elast.
+          val2(1,1) =  &
+                (Grad2(1)*Nrm(1) + Grad2(2)*Nrm(2)/2) * Phi &
+              + (Grad1(1)*Nrm(1) + Grad1(2)*Nrm(2)/2) * Phi2  + Coeff * Phi * Phi2
+
+          val2(1,2) = Grad2(1)*Nrm(2)/2*Phi + Grad1(1)*Nrm(2)/2*Phi2
+          val2(2,1) = Grad2(2)*Nrm(1)/2*Phi + Grad1(2)*Nrm(1)/2*Phi2
+
+          val2(2,2) = &
+                (Grad2(2)*Nrm(2) + Grad2(1)*Nrm(1)/2) * Phi &
+              + (Grad1(2)*Nrm(2) + Grad1(1)*Nrm(1)/2) * Phi2 + Coeff * Phi * Phi2
+          
+          DO l=1,2
+            p = dofs*(j-1)+l
+            DO m=dofs*(i-1)+1, dofs*(i-1)+2
+              q = dofs*(i-1)+m
+              LocalMatrix(p,q) = LocalMatrix(p,q) + Weight * val2(l,m)
+            END DO
+         END DO
+       END IF
+  END SUBROUTINE NitscheLocalMatrix
 
   
   !---------------------------------------------------------------------------
@@ -6377,10 +6487,13 @@ CONTAINS
       
  !     IF (BiOrthogonalBasis) ALLOCATE(CoeffBasis(n), MASS(n,n))
 
+      Nodes % x = 0
       Nodes % y  = 0.0_dp
       NodesM % y = 0.0_dp
+      NodesT % x = 0.0_dp
       NodesT % y = 0.0_dp
       Nodes % z  = 0.0_dp
+      NodesM % x = 0.0_dp
       NodesM % z = 0.0_dp
       NodesT % z = 0.0_dp
 
@@ -8314,8 +8427,7 @@ CONTAINS
     BMesh1 => AllocateMesh()
     BMesh2 => AllocateMesh()
 
-    CALL CreateInterfaceMeshes( Model, Mesh, This, Trgt, Bmesh1, BMesh2, &
-        Success ) 
+    CALL CreateInterfaceMeshes( Model, Mesh, This, Trgt, Bmesh1, BMesh2, Success ) 
 
     IF(.NOT. Success) THEN
       CALL Info(Caller,'Releasing interface meshes!',Level=20)
@@ -8456,8 +8568,7 @@ CONTAINS
     END IF
 
     IF( Rotational .OR. Cylindrical ) THEN
-      CALL RotationalInterfaceMeshes( BMesh1, BMesh2, BC, Cylindrical, &
-          Radius, FullCircle )
+      CALL RotationalInterfaceMeshes( BMesh1, BMesh2, BC, Cylindrical, Radius, FullCircle )
     ELSE IF( Radial ) THEN
       CALL RadialInterfaceMeshes( BMesh1, BMesh2, BC )
     ELSE IF( Flat ) THEN
@@ -8486,8 +8597,7 @@ CONTAINS
       
     IF( LevelProj ) THEN 
       Projector => LevelProjector( BMesh1, BMesh2, Repeating, AntiRepeating, &
-          FullCircle, Radius, DoNodes, DoEdges, &          
-          NodeScale, EdgeScale, BC )
+          FullCircle, Radius, DoNodes, DoEdges, NodeScale, EdgeScale, BC )
     ELSE IF( NormalProj ) THEN
       IF( AntiRepeating ) THEN
         CALL Fatal(Caller,'Antiperiodic projector cannot be dealt with the normal projector!')
@@ -8825,7 +8935,6 @@ CONTAINS
       END IF
     END DO
 
-    
     IF( ListCheckPresentAnyBC( Model,'Conforming BC' ) ) THEN
       NeedFaces = ListGetLogicalAnySolver( Model,'Use Piola Transform')
       
@@ -8840,7 +8949,6 @@ CONTAINS
         END IF
       END IF
         
-      
       IF(.NOT. ASSOCIATED( Mesh % PeriodicPerm ) ) THEN
         CALL Info('GeneratePeriodicProjectors','Allocating for conforming data!',Level=20)
         ALLOCATE( Mesh % PeriodicPerm(n) )
