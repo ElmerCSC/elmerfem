@@ -1935,7 +1935,7 @@ CONTAINS
           
           DO l=1,2
             p = dofs*(j-1)+l
-            DO m=dofs*(i-1)+1, dofs*(i-1)+2
+            DO m=1,2
               q = dofs*(i-1)+m
               LocalMatrix(p,q) = LocalMatrix(p,q) + Weight * val2(l,m)
             END DO
