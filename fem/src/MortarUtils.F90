@@ -1911,7 +1911,7 @@ CONTAINS
 
   SUBROUTINE NitscheLocalMatrix( LocalMatrix, j, Phi, Grad1, i, Phi2, Grad2, Nrm, Coeff, Weight, Dofs )
        INTEGER :: i,j,dofs
-       REAL(KIND=dp) :: LocalMatrix(:,:), Phi, Grad2(:), Phi2, Grad2(:), Nrm(:), Coeff, Weight
+       REAL(KIND=dp) :: LocalMatrix(:,:), Phi, Grad1(:), Phi2, Grad2(:), Nrm(:), Coeff, Weight
 
        INTEGER :: l,m,p,q
        REAL(KIND=dp) :: val, val2(2,2)
