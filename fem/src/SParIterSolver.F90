@@ -1895,6 +1895,8 @@ SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
 #else
     CALL Fatal(Caller,'This version has been compiled without Trilinos!')
 #endif
+  END IF
+
   IF (ListGetLogical(Params,'Linear System Use Permon', Found )) THEN
 #ifdef HAVE_PERMON
     CALL INFO(Caller,'Using permon from sparitersolver',Level=1)
@@ -1904,8 +1906,6 @@ SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
 #else
     CALL Fatal(Caller,'This version has been compiled without Permon!')
 #endif
-  END IF
-
   END IF
 
 
