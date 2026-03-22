@@ -425,9 +425,8 @@ CONTAINS
            END DO
          END DO
 
-         GB = ListGetLogical( Solver % Values, 'Bubbles in Global System', Found )
-         IF (.NOT.Found) GB = .TRUE.
-
+         GB = Solver % GlobalBubbles 
+         
          maxnode = MAXVAL(Mesh % ParallelInfo % GlobalDOFs)
          maxnode = ParallelReduction(maxnode,2)
 

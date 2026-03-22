@@ -1,5 +1,9 @@
 ! Test case for 2D nonconforming mortar elements
-! Some timing settings inhereted from benchmark computations
+! This cases solves the linear elasticity equation using
+! normal-tangential coordinate system.
+! Can be activated for Galerkin Projector = True / False.
+!
+! P.R. 5.3.2026
 
 Header
   CHECK KEYWORDS Warn
@@ -7,22 +11,28 @@ Header
   Include Path ""
   Results Directory "results"
 End
-  
+
+$omega = 1.0 
+$phi0 = 33.0
+
 Simulation
   Max Output Level = 5
   Coordinate System = Cartesian
-  Simulation Type = Transient
+  Simulation Type = Scanning 
   Steady State Max Iterations = 1
   Output Intervals = 1
   
-  Timestepping Method = BDF
-  BDF Order = 1
-  Timestep Sizes = 0.1
-  Timestep Intervals = 10
-  Output Intervals = 0
-!  Post File = case.vtu
+  Timestep Intervals = 3 !180
+  Output Intervals = 1
+
+  Post File = case.vtu
+  Ascii Output = True
 
   Simulation Timing = Logical True
+
+! This make the treatment of normals consistent such that all normals
+! point consistently out of cylinder axis. 
+  Use Cylinder System = Logical True
 End 
 
 
@@ -64,32 +74,22 @@ End
 
 
 Solver 2
-  Equation = Heat Equation
-  Procedure = "HeatSolve" "HeatSolver"
-  Variable = Temperature
+  Equation = StessEq
+  Procedure = "StressSolve" "StressSolver"
+  Variable = -dofs 2 Displacement 
   Steady State Convergence Tolerance = 1.0e-5
 
   Nonlinear System Max Iterations = 1
   Nonlinear System Consistent Norm = True
 
-  Linear System Solver = Iterative
-  Linear System Iterative Method = BiCGStabl
-  Linear System Max Iterations = 5000
-  Linear System Convergence Tolerance = 1.0e-8
-  Linear System Preconditioning = ILU0
-  Linear System Abort Not Converged = False
-  Linear System Residual Output = 20
-  Linear System Precondition Recompute = 1
- 
+  Linear System Solver = direct
+  Linear System Direct Method = umfpack
+
   Optimize Bandwidth = False
 
   Apply Mortar BCs = Logical True
-  Export Lagrange Multiplier = Logical True
 
-  Linear System Timing = Logical True
-  Solver Timing = Logical True
-  Linear System Timing Cumulative = Logical True
-  Solver Timing Cumulative = Logical True
+  Displace Mesh = False
 End
 
 Solver 3
@@ -110,8 +110,6 @@ Solver 3
   Operator 6 = cpu time
   Operator 7 = wall time
 
-!  File Append = Logical True
-
 ! Reduce just to one file when parallel
   Parallel Reduce = Logical True
   Default Parallel Operator = String max
@@ -126,9 +124,9 @@ End
 
 Material 1
   Name = "Ideal"
-  Heat Conductivity = 1
-  Heat Capacity = 1
   Density = 1
+  Poisson Ratio = 0.3  ! makes the equation diagonal!
+  Youngs Modulus = 1.0e3
 End
 
 Body Force 1
@@ -138,29 +136,34 @@ End
 
 Body Force 2 
   Name = "Hot Move"
-  Heat Source = 100.0
+  Stress Bodyforce 1 = Variable "Coordinate"
+    Real MATC "sqrt(tx(0)^2+tx(1)^2)"
   Mesh Rotate 3 = Variable time 
-    Real MATC "20*tx"
+    Real MATC "omega*tx+phi0"
 End 
 
 Body Force 3
   Name = "Cold Move"
-  Heat Source = -100.0
+  Stress Bodyforce 1 = Variable "Coordinate"
+    Real MATC "-sqrt(tx(0)^2+tx(1)^2)"
   Mesh Rotate 3 = Variable time 
-    Real MATC "20*tx"
+    Real MATC "omega*tx+phi0"
 End 
-
-
 
 Boundary Condition 1
   Target Boundaries(4) = 10 11 12 13
   Name = "Ambient"
-  Temperature = 0
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
 End
 
 Boundary Condition 2
   Target Boundaries(4) = 6 7 8 9
   Name = "Mortar Outside"
+
+! This makes the normals point always out from cylinder origin
+  Normal-Tangential Displacement = True
+  Rotational Normals = True
 End
 
 Boundary Condition 3
@@ -169,8 +172,18 @@ Boundary Condition 3
 
   Mortar BC = 2
   Rotational Projector = True
+
+  Normal-Tangential Displacement = True
+  Rotational Normals = True
+
+! This gives almost the same results using strong projector
+  Galerkin Projector = True
 End
 
+Solver 2 :: Reference Norm = 5.74636514E-05
 
-Solver 2 :: Reference Norm = 6.93769175
+
+!Material 1 :: Poisson Ratio = 0.0
+!Solver 2 :: Reference Norm = 5.28565365E-05
+
 

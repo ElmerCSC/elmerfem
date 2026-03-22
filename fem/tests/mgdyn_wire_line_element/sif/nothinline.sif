@@ -13,7 +13,7 @@ Initial Condition 1
    A  = Real 0
 End
 Simulation 1
-   Max Output Level = 33
+   Max Output Level = 7
    Coordinate System = Cartesian 3D
    Coordinate Mapping(3) = 1 2 3
    Coordinate Scaling = 0.001

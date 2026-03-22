@@ -78,7 +78,8 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: SolverParams
   LOGICAL :: Found, SecondOrder, PiolaVersion, SecondFamily, WithNDOFs, EigenProblem
-
+  INTEGER :: k
+!------------------------------------------------------------------------------
   SolverParams => GetSolverParams()  
 
   WithNDOFs = GetLogical(SolverParams, 'Use Gauss Law', Found)
@@ -89,10 +90,10 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
   
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
     ! We use one place where all the edge element keywords are defined and checked.
-    CALL EdgeElementStyle(SolverParams, PiolaVersion, SecondFamily, SecondOrder, Check = .TRUE. )
+    CALL EdgeElementStyle(SolverParams, PiolaVersion, SecondFamily, BasisDegree = k, Check = .TRUE. )
     
     IF (WithNDOFs) THEN
-      IF ( SecondOrder ) THEN
+      IF ( k == 2 ) THEN
         CALL ListAddString( SolverParams, "Element", &
             "n:1 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )
       ELSE IF( SecondFamily ) THEN
@@ -103,7 +104,16 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
         CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
       END IF      
     ELSE
-      IF( SecondOrder ) THEN
+      SELECT CASE(k)
+      CASE(3)
+        IF (SecondFamily) THEN
+          CALL Fatal('VectorHelmholtzSolver_Init0', 'No ready support for the cubic element of the second kind' )        
+        ELSE
+          CALL ListAddString( SolverParams, "Element", &
+              "n:0 e:3 -tri b:6 -tetra b:3 -tri_face b:6" )
+          CALL Fatal('VectorHelmholtzSolver_Init0', 'The use of cubic elements is not yet possible' )
+        END IF
+      CASE(2)
         IF (SecondFamily) THEN
           CALL ListAddString( SolverParams, "Element", &
               "n:0 e:3 -tri b:3 -tri_face b:3" )
@@ -111,13 +121,15 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
           CALL ListAddString( SolverParams, "Element", &
               "n:0 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )
         END IF
-      ELSE IF (SecondFamily) THEN
-        CALL ListAddString( SolverParams, "Element", "n:0 e:2" )
-      ELSE IF( PiolaVersion ) THEN
-        CALL ListAddString( SolverParams, "Element", "n:0 e:1 -quad b:2 -brick b:3 -quad_face b:2" )
-      ELSE
-        CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
-      END IF
+      CASE(1)
+        IF (SecondFamily) THEN
+          CALL ListAddString( SolverParams, "Element", "n:0 e:2" )
+        ELSE IF( PiolaVersion ) THEN
+          CALL ListAddString( SolverParams, "Element", "n:0 e:1 -quad b:2 -brick b:3 -quad_face b:2" )
+        ELSE
+          CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
+        END IF
+      END SELECT
     END IF
   END IF
 
@@ -634,14 +646,14 @@ CONTAINS
     
     ! Numerical integration:
     !----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+    IP = GaussPoints(Element, PReferenceElement=PiolaVersion, &
         EdgeBasisDegree = EdgeBasisDegree)
 
     DO t=1,IP % n
 
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-          IP % W(t), detJ, Basis, dBasisdx, &
-          EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
+          IP % W(t), detJ, Basis, dBasisdx, EdgeBasis = Wbasis, &
+          RotBasis = RotWBasis, USolver = pSolver ) 
       weight = detJ * IP % s(t)
       
       ! Compute element stiffness matrix and force vector:
@@ -997,7 +1009,7 @@ CONTAINS
     
     ! Numerical integration:
     !-----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+    IP = GaussPoints(Element, PReferenceElement=PiolaVersion, &
         EdgeBasisDegree=EdgeBasisDegree )
 
     IF (WithNdofs) THEN
@@ -1014,6 +1026,7 @@ CONTAINS
       ! is to call EdgeElementInfo:
       !
       IF (LineElement) THEN
+        ! TO DO: Call ElementInfo instead
         stat = EdgeElementInfo(Element, Nodes, IP % U(t), IP % V(t), IP % W(t), detF = detJ, &
             Basis = Basis, EdgeBasis = Wbasis, RotBasis = RotWBasis, dBasisdx = dBasisdx, &
             BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
@@ -1784,7 +1797,7 @@ CONTAINS
 
     ! Calculate nodal fields:
     ! -----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+    IP = GaussPoints(Element, PReferenceElement=PiolaVersion, &
         EdgeBasisDegree = EdgeBasisDegree)
 
     MASS  = 0._dp
@@ -1893,7 +1906,7 @@ CONTAINS
 
     ! Calculate nodal fields:
     ! -----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+    IP = GaussPoints(Element, PReferenceElement=PiolaVersion, &
         EdgeBasisDegree = EdgeBasisDegree)
 
     MASS  = 0._dp

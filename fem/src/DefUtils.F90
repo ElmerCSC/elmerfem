@@ -4050,6 +4050,7 @@ CONTAINS
     
     ! Combine the individual projectors into one massive projector
     CALL GenerateConstraintMatrix( CurrentModel, Solver )
+    CALL GenerateAddMatrix( CurrentModel, Solver )
     
     IF( GetLogical(Params,'Linear System Solver Disabled',Found) ) THEN
       CALL Info('DefaultSolve','Solver disabled, exiting early!',Level=10)
@@ -6396,7 +6397,7 @@ CONTAINS
                      n = Face % TYPE % NumberOfNodes
 
                      CALL SolveLocalFaceDOFs(BC, Face, n, Name//' {e}', Work, EDOFs, &
-                         Face % BDOFs, SecondKindBasis, BasisDegree)
+                         Face % BDOFs, SecondKindBasis, BasisDegree, SimplicialElements)
 
                      Face % BodyId = Parent % BodyId
                      
@@ -6790,7 +6791,7 @@ CONTAINS
     END IF
 
     Integral = 0._dp
-    IF (SecondOrder .AND. SecondKindBasis) THEN
+    IF (SecondOrder .AND. SecondKindBasis .OR. ThirdOrder .AND. Simplicial) THEN
       IP = GaussPoints(Element,3)
     ELSE
       IP = GaussPoints(Element)
@@ -6895,7 +6896,7 @@ CONTAINS
 !> the values of the DOFs associated with edges are given.
 !------------------------------------------------------------------------------
   SUBROUTINE SolveLocalFaceDOFs(BC, Element, n, Name, DOFValues, &
-      EDOFs, FDOFs, SecondKindBasis, BasisDegree)
+      EDOFs, FDOFs, SecondKindBasis, BasisDegree, SimplicialMesh)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 
@@ -6908,11 +6909,12 @@ CONTAINS
     INTEGER :: FDOFs                     !< The number of face DOFs
     LOGICAL :: SecondKindBasis           !< Use Nedelec's second family 
     INTEGER :: BasisDegree               !< The polynomial order of basis
+    LOGICAL, OPTIONAL :: SimplicialMesh
 !------------------------------------------------------------------------------
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
 
-    LOGICAL :: Lstat
+    LOGICAL :: Lstat, Simplicial
 
     INTEGER :: i,j,p,DOFs
 
@@ -6921,7 +6923,12 @@ CONTAINS
     REAL(KIND=dp) :: Mass(FDOFs,FDOFs), Force(FDOFs)
     REAL(KIND=dp) :: v,s,DetJ
 !------------------------------------------------------------------------------
-      
+    IF (PRESENT(SimplicialMesh)) THEN
+      Simplicial = SimplicialMesh
+    ELSE
+      Simplicial = .FALSE.
+    END IF
+    
     Mass = 0.0d0
     Force = 0.0d0
 
@@ -6935,14 +6942,14 @@ CONTAINS
     VLoad(2,1:n)=GetReal(BC,Name(1:i)//' 2',Lstat,element)
     VLoad(3,1:n)=GetReal(BC,Name(1:i)//' 3',Lstat,element)
 
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=.TRUE., &
-        EdgeBasisDegree=BasisDegree)
+    IP = GaussPoints(Element, PReferenceElement=.TRUE., EdgeBasisDegree=BasisDegree)
     
     DO p=1,IP % n
 
       Lstat = EdgeElementInfo( Element, Nodes, IP % u(p), IP % v(p), IP % w(p), &
           DetF=DetJ, Basis=Basis, EdgeBasis=EdgeBasis, SecondFamily = SecondKindBasis, &
-          BasisDegree=BasisDegree, ApplyPiolaTransform=.TRUE., TangentialTrMapping=.TRUE.)
+          BasisDegree=BasisDegree, ApplyPiolaTransform=.TRUE., TangentialTrMapping=.TRUE., &
+          SimplicialMesh=Simplicial )
 
       Normal = NormalVector(Element, Nodes, IP % u(p), IP % v(p), .FALSE.)
 

@@ -750,7 +750,7 @@ CONTAINS
         REAL(KIND=dp) :: w
         INTEGER, POINTER CONTIG :: Cols(:),Rows(:)
         REAL(KIND=dp), POINTER CONTIG :: Values(:)
-        COMPLEX(KIND=dp) CONTIG :: x(n/2),b(n/2),r(n/2)
+        COMPLEX(KIND=dp) :: x(n/2),b(n/2),r(n/2)
 
         DO i=1,n/2
           x(i) = CMPLX( rx(2*i-1), rx(2*i), KIND=dp )

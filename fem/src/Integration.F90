@@ -353,7 +353,53 @@ MODULE Integration
        0.1239234851349682D+00, 0.6832098141300300D-01, &
        0.3009586149124714D-01 /)
 !------------------------------------------------------------------------------
+! Tetrahedron - 24 point rule; exact integration of x^py^qz^r, p+q+r<=6
+! The 24-point rule is reproduced from datasets available at
+!   
+! https://people.sc.fsu.edu/~jburkardt/datasets/quadrature_rules_tet/quadrature_rules_tet.html
+!   
+!------------------------------------------------------------------------------
+   REAL(KIND=dp), DIMENSION(24), PRIVATE :: UTetra24P =  &
+    (/ 0.3561913862225449d0, 0.2146028712591517d0, 0.2146028712591517d0, &
+       0.2146028712591517d0, 0.8779781243961660d0, 0.406739585346113d-1, &
+       0.406739585346113d-1, 0.406739585346113d-1, 0.329863295731731d-1, &
+       0.3223378901422757d0, 0.3223378901422757d0, 0.3223378901422757d0, &
+       0.2696723314583159d0, 0.636610018750175d-1, 0.636610018750175d-1, &
+       0.6030056647916491d0, 0.636610018750175d-1, 0.636610018750175d-1, &
+       0.636610018750175d-1, 0.2696723314583159d0, 0.6030056647916491d0, &
+       0.636610018750175d-1, 0.2696723314583159d0, 0.6030056647916491d0 /)
 
+   REAL(KIND=dp), DIMENSION(24), PRIVATE :: VTetra24P =  &
+    (/ 0.2146028712591517d0, 0.2146028712591517d0, 0.2146028712591517d0, &
+       0.3561913862225449d0, 0.406739585346113d-1, 0.406739585346113d-1, &
+       0.406739585346113d-1, 0.8779781243961660d0, 0.3223378901422757d0, &
+       0.3223378901422757d0, 0.3223378901422757d0, 0.329863295731731d-1, &
+       0.636610018750175d-1, 0.2696723314583159d0, 0.636610018750175d-1, &
+       0.636610018750175d-1, 0.6030056647916491d0, 0.636610018750175d-1, &
+       0.2696723314583159d0, 0.6030056647916491d0, 0.636610018750175d-1, &
+       0.6030056647916491d0, 0.636610018750175d-1, 0.2696723314583159d0 /)
+
+   REAL(KIND=dp), DIMENSION(24), PRIVATE :: WTetra24P =  &
+    (/ 0.2146028712591517d0, 0.2146028712591517d0, 0.3561913862225449d0, &
+       0.2146028712591517d0, 0.406739585346113d-1, 0.406739585346113d-1, &
+       0.8779781243961660d0, 0.406739585346113d-1, 0.3223378901422757d0, &
+       0.3223378901422757d0, 0.329863295731731d-1, 0.3223378901422757d0, &
+       0.636610018750175d-1, 0.636610018750175d-1, 0.2696723314583159d0, &
+       0.636610018750175d-1, 0.636610018750175d-1, 0.6030056647916491d0, &
+       0.6030056647916491d0, 0.636610018750175d-1, 0.2696723314583159d0, &
+       0.2696723314583159d0, 0.6030056647916491d0, 0.636610018750175d-1 /)
+
+   REAL(KIND=dp), DIMENSION(24), PRIVATE :: STetra24P =  &
+    (/ 0.399227502581679d-1, 0.399227502581679d-1, 0.399227502581679d-1, &
+       0.399227502581679d-1, 0.100772110553207d-1, 0.100772110553207d-1, &
+       0.100772110553207d-1, 0.100772110553207d-1, 0.553571815436544d-1, &
+       0.553571815436544d-1, 0.553571815436544d-1, 0.553571815436544d-1, &
+       0.482142857142857d-1, 0.482142857142857d-1, 0.482142857142857d-1, &
+       0.482142857142857d-1, 0.482142857142857d-1, 0.482142857142857d-1, &
+       0.482142857142857d-1, 0.482142857142857d-1, 0.482142857142857d-1, &
+       0.482142857142857d-1, 0.482142857142857d-1, 0.482142857142857d-1 /)
+   
+   
 !------------------------------------------------------------------------------
 ! A SELECTION OF QUADRATURE RULES UP TO A HIGH ORDER DESIGNED FOR ECONOMIC
 ! INTEGRATION OF COMPLETE POLYNOMIALS
@@ -1874,6 +1920,12 @@ CONTAINS
          p % w(1:n) = WTetra11P
          p % s(1:n) = STetra11P / 6.0D0
          p % n = 11
+      CASE (24)
+         p % u(1:n) = UTetra24P
+         p % v(1:n) = VTetra24P
+         p % w(1:n) = WTetra24P
+         p % s(1:n) = STetra24P / 6.0D0
+         p % n = 24        
       CASE DEFAULT
 !        CALL Error( 'GaussPointsTetra', 'Invalid number of points requested.' )
 !        p % n = 0
@@ -2932,8 +2984,12 @@ CONTAINS
      CASE(1)
         IP = GaussPoints0D(1)
      CASE(2)
-        IF (SecondKind .AND. SecondOrder) THEN
-          IP = GaussPoints1D(3)
+        IF (SecondOrder .OR. ThirdOrder) THEN
+          IF (SecondKind .AND. SecondOrder .OR. ThirdOrder) THEN
+            IP = GaussPoints1D(3)
+          ELSE
+            IP = GaussPoints1D(2)
+          END IF
         ELSE
           IP = GaussPoints1D(2)
         END IF
@@ -2954,8 +3010,12 @@ CONTAINS
            IP = GaussPointsQuad(4)
         END IF
      CASE(5)
-        IF (SecondOrder) THEN
-           IP = GaussPointsTetra(11, PReferenceElement=PRefElement)
+        IF (SecondOrder .OR. ThirdOrder) THEN
+          IF (SecondOrder) THEN
+            IP = GaussPointsTetra(11, PReferenceElement=PRefElement)
+          ELSE
+            IP = GaussPointsTetra(24, PReferenceElement=PRefElement)
+          END IF
         ELSE
            IP = GaussPointsTetra(4, PReferenceElement=PRefElement)
         END IF

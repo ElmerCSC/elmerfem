@@ -115,7 +115,8 @@
 
   VeloSol => Solver % Variable 
   STDOFs = VeloSol % DOfs
-
+  VariableValues => VeloSol % Values
+  
   !------------------------------------------------------------------------------
   !    Get variables needed for solution
   !------------------------------------------------------------------------------
