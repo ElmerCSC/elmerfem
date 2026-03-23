@@ -95,7 +95,7 @@ MODULE elmer_ebfm_coupling
 
   USE yac, ONLY: yac_fdef_field, yac_fget_role_from_field_id, &
     yac_fget_field_datetime, yac_fget_field_role, yac_fget_field_timestep, &
-    yac_fget_field_metadata, yac_fget_points_size, &
+    yac_ffield_has_metadata, yac_fget_field_metadata, yac_fget_points_size, &
     yac_fget_field_source, yac_fget, yac_fput, yac_fupdate, yac_fget_action, &
     YAC_TIME_UNIT_HOUR, &
     YAC_ACTION_COUPLING, YAC_ACTION_GET_FOR_RESTART, &
@@ -234,17 +234,32 @@ CONTAINS
         src_grid_name = "ebfm_grid"
         src_field_name = field_name
 #endif
-        src_field_timestep = &
-          yac_fget_field_timestep(src_comp_name, src_grid_name, src_field_name)
-        src_field_metadata = &
-          yac_fget_field_metadata(src_comp_name, src_grid_name, src_field_name)
 
-        PRINT *, "ELMER: field ", field_name, ":"
-        PRINT *, "ELMER:  - source:"
-        PRINT *, "ELMER:    - component: ", src_comp_name
-        PRINT *, "ELMER:    - grid:      ", src_grid_name
-        PRINT *, "ELMER:    - timestep:  ", src_field_timestep
-        PRINT *, "ELMER:    - metadata:  ", src_field_metadata
+        IF (yac_fget_field_role( &
+              src_comp_name, src_grid_name, src_field_name) == &
+              YAC_EXCHANGE_TYPE_SOURCE) THEN
+
+          src_field_timestep = &
+            yac_fget_field_timestep( &
+              src_comp_name, src_grid_name, src_field_name)
+
+          IF (yac_ffield_has_metadata( &
+                src_comp_name, src_grid_name, src_field_name)) THEN
+            src_field_metadata = &
+              yac_fget_field_metadata( &
+                src_comp_name, src_grid_name, src_field_name)
+          ELSE
+            src_field_metadata = "N/A"
+          END IF
+
+          PRINT *, "ELMER: field ", field_name, ":"
+          PRINT *, "ELMER:  - source:"
+          PRINT *, "ELMER:    - component: ", src_comp_name
+          PRINT *, "ELMER:    - grid:      ", src_grid_name
+          PRINT *, "ELMER:    - timestep:  ", src_field_timestep
+          PRINT *, "ELMER:    - metadata:  ", src_field_metadata
+
+        END IF
 
       END IF
 
@@ -416,8 +431,8 @@ MODULE elmer_icon_coupling
 
   USE yac, ONLY: yac_fdef_field, yac_fget_role_from_field_id, &
     yac_fget_field_datetime, yac_fget_field_role, yac_fget_field_timestep, &
-    yac_fget_field_metadata, yac_fget_points_size, yac_fget_field_source, &
-    yac_fget, yac_fput, yac_fupdate, yac_fget_action, &
+    yac_ffield_has_metadata, yac_fget_field_metadata, yac_fget_points_size, &
+    yac_fget_field_source, yac_fget, yac_fput, yac_fupdate, yac_fget_action, &
     YAC_TIME_UNIT_HOUR, &
     YAC_ACTION_COUPLING, YAC_ACTION_GET_FOR_RESTART, &
     YAC_ACTION_PUT_FOR_RESTART, YAC_ACTION_REDUCTION, YAC_ACTION_NONE, &
@@ -521,18 +536,32 @@ CONTAINS
         src_grid_name = "icon_grid"
         src_field_name = field_name
 #endif
-        src_field_timestep = &
-          yac_fget_field_timestep(src_comp_name, src_grid_name, src_field_name)
-        src_field_metadata = &
-          yac_fget_field_metadata(src_comp_name, src_grid_name, src_field_name)
 
+        IF (yac_fget_field_role( &
+              elmer_comp_name, elmer_grid_name, field_name) == &
+              YAC_EXCHANGE_TYPE_SOURCE) THEN
 
-        PRINT *, "field ", field_name, ":"
-        PRINT *, " - source:"
-        PRINT *, "   - component: ", src_comp_name
-        PRINT *, "   - grid:      ", src_grid_name
-        PRINT *, "   - timestep:  ", src_field_timestep
-        PRINT *, "   - metadata:  ", src_field_metadata
+          src_field_timestep = &
+            yac_fget_field_timestep( &
+              src_comp_name, src_grid_name, src_field_name)
+
+          IF (yac_ffield_has_metadata( &
+                src_comp_name, src_grid_name, src_field_name)) THEN
+            src_field_metadata = &
+              yac_fget_field_metadata( &
+                src_comp_name, src_grid_name, src_field_name)
+          ELSE
+            src_field_metadata = "N/A"
+          END IF
+
+          PRINT *, "field ", field_name, ":"
+          PRINT *, " - source:"
+          PRINT *, "   - component: ", src_comp_name
+          PRINT *, "   - grid:      ", src_grid_name
+          PRINT *, "   - timestep:  ", src_field_timestep
+          PRINT *, "   - metadata:  ", src_field_metadata
+
+        END IF
 
       END IF
 
