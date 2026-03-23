@@ -1932,7 +1932,7 @@ CONTAINS
               + (Grad(1)*Nrm(1)  + Grad(2)*Nrm(2)/2) * Phi2  + Coeff * Phi * Phi2 )
 
           LocalMatrix(p+1,q+2) = LocalMatrix(p+1,q+2) + Weight * ( &
-                 Grad2(1)*Nrm2(2)/2*Phi + Grad(1)*Nrm2(2)/2*Phi2 )
+                 Grad2(1)*Nrm2(2)/2*Phi + Grad(1)*Nrm(2)/2*Phi2 )
 
           LocalMatrix(p+2,q+1) = LocalMatrix(p+2,q+1) + Weight * (&
                  Grad2(2)*Nrm2(1)/2*Phi + Grad(2)*Nrm(1)/2*Phi2 )
