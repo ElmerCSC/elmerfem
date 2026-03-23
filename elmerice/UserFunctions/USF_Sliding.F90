@@ -715,7 +715,6 @@ END FUNCTION Sliding_Budd
 ! *
 ! *  Authors: Rupert Gladstone
 ! *  Email:   RupertGladstone1972@gmail.com
-! *  Web: 
 ! *
 ! *  Original Date: Probably 2015; updated March 2026.
 ! *****************************************************************************

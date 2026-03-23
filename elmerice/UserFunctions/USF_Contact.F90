@@ -405,13 +405,32 @@ END FUNCTION SlidCoef_Contact
 ! This is the Stokes equivalent of HAF scaling.
 ! It is linear scaling to be applied to the basal resistance from zero at zero
 ! effective pressure up to 1 at the GZEPT (read from BC).
+! Note that it probably does not make sense to apply this approach when the
+! sliding parameterisation contains explicit dependence on effective pressure,
+! e.g. Regularised Coulomb sliding.
 !
-! Uses the EffectivePressure function (see USF_Sliding).
+! Uses the EffectivePressure function (see USF_Sliding). See aso that function
+! for comments on prerequisites.
 !
 ! Note: depends on Stress tensor from ComputeDevStress solver, but is computed
 ! during the Stokes execution. This can be unstable unless the stress tensor is
 ! already defined, such as restarting from a previous simulation in which
 ! ComputeDevStress was executed.
+!
+! Activated by calling SlidCoef_Contact and setting GZEPT to a real value
+! (units MPa), both in the lower surface BC. Example:
+!
+!  Slip Coefficient 2 = Variable Coordinate 3
+!    Real Procedure "ElmerIceUSF" "SlidCoef_Contact"
+!  Slip Coefficient 3 = Variable Coordinate 3
+!    Real Procedure "ElmerIceUSF" "SlidCoef_Contact"
+!
+!  Sliding Law = String Weertman
+!  Weertman Friction Coefficient = Real 0.001
+!  Weertman Exponent = Real 1.0
+!  Weertman Linear Velocity = Real 0.001
+!
+!  GZEPT = Real 0.1 ! specified in MPa                                                    
 !
 ! See also:
 !  https://www.overleaf.com/read/xwwfbyznhtkq#a01cf8
