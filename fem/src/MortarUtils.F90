@@ -1615,7 +1615,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: TrueElement, TrueElementM, Parent, ParentM
     TYPE(Nodes_t), SAVE :: TrueNodes, TrueNodesM, ParentNodes, ParentNodesM
     INTEGER :: np, npM, Lcols(32,32), LRows(32)
-    REAL(KIND=dp) :: Nrm(3), NrmM(3), Esize, EsizeM, Gamma, Cond, LVals(32), Coeff
+    REAL(KIND=dp) :: Nrm(3), NrmM(3), Esize, EsizeM, Gamma, Cond, LVals(32), Coeff, CoeffM
     INTEGER, ALLOCATABLE, TARGET :: Ind(:), IndM(:), pIndexes(:), pIndexesM(:)
     INTEGER, SAVE :: sgns(4), previ=-1
 
@@ -1722,7 +1722,8 @@ CONTAINS
     Gamma = ListGetCReal(BC,'Nitsche Penalty',Found)
     IF(.NOT. Found) Gamma = 1.0e-3
 
-    Coeff = 1/Gamma/Esize
+    Coeff  = 1/Gamma/Esize
+    CoeffM = 1/Gamma/EsizeM
 
     Cond = ListGetCReal(BC,'Nitsche Conductivity',Found)
     IF(.NOT. Found) Cond = 1.0_dp
@@ -1802,7 +1803,7 @@ CONTAINS
               lCols(dofs*(j-1) + k, dofs*(i-1) + l) = dofs*(ii-1) + l
             END DO
           END DO
-          CALL NitscheLocalMatrix( LocalMatrix, j, Basis(j), dBasisdx(Ind(j),:),  &
+          CALL NitscheLocalMatrix( LocalMatrix, j, Basis(j), dBasisdx(Ind(j),:), Nrm,  &
                   i, Basis(i), dBasisdx(Ind(i),:), Nrm, Weight, Coeff, Dofs ) 
         END DO
 
@@ -1815,8 +1816,8 @@ CONTAINS
               lCols(dofs*(j-1) + k, dofs*(nd+i-1) + l) = dofs*(ii-1) + l
             END DO
           END DO
-          CALL NitscheLocalMatrix( LocalMatrix, j, Basis(j), dBasisdx(Ind(j),:),  &
-                  nd+i, BasisM(i), dBasisdxM(IndM(i),:), Nrm, -NodeScale*Weight, Coeff, Dofs ) 
+          CALL NitscheLocalMatrix( LocalMatrix, j, Basis(j), dBasisdx(Ind(j),:), Nrm,  &
+                  nd+i, BasisM(i), dBasisdxM(IndM(i),:), NrmM,  -NodeScale*Weight, Coeff, Dofs ) 
         END DO
       END DO
 
@@ -1841,8 +1842,8 @@ CONTAINS
               lCols(dofs*(nd+j-1) + k, dofs*(nd+i-1) + l) = dofs*(ii-1) + l
             END DO
           END DO
-          CALL NitscheLocalMatrix( LocalMatrix, nd+j, BasisM(j), dBasisdxM(IndM(j),:),  &
-                  nd+i, BasisM(i), dBasisdxM(IndM(i),:), Nrm, Weight, Coeff, Dofs  ) 
+          CALL NitscheLocalMatrix( LocalMatrix, nd+j, BasisM(j), dBasisdxM(IndM(j),:), NrmM,  &
+                  nd+i, BasisM(i), dBasisdxM(IndM(i),:), NrmM, Weight, CoeffM, Dofs  ) 
         END DO
         
         DO i=1,nd
@@ -1854,8 +1855,8 @@ CONTAINS
               lCols(dofs*(nd+j-1) + k, dofs*(i-1) + l) = dofs*(ii-1) + l
             END DO
           END DO
-          CALL NitscheLocalMatrix( LocalMatrix, nd+j, BasisM(j), dBasisdxM(IndM(j),:),  &
-                  i, Basis(i), dBasisdx(Ind(i),:), Nrm, -NodeScale*Weight, Coeff, Dofs ) 
+          CALL NitscheLocalMatrix( LocalMatrix, nd+j, BasisM(j), dBasisdxM(IndM(j),:),  NrmM, &
+                  i, Basis(i), dBasisdx(Ind(i),:), Nrm, -NodeScale*Weight, CoeffM, Dofs ) 
         END DO        
       END DO
     END DO
@@ -1911,33 +1912,33 @@ CONTAINS
   END SUBROUTINE TemporalSegmentNitscheAssembly
 
 
-  SUBROUTINE NitscheLocalMatrix( LocalMatrix, j, Phi, Grad, i, Phi2, Grad2, Nrm, Weight, Coeff, Dofs )
+  SUBROUTINE NitscheLocalMatrix( LocalMatrix, j, Phi, Grad, Nrm, i, Phi2, Grad2, Nrm2, Weight, Coeff, Dofs )
        INTEGER :: i,j,dofs
-       REAL(KIND=dp) :: LocalMatrix(:,:), Phi, Grad(:), Phi2, Grad2(:), Nrm(:), Coeff, Weight
+       REAL(KIND=dp) :: LocalMatrix(:,:), Phi, Grad(:), Phi2, Grad2(:), Nrm(:), Nrm2(:), Coeff, Weight
 
        INTEGER :: l,m,p,q
        REAL(KIND=dp) :: val, val2(2,2)
 
        IF ( dofs==1 ) THEN ! Poisson
 
-          val = SUM(Grad2*Nrm) * Phi + SUM(Grad*Nrm) * Phi2  + Coeff * Phi * Phi2
+          val = SUM(Grad2*Nrm2) * Phi + SUM(Grad*Nrm) * Phi2  + Coeff * Phi * Phi2
           LocalMatrix(j,i) = LocalMatrix(j,i) + Weight*val
 
        ELSE  ! lin. elast.
           p = dofs*(j-1)
           q = dofs*(i-1)
           LocalMatrix(p+1,q+1) = LocalMatrix(p+1,q+1) + Weight * ( &
-                (Grad2(1)*Nrm(1) + Grad2(2)*Nrm(2)/2) * Phi &
+                (Grad2(1)*Nrm2(1) + Grad2(2)*Nrm2(2)/2) * Phi &
               + (Grad(1)*Nrm(1)  + Grad(2)*Nrm(2)/2) * Phi2  + Coeff * Phi * Phi2 )
 
           LocalMatrix(p+1,q+2) = LocalMatrix(p+1,q+2) + Weight * ( &
-                 Grad2(1)*Nrm(2)/2*Phi + Grad(1)*Nrm(2)/2*Phi2 )
+                 Grad2(1)*Nrm2(2)/2*Phi + Grad(1)*Nrm2(2)/2*Phi2 )
 
           LocalMatrix(p+2,q+1) = LocalMatrix(p+2,q+1) + Weight * (&
-                 Grad2(2)*Nrm(1)/2*Phi + Grad(2)*Nrm(1)/2*Phi2 )
+                 Grad2(2)*Nrm2(1)/2*Phi + Grad(2)*Nrm(1)/2*Phi2 )
 
           LocalMatrix(p+2,q+2) = LocalMatrix(p+2,q+2) + Weight * ( &
-                (Grad2(2)*Nrm(2) + Grad2(1)*Nrm(1)/2) * Phi &
+                (Grad2(2)*Nrm2(2) + Grad2(1)*Nrm2(1)/2) * Phi &
               + (Grad(2)*Nrm(2)  + Grad(1)*Nrm(1)/2) * Phi2 + Coeff * Phi * Phi2 )
        END IF
   END SUBROUTINE NitscheLocalMatrix
