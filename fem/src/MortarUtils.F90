@@ -1800,7 +1800,7 @@ CONTAINS
 
           DO k=1,dofs
             DO l=1,dofs
-              lCols(dofs*(j-1) + k, dofs*(i-1) + l) = dofs*(ii-1) + l
+              lCols(dofs*(j-1)+k, dofs*(i-1)+l) = dofs*(ii-1)+l
             END DO
           END DO
           CALL NitscheLocalMatrix( LocalMatrix, j, Basis(j), dBasisdx(Ind(j),:), Nrm,  &
@@ -1813,7 +1813,7 @@ CONTAINS
 
           DO k=1,dofs
             DO l=1,dofs
-              lCols(dofs*(j-1) + k, dofs*(nd+i-1) + l) = dofs*(ii-1) + l
+              lCols(dofs*(j-1)+k, dofs*(nd+i-1)+l) = dofs*(ii-1)+l
             END DO
           END DO
           CALL NitscheLocalMatrix( LocalMatrix, j, Basis(j), dBasisdx(Ind(j),:), Nrm,  &
@@ -1839,7 +1839,7 @@ CONTAINS
 
           DO k=1,dofs
             DO l=1,dofs
-              lCols(dofs*(nd+j-1) + k, dofs*(nd+i-1) + l) = dofs*(ii-1) + l
+              lCols(dofs*(nd+j-1)+k, dofs*(nd+i-1)+l) = dofs*(ii-1)+l
             END DO
           END DO
           CALL NitscheLocalMatrix( LocalMatrix, nd+j, BasisM(j), dBasisdxM(IndM(j),:), NrmM,  &
@@ -1852,7 +1852,7 @@ CONTAINS
 
           DO k=1,dofs
             DO l=1,dofs
-              lCols(dofs*(nd+j-1) + k, dofs*(i-1) + l) = dofs*(ii-1) + l
+              lCols(dofs*(nd+j-1)+k, dofs*(i-1)+l) = dofs*(ii-1)+l
             END DO
           END DO
           CALL NitscheLocalMatrix( LocalMatrix, nd+j, BasisM(j), dBasisdxM(IndM(j),:),  NrmM, &
@@ -1902,11 +1902,8 @@ CONTAINS
       END IF
     END BLOCK
 
-    DO i=1,nd+ndm
-      DO j=1,dofs
-        CALL List_AddMatrixRow(Projector % ListMatrix,lRows(dofs*(i-1)+j),&
-                dofs*(ndM+nd),lCols(dofs*(i-1)+j,:),LocalMatrix(dofs*(i-1)+j,:))
-      END DO
+    DO i=1,dofs*(nd+ndm)
+      CALL List_AddMatrixRow(Projector % ListMatrix,lRows(i),dofs*(nd+ndm),lCols(i,:),LocalMatrix(i,:))
     END DO
 
   END SUBROUTINE TemporalSegmentNitscheAssembly
