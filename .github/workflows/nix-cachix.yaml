@@ -17,7 +17,7 @@ jobs:
       with:
         primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
         restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}
-    - uses: cachix/cachix-action@v14
+    - uses: cachix/cachix-action@v17
       with:
         name: elmerfem
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
