@@ -5,4 +5,4 @@ CONFIGURE_FILE(nodal.sif nodal.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO shoebox_tets DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(VectorHelmholtzWaveguideNodal LABELS quick)
+ADD_ELMER_TEST(VectorHelmholtzWaveguideNodal LABELS quick emwave)

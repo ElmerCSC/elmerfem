@@ -111,6 +111,14 @@ SUBROUTINE mpi_allgather
   RETURN
 END SUBROUTINE mpi_allgather
 
+SUBROUTINE mpi_allgatherv
+  RETURN
+END SUBROUTINE mpi_allgatherv
+
+SUBROUTINE mpi_alltoallv
+  RETURN
+END SUBROUTINE mpi_alltoallv
+
 SUBROUTINE mpi_gatherv
   RETURN
 END SUBROUTINE mpi_gatherv
@@ -122,6 +130,10 @@ END SUBROUTINE mpi_gather
 SUBROUTINE mpi_reduce
   RETURN
 END SUBROUTINE mpi_reduce
+
+SUBROUTINE mpi_get_count
+  RETURN
+END SUBROUTINE mpi_get_count
 
 ! Parpack 
 SUBROUTINE pdseupd
@@ -147,3 +159,4 @@ END SUBROUTINE pdnaupd
 SUBROUTINE pznaupd
   RETURN
 END SUBROUTINE pznaupd
+

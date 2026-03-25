@@ -54,19 +54,48 @@
 !------------------------------------------------------------------------------
 !> The main program for Elmer. Solves the equations as defined by the input files.
 !------------------------------------------------------------------------------
-   SUBROUTINE ElmerSolver(initialize)
+   SUBROUTINE ElmerSolver(initialize, args, NoArgs)
 !------------------------------------------------------------------------------
 
      USE Lists
-     USE MainUtils
-     USE OptimizationUtils
-     USE SolverUtils, ONLY: GetControlValue
-    
-!------------------------------------------------------------------------------
+     USE SParIterGlobals
+     USE ParallelUtils, ONLY : ParallelInit, ParallelFinalize 
+     USE ElementUtils, ONLY: FreeMatrix, TangentDirections, CreateMatrix
+     USE ElementDescription, ONLY : InitializeElementDescriptions, NormalVector
+#ifdef HAVE_EXTOPTIM
+     USE OptimizationUtils, ONLY : ControlParameters, ControlResetMesh, &
+         ExternalOptimization_minpack, ExternalOptimization_newuoa, &
+         ExternalOptimization_bobyqa, GetCostFunction
+     USE ModelDescription , ONLY : SaveResult, OutputPath, InFileUnit, LoadInputFile, &
+         ReloadInputFile, LoadRestartFile, GetProcAddr, LoadModel, FreeModel, WritePostFile, &
+         CompleteModelKeywords, SetIntegerParametersMatc, SetRealParametersMatc, &
+         SetRealParametersKeywordCoeff
+#else
+     USE OptimizationUtils, ONLY : ControlParameters, ControlResetMesh, GetCostFunction
+     USE ModelDescription , ONLY : SaveResult, OutputPath, InFileUnit, LoadInputFile, &
+         ReloadInputFile, LoadRestartFile, GetProcAddr, LoadModel, FreeModel, WritePostFile, &
+         CompleteModelKeywords, SetIntegerParametersMatc, SetRealParametersMatc
+#endif
+     USE SolverUtils, ONLY: GetControlValue, FinalizeLumpedMatrix, UpdateExportedVariables, &
+         UpdateIpPerm, VectorValuesRange
+     USE MeshUtils, ONLY : MeshExtrude, MeshExtrudeSlices, &
+         CoordinateTransformation, InitializeElementDescriptions, ReleaseMesh, &
+         CalculateMeshPieces, SetActiveElementsTable, SetCurrentMesh, &
+         MarkSharpEdges, TagBodiesUsingCondition
+     USE MortarUtils, ONLY : PeriodicProjector
+     USE MainUtils, ONLY : AddEquationBasics, AddEquationSolution, AddExecWhenFlag, &
+         PredictorCorrectorControl, SingleSolver, SolveEquations, SolverActivate, &
+         SetGlobalBubblesFlag, SwapMesh
+     USE DefUtils, ONLY : GetSimulation, GetCompilationDate, GetRevision, GetVersion, GetBranch, &
+         GetReal, GetCReal, GetLogical, GetElementNOFNodes, GetElementDOFs, GetBC, &
+         GetElementFamily, GetElementNodes, VectorElementEdgeDOFs
+
      IMPLICIT NONE
 !------------------------------------------------------------------------------
 
      INTEGER :: Initialize
+     INTEGER :: NoArgs
+     TYPE(ArgStr_t) :: args(:)
 
 !------------------------------------------------------------------------------
 !    Local variables
@@ -99,8 +128,7 @@
 
      TYPE(ParEnv_t), POINTER :: ParallelEnv
 
-     CHARACTER(LEN=MAX_NAME_LEN) :: ModelName, eq
-     CHARACTER(LEN=MAX_STRING_LEN) :: OptionString
+     CHARACTER(:), ALLOCATABLE :: ModelName, OptionString, eq
 
      CHARACTER(:), ALLOCATABLE :: str, PostFile, ExecCommand, OutputFile, RestartFile, &
           OutputName, PostName, When
@@ -114,7 +142,6 @@
      LOGICAL :: Silent=.FALSE., Version=.FALSE., GotModelName, FinishEarly=.FALSE.
      LOGICAL :: FirstLoad = .TRUE., FirstTime=.TRUE., Found
 
-     INTEGER :: iargc, NoArgs
      INTEGER :: iostat, iSweep = 1, OptimIters
      LOGICAL :: GotOptimIters
      INTEGER :: MeshIndex
@@ -125,15 +152,7 @@
      INTEGER :: nr,ni,ExtMethod
      INTEGER, ALLOCATABLE :: ipar(:)
      REAL(KIND=dp), ALLOCATABLE :: rpar(:)
-     CHARACTER(LEN=MAX_NAME_LEN) :: MeshDir, MeshName
-     
-#ifdef HAVE_TRILINOS
-     INTERFACE
-       SUBROUTINE TrilinosCleanup() BIND(C,name='TrilinosCleanup')
-         IMPLICIT NONE
-       END SUBROUTINE TrilinosCleanup
-     END INTERFACE
-#endif
+     CHARACTER(LEN=MAX_PATH_LEN) :: MeshDir, MeshName
 
      ! Start the watches, store later
      !--------------------------------
@@ -153,7 +172,6 @@
        !
        ! Print banner to output:
        ! -----------------------
-       NoArgs = COMMAND_ARGUMENT_COUNT()
        ! Info Level is always true until the model has been read!
        ! This makes it possible to cast something 
        Silent = .FALSE.
@@ -163,16 +181,16 @@
          i = 0
          DO WHILE( i < NoArgs )
            i = i + 1 
-           CALL GET_COMMAND_ARGUMENT(i, OptionString)
+           OptionString = args(i) % astr
            IF( OptionString=='-rpar' ) THEN
              ! Followed by number of parameters + the parameter values
              i = i + 1
-             CALL GET_COMMAND_ARGUMENT(i, OptionString)
-             READ( OptionString,*) nr             
+             OptionString = args(i) % astr
+             READ( OptionString,*) nr
              ALLOCATE( rpar(nr) )
              DO j=1,nr
                i = i + 1
-               CALL GET_COMMAND_ARGUMENT(i, OptionString)
+               OptionString = args(i) % astr
                READ( OptionString,*) rpar(j)
              END DO
              CALL Info('MAIN','Read '//I2S(nr)//' real parameters from command line!')
@@ -182,12 +200,13 @@
            IF( OptionString=='-ipar' ) THEN
              ! Followed by number of parameters + the parameter values
              i = i + 1
-             CALL GET_COMMAND_ARGUMENT(i, OptionString)
-             READ( OptionString,*) ni             
+             OptionString = args(i) % astr
+             PRINT *, OptionString
+             READ( OptionString,*) ni
              ALLOCATE( ipar(nr) )
              DO j=1,ni
                i = i + 1
-               CALL GET_COMMAND_ARGUMENT(i, OptionString)
+               OptionString = args(i) % astr
                READ( OptionString,*) ipar(j)
              END DO
              CALL Info('MAIN','Read '//I2S(ni)//' integer parameters from command line!')
@@ -228,7 +247,7 @@
          CALL Info( 'MAIN', 'This program is free software licensed under (L)GPL          ')
          CALL Info( 'MAIN', 'Copyright 1st April 1995 - , CSC - IT Center for Science Ltd.')
          CALL Info( 'MAIN', 'Webpage http://www.csc.fi/elmer, Email elmeradm@csc.fi       ')
-         CALL Info( 'MAIN', 'Version: ' // GetVersion() // ' (Rev: ' // GetRevision() // &
+         CALL Info( 'MAIN', 'Version: ' // GetVersion() //'-'// GetBranch() // ' (Rev: ' // GetRevision() // &
                             ', Compiled: ' // GetCompilationDate() // ')' )
 
          IF ( ParEnv % PEs > 1 ) THEN
@@ -251,9 +270,6 @@
 #endif
 #ifdef HAVE_HYPRE
          CALL Info( 'MAIN', ' HYPRE library linked in.')
-#endif
-#ifdef HAVE_TRILINOS
-         CALL Info( 'MAIN', ' Trilinos library linked in.')
 #endif
 #ifdef HAVE_MUMPS
          CALL Info( 'MAIN', ' MUMPS library linked in.')
@@ -303,10 +319,10 @@
      !----------------------------------------------------------------------
      GotModelName = .FALSE.
      IF ( NoArgs > 0 ) THEN
-       CALL GET_COMMAND_ARGUMENT(1, ModelName)
+       ModelName = args(1) % astr
        IF( ModelName(1:1) /= '-') THEN 
          GotModelName = .TRUE.
-         IF (NoArgs > 1) CALL GET_COMMAND_ARGUMENT(2, eq)
+         IF (NoArgs > 1) eq = args(2) % astr
        END IF
      END IF
 
@@ -315,6 +331,7 @@
        IF( iostat /= 0 ) THEN
          CALL Fatal( 'MAIN', 'Unable to find ELMERSOLVER_STARTINFO, can not execute.' )
        END IF
+       ALLOCATE(CHARACTER(MAX_PATH_LEN)::ModelName)
        READ(1,'(a)') ModelName
        CLOSE(1)
      END IF
@@ -416,7 +433,10 @@
          ! Optionally perform simple extrusion to increase the dimension of the mesh
          !----------------------------------------------------------------------------------
          CALL CreateExtrudedMesh() 
-
+         DO j=1,CurrentModel % NumberOfSolvers
+           CALL CreateExtrudedMesh(j) 
+         END DO
+         
          !----------------------------------------------------------------------------------
          ! If requested perform coordinate transformation directly after is has been obtained.
          ! Don't maintain the original mesh. 
@@ -425,6 +445,16 @@
          IF( GotIt ) THEN
            CALL CoordinateTransformation( CurrentModel % Meshes, CoordTransform, &
                CurrentModel % Simulation, .TRUE. )
+         END IF
+
+         IF( ListGetLogical( CurrentModel % Simulation,'Mark Sharp Edges',GotIt) ) THEN
+           BLOCK
+             LOGICAL, ALLOCATABLE :: SharpEdge(:)
+             REAL(KIND=dp) :: phi
+             phi = ListGetConstReal( CurrentModel % Simulation,'Sharp Edge',GotIt)
+             IF(.NOT. GotIt) phi = 30.0_dp
+             CALL MarkSharpEdges( CurrentModel % Meshes, SharpEdge, phi )
+           END BLOCK
          END IF
 
          IF(.NOT. Silent ) THEN
@@ -487,8 +517,13 @@
 !      Add coordinates such that if there is a solver that is run on creation
 !      the coordinates are already usable then.
 !------------------------------------------------------------------------------
-       IF ( FirstLoad ) CALL AddMeshCoordinates()
+       IF ( FirstLoad ) THEN
+         CALL AddMeshCoordinates()
 
+         ! We can toggle with the body indexes already at this moment.
+         CALL TagBodiesUsingCondition( CurrentModel, CurrentModel % Meshes )
+       END IF
+                
 !------------------------------------------------------------------------------
 !      Figure out what (flow,heat,stress,...) should be computed, and get
 !      memory for the dofs
@@ -713,9 +748,6 @@
      
      IF ( Initialize <= 0 ) CALL FreeModel(CurrentModel)
 
-#ifdef HAVE_TRILINOS
-  CALL TrilinosCleanup()
-#endif
 
      IF ( FirstTime ) CALL ParallelFinalize()
      FirstTime = .FALSE.
@@ -794,8 +826,7 @@
            
          CALL FreeMatrix( iSolver % Matrix)
 
-         GB = ListGetLogical( iSolver % Values,'Bubbles in Global System', Found )
-         IF ( .NOT. Found ) GB = .TRUE.
+         GB = SetGlobalBubblesFlag(iSolver)
 
          BO = ListGetLogical( iSolver % Values,'Optimize Bandwidth', Found )
          IF ( .NOT. Found ) BO = .TRUE.
@@ -843,30 +874,69 @@
      
      ! Optionally create extruded mesh on-the-fly.
      !--------------------------------------------------------------------
-     SUBROUTINE CreateExtrudedMesh()
-
-       LOGICAL :: SliceVersion
-
-       IF(.NOT. ListCheckPrefix(CurrentModel % Simulation,'Extruded Mesh') ) RETURN
+     SUBROUTINE CreateExtrudedMesh(SolverId)
+       INTEGER, OPTIONAL :: SolverId
        
-       SliceVersion = GetLogical(CurrentModel % Simulation,'Extruded Mesh Slices',Found )              
-       IF( SliceVersion ) THEN
-         ExtrudedMesh => MeshExtrudeSlices(CurrentModel % Meshes, CurrentModel % Simulation )
+       LOGICAL :: SliceVersion
+       TYPE(ValueList_t), POINTER :: VList
+       TYPE(Mesh_t), POINTER :: Mesh_in, pMesh, prevMesh
+       LOGICAL :: PrimaryMesh
+       
+       IF(PRESENT(SolverId)) THEN
+         Vlist => CurrentModel % Solvers(SolverId) % Values
+         Mesh_in => CurrentModel % Solvers(SolverId) % Mesh
+         PrimaryMesh = .FALSE.
        ELSE
-         ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, CurrentModel % Simulation)
+         Vlist => CurrentModel % Simulation
+         Mesh_in => CurrentModel % Meshes
+         PrimaryMesh = .TRUE.
+       END IF
+                  
+       IF(.NOT. ListCheckPrefix(VList,'Extruded Mesh') ) RETURN
+       IF(.NOT. PrimaryMesh) THEN
+         CALL Info('CreateExtrudedMesh','Extruding mesh associated to solver '//I2S(SolverId))
+       END IF
+       
+       SliceVersion = GetLogical(Vlist,'Extruded Mesh Slices',Found )              
+       IF( SliceVersion ) THEN
+         ExtrudedMesh => MeshExtrudeSlices(Mesh_in, Vlist ) 
+       ELSE
+         ExtrudedMesh => MeshExtrude(Mesh_in, Vlist )
        END IF
          
        ! Make the solvers point to the extruded mesh, not the original mesh
        !-------------------------------------------------------------------
        DO i=1,CurrentModel % NumberOfSolvers
-         IF(ASSOCIATED(CurrentModel % Solvers(i) % Mesh,CurrentModel % Meshes)) &
-             CurrentModel % Solvers(i) % Mesh => ExtrudedMesh 
+         IF(ASSOCIATED(CurrentModel % Solvers(i) % Mesh,Mesh_in)) THEN
+           CALL Info('CreateExtrudedMesh','Pointing solver '//I2S(i)//' to the new extruded mesh!')
+           CurrentModel % Solvers(i) % Mesh => ExtrudedMesh
+         END IF
        END DO
-       ExtrudedMesh % Next => CurrentModel % Meshes % Next
-       CurrentModel % Meshes => ExtrudedMesh
 
+       ! Put the extruded mesh in a correct place in the list of meshes.
+       i = 0
+       NULLIFY(prevMesh) 
+       pMesh => CurrentModel % Meshes
+       DO WHILE(ASSOCIATED(pMesh))
+         i = i+1
+         IF(ASSOCIATED(pMesh,Mesh_in)) EXIT
+         prevMesh => pMesh
+         pMesh => pMesh % Next 
+       END DO
+       CALL Info('CreateExtrudedMesh','Extruded mesh order is '//I2S(i),Level=25)
+
+       ExtrudedMesh % Next => Mesh_in % Next
+       IF(ASSOCIATED(prevMesh)) THEN
+         prevMesh % Next => ExtrudedMesh
+       ELSE
+         CurrentModel % Meshes => ExtrudedMesh
+       END IF
+         
        ! If periodic BC given, compute boundary mesh projector:
+       ! but only for the primary mesh.
        ! ------------------------------------------------------
+       IF(.NOT. PrimaryMesh) RETURN
+       
        DO i = 1,CurrentModel % NumberOfBCs
          IF(ASSOCIATED(CurrentModel % Bcs(i) % PMatrix)) &
              CALL FreeMatrix( CurrentModel % BCs(i) % PMatrix )
@@ -1078,7 +1148,7 @@
        LOGICAL, OPTIONAL :: Finalize 
 
        INTEGER :: i, j, k, n, solver_id, TestCount=0, PassCount=0, FailCount, Dofs
-       REAL(KIND=dp) :: Norm, RefNorm, Tol, Err, val, refval
+       REAL(KIND=dp) :: Norm, RefNorm, Tol, Err, val, refval, dt
        TYPE(Solver_t), POINTER :: Solver
        TYPE(Variable_t), POINTER :: Var
        LOGICAL :: Found, Success = .TRUE., FinalizeOnly, CompareNorm, CompareSolution, AbsoluteErr
@@ -1125,6 +1195,9 @@
              END IF
              CALL FLUSH( 10 )
              CLOSE( 10 )
+
+             dt = ListGetConstReal(CurrentModel % Simulation,'Test Passed Delay', Found )
+             IF(Found) CALL WaitSec(dt)
            END IF
          END IF
 
@@ -1727,7 +1800,8 @@
 !------------------------------------------------------------------------------
    SUBROUTINE SetInitialConditions()
 !------------------------------------------------------------------------------
-     USE DefUtils
+     USE CoordinateSystems, ONLY : CoordinateSystemDimension
+
      INTEGER :: DOFs
      CHARACTER(:), ALLOCATABLE :: str
      LOGICAL :: Found, NamespaceFound
@@ -1759,6 +1833,7 @@
        CALL Restart()
      END IF
 
+     CALL Info('SetInitialConditions','Initial conditions set',Level=20)
          
 !------------------------------------------------------------------------------
 !    Make sure that initial values at boundaries are set correctly.
@@ -1805,6 +1880,7 @@
              ! This seems to be a more robust marker for DG type
              DG = ( Var % Type == Variable_on_nodes_on_elements ) 
              
+
              IF ( Var % DOFs <= 1 ) THEN
                Work(1:n) = GetReal( BC,Var % Name, gotIt )
                IF ( GotIt ) THEN
@@ -1951,6 +2027,10 @@
          Mesh => Mesh % Next
        END DO
      END IF
+
+     CALL Info('SetInitialConditions','Initial values for boundaries set',Level=20)
+
+     
 !------------------------------------------------------------------------------
    END SUBROUTINE SetInitialConditions
 !------------------------------------------------------------------------------
@@ -1959,7 +2039,10 @@
 !------------------------------------------------------------------------------
    SUBROUTINE InitCond()
 !------------------------------------------------------------------------------
-     USE DefUtils
+     USE Integration, ONLY : GaussIntegrationPoints_t
+     USE SolverUtils, ONLY : GaussPointsAdapt
+     USE ElementDescription, ONLY : ElementInfo
+     
      TYPE(Element_t), POINTER :: Edge
      INTEGER :: DOFs,i,i2,j,k,k1,k2,l,n,n2,m,nsize
      CHARACTER(:), ALLOCATABLE :: str, VarName
@@ -1988,14 +2071,25 @@
        CALL SetCurrentMesh( CurrentModel, Mesh )
 
        IF( InfoActive( 30 ) ) THEN
+         j = 0
          CALL Info('InitCond','Initial conditions for '//I2S(Mesh % MeshDim)//'D mesh:'//TRIM(Mesh % Name))
          Var => Mesh % Variables
          DO WHILE( ASSOCIATED(Var) ) 
            IF( ListCheckPresentAnyIC( CurrentModel, Var % Name ) ) THEN
-             CALL VectorValuesRange(Var % Values,SIZE(Var % Values),'PreInit: '//TRIM(Var % Name))       
+             !CALL VectorValuesRange(Var % Values,SIZE(Var % Values),'PreInit: '//TRIM(Var % Name))       
+           END IF
+           IF(Var % TYPE == Variable_on_nodes ) THEN
+             IF( ASSOCIATED(Var % Perm) ) THEN
+               IF(MAXVAL(Var % Perm) /= COUNT(Var % Perm > 0) ) THEN
+                 PRINT *,'Perm range for: '//TRIM(Var % Name), MAXVAL(Var % Perm), COUNT(Var % Perm /= 0), &
+                     SIZE(Var % Perm)
+                 j = j+1
+               END IF
+             END IF
            END IF
            Var => Var % Next
          END DO
+         IF(j>0) CALL Fatal('InitCond','Mismatch in '//I2S(j)//' nodal permutations!')         
        END IF
        
        m = Mesh % MaxElementDofs
@@ -2061,12 +2155,23 @@
            
            Element =>  Mesh % Elements(t)
            
-           i = Element % BodyId 
-           IF( i == 0 ) CYCLE
+           GotIt = .FALSE.
+           IF ( ASSOCIATED(Element % BoundaryInfo) ) THEN
+             i = Element % BoundaryInfo % Constraint
+             IF ( i >= 1 .AND. i <= CurrentModel % NumberOfBCs) THEN
+               j = ListGetInteger(CurrentModel % BCs(i) % Values, &
+                   'Initial Condition',GotIt, 1, CurrentModel % NumberOfBCs )
+             END IF
+           END IF
+
+           IF ( .NOT. GotIt ) THEN
+             i = Element % BodyId 
+             IF( i == 0 ) CYCLE
            
-           j = ListGetInteger(CurrentModel % Bodies(i) % Values, &
-               'Initial Condition',GotIt, 1, CurrentModel % NumberOfICs )           
-           IF ( .NOT. GotIt ) CYCLE
+             j = ListGetInteger(CurrentModel % Bodies(i) % Values, &
+                 'Initial Condition',GotIt, 1, CurrentModel % NumberOfICs )           
+             IF ( .NOT. GotIt ) CYCLE
+           END IF
            
            IC => CurrentModel % ICs(j) % Values
            CurrentModel % CurrentElement => Element
@@ -2205,7 +2310,9 @@
                
                IF(ASSOCIATED(Mesh % Edges)) THEN
                  IF ( i<=Mesh % NumberOfBulkElements) THEN
-                   Gotit = ListCheckPresent( IC, TRIM(Var % Name)//' {e}' )
+                   BLOCK
+                     Gotit = ListCheckPresent( IC, Var % Name//' {e}' )
+                   END BLOCK
                    IF ( Gotit ) THEN
                      DO k=1,Element % TYPE % NumberOfedges
                        Edge => Mesh % Edges(Element % EdgeIndexes(k))
@@ -2385,11 +2492,10 @@
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-!> Check if we are restarting are if yes, read in field values.
+!> Check if we are restarting and if yes, read in field values.
 !------------------------------------------------------------------------------
    SUBROUTINE Restart()
 !------------------------------------------------------------------------------
-     USE DefUtils
      LOGICAL :: Gotit, DoIt
      INTEGER :: i, j, k, l
      REAL(KIND=dp) :: StartTime
@@ -2573,10 +2679,12 @@
 !> Execute the individual solvers in defined sequence. 
 !------------------------------------------------------------------------------
    SUBROUTINE ExecSimulation(TimeIntervals,  CoupledMinIter, &
-              CoupledMaxIter, OutputIntervals, Transient, Scanning)
+       CoupledMaxIter, OutputIntervals, Transient, Scanning)
+!------------------------------------------------------------------------------     
+     USE Integration, ONLY : GaussPointsInitialized, GaussPointsInit
      IMPLICIT NONE
-      INTEGER :: TimeIntervals,CoupledMinIter, CoupledMaxIter,OutputIntervals(:)
-      LOGICAL :: Transient,Scanning
+     INTEGER :: TimeIntervals,CoupledMinIter, CoupledMaxIter,OutputIntervals(:)
+     LOGICAL :: Transient,Scanning
 !------------------------------------------------------------------------------
      INTEGER :: interval, timestep, i, j, k, n
      REAL(KIND=dp) :: dt, ddt, dtfunc, timeleft
@@ -2685,7 +2793,7 @@
          END IF
        END IF
        IF( MODULO( ParEnv % PEs, nSlices ) /= 0 ) THEN
-         CALL Fatal(Caller,'For hybrid parallellism #np must be divisible with "Number of Slices"')
+         CALL Fatal(Caller,'For hybrid parallelism #np must be divisible with "Number of Slices"')
        END IF
        nTimes = ParEnv % PEs / nSlices 
        CALL ListAddInteger( CurrentModel % Simulation,'Number Of Times',nTimes )
@@ -3716,7 +3824,7 @@
     LOGICAL :: EigAnal = .FALSE., Found
     INTEGER :: i, j,k,l,n,q,CurrentStep,nlen,nlen2,timesteps,SavedEigenValues
     CHARACTER(LEN=MAX_NAME_LEN) :: Simul, SaveWhich
-    CHARACTER(MAX_NAME_LEN) :: OutputDirectory
+    CHARACTER(MAX_PATH_LEN) :: OutputDirectory
     TYPE(Solver_t), POINTER :: pSolver
     
     Simul = ListGetString( CurrentModel % Simulation,'Simulation Type' )

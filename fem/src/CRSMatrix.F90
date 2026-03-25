@@ -47,7 +47,6 @@
 MODULE CRSMatrix
 
   USE Lists
-  USE LoadMod
 
   IMPLICIT NONE
 
@@ -228,7 +227,7 @@ CONTAINS
         !$OMP PARALLEL DO DEFAULT(NONE) &
         !$OMP SHARED(Diag, Rows, Cols, N) &
         !$OMP PRIVATE(i,j)
-        DO i=1,N
+        DO i=1,n
           DO j=Rows(i),Rows(i+1)-1
             IF ( Cols(j) == i ) THEN
               Diag(i) = j
@@ -356,11 +355,12 @@ CONTAINS
     INTEGER, POINTER :: Cols(:),Rows(:),Diag(:)
 !------------------------------------------------------------------------------
     IF(i>A % NumberOfRows) THEN
-      CALL Warn('CRS_AddToMatrixElement','Matrix element is to be added to a nonexistent position')
+      WRITE(Message,'(A,ES12.3)') 'Nonexistent row index for matrix entry:',val
+      CALL Warn('CRS_AddToMatrixElement',Message)
       CALL Warn('CRS_AddToMatrixElement','Row: '//i2s(i)//' Col: '//i2s(j))
       CALL Warn('CRS_AddToMatrixElement','Number of Matrix rows:'//i2s(A % NumberOfRows))
       CALL Warn('CRS_AddToMatrixElement','Converting CRS to list')
-      A % FORMAT=MATRIX_LIST; RETURN
+      A % FORMAT = MATRIX_LIST; RETURN
     END IF
 
     Rows   => A % Rows
@@ -380,7 +380,8 @@ CONTAINS
       ELSE
         k = CRS_Search( Rows(i+1)-Rows(i),Cols(Rows(i):Rows(i+1)-1),j )
         IF ( k==0 .AND. val/=0 ) THEN
-          CALL Warn('CRS_AddToMatrixElement','Matrix element is to be added to a nonexistent position')
+          WRITE(Message,'(A,ES12.3)') 'Nonexistent col index for matrix entry:',val
+          CALL Warn('CRS_AddToMatrixElement',Message)
           CALL Warn('CRS_AddToMatrixElement','Row: '//i2s(i)//' Col: '//i2s(j))
           CALL Warn('CRS_AddToMatrixElement','Number of Matrix rows:'//i2s(A % NumberOfRows))
           CALL Warn('CRS_AddToMatrixElement','Converting CRS to list')
@@ -736,8 +737,8 @@ CONTAINS
      REAL(KIND=dp), OPTIONAL, TARGET :: GlobalValues(:)
 !------------------------------------------------------------------------------ 
      INTEGER :: i,j,k,l,c,Row,Col
-     INTEGER, POINTER :: Cols(:),Rows(:),Diag(:)
      REAL(KIND=dp), POINTER :: Values(:)
+     INTEGER, POINTER :: Cols(:),Rows(:),Diag(:)
 !------------------------------------------------------------------------------
 
      Diag   => A % Diag
@@ -750,13 +751,14 @@ CONTAINS
      END IF
 
      IF ( Dofs == 1 ) THEN
-       DO i=1,N
+       DO i=1,n
          Row = Indeces(i)
          IF ( Row <=0 ) CYCLE
-         DO j=1,N
+         IF ( Diag(Row) <= 0) CYCLE
+         DO j=1,n
            Col = Indeces(j)
            IF ( Col <= 0 ) CYCLE
-           IF ( Col >= Row ) THEN
+           IF (Col >= Row ) THEN
              DO c=Diag(Row),Rows(Row+1)-1
                IF ( Cols(c) == Col ) THEN
 !$omp atomic
@@ -780,6 +782,7 @@ CONTAINS
           DO k=0,Dofs-1
              IF ( Indeces(i) <= 0 ) CYCLE
              Row  = Dofs * Indeces(i) - k
+             IF ( Diag(Row) <= 0)  CYCLE
              DO j=1,N
                 DO l=0,Dofs-1
                    IF ( Indeces(j) <= 0 ) CYCLE
@@ -1292,7 +1295,7 @@ CONTAINS
 
   
 !------------------------------------------------------------------------------
-!> Computes the rowsoum of a given row in a CRS matrix.
+!> Computes the rowsum of a given row in a CRS matrix.
 !------------------------------------------------------------------------------
 FUNCTION CRS_RowSum( A,k ) RESULT(rsum)
 !------------------------------------------------------------------------------
@@ -1308,6 +1311,25 @@ FUNCTION CRS_RowSum( A,k ) RESULT(rsum)
    END DO
 !------------------------------------------------------------------------------
 END FUNCTION CRS_RowSum
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Computes the absolute rowsum of a given row in a CRS matrix.
+!------------------------------------------------------------------------------
+FUNCTION CRS_RowSumAbs( A,k ) RESULT(rsum)
+!------------------------------------------------------------------------------
+  TYPE(Matrix_t), INTENT(IN) :: A       !< Structure holding matrix
+  INTEGER, INTENT(IN) :: k              !< Row index 
+  REAL(KIND=dp) :: rsum                 !< Sum of the entries on the row
+!------------------------------------------------------------------------------
+  INTEGER :: i
+
+  rsum = 0.0D0
+  DO i=A % Rows(k), A % Rows(k+1)-1
+    rsum  = rsum + ABS( A % Values( i ) ) 
+  END DO
+!------------------------------------------------------------------------------
+END FUNCTION CRS_RowSumAbs
 !------------------------------------------------------------------------------
 
 
@@ -1805,7 +1827,11 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
        CALL Info('CRS_Transpose','Creating a transpose of matrix',Level=20)
        
        B => AllocateMatrix()
-       
+
+       IF(.NOT. ASSOCIATED(A) ) THEN
+         CALL Fatal('CRS_Transpose','Matrix not associated!')
+       END IF
+         
        na = A % NumberOfRows
        IF( na == 0 ) THEN
          B % NumberOfRows = 0
@@ -1824,12 +1850,14 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
          ALLOCATE( B % Diag(nb) )       
          B % Diag = 0
        END IF
-         
+
+       ! Count how many hits there are in A for each column
        Row = 0       
        DO i = 1, NVals
          Row( A % Cols(i) ) = Row( A % Cols(i) ) + 1
        END DO
-       
+
+       ! For transpose the column hits are row hits
        B % Rows = 0
        B % Rows(1) = 1
        DO i = 1, nB
@@ -1837,10 +1865,8 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
        END DO
        B % Cols = 0
        
-       DO i = 1, nB
-         Row(i) = B % Rows(i)
-       END DO
-
+       ! Location of 1st entry in each row
+       Row(1:nB) = B % Rows(1:nB)
        
        DO i = 1, nA
 
@@ -1852,7 +1878,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
              B % Values( Row(k) ) = A % Values(j)
              Row(k) = Row(k) + 1
            ELSE
-             WRITE( Message, * ) 'Trying to access non-existent column', i,k,j
+             WRITE( Message, * ) 'Trying to access column beyond allocation: ', i,k,j
              CALL Error( 'CRS_Transpose', Message )
              RETURN
            END IF
@@ -1877,7 +1903,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
      INTEGER, POINTER  CONTIG :: Cols(:),Rows(:)
      REAL(KIND=dp), POINTER  CONTIG :: Values(:)
 
-     INTEGER :: i,j,k,n
+     INTEGER :: i,j,k,n,m
      REAL(KIND=dp) :: rsum
 #ifdef HAVE_MKL
 	INTERFACE
@@ -1896,13 +1922,14 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
      n = A % NumberOfRows
      Rows   => A % Rows
      Cols   => A % Cols
-     Values => A % Values
-
-	! Use MKL to perform mvp if it is available
+     Values => A % Values     
+          
+     ! Use MKL to perform mvp if it is available
 #ifdef HAVE_MKL
-	CALL mkl_dcsrgemv('T', n, Values, Rows, Cols, u, v)
+     CALL mkl_dcsrgemv('T', n, Values, Rows, Cols, u, v)
 #else
-     v(1:n) = 0.0_dp
+     m = MAXVAL(Cols)
+     v(1:m) = 0.0_dp
      DO i=1,n
 !DIR$ IVDEP
        DO j=Rows(i),Rows(i+1)-1
@@ -2004,7 +2031,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
          i = InvPermA(iC)
 
          iA = PermA(i)
-         IF(iA /= iC) CALL Fatal('CRS_MergeMatrix','This Should be True by consruction!')                 
+         IF(iA /= iC) CALL Fatal('CRS_MergeMatrix','This Should be True by construction!')                 
          iB = PermB(i)
          
          nA = 0
@@ -2377,7 +2404,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
 
 !------------------------------------------------------------------------------
-!>    Pics the block diagonal entries from matrix A to build matrix B.
+!> Picks the block diagonal entries from matrix A to build matrix B.
 !------------------------------------------------------------------------------
   SUBROUTINE CRS_BlockDiagonal(A,B,Blocks) 
 !------------------------------------------------------------------------------
@@ -2783,7 +2810,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
 
 !------------------------------------------------------------------------------
-!>    Pics a block from matrix A to build matrix B. It is assumed that the 
+!> Picks a block from matrix A to build matrix B. It is assumed that the 
 !> matrix is split into given number of equally sized blocks.
 !------------------------------------------------------------------------------
   SUBROUTINE CRS_BlockMatrixPick(A,B,Blocks,Nrow,Ncol,PickPrec)
@@ -2898,8 +2925,8 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
 
 !------------------------------------------------------------------------------
-!> Pics a block from matrix A to build matrix B. It is assumed that the 
-!> matrix is split by intervals given by the users. For example for AV matris
+!> Picks a block from matrix A to build matrix B. It is assumed that the 
+!> matrix is split by intervals given by the users. For example for AV matrix
 !> the user would give the size of V as the input and choose then blocks
 !> (1,1), (1,2), (2,1) or (2,2). This logic assumes that nodes are numbered
 !> first, followed by other dofs. 
@@ -3055,7 +3082,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
 
 !------------------------------------------------------------------------------
-!> Pics a block from matrix A to build matrix B. 
+!> Picks a block from matrix A to build matrix B. 
 !> This subroutine enables the use of 
 !> nontrivial block decompositions. 
 !------------------------------------------------------------------------------
@@ -3442,17 +3469,18 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !>    Builds an incomplete (ILU(n)) factorization for a iterative solver
 !>    preconditioner. Real matrix version.
 !------------------------------------------------------------------------------
-  FUNCTION CRS_IncompleteLU(A,ILUn) RESULT(Status)
+  FUNCTION CRS_IncompleteLU(A,ILUn,Params) RESULT(Status)
 !------------------------------------------------------------------------------
     TYPE(Matrix_t) :: A          !< Structure holding input matrix, will also hold the factorization on exit.
     INTEGER, INTENT(IN) :: ILUn  !< Order of fills allowed 0-9
+    TYPE(ValueList_t), POINTER, INTENT(in) :: Params !< 
     LOGICAL :: Status            !< Whether or not the factorization succeeded.
 !------------------------------------------------------------------------------
-    LOGICAL :: Warned
+    LOGICAL :: Warned, Retry, Found
     INTEGER :: i,j,k,l,m,n,istat
     INTEGER, POINTER :: Cols(:),Rows(:),Diag(:)
     REAL(KIND=dp), POINTER :: ILUValues(:), Values(:)
-    REAL(KIND=dp) :: st, tx
+    REAL(KIND=dp) :: st, tx, scl, cFactor
     LOGICAL, ALLOCATABLE :: C(:), D(:)
     REAL(KIND=dp), ALLOCATABLE ::  S(:), T(:)
     INTEGER, POINTER :: ILUCols(:),ILURows(:),ILUDiag(:)
@@ -3482,7 +3510,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     ELSE
       Values => A % Values
     END IF
-
+    
     IF ( .NOT. ASSOCIATED(A % ILUValues) ) THEN
 
        IF ( ILUn == 0 ) THEN
@@ -3540,12 +3568,23 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       CALL Info('CRS_IncompleteLU','Performing incomplete Cholesky',Level=12)
 
       ALLOCATE( T(n) )
-      T =  0._dp
+
+      Retry = ListGetLogical( Params, 'Linear System Cholesky Retry', Found )
+      IF( Retry ) THEN
+        cFactor = ListGetCReal( Params, 'Linear System Cholesky Factor', Found )
+        cFactor = cFactor + 1._dp
+      END IF
+
+      Scl = 1._dp
+
+1     CONTINUE
+
+     T =  0._dp
      !
      ! The factorization row by row:
      ! -----------------------------
      Warned = .FALSE.
-     DO i=1,N
+     DO i=1,n
 
        ! Convert current row to full form for speed,
        ! only flagging the nonzero entries:
@@ -3563,7 +3602,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
        ! This is the factorization part for the current row:
        ! ---------------------------------------------------
-       S(i) = T(i)
+       S(i) = Scl * T(i)
        DO m=ILURows(i),ILUDiag(i)-1
          j = ILUCols(m)
          S(j) = T(j)
@@ -3581,6 +3620,13 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
            CALL Warn( 'Cholesky factorization:', &
                'Negative diagonal: not pos.def. or badly conditioned matrix' )
            Warned = .TRUE.
+         END IF
+         IF ( Retry ) THEN
+           Scl = Scl * cFactor
+           WRITE(Message, *) Scl
+           CALL Warn( 'Cholesky factorization:', &
+                  'Retry using diagonal scaling:'//TRIM(Message) )
+           GOTO 1
          END IF
        ELSE
          S(i) = 1._dp / SQRT(S(i))
@@ -3799,7 +3845,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-!>    Buids an incomplete (ILU(n)) factorization for an iterative solver
+!>    Builds an incomplete (ILU(n)) factorization for an iterative solver
 !>    preconditioner. Complex matrix version.
 !------------------------------------------------------------------------------
   FUNCTION CRS_ComplexIncompleteLU(A,ILUn) RESULT(Status)
@@ -4138,7 +4184,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
 
 !------------------------------------------------------------------------------
-!>    Buids an incomplete (ILUT) factorization for an iterative solver
+!>    Builds an incomplete (ILUT) factorization for an iterative solver
 !>    preconditioner. Real matrix version.
 !------------------------------------------------------------------------------
   FUNCTION CRS_ILUT(A,TOL) RESULT(Status)
@@ -4236,7 +4282,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
          END DO
 !
 !        Check bandwidth for speed, bandwidth optimization
-!        helps here ALOT, use it!
+!        helps here A LOT, use it!
 !        -------------------------------------------------
          RowMin = Cols(Rows(i))
          RowMax = Cols(Rows(i+1)-1)
@@ -4338,7 +4384,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
 
 !------------------------------------------------------------------------------
-!>    Buids an incomplete (ILUT) factorization for an iterative solver
+!>    Builds an incomplete (ILUT) factorization for an iterative solver
 !>    preconditioner. Complex matrix version.
 !------------------------------------------------------------------------------
   FUNCTION CRS_ComplexILUT(A,TOL) RESULT(Status)
@@ -4440,7 +4486,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
          END DO
 !
 !        Check bandwidth for speed, bandwidth optimization
-!        helps here ALOT, use it!
+!        helps here A LOT, use it!
 !        -------------------------------------------------
          RowMin = (Cols(Rows(2*i-1)) + 1) / 2
          RowMax = (Cols(Rows(2*i)-1) + 1) / 2
@@ -4744,8 +4790,8 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
   SUBROUTINE CRS_MatrixVectorProd( u,v,ipar )
 !------------------------------------------------------------------------------
     INTEGER, DIMENSION(*), INTENT(IN) :: ipar  !< Structure holding info HUTIter-iterative solver package
-    REAL(KIND=dp), INTENT(IN) :: u(HUTI_NDIM)  !< vector to multiply u
-    REAL(KIND=dp) :: v(HUTI_NDIM)              !< result vector
+    REAL(KIND=dp), INTENT(IN) :: u(*)  !< vector to multiply u
+    REAL(KIND=dp) :: v(*)              !< result vector
 
 !------------------------------------------------------------------------------
     INTEGER, POINTER  CONTIG :: Cols(:),Rows(:)
@@ -4981,10 +5027,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     RowMax = MAXVAL( Rows )
     RowN = SIZE( Rows )
 
-    PRINT *,'Rows:'
-    PRINT *,'size:',RowN
-    PRINT *,'min:',RowMin
-    PRINT *,'max:',RowMax
+    PRINT *,'Rows (size '//I2S(RowN)//') range:',RowMin, RowMax
 
     IF( RowMin < 1 ) THEN
       PRINT *,'Outliers:'
@@ -5003,12 +5046,8 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     ColMin = MINVAL( Cols )
     ColMax = MAXVAL( Cols )
     ColN = SIZE( Cols )
-
-    PRINT *,'Cols:'
-    PRINT *,'size:',ColN
-    PRINT *,'min:',ColMin
-    PRINT *,'max:',ColMax
-
+    PRINT *,'Cols (size '//I2S(ColN)//') range:',ColMin, ColMax
+    
     IF( ColMin < 1 ) THEN
       PRINT *,'Outliers:'
       j = 0
@@ -5028,11 +5067,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     ValN = SIZE( Values )
     TotalSum = SUM( Values )
 
-    PRINT *,'Values:'
-    PRINT *,'size:',ValN
-    PRINT *,'min:',ValMin
-    PRINT *,'max:',ValMax
-    PRINT *,'sum:',TotalSum
+    PRINT *,'Values (size '//I2S(ValN)//') range:',ValMin,ValMax,TotalSum
     
     IF( ColN /= RowMax - 1  ) THEN
       PRINT *,'Conflicting max row index :',n,RowMax-1

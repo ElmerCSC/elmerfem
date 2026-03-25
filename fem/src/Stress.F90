@@ -210,7 +210,7 @@ MODULE StressLocal
        END IF
 
        IF(.NOT.ASSOCIATED(ve_stress % PrevValues)) THEN
-         ALLOCATE(ve_stress % PrevValues(1,SIZE(ve_stress % values)))
+         ALLOCATE(ve_stress % PrevValues(SIZE(ve_stress % values),1))
          ve_stress % PrevValues = 0._dp
        END IF
 
@@ -717,7 +717,7 @@ CONTAINS
      ! Update timederivatives at the start of timesteps:
      ! -------------------------------------------------
      IF ( GetNonlinIter()==1 .AND. GetCoupledIter()==1 ) THEN
-       ve_stress % prevvalues(1,i+1:i+dim**2) = ve_stress % values(i+1:i+dim**2)
+       ve_stress % prevvalues(i+1:i+dim**2,1) = ve_stress % values(i+1:i+dim**2)
      END IF
 
      ! Elastic deviatoric stress from previous timestep:
@@ -750,7 +750,7 @@ CONTAINS
      END IF
 
      xPhi = 1._dp / ( 1 + ShearModulus / Viscosity * GetTimeStepSize() )
-     PrevStress(1:dim,1:dim) = RESHAPE(ve_stress % prevvalues(1,i+1:i+dim**2), [dim,dim])
+     PrevStress(1:dim,1:dim) = RESHAPE(ve_stress % prevvalues(i+1:i+dim**2,1), [dim,dim])
 
      ! Viscoelastic load from the previous timestep:
      ! ----------------------------------------------

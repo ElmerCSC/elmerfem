@@ -45,7 +45,7 @@ MODULE StressGeneral
 !------------------------------------------------------------------------------
   USE CoordinateSystems
   USE Integration
-  USE ElementDescription
+  USE ElementDescription, ONLY : ElementInfo, NormalVector
 
   IMPLICIT NONE
 

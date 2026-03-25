@@ -60,8 +60,8 @@ MODULE Messages
    CHARACTER(LEN=512) :: Message = ' '
    INTEGER, PRIVATE :: i
    LOGICAL :: OutputPrefix=.FALSE., OutputCaller=.TRUE.
-   LOGICAL :: OutputLevelMask(0:31) = .TRUE.
-   INTEGER :: MaxOutputLevel=31, MinOutputLevel=0, OutputPE = 0
+   LOGICAL :: OutputLevelMask(0:32) = .TRUE.
+   INTEGER :: MaxOutputLevel=32, MinOutputLevel=0, OutputPE = 0
    INTEGER :: MaxOutputThread=0, MaxThreads=1
    INTEGER :: MaxOutputPE = 0, MinOutputPE = 0
    INTEGER :: InfoOutUnit = stdout

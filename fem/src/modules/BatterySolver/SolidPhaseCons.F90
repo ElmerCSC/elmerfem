@@ -9,6 +9,7 @@
 !> that is active in every node of the global 1D/2D/3D mesh. 
 !------------------------------------------------------------------------------
 SUBROUTINE SolidPhaseCons_Init( Model,Solver,dt,Transient)
+  USE MeshUtils, ONLY : CreateLineMesh
   USE DefUtils
   IMPLICIT NONE
   !------------------------------------------------------------------------------

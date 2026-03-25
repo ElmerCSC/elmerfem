@@ -78,11 +78,7 @@
         PauseVolumeThresh, BotZ, TopZ, prop, MaxBergVolume, dy, dz, dzdy, &
         gradLimit, Displace, y_coord(2), ShiftTo, Time, CrevPenetration, &
         CalvingLimit, PrevValue,&
-#ifdef USE_ISO_C_BINDINGS
         rt0, rt
-#else
-        rt0, rt, RealTime
-#endif
 
    REAL(KIND=dp), POINTER :: DistValues(:), CIndexValues(:), WorkReal(:), &
         CalvingValues(:), ForceVector(:)

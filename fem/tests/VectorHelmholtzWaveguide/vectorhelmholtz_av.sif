@@ -150,7 +150,8 @@ Boundary Condition 1
 
 ! Now an additional condition for the scalar variable is needed, since
 ! the Gauss law is used. Assuming some source impedance seems to be
-! essential for stability.
+! essential for stability. A small "Electric Transfer Coefficient" provides
+! a way to approximate the condition that there is no surface charge:
 !  -------------------------------------------------------
   Electric Transfer Coefficient Im = $ -w/50e+6
   Electric Current Density = 0
@@ -179,16 +180,12 @@ Boundary Condition 2
 !  Layer Electric Conductivity = 5.0e+6
 !  Layer Electric Conductivity Im = 5.0e+6	  
 
-  ! A small "Electric Transfer Coefficient" provides a way to approximate
-  ! the condition that there is no surface charge:
-  ! -------------------------------------------------------
-  Electric Transfer Coefficient Im = $ -w/50e+6
-  Electric Current Density = 0
-  Electric Current Density Im = 0  
+  E Re = Real 0.0
+  E Im = Real 0.0
 End
 
 
-Solver 1 :: Reference Norm = 8.88514461E-01
+Solver 1 :: Reference Norm = 1.62980066E+00
 Solver 1 :: Reference Norm Tolerance = 1e-3
 Solver 2 :: Reference Norm = 2.32743791E-03
 Solver 2 :: Reference Norm Tolerance = 1e-3

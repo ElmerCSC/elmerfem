@@ -4,23 +4,22 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-!
 !/******************************************************************************
 ! *
 ! *  Authors: Juha Ruokolainen
@@ -66,7 +65,7 @@
      TYPE(Element_t),POINTER :: Element
 
      REAL(KIND=dp) :: RelativeChange,UNorm,PrevUNorm,Gravity(3), &
-         Tdiff,Normal(3),s,r,NonlinearTol
+         Tdiff,Normal(3),s,r,NonlinearTol,mu0
 
      TYPE(Variable_t), POINTER :: ElectricSol, ForceSol, ElecFieldSol
      INTEGER :: NSDOFs,NonlinearIter, dim
@@ -124,6 +123,12 @@
 
      LocalNodes = COUNT( Solver % Variable % Perm>0 )
 
+     IF(ListCheckPresentAnyMaterial( Model,'Relative Permeability' ) ) THEN
+       mu0 = GetConstReal( Model % Constants,'Permeability of Vacuum', GotIt )
+       IF(.NOT. GotIt ) CALL Fatal('MagneticSolve','> Permeability of Vacuum < is required')
+     END IF
+            
+     
      UNorm = Solver % Variable % Norm
 !------------------------------------------------------------------------------
 !    Allocate some permanent storage, this is done first time only
@@ -238,7 +243,11 @@
 
          Material => GetMaterial()
 
-         Permeability(1:n) = GetReal(Material, 'Magnetic Permeability'   )
+         Permeability(1:n) = GetReal(Material, 'Magnetic Permeability',GotIt)
+         IF(.NOT. GotIt) THEN
+           Permeability(1:n) = mu0 * GetReal(Material, 'Relative Permeability')
+         END IF
+
          Conductivity(1:n) = GetReal(Material, 'Electrical Conductivity',GotIt )
          IF( GotIt ) THEN
            CALL Warn('MagneticSolve','Use electric conductivity instead of electrical')

@@ -4,23 +4,22 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-!
 !/******************************************************************************
 ! *
 ! *  Authors: Juha Ruokolainen
@@ -268,7 +267,7 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
   !-----------------------------------------------------------------------
   ShiftCoeff = GetCReal(SolverParams, 'Linear System Preconditioning Damp Coefficient', UsePrecShift)
   ShiftCoeff = CMPLX(REAL(ShiftCoeff), &
-      GetCReal(SolverParams, 'Linear System Preconditioning Damp Coefficient Im', Found))
+      GetCReal(SolverParams, 'Linear System Preconditioning Damp Coefficient Im', Found),KIND=dp)
   UsePrecShift = UsePrecShift .OR. Found
 
   IF(UsePrecShift) THEN
@@ -371,13 +370,14 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
 
      DO t=1, Solver % Mesh % NumberOfBoundaryElements
         Element => GetBoundaryElement(t)
-        IF ( .NOT.ActiveBoundaryElement() ) CYCLE
-
-        n  = GetElementNOFNodes()
-        nd = GetElementNOFDOFs()
 
         BC => GetBC()
         IF ( ASSOCIATED( BC ) ) THEN
+          IF ( .NOT.ActiveBoundaryElement() ) CYCLE
+
+          n  = GetElementNOFNodes()
+          nd = GetElementNOFDOFs()
+          
           Load(1,1:n) = GetReal( BC, 'Wave Flux 1', Found )
           Load(2,1:n) = GetReal( BC, 'Wave Flux 2', Found )
           Impedance(1,1:n) = GetReal( BC, 'Wave Impedance 1', Found )
@@ -446,11 +446,11 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
                IF( DispMode == 1 ) THEN
                  cu = DispEigen( (k-1)*DispDofs + l )
                ELSE IF( DispMode == 2 ) THEN
-                 cu = CMPLX( Disp( (k-1)*DispDofs + 2*l-1 ), Disp( (k-1)*DispDofs + 2*l ) )
+                 cu = CMPLX( Disp( (k-1)*DispDofs + 2*l-1 ), Disp( (k-1)*DispDofs + 2*l ),KIND=dp )
                ELSE IF( DispMode == 3 ) THEN                
-                 cu = CMPLX( Disp( (k-1)*DispDofs + l ), 0.0_dp )
+                 cu = CMPLX( Disp( (k-1)*DispDofs + l ), 0.0_dp,KIND=dp )
                ELSE 
-                 cu = CMPLX( Disp( (k-1)*DispDofs + l ),  DispIm( (k-1)*DispDofs + l ) )
+                 cu = CMPLX( Disp( (k-1)*DispDofs + l ),  DispIm( (k-1)*DispDofs + l ),KIND=dp )
                END IF
 
                WallVelocity(l,j) = cu

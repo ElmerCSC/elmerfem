@@ -51,7 +51,7 @@
 
        INTEGER :: IPIV(N),iINFO
 
-       IF ( N .LE. 0 ) RETURN
+       IF ( N <= 0 ) RETURN
 
        iINFO = 0
        CALL DPBTRF( 'L',N,Subband,A,Band,iINFO )
@@ -84,7 +84,7 @@
 
        INTEGER :: IPIV(N),iINFO
 
-       IF ( N .LE. 0 ) RETURN
+       IF ( N <= 0 ) RETURN
 
        iINFO = 0
        CALL ZPBTRF( 'L',N,Subband,A,Band,iINFO )

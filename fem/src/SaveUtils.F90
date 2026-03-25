@@ -46,8 +46,9 @@ MODULE SaveUtils
   USE MatrixAssembly
   USE Lists
   USE Messages
-  USE MeshUtils, ONLY: GetLagrangeIndexes, CopyElementNodesFromMesh
+  USE MeshUtils, ONLY: GetLagrangeIndexes
   USE ElementUtils, ONLY: FindParentUVW
+  USE Interpolation, ONLY: CopyElementNodesFromMesh
   USE ElementDescription
   
   IMPLICIT NONE
@@ -385,7 +386,7 @@ CONTAINS
       IF( ASSOCIATED(MaskVar)) MaskPerm => MaskVar % Perm
       MaskExists = ASSOCIATED(MaskPerm)
       IF( MaskExists ) THEN
-        CALL Info(Caller,'Using > '// TRIM(Str) // ' < as mask variable')
+        CALL Info(Caller,'Using > '// TRIM(Str) // ' < as mask variable',Level=8)
       END IF
     ELSE
       ! Check if there is an additional mask name given
@@ -397,6 +398,9 @@ CONTAINS
       END IF
       IF(.NOT. GotIt) MaskName = ListGetString( Params,'Mask Name',GotIt) 
       GotMaskName = GotIt
+      IF(GotMaskName) THEN
+        CALL Info(Caller,'Using "Mask Name" to select elements: '//TRIM(MaskName),Level=8)
+      END IF
     END IF
 
     GotMaskCond = .FALSE.
@@ -419,9 +423,9 @@ CONTAINS
     NumberOfGeomNodes = Mesh % NumberOfNodes
     IF( MaskExists ) THEN
       NumberOfGeomNodes = COUNT( MaskPerm(1:NumberOfGeomNodes) > 0 ) 
-      CALL Info(Caller,'Mask is positive for nodes: '//I2S(NumberOfGeomNodes),Level=15)
+      CALL Info(Caller,'Mask is positive for nodes: '//I2S(NumberOfGeomNodes),Level=15)      
       IF( NumberOfGeomNodes == 0 ) THEN
-        CALL Info(Caller,'Leaving early since mask is negative everywhere')
+        CALL Info(Caller,'Leaving early since mask not active anywhere')
         RETURN
       END IF
     END IF
@@ -580,7 +584,7 @@ CONTAINS
 
     NumberOfGeomNodes = COUNT( NodePerm > 0 ) 
     IF( NumberOfElements == 0 ) THEN
-      CALL Info(Caller,'No active elements forthis mask',Level=12)
+      CALL Info(Caller,'No active elements for this mask',Level=12)
     ELSE
       CALL Info(Caller,'Number of active elements '//I2S(NumberOfElements)//&
           ' out of '//I2S(Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements),Level=10)      
@@ -936,7 +940,7 @@ CONTAINS
 
     INTEGER, PARAMETER :: LENGTH = 1024
     CHARACTER(LEN=LENGTH) :: Txt, FieldName, CompName
-    CHARACTER(MAX_NAME_LEN) :: OutputFile
+    CHARACTER(MAX_PATH_LEN) :: OutputFile
     CHARACTER(:), ALLOCATABLE :: OutputDirectory
     INTEGER :: GmshUnit
     CHARACTER(*), PARAMETER :: Caller = 'SaveGmshOutput'
@@ -958,6 +962,11 @@ CONTAINS
       VisitedTimes = VisitedTimes + 1
     END IF
 
+    IF( VisitedTimes > 1 ) THEN
+      IF(ListGetLogical(Params,'Gmsh Save Mesh Only', Found ) ) RETURN    
+    END IF
+
+    
     Numbering = ListGetLogical( Params,'Filename Numbering',Found ) 
     IF(.NOT. Found) Numbering = .TRUE.
     
@@ -1065,19 +1074,21 @@ CONTAINS
 
 10  CONTINUE
 
-    CALL Info(Caller,'Writing the nodal data')
-    CALL WriteGmshData()
+    IF(.NOT. ListGetLogical(Params,'Gmsh Save Mesh Only', Found ) ) THEN    
+      CALL Info(Caller,'Writing the nodal data')
+      CALL WriteGmshData()
 
-    IF(.FALSE.) THEN
-      WRITE(GmshUnit,'(A)') '$ElementData'
-      WRITE(GmshUnit,'(A)') '$EndElementData'
+      IF(.FALSE.) THEN
+        WRITE(GmshUnit,'(A)') '$ElementData'
+        WRITE(GmshUnit,'(A)') '$EndElementData'
+      END IF
+
+      IF(.FALSE.) THEN
+        WRITE(GmshUnit,'(A)') '$ElementNodeData'
+        WRITE(GmshUnit,'(A)') '$EndElementNodeData'
+      END IF
     END IF
-
-    IF(.FALSE.) THEN
-      WRITE(GmshUnit,'(A)') '$ElementNodeData'
-      WRITE(GmshUnit,'(A)') '$EndElementNodeData'
-    END IF
-
+      
     CLOSE(GmshUnit)
 
     IF(ALLOCATED(DgPerm)) DEALLOCATE(DgPerm)
@@ -1420,5 +1431,247 @@ CONTAINS
   END SUBROUTINE SaveGmshOutput
 !------------------------------------------------------------------------------
 
+
+  ! Saves a loop in STL format. 
+  ! This is still not general.
+  ! We should sort out the direction of the normal for true 3D meshes.
+  !-------------------------------------------------------------------
+  SUBROUTINE SaveSTLSurface(Mesh,Params)
+       
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(ValueList_t), POINTER :: Params
+
+    TYPE(Element_t), POINTER :: Element, Parent
+    CHARACTER(LEN=MAX_NAME_LEN) :: Filename
+    LOGICAL :: Found, CalcNrm
+    INTEGER, PARAMETER :: GeoUnit = 10
+    INTEGER :: i,j,k,kmax,n,pn,ReverseCnt, ElemCnt, t_start, t_end, StlInds(3), &
+        BodyId, MinBody, MaxBody 
+    INTEGER, POINTER :: NodeInds(:)    
+    TYPE(Nodes_t) :: Nodes 
+    REAL(KIND=dp) :: Normal(3), MeshCenter(3), ElemCenter(3), dVec(3), NormalP(3)
+    LOGICAL :: Reverse, BodyStarted, DoBodies, DoBCs
+    CHARACTER(:), ALLOCATABLE :: Str
+    REAL(KIND=dp), POINTER :: RefResults(:,:), ArrayResults(:,:), ThisResults(:)
+    
+    IF( ParEnv % PEs > 1 ) THEN
+      CALL Warn('SaveSTLSurface','Not implemented yet in parallel')
+    END IF
+
+    Filename = ListGetString(Params,'STL Filename',Found)
+    IF( .NOT. Found ) Filename = 'mesh.stl'
+
+    CALL Info('SaveSTLSurface','Writing the surface mesh to STL file: '//TRIM(Filename))
+
+    ! Should we compute reference results for unit testing.
+    CalcNrm = ListCheckPresent( Params,'Reference Values')
+    IF( CalcNrm ) THEN
+      ALLOCATE( ArrayResults(6,1) )    
+      ArrayResults = 0.0_dp
+      ThisResults => ArrayResults(:,1)
+    END IF
+      
+    n = 4
+    ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n))
+
+    DoBodies = .FALSE.
+    DoBCs = .FALSE.
+    IF(Mesh % Elements(1) % TYPE % ElementCode > 500 ) THEN
+      DoBodies = ListGetLogical(Params,'STL Separate Bodies', Found ) 
+      DoBCs = ListGetLogical(Params,'STL Separate BCs', Found ) 
+    END IF
+
+    IF(DoBodies .OR. DoBCs ) THEN    
+      MinBody = MAX(1,ListGetInteger(Params,'STL Min Entity',Found ))
+      MaxBody = ListGetInteger(Params,'STL Max Entity',Found )
+      IF(.NOT. Found ) THEN
+        IF(DoBodies) MaxBody = CurrentModel % NumberOfBodies
+      ELSE
+        MaxBody = CurrentModel % NumberOfBCs                
+      END IF        
+      t_start = Mesh % NumberOfBulkElements + 1
+      t_end = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+    ELSE
+      t_start = 1
+      t_end = Mesh % NumberOfBulkElements
+      ! We just need some value such that looping over [MinBody,MaxBody] results to one cycle only.
+      MinBody = 1
+      MaxBody = MinBody
+      ! Use global center to define normal direction. 
+      n = Mesh % NumberOfNodes
+      MeshCenter(1) = SUM(Mesh % Nodes % x(1:n)) / n
+      MeshCenter(2) = SUM(Mesh % Nodes % y(1:n)) / n
+      MeshCenter(3) = SUM(Mesh % Nodes % z(1:n)) / n    
+    END IF
+    
+    ElemCnt = 0
+    ReverseCnt = 0
+    BodyId = MinBody
+    OPEN( UNIT=GeoUnit, FILE=Filename, STATUS='UNKNOWN')     
+    str = 'body'
+    
+10  BodyStarted = .FALSE.
+    DO i=t_start,t_end 
+      Element => Mesh % Elements(i)
+
+      n = Element % TYPE % ElementCode / 100
+      IF( n == 3 ) THEN
+        kmax = 1
+      ELSE IF( n == 4 ) THEN
+        kmax = 2
+      ELSE
+        CYCLE
+      END IF
+      
+      NodeInds => Element % NodeIndexes
+      CALL CopyElementNodesFromMesh(Nodes,Mesh,n,NodeInds) 
+
+      IF( DoBodies ) THEN
+        IF(.NOT. ASSOCIATED(Element % BoundaryInfo)) CYCLE
+        Found = .FALSE.
+        Parent => Element % BoundaryInfo % Left
+        IF(ASSOCIATED(Parent)) THEN
+          Found = (Parent % BodyId == BodyId)
+        END IF
+        IF(.NOT. Found ) THEN
+          Parent => Element % BoundaryInfo % Right
+          IF(ASSOCIATED(Parent)) THEN
+            Found = (Parent % BodyId == BodyId)
+          END IF
+        END IF
+        IF(.NOT. Found) CYCLE
+        IF(.NOT. BodyStarted) THEN
+          Found = .FALSE.
+          IF(DoBodies) THEN
+            str = ListGetString( CurrentModel % Bodies(BodyId) % Values,'Name',Found)
+          END IF
+          IF(.NOT. Found) str = 'body'//I2S(BodyId)
+        END IF
+#if 0 
+        Normal = NormalVector( Element, Nodes, Parent = Parent )  
+        Normal = -Normal
+        ! Normal points differently than the normal pointing outward of parent, then reverse.
+        Reverse = .FALSE. !(SUM(Normal*NormalP) > 0.0)
+#else
+        Normal = NormalVector( Element, Nodes )  
+
+        ! Center of boundary element
+        ElemCenter(1) = SUM(Nodes % x(1:n)) / n
+        ElemCenter(2) = SUM(Nodes % y(1:n)) / n
+        ElemCenter(3) = SUM(Nodes % z(1:n)) / n
+
+        ! Center of parent element
+        pn = Parent % Type % NumberOfNodes
+        MeshCenter(1) = SUM(Mesh % Nodes % x(Parent % NodeIndexes))/pn
+        MeshCenter(2) = SUM(Mesh % Nodes % y(Parent % NodeIndexes))/pn
+        MeshCenter(3) = SUM(Mesh % Nodes % y(Parent % NodeIndexes))/pn
+           
+        ! Parent center is always within body.
+        dVec = ElemCenter - MeshCenter 
+
+        ! If the normal points differently than dVec then reverse nodes. 
+        Reverse = (SUM(Normal*dVec) < 0.0)
+#endif
+      ELSE IF( DoBCs ) THEN
+        IF(.NOT. ASSOCIATED(Element % BoundaryInfo)) CYCLE
+        IF(Element % BoundaryInfo % Constraint /= BodyId) CYCLE
+
+         Parent => Element % BoundaryInfo % Left
+        IF(.NOT. ASSOCIATED(Parent) ) THEN
+          Parent => Element % BoundaryInfo % Right
+        END IF
+        IF(.NOT. BodyStarted) THEN
+          Found = .FALSE.
+          IF(DoBCs) THEN
+            str = ListGetString( CurrentModel % BCs(BodyId) % Values,'Name',Found)
+          END IF
+          IF(.NOT. Found) str = 'boundary'//I2S(BodyId)
+        END IF
+        Normal = NormalVector( Element, Nodes, Parent = Parent )  
+        !Normal = NormalVector( Element, Nodes )  
+        !Normal = -Normal
+        
+        ! Normal points differently than the normal pointing outward of parent, then reverse.
+        Reverse = .FALSE. !(SUM(Normal*NormalP) > 0.0)
+      ELSE                
+        ElemCenter(1) = SUM(Nodes % x(1:n)) / n
+        ElemCenter(2) = SUM(Nodes % y(1:n)) / n
+        ElemCenter(3) = SUM(Nodes % z(1:n)) / n
+
+        ! For simple geometries "MeshCenter" should be inside the object.
+        dVec = ElemCenter - MeshCenter
+
+        ! If the normal points differently than dVec then reverse nodes. 
+        Normal = NormalVector( Element, Nodes )  
+        Reverse = (SUM(Normal*dVec) < 0.0)
+      END IF
+
+      IF( Reverse) THEN
+        ReverseCnt = ReverseCnt + kmax
+        Normal = -Normal
+      END IF
+      ElemCnt = ElemCnt + kmax
+
+      
+      IF(.NOT. BodyStarted) THEN
+        WRITE( GeoUnit,'(A)') 'solid '//TRIM(str)
+        BodyStarted = .TRUE.
+        CALL Info('SaveSTLSurface','Starting writing surface: '//TRIM(str),Level=15)
+        IF(CalcNrm) ThisResults(1) = ThisResults(1) + 1
+      END IF
+              
+      DO k=1,kmax
+        IF(k==1) THEN
+          IF( Reverse ) THEN
+            StlInds(1:3) = [3,2,1]
+          ELSE
+            StlInds(1:3) = [1,2,3]
+          END IF
+        ELSE
+          IF( Reverse ) THEN
+            StlInds(1:3) = [4,3,1]
+          ELSE
+            StlInds(1:3) = [1,3,4]
+          END IF
+        END IF
+
+        IF(CalcNrm) THEN
+          ThisResults(2) = ThisResults(2) + 1
+          ThisResults(3) = ThisResults(3) + SUM(Normal)
+          ThisResults(4) = ThisResults(4) + Nodes % x(stlInds(1))
+          ThisResults(5) = ThisResults(5) + Nodes % y(stlInds(1))
+          ThisResults(6) = ThisResults(6) + Nodes % z(stlInds(1))
+        END IF
+        
+        WRITE( GeoUnit,'(A,3ES15.6)')   '  facet normal',Normal 
+        WRITE( GeoUnit,'(A)')           '    outer loop'
+        DO j=1,3
+          WRITE( GeoUnit,'(A,3ES15.6)') '      vertex',&
+              Nodes % x(StlInds(j)), Nodes % y(StlInds(j)), Nodes % z(StlInds(j)) 
+        END DO
+        WRITE( GeoUnit,'(A)')           '    endloop'
+        WRITE( GeoUnit,'(A)')           '  endfacet'
+      END DO
+    END DO
+
+    IF(BodyStarted) THEN
+      WRITE( GeoUnit,'(A)') 'endsolid '//TRIM(str)
+    END IF
+    BodyId = BodyId + 1 
+    IF(BodyId <= MaxBody ) GOTO 10 
+      
+    CLOSE( GeoUnit ) 
+    
+    CALL Info('SaveSTLSurface','Number of triangular elements in STL file: '//I2S(ElemCnt))
+    CALL Info('SaveSTLSurface','Number of element with reversed normal: '//I2S(ReverseCnt))
+    CALL Info('SaveSTLSurface','Finished writing the STL file!')
+    
+    IF(CalcNrm) THEN
+      CALL ListAddConstRealArray( Params,'This Values', 6, 1, ArrayResults )
+    END IF
+    
+  END SUBROUTINE SaveSTLSurface
+
+  
 END MODULE SaveUtils
   

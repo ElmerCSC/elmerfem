@@ -170,20 +170,21 @@ SUBROUTINE ComputeNormalSolver( Model, Solver, dt, TransientSimulation )
 
     CALL GetElementNodes( Nodes, Element )
 
+    CompBC = CompAll
     IF (.NOT.CompAll) THEN
       CompBC = GetLogical ( BC,'ComputeNormal',Found)
+      NormalCond = 0.0_dp
       IF (.NOT.Found) THEN
-          NormalCond = 0.0
           NormalCond(1:n) = GetReal( BC, 'ComputeNormal Condition', Found )
 
-	! If at least one value in NormalCond > 0, then CompBC=.true.
+        ! If at least one value in NormalCond > 0, then CompBC=.true.
         IF (COUNT(NormalCond > 0.0) > 0) CompBC = .TRUE.
       END IF
     END IF
 
     IF (CompBC) THEN
        DO i = 1,n
-          IF (NormalCond(i) .LT. 0) CYCLE
+          IF (NormalCond(i) < 0) CYCLE
           j = Element % NodeIndexes( i )
           k = Permutation(j)
 

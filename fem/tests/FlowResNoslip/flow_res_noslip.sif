@@ -18,7 +18,7 @@ Simulation
   Simulation Type = Steady State
   Steady State Max Iterations = 1
 !  Output File = "flow.result"
-!  Post File = "flow.ep"
+!  Post File = "flow.vtu"
 End
 
 Body 1

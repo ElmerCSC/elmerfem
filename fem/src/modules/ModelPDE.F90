@@ -4,23 +4,22 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-!
 !/*****************************************************************************/
 ! *
 ! * A prototype solver for advection-diffusion-reaction equation,
@@ -53,6 +52,7 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
   INTEGER :: n, nb, nd, t, active
   INTEGER :: iter, maxiter
   LOGICAL :: Found
+  REAL(KIND=dp) :: TotArea, TotLen
 !------------------------------------------------------------------------------
 
   CALL DefaultStart()
@@ -68,7 +68,13 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
     ! System assembly:
     !----------------
     CALL DefaultInitialize()
-    Active = GetNOFActive()
+
+    ! These are to test cutfem
+    TotArea = 0.0_dp
+    TotLen = 0.0_dp
+    
+1   Active = GetNOFActive()
+
     DO t=1,Active
       Element => GetActiveElement(t)
       n  = GetElementNOFNodes()
@@ -89,6 +95,8 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
       END IF
     END DO
 
+    IF(DefaultCutFEM()) GOTO 1
+    
     CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()
@@ -102,6 +110,11 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
 
   CALL DefaultFinish()
   
+  IF( ListGetLogical( GetSolverParams(),'CutFEM',Found) ) THEN
+    CALL ListAddConstReal(CurrentModel % Simulation,'res: cutfem total area',TotArea ) 
+    CALL ListAddConstReal(CurrentModel % Simulation,'res: cutfem total len',TotLen ) 
+  END IF
+ 
 CONTAINS
 
 ! Assembly of the matrix entries arising from the bulk elements
@@ -196,6 +209,7 @@ CONTAINS
       END DO
 
       FORCE(1:nd) = FORCE(1:nd) + Weight * LoadAtIP * Basis(1:nd)
+      TotArea = TotArea + Weight 
     END DO
 
     IF(TransientSimulation) CALL Default1stOrderTime(MASS,STIFF,FORCE)
@@ -239,6 +253,7 @@ CONTAINS
     Coeff(1:n) = GetReal( BC,'robin coefficient', Found )
     Ext_t(1:n) = GetReal( BC,'external field', Found )
 
+        
     ! Numerical integration:
     !-----------------------
     IP = GaussPoints( Element )
@@ -269,6 +284,7 @@ CONTAINS
       END DO
 
       FORCE(1:nd) = FORCE(1:nd) + Weight * (F + C*Ext) * Basis(1:nd)
+      TotLen = TotLen + Weight 
     END DO
     CALL DefaultUpdateEquations(STIFF,FORCE)
 !------------------------------------------------------------------------------

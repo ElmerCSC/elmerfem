@@ -4,23 +4,22 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-!
 !/******************************************************************************
 ! *
 ! *  Authors: Juhani Kataja, Peter Råback, Juha Ruokolainen and Mika Malinen
@@ -97,7 +96,7 @@ SUBROUTINE EMWaveSolver_Init0(Model,Solver,dt,Transient)
   CALL ListAddNewString( SolverParams,'Variable','E')
   CALL ListAddNewLogical( SolverParams,'Linear System Complex', .FALSE.)
   
-  CALL ListAddInteger( SolverParams,'Time derivative order', 2 )
+  CALL ListAddNewInteger( SolverParams,'Time derivative order', 2 )
 
   ! Set a multiplier for the relative keywords
   !--------------------------------------------------------------------
@@ -143,7 +142,7 @@ SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
   LOGICAL :: AllocationsDone = .FALSE., Found
   TYPE(Element_t),POINTER :: Element
   TYPE(ValueList_t), POINTER :: BC
-  INTEGER :: n,istat,i,nNodes,Active,dofs
+  INTEGER :: n,istat,i,nNodes,Active,dofs,TimeOrder
   INTEGER :: NoIterationsMax, EdgeBasisDegree
   TYPE(Mesh_t), POINTER :: Mesh
   REAL(KIND=dp) :: Norm
@@ -167,6 +166,8 @@ SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
     CALL Fatal('EMWaveSolver', 'A 2D model needs Use Piola Transform = True')
   END IF
 
+  TimeOrder = ListGetInteger( SolverParams,'Time derivative order')
+  
   dofs = Solver % Variable % Dofs
 
   eps0 = GetConstReal( Model % Constants,'Permittivity of Vacuum')
@@ -248,14 +249,18 @@ CONTAINS
 
       ! Update global matrix and rhs vector from local matrix & vector:
       !---------------------------------------------------------------       
-      CALL Default2ndOrderTime( MASS, DAMP, STIFF, FORCE )
+      IF( TimeOrder == 2 ) THEN
+        CALL Default2ndOrderTime( MASS, DAMP, STIFF, FORCE )
+      ELSE IF( TimeOrder == 1 ) THEN
+        CALL Default1stOrderTime( DAMP, STIFF, FORCE )
+      END IF
       CALL DefaultUpdateEquations( STIFF, FORCE )
     END DO
 
     CALL DefaultFinishBulkAssembly()
 
     ConstantBulkInUse = ListGetLogical( SolverParams,'Constant Bulk Matrix',Found )       
-
+    
 !------------------------------------------------------------------------------
   END SUBROUTINE DoBulkAssembly
 !------------------------------------------------------------------------------
@@ -296,7 +301,11 @@ CONTAINS
       CALL LocalMatrixBC(MASS,DAMP,STIFF,FORCE,&
           Element,n,nd,PiolaVersion,InitHandles)
       
-      CALL Default2ndOrderTimeR( MASS, DAMP, STIFF, FORCE(1:nd), UElement=Element)
+      IF( TimeOrder == 2 ) THEN
+        CALL Default2ndOrderTimeR( MASS, DAMP, STIFF, FORCE(1:nd), UElement=Element)
+      ELSE IF( TimeOrder == 1 ) THEN
+        CALL Default1stOrderTimeR( DAMP, STIFF, FORCE(1:nd), UElement=Element)
+      END IF
       CALL DefaultUpdateEquationsR(STIFF,FORCE(1:nd), UElement=Element)
 
       InitHandles = .FALSE.
@@ -336,7 +345,7 @@ CONTAINS
       CALL ListInitElementKeyword( Cd_h(1),'Body Force','Current Density Rate 1')
       CALL ListInitElementKeyword( Cd_h(2),'Body Force','Current Density Rate 2')
       CALL ListInitElementKeyword( Cd_h(3),'Body Force','Current Density Rate 3')
-
+        
       ! These have been normalized by mu0 and eps0 in _init section
       CALL ListInitElementKeyword( Mu_h,'Material','Relative Permeability')
       CALL ListInitElementKeyword( Eps_h,'Material','Relative Permittivity')
@@ -1045,6 +1054,7 @@ CONTAINS
 !------------------------------------------------------------------------------
  SUBROUTINE GlobalSol(Var, m, b, dofs,EL_Var )
 !------------------------------------------------------------------------------
+   USE MeshUtils, ONLY : CalculateBodyAverage
    IMPLICIT NONE
    REAL(KIND=dp), TARGET CONTIG :: b(:,:)
    INTEGER :: m, dofs
@@ -1083,7 +1093,7 @@ CONTAINS
          Var % EigenVectors(iEigen,i::m/2) = Solver % Variable % Values
        ELSE
          Var % EIgenVectors(iEigen,i-3::m/2) = &
-             CMPLX( REAL(Var % EIgenVectors(iEigen,i-3::m/2)), Solver % Variable % Values )
+             CMPLX( REAL(Var % EIgenVectors(iEigen,i-3::m/2)), Solver % Variable % Values,KIND=dp )
        END IF
      ELSE
        var % Values(i::m) = Solver % Variable % Values
@@ -1117,7 +1127,7 @@ CONTAINS
           Var % EigenVectors(iEigen,ind(1:n)+i) = x
         ELSE
           Var % EIgenVectors(iEigen,ind(1:n)+i-3) = &
-              CMPLX( REAL(Var % EigenVectors(iEigen,ind(1:n)+i-3)), x )
+              CMPLX( REAL(Var % EigenVectors(iEigen,ind(1:n)+i-3)), x,KIND=dp )
         END IF
       ELSE
         Var % Values(ind(1:n)+i) = x

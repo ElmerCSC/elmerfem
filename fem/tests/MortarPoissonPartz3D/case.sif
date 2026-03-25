@@ -176,6 +176,7 @@ Boundary Condition 3
   Mortar BC =  Integer 7
   Rotational Projector = True
   Level Projector Generic = True
+  Level Projector Strong = False
 End 
 
 Boundary Condition 4

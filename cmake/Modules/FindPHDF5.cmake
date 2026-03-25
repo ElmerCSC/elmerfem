@@ -1,7 +1,7 @@
 # - cmake script for finding PHDF5 libraries
 
 #  PHDF5_INCLUDE_DIR        - user modifiable choice of where hdf5 headers are
-#  PHDF5_LIBRARY            - user modifiable choice of where hdf5 library if
+#  PHDF5_LIBRARY            - user modifiable choice of where hdf5 library is
 #  PHDF5HL_LIBRARY          - user modifiable choice of where hdf5 height level library is
 #  or PHDF5_LIBRARIES       - user modifiable choice of where hdf5 & hdf5hl libraries are
 

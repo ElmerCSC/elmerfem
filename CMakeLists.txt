@@ -17,15 +17,22 @@ ENDIF()
 
 CMAKE_MINIMUM_REQUIRED(VERSION 3.10)
 
+if(POLICY CMP0074)
+    cmake_policy(SET CMP0074 NEW)
+endif()
+
 PROJECT(Elmer Fortran C CXX)
 
 IF(APPLE)
   SET(CMAKE_MACOSX_RPATH 1)
 ENDIF()
 
+# Allow users to ignore package managers on macOS
+option(USE_MACOS_PACKAGE_MANAGER "Search for packages that are installed with Homebrew or MacPorts on macOS" ON)
+
 #shamelessly borrowed from FreeCAD project: https://github.com/FreeCAD/FreeCAD/blob/master/cMake/FreeCAD_Helpers/SetupPython.cmake
 # For building on OS X
-if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND USE_MACOS_PACKAGE_MANAGER)
 
   # If the user doesn't tell us which package manager they're using
   if(NOT DEFINED MACPORTS_PREFIX AND NOT DEFINED HOMEBREW_PREFIX)
@@ -57,7 +64,8 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
   elseif(NOT DEFINED MACPORTS_PREFIX AND NOT DEFINED HOMEBREW_PREFIX)
     message(SEND_ERROR "No package manager detected - install MacPorts or Homebrew")
   endif()
-endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND USE_MACOS_PACKAGE_MANAGER)
+# endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 
 
 # SET(CMAKE_MODULE_PATH "${CMAKE_ROOT}/Modules;${PROJECT_SOURCE_DIR}/cmake/Modules")
@@ -78,6 +86,7 @@ SET(MPI_TEST_MAXPROC 8 CACHE STRING "Maximum number of tasks used in parallel te
 SET(MPI_TEST_MINPROC 1 CACHE STRING "Minimum number of tasks used in parallel tests")
 SET(WITH_OpenMP FALSE CACHE BOOL "Use OpenMP thread and SIMD (if available) parallelization")
 SET(WITH_MKL FALSE CACHE BOOL "Use Intel Math Kernel library")
+OPTION(HAVE_QP "Fortran compiler and runtime support quadruple-precision floating-point numbers" ON)
 SET(WITH_Mumps FALSE CACHE BOOL "Use Mumps sparse direct solver")
 SET(WITH_Hypre FALSE CACHE BOOL "Use Hypre linear algebra library")
 SET(WITH_CHOLMOD FALSE CACHE BOOL "Use CHOLMOD linear algebra library")
@@ -85,6 +94,7 @@ SET(WITH_UMFPACK TRUE CACHE BOOL "Use UMFPACK for LU factorization")
 SET(WITH_ELMERGUI FALSE CACHE BOOL "Include ElmerGUI")
 SET(WITH_ElmerIce FALSE CACHE BOOL "Include ElmerIce")
 SET(WITH_XIOS FALSE CACHE BOOL "Include XIOS")
+SET(WITH_NETCDF FALSE CACHE BOOL "Include NetCDF")
 SET(WITH_ELMERGUITESTER FALSE CACHE BOOL "Include ElmerGUI tester")
 SET(WITH_ELMERGUILOGGER FALSE CACHE BOOL "Include ElmerGUI logger")
 SET(ELMER_INSTALL_LIB_DIR "lib/elmersolver" CACHE PATH "Location of elmer shared libraries relative to prefix.")
@@ -95,6 +105,7 @@ SET(WITH_CONTRIB FALSE CACHE BOOL "Include contributed solvers")
 
 SET(WITH_LUA FALSE CACHE BOOL "Include LUA extensions.")
 SET(WITH_MMG FALSE CACHE BOOL "Compile with MMG library.")
+SET(WITH_PARMMG FALSE CACHE BOOL "Compile with PARMMG library.")
 SET(WITH_ROCALUTION FALSE CACHE BOOL "Compile with Rocalution library.")
 
 SET(WITH_Zoltan FALSE CACHE BOOL "Link in Zoltan mesh repartitioning library.")
@@ -120,8 +131,8 @@ MARK_AS_ADVANCED(ELMER_INSTALL_LIB_DIR)
 
 INCLUDE(CTest)
 
-SET(ELMER_FEM_MAJOR_VERSION 9)
-SET(ELMER_FEM_MINOR_VERSION 0)
+SET(ELMER_FEM_MAJOR_VERSION 26)
+SET(ELMER_FEM_MINOR_VERSION 1)
 
 SET(ELMER_FEM_VERSION
   ${ELMER_FEM_MAJOR_VERSION}.${ELMER_FEM_MINOR_VERSION})
@@ -143,8 +154,25 @@ IF(RESET_ELMER_REVISION)
   ENDIF()
 ENDIF()
 
-SET(VERSION ${ELMER_FEM_VERSION})
-SET(REVISION ${ELMER_FEM_REVISION})
+IF(NOT(ELMER_FEM_BRANCH))
+  SET(RESET_ELMER_BRANCH TRUE CACHE BOOL "")
+  MARK_AS_ADVANCED(RESET_ELMER_BRANCH)
+ENDIF()
+
+
+IF(RESET_ELMER_BRANCH)
+  execute_process(
+    COMMAND "git" "branch" "--show-current"
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    OUTPUT_VARIABLE ELMER_FEM_BRANCH_
+    RESULT_VARIABLE RUN_RETURN_VALUE)
+  IF(RUN_RETURN_VALUE EQUAL 0)
+    SET(ELMER_FEM_BRANCH ${ELMER_FEM_BRANCH_} CACHE STRING "" FORCE)
+    MARK_AS_ADVANCED(ELMER_FEM_BRANCH)
+  ENDIF()
+ENDIF()
+
 SET(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 STRING(TIMESTAMP ELMER_FEM_COMPILATIONDATE "%Y-%m-%d")
 SET(COMPILATIONDATE ${ELMER_FEM_COMPILATIONDATE})
@@ -435,6 +463,7 @@ IF(WITH_MMG)
     MESSAGE(STATUS "------------------------------------------------")
 
   ELSE()
+    SET(HAVE_MMG FALSE)
     MESSAGE(STATUS "  Library not found: >MMG_FOUND< ")
     MESSAGE(STATUS "    Missing: >MMG_INCLUDE_DIR< , >MMG_LIBRARY<, to compile MMG3DSolver")
   ENDIF(MMG_FOUND)
@@ -459,11 +488,13 @@ IF(WITH_MMG)
       INCLUDE_DIRECTORIES(${PARMMG_INCLUDE_DIR})
       MESSAGE(STATUS "------------------------------------------------")
     ELSE()
+      SET(HAVE_PARMMG FALSE)
       MESSAGE(STATUS "  Library not found: >PARMMG_FOUND< ")
       MESSAGE(STATUS "    Missing: >PARMMG_INCLUDE_DIR< , >PARMMG_LIBRARY<, to compile PARMMGSolver")
     ENDIF(PARMMG_FOUND)
   ELSE()
     SET(PARMMG_FOUND FALSE)
+    SET(HAVE_PARMMG FALSE)
     MESSAGE(STATUS "  Skipping ParMMG")
   # INCLUDE("cmake/Modules/FindParMMG.cmake")
   # INCLUDE_DIRECTORIES(${PARMMG_INCLUDE_DIR})
@@ -478,26 +509,52 @@ ENDIF()
 # XIOS
 IF (WITH_XIOS)
   MESSAGE(STATUS "------------------------------------------------")
+  MESSAGE(STATUS "  Checking for XIOS-related dependencies")
+  MESSAGE(STATUS "  NETCDF:                 " "${NETCDF_FOUND}")
+
+  IF (NOT NETCDF_FOUND)
+    MESSAGE(FATAL_ERROR "Building with XIOS requires NetCDF. Please configure "
+                        "with -DWITH_NETCDF=ON and make sure NetCDF is found.")
+  ENDIF()
+
+  MESSAGE(STATUS "------------------------------------------------")
   MESSAGE(STATUS "  Looking for XIOS ")
 
   FIND_PACKAGE(XIOS)
 
+  MESSAGE(STATUS "  XIOS_FOUND:             " "${XIOS_FOUND}")
+  MESSAGE(STATUS "  XIOS_INC:               " "${XIOS_INCLUDE_DIR}")
+  MESSAGE(STATUS "  XIOS_LIB :              " "${XIOS_LIBRARIES}")
   IF(XIOS_FOUND)
     SET(HAVE_XIOS TRUE)
     MARK_AS_ADVANCED(HAVE_XIOS)
     INCLUDE_DIRECTORIES(${XIOS_INCLUDE_DIR})
     LINK_DIRECTORIES(${XIOS_LIBRARIES})
     ADD_DEFINITIONS(-DHAVE_XIOS)
-    MESSAGE(STATUS "  XIOS:           " "${XIOS_FOUND}")
-    MESSAGE(STATUS "  XIOS_INC:       " "${XIOS_INCLUDE_DIR}")
-    MESSAGE(STATUS "  XIOS_LIB :      " "${XIOS_LIBRARIES}")
-  ELSE()
-    MESSAGE(STATUS "  XIOS not found ")
-  ENDIF()
+  ELSE(XIOS_FOUND)
+    MESSAGE(STATUS "  ${XIOS_FAILMSG}")
+  ENDIF(XIOS_FOUND)
 
   MESSAGE(STATUS "------------------------------------------------")
 ENDIF()
 
+# Set environment variable ADIOS2_ROOT to point installation directory of adios (e.g. "/opt/adios/2.11")
+IF(WITH_ADIOS2)
+  MESSAGE(STATUS "------------------------------------------------")
+  MESSAGE(STATUS "  Looking for ADIOS2")
+  FIND_PACKAGE(ADIOS2 REQUIRED Fortran)
+  IF(ADIOS2_FOUND)
+    GET_TARGET_PROPERTY(ADIOS2_MOD_DIR adios2::fortran INTERFACE_INCLUDE_DIRECTORIES)
+    INCLUDE_DIRECTORIES(${ADIOS2_MOD_DIR})
+    SET(HAVE_ADIOS2 TRUE)
+    MESSAGE(STATUS "------------------------------------------------")
+    MESSAGE(STATUS "  ADIOS2_FOUND: ${ADIOS2_FOUND}")
+    MESSAGE(STATUS "  ADIOS2_INCLUDE_DIR: ${ADIOS2_MOD_DIR}")
+    MESSAGE(STATUS "  ADIOS2_LIBRARIES: ${ADIOS2_LIBRARIES}")
+    MESSAGE(STATUS "------------------------------------------------")
+  ENDIF(ADIOS2_FOUND)
+
+ENDIF(WITH_ADIOS2)
 
 MESSAGE(STATUS "------------------------------------------------")
 
@@ -617,13 +674,6 @@ ENDIF()
 
 ADD_SUBDIRECTORY(matc)
 
-IF(WITH_ElmerIce)
-  IF(NOT WITH_MPI)
-    MESSAGE(FATAL_ERROR "Building ElmerIce requires MPI.")
-  ENDIF()
-  MESSAGE(STATUS "Adding optional package ElmerIce")
-  ADD_SUBDIRECTORY(elmerice)
-ENDIF(WITH_ElmerIce)
 
 IF (WITH_UMFPACK)
   IF (EXTERNAL_UMFPACK)
@@ -660,6 +710,7 @@ IF(NOT DEFINED UMFPACK_LONG_FORTRAN_TYPE)
   SET(UMFPACK_LONG_FORTRAN_TYPE "C_LONG")
 ENDIF()
 
+
 # Find external arpack and parpack
 IF(EXTERNAL_ARPACK)
   MESSAGE(STATUS "Using external arpack library instead of built-in")
@@ -681,6 +732,15 @@ ADD_SUBDIRECTORY(fem)
 ADD_SUBDIRECTORY(mathlibs)
 ADD_SUBDIRECTORY(elmergrid)
 ADD_SUBDIRECTORY(license_texts)
+
+IF(WITH_ElmerIce)
+  IF(NOT WITH_MPI)
+    MESSAGE(FATAL_ERROR "Building ElmerIce requires MPI.")
+  ENDIF()
+  MESSAGE(STATUS "Adding optional package ElmerIce")
+  ADD_SUBDIRECTORY(elmerice)
+ENDIF(WITH_ElmerIce)
+
 
 IF(WITH_ELMERGUI)
     MESSAGE(STATUS "  Building ElmerGUI")

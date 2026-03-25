@@ -4,23 +4,22 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-!
 !/******************************************************************************
 ! *
 ! *  Module for the solution of Stokes equation with hydrostatic 1st order assumption.
@@ -504,7 +503,7 @@ CONTAINS
 !DIR$ ATTRIBUTES ALIGN:64 :: STIFF, FORCE, weight_1, weight_2, weight_4
 !$OMP THREADPRIVATE(BasisVec, dBasisdxVec, DetJVec, rhoVec, loadAtIpVec, ElemDim )
 !$OMP THREADPRIVATE(ForcePart, weight_1, weight_2, weight_4)
-!$OMP THREADPRIVATE(tauVec, GradVec, Nodes)
+!$OMP THREADPRIVATE(tauVec, GradVec, GradHeight, Nodes)
 
     SAVE Nodes
 !------------------------------------------------------------------------------
@@ -521,7 +520,7 @@ CONTAINS
 
     ! Numerical integration:
     !-----------------------
-    IsPelem = isPElement(Element)
+    IsPelem = isActivePElement(Element, CurrentModel % Solver)
 
     IP = GaussPointsAdapt(Element, PReferenceElement = isPelem )
     ngp = IP % n
@@ -1136,7 +1135,7 @@ CONTAINS
 
     IMPLICIT NONE
 
-    TYPE(Variable_t), POINTER :: VarXY, VarFull, VarDuz, VarP, VarVx, VarVy
+    TYPE(Variable_t), POINTER :: VarXY, VarFull, VarDuz, VarP, VarVx, VarVy, VarXYAve
     CHARACTER(LEN=MAX_NAME_LEN):: str
     TYPE(ValueList_t), POINTER :: Params, Material
     TYPE(Mesh_t), POINTER :: Mesh
@@ -1145,7 +1144,7 @@ CONTAINS
     INTEGER :: i,j,k,j1,j2,i1,i2,k1,k2,t,n,nd,nb,active, dofs, pdof, zdof
     TYPE(Element_t), POINTER :: Element
     TYPE(Solver_t), POINTER :: pSolver
-    REAL(KIND=dp) :: dz, rho, g, Nrm(3)
+    REAL(KIND=dp) :: dz, rho, g, Nrm(3), Vave(2), zint
     REAL(KIND=dp), POINTER :: gWork(:,:)
     
     
@@ -1205,6 +1204,16 @@ CONTAINS
         VarP => VarFull
       END IF
     END IF    
+   
+    NULLIFY(VarXYAve)
+    str = ListGetString( Params,'Average Velocity Name',Found )
+    IF(Found) THEN
+      VarXYAve => VariableGet(Mesh % Variables, str, ThisOnly = .TRUE.)
+      IF(.NOT. ASSOCIATED(VarXYAve)) THEN
+        CALL Fatal('HydrostaticNSVec','Could not find average velocity variable: '//TRIM(str))
+      END IF
+    END IF
+    
     
     ! Pressure can be 1st component of pressure or last compenent of 'flow solution'
     pdof = 0
@@ -1353,7 +1362,7 @@ CONTAINS
         END DO
       END IF
     END DO
-
+              
     DEALLOCATE(duz,wuz)
     
     IF( PressureCorr ) THEN
@@ -1364,7 +1373,53 @@ CONTAINS
       END DO
       DEALLOCATE(dpr)
     END IF
-     
+
+
+    ! Compute average (x,y) velocity.
+    IF( ASSOCIATED(VarXYAve)) THEN
+      DO i=1,Mesh % NumberOfNodes                   
+        ! We start from bottom of each stride.
+        IF(DownPointer(i)==i) THEN
+          ! Integrate (x,y) velocity over stride. 
+          i1 = i
+          Vave = 0.0_dp
+          zint = 0.0_dp
+          DO WHILE(.TRUE.)
+            i2 = UpPointer(i1)
+            IF(i2==i1) EXIT
+            
+            j1 = VarXY % Perm(i1)
+            j2 = VarXY % Perm(i2)
+
+            dz = Mesh % Nodes % z(i2) - Mesh % Nodes % z(i1)
+            zint = zint + dz
+
+            Vave(1) = Vave(1) + dz * (VarXY % Values(2*j1-1) + VarXY % Values(2*j2-1)) / 2
+            Vave(2) = Vave(2) + dz * (VarXY % Values(2*j1-0) + VarXY % Values(2*j2-0)) / 2
+            i1 = i2
+          END DO
+
+          ! Average velocity
+          Vave = Vave / zint
+
+          ! Populate all the entries for which XYAve is present. 
+          ! Note that this loop is one longer than the previous. 
+          i1 = i       
+          DO WHILE(.TRUE.)
+            j1 = VarXYAve % Perm(i1)            
+            IF(j1>0) THEN
+              VarXYAve % Values(2*j1-1) = Vave(1)
+              VarXYAve % Values(2*j1-0) = Vave(2)
+            END IF
+            
+            i2 = i1
+            i1 = UpPointer(i1)
+            IF(i2==i1) EXIT
+          END DO
+        END IF
+      END DO
+    END IF
+    
   END SUBROUTINE PopulateDerivedFields
 
  
@@ -1524,7 +1579,7 @@ SUBROUTINE HydrostaticNSSolver(Model, Solver, dt, Transient)
   USE DefUtils
   USE HydrostaticNSUtils
   USE MainUtils
-
+  USE MeshUtils, ONLY : DetectExtrudedStructure
   
   IMPLICIT NONE
 !------------------------------------------------------------------------------

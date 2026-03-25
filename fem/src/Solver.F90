@@ -35,12 +35,28 @@ PROGRAM Solver
    USE GeneralUtils
    USE ParallelUtils
 
+   IMPLICIT NONE
+
    REAL(KIND=dp) :: CT, RT
    INTEGER, PARAMETER :: Initialize=0
    INTEGER :: tlen
    LOGICAL :: Silent
    CHARACTER(:), ALLOCATABLE :: DateStr
    CHARACTER(LEN=MAX_NAME_LEN) :: toutput
+
+   INTEGER :: iargc, nargs, arglen
+   CHARACTER(:), ALLOCATABLE :: buf
+   TYPE(ArgStr_t), ALLOCATABLE :: args(:)
+
+   INTERFACE
+     SUBROUTINE ElmerSolver(initialize, args, NoArgs)
+       USE Types
+       IMPLICIT NONE
+       INTEGER, INTENT(IN) :: initialize
+       INTEGER, INTENT(IN) :: NoArgs
+       TYPE(ArgStr_t), INTENT(IN) :: args(:)
+     END SUBROUTINE ElmerSolver
+   END INTERFACE
 
    CALL envir( 'ELMERSOLVER_OUTPUT_TOTAL', toutput, tlen )
    Silent = toutput(1:1)=='0' .OR. toutput(1:5)=='false'
@@ -50,11 +66,29 @@ PROGRAM Solver
 
    IF ( .NOT. Silent ) THEN
      DateStr = FormatDate()
-     WRITE( *,'(A,A)' ) "ELMER SOLVER (v " // VERSION // ") STARTED AT: ", TRIM(DateStr)
+     WRITE( *,'(A,A)' ) "ELMER SOLVER (v " // ELMER_FEM_VERSION // ") STARTED AT: ", TRIM(DateStr)
      CALL FLUSH(6)
    END IF
 
-   CALL ElmerSolver(Initialize)
+   ! Get number of command line arguments
+   nargs = COMMAND_ARGUMENT_COUNT()
+
+   ! Collect command line arguments
+   IF( nargs > 0 ) THEN 
+     ALLOCATE(args(nargs))
+     ALLOCATE(CHARACTER(MAX_PATH_LEN)::buf)
+
+     iargc = 0
+     DO WHILE( iargc < nargs )
+       iargc = iargc + 1 
+       CALL GET_COMMAND_ARGUMENT(iargc, buf, length=arglen)
+       args(iargc) % astr = buf(1:arglen)
+     END DO
+
+     DEALLOCATE(buf)
+   END IF
+
+   CALL ElmerSolver(Initialize, args, nargs)
 
    IF ( .NOT. Silent ) THEN
      IF ( ParEnv % myPE == 0 ) THEN

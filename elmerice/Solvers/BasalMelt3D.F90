@@ -323,7 +323,7 @@
 #else
       CALL MPI_AllReduce(MPI_IN_PLACE, &
 #endif
-           TotalArea, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD, ierr)
+           TotalArea, 1, MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
 
 #ifdef ELMER_BROKEN_MPI_IN_PLACE
       buffer = TotalBMelt
@@ -331,7 +331,7 @@
 #else
       CALL MPI_AllReduce(MPI_IN_PLACE, &
 #endif
-           TotalBMelt, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD, ierr)
+           TotalBMelt, 1, MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
 
       IF(ParEnv % MyPE == 0) THEN
         IF(.NOT. Visited) THEN

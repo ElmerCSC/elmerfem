@@ -1,3 +1,12 @@
+! This is a legacy test case for heat equatin that utilizes the internal
+! Mesh2D Delaynay mesh generator of Elmer (by H. Hakula). It used to have
+! a graphical user interface called ElmerFront (bt M. Verho) but now Mesh2D
+! has no means of creation. 
+!
+! Additionally this test cases depicts how to use two instances of the
+! same solver with different name for the field variable. 
+
+
 Header
   CHECK KEYWORDS Warn
   Mesh DB "." "Mesh"
@@ -15,7 +24,7 @@ Simulation
   Output Intervals = 1
 
 ! Output File = "TempDist.dat"
-! Post File = "TempDist.ep"
+! Post File = "TempDist.vtu"
 End
 
 Constants
@@ -102,5 +111,4 @@ Boundary Condition 1
 End
 
 Solver 2 :: Reference Norm = Real 0.768016492512E-01
-RUN
 !End Of File

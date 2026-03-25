@@ -47,7 +47,6 @@
 
 MODULE BandMatrix
 
-  USE Types
   USE GeneralUtils
 
   IMPLICIT NONE

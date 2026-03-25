@@ -4,23 +4,22 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-!
 !/******************************************************************************
 ! *
 ! *  Authors: Juha Ruokolainen
@@ -775,7 +774,7 @@ CONTAINS
     INTEGER :: i,j,k,l,n,Start
     LOGICAL, ALLOCATABLE :: Done(:), CondReg(:)
     TYPE(ValueList_t), POINTER :: BC
-    REAL(KIND=dp) :: Cond1
+    REAL(KIND=dp) :: Cond1, NodalCond(27)
     TYPE(Element_t), POINTER :: Edge, Boundary, Element
 
     INTEGER, ALLOCATABLE :: r_e(:), s_e(:,:), iperm(:)
@@ -825,8 +824,10 @@ CONTAINS
         condReg = .TRUE.
         DO i=1,GetNOFActive()
           Element => GetActiveElement(i)
-          Cond1 = GetCReal(GetMaterial(), 'Electric Conductivity',Found)
-          IF (cond1==0) condReg(Element % NodeIndexes) = .FALSE.
+          n = Element % Type % NumberOfNodes
+          NodalCond(1:n) = GetReal(GetMaterial(), 'Electric Conductivity',Found)
+          cond1 = MAXVAL(NodalCond(1:n))
+          IF (cond1 < EPSILON(cond1) ) condReg(Element % NodeIndexes) = .FALSE.
         END DO
 
         CALL CommunicateCondReg(Solver,Mesh,CondReg)

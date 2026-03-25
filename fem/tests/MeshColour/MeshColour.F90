@@ -45,6 +45,8 @@ SUBROUTINE MeshColour( Model,Solver,dt,TransientSimulation )
 !
 !******************************************************************************
     USE DefUtils
+    USE MeshUtils, ONLY : ElmerGraphColour, ElmerMeshToDualGraph, &
+        ElmerColouringToGraph, Colouring_deallocate
     USE ISO_C_BINDING
     !------------------------------------------------------------------------------
     IMPLICIT NONE

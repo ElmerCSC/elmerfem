@@ -41,12 +41,6 @@ Material 1
    Density = 1.0
    Heat Conductivity = 1.0
 !   Emissivity = 0.9
-  Emissivity = Variable Temperature
-    Real
-      0.0 0.5
-      500.0 0.7
-      1000.0 0.7
-    End
     
 End
 
@@ -67,6 +61,7 @@ Solver 1
   Nonlinear System Newton After Tolerance = 1.0e-5
   Nonlinear System Newton After Iterations = 1
   Nonlinear System Max Iterations = 50
+  Nonlinear System Consistent Norm = True
   Nonlinear System Relaxation Factor = 0.3
   Nonlinear System Convergence Tolerance = 1.0e-5
 
@@ -103,6 +98,8 @@ End
 Solver 2
   Equation = SaveScalars
   Procedure = "SaveData" "SaveScalars"
+
+  Parallel Reduce = 1
 
   Variable 1 = Temperature Loads
   Operator 1 = boundary sum
@@ -147,6 +144,14 @@ Boundary Condition 3
   Name = "Internal"
   Target Boundaries(3) = 2 4 5
 
+  Initial Condition = 1
+
+  Emissivity = Variable Temperature
+    Real
+      0.0 0.5
+      500.0 0.7
+      1000.0 0.7
+    End
   Radiator BC = Logical True
   Radiation Target Body = -1
 

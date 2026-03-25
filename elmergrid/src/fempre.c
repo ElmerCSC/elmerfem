@@ -38,7 +38,7 @@
 *                                                                           *
 *  Note: this software was initially part of my first fem implementation    *
 *  the Pirfem code, then later called Quickmesh, and finally renamed to     *
-*  Elmergrid. The code has never been designed and with new features the    *
+*  ElmerGrid. The code has never been designed and with new features the    *
 *  code has eventually become very dirty and does not present my view of    *
 *  good programming.                                                        *
 *                                                                           *
@@ -62,6 +62,7 @@
 #include "egconvert.h"
 #include "egexport.h"
 
+#include "../config.h"
 
 int main(int argc, char *argv[])
 {
@@ -77,9 +78,22 @@ int main(int argc, char *argv[])
   struct ElmergridType eg;
 
   showmem = TRUE;
-
-  printf("\nStarting program Elmergrid, compiled on %s\n", __DATE__ );
-
+  
+  printf("==================================================================\n");
+  printf("ElmerGrid mesh conversion and manipulation utility, Welcome!\n");
+#ifdef ELMER_FEM_VERSION
+  /* Branch might not exist even though Revision would exist when git is in detached head state.
+     Heance check the branch for existance. */
+#ifdef ELMER_FEM_BRANCH
+  printf("Version: %s-%s (Rev: %s, Compiled: %s)\n",ELMER_FEM_VERSION,ELMER_FEM_BRANCH,
+	 ELMER_FEM_REVISION,ELMER_FEM_COMPILATIONDATE);
+#else
+  printf("Version: %s (Rev: NA, Compiled: NA)\n",ELMER_FEM_VERSION);
+#endif
+#endif
+  printf("This program is free software licensed under GPL\n");
+  printf("==================================================================\n");
+  
   InitParameters(&eg);
 
   grids = (struct GridType*)malloc((size_t) (MAXCASES)*sizeof(struct GridType));     
@@ -132,6 +146,15 @@ int main(int argc, char *argv[])
   inmethod = eg.inmethod;
   outmethod = eg.outmethod;
 
+  if(eg.nooverwrite && !eg.filerenamed) {
+    if( eg.partitions == 1 || eg.metis == 1 ) {
+      if(inmethod == outmethod) {
+	printf("Nothing to do, one partition, same input/output format and no overwriting allowed!\n");
+	Goodbye();
+	return(0);
+      }
+    }
+  }
 
  read_another_file:    
 
@@ -294,14 +317,14 @@ int main(int argc, char *argv[])
   case 14:
     boundaries[nofile] = (struct BoundaryType*)
       malloc((size_t) (MAXBOUNDARIES)*sizeof(struct BoundaryType)); 	
-    data[nofile].dim = (eg.dim >= 1 && eg.dim <= 3) ? eg.dim : 3; /* default dim 3 with gmsh*/
+    data[nofile].dim = (eg.dim >= 1 && eg.dim <= 3) ? eg.dim : 3; /* default dim 3 with gmsh if not given! */
     for(i=0;i<MAXBOUNDARIES;i++) {
       boundaries[nofile][i].created = FALSE; 
       boundaries[nofile][i].nosides = 0;
     }
-
+    
     if (LoadGmshInput(&(data[nofile]),boundaries[nofile],eg.filesin[nofile],
-		      eg.multidim,TRUE))
+		      eg.multidim,eg.dim,TRUE)) 
       Goodbye();
     nomeshes++;    
     break;
@@ -702,7 +725,6 @@ int main(int argc, char *argv[])
       }
     }
 
-
     partoptim = eg.partoptim;
     partbcoptim = eg.partbcoptim;
     partdual = eg.partdual;
@@ -808,10 +830,11 @@ int main(int argc, char *argv[])
     for(k=0;k<nomeshes;k++) {
       if(data[k].nopartitions > 1) 
 	SaveElmerInputPartitioned(&data[k],boundaries[k],eg.filesout[k],eg.decimals,
-				  eg.parthalo,eg.partitionindirect,eg.parthypre,
+				  eg.binary,eg.parthalo,eg.parthypre,
 				  MAX(eg.partbcz,eg.partbcr),eg.nooverwrite,info);
       else
-	SaveElmerInput(&data[k],boundaries[k],eg.filesout[k],eg.decimals,eg.nooverwrite,info);
+	SaveElmerInput(&data[k],boundaries[k],eg.filesout[k],eg.decimals,eg.binary,
+		       eg.nooverwrite,info);
     }
     break;
 

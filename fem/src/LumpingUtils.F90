@@ -47,10 +47,14 @@
 
 MODULE LumpingUtils
 
+   USE Lists
    USE ElementUtils
-   USE ModelDescription
+   USE ElementDescription
+   USE ParallelUtils
+
    IMPLICIT NONE
 
+   
  CONTAINS
 
 
@@ -766,7 +770,6 @@ MODULE LumpingUtils
       CALL Info('UpdateDepedentComponents','Updating component: '//I2S(j))
       CompParams => CurrentModel % Components(j) % Values
 
-
       NoVar = 0
       DO WHILE( .TRUE. )
         NoVar = NoVar + 1
@@ -877,19 +880,18 @@ MODULE LumpingUtils
     REAL(KIND=dp) :: Center(3), Coord(3), Coord0(3), Coord1(3), Coord2(3), &
         Normal(3), Tangent1(3), Tangent2(3), x1, y1, x2, y2, phi, phi1, phi2, &
         phisum, g, ssum, h, hmin, hmax, htol, hgoal, hrel, r, rmin, rmax, rtol
-    COMPLEX :: gradv(3), Circ
-    REAL(KIND=dp) :: EdgeVector(3), ds, r2, r2min, dsmax, dphi, dphimax
+    COMPLEX :: gradv(3)
+    REAL(KIND=dp) :: EdgeVector(3), ds, r2, r2min, dsmax, dphi, dphimax, &
+        ReCirc, ImCirc
     INTEGER :: nsteps, sgn, t, i, j, k, i1, i2, j1, j2, l, &
-        lp, n0, r2ind, imax, kmax, n
+        lp, n0, r2ind, imax, kmax, n, InsideBC
     INTEGER, POINTER :: NodeIndexes(:)
     INTEGER, POINTER :: TargetBodies(:)
-    LOGICAL :: Found, SaveLoop, Debug, GotHtol, GotRtol 
+    LOGICAL :: Found, SaveLoop, Debug, GotHtol, GotRtol, BCMode
     TYPE(Element_t), POINTER :: Edge, Element
     LOGICAL, ALLOCATABLE :: NodeActive(:),Inside(:),Outside(:)       
     CHARACTER(*), PARAMETER :: Caller = 'ComponentStokesTheorem'
    
-    CALL Info(Caller,'Calculating line integral for:'//TRIM(avar % name))
-    
     TargetBodies => ListGetIntegerArray( VList,'Master Bodies',Found )
     IF( .NOT. Found ) TargetBodies => ListGetIntegerArray( VList,'Body',Found )
     IF( .NOT. Found ) CALL Fatal(Caller,'Stokes theorem requires > Master Bodies <') 
@@ -900,52 +902,80 @@ MODULE LumpingUtils
     HelperArray => ListGetConstRealArray( Vlist, 'Coil normal', UnfoundFatal = .TRUE. )
     Normal(1:3) = HelperArray(1:3,1)
     CALL TangentDirections(Normal, Tangent1, Tangent2)
-    
+      
     n = Mesh % NumberOfNodes 
     ALLOCATE(NodeActive(n))
 
+    InsideBC = ListGetInteger( Vlist,'Inside Boundary', BCMode ) 
+           
     CALL SetActiveNodeSet()
-
+    
     IF(Surf) THEN
+      CALL Info(Caller,'Calculating cylinder integral for: '//TRIM(avar % name))    
       CALL ComputeCylinderIntegral()
     ELSE
+      CALL Info(Caller,'Calculating line integral for: '//TRIM(avar % name))   
       CALL ComputeLineIntegral()
     END IF
 
-    FL = REAL(Circ)
+    FL = ReCirc
+      
     
   CONTAINS
 
+    ! Set active nodes such that when we try to create a closed circle we will only check the marked
+    ! nodes. We need a quick look-up table since otherwise there is no quick way to determine whether
+    ! a node is part of a suitable edge. Also compute the height of the domain for other purposes.
+    !------------------------------------------------------------------------------------------------
+    
     SUBROUTINE SetActiveNodeSet()
 
-      ALLOCATE(Inside(n), Outside(n))
-      Inside = .FALSE.
-      Outside = .FALSE.    
-
-      DO t=1,Mesh % NumberOfBulkElements
-        Element => Mesh % Elements(t)
-        IF( ANY(TargetBodies == Element % BodyId) ) THEN
-          Inside(Element % NodeIndexes) = .TRUE.
-        ELSE
-          Outside(Element % NodeIndexes) = .TRUE.
-        END IF
-      END DO
-
-      !PRINT *,'Inside nodes:',COUNT(Inside)
-      !PRINT *,'Outside nodes:',COUNT(Outside)
-
-      ! We make the stokes theorem on the interface
-      NodeActive = Inside .AND. Outside
-      DEALLOCATE(Inside,Outside)
-
+      IF( BCMode ) THEN
+        DO t=Mesh % NumberOfBulkElements+1, &
+            Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+          Element => Mesh % Elements(t)
+          n = Element % TYPE % NumberOfNodes
+          NodeIndexes => Element % NodeIndexes 
+          
+          IF(.NOT. ASSOCIATED(Element % BoundaryInfo)) CYCLE
+          IF(Element % BoundaryInfo % Constraint == 0) CYCLE
+          DO i=1,CurrentModel % NumberOfBCs
+            IF ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(i) % Tag ) EXIT
+          END DO
+          IF(i /= InsideBC) CYCLE
+          NodeActive(NodeIndexes) = .TRUE.
+        END DO
+      ELSE
+        ! No BC elements given, initialize the list of candidate nodes using
+        ! an intersection between inside and outside nodes. 
+        ALLOCATE(Inside(n), Outside(n))
+        Inside = .FALSE.
+        Outside = .FALSE.    
+        
+        DO t=1,Mesh % NumberOfBulkElements
+          Element => Mesh % Elements(t)
+          IF( ANY(TargetBodies == Element % BodyId) ) THEN
+            Inside(Element % NodeIndexes) = .TRUE.
+          ELSE
+            Outside(Element % NodeIndexes) = .TRUE.
+          END IF
+        END DO
+        
+        ! We make the stokes theorem on the interface
+        NodeActive = Inside .AND. Outside
+        DEALLOCATE(Inside,Outside)
+      END IF
+        
       n = COUNT(NodeActive)
-      CALL Info(Caller,'Active nodes for edge path candidates: '//I2S(n))
+      CALL Info(Caller,'Active nodes for edge patch candidates: '//I2S(n))
 
       ! We may limit the active set of nodes through which path may be drawn.
       ! The idea could be to choose only the upper or lower surface of the coil. 
       htol = ListGetConstReal( Vlist,'Flux linkage height tolerance',GotHtol )
       rtol = ListGetConstReal( Vlist,'Flux linkage radius tolerance',GotRtol )
-      IF(Found ) THEN      
+
+      ! We always make one round to get the bounding box!
+      IF(.TRUE.) THEN      
         hgoal = ListGetConstReal( Vlist,'Flux linkage relative height',Found ) 
         hmin = HUGE(hmin)
         hmax = -HUGE(hmax)
@@ -983,19 +1013,41 @@ MODULE LumpingUtils
               rmin = ParallelReduction(rmin,1)
               rmax = ParallelReduction(rmax,2)
             END IF
-            !PRINT *,'Height interval in n-t system: ',hmin,hmax
-            !PRINT *,'Radius interval in n-t system: ',hmin,hmax
+            IF(InfoActive(20)) THEN
+              PRINT *,'Height interval in n-t system: ',hmin,hmax
+              PRINT *,'Radius interval in n-t system: ',hmin,hmax
+            END IF
           END IF
+          
+          IF(.NOT. (GotHTol .OR. GotRTol ) ) EXIT
         END DO
+      END IF
+
+      IF(GotHTol .OR. GotRTol ) THEN
         n = COUNT(NodeActive)
-        CALL Info(Caller,'Active nodes after tolerance check: '//I2S(n))
+        CALL Info(Caller,'Active nodes after tolerance check (out of '&
+            //I2S(SIZE(NodeActive))//'): '//I2S(n))
       END IF
      
     END SUBROUTINE SetActiveNodeSet
       
 
+    ! This compute a line integral. No line may exist so we go through a line created on-the-fly from
+    ! existing node-to-node connections. We rotate through the axis until 360 degrees are passed
+    ! going always to the node among the candidate nodes that is as efficient as possible in terms of angle.
+    ! Unfortunately this logic may fail if the circle is not a true circle. 
+    !------------------------------------------------------------------------------------------------------    
     SUBROUTINE ComputeLineIntegral()
 
+      INTEGER :: WhoActive, PrevWhoActive, NoStat, kprev(3)
+      LOGICAL :: FileOpen
+      REAL(KIND=dp) :: r2min_par
+      CHARACTER(:), ALLOCATABLE :: str
+      
+      FileOpen = .FALSE.
+      NoStat = 0
+
+      
       ! Create a graph for node-to-edge connectivity
       !----------------------------------------------
       NodeGraph => AllocateMatrix()
@@ -1009,17 +1061,11 @@ MODULE LumpingUtils
         END IF
       END DO
       CALL List_ToCRSMatrix(NodeGraph)
-      WRITE(Message,*) 'Nonzeros per row NodeGraph:',1.0_dp * SIZE(NodeGraph % Values) / NodeGraph % NumberOfRows
-      CALL Info(Caller, Message)
+      WRITE(Message,'(A,ES12.3)') 'Nonzeros per row NodeGraph:',&
+          1.0_dp * SIZE(NodeGraph % Values) / NodeGraph % NumberOfRows
+      CALL Info(Caller, Message, Level=10)
 
       n0 = Mesh % NumberOfNodes
-
-      SaveLoop = .FALSE.
-      IF( SaveLoop ) THEN
-        OPEN (10, FILE='Loop.dat' )
-      END IF
-      Debug = .FALSE.
-
 
       ! Find the node closest to the origin
       r2min = HUGE(r2min)
@@ -1037,8 +1083,12 @@ MODULE LumpingUtils
         END IF
       END DO
 
+      WRITE(Message,'(A,ES10.3)') 'Minimum distance (node '//I2S(r2ind)//'):',SQRT(r2min)
+      CALL Info(Caller,Message,Level=7)
+      
+      Debug = .FALSE.
       IF( Debug ) THEN
-        PRINT *,'Minimum distance:',SQRT(r2min),r2ind,NodeActive(r2ind)
+        PRINT *,'Center:',Center
         PRINT *,'Normal:',Normal
         PRINT *,'Tangent1:',Tangent1    
         PRINT *,'Tangent2:',Tangent2
@@ -1047,25 +1097,82 @@ MODULE LumpingUtils
 
       phisum = 0.0_dp
       nsteps = 0
-      Circ = CMPLX(0.0_dp, 0.0_dp)
+      ReCirc = 0.0_dp
+      ImCirc = 0.0_dp
       ssum = 0.0_dp
 
       Coord1 = Coord0    
       i1 = r2ind 
-      x1 = SUM(Coord1*Tangent1)
-      y1 = SUM(Coord1*Tangent2) 
-      phi1 = (180.0_dp/PI) * ATAN2(y1,x1)
 
-      IF(SaveLoop) WRITE(10,*) nsteps, Coord1, phi1, phisum, ssum, REAL(Circ) 
+      ! We have to assume that one partition finds the entire circle.
+      ! If this is done in many pieces we should generate an algo that passed on the
+      ! process on a joint node that turns out to be otherwise the end of the path. 
+      IF(ParEnv % PEs > 1) THEN
+        WhoActive = -1 
+        r2min_par = ParallelReduction(r2min,1)
+        IF( ABS(r2min_par - r2min) < TINY(r2min)) THEN
+          WhoActive = ParEnv % MyPe
+        END IF
+        
+        ! We start from this partition.
+        ! I.e. the largest partition index with the minimum distance. 
+        WhoActive = ParallelReduction(WhoActive,2)
 
+        ! We need Coord0 always in parallel in each partition. 
+        IF(WhoActive /= ParEnv % MyPe ) THEN
+          Coord0 = -HUGE(Coord0)
+          r2ind = 0
+        END IF
+        DO k=1,3
+          Coord0(k) = ParallelReduction(Coord0(k),2)
+        END DO          
+      ELSE
+        WhoActive = ParEnv % Mype        
+      END IF
+      PrevWhoActive = WhoActive
+      
+10    IF( WhoActive == ParEnv % MyPe ) THEN
+        x1 = SUM(Coord1*Tangent1)
+        y1 = SUM(Coord1*Tangent2) 
+        phi1 = (180.0_dp/PI) * ATAN2(y1,x1)
+        str = ListGetString( Vlist,'Line Integral File',SaveLoop )
+      ELSE
+        Coord1 = -HUGE(Coord1)
+        SaveLoop = .FALSE.
+      END IF
+
+      IF( ParEnv % PEs > 1) THEN
+        ! If this is not active partition go to wait for the active one for further instructions.
+        IF( WhoActive /= ParEnv % MyPe ) GOTO 20 
+      END IF
+              
+      IF( SaveLoop ) THEN
+        ! Only open the file once!
+        IF(.NOT. FileOpen ) THEN
+          IF( ParEnv % PEs > 1 ) THEN            
+            OPEN (10, FILE=TRIM(str)//'_'//I2S(ParEnv % MyPe) )
+          ELSE
+            OPEN (10, FILE=str )
+          END IF
+          FileOpen = .TRUE.
+        END IF
+        WRITE(10,*) nsteps, Coord1, phi1, phisum, ssum, ReCirc
+      END IF
+
+      kprev = 0
       DO WHILE(.TRUE.)
-        dsmax = 0.0_dp !-HUGE(dsmax) !0.0_dp
+        dsmax = -EPSILON(dsmax) 
+        kprev(2:3) = kprev(1:2)
+        kprev(1) = kmax
         kmax = 0
 
         ! Among the edges related to node "i1" find the one that has makes us further in
         ! minimizing the distance.
-        DO j = NodeGraph % Rows(i1),NodeGraph % Rows(i1+1)-1
+        DO j = NodeGraph % Rows(i1),NodeGraph % Rows(i1+1)-1          
           k = NodeGraph % Cols(j)
+
+          ! Do not use any of the previous node again!
+          IF(ANY(k==kprev)) CYCLE
           Edge => Mesh % Edges(k)
           NodeIndexes => Edge % NodeIndexes
 
@@ -1106,7 +1213,7 @@ MODULE LumpingUtils
           END IF
 
           ! Have we found a better edge candidate? Memorize that!
-          IF( ds > dsmax ) THEN
+          IF( ds >= dsmax ) THEN
             kmax = k
             imax = i2
             dsmax = ds
@@ -1116,11 +1223,27 @@ MODULE LumpingUtils
           END IF
         END DO
 
-        ! When no way to get further we are node!
+        ! When no way to get further we are done!
         IF( kmax == 0 ) THEN
-          PRINT *,'Cands:',i1,NodeGraph % Rows(i1),NodeGraph % Rows(i1+1)-1
-
-          CALL Fatal(Caller,'We had to stop because not route was found!')
+          IF( ParEnv % PEs > 1 ) THEN
+            BLOCK
+              INTEGER, POINTER :: Neig(:)
+              Neig => Mesh % ParallelInfo % NeighbourList(i1) % Neighbours
+              IF( SIZE(Neig) > 1 ) THEN
+                !PRINT *,'Swapping to partition:',Neig
+                IF( WhoActive == Neig(1) ) THEN
+                  WhoActive = Neig(2)
+                ELSE
+                  WhoActive = Neig(1)
+                END IF
+                EXIT
+              END IF
+            END BLOCK
+          END IF
+            
+          !PRINT *,'Cands:',i1,NodeGraph % Rows(i1),NodeGraph % Rows(i1+1)-1
+          NoStat = 1
+          CALL Warn(Caller,'We had to stop because no route was found!')
           EXIT
         END IF
 
@@ -1147,10 +1270,11 @@ MODULE LumpingUtils
               gradv(k) = ( avar % Values(3*(j1-1)+k) + avar % Values(3*(j2-1)+k) ) / 2
             ELSE
               gradv(k) = CMPLX(avar % Values(6*(j1-1)+k) + avar % Values(6*(j2-1)+k),&
-                  avar % Values(6*(j1-1)+3+k) + avar % Values(6*(j2-1)+3+k) ) / 2
+                  avar % Values(6*(j1-1)+3+k) + avar % Values(6*(j2-1)+3+k), KIND=dp ) / 2
             END IF
           END DO
-          Circ = Circ + SUM(gradv*EdgeVector)
+          ReCirc = ReCirc + REAL(SUM(gradv*EdgeVector))
+          ImCirc = ImCirc + AIMAG(SUM(gradv*EdgeVector))
         ELSE                
           ! Integral over edge field.
 
@@ -1168,9 +1292,10 @@ MODULE LumpingUtils
           IF( j==0) CALL Fatal(Caller,'Edge field missing on path!')
 
           IF( avar % dofs == 1 ) THEN
-            Circ = Circ + sgn * avar % Values(j)
+            ReCirc = ReCirc + sgn * avar % Values(j)
           ELSE
-            Circ = Circ + sgn * CMPLX( avar % Values(2*j-1),avar % Values(2*j) )
+            ReCirc = ReCirc + sgn * avar % Values(2*j-1)
+            ImCirc = ImCirc + sgn * avar % Values(2*j) 
           END IF
         END IF
 
@@ -1184,14 +1309,13 @@ MODULE LumpingUtils
 
         phisum = phisum + dphimax      
 
-        IF(Debug) PRINT *,'phisum:',nsteps,Coord1,phisum,ssum,phi1,REAL(Circ)
-
+        IF(Debug) PRINT *,'phisum:',nsteps,Coord1,phisum,ssum,phi1,ReCirc
 
         IF( ABS(phisum) > 720.0_dp ) THEN
           CALL Fatal(Caller,'We circled twice around!?')
         END IF
 
-        IF(SaveLoop) WRITE(10,*) nsteps, Coord1, phi1, phisum, ssum, REAL(Circ)
+        IF(SaveLoop) WRITE(10,*) nsteps, Coord1, phi1, phisum, ssum, ReCirc
 
         ! We have come home to roost!
         IF(i1 == r2ind) THEN
@@ -1200,11 +1324,73 @@ MODULE LumpingUtils
         END IF
       END DO
 
-      !PRINT *,'Path integral:',avar % dofs, targetbodies, nsteps, phisum, ssum, Circ
+20    IF( ParEnv % PEs > 1 ) THEN
+        phisum = ParallelReduction(phisum)
+        !PRINT *,'phisum:',phisum, ParEnv % MyPe
+        !PRINT *,'whoactive:',whoactive, prevwhoactive, ParEnv % Mype
 
-      CALL FreeMatrix(NodeGraph)
-      IF(SaveLoop) CLOSE(10)
+        ! Find out the new active partition. It has been set only in the previous active partition.
+        IF(PrevWhoActive /= ParEnv % MyPe) THEN
+          WhoActive = -1
+        END IF
+        WhoActive = ParallelReduction(WhoActive,2)
+
+        !PRINT *,'New whoactive:',WhoActive, PrevWhoActive, ParEnv % MyPe
+        
+        IF(WhoActive /= PrevWhoActive) THEN
+          PrevWhoActive = WhoActive
+
+          ! Find the new starting node.
+          DO k=1,3
+            Coord1(k) = ParallelReduction(Coord1(k),2)
+          END DO
+
+          ! For the new active partition find a new starting point. 
+          IF( WhoActive == ParEnv % MyPe ) THEN
+            r2min = HUGE(r2min)
+            i1 = 0
+            DO i=1,Mesh % NumberOfNodes
+              IF(.NOT. NodeActive(i)) CYCLE
+              Coord(1) = Mesh % Nodes % x(i)
+              Coord(2) = Mesh % Nodes % y(i)
+              Coord(3) = Mesh % Nodes % z(i)
+              r2 = SUM((Coord-Coord1)**2)
+              IF(r2 < r2min) THEN
+                r2min = r2
+                i1 = i
+              END IF
+            END DO
+            !PRINT *,'New starting point:',i1,SQRT(r2min)
+          ELSE
+            ! Have the counter active only in the active partition.
+            phisum = 0.0_dp
+          END IF
+
+          !PRINT *,'WhoIsActice:',ParEnv % MyPe, WhoActive, WhoActive == ParEnv % MyPe          
+          GOTO 10
+        END IF
+      END IF      
+
+      IF(ParEnv % PEs > 1 ) THEN
+        ReCirc = ParallelReduction(ReCirc)
+        ImCirc = ParallelReduction(ImCirc)
+        ssum = ParallelReduction(ssum)        
+      END IF
       
+      IF(InfoActive(20)) THEN
+        PRINT *,'PathIntegralLine:',ParEnv % MyPe, avar % dofs, targetbodies, nsteps, phisum, ssum, ReCirc
+      END IF
+
+      NoStat = ParallelReduction(NoStat)
+      IF(Nostat > 0 ) THEN
+        CALL Info(Caller,'Setting values to zero because of issues!')
+        ReCirc = 0.0_dp
+        ImCirc = 0.0_dp
+      END IF
+      
+      CALL FreeMatrix(NodeGraph)
+      IF(FileOpen) CLOSE(10)
+                   
     END SUBROUTINE ComputeLineIntegral           
 
 
@@ -1213,11 +1399,12 @@ MODULE LumpingUtils
       TYPE(Nodes_t), SAVE :: ElementNodes
       LOGICAL :: AllocationsDone = .FALSE.
       TYPE(GaussIntegrationPoints_t) :: IP
-      REAL(KIND=dp) :: detJ, Area, s, TestVec(3)
+      REAL(KIND=dp) :: detJ, Area, s, TestVec(3), ParentNormal(3), Coeff
       TYPE(ValueList_t), POINTER :: Params
-      LOGICAL :: Stat, PiolaVersion, EdgeBasis 
-      INTEGER :: np, nd, EdgeBasisDegree
+      LOGICAL :: Stat, PiolaVersion, EdgeBasis
+      INTEGER :: np, nd, EdgeBasisDegree, tmin, tmax
       INTEGER, POINTER, SAVE :: Indexes(:)
+      TYPE(Element_t), POINTER :: Element, Parent, pElem
       REAL(KIND=dp), POINTER, SAVE :: Basis(:), SOL(:,:), WBasis(:,:), dBasisdx(:,:), RotWBasis(:,:)
 
       CALL Info(Caller,'Estimating line integral from surface integral!')
@@ -1228,29 +1415,93 @@ MODULE LumpingUtils
             Basis(n), dBasisdx(n,3), WBasis(n,3), RotWBasis(n,3), SOL(6,n), Indexes(n) )      
         AllocationsDone = .TRUE.
       END IF
-
+      
       Area = 0.0_dp
-      Circ = 0.0_dp
+      ReCirc = 0.0_dp
+      ImCirc = 0.0_dp
       
       EdgeBasis = .FALSE.
       IF(avar % dofs <= 2) THEN
         EdgeBasis = .TRUE.
         Params => avar % Solver % Values
-
         CALL EdgeElementStyle(avar % Solver % Values, PiolaVersion, BasisDegree = EdgeBasisDegree ) 
       END IF      
+
+      IF( BCMode ) THEN
+        tmin = Mesh % NumberOfBulkElements + 1
+        tmax = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+      ELSE
+        tmin = 1
+        tmax = Mesh % NumberOfFaces
+      END IF
       
-      DO t=1, Mesh % NumberOfFaces
-        Element => Mesh % Faces(t)
+      !PRINT *,'Center:',Center
+      !PRINT *,'Normal:',Normal
+      !PRINT *,'BCMode:',BCMode,tmin,tmax,InsideBC
+      
+      DO t=tmin, tmax
+        IF(BCMode) THEN
+          Element => Mesh % Elements(t)
+        ELSE          
+          Element => Mesh % Faces(t)
+        END IF
         n = Element % TYPE % NumberOfNodes
         NodeIndexes => Element % NodeIndexes 
-
-        IF(.NOT. ALL(NodeActive(NodeIndexes))) CYCLE
-                
+        
+        IF( BCMode ) THEN
+          IF(.NOT. ASSOCIATED(Element % BoundaryInfo)) CYCLE
+          IF(Element % BoundaryInfo % Constraint == 0) CYCLE
+          DO i=1,CurrentModel % NumberOfBCs
+            IF ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(i) % Tag ) EXIT
+          END DO
+          IF(i /= InsideBC) CYCLE
+        ELSE
+          IF(.NOT. ALL(NodeActive(NodeIndexes))) CYCLE
+        END IF
+          
+        ! Check that we have a parent that is on the boundary.
+        k = 0
+        DO i=1,2
+          IF(i==1) THEN
+            pElem => Element % BoundaryInfo % Left        
+          ELSE
+            pElem => Element % BoundaryInfo % Right        
+          END IF           
+          IF(ASSOCIATED(pElem)) THEN
+            IF( ANY( TargetBodies == pElem % BodyId ) ) THEN
+              k=k+1
+              Parent => pElem
+            END IF
+          END IF
+        END DO
+        IF(k/=1) CYCLE
+                        
         ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes(1:n))
         ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes(1:n))
         ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes(1:n))
 
+        ! Normal pointing out of the parent
+        ParentNormal = NormalVector(Element,ElementNodes,Parent=Parent)
+        ! Normal just in xy-plane
+        ParentNormal = ParentNormal - SUM(Normal*ParentNormal)*Normal
+
+        ! Center of face element
+        Coord1(1) = SUM(ElementNodes % x(1:n)) / n
+        Coord1(2) = SUM(ElementNodes % y(1:n)) / n
+        Coord1(3) = SUM(ElementNodes % z(1:n)) / n
+        ! Face element direction vector in xy-plane
+        Coord1 = Coord1 - Center
+        Coord1 = Coord1 - SUM(Normal*Coord1)*Normal
+        ! Normalize such that |Coord1| == 1.
+        ds = SQRT(SUM(Coord1**2))
+        IF(ds > EPSILON(ds)) Coord1 = Coord1 / ds
+
+        ! If we are not pointing inwards at all then skip the face element. 
+        Coeff = -SUM(ParentNormal * Coord1)
+        IF(Coeff < EPSILON(Coeff) ) CYCLE
+        
+        ! Find the maximum distance edge on the boundary in the local coordinates.
+        ! This edge is oriented with the surface having the desired direction. 
         dsmax = -HUGE(dsmax) 
         DO i=1,n
           Coord1(1) = ElementNodes % x(i)
@@ -1314,7 +1565,7 @@ MODULE LumpingUtils
           !   CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
           ! END IF
           
-          s = DetJ * IP % s(l)            
+          s = Coeff * DetJ * IP % s(l)            
           Area = Area + S
 
           SELECT CASE( avar % dofs )
@@ -1322,24 +1573,35 @@ MODULE LumpingUtils
             gradv = MATMUL(SOL(1,np+1:nd), WBasis(1:nd-np,:))
           CASE( 2 ) 
             gradv = CMPLX( MATMUL(SOL(1,np+1:nd), WBasis(1:nd-np,:)), &
-                MATMUL(SOL(2,np+1:nd), WBasis(1:nd-np,:)))
+                MATMUL(SOL(2,np+1:nd), WBasis(1:nd-np,:)), KIND=dp)
           CASE( 3 )
             gradv = MATMUL(SOL(1:3,1:n),Basis(1:n))
           CASE( 6 )
             DO i=1,3
               gradv(i) = CMPLX( SUM(SOL(2*i-1,1:n)*Basis(1:n)), &
-                  SUM(SOL(2*i,1:n)*Basis(1:n)) )
+                  SUM(SOL(2*i,1:n)*Basis(1:n)), KIND=dp )
             END DO
           END SELECT
           
-          Circ = Circ + s * SUM(gradv*EdgeVector)
+          ReCirc = ReCirc + s * REAL(SUM(gradv*EdgeVector))
+          ImCirc = ImCirc + s * AIMAG(SUM(gradv*EdgeVector))
         END DO
       END DO
 
-      Circ = Circ / (hmax-hmin)       
-      !PRINT *,'Path integral cyl:',avar % dofs, targetbodies, area, &
-      !    area/((hmax-hmin)*2*PI), Circ
+      ! Sum up in parallel.
+      Area = ParallelReduction(Area)
+      ReCirc = ParallelReduction(ReCirc)
+      ImCirc = ParallelReduction(ImCirc)
       
+      ! Move from surface integral to line integral correspondent by dividing with the height.     
+      ReCirc = ReCirc / (hmax-hmin)       
+      ImCirc = ImCirc / (hmax-hmin)       
+
+      IF(InfoActive(20)) THEN
+        PRINT *,'PathIntegralCyl:',avar % dofs, targetbodies, area, &
+            area/((hmax-hmin)*2*PI), ReCirc, ImCirc
+      END IF
+        
     END SUBROUTINE ComputeCylinderIntegral
           
   END FUNCTION ComponentStokesTheorem
@@ -1350,14 +1612,14 @@ MODULE LumpingUtils
 !> This is actually not energy, but twice the energy, since the values are
 !> used to computed inductance matrix. 
 !------------------------------------------------------------------------------
-  FUNCTION ComponentCoilEnergy(Model, Mesh, MasterEntities, AVar, CVar, BCMode ) RESULT ( AIint ) 
+  FUNCTION ComponentCoilEnergy(Model, Mesh, MasterEntities, AVar, CVar, BCMode ) RESULT ( AIintRe ) 
 !------------------------------------------------------------------------------
     TYPE(Model_t) :: Model    
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER, POINTER :: MasterEntities(:) 
     TYPE(Variable_t), POINTER :: AVar, CVar
     LOGICAL, OPTIONAL :: BCMode 
-    REAL(KIND=dp) :: AIint
+    REAL(KIND=dp) :: AIintRe
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
@@ -1366,6 +1628,7 @@ MODULE LumpingUtils
     REAL(KIND=dp) :: volume
     LOGICAL :: Found
     LOGICAL :: Stat, PiolaVersion, EdgeBasis, DoBCs 
+    COMPLEX(KIND=dp) :: AIint
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     CHARACTER(*), PARAMETER :: Caller = 'ComponentCoilEnergy'
         
@@ -1406,8 +1669,8 @@ MODULE LumpingUtils
     IF( CVar % Dofs /= 3 ) THEN
       CALL Fatal(Caller,'Expecting 3 components for current density!')
     END IF
-    IF( ALL([1,3] /= AVar % Dofs) ) THEN
-      CALL Fatal(Caller,'Expecting 1 or 3 components for vector potential!')
+    IF( ALL([1,2,3,6] /= AVar % Dofs) ) THEN
+      CALL Fatal(Caller,'Expecting 1,2,3 or 6 components for vector potential!')
     END IF
 
     DO t=t1, t2
@@ -1420,9 +1683,13 @@ MODULE LumpingUtils
       CALL LocalIntegElem()
     END DO
 
-    !AIint = ParallelReduction( AIint ) 
-    !Volume = ParallelReduction( volume ) 
+    AIint = ParallelReduction( AIint ) 
+    Volume = ParallelReduction( volume ) 
 
+    !PRINT *,'AiInit:',AiInt,Volume
+    
+    AIIntRe = REAL(AIint)    
+    
     CALL Info(Caller,'Reduction operator finished',Level=12)
 
   CONTAINS
@@ -1434,7 +1701,8 @@ MODULE LumpingUtils
       LOGICAL, SAVE :: AllocationsDone = .FALSE.
       INTEGER, POINTER, SAVE :: EdgeIndexes(:)
       INTEGER, POINTER :: NodeIndexes(:), pIndexes(:)
-      REAL(KIND=dp) :: DetJ,S,Cip(3),Aip(3)
+      REAL(KIND=dp) :: DetJ,S,Cip(3)
+      COMPLEX(KIND=dp) :: Aip(3)
       REAL(KIND=dp), POINTER, SAVE :: Basis(:), WBasis(:,:), dBasisdx(:,:), RotWBasis(:,:), &
           Aelem(:,:), Celem(:,:)    
 
@@ -1490,36 +1758,27 @@ MODULE LumpingUtils
               RotBasis = RotWBasis, USolver = avar % Solver )
         END IF
 
-        !stat = EdgeElementInfo(Element, ElementNodes, IP % U(l), IP % V(l), IP % W(l), &
-        !      DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, dBasisdx = dBasisdx, &
-        !      BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-        !ELSE
-        !  stat = ElementInfo(Element, ElementNodes, IP % U(l), IP % V(l), IP % W(l), &
-        !      detJ, Basis, dBasisdx)           
-        !  CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
-        !END IF
-
         s = DetJ * IP % s(l)            
 
         ! Vector potential at IP
         SELECT CASE( avar % dofs )
         CASE( 1 )
           Aip = MATMUL(Aelem(1,np+1:nd), WBasis(1:nd-np,:))
-          !CASE( 2 ) 
-          !  Aip = CMPLX( MATMUL(Aelem(1,np+1:nd), WBasis(1:nd-np,:)), &
-          !      MATMUL(Aelem(2,np+1:nd), WBasis(1:nd-np,:)))
+        CASE( 2 ) 
+          Aip = CMPLX( MATMUL(Aelem(1,np+1:nd), WBasis(1:nd-np,:)), &
+              MATMUL(Aelem(2,np+1:nd), WBasis(1:nd-np,:)), KIND=dp)
         CASE( 3 )
           Aip = MATMUL(Aelem(1:3,1:n),Basis(1:n))
-          !CASE( 6 ) 
-          !  Aip = CMPLX( MATMUL(Aelem(1:2:5,1:n),Basis(1:n)), &
-          !      MATMUL(Aelem(2:2:6,1:n),Basis(1:n)) )
-        CASE DEFAULT
-          CALL Fatal(Caller,'Invalid number of components for vector potential!')
+        CASE( 6 ) 
+          Aip = CMPLX( MATMUL(Aelem(1:5:2,1:n),Basis(1:n)), &
+              MATMUL(Aelem(2:6:2,1:n),Basis(1:n)), KIND=dp )
         END SELECT
 
         ! Current density at IP
         Cip = MATMUL(Celem(1:3,1:n),Basis(1:n))
 
+        !PRINT *,'Ai:',s,SQRT(SUM(REAL(Aip)**2)),SQRT(SUM(AIMAG(Aip)**2)),'c',SQRT(SUM(Cip*Cip))
+        
         AIint = AIint + s * SUM(Aip*Cip) 
         Volume = Volume + s
       END DO
@@ -1650,7 +1909,12 @@ MODULE LumpingUtils
       OutFlux = int_el
       InFlux = int_norm 
       
-      PRINT *,'LumpedCurr e:',int_el,int_norm,area,trans,Zimp
+      IF(ABS(int_norm) < 1.0e-20 ) THEN
+        PRINT *,'int_norm:',int_norm,area,EPSILON(area)
+        CALL Warn(Caller,'Source seems to be close to zero!')
+      END IF
+        
+      PRINT *,'LumpedCurr e:',int_el,int_norm,area,trans,Zimp,ABS(int_norm)
 
     END IF
     
@@ -1666,8 +1930,8 @@ MODULE LumpingUtils
       TYPE(Element_t), POINTER :: Element
       LOGICAL :: InitHandles
 !------------------------------------------------------------------------------
-      COMPLEX(KIND=dp) :: B, Zs, L(3), muinv, MagLoad(3), TemGrad(3), eps, &
-          e_ip(3), e_ip_norm, e_ip_tan(3), f_ip_tan(3), imu, phi, eps0, mu0inv, epsr, mur
+      COMPLEX(KIND=dp) :: B, L(3), muinv, MagLoad(3), TemGrad(3), &
+          e_ip(3), e_ip_norm, e_ip_tan(3), f_ip_tan(3), imu, phi, eps0, mu0inv, epsr, mur, ElSurfCurr(3)
       REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:), e_local(:,:)
       REAL(KIND=dp) :: weight, DetJ, Normal(3), cond, u, v, w, x, y, z, rob0
       TYPE(Nodes_t), SAVE :: ElementNodes, ParentNodes
@@ -1677,10 +1941,16 @@ MODULE LumpingUtils
       TYPE(GaussIntegrationPoints_t) :: IP
       INTEGER :: t, i, j, m, np, p, q, ndofs, n, nd
       LOGICAL :: AllocationsDone = .FALSE.
-      TYPE(Element_t), POINTER :: Parent
-      TYPE(ValueHandle_t), SAVE :: MagLoad_h, ElRobin_h, MuCoeff_h, Absorb_h, TemRe_h, TemIm_h
+      TYPE(Element_t), POINTER :: Parent, Parent2
+      TYPE(ValueHandle_t), SAVE :: MagLoad_h, ElRobin_h, MuCoeff_h, Absorb_h, TemRe_h, TemIm_h, ElSurfCurr_h
       TYPE(ValueHandle_t), SAVE :: CondCoeff_h, CurrDens_h, EpsCoeff_h
       INTEGER :: nactive
+      
+      TYPE(ValueHandle_t), SAVE :: PortTypeIndex_h, PortZ_h, PortLength_h, PortScale_h, PortDirection_h, PortCenter_h
+      INTEGER :: PortTypeIndex, PortDirection
+      COMPLEX(KIND=dp) :: PortZ
+      REAL(KIND=dp) :: PortLength, PortScale, PortCenter(3)
+      LOGICAL :: GotPort
       
       SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, e_local, mu0inv, eps0
       
@@ -1696,6 +1966,8 @@ MODULE LumpingUtils
       IF( InitHandles ) THEN
         CALL ListInitElementKeyword( ElRobin_h,'Boundary Condition','Electric Robin Coefficient',InitIm=.TRUE.)
         CALL ListInitElementKeyword( MagLoad_h,'Boundary Condition','Magnetic Boundary Load', InitIm=.TRUE.,InitVec3D=.TRUE.)
+        CALL ListInitElementKeyword( ElSurfCurr_h, 'Boundary Condition', 'Electric Surface Current', &
+          InitIm = .TRUE., InitVec3D=.TRUE.)
         CALL ListInitElementKeyword( Absorb_h,'Boundary Condition','Absorbing BC')
         CALL ListInitElementKeyword( TemRe_h,'Boundary Condition','TEM Potential')
         CALL ListInitElementKeyword( TemIm_h,'Boundary Condition','TEM Potential Im')
@@ -1703,6 +1975,15 @@ MODULE LumpingUtils
         CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)      
         CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity',InitIm=.TRUE.)
         CALL ListInitElementKeyword( CondCoeff_h,'Material','Electric Conductivity')
+
+        ! Lumped ports
+        CALL ListInitElementKeyword( PortTypeIndex_h,'Boundary Condition','Port Type Index')
+        CALL ListInitElementKeyword( PortZ_h,'Boundary Condition','Port Impedance',InitIm=.TRUE.)
+        CALL ListInitElementKeyword( PortLength_h,'Boundary Condition','Port Length')
+        CALL ListInitElementKeyword( PortScale_h,'Boundary Condition','Port Scale')
+        CALL ListInitElementKeyword( PortDirection_h,'Boundary Condition','Port Direction',DefIValue=3)
+        CALL ListInitElementKeyword( PortCenter_h,'Boundary Condition','Port Center',InitVec3D=.TRUE.)
+        
         Found = .FALSE.
         IF( ASSOCIATED( Model % Constants ) ) THEN
           mu0inv = ListGetConstReal( Model % Constants,'Permeability of Vacuum', Found )
@@ -1717,7 +1998,7 @@ MODULE LumpingUtils
         InitHandles = .FALSE.
       END IF
 
-      imu = CMPLX(0.0_dp, 1.0_dp)
+      imu = CMPLX(0.0_dp, 1.0_dp, KIND=dp)
       rob0 = Omega * SQRT( eps0 / mu0inv )
       
       n = Element % TYPE % NumberOfNodes
@@ -1727,13 +2008,19 @@ MODULE LumpingUtils
       ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes(1:n))
       ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes(1:n))
 
+      ! We always need the parent for material properties.
       Parent => Element % BoundaryInfo % Left
-      IF(.NOT. ASSOCIATED(Parent)) Parent => Element % BoundaryInfo % Right
+      IF(.NOT. ASSOCIATED(Parent)) THEN
+        Parent => Element % BoundaryInfo % Right
+      END IF
       IF(.NOT. ASSOCIATED( Parent ) ) THEN
         CALL Fatal(Caller,'Model lumping requires parent element!')
       END IF
-
+      
+      ! If the source of the incident field is not in the plane of the port we have to use the parent!
+#define doparent 0
       IF( EdgeBasis ) THEN
+#if doparent
         np = Parent % TYPE % NumberOfNodes
         ParentIndexes => Parent % NodeIndexes
         ParentNodes % x(1:np) = Mesh % Nodes % x(ParentIndexes(1:np))
@@ -1743,7 +2030,12 @@ MODULE LumpingUtils
         nd = mGetElementDofs( EdgeIndexes, Uelement = Parent, USolver = avar % Solver ) 
         np = COUNT(EdgeIndexes(1:nd) <= Mesh % NumberOfNodes)
         pIndexes => EdgeIndexes
+#else
+        nd = mGetElementDofs( EdgeIndexes, Uelement = Element, USolver = avar % Solver ) 
+        np = COUNT(EdgeIndexes(1:nd) <= Mesh % NumberOfNodes)
+        pIndexes => EdgeIndexes
 
+#endif        
         IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
             EdgeBasisDegree=EdgeBasisDegree)
       ELSE
@@ -1760,9 +2052,25 @@ MODULE LumpingUtils
       DO i=1,avar % dofs 
         e_local(i,1:nd) = avar % values(avar % dofs*(avar % Perm(pIndexes(1:nd))-1)+i)
       END DO
-      
-      Normal = NormalVector(Element, ElementNodes, Check=.TRUE.)
 
+      PortTypeIndex = ListGetElementInteger(PortTypeIndex_h, Element, GotPort)
+      IF(GotPort) THEN
+        PortTypeIndex = ListGetElementInteger( PortTypeIndex_h, Element ) 
+        PortZ = ListGetElementComplex( PortZ_h, Element = Element )
+        PortScale = ListGetElementReal( PortScale_h, Element = Element )
+        PortLength = ListGetElementReal( PortLength_h, Element = Element )
+        IF( PortTypeIndex == 1 ) THEN
+          PortDirection = ListGetElementInteger( PortDirection_h, Element )
+        ELSE
+          PortCenter = ListGetElementReal( PortCenter_h, Element = Element )
+        END IF
+      END IF     
+      
+#if doparent 
+      ! Normal is only needed if we integrate over parent element.
+      Normal = NormalVector(Element, ElementNodes, Check=.TRUE.)
+#endif
+      
       ! Numerical integration:
       !-----------------------      
       DO t=1,IP % n  
@@ -1776,45 +2084,69 @@ MODULE LumpingUtils
         mur = ListGetElementComplex( MuCoeff_h, Basis, Parent, Found, GaussPoint = t )      
         IF( .NOT. Found ) mur = 1.0_dp
         muinv = mur * mu0inv
-
-        epsr = ListGetElementComplex( EpsCoeff_h, Basis, Parent, Found, GaussPoint = t )      
-        IF( .NOT. Found ) epsr = 1.0_dp
-        eps = epsr * eps0
         
         Cond = ListGetElementReal( CondCoeff_h, Basis, Parent, Found, GaussPoint = t )
         
+        L = (0_dp, 0_dp)
+
         IF( ListGetElementLogical( Absorb_h, Element, Found ) ) THEN
+          epsr = ListGetElementComplex( EpsCoeff_h, Basis, Parent, Found, GaussPoint = t )      
+          IF( .NOT. Found ) epsr = 1.0_dp
           B = imu * rob0 * SQRT( epsr / mur ) 
+
+        ELSE IF(GotPort) THEN
+          IF( PortTypeIndex == 1 ) THEN
+            B = CMPLX(0_dp, 1_dp, KIND=dp) * ( omega / mu0inv ) / (PortScale * PortZ ) 
+            L(ABS(PortDirection)) = SIGN(1,PortDirection) / ( PortLength * SQRT( PortScale ) )
+          END IF
         ELSE        
           B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
-        END IF
                   
-        Zs = 1.0_dp / (SQRT(REAL(muinv*eps)))
+          MagLoad = ListGetElementComplex3D( MagLoad_h, Basis, Element, Found, GaussPoint = t )
+          ElSurfCurr = ListGetElementComplex3D( ElSurfCurr_h, Basis, Element, Found, GaussPoint = t)
 
-        MagLoad = ListGetElementComplex3D( MagLoad_h, Basis, Element, Found, GaussPoint = t )
-        TemGrad = CMPLX( ListGetElementRealGrad( TemRe_h,dBasisdx,Element,Found), &
-            ListGetElementRealGrad( TemIm_h,dBasisdx,Element,Found) )
-        L = ( MagLoad + TemGrad ) / ( 2*B) 
-                
+          TemGrad = CMPLX( ListGetElementRealGrad( TemRe_h,dBasisdx,Element,Found), &
+              ListGetElementRealGrad( TemIm_h,dBasisdx,Element,Found), KIND=dp )
+
+          IF (ABS(B) > AEPS) THEN
+            L = ( MagLoad + TemGrad ) / ( 2*B) 
+          END IF
+          
+          ! We sum the components here, since continutation is a little cleaner then...
+          ElSurfCurr = L + (0_dp, 1_dp)*omega*ElSurfCurr
+        END IF
+
+          
         IF( EdgeBasis ) THEN
+#if doparent
           ! In order to get the normal component of the electric field we must operate on the
-          ! parent element. The surface element only has tangential components. 
+          ! parent element. The surface element only has tangential components.                    
+          ! Note: the finding of parents does not work for piola/quadratic gauss points.
           CALL FindParentUVW( Element, n, Parent, Parent % TYPE % NumberOfNodes, U, V, W, Basis ) 
           stat = ElementInfo( Parent, ParentNodes, u, v, w, detJ, Basis, dBasisdx, &
               EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = avar % Solver )
-          e_ip(1:3) = CMPLX(MATMUL(e_local(1,np+1:nd),WBasis(1:nd-np,1:3)), MATMUL(e_local(2,np+1:nd),WBasis(1:nd-np,1:3)))       
+#else          
+          stat = ElementInfo( Element, ElementNodes, IP % U(t), IP % V(t), &
+              IP % W(t), detJ, Basis, dBasisdx, &
+              EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = avar % Solver )
+#endif
+          e_ip(1:3) = CMPLX(MATMUL(e_local(1,np+1:nd),WBasis(1:nd-np,1:3)), MATMUL(e_local(2,np+1:nd),WBasis(1:nd-np,1:3)), KIND=dp)
         ELSE
           DO i=1,3
-            e_ip(i) = CMPLX( SUM( Basis(1:n) * e_local(i,1:n) ), SUM( Basis(1:n) * e_local(i+3,1:n) ) )
+            e_ip(i) = CMPLX( SUM( Basis(1:n) * e_local(i,1:n) ), SUM( Basis(1:n) * e_local(i+3,1:n) ), KIND=dp )
           END DO
         END IF
         
+        ! Integral over electric field: This gives the phase
+#if doparent
+        ! e_ip is actually by construction on the plane if we do not use parent elements
         e_ip_norm = SUM(e_ip*Normal)
         e_ip_tan = e_ip - e_ip_norm * Normal
-
-        ! Integral over electric field: This gives the phase
         int_el = int_el + weight * SUM(e_ip_tan * CONJG(L) )         
-
+#else
+        int_el = int_el + weight * SUM(e_ip * CONJG(L) )         
+#endif
+        
         ! Norm of electric field used for normalization
         int_norm = int_norm + weight * ABS( SUM( L * CONJG(L) ) ) 
 
@@ -1826,6 +2158,15 @@ MODULE LumpingUtils
     END SUBROUTINE LocalIntegBC_E
 !------------------------------------------------------------------------------
 
+  FUNCTION RealComplexCrossProduct(v1,v2) RESULT(v3)
+!------------------------------------------------------------------------------
+    COMPLEX(KIND=dp) ::  v2(3), v3(3)
+    REAL(KIND=dp) :: v1(3)
+    v3(1) =  v1(2)*v2(3) - v1(3)*v2(2)
+    v3(2) = -v1(1)*v2(3) + v1(3)*v2(1)
+    v3(3) =  v1(1)*v2(2) - v1(2)*v2(1)
+!------------------------------------------------------------------------------
+  END FUNCTION RealComplexCrossProduct
 
 !-----------------------------------------------------------------------------
     SUBROUTINE LocalIntegBC_AV( BC, Element, InitHandles )
@@ -1834,7 +2175,7 @@ MODULE LumpingUtils
       TYPE(Element_t), POINTER :: Element
       LOGICAL :: InitHandles
 !------------------------------------------------------------------------------
-      COMPLEX(KIND=dp) :: tc_ip, cd_ip, v_ip, ep_ip, eps0, eps, mu0inv, muinv, mur, epsr, &
+      COMPLEX(KIND=dp) :: tc_ip, cd_ip, v_ip, ep_ip, mu0inv, muinv, mur, &
           cond_ip, imu
       REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),v_local(:,:)
       REAL(KIND=dp) :: weight, DetJ 
@@ -1845,10 +2186,10 @@ MODULE LumpingUtils
       INTEGER :: t, i, j, m, np, p, q, ndofs, n, nd
       LOGICAL :: AllocationsDone = .FALSE.
       TYPE(Element_t), POINTER :: Parent, MatElement
-      TYPE(ValueHandle_t), SAVE :: MuCoeff_h, EpsCoeff_h, CondCoeff_h, ExtPot_h
+      TYPE(ValueHandle_t), SAVE :: MuCoeff_h, CondCoeff_h, ExtPot_h
       TYPE(ValueHandle_t), SAVE :: TransferCoeff_h, ElCurrent_h, BCMat_h
       
-      SAVE AllocationsDone, Basis, dBasisdx, v_local, mu0inv, eps0
+      SAVE AllocationsDone, Basis, dBasisdx, v_local, mu0inv
       
       ndofs = avar % dofs
       IF(.NOT. AllocationsDone ) THEN
@@ -1863,7 +2204,6 @@ MODULE LumpingUtils
       ! Electric Current Density / Incident Voltage
       IF( InitHandles ) THEN
         CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)      
-        CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity',InitIm=.TRUE.)
         CALL ListInitElementKeyword( CondCoeff_h,'Material','Electric Conductivity')
         
         CALL ListInitElementKeyword( TransferCoeff_h,'Boundary Condition','Electric Transfer Coefficient',InitIm=.TRUE.)
@@ -1878,14 +2218,10 @@ MODULE LumpingUtils
         END IF
         IF(.NOT. Found ) mu0inv = 1.0_dp / ( PI * 4.0d-7 )
         Found = .FALSE.
-        IF( ASSOCIATED( Model % Constants ) ) THEN
-          eps0 = ListGetConstReal ( Model % Constants,'Permittivity of Vacuum', Found )
-        END IF
-        IF(.NOT. Found ) eps0 = 8.854187817d-12           
         InitHandles = .FALSE.
       END IF
 
-      imu = CMPLX(0.0_dp, 1.0_dp)
+      imu = CMPLX(0.0_dp, 1.0_dp, KIND=dp)
       
       n = Element % TYPE % NumberOfNodes
       NodeIndexes => Element % NodeIndexes 
@@ -1931,10 +2267,6 @@ MODULE LumpingUtils
         IF( .NOT. Found ) mur = 1.0_dp
         muinv = mur * mu0inv
 
-        epsr = ListGetElementComplex( EpsCoeff_h, Basis, MatElement, Found, GaussPoint = t )      
-        IF( .NOT. Found ) epsr = 1.0_dp
-        eps = epsr * eps0
-
         cond_ip = ListGetElementReal( CondCoeff_h, Basis, MatElement, Found, GaussPoint = t )        
         cd_ip = ListGetElementComplex( ElCurrent_h, Basis, Element, Found, GaussPoint = t )
 
@@ -1943,7 +2275,7 @@ MODULE LumpingUtils
           ep_ip = ListGetElementComplex( ExtPot_h, Basis, Element, Found, GaussPoint = t )
           IF(Found) cd_ip = cd_ip + 2 * tc_ip * ep_ip
         END IF
-        v_ip = CMPLX( SUM( Basis(1:n) * v_local(1,1:n) ), SUM( Basis(1:n) * v_local(2,1:n) ) )
+        v_ip = CMPLX( SUM( Basis(1:n) * v_local(1,1:n) ), SUM( Basis(1:n) * v_local(2,1:n) ), KIND=dp )
                 
         area = area + weight
 
@@ -1959,6 +2291,168 @@ MODULE LumpingUtils
     
   END FUNCTION BoundaryWaveFlux
 
+
+
+!------------------------------------------------------------------------------
+!> This routine computes geometric quantities for lumped port making the setting
+!> of BCs a little easier.
+!------------------------------------------------------------------------------
+  SUBROUTINE DefinePortParameters(Model, Mesh)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE 
+    TYPE(Model_t) :: Model 
+    TYPE(Mesh_t), POINTER :: Mesh
+!------------------------------------------------------------------------------
+    TYPE(Nodes_t) :: ElementNodes
+    TYPE(Element_t), POINTER :: Element
+    TYPE(GaussIntegrationPoints_t) :: IP
+    INTEGER ::i,j,k,n,t,t0,bc_id,ierr,PortDir,PortIndex,PortTypeInd
+    INTEGER, POINTER :: Indexes(:)
+    REAL(KIND=dp) :: s,detJ,Width,Area,Length,RadInner, RadOuter,CenterArray(3,1),Scale
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:), LumpVec(:)
+    TYPE(ValueList_t), POINTER :: BC, BC0
+    CHARACTER(:), ALLOCATABLE :: PortType
+    LOGICAL :: Found, stat
+
+    CHARACTER(*), PARAMETER :: Caller = 'DefinePortParameters'
+
+    IF(.NOT. ASSOCIATED( Mesh ) ) THEN
+      CALL Fatal(Caller,'Mesh not associated!')
+    END IF
+
+    CALL Info(Caller,'Defining geometric port parameters',Level=8)
+
+    n = Mesh % MaxElementNodes    
+    t0 = Mesh % NumberOfBulkElements       
+    
+    ! Check the number of ports and add "port type index" keyword.
+    DO bc_id = 1,Model % NumberOfBCs
+      BC => Model % BCs(bc_id) % Values
+
+      ! This has already been defined!
+      IF( ListCheckPresent( BC,'Port Type Index')) CYCLE
+
+      IF(.NOT. ListCheckPresent(BC,'port impedance')) CYCLE
+      
+      PortType = ListGetString( BC,'port type',Found)
+
+      SELECT CASE(PortType)
+      CASE('rectangular')
+        PortTypeInd = 1
+
+      CASE('coaxial')
+        PortTypeInd = 2
+
+      CASE DEFAULT
+        CALL Info(Caller,'Port Type "Port Type" defaulted to "rectangular"',Level=4)
+        PortTypeInd = 1
+      END SELECT
+      
+      CALL Info(Caller,'Defining parameters for port on BC: '//I2S(bc_id),Level=8)
+      CALL ListAddInteger( BC,'Port Type Index',PortTypeInd)
+
+      IF(.NOT. ALLOCATED(Basis) ) THEN
+        ALLOCATE(Basis(n), ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n), LumpVec(7) )
+      END IF
+      
+      LumpVec(1:3) = HUGE(s)
+      LumpVec(4:6) = -HUGE(s)
+      LumpVec(7) = 0.0_dp
+
+      
+      DO t=1, Mesh % NumberOfBoundaryElements
+        Element => Mesh % Elements( t0 + t )               
+        IF( Element % BoundaryInfo % Constraint /= Model % BCs(bc_id) % Tag ) CYCLE
+
+        Indexes => Element % NodeIndexes
+        n = Element % TYPE % NumberOfNodes
+
+        ElementNodes % x = 0.0_dp
+        ElementNodes % y = 0.0_dp
+        ElementNodes % z = 0.0_dp
+
+        ElementNodes % x(1:n) = Mesh % Nodes % x(Indexes)
+        ElementNodes % y(1:n) = Mesh % Nodes % y(Indexes)
+        ElementNodes % z(1:n) = Mesh % Nodes % z(Indexes)
+
+        ! Get min/max range for each coordinate.
+        LumpVec(1) = MIN(LumpVec(1),MINVAL(ElementNodes % x(1:n)))
+        LumpVec(2) = MIN(LumpVec(2),MINVAL(ElementNodes % y(1:n)))
+        LumpVec(3) = MIN(LumpVec(3),MINVAL(ElementNodes % z(1:n)))
+        LumpVec(4) = MAX(LumpVec(4),MAXVAL(ElementNodes % x(1:n)))
+        LumpVec(5) = MAX(LumpVec(5),MAXVAL(ElementNodes % y(1:n)))
+        LumpVec(6) = MAX(LumpVec(6),MAXVAL(ElementNodes % z(1:n)))
+        
+        ! Integrate over the area.
+        IP = GaussPoints( Element, PReferenceElement = .FALSE.)
+        DO j=1,IP % n        
+          stat = ElementInfo( Element, ElementNodes, IP % U(j), IP % V(j), IP % W(j), detJ, Basis )
+          S = DetJ * IP % s(j)
+          LumpVec(7) = LumpVec(7) + s
+        END DO
+      END DO
+      
+      ! Do parallel communication, if needed.
+      IF( ParEnv % PEs > 1 ) THEN
+        CALL MPI_ALLREDUCE( MPI_IN_PLACE, LumpVec(1:3), 3, &
+            MPI_DOUBLE_PRECISION, MPI_MIN, ELMER_COMM_WORLD, ierr )
+        CALL MPI_ALLREDUCE( MPI_IN_PLACE, LumpVec(4:6), 3, &
+            MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD, ierr )
+        CALL MPI_ALLREDUCE( MPI_IN_PLACE, LumpVec(7:7), 1, &
+            MPI_DOUBLE_PRECISION, MPI_SUM, ELMER_COMM_WORLD, ierr )
+      END IF
+
+      ! Area is used in all port models. 
+      Area = LumpVec(7)
+      
+      SELECT CASE(PortTypeInd)
+      CASE(1)
+        PortDir = ABS( ListGetInteger( BC,'Port Direction',Found) )
+        IF(.NOT. Found) PortDir = 3
+                
+        Length = LumpVec(3+PortDir) - LumpVec(PortDir)        
+        Width = Area / Length
+        Scale = Width / Length
+
+        !PRINT *,'area:',area, length, width, scale
+        
+        CALL ListAddConstReal( BC,'Port Length',Length)
+        CALL ListAddConstReal( BC,'Port Scale',Scale)
+        IF(InfoActive(8)) THEN
+          PRINT *,'Setting rectangular port parameters:',Length,Scale
+        END IF
+
+      CASE(2)
+        RadOuter = 0.0_dp
+        DO i=1,3
+          RadOuter = MAX(RadOuter,(LumpVec(3+i)-LumpVec(i))/2)
+          CenterArray(i,1) = (LumpVec(3+i)+LumpVec(i))/2
+        END DO
+        RadInner = SQRT(RadOuter**2-Area/PI)        
+        Length = (RadInner+RadOuter)/2
+        Scale = 2*PI/LOG(RadOuter/RadInner)
+
+        ! PRINT *,'area:',area, radinner, radouter
+        
+        CALL ListAddConstReal( BC,'Port Length',Length) 
+        CALL ListAddConstReal( BC,'Port Scale',Scale)
+        CALL ListAddConstRealArray( BC,'Port Center',3,1,CenterArray)
+        IF(InfoActive(8)) THEN
+          PRINT *,'Setting coaxial port parameters:',Length,Scale,' and center ',CenterArray
+        END IF
+      END SELECT
+          
+    END DO
+
+    IF(ALLOCATED(Basis)) THEN
+      DEALLOCATE(Basis, ElementNodes % x, ElementNodes % y, ElementNodes % z, LumpVec )
+    END IF
+
+  END SUBROUTINE DefinePortParameters
+!------------------------------------------------------------------------------
+
+
+  
     
 END MODULE LumpingUtils
 !------------------------------------------------------------------------------

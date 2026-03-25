@@ -4,23 +4,22 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under The terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-!
 !/******************************************************************************
 ! *
 ! *  Authors: Juha Ruokolainen, Leila Puska, Antti Pursula, Peter Råback
@@ -199,32 +198,32 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
   !$omp               Basis, dBasisdx, PiezoMaterial)
   
   INTERFACE
-    FUNCTION StatElecSolver_Boundary_Residual( Model,Edge,Mesh,Quant,Perm,Gnorm ) RESULT(Indicator)
+    SUBROUTINE StatElecSolver_Boundary_Residual( Model,Edge,Mesh,Quant,Perm,Gnorm,Indicator)
       USE Types
       TYPE(Element_t), POINTER :: Edge
       TYPE(Model_t) :: Model
       TYPE(Mesh_t), POINTER :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
       INTEGER :: Perm(:)
-    END FUNCTION StatElecSolver_Boundary_Residual
+    END SUBROUTINE StatElecSolver_Boundary_Residual
     
-    FUNCTION StatElecSolver_Edge_Residual( Model,Edge,Mesh,Quant,Perm ) RESULT(Indicator)
+    SUBROUTINE StatElecSolver_Edge_Residual( Model,Edge,Mesh,Quant,Perm,Indicator)
       USE Types
       TYPE(Element_t), POINTER :: Edge
       TYPE(Model_t) :: Model
       TYPE(Mesh_t), POINTER :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2)
       INTEGER :: Perm(:)
-    END FUNCTION StatElecSolver_Edge_Residual
+    END SUBROUTINE StatElecSolver_Edge_Residual
     
-    FUNCTION StatElecSolver_Inside_Residual( Model,Element,Mesh,Quant,Perm, Fnorm ) RESULT(Indicator)
+    SUBROUTINE StatElecSolver_Inside_Residual( Model,Element,Mesh,Quant,Perm, Fnorm,Indicator)
       USE Types
       TYPE(Element_t), POINTER :: Element
       TYPE(Model_t) :: Model
       TYPE(Mesh_t), POINTER :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
       INTEGER :: Perm(:)
-    END FUNCTION StatElecSolver_Inside_Residual
+    END SUBROUTINE StatElecSolver_Inside_Residual
   END INTERFACE
   
 !------------------------------------------------------------------------------
@@ -548,12 +547,14 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
        END IF
      END IF
    END IF
-   
 
-   IF ( ListGetLogical( Params, 'Adaptive Mesh Refinement', GotIt ) ) &
+   IF ( ListGetLogical( Params, 'Adaptive Mesh Refinement', GotIt ) ) THEN
+     IF ( .NOT. ListGetLogical( Params, 'Library Adaptivity', GotIt ) ) THEN
        CALL RefineMesh( Model, Solver, Potential, PotentialPerm, &
        StatElecSolver_Inside_Residual, StatElecSolver_Edge_Residual, &
        StatElecSolver_Boundary_Residual )
+     END IF
+   END IF
    
    CALL InvalidateVariable( Model % Meshes, Solver % Mesh, 'Potential')
 
@@ -802,9 +803,10 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
        DO t= 1, Mesh % NumberOfBoundaryElements
 
          CurrentElement => GetBoundaryElement(t)
-         IF ( .NOT. ActiveBoundaryElement(CurrentElement) ) CYCLE 
          BC => GetBC(CurrentElement)
-         IF ( .NOT.ASSOCIATED( BC ) ) CYCLE 
+         IF ( .NOT.ASSOCIATED( BC ) ) CYCLE          
+
+         IF ( .NOT. ActiveBoundaryElement(CurrentElement) ) CYCLE 
 
          n = GetElementNOFNodes(CurrentElement)
          ntot = GetElementNOFDOFs(CurrentElement)
@@ -1508,8 +1510,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  FUNCTION StatElecSolver_Boundary_Residual( Model, Edge, Mesh, Quant, Perm, Gnorm ) &
-       RESULT( Indicator )
+  SUBROUTINE StatElecSolver_Boundary_Residual( Model, Edge, Mesh, Quant, Perm, Gnorm,Indicator )
 !------------------------------------------------------------------------------
      USE DefUtils
      IMPLICIT NONE
@@ -1753,13 +1754,13 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
      DEALLOCATE( EdgeBasis, Basis, dBasisdx, Flux, x, y, z, &
              NodalPermittivity, Potential )
 !------------------------------------------------------------------------------
-   END FUNCTION StatElecSolver_Boundary_Residual
+   END SUBROUTINE StatElecSolver_Boundary_Residual
 !------------------------------------------------------------------------------
 
 
 
 !------------------------------------------------------------------------------
-  FUNCTION StatElecSolver_Edge_Residual( Model, Edge, Mesh, Quant, Perm ) RESULT( Indicator )
+  SUBROUTINE StatElecSolver_Edge_Residual( Model, Edge, Mesh, Quant, Perm, Indicator )
 !------------------------------------------------------------------------------
      USE DefUtils
      IMPLICIT NONE
@@ -1971,13 +1972,13 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
      DEALLOCATE( x, y, z, NodalPermittivity, EdgeBasis, Basis, &
                 dBasisdx, Potential )
 !------------------------------------------------------------------------------
-   END FUNCTION StatElecSolver_Edge_Residual
+   END SUBROUTINE StatElecSolver_Edge_Residual
 !------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
-   FUNCTION StatElecSolver_Inside_Residual( Model, Element, Mesh, &
-        Quant, Perm, Fnorm ) RESULT( Indicator )
+   SUBROUTINE StatElecSolver_Inside_Residual( Model, Element, Mesh, &
+        Quant, Perm, Fnorm, Indicator )
 !------------------------------------------------------------------------------
      USE DefUtils
 !------------------------------------------------------------------------------
@@ -2196,6 +2197,6 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
      DEALLOCATE( Nodes % x, Nodes % y, Nodes % z, NodalPermittivity, &
         Basis, dBasisdx, ddBasisddx, PrevPot, NodalSource, Potential )
 !------------------------------------------------------------------------------
-   END FUNCTION StatElecSolver_Inside_Residual
+   END SUBROUTINE StatElecSolver_Inside_Residual
 !------------------------------------------------------------------------------
 

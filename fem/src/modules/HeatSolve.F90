@@ -4,23 +4,22 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-!
 !/******************************************************************************
 ! *
 ! *  Module containing a solver for heat equation
@@ -71,7 +70,7 @@ SUBROUTINE HeatSolver_init( Model,Solver,dt,Transient )
   END IF
 
   ! If library adaptivity is compiled with, use that by default.
-#ifdef LIBRARY_ADAPTIVIVTY
+#ifdef LIBRARY_ADAPTIVITY
   CALL ListAddNewLogical(Params,'Library Adaptivity',.TRUE.)
 #endif
   
@@ -188,32 +187,32 @@ END SUBROUTINE HeatSolver_Init
 
 
      INTERFACE
-        FUNCTION HeatSolver_Boundary_Residual( Model,Edge,Mesh,Quant,Perm,Gnorm ) RESULT(Indicator)
+        SUBROUTINE HeatSolver_Boundary_Residual( Model,Edge,Mesh,Quant,Perm,Gnorm,Indicator)
           USE Types
           TYPE(Element_t), POINTER :: Edge
           TYPE(Model_t) :: Model
           TYPE(Mesh_t), POINTER :: Mesh
           REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
           INTEGER :: Perm(:)
-        END FUNCTION HeatSolver_Boundary_Residual
+        END SUBROUTINE HeatSolver_Boundary_Residual
 
-        FUNCTION HeatSolver_Edge_Residual( Model,Edge,Mesh,Quant,Perm ) RESULT(Indicator)
+        SUBROUTINE HeatSolver_Edge_Residual( Model,Edge,Mesh,Quant,Perm,Indicator)
           USE Types
           TYPE(Element_t), POINTER :: Edge
           TYPE(Model_t) :: Model
           TYPE(Mesh_t), POINTER :: Mesh
           REAL(KIND=dp) :: Quant(:), Indicator(2)
           INTEGER :: Perm(:)
-        END FUNCTION HeatSolver_Edge_Residual
+        END SUBROUTINE HeatSolver_Edge_Residual
 
-        FUNCTION HeatSolver_Inside_Residual( Model,Element,Mesh,Quant,Perm, Fnorm ) RESULT(Indicator)
+        SUBROUTINE HeatSolver_Inside_Residual( Model,Element,Mesh,Quant,Perm, Fnorm,Indicator)
           USE Types
           TYPE(Element_t), POINTER :: Element
           TYPE(Model_t) :: Model
           TYPE(Mesh_t), POINTER :: Mesh
           REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
           INTEGER :: Perm(:)
-        END FUNCTION HeatSolver_Inside_Residual
+        END SUBROUTINE HeatSolver_Inside_Residual
      END INTERFACE
 
      REAL(KIND=dp) :: at,at0,totat,st,totst,t1
@@ -1112,12 +1111,13 @@ END SUBROUTINE HeatSolver_Init
       DO bc_elem = 1, Solver % Mesh % NumberOfBoundaryElements
         
         Element => GetBoundaryElement(bc_elem)
+        BC => GetBC()
+        IF ( .NOT. ASSOCIATED(BC) ) CYCLE
+        
         IF ( .NOT. ActiveBoundaryElement() ) CYCLE
 
         n = GetElementNOFNodes()
 
-        BC => GetBC()
-        IF ( .NOT. ASSOCIATED(BC) ) CYCLE
 
         ! This checks whether there are any Dirichlet conditions on the 
         ! smart heater boundary. If there are the r.h.s. must be zero as 
@@ -1403,8 +1403,9 @@ CONTAINS
      NoActive = 0
      
      DO j=1,nb
-       bindex = j + Mesh % NumberOfBulkElements
-       Element => Mesh % Elements(bindex)
+!      bindex = j + Mesh % NumberOfBulkElements
+!      Element => Mesh % Elements(bindex)
+       Element => GetBoundaryElement(j)
 
        BC => GetBC(Element)
        IF(.NOT. ASSOCIATED( BC ) ) CYCLE
@@ -1466,10 +1467,12 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE AddHeatFluxBC()
 !------------------------------------------------------------------------------
+      LOGICAL :: ElementForThisPartition
       CALL GetElementNodes( ElementNodes )
 
-      HeatTransferCoeff = 0.0D0
-      LOAD  = 0.0D0
+      HeatTransferCoeff = 0.0_dp
+      LOAD  = 0.0_dp
+      AText = 0.0_dp
 !------------------------------------------------------------------------------
 !     BC: -k@T/@n = \epsilon\sigma(T^4 - Text^4)
 !------------------------------------------------------------------------------
@@ -1480,10 +1483,13 @@ CONTAINS
 
 !------------------------------------------------------------------------------
         IsRadiosity = .FALSE.
+
+        ElementForThisPartition = Element % PartIndex == ParEnv % myPE
+
         IF (  RadiationFlag == 'idealized' ) THEN
           AText(1:n) = GetReal( BC, 'Radiation External Temperature',Found )
           IF(.NOT. Found) AText(1:n) = GetReal( BC, 'External Temperature' )
-        ELSE
+        ELSE IF (ElementForThisPartition) THEN
           IF( Radiosity ) THEN
             CALL RadiosityRadiation( Model, Solver, Element, & 
                 n, Temperature, TempPerm, ForceVector )
@@ -1510,7 +1516,7 @@ CONTAINS
 !       Add our own contribution to surface temperature (and external
 !       if using linear type iteration or idealized radiation)
 !------------------------------------------------------------------------------
-        IF(.NOT. IsRadiosity ) THEN
+        IF(.NOT.IsRadiosity.AND.(RadiationFlag=='idealized'.OR.ElementForThisPartition)) THEN
           DO j=1,n
             k = TempPerm(Element % NodeIndexes(j))
             Text = AText(j)
@@ -2291,7 +2297,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  FUNCTION HeatSolver_Boundary_Residual( Model, Edge, Mesh, Quant, Perm,Gnorm ) RESULT( Indicator )
+  SUBROUTINE HeatSolver_Boundary_Residual( Model, Edge, Mesh, Quant, Perm,Gnorm, Indicator )
 !------------------------------------------------------------------------------
      USE DefUtils
      USE Radiation
@@ -2586,13 +2592,11 @@ CONTAINS
 !    Gnorm = EdgeLength * Gnorm
      Indicator = EdgeLength * ResidualNorm
 !------------------------------------------------------------------------------
-   END FUNCTION HeatSolver_Boundary_Residual
+   END SUBROUTINE HeatSolver_Boundary_Residual
 !------------------------------------------------------------------------------
 
-
-
 !------------------------------------------------------------------------------
-  FUNCTION HeatSolver_Edge_Residual(Model,Edge,Mesh,Quant,Perm) RESULT( Indicator )
+  SUBROUTINE HeatSolver_Edge_Residual(Model,Edge,Mesh,Quant,Perm,Indicator )
 !------------------------------------------------------------------------------
      USE DefUtils
      IMPLICIT NONE
@@ -2785,13 +2789,13 @@ CONTAINS
      Indicator = EdgeLength * ResidualNorm
 
 !------------------------------------------------------------------------------
-   END FUNCTION HeatSolver_Edge_Residual
+   END SUBROUTINE HeatSolver_Edge_Residual
 !------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
-   FUNCTION HeatSolver_Inside_Residual( Model, Element, Mesh, &
-        Quant, Perm, Fnorm ) RESULT( Indicator )
+   SUBROUTINE HeatSolver_Inside_Residual( Model, Element, Mesh, &
+        Quant, Perm, Fnorm, Indicator )
 !------------------------------------------------------------------------------
      USE DefUtils
 !------------------------------------------------------------------------------
@@ -3123,5 +3127,5 @@ CONTAINS
 !    Fnorm = Element % hk**2 * Fnorm
      Indicator = Element % hK**2 * ResidualNorm
 !------------------------------------------------------------------------------
-   END FUNCTION HeatSolver_Inside_Residual
+   END SUBROUTINE HeatSolver_Inside_Residual
 !------------------------------------------------------------------------------

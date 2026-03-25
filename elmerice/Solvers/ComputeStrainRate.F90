@@ -103,11 +103,7 @@
             
      CHARACTER(LEN=MAX_NAME_LEN) :: FlowSolverName, StrainRateVariableName
 
-#ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: at, at0
-#else
-  REAL(KIND=dp) :: at, at0, CPUTime, RealTime
-#endif
 
 !!-----------------------------------------------------------------------------
      SAVE LocalMassMatrix, LocalStiffMatrix, LocalForce, &

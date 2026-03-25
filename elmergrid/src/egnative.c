@@ -102,17 +102,18 @@ const char *OutMethods[] = {
 
 void Instructions()
 {
-  printf("****************** Elmergrid ************************\n");
   printf("This program can create simple 2D structured meshes consisting of\n");
   printf("linear, quadratic or cubic rectangles or triangles. The meshes may\n");
   printf("also be extruded and revolved to create 3D forms. In addition many\n");
   printf("mesh formats may be imported into Elmer software. Some options have\n");
-  printf("not been properly tested. Contact the author if you face problems.\n\n");
+  printf("not been properly tested. Contact the author if you face problems.\n");
+  printf("------------------------------------------------------------------\n");
 
   printf("The program has two operation modes\n");
   printf("A) Command file mode which has the command file as the only argument\n");
   printf("   'ElmerGrid commandfile.eg'\n\n");
 
+  printf("------------------------------------------------------------------\n");
   printf("B) Inline mode which expects at least three input parameters\n");
   printf("   'ElmerGrid 1 3 test'\n\n");
   printf("The first parameter defines the input file format:\n");
@@ -151,6 +152,7 @@ void Instructions()
   printf("7)  .fidap    : Fidap format\n");
   printf("18) .ep       : Fastcap input format.\n");
 #endif
+  printf("------------------------------------------------------------------\n");
 
   printf("\nThe third parameter is the name of the input file.\n");
   printf("If the file does not exist, an example with the same name is created.\n");
@@ -162,6 +164,8 @@ void Instructions()
   printf("-out str             : name of the output file\n");
   printf("-in str              : name of a secondary input file\n");
   printf("-decimals            : number of decimals in the saved mesh (eg. 8)\n");
+  printf("-bin                 : save mesh for ElmerSolver in binary format\n");
+  printf("-sbin                : save mesh for ElmerSolver in binary & single precision format\n");
   printf("-relh real           : give relative mesh density parameter for ElmerGrid meshing\n");
   printf("-triangles           : rectangles will be divided to triangles\n");
   printf("-merge real          : merges nodes that are close to each other\n");
@@ -226,7 +230,6 @@ void Instructions()
   printf("-halobc              : create halo for the partitioning at boundaries only\n");
   printf("-haloz / -halor      : create halo for the the special z- or r-partitioning\n");
   printf("-halogreedy          : create halo being greedy over the partition interfaces\n");
-  printf("-indirect            : create indirect connections (102 elements) in the partitioning\n");
   printf("-periodic int[3]     : periodic coordinate directions for parallel & conforming meshes\n");
   printf("-partoptim           : apply aggressive optimization to node sharing\n");
   printf("-partnobcoptim       : do not apply optimization to bc ownership sharing\n");
@@ -238,13 +241,17 @@ void Instructions()
   printf("-metisbc             : partition connected BCs separately to partitions by Metis\n");
 #endif
   printf("-partlayers int      : extend boundary partitioning by element layers\n");
-
+  
+  
+#if 0
   printf("\nKeywords are related to (nearly obsolete) ElmerPost format:\n");
   printf("-partjoin int        : number of ElmerPost partitions in the data to be joined\n");
   printf("-saveinterval int[3] : the first, last and step for fusing parallel data\n");
   printf("-nobound             : disable saving of boundary elements in ElmerPost format\n");
-
+#endif
+  
   if(0) printf("-names               : conserve name information where applicable\n");
+  printf("------------------------------------------------------------------\n");
 }
  
 
@@ -1952,7 +1959,7 @@ int GetSideInfo(struct CellType *cell,int cellno,int side,int element,
     case 0:
       more = FALSE;
       elemind[0] = GetElementIndices(&(cell[cellno]),1,element,&(ind[0]));
-      if(sideno = cell[cellno].neighbour[LEFT])
+      if((sideno = cell[cellno].neighbour[LEFT]))
 	elemind[1] = GetElementIndices(&(cell[sideno]),cell[sideno].xelem,element,&(ind[0]));
       else 
 	elemind[1] = 0;
@@ -1962,7 +1969,7 @@ int GetSideInfo(struct CellType *cell,int cellno,int side,int element,
     case 1:
       more = FALSE; 
       elemind[0] = GetElementIndices(&(cell)[cellno],cell[cellno].xelem,element,&(ind[0]));
-      if(sideno = cell[cellno].neighbour[RIGHT])
+      if((sideno = cell[cellno].neighbour[RIGHT]))
 	elemind[1] = GetElementIndices(&(cell[sideno]),1,element,&(ind[0]));
       else 
 	elemind[1] = 0;
@@ -1978,7 +1985,7 @@ int GetSideInfo(struct CellType *cell,int cellno,int side,int element,
   case LEFT:
     if(element == cell[cellno].yelem) more = FALSE;
     elemind[0] = GetElementIndices(&(cell[cellno]),1,element,&(ind[0]));
-    if(sideno = cell[cellno].neighbour[LEFT])
+    if((sideno = cell[cellno].neighbour[LEFT]))
       elemind[1] = GetElementIndices(&(cell[sideno]),cell[sideno].xelem,element,&(ind[0]));
     else 
       elemind[1] = 0;
@@ -1987,7 +1994,7 @@ int GetSideInfo(struct CellType *cell,int cellno,int side,int element,
   case RIGHT:
     if(element == cell[cellno].yelem) more = FALSE; 
     elemind[0] = GetElementIndices(&(cell)[cellno],cell[cellno].xelem,element,&(ind[0]));
-    if(sideno = cell[cellno].neighbour[RIGHT])
+    if((sideno = cell[cellno].neighbour[RIGHT]))
       elemind[1] = GetElementIndices(&(cell[sideno]),1,element,&(ind[0]));
     else 
       elemind[1] = 0;
@@ -1996,7 +2003,7 @@ int GetSideInfo(struct CellType *cell,int cellno,int side,int element,
   case DOWN:
     if(element == cell[cellno].xelem) more = FALSE;
     elemind[0] = GetElementIndices(&(cell)[cellno],element,1,&(ind[0]));
-    if(sideno = cell[cellno].neighbour[DOWN])
+    if((sideno = cell[cellno].neighbour[DOWN]))
       elemind[1] = GetElementIndices(&(cell[sideno]),element,cell[sideno].yelem,&(ind[0]));
     else 
       elemind[1] = 0;
@@ -2005,7 +2012,7 @@ int GetSideInfo(struct CellType *cell,int cellno,int side,int element,
   case UP:
     if(element == cell[cellno].xelem) more = FALSE; 
     elemind[0] = GetElementIndices(&(cell)[cellno],element,cell[cellno].yelem,&(ind[0]));
-    if(sideno = cell[cellno].neighbour[UP])
+    if((sideno = cell[cellno].neighbour[UP]))
       elemind[1] = GetElementIndices(&(cell[sideno]),element,1,&(ind[0]));
     else 
       elemind[1] = 0;
@@ -3590,6 +3597,7 @@ void InitParameters(struct ElmergridType *eg)
   eg->inmethod = 0;
   eg->outmethod = 0;
   eg->silent = FALSE;
+  eg->binary = 0;
   eg->nofilesin = 1;
   eg->unitemeshes = FALSE;
   eg->unitenooverlap = FALSE;
@@ -3610,12 +3618,12 @@ void InitParameters(struct ElmergridType *eg)
   eg->metis_volcut = FALSE;
   eg->metis_seed = 0;
   eg->metis_ncuts = 1;
+  eg->metis_minconn = FALSE;
   eg->partopt = 0;
   eg->partoptim = FALSE;
   eg->partbcoptim = TRUE;
   eg->partjoin = 0;
   for(i=0;i<MAXHALOMODES;i++) eg->parthalo[i] = FALSE;
-  eg->partitionindirect = FALSE;
   eg->reduce = FALSE;
   eg->increase = FALSE;
   eg->translate = FALSE;
@@ -3657,6 +3665,7 @@ void InitParameters(struct ElmergridType *eg)
   eg->bulkmappings = 0;
   eg->coordinatemap[0] = eg->coordinatemap[1] = eg->coordinatemap[2] = 0;
   eg->clone[0] = eg->clone[1] = eg->clone[2] = 0;
+  eg->clonesize[0] = eg->clonesize[1] = eg->clonesize[2] = 0.0;
   eg->mirror[0] = eg->mirror[1] = eg->mirror[2] = 0;
   eg->cloneinds = FALSE;
   eg->mirrorbc = 0;
@@ -3664,12 +3673,13 @@ void InitParameters(struct ElmergridType *eg)
   eg->discont = 0;
   eg->connect = 0;
   eg->connectboundsnosets = 0;
-
+  
   eg->rotatecurve = FALSE;
   eg->curverad = 0.5;
   eg->curveangle = 90.0;
   eg->curvezet = 0.0;
   eg->parttol = 0.0;
+  eg->filerenamed = FALSE;
   
   for(i=0;i<MAXSIDEBULK;i++) 
     eg->sidebulk[i] = 0;
@@ -3750,7 +3760,14 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
       }
       else {
 	strcpy(eg->filesout[0],argv[arg+1]);
+	eg->filerenamed = TRUE;
       }
+    }
+    else if(strcmp(argv[arg],"-bin") == 0) {
+      eg->binary = 1;
+    }
+    else if(strcmp(argv[arg],"-sbin") == 0) {
+      eg->binary = 2;
     }
     else if(strcmp(argv[arg],"-decimals") == 0) {
       eg->decimals = atoi(argv[arg+1]);
@@ -3826,9 +3843,6 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
     else if(strcmp(argv[arg],"-halogreedy") == 0) {
       eg->parthalo[4] = TRUE;
     }    
-    else if(strcmp(argv[arg],"-indirect") == 0) {
-      eg->partitionindirect = TRUE;
-    }
     else if(strcmp(argv[arg],"-metisorder") == 0) {
       eg->order = 3;
     }    
@@ -4398,7 +4412,7 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
   iodebug = FALSE;
 
   if( mode == 0) {  
-    if (in = fopen("ELMERGRID_STARTINFO","r")) {
+    if ((in = fopen("ELMERGRID_STARTINFO","r"))) {
       iostat = fscanf(in,"%s",filename);
       fclose(in);
       printf("Using the file %s defined in ELMERGRID_STARTINFO\n",filename);
@@ -4446,6 +4460,7 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
 
       else if(strstr(command,"OUTPUT FILE")) {
 	sscanf(params,"%s",eg->filesout[0]);
+	eg->filerenamed = TRUE;
       }
 
       else if(strstr(command,"INPUT MODE")) {
@@ -4667,10 +4682,6 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
     else if(strstr(command,"PARTHYPRE")) {
       for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
       if(strstr(params,"TRUE")) eg->parthypre = TRUE;      
-    }
-    else if(strstr(command,"INDIRECT")) {
-      for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
-      if(strstr(params,"TRUE")) eg->partitionindirect = TRUE;      
     }
     else if(strstr(command,"BOUNDARY TYPE MAPPINGS")) {
       for(i=0;i<MAXMAPPINGS;i++) {
@@ -5367,7 +5378,7 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
 
 
   sprintf(filename,"%s","mesh.names");
-  if (in = fopen(filename,"r") ) {
+  if ((in = fopen(filename,"r") )) {
     int isbody,started,nameproblem;
     
     isbody = TRUE;
@@ -5471,25 +5482,30 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
 
 
 int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
-		   char *prefix,int decimals,int nooverwrite, int info)
+		   char *prefix,int decimals,int binary,int nooverwrite, int info)
 /* Saves the mesh in a form that may be used as input 
    in Elmer calculations. 
    */
 {
   int noknots,noelements,material,sumsides,elemtype,fail,cdstat,bcdim;
-  int sideelemtype,conelemtype,nodesd1,nodesd2,newtype;
+  int sideelemtype,conelemtype,nodesd1,nodesd2,newtype,singleprec;
   int i,j,k,l,bulktypes[MAXELEMENTTYPE+1],sidetypes[MAXELEMENTTYPE+1];
   int alltypes[MAXELEMENTTYPE+1],tottypes;
   int ind[MAXNODESD1],ind2[MAXNODESD1],usedbody[MAXBODIES],usedbc[MAXBCS];
   FILE *out;
   char filename[MAXFILESIZE], outstyle[MAXFILESIZE];
   char directoryname[MAXFILESIZE];
-
+  double coords[3];
+  float scoords[3];
+  
   if(!data->created) {
     printf("You tried to save points that were never created.\n");
     return(1);
   }
 
+  singleprec = FALSE;
+  if(binary == 2) singleprec = TRUE;
+  
   noelements = data->noelements;
   noknots = data->noknots;
   sumsides = 0;
@@ -5525,55 +5541,105 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
   else {
     if(info) printf("Reusing an existing directory\n");
     if(nooverwrite) {
-      if (out = fopen("mesh.header", "r")) {
+      if ((out = fopen("mesh.header", "r"))) {
 	printf("Mesh seems to already exist, writing is cancelled!\n"); 
 	return(1);
       }
     }
   }
 
-  
-  sprintf(filename,"%s","mesh.nodes");
-  out = fopen(filename,"w");
-
+  /* Save mesh nodes in binary or ascii format */  
+  if(binary) {  
+    if(singleprec) 
+      sprintf(filename,"%s","mesh.nodes.sbin");
+    else 
+      sprintf(filename,"%s","mesh.nodes.bin");
+    out = fopen(filename,"wb");
+  } else {
+    sprintf(filename,"%s","mesh.nodes");
+    out = fopen(filename,"w");
+  }
+    
   if(info) printf("Saving %d coordinates to %s.\n",noknots,filename);  
   if(out == NULL) {
     printf("opening of file was not successful\n");
     return(2);
   }
-
-  sprintf(outstyle,"%%d %%d %%.%dg %%.%dg %%.%dg\n",decimals,decimals,decimals);
-  for(i=1; i <= noknots; i++) 
-    fprintf(out,outstyle,i,-1,data->x[i],data->y[i],data->z[i]);    
-
+  
+  if(binary) {
+    for(i=1; i <= noknots; i++) {
+      fwrite(&i,sizeof(int),1,out); 
+      /* Note that in binary format we don't save the obsolite "-1". */
+      if(singleprec) {
+	/* We save the coordinates in single precidion format */
+	scoords[0] = data->x[i];
+	scoords[1] = data->y[i];
+	scoords[2] = data->z[i];
+	fwrite(scoords,sizeof(float),3,out); 
+      } else {
+	coords[0] = data->x[i];
+	coords[1] = data->y[i];
+	coords[2] = data->z[i];
+	fwrite(coords,sizeof(double),3,out);
+      }
+    }
+  }
+  else {
+    sprintf(outstyle,"%%d %%d %%.%dg %%.%dg %%.%dg\n",decimals,decimals,decimals);
+    for(i=1; i <= noknots; i++) 
+      fprintf(out,outstyle,i,-1,data->x[i],data->y[i],data->z[i]);    
+  }    
   fclose(out);
 
-  sprintf(filename,"%s","mesh.elements");
-  out = fopen(filename,"w");
+
+  /* Save bulk elements in binary or ascii format */  
+  if(binary) { 
+    sprintf(filename,"%s","mesh.elements.bin");
+    out = fopen(filename,"wb");
+  } else {
+    sprintf(filename,"%s","mesh.elements");
+    out = fopen(filename,"w");
+  }
+  
   if(info) printf("Saving %d element topologies to %s.\n",noelements,filename);
   if(out == NULL) {
     printf("opening of file was not successful\n");
     return(3);
   }
-
+  
   for(i=1;i<=noelements;i++) {
     elemtype = data->elementtypes[i];
     material = data->material[i];
 
     if(material < MAXBODIES) usedbody[material] += 1;
-    fprintf(out,"%d %d %d",i,material,elemtype);
-
     bulktypes[elemtype] += 1;
     nodesd2 = elemtype%100;
-    for(j=0;j < nodesd2;j++) 
-      fprintf(out," %d",data->topology[i][j]);
-    fprintf(out,"\n");          
+
+    if(binary) {      
+      fwrite(&i,sizeof(int),1,out);
+      k=-1; fwrite(&k,sizeof(int),1,out);  /* partition is saved in binary also in serial as "-1". */
+      fwrite(&material,sizeof(int),1,out);
+      fwrite(&elemtype,sizeof(int),1,out);
+      fwrite(&data->topology[i][0],sizeof(int),nodesd2,out);
+    } else {      
+      fprintf(out,"%d %d %d",i,material,elemtype);
+      for(j=0;j < nodesd2;j++) 
+	fprintf(out," %d",data->topology[i][j]);
+      fprintf(out,"\n");
+    }
   }
   fclose(out);
 
 
-  sprintf(filename,"%s","mesh.boundary");
-  out = fopen(filename,"w");
+  /* Save bulk elements in binary or ascii format */  
+  if(binary) { 
+    sprintf(filename,"%s","mesh.boundary.bin");
+    out = fopen(filename,"wb");
+  } else {
+    sprintf(filename,"%s","mesh.boundary");
+    out = fopen(filename,"w");
+  }
+  
   if(info) printf("Saving boundary elements to %s.\n",filename);
   if(out == NULL) {
     printf("opening of file was not successful\n");
@@ -5591,10 +5657,6 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
     for(i=1; i <= bound[j].nosides; i++) {
       GetBoundaryElement(i,&bound[j],data,ind,&sideelemtype); 
       sumsides++;
-      
-      fprintf(out,"%d %d %d %d ",
-	      sumsides,bound[j].types[i],bound[j].parent[i],bound[j].parent2[i]);
-      fprintf(out,"%d",sideelemtype);
 
       k = bound[j].types[i];
       if(k < MAXBCS) {	
@@ -5604,9 +5666,22 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
 	
       sidetypes[sideelemtype] += 1;
       nodesd1 = sideelemtype%100;
-      for(l=0;l<nodesd1;l++)
-	fprintf(out," %d",ind[l]);
-      fprintf(out,"\n");
+      
+      if(binary) {
+	fwrite(&sumsides,sizeof(int),1,out);	
+	k=-1; fwrite(&k,sizeof(int),1,out);
+	fwrite(&bound[j].types[i],sizeof(int),1,out);
+	fwrite(&bound[j].parent[i],sizeof(int),1,out);
+	fwrite(&bound[j].parent2[i],sizeof(int),1,out);
+	fwrite(&sideelemtype,sizeof(int),1,out);
+	fwrite(ind,sizeof(int),nodesd1,out);
+      } else {
+	fprintf(out,"%d %d %d %d %d",
+		sumsides,bound[j].types[i],bound[j].parent[i],bound[j].parent2[i],sideelemtype);
+	for(l=0;l<nodesd1;l++)
+	  fprintf(out," %d",ind[l]);
+	fprintf(out,"\n");
+      }
     }
   }
 

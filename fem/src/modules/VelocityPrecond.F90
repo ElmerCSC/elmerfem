@@ -4,23 +4,22 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-! *
 ! * A dummy solver to generate a velocity preconditioning matrix for block
 ! * preconditioning. Some default initializations for using this especially in 
 ! * connection with the ParStokes solver are introduced to simplify the writing 
@@ -59,29 +58,19 @@ SUBROUTINE VelocityPrecond_Init0(Model, Solver, dt, Transient)
   SolverParams => GetSolverParams()
 
   CALL ListAddString(SolverParams, 'Exec Solver', 'before simulation' )
-  CALL ListAddLogical(SolverParams, 'Variable Output', .FALSE.) 
-  IF ( .NOT. ListCheckPresent(SolverParams, 'Bubbles in Global System') ) &
-      CALL ListAddLogical(SolverParams, 'Bubbles in Global System', .FALSE.)  
+  CALL ListAddNewLogical(SolverParams, 'Variable Output', .FALSE.) 
+  CALL ListAddNewLogical(SolverParams, 'Bubbles in Global System', .FALSE.)  
   CALL ListAddLogical(SolverParams, 'Skip Compute Nonlinear Change', .TRUE.) 
   CALL ListAddLogical(SolverParams, 'Back Rotate N-T Solution', .FALSE.) 
 
-  IF ( .NOT. ListCheckPresent( SolverParams,'Variable') ) THEN
-    CALL ListAddString(SolverParams, 'Variable', 'V')
-  END IF
+  CALL ListAddNewString(SolverParams, 'Variable', 'V')
 
-  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Solver') ) &
-      CALL ListAddString(SolverParams, 'Linear System Solver', 'Iterative')
-  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Iterative Method') ) &
-      CALL ListAddString(SolverParams, 'Linear System Iterative Method', 'BiCGStabL') 
-  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Max Iterations') ) &
-      CALL ListAddInteger(SolverParams, 'Linear System Max Iterations', 1000)
-!  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Row Equilibration') ) &
-!      CALL ListAddLogical(SolverParams, 'Linear System Row Equilibration', .TRUE.)
-  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Preconditioning') ) &
-      CALL ListAddString(SolverParams, 'Linear System Preconditioning', 'ILU0') 
-  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Convergence Tolerance') ) &
-      CALL ListAddConstReal(SolverParams, 'Linear System Convergence Tolerance', 1.0d-4)
-  CALL ListAddLogical(SolverParams, 'Linear System Abort Not Converged', .FALSE.)
+  CALL ListAddNewString(SolverParams, 'Linear System Solver', 'Iterative')
+  CALL ListAddNewString(SolverParams, 'Linear System Iterative Method', 'BiCGStabL') 
+  CALL ListAddNewInteger(SolverParams, 'Linear System Max Iterations', 1000)
+  CALL ListAddNewString(SolverParams, 'Linear System Preconditioning', 'ILU0') 
+  CALL ListAddNewConstReal(SolverParams, 'Linear System Convergence Tolerance', 1.0d-4)
+  CALL ListAddNewLogical(SolverParams, 'Linear System Abort Not Converged', .FALSE.)
 
 !------------------------------------------------------------------------------
 END SUBROUTINE VelocityPrecond_Init0

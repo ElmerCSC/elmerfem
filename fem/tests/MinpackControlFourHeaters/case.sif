@@ -40,7 +40,7 @@ Run Control
 End 
 
 Simulation
-  Max Output Level = 20
+  Max Output Level = 7
   Coordinate System = "Cartesian"
   Simulation Type = Steady
   Output Intervals = 1

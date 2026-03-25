@@ -399,9 +399,9 @@ CONTAINS
      INTEGER :: prevSolverId = -1
      INTEGER :: eind, vind
      LOGICAL :: Found
-     LOGICAL :: DoMultiply = .FALSE., DoMultiplyRhs = .FALSE.
+     LOGICAL :: DoMultiply = .FALSE., DoMultiplyRhs = .FALSE., DoInvert = .FALSE.
      
-     SAVE cVar, DoMultiply, DoMultiplyRhs, prevSolverId
+     SAVE cVar, DoMultiply, DoMultiplyRhs, DoInvert, prevSolverId
      
      IF( PRESENT(activeind) ) THEN
        eind = activeind
@@ -457,6 +457,8 @@ CONTAINS
          END IF
          DoMultiply = .TRUE.
 
+         DoInvert = ListGetLogical( Solver % Values,'Matrix Multiplier Invert',Found )
+         
          ! We may multiply the r.h.s. with a different multiplier. 
          multname = ListGetString( Solver % Values,'Rhs Multiplier Name',Found )
          IF(Found ) THEN
@@ -477,7 +479,11 @@ CONTAINS
      IF( DoMultiply ) THEN
        vind = cvar % Perm(eind)
        IF(vind > 0 ) THEN
-         cmult = cvar % Values(vind)       
+         IF( DoInvert ) THEN
+           cmult = 1.0_dp / cvar % Values(vind)
+         ELSE
+           cmult = cvar % Values(vind)
+         END IF
          K(1:n,1:n) = cmult * K(1:n,1:n)
        END IF
        IF( DoMultiplyRhs ) THEN
@@ -747,7 +753,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 SUBROUTINE NSCondensate( N, Nb, dim, K, F, F1 )
 !------------------------------------------------------------------------------
-    USE LinearAlgebra
+    USE LinearAlgebra, ONLY : InvertMatrix
     INTEGER :: N, Nb, dim
     REAL(KIND=dp) :: K(:,:), F(:)
     REAL(KIND=dp), OPTIONAL :: F1(:)
@@ -800,7 +806,6 @@ END SUBROUTINE NSCondensate
 !------------------------------------------------------------------------------
 SUBROUTINE Condensate( N, K, F, F1 )
 !------------------------------------------------------------------------------
-    USE LinearAlgebra
     INTEGER :: N
     REAL(KIND=dp) :: K(:,:),F(:)
     REAL(KIND=dp), OPTIONAL :: F1(:)
@@ -820,7 +825,7 @@ END SUBROUTINE Condensate
 !------------------------------------------------------------------------------
 SUBROUTINE CondensatePR( N, Nb, K, F, F1 )
 !------------------------------------------------------------------------------
-    USE LinearAlgebra
+    USE LinearAlgebra, ONLY : InvertMatrix
     INTEGER :: N               !< The count of nodal, edge and face degrees of freedom.
     INTEGER :: Nb              !< The count of internal (bubble) degrees of freedom.
     REAL(KIND=dp) :: K(:,:)    !< Local stiffness matrix.
@@ -838,7 +843,7 @@ SUBROUTINE CondensatePR( N, Nb, K, F, F1 )
     Kbb = K(Bdofs,Bdofs)
     Kbl = K(Bdofs,Ldofs)
     Klb = K(Ldofs,Bdofs)
-    Fb  = F(Bdofs)
+    IF (PRESENT(F))Fb  = F(Bdofs)
 
     CALL InvertMatrix( Kbb,nb )
 
@@ -859,7 +864,7 @@ END SUBROUTINE CondensatePR
 !------------------------------------------------------------------------------
 SUBROUTINE CondensatePC( N, Nb, K, F, F1 )
 !------------------------------------------------------------------------------
-    USE LinearAlgebra
+    USE LinearAlgebra, ONLY : ComplexInvertMatrix
     INTEGER :: N               !< The count of nodal, edge and face degrees of freedom.
     INTEGER :: Nb              !< The count of internal (bubble) degrees of freedom.
     COMPLEX(KIND=dp) :: K(:,:)    !< Local stiffness matrix.
@@ -877,7 +882,7 @@ SUBROUTINE CondensatePC( N, Nb, K, F, F1 )
     Kbb = K(Bdofs,Bdofs)
     Kbl = K(Bdofs,Ldofs)
     Klb = K(Ldofs,Bdofs)
-    Fb  = F(Bdofs)
+    IF (PRESENT(F))Fb  = F(Bdofs)
 
     CALL ComplexInvertMatrix( Kbb,nb )
 

@@ -5,4 +5,4 @@ CONFIGURE_FILE(case.sif case.sif COPYONLY)
 
 file(COPY two_plates.grd ELMERSOLVER_STARTINFO  DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(radiation2d_spectral LABELS radiation)
+ADD_ELMER_TEST(radiation2d_spectral NPROCS 1 2 4 LABELS radiation)

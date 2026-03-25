@@ -47,6 +47,7 @@ $ w = 2*pi*(2.5e9)
 $ k0 = w/c
 $ kc = n*pi/a
 $ beta0 = sqrt(k0^2-kc^2)
+$ s = -1.0
 
 ! The above parameters give the following numerical values: 
 !
@@ -68,39 +69,59 @@ Solver 1
   Equation = "VectorHelmholtz"
   Use Piola Transform = True
   Second Kind Basis = True
-!  Quadratic Approximation = True
+  Quadratic Approximation = False
 
   Procedure = "VectorHelmholtz" "VectorHelmholtzSolver"
 
   Linear System Symmetric = False
-  Linear System Scaling = True
+  Linear System Residual Mode = True
 
-  !Linear System Use Hypre = Logical True
-  !Linear System Use Trilinos = Logical True
-  !Linear System Use Mumps = Logical True
+  Linear System Block Mode = True
+  Block Hcurl System = Logical True
+  Block Preconditioner = True
+  Block Gauss-Seidel = True
+  Block Scaling = True
 
-  Linear System Solver = String "Iterative"
-  !Linear System Solver = String "Direct"
-  Linear System Iterative Method = BiCGStabl
-  BiCGstabl polynomial degree = Integer 4
-  
-  Linear System Preconditioning Damp Coefficient = Real 0.0
-  Linear System Preconditioning Damp Coefficient im = Real -1
-  Mass-proportional Damping = True
-  !Linear System Preconditioning = String "boomerAMG"
-  !Linear System Preconditioning = String "parasails"
-  Linear System Preconditioning = String "vanka"
-  !Linear System Preconditioning = String "None"
-  !Linear System Preconditioning = String "diagonal"
-  !Linear System Preconditioning = String "ILU0"
-  Linear System ILUT Tolerance = Real 3e-3
-  Linear System Max Iterations = Integer 4000
-  Linear System Convergence Tolerance = 1.0e-7
+! Linear system solver for outer loop
+!-----------------------------------------
+  Outer: Linear System Solver = "Iterative"
+  Outer: Linear System Convergence Tolerance = 1e-7
+  Outer: Linear System Iterative Method = gcr
+  Outer: Linear System Max Iterations = 50
+  Outer: Linear System Residual Output = 1
+  Outer: Linear System GCR Restart = 50
+  Outer: Linear System Abort Not Converged = False
+  Outer: Linear System Pseudo Complex = True
 
-  linear system abort not converged = false
+!  $blocktol = 0.01
+
+! Linear system solver for DOFs corresponding to
+! the lowest-order Nedelec basis:
+!-----------------------------------------
+  block 11: Linear System Solver = "direct"
+  block 11: Linear System direct method = umfpack ! "mumps"
+  block 11: Linear System Complex = True
+  block 11: Linear System Scaling = True
+  block 11: Linear System Abort Not Converged = False
+
+! Linear system solver for DOFs corresponding to
+! the hierarchic augmentation:
+!-----------------------------------------
+!  block 22: Linear System Solver = "direct"
+!  block 22: Linear System direct method = umfpack ! "mumps"
+  block 22: Linear System Solver = "Iterative"
+  block 22: Linear System Convergence Tolerance = 1e-8
+  block 22: Linear System Iterative Method = IDRS
+!  block 22: BiCGstabl polynomial degree = Integer 8
+!  block 22: Linear System GCR Restart = 100
+  block 22: Linear System Preconditioning = diagonal
+  block 22: Linear System Residual Output = 10
+  block 22: Linear System Max Iterations = 400
+  block 22: Linear System Complex = True
+  block 22: Linear System Abort Not Converged = False
+  block 22: Linear System Scaling = True
 
   Steady State Convergence Tolerance = 1e-09
-  Linear System Residual Output = 10
   Calculate Loads = Logical True
   Calculate Energy Inner Product = Logical True
 End
@@ -140,6 +161,7 @@ Solver 4
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
   Output File Name = TM_2ndkind
   Vtu Format = Logical True
+  Ascii Output = True
   !GMSH Format = Logical True
   !Single Precision = Logical True
   !Save Bulk Only = True
@@ -148,9 +170,9 @@ End
 
 Boundary Condition 1
   Target Boundaries(1) = 1
-  Electric Robin Coefficient Im = Real $ k0*k0/beta0
+  Electric Robin Coefficient Im = Real $ -s*k0*k0/beta0
   Magnetic Boundary Load Im 1 = Variable Coordinate 1
-    Real MATC "2*k0*k0/beta0*cos(kc*tx)"
+    Real MATC "(1-s)*k0*k0/beta0*cos(kc*tx)"
 End
 
 Boundary Condition 2
@@ -171,7 +193,7 @@ End
 ! + the do-nothing BC on the boundaries 2 and 5 to set n x curl E = 0 
 
 
-Solver 1 :: Reference Norm = 1.93829545E-03
+Solver 1 :: Reference Norm = 2.75603743E-03
 Solver 1 :: Reference Norm Tolerance = 1e-4
 Solver 2 :: Reference Norm = 3.44478182E-01
 Solver 2 :: Reference Norm Tolerance = 1e-4

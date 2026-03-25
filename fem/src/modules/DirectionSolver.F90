@@ -278,7 +278,7 @@ CONTAINS
   Active = GetNOFActive()
   DO t=1,Active
      Element => GetActiveElement(t)
-     IF (ns_iter .NE. Element % BodyId) CYCLE
+     IF (ns_iter /= Element % BodyId) CYCLE
      nn = GetElementNOFNodes()
      CALL SaveElementSolution(Element, nn)
   END DO

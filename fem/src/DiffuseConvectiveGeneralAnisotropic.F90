@@ -53,7 +53,7 @@ MODULE DiffuseConvectiveGeneral
 
 !------------------------------------------------------------------------------
 !>  Return element local matrices and RSH vector for diffusion-convection
-!>  equation (genaral euclidean coordinate system): 
+!>  equation (general euclidean coordinate system): 
 !------------------------------------------------------------------------------
    SUBROUTINE DiffuseConvectiveGenCompose( MassMatrix,StiffMatrix,ForceVector,  &
     LoadVector,NodalCT,NodalC0,NodalC1,NodalC2,PhaseChange,Temperature,Enthalpy,&
@@ -99,7 +99,7 @@ MODULE DiffuseConvectiveGeneral
 !     INPUT: Nodal values of the viscosity
 !
 !  LOGICAL :: Stabilize
-!     INPUT: Should stabilzation be used ? Used only if coefficient of the
+!     INPUT: Should stabilization be used ? Used only if coefficient of the
 !            convection term (C1) is nonzero
 !
 !  TYPE(Element_t) :: Element

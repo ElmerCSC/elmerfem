@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! ******************************************************************************
@@ -31,7 +31,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 02 Jun 1997
 ! *
@@ -64,7 +64,7 @@
 /* pc needs more bits on 64bit arch  */
 #ifdef ARCH_32_BITS
 #define f_ptr int32_t *
-#else 
+#else
 #define f_ptr int64_t *
 #endif
 
@@ -86,7 +86,7 @@
 #ifdef USE_ISO_C_BINDINGS
 void STDCALLBULL getsolverhome( char *solverDir, int *len)
 #else
-void STDCALLBULL FC_FUNC(getsolverhome,GETSOLVERHOME) 
+void STDCALLBULL FC_FUNC(getsolverhome,GETSOLVERHOME)
      ( char *solverDir, int *len)
 #endif
 {
@@ -188,14 +188,14 @@ void STDCALLBULL FC_FUNC(envir,ENVIR) (char *Name, char *Value, int *len)
 static void STDCALLBULL fortranMangle(char *orig, char *mangled)
 {
   int uscore, i;
-  
+
   strcpy( mangled, orig );
 
   if(ELMER_LINKTYP == 1 || ELMER_LINKTYP == 3 || ELMER_LINKTYP == 4)
   {
     for( i=0 ; i<strlen(mangled) ; i++ ) /* to lower case */
     {
-      if ( mangled[i] >= 'A'  && mangled[i] <= 'Z' ) 
+      if ( mangled[i] >= 'A'  && mangled[i] <= 'Z' )
 	mangled[i] += 'a' - 'A';
     }
   }
@@ -203,11 +203,11 @@ static void STDCALLBULL fortranMangle(char *orig, char *mangled)
   {
     for( i=0; i<strlen(mangled); i++ ) /* to upper case */
     {
-      if ( mangled[i] >= 'a'  && mangled[i] <= 'z' ) 
+      if ( mangled[i] >= 'a'  && mangled[i] <= 'z' )
 	mangled[i] += 'A' - 'a';
     }
   }
-  
+
   if(ELMER_LINKTYP == 1) /* underscore */
   {
       strcat( mangled, "_" );
@@ -218,12 +218,12 @@ static void STDCALLBULL fortranMangle(char *orig, char *mangled)
     for( i=0; i<strlen(mangled); i++ )
       if(mangled[i] == '_')
 	uscore++;
-    
+
     if(uscore == 0)
     {
       strcat( mangled, "_" );
-    } 
-    else 
+    }
+    else
     {
       strcat( mangled, "__" );
     }
@@ -327,7 +327,7 @@ try_open_solver(char *SearchPath, char *Library, void **Handle, char *errorBuf)
   loaded library and name of the routine.
   -------------------------------------------------------------------------*/
 #ifdef USE_ISO_C_BINDINGS
-void *STDCALLBULL loadfunction_c( int *Quiet, int *abort_not_found, 
+void *STDCALLBULL loadfunction_c( int *Quiet, int *abort_not_found,
         char *Library, char *Name, int *mangle )
 #else
 void *STDCALLBULL FC_FUNC(loadfunction,LOADFUNCTION) ( int *Quiet, int *abort_not_found,
@@ -404,7 +404,7 @@ void *STDCALLBULL FC_FUNC(loadfunction,LOADFUNCTION) ( int *Quiet, int *abort_no
       fprintf(stderr, "%s", ErrorBuffer);
       exit(0);
    }
-   
+
 #ifdef HAVE_DLOPEN_API
 
    if ( (Function = (void(*)())dlsym( Handle,NewName)) == NULL && *abort_not_found )
@@ -429,7 +429,7 @@ void *STDCALLBULL FC_FUNC(loadfunction,LOADFUNCTION) ( int *Quiet, int *abort_no
 /*--------------------------------------------------------------------------
   INTERNAL: Execute given function returning integer value
   -------------------------------------------------------------------------*/
-static int IntExec( int (STDCALLBULL *Function)(),void *Model )
+static int IntExec( int (STDCALLBULL *Function)(void *),void *Model )
 {
    return (*Function)( Model );
 }
@@ -449,8 +449,9 @@ int STDCALLBULL FC_FUNC(execintfunction,EXECINTFUNCTION) ( f_ptr Function,void *
 /*--------------------------------------------------------------------------
    INTERNAL: Execute given function returning double value
   -------------------------------------------------------------------------*/
-static void DoubleArrayExec( double *(STDCALLBULL *Function)(), void *Model,
-               int *Node, double *Value, double *Array )
+static void DoubleArrayExec(
+              double *(STDCALLBULL *Function)(void *, int *, double *, double *),
+              void *Model, int *Node, double *Value, double *Array )
 {
    (*Function)( Model,Node,Value,Array );
 }
@@ -463,18 +464,21 @@ void STDCALLBULL execrealarrayfunction_c( f_ptr Function, void *Model,
 										int *Node, double *Value, double *Array )
 #else
 void STDCALLBULL FC_FUNC(execrealarrayfunction,EXECREALARRAYFUNCTION)
-     ( f_ptr Function, void *Model,
-       int *Node, double *Value, double *Array )
+     ( f_ptr Function,
+       void *Model, int *Node, double *Value, double *Array )
 #endif
 {
-   DoubleArrayExec( (double*(STDCALLBULL *)())*Function,Model,Node,Value, Array );
+  DoubleArrayExec(
+    (double*(STDCALLBULL *)(void *, int *, double *, double *)) *Function,
+    Model, Node, Value, Array );
 }
 
 /*--------------------------------------------------------------------------
    INTERNAL: Execute given function returning double value
   -------------------------------------------------------------------------*/
-static double DoubleExec( double (STDCALLBULL *Function)(), void *Model,
-               int *Node, double *Value )
+static double DoubleExec(
+  double (STDCALLBULL *Function)(void *, int *, double *),
+  void *Model, int *Node, double *Value )
 {
    return (*Function)( Model,Node,Value );
 }
@@ -491,14 +495,17 @@ double STDCALLBULL FC_FUNC(execrealfunction,EXECREALFUNCTION)
        int *Node, double *Value )
 #endif
 {
-   return DoubleExec( (double (STDCALLBULL *)())*Function,Model,Node,Value );
+  return DoubleExec(
+    (double (STDCALLBULL *)(void *, int *, double *)) *Function,
+    Model, Node, Value );
 }
 
 /*--------------------------------------------------------------------------
    INTERNAL: Execute given function returning double value
   -------------------------------------------------------------------------*/
-static double ConstDoubleExec( double (STDCALLBULL *Function)(), void *Model,
-			       double *x, double *y, double *z )
+static double ConstDoubleExec(
+  double (STDCALLBULL *Function)(void *, double *, double *, double *),
+  void *Model, double *x, double *y, double *z )
 {
    return (*Function)( Model, x,y,z );
 }
@@ -515,7 +522,9 @@ double STDCALLBULL FC_FUNC(execconstrealfunction,EXECCONSTREALFUNCTION)
        double *x, double *y, double *z )
 #endif
 {
-   return ConstDoubleExec( (double (STDCALLBULL *)())*Function,Model,x,y,z );
+  return ConstDoubleExec(
+    (double (STDCALLBULL *)(void *, double *, double *, double *)) *Function,
+    Model, x, y, z );
 }
 
 
@@ -535,9 +544,10 @@ void *STDCALLBULL FC_FUNC(addrfunc,ADDRFUNC) ( void *Function )
    INTERNAL: Call solver routines at given address
   -------------------------------------------------------------------------*/
 static void DoExecSolver(
-  void (STDCALLBULL *SolverProc)(), void *Model, void *Solver, void *dt, void *Transient)
+  void (STDCALLBULL *SolverProc)(void *, void *, void *, void *),
+  void *Model, void *Solver, void *dt, void *Transient)
 {
-  (*SolverProc)( Model,Solver,dt,Transient ); 
+  (*SolverProc)( Model,Solver,dt,Transient );
   return;
 }
 
@@ -552,15 +562,18 @@ void STDCALLBULL FC_FUNC(execsolver,EXECSOLVER)
      ( f_ptr *SolverProc, void *Model, void *Solver, void *dt, void *Transient )
 #endif
 {
-  DoExecSolver( (void (STDCALLBULL *)())*SolverProc,Model,Solver,dt,Transient );
+  DoExecSolver(
+    (void (STDCALLBULL *)(void *, void *, void *, void *))*SolverProc,
+    Model, Solver, dt, Transient );
 }
 
 /*--------------------------------------------------------------------------
    INTERNAL: Call lin. solve routines at given address
   -------------------------------------------------------------------------*/
 static int DoLinSolveProcs(
-  int (STDCALLBULL *SolverProc)(), void *Model, void *Solver, void *Matrix, void *b, 
-                void *x, void *n, void *DOFs, void *Norm )
+  int (STDCALLBULL *SolverProc)(void *, void *, void *, void *, void *, void *, void *, void *),
+  void *Model, void *Solver, void *Matrix, void *b,
+  void *x, void *n, void *DOFs, void *Norm )
 {
    return (*SolverProc)( Model,Solver,Matrix,b,x,n, DOFs,Norm );
 }
@@ -577,7 +590,9 @@ int STDCALLBULL FC_FUNC(execlinsolveprocs,EXECLINSOLVEPROCS)
      ( f_ptr *SolverProc, void *Model, void *Solver, void *Matrix, void *b, void *x, void *n, void *DOFs, void *Norm )
 #endif
 {
-   return DoLinSolveProcs( (int (STDCALLBULL *)())*SolverProc,Model,Solver,Matrix,b,x,n,DOFs,Norm );
+  return DoLinSolveProcs(
+    (int (STDCALLBULL *)(void *, void *, void *, void *, void *, void *, void *, void *)) *SolverProc,
+    Model, Solver, Matrix, b, x, n, DOFs, Norm );
 }
 
 char *mtc_domath(char *);
@@ -589,7 +604,7 @@ void mtc_init(FILE *,FILE *, FILE *);
 #ifdef USE_ISO_C_BINDINGS
 void STDCALLBULL matc_get_array(char *name, double *values, int *nrows, int *ncols )
 #else
-void STDCALLBULL FC_FUNC_(matc_get_array,MATC_GET_ARRAY) (char *name, 
+void STDCALLBULL FC_FUNC_(matc_get_array,MATC_GET_ARRAY) (char *name,
            double *values, int *nrows, int *ncols )
 #endif
 {
@@ -618,7 +633,7 @@ void STDCALLBULL FC_FUNC(matc_c,MATC) (char *cmd,int *cmdlen,char *result,*resle
 
    slen = *len;
    if ( been_here==0 ) {
-     mtc_init( NULL, stdout, stderr ); 
+     mtc_init( NULL, stdout, stderr );
      strcpy( cc, "format( 12,\"rowform\")" );
      mtc_domath( cc );
      been_here = 1;
@@ -665,8 +680,10 @@ void STDCALLBULL FC_FUNC(matc_c,MATC) (char *cmd,int *cmdlen,char *result,*resle
 /*--------------------------------------------------------------------------
   INTERNAL: execute user material function
   -------------------------------------------------------------------------*/
-static double DoViscFunction(double (STDCALLBULL *SolverProc)(), void *Model, void *Element, void *Nodes, void *n,
-     void *Basis, void *GradBasis, void *Viscosity, void *Velo, void *GradV )
+static double DoViscFunction(
+  double (STDCALLBULL *SolverProc)(void *, void *, void *, void *, void *, void *, void *, void *, void *),
+  void *Model, void *Element, void *Nodes, void *n,
+  void *Basis, void *GradBasis, void *Viscosity, void *Velo, void *GradV )
 {
    double s;
    s = (*SolverProc)( Model,Element,Nodes,n,Basis,GradBasis,
@@ -685,16 +702,17 @@ double STDCALLBULL FC_FUNC(materialuserfunction,MATERIALUSERFUNCTION)
   ( f_ptr Function, void *Model, void *Element, void *Nodes, void *n, void *nd, void *Basis, void *GradBasis, void *Viscosity, void *Velo, void *gradV )
 #endif
 {
-   return DoViscFunction( (double (STDCALLBULL *)())*Function,Model,Element,Nodes,n,Basis,
-                  GradBasis,Viscosity,Velo,gradV );
+   return DoViscFunction(
+    (double (STDCALLBULL *)(void *, void *, void *, void *, void *, void *, void *, void *, void *)) *Function,
+    Model, Element, Nodes, n, Basis, GradBasis, Viscosity, Velo, gradV );
 }
 
 /*--------------------------------------------------------------------------
   INTERNAL: execute user material function
   -------------------------------------------------------------------------*/
-static void DoSimulationProc( void (STDCALLBULL *SimulationProc)(), void *Model )
-{ 
-  (*SimulationProc)( Model ); 
+static void DoSimulationProc( void (STDCALLBULL *SimulationProc)(void *), void *Model )
+{
+  (*SimulationProc)( Model );
 }
 
 /*--------------------------------------------------------------------------
@@ -707,23 +725,30 @@ void STDCALLBULL FC_FUNC(execsimulationproc,EXECSIMULATIONPROC)
      ( f_ptr Function, void *Model )
 #endif
 {
-   DoSimulationProc( (void (STDCALLBULL *)())*Function,Model );
+   DoSimulationProc( (void (STDCALLBULL *)(void *)) *Function, Model );
 }
 
 
 /*--------------------------------------------------------------------------
-  INTERNAL: execute (Krylov) iterator 
+  INTERNAL: execute (Krylov) iterator
   -------------------------------------------------------------------------*/
-static void DoIterCall( void (STDCALLBULL *iterProc)(),
-       void *x,void *b,void *ipar,void *dpar,void *work,
-       void (STDCALLBULL *mvProc)(),
-       void (STDCALLBULL *pcondProc)(),
-       void (STDCALLBULL *pcondrProc)(),
-       void (STDCALLBULL *dotProc)(),
-       void (STDCALLBULL *normProc)(),
-       void (STDCALLBULL *STOPC)() )
-{ 
-  (*iterProc)( x,b,ipar,dpar,work,mvProc,pcondProc, 
+static void DoIterCall(
+  void (STDCALLBULL *iterProc)(void *,void *,void *,void *,void *,
+                               void (STDCALLBULL *)(),
+                               void (STDCALLBULL *)(),
+                               void (STDCALLBULL *)(),
+                               void (STDCALLBULL *)(),
+                               void (STDCALLBULL *)(),
+                               void (STDCALLBULL *)()),
+  void *x,void *b,void *ipar,void *dpar,void *work,
+  void (STDCALLBULL *mvProc)(),
+  void (STDCALLBULL *pcondProc)(),
+  void (STDCALLBULL *pcondrProc)(),
+  void (STDCALLBULL *dotProc)(),
+  void (STDCALLBULL *normProc)(),
+  void (STDCALLBULL *STOPC)() )
+{
+  (*iterProc)( x,b,ipar,dpar,work,mvProc,pcondProc,
        pcondrProc,dotProc,normProc,STOPC );
 }
 
@@ -735,12 +760,19 @@ void STDCALLBULL itercall_c( f_ptr iterProc, void *x, void *b, void *ipar, void 
        f_ptr mvProc, f_ptr pcondProc, f_ptr pcondrProc, f_ptr dotProc, f_ptr normProc, f_ptr STOPC )
 #else
 void STDCALLBULL FC_FUNC(itercall,ITERCALL)
-     ( f_ptr iterProc, void *x, void *b, void *ipar, void *dpar, void *work, 
+     ( f_ptr iterProc, void *x, void *b, void *ipar, void *dpar, void *work,
        f_ptr mvProc, f_ptr pcondProc, f_ptr pcondrProc, f_ptr dotProc, f_ptr normProc, f_ptr STOPC )
 #endif
 {
-   DoIterCall( (void (STDCALLBULL *)())*iterProc,x,b,ipar,dpar,work,
-       (void (STDCALLBULL *)())*mvProc, 
+   DoIterCall( (void (STDCALLBULL *)(void *,void *,void *,void *,void *,
+                                     void (STDCALLBULL *)(),
+                                     void (STDCALLBULL *)(),
+                                     void (STDCALLBULL *)(),
+                                     void (STDCALLBULL *)(),
+                                     void (STDCALLBULL *)(),
+                                     void (STDCALLBULL *)())) *iterProc,
+       x,b,ipar,dpar,work,
+       (void (STDCALLBULL *)())*mvProc,
        (void (STDCALLBULL *)())*pcondProc,
        (void (STDCALLBULL *)())*pcondrProc,
        (void (STDCALLBULL *)())*dotProc,
@@ -751,9 +783,10 @@ void STDCALLBULL FC_FUNC(itercall,ITERCALL)
 /*--------------------------------------------------------------------------
   INTERNAL: execute localmatrix call
   -------------------------------------------------------------------------*/
-static void DoLocalCall( void (STDCALLBULL *localProc)(),
-  void *Model,void *Solver,void *G, void *F, void *Element,void *n,void *nd )
-{ 
+static void DoLocalCall(
+  void (STDCALLBULL *localProc)(void *, void *, void *, void *, void *, void *, void *),
+  void *Model, void *Solver, void *G, void *F, void *Element, void *n, void *nd )
+{
   (*localProc)( Model, Solver, G, F, Element, n, nd );
 }
 
@@ -768,7 +801,9 @@ void STDCALLBULL FC_FUNC(execlocalproc, EXECLOCALPROC )
      ( f_ptr localProc, void *Model,void *Solver,void *G, void *F, void *Element,void *n,void *nd )
 #endif
 {
-   DoLocalCall( (void (STDCALLBULL *)())*localProc,Model,Solver,G,F,Element,n,nd );
+  DoLocalCall(
+    (void (STDCALLBULL *)(void *, void *, void *, void *, void *, void *, void *)) *localProc,
+    Model, Solver, G, F, Element, n, nd );
 }
 
 
@@ -776,9 +811,10 @@ void STDCALLBULL FC_FUNC(execlocalproc, EXECLOCALPROC )
 /*--------------------------------------------------------------------------
   INTERNAL: execute complete localmatrix call
   -------------------------------------------------------------------------*/
-static void DoLocalAssembly( void (STDCALLBULL *LocalAssembly)(),
+static void DoLocalAssembly(
+  void (STDCALLBULL *LocalAssembly)(void *, void *, void *, void *, void *, void *, void *,void *, void *, void *, void *),
   void *Model,void *Solver,void *dt,void *transient,void *M, void *D, void *S,void *F, void *Element,void *n,void *nd )
-{ 
+{
   (*LocalAssembly)( Model, Solver, dt, transient, M, D, S, F, Element, n, nd );
 }
 
@@ -795,7 +831,9 @@ void STDCALLBULL FC_FUNC(execlocalassembly, EXECLOCALASSEMBLY )
      ( f_ptr LocalAssembly, void *Model,void *Solver,void *dt,void *transient,void *M, void *D, void *S,void *F,void *Element,void *n,void *nd )
 #endif
 {
-   DoLocalAssembly( (void (STDCALLBULL *)())*LocalAssembly,Model,Solver,dt,transient,M,D,S,F,Element,n,nd );
+  DoLocalAssembly(
+    (void (STDCALLBULL *)(void *, void *, void *, void *, void *, void *, void *,void *, void *, void *, void *)) *LocalAssembly,
+    Model, Solver, dt, transient, M, D, S, F, Element, n, nd );
 }
 
 
@@ -803,9 +841,10 @@ void STDCALLBULL FC_FUNC(execlocalassembly, EXECLOCALASSEMBLY )
 /*--------------------------------------------------------------------------
   INTERNAL: execute complete localmatrix call
   -------------------------------------------------------------------------*/
-static void DoMatVecSubr( void (STDCALLBULL *matvec)(),
-  void **SpMV,void *n,void *rows,void *cols,void *vals,void *u, void *v, void *reinit )
-{ 
+static void DoMatVecSubr(
+  void (STDCALLBULL *matvec)(void **, void *, void *, void *,void *, void *, void *, void *),
+  void **SpMV, void *n, void *rows, void *cols, void *vals, void *u, void *v, void *reinit )
+{
   (*matvec)( SpMV,n,rows,cols,vals,u,v,reinit);
 }
 
@@ -820,5 +859,7 @@ void STDCALLBULL FC_FUNC(matvecsubr, MMATVECSUBR)
      ( f_ptr matvec, void **SpMV, void *n, void *rows, void *cols, void *vals, void *u, void *v,void *reinit )
 #endif
 {
-   DoMatVecSubr( (void (STDCALLBULL *)())*matvec,SpMV,n,rows,cols,vals,u,v,reinit);
+  DoMatVecSubr(
+    (void (STDCALLBULL *)(void **, void *, void *, void *,void *, void *, void *, void *)) *matvec,
+    SpMV, n, rows, cols, vals, u, v, reinit);
 }

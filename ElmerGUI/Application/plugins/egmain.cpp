@@ -495,7 +495,7 @@ static int ImportMeshDefinition(int inmethod,int nofile,char *filename,int *nogr
     data[nofile].dim = 3; /* default dim 3 with gmsh*/
     eg.dim = 3;
     errorstat = LoadGmshInput(&(data[nofile]),boundaries[nofile],eg.filesin[nofile],
-			      eg.multidim,info);
+			      eg.multidim,eg.dim,info);
     break;
 
    

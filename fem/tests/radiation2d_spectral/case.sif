@@ -45,28 +45,32 @@ Material 1
   Density = 1.0
   Heat Conductivity = 10.0
 
-  Emissivity = Variable Temperature
-    Real
-      0.0 0.5
-      100.0 0.5
-      1000.0 0.9
-      1100.0 0.9
-    End    
+! Emissivity = Variable Temperature
+!   Real
+!     0.0 0.5
+!     100.0 0.5
+!     1000.0 0.9
+!     1100.0 0.9
+!   End    
+
+!   This can replace material emissivity for view factor computations (also the default, as
+!   the 'other' side is not meshed). Emissivities defined in BC -sections.
+    Radiative Body = True
 End
 
-Material 2
-  Name = "MatB"
-  Density = 1.0
-  Heat Conductivity = 10.0
-
-  Emissivity = Variable Temperature
-    Real
-      0.0 0.9
-      100.0 0.9
-      1000.0 0.5
-      1100.0 0.5
-    End    
-End
+!Material 2
+!  Name = "MatB"
+!  Density = 1.0
+!  Heat Conductivity = 10.0
+!
+!  Emissivity = Variable Temperature
+!    Real
+!      0.0 0.9
+!      100.0 0.9
+!      1000.0 0.5
+!      1100.0 0.5
+!    End    
+!End
 
 
 
@@ -87,6 +91,7 @@ Solver 1
   Nonlinear System Newton After Iterations = 1
   Nonlinear System Max Iterations = 50
   Nonlinear System Relaxation Factor = 0.5
+  Nonlinear System Consistent Norm = True
   Nonlinear System Convergence Tolerance = 1.0e-5
 
   Steady State Convergence Tolerance = 1.0e-8
@@ -115,6 +120,8 @@ Solver 2
   Equation = SaveScalars
   Procedure = "SaveData" "SaveScalars"
 
+  Parallel Reduce = true
+
   Variable 1 = Temperature Loads
   Operator 1 = boundary sum
   Mask Name 1 = intflux 
@@ -134,13 +141,41 @@ End
 Boundary Condition 1
   Name = "LeftInside"
   Target Boundaries(1) = 1
+
+  Initial Condition = 1 ! needed current parallel implementation
+  !  .e.g. boundary elements w/o parents
+
   Radiation = Diffuse Gray
+
+  ! Emissivity must be defined in BC -section for parallel implementation
+  ! (this is a surface property anyway ...):
+  Emissivity = Variable Temperature
+    Real
+      0.0 0.5
+      100.0 0.5
+      1000.0 0.9
+      1100.0 0.9
+    End    
 End
 
 Boundary Condition 2
   Name = "RightInside"
   Target Boundaries(1) = 2
+
+  Initial Condition = 1 ! needed for current parallel implementation, 
+  !  .e.g. boundary elements w/o parents
+
   Radiation = Diffuse Gray
+
+  ! Emissivity must be defined in BC -section for parallel implementation
+  ! (this is a surface property anyway ...):
+  Emissivity = Variable Temperature
+    Real
+      0.0 0.5
+      100.0 0.5
+      1000.0 0.9
+      1100.0 0.9
+    End    
 End
 
 Boundary Condition 3

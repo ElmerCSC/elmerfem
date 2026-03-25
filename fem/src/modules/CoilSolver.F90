@@ -4,23 +4,22 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-!
 !/******************************************************************************
 ! *
 ! *  Authors: Peter Råback, Juha Ruokolainen
@@ -197,7 +196,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), ALLOCATABLE :: DesiredCoilCurrent(:), DesiredCurrentDensity(:),&
       CoilHelicity(:),CoilNormals(:,:)
   LOGICAL :: Found, CoilClosed, CoilAnisotropic, UseDistance, FixConductivity, &
-      FitCoil, SelectNodes, CalcCurr, UseUnityCond
+      FitCoil, SelectNodes, CalcCurr, UseUnityCond, ThisIsCoil
   LOGICAL, ALLOCATABLE :: GotCurr(:), GotDens(:), NormalizeCoil(:), CoilBodies(:)
   REAL(KIND=dp) :: CoilCenter(3), CoilNormal(3), CoilTangent1(3), CoilTangent2(3), &
       MinCurr(3),MaxCurr(3),TmpCurr(3)
@@ -349,7 +348,11 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
     IF( i <= Model % NumberOfComponents ) THEN
       CoilList => Model % Components(i) % Values
 
-      IF(.NOT. ListCheckPresent( CoilList,'Coil Type' ) ) CYCLE      
+      ! Currently we assume that we have an active coil if any keyword starting with
+      ! "coil" is found. This used to be more stringent criteria requiring "coil type". 
+      ThisIsCoil = ListCheckPrefix( CoilList,'Coil' )
+      IF(.NOT. ThisIsCoil) CYCLE
+      
       TargetBodies => ListGetIntegerArray( CoilList,'Master Bodies',Found )
       IF( .NOT. Found ) TargetBodies => ListGetIntegerArray( CoilList,'Body',Found )
       IF( .NOT. Found ) CALL Fatal(Caller,'Coil fitting requires > Master Bodies <') 

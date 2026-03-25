@@ -54,7 +54,7 @@ MODULE Types
    USE Lua
    IMPLICIT NONE
 
-   INTEGER, PARAMETER :: MAX_NAME_LEN = 128, MAX_STRING_LEN=2048
+   INTEGER, PARAMETER :: MAX_NAME_LEN = 128, MAX_STRING_LEN=2048, MAX_PATH_LEN=4096
    ! Parameter for internal blocking
    INTEGER, PARAMETER :: VECTOR_BLOCK_LENGTH = 128
    ! Parameter for internally avoiding calls to BLAS
@@ -96,14 +96,15 @@ MODULE Types
 	                      SOLVER_MODE_BLOCK = 4, &      ! block solver
 	                      SOLVER_MODE_GLOBAL = 5, &     ! lumped variables (no mesh)
 	                      SOLVER_MODE_MATRIXFREE = 6, & ! normal field, no matrix
-                        SOLVER_MODE_STEPS = 7         ! as the legacy but split to different steps
+                              SOLVER_MODE_STEPS = 7         ! as the legacy but split to different steps
 
   INTEGER, PARAMETER :: PROJECTOR_TYPE_DEFAULT = 0, &  ! unspecified constraint matrix
                         PROJECTOR_TYPE_NODAL = 1, &    ! nodal projector
                         PROJECTOR_TYPE_GALERKIN = 2, & ! Galerkin projector
-                        PROJECTOR_TYPE_INTEGRAL = 3, & 
-                        PROJECTOR_TYPE_ROBIN = 4 
-                        
+                        PROJECTOR_TYPE_INTEGRAL = 3, & ! Integral type of constraint
+                        PROJECTOR_TYPE_ROBIN = 4, &    ! Robin type of constraint
+                        PROJECTOR_TYPE_NITSCHE = 5     ! Projector for Nitsche interface conditions
+                                              
   INTEGER, PARAMETER :: DIRECT_NORMAL = 0, & ! Normal direct method
                         DIRECT_PERMON = 1    ! Permon direct method
 
@@ -116,8 +117,15 @@ MODULE Types
 
 
 #ifdef HAVE_MUMPS
+  INCLUDE 'smumps_struc.h'
+  INCLUDE 'cmumps_struc.h'
   INCLUDE 'dmumps_struc.h'
+  INCLUDE 'zmumps_struc.h'
 #endif
+
+  TYPE ArgStr_t
+     CHARACTER(:), ALLOCATABLE :: astr
+  END TYPE ArgStr_t
 
 
   TYPE BasicMatrix_t
@@ -135,6 +143,7 @@ MODULE Types
     REAL(KIND=dp), ALLOCATABLE :: rhs(:)
     REAL(KIND=dp), ALLOCATABLE :: DiagScaling(:)
     TYPE(Solver_t), POINTER :: Solver => NULL()
+    LOGICAL :: AddVector = .FALSE.
   END TYPE SubVector_t
 
   TYPE SubMatrix_t
@@ -183,8 +192,13 @@ MODULE Types
 
 
 #ifdef HAVE_ROCALUTION
+  TYPE Matrix_arr_t
+     TYPE(Matrix_t), POINTER :: M
+  END TYPE Matrix_arr_t
+
   TYPE RocParams_t
     TYPE(Matrix_t), POINTER :: Rmatrix => Null()
+    TYPE(Matrix_arr_t), POINTER :: IMatrix(:) => Null()
     INTEGER, POINTER :: CntPerm(:)=> Null(), LocPerm(:) => Null(), gOffset(:) => Null()
   END TYPE RocParams_t
 #endif
@@ -219,6 +233,8 @@ MODULE Types
     REAL(KIND=dp), POINTER CONTIG :: RHS(:)=>NULL(),BulkRHS(:)=>NULL(),RHS_im(:)=>NULL(),Force(:,:)=>NULL()
     REAL(KIND=dp), POINTER CONTIG :: BulkResidual(:)=>NULL()
 
+    REAL(KIND=dp), POINTER CONTIG :: RhsAdjoint(:)=>NULL()
+    
     REAL(KIND=dp),  POINTER CONTIG :: Values(:)=>NULL(), ILUValues(:)=>NULL(), &
                DiagScaling(:) => NULL(), TValues(:) => NULL(), Values_im(:) => NULL()
 
@@ -235,6 +251,15 @@ MODULE Types
 #ifdef HAVE_MUMPS
     TYPE(dmumps_struc), POINTER :: MumpsID => NULL() ! Global distributed Mumps
     TYPE(dmumps_struc), POINTER :: MumpsIDL => NULL() ! Local domainwise Mumps
+
+    TYPE(zmumps_struc), POINTER :: ZMumpsID => NULL() ! Global distributed Mumps
+    TYPE(zmumps_struc), POINTER :: ZMumpsIDL => NULL() ! Local domainwise Mumps
+
+    TYPE(smumps_struc), POINTER :: SMumpsID => NULL() ! Global distributed Mumps
+    TYPE(smumps_struc), POINTER :: SMumpsIDL => NULL() ! Local domainwise Mumps
+
+    TYPE(cmumps_struc), POINTER :: CMumpsID => NULL() ! Global distributed Mumps
+    TYPE(cmumps_struc), POINTER :: CMumpsIDL => NULL() ! Local domainwise Mumps
 #endif
 #if defined(HAVE_MKL) || defined(HAVE_PARDISO)
     INTEGER, POINTER :: PardisoParam(:) => NULL()
@@ -254,9 +279,6 @@ MODULE Types
 #endif
 #ifdef HAVE_HYPRE
     INTEGER(KIND=C_INTPTR_T) :: Hypre=0
-#endif
-#ifdef HAVE_TRILINOS
-    INTEGER(KIND=C_INTPTR_T) :: Trilinos=0
 #endif
 #ifdef HAVE_ROCALUTION
     TYPE(RocParams_t) :: RocParams
@@ -620,11 +642,13 @@ MODULE Types
      INTEGER, POINTER :: ConstraintModesIndeces(:) => NULL()
      REAL(KIND=dp), POINTER :: ConstraintModesWeights(:) => NULL()
      INTEGER :: NumberOfConstraintModes = -1
+     LOGICAL :: FrozenMode = .FALSE.
      REAL(KIND=dp), POINTER :: Values(:) => NULL() ,&
           PrevValues(:,:) => NULL(), &
           PValues(:) => NULL(), NonlinValues(:) => NULL(), &
           SteadyValues(:) => NULL()
      LOGICAL, POINTER :: UpperLimitActive(:) => NULL(), LowerLimitActive(:) => NULL()
+     REAL(KIND=dp), POINTER :: UpperLimit(:) => NULL(), LowerLimit(:) => NULL()
      COMPLEX(KIND=dp), POINTER :: CValues(:) => NULL()
      TYPE(IntegrationPointsTable_t), POINTER :: IPTable => NULL()
    END TYPE Variable_t
@@ -780,6 +804,7 @@ MODULE Types
 
      LOGICAL, POINTER               :: EdgeInterface(:) => NULL()
      TYPE(NeighbourList_t),POINTER  :: EdgeNeighbourList(:) => NULL()
+     LOGICAL                        :: NothingShared = .FALSE.
    END TYPE ParallelInfo_t
 
 !------------------------------------------------------------------------------
@@ -798,7 +823,7 @@ MODULE Types
    END TYPE FactorsStore_t 
 
    TYPE Mesh_t
-     CHARACTER(MAX_NAME_LEN) :: Name
+     CHARACTER(:), ALLOCATABLE :: Name
      TYPE(Mesh_t), POINTER   :: Next => NULL(), Parent => NULL(), Child => NULL()
 
      TYPE(Projector_t), POINTER :: Projector => NULL()
@@ -952,6 +977,8 @@ MODULE Types
 
       INTEGER :: LocalSystemMode = -1
       TYPE(LocalSystemStorage_t), POINTER :: LocalSystem(:) => NULL()
+
+      REAL(KIND=dp), POINTER :: CutInterp(:) => NULL()
     END TYPE Solver_t
 
 !------------------------------------------------------------------------------
@@ -989,6 +1016,7 @@ MODULE Types
     CHARACTER(MAX_NAME_LEN), ALLOCATABLE :: names(:), source(:)
     TYPE(Component_t), POINTER :: Components(:)=>NULL()
     TYPE(CircuitVariable_t), POINTER :: CircuitVariables(:)=>NULL()
+    TYPE(Solver_t), POINTER :: ASolver => NULL()
   END TYPE Circuit_t
 !-------------------Circuit stuff----------------------------------------------
 

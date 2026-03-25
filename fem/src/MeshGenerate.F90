@@ -38,7 +38,7 @@
 !> \{
 
 !--------------------------------------------------------------------------------------------------------
-!> Module for determinishting meshing routines without adaptivivity.
+!> Module for deterministic meshing routines without adaptivity.
 !--------------------------------------------------------------------------------------------------------
 MODULE MeshGenerate
 
@@ -46,7 +46,9 @@ MODULE MeshGenerate
   USE SolverUtils
   USE ModelDescription
   USE LoadMod
-  USE MeshUtils
+  USE MeshUtils, ONLY : MeshStabParams, ReleaseMesh, ReleaseMeshEdgeTables, &
+      ReleaseMeshFaceTables, SetCurrentMesh, SetMeshMaxDOFs, &
+      TransferCoordAndTime, UpdateSolverMesh, WriteMeshToDisk, WriteMeshToDisk2
   USE MeshRemeshing
 
   IMPLICIT NONE
@@ -141,7 +143,7 @@ CONTAINS
 !   ----------------------
     t = RealTime()
 #ifdef HAVE_MMG
-    CALL Info(Caller,'Using MMG libary for mesh refinement',Level=5)
+    CALL Info(Caller,'Using MMG library for mesh refinement',Level=5)
     NewMesh => MMG_ReMesh( RefMesh )
 #else
     CALL Fatal( Caller,'Remeshing requested with MMG but not compiled with!')

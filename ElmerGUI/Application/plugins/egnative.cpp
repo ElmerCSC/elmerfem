@@ -1952,7 +1952,7 @@ int GetSideInfo(struct CellType *cell,int cellno,int side,int element,
     case 0:
       more = FALSE;
       elemind[0] = GetElementIndices(&(cell[cellno]),1,element,&(ind[0]));
-      if(sideno = cell[cellno].neighbour[LEFT])
+      if((sideno = cell[cellno].neighbour[LEFT]))
 	elemind[1] = GetElementIndices(&(cell[sideno]),cell[sideno].xelem,element,&(ind[0]));
       else 
 	elemind[1] = 0;
@@ -1962,7 +1962,7 @@ int GetSideInfo(struct CellType *cell,int cellno,int side,int element,
     case 1:
       more = FALSE; 
       elemind[0] = GetElementIndices(&(cell)[cellno],cell[cellno].xelem,element,&(ind[0]));
-      if(sideno = cell[cellno].neighbour[RIGHT])
+      if((sideno = cell[cellno].neighbour[RIGHT]))
 	elemind[1] = GetElementIndices(&(cell[sideno]),1,element,&(ind[0]));
       else 
 	elemind[1] = 0;
@@ -1978,7 +1978,7 @@ int GetSideInfo(struct CellType *cell,int cellno,int side,int element,
   case LEFT:
     if(element == cell[cellno].yelem) more = FALSE;
     elemind[0] = GetElementIndices(&(cell[cellno]),1,element,&(ind[0]));
-    if(sideno = cell[cellno].neighbour[LEFT])
+    if((sideno = cell[cellno].neighbour[LEFT]))
       elemind[1] = GetElementIndices(&(cell[sideno]),cell[sideno].xelem,element,&(ind[0]));
     else 
       elemind[1] = 0;
@@ -1987,7 +1987,7 @@ int GetSideInfo(struct CellType *cell,int cellno,int side,int element,
   case RIGHT:
     if(element == cell[cellno].yelem) more = FALSE; 
     elemind[0] = GetElementIndices(&(cell)[cellno],cell[cellno].xelem,element,&(ind[0]));
-    if(sideno = cell[cellno].neighbour[RIGHT])
+    if((sideno = cell[cellno].neighbour[RIGHT]))
       elemind[1] = GetElementIndices(&(cell[sideno]),1,element,&(ind[0]));
     else 
       elemind[1] = 0;
@@ -1996,7 +1996,7 @@ int GetSideInfo(struct CellType *cell,int cellno,int side,int element,
   case DOWN:
     if(element == cell[cellno].xelem) more = FALSE;
     elemind[0] = GetElementIndices(&(cell)[cellno],element,1,&(ind[0]));
-    if(sideno = cell[cellno].neighbour[DOWN])
+    if((sideno = cell[cellno].neighbour[DOWN]))
       elemind[1] = GetElementIndices(&(cell[sideno]),element,cell[sideno].yelem,&(ind[0]));
     else 
       elemind[1] = 0;
@@ -2005,7 +2005,7 @@ int GetSideInfo(struct CellType *cell,int cellno,int side,int element,
   case UP:
     if(element == cell[cellno].xelem) more = FALSE; 
     elemind[0] = GetElementIndices(&(cell)[cellno],element,cell[cellno].yelem,&(ind[0]));
-    if(sideno = cell[cellno].neighbour[UP])
+    if((sideno = cell[cellno].neighbour[UP]))
       elemind[1] = GetElementIndices(&(cell[sideno]),element,1,&(ind[0]));
     else 
       elemind[1] = 0;
@@ -3610,6 +3610,7 @@ void InitParameters(struct ElmergridType *eg)
   eg->metis_volcut = FALSE;
   eg->metis_seed = 0;
   eg->metis_ncuts = 1;
+  eg->metis_minconn = FALSE;
   eg->partopt = 0;
   eg->partoptim = FALSE;
   eg->partbcoptim = TRUE;
@@ -3657,6 +3658,7 @@ void InitParameters(struct ElmergridType *eg)
   eg->bulkmappings = 0;
   eg->coordinatemap[0] = eg->coordinatemap[1] = eg->coordinatemap[2] = 0;
   eg->clone[0] = eg->clone[1] = eg->clone[2] = 0;
+  eg->clonesize[0] = eg->clonesize[1] = eg->clonesize[2] = 0.0;
   eg->mirror[0] = eg->mirror[1] = eg->mirror[2] = 0;
   eg->cloneinds = FALSE;
   eg->mirrorbc = 0;
@@ -3664,12 +3666,13 @@ void InitParameters(struct ElmergridType *eg)
   eg->discont = 0;
   eg->connect = 0;
   eg->connectboundsnosets = 0;
-
+  
   eg->rotatecurve = FALSE;
   eg->curverad = 0.5;
   eg->curveangle = 90.0;
   eg->curvezet = 0.0;
   eg->parttol = 0.0;
+  eg->filerenamed = FALSE;
   
   for(i=0;i<MAXSIDEBULK;i++) 
     eg->sidebulk[i] = 0;
@@ -3750,6 +3753,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
       }
       else {
 	strcpy(eg->filesout[0],argv[arg+1]);
+	eg->filerenamed = TRUE;
       }
     }
     else if(strcmp(argv[arg],"-decimals") == 0) {
@@ -4398,7 +4402,7 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
   iodebug = FALSE;
 
   if( mode == 0) {  
-    if (in = fopen("ELMERGRID_STARTINFO","r")) {
+    if ((in = fopen("ELMERGRID_STARTINFO","r"))) {
       iostat = fscanf(in,"%s",filename);
       fclose(in);
       printf("Using the file %s defined in ELMERGRID_STARTINFO\n",filename);
@@ -4446,6 +4450,7 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
 
       else if(strstr(command,"OUTPUT FILE")) {
 	sscanf(params,"%s",eg->filesout[0]);
+	eg->filerenamed = TRUE;
       }
 
       else if(strstr(command,"INPUT MODE")) {
@@ -5367,7 +5372,7 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
 
 
   sprintf(filename,"%s","mesh.names");
-  if (in = fopen(filename,"r") ) {
+  if ((in = fopen(filename,"r") )) {
     int isbody,started,nameproblem;
     
     isbody = TRUE;
@@ -5525,7 +5530,7 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
   else {
     if(info) printf("Reusing an existing directory\n");
     if(nooverwrite) {
-      if (out = fopen("mesh.header", "r")) {
+      if ((out = fopen("mesh.header", "r"))) {
 	printf("Mesh seems to already exist, writing is cancelled!\n"); 
 	return(1);
       }

@@ -44,7 +44,6 @@
 !-----------------------------------------------------------------------------
 MODULE GeneralUtils
 
-USE Types
 USE LoadMod
 
 #ifdef HAVE_LUA
@@ -294,9 +293,17 @@ CONTAINS
   END FUNCTION str2ints
 !------------------------------------------------------------------------------
 
+  SUBROUTINE WaitSec(t)
+    REAL(KIND=dp) :: t,t0,t1
 
-
-
+    t0 = RealTime()
+    DO WHILE(.TRUE.)
+      t1 = RealTime()
+      IF(t1-t0 > t) EXIT
+    END DO
+    
+  END SUBROUTINE WaitSec
+    
 !------------------------------------------------------------------------------
   SUBROUTINE SystemCommand( cmd ) 
 !------------------------------------------------------------------------------
@@ -1226,10 +1233,6 @@ CONTAINS
 
            ! Initialize variables for each copy of Lua interpreter separately
 
-           !$OMP PARALLEL DEFAULT(NONE) &
-           !$OMP SHARED(copystr, i, matcstr, ninlen, inlen, closed_region, first_bang, j) &
-           !$OMP PRIVATE(tcmdstr, tninlen, lstat, result_len, lua_result) 
-
            tninlen = ninlen
            tcmdstr = copystr(i+1:inlen)
 
@@ -1239,26 +1242,31 @@ CONTAINS
              closed_region = .FALSE.
            END IF
 
+           !$OMP PARALLEL DEFAULT(NONE) &
+           !$OMP FIRSTPRIVATE(tcmdstr, tninlen, lstat) &
+           !$OMP SHARED(lua_result, result_len, closed_region, i, j, inlen, first_bang)
            IF(closed_region) THEN
              lstat = lua_dostring( LuaState, &
                  'return tostring('// tcmdstr(1:tninlen-1) // ')'//c_null_char, 1)
            ELSE
              IF (i == 1 .and. first_bang .and. j == inlen) THEN  ! ' # <luacode>' case, do not do 'return tostring(..)'.
                ! Instead, just execute the line in the lua interpreter
-               lstat = lua_dostring( LuaState, tcmdstr(1:tninlen) // c_null_char, 1)
+
+             lstat = lua_dostring( LuaState, tcmdstr(1:tninlen) // c_null_char, 1)
+
              ELSE ! 'abc = # <luacode>' case, oneliners only
+
                lstat = lua_dostring( LuaState, &
                    'return tostring('// tcmdstr(1:tninlen) // ')'//c_null_char, 1)
              END IF
            END IF
+           !$OMP CRITICAL
            lua_result => lua_popstring(LuaState, result_len)
+           !$OMP END CRITICAL
+           !$OMP END PARALLEL
 
-           !$OMP SINGLE 
            matcstr(1:result_len) = lua_result(1:result_len)
            ninlen = result_len
-           !$OMP END SINGLE
-
-           !$OMP END PARALLEL
 
            DO k=1,ninlen
              readstr(m:m) = matcstr(k:k)
@@ -1473,7 +1481,7 @@ END FUNCTION ComponentNameVar
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-!> Evalulate a cubic spline.
+!> Evaluate a cubic spline.
 !------------------------------------------------------------------------------
    PURE FUNCTION CubicSplineVal(x,y,r,t) RESULT(s)
 !------------------------------------------------------------------------------
@@ -1496,7 +1504,7 @@ END FUNCTION ComponentNameVar
 
 
 !------------------------------------------------------------------------------
-!> Evalulate derivative of cubic spline.
+!> Evaluate derivative of cubic spline.
 !------------------------------------------------------------------------------
    PURE FUNCTION CubicSplinedVal(x,y,r,t) RESULT(s)
 !------------------------------------------------------------------------------
@@ -1948,129 +1956,6 @@ END FUNCTION ComponentNameVar
    END FUNCTION IntegrateCurve
 !------------------------------------------------------------------------------
 
-
-!------------------------------------------------------------------------------
-!> Solves a 2 x 2 linear system.
-!------------------------------------------------------------------------------
-   SUBROUTINE SolveLinSys2x2( A, x, b )
-!------------------------------------------------------------------------------
-     REAL(KIND=dp), INTENT(out) :: x(:)
-     REAL(KIND=dp), INTENT(in)  :: A(:,:),b(:)
-!------------------------------------------------------------------------------
-     REAL(KIND=dp) :: detA
-!------------------------------------------------------------------------------
-     detA = A(1,1) * A(2,2) - A(1,2) * A(2,1)
-
-     IF ( detA == 0.0d0 ) THEN
-       WRITE( Message, * ) 'Singular matrix, sorry!'
-       CALL Error( 'SolveLinSys2x2', Message )
-       RETURN
-     END IF
-
-     detA = 1.0d0 / detA
-     x(1) = detA * (A(2,2) * b(1) - A(1,2) * b(2))
-     x(2) = detA * (A(1,1) * b(2) - A(2,1) * b(1))
-!------------------------------------------------------------------------------
-   END SUBROUTINE SolveLinSys2x2
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-!> Solves a 3 x 3 linear system.
-!------------------------------------------------------------------------------
-   SUBROUTINE SolveLinSys3x3( A, x, b )
-!------------------------------------------------------------------------------
-     REAL(KIND=dp), INTENT(out) :: x(:)
-     REAL(KIND=dp), INTENT(in)  :: A(:,:),b(:)
-!------------------------------------------------------------------------------
-     REAL(KIND=dp) :: C(2,2),y(2),g(2),s,t,q
-!------------------------------------------------------------------------------
-
-     IF ( ABS(A(1,1))>ABS(A(1,2)) .AND. ABS(A(1,1))>ABS(A(1,3)) ) THEN
-       q = 1.0d0 / A(1,1)
-       s = q * A(2,1)
-       t = q * A(3,1)
-       C(1,1) = A(2,2) - s * A(1,2)
-       C(1,2) = A(2,3) - s * A(1,3)
-       C(2,1) = A(3,2) - t * A(1,2)
-       C(2,2) = A(3,3) - t * A(1,3)
-
-       g(1) = b(2) - s * b(1)
-       g(2) = b(3) - t * b(1)
-       CALL SolveLinSys2x2( C,y,g )
-       
-       x(2) = y(1)
-       x(3) = y(2)
-       x(1) = q * ( b(1) - A(1,2) * x(2) - A(1,3) * x(3) )
-     ELSE IF ( ABS(A(1,2)) > ABS(A(1,3)) ) THEN
-       q = 1.0d0 / A(1,2)
-       s = q * A(2,2)
-       t = q * A(3,2)
-       C(1,1) = A(2,1) - s * A(1,1)
-       C(1,2) = A(2,3) - s * A(1,3)
-       C(2,1) = A(3,1) - t * A(1,1)
-       C(2,2) = A(3,3) - t * A(1,3)
-       
-       g(1) = b(2) - s * b(1)
-       g(2) = b(3) - t * b(1)
-       CALL SolveLinSys2x2( C,y,g )
-
-       x(1) = y(1)
-       x(3) = y(2)
-       x(2) = q * ( b(1) - A(1,1) * x(1) - A(1,3) * x(3) )
-     ELSE
-       q = 1.0d0 / A(1,3)
-       s = q * A(2,3)
-       t = q * A(3,3)
-       C(1,1) = A(2,1) - s * A(1,1)
-       C(1,2) = A(2,2) - s * A(1,2)
-       C(2,1) = A(3,1) - t * A(1,1)
-       C(2,2) = A(3,2) - t * A(1,2)
-
-       g(1) = b(2) - s * b(1)
-       g(2) = b(3) - t * b(1)
-       CALL SolveLinSys2x2( C,y,g )
-
-       x(1) = y(1)
-       x(2) = y(2)
-       x(3) = q * ( b(1) - A(1,1) * x(1) - A(1,2) * x(2) )
-     END IF
-!------------------------------------------------------------------------------
-   END SUBROUTINE SolveLinSys3x3
-!------------------------------------------------------------------------------
-
-
-! Solves a small dense linear system using Lapack routines
-!------------------------------------------------------------------------------
-  SUBROUTINE SolveLinSys( A, x, n )
-!------------------------------------------------------------------------------
-     INTEGER :: n
-     REAL(KIND=dp) :: A(n,n), x(n), b(n)
-
-     INTERFACE
-       SUBROUTINE SolveLapack( N,A,x )
-         INTEGER  N
-         DOUBLE PRECISION  A(n*n),x(n)
-       END SUBROUTINE
-     END INTERFACE
-
-!------------------------------------------------------------------------------
-     SELECT CASE(n)
-     CASE(1)
-       x(1) = x(1) / A(1,1)
-     CASE(2)
-       b = x
-       CALL SolveLinSys2x2(A,x,b)
-     CASE(3)
-       b = x
-       CALL SolveLinSys3x3(A,x,b)
-     CASE DEFAULT
-       CALL SolveLapack(n,A,x)
-     END SELECT
-!------------------------------------------------------------------------------
-  END SUBROUTINE SolveLinSys
-!------------------------------------------------------------------------------
-   
 
 !------------------------------------------------------------------------------
    SUBROUTINE ClearMatrix( Matrix ) 
@@ -2972,36 +2857,46 @@ CONTAINS
   END SUBROUTINE AscBinInitNorm
 
   
-  FUNCTION AscBinCompareNorm(RefResults) RESULT ( RelativeNorm ) 
-    REAL(KIND=dp), DIMENSION(*) :: RefResults 
+  FUNCTION AscBinCompareNorm(RefResults,ExtResults) RESULT ( RelativeNorm ) 
+    REAL(KIND=dp), DIMENSION(*) :: RefResults
+    REAL(KIND=dp), DIMENSION(*), OPTIONAL :: ExtResults
     REAL(KIND=dp) :: RelativeNorm
-    REAL(KIND=dp) :: ThisResults(6)
+    REAL(KIND=dp), POINTER :: ThisResults(:)
     REAL(KIND=dp) :: c
-    INTEGER :: i 
+    INTEGER :: i, n 
     
-    ThisResults(1) = scount
-    ThisResults(2) = icount
-    ThisResults(3) = rcount
-    ThisResults(4) = ssum
-    ThisResults(5) = isum ! we use real for isum since it could be huge too!
-    ThisResults(6) = rsum
-    
+    n = 6 !SIZE(RefResults)
+    ALLOCATE(ThisResults(n))      
+
+    IF( PRESENT( ExtResults ) ) THEN
+      ThisResults(1:n) = ExtResults(1:n)
+    ELSE     
+      ThisResults(1) = scount
+      ThisResults(2) = icount
+      ThisResults(3) = rcount
+      ThisResults(4) = ssum
+      ThisResults(5) = isum ! we use real for isum since it could be huge too!
+      ThisResults(6) = rsum
+    END IF
+      
     PRINT *,'Checksums for file output:'
-    PRINT *,'RefResults:',NINT(RefResults(1:4)),RefResults(5:6)
-    PRINT *,'ThisResults:',NINT(ThisResults(1:4)),ThisResults(5:6)
+    PRINT *,'RefResults:',RefResults(1:n)
+    PRINT *,'ThisResults:',ThisResults(1:n)
 
     ! We have a special relative pseunonorm that should be one!
     RelativeNorm = 0.0
-    DO i=1,6
+    DO i=1,n
       IF( ABS(RefResults(i) ) > EPSILON(c) ) THEN
         c = ThisResults(i)/RefResults(i)
-        c = MAX( c, 1.0_dp /c ) 
+        IF( ABS(ThisResults(i) ) > EPSILON(c) ) THEN
+          c = MAX( c, 1.0_dp /c )
+        END IF
       ELSE
         c = 1.0_dp + ABS(ThisResults(i))
       END IF
       RelativeNorm = RelativeNorm + c
     END DO
-    RelativeNorm = RelativeNorm / 6
+    RelativeNorm = RelativeNorm / n
     
   END FUNCTION AscBinCompareNorm
    

@@ -4,23 +4,22 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-
 
 !------------------------------------------------------------------------------
 !>  Exports data to other suitable postprocessing software.
@@ -42,15 +41,15 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: TransientSimulation
 
   LOGICAL :: SaveGid, SaveVTK, SaveOpenDx, SaveGmsh, &
-      SaveVTU, SaveEP, SaveAny, ListSet = .FALSE., ActiveMesh, &
+      SaveVTU, SaveEP, SaveSTL, SaveAny, ListSet = .FALSE., ActiveMesh, &
       SomeMeshSaved, SaveAllMeshes
-  INTEGER :: i,nInterval=1, nstep=0, OutputCount(6) = 0, MeshDim,&
+  INTEGER :: i,nInterval=1, nstep=0, OutputCount(7) = 0, MeshDim,&
       MinMeshDim,MaxMeshDim,MeshLevel,nlen,NoMeshes, m
   INTEGER, POINTER :: OutputIntervals(:), TimeSteps(:)
 
   TYPE(Mesh_t), POINTER :: Mesh, iMesh, MyMesh
   CHARACTER(10) :: OutputFormat
-  CHARACTER(LEN=MAX_NAME_LEN) :: FilePrefix, MeshName, iMeshName, ListMeshName
+  CHARACTER(LEN=MAX_PATH_LEN) :: FilePrefix, MeshName, iMeshName, ListMeshName
   LOGICAL :: SubroutineVisited=.FALSE.,Found, SaveThisMesh, NowSave
   TYPE(ValueList_t), POINTER :: Params
   TYPE(Variable_t), POINTER :: ModelVariables
@@ -58,7 +57,7 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   INTEGER :: SaveSolverMeshIndex
   LOGICAL :: CalcNrm
   REAL(KIND=dp) :: Nrm
-  REAL(KIND=dp), POINTER :: RefResults(:,:)
+  REAL(KIND=dp), POINTER :: RefResults(:,:), ThisResults(:,:)
   
   
   SAVE SubroutineVisited, OutputCount, ListSet, MeshDim, ListMeshName
@@ -85,6 +84,7 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   SaveVTU = GetLogical(Params,'VTU Format',Found)
   SaveOpenDx = GetLogical(Params,'Dx Format',Found)
   SaveEP = GetLogical(Params,'Elmerpost Format',Found)
+  SaveSTL = GetLogical(Params,'STL Format',Found)
 
   OutputFormat = GetString( Params, 'Output Format', Found )
   IF(Found) THEN
@@ -100,6 +100,8 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
       SaveGmsh = .TRUE.
     ELSE IF( OutputFormat == "elmerpost" )THEN
       SaveEP = .TRUE.
+    ELSE IF( OutputFormat == "stl" )THEN
+      SaveSTL = .TRUE.
     ELSE
       CALL Warn( Caller, &
                  'Unknown output format "' // TRIM(OutputFormat) // '"' )
@@ -141,6 +143,7 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   IF(SaveEp)   OutputCount(4) = OutputCount(4) + 1
   IF(SaveGid)  OutputCount(5) = OutputCount(5) + 1
   IF(SaveOpenDx) OutputCount(6) = OutputCount(6) + 1
+  IF(SaveSTL) OutputCount(7) = OutputCount(7) + 1
   
   ! Finally go for it and write desired data
   ! Some formats requite that the list of variables is explicitly given
@@ -238,12 +241,13 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
     ModelVariables => Model % Variables
     Model % Variables => iMesh % variables 
 
+    
     IF( .NOT. ListSet ) THEN
-      CALL Info(Caller,'Creating list for saving - if not present')
+      CALL Info(Caller,'Creating list for saving - if not present',Level=7)
       CALL CreateListForSaving( Model, Params,.TRUE. )    
       ListSet = .TRUE.
-    ELSE IF( MeshDim /= Model % Mesh % MeshDim .OR. (iMeshName(1:nlen) /= ListMeshName(1:nlen))) THEN
-      CALL Info(Caller,'Recreating list for saving')
+    ELSE IF( MeshDim /= Model % Mesh % MeshDim .OR. (iMeshName(1:nlen) /= TRIM(ListMeshName))) THEN
+      CALL Info(Caller,'Mesh name changed - recreating list for saving',Level=7)
       CALL CreateListForSaving( Model, Params,.TRUE.,.TRUE.)
     END IF
 
@@ -295,6 +299,11 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
         CALL ListAddInteger( Params,'Output Count',OutputCount(6))
         CALL DXOutputSolver( Model,Solver,dt,TransientSimulation )
       END IF
+      IF( SaveSTL ) THEN
+        CALL Info( Caller,'Saving surface mesh in STL format' )
+        CALL ListAddInteger( Params,'Output Count',OutputCount(7))
+        CALL SaveSTLSurface( Mesh, Params )
+      END IF
 
       CALL Info( Caller, '-------------------------------------')
     END IF
@@ -319,12 +328,17 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   IF( CalcNrm ) THEN
     IF( SaveVtu ) THEN
       Nrm = AscBinCompareNorm(RefResults(:,1))
-      Solver % Variable % Norm = Nrm
-      WRITE( Message,'(A,ES15.6)' ) 'Calculate Pseudonorm:',Nrm
-      CALL Info(Caller, Message)
+    ELSE IF(SaveStl) THEN
+      ! For STL format these have been precomputed.
+      ThisResults => ListGetConstRealArray( Params,'This Values')
+      Nrm = AscBinCompareNorm(RefResults(:,1),ThisResults(:,1))      
     ELSE
-      CALL Warn(Caller,'Reference norm computation implemented only for VTU format!')
+      CALL Fatal(Caller,'Reference norm computation implemented only for (VTU,STL) formats!')
     END IF
+    
+    Solver % Variable % Norm = Nrm
+    WRITE( Message,'(A,ES15.6)' ) 'Calculate Pseudonorm:',Nrm
+    CALL Info(Caller, Message)
   END IF
 
   

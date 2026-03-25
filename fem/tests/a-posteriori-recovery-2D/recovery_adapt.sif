@@ -1,0 +1,82 @@
+Check Keywords "Warn"
+
+Header :: Mesh DB "." "strip"
+
+Simulation
+  Max Output Level = 10
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady
+  Output Intervals(1) = 1
+!  Steady State Min Iterations = 1	
+  Steady State Max Iterations = 10
+  Post File = "recovery_adapt.vtu"
+  vtu: Ascii Output = Logical True
+  vtu: Output Directory = File vtu 
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Material 1
+  Heat Conductivity = Variable "Coordinate 1"
+    MATC "1.0 + tx"
+  Density = 1.0
+End
+
+Body Force 1
+  Volumetric Heat Source = Variable "Coordinate 1"
+    MATC "2.0/9.0 * (1.0 + 2.0 * tx)"
+End
+
+Equation 1 :: Active Solvers(2) = 1 2
+
+Solver 1
+  Equation = Heat Equation
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = Temperature
+  Linear System Solver = Direct
+  Optimize Bandwidth = True
+  Steady State Convergence Tolerance = 1.0e-8
+
+  Flux Recovery = Logical True
+  Adaptive Mesh Refinement = True
+  Adaptive Remesh = False
+  Adaptive Save Mesh = False
+  Adaptive Error Limit = 1.0e-2
+  Adaptive Max Error Scale = 2.0 ! Controls how evenly distributed the error should be
+  Adaptive Error Histogram = Logical True
+  Adaptive Max Depth = 10
+  Adaptive Interpolate = Logical False
+  Calculate Loads = True
+End
+
+Solver 2
+  Equation = "Flux reconstruction"
+  No Matrix = True
+
+  ! We need a dummy solver which we here pick from another solver: 
+  Procedure = "VectorHelmholtz" "VectorHelmholtz_Dummy"
+  
+  Variable = RTFlux
+  Body Force Name = String "volumetric heat source"
+  Material Parameter Name = String "heat conductivity"
+  Variable Output = False
+  Second Kind Basis = True
+!  Element = "n:0 e:2 b:2"  ! this is for triangular RT_1 element
+  Element = "n:0 e:2"     ! BDM_1
+  Skip Compute Steady State Change = True
+End
+
+Boundary Condition 1
+  Target Boundaries(3) = 1 3 4
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 2
+  Temperature = 0.0
+End
+
+Solver 1 :: Reference Norm = 6.21786974E-01

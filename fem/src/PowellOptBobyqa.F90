@@ -1263,7 +1263,7 @@ contains
 !     GOPT is usually the gradient of the quadratic model at XOPT+XBASE, but
 !       it is set by PRELIM to the gradient of the quadratic model at XBASE.
 !       If XOPT is nonzero, BOBYQB will change it to its usual value later.
-!     NF is maintaned as the number of calls of CALFUN so far.
+!     NF is maintained as the number of calls of CALFUN so far.
 !     KOPT will be such that the least calculated value of F so far is at
 !       the point XPT(KOPT,.)+XBASE in the space of the variables.
 !

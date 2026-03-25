@@ -178,9 +178,9 @@ Solver 6
   Equation = "SaveLine"
   Procedure = "SaveData" "SaveLine"
 
-  FileName = f.dat
-
-  Polyline Coordinates(2,3) = -5.0e-3 0.0 5.0e-3 5.0e-3 0.0 5.0e-3
+  FileName = f.dat  
+  ! Have small offset to make the the choice of elements unique. 
+  Polyline Coordinates(2,3) = -5.0e-3 1.0e-6 5.1e-3 5.0e-3 1.0e-6 5.1e-3
   Polyline Divisions(1) = 200 
 
 ! The Joule heating 
@@ -288,7 +288,7 @@ Solver 2 :: Reference Norm = 2.40327023E-10
 Solver 2 :: Reference Norm Tolerance = 1e-3
 Solver 3 :: Reference Norm = 7.29761264E-11
 Solver 3 :: Reference Norm Tolerance = 1e-3
-Solver 6 :: Reference Norm = 1.60131866E+03
+Solver 6 :: Reference Norm = 1.57925154E+03
 Solver 6 :: Reference Norm Tolerance = 1e-3
 Solver 7 :: Reference Norm = 1.51603302E-06
 Solver 7 :: Reference Norm Tolerance = 1e-3

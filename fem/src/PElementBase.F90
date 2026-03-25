@@ -45,8 +45,8 @@
 !-----------------------------------------------------------------------------
 
 MODULE PElementBase
-  USE PElementMaps
   USE Messages
+  USE PElementMaps
   USE Types, ONLY : dp, Element_t, Mesh_t
   IMPLICIT NONE
 

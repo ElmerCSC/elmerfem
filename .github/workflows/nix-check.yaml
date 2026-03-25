@@ -7,10 +7,13 @@ jobs:
   tests:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - uses: cachix/install-nix-action@v27
+    - uses: actions/checkout@v6
+    - uses: nixbuild/nix-quick-install-action@v34
       with:
-        nix_path: nixpkgs=channel:nixos-24.05
-    - uses: DeterminateSystems/magic-nix-cache-action@v2
+        nix_path: nixpkgs=channel:nixos-25.05
+    - uses: nix-community/cache-nix-action@v7
+      with:
+        primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
+        restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}
     - name: nix flake check
       run: nix flake check -L

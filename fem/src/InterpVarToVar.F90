@@ -693,7 +693,7 @@ CONTAINS
        ! Only actually for if new mesh has bigger perm than old mesh
        ! Which crashes on result output
        ! If inequality other way round, standard routine works fine
-       IF(NewMesh % NumberOfNodes .NE.  OldMesh % NumberOfNodes .OR. NewMesh % MeshDim .NE. OldMesh % MeshDim) THEN
+       IF(NewMesh % NumberOfNodes /=  OldMesh % NumberOfNodes .OR. NewMesh % MeshDim /= OldMesh % MeshDim) THEN
          !Special case for my calvinghydrointerp stuff
          PermVar => VariableGet( NewMesh % Variables, 'hydroweights', ThisOnly = .TRUE. )
          !On the assumption you'll have some velocity
@@ -1431,7 +1431,7 @@ CONTAINS
         CALL MPI_BSEND( GDOFs, NoSuppNodes, MPI_INTEGER, proc, &
           3999, ELMER_COMM_WORLD,ierr )
       END IF
-      IF(UseProc(i+1)) THEN !neighouring proc has supp nodes
+      IF(UseProc(i+1)) THEN !neighbouring proc has supp nodes
         CALL MPI_RECV( PartGDOFs(counter+1:counter+PartNoSuppNodes(i+1)), &
           PartNoSuppNodes(i+1), MPI_INTEGER, proc, &
           3999, ELMER_COMM_WORLD, status, ierr )
@@ -1639,7 +1639,7 @@ CONTAINS
         CALL MPI_BSEND( SuppNodePMask, NoSuppNodes*PMaskCount, MPI_LOGICAL, proc, &
           4011, ELMER_COMM_WORLD,ierr )
       END IF
-      IF(UseProc(i+1)) THEN !neighouring proc has supp nodes
+      IF(UseProc(i+1)) THEN !neighbouring proc has supp nodes
         counter=counter+1
         CALL MPI_RECV( PartSuppNodePMask(counter+1,:PartNoSuppNodes(i+1),: ) , &
           PartNoSuppNodes(i+1)*PMaskCount, MPI_LOGICAL, proc, &
@@ -1674,7 +1674,7 @@ CONTAINS
         CALL MPI_BSEND( InterpedPValue, PMaskCount, MPI_DOUBLE_PRECISION, proc, &
           4012, ELMER_COMM_WORLD,ierr )
       END IF
-      IF(UseProc(i+1)) THEN !neighouring prco has supp nodes
+      IF(UseProc(i+1)) THEN !neighbouring prco has supp nodes
         counter=counter+1
         CALL MPI_RECV( PartInterpedPValues(counter+1,:), PMaskCount, MPI_DOUBLE_PRECISION, proc, &
           4012, ELMER_COMM_WORLD, status, ierr )

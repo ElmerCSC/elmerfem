@@ -323,7 +323,7 @@ CONTAINS
            IF ( k<0 .OR. k>9 ) k = 0
            PMatrix % Cholesky = ListGetLogical( Solver % Values, &
                 'Linear System Symmetric ILU', stat )
-           stat = CRS_IncompleteLU( PMatrix, k )
+           stat = CRS_IncompleteLU( PMatrix, k, Solver % Values )
         END IF
       END IF
 

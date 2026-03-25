@@ -4,23 +4,22 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-!
 !/******************************************************************************
 ! *
 ! *  Authors: Peter Råback, Juha Ruokolainen, 
@@ -1043,14 +1042,14 @@ END SUBROUTINE SaveGridData
           DO i=1,FieldLength
             IF(Part == 0) WorkChar = FieldName(i:i)
             CALL MPI_BCAST(WorkChar, 1, MPI_CHARACTER, 0, ELMER_COMM_WORLD, ierr)
-            IF(Part .NE. 0 .AND. i==1) WorkString = WorkChar
+            IF(Part /= 0 .AND. i==1) WorkString = WorkChar
 
             !We have to consider, certainly in vectors, that there will be a
             !space in the middle of the filename that TRIM will remove. These
             !IFs ensure it's re-inserted
             IF(WorkChar == ' ') WorkChar2 = WorkChar
-            IF(Part .NE. 0 .AND. i .NE. 1) THEN
-              IF(WorkChar2 == ' ' .AND. WorkChar .NE. ' ') THEN
+            IF(Part /= 0 .AND. i /= 1) THEN
+              IF(WorkChar2 == ' ' .AND. WorkChar /= ' ') THEN
                 WorkString = TRIM(WorkString)//WorkChar2//WorkChar
                 WorkChar2 = 'x'
               ELSE
@@ -1058,7 +1057,7 @@ END SUBROUTINE SaveGridData
               END IF
             END IF
           END DO
-          IF(Part .NE. 0) FieldName = TRIM(WorkString)
+          IF(Part /= 0) FieldName = TRIM(WorkString)
         END IF
 
         !Actually get the variable!
@@ -1114,7 +1113,7 @@ END SUBROUTINE SaveGridData
               DO i = 1,nx
 
                 ind = GridIndex( i, j, k ) 
-                IF(ind.GT.0) THEN
+                IF(ind > 0) THEN
 
                     Element => Mesh % Elements( Particles % ElementIndex(ind) )            
                     IF ( Solution % TYPE == Variable_on_elements ) THEN
@@ -1166,13 +1165,13 @@ END SUBROUTINE SaveGridData
           END DO ! k
 
           IF(Parallel) THEN
-            CALL MPI_REDUCE(Array,PArray,nx*ny*nz,MPI_DOUBLE,MPI_MAX,0,ELMER_COMM_WORLD, ierr)
+            CALL MPI_REDUCE(Array,PArray,nx*ny*nz,MPI_DOUBLE_PRECISION,MPI_MAX,0,ELMER_COMM_WORLD, ierr)
             IF(Part == 0) Array=PArray
           END IF
         
           IF(Part == 0 .OR. (.NOT.Parallel)) THEN
             !Array=PArray
-            WHERE(Array.EQ.-HUGE(1.0_dp)) Array=FillValue
+            WHERE(Array == -HUGE(1.0_dp)) Array=FillValue
             IF(Dim == 2) THEN
                NetCDFStatus = NF90_PUT_VAR(FileId, VarId(NumVars2), Array(:,:,1), start=(/ 1,1,nTime /))
             ELSE IF(Dim == 3) THEN

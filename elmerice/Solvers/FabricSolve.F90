@@ -128,11 +128,7 @@
      REAL(KIND=dp), POINTER :: PrevFabric(:),CurrFabric(:),TempFabVal(:)
 
      SAVE  ViscosityFile, PrevFabric, CurrFabric,TempFabVal
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: at, at0
-#else
-     REAL(KIND=dp) :: at, at0, CPUTime, RealTime
-#endif
 !------------------------------------------------------------------------------
       INTERFACE
         Subroutine R2Ro(a2,dim,ai,angle)

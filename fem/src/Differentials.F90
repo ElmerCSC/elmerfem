@@ -47,7 +47,8 @@ MODULE Differentials
   USE Types
   USE Lists
   USE LinearAlgebra
-  USE ElementDescription
+  USE CoordinateSystems
+  USE ElementDescription, ONLY : ElementInfo
 
   IMPLICIT NONE
 

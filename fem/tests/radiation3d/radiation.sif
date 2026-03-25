@@ -15,7 +15,7 @@ Simulation
   Steady State Max Iterations = 1
   Output Intervals = 1
 ! Output File = "radiation.result"
-! Post File = "radiation.vtu"
+! Post File = "radiation.ep"
   View Factors ="ViewFactors.dat"
 End
 
@@ -54,18 +54,28 @@ End
 
 Solver 1
   Equation = Heat Equation
-  Procedure = "HeatSolve" "HeatSolver"
+  Procedure = "HeatSolveVec" "HeatSolver"
   Variable = Temperature
   Stabilize = True
-  Linear System Solver = Iterative
-  Linear System Direct Method = UMFPack
-  Linear System Iterative Method = BiCGStab
+  Linear System Solver = iterative
+
+  Radiation Solver = Logical True
+
+  Linear System Direct Method = Mumps
+  mumps percentage increase working space = 100000
+
+  Linear System Symmetric = True
+  Linear System Iterative Method = BiCGStabL
   Linear System Convergence Tolerance = 1.0e-8
   Linear System Max Iterations = 500
   Linear System Preconditioning = ILU
+
   Nonlinear System Newton After Iterations = 1
   Nonlinear System Newton After Tolerance = 0.1
   Nonlinear System Max Iterations = 50
+
+  Nonlinear System Consistent Norm = True
+
   Steady State Convergence Tolerance = 1.0e-5
   NonLinear System Convergence Tolerance = 1.0e-5
   Nonlinear System Relaxation Factor = 1.0
@@ -75,9 +85,7 @@ Solver 1
   Viewfactor factor tolerance = real 0.001
 End
 
-Equation 1
-  Active Solvers = 1
-End
+Equation 1 :: Active Solvers = 1
 
 Boundary Condition 1
    Target Boundaries = 1
@@ -90,9 +98,10 @@ Boundary Condition 2
    Heat Flux BC = True
    Radiation = Diffuse Gray
    Emissivity = 0.6
-   Radiation Target Body = -1
+   Radiation Target Body =  -1
 End
 
 Solver 1 :: Reference Norm = Real 180.435264497
 Solver 1 :: Reference Norm Tolerance = Real 1.0e-3
 RUN
+

@@ -63,6 +63,7 @@ Solver 1
   Nonlinear System Newton After Iterations = 1
   Nonlinear System Max Iterations = 50
   Nonlinear System Relaxation Factor = 1
+  Nonlinear System Consistent Norm = True
   NonLinear System Convergence Tolerance = 1.0e-8
 
   Steady State Convergence Tolerance = 1.0e-8

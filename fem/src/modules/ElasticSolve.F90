@@ -264,6 +264,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   USE DefUtils
   USE MaterialModels
   USE StressLocal
+  USE MainUtils, ONLY : SetGlobalBubblesFlag
   
   IMPLICIT NONE
 
@@ -359,32 +360,32 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
       UmatEnergy0, UmatStress0, UmatState0, UmatInitDone
 !-----------------------------------------------------------------------------------------------------
   INTERFACE
-    FUNCTION ElastBoundaryResidual( Model,Edge,Mesh,Quant,Perm, Gnorm ) RESULT(Indicator)
+    SUBROUTINE ElasticSolver_Boundary_Residual( Model,Edge,Mesh,Quant,Perm, Gnorm,Indicator)
       USE Types
       TYPE(Element_t), POINTER :: Edge
       TYPE(Model_t) :: Model
       TYPE(Mesh_t), POINTER :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
       INTEGER :: Perm(:)
-    END FUNCTION ElastBoundaryResidual
+    END SUBROUTINE ElasticSolver_Boundary_Residual
 
-    FUNCTION ElastEdgeResidual( Model,Edge,Mesh,Quant,Perm ) RESULT(Indicator)
+    SUBROUTINE ElasticSolver_Edge_Residual( Model,Edge,Mesh,Quant,Perm,Indicator)
       USE Types
       TYPE(Element_t), POINTER :: Edge
       TYPE(Model_t) :: Model
       TYPE(Mesh_t), POINTER :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2)
       INTEGER :: Perm(:)
-    END FUNCTION ElastEdgeResidual
+    END SUBROUTINE ElasticSolver_Edge_Residual
 
-    FUNCTION ElastInsideResidual( Model,Element,Mesh,Quant,Perm, Fnorm ) RESULT(Indicator)
+    SUBROUTINE ElasticSolver_Inside_Residual( Model,Element,Mesh,Quant,Perm, Fnorm,Indicator)
       USE Types
       TYPE(Element_t), POINTER :: Element
       TYPE(Model_t) :: Model
       TYPE(Mesh_t), POINTER :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
       INTEGER :: Perm(:)
-    END FUNCTION ElastInsideResidual
+    END SUBROUTINE ElasticSolver_Inside_Residual
   END INTERFACE
 
 
@@ -1367,9 +1368,9 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   IF ( ListGetLogical(SolverParams, 'Adaptive Mesh Refinement', GotIt) ) THEN
      IF (UseUmat .OR. NeoHookeanMaterial) THEN
         CALL Info(Caller,'Adaptive Mesh Refinement is not available') 
-     ELSE
+     ELSE IF(.NOT.ListGetLogical(SolverParams, 'Library Adaptivity', GotIt ) ) THEN
         CALL RefineMesh( Model, Solver, Displacement, StressPerm, &
-             ElastInsideResidual, ElastEdgeResidual, ElastBoundaryResidual )
+             ElasticSolver_Inside_Residual, ElasticSolver_Edge_Residual, ElasticSolver_Boundary_Residual )
 
         IF ( MeshDisplacementActive ) THEN
            StressSol => Solver % Variable
@@ -3345,8 +3346,12 @@ CONTAINS
 
        OptimizeBW = GetLogical( StSolver % Values, 'Optimize Bandwidth', Found )
        IF ( .NOT. Found ) OptimizeBW = .TRUE.
-       GlobalBubbles = GetLogical( StSolver % Values, 'Bubbles in Global System', Found )
-       IF ( .NOT. Found ) GlobalBubbles = .TRUE.
+
+       GlobalBubbles = GetLogical( Solver % Values, 'Bubbles in Global System', Found )
+       IF(Found) THEN
+         CALL ListAddLogical( StSolver % Values, 'Bubbles in Global System', GlobalBubbles )
+       END IF
+       GlobalBubbles = SetGlobalBubblesFlag( stSolver )
 
        IF( ListGetLogicalAnyEquation( Model,'Calculate Strains' ) ) THEN
           UseMask = .TRUE.
@@ -3611,8 +3616,12 @@ CONTAINS
 
        OptimizeBW = GetLogical( StSolver % Values, 'Optimize Bandwidth', Found )
        IF ( .NOT. Found ) OptimizeBW = .TRUE.
-       GlobalBubbles = GetLogical( StSolver % Values, 'Bubbles in Global System', Found )
-       IF ( .NOT. Found ) GlobalBubbles = .TRUE.
+
+       GlobalBubbles = GetLogical( Solver % Values, 'Bubbles in Global System', Found )
+       IF(Found) THEN
+         CALL ListAddLogical( StSolver % Values, 'Bubbles in Global System', GlobalBubbles )
+       END IF
+       GlobalBubbles = SetGlobalBubblesFlag( stSolver )
 
        IF( ListGetLogicalAnyEquation( Model,'Calculate Stresses' ) ) THEN
           UseMask = .TRUE.
@@ -3898,8 +3907,12 @@ CONTAINS
 
        OptimizeBW = GetLogical( StSolver % Values, 'Optimize Bandwidth', Found )
        IF ( .NOT. Found ) OptimizeBW = .TRUE.
-       GlobalBubbles = GetLogical( StSolver % Values, 'Bubbles in Global System', Found )
-       IF ( .NOT. Found ) GlobalBubbles = .TRUE.
+
+       GlobalBubbles = GetLogical( Solver % Values, 'Bubbles in Global System', Found )
+       IF(Found) THEN
+         CALL ListAddLogical( StSolver % Values, 'Bubbles in Global System', GlobalBubbles )
+       END IF
+       GlobalBubbles = SetGlobalBubblesFlag( stSolver )
 
        IF( ListGetLogicalAnyEquation( Model,'Calculate Stresses' ) ) THEN
           UseMask = .TRUE.
@@ -4567,7 +4580,7 @@ END SUBROUTINE ElasticSolver
 
 
 !------------------------------------------------------------------------------
-   FUNCTION ElastBoundaryResidual( Model, Edge, Mesh, Quant, Perm, Gnorm ) RESULT( Indicator )
+   SUBROUTINE ElasticSolver_Boundary_Residual( Model, Edge, Mesh, Quant, Perm, Gnorm, Indicator )
 !------------------------------------------------------------------------------
      USE DefUtils
      IMPLICIT NONE
@@ -4883,13 +4896,13 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-   END FUNCTION ElastBoundaryResidual
+   END SUBROUTINE ElasticSolver_Boundary_Residual
 !------------------------------------------------------------------------------
 
 
 
 !------------------------------------------------------------------------------
-  FUNCTION ElastEdgeResidual( Model,Edge,Mesh,Quant,Perm ) RESULT( Indicator )
+  SUBROUTINE ElasticSolver_Edge_Residual( Model,Edge,Mesh,Quant,Perm, Indicator )
 !------------------------------------------------------------------------------
      USE DefUtils
      IMPLICIT NONE
@@ -5162,13 +5175,13 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-   END FUNCTION ElastEdgeResidual
+   END SUBROUTINE ElasticSolver_Edge_Residual
 !------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
-   FUNCTION ElastInsideResidual( Model, Element,  &
-                      Mesh, Quant, Perm, Fnorm ) RESULT( Indicator )
+   SUBROUTINE ElasticSolver_Inside_Residual( Model, Element,  &
+                      Mesh, Quant, Perm, Fnorm, Indicator )
 !------------------------------------------------------------------------------
      USE DefUtils
 !------------------------------------------------------------------------------
@@ -5509,5 +5522,5 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   END FUNCTION ElastInsideResidual
+   END SUBROUTINE ElasticSolver_Inside_Residual
 !------------------------------------------------------------------------------

@@ -96,15 +96,9 @@ RECURSIVE SUBROUTINE IDSSolver( Model,Solver,Timestep,TransientSimulation )
        IDSHeadExt(:), OldValues(:), OldRHS(:), StiffVector(:), &
        Influx(:), EPLToIDS(:), DummyRealArray(:), FORCE(:), &
        LOAD(:), TimeForce(:)
-#ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: LinearTol, NonlinearTol, &
        totat, totst, at, at0, st, &
        WatComp, Norm, PrevNorm, RelativeChange
-#else
-  REAL(KIND=dp) :: LinearTol, NonlinearTol, &
-       totat, totst, at, at0, st, CPUTime, RealTime, &
-       WatComp, Norm, PrevNorm, RelativeChange
-#endif
 
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, VariableName
 

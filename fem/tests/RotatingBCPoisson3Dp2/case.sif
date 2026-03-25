@@ -191,8 +191,9 @@ Boundary Condition 3
 ! decide the periodicity from the interface mesh directly. 
   Rotational Projector Periods = Integer 4
 
-  Level Projector = Logical True
-  Level Projector Generic = Logical True
+  Level Projector = True
+  Level Projector Generic = True
+  Level Projector Strong = False
   
 !  Save Projector = Logical True
 !  Projector Save Element Index = Integer 1
@@ -205,8 +206,9 @@ Boundary Condition 4
 
   Mortar BC =  Integer 5
   Radial Projector = Logical True
-  Level Projector = Logical True
-  Level Projector Generic = Logical True
+  Level Projector = True
+  Level Projector Generic = True
+  Level Projector Strong = False
 End
 
 Boundary Condition 5
@@ -220,8 +222,9 @@ Boundary Condition 6
 
   Mortar BC =  Integer 7
   Radial Projector = Logical True
-  Level Projector = Logical True
-  Level Projector Generic = Logical True
+  Level Projector = True
+  Level Projector Generic = True
+  Level Projector Strong = False
 End
 
 Boundary Condition 7
@@ -235,5 +238,5 @@ Boundary Condition 8
 End 
 
 
-Solver 2 :: Reference Norm = 7.53682555E-01
+Solver 2 :: Reference Norm = 6.14777349E-01
 Solver 2 :: Reference Norm Tolerance = 1.0e-4

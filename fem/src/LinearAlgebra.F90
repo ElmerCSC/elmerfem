@@ -42,6 +42,9 @@
 !>  matrix eigenvalues  (don't use this for anything big, use for example 
 !>  LAPACK routines instead...)
 !------------------------------------------------------------------------------
+
+#include "../config.h"
+
 MODULE LinearAlgebra
 
   USE Types
@@ -64,7 +67,7 @@ MODULE LinearAlgebra
    !  */
    CALL LUDecomp( a,n,pivot,erroneous  )
 
-   IF (erroneous) CALL Fatal('InvertMatrix', 'inversion needs successfull LU-decomposition')
+   IF (erroneous) CALL Fatal('InvertMatrix', 'inversion needs successful LU-decomposition')
 
    ! /*  
    !  *  INV(U)
@@ -255,7 +258,7 @@ MODULE LinearAlgebra
 
   SUBROUTINE ComplexInvertMatrix( A,n )
 
-    COMPLEx(KIND=dp), DIMENSION(:,:) :: A
+    COMPLEX(KIND=dp), DIMENSION(:,:) :: A
     INTEGER :: n 
 
     COMPLEX(KIND=dp) :: s
@@ -268,7 +271,7 @@ MODULE LinearAlgebra
    !  */
    CALL ComplexLUDecomp( a,n,pivot,erroneous )
 
-   IF (erroneous) CALL Fatal('ComplexInvertMatrix', 'inversion needs successfull LU-decomposition')
+   IF (erroneous) CALL Fatal('ComplexInvertMatrix', 'inversion needs successful LU-decomposition')
 
    DO i=1,n
      IF ( ABS(A(i,i))==0.0d0 ) THEN
@@ -403,6 +406,196 @@ MODULE LinearAlgebra
     END IF
   END SUBROUTINE ComplexLUDecomp
 
+
+!------------------------------------------------------------------------------
+!> Solves a 2 x 2 linear system.
+!------------------------------------------------------------------------------
+   SUBROUTINE SolveLinSys2x2( A, x, b )
+!------------------------------------------------------------------------------
+     REAL(KIND=dp), INTENT(out) :: x(:)
+     REAL(KIND=dp), INTENT(in)  :: A(:,:),b(:)
+!------------------------------------------------------------------------------
+     REAL(KIND=dp) :: detA
+!------------------------------------------------------------------------------
+     detA = A(1,1) * A(2,2) - A(1,2) * A(2,1)
+
+     IF ( detA == 0.0d0 ) THEN
+       WRITE( Message, * ) 'Singular matrix, sorry!'
+       CALL Error( 'SolveLinSys2x2', Message )
+       RETURN
+     END IF
+
+     detA = 1.0d0 / detA
+     x(1) = detA * (A(2,2) * b(1) - A(1,2) * b(2))
+     x(2) = detA * (A(1,1) * b(2) - A(2,1) * b(1))
+!------------------------------------------------------------------------------
+   END SUBROUTINE SolveLinSys2x2
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Solves a 3 x 3 linear system.
+!------------------------------------------------------------------------------
+   SUBROUTINE SolveLinSys3x3( A, x, b )
+!------------------------------------------------------------------------------
+     REAL(KIND=dp), INTENT(out) :: x(:)
+     REAL(KIND=dp), INTENT(in)  :: A(:,:),b(:)
+!------------------------------------------------------------------------------
+     REAL(KIND=dp) :: C(2,2),y(2),g(2),s,t,q
+!------------------------------------------------------------------------------
+
+     IF ( ABS(A(1,1))>ABS(A(1,2)) .AND. ABS(A(1,1))>ABS(A(1,3)) ) THEN
+       q = 1.0d0 / A(1,1)
+       s = q * A(2,1)
+       t = q * A(3,1)
+       C(1,1) = A(2,2) - s * A(1,2)
+       C(1,2) = A(2,3) - s * A(1,3)
+       C(2,1) = A(3,2) - t * A(1,2)
+       C(2,2) = A(3,3) - t * A(1,3)
+
+       g(1) = b(2) - s * b(1)
+       g(2) = b(3) - t * b(1)
+       CALL SolveLinSys2x2( C,y,g )
+       
+       x(2) = y(1)
+       x(3) = y(2)
+       x(1) = q * ( b(1) - A(1,2) * x(2) - A(1,3) * x(3) )
+     ELSE IF ( ABS(A(1,2)) > ABS(A(1,3)) ) THEN
+       q = 1.0d0 / A(1,2)
+       s = q * A(2,2)
+       t = q * A(3,2)
+       C(1,1) = A(2,1) - s * A(1,1)
+       C(1,2) = A(2,3) - s * A(1,3)
+       C(2,1) = A(3,1) - t * A(1,1)
+       C(2,2) = A(3,3) - t * A(1,3)
+       
+       g(1) = b(2) - s * b(1)
+       g(2) = b(3) - t * b(1)
+       CALL SolveLinSys2x2( C,y,g )
+
+       x(1) = y(1)
+       x(3) = y(2)
+       x(2) = q * ( b(1) - A(1,1) * x(1) - A(1,3) * x(3) )
+     ELSE
+       q = 1.0d0 / A(1,3)
+       s = q * A(2,3)
+       t = q * A(3,3)
+       C(1,1) = A(2,1) - s * A(1,1)
+       C(1,2) = A(2,2) - s * A(1,2)
+       C(2,1) = A(3,1) - t * A(1,1)
+       C(2,2) = A(3,2) - t * A(1,2)
+
+       g(1) = b(2) - s * b(1)
+       g(2) = b(3) - t * b(1)
+       CALL SolveLinSys2x2( C,y,g )
+
+       x(1) = y(1)
+       x(2) = y(2)
+       x(3) = q * ( b(1) - A(1,1) * x(1) - A(1,2) * x(2) )
+     END IF
+!------------------------------------------------------------------------------
+   END SUBROUTINE SolveLinSys3x3
+!------------------------------------------------------------------------------
+
+
+!> Solves a small dense linear system using Lapack routines
+!------------------------------------------------------------------------------
+  SUBROUTINE SolveLinSys( A, x, n )
+!------------------------------------------------------------------------------
+     INTEGER :: n
+     REAL(KIND=dp) :: A(n,n), x(n), b(n)
+
+     INTERFACE
+       SUBROUTINE SolveLapack( N,A,x )
+         INTEGER  N
+         DOUBLE PRECISION  A(n*n),x(n)
+       END SUBROUTINE
+     END INTERFACE
+
+!------------------------------------------------------------------------------
+     SELECT CASE(n)
+     CASE(1)
+       x(1) = x(1) / A(1,1)
+     CASE(2)
+       b = x
+       CALL SolveLinSys2x2(A,x,b)
+     CASE(3)
+       b = x
+       CALL SolveLinSys3x3(A,x,b)
+     CASE DEFAULT
+       CALL SolveLapack(n,A,x)
+     END SELECT
+!------------------------------------------------------------------------------
+  END SUBROUTINE SolveLinSys
+!------------------------------------------------------------------------------
+
+  
+!------------------------------------------------------------------------------
+  SUBROUTINE InvertMatrix3x3( G,GI,detG )
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: G(3,3),GI(3,3)
+    REAL(KIND=dp) :: detG, s
+!------------------------------------------------------------------------------
+    s = 1.0 / DetG
+    
+    GI(1,1) =  s * (G(2,2)*G(3,3) - G(3,2)*G(2,3));
+    GI(2,1) = -s * (G(2,1)*G(3,3) - G(3,1)*G(2,3));
+    GI(3,1) =  s * (G(2,1)*G(3,2) - G(3,1)*G(2,2));
+    
+    GI(1,2) = -s * (G(1,2)*G(3,3) - G(3,2)*G(1,3));
+    GI(2,2) =  s * (G(1,1)*G(3,3) - G(3,1)*G(1,3));
+    GI(3,2) = -s * (G(1,1)*G(3,2) - G(3,1)*G(1,2));
+
+    GI(1,3) =  s * (G(1,2)*G(2,3) - G(2,2)*G(1,3));
+    GI(2,3) = -s * (G(1,1)*G(2,3) - G(2,1)*G(1,3));
+    GI(3,3) =  s * (G(1,1)*G(2,2) - G(2,1)*G(1,2));
+!------------------------------------------------------------------------------
+  END SUBROUTINE InvertMatrix3x3
+!------------------------------------------------------------------------------
+
+#ifdef HAVE_QP
+!------------------------------------------------------------------------------
+! Quadratic precision version of the previous routine!
+!------------------------------------------------------------------------------
+  SUBROUTINE InvertMatrix3x3QP( G,GI,detG )
+!------------------------------------------------------------------------------
+    INTEGER, PARAMETER :: qp = SELECTED_REAL_KIND(24)     
+    REAL(KIND=qp) :: G(3,3),GI(3,3)
+    REAL(KIND=qp) :: detG, s
+!------------------------------------------------------------------------------
+    s = 1.0 / DetG
+    
+    GI(1,1) =  s * (G(2,2)*G(3,3) - G(3,2)*G(2,3));
+    GI(2,1) = -s * (G(2,1)*G(3,3) - G(3,1)*G(2,3));
+    GI(3,1) =  s * (G(2,1)*G(3,2) - G(3,1)*G(2,2));
+    
+    GI(1,2) = -s * (G(1,2)*G(3,3) - G(3,2)*G(1,3));
+    GI(2,2) =  s * (G(1,1)*G(3,3) - G(3,1)*G(1,3));
+    GI(3,2) = -s * (G(1,1)*G(3,2) - G(3,1)*G(1,2));
+
+    GI(1,3) =  s * (G(1,2)*G(2,3) - G(2,2)*G(1,3));
+    GI(2,3) = -s * (G(1,1)*G(2,3) - G(2,1)*G(1,3));
+    GI(3,3) =  s * (G(1,1)*G(2,2) - G(2,1)*G(1,2));
+!------------------------------------------------------------------------------
+  END SUBROUTINE InvertMatrix3x3QP
+!------------------------------------------------------------------------------
+#endif
+  
+!------------------------------------------------------------------------------
+!> Compute the value of 3x3 determinant
+!------------------------------------------------------------------------------
+  FUNCTION Det3x3( A ) RESULT ( val ) 
+!------------------------------------------------------------------------------      
+    REAL(KIND=dp) :: A(3,3)
+    REAL(KIND=dp) :: val
+
+    val = A(1,1) * ( A(2,2) * A(3,3) - A(2,3) * A(3,2) ) &
+        - A(1,2) * ( A(2,1) * A(3,3) - A(2,3) * A(3,1) ) &
+        + A(1,3) * ( A(2,1) * A(3,2) - A(2,2) * A(3,1) ) 
+!------------------------------------------------------------------------------
+  END FUNCTION Det3x3
+!------------------------------------------------------------------------------  
+  
   ! --------------------------------------------------
   !> Solve eigenvalues of a nonsymmetric matrix A(n,n)
   !> The matrix is modified in the process.

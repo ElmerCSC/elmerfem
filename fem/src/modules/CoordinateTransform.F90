@@ -452,7 +452,7 @@ CONTAINS
 
     Converged=.FALSE. 
     DO i=1,PDMaxIter
-      Det = Determinant3x3(RotMLoc)
+      Det = Det3x3(RotMLoc)
       CALL InvertMatrix3x3(RotMloc, RotMLocInv, Det)
       RotMloc=(RotMloc+TRANSPOSE(RotMlocInv))/2_dp
       IF (ABS(Det - 1_dp) <= PDDetTol) THEN
@@ -473,19 +473,6 @@ CONTAINS
   END SUBROUTINE PolarDecomposition
 !------------------------------------------------------------------------------ 
 
-!------------------------------------------------------------------------------ 
-  FUNCTION Determinant3x3(A) RESULT(D)
-!------------------------------------------------------------------------------ 
-    USE DefUtils
-    REAL(KIND=DP) :: A(3,3), D
-
-    D = A(1,1)*A(2,2)*A(3,3)-A(1,1)*A(2,3)*A(3,2)- & 
-            A(1,2)*A(2,1)*A(3,3)+A(1,2)*A(2,3)*A(3,1)+ & 
-                A(1,3)*A(2,1)*A(3,2)-A(1,3)*A(2,2)*A(3,1)
-
-!------------------------------------------------------------------------------ 
-  END FUNCTION Determinant3x3
-!------------------------------------------------------------------------------ 
  
 !------------------------------------------------------------------------------
    SUBROUTINE GetElementRotM(Element,RotM,nn)

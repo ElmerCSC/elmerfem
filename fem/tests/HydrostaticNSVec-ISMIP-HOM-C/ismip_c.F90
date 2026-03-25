@@ -129,7 +129,7 @@ FUNCTION Sliding ( Model, nodenumber, dummyr) RESULT(C)
      FirstTime=.FALSE.
      L = MAXVAL(Model % Nodes % x)
      omega = 2.0_dp * Pi /L
-     WRITE(Message,*) 'Lenght of domain:', L,' Corresponding wavefrequency:',omega 
+     WRITE(Message,*) 'Length of domain:', L,' Corresponding wavefrequency:',omega 
      CALL INFO('ISMIP_C(Sliding)',Message,Level=1)
    END IF
 

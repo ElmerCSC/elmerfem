@@ -126,6 +126,104 @@ CONTAINS
   END FUNCTION GetComponentParams
 !------------------------------------------------------------------------------
 
+
+! Get the current associated to the component from the solution of the
+! constraint problem having lagrange multiplier vector. 
+!------------------------------------------------------------------------------
+  FUNCTION GetComponentCurrent(CompId,Found) RESULT ( Curr ) 
+    INTEGER :: CompId
+    LOGICAL :: Found
+    COMPLEX(KIND=dp) :: Curr
+    
+    INTEGER :: i,j
+    TYPE(CircuitVariable_t), POINTER :: iVar
+    TYPE(Variable_t), POINTER :: LagrangeVar
+    REAL(KIND=dp) :: CurrIm, CurrRe
+    TYPE(Circuit_t), POINTER :: Circuit
+    CHARACTER(LEN=MAX_NAME_LEN) :: str 
+       
+    Found = .FALSE.
+    Curr = 0.0_dp
+
+    IF(CurrentModel % n_Circuits == 0) RETURN
+    
+    CurrRe = 0.0_dp
+    CurrIm = 0.0_dp
+    
+    DO i = 1, CurrentModel % n_Circuits     
+      Circuit => CurrentModel % Circuits(i)
+      
+      str = LagrangeMultiplierName( CurrentModel % ASolver ) 
+      LagrangeVar => VariableGet( CurrentModel % Mesh % Variables, str, ThisOnly = .TRUE.)
+      IF(.NOT. ASSOCIATED(LagrangeVar) ) RETURN           
+      
+      DO j = 1, SIZE(Circuit % Components)
+        ivar => Circuit % Components(j) % ivar
+        IF(.NOT. ASSOCIATED(ivar)) CYCLE            
+        IF(.NOT. iVar % isIvar ) CYCLE
+        IF(iVar % BodyId /= CompId ) CYCLE
+        IF(iVar % ValueId > 0 ) THEN
+          Found = .TRUE.
+          CurrRe = LagrangeVar % Values(iVar % ValueId)
+        END IF
+        IF(iVar % ImValueId > 0 ) THEN
+          CurrIm = LagrangeVar % Values(iVar % ImValueId)
+        END IF        
+        IF(Found) EXIT
+      END DO
+      IF(Found) EXIT
+    END DO
+
+    IF(.NOT. Found) THEN
+      CALL Fatal('GetComponentCurrent','Got circuits but no current for component: '//I2S(CompId))
+    END IF
+      
+    !PRINT *,'Curr:',CompId,CurrRe,CurrIm
+    Curr = CMPLX(CurrRe,CurrIm,KIND=dp)
+
+  END FUNCTION GetComponentCurrent
+
+
+  ! Get the current associated to the component from the solution of the
+! constraint problem having lagrange multiplier vector. 
+!------------------------------------------------------------------------------
+  FUNCTION GetComponentArea(CompId,Found) RESULT ( Area ) 
+    INTEGER :: CompId
+    LOGICAL :: Found
+    REAL(KIND=dp) :: Area
+    
+    INTEGER :: i,j
+    TYPE(CircuitVariable_t), POINTER :: iVar
+    TYPE(Variable_t), POINTER :: LagrangeVar
+    REAL(KIND=dp) :: CurrIm, CurrRe
+    TYPE(Circuit_t), POINTER :: Circuit
+    CHARACTER(LEN=MAX_NAME_LEN) :: str 
+       
+    Found = .FALSE.
+    Area = 0.0_dp
+
+    IF(CurrentModel % n_Circuits == 0) RETURN
+    
+    DO i = 1, CurrentModel % n_Circuits     
+      Circuit => CurrentModel % Circuits(i)      
+      DO j = 1, SIZE(Circuit % Components)
+        ivar => Circuit % Components(j) % ivar
+        IF(iVar % BodyId /= CompId ) CYCLE
+
+        Area = Circuit % Components(j) % ElArea
+        Found = .TRUE.
+        EXIT
+      END DO
+      IF(Found) EXIT
+    END DO
+
+    IF(.NOT. Found) THEN
+      CALL Fatal('GetComponentArea','Got circuits but no area for component: '//I2S(CompId))
+    END IF
+      
+  END FUNCTION GetComponentArea
+
+  
 !------------------------------------------------------------------------------
   FUNCTION GetComponentId(Element) RESULT (ComponentId)
 !------------------------------------------------------------------------------

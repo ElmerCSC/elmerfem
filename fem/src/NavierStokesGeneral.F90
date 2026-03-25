@@ -85,7 +85,7 @@ MODULE NavierStokesGeneral
 !     INPUT: Nodal values of velocity components from previous iteration
 !
 !  LOGICAL :: Stabilize
-!     INPUT: Should stabilzation be used ?
+!     INPUT: Should stabilization be used ?
 !
 !  LOGICAL :: NewtonLinearization
 !      INPUT: Picard or Newton  linearization of the convection term ?

@@ -1,0 +1,108 @@
+! Test case that combines
+! - Reduced basis with heat gap
+! - Mortar BCs for nonconforming mesh joining 
+! - Elimination of mortar dofs
+!
+! P.R. 4.12.24
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "blocks"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+
+  Coordinate Mapping(3) = 3 2 1
+
+!  Post File = "case.vtu"
+!  Ascii Output = Logical True
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Active Solvers = 1
+End
+
+Solver 1
+  Equation = HeatSolve
+  Variable = Temperature
+  Procedure = "HeatSolveVec" "HeatSolver"
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+
+  Nonlinear System Max Iterations = 1
+
+! Here we define the reduced basis 
+  Discontinuous Galerkin = Logical True
+  DG Reduced Basis = Logical True
+  DG Reduced Basis Master Bodies(1) = Integer 1 
+
+! Here we apply mortar BCs
+  Apply Mortar BCs = True
+
+! Here we eliminate the mortar dofs
+  Eliminate Linear Constraints = True
+End
+
+Material 1
+  Heat Conductivity = 1.0
+  Density = 1.0
+End
+
+Boundary Condition 1
+  Name = "Right" 
+  Target Boundaries = 1
+!  Temperature = 1.0
+  Heat Flux = 0.5
+End 
+
+Boundary Condition 2
+  Name = "Jump" 
+  Target Boundaries = 2
+
+! This activates the jump condition enabled by DG Basis
+  Heat Gap = Logical True
+  Heat Gap Coefficient = Real 1.0
+End
+
+Boundary Condition 3
+  Name = "Mortar Right"
+  Target Boundaries = 3
+
+  Mortar BC =  Integer 4
+  Level Projector = Logical True
+
+!  Generic Projector = True
+  Galerkin Projector = True
+End
+
+Boundary Condition 4
+  Name = "Mortar Left"
+  Target Boundaries = 4
+End
+
+Boundary Condition 5
+  Name = "Left"
+  Target Boundaries = 5
+  Temperature = -1.0
+End
+
+Solver 1 :: Reference Norm = 6.50099517E-01
+
+!End Of File
+

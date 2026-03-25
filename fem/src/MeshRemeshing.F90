@@ -35,7 +35,7 @@ MODULE MeshRemeshing
 USE Types
 USE Lists
 USE Messages
-USE MeshUtils
+USE MeshUtils, ONLY : PrepareMesh, MarkSharpEdges, MarkSharpNodes, GetDefs
 USE MeshPartition
 USE SparIterComm
 
@@ -97,7 +97,9 @@ SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount, Solver)
   
   INTEGER :: i,j,NNodes,NVerts, NTetras, NPrisms, NTris, NQuads, NEdges, nbulk, nbdry,ref,ierr
   INTEGER, ALLOCATABLE :: NodeRefs(:)
-  LOGICAL :: Warn101=.FALSE., Warn202=.FALSE.,Debug=.FALSE.,Elem202,Found
+  LOGICAL :: Warn101=.FALSE., Warn202=.FALSE.,Debug=.FALSE.,Elem202,Found, UsePerm
+  LOGICAL, ALLOCATABLE :: SharpEdge(:), SharpNode(:)
+  REAL(KIND=dp) :: phi
   INTEGER, POINTER :: Perm(:)
   CHARACTER(:), ALLOCATABLE :: EquationName                              
   CHARACTER(*), PARAMETER :: FuncName="Set_MMG3D_Mesh"
@@ -108,18 +110,23 @@ SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount, Solver)
 
   IF(Parallel) CALL Assert(ASSOCIATED(Mesh % ParallelInfo % GlobalDOFs), FuncName,&
       "Parallel sim but no ParallelInfo % GlobalDOFs")
-  
-  IF( PRESENT( Solver ) ) THEN
-    CALL Info(FuncName,'Setting only the active part of mesh')
-    EquationName = ListGetString( Solver % Values, 'Equation', Found)                 
+
+  NULLIFY(Perm)
+  UsePerm = .FALSE.
+  IF(PRESENT( Solver ) ) THEN
     Perm => Solver % Variable % Perm
     IF(.NOT. ASSOCIATED(Perm)) THEN
-      CALL Fatal(FuncName,'Perm vector not associated!?')
+      CALL Fatal(FuncName,'Perm vector not associated but Solver given!?')
     END IF
     NVerts = COUNT( Perm(1:Mesh % NumberOfNodes) > 0 )
+    UsePerm = (NVerts < Mesh % NumberOfNodes )
   ELSE
-    NULLIFY( Perm )
     NVerts = Mesh % NumberOfNodes    
+  END IF  
+    
+  IF( UsePerm ) THEN
+    CALL Info(FuncName,'Using only the active part of mesh')
+    EquationName = ListGetString( Solver % Values, 'Equation', Found)                 
   END IF
   CALL Info(FuncName,'Set number of nodes: '//I2S(Nverts),Level=20)
   
@@ -128,8 +135,9 @@ SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount, Solver)
   ntris = 0
   nquads = 0
   nedges = 0
-  IF(PRESENT(PairCount)) NEdges= PairCount
+  IF(PRESENT(PairCount)) NEdges = PairCount
 
+  
   DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
     Element => Mesh % Elements(i)
     IF( PRESENT( Solver ) ) THEN
@@ -166,8 +174,26 @@ SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount, Solver)
   Nbulk = NTetras + NPrisms
   Nbdry = NTris + Nquads
 
+  IF( ListGetLogical(CurrentModel % Solver % Values,'mmg External Angle detection',Found) ) THEN
+    phi = ListGetConstReal(CurrentModel % Solver % Values,'mmg angle detection',Found )
+    IF(.NOT. Found) phi = 30.0_dp    
+    CALL MarkSharpEdges( Mesh, SharpEdge, phi )
+    IF(UsePerm) THEN
+      DO i=1,Mesh % NumberOfEdges
+        IF(SharpEdge(i)) THEN
+          NodeRefs(1:2) = Perm(Mesh % Edges(i) % NodeIndexes)
+          IF(ANY(NodeRefs(1:2)==0)) CYCLE
+        END IF        
+        Nedges = Nedges + 1
+      END DO
+    ELSE
+      Nedges = Nedges + COUNT(SharpEdge)
+    END IF
+  END IF
+  
   CALL Info(FuncName,'Set number of bulk elements: '//I2S(Nbulk),Level=20)
   CALL Info(FuncName,'Set number of boundary elements: '//I2S(Nbdry),Level=20)
+  CALL Info(FuncName,'Set number of edge elements: '//I2S(Nedges),Level=20)
 
   
   IF(Warn101) CALL Warn(FuncName,"101 elements detected - these won't be remeshed")
@@ -207,7 +233,7 @@ SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount, Solver)
     NNodes = Element % TYPE % NumberOfNodes
     NodeIndexes => Element % NodeIndexes
 
-    IF(PRESENT(Solver)) THEN
+    IF(UsePerm) THEN
       NodeRefs(1:NNodes) = Perm(NodeIndexes(1:NNodes))
       IF(ANY(NodeRefs(1:NNodes) == 0 ) ) CYCLE      
       IF(i<=Mesh % NumberOfBulkElements) THEN
@@ -245,7 +271,7 @@ SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount, Solver)
 
 
   ! Freeze nodes at the interface of remeshed and omitted volume
-  IF( PRESENT( Solver ) ) THEN
+  IF( UsePerm ) THEN
     BLOCK
       LOGICAL, ALLOCATABLE :: TagNode(:)
       ALLOCATE(TagNode(Mesh % NumberOfNodes))
@@ -268,8 +294,7 @@ SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount, Solver)
       CALL Info(FuncName,'Fixed number of nodes at interface: '//I2S(j),Level=10)
     END BLOCK
   END IF
-    
-  
+
   ! use element pairs '202' elements
   Elem202 = (PRESENT(EdgePairs))
   IF (Elem202) THEN
@@ -279,10 +304,40 @@ SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount, Solver)
       CALL MMG3D_Set_ridge(mmgMesh, nedges, ierr)
       !CALL MMG3D_Set_requiredEdge(mmgMesh, Nedges, ierr)
     END DO
+    CALL Info(FuncName,'Set EdgePairs elements done',Level=20)
   END IF
 
-  CALL Info(FuncName,'Set edge elements done',Level=20)
+  IF( ALLOCATED(SharpEdge)) THEN
+    DO i=1,Mesh % NumberOfEdges
+      IF(SharpEdge(i)) THEN
+        NodeRefs(1:2) = Mesh % Edges(i) % NodeIndexes
+        IF(UsePerm) THEN
+          NodeRefs(1:2) = Perm(NodeRefs(1:2))
+          IF(ANY(NodeRefs(1:2)==0)) CYCLE
+        END IF        
+        NEdges = NEdges + 1 
+        CALL MMG3D_Set_edge(mmgMesh, NodeRefs(1), NodeRefs(2), 1, nedges, ierr)
+        CALL MMG3D_Set_ridge(mmgMesh, nedges, ierr)
+      END IF
+    END DO
+    CALL Info(FuncName,'Sharp edge elements set!',Level=20)
 
+    IF( ListGetLogical(CurrentModel % Solver % Values,'mmg External Corner detection',Found) ) THEN
+      CALL MarkSharpNodes( Mesh, SharpEdge, SharpNode, phi )     
+      DO i=1,Mesh % NumberOfNodes
+        IF(SharpNode(i)) THEN
+          j = i
+          IF(UsePerm) j=Perm(i)
+          CALL MMG3D_Set_corner(mmgMesh, j, ierr)
+        END IF
+      END DO
+      CALL Info(FuncName,'Sharp corner nodes set!',Level=20)
+      DEALLOCATE(SharpNode)
+    END IF
+      
+    DEALLOCATE(SharpEdge)
+  END IF
+  
 #else
   CALL Fatal('Set_MMG3D_Mesh',&
         'Remeshing utility MMG3D has not been installed')
@@ -291,7 +346,7 @@ SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount, Solver)
 END SUBROUTINE Set_MMG3D_Mesh
 
 
-SUBROUTINE Check_Parameters_Obsolite(SolverParams)
+SUBROUTINE Check_Parameters_Obsolete(SolverParams)
 
   TYPE(ValueList_t), POINTER :: SolverParams
   LOGICAL :: Checked = .FALSE.
@@ -299,25 +354,25 @@ SUBROUTINE Check_Parameters_Obsolite(SolverParams)
   IF(Checked) RETURN
   
   IF( ListCheckPrefix( SolverParams,'RemeshMMG3D') ) THEN
-    CALL Fatal('Check_Parameters_Obsolite','Use "MMG" as prefix instead of "RemeshMMG3D"')
+    CALL Fatal('Check_Parameters_Obsolete','Use "MMG" as prefix instead of "RemeshMMG3D"')
   END IF
-  CALL ListObsoliteFatal(SolverParams,'hmin','MMG hmin')
-  CALL ListObsoliteFatal(SolverParams,'hmax','MMG hmax')
-  CALL ListObsoliteFatal(SolverParams,'hsiz','MMG hsiz')
-  CALL ListObsoliteFatal(SolverParams,'hausd','MMG hausd')
-  CALL ListObsoliteFatal(SolverParams,'hgrad','MMG hgrad')
-  CALL ListObsoliteFatal(SolverParams,'verbosity','MMG verbosity')
-  CALL ListObsoliteFatal(SolverParams,'angle detection','MMG angle detection')
-  CALL ListObsoliteFatal(SolverParams,'no angle detection','MMG no angle detection')
-  CALL ListObsoliteFatal(SolverParams,'increase memory','MMG increase memory')
-  CALL ListObsoliteFatal(SolverParams,'no insert','MMG noinsert')
-  CALL ListObsoliteFatal(SolverParams,'no swap','MMG no swap')
-  CALL ListObsoliteFatal(SolverParams,'no move','MMG no move')
-  CALL ListObsoliteFatal(SolverParams,'no surf','MMG no surf')
+  CALL ListObsoleteFatal(SolverParams,'hmin','MMG hmin')
+  CALL ListObsoleteFatal(SolverParams,'hmax','MMG hmax')
+  CALL ListObsoleteFatal(SolverParams,'hsiz','MMG hsiz')
+  CALL ListObsoleteFatal(SolverParams,'hausd','MMG hausd')
+  CALL ListObsoleteFatal(SolverParams,'hgrad','MMG hgrad')
+  CALL ListObsoleteFatal(SolverParams,'verbosity','MMG verbosity')
+  CALL ListObsoleteFatal(SolverParams,'angle detection','MMG angle detection')
+  CALL ListObsoleteFatal(SolverParams,'no angle detection','MMG no angle detection')
+  CALL ListObsoleteFatal(SolverParams,'increase memory','MMG increase memory')
+  CALL ListObsoleteFatal(SolverParams,'no insert','MMG noinsert')
+  CALL ListObsoleteFatal(SolverParams,'no swap','MMG no swap')
+  CALL ListObsoleteFatal(SolverParams,'no move','MMG no move')
+  CALL ListObsoleteFatal(SolverParams,'no surf','MMG no surf')
 
   Checked = .TRUE.
   
-END SUBROUTINE Check_Parameters_Obsolite
+END SUBROUTINE Check_Parameters_Obsolete
   
   
 
@@ -339,7 +394,7 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams, ReTrial)
     CALL Fatal(FuncName,'"SolverParams" is not associated!')
   END IF
 
-  CALL Check_Parameters_Obsolite(SolverParams)
+  CALL Check_Parameters_Obsolete(SolverParams)
   
   ! Minimal mesh size:  hmin
   hmin = ListGetCReal( SolverParams,'adaptive min h', Found ) 
@@ -412,6 +467,7 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams, ReTrial)
 
   ! !< [1/0], Avoid/allow automatic angle detection */
   NoAngleDetect = ListGetLogical(SolverParams,'mmg No Angle detection',Found)
+  IF(.NOT. Found) NoAngleDetect = ListGetLogical(SolverParams,'mmg External Angle detection',Found)
   IF (NoAngleDetect) THEN
     CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMG3D_IPARAM_angle,0,ierr)
     IF ( ierr == 0 ) CALL Fatal(FuncName,&
@@ -502,7 +558,7 @@ SUBROUTINE Set_PMMG_Parameters(SolverParams, ReTrial )
   LOGICAL :: Found,Debug=.FALSE.,ParMMG
   CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="Set_PMMG_Parameters"
 
-  CALL Check_Parameters_Obsolite(SolverParams)
+  CALL Check_Parameters_Obsolete(SolverParams)
   
   ! Minimal mesh size:  hmin
   hmin = ListGetCReal( SolverParams,'adaptive min h', Found ) 
@@ -560,9 +616,9 @@ SUBROUTINE Set_PMMG_Parameters(SolverParams, ReTrial )
 
   
   ! If this is a ReTrial then we only change some real valued keywords!
-  IF( PRESENT( ReTrial ) ) THEN
-    IF( ReTrial ) RETURN
-  END IF
+  !IF( PRESENT( ReTrial ) ) THEN
+  !  IF( ReTrial ) RETURN
+  !END IF
     
 !!! PARAMS: generic options (debug, mem, verbosity)
   ! [val] Set the verbosity level to n
@@ -601,6 +657,7 @@ SUBROUTINE Set_PMMG_Parameters(SolverParams, ReTrial )
 
   ! !< [1/0], Avoid/allow surface modifications */ 
   NoAngleDetect = ListGetLogical(SolverParams,'mmg No Angle detection',Found)
+  IF(.NOT. Found) NoAngleDetect = ListGetLogical(SolverParams,'mmg External Angle detection',Found)
   IF (NoAngleDetect) THEN
     CALL PMMG_SET_IPARAMETER(pmmgMesh,PMMGPARAM_angle,0,ierr)
     IF ( ierr == 0 ) CALL Fatal(FuncName, &
@@ -698,7 +755,7 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel, FixedNodes, FixedElems, Calving)
   CALL Info(FuncName,'MMG3D_Get_meshSize done',Level=20)
   IF(NPrisms /= 0) CALL Fatal(FuncName, "Programming Error: MMG3D returns prisms")
   IF(NQuads /= 0) CALL Fatal(FuncName, "Programming Error: MMG3D returns quads")
-
+  
   maxnodes = 4
   nt0 = 0; np0 = 0; na0 = 0
   Combine = ListGetLogical( CurrentModel % Solver % Values,'Keep unmeshed regions',Found)
@@ -710,7 +767,7 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel, FixedNodes, FixedElems, Calving)
     ! This still related to the old mesh
     Perm => Solver % Variable % Perm
     IF(.NOT. ASSOCIATED(Perm)) THEN
-      CALL Fatal(FuncName,'Perm vector not assoicated!?')
+      CALL Fatal(FuncName,'Perm vector not associated!?')
     END IF
 
     EquationName = ListGetString( Solver % Values, 'Equation', Found)                
@@ -1460,7 +1517,6 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,&
   IF(UseHvar) UseHvar = ASSOCIATED(HVar)
   
   UseTargetLength = ListCheckPresent( FuncParams,'MMG Target Length' )
-
   
   IF( UseHvar ) THEN
     CALL Info(FuncName,'Using external field for mesh metric: '//TRIM(HVar % Name),Level=10)
@@ -1620,7 +1676,7 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,&
     IF(PRESENT(ElemFixed)) THEN
       IF( InfoActive(20) ) THEN
         j = COUNT(ElemFixed)
-        CALL Info(FuncName,'Set reuired elements: '//I2S(j))
+        CALL Info(FuncName,'Set required elements: '//I2S(j))
       END IF
       DO i=1,NBulk + NBdry
         IF(ElemFixed(i)) THEN
@@ -1634,12 +1690,12 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,&
     END IF
     
     IF(SaveMMGMeshes) THEN
-      WRITE(MeshName, '(A,i0,A)') TRIM(premmg_meshfile), time, '.mesh'
+      MeshName = TRIM(premmg_meshfile) // I2S(time) // '.mesh'
       CALL MMG3D_SaveMesh(mmgMesh,MeshName,LEN(TRIM(MeshName)),ierr)
     END IF
     
     IF(SaveMMGSols) THEN
-      WRITE(SolName, '(A,i0,A)') TRIM(premmg_solfile), time, '.sol'
+      SolName =  TRIM(premmg_solfile) // I2S(time) // '.sol'
       CALL MMG3D_SaveSol(mmgMesh, mmgSol,SolName,LEN(TRIM(SolName)),ierr)
     END IF
     
@@ -1704,7 +1760,7 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,&
   ! And delete the unneeded BC elems
   ! Important note for calving. mmg adds boundary nodes to upstream user defined boundary.
   ! these need to be removed
-  ! this is a temp fix as calving algo has mutliple inputs
+  ! this is a temp fix as calving algo has multiple inputs
   IF(MultipleInputs) THEN
     ALLOCATE(RmElement(NBulk+NBdry))
     RmElement = .FALSE.
@@ -3006,7 +3062,7 @@ END SUBROUTINE DistributedRemeshParMMG
       ! This still related to the old mesh
       Perm => Solver % Variable % Perm
       IF(.NOT. ASSOCIATED(Perm)) THEN
-        CALL Fatal(FuncName,'Perm vector not assoicated!?')
+        CALL Fatal(FuncName,'Perm vector not associated!?')
       END IF
       
       EquationName = ListGetString( Solver % Values, 'Equation', Found)                
@@ -3069,10 +3125,10 @@ END SUBROUTINE DistributedRemeshParMMG
       END DO
     END IF
     
-    ! Initialize the new mesh stucture
+    ! Initialize the new mesh structure
     NewMesh => AllocateMesh(nt + nt0,na + na0,np + np0,ParEnv%PEs > 1)
     IF (MeshNumber > 0 ) THEN
-      WRITE(NewMesh % Name,'(A,A,I0)') TRIM(OutPutFileName),'_N',MeshNumber
+      NewMesh % Name = TRIM(OutPutFileName) // '_N' // I2S(MeshNumber)
     ELSE
       NewMesh % Name = TRIM(OutPutFileName)
     END IF
@@ -3288,6 +3344,10 @@ BLOCK
       ElementDef0 = ElementDef
       DO WHILE(.TRUE.)
         j = INDEX( ElementDef0, '-' )
+        IF (j == 1) THEN
+          ElementDef0 = ElementDef0(2:)
+          j = INDEX( ElementDef0, '-' )
+        END IF
         IF (j>0) THEN
           !
           ! Read the element definition up to the next flag which specifies the
@@ -3298,7 +3358,8 @@ BLOCK
           ElementDef = ElementDef0
         END IF
         !  Calling GetDefs fills Def_Dofs arrays:
-        CALL GetDefs( ElementDef, Solver % Def_Dofs, Def_Dofs(:,:), .NOT. GotMesh )
+        CALL GetDefs( ElementDef, Solver % Def_Dofs, Def_Dofs(:,:), .NOT. GotMesh, &
+            Solver % DG)
         IF(j>0) THEN
           ElementDef0 = ElementDef0(j+1:)
         ELSE
@@ -3309,121 +3370,10 @@ BLOCK
       CALL PrepareMesh( CurrentModel, NewMesh, ParEnv % PEs>1 , Def_Dofs )
 END BLOCK
 
-CONTAINS
+!CONTAINS
 
 
 
-!------------------------------------------------------------------------------
-!> This subroutine is used to fill Def_Dofs array of the solver structure.
-!> Note that this subroutine makes no attempt to figure out the index of
-!> the body, so all bodies are assigned with the same element definition.
-!> A similar array of reduced dimension is also filled so as to figure out
-!> the maximal-complexity definition over all solvers which use the same
-!> global mesh.
-!------------------------------------------------------------------------------
-    SUBROUTINE GetDefs(ElementDef, Solver_Def_Dofs, Def_Dofs, Def_Dofs_Update)
-!------------------------------------------------------------------------------
-      CHARACTER(LEN=*), INTENT(IN) :: ElementDef     !< an element definition string
-      INTEGER, INTENT(OUT) :: Solver_Def_Dofs(:,:,:) !< Def_Dofs of the solver structure
-      INTEGER, INTENT(INOUT) :: Def_Dofs(:,:)        !< holds the maximal-complexity definition on global mesh
-      LOGICAL, INTENT(IN) :: Def_Dofs_Update         !< is .TRUE. when the definition refers to the global mesh
-!------------------------------------------------------------------------------
-      INTEGER, POINTER :: ind(:)
-      INTEGER, TARGET :: Family(10)
-      INTEGER :: i,j,l,n
-      LOGICAL :: stat
-
-      Family = [1,2,3,4,5,6,7,8,9,10]
-
-      ! The default assumption is that the given element definition is applied 
-      ! to all basic element families (note that the element sets 9 and 10 are
-      ! not included since the explicit choice of the target family is 
-      ! a part of the element definition string when the target index is
-      ! deduced to be 9 or 10).
-      !
-      ind => Family(1:8)
-      !
-      ! If the element family is specified, change the target family 
-      !
-      IF (SEQL(ElementDef, 'point') )     ind => Family(1:1)
-      IF (SEQL(ElementDef, 'line') )      ind => Family(2:2)
-      IF (SEQL(ElementDef, 'tri') )       ind => Family(3:3)
-      IF (SEQL(ElementDef, 'quad') )      ind => Family(4:4)
-      IF (SEQL(ElementDef, 'tetra') )     ind => Family(5:5)
-      IF (SEQL(ElementDef, 'pyramid') )   ind => Family(6:6)
-      IF (SEQL(ElementDef, 'prism') )     ind => Family(7:7)
-      IF (SEQL(ElementDef, 'brick') )     ind => Family(8:8)
-      IF (SEQL(ElementDef, 'tri_face') )  ind => Family(9:9)
-      IF (SEQL(ElementDef, 'quad_face') ) ind => Family(10:10)
-
-      n = INDEX(ElementDef,'-')
-      IF (n<=0) n=LEN_TRIM(ElementDef)
-          
-      j = INDEX( ElementDef(1:n), 'n:' )
-      IF ( j>0 ) THEN
-        READ( ElementDef(j+2:), * ) l
-        Solver_Def_Dofs(ind,:,1) = l
-        IF ( Def_Dofs_Update ) Def_Dofs(ind,1) = MAX(Def_Dofs(ind,1), l)
-      END IF
-          
-      j = INDEX( ElementDef(1:n), 'e:' )
-      IF ( j>0 ) THEN
-        READ( ElementDef(j+2:), * ) l
-        Solver_Def_Dofs(ind,:,2) = l
-        IF ( Def_Dofs_Update ) Def_Dofs(ind,2) = MAX(Def_Dofs(ind,2), l )
-      END IF
-          
-      j = INDEX( ElementDef(1:n), 'f:' )
-      IF ( j>0 ) THEN
-        READ( ElementDef(j+2:), * ) l
-        Solver_Def_Dofs(ind,:,3) = l
-        IF ( Def_Dofs_Update ) Def_Dofs(ind,3) = MAX(Def_Dofs(ind,3), l )
-      END IF
-          
-      j = INDEX( ElementDef(1:n), 'd:' )
-      IF ( j>0 ) THEN
-        READ( ElementDef(j+2:), * ) l
-
-        ! Zero value triggers discontinuous approximation within LoadMesh2,
-        ! substitute the default negative initialization value to avoid troubles:
-        IF (l == 0) l = -1
-
-        Solver_Def_Dofs(ind,:,4) = l
-        IF ( Def_Dofs_Update ) Def_Dofs(ind,4) = MAX(Def_Dofs(ind,4), l )
-      ELSE 
-        IF ( ListGetLogical( Solver % Values, &
-            'Discontinuous Galerkin', stat ) ) THEN
-          Solver_Def_Dofs(ind,:,4) = 0
-          IF ( Def_Dofs_Update ) Def_Dofs(ind,4) = MAX(Def_Dofs(ind,4),0 )
-        END IF
-      END IF
-          
-      j = INDEX( ElementDef(1:n), 'b:' )
-      IF ( j>0 ) THEN
-        READ( ElementDef(j+2:), * ) l
-        Solver_Def_Dofs(ind,:,5) = l
-        IF ( Def_Dofs_Update ) Def_Dofs(ind,5) = MAX(Def_Dofs(ind,5), l )
-      END IF
-          
-      j = INDEX( ElementDef(1:n), 'p:' )
-      IF ( j>0 ) THEN
-        IF ( ElementDef(j+2:j+2)=='%' ) THEN
-          ! Seeing a p-element definition starting as p:% means that a 
-          ! a special keyword construct is used so that the degree of
-          ! approximation can be evaluated by calling a MATC function.
-          ! This special case is handled elsewhere and we now postpone
-          ! setting the right value.
-          Solver_Def_Dofs(ind,:,6) = 0
-        ELSE
-          READ( ElementDef(j+2:), * ) l
-          Solver_Def_Dofs(ind,:,6) = l
-          IF ( Def_Dofs_Update ) Def_Dofs(ind,6) = MAX(Def_Dofs(ind,6), l )
-         END IF
-      END IF
-
-!------------------------------------------------------------------------------
-    END SUBROUTINE GetDefs
-!------------------------------------------------------------------------------
 
     
 
@@ -3518,7 +3468,7 @@ CONTAINS
       CALL Info(FuncName,'Setting only the active part of mesh')
       Perm => Solver % Variable % Perm
       IF(.NOT. ASSOCIATED(Perm)) THEN
-        CALL Fatal(FuncName,'Perm vector not assoicated!?')
+        CALL Fatal(FuncName,'Perm vector not associated!?')
       END IF
       ii = Mesh % NumberOfNodes
       NVert = COUNT( Perm(1:ii) > 0 )
@@ -3665,7 +3615,7 @@ CONTAINS
 
     CALL Info(FuncName,'Setting MMG2D Parameters',Level=20)
 
-    CALL Check_Parameters_Obsolite(SolverParams)
+    CALL Check_Parameters_Obsolete(SolverParams)
     
     ! Minimal mesh size:  hmin
     Hmin = ListGetConstReal( SolverParams, 'mmg hmin', Found)
@@ -3743,6 +3693,7 @@ CONTAINS
 
     ! [1/0], Avoid/allow surface modifications  
     Stat = ListGetLogical(SolverParams,'mmg No Angle detection',Found)
+    IF(.NOT. Found) Stat = ListGetLogical(SolverParams,'mmg External Angle detection',Found)
     IF (Found) THEN
       istat=0; IF(Stat) istat=1
       CALL MMG2D_SET_IPARAMETER(mmgMesh,mmgSol,MMG2D_IPARAM_angle,istat,ier)
@@ -3909,6 +3860,10 @@ CONTAINS
       ElementDef0 = ElementDef
       DO WHILE(.TRUE.)
         j = INDEX( ElementDef0, '-' )
+        IF (j == 1) THEN
+          ElementDef0 = ElementDef0(2:)
+          j = INDEX( ElementDef0, '-' )
+        END IF
         IF (j>0) THEN
           !
           ! Read the element definition up to the next flag which specifies the
@@ -3919,7 +3874,8 @@ CONTAINS
           ElementDef = ElementDef0
         END IF
         !  Calling GetDefs fills Def_Dofs arrays:
-        CALL GetDefs( ElementDef, Solver % Def_Dofs, Def_Dofs(:,:), .NOT. GotMesh )
+        CALL GetDefs( ElementDef, Solver % Def_Dofs, Def_Dofs(:,:), .NOT. GotMesh, &
+            Solver % DG)
         IF(j>0) THEN
           ElementDef0 = ElementDef0(j+1:)
         ELSE
@@ -3929,119 +3885,9 @@ CONTAINS
 
       CALL PrepareMesh( CurrentModel, Mesh, ParEnv % PEs>1 , Def_Dofs )
 
-CONTAINS
+!CONTAINS
 
-!------------------------------------------------------------------------------
-!> This subroutine is used to fill Def_Dofs array of the solver structure.
-!> Note that this subroutine makes no attempt to figure out the index of
-!> the body, so all bodies are assigned with the same element definition.
-!> A similar array of reduced dimension is also filled so as to figure out
-!> the maximal-complexity definition over all solvers which use the same
-!> global mesh.
-!------------------------------------------------------------------------------
-    SUBROUTINE GetDefs(ElementDef, Solver_Def_Dofs, Def_Dofs, Def_Dofs_Update)
-!------------------------------------------------------------------------------
-      CHARACTER(LEN=*), INTENT(IN) :: ElementDef     !< an element definition string
-      INTEGER, INTENT(OUT) :: Solver_Def_Dofs(:,:,:) !< Def_Dofs of the solver structure
-      INTEGER, INTENT(INOUT) :: Def_Dofs(:,:)        !< holds the maximal-complexity definition on global mesh
-      LOGICAL, INTENT(IN) :: Def_Dofs_Update         !< is .TRUE. when the definition refers to the global mesh
-!------------------------------------------------------------------------------
-      INTEGER, POINTER :: ind(:)
-      INTEGER, TARGET :: Family(10)
-      INTEGER :: i,j,l,n
-      LOGICAL :: stat
 
-      Family = [1,2,3,4,5,6,7,8,9,10]
-
-      ! The default assumption is that the given element definition is applied 
-      ! to all basic element families (note that the element sets 9 and 10 are
-      ! not included since the explicit choice of the target family is 
-      ! a part of the element definition string when the target index is
-      ! deduced to be 9 or 10).
-      !
-      ind => Family(1:8)
-      !
-      ! If the element family is specified, change the target family 
-      !
-      IF (SEQL(ElementDef, 'point') )     ind => Family(1:1)
-      IF (SEQL(ElementDef, 'line') )      ind => Family(2:2)
-      IF (SEQL(ElementDef, 'tri') )       ind => Family(3:3)
-      IF (SEQL(ElementDef, 'quad') )      ind => Family(4:4)
-      IF (SEQL(ElementDef, 'tetra') )     ind => Family(5:5)
-      IF (SEQL(ElementDef, 'pyramid') )   ind => Family(6:6)
-      IF (SEQL(ElementDef, 'prism') )     ind => Family(7:7)
-      IF (SEQL(ElementDef, 'brick') )     ind => Family(8:8)
-      IF (SEQL(ElementDef, 'tri_face') )  ind => Family(9:9)
-      IF (SEQL(ElementDef, 'quad_face') ) ind => Family(10:10)
-
-      n = INDEX(ElementDef,'-')
-      IF (n<=0) n=LEN_TRIM(ElementDef)
-          
-      j = INDEX( ElementDef(1:n), 'n:' )
-      IF ( j>0 ) THEN
-        READ( ElementDef(j+2:), * ) l
-        Solver_Def_Dofs(ind,:,1) = l
-        IF ( Def_Dofs_Update ) Def_Dofs(ind,1) = MAX(Def_Dofs(ind,1), l)
-      END IF
-          
-      j = INDEX( ElementDef(1:n), 'e:' )
-      IF ( j>0 ) THEN
-        READ( ElementDef(j+2:), * ) l
-        Solver_Def_Dofs(ind,:,2) = l
-        IF ( Def_Dofs_Update ) Def_Dofs(ind,2) = MAX(Def_Dofs(ind,2), l )
-      END IF
-          
-      j = INDEX( ElementDef(1:n), 'f:' )
-      IF ( j>0 ) THEN
-        READ( ElementDef(j+2:), * ) l
-        Solver_Def_Dofs(ind,:,3) = l
-        IF ( Def_Dofs_Update ) Def_Dofs(ind,3) = MAX(Def_Dofs(ind,3), l )
-      END IF
-          
-      j = INDEX( ElementDef(1:n), 'd:' )
-      IF ( j>0 ) THEN
-        READ( ElementDef(j+2:), * ) l
-
-        ! Zero value triggers discontinuous approximation within LoadMesh2,
-        ! substitute the default negative initialization value to avoid troubles:
-        IF (l == 0) l = -1
-
-        Solver_Def_Dofs(ind,:,4) = l
-        IF ( Def_Dofs_Update ) Def_Dofs(ind,4) = MAX(Def_Dofs(ind,4), l )
-      ELSE 
-        IF ( ListGetLogical( Solver % Values, &
-            'Discontinuous Galerkin', stat ) ) THEN
-          Solver_Def_Dofs(ind,:,4) = 0
-          IF ( Def_Dofs_Update ) Def_Dofs(ind,4) = MAX(Def_Dofs(ind,4),0 )
-        END IF
-      END IF
-          
-      j = INDEX( ElementDef(1:n), 'b:' )
-      IF ( j>0 ) THEN
-        READ( ElementDef(j+2:), * ) l
-        Solver_Def_Dofs(ind,:,5) = l
-        IF ( Def_Dofs_Update ) Def_Dofs(ind,5) = MAX(Def_Dofs(ind,5), l )
-      END IF
-          
-      j = INDEX( ElementDef(1:n), 'p:' )
-      IF ( j>0 ) THEN
-        IF ( ElementDef(j+2:j+2)=='%' ) THEN
-          ! Seeing a p-element definition starting as p:% means that a 
-          ! a special keyword construct is used so that the degree of
-          ! approximation can be evaluated by calling a MATC function.
-          ! This special case is handled elsewhere and we now postpone
-          ! setting the right value.
-          Solver_Def_Dofs(ind,:,6) = 0
-        ELSE
-          READ( ElementDef(j+2:), * ) l
-          Solver_Def_Dofs(ind,:,6) = l
-          IF ( Def_Dofs_Update ) Def_Dofs(ind,6) = MAX(Def_Dofs(ind,6), l )
-         END IF
-      END IF
-
-!------------------------------------------------------------------------------
-    END SUBROUTINE GetDefs
-!------------------------------------------------------------------------------
 
 END SUBROUTINE Finalize_MMG_Mesh
     

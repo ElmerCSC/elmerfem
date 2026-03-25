@@ -1,4 +1,25 @@
-
+!/*****************************************************************************/
+! *
+! *  Elmer, A Finite Element Software for Multiphysical Problems
+! *
+! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
+! * 
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
+! *
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
+! *
+! *****************************************************************************/
 !------------------------------------------------------------------------------
 !>  Calculate the charge density using the eigenvectors of variable 
 !>  "Wavefunctions" of eigenproblem solver 
@@ -693,7 +714,7 @@ SUBROUTINE PoissonSolver( Model, Solver, dt, TransientSimulation )
     GlobSize = SIZE(Solver % Variable % Values)
     ALLOCATE( OldSolution(GlobSize) , STAT=istat )
     IF (istat /= 0) CALL ERROR('PoissonSolver', &
-        'Error when allocating memory for previous solution strorage.')
+        'Error when allocating memory for previous solution storage.')
     
     OldSolution = 0.0d0
     
@@ -1177,7 +1198,7 @@ CONTAINS
             Coefficients(1:3)
         CALL INFO('PoissonSolver, GRPulay3', Message)
         
-        WRITE(Message,*) 'Lagrange multiplier of the minization problem', &
+        WRITE(Message,*) 'Lagrange multiplier of the minimization problem', &
             Coefficients(4)
         CALL INFO('PoissonSolver, GRPulay3', Message)
         

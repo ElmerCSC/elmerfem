@@ -1,26 +1,25 @@
-!/*****************************************************************************
+!/*****************************************************************************/
 ! *
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-!
 !/******************************************************************************
 ! *
 ! *  Authors: Juha Ruokolainen, Peter Råback
@@ -33,6 +32,12 @@
 ! *  Original Date: 16.11.2005
 ! *
 ! *****************************************************************************/
+! *  Modified by: Cruz Garcia Molina
+! *  Email:   Cruz.Garcia-molina@univ-grenoble-alpes.fr
+! *  Address: IGE - OSUG B
+! *           460 rue de la Piscine 
+! *           Domaine universitaire 
+! *           38400 St Martin d'Hères, France
 !------------------------------------------------------------------------------
 !>  Renormalizes the level-set function using straight-forward geometric search.
 !>  Also includes an option to do the convection at the same time as an alternative
@@ -68,14 +73,18 @@
      INTEGER, POINTER :: SurfPerm(:)
      REAL(KIND=dp), POINTER :: Surface(:),Distance(:), Surf(:)
      REAL(KIND=dp), ALLOCATABLE :: ZeroNodes(:,:,:), Direction(:)
+     REAL(KIND=dp), ALLOCATABLE :: send(:),recv(:),recZeroNodes(:,:,:)
      INTEGER, POINTER :: DistancePerm(:)
-     INTEGER :: ZeroLevels, ReinitializeInterval, ExtractInterval
+     INTEGER :: ZeroLevels, ReinitializeInterval, ExtractInterval, &
+             & ierr, request, recZeroLevels,aux,nPEs
+     INTEGER,ALLOCATABLE,SAVE :: pZeroLevels(:),disps(:)
      LOGICAL :: Reinitialize, Extrct
+     LOGICAL,SAVE :: Parallel
      REAL(KIND=dp) :: Relax, dt, r, NarrowBand, DsMax
      REAL(KIND=dp), ALLOCATABLE :: ElemVelo(:,:), SurfaceFlux(:)
      REAL(KIND=dp) :: at,totat,st,totst
      CHARACTER(LEN=MAX_NAME_LEN) :: LevelSetVariableName
-     
+
      SAVE ElementNodes, ElemVelo, Direction, ZeroNodes, TimesVisited, &
          Distance, DistancePerm, ExtractAllocated, DistanceAllocated
 
@@ -135,6 +144,9 @@
 !    Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
      IF ( .NOT. ExtractAllocated ) THEN
+       Parallel = ( ParEnv % PEs > 1 )
+       IF (Parallel) ALLOCATE(pZeroLevels(ParEnv % PEs),disps(ParEnv % PEs))
+       
        N = Solver % Mesh % MaxElementNodes
        ALLOCATE( ElementNodes % x( N ), ElementNodes % y( N ), ElementNodes % z( N ),   &
            ElemVelo( 2, N), ZeroNodes(Solver % Mesh % NumberOfBulkElements,2,2), &
@@ -166,12 +178,51 @@
      st = CPUTIme()-st
      WRITE(Message,'(a,F8.2)') 'Zero level extracted in time (s):',st
      CALL Info( 'LevelSetDistance',Message, Level=4 )
+     recZeroLevels = ZeroLevels
+     
+     ! BEGIN of SENDING-RECEIVING ZeroLevels array
+     IF (Parallel) THEN
+#if 0 
+       BLOCK
+         INTEGER status(MPI_STATUS_SIZE)     
 
+         nPEs=ParEnv % PEs
+         CALL MPI_AllGather(ZeroLevels,1,MPI_INTEGER,pZeroLevels,1,MPI_INTEGER,ELMER_COMM_WORLD, ierr)
+         recZeroLevels = SUM(pZeroLevels(1:nPEs))
+         ALLOCATE(send(ZeroLevels),recv(recZeroLevels),recZeroNodes(recZeroLevels,2,2))
+         disps(1)=0
+         Do i=2,nPes
+           disps(i)=disps(i-1)+pZeroLevels(i-1)
+         END DO
+         DO i=1,2
+           DO j=1,2
+             IF (ZeroLevels > 0) send(1:ZeroLevels) = ZeroNodes(1:ZeroLevels,i,j)
+             CALL MPI_AllGatherv(send,ZeroLevels,MPI_DOUBLE_PRECISION,recv,&
+                 pZeroLevels,disps,MPI_DOUBLE_PRECISION,ELMER_COMM_WORLD, ierr)
+             recZeroNodes(1:recZeroLevels,i,j) = recv(1:recZeroLevels)
+           END DO
+         END DO
+
+         ZeroLevels=recZeroLevels
+         IF (SIZE(ZeroNodes,1) < ZeroLevels) THEN
+           DEALLOCATE(ZeroNodes)
+           ALLOCATE(ZeroNodes(ZeroLevels,2,2))
+         END IF
+         ZeroNodes(1:ZeroLevels,1:2,1:2) = recZeroNodes(1:recZeroLevels,1:2,1:2)
+
+         DEALLOCATE(send,recv,recZeroNodes)         
+       END BLOCK
+#else
+       CALL Fatal('LevelSetDistance','Subroutine not compiled with MPI!')
+#endif
+     ENDIF
+     ! END of SENDING-RECEIVING ZeroLevels array
+     
      IF( ZeroLevels == 0) THEN
        CALL Warn('LevelSetDistance','The does not seem to be a zero level-set present, exiting...')
        RETURN
      END IF
-
+     
      IF(.NOT. Reinitialize) THEN
        CALL Info('LevelSetDistance','Exiting without reinitialization')
        RETURN
@@ -306,7 +357,7 @@ CONTAINS
       Element => Solver % Mesh % Elements(i)
       n = Element % TYPE % NumberOfNodes
       NodeIndexes => Element % NodeIndexes
-      
+      IF ( Element % PartIndex /= ParEnv % MyPE ) CYCLE !! ommit halo elements
       IF ( ALL( Surface(SurfPerm(NodeIndexes)) < 0) .OR. &
           ALL( Surface(SurfPerm(NodeIndexes)) > 0) ) CYCLE
       

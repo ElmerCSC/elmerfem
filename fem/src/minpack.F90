@@ -27,7 +27,7 @@ module minpack_module
             import :: wp
             implicit none
             integer,intent(in) :: n !! the number of variables.
-            real(wp),intent(in) :: x(n) !! independant variable vector
+            real(wp),intent(in) :: x(n) !! independent variable vector
             real(wp),intent(out) :: fvec(n) !! value of function at `x`
             integer,intent(inout) :: iflag !! set to <0 to terminate execution
         end subroutine func
@@ -38,7 +38,7 @@ module minpack_module
             implicit none
             integer,intent(in) :: m !! the number of functions.
             integer,intent(in) :: n !! the number of variables.
-            real(wp),intent(in) :: x(n) !! independant variable vector
+            real(wp),intent(in) :: x(n) !! independent variable vector
             real(wp),intent(out) :: fvec(m) !! value of function at `x`
             integer,intent(inout) :: iflag !! the value of iflag should not be changed unless
                                            !! the user wants to terminate execution of lmdif.
@@ -50,7 +50,7 @@ module minpack_module
             import :: wp
             implicit none
             integer,intent(in)                       :: n !! the number of variables.
-            real(wp),dimension(n),intent(in)         :: x !! independant variable vector
+            real(wp),dimension(n),intent(in)         :: x !! independent variable vector
             integer,intent(in)                       :: ldfjac !! leading dimension of the array fjac.
             real(wp),dimension(n),intent(out)        :: fvec !! value of function at `x`
             real(wp),dimension(ldfjac,n),intent(out) :: fjac !! jacobian matrix at `x`
@@ -79,7 +79,7 @@ module minpack_module
                                            !! the value of iflag should not be changed by fcn unless
                                            !! the user wants to terminate execution of lmder.
                                            !! in this case set iflag to a negative integer.
-            real(wp),intent(in) :: x(n) !! independant variable vector
+            real(wp),intent(in) :: x(n) !! independent variable vector
             real(wp),intent(inout) :: fvec(m) !! value of function at `x`
             real(wp),intent(inout) :: fjac(ldfjac,n) !! jacobian matrix at `x`
         end subroutine fcn_lmder
@@ -97,7 +97,7 @@ module minpack_module
                                        !! the value of iflag should not be changed by fcn unless
                                        !! the user wants to terminate execution of lmstr.
                                        !! in this case set iflag to a negative integer.
-        real(wp) :: x(n) !! independant variable vector
+        real(wp) :: x(n) !! independent variable vector
         real(wp) :: fvec(m) !! value of function at `x`
         real(wp) :: fjrow(n) !! jacobian row
         end subroutine fcn_lmstr

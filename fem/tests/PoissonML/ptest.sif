@@ -1,0 +1,48 @@
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+! Output File = "ptest.dat"
+End
+
+Body 1
+  Equation = 1
+  Body Force = 1
+End
+
+Body Force 1 :: Source = Real 1
+Equation 1 :: Active Solvers(1) = 1
+
+Solver 1
+  Equation = "Poisson"
+
+  Variable = "Potential"
+  Procedure = "PoissonML" "PoissonSolver"
+
+  Element = "p:9"
+  No Matrix = True
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = CG
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1e-8
+  Linear System Timing = True
+  Linear System Residual Output = 1
+  Steady State Convergence Tolerance = 1e-09
+End
+
+Boundary Condition 1
+  Target Boundaries(4) = 1 2 3 4
+  Potential = Real 1
+End
+
+Solver 1 :: Reference Norm = Real 0.17158061
+RUN

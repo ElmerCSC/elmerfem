@@ -49,6 +49,8 @@ MACRO(ADD_ELMER_TEST TestName)
         COMMAND ${CMAKE_COMMAND}
         -DCMAKE_MODULE_PATH=${CMAKE_MODULE_PATH}
         -DELMERGRID_BIN=${ELMERGRID_BIN}
+        -DVIEWFACTORS_BIN=${VIEWFACTORS_BIN}
+        -DRADIATORS_BIN=${RADIATORS_BIN}
         -DELMERSOLVER_BIN=${ELMERSOLVER_BIN}
         -DFINDNORM_BIN=${FINDNORM_BIN}
         -DMESH2D_BIN=${MESH2D_BIN}
@@ -71,6 +73,11 @@ MACRO(ADD_ELMER_TEST TestName)
         FOREACH(lbl ${_parsedArgs_LABELS})
           SET_PROPERTY(TEST ${_this_test_name} APPEND PROPERTY LABELS ${lbl})
         ENDFOREACH()
+      ENDIF()
+      IF(WITH_MPI)
+        # Tell ctest how many processors this test requires.
+        SET_TESTS_PROPERTIES(${_this_test_name} PROPERTIES
+          PROCESSORS ${n})
       ENDIF()
       IF(${n} GREATER 0)
         # Avoid running tests using the same directory concurrently.
@@ -141,13 +148,13 @@ MACRO(RUN_ELMER_TEST)
   IF(WITH_MPI)
     EXECUTE_PROCESS(COMMAND "${MPIEXEC}" ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_NTASKS} ${MPIEXEC_PREFLAGS} ${ELMERSOLVER_BIN} ${MPIEXEC_POSTFLAGS}
       OUTPUT_VARIABLE TEST_STDOUT_VARIABLE
-      ERROR_VARIABLE TEST_ERROR_VARIABLE)
+      ERROR_VARIABLE TEST_STDERR_VARIABLE)
       FILE(WRITE "test-stdout_${MPIEXEC_NTASKS}.log" "${TEST_STDOUT_VARIABLE}")
       FILE(WRITE "test-stderr_${MPIEXEC_NTASKS}.log" "${TEST_STDERR_VARIABLE}")
   ELSE()
     EXECUTE_PROCESS(COMMAND ${ELMERSOLVER_BIN}
       OUTPUT_VARIABLE TEST_STDOUT_VARIABLE
-      ERROR_VARIABLE TEST_ERROR_VARIABLE)
+      ERROR_VARIABLE TEST_STDERR_VARIABLE)
       FILE(WRITE "test-stdout.log" "${TEST_STDOUT_VARIABLE}")
       FILE(WRITE "test-stderr.log" "${TEST_STDERR_VARIABLE}")
   ENDIF()
@@ -166,6 +173,18 @@ MACRO(RUN_ELMER_TEST)
   ENDIF()
   IF(NOT RES EQUAL "1")
     MESSAGE(FATAL_ERROR "Test failed")
+  ELSE()
+    STRING(REGEX MATCH
+      "SOLVER TOTAL TIME\\(CPU,REAL\\):[ \t]*([0-9]+\\.[0-9]+)[ \t]+([0-9]+\\.[0-9]+)" 
+      SOLVERTIMELINE_MATCH "${TEST_STDOUT_VARIABLE}")
+    STRING(REGEX REPLACE 
+      "SOLVER TOTAL TIME\\(CPU,REAL\\):[ \t]*([0-9]+\\.[0-9]+)[ \t]+([0-9]+\\.[0-9]+)" 
+      "\\1" TIME_CPU "${SOLVERTIMELINE_MATCH}")
+    STRING(REGEX REPLACE 
+      "SOLVER TOTAL TIME\\(CPU,REAL\\):[ \t]*([0-9]+\\.[0-9]+)[ \t]+([0-9]+\\.[0-9]+)" 
+      "\\2" TIME_REAL "${SOLVERTIMELINE_MATCH}")
+    message("<DartMeasurement name=\"CPU_Time\" type=\"numeric/double\"> ${TIME_CPU} </DartMeasurement>")
+    message("<DartMeasurement name=\"REAL_Time\" type=\"numeric/double\"> ${TIME_REAL} </DartMeasurement>")
   ENDIF()
 ENDMACRO()
 

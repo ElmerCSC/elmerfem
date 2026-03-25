@@ -4,23 +4,22 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-!
 !/******************************************************************************
 ! *
 ! *  Module for solving heating equation.
@@ -144,7 +143,7 @@ SUBROUTINE HeatSolver_init( Model,Solver,dt,Transient )
   END IF
 
   ! If library adaptivity is compiled with, use that by default.
-#ifdef LIBRARY_ADAPTIVIVTY
+#ifdef LIBRARY_ADAPTIVITY
   CALL ListAddNewLogical(Params,'Library Adaptivity',.TRUE.)
 #endif
   
@@ -160,6 +159,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE DefUtils
   USE Radiation
+  USE Adaptive
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
@@ -186,32 +186,32 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   CHARACTER(*), PARAMETER :: Caller = 'HeatSolver'
 
   INTERFACE
-    FUNCTION HeatSolver_Boundary_Residual( Model,Edge,Mesh,Quant,Perm,Gnorm ) RESULT(Indicator)
+    SUBROUTINE HeatSolver_Boundary_Residual( Model,Edge,Mesh,Quant,Perm,Gnorm,Indicator)
       USE Types
       TYPE(Element_t), POINTER :: Edge
       TYPE(Model_t) :: Model
       TYPE(Mesh_t), POINTER :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
       INTEGER :: Perm(:)
-    END FUNCTION HeatSolver_Boundary_Residual
+    END SUBROUTINE HeatSolver_Boundary_Residual
 
-    FUNCTION HeatSolver_Edge_Residual( Model,Edge,Mesh,Quant,Perm ) RESULT(Indicator)
+    SUBROUTINE HeatSolver_Edge_Residual( Model,Edge,Mesh,Quant,Perm,Indicator)
       USE Types
       TYPE(Element_t), POINTER :: Edge
       TYPE(Model_t) :: Model
       TYPE(Mesh_t), POINTER :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2)
       INTEGER :: Perm(:)
-    END FUNCTION HeatSolver_Edge_Residual
+    END SUBROUTINE HeatSolver_Edge_Residual
 
-    FUNCTION HeatSolver_Inside_Residual( Model,Element,Mesh,Quant,Perm, Fnorm ) RESULT(Indicator)
+    SUBROUTINE HeatSolver_Inside_Residual( Model,Element,Mesh,Quant,Perm, Fnorm,Indicator)
       USE Types
       TYPE(Element_t), POINTER :: Element
       TYPE(Model_t) :: Model
       TYPE(Mesh_t), POINTER :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
       INTEGER :: Perm(:)
-    END FUNCTION HeatSolver_Inside_Residual
+    END SUBROUTINE HeatSolver_Inside_Residual
   END INTERFACE
   
   IF (.NOT. ASSOCIATED(Solver % Matrix)) RETURN
@@ -429,13 +429,39 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
     END IF
     
     IF (ALLOCATED(RadiatorPowers)) DEALLOCATE( RadiatorPowers)
+
+
+    BLOCK 
+      CHARACTER(:), ALLOCATABLE :: str
+      TYPE(ValueList_t), POINTER :: BC
+      
+      str = GetVarName(Solver % Variable)//' Nitsche'
+      
+      IF( ListCheckPresentAnyBC(Model, str) ) THEN
+        CALL Info(Caller,"Setting BC's weakly using the Nitshce method!",Level=6)
         
+        Active = GetNOFBoundaryElements()
+        DO t=1,Active
+          Element => GetBoundaryElement(t)
+          n  = GetElementNOFNodes()
+          nd = GetElementNOFDOFs()
+          
+          BC => GetBC(Element)
+          IF (.NOT.ASSOCIATED(BC)) CYCLE
+          
+          CALL LocalNitscheBC( Element, n, BC, str )
+        END DO
+      END IF
+    END BLOCK
+      
+
+    
     CALL DefaultFinishBoundaryAssembly()
         
     CALL DefaultFinishAssembly()
 
     CALL DefaultDirichletBCs()
-
+    
     ! Check stepsize for nonlinear iteration
     !------------------------------------------------------------------------------
     IF( DefaultLinesearch( Converged ) ) GOTO 100
@@ -460,6 +486,89 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
  END IF
    
 CONTAINS 
+
+
+  SUBROUTINE LocalNitscheBC(Element,n,BC,str)
+    TYPE(Element_t), POINTER :: Element
+    INTEGER :: n
+    TYPE(ValueList_t), POINTER :: BC
+    CHARACTER(:), ALLOCATABLE :: str
+
+    LOGICAL :: AllocationsDone = .FALSE.
+    TYPE(Element_t), POINTER :: Parent
+    REAL(KIND=dp), ALLOCATABLE, SAVE :: STIFF(:,:), FORCE(:), Basis(:), pBasis(:), pdBasisdx(:,:), Dnodal(:)
+    REAL(KIND=dp) :: DetJ, D, Esize, Gamma, nrm(3), weight, u, v, w
+    LOGICAL :: Stat
+    INTEGER, ALLOCATABLE, SAVE :: Indexes(:), pIndexes(:), Ind(:)
+    INTEGER :: i,j,t,m,nd,pnd,ii
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Nodes_t), SAVE :: Nodes, PNodes
+    
+    IF(.NOT. AllocationsDone) THEN
+      m = Mesh % MaxElementDofs
+      ALLOCATE(STIFF(m,m),FORCE(m),Basis(m),pBasis(m),pdBasisdx(m,3),Dnodal(m),Indexes(m),pIndexes(m),Ind(m))
+      AllocationsDone = .TRUE.
+    END IF
+
+    Dnodal(1:n) = GetReal(BC,str,Found)
+    IF (.NOT. Found) RETURN
+
+    Gamma = ListGetCReal(BC,'Nitsche Penalty')
+
+    CALL GetElementNodes( Nodes, Element )
+    Esize = ElementDiameter(Element, Nodes)
+    
+    Parent => Element % BoundaryInfo % Left
+    CALL GetElementNodes( PNodes, Parent )
+
+    nd  = GetElementDOFs(Indexes, Element)
+    pnd = GetElementDOFs(pIndexes, Parent )
+
+    DO i=1,nd
+      DO ii=1,pnd
+        IF ( Indexes(i) == pIndexes(ii) ) THEN
+           Ind(i) = ii; EXIT
+        END IF
+      END DO
+    END DO
+    
+    STIFF = 0.0_dp
+    FORCE = 0.0_dp
+    
+    ! Numerical integration:
+    !----------------------
+    IP = GaussPoints( Element )
+    DO t=1,IP % n
+      ! Basis function values & derivatives at the integration point:
+      !--------------------------------------------------------------
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+                 IP % W(t), detJ, Basis )
+      weight = DetJ * IP % s(t)
+      
+      ! Normal vector of the surface
+      CALL GetParentUVW( Element, nd, Parent, pnd, U, V, W, Basis )
+      stat = ElementInfo(Parent,PNodes,U,V,W,detJ,pBasis,pdBasisdx)
+
+      Nrm = NormalVector( Element, Nodes, IP % u(t), IP % v(t), .TRUE. )
+
+      ! Target value at integration point
+      D = SUM(Dnodal(1:n) * Basis(1:n))
+      
+      DO i=1,nd
+        DO j=1,nd
+          STIFF(i,j) = STIFF(i,j) + weight * SUM(pdBasisdx(Ind(j),:)*Nrm) * Basis(i)
+          STIFF(i,j) = STIFF(i,j) + weight * SUM(pdBasisdx(Ind(i),:)*Nrm) * Basis(j)
+          STIFF(i,j) = STIFF(i,j) + weight * Basis(i) * Basis(j) / Esize / Gamma
+        END DO
+        FORCE(i) = FORCE(i) + weight * d * SUM(pdBasisdx(Ind(i),:)*Nrm)
+        FORCE(i) = FORCE(i) + weight * d * Basis(i) / Esize / Gamma
+      END DO
+    END DO    
+
+    CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element)
+    
+  END SUBROUTINE LocalNitscheBC
+    
   
 
 !------------------------------------------------------------------------------
@@ -1002,6 +1111,7 @@ CONTAINS
     ! Is this a radiator BC? 
     TorBC = ListGetElementLogical( TorBC_h, Element, Found = Found ) 
     TorBC = TorBC .AND. .NOT. DiffuseGray
+    TorBC = TorBC .AND. Element % PartIndex == ParEnv % myPE
 
         
     DO t=1,IP % n
@@ -1145,8 +1255,9 @@ CONTAINS
      NoActive = 0
      
      DO j=1,nb
-       bindex = j + Mesh % NumberOfBulkElements
-       Element => Mesh % Elements(bindex)
+!      bindex = j + Mesh % NumberOfBulkElements
+!      Element => Mesh % Elements(bindex)
+       Element => GetBoundaryElement(j)
 
        BC => GetBC(Element)
        IF(.NOT. ASSOCIATED( BC ) ) CYCLE
@@ -1242,6 +1353,7 @@ CONTAINS
 
 !$OMP THREADPRIVATE(Nodes)
 !------------------------------------------------------------------------------
+    IF(Element % PartIndex /= ParEnv % myPE ) RETURN
     
     BC => GetBC(Element)
     IF (.NOT.ASSOCIATED(BC) ) RETURN
@@ -1992,7 +2104,7 @@ END SUBROUTINE HeatSolver
 
 
 !------------------------------------------------------------------------------
-  FUNCTION HeatSolver_Boundary_Residual( Model, Edge, Mesh, Quant, Perm,Gnorm ) RESULT( Indicator )
+  SUBROUTINE HeatSolver_Boundary_Residual( Model, Edge, Mesh, Quant, Perm,Gnorm, Indicator )
 !------------------------------------------------------------------------------
      USE DefUtils
      USE Radiation
@@ -2274,13 +2386,13 @@ END SUBROUTINE HeatSolver
 !    Gnorm = EdgeLength * Gnorm
      Indicator = EdgeLength * ResidualNorm
 !------------------------------------------------------------------------------
-   END FUNCTION HeatSolver_Boundary_Residual
+   END SUBROUTINE HeatSolver_Boundary_Residual
 !------------------------------------------------------------------------------
 
 
 
 !------------------------------------------------------------------------------
-  FUNCTION HeatSolver_Edge_Residual(Model,Edge,Mesh,Quant,Perm) RESULT( Indicator )
+  SUBROUTINE HeatSolver_Edge_Residual(Model,Edge,Mesh,Quant,Perm, Indicator )
 !------------------------------------------------------------------------------
      USE DefUtils
      IMPLICIT NONE
@@ -2463,13 +2575,13 @@ END SUBROUTINE HeatSolver
      IF (dim==3) EdgeLength = SQRT(EdgeLength)
      Indicator = EdgeLength * ResidualNorm
 !------------------------------------------------------------------------------
-   END FUNCTION HeatSolver_Edge_Residual
+   END SUBROUTINE HeatSolver_Edge_Residual
 !------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
-   FUNCTION HeatSolver_Inside_Residual( Model, Element, Mesh, &
-        Quant, Perm, Fnorm ) RESULT( Indicator )
+   SUBROUTINE HeatSolver_Inside_Residual( Model, Element, Mesh, &
+        Quant, Perm, Fnorm, Indicator )
 !------------------------------------------------------------------------------
      USE DefUtils
 !------------------------------------------------------------------------------
@@ -2798,5 +2910,5 @@ END SUBROUTINE HeatSolver
 !    Fnorm = Element % hk**2 * Fnorm
      Indicator = Element % hK**2 * ResidualNorm
 !------------------------------------------------------------------------------
-   END FUNCTION HeatSolver_Inside_Residual
+   END SUBROUTINE HeatSolver_Inside_Residual
 !------------------------------------------------------------------------------

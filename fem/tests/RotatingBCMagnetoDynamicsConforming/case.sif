@@ -10,7 +10,7 @@
 !
 ! For other BCs it uses elimination which assumes conforming meshes.
 ! Elimination is carried out simply by using permutation vector.
-! Particularly With skew the elimination seems towork better.
+! Particularly with skew the elimination seems to work better.
 !
 ! P.R. / 13.5.2019 
 !---------------------------------------------------------------------
@@ -266,8 +266,9 @@ Boundary Condition 3
   Rotational Projector = Logical True
   Rotational Projector Periods = Integer 4
 
-  Level Projector = Logical True
-  Level Projector Generic = Logical True
+  Level Projector = True
+  Level Projector Generic = True
+  Level Projector Strong = False
 ! electric conductivity zero so we can skip this
   Projector Skip Nodes = Logical True
 

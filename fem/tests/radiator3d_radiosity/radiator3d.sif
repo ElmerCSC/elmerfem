@@ -39,7 +39,6 @@ End
 Material 1
    Density = 1.0
    Heat Conductivity = 1.0
-   Emissivity = 0.9
 End
 
 
@@ -59,6 +58,7 @@ Solver 1
   Nonlinear System Newton After Tolerance = 1.0e-5
   Nonlinear System Newton After Iterations = 1
   Nonlinear System Max Iterations = 50
+  Nonlinear System Consistent Norm = True
   Nonlinear System Relaxation Factor = 0.3
   Nonlinear System Convergence Tolerance = 1.0e-7
 
@@ -91,10 +91,11 @@ Solver 2
   Equation = SaveScalars
   Procedure = "SaveData" "SaveScalars"
 
+  Parallel Reduce = True
+
   Variable 1 = Temperature Loads
   Operator 1 = boundary sum
   Mask Name 1 = intflux 
-
 
   Save Coordinates(4,3) = Real \
           -1.0 0.0 -0.75 \
@@ -133,6 +134,10 @@ End
 Boundary Condition 3
   Name = "Internal"
   Target Boundaries(3) = 2 4 5
+
+  Initial Condition = 1
+
+  Emissivity = 0.9
 
   Radiator BC = Logical True
   Radiation = Diffuse Gray

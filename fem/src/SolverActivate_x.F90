@@ -23,7 +23,8 @@
 !
 
 SUBROUTINE SolverActivate_x(Model,Solver,dt,Transient)
-  USE MainUtils
+  USE Types
+  USE MainUtils, ONLY : SolverActivate
   TYPE(Model_t)::Model
   TYPE(Solver_t),POINTER::Solver
   REAL(KIND=dp)::dt

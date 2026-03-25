@@ -5,4 +5,4 @@ CONFIGURE_FILE( radiator3d.sif radiator3d.sif COPYONLY)
 
 file(COPY box.grd ELMERSOLVER_STARTINFO  DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(radiator3d_radiosity LABELS radiator)
+ADD_ELMER_TEST(radiator3d_radiosity NPROCS 1 2 4 8 LABELS radiator)

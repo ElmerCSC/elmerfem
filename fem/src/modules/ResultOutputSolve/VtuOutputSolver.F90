@@ -4,23 +4,25 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
+
 MODULE VtuXMLFile
+
   USE DefUtils 
   USE MeshUtils
   USE SolverUtils
@@ -83,7 +85,7 @@ CONTAINS
   ! and honoring discontinuities. 
   !-----------------------------------------------------------------------
   SUBROUTINE AverageBodyFields( Mesh ) 
-    
+    USE MeshUtils, ONLY : CalculateBodyAverage    
     TYPE(Mesh_t), POINTER :: Mesh
 
     TYPE(Variable_t), POINTER :: Var, Var1
@@ -256,6 +258,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 
   USE VtuXMLFile
+  USE MeshUtils, ONLY : CalculateBodyAverage
     
   IMPLICIT NONE
   TYPE(Solver_t) :: Solver
@@ -265,8 +268,8 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   
   INTEGER, SAVE :: nTime = 0
   LOGICAL :: GotIt, Parallel, FixedMesh, DG, DN, DoAve
-  CHARACTER(MAX_NAME_LEN) :: FilePrefix
-  CHARACTER(MAX_NAME_LEN) :: BaseFile, VtuFile, PvtuFile, PvdFile, DataSetFile
+  CHARACTER(MAX_PATH_LEN) :: FilePrefix
+  CHARACTER(MAX_PATH_LEN) :: BaseFile, VtuFile, PvtuFile, PvdFile, DataSetFile
   TYPE(Mesh_t), POINTER :: Mesh
   INTEGER :: i, j, k, l, n, m, Partitions, Part, ExtCount, FileindexOffSet, MeshDim, PrecBits, &
              PrecSize, IntSize, FileIndex
@@ -286,7 +289,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   INTEGER, POINTER :: ActiveModes(:), ActiveModes2(:)
   LOGICAL :: GotActiveModes, GotActiveModes2, EigenAnalysis, &
       WriteIds, SaveLinear, SaveMetainfo, &
-      NoPermutation, SaveElemental, SaveNodal, NoInterp
+      NoPermutation, SaveElemental, SaveNodal, NoInterp, DiscontNaming 
   LOGICAL, ALLOCATABLE :: ActiveElem(:)
   INTEGER, ALLOCATABLE :: GeometryBodyMap(:),GeometryBCMap(:)
 
@@ -396,9 +399,14 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
 
   SaveLinear = GetLogical( Params,'Save Linear Elements',GotIt)
 
+  ! This is an old practice to name the discontinuous mesh differently so that
+  ! results will not be overwritten over the standard mesh results. 
+  DiscontNaming = GetLogical( Params,'Discont Mesh Naming', GotIt )
+  IF(.NOT. GotIt) DiscontNaming = .TRUE.
+  
   FilePrefix = GetString( Params,'Output File Name',GotIt )
   IF ( .NOT.GotIt ) FilePrefix = "Output"
-  IF ( Mesh % DiscontMesh ) THEN
+  IF ( Mesh % DiscontMesh .AND. DiscontNaming ) THEN
     FilePrefix = 'discont_'//TRIM(FilePrefix)    
   ELSE IF( OutputMeshes > 1 ) THEN
     i = INDEX( Mesh % Name,'/',.TRUE.)
@@ -514,7 +522,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
       END DO
     END IF
   END IF
-    
+  EigenVectorMode = 0
   IF( MaxModes > 0 ) THEN
     CALL Info(Caller,'Maximum number of eigen/harmonic modes: '//I2S(MaxModes),Level=7)
     Str = ListGetString( Params,'Eigen Vector Component', GotIt )
@@ -541,8 +549,8 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
     MaxModes2 = 0
     DO i=1,Model % NumberOfSolvers
       IF( .NOT. ASSOCIATED( Model % Solvers(i) % Variable ) ) CYCLE
-      MaxModes2 = MAX( MaxModes2, &
-          Model % Solvers(i) % Variable % NumberOfConstraintModes )
+      j = Model % Solvers(i) % Variable % NumberOfConstraintModes
+      MaxModes2 = MAX( MaxModes2, j ) 
     END DO
   END IF
   IF( MaxModes2 > 0 ) THEN
@@ -710,22 +718,22 @@ CONTAINS
     LOGICAL, INTENT(IN) :: RemoveDisp
     INTEGER, PARAMETER :: VtuUnit = 58
     INTEGER :: i,ii,j,jj,k,dofs,Rank,n,m,dim,vari,sdofs,dispdofs, dispBdofs, Offset, &
-        NoFields, NoFields2, IndField, iField, NoModes, NoModes2, NoFieldsWritten, &
-        cumn, iostat
+        NoFields, NoFields2, IndField, iField, iField0, NoModes, NoModes2, NoFieldsWritten, &
+        cumn, iostat, NoTooBig, nofs
     CHARACTER(LEN=1024) :: Txt, ScalarFieldName, VectorFieldName, TensorFieldName, &
         FieldName, FieldNameB, OutStr
     CHARACTER :: lf
     CHARACTER(*), PARAMETER :: Caller = 'WriteVtuFile'
     LOGICAL :: ScalarsExist, VectorsExist, Found, &
         ComponentVector, ComponentVectorB, ComplementExists, &
-        Use2, IsHarmonic, FlipActive
+        Use2, IsHarmonic, FlipActive, RotateActive
     INTEGER :: DoIm
     LOGICAL :: WriteData, WriteXML, L, Buffered
     TYPE(Variable_t), POINTER :: Solution, Solution2, Solution3, TmpSolDg, TmpSolDg2, TmpSolDg3
     INTEGER, POINTER :: Perm(:), PermB(:), DispPerm(:), DispBPerm(:)
     REAL(KIND=dp), POINTER :: Values(:), Values2(:), Values3(:), DispValues(:)
     REAL(KIND=dp), POINTER :: ValuesB(:), ValuesB2(:), ValuesB3(:), DispBValues(:)
-    REAL(KIND=dp) :: x,y,z, val,ElemVectVal(3)
+    REAL(KIND=dp) :: x,y,z, val,ElemVectVal(3), vals(50)
     INTEGER, ALLOCATABLE, TARGET :: ElemInd(:)
     INTEGER, PARAMETER :: MAX_LAGRANGE_NODES = 729
     INTEGER :: TmpIndexes(MAX_LAGRANGE_NODES), VarType
@@ -938,7 +946,7 @@ CONTAINS
             END IF
           END IF
 
-          CALL Info(Caller,'Saving variable: '//TRIM(FieldName),Level=10)
+          CALL Info(Caller,'Saving '//I2S(dofs)//'-component variable: '//TRIM(FieldName),Level=10)
           
           VarType = Solution % Type
 
@@ -1068,6 +1076,17 @@ CONTAINS
           
           Perm => Solution % Perm
           FlipActive = Solution % PeriodicFlipActive 
+
+          RotateActive = .FALSE.
+          IF(dofs==3) THEN
+            IF(ASSOCIATED(Model % Mesh % PeriodicPerm)) THEN
+              IF( Solution % Solver % NormalTangential % NormalTangentialNOFNodes > 0 ) THEN
+                RotateActive = ListGetLogical( Solution %  Solver % Values, &
+                    'Apply Conforming BCs',Found )
+                CALL Info(Caller,'Rotate active for variable: '//TRIM(Solution % Name))
+              END IF
+            END IF
+          END IF
           
           !---------------------------------------------------------------------
           ! There may be special complementary variables such as 
@@ -1118,10 +1137,17 @@ CONTAINS
           END IF
 
           !---------------------------------------------------------------------
-          ! Finally save the field values 
+          ! Finally save the nodal field values 
           !---------------------------------------------------------------------
           DoIm = 0
-300       DO iField = 1, NoFields + NoFields2          
+
+          IF(Solution % FrozenMode ) THEN
+            iField0 = 0
+          ELSE
+            iField0 = 1
+          END IF
+          
+300       DO iField = iField0, NoFields + NoFields2          
 
             IF( ( DG .OR. DN ) .AND. VarType == Variable_on_nodes_on_elements ) THEN
               CALL Info(Caller,'Setting field type to discontinuous',Level=12)
@@ -1156,7 +1182,7 @@ CONTAINS
             IF( WriteXML ) THEN
               NoFieldsWritten = NoFieldsWritten + 1
 
-              IF( NoModes + NoModes2 == 0 .OR. EigenAnalysis ) THEN
+              IF( iField==0 .OR. NoModes + NoModes2 == 0 .OR. EigenAnalysis ) THEN
                 WRITE( OutStr,'(A,I0,A)') '        <DataArray type="Float',PrecBits,'" Name="'//TRIM(FieldName)
               ELSE IF( iField <= NoFields ) THEN
                 IF( IsHarmonic ) THEN
@@ -1199,9 +1225,11 @@ CONTAINS
                   CALL Fatal(Caller,'InvFieldPerm not associated!')
                 END IF
               END IF
+              NoTooBig = 0
+              nofs = 0
               
               IF( BinaryOutput ) WRITE( VtuUnit ) k
-
+              
               DO ii = 1, NumberOfDofNodes
 
                 IF( NoPermutation ) THEN
@@ -1211,11 +1239,18 @@ CONTAINS
                 END IF
 
                 IF( ASSOCIATED( Perm ) .AND. LagN == 0 ) THEN
-                  j = Perm(i)
+                  j = 0
+                  IF(i<1 .OR. i>SIZE(Perm)) THEN
+                    NoTooBig = NoTooBig + 1
+                  ELSE
+                    j = Perm(i)
+                  END IF
                 ELSE
                   j = i
                 END IF
 
+                IF(j>0) nofs = nofs + 1
+                
                 Use2 = .FALSE.
                 IF( ComplementExists ) THEN
                   IF( j == 0 ) THEN
@@ -1224,9 +1259,32 @@ CONTAINS
                   END IF
                 END IF
                 
+                vals = 0.0_dp
                 DO k=1,sdofs              
                   IF(j==0 .OR. k > dofs) THEN
-                    val = 0.0_dp
+                    vals(k) = 0.0_dp
+                  ELSE IF( NoModes + NoModes2 == 0  .OR. iField == 0 ) THEN 
+                    IF( Use2 ) THEN
+                      IF( ComponentVectorB ) THEN
+                        IF( k == 1 ) val = ValuesB(j)
+                        IF( k == 2 ) val = ValuesB2(j)
+                        IF( k == 3 ) val = ValuesB3(j)
+                      ELSE
+                        vals(k) = ValuesB(dofs*(j-1)+k)              
+                      END IF
+                    ELSE
+                      IF( ComponentVector ) THEN
+                        IF( k == 1 ) vals(k) = Values(j)
+                        IF( k == 2 ) vals(k) = Values2(j)
+                        IF( k == 3 ) vals(k) = Values3(j)
+                      ELSE
+                        IF(dofs*(j-1)+k > SIZE(Values) .OR. dofs*(j-1)+k < 1 ) THEN
+                          PRINT *,'vtu:',dofs,j,k,SIZE(values),dofs*(j-1)+k
+                          call flush(6)
+                        END IF
+                        vals(k) = Values(dofs*(j-1)+k)              
+                      END IF
+                    END IF
                   ELSE IF( NoModes > 0 .AND. iField <= NoFields ) THEN
                     IF( Use2 ) THEN
                       IF( ComponentVectorB ) THEN
@@ -1245,44 +1303,65 @@ CONTAINS
                         zval = EigenVectors(IndField,dofs*(j-1)+k) 
                       END IF
                     END IF
-                    val = PickComplex(zval,EigenVectorMode+DoIm) 
-
+                    vals(k) = PickComplex(zval,EigenVectorMode+DoIm) 
+                    
                   ELSE IF( NoModes2 > 0 ) THEN
-                    val = ConstraintModes(IndField,dofs*(j-1)+k)
-                  ELSE
-                    IF( Use2 ) THEN
-                      IF( ComponentVectorB ) THEN
-                        IF( k == 1 ) val = ValuesB(j)
-                        IF( k == 2 ) val = ValuesB2(j)
-                        IF( k == 3 ) val = ValuesB3(j)
-                      ELSE
-                        val = ValuesB(dofs*(j-1)+k)              
-                      END IF
-                    ELSE
-                      IF( ComponentVector ) THEN
-                        IF( k == 1 ) val = Values(j)
-                        IF( k == 2 ) val = Values2(j)
-                        IF( k == 3 ) val = Values3(j)
-                      ELSE
-                        IF(dofs*(j-1)+k > SIZE(Values) .OR. dofs*(j-1)+k < 1 ) THEN
-                          PRINT *,'vtu:',dofs,j,k,SIZE(values),dofs*(j-1)+k
-                          call flush(6)
-                        END IF
-                        val = Values(dofs*(j-1)+k)              
-                      END IF
-                    END IF
+                    vals(k) = ConstraintModes(IndField,dofs*(j-1)+k)
                   END IF
 
                   IF( FlipActive ) THEN
-                    IF( Model % Mesh % PeriodicFlip(i) ) val = -val
+                    IF( Model % Mesh % PeriodicFlip(i) ) vals(k) = -vals(k)
                   END IF
-                  
-                  CALL AscBinRealWrite( val )
                 END DO
+
+                IF(RotateActive) THEN
+                  BLOCK 
+                    TYPE(NormalTangential_t), POINTER :: NT                    
+                    REAL(KIND=dp) :: vals0(dofs), Rot1(dofs,dofs), Rot2(dofs,dofs), r1, r2, x1(dofs), x2(dofs)
+                    INTEGER :: kk,ll
+                    NT => Solution % Solver % NormalTangential
+                    jj = Model % Mesh % PeriodicPerm(i)
+                    IF(jj > 0) THEN
+                      kk = NT % BoundaryReOrder(i)
+                      ll = NT % BoundaryReorder(jj)
+
+                      IF(kk>0 .AND. ll>0) THEN
+                        vals0(1:dofs) = vals(1:dofs)
+                        
+                        Rot1(1:dofs,1) = NT % BoundaryNormals(kk,1:dofs)
+                        Rot1(1:dofs,2) = NT % BoundaryTangent1(kk,1:dofs)
+                        
+                        Rot2(1,1:dofs) = NT % BoundaryNormals(ll,1:dofs)
+                        Rot2(2,1:dofs) = NT % BoundaryTangent1(ll,1:dofs)
+
+                        IF(dofs==3) THEN
+                          Rot1(1:dofs,3) = NT % BoundaryTangent2(kk,1:dofs)                        
+                          Rot2(3,1:dofs) = NT % BoundaryTangent2(ll,1:dofs)
+                        END IF
+                          
+                        vals(1:dofs) = MATMUL(Rot1,MATMUL(Rot2,vals0))                        
+                      END IF
+
+                    END IF
+                  END BLOCK
+                END IF
+                
+                DO k=1,sdofs                              
+                  CALL AscBinRealWrite( vals(k) )
+                END DO
+                  
               END DO
 
               CALL AscBinRealWrite( 0.0_dp, .TRUE. )
 
+              IF(NoTooBig > 0) THEN
+                CALL Fatal(Caller,'Too big index for Perm in '//I2S(NoTooBig)//' nodes for '//TRIM(FieldName))
+              END IF
+              IF(ASSOCIATED(Perm)) THEN
+                CALL Info(Caller,'Number of nonzeros for "'&
+                    //TRIM(FieldName)//'" is '//I2S(nofs)//' of '//I2S(NumberOfDofNodes),Level=15)
+              END IF
+                
             END IF
 
             IF( AsciiOutput ) THEN
@@ -1472,7 +1551,7 @@ CONTAINS
           END IF
           
           !---------------------------------------------------------------------
-          ! Finally save the field values 
+          ! Finally save the elemental field values 
           !---------------------------------------------------------------------
           DoIm = 0
 400       DO iField = 1, NoFields + NoFields2          
@@ -1501,7 +1580,7 @@ CONTAINS
               NoFieldsWritten = NoFieldsWritten + 1
 
               CALL Info(Caller,'Writing variable: '//TRIM(FieldName),Level=20)
-              IF( NoModes + NoModes2 == 0 .OR. EigenAnalysis ) THEN
+              IF( iField == 0 .OR. NoModes + NoModes2 == 0 .OR. EigenAnalysis ) THEN
                 WRITE( OutStr,'(A,I0,A)') '        <DataArray type="Float',PrecBits,'" Name="'//TRIM(FieldName)
               ELSE IF( iField <= NoFields ) THEN
                 IF( IsHarmonic ) THEN
@@ -1619,7 +1698,7 @@ CONTAINS
                   DO k=1,sdofs
                     IF( k > dofs ) THEN
                       val = 0.0_dp
-
+                      
                     ELSE IF( NoModes > 0 .AND. iField <= NoFields ) THEN
                       IF( ComponentVector ) THEN
                         IF( k == 1 ) zval = SUM(EigenVectors(IndField,ElemInd(1:n)))/n
@@ -2153,7 +2232,8 @@ CONTAINS
     LOGICAL :: ScalarsExist, VectorsExist, Found, ComponentVector, AllActive, ThisActive
     LOGICAL, POINTER :: ActivePartition(:)
     TYPE(Variable_t), POINTER :: Solution, Solution2, Solution3
-    INTEGER :: Active, NoActive, ierr, NoFields, NoFields2, NoModes, NoModes2, IndField, iField, VarType
+    INTEGER :: Active, NoActive, ierr, NoFields, NoFields2, NoModes, NoModes2, &
+        IndField, iField, iField0, VarType
     INTEGER, DIMENSION(MPI_STATUS_SIZE) :: status
     
 
@@ -2296,9 +2376,15 @@ CONTAINS
           ELSE
             sdofs = 1
           END IF
+
+          IF(Solution % FrozenMode ) THEN
+            iField0 = 0
+          ELSE
+            iField0 = 1
+          END IF
           
-          DO iField = 1, NoFields 
-            IF( NoModes + NoModes2 == 0 .OR. EigenAnalysis ) THEN
+          DO iField = iField0, NoFields 
+            IF( iField == 0 .OR. NoModes + NoModes2 == 0 .OR. EigenAnalysis ) THEN
               FullName = TRIM( FieldName ) 
             ELSE          
               IF( GotActiveModes ) THEN
@@ -2405,9 +2491,15 @@ CONTAINS
             ELSE
               sdofs = 1
             END IF
-
-            DO iField = 1, NoFields
-              IF( NoModes + NoModes2 == 0 .OR. EigenAnalysis ) THEN
+            
+            IF(Solution % FrozenMode ) THEN
+              iField0 = 0
+            ELSE
+              iField0 = 1
+            END IF
+            
+            DO iField = iField0, NoFields
+              IF( iField == 0 .OR. NoModes + NoModes2 == 0 .OR. EigenAnalysis ) THEN
                 FullName = TRIM( FieldName ) 
               ELSE          
                 IF( NoModes > 0 ) THEN

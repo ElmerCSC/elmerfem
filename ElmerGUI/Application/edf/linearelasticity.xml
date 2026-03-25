@@ -346,7 +346,7 @@ stress. </Whatis>
         <Parameter Widget="Label"> <Name> Material principal directions </Name> </Parameter>
         <Parameter Widget="CheckBox">
           <Name> Rotate Elasticity Tensor </Name>
-          <Whatis> For anisotropic materials the principal directions of anisotropy do not always correspond to the coordinate axes. Setting this keyord to True enables the user to input Youngs Modulus matrix with respect to the principal directions of anisotropy. Otherwise Youngs Modulus should be given with respect to the coordinate axis directions. </Whatis>
+          <Whatis> For anisotropic materials the principal directions of anisotropy do not always correspond to the coordinate axes. Setting this keyword to True enables the user to input Youngs Modulus matrix with respect to the principal directions of anisotropy. Otherwise Youngs Modulus should be given with respect to the coordinate axis directions. </Whatis>
           <Activate> /Linear elasticity/Material/Unit Vector 1</Activate>
           <Activate> /Linear elasticity/Material/Unit Vector 2</Activate>
           <Activate> /Linear elasticity/Material/Unit Vector 3</Activate>

@@ -40,7 +40,8 @@ Simulation
 End
 
 Constants
-  Gravity(4) = 0 -1 0 9.82
+! Not active in the test.
+!  Gravity(4) = 0 -1 0 9.82
 End
 
 Body 1
@@ -177,7 +178,7 @@ Body Force 2
     Real LUA "tx[0]+h0"
 
 ! Additional force in direction of the strip
-  Flow Bodyforce 1 = Real 1.0
+  FilmFlow Bodyforce 1 = Real 1.0
 End
 
 

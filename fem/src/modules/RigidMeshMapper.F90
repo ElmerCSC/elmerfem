@@ -4,23 +4,22 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-!
 !/******************************************************************************
 ! *
 ! *  Authors: Peter Råback
@@ -50,6 +49,7 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
   USE ParallelUtils
   USE Types
   USE Lists
+  USE MeshUtils, ONLY: SetMeshSkew, StoreOriginalCoordinates
   USE DefUtils
 
   
@@ -70,8 +70,7 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
       RotorBodies(:), IntArray(:) => NULL()
   REAL(KIND=dp) :: x0(4), x1(4), RotMatrix(4,4),TrsMatrix(4,4),SclMatrix(4,4), &
       TrfMatrix(4,4),Identity(4,4), Origin(4),Angles(3),Scaling(3),alpha, Coord(3), &
-      dCoord(3), Norm, dx(3), zmin, zmax, zloc
-  REAL(KIND=dp) :: RotorSkew, StatorSkew
+      dCoord(3), Norm, dx(3) 
   REAL(KIND=dp) :: at0,at1,at2,Coeff,Source,relax(1),MaxDeform,AngleCoeff, RotorRad, RotorAngle
   REAL(KIND=dp), POINTER :: Xorig(:),Yorig(:),Zorig(:),Xnew(:),Ynew(:),Znew(:),&
       RelaxField(:),VeloVal(:), PArray(:,:) => NULL()
@@ -81,7 +80,7 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
   LOGICAL :: Found,GotMatrix,GotRotate,GotTranslate,GotScale,Visited=.FALSE.,&
       UseOriginalMesh, Cumulative, GotRelaxField=.FALSE., &
       CalculateVelocity,TranslateBeforeRotate, StoreOriginalMesh, &
-      RotorMode, WholeMode, DoIt, GotSkew, GotRotorAngle, GotSkewFun
+      RotorMode, WholeMode, DoIt, GotRotorAngle
   LOGICAL :: AnyMeshMatrix,AnyMeshRotate,AnyMeshTranslate,AnyMeshScale,&
       AnyMeshOrigin, AnyRelax, ConstantMap, GotMap, IsRotor
   LOGICAL, POINTER :: NodeDone(:)
@@ -142,7 +141,37 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
     END IF
   END IF
   RotorAngle = ListGetCReal( CurrentModel % Simulation,'Rotor Angle',GotRotorAngle )
-  
+
+  NoNodes = Mesh % NumberOfNodes
+  ALLOCATE( NodeDone(NoNodes) )
+  NodeDone = .FALSE.
+  NodeIndex => CurrentNode
+
+
+  IF( RotorMode .AND. .NOT. Visited ) THEN
+    ! Skew is moved to the library so that it can be done in different ways. 
+    CALL SetMeshSkew(Mesh, CurrentModel % Simulation) 
+
+    ALLOCATE(RotorElement(Mesh % NumberOfBulkElements))
+    RotorElement = .FALSE.
+
+    DO elem = 1,Mesh % NumberOfBulkElements      
+      Element => Mesh % Elements(elem)
+      n = GetElementNOFNodes(Element)
+      CALL GetElementNodes( Nodes, Element )
+      Coord(1) = SUM(Nodes % x(1:n)) / n
+      Coord(2) = SUM(Nodes % y(1:n)) / n
+      Coord(3) = SUM(Nodes % z(1:n)) / n
+      IF(ASSOCIATED(RotorBodies)) THEN
+        IsRotor = ANY( RotorBodies == Element % BodyId ) 
+      ELSE
+        IsRotor = (Coord(1)**2+Coord(2)**2 < RotorRad**2) 
+      END IF
+      RotorElement(elem) = IsRotor
+    END DO
+    NodeDone = .FALSE.
+  END IF
+    
   ! If using original mesh as a reference mesh it must be saved,
   ! otherwise the analytic mapping does not require two meshes
   !------------------------------------------------------------
@@ -165,89 +194,6 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
     Xorig => Xnew
     Yorig => Ynew
     Zorig => Znew
-  END IF
-
-  NoNodes = Mesh % NumberOfNodes
-  ALLOCATE( NodeDone(NoNodes) )
-  NodeDone = .FALSE.
-  NodeIndex => CurrentNode
-
-  IF( RotorMode .AND. .NOT. Visited ) THEN
-    RotorSkew = AngleCoeff * ListGetCReal(CurrentModel % Simulation,'Rotor Skew',GotSkew )
-    GotSkewFun = ListCheckPresent( CurrentModel % Simulation,'Rotor Skew Function')
-    StatorSkew = AngleCoeff * ListGetCReal(CurrentModel % Simulation,'Stator Skew',Found )
-    GotSkew = GotSkew .OR. GotSkewFun .OR. Found
-    IF( GotSkew ) THEN
-      zmax = ListGetCReal( CurrentModel % Simulation,'Rotor Skew Max Coordinate',Found ) 
-      IF(.NOT. Found) THEN
-        zmax = ListGetCReal( CurrentModel % Simulation,'Extruded Max Coordinate',Found ) 
-        IF(.NOT. Found) zmax = ParallelReduction(MAXVAL(Zorig))        
-      END IF
-      IF(.NOT. Found) THEN
-        CALL Fatal(Caller,'"Rotor Skew" currently requires "Extruded Max Coordinate" to be given!')
-      END IF      
-      zmin = ListGetCReal( CurrentModel % Simulation,'Rotor Skew Min Coordinate',Found ) 
-      IF(.NOT. Found) THEN
-        zmin = ListGetCReal( CurrentModel % Simulation,'Extruded Min Coordinate',Found ) 
-        IF(.NOT. Found) zmin = ParallelReduction(MINVAL(Zorig))
-      END IF
-      IF(InfoActive(20)) THEN
-        PRINT *,'RotorSkew:',RotorSkew, StatorSkew, zmin, zmax, GotSkew, GotSkewFun 
-      END IF
-    END IF
-      
-    ALLOCATE(RotorElement(Mesh % NumberOfBulkElements))
-    RotorElement = .FALSE.
-    
-    DO elem = 1,Mesh % NumberOfBulkElements      
-      Element => Mesh % Elements(elem)
-      n = GetElementNOFNodes(Element)
-      
-      CALL GetElementNodes( Nodes, Element )
-      Coord(1) = SUM(Nodes % x(1:n)) / n
-      Coord(2) = SUM(Nodes % y(1:n)) / n
-      Coord(3) = SUM(Nodes % z(1:n)) / n
-      IF(ASSOCIATED(RotorBodies)) THEN
-        IsRotor = ANY( RotorBodies == Element % BodyId ) 
-      ELSE
-        IsRotor = (Coord(1)**2+Coord(2)**2 < RotorRad**2) 
-      END IF
-      
-      RotorElement(elem) = IsRotor
-
-      IF(GotSkew) THEN
-        DO Node=1,n
-          NodeIndex(1) = Element % NodeIndexes(Node)
-          NodeI = NodeIndex(1)
-          IF(.NOT. NodeDone(NodeI)) THEN
-            Coord(1) = Xorig(NodeI)
-            Coord(2) = Yorig(NodeI)
-            Coord(3) = Zorig(NodeI)
-
-            ! Skew is not constant, perform it for each node 1st if requested. 
-            zloc = (coord(3)-zmin)/(zmax-zmin)
-
-            ! By construction this must be in [0,1]
-            zloc = MAX(0.0_dp,MIN(1.0_dp,zloc))
-            
-            IF( IsRotor ) THEN
-              IF(GotSkewFun) THEN
-                alpha = AngleCoeff * ListGetFun( CurrentModel % Simulation,'Rotor Skew Function',zloc)                
-              ELSE
-                alpha = (zloc-0.5_dp) * RotorSkew
-              END IF
-            ELSE
-              alpha = (zloc-0.5_dp) * StatorSkew 
-            END IF
-            
-            Xorig(NodeI) = Coord(1)*COS(alpha) - Coord(2)*SIN(alpha)
-            Yorig(Nodei) = Coord(1)*SIN(alpha) + Coord(2)*COS(alpha)        
-            NodeDone(NodeI) = .TRUE.
-          END IF
-        END DO
-      END IF
-    END DO
-    NodeDone = .FALSE.
   END IF
 
   
@@ -318,6 +264,14 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
       IF ( GetLogical(  BC, 'Moving Boundary', Found ) ) THEN
         CALL ListAddConstReal( BC,Solver % Variable % Name, 1.0_dp )
       ELSE IF ( GetLogical(  BC, 'Fixed Boundary', Found ) ) THEN
+        CALL ListAddConstReal( BC,Solver % Variable % Name, 0.0_dp )
+      END IF
+    END DO
+    DO i=1,Model % NumberOFBodyForces
+      BC => Model % BodyForces(i) % Values
+      IF ( GetLogical(  BC, 'Moving Body', Found ) ) THEN
+        CALL ListAddConstReal( BC,Solver % Variable % Name, 1.0_dp )
+      ELSE IF ( GetLogical(  BC, 'Fixed Body', Found ) ) THEN
         CALL ListAddConstReal( BC,Solver % Variable % Name, 0.0_dp )
       END IF
     END DO

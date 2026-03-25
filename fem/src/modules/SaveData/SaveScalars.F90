@@ -4,23 +4,22 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-!
 !/******************************************************************************
 ! *
 ! *  Subroutine for saving scalar data to files
@@ -123,6 +122,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   USE DefUtils
   USE Interpolation
   USE ElementUtils
+  USE MeshUtils, ONLY : ClosestElementInMesh, ClosestNodeInMesh, NodeToDGIndex
   USE SaveUtils
   
   IMPLICIT NONE
@@ -169,10 +169,10 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   INTEGER, POINTER :: PointIndex(:), NodeIndexes(:), SaveIndex(:)
   INTEGER, ALLOCATABLE, TARGET :: ClosestIndex(:)
   CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: ValueNames(:)
-  CHARACTER(LEN=MAX_NAME_LEN) :: ScalarsFile, ScalarNamesFile, DateStr, &
-      VariableName, OldVariableName, ResultPrefix, Suffix, Oper, Oper0, OldOper0, ParOper, Name, &
-      CoefficientName, ScalarParFile, MinOper, MaxOper, &
-      MaskName, OldMaskName, SaveName
+  CHARACTER(LEN=MAX_PATH_LEN) :: ScalarsFile, ScalarNamesFile, ScalarParFile
+  CHARACTER(LEN=MAX_NAME_LEN) ::  DateStr, VariableName, OldVariableName, ResultPrefix, &
+      Suffix, Oper, Oper0, OldOper0, ParOper, Name, CoefficientName, &
+      MinOper, MaxOper, MaskName, OldMaskName, SaveName
   CHARACTER(:), ALLOCATABLE :: OutputDirectory
   INTEGER :: i,j,k,l,lpar,q,n,ierr,No,NoPoints,NoCoordinates,NoLines,NumberOfVars,&
       NoDims, NoDofs, NoOper, NoElements, NoVar, NoValues, PrevNoValues, DIM, &
@@ -1140,6 +1140,9 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       END DO
     END IF
 
+
+    GotEigen = .FALSE.
+    GotEdge  = .FALSE.
 
     Var => Model % Variables
     DO WHILE( ASSOCIATED( Var ) )
@@ -2201,9 +2204,11 @@ CONTAINS
         PermIndexes => Element % NodeIndexes
       END IF
 
-      IF ( ANY(Var % Perm(PermIndexes) == 0 ) ) CYCLE      
+      IF(ASSOCIATED(Var % Perm)) THEN
+        IF ( ANY(Var % Perm(PermIndexes) == 0 ) ) CYCLE      
+      END IF
       hits = hits + 1
-      
+        
       NodeIndexes => Element % NodeIndexes 
       CALL CopyElementNodesFromMesh( ElementNodes, Mesh, n, NodeIndexes)
 

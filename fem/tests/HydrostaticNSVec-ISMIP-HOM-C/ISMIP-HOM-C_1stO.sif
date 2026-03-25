@@ -45,6 +45,8 @@ Simulation
   Output Intervals = 0 
 
 !  Post File = $name$".vtu"
+!  Ascii Output = Logical True
+ 
   max output level = 5
 End
 
@@ -65,11 +67,11 @@ Initial Condition 1
   !Velocity 2 = Real 0.0
   !Velocity 3 = Real 0.0
   Pressure = Variable coordinate 1 
-      Real Procedure "ismip_c.so" "pSIAB"
+      Real Procedure "ismip_c" "pSIAB"
   Velocity 1 = Variable coordinate 1 
-      Real Procedure "ismip_c.so" "uSIAB"
+      Real Procedure "ismip_c" "uSIAB"
   Velocity 3 =  Variable coordinate 1 
-      Real Procedure "ismip_c.so" "wSIAB"
+      Real Procedure "ismip_c" "wSIAB"
   Height = Real 1000.0    
 End
 
@@ -116,6 +118,7 @@ Solver 2
 
   Variable = -dofs 2 "Horizontal Velocity"
 
+
 ! Optionally populate all components to a vector (could be flow solution too)
 
   Velocity Vector Name = String "FlowSolution"
@@ -151,6 +154,12 @@ Solver 2
 
   Exported Variable 6 = -dofs 1 "dSdt" 
   Exported Variable 7 = -dofs 1 "dS" 
+
+
+  Exported Variable 8 = -dofs 2 "Horizontal Velocity Ave"
+  Average Velocity Name = String "Horizontal Velocity Ave"
+
+
 
   Linear System Solver = Iterative
   Linear System Iterative Method = "IDRS"
@@ -194,9 +203,9 @@ Boundary Condition 1
   Bottom Surface = Real 0.0
   Velocity 3 = 0.0
   Slip Coefficient 1 = Variable Coordinate 1
-    Real Procedure "ismip_c.so" "Sliding"
+    Real Procedure "ismip_c" "Sliding"
   Slip Coefficient 2 = Variable Coordinate 1
-    Real Procedure "ismip_c.so" "Sliding"
+    Real Procedure "ismip_c" "Sliding"
     
 End
 

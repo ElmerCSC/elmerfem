@@ -149,7 +149,7 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
     ! start of the simulation
     InitializeSteadyState = GetLogical(Params,'Initialize Steady State',Found)
     ! inquire whether to include time-derivative terms in force vector
-    ComputeDt = GetLogical(Params,'Compute Time Derivatives',Found)
+    IF (TransientSimulation) ComputeDt = GetLogical(Params,'Compute Time Derivatives',Found)
     IF (ComputeDt) THEN
       CALL INFO(SolverName,"Computing time derivatives in force vector",Level=4)
     ELSE
@@ -166,16 +166,21 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
       IF (ComputeFreshwaterHead) &
            CALL INFO(SolverName,'Computing freshwater head',Level=4)
   END IF
-  
-  IF (InitializeSteadyState) THEN
-    IF (GetTimeStep() == 1) THEN
-      CALL INFO(SolverName,"Initializing with steady state (no mass matrix)",Level=4)
-      ActiveMassMatrix = .FALSE.
-    ELSE 
-      CALL INFO(SolverName,"Switching mass matrix to active after initializing with steady state",Level=4)
-      ActiveMassMatrix = .TRUE.
-      InitializeSteadyState = .FALSE.
+
+  IF (TransientSimulation) THEN
+    IF (InitializeSteadyState) THEN
+      IF (GetTimeStep() == 1) THEN
+        CALL INFO(SolverName,"Initializing with steady state (no mass matrix)",Level=5)
+        ActiveMassMatrix = .FALSE.
+      ELSE 
+        CALL INFO(SolverName,"Switching mass matrix to active after initializing with steady state",Level=5)
+        ActiveMassMatrix = .TRUE.
+        InitializeSteadyState = .FALSE.
+      END IF
     END IF
+  ELSE
+    CALL INFO(SolverName,"Running steady state simulation of the permafrost Darcy problem",Level=3)
+    ActiveMassMatrix = .FALSE.
   END IF
   
   
@@ -301,7 +306,7 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
         WRITE (Message,'(A,A)') '"Permafrost Phase Change Model" set to ', TRIM(PhaseChangeModel)
         CALL INFO(SolverName,Message,Level=9)
       END IF
-
+      
       IF (FirstTime) THEN
         ! check, whether we have globally or element-wise defined values of rock-material parameters
         ElementRockMaterialName = GetString(Material,'Element Rock Material File',ElementWiseRockMaterial)
@@ -324,7 +329,7 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
           CALL INFO(SolverName,'Permafrost Rock Material read',Level=5)
           FirstTime = .FALSE.
         END IF
-        CALL SetPermafrostSolventMaterial( CurrentSolventMaterial )
+        CALL ReadPermafrostSolventMaterial( Material, CurrentSolventMaterial )
         IF (.NOT.ASSOCIATED(CurrentSolventMaterial)) &
              CALL FATAL(Solvername,'Solvent Material not associated')
         CALL ReadPermafrostSoluteMaterial( Material,Model % Constants,CurrentSoluteMaterial )
@@ -479,13 +484,14 @@ CONTAINS
          rhogwPAtIP,rhogwTAtIP,rhogwYcAtIP, rhoGAtIP, rhow0
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,Weight,LoadAtIP,StiffPQ,elevationAtIp
     REAL(KIND=dp) :: TemperatureAtIP,PorosityAtIP,KPorosityAtIP,SalinityAtIP,PressureAtIP
-    REAL(KIND=dp) :: TemperatureDtAtIP,SalinityDtAtIP,PressureDtAtIP,StressInvDtAtIP 
+    REAL(KIND=dp) :: TemperatureDtAtIP,SalinityDtAtIP,PressureDtAtIP,StressInvDtAtIP
+    REAL(KIND=dp) :: Swres=1.0_dp, IFdeltaT=0.5_dp
     REAL(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd), LOAD(n)
     REAL(KIND=dp) , POINTER :: gWork(:,:)
     !REAL(KIND=dp) , ALLOCATABLE :: CgwpI1AtNodes(:)
     INTEGER :: i,t,p,q,DIM, RockMaterialID, FluxDOFs,IPPerm,IPPermRhogw,IPPermFreshwaterHead
     LOGICAL :: Stat,Found, ConstantsRead=.FALSE., ConstVal=.FALSE., ConstantDispersion=.FALSE.,&
-         ConstantDiffusion=.FALSE., CryogenicSuction=.FALSE., swaptensor=.FALSE.
+         ConstantDiffusion=.FALSE., CryogenicSuction=.FALSE., swaptensor=.FALSE., TH1=.FALSE.
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BodyForce, Material
     TYPE(Nodes_t) :: Nodes
@@ -497,9 +503,13 @@ CONTAINS
     
     SAVE Nodes, ConstantsRead, ConstVal, DIM, GasConstant, N0, DeltaT, T0, p0, eps, Gravity
     !------------------------------------------------------------------------------
+    Material => GetMaterial(Element)    ! Get stuff from SIF Material section
     IF(.NOT.ConstantsRead) THEN
       ConstantsRead = &
-           ReadPermafrostConstants(Model, FunctionName, DIM, GasConstant, N0, DeltaT, T0, p0, eps, Gravity)      
+           ReadPermafrostConstants(Model, FunctionName, DIM, GasConstant, N0, DeltaT, T0, p0, eps, Gravity)
+      ConstVal = GetLogical(Material,'Constant Permafrost Properties',Found)
+      IF (ConstVal) &
+           CALL INFO(FunctionName,'"Constant Permafrost Properties" set to true',Level=9)
     END IF
     XiAtIPVar => VariableGet( Solver % Mesh % Variables, 'Xi')
     IF (.NOT.ASSOCIATED(XiAtIPVar)) THEN
@@ -548,26 +558,27 @@ CONTAINS
       LOAD(1:n) = GetReal( BodyForce,'Groundwater source', Found )   
     END IF
 
-    ! Get stuff from SIF Material section
-    Material => GetMaterial(Element)
 
-    meanfactor = GetConstReal(Material,"Conductivity Arithmetic Mean Weight",Found)
-    IF (.NOT.Found) THEN
-      CALL INFO(FunctionName,'"Conductivity Arithmetic Mean Weight" not found. Using default unity value.',Level=9)
-      meanfactor = 1.0_dp
-    END IF
+
+    !meanfactor = GetConstReal(Material,"Conductivity Arithmetic Mean Weight",Found)
+    !IF (.NOT.Found) THEN
+    !  CALL INFO(FunctionName,'"Conductivity Arithmetic Mean Weight" not found. Using default unity value.',Level=9)
+    !  meanfactor = 1.0_dp
+    !END IF
     MinKgw = GetConstReal( Material, &
          'Hydraulic Conductivity Limit', Found)
     IF (.NOT.Found .OR. (MinKgw <= 0.0_dp))  &
          MinKgw = 1.0D-14
 
+    Swres = GetConstReal( Material, "Interfrost Swres", Found)
+    IFdeltaT = GetConstReal( Material, "Interfrost deltaT", Found)
+
+    
     swaptensor = GetLogical(Material,'Swap Tensor',Found)
     
     NoSalinity = GetLogical(Material,'No Salinity',Found)
     
-    ConstVal = GetLogical(Material,'Constant Permafrost Properties',Found)
-    IF (ConstVal) &
-        CALL INFO(FunctionName,'"Constant Permafrost Properties" set to true',Level=9)
+ 
     DispersionCoefficient = GetConstReal(Material,"Dispersion Coefficient", ConstantDispersion)
     MolecularDiffusionCoefficient = GetConstReal(Material,"Molecular Diffusion Coefficient", ConstantDiffusion)
     CryogenicSuction = GetLogical(Material,"Compute Cryogenic Suction", Found)
@@ -675,7 +686,15 @@ CONTAINS
         XiPAtIP   = &
              XiAndersonP(XiAtIp(IPPerm),0.011_dp,-0.66_dp,9.8d-08,&
              CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
-             T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)        
+             T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
+      CASE('interfrost') ! simple Interfrost model
+        XiAtIP(IPPerm) = GetXiInterfrost(T0,TemperatureAtIP,Swres,IFdeltaT,.FAlSE.)
+        XiTAtIP = XiInterfrostT(T0,TemperatureAtIP,Swres,IFdeltaT,.FALSE.)
+        XiPAtIP = 0.0_dp
+      CASE('interfrostTH1') ! simple Interfrost model for TH1
+        XiAtIP(IPPerm) = GetXiInterfrost(T0,TemperatureAtIP,Swres,IFdeltaT,.TRUE.)
+        XiTAtIP = XiInterfrostT(T0,TemperatureAtIP,Swres,IFdeltaT,.TRUE.)
+        XiPAtIP = 0.0_dp   
       CASE DEFAULT ! Hartikainen model
         CALL  GetXiHartikainen(RockMaterialID,&
              CurrentSoluteMaterial,CurrentSolventMaterial,&

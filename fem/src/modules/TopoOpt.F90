@@ -1,3 +1,25 @@
+!/*****************************************************************************/
+! *
+! *  Elmer, A Finite Element Software for Multiphysical Problems
+! *
+! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
+! * 
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
+! *
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
+! *
+! *****************************************************************************/
 !------------------------------------------------------------------------------
 !> Topology optimization workflow with the SIMP method
 !> Based heavily on the ideas presented in Python code in:
@@ -42,7 +64,7 @@ SUBROUTINE TopoOpt_init( Model,Solver,dt,Transient )
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: Params
-  LOGICAL :: Found
+  LOGICAL :: Found, HaveField
   Params => Solver % Values
 
   ! These automatically allocate elemental variables that are then created by library
@@ -55,10 +77,24 @@ SUBROUTINE TopoOpt_init( Model,Solver,dt,Transient )
   IF( ListGetLogical( Params,'Create BW Topology', Found ) ) THEN
     CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params),'-elem topo bw' )
   END IF
+
+  HaveField = ( ListGetString( Params,'Filter Type', Found ) == 'pde' ) 
+
+  IF( HaveField ) THEN
+    CALL ListAddNewString( Params,'Variable','xNodal') 
+  ELSE
+    ! Add a global variable to store the norm to if no variable present.
+    CALL ListAddNewString( Params,'Variable','-nooutput -global topoopt_nrm')
+  END IF
+
+  IF( ListGetLogical( Params,'Create Zero Levelset', Found ) ) THEN
+    IF( HaveField ) THEN
+      CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params),'topo levelset' )
+    ELSE
+      CALL Warn('TopoOpt_init','Only PDE filter can create levelset field!')
+    END IF
+  END IF
   
-  ! Add a global variable to store the norm to.
-  CALL ListAddNewString( Params,'Variable','-nooutput -global topoopt_nrm')
-    
 !------------------------------------------------------------------------------
 END SUBROUTINE TopoOpt_init
 !------------------------------------------------------------------------------
@@ -71,6 +107,7 @@ END SUBROUTINE TopoOpt_init
 SUBROUTINE TopoOpt( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE DefUtils
+  USE MeshUtils
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
@@ -80,26 +117,30 @@ SUBROUTINE TopoOpt( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   LOGICAL :: Found 
   TYPE(ValueList_t), POINTER :: Params
-  TYPE(Variable_t), POINTER :: pVar, uVar, aVar
+  TYPE(Variable_t), POINTER :: pVar, uVar, aVar, pVarExt
   TYPE(Matrix_t), POINTER :: Fmat 
-  REAL(KIND=dp), ALLOCATABLE :: local_sol_array(:,:), local_sol(:)
-  REAL(KIND=dp), POINTER :: ce(:), dc(:), dv(:), dv0(:), bw(:), xTopo(:), xPhys(:), xMult(:)
+  REAL(KIND=dp), ALLOCATABLE :: local_sol_array(:,:), local_sol(:), local_act(:)
+  REAL(KIND=dp), POINTER :: ce(:), dc(:), dv(:), dv0(:), bw(:), zeroset(:), xTopo(:), xPhys(:), xMult(:)
   INTEGER :: TimesVisited = 0, dim, dofs, Niter, i, j, n, m, Nelems, Nnodes, nsize, cMode
   REAL(KIND=dp) :: volFrac, penal, emin, efrac, gt, obj, val, wmin, Diff(3)
   TYPE(Solver_t), POINTER :: PhysSolver
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Element_t), POINTER :: Element
   TYPE(Nodes_t) :: Nodes
-  LOGICAL :: PdeFilter, SimpleFilter, Csymmetry, SolveAdj
+  LOGICAL :: PdeFilter, SimpleFilter, Csymmetry, SolveAdj, PhysSym, ElemField
   INTEGER, POINTER :: ElemPerm(:)
+  INTEGER, ALLOCATABLE, SAVE :: SumPerm(:)
+  LOGICAL, ALLOCATABLE, SAVE :: InterfaceNode(:)
+  LOGICAL :: SkipInterface
+  INTEGER :: nPer
   CHARACTER(:), ALLOCATABLE :: filterMethod, filterType
   CHARACTER(*), PARAMETER :: Caller = 'TopoOpt'
 
   
   SAVE :: TimesVisited, Fmat, xTopo, xPhys, xMult, Niter, PhysSolver, dim, Mesh, &
-      local_sol_array, local_sol, ce, dc, dv, dv0, bw, wmin, FilterMethod, FilterType, &
+      local_sol_array, local_sol, local_act, ce, dc, dv, dv0, bw, zeroset, wmin, FilterMethod, FilterType, &
       gt, Nnodes, Nelems, uVar, aVar, dofs, Nodes, PdeFilter, SimpleFilter, Diff, nsize, &
-      ElemPerm, Csymmetry, SolveAdj, obj
+      ElemPerm, Csymmetry, SolveAdj, obj, nPer, PhysSym, SkipInterface
   
   
   CALL Info(Caller,'-------------------------------------------')
@@ -146,6 +187,10 @@ SUBROUTINE TopoOpt( Model,Solver,dt,Transient )
     ! This is not generic. We assume the stress solver to be the 1st solver for now. 
     i = ListGetInteger( Params,'Primary Solver Index' )
     PhysSolver => Model % Solvers(i)
+    IF(.NOT. ListGetLogical(PhysSolver % Values,'Local Matrix Storage',Found ) ) THEN
+      CALL Fatal(Caller,'Primary solver should have active "Local Matrix Storage"')
+    END IF
+      
     uVar => PhysSolver % Variable
     dofs = uVar % dofs
 
@@ -177,6 +222,13 @@ SUBROUTINE TopoOpt( Model,Solver,dt,Transient )
     ELSE
       bw => NULL()
     END IF
+
+    pVar => VariableGet( Mesh % Variables,"topo levelset")
+    IF(ASSOCIATED(pVar)) THEN
+      zeroset => pVar % Values
+    ELSE
+      zeroset => NULL()
+    END IF
     
     ! Allocate full vectors
     ALLOCATE( xTopo(nsize) )
@@ -201,17 +253,28 @@ SUBROUTINE TopoOpt( Model,Solver,dt,Transient )
       CALL VectorValuesRange(dv0,nsize,'dv0')       
     END IF
     
+    nPer = ListGetInteger( Params,'Periodic PhysSolver',Found ) 
+    IF(nPer > 1) THEN
+      ALLOCATE(SumPerm(Solver % Mesh % NumberOfBulkElements))
+      PhysSym = ListGetLogical( Params,'Periodic PhysSolver Symmetric',Found )      
+      ElemField = .TRUE.
+      CALL RotationalPeriodicSumPerm(Solver, Solver % Mesh, 360.0_dp/nPer, &
+          Solver % Variable % Perm, SumPerm, ElemField, PhysSym )
+    END IF
+    
     ! Allocate elemental stuff
     n = Mesh % MaxElementDofs        
-    ALLOCATE(local_sol_array(dofs,n), local_sol(dofs*n))
+    ALLOCATE(local_sol_array(dofs,n), local_sol(dofs*n), local_act(dofs*n))
     
     wmin = ListGetConstReal( Params,'Sensitivity Filter Threshold', Found )
     IF(.NOT. Found) wmin = 1.0e-3
-
+    SkipInterface = .FALSE.
+    
     IF(PdeFilter ) THEN      
       BLOCK 
         REAL(KIND=dp), POINTER :: HWrk(:,:)
-        INTEGER :: d1, d2
+        INTEGER, ALLOCATABLE :: NodeCount(:)
+        INTEGER :: d1, d2, t
         Hwrk => ListGetConstRealArray( Params,'PDE Filter Diffusion Constant',UnfoundFatal = .TRUE.)
 
         d1 = SIZE(Hwrk,1)
@@ -226,6 +289,22 @@ SUBROUTINE TopoOpt( Model,Solver,dt,Transient )
         ELSE
           CALL Fatal(Caller,'Invalid size for "PDE Filter Diffusion Constant": '//I2S(d1)//' x '//I2S(d2))
         END IF        
+
+        SkipInterface = ListGetLogical( Params,'PDE Filter skip Interface',Found )
+        IF( SkipInterface ) THEN
+          ALLOCATE(NodeCount(Mesh % NumberOfNodes))
+          NodeCount = 0
+          DO t=1,Mesh % NumberOfBulkElements
+            Element => Mesh % Elements(t)
+            NodeCount(Element % NodeIndexes) = NodeCount(Element % NodeIndexes) + 1 
+          END DO
+          ALLOCATE(InterfaceNode(Mesh % NumberOfNodes))
+          InterfaceNode = (NodeCount < 4 )
+          DEALLOCATE(NodeCount)
+
+          t = COUNT(InterfaceNode)
+          CALL Info(Caller,'Number of Interface nodes: '//I2S(t),Level=7)
+        END IF
       END BLOCK
     ELSE
       IF(ParEnv % PEs > 1 ) THEN
@@ -309,7 +388,7 @@ SUBROUTINE TopoOpt( Model,Solver,dt,Transient )
   END IF
   WRITE(Message,*) 'Objective function: ',obj
   CALL Info(Caller,Message)
-  
+
   ! Pre-filter  
   SELECT CASE( FilterMethod )
   CASE('sensitivity')
@@ -365,7 +444,13 @@ SUBROUTINE TopoOpt( Model,Solver,dt,Transient )
   END IF
 
   IF(ASSOCIATED(bw)) THEN
+    CALL Info(Caller,'Extracting B&W coloring',Level=8) 
     CALL DefineTopologyBW(dv0,xPhys,bw)    
+  END IF
+
+  IF(ASSOCIATED(zeroset)) THEN
+    CALL Info(Caller,'Extracting zero levelset function',Level=8) 
+    CALL DefineTopologyZeroLevel(Solver % Variable,zeroset)    
   END IF
 
   IF(InfoActive(20)) THEN
@@ -373,7 +458,21 @@ SUBROUTINE TopoOpt( Model,Solver,dt,Transient )
   END IF
   
   ! Multiplier for local stiffness matrix of the external solver.
-1 xMult = emin + efrac * xPhys**penal
+1 CONTINUE
+
+  xMult = emin + efrac * xPhys**penal
+
+  IF( nPer > 1 ) THEN
+    pVar => VariableGet( Mesh % Variables,"topo mult", UnfoundFatal = .TRUE.)
+    pVarExt => VariableGet( Mesh % Variables,"topo mult extended", UnfoundFatal = .TRUE.)
+    pVarExt % Values = 1.0_dp
+    DO i=1,Mesh % NumberOfBulkElements
+      Element => Mesh % Elements(i)
+      j = ABS(SumPerm(i))
+      IF(j==0) CYCLE
+      pVarExt % Values(pVarExt % Perm(i)) = pVar % Values(pVar % Perm(j))
+    END DO
+  END IF
     
   TimesVisited = TimesVisited + 1
   
@@ -414,20 +513,75 @@ CONTAINS
     REAL(KIND=dp), POINTER :: ce(:),dc(:),dv(:)
     REAL(KIND=dp) :: obj
 
-    INTEGER :: i,j,k
+    INTEGER :: i,j,k,l,NoModes, NoActive, sgn, sgn1, sgn2
+    LOGICAL :: UseAdjoint, Found
+    TYPE(Variable_t), POINTER :: AdjSol
     REAL(KIND=dp), ALLOCATABLE:: Stiff(:,:), Force(:)
-
+    TYPE(Element_t), POINTER :: Element
+    REAL(KIND=dp) :: spos, sneg
     
     n = Solver % Mesh % MaxElementNodes * dofs
     ALLOCATE(Stiff(n,n), Force(n) )
+
+    UseAdjoint = ListGetLogical(Params,'Use Adjoint Solution',Found)
+    IF(UseAdjoint) THEN
+      AdjSol => VariableGet(Solver % Mesh % Variables,TRIM(PhysSolver % Variable % Name)//' adjoint')
+      IF(.NOT. ASSOCIATED(AdjSol)) CALL Fatal(Caller,'Did not find Adjoint solution!')
+      CALL Info(Caller,'Using adjoint solution: '//TRIM(AdjSol % Name))
+      IF(InfoActive(20)) THEN
+        PRINT *,'Adjoing interval:',MINVAL(AdjSol % Values), MAXVAL(AdjSol % Values), SIZE(AdjSol % Values)
+      END IF
+    END IF
+
+    sgn1 = LIstGetInteger(Params,'Sign A',Found )
+    IF(.NOT. Found) sgn1 = 1
+    sgn2 = LIstGetInteger(Params,'Sign B',Found )
+    IF(.NOT. Found) sgn2 = 1
     
-    DO i=1,Solver % NumberOfActiveElements
-      Element => Mesh % Elements(Solver % ActiveElements(i))
+    NoModes = ListGetInteger(Params,'No Modes',Found )
+    IF(.NOT. Found ) THEN
+      NoModes = PhysSolver % Variable % NumberOfConstraintModes 
+    END IF
+
+    IF(nPer > 1) THEN
+      NoActive = PhysSolver % NumberOfActiveElements
+    ELSE
+      NoActive = Solver % NumberOfActiveElements
+    END IF
+    
+    !ce = 0.0_dp
+    !PRINT *,'NULLIFY ce'
+
+    spos = 0.0_dp
+    sneg = 0.0_dp
+    
+    DO i=1,NoActive
+      IF(nPer > 1 ) THEN
+        j = PhysSolver % ActiveElements(i)
+        Element => Mesh % Elements(j)
+        j = SumPerm(j)        
+        IF(j==0) CYCLE
+        IF(j<0) THEN
+          j=-j
+          sgn=-1
+        ELSE
+          sgn=1
+        END IF
+      ELSE
+        j = Solver % ActiveElements(i)
+        Element => Mesh % Elements(j)
+      END IF
+      l = ElemPerm(j)
+
+      !IF(j>SIZE(ce)) PRINT *,'Too big j:',j,SIZE(ce)
+      
+      
       n = Element % TYPE % NumberOfNodes    
       m = dofs*n
 
       ! Get the local stiffness matrix as saved by the primary solver
-      CALL GetLocalMatrixStorage( PhysSolver, m, Stiff, Force, Found, ActiveInd = i )       
+      CALL GetLocalMatrixStorage( PhysSolver, m, Stiff, Force, Found, &
+          ElemInd = Element % ElementIndex ) 
       IF(.NOT. Found) CALL Fatal(Caller,'Could not find local stiffness matrix!')
 
       ! Get the solution from stress solver 
@@ -438,18 +592,54 @@ CONTAINS
         local_sol(1:m) = RESHAPE( local_sol_array(1:dofs,1:n), [m] )
       END IF
 
+      local_act(1:m) = MATMUL( Stiff(1:m,1:m), local_sol(1:m) )
+            
       ! Elemental energy assuming unity multiplier.
-      ce(i) = SUM( local_sol(1:m) * MATMUL( Stiff, local_sol(1:m) ) )            
+      IF(UseAdjoint) THEN
+        ! Get the solution from stress solver 
+        IF(dofs == 1) THEN
+          CALL GetLocalSolution( local_sol,UElement=Element,UVariable=AdjSol)
+        ELSE
+          CALL GetLocalSolution( local_sol_array,UElement=Element,UVariable=AdjSol)
+          local_sol(1:m) = RESHAPE( local_sol_array(1:dofs,1:n), [m] )
+        END IF
+        ! This sign leads to convergence of the bisection iteration. 
+        IF(sgn>0) THEN
+          spos = spos + SUM( local_sol(1:m) * local_act(1:m) )
+          ce(l) = ce(l) + sgn1 * SUM( local_sol(1:m) * local_act(1:m) )
+        ELSE
+          sneg = sneg + SUM( local_sol(1:m) * local_act(1:m) )
+          ce(l) = ce(l) + sgn2 * SUM( local_sol(1:m) * local_act(1:m) )
+        END IF          
+      ELSE IF(NoModes > 0 ) THEN
+        ce(l) = 0.0_dp
+        DO k=1,NoModes
+          IF(dofs == 1) THEN
+            CALL GetLocalConsmode( local_sol,UElement=Element,USolver=PhysSolver,NoMode=k) 
+          ELSE
+            CALL GetLocalConsmode( local_sol_array,UElement=Element,USolver=PhysSolver,NoMode=k) 
+            local_sol(1:m) = RESHAPE( local_sol_array(1:dofs,1:n), [m] )
+          END IF
+          ce(l) = ce(l) + SUM( local_sol(1:m) * local_act(1:m) )           
+        END DO
+      ELSE
+        ce(l) = SUM( local_sol(1:m) * local_act(1:m) )
+      END IF
     END DO
-
-    !PRINT *,'Objective:',obj,emin,efrac,penal,SUM(x),SUM(ce)
     
     ! Derivative of elemental energy
     dc = dc - penal*x**(penal-1) * efrac * ce
 
     ! Objective function
     obj = obj + SUM( (emin + efrac*( x**penal ) ) * ce )
-    
+
+    IF(InfoActive(20)) THEN
+      PRINT *,'Objective:',obj,spos,sneg
+      PRINT *,'ce:',SUM(ce),SUM(ABS(ce)),MINVAL(ce), MAXVAL(ce)
+      PRINT *,'dc:',SUM(dc),SUM(ABS(dc)),MINVAL(dc), MAXVAL(dc)
+      PRINT *,'x:',SUM(x),SUM(ABS(x)),MINVAL(x), MAXVAL(x)
+    END IF
+      
   END SUBROUTINE ObjectiveGradients
     
 
@@ -464,7 +654,7 @@ CONTAINS
     REAL(KIND=dp) :: g
 
     REAL(KIND=dp), ALLOCATABLE :: xnew(:)
-    REAL(KIND=dp) :: Vi, l1, l2, lmid, move, err, tol, V0
+    REAL(KIND=dp) :: Vi, l1, l2, lmid, move, err, tol, V0, damp
     INTEGER :: k
     LOGICAL :: Visited = .FALSE.
 
@@ -479,6 +669,9 @@ CONTAINS
     
     tol = ListGetCReal(Params,'Bisection search tolerance',Found )
     IF(.NOT. Found) tol = 1.0e-6
+
+    damp = ListGetCReal(Params,'Bisection search damping exponent',Found )
+    IF(.NOT. Found) damp = 0.5_dp
       
     ! Desired total volume
     V0 = volFrac * SUM(dv)
@@ -492,7 +685,7 @@ CONTAINS
       
       ! Note: xnew in [0,1]
       ! Suggested new density
-      xnew = x*SQRT(-dc/(dv*lmid))
+      xnew = x*(MAX(1.0e-10,-dc/(dv*lmid)))**damp
 
       ! Regulators and limiters
       xnew = MAX(0.0_dp,MAX(x-move,MIN(1.0_dp,MIN(x+move,xnew))))
@@ -508,16 +701,19 @@ CONTAINS
       END IF
       
       err = (l2-l1)/(l1+l2)
-      IF( err < tol ) EXIT      
-
-      IF( InfoActive(20)) THEN
+      IF( InfoActive(15)) THEN
         PRINT *,'Bisection:',k,Vi,l1,l2,err
       END IF
+
+      IF( err < tol ) EXIT      
     END DO
 
     x = xnew 
     g = Vi - V0
-    CALL Info(Caller,'Number of bisection iterations: '//I2S(k))
+    CALL Info(Caller,'Number of bisection iterations: '//I2S(k),Level=7)
+    WRITE(Message,'(A,2ES12.3)') 'Volume target and accuracy: ',V0,g
+    CALL Info(Caller, Message, Level=7)
+    
     
   END SUBROUTINE UpdateDensities
                 
@@ -893,15 +1089,18 @@ CONTAINS
   SUBROUTINE DefineTopologyBW(dv0,xPhys,bw)    
     REAL(KIND=dp), POINTER :: dv0(:), xPhys(:), bw(:)
 
-    REAL(KIND=dp) :: xlow, xup, xmid, h
-    REAL(KIND=dp), ALLOCATABLE :: histv(:), cumv(:)
+    REAL(KIND=dp) :: xlow, xup, xmid, h, q
+    REAL(KIND=dp), ALLOCATABLE :: histv(:), cumv(:), tmp_histv(:)
 
     REAL(KIND=dp) :: Vtot, Vtarget
-    INTEGER :: i,j,k,m,iter
+    INTEGER :: i,j,k,m,iter,ierr
     LOGICAL :: Hit
     
     m = 100
     ALLOCATE(histv(0:m),cumv(0:m))
+    IF(ParEnv % MyPe > 1 ) THEN
+      ALLOCATE(tmp_histv(0:m))
+    END IF
     
     xlow = 0.0_dp
     xup = 1.0_dp
@@ -917,18 +1116,28 @@ CONTAINS
         j = MAX(0,MIN(CEILING((xPhys(i)-xlow)/h),m))
         histv(j) = histv(j) + dv0(i)
       END DO
-      cumv(0) = histv(0)
 
-      ! For parallel runs communicate the histogram here.
+      IF( ParEnv % PEs > 1 ) THEN
+        tmp_histv(0:m) = histv(0:m)
+        CALL MPI_ALLREDUCE( tmp_histv, histv, m+1, &
+            MPI_DOUBLE_PRECISION, MPI_SUM, ELMER_COMM_WORLD, ierr )
+      END IF              
+
+      cumv(0) = histv(0)
       DO i=1,m        
         cumv(i) = cumv(i-1) + histv(i)
       END DO
 
       Hit = .FALSE.
+      q = 1.0_dp
+      
       DO i=1,m
         IF(cumv(i-1) < Vtarget .AND. cumv(i) > Vtarget) THEN
           xlow = xlow + (i-1)*h
           xup = xlow + h
+
+          q = (Vtarget-cumv(i-1))/(cumv(i)-cumv(i-1))
+
           Hit = .TRUE.
           EXIT
         ELSE IF(ABS(cumv(i-1)-Vtarget) < EPSILON(h)) THEN
@@ -944,19 +1153,156 @@ CONTAINS
       IF(.NOT. Hit) EXIT
     END DO
     
-    xmid = (xlow+xup)/2.0_dp
+    xmid = (1-q)*xlow + q*xup
+
     WHERE(xPhys > xmid )
       bw = 1.0_dp
     ELSE WHERE
       bw = 0.0_dp
     END WHERE
 
-    IF(InfoActive(7)) THEN
-      PRINT *,'Mass Conserving Limit:',xmid,xlow,xup,iter
-    END IF
+    WRITE(Message,'(A,ES12.3)') 'Mass conserving B&W limit after '//I2S(iter)//' iters: ',xmid
+    CALL Info(Caller,Message,Level=7)
     
   END SUBROUTINE DefineTopologyBW
 
+
+!------------------------------------------------------------------------------
+!> Given a nodal topology xPhys find a zero levelset such that the volume
+!> constraint is conserved as accurately as possible.
+!------------------------------------------------------------------------------
+  SUBROUTINE DefineTopologyZeroLevel(xPhysVar,bw)    
+    TYPE(Variable_t), POINTER :: xPhysVar
+    REAL(KIND=dp), POINTER :: dv0(:), bw(:)
+
+    REAL(KIND=dp) :: xlow, xup, xmid, h, xAtIp, weight, detJ, f, q
+    REAL(KIND=dp), ALLOCATABLE :: histv(:), cumv(:), tmp_histv(:), Basis(:)
+
+    REAL(KIND=dp) :: Vtot, Vtarget
+    INTEGER :: i,j,k,m,n,t,iter,elem,RelOrder,ierr
+    LOGICAL :: Hit, Stat
+    TYPE(GaussIntegrationPoints_t) :: IP
+
+    m = 1000
+    ALLOCATE(histv(m+1),cumv(m+1))
+    IF( ParEnv % PEs > 1 ) THEN
+      ALLOCATE(tmp_histv(m+1))
+    END IF
+      
+    xlow = 0.0_dp
+    xup = 1.0_dp
+
+    n = Mesh % MaxElementNodes
+    ALLOCATE(Basis(n))
+    Basis = 0.0_dp
+
+    RelOrder = ListGetInteger( Solver % Values,'Levelset Integration Relative Order',Found)
+    IF(.NOT. Found) RelOrder = 1
+    
+    DO iter=1,1 !0
+      h = (xup-xlow) / m 
+      histv = 0.0_dp
+      cumv = 0.0_dp
+
+      DO elem=1,Mesh % NumberOfBulkElements
+        Element => Mesh % Elements(elem)
+        n = Element % Type % NumberOfNodes
+        
+        IP = GaussPoints(Element, RelOrder=RelOrder)
+
+        DO t=1,IP % n
+          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), detJ, Basis )
+          xAtIp = SUM(Basis(1:n) * xPhysVar % Values(xPhysVar % Perm(Element % NodeIndexes)))
+          weight = detJ * IP % s(t)
+
+          IF(xAtIp <= xlow ) THEN
+            histv(1) = histv(1) + weight 
+          ELSE IF( xAtIp >= xup ) THEN
+            histv(m+1) = histv(m+1) + weight 
+          ELSE
+            f = (xAtIp-xlow)/h
+            j = CEILING(f)
+            q = j-f
+            histv(j+1) = histv(j+1) + (1-q) * weight 
+            histv(j) = histv(j) + q * weight
+          END IF
+        END DO
+      END DO
+
+      IF( ParEnv % PEs > 1 ) THEN
+        ! For parallel runs communicate the histogram here.
+        tmp_histv = histv
+        CALL MPI_ALLREDUCE( tmp_histv, histv, m+1, &
+            MPI_DOUBLE_PRECISION, MPI_SUM, ELMER_COMM_WORLD, ierr )
+      END IF              
+
+      cumv(1) = histv(1)
+      DO i=2,m+1        
+        cumv(i) = cumv(i-1) + histv(i)
+      END DO
+
+      Vtot = cumv(m+1) 
+      Vtarget = (1-volFrac) * Vtot
+            
+      IF( ParEnv % MyPe == 0) THEN
+        ! We may optionally save the histogram and its cumulative sum.  
+        IF( ListGetLogical( Solver % Values,'Save Density Histogram',Found ) ) THEN
+          BLOCK
+            INTEGER :: IoUnit
+            OPEN(NEWUNIT=IoUnit, FILE="dens_hist.dat")
+            DO i=1,m+1
+              WRITE(IoUnit,*) i-1, (i-1)*h, histv(i), cumv(i), cumv(i)/Vtot
+            END DO
+            CLOSE(IoUnit)
+          END BLOCK
+        END IF
+      END IF
+              
+      Hit = .FALSE.
+      q = 1.0_dp
+      
+      DO i=1,m
+        IF(cumv(i) < Vtarget .AND. cumv(i+1) > Vtarget) THEN
+          xlow = xlow + (i-1)*h
+          xup = xlow + h
+
+          q = (Vtarget-cumv(i))/(cumv(i+1)-cumv(i))
+          Hit = .TRUE.
+          EXIT
+        ELSE IF(ABS(cumv(i)-Vtarget) < EPSILON(h)) THEN
+          xlow = xlow + (i-1)*h
+          xup = xlow
+          EXIT
+        ELSE IF(ABS(cumv(i+1)-Vtarget) < EPSILON(h)) THEN
+          xlow = xlow + i*h
+          xup = xlow          
+          EXIT
+        END IF
+      END DO
+      IF(.NOT. Hit) EXIT
+    END DO
+
+    ! This is the new approximation of the mid value that gives the desider volume within (x>xmid).
+    xmid = (1-q)*xlow + q*xup
+             
+    IF( ListGetLogical( Solver % Values,'Levelset Symmmetric',Found ) ) THEN
+      ! Define levelset as simple offset from nodal density.
+      bw = xPhysVar % Values-xmid
+    ELSE
+      ! Map levelset between [-1,1] such that zero levelset is at desired value. 
+      WHERE(xPhysVar % Values > xmid )
+        bw = (xPhysVar % Values-xmid)/(1.0_dp-xmid)
+      ELSE WHERE
+        bw = (xPhysVar % Values-xmid)/xmid      
+      END WHERE
+    END IF
+      
+    WRITE(Message,'(A,ES12.3)') 'Mass conserving zero levelset: ',xmid
+    CALL Info(Caller,Message,Level=7)
+    
+  END SUBROUTINE DefineTopologyZeroLevel
+
+  
 
 !------------------------------------------------------------------------------
 !> Assembly of the matrix equation used for PDE filtering.
@@ -998,9 +1344,18 @@ CONTAINS
         IF(Csymmetry) weight = Weight * SUM(Basis(1:n) * Nodes % x(1:n)) 
         
         DO p=1,n
+          DO q=1,n            
+            STIFF(p,q) = STIFF(p,q) + Weight * Basis(p) * Basis(q) 
+          END DO
+        END DO
+
+        DO p=1,n
+          IF(SkipInterface) THEN
+            IF(InterfaceNode(Element % NodeIndexes(p))) CYCLE
+          END IF
           DO q=1,n
-            STIFF(p,q) = STIFF(p,q) + Weight * ( Basis(p) * Basis(q) + & 
-                SUM( Diff(1:dim) * dBasisdx(p,1:dim) * dBasisdx(q,1:dim) ) )
+            STIFF(p,q) = STIFF(p,q) + Weight * &  
+                SUM( Diff(1:dim) * dBasisdx(p,1:dim) * dBasisdx(q,1:dim) )
           END DO
         END DO
       END DO
@@ -1080,7 +1435,9 @@ CONTAINS
       n  = GetElementNOFNodes()
       CALL LocalMatrix(  Element, n, DoMatrix, Diff, xtmp )
     END DO
-
+    
+    CALL DefaultDirichletBCs()
+    
     Norm = DefaultSolve()
     pVar => Solver % Variable 
     
@@ -1103,7 +1460,7 @@ CONTAINS
   END SUBROUTINE ApplyPDEFilter
 
 
-
+#if 0 
 !------------------------------------------------------------------------------
 !> Solves a adjoint problem of the primary problem with different rhs.
 !------------------------------------------------------------------------------
@@ -1155,7 +1512,7 @@ CONTAINS
     PhysSolver % Variable => uVar
     
   END SUBROUTINE SolveAdjointProblem
-
+#endif
   
 !------------------------------------------------------------------------------
 END SUBROUTINE TopoOpt

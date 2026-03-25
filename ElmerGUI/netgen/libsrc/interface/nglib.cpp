@@ -397,14 +397,15 @@ Ng_STL_Geometry * Ng_STL_LoadGeometry (const char * filename, int binary)
   int i;
   STLGeometry geom;
   STLGeometry* geo;
-  ifstream ist(filename);
 
   if (binary)
     {
+      ifstream ist(filename, ios::binary);
       geo = geom.LoadBinary(ist);
     }
   else
     {
+      ifstream ist(filename);
       geo = geom.Load(ist);
     }
 

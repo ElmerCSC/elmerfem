@@ -4,23 +4,22 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-!
 !/******************************************************************************
 ! *
 ! *  Authors: Juha Ruokolainen, Antti Pursula
@@ -77,7 +76,7 @@ SUBROUTINE StatCurrentSolver_Init( Model,Solver,dt,TransientSimulation)
     END IF
 
     ! If library adaptivity is compiled with, use that by default.
-#ifdef LIBRARY_ADAPTIVIVTY
+#ifdef LIBRARY_ADAPTIVITY
     CALL ListAddNewLogical(Params,'Library Adaptivity',.TRUE.)
 #endif
         
@@ -145,32 +144,32 @@ END SUBROUTINE StatCurrentSolver_Init
           Cwrk, ControlScaling, CalculateNodalHeating
 
      INTERFACE
-       FUNCTION StatCurrentSolver_Boundary_Residual(Model, Edge, Mesh, Quant, Perm, Gnorm) RESULT(Indicator)
+       SUBROUTINE StatCurrentSolver_Boundary_Residual(Model, Edge, Mesh, Quant, Perm, Gnorm,Indicator)
          USE Types
          TYPE(Element_t), POINTER :: Edge
          TYPE(Model_t) :: Model
          TYPE(Mesh_t), POINTER :: Mesh
          REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
          INTEGER :: Perm(:)
-       END FUNCTION StatCurrentSolver_Boundary_Residual
+       END SUBROUTINE StatCurrentSolver_Boundary_Residual
 
-       FUNCTION StatCurrentSolver_Edge_Residual(Model, Edge, Mesh, Quant, Perm) RESULT(Indicator)
+       SUBROUTINE StatCurrentSolver_Edge_Residual(Model, Edge, Mesh, Quant, Perm,Indicator)
          USE Types
          TYPE(Element_t), POINTER :: Edge
          TYPE(Model_t) :: Model
          TYPE(Mesh_t), POINTER :: Mesh
          REAL(KIND=dp) :: Quant(:), Indicator(2)
          INTEGER :: Perm(:)
-       END FUNCTION StatCurrentSolver_Edge_Residual
+       END SUBROUTINE StatCurrentSolver_Edge_Residual
 
-       FUNCTION StatCurrentSolver_Inside_Residual(Model, Element, Mesh, Quant, Perm, Fnorm) RESULT(Indicator)
+       SUBROUTINE StatCurrentSolver_Inside_Residual(Model, Element, Mesh, Quant, Perm, Fnorm,Indicator)
          USE Types
          TYPE(Element_t), POINTER :: Element
          TYPE(Model_t) :: Model
          TYPE(Mesh_t), POINTER :: Mesh
          REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
          INTEGER :: Perm(:)
-       END FUNCTION StatCurrentSolver_Inside_Residual
+       END SUBROUTINE StatCurrentSolver_Inside_Residual
      END INTERFACE
 
 !------------------------------------------------------------------------------
@@ -1025,7 +1024,7 @@ END SUBROUTINE StatCurrentSolver_Init
 
 
   !------------------------------------------------------------------------------
-  FUNCTION StatCurrentSolver_boundary_residual(Model, Edge, Mesh, Quant, Perm, Gnorm) RESULT(Indicator)
+  SUBROUTINE StatCurrentSolver_boundary_residual(Model, Edge, Mesh, Quant, Perm, Gnorm,Indicator)
   !------------------------------------------------------------------------------
     USE DefUtils
     IMPLICIT NONE
@@ -1249,11 +1248,11 @@ END SUBROUTINE StatCurrentSolver_Init
   !    Gnorm = EdgeLength * Gnorm
     Indicator = EdgeLength * ResidualNorm
   !------------------------------------------------------------------------------
-    END FUNCTION StatCurrentSolver_boundary_residual
+    END SUBROUTINE StatCurrentSolver_boundary_residual
     !------------------------------------------------------------------------------
       
   
-  FUNCTION StatCurrentSolver_edge_residual(Model, Edge, Mesh, Quant, Perm) RESULT(Indicator)
+  SUBROUTINE StatCurrentSolver_edge_residual(Model, Edge, Mesh, Quant, Perm,Indicator)
   !------------------------------------------------------------------------------
     USE DefUtils
     IMPLICIT NONE
@@ -1449,11 +1448,11 @@ END SUBROUTINE StatCurrentSolver_Init
     DEALLOCATE (x, y, z, NodalConductivity, EdgeBasis, &
                 Basis, dBasisdx, Potential)
   !------------------------------------------------------------------------------
-    END FUNCTION StatCurrentSolver_edge_residual
+    END SUBROUTINE StatCurrentSolver_edge_residual
     !------------------------------------------------------------------------------
       
   !------------------------------------------------------------------------------
-  FUNCTION StatCurrentSolver_inside_residual(Model, Element, Mesh, Quant, Perm, Fnorm) RESULT(Indicator)
+  SUBROUTINE StatCurrentSolver_inside_residual(Model, Element, Mesh, Quant, Perm, Fnorm,Indicator)
   !------------------------------------------------------------------------------
     USE DefUtils
   !------------------------------------------------------------------------------
@@ -1666,6 +1665,6 @@ END SUBROUTINE StatCurrentSolver_Init
   !    Fnorm = Element % hk**2 * Fnorm
     Indicator = Element % hK**2 * ResidualNorm
   !------------------------------------------------------------------------------
-  END FUNCTION StatCurrentSolver_inside_residual
+  END SUBROUTINE StatCurrentSolver_inside_residual
 !------------------------------------------------------------------------------
  

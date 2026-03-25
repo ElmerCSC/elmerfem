@@ -53,7 +53,8 @@ End
 
 Solver 1
   Equation = "VectorHelmholtz"
-  Use Piola Transform = Logical False
+!  Use Piola Transform = True
+!  Bubbles in Global System = False
   Procedure = "VectorHelmholtz" "VectorHelmholtzSolver"
 
   Linear System Row Equilibration = True

@@ -4,23 +4,22 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-!
 !/******************************************************************************
 ! *
 ! *  Subroutine for line data to files
@@ -1094,9 +1093,9 @@ CONTAINS
           tmpResultData = 0.0_dp
           
           IF( nold > 0 ) THEN
-            tmpPosData = PosData
-            tmpResultData = ResultData
-            tmpLabelData = LabelData
+            tmpPosData(1:nold) = PosData
+            tmpLabelData(1:nold,1:NoLabels) = LabelData
+            tmpResultData(1:nold,1:NoResults) = ResultData
             DEALLOCATE(PosData, ResultData, LabelData,STAT=istat)
             IF(istat /= 0) THEN
               CALL Fatal(Caller,'Problems deallocating some too small workspace')
@@ -1336,6 +1335,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Parent
     LOGICAL :: BreakLoop, ParallelComm
     REAL(KIND=dp) :: linepos
+    INTEGER, ALLOCATABLE :: NodeToElement(:)
     
     MaskName = ListGetString(Params,'Save Mask',GotIt) 
     IF(.NOT. GotIt) MaskName = 'Save Line'
@@ -1400,6 +1400,19 @@ CONTAINS
           InvPerm(SavePerm(i)) = i
         END IF
       END DO
+      
+      ! Create a table where from each node we have something pointing to an element.
+      ALLOCATE(NodeToElement(Mesh % NumberOfNodes))
+      NodeToElement = 0
+      DO t = 1,  Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements                
+        CurrentElement => Mesh % Elements(t)
+        IF( ParEnv % PEs > 1 ) THEN
+          IF( CurrentElement % PartIndex /= ParEnv % MyPe ) CYCLE
+        END IF
+        NodeIndexes => CurrentElement % NodeIndexes        
+        NodeToElement(NodeIndexes) = CurrentElement % ElementIndex
+      END DO
+
       
       IF(CalculateFlux) THEN
         CALL Info(Caller,'Calculating nodal fluxes',Level=8)
@@ -1565,6 +1578,10 @@ CONTAINS
         linepos = -1.0_dp
         DO t = 1, SaveNodes(1)    
           node = InvPerm(t)
+          
+          ! Get some element which may be usefull in evaluating the field.
+          CurrentElement => Mesh % Elements(NodeToElement(node))
+          
           IF( CalculateFlux ) THEN
             CALL WriteFieldsAtElement( CurrentElement, BoundaryIndex(t), node, &
                 dgnode, UseNode = .TRUE., NodalFlux = PointFluxes(t,:), &

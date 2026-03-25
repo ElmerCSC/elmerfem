@@ -28,7 +28,6 @@
 ! ****************************************************************************/
 
 MODULE zirka ! Pointwise zirka {{{
-USE ISO_C_BINDING, ONLY: C_INT, C_LOC, C_PTR, C_F_POINTER
 USE GeneralUtils
 USE DefUtils
 implicit none
@@ -795,8 +794,9 @@ END SUBROUTINE ! }}}
 END MODULE ! }}}
 
 module ZirkaUtils ! Utils for 2D/3D calculations {{{
-use zirka
-use DefUtils
+USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_PTR, C_LOC, C_F_POINTER
+USE zirka
+USE DefUtils
 
 character(len=*), parameter :: default_zirka_variable_name = 'zirka_ipvar'
 
@@ -878,8 +878,10 @@ SUBROUTINE InitHysteresis(Model,Solver) ! {{{
     allocate(ABCParams)
     zirkamodel % ABCParams => ABCParams
     call GetConstRealArray(Material,  zcoeff, 'Zirka model coefficients', found)
-    if(Found .and. size(zcoeff,1) == 4) then
-      ABCparams % coeffs(1:4) = zcoeff(1:4,1)
+    if(Found) THEN
+      IF (size(zcoeff,1) == 4) then
+       ABCparams % coeffs(1:4) = zcoeff(1:4,1)
+       end if
     end if
     
     b_mult = GetCReal(Material, 'Zirka model b multiplier', found)

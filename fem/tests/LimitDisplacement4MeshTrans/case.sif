@@ -151,5 +151,5 @@ Boundary Condition 3
   Disp 3 = Real 0.0
 End
 
-Solver 1 :: Reference Norm = 2.52127098E-01
-Solver 2 :: Reference Norm = 8.37681668E-01
+Solver 1 :: Reference Norm = 2.52128151E-01
+Solver 2 :: Reference Norm = 8.37681591E-01

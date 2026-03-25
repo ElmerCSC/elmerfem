@@ -4,23 +4,22 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-!
 !/******************************************************************************
 ! *
 ! *  Module for solving the two-dimensional Reissner-Naghdi shell equations using
@@ -109,12 +108,12 @@ SUBROUTINE ShellSolver_Init0(Model, Solver, dt, Transient)
     CALL ListAddNewInteger(SolverPars, 'Nonlinear System Max Iterations', 50)
     CALL ListAddNewConstReal(SolverPars, 'Nonlinear System Convergence Tolerance', 1.0d-5)
     IF (Transient) THEN
-      CALL ListAddInteger(SolverPars, 'Time derivative order', 2)
       CALL ListAddString(SolverPars, 'Timestepping Method', 'Bossak')
     END IF
   END IF
+  CALL ListAddNewInteger(SolverPars, 'Time derivative order', 2)
   CALL ListAddNewLogical(SolverPars, 'Skip Compute Nonlinear Change', .TRUE.)
-
+  
   !----------------------------------------------------------------------------
   ! Create variables for saving principal (curvature) directions:
   !----------------------------------------------------------------------------
@@ -942,7 +941,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 
-    CHARACTER(LEN=MAX_NAME_LEN), INTENT(IN) :: MeshName
+    CHARACTER(LEN=*), INTENT(IN) :: MeshName
     INTEGER, INTENT(IN) :: NumberOfNodes
     TYPE(ValueList_t), POINTER, INTENT(IN) :: SolverPars
     TYPE(Variable_t), POINTER, INTENT(IN) :: Director
@@ -954,7 +953,8 @@ CONTAINS
     REAL(KIND=dp), POINTER :: NodalDirector(:,:)  
     REAL(KIND=dp), POINTER :: DirectorValues(:)
     REAL(KIND=dp) :: ElementDirectors(3*MaxBGElementNodes)
-    CHARACTER(LEN=MAX_NAME_LEN) :: DirectorFile, FormatString
+    CHARACTER(LEN=MAX_PATH_LEN) :: DirectorFile
+    CHARACTER(LEN=MAX_NAME_LEN) :: FormatString
     !------------------------------------------------------------------------------
     ReadNodalDirectors = .FALSE.
 

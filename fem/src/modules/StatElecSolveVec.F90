@@ -4,23 +4,22 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-!
 !/******************************************************************************
 ! *
 ! *  Module for static electric fields. 
@@ -112,13 +111,13 @@ SUBROUTINE StatElecSolver_init( Model,Solver,dt,Transient )
     PostActive = .TRUE.
   END IF
 
-  IF( ListGetLogical(Params,'Calculate Elecric Flux',Found) ) THEN
+  IF( ListGetLogical(Params,'Calculate Electric Flux',Found) ) THEN
     IF( CalculateElemental ) & 
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-        '-dg Elecric Flux e[Elecric Flux e:'//I2S(dim)//']' )
+        '-dg Electric Flux e[Electric Flux e:'//I2S(dim)//']' )
     IF( CalculateNodal ) &
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-        'Elecric Flux[Elecric Flux:'//I2S(dim)//']' )       
+        'Electric Flux[Electric Flux:'//I2S(dim)//']' )       
     PostActive = .TRUE.
   END IF
 
@@ -170,14 +169,14 @@ SUBROUTINE StatElecSolver_init( Model,Solver,dt,Transient )
   CALL ListWarnUnsupportedKeyword('solver','adaptive mesh redinement',FatalFound=.TRUE.)
   CALL ListWarnUnsupportedKeyword('body force','piezo material',FatalFound=.TRUE.)
   IF( ListCheckPresentAnyBC(Model,'infinity bc') ) THEN
-    CALL Fatal('StatElecSolver_init','Use "Elecric Infinity BC" instead of "Infinity BC"')
+    CALL Fatal('StatElecSolver_init','Use "Electric Infinity BC" instead of "Infinity BC"')
   END IF
   
   ! If no fields need to be computed do not even call the _post solver!
   CALL ListAddLogical(Params,'PostSolver Active',PostActive)
 
   ! If library adaptivity is compiled with, use that by default.
-#ifdef LIBRARY_ADAPTIVIVTY
+#ifdef LIBRARY_ADAPTIVITY
   CALL ListAddNewLogical(Params,'Library Adaptivity',.TRUE.)
 #endif
   
@@ -190,7 +189,9 @@ END SUBROUTINE StatElecSolver_Init
 !------------------------------------------------------------------------------
 SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
+  USE MeshUtils, ONLY : FollowCurvedBoundary
   USE DefUtils
+  USE Adaptive
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
@@ -209,36 +210,34 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
   TYPE(Mesh_t), POINTER :: Mesh
   CHARACTER(*), PARAMETER :: Caller = 'StatElecSolver'
 
-#ifndef LIBRARY_ADAPTIVITY
   INTERFACE
-    FUNCTION StatElecSolver_Boundary_Residual(Model, Edge, Mesh, Quant, Perm, Gnorm) RESULT(Indicator)
+    SUBROUTINE StatElecSolver_Boundary_Residual(Model, Edge, Mesh, Quant, Perm, Gnorm,Indicator)
       USE Types
       TYPE(Element_t), POINTER :: Edge
       TYPE(Model_t) :: Model
       TYPE(Mesh_t), POINTER :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
       INTEGER :: Perm(:)
-    END FUNCTION StatElecSolver_Boundary_Residual
+    END SUBROUTINE StatElecSolver_Boundary_Residual
     
-    FUNCTION StatElecSolver_Edge_Residual(Model, Edge, Mesh, Quant, Perm) RESULT(Indicator)
+    SUBROUTINE StatElecSolver_Edge_Residual(Model, Edge, Mesh, Quant, Perm,Indicator)
       USE Types
       TYPE(Element_t), POINTER :: Edge
       TYPE(Model_t) :: Model
       TYPE(Mesh_t), POINTER :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2)
       INTEGER :: Perm(:)
-    END FUNCTION StatElecSolver_Edge_Residual
+    END SUBROUTINE StatElecSolver_Edge_Residual
     
-    FUNCTION StatElecSolver_Inside_Residual(Model, Element, Mesh, Quant, Perm, Fnorm) RESULT(Indicator)
+    SUBROUTINE StatElecSolver_Inside_Residual(Model, Element, Mesh, Quant, Perm, Fnorm,Indicator)
       USE Types
       TYPE(Element_t), POINTER :: Element
       TYPE(Model_t) :: Model
       TYPE(Mesh_t), POINTER :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
       INTEGER :: Perm(:)
-    END FUNCTION StatElecSolver_Inside_Residual
+    END SUBROUTINE StatElecSolver_Inside_Residual
   END INTERFACE
-#endif
   
 !------------------------------------------------------------------------------
 
@@ -807,8 +806,8 @@ SUBROUTINE StatElecSolver_post( Model,Solver,dt,Transient )
   ! Electric current: type 2, components 2:4
   PostVars(4) % Var => VariableGet( Mesh % Variables, 'Nodal Electric Flux')
   PostVars(4) % NodalField = .TRUE.
-  PostVars(5) % Var => VariableGet( Mesh % Variables, 'Elecric Flux')
-  PostVars(6) % Var => VariableGet( Mesh % Variables, 'Elecric Flux e')
+  PostVars(5) % Var => VariableGet( Mesh % Variables, 'Electric Flux')
+  PostVars(6) % Var => VariableGet( Mesh % Variables, 'Electric Flux e')
   PostVars(4:6) % FieldType = 2 
 
   ! Electric field: type 3, components 5-7
@@ -1226,6 +1225,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE GlobalPostAve()
 !------------------------------------------------------------------------------
+    USE MeshUtils, ONLY : CalculateBodyAverage
     INTEGER :: i, Vari
     TYPE(Variable_t), POINTER :: pVar
 
@@ -1252,7 +1252,7 @@ END SUBROUTINE StatElecSolver_Post
 !------------------------------------------------------------------------------
 ! Subroutine for computing residuals for adaptive mesh refinement.
 !------------------------------------------------------------------------------
-FUNCTION StatElecSolver_boundary_Residual(Model, Edge, Mesh, Quant, Perm, Gnorm) RESULT(Indicator)
+SUBROUTINE StatElecSolver_boundary_Residual(Model, Edge, Mesh, Quant, Perm, Gnorm,Indicator)
 !------------------------------------------------------------------------------
   USE DefUtils
   IMPLICIT NONE
@@ -1477,11 +1477,11 @@ FUNCTION StatElecSolver_boundary_Residual(Model, Edge, Mesh, Quant, Perm, Gnorm)
 !    Gnorm = EdgeLength * Gnorm
   Indicator = EdgeLength * ResidualNorm
 !------------------------------------------------------------------------------
-END FUNCTION StatElecSolver_boundary_residual
+END SUBROUTINE StatElecSolver_boundary_residual
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-FUNCTION StatElecSolver_edge_residual(Model, Edge, Mesh, Quant, Perm) RESULT(Indicator)
+SUBROUTINE StatElecSolver_edge_residual(Model, Edge, Mesh, Quant, Perm,Indicator)
 !------------------------------------------------------------------------------
   USE DefUtils
   IMPLICIT NONE
@@ -1676,12 +1676,12 @@ FUNCTION StatElecSolver_edge_residual(Model, Edge, Mesh, Quant, Perm) RESULT(Ind
   DEALLOCATE (x, y, z, NodalPermittivity, EdgeBasis, &
               Basis, dBasisdx, Potential)
 !------------------------------------------------------------------------------
-END FUNCTION StatElecSolver_Edge_Residual
+END SUBROUTINE StatElecSolver_Edge_Residual
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-FUNCTION StatElecSolver_Inside_residual(Model, Element, Mesh, &
-                                Quant, Perm, Fnorm) RESULT(Indicator)
+SUBROUTINE StatElecSolver_Inside_residual(Model, Element, Mesh, &
+                                Quant, Perm, Fnorm,Indicator)
 !------------------------------------------------------------------------------
   USE DefUtils
 !------------------------------------------------------------------------------
@@ -1900,5 +1900,5 @@ FUNCTION StatElecSolver_Inside_residual(Model, Element, Mesh, &
 !    Fnorm = Element % hk**2 * Fnorm
   Indicator = Element % hK**2 * ResidualNorm
 !------------------------------------------------------------------------------
-END FUNCTION StatElecSolver_inside_residual
+END SUBROUTINE StatElecSolver_inside_residual
 !------------------------------------------------------------------------------

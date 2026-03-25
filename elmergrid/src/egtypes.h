@@ -281,6 +281,7 @@ struct ElmergridType {
 
   int dim,
     silent,
+    binary,     /* save mesh to ElmerSolver in binary format */
     center,
     scale,      /* scale the geometry */
     order,      /* reorder the nodes */
@@ -369,7 +370,8 @@ struct ElmergridType {
     timeron,
     nosave,
     nooverwrite,
-    unitenooverlap;
+    unitenooverlap,
+    filerenamed;
 
   Real cscale[3], 
     corder[3],

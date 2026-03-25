@@ -49,10 +49,8 @@
 MODULE DirectSolve
 
    USE CRSMatrix
-   USE Lists
    USE BandMatrix
    USE SParIterSolve
-   USE SparIterGlobals
 
    IMPLICIT NONE
 
@@ -708,12 +706,84 @@ CONTAINS
   END SUBROUTINE SPQR_SolveSystem
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+ SUBROUTINE FreeMumpsFactorizations(A)
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t) :: A
+
+!------------------------------------------------------------------------------
+#ifdef HAVE_MUMPS
+    IF(ASSOCIATED(A % SMumpsID)) THEN
+      DEALLOCATE( A % SMumpsID % irn_loc, &
+         A % SMumpsID % jcn_loc, A % SMumpsID % Rhs,  &
+           A % SMumpsID % isol_loc, A % SMumpsID % sol_loc)
+
+      DEALLOCATE( A % SMumpsID % A_loc )
+      IF (ASSOCIATED(A % Gorder)) DEALLOCATE(A % Gorder)
+      A % Gorder=>Null()
+
+      A % SMumpsID % job = -2
+      CALL SMumps(A % SMumpsID)
+      DEALLOCATE(A % SMumpsID)
+      A % SMumpsId => NULL()
+    END IF
+
+    IF(ASSOCIATED(A % CMumpsID)) THEN
+      DEALLOCATE( A % CMumpsID % irn_loc, &
+         A % CMumpsID % jcn_loc, A % CMumpsID % Rhs,  &
+           A % CMumpsID % isol_loc, A % CMumpsID % sol_loc)
+
+      DEALLOCATE( A % CMumpsID % A_loc )
+      IF (ASSOCIATED(A % Gorder)) DEALLOCATE(A % Gorder)
+      A % Gorder=>Null()
+
+      A % CMumpsID % job = -2
+      CALL CMumps(A % CMumpsID)
+      DEALLOCATE(A % CMumpsID)
+      A % CMumpsId => NULL()
+    END IF
+
+    IF(ASSOCIATED(A % MumpsID)) THEN
+      DEALLOCATE( A % MumpsID % irn_loc, &
+         A % MumpsID % jcn_loc, A % MumpsID % Rhs,  &
+           A % MumpsID % isol_loc, A % MumpsID % sol_loc)
+
+      IF(.NOT.ASSOCIATED(A % MumpsID % A_loc, A % Values)) DEALLOCATE( A % MumpsID % A_loc )
+      IF (ASSOCIATED(A % Gorder)) DEALLOCATE(A % Gorder)
+      A % Gorder=>Null()
+
+      A % MumpsID % job = -2
+      CALL DMumps(A % MumpsID)
+      DEALLOCATE(A % MumpsID)
+      A % MumpsId => NULL()
+    END IF
+
+    IF(ASSOCIATED(A % ZMumpsID)) THEN
+      DEALLOCATE( A % ZMumpsID % irn_loc, &
+         A % ZMumpsID % jcn_loc, A % ZMumpsID % Rhs,  &
+           A % ZMumpsID % isol_loc, A % ZMumpsID % sol_loc)
+
+      DEALLOCATE( A % ZMumpsID % A_loc )
+
+      IF (ASSOCIATED(A % Gorder)) DEALLOCATE(A % Gorder)
+      A % Gorder=>Null()
+
+      A % ZMumpsID % job = -2
+      CALL ZMumps(A % ZMumpsID)
+      DEALLOCATE(A % ZMumpsID)
+      A % ZMumpsId => NULL()
+    END IF
+#endif
+!------------------------------------------------------------------------------
+ END SUBROUTINE FreeMumpsFactorizations
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
 !> Solves a linear system using MUMPS direct solver. This is a legacy solver
-!> with complicated dependencies. This is only available in parallel. 
+!> with complicated dependencies. Single precision version.
 !------------------------------------------------------------------------------
-  SUBROUTINE Mumps_SolveSystem( Solver,A,x,b,Free_Fact )
+  SUBROUTINE SMumps_SolveSystem( Solver,A,x,b )
 !------------------------------------------------------------------------------
 #ifdef HAVE_MUMPS
 #  if defined(ELMER_HAVE_MPI_MODULE)
@@ -721,7 +791,431 @@ CONTAINS
 #  endif
 #endif
 
-  LOGICAL, OPTIONAL :: Free_Fact
+  TYPE(Matrix_t) :: A
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp), TARGET :: x(*), b(*)
+
+#ifdef HAVE_MUMPS
+#  if defined(ELMER_HAVE_MPIF_HEADER)
+  INCLUDE 'mpif.h'
+#  endif
+
+  INTEGER, ALLOCATABLE :: Owner(:)
+  INTEGER :: i,j,n,ip,ierr,icntlft,nzloc
+  LOGICAL :: Factorize, FreeFactorize, stat, matsym, matspd, scaled
+
+  INTEGER, ALLOCATABLE :: memb(:)
+  INTEGER :: Comm_active, Group_active, Group_world
+
+  REAL, ALLOCATABLE :: dbuf(:)
+
+  Factorize = ListGetLogical( Solver % Values, 'Linear System Refactorize', stat )
+  IF ( .NOT. stat ) Factorize = .TRUE.
+
+  IF ( Factorize .OR. .NOT.ASSOCIATED(A % SMumpsID) ) THEN
+    CALL FreeMumpsFactorizations(A)
+    ALLOCATE(A % SMumpsID)
+
+    A % SMumpsID % Comm = A % Comm
+    A % SMumpsID % par  =  1
+    A % SMumpsID % job  = -1
+    A % SMumpsID % Keep =  0
+
+    matsym = ListGetLogical( Solver % Values, 'Linear System Symmetric', stat)
+    matspd = ListGetLogical( Solver % Values, 'Linear System Positive Definite', stat)
+
+    ! force unsymmetric mode when "row equilibration" is used
+    scaled = ListGetLogical( Solver % Values, 'Linear System Scaling', stat)
+    IF(.NOT.stat) scaled = .TRUE.
+    IF(scaled) THEN
+      IF(ListGetLogical( Solver % Values, 'Linear System Row Equilibration',stat)) matsym=.FALSE.
+    END IF
+
+    IF(matsym) THEN
+      IF ( matspd) THEN
+        A % MumpsID % sym = 1
+      ELSE
+        A % SMumpsID % sym = 0 ! 2=symmetric, but unsymmetric solver seems faster, at least in a few
+                              ! simple cases...  more testing needed...
+      END IF
+    ELSE
+      A % SMumpsID % sym = 0
+    END IF
+
+    CALL SMumps(A % SMumpsID)
+
+    IF(ASSOCIATED(A % Gorder)) DEALLOCATE(A % Gorder)
+
+    IF(ASSOCIATED(A % ParallelInfo)) THEN
+      n = SIZE(A % ParallelInfo % GlobalDOFs)
+
+      ALLOCATE( A % Gorder(n), Owner(n) )
+      CALL ContinuousNumbering( A % ParallelInfo, A % Perm, A % Gorder, Owner )
+
+      CALL MPI_ALLREDUCE( SUM(Owner), A % SMumpsID % n, &
+         1, MPI_INTEGER, MPI_SUM, A % SMumpsID % Comm, ierr )
+      DEALLOCATE(Owner)
+    ELSE
+      CALL MPI_ALLREDUCE( A % NumberOfRows, A % SMumpsId % n, &
+            1, MPI_INTEGER, MPI_MAX, A % Comm, ierr )
+
+      ALLOCATE(A % Gorder(A % NumberOFrows))
+      DO i=1,A % NumberOFRows
+        A % Gorder(i) = i
+      END DO
+    END IF
+
+   ! Set matrix for Mumps (unsymmetric case)
+    IF (A % SmumpsID % sym == 0) THEN
+      A % SMumpsID % nz_loc = A % Rows(A % NumberOfRows+1)-1
+
+      ALLOCATE( A % SMumpsID % irn_loc(A % SMumpsID % nz_loc) )
+      ALLOCATE( A % SMumpsID % a_loc(A % SMumpsId % nz_loc) )
+      ALLOCATE( A % SMumpsID % jcn_loc(A % SMumpsId % nz_loc) )
+
+      nzloc = 0
+      DO i=1,A % NumberOfRows
+        ip = A % Gorder(i)
+        DO j=A % Rows(i),A % Rows(i+1)-1
+          nzloc = nzloc + 1
+          A % SMumpsID % irn_loc(nzloc) = ip
+          A % SMumpsID % a_loc(nzloc)   = A % Values(j)
+          A % SMumpsID % jcn_loc(nzloc) = A % Gorder(A % Cols(j))
+        END DO
+      END DO
+    ELSE
+      ! Set matrix for Mumps (symmetric case)
+      nzloc = 0
+      DO i=1,A % NumberOfRows
+        ! Only output lower triangular part to Mumps
+        DO j=A % Rows(i),A % Diag(i)
+          nzloc = nzloc + 1
+        END DO
+      END DO
+
+      A % SMumpsID % nz_loc = nzloc
+
+      ALLOCATE( A % SMumpsID % irn_loc(A % SMumpsID % nz_loc) )
+      ALLOCATE( A % SMumpsID % jcn_loc(A % SMumpsId % nz_loc) )
+      ALLOCATE( A % SMumpsID % A_loc(A % SMumpsId % nz_loc) )
+
+      nzloc = 0
+      DO i=1,A % NumberOfRows
+        ! Only output lower triangular part to Mumps
+        ip = A % Gorder(i)
+        DO j=A % Rows(i),A % Diag(i)
+          nzloc = nzloc + 1
+          A % SmumpsID % IRN_loc(nzloc) = ip
+          A % SmumpsID % A_loc(nzloc) = A % Values(j)
+          A % SmumpsID % JCN_loc(nzloc) = A % Gorder(A % Cols(j))
+        END DO
+      END DO
+    END IF
+
+
+    ALLOCATE(A % SMumpsID % rhs(A % SMumpsId % n))
+
+    ! Tune verbosity of MUMPS.
+    i = 0
+    IF(InfoActive(20)) i = 1
+    A % SMumpsID % icntl(2) = i ! suppress printing of diagnostics and warnings
+    A % SMumpsID % icntl(3) = i ! suppress statistics
+
+    A % SMumpsID % icntl(4) = 1 ! the same as the two above, but doesn't seem to work.
+    A % SMumpsID % icntl(5) = 0 ! matrix format 'assembled'
+
+    icntlft = ListGetInteger(Solver % Values, &
+          'mumps percentage increase working space', stat)
+    IF (stat) THEN
+       A % SMumpsID % icntl(14) = icntlft
+    END IF
+    A % SMumpsID % icntl(18) = 3 ! 'distributed' matrix 
+    A % SMumpsID % icntl(21) = 1 ! 'distributed' solution phase
+
+    A % SMumpsID % job = 4
+    CALL SMumps(A % SMumpsID)
+    CALL Flush(6)
+
+    A % SMumpsID % lsol_loc = A % Smumpsid % info(23)
+    ALLOCATE(A % SMumpsID % sol_loc(A % SMumpsId % lsol_loc))
+    ALLOCATE(A % SMumpsID % isol_loc(A % SMumpsId % lsol_loc))
+  END IF
+
+ ! sum the rhs from all procs. Could be done for neighbours only (i guess):
+ ! ------------------------------------------------------------------------
+  A % SMumpsID % RHS = 0
+  DO i=1,A % NumberOfRows
+    ip = A % Gorder(i)
+    A % SMumpsId % RHS(ip) = b(i)
+  END DO
+
+  ALLOCATE( dbuf(A % SMumpsID % n) )
+  dbuf = A % SMumpsId % RHS
+  CALL MPI_ALLREDUCE( dbuf, A % SMumpsID % RHS, &
+    A % SMumpsID % n, MPI_REAL, MPI_SUM, A % SMumpsID % Comm, ierr )
+
+ ! Solution:
+ ! ---------
+  A % SMumpsID % job = 3
+  CALL SMumps(A % SMumpsID)
+
+ ! Distribute the solution to all:
+ ! -------------------------------
+  A % SMumpsId % Rhs = 0
+  DO i=1,A % SMumpsID % lsol_loc
+    A % SMumpsID % RHS(A % SMumpsID % isol_loc(i)) = A % SMumpsID % sol_loc(i)
+  END DO
+  dbuf = A % SMumpsId % RHS
+  CALL MPI_ALLREDUCE( dbuf, A % SMumpsID % RHS, &
+    A % SMumpsID % n, MPI_REAL, MPI_SUM,A %  SMumpsID % Comm, ierr )
+
+  DEALLOCATE(dbuf)
+
+ ! Select the values which belong to us:
+ ! -------------------------------------
+  DO i=1,A % NumberOfRows
+    ip = A % Gorder(i)
+    x(i) = A % SMumpsId % RHS(ip)
+  END DO
+
+  FreeFactorize = ListGetLogical( Solver % Values, 'Linear System Free Factorization', stat )
+  IF ( .NOT. stat ) FreeFactorize = .TRUE.
+
+  IF ( Factorize .AND. FreeFactorize ) CALL FreeMumpsFactorizations(A)
+#else
+   CALL Fatal( 'Mumps_SolveSystem', 'MUMPS Solver has not been installed.' )
+#endif
+!------------------------------------------------------------------------------
+  END SUBROUTINE SMumps_SolveSystem
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Solves a linear system using MUMPS direct solver. This is a legacy solver
+!> with complicated dependencies. Single precision complex version.
+!------------------------------------------------------------------------------
+  SUBROUTINE CMumps_SolveSystem( Solver,A,x,b )
+!------------------------------------------------------------------------------
+#ifdef HAVE_MUMPS
+#  if defined(ELMER_HAVE_MPI_MODULE)
+  USE mpi
+#  endif
+#endif
+
+  TYPE(Matrix_t) :: A
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp), TARGET :: x(*), b(*)
+
+#ifdef HAVE_MUMPS
+#  if defined(ELMER_HAVE_MPIF_HEADER)
+  INCLUDE 'mpif.h'
+#  endif
+
+  INTEGER, ALLOCATABLE :: Owner(:)
+  INTEGER :: i,j,n,ip,ierr,icntlft,nzloc
+  LOGICAL :: Factorize, FreeFactorize, stat, matsym, matspd, scaled
+
+  INTEGER, ALLOCATABLE :: memb(:)
+  INTEGER :: Comm_active, Group_active, Group_world
+
+  COMPLEX, ALLOCATABLE :: dbuf(:)
+
+  Factorize = ListGetLogical( Solver % Values, 'Linear System Refactorize', stat )
+  IF ( .NOT. stat ) Factorize = .TRUE.
+
+  IF ( Factorize .OR. .NOT.ASSOCIATED(A % CMumpsID) ) THEN
+    CALL FreeMumpsFactorizations(A)
+    ALLOCATE(A % CMumpsID)
+
+    A % CMumpsID % Comm = A % Comm
+    A % CMumpsID % par  =  1
+    A % CMumpsID % job  = -1
+    A % CMumpsID % Keep =  0
+
+!   matsym = ListGetLogical( Solver % Values, 'Linear System Symmetric', stat)
+!   matspd = ListGetLogical( Solver % Values, 'Linear System Positive Definite', stat)
+    matsym = .FALSE.
+    matspd = .FALSE.
+
+    ! force unsymmetric mode when "row equilibration" is used
+    scaled = ListGetLogical( Solver % Values, 'Linear System Scaling', stat)
+    IF(.NOT.stat) scaled = .TRUE.
+    IF(scaled) THEN
+      IF(ListGetLogical( Solver % Values, 'Linear System Row Equilibration',stat)) matsym=.FALSE.
+    END IF
+
+!   IF(matsym) THEN
+!     IF ( matspd) THEN
+!       A % CMumpsID % sym = 1
+!     ELSE
+!       A % CMumpsID % sym = 0 ! 2=symmetric, but unsymmetric solver seems faster, at least in a few
+!                             ! simple cases...  more testing needed...
+!     END IF
+!   ELSE
+!     A % CMumpsID % sym = 0
+!   END IF
+     A % CMumpsID % sym = 0
+
+    CALL CMumps(A % CMumpsID)
+
+    IF(ASSOCIATED(A % Gorder)) DEALLOCATE(A % Gorder)
+
+    IF(ASSOCIATED(A % ParallelInfo)) THEN
+      n = SIZE(A % ParallelInfo % GlobalDOFs)
+      ALLOCATE( A % Gorder(n), Owner(n) )
+      CALL ContinuousNumbering( A % ParallelInfo, A % Perm, A % Gorder, Owner )
+
+      CALL MPI_ALLREDUCE( SUM(Owner)/2, A % CMumpsID % n, &
+        1, MPI_INTEGER, MPI_SUM, A % CMumpsID % Comm, ierr )
+      DEALLOCATE(Owner)
+    ELSE
+      CALL MPI_ALLREDUCE( A % NumberOfRows/2, A % CMumpsId % n, &
+            1, MPI_INTEGER, MPI_MAX, A % Comm, ierr )
+
+      ALLOCATE(A % Gorder(A % NumberOFrows))
+      DO i=1,A % NumberOFRows
+        A % Gorder(i) = i
+      END DO
+    END IF
+
+   ! Set matrix for Mumps (unsymmetric case)
+    IF (A % CmumpsID % sym == 0) THEN
+      A % CMumpsID % nz_loc = (A % Rows(A % NumberOfRows+1)-1)/4
+
+      ALLOCATE( A % CMumpsID % irn_loc(A % CMumpsID % nz_loc) )
+      ALLOCATE( A % CMumpsID % a_loc(A % CMumpsId % nz_loc) )
+      ALLOCATE( A % CMumpsID % jcn_loc(A % CMumpsId % nz_loc) )
+
+      nzloc = 0
+      DO i=1,A % NumberOfRows,2
+        ip = (A % Gorder(i)-1)/2+1
+        DO j=A % Rows(i),A % Rows(i+1)-1,2
+          nzloc = nzloc + 1
+          A % CMumpsID % irn_loc(nzloc) = ip
+          A % CMumpsID % jcn_loc(nzloc) = (A % Gorder(A % Cols(j))-1)/2+1
+          A % CMumpsID % a_loc(nzloc)   = CMPLX( A % Values(j), -A % Values(j+1) )
+        END DO
+      END DO
+    ELSE
+      ! Set matrix for Mumps (symmetric case)
+      nzloc = 0
+      DO i=1,A % NumberOfRows
+        ! Only output lower triangular part to Mumps
+        DO j=A % Rows(i),A % Diag(i)
+          nzloc = nzloc + 1
+        END DO
+      END DO
+
+      A % CMumpsID % nz_loc = nzloc
+
+      ALLOCATE( A % CMumpsID % irn_loc(A % CMumpsID % nz_loc) )
+      ALLOCATE( A % CMumpsID % jcn_loc(A % CMumpsId % nz_loc) )
+      ALLOCATE( A % CMumpsID % A_loc(A % CMumpsId % nz_loc) )
+
+      nzloc = 0
+      DO i=1,A % NumberOfRows,2
+        ! Only output lower triangular part to Mumps
+        ip = A % Gorder(i)
+        DO j=A % Rows(i),A % Diag(i),2
+          nzloc = nzloc + 1
+          A % CmumpsID % IRN_loc(nzloc) = ip
+          A % CmumpsID % A_loc(nzloc) = A % Values(j)
+          A % CmumpsID % JCN_loc(nzloc) = A % Gorder(A % Cols(j))
+        END DO
+      END DO
+    END IF
+
+
+    ALLOCATE(A % CMumpsID % rhs(A % CMumpsId % n))
+
+    ! Tune verbosity of MUMPS.
+    i = 0
+    IF(InfoActive(20)) i = 1
+    A % CMumpsID % icntl(2) = i ! suppress printing of diagnostics and warnings
+    A % CMumpsID % icntl(3) = i ! suppress statistics
+
+    A % CMumpsID % icntl(4) = 1 ! the same as the two above, but doesn't seem to work.
+    A % CMumpsID % icntl(5) = 0 ! matrix format 'assembled'
+
+    icntlft = ListGetInteger(Solver % Values, &
+          'mumps percentage increase working space', stat)
+    IF (stat) THEN
+       A % CMumpsID % icntl(14) = icntlft
+    END IF
+    A % CMumpsID % icntl(18) = 3 ! 'distributed' matrix 
+    A % CMumpsID % icntl(21) = 1 ! 'distributed' solution phase
+
+    A % CMumpsID % job = 4
+    CALL CMumps(A % CMumpsID)
+    CALL Flush(6)
+
+    A % CMumpsID % lsol_loc = A % CMumpsid % info(23)
+    ALLOCATE(A % CMumpsID % sol_loc(A % CMumpsId % lsol_loc))
+    ALLOCATE(A % CMumpsID % isol_loc(A % CMumpsId % lsol_loc))
+  END IF
+
+ ! sum the rhs from all procs. Could be done
+ ! for neighbours only (i guess):
+ ! ------------------------------------------
+  A % CMumpsID % RHS = 0
+  DO i=1,A % NumberOfRows,2
+    ip = (A % Gorder(i)-1)/2+1
+    A % CMumpsId % RHS(ip) = CMPLX( b(i), b(i+1) )
+  END DO
+
+  ALLOCATE( dbuf(A % CMumpsID % n) )
+  dbuf = A % CMumpsId % RHS
+  CALL MPI_ALLREDUCE( dbuf, A % CMumpsID % RHS, &
+    A % CMumpsID % n, MPI_COMPLEX, MPI_SUM, A % CMumpsID % Comm, ierr )
+
+ ! Solution:
+ ! ---------
+  A % CMumpsID % job = 3
+  CALL CMumps(A % CMumpsID)
+
+ ! Distribute the solution to all:
+ ! -------------------------------
+  A % CMumpsId % Rhs = 0
+  DO i=1,A % CMumpsID % lsol_loc
+    A % CMumpsID % RHS(A % CMumpsID % isol_loc(i)) = A % CMumpsID % sol_loc(i)
+  END DO
+  dbuf = A % CMumpsId % RHS
+  CALL MPI_ALLREDUCE( dbuf, A % CMumpsID % RHS, &
+    A % CMumpsID % N, MPI_COMPLEX, MPI_SUM, A %  CMumpsID % Comm, ierr )
+
+  DEALLOCATE(dbuf)
+
+ ! Select the values which belong to us:
+ ! -------------------------------------
+  DO i=1,A % NumberOfRows,2
+    ip = (A % Gorder(i)-1)/2+1
+    x(i)   = REAL( A % CMumpsId % RHS(ip) )
+    x(i+1) = AIMAG( A % CMumpsId % RHS(ip) )
+  END DO
+
+  FreeFactorize = ListGetLogical( Solver % Values, 'Linear System Free Factorization', stat )
+  IF ( .NOT. stat ) FreeFactorize = .TRUE.
+  IF ( Factorize .AND. FreeFactorize ) CALL FreeMumpsFactorizations(A)
+
+#else
+   CALL Fatal( 'Mumps_SolveSystem', 'MUMPS Solver has not been installed.' )
+#endif
+!------------------------------------------------------------------------------
+  END SUBROUTINE CMumps_SolveSystem
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Solves a linear system using MUMPS direct solver. This is a legacy solver
+!> with complicated dependencies. This is only available in parallel. 
+!------------------------------------------------------------------------------
+  SUBROUTINE Mumps_SolveSystem( Solver,A,x,b )
+!------------------------------------------------------------------------------
+#ifdef HAVE_MUMPS
+#  if defined(ELMER_HAVE_MPI_MODULE)
+  USE mpi
+#  endif
+#endif
+
   TYPE(Matrix_t) :: A
   TYPE(Solver_t) :: Solver
   REAL(KIND=dp), TARGET :: x(*), b(*)
@@ -741,36 +1235,11 @@ CONTAINS
   REAL(KIND=dp), ALLOCATABLE :: dbuf(:)
 
 
-  IF ( PRESENT(Free_Fact) ) THEN
-    IF ( Free_Fact ) THEN
-      IF ( ASSOCIATED(A % MumpsID) ) THEN
-        DEALLOCATE( A % MumpsID % irn_loc, &
-           A % MumpsID % jcn_loc, A % MumpsID % rhs,  &
-              A % MumpsID % isol_loc, A % MumpsID % sol_loc, A % Gorder)
-        A % Gorder=>Null()
-
-        A % MumpsID % job = -2
-        CALL DMumps(A % MumpsID)
-        DEALLOCATE(A % MumpsID)
-      END IF
-      RETURN
-    END IF
-  END IF
-
-  Factorize = ListGetLogical( Solver % Values, &
-     'Linear System Refactorize', stat )
+  Factorize = ListGetLogical( Solver % Values, 'Linear System Refactorize', stat )
   IF ( .NOT. stat ) Factorize = .TRUE.
 
   IF ( Factorize .OR. .NOT.ASSOCIATED(A % MumpsID) ) THEN
-    IF ( ASSOCIATED(A % MumpsID) ) THEN
-      DEALLOCATE( A % MumpsID % irn_loc, &
-         A % MumpsID % jcn_loc, A % MumpsID % Rhs,  &
-            A % MumpsID % isol_loc, A % MumpsID % sol_loc, A % Gorder)
-      A % MumpsID % job = -2
-      CALL DMumps(A % MumpsID)
-      DEALLOCATE(A % MumpsID)
-    END IF
-
+    CALL FreeMumpsFactorizations(A)
     ALLOCATE(A % MumpsID)
 
     A % MumpsID % Comm = A % Comm
@@ -807,8 +1276,7 @@ CONTAINS
       n = SIZE(A % ParallelInfo % GlobalDOFs)
 
       ALLOCATE( A % Gorder(n), Owner(n) )
-      CALL ContinuousNumbering( A % ParallelInfo, &
-          A % Perm, A % Gorder, Owner )
+      CALL ContinuousNumbering( A % ParallelInfo, A % Perm, A % Gorder, Owner )
 
       CALL MPI_ALLREDUCE( SUM(Owner), A % MumpsID % n, &
          1, MPI_INTEGER, MPI_SUM, A % MumpsID % Comm, ierr )
@@ -871,10 +1339,14 @@ CONTAINS
 
     ALLOCATE(A % MumpsID % rhs(A % MumpsId % n))
 
-    A % MumpsID % icntl(2)  = 0 ! suppress printing of diagnostics and warnings
-    A % MumpsID % icntl(3)  = 0 ! suppress statistics
-    A % MumpsID % icntl(4)  = 1 ! the same as the two above, but doesn't seem to work.
-    A % MumpsID % icntl(5)  = 0 ! matrix format 'assembled'
+    ! Tune verbosity of MUMPS.
+    i = 0
+    IF(InfoActive(20)) i = 1
+    A % MumpsID % icntl(2) = i ! suppress printing of diagnostics and warnings
+    A % MumpsID % icntl(3) = i ! suppress statistics
+
+    A % MumpsID % icntl(4) = 1 ! the same as the two above, but doesn't seem to work.
+    A % MumpsID % icntl(5) = 0 ! matrix format 'assembled'
 
     icntlft = ListGetInteger(Solver % Values, &
           'mumps percentage increase working space', stat)
@@ -893,14 +1365,14 @@ CONTAINS
     ALLOCATE(A % MumpsID % isol_loc(A % MumpsId % lsol_loc))
   END IF
 
- ! sum the rhs from all procs. Could be done
- ! for neighbours only (i guess):
- ! ------------------------------------------
+ ! sum the rhs from all procs. Could be done for neighbours only (i guess):
+ ! ------------------------------------------------------------------------
   A % MumpsID % RHS = 0
   DO i=1,A % NumberOfRows
     ip = A % Gorder(i)
     A % MumpsId % RHS(ip) = b(i)
   END DO
+
   ALLOCATE( dbuf(A % MumpsID % n) )
   dbuf = A % MumpsId % RHS
   CALL MPI_ALLREDUCE( dbuf, A % MumpsID % RHS, &
@@ -915,8 +1387,7 @@ CONTAINS
  ! -------------------------------
   A % MumpsId % Rhs = 0
   DO i=1,A % MumpsID % lsol_loc
-    A % MumpsID % RHS(A % MumpsID % isol_loc(i)) = &
-            A % MumpsID % sol_loc(i)
+    A % MumpsID % RHS(A % MumpsID % isol_loc(i)) = A % MumpsID % sol_loc(i)
   END DO
   dbuf = A % MumpsId % RHS
   CALL MPI_ALLREDUCE( dbuf, A % MumpsID % RHS, &
@@ -931,30 +1402,223 @@ CONTAINS
     x(i) = A % MumpsId % RHS(ip)
   END DO
 
-  FreeFactorize = ListGetLogical( Solver % Values, &
-      'Linear System Free Factorization', stat )
+  FreeFactorize = ListGetLogical( Solver % Values, 'Linear System Free Factorization', stat )
   IF ( .NOT. stat ) FreeFactorize = .TRUE.
-
-  IF ( Factorize .AND. FreeFactorize ) THEN
-    DEALLOCATE( A % MumpsID % irn_loc, &
-       A % MumpsID % jcn_loc, A % MumpsID % Rhs,  &
-         A % MumpsID % isol_loc, A % MumpsID % sol_loc, A % Gorder)
-
-    IF ( A % MumpsID % Sym/=0 ) DEALLOCATE( A % MumpsID % A_loc )
-
-    A % Gorder=>Null()
-
-    A % MumpsID % job = -2
-    CALL DMumps(A % MumpsID)
-    DEALLOCATE(A % MumpsID)
-    A % MumpsId => NULL()
-  END IF
+  IF ( Factorize .AND. FreeFactorize ) CALL FreeMumpsFactorizations(A)
 
 #else
    CALL Fatal( 'Mumps_SolveSystem', 'MUMPS Solver has not been installed.' )
 #endif
 !------------------------------------------------------------------------------
   END SUBROUTINE Mumps_SolveSystem
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Solves a complex linear system using MUMPS direct solver. This is a legacy solver
+!> with complicated dependencies. This is only available in parallel. 
+!------------------------------------------------------------------------------
+  SUBROUTINE ZMumps_SolveSystem( Solver,A,x,b )
+!------------------------------------------------------------------------------
+#ifdef HAVE_MUMPS
+#  if defined(ELMER_HAVE_MPI_MODULE)
+  USE mpi
+#  endif
+#endif
+
+  TYPE(Matrix_t) :: A
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp), TARGET :: x(*), b(*)
+
+#ifdef HAVE_MUMPS
+#  if defined(ELMER_HAVE_MPIF_HEADER)
+  INCLUDE 'mpif.h'
+#  endif
+
+  INTEGER, ALLOCATABLE :: Owner(:)
+  INTEGER :: i,j,k,l,n,ip,ierr,icntlft,nzloc
+  LOGICAL :: Factorize, FreeFactorize, stat, matsym, matspd, scaled
+
+  INTEGER, ALLOCATABLE :: memb(:)
+  INTEGER :: Comm_active, Group_active, Group_world
+
+  COMPLEX(KIND=dp), ALLOCATABLE :: dbuf(:)
+
+  Factorize = ListGetLogical( Solver % Values, 'Linear System Refactorize', stat )
+  IF ( .NOT. stat ) Factorize = .TRUE.
+
+  IF ( Factorize .OR. .NOT.ASSOCIATED(A % ZMumpsID) ) THEN
+    CALL FreeMumpsFactorizations(A)
+    ALLOCATE(A % ZMumpsID)
+
+    A % ZMumpsID % Comm = A % Comm
+    A % ZMumpsID % par  =  1
+    A % ZMumpsID % job  = -1
+    A % ZMumpsID % Keep =  0
+
+!   matsym = ListGetLogical( Solver % Values, 'Linear System Symmetric', stat)
+!   matspd = ListGetLogical( Solver % Values, 'Linear System Positive Definite', stat)
+    matsym = .FALSE.
+    matspd = .FALSE.
+
+    ! force unsymmetric mode when "row equilibration" is used
+    scaled = ListGetLogical( Solver % Values, 'Linear System Scaling', stat)
+    IF(.NOT.stat) scaled = .TRUE.
+    IF(scaled) THEN
+      IF(ListGetLogical( Solver % Values, 'Linear System Row Equilibration',stat)) matsym=.FALSE.
+    END IF
+
+    A % ZMumpsID % sym = 0
+
+!   IF(matsym) THEN
+!     IF ( matspd) THEN
+!       A % ZMumpsID % sym = 1
+!     ELSE
+!       A % ZMumpsID % sym = 2 ! 2=symmetric, but unsymmetric solver seems faster, at least in a few
+!                             ! simple cases...  more testing needed...
+!     END IF
+!   ELSE
+!     A % ZMumpsID % sym = 0
+!   END IF
+
+    CALL ZMumps(A % ZMumpsID)
+
+    IF(ASSOCIATED(A % Gorder)) DEALLOCATE(A % Gorder)
+
+    IF(ASSOCIATED(A % ParallelInfo)) THEN
+      n = SIZE(A % ParallelInfo % GlobalDOFs)
+
+      ALLOCATE( A % Gorder(n), Owner(n) )
+      CALL ContinuousNumbering( A % ParallelInfo, A % Perm, A % Gorder, Owner )
+      CALL MPI_ALLREDUCE( SUM(Owner)/2,A % ZMumpsID % n,1,MPI_INTEGER, MPI_SUM,A % ZMumpsID % Comm,ierr )
+      DEALLOCATE(Owner)
+    ELSE
+      CALL MPI_ALLREDUCE( A % NumberOfRows/2, A % ZMumpsId % n, 1, MPI_INTEGER, MPI_MAX, A % Comm, ierr )
+
+      ALLOCATE(A % Gorder(A % NumberOFrows))
+      DO i=1,A % NumberOFRows
+        A % Gorder(i) = i
+      END DO
+    END IF
+
+   ! Set matrix for Mumps (unsymmetric case)
+   IF (A % ZmumpsID % sym == 0) THEN ! SYMMETRIC CASE NOT  DONE
+      A % ZMumpsID % nz_loc = (A % Rows(A % NumberOfRows+1)-1)/4
+
+      ALLOCATE( A % ZMumpsID % irn_loc(A % ZMumpsID % nz_loc) )
+      ALLOCATE( A % ZMumpsID % jcn_loc(A % ZMumpsId % nz_loc) )
+      ALLOCATE( A % ZMumpsID % a_loc(A % ZMumpsId % nz_loc) )
+
+      nzloc = 0
+      DO i=1,A % NumberOfRows,2
+        ip = (A % Gorder(i)-1)/2 + 1
+        DO j=A % Rows(i), A % Rows(i+1)-1,2
+          nzloc = nzloc + 1
+          A % ZMumpsID % irn_loc(nzloc) = ip
+          A % ZMumpsID % jcn_loc(nzloc) = (A % Gorder(A % Cols(j))-1)/2+1
+          A % ZMumpsID % a_loc(nzloc)   = CMPLX( A % Values(j), -A % Values(j+1), KIND=dp)
+        END DO
+      END DO
+    ELSE
+      ! Set matrix for Mumps (symmetric case)
+      nzloc = 0
+      DO i=1,A % NumberOfRows,2
+        ! Only output lower triangular part to Mumps
+        DO j=A % Rows(i),A % Diag(i),2
+          nzloc = nzloc + 1
+        END DO
+      END DO
+
+      A % ZMumpsID % nz_loc = nzloc
+
+      ALLOCATE( A % ZMumpsID % irn_loc(A % ZMumpsID % nz_loc) )
+      ALLOCATE( A % ZMumpsID % jcn_loc(A % ZMumpsId % nz_loc) )
+      ALLOCATE( A % ZMumpsID % A_loc(A % ZMumpsId % nz_loc) )
+
+      nzloc = 0
+      DO i=1,A % NumberOfRows,2
+        ! Only output lower triangular part to Mumps
+        DO j=A % Rows(i),A % Diag(i),2
+          nzloc = nzloc + 1
+          A % ZmumpsID % IRN_loc(nzloc) = (A % Gorder(i)-1)/2+1
+          A % ZmumpsID % JCN_loc(nzloc) = (A % Gorder(A % Cols(j))-1)/2+1
+          A % ZmumpsID % A_loc(nzloc) = CMPLX( A % Values(j), -A % Values(j+1), KIND=dp)
+        END DO
+      END DO
+    END IF
+
+    ALLOCATE(A % ZMumpsID % rhs(A % ZMumpsId % n))
+
+    ! Tune verbosity of MUMPS.
+    i = 0
+    IF(InfoActive(20)) i = 1
+    A % ZMumpsID % icntl(2) = i ! suppress printing of diagnostics and warnings
+    A % ZMumpsID % icntl(3) = i ! suppress statistics
+
+    A % ZMumpsID % icntl(4) = 1 ! the same as the two above, but doesn't seem to work.
+    A % ZMumpsID % icntl(5) = 0 ! matrix format 'assembled'
+
+    icntlft = ListGetInteger(Solver % Values, 'mumps percentage increase working space', stat)
+    IF (stat) THEN
+       A % ZMumpsID % icntl(14) = icntlft
+    END IF
+    A % ZMumpsID % icntl(18) = 3 ! 'distributed' matrix 
+    A % ZMumpsID % icntl(21) = 1 ! 'distributed' solution phase
+
+    A % ZMumpsID % job = 4
+    CALL ZMumps(A % ZMumpsID)
+    CALL Flush(6)
+
+    A % ZMumpsID % lsol_loc = A % Zmumpsid % info(23)
+    ALLOCATE(A % ZMumpsID % sol_loc(A % ZMumpsId % lsol_loc))
+    ALLOCATE(A % ZMumpsID % isol_loc(A % ZMumpsId % lsol_loc))
+  END IF
+
+ ! sum the rhs from all procs. Could be done
+ ! for neighbours only (i guess):
+ ! ------------------------------------------
+  A % ZMumpsID % RHS = 0
+  DO i=1,A % NumberOfRows,2
+    ip = (A % Gorder(i)-1)/2+1
+    A % ZMumpsId % RHS(ip) = CMPLX(b(i), b(i+1), KIND=dp)
+  END DO
+  ALLOCATE( dbuf(A % ZMumpsID % n) )
+  dbuf = A % ZMumpsId % RHS
+  CALL MPI_ALLREDUCE( dbuf, A % ZMumpsID % RHS, &
+    A % ZMumpsID % n, MPI_DOUBLE_COMPLEX, MPI_SUM, A % ZMumpsID % Comm, ierr )
+
+ ! Solution:
+ ! ---------
+  A % ZMumpsID % job = 3
+  CALL ZMumps(A % ZMumpsID)
+
+ ! Distribute the solution to all:
+ ! -------------------------------
+  A % ZMumpsId % Rhs = 0
+  DO i=1,A % ZMumpsID % lsol_loc
+    A % ZMumpsID % RHS(A % ZMumpsID % isol_loc(i)) = A % ZMumpsID % sol_loc(i)
+  END DO
+  dbuf = A % ZMumpsId % RHS
+  CALL MPI_ALLREDUCE( dbuf, A % ZMumpsID % RHS, &
+    A % ZMumpsID % N, MPI_DOUBLE_COMPLEX, MPI_SUM,A %  ZMumpsID % Comm, ierr )
+
+  DEALLOCATE(dbuf)
+
+ ! Select the values which belong to us:
+ ! -------------------------------------
+  DO i=1,A % NumberOfRows,2
+    ip = (A % Gorder(i)-1)/2+1
+    x(i)   = REAL( A % ZMumpsId % RHS(ip) )
+    x(i+1) = AIMAG( A % ZMumpsId % RHS(ip) )
+  END DO
+
+  FreeFactorize = ListGetLogical( Solver % Values, 'Linear System Free Factorization', stat )
+  IF ( .NOT. stat ) FreeFactorize = .TRUE.
+  IF ( Factorize .AND. FreeFactorize ) CALL FreeMumpsFactorizations(A)
+#else
+   CALL Fatal( 'ZMumps_SolveSystem', 'MUMPS Solver has not been installed.' )
+#endif
+!------------------------------------------------------------------------------
+  END SUBROUTINE ZMumps_SolveSystem
 !------------------------------------------------------------------------------
 
 
@@ -985,13 +1649,13 @@ CONTAINS
 
      ! Refactorize local matrix if needed
      Factorize = ListGetLogical( Solver % Values, &
-                                'Linear System Refactorize', stat )
+         'Linear System Refactorize', stat )
      IF (.NOT. stat) Factorize = .TRUE.
 
      IF (Factorize .OR. .NOT. ASSOCIATED(A % mumpsIDL)) THEN
        CALL MumpsLocal_Factorize(Solver, A)
      END IF
-
+       
      ! Set RHS
      A % mumpsIDL % NRHS = 1
      A % mumpsIDL % LRHS = A % mumpsIDL % n
@@ -1009,13 +1673,13 @@ CONTAINS
 
      ! Set local solution
      DO i=1,A % NumberOfRows
-       x(i)=A % mumpsIDL % RHS(i)
+       x(i) = A % mumpsIDL % RHS(i)
      END DO
      ! We could use BLAS here..
      ! CALL DCOPY(A % NumberOfRows, A % mumpsIDL % RHS, 1, x, 1)
 
      FreeFactorize = ListGetLogical( Solver % Values, &
-                                  'Linear System Free Factorization', stat )
+         'Linear System Free Factorization', stat )
      IF (.NOT. stat) FreeFactorize = .TRUE.
 
      IF (Factorize .AND. FreeFactorize) CALL MumpsLocal_Free(A)
@@ -1024,6 +1688,77 @@ CONTAINS
 #endif
 !------------------------------------------------------------------------------
   END SUBROUTINE MumpsLocal_SolveSystem
+!------------------------------------------------------------------------------
+
+  !------------------------------------------------------------------------------
+!> Solves local linear system using MUMPS direct solver. If the solved system
+!> is singular, optionally one possible solution is returned.
+!------------------------------------------------------------------------------
+  SUBROUTINE ZMumpsLocal_SolveSystem( Solver, A, x, b, Free_Fact )
+!------------------------------------------------------------------------------
+     IMPLICIT NONE
+
+     TYPE(Matrix_t) :: A
+     TYPE(Solver_t) :: Solver
+     REAL(KIND=dp), TARGET :: x(*), b(*)
+     LOGICAL, OPTIONAL :: Free_Fact
+
+     INTEGER :: i,j
+     LOGICAL :: Factorize, FreeFactorize, stat
+
+#ifdef HAVE_MUMPS
+     ! Free local Mumps instance if requested
+     IF (PRESENT(Free_Fact)) THEN
+       IF (Free_Fact) THEN
+         CALL MumpsLocal_Free(A)
+         RETURN
+       END IF
+     END IF
+
+     ! Refactorize local matrix if needed
+     Factorize = ListGetLogical( Solver % Values,'Linear System Refactorize', stat )
+     IF (.NOT. stat) Factorize = .TRUE.
+
+     IF (Factorize .OR. .NOT. ASSOCIATED(A % ZmumpsIDL)) THEN
+       CALL ZMumpsLocal_Factorize(Solver, A)
+     END IF
+
+     ! Set RHS
+     A % ZmumpsIDL % NRHS = 1
+     A % ZmumpsIDL % LRHS = A % ZmumpsIDL % n
+     j = 0
+     DO i=1,A % NumberOfRows,2
+       j = j + 1
+       A % ZmumpsIDL % RHS(j) = CMPLX(b(i), b(i+1), KIND=dp)
+     END DO
+     ! We could use BLAS here..
+     ! CALL DCOPY(A % NumberOfRows, b, 1, A % mumpsIDL % RHS, 1)
+
+     ! SOLUTION PHASE
+     A % ZmumpsIDL % job = 3
+     CALL ZMumps(A % ZmumpsIDL)
+
+     ! TODO: If solution is not local, redistribute the solution vector here
+
+     ! Set local solution
+     j = 0
+     DO i=1,A % NumberOfRows,2
+       j = j + 1
+       x(i) = REAL(A % ZmumpsIDL % RHS(j) )
+       x(i+1) = AIMAG(A % ZmumpsIDL % RHS(j) )
+     END DO
+     ! We could use BLAS here..
+     ! CALL DCOPY(A % NumberOfRows, A % mumpsIDL % RHS, 1, x, 1)
+
+     FreeFactorize = ListGetLogical( Solver % Values, 'Linear System Free Factorization', stat )
+     IF (.NOT. stat) FreeFactorize = .TRUE.
+
+     IF (Factorize .AND. FreeFactorize) CALL MumpsLocal_Free(A)
+#else
+     CALL Fatal( 'ZMumpsLocal_SolveSystem', 'MUMPS Solver has not been installed.' )
+#endif
+!------------------------------------------------------------------------------
+   END SUBROUTINE ZMumpsLocal_SolveSystem
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
@@ -1207,6 +1942,185 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+!> Factorize local matrix with Mumps
+!------------------------------------------------------------------------------
+  SUBROUTINE ZMumpsLocal_Factorize(Solver, A)
+!------------------------------------------------------------------------------
+#ifdef HAVE_MUMPS
+#  if defined(ELMER_HAVE_MPI_MODULE)
+    USE mpi
+#  endif
+#endif
+    IMPLICIT NONE
+
+    TYPE(Solver_t) :: Solver
+    TYPE(Matrix_t) :: A
+
+#ifdef HAVE_MUMPS
+#  if defined(ELMER_HAVE_MPIF_HEADER)
+    INCLUDE 'mpif.h'
+#  endif
+
+    INTEGER :: i, j, k, n, nz, allocstat, icntlft, ptype, nzloc
+    LOGICAL :: matpd, matsym, nullpiv, stat
+
+    ! INTEGER :: myrank, ierr
+    ! CHARACTER(len=32) :: buf
+
+    IF ( ASSOCIATED(A % ZmumpsIDL) ) CALL MumpsLocal_Free(A)
+
+    ! INITIALIZATION PHASE
+    ALLOCATE(A % ZmumpsIDL)
+
+    ! Initialize local instance of Mumps
+    ! TODO (Hybridization): change this if local system needs to be solved
+    ! with several cores
+    A % ZmumpsIDL % COMM = MPI_COMM_SELF
+    A % ZmumpsIDL % PAR = 1 ! Host (=self) takes part in factorization
+
+    ! Check if matrix is symmetric or spd
+    matsym = ListGetLogical(Solver % Values, &
+        'Linear System Symmetric', stat)
+ 
+    matpd = ListGetLogical(Solver % Values, &
+        'Linear System Positive Definite', stat)
+ 
+    A % ZmumpsIDL % SYM = 0
+!   IF (matsym) THEN
+!     IF (matpd) THEN
+!       ! Matrix is symmetric positive definite
+!       A % ZmumpsIDL % SYM = 1
+!     ELSE
+!       ! Matrix is symmetric
+!       A % ZmumpsIDL % SYM = 2
+!    END IF
+!   ELSE
+!     ! Matrix is unsymmetric
+!     A % ZmumpsIDL % SYM = 0
+!   END IF
+
+    A % ZmumpsIDL % JOB  = -1 ! Initialize
+    CALL ZMumps(A % ZmumpsIDL)
+
+    ! FACTORIZE PHASE
+
+    ! Set stdio parameters
+    A % ZmumpsIDL % ICNTL(1)  = 6  ! Error messages to stdout
+    A % ZmumpsIDL % ICNTL(2)  = -1 ! No diagnostic and warning messages
+    A % ZmumpsIDL % ICNTL(3)  = -1 ! No statistic messages
+    A % ZmumpsIDL % ICNTL(4)  = 1  ! Print only error messages
+
+    ! Set matrix format
+    A % ZmumpsIDL % ICNTL(5)  = 0  ! Assembled matrix format
+    A % ZmumpsIDL % ICNTL(18) = 0 ! Centralized matrix
+    A % ZmumpsIDL % ICNTL(21) = 0 ! Centralized dense solution phase
+
+    ! Check if solution of singular systems is ok
+    A % ZmumpsIDL % ICNTL(24) = 0
+    nullpiv = ListGetLogical(Solver % Values, 'Mumps Solve Singular', stat)
+    IF (nullpiv) THEN
+      A % ZmumpsIDL % ICNTL(24) = 1
+      A % ZmumpsIDL % CNTL(1) = 1D-2     ! Pivoting threshold
+      A % ZmumpsIDL % CNTL(3) = 1D-9     ! Null pivot detection threshold
+      A % ZmumpsIDL % CNTL(5) = 1D6      ! Fixation value for null pivots
+      A % ZmumpsIDL % CNTL(13) = 1       ! Do not use ScaLAPACK on the root node
+      ! TODO: if needed, here set CNTL(3) and CNTL(5) as parameters for
+      ! more accurate null pivot detection
+    END IF
+
+    ! Set permutation strategy for Mumps
+    ptype = ListGetInteger(Solver % Values, 'Mumps Permutation Type', stat)
+    IF (stat) A % ZmumpsIDL % ICNTL(6) = ptype
+
+    ! TODO: Change this if system is larger than local.
+    ! For larger than local systems define global->local numbering
+    n = A % NumberofRows / 2
+    nz = (A % Rows(A % NumberOfRows+1)-1) / 4
+    A % ZmumpsIDL % N  = n
+    A % ZmumpsIDL % nz = nz
+    ! A % mumpsIDL % nz_loc = nz
+
+    ! Allocate rows and columns for MUMPS
+    ALLOCATE( A % ZmumpsIDL % IRN(nz), &
+              A % ZmumpsIDL % JCN(nz), &
+              A % ZmumpsIDL % A(nz), STAT=allocstat)
+    IF (allocstat /= 0) THEN
+      CALL Fatal('MumpsLocal_Factorize', &
+            'Memory allocation for MUMPS row and column indices failed.')
+    END IF
+
+    ! Set matrix for Mumps (unsymmetric case)
+    IF (A % ZmumpsIDL % sym == 0) THEN
+      nzloc = 0
+      DO i=1,A % NumberOfRows,2
+         DO j=A % Rows(i),A % Rows(i+1)-1,2
+            nzloc = nzloc + 1
+            A % ZmumpsIDL % IRN(nzloc) = i/2+1
+         END DO
+       END DO
+
+       ! Set columns and values
+       nzloc = 0
+       DO i=1,A % NumberOfRows,2
+         DO j=A % Rows(i),A % Rows(i+1)-1,2
+           nzloc = nzloc + 1
+           A % ZmumpsIDL % JCN(nzloc) = A % Cols(j)/2+1
+           A % ZmumpsIDL % A(nzloc) = CMPLX(A % Values(j), -A % Values(j+1), KIND=dp )
+         END DO
+       END DO
+    ELSE
+      ! Set matrix for Mumps (symmetric case)
+      nzloc = 0
+      DO i=1,A % NumberOfRows,2
+        DO j=A % Rows(i),A % Rows(i+1)-1,2
+          ! Only output lower triangular part to Mumps
+          IF (i<=A % Cols(j)) THEN
+            nzloc = nzloc + 1
+            A % ZmumpsIDL % IRN(nzloc) = i/2+1
+            A % ZmumpsIDL % JCN(nzloc) = A % Cols(j)/2+1
+            A % ZmumpsIDL % A(nzloc) = CMPLX(A % Values(j), -A % Values(j+1),KIND=dp)
+          END IF
+        END DO
+      END DO
+    END IF
+
+    icntlft = ListGetInteger(Solver % Values, 'mumps percentage increase working space', stat)
+    IF (stat) THEN
+       A % ZmumpsIDL % ICNTL(14) = icntlft
+    END IF
+
+    A % ZmumpsIDL % JOB = 1 ! Perform analysis
+    CALL ZMumps(A % ZmumpsIDL)
+    CALL Flush(6)
+
+    ! Check return status
+    IF (A % ZmumpsIDL % INFO(1)<0) THEN
+      CALL Fatal('MumpsLocal_Factorize','Mumps analysis phase failed')
+    END IF
+
+    A % ZmumpsIDL % JOB = 2 ! Perform factorization
+    CALL ZMumps(A % ZmumpsIDL)
+    CALL Flush(6)
+
+    ! Check return status
+    IF (A % ZmumpsIDL % INFO(1)<0) THEN
+      CALL Fatal('ZMumpsLocal_Factorize','Mumps factorize phase failed')
+    END IF
+
+    ! Allocate RHS
+    ALLOCATE(A % ZmumpsIDL % RHS(A % ZmumpsIDL % N), STAT=allocstat)
+    IF (allocstat /= 0) THEN
+         CALL Fatal('ZMumpsLocal_Factorize', &
+                 'Memory allocation for MUMPS solution vector and RHS failed.' )
+    END IF
+#else
+   CALL Fatal( 'ZMumpsLocal_Factorize', 'MUMPS Solver has not been installed.' )
+#endif
+!------------------------------------------------------------------------------
+ END SUBROUTINE ZMumpsLocal_Factorize
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
 !> Solve local nullspace using MUMPS direct solver. On exit, z will be
 !> allocated and will hold the jth local nullspace vectors as z(j,:).
 !------------------------------------------------------------------------------
@@ -1323,17 +2237,29 @@ CONTAINS
         TYPE(Matrix_t) :: A
 
 #ifdef HAVE_MUMPS
-     IF (ASSOCIATED(A % mumpsIDL)) THEN
+        IF (ASSOCIATED(A % mumpsIDL)) THEN
           ! Deallocate Mumps structures
           DEALLOCATE( A % mumpsIDL % irn, A % mumpsIDL % jcn, &
-             A % mumpsIDL % a, A % mumpsIDL % rhs)
+              A % mumpsIDL % a, A % mumpsIDL % rhs)
 
           ! Free Mumps internal allocations
           A % mumpsIDL % job = -2
           CALL DMumps(A % mumpsIDL)
           DEALLOCATE(A % mumpsIDL)
 
-          A % mumpsIDL => Null()
+          A % mumpsIDL => NULL()
+        END IF
+        IF (ASSOCIATED(A % ZmumpsIDL)) THEN
+          ! Deallocate Mumps structures
+          DEALLOCATE( A % ZmumpsIDL % irn, A % ZmumpsIDL % jcn, &
+              A % ZmumpsIDL % a, A % ZmumpsIDL % rhs)
+
+          ! Free Mumps internal allocations
+          A % ZmumpsIDL % job = -2
+          CALL ZMumps(A % ZmumpsIDL)
+          DEALLOCATE(A % ZmumpsIDL)
+
+          A % ZmumpsIDL => NULL()
         END IF
 #else
      CALL Fatal( 'MumpsLocal_Free', 'MUMPS Solver has not been installed.' )
@@ -1759,7 +2685,7 @@ CONTAINS
       CALL pardiso(A % PardisoId, maxfct, mnum, mtype, phase, n, &
             values, rows, cols, idum, nrhs, iparm, msglvl, ddum, ddum, ierror)
 
-      IF (ierror .NE. 0) THEN
+      IF (ierror /= 0) THEN
         WRITE(*,'(A,I0)') 'MKL Pardiso: ERROR=', ierror
         CALL Fatal('Pardiso_SolveSystem','Error during analysis phase')
       END IF
@@ -1769,7 +2695,7 @@ CONTAINS
       CALL pardiso (A % pardisoId, maxfct, mnum, mtype, phase, n, &
            values, rows, cols, idum, nrhs, iparm, msglvl, ddum, ddum, ierror)
 
-      IF (ierror .NE. 0) THEN
+      IF (ierror /= 0) THEN
         WRITE(*,'(A,I0)') 'MKL Pardiso: ERROR=', ierror
         CALL Fatal('Pardiso_SolveSystem','Error during factorization phase')
       END IF
@@ -1780,7 +2706,7 @@ CONTAINS
     CALL pardiso(A % PardisoId, maxfct, mnum, mtype, phase, n, &
                 values, rows, cols, idum, nrhs, iparm, msglvl, b, x, ierror)
 
-    IF (ierror .NE. 0) THEN
+    IF (ierror /= 0) THEN
       WRITE(*,'(A,I0)') 'MKL Pardiso: ERROR=', ierror
       CALL Fatal('Pardiso_SolveSystem','Error during solve phase')
     END IF
@@ -1938,7 +2864,7 @@ CONTAINS
         CALL pardiso(A % PardisoId, maxfct, mnum, mtype, phase, n, &
           values, rows, cols, idum, nrhs, iparm, msglvl, ddum, ddum, ierror, dparm)
 
-        IF (ierror .NE. 0) THEN
+        IF (ierror /= 0) THEN
           WRITE(*,*) 'The following ERROR was detected: ', ierror
           STOP EXIT_ERROR
         END IF
@@ -1948,7 +2874,7 @@ CONTAINS
         CALL pardiso (A % pardisoId, maxfct, mnum, mtype, phase, n, &
          values, rows, cols, idum, nrhs, iparm, msglvl, ddum, ddum, ierror, dparm)
 
-        IF (ierror .NE. 0) THEN
+        IF (ierror /= 0) THEN
            WRITE(*,*) 'The following ERROR was detected: ', ierror
           STOP EXIT_ERROR
         ENDIF
@@ -2363,7 +3289,7 @@ CONTAINS
           aa, ia, ja, idum, A % CPardisoId % nrhs, iparm, &
           A % CPardisoId % msglvl, &
           ddum, ddum,  A % Comm, ierror)
-    IF (ierror .NE. 0) THEN
+    IF (ierror /= 0) THEN
         WRITE(*,'(A,I0)') 'MKL CPardiso: ERROR=', ierror
         CALL Fatal('CPardiso_SolveSystem','Error during factorization phase')
     END IF
@@ -2434,7 +3360,7 @@ CONTAINS
         CALL BandSolver( A, x, b, Free_Fact )
         CALL ComplexBandSolver( A, x, b, Free_Fact )
 #ifdef HAVE_MUMPS
-        CALL Mumps_SolveSystem( Solver, A, x, b, Free_Fact )
+        CALL FreeMumpsFactorizations(A)
         CALL MumpsLocal_SolveSystem( Solver, A, x, b, Free_Fact )
 #endif
 #if defined(HAVE_MKL) || defined(HAVE_PARDISO)
@@ -2456,7 +3382,6 @@ CONTAINS
 #ifdef HAVE_FETI4I
         CALL Permon_SolveSystem( Solver, A, x, b, Free_Fact )
 #endif
-        RETURN
         RETURN
       END IF
     END IF
@@ -2491,12 +3416,27 @@ CONTAINS
       CASE( 'spqr' )
         CALL SPQR_SolveSystem( Solver, A, x, b )
 
-      CASE( 'mumps' )
-        CALL Mumps_SolveSystem( Solver, A, x, b )
+      CASE( 'smumps', 'cmumps' )
+        IF( A % Complex ) THEN
+          CALL CMumps_SolveSystem( Solver, A, x, b )
+        ELSE
+          CALL SMumps_SolveSystem( Solver, A, x, b )
+        END IF
+
+      CASE( 'mumps', 'dmumps', 'zmumps' )
+        IF( A % Complex ) THEN
+          CALL ZMumps_SolveSystem( Solver, A, x, b )
+        ELSE
+          CALL Mumps_SolveSystem( Solver, A, x, b )
+        END IF
 
       CASE( 'mumpslocal' )
-        CALL MumpsLocal_SolveSystem( Solver, A, x, b )
-
+        IF( A % Complex ) THEN
+          CALL ZMumpsLocal_SolveSystem( Solver, A, x, b )
+        ELSE
+          CALL MumpsLocal_SolveSystem( Solver, A, x, b )
+        END IF
+          
       CASE( 'superlu' )
         CALL SuperLU_SolveSystem( Solver, A, x, b )
 

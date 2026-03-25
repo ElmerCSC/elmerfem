@@ -45,8 +45,13 @@
 
 MODULE MeshPartition
 
-  USE Types
-  USE MeshUtils
+  USE ParallelUtils
+  USE CoordinateSystems
+  USE ElementDescription, ONLY : GetElementType
+  USE MeshUtils, ONLY : AllocateMesh, BackCoordinateTransformation, &
+      ComputeCRSIndexes, CoordinateTransformation, FindMeshEdges, &
+      FindMeshEdges2D, FindMeshEdges3D, FindMeshFaces3D, PrepareMesh, &
+      ReleaseMesh, ReleaseMeshEdgeTables, ReleaseMeshFaceTables, GetDefs
   USE ClusteringMethods
   
 #ifdef HAVE_ZOLTAN
@@ -84,9 +89,8 @@ CONTAINS
   SUBROUTINE Zoltan_Interface( Model, Mesh, SerialMode, NoPartitions, PartitionCand, &
                                 StartImbalanceTol, TolChange, MinElems )
 
-    USE MeshUtils
-
 #ifdef HAVE_ZOLTAN
+    USE MeshUtils
     USE Zoltan
 #endif
 
@@ -471,9 +475,27 @@ CONTAINS
         CALL Info(FuncName, Message)
         IF(ImbalanceTol < 1.0) CALL FATAL(FuncName, 'Unable to rebalance successfully')
         DEALLOCATE(ElemAdj, ElemAdjProc, ElemStart, PartSuccess)
+
+        ! release zoltan input/output arrays
+        IF(numImport > 0) &
+          zierr = Zoltan_LB_Free_Part(importGlobalGids,importLocalGids,importProcs,importToPart)
+        IF(numExport > 0) &
+          zierr = Zoltan_LB_Free_Part(exportGlobalGids,exportLocalGids,exportProcs,exportToPart)
+
+        ! release zoltan object and mpi communicators
+        CALL Zoltan_Destroy(zz_obj)
         GOTO 10
       END IF
     END IF
+
+    ! release zoltan input/output arrays
+    IF(numImport > 0) &
+      zierr = Zoltan_LB_Free_Part(importGlobalGids,importLocalGids,importProcs,importToPart)
+    IF(numExport > 0) &
+      zierr = Zoltan_LB_Free_Part(exportGlobalGids,exportLocalGids,exportProcs,exportToPart)
+
+    ! release zoltan object and mpi communicators
+    CALL Zoltan_Destroy(zz_obj)
     
     CALL Info(FuncName,'Finished Zoltan partitioning',Level=10)
     
@@ -588,7 +610,7 @@ CONTAINS
 
 #else
     CALL FATAL('Zoltan_Interface',&
-         'Repartitioning utility Zoltan (Trilinos) has not been installed')
+         'Repartitioning utility Zoltan has not been installed')
 #endif
   END SUBROUTINE Zoltan_Interface
 
@@ -620,11 +642,12 @@ CONTAINS
     NBulk = Mesh % NumberOfBulkElements
     
     !Find and globally number mesh faces
-    IF(Nbulk == 0 ) THEN
-      CONTINUE
-
-    ELSE IF(DIM == 3) THEN
-      CALL FindMeshFaces3D(Mesh)
+    IF(DIM == 3) THEN
+      IF( NBulk /= 0 ) THEN
+        CALL FindMeshFaces3D(Mesh)
+      ELSE
+        CALL AllocateVector( Mesh % Faces, 6*Mesh % NumberOfBulkElements, 'FindMeshFaces3D' )
+      END IF
       CALL FindMeshEdges3D(Mesh)
       CALL SParFaceNumbering(Mesh)
       MFacePtr => Mesh % Faces
@@ -687,7 +710,7 @@ CONTAINS
     !don't know at this point the required size of work_int, if there are lots
     !of bulk elements, probably NBulk is sufficient, but for only a few
     !disconnected elements, maybe not. So set min size = 1000
-    work_size = MAX(NBulk, 1000)
+    work_size = MAX(NBulk, 5000)
     ALLOCATE(SendFaces(ParEnv % PEs),RecvFaces(ParEnv % PEs),work_int(work_size))
 
     RecvFaces % Count = 0
@@ -2185,6 +2208,10 @@ CONTAINS
       ElementDef0 = ElementDef
       DO WHILE(.TRUE.)
         j = INDEX( ElementDef0, '-' )
+        IF (j == 1) THEN
+          ElementDef0 = ElementDef0(2:)
+          j = INDEX( ElementDef0, '-' )
+        END IF
         IF (j>0) THEN
           !
           ! Read the element definition up to the next flag which specifies the
@@ -2195,7 +2222,8 @@ CONTAINS
           ElementDef = ElementDef0
         END IF
         !  Calling GetDefs fills Def_Dofs arrays:
-        CALL GetDefs( ElementDef, Solver % Def_Dofs, Def_Dofs(:,:), .NOT. GotMesh )
+        CALL GetDefs( ElementDef, Solver % Def_Dofs, Def_Dofs(:,:), .NOT. GotMesh, &
+            Solver % DG)
         IF(j>0) THEN
           ElementDef0 = ElementDef0(j+1:)
         ELSE
@@ -2205,119 +2233,9 @@ CONTAINS
 
       CALL PrepareMesh( CurrentModel, Mesh, ParEnv % PEs>1 , Def_Dofs )
 
-CONTAINS
+!CONTAINS
 
-!------------------------------------------------------------------------------
-!> This subroutine is used to fill Def_Dofs array of the solver structure.
-!> Note that this subroutine makes no attempt to figure out the index of
-!> the body, so all bodies are assigned with the same element definition.
-!> A similar array of reduced dimension is also filled so as to figure out
-!> the maximal-complexity definition over all solvers which use the same
-!> global mesh.
-!------------------------------------------------------------------------------
-    SUBROUTINE GetDefs(ElementDef, Solver_Def_Dofs, Def_Dofs, Def_Dofs_Update)
-!------------------------------------------------------------------------------
-      CHARACTER(LEN=*), INTENT(IN) :: ElementDef     !< an element definition string
-      INTEGER, INTENT(OUT) :: Solver_Def_Dofs(:,:,:) !< Def_Dofs of the solver structure
-      INTEGER, INTENT(INOUT) :: Def_Dofs(:,:)        !< holds the maximal-complexity definition on global mesh
-      LOGICAL, INTENT(IN) :: Def_Dofs_Update         !< is .TRUE. when the definition refers to the global mesh
-!------------------------------------------------------------------------------
-      INTEGER, POINTER :: ind(:)
-      INTEGER, TARGET :: Family(10)
-      INTEGER :: i,j,l,n
-      LOGICAL :: stat
 
-      Family = [1,2,3,4,5,6,7,8,9,10]
-
-      ! The default assumption is that the given element definition is applied 
-      ! to all basic element families (note that the element sets 9 and 10 are
-      ! not included since the explicit choice of the target family is 
-      ! a part of the element definition string when the target index is
-      ! deduced to be 9 or 10).
-      !
-      ind => Family(1:8)
-      !
-      ! If the element family is specified, change the target family 
-      !
-      IF (SEQL(ElementDef, 'point') )     ind => Family(1:1)
-      IF (SEQL(ElementDef, 'line') )      ind => Family(2:2)
-      IF (SEQL(ElementDef, 'tri') )       ind => Family(3:3)
-      IF (SEQL(ElementDef, 'quad') )      ind => Family(4:4)
-      IF (SEQL(ElementDef, 'tetra') )     ind => Family(5:5)
-      IF (SEQL(ElementDef, 'pyramid') )   ind => Family(6:6)
-      IF (SEQL(ElementDef, 'prism') )     ind => Family(7:7)
-      IF (SEQL(ElementDef, 'brick') )     ind => Family(8:8)
-      IF (SEQL(ElementDef, 'tri_face') )  ind => Family(9:9)
-      IF (SEQL(ElementDef, 'quad_face') ) ind => Family(10:10)
-
-      n = INDEX(ElementDef,'-')
-      IF (n<=0) n=LEN_TRIM(ElementDef)
-          
-      j = INDEX( ElementDef(1:n), 'n:' )
-      IF ( j>0 ) THEN
-        READ( ElementDef(j+2:), * ) l
-        Solver_Def_Dofs(ind,:,1) = l
-        IF ( Def_Dofs_Update ) Def_Dofs(ind,1) = MAX(Def_Dofs(ind,1), l)
-      END IF
-          
-      j = INDEX( ElementDef(1:n), 'e:' )
-      IF ( j>0 ) THEN
-        READ( ElementDef(j+2:), * ) l
-        Solver_Def_Dofs(ind,:,2) = l
-        IF ( Def_Dofs_Update ) Def_Dofs(ind,2) = MAX(Def_Dofs(ind,2), l )
-      END IF
-          
-      j = INDEX( ElementDef(1:n), 'f:' )
-      IF ( j>0 ) THEN
-        READ( ElementDef(j+2:), * ) l
-        Solver_Def_Dofs(ind,:,3) = l
-        IF ( Def_Dofs_Update ) Def_Dofs(ind,3) = MAX(Def_Dofs(ind,3), l )
-      END IF
-          
-      j = INDEX( ElementDef(1:n), 'd:' )
-      IF ( j>0 ) THEN
-        READ( ElementDef(j+2:), * ) l
-
-        ! Zero value triggers discontinuous approximation within LoadMesh2,
-        ! substitute the default negative initialization value to avoid troubles:
-        IF (l == 0) l = -1
-
-        Solver_Def_Dofs(ind,:,4) = l
-        IF ( Def_Dofs_Update ) Def_Dofs(ind,4) = MAX(Def_Dofs(ind,4), l )
-      ELSE 
-        IF ( ListGetLogical( Solver % Values, &
-            'Discontinuous Galerkin', stat ) ) THEN
-          Solver_Def_Dofs(ind,:,4) = 0
-          IF ( Def_Dofs_Update ) Def_Dofs(ind,4) = MAX(Def_Dofs(ind,4),0 )
-        END IF
-      END IF
-          
-      j = INDEX( ElementDef(1:n), 'b:' )
-      IF ( j>0 ) THEN
-        READ( ElementDef(j+2:), * ) l
-        Solver_Def_Dofs(ind,:,5) = l
-        IF ( Def_Dofs_Update ) Def_Dofs(ind,5) = MAX(Def_Dofs(ind,5), l )
-      END IF
-          
-      j = INDEX( ElementDef(1:n), 'p:' )
-      IF ( j>0 ) THEN
-        IF ( ElementDef(j+2:j+2)=='%' ) THEN
-          ! Seeing a p-element definition starting as p:% means that a 
-          ! a special keyword construct is used so that the degree of
-          ! approximation can be evaluated by calling a MATC function.
-          ! This special case is handled elsewhere and we now postpone
-          ! setting the right value.
-          Solver_Def_Dofs(ind,:,6) = 0
-        ELSE
-          READ( ElementDef(j+2:), * ) l
-          Solver_Def_Dofs(ind,:,6) = l
-          IF ( Def_Dofs_Update ) Def_Dofs(ind,6) = MAX(Def_Dofs(ind,6), l )
-         END IF
-      END IF
-
-!------------------------------------------------------------------------------
-    END SUBROUTINE GetDefs
-!------------------------------------------------------------------------------
 
     END SUBROUTINE Finalize_Zoltan_Mesh
 
@@ -2350,7 +2268,7 @@ CONTAINS
   !> sending to another partition.
   !------------------------------------------------------------------------------
   SUBROUTINE PackMeshPieces(Model, Mesh, NewPart, ParallelMesh, NoPartitions, &
-      SentPack, dim, NodalVals )
+    SentPack, dim, NodalVals )
 
     IMPLICIT NONE
 
@@ -3041,6 +2959,7 @@ CONTAINS
     REAL(KIND=dp), POINTER, OPTIONAL :: NodalVals(:,:)
     !----------------------------------
     TYPE( MeshPack_t), ALLOCATABLE, TARGET :: RecPack(:)
+    !----------------------------------
     TYPE(Element_t), POINTER :: Element, Element0
     INTEGER :: i,j,k,n,t,nbulk,nbdry,allocstat,part,elemcode,elemindex,geom_id,sweep,partindex
     INTEGER :: gind,lind,rcount,icount,lcount,minelem,maxelem,newnbdry,newnodes,newnbulk
@@ -3327,8 +3246,7 @@ CONTAINS
           END IF
           IF( GlobalToLocal(k) <= 0 .OR. GlobalToLocal(k) > newnodes ) THEN
             errcount = errcount + 1
-            PRINT *,'Local index out of bounds:',ParEnv % Mype,Element % PartIndex, k,minind,maxind,&
-                SIZE(GlobalToLocal), GlobalToLocal(k)
+            PRINT *,'Local index out of bounds:',ParEnv % Mype,Element % PartIndex, k,minind,maxind,GlobalToLocal(k)
           END IF
           Element % NodeIndexes(j) = GlobalToLocal(k)
         END DO
@@ -3438,12 +3356,7 @@ CONTAINS
         NewMesh % Nodes % y(k) = PPack % rdata(rcount+2)
         IF( dim == 3 ) NewMesh % Nodes % z(k) = PPack % rdata(rcount+3)
         rcount = rcount + dim
-        
-        IF(nVals > 0 ) THEN 
-          NewVals(k,1:nVals) = PPack % rdata(rcount+1:rcount+nVals)
-          rcount = rcount + nVals
-        END IF
-        
+
         NewMesh % ParallelInfo % GInterface(k) = PPack % ldata(lcount+1)
         lcount = lcount + 1
       END DO
@@ -3452,11 +3365,14 @@ CONTAINS
     IF( errcount > 0 ) THEN
       CALL Fatal(Caller,'Encountered '//I2S(errcount)//' indexing issues in nodes')
     END IF
-     
+ 
+
+    
     n = COUNT( NewMesh % ParallelInfo % GInterface )
     CALL Info(Caller,'Potential interface nodes '//I2S(n)//' out of '&
         //I2S(NewMesh % NumberOfNodes),Level=20)
-   
+
+    
     CALL Info(Caller,'Creating local to global numbering for '&
          //I2S(newnodes)//' nodes',Level=20)
     ALLOCATE( NewMesh % ParallelInfo % GlobalDofs( newnodes ), STAT = allocstat)

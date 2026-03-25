@@ -1,0 +1,334 @@
+! P.R. 3.9.2025
+
+Check Keywords "Warn"
+
+$L=0.05
+$alpha=30.0
+$piola="False"
+$mono="False"
+$levels=1
+
+Header
+  Mesh DB "." "wire3d"
+  Results Directory "results"
+End
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = "Cartesian"
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+  Output Intervals(1) = 1
+
+  Coordinate Scaling = 1.0e-2
+
+!  Dirty Finish = Logical True
+
+  Mesh Levels = $levels
+
+!  Split Mesh Prisms = True
+End
+
+Body 1
+  Name = "Wire A"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Name = "Wire B"
+!! "1" sets sets B to wire, "2" sets B to air.
+$myid=2
+  Equation = $myid
+  Material = $myid
+  Body Force = $myid
+End
+
+Body 3
+  Name = "Air"
+  Equation = 2
+  Material = 2
+  Body Force = 2
+End
+
+Material 1
+  Name = "Cu"
+  Relative Permittivity = 1
+  Relative Permeability = 1
+  Electric Conductivity = 58e6
+End
+
+Material 2
+  Name = "Air"
+  Relative Permittivity = 1.0
+  Relative Permeability = 1.0
+  Electric Conductivity = 0.0
+End 
+
+Equation 1
+  Active Solvers(5) = 1 2 3 4 7
+End
+
+Equation 2
+  Active Solvers(4) = 1 3 4 7
+End
+
+
+Solver 1
+! Solves the new mesh positions combining rigid mesh movement
+! and a computed relaxation field [0,1] computed from a Laplace equation.
+
+  Equation = MeshDeform
+  Procedure = "RigidMeshMapper" "RigidMeshMapper"
+
+  Variable = MeshRelax
+  Nonlinear System Max Iterations = 1
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 20
+End
+
+
+Solver 2
+  Equation = "CoilSolver"
+  Procedure = "CoilSolver" "CoilSolver"
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = ilu1
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1e-10
+  Linear System Iterative Method = BiCGStabL
+  Linear System Residual Output = 20
+  Steady State Convergence Tolerance = 1e-06
+
+  Desired Coil Current = Real 1.0e3
+  Nonlinear System Consistent Norm = True
+
+  Fix Input Current Density = True
+End
+
+
+
+Solver 3
+  Equation = "MGDynamics"
+
+  Variable = "AV"
+  Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+
+  Fix Input Current Density = False
+  Use Piola Transform = $piola
+! quadratic approximation = logical true
+!  Newton-Raphson Iteration = False
+
+  Edge Basis = Logical True
+  NonLinear System Consistent Norm = True
+
+  Optimize Bandwidth = True
+
+
+  include linsys_nodalprec.sif
+!  include linsys_hutiter.sif
+! include linsys_ams.sif
+
+  Linear System Timing = True
+End
+
+
+Solver 4
+  Equation = "MGDynamicsCalc"
+
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+  Linear System Symmetric = True
+
+  Potential Variable = String "AV"
+
+  Calculate Current Density = False 
+  Calculate Electric Field = False 
+  Calculate Magnetic Field Strength = True
+  Calculate Magnetic Flux Density = True
+  Calculate Joule Heating = False
+  Calculate Magnetic Vector Potential = True
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = None
+  Linear System Residual Output = 0
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = CG
+  Linear System Convergence Tolerance = 1.0e-8
+
+  Calculate Nodal Fields = False
+  Calculate Elemental Fields = True
+
+  Impose Body Force Potential = Logical True
+  Impose Body Force Current = Logical True
+
+  Discontinuous Bodies = True
+
+!  exec solver = never
+End
+
+
+Solver 5
+  Exec Solver = after all
+  Equation = "ResultOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = case-zero
+  Vtu format = True
+  Discontinuous Bodies = True
+!  Vtu Part collection = True
+!  Save Bulk Only = True
+
+  Save Geometry Ids = True
+  ascii output = true
+
+  exec solver = never
+End
+
+Solver 6
+  Exec Solver = after all
+  Equation = "SaveLine"
+  Procedure = "SaveData" "SaveLine"
+  FileName = f.dat
+
+  Polyline Coordinates(2,3) = -5.0e-3 0.0 5.0e-3 5.0e-3 0.0 5.0e-3
+  Polyline Divisions(1) = 100
+End
+
+
+Solver 7
+! used as slave solver only  
+  exec solver = never
+
+  Equation = "MagnetodDynamicsNodal"
+!  Procedure = "MagnetoDynamics" "MagnetoDynamics3D"
+  Procedure = "MagnetoDynamics" "APrecSolver"
+
+  Preconditioning Solver = Logical True
+  Monolithic Solver = Logical $mono
+  
+  Edge Residual Name = String "a res"
+  Edge Update Name = String "a update"
+
+  Linear System Scaling = False
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = String "bicgstab2"
+
+  BiCGstabl polynomial degree = Integer 4  
+  Linear System Preconditioning = String "ILU2"
+  Linear System Max Iterations = Integer 1000
+  Linear System Convergence Tolerance = 1.0e-7
+  Linear system abort not converged = false
+  Linear System Residual Output = 10
+
+  Linear System Scaling = True
+
+  Optimize Bandwidth = False
+
+! Essential for performance!
+  No Precondition Recompute = True
+End
+
+
+
+
+Body Force 1
+! a) Give current density
+!  Current Density 1 = Equals "CoilCurrent 1"
+!  Current Density 2 = Equals "CoilCurrent 2"
+!  Current Density 3 = Equals "CoilCurrent 3"
+
+! b) Give the driving external potential
+  Electric Potential = Equals "CoilPot"
+
+! c) Slightly wrong field
+!  Current Density 1 = 1.0
+
+
+! Sets body condition 1 for the mesh relaxation.
+  Moving Body = Logical True
+
+  Mesh Rotate 3 = Variable "coordinate 3"
+    Real MATC "alpha*tx/L"
+End
+
+Body Force 2
+  Mesh Rotate 3 = Variable "coordinate 3"
+    Real MATC "alpha*tx/L"
+End
+
+
+
+Boundary Condition 1
+  Name = "WireStart"
+  Target Boundaries(2) = 10 11
+
+  Coil Start = True
+
+  AV {e} 1 = Real 0.0
+  AV {e} 2 = Real 0.0
+
+  Nodal A 1 = Real 0.0
+  Nodal A 2 = Real 0.0
+End
+
+Boundary Condition 2
+  Name = "AirStart"
+  Target Boundaries(1) = 12
+
+  AV {e} 1 = Real 0.0
+  AV {e} 2 = Real 0.0
+
+  Nodal A 1 = Real 0.0
+  Nodal A 2 = Real 0.0
+End
+
+Boundary Condition 3
+  Name = "WireEnd"
+  Target Boundaries(2) = 13 14
+
+  Coil End = True
+
+  AV {e} 1 = Real 0.0
+  AV {e} 2 = Real 0.0
+
+  Nodal A 1 = Real 0.0
+  Nodal A 2 = Real 0.0
+End
+
+
+Boundary Condition 4
+  Name = "AirEnd"
+  Target Boundaries(1) = 15
+
+  AV {e} 1 = Real 0.0
+  AV {e} 2 = Real 0.0
+
+  Nodal A 1 = Real 0.0
+  Nodal A 2 = Real 0.0
+End
+
+Boundary Condition 5
+  Name = "AirSurface"
+  Target Boundaries(4) = 5 6 7 8 
+
+  AV {e} = Real 0.0
+
+  Nodal A 1 = Real 0.0
+  Nodal A 2 = Real 0.0
+  Nodal A 3 = Real 0.0
+
+  Fixed Boundary = True
+End
+
+!Boundary Condition 6
+!  Name = "WireSurface"
+!  Target Boundaries(5) = 1 2 3 4 9
+!End
+
+Solver 1 :: Reference Norm = 6.36587122E-01
+Solver 2 :: Reference Norm = 3.22270313E-03

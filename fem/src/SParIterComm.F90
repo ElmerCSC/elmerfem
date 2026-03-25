@@ -46,8 +46,7 @@
 
 MODULE SParIterComm
 
-  USE Types
-  USE LoadMod
+  USE LoadMod, ONLY : RealTime
   USE SParIterGlobals
 
 #ifdef HAVE_XIOS
@@ -60,7 +59,9 @@ MODULE SParIterComm
 #  endif
 #endif
 
+
   IMPLICIT NONE
+
 
 #ifdef HAVE_PARMMG
 #include "parmmg/libparmmgf.h"
@@ -95,6 +96,12 @@ MODULE SParIterComm
     REAL(KIND=dp), ALLOCATABLE :: vec(:)
     INTEGER, ALLOCATABLE :: ivec(:)
   END TYPE vBuff_t
+
+  TYPE CommonList_t
+     INTEGER :: Count = 0
+     INTEGER, POINTER :: clist(:) => null()
+  END TYPE CommonList_t
+
 CONTAINS
 
 !-----------------------------------------------------------------
@@ -238,9 +245,7 @@ CONTAINS
     CALL MPI_COMM_SPLIT(MPI_COMM_WORLD,ELMER_COLOUR,&
          ParEnv % MyPE,ELMER_COMM_WORLD,ierr) 
 #endif  
-
     ParEnv % ActiveComm = ELMER_COMM_WORLD
-
 
 !ELMER_COMM_WORLD=MPI_COMM_WORLD
 
@@ -251,11 +256,13 @@ CONTAINS
        CALL MPI_COMM_RANK( ELMER_COMM_WORLD, ParEnv % MyPE, ierr )
        OutputPE = ParEnv % MyPe
 
-       WRITE( Message, * ) 'Initialize #PEs: ', ParEnv % PEs
-       CALL Info( 'ParCommInit', Message, Level=5 )
-    
+       IF( ParEnv % MyPe < 2 .OR. ParEnv % MyPe >= ParEnv % PEs - 2 ) THEN
+         WRITE( Message,'(A,I0)') 'Initialize #PEs: ', ParEnv % PEs
+         CALL Info( 'ParCommInit',Message, Level=5 )
+       END IF
+         
        IF ( ierr /= 0 ) THEN
-          WRITE( Message, * ) 'MPI Initialization failed ! (ierr=', ierr, ')'
+          WRITE( Message,'(A,I0,A)') 'MPI Initialization failed ! (ierr=', ierr, ')'
           CALL Fatal( 'ParCommInit', Message )
        END IF
 
@@ -270,14 +277,19 @@ CONTAINS
 !-----------------------------------------------------------------------
 !> Initialize parallel execution environment
 !-----------------------------------------------------------------------
-  SUBROUTINE ParEnvInit( SPMatrix, ParallelInfo, SourceMatrix )
+  SUBROUTINE ParEnvInit( SPMatrix, ParallelInfo, SourceMatrix, NeighboursOnly)
 !-----------------------------------------------------------------------
 
     TYPE(SparIterSolverGlobalD_t) :: SPMatrix
     TYPE (ParallelInfo_t) :: ParallelInfo
     TYPE(Matrix_t) :: SourceMatrix
+    LOGICAL, OPTIONAL :: NeighboursOnly
 !-----------------------------------------------------------------------
-    CALL FindActivePEs( ParallelInfo, SourceMatrix )
+    IF(PRESENT(NeighboursOnly)) THEN
+      CALL FindActivePEs( ParallelInfo, SourceMatrix, NeighboursOnly )
+    ELSE
+      CALL FindActivePEs( ParallelInfo, SourceMatrix )
+    END IF
 !-----------------------------------------------------------------------
   END SUBROUTINE ParEnvInit
 !-----------------------------------------------------------------------
@@ -469,6 +481,7 @@ CONTAINS
         Active(ii) = HUGE(i)
         IF ( ParallelInfo % GInterface(ii) ) THEN
           sz = SIZE(ParallelInfo % NeighbourList(ii) % Neighbours)
+
           DO j=1,sz
             k = ParallelInfo % NeighbourList(ii) % Neighbours(j)
             IF ( k == ParEnv % Mype ) THEN
@@ -545,6 +558,7 @@ CONTAINS
         END IF
       END DO
 
+#if 1
       DO ii=1,SourceMatrix % NumberOfRows
         IF ( ParallelInfo % GInterface(ii) ) THEN
           sz = SIZE(ParallelInfo % NeighbourList(ii) % Neighbours)
@@ -558,6 +572,7 @@ CONTAINS
           END IF
         END IF
       END DO
+#endif
 !   END IF
 
 
@@ -608,14 +623,14 @@ CONTAINS
 !-----------------------------------------------------------------------
 
 !-----------------------------------------------------------------------
-  SUBROUTINE AddToCommonList( list, ENTRY )
+  SUBROUTINE AddToCommonList( list, val )
 !-----------------------------------------------------------------------
 ! Helper subroutine for SParIterGlobalNumbering
 ! Adds integer Entry to integer pointer List(:)
 !-----------------------------------------------------------------------
     IMPLICIT NONE
+    INTEGER :: val
     INTEGER, POINTER :: list(:)
-    INTEGER :: ENTRY
 !-----------------------------------------------------------------------
     INTEGER, POINTER :: ptmp(:)
     INTEGER :: itmp,i
@@ -624,16 +639,47 @@ CONTAINS
        itmp = SIZE(list)
        ALLOCATE(ptmp(itmp+1))
        ptmp(1:itmp) = list
-       ptmp(itmp+1) = entry
+       ptmp(itmp+1) = val
        DEALLOCATE(list)
        list => ptmp
     ELSE
        ALLOCATE(ptmp(1))
-       ptmp(1) = entry
+       ptmp(1) = val
        list => ptmp
     END IF
 !-----------------------------------------------------------------------
   END SUBROUTINE AddToCommonList
+!-----------------------------------------------------------------------
+
+
+
+!-----------------------------------------------------------------------
+  SUBROUTINE AddToCommonList2( list, val )
+!-----------------------------------------------------------------------
+! Helper subroutine for SParIterGlobalNumbering
+! Adds integer Entry to integer pointer List(:)
+!-----------------------------------------------------------------------
+    IMPLICIT NONE
+
+    INTEGER :: val
+    TYPE(CommonList_t) :: list
+!-----------------------------------------------------------------------
+    INTEGER, POINTER :: ptmp(:)
+    INTEGER :: itmp,i
+!-----------------------------------------------------------------------
+    IF (.NOT. ASSOCIATED(list % clist))THEN
+      ALLOCATE(list % clist(64))
+      List % Count = 0
+    ELSE IF ( list % count >= SIZE(list % clist) ) THEN
+      ALLOCATE(ptmp(list % count+64))
+      ptmp(1:list % count) = list % clist(1:list % count)
+      DEALLOCATE(list % clist)
+      List % clist => ptmp
+    END IF
+    list % count = list % count + 1
+    list % clist(list % count) = val
+!-----------------------------------------------------------------------
+  END SUBROUTINE AddToCommonList2
 !-----------------------------------------------------------------------  
 
 !-----------------------------------------------------------------------
@@ -721,8 +767,9 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element
      real(kind=dp) :: tt
 !-------------------------------------------------------------------------------
-
+     
     IF ( .NOT. ASSOCIATED(Mesh % Edges) ) RETURN
+    IF ( Mesh % NumberOfEdges <= 0 ) RETURN
 
     CALL CheckBuffer(1000000)
 
@@ -740,11 +787,11 @@ CONTAINS
     n = Mesh % NumberOfEdges
 
     ALLOCATE(  &
-         Edgen(n), parentnodes(n,2),   &
-         owned_edges ( ParEnv % PEs ), &
-         owned_edges2( ParEnv % PEs ), &
-         tosend( ParEnv % PEs ),       &
-         toreceive( ParEnv % PEs ) )
+        Edgen(n), parentnodes(n,2),   &
+        owned_edges ( ParEnv % PEs ), &
+        owned_edges2( ParEnv % PEs ), &
+        tosend( ParEnv % PEs ),       &
+        toreceive( ParEnv % PEs ) )
 
     owned_edges  = 0
     owned_edges2 = 0
@@ -1386,10 +1433,11 @@ CONTAINS
      LOGICAL :: AllM, Intf
      LOGICAL, POINTER :: IsNeighbour(:)
      TYPE(Element_t), POINTER :: Element, Edge
-     REAL(kind=dp) :: tt
+     REAL(kind=dp) :: tstart
 !-------------------------------------------------------------------------------
 
     IF ( .NOT. ASSOCIATED(Mesh % Faces) ) RETURN
+    IF ( Mesh % NumberOfFaces <= 0 ) RETURN
 
     CALL CheckBuffer(1000000)
 
@@ -1591,7 +1639,7 @@ CONTAINS
 
          DO m = 2,SIZE(Facen(l) % Neighbours)
             mm = Facen(l) %  Neighbours(m)
-            IF( mm+1 .NE. i ) CYCLE
+            IF( mm+1 /= i ) CYCLE
             gindices(k) = facen(l) % n
             gindices(k+1) = gdofs(parentnodes(l,1))
             gindices(k+2) = gdofs(parentnodes(l,2))
@@ -1893,21 +1941,23 @@ CONTAINS
      TYPE(Mesh_t) :: Mesh, OldMesh
      INTEGER, TARGET :: NewNodeCnt,Reorder(:)
 !-----------------------------------------------------------------------
+
      INTEGER, DIMENSION(MPI_STATUS_SIZE) :: status
      INTEGER :: ierr
 
      INTEGER, POINTER :: oldnodes(:), oldnodes2(:), newnodes(:), &
           newnodes2(:), parentnodes(:,:), tosend(:), toreceive(:), &
-          list1(:), list2(:), commonlist(:)
+          list1(:), list2(:)
      LOGICAL :: Found, AllReceived
 
+     TYPE(CommonList_t) :: commonlist, cgorder
      TYPE Node_t
-        INTEGER, POINTER :: ElementIndexes(:)
+        TYPE(CommonList_t) :: ElementIndexes
      END TYPE Node_t
      TYPE(Node_t), POINTER :: Node(:)
 
      TYPE Request_t
-        INTEGER, POINTER :: DATA(:)
+        TYPE(CommonList_t) :: DATA
      END TYPE Request_t
      TYPE(Request_t), POINTER :: Request1(:), Request2(:)
 
@@ -1921,6 +1971,7 @@ CONTAINS
      INTEGER :: DataSize, TmpArray(3),ddd
      INTEGER, POINTER :: IntArray(:),IntCnts(:),GIndices(:),Gorder(:)
      real(kind=dp) :: tstart
+
 !-----------------------------------------------------------------------
      CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
 tstart = realtime()
@@ -1952,7 +2003,6 @@ tstart = realtime()
        END DO
        IsNeighbour(ParEnv % myPE+1) = .FALSE.
      END IF
-
 !
 !    Our maximum global node index:
 !    -------------------------------
@@ -1980,23 +2030,24 @@ tstart = realtime()
 
      ALLOCATE( Request1(ParEnv % PEs) )
      ALLOCATE( Request2(ParEnv % PEs) )
-     DO i = 1, ParEnv % PEs
-        Request1(i) % DATA => NULL()
-        Request2(i) % DATA => NULL()
-     END DO
+!    DO i = 1, ParEnv % PEs
+!       Request1(i) % DATA => NULL()
+!       Request2(i) % DATA => NULL()
+!    END DO
+
      !
      ! Prepare the inverse connection table for nodes and elements:
      !-------------------------------------------------------------
      ALLOCATE( Node( Mesh % NumberOfNodes ) )
-     DO i = 1,Mesh % NumberOfNodes
-        Node(i) % ElementIndexes => NULL()
-     END DO
+!    DO i = 1,Mesh % NumberOfNodes
+!       Node(i) % ElementIndexes => NULL()
+!    END DO
      
      DO i = 1,Mesh % NumberOfBulkElements
         Element => Mesh % Elements(i)
         DO j = 1,SIZE( Element % NodeIndexes )
            k = Element % NodeIndexes(j)
-           CALL AddToCommonList( Node(k) % ElementIndexes, i )
+           CALL AddToCommonList2( Node(k) % ElementIndexes, i )
         END DO
      END DO
      !
@@ -2035,12 +2086,13 @@ tstart = realtime()
         !---------------------------
         list1 => NULL() ! list of PEs related to parent node 1
         list2 => NULL() ! list of PEs related to parent node 2
-        commonlist => NULL() ! intersection of list1 and list2
+!       commonlist => NULL() ! intersection of list1 and list2
+        commonlist % count = 0
         !
         ! Go through all new elements connected to node i:
         !--------------------------------------------------
-        DO j = 1, SIZE( Node(i) % ElementIndexes )
-           Element => Mesh % Elements( Node(i) % ElementIndexes(j) )
+        DO j = 1,  Node(i) % ElementIndexes % Count
+           Element => Mesh % Elements( Node(i) % ElementIndexes % clist(j) )
            !
            ! Loop over all nodes of element j:
            !----------------------------------
@@ -2070,18 +2122,20 @@ tstart = realtime()
         ! Determine the intersection of the PE-lists:
         !--------------------------------------------
         IF( ASSOCIATED(list1) .AND. ASSOCIATED(list2) ) THEN
-           IF(ASSOCIATED(commonlist)) DEALLOCATE(commonlist)
-           commonlist => NULL()
+!          IF(ASSOCIATED(commonlist)) DEALLOCATE(commonlist)
+           commonlist % count = 0
            DO p = 1,SIZE(list1)
               DO q = 1,SIZE(list2)
                  IF( list1(p) == list2(q)) &
-                      CALL AddToCommonList( commonlist, list1(p) ) 
+                      CALL AddToCommonList2( commonlist, list1(p) ) 
               END DO
            END DO
            !
            ! Now, we should have a list of PEs common to the parents:
            !----------------------------------------------------------
-           IF( .NOT.ASSOCIATED(commonlist) ) CYCLE
+!          IF( .NOT.ASSOCIATED(commonlist) ) CYCLE
+           IF( CommonList % count == 0) cycle
+
            !
            ! If everything went ok and the mesh data was unique, there
            ! are only two PEs common to both parents. If not, that's bad:
@@ -2097,9 +2151,9 @@ tstart = realtime()
            !
            ! Node i is given to the smallest numbered PE common to the parents:
            !-------------------------------------------------------------------
-           ALLOCATE( gindices( SIZE(commonlist)))
-           gindices = commonlist
-           DEALLOCATE( commonlist )
+           ALLOCATE( gindices( commonlist % count ) )
+           gindices = commonlist % clist(1:commonlist % count)
+!          DEALLOCATE( commonlist )
            CALL SORT( SIZE(gindices), gindices )
            IF( ASSOCIATED( Mesh % ParallelInfo % NeighbourList(i) % Neighbours ) ) &
               DEALLOCATE( Mesh % ParallelInfo % NeighbourList(i) % Neighbours )
@@ -2127,10 +2181,12 @@ tstart = realtime()
      ! Begin iteration (if the mesh was good, then only one round is needed):
      !-----------------------------------------------------------------------
      DO i = 1, ParEnv % PEs
-        IF( ASSOCIATED(Request1(i) % DATA) ) DEALLOCATE( Request1(i) % DATA )
-        IF( ASSOCIATED(Request2(i) % DATA) ) DEALLOCATE( Request2(i) % DATA )
-        Request1(i) % DATA => NULL() ! buffer for data exchange
-        Request2(i) % DATA => NULL() ! buffer for data exchange
+!       IF( ASSOCIATED(Request1(i) % DATA) ) DEALLOCATE( Request1(i) % DATA )
+!       IF( ASSOCIATED(Request2(i) % DATA) ) DEALLOCATE( Request2(i) % DATA )
+!       Request1(i) % DATA => NULL() ! buffer for data exchange
+!       Request2(i) % DATA => NULL() ! buffer for data exchange
+        Request1(i) % data % count = 0
+        Request2(i) % data % count = 0
      END DO
      !
      ! Count the current situation in what comes to nodes owned by us:
@@ -2214,7 +2270,7 @@ tstart = realtime()
 
            DO m = 2,SIZE( Mesh % ParallelInfo % NeighbourList(l) % Neighbours )
               mm = Mesh % ParallelInfo % NeighbourList(l) % Neighbours(m)
-              IF( mm+1 .NE. i ) CYCLE
+              IF( mm+1 /= i ) CYCLE
               gindices(k) = Mesh % ParallelInfo % GlobalDOFs(l)
               gindices(k+1) = Mesh % ParallelInfo % GlobalDOFs(parentnodes(l,1))
               gindices(k+2) = Mesh % ParallelInfo % GlobalDOFs(parentnodes(l,2))
@@ -2260,6 +2316,7 @@ tstart = realtime()
               END IF
            END DO
         END DO
+        
         !
         ! PROBLEM CASE 1: Received too much data
         ! =======================================
@@ -2277,9 +2334,9 @@ tstart = realtime()
               !
               ! Request PE=i to remove us from the neighbour list:
               !----------------------------------------------------
-              CALL AddToCommonList( Request1(i) % DATA, gindices(3*l-2) )  ! i-node
-              CALL AddToCommonList( Request1(i) % DATA, gindices(3*l-1) )  ! parent 1
-              CALL AddToCommonList( Request1(i) % DATA, gindices(3*l-0) )  ! parent 2
+              CALL AddToCommonList2( Request1(i) % DATA, gindices(3*l-2) )  ! i-node
+              CALL AddToCommonList2( Request1(i) % DATA, gindices(3*l-1) )  ! parent 1
+              CALL AddToCommonList2( Request1(i) % DATA, gindices(3*l-0) )  ! parent 2
            END IF
         END DO
         DEALLOCATE( gindices )
@@ -2294,26 +2351,28 @@ tstart = realtime()
      ! they don't, ask them to return a request to be removed from our neighbour list:
      !---------------------------------------------------------------------------------
      DO i = n, Mesh % NumberOfNodes
-       IF( Mesh % ParallelInfo % GlobalDOFs(i) < 1 .OR. &
-            SIZE(Mesh % ParallelInfo % NeighbourList(i) % Neighbours )>2 ) THEN
+       IF( Mesh % ParallelInfo % GlobalDOFs(i) <= 0 ) THEN
 
           !WRITE(*,'(A,I5,A,I8,A,2I8)') 'SParGlobalNumbering: PE',ParEnv % MyPE+1, &
           !     ' Did not receive global number for node(loc):', i, ' Parents nodes(glob):', &
           !     Mesh % ParallelInfo % GlobalDOFs( parentnodes(i,:) )
           !PRINT *,'Have to inform the following PEs:', &
           !     Mesh % ParallelInfo % NeighbourList(i) % Neighbours +1 
+
           DO j = 1,SIZE( Mesh % ParallelInfo % NeighbourList(i) % Neighbours )
              k = Mesh % ParallelInfo % NeighbourList(i) % Neighbours(j)
-              IF( k == ParEnv % MyPE ) CYCLE
+             IF( k == ParEnv % MyPE ) CYCLE
+
              TmpArray(1) = Mesh % ParallelInfo % GlobalDOFs( i )
              TmpArray(2) = Mesh % ParallelInfo % GlobalDOFs( parentnodes(i,1) )
              TmpArray(3) = Mesh % ParallelInfo % GlobalDOFs( parentnodes(i,2) )
-             CALL AddToCommonList( Request2(k+1) % DATA, TmpArray(1) )
-             CALL AddToCommonList( Request2(k+1) % DATA, TmpArray(2) )
-             CALL AddToCommonList( Request2(k+1) % DATA, TmpArray(3) )
+             CALL AddToCommonList2( Request2(k+1) % DATA, TmpArray(1) )
+             CALL AddToCommonList2( Request2(k+1) % DATA, TmpArray(2) )
+             CALL AddToCommonList2( Request2(k+1) % DATA, TmpArray(3) )
           END DO
         END IF
      END DO
+
      !
      ! Send the query (CASE 2):
      !--------------------------
@@ -2323,14 +2382,15 @@ tstart = realtime()
         IF( .NOT. IsNeighbour(i) ) CYCLE
 
         DataSize = 0
-        IF( ASSOCIATED( Request2(i) % DATA ) ) DataSize = SIZE( Request2(i) % DATA )
+!       IF( ASSOCIATED( Request2(i) % DATA ) ) DataSize = SIZE( Request2(i) % DATA )
+        DataSize = Request2(i) % Data % Count
 !ddd = ddd+DataSize
 
         !CALL MPI_SEND( DataSize, 1, MPI_INTEGER, i-1, 900, ELMER_COMM_WORLD, ierr)
         CALL MPI_BSEND( DataSize, 1, MPI_INTEGER, i-1, 900, ELMER_COMM_WORLD, ierr)
         IF( DataSize < 1 ) CYCLE
 
-        CALL MPI_BSEND( Request2(i) % DATA, DataSize, MPI_INTEGER, i-1, 950, ELMER_COMM_WORLD, ierr)
+        CALL MPI_BSEND( Request2(i) % DATA % clist, DataSize, MPI_INTEGER, i-1, 950, ELMER_COMM_WORLD, ierr)
      END DO
 !print *,'*****',ParEnv % MyPE+1,ddd
      !
@@ -2360,8 +2420,8 @@ tstart = realtime()
               IF( .NOT. Mesh % ParallelInfo % GInterface(j)) CYCLE
               mm = 0
               nn = 0
-              DO k = 1,SIZE( Node(j) % ElementIndexes )
-                 l = Node(j) % ElementIndexes(k)
+              DO k = 1,Node(j) % ElementIndexes % count
+                 l = Node(j) % ElementIndexes % clist(k)
                  Element => Mesh % Elements(l)
                  IF( ANY(Mesh % ParallelInfo % GlobalDOFs(Element % NodeIndexes) == TmpArray(2)) ) mm = 1
                  IF( ANY(Mesh % ParallelInfo % GlobalDOFs(Element % NodeIndexes) == TmpArray(3)) ) nn = 1
@@ -2374,9 +2434,9 @@ tstart = realtime()
 
            IF( .NOT.(mm==1 .AND. nn==1) ) THEN
               !PRINT *,'Nope, I do not have it. Sending back request to remove me from the neighbour list.'
-              CALL AddToCommonList( Request1(i) % DATA, TmpArray(1) )
-              CALL AddToCommonList( Request1(i) % DATA, TmpArray(2) )
-              CALL AddToCommonList( Request1(i) % DATA, TmpArray(3) )
+              CALL AddToCommonList2( Request1(i) % DATA, TmpArray(1) )
+              CALL AddToCommonList2( Request1(i) % DATA, TmpArray(2) )
+              CALL AddToCommonList2( Request1(i) % DATA, TmpArray(3) )
            END IF
         END DO
         DEALLOCATE( IntArray )
@@ -2389,11 +2449,13 @@ tstart = realtime()
         IF( .NOT. IsNeighbour(i) ) CYCLE
 
         DataSize = 0
-        IF( ASSOCIATED( Request1(i) % DATA ) ) DataSize = SIZE( Request1(i) % DATA )
+!       IF( ASSOCIATED( Request1(i) % DATA ) ) DataSize = SIZE( Request1(i) % DATA )
+        DataSize = Request1(i) % data % count
         CALL MPI_BSEND( DataSize, 1, MPI_INTEGER, i-1, 700, ELMER_COMM_WORLD, ierr)
         IF( DataSize < 1 ) CYCLE
-        CALL MPI_BSEND( Request1(i) % DATA, DataSize, MPI_INTEGER, i-1, 1800, ELMER_COMM_WORLD, ierr )
+        CALL MPI_BSEND( Request1(i) % DATA % clist, DataSize, MPI_INTEGER, i-1, 1800, ELMER_COMM_WORLD, ierr )
      END DO
+
      !
      ! Receive the removal requests and update the neighbour lists (CASE 1):
      !----------------------------------------------------------------------
@@ -2424,17 +2486,19 @@ tstart = realtime()
                  !
                  ! Removing:
                  !----------
-                 IF( ASSOCIATED(gorder)) DEALLOCATE( gorder )
-                 gorder => NULL()
+!                IF( ASSOCIATED(gorder)) DEALLOCATE( gorder )
+!                gorder => NULL()
+                 cgorder % count = 0
                  DO k = 1,SIZE( Mesh % ParallelInfo % NeighbourList(j) % Neighbours )
                     l = Mesh % ParallelInfo % NeighbourList(j) % Neighbours(k)
                     IF( l == i-1 ) CYCLE
-                    CALL AddToCommonList( gorder, l )
+                    CALL AddToCommonList2(cgorder, l)
                  END DO
                  DEALLOCATE( Mesh % ParallelInfo % NeighbourList(j) % Neighbours )
-                 ALLOCATE( IntCnts( SIZE(gorder) ) )
-                 IntCnts = gorder
-                 IF (ASSOCIATED(gorder)) DEALLOCATE( gorder )
+                 ALLOCATE(IntCnts(cgorder % count))
+                 intCnts = cgorder % clist(1:cgorder % count)
+!                IF (ASSOCIATED(gorder)) DEALLOCATE( gorder )
+                 cgorder % count = 0
                  Mesh % ParallelInfo % NeighbourList(j) % Neighbours => IntCnts
                  !PRINT *,'Updated neighbours:', Mesh % ParallelInfo % NeighbourList(j) % Neighbours+1
                  EXIT
@@ -2506,23 +2570,30 @@ tstart = realtime()
           parentnodes, tosend, toreceive )
      
      DO i = 1,Mesh % NumberOfNodes
-       DEALLOCATE( Node(i) % ElementIndexes )
+!      DEALLOCATE( Node(i) % ElementIndexes )
+       IF (ASSOCIATED( Node(i) % ElementIndexes % Clist)) &
+          DEALLOCATE(Node(i) % ElementIndexes % Clist)
      END DO
      DEALLOCATE(Node)
 
      DO i = 1, ParEnv % PEs
-       IF( ASSOCIATED(Request1(i) % DATA) ) DEALLOCATE(Request1(i) % DATA)
-       IF( ASSOCIATED(Request2(i) % DATA) ) DEALLOCATE(Request2(i) % DATA)
+       IF(ASSOCIATED(Request1(i) % Data % Clist)) &
+         DEALLOCATE(Request1(i) % Data % Clist)
+
+       IF(ASSOCIATED(Request2(i) % Data % Clist)) &
+         DEALLOCATE(Request2(i) % Data % Clist)
+!      IF( ASSOCIATED(Request1(i) % DATA) ) DEALLOCATE(Request1(i) % DATA)
+!      IF( ASSOCIATED(Request2(i) % DATA) ) DEALLOCATE(Request2(i) % DATA)
      END DO
-     DEALLOCATE( Request1, Request2 )
+!    DEALLOCATE( Request1, Request2 )
+
 
      !-------------------------------------------------------------------
      ! Now, the numbering should be unique. It remains to sort the nodes.
      !-------------------------------------------------------------------
 !
-!    Sort our own nodes according to ascending
-!    global order:
-!    -----------------------------------------
+!    Sort our own nodes according to ascending global order:
+!    -------------------------------------------------------
      ALLOCATE( IntCnts(NewNodeCnt), Gorder(NewNodeCnt) )
      Gorder = (/ (i,i=1,NewNodeCnt) /)
 
@@ -2560,326 +2631,6 @@ tstart = realtime()
 !print*,'globnum: ', parenv % mype, RealTime()-tstart; call flush(6)
 
      RETURN
-
-
-!???????????????????????????????????????????????????????????????????????????????
-#if 0
-
-!
-!    Lowest numbered PE will compute the size of
-!    the (old) global node array, and eventually
-!    distribute the knowledge:
-!
-!    Others send their maxlcl to minproc
-!    -------------------------------------------
-     IF ( ParEnv % MyPE == MinProc-1 ) THEN
-        j = 1 !?????
-        DO i = MinProc+1, ParEnv % PEs
-           IF ( ParEnv % Active(i) ) THEN
-              CALL MPI_RECV( k, 1, MPI_INTEGER, i-1, &
-                   10, ELMER_COMM_WORLD, status, ierr )
-              MaxGlb = MAX( MaxGlb, k )
-           END IF
-        END DO
-     ELSE
-        CALL MPI_BSEND( MaxLcl, 1, MPI_INTEGER, &
-             MinProc-1, 10, ELMER_COMM_WORLD, ierr )
-     END IF
-
-!print *,'(2) Id:',ParEnv % MyPE+1,'MaxGlb=',MaxGlb
-
-!
-!    Receive new interface nodes from lower
-!    numbered PEs, and check if they are
-!    relevant to us:
-!    ---------------------------------------
-
-     DO i = MinProc, ParEnv % MyPE
-
-!if( ParEnv % IsNeighbour(i) ) &
-!     print *,'(3) Id:',ParEnv % MyPE+1,'Neighbour=',i
-
-        IF ( .NOT. (ParEnv % Active(i) .AND. ParEnv % Isneighbour(i)) ) CYCLE
-        
-        CALL MPI_RECV( InterfaceNodes, 1, MPI_INTEGER, &
-             i-1, 14, ELMER_COMM_WORLD, status, ierr )
-
-!print *,'(4) Id:',ParEnv % MyPE+1,'Neighbour=',i,'InterfaceNodes=',InterfaceNodes
-        
-        IF ( InterfaceNodes > 0 ) THEN
-           ALLOCATE( GIndices(InterfaceNodes), IntCnts(InterfaceNodes) )
-           
-           CALL MPI_RECV( GIndices, InterfaceNodes, MPI_INTEGER, &
-                i-1, 15, ELMER_COMM_WORLD, status, ierr )
-
-!print *,'(5) Id:', ParEnv % MyPE+1, 'Neighbour=',i,'GIndices=',GIndices
-           
-           CALL MPI_RECV( IntCnts, InterfaceNodes, MPI_INTEGER, &
-                i-1, 16, ELMER_COMM_WORLD, status, ierr )
-
-!print *,'(6) Id:', ParEnv % MyPE+1, 'Neighbour=',i,'IntCnts=',IntCnts
-           
-           CALL MPI_RECV( k, 1, MPI_INTEGER, &
-                i-1, 17, ELMER_COMM_WORLD, status, ierr )
-
-!print *,'(7) Id:', ParEnv % MyPE+1, 'Neighbour=',i,'k=',k
-           
-           ALLOCATE( IntArray(k) )
-           
-           CALL MPI_RECV( IntArray, SIZE(IntArray), MPI_INTEGER, &
-                i-1, 18, ELMER_COMM_WORLD, status, ierr )
-
-!print *,'(8) Id:', ParEnv % MyPE+1, 'Neighbour=',i,'IntArray=',IntArray
-
-!
-!          Update our view of the global numbering
-!          at the interface nodes:
-!          ---------------------------------------
-           l = 0
-           DO j=1,InterfaceNodes
-              Lindex = 0
-              IntN = IntCnts(j)
-              DO k=1,IntN
-                 Lindex(k) = SearchNode( Mesh % ParallelInfo, IntArray(l+k), 1, n-1 )
-              END DO
-
-              IF ( ALL( Lindex(1:IntN) > 0 ) ) THEN
-!
-!                This node belongs to us as well well:
-!                -------------------------------------
-                 k2 = 0
-                 k1 = 0
-                 DO k=n,Mesh % NumberOfNodes
-                    IF ( .NOT.Mesh % ParallelInfo % GInterface(k) ) CYCLE
-
-                    k1 = k1 + 1
-                    IF ( IntN == OldIntCnts(k1) ) THEN
-                       IF ( ALL( IntArray(l+1:l+IntN) == &
-                                    OldIntArray(k2+1:k2+IntN)) ) THEN
-                           Mesh % ParallelInfo % GlobalDOFs(k) = GIndices(j)
-                           EXIT
-                        END IF
-                     END IF
-                     k2 = k2 + OldIntCnts(k1)
-                 END DO
-              END IF
-              l = l + IntN
-           END DO
-           DEALLOCATE( Gindices, IntCnts, IntArray )
-        END IF
-     END DO
-!
-!    Update the current numbering from the 
-!    previous PE in line, this will make the
-!    execution strictly serial. Maybe there
-!    would be an easier way?
-!    ---------------------------------------
-     IF ( ParEnv % MyPE > MinProc-1 ) THEN
-        DO i=ParEnv % MyPE, MinProc, -1
-           IF ( ParEnv % Active(i) ) THEN
-              CALL MPI_RECV( MaxGlb, 1, MPI_INTEGER, &
-               i-1, 20, ELMER_COMM_WORLD, status, ierr )
-
-!print *,'(20) Id:',ParEnv % MyPE+1,'dest=',i,'MaxGlb=',MaxGlb
-
-              EXIT
-           END IF
-        END DO
-     END IF
-!
-!    Renumber our own new set of nodes:
-!    ----------------------------------
-     DO i=n,Mesh % NumberOfNodes
-        IF ( Mesh % ParallelInfo % GlobalDOFs(i) == 0 ) THEN
-           MaxGlb = MaxGlb + 1
-           Mesh % ParallelInfo % GlobalDOFs(i) = MaxGlb
-        END IF
-     END DO
-
-!
-!    Extract interface nodes:
-!    ------------------------
-     InterfaceNodes = COUNT( Mesh % ParallelInfo % GInterface(n:) )
-     IF ( InterfaceNodes > 0 ) ALLOCATE( Gindices(InterfaceNodes) )
-
-     InterfaceNodes = 0
-     DO i=n,Mesh % NumberOfNodes
-        IF ( Mesh % ParallelInfo % GInterface(i) ) THEN
-           InterfaceNodes = InterfaceNodes + 1
-           Gindices(InterfaceNodes) = Mesh % ParallelInfo % GlobalDOFs(i)
-        END IF
-     END DO
-!
-!    Send new interface nodes to higher numbered PEs:
-!    ------------------------------------------------
-     DO i=ParEnv % MyPE+2,ParEnv % PEs
-        IF ( .NOT. (ParEnv % Active(i) .AND. ParEnv % Isneighbour(i)) ) CYCLE
-
-        CALL MPI_BSEND( InterfaceNodes, 1, MPI_INTEGER, &
-               i-1, 14, ELMER_COMM_WORLD, ierr )
-
-        IF ( InterfaceNodes > 0 ) THEN
-           CALL MPI_BSEND( GIndices, InterfaceNodes, MPI_INTEGER, &
-                    i-1, 15, ELMER_COMM_WORLD, ierr )
-
-           CALL MPI_BSEND( OldIntCnts, InterfaceNodes, &
-              MPI_INTEGER, i-1, 16, ELMER_COMM_WORLD, ierr )
-
-           j = SIZE(OldIntArray)
-           CALL MPI_BSEND( j, 1, &
-              MPI_INTEGER, i-1, 17, ELMER_COMM_WORLD, ierr )
-
-           CALL MPI_BSEND( OldIntArray, SIZE(OldIntArray), &
-              MPI_INTEGER, i-1, 18, ELMER_COMM_WORLD, ierr )
-
-        END IF
-     END DO
-
-     DEALLOCATE( GIndices )
-!
-!    Send go signal to next PE in line...
-!    ------------------------------------
-     DO i = ParEnv % MyPE+2, ParEnv % PEs
-        IF ( ParEnv % Active(i) ) THEN
-           CALL MPI_BSEND( MaxGlb, 1, MPI_INTEGER, &
-               i-1, 20, ELMER_COMM_WORLD, ierr )
-           EXIT
-        END IF
-     END DO
-!
-!    Sort our own nodes according to ascending
-!    global order:
-!    -----------------------------------------
-     ALLOCATE( IntCnts(NewNodeCnt), Gorder(NewNodeCnt) )
-     DO i=1,NewNodeCnt
-        Gorder(i) = i
-     END DO
-
-     CALL SortI( NewNodeCnt, Mesh % ParallelInfo % GlobalDOFs(n:), Gorder )
-
-     DO i=1,NewNodeCnt
-        IntCnts(Gorder(i)) = i
-     END DO
-!
-!    Reorder will return the nodal reordering
-!    to the caller:
-!    ----------------------------------------
-     Reorder(n:) = IntCnts + n - 1
-!
-!    Order the whole of the nodal structure
-!    according to the changed order of the 
-!    global numbers:
-!    --------------------------------------
-     DO i=1,NewNodeCnt
-        k = Gorder(i)
-        CALL SwapNodes( Mesh, i+n-1, k+n-1 )
-
-        j = IntCnts(i)
-        IntCnts(i) = IntCnts(k)
-        IntCnts(k) = j
-
-        Gorder(IntCnts(k)) = k
-     END DO
-
-     DEALLOCATE( IntCnts )
-!
-!    Ok, now we have generated the global numbering
-!    of nodes. We still need to distribute the
-!    information which PEs share which of the new
-!    interface nodes:
-!    -----------------------------------------------
-     InterfaceNodes = COUNT( Mesh % ParallelInfo % GInterface(n:) )
-     ALLOCATE( GIndices( InterfaceNodes ) )
-     j = 0
-     DO i=n,Mesh % NumberOfNodes
-        IF ( Mesh % ParallelInfo % GInterface(i) ) THEN
-           j = j + 1
-           GIndices(j) = Mesh % ParallelInfo % GlobalDOFs(i)
-           ALLOCATE( Mesh % ParallelInfo % NeighbourList(i) % Neighbours(ParEnv % PEs) )
-           Mesh % ParallelInfo % NeighbourList(i) % Neighbours = -1
-        END IF
-     END DO
-
-     DO i=MinProc,ParEnv % PEs
-        IF ( ParEnv % MyPE == i-1 ) CYCLE
-        IF ( ParEnv % Active(i) .AND. ParEnv % IsNeighbour(i) ) THEN
-           CALL MPI_BSEND( InterfaceNodes, 1, &
-              MPI_INTEGER, i-1, 30, ELMER_COMM_WORLD, ierr )
-
-           CALL MPI_BSEND( GIndices, InterfaceNodes, &
-              MPI_INTEGER, i-1, 31, ELMER_COMM_WORLD, ierr )
-        END IF
-     END DO
-
-     DEALLOCATE( Gindices )
-
-     ALLOCATE( IntCnts( Mesh % NumberOfNodes ) )
-
-     IntCnts = 0
-     DO i=n,Mesh % NumberOfNodes
-        IF ( Mesh % ParallelInfo % GInterface(i) ) THEN
-           IntCnts(i) = IntCnts(i) + 1
-           Mesh % ParallelInfo % NeighbourList(i) % Neighbours(1) = ParEnv % MyPE
-        END IF
-     END DO
-
-     DO i=MinProc,ParEnv % PEs
-        IF ( ParEnv % MyPE == i-1 ) CYCLE
-        IF ( ParEnv % Active(i) .AND. ParEnv % IsNeighbour(i) ) THEN
-           CALL MPI_RECV( InterfaceNodes, 1, MPI_INTEGER, &
-               i-1, 30, ELMER_COMM_WORLD, status, ierr )
-
-           ALLOCATE( GIndices(InterfaceNodes) )
-
-           CALL MPI_RECV( GIndices, InterfaceNodes, MPI_INTEGER, &
-               i-1, 31, ELMER_COMM_WORLD, status, ierr )
-
-           DO j=1,InterfaceNodes
-              k = SearchNode( Mesh % ParallelInfo, Gindices(j), n )
-              IF ( k <= 0 ) CYCLE
-              IntCnts(k) = IntCnts(k) + 1
-              Mesh % ParallelInfo % NeighbourList(k) % Neighbours(IntCnts(k)) = i-1
-           END DO
-
-           DEALLOCATE( GIndices )
-        END IF
-     END DO
-!
-!    Reallocate the nodal neighbour lists to
-!    correct sizes:
-!    ---------------------------------------
-     DO i=n,Mesh % NumberOfNodes
-        IF ( Mesh % ParallelInfo % GInterface(i) ) THEN
-           k = IntCnts(i)
-           ALLOCATE( Gindices(k) ) ! just work space
-           Gindices = Mesh % ParallelInfo % NeighbourList(i) % Neighbours(1:k)
-           CALL Sort( k, Gindices )
-           DEALLOCATE( Mesh % ParallelInfo % NeighbourList(i) % Neighbours )
-           Mesh % ParallelInfo % NeighbourList(i) % Neighbours => Gindices
-        END IF
-     END DO
-     
-     DEALLOCATE( IntCnts )
-
-! final test:
-!     IF( ParEnv % MyPE == 3 ) THEN
-!        DO i = 1, Mesh % NumberOfNodes
-!           PRINT *,'Local:',i, &
-!                'Global:' ,Mesh % Parallelinfo % GlobalDOFs(i), &
-!                'Interface:', Mesh % ParallelInfo % GInterface(i), &
-!                'Neighbours:', Mesh % ParallelInfo % NeighbourList(i) % Neighbours + 1
-!        END DO
-!     END IF
-
-PRINT *,'****OK:', parenv % mype+1
-DO i = 1, mesh % nodes % numberofnodes
-   PRINT *,'(+++)',parenv % mype+1, i, Mesh % ParallelInfo % GlobalDOFs(i), &
-        Mesh % ParallelInfo % GInterface(i), Mesh % ParallelInfo % NeighbourList(i) % Neighbours
-END DO
-
-
-     CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
-#endif
 
 CONTAINS
 
@@ -4578,7 +4329,6 @@ END SUBROUTINE BuildRevVecIndices
 !----------------------------------------------------------------------
 SUBROUTINE Send_LocIf_Old( SplittedMatrix )
 
-  USE types
   IMPLICIT NONE
 
   TYPE (SplittedMatrixT) :: SplittedMatrix
@@ -4660,7 +4410,6 @@ END SUBROUTINE Send_LocIf_Old
 !----------------------------------------------------------------------
 SUBROUTINE Recv_LocIf_Old( SplittedMatrix, ndim, v )
 
-  USE types
   IMPLICIT NONE
 
   TYPE (SplittedMatrixT) :: SplittedMatrix
@@ -4718,7 +4467,6 @@ END SUBROUTINE Recv_LocIf_Old
 !----------------------------------------------------------------------
 SUBROUTINE Send_LocIf_size( SplittedMatrix, n, neigh )
 
-  USE types
   IMPLICIT NONE
 
   INTEGER :: n, neigh(:)
@@ -4762,7 +4510,6 @@ END SUBROUTINE Send_LocIf_size
 !
 SUBROUTINE Send_LocIf( SplittedMatrix,n,neigh )
 
-  USE types
   IMPLICIT NONE
 
   INTEGER :: n,neigh(:)
@@ -4838,7 +4585,6 @@ END SUBROUTINE Send_LocIf
 !> Receive interface block contributions to vector from neighbours
 !
 SUBROUTINE Recv_LocIf_size( n, neigh, sizes )
-  USE Types
   IMPLICIT NONE
 
   INTEGER :: sizes(:), neigh(:), n
@@ -4907,7 +4653,6 @@ END SUBROUTINE Recv_LocIf
 !
 SUBROUTINE Recv_LocIf_Wait( SplittedMatrix, ndim, v, n, neigh, &
                sizes, requests, buffer )
-  USE Types
   IMPLICIT NONE
 
   TYPE (SplittedMatrixT) :: SplittedMatrix
@@ -5256,7 +5001,6 @@ END SUBROUTINE ParEnvFinalize
 !
 FUNCTION SearchNode( ParallelInfo, QueriedNode, First, Last,Order ) RESULT ( Indx )
 
-  USE Types
   IMPLICIT NONE
 
   TYPE (ParallelInfo_t) :: ParallelInfo
@@ -5351,7 +5095,6 @@ END FUNCTION SearchNode
 !
 FUNCTION SearchIAItem( N, IArray, Item, SortOrder, sIndx ) RESULT ( Indx )
 
-  USE types
   IMPLICIT NONE
 
   INTEGER :: Item, Indx, i
@@ -5413,7 +5156,6 @@ END FUNCTION SearchIAItem
 !
 FUNCTION SearchIAItemLinear( N, IArray, Item ) RESULT ( Indx )
 
-  USE types
   IMPLICIT NONE
 
   INTEGER :: N

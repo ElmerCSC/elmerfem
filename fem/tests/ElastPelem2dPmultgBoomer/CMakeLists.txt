@@ -7,6 +7,6 @@ CONFIGURE_FILE(case.sif case.sif COPYONLY)
 
 file(COPY angle.grd ELMERSOLVER_STARTINFO DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(ElastPelem2dPmultgBoomer LABELS slow p-fem NPROCS 3)
+ADD_ELMER_TEST(ElastPelem2dPmultgBoomer LABELS slow p-fem hypre NPROCS 3)
 ENDIF()
 ENDIF()

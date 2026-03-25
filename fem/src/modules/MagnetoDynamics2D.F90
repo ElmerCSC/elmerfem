@@ -4,20 +4,20 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
 !
@@ -135,7 +135,7 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
 !------------------------------------------------------------------------------
   LOGICAL :: Found
   TYPE(Element_t), POINTER :: Element
-  REAL(KIND=dp) :: Norm
+  REAL(KIND=dp) :: Norm, newton_eps
   INTEGER :: i,j,k,n, nb, nd, t, Active, NonlinIter, iter, tind
   TYPE(ValueList_t), POINTER :: BC
   TYPE(Mesh_t),   POINTER :: Mesh
@@ -185,6 +185,9 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
     CALL Info(Caller,'Performing legacy version of bulk element assembly',Level=7)      
   END IF
 
+  newton_eps = GetCReal(SolverParams, 'Newton epsilon', Found )
+  IF(.NOT. Found) newton_eps = 1.0e-3
+
   MassAsm = Transient
   IF( ConstantMassInUse ) MassAsm = .FALSE.
   
@@ -218,44 +221,45 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
     END IF
 
     tind = 0
-    !$omp parallel do private(Element,n,nd,nb,t)   
+    !!omp parallel do private(Element,n,nd,nb,t)
     DO t=1,active
       Element => GetActiveElement(t)
       n  = GetElementNOFNodes(Element)
       nd = GetElementNOFDOFs(Element)
       nb = GetElementNOFBDOFs(Element)
-      IF( SkipDegenerate .AND. DegenerateElement( Element ) ) THEN
+
+      IF( SkipDegenerate .AND. DegenerateElement(Element) ) THEN
         CALL Info(Caller,'Skipping degenerate element:'//I2S(t),Level=12)
         CYCLE
       END IF
+
       IF( HandleAsm ) THEN
         CALL LocalMatrixHandles(  Element, n, nd+nb, nb )
       ELSE
         CALL LocalMatrix(Element, n, nd)
       END IF
     END DO
-    !$omp end parallel do  
+    !!omp end parallel do  
       
     CALL DefaultFinishBulkAssembly()
     
     Active = GetNOFBoundaryElements()
-!$omp parallel do private(Element, n, nd, BC,Found, t)
+!!omp parallel do private(Element, n, nd, BC,Found, t)
     DO t=1,active
       Element => GetBoundaryElement(t)
-      BC=>GetBC( Element )
+      BC => GetBC( Element )
       IF(.NOT.ASSOCIATED(BC)) CYCLE
 
+      n  = GetElementNOFNodes( Element )
+      nd = GetElementNOFDOFs( Element )
+
       IF(GetLogical(BC,'Infinity BC',Found)) THEN
-         n  = GetElementNOFNodes( Element )
-         nd = GetElementNOFDOFs( Element )
-         CALL LocalMatrixInfinityBC(Element, n, nd)
-      ELSE IF(GetLogical(BC,'Air Gap',Found)) THEN
-         n  = GetElementNOFNodes( Element )
-         nd = GetElementNOFDOFs( Element )
-         CALL LocalMatrixAirGapBC(Element, BC, n, nd)
+        CALL LocalMatrixInfinityBC(Element, n, nd)
+      ELSE 
+        CALL LocalMatrixBC(Element, BC, n, nd)
       END IF
     END DO
-!$omp end parallel do
+!!omp end parallel do
 
     CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
@@ -407,9 +411,9 @@ CONTAINS
 
    REAL(KIND=dp) :: torq,TorqArea,IMoment,IA, &
        rinner,router,rmean,rdiff,ctorq,detJ,Weight,&
-       Bp,Br,Bx,By,x,y,r,rho
+       Bp,Br,Bx,By,x,y,r,rho,wtorq,Bp0,Br0,Bx0,By0
    REAL(KIND=dp), ALLOCATABLE :: a(:),u(:),POT(:),dPOT(:), &
-       pPot(:),Density(:)
+       pPot(:),Density(:),TorqSens(:)
    REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:)
    LOGICAL, ALLOCATABLE :: TorqueElem(:)
    INTEGER :: i,bfid,n,nd,nbf,PrevComm,NoSlices,NoTimes
@@ -417,11 +421,12 @@ CONTAINS
    TYPE(ValueList_t),POINTER::Params
    TYPE(GaussIntegrationPoints_t) :: IP
    TYPE(Nodes_t) :: Nodes
-   LOGICAL :: CalcTorque, CalcPot, CalcInert
+   LOGICAL :: CalcTorque, CalcPot, CalcInert, AdjointTorque 
    LOGICAL :: ThisTorque, ThisPot, ThisInert, Parallel, HaveRange
    LOGICAL :: Visited = .FALSE.
    
-   SAVE Visited, Nodes, Basis, dBasisdx, a, u, POT, dPOT, pPot, Density, Ctorq, TorqueElem
+   SAVE Visited, Nodes, Basis, dBasisdx, a, u, POT, dPOT, pPot, Density, Ctorq, &
+       TorqueElem, TorqSens
    
 !------------------------------------------------------------------------------
 
@@ -457,13 +462,15 @@ CONTAINS
         
    IF(.NOT. (CalcTorque .OR. CalcPot .OR. CalcInert) ) RETURN
 
+   AdjointTorque = ListGetLogical( Solver % Values,'Solve Adjoint Equation', Found )
+   
    Parallel = ( ParEnv % PEs > 1 )
    
    nbf = Model % NumberOfBodyForces
    IF(.NOT. Visited ) THEN
      n = Model % Mesh % MaxElementDofs
      ALLOCATE( a(nbf), u(nbf), POT(n), dPOT(n), pPot(n), Density(n), &
-         Basis(n), dBasisdx(n,3) )
+         Basis(n), dBasisdx(n,3), TorqSens(n) )
    END IF
 
    IF( CalcTorque ) THEN
@@ -611,14 +618,33 @@ CONTAINS
          U(bfid) = U(bfid) + Weight * SUM(dPot(1:nd)*Basis(1:nd))
        END IF
        
-       IF( ThisTorque ) THEN                      
+       IF( ThisTorque ) THEN
+         wtorq = weight * r / (PI*4.0d-7*rdiff) 
+         
          Bx =  SUM(POT(1:nd)*dBasisdx(1:nd,2))
          By = -SUM(POT(1:nd)*dBasisdx(1:nd,1))
          Br =  x/r*Bx + y/r*By
          Bp = -y/r*Bx + x/r*By
-         Torq = Torq + Weight * r*Br*Bp / (PI*4.0d-7*rdiff)
+
+         Torq = Torq + wtorq * Br*Bp 
          TorqArea = TorqArea + Weight
+
+         ! This is tentative addition for solving the adjoint equation. 
+         IF( AdjointTorque ) THEN
+           DO j=1,nd
+             Bx0 =  dBasisdx(j,2)
+             By0 = -dBasisdx(j,1)
+             Br0 =  x/r*Bx0 + y/r*By0
+             Bp0 = -y/r*Bx0 + x/r*By0             
+             TorqSens(j) = 2 * wtorq * (Br0*Bp+Br*Bp0)              
+           END DO
+
+           CALL UpdateGlobalForce( Solver % Matrix % RhsAdjoint, &
+               TorqSens(1:nd), nd, Solver % Variable % DOFs, &
+               Solver % Variable % Perm(Element % NodeIndexes(1:nd)) )
+         END IF
        END IF
+
        
        IF( ThisInert ) THEN
          IF( r < rmean ) THEN
@@ -711,11 +737,13 @@ CONTAINS
        IA = ParallelReduction(IA) / NoSlices
      END IF
 
-     WRITE(Message,'(A,ES15.4)') 'Inertial volume:', IA
-     CALL Info(Caller,Message,Level=7)
-
-     WRITE(Message,'(A,ES15.4)') 'Inertial moment:', Imoment
-     CALL Info(Caller,Message,Level=7)
+     IF(Imoment > EPSILON(Imoment)) THEN
+       WRITE(Message,'(A,ES15.4)') 'Inertial volume:', IA
+       CALL Info(Caller,Message,Level=7)
+       
+       WRITE(Message,'(A,ES15.4)') 'Inertial moment:', Imoment
+       CALL Info(Caller,Message,Level=7)
+     END IF
        
      CALL ListAddConstReal(Model % Simulation,'res: inertial volume', IA)
      CALL ListAddConstReal(Model % Simulation,'res: inertial moment', IMoment)
@@ -734,21 +762,22 @@ CONTAINS
 !------------------------------------------------------------------------------
 ! Old style local matrix. 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrix(Element, n, nd)
+  RECURSIVE SUBROUTINE LocalMatrix(Element, n, nd)
 !------------------------------------------------------------------------------
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
-    TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: Material, BodyForce
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: CompParams
+
+    TYPE(Nodes_t), SAVE :: Nodes
 
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,LoadAtIP
     REAL(KIND=dp) :: MASS(nd,nd), DAMP(nd,nd), STIFF(nd,nd), FORCE(nd), &
         LOAD(nd),R(2,2,n),LondonLambda(nd), C(n), mu,muder,Babs,POT(nd), &
-        JAC(nd,nd),Agrad(3),C_ip,M(2,n),M_ip(2),x, y,&
-        Lorentz_velo(3,nd), Velo(3), omega_velo
+        JAC(nd,nd),Agrad(3),C_ip,M(2,n),M_ip(2),x, y, Lorentz_velo(3,nd), Velo(3), omega_velo
+
     REAL(KIND=dp) :: LondonLambda_ip, P_ip, Permittivity(nd)
     REAL(KIND=dp) :: Bt(nd,2), Ht(nd,2)
     REAL(KIND=dp) :: nu_tensor(2,2)
@@ -756,14 +785,14 @@ CONTAINS
 
     INTEGER :: i,p,q,t
 
-    LOGICAL :: HBcurve, WithVelocity, WithAngularVelocity, Found, Stat
     LOGICAL :: CoilBody, StrandedCoil    
+    LOGICAL :: HBcurve, WithVelocity, WithAngularVelocity, Found, Stat
 
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
 
     ! Zirka related
     LOGICAL :: Zirka
-    LOGICAL :: LondonEquations = .TRUE.
+    LOGICAL :: LondonEquations
     TYPE(Variable_t), POINTER :: hystvar
     TYPE(GlobalHysteresisModel_t), pointer :: zirkamodel
 
@@ -1039,24 +1068,25 @@ CONTAINS
     REAL(KIND=dp), POINTER, SAVE :: Basis(:), dBasisdx(:,:)
     REAL(KIND=dp), ALLOCATABLE, SAVE :: MASS(:,:), DAMP(:,:), STIFF(:,:), FORCE(:), POT(:)    
     REAL(KIND=dp) :: Nu0, Nu, weight, SourceAtIp, CondAtIp, DetJ, Mu, MuDer, Babs
-    LOGICAL :: Stat,Found, HBCurve
-    INTEGER :: t,p,q,m,allocstat
+    LOGICAL :: Stat,Found, HBCurve, HasReluctivityFunction
+    INTEGER :: t,p,q,k,m,allocstat, nudim
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(ValueList_t), POINTER :: Material, PrevMaterial => NULL()
     REAL(KIND=dp) :: B_ip(2), Ht(nd,2), Bt(nd,2), Agrad(2), JAC(nd,nd), Alocal, &
-            Permittivity(nd), P_ip
+            Permittivity(nd), P_ip, A_t_der(2,2), nu_tensor(2,2)
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
     LOGICAL :: StrandedCoil
+    REAL(KIND=dp), POINTER :: NuTensor(:,:)
     TYPE(ValueHandle_t), SAVE :: SourceCoeff_h, CondCoeff_h, PermCoeff_h, &
-        RelPermCoeff_h, RelucCoeff_h, Mag1Coeff_h, Mag2Coeff_h, CoilType_h
+        RelPermCoeff_h, RelucCoeff_h, Mag1Coeff_h, Mag2Coeff_h, CoilType_h, nu_h
     INTEGER :: PrevElemInd = HUGE(PrevElemInd)
     
-    SAVE HBCurve, Nu0, PrevMaterial, PrevElemInd
+    SAVE HBCurve, Nu0, PrevMaterial, PrevElemInd, HasReluctivityFunction
     
     !$omp threadprivate(Basis, dBasisdx, MASS, DAMP, STIFF, FORCE, POT, &
-    !$omp               Nodes, Nu0, HBCurve, PrevMaterial, &
-    !$omp               SourceCoeff_h, CondCoeff_h, PermCoeff_h, RelPermCoeff_h, &
+    !$omp               Nodes, Nu0, HBCurve, HasReluctivityFunction,PrevMaterial, &
+    !$omp               SourceCoeff_h, CondCoeff_h, PermCoeff_h,nu_h, RelPermCoeff_h, &
     !$omp               RelucCoeff_h, Mag1Coeff_h, Mag2Coeff_h, CoilType_h, PrevElemInd )
     
 !------------------------------------------------------------------------------
@@ -1071,6 +1101,10 @@ CONTAINS
       CALL ListInitElementKeyword( Mag1Coeff_h,'Material','Magnetization 1')
       CALL ListInitElementKeyword( Mag2Coeff_h,'Material','Magnetization 2')
       CALL ListInitElementKeyword( CoilType_h,'Component','Coil Type')
+      IF( ListCheckPresentAnyMaterial(Model,'Reluctivity Function') ) THEN
+        CALL ListInitElementKeyword(nu_h,'Material','Reluctivity Function',&
+              EvaluateAtIp=.TRUE.,DummyCount=2)
+      END IF
       Found = .FALSE.
       IF( ASSOCIATED( Model % Constants ) ) THEN
         Nu0 = ListGetCReal( Model % Constants,'Permeability of Vacuum',Found)
@@ -1097,6 +1131,7 @@ CONTAINS
     IF( .NOT. ASSOCIATED( Material, PrevMaterial ) ) THEN
       PrevMaterial => Material           
       HbCurve = ListCheckPresent(Material,'H-B Curve')
+      HasReluctivityFunction = ListCheckPresent(Material,'Reluctivity Function')
     END IF
 
     IF(ElectroDynamics) THEN
@@ -1129,7 +1164,7 @@ CONTAINS
       
     CALL GetElementNodes( Nodes, UElement=Element )
 
-    IF(HBcurve) THEN
+    IF(HBcurve.OR. HasReluctivityFunction) THEN
       CALL GetLocalSolution(POT,UElement=Element,USolver=Solver)
       JAC = 0.0_dp
     END IF
@@ -1147,7 +1182,7 @@ CONTAINS
             IP % W(t), detJ, Basis, dBasisdx )
         Weight = IP % s(t) * DetJ
       END IF
-        
+      nu_tensor = 0.0_dp  
       ! diffusion term (D*grad(u),grad(v)):
       ! -----------------------------------
       IF( HBCurve ) THEN
@@ -1164,6 +1199,28 @@ CONTAINS
         ELSE
           mu = ListGetFun( Material,'h-b curve',babs) / Babs
         END IF
+      ELSE IF (HasReluctivityFunction) THEN
+        Agrad(1:2) = MATMUL( POT(1:nd),dBasisdx(1:nd,1:2) )
+        Alocal = SUM( POT(1:nd) * Basis(1:nd) )
+
+        B_ip(1) = Agrad(2) 
+        B_ip(2) = -Agrad(1)         
+        Babs = MAX( SQRT(SUM(B_ip**2)), 1.d-8 )
+        Babs = MAX( SQRT(SUM(B_ip**2)), 1.d-8 )
+        nu = ListGetElementReal( nu_h, Basis, Element, &
+             GaussPoint = t, Rdim=nudim, Rtensor=NuTensor, DummyVals = B_ip )
+        IF (nudim < 2) CALL Fatal(Caller, &
+             'Specify Reluctivity Function as a full (2x2)-tensor')
+        IF( NewtonRaphson ) THEN
+           ! Use central differencing
+          nu = ListGetElementReal( nu_h, Basis, Element, &
+               GaussPoint = t, Rdim=nudim, Rtensor=NuTensor, DummyVals = (1+newton_eps)*B_ip )
+           A_t_der(1:2,1:2) = NuTensor(1:2,1:2)
+           nu = ListGetElementReal( nu_h, Basis, Element, &
+               GaussPoint = t, Rdim=nudim, Rtensor=NuTensor, DummyVals = (1-newton_eps)*B_ip )
+           A_t_der(1:2,1:2) = ( A_t_der(1:2,1:2) - NuTensor(1:2,1:2) ) / ( 2*newton_eps*babs)
+         END IF
+        nu_tensor(1:2,1:2) = NuTensor(1:2,1:2)
       ELSE
         Nu = ListGetElementReal( RelPermCoeff_h, Basis, Element, Found, GaussPoint = t )
         IF( Found ) THEN
@@ -1189,13 +1246,29 @@ CONTAINS
       Bt(1:nd,2) = -dbasisdx(1:nd,1)
 
       ! Here isotrophy is assumed!
-      Ht(1:nd,:) = mu * Bt(1:nd,:)
+      
+      IF (HasReluctivityFunction) THEN
+        DO p = 1,nd
+          Ht(p,:) = MATMUL(nu_tensor, Bt(p,:))
+        END DO
+      ELSE
+        Ht(1:nd,:) = mu * Bt(1:nd,:)
+      END IF
            
       IF ( HBCurve .AND. NewtonRaphson) THEN
         DO p=1,nd
           DO q=1,nd
             JAC(p,q) = JAC(p,q) + Weight * &
                 muder/babs * SUM(B_ip(:) * Bt(q,:)) * SUM(B_ip(:)*Bt(p,:))
+          END DO
+        END DO
+      ELSE IF (HasReluctivityFunction .AND. NewtonRaphson) THEN
+        DO p=1,nd
+          DO q=1,nd
+            DO k=1,2
+              JAC(p,q) = JAC(p,q) + detJ*IP % s(t) * &
+                SUM(A_t_der(k,:) * B_ip(k) * Bt(q,:)) * SUM(B_ip(:)*Bt(p,:))/Babs
+            END DO
           END DO
         END DO
       END IF
@@ -1235,7 +1308,7 @@ CONTAINS
       END IF     
     END DO
 
-    IF (HBcurve .AND. NewtonRaphson) THEN
+    IF ((HBcurve .OR. HasReluctivityFunction) .AND. NewtonRaphson) THEN
       STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + JAC(1:nd,1:nd)
       FORCE(1:nd) = FORCE(1:nd) + MATMUL(JAC(1:nd,1:nd),POT(1:nd))
     END IF
@@ -1362,31 +1435,38 @@ END SUBROUTINE ! }}}
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixAirGapBC(Element, BC, n, nd )
+  RECURSIVE SUBROUTINE LocalMatrixBC(Element, BC, n, nd )
 !------------------------------------------------------------------------------
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ
-    LOGICAL :: Stat, Found
+    LOGICAL :: Stat, Found, GotAirGap, GotSurfCurr
     INTEGER :: t
     TYPE(GaussIntegrationPoints_t) :: IP
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), &
-            mu,AirGapLength(nd), AirGapMu(nd), AirGapL
+            mu,AirGapLength(nd), AirGapMu(nd), SurfCurr(nd), AirGapL, SurfC, x
     TYPE(ValueList_t), POINTER :: BC
-    TYPE(Nodes_t) :: Nodes
-    SAVE Nodes
+    TYPE(Nodes_t), SAVE :: Nodes
     !$OMP THREADPRIVATE(Nodes)
 !------------------------------------------------------------------------------
+
+    GotAirGap = ListGetLogical( BC,'Air Gap', Found ) 
+    SurfCurr = GetReal( BC, 'Surface Current', GotSurfCurr )
+
+    IF(.NOT. (GotAirGap .OR. GotSurfCurr)) RETURN
+
+    IF( GotAirGap ) THEN
+      AirGapLength = GetReal( BC, 'Air Gap Length',Found) 
+      IF(.NOT. Found) CALL Fatal('LocalMatrixBC', '"Air Gap Length" not found!')
+      AirGapMu = GetReal( BC, 'Air Gap Relative Permeability', Found)
+      IF (.NOT. Found) AirGapMu = 1.0_dp
+    END IF
+    
     CALL GetElementNodes( Nodes, Element )
     STIFF = 0._dp
     FORCE = 0._dp
-
-    AirGapLength = ListGetConstReal( BC, 'Air Gap Length', UnfoundFatal = .TRUE.)
-
-    AirGapMu = ListGetConstReal( BC, 'Air Gap Relative Permeability', Found)
-    IF (.NOT. Found) AirGapMu=1.0_dp
-
+      
     !Numerical integration:
     !----------------------
     IP = GaussPoints( Element )
@@ -1396,16 +1476,26 @@ END SUBROUTINE ! }}}
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
               IP % W(t), detJ, Basis, dBasisdx )
 
-      mu = 4*pi*1d-7*SUM(Basis(1:n)*AirGapMu(1:n))
-      AirGapL = SUM(Basis(1:n)*AirGapLength(1:n))
-
-      STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + IP % s(t) * DetJ * &
-          AirGapL/mu*MATMUL(dBasisdx, TRANSPOSE(dBasisdx))
-
+      IF ( CSymmetry ) THEN
+        x = SUM( Basis(1:n) * Nodes % x(1:n) )
+        detJ = detJ * x
+      END IF
+      
+      IF( GotAirGap ) THEN
+        mu = 4*pi*1d-7*SUM(Basis(1:n)*AirGapMu(1:n))
+        AirGapL = SUM(Basis(1:n)*AirGapLength(1:n))
+        STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + IP % s(t) * DetJ * &
+            AirGapL/mu*MATMUL(dBasisdx, TRANSPOSE(dBasisdx))
+      END IF
+      
+      IF( GotSurfCurr ) THEN
+        SurfC = SUM(Basis(1:n)*SurfCurr(1:n))
+        FORCE(1:nd) = FORCE(1:nd) + IP % s(t) * DetJ * SurfC * Basis(1:nd) 
+      END IF        
     END DO
     CALL DefaultUpdateEquations( STIFF, FORCE, UElement=Element )
 !------------------------------------------------------------------------------
-  END SUBROUTINE LocalMatrixAirGapBC
+  END SUBROUTINE LocalMatrixBC
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
@@ -1666,10 +1756,10 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
       
       IF(GetLogical(BC,'Infinity BC',Found)) THEN
         CALL LocalMatrixInfinityBC(  Element, n, nd )
-      ELSE IF(GetLogical(BC,'Air Gap',Found)) THEN
-        CALL LocalMatrixAirGapBC(Element, BC, n, nd)
       ELSE IF( ListCheckPresent( BC,'Layer Electric Conductivity' ) ) THEN
         CALL LocalMatrixSkinBC(Element, BC, n, nd)
+      ELSE 
+        CALL LocalMatrixBC(Element, BC, n, nd)
       END IF
     END DO
 !$omp end parallel do
@@ -2035,11 +2125,13 @@ CONTAINS
        IA = ParallelReduction(IA) / NoSlices
      END IF
 
-     WRITE(Message,'(A,ES15.4)') 'Inertial volume:', IA
-     CALL Info(Caller,Message,Level=7)
-
-     WRITE(Message,'(A,ES15.4)') 'Inertial moment:', Imoment
-     CALL Info(Caller,Message,Level=7)
+     IF(Imoment > EPSILON(Imoment) ) THEN
+       WRITE(Message,'(A,ES15.4)') 'Inertial volume:', IA
+       CALL Info(Caller,Message,Level=7)
+       
+       WRITE(Message,'(A,ES15.4)') 'Inertial moment:', Imoment
+       CALL Info(Caller,Message,Level=7)
+     END IF
        
      CALL ListAddConstReal(Model % Simulation,'res: inertial volume', IA)
      CALL ListAddConstReal(Model % Simulation,'res: inertial moment', IMoment)
@@ -2057,7 +2149,7 @@ CONTAINS
 
   
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrix(  Element, n, nd)
+  RECURSIVE SUBROUTINE LocalMatrix(  Element, n, nd)
 !------------------------------------------------------------------------------
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
@@ -2089,9 +2181,9 @@ CONTAINS
 
     LOGICAL :: HBcurve, Found, Stat, StrandedHomogenization
     LOGICAL :: CoilBody    
-    LOGICAL :: InPlaneProximity = .FALSE., WithVelocity, WithAngularVelocity
+    LOGICAL :: InPlaneProximity=.TRUE., WithVelocity, WithAngularVelocity
     LOGICAL :: FoundIm, StrandedCoil
-    LOGICAL :: LondonEquations = .TRUE.
+    LOGICAL :: LondonEquations
     
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
 
@@ -2364,7 +2456,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixInfinityBC(Element, n, nd )
+  RECURSIVE SUBROUTINE LocalMatrixInfinityBC(Element, n, nd )
 !------------------------------------------------------------------------------
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
@@ -2429,32 +2521,43 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixAirGapBC(Element, BC, n, nd )
+  RECURSIVE SUBROUTINE LocalMatrixBC(Element, BC, n, nd )
 !------------------------------------------------------------------------------
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ
-    LOGICAL :: Stat, Found
+    LOGICAL :: Stat, Found, GotSurfCurr, GotAirGap
     INTEGER :: i,t
     TYPE(GaussIntegrationPoints_t) :: IP
-    COMPLEX(KIND=dp) :: STIFF(nd,nd), FORCE(nd)
-    REAL(KIND=dp) :: mu,x,AirGapLength(nd), AirGapMu(nd), AirGapL
+    COMPLEX(KIND=dp) :: STIFF(nd,nd), FORCE(nd), SurfC
+    REAL(KIND=dp) :: mu,x,AirGapLength(nd), AirGapMu(nd), SurfCurr(nd), &
+        SurfCurrIm(nd), AirGapL
     TYPE(ValueList_t), POINTER :: BC
     TYPE(Nodes_t) :: Nodes
     SAVE Nodes
     !$OMP THREADPRIVATE(Nodes)
 !------------------------------------------------------------------------------
+
+    GotAirGap = GetLogical( BC,'Air Gap', Found ) 
+    SurfCurr = GetReal( BC, 'Surface Current', GotSurfCurr )
+    SurfCurrIm = GetReal( BC, 'Surface Current Im', Found )
+    GotSurfCurr = GotSurfCurr .OR. Found
+    
+    IF(.NOT. (GotSurfCurr .OR. GotAirGap) ) RETURN
+    
     CALL GetElementNodes( Nodes, Element )
     STIFF = 0._dp
     FORCE = 0._dp
 
-    AirGapLength=GetConstReal( BC, 'Air Gap Length', Found)
-    IF (.NOT. Found) CALL Fatal('LocalMatrixAirGapBC', 'Air Gap Length not found!')
-
-    AirGapMu=GetConstReal( BC, 'Air Gap Relative Permeability', Found)
-    IF (.NOT. Found) AirGapMu=1.0_dp
-
+    IF( GotAirGap ) THEN
+      AirGapLength = GetReal( BC, 'Air Gap Length',Found )
+      IF(.NOT. Found) CALL Fatal('LocalMatrixBC', '"Air Gap Length" not found!')
+      AirGapMu = GetReal( BC, 'Air Gap Relative Permeability', Found)
+      IF (.NOT. Found) AirGapMu = 1.0_dp
+    END IF
+           
+    
     !Numerical integration:
     !----------------------
     IP = GaussPoints( Element )
@@ -2468,21 +2571,27 @@ CONTAINS
         x = SUM( Basis(1:n) * Nodes % x(1:n) )
         detJ = detJ * x
       END IF
-      
-      mu = 4*pi*1d-7*SUM(Basis(1:n)*AirGapMu(1:n))
-      AirGapL = SUM(Basis(1:n)*AirGapLength(1:n))
 
-      STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + IP % s(t) * DetJ * &
-          AirGapL/mu*MATMUL(dBasisdx, TRANSPOSE(dBasisdx))
-      
+      IF( GotAirGap ) THEN
+        mu = 4*pi*1d-7*SUM(Basis(1:n)*AirGapMu(1:n))
+        AirGapL = SUM(Basis(1:n)*AirGapLength(1:n))        
+        STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + IP % s(t) * DetJ * &
+            AirGapL/mu*MATMUL(dBasisdx, TRANSPOSE(dBasisdx))
+      END IF
+
+      IF( GotSurfCurr ) THEN
+        SurfC = CMPLX( SUM(Basis(1:n)*SurfCurr(1:n)), SUM(Basis(1:n)*SurfCurrIm(1:n)),KIND=dp)
+        FORCE(1:nd) = FORCE(1:nd) + IP % s(t) * DetJ * SurfC * Basis(1:nd) 
+      END IF        
     END DO
+    
     CALL DefaultUpdateEquations( STIFF, FORCE, UElement=Element )
 !------------------------------------------------------------------------------
-  END SUBROUTINE LocalMatrixAirGapBC
+  END SUBROUTINE LocalMatrixBC
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixSkinBC(Element, BC, n, nd )
+  RECURSIVE SUBROUTINE LocalMatrixSkinBC(Element, BC, n, nd )
 !------------------------------------------------------------------------------
     INTEGER :: n, nd
     TYPE(ValueList_t), POINTER :: BC
@@ -2503,7 +2612,7 @@ CONTAINS
     FORCE = 0._dp
 
     muVacuum = 4 * PI * 1d-7
-    imu = CMPLX(0.0_dp, 1.0_dp)
+    imu = CMPLX(0.0_dp, 1.0_dp,KIND=dp)
     
     SkinCond(1:n) = GetReal( BC,'Layer Electric Conductivity', Found)
     Mu(1:n) = GetReal( BC,'Layer Relative Permeability', Found)
@@ -3374,7 +3483,7 @@ CONTAINS
 
         IF (ComplexPowerCompute) THEN
           cmplx_power = 0._dp
-          imag_value = CMPLX(BAtIp(7), BAtIp(8))
+          imag_value = CMPLX(BAtIp(7), BAtIp(8),KIND=dp)
 
           MuAtIp = SUM( Basis(1:n) * mu(1:n) )
 
@@ -3793,7 +3902,7 @@ CONTAINS
       imag_value = CMPLX(ComplexPower(1), &
                          ComplexPower(2), &
                          KIND=dp)
-      I = CMPLX(Current(1), Current(2))
+      I = CMPLX(Current(1), Current(2),KIND=dp)
       imag_value = imag_value*Volume/ABS(I)**2._dp
       imag_value2 = 1._dp/imag_value
       SkinCond(1) = REAL(imag_value2) 

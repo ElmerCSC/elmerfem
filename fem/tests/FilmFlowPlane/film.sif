@@ -17,14 +17,15 @@ Header
 End
 
 Simulation
-  Max Output Level = 7
+  Max Output Level = 5
   Coordinate System = Cartesian 2D
   Simulation Type = Steady State
   Steady State Max Iterations = 1
 
   Output Intervals = 0
-  Post File = film.vtu
-  
+!  Post File = film.vtu
+!  Ascii Output = True
+
 !  Set Dirichlet BCs by BC Numbering = True
 !  Initialize Dirichlet Conditions = False
 !  Coordinate Mapping(3) = 2 1 3
@@ -63,6 +64,9 @@ Solver 1
   Linear System Direct Method = umfpack
 
 !  Calculate Loads = True
+
+  Calculate Friction Heating = Logical True 
+!  Friction Heating Source = Logical True
 End
 
 
@@ -101,6 +105,9 @@ Material 1
       0.0 $h0
       5.0 $h1
     End
+
+
+  Latent Heat = 1.0e6
 End
 
 Boundary Condition 1

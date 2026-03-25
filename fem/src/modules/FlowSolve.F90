@@ -4,23 +4,22 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-!
 !/******************************************************************************
 ! *
 ! *  Authors: Juha Ruokolainen
@@ -157,32 +156,32 @@
 !------------------------------------------------------------------------------
 
      INTERFACE
-        FUNCTION FlowBoundaryResidual( Model,Edge,Mesh,Quant,Perm,Gnorm ) RESULT(Indicator)
+        SUBROUTINE FlowSolver_Boundary_Residual( Model,Edge,Mesh,Quant,Perm,Gnorm,Indicator)
           USE Types
           TYPE(Element_t), POINTER :: Edge
           TYPE(Model_t) :: Model
           TYPE(Mesh_t), POINTER :: Mesh
           REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
           INTEGER :: Perm(:)
-        END FUNCTION FlowBoundaryResidual
+        END SUBROUTINE FlowSolver_Boundary_Residual
 
-        FUNCTION FlowEdgeResidual( Model,Edge,Mesh,Quant,Perm ) RESULT(Indicator)
+        SUBROUTINE FlowSolver_Edge_Residual( Model,Edge,Mesh,Quant,Perm,Indicator)
           USE Types
           TYPE(Element_t), POINTER :: Edge
           TYPE(Model_t) :: Model
           TYPE(Mesh_t), POINTER :: Mesh
           REAL(KIND=dp) :: Quant(:), Indicator(2)
           INTEGER :: Perm(:)
-        END FUNCTION FlowEdgeResidual
+        END SUBROUTINE FlowSolver_Edge_Residual
 
-        FUNCTION FlowInsideResidual( Model,Element,Mesh,Quant,Perm,Fnorm ) RESULT(Indicator)
+        SUBROUTINE FlowSolver_Inside_Residual( Model,Element,Mesh,Quant,Perm,Fnorm,Indicator)
           USE Types
           TYPE(Element_t), POINTER :: Element
           TYPE(Model_t) :: Model
           TYPE(Mesh_t), POINTER :: Mesh
           REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
           INTEGER :: Perm(:)
-        END FUNCTION FlowInsideResidual
+        END SUBROUTINE FlowSolver_Inside_Residual
      END INTERFACE
 !------------------------------------------------------------------------------
 
@@ -1103,6 +1102,8 @@
       DO t = 1,NoActive
 
         Element => GetBoundaryElement(t)
+        BC => GetBC()
+        IF ( .NOT. ASSOCIATED(BC) ) CYCLE
         IF ( .NOT. ActiveBoundaryElement() ) CYCLE
 
         IF( dim - GetElementDim(Element) > 1 ) CYCLE
@@ -1112,8 +1113,6 @@
         CALL GetElementNodes( ElementNodes )
         NodeIndexes => Element % NodeIndexes
 
-        BC => GetBC()
-        IF ( .NOT. ASSOCIATED(BC) ) CYCLE
 
 !------------------------------------------------------------------------------
         GotForceBC = GetLogical( BC, 'Flow Force BC',gotIt )
@@ -1469,9 +1468,12 @@
       END DO
     END IF
 
-    IF (ListGetLogical(Solver % Values,'Adaptive Mesh Refinement',GotIt)) &
-      CALL RefineMesh( Model,Solver,FlowSolution,FlowPerm, &
-         FlowInsideResidual, FlowEdgeResidual, FlowBoundaryResidual ) 
+    IF (ListGetLogical(Solver % Values,'Adaptive Mesh Refinement',GotIt)) THEN
+      IF (.NOT.ListGetLogical(Solver % Values,'Library Adaptivity',GotIt)) THEN
+        CALL RefineMesh( Model,Solver,FlowSolution,FlowPerm, &
+           FlowSolver_Inside_Residual, FlowSolver_Edge_Residual, FlowSolver_Boundary_Residual ) 
+      END IF
+    END IF
 
 !------------------------------------------------------------------------------
     CALL CheckCircleBoundary()
@@ -1547,8 +1549,8 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Compute the residual of the Navier-Stokes equation for the boundary elements.
 !------------------------------------------------------------------------------
-  FUNCTION FlowBoundaryResidual( Model, Edge, Mesh, &
-        Quant, Perm, Gnorm ) RESULT( Indicator )
+  SUBROUTINE FlowSolver_Boundary_Residual( Model, Edge, Mesh, &
+        Quant, Perm, Gnorm, Indicator )
 !------------------------------------------------------------------------------
      USE DefUtils
      IMPLICIT NONE
@@ -1908,14 +1910,14 @@ CONTAINS
       ExtPressure, Temperature, Tension,SlipCoeff, Velocity, Pressure, &
       Force, NodalViscosity )
 !------------------------------------------------------------------------------
-  END FUNCTION FlowBoundaryResidual
+  END SUBROUTINE FlowSolver_Boundary_Residual
 !------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
 !> Compute the residual of the Navier-Stokes equation for the edge elements.
 !------------------------------------------------------------------------------
-  FUNCTION FlowEdgeResidual( Model,Edge,Mesh,Quant,Perm ) RESULT( Indicator )
+  SUBROUTINE FlowSolver_Edge_Residual( Model,Edge,Mesh,Quant,Perm, Indicator )
 !------------------------------------------------------------------------------
      USE DefUtils
      IMPLICIT NONE
@@ -2141,15 +2143,15 @@ CONTAINS
      DEALLOCATE( NodalViscosity, x, y, z, EdgeBasis, &
            Basis, dBasisdx, Velocity, Pressure )
 !------------------------------------------------------------------------------
-  END FUNCTION FlowEdgeResidual
+  END SUBROUTINE FlowSolver_Edge_Residual
 !------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
 !> Compute the residual of the Navier-Stokes equation for the bulk elements.
 !------------------------------------------------------------------------------
-   FUNCTION FlowInsideResidual( Model, Element,  &
-          Mesh, Quant, Perm, Fnorm ) RESULT( Indicator )
+   SUBROUTINE FlowSolver_Inside_Residual( Model, Element,  &
+          Mesh, Quant, Perm, Fnorm, Indicator )
 !------------------------------------------------------------------------------
      USE DefUtils
 !------------------------------------------------------------------------------
@@ -2658,7 +2660,7 @@ CONTAINS
         NodalForce, HeatCapacity, ReferenceTemperature, HeatExpansionCoeff,&
         Nodes % x, Nodes % y, Nodes % z )
 !------------------------------------------------------------------------------
-  END FUNCTION FlowInsideResidual
+  END SUBROUTINE FlowSolver_Inside_Residual
 !------------------------------------------------------------------------------
 
 !> \} 

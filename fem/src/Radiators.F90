@@ -72,7 +72,7 @@
      INTEGER, ALLOCATABLE ::  Surfaces(:), TYPE(:)
      REAL(KIND=dp), ALLOCATABLE :: Coords(:),Normals(:),Factors(:)
 
-     TYPE(Element_t),POINTER :: Element, Parent
+     TYPE(Element_t),POINTER :: Element, LParent, RParent
 
      INTEGER :: BandSize,SubbandSize,RadiationSurfaces,Row,Col
      INTEGER, DIMENSION(:), POINTER :: Perm
@@ -116,7 +116,7 @@
      INTEGER, POINTER :: Timesteps(:)
      INTEGER :: TimeIntervals,interval,timestep,combineInt
      
-     LOGICAL :: CylindricSymmetry,GotIt, Found, Radiation, LeftEmis, RightEmis
+     LOGICAL :: CylindricSymmetry,GotIt, Found, Radiation, LeftRad, RightRad
 
      CHARACTER(LEN=MAX_NAME_LEN) :: eq, &
            ViewFactorsFile,OutputName,ModelName,LMessage, TempString
@@ -378,87 +378,110 @@
          ELSE
            nrm = NormalVector( Element, ElementNodes, 0.0_dp, 0.0_dp )
          END IF
-         
+
          LeftBody = 0
          LeftNode = -1
-	 LeftEmis = .FALSE.
-         Parent => Element % BoundaryInfo % Left
-         IF ( ASSOCIATED(Parent) ) THEN
-           LeftBody  = Parent % BodyId
-           DO i=1,Parent % TYPE % NumberOfNodes
+         LeftRad  = .FALSE.
+
+         LParent => Element % BoundaryInfo % Left
+         IF ( ASSOCIATED(LParent) ) THEN
+           LeftBody  = LParent % BodyId
+           k1 = 0
+           DO i=1,LParent % TYPE % NumberOfNodes
              gotIt =.TRUE.
+             ! Find a node in parent element that is not a node in boundary element.
              DO j=1,Element % TYPE % NumberOfNodes
-               IF ( Element % NodeIndexes(j)==Parent % NodeIndexes(i)) THEN
+               IF ( Element % NodeIndexes(j) == LParent % NodeIndexes(i)) THEN
+                 k1 = k1 + 1
                  gotIt=.FALSE.
                  EXIT
                END IF
              END DO
              IF (gotIt) THEN
-               LeftNode = Parent % NodeIndexes(i)
-               EXIT
+               LeftNode = LParent % NodeIndexes(i)
              END IF
            END DO
-	   IF( LeftBody > 0 ) THEN 
-             MatId = GetInteger( Model % Bodies(LeftBody) % Values,'Material', GotIt)
-	     IF( MatId == 0 ) THEN
-               CALL Warn(Caller,'Invalid material index in body, perhaps none')
-             END IF 
+           IF(k1 /= Element % TYPE % NumberOfNodes ) THEN
+             CALL Fatal(Caller,'Boundary element '//I2S(Element % ElementIndex - Mesh % NumberOfBulkElements)//&
+                 ' not included in left parent '//I2S(LParent % ElementIndex)//'!')               
+           END IF
+
+           IF( LeftBody > 0 ) THEN 
+             LeftRad  = ListGetLogical(Model % Bodies(LeftBody) % Values,'Radiative Body', GotIt )
+             IF ( .NOT. GotIt ) THEN
+               MatId = GetInteger( Model % Bodies(LeftBody) % Values,'Material', GotIt)
+               IF( MatId == 0 ) THEN
+                 CALL Fatal(Caller,'Invalid material index in body, perhaps none')
+               END IF 
+               LeftRad = ListGetLogical(Model % Materials(MatId) % Values,'Radiative Body', GotIt) 
+               IF ( .NOT. GotIt ) THEN
+                 LeftRad = ListCheckPresent(Model % Materials(MatId) % Values,'Emissivity') 
+               END IF
+             END IF
            ELSE
              CALL Warn(Caller,'LeftBody not associated')
            END IF
-           LeftEmis = ListCheckPresent(Model % Materials(MatId) % Values,'Emissivity') 
          END IF
          
          RightBody = 0
          RightNode=-1
-         RightEmis = .FALSE.
-         Parent => Element % BoundaryInfo % Right
-         IF ( ASSOCIATED(Parent) ) THEN
-           RightBody = Parent % BodyId
-           DO i=1,Parent % TYPE % NumberOfNodes
+         RightRad = .FALSE.
+
+         RParent => Element % BoundaryInfo % Right
+         IF ( ASSOCIATED(RParent) ) THEN
+           RightBody = RParent % BodyId
+           k1 = 0
+           DO i=1,RParent % TYPE % NumberOfNodes
              gotIt =.TRUE.
              DO j=1,Element % TYPE % NumberOfNodes
-               IF (Element % NodeIndexes(j)==Parent % NodeIndexes(i)) THEN
+               IF (Element % NodeIndexes(j) == RParent % NodeIndexes(i)) THEN
+                 k1 = k1 + 1
                  gotIt=.FALSE.
                  EXIT
                END IF
              END DO
              IF (gotIt) THEN
-               RightNode = Parent % NodeIndexes(i)
-               EXIT
+               RightNode = RParent % NodeIndexes(i)
              END IF
            END DO
-	   
-           MatId = GetInteger( Model % Bodies(RightBody) % Values,'Material', GotIt)
-           RightEmis=ListCheckPresent(Model % Materials(MatId) % Values,'Emissivity') 
+           IF(k1 /= Element % TYPE % NumberOfNodes ) THEN
+             CALL Fatal(Caller,'Boundary element '//I2S(Element % ElementIndex - Mesh % NumberOfBulkElements)//&
+                 ' not included in right parent '//I2S(RParent % ElementIndex)//'!')               
+           END IF
+
+           RightRad = ListGetLogical(Model % Bodies(RightBody) % Values,'Radiative Body', GotIt )
+           IF(.NOT.GotIt ) THEN
+             MatId = GetInteger( Model % Bodies(RightBody) % Values,'Material', GotIt)
+             RightRad  = ListGetLogical(Model % Materials(MatId) % Values,'Radiative Body', GotIt )
+             IF (.NOT. GotIt ) THEN
+               RightRad = ListCheckPresent(Model % Materials(MatId) % Values,'Emissivity') 
+             END IF
+           END IF
          END IF
 
-
          BC => GetBC()
+
          RadBody = GetInteger( BC, 'Radiation Target Body',GotIt )
          IF ( .NOT. GotIt ) RadBody = GetInteger( BC, 'Normal Target Body',GotIt )
 
          IF ( .NOT. Gotit ) THEN
-	   ! If emissivity given in either side then make the radiation target body to be the other.
-           !----------------------------------------------------------------------------------------
-           IF( RightEmis .AND. LeftEmis ) THEN
-             CALL Warn(Caller,'Emissivity defined on both sides!')
+           IF ( LeftRad .AND. RightRad ) THEN
              WRITE(Message,'(A,I3,I3,A,I3,A,I5)') 'Bodies:',RightBody,LeftBody,' BC:', &
-                            GetBCId( Element ),' Ind:',t
+                              GetBCId( Element ),' Ind:',t
              CALL Info(Caller,Message)
-             IF( ASSOCIATED(Element % BoundaryInfo % Left, Element % BoundaryInfo % Right)) THEN
-              CALL Warn(Caller,'Parents of the boundary element are the same')
-              RadBody = LeftBody
-             END IF
-           ELSE IF( RightEmis ) THEN
-             RadBody = LeftBody
-           ELSE IF( LeftEmis ) THEN
+             CALL Fatal(Caller,'"Radiative Body" defined on both sides!')
+           ELSE IF (LeftRad ) THEN
              RadBody = RightBody
+           ELSE IF ( RightRad ) THEN
+             RadBody = LeftBody
+           ELSE
+             RadBody = 0
+             CALL Info( Caller,"Radiation flux target on a boundary should be defined. " &
+                  // "Taking a meshed body as a default.", Level = 20)
            END IF
          END IF
 
          IF ( RadBody < 0 ) RadBody = 0
-         
          IF ( RadBody>0 .AND. (RadBody /= RightBody .AND. RadBody /= LeftBody) ) THEN
            CALL Error( Caller, 'Inconsistent direction information (Radiation Target Body)' )
            WRITE( LMessage, * ) 'Radiation Target: ', RadBody, ' Left, Right: ', LeftBody, RightBody

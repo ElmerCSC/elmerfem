@@ -1,0 +1,171 @@
+!--------------------------------------------------------
+! Test case for topology optimization.
+! Peter Råback & Stefan Hiemer, 2025.
+!
+! This case is the canonical case of force inverter and also a basic test
+! case that uses adjoint solution.
+!
+! Note that the test is not run to the end. Add SS iterations
+! and resolution (mesh levels) for better solution.
+!
+! P.R. 19.5.2025
+!-------------------------------------------------------------
+
+$L=0.2
+$rmax=0.04*L
+$pexp=3.5
+$rhomin=1.0e-3
+$Vfrac=0.2
+$wmin=1.0e-3
+$Dcoeff=1.0e-5
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "square"
+  Include Path ""
+  Results Directory "results"
+End
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = Cartesian
+  Simulation Type = Steady state
+  Steady State Max Iterations = 3 !100
+
+! Activate for output
+  Post File = a.vtu
+!  vtu: Save Bulk Only = Logical True
+  vtu: ascii output = logical True
+
+  Mesh Levels = 1
+End
+
+Body 1
+  Target Bodies(3) = 1 2 3 
+  Name = "Body Property 1"
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Initial Condition 1
+  Name = "Guess"
+  topo rho = Real $Vfrac
+  topo mult = Real $Vfrac^pexp
+End
+
+Solver 1
+  Equation = LinearElasticity
+  Procedure = "StressSolve" "StressSolver"
+  Variable = -dofs 2 Displacement
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Consistent Norm = True
+
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+ 
+  Local Matrix Identical = Logical False
+  Local Matrix Storage = Logical True  
+
+  Matrix Multiplier Name = String "topo mult"
+
+  Optimize Bandwidth = False
+  Solver Timing = True
+
+  Steady State Convergence Tolerance = 1.0e-4
+  Displace Mesh = False
+
+! We use constraint modes that are also adjoint modes for a self-adjoint equation. 
+  Constraint Modes Analysis = Logical True  
+  Constraint Modes Lumped = Logical True
+  Constraint Modes Analysis Frozen = Logical True
+  Constraint Modes Rhs = Logical True
+End
+
+
+Solver 2
+  Equation = TopoOpt
+  Procedure = "TopoOpt" "TopoOpt"
+
+  Linear System Solver = direct
+  Linear System Direct Method = MUMPS
+
+  Filter Method = String "density"  ! density, sensitivity, none
+  Sensitivity Filter Threshold = Real $wmin
+
+  Filter Type = String "simple" ! distance, pde, simple
+! If you want to use PDE filter activate the two following:
+  PDE Filter Diffusion Constant = Real $Dcoeff 
+  PDE Filter Skip Interface = Logical True
+
+  Distance Filter Radius = Real $rmax
+  Simple Filter Iterations = Integer 3
+
+  Penalty Exponent = Real $pexp
+  Minimum Relative Density = Real $rhomin
+  Volume Fraction = Real $Vfrac
+
+  Nonlinear System Consistent Norm = True
+
+! Convergence tolerance for objective function.
+  Steady State Convergence Tolerance = 1.0e-5
+  Bisection Search Tolerance = Real 1.0e-6
+  Bisection search max change = Real 0.1
+  Bisection search damping exponent = Real 0.2
+
+  Solver Timing = True
+End
+
+
+Solver 3
+  Exec Solver = After Simulation
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Filename = "f.dat"
+End
+
+Equation 1
+  Name = "Elast"
+!  Calculate Stresses = True
+  Active Solvers(2) = 1 2
+
+! This has been checked!
+  Plane Stress = True
+End
+
+Material 1
+  Name = "PlaneStuff"
+  Youngs modulus = 1.0e3
+  Poisson ratio = 0.3
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  Name = "Fixed"
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 2
+  Name = "Force"
+  Force 1 = Real 1.0
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 3
+  Name = "Reaction"
+
+  Constraint Mode = 1
+  Constraint Mode Direction(2) = Real 1.0 0.0
+End
+
+! After 3 SS iterations
+Solver 1 :: Reference Norm = 9.01622184E-04
+Solver 2 :: Reference Norm = 2.17285719E-06
+
+! After 100 SS iterations
+!Solver 1 :: Reference Norm = 1.15937228E-03
+!Solver 2 :: Reference Norm = 2.11259040E-05
+

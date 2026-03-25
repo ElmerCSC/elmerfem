@@ -4,23 +4,22 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-!
 !/******************************************************************************
 ! *
 ! *  Module containing a solver for linear stress equations.
@@ -126,12 +125,9 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
       END IF      
     END IF
     
-    IF(.NOT.ListCheckPresent( SolverParams, 'Time derivative order') ) &
-      CALL ListAddInteger( SolverParams, 'Time derivative order', 2 )
+    CALL ListAddNewInteger( SolverParams, 'Time derivative order', 2 )
 
-    IF( .NOT. ListCheckPresent( SolverParams,'Displace Mesh At Init') ) THEN
-      CALL ListAddLogical( SolverParams,'Displace Mesh At Init',.TRUE.)
-    END IF
+    CALL ListAddNewLogical( SolverParams,'Displace Mesh At Init',.TRUE.)
     
     CalculateStrains = GetLogical(SolverParams, 'Calculate Strains', Found)
     CalcPrincipalAngle = GetLogical(SolverParams, 'Calculate PAngle', Found)
@@ -314,32 +310,32 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
      REAL(KIND=dp) :: LumpedArea, LumpedCenter(3), LumpedMoments(3,3)
 
      INTERFACE
-        FUNCTION StressBoundaryResidual( Model,Edge,Mesh,Quant,Perm, Gnorm ) RESULT(Indicator)
+        SUBROUTINE StressSolver_Boundary_Residual( Model,Edge,Mesh,Quant,Perm, Gnorm,Indicator)
           USE Types
           TYPE(Element_t), POINTER :: Edge
           TYPE(Model_t) :: Model
           TYPE(Mesh_t), POINTER :: Mesh
           REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
           INTEGER :: Perm(:)
-        END FUNCTION StressBoundaryResidual
+        END SUBROUTINE StressSolver_Boundary_Residual
 
-        FUNCTION StressEdgeResidual( Model,Edge,Mesh,Quant,Perm ) RESULT(Indicator)
+        SUBROUTINE StressSolver_Edge_Residual( Model,Edge,Mesh,Quant,Perm,Indicator)
           USE Types
           TYPE(Element_t), POINTER :: Edge
           TYPE(Model_t) :: Model
           TYPE(Mesh_t), POINTER :: Mesh
           REAL(KIND=dp) :: Quant(:), Indicator(2)
           INTEGER :: Perm(:)
-        END FUNCTION StressEdgeResidual
+        END SUBROUTINE StressSolver_Edge_Residual
 
-        FUNCTION StressInsideResidual( Model,Element,Mesh,Quant,Perm, Fnorm ) RESULT(Indicator)
+        SUBROUTINE StressSolver_Inside_Residual( Model,Element,Mesh,Quant,Perm, Fnorm,Indicator)
           USE Types
           TYPE(Element_t), POINTER :: Element
           TYPE(Model_t) :: Model
           TYPE(Mesh_t), POINTER :: Mesh
           REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
           INTEGER :: Perm(:)
-        END FUNCTION StressInsideResidual
+        END SUBROUTINE StressSolver_Inside_Residual
      END INTERFACE
 !------------------------------------------------------------------------------
 
@@ -1032,14 +1028,16 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
 
 
      IF ( GetLogical( SolverParams, 'Adaptive Mesh Refinement', Found) ) THEN
-       CALL RefineMesh( Model, Solver, Displacement, DisplPerm, &
-           StressInsideResidual, StressEdgeResidual, StressBoundaryResidual )
+       IF ( .NOT. GetLogical( SolverParams, 'Library Adaptivity', Found) ) THEN
+         CALL RefineMesh( Model, Solver, Displacement, DisplPerm, &
+             StressSolver_Inside_Residual, StressSolver_Edge_Residual, StressSolver_Boundary_Residual )
        
-       IF ( MeshDisplacementActive ) THEN
-         StressSol => Solver % Variable
-         IF ( .NOT.ASSOCIATED( Mesh, Model % Mesh ) ) &
+         IF ( MeshDisplacementActive ) THEN
+           StressSol => Solver % Variable
+           IF ( .NOT.ASSOCIATED( Mesh, Model % Mesh ) ) &
              CALL DisplaceMesh( Mesh, StressSol % Values, 1, &
                StressSol % Perm, StressSol % DOFs,.FALSE.)
+         END IF
        END IF
      END IF
  
@@ -2920,7 +2918,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-   FUNCTION StressBoundaryResidual( Model, Edge, Mesh, Quant, Perm, Gnorm ) RESULT( Indicator )
+   SUBROUTINE StressSolver_Boundary_Residual( Model, Edge, Mesh, Quant, Perm, Gnorm, Indicator )
 !------------------------------------------------------------------------------
      USE StressLocal
      USE DefUtils
@@ -3132,12 +3130,12 @@ CONTAINS
       dBasisdx, Force, NodalDisplacement, ElasticModulus, NodalPoissonRatio, &
       LocalTemp, LocalHexp )
 !------------------------------------------------------------------------------
-   END FUNCTION StressBoundaryResidual
+   END SUBROUTINE StressSolver_Boundary_Residual
 !------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
-  FUNCTION StressEdgeResidual( Model,Edge,Mesh,Quant,Perm ) RESULT( Indicator )
+  SUBROUTINE StressSolver_Edge_Residual( Model,Edge,Mesh,Quant,Perm, Indicator )
 !------------------------------------------------------------------------------
      USE StressLocal
      USE DefUtils
@@ -3323,13 +3321,13 @@ CONTAINS
      DEALLOCATE( LocalTemp, LocalHexp, x, y, z, NodalDisplacement, &
        ElasticModulus, NodalPoissonRatio, EdgeBasis, Basis, dBasisdx )
 !------------------------------------------------------------------------------
-   END FUNCTION StressEdgeResidual
+   END SUBROUTINE StressSolver_Edge_Residual
 !------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
-   FUNCTION StressInsideResidual( Model, Element,  &
-                      Mesh, Quant, Perm, Fnorm ) RESULT( Indicator )
+   SUBROUTINE StressSolver_Inside_Residual( Model, Element,  &
+                      Mesh, Quant, Perm, Fnorm, Indicator )
 !------------------------------------------------------------------------------
      USE StressLocal
      USE DefUtils
@@ -3606,5 +3604,5 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   END FUNCTION StressInsideResidual
+   END SUBROUTINE StressSolver_Inside_Residual
 !------------------------------------------------------------------------------

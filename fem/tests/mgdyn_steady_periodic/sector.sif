@@ -115,8 +115,9 @@ Boundary Condition 2
   Target Boundaries(1) = $ source_face
   Mortar BC = Integer 3
   Radial Projector = True
-  Level Projector = Logical True
-  Level Projector Generic = Logical True
+  Level Projector = True
+  Level Projector Generic = True
+  Level Projector Strong = False
 End
 
 Boundary Condition 3

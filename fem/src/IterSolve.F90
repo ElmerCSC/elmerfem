@@ -49,7 +49,6 @@
 MODULE IterSolve
 
    USE Lists
-   USE CRSMatrix
    USE BandMatrix
    USE IterativeMethods
    USE huti_sfe
@@ -71,6 +70,7 @@ MODULE IterSolve
    INTEGER, PARAMETER, PRIVATE :: ITER_BICGSTABL    =           400
    INTEGER, PARAMETER, PRIVATE :: ITER_GCR          =           410
    INTEGER, PARAMETER, PRIVATE :: ITER_IDRS         =           420
+   INTEGER, PARAMETER, PRIVATE :: ITER_MPRGP        =           430
 
    !/*
    ! * Preconditioning type code
@@ -88,6 +88,8 @@ MODULE IterSolve
    INTEGER, PARAMETER :: stack_max=64
    INTEGER :: stack_pos=0
    LOGICAL :: FirstCall(stack_max)
+
+   REAL(KIND=dp), POINTER :: fm_Diag(:), fm_G(:,:)
 
 CONTAINS
 
@@ -112,6 +114,18 @@ CONTAINS
 #endif
 #ifndef HUTI_IDRS_S
 #define HUTI_IDRS_S ipar(18)
+#endif
+#ifndef HUTI_MPRGP_GAMMA
+#define HUTI_MPRGP_GAMMA dpar(6)
+#endif
+#ifndef HUTI_MPRGP_TOLFACTOR
+#define HUTI_MPRGP_TOLFACTOR dpar(7)
+#endif
+!#ifndef HUTI_MPRGP_BOUND
+!#define HUTI_MPRGP_BOUND ipar(19)
+!#endif
+#ifndef HUTI_MPRGP_ADAPT
+#define HUTI_MPRGP_ADAPT ipar(19)
 #endif
 
 !------------------------------------------------------------------------------
@@ -147,7 +161,315 @@ CONTAINS
   END SUBROUTINE pcond_dummy_cmplx
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+  SUBROUTINE fm_DiagPrec( u,v,ipar )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
 
+    REAL(KIND=dp) :: u(*),v(*)
+    INTEGER :: ipar(*)
+
+    INTEGER :: n
+
+    n = HUTI_NDIM
+    u(1:n) = v(1:n)*fm_diag(1:n)
+!------------------------------------------------------------------------------
+  END SUBROUTINE fm_DiagPrec
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+  SUBROUTINE fm_MatVec( u,v,ipar )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+
+    INTEGER :: ipar(*)
+    REAL(KIND=dp) :: u(*),v(*), ct, rsum, cumt=0, s
+
+    INTEGER :: i,j,n
+
+    n = HUTI_NDIM
+#if 1
+!   CALL DSYMV('U',n,1.0_dp,Jacobian,n,u,1,0.0_dp,v,1)
+    CALL DGEMV('N',n,n,1.0_dp,fm_G,n,u,1,0.0_dp,v,1)
+#else
+    v(1:n) = 0
+!$omp parallel do private(i,j,s) shared(n,u,v,fM_G)
+    DO i=1,n
+       s = 0._dp
+       DO j=1,n
+         s = s + fm_G(i,j) * u(j)
+       END DO
+       v(i) = s
+    END DO
+!$omp end parallel do
+#endif
+!------------------------------------------------------------------------------
+  END SUBROUTINE fm_MatVec
+!------------------------------------------------------------------------------
+
+
+  !------------------------------------------------------------------------------
+  !> Create mask for skipping edges on a given boundary. 
+  !------------------------------------------------------------------------------
+  SUBROUTINE CreateEdgeSkipMask(SkipMask)
+
+    LOGICAL, POINTER :: SkipMask(:)
+    INTEGER :: t,n0,e0,t0,bc_id,i,j
+    LOGICAL :: Found, Piola
+    TYPE(ValueList_t), POINTER :: BC
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Variable_t), POINTER :: pVar    
+
+    Mesh => CurrentModel % Mesh
+
+    NULLIFY(pVar)
+    DO t=1,CurrentModel % NumberOfSolvers
+      IF(ListGetLogical(CurrentModel % Solvers(t) % Values,'Edge Basis',Found ) ) THEN
+        pVar => CurrentModel % Solvers(t) % Variable
+        EXIT
+      END IF
+    END DO
+    IF(.NOT. ASSOCIATED(pVar)) THEN
+      CALL Fatal('CreateEdgeSkipMask','Could not find "Edge Basis" defined in any Solver!')
+    END IF
+
+    n0 = Mesh % NumberOfNodes
+    t0 = Mesh % NumberOfBulkElements
+    e0 = Mesh % NumberOfEdges
+
+    Piola = ListGetLogicalAnySolver( CurrentModel,'Use Piola Transform' ) 
+
+    SkipMask = .FALSE.
+
+    DO t=t0+1,t0+Mesh % NumberOfBoundaryElements
+      Element => Mesh % Elements(t)
+
+      IF(.NOT. ASSOCIATED( Element % BoundaryInfo ) ) CYCLE
+      DO bc_id=1,CurrentModel % NumberOfBCs
+        IF ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(bc_id) % Tag ) EXIT
+      END DO
+      IF ( bc_id > CurrentModel % NumberOfBCs ) CYCLE
+      BC => CurrentModel % BCs(bc_id) % Values
+
+      IF(ListGetLogical(BC,'Edge Skip Mask',Found ) ) THEN
+        SkipMask(pVar % Perm(n0+Element % EdgeIndexes)) = .TRUE.
+      END IF
+    END DO
+
+    n0 = COUNT(SkipMask)
+    CALL Info('CreateEdgeSkipMask','Mask include edges on BC: '//I2S(n0)//' (out of '//I2S(e0)//')',Level=7)   
+
+    
+    ! It is not self-evident that we should include the additional Piola nodes
+    ! in the set of nodes to be skipped in smoothing / krylov iteration.
+    ! Numerical evidence seems to suggest that this is a good idea. 
+    IF(Piola) THEN
+
+      IF(SIZE(pVar % Perm) < n0+e0+2*Mesh % NumberOfFaces) THEN
+        CALL Fatal('CreateEdgeSkipMask','Size of Perm too small for Piola!')
+      END IF
+      
+      DO t=1, Mesh % NumberOfFaces
+        Element => Mesh % Faces(t)
+
+        ! Only for quads do we have the extra dofs related to Piola transformed edge elements.
+        IF(Element % TYPE % ElementCode / 100 == 4 ) THEN
+          IF(ALL(SkipMask(pVar % Perm(n0+Element % EdgeIndexes)))) THEN
+            DO i=0,1
+              j = pVar % Perm(n0+e0+2*t-i)
+              IF(j>0) SkipMask(j) = .TRUE.
+            END DO
+          END IF
+        END IF
+      END DO
+      
+      n0 = COUNT(SkipMask)
+      CALL Info('CreateEdgeSkipMask','Mask include total dofs on BC: '//I2S(n0), Level=7)
+    END IF
+    
+
+  END SUBROUTINE CreateEdgeSkipMask
+
+  
+  !------------------------------------------------------------------------------
+  !> Create mask for skipping nodes on a given boundary. 
+  !------------------------------------------------------------------------------
+  SUBROUTINE CreateNodeSkipMask(SkipMask, pVar )
+
+    LOGICAL, POINTER :: SkipMask(:)
+    TYPE(Variable_t), POINTER :: pVar    
+
+    INTEGER :: t,n0,e0,t0,bc_id
+    LOGICAL :: Found
+    TYPE(ValueList_t), POINTER :: BC
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Mesh_t), POINTER :: Mesh
+
+    IF(.NOT. ListGetLogicalAnyBC(CurrentModel,'Edge Skip Mask' ) ) RETURN
+    
+    Mesh => CurrentModel % Mesh      
+    t0 = Mesh % NumberOfBulkElements
+    SkipMask = .FALSE.
+    
+    DO t=t0+1,t0+Mesh % NumberOfBoundaryElements
+      Element => Mesh % Elements(t)
+
+      IF(.NOT. ASSOCIATED( Element % BoundaryInfo ) ) CYCLE
+      DO bc_id=1,CurrentModel % NumberOfBCs
+        IF ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(bc_id) % Tag ) EXIT
+      END DO
+      IF ( bc_id > CurrentModel % NumberOfBCs ) CYCLE
+      BC => CurrentModel % BCs(bc_id) % Values
+
+      IF(ListGetLogical(BC,'Edge Skip Mask',Found ) ) THEN
+        WHERE(pVar % Perm(Element % NodeIndexes) > 0) 
+          SkipMask(pVar % Perm(Element % NodeIndexes)) = .TRUE.
+        END WHERE
+      END IF
+    END DO
+
+    n0 = COUNT(SkipMask)
+    CALL Info('CreateNodeSkipMask','Created mask for skipping nodes: '//I2S(n0),Level=7)
+    
+  END SUBROUTINE CreateNodeSkipMask
+
+  
+
+!> Computed masked dot product.
+!----------------------------------------------------------------------
+FUNCTION MaskedDotProd( ndim, x, xind, y, yind ) RESULT(dres)
+!----------------------------------------------------------------------
+  IMPLICIT NONE
+
+  ! Parameters
+  INTEGER :: ndim, xind, yind
+  REAL(KIND=dp) :: x(*)
+  REAL(KIND=dp) :: y(*)
+  REAL(KIND=dp) :: dres
+
+  ! Local variables
+  REAL(KIND=dp) :: s
+  INTEGER :: i
+
+  LOGICAL, POINTER, SAVE :: SkipMask(:) => NULL()
+  
+  IF(.NOT. ASSOCIATED(SkipMask)) THEN
+    ALLOCATE(SkipMask(ndim))
+    CALL CreateEdgeSkipMask(SkipMask)
+  END IF
+    
+  dres = 0
+  !$OMP PARALLEL DO REDUCTION(+:dres)
+  DO i = 1, ndim
+    IF(SkipMask(i)) CYCLE
+    dres = dres + y(i) * x(i)
+  END DO
+  !$OMP END PARALLEL DO 
+!!!CALL SParActiveSUM(dres,0)
+
+!----------------------------------------------------------------------
+ END FUNCTION MaskedDotProd
+!----------------------------------------------------------------------
+
+
+!> Compute global 2-norm of vector x
+!----------------------------------------------------------------------
+FUNCTION MaskedNorm( ndim, x, xind ) RESULT(dres)
+!----------------------------------------------------------------------
+  IMPLICIT NONE
+
+  ! Parameters
+
+  INTEGER :: ndim, xind
+  REAL(KIND=dp) :: x(*)
+  REAL(KIND=dp) :: dres
+
+  ! Local variables
+  INTEGER :: i
+  LOGICAL, POINTER, SAVE :: SkipMask(:) => NULL()
+  
+  IF(.NOT. ASSOCIATED(SkipMask)) THEN
+    ALLOCATE(SkipMask(ndim))
+    CALL CreateEdgeSkipMask(SkipMask)
+  END IF
+
+  dres = 0
+  !$OMP PARALLEL DO REDUCTION(+:dres)
+  DO i = 1, ndim
+    IF(SkipMask(i)) CYCLE
+    dres = dres + x(i)*x(i)
+  END DO
+  !$OMP END PARALLEL DO
+!!!CALL SParActiveSUM(dres,0)
+  dres = SQRT(dres)
+
+!----------------------------------------------------------------------
+END FUNCTION MaskedNorm
+!----------------------------------------------------------------------
+
+
+!----------------------------------------------------------------------
+  FUNCTION Otmp_ddot( ndim, x, xind, y, yind ) RESULT(dres)
+!----------------------------------------------------------------------
+    IMPLICIT NONE
+
+    ! Parameters
+    INTEGER :: ndim, xind, yind
+    REAL(KIND=dp) :: x(*)
+    REAL(KIND=dp) :: y(*)
+    REAL(KIND=dp) :: dres
+
+    INTEGER :: i
+
+    IF(  xind/=1 .OR. yind /=1 ) THEN
+       dres = ddot(ndim,x,xind,y,yind)
+       RETURN
+    END IF
+
+    dres = 0
+!$OMP PARALLEL do shared(x,y) reduction(+:dres)
+    DO i=1,ndim
+       dres = dres + x(i) * y(i)
+    END DO
+!$OMP END PARALLEL DO
+
+!----------------------------------------------------------------------
+  END FUNCTION Otmp_ddot
+!----------------------------------------------------------------------
+
+
+!----------------------------------------------------------------------
+  FUNCTION Otmp_zdotc( ndim, x, xind, y, yind ) RESULT(zres)
+!----------------------------------------------------------------------
+    IMPLICIT NONE
+
+    ! Parameters
+    INTEGER :: ndim, xind, yind
+    COMPLEX(KIND=dp) :: x(*)
+    COMPLEX(KIND=dp) :: y(*)
+    COMPLEX(KIND=dp) :: zres
+
+    INTEGER :: i
+
+    IF(  xind/=1 .OR. yind /=1 ) THEN
+       zres = zdotc(ndim,x,xind,y,yind)
+       RETURN
+    END IF
+
+    zres = 0
+!$OMP PARALLEL do shared(x,y) reduction(+:zres)
+    DO i=1,ndim
+       zres = zres + DCONJG(x(i)) * y(i)
+    END DO
+!$OMP END PARALLEL DO
+
+!----------------------------------------------------------------------
+  END FUNCTION Otmp_zdotc
+!----------------------------------------------------------------------
+
+    
 !------------------------------------------------------------------------------
 !> The routine that decides which linear system solver to call, and calls it.
 !> There are two main sources of iterations within Elmer.
@@ -312,6 +634,8 @@ CONTAINS
       IterType = ITER_IDRS
     CASE DEFAULT
       IterType = ITER_BiCGStab
+    CASE('mprgp')
+      IterType = ITER_MPRGP
     END SELECT
     
 !------------------------------------------------------------------------------
@@ -388,7 +712,23 @@ CONTAINS
       HUTI_IDRS_S = ListGetInteger( Params,'IDRS parameter',GotIt,minv=1)
       IF(.NOT. GotIt) HUTI_IDRS_S = 4
       Internal = .TRUE.
-      
+    
+    CASE (ITER_MPRGP)
+      HUTI_WRKDIM = 1
+      Internal = .TRUE.
+      HUTI_MPRGP_GAMMA = ListGetConstReal( Params, 'Linear System MPRGP Gamma', GotIt )
+      IF(.NOT. GotIt) HUTI_MPRGP_GAMMA = 1.0_dp
+      HUTI_MPRGP_TOLFACTOR = ListGetConstReal( Params, 'Linear System MPRGP TolFactor', GotIt )
+      IF(.NOT. GotIt) HUTI_MPRGP_TOLFACTOR = 5.0_dp
+      !HUTI_MPRGP_BOUND = ListGetString( Params, 'Linear System MPRGP Bound Type', GotIt )
+      !IF(.NOT. GotIt) HUTI_MPRGP_BOUND = 'lower' ! TODO: should write error if no bounds      
+      HUTI_MPRGP_ADAPT = 1
+      IF( ListGetLogical( Params, 'Linear System MPRGP Adaptive', GotIt ) ) THEN
+        HUTI_MPRGP_ADAPT = 1
+      ELSE
+        IF(GotIt) HUTI_MPRGP_ADAPT = 0
+      END IF
+        
     END SELECT
 !------------------------------------------------------------------------------
     
@@ -563,7 +903,7 @@ CONTAINS
       ELSE IF ( SEQL(str,'vanka') ) THEN
         PCondType = PRECOND_VANKA
         
-      ELSE IF ( str == 'slave' ) THEN
+      ELSE IF ( str == 'auxiliary space solver' .OR. str == 'slave' ) THEN
         PCondType = PRECOND_SLAVE
         
       ELSE IF ( str == 'circuit' ) THEN
@@ -573,9 +913,9 @@ CONTAINS
 
       ELSE
         PCondType = PRECOND_NONE
-        CALL Warn( 'IterSolve', 'Unknown preconditioner type, feature disabled.' )
+        CALL Warn( 'IterSolve', 'Unknown preconditioner type: '//TRIM(str)//', feature disabled.' )
       END IF
-      
+
       IF ( .NOT. ListGetLogical( Params, 'No Precondition Recompute',GotIt ) ) THEN
         CALL ResetTimer("Prec-"//TRIM(str))
 
@@ -728,7 +1068,7 @@ CONTAINS
                   END DO
 
                   CALL List_ToCRSMatrix(PrecMat)
-                  Condition = CRS_IncompleteLU(PrecMat,ILUn)
+                  Condition = CRS_IncompleteLU(PrecMat,ILUn,Params)
 
                   A % ILURows => PrecMat % IluRows
                   A % ILUCols => PrecMat % IluCols
@@ -741,19 +1081,19 @@ CONTAINS
                   IF(.NOT.ASSOCIATED(A % ILUDiag,PrecMat % Diag)) DEALLOCATE(PrecMat % Diag)
                   DEALLOCATE(PrecMat)
                 ELSE
-                  Condition = CRS_IncompleteLU(A,ILUn)
+                  Condition = CRS_IncompleteLU(A,ILUn,Params)
                 END IF
               CASE(PRECOND_ILUT)
                 Condition = CRS_ILUT( A,ILUT_TOL )
               CASE(PRECOND_BILUn)
                 Blocks = Solver % Variable % Dofs
                 IF ( Blocks <= 1 ) THEN
-                  Condition = CRS_IncompleteLU(A,ILUn)
+                  Condition = CRS_IncompleteLU(A,ILUn,Params)
                 ELSE
                   IF( .NOT. ASSOCIATED( A % ILUValues ) ) THEN
                     Adiag => AllocateMatrix()
                     CALL CRS_BlockDiagonal(A,Adiag,Blocks)
-                    Condition = CRS_IncompleteLU(Adiag,ILUn)
+                    Condition = CRS_IncompleteLU(Adiag,ILUn,Params)
                     A % ILURows   => Adiag % ILURows
                     A % ILUCols   => Adiag % ILUCols
                     A % ILUValues => Adiag % ILUValues
@@ -763,7 +1103,7 @@ CONTAINS
                     END IF
                     DEALLOCATE( Adiag )
                   ELSE
-                    Condition = CRS_IncompleteLU(A,ILUn)
+                    Condition = CRS_IncompleteLU(A,ILUn,Params)
                   END IF
                 END IF
               CASE(PRECOND_VANKA)
@@ -846,6 +1186,9 @@ CONTAINS
         pcondProc = AddrFunc( VankaPrec )
 
       CASE (PRECOND_Slave)
+        IF(ListGetLogical( Solver % Values,'Linear System Refactorize First',Found ) ) THEN
+          CALL LIstAddLogical( Solver % Values,'Linear System Refactorize',.TRUE.)
+        END IF        
         IF ( .NOT. ComplexSystem ) THEN
           pcondProc = AddrFunc( SlavePrec )
         ELSE
@@ -897,12 +1240,17 @@ CONTAINS
         iterProc = AddrFunc( itermethod_bicgstabl )
       CASE (ITER_IDRS)
         iterProc = AddrFunc( itermethod_idrs )
+      CASE (ITER_MPRGP)
+        iterProc = AddrFunc( itermethod_mprgp )
         
       END SELECT
       
       IF( Internal ) THEN
-        
-        IF( PseudoComplexSystem ) THEN
+        IF( ListGetLogical( Params,'Linear System Skip Mask',Found ) ) THEN
+          CALL Info('IterSolver','Using edge skip mask for linear system solver!')
+          dotProc = AddrFunc(MaskedDotProd)
+          normproc = AddrFunc(MaskedNorm)        
+        ELSE IF( PseudoComplexSystem ) THEN
           IF( HUTI_PSEUDOCOMPLEX == 1 ) THEN
             CALL Info('IterSolver','Setting dot product function to: PseudoZDotProd',Level=15)
             dotProc = AddrFunc( PseudoZDotProd )
@@ -911,11 +1259,13 @@ CONTAINS
             dotProc = AddrFunc( PseudoZDotProd2 )             
           END IF
         ELSE        
-          IF ( dotProc  == 0 ) dotProc = AddrFunc(ddot)
+!         IF ( dotProc  == 0 ) dotProc = AddrFunc(ddot)
         END IF
         IF ( normProc == 0 ) normproc = AddrFunc(dnrm2)
         IF( HUTI_DBUGLVL == 0) HUTI_DBUGLVL = HUGE( HUTI_DBUGLVL )        
       END IF
+
+      IF ( dotProc  == 0 ) dotProc = AddrFunc(Otmp_ddot)
       
     ELSE
       HUTI_NDIM = HUTI_NDIM / 2
@@ -944,14 +1294,17 @@ CONTAINS
         iterProc = AddrFunc( itermethod_z_bicgstabl )
       CASE (ITER_IDRS)
         iterProc = AddrFunc( itermethod_z_idrs )
-
+      CASE DEFAULT
+        CALL Fatal('IterSolver', 'Complex arithmetic version of the given linear solver is not available')
       END SELECT
       
       IF( Internal ) THEN
-        IF ( dotProc  == 0 ) dotProc = AddrFunc(zdotc)
+!       IF ( dotProc  == 0 ) dotProc = AddrFunc(zdotc)
         IF ( normProc == 0 ) normproc = AddrFunc(dznrm2)
         IF( HUTI_DBUGLVL == 0) HUTI_DBUGLVL = HUGE( HUTI_DBUGLVL )
       END IF
+
+      IF ( dotProc  == 0 ) dotProc = AddrFunc(Otmp_zdotc)
       
     END IF
     
@@ -1087,6 +1440,7 @@ CONTAINS
 !-----------------------------------------------------------------------
    END SUBROUTINE NumericalError
 !-----------------------------------------------------------------------
+
 
 END MODULE IterSolve
 

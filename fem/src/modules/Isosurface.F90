@@ -4,23 +4,22 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-!
 ! ******************************************************************************
 ! *
 ! *  Authors: Juha Ruokolainen
@@ -68,6 +67,7 @@ SUBROUTINE IsosurfaceSolver( Model,Solver,dt,Transient )
 
   USE CoordinateSystems
   USE DefUtils
+  USE SaveUtils
 
   IMPLICIT NONE
 !------------------------------------------------------------------------------
@@ -363,14 +363,14 @@ SUBROUTINE IsosurfaceSolver( Model,Solver,dt,Transient )
   NoEdges = 0
   CALL Info('IsosurfaceSolver','Creating mesh edges',Level=9)
   IF (.NOT.ASSOCIATED(Mesh % Edges)) THEN
+    NoOrigBoundaryElements = Mesh % NumberOfBoundaryElements
+    Mesh % NumberOfBoundaryElements = 0
     IF( dim == 2 ) THEN
-      NoOrigBoundaryElements = Mesh % NumberOfBoundaryElements
-      Mesh % NumberOfBoundaryElements = 0
       CALL FindMeshEdges2D(Mesh)
-      Mesh % NumberOfBoundaryElements = NoOrigBoundaryElements
     ELSE
       CALL FindMeshEdges3D(Mesh)
     END IF
+    Mesh % NumberOfBoundaryElements = NoOrigBoundaryElements
   END IF
   NoEdges = Mesh % NumberOfEdges
 
@@ -490,7 +490,7 @@ SUBROUTINE IsosurfaceSolver( Model,Solver,dt,Transient )
     CALL SaveGmshGeo2D(IsoMesh)
   END IF
   IF( GetLogical( Params,'Save STL File',Found ) ) THEN
-    CALL SaveSTLSurface(IsoMesh)    
+    CALL SaveSTLSurface(IsoMesh, Params )    
   END IF
 
   ! Just create some variable that will act as a norm.
@@ -1283,91 +1283,6 @@ CONTAINS
 
 
   END SUBROUTINE SaveGmshGeo2D
-
-
-  ! Saves a loop in STL format. 
-  ! This is still not general and assumes one body only.
-  !-------------------------------------------------------------- 
-  SUBROUTINE SaveSTLSurface(Mesh)
-    
-    TYPE(Mesh_t), POINTER :: Mesh
-    CHARACTER(LEN=MAX_NAME_LEN) :: Filename
-    LOGICAL :: Found
-    INTEGER, PARAMETER :: GeoUnit = 10
-    INTEGER :: i,j,k,n, ReverseCnt
-    TYPE(Nodes_t) :: Nodes 
-    REAL(KIND=dp) :: Normal(3), MeshCenter(3), ElemCenter(3), dVec(3)
-    LOGICAL :: Reverse
-    
-    IF( ParEnv % PEs > 1 ) THEN
-      CALL Warn('SaveSTLSurface','Not implemented yet in parallel')
-    END IF
-    
-    Filename = ListGetString(Params,'STL Filename',Found)
-    IF( .NOT. Found ) Filename = 'mesh.stl'
-
-    n = Mesh % NumberOfNodes
-    MeshCenter(1) = SUM(Mesh % Nodes % x(1:n)) / n
-    MeshCenter(2) = SUM(Mesh % Nodes % y(1:n)) / n
-    MeshCenter(3) = SUM(Mesh % Nodes % z(1:n)) / n
-
-    n = 3
-    ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n))
-    
-    
-    ReverseCnt = 0
-    
-    CALL Info('SaveSTLSurface','Writing the surface mesh to STL file: '//TRIM(Filename))
-    
-    OPEN( UNIT=GeoUnit, FILE=Filename, STATUS='UNKNOWN')     
-    WRITE( GeoUnit,'(A)') 'solid body'
-    DO i=1,Mesh % NumberOfBulkElements
-      Element => Mesh % Elements(i)
-      IF( Element % TYPE % ElementCode /= 303 ) THEN
-        CALL Fatal('SaveSTLSurface','Only elements of type 303 can be saved in STL format!')
-      END IF      
-      CALL CopyElementNodesFromMesh(Nodes,Mesh,n,Element % NodeIndexes) 
-      Normal = NormalVector( Element, Nodes )  
-
-      n = 3
-      ElemCenter(1) = SUM(Nodes % x) / n
-      ElemCenter(2) = SUM(Nodes % y) / n
-      ElemCenter(3) = SUM(Nodes % z) / n
-
-      ! For simple geometries "MeshCenter" should be inside the object.
-      dVec = ElemCenter - MeshCenter
-
-      ! If the normal points differently than dVec then reverse nodes. 
-      Reverse = (SUM(Normal*dVec) < 0.0)
-      IF( Reverse) THEN
-        ReverseCnt = ReverseCnt + 1
-        Normal = -Normal
-      END IF
-      
-      WRITE( GeoUnit,'(A,3ES15.6)')   '  facet normal',Normal 
-      WRITE( GeoUnit,'(A)')           '    outer loop'
-      IF( Reverse ) THEN
-        DO j=3,1,-1
-          WRITE( GeoUnit,'(A,3ES15.6)') '      vertex',Nodes % x(j), Nodes % y(j), Nodes % z(j) 
-        END DO
-      ELSE
-        DO j=1,3
-          WRITE( GeoUnit,'(A,3ES15.6)') '      vertex',Nodes % x(j), Nodes % y(j), Nodes % z(j) 
-        END DO
-      END IF
-      WRITE( GeoUnit,'(A)')           '    end loop'
-      WRITE( GeoUnit,'(A)')           '  end facet'
-    END DO
-    WRITE( GeoUnit,'(A)') 'endsolid body'
-
-
-    CALL Info('SaveSTLSurface','Number of triangular elements in STL file: '&
-        //I2S(Mesh % NumberOfBulkElements))
-    CALL Info('SaveSTLSurface','Number of element with reversed normal: '//I2S(ReverseCnt))
-    
-    CALL Info('SaveSTLSurface','Finished writing the STL file!')
-
-  END SUBROUTINE SaveSTLSurface
 
   
 !------------------------------------------------------------------------------
