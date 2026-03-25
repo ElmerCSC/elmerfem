@@ -139,7 +139,6 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
   LOGICAL,SAVE :: Initialized = .FALSE.
   LOGICAL,SAVE :: ExtrudedMesh=.False.
   LOGICAL :: Found,GotIt
-  LOGICAL :: BoundarySolver
   LOGICAL :: ComputeIceMasks,LimitedSolution,IceFree
   LOGICAL :: stat
   LOGICAL :: SEP
@@ -152,9 +151,7 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
   Mesh => Model % Mesh
 
   Params => Solver % Values
-
-  BoundarySolver = ( Solver % ActiveElements(1) > Model % Mesh % NumberOfBulkElements )
-
+  
 !!! get required variables Zb,Zs,H
   ZbName = ListGetString(Params, 'Bottom Surface Name', UnFoundFatal=.TRUE.)
   zbVar => VariableGet( Model % Mesh % Variables, ZbName,UnFoundFatal=.TRUE.)
@@ -239,28 +236,20 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
   END IF
 !!
 
- zsea = ListGetCReal( Model % Constants, 'Sea Level', UnFoundFatal=.TRUE. )
- rhow = ListGetCReal( Model % Constants, 'water density', UnFoundFatal=.TRUE. )
+  zsea = ListGetCReal( Model % Constants, 'Sea Level', UnFoundFatal=.TRUE. )
+  rhow = ListGetCReal( Model % Constants, 'water density', UnFoundFatal=.TRUE. )
 
- IF (ASSOCIATED(GLMask)) GLMask%Values = -1.0
+  IF (ASSOCIATED(GLMask)) GLMask%Values = +1.0
+  
+  Active = GetNOFActive(Solver)
+ 
+  IF (ASSOCIATED(HafVar)) HafVar%Values = 0._dp
+   
+  ActiveLoop: DO t=1,Active
 
-   IF (BoundarySolver) THEN
-     Active = GetNOFBoundaryElements()
-   ELSE
-     Active = Solver % Mesh % NumberOfBulkElements
-   ENDIF
-
-   IF (ASSOCIATED(HafVar)) HafVar%Values = 0._dp
-
-   Do t=1,Active
-
-    IF (BoundarySolver) THEN
-      Element => GetBoundaryElement(t,Solver)
-    ELSE
-      Element => Solver % Mesh % Elements(t)
-      CurrentModel % CurrentElement => Element
-    ENDIF
-
+    Element => GetActiveElement(t)
+    CurrentModel % CurrentElement => Element
+ 
     Eindex = Element%ElementIndex
     n = GetElementNOFNodes(Element)
     NodeIndexes => Element % NodeIndexes
@@ -291,7 +280,7 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
 
     GroundedNode=0
     GL=-1
-    Do i=1,n 
+    ElementNodeLoop: DO i=1,n 
 
        H=NodalH(i)
        rhoi=Density(i)
@@ -320,8 +309,9 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
           ZsVar%Values(ZsVar%Perm(topnode))=zs
        END IF
 
-    End do
-    IF (ASSOCIATED(GLMask)) THEN
+     END DO ElementNodeLoop
+
+     IF (ASSOCIATED(GLMask)) THEN
        IF ((GroundedNode.GT.0).AND.(GroundedNode.LT.n)) THEN
            WHERE(GL.GT.0._dp) GL=0._dp
        END IF
@@ -383,7 +373,7 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
           sftflf % Values ( sftflf % Perm(Eindex)) = FillValue
       END IF
     ENDIF
- End Do
+  END DO ActiveLoop
 
  IF (ASSOCIATED(GLMask).AND.( ParEnv % PEs>1 )) CALL ParallelSumVector( Solver % Matrix, GLMask%Values ,1 )
 
