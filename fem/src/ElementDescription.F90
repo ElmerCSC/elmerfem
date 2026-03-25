@@ -7904,12 +7904,12 @@ END SUBROUTINE PickActiveFace
 
                EdgeBasis(9,:) = D1 * WorkBasis(2*(I1-1)+1,:)
                CurlBasis(9,:) = D1 * WorkCurlBasis(2*(I1-1)+1,:)
-               EdgeBasis(10,:) = WorkBasis(2*(I1-1)+2,:)
-               CurlBasis(10,:) = WorkCurlBasis(2*(I1-1)+2,:)
+               EdgeBasis(10,:) = 0.5d0 * WorkBasis(2*(I1-1)+2,:)
+               CurlBasis(10,:) = 0.5d0 * WorkCurlBasis(2*(I1-1)+2,:)
                EdgeBasis(11,:) = D2 * WorkBasis(2*(I2-1)+1,:)
                CurlBasis(11,:) = D2 * WorkCurlBasis(2*(I2-1)+1,:)
-               EdgeBasis(12,:) = WorkBasis(2*(I2-1)+2,:)
-               CurlBasis(12,:) = WorkCurlBasis(2*(I2-1)+2,:)
+               EdgeBasis(12,:) = 0.5d0 * WorkBasis(2*(I2-1)+2,:)
+               CurlBasis(12,:) = 0.5d0 * WorkCurlBasis(2*(I2-1)+2,:)
              END IF
            ELSE
              !------------------------------------------------------
@@ -10228,12 +10228,12 @@ END SUBROUTINE PickActiveFace
                k = 24
                EdgeBasis(k+4*(q-1)+1,:) = D1 * WorkBasis(2*(I1-1)+1,:)
                CurlBasis(k+4*(q-1)+1,:) = D1 * WorkCurlBasis(2*(I1-1)+1,:)
-               EdgeBasis(k+4*(q-1)+2,:) = WorkBasis(2*(I1-1)+2,:)
-               CurlBasis(k+4*(q-1)+2,:) = WorkCurlBasis(2*(I1-1)+2,:)
+               EdgeBasis(k+4*(q-1)+2,:) = 0.5d0 * WorkBasis(2*(I1-1)+2,:)
+               CurlBasis(k+4*(q-1)+2,:) = 0.5d0 * WorkCurlBasis(2*(I1-1)+2,:)
                EdgeBasis(k+4*(q-1)+3,:) = D2 * WorkBasis(2*(I2-1)+1,:)
                CurlBasis(k+4*(q-1)+3,:) = D2 * WorkCurlBasis(2*(I2-1)+1,:)
-               EdgeBasis(k+4*(q-1)+4,:) = WorkBasis(2*(I2-1)+2,:)
-               CurlBasis(k+4*(q-1)+4,:) = WorkCurlBasis(2*(I2-1)+2,:)
+               EdgeBasis(k+4*(q-1)+4,:) = 0.5d0 * WorkBasis(2*(I2-1)+2,:)
+               CurlBasis(k+4*(q-1)+4,:) = 0.5d0 * WorkCurlBasis(2*(I2-1)+2,:)
              END DO
 
              ! Faces 1265 and 4378:
@@ -10271,12 +10271,12 @@ END SUBROUTINE PickActiveFace
 
                EdgeBasis(k+1,:) = D1 * WorkBasis(2*(I1-1)+1,:)
                CurlBasis(k+1,:) = D1 * WorkCurlBasis(2*(I1-1)+1,:)
-               EdgeBasis(k+2,:) = WorkBasis(2*(I1-1)+2,:)
-               CurlBasis(k+2,:) = WorkCurlBasis(2*(I1-1)+2,:)
+               EdgeBasis(k+2,:) = 0.5d0 * WorkBasis(2*(I1-1)+2,:)
+               CurlBasis(k+2,:) = 0.5d0 * WorkCurlBasis(2*(I1-1)+2,:)
                EdgeBasis(k+3,:) = D2 * WorkBasis(2*(I2-1)+1,:)
                CurlBasis(k+3,:) = D2 * WorkCurlBasis(2*(I2-1)+1,:)
-               EdgeBasis(k+4,:) = WorkBasis(2*(I2-1)+2,:)
-               CurlBasis(k+4,:) = WorkCurlBasis(2*(I2-1)+2,:)
+               EdgeBasis(k+4,:) = 0.5d0 * WorkBasis(2*(I2-1)+2,:)
+               CurlBasis(k+4,:) = 0.5d0 * WorkCurlBasis(2*(I2-1)+2,:)
              END DO
              
              ! Faces 2376 and 1485:
@@ -10314,12 +10314,12 @@ END SUBROUTINE PickActiveFace
 
                EdgeBasis(k+1,:) = D1 * WorkBasis(2*(I1-1)+1,:)
                CurlBasis(k+1,:) = D1 * WorkCurlBasis(2*(I1-1)+1,:)
-               EdgeBasis(k+2,:) = WorkBasis(2*(I1-1)+2,:)
-               CurlBasis(k+2,:) = WorkCurlBasis(2*(I1-1)+2,:)
+               EdgeBasis(k+2,:) = 0.5d0 * WorkBasis(2*(I1-1)+2,:)
+               CurlBasis(k+2,:) = 0.5d0 * WorkCurlBasis(2*(I1-1)+2,:)
                EdgeBasis(k+3,:) = D2 * WorkBasis(2*(I2-1)+1,:)
                CurlBasis(k+3,:) = D2 * WorkCurlBasis(2*(I2-1)+1,:)
-               EdgeBasis(k+4,:) = WorkBasis(2*(I2-1)+2,:)
-               CurlBasis(k+4,:) = WorkCurlBasis(2*(I2-1)+2,:)
+               EdgeBasis(k+4,:) = 0.5d0 * WorkBasis(2*(I2-1)+2,:)
+               CurlBasis(k+4,:) = 0.5d0 * WorkCurlBasis(2*(I2-1)+2,:)
              END DO
 
              ! Interior basis functions, two per coordinate direction:
