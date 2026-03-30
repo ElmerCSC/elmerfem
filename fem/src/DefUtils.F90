@@ -6241,8 +6241,8 @@ CONTAINS
      ! Set Dirichlet BCs for edge and face dofs which arise from approximating with
      ! edge (curl-conforming) or face (div-conforming) elements:
      ! ----------------------------------------------------------------------------
-     CALL EdgeElementStyle(Params, PiolaTransform, SecondKindBasis, BasisDegree = BasisDegree)
-     SimplicialElements = ListGetLogical(Params, 'Simplicial Mesh', Found)
+     CALL EdgeElementStyle(Params, PiolaTransform, SecondKindBasis, BasisDegree = BasisDegree, &
+         SimplicialVersion = SimplicialElements)
      
      DO DOF=1,x % DOFs
         name = TRIM(x % name)

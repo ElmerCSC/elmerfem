@@ -3037,13 +3037,14 @@ CONTAINS
 
 
    SUBROUTINE EdgeElementStyle(VList, PiolaVersion, SecondFamily, QuadraticApproximation, &
-       BasisDegree, Check ) 
+       BasisDegree, SimplicialVersion, Check ) 
 
      TYPE(ValueList_t), POINTER :: VList
      LOGICAL :: PiolaVersion
      LOGICAL, OPTIONAL :: SecondFamily
      LOGICAL, OPTIONAL :: QuadraticApproximation
      INTEGER, OPTIONAL :: BasisDegree
+     LOGICAL, OPTIONAL :: SimplicialVersion
      LOGICAL, OPTIONAL :: Check
      
      LOGICAL :: Found, Quadratic, Cubic, Second 
@@ -3079,6 +3080,10 @@ CONTAINS
        QuadraticApproximation = Quadratic
      END IF
 
+     IF (PRESENT(SimplicialVersion)) THEN
+       SimplicialVersion = ListGetLogical(VList, 'Simplicial Mesh', Found)
+     END IF
+     
      ! When initializing the consistency of the keywords may be checked.
      ! Also always add the Piola flag since it determines the type of IPs.
      IF( PRESENT(Check)) THEN
@@ -3155,7 +3160,8 @@ CONTAINS
      LOGICAL :: SecondFamily
      LOGICAL :: SimplicialElements
      
-     SAVE PrevSolver, EdgeBasisDegree, PerformPiolaTransform, SecondFamily
+     SAVE PrevSolver, EdgeBasisDegree, PerformPiolaTransform, SecondFamily, &
+         SimplicialElements
 !------------------------------------------------------------------------------
 
      IF( PRESENT( USolver ) ) THEN
@@ -3168,12 +3174,9 @@ CONTAINS
        IF( .NOT. ASSOCIATED( PrevSolver, PSolver ) ) THEN
          PrevSolver => pSolver                  
          CALL EdgeElementStyle(pSolver % Values, PerformPiolaTransform, SecondFamily, &
-             BasisDegree = EdgeBasisDegree )
+             BasisDegree = EdgeBasisDegree, SimplicialVersion = SimplicialElements)
        END IF
        IF( PerformPiolaTransform ) THEN
-
-         SimplicialElements = ListGetLogical(pSolver % Values, 'Simplicial Mesh', Found )
-         
          stat = EdgeElementInfo(Element,Nodes,u,v,w,detF=Detj,Basis=Basis, &
              EdgeBasis=EdgeBasis,RotBasis=RotBasis,dBasisdx=dBasisdx,&
              SecondFamily = SecondFamily, BasisDegree = EdgeBasisDegree, &
