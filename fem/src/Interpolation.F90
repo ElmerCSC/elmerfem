@@ -902,7 +902,7 @@ MODULE Interpolation
     
     IF (.NOT. ASSOCIATED(Mesh % Edges)) CALL Fatal(Caller, 'Mesh edges not associated!')
 
-    ! We only want to apply the projetor to the master nodes/edges of the conforming system. 
+    ! We only want to apply the projector to the master nodes/edges of the conforming system. 
     SkipPeriodicSlave = ASSOCIATED( Mesh % PeriodicPerm )
 
     DoFaces = ASSOCIATED(Mesh % Faces)
@@ -917,7 +917,7 @@ MODULE Interpolation
     END IF
     vdofs = VectorElementVar % DOFs
     IF(vdofs /=1 .AND. vdofs /= 2) THEN
-      CALL Fatal(Caller,'Vector dofs only makes sense for values 1 (real) and 2 (complex)!')
+      CALL Fatal(Caller,'H(curl) variable has to consist of either 1 (real) or 2 (complex) components!')
     END IF
     
     NodalPerm => NodalVar % Perm

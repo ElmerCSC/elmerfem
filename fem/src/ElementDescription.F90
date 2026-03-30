@@ -6868,7 +6868,7 @@ END SUBROUTINE PickActiveFace
        REAL(KIND=dp), OPTIONAL :: ReadyRotBasis(:,:)  !< The preretabulated Curl of the edge basis function
        LOGICAL, OPTIONAL :: TangentialTrMapping  !< To return b x n, with n=(0,0,1) the normal to the 2D reference element.
                                                  !< The Piola transform is then the usual div-conforming version.    
-       LOGICAL, OPTIONAL :: SimplicialMesh       !< Use an alternate basis of the first kind, needs simplicial elements
+       LOGICAL, OPTIONAL :: SimplicialMesh       !< Use an alternate basis of the first kind, lacking support for pyramids and bricks
        LOGICAL :: Stat                           !< .FALSE. for a degenerate element
 !-----------------------------------------------------------------------------------------------------------------
 !      Local variables
@@ -7416,7 +7416,6 @@ END SUBROUTINE PickActiveFace
              ELSE
                !
                ! An alternate first-family basis of degree 2 or 3 for faster solution with iterative methods. 
-               ! Currently this is available only for simplicial elements. 
                !
                IF (SecondOrder) THEN
                  EDOFs = 2
@@ -7433,20 +7432,8 @@ END SUBROUTINE PickActiveFace
                i = EdgeMap(k,1)
                j = EdgeMap(k,2)
 
-               svec(1:2) = Basis(j) * dLBasisdx(i,1:2)
-               tvec(1:2) = Basis(i) * dLBasisdx(j,1:2)
-
-               grad_svec(1,2) = dLBasisdx(j,2) * dLBasisdx(i,1)
-               grad_svec(2,1) = dLBasisdx(j,1) * dLBasisdx(i,2)
-
-               grad_tvec(1,2) = dLBasisdx(i,2) * dLBasisdx(j,1)
-               grad_tvec(2,1) = dLBasisdx(i,1) * dLBasisdx(j,2)
-
-               WorkBasis(1,1:2) = svec(1:2)
-               WorkBasis(2,1:2) = tvec(1:2)
-               WorkCurlBasis(1,3) = grad_svec(2,1) - grad_svec(1,2)
-               WorkCurlBasis(2,3) = grad_tvec(2,1) - grad_tvec(1,2)
-
+               CALL EdgeWhitneyComponents2D(WorkBasis(1:2,:), WorkCurlBasis(1:2,:), i, j, u, v)
+               
                IF (Create2ndKindBasis .AND. SecondOrder .OR. &
                    Simplicial .AND. ThirdOrder) THEN
                  WorkWeight(1) = 2.0d0*Basis(i) - Basis(j)
@@ -7495,33 +7482,9 @@ END SUBROUTINE PickActiveFace
              ! The basis functions associated with the faces for higher-order cases
              IF (FDOFs > 0) THEN
                TriangleFaceMap(:) = (/ 1,2,3 /)
-               I1 = 1
-               I2 = 2
-               I3 = 3
 
-               WorkBasis(1,1:2) = Basis(I2) * Basis(I3) * dLBasisdx(I1,1:2)
-               WorkBasis(2,1:2) = Basis(I1) * Basis(I3) * dLBasisdx(I2,1:2)
-               WorkBasis(3,1:2) = Basis(I1) * Basis(I2) * dLBasisdx(I3,1:2)
-
-               grad_svec(1,2) = (dLBasisdx(I2,2) * Basis(I3) + &
-                   Basis(I2) * dLBasisdx(I3,2)) * dLBasisdx(I1,1)
-               grad_svec(2,1) = (dLBasisdx(I2,1) * Basis(I3) + &
-                   Basis(I2) * dLBasisdx(I3,1)) * dLBasisdx(I1,2)
-
-               grad_tvec(1,2) = (dLBasisdx(I1,2) * Basis(I3)  + &
-                   Basis(I1) * dLBasisdx(I3,2)) * dLBasisdx(I2,1)
-               grad_tvec(2,1) = (dLBasisdx(I1,1) * Basis(I3)  + &
-                   Basis(I1) * dLBasisdx(I3,1)) * dLBasisdx(I2,2)
-
-               grad_hvec(1,2) = (dLBasisdx(I1,2) * Basis(I2)  + &
-                   Basis(I1) * dLBasisdx(I2,2)) * dLBasisdx(I3,1)
-               grad_hvec(2,1) = (dLBasisdx(I1,1) * Basis(I2)  + &
-                   Basis(I1) * dLBasisdx(I2,1)) * dLBasisdx(I3,2)
-
-               WorkCurlBasis(1,3) = grad_svec(2,1) - grad_svec(1,2)
-               WorkCurlBasis(2,3) = grad_tvec(2,1) - grad_tvec(1,2)
-               WorkCurlBasis(3,3) = grad_hvec(2,1) - grad_hvec(1,2)
-
+               CALL FaceWhitneyComponents2D(WorkBasis(1:3,:), WorkCurlBasis(1:3,:), u, v)
+               
                ! Create permutation:
                FaceIndices(1:3) = GIndexes(TriangleFaceMap(1:3))
                CALL TriangleFaceDofsOrdering2nd(I1,I2,I3,FaceIndices(1:3))
@@ -8023,7 +7986,6 @@ END SUBROUTINE PickActiveFace
              ELSE
                !
                ! An alternate first-family basis of degree 2 or 3 for faster solution with iterative methods. 
-               ! Currently this is available only for simplicial elements. 
                !
                IF (SecondOrder) THEN
                  EDOFs = 2
