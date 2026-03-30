@@ -15464,7 +15464,6 @@ END FUNCTION SearchNodeL
         CALL Fatal(Caller,'Unknown "Linear System Solver": '//TRIM(Method))
       END SELECT
     ELSE
-      IF(ListGetLogical(Params, 'Linear System Use Permon', Found)) Method = 'permon'
       CALL Info(Caller,'Parallel linear System Solver: '//TRIM(Method),Level=8)
 
       SELECT CASE(Method)
