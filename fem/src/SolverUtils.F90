@@ -15483,6 +15483,7 @@ END FUNCTION SearchNodeL
         CALL ROCSolver( A, x, b, Solver )
       CASE('direct')
         CALL DirectSolver( A, x, b, Solver )
+      ! probably not needed, should be handled by the parallel iterative solver
       CASE('permon')
         CALL SolvePermon(A, x, b, Solver, A % ParallelInfo, A % ParMatrix % SplittedMatrix)
       CASE DEFAULT        
@@ -16574,9 +16575,9 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
     TYPE(Variable_t), POINTER :: Var, NodalLoads
     TYPE(Mesh_t), POINTER :: Mesh, SaveMEsh
-    LOGICAL :: Relax, Found, NeedPrevSol, Timing, ResidualMode, &
+    LOGICAL :: Relax, Found, NeedPrevSol, Timing, TimingBarrier, ResidualMode, &
         RestrictionMode, BlockMode, GloNum, FirstLoop
-    INTEGER :: n,i,j,k,l,m,istat,nrows,ncols,colsj,rowoffset
+    INTEGER :: n,i,j,k,l,m,istat,nrows,ncols,colsj,rowoffset, ierr
     CHARACTER(:), ALLOCATABLE :: Method, VariableName
     INTEGER(KIND=AddrInt) :: Proc
     REAL(KIND=dp) :: Relaxation,Alpha,Beta,Gamma
@@ -16603,7 +16604,11 @@ END FUNCTION SearchNodeL
     CALL Info(Caller,'Solving linear system',Level=10)
 
     Timing = ListCheckPrefix(Params,'Linear System Timing')
+    TimingBarrier = ListGetLogical( Params,'Linear System Timing Barrier',Found )
     IF( Timing ) THEN
+      IF( TimingBarrier .AND. ParEnv % PEs > 1 ) THEN
+        CALL MPI_BARRIER( ParEnv % ActiveComm, ierr )
+      END IF
       t0 = CPUTime(); rt0 = RealTime()
     END IF
 
@@ -16759,6 +16764,9 @@ END FUNCTION SearchNodeL
     END IF
 
     IF( Timing ) THEN
+      IF( TimingBarrier .AND. ParEnv % PEs > 1 ) THEN
+        CALL MPI_BARRIER( ParEnv % ActiveComm, ierr )
+      END IF
       st  = CPUTime() - t0;
       rst = RealTime() - rt0
 
