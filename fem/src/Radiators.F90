@@ -98,7 +98,7 @@
         ! int *NInteg,int *NInteg3, int  *Combine )
         SUBROUTINE radiatorfactors3d(EL_N,  EL_Topo, EL_Type, EL_Coord, EL_Normals, &
                                  RT_N0, RT_Topo0, RT_Type, RT_Coord, RT_Normals, &
-                                 NofRadiators, RadiatorCoords, &
+                                 NofRadiators, RadiatorCoords, LineFlag, &
                                  Factors, Feps, Aeps, Reps, Nr, NInteg, NInteg3, Combine) BIND(C)
 
             USE, INTRINSIC :: ISO_C_BINDING
@@ -108,13 +108,13 @@
             INTEGER(C_INT) :: RT_N0, RT_Topo0(*), RT_Type(*), NofRadiators
             REAL(KIND=C_DOUBLE) :: RT_Coord(*), RT_Normals(*), Factors(*), RadiatorCoords(*)
             REAL(KIND=C_DOUBLE) :: Feps, Aeps, Reps
-            INTEGER(C_INT) :: Nr, NInteg, NInteg3, Combine
+            INTEGER(C_INT) :: Nr, NInteg, NInteg3, Combine, LineFlag
         END SUBROUTINE radiatorfactors3d
         
       END INTERFACE
 
      INTEGER, POINTER :: Timesteps(:)
-     INTEGER :: TimeIntervals,interval,timestep,combineInt
+     INTEGER :: TimeIntervals,interval,timestep,combineInt, LineFlag
      
      LOGICAL :: CylindricSymmetry,GotIt, Found, Radiation, LeftRad, RightRad
 
@@ -186,6 +186,7 @@
      IF(.NOT. Found ) CALL Fatal( 'RadiatorFactors', 'No radiators present, quitting' )
 
      NofRadiators = SIZE(Radiators,1)
+     LineFlag = SIZE(Radiators,2) / 6
      CALL Info( 'RadiatorFactors', 'Computing flux coefficients for ' // &
              I2S(NofRadiators) // ' radiative sources', LEVEL=5 )
 
@@ -552,7 +553,7 @@
        IF ( .NOT. GotIt ) Nrays = 1
 
        CALL RadiatorFactors3d( N, Surfaces, Type, Coords, Normals, 0, Surfaces, Type, Coords, Normals, &
-           NofRadiators, Radiators, Factors, AreaEPS, FactEPS, RayEPS, Nrays, 4, 3, CombineInt )
+           NofRadiators, Radiators, LineFlag, Factors, AreaEPS, FactEPS, RayEPS, Nrays, 4, 3, CombineInt )
        
        WRITE (Message,'(A,F8.2,F8.2)') 'Radiator factors computed in time (s):',CPUTime()-at0, RealTime()-rt0
        CALL Info( Caller,Message, Level=3 )
