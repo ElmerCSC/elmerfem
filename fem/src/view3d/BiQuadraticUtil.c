@@ -474,7 +474,7 @@ direct numerical integration.
 24 Aug 1995
 
 *******************************************************************************/
-double BiQuadraticIntegrateDiffToArea( Geometry_t *GB,
+double BiQuadraticIntegrateDiffToArea( Geometry_t *GB, Cylinder_t *Cyl,
   double FX,double FY,double FZ,double NFX,double NFY,double NFZ)
 {
     double F,R,cosA,cosB,EA,EAF,EAT,PI=2*acos(0.0);

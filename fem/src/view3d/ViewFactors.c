@@ -187,7 +187,6 @@ static void FreeChilds( Geometry_t *Geom )
 }
 
 
-
 /*******************************************************************************
 
 Compute viewfactors for elements of the model
@@ -195,9 +194,9 @@ Compute viewfactors for elements of the model
 24 Aug 1995
 
 *******************************************************************************/
-static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int N,double *Factors)
+static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int LineFlag, int N,double *Factors)
 {
-    double T,s,F,Fmin=DBL_MAX,Fmax=-DBL_MAX,Favg=0.0,*RowSums,Fact;
+    double T,s,F,Fmin=DBL_MAX,Fmax=-DBL_MAX,Favg=0.0,*RowSums,Fact,rx,ry,rz,nx,ny,nz;
     int i,j,k,l,Imin,Imax,Ns;
 
     GeometryList_t *Link;
@@ -253,6 +252,18 @@ static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int 
 
       for( i=0; i<NofRadiators; i++ )
       {
+	 nx = ny = nz = 0;
+
+	 rx = RadiatorCoords[i];
+	 ry = RadiatorCoords[NofRadiators+i];
+	 rz = RadiatorCoords[2*NofRadiators+i];
+
+	 if ( LineFlag ) {
+	   nx = RadiatorCoords[3*NofRadiators+i] - rx;
+	   ny = RadiatorCoords[4*NofRadiators+i] - ry;
+	   nz = RadiatorCoords[5*NofRadiators+i] - rz;
+         }
+         	 
          for( j=0; j<N; j++ ) Factors[i*N+j] = 0.0;
          for( j=0; j<N; j++ )
          { 
@@ -261,8 +272,7 @@ static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int 
             FreeLinks( &lel[j] );
             lel[j].Flags |= GEOMETRY_FLAG_LEAF;
 
-            (*RadiatorFactorsCompute[lel[j].GeometryType])( &lel[j],
-                RadiatorCoords[i], RadiatorCoords[NofRadiators+i], RadiatorCoords[2*NofRadiators+i], 0 );
+            (*RadiatorFactorsCompute[lel[j].GeometryType])( &lel[j],LineFlag,rx,ry,rz,nx,ny,nz,0);
 
             Fact = ComputeViewFactorValue( &lel[j],0 );
             Factors[i*N+j] = Fact; // lel[j].Area;
@@ -302,7 +312,7 @@ static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int 
                        N,Imin,Fmin,Imax,Fmax,Favg/N );
 }
 
-void MakeRadiatorFactorMatrix(int NofRadiators, double *RadiatorCoords, int N,double *Factors,int NInteg,int NInteg3)
+void MakeRadiatorFactorMatrix(int NofRadiators, double *RadiatorCoords, int LineFlag, int N,double *Factors,int NInteg,int NInteg3)
 {
     double T[32],S[32];
     long int i,j,k,n;
@@ -437,7 +447,7 @@ void MakeRadiatorFactorMatrix(int NofRadiators, double *RadiatorCoords, int N,do
       break;
     }
 
-    IntegrateFromGeometry( NofRadiators, RadiatorCoords, N,Factors );
+    IntegrateFromGeometry( NofRadiators, RadiatorCoords, LineFlag, N,Factors );
 }
 
 void InitGeometryTypes()
@@ -611,15 +621,15 @@ void MakeViewFactorMatrix(int N,double *Factors,int NInteg,int NInteg3)
       break;
     }
 
-    IntegrateFromGeometry( 0, NULL, N,Factors );
+    IntegrateFromGeometry( 0, NULL, 0, N,Factors );
 }
 
 
 void radiatorfactors3d
   ( int *EL_N,  int *EL_Topo, int *EL_Type, double *EL_Coord, double *EL_Normals,
     int *RT_N0, int *RT_Topo0, int *RT_Type, double *RT_Coord, double *RT_Normals,
-    int *NofRadiators, double *RadiatorCoords, double *Factors, double *Feps,
-      double *Aeps, double *Reps, int *Nr, int *NInteg,int *NInteg3, int  *Combine )
+    int *NofRadiators, double *RadiatorCoords, int *LineFlag,
+    double *Factors, double *Feps, double *Aeps, double *Reps, int *Nr, int *NInteg,int *NInteg3, int  *Combine )
 {
    int i,j,k,l,n,NOFRayElements;
    int RT_N=0, *RT_Topo=NULL;
@@ -881,7 +891,7 @@ void radiatorfactors3d
 
    InitGeometryTypes();
    InitVolumeBounds( 2, NOFRayElements, RTElements );
-   MakeRadiatorFactorMatrix( *NofRadiators, RadiatorCoords, *EL_N,Factors,*NInteg,*NInteg3 );
+   MakeRadiatorFactorMatrix( *NofRadiators, RadiatorCoords, *LineFlag, *EL_N,Factors,*NInteg,*NInteg3 );
 
 
 }

@@ -269,6 +269,7 @@ void InitVolumeBounds( int,int,Geometry_t * );
 
 void GetMatrixToRotateVectorToZAxis(double x,double y,double z,Matrix_t Matrix,int *Ident);
 void RotateVector(double *x,double *y,double *z,Matrix_t Matrix);
+void CylinderNormal(double,double,double,double,double,double,Cylinder_t *,double *,double *,double *);
 
 EXT Geometry_t *Geometry,*Elements,*RTElements;
 
@@ -290,7 +291,7 @@ void BiCubicBezierToMonomial(double *MonomialFactors,double *BezierFactors);
 double BiCubicEofA(double U,double V,double *X,double *Y,double *Z);
 double BiCubicArea(Geometry_t *);
 double BiCubicLength(Geometry_t *,int);
-double BiCubicIntegrateDiffToArea(Geometry_t *,double,double,double,double,double,double);
+double BiCubicIntegrateDiffToArea(Geometry_t *,Cylinder_t *,double,double,double,double,double,double);
 void BiCubicSubdivide(Geometry_t *,int,int);
 int BiCubicIsAPlane(double *,double *,double *);
 void BiCubicComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int Level,int );
@@ -305,7 +306,7 @@ void BiQuadraticBezierToMonomial(double *MonomialFactors,double *BezierFactors);
 double BiQuadraticEofA(double U,double V,double *X,double *Y,double *Z);
 double BiQuadraticArea(Geometry_t *);
 double BiQuadraticLength(Geometry_t *,int);
-double BiQuadraticIntegrateDiffToArea(Geometry_t *,double,double,double,double,double,double);
+double BiQuadraticIntegrateDiffToArea(Geometry_t *,Cylinder_t *,double,double,double,double,double,double);
 void BiQuadraticSubdivide(Geometry_t *,int,int);
 int BiQuadraticIsAPlane(double *,double *,double *);
 void BiQuadraticComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int Level,int );
@@ -317,7 +318,7 @@ void BiQuadraticComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int Level,int )
 double BiLinearEofA(double U,double V,double *X,double *Y,double *Z);
 double BiLinearArea(Geometry_t *);
 double BiLinearLength(Geometry_t *,int);
-double BiLinearIntegrateDiffToArea(Geometry_t *,double,double,double,double,double,double);
+double BiLinearIntegrateDiffToArea(Geometry_t *,Cylinder_t *,double,double,double,double,double,double);
 void BiLinearSubdivide(Geometry_t *,int,int);
 void BiLinearComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int,int );
 
@@ -328,7 +329,7 @@ void BiLinearComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int,int );
 double TriangleEofA(double U,double V,double *X,double *Y,double *Z);
 double TriangleArea(Geometry_t *);
 double TriangleLength(Geometry_t *,int);
-double TriangleIntegrateDiffToArea(Geometry_t *,double,double,double,double,double,double);
+double TriangleIntegrateDiffToArea(Geometry_t *,Cylinder_t *,double,double,double,double,double,double);
 void TriangleSubdivide(Geometry_t *,int,int);
 void TriangleComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int,int );
 
@@ -338,12 +339,12 @@ void TriangleComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int,int );
 double LinearEofA(double,double, double *,double *, double *);
 double LinearArea(Geometry_t *);
 double LinearLength(Geometry_t *,int);
-double LinearIntegrateDiffToArea(Geometry_t *,double,double,double,double,double,double);
+double LinearIntegrateDiffToArea(Geometry_t *,Cylinder_t *,double,double,double,double,double,double);
 void LinearSubdivide(Geometry_t *,int,int);
 void LinearComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int,int );
-void LinearComputeRadiatorFactors(Geometry_t *GA,double, double, double, int );
-void BiLinearComputeRadiatorFactors(Geometry_t *GA,double, double, double, int );
-void TriangleComputeRadiatorFactors(Geometry_t *GA,double, double, double, int );
+void LinearComputeRadiatorFactors(Geometry_t *GA,int,double, double, double, double, double, double, int );
+void BiLinearComputeRadiatorFactors(Geometry_t *GA,int,double, double, double, double, double, double, int );
+void TriangleComputeRadiatorFactors(Geometry_t *GA,int,double, double, double, double, double, double, int );
 
 void elm_4node_quad_shape_functions(double B[4][4]); 
 
@@ -373,9 +374,9 @@ static double FunctionValue( Geometry_t *Geom,double U,double V,int N )
 
 EXT double (*AreaCompute[MAX_GEOMETRY_TYPES])(Geometry_t *);
 EXT void (*ViewFactorCompute[MAX_GEOMETRY_TYPES])(Geometry_t *,Geometry_t *,int, int);
-EXT void (*RadiatorFactorsCompute[MAX_GEOMETRY_TYPES])(Geometry_t *,double,double,double,int);
+EXT void (*RadiatorFactorsCompute[MAX_GEOMETRY_TYPES])(Geometry_t *,int,double,double,double,double,double,double,int);
 EXT void (*Subdivide[MAX_GEOMETRY_TYPES])(Geometry_t *,int,int);
-EXT double (*IntegrateDiffToArea[MAX_GEOMETRY_TYPES])(Geometry_t *,double,double,double,double,double,double);
+EXT double (*IntegrateDiffToArea[MAX_GEOMETRY_TYPES])(Geometry_t *,Cylinder_t *,double,double,double,double,double,double);
 
 void OutputGeometry( Geometry_t *,int );
 void LinearSolveGaussSeidel( Geometry_t *,int,double *);
