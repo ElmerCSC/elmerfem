@@ -585,7 +585,7 @@ BiLinearComputeRadiatorFactors (Geometry_t * GA, int LineFlag, double dx, double
     double dz, double nx, double ny, double nz, int LevelA)
 {
   double R, FX, FY, FZ, GX, GY, GZ, U, V, Hit;
-  double F, Fa, Fb, EA, PI = 2 * acos (0.0), EPS=1e-9;
+  double F, Fa, Fb, EA, PI = 2 * acos (0.0), EPS=1e-12;
 
   double *X = GA->BiLinear->PolyFactors[0];
   double *Y = GA->BiLinear->PolyFactors[1];
@@ -603,22 +603,28 @@ BiLinearComputeRadiatorFactors (Geometry_t * GA, int LineFlag, double dx, double
     {
       Fa = 0;
       Fb = 0;
-        goto subdivide;
+      goto subdivide;
     }
 
-    if (LineFlag) {
-      R = nx*nx + ny*ny +nz*nz;
-      if (R>EPS) {
-        Cyl = &CylS;
-        Cyl->Radius = sqrt(R)/25;
-        Cyl->CenterPoint.x = (2*dx+nx)/2;
-        Cyl->CenterPoint.y = (2*dy+ny)/2;
-        Cyl->CenterPoint.z = (2*dz+nz)/2;
-        GetMatrixToRotateVectorToZAxis(nx,ny,nz,Cyl->RotationMatrix,&Ident);
+    R = nx*nx + ny*ny +nz*nz;
+    if (LineFlag &&  R != 0) {
+      R = sqrt(R);
+      Cyl = &CylS;
+      Cyl->Radius = R/25;
+      Cyl->CenterPoint.x = (2*dx+nx)/2;
+      Cyl->CenterPoint.y = (2*dy+ny)/2;
+      Cyl->CenterPoint.z = (2*dz+nz)/2;
+      GetMatrixToRotateVectorToZAxis(nx,ny,nz,Cyl->RotationMatrix,&Ident);
+
+      Fa = 0;
+      for( i=0; i<N_Integ1d; i++ )
+      {
+         Fa += S_Integ1d[i]*BiLinearIntegrateDiffToArea(GA,Cyl,dx+U_Integ1d[i]*nx,dy+U_Integ1d[i]*ny,dz+U_Integ1d[i]*nz,nx,ny,nz);
       }
+      Fb = Fa;
+    } else {
+      Fa = Fb = BiLinearIntegrateDiffToArea( GA,Cyl,dx,dy,dz,nx,ny,nz );
     }
-
-    Fa = Fb = BiLinearIntegrateDiffToArea( GA,Cyl,dx,dy,dz,nx,ny,nz );
 
     if ( Fa < 1.0e-10 && Fb < 1.0e-10 ) return;
 
