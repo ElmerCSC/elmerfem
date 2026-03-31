@@ -96,3 +96,58 @@ void GetMatrixToRotateVectorToZAxis(double x,double y,double z,Matrix_t Matrix,i
 
      *Ident = FALSE;
 }
+
+
+
+void CylinderNormal( double FX,double FY,double FZ, double DX,double DY,double DZ,
+           Cylinder_t *Cyl, double  *nx, double *ny, double *nz )
+{
+     double A,B,C,D,E,T,X,Y,Z,R=Cyl->Radius,L,EPS=1e-9,T1,T2;
+     int i,j;
+     Matrix_t mat;
+
+
+     *nx = 0; *ny  = 0; *nz = 0;
+
+     FX -= Cyl->CenterPoint.x;
+     FY -= Cyl->CenterPoint.y;
+     FZ -= Cyl->CenterPoint.z;
+    
+     RotateVector( &FX,&FY,&FZ, Cyl->RotationMatrix);
+     RotateVector( &DX,&DY,&DZ, Cyl->RotationMatrix);
+
+     A = DX*DX + DY*DY;
+     B = 2*(FX*DX + FY*DY);
+     C = FX*FX + FY*FY - R*R;
+
+     if ( A<EPS ) {
+        T = -C/B;
+     } else if ( ABS(B)<EPS ) {
+	T = sqrt(-C/A);
+        if ( T<0 || T>1  ) T = -T;
+     } else {
+       if ( (D = (B*B - 4*A*C))>=0.0 ) {
+         D = sqrt(D);
+         T = (-B + D)/(2*A);
+         if ( T<0 || T>1  ) T = (-B - D)/(2*A);
+       } else {
+         exit(1);
+       } 
+     }
+
+     if ( T>=0 && T<=1 ) {
+       *nx = FX + T*DX;
+       *ny = FY + T*DY;
+       *nz = 0;
+       for( i=0; i<3; i++)
+         for( j=0; j<3; j++)  mat[i][j] = Cyl->RotationMatrix[j][i];
+       RotateVector( nx,ny,nz,  mat );
+
+       R = sqrt(*nx*(*nx) + *ny*(*ny) + *nz*(*nz));
+       *nx /= R; *ny /= R; *nz /= R;
+     } else {
+       *nx = 0; *ny = 0; *nz = 0;
+     } 
+}
+
+
