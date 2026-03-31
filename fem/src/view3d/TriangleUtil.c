@@ -633,7 +633,8 @@ TriangleComputeRadiatorFactors (Geometry_t * GA, int LineFlag, double dx, double
       fprintf( stderr, "%g %d\n", Fa, N_Integ1d );
       for( i=0; i<N_Integ1d; i++ )
       {
-         Fa += S_Integ1d[i]*TriangleIntegrateDiffToArea(GA,Cyl,dx+U_Integ1d[i]*nx,dy+U_Integ1d[i]*ny,dz+U_Integ1d[i]*nz,nx,ny,nz);
+	 U = U_Integ1d[i];
+         Fa += S_Integ1d[i]*TriangleIntegrateDiffToArea(GA,Cyl,dx+U*nx,dy+U*ny,dz+U*nz,nx,ny,nz);
       }
       Fb = Fa;
     } else {
