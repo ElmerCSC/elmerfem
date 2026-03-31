@@ -639,6 +639,12 @@ BiLinearComputeRadiatorFactors (Geometry_t * GA, int LineFlag, double dx, double
           GX = dx - FX;
           GY = dy - FY;
           GZ = dz - FZ;
+	  if ( Cyl ) {
+            U = drand48();
+	    GX += U*nx;
+	    GY += U*ny;
+	    GZ += U*nz;
+	  }
 
            if ( RayHitGeometry( FX,FY,FZ,GX,GY,GZ ) ) Hit-=1.0;
         }
