@@ -595,7 +595,7 @@ BiLinearComputeRadiatorFactors (Geometry_t * GA, int LineFlag, double dx, double
   double *aY = GA->BiLinear->PolyFactors[4];
   double *aZ = GA->BiLinear->PolyFactors[5];
 
-  Cylinder_t *Cyl, CylS;
+  Cylinder_t *Cyl = NULL, CylS;
 
   int i, j, Ident;
 
