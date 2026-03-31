@@ -312,12 +312,12 @@ static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int 
                        N,Imin,Fmin,Imax,Fmax,Favg/N );
 }
 
-void MakeRadiatorFactorMatrix(int NofRadiators, double *RadiatorCoords, int LineFlag, int N,double *Factors,int NInteg,int NInteg3)
+void MakeRadiatorFactorMatrix(int NofRadiators, double *RadiatorCoords, int LineFlag, int N,double *Factors,int NInteg, int NInteg3)
 {
-    double T[32],S[32];
+    double T[49],S[49];
     long int i,j,k,n;
 
-    n = sqrt( NInteg ) + 0.5;
+    n = sqrt(1.0*NInteg) + 0.5;
 
     switch( n )
     {

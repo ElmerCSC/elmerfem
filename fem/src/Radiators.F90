@@ -85,7 +85,7 @@
      INTEGER :: LeftNode,RightNode,LeftBody,RightBody,RadBody
      REAL(KIND=dp) :: NX,NY,NZ,NRM(3),DensL,DensR
 
-     INTEGER :: divide, nprob, NofRadiators
+     INTEGER :: divide, nprob, NofRadiators, QuadInteg, TriInteg
      REAL(KIND=dp) :: AreaEPS, RayEPS, FactEPS
      REAL(KIND=dp) :: at0, rt0
      CHARACTER(*), PARAMETER :: Caller = 'Radiators'
@@ -552,8 +552,14 @@
        Nrays = GetInteger( Params, 'Viewfactor Number of Rays ',  GotIt )
        IF ( .NOT. GotIt ) Nrays = 1
 
+       QuadInteg = GetInteger( Params, 'Viewfactor Quad Integration Points ',  GotIt )
+       IF ( .NOT. GotIt ) QuadInteg = 4; ! ---> 1,4,16,49, 1d also sqrt of this.
+
+       TriInteg = GetInteger( Params, 'Viewfactor Triangle Integration Points ',  GotIt )
+       IF ( .NOT. GotIt ) TriInteg = 3;  ! ---> 1,3,6
+
        CALL RadiatorFactors3d( N, Surfaces, Type, Coords, Normals, 0, Surfaces, Type, Coords, Normals, &
-           NofRadiators, Radiators, LineFlag, Factors, AreaEPS, FactEPS, RayEPS, Nrays, 4, 3, CombineInt )
+           NofRadiators, Radiators, LineFlag, Factors, AreaEPS, FactEPS, RayEPS, Nrays, QuadInteg, TriInteg, CombineInt )
        
        WRITE (Message,'(A,F8.2,F8.2)') 'Radiator factors computed in time (s):',CPUTime()-at0, RealTime()-rt0
        CALL Info( Caller,Message, Level=3 )
