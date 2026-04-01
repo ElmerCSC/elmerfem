@@ -1,0 +1,32 @@
+! Here we use second-order basis functions and use p-multigrid
+! as preconditioner
+
+  Use Piola Transform = True
+  Quadratic Approximation = True
+  Gradient Basis Functions = True
+
+! Outer iteration
+  Linear System Solver = iterative 
+  Linear System Iterative Method = GCR 
+  Linear System Max Iterations = 200
+  Linear System GCR Restart = 50
+  Linear System Convergence Tolerance = 1.0e-7
+  Linear System Residual Output = 1
+  Linear System Scaling = True
+
+  Linear System Preconditioning = multigrid
+
+! MG parameters only active when preconditioning is set as "multigrid"
+  Edge Basis = True
+  MG Method = p
+  MG Levels = 2
+  MG Max Iterations = 1
+  MG Smoother = cjacobi
+  MG Pre Smoothing iterations = 6
+  MG Post Smoothing Iterations = 6
+  MG Smoother Relaxation Factor = $ 1/6
+
+  MG Lowest Linear Solver = Direct
+  mglowest: Linear System Scaling = True
+  mglowest: Linear System Direct Method = umfpack
+!  mglowest: Linear System Direct Method = MUMPS
