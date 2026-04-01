@@ -74,6 +74,7 @@ static double ComputeViewFactorValue( Geometry_t *Geom,int Level )
      while( Link )
      {
         S += Area * Link->ViewFactor;
+	Link = Link->Next;
      }
 
      if ( !(Geom->Flags & GEOMETRY_FLAG_LEAF) )
