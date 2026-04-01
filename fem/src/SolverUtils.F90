@@ -11920,7 +11920,7 @@ END FUNCTION SearchNodeL
           ElemCut = .FALSE.
           CALL CutSingleElement(Element, ElemNodes, ElemPhi, ElemCut )
 
-          IF(COUNT(ElemCut(1:n)) > 1) THEN
+          IF(COUNT(ElemCut(1:2*n)) > 1) THEN
             BLOCK
               LOGICAL :: IsCut, IsMore, stat
               INTEGER :: SgnNode, CutCnt, LocalInds(4), m, t
