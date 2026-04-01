@@ -54,7 +54,15 @@ int permon_set_options_file(const char *options_file, int fcomm){
         return 0;
     }
 
-    return PetscOptionsInsertFile(comm, NULL, options_file, PETSC_TRUE);
+    PetscErrorCode ierr;
+    ierr = PetscOptionsInsertFile(comm, NULL, options_file, PETSC_TRUE);
+
+    /* If options were inserted after PetscInitialize, some options
+       (e.g. log viewing) expect a log handler to be active. Start
+       the default log handler.*/
+    PetscCall(PetscLogDefaultBegin());
+
+    return ierr;
 }
 
 int permon_finalize(){
