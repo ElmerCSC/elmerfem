@@ -53,7 +53,7 @@ double drand48()
 }
 #endif
 
-extern double ShapeFunctionMatrix3[3][3],ShapeFunctionMatrix4[4][4];
+extern double ShapeFunctionMatrix2[2][2], ShapeFunctionMatrix3[3][3],ShapeFunctionMatrix4[4][4];
 
 
 static int MaxLev;
@@ -74,7 +74,6 @@ static double ComputeViewFactorValue( Geometry_t *Geom,int Level )
      while( Link )
      {
         S += Area * Link->ViewFactor;
-        Link = Link->Next;
      }
 
      if ( !(Geom->Flags & GEOMETRY_FLAG_LEAF) )
@@ -87,67 +86,6 @@ static double ComputeViewFactorValue( Geometry_t *Geom,int Level )
      return S;
 }
 
-static void PrintMesh( Geometry_t *Geom )
-{
-   static FILE *nfp=NULL,*efp=NULL;
-   static int nodes;
-
-   if ( !Geom->Left )
-   {
-     if ( !nfp )
-     {
-        nfp = (FILE *)fopen( "nodes", "w" );
-        efp = (FILE *)fopen( "elems", "w" );
-     }
-
-     if ( Geom->GeometryType == GEOMETRY_TRIANGLE )
-     {
-         fprintf( nfp, "%g %g %g\n", 
-            TriangleValue(0.0,0.0,Geom->Triangle->PolyFactors[0]),
-            TriangleValue(0.0,0.0,Geom->Triangle->PolyFactors[1]),
-            TriangleValue(0.0,0.0,Geom->Triangle->PolyFactors[2]) );
-
-         fprintf( nfp, "%g %g %g\n", 
-            TriangleValue(1.0,0.0,Geom->Triangle->PolyFactors[0]),
-            TriangleValue(1.0,0.0,Geom->Triangle->PolyFactors[1]),
-            TriangleValue(1.0,0.0,Geom->Triangle->PolyFactors[2]) );
-
-         fprintf( nfp, "%g %g %g\n", 
-            TriangleValue(0.0,1.0,Geom->Triangle->PolyFactors[0]),
-            TriangleValue(0.0,1.0,Geom->Triangle->PolyFactors[1]),
-            TriangleValue(0.0,1.0,Geom->Triangle->PolyFactors[2]) );
-
-        fprintf( efp, "1 303 %d %d %d\n",nodes,nodes+1,nodes+2 );
-        nodes += 3;
-     } else {
-         fprintf( nfp, "%g %g %g\n", 
-            BiLinearValue(0.0,0.0,Geom->BiLinear->PolyFactors[0]),
-            BiLinearValue(0.0,0.0,Geom->BiLinear->PolyFactors[1]),
-            BiLinearValue(0.0,0.0,Geom->BiLinear->PolyFactors[2]) );
-
-         fprintf( nfp, "%g %g %g\n", 
-            BiLinearValue(1.0,0.0,Geom->BiLinear->PolyFactors[0]),
-            BiLinearValue(1.0,0.0,Geom->BiLinear->PolyFactors[1]),
-            BiLinearValue(1.0,0.0,Geom->BiLinear->PolyFactors[2]) );
-
-         fprintf( nfp, "%g %g %g\n", 
-            BiLinearValue(1.0,1.0,Geom->BiLinear->PolyFactors[0]),
-            BiLinearValue(1.0,1.0,Geom->BiLinear->PolyFactors[1]),
-            BiLinearValue(1.0,1.0,Geom->BiLinear->PolyFactors[2]) );
-
-         fprintf( nfp, "%g %g %g\n", 
-            BiLinearValue(0.0,1.0,Geom->BiLinear->PolyFactors[0]),
-            BiLinearValue(0.0,1.0,Geom->BiLinear->PolyFactors[1]),
-            BiLinearValue(0.0,1.0,Geom->BiLinear->PolyFactors[2]) );
-
-        fprintf( efp, "1 404 %d %d %d %d\n",nodes,nodes+1,nodes+2,nodes+3 );
-        nodes += 4;
-     }
-   } else {
-      PrintMesh( Geom->Left );
-      PrintMesh( Geom->Right );
-   }
-}
 
 /*******************************************************************************
 *******************************************************************************/
@@ -164,7 +102,7 @@ static void FreeLinks( Geometry_t *Geom )
      }
      Geom->Link = NULL;
 
-     if ( Geom->Flags & GEOMETRY_FLAG_LEAF ) 
+     if ( Geom->Flags & GEOMETRY_FLAG_LEAF )
      {
         Geom->Flags &= ~GEOMETRY_FLAG_LEAF;
         return;
@@ -186,6 +124,7 @@ static void FreeChilds( Geometry_t *Geom )
 
     free( Geom );
 }
+
 
 
 /*******************************************************************************
@@ -430,120 +369,120 @@ void InitShapeFunctions()
 
 void Combine2DRaytraceElements( int N, int *Topo, int *RT_N, int *RT_Topo, double *Coord )
 {
-     int maxind = 0, maxnodehits=0, tablesize;
-     int *nodehits,*nodetable,i,j;
-     int ind0,ind1,ind2;
-     double x0, y0,  x1, y1, x2, y2, dx1, dx2,
-       dy1, dy2, dp1, dp2, ds1,ds2, eps=1e-16;
+   int maxind = 0, maxnodehits=0, tablesize;
+   int *nodehits,*nodetable,i,j;
+   int ind0,ind1,ind2;
+   double x0, y0,  x1, y1, x2, y2, dx1, dx2,
+     dy1, dy2, dp1, dp2, ds1,ds2, eps=1e-16;
 
-     printf("Combining original boundary elements for shading\n");
+   printf("Combining original boundary elements for shading\n");
 
-     maxind=0; maxnodehits=0;
-     for (i=0; i<2*N; i++) 
-       if(maxind < Topo[i]) maxind = Topo[i];
+   maxind=0; maxnodehits=0;
+   for (i=0; i<2*N; i++) 
+     if(maxind < Topo[i]) maxind = Topo[i];
 
-     nodehits = (int*) malloc((maxind+1)*sizeof(int));
-     for(i=0;i<=maxind;i++)
-       nodehits[i] = 0;
-     for(i=0; i<2*N; i++)  
-       nodehits[Topo[i]]++;
+   nodehits = (int*) malloc((maxind+1)*sizeof(int));
+   for(i=0;i<=maxind;i++)
+     nodehits[i] = 0;
+   for(i=0; i<2*N; i++)  
+     nodehits[Topo[i]]++;
 
-     maxnodehits = 0;
-     for(i=0; i<=maxind; i++) 
-       if(nodehits[i] > maxnodehits) maxnodehits = nodehits[i];
+   maxnodehits = 0;
+   for(i=0; i<=maxind; i++) 
+     if(nodehits[i] > maxnodehits) maxnodehits = nodehits[i];
     
-     tablesize = (maxind+1)*maxnodehits;
-     nodetable = (int*) malloc(tablesize*sizeof(int));
-     for(i=0; i< tablesize; i++) 
-       nodetable[i] = 0;
+   tablesize = (maxind+1)*maxnodehits;
+   nodetable = (int*) malloc(tablesize*sizeof(int));
+   for(i=0; i< tablesize; i++) 
+     nodetable[i] = 0;
 
-     for(i=0;i<=maxind;i++)
-       nodehits[i] = 0;
+   for(i=0;i<=maxind;i++)
+     nodehits[i] = 0;
 
-     for(i=0; i<N; i++) {
-       ind1 = Topo[2*i+1];
-       ind2 = Topo[2*i+0];
-       nodetable[maxnodehits*ind1 + nodehits[ind1]] = i;
-       nodetable[maxnodehits*ind2 + nodehits[ind2]] = i;
-       nodehits[ind1] += 1;
-       nodehits[ind2] += 1;
-     }
+   for(i=0; i<N; i++) {
+     ind1 = Topo[2*i+1];
+     ind2 = Topo[2*i+0];
+     nodetable[maxnodehits*ind1 + nodehits[ind1]] = i;
+     nodetable[maxnodehits*ind2 + nodehits[ind2]] = i;
+     nodehits[ind1] += 1;
+     nodehits[ind2] += 1;
+   }
  
-     for(i=0;i<2*N;i++)
-       RT_Topo[i] = Topo[i];
+   for(i=0;i<2*N;i++)
+     RT_Topo[i] = Topo[i];
  
-     for (i=0; i<=maxind; i++) {
-       int elem1,elem2;
-       ind0 = i;
+   for (i=0; i<=maxind; i++) {
+     int elem1,elem2;
+     ind0 = i;
+    
+     if( nodehits[ind0] != 2) continue;
+
+     elem1 = nodetable[maxnodehits*ind0+0];
+     if( RT_Topo[2*elem1+1] == ind0 ) 
+       nd1 = RT_Topo[2*elem1];
+     else 
+       nd1 = RT_Topo[2*elem1+1];
+
+     elem2 = nodetable[maxnodehits*ind0+1];
+     if( RT_Topo[2*elem2+1] == ind0 ) 
+       ind2 = RT_Topo[2*elem2];
+     else 
+       ind2 = RT_Topo[2*elem2+1];
+
+     x0 = Coord[3*ind0];
+     x1 = Coord[3*ind1];
+     x2 = Coord[3*ind2];
       
-       if( nodehits[ind0] != 2) continue;
+     y0 = Coord[3*ind0+1];
+     y1 = Coord[3*ind1+1];
+     y2 = Coord[3*ind2+1];
 
-       elem1 = nodetable[maxnodehits*ind0+0];
-       if( RT_Topo[2*elem1+1] == ind0 ) 
- 	ind1 = RT_Topo[2*elem1];
-       else 
- 	ind1 = RT_Topo[2*elem1+1];
-
-       elem2 = nodetable[maxnodehits*ind0+1];
-       if( RT_Topo[2*elem2+1] == ind0 ) 
- 	ind2 = RT_Topo[2*elem2];
-       else 
- 	ind2 = RT_Topo[2*elem2+1];
-
-       x0 = Coord[3*ind0];
-       x1 = Coord[3*ind1];
-       x2 = Coord[3*ind2];
+     dx1 = x1-x0;
+     dx2 = x2-x0;
+     dy1 = y1-y0;
+     dy2 = y2-y0;
       
-       y0 = Coord[3*ind0+1];
-       y1 = Coord[3*ind1+1];
-       y2 = Coord[3*ind2+1];
-
-       dx1 = x1-x0;
-       dx2 = x2-x0;
-       dy1 = y1-y0;
-       dy2 = y2-y0;
+     dp1 = dx1*dx2+dy1*dy2;
+     ds1 = sqrt(dx1*dx1+dy1*dy1);
+     ds2 = sqrt(dx2*dx2+dy2*dy2);
       
-       dp1 = dx1*dx2+dy1*dy2;
-       ds1 = sqrt(dx1*dx1+dy1*dy1);
-       ds2 = sqrt(dx2*dx2+dy2*dy2);
+     dp1 /= (ds1*ds2);
+
+     /* Boundary elements must be aligned */
+     if( dp1 > eps - 1. ) continue;
+
+     /* Make the 1st element bigger  */
+     if( RT_Topo[2*elem1] == ind0 ) 
+       RT_Topo[2*elem1] = ind2;
+     else 
+       RT_Topo[2*elem1+1] = ind2;
       
-       dp1 /= (ds1*ds2);
+     /* Destroy the 2nd element */
+     RT_Topo[2*elem2] = 0;
+     RT_Topo[2*elem2+1] = 0;
 
-       /* Boundary elements must be aligned */
-       if( dp1 > eps - 1. ) continue;
+     /* Update the node information */
+     nodehits[ind0] = 0;
+     if( nodetable[maxnodehits*ind2] == elem2) 
+       nodetable[maxnodehits*ind2] = elem1;
+     else 
+       nodetable[maxnodehits*ind2+1] = elem1;
+   }
 
-       /* Make the 1st element bigger  */
-       if( RT_Topo[2*elem1] == ind0 ) 
- 	 RT_Topo[2*elem1] = ind2;
-       else 
-	 RT_Topo[2*elem1+1] = ind2;
-      
-       /* Destroy the 2nd element */
-       RT_Topo[2*elem2] = 0;
-       RT_Topo[2*elem2+1] = 0;
+   /* Free, not needed anymore */
+   free((char*)(nodetable));
+   free((char*)(nodehits));
 
-       /* Update the node information */
-       nodehits[ind0] = 0;
-       if( nodetable[maxnodehits*ind2] == elem2) 
- 	nodetable[maxnodehits*ind2] = elem1;
-       else 
- 	nodetable[maxnodehits*ind2+1] = elem1;
+   j = 0;
+   for (i=0; i<N; i++) {
+     if(RT_Topo[2*i+1] || RT_Topo[2*i+0]) {
+        RT_Topo[2*j+1] = RT_Topo[2*i+1];
+        RT_Topo[2*j+0] = RT_Topo[2*i+0];
+        j++;
      }
-
-     /* Free, not needed anymore */
-     free((char*)(nodetable));
-     free((char*)(nodehits));
-
-     j = 0;
-     for (i=0; i<N; i++) {
-       if(RT_Topo[2*i+1] || RT_Topo[2*i+0]) {
-          RT_Topo[2*j+1] = RT_Topo[2*i+1];
-          RT_Topo[2*j+0] = RT_Topo[2*i+0];
-          j++;
-       }
-     }
-     *RT_N = j;
-     printf("The combined set includes %d line segments (vs. %d)\n",*RT_N,N);
+   }
+   *RT_N = j;
+   printf("The combined set includes %d line segments (vs. %d)\n",*RT_N,N);
 }
 
 void InitStuff( int N, int *Topo, int *Type, double *Coord, double *Normals, int RT_N0,
