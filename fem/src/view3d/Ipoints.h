@@ -103,7 +103,7 @@ void IPoints1d( int N_Integ )
    U_Integ1d[6]=0.59171732124782;
    U_Integ1d[7]=0.40828267875218;
  
-   S_Integ1d[1]=0.05061426814519;
+   S_Integ1d[0]=0.05061426814519;
    S_Integ1d[1]=0.05061426814519;
    S_Integ1d[2]=0.11119051722669;
    S_Integ1d[3]=0.11119051722669;
@@ -225,7 +225,6 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
 {
     int n1d, i,j,k;
 
-
     /* quad integration points as cartesian product from 1d points */
     n1d = sqrt(1.0*NInteg4) + 0.5;
     IPoints1d(n1d);
@@ -237,12 +236,11 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     N_Integ = 0;
     for( i=0; i<n1d; i++ )
     {
-       for( j=0; j<n1d; j++ )
+       for( j=0; j<n1d; j++, N_Integ++ )
        {
           U_Integ[N_Integ] = U_Integ1d[i];
           V_Integ[N_Integ] = U_Integ1d[j];
           S_Integ[N_Integ] = S_Integ1d[i]*S_Integ1d[j];
-	  N_Integ++;
       }
    }
 
