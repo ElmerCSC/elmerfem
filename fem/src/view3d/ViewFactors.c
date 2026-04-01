@@ -43,6 +43,7 @@ Juha Ruokolainen/CSC - 24 Aug 1995
 ******************************************************************************/
 
 #include <ViewFactors.h>
+#include <Ipoints.h>
 #include "../../config.h"
 
 #if defined(WIN32) || defined(MINGW32) 
@@ -312,142 +313,10 @@ static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int 
                        N,Imin,Fmin,Imax,Fmax,Favg/N );
 }
 
-void MakeRadiatorFactorMatrix(int NofRadiators, double *RadiatorCoords, int LineFlag, int N,double *Factors,int NInteg, int NInteg3)
+void MakeRadiatorFactorMatrix(int NofRadiators, double *RadiatorCoords, int LineFlag, int N,double *Factors, int NInteg2, int NInteg3, int NInteg4)
 {
-    double T[49],S[49];
-    long int i,j,k,n;
-
-    n = sqrt(1.0*NInteg) + 0.5;
-
-    switch( n )
-    {
-      case 1:
-        T[0] = 0.0;
-        S[0] = 2.0;
-
-        N_Integ = 1;
-      break;
-
-      case 2:
-        T[0] = -0.577350269189625;
-        T[1] =  0.577350269189625;
-
-        S[0] = 1.000000000000000;
-        S[1] = 1.000000000000000;
-
-        N_Integ = 2;
-      break;
-
-      case 4:
-        T[0] = -0.861136311594052;
-        T[1] = -0.339981043584856;
-        T[2] =  0.339981043584856;
-        T[3] =  0.861136311594052;
-
-        S[0] =  0.347854845137454;
-        S[1] =  0.652145154862546;
-        S[2] =  0.652145154862546;
-        S[3] =  0.347854845137454;
-
-        N_Integ = 4;
-      break;
-
-      case 7:
-        T[0] = -0.949107912342759;
-        T[1] = -0.741531185599394;
-        T[2] = -0.405845151377397;
-        T[3] =  0.000000000000000;
-        T[4] =  0.405845151377397;
-        T[5] =  0.741531185599394;
-        T[6] =  0.949107912342759;
-
-        S[0] =  0.129484966168870;
-        S[1] =  0.279705391489277;
-        S[2] =  0.381830050505119;
-        S[3] =  0.417959183673469;
-        S[4] =  0.381830050505119;
-        S[5] =  0.279705391489277;
-        S[6] =  0.129484966168870;
-
-        N_Integ = 7;
-      break;
-     }
-
-     k = 0;
-     for( i=0; i<N_Integ; i++ )
-     {
-        for( j=0; j<N_Integ; j++,k++ )
-        {
-           /* FOR -1,1 */
-           U_Integ[k] = T[i];
-           V_Integ[k] = T[j];
-           S_Integ[k] = S[i]*S[j];
-
-           /* FOR 0-1 */
-           U_Integ[k] = 0.5*(T[i]+1.0);
-           V_Integ[k] = 0.5*(T[j]+1.0);
-           S_Integ[k] = S[i]*S[j]/4.0;
-       }
-       U_Integ1d[i] = 0.5*(T[i]+1.0);
-       S_Integ1d[i] = 0.5*S[i];
-    }
-    N_Integ1d = N_Integ;
-    N_Integ = k;
-
-
-    switch( NInteg3 )
-    {
-      case 1:
-         N_Integ3 = 1;
-
-        U_Integ3[0] = 1.0/3.0;
-        V_Integ3[0] = 1.0/3.0;
-        S_Integ3[0] = 1.0/2.0;
-      break;
-
-      case 3:
-        N_Integ3 = 3;
-
-        U_Integ3[0] = 1.0/6.0;
-        U_Integ3[1] = 2.0/3.0;
-        U_Integ3[2] = 1.0/6.0;
-
-        V_Integ3[0] = 1.0/6.0;
-        V_Integ3[1] = 1.0/6.0;
-        V_Integ3[2] = 2.0/3.0;
-
-        S_Integ3[0] = 1.0/6.0;
-        S_Integ3[1] = 1.0/6.0;
-        S_Integ3[2] = 1.0/6.0;
-      break;
-
-      case 6:
-        N_Integ3 = 6;
-
-        U_Integ3[0] = 0.091576213509771;
-        U_Integ3[1] = 0.816847572980459;
-        U_Integ3[2] = 0.091576213509771;
-        U_Integ3[3] = 0.445948490915965;
-        U_Integ3[4] = 0.108103018168070;
-        U_Integ3[5] = 0.445948490915965;
-
-        V_Integ3[0] = 0.091576213509771;
-        V_Integ3[1] = 0.091576213509771;
-        V_Integ3[2] = 0.816847572980459;
-        V_Integ3[3] = 0.445948490915965;
-        V_Integ3[4] = 0.445948490915965;
-        V_Integ3[5] = 0.108103018168070;
-
-        S_Integ3[0] = 0.109951743655322 / 2;
-        S_Integ3[1] = 0.109951743655322 / 2;
-        S_Integ3[2] = 0.109951743655322 / 2;
-        S_Integ3[3] = 0.223381589678011 / 2;
-        S_Integ3[4] = 0.223381589678011 / 2;
-        S_Integ3[5] = 0.223381589678011 / 2;
-      break;
-    }
-
-    IntegrateFromGeometry( NofRadiators, RadiatorCoords, LineFlag, N,Factors );
+    FillIPointArrays( NInteg2, NInteg3, NInteg4 );
+    IntegrateFromGeometry( NofRadiators, RadiatorCoords, LineFlag, N, Factors );
 }
 
 void InitGeometryTypes()
@@ -486,141 +355,9 @@ void InitGeometryTypes()
     ViewFactorCompute[GEOMETRY_BIQUADRATIC]   = BiQuadraticComputeViewFactors;
 */
 }
-void MakeViewFactorMatrix(int N,double *Factors,int NInteg,int NInteg3)
+void MakeViewFactorMatrix(int N,double *Factors,int NInteg2,int NInteg3,int NInteg4)
 {
-    double T[32],S[32];
-    long int i,j,k,n;
-
-    n = sqrt( NInteg ) + 0.5;
-
-    switch( n )
-    {
-      case 1:
-        T[0] = 0.0;
-        S[0] = 2.0;
-
-        N_Integ = 1;
-      break;
-
-      case 2:
-        T[0] = -0.577350269189625;
-        T[1] =  0.577350269189625;
-
-        S[0] = 1.000000000000000;
-        S[1] = 1.000000000000000;
-
-        N_Integ = 2;
-      break;
-
-      case 4:
-        T[0] = -0.861136311594052;
-        T[1] = -0.339981043584856;
-        T[2] =  0.339981043584856;
-        T[3] =  0.861136311594052;
-
-        S[0] =  0.347854845137454;
-        S[1] =  0.652145154862546;
-        S[2] =  0.652145154862546;
-        S[3] =  0.347854845137454;
-
-        N_Integ = 4;
-      break;
-
-      case 7:
-        T[0] = -0.949107912342759;
-        T[1] = -0.741531185599394;
-        T[2] = -0.405845151377397;
-        T[3] =  0.000000000000000;
-        T[4] =  0.405845151377397;
-        T[5] =  0.741531185599394;
-        T[6] =  0.949107912342759;
-
-        S[0] =  0.129484966168870;
-        S[1] =  0.279705391489277;
-        S[2] =  0.381830050505119;
-        S[3] =  0.417959183673469;
-        S[4] =  0.381830050505119;
-        S[5] =  0.279705391489277;
-        S[6] =  0.129484966168870;
-
-        N_Integ = 7;
-      break;
-     }
-
-     k = 0;
-     for( i=0; i<N_Integ; i++ )
-     {
-        for( j=0; j<N_Integ; j++,k++ )
-        {
-           /* FOR -1,1 */
-           U_Integ[k] = T[i];
-           V_Integ[k] = T[j];
-           S_Integ[k] = S[i]*S[j];
-
-           /* FOR 0-1 */
-           U_Integ[k] = 0.5*(T[i]+1.0);
-           V_Integ[k] = 0.5*(T[j]+1.0);
-           S_Integ[k] = S[i]*S[j]/4.0;
-       }
-       U_Integ1d[i] = 0.5*(T[i]+1.0);
-       S_Integ1d[i] = 0.5*S[i];
-    }
-    N_Integ1d = N_Integ;
-    N_Integ = k;
-
-
-    switch( NInteg3 )
-    {
-      case 1:
-         N_Integ3 = 1;
-
-        U_Integ3[0] = 1.0/3.0;
-        V_Integ3[0] = 1.0/3.0;
-        S_Integ3[0] = 1.0/2.0;
-      break;
-
-      case 3:
-        N_Integ3 = 3;
-
-        U_Integ3[0] = 1.0/6.0;
-        U_Integ3[1] = 2.0/3.0;
-        U_Integ3[2] = 1.0/6.0;
-
-        V_Integ3[0] = 1.0/6.0;
-        V_Integ3[1] = 1.0/6.0;
-        V_Integ3[2] = 2.0/3.0;
-
-        S_Integ3[0] = 1.0/6.0;
-        S_Integ3[1] = 1.0/6.0;
-        S_Integ3[2] = 1.0/6.0;
-      break;
-
-      case 6:
-        N_Integ3 = 6;
-
-        U_Integ3[0] = 0.091576213509771;
-        U_Integ3[1] = 0.816847572980459;
-        U_Integ3[2] = 0.091576213509771;
-        U_Integ3[3] = 0.445948490915965;
-        U_Integ3[4] = 0.108103018168070;
-        U_Integ3[5] = 0.445948490915965;
-
-        V_Integ3[0] = 0.091576213509771;
-        V_Integ3[1] = 0.091576213509771;
-        V_Integ3[2] = 0.816847572980459;
-        V_Integ3[3] = 0.445948490915965;
-        V_Integ3[4] = 0.445948490915965;
-        V_Integ3[5] = 0.108103018168070;
-
-        S_Integ3[0] = 0.109951743655322 / 2;
-        S_Integ3[1] = 0.109951743655322 / 2;
-        S_Integ3[2] = 0.109951743655322 / 2;
-        S_Integ3[3] = 0.223381589678011 / 2;
-        S_Integ3[4] = 0.223381589678011 / 2;
-        S_Integ3[5] = 0.223381589678011 / 2;
-      break;
-    }
-
+    FillIPointArrays(NInteg2,NInteg3,NInteg4);
     IntegrateFromGeometry( 0, NULL, 0, N,Factors );
 }
 
@@ -629,7 +366,7 @@ void radiatorfactors3d
   ( int *EL_N,  int *EL_Topo, int *EL_Type, double *EL_Coord, double *EL_Normals,
     int *RT_N0, int *RT_Topo0, int *RT_Type, double *RT_Coord, double *RT_Normals,
     int *NofRadiators, double *RadiatorCoords, int *LineFlag,
-    double *Factors, double *Feps, double *Aeps, double *Reps, int *Nr, int *NInteg,int *NInteg3, int  *Combine )
+    double *Factors, double *Feps, double *Aeps, double *Reps, int *Nr, int *NInteg2, int *NInteg3,int *NInteg4, int  *Combine )
 {
    int i,j,k,l,n,NOFRayElements;
    int RT_N=0, *RT_Topo=NULL;
@@ -891,16 +628,14 @@ void radiatorfactors3d
 
    InitGeometryTypes();
    InitVolumeBounds( 2, NOFRayElements, RTElements );
-   MakeRadiatorFactorMatrix( *NofRadiators, RadiatorCoords, *LineFlag, *EL_N,Factors,*NInteg,*NInteg3 );
-
-
+   MakeRadiatorFactorMatrix(*NofRadiators, RadiatorCoords,*LineFlag,*EL_N,Factors,*NInteg2,*NInteg3,*NInteg4);
 }
 
 void viewfactors3d
   ( int *EL_N,  int *EL_Topo, int *EL_Type, double *EL_Coord, double *EL_Normals,
     int *RT_N0, int *RT_Topo0, int *RT_Type, double *RT_Coord, double *RT_Normals,
     double *Factors, double *Feps, double *Aeps, double *Reps, int *Nr,
-    int *NInteg,int *NInteg3, int  *Combine )
+    int *NInteg2,int *NInteg3, int *NInteg4, int  *Combine )
 {
    int i,j,k,l,n,NOFRayElements;
    int RT_N=0, *RT_Topo=NULL;
@@ -1161,7 +896,6 @@ void viewfactors3d
    }
 
    InitGeometryTypes();
-   InitVolumeBounds( 2, NOFRayElements, RTElements );
-   MakeViewFactorMatrix( *EL_N,Factors,*NInteg,*NInteg3 );
+   InitVolumeBounds(2,NOFRayElements, RTElements);
+   MakeViewFactorMatrix( *EL_N,Factors,*NInteg2,*NInteg3,*NInteg4 );
 }
-
