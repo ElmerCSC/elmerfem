@@ -44,7 +44,17 @@ void mprgp_print_vector(void *cptr, int n, char *name)
 
 int permon_init(){
     // permonrc - default name for solver options file
-    return PermonInitialize(NULL, NULL, "permonrc", NULL);
+    return PermonInitialize(NULL, NULL, NULL, NULL);
+}
+
+int permon_set_options_file(const char *options_file, int fcomm){
+    MPI_Comm comm = MPI_Comm_f2c(fcomm);
+
+    if (options_file == NULL || options_file[0] == '\0') {
+        return 0;
+    }
+
+    return PetscOptionsInsertFile(comm, NULL, options_file, PETSC_TRUE);
 }
 
 int permon_finalize(){

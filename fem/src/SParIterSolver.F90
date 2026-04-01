@@ -1809,6 +1809,9 @@ SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
   
   INTEGER :: nrows, ncols, nnz
   TYPE(ValueList_t), POINTER :: Params
+  CHARACTER(LEN=MAX_NAME_LEN) :: PermonOptionsFile
+  CHARACTER(KIND=C_CHAR), ALLOCATABLE, TARGET :: PermonOptionsFileC(:)
+  INTEGER :: OptLen
   INTEGER,ALLOCATABLE::revdoflist(:)
   INTEGER::inside
    
@@ -2770,6 +2773,9 @@ SUBROUTINE SolvePermon(Matrix, XVec, RHSVec, Solver, ParallelInfo, SplittedMatri
   INTEGER :: verbosity, myverb
   INTEGER :: nrows, ncols, nnz
   TYPE(ValueList_t), POINTER :: Params
+  CHARACTER(LEN=MAX_STRING_LEN) :: PermonOptionsFile
+  CHARACTER(KIND=C_CHAR), ALLOCATABLE, TARGET :: PermonOptionsFileC(:)
+  INTEGER :: OptLen
 
   TYPE(Matrix_t), POINTER :: GM, PiM, Aser
   INTEGER:: nnd,ind(2), precond
@@ -2795,6 +2801,19 @@ SUBROUTINE SolvePermon(Matrix, XVec, RHSVec, Solver, ParallelInfo, SplittedMatri
   
 !  CALL SetHypreParameters(Params, hypremethod, ilun, hypre_dppara, hypre_intpara )
 ! TODO set permon parameters from sif file
+
+  PermonOptionsFile = ListGetString( Params,'Permon Options File', Found )
+  IF (.NOT. Found .OR. LEN_TRIM(PermonOptionsFile) == 0) PermonOptionsFile = 'permonrc'
+
+  OptLen = LEN_TRIM(PermonOptionsFile)
+  ALLOCATE(PermonOptionsFileC(OptLen+1))
+  DO i = 1, OptLen
+    PermonOptionsFileC(i) = CHAR(ICHAR(PermonOptionsFile(i:i)), KIND=C_CHAR)
+  END DO
+  PermonOptionsFileC(OptLen+1) = C_NULL_CHAR
+  CALL permon_set_options_file(C_LOC(PermonOptionsFileC(1)), INT(Matrix % Comm, KIND=C_INT))
+  CALL Info(Caller,'Loaded PERMON options from file: '//TRIM(PermonOptionsFile),Level=5)
+  DEALLOCATE(PermonOptionsFileC)
 
   TOL = ListGetCReal( Params,'Linear System Convergence Tolerance', Found )
   IF ( .NOT. Found ) TOL = 1.0d-6
