@@ -78,7 +78,7 @@ EXT int N_Integ,N_Integ1d,N_Integ3;
 EXT double ShapeFunctionMatrix[16][16],ShapeFunctionMatrix4[4][4],
            ShapeFunctionMatrix3[3][3], ShapeFunctionMatrix2[2][2];
 
-EXT double U_Integ3[128],V_Integ3[128],S_Integ3[128];
+EXT double *U_Integ3,*V_Integ3,*S_Integ3;
 
 EXT double XMin,XMax,YMin,YMax,ZMin,ZMax; 
 EXT char str[512];
