@@ -419,9 +419,9 @@ void Combine2DRaytraceElements( int N, int *Topo, int *RT_N, int *RT_Topo, doubl
 
      elem1 = nodetable[maxnodehits*ind0+0];
      if( RT_Topo[2*elem1+1] == ind0 ) 
-       nd1 = RT_Topo[2*elem1];
+       ind1 = RT_Topo[2*elem1];
      else 
-       nd1 = RT_Topo[2*elem1+1];
+       ind1 = RT_Topo[2*elem1+1];
 
      elem2 = nodetable[maxnodehits*ind0+1];
      if( RT_Topo[2*elem2+1] == ind0 ) 
