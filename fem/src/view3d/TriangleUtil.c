@@ -630,7 +630,6 @@ TriangleComputeRadiatorFactors (Geometry_t * GA, int LineFlag, double dx, double
       GetMatrixToRotateVectorToZAxis(nx,ny,nz,Cyl->RotationMatrix,&Ident);
 
       Fa = 0;
-      fprintf( stderr, "%g %d\n", Fa, N_Integ1d );
       for( i=0; i<N_Integ1d; i++ )
       {
 	 U = U_Integ1d[i];
