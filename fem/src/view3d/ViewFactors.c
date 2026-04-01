@@ -348,39 +348,10 @@ void InitGeometryTypes()
 }
 
 
-void InitStuff( int N, int *Topo, int *Type, double *Coord, double *Normals, int RT_N0,
-    int *RT_Topo0, int *RT_Type, double *RT_Coord, double *RT_Normals,
-      double Feps, double Aeps, double Reps, int Nr, int NInteg2, int NInteg3, int NInteg4, int Combine )
+void InitPolyFactors( int N, Geometry_t *Elements, int *Type, int *Topo, double *Coord, double *Normals )
 {
-   int i,j,k,l,n,NOFRayElements;
-   int RT_N=0, *RT_Topo=NULL;
+   int i,j,k,l,n;
 
-   AreaEPS   = Aeps; 
-   RayEPS    = Reps; 
-   FactorEPS = Feps; 
-   Nrays     = Nr;
-
-   ShapeFunctionMatrix2[0][0] =  1.0;
-   ShapeFunctionMatrix2[0][1] = -1.0;
-
-   ShapeFunctionMatrix2[1][0] =  0.0;
-   ShapeFunctionMatrix2[1][1] =  1.0;
-
-   ShapeFunctionMatrix3[0][0] =  1.0;
-   ShapeFunctionMatrix3[0][1] = -1.0;
-   ShapeFunctionMatrix3[0][2] = -1.0;
-
-   ShapeFunctionMatrix3[1][0] =  0.0;
-   ShapeFunctionMatrix3[1][1] =  1.0;
-   ShapeFunctionMatrix3[1][2] =  0.0;
-
-   ShapeFunctionMatrix3[2][0] =  0.0;
-   ShapeFunctionMatrix3[2][1] =  0.0;
-   ShapeFunctionMatrix3[2][2] =  1.0;
-
-   elm_4node_quad_shape_functions(  ShapeFunctionMatrix4 );
-
-   Elements = (Geometry_t *)calloc(N,sizeof(Geometry_t));
    for( i=0; i<N; i++ )
    {
      switch( Type[i] ) {
@@ -431,12 +402,34 @@ void InitStuff( int N, int *Topo, int *Type, double *Coord, double *Normals, int
      break;
      }
    }
+}
 
-   RT_N = RT_N0;
-   RT_Topo = RT_Topo0;
+void InitShapeFunctions()
+{
+   ShapeFunctionMatrix2[0][0] =  1.0;
+   ShapeFunctionMatrix2[0][1] = -1.0;
 
-   if ( RT_N == 0 && Type[0] == 202 && Combine )
-   {
+   ShapeFunctionMatrix2[1][0] =  0.0;
+   ShapeFunctionMatrix2[1][1] =  1.0;
+
+   ShapeFunctionMatrix3[0][0] =  1.0;
+   ShapeFunctionMatrix3[0][1] = -1.0;
+   ShapeFunctionMatrix3[0][2] = -1.0;
+
+   ShapeFunctionMatrix3[1][0] =  0.0;
+   ShapeFunctionMatrix3[1][1] =  1.0;
+   ShapeFunctionMatrix3[1][2] =  0.0;
+
+   ShapeFunctionMatrix3[2][0] =  0.0;
+   ShapeFunctionMatrix3[2][1] =  0.0;
+   ShapeFunctionMatrix3[2][2] =  1.0;
+
+   elm_4node_quad_shape_functions(  ShapeFunctionMatrix4 );
+}
+
+
+void Combine2DRaytraceElements( int N, int *Topo, int *RT_N, int *RT_Topo, double *Coord )
+{
      int maxind = 0, maxnodehits=0, tablesize;
      int *nodehits,*nodetable,i,j;
      int ind0,ind1,ind2;
@@ -445,6 +438,7 @@ void InitStuff( int N, int *Topo, int *Type, double *Coord, double *Normals, int
 
      printf("Combining original boundary elements for shading\n");
 
+     maxind=0; maxnodehits=0;
      for (i=0; i<2*N; i++) 
        if(maxind < Topo[i]) maxind = Topo[i];
 
@@ -475,7 +469,6 @@ void InitStuff( int N, int *Topo, int *Type, double *Coord, double *Normals, int
        nodehits[ind2] += 1;
      }
  
-     RT_Topo = (int*) malloc(2*N*sizeof(int));
      for(i=0;i<2*N;i++)
        RT_Topo[i] = Topo[i];
  
@@ -539,6 +532,7 @@ void InitStuff( int N, int *Topo, int *Type, double *Coord, double *Normals, int
 
      /* Free, not needed anymore */
      free((char*)(nodetable));
+     free((char*)(nodehits));
 
      j = 0;
      for (i=0; i<N; i++) {
@@ -548,8 +542,33 @@ void InitStuff( int N, int *Topo, int *Type, double *Coord, double *Normals, int
           j++;
        }
      }
-     RT_N = j;
-     printf("The combined set includes %d line segments (vs. %d)\n",RT_N,N);
+     *RT_N = j;
+     printf("The combined set includes %d line segments (vs. %d)\n",*RT_N,N);
+}
+
+void InitStuff( int N, int *Topo, int *Type, double *Coord, double *Normals, int RT_N0,
+    int *RT_Topo0, int *RT_Type, double *RT_Coord, double *RT_Normals,
+      double Feps, double Aeps, double Reps, int Nr, int NInteg2, int NInteg3, int NInteg4, int Combine )
+{
+   int i,j,k,l,n,NOFRayElements;
+   int RT_N=0, *RT_Topo=NULL;
+
+   AreaEPS   = Aeps; 
+   RayEPS    = Reps; 
+   FactorEPS = Feps; 
+   Nrays     = Nr;
+
+   InitShapeFunctions();
+
+   Elements = (Geometry_t *)calloc(N,sizeof(Geometry_t));
+   InitPolyFactors(N,Elements,Type,Topo,Coord,Normals);
+
+   RT_N = RT_N0;
+   RT_Topo = RT_Topo0;
+   if ( RT_N == 0 && Type[0] == 202 && Combine )
+   {
+     RT_Topo = (int *)malloc(2*N*sizeof(int));
+     Combine2DRaytraceElements(N,Topo,&RT_N,RT_Topo,Coord);
    }
 
    /*
@@ -557,53 +576,7 @@ void InitStuff( int N, int *Topo, int *Type, double *Coord, double *Normals, int
     */
    if ( RT_N > 0 ) {
      RTElements = (Geometry_t *)calloc( RT_N,sizeof(Geometry_t) );
-     for( i=0; i<RT_N; i++ )
-     {
-       switch( RT_Type[i] ) {
-       case 202:
-          RTElements[i].GeometryType = GEOMETRY_LINE;
-          RTElements[i].Linear = (Linear_t *)calloc( sizeof(Linear_t),1 );
-
-          for( j=0; j<2; j++ )
-          {
-             for( k=0; k<2; k++ )
-             for( n=0; n<3; n++ )
-             {
-                l = 3*RT_Topo[2*i+k]+n;
-                RTElements[i].Linear->PolyFactors[n][j]   += ShapeFunctionMatrix2[k][j]*RT_Coord[l];
-              }
-          }
-       break;
-       case 404:
-          RTElements[i].GeometryType = GEOMETRY_BILINEAR;
-          RTElements[i].BiLinear = (BiLinear_t *)calloc( sizeof(BiLinear_t),1 );
-
-          for( j=0; j<4; j++ )
-          {
-             for( k=0; k<4; k++ )
-             for( n=0; n<3; n++ )
-             {
-                l = 3*RT_Topo[4*i+k]+n;
-                RTElements[i].BiLinear->PolyFactors[n][j]   += ShapeFunctionMatrix4[k][j]*RT_Coord[l];
-             }
-          }
-       break;
-       case 303:
-          RTElements[i].GeometryType = GEOMETRY_TRIANGLE;
-          RTElements[i].Triangle = (Triangle_t *)calloc( sizeof(Triangle_t),1 );
-
-          for( j=0; j<3; j++ )
-          {
-             for( k=0; k<3; k++ )
-             for( n=0; n<3; n++ )
-             {
-                l = 3*RT_Topo[3*i+k] + n;
-                RTElements[i].Triangle->PolyFactors[n][j]   += ShapeFunctionMatrix3[k][j]*RT_Coord[l];
-             }
-          }
-       break;
-       }
-     }
+     InitPolyFactors(RT_N,RTElements,RT_Type,RT_Topo,RT_Coord,RT_Normals);
      NOFRayElements = RT_N;
    } else {
      NOFRayElements = N;
@@ -630,8 +603,8 @@ void radiatorfactors3d
 
 void viewfactors3d
   ( int *N,  int *Topo, int *Type, double *Coord, double *Normals, int *RT_N0, int *RT_Topo0,
-    int *RT_Type, double *RT_Coord, double *RT_Normals, double *Factors, double *Feps, double *Aeps,
-        double *Reps, int *Nr, int *NInteg2,int *NInteg3, int *NInteg4, int  *Combine )
+       int *RT_Type, double *RT_Coord, double *RT_Normals, double *Factors, double *Feps, double *Aeps,
+          double *Reps, int *Nr, int *NInteg2,int *NInteg3, int *NInteg4, int  *Combine )
 {
    InitStuff( *N, Topo, Type, Coord, Normals, *RT_N0, RT_Topo0, RT_Type, RT_Coord, RT_Normals, 
         *Feps, *Aeps, *Reps, *Nr, *NInteg2, *NInteg3, *NInteg4, *Combine );
