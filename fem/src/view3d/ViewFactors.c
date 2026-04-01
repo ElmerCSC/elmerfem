@@ -313,11 +313,6 @@ static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int 
                        N,Imin,Fmin,Imax,Fmax,Favg/N );
 }
 
-void MakeRadiatorFactorMatrix(int NofRadiators, double *RadiatorCoords, int LineFlag, int N,double *Factors, int NInteg2, int NInteg3, int NInteg4)
-{
-    FillIPointArrays( NInteg2, NInteg3, NInteg4 );
-    IntegrateFromGeometry( NofRadiators, RadiatorCoords, LineFlag, N, Factors );
-}
 
 void InitGeometryTypes()
 {
@@ -350,31 +345,20 @@ void InitGeometryTypes()
     RadiatorFactorsCompute[GEOMETRY_LINE]      = LinearComputeRadiatorFactors;
     RadiatorFactorsCompute[GEOMETRY_TRIANGLE]  = TriangleComputeRadiatorFactors;
     RadiatorFactorsCompute[GEOMETRY_BILINEAR]  = BiLinearComputeRadiatorFactors;
-/*
-    ViewFactorCompute[GEOMETRY_BICUBIC]       = BiCubicComputeViewFactors;
-    ViewFactorCompute[GEOMETRY_BIQUADRATIC]   = BiQuadraticComputeViewFactors;
-*/
-}
-void MakeViewFactorMatrix(int N,double *Factors,int NInteg2,int NInteg3,int NInteg4)
-{
-    FillIPointArrays(NInteg2,NInteg3,NInteg4);
-    IntegrateFromGeometry( 0, NULL, 0, N,Factors );
 }
 
 
-void radiatorfactors3d
-  ( int *EL_N,  int *EL_Topo, int *EL_Type, double *EL_Coord, double *EL_Normals,
-    int *RT_N0, int *RT_Topo0, int *RT_Type, double *RT_Coord, double *RT_Normals,
-    int *NofRadiators, double *RadiatorCoords, int *LineFlag,
-    double *Factors, double *Feps, double *Aeps, double *Reps, int *Nr, int *NInteg2, int *NInteg3,int *NInteg4, int  *Combine )
+void InitStuff( int N, int *Topo, int *Type, double *Coord, double *Normals, int RT_N0,
+    int *RT_Topo0, int *RT_Type, double *RT_Coord, double *RT_Normals,
+      double Feps, double Aeps, double Reps, int Nr, int NInteg2, int NInteg3, int NInteg4, int Combine )
 {
    int i,j,k,l,n,NOFRayElements;
    int RT_N=0, *RT_Topo=NULL;
 
-   AreaEPS   = *Aeps; 
-   RayEPS    = *Reps; 
-   FactorEPS = *Feps; 
-   Nrays     = *Nr;
+   AreaEPS   = Aeps; 
+   RayEPS    = Reps; 
+   FactorEPS = Feps; 
+   Nrays     = Nr;
 
    ShapeFunctionMatrix2[0][0] =  1.0;
    ShapeFunctionMatrix2[0][1] = -1.0;
@@ -396,10 +380,10 @@ void radiatorfactors3d
 
    elm_4node_quad_shape_functions(  ShapeFunctionMatrix4 );
 
-   Elements = (Geometry_t *)calloc( *EL_N,sizeof(Geometry_t) );
-   for( i=0; i<*EL_N; i++ )
+   Elements = (Geometry_t *)calloc(N,sizeof(Geometry_t));
+   for( i=0; i<N; i++ )
    {
-     switch( EL_Type[i] ) {
+     switch( Type[i] ) {
      case 202:
         Elements[i].GeometryType = GEOMETRY_LINE;
         Elements[i].Linear = (Linear_t *)calloc( sizeof(Linear_t),1 );
@@ -409,9 +393,9 @@ void radiatorfactors3d
            for( k=0; k<2; k++ )
            for( n=0; n<3; n++ )
            {
-              l = 3*EL_Topo[2*i+k]+n;
-              Elements[i].Linear->PolyFactors[n][j]   += ShapeFunctionMatrix2[k][j]*EL_Coord[l];
-              Elements[i].Linear->PolyFactors[n+3][j] += ShapeFunctionMatrix2[k][j]*EL_Normals[3*i+n];
+              l = 3*Topo[2*i+k]+n;
+              Elements[i].Linear->PolyFactors[n][j]   += ShapeFunctionMatrix2[k][j]*Coord[l];
+              Elements[i].Linear->PolyFactors[n+3][j] += ShapeFunctionMatrix2[k][j]*Normals[3*i+n];
            }
         }
      break;
@@ -424,9 +408,9 @@ void radiatorfactors3d
            for( k=0; k<4; k++ )
            for( n=0; n<3; n++ )
            {
-              l = 3*EL_Topo[4*i+k]+n;
-              Elements[i].BiLinear->PolyFactors[n][j]   += ShapeFunctionMatrix4[k][j]*EL_Coord[l];
-              Elements[i].BiLinear->PolyFactors[n+3][j] += ShapeFunctionMatrix4[k][j]*EL_Normals[3*i+n];
+              l = 3*Topo[4*i+k]+n;
+              Elements[i].BiLinear->PolyFactors[n][j]   += ShapeFunctionMatrix4[k][j]*Coord[l];
+              Elements[i].BiLinear->PolyFactors[n+3][j] += ShapeFunctionMatrix4[k][j]*Normals[3*i+n];
            }
         }
      break;
@@ -439,19 +423,19 @@ void radiatorfactors3d
            for( k=0; k<3; k++ )
            for( n=0; n<3; n++ )
            {
-              l = 3*EL_Topo[3*i+k] + n;
-              Elements[i].Triangle->PolyFactors[n][j]   += ShapeFunctionMatrix3[k][j]*EL_Coord[l];
-              Elements[i].Triangle->PolyFactors[n+3][j] += ShapeFunctionMatrix3[k][j]*EL_Normals[3*i+n];
+              l = 3*Topo[3*i+k] + n;
+              Elements[i].Triangle->PolyFactors[n][j]   += ShapeFunctionMatrix3[k][j]*Coord[l];
+              Elements[i].Triangle->PolyFactors[n+3][j] += ShapeFunctionMatrix3[k][j]*Normals[3*i+n];
            }
         }
      break;
      }
    }
 
-   RT_N = *RT_N0;
+   RT_N = RT_N0;
    RT_Topo = RT_Topo0;
 
-   if ( RT_N == 0 && EL_Type[0] == 202 && *Combine )
+   if ( RT_N == 0 && Type[0] == 202 && Combine )
    {
      int maxind = 0, maxnodehits=0, tablesize;
      int *nodehits,*nodetable,i,j;
@@ -461,14 +445,14 @@ void radiatorfactors3d
 
      printf("Combining original boundary elements for shading\n");
 
-     for (i=0; i<2**EL_N; i++) 
-       if(maxind < EL_Topo[i]) maxind = EL_Topo[i];
+     for (i=0; i<2*N; i++) 
+       if(maxind < Topo[i]) maxind = Topo[i];
 
      nodehits = (int*) malloc((maxind+1)*sizeof(int));
      for(i=0;i<=maxind;i++)
        nodehits[i] = 0;
-     for(i=0; i<2**EL_N; i++)  
-       nodehits[EL_Topo[i]]++;
+     for(i=0; i<2*N; i++)  
+       nodehits[Topo[i]]++;
 
      maxnodehits = 0;
      for(i=0; i<=maxind; i++) 
@@ -482,18 +466,18 @@ void radiatorfactors3d
      for(i=0;i<=maxind;i++)
        nodehits[i] = 0;
 
-     for(i=0; i<*EL_N; i++) {
-       ind1 = EL_Topo[2*i+1];
-       ind2 = EL_Topo[2*i+0];
+     for(i=0; i<N; i++) {
+       ind1 = Topo[2*i+1];
+       ind2 = Topo[2*i+0];
        nodetable[maxnodehits*ind1 + nodehits[ind1]] = i;
        nodetable[maxnodehits*ind2 + nodehits[ind2]] = i;
        nodehits[ind1] += 1;
        nodehits[ind2] += 1;
      }
  
-     RT_Topo = (int*) malloc(2**EL_N*sizeof(int));
-     for(i=0;i<2**EL_N;i++)
-       RT_Topo[i] = EL_Topo[i];
+     RT_Topo = (int*) malloc(2*N*sizeof(int));
+     for(i=0;i<2*N;i++)
+       RT_Topo[i] = Topo[i];
  
      for (i=0; i<=maxind; i++) {
        int elem1,elem2;
@@ -513,13 +497,13 @@ void radiatorfactors3d
        else 
  	ind2 = RT_Topo[2*elem2+1];
 
-       x0 = EL_Coord[3*ind0];
-       x1 = EL_Coord[3*ind1];
-       x2 = EL_Coord[3*ind2];
+       x0 = Coord[3*ind0];
+       x1 = Coord[3*ind1];
+       x2 = Coord[3*ind2];
       
-       y0 = EL_Coord[3*ind0+1];
-       y1 = EL_Coord[3*ind1+1];
-       y2 = EL_Coord[3*ind2+1];
+       y0 = Coord[3*ind0+1];
+       y1 = Coord[3*ind1+1];
+       y2 = Coord[3*ind2+1];
 
        dx1 = x1-x0;
        dx2 = x2-x0;
@@ -557,7 +541,7 @@ void radiatorfactors3d
      free((char*)(nodetable));
 
      j = 0;
-     for (i=0; i<*EL_N; i++) {
+     for (i=0; i<N; i++) {
        if(RT_Topo[2*i+1] || RT_Topo[2*i+0]) {
           RT_Topo[2*j+1] = RT_Topo[2*i+1];
           RT_Topo[2*j+0] = RT_Topo[2*i+0];
@@ -565,7 +549,7 @@ void radiatorfactors3d
        }
      }
      RT_N = j;
-     printf("The combined set includes %d line segments (vs. %d)\n",RT_N,*EL_N);
+     printf("The combined set includes %d line segments (vs. %d)\n",RT_N,N);
    }
 
    /*
@@ -622,280 +606,35 @@ void radiatorfactors3d
      }
      NOFRayElements = RT_N;
    } else {
-     NOFRayElements = *EL_N;
+     NOFRayElements = N;
      RTElements = Elements;
    }
 
+   FillIPointArrays(NInteg2,NInteg3,NInteg4);
    InitGeometryTypes();
-   InitVolumeBounds( 2, NOFRayElements, RTElements );
-   MakeRadiatorFactorMatrix(*NofRadiators, RadiatorCoords,*LineFlag,*EL_N,Factors,*NInteg2,*NInteg3,*NInteg4);
+   InitVolumeBounds(2,NOFRayElements,RTElements);
+}
+
+/* Fortran callable interface routines */
+
+void radiatorfactors3d
+  ( int *N,  int *Topo, int *Type, double *Coord, double *Normals, int *RT_N0, int *RT_Topo0,
+      int *RT_Type, double *RT_Coord, double *RT_Normals, int *NofRadiators, double *RadiatorCoords, int *LineFlag,
+        double *Factors, double *Feps, double *Aeps, double *Reps, int *Nr, int *NInteg2, int *NInteg3,int *NInteg4, int  *Combine )
+{
+   InitStuff( *N, Topo, Type, Coord, Normals, *RT_N0, RT_Topo0, RT_Type, RT_Coord, RT_Normals, 
+        *Feps, *Aeps, *Reps, *Nr, *NInteg2, *NInteg3, *NInteg4, *Combine );
+
+   IntegrateFromGeometry(*NofRadiators,RadiatorCoords,*LineFlag,*N,Factors);
 }
 
 void viewfactors3d
-  ( int *EL_N,  int *EL_Topo, int *EL_Type, double *EL_Coord, double *EL_Normals,
-    int *RT_N0, int *RT_Topo0, int *RT_Type, double *RT_Coord, double *RT_Normals,
-    double *Factors, double *Feps, double *Aeps, double *Reps, int *Nr,
-    int *NInteg2,int *NInteg3, int *NInteg4, int  *Combine )
+  ( int *N,  int *Topo, int *Type, double *Coord, double *Normals, int *RT_N0, int *RT_Topo0,
+    int *RT_Type, double *RT_Coord, double *RT_Normals, double *Factors, double *Feps, double *Aeps,
+        double *Reps, int *Nr, int *NInteg2,int *NInteg3, int *NInteg4, int  *Combine )
 {
-   int i,j,k,l,n,NOFRayElements;
-   int RT_N=0, *RT_Topo=NULL;
+   InitStuff( *N, Topo, Type, Coord, Normals, *RT_N0, RT_Topo0, RT_Type, RT_Coord, RT_Normals, 
+        *Feps, *Aeps, *Reps, *Nr, *NInteg2, *NInteg3, *NInteg4, *Combine );
 
-   AreaEPS   = *Aeps; 
-   RayEPS    = *Reps; 
-   FactorEPS = *Feps; 
-   Nrays     = *Nr;
-
-   ShapeFunctionMatrix2[0][0] =  1.0;
-   ShapeFunctionMatrix2[0][1] = -1.0;
-
-   ShapeFunctionMatrix2[1][0] =  0.0;
-   ShapeFunctionMatrix2[1][1] =  1.0;
-
-   ShapeFunctionMatrix3[0][0] =  1.0;
-   ShapeFunctionMatrix3[0][1] = -1.0;
-   ShapeFunctionMatrix3[0][2] = -1.0;
-
-   ShapeFunctionMatrix3[1][0] =  0.0;
-   ShapeFunctionMatrix3[1][1] =  1.0;
-   ShapeFunctionMatrix3[1][2] =  0.0;
-
-   ShapeFunctionMatrix3[2][0] =  0.0;
-   ShapeFunctionMatrix3[2][1] =  0.0;
-   ShapeFunctionMatrix3[2][2] =  1.0;
-
-   elm_4node_quad_shape_functions(  ShapeFunctionMatrix4 );
-
-   Elements = (Geometry_t *)calloc( *EL_N,sizeof(Geometry_t) );
-   for( i=0; i<*EL_N; i++ )
-   {
-     switch( EL_Type[i] ) {
-     case 202:
-        Elements[i].GeometryType = GEOMETRY_LINE;
-        Elements[i].Linear = (Linear_t *)calloc( sizeof(Linear_t),1 );
-
-        for( j=0; j<2; j++ )
-        {
-           for( k=0; k<2; k++ )
-           for( n=0; n<3; n++ )
-           {
-              l = 3*EL_Topo[2*i+k]+n;
-              Elements[i].Linear->PolyFactors[n][j]   += ShapeFunctionMatrix2[k][j]*EL_Coord[l];
-              Elements[i].Linear->PolyFactors[n+3][j] += ShapeFunctionMatrix2[k][j]*EL_Normals[3*i+n];
-           }
-        }
-     break;
-     case 404:
-        Elements[i].GeometryType = GEOMETRY_BILINEAR;
-        Elements[i].BiLinear = (BiLinear_t *)calloc( sizeof(BiLinear_t),1 );
-
-        for( j=0; j<4; j++ )
-        {
-           for( k=0; k<4; k++ )
-           for( n=0; n<3; n++ )
-           {
-              l = 3*EL_Topo[4*i+k]+n;
-              Elements[i].BiLinear->PolyFactors[n][j]   += ShapeFunctionMatrix4[k][j]*EL_Coord[l];
-              Elements[i].BiLinear->PolyFactors[n+3][j] += ShapeFunctionMatrix4[k][j]*EL_Normals[3*i+n];
-           }
-        }
-     break;
-     case 303:
-        Elements[i].GeometryType = GEOMETRY_TRIANGLE;
-        Elements[i].Triangle = (Triangle_t *)calloc( sizeof(Triangle_t),1 );
-
-        for( j=0; j<3; j++ )
-        {
-           for( k=0; k<3; k++ )
-           for( n=0; n<3; n++ )
-           {
-              l = 3*EL_Topo[3*i+k] + n;
-              Elements[i].Triangle->PolyFactors[n][j]   += ShapeFunctionMatrix3[k][j]*EL_Coord[l];
-              Elements[i].Triangle->PolyFactors[n+3][j] += ShapeFunctionMatrix3[k][j]*EL_Normals[3*i+n];
-           }
-        }
-     break;
-     }
-   }
-
-   RT_N = *RT_N0;
-   RT_Topo = RT_Topo0;
-
-   if ( RT_N == 0 && EL_Type[0] == 202 && *Combine )
-   {
-     int maxind = 0, maxnodehits=0, tablesize;
-     int *nodehits,*nodetable,i,j;
-     int ind0,ind1,ind2;
-     double x0, y0,  x1, y1, x2, y2, dx1, dx2,
-       dy1, dy2, dp1, dp2, ds1,ds2, eps=1e-16;
-
-     printf("Combining original boundary elements for shading\n");
-
-     for (i=0; i<2**EL_N; i++) 
-       if(maxind < EL_Topo[i]) maxind = EL_Topo[i];
-
-     nodehits = (int*) malloc((maxind+1)*sizeof(int));
-     for(i=0;i<=maxind;i++)
-       nodehits[i] = 0;
-     for(i=0; i<2**EL_N; i++)  
-       nodehits[EL_Topo[i]]++;
-
-     maxnodehits = 0;
-     for(i=0; i<=maxind; i++) 
-       if(nodehits[i] > maxnodehits) maxnodehits = nodehits[i];
-    
-     tablesize = (maxind+1)*maxnodehits;
-     nodetable = (int*) malloc(tablesize*sizeof(int));
-     for(i=0; i< tablesize; i++) 
-       nodetable[i] = 0;
-
-     for(i=0;i<=maxind;i++)
-       nodehits[i] = 0;
-
-     for(i=0; i<*EL_N; i++) {
-       ind1 = EL_Topo[2*i+1];
-       ind2 = EL_Topo[2*i+0];
-       nodetable[maxnodehits*ind1 + nodehits[ind1]] = i;
-       nodetable[maxnodehits*ind2 + nodehits[ind2]] = i;
-       nodehits[ind1] += 1;
-       nodehits[ind2] += 1;
-     }
- 
-     RT_Topo = (int*) malloc(2**EL_N*sizeof(int));
-     for(i=0;i<2**EL_N;i++)
-       RT_Topo[i] = EL_Topo[i];
- 
-     for (i=0; i<=maxind; i++) {
-       int elem1,elem2;
-       ind0 = i;
-      
-       if( nodehits[ind0] != 2) continue;
-
-       elem1 = nodetable[maxnodehits*ind0+0];
-       if( RT_Topo[2*elem1+1] == ind0 ) 
- 	ind1 = RT_Topo[2*elem1];
-       else 
- 	ind1 = RT_Topo[2*elem1+1];
-
-       elem2 = nodetable[maxnodehits*ind0+1];
-       if( RT_Topo[2*elem2+1] == ind0 ) 
- 	ind2 = RT_Topo[2*elem2];
-       else 
- 	ind2 = RT_Topo[2*elem2+1];
-
-       x0 = EL_Coord[3*ind0];
-       x1 = EL_Coord[3*ind1];
-       x2 = EL_Coord[3*ind2];
-      
-       y0 = EL_Coord[3*ind0+1];
-       y1 = EL_Coord[3*ind1+1];
-       y2 = EL_Coord[3*ind2+1];
-
-       dx1 = x1-x0;
-       dx2 = x2-x0;
-       dy1 = y1-y0;
-       dy2 = y2-y0;
-      
-       dp1 = dx1*dx2+dy1*dy2;
-       ds1 = sqrt(dx1*dx1+dy1*dy1);
-       ds2 = sqrt(dx2*dx2+dy2*dy2);
-      
-       dp1 /= (ds1*ds2);
-
-       /* Boundary elements must be aligned */
-       if( dp1 > eps - 1. ) continue;
-
-       /* Make the 1st element bigger  */
-       if( RT_Topo[2*elem1] == ind0 ) 
- 	 RT_Topo[2*elem1] = ind2;
-       else 
-	 RT_Topo[2*elem1+1] = ind2;
-      
-       /* Destroy the 2nd element */
-       RT_Topo[2*elem2] = 0;
-       RT_Topo[2*elem2+1] = 0;
-
-       /* Update the node information */
-       nodehits[ind0] = 0;
-       if( nodetable[maxnodehits*ind2] == elem2) 
- 	nodetable[maxnodehits*ind2] = elem1;
-       else 
- 	nodetable[maxnodehits*ind2+1] = elem1;
-     }
-
-     /* Free, not needed anymore */
-     free((char*)(nodetable));
-
-     j = 0;
-     for (i=0; i<*EL_N; i++) {
-       if(RT_Topo[2*i+1] || RT_Topo[2*i+0]) {
-          RT_Topo[2*j+1] = RT_Topo[2*i+1];
-          RT_Topo[2*j+0] = RT_Topo[2*i+0];
-          j++;
-       }
-     }
-     RT_N = j;
-     printf("The combined set includes %d line segments (vs. %d)\n",RT_N,*EL_N);
-   }
-
-   /*
-    * check if different geometry elements given for shadowing ...
-    */
-   if ( RT_N > 0 ) {
-     RTElements = (Geometry_t *)calloc( RT_N,sizeof(Geometry_t) );
-     for( i=0; i<RT_N; i++ )
-     {
-       switch( RT_Type[i] ) {
-       case 202:
-          RTElements[i].GeometryType = GEOMETRY_LINE;
-          RTElements[i].Linear = (Linear_t *)calloc( sizeof(Linear_t),1 );
-
-          for( j=0; j<2; j++ )
-          {
-             for( k=0; k<2; k++ )
-             for( n=0; n<3; n++ )
-             {
-                l = 3*RT_Topo[2*i+k]+n;
-                RTElements[i].Linear->PolyFactors[n][j]   += ShapeFunctionMatrix2[k][j]*RT_Coord[l];
-              }
-          }
-       break;
-       case 404:
-          RTElements[i].GeometryType = GEOMETRY_BILINEAR;
-          RTElements[i].BiLinear = (BiLinear_t *)calloc( sizeof(BiLinear_t),1 );
-
-          for( j=0; j<4; j++ )
-          {
-             for( k=0; k<4; k++ )
-             for( n=0; n<3; n++ )
-             {
-                l = 3*RT_Topo[4*i+k]+n;
-                RTElements[i].BiLinear->PolyFactors[n][j]   += ShapeFunctionMatrix4[k][j]*RT_Coord[l];
-             }
-          }
-       break;
-       case 303:
-          RTElements[i].GeometryType = GEOMETRY_TRIANGLE;
-          RTElements[i].Triangle = (Triangle_t *)calloc( sizeof(Triangle_t),1 );
-
-          for( j=0; j<3; j++ )
-          {
-             for( k=0; k<3; k++ )
-             for( n=0; n<3; n++ )
-             {
-                l = 3*RT_Topo[3*i+k] + n;
-                RTElements[i].Triangle->PolyFactors[n][j]   += ShapeFunctionMatrix3[k][j]*RT_Coord[l];
-             }
-          }
-       break;
-       }
-     }
-     NOFRayElements = RT_N;
-   } else {
-     NOFRayElements = *EL_N;
-     RTElements = Elements;
-   }
-
-   InitGeometryTypes();
-   InitVolumeBounds(2,NOFRayElements, RTElements);
-   MakeViewFactorMatrix( *EL_N,Factors,*NInteg2,*NInteg3,*NInteg4 );
+   IntegrateFromGeometry(0,NULL,0,*N,Factors);
 }
