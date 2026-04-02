@@ -361,6 +361,7 @@
          ALLOCATE( Surfaces(2*N), Factors(N*N), STAT=istat )
        ELSE
          ALLOCATE( Normals(3*n), Factors(NofRadiators*n),Surfaces(4*n), TYPE(n), STAT=istat )
+         Surfaces = 0
        END IF
        IF ( istat /= 0 ) THEN
          CALL Fatal( 'RadiatonFactors', 'Memory allocation error. Aborting' )
@@ -516,7 +517,7 @@
                 TYPE(t) = 404
            END SELECT
            DO i=1,j
-             Surfaces(j*(t-1)+i) = Element % NodeIndexes(i)-1
+             Surfaces(4*(t-1)+i) = Element % NodeIndexes(i)-1
            END DO
            
            IF (Normal_in*(Nrm(1)*Nx + Nrm(2)*Ny + Nrm(3)*nz)>0) THEN
