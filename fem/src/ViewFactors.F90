@@ -532,7 +532,11 @@
                 TYPE(t) = 404
            END SELECT
            DO i=1,j
-             Surfaces(4*(t-1)+i) = Element % NodeIndexes(i)-1
+             IF ( j==2 ) THEN
+               Surfaces(2*(t-1)+i) = Element % NodeIndexes(i)-1
+             ELSE
+               Surfaces(4*(t-1)+i) = Element % NodeIndexes(i)-1
+             END IF
            END DO
            
            IF (Normal_in * SUM(Nrm*NrmB)>0) THEN
