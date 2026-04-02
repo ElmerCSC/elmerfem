@@ -1137,7 +1137,7 @@ void viewfactors3d
              for( k=0; k<3; k++ )
              for( n=0; n<3; n++ )
              {
-                l = 3*RT_Topo[3*i+k] + n;
+                l = 3*RT_Topo[4*i+k] + n;
                 RTElements[i].Triangle->PolyFactors[n][j]   += ShapeFunctionMatrix3[k][j]*RT_Coord[l];
              }
           }
