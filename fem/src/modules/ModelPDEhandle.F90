@@ -1,7 +1,40 @@
-!-----------------------------------------------------------------------------
-!> A prototype solver for advection-diffusion-reaction equation,
-!> This equation is generic and intended for education purposes
-!> but may also serve as a starting point for more complex solvers.
+!/*****************************************************************************/
+! *
+! *  Elmer, A Finite Element Software for Multiphysical Problems
+! *
+! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
+! * 
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
+! *
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
+! *
+! *****************************************************************************/
+!/*****************************************************************************/
+! *
+! * A prototype solver for advection-diffusion-reaction equation,
+! * This equation is generic and intended for education purposes
+! * but may also serve as a starting point for more complex solvers.
+! * This one uses the ListGetElement* commands with handles that offer 
+! * speed and generality over ListGetReal.
+! *
+! *  Web:     http://www.csc.fi/elmer
+! *  Address: CSC - IT Center for Science Ltd.
+! *           Keilaranta 14
+! *           02101 Espoo, Finland 
+! *
+! *****************************************************************************/
+
 !------------------------------------------------------------------------------
 SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
@@ -21,6 +54,7 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
   INTEGER :: n, nb, nd, t, active
   INTEGER :: iter, maxiter, dim
   LOGICAL :: Found
+  REAL(KIND=dp) :: TotArea, TotLen, TotSrc
 !------------------------------------------------------------------------------
   TYPE(ValueHandle_t) :: Load_h, FieldSource_h, DiffCoeff_h, ReactCoeff_h, ConvCoeff_h, &
       TimeCoeff_h, ConvVelo1_h, ConvVelo2_h, ConvVelo3_h, &
@@ -46,8 +80,6 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
   IF(.NOT. Found ) maxiter = 1
 
   dim = CoordinateSystemDimension()
-
-
   
   ! Nonlinear iteration loop:
   !--------------------------
@@ -56,7 +88,14 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
     ! System assembly:
     !----------------
     CALL DefaultInitialize()
-    Active = GetNOFActive()
+
+    ! These are to test cutfem
+    TotArea = 0.0_dp
+    TotLen = 0.0_dp
+    TotSrc = 0.0_dp
+    
+1   Active = GetNOFActive()
+
     DO t=1,Active
       Element => GetActiveElement(t)
       n  = GetElementNOFNodes()
@@ -78,6 +117,8 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
       END IF
     END DO
 
+    IF(DefaultCutFEM()) GOTO 1
+    
     CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()
@@ -85,13 +126,19 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
     ! And finally, solve:
     !--------------------
     Norm = DefaultSolve()
-
-    IF( Solver % Variable % NonlinConverged > 0 ) EXIT
+    IF( DefaultConverged() ) EXIT    
 
   END DO
 
   CALL DefaultFinish()
   
+  IF( ListGetLogical( GetSolverParams(),'CutFEM',Found) &
+      .OR. ListGetLogical( GetSolverParams(),'Integ Test',Found) ) THEN
+    CALL ListAddConstReal(CurrentModel % Simulation,'res: integ total area',TotArea ) 
+    CALL ListAddConstReal(CurrentModel % Simulation,'res: integ total len',TotLen ) 
+    CALL ListAddConstReal(CurrentModel % Simulation,'res: integ total src',TotSrc ) 
+  END IF
+ 
 CONTAINS
 
 ! Assembly of the matrix entries arising from the bulk elements
@@ -169,10 +216,12 @@ CONTAINS
       END DO
 
       FORCE(1:nd) = FORCE(1:nd) + Weight * LoadAtIP * Basis(1:nd)
+      TotArea = TotArea + Weight 
+      TotSrc = TotSrc + Weight * LoadAtIp
     END DO
 
     IF(TransientSimulation) CALL Default1stOrderTime(MASS,STIFF,FORCE)
-    CALL LCondensate( nd-nb, nb, STIFF, FORCE )
+    CALL CondensateP( nd-nb, nb, STIFF, FORCE )
     CALL DefaultUpdateEquations(STIFF,FORCE)
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
@@ -235,39 +284,11 @@ CONTAINS
       END DO
 
       FORCE(1:nd) = FORCE(1:nd) + Weight * (F + C*Ext) * Basis(1:nd)
+      TotLen = TotLen + Weight 
     END DO
     CALL DefaultUpdateEquations(STIFF,FORCE)
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBC
-!------------------------------------------------------------------------------
-
-! Perform static condensation in case bubble dofs are present
-!------------------------------------------------------------------------------
-  SUBROUTINE LCondensate( N, Nb, K, F )
-!------------------------------------------------------------------------------
-    USE LinearAlgebra
-    INTEGER :: N, Nb
-    REAL(KIND=dp) :: K(:,:),F(:),Kbb(Nb,Nb), &
-         Kbl(Nb,N), Klb(N,Nb), Fb(Nb)
-
-    INTEGER :: m, i, j, l, p, Ldofs(N), Bdofs(Nb)
-
-    IF ( Nb <= 0 ) RETURN
-
-    Ldofs = (/ (i, i=1,n) /)
-    Bdofs = (/ (i, i=n+1,n+nb) /)
-
-    Kbb = K(Bdofs,Bdofs)
-    Kbl = K(Bdofs,Ldofs)
-    Klb = K(Ldofs,Bdofs)
-    Fb  = F(Bdofs)
-
-    CALL InvertMatrix( Kbb,nb )
-
-    F(1:n) = F(1:n) - MATMUL( Klb, MATMUL( Kbb, Fb  ) )
-    K(1:n,1:n) = K(1:n,1:n) - MATMUL( Klb, MATMUL( Kbb, Kbl ) )
-!------------------------------------------------------------------------------
-  END SUBROUTINE LCondensate
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------

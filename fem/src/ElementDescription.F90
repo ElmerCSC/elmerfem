@@ -3037,13 +3037,14 @@ CONTAINS
 
 
    SUBROUTINE EdgeElementStyle(VList, PiolaVersion, SecondFamily, QuadraticApproximation, &
-       BasisDegree, Check ) 
+       BasisDegree, GradientVersion, Check ) 
 
      TYPE(ValueList_t), POINTER :: VList
      LOGICAL :: PiolaVersion
      LOGICAL, OPTIONAL :: SecondFamily
      LOGICAL, OPTIONAL :: QuadraticApproximation
      INTEGER, OPTIONAL :: BasisDegree
+     LOGICAL, OPTIONAL :: GradientVersion
      LOGICAL, OPTIONAL :: Check
      
      LOGICAL :: Found, Quadratic, Cubic, Second 
@@ -3079,6 +3080,11 @@ CONTAINS
        QuadraticApproximation = Quadratic
      END IF
 
+     IF (PRESENT(GradientVersion)) THEN
+       GradientVersion = ListGetLogical(VList, 'Gradient Basis Functions', Found) .OR. &
+           ListGetLogical(VList, 'Simplicial Mesh', Found)
+     END IF
+     
      ! When initializing the consistency of the keywords may be checked.
      ! Also always add the Piola flag since it determines the type of IPs.
      IF( PRESENT(Check)) THEN
@@ -3153,9 +3159,10 @@ CONTAINS
      INTEGER :: EdgeBasisDegree
      LOGICAL :: PerformPiolaTransform, Found, SerendipityPBasis
      LOGICAL :: SecondFamily
-     LOGICAL :: SimplicialElements
+     LOGICAL :: GradVersion
      
-     SAVE PrevSolver, EdgeBasisDegree, PerformPiolaTransform, SecondFamily
+     SAVE PrevSolver, EdgeBasisDegree, PerformPiolaTransform, SecondFamily, &
+         GradVersion
 !------------------------------------------------------------------------------
 
      IF( PRESENT( USolver ) ) THEN
@@ -3168,17 +3175,14 @@ CONTAINS
        IF( .NOT. ASSOCIATED( PrevSolver, PSolver ) ) THEN
          PrevSolver => pSolver                  
          CALL EdgeElementStyle(pSolver % Values, PerformPiolaTransform, SecondFamily, &
-             BasisDegree = EdgeBasisDegree )
+             BasisDegree = EdgeBasisDegree, GradientVersion = GradVersion)
        END IF
        IF( PerformPiolaTransform ) THEN
-
-         SimplicialElements = ListGetLogical(pSolver % Values, 'Simplicial Mesh', Found )
-         
          stat = EdgeElementInfo(Element,Nodes,u,v,w,detF=Detj,Basis=Basis, &
              EdgeBasis=EdgeBasis,RotBasis=RotBasis,dBasisdx=dBasisdx,&
              SecondFamily = SecondFamily, BasisDegree = EdgeBasisDegree, &
              ApplyPiolaTransform = PerformPiolaTransform, &
-             SimplicialMesh = SimplicialElements)
+             GradientVersion = GradVersion)
        ELSE
          IF(Element % Type % ElementCode == 504 .AND. ANY([u,v,w] < 0.0) ) THEN
            PRINT *,'Negative local coordinates for tet:',u,v,w
@@ -6839,7 +6843,7 @@ END SUBROUTINE PickActiveFace
      FUNCTION EdgeElementInfo( Element, Nodes, u, v, w, F, G, detF, &
           Basis, EdgeBasis, RotBasis, dBasisdx, SecondFamily, BasisDegree, &
           ApplyPiolaTransform, ReadyEdgeBasis, ReadyRotBasis, &
-          TangentialTrMapping, SimplicialMesh) RESULT(stat)
+          TangentialTrMapping, GradientVersion) RESULT(stat)
 !------------------------------------------------------------------------------
        IMPLICIT NONE
 
@@ -6865,7 +6869,7 @@ END SUBROUTINE PickActiveFace
        REAL(KIND=dp), OPTIONAL :: ReadyRotBasis(:,:)  !< The preretabulated Curl of the edge basis function
        LOGICAL, OPTIONAL :: TangentialTrMapping  !< To return b x n, with n=(0,0,1) the normal to the 2D reference element.
                                                  !< The Piola transform is then the usual div-conforming version.    
-       LOGICAL, OPTIONAL :: SimplicialMesh       !< Use an alternate basis of the first kind, needs simplicial elements
+       LOGICAL, OPTIONAL :: GradientVersion      !< Use an alternate basis of the first kind, lacking support for pyramids and bricks
        LOGICAL :: Stat                           !< .FALSE. for a degenerate element
 !-----------------------------------------------------------------------------------------------------------------
 !      Local variables
@@ -6889,7 +6893,7 @@ END SUBROUTINE PickActiveFace
        LOGICAL :: SecondOrder, ThirdOrder, ApplyTraceMapping, Found
        LOGICAL :: ReverseSign(4)
        LOGICAL :: ScaleFaceBasis, RedefineFaceBasis, UseWForms = .false.
-       LOGICAL :: Simplicial
+       LOGICAL :: GradVersion
        LOGICAL :: InformAboutWForms = .TRUE.
        INTEGER, POINTER :: EdgeMap(:,:)
        INTEGER :: TriangleFaceMap(3), SquareFaceMap(4), BrickFaceMap(6,4), PrismSquareFaceMap(3,4), DOFs, GIndexes(27)
@@ -6938,14 +6942,14 @@ END SUBROUTINE PickActiveFace
        ApplyTraceMapping = .FALSE.
        IF ( PRESENT(TangentialTrMapping) ) ApplyTraceMapping = TangentialTrMapping
 
-       Simplicial = .FALSE.
-       IF ( PRESENT(SimplicialMesh) ) Simplicial = SimplicialMesh
-       IF (Simplicial .AND. .NOT.(Element % TYPE % ElementCode / 100 == 2 .OR. &
+       GradVersion = .FALSE.
+       IF ( PRESENT(GradientVersion) ) GradVersion = GradientVersion
+       IF (GradVersion .AND. .NOT.(Element % TYPE % ElementCode / 100 == 2 .OR. &
            Element % TYPE % ElementCode / 100 == 3 .OR. &
            Element % TYPE % ElementCode / 100 == 4 .OR. &
            Element % TYPE % ElementCode / 100 == 5 .OR. &
            Element % TYPE % ElementCode / 100 == 7)) THEN
-         CALL Fatal('EdgeElementInfo', 'Simplicial Mesh = True is not supported for the given element shape')
+         CALL Fatal('EdgeElementInfo', 'Gradient Basis Functions = True is not supported for the given element shape')
        END IF
            
        !-------------------------------------------------------------------------------------------
@@ -7395,7 +7399,7 @@ END SUBROUTINE PickActiveFace
            EdgeMap => GetEdgeMap(3)
            !EdgeMap => GetEdgeMap(GetElementFamily(Element))
 
-           IF (Create2ndKindBasis .OR. Simplicial .AND. &
+           IF (Create2ndKindBasis .OR. GradVersion .AND. &
                (SecondOrder .OR. ThirdOrder)) THEN
 
              IF (Create2ndKindBasis) THEN
@@ -7413,7 +7417,6 @@ END SUBROUTINE PickActiveFace
              ELSE
                !
                ! An alternate first-family basis of degree 2 or 3 for faster solution with iterative methods. 
-               ! Currently this is available only for simplicial elements. 
                !
                IF (SecondOrder) THEN
                  EDOFs = 2
@@ -7430,22 +7433,10 @@ END SUBROUTINE PickActiveFace
                i = EdgeMap(k,1)
                j = EdgeMap(k,2)
 
-               svec(1:2) = Basis(j) * dLBasisdx(i,1:2)
-               tvec(1:2) = Basis(i) * dLBasisdx(j,1:2)
-
-               grad_svec(1,2) = dLBasisdx(j,2) * dLBasisdx(i,1)
-               grad_svec(2,1) = dLBasisdx(j,1) * dLBasisdx(i,2)
-
-               grad_tvec(1,2) = dLBasisdx(i,2) * dLBasisdx(j,1)
-               grad_tvec(2,1) = dLBasisdx(i,1) * dLBasisdx(j,2)
-
-               WorkBasis(1,1:2) = svec(1:2)
-               WorkBasis(2,1:2) = tvec(1:2)
-               WorkCurlBasis(1,3) = grad_svec(2,1) - grad_svec(1,2)
-               WorkCurlBasis(2,3) = grad_tvec(2,1) - grad_tvec(1,2)
-
+               CALL EdgeWhitneyComponents2D(WorkBasis(1:2,:), WorkCurlBasis(1:2,:), i, j, u, v)
+               
                IF (Create2ndKindBasis .AND. SecondOrder .OR. &
-                   Simplicial .AND. ThirdOrder) THEN
+                   GradVersion .AND. ThirdOrder) THEN
                  WorkWeight(1) = 2.0d0*Basis(i) - Basis(j)
                  WorkWeight(2) = 2.0d0*Basis(j) - Basis(i)
 
@@ -7492,33 +7483,9 @@ END SUBROUTINE PickActiveFace
              ! The basis functions associated with the faces for higher-order cases
              IF (FDOFs > 0) THEN
                TriangleFaceMap(:) = (/ 1,2,3 /)
-               I1 = 1
-               I2 = 2
-               I3 = 3
 
-               WorkBasis(1,1:2) = Basis(I2) * Basis(I3) * dLBasisdx(I1,1:2)
-               WorkBasis(2,1:2) = Basis(I1) * Basis(I3) * dLBasisdx(I2,1:2)
-               WorkBasis(3,1:2) = Basis(I1) * Basis(I2) * dLBasisdx(I3,1:2)
-
-               grad_svec(1,2) = (dLBasisdx(I2,2) * Basis(I3) + &
-                   Basis(I2) * dLBasisdx(I3,2)) * dLBasisdx(I1,1)
-               grad_svec(2,1) = (dLBasisdx(I2,1) * Basis(I3) + &
-                   Basis(I2) * dLBasisdx(I3,1)) * dLBasisdx(I1,2)
-
-               grad_tvec(1,2) = (dLBasisdx(I1,2) * Basis(I3)  + &
-                   Basis(I1) * dLBasisdx(I3,2)) * dLBasisdx(I2,1)
-               grad_tvec(2,1) = (dLBasisdx(I1,1) * Basis(I3)  + &
-                   Basis(I1) * dLBasisdx(I3,1)) * dLBasisdx(I2,2)
-
-               grad_hvec(1,2) = (dLBasisdx(I1,2) * Basis(I2)  + &
-                   Basis(I1) * dLBasisdx(I2,2)) * dLBasisdx(I3,1)
-               grad_hvec(2,1) = (dLBasisdx(I1,1) * Basis(I2)  + &
-                   Basis(I1) * dLBasisdx(I2,1)) * dLBasisdx(I3,2)
-
-               WorkCurlBasis(1,3) = grad_svec(2,1) - grad_svec(1,2)
-               WorkCurlBasis(2,3) = grad_tvec(2,1) - grad_tvec(1,2)
-               WorkCurlBasis(3,3) = grad_hvec(2,1) - grad_hvec(1,2)
-
+               CALL FaceWhitneyComponents2D(WorkBasis(1:3,:), WorkCurlBasis(1:3,:), u, v)
+               
                ! Create permutation:
                FaceIndices(1:3) = GIndexes(TriangleFaceMap(1:3))
                CALL TriangleFaceDofsOrdering2nd(I1,I2,I3,FaceIndices(1:3))
@@ -7690,10 +7657,10 @@ END SUBROUTINE PickActiveFace
            !--------------------------------------------------------------
            EdgeMap => GetEdgeMap(4)
            IF (SecondOrder) THEN
-             IF (Simplicial) THEN
+             IF (GradVersion) THEN
                !
                ! An alternate basis which is compatible with the basis originally constructed for
-               ! simplicial elements when SimplicialMesh = .TRUE.. Here the basis functions are  
+               ! simplicial elements when GradientVersion = .TRUE.. Here the basis functions are  
                ! defined in terms of the Lobatto shape functions Phi(k,.) and the Legendre
                ! polynomials LegendreP(1,.)
                !
@@ -8000,7 +7967,7 @@ END SUBROUTINE PickActiveFace
            !--------------------------------------------------------------
            EdgeMap => GetEdgeMap(5)
 
-           IF (Create2ndKindBasis .OR. Simplicial .AND. &
+           IF (Create2ndKindBasis .OR. GradVersion .AND. &
                (SecondOrder .OR. ThirdOrder)) THEN
 
              BDOFs = 0
@@ -8020,7 +7987,6 @@ END SUBROUTINE PickActiveFace
              ELSE
                !
                ! An alternate first-family basis of degree 2 or 3 for faster solution with iterative methods. 
-               ! Currently this is available only for simplicial elements. 
                !
                IF (SecondOrder) THEN
                  EDOFs = 2
@@ -8067,7 +8033,7 @@ END SUBROUTINE PickActiveFace
                WorkCurlBasis(2,3) = grad_tvec(2,1) - grad_tvec(1,2)
 
                IF (Create2ndKindBasis .AND. SecondOrder .OR. &
-                   Simplicial .AND. ThirdOrder) THEN
+                   GradVersion .AND. ThirdOrder) THEN
                  WorkWeight(1) = 2.0d0*Basis(i) - Basis(j)
                  WorkWeight(2) = 2.0d0*Basis(j) - Basis(i)
 
@@ -9504,7 +9470,7 @@ END SUBROUTINE PickActiveFace
            EdgeMap => GetEdgeMap(7)
 
            IF (SecondOrder) THEN
-             GRADIENT_VERSION_PRISM: IF (Simplicial) THEN
+             GRADIENT_VERSION_PRISM: IF (GradVersion) THEN
                EDOFs = 2               
                !
                ! First handle the edges which bound a triangular face
