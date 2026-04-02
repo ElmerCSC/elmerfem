@@ -627,7 +627,7 @@ TriangleComputeRadiatorFactors (Geometry_t * GA, int LineFlag, double dx, double
       Cyl->CenterPoint.x = (2*dx+nx)/2;
       Cyl->CenterPoint.y = (2*dy+ny)/2;
       Cyl->CenterPoint.z = (2*dz+nz)/2;
-      GetMatrixToRotateVectorToZAxis(nx,ny,nz,Cyl->RotationMatrix,&Ident);
+      GetMatrixToRotateVectorToZAxis(nx/R,ny/R,nz/R,Cyl->RotationMatrix,&Ident);
 
       Fa = 0;
       for( i=0; i<N_Integ1d; i++ )

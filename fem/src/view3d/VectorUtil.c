@@ -43,11 +43,9 @@ Juha Ruokolainen/CSC - 27 Aug 1995
 #include <ViewFactors.h>
 
 /*******************************************************************************
-
 Rotate vector (x,y,z) by given matrix.
 
 27 Aug 1995
-
 *******************************************************************************/
 void RotateVector(double *x,double *y,double *z,Matrix_t M)
 {
@@ -56,6 +54,20 @@ void RotateVector(double *x,double *y,double *z,Matrix_t M)
     *x = M[0][0]*rx + M[0][1]*ry + M[0][2]*rz;
     *y = M[1][0]*rx + M[1][1]*ry + M[1][2]*rz;
     *z = M[2][0]*rx + M[2][1]*ry + M[2][2]*rz;
+}
+
+/*******************************************************************************
+Rotate vector (x,y,z) by transpose of a given matrix.
+
+27 Aug 1995
+*******************************************************************************/
+void RotateVectorTranspose(double *x,double *y,double *z,Matrix_t M)
+{
+    double rx = *x,ry = *y,rz = *z;
+
+    *x = M[0][0]*rx + M[1][0]*ry + M[2][0]*rz;
+    *y = M[0][1]*rx + M[1][1]*ry + M[2][1]*rz;
+    *z = M[0][2]*rx + M[1][2]*ry + M[2][2]*rz;
 }
 
 /******************************************************************************
@@ -102,27 +114,24 @@ void GetMatrixToRotateVectorToZAxis(double x,double y,double z,Matrix_t Matrix,i
 void CylinderNormal( double FX,double FY,double FZ, double DX,double DY,double DZ,
            Cylinder_t *Cyl, double  *nx, double *ny, double *nz )
 {
-     double A,B,C,D,E,T,X,Y,Z,R=Cyl->Radius,L,EPS=1e-9,T1,T2;
+     double A,B,C,D,T,R=Cyl->Radius,eps=1e-12;
      int i,j;
-     Matrix_t mat;
 
-
-     *nx = 0; *ny  = 0; *nz = 0;
 
      FX -= Cyl->CenterPoint.x;
      FY -= Cyl->CenterPoint.y;
      FZ -= Cyl->CenterPoint.z;
     
-     RotateVector( &FX,&FY,&FZ, Cyl->RotationMatrix);
-     RotateVector( &DX,&DY,&DZ, Cyl->RotationMatrix);
+     RotateVector(&FX,&FY,&FZ,Cyl->RotationMatrix);
+     RotateVector(&DX,&DY,&DZ,Cyl->RotationMatrix);
 
      A = DX*DX + DY*DY;
      B = 2*(FX*DX + FY*DY);
      C = FX*FX + FY*FY - R*R;
 
-     if ( A<EPS ) {
+     if ( A<eps ) {
         T = -C/B;
-     } else if ( ABS(B)<EPS ) {
+     } else if ( ABS(B)<eps ) {
 	T = sqrt(-C/A);
         if ( T<0 || T>1  ) T = -T;
      } else {
@@ -139,9 +148,7 @@ void CylinderNormal( double FX,double FY,double FZ, double DX,double DY,double D
        *nx = FX + T*DX;
        *ny = FY + T*DY;
        *nz = 0;
-       for( i=0; i<3; i++)
-         for( j=0; j<3; j++)  mat[i][j] = Cyl->RotationMatrix[j][i];
-       RotateVector( nx,ny,nz,  mat );
+       RotateVectorTranspose(nx,ny,nz,Cyl->RotationMatrix);
 
        R = sqrt(*nx*(*nx) + *ny*(*ny) + *nz*(*nz));
        *nx /= R; *ny /= R; *nz /= R;
@@ -149,5 +156,3 @@ void CylinderNormal( double FX,double FY,double FZ, double DX,double DY,double D
        *nx = 0; *ny = 0; *nz = 0;
      } 
 }
-
-
