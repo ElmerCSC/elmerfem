@@ -79,7 +79,9 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
     QPS       qps;
     PetscInt  i, rstart, rend, nnz;
     PetscBool converged, viewSol = PETSC_FALSE;
+    PetscBool debugInit = PETSC_FALSE, pinInitToBound = PETSC_FALSE, pinInitToBoundAfterFirst = PETSC_FALSE;
     PetscViewer viewer;
+    static PetscInt solveCallCounter = 0;
     
     MPI_Comm comm=MPI_Comm_f2c(fcomm);
     
@@ -197,14 +199,17 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
     * Setup QP: argmin 1/2 x'Ax -x'b s.t. c <= x
     *  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */    
 
+    solveCallCounter++;
+
+    PetscCall(PetscOptionsGetBool(NULL, NULL, "-permon_debug_initial_guess", &debugInit, NULL));
+    PetscCall(PetscOptionsGetBool(NULL, NULL, "-permon_initial_guess_at_bound", &pinInitToBound, NULL));
+    PetscCall(PetscOptionsGetBool(NULL, NULL, "-permon_initial_guess_at_bound_after_first", &pinInitToBoundAfterFirst, NULL));
+
     PetscCall(QPCreate(comm, &qp));
     /* Set matrix representing QP operator */
     PetscCall(QPSetOperator(qp, A));
     /* Set right hand side */
     PetscCall(QPSetRhs(qp, b));
-    /* Set initial guess.
-    * THIS VECTOR WILL ALSO HOLD THE SOLUTION OF QP */
-    PetscCall(QPSetInitialVector(qp, x));
     /* Set box constraints.
     * For PERMON's QPCBox we must always provide a valid lower bound vector. */
     if (bound == 0) {
@@ -222,6 +227,33 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
     } else {
         return -1;
     }
+
+    if (debugInit) {
+        PetscReal xNorm2 = 0.0, xMin = 0.0, xMax = 0.0;
+        PetscReal cNorm2 = 0.0, cMin = 0.0, cMax = 0.0;
+        PetscCall(VecNorm(x, NORM_2, &xNorm2));
+        PetscCall(VecMin(x, NULL, &xMin));
+        PetscCall(VecMax(x, NULL, &xMax));
+        PetscCall(VecNorm(c, NORM_2, &cNorm2));
+        PetscCall(VecMin(c, NULL, &cMin));
+        PetscCall(VecMax(c, NULL, &cMax));
+        PetscCall(PetscPrintf(comm,
+            "[permon_solve #%" PetscInt_FMT "] initial guess from Elmer: ||x||_2=%.6e min=%.6e max=%.6e; bound=%s ||c||_2=%.6e min=%.6e max=%.6e\n",
+            solveCallCounter,
+            (double)xNorm2, (double)xMin, (double)xMax,
+            (bound == 0) ? "lower" : "upper",
+            (double)cNorm2, (double)cMin, (double)cMax));
+    }
+
+    if (pinInitToBound || (pinInitToBoundAfterFirst && solveCallCounter > 1)) {
+        /* Optional experiment: start exactly on active bound instead of Elmer's XVec. */
+        PetscCall(VecCopy(c, x));
+    }
+
+    /* Set initial guess.
+    * THIS VECTOR WILL ALSO HOLD THE SOLUTION OF QP */
+    PetscCall(QPSetInitialVector(qp, x));
+
     PetscCall(QPSetBox(qp, NULL, lb, ub));
     /* Set runtime options, e.g
     *   -qp_chain_view_kkt */
