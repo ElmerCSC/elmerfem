@@ -334,7 +334,7 @@ void InitPolyFactors( int N, Geometry_t *Elements, int *Type, int *Topo, double 
            for( k=0; k<3; k++ )
            for( n=0; n<3; n++ )
            {
-              l = 3*Topo[3*i+k] + n;
+              l = 3*Topo[4*i+k]+n;
               Elements[i].Triangle->PolyFactors[n][j]   += ShapeFunctionMatrix3[k][j]*Coord[l];
               Elements[i].Triangle->PolyFactors[n+3][j] += ShapeFunctionMatrix3[k][j]*Normals[3*i+n];
            }
@@ -503,12 +503,15 @@ void InitStuff( int N, int *Topo, int *Type, double *Coord, double *Normals, int
    Elements = (Geometry_t *)calloc(N,sizeof(Geometry_t));
    InitPolyFactors(N,Elements,Type,Topo,Coord,Normals);
 
+
    RT_N = RT_N0;
    RT_Topo = RT_Topo0;
-   if ( RT_N == 0 && Type[0] == 202 && Combine )
+   if ( RT_N == 0 && Combine )
    {
-     RT_Topo = (int *)malloc(2*N*sizeof(int));
-     Combine2DRaytraceElements(N,Topo,&RT_N,RT_Topo,Coord);
+     if ( Type[0] == 202 ) {
+       RT_Topo = (int *)malloc(2*N*sizeof(int));
+       Combine2DRaytraceElements(N,Topo,&RT_N,RT_Topo,Coord);
+     }
    }
 
    /*

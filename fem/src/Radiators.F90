@@ -517,7 +517,7 @@
                 TYPE(t) = 404
            END SELECT
            DO i=1,j
-             Surfaces(j*(t-1)+i) = Element % NodeIndexes(i)-1
+             Surfaces(4*(t-1)+i) = Element % NodeIndexes(i)-1
            END DO
            
            IF (Normal_in*(Nrm(1)*Nx + Nrm(2)*Ny + Nrm(3)*nz)>0) THEN

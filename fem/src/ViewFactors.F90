@@ -367,6 +367,7 @@
          ALLOCATE( Surfaces(2*N), Factors(N*N), STAT=istat )
        ELSE
          ALLOCATE( Normals(3*N), Factors(N*N),Surfaces(4*N), TYPE(N), STAT=istat )
+         Surfaces = 0 
        END IF
        IF ( istat /= 0 ) THEN
          CALL Fatal( 'Viewfactors', 'Memory allocation error. Aborting' )
@@ -531,7 +532,7 @@
                 TYPE(t) = 404
            END SELECT
            DO i=1,j
-             Surfaces(j*(t-1)+i) = Element % NodeIndexes(i)-1
+             Surfaces(4*(t-1)+i) = Element % NodeIndexes(i)-1
            END DO
            
            IF (Normal_in * SUM(Nrm*NrmB)>0) THEN
@@ -568,7 +569,7 @@
          Nrays = GetInteger( Params, 'Viewfactor Number of Rays ',  GotIt )
          IF ( .NOT. GotIt ) Nrays = 1
 
-         QuadInteg = GetInteger( Params, 'Viewfactor Line Integration Points ',  GotIt )
+         LineInteg = GetInteger( Params, 'Viewfactor Line Integration Points ',  GotIt )
          IF ( .NOT. GotIt ) LineInteg = 2; ! ---> 1...12
 
          QuadInteg = GetInteger( Params, 'Viewfactor Quad Integration Points ',  GotIt )
