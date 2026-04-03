@@ -1,0 +1,42 @@
+
+  Use Piola Transform = False
+
+  Linear System Block Mode = Logical True
+
+  Block Gauss-Seidel = Logical True
+  Block Hor-Ver System = Logical True
+  active coordinate = integer 3
+!  Block Cartesian System = Logical True
+  Block Matrix Reuse = Logical False
+  Block Preconditioner = Logical True
+  Block Scaling = Logical True
+
+! Linear system solver for outer loop
+!-----------------------------------------
+  Outer: Linear System Solver = "Iterative"
+  Outer: Linear System Convergence Tolerance = 1e-7
+  Outer: Linear System Iterative Method = gcr
+  Outer: Linear System GCR Restart =  250
+  Outer: Linear System Residual Output =  1
+  Outer: Linear System Max Iterations =  100
+  Outer: Linear System Pseudo Complex = logical True
+
+  $blocktol = 1.0e-4
+
+  block 11: Linear System Solver = "iterative"
+  block 11: Linear System Preconditioning = none 
+  block 11: Linear System Residual Output = 100
+  block 11: Linear System Max Iterations = 500
+  block 11: Linear System Iterative Method = idrs 
+  block 11: Linear System Convergence Tolerance = $blocktol
+  block 22: Idrs Parameter = 3
+  block 11: Linear System Complex = True
+
+  block 22: Linear System Solver = "Iterative"
+  block 22: Linear System Preconditioning = none 
+  block 22: Linear System Residual Output = 100
+  block 22: Linear System Max Iterations = 500
+  block 22: Linear System Iterative Method = idrs 
+  block 22: Linear System Convergence Tolerance = $blocktol
+  block 22: Idrs Parameter = 3
+  block 22: Linear System Complex = True

@@ -11752,7 +11752,7 @@ END FUNCTION SearchNodeL
     REAL(KIND=dp) :: MinLim, MaxLim, MinV, MaxV, V
     LOGICAL :: UseAdapt, Found,ElementalRule
     INTEGER :: i,j,n,ElementalNp(8),prevVisited = -1
-    LOGICAL :: Debug, InitDone, pRef, IsBC, prevIsBC, AdaptSplit 
+    LOGICAL :: Debug, InitDone, pRef, IsBC, prevIsBC, AdaptSplit, UseNameSpace
     INTEGER :: EdgeBasisDegree
     REAL(KIND=dp) :: ElemPhi(27)
     LOGICAL :: ElemCut(8)
@@ -11776,6 +11776,16 @@ END FUNCTION SearchNodeL
     IF( .NOT. InitDone ) THEN
       PrevIsBC = IsBC
 
+      IF(IsBC ) THEN
+        UseNameSpace = ListCheckPrefix( pSolver % Values,'bc gauss:')         
+        CALL Info('GaussPointsAdapt','Looking for integration rules with namespace "bc gauss:"',Level=10)
+        CALL ListPushNamespace('bcgauss:')
+      ELSE
+        UseNameSpace = ListCheckPrefix( pSolver % Values,'bulk gauss:')         
+        CALL Info('GaussPointsAdapt','Looking for integration rules with namespace "bulk gauss:"',Level=10)
+        CALL ListPushNamespace('bulk gauss:')
+      END IF
+                    
       RelOrder = ListGetInteger( pSolver % Values,'Relative Integration Order',Found )
       AdaptNp = 0
       AdaptSplit = .FALSE.
@@ -11797,7 +11807,11 @@ END FUNCTION SearchNodeL
         IF( IntegVar % TYPE /= Variable_on_nodes ) THEN
           CALL Fatal('GaussPointsAdapt','Wrong type of integration variable!')
         END IF
-        AdaptSplit = ListGetLogical( pSolver % Values,'Adaptive Integration Split',Found )  
+        AdaptSplit = ListGetLogical( pSolver % Values,'Adaptive Integration Split',Found )          
+        IF(AdaptSplit .AND. Element % TYPE % ElementCode > 500 ) THEN
+          CALL Warn('GaussPointsAdapt','Adaptive Integration Split only implemented in 2D!')
+        END IF
+        
         IF( AdaptSplit ) THEN
           MinLim = ListGetCReal( pSolver % Values,'Adaptive Integration Split Limit', Found )
           MaxLim = MinLim
@@ -11810,9 +11824,18 @@ END FUNCTION SearchNodeL
           AdaptOrder = ListGetInteger( pSolver % Values,'Adaptive Integration Order',Found )        
         END IF
         IF(.NOT. Found ) AdaptOrder = 1
-        !PRINT *,'Adaptive Integration Strategy:',MinV,MaxV,AdaptOrder,AdaptNp
+        !PRINT *,'Adaptive Integration Strategy:',MinLim,MaxLim,AdaptOrder,AdaptSplit,AdaptNp
       END IF
 
+      IF(UseNameSpace) THEN
+        IF(IsBC) THEN
+          CALL ListPopNamespace('bc gauss:')
+        ELSE
+          CALL ListPopNamespace('bulk gauss:')
+        END IF
+      END IF
+      
+      
       pRef = .FALSE.
       
       EdgeBasisDegree = 0
@@ -11876,7 +11899,9 @@ END FUNCTION SearchNodeL
       RelOrder = 0
       Np = 0
 
-      n = Element % TYPE % NumberOfNodes
+      ! Count number of corner nodes only 
+      n = Element % TYPE % ElementCode / 100
+      IF(n > 4 .AND. n < 8) n = n-1
       
       BLOCK
         INTEGER :: nn,j1,j2
@@ -11908,6 +11933,7 @@ END FUNCTION SearchNodeL
 
         
       IF( .NOT. ( MaxV < MinLim .OR. MinV > MaxLim ) ) THEN
+
         IF( AdaptSplit ) THEN
           ElemPhi(1:n) = ElemPhi(1:n) - MinLim 
           IF(.NOT. ASSOCIATED(ElemNodes % x)) THEN
@@ -11920,7 +11946,7 @@ END FUNCTION SearchNodeL
           ElemCut = .FALSE.
           CALL CutSingleElement(Element, ElemNodes, ElemPhi, ElemCut )
 
-          IF(COUNT(ElemCut(1:n)) > 1) THEN
+          IF(COUNT(ElemCut(1:2*n)) > 1) THEN
             BLOCK
               LOGICAL :: IsCut, IsMore, stat
               INTEGER :: SgnNode, CutCnt, LocalInds(4), m, t
@@ -11993,9 +12019,12 @@ END FUNCTION SearchNodeL
               IF(i>0) THEN
                 !PRINT *,'detJ orig:',CutCnt,i,ssum0,ssum,IP % n
               END IF
+              !PRINT *,'AdaptiveElement:',Element % ElementIndex, MinV, MaxV, AdaptSplit, IntegStuff % n
+
               RETURN
               
             END BLOCK
+
           END IF
         ELSE
           RelOrder = AdaptOrder

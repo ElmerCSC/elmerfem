@@ -3037,13 +3037,14 @@ CONTAINS
 
 
    SUBROUTINE EdgeElementStyle(VList, PiolaVersion, SecondFamily, QuadraticApproximation, &
-       BasisDegree, Check ) 
+       BasisDegree, GradientVersion, Check ) 
 
      TYPE(ValueList_t), POINTER :: VList
      LOGICAL :: PiolaVersion
      LOGICAL, OPTIONAL :: SecondFamily
      LOGICAL, OPTIONAL :: QuadraticApproximation
      INTEGER, OPTIONAL :: BasisDegree
+     LOGICAL, OPTIONAL :: GradientVersion
      LOGICAL, OPTIONAL :: Check
      
      LOGICAL :: Found, Quadratic, Cubic, Second 
@@ -3079,6 +3080,11 @@ CONTAINS
        QuadraticApproximation = Quadratic
      END IF
 
+     IF (PRESENT(GradientVersion)) THEN
+       GradientVersion = ListGetLogical(VList, 'Gradient Basis Functions', Found) .OR. &
+           ListGetLogical(VList, 'Simplicial Mesh', Found)
+     END IF
+     
      ! When initializing the consistency of the keywords may be checked.
      ! Also always add the Piola flag since it determines the type of IPs.
      IF( PRESENT(Check)) THEN
@@ -3153,9 +3159,10 @@ CONTAINS
      INTEGER :: EdgeBasisDegree
      LOGICAL :: PerformPiolaTransform, Found, SerendipityPBasis
      LOGICAL :: SecondFamily
-     LOGICAL :: SimplicialElements
+     LOGICAL :: GradVersion
      
-     SAVE PrevSolver, EdgeBasisDegree, PerformPiolaTransform, SecondFamily
+     SAVE PrevSolver, EdgeBasisDegree, PerformPiolaTransform, SecondFamily, &
+         GradVersion
 !------------------------------------------------------------------------------
 
      IF( PRESENT( USolver ) ) THEN
@@ -3168,17 +3175,14 @@ CONTAINS
        IF( .NOT. ASSOCIATED( PrevSolver, PSolver ) ) THEN
          PrevSolver => pSolver                  
          CALL EdgeElementStyle(pSolver % Values, PerformPiolaTransform, SecondFamily, &
-             BasisDegree = EdgeBasisDegree )
+             BasisDegree = EdgeBasisDegree, GradientVersion = GradVersion)
        END IF
        IF( PerformPiolaTransform ) THEN
-
-         SimplicialElements = ListGetLogical(pSolver % Values, 'Simplicial Mesh', Found )
-         
          stat = EdgeElementInfo(Element,Nodes,u,v,w,detF=Detj,Basis=Basis, &
              EdgeBasis=EdgeBasis,RotBasis=RotBasis,dBasisdx=dBasisdx,&
              SecondFamily = SecondFamily, BasisDegree = EdgeBasisDegree, &
              ApplyPiolaTransform = PerformPiolaTransform, &
-             SimplicialMesh = SimplicialElements)
+             GradientVersion = GradVersion)
        ELSE
          IF(Element % Type % ElementCode == 504 .AND. ANY([u,v,w] < 0.0) ) THEN
            PRINT *,'Negative local coordinates for tet:',u,v,w
@@ -6839,7 +6843,7 @@ END SUBROUTINE PickActiveFace
      FUNCTION EdgeElementInfo( Element, Nodes, u, v, w, F, G, detF, &
           Basis, EdgeBasis, RotBasis, dBasisdx, SecondFamily, BasisDegree, &
           ApplyPiolaTransform, ReadyEdgeBasis, ReadyRotBasis, &
-          TangentialTrMapping, SimplicialMesh) RESULT(stat)
+          TangentialTrMapping, GradientVersion) RESULT(stat)
 !------------------------------------------------------------------------------
        IMPLICIT NONE
 
@@ -6865,7 +6869,7 @@ END SUBROUTINE PickActiveFace
        REAL(KIND=dp), OPTIONAL :: ReadyRotBasis(:,:)  !< The preretabulated Curl of the edge basis function
        LOGICAL, OPTIONAL :: TangentialTrMapping  !< To return b x n, with n=(0,0,1) the normal to the 2D reference element.
                                                  !< The Piola transform is then the usual div-conforming version.    
-       LOGICAL, OPTIONAL :: SimplicialMesh       !< Use an alternate basis of the first kind, needs simplicial elements
+       LOGICAL, OPTIONAL :: GradientVersion      !< Use an alternate basis of the first kind, lacking support for pyramids and bricks
        LOGICAL :: Stat                           !< .FALSE. for a degenerate element
 !-----------------------------------------------------------------------------------------------------------------
 !      Local variables
@@ -6876,10 +6880,10 @@ END SUBROUTINE PickActiveFace
        REAL(KIND=dp) :: dLbasisdx(MAX(SIZE(Nodes % x),SIZE(Basis)),3), WorkBasis(4,3), WorkCurlBasis(4,3)
        REAL(KIND=dp) :: D1, D2, B(3), curlB(3), GT(3,3), LG(3,3), LF(3,3)
        REAL(KIND=dp) :: ElmMetric(3,3), detJ, CurlBasis(54,3)
-       REAL(KIND=dp) :: t(3), s(3), v1, v2, v3, h1, h2, h3, dh1, dh2, dh3, grad(2)
+       REAL(KIND=dp) :: t(3), s(3), v1, v2, v3, h1, h2, h3, dh1, dh2, dh3, grad(2), grad_i(2), grad_j(2), grad_k(2)
        REAL(KIND=dp) :: LBasis(Element % TYPE % NumberOfNodes), Beta(4), EdgeSign(16)
        REAL(KIND=dp) :: fs1, fs2
-       REAL(KIND=dp) :: sfun, tfun, hfun, gfun
+       REAL(KIND=dp) :: sfun, tfun, hfun, gfun, bfun
        REAL(KIND=dp) :: grad_sfun(3), grad_tfun(3), grad_hfun(3), grad_gfun(3)
        REAL(KIND=dp) :: svec(3), tvec(3), hvec(3), gvec(3)
        REAL(KIND=dp) :: grad_svec(3,3), grad_tvec(3,3), grad_hvec(3,3), grad_gvec(3,3)
@@ -6889,7 +6893,7 @@ END SUBROUTINE PickActiveFace
        LOGICAL :: SecondOrder, ThirdOrder, ApplyTraceMapping, Found
        LOGICAL :: ReverseSign(4)
        LOGICAL :: ScaleFaceBasis, RedefineFaceBasis, UseWForms = .false.
-       LOGICAL :: Simplicial
+       LOGICAL :: GradVersion
        LOGICAL :: InformAboutWForms = .TRUE.
        INTEGER, POINTER :: EdgeMap(:,:)
        INTEGER :: TriangleFaceMap(3), SquareFaceMap(4), BrickFaceMap(6,4), PrismSquareFaceMap(3,4), DOFs, GIndexes(27)
@@ -6938,13 +6942,14 @@ END SUBROUTINE PickActiveFace
        ApplyTraceMapping = .FALSE.
        IF ( PRESENT(TangentialTrMapping) ) ApplyTraceMapping = TangentialTrMapping
 
-       Simplicial = .FALSE.
-       IF ( PRESENT(SimplicialMesh) ) Simplicial = SimplicialMesh
-       IF (Simplicial .AND. .NOT.(Element % TYPE % ElementCode / 100 == 2 .OR. &
+       GradVersion = .FALSE.
+       IF ( PRESENT(GradientVersion) ) GradVersion = GradientVersion
+       IF (GradVersion .AND. .NOT.(Element % TYPE % ElementCode / 100 == 2 .OR. &
            Element % TYPE % ElementCode / 100 == 3 .OR. &
            Element % TYPE % ElementCode / 100 == 4 .OR. &
-           Element % TYPE % ElementCode / 100 == 5)) THEN
-         CALL Fatal('EdgeElementInfo', 'Simplicial Mesh = True is not supported for the given element shape')
+           Element % TYPE % ElementCode / 100 == 5 .OR. &
+           Element % TYPE % ElementCode / 100 == 7)) THEN
+         CALL Fatal('EdgeElementInfo', 'Gradient Basis Functions = True is not supported for the given element shape')
        END IF
            
        !-------------------------------------------------------------------------------------------
@@ -7394,7 +7399,7 @@ END SUBROUTINE PickActiveFace
            EdgeMap => GetEdgeMap(3)
            !EdgeMap => GetEdgeMap(GetElementFamily(Element))
 
-           IF (Create2ndKindBasis .OR. Simplicial .AND. &
+           IF (Create2ndKindBasis .OR. GradVersion .AND. &
                (SecondOrder .OR. ThirdOrder)) THEN
 
              IF (Create2ndKindBasis) THEN
@@ -7412,7 +7417,6 @@ END SUBROUTINE PickActiveFace
              ELSE
                !
                ! An alternate first-family basis of degree 2 or 3 for faster solution with iterative methods. 
-               ! Currently this is available only for simplicial elements. 
                !
                IF (SecondOrder) THEN
                  EDOFs = 2
@@ -7429,22 +7433,10 @@ END SUBROUTINE PickActiveFace
                i = EdgeMap(k,1)
                j = EdgeMap(k,2)
 
-               svec(1:2) = Basis(j) * dLBasisdx(i,1:2)
-               tvec(1:2) = Basis(i) * dLBasisdx(j,1:2)
-
-               grad_svec(1,2) = dLBasisdx(j,2) * dLBasisdx(i,1)
-               grad_svec(2,1) = dLBasisdx(j,1) * dLBasisdx(i,2)
-
-               grad_tvec(1,2) = dLBasisdx(i,2) * dLBasisdx(j,1)
-               grad_tvec(2,1) = dLBasisdx(i,1) * dLBasisdx(j,2)
-
-               WorkBasis(1,1:2) = svec(1:2)
-               WorkBasis(2,1:2) = tvec(1:2)
-               WorkCurlBasis(1,3) = grad_svec(2,1) - grad_svec(1,2)
-               WorkCurlBasis(2,3) = grad_tvec(2,1) - grad_tvec(1,2)
-
+               CALL EdgeWhitneyComponents2D(WorkBasis(1:2,:), WorkCurlBasis(1:2,:), i, j, u, v)
+               
                IF (Create2ndKindBasis .AND. SecondOrder .OR. &
-                   Simplicial .AND. ThirdOrder) THEN
+                   GradVersion .AND. ThirdOrder) THEN
                  WorkWeight(1) = 2.0d0*Basis(i) - Basis(j)
                  WorkWeight(2) = 2.0d0*Basis(j) - Basis(i)
 
@@ -7491,33 +7483,9 @@ END SUBROUTINE PickActiveFace
              ! The basis functions associated with the faces for higher-order cases
              IF (FDOFs > 0) THEN
                TriangleFaceMap(:) = (/ 1,2,3 /)
-               I1 = 1
-               I2 = 2
-               I3 = 3
 
-               WorkBasis(1,1:2) = Basis(I2) * Basis(I3) * dLBasisdx(I1,1:2)
-               WorkBasis(2,1:2) = Basis(I1) * Basis(I3) * dLBasisdx(I2,1:2)
-               WorkBasis(3,1:2) = Basis(I1) * Basis(I2) * dLBasisdx(I3,1:2)
-
-               grad_svec(1,2) = (dLBasisdx(I2,2) * Basis(I3) + &
-                   Basis(I2) * dLBasisdx(I3,2)) * dLBasisdx(I1,1)
-               grad_svec(2,1) = (dLBasisdx(I2,1) * Basis(I3) + &
-                   Basis(I2) * dLBasisdx(I3,1)) * dLBasisdx(I1,2)
-
-               grad_tvec(1,2) = (dLBasisdx(I1,2) * Basis(I3)  + &
-                   Basis(I1) * dLBasisdx(I3,2)) * dLBasisdx(I2,1)
-               grad_tvec(2,1) = (dLBasisdx(I1,1) * Basis(I3)  + &
-                   Basis(I1) * dLBasisdx(I3,1)) * dLBasisdx(I2,2)
-
-               grad_hvec(1,2) = (dLBasisdx(I1,2) * Basis(I2)  + &
-                   Basis(I1) * dLBasisdx(I2,2)) * dLBasisdx(I3,1)
-               grad_hvec(2,1) = (dLBasisdx(I1,1) * Basis(I2)  + &
-                   Basis(I1) * dLBasisdx(I2,1)) * dLBasisdx(I3,2)
-
-               WorkCurlBasis(1,3) = grad_svec(2,1) - grad_svec(1,2)
-               WorkCurlBasis(2,3) = grad_tvec(2,1) - grad_tvec(1,2)
-               WorkCurlBasis(3,3) = grad_hvec(2,1) - grad_hvec(1,2)
-
+               CALL FaceWhitneyComponents2D(WorkBasis(1:3,:), WorkCurlBasis(1:3,:), u, v)
+               
                ! Create permutation:
                FaceIndices(1:3) = GIndexes(TriangleFaceMap(1:3))
                CALL TriangleFaceDofsOrdering2nd(I1,I2,I3,FaceIndices(1:3))
@@ -7689,10 +7657,10 @@ END SUBROUTINE PickActiveFace
            !--------------------------------------------------------------
            EdgeMap => GetEdgeMap(4)
            IF (SecondOrder) THEN
-             IF (Simplicial) THEN
+             IF (GradVersion) THEN
                !
                ! An alternate basis which is compatible with the basis originally constructed for
-               ! simplicial elements when SimplicialMesh = .TRUE.. Here the basis functions are  
+               ! simplicial elements when GradientVersion = .TRUE.. Here the basis functions are  
                ! defined in terms of the Lobatto shape functions Phi(k,.) and the Legendre
                ! polynomials LegendreP(1,.)
                !
@@ -7775,58 +7743,67 @@ END SUBROUTINE PickActiveFace
 
                WorkBasis(1:4,1:2) = 0.0d0
 
-               ! (u,v) ->  P0 * phi_2(v) e1
-               WorkBasis(1,1) = Phi(2,v)
-               WorkCurlBasis(1,3) = -dPhi(2,v)
+               ! (u,v) ->  P0/2 * (-2) * sqrt(2.0d0/3.0d0) * phi_2(v) e1
+               !        =  1/2 P0 * 4 L_1(v) L_2(v) e1
+               WorkBasis(1,1) = -sqrt(2.0d0/3.0d0) * Phi(2,v)
+               WorkCurlBasis(1,3) = sqrt(2.0d0/3.0d0) * dPhi(2,v)
 
-               ! (u,v) ->  phi_2(u) * P0 e2
-               WorkBasis(2,2) = Phi(2,u)
-               WorkCurlBasis(2,3) = dPhi(2,u)
+               ! (u,v) ->  (-2) * sqrt(2.0d0/3.0d0) * phi_2(u) * P0/2 e2
+               !        =  1/2 P0 * 4 L_1(u) L_2(u) e2               
+               WorkBasis(2,2) = -sqrt(2.0d0/3.0d0) * Phi(2,u)
+               WorkCurlBasis(2,3) = -sqrt(2.0d0/3.0d0) * dPhi(2,u)
 
-               ! (u,v) ->  P1(u) * phi_2(v) e1
-               WorkBasis(3,1) = LegendreP(1,u) * Phi(2,v)
-               WorkCurlBasis(3,3) = -LegendreP(1,u) * dPhi(2,v)
+               ! (u,v) ->  D_u [-1/sqrt(6) * phi_2(u) * (-2) * sqrt(2/3) * phi_2(v) ] e_1
+               !        = -1/2 P1(u) * [(-2) * sqrt(2/3) * phi_2(v)] e_1
+               !        = -1/2 P1(u) * [4 L_1(v) L_2(v)] e_1
+               WorkBasis(3,1) = -1.0d0/2.0d0 * LegendreP(1,u) * (-2.0d0) * sqrt(2.0d0/3.0d0) * Phi(2,v)
+               WorkCurlBasis(3,3) = 1.0d0/2.0d0 * LegendreP(1,u) * (-2.0d0) * sqrt(2.0d0/3.0d0) * dPhi(2,v)
 
-               ! (u,v) ->  phi_2(u) * P1(v) e2
-               WorkBasis(4,2) = Phi(2,u) * LegendreP(1,v)
-               WorkCurlBasis(4,3) = dPhi(2,u) * LegendreP(1,v)
+               ! (u,v) -> D_v [-1/sqrt(6) * phi_2(v) * (-2) * sqrt(2/3) * phi_2(u) ] e_2
+               !        = -1/2 P1(v) * [(-2) * sqrt(2/3) * phi_2(u)] e_2
+               !        = -1/2 P1(v) * [4 L_1(u) L_2(u)] e_2
+               WorkBasis(4,2) = (-2.0d0) * sqrt(2.0d0/3.0d0) * Phi(2,u) * (-1.0d0/2.0d0) * LegendreP(1,v)
+               WorkCurlBasis(4,3) = (-2.0d0) * sqrt(2.0d0/3.0d0) * dPhi(2,u) * (-1.0d0/2.0d0) * LegendreP(1,v)
 
                DO l=1,FDOFs
 
                  SELECT CASE(l)
                  CASE(1)
-                   ! (u,v) ->  P0 * phi_2(v) e1
+                   ! (u,v) -> -sqrt(2/3) * P0 * phi_2(v) e1
+                   !        = (1/2 P0) * [-2 * sqrt(2/3) * phi_2(v)] e1
+                   !        = (1/2 P0) * 4 L_1(v) L_2(v) e1
+                   !
+                   sfun = 1.0d0
+                   ! tfun = 0.0d0
+                   EdgeBasis(4*EDOFs + l,1:2) = sfun * D1 * WorkBasis(I1,1:2)
+                   CurlBasis(4*EDOFs + l,3) = sfun * D1 * WorkCurlBasis(I1,3)
+                 CASE(2)
+                   ! (u,v) -> -sqrt(2/3) * phi_2(u) * P0 e2
+                   !        = (1/2 P0) * [-2 * sqrt(2/3) * phi_2(u)] e2
+                   !        = (1/2 P0) * 4 L_1(u) L_2(u) e2
+                   !
+                   !sfun = 0.0d0
+                   tfun = 1.0d0
+                   EdgeBasis(4*EDOFs + l,1:2) = tfun * D2 * WorkBasis(I2,1:2)
+                   CurlBasis(4*EDOFs + l,3) = tfun * D2 * WorkCurlBasis(I2,3)
+                 CASE(3)
+                   ! (u,v) ->  -1/2 P1(u) * [4 L_1(v) L_2(v)] e_1,  or -1/2 P1(v) * [4 L_1(u) L_2(u)] e_2
                    sfun = 1.0d0
                    tfun = 0.0d0
-                   q = 0
-                   EdgeBasis(4*EDOFs + l,1:2) = sfun * D1 * WorkBasis(q+I1,1:2)
-                   CurlBasis(4*EDOFs + l,3) = sfun * D1 * WorkCurlBasis(q+I1,3)
-                 CASE(2)
-                   ! (u,v) ->  phi_2(u) * P0 e2
-                   sfun = 0.0d0
-                   tfun = 1.0d0
-                   q = 0
-                   EdgeBasis(4*EDOFs + l,1:2) = tfun * D2 * WorkBasis(q+I2,1:2)
-                   CurlBasis(4*EDOFs + l,3) = tfun * D2 * WorkCurlBasis(q+I2,3)
-                 CASE(3)
-                   ! (u,v) ->  P1(u) * phi_2(v) e1 - phi_2(u) * P1(v) e2
-                   sfun = 1.0d0
-                   tfun = -1.0d0
                    q = 2
                    ! Note that sign changes never happen
-                   EdgeBasis(4*EDOFs + l,1:2) = sfun * WorkBasis(q+I1,1:2) + tfun * WorkBasis(q+I2,1:2)
-                   CurlBasis(4*EDOFs + l,3) = sfun * WorkCurlBasis(q+I1,3) + tfun * WorkCurlBasis(q+I2,3)
+                   EdgeBasis(4*EDOFs + l,1:2) = sfun * WorkBasis(q+I1,1:2)
+                   CurlBasis(4*EDOFs + l,3) = sfun * WorkCurlBasis(q+I1,3)
                  CASE(4)
-                   ! (u,v) -> grad( phi_2(u) * phi_2(v) )
-                   !        =  1/||P1|| * P1(u) * phi_2(v) e1 + phi_2(u )* 1/||P1|| * P1(v) e2
-                   !        = sqrt(3/2) * P1(u) * phi_2(v) e1 + sqrt(3/2) * phi_2(u) * P1(v) e2               
+                   ! (u,v) -> grad( -1/sqrt(6) * (-2 * sqrt(2/3)) * phi_2(u) * phi_2(v) )
+                   !        = -1/2 P1(u) * [4 L_1(v) L_2(v)] e_1 - 1/2 P1(v) * [4 L_1(u) L_2(u)] e_2
                    !
-                   sfun = sqrt(3.0d0/2.0d0)
-                   tfun = sqrt(3.0d0/2.0d0)
+                   sfun = 1.0d0
+                   tfun = 1.0d0
                    q = 2
                    ! Note that sign changes never happen
                    EdgeBasis(4*EDOFs + l,1:2) = sfun * WorkBasis(q+I1,1:2) + tfun * WorkBasis(q+I2,1:2)
-                   CurlBasis(4*EDOFs + l,3) = sfun * WorkCurlBasis(q+I1,3) + tfun * WorkCurlBasis(q+I2,3)
+                   CurlBasis(4*EDOFs + l,3) = 0.0d0
                  END SELECT
                END DO
              ELSE
@@ -7990,7 +7967,7 @@ END SUBROUTINE PickActiveFace
            !--------------------------------------------------------------
            EdgeMap => GetEdgeMap(5)
 
-           IF (Create2ndKindBasis .OR. Simplicial .AND. &
+           IF (Create2ndKindBasis .OR. GradVersion .AND. &
                (SecondOrder .OR. ThirdOrder)) THEN
 
              BDOFs = 0
@@ -8010,7 +7987,6 @@ END SUBROUTINE PickActiveFace
              ELSE
                !
                ! An alternate first-family basis of degree 2 or 3 for faster solution with iterative methods. 
-               ! Currently this is available only for simplicial elements. 
                !
                IF (SecondOrder) THEN
                  EDOFs = 2
@@ -8057,7 +8033,7 @@ END SUBROUTINE PickActiveFace
                WorkCurlBasis(2,3) = grad_tvec(2,1) - grad_tvec(1,2)
 
                IF (Create2ndKindBasis .AND. SecondOrder .OR. &
-                   Simplicial .AND. ThirdOrder) THEN
+                   GradVersion .AND. ThirdOrder) THEN
                  WorkWeight(1) = 2.0d0*Basis(i) - Basis(j)
                  WorkWeight(2) = 2.0d0*Basis(j) - Basis(i)
 
@@ -9494,385 +9470,629 @@ END SUBROUTINE PickActiveFace
            EdgeMap => GetEdgeMap(7)
 
            IF (SecondOrder) THEN
-!             IF (Simplicial) THEN
+             GRADIENT_VERSION_PRISM: IF (GradVersion) THEN
+               EDOFs = 2               
+               !
+               ! First handle the edges which bound a triangular face
+               !
+               EDGES_BOUNDING_TRIANGLE: DO k=1,3
+                 !
+                 ! We utilize the Nedelec basis for the triangle, so we
+                 ! compute component functions to create the Whitney forms
+                 ! associated with the edges of triangle.
+                 
+                 EdgeMap => GetEdgeMap(3)
+                 i = EdgeMap(k,1)
+                 j = EdgeMap(k,2)
 
-!             ELSE
-             !---------------------------------------------------------------
-             ! The second-order element from the Nedelec's first family 
-             ! (note that the lowest-order prism element is from a different 
-             ! family). This element may not be optimally accurate if 
-             ! the physical element is not affine.
-             !--------------------------------------------------------------             
-             h1 = 0.5d0 * (1-w)
-             dh1 = -0.5d0
-             h2 = 0.5d0 * (1+w)
-             dh2 = 0.5d0
-             h3 = h1 * h2
-             dh3 = -0.5d0 * w
+                 CALL EdgeWhitneyComponents2D(Wrk(1:2,:), WrkCurl(1:2,:), i, j, u, v)
+                 bfun = TriangleNodalPBasis(i,u,v) * TriangleNodalPBasis(j,u,v)
 
-             ! ---------------------------------------------------------
-             ! The first and fourth edges ...
-             !--------------------------------------------------------
-             ! The corresponding basis functions for the triangle:
-             !--------------------------------------------------------
-             WorkBasis(1,1) = (3.0d0 - Sqrt(3.0d0)*v)/6.0d0
-             WorkBasis(1,2) = u/(2.0d0*Sqrt(3.0d0))
-             WorkCurlBasis(1,3) = 1.0d0/Sqrt(3.0d0)
-             WorkBasis(2,1) = -(u*(-3.0d0 + Sqrt(3.0d0)*v))/2.0d0
-             WorkBasis(2,2) = (Sqrt(3.0d0)*u**2)/2.0d0
-             WorkCurlBasis(2,3) = (3.0d0*Sqrt(3.0d0)*u)/2.0d0
+                 EdgeMap => GetEdgeMap(7)
 
-             i = EdgeMap(1,1)
-             j = EdgeMap(1,2)
-             EdgeBasis(1,1:2) = WorkBasis(1,1:2) * h1
-             CurlBasis(1,1) = -WorkBasis(1,2) * dh1
-             CurlBasis(1,2) = WorkBasis(1,1) * dh1
-             CurlBasis(1,3) = WorkCurlBasis(1,3) * h1
-             EdgeBasis(2,1:2) = WorkBasis(2,1:2) * h1
-             CurlBasis(2,1) = -WorkBasis(2,2) * dh1
-             CurlBasis(2,2) = WorkBasis(2,1) * dh1
-             CurlBasis(2,3) = WorkCurlBasis(2,3) * h1
-             IF(GIndexes(j)<GIndexes(i)) THEN
-               EdgeBasis(1,1:2) = -EdgeBasis(1,1:2)
-               CurlBasis(1,1:3) = -CurlBasis(1,1:3)
-             END IF
+                 TRIANGULAR_ENDS: DO q=1,2
+                   !
+                   ! If k=1, handle the first and fourth edge when q=1 and q=2, respectively.
+                   ! If k=2, handle the second and fifth edge.
+                   ! If k=3, handle the third and sixth edge.
+                   !
+                   SELECT CASE(q)
+                   CASE(1)
+                     ! Pick a blending function:
+                     h1 = 0.5d0 * (1-w)
+                     dh1 = -0.5d0
+                   CASE(2)
+                     i = EdgeMap(3+k,1)
+                     j = EdgeMap(3+k,2)
+                     ! Pick a blending function:
+                     h1 = 0.5d0 * (1+w)
+                     dh1 = 0.5d0                     
+                   END SELECT
 
-             i = EdgeMap(4,1)
-             j = EdgeMap(4,2)
-             EdgeBasis(7,1:2) = WorkBasis(1,1:2) * h2
-             CurlBasis(7,1) = -WorkBasis(1,2) * dh2
-             CurlBasis(7,2) = WorkBasis(1,1) * dh2
-             CurlBasis(7,3) = WorkCurlBasis(1,3) * h2
-             EdgeBasis(8,1:2) = WorkBasis(2,1:2) * h2
-             CurlBasis(8,1) = -WorkBasis(2,2) * dh2
-             CurlBasis(8,2) = WorkBasis(2,1) * dh2
-             CurlBasis(8,3) = WorkCurlBasis(2,3) * h2
-             IF(GIndexes(j)<GIndexes(i)) THEN
-               EdgeBasis(7,1:2) = -EdgeBasis(7,1:2)
-               CurlBasis(7,1:3) = -CurlBasis(7,1:3)
-             END IF
+                   IF (GIndexes(j) < GIndexes(i)) THEN
+                     I1 = 2
+                     I2 = 1
+                   ELSE
+                     I1 = 1
+                     I2 = 2
+                   END IF
 
-             ! ---------------------------------------------------------
-             ! The second and fifth edges ...
-             !--------------------------------------------------------
-             ! The corresponding basis functions for the triangle:
-             !--------------------------------------------------------
-             WorkBasis(1,1) = -v/(2.0d0*Sqrt(3.0d0))
-             WorkBasis(1,2) = (1 + u)/(2.0d0*Sqrt(3.0d0))
-             WorkCurlBasis(1,3) = 1.0d0/Sqrt(3.0d0)
-             WorkBasis(2,1) = ((Sqrt(3.0d0) + Sqrt(3.0d0)*u - 3.0d0*v)*v)/4.0d0
-             WorkBasis(2,2) = (Sqrt(3.0d0)*(1.0d0 + u)*(-1.0d0 - u + Sqrt(3.0d0)*v))/4.0d0
-             WorkCurlBasis(2,3) = (-3.0d0*(Sqrt(3.0d0) + Sqrt(3.0d0)*u - 3.0d0*v))/4.0d0
+                   DO l=1,EDOFs
+                     SELECT CASE(l)
+                     CASE(1)
+                       sfun = -1.0d0
+                       tfun = 1.0d0
+                     CASE(2)
+                       sfun = 1.0d0
+                       tfun = 1.0d0
+                     CASE DEFAULT
+                       CALL Fatal('ElementDescription::EdgeElementInfo','sfun/tfun not defined')
+                     END SELECT
 
-             i = EdgeMap(2,1)
-             j = EdgeMap(2,2)
-             EdgeBasis(3,1:2) = WorkBasis(1,1:2) * h1
-             CurlBasis(3,1) = -WorkBasis(1,2) * dh1
-             CurlBasis(3,2) = WorkBasis(1,1) * dh1
-             CurlBasis(3,3) = WorkCurlBasis(1,3) * h1
-             EdgeBasis(4,1:2) = WorkBasis(2,1:2) * h1
-             CurlBasis(4,1) = -WorkBasis(2,2) * dh1
-             CurlBasis(4,2) = WorkBasis(2,1) * dh1
-             CurlBasis(4,3) = WorkCurlBasis(2,3) * h1
-             IF(GIndexes(j)<GIndexes(i)) THEN
-               EdgeBasis(3,1:2) = -EdgeBasis(3,1:2)
-               CurlBasis(3,1:3) = -CurlBasis(3,1:3)
-             END IF
+                     B(1:2) = sfun * Wrk(I1,1:2) + tfun * Wrk(I2,1:2)
+                     CurlB(3) = sfun * WrkCurl(I1,3) + tfun * WrkCurl(I2,3)
+                     EdgeBasis((q-1)*3*EDOFs + EDOFs*(k-1) + l, 1:2) = B(1:2) * h1
+                     
+                     SELECT CASE(l)
+                     CASE(1)
+                       CurlBasis((q-1)*3*EDOFs + EDOFs*(k-1) + l, 1) = -B(2) * dh1
+                       CurlBasis((q-1)*3*EDOFs + EDOFs*(k-1) + l, 2) = B(1) * dh1
+                       CurlBasis((q-1)*3*EDOFs + EDOFs*(k-1) + l, 3) = CurlB(3) * h1 
+                     CASE(2)
+                       ! The basis function obtained as grad(bfun*h1)
+                       EdgeBasis((q-1)*3*EDOFs + EDOFs*(k-1) + l, 3) = bfun * dh1
+                       CurlBasis((q-1)*3*EDOFs + EDOFs*(k-1) + l, 1:3) = 0.0d0
+                     END SELECT
+                   END DO
+                 END DO TRIANGULAR_ENDS
+               END DO EDGES_BOUNDING_TRIANGLE
 
-             i = EdgeMap(5,1)
-             j = EdgeMap(5,2)
-             EdgeBasis(9,1:2) = WorkBasis(1,1:2) * h2
-             CurlBasis(9,1) = -WorkBasis(1,2) * dh2
-             CurlBasis(9,2) = WorkBasis(1,1) * dh2
-             CurlBasis(9,3) = WorkCurlBasis(1,3) * h2
-             EdgeBasis(10,1:2) = WorkBasis(2,1:2) * h2
-             CurlBasis(10,1) = -WorkBasis(2,2) * dh2
-             CurlBasis(10,2) = WorkBasis(2,1) * dh2
-             CurlBasis(10,3) = WorkCurlBasis(2,3) * h2
-             IF(GIndexes(j)<GIndexes(i)) THEN
-               EdgeBasis(9,1:2) = -EdgeBasis(9,1:2)
-               CurlBasis(9,1:3) = -CurlBasis(9,1:3)
-             END IF
+               AXIAL_EDGES: DO k=1,3
 
-             ! ---------------------------------------------------------
-             ! The third and sixth edges ...
-             !--------------------------------------------------------
-             ! The corresponding basis functions for the triangle:
-             !--------------------------------------------------------
-             WorkBasis(1,1) = -v/(2.0d0*Sqrt(3.0d0))
-             WorkBasis(1,2) = (-1 + u)/(2.0d0*Sqrt(3.0d0))
-             WorkCurlBasis(1,3) =  1.0d0/Sqrt(3.0d0)
-             WorkBasis(2,1) = (v*(-Sqrt(3.0d0) + Sqrt(3.0d0)*u + 3.0d0*v))/4.0d0
-             WorkBasis(2,2) = -(Sqrt(3.0d0)*(-1.0d0 + u)*(-1.0d0 + u + Sqrt(3.0d0)*v))/4.0d0
-             WorkCurlBasis(2,3) = (-3.0d0*(-Sqrt(3.0d0) + Sqrt(3.0d0)*u + 3.0d0*v))/4.0d0
+                 i = EdgeMap(6+k,1)
+                 j = EdgeMap(6+k,2)
+                 grad(1:2) = dTriangleNodalPBasis(k, u, v)
 
-             i = EdgeMap(3,1)
-             j = EdgeMap(3,2)
-             EdgeBasis(5,1:2) = WorkBasis(1,1:2) * h1
-             CurlBasis(5,1) = -WorkBasis(1,2) * dh1
-             CurlBasis(5,2) = WorkBasis(1,1) * dh1
-             CurlBasis(5,3) = WorkCurlBasis(1,3) * h1
-             EdgeBasis(6,1:2) = WorkBasis(2,1:2) * h1
-             CurlBasis(6,1) = -WorkBasis(2,2) * dh1
-             CurlBasis(6,2) = WorkBasis(2,1) * dh1
-             CurlBasis(6,3) = WorkCurlBasis(2,3) * h1
-             IF(GIndexes(j)<GIndexes(i)) THEN
-               EdgeBasis(5,1:2) = -EdgeBasis(5,1:2)
-               CurlBasis(5,1:3) = -CurlBasis(5,1:3)
-             END IF
+                 WorkBasis(1,3) = 0.5d0 * TriangleNodalPBasis(k, u, v)
+                 WorkCurlBasis(1,1) = 0.5d0* grad(2)
+                 WorkCurlBasis(1,2) = -0.5d0* grad(1)
 
-             i = EdgeMap(6,1)
-             j = EdgeMap(6,2)
-             EdgeBasis(11,1:2) = WorkBasis(1,1:2) * h2
-             CurlBasis(11,1) = -WorkBasis(1,2) * dh2
-             CurlBasis(11,2) = WorkBasis(1,1) * dh2
-             CurlBasis(11,3) = WorkCurlBasis(1,3) * h2
-             EdgeBasis(12,1:2) = WorkBasis(2,1:2) * h2
-             CurlBasis(12,1) = -WorkBasis(2,2) * dh2
-             CurlBasis(12,2) = WorkBasis(2,1) * dh2
-             CurlBasis(12,3) = WorkCurlBasis(2,3) * h2
-             IF(GIndexes(j)<GIndexes(i)) THEN
-               EdgeBasis(11,1:2) = -EdgeBasis(11,1:2)
-               CurlBasis(11,1:3) = -CurlBasis(11,1:3)
-             END IF
+                 ! (u,v,w) -> grad( -1/sqrt(6) * L_k(u,v) * phi_2(w) )
+                 !          = grad( L_k(u,v) * L_1(w) * L_2(w) )
+                 WorkBasis(2,1) = -1.0d0/sqrt(6.0d0) * grad(1) * Phi(2,w)
+                 WorkBasis(2,2) = -1.0d0/sqrt(6.0d0) * grad(2) * Phi(2,w)
+                 WorkBasis(2,3) = -1.0d0/sqrt(6.0d0) * TriangleNodalPBasis(k, u, v) * dPhi(2,w)
 
-             ! -------------------------------------------------------
-             ! The edges 14, 25 and 36
-             !--------------------------------------------------------
-             DO q = 1,3
-               i = EdgeMap(6+q,1)
-               j = EdgeMap(6+q,2)
-               grad(1:2) = dTriangleNodalPBasis(q, u, v)
-               EdgeBasis(12+(q-1)*2+1,3) = 0.5d0 * TriangleNodalPBasis(q, u, v)
-               CurlBasis(12+(q-1)*2+1,1) = 0.5d0* grad(2)
-               CurlBasis(12+(q-1)*2+1,2) = -0.5d0* grad(1)
-               EdgeBasis(12+(q-1)*2+2,3) = 3.0d0 * EdgeBasis(12+(q-1)*2+1,3) * w
-               CurlBasis(12+(q-1)*2+2,1) = 1.5d0 * grad(2) * w
-               CurlBasis(12+(q-1)*2+2,2) = -1.5d0 * grad(1) * w
+                 IF (GIndexes(j) < GIndexes(i)) THEN
+                   WorkBasis(1,3) = -WorkBasis(1,3)
+                   WorkCurlBasis(1,1:2) = -WorkCurlBasis(1,1:2)
+                 END IF
+                 
+                 EdgeBasis(6*EDOFs+(k-1)*EDOFs+1,3) = WorkBasis(1,3)
+                 CurlBasis(6*EDOFs+(k-1)*EDOFs+1,1:2) = WorkCurlBasis(1,1:2)
+                 
+                 EdgeBasis(6*EDOFs+(k-1)*EDOFs+2,1:3) = WorkBasis(2,1:3)
+                 CurlBasis(6*EDOFs+(k-1)*EDOFs+2,1:3) = 0.0d0 
+               END DO AXIAL_EDGES
 
+               ! The triangular faces and two internal (bubble) functions
+               !
+               FDOFs = 2
+               TRIANGULAR_FACES: DO k=1,3
+                 !
+                 ! We utilize the basis functions of the triangle
+                 !
+                 CALL FaceWhitneyComponents2D(Wrk(1:3,:), WrkCurl(1:3,:), u, v)
+                 
+                 SELECT CASE(k)
+                 CASE(1)
+                   TriangleFaceMap(:) = (/ 1,2,3 /)
+                   h1 = 0.5d0 * (1-w)
+                   dh1 = -0.5d0
+                 CASE(2)
+                   TriangleFaceMap(:) = (/ 4,5,6 /)
+                   h1 = 0.5d0 * (1+w)
+                   dh1 = 0.5d0
+                 CASE(3)
+                   h1 = 0.25d0 * (1-w**2)
+                   dh1 = -0.5d0 * w
+                 END SELECT
+
+                 IF (k == 3) THEN
+                   I1 = 1
+                   I2 = 2
+                   I3 = 3
+                   ! Check the following offset if the order is higher than 2
+                   c0 = 9*EDOFs + 2*FDOFs + 3*4
+                 ELSE
+                   FaceIndices(1:3) = GIndexes(TriangleFaceMap(1:3))
+                   CALL TriangleFaceDofsOrdering2nd(I1,I2,I3,FaceIndices(1:3))
+                   c0 = 9*EDOFs + (k-1)*FDOFs
+                 END IF
+                   
+                 DO l=1,FDOFs
+                   
+                   SELECT CASE(l)
+                   CASE(1)
+                     sfun = 1.0d0
+                     tfun = 1.0d0
+                     hfun = -2.0d0
+                   CASE(2)
+                     sfun = 1.0d0
+                     tfun = -1.0d0
+                     hfun = 0.0d0
+                   END SELECT
+
+                   B(1:2) = sfun * Wrk(I1,1:2) + tfun * Wrk(I2,1:2) + hfun * Wrk(I3,1:2)
+                   CurlB(3) = sfun * WrkCurl(I1,3) + tfun * WrkCurl(I2,3) + &
+                       hfun * WrkCurl(I3,3)
+
+                   EdgeBasis(c0+l,1:2) = B(1:2) * h1
+                   CurlBasis(c0+l,1) = -B(2) * dh1
+                   CurlBasis(c0+l,2) = B(1) * dh1
+                   CurlBasis(c0+l,3) = CurlB(3) * h1
+                 END DO
+               END DO TRIANGULAR_FACES
+                 
+               ! The quadrilateral faces
+               !
+               FDOFs = 4
+               c0 = 9*EDOFs + 2*2
+               QUAD_FACES_PRISM: DO k=1,3
+
+                 SELECT CASE(k)
+                 CASE(1)
+                   SquareFaceMap(:) = (/ 1,2,5,4 /)
+                 CASE(2)
+                   SquareFaceMap(:) = (/ 2,3,6,5 /)
+                 CASE(3)
+                   SquareFaceMap(:) = (/ 3,1,4,6 /)
+                 END SELECT
+
+                 h1 = 1.0d0 - w**2
+                 dh1 = -2.0d0 * w
+                 
+                 i = SquareFaceMap(1)
+                 j = SquareFaceMap(2)
+
+                 CALL EdgeWhitneyComponents2D(Wrk(1:2,:), WrkCurl(1:2,:), i, j, u, v)
+
+                 WorkBasis(:,:) = 0.0d0
+                 WorkCurlBasis(:,:) = 0.0d0
+
+                 ! The case where blending is done in the direction of the axis of prism:
+                 DO l=1,FDOFs/2
+                   
+                   SELECT CASE(l)
+                   CASE(1)
+                     sfun = -1.0d0
+                     tfun = 1.0d0
+                   CASE(2)
+                     sfun = 1.0d0
+                     tfun = 1.0d0
+                   CASE DEFAULT
+                     CALL Fatal('ElementDescription::EdgeElementInfo','sfun/tfun not defined')
+                   END SELECT
+
+                   B(1:2) = sfun * Wrk(1,1:2) + tfun * Wrk(2,1:2)
+                   CurlB(3) = sfun * WrkCurl(1,3) + tfun * WrkCurl(2,3)
+
+                   WorkBasis(2*(l-1)+1,1:2) = B(1:2) * h1
+                   
+                   WorkCurlBasis(2*(l-1)+1,1) = -B(2) * dh1
+                   WorkCurlBasis(2*(l-1)+1,2) = B(1) * dh1
+                   WorkCurlBasis(2*(l-1)+1,3) = CurlB(3) * h1 
+                 END DO
+
+                 grad_i = dTriangleNodalPBasis(i,u,v)
+                 grad_j = dTriangleNodalPBasis(j,u,v)
+                 bfun = TriangleNodalPBasis(i,u,v) * TriangleNodalPBasis(j,u,v)
+                 
+                 WorkBasis(2,3) = 2.0d0 * bfun
+                 WorkCurlBasis(2,1) = 2.0d0 * (grad_i(2)*TriangleNodalPBasis(j,u,v) + &
+                     TriangleNodalPBasis(i,u,v)*grad_j(2))
+                 WorkCurlBasis(2,2) = -2.0d0 * (grad_i(1)*TriangleNodalPBasis(j,u,v) + &
+                     TriangleNodalPBasis(i,u,v)*grad_j(1))
+                 
+                 WorkBasis(4,3) = dh1 * bfun
+                 WorkCurlBasis(4,1) = -0.5d0 * w * 4.0d0 * (grad_i(2)*TriangleNodalPBasis(j,u,v) + &
+                     TriangleNodalPBasis(i,u,v)*grad_j(2))
+                 WorkCurlBasis(4,2) = 0.5d0 * w * 4.0d0 * (grad_i(1)*TriangleNodalPBasis(j,u,v) + &
+                     TriangleNodalPBasis(i,u,v)*grad_j(1))
+
+                 FaceIndices(1:4) = GIndexes(SquareFaceMap(1:4))
+                 CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
+
+                 EdgeBasis(c0 + (k-1)*FDOFs + 1,1:3) = D1 * WorkBasis(I1,1:3)
+                 CurlBasis(c0 + (k-1)*FDOFs + 1,1:3) = D1 * WorkCurlBasis(I1,1:3)
+                 EdgeBasis(c0 + (k-1)*FDOFs + 2,1:3) = D2 * WorkBasis(I2,1:3)
+                 CurlBasis(c0 + (k-1)*FDOFs + 2,1:3) = D2 * WorkCurlBasis(I2,1:3)
+                 ! Note that sign changes never happen:
+                 EdgeBasis(c0 + (k-1)*FDOFs + 3,1:3) = WorkBasis(2+I1,1:3)
+                 CurlBasis(c0 + (k-1)*FDOFs + 3,1:3) = WorkCurlBasis(2+I1,1:3)
+                 EdgeBasis(c0 + (k-1)*FDOFs + 4,1:3) = WorkBasis(2+I1,1:3) + WorkBasis(2+I2,1:3)
+                 CurlBasis(c0 + (k-1)*FDOFs + 4,1:3) = 0.0d0
+                 !CurlBasis(c0 + (k-1)*FDOFs + 4,1:3) = WorkCurlBasis(2+I1,1:3) + WorkCurlBasis(2+I2,1:3)
+
+               END DO QUAD_FACES_PRISM
+               
+             ELSE
+               !---------------------------------------------------------------
+               ! The second-order element from the Nedelec's first family 
+               ! (note that the lowest-order prism element is from a different 
+               ! family). This element may not be optimally accurate if 
+               ! the physical element is not affine.
+               !--------------------------------------------------------------             
+               h1 = 0.5d0 * (1-w)
+               dh1 = -0.5d0
+               h2 = 0.5d0 * (1+w)
+               dh2 = 0.5d0
+               h3 = h1 * h2
+               dh3 = -0.5d0 * w
+
+               ! ---------------------------------------------------------
+               ! The first and fourth edges ...
+               !--------------------------------------------------------
+               ! The corresponding basis functions for the triangle:
+               !--------------------------------------------------------
+               WorkBasis(1,1) = (3.0d0 - Sqrt(3.0d0)*v)/6.0d0
+               WorkBasis(1,2) = u/(2.0d0*Sqrt(3.0d0))
+               WorkCurlBasis(1,3) = 1.0d0/Sqrt(3.0d0)
+               WorkBasis(2,1) = -(u*(-3.0d0 + Sqrt(3.0d0)*v))/2.0d0
+               WorkBasis(2,2) = (Sqrt(3.0d0)*u**2)/2.0d0
+               WorkCurlBasis(2,3) = (3.0d0*Sqrt(3.0d0)*u)/2.0d0
+
+               i = EdgeMap(1,1)
+               j = EdgeMap(1,2)
+               EdgeBasis(1,1:2) = WorkBasis(1,1:2) * h1
+               CurlBasis(1,1) = -WorkBasis(1,2) * dh1
+               CurlBasis(1,2) = WorkBasis(1,1) * dh1
+               CurlBasis(1,3) = WorkCurlBasis(1,3) * h1
+               EdgeBasis(2,1:2) = WorkBasis(2,1:2) * h1
+               CurlBasis(2,1) = -WorkBasis(2,2) * dh1
+               CurlBasis(2,2) = WorkBasis(2,1) * dh1
+               CurlBasis(2,3) = WorkCurlBasis(2,3) * h1
                IF(GIndexes(j)<GIndexes(i)) THEN
-                 EdgeBasis(12+(q-1)*2+1,3) = -EdgeBasis(12+(q-1)*2+1,3)
-                 CurlBasis(12+(q-1)*2+1,1:2) = -CurlBasis(12+(q-1)*2+1,1:2)
+                 EdgeBasis(1,1:2) = -EdgeBasis(1,1:2)
+                 CurlBasis(1,1:3) = -CurlBasis(1,1:3)
                END IF
-             END DO
 
-             !-------------------------------------------------
-             ! Two basis functions defined on the face 123:
-             !-------------------------------------------------
-             TriangleFaceMap(:) = (/ 1,2,3 /)
-             FaceIndices(1:3) = GIndexes(TriangleFaceMap(1:3))
-             CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
+               i = EdgeMap(4,1)
+               j = EdgeMap(4,2)
+               EdgeBasis(7,1:2) = WorkBasis(1,1:2) * h2
+               CurlBasis(7,1) = -WorkBasis(1,2) * dh2
+               CurlBasis(7,2) = WorkBasis(1,1) * dh2
+               CurlBasis(7,3) = WorkCurlBasis(1,3) * h2
+               EdgeBasis(8,1:2) = WorkBasis(2,1:2) * h2
+               CurlBasis(8,1) = -WorkBasis(2,2) * dh2
+               CurlBasis(8,2) = WorkBasis(2,1) * dh2
+               CurlBasis(8,3) = WorkCurlBasis(2,3) * h2
+               IF(GIndexes(j)<GIndexes(i)) THEN
+                 EdgeBasis(7,1:2) = -EdgeBasis(7,1:2)
+                 CurlBasis(7,1:3) = -CurlBasis(7,1:3)
+               END IF
 
-             WorkBasis(1,1) = ((Sqrt(3.0d0) - v)*v)/6.0d0
-             WorkBasis(1,2) = (u*v)/6.0d0
-             WorkCurlBasis(1,3) = (-Sqrt(3.0d0) + 3.0d0*v)/6.0d0
-             WorkBasis(2,1) = (v*(1.0d0 + u - v/Sqrt(3.0d0)))/(4.0d0*Sqrt(3.0d0))
-             WorkBasis(2,2) = ((-1.0d0 + u)*(-3.0d0 - 3.0d0*u + Sqrt(3.0d0)*v))/(12.0d0*Sqrt(3.0d0))
-             WorkCurlBasis(2,3) =(-Sqrt(3.0d0) - 3.0d0*Sqrt(3.0d0)*u + 3.0d0*v)/12.0d0
-             WorkBasis(3,1) = (v*(-3.0d0 + 3.0d0*u + Sqrt(3.0d0)*v))/(12.0d0*Sqrt(3.0d0))
-             WorkBasis(3,2) = -((1.0d0 + u)*(-3.0d0 + 3.0d0*u + Sqrt(3.0d0)*v))/(12.0d0*Sqrt(3.0d0))
-             WorkCurlBasis(3,3) = (Sqrt(3.0d0) - 3.0d0*Sqrt(3.0d0)*u - 3.0d0*v)/12.0d0
+               ! ---------------------------------------------------------
+               ! The second and fifth edges ...
+               !--------------------------------------------------------
+               ! The corresponding basis functions for the triangle:
+               !--------------------------------------------------------
+               WorkBasis(1,1) = -v/(2.0d0*Sqrt(3.0d0))
+               WorkBasis(1,2) = (1 + u)/(2.0d0*Sqrt(3.0d0))
+               WorkCurlBasis(1,3) = 1.0d0/Sqrt(3.0d0)
+               WorkBasis(2,1) = ((Sqrt(3.0d0) + Sqrt(3.0d0)*u - 3.0d0*v)*v)/4.0d0
+               WorkBasis(2,2) = (Sqrt(3.0d0)*(1.0d0 + u)*(-1.0d0 - u + Sqrt(3.0d0)*v))/4.0d0
+               WorkCurlBasis(2,3) = (-3.0d0*(Sqrt(3.0d0) + Sqrt(3.0d0)*u - 3.0d0*v))/4.0d0
 
-             IF (RedefineFaceBasis) THEN
-               EdgeBasis(19,1:2) = (D1 * WorkBasis(I1,1:2) + D2 * WorkBasis(I2,1:2)) * 0.5d0 * h1
-               EdgeBasis(20,1:2) = (-D1 * WorkBasis(I1,1:2) + D2 * WorkBasis(I2,1:2)) * 0.5d0 * h1
+               i = EdgeMap(2,1)
+               j = EdgeMap(2,2)
+               EdgeBasis(3,1:2) = WorkBasis(1,1:2) * h1
+               CurlBasis(3,1) = -WorkBasis(1,2) * dh1
+               CurlBasis(3,2) = WorkBasis(1,1) * dh1
+               CurlBasis(3,3) = WorkCurlBasis(1,3) * h1
+               EdgeBasis(4,1:2) = WorkBasis(2,1:2) * h1
+               CurlBasis(4,1) = -WorkBasis(2,2) * dh1
+               CurlBasis(4,2) = WorkBasis(2,1) * dh1
+               CurlBasis(4,3) = WorkCurlBasis(2,3) * h1
+               IF(GIndexes(j)<GIndexes(i)) THEN
+                 EdgeBasis(3,1:2) = -EdgeBasis(3,1:2)
+                 CurlBasis(3,1:3) = -CurlBasis(3,1:3)
+               END IF
 
-               CurlBasis(19,1) = -(D1 * WorkBasis(I1,2) + D2 * WorkBasis(I2,2)) * 0.5d0 * dh1
-               CurlBasis(19,2) = (D1 * WorkBasis(I1,1) + D2 * WorkBasis(I2,1)) * 0.5d0 * dh1
-               CurlBasis(19,3) = (D1 * WorkCurlBasis(I1,3) + D2 * WorkCurlBasis(I2,3)) * 0.5d0 * h1
+               i = EdgeMap(5,1)
+               j = EdgeMap(5,2)
+               EdgeBasis(9,1:2) = WorkBasis(1,1:2) * h2
+               CurlBasis(9,1) = -WorkBasis(1,2) * dh2
+               CurlBasis(9,2) = WorkBasis(1,1) * dh2
+               CurlBasis(9,3) = WorkCurlBasis(1,3) * h2
+               EdgeBasis(10,1:2) = WorkBasis(2,1:2) * h2
+               CurlBasis(10,1) = -WorkBasis(2,2) * dh2
+               CurlBasis(10,2) = WorkBasis(2,1) * dh2
+               CurlBasis(10,3) = WorkCurlBasis(2,3) * h2
+               IF(GIndexes(j)<GIndexes(i)) THEN
+                 EdgeBasis(9,1:2) = -EdgeBasis(9,1:2)
+                 CurlBasis(9,1:3) = -CurlBasis(9,1:3)
+               END IF
 
-               CurlBasis(20,1) = -(-D1 * WorkBasis(I1,2) + D2 * WorkBasis(I2,2)) * 0.5d0 * dh1
-               CurlBasis(20,2) = (-D1 * WorkBasis(I1,1) + D2 * WorkBasis(I2,1)) * 0.5d0 * dh1
-               CurlBasis(20,3) = (-D1 * WorkCurlBasis(I1,3) + D2 * WorkCurlBasis(I2,3)) * 0.5d0 * h1
-               
-             ELSE
-               EdgeBasis(19,1:2) = D1 * WorkBasis(I1,1:2) * h1
-               CurlBasis(19,1) = -D1 * WorkBasis(I1,2) * dh1
-               CurlBasis(19,2) = D1 * WorkBasis(I1,1) * dh1
-               CurlBasis(19,3) = D1 * WorkCurlBasis(I1,3) * h1
+               ! ---------------------------------------------------------
+               ! The third and sixth edges ...
+               !--------------------------------------------------------
+               ! The corresponding basis functions for the triangle:
+               !--------------------------------------------------------
+               WorkBasis(1,1) = -v/(2.0d0*Sqrt(3.0d0))
+               WorkBasis(1,2) = (-1 + u)/(2.0d0*Sqrt(3.0d0))
+               WorkCurlBasis(1,3) =  1.0d0/Sqrt(3.0d0)
+               WorkBasis(2,1) = (v*(-Sqrt(3.0d0) + Sqrt(3.0d0)*u + 3.0d0*v))/4.0d0
+               WorkBasis(2,2) = -(Sqrt(3.0d0)*(-1.0d0 + u)*(-1.0d0 + u + Sqrt(3.0d0)*v))/4.0d0
+               WorkCurlBasis(2,3) = (-3.0d0*(-Sqrt(3.0d0) + Sqrt(3.0d0)*u + 3.0d0*v))/4.0d0
 
-               EdgeBasis(20,1:2) = D2 * WorkBasis(I2,1:2) * h1
-               CurlBasis(20,1) = -D2 * WorkBasis(I2,2) * dh1
-               CurlBasis(20,2) = D2 * WorkBasis(I2,1) * dh1
-               CurlBasis(20,3) = D2 * WorkCurlBasis(I2,3) * h1
-             END IF
-               
-             !-------------------------------------------------
-             ! Two basis functions defined on the face 456:
-             !-------------------------------------------------
-             TriangleFaceMap(:) = (/ 4,5,6 /)
-             FaceIndices(1:3) = GIndexes(TriangleFaceMap(1:3))
-             CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
+               i = EdgeMap(3,1)
+               j = EdgeMap(3,2)
+               EdgeBasis(5,1:2) = WorkBasis(1,1:2) * h1
+               CurlBasis(5,1) = -WorkBasis(1,2) * dh1
+               CurlBasis(5,2) = WorkBasis(1,1) * dh1
+               CurlBasis(5,3) = WorkCurlBasis(1,3) * h1
+               EdgeBasis(6,1:2) = WorkBasis(2,1:2) * h1
+               CurlBasis(6,1) = -WorkBasis(2,2) * dh1
+               CurlBasis(6,2) = WorkBasis(2,1) * dh1
+               CurlBasis(6,3) = WorkCurlBasis(2,3) * h1
+               IF(GIndexes(j)<GIndexes(i)) THEN
+                 EdgeBasis(5,1:2) = -EdgeBasis(5,1:2)
+                 CurlBasis(5,1:3) = -CurlBasis(5,1:3)
+               END IF
 
-             IF (RedefineFaceBasis) THEN
-               EdgeBasis(21,1:2) = (D1 * WorkBasis(I1,1:2) + D2 * WorkBasis(I2,1:2)) * 0.5d0 * h2
-               EdgeBasis(22,1:2) = (-D1 * WorkBasis(I1,1:2) + D2 * WorkBasis(I2,1:2)) * 0.5d0 * h2
+               i = EdgeMap(6,1)
+               j = EdgeMap(6,2)
+               EdgeBasis(11,1:2) = WorkBasis(1,1:2) * h2
+               CurlBasis(11,1) = -WorkBasis(1,2) * dh2
+               CurlBasis(11,2) = WorkBasis(1,1) * dh2
+               CurlBasis(11,3) = WorkCurlBasis(1,3) * h2
+               EdgeBasis(12,1:2) = WorkBasis(2,1:2) * h2
+               CurlBasis(12,1) = -WorkBasis(2,2) * dh2
+               CurlBasis(12,2) = WorkBasis(2,1) * dh2
+               CurlBasis(12,3) = WorkCurlBasis(2,3) * h2
+               IF(GIndexes(j)<GIndexes(i)) THEN
+                 EdgeBasis(11,1:2) = -EdgeBasis(11,1:2)
+                 CurlBasis(11,1:3) = -CurlBasis(11,1:3)
+               END IF
 
-               CurlBasis(21,1) = -(D1 * WorkBasis(I1,2) + D2 * WorkBasis(I2,2)) * 0.5d0 * dh2
-               CurlBasis(21,2) = (D1 * WorkBasis(I1,1) + D2 * WorkBasis(I2,1)) * 0.5d0 * dh2
-               CurlBasis(21,3) = (D1 * WorkCurlBasis(I1,3) + D2 * WorkCurlBasis(I2,3)) * 0.5d0 * h2
+               ! -------------------------------------------------------
+               ! The edges 14, 25 and 36
+               !--------------------------------------------------------
+               DO q = 1,3
+                 i = EdgeMap(6+q,1)
+                 j = EdgeMap(6+q,2)
+                 grad(1:2) = dTriangleNodalPBasis(q, u, v)
+                 EdgeBasis(12+(q-1)*2+1,3) = 0.5d0 * TriangleNodalPBasis(q, u, v)
+                 CurlBasis(12+(q-1)*2+1,1) = 0.5d0* grad(2)
+                 CurlBasis(12+(q-1)*2+1,2) = -0.5d0* grad(1)
+                 EdgeBasis(12+(q-1)*2+2,3) = 3.0d0 * EdgeBasis(12+(q-1)*2+1,3) * w
+                 CurlBasis(12+(q-1)*2+2,1) = 1.5d0 * grad(2) * w
+                 CurlBasis(12+(q-1)*2+2,2) = -1.5d0 * grad(1) * w
 
-               CurlBasis(22,1) = -(-D1 * WorkBasis(I1,2) + D2 * WorkBasis(I2,2)) * 0.5d0 * dh2
-               CurlBasis(22,2) = (-D1 * WorkBasis(I1,1) + D2 * WorkBasis(I2,1)) * 0.5d0 * dh2
-               CurlBasis(22,3) = (-D1 * WorkCurlBasis(I1,3) + D2 * WorkCurlBasis(I2,3)) * 0.5d0 * h2
-               
-             ELSE
-               EdgeBasis(21,1:2) = D1 * WorkBasis(I1,1:2) * h2
-               CurlBasis(21,1) = -D1 * WorkBasis(I1,2) * dh2
-               CurlBasis(21,2) = D1 * WorkBasis(I1,1) * dh2
-               CurlBasis(21,3) = D1 * WorkCurlBasis(I1,3) * h2
+                 IF(GIndexes(j)<GIndexes(i)) THEN
+                   EdgeBasis(12+(q-1)*2+1,3) = -EdgeBasis(12+(q-1)*2+1,3)
+                   CurlBasis(12+(q-1)*2+1,1:2) = -CurlBasis(12+(q-1)*2+1,1:2)
+                 END IF
+               END DO
 
-               EdgeBasis(22,1:2) = D2 * WorkBasis(I2,1:2) * h2
-               CurlBasis(22,1) = -D2 * WorkBasis(I2,2) * dh2
-               CurlBasis(22,2) = D2 * WorkBasis(I2,1) * dh2
-               CurlBasis(22,3) = D2 * WorkCurlBasis(I2,3) * h2
-             END IF
+               !-------------------------------------------------
+               ! Two basis functions defined on the face 123:
+               !-------------------------------------------------
+               TriangleFaceMap(:) = (/ 1,2,3 /)
+               FaceIndices(1:3) = GIndexes(TriangleFaceMap(1:3))
+               CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
-             ! scale to reduce ill-conditioning:
-             IF (ScaleFaceBasis) THEN
-               EdgeBasis(19:21:2,:) = sqrt(fs1) * EdgeBasis(19:21:2,:)
-               CurlBasis(19:21:2,:) = sqrt(fs1) * CurlBasis(19:21:2,:)
-               EdgeBasis(20:22:2,:) = sqrt(fs2) * EdgeBasis(20:22:2,:)
-               CurlBasis(20:22:2,:) = sqrt(fs2) * CurlBasis(20:22:2,:)
-             END IF
-               
-             !-------------------------------------------------
-             ! Four basis functions defined on the face 1254:
-             !-------------------------------------------------              
-             SquareFaceMap(:) = (/ 1,2,5,4 /)          
-             WorkBasis = 0.0d0
-             WorkCurlBasis = 0.0d0
+               WorkBasis(1,1) = ((Sqrt(3.0d0) - v)*v)/6.0d0
+               WorkBasis(1,2) = (u*v)/6.0d0
+               WorkCurlBasis(1,3) = (-Sqrt(3.0d0) + 3.0d0*v)/6.0d0
+               WorkBasis(2,1) = (v*(1.0d0 + u - v/Sqrt(3.0d0)))/(4.0d0*Sqrt(3.0d0))
+               WorkBasis(2,2) = ((-1.0d0 + u)*(-3.0d0 - 3.0d0*u + Sqrt(3.0d0)*v))/(12.0d0*Sqrt(3.0d0))
+               WorkCurlBasis(2,3) =(-Sqrt(3.0d0) - 3.0d0*Sqrt(3.0d0)*u + 3.0d0*v)/12.0d0
+               WorkBasis(3,1) = (v*(-3.0d0 + 3.0d0*u + Sqrt(3.0d0)*v))/(12.0d0*Sqrt(3.0d0))
+               WorkBasis(3,2) = -((1.0d0 + u)*(-3.0d0 + 3.0d0*u + Sqrt(3.0d0)*v))/(12.0d0*Sqrt(3.0d0))
+               WorkCurlBasis(3,3) = (Sqrt(3.0d0) - 3.0d0*Sqrt(3.0d0)*u - 3.0d0*v)/12.0d0
 
-             WorkBasis(1,1) = (3.0d0 - Sqrt(3.0d0)*v)/6.0d0 * 4.0d0 * h3
-             WorkBasis(1,2) = u/(2.0d0*Sqrt(3.0d0)) * 4.0d0 * h3
-             WorkCurlBasis(1,1) = -WorkBasis(1,2)/h3 * dh3 
-             WorkCurlBasis(1,2) = WorkBasis(1,1)/h3 * dh3 
-             WorkCurlBasis(1,3) = 1.0d0/Sqrt(3.0d0) * 4.0d0 * h3
-             WorkBasis(2,1) = -(u*(-3.0d0 + Sqrt(3.0d0)*v))/2.0d0 * 4.0d0 * h3
-             WorkBasis(2,2) = (Sqrt(3.0d0)*u**2)/2.0d0 * 4.0d0 * h3
-             WorkCurlBasis(2,1) = -WorkBasis(2,2)/h3 * dh3 
-             WorkCurlBasis(2,2) = WorkBasis(2,1)/h3 * dh3
-             WorkCurlBasis(2,3) = (3.0d0*Sqrt(3.0d0)*u)/2.0d0 * 4.0d0 * h3
+               IF (RedefineFaceBasis) THEN
+                 EdgeBasis(19,1:2) = (D1 * WorkBasis(I1,1:2) + D2 * WorkBasis(I2,1:2)) * 0.5d0 * h1
+                 EdgeBasis(20,1:2) = (-D1 * WorkBasis(I1,1:2) + D2 * WorkBasis(I2,1:2)) * 0.5d0 * h1
 
-             WorkBasis(3,3) = 2.0d0 * TriangleNodalPBasis(1, u, v) * TriangleNodalPBasis(2, u, v)
-             grad(1:2) = dTriangleNodalPBasis(1, u, v) * TriangleNodalPBasis(2, u, v) + &
-                 TriangleNodalPBasis(1, u, v) * dTriangleNodalPBasis(2, u, v)
-             WorkCurlBasis(3,1) = 2.0d0 * grad(2)
-             WorkCurlBasis(3,2) = -2.0d0 * grad(1)
-             WorkBasis(4,3) = 3.0d0 * WorkBasis(3,3) * w
-             WorkCurlBasis(4,1) = 6.0d0 * grad(2) * w
-             WorkCurlBasis(4,2) = -6.0d0 * grad(1) * w
+                 CurlBasis(19,1) = -(D1 * WorkBasis(I1,2) + D2 * WorkBasis(I2,2)) * 0.5d0 * dh1
+                 CurlBasis(19,2) = (D1 * WorkBasis(I1,1) + D2 * WorkBasis(I2,1)) * 0.5d0 * dh1
+                 CurlBasis(19,3) = (D1 * WorkCurlBasis(I1,3) + D2 * WorkCurlBasis(I2,3)) * 0.5d0 * h1
 
-             FaceIndices(1:4) = GIndexes(SquareFaceMap(1:4))
-             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
+                 CurlBasis(20,1) = -(-D1 * WorkBasis(I1,2) + D2 * WorkBasis(I2,2)) * 0.5d0 * dh1
+                 CurlBasis(20,2) = (-D1 * WorkBasis(I1,1) + D2 * WorkBasis(I2,1)) * 0.5d0 * dh1
+                 CurlBasis(20,3) = (-D1 * WorkCurlBasis(I1,3) + D2 * WorkCurlBasis(I2,3)) * 0.5d0 * h1
 
-             EdgeBasis(23,:) = D1 * WorkBasis(2*(I1-1)+1,:)
-             CurlBasis(23,:) = D1 * WorkCurlBasis(2*(I1-1)+1,:)
-             EdgeBasis(24,:) = WorkBasis(2*(I1-1)+2,:)
-             CurlBasis(24,:) = WorkCurlBasis(2*(I1-1)+2,:)
-             EdgeBasis(25,:) = D2 * WorkBasis(2*(I2-1)+1,:)
-             CurlBasis(25,:) = D2 * WorkCurlBasis(2*(I2-1)+1,:)
-             EdgeBasis(26,:) = WorkBasis(2*(I2-1)+2,:)
-             CurlBasis(26,:) = WorkCurlBasis(2*(I2-1)+2,:)            
+               ELSE
+                 EdgeBasis(19,1:2) = D1 * WorkBasis(I1,1:2) * h1
+                 CurlBasis(19,1) = -D1 * WorkBasis(I1,2) * dh1
+                 CurlBasis(19,2) = D1 * WorkBasis(I1,1) * dh1
+                 CurlBasis(19,3) = D1 * WorkCurlBasis(I1,3) * h1
 
-             !-------------------------------------------------
-             ! Four basis functions defined on the face 2365:
-             !-------------------------------------------------              
-             SquareFaceMap(:) = (/ 2,3,6,5 /)          
-             WorkBasis = 0.0d0
-             WorkCurlBasis = 0.0d0
+                 EdgeBasis(20,1:2) = D2 * WorkBasis(I2,1:2) * h1
+                 CurlBasis(20,1) = -D2 * WorkBasis(I2,2) * dh1
+                 CurlBasis(20,2) = D2 * WorkBasis(I2,1) * dh1
+                 CurlBasis(20,3) = D2 * WorkCurlBasis(I2,3) * h1
+               END IF
 
-             WorkBasis(1,1) = -v/(2.0d0*Sqrt(3.0d0)) * 4.0d0 * h3
-             WorkBasis(1,2) = (1 + u)/(2.0d0*Sqrt(3.0d0)) * 4.0d0 * h3
-             WorkCurlBasis(1,1) = -WorkBasis(1,2)/h3 * dh3 
-             WorkCurlBasis(1,2) = WorkBasis(1,1)/h3 * dh3 
-             WorkCurlBasis(1,3) = 1.0d0/Sqrt(3.0d0) * 4.0d0 * h3
-             WorkBasis(2,1) = ((Sqrt(3.0d0) + Sqrt(3.0d0)*u - 3.0d0*v)*v)/4.0d0 * 4.0d0 * h3
-             WorkBasis(2,2) = (Sqrt(3.0d0)*(1.0d0 + u)*(-1.0d0 - u + Sqrt(3.0d0)*v))/4.0d0 * 4.0d0 * h3
-             WorkCurlBasis(2,1) = -WorkBasis(2,2)/h3 * dh3 
-             WorkCurlBasis(2,2) = WorkBasis(2,1)/h3 * dh3
-             WorkCurlBasis(2,3) = (-3.0d0*(Sqrt(3.0d0) + Sqrt(3.0d0)*u - 3.0d0*v))/4.0d0 * 4.0d0 * h3
+               !-------------------------------------------------
+               ! Two basis functions defined on the face 456:
+               !-------------------------------------------------
+               TriangleFaceMap(:) = (/ 4,5,6 /)
+               FaceIndices(1:3) = GIndexes(TriangleFaceMap(1:3))
+               CALL TriangleFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
-             WorkBasis(3,3) = 2.0d0 * TriangleNodalPBasis(2, u, v) * TriangleNodalPBasis(3, u, v)
-             grad(1:2) = dTriangleNodalPBasis(2, u, v) * TriangleNodalPBasis(3, u, v) + &
-                 TriangleNodalPBasis(2, u, v) * dTriangleNodalPBasis(3, u, v)
-             WorkCurlBasis(3,1) = 2.0d0 * grad(2)
-             WorkCurlBasis(3,2) = -2.0d0 * grad(1)
-             WorkBasis(4,3) = 3.0d0 * WorkBasis(3,3) * w
-             WorkCurlBasis(4,1) = 6.0d0 * grad(2) * w
-             WorkCurlBasis(4,2) = -6.0d0 * grad(1) * w
+               IF (RedefineFaceBasis) THEN
+                 EdgeBasis(21,1:2) = (D1 * WorkBasis(I1,1:2) + D2 * WorkBasis(I2,1:2)) * 0.5d0 * h2
+                 EdgeBasis(22,1:2) = (-D1 * WorkBasis(I1,1:2) + D2 * WorkBasis(I2,1:2)) * 0.5d0 * h2
 
-             FaceIndices(1:4) = GIndexes(SquareFaceMap(1:4))
-             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
+                 CurlBasis(21,1) = -(D1 * WorkBasis(I1,2) + D2 * WorkBasis(I2,2)) * 0.5d0 * dh2
+                 CurlBasis(21,2) = (D1 * WorkBasis(I1,1) + D2 * WorkBasis(I2,1)) * 0.5d0 * dh2
+                 CurlBasis(21,3) = (D1 * WorkCurlBasis(I1,3) + D2 * WorkCurlBasis(I2,3)) * 0.5d0 * h2
 
-             EdgeBasis(27,:) = D1 * WorkBasis(2*(I1-1)+1,:)
-             CurlBasis(27,:) = D1 * WorkCurlBasis(2*(I1-1)+1,:)
-             EdgeBasis(28,:) = WorkBasis(2*(I1-1)+2,:)
-             CurlBasis(28,:) = WorkCurlBasis(2*(I1-1)+2,:)
-             EdgeBasis(29,:) = D2 * WorkBasis(2*(I2-1)+1,:)
-             CurlBasis(29,:) = D2 * WorkCurlBasis(2*(I2-1)+1,:)
-             EdgeBasis(30,:) = WorkBasis(2*(I2-1)+2,:)
-             CurlBasis(30,:) = WorkCurlBasis(2*(I2-1)+2,:)  
+                 CurlBasis(22,1) = -(-D1 * WorkBasis(I1,2) + D2 * WorkBasis(I2,2)) * 0.5d0 * dh2
+                 CurlBasis(22,2) = (-D1 * WorkBasis(I1,1) + D2 * WorkBasis(I2,1)) * 0.5d0 * dh2
+                 CurlBasis(22,3) = (-D1 * WorkCurlBasis(I1,3) + D2 * WorkCurlBasis(I2,3)) * 0.5d0 * h2
 
-             !-------------------------------------------------
-             ! Four basis functions defined on the face 3146:
-             !-------------------------------------------------              
-             SquareFaceMap(:) = (/ 3,1,4,6 /)          
-             WorkBasis = 0.0d0
-             WorkCurlBasis = 0.0d0
+               ELSE
+                 EdgeBasis(21,1:2) = D1 * WorkBasis(I1,1:2) * h2
+                 CurlBasis(21,1) = -D1 * WorkBasis(I1,2) * dh2
+                 CurlBasis(21,2) = D1 * WorkBasis(I1,1) * dh2
+                 CurlBasis(21,3) = D1 * WorkCurlBasis(I1,3) * h2
 
-             WorkBasis(1,1) = -v/(2.0d0*Sqrt(3.0d0)) * 4.0d0 * h3
-             WorkBasis(1,2) = (-1 + u)/(2.0d0*Sqrt(3.0d0)) * 4.0d0 * h3
-             WorkCurlBasis(1,1) = -WorkBasis(1,2)/h3 * dh3 
-             WorkCurlBasis(1,2) = WorkBasis(1,1)/h3 * dh3 
-             WorkCurlBasis(1,3) = 1.0d0/Sqrt(3.0d0) * 4.0d0 * h3
-             WorkBasis(2,1) = (v*(-Sqrt(3.0d0) + Sqrt(3.0d0)*u + 3.0d0*v))/4.0d0 * 4.0d0 * h3
-             WorkBasis(2,2) =  -(Sqrt(3.0d0)*(-1.0d0 + u)*(-1.0d0 + u + Sqrt(3.0d0)*v))/4.0d0 * 4.0d0 * h3
-             WorkCurlBasis(2,1) = -WorkBasis(2,2)/h3 * dh3 
-             WorkCurlBasis(2,2) = WorkBasis(2,1)/h3 * dh3
-             WorkCurlBasis(2,3) = (-3.0d0*(-Sqrt(3.0d0) + Sqrt(3.0d0)*u + 3.0d0*v))/4.0d0 * 4.0d0 * h3
+                 EdgeBasis(22,1:2) = D2 * WorkBasis(I2,1:2) * h2
+                 CurlBasis(22,1) = -D2 * WorkBasis(I2,2) * dh2
+                 CurlBasis(22,2) = D2 * WorkBasis(I2,1) * dh2
+                 CurlBasis(22,3) = D2 * WorkCurlBasis(I2,3) * h2
+               END IF
 
-             WorkBasis(3,3) = 2.0d0 * TriangleNodalPBasis(3, u, v) * TriangleNodalPBasis(1, u, v)
-             grad(1:2) = dTriangleNodalPBasis(3, u, v) * TriangleNodalPBasis(1, u, v) + &
-                 TriangleNodalPBasis(3, u, v) * dTriangleNodalPBasis(1, u, v)
-             WorkCurlBasis(3,1) = 2.0d0 * grad(2)
-             WorkCurlBasis(3,2) = -2.0d0 * grad(1)
-             WorkBasis(4,3) = 3.0d0 * WorkBasis(3,3) * w
-             WorkCurlBasis(4,1) = 6.0d0 * grad(2) * w
-             WorkCurlBasis(4,2) = -6.0d0 * grad(1) * w
+               ! scale to reduce ill-conditioning:
+               IF (ScaleFaceBasis) THEN
+                 EdgeBasis(19:21:2,:) = sqrt(fs1) * EdgeBasis(19:21:2,:)
+                 CurlBasis(19:21:2,:) = sqrt(fs1) * CurlBasis(19:21:2,:)
+                 EdgeBasis(20:22:2,:) = sqrt(fs2) * EdgeBasis(20:22:2,:)
+                 CurlBasis(20:22:2,:) = sqrt(fs2) * CurlBasis(20:22:2,:)
+               END IF
 
-             FaceIndices(1:4) = GIndexes(SquareFaceMap(1:4))
-             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
+               !-------------------------------------------------
+               ! Four basis functions defined on the face 1254:
+               !-------------------------------------------------              
+               SquareFaceMap(:) = (/ 1,2,5,4 /)          
+               WorkBasis = 0.0d0
+               WorkCurlBasis = 0.0d0
 
-             EdgeBasis(31,:) = D1 * WorkBasis(2*(I1-1)+1,:)
-             CurlBasis(31,:) = D1 * WorkCurlBasis(2*(I1-1)+1,:)
-             EdgeBasis(32,:) = WorkBasis(2*(I1-1)+2,:)
-             CurlBasis(32,:) = WorkCurlBasis(2*(I1-1)+2,:)
-             EdgeBasis(33,:) = D2 * WorkBasis(2*(I2-1)+1,:)
-             CurlBasis(33,:) = D2 * WorkCurlBasis(2*(I2-1)+1,:)
-             EdgeBasis(34,:) = WorkBasis(2*(I2-1)+2,:)
-             CurlBasis(34,:) = WorkCurlBasis(2*(I2-1)+2,:)  
+               WorkBasis(1,1) = (3.0d0 - Sqrt(3.0d0)*v)/6.0d0 * 4.0d0 * h3
+               WorkBasis(1,2) = u/(2.0d0*Sqrt(3.0d0)) * 4.0d0 * h3
+               WorkCurlBasis(1,1) = -WorkBasis(1,2)/h3 * dh3 
+               WorkCurlBasis(1,2) = WorkBasis(1,1)/h3 * dh3 
+               WorkCurlBasis(1,3) = 1.0d0/Sqrt(3.0d0) * 4.0d0 * h3
+               WorkBasis(2,1) = -(u*(-3.0d0 + Sqrt(3.0d0)*v))/2.0d0 * 4.0d0 * h3
+               WorkBasis(2,2) = (Sqrt(3.0d0)*u**2)/2.0d0 * 4.0d0 * h3
+               WorkCurlBasis(2,1) = -WorkBasis(2,2)/h3 * dh3 
+               WorkCurlBasis(2,2) = WorkBasis(2,1)/h3 * dh3
+               WorkCurlBasis(2,3) = (3.0d0*Sqrt(3.0d0)*u)/2.0d0 * 4.0d0 * h3
 
-             !-------------------------------------------------
-             ! Two basis functions associated with the interior
-             !-------------------------------------------------    
-             EdgeBasis(35,1) = (v*(1.0d0 + u - v/Sqrt(3.0d0)))/(4.0d0*Sqrt(3.0d0)) * h3
-             EdgeBasis(35,2) = ((-1.0d0 + u)*(-3.0d0 - 3.0d0*u + Sqrt(3.0d0)*v))/(12.0d0*Sqrt(3.0d0)) * h3
-             CurlBasis(35,1) = -EdgeBasis(35,2)/h3 * dh3
-             CurlBasis(35,2) = EdgeBasis(35,1)/h3 * dh3
-             CurlBasis(35,3) = (-Sqrt(3.0d0) - 3.0d0*Sqrt(3.0d0)*u + 3.0d0*v)/12.0d0 * h3
+               WorkBasis(3,3) = 2.0d0 * TriangleNodalPBasis(1, u, v) * TriangleNodalPBasis(2, u, v)
+               grad(1:2) = dTriangleNodalPBasis(1, u, v) * TriangleNodalPBasis(2, u, v) + &
+                   TriangleNodalPBasis(1, u, v) * dTriangleNodalPBasis(2, u, v)
+               WorkCurlBasis(3,1) = 2.0d0 * grad(2)
+               WorkCurlBasis(3,2) = -2.0d0 * grad(1)
+               WorkBasis(4,3) = 3.0d0 * WorkBasis(3,3) * w
+               WorkCurlBasis(4,1) = 6.0d0 * grad(2) * w
+               WorkCurlBasis(4,2) = -6.0d0 * grad(1) * w
 
-             EdgeBasis(36,1) = (v*(-3.0d0 + 3.0d0*u + Sqrt(3.0d0)*v))/(12.0d0*Sqrt(3.0d0)) * h3
-             EdgeBasis(36,2) = -((1.0d0 + u)*(-3.0d0 + 3.0d0*u + Sqrt(3.0d0)*v))/(12.0d0*Sqrt(3.0d0)) * h3
-             CurlBasis(36,1) = -EdgeBasis(36,2)/h3 * dh3
-             CurlBasis(36,2) = EdgeBasis(36,1)/h3 * dh3
-             CurlBasis(36,3) = (Sqrt(3.0d0) - 3.0d0*Sqrt(3.0d0)*u - 3.0d0*v)/12.0d0 * h3
+               FaceIndices(1:4) = GIndexes(SquareFaceMap(1:4))
+               CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
-             IF (ScaleFaceBasis) THEN
-               EdgeBasis(35:36,1:2) = sqrt(150.0d0) * EdgeBasis(35:36,1:2)
-               CurlBasis(35:36,1:3) = sqrt(150.0d0) * CurlBasis(35:36,1:3)
-             END IF
-!             END IF
+               EdgeBasis(23,:) = D1 * WorkBasis(2*(I1-1)+1,:)
+               CurlBasis(23,:) = D1 * WorkCurlBasis(2*(I1-1)+1,:)
+               EdgeBasis(24,:) = WorkBasis(2*(I1-1)+2,:)
+               CurlBasis(24,:) = WorkCurlBasis(2*(I1-1)+2,:)
+               EdgeBasis(25,:) = D2 * WorkBasis(2*(I2-1)+1,:)
+               CurlBasis(25,:) = D2 * WorkCurlBasis(2*(I2-1)+1,:)
+               EdgeBasis(26,:) = WorkBasis(2*(I2-1)+2,:)
+               CurlBasis(26,:) = WorkCurlBasis(2*(I2-1)+2,:)            
+
+               !-------------------------------------------------
+               ! Four basis functions defined on the face 2365:
+               !-------------------------------------------------              
+               SquareFaceMap(:) = (/ 2,3,6,5 /)          
+               WorkBasis = 0.0d0
+               WorkCurlBasis = 0.0d0
+
+               WorkBasis(1,1) = -v/(2.0d0*Sqrt(3.0d0)) * 4.0d0 * h3
+               WorkBasis(1,2) = (1 + u)/(2.0d0*Sqrt(3.0d0)) * 4.0d0 * h3
+               WorkCurlBasis(1,1) = -WorkBasis(1,2)/h3 * dh3 
+               WorkCurlBasis(1,2) = WorkBasis(1,1)/h3 * dh3 
+               WorkCurlBasis(1,3) = 1.0d0/Sqrt(3.0d0) * 4.0d0 * h3
+               WorkBasis(2,1) = ((Sqrt(3.0d0) + Sqrt(3.0d0)*u - 3.0d0*v)*v)/4.0d0 * 4.0d0 * h3
+               WorkBasis(2,2) = (Sqrt(3.0d0)*(1.0d0 + u)*(-1.0d0 - u + Sqrt(3.0d0)*v))/4.0d0 * 4.0d0 * h3
+               WorkCurlBasis(2,1) = -WorkBasis(2,2)/h3 * dh3 
+               WorkCurlBasis(2,2) = WorkBasis(2,1)/h3 * dh3
+               WorkCurlBasis(2,3) = (-3.0d0*(Sqrt(3.0d0) + Sqrt(3.0d0)*u - 3.0d0*v))/4.0d0 * 4.0d0 * h3
+
+               WorkBasis(3,3) = 2.0d0 * TriangleNodalPBasis(2, u, v) * TriangleNodalPBasis(3, u, v)
+               grad(1:2) = dTriangleNodalPBasis(2, u, v) * TriangleNodalPBasis(3, u, v) + &
+                   TriangleNodalPBasis(2, u, v) * dTriangleNodalPBasis(3, u, v)
+               WorkCurlBasis(3,1) = 2.0d0 * grad(2)
+               WorkCurlBasis(3,2) = -2.0d0 * grad(1)
+               WorkBasis(4,3) = 3.0d0 * WorkBasis(3,3) * w
+               WorkCurlBasis(4,1) = 6.0d0 * grad(2) * w
+               WorkCurlBasis(4,2) = -6.0d0 * grad(1) * w
+
+               FaceIndices(1:4) = GIndexes(SquareFaceMap(1:4))
+               CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
+
+               EdgeBasis(27,:) = D1 * WorkBasis(2*(I1-1)+1,:)
+               CurlBasis(27,:) = D1 * WorkCurlBasis(2*(I1-1)+1,:)
+               EdgeBasis(28,:) = WorkBasis(2*(I1-1)+2,:)
+               CurlBasis(28,:) = WorkCurlBasis(2*(I1-1)+2,:)
+               EdgeBasis(29,:) = D2 * WorkBasis(2*(I2-1)+1,:)
+               CurlBasis(29,:) = D2 * WorkCurlBasis(2*(I2-1)+1,:)
+               EdgeBasis(30,:) = WorkBasis(2*(I2-1)+2,:)
+               CurlBasis(30,:) = WorkCurlBasis(2*(I2-1)+2,:)  
+
+               !-------------------------------------------------
+               ! Four basis functions defined on the face 3146:
+               !-------------------------------------------------              
+               SquareFaceMap(:) = (/ 3,1,4,6 /)          
+               WorkBasis = 0.0d0
+               WorkCurlBasis = 0.0d0
+
+               WorkBasis(1,1) = -v/(2.0d0*Sqrt(3.0d0)) * 4.0d0 * h3
+               WorkBasis(1,2) = (-1 + u)/(2.0d0*Sqrt(3.0d0)) * 4.0d0 * h3
+               WorkCurlBasis(1,1) = -WorkBasis(1,2)/h3 * dh3 
+               WorkCurlBasis(1,2) = WorkBasis(1,1)/h3 * dh3 
+               WorkCurlBasis(1,3) = 1.0d0/Sqrt(3.0d0) * 4.0d0 * h3
+               WorkBasis(2,1) = (v*(-Sqrt(3.0d0) + Sqrt(3.0d0)*u + 3.0d0*v))/4.0d0 * 4.0d0 * h3
+               WorkBasis(2,2) =  -(Sqrt(3.0d0)*(-1.0d0 + u)*(-1.0d0 + u + Sqrt(3.0d0)*v))/4.0d0 * 4.0d0 * h3
+               WorkCurlBasis(2,1) = -WorkBasis(2,2)/h3 * dh3 
+               WorkCurlBasis(2,2) = WorkBasis(2,1)/h3 * dh3
+               WorkCurlBasis(2,3) = (-3.0d0*(-Sqrt(3.0d0) + Sqrt(3.0d0)*u + 3.0d0*v))/4.0d0 * 4.0d0 * h3
+
+               WorkBasis(3,3) = 2.0d0 * TriangleNodalPBasis(3, u, v) * TriangleNodalPBasis(1, u, v)
+               grad(1:2) = dTriangleNodalPBasis(3, u, v) * TriangleNodalPBasis(1, u, v) + &
+                   TriangleNodalPBasis(3, u, v) * dTriangleNodalPBasis(1, u, v)
+               WorkCurlBasis(3,1) = 2.0d0 * grad(2)
+               WorkCurlBasis(3,2) = -2.0d0 * grad(1)
+               WorkBasis(4,3) = 3.0d0 * WorkBasis(3,3) * w
+               WorkCurlBasis(4,1) = 6.0d0 * grad(2) * w
+               WorkCurlBasis(4,2) = -6.0d0 * grad(1) * w
+
+               FaceIndices(1:4) = GIndexes(SquareFaceMap(1:4))
+               CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
+
+               EdgeBasis(31,:) = D1 * WorkBasis(2*(I1-1)+1,:)
+               CurlBasis(31,:) = D1 * WorkCurlBasis(2*(I1-1)+1,:)
+               EdgeBasis(32,:) = WorkBasis(2*(I1-1)+2,:)
+               CurlBasis(32,:) = WorkCurlBasis(2*(I1-1)+2,:)
+               EdgeBasis(33,:) = D2 * WorkBasis(2*(I2-1)+1,:)
+               CurlBasis(33,:) = D2 * WorkCurlBasis(2*(I2-1)+1,:)
+               EdgeBasis(34,:) = WorkBasis(2*(I2-1)+2,:)
+               CurlBasis(34,:) = WorkCurlBasis(2*(I2-1)+2,:)  
+
+               !-------------------------------------------------
+               ! Two basis functions associated with the interior
+               !-------------------------------------------------    
+               EdgeBasis(35,1) = (v*(1.0d0 + u - v/Sqrt(3.0d0)))/(4.0d0*Sqrt(3.0d0)) * h3
+               EdgeBasis(35,2) = ((-1.0d0 + u)*(-3.0d0 - 3.0d0*u + Sqrt(3.0d0)*v))/(12.0d0*Sqrt(3.0d0)) * h3
+               CurlBasis(35,1) = -EdgeBasis(35,2)/h3 * dh3
+               CurlBasis(35,2) = EdgeBasis(35,1)/h3 * dh3
+               CurlBasis(35,3) = (-Sqrt(3.0d0) - 3.0d0*Sqrt(3.0d0)*u + 3.0d0*v)/12.0d0 * h3
+
+               EdgeBasis(36,1) = (v*(-3.0d0 + 3.0d0*u + Sqrt(3.0d0)*v))/(12.0d0*Sqrt(3.0d0)) * h3
+               EdgeBasis(36,2) = -((1.0d0 + u)*(-3.0d0 + 3.0d0*u + Sqrt(3.0d0)*v))/(12.0d0*Sqrt(3.0d0)) * h3
+               CurlBasis(36,1) = -EdgeBasis(36,2)/h3 * dh3
+               CurlBasis(36,2) = EdgeBasis(36,1)/h3 * dh3
+               CurlBasis(36,3) = (Sqrt(3.0d0) - 3.0d0*Sqrt(3.0d0)*u - 3.0d0*v)/12.0d0 * h3
+
+               IF (ScaleFaceBasis) THEN
+                 EdgeBasis(35:36,1:2) = sqrt(150.0d0) * EdgeBasis(35:36,1:2)
+                 CurlBasis(35:36,1:3) = sqrt(150.0d0) * CurlBasis(35:36,1:3)
+               END IF
+             END IF GRADIENT_VERSION_PRISM
            ELSE
              !--------------------------------------------------------------
              ! The lowest-order element from the optimal family. The optimal
@@ -11279,6 +11499,97 @@ END SUBROUTINE PickActiveFace
 !----------------------------------------------------------
      END SUBROUTINE ReorderingAndSignReversionsData
 !----------------------------------------------------------
+
+!------------------------------------------------------------------------     
+!    Given an edge [ij] of a triangle this subroutine returns
+!
+!    Workbasis(1,1:2) = L_j grad L_i
+!    Workbasis(2,1:2) = L_i grad L_j
+!
+!    and the values of their curl at a given point (u,v). Suitable linear
+!    combinations of these functions then give the basic Whitney forms. 
+!------------------------------------------------------------------------
+     SUBROUTINE EdgeWhitneyComponents2D(WorkBasis, WorkCurlBasis, i, j, u, v)
+!------------------------------------------------------------------------
+       
+       REAL(KIND=dp), INTENT(OUT) :: WorkBasis(2,3), WorkCurlBasis(2,3)
+       INTEGER, INTENT(IN) :: i, j
+       REAL(KIND=dp), INTENT(IN) :: u, v
+!------------------------------------------------------------------------
+       REAL(KIND=dp) :: grad_i(2), grad_j(2)
+       REAL(KIND=dp) :: grad_svec(2,2), grad_tvec(2,2)
+!------------------------------------------------------------------------
+       grad_i = dTriangleNodalPBasis(i,u,v)
+       grad_j = dTriangleNodalPBasis(j,u,v)
+
+       grad_svec(1,2) = grad_j(2) * grad_i(1)
+       grad_svec(2,1) = grad_j(1) * grad_i(2)
+
+       grad_tvec(1,2) = grad_i(2) * grad_j(1)
+       grad_tvec(2,1) = grad_i(1) * grad_j(2)
+
+       WorkBasis(1:2,3) = 0.0d0
+       WorkBasis(1,1:2) = TriangleNodalPBasis(j,u,v) * grad_i
+       WorkBasis(2,1:2) = TriangleNodalPBasis(i,u,v) * grad_j
+
+       WorkCurlBasis(1:2,1:2) = 0.0d0
+       WorkCurlBasis(1,3) = grad_svec(2,1) - grad_svec(1,2)
+       WorkCurlBasis(2,3) = grad_tvec(2,1) - grad_tvec(1,2)
+!------------------------------------------------------------------------
+     END SUBROUTINE EdgeWhitneyComponents2D
+!------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------     
+!    Given a face [ijk] of a triangle this subroutine returns
+!
+!    Workbasis(1,1:2) = L_j L_k grad L_i
+!    Workbasis(2,1:2) = L_i L_k grad L_j
+!    Workbasis(3,1:2) = L_i L_j grad L_k     
+!
+!    and the values of their curl at a given point (u,v).
+!------------------------------------------------------------------------
+     SUBROUTINE FaceWhitneyComponents2D(WorkBasis, WorkCurlBasis, u, v)
+!------------------------------------------------------------------------
+       
+       REAL(KIND=dp), INTENT(OUT) :: WorkBasis(3,3), WorkCurlBasis(3,3)
+!       INTEGER, INTENT(IN) :: i, j
+       REAL(KIND=dp), INTENT(IN) :: u, v
+!------------------------------------------------------------------------
+       REAL(KIND=dp) :: grad_i(2), grad_j(2), grad_k(2)
+       REAL(KIND=dp) :: grad_svec(2,2), grad_tvec(2,2), grad_hvec(2,2)
+!------------------------------------------------------------------------
+       WorkBasis(:,3) = 0.0d0
+       WorkBasis(1,1:2) = TriangleNodalPBasis(2,u,v) * TriangleNodalPBasis(3,u,v) * dTriangleNodalPBasis(1,u,v) 
+       WorkBasis(2,1:2) = TriangleNodalPBasis(1,u,v) * TriangleNodalPBasis(3,u,v) * dTriangleNodalPBasis(2,u,v)
+       WorkBasis(3,1:2) = TriangleNodalPBasis(1,u,v) * TriangleNodalPBasis(2,u,v) * dTriangleNodalPBasis(3,u,v)
+       
+       grad_i = dTriangleNodalPBasis(1,u,v)
+       grad_j = dTriangleNodalPBasis(2,u,v)
+       grad_k = dTriangleNodalPBasis(3,u,v)
+                 
+       grad_svec(1,2) = (grad_j(2) * TriangleNodalPBasis(3,u,v) + &
+           TriangleNodalPBasis(2,u,v) * grad_k(2)) * grad_i(1)
+       grad_svec(2,1) = (grad_j(1) * TriangleNodalPBasis(3,u,v) + &
+           TriangleNodalPBasis(2,u,v) * grad_k(1)) * grad_i(2)
+
+       grad_tvec(1,2) = (grad_i(2) * TriangleNodalPBasis(3,u,v)  + &
+           TriangleNodalPBasis(1,u,v) * grad_k(2)) * grad_j(1)
+       grad_tvec(2,1) = (grad_i(1) * TriangleNodalPBasis(3,u,v)  + &
+           TriangleNodalPBasis(1,u,v) * grad_k(1)) * grad_j(2)
+
+       grad_hvec(1,2) = (grad_i(2) * TriangleNodalPBasis(2,u,v)  + &
+           TriangleNodalPBasis(1,u,v) * grad_j(2)) * grad_k(1)
+       grad_hvec(2,1) = (grad_i(1) * TriangleNodalPBasis(2,u,v)  + &
+           TriangleNodalPBasis(1,u,v) * grad_j(1)) * grad_k(2)
+
+       WorkCurlBasis(1:3,1:2) = 0.0d0
+       WorkCurlBasis(1,3) = grad_svec(2,1) - grad_svec(1,2)
+       WorkCurlBasis(2,3) = grad_tvec(2,1) - grad_tvec(1,2)
+       WorkCurlBasis(3,3) = grad_hvec(2,1) - grad_hvec(1,2)
+!------------------------------------------------------------------------
+     END SUBROUTINE FaceWhitneyComponents2D
+!------------------------------------------------------------------------
      
 !------------------------------------------------------------------------
      SUBROUTINE WeightedWhitneyForms(WorkBasis, WorkCurlBasis, k, u, v, w)
