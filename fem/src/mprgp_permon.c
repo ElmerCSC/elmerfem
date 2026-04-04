@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <inttypes.h>
 #include <permonqps.h>
+#include <petscmat.h>
 #include <petscsys.h>
 
 
@@ -80,6 +81,8 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
     PetscInt  i, rstart, rend, nnz;
     PetscBool converged, viewSol = PETSC_FALSE;
     PetscBool debugInit = PETSC_FALSE, pinInitToBound = PETSC_FALSE, pinInitToBoundAfterFirst = PETSC_FALSE;
+    PetscBool checkSymmetry = PETSC_TRUE, symmetryStrict = PETSC_FALSE, isSymmetric = PETSC_FALSE;
+    PetscReal symmetryTol = 1e-12;
     PetscViewer viewer;
     static PetscInt solveCallCounter = 0;
     
@@ -139,6 +142,7 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
     PetscCall(MatSetUp(A));
     /* Attach local->global mapping so we can insert with local indices */
     PetscCall(MatSetLocalToGlobalMapping(A, ltog, ltog));
+    PetscCall(ISLocalToGlobalMappingDestroy(&ltog));
 
     PetscInt maxnnz = 0;
     for (i = 0; i < nrows; i++) {
@@ -165,6 +169,26 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
 
     MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(A, MAT_FINAL_ASSEMBLY);
+
+    /* MPRGP/PERMON assumes a symmetric operator; this check verifies the
+       assembled matrix and can optionally abort before solve. */
+    PetscCall(PetscOptionsGetBool(NULL, NULL, "-permon_check_symmetry", &checkSymmetry, NULL));
+    PetscCall(PetscOptionsGetReal(NULL, NULL, "-permon_check_symmetry_tol", &symmetryTol, NULL));
+    PetscCall(PetscOptionsGetBool(NULL, NULL, "-permon_check_symmetry_strict", &symmetryStrict, NULL));
+    if (checkSymmetry) {
+        PetscCall(MatIsSymmetric(A, symmetryTol, &isSymmetric));
+        if (!isSymmetric) {
+            PetscCall(PetscPrintf(comm,
+                "[permon_solve] WARNING: matrix is NOT symmetric within tol=%g.\n",
+                (double)symmetryTol));
+            if (symmetryStrict) {
+                PetscCall(PetscPrintf(comm,
+                    "[permon_solve] Aborting because -permon_check_symmetry_strict is enabled.\n"));
+                PetscCall(MatDestroy(&A));
+                return PETSC_ERR_ARG_WRONGSTATE;
+            }
+        }
+    }
 
     // -----------------------------
     // 4. Create vectors (b, c, x)
@@ -248,6 +272,23 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
     if (pinInitToBound || (pinInitToBoundAfterFirst && solveCallCounter > 1)) {
         /* Optional experiment: start exactly on active bound instead of Elmer's XVec. */
         PetscCall(VecCopy(c, x));
+        if (debugInit) {
+            PetscReal xNorm2 = 0.0, xMin = 0.0, xMax = 0.0;
+            PetscReal cNorm2 = 0.0, cMin = 0.0, cMax = 0.0;
+            PetscCall(VecNorm(x, NORM_2, &xNorm2));
+            PetscCall(VecMin(x, NULL, &xMin));
+            PetscCall(VecMax(x, NULL, &xMax));
+            PetscCall(VecNorm(c, NORM_2, &cNorm2));
+            PetscCall(VecMin(c, NULL, &cMin));
+            PetscCall(VecMax(c, NULL, &cMax));
+            PetscCall(PetscPrintf(comm,
+                "[permon_solve #%" PetscInt_FMT "] x after pinning: ||x||_2=%.6e min=%.6e max=%.6e; bound=%s ||c||_2=%.6e min=%.6e max=%.6e\n",
+                solveCallCounter,
+                (double)xNorm2, (double)xMin, (double)xMax,
+                (bound == 0) ? "lower" : "upper",
+                (double)cNorm2, (double)cMin, (double)cMax));
+        }
+
     }
 
     /* Set initial guess.
