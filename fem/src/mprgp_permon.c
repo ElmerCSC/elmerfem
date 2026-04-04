@@ -227,7 +227,13 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
 
     PetscCall(PetscOptionsGetBool(NULL, NULL, "-permon_debug_initial_guess", &debugInit, NULL));
     PetscCall(PetscOptionsGetBool(NULL, NULL, "-permon_initial_guess_at_bound", &pinInitToBound, NULL));
-    PetscCall(PetscOptionsGetBool(NULL, NULL, "-permon_initial_guess_at_bound_after_first", &pinInitToBoundAfterFirst, NULL));
+    PetscCall(PetscOptionsGetBool(NULL, NULL, "-permon_initial_guess_at_bound_first", &pinInitToBoundAfFirst, NULL));
+
+    if (solveCallCounter == 1) {
+        PetscCall(PetscPrintf(comm,"permon_solve: Saving A and b"));
+        MatViewFromOptions(A,NULL,"-amat_view");
+        VecViewFromOptions(b,NULL,"-bvec_view");
+    }
 
     PetscCall(QPCreate(comm, &qp));
     /* Set matrix representing QP operator */
@@ -252,6 +258,11 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
         return -1;
     }
 
+    if (solveCallCounter == 1) {
+        PetscCall(PetscPrintf(comm,"permon_solve: Saving c"));
+        VecViewFromOptions(c,NULL,"-cvec_view");
+    }
+
     if (debugInit) {
         PetscReal xNorm2 = 0.0, xMin = 0.0, xMax = 0.0;
         PetscReal cNorm2 = 0.0, cMin = 0.0, cMax = 0.0;
@@ -269,8 +280,11 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
             (double)cNorm2, (double)cMin, (double)cMax));
     }
 
-    if (pinInitToBound || (pinInitToBoundAfterFirst && solveCallCounter > 1)) {
+    if (pinInitToBound || (pinInitToBoundAfFirst && solveCallCounter == 1)) {
         /* Optional experiment: start exactly on active bound instead of Elmer's XVec. */
+        PetscCall(PetscPrintf(comm,
+            "[permon_solve #%" PetscInt_FMT "] pinning initial guess to bound\n",
+            solveCallCounter));
         PetscCall(VecCopy(c, x));
         if (debugInit) {
             PetscReal xNorm2 = 0.0, xMin = 0.0, xMax = 0.0;
