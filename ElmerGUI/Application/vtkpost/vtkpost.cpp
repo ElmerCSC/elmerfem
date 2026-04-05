@@ -1193,6 +1193,7 @@ int VtkPost::vtk2ElmerElement(int vtkCode){
 		case 24:  elmerCode = 510; break;
 		case 25:  elmerCode = 820; break;
 		case 26:  elmerCode = 715; break;
+		case 73:  elmerCode = 718; break;
 		case 27:  elmerCode = 613; break;
 		case 28:  elmerCode = 409; break;
 		case 29:  elmerCode = 827; break;

@@ -142,7 +142,7 @@ void Meshutils::findSurfaceElements(mesh_t *mesh)
   static int facemap8[][8] = {{0,1,2,3,8,9,10,11}, {4,5,6,7,16,17,18,19}, {0,1,5,4,8,13,16,12}, {1,2,6,5,9,14,17,13}, {2,3,7,6,10,15,18,14}, {3,0,4,7,11,12,19,15}};
 
   static int faceedges7[] = {3, 3, 4, 4, 4};
-  static int facemap7[][8] = {{0,1,2,6,7,8}, {3,4,5,12,13,14}, {0,1,4,3,6,10,12,9}, {1,2,5,4,7,11,13,10}, {2,0,3,5,8,9,14,11}};
+  static int facemap7[][9] = {{0,1,2,6,7,8}, {3,4,5,12,13,14}, {0,1,4,3,6,10,12,9,15}, {1,2,5,4,7,11,13,10,17}, {2,0,3,5,8,9,14,11,16}};
 
   static int faceedges6[] = {4, 3, 3, 3, 3};
   static int facemap6[][8] = {{0,1,2,3,5,6,7,8}, {0,1,4,5,10,9}, {1,2,4,6,11,10}, {2,3,4,7,12,11}, {3,0,4,8,9,12}};
@@ -306,16 +306,17 @@ void Meshutils::findSurfaceElements(mesh_t *mesh)
 	}
 	else if(family == 7) {
 	  faceedges = faceedges7[f];
-	  if( code == 715) degree = 2;
+	  if( code == 715 || code == 718 ) degree = 2;
 	  facemap = &facemap7[f][0];
 	}
 	else if(family == 8) {
 	  faceedges = faceedges8[f];
-	  if( code == 820 ) degree = 2;
+	  if( code == 820 || code == 827) degree = 2;
 	  facemap = &facemap8[f][0];
 	}
 	
 	int facenodes = degree * faceedges;
+	if (code == 718 && f >= 2) facenodes = 9;
         if (code == 827) facenodes = 9;
 
 	s->setNodes(facenodes);
