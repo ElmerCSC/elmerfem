@@ -75,13 +75,14 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
     Vec       b, c, x;
     Vec       lb_fill = NULL, ub_fill = NULL;
     Vec       lb = NULL, ub = NULL;
-    Mat       A;
+    Mat       A, AT = NULL;
     QP        qp;
     QPS       qps;
     PetscInt  i, rstart, rend, nnz;
     PetscBool converged, viewSol = PETSC_FALSE;
-    PetscBool debugInit = PETSC_FALSE, pinInitToBound = PETSC_FALSE, pinInitToBoundAfterFirst = PETSC_FALSE;
+    PetscBool debugInit = PETSC_FALSE, pinInitToBound = PETSC_FALSE, pinInitToBoundAtFirst = PETSC_FALSE;
     PetscBool checkSymmetry = PETSC_TRUE, symmetryStrict = PETSC_FALSE, isSymmetric = PETSC_FALSE;
+    PetscBool symmetrizeOperator = PETSC_FALSE;
     PetscReal symmetryTol = 1e-12;
     PetscViewer viewer;
     static PetscInt solveCallCounter = 0;
@@ -170,6 +171,19 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
     MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(A, MAT_FINAL_ASSEMBLY);
 
+    /* Optional defect-correction style operator modification:
+       A <- 0.5 * (A + A^T). This enforces symmetry for PERMON while
+       keeping the RHS from the full assembled physics. */
+    PetscCall(PetscOptionsGetBool(NULL, NULL, "-permon_symmetrize_operator", &symmetrizeOperator, NULL));
+    if (symmetrizeOperator) {
+        PetscCall(MatTranspose(A, MAT_INITIAL_MATRIX, &AT));
+        PetscCall(MatAXPY(A, 1.0, AT, DIFFERENT_NONZERO_PATTERN));
+        PetscCall(MatScale(A, 0.5));
+        PetscCall(MatDestroy(&AT));
+        PetscCall(PetscPrintf(comm,
+            "[permon_solve] Using symmetrized operator A_sym = 0.5*(A + A^T).\n"));
+    }
+
     /* MPRGP/PERMON assumes a symmetric operator; this check verifies the
        assembled matrix and can optionally abort before solve. */
     PetscCall(PetscOptionsGetBool(NULL, NULL, "-permon_check_symmetry", &checkSymmetry, NULL));
@@ -227,7 +241,7 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
 
     PetscCall(PetscOptionsGetBool(NULL, NULL, "-permon_debug_initial_guess", &debugInit, NULL));
     PetscCall(PetscOptionsGetBool(NULL, NULL, "-permon_initial_guess_at_bound", &pinInitToBound, NULL));
-    PetscCall(PetscOptionsGetBool(NULL, NULL, "-permon_initial_guess_at_bound_first", &pinInitToBoundAfFirst, NULL));
+    PetscCall(PetscOptionsGetBool(NULL, NULL, "-permon_initial_guess_at_bound_first", &pinInitToBoundAtFirst, NULL));
 
     if (solveCallCounter == 1) {
         PetscCall(PetscPrintf(comm,"permon_solve: Saving A and b"));
@@ -280,7 +294,7 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
             (double)cNorm2, (double)cMin, (double)cMax));
     }
 
-    if (pinInitToBound || (pinInitToBoundAfFirst && solveCallCounter == 1)) {
+    if (pinInitToBound || (pinInitToBoundAtFirst && solveCallCounter == 1)) {
         /* Optional experiment: start exactly on active bound instead of Elmer's XVec. */
         PetscCall(PetscPrintf(comm,
             "[permon_solve #%" PetscInt_FMT "] pinning initial guess to bound\n",
