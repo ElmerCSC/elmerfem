@@ -16,8 +16,8 @@ Simulation
   Simulation Type = Steady State
   Steady State Max Iterations  = 1
   Output Intervals = 1
-  Post File   = "carre2D.vtu"
-  Output File = "carre2D.result"
+  !Post File   = "carre2D.vtu"
+  !Output File = "carre2D.result"
   max output level = 4
 End  
 
@@ -112,16 +112,13 @@ Solver 4
   Exec Solver = After All
   Equation = SaveScalars
   Procedure = File "SaveData" "SaveScalars"
-  Filename = "results.dat"
+ ! Filename = "results.dat"
+  
+  Show Norm Index = 1
 
-  Variable 1 = String "Stresses"
-  Operator 1 = String "int"
-  Variable 2 = String "Stresses"
-  Operator 2 = String "max"
-  Variable 3 = String "Stresses"
-  Operator 3 = String "min"
+  Variable 1 = String "EigenS 3"
+  Operator 1 = String "mean"
 
-  Operator 4 = String "cpu time"
 End
 
 Equation 1
@@ -149,5 +146,5 @@ Boundary Condition 4
   Velocity 1 = Real 0.0
 End
 
-Solver 3 :: Reference Norm = Real 0.0000000
-Solver 3 :: Reference Norm Tolerance = Real 1E-06
+Solver 4 :: Reference Norm = Real 9.99999684E-01
+Solver 4 :: Reference Norm Tolerance = Real 1E-06
