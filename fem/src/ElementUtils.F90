@@ -1745,7 +1745,7 @@ CONTAINS
    FUNCTION CreateMatrix( Model, Solver, Mesh, Perm, DOFs, MatrixFormat, &
           OptimizeBW, Equation, DGSolver, GlobalBubbles, &
           NodalDofsOnly, ProjectorDofs, ThreadedStartup, &
-          UseGivenPerm ) RESULT(Matrix)
+          UseGivenPerm, BCMode ) RESULT(Matrix)
 !------------------------------------------------------------------------------
      IMPLICIT NONE
      TYPE(Model_t) :: Model
@@ -1758,7 +1758,8 @@ CONTAINS
      LOGICAL, OPTIONAL :: NodalDofsOnly, ProjectorDofs
      LOGICAL, OPTIONAL :: ThreadedStartup
      LOGICAL, OPTIONAL :: USeGivenPerm
-
+     LOGICAL, OPTIONAL :: BCMode          ! optionally we can check the flag in BC section, instead of equation
+     
      CHARACTER(LEN=*), OPTIONAL :: Equation
 
      TYPE(Matrix_t),POINTER :: Matrix
@@ -1769,7 +1770,7 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element
      TYPE(ListMatrixEntry_t), POINTER :: CList
      CHARACTER(:), ALLOCATABLE :: Eq,str
-     LOGICAL :: GotIt, DG, GB, UseOptimized, Found, UseGiven
+     LOGICAL :: GotIt, DG, GB, UseOptimized, Found, UseGiven, DoBC
      INTEGER i,j,k,l,k1,t,n, p,m, minEdgeDOFs, maxEdgeDOFs, &
            minFaceDOFs, maxFaceDOFs, BDOFs, cols, istat, &
            NDOFs
@@ -1790,6 +1791,9 @@ CONTAINS
      GB = .FALSE.
      IF ( PRESENT(GlobalBubbles) ) GB = GlobalBubbles
 
+     DoBC = .FALSE.
+     IF(PRESENT(BcMode)) DoBC = BCMode
+     
      UseGiven = .FALSE.
      IF( PRESENT( UseGivenPerm ) ) THEN
        IF( UseGivenPerm ) THEN
@@ -1810,7 +1814,6 @@ CONTAINS
        END IF
      END IF
 
-     
      UseThreads = .FALSE.
      nthr = 1
      IF ( PRESENT(ThreadedStartup) ) THEN
@@ -1944,7 +1947,7 @@ CONTAINS
      Perm = 0
      IF ( PRESENT(Equation) ) THEN
        CALL Info(Caller,'Creating initial permutation',Level=14)
-       k = InitialPermutation( Perm,Model,Solver,Mesh,Eq,DG,GB )
+       k = InitialPermutation( Perm,Model,Solver,Mesh,Eq,DG,GB,BCMode=BCMode)
        IF ( k <= 0 ) THEN
          IF(ALLOCATED(InvInitialReorder)) DEALLOCATE(InvInitialReorder)
          RETURN
@@ -2050,7 +2053,7 @@ CONTAINS
        NULLIFY( ListMatrix )
        CALL Info(Caller,'Creating list matrix for equation: '//TRIM(Eq),Level=14)
 
-       IF ( PRESENT(Equation) ) THEN
+       IF ( PRESENT(Equation) .AND. .NOT. DoBC ) THEN
          CALL MakeListMatrix( Model, Solver, Mesh, ListMatrix, Perm, k, Eq, DG, GB,&
                NodalDofsOnly, ProjectorDofs, CalcNonZeros = .FALSE.)
          n = OptimizeBandwidth( ListMatrix, Perm, InvInitialReorder, &
