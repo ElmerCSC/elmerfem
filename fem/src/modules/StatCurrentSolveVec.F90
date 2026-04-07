@@ -799,7 +799,6 @@ SUBROUTINE StatCurrentSolver_post( Model,Solver,dt,Transient )
   ALLOCATE( MASS(n,n), FORCE(8,n) ) ! 1+1+3+3 components for force
 
   CALL Info(Caller,'Calculating local field values',Level=12) 
-  InitHandles = .TRUE.
   HeatingTot = 0.0_dp
   VolTot = 0.0_dp
 
@@ -810,7 +809,8 @@ SUBROUTINE StatCurrentSolver_post( Model,Solver,dt,Transient )
   !$OMP SINGLE
   Active = GetNOFActive(Solver)
   !$OMP END SINGLE
-
+  InitHandles = .TRUE.
+  
   !$OMP DO
   DO t = 1, Active
     Element => GetActiveElement(t)
@@ -823,7 +823,7 @@ SUBROUTINE StatCurrentSolver_post( Model,Solver,dt,Transient )
   END DO
   !$OMP END DO 
   !$OMP END PARALLEL
-  
+
   IF( NeedScaling ) THEN
     CALL Info(Caller,'Scaling the field values with weights',Level=12)
     CALL GlobalPostScale()

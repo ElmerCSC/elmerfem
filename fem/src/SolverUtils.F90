@@ -52,7 +52,8 @@ MODULE SolverUtils
    USE LoadMod
    USE Multigrid
    USE ElementUtils
-   USE LumpingUtils
+   USE LumpingUtils, ONLY : ComponentStokesTheorem, ComponentCoilEnergy, BoundaryWaveFlux, &
+       UpdateDependentComponents, ComponentNodalForceReduction
    USE TimeIntegrate
    USE ModelDescription
    USE MeshUtils, ONLY : CommunicateParallelSystemTag, CylinderFit, &
@@ -2187,13 +2188,13 @@ CONTAINS
        CALL Info(Caller,'Using p-elements for contact, if available in projector!',Level=8)
      END IF
      
-     IterVar => VariableGet( Model % Variables,'coupled iter')
+     IterVar => VariableGet( Model % Variables,'coupled iter',UnfoundFatal=.TRUE.)
      CoupledIter = NINT( IterVar % Values(1) )
 
-     IterVar => VariableGet( Model % Variables,'nonlin iter')
+     IterVar => VariableGet( Model % Variables,'nonlin iter',UnfoundFatal=.TRUE.)
      NonlinIter = NINT( IterVar % Values(1) )
      
-     IterVar => VariableGet( Model % Variables,'timestep')
+     IterVar => VariableGet( Model % Variables,'timestep',UnfoundFatal=.TRUE.)
      Timestep = NINT( IterVar % Values(1) )
 
      IterVar => VariableGet( Mesh % Variables,'timestep size')
@@ -11111,13 +11112,13 @@ END FUNCTION SearchNodeL
           'Steady State Relaxation Factor', Relax )
       Relax = Relax .AND. ABS(Relaxation-1.0_dp) > EPSILON(Relaxation)
 
-      iterVar => VariableGet( Solver % Mesh % Variables, 'coupled iter' )
+      iterVar => VariableGet( Solver % Mesh % Variables, 'coupled iter', UnfoundFatal=.TRUE.)
       IterNo = NINT( iterVar % Values(1) )
       IF( Relax ) THEN
         RelaxAfter = ListGetInteger(SolverParams,'Steady State Relaxation After',Stat)
         IF( Stat .AND. RelaxAfter >= IterNo ) Relax = .FALSE.
-      END IF	
-
+      END IF
+        
       NodalNorm = ListGetLogical(SolverParams,'Steady State Nodal Norm',Stat)
       
       RelaxBefore = .TRUE.
@@ -11133,6 +11134,7 @@ END FUNCTION SearchNodeL
       SkipConstraints = .FALSE.
       
     ELSE
+      IterNo = 0
       iterVar => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
       IF( ASSOCIATED( iterVar ) ) THEN
         IterNo = NINT( iterVar % Values(1) )
@@ -11642,10 +11644,10 @@ END FUNCTION SearchNodeL
 
     IF( DoIt ) THEN
       IF( SteadyState ) THEN
-        iterVar => VariableGet( Solver % Mesh % Variables, 'coupled iter' )
+        iterVar => VariableGet( Solver % Mesh % Variables, 'coupled iter',UnfoundFatal=.TRUE.)
         IterNo = NINT( iterVar % Values(1) )
       ELSE
-        iterVar => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
+        iterVar => VariableGet( Solver % Mesh % Variables, 'nonlin iter',UnfoundFatal=.TRUE.)
         IterNo = NINT( iterVar % Values(1) )
       END IF
       
@@ -12470,7 +12472,7 @@ END FUNCTION SearchNodeL
       SolverName = ListGetString( SolverParams, 'Equation',Stat)
       IF(.NOT. Stat) SolverName = TRIM(Solver % Variable % Name)
             
-      IterVar => VariableGet( Solver % Mesh % Variables, 'nonlin iter')
+      IterVar => VariableGet( Solver % Mesh % Variables, 'nonlin iter',UnfoundFatal=.TRUE.)
       m = NINT(IterVar % Values(1))
       
       ! This replaces the standard error output usually written by the ComputeChange
@@ -12825,7 +12827,7 @@ END FUNCTION SearchNodeL
 
     Parallel = ( ParEnv % PEs > 1 ) 
         
-    iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
+    iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter',UnfoundFatal=.TRUE.)
     iter = NINT(iterV % Values(1))
 
     IF(PRESENT(NoSolve)) NoSolve = .FALSE.
@@ -15287,8 +15289,10 @@ END FUNCTION SearchNodeL
         ! Increase the nonlinear counter since otherwise some stuff may stagnate
         ! Normally this is done within ComputeChange
         iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
-        Solver % Variable % NonlinIter = iterV % Values(1)
-        iterV % Values(1) = iterV % Values(1) + 1 
+        IF(ASSOCIATED(iterV)) THEN
+          Solver % Variable % NonlinIter = iterV % Values(1)
+          iterV % Values(1) = iterV % Values(1) + 1 
+        END IF
         Solver % Variable % Norm = 0.0_dp
         Solver % Variable % NonlinConverged = 1
      
@@ -15410,8 +15414,10 @@ END FUNCTION SearchNodeL
       ! Increase the nonlinear counter since otherwise some stuff may stagnate
       ! Normally this is done within ComputeChange
       iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
-      Solver % Variable % NonlinIter = iterV % Values(1)
-      iterV % Values(1) = iterV % Values(1) + 1 
+      IF(ASSOCIATED(iterV)) THEN
+        Solver % Variable % NonlinIter = iterV % Values(1)
+        iterV % Values(1) = iterV % Values(1) + 1
+      END IF
       Solver % Variable % Norm = 0.0_dp
       Solver % Variable % NonlinConverged = 1
 
@@ -15455,7 +15461,7 @@ END FUNCTION SearchNodeL
       CALL Info(Caller,'Nullifying initial guess!',Level=30)
       x(1:n) = 0.0_dp
     ELSE IF( ListGetLogical( Params,'Linear System Nullify First Guess',GotIt ) ) THEN
-      iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
+      iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter', UnfoundFatal=.TRUE.)
       i = NINT(iterV % Values(1))
       IF(i<=1) THEN
         CALL Info(Caller,'Nullifying first initial guess!',Level=30)
@@ -19929,7 +19935,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
   Parallel = Solver % Parallel
 
   ResidualMode = ListGetLogical( Params,'Restriction System Residual Mode',Found )    
-  iterV => VariableGet(Solver % Mesh % Variables,'nonlin iter')
+  iterV => VariableGet(Solver % Mesh % Variables,'nonlin iter',UnfoundFatal=.TRUE.)
   nIter = NINT(iterV % Values(1))
     
   NotExplicit = ListGetLogical(Params,'No Explicit Constrained Matrix',Found)

@@ -6291,34 +6291,79 @@ CONTAINS
            np = Parent % TYPE % NumberOfNodes
 
            IF ( ListCheckPrefix(BC, Name//' {e}') ) THEN
-              !--------------------------------------------------------------------------------
-              ! We now devote this branch for handling edge (curl-conforming) finite elements 
-              ! which, in addition to edge DOFs, may also have DOFs associated with faces. 
-              !--------------------------------------------------------------------------------
-              IF ( ASSOCIATED( Solver % Mesh % Edges ) ) THEN
+             !--------------------------------------------------------------------------------
+             ! We now devote this branch for handling edge (curl-conforming) finite elements 
+             ! which, in addition to edge DOFs, may also have DOFs associated with faces. 
+             !--------------------------------------------------------------------------------
+             IF ( ASSOCIATED( Solver % Mesh % Edges ) ) THEN
+               BLOCK
+                 INTEGER :: NoEdges = 0
+                 INTEGER :: BCMode = 0
+
+                 AugmentedEigenSystem = .FALSE.                      
+                 BCMode = 0
+                 
                  SELECT CASE(GetElementFamily(Element))
-                 CASE(2)
-
+                 CASE(2)                    
                    CALL PickActiveFace(Solver % Mesh, Parent, Element, Edge, j)
-
                    IF ( .NOT. ASSOCIATED(Edge) ) CYCLE
                    Edge % BodyId = Parent % BodyId
-                   IF ( .NOT. ActiveBoundaryElement(Edge) ) CYCLE                  
+                   IF ( .NOT. ActiveBoundaryElement(Edge) ) CYCLE                                      
+
+                   AugmentedEigenSystem = ListGetLogical(Params, 'Eigen System Augmentation', Found) 
+                   BCMode = 1
+                   NoEdges = 1
+
+                 CASE(3,4)
+                   CALL PickActiveFace(Solver % Mesh, Parent, Element, Face, j)
+                   IF (.NOT. ASSOCIATED(Face)) CYCLE
+                   NoEdges = Face % TYPE % NumberOfEdges
+		   Face % BodyId = Parent % BodyId                      
+
+                   IF ( ActiveBoundaryElement(Face) ) THEN
+                     BCMode = 2
+                   ELSE
+                     BCMode = 3
+                   END IF
+
+                 END SELECT
+
+                 IF(BCMode < 3 .AND. Parent % BodyId == 0) THEN
+                   CALL Fatal('DefaultDirichletBCs','Body id is zero!')
+                 END IF
+
+
+                 ! ---------------------------------------------------------------------
+                 ! Set first constraints for DOFs associated with edges. Save the values
+                 ! of DOFs in the array Work(:), so that the possible remaining DOFs
+                 ! associated with the face can be computed after this.
+                 ! ---------------------------------------------------------------------
+                 i0 = 0
+                 DO l=1,NoEdges
+                   IF(BCMode == 1) THEN
+                     CONTINUE
+                   ELSE IF( BCMode == 2 ) THEN
+                     Edge => Solver % Mesh % Edges(Face % EdgeIndexes(l))
+                     IF(.NOT. ASSOCIATED(Edge)) CYCLE
+                   ELSE
+                     Edge => Solver % Mesh % Edges(Face % EdgeIndexes(l))
+                     IF(.NOT. ASSOCIATED(Edge)) CYCLE
+                   END IF
+                   Edge % BodyId = Parent % BodyId
 
                    EDOFs = Edge % BDOFs     ! The number of DOFs associated with edges
                    IF (EDOFs < 1) CYCLE
-                   
-                   AugmentedEigenSystem = ListGetLogical(Params, 'Eigen System Augmentation', Found) 
+
                    IF (AugmentedEigenSystem) THEN
                      EDOFs = EDOFs/2
                    END IF
 
                    n = Edge % TYPE % NumberOfNodes
-                   CALL VectorElementEdgeDOFs(BC,Edge,n,Parent,np,Name//' {e}',Work, &
-                       EDOFs, SecondKindBasis, BasisDegree = BasisDegree, &
-                       GradientVersion = GradVersion)
+                   CALL VectorElementEdgeDOFs(BC, Edge, n, Parent, np, Name//' {e}', &
+                       Work(i0+1:i0+EDOFs), EDOFs, SecondKindBasis, &
+                       BasisDegree = BasisDegree, GradientVersion = GradVersion)                    
 
-                   n=GetElementDOFs(gInd,Edge)
+                   n = GetElementDOFs(gInd,Edge)
 
                    IF (Solver % Def_Dofs(2,Parent % BodyId,1) > 0) THEN
                      n_start = Edge % NDOFs
@@ -6337,83 +6382,41 @@ CONTAINS
                      nb = Offset + x % DOFs*(nb-1) + DOF
 
                      A % ConstrainedDOF(nb) = .TRUE.
-                     A % Dvalues(nb) = Work(j) 
+                     A % Dvalues(nb) = Work(i0+j) 
                    END DO
+                   i0 = i0 + EDOFs
+                 END DO
 
-                 CASE(3,4)
-                   CALL PickActiveFace(Solver % Mesh, Parent, Element, Face, j)
+                 ! We will deal with the face-only BC's only if the full face is active.
+                 IF(BCMode /= 2) CYCLE
 
-                   IF (.NOT. ASSOCIATED(Face)) CYCLE
+                 ! ---------------------------------------------------------------------
+                 ! Set constraints for face DOFs via seeking the best approximation in L2.
+                 ! We use the variational equation (u x n,v') = (g x n - u0 x n,v) where
+                 ! u0 denotes the part of the interpolating function u+u0 which is already 
+                 ! known and v is a test function for the Galerkin method.
+                 ! ---------------------------------------------------------------------
+                 IF (Face % BDOFs > 0) THEN
+                   EDOFs = i0 ! The count of edge DOFs set so far
+                   n = Face % TYPE % NumberOfNodes
+                   
+                   CALL SolveLocalFaceDOFs(BC, Face, n, Name//' {e}', Work, EDOFs, &
+                       Face % BDOFs, SecondKindBasis, BasisDegree, GradVersion )
+
                    Face % BodyId = Parent % BodyId
-                   IF ( .NOT. ActiveBoundaryElement(Face) ) CYCLE
 
-                   ! ---------------------------------------------------------------------
-                   ! Set first constraints for DOFs associated with edges. Save the values
-                   ! of DOFs in the array Work(:), so that the possible remaining DOFs
-                   ! associated with the face can be computed after this.
-                   ! ---------------------------------------------------------------------
-                   i0 = 0
-                   DO l=1,Face % TYPE % NumberOfEdges
-                     Edge => Solver % Mesh % Edges(Face % EdgeIndexes(l))
-                     EDOFs = Edge % BDOFs
-                     IF (EDOFs < 1) CYCLE
+                   n = GetElementDOFs(GInd,Face)
+                   DO j=1,Face % BDOFs
+                     nb = x % Perm(GInd(n-Face % BDOFs+j)) ! The last entries should be face-DOF indices
+                     IF ( nb <= 0 ) CYCLE
+                     nb = Offset + x % DOFs*(nb-1) + DOF
 
-                     Edge % BodyId = Parent % BodyId
-                     n = Edge % TYPE % NumberOfNodes
-
-                     CALL VectorElementEdgeDOFs(BC, Edge, n, Parent, np, Name//' {e}', &
-                         Work(i0+1:i0+EDOFs), EDOFs, SecondKindBasis, &
-                         BasisDegree = BasisDegree, &
-                         GradientVersion = GradVersion)
-                     
-                     n = GetElementDOFs(gInd,Edge)
-
-                     IF (Solver % Def_Dofs(2,Parent % BodyId,1) > 0) THEN
-                       n_start = Edge % NDOFs
-                     ELSE
-                       n_start = 0
-                     END IF
- 
-                     DO j=1,EDOFs
-                       k = n_start + j
-                       nb = x % Perm(gInd(k))
-                       IF ( nb <= 0 ) CYCLE
-                       nb = Offset + x % DOFs*(nb-1) + DOF
-
-                       A % ConstrainedDOF(nb) = .TRUE.
-                       A % Dvalues(nb) = Work(i0+j) 
-                     END DO
-                     i0 = i0 + EDOFs
+                     A % ConstrainedDOF(nb) = .TRUE.
+                     A % Dvalues(nb) = Work(EDOFs+j) 
                    END DO
-
-                   ! ---------------------------------------------------------------------
-                   ! Set constraints for face DOFs via seeking the best approximation in L2.
-                   ! We use the variational equation (u x n,v') = (g x n - u0 x n,v) where
-                   ! u0 denotes the part of the interpolating function u+u0 which is already 
-                   ! known and v is a test function for the Galerkin method.
-                   ! ---------------------------------------------------------------------
-                   IF (Face % BDOFs > 0) THEN
-                     EDOFs = i0 ! The count of edge DOFs set so far
-                     n = Face % TYPE % NumberOfNodes
-
-                     CALL SolveLocalFaceDOFs(BC, Face, n, Name//' {e}', Work, EDOFs, &
-                         Face % BDOFs, SecondKindBasis, BasisDegree, GradVersion)
-
-                     Face % BodyId = Parent % BodyId
-                     
-                     n = GetElementDOFs(GInd,Face)
-                     DO j=1,Face % BDOFs
-                       nb = x % Perm(GInd(n-Face % BDOFs+j)) ! The last entries should be face-DOF indices
-                       IF ( nb <= 0 ) CYCLE
-                       nb = Offset + x % DOFs*(nb-1) + DOF
-
-                       A % ConstrainedDOF(nb) = .TRUE.
-                       A % Dvalues(nb) = Work(EDOFs+j) 
-                     END DO
-                   END IF
-
-                 END SELECT
-              END IF
+                 END IF
+               END BLOCK
+             END IF
            ELSE IF ( ListCheckPrefix(BC, Name//' {f}') ) THEN
              !--------------------------------------------------------------------------
              ! This branch should be able to handle BCs for face (div-conforming)

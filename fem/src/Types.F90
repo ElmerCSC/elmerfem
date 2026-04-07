@@ -478,7 +478,7 @@ MODULE Types
    TYPE ValueHandle_t
      INTEGER :: ValueType = -1
      INTEGER :: SectionType = -1
-     INTEGER :: ListId = -1
+     INTEGER :: ListId = -9999
      LOGICAL :: BulkElement
      TYPE(Element_t), POINTER :: Element => NULL()
      TYPE(ValueList_t), POINTER :: List => NULL()
@@ -928,27 +928,27 @@ MODULE Types
       INTEGER :: SolverId = 0
       TYPE(ValueList_t), POINTER :: Values => NULL()
 
-      INTEGER :: TimeOrder,DoneTime,Order,NOFEigenValues=0
+      INTEGER :: TimeOrder=0,DoneTime=0,Order=0,NOFEigenValues=0
       INTEGER :: TimesVisited = 0
-      INTEGER(KIND=AddrInt) :: PROCEDURE, LinBeforeProc, LinAfterProc
+      INTEGER(KIND=AddrInt) :: PROCEDURE=0, LinBeforeProc=0, LinAfterProc=0
 
       REAL(KIND=dp) :: Alpha,Beta,dt
 
       LOGICAL :: NewtonActive = .FALSE.
       LOGICAL :: PeriodicFlipActive = .FALSE.
       
-      INTEGER :: SolverExecWhen
-      INTEGER :: SolverMode
+      INTEGER :: SolverExecWhen=-1
+      INTEGER :: SolverMode=-1
 
-      INTEGER :: MultiGridLevel,  MultiGridTotal, MultiGridSweep
-      LOGICAL :: MultiGridSolver, MultiGridEqualSplit
+      INTEGER :: MultiGridLevel=-1, MultiGridTotal=-1, MultiGridSweep=-1
+      LOGICAL :: MultiGridSolver=.FALSE., MultiGridEqualSplit=.FALSE.
       TYPE(Mesh_t), POINTER :: Mesh => NULL()
       INTEGER :: MeshTag = 1
       LOGICAL :: MeshChanged = .FALSE.
       
       INTEGER, POINTER :: ActiveElements(:) => NULL()
       INTEGER, POINTER :: InvActiveElements(:) => NULL()
-      INTEGER :: NumberOfActiveElements
+      INTEGER :: NumberOfActiveElements=0
       INTEGER, ALLOCATABLE ::  Def_Dofs(:,:,:)
 
       TYPE(BlockMatrix_t), POINTER :: BlockMatrix => NULL()
@@ -1010,9 +1010,8 @@ MODULE Types
   TYPE Circuit_t
     REAL(KIND=dp), ALLOCATABLE :: A(:,:), B(:,:), Mre(:,:), Mim(:,:), Area(:)
     INTEGER, ALLOCATABLE :: ComponentIds(:), Perm(:)
-    LOGICAL :: UsePerm = .FALSE., Harmonic, Parallel
-    INTEGER :: n, m, n_comp,CvarDofs
-!   CHARACTER(:), ALLOCATABLE :: names(:), source(:)
+    LOGICAL :: UsePerm = .FALSE., Harmonic=.FALSE., Parallel=.FALSE.
+    INTEGER :: n=0, m=0, n_comp=0,CvarDofs=0
     CHARACTER(MAX_NAME_LEN), ALLOCATABLE :: names(:), source(:)
     TYPE(Component_t), POINTER :: Components(:)=>NULL()
     TYPE(CircuitVariable_t), POINTER :: CircuitVariables(:)=>NULL()
@@ -1030,9 +1029,9 @@ MODULE Types
 !
 !     Model dimensions
 !
-      INTEGER :: NumberOfBulkElements, &
-                 NumberOfNodes,        &
-                 NumberOfBoundaryElements
+      INTEGER :: NumberOfBulkElements=0, &
+                 NumberOfNodes=0,        &
+                 NumberOfBoundaryElements=0
 !
 !     Simulation input data, that concern the model as a whole
 !
@@ -1139,7 +1138,7 @@ MODULE Types
       TYPE(Circuit_t), POINTER :: Circuits(:) => NULL()
       TYPE(Solver_t), POINTER :: ASolver => NULL()
       
-      LOGICAL :: HarmonicCircuits
+      LOGICAL :: HarmonicCircuits=.FALSE.
 
 ! Tag counts to speed things up
       INTEGER :: NumberOfDistTags=-1,NumberOfParTags=-1

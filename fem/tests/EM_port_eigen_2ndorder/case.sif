@@ -13,8 +13,8 @@
 ! parameter (see [ZR18])
 !
 !            1.27576
-!            0.97156
-!            0.72854
+!            0.97154
+!            0.72865
 !            0.59390
 !
 ! which are in good agreement with the results given in the literature.
@@ -66,7 +66,7 @@ Material 2
 End 
 
 Equation 1
-  Active Solvers(2) = 1 2
+  Active Solvers(1) = 1 
 End
 
 Solver 1
@@ -77,6 +77,7 @@ Solver 1
 
   Angular Frequency = $wref
   Use Piola Transform = True
+  Quadratic Approximation = True
   Steady State Convergence Tolerance = 1e-09
 
   Linear System Solver = "Direct"
@@ -96,6 +97,9 @@ Solver 1
 ! This is special keyword for this solver
 ! We use the estimated beta^2 as the shift. 
   Eigen System Shift Automatic = Logical True
+  Eigen System Sorting = String "smallest real part"
+
+!  Calculate Nodal Field = Logical True
 
 !  Eigen System Shift = -1.0
 !  Eigen System Shift Im = Real 0
@@ -113,27 +117,16 @@ Solver 1
 !  Eigen System Select = largest magnitude
 !  Eigen System Lanczos Vectors = 180
 !  Eigen System Max Iterations = 1
+  post: Linear System Solver = Iterative
+  post: Linear System Convergence Tolerance = real 1e-8
+  post: Linear System Iterative Method = CG
+  post: Linear System Residual Output = integer 10
+  post: Linear System Max Iterations = integer 2000
+  post: Linear System Preconditioning = ILU0
 End
+
 
 Solver 2
-  Equation = "postprocess"
-  Procedure = "EMPort" "EMPortSolver_post"
-  Variable = postfield[Electric Field Re:3 Electric Field Im:3]
-  Variable DOFs = 6
-
-! If this is not given the largest negative real value is used.
-!  Mode Index = Integer 8
-  
-  Linear System Solver = Iterative
-  Linear System Convergence Tolerance = real 1e-8
-  Linear System Iterative Method = CG
-  Linear System Residual Output = integer 10
-  Linear System Max Iterations = integer 2000
-  Linear System Preconditioning = ILU0
-End
-
-
-Solver 3
 !  Exec Solver = never
   Equation = "result output"
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
@@ -143,14 +136,11 @@ Solver 3
   Ascii Output = True
   Single Precision = Logical True 
 
-  Vector Field 1 = Electric Field Re
-  Vector Field 2 = Electric Field Im
-
   Eigen Analysis = False
 End
 
 
-Solver 4
+Solver 3
   Equation = "SaveScalars"
 !  Filename = f.dat
 
@@ -158,16 +148,16 @@ Solver 4
   Save EigenValues = True
 
 ! Compare the norm of the 8th eigenvalue
-  Show Norm Index = 8 
+  Show Norm Index = 1
 End
 
 Boundary Condition 1
   Target Boundaries(6) = 1 2 3 4 5 6
-  E re = Real 0
-  E im = Real 0
-  E re {e} = Real 0.0
-  E im {e} = Real 0.0
+  Eport re = Real 0
+  Eport im = Real 0
+  Eport re {e} = Real 0.0
+  Eport im {e} = Real 0.0
 End
 
-Solver 2 :: Reference Norm = 2.87792448E-01
-Solver 4 :: Reference Norm = 14.647970391372228
+Solver 1 :: Reference Norm = 3.82726670E+00
+Solver 3 :: Reference Norm = 14.647970391372228
