@@ -441,18 +441,18 @@ CONTAINS
       IF (UseCurlNorm) THEN
         ! Curl error in L2:
         !-------------------
-        SolNorm = SolNorm + SUM( rotsol(1:3) * rotsol(1:3) ) * detJ
-        EK = EK + SUM( rote(1:3) * rote(1:3) ) * detJ       
+        SolNorm = SolNorm + SUM( rotsol(1:3) * rotsol(1:3) ) * detJ * IP % s(t)
+        EK = EK + SUM( rote(1:3) * rote(1:3) ) * detJ * IP % s(t)
  
         ! Energy norm:
         !--------------
-        !SolNorm = SolNorm + (SUM( Sol(1:3) * Sol(1:3) ) + 1.0d0 * SUM( rotsol(1:3) * rotsol(1:3) )) * detJ
-        !EK = EK + (SUM( e(1:3) * e(1:3) ) + 1.0d0 * SUM( rote(1:3) * rote(1:3) )) * detJ
+        !SolNorm = SolNorm + (SUM( Sol(1:3) * Sol(1:3) ) + 1.0d0 * SUM( rotsol(1:3) * rotsol(1:3) )) * detJ * IP % s(t)
+        !EK = EK + (SUM( e(1:3) * e(1:3) ) + 1.0d0 * SUM( rote(1:3) * rote(1:3) )) * detJ * IP % s(t)
 
       ELSE
         ! L2 norm
-        SolNorm = SolNorm + SUM( Sol(1:3) * Sol(1:3) )* detJ
-        EK = EK + SUM( e(1:3) * e(1:3) )* detJ
+        SolNorm = SolNorm + SUM( Sol(1:3) * Sol(1:3) ) * detJ * IP % s(t)
+        EK = EK + SUM( e(1:3) * e(1:3) ) * detJ * IP % s(t)
       END IF
     END DO
 !------------------------------------------------------------------------------
