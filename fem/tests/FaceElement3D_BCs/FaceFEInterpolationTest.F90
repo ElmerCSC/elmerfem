@@ -345,18 +345,18 @@ CONTAINS
       IF (UseDivNorm .AND. (TestMode>2)) THEN
         ! Div error in L2:
         !-------------------
-        SolNorm = SolNorm + divsol * divsol * detJ
-        EK = EK + dive * dive * detJ       
+        SolNorm = SolNorm + divsol * divsol * detJ * IP % s(t)
+        EK = EK + dive * dive * detJ * IP % s(t)
  
         ! Energy norm:
         !--------------
-        !SolNorm = SolNorm + (SUM( Sol(1:3) * Sol(1:3) ) + 1.0d0 * divsol * divsol)  * detJ
-        !EK = EK + (SUM( e(1:3) * e(1:3) ) + 1.0d0 * dive * dive) * detJ
+        !SolNorm = SolNorm + (SUM( Sol(1:3) * Sol(1:3) ) + 1.0d0 * divsol * divsol)  * detJ * IP % s(t)
+        !EK = EK + (SUM( e(1:3) * e(1:3) ) + 1.0d0 * dive * dive) * detJ * IP % s(t)
 
       ELSE
         ! L2 norm
-        SolNorm = SolNorm + SUM( Sol(1:3) * Sol(1:3) ) * detJ
-        EK = EK + SUM( e(1:3) * e(1:3) ) * detJ
+        SolNorm = SolNorm + SUM( Sol(1:3) * Sol(1:3) ) * detJ * IP % s(t)
+        EK = EK + SUM( e(1:3) * e(1:3) ) * detJ * IP % s(t)
       END IF
     END DO
 !------------------------------------------------------------------------------
