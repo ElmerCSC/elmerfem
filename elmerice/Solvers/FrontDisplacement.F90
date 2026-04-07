@@ -121,7 +121,8 @@ END SUBROUTINE FDMeshSolver_Init
   INTEGER, POINTER :: MeshPerm(:)
 
   LOGICAL :: AllocationsDone = .FALSE., Isotropic = .TRUE., &
-       GotForceBC, Found, ComputeMeshVelocity, FirstTime = .TRUE.
+       GotForceBC, Found, ComputeMeshVelocity, FirstTime = .TRUE.,&
+       DoIt
 
   REAL(KIND=dp),ALLOCATABLE:: STIFF(:,:),&
        LOAD(:,:),FORCE(:), ElasticModulus(:,:,:),PoissonRatio(:), &
@@ -280,6 +281,10 @@ END SUBROUTINE FDMeshSolver_Init
 !------------------------------------------------------------------------------
 !     Neumann & Newton boundary conditions
 !------------------------------------------------------------------------------
+  DoIt = ListCheckPresentAnyBC( Model,'Mesh Normal Force' ) .OR. &
+        ListCheckPrefixAnyBC( Model,'Mesh Force' )
+
+ IF( DoIt ) THEN
   DO t = 1, Solver % Mesh % NumberOfBoundaryElements
 
     Element => GetBoundaryElement(t)
@@ -319,6 +324,7 @@ END SUBROUTINE FDMeshSolver_Init
 
      CALL DefaultUpdateEquations( STIFF, FORCE )
   END DO
+ END IF
 !------------------------------------------------------------------------------
 
   CALL DefaultFinishAssembly()
