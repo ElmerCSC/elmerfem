@@ -305,6 +305,9 @@ static int ElmerToGmshType(int elmertype)
   case 715:
     gmshtype = 18;
     break;
+  case 718:
+    gmshtype = 13;
+    break;
   case 613:
     gmshtype = 19;
     break;
@@ -329,7 +332,7 @@ static void ElmerToGmshIndx(int elemtype,int *topology)
 
   int order510[]={0,1,2,3,4,5,6,7,9,8};
   int order613[]={0,1,2,3,4,5,8,10,6,7,9,11,12};
-  int order715[]={0,1,2,3,4,5,6,9,7,8,10,11,12,14,13};
+  int order718[]={0,1,2,3,4,5,6,9,7,8,10,11,12,14,13,15,17,16};
   int order820[]={0,1,2,3,4,5,6,7,8,11,12,9,10,12,14,15,16,18,19,17};
 
 
@@ -337,22 +340,27 @@ static void ElmerToGmshIndx(int elemtype,int *topology)
 
   switch (elemtype) {
       
-  case 510:        
+  case (510):        
     reorder = TRUE;
     porder = &order510[0];
     break;
 
-  case 613:        
+  case (613):        
     reorder = TRUE;
     porder = &order613[0];
     break;
 
-  case 715:        
+  case (715):        
     reorder = TRUE;
-    porder = &order715[0];
+    porder = &order718[0];
     break;
 
-  case 820:        
+  case (718):        
+    reorder = TRUE;
+    porder = &order718[0];
+    break;
+
+  case (820):        
     reorder = TRUE;
     porder = &order820[0];
     break;
@@ -656,6 +664,9 @@ static int ElmerToVtkType(int elmertype)
     break;
   case 715:        
     vtktype = 26;
+    break;
+  case 718:        
+    vtktype = 32;
     break;
   case 808:        
     vtktype = 12;

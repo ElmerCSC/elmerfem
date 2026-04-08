@@ -29,7 +29,7 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
 int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
 		   char *prefix,int nonames, int info);
 int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
-		   char *prefix,int decimals,int nooverwrite, int info);
+		   char *prefix,int decimals,int binary,int nooverwrite, int info);
 int CreateElmerGridMesh(struct GridType *grid,
 			struct FemType *data,struct BoundaryType *boundaries,
 			Real relh,int info);

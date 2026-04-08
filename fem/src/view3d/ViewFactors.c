@@ -692,7 +692,7 @@ void radiatorfactors3d
            for( k=0; k<3; k++ )
            for( n=0; n<3; n++ )
            {
-              l = 3*EL_Topo[3*i+k] + n;
+              l = 3*EL_Topo[4*i+k] + n;
               Elements[i].Triangle->PolyFactors[n][j]   += ShapeFunctionMatrix3[k][j]*EL_Coord[l];
               Elements[i].Triangle->PolyFactors[n+3][j] += ShapeFunctionMatrix3[k][j]*EL_Normals[3*i+n];
            }
@@ -866,7 +866,7 @@ void radiatorfactors3d
              for( k=0; k<3; k++ )
              for( n=0; n<3; n++ )
              {
-                l = 3*RT_Topo[3*i+k] + n;
+                l = 3*RT_Topo[4*i+k] + n;
                 RTElements[i].Triangle->PolyFactors[n][j]   += ShapeFunctionMatrix3[k][j]*RT_Coord[l];
              }
           }
@@ -963,7 +963,7 @@ void viewfactors3d
            for( k=0; k<3; k++ )
            for( n=0; n<3; n++ )
            {
-              l = 3*EL_Topo[3*i+k] + n;
+              l = 3*EL_Topo[4*i+k] + n;
               Elements[i].Triangle->PolyFactors[n][j]   += ShapeFunctionMatrix3[k][j]*EL_Coord[l];
               Elements[i].Triangle->PolyFactors[n+3][j] += ShapeFunctionMatrix3[k][j]*EL_Normals[3*i+n];
            }
@@ -1137,7 +1137,7 @@ void viewfactors3d
              for( k=0; k<3; k++ )
              for( n=0; n<3; n++ )
              {
-                l = 3*RT_Topo[3*i+k] + n;
+                l = 3*RT_Topo[4*i+k] + n;
                 RTElements[i].Triangle->PolyFactors[n][j]   += ShapeFunctionMatrix3[k][j]*RT_Coord[l];
              }
           }

@@ -487,12 +487,12 @@ CONTAINS
 
        IF (UseEnergyNorm) THEN
           ! Energy norm 
-          SolNorm = SolNorm + (SUM( Sol(1:3) * Sol(1:3) ) + SUM( rotsol(1:3) * rotsol(1:3) )) * detJ
-          EK = EK + (SUM( e(1:3) * e(1:3) ) + SUM( rote(1:3) * rote(1:3) )) * detJ
+          SolNorm = SolNorm + (SUM( Sol(1:3) * Sol(1:3) ) + SUM( rotsol(1:3) * rotsol(1:3) )) * detJ * IP % s(t)
+          EK = EK + (SUM( e(1:3) * e(1:3) ) + SUM( rote(1:3) * rote(1:3) )) * detJ * IP % s(t)
        ELSE
           ! L2 norm
-          SolNorm = SolNorm + SUM( Sol(1:3) * Sol(1:3) )* detJ
-          EK = EK + SUM( e(1:3) * e(1:3) )* detJ
+          SolNorm = SolNorm + SUM( Sol(1:3) * Sol(1:3) ) * detJ * IP % s(t)
+          EK = EK + SUM( e(1:3) * e(1:3) ) * detJ * IP % s(t)
        END IF
     END DO
 !------------------------------------------------------------------------------
