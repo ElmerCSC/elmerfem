@@ -24,8 +24,8 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   ! parameters to be read in from this solvers section in the sif 
   LOGICAL :: couple_to_ebfm, couple_to_icon         ! define which component is coupled to Elmer 
 
-  CHARACTER(LEN=1024) ::  config_file, model_tstep
-  INTEGER :: I, t, ierr, dt_hours
+  CHARACTER(LEN=1024) ::  config_file, model_tstep, coupling_timestep
+  INTEGER :: I, t, ierr, dt_hours, coupling_hours
   INTEGER, POINTER :: t_icePerm(:), smbPerm(:), runoffPerm(:)
   ! INTEGER, POINTER :: cltPerm(:), prPerm(:)  ! ICON is not supported at the moment
   LOGICAL :: Parallel, FirstTime=.TRUE., UnFoundFatal=.TRUE.
@@ -60,10 +60,28 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
      CALL FATAL(SolverName,'No keyword >Couple To ICON< found in yac2elmer solver')
   END IF
 
+  ! read coupling timestep as ISO 8601 string
+  coupling_timestep = GetString(SolverParams, 'Coupling Time Step', Found)
+  IF (.NOT. Found) THEN
+     CALL FATAL(SolverName,'No keyword >Coupling Time Step< found in yac2elmer solver')
+  END IF
+  ! Consistency check: Coupling Time Step must be ISO 8601 duration string like 'PT3H', 'PT24H', etc.
+  IF (.NOT. (LEN_TRIM(coupling_timestep) >= 4 .AND. &
+       coupling_timestep(1:2) == 'pt' .AND. &
+       coupling_timestep(LEN_TRIM(coupling_timestep):LEN_TRIM(coupling_timestep)) == 'h')) THEN
+  CALL FATAL(SolverName, &
+    "'Coupling Time Step' must be provided as ISO 8601 duration string of the form " // &
+    "'PT3H', 'PT24H', etc. Other formats are currently not supported.")
+  END IF
+  ! Extract the number between 'PT' and 'H' and convert to integer
+  READ(coupling_timestep(3:LEN_TRIM(coupling_timestep)-1), *, IOSTAT=ierr) coupling_hours
+  IF (ierr /= 0) THEN
+     CALL FATAL(SolverName,"Could not parse number of hours from 'Coupling Time Step'")
+  END IF
+
   IF (.NOT. (couple_to_ebfm .OR. couple_to_icon)) THEN
     CALL FATAL(SolverName,'At least one of >Couple To EBFM< or >Couple To ICON< must be TRUE')
   END IF
-
   ! TODO: remove this check when ICON coupling is implemented
   IF (couple_to_icon) THEN
     CALL FATAL(SolverName,'>Couple To ICON< is currently not supported. Please set to FALSE')
@@ -77,6 +95,14 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   write(model_tstep, *) dt_hours
   CALL INFO(SolverName, &
     'ELMER timestep size in hours:' // I2S(dt_hours), Level=3)
+  ! Check if coupling_hours is greater than or equal to dt_hours
+  IF (coupling_hours < dt_hours) THEN
+     CALL FATAL(SolverName,"'Coupling Time Step' must be greater than or equal to Elmer time step size in hours")
+  END IF
+  ! Check if coupling_hours is an integer multiple of dt_hours
+  IF (MOD(coupling_hours, dt_hours) /= 0) THEN
+     CALL FATAL(SolverName,"'Coupling Time Step' must be an integer multiple of Elmer time step size in hours")
+  END IF
   IF (FirstTime) THEN
 
 
@@ -91,7 +117,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
         'Running with ' // I2S(ParEnv % PEs) // ' partitions', Level=3)
     END IF
 
-    CALL coupling_setup(ThisMesh, TRIM(model_tstep), couple_to_ebfm, couple_to_icon)
+    CALL coupling_setup(ThisMesh, TRIM(ADJUSTL(I2S(coupling_hours))), couple_to_ebfm, couple_to_icon)
 
     IF (couple_to_ebfm) THEN
       ! setting up Elmer-side variables for receiving YAC variables
