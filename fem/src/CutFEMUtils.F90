@@ -60,11 +60,9 @@ MODULE CutFemUtils
   
   LOGICAL :: CutExtend, CutExtrapolate
   LOGICAL, ALLOCATABLE :: CutDof(:)
-  INTEGER, POINTER :: ExtendPerm(:) => NULL(), OrigMeshPerm(:) => NULL(), &
+  INTEGER, POINTER :: ExtendPerm(:) => NULL(), & !OrigMeshPerm(:) => NULL(), &
       CutPerm(:) => NULL(), PhiPerm(:) => NULL()
-  REAL(KIND=dp), POINTER :: OrigMeshValues(:) => NULL(), CutValues(:) => NULL(), &
-      ExtendValues(:) => NULL(), PhiValues(:) => NULL(), &
-      OrigPrevMeshValues(:,:) => NULL(), PrevCutValues(:,:) => NULL()
+  REAL(KIND=dp), POINTER :: ExtendValues(:) => NULL(), PhiValues(:) => NULL()
   INTEGER, POINTER :: OrigActiveElements(:), AddActiveElements(:), UnsplitActiveElements(:)
   REAL(KIND=dp), ALLOCATABLE, TARGET :: CutInterp(:)
   TYPE(Matrix_t), POINTER :: NodeMatrix
@@ -112,29 +110,16 @@ CONTAINS
     REAL(KIND=dp), POINTER :: xtmp(:)    
     LOGICAL :: UpdateOrigCoords
     CHARACTER(*), PARAMETER :: Caller = 'CreateCutFEMPerm'
-
+    REAL(KIND=dp), POINTER :: CutValues(:), PrevCutValues(:,:)
 
     Params => Solver % Values    
     Mesh => Solver % Mesh
+    ! Memorize original nodal matrix
+    NodeMatrix => Solver % Matrix
 
-    ! Memorize original nodal variable and matrix.
-    OrigMeshValues => NULL()
-    OrigPrevMeshValues => NULL()
-    OrigMeshPerm => NULL()
-    IF(ASSOCIATED(Solver % Variable ) ) THEN
-      IF(ASSOCIATED(Solver % Variable % Perm ) ) THEN
-        OrigMeshValues => Solver % Variable % Values
-        OrigMeshPerm => Solver % Variable % Perm
-        OrigPrevMeshValues => Solver % Variable % PrevValues
-      END IF
-      CutDofs = Solver % Variable % dofs
-      dofs = CutDofs
-    END IF
-    
+
     CutFEMOrigMesh => Solver % Mesh 
     OrigActiveElements => Solver % ActiveElements
-
-    NodeMatrix => Solver % Matrix
 
     CutExtend = ListGetLogical( Params,'CutFEM extend',Found )
     CutExtrapolate = ListGetLogical( Params,'CutFEM extrapolate',Found )
@@ -492,47 +477,44 @@ CONTAINS
 
 
     ! If there is a primary variable associated to the original mesh copy that to the new mesh.
-    IF(ASSOCIATED(OrigMeshValues)) THEN
+    ! Memorize original nodal variable and switch to cut version of it.
+    IF(ASSOCIATED(Solver % Variable ) ) THEN
+      Solver % OrigPerm => Solver % Variable % Perm
+      Solver % OrigValues => Solver % Variable % Values
+      Solver % OrigPrevValues => Solver % Variable % PrevValues
+      NULLIFY(Solver % Variable % Perm)
+      NULLIFY(Solver % Variable % Values)
+      NULLIFY(Solver % Variable % PrevValues)
+      dofs = Solver % Variable % Dofs
+      CutDofs = dofs
+    
       IF(ASSOCIATED(CutValues)) DEALLOCATE(CutValues)
       ALLOCATE(CutValues(dofs*j))
       CutValues = 0.0_dp
 
       DO i=1,dofs
         WHERE(CutPerm(1:nn) > 0 )        
-          CutValues(dofs*(CutPerm-1)+i) = OrigMeshValues(dofs*(OrigMeshPerm-1)+i) 
+          CutValues(dofs*(CutPerm-1)+i) = Solver % OrigValues(dofs*(Solver % OrigPerm-1)+i) 
         END WHERE
       END DO
         
       ! Point the permutation and values to the newly allocated vectors.
-      ! This way 
       Solver % Variable % Perm => CutPerm
       Solver % Variable % Values => CutValues
       
       ! For transient problems do the same for PrevValues
-      IF(ASSOCIATED(OrigPrevMeshValues)) THEN
+      IF(ASSOCIATED(Solver % OrigPrevValues)) THEN
         IF(ASSOCIATED(PrevCutValues)) DEALLOCATE(PrevCutValues)      
-        i = SIZE(OrigPrevMeshValues,2)
+        i = SIZE(Solver % OrigPrevValues,2)
         ALLOCATE(PrevCutValues(dofs*j,i))
         PrevCutValues = 0.0_dp
 
         ! Copy nodal values as initial guess to cut fem values. 
-#if 0
-        ! fix this
-        DO l=1,dofs
-          DO i=1,nn
-            j = CutPerm(i)
-            k = OrigMeshPerm(i)
-            IF(j==0 .OR. k==0) CYCLE
-            OrigMeshValues(dofs*(k-1)+l) = CutValues(dofs*(j-1)+l)
-          END DO
-        END DO
-#endif
-
-        DO i=1,SIZE(OrigPrevMeshValues,2)
+        DO i=1,SIZE(Solver % OrigPrevValues,2)
           DO j=1,dofs
             WHERE(CutPerm(1:nn) > 0 )        
               PrevCutValues(dofs*(CutPerm(1:nn)-1)+j,i) = &
-                  OrigPrevMeshValues(dofs*(OrigMeshPerm(1:nn)-1)+j,i) 
+                  Solver % OrigPrevValues(dofs*(Solver % OrigPerm(1:nn)-1)+j,i) 
             END WHERE
           END DO
         END DO
@@ -1586,6 +1568,7 @@ CONTAINS
     LOGICAL :: IsCut, IsMore, Found
     REAL(KIND=dp) :: s, r, dval, norm
     REAL(KIND=dp), ALLOCATABLE :: NodeWeigth(:)
+    REAL(KIND=dp), POINTER :: CutValues(:)
     
 
     Mesh => Solver % Mesh
@@ -1595,15 +1578,16 @@ CONTAINS
     
     ! If we solve some other equation in between store the original norm.
     Norm = Solver % Variable % Norm
-
+    CutValues => Solver % Variable % Values
+    
     ! Set values at shared nodes that have been computed. 
     CALL Info('CutFEMVariableFinalize','Copying values at shared nodes to the original mesh!',Level=10)
     DO l=1,dofs
       DO i=1,nn
         j = CutPerm(i)
-        k = OrigMeshPerm(i)
+        k = Solver % OrigPerm(i)
         IF(j==0 .OR. k==0) CYCLE
-        OrigMeshValues(dofs*(k-1)+l) = CutValues(dofs*(j-1)+l)
+        Solver % OrigValues(dofs*(k-1)+l) = CutValues(dofs*(j-1)+l)
       END DO
     END DO
 
@@ -1630,23 +1614,23 @@ CONTAINS
         IF(CutPerm(i1) > 0 .AND. CutPerm(i2) == 0 ) THEN
           s = (1-r)
           DO k=1,dofs
-            OrigMeshValues(dofs*(OrigMeshPerm(i2)-1)+k) = OrigMeshValues(dofs*(OrigMeshPerm(i2)-1)+k) + &
+            Solver % OrigValues(dofs*(Solver % OrigPerm(i2)-1)+k) = Solver % OrigValues(dofs*(Solver % OrigPerm(i2)-1)+k) + &
                 s*CutValues(dofs*(CutPerm(i1)-1)+k) + (CutValues(dofs*(j-1)+k)-CutValues(dofs*(CutPerm(i1)-1)+k))
           END DO
-          NodeWeigth(OrigMeshPerm(i2)) = NodeWeigth(OrigMeshPerm(i2)) + s
+          NodeWeigth(Solver % OrigPerm(i2)) = NodeWeigth(Solver % OrigPerm(i2)) + s
         ELSE IF(CutPerm(i1) == 0 .AND. CutPerm(i2) > 0) THEN
           s = r
           DO k=1,dofs
-            OrigMeshValues(dofs*(OrigMeshPerm(i1)-1)+k) = OrigMeshValues(dofs*(OrigMeshPerm(i1)-1)+k) + &
+            Solver % OrigValues(dofs*(Solver % OrigPerm(i1)-1)+k) = Solver % OrigValues(dofs*(Solver % OrigPerm(i1)-1)+k) + &
                 s*CutValues(dofs*(CutPerm(i2)-1)+k) + (CutValues(dofs*(j-1)+k)-CutValues(dofs*(CutPerm(i2)-1)+k))
           END DO
-          NodeWeigth(OrigMeshPerm(i1)) = NodeWeigth(OrigMeshPerm(i1)) + s
+          NodeWeigth(Solver % OrigPerm(i1)) = NodeWeigth(Solver % OrigPerm(i1)) + s
         END IF
       END DO
       
       DO k=1,dofs
         WHERE( NodeWeigth(1:nn) > EPSILON(s)) 
-          OrigMeshValues(k::dofs) = OrigMeshValues(k::dofs) / NodeWeigth(1:nn)
+          Solver % OrigValues(k::dofs) = Solver % OrigValues(k::dofs) / NodeWeigth(1:nn)
         END WHERE
       END DO
     END IF
@@ -1709,16 +1693,27 @@ CONTAINS
       
       DO i=1,nn
         j = ExtendPerm(i)
-        k = OrigMeshPerm(i)
+        k = Solver % OrigPerm(i)
         IF(j==0 .OR. k==0) CYCLE
-        OrigMeshValues(k) = ExtendValues(j)
+        Solver % OrigValues(k) = ExtendValues(j)
       END DO
     END IF
     
-    ! Revert to the original field that is present everywhere.           
-    Solver % Variable % Values => OrigMeshValues
-    Solver % Variable % Perm => OrigMeshPerm
-    Solver % Variable % PrevValues => OrigPrevMeshValues
+    ! Revert to the original field that is present everywhere.              
+    IF(ASSOCIATED(Solver % Variable % Values)) THEN
+      DEALLOCATE(Solver % Variable % Values)
+    END IF
+    IF(ASSOCIATED(Solver % Variable % PrevValues)) THEN
+      DEALLOCATE(Solver % Variable % PrevValues)
+    END IF
+
+    Solver % Variable % Perm => Solver % OrigPerm
+    Solver % Variable % Values => Solver % OrigValues
+    Solver % OrigValues => NULL()
+    IF(ASSOCIATED(Solver % OrigPrevValues)) THEN
+      Solver % Variable % PrevValues => Solver % OrigPrevValues
+      Solver % OrigPrevValues => NULL()
+    END IF
     Solver % Variable % Norm = Norm
     
     ! Revert to original body id's.
@@ -3997,9 +3992,9 @@ CONTAINS
           str = ListGetString( Solver % Values,'isoline variable '//I2S(i), Found )
           
           IF(i==iSolver) THEN
-            j = OrigMeshPerm(node)
+            j = Solver % OrigPerm(node)
             dofs = Solver % Variable % Dofs
-            pValues => OrigMeshValues
+            pValues => Solver % OrigValues
           ELSE
             Var2D => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE. )
             j = Var2D % Perm(node)
