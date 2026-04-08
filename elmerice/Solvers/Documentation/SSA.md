@@ -15,6 +15,8 @@
 - **Optional Output Variable(s):** 
   - (1) strbasemag : element-average basal friction
   - (2) Ceff: nodal effective friction coefficient
+  - (3) ligroundf,tendligroundf: element-average flux at the grounding line and total GL flux
+  - (4) calving_front_flux,tendcff: element-average flux at the fron, and total front flux
 - **Optional Input Variable(s):** None
 
 ## History
@@ -29,6 +31,9 @@
 	- Add post-processing options:  
 		- compute element-average basal friction if variable "strbasemag" is found and is by element  
 		- compute nodal effective friction coefficient if variable "Ceff" is found
+
+- 08/04/2026:
+    - Add sub-element grounding line parameterisation SEP2
 
 ## General Description
 ### Ice flow
@@ -116,15 +121,24 @@ The Budd paramerisation and the Gagliardini version of the regularised Coulomb s
 
 #### Sub-Element grounding line parametrisation
 The flotation condition can be tested directly at the integration points. The friction parameter is then set to 0 if ice is floating at the integration point.
-This scheme is activated with the Solver Keyword *Sub-Element GL parameterization = logical True*. The number of integration point for partially floating elements, i.e. where the scheme is used is set with the keyword
-*GL integration points number = N*
+
+Two schemes, corresponding to SEP2 and SEP3 (Seroussi et al., 2014)  can be used and are activated with the Solver Keyword *Sub-Element GL parameterization = logical True*:
+- SEP3 is activated with the keyword *GL integration points number = N*, where N is the number of IPs used in partially floating elements (See [ELMER_TRUNK]/fem/src/Integration.F90 for the possible integration rules, N=20 is the maximum coded rule foer triangles)
+- SEP2 uses Adaptive integration with SplitFEM, the elements are cut the follow the sub-grid GL location, which corresponds to the 0-isocontour of the variable Haf0 (computed with the **flotation** solver, see corresponding documentation). SEP2 is used if *GL integration points number = 0*, which is the default if the keyword is not set.
+
 
 :warning: if this scheme is not used it is to the user responsibility to parameterised *beta* a a function of the grounded mask and set it to 0 for floating nodes.
+
+Seroussi, H., Morlighem, M., Larour, E., Rignot, E., and Khazendar, A.: Hydrostatic grounding line parameterization in ice sheet models, The Cryosphere, 8, 2075–2087, https://doi.org/10.5194/tc-8-2075-2014, 2014.
+
 
 #### Post-processing variables
 
 - if a variable named "strbasemag" is found computes the element-averaged friction
-- if a variable names "Ceff" is found computes the nodal effictive friction coefficient
+- if a variable named "Ceff" is found computes the nodal effictive friction coefficient
+- Grounding flux computation is activated with  *Compute grounding line flux = Logical TRUE* and requires the variable "ligroundf" and optionnaly "tendligroundf"
+- calving front flux is activated with  *Compute calving front flux = Logical TRUE* and requires the variable "calving_front_flux" and optionnaly "tendcff"
+
 
 ## SIF contents
 Solver section:
@@ -139,10 +153,31 @@ Solver 1
   !# Set true to set friction to 0 when ice is floating
   !   Require: GroundedMask and Bedrork variables
   Sub-Element GL parameterization = logical True
-  !# You can set the number of IP points to evaluated the friction in the
-  !   first floating element
-  GL integration points number = Integer 20
+  ! default SEP2: requires Haf0
+  !# SEP3 is actiavted by setting the number of IP points to evaluate the friction in the
+  !   first floating element:
+   ! GL integration points number = Integer 20
 
+  !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  ! Secondary variable (output)
+  !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  ! grounding line flux [m/y] wrt cell area
+  Compute grounding line flux = Logical TRUE
+  Exported Variable 1 = -elem "ligroundf"
+  Exported Variable 2 = -global "tendligroundf"
+  ! calving front flux [m/y] wrt cell area
+  Compute calving front flux = Logical TRUE
+  Exported Variable 3 = -elem "calving_front_flux"
+  Exported Variable 4 = -global "tendcff"
+ ! if variables with this names exist compute the
+ ! element average basal stress
+ ! and nodal effective friction coefficient
+  Exported Variable 5 = -elem "strbasemag"
+  Exported Variable 6 = "Ceff"
+
+  !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  ! numerical settings examples
+  !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   Linear System Solver = Direct
   Linear System Direct Method = umfpack
 

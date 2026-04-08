@@ -150,10 +150,24 @@
   ZsPerm => ZsSol % Perm
 
 !  Sub - element GL parameterisation
-  SEP=GetLogical( Solver % Values, 'Sub-Element GL parameterization',GotIt)
+  SEP=GetLogical( SolverParams , 'Sub-Element GL parameterization',GotIt)
   IF (SEP) THEN
-    GLnIP=ListGetInteger( Solver % Values, &
+    GLnIP=ListGetInteger(SolverParams, &
         'GL integration points number',Found)
+  END IF
+  IF (SEP) THEN
+     IF (GLnIP == 0) THEN
+       IF (.NOT. ListCheckPrefix(SolverParams,'Adaptive Integration') ) THEN
+          CALL ListAddString(SolverParams,'Adaptive Integration Variable','haf0')
+          CALL ListAddLogical(SolverParams,'Adaptive Integration Split', .True.)
+          CALL ListAddConstReal(SolverParams,'Adaptive Integration Split Limit',0._dp)
+       END IF
+       CALL INFO(SolverName,'Using Sub-Element GL parameterization: SEP2',level=4)
+     ELSE
+       CALL INFO(SolverName,'Using Sub-Element GL parameterization: SEP3 with nIP='//I2S(GLnIP),level=4)
+     END IF
+  ELSE
+       CALL INFO(SolverName,'No Sub-Element GL parameterization')     
   END IF
 
   sealevel = ListGetCReal( Model % Constants, 'Sea Level', Found )

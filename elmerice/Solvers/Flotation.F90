@@ -108,7 +108,7 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
   TYPE(Variable_t),POINTER :: Var
   TYPE(Variable_t),POINTER :: ZbVar,ZsVar
   TYPE(Variable_t),POINTER :: HVar,BedVar
-  TYPE(Variable_t),POINTER :: GLMask,HafVar
+  TYPE(Variable_t),POINTER :: GLMask,HafVar,HafVar0
   TYPE(Variable_t),POINTER :: sftgif,sftgrf,sftflf
   TYPE(Element_t), POINTER :: Element
   TYPE(ValueList_t),POINTER :: BodyForce,Material, Params
@@ -183,6 +183,7 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
      Message='<Haf> not found; do not compute height above flotation'
      CALL INFO(SolverName,Message,level=5)
   END IF
+  HafVar0 => VariableGet( Model % Mesh % Variables, 'Haf0')
 
   !! compute ice area farctions
   ComputeIceMasks = ListGetLogical(Params,"compute ice area fractions",Gotit)
@@ -205,7 +206,25 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
            CALL FATAL(SolverName,"sftflf type should be on_elements")
 
     ! change number of IPs for partially grounded elements
-    GLnIP=ListGetInteger( Params,'GL integration points number',SEP)
+    SEP=GetLogical( Params, 'Sub-Element GL parameterization',GotIt)
+    GLnIP=ListGetInteger( Params,'GL integration points number',Gotit)
+    IF (GLnIP > 0) SEP=.TRUE.
+    IF (SEP) THEN
+     IF (GLnIP == 0) THEN
+       IF (.NOT.ASSOCIATED(HafVar0)) &
+            CALL FATAL(SolverName,"SEP requested but var <Haf0> not existing")    
+       IF (.NOT. ListCheckPrefix(Params,'Adaptive Integration') ) THEN
+          CALL ListAddString(Params,'Adaptive Integration Variable','haf0')
+          CALL ListAddLogical(Params,'Adaptive Integration Split', .True.)
+          CALL ListAddConstReal(Params,'Adaptive Integration Split Limit',0._dp)
+       END IF
+       CALL INFO(SolverName,'Using Sub-Element GL parameterization: SEP2',level=4)
+     ELSE
+       CALL INFO(SolverName,'Using Sub-Element GL parameterization: SEP3 with nIP='//I2S(GLnIP),level=4)
+     END IF
+    ELSE
+       CALL INFO(SolverName,'No Sub-Element GL parameterization')     
+    END IF
 
     ! check if we have a limited solution
     ! internal Elmer limiters...
@@ -244,6 +263,7 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
   Active = GetNOFActive(Solver)
  
   IF (ASSOCIATED(HafVar)) HafVar%Values = 0._dp
+  IF (ASSOCIATED(HafVar0)) HafVar0%Values = 0._dp
    
   ActiveLoop: DO t=1,Active
 
@@ -288,12 +308,15 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
       ! if bedrock defined check flotation criterion
        IF(ASSOCIATED(BedVar)) THEN
           bedrock=BedVar%Values(BedVar%Perm(NodeIndexes(i)))
+          Hf=max(zsea-bedrock,0._dp)*rhow/rhoi
+          IF (ASSOCIATED(HafVar0)) THEN
+             HafVar0%Values(HafVar0%Perm(NodeIndexes(i)))=H-Hf
+          END IF
           IF (zb.LE.bedrock) THEN
              zb=bedrock
              GL(i)=1
              GroundedNode=GroundedNode+1
              IF (ASSOCIATED(HafVar)) THEN
-                Hf=max(zsea-bedrock,0._dp)*rhow/rhoi
                 HafVar%Values(HafVar%Perm(NodeIndexes(i)))=H-Hf
              END IF
           END IF
@@ -330,7 +353,11 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
          !partly grounded
          CALL GetElementNodes( ElementNodes, Element )
          IF (SEP) THEN
-           IP = GaussPoints( Element ,np=GLnIP )
+           IF( GLnIP == 0 ) THEN
+              IP = GaussPointsAdapt( Element, Solver)
+           ELSE
+              IP = GaussPoints( Element ,np=GLnIP )
+           END IF
          ELSE
            IP = GaussPoints( Element )
          ENDIF

@@ -1,0 +1,141 @@
+!----------------------------------------------------------------------
+!                            PHYSICAL PARAMETERS
+!----------------------------------------------------------------------
+! the SI units are kg (kilogram) - m (meter) - s (second)
+!  Conversion to Elmer units in MPa (Megapascal) - m (meter) - a (years)
+!----------------------------------------------------------------------
+$yearinsec = 31536000                          ! time with calendar in s
+
+$rhoi_SI   = 900.0                            ! Ice density (kg.m^-3)
+$rhoi      = rhoi_SI / (1.0e6 * yearinsec^2)  ! Ice density (MPa.m^-2.a^2)
+
+$zsl       = 0.0                              ! Sea level elevation (m). under sea level z<0.
+
+$rhosw_SI  = 1000.0                           ! Sea water density (kg.m^-3)
+$rhow      = rhosw_SI / (1.0e6 * yearinsec^2) ! Sea water density (MPa.m^-2.a^2)
+
+$grav_SI   = 9.80                             ! Gravity (m.s^-2)
+$gravity   = -grav_SI * yearinsec^2           ! Gravity (m.a^-2)
+
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Header
+  Mesh DB "." "mesh"
+End
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Constants
+  sea level = Real $zsl
+  water density = Real $rhow
+End
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Simulation
+  Coordinate System  = Cartesian 2D 
+
+  Simulation Type = Steady
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+!##
+  Post File = "Case.vtu"
+!##
+  max output level = 4
+End
+
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Body 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Initial Condition 1
+
+ Bedrock = Variable Coordinate 1
+   REAL MATC "-100.0-tx/1.0e3"
+ 
+ H = Real 300.0
+
+End
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Material 1
+! Material properties
+  SSA Mean Density = Real $rhoi
+End
+
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+!#-----------------------------------------------------------------------
+!#    Main Steady State iterations
+!#-----------------------------------------------------------------------
+Solver 1
+   Equation = "Flotation"
+   Procedure = "ElmerIceSolvers" "Flotation"
+   Variable = GroundedMask
+
+   Exported Variable 1 = Zs
+   Exported Variable 2 = Zb
+   Exported Variable 3 = bedrock
+   Exported Variable 4 = Haf
+   Exported Variable 5 = Haf0
+
+  
+   ! options
+   ! secondary variables (output): surface and base altitude, heigh above flotation
+   !                               ice mask, floated and grounded fraction
+   compute ice area fractions = Logical TRUE
+
+   
+   Exported Variable 6 = -elem "sftgif"
+   Exported Variable 7 = -elem "sftgrf"
+   Exported Variable 8 = -elem "sftflf"
+
+   Exported Variable 9 = H
+End
+
+Solver 2
+  Equation = SaveScalars
+  Procedure =  "SaveData" "SaveScalars"
+  !Filename = f.dat
+  Show Norm Index = Integer 1
+  Variable 1 = String "sftgrf"
+  Operator 1 = int
+End
+
+!!######################
+Equation 1
+  Active Solvers(1) = 1
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Boundary Condition 1
+  name = "Sides"
+  Target Boundaries(2) = 1 3
+End
+
+Boundary Condition 2
+  name = "Front"
+  Target Boundaries(1) = 2
+End
+
+Boundary Condition 3
+  name = "Divide"
+  Target Boundaries(1) = 4
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+Solver 2 :: Reference Norm = Real 0.85500000E+10 
+Solver 2 :: Reference Norm Tolerance = Real 1E-06
+RUN
+
+$fprintf( stderr, "TEST CASE 2\n");
+Solver 1 :: Sub-Element GL parameterization = Logical True
+Solver 2 :: Reference Norm = Real 0.85000000E+10 
+Solver 2 :: Reference Norm Tolerance = Real 1E-06
+RUN
+$fprintf( stderr, "END TEST CASE 2: Target NRM=0.85000000E+10,EPS:1E-06\n" );
+
+$fprintf( stderr, "TEST CASE 3\n");
+Solver 1 :: GL integration points number = Integer 20
+Solver 2 :: Reference Norm = Real 0.84900927E+10
+Solver 2 :: Reference Norm Tolerance = Real 1E-06
+RUN
+$fprintf( stderr, "END TEST CASE 3: Target NRM=0.84900927E+10,EPS:1E-06\n" );
