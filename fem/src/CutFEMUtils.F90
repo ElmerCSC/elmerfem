@@ -79,7 +79,7 @@ MODULE CutFemUtils
     
   PUBLIC :: CreateCutFEMMatrix, CreateCutFEMMesh, CreateCutFEMPerm, CreateCutFEMAddMesh, &
       CutFEMVariableFinalize, CutFEMSetOrigMesh, CutFEMSetAddMesh, LevelSetUpdate, &
-      CutInterfaceBC, CutInterfaceBulk, CutInterfaceCheck
+      CutInterfaceBC, CutInterfaceBulk, CutInterfaceCheck, CreateCutFEMVariable
 
   PUBLIC :: CutInterp
   
@@ -89,6 +89,8 @@ MODULE CutFemUtils
 CONTAINS
 
 
+
+  
   ! Given a levelset function create a permutation that tells which
   ! edges and which nodes are being cut by the zero levelset.
   ! Optionally also create a permutation for the outside mesh. 
@@ -476,52 +478,7 @@ CONTAINS
     CALL Info(Caller,'CutFEM number of nodes: '//I2S(j)//' (original '//I2S(k)//')',Level=7)
 
 
-    ! If there is a primary variable associated to the original mesh copy that to the new mesh.
-    ! Memorize original nodal variable and switch to cut version of it.
-    IF(ASSOCIATED(Solver % Variable ) ) THEN
-      Solver % OrigPerm => Solver % Variable % Perm
-      Solver % OrigValues => Solver % Variable % Values
-      Solver % OrigPrevValues => Solver % Variable % PrevValues
-      NULLIFY(Solver % Variable % Perm)
-      NULLIFY(Solver % Variable % Values)
-      NULLIFY(Solver % Variable % PrevValues)
-      dofs = Solver % Variable % Dofs
-      CutDofs = dofs
     
-      IF(ASSOCIATED(CutValues)) DEALLOCATE(CutValues)
-      ALLOCATE(CutValues(dofs*j))
-      CutValues = 0.0_dp
-
-      DO i=1,dofs
-        WHERE(CutPerm(1:nn) > 0 )        
-          CutValues(dofs*(CutPerm-1)+i) = Solver % OrigValues(dofs*(Solver % OrigPerm-1)+i) 
-        END WHERE
-      END DO
-        
-      ! Point the permutation and values to the newly allocated vectors.
-      Solver % Variable % Perm => CutPerm
-      Solver % Variable % Values => CutValues
-      
-      ! For transient problems do the same for PrevValues
-      IF(ASSOCIATED(Solver % OrigPrevValues)) THEN
-        IF(ASSOCIATED(PrevCutValues)) DEALLOCATE(PrevCutValues)      
-        i = SIZE(Solver % OrigPrevValues,2)
-        ALLOCATE(PrevCutValues(dofs*j,i))
-        PrevCutValues = 0.0_dp
-
-        ! Copy nodal values as initial guess to cut fem values. 
-        DO i=1,SIZE(Solver % OrigPrevValues,2)
-          DO j=1,dofs
-            WHERE(CutPerm(1:nn) > 0 )        
-              PrevCutValues(dofs*(CutPerm(1:nn)-1)+j,i) = &
-                  Solver % OrigPrevValues(dofs*(Solver % OrigPerm(1:nn)-1)+j,i) 
-            END WHERE
-          END DO
-        END DO
-        Solver % Variable % PrevValues => PrevCutValues
-      END IF
-    END IF
-        
     ! This in an optional routine if we want to extend the field values outside
     ! active domain. The reason might be to provide better initial values for the new territory. 
     IF(CutExtend) THEN
@@ -617,11 +574,72 @@ CONTAINS
     
     ! This is just counter for different split cases while developing the code. 
     nCase = 0
-
     Solver % CutInterp => CutInterp 
     
   END SUBROUTINE CreateCutFEMPerm
 
+
+  ! Given permutation make additional vector for containing the values of the cutfem
+  ! field of the solver in question. Memorize the original nodal values.
+  !---------------------------------------------------------------------------------
+  SUBROUTINE CreateCutFEMVariable(Solver)
+
+    TYPE(Solver_t) :: Solver
+    INTEGER :: i,j,dofs,nn,ne
+    REAL(KIND=dp), POINTER :: CutValues(:), PrevCutValues(:,:)
+
+    IF(.NOT. ASSOCIATED(Solver % Variable)) THEN
+      CALL Info('CreateCutFEMVariable','Solver % Variable not associated, doing nothing!')
+      RETURN
+    END IF
+    
+    j = MAXVAL(CutPerm)
+    nn = Solver % Mesh % NumberOfNodes
+    ne = Solver % Mesh % NumberOfEdges
+
+    Solver % OrigPerm => Solver % Variable % Perm
+    Solver % OrigValues => Solver % Variable % Values
+    Solver % OrigPrevValues => Solver % Variable % PrevValues
+    NULLIFY(Solver % Variable % Perm)
+    NULLIFY(Solver % Variable % Values)
+    NULLIFY(Solver % Variable % PrevValues)
+    dofs = Solver % Variable % Dofs
+
+    IF(ASSOCIATED(CutValues)) DEALLOCATE(CutValues)
+    ALLOCATE(CutValues(dofs*j))
+    CutValues = 0.0_dp
+
+    DO i=1,dofs
+      WHERE(CutPerm(1:nn) > 0 )        
+        CutValues(dofs*(CutPerm-1)+i) = Solver % OrigValues(dofs*(Solver % OrigPerm-1)+i) 
+      END WHERE
+    END DO
+
+    ! Point the permutation and values to the newly allocated vectors.
+    Solver % Variable % Perm => CutPerm
+    Solver % Variable % Values => CutValues
+
+    ! For transient problems do the same for PrevValues
+    IF(ASSOCIATED(Solver % OrigPrevValues)) THEN
+      IF(ASSOCIATED(PrevCutValues)) DEALLOCATE(PrevCutValues)      
+      i = SIZE(Solver % OrigPrevValues,2)
+      ALLOCATE(PrevCutValues(dofs*j,i))
+      PrevCutValues = 0.0_dp
+
+      ! Copy nodal values as initial guess to cut fem values. 
+      DO i=1,SIZE(Solver % OrigPrevValues,2)
+        DO j=1,dofs
+          WHERE(CutPerm(1:nn) > 0 )        
+            PrevCutValues(dofs*(CutPerm(1:nn)-1)+j,i) = &
+                Solver % OrigPrevValues(dofs*(Solver % OrigPerm(1:nn)-1)+j,i) 
+          END WHERE
+        END DO
+      END DO
+      Solver % Variable % PrevValues => PrevCutValues
+    END IF
+    
+  END SUBROUTINE CreateCutFEMVariable
+      
 
   ! Given a permutation, create a matrix. We assume simple nodal elements.
   ! Some extra dofs are created since at the interface we assume that

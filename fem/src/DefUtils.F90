@@ -3642,6 +3642,7 @@ CONTAINS
      IF( ListGetLogical( Params,'CutFEM',Found ) ) THEN
        pMatrix => Solver % Matrix
        CALL CreateCutFEMPerm(Solver,.TRUE.)
+       CALL CreateCutFEMVariable(Solver)
        Solver % Matrix => CreateCutFEMMatrix(Solver,Solver % Variable % Perm, pMatrix )
        CALL FreeMatrix(pMatrix)
        IF(.NOT. ListGetLogical( Params,'CutFEM Solver',Found ) ) THEN
