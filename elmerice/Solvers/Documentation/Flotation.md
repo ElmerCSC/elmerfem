@@ -42,12 +42,12 @@ The aim of this solver is to apply the flotation criterion to compute the top an
 
 - If the **Haf** variable is present, compute the nodal heigh above flotation as:  
     - $Haf=H$ if $bedrock > zsea$
-    - $Haf=(zsea-bedrock)*rhow/rhoi$ if grounded (GroundedMask=[0,1])
+    - $Haf=H - (zsea-bedrock)*rhow/rhoi$ if grounded (GroundedMask=[0,1])
     - $Haf=0$ if floating (GroundedMask=-1)
 
 - If the **Haf0** variable is present :
     - $Haf0=H$ if $bedrock > zsea$
-    - $Haf0=(zsea-bedrock)*rhow/rhoi$
+    - $Haf0=H - (zsea-bedrock)*rhow/rhoi$
     - => the 0-isocontour of Haf0 exactly gives the sub-element grounding line location, and is used by the SEP2 sub-element integration for the ice fraction areas (see below)
 
 
