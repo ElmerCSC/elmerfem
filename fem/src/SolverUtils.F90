@@ -11843,14 +11843,8 @@ END FUNCTION SearchNodeL
       EdgeBasisDegree = 0
       IF( PRESENT(EdgeBasis) ) THEN
         IF( EdgeBasis ) THEN
-          EdgeBasisDegree = 1          
-          IF( ListGetLogical( pSolver % Values,'Quadratic Approximation',Found ) ) THEN
-            EdgeBasisDegree = 2
-            pRef = .TRUE.
-          END IF
-          IF( ListGetLogical(pSolver % Values, 'Use Piola Transform', Found) ) THEN
-            pRef = .TRUE.
-          END IF
+
+          CALL EdgeElementStyle(pSolver % Values, pRef, BasisDegree=EdgeBasisDegree)
 
           ! If elemental rule has not been given then use special edge basis rules
           ! to overrule any other rule for the gauss points. 

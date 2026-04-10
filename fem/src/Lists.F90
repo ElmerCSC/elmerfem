@@ -658,21 +658,20 @@ CONTAINS
          IF(.NOT. ASSOCIATED( Mesh % PeriodicPerm ) ) THEN
            CALL Warn(Caller,'Conforming BC is requested but not generated!')
          ELSE       
-           Solver % PeriodicFlipActive = .FALSE.
            n = SIZE( Mesh % PeriodicPerm )
            m = SIZE( Perm )
            
            IF( n < m ) THEN
              CALL Info(Caller,'Increasing size of periodic tables from '&
-                 //I2S(n)//' to '//I2S(SIZE(Perm))//'!',Level=7)
-             ALLOCATE( TmpPerm(SIZE(Perm)) )
+                 //I2S(n)//' to '//I2S(m)//'!',Level=7)
+             ALLOCATE( TmpPerm(m) )
              TmpPerm = 0
              TmpPerm(1:n) = Mesh % PeriodicPerm(1:n)
              DEALLOCATE(Mesh % PeriodicPerm)
              Mesh % PeriodicPerm => TmpPerm
              
              IF(ASSOCIATED(Mesh % PeriodicFlip ) ) THEN
-               ALLOCATE( TmpFlip(SIZE(Perm)) )
+               ALLOCATE( TmpFlip(m) )
                TmpFlip = .FALSE.
                TmpFlip(1:n) = Mesh % PeriodicFlip(1:n)
                DEALLOCATE(Mesh % PeriodicFlip)
@@ -680,32 +679,32 @@ CONTAINS
              END IF
            END IF
            
+           ! Set the eliminated dofs to zero and renumber
+           WHERE( Mesh % PeriodicPerm(1:m) > 0 ) Perm = -Perm
+
+           k = 0                  
+           DO i=1,m
+             IF( Perm(i) > 0 ) THEN
+               k = k + 1
+               Perm(i) = k
+             END IF
+           END DO
+
            n = 0
-           IF( ASSOCIATED( Mesh % PeriodicPerm ) ) THEN
-             ! Set the eliminated dofs to zero and renumber
-             WHERE( Mesh % PeriodicPerm(1:m) > 0 ) Perm = -Perm
-             
-             k = 0                  
-             DO i=1,m
-               IF( Perm(i) > 0 ) THEN
-                 k = k + 1
-                 Perm(i) = k
-               END IF
-             END DO
-             
-             DO i=1,m
-               j = Mesh % PeriodicPerm(i)
-               IF( j > 0 ) THEN
-                 IF( Perm(i) /= 0 ) THEN             
-                   Perm(i) = Perm(j)
+           DO i=1,m
+             j = Mesh % PeriodicPerm(i)
+             IF( j > 0 ) THEN
+               IF( Perm(i) /= 0 ) THEN             
+                 Perm(i) = Perm(j)
+                 IF(ASSOCIATED(Mesh % PeriodicFlip)) THEN
                    IF(Mesh % PeriodicFlip(i)) n = n + 1
                  END IF
                END IF
-             END DO
+             END IF
+           END DO
 
-             Solver % PeriodicFlipActive = ( n > 0 )
-             CALL Info(Caller,'Number of periodic flips in the field: '//I2S(n),Level=8)
-           END IF
+           Solver % PeriodicFlipActive = ( n > 0 )
+           CALL Info(Caller,'Number of periodic flips in the field: '//I2S(n),Level=8)
          END IF
        END BLOCK
      END IF
