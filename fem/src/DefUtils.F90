@@ -3500,6 +3500,11 @@ CONTAINS
 
        CALL Info('DefaultSlaveSolvers','Calling slave solver: '//I2S(k),Level=8)
 
+       IF( ListGetLogical( SlaveSolver % Values,'CutFEM Slave',Found ) ) THEN
+         CALL Info('DefaultSlaveSolvers','Reverting to original mesh for CutFEM slave solvers!')
+         CALL CutFEMSetOrigMesh(Solver)         
+       END IF
+       
        IF( ListGetLogical( Solver % Values,'Monolithic Slave',Found )  ) THEN
          IF(.NOT. ListCheckPresent( SlaveSolver % Values,'Linear System Solver Disabled') ) THEN
            CALL Info('DefaultSlaveSolvers','Disabling linear system solver for slave: '//I2S(k),Level=6)
@@ -3621,7 +3626,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      TYPE(Solver_t), OPTIONAL, TARGET, INTENT(IN) :: USolver     
      TYPE(Solver_t), POINTER :: Solver
-     LOGICAL :: Found
+     LOGICAL :: Found, CutFEMSlave
      TYPE(ValueList_t), POINTER :: Params
      INTEGER :: i,j,n
      TYPE(Matrix_t), POINTER :: pMatrix
@@ -3640,14 +3645,19 @@ CONTAINS
      ! Code for splitting the mesh to be able to integrate accurately over discontinuous
      ! fields defined by zero levelset.     
      IF( ListGetLogical( Params,'CutFEM',Found ) ) THEN
+       ! We may have other solver use the same splitted mesh, these slave solvers need not do all steps themselves. 
+       CutFEMSlave = ListGetLogical( Params,'CutFEM Slave',Found )
        pMatrix => Solver % Matrix
-       CALL CreateCutFEMPerm(Solver,.TRUE.)
+       IF(.NOT. CutFEMSlave) CALL CreateCutFEMPerm(Solver,.TRUE.)
        CALL CreateCutFEMVariable(Solver)
        Solver % Matrix => CreateCutFEMMatrix(Solver,Solver % Variable % Perm, pMatrix )
        CALL FreeMatrix(pMatrix)
        IF(.NOT. ListGetLogical( Params,'CutFEM Solver',Found ) ) THEN
-         CALL CreateCutFEMAddMesh(Solver) 
+         IF(.NOT. CutFEMSlave) CALL CreateCutFEMAddMesh(Solver) 
        END IF
+       IF(CutFEMSlave) THEN
+         CALL CutFEMSetOrigMesh(Solver)
+       END IF       
      END IF
 
      ! When Newton linearization is used we may reset it after previously visiting the solver
@@ -3769,7 +3779,7 @@ CONTAINS
      TYPE(ValueList_t), POINTER :: Params
      TYPE(Mesh_t), POINTER :: Mesh
      CHARACTER(:), ALLOCATABLE :: str
-     LOGICAL :: Found, SolveAdjoint
+     LOGICAL :: Found, SolveAdjoint, CutFEMSlave
      
      IF ( PRESENT( USolver ) ) THEN
        Solver => USolver
@@ -3895,32 +3905,34 @@ CONTAINS
        END IF
      END IF
 
-
-     
+          
      IF( ListGetLogical( Params,'CutFEM',Found ) ) THEN
-       Mesh => Solver % Mesh
-       
-       ! We do not need the old meshes. When we reach a new timestep
-       ! they have already been saved. 
-       IF(ASSOCIATED(Solver % Mesh % Next ) ) THEN
-         IF(ASSOCIATED(Solver % Mesh % Next % Next ) ) THEN
-           CALL FreeMesh(Solver % Mesh % Next % Next )
+       CutFEMSlave = ListGetLogical( Params,'CutFEM Slave',Found )
+       IF(.NOT. CutFEMSlave) THEN
+         Mesh => Solver % Mesh
+         
+         ! We do not need the old meshes. When we reach a new timestep
+         ! they have already been saved. 
+         IF(ASSOCIATED(Solver % Mesh % Next ) ) THEN
+           IF(ASSOCIATED(Solver % Mesh % Next % Next ) ) THEN
+             CALL FreeMesh(Solver % Mesh % Next % Next )
+           END IF
+           CALL FreeMesh(Solver % Mesh % Next)
          END IF
-         CALL FreeMesh(Solver % Mesh % Next)
+
+         ! Updates Level-set and creates 1D mesh that becomes "Mesh % Next"
+         ! The Mesh % Next is saved normally in the VTU files etc. 
+         CALL LevelSetUpdate(Solver,Solver % Mesh)
+
+         ! We do not need to create the actual CutFEM Mesh, but we might want to have it
+         ! for visualization purposes. 
+         IF( ListGetLogical( Solver % Values,'CutFEM Mesh Save', Found ) )  THEN
+           ! This 2D mesh becomes Mesh % Next % Next
+           Solver % Mesh % Next % Next => CreateCutFEMMesh(Solver,Mesh,Solver % Variable % Perm,&
+               .TRUE.,.TRUE.,.FALSE.,Solver % Values,'project variable') 
+         END IF
        END IF
-       
-       ! Updates Level-set and creates 1D mesh that becomes "Mesh % Next"
-       ! The Mesh % Next is saved normally in the VTU files etc. 
-       CALL LevelSetUpdate(Solver,Solver % Mesh)
-       
-       ! We do not need to create the actual CutFEM Mesh, but we might want to have it
-       ! for visualization purposes. 
-       IF( ListGetLogical( Solver % Values,'CutFEM Mesh Save', Found ) )  THEN
-         ! This 2D mesh becomes Mesh % Next % Next
-         Solver % Mesh % Next % Next => CreateCutFEMMesh(Solver,Mesh,Solver % Variable % Perm,&
-             .TRUE.,.TRUE.,.FALSE.,Solver % Values,'project variable') 
-       END IF
-      
+         
        CALL CutFEMVariableFinalize(Solver)         
      END IF
      

@@ -63,11 +63,14 @@ MODULE CutFemUtils
   INTEGER, POINTER :: ExtendPerm(:) => NULL(), & !OrigMeshPerm(:) => NULL(), &
       CutPerm(:) => NULL(), PhiPerm(:) => NULL()
   REAL(KIND=dp), POINTER :: ExtendValues(:) => NULL(), PhiValues(:) => NULL()
-  INTEGER, POINTER :: OrigActiveElements(:), AddActiveElements(:), UnsplitActiveElements(:)
+  INTEGER, POINTER :: AddActiveElements(:), UnsplitActiveElements(:)
+  !INTEGER, POINTER :: OrigActiveElements(:)
   REAL(KIND=dp), ALLOCATABLE, TARGET :: CutInterp(:)
   TYPE(Matrix_t), POINTER :: NodeMatrix
   INTEGER :: CutFemBody
   CHARACTER(:), ALLOCATABLE :: CutStr
+  TYPE(Solver_t), POINTER :: SlaveSolver => NULL()
+  INTEGER :: SlaveSolverId = 0
   INTEGER :: CutDofs = 0
   INTEGER :: nCase(20)
 
@@ -87,8 +90,6 @@ MODULE CutFemUtils
   
     
 CONTAINS
-
-
 
   
   ! Given a levelset function create a permutation that tells which
@@ -112,7 +113,7 @@ CONTAINS
     REAL(KIND=dp), POINTER :: xtmp(:)    
     LOGICAL :: UpdateOrigCoords
     CHARACTER(*), PARAMETER :: Caller = 'CreateCutFEMPerm'
-    REAL(KIND=dp), POINTER :: CutValues(:), PrevCutValues(:,:)
+    !REAL(KIND=dp), POINTER :: CutValues(:), PrevCutValues(:,:)
 
     Params => Solver % Values    
     Mesh => Solver % Mesh
@@ -120,8 +121,18 @@ CONTAINS
     NodeMatrix => Solver % Matrix
 
 
+    ! Eventually we could have more than 1 slave solver but this is for now...
+    NULLIFY(SlaveSolver)
+    SlaveSolverId = 0
+    DO i=1,CurrentModel % NumberOfSolvers
+      IF( ListGetLogical(CurrentModel % Solvers(i) % Values,'CutFEM Slave',Found)) THEN
+        SlaveSolver => CurrentModel % Solvers(i)
+        SlaveSolverId = i
+      END IF
+    END DO       
+
     CutFEMOrigMesh => Solver % Mesh 
-    OrigActiveElements => Solver % ActiveElements
+    Solver % OrigActiveElements => Solver % ActiveElements
 
     CutExtend = ListGetLogical( Params,'CutFEM extend',Found )
     CutExtrapolate = ListGetLogical( Params,'CutFEM extrapolate',Found )
@@ -587,11 +598,20 @@ CONTAINS
     TYPE(Solver_t) :: Solver
     INTEGER :: i,j,dofs,nn,ne
     REAL(KIND=dp), POINTER :: CutValues(:), PrevCutValues(:,:)
+    CHARACTER(*), PARAMETER :: Caller = 'CreateCutFEMVariable'
 
     IF(.NOT. ASSOCIATED(Solver % Variable)) THEN
-      CALL Info('CreateCutFEMVariable','Solver % Variable not associated, doing nothing!')
+      CALL Info(Caller,'Solver % Variable not associated, doing nothing!')
       RETURN
     END IF
+
+    IF(.NOT. ASSOCIATED(Solver % OrigActiveElements ) ) THEN
+      CALL Info('CreateCutFEMVariable','Storing original ActiveElements table!',Level=15)
+      Solver % OrigActiveElements => Solver % ActiveElements
+    END IF
+      
+    
+    CALL Info(Caller,'Creating storage for the CutFEM field variable: '//TRIM(Solver % Variable % Name),Level=10)
     
     j = MAXVAL(CutPerm)
     nn = Solver % Mesh % NumberOfNodes
@@ -1466,6 +1486,7 @@ CONTAINS
       END DO
       IF(Sweep == 0) THEN
         ALLOCATE(UnsplitActiveElements(n))
+        UnsplitActiveElements = 0
       END IF
     END DO
 
@@ -1486,6 +1507,10 @@ CONTAINS
       AddActiveElements(i) = i
     END DO
 
+    IF(.NOT. ASSOCIATED(UnsplitActiveElements)) THEN
+      CALL Fatal('CreateCutFEMAddMesh','UnsplitActiveElements not associated!')
+    END IF
+      
     Solver % ActiveElements => UnsplitActiveElements
     Solver % NumberOfActiveElements = SIZE(UnsplitActiveElements)
 
@@ -1498,6 +1523,11 @@ CONTAINS
 
     Solver % Mesh => CutFEMAddMesh
     CurrentModel % Mesh => CutFEMAddMesh
+
+    IF(.NOT. ASSOCIATED(UnsplitActiveElements)) THEN
+      CALL Fatal('CutFEMSetAddMesh','AddActiveElements not associated!')
+    END IF
+    
     Solver % ActiveElements => AddActiveElements
     Solver % NumberOfActiveElements = SIZE(Solver % ActiveElements)
     Solver % Mesh % Edges => CutFemOrigMesh % Edges
@@ -1511,6 +1541,11 @@ CONTAINS
     
     Solver % Mesh => CutFEMOrigMesh
     CurrentModel % Mesh => CutFEMOrigMesh 
+
+    IF(.NOT. ASSOCIATED(UnsplitActiveElements)) THEN
+      CALL Fatal('CutFEMSetOrigMesh','AddActiveElements not associated!')
+    END IF
+
     Solver % ActiveElements => UnsplitActiveElements
     Solver % NumberOfActiveElements = SIZE(Solver % ActiveElements)
 
@@ -1587,7 +1622,6 @@ CONTAINS
     REAL(KIND=dp) :: s, r, dval, norm
     REAL(KIND=dp), ALLOCATABLE :: NodeWeigth(:)
     REAL(KIND=dp), POINTER :: CutValues(:)
-    
 
     Mesh => Solver % Mesh
     nn = Mesh % NumberOfNodes
@@ -1716,33 +1750,60 @@ CONTAINS
         Solver % OrigValues(k) = ExtendValues(j)
       END DO
     END IF
-    
-    ! Revert to the original field that is present everywhere.              
-    IF(ASSOCIATED(Solver % Variable % Values)) THEN
-      DEALLOCATE(Solver % Variable % Values)
-    END IF
-    IF(ASSOCIATED(Solver % Variable % PrevValues)) THEN
-      DEALLOCATE(Solver % Variable % PrevValues)
-    END IF
 
-    Solver % Variable % Perm => Solver % OrigPerm
-    Solver % Variable % Values => Solver % OrigValues
-    Solver % OrigValues => NULL()
-    IF(ASSOCIATED(Solver % OrigPrevValues)) THEN
-      Solver % Variable % PrevValues => Solver % OrigPrevValues
-      Solver % OrigPrevValues => NULL()
-    END IF
     Solver % Variable % Norm = Norm
     
-    ! Revert to original body id's.
-    ! If we don't do this then ActiveElements is spoiled. 
-    DO t=1,Mesh % NumberOfBulkElements        
-      Element => Mesh % Elements(t)
-      IF(ALL(PhiPerm(Element % NodeIndexes)>0)) THEN
-        Element % BodyId = CutFemBody
+    IF(Solver % SolverId /= SlaveSolverId ) THEN    
+      CALL Info('CutFEMVariableFinalize','Reverting cut field back to original: '&
+          //TRIM(Solver % Variable % Name),Level=20)
+
+      IF(ASSOCIATED(Solver % Variable % Values)) THEN
+        DEALLOCATE(Solver % Variable % Values)
       END IF
-    END DO
-    
+      IF(ASSOCIATED(Solver % Variable % PrevValues)) THEN
+        DEALLOCATE(Solver % Variable % PrevValues)
+      END IF
+      
+      Solver % Variable % Perm => Solver % OrigPerm
+      Solver % Variable % Values => Solver % OrigValues
+      Solver % OrigValues => NULL()
+      IF(ASSOCIATED(Solver % OrigPrevValues)) THEN
+        Solver % Variable % PrevValues => Solver % OrigPrevValues
+        Solver % OrigPrevValues => NULL()
+      END IF
+      
+      ! Revert to original body id's.
+      ! If we don't do this then ActiveElements is spoiled. 
+      DO t=1,Mesh % NumberOfBulkElements        
+        Element => Mesh % Elements(t)
+        IF(ALL(PhiPerm(Element % NodeIndexes)>0)) THEN
+          Element % BodyId = CutFemBody
+        END IF
+      END DO
+
+      IF(SlaveSolverId > 0 ) THEN
+        CALL Info('CutFEMVariableFinalize','Reverting slave cut field back to original: '&
+            //TRIM(SlaveSolver % Variable % Name),Level=20)
+        IF(ASSOCIATED(SlaveSolver % Variable % Values)) THEN
+          DEALLOCATE(SlaveSolver % Variable % Values)
+        END IF
+        IF(ASSOCIATED(SlaveSolver % Variable % PrevValues)) THEN
+          DEALLOCATE(SlaveSolver % Variable % PrevValues)
+        END IF
+        
+        SlaveSolver % Variable % Perm => SlaveSolver % OrigPerm
+        SlaveSolver % Variable % Values => SlaveSolver % OrigValues
+        SlaveSolver % OrigValues => NULL()
+        IF(ASSOCIATED(SlaveSolver % OrigPrevValues)) THEN
+          SlaveSolver % Variable % PrevValues => SlaveSolver % OrigPrevValues
+          SlaveSolver % OrigPrevValues => NULL()
+        END IF
+        
+        !Solver % NumberOfActiveElements = SIZE(Solver % ActiveElements)
+      END IF
+        
+    END IF
+      
   END SUBROUTINE CutFEMVariableFinalize
 
 
@@ -2031,14 +2092,19 @@ CONTAINS
       REAL(KIND=dp), POINTER :: Values(:)
       INTEGER, POINTER :: Perm(:)
       LOGICAL :: IsCutVar
-      
-      DO iVar = -1,100    
-        
-        IF(iVar == -1) THEN
+
+      DO iVar = -2,100            
+        IF(iVar == -2) THEN
+          ! This is possible slave solver variable living in cutfem space.
+          IF(.NOT. ASSOCIATED(SlaveSolver)) CYCLE
+          Var => SlaveSolver % Variable
+          VarName = Var % name
+          IsCutVar = .TRUE.
+        ELSE IF(iVar == -1) THEN
           ! We want to always interpolate the primary variable!
           ! This is the only variable living in the "CutFEM" universe.
           Var => Solver % Variable
-          VarName = Solver % Variable % name
+          VarName = Var % name
           IsCutVar = .TRUE.
         ELSE
           IF(iVar == 0) THEN
@@ -2048,7 +2114,10 @@ CONTAINS
             VarName = ListGetString( Vlist,TRIM(ProjectPrefix)//' '//I2S(iVar), Found )
             IF(.NOT. Found ) EXIT    
 
-            ! These are cases "-1" and "-0" that are always done!
+            ! These are cases {-2,-1,0} that are always done!
+            IF(ASSOCIATED(SlaveSolver)) THEN
+              IF(VarName == SlaveSolver % Variable % Name ) CYCLE
+            END IF
             IF(VarName == Solver % Variable % Name ) CYCLE
             IF(VarName == CutStr ) CYCLE
           END IF
@@ -2188,7 +2257,7 @@ CONTAINS
     CHARACTER(:), ALLOCATABLE :: str       
     LOGICAL :: Found, Nonzero, MovingLevelset, NormalMove, NodeHistory, Positive, CheckLS
     LOGICAL, ALLOCATABLE :: Trust(:), DoesElemIntersect(:)
-    INTEGER :: nVar,i,j,iAvoid,iSolver,k,l,counter,NNeighbours,MyPE
+    INTEGER :: nVar,i,j,iAvoid,iSolver,jSolver,k,l,counter,NNeighbours,MyPE
     INTEGER, ALLOCATABLE :: LocalPerm(:),Neighbours(:),nSend(:),nRecv(:)
     INTEGER, POINTER :: NodeIndexes(:)
     
@@ -2212,6 +2281,11 @@ CONTAINS
     
     SAVE IsoMesh
 
+    IF( Solver % SolverId == SlaveSolverId ) THEN
+      CALL Info('LevelSetUpdate','Skipping this for slave solvers!',Level=10)
+      RETURN
+    END IF
+    
     IsoMesh => CreateCutFEMMesh(Solver,Mesh,Solver % Variable % Perm,&
         .TRUE.,.FALSE.,.FALSE.,Solver % Values,'isoline variable')     
     IsoMesh % Name = TRIM(Mesh % Name)//'-isomesh'
@@ -2727,6 +2801,7 @@ CONTAINS
       nVar = 0
       iAvoid = 0
       iSolver = 0
+      jSolver = 0
       TotLineLen = 0.0_dp
       
       DO k = 1,100    
@@ -2736,7 +2811,10 @@ CONTAINS
         ! The levelset is really computed, do not interpolate it. 
         IF(str == CutStr) iAvoid = k 
         IF(str == Solver % Variable % Name) iSolver = k
-
+        IF(ASSOCIATED(SlaveSolver)) THEN
+          IF(str == SlaveSolver % Variable % Name) jSolver = k
+        END IF
+        
         Var1D => VariableGet( IsoMesh % Variables, str, ThisOnly = .TRUE. )
         IF(.NOT. ASSOCIATED(Var1D)) EXIT
         nVar = k
@@ -2748,6 +2826,9 @@ CONTAINS
         END IF
       END DO
 
+      IF(iSolver > 0) CALL Info('PopulatePolyline','Field is CutFEM field in primary solver: '//I2S(iSolver),Level=15)
+      IF(jSolver > 0) CALL Info('PopulatePolyline','Field is CutFEM field in slave solver: '//I2S(jSolver),Level=15)
+      
       m = Isomesh % NumberOfBulkElements
       MyPe = ParEnv % MyPe + 1
       PEs = ParEnv % PEs
@@ -4013,6 +4094,10 @@ CONTAINS
             j = Solver % OrigPerm(node)
             dofs = Solver % Variable % Dofs
             pValues => Solver % OrigValues
+          ELSE IF(i==jSolver) THEN
+            j = SlaveSolver % OrigPerm(node)
+            dofs = SlaveSolver % Variable % Dofs
+            pValues => SlaveSolver % OrigValues
           ELSE
             Var2D => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE. )
             j = Var2D % Perm(node)
