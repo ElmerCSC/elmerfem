@@ -11780,12 +11780,16 @@ END FUNCTION SearchNodeL
 
       IF(IsBC ) THEN
         UseNameSpace = ListCheckPrefix( pSolver % Values,'bc gauss:')         
-        CALL Info('GaussPointsAdapt','Looking for integration rules with namespace "bc gauss:"',Level=10)
-        CALL ListPushNamespace('bcgauss:')
+        IF( UseNameSpace) THEN
+          CALL Info('GaussPointsAdapt','Using namespace "bc gauss:" for integration rules!',Level=10)
+          CALL ListPushNamespace('bcgauss:')
+        END IF
       ELSE
         UseNameSpace = ListCheckPrefix( pSolver % Values,'bulk gauss:')         
-        CALL Info('GaussPointsAdapt','Looking for integration rules with namespace "bulk gauss:"',Level=10)
-        CALL ListPushNamespace('bulk gauss:')
+        IF( UseNameSpace) THEN
+          CALL Info('GaussPointsAdapt','Using namespace "bulk gauss:" for integration rules!',Level=10)
+          CALL ListPushNamespace('bulk gauss:')
+        END IF
       END IF
                     
       RelOrder = ListGetInteger( pSolver % Values,'Relative Integration Order',Found )
