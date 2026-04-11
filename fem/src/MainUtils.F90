@@ -1648,7 +1648,7 @@ CONTAINS
                      ' < exists but it is not associated to any equation')
         END IF
         
-        ! Computate the size of the permutation vector
+        ! Compute the size of the permutation vector
         !-----------------------------------------------------------------------------------------
         CALL Info(Caller,'Computing size of permutation vector',Level=12)
         Ndeg = 0
