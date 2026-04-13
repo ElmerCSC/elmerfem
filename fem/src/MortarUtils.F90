@@ -3802,6 +3802,10 @@ CONTAINS
 
       IF( StrongEdges .OR. StrongConformingEdges ) THEN
         IF( StrongConformingEdges ) THEN
+          IF (SecondOrder) THEN
+            CALL Fatal(Caller, &
+                'Level Projector Conforming Edges Strong needs Quadratic Approximation=False')
+          END IF
           CALL AddEdgeProjectorStrongConforming()
         ELSE         
           CALL AddEdgeProjectorStrongGeneric()
@@ -8029,8 +8033,6 @@ CONTAINS
         RefSum = 0.0_dp
         Normal0Set = .FALSE.
 
-        ! we use the Dot2Min and Normal2 temporarily also for first mesh, with k=1
-        !-------------------------------------------------------------------------
         DO i=1, BMesh % NumberOfBulkElements
           Element => BMesh % Elements(i)
           n = Element % TYPE % NumberOfNodes
@@ -8075,14 +8077,15 @@ CONTAINS
 
       ! Choose the mesh for which is close to a plane 
       IF( Planeness1 > Planeness ) THEN
-        PRINT *,'PlaneNormal: Selecting slave normal'
+        CALL Info('PlaneInterfaceMeshes','Selecting slave normal',Level=12)
         PlaneNormal = PlaneNormal1
       ELSE
-        PRINT *,'PlaneNormal: Selecting master normal'        
+        CALL Info('PlaneInterfaceMeshes','Selecting master normal',Level=12)
         PlaneNormal = -PlaneNormal
       END IF
 
-      PRINT *,'PlaneNormal selected:',PlaneNormal(:,1)
+      WRITE(Message,'(A,3F8.3)') 'PlaneNormal selected:', PlaneNormal(:,1)
+      CALL Info('PlaneInterfaceMeshes', Message, Level=8)      
 
       CALL ListAddConstRealArray( BParams,'Plane Projector Normal',&
           3,1,PlaneNormal )
@@ -8633,26 +8636,24 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Create a permutation between two meshes such that we can solve a smaller system.
 !------------------------------------------------------------------------------
-  SUBROUTINE PeriodicPermutation( Model, Mesh, This, Trgt, PerPerm, PerFlip, DoFaces ) 
+  SUBROUTINE PeriodicPermutation( Model, Mesh, This, Trgt, PerPerm, PerFlip ) 
 !------------------------------------------------------------------------------   
     TYPE(Model_t) :: Model
     INTEGER :: This, Trgt
     TYPE(Mesh_t), TARGET :: Mesh
     INTEGER, POINTER :: PerPerm(:)
     LOGICAL, POINTER :: PerFlip(:)
-    LOGICAL :: DoFaces
 !------------------------------------------------------------------------------
-    INTEGER :: i,j,k,n,dim
+   INTEGER :: i,j,k,n,dim
+    LOGICAL :: DoFaces, GradientVersion
     LOGICAL :: GotIt, Success, Rotational, AntiRotational, Sliding, AntiSliding, Repeating, &
         Radial, AntiRadial, DoNodes, DoEdges, Axial, AntiAxial, &
-        Flat, Plane, AntiPlane, Cylindrical, ParallelNumbering, EnforceOverlay, &
+        Flat, Plane, AntiPlane, Cylindrical, EnforceOverlay, &
         FullCircle, AntiPeriodic
     REAL(KIND=dp) :: Radius
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
     TYPE(ValueList_t), POINTER :: BC
     CHARACTER(*), PARAMETER :: Caller="PeriodicPermutation"
-
-    
 !------------------------------------------------------------------------------
     IF ( This <= 0  .OR. Trgt <= 0 ) RETURN    
     CALL Info(Caller,'Starting periodic permutation creation',Level=12)
@@ -8724,22 +8725,28 @@ CONTAINS
     !IF( ListGetLogical( Model % Solver % Values,'Projector Skip Nodes',GotIt ) ) DoNodes = .FALSE.    
     IF( ListGetLogical( BC,'Projector Skip Nodes',GotIt) ) DoNodes = .FALSE.
 
-    ! We are conservative here since there may be edges in 2D which 
-    ! still cannot be used for creating the projector
-    DoEdges = ( Mesh % NumberOfEdges > 0 .AND. Mesh % MeshDim == 3 .AND. Dim == 3 )
-    
-    ! Ensure that there is no p-elements that made us think that we have edges
-    ! Here we assume that if there is any p-element then also the 1st element is such
-    IF( DoEdges ) THEN
-      IF(isActivePelement(Mesh % Elements(1))) THEN
-        DoEdges = .FALSE.
-        CALL Info(Caller,'Edge projector will not be created for p-element mesh',Level=10)
+    !IF( ListGetLogical( Model % Solver % Values,'Projector Skip Edges',GotIt ) ) DoEdges = .FALSE.
+    IF( ListGetLogical( BC,'Projector Skip Edges',GotIt) ) THEN
+      DoEdges = .FALSE.
+    ELSE
+      ! We are conservative here since there may be edges in 2D which 
+      ! still cannot be used for creating the projector
+      DoEdges = ( Mesh % MaxEdgeDOFs > 0 .AND. Mesh % MeshDim == 3 .AND. Dim == 3 )
+
+      ! Ensure that there is no p-elements that made us think that we have edges
+      ! Here we assume that if there is any p-element then also the 1st element is such
+      IF( DoEdges ) THEN
+        IF(isActivePelement(Mesh % Elements(1))) THEN
+          DoEdges = .FALSE.
+          CALL Info(Caller,'Edge projector will not be created for p-element mesh',Level=10)
+        ELSE
+          GradientVersion = ListGetLogicalAnySolver(Model, 'Gradient Basis Functions')
+        END IF
       END IF
     END IF
-        
-    !IF( ListGetLogical( Model % Solver % Values,'Projector Skip Edges',GotIt ) ) DoEdges = .FALSE.
-    IF( ListGetLogical( BC,'Projector Skip Edges',GotIt) ) DoEdges = .FALSE.
-      
+
+    DoFaces = Mesh % MaxFaceDOFs > 0
+    
     ! Make the two meshes to coincide using rotation, translation scaling.
     !---------------------------------------------------------------------------------
     Radius = 1.0_dp
@@ -8767,7 +8774,7 @@ CONTAINS
     END IF
     
     IF( DoNodes ) CALL ConformingNodePerm(PMesh, BMesh1, BMesh2, PerPerm, PerFlip, AntiPeriodic )
-    IF( DoEdges ) CALL ConformingEdgePerm(PMesh, BMesh1, BMesh2, PerPerm, PerFlip, AntiPeriodic )
+    IF( DoEdges ) CALL ConformingEdgePerm(PMesh, BMesh1, BMesh2, PerPerm, PerFlip, AntiPeriodic, GradientVersion )
     IF( DoEdges .AND. DoFaces ) &
         CALL ConformingFacePerm(PMesh, BMesh1, BMesh2, PerPerm, PerFlip, AntiPeriodic )
     
@@ -8800,8 +8807,8 @@ CONTAINS
   SUBROUTINE GeneratePeriodicProjectors( Model, Mesh ) 
     TYPE(Model_t) :: Model
     TYPE(Mesh_t), POINTER :: Mesh
-    INTEGER :: i,j,k,n,nocyclic,noconf,noflip,mini,maxi
-    LOGICAL :: Found, NeedFaces
+    INTEGER :: i,j,k,n,nocyclic,noconf,noflip
+    LOGICAL :: Found
     INTEGER, POINTER :: PerPerm(:)
     LOGICAL, POINTER :: PerFlip(:)
 
@@ -8827,10 +8834,10 @@ CONTAINS
 
     
     IF( ListCheckPresentAnyBC( Model,'Conforming BC' ) ) THEN
-      NeedFaces = ListGetLogicalAnySolver( Model,'Use Piola Transform')
       
-      n = Mesh % NumberOfNodes + Mesh % NumberOfEdges
-      IF(NeedFaces) n = n + 2 * Mesh % NumberOfFaces + 3 * Mesh % NumberOfBulkElements
+      n = Mesh % NumberOfNodes + Mesh % MaxEdgeDOFs * Mesh % NumberOfEdges + &
+          Mesh % MaxFaceDOFs * Mesh % NumberOfFaces + &
+          Mesh % MaxBDOFs * Mesh % NumberOfBulkElements
 
       IF( ASSOCIATED( Mesh % PeriodicPerm ) ) THEN
         IF( SIZE( Mesh % PeriodicPerm ) /= n ) THEN
@@ -8854,19 +8861,15 @@ CONTAINS
       DO i = 1,Model % NumberOfBCs
         k = ListGetInteger( Model % BCs(i) % Values, 'Conforming BC', Found )
         IF( Found ) THEN
-          CALL PeriodicPermutation( Model, Mesh, i, k, PerPerm, PerFlip, NeedFaces )
+          CALL PeriodicPermutation( Model, Mesh, i, k, PerPerm, PerFlip)
         END IF
       END DO
+      
       nocyclic = 0
       noconf = 0
-      mini = HUGE(mini)
-      maxi = 0
-      
       DO i = 1,n
         j = PerPerm(i)
         IF( j > 0 ) THEN
-          mini = MIN( mini, i )
-          maxi = MAX( maxi, i )
           noconf = noconf + 1
           IF( PerPerm(j) > 0 ) THEN
             PerPerm(i) = PerPerm(j)
@@ -9390,36 +9393,51 @@ CONTAINS
   
   
   !---------------------------------------------------------------------------------
-  ! Create a permutation to eliminate edges in a conforming case.
+  ! Create a permutation to eliminate edge DOFs in a conforming case.
+  ! TO DO: Allow for higher-order case
   !---------------------------------------------------------------------------------
-  SUBROUTINE ConformingEdgePerm( Mesh, BMesh1, BMesh2, PerPerm, PerFlip, AntiPeriodic )
+  SUBROUTINE ConformingEdgePerm( Mesh, BMesh1, BMesh2, PerPerm, PerFlip, AntiPeriodic, &
+      GradientVersion)
     TYPE(Mesh_t), POINTER :: Mesh, BMesh1, BMesh2
     INTEGER, POINTER :: PerPerm(:)
     LOGICAL, POINTER :: PerFlip(:)
-    LOGICAL, OPTIONAL :: AntiPeriodic 
+    LOGICAL, OPTIONAL :: AntiPeriodic
+    LOGICAL, OPTIONAL :: GradientVersion
     !---------------------------------------------------------------------------------      
-    INTEGER :: n, ind, indm, e, em, eind, eindm, k1, k2, km1, km2, sgn0, sgn, i1, i2, &
-        noedges, noedgesm, Nundefined, n0, dim
+    INTEGER :: n, e, em, eind, eindm, k1, k2, km1, km2, i1, i2, &
+        noedges, noedgesm, n0, dim
+    INTEGER :: i, nd, nd_m, edofs
     TYPE(Element_t), POINTER :: Edge, EdgeM
-    INTEGER, POINTER :: Indexes(:), IndexesM(:)
-    REAL(KIND=dp) :: xm1, xm2, ym1, ym2, x1, y1, x2, y2, y2m, z1, zm1, z2, zm2, nrow
+    INTEGER :: Indexes(Mesh % MaxElementDOFs), IndexesM(Mesh % MaxElementDOFs)
+    REAL(KIND=dp) :: xm1, xm2, ym1, ym2, x1, y1, x2, y2, z1, zm1, z2, zm2
     INTEGER, ALLOCATABLE :: PeriodicEdge(:), EdgeInds(:), EdgeIndsM(:)
     REAL(KIND=dp), ALLOCATABLE :: EdgeX(:,:), EdgeY(:,:), EdgeZ(:,:), &
         EdgeMX(:,:), EdgeMY(:,:), EdgeMZ(:,:)
     REAL(KIND=dp) :: coordprod, indexprod, ss, minss, maxminss
     INTEGER :: minuscount, samecount, mini, doubleusecount
-    LOGICAL :: Parallel, AntiPer
+    LOGICAL :: Parallel, AntiPer, GradVersion
     LOGICAL, ALLOCATABLE :: EdgeUsed(:)
     CHARACTER(*), PARAMETER :: Caller = 'ConformingEdgePerm'
   
-    CALL Info(Caller,'Creating permutation for elimination of conforming edges',Level=8)
+    CALL Info(Caller,'Creating permutation to eliminate conforming edge DOFs',Level=8)
 
     n = Mesh % NumberOfEdges
-    IF( n == 0 ) RETURN
+    edofs = Mesh % MaxEdgeDOFs
+    IF( n == 0 .OR. edofs == 0) RETURN
 
+    IF (edofs > 1 .AND. .NOT. GradVersion) THEN
+      CALL Fatal(Caller, 'Higher-order case needs Gradient Basis Functions = True')
+    END IF
+    IF (edofs > 1) THEN
+      CALL Fatal(Caller, 'Implementation for higher-order is not yet available')
+    END IF
+    
     AntiPer = .FALSE.
     IF( PRESENT( AntiPeriodic ) ) AntiPer = AntiPeriodic
 
+    GradVersion = .FALSE.
+    IF (PRESENT(GradientVersion)) GradVersion = GradientVersion
+    
     dim = 2
     BLOCK
       REAL(KIND=dp) :: maxz, minz
@@ -9440,10 +9458,10 @@ CONTAINS
     ALLOCATE( PeriodicEdge(noedges),EdgeUsed(noedgesm))
     PeriodicEdge = 0
     EdgeUsed = .FALSE.
-    maxminss = 0.0_dp
     n0 = Mesh % NumberOfNodes
     
     Parallel = ( ParEnv % PEs > 1 )
+    maxminss = 0.0_dp
     samecount = 0
     doubleusecount = 0
     
@@ -9452,8 +9470,10 @@ CONTAINS
       y1 = EdgeY(3,i1)
       IF(dim==3) z1 = EdgeZ(3,i1)
       
-      IF( PerPerm( EdgeInds(i1) + n0 ) > 0 ) CYCLE
-
+      ! Check whether this edge has already been set
+      eind = EdgeInds(i1)
+      IF (PerPerm(n0 + edofs*(eind-1) + 1) > 0) CYCLE
+      
       minss = HUGE(minss)
       mini = 0
 
@@ -9474,7 +9494,7 @@ CONTAINS
         END IF
       END DO
 
-      IF( EdgeInds(i1) == EdgeIndsM(mini) ) THEN        
+      IF( eind == EdgeIndsM(mini) ) THEN        
         samecount = samecount + 1        
         CYCLE
       END IF
@@ -9496,18 +9516,27 @@ CONTAINS
     minuscount = 0
 
     DO e=1,noedges        
-      eind = EdgeInds(e)
-
-      ! This has already been set
-      IF( PerPerm(eind+n0) > 0 ) CYCLE
-
-      ! Get the conforming counterpart
+      ! First check that the conforming counterpart exists
       em = PeriodicEdge(e)
       IF( em == 0 ) CYCLE
-      eindm = EdgeIndsM(em)        
+
+      eind = EdgeInds(e)
+      Edge => Mesh % Edges(eind)
+!      nd = mGetElementDOFs(Indexes, Edge, notDG = .TRUE.)
+      
+      eindm = EdgeIndsM(em)
+      EdgeM => Mesh % Edges(eindm)
+!      nd_m = mGetElementDOFs(IndexesM, EdgeM, notDG = .TRUE.)
+
+      DO i=1,edofs
+        Indexes(i) = edofs*(eind-1) + i
+        IndexesM(i) = edofs*(eindm-1) + i
+      END DO
+
+      ! Check whether this edge has already been set
+!      IF (PerPerm(Indexes(1)+n0) > 0) CYCLE
 
       ! Get the coordinates and indexes of the 1st edge
-      Edge => Mesh % Edges(eind)
       k1 = Edge % NodeIndexes( 1 )
       k2 = Edge % NodeIndexes( 2 )
       IF(Parallel) THEN
@@ -9527,7 +9556,6 @@ CONTAINS
       END IF
         
       ! Get the coordinates and indexes of the 2nd edge
-      EdgeM => Mesh % Edges(eindm)
       km1 = EdgeM % NodeIndexes( 1 )
       km2 = EdgeM % NodeIndexes( 2 )
       IF(Parallel) THEN
@@ -9549,19 +9577,24 @@ CONTAINS
         
       indexprod = (k1-k2)*(km1-km2)
 
+      ! When Gradient Basis Functions = True, only the first edge DOF
+      ! depends on the orientation of the edge
+      !
       IF( coordprod * indexprod < 0 ) THEN
         minuscount = minuscount + 1
-        PerFlip(eind+n0) = .NOT. AntiPer
+        PerFlip(Indexes(1)+n0) = .NOT. AntiPer
         !PRINT *,'prod:',coordprod,indexprod
         !PRINT *,'x:',x1,x2,xm1,xm2
         !PRINT *,'y:',y1,y2,ym1,ym2
         !PRINT *,'k:',k1,k2,km1,km2
       ELSE
-        PerFlip(eind+n0) = AntiPer
+        PerFlip(Indexes(1)+n0) = AntiPer
       END IF
 
-      ! Mark that this is set so it don't need to be set again
-      PerPerm(eind+n0) = eindm + n0
+      ! Mark all DOFs so that they need not be set again
+      DO i=1,edofs
+        PerPerm(Indexes(i)+n0) = IndexesM(i) + n0
+      END DO
     END DO
 
     DEALLOCATE( EdgeInds, EdgeX, EdgeY, EdgeIndsM, EdgeMX, EdgeMY, PeriodicEdge )
@@ -9575,7 +9608,7 @@ CONTAINS
       CALL Info(Caller,'All edges in conforming projector have consistent sign!',Level=8)
     ELSE
       CALL Info(Caller,'Flipped sign of '//I2S(minuscount)//&
-          ' (out of '//I2S(noedges)//') edge projectors',Level=6)
+          ' (out of '//I2S(noedges*edofs)//') edge projectors',Level=6)
     END IF
 
     IF( doubleusecount > 0 ) THEN
@@ -9634,12 +9667,12 @@ CONTAINS
             k1 = Indexes( i1 )
             k2 = Indexes( i2 )
 
-            ! Ensure that the order of node is consistent with the global mesh
+            ! Ensure that the order of nodes is consistent with the global mesh
             ! because this is later used to check the sign of the edge. 
             IF( EdgeMesh % InvPerm(k1) /= Mesh % Edges(eind) % NodeIndexes(1) ) THEN
-              IF( EdgeMesh % InvPerm(k1) /= Mesh % Edges(eind) % NodeIndexes(2) ) THEN
-                PRINT *,'We have a problem with the edges:',k1,k2
-              END IF
+!              IF( EdgeMesh % InvPerm(k1) /= Mesh % Edges(eind) % NodeIndexes(2) ) THEN
+!                PRINT *,'We have a problem with the edges:',k1,k2
+!              END IF
               ktmp = k1
               k1 = k2
               k2 = ktmp
@@ -9651,7 +9684,7 @@ CONTAINS
             EdgeY(1,noedges) = EdgeMesh % Nodes % y(k1)
             EdgeY(2,noedges) = EdgeMesh % Nodes % y(k2)
 
-            ! The center of the edge (note we skip multiplication by 0.5 is it is redundant)
+            ! The center of the edge (note we skip multiplication by 0.5 as it is redundant)
             EdgeX(3,noedges) = EdgeX(1,noedges) + EdgeX(2,noedges)
             EdgeY(3,noedges) = EdgeY(1,noedges) + EdgeY(2,noedges)
 
@@ -9691,14 +9724,14 @@ CONTAINS
     LOGICAL, POINTER :: PerFlip(:)
     LOGICAL, OPTIONAL :: AntiPeriodic 
     !---------------------------------------------------------------------------------      
-    INTEGER :: n, ind, indm, e, em, eind, eindm, k1, k2, km1, km2, sgn0, sgn, i, i1, i2, &
-        nofaces, nofacesm, Nundefined, nf0, ne0, edofs, fdofs, j, cnts(4)
+    INTEGER :: n, ind, indm, e, em, eind, eindm, k1, k2, km1, km2, i, i1, i2, &
+        nofaces, nofacesm, nf0, ne0, edofs, fdofs, j, cnts(4)
     TYPE(Element_t), POINTER :: Face, FaceM
     INTEGER, POINTER :: Indexes(:), IndexesM(:)
-    REAL(KIND=dp) :: xm1, xm2, ym1, ym2, x1, y1, x2, y2, y2m, nrow
+    REAL(KIND=dp) :: xm1, xm2, ym1, ym2, x1, y1, x2, y2
     INTEGER, ALLOCATABLE :: PeriodicFace(:)
     REAL(KIND=dp), ALLOCATABLE :: FaceX(:), FaceY(:), FaceMX(:), FaceMY(:)
-    REAL(KIND=dp) :: coordprod, indexprod, ss, minss, maxminss
+    REAL(KIND=dp) :: ss, minss, maxminss
     INTEGER :: minuscount, samecount, mini, doubleusecount, swap(6)
     LOGICAL :: Parallel, AntiPer, Radial, Piola
     LOGICAL, ALLOCATABLE :: FaceUsed(:)
@@ -10050,7 +10083,7 @@ CONTAINS
 
   
 
-  ! Create a permutation to eliminate nodes in a conforming case.
+  ! Create a permutation to eliminate nodal DOFs in a conforming case.
   !----------------------------------------------------------------------
   SUBROUTINE ConformingNodePerm( Mesh, BMesh1, BMesh2, PerPerm, PerFlip, AntiPeriodic )
     TYPE(Mesh_t), POINTER :: Mesh, BMesh1, BMesh2
@@ -10058,7 +10091,7 @@ CONTAINS
     LOGICAL, POINTER, OPTIONAL :: PerFlip(:)
     LOGICAL, OPTIONAL :: AntiPeriodic 
     !----------------------------------------------------------------------
-    INTEGER :: n, i1, i2, j1, j2, k1, k2, mini, samecount, doubleusecount, hitcount
+    INTEGER :: n, i1, i2, j1, j2, mini, samecount, doubleusecount, hitcount
     REAL(KIND=dp) :: x1, y1, z1, x2, y2, z2
     REAL(KIND=dp) :: ss, minss, maxminss
     LOGICAL, ALLOCATABLE :: NodeUsed(:)
