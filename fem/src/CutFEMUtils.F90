@@ -1485,11 +1485,14 @@ CONTAINS
         END IF
       END DO
       IF(Sweep == 0) THEN
+        IF(ASSOCIATED(UnsplitActiveElements)) THEN
+          DEALLOCATE(UnsplitActiveElements)
+        END IF
         ALLOCATE(UnsplitActiveElements(n))
         UnsplitActiveElements = 0
       END IF
     END DO
-
+    
     IF(ASSOCIATED(CutFEMAddMesh)) THEN
       NULLIFY(CutFEMAddMesh % Nodes % x)
       NULLIFY(CutFEMAddMesh % Nodes % y)
@@ -1500,7 +1503,8 @@ CONTAINS
         .TRUE.,.TRUE.,.TRUE.,Solver % Values,'dummy variable') 
     
     CALL MeshStabParams( CutFEMAddMesh )
-    
+
+    ! In the AddMesh all elements are active by construction.
     n = CutFEMAddMesh % NumberOfBulkElements
     ALLOCATE(AddActiveElements(n))
     DO i=1,n
@@ -1545,7 +1549,7 @@ CONTAINS
     IF(.NOT. ASSOCIATED(UnsplitActiveElements)) THEN
       CALL Fatal('CutFEMSetOrigMesh','AddActiveElements not associated!')
     END IF
-
+      
     Solver % ActiveElements => UnsplitActiveElements
     Solver % NumberOfActiveElements = SIZE(Solver % ActiveElements)
 
@@ -1771,7 +1775,7 @@ CONTAINS
         Solver % Variable % PrevValues => Solver % OrigPrevValues
         Solver % OrigPrevValues => NULL()
       END IF
-      
+
       ! Revert to original body id's.
       ! If we don't do this then ActiveElements is spoiled. 
       DO t=1,Mesh % NumberOfBulkElements        
@@ -1780,6 +1784,10 @@ CONTAINS
           Element % BodyId = CutFemBody
         END IF
       END DO
+
+      Solver % ActiveElements => Solver % OrigActiveElements
+      Solver % NumberOfActiveElements = SIZE(Solver % ActiveElements)
+     
 
       IF(SlaveSolverId > 0 ) THEN
         CALL Info('CutFEMVariableFinalize','Reverting slave cut field back to original: '&
@@ -1800,6 +1808,10 @@ CONTAINS
         END IF
         
         !Solver % NumberOfActiveElements = SIZE(Solver % ActiveElements)
+
+        SlaveSolver % ActiveElements => SlaveSolver % OrigActiveElements
+        SlaveSolver % NumberOfActiveElements = SIZE(SlaveSolver % ActiveElements)
+
       END IF
         
     END IF
