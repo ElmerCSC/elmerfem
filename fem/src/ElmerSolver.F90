@@ -142,6 +142,9 @@
 
      LOGICAL :: Silent=.FALSE., Version=.FALSE., GotModelName, FinishEarly=.FALSE.
      LOGICAL :: FirstLoad = .TRUE., FirstTime=.TRUE., Found
+#ifdef HAVE_PERMON
+  LOGICAL, SAVE :: PermonInitialized = .FALSE.
+#endif
 
      INTEGER :: iargc, NoArgs
      INTEGER :: iostat, iSweep = 1, OptimIters
@@ -326,9 +329,6 @@
        IF( Version ) RETURN
        
        CALL InitializeElementDescriptions()
-#ifdef HAVE_PERMON
-       CALL permon_init()
-#endif
      END IF
 
      ! Read input file name either as an argument, or from the default file:
@@ -544,6 +544,10 @@
 !      memory for the dofs
 !------------------------------------------------------------------------------
        CALL AddSolvers()
+
+#ifdef HAVE_PERMON
+  CALL MaybeInitPermon()
+#endif
 
 !------------------------------------------------------------------------------
 !      Time integration and/or steady state steps
@@ -767,7 +771,7 @@
   CALL TrilinosCleanup()
 #endif
 #ifdef HAVE_PERMON
-     IF ( FirstTime ) CALL permon_finalize()
+  IF ( FirstTime .AND. PermonInitialized ) CALL permon_finalize()
 #endif
 
      IF ( FirstTime ) CALL ParallelFinalize()
@@ -778,6 +782,28 @@
      RETURN
 
    CONTAINS 
+
+#ifdef HAVE_PERMON
+     ! Initialize PERMON when a solver actually requests it.
+     SUBROUTINE MaybeInitPermon()
+       INTEGER :: i
+       LOGICAL :: use_permon, found_local
+
+       IF( PermonInitialized ) RETURN
+
+       use_permon = .FALSE.
+       DO i=1,CurrentModel % NumberOfSolvers
+         use_permon = ListGetLogical( CurrentModel % Solvers(i) % Values, &
+             'Linear System Use Permon', found_local )
+         IF( use_permon ) EXIT
+       END DO
+
+       IF( use_permon ) THEN
+         CALL permon_init()
+         PermonInitialized = .TRUE.
+       END IF
+     END SUBROUTINE MaybeInitPermon
+#endif
 
 
      ! If we want to start a new adaptive simulation with the original mesh
