@@ -14768,7 +14768,7 @@ CONTAINS
     TYPE(Nodes_t) :: Nodes
     TYPE(Nodes_t), POINTER :: MeshNodes
     INTEGER :: i,j,k,n,ii,jj,dim, nsize, nnodes, elem, TopNodes, BotNodes, Rounds, ActiveDirection, &
-	UpHit, DownHit, bc_ind, jmin, jmax
+	UpHit, DownHit, bc_ind, jmin, jmax, elemmax
     INTEGER, POINTER :: NodeIndexes(:), MaskPerm(:)
     LOGICAL :: MaskExists, UpActive, DownActive, GotIt, Found, DoCoordTransform
     LOGICAL, POINTER :: TopFlag(:), BotFlag(:)
@@ -14870,6 +14870,7 @@ CONTAINS
       Var => VariableGet( Mesh % Variables,'Coordinate 3')
     END IF	      
 
+    CALL Info(Caller,'Variable used to detect extrusion: '//TRIM(Var % Name),Level=10)
     IF( MaskExists .OR. DoCoordTransform) THEN
       DO i=1,Mesh % NumberOfNodes
         j = i
@@ -14937,7 +14938,14 @@ CONTAINS
     n = Mesh % MaxElementNodes
     ALLOCATE( Nodes % x(n), Nodes % y(n),Nodes % z(n) )
     
-    DO elem = 1,Mesh % NumberOfBulkElements      
+    IF( MaskExists ) THEN
+      elemmax = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+    ELSE
+      elemmax = Mesh % NumberOfBulkElements 
+    END IF
+
+    
+    DO elem = 1,elemmax
       
       Element => Mesh % Elements(elem)
       NodeIndexes => Element % NodeIndexes
