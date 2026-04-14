@@ -5676,78 +5676,6 @@ CONTAINS
 
   
   
-  !------------------------------------------------------------------------------------------------
-  !> Finds nodes for which CandNodes are True such that their mutual distance is somehow
-  !> maximized. We first find lower left corner, then the node that is furthest apart from it,
-  !> and continue as long as there are nodes to find. Typically we would be content with two nodes
-  !> on a line, three nodes on a plane, and four nodes on a volume.
-  !-------------------------------------------------------------------------------------------------
-  SUBROUTINE FindExtremumNodes(Mesh,CandNodes,NoExt,Inds) 
-    TYPE(Mesh_t), POINTER :: Mesh
-    LOGICAL, ALLOCATABLE :: CandNodes(:)
-    INTEGER :: NoExt
-    INTEGER, POINTER :: Inds(:)
-
-    REAL(KIND=dp) :: Coord(3),dCoord(3),dist,MinDist,MaxDist
-    REAL(KIND=dp), ALLOCATABLE :: SetCoord(:,:)
-    INTEGER :: i,j,k
-    
-    ALLOCATE( SetCoord(NoExt,3) )
-    SetCoord = 0.0_dp
-    Inds = 0
-    
-    ! First find the lower left corner
-    MinDist = HUGE(MinDist) 
-    DO i=1, Mesh % NumberOfNodes
-      IF(.NOT. CandNodes(i) ) CYCLE
-      Coord(1) = Mesh % Nodes % x(i)
-      Coord(2) = Mesh % Nodes % y(i)
-      Coord(3) = Mesh % Nodes % z(i)
-      Dist = SUM( Coord )
-      IF( Dist < MinDist ) THEN
-        Inds(1) = i
-        MinDist = Dist
-        SetCoord(1,:) = Coord
-      END IF
-    END DO
-    
-    ! Find more points such that their minimum distance to the previous point(s)
-    ! is maximized.
-    DO j=2,NoExt
-      ! The maximum minimum distance of any node from the previously defined nodes
-      MaxDist = 0.0_dp
-      DO i=1, Mesh % NumberOfNodes
-        IF(.NOT. CandNodes(i) ) CYCLE
-        Coord(1) = Mesh % Nodes % x(i)
-        Coord(2) = Mesh % Nodes % y(i)
-        Coord(3) = Mesh % Nodes % z(i)
-        
-        ! Minimum distance from the previously defined nodes
-        MinDist = HUGE(MinDist)
-        DO k=1,j-1
-          dCoord = SetCoord(k,:) - Coord
-          Dist = SUM( dCoord**2 )          
-          MinDist = MIN( Dist, MinDist )
-        END DO
-        
-        ! If the minimum distance is greater than in any other node, choose this
-        IF( MaxDist < MinDist ) THEN
-          MaxDist = MinDist 
-          Inds(j) = i
-          SetCoord(j,:) = Coord
-        END IF
-      END DO
-    END DO
-
-    IF( InfoActive(30) ) THEN
-      PRINT *,'Extremum Inds:',Inds
-      DO i=1,NoExt
-        PRINT *,'Node:',Inds(i),SetCoord(i,:)
-      END DO
-    END IF
-      
-  END SUBROUTINE FindExtremumNodes
-    
 
     
   ! This creates a projector that integrates over the BCs on the boundary such that
@@ -20953,6 +20881,8 @@ CONTAINS
     END DO
       
   END SUBROUTINE TagBodiesUsingCondition
+  
+
   
 !------------------------------------------------------------------------------
 END MODULE MeshUtils

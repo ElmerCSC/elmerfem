@@ -844,7 +844,321 @@ CONTAINS
 
   END SUBROUTINE SphereFit
 
- 
+
+
+  !------------------------------------------------------------------------------------------------
+  !> Finds nodes for which CandNodes are True such that their mutual distance is somehow
+  !> maximized. We first find lower left corner, then the node that is furthest apart from it,
+  !> and continue as long as there are nodes to find. Typically we would be content with two nodes
+  !> on a line, three nodes on a plane, and four nodes on a volume.
+  !-------------------------------------------------------------------------------------------------
+  SUBROUTINE FindExtremumNodes(Mesh,CandNodes,NoExt,Inds) 
+    TYPE(Mesh_t) :: Mesh
+    LOGICAL, ALLOCATABLE :: CandNodes(:)
+    INTEGER :: NoExt
+    INTEGER, POINTER :: Inds(:)
+
+    REAL(KIND=dp) :: Coord(3),Coord0(3),dCoord(3),dist,MinDist,MaxDist
+    REAL(KIND=dp), ALLOCATABLE :: SetCoord(:,:)
+    INTEGER :: i,j,k
+
+    ALLOCATE( SetCoord(NoExt,3) )
+    SetCoord = 0.0_dp
+    Inds = 0
+
+    ! First find the lower left corner as a tentative starting point
+    MinDist = HUGE(MinDist) 
+    DO i=1, Mesh % NumberOfNodes
+      IF(.NOT. CandNodes(i) ) CYCLE
+      Coord(1) = Mesh % Nodes % x(i)
+      Coord(2) = Mesh % Nodes % y(i)
+      Coord(3) = Mesh % Nodes % z(i)
+
+      Dist = SUM( Coord )
+      IF( Dist < MinDist ) THEN
+        MinDist = Dist
+        Coord0 = Coord
+      END IF
+    END DO
+
+    ! Then find a point which is most further apart from the previous.
+    ! Typically this could be upper right corner. 
+    MinDist = HUGE(MinDist) 
+    DO i=1, Mesh % NumberOfNodes
+      IF(.NOT. CandNodes(i) ) CYCLE
+      Coord(1) = Mesh % Nodes % x(i)
+      Coord(2) = Mesh % Nodes % y(i)
+      Coord(3) = Mesh % Nodes % z(i)
+
+      dCoord = Coord0 - Coord
+      Dist = SUM( dCoord**2 )          
+      IF( Dist < MinDist ) THEN
+        Inds(1) = i
+        MinDist = Dist
+        SetCoord(1,:) = Coord
+      END IF
+    END DO
+
+
+    ! Find more points such that their minimum distance to all previous point(s)
+    ! is maximized.
+    DO j=2,NoExt
+      ! The maximum minimum distance of any node from the previously defined nodes
+      MaxDist = 0.0_dp
+      DO i=1, Mesh % NumberOfNodes
+        IF(.NOT. CandNodes(i) ) CYCLE
+        Coord(1) = Mesh % Nodes % x(i)
+        Coord(2) = Mesh % Nodes % y(i)
+        Coord(3) = Mesh % Nodes % z(i)
+
+        ! Minimum distance from the previously defined nodes
+        MinDist = HUGE(MinDist)
+        DO k=1,j-1
+          dCoord = SetCoord(k,:) - Coord
+          Dist = SUM( dCoord**2 )          
+          MinDist = MIN( Dist, MinDist )
+        END DO
+
+        ! If the minimum distance is greater than in any other node, choose this
+        IF( MaxDist < MinDist ) THEN
+          MaxDist = MinDist 
+          Inds(j) = i
+          SetCoord(j,:) = Coord
+        END IF
+      END DO
+    END DO
+
+    IF( InfoActive(30) ) THEN
+      PRINT *,'Extremum Inds:',Inds
+      DO i=1,NoExt
+        PRINT *,'Node:',Inds(i),SetCoord(i,:)
+      END DO
+    END IF
+
+  END SUBROUTINE FindExtremumNodes
+
+  
+
+  ! Code for fitting a quadrilatel element 
+  !-------------------------------------------------------------------------
+  SUBROUTINE QuadrilateralFit(Mesh, Params, BCind, FitParams, CornerInds ) 
+    TYPE(Mesh_t), TARGET :: Mesh
+    TYPE(ValueList_t), POINTER :: Params
+    INTEGER, OPTIONAL :: BCind
+    REAL(KIND=dp), OPTIONAL :: FitParams(:)
+    INTEGER, OPTIONAL :: CornerInds(:)
+
+    TYPE(Mesh_t), POINTER :: pMesh
+    INTEGER :: i,j,k,n,t,t1,t2,Tag
+    INTEGER, POINTER :: Inds(:)
+    TYPE(GaussIntegrationPoints_t) :: IP
+    REAL(KIND=dp), POINTER :: rArray(:,:), Basis(:)
+    REAL(KIND=dp) :: Area, Area0, s, detJ
+    LOGICAL :: Found, Stat
+    LOGICAL, ALLOCATABLE :: ActiveNode(:)
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t) :: ElementQ 
+    TYPE(Nodes_t) :: Nodes
+
+    SAVE Nodes
+    
+    ! If we have defined the quad coordinates, use them. 
+    IF( PRESENT( FitParams ) ) THEN
+      IF( ListCheckPresent( Params,'Quad Coordinates') ) THEN
+        CALL Info('SphereFit','Using predefined values for quad coordinates',Level=20)
+        rArray => ListGetConstRealArray( Params,'Quad Coordinates')
+        FitParams(1:12) = rArray(1:12,1)
+        RETURN
+      END IF
+    END IF
+
+    ! Set the range for the possible active elements. 
+    pMesh => Mesh 
+    ALLOCATE( ActiveNode( Mesh % NumberOfNodes ) )
+    IF( PRESENT( BCind ) ) THEN
+      t1 = Mesh % NumberOfBulkElements + 1
+      t2 = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+      Tag = CurrentModel % BCs(BCind) % Tag
+
+      ! We are given a boundary index and only use the nodes related to it. 
+      ActiveNode = .FALSE.           
+      DO t=t1,t2
+        Element => Mesh % Elements(t)
+        IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) CYCLE     
+        IF ( Element % BoundaryInfo % Constraint /= Tag ) CYCLE
+        ActiveNode(Element % NodeIndexes) = .TRUE.
+      END DO
+    ELSE
+      ! We only have bulk elements in which case we use all of the nodes or
+      ActiveNode = .TRUE.
+      t1 = 1
+      t2 = Mesh % NumberOfBulkElements
+    END IF
+    
+    ! Find the extremum nodes of the BC. 
+    ALLOCATE(Inds(4))
+    Inds = 0
+    CALL FindExtremumNodes(Mesh,ActiveNode,NoExt=4,Inds=Inds)
+    j = Inds(2)
+    Inds(2) = Inds(3)
+    Inds(3) = j
+        
+    ! Calculate reference area so that we can test whether this really is a ractangle. 
+    Area0 = 0.0_dp
+    ALLOCATE(Basis(4))
+    DO t=t1, t2
+      Element => Mesh % Elements(t)
+      IF( PRESENT( BCInd ) ) THEN
+        IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) CYCLE     
+        IF ( Element % BoundaryInfo % Constraint /= Tag ) CYCLE
+      END IF
+        
+      n  = Element % Type % NumberOfNodes
+      CALL CopyElementNodesFromMesh(Nodes,pMesh,n,Element % NodeIndexes)      
+      IP = GaussPoints(Element)
+
+      DO k=1,IP % n
+        stat = ElementInfo( Element, Nodes, IP % U(k), IP % V(k), &
+            IP % W(k), detJ, Basis )
+        s = IP % s(k) * detJ        
+        Area0 = Area0 + s 
+      END DO
+    END DO
+
+    ! Calculate area of the fitted rectangular element.
+    n = 4
+    ElementQ % TYPE => GetElementType( 404, .FALSE. )
+    ElementQ % NodeIndexes => Inds
+
+    Nodes % x(1:n) = Mesh % Nodes % x(Inds)
+    Nodes % y(1:n) = Mesh % Nodes % y(Inds)
+    Nodes % z(1:n) = Mesh % Nodes % z(Inds)
+
+    IF(InfoActive(10)) THEN
+      PRINT *,'Corners X:',Nodes % x(1:n)
+      PRINT *,'Corners Y:',Nodes % y(1:n)
+      PRINT *,'Corners Z:',Nodes % z(1:n)      
+    END IF
+
+    
+    Area = 0.0_dp
+    IP = GaussPoints(ElementQ)
+    DO k=1,IP % n
+      stat = ElementInfo( ElementQ, Nodes, IP % U(k), IP % V(k), &
+          IP % W(k), detJ, Basis )
+      s = IP % s(k) * detJ        
+      Area = Area + s 
+    END DO
+
+
+    PRINT *,'Area:',Area,Area0,ABS(Area-Area0)/Area0
+    
+    IF( PRESENT(CornerInds)) THEN
+      CornerInds(1:4) = Inds(1:4)
+    END IF
+    
+    NULLIFY(rArray)
+    ALLOCATE(rArray(12,1))
+    rArray(1:3:12,1) = Nodes % x(1:n)
+    rArray(2:3:12,1) = Nodes % y(1:n)
+    rArray(3:3:12,1) = Nodes % z(1:n)
+        
+    CALL ListAddConstRealArray( Params,'Quad Coordinates', 12, 1, rArray ) 
+    IF(PRESENT(FitParams)) THEN
+      FitParams(1:12) = rArray(1:12,1) 
+    END IF
+
+
+  END SUBROUTINE QuadrilateralFit
+
+
+  
+  SUBROUTINE TagElementsOnBoundingBox(Mesh,OnBB,NRad,RadElements)
+
+    TYPE(Mesh_t) :: Mesh
+    LOGICAL :: OnBB(:)
+    INTEGER, OPTIONAL :: nRad
+    TYPE(Element_t), POINTER, OPTIONAL :: RadElements(:)
+    
+    REAL(KIND=dp), POINTER :: x(:), y(:), z(:)
+    REAL(KIND=dp) :: xmin,xmax,ymin,ymax,zmin,zmax,xeps
+    INTEGER :: i,j,k,n,nb,nc
+    INTEGER, POINTER :: Inds(:)
+    LOGICAL, ALLOCATABLE :: NodeMask(:)
+    TYPE(Element_t), POINTER :: Element
+    
+    
+    CALL Info('TagElementsOnBoundingBox','Marking elements that lie on boundix box boundaries')
+
+    OnBB = .FALSE.
+    
+    n = Mesh % NumberOfNodes
+    x => Mesh % Nodes % x
+    y => Mesh % Nodes % y
+    z => Mesh % Nodes % z
+
+    IF(PRESENT(RadElements)) THEN
+      ALLOCATE(NodeMask(n))
+      NodeMask = .FALSE.
+
+      nb = 0
+      nc = NRad 
+      DO i=1,nrad
+        NodeMask(RadElements(i) % NodeIndexes) = .TRUE.
+      END DO      
+      
+      xmin = MINVAL(x(1:n),NodeMask)
+      xmax = MAXVAL(x(1:n),NodeMask)
+      ymin = MINVAL(y(1:n),NodeMask)
+      ymax = MAXVAL(y(1:n),NodeMask)
+      zmin = MINVAL(z(1:n),NodeMask)
+      zmax = MAXVAL(z(1:n),NodeMask)
+
+      i = COUNT(NodeMask)
+      CALL Info('TagElementsOnBoundingBox','Number of nodes at BB is: '//TRIM(I2S(i)))
+      
+      DEALLOCATE(NodeMask)
+    ELSE          
+      nb = Mesh % NumberOfBulkElements
+      nc = Mesh % NumberOfBoundaryElements
+
+      xmin = MINVAL(x(1:n))
+      xmax = MAXVAL(x(1:n))
+      ymin = MINVAL(y(1:n))
+      ymax = MAXVAL(y(1:n))
+      zmin = MINVAL(z(1:n))
+      zmax = MAXVAL(z(1:n))
+    END IF
+
+    IF(InfoActive(10)) THEN
+      PRINT *,'Range for X:',xmin,xmax
+      PRINT *,'Range for Y:',ymin,ymax
+      PRINT *,'Range for Z:',zmin,zmax
+    END IF
+      
+    xeps = 1.0e-8 * SQRT((xmax-xmin)**2 + (ymax-ymin)**2 + (zmax-zmin)**2)
+
+    DO i=1,nc
+      IF(PRESENT(RadElements)) THEN
+        Element => RadElements(i)
+      ELSE        
+        Element => Mesh % Elements(nb+i)
+      END IF
+      Inds => Element % NodeIndexes
+
+      IF(ALL(x(Inds)-xmin < xeps) ) OnBB(i) = .TRUE.
+      IF(ALL(y(Inds)-ymin < xeps) ) OnBB(i) = .TRUE.
+      IF(ALL(z(Inds)-zmin < xeps) ) OnBB(i) = .TRUE.
+      IF(ALL(xmax-x(Inds) < xeps) ) OnBB(i) = .TRUE.
+      IF(ALL(ymax-y(Inds) < xeps) ) OnBB(i) = .TRUE.
+      IF(ALL(zmax-z(Inds) < xeps) ) OnBB(i) = .TRUE.
+    END DO
+
+    n = COUNT(OnBB)
+    CALL Info('TagElementsOnBoundingBox','Number of elements at BB is '//I2S(n))
+        
+  END SUBROUTINE TagElementsOnBoundingBox
+  
 
 END MODULE GeometryFitting
   

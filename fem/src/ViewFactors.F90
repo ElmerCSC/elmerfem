@@ -59,7 +59,8 @@
    
      USE DefUtils
      USE ViewFactorGlobals
-
+     USE GeometryFitting, ONLY : QuadrilateralFit, TagElementsOnBoundingBox
+   
      IMPLICIT NONE
 
 !------------------------------------------------------------------------------
@@ -75,6 +76,10 @@
 
      INTEGER, ALLOCATABLE ::  Surfaces(:), TYPE(:)
      REAL(KIND=dp), ALLOCATABLE :: Coords(:),Normals(:),Factors(:)
+
+     INTEGER :: n2
+     INTEGER, ALLOCATABLE ::  Surfaces2(:), TYPE2(:)
+     REAL(KIND=dp), ALLOCATABLE :: Normals2(:)
 
      TYPE(Element_t),POINTER :: Element, LParent, RParent
 
@@ -582,10 +587,20 @@
          TriInteg = GetInteger( Params, 'Viewfactor Triangle Integration Points ',  GotIt )
          IF ( .NOT. GotIt ) TriInteg = 3;  ! ---> 1,3,6
 
-         CALL ViewFactors3D( &
-             N, Surfaces, Type, Coords, Normals, &
-             0, Surfaces, Type, Coords, Normals, &
-             Factors, AreaEPS, FactEPS, RayEPS, Nrays, LineInteg, TriInteg, QuadInteg, CombineInt )
+         IF( ListGetLogical( Params,'Smart Shading', GotIt ) ) THEN
+           BLOCK 
+             CALL CombineShadingElements(Mesh,N2,Surfaces2,Type2,Normals2)
+             CALL ViewFactors3D( &
+                 N, Surfaces, TYPE, Coords, Normals, &
+                 N2, Surfaces2, TYPE2, Coords, Normals2, &
+                 Factors, AreaEPS, FactEPS, RayEPS, Nrays, LineInteg, TriInteg, QuadInteg, CombineInt )
+           END BLOCK
+         ELSE
+           CALL ViewFactors3D( &
+               N, Surfaces, TYPE, Coords, Normals, &
+               0, Surfaces, TYPE, Coords, Normals, &
+               Factors, AreaEPS, FactEPS, RayEPS, Nrays, LineInteg, TriInteg, QuadInteg, CombineInt )
+         END IF
        END IF
        
        WRITE (Message,'(A,F8.2,F8.2,F8.2)') 'View factors computed in time (s):',CPUTime()-at0,Realtime()-rt0
@@ -1221,6 +1236,140 @@
        Model % NumberOfBoundaryElements = Mesh % NumberOfBoundaryElements
      END SUBROUTINE MirrorMesh
 
+
+     SUBROUTINE CombineShadingElements(Mesh,n2,Surfaces2,Type2,Normals2)
+
+       TYPE(Mesh_t) :: Mesh
+       INTEGER :: n2
+       INTEGER, ALLOCATABLE ::  Surfaces2(:), Type2(:)
+       REAL(KIND=dp), ALLOCATABLE :: Normals2(:)
+              
+       LOGICAL, ALLOCATABLE :: OnBB(:) 
+       TYPE(ValueList_t), POINTER :: BC
+       TYPE(Element_t), POINTER :: Element
+       LOGICAL :: Found
+       INTEGER :: i,n,nb,nc,t,bc_id,Alloc,Inds(4)
+       INTEGER, ALLOCATABLE :: CornerInds(:,:), BCCounts(:,:)
+       LOGICAL, ALLOCATABLE :: ShadingPanel(:), PanelSet(:)
+       INTEGER :: Cnt(3) 
+       
+
+       IF ( CylindricSymmetry ) THEN
+         CALL Fatal('CombineShadingElemenets','Only implemented for 3D!')
+       END IF
+
+       Cnt = 0
+       
+       nb = Mesh % NumberOfBulkElements
+       nc = Mesh % NumberOfBoundaryElements
+       ALLOCATE(OnBB(nc))
+       OnBB = .FALSE.       
+       CALL TagElementsOnBoundingBox(Mesh,OnBB,RadiationSurfaces,RadElements) 
+
+       n = CurrentModel % NumberOfBCs
+       ALLOCATE(ShadingPanel(n),PanelSet(n),CornerInds(4,n),BCCounts(2,n)) 
+       ShadingPanel = .FALSE.
+       CornerInds = 0
+       BCCounts = 0
+       
+       IF(ListCheckPresentAnyBC(CurrentModel,'Shading Panel')) THEN
+         DO i=1,CurrentModel % NumberOfBCs
+           BC => CurrentModel % BCs(i) % Values
+           IF(ListGetLogical(BC,'Shading Panel',Found ) ) THEN
+             PRINT *,'Doing panel:',i
+             CALL QuadrilateralFit(Mesh, BC, i, CornerInds = Inds )
+             CornerInds(:,i) = Inds
+             ShadingPanel(i) = .TRUE.             
+
+             PRINT *,'Inds:',Inds
+           END IF
+         END DO
+       END IF
+       
+
+       
+       DO Alloc=0,1         
+         n2 = 0
+         PanelSet = .FALSE.
+
+         DO t=1,RadiationSurfaces
+           Element => RadElements(t)
+
+           DO bc_id=1,Model % NumberOfBCs
+             IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc_id) % Tag ) EXIT
+           END DO
+           IF ( bc_id > Model % NumberOfBCs ) CYCLE
+           BC => Model % BCs(bc_id) % Values
+
+
+           IF( Alloc == 1 ) THEN
+             BCCounts(1,bc_id) = BCCounts(1,bc_id) + 1
+           END IF
+
+           ! This is a boundary elements, we skip these completely
+           IF(OnBB(t)) THEN
+             Cnt(1) = Cnt(1) + 1
+             CYCLE
+           END IF
+           
+           ! This is replaced by a quad panel
+           IF(ShadingPanel(bc_id)) THEN
+             Cnt(2) = Cnt(2) + 1             
+             IF(PanelSet(bc_id)) CYCLE
+
+             ! Only set one superelement for each panel!
+             n2 = n2 + 1
+             PanelSet(bc_id) = .TRUE.
+             IF( Alloc == 1 ) THEN               
+               TYPE(n2) = 404
+               DO i=1,4
+                 Surfaces2(4*(n2-1)+i) = CornerInds(i,bc_id)
+               END DO
+               Normals2(3*(n2-1)+1:3*(n2-1)+3) = Normals(3*(t-1)+1:3*(t-1)+3)                              
+
+               IF( Alloc == 1 ) THEN
+                 BCCounts(2,bc_id) = BCCounts(2,bc_id) + 1
+               END IF
+
+             END IF
+             CYCLE
+           END IF
+
+           ! All other elements that are not part of super elements
+           n2 = n2 + 1           
+           IF(Alloc == 1 ) THEN
+             TYPE2(n2) = TYPE(t)
+             j = TYPE(t) / 100 
+             DO i=1,j
+               Surfaces2(4*(n2-1)+i) = Surfaces(4*(t-1)+i)
+             END DO
+             Normals2(3*(n2-1)+1:3*(n2-1)+3) = Normals(3*(t-1)+1:3*(t-1)+3)
+
+             IF( Alloc == 1 ) THEN
+               BCCounts(2,bc_id) = BCCounts(2,bc_id) + 1
+             END IF            
+           END IF
+         END DO
+
+         IF(Alloc == 0) THEN
+           CALL Info(Caller,'Number of superelements participating in radiation: '//I2S(N2))
+           ALLOCATE( Normals2(3*N2), Surfaces2(4*N2), TYPE2(N2), STAT=istat )
+           IF ( istat /= 0 ) THEN
+             CALL Fatal( 'Viewfactors', 'Memory allocation error for shading elements. Aborting' )
+           END IF           
+           Normals2 = 0.0_dp
+           Surfaces2 = 0 
+           Type2 = 0
+         END IF
+       END DO
+
+       PRINT *,'Cnt:',Cnt
+       PRINT *,'BCCounts orig:',BCCounts(1,:)
+       PRINT *,'BCCounts comb:',BCCounts(2,:)
+
+     END SUBROUTINE CombineShadingElements
+       
+     
   END PROGRAM ViewFactors
 
 !> \}
