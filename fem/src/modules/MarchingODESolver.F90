@@ -94,7 +94,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
   LOGICAL :: Found
   REAL(KIND=dp) :: Norm, Change, dz, dtime, velo, NonLinTol, Beta, &
       Hparam, dth, time 
-  INTEGER :: t,i,j,n,iter,MaxIter,TimeOrder,BotNodes,layer,dtn,dti,NoActive
+  INTEGER :: t,i,j,n,m,iter,MaxIter,TimeOrder,BotNodes,layer,dtn,dti,NoActive
   TYPE(ValueList_t), POINTER :: Params
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Solver_t), POINTER :: PSolver
@@ -102,7 +102,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
   INTEGER, POINTER :: BotPointer(:), UpPointer(:)
   INTEGER, POINTER :: BotPerm(:),InvPerm(:),PrevInvPerm(:),MaskPerm(:),SingleIndex(:),Node2DG(:)
   INTEGER, ALLOCATABLE :: ParentElem(:),DGIndexes(:)
-  INTEGER :: NumberOfLayers, NoBCNodes
+  INTEGER :: NumberOfLayers, NoBCNodes, dofs
   TYPE(Variable_t), POINTER :: ExtVar, Var3D
   TYPE(ValueList_t), POINTER :: Material
   LOGICAL :: MaskExist, ParabolicModel, RequireBC, DoTransient, AnyDG
@@ -130,6 +130,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
   ! In principle we could use the same solver to advect many fields on
   ! same extruded mesh. Hence these are not saved. 
   Var3D => Solver % Variable
+  dofs = Var3D % dofs
   VarName = TRIM( Var3D % Name ) 
 
   IF( .NOT. Initialized ) THEN
@@ -261,8 +262,9 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
     CALL Info(Caller,'Number of bottom nodes: '//I2S(n),Level=7)
     
     ! Allocate some vectors to study convergence 
-    ALLOCATE( xvec(n), fvec(n), rvec(n), cvec(n), f0vec(n), r0vec(n), &
-        c0vec(n), xivec(n), dxvec(n), x0vec(n) )
+    m = dofs * n
+    ALLOCATE( xvec(m), fvec(m), rvec(m), cvec(m), f0vec(m), r0vec(m), &
+        c0vec(m), xivec(m), dxvec(m), x0vec(m) )
        
     Initialized = .TRUE.
     CALL Info(Caller,'Initialization done',Level=10)
@@ -270,6 +272,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
   
   ! The variable on the layer
   n = BotNodes
+  m = dofs * n
   
   ! We just use one parameter to define the timestepping.
   ! This defines how the coefficients are to be evaluated. 
@@ -311,10 +314,16 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
   x0vec = 0.0_dp; f0vec = 0.0_dp; r0vec = 0.0_dp; c0vec = 0.0_dp
   xivec = 0.0_dp; dxvec = 0.0_dp
 
-  HaveF = ListCheckPresent( Material,TRIM(VarName)//': Source')
-  HaveR = ListCheckPresent( Material,TRIM(VarName)//': Reaction Coefficient')
-  HaveC = ListCheckPresent( Material,TRIM(VarName)//': Time Derivative Coefficient')
-  
+  IF(dofs == 1 ) THEN
+    HaveF = ListCheckPresent( Material,TRIM(VarName)//': Source')
+    HaveR = ListCheckPresent( Material,TRIM(VarName)//': Reaction Coefficient')
+    HaveC = ListCheckPresent( Material,TRIM(VarName)//': Time Derivative Coefficient')
+  ELSE
+    HaveF = ListCheckSuffix( Material,': Source')
+    HaveR = ListCheckSuffix( Material,': Reaction Coefficient')
+    HaveC = ListCheckSuffix( Material,': Time Derivative Coefficient')
+  END IF
+    
   IF( HaveR ) THEN
     CALL Fatal(Caller,'Code some more to account for reaction term!')
   ELSE IF( .NOT. HaveC ) THEN
@@ -365,12 +374,22 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
         CALL Fatal(Caller,'Number of nodes has InvPerm undefined: '//I2S(COUNT(InvPerm==0)))
       END IF
       
-      IF( ParabolicModel ) THEN
-        xvec(1:n) = 0.5_dp * Var3D % Values(Var3D % Perm(InvPerm))**2 
+      IF(dofs == 1 ) THEN
+        IF( ParabolicModel ) THEN
+          xvec(1:n) = 0.5_dp * Var3D % Values(Var3D % Perm(InvPerm))**2 
+        ELSE
+          xvec(1:n) = Var3D % Values(Var3D % Perm(InvPerm))       
+        END IF
       ELSE
-        xvec(1:n) = Var3D % Values(Var3D % Perm(InvPerm))       
+        DO j=1,dofs
+          IF( ParabolicModel ) THEN
+            xvec(j:dofs:m) = 0.5_dp * Var3D % Values(dofs*(Var3D % Perm(InvPerm)-1)+j)**2 
+          ELSE
+            xvec(j:dofs:m) = Var3D % Values(dofs*(Var3D % Perm(InvPerm)-1)+j)       
+          END IF
+        END DO
       END IF
-      
+          
       ! 0-values at values at the previous layer
       ! The 1st layer cannot really change since it is the BC. 
       CALL GetCoefficients(Set0=.TRUE.)
@@ -393,12 +412,23 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
     END IF
     
     ! xi is the value of x at the previous iterate of this layer
-    IF( ParabolicModel ) THEN
-      xivec(1:n) = 0.5_dp * Var3D % Values(Var3D % Perm(InvPerm))**2 
+    IF( dofs == 1 ) THEN
+      IF( ParabolicModel ) THEN
+        xivec(1:n) = 0.5_dp * Var3D % Values(Var3D % Perm(InvPerm))**2 
+      ELSE
+        xivec(1:n) = Var3D % Values(Var3D % Perm(InvPerm))       
+      END IF
     ELSE
-      xivec(1:n) = Var3D % Values(Var3D % Perm(InvPerm))       
+      DO j=1,dofs
+        IF( ParabolicModel ) THEN
+          xivec(j:dofs:m) = 0.5_dp * Var3D % Values(dofs*(Var3D % Perm(InvPerm)-1)+j)**2 
+        ELSE
+          xivec(j:dofs:m) = Var3D % Values(dofs*(Var3D % Perm(InvPerm)-1)+j)       
+        END IF
+      END DO     
     END IF
-    
+
+      
     ! This sets the timestep assuming that all nodes are extruded equally.
     ! Hence this only applied to cartesian drawing. 
     IF( MaskExist ) THEN
@@ -443,10 +473,20 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
       
       ! This must be in the loop since we may have dependence on some field value
       ! that has changed!
-      IF( ParabolicModel ) THEN
-        Var3D % Values(Var3D % Perm(InvPerm)) = SQRT( 2 * xvec ) 
-      ELSE      
-        Var3D % Values(Var3D % Perm(InvPerm)) = xvec
+      IF(dofs == 1 ) THEN
+        IF( ParabolicModel ) THEN
+          Var3D % Values(Var3D % Perm(InvPerm)) = SQRT( 2 * xvec ) 
+        ELSE      
+          Var3D % Values(Var3D % Perm(InvPerm)) = xvec
+        END IF
+      ELSE
+        DO j=1,dofs
+          IF( ParabolicModel ) THEN
+            Var3D % Values(dofs*(Var3D % Perm(InvPerm)-1)+j) = SQRT( 2 * xvec(j:dofs:m))
+          ELSE
+            Var3D % Values(dofs*(Var3D % Perm(InvPerm)-1)+j) = xvec(j:dofs:m)
+          END IF
+        END DO
       END IF
       
       IF( Change < NonLinTol ) EXIT
@@ -463,18 +503,41 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
         ! that we take exactly one extruded layer. Then the initial value is the
         ! next starting value of the next layer. We have to do some back-and-forth
         ! stuff to have true previous timestep starting values for the coefficients. 
-        IF( ParabolicModel ) THEN
-          Var3D % Values(Var3D % Perm(InvPerm)) = SQRT( 2 * xivec ) 
-        ELSE      
-          Var3D % Values(Var3D % Perm(InvPerm)) = xivec
-        END IF        
+        IF(dofs == 1 ) THEN
+          IF( ParabolicModel ) THEN
+            Var3D % Values(Var3D % Perm(InvPerm)) = SQRT( 2 * xivec ) 
+          ELSE      
+            Var3D % Values(Var3D % Perm(InvPerm)) = xivec
+          END IF
+        ELSE
+          DO j=1,dofs
+            IF( ParabolicModel ) THEN
+              Var3D % Values(dofs*(Var3D % Perm(InvPerm)-1)+j) = SQRT( 2 * xivec(j:dofs:m))
+            ELSE
+              Var3D % Values(dofs*(Var3D % Perm(InvPerm)-1)+j) = xivec(j:dofs:m)
+            END IF
+          END DO
+        END IF
+                    
         CALL GetCoefficients(Set0=.TRUE.)
         x0vec = xivec
-        IF( ParabolicModel ) THEN
-          Var3D % Values(Var3D % Perm(InvPerm)) = SQRT( 2 * xvec ) 
-        ELSE      
-          Var3D % Values(Var3D % Perm(InvPerm)) = xvec
+
+        IF(dofs == 1 ) THEN
+          IF( ParabolicModel ) THEN
+            Var3D % Values(Var3D % Perm(InvPerm)) = SQRT( 2 * xvec ) 
+          ELSE      
+            Var3D % Values(Var3D % Perm(InvPerm)) = xvec
+          END IF
+        ELSE
+          DO j=1,dofs
+            IF( ParabolicModel ) THEN
+              Var3D % Values(dofs*(Var3D % Perm(InvPerm)-1)+j) = SQRT( 2 * xvec(j:dofs:m))
+            ELSE
+              Var3D % Values(dofs*(Var3D % Perm(InvPerm)-1)+j) = xvec(j:dofs:m)
+            END IF
+          END DO          
         END IF
+          
       ELSE
         ! For steady state the initial value is the final value of this layer. 
         CALL GetCoefficients(Set0=.TRUE.)
@@ -523,7 +586,7 @@ CONTAINS
   SUBROUTINE GetCoefficients( q, Set0 )
     REAL(KIND=DP), OPTIONAL :: q
     LOGICAL, OPTIONAL :: Set0
-    INTEGER :: i,j,k
+    INTEGER :: i,j,k,l
     TYPE(Element_t), POINTER :: Element
 
     
@@ -542,34 +605,72 @@ CONTAINS
         !PRINT *,'Nodes:',Element % NodeIndexes
         !PRINT *,'DGs:',Element % DGIndexes
 
-        IF( HaveF ) THEN
-          fvec(i:i) = ListGetReal( Material,&
-              TRIM(VarName)//': Source',k,SingleIndex(1:1))
-        END IF
-        IF( HaveR ) THEN
-          rvec(i:i) = ListGetReal( Material,&
-              TRIM(VarName)//': Reaction Coefficient',k,SingleIndex(1:1) )
-        END IF
-        IF( HaveC ) THEN
-          cvec(i:i) = ListGetReal( Material,&
-              TRIM(VarName)//': Time Derivative Coefficient',k,SingleIndex(1:1) )
+        IF(dofs == 1 ) THEN
+          IF( HaveF ) THEN
+            fvec(i:i) = ListGetReal( Material,&
+                TRIM(VarName)//': Source',k,SingleIndex(1:1))
+          END IF
+          IF( HaveR ) THEN
+            rvec(i:i) = ListGetReal( Material,&
+                TRIM(VarName)//': Reaction Coefficient',k,SingleIndex(1:1) )
+          END IF
+          IF( HaveC ) THEN
+            cvec(i:i) = ListGetReal( Material,&
+                TRIM(VarName)//': Time Derivative Coefficient',k,SingleIndex(1:1) )
+          END IF
+        ELSE
+          DO j=1,dofs
+            l = dofs*(i-1)+j
+            IF( HaveF ) THEN
+              fvec(l:l) = ListGetReal( Material,&
+                  TRIM(VarName)//' '//I2S(j)//': Source',k,SingleIndex(1:1), Found )
+            END IF
+            IF( HaveR ) THEN
+              rvec(l:l) = ListGetReal( Material,&
+                  TRIM(VarName)//' '//I2S(j)//': Reaction Coefficient',k,SingleIndex(1:1), Found )
+            END IF
+            IF( HaveC ) THEN
+              cvec(l:l) = ListGetReal( Material,&
+                  TRIM(VarName)//' '//I2S(j)//': Time Derivative Coefficient',k,SingleIndex(1:1), Found)
+              IF(.NOT. Found) cvec(l:l) = 1.0_dp
+            END IF
+          END DO
         END IF
 
         IF(ALL(SingleIndex(1) /= Element % NodeIndexes ) ) STOP
       END DO
     ELSE
-      IF( HaveF ) THEN
-        fvec(1:n) = ListGetReal( Material,&
-            TRIM(VarName)//': Source',n,InvPerm )
+      IF( dofs == 1 ) THEN
+        IF( HaveF ) THEN
+          fvec(1:n) = ListGetReal( Material,&
+              TRIM(VarName)//': Source',n,InvPerm )
+        END IF
+        IF( HaveR ) THEN
+          rvec(1:n) = ListGetReal( Material,&
+              TRIM(VarName)//': Reaction Coefficient',n,InvPerm )
+        END IF
+        IF( HaveC ) THEN
+          cvec(1:n) = ListGetReal( Material,&
+              TRIM(VarName)//': Time Derivative Coefficient',n,invPerm )
+        END IF
+      ELSE
+        DO j=1,dofs
+          IF( HaveF ) THEN
+            fvec(j:dofs:m) = ListGetReal( Material,&
+                TRIM(VarName)//' '//I2S(j)//': Source',n,InvPerm, Found )
+          END IF
+          IF( HaveR ) THEN
+            rvec(j:dofs:m) = ListGetReal( Material,&
+                TRIM(VarName)//' '//I2S(j)//': Reaction Coefficient',n,InvPerm, Found )
+          END IF
+          IF( HaveC ) THEN
+            cvec(j:dofs:m) = ListGetReal( Material,&
+                TRIM(VarName)//' '//I2S(j)//': Time Derivative Coefficient',n,InvPerm, Found)
+            IF(.NOT. Found) cvec(j:dofs:m) = 1.0_dp
+          END IF
+        END DO
       END IF
-      IF( HaveR ) THEN
-        rvec(1:n) = ListGetReal( Material,&
-            TRIM(VarName)//': Reaction Coefficient',n,InvPerm )
-      END IF
-      IF( HaveC ) THEN
-        cvec(1:n) = ListGetReal( Material,&
-            TRIM(VarName)//': Time Derivative Coefficient',n,invPerm )
-      END IF
+        
     END IF
 
     !PRINT *,'fvec',fvec(1:n)
