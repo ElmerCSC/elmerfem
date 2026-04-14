@@ -302,8 +302,8 @@
          m = mGetElementDOFs( DofInds, Element, USolver = EigenSolver )
          nd = m - n
          
-         Re_eigenf(1:m) = REAL( EigenVar % EigenVectors(EigenInd,EigenVar % Perm(DofInds)) )
-         Im_eigenf(1:m) = AIMAG( EigenVar % EigenVectors(EigenInd,EigenVar % Perm(DofInds)) )         
+         Re_eigenf(1:m) = REAL( EigenVar % EigenVectors(EigenInd,EigenVar % Perm(DofInds(1:m))) )
+         Im_eigenf(1:m) = AIMAG( EigenVar % EigenVectors(EigenInd,EigenVar % Perm(DofInds(1:m))) )         
        ELSE
          CALL Fatal(Caller,'Uncoded port type: '//I2S(PortTypeIndex))        
        END IF
