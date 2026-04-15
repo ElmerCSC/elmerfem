@@ -521,7 +521,7 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE, TARGET :: Mass(:,:), LForce(:,:), GForce(:,:)  
     REAL(KIND=dp), ALLOCATABLE :: WBasis(:,:), CurlWBasis(:,:), Basis(:), dBasisdx(:,:)
     REAL(KIND=dp), ALLOCATABLE :: re_local_field(:), im_local_field(:)
-    REAL(KIND=dp), POINTER :: FSave(:)
+    REAL(KIND=dp), POINTER :: FSave(:) => NULL()
     CHARACTER(:), ALLOCATABLE :: eqname    
     REAL(KIND=dp) :: u, v, w, detJ, s, xq, Norm, TotNorm
     REAL(KIND=dp) :: ReEz, ImEz, ReE(3), ImE(3), ReV(3), ImV(3), Normal(3), ReL(3), ImL(3)
@@ -529,34 +529,48 @@ CONTAINS
     COMPLEX(KIND=dp) :: Ez, EigVal
     LOGICAL :: Found, Stat
     COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
-    INTEGER, POINTER :: NodalPerm(:)
+    INTEGER, POINTER :: NodalPerm(:) => NULL()
     TYPE(Solver_t), POINTER :: pSolver=>NULL(), PostSolver=>NULL()
     INTEGER, ALLOCATABLE :: PermIndexes(:)
+    LOGICAL :: AllocDone = .FALSE.
     
     SAVE PostSolver, MASS, LFORCE, WBasis, CurlWBasis, Basis, dBasisdx, PermIndexes, &
-        Re_local_field, Im_local_field, dofs, EF, GForce, FSave
+        Re_local_field, Im_local_field, dofs, EF, GForce, FSave, AllocDone, NodalPerm
     
     !------------------------------------------------------------------------------
 
     IF(PortInd > 1) GOTO 10
     
-    IF(.NOT. ASSOCIATED(PostSolver)) ALLOCATE(PostSolver)
-    CALL ListCopyPrefixedKeywords( Solver % Values, PostSolver % Values,'post:')
+    IF(.NOT. AllocDone ) THEN
+      ALLOCATE(PostSolver)
+      CALL ListCopyPrefixedKeywords( Solver % Values, PostSolver % Values,'post:')
+      
+      PostSolver % Mesh => Mesh
+      i = SIZE(Solver % Def_Dofs,1)
+      j = SIZE(Solver % Def_Dofs,2)
+      k = SIZE(Solver % Def_Dofs,3)
+      ALLOCATE(PostSolver % Def_Dofs(i,j,k))
+      PostSolver % Def_Dofs = 0
+      PostSolver % Def_Dofs(:,:,1) = 1
+      
+      n = Mesh % MaxElementDOFs   
+      dofs = 6
+      ALLOCATE(MASS(DOFs,DOFs), LFORCE(n,DOFs), WBasis(n,3), &
+          CurlWBasis(n,3), Basis(n), dBasisdx(n,3), PermIndexes(n), &
+          Re_Local_field(n), Im_Local_field(n))
+    END IF
 
-    PostSolver % Mesh => Mesh
-    i = SIZE(Solver % Def_Dofs,1)
-    j = SIZE(Solver % Def_Dofs,2)
-    k = SIZE(Solver % Def_Dofs,3)
-    ALLOCATE(PostSolver % Def_Dofs(i,j,k))
-    PostSolver % Def_Dofs = 0
-    PostSolver % Def_Dofs(:,:,1) = 1
-    
-    n = Mesh % MaxElementDOFs   
-    dofs = 6
-    ALLOCATE(MASS(DOFs,DOFs), LFORCE(n,DOFs), WBasis(n,3), &
-        CurlWBasis(n,3), Basis(n), dBasisdx(n,3), PermIndexes(n), &
-        Re_Local_field(n), Im_Local_field(n))
-
+    ! If allocations are done and mesh is unchanged no need to do anything. 
+    IF(AllocDone ) THEN
+      IF( SIZE( NodalPerm) == SIZE( Solver % Variable % Perm ) ) THEN
+        GOTO 10
+      ELSE
+        DEALLOCATE(NodalPerm)
+        CALL FreeMatrix( PostSolver % Matrix )
+      END IF
+    END IF
+    AllocDone = .TRUE.
+        
     ALLOCATE(NodalPerm(SIZE(Solver % Variable % Perm)))
 
     ! Creating matrix structure using the mask of the primary equation.
@@ -582,10 +596,9 @@ CONTAINS
     
     ! Allocate the rhs vectors for each component
     n = PostSolver % Matrix % NumberOfRows
-    ALLOCATE( PostSolver % Matrix % RHS(n), GForce(n,dofs-1))
+    ALLOCATE( PostSolver % Matrix % RHS(n) )
     Fsave => PostSolver % Matrix % RHS
     PostSolver % Matrix % rhs = 0.0_dp
-    GForce = 0.0_dp
 
     ! Use the original communicator
     PostSolver % Matrix % Comm = Solver % Matrix % Comm
@@ -593,7 +606,13 @@ CONTAINS
     ! The default mode is the 1st mode because of default ordering it should be ok
 10  pSolver => Solver
     Active = GetNOFActive(Solver)
-
+        
+    n = PostSolver % Matrix % NumberOfRows
+    IF(.NOT. ALLOCATED(GForce)) THEN
+      ALLOCATE( GForce(n,dofs-1))
+      GForce = 0.0_dp
+    END IF
+    
     DO k=1, Active
       Element => GetActiveElement(k,Solver)
 
