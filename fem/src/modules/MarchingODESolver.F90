@@ -383,9 +383,9 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
       ELSE
         DO j=1,dofs
           IF( ParabolicModel ) THEN
-            xvec(j:dofs:m) = 0.5_dp * Var3D % Values(dofs*(Var3D % Perm(InvPerm)-1)+j)**2 
+            xvec(j:m:dofs) = 0.5_dp * Var3D % Values(dofs*(Var3D % Perm(InvPerm)-1)+j)**2 
           ELSE
-            xvec(j:dofs:m) = Var3D % Values(dofs*(Var3D % Perm(InvPerm)-1)+j)       
+            xvec(j:m:dofs) = Var3D % Values(dofs*(Var3D % Perm(InvPerm)-1)+j)       
           END IF
         END DO
       END IF
@@ -421,9 +421,9 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
     ELSE
       DO j=1,dofs
         IF( ParabolicModel ) THEN
-          xivec(j:dofs:m) = 0.5_dp * Var3D % Values(dofs*(Var3D % Perm(InvPerm)-1)+j)**2 
+          xivec(j:m:dofs) = 0.5_dp * Var3D % Values(dofs*(Var3D % Perm(InvPerm)-1)+j)**2 
         ELSE
-          xivec(j:dofs:m) = Var3D % Values(dofs*(Var3D % Perm(InvPerm)-1)+j)       
+          xivec(j:m:dofs) = Var3D % Values(dofs*(Var3D % Perm(InvPerm)-1)+j)       
         END IF
       END DO     
     END IF
@@ -469,7 +469,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
 
       ! For the 1st iteration the error corresponds to the error with respect to previous solution.
       ! For 2nd etc. iteration the error is of the nonlinear iteration. 
-      Change = SQRT(SUM(dxvec*dxvec))/Norm
+      Change = SQRT(SUM(dxvec*dxvec)) / Norm
       
       ! This must be in the loop since we may have dependence on some field value
       ! that has changed!
@@ -482,9 +482,9 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
       ELSE
         DO j=1,dofs
           IF( ParabolicModel ) THEN
-            Var3D % Values(dofs*(Var3D % Perm(InvPerm)-1)+j) = SQRT( 2 * xvec(j:dofs:m))
+            Var3D % Values(dofs*(Var3D % Perm(InvPerm)-1)+j) = SQRT( 2 * xvec(j:m:dofs))
           ELSE
-            Var3D % Values(dofs*(Var3D % Perm(InvPerm)-1)+j) = xvec(j:dofs:m)
+            Var3D % Values(dofs*(Var3D % Perm(InvPerm)-1)+j) = xvec(j:m:dofs)
           END IF
         END DO
       END IF
@@ -512,9 +512,9 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
         ELSE
           DO j=1,dofs
             IF( ParabolicModel ) THEN
-              Var3D % Values(dofs*(Var3D % Perm(InvPerm)-1)+j) = SQRT( 2 * xivec(j:dofs:m))
+              Var3D % Values(dofs*(Var3D % Perm(InvPerm)-1)+j) = SQRT( 2 * xivec(j:m:dofs))
             ELSE
-              Var3D % Values(dofs*(Var3D % Perm(InvPerm)-1)+j) = xivec(j:dofs:m)
+              Var3D % Values(dofs*(Var3D % Perm(InvPerm)-1)+j) = xivec(j:m:dofs)
             END IF
           END DO
         END IF
@@ -531,9 +531,9 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
         ELSE
           DO j=1,dofs
             IF( ParabolicModel ) THEN
-              Var3D % Values(dofs*(Var3D % Perm(InvPerm)-1)+j) = SQRT( 2 * xvec(j:dofs:m))
+              Var3D % Values(dofs*(Var3D % Perm(InvPerm)-1)+j) = SQRT( 2 * xvec(j:m:dofs))
             ELSE
-              Var3D % Values(dofs*(Var3D % Perm(InvPerm)-1)+j) = xvec(j:dofs:m)
+              Var3D % Values(dofs*(Var3D % Perm(InvPerm)-1)+j) = xvec(j:m:dofs)
             END IF
           END DO          
         END IF
@@ -656,17 +656,17 @@ CONTAINS
       ELSE
         DO j=1,dofs
           IF( HaveF ) THEN
-            fvec(j:dofs:m) = ListGetReal( Material,&
+            fvec(j:m:dofs) = ListGetReal( Material,&
                 TRIM(VarName)//' '//I2S(j)//': Source',n,InvPerm, Found )
           END IF
           IF( HaveR ) THEN
-            rvec(j:dofs:m) = ListGetReal( Material,&
+            rvec(j:m:dofs) = ListGetReal( Material,&
                 TRIM(VarName)//' '//I2S(j)//': Reaction Coefficient',n,InvPerm, Found )
           END IF
           IF( HaveC ) THEN
-            cvec(j:dofs:m) = ListGetReal( Material,&
+            cvec(j:m:dofs) = ListGetReal( Material,&
                 TRIM(VarName)//' '//I2S(j)//': Time Derivative Coefficient',n,InvPerm, Found)
-            IF(.NOT. Found) cvec(j:dofs:m) = 1.0_dp
+            IF(.NOT. Found) cvec(j:m:dofs) = 1.0_dp
           END IF
         END DO
       END IF
