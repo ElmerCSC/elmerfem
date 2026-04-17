@@ -68,18 +68,18 @@ SUBROUTINE collect_coupling_grid_data(ThisMesh, lon_vertices, lat_vertices, &
 
   DO i = 1, nbr_vertices
     CALL xy2LonLat(x_vertices(i), y_vertices(i), &
-                   lon_vertices(i), lat_vertices(i))
+                   lon_vertices(i), lat_vertices(i), .False.)
     ! Convert from degrees to radians
-    lon_vertices(i) = lon_vertices(i) * deg2rad
-    lat_vertices(i) = lat_vertices(i) * deg2rad
+    lon_vertices(i) = lon_vertices(i)
+    lat_vertices(i) = lat_vertices(i)
   END DO
 
   DO i = 1, nbr_cells
     CALL xy2LonLat(x_cells(i), y_cells(i), &
-                   lon_cells(i), lat_cells(i))
+                   lon_cells(i), lat_cells(i), .False.)
     ! Convert from degrees to radians
-    lon_cells(i) = lon_cells(i) * deg2rad
-    lat_cells(i) = lat_cells(i) * deg2rad
+    lon_cells(i) = lon_cells(i)
+    lat_cells(i) = lat_cells(i)
   END DO
 
   ! Clean up local arrays
