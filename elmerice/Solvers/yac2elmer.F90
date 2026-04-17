@@ -94,7 +94,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   USE GeneralUtils, ONLY: I2S
   USE Types, ONLY: Model_t, Solver_t, Mesh_t, Variable_t, ValueList_t, dp, Element_t
   USE Messages, ONLY: Message, FATAL, INFO, USE_YAC
-  USE elmer_coupling, ONLY: is_root_rank, coupling_setup
+  USE elmer_coupling, ONLY: coupling_setup, is_root_rank
   USE elmer_ebfm_coupling, ONLY: elmer_ebfm_interface, t_ice_field, smb_field, &
                                  runoff_field, surface_height_field
   ! USE elmer_icon_coupling, ONLY: elmer_icon_interface, clt_field, pr_field
