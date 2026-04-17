@@ -20,7 +20,7 @@ SUBROUTINE collect_coupling_grid_data(ThisMesh, lon_vertices, lat_vertices, &
   INTEGER :: i, n, vertex_offset, v_end
   INTEGER :: nbr_vertices, nbr_cells
   INTEGER, POINTER :: this_cell_ids(:)
-  
+
   ! Grid arrays for coupling
   REAL(KIND=dp), ALLOCATABLE :: x_vertices(:), y_vertices(:)
   REAL(KIND=dp), ALLOCATABLE :: x_cells(:), y_cells(:)
@@ -65,7 +65,7 @@ SUBROUTINE collect_coupling_grid_data(ThisMesh, lon_vertices, lat_vertices, &
   ! Note: ProjUtils returns degrees, need to convert to radians for YAC
   ALLOCATE(lon_vertices(nbr_vertices), lat_vertices(nbr_vertices))
   ALLOCATE(lon_cells(nbr_cells), lat_cells(nbr_cells))
-  
+
   DO i = 1, nbr_vertices
     CALL xy2LonLat(x_vertices(i), y_vertices(i), &
                    lon_vertices(i), lat_vertices(i))
@@ -73,7 +73,7 @@ SUBROUTINE collect_coupling_grid_data(ThisMesh, lon_vertices, lat_vertices, &
     lon_vertices(i) = lon_vertices(i) * deg2rad
     lat_vertices(i) = lat_vertices(i) * deg2rad
   END DO
-  
+
   DO i = 1, nbr_cells
     CALL xy2LonLat(x_cells(i), y_cells(i), &
                    lon_cells(i), lat_cells(i))
@@ -94,7 +94,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   USE GeneralUtils, ONLY: I2S
   USE Types, ONLY: Model_t, Solver_t, Mesh_t, Variable_t, ValueList_t, dp, Element_t
   USE Messages, ONLY: Message, FATAL, INFO, USE_YAC
-  USE elmer_coupling, ONLY: coupling_setup, is_root_rank
+  USE elmer_coupling, ONLY: is_root_rank, coupling_setup
   USE elmer_ebfm_coupling, ONLY: elmer_ebfm_interface, t_ice_field, smb_field, &
                                  runoff_field, surface_height_field
   ! USE elmer_icon_coupling, ONLY: elmer_icon_interface, clt_field, pr_field
@@ -114,7 +114,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   LOGICAL :: couple_to_ebfm, couple_to_icon         ! define which component is coupled to Elmer
 
   CHARACTER(LEN=1024) ::  config_file, model_tstep, coupling_timestep, grid_crs, proj_type
-  INTEGER :: I, t, ierr, dt_hours, coupling_hours
+  INTEGER :: i, t, ierr, dt_hours, coupling_hours
   INTEGER, POINTER :: t_icePerm(:), smbPerm(:), runoffPerm(:)
   ! INTEGER, POINTER :: cltPerm(:), prPerm(:)  ! ICON is not supported at the moment
   LOGICAL :: Parallel, FirstTime=.TRUE., UnFoundFatal=.TRUE.
@@ -142,7 +142,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
       INTEGER, ALLOCATABLE, INTENT(OUT) :: cell_ids(:), vertex_ids(:)
     END SUBROUTINE collect_coupling_grid_data
   END INTERFACE
-  
+
   SolverParams => GetSolverParams()
 
   ! read config file
