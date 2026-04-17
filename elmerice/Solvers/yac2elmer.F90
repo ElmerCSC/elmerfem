@@ -1,9 +1,172 @@
+!> Register and setup the grid for YAC coupling
+!> Extracts grid information from mesh, converts coordinates, and calls coupling_setup
+SUBROUTINE register_coupling_grid(ThisMesh, grid_crs, model_tstep, &
+                                   couple_to_ebfm, couple_to_icon)
+  USE Types, ONLY: Mesh_t, Element_t, dp
+  USE Messages, ONLY: INFO
+  USE elmer_coupling, ONLY: coupling_setup, is_root_rank
+  USE ProjUtils, ONLY: xy2LonLat
+
+  IMPLICIT NONE
+
+  TYPE(Mesh_t), POINTER :: ThisMesh
+  CHARACTER(LEN=*), INTENT(IN) :: grid_crs, model_tstep
+  LOGICAL, INTENT(IN) :: couple_to_ebfm, couple_to_icon
+
+  ! Local variables
+  TYPE(Element_t), POINTER :: element
+  INTEGER :: i, n, vertex_offset, v_end
+  INTEGER :: nbr_vertices, nbr_cells
+  INTEGER, POINTER :: this_cell_ids(:)
+  
+  ! Grid arrays for coupling
+  REAL(KIND=dp), ALLOCATABLE :: x_vertices(:), y_vertices(:)
+  REAL(KIND=dp), ALLOCATABLE :: x_cells(:), y_cells(:)
+  INTEGER, ALLOCATABLE :: cell_to_vertex(:), num_vertices_per_cell(:)
+  INTEGER, ALLOCATABLE :: cell_ids(:), vertex_ids(:)
+
+  ! For ProjUtils comparison
+  REAL(KIND=dp), ALLOCATABLE :: lon_vertices_proj(:), lat_vertices_proj(:)
+  REAL(KIND=dp), ALLOCATABLE :: lon_cells_proj(:), lat_cells_proj(:)
+  REAL(KIND=dp) :: max_lon_diff_v, max_lat_diff_v, max_lon_diff_c, max_lat_diff_c
+  REAL(KIND=dp) :: mean_lon_diff_v, mean_lat_diff_v, mean_lon_diff_c, mean_lat_diff_c
+
+  CHARACTER(LEN=*), PARAMETER :: SolverName = 'register_coupling_grid'
+
+  ! Extract grid information for coupling
+  nbr_vertices = ThisMesh % NumberOfNodes
+  ALLOCATE(vertex_ids(nbr_vertices))
+  vertex_ids = ThisMesh % ParallelInfo % GlobalDofs
+
+  nbr_cells = ThisMesh % NumberOfBulkElements
+  ALLOCATE(cell_ids(nbr_cells), num_vertices_per_cell(nbr_cells))
+  DO i=1, nbr_cells
+    element => ThisMesh % Elements(i)
+    cell_ids(i) = element % GElementIndex
+    num_vertices_per_cell(i) = element % Type % NumberOfNodes
+  END DO
+
+  ALLOCATE(cell_to_vertex(SUM(num_vertices_per_cell(:))))
+  vertex_offset = 0
+  DO i=1, nbr_cells
+    element => ThisMesh % Elements(i)
+    n = num_vertices_per_cell(i)
+    v_end = vertex_offset+n
+    cell_to_vertex(vertex_offset+1:v_end) = element % NodeIndexes(1:n)
+    vertex_offset = v_end
+  END DO
+
+  ALLOCATE(x_vertices(nbr_vertices), y_vertices(nbr_vertices))
+  x_vertices(:) = ThisMesh % Nodes % x(1:nbr_vertices)
+  y_vertices(:) = ThisMesh % Nodes % y(1:nbr_vertices)
+
+  ALLOCATE(x_cells(nbr_cells), y_cells(nbr_cells))
+  DO i=1,nbr_cells
+    element => ThisMesh % Elements(i)
+    n = element % Type % NumberOfNodes
+    this_cell_ids => element % NodeIndexes
+    x_cells(i) = SUM(x_vertices(this_cell_ids(1:n))) / n
+    y_cells(i) = SUM(y_vertices(this_cell_ids(1:n))) / n
+  END DO
+
+  ! Print debug info for first vertex
+  IF (is_root_rank .AND. nbr_vertices > 0) THEN
+    PRINT *, "DEBUG: Original coordinates (first vertex):"
+    PRINT *, "  x = ", x_vertices(1), " m"
+    PRINT *, "  y = ", y_vertices(1), " m"
+  END IF
+
+  ! Convert using ProjUtils for comparison (does NOT modify input arrays - INTENT(IN))
+  ! Note: ProjUtils returns degrees, need to convert to radians for YAC
+  ALLOCATE(lon_vertices_proj(nbr_vertices), lat_vertices_proj(nbr_vertices))
+  ALLOCATE(lon_cells_proj(nbr_cells), lat_cells_proj(nbr_cells))
+  
+  DO i = 1, nbr_vertices
+    CALL xy2LonLat(x_vertices(i), y_vertices(i), &
+                   lon_vertices_proj(i), lat_vertices_proj(i))
+    ! Convert from degrees to radians
+    lon_vertices_proj(i) = lon_vertices_proj(i) * (ACOS(-1.0_dp) / 180.0_dp)
+    lat_vertices_proj(i) = lat_vertices_proj(i) * (ACOS(-1.0_dp) / 180.0_dp)
+  END DO
+  
+  DO i = 1, nbr_cells
+    CALL xy2LonLat(x_cells(i), y_cells(i), &
+                   lon_cells_proj(i), lat_cells_proj(i))
+    ! Convert from degrees to radians
+    lon_cells_proj(i) = lon_cells_proj(i) * (ACOS(-1.0_dp) / 180.0_dp)
+    lat_cells_proj(i) = lat_cells_proj(i) * (ACOS(-1.0_dp) / 180.0_dp)
+  END DO
+
+  ! Print ProjUtils result for first vertex
+  IF (is_root_rank .AND. nbr_vertices > 0) THEN
+    PRINT *, "DEBUG: ProjUtils result (first vertex):"
+    PRINT *, "  lon = ", lon_vertices_proj(1), " radians"
+    PRINT *, "  lat = ", lat_vertices_proj(1), " radians"
+  END IF
+
+  ! Call coupling_setup which will convert coordinates using C function
+  ! (modifies x/y arrays in-place to lon/lat)
+  CALL coupling_setup(x_vertices, y_vertices, x_cells, y_cells, &
+                      cell_to_vertex, num_vertices_per_cell, &
+                      cell_ids, vertex_ids, &
+                      TRIM(grid_crs), TRIM(model_tstep), &
+                      couple_to_ebfm, couple_to_icon)
+
+  ! Print C function result for first vertex
+  IF (is_root_rank .AND. nbr_vertices > 0) THEN
+    PRINT *, "DEBUG: C function result (first vertex):"
+    PRINT *, "  lon = ", x_vertices(1), " radians"
+    PRINT *, "  lat = ", y_vertices(1), " radians"
+  END IF
+
+  ! Compare C results with ProjUtils results
+  IF (is_root_rank) THEN
+    max_lon_diff_v = MAXVAL(ABS(x_vertices - lon_vertices_proj))
+    max_lat_diff_v = MAXVAL(ABS(y_vertices - lat_vertices_proj))
+    mean_lon_diff_v = SUM(ABS(x_vertices - lon_vertices_proj)) / nbr_vertices
+    mean_lat_diff_v = SUM(ABS(y_vertices - lat_vertices_proj)) / nbr_vertices
+
+    max_lon_diff_c = MAXVAL(ABS(x_cells - lon_cells_proj))
+    max_lat_diff_c = MAXVAL(ABS(y_cells - lat_cells_proj))
+    mean_lon_diff_c = SUM(ABS(x_cells - lon_cells_proj)) / nbr_cells
+    mean_lat_diff_c = SUM(ABS(y_cells - lat_cells_proj)) / nbr_cells
+
+    PRINT *, "========================================"
+    PRINT *, "YAC2Elmer: Coordinate conversion comparison (C vs ProjUtils)"
+    PRINT *, "YAC2Elmer: Vertices:"
+    PRINT *, "YAC2Elmer:   Max Longitude diff: ", max_lon_diff_v, " radians"
+    PRINT *, "YAC2Elmer:   Max Latitude diff:  ", max_lat_diff_v, " radians"
+    PRINT *, "YAC2Elmer:   Mean Longitude diff:", mean_lon_diff_v, " radians"
+    PRINT *, "YAC2Elmer:   Mean Latitude diff: ", mean_lat_diff_v, " radians"
+    PRINT *, "YAC2Elmer: Cells:"
+    PRINT *, "YAC2Elmer:   Max Longitude diff: ", max_lon_diff_c, " radians"
+    PRINT *, "YAC2Elmer:   Max Latitude diff:  ", max_lat_diff_c, " radians"
+    PRINT *, "YAC2Elmer:   Mean Longitude diff:", mean_lon_diff_c, " radians"
+    PRINT *, "YAC2Elmer:   Mean Latitude diff: ", mean_lat_diff_c, " radians"
+    
+    ! Assert that differences are within acceptable tolerance (1e-8 radians ~ 0.6m at equator)
+    IF (max_lon_diff_v > 1.0d-8 .OR. max_lat_diff_v > 1.0d-8 .OR. &
+        max_lon_diff_c > 1.0d-8 .OR. max_lat_diff_c > 1.0d-8) THEN
+      PRINT *, "YAC2Elmer: WARNING: Coordinate conversion differences exceed tolerance!"
+    ELSE
+      PRINT *, "YAC2Elmer: Coordinate conversions match within tolerance."
+    END IF
+    PRINT *, "========================================"
+  END IF
+
+  ! Clean up local arrays
+  DEALLOCATE(x_vertices, y_vertices, x_cells, y_cells)
+  DEALLOCATE(cell_to_vertex, num_vertices_per_cell, cell_ids, vertex_ids)
+  DEALLOCATE(lon_vertices_proj, lat_vertices_proj, lon_cells_proj, lat_cells_proj)
+
+END SUBROUTINE register_coupling_grid
+
 SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   USE DefUtils, ONLY: GetSolverParams, GetMesh, GetNOFActive, &
     DefaultVariableAdd, GetLogical, GetLogical, GetString, ListGetString, &
     GetSimulation, MAX_NAME_LEN, VariableGet, ParEnv, variable_on_elements
   USE GeneralUtils, ONLY: I2S
-  USE Types, ONLY: Model_t, Solver_t, Mesh_t, Variable_t, ValueList_t, dp
+  USE Types, ONLY: Model_t, Solver_t, Mesh_t, Variable_t, ValueList_t, dp, Element_t
   USE Messages, ONLY: Message, FATAL, INFO, USE_YAC
   USE elmer_coupling, ONLY: coupling_setup, is_root_rank
   USE elmer_ebfm_coupling, ONLY: elmer_ebfm_interface, t_ice_field, smb_field, &
@@ -35,6 +198,17 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
 
   LOGICAL        :: Found
 
+  INTERFACE
+    SUBROUTINE register_coupling_grid(ThisMesh, grid_crs, model_tstep, &
+                                       couple_to_ebfm, couple_to_icon)
+      USE Types, ONLY: Mesh_t
+      IMPLICIT NONE
+      TYPE(Mesh_t), POINTER :: ThisMesh
+      CHARACTER(LEN=*), INTENT(IN) :: grid_crs, model_tstep
+      LOGICAL, INTENT(IN) :: couple_to_ebfm, couple_to_icon
+    END SUBROUTINE register_coupling_grid
+  END INTERFACE
+  
   SolverParams => GetSolverParams()
 
   ! read config file
@@ -133,7 +307,9 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
         'Running with ' // I2S(ParEnv % PEs) // ' partitions', Level=3)
     END IF
 
-    CALL coupling_setup(ThisMesh, TRIM(grid_crs), TRIM(ADJUSTL(I2S(coupling_hours))), couple_to_ebfm, couple_to_icon)
+    ! Register coupling grid (extract mesh, convert coordinates, setup YAC)
+    CALL register_coupling_grid(ThisMesh, TRIM(grid_crs), TRIM(ADJUSTL(I2S(coupling_hours))), &
+                                couple_to_ebfm, couple_to_icon)
 
     IF (couple_to_ebfm) THEN
       ! setting up Elmer-side variables for receiving YAC variables

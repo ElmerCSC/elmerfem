@@ -731,44 +731,44 @@ CONTAINS
 
   !> Set up the coupling configuration for YAC
   !>
-  !> @param grid The Elmer mesh/grid to be coupled
+  !> @param x_vertices X-coordinates of vertices (will be modified to lon)
+  !> @param y_vertices Y-coordinates of vertices (will be modified to lat)
+  !> @param x_cells X-coordinates of cell centers (will be modified to lon)
+  !> @param y_cells Y-coordinates of cell centers (will be modified to lat)
+  !> @param cell_to_vertex Connectivity array (which vertices belong to which cell)
+  !> @param num_vertices_per_cell Number of vertices for each cell
+  !> @param cell_ids Global cell IDs
+  !> @param vertex_ids Global vertex IDs
   !> @param grid_crs Coordinate reference system (CRS) of the grid (e.g., "EPSG:3413")
   !> @param timestepstring Timestep configuration string for YAC
   !> @param couple_to_ebfm_in Enable coupling to EBFM
   !> @param couple_to_icon_in Enable coupling to ICON
-  SUBROUTINE coupling_setup(grid, grid_crs, timestepstring, couple_to_ebfm_in, couple_to_icon_in)
+  SUBROUTINE coupling_setup(x_vertices, y_vertices, x_cells, y_cells, &
+                            cell_to_vertex, num_vertices_per_cell, &
+                            cell_ids, vertex_ids, &
+                            grid_crs, timestepstring, &
+                            couple_to_ebfm_in, couple_to_icon_in)
 
     USE, INTRINSIC :: iso_c_binding, ONLY: C_INT, C_DOUBLE, C_CHAR, C_NULL_CHAR
 
-    ! need to use Types_ without Messages because of circular dependency
-    ! originating from coupling_finalize in Messages Fatal
-    USE :: Types_, ONLY: Mesh_t, Element_t, dp
-
     IMPLICIT NONE
 
-    INTEGER :: i, j, n, vertex_offset, v_end
-    INTEGER, POINTER :: this_cell_ids(:)
-
-    TYPE(Mesh_t), POINTER, INTENT(IN) :: grid
+    ! Input/output arrays (coordinates will be converted in-place)
+    REAL(KIND=C_DOUBLE), INTENT(INOUT) :: x_vertices(:)
+    REAL(KIND=C_DOUBLE), INTENT(INOUT) :: y_vertices(:)
+    REAL(KIND=C_DOUBLE), INTENT(INOUT) :: x_cells(:)
+    REAL(KIND=C_DOUBLE), INTENT(INOUT) :: y_cells(:)
+    INTEGER, INTENT(IN) :: cell_to_vertex(:)
+    INTEGER, INTENT(IN) :: num_vertices_per_cell(:)
+    INTEGER, INTENT(IN) :: cell_ids(:)
+    INTEGER, INTENT(IN) :: vertex_ids(:)
     CHARACTER(LEN=*), INTENT(IN) :: grid_crs
-    TYPE(Element_t), POINTER :: element
     CHARACTER(LEN=*), INTENT(IN) :: timestepstring
     LOGICAL, INTENT(IN) :: couple_to_ebfm_in, couple_to_icon_in
 
+    ! Local variables
     INTEGER :: grid_id, corner_point_id, cell_point_id
-
-    INTEGER(KIND=C_INT) :: nbr_vertices
-    INTEGER(KIND=C_INT) :: nbr_cells
-
-    REAL(KIND=dp), ALLOCATABLE :: x_vertices(:)
-    REAL(KIND=dp), ALLOCATABLE :: y_vertices(:)
-    REAL(KIND=dp), ALLOCATABLE :: x_cells(:)
-    REAL(KIND=dp), ALLOCATABLE :: y_cells(:)
-
-    INTEGER, ALLOCATABLE          :: num_vertices_per_cell(:)
-    INTEGER, ALLOCATABLE          :: cell_ids(:)
-    INTEGER, ALLOCATABLE          :: vertex_ids(:)
-    INTEGER, ALLOCATABLE          :: cell_to_vertex(:)
+    INTEGER(KIND=C_INT) :: nbr_vertices, nbr_cells
 
     INTERFACE
 
@@ -790,41 +790,11 @@ CONTAINS
     couple_to_ebfm = couple_to_ebfm_in
     couple_to_icon = couple_to_icon_in
 
-    nbr_vertices = grid % NumberOfNodes
-    ALLOCATE(vertex_ids(nbr_vertices))
-    vertex_ids = grid % ParallelInfo % GlobalDofs
+    ! Infer sizes from input arrays
+    nbr_vertices = SIZE(x_vertices)
+    nbr_cells = SIZE(x_cells)
 
-    nbr_cells = grid % NumberOfBulkElements
-    ALLOCATE(cell_ids(nbr_cells), num_vertices_per_cell(nbr_cells))
-    DO i=1, nbr_cells
-      element => grid % Elements(i)
-      cell_ids(i) = element % GElementIndex
-      num_vertices_per_cell(i) = element % Type % NumberOfNodes
-    END DO
-
-    ALLOCATE(cell_to_vertex(SUM(num_vertices_per_cell(:))))
-    vertex_offset = 0
-    DO i=1, nbr_cells
-      element => grid % Elements(i)
-      n = num_vertices_per_cell(i)
-      v_end = vertex_offset+n
-      cell_to_vertex(vertex_offset+1:v_end) = element % NodeIndexes(1:n)
-      vertex_offset = v_end
-    END DO
-
-    ALLOCATE(x_vertices(nbr_vertices), y_vertices(nbr_vertices))
-    x_vertices(:) = grid % Nodes % x(1:nbr_vertices)
-    y_vertices(:) = grid % Nodes % y(1:nbr_vertices)
-
-    ALLOCATE(x_cells(nbr_cells), y_cells(nbr_cells))
-    DO i=1,nbr_cells
-      element => grid % Elements(i)
-      n = element % Type % NumberOfNodes
-      this_cell_ids => element % NodeIndexes
-      x_cells(i) = SUM(x_vertices(this_cell_ids(1:n))) / n
-      y_cells(i) = SUM(y_vertices(this_cell_ids(1:n))) / n
-    END DO
-
+    ! Convert projected coordinates to lon/lat using C function (returns radians)
     CALL convert_to_lonlat_c(x_vertices, y_vertices, nbr_vertices, TRIM(grid_crs)//C_NULL_CHAR)
     CALL convert_to_lonlat_c(x_cells, y_cells, nbr_cells, TRIM(grid_crs)//C_NULL_CHAR)
 
