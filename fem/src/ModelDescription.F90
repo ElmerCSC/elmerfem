@@ -2795,11 +2795,6 @@ CONTAINS
           EXIT
         END IF
       END DO
-     
-      !Solver % GlobalBubbles = ListGetLogical(Solver % Values, &
-      !    'Bubbles in Global System', stat)
-      !IF(.NOT. stat) Solver % GlobalBubbles = .TRUE.
-      
       i = i + 1
     END DO
 
@@ -4145,7 +4140,7 @@ CONTAINS
     TYPE(Solver_t),   POINTER :: Solver
     TYPE(Variable_t), POINTER :: TimeVar, tStepVar
 
-    LOGICAL :: RestartFileOpen = .FALSE., Cont, Found, LoadThis, ThisIp, UsePerm
+    LOGICAL :: RestartFileOpen = .FALSE., Cont, Found, LoadThis, ThisIp, UsePerm, NewPerm
     LOGICAL, SAVE :: PosFile = .FALSE.
     LOGICAL, SAVE :: Binary, GotPerm, GotIt, CreateVariables
     INTEGER, SAVE, ALLOCATABLE :: FileVariableInfo(:,:)
@@ -4744,10 +4739,10 @@ CONTAINS
         ! Note that Var % Perm is the permutation associated with the current field
         ! while Perm will be the permutation associated with the saved field. 
         ! They could be different, even though the usually are not!
-        CALL Info(Caller,'Reading permutation order for: '//TRIM(Row),Level=12)
+        CALL Info(Caller,'Reading permutation order for: '//TRIM(Row),Level=20)
         CALL ReadPerm( RestartUnit, Perm, GotPerm )           
         IF( GotPerm ) THEN
-          CALL Info(Caller,'Succesfully read permutation order for: '//TRIM(Row),Level=20)
+          CALL Info(Caller,'Maximum value for permutation order for "'//TRIM(Row)//'" is '//I2S(MAXVAL(Perm)),Level=12)
         END IF
           
         IF( LoadThis ) THEN
@@ -4760,7 +4755,7 @@ CONTAINS
           ELSE
             n = FieldSize
           END IF
-          CALL Info(Caller,'Size of load loop is '//I2S(n),Level=15)
+          CALL Info(Caller,'Size of load loop is '//I2S(n),Level=20)
 
           ! If we are renaming the variable also then do it
           j = FileVariableInfo(i,4) 
@@ -4798,7 +4793,9 @@ CONTAINS
             END IF
           END IF
 
-
+          NewPerm = .FALSE.
+          IF(UsePerm) NewPerm = ALL(Var % Perm == 0)
+          
           DO j=1, n
             CALL GetValue( RestartUnit, Perm, UsePerm, j, k, Val )
 
@@ -4809,11 +4806,11 @@ CONTAINS
                                     
             IF ( .NOT. UsePerm ) THEN
               Var % Values(k) = Val
-            ELSE IF ( Var % Perm(j) > 0 ) THEN
-              Var % Values(Var % Perm(j)) = Val
-            ELSE 
+            ELSE IF(NewPerm) THEN
               Var % Perm(j) = k
               Var % Values(k) = Val
+            ELSE IF ( Var % Perm(j) > 0 ) THEN
+              Var % Values(Var % Perm(j)) = Val
             END IF
           END DO
 
@@ -4990,7 +4987,11 @@ CONTAINS
       REAL(dp), INTENT(OUT) :: Val
 
       IF ( UsePerm ) THEN
-        iPerm = Perm(iNode)
+        IF(iNode > SIZE(Perm)) THEN
+          iPerm = 0
+        ELSE
+          iPerm = Perm(iNode)
+        END IF
       ELSE
         iPerm = iNode
       END IF

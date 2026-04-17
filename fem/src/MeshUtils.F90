@@ -6631,7 +6631,6 @@ CONTAINS
     END IF
 
     PreserveBaseline = ListGetLogical( CurrentModel % Simulation,'Preserve Baseline',Found )
-    IF(.NOT. Found) PreserveBaseline = .FALSE.
 
     CollectExtrudedBCs = ListGetLogical( CurrentModel % Simulation,'Extruded BCs Collect',Found )
     
@@ -8509,6 +8508,7 @@ CONTAINS
     
     CALL CheckMeshBulkHits()
     CALL CheckMeshBoundaryHits()
+    CALL CheckBCTags()
     CALL CheckParentIndeces()
     CALL CheckMeshGeomSize()
     CALL CheckMeshSerendipity()
@@ -8539,7 +8539,7 @@ CONTAINS
         IF(.NOT. ASSOCIATED( Element % TYPE ) ) THEN
           CALL Fatal(Caller,'Element type not associated for bulk elem: '//I2S(t))
         END IF
-        i = Element % TYPE % ElementCode
+        i = Element % TYPE % ElementCode        
         TypeHits(i) = TypeHits(i)+1
         IF(ANY(Element % NodeIndexes < 1 ) ) THEN
           PRINT *,'NodeIndexes:', Element % NodeIndexes 
@@ -8553,7 +8553,13 @@ CONTAINS
           PRINT *,'NodeIndexes:',Element % NodeIndexes
           CALL Fatal(Caller,'Non-positive node index encountered')
         END IF
-        NodeHits(Element % NodeIndexes) = NodeHits(Element % NodeIndexes) + 1
+        IF(ANY(Element % NodeIndexes < 1) ) THEN
+          PRINT *,'Too small bulk element index: ',t, Element % NodeIndexes
+        ELSE IF(ANY(Element % NodeIndexes > nn) ) THEN
+          PRINT *,'Too large bulk element index: ',t, Element % NodeIndexes
+        ELSE
+          NodeHits(Element % NodeIndexes) = NodeHits(Element % NodeIndexes) + 1
+        END IF
       END DO
 
       Dbg(1) = na
@@ -8568,6 +8574,7 @@ CONTAINS
       END DO
       
       t=MAXVAL(NodeHits)
+
       IF( InfoActive(25)) THEN
         DO i=0,t
           j = COUNT( NodeHits == i)
@@ -8576,6 +8583,8 @@ CONTAINS
       END IF
       dbg(4) = t      
       Dbg(5) = COUNT(TypeHits>0)
+
+
       WRITE(Message,*) 'Bulk Checksum: ',Dbg(1:5)
       CALL Info(Caller,Message)      
       
@@ -8695,6 +8704,68 @@ CONTAINS
       
     END SUBROUTINE CheckParentIndeces
 
+
+    SUBROUTINE CheckBCTags()
+      INTEGER :: Misses, Tag, MinTag, MaxTag
+      INTEGER, ALLOCATABLE :: TagCount(:), BCNodeCount(:)
+
+      ! Not BCs to go through
+      IF(nb==0) RETURN
+
+      Misses = 0
+      MinTag = HUGE(MinTag)
+      MaxTag = -HUGE(MaxTag)
+
+      DO k=1,2
+        DO t=na+1,na+nb
+          Element => Mesh % Elements(t)
+          IF(.NOT. ASSOCIATED(Element % BoundaryInfo)) THEN
+            IF(k==1) Misses = Misses + 1
+            CYCLE
+          END IF
+          Tag = Element % BoundaryInfo % Constraint
+          IF(k==1) THEN
+            MinTag = MIN(MinTag,Tag)
+            MaxTag = MAX(MaxTag,Tag)
+          ELSE
+            TagCount(Tag) = TagCount(Tag) + 1
+          END IF
+        END DO
+        IF(k==1) THEN
+          ! Not tags defined in this partition
+          IF(MinTag > MaxTag) THEN
+            EXIT
+          ELSE
+            ALLOCATE(TagCount(MinTag:MaxTag))
+            TagCount = 0
+          END IF
+        END IF
+      END DO
+
+      ALLOCATE(BCNodeCount(MinTag:MaxTag))
+      BCNodeCount = 0
+      
+      DO k=1, MaxTag
+        IF(TagCount(k)==0) CYCLE
+        NodeHits = 0
+        DO t=na+1,na+nb
+          Element => Mesh % Elements(t)
+          IF(.NOT. ASSOCIATED(Element % BoundaryInfo)) CYCLE
+          Tag = Element % BoundaryInfo % Constraint
+          IF(Tag==k) NodeHits(Element % NodeIndexes) = 1
+        END DO
+        BCNodeCount(k) = COUNT(NodeHits == 1)
+      END DO
+
+      DO k=MinTag,MaxTag
+        IF(TagCount(k) > 0) THEN
+          PRINT *,'BC'//I2S(k)//': elems '//I2S(TagCount(k))//' nodes '//I2S(BCNodeCount(k))
+        END IF
+      END DO           
+      
+    END SUBROUTINE CheckBCTags
+
+    
     
     SUBROUTINE CheckMeshGeomSize()
 
@@ -8877,7 +8948,7 @@ CONTAINS
       WRITE(Message,*) 'Edges Checksum: ',Dbg(1:5)
       CALL Info(Caller,Message)                  
 
-      IF(ANY(Dbg < 0) ) Halt = .TRUE.
+      !IF(ANY(Dbg < 0) ) Halt = .TRUE.
 
     END SUBROUTINE CheckMeshEdges
 
@@ -8915,7 +8986,7 @@ CONTAINS
       WRITE(Message,*) 'Faces Checksum: ',Dbg(1:5)
       CALL Info(Caller,Message)                  
 
-      IF(ANY(Dbg < 0) ) Halt = .TRUE.
+      !IF(ANY(Dbg < 0) ) Halt = .TRUE.
       
     END SUBROUTINE CheckMeshFaces
 
@@ -10624,10 +10695,7 @@ END SUBROUTINE FindNeighbourNodes
      END IF
      Permutation = 0
      
-     
-     GlobalBubbles = ListGetLogical( Solver % Values, &
-         'Bubbles in Global System', Found )
-     IF ( .NOT. Found ) GlobalBubbles = .TRUE.
+     GlobalBubbles = Solver % GlobalBubbles
      
      OptimizeBandwidth = ListGetLogical( Solver % Values, 'Optimize Bandwidth', Found )
      IF ( .NOT. Found ) OptimizeBandwidth = .TRUE.
@@ -14700,7 +14768,7 @@ CONTAINS
     TYPE(Nodes_t) :: Nodes
     TYPE(Nodes_t), POINTER :: MeshNodes
     INTEGER :: i,j,k,n,ii,jj,dim, nsize, nnodes, elem, TopNodes, BotNodes, Rounds, ActiveDirection, &
-	UpHit, DownHit, bc_ind, jmin, jmax
+	UpHit, DownHit, bc_ind, jmin, jmax, elemmax
     INTEGER, POINTER :: NodeIndexes(:), MaskPerm(:)
     LOGICAL :: MaskExists, UpActive, DownActive, GotIt, Found, DoCoordTransform
     LOGICAL, POINTER :: TopFlag(:), BotFlag(:)
@@ -14802,6 +14870,7 @@ CONTAINS
       Var => VariableGet( Mesh % Variables,'Coordinate 3')
     END IF	      
 
+    CALL Info(Caller,'Variable used to detect extrusion: '//TRIM(Var % Name),Level=10)
     IF( MaskExists .OR. DoCoordTransform) THEN
       DO i=1,Mesh % NumberOfNodes
         j = i
@@ -14869,7 +14938,14 @@ CONTAINS
     n = Mesh % MaxElementNodes
     ALLOCATE( Nodes % x(n), Nodes % y(n),Nodes % z(n) )
     
-    DO elem = 1,Mesh % NumberOfBulkElements      
+    IF( MaskExists ) THEN
+      elemmax = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+    ELSE
+      elemmax = Mesh % NumberOfBulkElements 
+    END IF
+
+    
+    DO elem = 1,elemmax
       
       Element => Mesh % Elements(elem)
       NodeIndexes => Element % NodeIndexes

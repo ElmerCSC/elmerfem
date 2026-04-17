@@ -4050,6 +4050,7 @@ CONTAINS
     
     ! Combine the individual projectors into one massive projector
     CALL GenerateConstraintMatrix( CurrentModel, Solver )
+    CALL GenerateAddMatrix( CurrentModel, Solver )
     
     IF( GetLogical(Params,'Linear System Solver Disabled',Found) ) THEN
       CALL Info('DefaultSolve','Solver disabled, exiting early!',Level=10)
@@ -5740,7 +5741,7 @@ CONTAINS
      LOGICAL, ALLOCATABLE :: ReleaseDir(:)
      LOGICAL :: ReleaseAny, NodalBCsWithBraces,AllConstrained
      LOGICAL :: CheckRight, AugmentedEigenSystem
-     LOGICAL :: SimplicialElements
+     LOGICAL :: GradVersion
      
      CHARACTER(:), ALLOCATABLE :: Name
 
@@ -6240,8 +6241,8 @@ CONTAINS
      ! Set Dirichlet BCs for edge and face dofs which arise from approximating with
      ! edge (curl-conforming) or face (div-conforming) elements:
      ! ----------------------------------------------------------------------------
-     CALL EdgeElementStyle(Params, PiolaTransform, SecondKindBasis, BasisDegree = BasisDegree)
-     SimplicialElements = ListGetLogical(Params, 'Simplicial Mesh', Found)
+     CALL EdgeElementStyle(Params, PiolaTransform, SecondKindBasis, BasisDegree = BasisDegree, &
+         GradientVersion = GradVersion)
      
      DO DOF=1,x % DOFs
         name = TRIM(x % name)
@@ -6290,34 +6291,79 @@ CONTAINS
            np = Parent % TYPE % NumberOfNodes
 
            IF ( ListCheckPrefix(BC, Name//' {e}') ) THEN
-              !--------------------------------------------------------------------------------
-              ! We now devote this branch for handling edge (curl-conforming) finite elements 
-              ! which, in addition to edge DOFs, may also have DOFs associated with faces. 
-              !--------------------------------------------------------------------------------
-              IF ( ASSOCIATED( Solver % Mesh % Edges ) ) THEN
+             !--------------------------------------------------------------------------------
+             ! We now devote this branch for handling edge (curl-conforming) finite elements 
+             ! which, in addition to edge DOFs, may also have DOFs associated with faces. 
+             !--------------------------------------------------------------------------------
+             IF ( ASSOCIATED( Solver % Mesh % Edges ) ) THEN
+               BLOCK
+                 INTEGER :: NoEdges = 0
+                 INTEGER :: BCMode = 0
+
+                 AugmentedEigenSystem = .FALSE.                      
+                 BCMode = 0
+                 
                  SELECT CASE(GetElementFamily(Element))
-                 CASE(2)
-
+                 CASE(2)                    
                    CALL PickActiveFace(Solver % Mesh, Parent, Element, Edge, j)
-
                    IF ( .NOT. ASSOCIATED(Edge) ) CYCLE
                    Edge % BodyId = Parent % BodyId
-                   IF ( .NOT. ActiveBoundaryElement(Edge) ) CYCLE                  
+                   IF ( .NOT. ActiveBoundaryElement(Edge) ) CYCLE                                      
+
+                   AugmentedEigenSystem = ListGetLogical(Params, 'Eigen System Augmentation', Found) 
+                   BCMode = 1
+                   NoEdges = 1
+
+                 CASE(3,4)
+                   CALL PickActiveFace(Solver % Mesh, Parent, Element, Face, j)
+                   IF (.NOT. ASSOCIATED(Face)) CYCLE
+                   NoEdges = Face % TYPE % NumberOfEdges
+		   Face % BodyId = Parent % BodyId                      
+
+                   IF ( ActiveBoundaryElement(Face) ) THEN
+                     BCMode = 2
+                   ELSE
+                     BCMode = 3
+                   END IF
+
+                 END SELECT
+
+                 IF(BCMode < 3 .AND. Parent % BodyId == 0) THEN
+                   CALL Fatal('DefaultDirichletBCs','Body id is zero!')
+                 END IF
+
+
+                 ! ---------------------------------------------------------------------
+                 ! Set first constraints for DOFs associated with edges. Save the values
+                 ! of DOFs in the array Work(:), so that the possible remaining DOFs
+                 ! associated with the face can be computed after this.
+                 ! ---------------------------------------------------------------------
+                 i0 = 0
+                 DO l=1,NoEdges
+                   IF(BCMode == 1) THEN
+                     CONTINUE
+                   ELSE IF( BCMode == 2 ) THEN
+                     Edge => Solver % Mesh % Edges(Face % EdgeIndexes(l))
+                     IF(.NOT. ASSOCIATED(Edge)) CYCLE
+                   ELSE
+                     Edge => Solver % Mesh % Edges(Face % EdgeIndexes(l))
+                     IF(.NOT. ASSOCIATED(Edge)) CYCLE
+                   END IF
+                   Edge % BodyId = Parent % BodyId
 
                    EDOFs = Edge % BDOFs     ! The number of DOFs associated with edges
                    IF (EDOFs < 1) CYCLE
-                   
-                   AugmentedEigenSystem = ListGetLogical(Params, 'Eigen System Augmentation', Found) 
+
                    IF (AugmentedEigenSystem) THEN
                      EDOFs = EDOFs/2
                    END IF
 
                    n = Edge % TYPE % NumberOfNodes
-                   CALL VectorElementEdgeDOFs(BC,Edge,n,Parent,np,Name//' {e}',Work, &
-                       EDOFs, SecondKindBasis, BasisDegree = BasisDegree, &
-                       SimplicialMesh = SimplicialElements)
+                   CALL VectorElementEdgeDOFs(BC, Edge, n, Parent, np, Name//' {e}', &
+                       Work(i0+1:i0+EDOFs), EDOFs, SecondKindBasis, &
+                       BasisDegree = BasisDegree, GradientVersion = GradVersion)                    
 
-                   n=GetElementDOFs(gInd,Edge)
+                   n = GetElementDOFs(gInd,Edge)
 
                    IF (Solver % Def_Dofs(2,Parent % BodyId,1) > 0) THEN
                      n_start = Edge % NDOFs
@@ -6336,83 +6382,41 @@ CONTAINS
                      nb = Offset + x % DOFs*(nb-1) + DOF
 
                      A % ConstrainedDOF(nb) = .TRUE.
-                     A % Dvalues(nb) = Work(j) 
+                     A % Dvalues(nb) = Work(i0+j) 
                    END DO
+                   i0 = i0 + EDOFs
+                 END DO
 
-                 CASE(3,4)
-                   CALL PickActiveFace(Solver % Mesh, Parent, Element, Face, j)
+                 ! We will deal with the face-only BC's only if the full face is active.
+                 IF(BCMode /= 2) CYCLE
 
-                   IF (.NOT. ASSOCIATED(Face)) CYCLE
+                 ! ---------------------------------------------------------------------
+                 ! Set constraints for face DOFs via seeking the best approximation in L2.
+                 ! We use the variational equation (u x n,v') = (g x n - u0 x n,v) where
+                 ! u0 denotes the part of the interpolating function u+u0 which is already 
+                 ! known and v is a test function for the Galerkin method.
+                 ! ---------------------------------------------------------------------
+                 IF (Face % BDOFs > 0) THEN
+                   EDOFs = i0 ! The count of edge DOFs set so far
+                   n = Face % TYPE % NumberOfNodes
+                   
+                   CALL SolveLocalFaceDOFs(BC, Face, n, Name//' {e}', Work, EDOFs, &
+                       Face % BDOFs, SecondKindBasis, BasisDegree, GradVersion )
+
                    Face % BodyId = Parent % BodyId
-                   IF ( .NOT. ActiveBoundaryElement(Face) ) CYCLE
 
-                   ! ---------------------------------------------------------------------
-                   ! Set first constraints for DOFs associated with edges. Save the values
-                   ! of DOFs in the array Work(:), so that the possible remaining DOFs
-                   ! associated with the face can be computed after this.
-                   ! ---------------------------------------------------------------------
-                   i0 = 0
-                   DO l=1,Face % TYPE % NumberOfEdges
-                     Edge => Solver % Mesh % Edges(Face % EdgeIndexes(l))
-                     EDOFs = Edge % BDOFs
-                     IF (EDOFs < 1) CYCLE
+                   n = GetElementDOFs(GInd,Face)
+                   DO j=1,Face % BDOFs
+                     nb = x % Perm(GInd(n-Face % BDOFs+j)) ! The last entries should be face-DOF indices
+                     IF ( nb <= 0 ) CYCLE
+                     nb = Offset + x % DOFs*(nb-1) + DOF
 
-                     Edge % BodyId = Parent % BodyId
-                     n = Edge % TYPE % NumberOfNodes
-
-                     CALL VectorElementEdgeDOFs(BC, Edge, n, Parent, np, Name//' {e}', &
-                         Work(i0+1:i0+EDOFs), EDOFs, SecondKindBasis, &
-                         BasisDegree = BasisDegree, &
-                         SimplicialMesh = SimplicialElements)
-                     
-                     n = GetElementDOFs(gInd,Edge)
-
-                     IF (Solver % Def_Dofs(2,Parent % BodyId,1) > 0) THEN
-                       n_start = Edge % NDOFs
-                     ELSE
-                       n_start = 0
-                     END IF
- 
-                     DO j=1,EDOFs
-                       k = n_start + j
-                       nb = x % Perm(gInd(k))
-                       IF ( nb <= 0 ) CYCLE
-                       nb = Offset + x % DOFs*(nb-1) + DOF
-
-                       A % ConstrainedDOF(nb) = .TRUE.
-                       A % Dvalues(nb) = Work(i0+j) 
-                     END DO
-                     i0 = i0 + EDOFs
+                     A % ConstrainedDOF(nb) = .TRUE.
+                     A % Dvalues(nb) = Work(EDOFs+j) 
                    END DO
-
-                   ! ---------------------------------------------------------------------
-                   ! Set constraints for face DOFs via seeking the best approximation in L2.
-                   ! We use the variational equation (u x n,v') = (g x n - u0 x n,v) where
-                   ! u0 denotes the part of the interpolating function u+u0 which is already 
-                   ! known and v is a test function for the Galerkin method.
-                   ! ---------------------------------------------------------------------
-                   IF (Face % BDOFs > 0) THEN
-                     EDOFs = i0 ! The count of edge DOFs set so far
-                     n = Face % TYPE % NumberOfNodes
-
-                     CALL SolveLocalFaceDOFs(BC, Face, n, Name//' {e}', Work, EDOFs, &
-                         Face % BDOFs, SecondKindBasis, BasisDegree)
-
-                     Face % BodyId = Parent % BodyId
-                     
-                     n = GetElementDOFs(GInd,Face)
-                     DO j=1,Face % BDOFs
-                       nb = x % Perm(GInd(n-Face % BDOFs+j)) ! The last entries should be face-DOF indices
-                       IF ( nb <= 0 ) CYCLE
-                       nb = Offset + x % DOFs*(nb-1) + DOF
-
-                       A % ConstrainedDOF(nb) = .TRUE.
-                       A % Dvalues(nb) = Work(EDOFs+j) 
-                     END DO
-                   END IF
-
-                 END SELECT
-              END IF
+                 END IF
+               END BLOCK
+             END IF
            ELSE IF ( ListCheckPrefix(BC, Name//' {f}') ) THEN
              !--------------------------------------------------------------------------
              ! This branch should be able to handle BCs for face (div-conforming)
@@ -6654,7 +6658,7 @@ CONTAINS
 !> v is a polynomial on the edge E, and S reverses sign if necessary.
 !------------------------------------------------------------------------------
   SUBROUTINE VectorElementEdgeDOFs(BC, Element, n, Parent, np, Name, Integral, EDOFs, &
-      SecondFamily, FaceElement, BasisDegree, SimplicialMesh)
+      SecondFamily, FaceElement, BasisDegree, GradientVersion)
 !------------------------------------------------------------------------------
     USE ElementDescription, ONLY: GetEdgeMap
     IMPLICIT NONE
@@ -6670,7 +6674,7 @@ CONTAINS
     LOGICAL, OPTIONAL :: SecondFamily !< To select the element family
     LOGICAL, OPTIONAL :: FaceElement  !< If .TRUE., e is normal to the edge
     INTEGER, OPTIONAL :: BasisDegree
-    LOGICAL, OPTIONAL :: SimplicialMesh
+    LOGICAL, OPTIONAL :: GradientVersion
 !------------------------------------------------------------------------------
     TYPE(Nodes_t), SAVE :: Nodes, Pnodes
     TYPE(ElementType_t), POINTER :: SavedType
@@ -6678,7 +6682,7 @@ CONTAINS
 
     LOGICAL :: Lstat, ReverseSign, SecondKindBasis, DivConforming
     LOGICAL :: SecondOrder, ThirdOrder
-    LOGICAL :: Simplicial, ErvinStyle = .FALSE.
+    LOGICAL :: GradVersion, ErvinStyle = .FALSE.
     INTEGER, POINTER :: Edgemap(:,:)
     INTEGER :: i,j,k,p,DOFs
     INTEGER :: i1,i2,i3
@@ -6724,10 +6728,10 @@ CONTAINS
       DivConforming = .FALSE.
     END IF
 
-    IF (PRESENT(SimplicialMesh)) THEN
-      Simplicial = SimplicialMesh
+    IF (PRESENT(GradientVersion)) THEN
+      GradVersion = GradientVersion
     ELSE
-      Simplicial = .FALSE.
+      GradVersion = .FALSE.
     END IF
     
     ! Get the nodes of the boundary and parent elements:
@@ -6790,7 +6794,7 @@ CONTAINS
     END IF
 
     Integral = 0._dp
-    IF (SecondOrder .AND. SecondKindBasis) THEN
+    IF (SecondOrder .AND. SecondKindBasis .OR. ThirdOrder .AND. GradVersion) THEN
       IP = GaussPoints(Element,3)
     ELSE
       IP = GaussPoints(Element)
@@ -6826,7 +6830,7 @@ CONTAINS
         END IF
       ELSE
         u = IP % u(p)
-        IF (ThirdOrder .AND. Simplicial) THEN
+        IF (ThirdOrder .AND. GradVersion) THEN
           ! This is the same as the case of second-kind basis of degree 2
           ! TO DO: restructure to avoid repetition
           Integral(1)=Integral(1)+s*(L+SUM(VL*e))
@@ -6834,7 +6838,7 @@ CONTAINS
           Integral(2)=Integral(2)+sgn*s*(L+SUM(VL*e))*v
           v = 2.5d0 * (1.0d0 - 3.0d0 * u**2)
           Integral(3)=Integral(3)+s*(L+SUM(VL*e))*v          
-        ELSE IF (SecondOrder .AND. Simplicial) THEN
+        ELSE IF (SecondOrder .AND. GradVersion) THEN
           ! This is analogous to the case of second-kind basis
           Integral(1)=Integral(1)+s*(L+SUM(VL*e))
           v = -3.0d0 * u
@@ -6895,7 +6899,7 @@ CONTAINS
 !> the values of the DOFs associated with edges are given.
 !------------------------------------------------------------------------------
   SUBROUTINE SolveLocalFaceDOFs(BC, Element, n, Name, DOFValues, &
-      EDOFs, FDOFs, SecondKindBasis, BasisDegree)
+      EDOFs, FDOFs, SecondKindBasis, BasisDegree, GradientVersion)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 
@@ -6908,11 +6912,12 @@ CONTAINS
     INTEGER :: FDOFs                     !< The number of face DOFs
     LOGICAL :: SecondKindBasis           !< Use Nedelec's second family 
     INTEGER :: BasisDegree               !< The polynomial order of basis
+    LOGICAL, OPTIONAL :: GradientVersion
 !------------------------------------------------------------------------------
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
 
-    LOGICAL :: Lstat
+    LOGICAL :: Lstat, GradVersion
 
     INTEGER :: i,j,p,DOFs
 
@@ -6921,7 +6926,12 @@ CONTAINS
     REAL(KIND=dp) :: Mass(FDOFs,FDOFs), Force(FDOFs)
     REAL(KIND=dp) :: v,s,DetJ
 !------------------------------------------------------------------------------
-      
+    IF (PRESENT(GradientVersion)) THEN
+      GradVersion = GradientVersion
+    ELSE
+      GradVersion = .FALSE.
+    END IF
+    
     Mass = 0.0d0
     Force = 0.0d0
 
@@ -6935,14 +6945,14 @@ CONTAINS
     VLoad(2,1:n)=GetReal(BC,Name(1:i)//' 2',Lstat,element)
     VLoad(3,1:n)=GetReal(BC,Name(1:i)//' 3',Lstat,element)
 
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=.TRUE., &
-        EdgeBasisDegree=BasisDegree)
+    IP = GaussPoints(Element, PReferenceElement=.TRUE., EdgeBasisDegree=BasisDegree)
     
     DO p=1,IP % n
 
       Lstat = EdgeElementInfo( Element, Nodes, IP % u(p), IP % v(p), IP % w(p), &
           DetF=DetJ, Basis=Basis, EdgeBasis=EdgeBasis, SecondFamily = SecondKindBasis, &
-          BasisDegree=BasisDegree, ApplyPiolaTransform=.TRUE., TangentialTrMapping=.TRUE.)
+          BasisDegree=BasisDegree, ApplyPiolaTransform=.TRUE., TangentialTrMapping=.TRUE., &
+          GradientVersion=GradVersion )
 
       Normal = NormalVector(Element, Nodes, IP % u(p), IP % v(p), .FALSE.)
 

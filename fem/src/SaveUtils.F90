@@ -273,7 +273,7 @@ CONTAINS
     INTEGER :: i,n
     LOGICAL :: reorder, Visited = .FALSE.
 
-    INTEGER, TARGET, SAVE :: order510(10),order613(13),order715(15),order820(20)
+    INTEGER, TARGET, SAVE :: order510(10),order613(13),order718(18),order820(20)
     INTEGER, POINTER :: order(:)
 
     SAVE Visited
@@ -281,7 +281,8 @@ CONTAINS
     IF(.NOT. Visited ) THEN
       order510(:) = (/ 0,1,2,3,4,5,6,7,9,8 /)
       order613(:) = (/ 0,1,2,3,4,5,8,10,6,7,9,11,12 /)
-      order715(:) = (/ 0,1,2,3,4,5,6,9,7,8,10,11,12,14,13 /)
+      !order715(:) = (/ 0,1,2,3,4,5,6,9,7,8,10,11,12,14,13 /)
+      order718(:) = (/ 0,1,2,3,4,5,6,9,7,8,10,11,12,14,13,15,17,16 /)
       order820(:) = (/ 0,1,2,3,4,5,6,7,8,11,13,9,10,12,14,15,16,18,19,17 /)
       Visited = .TRUE.
     END IF
@@ -298,9 +299,9 @@ CONTAINS
       reorder = .TRUE.
       order => order613
       
-    CASE (715)
+    CASE (715, 718)
       reorder = .TRUE.
-      order => order715
+      order => order718
       
     CASE (820)
       reorder = .TRUE.
@@ -971,7 +972,7 @@ CONTAINS
     IF(.NOT. Found) Numbering = .TRUE.
     
     GmshToElmerType = (/ 202, 303, 404, 504, 808, 706, 605, 203, 306, 409, &
-        510, 827, 0, 0, 101, 408, 820, 715, 613, 0, 310 /)
+        510, 827, 718, 0, 101, 408, 820, 715, 613, 0, 310 /)
     ElmerToGmshType = 0
 
     DO i=1,SIZE(GmshToElmerType)

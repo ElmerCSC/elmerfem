@@ -367,6 +367,7 @@
          ALLOCATE( Surfaces(2*N), Factors(N*N), STAT=istat )
        ELSE
          ALLOCATE( Normals(3*N), Factors(N*N),Surfaces(4*N), TYPE(N), STAT=istat )
+         Surfaces = 0
        END IF
        IF ( istat /= 0 ) THEN
          CALL Fatal( 'Viewfactors', 'Memory allocation error. Aborting' )
@@ -531,8 +532,13 @@
                 TYPE(t) = 404
            END SELECT
            DO i=1,j
-             Surfaces(j*(t-1)+i) = Element % NodeIndexes(i)-1
+             IF ( j==2 ) THEN
+               Surfaces(2*(t-1)+i) = Element % NodeIndexes(i)-1
+             ELSE
+               Surfaces(4*(t-1)+i) = Element % NodeIndexes(i)-1
+             END IF
            END DO
+
            
            IF (Normal_in * SUM(Nrm*NrmB)>0) THEN
              Normals(3*(t-1)+1:3*(t-1)+3) = Nrm

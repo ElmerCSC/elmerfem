@@ -5790,7 +5790,8 @@ RETURN
       
     IF(TimeInteg) THEN
       CALL ListInitElementKeyword( TimeSource_h,'Body Force','Particle Time Integral Source',DummyCount=j)    
-    ELSE
+    END IF
+    IF(DistInteg) THEN
       CALL ListInitElementKeyword( DistSource_h,'Body Force','Particle Distance Integral Source',DummyCount=j)
     END IF
       

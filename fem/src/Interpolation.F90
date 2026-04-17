@@ -624,6 +624,7 @@ MODULE Interpolation
 !> interpolant. This subroutine assumes that DOFs are associated
 !> with edges, so that the geometric domain of the finite element given as input
 !> is supposed to be one-dimensional.
+!> TO DO: Add support for higher-order basis functions  
 !------------------------------------------------------------------------------
   SUBROUTINE NodalToNedelecPiMatrix(PiMat, Edge, Mesh, dim, SecondFamily)
 !------------------------------------------------------------------------------
@@ -639,7 +640,7 @@ MODULE Interpolation
     INTEGER, ALLOCATABLE, SAVE :: Ind(:)
     
     INTEGER :: EDOFs, i, k, p, i1, i2, j1, j2, n
-    REAL(KIND=dp) :: Basis(2), detJ, s, e(3), t(3), fun(3), u, v
+    REAL(KIND=dp) :: Basis(2), detJ, s, e(3), t(3), fun(3), u, v, sgn
 !------------------------------------------------------------------------------
     IF ((Edge % Type % ElementCode / 100) /= 2) THEN
       CALL Warn('NodalToNedelecPiMatrix', 'A 1-dimensional element expected')
@@ -682,7 +683,11 @@ MODULE Interpolation
       j2 = i2
     END IF
 
-    IF (j2 < j1) t = -t      
+    IF (j2 < j1) THEN
+      sgn = -1.0d0
+    ELSE
+      sgn = 1.0d0
+    END IF
     t = t/SQRT(SUM(t**2))
 
     PiMat = 0.0_dp
@@ -698,12 +703,11 @@ MODULE Interpolation
           fun(:) = Basis(i) * e(:)
           IF (SecondKindBasis) THEN
             u = IP % u(p)
-            v = 0.5d0*(1.0d0-sqrt(3.0d0)*u)
-            PiMat(1,3*(i-1)+k) = PiMat(1,3*(i-1)+k) + s * SUM(fun*t)*v
-            v = 0.5d0*(1.0d0+sqrt(3.0d0)*u)
+            PiMat(1,3*(i-1)+k) = PiMat(1,3*(i-1)+k) + s * sgn * SUM(fun*t)
+            v = -3.0d0 * u
             PiMat(2,3*(i-1)+k) = PiMat(2,3*(i-1)+k) + s * SUM(fun*t)*v
           ELSE
-            PiMat(1,3*(i-1)+k) = PiMat(1,3*(i-1)+k) + s * SUM(fun*t)  
+            PiMat(1,3*(i-1)+k) = PiMat(1,3*(i-1)+k) + s * sgn * SUM(fun*t)  
           END IF
         END DO
       END DO
@@ -899,7 +903,7 @@ MODULE Interpolation
     
     IF (.NOT. ASSOCIATED(Mesh % Edges)) CALL Fatal(Caller, 'Mesh edges not associated!')
 
-    ! We only want to apply the projetor to the master nodes/edges of the conforming system. 
+    ! We only want to apply the projector to the master nodes/edges of the conforming system. 
     SkipPeriodicSlave = ASSOCIATED( Mesh % PeriodicPerm )
 
     DoFaces = ASSOCIATED(Mesh % Faces)
@@ -914,7 +918,7 @@ MODULE Interpolation
     END IF
     vdofs = VectorElementVar % DOFs
     IF(vdofs /=1 .AND. vdofs /= 2) THEN
-      CALL Fatal(Caller,'Vector dofs only makes sense for values 1 (real) and 2 (complex)!')
+      CALL Fatal(Caller,'H(curl) variable has to consist of either 1 (real) or 2 (complex) components!')
     END IF
     
     NodalPerm => NodalVar % Perm
@@ -1063,7 +1067,7 @@ MODULE Interpolation
     INTEGER, ALLOCATABLE, SAVE :: Ind(:)
     
     INTEGER :: EDOFs, i, k, p, i1, i2, j1, j2, n
-    REAL(KIND=dp) :: dBasis(2,3), Basis(2), detJ, s, e(3), t(3), fun(3), u, v
+    REAL(KIND=dp) :: dBasis(2,3), Basis(2), detJ, s, e(3), t(3), fun(3), u, v, sgn
 
 !------------------------------------------------------------------------------
     IF ((Edge % Type % ElementCode / 100) /= 2) THEN
@@ -1107,7 +1111,11 @@ MODULE Interpolation
       j2 = i2
     END IF
 
-    IF (j2 < j1) t = -t      
+    IF (j2 < j1) THEN
+      sgn = -1.0d0
+    ELSE
+      sgn = 1.0d0
+    END IF
     t = t/SQRT(SUM(t**2))
 
     PiMat = 0.0_dp
@@ -1120,12 +1128,11 @@ MODULE Interpolation
         fun(:) = dBasis(i,:)
         IF (SecondKindBasis) THEN
           u = IP % u(p)
-          v = 0.5d0*(1.0d0-sqrt(3.0d0)*u)
-          PiMat(1,i) = PiMat(1,i) + s * SUM(fun*t)*v
-          v = 0.5d0*(1.0d0+sqrt(3.0d0)*u)
+          PiMat(1,i) = PiMat(1,i) + s * sgn * SUM(fun*t)
+          v = -3.0d0*u
           PiMat(2,i) = PiMat(2,i) + s * SUM(fun*t)*v
         ELSE
-          PiMat(1,i) = PiMat(1,i) + s * SUM(fun*t)  
+          PiMat(1,i) = PiMat(1,i) + s * sgn * SUM(fun*t)  
         END IF
       END DO
     END DO

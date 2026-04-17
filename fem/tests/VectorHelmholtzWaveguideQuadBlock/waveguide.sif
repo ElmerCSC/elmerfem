@@ -71,6 +71,7 @@ Solver 1
 !  Variable = E[E re:1 E im:1]
   Use Piola Transform = True
   Quadratic Approximation = True
+  Gradient Basis Functions = True
 !  Optimize Bandwidth = False
   Procedure = "VectorHelmholtz" "VectorHelmholtzSolver"
 
@@ -83,8 +84,7 @@ include block.sif
 ! 2) split lin/quad + re/im
 !  include block4.sif
 
-! 3) Tentative idea only:
-! split lin/quad multigrid
+! 3) multigrid based on the order of basis functions (lin/quad)  
 !  include pmult.sif
 
 ! 4) Re/Im split
@@ -146,7 +146,7 @@ End
 !End
 
 
-Solver 1 :: Reference Norm = 3.28679313E-03
+Solver 1 :: Reference Norm = 3.30255031E-03
 Solver 1 :: Reference Norm Tolerance = 1e-3
-Solver 3 :: Reference Norm = 4.03148005E+05
+Solver 3 :: Reference Norm = 4.02757713E+05
 Solver 3 :: Reference Norm Tolerance = 1e-3

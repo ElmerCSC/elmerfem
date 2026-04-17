@@ -32,7 +32,10 @@
 ! *  direction to the plane are related in terms of the eigenvalue lambda
 ! *  by the equation P_z = sqrt(lambda) E_z 
 ! *
-! *  Authors: Mika Malinen
+! *  This has been modified to be able to deal with multiple ports within the
+! *  same solver, and to combine them into one single field.  
+! * 
+! *  Authors: Mika Malinen & Peter Råback
 ! *  Email:   mika.malinen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -58,10 +61,11 @@ SUBROUTINE EMPortSolver_Init0(Model, Solver, dt, Transient)
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
-  CHARACTER(*), PARAMETER :: Caller = 'EMPortSolver_Init0'
-  TYPE(ValueList_t), POINTER :: Params
+  INTEGER :: i
+  TYPE(ValueList_t), POINTER :: Params, BC
   LOGICAL :: Found, PiolaVersion, SecondFamily, SecondOrder
-   
+  CHARACTER(*), PARAMETER :: Caller = 'EMPortSolver_Init0'
+  
   Params => GetSolverParams()
   
   CALL ListAddNewLogical(Params, 'Linear System Complex', .TRUE.)
@@ -77,6 +81,8 @@ SUBROUTINE EMPortSolver_Init0(Model, Solver, dt, Transient)
     IF (SecondOrder) THEN
       CALL ListAddString(Params, "Element", &
           "n:1 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2")
+    ELSE IF( SecondFamily ) THEN
+      CALL ListAddString(Params, "Element", "n:1 e:2" )
     ELSE IF (PiolaVersion) THEN
       CALL ListAddString(Params, "Element", "n:1 e:1 -quad_face b:2 -quad b:2 -brick b:3")
     ELSE
@@ -84,7 +90,35 @@ SUBROUTINE EMPortSolver_Init0(Model, Solver, dt, Transient)
     END IF
   END IF
 
-  CALL ListAddNewString(Params, 'Variable', 'E[E re:1 E im:1]')
+  ! Set the port field to zero at BCs which are defined as port ground
+  DO i = 1,Model % NumberOfBCs
+    BC => Model % BCs(i) % Values
+    IF( ListGetLogical( BC,"Port Ground", Found ) ) THEN
+      CALL ListAddConstReal( BC,'Eport re',0.0_dp)
+      CALL ListAddConstReal( BC,'Eport im',0.0_dp)
+      CALL ListAddConstReal( BC,'Eport re {e}',0.0_dp)
+      CALL ListAddConstReal( BC,'Eport im {e}',0.0_dp)
+    END IF
+  END DO
+
+  
+  CALL ListAddNewString(Params, 'Variable', 'Eport[Eport re:1 Eport im:1]')
+  CALL ListAddLogical(Params, 'Linear System refactorize', .TRUE.)
+
+  ! Skip change computation since we want to store the Norm and there is
+  ! nothing really changing.
+  CALL ListAddNewLogical( Params,'Skip Compute Nonlinear Change',.TRUE.)
+  CALL ListAddNewLogical( Params,'Skip Compute Steady State Change',.TRUE.)
+  CALL ListAddNewLogical( Params,'Variable Output',.FALSE.)
+  CALL ListAddNewLogical( Params,'post: Skip Compute Nonlinear Change',.TRUE.)
+  CALL ListAddNewLogical( Params,'post: Linear System Complex',.FALSE.)
+  CALL ListAddNewLogical( Params,'post: Variable Output',.FALSE.)
+
+  CALL Info('EMPortSolver','Setting default sorting and normalization for eigenmodes!')
+  CALL ListAddNewString( Params,'Eigen System Sorting','smallest real part')
+  CALL ListAddNewLogical( Params,'Eigen System Normalize To Unity',.TRUE.)
+  CALL ListAddNewLogical( Params,'Eigen System Shift Automatic',.TRUE.)
+  
 !-----------------------------------------------------------------------------
 END SUBROUTINE EMPortSolver_Init0
 !-----------------------------------------------------------------------------
@@ -106,79 +140,217 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   TYPE(Solver_t), POINTER :: SolverPtr
   TYPE(Mesh_t), POINTER :: Mesh
-  TYPE(ValueList_t), POINTER :: Params
+  TYPE(ValueList_t), POINTER :: Params, BC
   TYPE(Element_t), POINTER :: Element
-  LOGICAL :: PiolaVersion, EigenProblem, InitHandles, Found
-  INTEGER :: DOFs, EdgeBasisDegree, Active, t, n, nd, EFamily
+  LOGICAL :: PiolaVersion, EigenProblem, InitHandles, CalculateNodal, Found
+  INTEGER :: DOFs, EdgeBasisDegree, Active, i, j, k, t, m, n, nd, &
+      EFamily, NoPorts, MaxPort, PortInd, t1, t2, ModeIndex
   COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
-  REAL(KIND=dp) :: mu0inv, eps0, omega
-  REAL(KIND=dp) :: Norm
+  COMPLEX(KIND=dp) :: Beta
+  COMPLEX(KIND=dp), POINTER :: SaveEigenVectors(:,:)
+  REAL(KIND=dp) :: mu0inv, eps0, omega, maxeps, maxmu, betalim, Norm, BetaSum
+  TYPE(Variable_t), POINTER :: EMVar
+  INTEGER, ALLOCATABLE :: SavePerm(:)
   CHARACTER(*), PARAMETER :: Caller = 'EMPortSolver'
 !------------------------------------------------------------------------------
 
+  SAVE :: SavePerm, SaveEigenVectors
+  
   CALL Info(Caller,'',Level=8)
   CALL Info(Caller,'------------------------------------------------',Level=6)
   CALL Info(Caller,'Solving electromagnetic port equations over a surface')
   CALL Info(Caller,'------------------------------------------------',Level=6)
 
+  SolverPtr => Solver  
+  Mesh => GetMesh()
+  Params => GetSolverParams()
+
   IF ( CurrentCoordinateSystem() /= Cartesian ) THEN 
     CALL Fatal(Caller,'Implemented only for Cartesian problems!')
   END IF
-  
+
+  MaxPort = 0
+  BetaSum = 0.0_dp
+  DO i = 1,Model % NumberOfBCs
+    BC => Model % BCs(i) % Values
+    j = ListgetInteger( BC,"Port Index", Found )
+    IF(.NOT. Found ) THEN
+      IF(ListGetString( BC,'Port Type',Found) == 'eigenmode' ) THEN
+        j = ListgetInteger( BC,"Constraint Mode", Found )
+        IF(j>0) CALL ListAddInteger( BC,"Port Index", j)
+      END IF
+    END IF
+    IF( j > 0 ) THEN
+      ! We add the labels so that we can use the CreateMatrix to include several ports.
+      CALL ListAddLogical( Model % BCs(i) % Values,"Port Label "//I2S(j),.TRUE.)
+      MaxPort = MAX(MaxPort,j)
+    END IF
+  END DO
+
+  CalculateNodal = LIstGetLogical( Params,'Calculate Nodal Field', Found )
+ 
+  EMVar => Solver % Variable
+  IF( MaxPort > 1) THEN
+    CALL Info(Caller,'Creating separate matrices for each '//I2S(MaxPort)//' port!')
+    ! We cannot really use the original matrix that solves all ports together.
+    CALL FreeMatrix(Solver % Matrix)
+
+    ! Let's store the original permutation matrix.
+    ALLOCATE( SavePerm(SIZE(EMVar % Perm)))
+    SavePerm = EMVar % Perm     
+
+    ! Allocate a collector for the several BC's
+    n = SIZE(EMVar % EigenVectors,1)
+    m = SIZE(EMVar % EigenVectors,2)
+    ALLOCATE(SaveEigenVectors(n,m))
+    SaveEigenVectors = 0.0_dp
+  END IF
+    
   DOFs = Solver % Variable % Dofs
   IF (DOFs /= 2) THEN
     CALL Fatal(Caller, 'Complex field, specify two DOFs instead of '//I2S(DOFs))
   END IF
 
-  SolverPtr => Solver  
-  Mesh => GetMesh()
-  Params => GetSolverParams()
-
   CALL EdgeElementStyle(Params, PiolaVersion, BasisDegree = EdgeBasisDegree )
   
   EigenProblem = EigenOrHarmonicAnalysis(Solver)
   
-  ! maxiter = ListGetInteger(Params,'Nonlinear System Max Iterations', Found, minv=1)
-  
   CALL DefaultStart()
   CALL InitStuff()
 
-  CALL DefaultInitialize()
+  maxmu = 0.0_dp
+  maxeps = 0.0_dp
 
-  CALL Info(Caller, 'Performing bulk element assembly', Level=12)
   Active = GetNOFActive(Solver)
   InitHandles = .TRUE.
-  DO t=1,Active
-    Element => GetActiveElement(t)
-    EFamily = GetElementFamily(Element)
-    IF (EFamily > 4) CYCLE
-    
-    n  = GetElementNOFNodes(Element)
-    nd = GetElementNOFDOFs(Element)
 
-    IF (EdgeBasisDegree > 1) THEN
-      SELECT CASE(EFamily)    
-      CASE(3)
-        IF (n < 6) CALl Fatal(Caller, 'A background mesh needs 6-node triangles')
-      CASE(4)
-        IF (n < 9) CALl Fatal(Caller, 'A background mesh needs 9-node quads')
-      END SELECT
+  DO PortInd=1,MAX(MaxPort,1)
+    CALL Info(Caller,'Solving for port: '//I2S(PortInd),Level=10)
+    IF( MaxPort > 1 ) THEN
+      EMVar % Perm = 0 
+      Solver % Matrix => CreateMatrix( Model, Solver, Solver % Mesh, EMVar % Perm, &
+          EMVar % Dofs, MATRIX_CRS, .FALSE.,"Port Label "//I2S(PortInd), &
+          GlobalBubbles = Solver % GlobalBubbles, BcMode = .TRUE.)     
+      n = MAXVAL(EMVar % Perm) * EMVar % Dofs
+      ALLOCATE(Solver % Matrix % rhs(n))
+      Solver % Matrix % rhs = 0.0_dp
     END IF
+          
+    CALL DefaultInitialize()
+
+    IF(MaxPort==0) THEN
+      ModeIndex = ListGetInteger(Params, 'Mode Index', Found)
+      IF(.NOT. Found ) ModeIndex = 1            
+    END IF
+
     
-    CALL LocalMatrix(Element, n, nd, InitHandles)
+    DO t=1,Active
+      Element => GetActiveElement(t,Solver)
+      
+      ! We we have several ports then only assembly the correct one. 
+      IF(MaxPort>0) THEN
+        BC => GetBC(Element)
+        IF(ListGetInteger(BC,'Port Index',Found ) /= PortInd) CYCLE
+        ModeIndex = ListGetInteger(BC, 'Mode Index', Found)
+        IF(.NOT. Found ) ModeIndex = 1            
+      END IF
+      
+      EFamily = GetElementFamily(Element)
+      IF (EFamily > 4) CYCLE
+      
+      n  = GetElementNOFNodes(Element)
+      nd = GetElementNOFDOFs(Element)
+      
+!      IF (EdgeBasisDegree > 1) THEN
+      IF (.FALSE.) THEN
+        SELECT CASE(EFamily)    
+        CASE(3)
+          IF (n < 6) CALL Fatal(Caller, 'A background mesh needs 6-node triangles')
+        CASE(4)
+          IF (n < 9) CALL Fatal(Caller, 'A background mesh needs 9-node quads')
+        END SELECT
+      END IF
+    
+      CALL LocalMatrix(Element, n, nd, InitHandles)
+    END DO
+  
+    CALL DefaultFinishBulkAssembly()
+    
+    CALL DefaultFinishAssembly()
+    CALL DefaultDirichletBCs()
+    
+    IF(ListGetLogical( Params,'Eigen System Shift Automatic',Found ) ) THEN
+      maxeps = ParallelReduction(maxeps)
+      maxmu = ParallelReduction(maxmu)    
+      betalim = Omega * SQRT(maxeps*maxmu)    
+      CALL ListAddConstReal( Params,'Eigen System Shift', betalim**2 )
+      WRITE(Message,'(A,ES12.3)') 'Propagation constant beta upper limit: ',betalim
+      CALL Info('EMPortSolver',Message,Level=7)
+    END IF
+
+    ! Solve the eigenmodes
+    Norm = DefaultSolve()
+
+    Beta = SQRT(-Solver % Variable % EigenValues(ModeIndex))
+    WRITE(Message,'(A,2ES12.3)') 'Propagation constant beta: ',REAL(Beta),AIMAG(Beta)
+    CALL Info(Caller,Message,Level=5)      
+    CALL ListAddConstReal( Model % Simulation,'res: Port Beta '//I2S(PortInd),REAL(Beta))
+    
+    ! Use the sum or propagation constant as a reference value for consistency
+    BetaSum = BetaSum + REAL(Beta)
+    
+    ! Set the propagation constant to all those BC's associated to this port.
+    DO i = 1,Model % NumberOfBCs
+      BC => Model % BCs(i) % Values
+      IF(ListGetString( BC,'Port Type',Found) == 'eigenmode' ) THEN
+        j = ListgetInteger( BC,"Port Index", Found )
+        IF(j==PortInd .OR. MaxPort == 0) THEN
+          CALL ListAddConstReal( BC,'Port Beta',REAL(Beta))
+          CALL ListAddConstReal( BC,'Port Beta Im',AIMAG(Beta))
+        END IF
+      END IF
+      j = ListgetInteger( BC,"Port Beta Parent", Found )
+      IF(Found .AND. j==PortInd) THEN
+        CALL ListAddConstReal( BC,'Port Beta',REAL(Beta))
+        CALL ListAddConstReal( BC,'Port Beta Im',AIMAG(Beta))
+      END IF
+    END DO
+      
+   IF(CalculateNodal) THEN
+     CALL EMPortPost(PortInd, MaxPort)
+   END IF
+
+    IF( MaxPort > 1 ) THEN
+      CALL FreeMatrix(Solver % Matrix)      
+
+      ! Copy only the values that were actually computed for this port
+      n = SIZE(EMVar % Perm)
+      DO i=1,n
+        IF(SavePerm(i) > 0 .AND. EMVar % Perm(i) > 0) THEN
+          SaveEigenVectors(:,SavePerm(i)) = EMVar % EigenVectors(:,EMVar % Perm(i))
+        END IF
+      END DO
+    END IF
+
   END DO
-    
-  CALL DefaultFinishBulkAssembly()
-
-  CALL DefaultFinishAssembly()
-  CALL DefaultDirichletBCs()
-
-  Norm = DefaultSolve()
 
   CALL DefaultFinish()
 
+  IF(MaxPort > 1) THEN
+    EMVar % Perm = SavePerm
+    ! Eigenvectors is most likely of different size.
+    ! Use the original full eigenvectors. 
+    DEALLOCATE(EMVar % EigenVectors)
+    EMVar % EigenVectors => SaveEigenVectors
+    NULLIFY(SaveEigenVectors)
+    DEALLOCATE(SavePerm)
+  END IF
+
+  Solver % Variable % Norm = BetaSum
+
   CALL Info(Caller, 'All done', Level=12)
 
+  
 CONTAINS
 
 
@@ -218,20 +390,14 @@ CONTAINS
 !------------------------------------------------------------------------------
     TYPE(ValueHandle_t), SAVE :: EpsCoeff_h, NuCoeff_h
     TYPE(Nodes_t), SAVE :: Nodes
-    TYPE(GaussIntegrationPoints_t) :: IP
-    
+    TYPE(GaussIntegrationPoints_t) :: IP    
     INTEGER :: m, allocstat, t
     INTEGER :: i, j, p, q, vdofs
-    LOGICAL :: Stat, Found
-    LOGICAL :: CreateEps, CreateNu
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:), dBasisdx(:,:), WBasis(:,:), &
-        CurlWBasis(:,:)
+    LOGICAL :: Stat, Found, GotNu, GotEps
+    REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:), dBasisdx(:,:), WBasis(:,:), CurlWBasis(:,:)
     COMPLEX(KIND=dp), ALLOCATABLE, SAVE :: Stiff(:,:), Mass(:,:), Force(:)
     REAL(KIND=dp) :: weight, DetJ, CondAtIp
     COMPLEX(KIND=dp) :: Nu, Eps
-    TYPE(ValueList_t), POINTER :: Material
-    REAL(KIND=dp) :: RelPermit(n), RelPermit_Im(n)
-    REAL(KIND=dp) :: RelNu(n), RelNu_Im(n)
 !------------------------------------------------------------------------------
 
     IF (InitHandles) THEN
@@ -260,14 +426,8 @@ CONTAINS
     ! The number of DOFs for one vector FE field  
     vdofs = nd - n
 
-    Material => GetMaterial()
-    RelPermit(1:n) = GetReal(Material, 'Relative Permittivity', CreateEps)
-    RelPermit_Im(1:n) = GetReal(Material, 'Relative Permittivity Im', Found)
-    CreateEps = Found .OR. CreateEps
 
-    RelNu(1:n) = GetReal(Material, 'Relative Reluctivity', CreateNu)
-    RelNu_Im(1:n) = GetReal(Material, 'Relative Reluctivity Im', Found)
-    CreateNu = Found .OR. CreateNu
+
     
     DO t=1,IP % n
       !--------------------------------------------------------------
@@ -277,27 +437,32 @@ CONTAINS
           detJ, Basis, dBasisdx, EdgeBasis = Wbasis, RotBasis = CurlWBasis, USolver = SolverPtr)
       Weight = IP % s(t) * DetJ
 
-      ! NOTE: There seems to be an issue with getting the values of model parameters
-      ! by using variables of type ValueHandle_t when the keyword Body Id is used to
-      ! create body identifiers. We use the traditional way to read the material parameters
-      ! until this trouble is resolved.
-      
-!      Nu = ListGetElementComplex(NuCoeff_h, Basis, Element, CreateNu, GaussPoint = t)      
-      IF( CreateNu ) THEN
-        !Nu = Nu * mu0inv
-        Nu = mu0inv * CMPLX(SUM(RelNu(1:n)*Basis(1:n)), SUM(RelNu_Im(1:n)*Basis(1:n)), kind=dp)
+      ! This is a little strange since we may have the parameters defined either in the material
+      ! related to the boundary or its parent.
+      ! For the 2nd etc. integration points we should be consistent. 
+      IF(t==1 .OR. GotNu) THEN
+        Nu = ListGetElementComplex(NuCoeff_h, Basis, Element, GotNu, GaussPoint = t)      
+      END IF
+      IF(.NOT. GotNu) Nu = ListGetElementRealParent(NuCoeff_h, Basis, Element, Found )
+      IF( GotNu .OR. Found ) THEN
+        Nu = mu0inv * Nu
       ELSE
         Nu = mu0inv
       END IF
 
-!      Eps = ListGetElementComplex(EpsCoeff_h, Basis, Element, CreateEps, GaussPoint = t)        
-      IF( CreateEps ) THEN
-        !Eps = Eps0 * Eps
-        Eps = Eps0 * CMPLX(SUM(RelPermit(1:n)*Basis(1:n)), SUM(RelPermit_Im(1:n)*Basis(1:n)), kind=dp)  
+      IF(t==1 .OR. GotEps) THEN
+        Eps = ListGetElementComplex(EpsCoeff_h, Basis, Element, GotEps, GaussPoint = t)        
+      END IF
+      IF(.NOT. GotEps ) Eps = ListGetElementRealParent( EpsCoeff_h, Basis, Element, Found ) 
+      IF( GotEps .OR. Found ) THEN
+        Eps = Eps0 * Eps 
       ELSE
         Eps = Eps0 
       END IF
-
+      
+      maxmu = MAX(maxmu, REAL(1/Nu))
+      maxeps = MAX(maxeps, REAL(eps))
+      
       DO p = 1,n
         DO q = 1,n
           ! The operator -eps I for the scalar variable:
@@ -326,6 +491,8 @@ CONTAINS
         END DO
       END DO
     END DO
+
+    !Mass = -Mass
     
     CALL DefaultUpdateEquations(Stiff, Force)
     CALL DefaultUpdateMass(Mass)
@@ -333,246 +500,233 @@ CONTAINS
   END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------
 
-!------------------------------------------------------------------------------
-END SUBROUTINE EMPortSolver
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-SUBROUTINE EMPortSolver_Post_Init0(Model, Solver, dt, Transient)
-!------------------------------------------------------------------------------
-  USE DefUtils
-  IMPLICIT NONE
-!------------------------------------------------------------------------------
-  TYPE(Model_t) :: Model
-  TYPE(Solver_t) :: Solver
-  REAL(KIND=dp) :: dt
-  LOGICAL :: Transient
-!------------------------------------------------------------------------------
-  TYPE(ValueList_t), POINTER :: SolverParams
-  LOGICAL :: Found, NodalFields, EigenAnalysis
-  INTEGER :: soln, i, j
-  CHARACTER(LEN=MAX_NAME_LEN) :: sname
-!------------------------------------------------------------------------------
-  SolverParams => GetSolverParams()
-
-  soln = 0
-  DO i=1,Model % NumberOfSolvers
-    sname = GetString(Model % Solvers(i) % Values, 'Procedure', Found)
-    j = INDEX(sname, 'EMPortSolver')
-    IF( j > 0 ) THEN
-      soln = i 
-      EXIT
-    END IF
-  END DO
-     
-  IF (soln == 0) THEN
-    CALL Fatal('EMPortSolver_post_Init0', 'Cannot locate the primary solver')      
-  ELSE
-    CALL Info('EMPortSolver_post_Init0', 'The primary solver index is: '//I2S(soln), Level=12)
-    CALL ListAddInteger(SolverParams, 'Primary Solver Index', soln) 
-  END IF
-!------------------------------------------------------------------------------
-END SUBROUTINE EMPortSolver_Post_Init0
-!------------------------------------------------------------------------------
-  
-!------------------------------------------------------------------------------
-SUBROUTINE EMPortSolver_post_Init(Model, Solver, dt, Transient)
-!------------------------------------------------------------------------------
-  USE DefUtils
-  IMPLICIT NONE
-!------------------------------------------------------------------------------
-  TYPE(Model_t) :: Model
-  TYPE(Solver_t) :: Solver
-  REAL(KIND=dp) :: dt
-  LOGICAL :: Transient
-!------------------------------------------------------------------------------
-  TYPE(ValueList_t), POINTER :: SolverParams
-  LOGICAL :: Found, NodalFields, EigenAnalysis
-
-  SolverParams => GetSolverParams()
-
-!  CALL ListAddString(SolverParams, 'Variable', '-nooutput EMPortSolver_dummy' )
-  CALL ListAddLogical(SolverParams, 'Linear System refactorize', .FALSE.)
-  CALL ListAddNewLogical( SolverParams,'Skip Compute Nonlinear Change',.TRUE.)
-  
-!  NodalFields = GetLogical( SolverParams, 'Calculate Nodal Fields', Found)
-!  IF (Found .AND. .NOT. NodalFields ) RETURN
-
-!  EigenAnalysis = ListGetLogical(SolverParams,'Eigen Analysis', Found ) 
-!------------------------------------------------------------------------------
-END SUBROUTINE EMPortSolver_Post_Init
-!------------------------------------------------------------------------------
 
 !-----------------------------------------------------------------------------
 !> A postprocessing solver for EMPortSolver
+!> Create the mass matrix on-the-fly and computes one component at a time. 
 !------------------------------------------------------------------------------
-SUBROUTINE EMPortSolver_Post(Model, Solver, dt, Transient)
-!------------------------------------------------------------------------------
-  USE DefUtils
-  IMPLICIT NONE
-!------------------------------------------------------------------------------
-  TYPE(Model_t) :: Model
-  TYPE(Solver_t), TARGET :: Solver
-  REAL(KIND=dp) :: dt
-  LOGICAL :: Transient
-!------------------------------------------------------------------------------
-! Local variables
-!------------------------------------------------------------------------------
-  TYPE(ValueList_t), POINTER :: Params
-  TYPE(Mesh_t), POINTER :: Mesh
-  TYPE(Solver_t), POINTER :: PrimSolver
-  TYPE(Variable_t), POINTER :: EF, ReVar, ImVar, Var
-  TYPE(Element_t), POINTER :: Element
-  TYPE(GaussIntegrationPoints_t) :: IP
-  TYPE(Nodes_t), SAVE :: Nodes
-  CHARACTER(*), PARAMETER :: Caller = 'EMPortSolver_Post'
-  LOGICAL :: PiolaVersion, stat
-  INTEGER :: soln, i, j, k, n, nd, EdgeBasisDegree, normal_ind(1)
-  INTEGER :: DOFs, vdofs, p, q, ModeIndex
-  INTEGER, POINTER, SAVE :: Ind(:) => NULL()
-  REAL(KIND=dp), ALLOCATABLE, TARGET :: Mass(:,:), Force(:)  
-  REAL(KIND=dp), ALLOCATABLE :: WBasis(:,:), CurlWBasis(:,:), Basis(:), &
-      dBasisdx(:,:)
-  REAL(KIND=dp), ALLOCATABLE :: re_local_field(:), im_local_field(:)
-  REAL(KIND=dp), ALLOCATABLE :: vec_local_field(:,:)
-  
-  REAL(KIND=dp) :: u, v, w, detJ, s
-  
-  REAL(KIND=dp) :: xq, ReEz, ImEz, ReE(3), ImE(3), ReV(3), ImV(3), Normal(3) 
-  REAL(KIND=dp) :: Norm
+  SUBROUTINE EMPortPost(PortInd, MaxPort)
+    !------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
 
-  
-  COMPLEX(KIND=dp) :: Beta, Ez
-  
-  LOGICAL :: EigenProblem, Found
-  INTEGER :: Active, t
-  COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
-  REAL(KIND=dp) :: mu0inv, eps0, omega
-
-!------------------------------------------------------------------------------
-  DOFs = 6
-  Params => GetSolverParams()
-
-  soln = ListGetInteger(Params, 'Primary Solver Index', Found) 
-  IF( soln == 0 ) THEN
-    CALL Fatal(Caller, 'We should know > Primary Solver Index <')
-  END IF
-
-  Mesh => GetMesh()
-  
-  ! Pointer to primary solver
-  PrimSolver => Model % Solvers(soln)
-  CALL EdgeElementStyle(PrimSolver % Values, PiolaVersion, BasisDegree = EdgeBasisDegree)
-
-  n = Mesh % MaxElementDOFs   
-  ALLOCATE(MASS(DOFs*n,DOFs*n), FORCE(DOFs*n))
-  ALLOCATE(WBasis(n,3), CurlWBasis(n,3), Basis(n), dBasisdx(n,3) )
-  ALLOCATE(Re_Local_field(n), Im_Local_field(n))
-
-  IF (.NOT. ASSOCIATED(Ind)) ALLOCATE(Ind(n))
-  
-  CALL DefaultStart()
-  CALL DefaultInitialize()
-
-  ModeIndex = ListGetInteger(Params, 'Mode Index', Found)
-!  print *, 'processing eigenvalue', PrimSolver % Variable % Eigenvalues(ModeIndex)
-
-  Beta = SQRT(-PrimSolver % Variable % Eigenvalues(ModeIndex))
-!  print *, 'propagation parameter beta', Beta
-  
-  DO k=1, GetNOFActive()
-    Element => GetActiveElement(k)
-    n = GetElementNOFNodes()
-    nd = GetElementNOFDOFs(USolver=PrimSolver)
-    nd = GetElementDOFs(Ind, Element, PrimSolver)
+    INTEGER :: PortInd, MaxPort
     
-    ! The number of DOFs for one vector FE field  
-    vdofs = nd - n
-
-    CALL GetElementNodes( Nodes )
-
-    ! At the moment we assume that the wave propagates in the direction of some
-    ! coordinate axis. Then the following check should be enough to get the positive
-    ! direction of wave propagation: 
-    Normal = NormalVector(Element, Nodes)
-    normal_ind = MAXLOC(ABS(Normal))
-    IF (Normal(normal_ind(1)) < 0.0_dp) Normal = -Normal
+    TYPE(Variable_t), POINTER :: EF, ReVar, ImVar, Var
+    TYPE(Element_t), POINTER :: Element
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Nodes_t), SAVE :: Nodes
+    INTEGER :: i, j, k, n, p, q, nd, normal_ind(1), DOFs, vdofs
+    INTEGER :: Active, t
+    REAL(KIND=dp), ALLOCATABLE, TARGET :: Mass(:,:), LForce(:,:), GForce(:,:)  
+    REAL(KIND=dp), ALLOCATABLE :: WBasis(:,:), CurlWBasis(:,:), Basis(:), dBasisdx(:,:)
+    REAL(KIND=dp), ALLOCATABLE :: re_local_field(:), im_local_field(:)
+    REAL(KIND=dp), POINTER :: FSave(:) => NULL()
+    CHARACTER(:), ALLOCATABLE :: eqname    
+    REAL(KIND=dp) :: u, v, w, detJ, s, xq, Norm, TotNorm
+    REAL(KIND=dp) :: ReEz, ImEz, ReE(3), ImE(3), ReV(3), ImV(3), Normal(3), ReL(3), ImL(3)
+    REAL(KIND=dp) :: mu0inv, eps0, omega
+    COMPLEX(KIND=dp) :: Ez, EigVal
+    LOGICAL :: Found, Stat
+    COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
+    INTEGER, POINTER :: NodalPerm(:) => NULL()
+    TYPE(Solver_t), POINTER :: pSolver=>NULL(), PostSolver=>NULL()
+    INTEGER, ALLOCATABLE :: PermIndexes(:)
+    LOGICAL :: AllocDone = .FALSE.
     
-    CALL GetScalarLocalEigenmode(re_local_field, 'e re', Element, PrimSolver, ModeIndex, ComplexPart=.FALSE.)
-    CALL GetScalarLocalEigenmode(im_local_field, 'e im', Element, PrimSolver, ModeIndex, ComplexPart=.FALSE.)
+    SAVE PostSolver, MASS, LFORCE, WBasis, CurlWBasis, Basis, dBasisdx, PermIndexes, &
+        Re_local_field, Im_local_field, dofs, EF, GForce, FSave, AllocDone, NodalPerm
     
-    Mass = 0.0_dp
-    Force = 0.0_dp
+    !------------------------------------------------------------------------------
 
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
-        EdgeBasisDegree = EdgeBasisDegree)
-
-    DO i=1, IP % n
-      u = IP % U(i)
-      v = IP % V(i)
-      w = IP % W(i)
-
-      stat = ElementInfo(Element, Nodes, u, v, w, detJ, Basis, dBasisdx, &
-          EdgeBasis = Wbasis, RotBasis = CurlWBasis, USolver = PrimSolver)
-
-      s = IP % s(i) * detJ
+    IF(PortInd > 1) GOTO 10
+    
+    IF(.NOT. AllocDone ) THEN
+      ALLOCATE(PostSolver)
+      CALL ListCopyPrefixedKeywords( Solver % Values, PostSolver % Values,'post:')
       
-      ReEz = SUM( Re_local_field(1:n) * Basis(1:n) )
-      ImEz = SUM( Im_local_field(1:n) * Basis(1:n) )
-      Ez = CMPLX(ReEz, ImEz, kind=dp) / (im * Beta)
-      ReEz = REAL(Ez)
-      ImEz = AIMAG(Ez)
-
-      ReE(:) = 0.0_dp
-      ImE(:) = 0.0_dp
+      PostSolver % Mesh => Mesh
+      i = SIZE(Solver % Def_Dofs,1)
+      j = SIZE(Solver % Def_Dofs,2)
+      k = SIZE(Solver % Def_Dofs,3)
+      ALLOCATE(PostSolver % Def_Dofs(i,j,k))
+      PostSolver % Def_Dofs = 0
+      PostSolver % Def_Dofs(:,:,1) = 1
       
-      DO p=1,vdofs
-        ReE(:) = ReE(:) + Re_local_field(n+p) * WBasis(p,:)
-        ImE(:) = ImE(:) + Im_local_field(n+p) * WBasis(p,:)
-      END DO
+      n = Mesh % MaxElementDOFs   
+      dofs = 6
+      ALLOCATE(MASS(DOFs,DOFs), LFORCE(n,DOFs), WBasis(n,3), &
+          CurlWBasis(n,3), Basis(n), dBasisdx(n,3), PermIndexes(n), &
+          Re_Local_field(n), Im_Local_field(n))
+    END IF
+
+    ! If allocations are done and mesh is unchanged no need to do anything. 
+    IF(AllocDone ) THEN
+      IF( SIZE( NodalPerm) == SIZE( Solver % Variable % Perm ) ) THEN
+        GOTO 10
+      ELSE
+        DEALLOCATE(NodalPerm)
+        CALL FreeMatrix( PostSolver % Matrix )
+      END IF
+    END IF
+    AllocDone = .TRUE.
         
-!      ReE(:) = SUM( Re_local_field(n+1:nd:2) * WBasis(1:vdofs,:) )
-!      ReV(:) = SUM( Re_local_field(n+2:nd:2) * WBasis(1:vdofs,:) )
-!      ImE(:) = SUM( Im_local_field(n+1:nd:2) * WBasis(1:vdofs,:) )
-!      ImV(:) = SUM( Im_local_field(n+2:nd:2) * WBasis(1:vdofs,:) )
+    ALLOCATE(NodalPerm(SIZE(Solver % Variable % Perm)))
 
-      DO j=1,DOFs
+    ! Creating matrix structure using the mask of the primary equation.
+    ! Note that this matrix only has nodal dofs. 
+    NodalPerm = 0
+    eqname = ListGetString( Params,'Equation')
+    CALL ListAddString( PostSolver % Values,'Equation',TRIM(eqname)//'_post')
+    PostSolver % Matrix => CreateMatrix( Model, PostSolver, Mesh, NodalPerm, &
+        1, MATRIX_CRS,.FALSE., eqname, NodalDofsOnly = .TRUE.)
+    PostSolver % Matrix % Values = 0.0_dp
+
+    ! Temporal vector for solving one nodal component at a time.    
+    CALL VariableAddVector( Mesh % Variables,Mesh,PostSolver,&
+        'EM2D tmp',1,Perm = NodalPerm, Output = .FALSE. )
+    PostSolver % Variable => VariableGet( Mesh % Variables,'EM2D tmp')
+    IF(.NOT. ASSOCIATED(PostSolver % Variable)) CALL Fatal(Caller,'Post solver field not found!')
+
+    ! Field including all the nodal components. 
+    CALL VariableAddVector( Mesh % Variables,Mesh,PostSolver,&
+        'EF2D[EF2D Re:3 EF2D Im:3]',6,Perm = NodalPerm, Secondary = .TRUE., Output = .TRUE. )
+    EF => VariableGet( Mesh % Variables,'EF2D')
+    IF(.NOT. ASSOCIATED(EF) ) CALL Fatal(Caller,'Could not find field: EF2D!')
+    
+    ! Allocate the rhs vectors for each component
+    n = PostSolver % Matrix % NumberOfRows
+    ALLOCATE( PostSolver % Matrix % RHS(n) )
+    Fsave => PostSolver % Matrix % RHS
+    PostSolver % Matrix % rhs = 0.0_dp
+
+    ! Use the original communicator
+    PostSolver % Matrix % Comm = Solver % Matrix % Comm
+    
+    ! The default mode is the 1st mode because of default ordering it should be ok
+10  pSolver => Solver
+    Active = GetNOFActive(Solver)
+        
+    n = PostSolver % Matrix % NumberOfRows
+    IF(.NOT. ALLOCATED(GForce)) THEN
+      ALLOCATE( GForce(n,dofs-1))
+      GForce = 0.0_dp
+    END IF
+    
+    DO k=1, Active
+      Element => GetActiveElement(k,Solver)
+
+      IF(MaxPort>0) THEN
+        BC => GetBC(Element)
+        IF(ListGetInteger(BC,'Port Index',Found ) /= PortInd) CYCLE
+      END IF
+      
+      n = GetElementNOFNodes()
+      nd = GetElementNOFDOFs(USolver=Solver)
+
+      ! The number of DOFs for one vector FE field  
+      vdofs = nd - n
+      CALL GetElementNodes( Nodes, Element, Solver )
+
+      ! At the moment we assume that the wave propagates in the direction of some
+      ! coordinate axis. Then the following check should be enough to get the positive
+      ! direction of wave propagation: 
+      Normal = NormalVector(Element, Nodes)
+      normal_ind = MAXLOC(ABS(Normal))
+      IF (Normal(normal_ind(1)) < 0.0_dp) Normal = -Normal
+      
+      CALL GetScalarLocalEigenmode(re_local_field, UElement = Element, &
+          USolver = Solver, NoEigen = ModeIndex, ComplexPart=.FALSE.)
+      CALL GetScalarLocalEigenmode(im_local_field, UElement = Element, &
+          USolver = Solver, NoEigen = ModeIndex, ComplexPart=.TRUE.)
+      
+      Mass = 0.0_dp
+      LForce = 0.0_dp
+
+      IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+          EdgeBasisDegree = EdgeBasisDegree)
+      
+      DO i=1, IP % n
+        u = IP % U(i)
+        v = IP % V(i)
+        w = IP % W(i)
+
+        stat = ElementInfo(Element, Nodes, u, v, w, detJ, Basis, dBasisdx, &
+            EdgeBasis = Wbasis, RotBasis = CurlWBasis, USolver = pSolver)
+
+        s = IP % s(i) * detJ
+
+        ReEz = SUM( Re_local_field(1:n) * Basis(1:n) )
+        ImEz = SUM( Im_local_field(1:n) * Basis(1:n) )
+        Ez = CMPLX(ReEz, ImEz, kind=dp) / (im * Beta)
+        ReEz = REAL(Ez)
+        ImEz = AIMAG(Ez)
+
+        ReE(:) = 0.0_dp
+        ImE(:) = 0.0_dp
+        DO p=1,vdofs
+          ReE(:) = ReE(:) + Re_local_field(n+p) * WBasis(p,:)
+          ImE(:) = ImE(:) + Im_local_field(n+p) * WBasis(p,:)
+        END DO
+        
+        ReL = ReE + Normal * ReEz
+        IML = ImE + Normal * ImEz
+
         DO p=1,n
           DO q=1,n
-            Mass((p-1)*DOFs+j,(q-1)*DOFs+j) = Mass((p-1)*DOFs+j,(q-1)*DOFs+j) + s * Basis(p) * Basis(q)
+            Mass(p,q) = Mass(p,q) + s * Basis(p) * Basis(q)
           END DO
-          SELECT CASE(j)
-          CASE(1)
-            Force((p-1)*DOFs+1) = Force((p-1)*DOFs+1) + s * (ReE(1) + Normal(1)*ReEz) * Basis(p)
-          CASE(2)
-            Force((p-1)*DOFs+2) = Force((p-1)*DOFs+2) + s * (ReE(2) + Normal(2)*ReEz) * Basis(p)
-          CASE(3)
-            Force((p-1)*DOFs+3) = Force((p-1)*DOFs+3) + s * (ReE(3) + Normal(3)*ReEz) * Basis(p)
-          CASE(4)
-            Force((p-1)*DOFs+4) = Force((p-1)*DOFs+4) + s * (ImE(1) + Normal(1)*ImEz) * Basis(p)
-          CASE(5)
-            Force((p-1)*DOFs+5) = Force((p-1)*DOFs+5) + s * (ImE(2) + Normal(2)*ImEz) * Basis(p)
-          CASE(6)
-            Force((p-1)*DOFs+6) = Force((p-1)*DOFs+6) + s * (ImE(3) + Normal(3)*ImEz) * Basis(p)
-          END SELECT
+          LForce(p,1:3) = LForce(p,1:3) + s * ReL * Basis(p)
+          LForce(p,4:6) = LForce(p,4:6) + s * ImL * Basis(p)
         END DO
       END DO
+
+      PermIndexes(1:n) = PostSolver % Variable % Perm(Element % NodeIndexes)
+      
+      ! Assemble mass matrix and the 1st component      
+      CALL UpdateGlobalEquations( PostSolver % Matrix, Mass, PostSolver % Matrix % rhs, &
+          LForce(1:n,1),n,1,PermIndexes(1:n), UElement=Element)      
+
+      ! Assemble the remaining r.h.s. vectors
+      DO j=2,Dofs
+        CALL UpdateGlobalForce( GForce(:,j-1), &
+            LForce(1:n,j), n, 1, PermIndexes(1:n), UElement=Element)
+      END DO
+
     END DO
 
-    CALL DefaultUpdateEquations(Mass, Force)
+    ! We will assembly until the last mode has been added.
+    IF(PortInd < MaxPort) RETURN
     
-  END DO
+    TotNorm = 0.0_dp
+    DO j=1,Dofs
+      CALL Info(Caller,'Solving for component: '//I2S(j),Level=10)
+      IF(j==1) THEN
+        FSave => PostSolver % Matrix % RHS 
+      ELSE
+        PostSolver % Matrix % rhs => GForce(:,j-1)
+      END IF
+      PostSolver % Variable % Values = 0.0_dp    
 
-  CALL DefaultFinishBulkAssembly()
-  CALL DefaultFinishAssembly()
-!  CALL DefaultDirichletBCs()
+      Norm = DefaultSolve(PostSolver)
+      TotNorm = TotNorm + Norm**2
 
-  Norm = DefaultSolve()
+      EF % Values(j::dofs) = PostSolver % Variable % Values
+      CALL ListAddLogical(PostSolver % Values, 'Linear System refactorize', .FALSE.)
+    END DO
+    PostSolver % Variable % Norm = SQRT(TotNorm)
+    
+    PostSolver % Matrix % RHS => FSave
+    TotNorm = SQRT(TotNorm)
+    PostSolver % Variable % Norm = TotNorm
+    
+    PostSolver % Matrix % rhs => FSave
+    DEALLOCATE(GForce)
+    
+  END SUBROUTINE EMPortPost
 
-  CALL DefaultFinish()  
 !------------------------------------------------------------------------------
-END SUBROUTINE EMPortSolver_Post
+END SUBROUTINE EMPortSolver
 !------------------------------------------------------------------------------
 
 

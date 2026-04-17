@@ -193,8 +193,8 @@ CONTAINS
       MaxFDOFs  = MAX( MaxFDOFs,  Element % BDOFs )
     END DO
     
-    GlobalBubbles = ListGetLogical( Params, 'Bubbles in Global System', Found )
-    IF (.NOT.Found) GlobalBubbles = .TRUE.
+    ! Inherit the bubbles from primary solver
+    GlobalBubbles = Solver % GlobalBubbles
     
     Ndeg = Ndeg + Mesh % NumberOfNodes
     IF ( MaxEDOFs > 0 ) Ndeg = Ndeg + MaxEDOFs * Mesh % NumberOFEdges

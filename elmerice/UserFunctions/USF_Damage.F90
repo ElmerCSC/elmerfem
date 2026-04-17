@@ -104,7 +104,6 @@ FUNCTION SourceDamage (Model, nodenumber, D) RESULT(Source)
    
 
    IF (FirstTime) THEN
-      FirstTime = .FALSE.  
       DIM = CoordinateSystemDimension()
 
       DO i=1, 3
@@ -158,7 +157,7 @@ FUNCTION SourceDamage (Model, nodenumber, D) RESULT(Source)
    IF ( ASSOCIATED( PSeaDVariable ) ) THEN
       PSeaDPerm   => PSeaDVariable % Perm
       PSeaDValues => PSeaDVariable % Values
-   ELSE
+   ELSE IF( FirstTime ) THEN
       CALL WARN('Damage Source', 'PSeaD not associated, basal pressure not taken into account in damage formation' )
       CALL WARN('Damage Source', 'Taking default value PSeaD=0.0')
    END IF
@@ -168,6 +167,8 @@ FUNCTION SourceDamage (Model, nodenumber, D) RESULT(Source)
    FlowPerm    => FlowVariable % Perm
    FlowValues  => FlowVariable % Values
 
+   FirstTime = .FALSE.
+   
    Sig = 0.0
    DO i=1, DIM
       DO j= 1, DIM
@@ -235,9 +236,9 @@ FUNCTION SourceDamage (Model, nodenumber, D) RESULT(Source)
    ! Get the Sea pressure at the node
    
    IF ( ASSOCIATED( PSeaDVariable ) ) THEN
-   pwater = PseaDValues ( PSeaDPerm (nodenumber) )
+     pwater = PseaDValues ( PSeaDPerm (nodenumber) )
    ELSE
-   pwater = 0.0_dp
+     pwater = 0.0_dp
    END IF
 
    ! Damage Criterion

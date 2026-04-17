@@ -1,0 +1,311 @@
+!
+! This is a 3-D application of the 2-D test case ../EM_port_eigen. Here the 2-D
+! port model is first solved over a surface of a 3-D mesh. Boundary conditions
+! for the 3-D model are then created by using the propagation parameter and the
+! corresponding eigenfunction determined by the 2-D solution.
+!
+! NOTE: This is WIP and this approach is not yet ready for serious use
+
+! The original author: M.M. 
+!
+
+Check Keywords "Warn"
+
+$ epsr = 2.25
+$ wref = 3
+
+Header
+  Mesh DB "." "waveguide3D"
+End
+
+Simulation
+  Coordinate System = "Cartesian 3D"
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Max Output Level = 7
+End
+
+Constants
+  Permeability of Vacuum = 1.0
+  Permittivity of Vacuum = 1.0
+End
+
+Body 1
+  Equation = 2
+  Material = 1
+End
+
+Body 2
+  Equation = 2
+  Material = 2
+End
+
+Body 3
+  Equation = 1
+End
+
+Body 4
+  Equation = 1
+End
+
+Material 1
+  Name = "higher_eps"
+  Relative Reluctivity = 1.0
+  Relative Permittivity = $ epsr
+  AMatrix = Real $ -epsr * wref^2
+End 
+
+Material 2
+  Name = "Vacuum"
+  Relative Reluctivity = 1.0
+  Relative Permittivity = 1.0
+  AMatrix = Real $ -wref^2
+End
+
+Equation 1
+  Active Solvers(1) = 1 
+End
+
+Equation 2
+  Active Solvers(4) = 2 3 6 7 
+End
+
+Solver 1
+  Equation = "Port mode"
+  Procedure = "EMPort" "EMPortSolver"
+
+  Angular Frequency = $wref
+  Use Piola Transform = True
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = Umfpack ! use mumps if available
+
+!  Eigen System Shift = -1.0
+!  Eigen System Shift Im = Real 0
+  Eigen Analysis = True
+  Eigen System Values = 30
+  Eigen System Convergence Tolerance = Real 1.0e-8
+!  Eigen System Compute Residuals = True
+
+! defaulted these
+!  Eigen System Sorting = string "smallest real part"
+!  Eigen System Normalize To Unity = True
+!  Mode Index = Integer 1
+
+
+!  Eigen System Select = smallest real part
+!  Eigen System Select = largest real part
+!  Eigen System Select = smallest imag part
+!  Eigen System Select = largest imag part
+!  Eigen System Select = smallest magnitude
+!  Eigen System Select = largest magnitude
+!  Eigen System Lanczos Vectors = 180
+!  Eigen System Max Iterations = 1
+
+  Calculate Nodal Field = Logical True
+  post: linear system solver = direct
+  post: linear system direct method = umfpack
+End
+
+
+Solver 2
+  Equation = "VectorHelmholtz"
+  Use Piola Transform = Logical True
+  Procedure = "VectorHelmholtz" "VectorHelmholtzSolver"
+
+  Angular Frequency = $wref
+
+  ! Command to seek for a lower-dimensional eigenfunction
+  ! so that BCs based on it can be constructed:
+  !
+  Variable = E[E re:1 E im:1]
+
+  Linear System Symmetric = False
+  Linear System Scaling = True
+  Linear System Row Equilibration = True
+
+  Linear System Solver = String "Iterative"
+  Linear System Iterative Method = String "gcr"
+  Linear System Convergence Tolerance = 1.0e-5
+  Linear System Residual Output = 1
+  Linear system abort not converged = false
+  Linear System Max Iterations = 150
+  Linear System Complex = True
+  Linear System Preconditioning = "auxiliary space solver"
+
+! Needed for auxiliary space preconditioning
+  Exported Variable 1 = -dofs 2 e res
+  Exported Variable 2 = -dofs 2 e update
+  Prec Solvers(1) = Integer 7
+  Additive Prec Solvers(1) = Integer 6
+  Preconditioning Residual = String "e res"
+  Preconditioning Update = String "e update"
+  Additive Preconditioning = Logical True
+  Additive Pre-Smoothing = Logical False
+
+  MG Smoother = csgs
+!  MG Pre Smoothing Iterations = 7
+  MG Post Smoothing Iterations = 3
+  MG Smoother Relaxation Factor = Real 1.0
+
+!  Calculate Loads = Logical True
+!  Calculate Energy Inner Product = Logical True
+
+End
+
+Solver 3
+  Equation = "calcfields"
+
+  Procedure = "VectorHelmholtz" "VectorHelmholtzCalcFields"
+
+  Calculate Elemental Fields = Logical False
+  Calculate Magnetic Field Strength = Logical False
+  Calculate Magnetic Flux Density = Logical False
+  Calculate Poynting vector = Logical False
+  Calculate Electric field = Logical True
+
+  Steady State Convergence Tolerance = 1
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = None
+  Linear System Residual Output = 10
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = CG
+  Linear System Convergence Tolerance = 1.0e-9
+End
+
+Solver 4
+!  Exec Solver = never
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = case
+  Vtu Format = Logical True
+  Save Geometry IDs = True
+  Ascii Output = True
+
+  Eigen Analysis = False
+End
+
+Solver 5
+  Equation = "SaveScalars"
+!  Filename = f.dat
+
+  Procedure = "SaveData" "SaveScalars"
+  Save EigenValues = True
+
+! Compare the 1st eigenvalue when sorted from smallest (negative real)
+  Show Norm Index = 1 
+End
+
+Solver 6
+  exec solver = never
+
+  Equation = "VectorHelmholtzNodal"
+  Procedure = "VectorHelmholtzNodal" "VectorHelmholtzNodal"
+  Angular Frequency = $wref
+
+  Preconditioning Solver = Logical True
+  Monolithic Solver = Logical True
+  Edge Residual Name = String "e res"
+  Edge Update Name = String "e update"
+
+  curl-curl Form = Logical True
+  Linear System Preconditioning Damp Coefficient im = -1.0
+
+  Linear System Symmetric = False
+  Linear System Scaling = True
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = String "bicgstab2"
+  Linear System Complex = True
+!  BiCGstabl polynomial degree = Integer 4  
+  Linear System Preconditioning = String "ILU1"
+  Linear System Max Iterations = Integer 1000
+  Linear System Convergence Tolerance = 1.0e-3
+  Linear system abort not converged = false
+  Linear System Residual Output = 1
+
+  Nonlinear System Max Iterations = 1
+
+  Skip Compute Nonlinear Change = True
+End
+
+Solver 7
+! used as slave solver only  
+  exec solver = never
+
+  Equation = "Complex Poisson"
+  Procedure = "DCRComplexSolve" "DCRComplexSolver"
+
+  Variable = "Prec Scalar[ps re:1 ps im:1]"
+!  Variable DOFs = 2
+
+  Preconditioning Solver = Logical True
+  Edge Residual Name = String "e res"
+  Edge Update Name = String "e update"
+
+  Linear System Symmetric = False
+  Linear System Scaling = True
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = String "bicgstab2"
+  Linear System Complex = True
+  BiCGstabl polynomial degree = Integer 4  
+  Linear System Preconditioning = String "ILU1"
+  Linear System Max Iterations = Integer 1000
+  Linear System Convergence Tolerance = 1.0e-7
+  Linear system abort not converged = false
+  Linear System Residual Output = 1
+
+  Nonlinear System Max Iterations = 1
+
+  Skip Compute Nonlinear Change = True
+End
+
+
+Boundary Condition 1
+  Name = "Sides"
+  Target Boundaries(6) = 1 2 3 4 5 6
+  E re {e} = Real 0.0
+  E im {e} = Real 0.0
+
+  PEX re = Real 0
+  PEZ re = Real 0
+  PEX im = Real 0
+  PEZ im = Real 0
+
+  ps re = Real 0.0
+  ps im = Real 0.0
+
+
+  Eport re = Real 0
+  Eport im = Real 0
+  Eport re {e} = Real 0.0
+  Eport im {e} = Real 0.0
+End
+
+
+
+
+Boundary Condition 2
+  Target Boundaries(2) = 7 8
+
+  Body Id = 3
+  Port Type = "eigenmode"
+
+  ! If we are doing lumping then "Constraint Mode" works also instead of "Port Index"
+  Port Index = Integer 1
+
+  Bscalar 1 = Real 0.0  
+  Bscalar 2 = Real -2.9152713305134146
+End
+
+Boundary Condition 3
+  Target Boundaries(2) = 9 10
+  
+  Body Id = 3
+  Port Type = "eigenmode"
+  Port Index = Integer 2
+  Port Passive = Logical True
+End
+
+Solver 2 :: Reference Norm = 2.52395370E-01
+Solver 3 :: Reference Norm = 1.59199773E-01
+Solver 5 :: Reference Norm = 1.46409335E+01

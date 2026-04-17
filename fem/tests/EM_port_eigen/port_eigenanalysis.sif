@@ -35,7 +35,7 @@ Simulation
   Coordinate System = "Cartesian"
   Simulation Type = Steady State
   Steady State Max Iterations = 1
-  Max Output Level = 5
+  Max Output Level = 7
 End
 
 Constants
@@ -93,8 +93,13 @@ Solver 1
 !  Linear System Preconditioning = ILU2
 !  Linear System Residual Output = 50
 
-  Eigen System Shift = -1.0
-  Eigen System Shift Im = Real 0
+! This is special keyword for this solver
+! We use the estimated beta^2 as the shift. 
+  Eigen System Shift Automatic = Logical True
+
+!  Eigen System Shift = -1.0
+!  Eigen System Shift Im = Real 0
+
   Eigen Analysis = True
   Eigen System Values = 30
   Eigen System Convergence Tolerance = Real 1.0e-10
@@ -116,7 +121,8 @@ Solver 2
   Variable = postfield[Electric Field Re:3 Electric Field Im:3]
   Variable DOFs = 6
 
-  Mode Index = Integer 8
+! If this is not given the largest negative real value is used.
+!  Mode Index = Integer 8
   
   Linear System Solver = Iterative
   Linear System Convergence Tolerance = real 1e-8
@@ -163,4 +169,5 @@ Boundary Condition 1
   E im {e} = Real 0.0
 End
 
-Solver 4 :: Reference Norm = Real 14.647970391372228
+Solver 2 :: Reference Norm = 2.87792448E-01
+Solver 4 :: Reference Norm = 14.647970391372228

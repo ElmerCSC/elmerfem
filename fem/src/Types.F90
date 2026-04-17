@@ -95,14 +95,15 @@ MODULE Types_
 	                      SOLVER_MODE_BLOCK = 4, &      ! block solver
 	                      SOLVER_MODE_GLOBAL = 5, &     ! lumped variables (no mesh)
 	                      SOLVER_MODE_MATRIXFREE = 6, & ! normal field, no matrix
-                        SOLVER_MODE_STEPS = 7         ! as the legacy but split to different steps
+                              SOLVER_MODE_STEPS = 7         ! as the legacy but split to different steps
 
   INTEGER, PARAMETER :: PROJECTOR_TYPE_DEFAULT = 0, &  ! unspecified constraint matrix
                         PROJECTOR_TYPE_NODAL = 1, &    ! nodal projector
                         PROJECTOR_TYPE_GALERKIN = 2, & ! Galerkin projector
-                        PROJECTOR_TYPE_INTEGRAL = 3, & 
-                        PROJECTOR_TYPE_ROBIN = 4 
-                        
+                        PROJECTOR_TYPE_INTEGRAL = 3, & ! Integral type of constraint
+                        PROJECTOR_TYPE_ROBIN = 4, &    ! Robin type of constraint
+                        PROJECTOR_TYPE_NITSCHE = 5     ! Projector for Nitsche interface conditions
+                                              
   INTEGER, PARAMETER :: DIRECT_NORMAL = 0, & ! Normal direct method
                         DIRECT_PERMON = 1    ! Permon direct method
 
@@ -476,7 +477,7 @@ MODULE Types_
    TYPE ValueHandle_t
      INTEGER :: ValueType = -1
      INTEGER :: SectionType = -1
-     INTEGER :: ListId = -1
+     INTEGER :: ListId = -9999
      LOGICAL :: BulkElement
      TYPE(Element_t), POINTER :: Element => NULL()
      TYPE(ValueList_t), POINTER :: List => NULL()
@@ -926,27 +927,27 @@ MODULE Types_
       INTEGER :: SolverId = 0
       TYPE(ValueList_t), POINTER :: Values => NULL()
 
-      INTEGER :: TimeOrder,DoneTime,Order,NOFEigenValues=0
+      INTEGER :: TimeOrder=0,DoneTime=0,Order=0,NOFEigenValues=0
       INTEGER :: TimesVisited = 0
-      INTEGER(KIND=AddrInt) :: PROCEDURE, LinBeforeProc, LinAfterProc
+      INTEGER(KIND=AddrInt) :: PROCEDURE=0, LinBeforeProc=0, LinAfterProc=0
 
       REAL(KIND=dp) :: Alpha,Beta,dt
 
       LOGICAL :: NewtonActive = .FALSE.
       LOGICAL :: PeriodicFlipActive = .FALSE.
       
-      INTEGER :: SolverExecWhen
-      INTEGER :: SolverMode
+      INTEGER :: SolverExecWhen=-1
+      INTEGER :: SolverMode=-1
 
-      INTEGER :: MultiGridLevel,  MultiGridTotal, MultiGridSweep
-      LOGICAL :: MultiGridSolver, MultiGridEqualSplit
+      INTEGER :: MultiGridLevel=-1, MultiGridTotal=-1, MultiGridSweep=-1
+      LOGICAL :: MultiGridSolver=.FALSE., MultiGridEqualSplit=.FALSE.
       TYPE(Mesh_t), POINTER :: Mesh => NULL()
       INTEGER :: MeshTag = 1
       LOGICAL :: MeshChanged = .FALSE.
       
       INTEGER, POINTER :: ActiveElements(:) => NULL()
       INTEGER, POINTER :: InvActiveElements(:) => NULL()
-      INTEGER :: NumberOfActiveElements
+      INTEGER :: NumberOfActiveElements=0
       INTEGER, ALLOCATABLE ::  Def_Dofs(:,:,:)
 
       TYPE(BlockMatrix_t), POINTER :: BlockMatrix => NULL()
@@ -1008,9 +1009,8 @@ MODULE Types_
   TYPE Circuit_t
     REAL(KIND=dp), ALLOCATABLE :: A(:,:), B(:,:), Mre(:,:), Mim(:,:), Area(:)
     INTEGER, ALLOCATABLE :: ComponentIds(:), Perm(:)
-    LOGICAL :: UsePerm = .FALSE., Harmonic, Parallel
-    INTEGER :: n, m, n_comp,CvarDofs
-!   CHARACTER(:), ALLOCATABLE :: names(:), source(:)
+    LOGICAL :: UsePerm = .FALSE., Harmonic=.FALSE., Parallel=.FALSE.
+    INTEGER :: n=0, m=0, n_comp=0,CvarDofs=0
     CHARACTER(MAX_NAME_LEN), ALLOCATABLE :: names(:), source(:)
     TYPE(Component_t), POINTER :: Components(:)=>NULL()
     TYPE(CircuitVariable_t), POINTER :: CircuitVariables(:)=>NULL()
@@ -1028,9 +1028,9 @@ MODULE Types_
 !
 !     Model dimensions
 !
-      INTEGER :: NumberOfBulkElements, &
-                 NumberOfNodes,        &
-                 NumberOfBoundaryElements
+      INTEGER :: NumberOfBulkElements=0, &
+                 NumberOfNodes=0,        &
+                 NumberOfBoundaryElements=0
 !
 !     Simulation input data, that concern the model as a whole
 !
@@ -1137,7 +1137,7 @@ MODULE Types_
       TYPE(Circuit_t), POINTER :: Circuits(:) => NULL()
       TYPE(Solver_t), POINTER :: ASolver => NULL()
       
-      LOGICAL :: HarmonicCircuits
+      LOGICAL :: HarmonicCircuits=.FALSE.
 
 ! Tag counts to speed things up
       INTEGER :: NumberOfDistTags=-1,NumberOfParTags=-1
