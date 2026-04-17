@@ -627,22 +627,6 @@ IF (WITH_YAC)
     MESSAGE(FATAL_ERROR "WITH_YAC requires YAML_FOUND.  YAML not found ")
   ENDIF()
 
-  FIND_PACKAGE(Proj)
-
-  MESSAGE(STATUS "  Proj_FOUND:     " "${Proj_FOUND}")
-  MESSAGE(STATUS "  Proj_INC:       " "${Proj_INCLUDE_DIR}")
-  MESSAGE(STATUS "  Proj_LIB :      " "${Proj_LIBRARIES}")
-
-  IF(Proj_FOUND)
-    SET(HAVE_Proj TRUE)
-    MARK_AS_ADVANCED(HAVE_Proj)
-    INCLUDE_DIRECTORIES(${Proj_INCLUDE_DIR})
-    LINK_DIRECTORIES(${Proj_LIBRARIES})
-    ADD_DEFINITIONS(-DHAVE_Proj)
-  ELSE()
-    MESSAGE(FATAL_ERROR "WITH_YAC requires Proj_FOUND.  Proj not found ")
-  ENDIF()
-
   MESSAGE(STATUS "------------------------------------------------")
   MESSAGE(STATUS "  Looking for YAC ")
 

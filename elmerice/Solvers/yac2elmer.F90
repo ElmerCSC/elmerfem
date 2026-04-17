@@ -1,16 +1,19 @@
-!> Register and setup the grid for YAC coupling
-!> Extracts grid information from mesh, converts coordinates, and calls coupling_setup
-SUBROUTINE register_coupling_grid(ThisMesh, grid_crs, model_tstep, &
-                                   couple_to_ebfm, couple_to_icon)
+!> Collect grid data for YAC coupling
+!> Extracts grid information from mesh and converts coordinates
+SUBROUTINE collect_coupling_grid_data(ThisMesh, lon_vertices, lat_vertices, &
+                                      lon_cells, lat_cells, cell_to_vertex, &
+                                      num_vertices_per_cell, cell_ids, vertex_ids)
   USE Types, ONLY: Mesh_t, Element_t, dp
-  USE elmer_coupling, ONLY: coupling_setup
   USE ProjUtils, ONLY: xy2LonLat, deg2rad
 
   IMPLICIT NONE
 
   TYPE(Mesh_t), POINTER :: ThisMesh
-  CHARACTER(LEN=*), INTENT(IN) :: grid_crs, model_tstep
-  LOGICAL, INTENT(IN) :: couple_to_ebfm, couple_to_icon
+  REAL(KIND=dp), ALLOCATABLE, INTENT(OUT) :: lon_vertices(:), lat_vertices(:)
+  REAL(KIND=dp), ALLOCATABLE, INTENT(OUT) :: lon_cells(:), lat_cells(:)
+  INTEGER, ALLOCATABLE, INTENT(OUT) :: cell_to_vertex(:)
+  INTEGER, ALLOCATABLE, INTENT(OUT) :: num_vertices_per_cell(:)
+  INTEGER, ALLOCATABLE, INTENT(OUT) :: cell_ids(:), vertex_ids(:)
 
   ! Local variables
   TYPE(Element_t), POINTER :: element
@@ -21,12 +24,6 @@ SUBROUTINE register_coupling_grid(ThisMesh, grid_crs, model_tstep, &
   ! Grid arrays for coupling
   REAL(KIND=dp), ALLOCATABLE :: x_vertices(:), y_vertices(:)
   REAL(KIND=dp), ALLOCATABLE :: x_cells(:), y_cells(:)
-  INTEGER, ALLOCATABLE :: cell_to_vertex(:), num_vertices_per_cell(:)
-  INTEGER, ALLOCATABLE :: cell_ids(:), vertex_ids(:)
-
-  ! For ProjUtils comparison
-  REAL(KIND=dp), ALLOCATABLE :: lon_vertices(:), lat_vertices(:)
-  REAL(KIND=dp), ALLOCATABLE :: lon_cells(:), lat_cells(:)
 
   ! Extract grid information for coupling
   nbr_vertices = ThisMesh % NumberOfNodes
@@ -85,19 +82,10 @@ SUBROUTINE register_coupling_grid(ThisMesh, grid_crs, model_tstep, &
     lat_cells(i) = lat_cells(i) * deg2rad
   END DO
 
-  ! Call coupling_setup with precomputed lon/lat coordinates (radians)
-  CALL coupling_setup(lon_vertices, lat_vertices, lon_cells, lat_cells, &
-                      cell_to_vertex, num_vertices_per_cell, &
-                      cell_ids, vertex_ids, &
-                      TRIM(grid_crs), TRIM(model_tstep), &
-                      couple_to_ebfm, couple_to_icon)
-
   ! Clean up local arrays
   DEALLOCATE(x_vertices, y_vertices, x_cells, y_cells)
-  DEALLOCATE(cell_to_vertex, num_vertices_per_cell, cell_ids, vertex_ids)
-  DEALLOCATE(lon_vertices, lat_vertices, lon_cells, lat_cells)
 
-END SUBROUTINE register_coupling_grid
+END SUBROUTINE collect_coupling_grid_data
 
 SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   USE DefUtils, ONLY: GetSolverParams, GetMesh, GetNOFActive, &
@@ -133,18 +121,26 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   TYPE(Mesh_t),POINTER :: Mesh
   TYPE(Variable_t), POINTER :: t_iceVar, smbVar, runoffVar, ZsSol
   ! TYPE(Variable_t), POINTER :: cltVar, prVar  ! ICON is not supported at the moment
+  REAL(KIND=dp), ALLOCATABLE :: lon_vertices(:), lat_vertices(:)
+  REAL(KIND=dp), ALLOCATABLE :: lon_cells(:), lat_cells(:)
+  INTEGER, ALLOCATABLE :: cell_to_vertex(:), num_vertices_per_cell(:)
+  INTEGER, ALLOCATABLE :: cell_ids(:), vertex_ids(:)
 
   LOGICAL        :: Found
 
   INTERFACE
-    SUBROUTINE register_coupling_grid(ThisMesh, grid_crs, model_tstep, &
-                                       couple_to_ebfm, couple_to_icon)
-      USE Types, ONLY: Mesh_t
+    SUBROUTINE collect_coupling_grid_data(ThisMesh, lon_vertices, lat_vertices, &
+                                          lon_cells, lat_cells, cell_to_vertex, &
+                                          num_vertices_per_cell, cell_ids, vertex_ids)
+      USE Types, ONLY: Mesh_t, dp
       IMPLICIT NONE
       TYPE(Mesh_t), POINTER :: ThisMesh
-      CHARACTER(LEN=*), INTENT(IN) :: grid_crs, model_tstep
-      LOGICAL, INTENT(IN) :: couple_to_ebfm, couple_to_icon
-    END SUBROUTINE register_coupling_grid
+      REAL(KIND=dp), ALLOCATABLE, INTENT(OUT) :: lon_vertices(:), lat_vertices(:)
+      REAL(KIND=dp), ALLOCATABLE, INTENT(OUT) :: lon_cells(:), lat_cells(:)
+      INTEGER, ALLOCATABLE, INTENT(OUT) :: cell_to_vertex(:)
+      INTEGER, ALLOCATABLE, INTENT(OUT) :: num_vertices_per_cell(:)
+      INTEGER, ALLOCATABLE, INTENT(OUT) :: cell_ids(:), vertex_ids(:)
+    END SUBROUTINE collect_coupling_grid_data
   END INTERFACE
   
   SolverParams => GetSolverParams()
@@ -245,9 +241,20 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
         'Running with ' // I2S(ParEnv % PEs) // ' partitions', Level=3)
     END IF
 
-    ! Register coupling grid (extract mesh, convert coordinates, setup YAC)
-    CALL register_coupling_grid(ThisMesh, TRIM(grid_crs), TRIM(ADJUSTL(I2S(coupling_hours))), &
-                                couple_to_ebfm, couple_to_icon)
+    ! Collect coupling grid data (extract mesh, convert coordinates)
+    CALL collect_coupling_grid_data(ThisMesh, lon_vertices, lat_vertices, &
+                    lon_cells, lat_cells, cell_to_vertex, &
+                    num_vertices_per_cell, cell_ids, vertex_ids)
+
+    ! Setup YAC coupling with precomputed lon/lat coordinates (radians)
+    CALL coupling_setup(lon_vertices, lat_vertices, lon_cells, lat_cells, &
+              cell_to_vertex, num_vertices_per_cell, &
+              cell_ids, vertex_ids, &
+              TRIM(grid_crs), TRIM(ADJUSTL(I2S(coupling_hours))), &
+              couple_to_ebfm, couple_to_icon)
+
+    DEALLOCATE(lon_vertices, lat_vertices, lon_cells, lat_cells)
+    DEALLOCATE(cell_to_vertex, num_vertices_per_cell, cell_ids, vertex_ids)
 
     IF (couple_to_ebfm) THEN
       ! setting up Elmer-side variables for receiving YAC variables

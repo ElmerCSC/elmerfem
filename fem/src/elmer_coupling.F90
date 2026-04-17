@@ -770,22 +770,6 @@ CONTAINS
     INTEGER :: grid_id, corner_point_id, cell_point_id
     INTEGER(KIND=C_INT) :: nbr_vertices, nbr_cells
 
-    INTERFACE
-
-      SUBROUTINE convert_to_lonlat_c(x_vertices, y_vertices, nbr_vertices, crs) &
-        bind ( C, name='convert_to_lonlat' )
-
-        USE, INTRINSIC :: iso_c_binding, ONLY: C_INT, C_DOUBLE, C_CHAR
-
-        INTEGER(KIND=C_INT), VALUE, INTENT(IN)    :: nbr_vertices
-        REAL(C_DOUBLE),             INTENT(INOUT) :: x_vertices(*)
-        REAL(C_DOUBLE),             INTENT(INOUT) :: y_vertices(*)
-        CHARACTER(KIND=C_CHAR),     INTENT(IN)    :: crs(*)
-
-      END SUBROUTINE convert_to_lonlat_c
-
-    END INTERFACE
-
     ! Store coupling flags in module variables for later use
     couple_to_ebfm = couple_to_ebfm_in
     couple_to_icon = couple_to_icon_in
