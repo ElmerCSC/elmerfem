@@ -1,7 +1,7 @@
 SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   USE DefUtils, ONLY: GetSolverParams, GetMesh, GetNOFActive, &
-    DefaultVariableAdd, GetLogical, GetLogical, GetString, MAX_NAME_LEN, &
-    VariableGet, ParEnv, variable_on_elements
+    DefaultVariableAdd, GetLogical, GetLogical, GetString, ListGetString, &
+    GetSimulation, MAX_NAME_LEN, VariableGet, ParEnv, variable_on_elements
   USE GeneralUtils, ONLY: I2S
   USE Types, ONLY: Model_t, Solver_t, Mesh_t, Variable_t, ValueList_t, dp
   USE Messages, ONLY: Message, FATAL, INFO, USE_YAC
@@ -24,7 +24,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   ! parameters to be read in from this solvers section in the sif
   LOGICAL :: couple_to_ebfm, couple_to_icon         ! define which component is coupled to Elmer
 
-  CHARACTER(LEN=1024) ::  config_file, model_tstep, coupling_timestep, grid_crs
+  CHARACTER(LEN=1024) ::  config_file, model_tstep, coupling_timestep, grid_crs, proj_type
   INTEGER :: I, t, ierr, dt_hours, coupling_hours
   INTEGER, POINTER :: t_icePerm(:), smbPerm(:), runoffPerm(:)
   ! INTEGER, POINTER :: cltPerm(:), prPerm(:)  ! ICON is not supported at the moment
@@ -79,18 +79,25 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
      CALL FATAL(SolverName,"Could not parse number of hours from 'Coupling Time Step'")
   END IF
 
-  ! read grid CRS (coordinate reference system)
-  grid_crs = GetString(SolverParams, 'Grid CRS', Found)
-  IF (.NOT. Found) THEN
-     CALL FATAL(SolverName, 'No keyword >Grid CRS< found in yac2elmer solver')
-  ELSE
-     CALL INFO(SolverName, &
-       'Using coordinate reference system (CRS): ' // TRIM(grid_crs), Level=3)
-  END IF
+  ! infer grid CRS (coordinate reference system) from projection type in Simulation
+  proj_type = ListGetString(GetSimulation(),'projection type',UnFoundFatal=.True.)
+  SELECT CASE (TRIM(proj_type))
+    CASE ('polar stereographic north')
+      grid_crs = 'EPSG:3413'
+    CASE ('polar stereographic south')
+      grid_crs = 'EPSG:3031'
+    CASE DEFAULT
+      CALL FATAL(SolverName, 'Unsupported >projection type< for YAC coupling: ' // TRIM(proj_type) // &
+        '. Supported values are "polar stereographic north" and "polar stereographic south".')
+  END SELECT
+  CALL INFO(SolverName, &
+    'Using coordinate reference system (CRS): ' // TRIM(grid_crs) // ' (from projection type: ' // &
+    TRIM(proj_type) // ')', Level=3)
 
   IF (.NOT. (couple_to_ebfm .OR. couple_to_icon)) THEN
     CALL FATAL(SolverName,'At least one of >Couple To EBFM< or >Couple To ICON< must be TRUE')
   END IF
+
   ! TODO: remove this check when ICON coupling is implemented
   IF (couple_to_icon) THEN
     CALL FATAL(SolverName,'>Couple To ICON< is currently not supported. Please set to FALSE')
