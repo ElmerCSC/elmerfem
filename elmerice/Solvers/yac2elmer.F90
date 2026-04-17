@@ -89,7 +89,8 @@ END SUBROUTINE collect_coupling_grid_data
 
 SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   USE DefUtils, ONLY: GetSolverParams, GetMesh, GetNOFActive, &
-    DefaultVariableAdd, GetLogical, GetLogical, GetString, ListGetString, &
+    DefaultVariableAdd, GetLogical, GetLogical, GetString, &
+    ListGetString, ListGetConstReal, &
     GetSimulation, MAX_NAME_LEN, VariableGet, ParEnv, variable_on_elements
   USE GeneralUtils, ONLY: I2S
   USE Types, ONLY: Model_t, Solver_t, Mesh_t, Variable_t, ValueList_t, dp, Element_t
@@ -116,6 +117,9 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   CHARACTER(LEN=1024) ::  config_file, model_tstep, coupling_timestep, grid_crs, proj_type
   INTEGER :: i, t, ierr, dt_hours, coupling_hours
   INTEGER, POINTER :: t_icePerm(:), smbPerm(:), runoffPerm(:)
+  REAL(KIND=dp) :: central_meridian, latitude_of_origin
+  REAL(KIND=dp) :: expected_central_meridian, expected_latitude_of_origin
+  CHARACTER(LEN=16) :: expected_central_meridian_str, expected_latitude_of_origin_str
   ! INTEGER, POINTER :: cltPerm(:), prPerm(:)  ! ICON is not supported at the moment
   LOGICAL :: Parallel, FirstTime=.TRUE., UnFoundFatal=.TRUE.
   TYPE(Mesh_t),POINTER :: Mesh
@@ -187,17 +191,41 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
      CALL FATAL(SolverName,"Could not parse number of hours from 'Coupling Time Step'")
   END IF
 
+
   ! infer grid CRS (coordinate reference system) from projection type in Simulation
   proj_type = ListGetString(GetSimulation(),'projection type',UnFoundFatal=.True.)
+
   SELECT CASE (TRIM(proj_type))
     CASE ('polar stereographic north')
       grid_crs = 'EPSG:3413'
+      expected_central_meridian = -45.0_dp
+      expected_latitude_of_origin = 70.0_dp
     CASE ('polar stereographic south')
       grid_crs = 'EPSG:3031'
+      expected_central_meridian = 0.0_dp
+      expected_latitude_of_origin = -71.0_dp
     CASE DEFAULT
       CALL FATAL(SolverName, 'Unsupported >projection type< for YAC coupling: ' // TRIM(proj_type) // &
         '. Supported values are "polar stereographic north" and "polar stereographic south".')
   END SELECT
+
+  ! Do consistency checks
+  central_meridian = ListGetConstReal(GetSimulation(), 'central_meridian', UnFoundFatal=.True.)
+  latitude_of_origin = ListGetConstReal(GetSimulation(), 'latitude_of_origin', UnFoundFatal=.True.)
+
+  ! Format expected values as strings
+  WRITE(expected_central_meridian_str, '(F6.1)') expected_central_meridian
+  WRITE(expected_latitude_of_origin_str, '(F6.1)') expected_latitude_of_origin
+
+  IF (ABS(central_meridian - expected_central_meridian) > 1.0e-6_dp) THEN
+    CALL FATAL(SolverName, 'For >projection type< "' // TRIM(proj_type) &
+      // '", >central_meridian< must be ' // TRIM(expected_central_meridian_str))
+  END IF
+  IF (ABS(latitude_of_origin - expected_latitude_of_origin) > 1.0e-6_dp) THEN
+    CALL FATAL(SolverName, 'For >projection type< "' // TRIM(proj_type) &
+      // '", >latitude_of_origin< must be ' // TRIM(expected_latitude_of_origin_str))
+  END IF
+
   CALL INFO(SolverName, &
     'Using coordinate reference system (CRS): ' // TRIM(grid_crs) // ' (from projection type: ' // &
     TRIM(proj_type) // ')', Level=3)
