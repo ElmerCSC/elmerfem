@@ -81,7 +81,7 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
     PetscInt  i, rstart, rend, nnz;
     PetscBool converged, viewSol = PETSC_FALSE;
     PetscBool debugInit = PETSC_FALSE, pinInitToBound = PETSC_FALSE, pinInitToBoundAtFirst = PETSC_FALSE;
-    PetscBool checkSymmetry = PETSC_TRUE, symmetryStrict = PETSC_FALSE, isSymmetric = PETSC_FALSE;
+    PetscBool checkSymmetry = PETSC_FALSE, symmetryStrict = PETSC_FALSE, isSymmetric = PETSC_FALSE;
     PetscBool symmetrizeOperator = PETSC_FALSE;
     PetscReal symmetryTol = 1e-12;
     PetscViewer viewer;
