@@ -9,7 +9,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   USE elmer_ebfm_coupling, ONLY: elmer_ebfm_interface, t_ice_field, smb_field, &
                                  runoff_field, surface_height_field
   ! USE elmer_icon_coupling, ONLY: elmer_icon_interface, clt_field, pr_field
-  
+
   IMPLICIT NONE
 
   TYPE(Model_t),  INTENT(IN) :: Model
@@ -17,12 +17,12 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp),  INTENT(IN) :: dt
   LOGICAL,        INTENT(IN) :: TransientSimulation
 
-  
+
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Mesh_t), POINTER :: ThisMesh
   CHARACTER(LEN=MAX_NAME_LEN):: SolverName='YAC2Elmer'
-  ! parameters to be read in from this solvers section in the sif 
-  LOGICAL :: couple_to_ebfm, couple_to_icon         ! define which component is coupled to Elmer 
+  ! parameters to be read in from this solvers section in the sif
+  LOGICAL :: couple_to_ebfm, couple_to_icon         ! define which component is coupled to Elmer
 
   CHARACTER(LEN=1024) ::  config_file, model_tstep, coupling_timestep
   INTEGER :: I, t, ierr, dt_hours, coupling_hours
@@ -34,9 +34,9 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   ! TYPE(Variable_t), POINTER :: cltVar, prVar  ! ICON is not supported at the moment
 
   LOGICAL        :: Found
-  
+
   SolverParams => GetSolverParams()
- 
+
   ! read config file
   config_file = GetString(SolverParams, 'Config File Name',  Found )
   IF (.NOT. Found) THEN
@@ -88,7 +88,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   END IF
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  ! retrieve the timestep in hours 
+  ! retrieve the timestep in hours
   Mesh => Solver % Mesh
 
   dt_hours = int(dt * 8760)
@@ -158,7 +158,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
       ! DO i=1,Mesh % NumberOfNodes
       !   cltPerm(i) = i
       ! END DO
-      
+
       ! DO t=1,GetNOFActive(Solver)
       !   prPerm(t) = t
       ! END DO
@@ -170,18 +170,18 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
     END IF
 
     FirstTime = .FALSE.
-    
+
     CALL INFO(SolverName, "YAC coupling setup done", Level=1)
   END IF
 !!!!!!!!!! DO WE HAVE TO INITIALIZE WITH EVERY CALL ? !!!!!!!!!!!!!!
-  
+
   IF (couple_to_ebfm) THEN
       CALL INFO(SolverName, 'BEFORE ELMER EBFM INTERFACE', Level=3)
       ! couple with EBFM
       CALL elmer_ebfm_interface(is_root_rank)
       CALL INFO(SolverName, 'AFTER ELMER EBFM INTERFACE', Level=3)
 
-      t_iceVar => VariableGet( Mesh % Variables, 'T_ice' )  
+      t_iceVar => VariableGet( Mesh % Variables, 'T_ice' )
       smbVar => VariableGet( Mesh % Variables, 'smb' )
       runoffVar => VariableGet( Mesh % Variables, 'runoff' )
       ZsSol => VariableGet( Model % Mesh % Variables, "Zs" ,UnFoundFatal=UnFoundFatal)
@@ -189,7 +189,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
       IF ((.NOT.ASSOCIATED(t_iceVar)) .OR. (.NOT.ASSOCIATED(smbVar)) .OR. (.NOT.ASSOCIATED(runoffVar))) THEN
         CALL FATAL(SolverName,'Elmer variables not associated')
       END IF
-      
+
       CALL INFO(SolverName, 'BEFORE WRITING NODAL VALUES', Level=3)
        !write over values for nodes
       DO i=1, Mesh % NumberOfNodes
@@ -217,6 +217,6 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   END IF
 
   CALL INFO(SolverName,'Coupling step done', Level=1)
-  
+
 END SUBROUTINE YAC2Elmer
 
