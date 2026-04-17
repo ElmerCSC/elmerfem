@@ -37,11 +37,11 @@
 
 #include "project_to_lonlat.h"
 
-void convert_epsg3413_to_lonlat(double * x, double * y, int n) {
+void convert_to_lonlat(double * x, double * y, int n, const char * crs) {
   // define transformation
   PJ * P =
     proj_create_crs_to_crs(
-      PJ_DEFAULT_CTX, "EPSG:3413", "+proj=longlat +datum=WGS84", NULL);
+      PJ_DEFAULT_CTX, crs, "+proj=longlat +datum=WGS84", NULL);
 
   if (!P) {
     fputs("failed to create transformation", stderr);

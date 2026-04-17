@@ -24,7 +24,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   ! parameters to be read in from this solvers section in the sif
   LOGICAL :: couple_to_ebfm, couple_to_icon         ! define which component is coupled to Elmer
 
-  CHARACTER(LEN=1024) ::  config_file, model_tstep, coupling_timestep
+  CHARACTER(LEN=1024) ::  config_file, model_tstep, coupling_timestep, grid_crs
   INTEGER :: I, t, ierr, dt_hours, coupling_hours
   INTEGER, POINTER :: t_icePerm(:), smbPerm(:), runoffPerm(:)
   ! INTEGER, POINTER :: cltPerm(:), prPerm(:)  ! ICON is not supported at the moment
@@ -79,6 +79,13 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
      CALL FATAL(SolverName,"Could not parse number of hours from 'Coupling Time Step'")
   END IF
 
+  ! read grid CRS (coordinate reference system)
+  grid_crs = GetString(SolverParams, 'Grid CRS', Found)
+  IF (.NOT. Found) THEN
+     grid_crs = "EPSG:3413"  ! default value
+     CALL INFO(SolverName, 'No keyword >Grid CRS< found, using default: EPSG:3413', Level=3)
+  END IF
+
   IF (.NOT. (couple_to_ebfm .OR. couple_to_icon)) THEN
     CALL FATAL(SolverName,'At least one of >Couple To EBFM< or >Couple To ICON< must be TRUE')
   END IF
@@ -117,7 +124,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
         'Running with ' // I2S(ParEnv % PEs) // ' partitions', Level=3)
     END IF
 
-    CALL coupling_setup(ThisMesh, TRIM(ADJUSTL(I2S(coupling_hours))), couple_to_ebfm, couple_to_icon)
+    CALL coupling_setup(ThisMesh, TRIM(grid_crs), TRIM(ADJUSTL(I2S(coupling_hours))), couple_to_ebfm, couple_to_icon)
 
     IF (couple_to_ebfm) THEN
       ! setting up Elmer-side variables for receiving YAC variables

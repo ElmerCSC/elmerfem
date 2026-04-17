@@ -729,9 +729,16 @@ CONTAINS
 
   END SUBROUTINE coupling_init
 
-  SUBROUTINE coupling_setup(grid, timestepstring, couple_to_ebfm_in, couple_to_icon_in)
+  !> Set up the coupling configuration for YAC
+  !>
+  !> @param grid The Elmer mesh/grid to be coupled
+  !> @param grid_crs Coordinate reference system (CRS) of the grid (e.g., "EPSG:3413")
+  !> @param timestepstring Timestep configuration string for YAC
+  !> @param couple_to_ebfm_in Enable coupling to EBFM
+  !> @param couple_to_icon_in Enable coupling to ICON
+  SUBROUTINE coupling_setup(grid, grid_crs, timestepstring, couple_to_ebfm_in, couple_to_icon_in)
 
-    USE, INTRINSIC :: iso_c_binding, ONLY: C_INT, C_DOUBLE
+    USE, INTRINSIC :: iso_c_binding, ONLY: C_INT, C_DOUBLE, C_CHAR, C_NULL_CHAR
 
     ! need to use Types_ without Messages because of circular dependency
     ! originating from coupling_finalize in Messages Fatal
@@ -743,6 +750,7 @@ CONTAINS
     INTEGER, POINTER :: this_cell_ids(:)
 
     TYPE(Mesh_t), POINTER, INTENT(IN) :: grid
+    CHARACTER(LEN=*), INTENT(IN) :: grid_crs
     TYPE(Element_t), POINTER :: element
     CHARACTER(LEN=*), INTENT(IN) :: timestepstring
     LOGICAL, INTENT(IN) :: couple_to_ebfm_in, couple_to_icon_in
@@ -764,16 +772,17 @@ CONTAINS
 
     INTERFACE
 
-      SUBROUTINE convert_epsg3413_to_lonlat_c(x_vertices, y_vertices, nbr_vertices) &
-        bind ( C, name='convert_epsg3413_to_lonlat' )
+      SUBROUTINE convert_to_lonlat_c(x_vertices, y_vertices, nbr_vertices, crs) &
+        bind ( C, name='convert_to_lonlat' )
 
-        USE, INTRINSIC :: iso_c_binding, ONLY: C_INT, C_DOUBLE
+        USE, INTRINSIC :: iso_c_binding, ONLY: C_INT, C_DOUBLE, C_CHAR
 
         INTEGER(KIND=C_INT), VALUE, INTENT(IN)    :: nbr_vertices
         REAL(C_DOUBLE),             INTENT(INOUT) :: x_vertices(*)
         REAL(C_DOUBLE),             INTENT(INOUT) :: y_vertices(*)
+        CHARACTER(KIND=C_CHAR),     INTENT(IN)    :: crs(*)
 
-      END SUBROUTINE convert_epsg3413_to_lonlat_c
+      END SUBROUTINE convert_to_lonlat_c
 
     END INTERFACE
 
@@ -816,8 +825,8 @@ CONTAINS
       y_cells(i) = SUM(y_vertices(this_cell_ids(1:n))) / n
     END DO
 
-    CALL convert_epsg3413_to_lonlat_c(x_vertices, y_vertices, nbr_vertices)
-    CALL convert_epsg3413_to_lonlat_c(x_cells, y_cells, nbr_cells)
+    CALL convert_to_lonlat_c(x_vertices, y_vertices, nbr_vertices, TRIM(grid_crs)//C_NULL_CHAR)
+    CALL convert_to_lonlat_c(x_cells, y_cells, nbr_cells, TRIM(grid_crs)//C_NULL_CHAR)
 
     ! register Elmer grid in YAC
     ! * is defined as an unstructured grid

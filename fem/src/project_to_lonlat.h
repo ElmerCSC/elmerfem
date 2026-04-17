@@ -34,12 +34,13 @@
 #define PROJECT_TO_LONLAT_H
 
 /**
- * Convert coordinates from EPSG:3413 to longitude/latitude in radians.
+ * Convert coordinates from a specified coordinate reference system (CRS) to longitude/latitude in radians.
  * 
- * @param x Array of x coordinates (EPSG:3413), modified in place to longitude in radians.
- * @param y Array of y coordinates (EPSG:3413), modified in place to latitude in radians.
+ * @param x Array of x coordinates (in source CRS), modified in place to longitude in radians.
+ * @param y Array of y coordinates (in source CRS), modified in place to latitude in radians.
  * @param n Number of coordinates in the arrays.
+ * @param crs Source CRS (e.g., "EPSG:3413").
  */
-void convert_epsg3413_to_lonlat(double * x, double * y, const int n);
+void convert_to_lonlat(double * x, double * y, const int n, const char * crs);
 
 #endif // PROJECT_TO_LONLAT_H
