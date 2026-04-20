@@ -1243,7 +1243,7 @@ CONTAINS
         k = VarXY % Perm(i)
         
         IF (LimitVelocity) THEN 
-          vabs = SQRT((VarXY % Values(2*k-1))**2.0_dp + (VarXY % Values(2*k))**2)
+          vabs = SQRT((VarXY % Values(2*k-1))**2.0_dp + (VarXY % Values(2*k))**2.0_dp)
           IF (vabs > vlimit) THEN
             rfact = vlimit/vabs
           ELSE
