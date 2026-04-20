@@ -862,7 +862,9 @@ CONTAINS
           - ListGetElementReal( IntPressure_h, Basis, Element, Found, GaussPoint = t )
       HavePres = HavePres .OR. Found
       
-      ! Slip coefficient
+      ! Slip coefficientyes
+
+      
       !----------------------------------
       SlipCoeff = ListGetElementReal3D( SlipCoeff_h, Basis, Element, HaveSlip, GaussPoint = t )      
 
@@ -1139,12 +1141,12 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN):: str
     TYPE(ValueList_t), POINTER :: Params, Material
     TYPE(Mesh_t), POINTER :: Mesh
-    LOGICAL :: Found, PressureCorr, BaseVelo
+    LOGICAL :: Found, PressureCorr, BaseVelo, LimitVelocity=.FALSE.
     REAL(KIND=dp), POINTER :: duz(:), wuz(:), dpr(:), ub(:)
     INTEGER :: i,j,k,j1,j2,i1,i2,k1,k2,t,n,nd,nb,active, dofs, pdof, zdof
     TYPE(Element_t), POINTER :: Element
     TYPE(Solver_t), POINTER :: pSolver
-    REAL(KIND=dp) :: dz, rho, g, Nrm(3), Vave(2), zint
+    REAL(KIND=dp) :: dz, rho, g, Nrm(3), Vave(2), zint, vlimit, vabs
     REAL(KIND=dp), POINTER :: gWork(:,:)
     
     
@@ -1161,6 +1163,8 @@ CONTAINS
     str = ListGetString( Params,'Velocity Vector Name',Found )
     IF(.NOT. Found) str = ListGetString( Params,'Velocity Variable Name',Found )
 
+    vlimit = GetRealConst(Params,'Velocity limit', LimitVelocity)
+    
     IF(.NOT. Found) str = 'Flow Solution'
     Found = .TRUE.
     
@@ -1237,12 +1241,23 @@ CONTAINS
       DO i=1,Mesh % NumberOfNodes
         j = VarFull % Perm(i)
         k = VarXY % Perm(i)
+        IF (LimitVelocity) THEN 
+          vabs = SQRT((VarXY % Values(2*k-1))**2.0_dp + (VarXY % Values(2*k))**2)
+          IF (vabs > vlimit) THEN
+              reduction = vlimit/vabs
+            ELSE
+              reduction = 1.0_dp
+            END IF
+          ELSE
+            reduction = 1.0_dp
+          END IF
+        END IF
         IF(dofs == 1 ) THEN
-          VarVx % Values(j) = VarXY % Values(2*k-1)
-          VarVy % Values(j) = VarXY % Values(2*k)          
+          VarVx % Values(j) = VarXY % Values(2*k-1)*reduction          
+          VarVy % Values(j) = VarXY % Values(2*k)*reduction          
         ELSE
-          VarFull % Values(dofs*(j-1)+1) = VarXY % Values(2*k-1)
-          VarFull % Values(dofs*(j-1)+2) = VarXY % Values(2*k)
+          VarFull % Values(dofs*(j-1)+1) = VarXY % Values(2*k-1)*reduction
+          VarFull % Values(dofs*(j-1)+2) = VarXY % Values(2*k)*reduction
         END IF
       END DO
     END IF
