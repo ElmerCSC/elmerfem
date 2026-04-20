@@ -1146,7 +1146,7 @@ CONTAINS
     INTEGER :: i,j,k,j1,j2,i1,i2,k1,k2,t,n,nd,nb,active, dofs, pdof, zdof
     TYPE(Element_t), POINTER :: Element
     TYPE(Solver_t), POINTER :: pSolver
-    REAL(KIND=dp) :: dz, rho, g, Nrm(3), Vave(2), zint, vlimit, vabs
+    REAL(KIND=dp) :: dz, rho, g, Nrm(3), Vave(2), zint, vlimit, vabs, rfact
     REAL(KIND=dp), POINTER :: gWork(:,:)
     
     
@@ -1159,11 +1159,11 @@ CONTAINS
     VarXY => pSolver % Variable
     Mesh => CurrentModel % Mesh
     dofs = 0
+
+    vlimit = GetConstReal(Params,'Velocity limit', LimitVelocity)
     
     str = ListGetString( Params,'Velocity Vector Name',Found )
     IF(.NOT. Found) str = ListGetString( Params,'Velocity Variable Name',Found )
-
-    vlimit = GetRealConst(Params,'Velocity limit', LimitVelocity)
     
     IF(.NOT. Found) str = 'Flow Solution'
     Found = .TRUE.
@@ -1241,23 +1241,24 @@ CONTAINS
       DO i=1,Mesh % NumberOfNodes
         j = VarFull % Perm(i)
         k = VarXY % Perm(i)
+        
         IF (LimitVelocity) THEN 
           vabs = SQRT((VarXY % Values(2*k-1))**2.0_dp + (VarXY % Values(2*k))**2)
           IF (vabs > vlimit) THEN
-              reduction = vlimit/vabs
-            ELSE
-              reduction = 1.0_dp
-            END IF
+            rfact = vlimit/vabs
           ELSE
-            reduction = 1.0_dp
+            rfact = 1.0_dp
           END IF
-        END IF
-        IF(dofs == 1 ) THEN
-          VarVx % Values(j) = VarXY % Values(2*k-1)*reduction          
-          VarVy % Values(j) = VarXY % Values(2*k)*reduction          
         ELSE
-          VarFull % Values(dofs*(j-1)+1) = VarXY % Values(2*k-1)*reduction
-          VarFull % Values(dofs*(j-1)+2) = VarXY % Values(2*k)*reduction
+          rfact = 1.0_dp
+        END IF
+       
+        IF(dofs == 1 ) THEN
+          VarVx % Values(j) = VarXY % Values(2*k-1)*rfact          
+          VarVy % Values(j) = VarXY % Values(2*k)*rfact          
+        ELSE
+          VarFull % Values(dofs*(j-1)+1) = VarXY % Values(2*k-1)*rfact
+          VarFull % Values(dofs*(j-1)+2) = VarXY % Values(2*k)*rfact
         END IF
       END DO
     END IF
