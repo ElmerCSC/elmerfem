@@ -1,9 +1,99 @@
+!> Collect grid data for YAC coupling
+!> Extracts grid information from mesh and converts coordinates
+SUBROUTINE collect_coupling_grid_data(ThisMesh, lon_vertices, lat_vertices, &
+                                      lon_cells, lat_cells, cell_to_vertex, &
+                                      num_vertices_per_cell, cell_ids, vertex_ids)
+  USE Types, ONLY: Mesh_t, Element_t, dp
+  USE ProjUtils, ONLY: xy2LonLat, deg2rad
+
+  IMPLICIT NONE
+
+  TYPE(Mesh_t), POINTER :: ThisMesh
+  REAL(KIND=dp), ALLOCATABLE, INTENT(OUT) :: lon_vertices(:), lat_vertices(:)
+  REAL(KIND=dp), ALLOCATABLE, INTENT(OUT) :: lon_cells(:), lat_cells(:)
+  INTEGER, ALLOCATABLE, INTENT(OUT) :: cell_to_vertex(:)
+  INTEGER, ALLOCATABLE, INTENT(OUT) :: num_vertices_per_cell(:)
+  INTEGER, ALLOCATABLE, INTENT(OUT) :: cell_ids(:), vertex_ids(:)
+
+  ! Local variables
+  TYPE(Element_t), POINTER :: element
+  INTEGER :: i, n, vertex_offset, v_end
+  INTEGER :: nbr_vertices, nbr_cells
+  INTEGER, POINTER :: this_cell_ids(:)
+
+  ! Grid arrays for coupling
+  REAL(KIND=dp), ALLOCATABLE :: x_vertices(:), y_vertices(:)
+  REAL(KIND=dp), ALLOCATABLE :: x_cells(:), y_cells(:)
+
+  ! Extract grid information for coupling
+  nbr_vertices = ThisMesh % NumberOfNodes
+  ALLOCATE(vertex_ids(nbr_vertices))
+  vertex_ids = ThisMesh % ParallelInfo % GlobalDofs
+
+  nbr_cells = ThisMesh % NumberOfBulkElements
+  ALLOCATE(cell_ids(nbr_cells), num_vertices_per_cell(nbr_cells))
+  DO i=1, nbr_cells
+    element => ThisMesh % Elements(i)
+    cell_ids(i) = element % GElementIndex
+    num_vertices_per_cell(i) = element % Type % NumberOfNodes
+  END DO
+
+  ALLOCATE(cell_to_vertex(SUM(num_vertices_per_cell(:))))
+  vertex_offset = 0
+  DO i=1, nbr_cells
+    element => ThisMesh % Elements(i)
+    n = num_vertices_per_cell(i)
+    v_end = vertex_offset+n
+    cell_to_vertex(vertex_offset+1:v_end) = element % NodeIndexes(1:n)
+    vertex_offset = v_end
+  END DO
+
+  ALLOCATE(x_vertices(nbr_vertices), y_vertices(nbr_vertices))
+  x_vertices(:) = ThisMesh % Nodes % x(1:nbr_vertices)
+  y_vertices(:) = ThisMesh % Nodes % y(1:nbr_vertices)
+
+  ALLOCATE(x_cells(nbr_cells), y_cells(nbr_cells))
+  DO i=1,nbr_cells
+    element => ThisMesh % Elements(i)
+    n = element % Type % NumberOfNodes
+    this_cell_ids => element % NodeIndexes
+    x_cells(i) = SUM(x_vertices(this_cell_ids(1:n))) / n
+    y_cells(i) = SUM(y_vertices(this_cell_ids(1:n))) / n
+  END DO
+
+  ! Convert using ProjUtils for comparison (does NOT modify input arrays - INTENT(IN))
+  ! Note: ProjUtils returns degrees, need to convert to radians for YAC
+  ALLOCATE(lon_vertices(nbr_vertices), lat_vertices(nbr_vertices))
+  ALLOCATE(lon_cells(nbr_cells), lat_cells(nbr_cells))
+
+  DO i = 1, nbr_vertices
+    CALL xy2LonLat(x_vertices(i), y_vertices(i), &
+                   lon_vertices(i), lat_vertices(i), .False.)
+    ! Convert from degrees to radians
+    lon_vertices(i) = lon_vertices(i)
+    lat_vertices(i) = lat_vertices(i)
+  END DO
+
+  DO i = 1, nbr_cells
+    CALL xy2LonLat(x_cells(i), y_cells(i), &
+                   lon_cells(i), lat_cells(i), .False.)
+    ! Convert from degrees to radians
+    lon_cells(i) = lon_cells(i)
+    lat_cells(i) = lat_cells(i)
+  END DO
+
+  ! Clean up local arrays
+  DEALLOCATE(x_vertices, y_vertices, x_cells, y_cells)
+
+END SUBROUTINE collect_coupling_grid_data
+
 SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   USE DefUtils, ONLY: GetSolverParams, GetMesh, GetNOFActive, &
-    DefaultVariableAdd, GetLogical, GetLogical, GetString, MAX_NAME_LEN, &
-    VariableGet, ParEnv, variable_on_elements
+    DefaultVariableAdd, GetLogical, GetLogical, GetString, &
+    ListGetString, ListGetConstReal, &
+    GetSimulation, MAX_NAME_LEN, VariableGet, ParEnv, variable_on_elements
   USE GeneralUtils, ONLY: I2S
-  USE Types, ONLY: Model_t, Solver_t, Mesh_t, Variable_t, ValueList_t, dp
+  USE Types, ONLY: Model_t, Solver_t, Mesh_t, Variable_t, ValueList_t, dp, Element_t
   USE Messages, ONLY: Message, FATAL, INFO, USE_YAC
   USE elmer_coupling, ONLY: coupling_setup, is_root_rank
   USE elmer_ebfm_coupling, ONLY: elmer_ebfm_interface, t_ice_field, smb_field, &
@@ -24,16 +114,38 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   ! parameters to be read in from this solvers section in the sif
   LOGICAL :: couple_to_ebfm, couple_to_icon         ! define which component is coupled to Elmer
 
-  CHARACTER(LEN=1024) ::  config_file, model_tstep, coupling_timestep
-  INTEGER :: I, t, ierr, dt_hours, coupling_hours
+  CHARACTER(LEN=1024) ::  config_file, model_tstep, coupling_timestep, grid_crs, proj_type
+  INTEGER :: i, t, ierr, dt_hours, coupling_hours
   INTEGER, POINTER :: t_icePerm(:), smbPerm(:), runoffPerm(:)
+  REAL(KIND=dp) :: central_meridian, latitude_of_origin
+  REAL(KIND=dp) :: expected_central_meridian, expected_latitude_of_origin
+  CHARACTER(LEN=16) :: expected_central_meridian_str, expected_latitude_of_origin_str
   ! INTEGER, POINTER :: cltPerm(:), prPerm(:)  ! ICON is not supported at the moment
   LOGICAL :: Parallel, FirstTime=.TRUE., UnFoundFatal=.TRUE.
   TYPE(Mesh_t),POINTER :: Mesh
   TYPE(Variable_t), POINTER :: t_iceVar, smbVar, runoffVar, ZsSol
   ! TYPE(Variable_t), POINTER :: cltVar, prVar  ! ICON is not supported at the moment
+  REAL(KIND=dp), ALLOCATABLE :: lon_vertices(:), lat_vertices(:)
+  REAL(KIND=dp), ALLOCATABLE :: lon_cells(:), lat_cells(:)
+  INTEGER, ALLOCATABLE :: cell_to_vertex(:), num_vertices_per_cell(:)
+  INTEGER, ALLOCATABLE :: cell_ids(:), vertex_ids(:)
 
   LOGICAL        :: Found
+
+  INTERFACE
+    SUBROUTINE collect_coupling_grid_data(ThisMesh, lon_vertices, lat_vertices, &
+                                          lon_cells, lat_cells, cell_to_vertex, &
+                                          num_vertices_per_cell, cell_ids, vertex_ids)
+      USE Types, ONLY: Mesh_t, dp
+      IMPLICIT NONE
+      TYPE(Mesh_t), POINTER :: ThisMesh
+      REAL(KIND=dp), ALLOCATABLE, INTENT(OUT) :: lon_vertices(:), lat_vertices(:)
+      REAL(KIND=dp), ALLOCATABLE, INTENT(OUT) :: lon_cells(:), lat_cells(:)
+      INTEGER, ALLOCATABLE, INTENT(OUT) :: cell_to_vertex(:)
+      INTEGER, ALLOCATABLE, INTENT(OUT) :: num_vertices_per_cell(:)
+      INTEGER, ALLOCATABLE, INTENT(OUT) :: cell_ids(:), vertex_ids(:)
+    END SUBROUTINE collect_coupling_grid_data
+  END INTERFACE
 
   SolverParams => GetSolverParams()
 
@@ -79,9 +191,49 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
      CALL FATAL(SolverName,"Could not parse number of hours from 'Coupling Time Step'")
   END IF
 
+
+  ! infer grid CRS (coordinate reference system) from projection type in Simulation
+  proj_type = ListGetString(GetSimulation(),'projection type',UnFoundFatal=.True.)
+
+  SELECT CASE (TRIM(proj_type))
+    CASE ('polar stereographic north')
+      grid_crs = 'EPSG:3413'
+      expected_central_meridian = -45.0_dp
+      expected_latitude_of_origin = 70.0_dp
+    CASE ('polar stereographic south')
+      grid_crs = 'EPSG:3031'
+      expected_central_meridian = 0.0_dp
+      expected_latitude_of_origin = -71.0_dp
+    CASE DEFAULT
+      CALL FATAL(SolverName, 'Unsupported >projection type< for YAC coupling: ' // TRIM(proj_type) // &
+        '. Supported values are "polar stereographic north" and "polar stereographic south".')
+  END SELECT
+
+  ! Do consistency checks
+  central_meridian = ListGetConstReal(GetSimulation(), 'central_meridian', UnFoundFatal=.True.)
+  latitude_of_origin = ListGetConstReal(GetSimulation(), 'latitude_of_origin', UnFoundFatal=.True.)
+
+  ! Format expected values as strings
+  WRITE(expected_central_meridian_str, '(F6.1)') expected_central_meridian
+  WRITE(expected_latitude_of_origin_str, '(F6.1)') expected_latitude_of_origin
+
+  IF (ABS(central_meridian - expected_central_meridian) > 1.0e-6_dp) THEN
+    CALL FATAL(SolverName, 'For >projection type< "' // TRIM(proj_type) &
+      // '", >central_meridian< must be ' // TRIM(expected_central_meridian_str))
+  END IF
+  IF (ABS(latitude_of_origin - expected_latitude_of_origin) > 1.0e-6_dp) THEN
+    CALL FATAL(SolverName, 'For >projection type< "' // TRIM(proj_type) &
+      // '", >latitude_of_origin< must be ' // TRIM(expected_latitude_of_origin_str))
+  END IF
+
+  CALL INFO(SolverName, &
+    'Using coordinate reference system (CRS): ' // TRIM(grid_crs) // ' (from projection type: ' // &
+    TRIM(proj_type) // ')', Level=3)
+
   IF (.NOT. (couple_to_ebfm .OR. couple_to_icon)) THEN
     CALL FATAL(SolverName,'At least one of >Couple To EBFM< or >Couple To ICON< must be TRUE')
   END IF
+
   ! TODO: remove this check when ICON coupling is implemented
   IF (couple_to_icon) THEN
     CALL FATAL(SolverName,'>Couple To ICON< is currently not supported. Please set to FALSE')
@@ -117,7 +269,20 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
         'Running with ' // I2S(ParEnv % PEs) // ' partitions', Level=3)
     END IF
 
-    CALL coupling_setup(ThisMesh, TRIM(ADJUSTL(I2S(coupling_hours))), couple_to_ebfm, couple_to_icon)
+    ! Collect coupling grid data (extract mesh, convert coordinates)
+    CALL collect_coupling_grid_data(ThisMesh, lon_vertices, lat_vertices, &
+                    lon_cells, lat_cells, cell_to_vertex, &
+                    num_vertices_per_cell, cell_ids, vertex_ids)
+
+    ! Setup YAC coupling with precomputed lon/lat coordinates (radians)
+    CALL coupling_setup(lon_vertices, lat_vertices, lon_cells, lat_cells, &
+              cell_to_vertex, num_vertices_per_cell, &
+              cell_ids, vertex_ids, &
+              TRIM(grid_crs), TRIM(ADJUSTL(I2S(coupling_hours))), &
+              couple_to_ebfm, couple_to_icon)
+
+    DEALLOCATE(lon_vertices, lat_vertices, lon_cells, lat_cells)
+    DEALLOCATE(cell_to_vertex, num_vertices_per_cell, cell_ids, vertex_ids)
 
     IF (couple_to_ebfm) THEN
       ! setting up Elmer-side variables for receiving YAC variables

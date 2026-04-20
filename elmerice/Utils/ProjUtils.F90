@@ -75,22 +75,36 @@
 !------------------------------------------------------------------------------
 ! generic xy2LonLat
 !------------------------------------------------------------------------------
-      SUBROUTINE xy2LonLat(x,y,Lon,Lat)
-        REAL(KIND=dp),INTENT(IN) :: x,y
-        REAL(KIND=dp),INTENT(OUT) :: lon,lat
+      SUBROUTINE xy2LonLat(x, y, Lon, Lat, as_deg)
+        REAL(KIND=dp), INTENT(IN) :: x, y
+        REAL(KIND=dp), INTENT(OUT) :: lon, lat
+        LOGICAL, OPTIONAL, INTENT(IN) :: as_deg
+        LOGICAL :: degout
+
+        IF (PRESENT(as_deg)) THEN
+          degout = as_deg
+        ELSE
+          degout = .TRUE.
+        END IF
 
         IF (.NOT.PjInitialized) CALL ProjINIT
 
         SELECT CASE(proj_type)
           CASE('polar stereographic north')
-             CALL proj_inv(x,y,Lon,Lat,RefLon,RefLat)
-             Lon=Lon*rad2deg
-             Lat=Lat*rad2deg
+             CALL proj_inv(x, y, Lon, Lat, RefLon, RefLat)
+             IF (degout) THEN
+               Lon = Lon * rad2deg
+               Lat = Lat * rad2deg
+             END IF
           CASE('polar stereographic south')
-             CALL proj_inv(-x,-y,Lon,Lat,-RefLon,-RefLat)
-             Lon=-Lon*rad2deg
-             Lat=-Lat*rad2deg
-
+             CALL proj_inv(-x, -y, Lon, Lat, -RefLon, -RefLat)
+             IF (degout) THEN
+               Lon = -Lon * rad2deg
+               Lat = -Lat * rad2deg
+             ELSE
+               Lon = -Lon
+               Lat = -Lat
+             END IF
           CASE('regular')
              Lon=MinLon+(x-xmin)*(MaxLon-MinLon)/(xmax-xmin)
              Lat=MinLat+(y-ymin)*(MaxLat-MinLat)/(ymax-ymin)
