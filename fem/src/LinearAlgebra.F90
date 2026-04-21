@@ -48,6 +48,7 @@
 MODULE LinearAlgebra
 
   USE Types
+  USE Messages
   IMPLICIT NONE
 
  CONTAINS

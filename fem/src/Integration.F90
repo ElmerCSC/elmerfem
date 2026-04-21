@@ -43,6 +43,7 @@
 !-----------------------------------------------------------------------------
 MODULE Integration
    USE LoadMod
+   USE Messages
 
    IMPLICIT NONE
 

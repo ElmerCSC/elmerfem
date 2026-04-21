@@ -44,6 +44,7 @@
 !-----------------------------------------------------------------------------
 MODULE GeneralUtils
 
+USE Messages
 USE LoadMod
 
 #ifdef HAVE_LUA
@@ -2615,8 +2616,8 @@ END MODULE GeneralUtils
 !---------------------------------------------------------
 MODULE AscBinOutputUtils
   
-  
   USE Types
+  USE Messages
   IMPLICIT NONE
   
   LOGICAL, PRIVATE :: AsciiOutput, SinglePrec, CalcSum = .FALSE.

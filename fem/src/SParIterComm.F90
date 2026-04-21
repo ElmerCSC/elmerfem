@@ -47,6 +47,7 @@
 MODULE SParIterComm
 
   USE LoadMod, ONLY : RealTime
+  USE Messages
   USE SParIterGlobals
 
 #ifdef HAVE_XIOS

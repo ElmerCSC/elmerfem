@@ -57,6 +57,7 @@
 
 MODULE EigenSolve
 
+   USE Messages
    IMPLICIT NONE
 
 CONTAINS

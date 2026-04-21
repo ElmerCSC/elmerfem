@@ -44,6 +44,7 @@
 MODULE Interpolation
 
    USE Types
+   USE Messages
    USE SParIterGlobals
    USE CoordinateSystems
    USE ElementDescription, ONLY : GlobalToLocal, ElementInfo, GetElementType, &
