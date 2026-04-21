@@ -1642,6 +1642,52 @@ END FUNCTION ComponentNameVar
 
 
 !------------------------------------------------------------------------------
+!> Interpolate values in a curve given by linear table or splines.
+!------------------------------------------------------------------------------
+   PURE FUNCTION InterpolateCurves( TValues, FValues, m, T, CubicCoeff) RESULT( F )
+!------------------------------------------------------------------------------
+     REAL(KIND=dp), INTENT(iN) :: TValues(:),FValues(:,:),T
+     INTEGER, INTENT(IN) :: m
+     REAL(KIND=dp), OPTIONAL, POINTER, INTENT(in) :: CubicCoeff(:)
+     REAL(KIND=dp) :: F(m)
+!------------------------------------------------------------------------------
+     INTEGER :: i,j,n 
+     LOGICAL :: Cubic
+     REAL(KIND=dp) :: q
+!------------------------------------------------------------------------------
+
+     n = SIZE(TValues)
+
+     ! This is a misuse of the interpolation in case of standard dependency
+     ! of type y=a*x.  
+     IF( n == 1 ) THEN
+       F(1:m) = FValues(1:m,1) * T
+       RETURN
+     END IF
+
+     i = SearchInterval( Tvalues, t )
+     
+     Cubic = .FALSE.
+     IF( PRESENT(CubicCoeff) ) THEN
+       Cubic = ( T>=Tvalues(1) .AND. T<=Tvalues(n) .AND. ASSOCIATED(CubicCoeff) )
+     END IF
+
+     IF ( Cubic ) THEN
+       DO j=1,m
+         F(j) = CubicSplineVal(Tvalues(i:i+1),FValues(j,i:i+1),CubicCoeff(i:i+1),T)
+       END DO
+     ELSE
+       q = (T-TValues(i)) / (TValues(i+1)-TValues(i))
+       DO j=1,m
+         F(j) = (1-q)*FValues(j,i) + q*FValues(j,i+1)
+       END DO
+     END IF
+   END FUNCTION InterpolateCurves
+!------------------------------------------------------------------------------
+
+   
+
+!------------------------------------------------------------------------------
 !> Derivate a curve given by linear table or splines.
 !------------------------------------------------------------------------------
    PURE FUNCTION DerivateCurve( TValues,FValues,T,CubicCoeff ) RESULT( F )

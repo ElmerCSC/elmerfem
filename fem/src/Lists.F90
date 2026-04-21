@@ -3933,7 +3933,7 @@ CONTAINS
      LOGICAL, OPTIONAL :: CubicTable, Monotone
      
      TYPE(ValueListEntry_t), POINTER :: ptr
-     INTEGER :: n,m, l
+     INTEGER :: i,j,n,m, l
      REAL(KIND=dp), ALLOCATABLE :: TmpValues(:,:,:)
      
      ptr => ListFind( List, Name )
@@ -3953,23 +3953,25 @@ CONTAINS
 
      n = SIZE(ptr % FValues,1)
      m = SIZE(ptr % FValues,2)
-
-     IF( m /= 2 ) THEN
-       CALL Warn('ListRealArrayToDepArray','Number of columns must be 2!')
-       RETURN
+     l = SIZE(ptr % FValues,3)
+     
+     IF( m < 2 ) THEN
+       CALL Fatal('ListRealArrayToDepArray','Number of columns must be at least 2!')
      END IF
 
      ALLOCATE( TmpValues(n,m,1) )
      TmpValues = ptr % FValues
      DEALLOCATE( ptr % FValues )
 
-     ALLOCATE( ptr % FValues(1,1,n), ptr % TValues(n) )
-     ptr % FValues(1,1,1:n) = TmpValues(1:n,2,1)
+     ALLOCATE( ptr % FValues(1,m-1,n), ptr % TValues(n) )
+     DO j=2,m
+       ptr % FValues(1,j-1,1:n) = TmpValues(1:n,j,1)
+     END DO
      ptr % TValues(1:n) = TmpValues(1:n,1,1)
      DEALLOCATE( TmpValues ) 
           
      ! The (x,y) table should be such that values of x are increasing in size
-     IF( .NOT. CheckMonotone( n, ptr % FValues(1,1,:) ) ) THEN
+     IF( .NOT. CheckMonotone( n, ptr % TValues(1:n) ) ) THEN
        CALL Fatal('ListRealArrayToDepReal',&
            'Values x in > '//TRIM(Name)//' < not monotonically ordered!')
      END IF
@@ -3977,16 +3979,21 @@ CONTAINS
      ! Make it cubic if asked
      IF ( n>3 .AND. PRESENT(CubicTable)) THEN
        IF ( CubicTable ) THEN
+         IF( m > 2 ) THEN
+           CALL Fatal('ListRealArrayToDepArray','Cannot make cubic spline if there are more then 2 columns!')
+         END IF       
          ALLOCATE(ptr % CubicCoeff(n))
          CALL CubicSpline(n,ptr % TValues,Ptr % Fvalues(1,1,:), &
              Ptr % CubicCoeff, Monotone )
        END IF
      END IF
 
-     ALLOCATE(ptr % Cumulative(n))
-     CALL CumulativeIntegral(ptr % TValues, Ptr % FValues(1,1,:), &
-          Ptr % CubicCoeff, Ptr % Cumulative )
-     
+     IF(m==2) THEN
+       ALLOCATE(ptr % Cumulative(n))
+       CALL CumulativeIntegral(ptr % TValues, Ptr % FValues(1,1,:), &
+           Ptr % CubicCoeff, Ptr % Cumulative )
+     END IF
+       
      ! Copy the depname     
      l = LEN_TRIM(DepName)
      IF(ALLOCATED(ptr % DependName)) DEALLOCATE(ptr % DependName)
@@ -3994,10 +4001,14 @@ CONTAINS
      ptr % DepNameLen = StringToLowerCase( ptr % DependName,DepName )
 
      ! Finally, change the type 
-     ptr % TYPE = LIST_TYPE_VARIABLE_SCALAR
-
+     IF( m == 2 ) THEN
+       ptr % TYPE = LIST_TYPE_VARIABLE_SCALAR
+     ELSE
+       ptr % TYPE = LIST_TYPE_VARIABLE_TENSOR
+     END IF
+       
      CALL Info('ListRealArrayToDepReal',&
-         'Changed constant array to dependence table of size '//I2S(n)//'!')
+         'Changed constant array to dependence table of size '//I2S(n)//' x '//I2S(m-1)//'!')
      
    END SUBROUTINE ListRealArrayToDepReal
 
@@ -7023,16 +7034,17 @@ CONTAINS
      ! or first at nodes and then using basis functions at IP.
      ! The latter is the default. 
      !------------------------------------------------------------------
-     IF( Handle % EvaluateAtIp ) THEN       
-       IF(.NOT. PRESENT(Basis)) THEN
-         CALL Fatal('ListGetElementReal','Parameter > Basis < is required for: '//TRIM(Handle % Name))
-       END IF
+     IF( Handle % EvaluateAtIp ) THEN
+
+
+       IF( Handle % VarCount == Handle % IntVarCount ) THEN       
+         Handle % ParNo = Handle % VarCount
        
-       ! If we get back to the same element than last time use the data already 
-       ! retrieved. If the element is new then get the data in every node of the 
-       ! current element, or only in the 1st node if it is constant. 
-       
-       IF( ASSOCIATED( PElement, Handle % Element ) ) THEN
+       ELSE IF( ASSOCIATED( PElement, Handle % Element ) ) THEN
+         ! If we get back to the same element than last time use the data already 
+         ! retrieved. If the element is new then get the data in every node of the 
+         ! current element, or only in the 1st node if it is constant. 
+      
          IF( PRESENT( Indexes ) ) THEN
            ni = SIZE( Indexes )
            NodeIndexes => Indexes
@@ -7043,6 +7055,10 @@ CONTAINS
            
          ParF => Handle % ParValues
        ELSE
+         IF(.NOT. PRESENT(Basis)) THEN
+           CALL Fatal('ListGetElementReal','Parameter > Basis < is required (1) for: '//TRIM(Handle % Name))
+         END IF
+         
          IF( .NOT. Handle % AllocationsDone ) THEN
            ni = CurrentModel % Mesh % MaxElementNodes
            ALLOCATE( Handle % Values(ni) )
@@ -7511,7 +7527,7 @@ CONTAINS
            RValue = F(1)
          ELSE
            IF(.NOT. PRESENT(Basis)) THEN
-             CALL Fatal('ListGetElementReal','Parameter > Basis < is required for: '//TRIM(Handle % Name))
+             CALL Fatal('ListGetElementReal','Parameter > Basis < is required (2) for: '//TRIM(Handle % Name))
            ELSE
              RValue = SUM( Basis(1:ni) * F(1:ni) )
            END IF
@@ -7522,7 +7538,7 @@ CONTAINS
 
          IF( .NOT. Handle % GlobalInList ) THEN
            IF(.NOT. PRESENT(Basis)) THEN
-             CALL Fatal('ListGetElementReal','Parameter > Basis < is required for: '//TRIM(Handle % Name))
+             CALL Fatal('ListGetElementReal','Parameter > Basis < is required (3) for: '//TRIM(Handle % Name))
            ELSE
              DO j2=1,SIZE( Handle % RTensor, 1 )
                DO k2=1,SIZE( Handle % RTensor, 2 )               
@@ -7937,7 +7953,7 @@ CONTAINS
      IF( Handle % EvaluateAtIp ) THEN
 
        IF(.NOT. PRESENT(BasisVec)) THEN
-         CALL Fatal('ListGetElementRealVec','Parameter > Basis < is required for: '//TRIM(Handle % Name))
+         CALL Fatal('ListGetElementRealVec','Parameter > Basis < is required (4) for: '//TRIM(Handle % Name))
        END IF
 
        IF( .NOT. Handle % AllocationsDone ) THEN
@@ -9063,7 +9079,7 @@ CONTAINS
      IF ( .NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(UnfoundFatal)) THEN
          IF(UnfoundFatal) THEN
-           CALL Fatal("ListGetConstRealArray","Failed to find: "//TRIM(Name))
+           CALL Fatal("ListGetRealArray","Failed to find: "//TRIM(Name))
          END IF
        END IF
        RETURN
