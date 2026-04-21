@@ -5039,7 +5039,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: Element
     INTEGER, POINTER :: NodeIndexes(:), IndNodes(:), BCOrder(:)
-    INTEGER, ALLOCATABLE :: Indexes(:), PassPerm(:)
+    INTEGER, POINTER :: Indexes(:), PassPerm(:)
     INTEGER :: BC,i,j,j2,k,l,m,n,nd,p,t,k1,k2,OffSet
     LOGICAL :: GotIt, periodic, OrderByBCNumbering, ReorderBCs
     REAL(KIND=dp), POINTER :: WorkA(:,:,:) => NULL()
@@ -5674,12 +5674,33 @@ CONTAINS
       Solver => Model % Solver
       Mesh => Solver % Mesh
 
-      ALLOCATE(PassPerm(Mesh % NumberOfNodes),NodeIndexes(1));PassPerm=0
+      ALLOCATE(PassPerm(Mesh % NumberOfNodes),NodeIndexes(1))
+      PassPerm=0
+
+      ! Mark the interface, don't know what the idea is but it seems to set the
+      ! flag to "1" so that we can avoid it when setting Dirichlet conditions. 
       DO i=0,Mesh % PassBCCnt-1
         j=Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements-i
-        PassPerm(Mesh % Elements(j) % NodeIndexes)=1
+        PassPerm(Mesh % Elements(j) % NodeIndexes) = 1
       END DO
 
+      ! Here set the flag to "2" for all nodes that are active anywhere.
+      ! This is basically redundant with the above.
+      DO i=1,Solver % NumberOfActiveElements
+        Element => Mesh % Elements(Solver % ActiveElements(i))
+        IF (.NOT. CheckPassiveElement(Element)) THEN
+          PassPerm(Element % NodeIndexes) = 2
+        END IF
+      END DO
+
+      ! Is is essential to communicate the parallel tag to avoid problems when
+      ! passive interface and partition interface match. 
+      BLOCK
+        TYPE(ParallelInfo_t), POINTER :: ParallelInfo=>NULL()
+        ParallelInfo => Mesh % ParallelInfo
+        CALL CommunicateParallelSystemTag(ParallelInfo,Itag=PassPerm,ParOper=2)
+      END BLOCK
+      
       DO i=1,Solver % NumberOfActiveElements
         Element => Mesh % Elements(Solver % ActiveElements(i))
         IF (CheckPassiveElement(Element)) THEN
@@ -5689,27 +5710,21 @@ CONTAINS
             k = Indexes(j)
             IF (k<=0) CYCLE
 
+            IF(k<=SIZE(PassPerm)) THEN
+              IF(PassPerm(k) > 0) CYCLE
+            END IF
+            
             k=Perm(k)
             IF (k<=0) CYCLE
 
-            IF(Indexes(j)<=SIZE(PassPerm)) THEN
-              IF(PassPerm(Indexes(j))==1) CYCLE
-            END IF
-
-!           s=0._dp
-!           DO l=1,NDOFs
-!             m=NDOFs*(k-1)+l
-!             s=s+ABS(A % Values(A % Diag(m)))
-!           END DO
-!           IF (s>EPSILON(s)) CYCLE
-
-
             DO l=1,NDOFs
-              s=0._dp
               m=NDOFs*(k-1)+l
-              s=s+ABS(A % Values(A % Diag(m)))
+#if 0 
+              ! I don't trust this piece of code for parallel interfaces
+              s=ABS(A % Values(A % Diag(m)))
               IF (s>EPSILON(s)) CYCLE
-
+#endif
+              
               m = NDOFs*(k-1)+l
               IF(A % ConstrainedDOF(m)) CYCLE
               CALL SetSinglePoint(k,l,Solver % Variable % Values(m),.FALSE.)

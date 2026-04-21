@@ -67,15 +67,14 @@ Solver 1
   Variable = Temperature
 
   Linear System Solver = Iterative
-  Linear System Direct Method = UMFPack
   Linear System Iterative Method = BiCGStab
   Linear System Preconditioning = ILU0
   Linear System Max Iterations = 300
-  Linear System Convergence Tolerance = 1.0e-6
-  Linear System Abort Not Converged = Logical False
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Abort Not Converged = Logical True
 
   Nonlinear System Max Iterations = 1
-  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Consistent Norm = Logical True
 
   Steady State Convergence Tolerance = 1.0e-5
 End
@@ -122,7 +121,6 @@ Boundary Condition 2
 End
 
 
-Solver 1 :: Reference Norm = Real 7.24228174780
-RUN
+Solver 1 :: Reference Norm = 7.24225765E+00
 
 ! End of File
