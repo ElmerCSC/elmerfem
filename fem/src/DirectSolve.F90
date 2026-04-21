@@ -48,8 +48,6 @@
 
 MODULE DirectSolve
 
-   USE Messages, ONLY: EXIT_ERROR
-
    USE CRSMatrix
    USE BandMatrix
    USE SParIterSolve

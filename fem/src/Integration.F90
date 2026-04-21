@@ -42,7 +42,6 @@
 !>  containing various integration routines.
 !-----------------------------------------------------------------------------
 MODULE Integration
-   USE Messages, ONLY: Warn, Fatal, Message
    USE LoadMod
    USE Messages
 

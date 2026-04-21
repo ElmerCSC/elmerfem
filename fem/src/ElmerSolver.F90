@@ -89,7 +89,6 @@
      USE DefUtils, ONLY : GetSimulation, GetCompilationDate, GetRevision, GetVersion, GetBranch, &
          GetReal, GetCReal, GetLogical, GetElementNOFNodes, GetElementDOFs, GetBC, &
          GetElementFamily, GetElementNodes, VectorElementEdgeDOFs
-     USE Messages, ONLY : MaxOutputThread, OutputPE
 
      IMPLICIT NONE
 !------------------------------------------------------------------------------
