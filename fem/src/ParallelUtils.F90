@@ -409,7 +409,8 @@ CONTAINS
               k = Matrix % Perm((i-1)*DOFs+j)
               IF ( k<=0 ) CYCLE
               IF (k > SIZE(Matrix % ParallelInfo % GlobalDOFs)) THEN
-                 CALL Fatal('ParallelInitMatrix','Matrix % ParallelInfo % GlobalDOFs bounds error. Matrix vs Solver perm scope conflict is a possible cause.')
+                CALL Fatal('ParallelInitMatrix','Matrix % ParallelInfo % GlobalDOFs bounds error.'//&
+                    ' Matrix vs Solver perm scope conflict is a possible cause.')
               END IF
               
               Matrix % ParallelInfo % GlobalDOFs(k) = &
