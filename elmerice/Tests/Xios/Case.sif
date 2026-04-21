@@ -85,6 +85,9 @@ Equation 1
   Active Solvers(3) = 1 2 3
 End
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Boundary Condition 1
+  Target Boundaries(4) = 1 2 3 4 
+End
 
 Solver 3 :: Reference Norm = Real 1.0
 Solver 3 :: Reference Norm Tolerance = Real 1E-06

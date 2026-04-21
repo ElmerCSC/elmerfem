@@ -1,0 +1,148 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! Test Case for the ComputeGroundingLineFlux Solver
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+#name="Case"
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Header
+  Mesh DB "." "square-tri"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 3D 
+  Simulation Type = Transient
+
+  Timestepping Method = "bdf"
+  BDF Order = 1
+  Timestep Intervals = 1
+  Timestep Sizes = 1
+
+  ! The mesh must be vertcially extruded
+  Extruded Mesh Levels= 8
+  Extruded Mesh Ratio = 1.0
+
+  Output Intervals = 1
+  Post File = "#name#.vtu"
+
+  max output level = 5
+
+  !! scalar outputs
+  Scalars File = "Scalars_#name#.dat"
+    scalars: Exec Solver = String "After Timestep"
+    scalars: Exec Intervals = Integer 1
+    scalars: Parallel Reduce = Logical True
+    scalars: Variable 1 = String "Time"
+    scalars: Variable 2 = String "tendligroundf"
+    scalars: Operator 3 = String "partitions"
+
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! Main ice body
+Body 1
+  Equation = 1
+  Initial Condition = 1
+  Body Force = 1
+End
+! bottom surface
+Body 2
+  Equation = 2
+  Initial Condition = 1
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+  GroundedMask = Variable Coordinate 1
+    REAL procedure "gmInit" "gmInit"
+End
+Body Force 1
+  Velocity 1 = Variable time
+    REAL LUA "1.0+tx[0]"
+  Velocity 2 = Variable time
+    REAL LUA "1.0+tx[0]"
+  Velocity 3 = Real -0.5
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1
+  Exec Solver = Before Simulation
+  Equation = "MapCoordinate"
+  Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
+
+  Active Coordinate = Integer 3
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!   Stokes eq.
+!    velocity field is function of time
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 2
+  Equation = "Velocity"
+  Procedure = "ElmerIceSolvers" "UpdateExport"
+
+  Exported Variable 1 = Flow Solution[Velocity:3 Pressure:1]
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!   GroundedMask
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 3
+  Exec Solver = never
+  Equation = GroundedMask
+  Procedure = "ElmerIceSolvers" "GroundedSolver"
+  Variable = GroundedMask
+  Variable DOFs = 1
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!  Flux computation
+!  to execute on the bottom boundary 
+!   as the GroundedSolver
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 4
+  Exec Solver = After TimeStep
+  Equation = "ComputeGlFlux"
+  Procedure = "ElmerIceSolvers" "ComputeGroundingLineFlux"
+
+  ! optionnal variable to save the element area
+  Exported Variable 1 = -elem "bc_area"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!# Bulk
+Equation 1
+  Active Solvers (2)= 1 2
+End
+!# Bottom
+Equation 2
+ Active Solvers (2)=  3 4
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Boundary Condition 1
+  Name = "Side Walls"
+  Target Boundaries(4) = 1 2 3 4
+End
+
+Boundary Condition 2
+  Name = "bed"
+  Body Id = 2
+
+  Bottom Surface = Variable Coordinate 1
+    REAL LUA "tx[0]-1.0"
+
+End
+
+! Upper Surface
+Boundary Condition 3
+  Name = "Surface"
+
+  Top Surface = Variable Coordinate 1
+    REAL LUA "1.5+tx[0]-1.0"
+End 
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! reference solution
+! at t=1, the velocity normal to the gl is 2
+!  integrated over a thickness of 1.5 and a width of 2
+!  flux=2x2x1.5=6.0
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!:
+Solver 4 :: Reference Norm = Real 6.0
+Solver 4 :: Reference Norm Tolerance = Real 1E-08

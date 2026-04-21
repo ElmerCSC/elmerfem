@@ -8,6 +8,7 @@
 - **Required Input Variable(s):** H (or Variable name prescribed by *Thickness Variable Name*)
 - **Optional Output Variable(s):** 
 	- GroundedMask
+    - Haf,Haf0
 	- sftgif,sftgrf,sftflf
 - **Optional Input Variable(s):** bedrock
 
@@ -39,7 +40,28 @@ The aim of this solver is to apply the flotation criterion to compute the top an
   - GroundedMask=-1 where $z_b>bedrock$ (floating ice)
   - GroundedMask=0 at the grounding line (list of nodes where $z_b=bedrock$ but the nodes belong to at least one grounded (all nodes grounded) and one floating (at least one node floating) element  
 
-- IF compute ice area fractions = TRUE, compute the element area fractions sftgif (land_ice_area_fraction), sftgrf (grounded_ice_sheet_area_fraction), sftflf (floating_ice_shelf_area_fraction). No sub-scheme is used so values are 0._dp or 1._dp. An element is considered floating if at least one node is floating, otherwise it is grounded. If the solution for the Thickness is limited, then if all nodal H == Lower Limit, all teh area fractions are set to 0.
+- If the **Haf** variable is present, compute the nodal heigh above flotation as:  
+    - $Haf=H$ if $bedrock > zsea$
+    - $Haf=H - (zsea-bedrock)*rhow/rhoi$ if grounded (GroundedMask=[0,1])
+    - $Haf=0$ if floating (GroundedMask=-1)
+
+- If the **Haf0** variable is present :
+    - $Haf0=H$ if $bedrock > zsea$
+    - $Haf0=H - (zsea-bedrock)*rhow/rhoi$
+    - => the 0-isocontour of Haf0 exactly gives the sub-element grounding line location, and is used by the SEP2 sub-element integration for the ice fraction areas (see below)
+
+
+- IF compute ice area fractions = TRUE, compute the element area fractions :
+    - sftgif (land_ice_area_fraction)
+    - sftgrf (grounded_ice_sheet_area_fraction)
+    - sftflf (floating_ice_shelf_area_fraction)
+    - sftgif=sftgrf+sftflf
+    - If the solution for the Thickness is limited, then if all nodal H == Lower Limit, all the area fractions are set to 0.
+    - To compute sftgrf and sftflf the flotation criterion is directly evaluated at the IPs:
+        - the number of IPs at partly grounded elements can be changed with the solver kw 'GL integration points number = Integer N'. This is SEP3 in Seroussi et al. (2014). See [ELMER_TRUNK]/fem/src/Integration.F90 for the possible integration rules.
+        - Adaptive integration where the elements are splitted following the sub-element GL location is activated using the solver kw 'Sub-Element GL parameterization = logical True'. This is SEP2 in Seroussi et al. (2014) and will give the exact grounded (resp. floating) area. The variable **Haf0** is required to locate the GL within the elements. 
+
+Seroussi, H., Morlighem, M., Larour, E., Rignot, E., and Khazendar, A.: Hydrostatic grounding line parameterization in ice sheet models, The Cryosphere, 8, 2075–2087, https://doi.org/10.5194/tc-8-2075-2014, 2014.
 
 ### Remarks  
 
@@ -70,6 +92,11 @@ Solver 3
    Exported Variable 2 = -dofs 1 "Zb"
    Exported Variable 3 = -dofs 1 "bedrock"
 
+  ![OPTIONAL :] Height above flotation
+   Exported Variable 4 = Haf
+   Exported Variable 5 = Haf0
+  
+
   ![OPTIONAL :] rates of changes of Zs and zb can be computed with 
   ! (in the solver where they are created as Exported Variables):
   ! Zs Calculate Velocity = Logical True
@@ -77,13 +104,21 @@ Solver 3
 
   ![OPTIONAL :]
   compute ice area fractions = Logical TRUE
+
+  ! activate Sub element integration:
+  ! SEP2
+  Sub-Element GL parameterization = Logical True 
+  !SEP3
+  ! 20 is the maximum coded inetgration rule for triangles
+  ! GL integration points number = Integer 20
   
-  Exported Variable 1 = -elem "sftgif"
-  Exported Variable 2 = -elem "sftgrf"
-  Exported Variable 3 = -elem "sftflf"
+  Exported Variable 6 = -elem "sftgif"
+  Exported Variable 7 = -elem "sftgrf"
+  Exported Variable 8 = -elem "sftflf"
 End
 ```
 
 ## Examples
-For examples look in your elmer source distribution under
-[ELMER_TRUNK]/elmerice/Tests/SSA_IceSheet
+For examples look in your elmer source distribution under :
+- [ELMER_TRUNK]/elmerice/Tests/SSA_IceSheet  
+- [ELMER_TRUNK]/elmerice/Tests/Flotation 
