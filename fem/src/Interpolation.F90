@@ -44,7 +44,7 @@
 MODULE Interpolation
 
    USE Types
-   USE Messages, ONLY: Message, Info, Warn, Fatal
+   USE Messages
    USE SParIterGlobals
    USE CoordinateSystems
    USE ElementDescription, ONLY : GlobalToLocal, ElementInfo, GetElementType, &

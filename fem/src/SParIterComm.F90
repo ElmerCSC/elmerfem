@@ -54,6 +54,7 @@ MODULE SParIterComm
   USE Messages, ONLY: USE_YAC
 #endif
   USE LoadMod, ONLY : RealTime
+  USE Messages
   USE SParIterGlobals
 
 ! always use mpi_handshake if YAC is involved; if only XIOS is used, use

@@ -43,6 +43,7 @@
 !------------------------------------------------------------------------------
 MODULE MainUtils
 !------------------------------------------------------------------------------
+  USE Messages
   USE BlockSolve
   USE IterSolve, ONLY : NumericalError
   USE LoadMod, ONLY : ExecLocalAssembly, ExecSolver

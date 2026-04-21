@@ -44,8 +44,8 @@
 !-----------------------------------------------------------------------------
 MODULE GeneralUtils
 
+USE Messages
 USE LoadMod
-USE Messages, ONLY: Message, Info, Warn, Error, Fatal
 
 #ifdef HAVE_LUA
 USE, INTRINSIC :: ISO_C_BINDING
@@ -2617,8 +2617,7 @@ END MODULE GeneralUtils
 MODULE AscBinOutputUtils
   
   USE Types
-  USE Messages, ONLY: Message, Info, Warn, Error, Fatal
-
+  USE Messages
   IMPLICIT NONE
   
   LOGICAL, PRIVATE :: AsciiOutput, SinglePrec, CalcSum = .FALSE.

@@ -44,6 +44,7 @@
 #include "../config.h"
 
 MODULE ElementDescription
+   USE Messages
    USE Integration
    USE LinearAlgebra
    USE CoordinateSystems
