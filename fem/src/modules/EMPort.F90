@@ -94,6 +94,7 @@ SUBROUTINE EMPortSolver_Init0(Model, Solver, dt, Transient)
   DO i = 1,Model % NumberOfBCs
     BC => Model % BCs(i) % Values
     IF( ListGetLogical( BC,"Port Ground", Found ) ) THEN
+      CALL Info(Caller,'Setting "Eport" to zero where "Port Ground" is set True',Level=10)
       CALL ListAddConstReal( BC,'Eport re',0.0_dp)
       CALL ListAddConstReal( BC,'Eport im',0.0_dp)
       CALL ListAddConstReal( BC,'Eport re {e}',0.0_dp)

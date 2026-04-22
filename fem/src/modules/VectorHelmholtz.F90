@@ -940,9 +940,9 @@ CONTAINS
     END IF
     
     LineElement = GetElementFamily(Element) == 2
-    DegenerateElement = (CoordinateSystemDimension() == 3) .AND. LineElement
-    
+    DegenerateElement = (CoordinateSystemDimension() == 3) .AND. LineElement    
     UpdateStiff = .FALSE.
+    
     DO t=1,IP % n  
       !
       ! We need to branch as the only way to get the traces of 2D vector finite elements 
@@ -997,7 +997,6 @@ CONTAINS
         mur = 1.0_dp
       END IF      
       muinv = mur * mu0inv
-
       
       IF( COUNT([GoodConductor,ThinSheet,Absorb,GotPort]) > 1) THEN
         CALL Fatal(Caller,'Boundary condition not uniquely defined!')
@@ -1021,6 +1020,8 @@ CONTAINS
         B = im * (omega/muinv) / SurfImp
       ELSE IF(GotPort) THEN
         CALL ElectricPortModel(3,Solver,Element,GotPort,WBasis,L,B)
+
+        !IF(t==1) PRINT *,'B11:',Element % ElementIndex,B,SUM(ABS(L)),Element % BoundaryInfo % Constraint
       ELSE
         B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
 
@@ -1031,6 +1032,8 @@ CONTAINS
         ElSurfCurr = ListGetElementComplex3D( ElSurfCurr_h, Basis, Element, Found, GaussPoint = t)
 
         L = MagLoad + TemGrad - (0_dp, 1_dp)*omega/muinv*ElSurfCurr
+
+        !IF(t==1) PRINT *,'B22:',Element % ElementIndex,B,SUM(ABS(L)),Element % BoundaryInfo % Constraint
       END IF
 
       IF (.NOT. WithNdofs) THEN

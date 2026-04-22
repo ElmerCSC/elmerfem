@@ -2061,12 +2061,19 @@ MODULE LumpingUtils
         muinv = mur * mu0inv
         
         Cond = ListGetElementReal( CondCoeff_h, Basis, Parent, Found, GaussPoint = t )
-        
-        L = (0_dp, 0_dp)
 
+        ! If we need EdgeBasis get it already here since it is needed in evaluation of some port models
+        IF( EdgeBasis ) THEN
+          stat = ElementInfo( Element, ElementNodes, IP % U(t), IP % V(t), &
+              IP % W(t), detJ, Basis, dBasisdx, &
+              EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = avar % Solver )
+        END IF
+
+        L = (0_dp, 0_dp)          
         IF(GotPort) THEN
           CALL ElectricPortModel(3,pSolver,Element,GotPort,WBasis,L,B)
 
+          !IF(t==1) PRINT *,'B1:',Element % ElementIndex,B,SUM(ABS(L)),Element % BoundaryInfo % Constraint
         ELSE IF( ListGetElementLogical( Absorb_h, Element, Found ) ) THEN
           epsr = ListGetElementComplex( EpsCoeff_h, Basis, Parent, Found, GaussPoint = t )      
           IF( .NOT. Found ) epsr = 1.0_dp
@@ -2081,19 +2088,16 @@ MODULE LumpingUtils
           TemGrad = CMPLX( ListGetElementRealGrad( TemRe_h,dBasisdx,Element,Found), &
               ListGetElementRealGrad( TemIm_h,dBasisdx,Element,Found), KIND=dp )
 
-          IF (ABS(B) > AEPS) THEN
-            L = ( MagLoad + TemGrad ) / ( 2*B) 
-          END IF
-          
-          ! We sum the components here, since continutation is a little cleaner then...
-          ElSurfCurr = L + (0_dp, 1_dp)*omega*ElSurfCurr
+          L = MagLoad + TemGrad - (0_dp, 1_dp)*omega/muinv*ElSurfCurr
+                   
+          !IF(t==1) PRINT *,'B2:',Element % ElementIndex,B,SUM(ABS(L)),Element % BoundaryInfo % Constraint
         END IF
-
-          
+        
+        IF (ABS(B) > AEPS) THEN
+          L = L / ( 2*B) 
+        END IF
+                
         IF( EdgeBasis ) THEN
-          stat = ElementInfo( Element, ElementNodes, IP % U(t), IP % V(t), &
-              IP % W(t), detJ, Basis, dBasisdx, &
-              EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = avar % Solver )
           e_ip(1:3) = CMPLX(MATMUL(e_local(1,np+1:nd),WBasis(1:nd-np,1:3)), MATMUL(e_local(2,np+1:nd),WBasis(1:nd-np,1:3)), KIND=dp)
         ELSE
           DO i=1,3

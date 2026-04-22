@@ -316,7 +316,7 @@
          B = im * ( omega / mu0inv ) / (PortScale * PortZ ) 
          L(ABS(PortDirection)) = SIGN(1,PortDirection) / ( PortLength * SQRT(PortScale) )
        ELSE IF( PortTypeIndex == 3 ) THEN
-         B = im * PortBeta
+         B = -im * PortBeta
          DO p=1,nd
            L(:) = L(:) + CMPLX(Re_Eigenf(n+p) * WBasis(p,:), Im_Eigenf(n+p) * WBasis(p,:), kind=dp) 
          END DO
