@@ -2181,7 +2181,7 @@ CONTAINS
       WRITE( Str,'(A)') '<VTKFile type="Collection" version="0.1" byte_order="LittleEndian"><Collection>'
       n = LEN_TRIM( Str ) 
       
-      WRITE( Str,'(A,ES16.7,A,I0,A)') '<DataSet timestep="',time,&
+      WRITE( Str,'(A,ES0.7,A,I0,A)') '<DataSet timestep="',time,&
         '" group="" part="',GroupId,'" file="'//TRIM(DataSetFile)//'"/>'
       n = MAX( LEN_TRIM( Str ), n ) 
 
@@ -2209,7 +2209,7 @@ CONTAINS
     END IF
 
     nLine = nLine + 1
-    WRITE( VtuUnit,'(A,ES12.3,A,I0,A)',REC=nLine) lf//'<DataSet timestep="',time,&
+    WRITE( VtuUnit,'(A,ES0.7,A,I0,A)',REC=nLine) lf//'<DataSet timestep="',time,&
         '" group="" part="',GroupId,'" file="'//TRIM(DataSetFile)//'"/>'
     WRITE( VtuUnit,'(A)',REC=nLine+1) lf//'</Collection></VTKFile>'
 
