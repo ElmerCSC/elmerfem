@@ -100,6 +100,9 @@
       CASE('eigenmode')
         PortTypeInd = 3
 
+      CASE('potential')
+        PortTypeInd = 4
+
       CASE DEFAULT
         CALL Info(Caller,'Port Type "Port Type" defaulted to "rectangular"',Level=4)
         PortTypeInd = 1
@@ -210,33 +213,37 @@
 
    
 !------------------------------------------------------------------------------
-   SUBROUTINE ElectricPortModel(Phase,Solver,Element,GotPort,WBasis,L,B)
+  SUBROUTINE ElectricPortModel(Phase,Solver,Element,GotPort,&
+      Basis,dBasisdx,WBasis,L,B)
 !------------------------------------------------------------------------------
      INTEGER :: Phase
      TYPE(Solver_t) :: Solver
      LOGICAL, OPTIONAL :: GotPort
      TYPE(Element_t), POINTER, OPTIONAL :: Element
-     REAL(KIND=dp), OPTIONAL :: WBasis(:,:)
+     REAL(KIND=dp), OPTIONAL :: Basis(:), dBasisdx(:,:), WBasis(:,:)
      COMPLEX(KIND=dp), OPTIONAL :: L(:), B
-
 
      LOGICAL :: Found
      TYPE(Solver_t), POINTER :: EigenSolver
-     TYPE(Variable_t), POINTER :: EigenVar
+     TYPE(Variable_t), POINTER :: EigenVar, PotVar
      REAL(KIND=dp), ALLOCATABLE :: Re_Eigenf(:), Im_Eigenf(:)     
-     INTEGER :: EigenInd, PortDirection, PortTypeIndex, p, n, nd, m
+     INTEGER :: EigenInd, PortDirection, PortTypeIndex, p, n, nd, m, i
      INTEGER, ALLOCATABLE :: DofInds(:)
      COMPLEX(KIND=dp) :: PortZ, PortBeta
-     REAL(KIND=dp) :: Omega, PortLength, PortScale, PortCenter(3), mu0inv, muinv
+     REAL(KIND=dp) :: Omega, PortLength, PortScale, PortCenter(3), mu0inv, muinv, eps0, rob0, &
+         epsr, mur
      LOGICAL :: PortPassive !, ThinSheet, GoodConductor, Absorb, EigenSource, EigenWave
      TYPE(ValueHandle_t), SAVE :: EigenInd_h, PortTypeIndex_h, PortZ_h, PortLength_h, PortScale_h, &
-         PortDirection_h, PortCenter_h, PortBeta_h, PortPassive_h
+         PortDirection_h, PortCenter_h, PortBeta_h, PortPassive_h, MuCoeff_h, EpsCoeff_h
+     TYPE(Element_t), POINTER :: Parent
      COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)   
+     CHARACTER(:), ALLOCATABLE :: str
      CHARACTER(*), PARAMETER :: Caller = 'VectorHelmholtzUtils'
-
+     
+     
      SAVE Omega, mu0inv, PortTypeIndex, EigenInd, Re_Eigenf, Im_Eigenf, EigenSolver, EigenVar, &
          PortBeta, PortZ, PortScale, PortDirection, PortLength, PortCenter, PortPassive, &
-         DofInds, m,  n, nd
+         DofInds, m,  n, nd, eps0, rob0, Parent, PotVar
           
      
      SELECT CASE ( Phase ) 
@@ -252,6 +259,9 @@
        CALL ListInitElementKeyword( PortPassive_h,'Boundary Condition','Port Passive')
        CALL ListInitElementKeyword( EigenInd_h,'Boundary Condition','Eigenfunction Index')
 
+       CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)      
+       CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity',InitIm=.TRUE.)      
+       
        Omega = ListGetAngularFrequency( Solver % Values )
 
        Found = .FALSE.
@@ -260,7 +270,15 @@
          IF(mu0inv/=0) mu0inv=1/mu0inv
        END IF
        IF(.NOT. Found ) mu0inv = 1.0_dp / ( PI * 4.0d-7 )
+       
+       Found = .FALSE.
+       IF( ASSOCIATED( CurrentModel % Constants ) ) THEN
+         eps0 = ListGetConstReal ( CurrentModel % Constants, 'Permittivity of Vacuum', Found )
+       END IF
+       IF(.NOT. Found ) eps0 = 8.854187817d-12
 
+       rob0 = Omega * SQRT( eps0 / mu0inv )
+       
        n = Solver % Mesh % MaxElementDOFs
        IF(.NOT. ALLOCATED(DofInds)) THEN
          ALLOCATE(DofInds(n))
@@ -276,6 +294,10 @@
          END IF
          EigenVar => EigenSolver % Variable
        END IF       
+
+       str = ListGetString( Solver % Values,'tem potential name',Found)
+       IF(.NOT. Found) str = 'potential'
+       PotVar => VariableGet( Solver % Mesh % Variables, str, ThisOnly=.TRUE.)
 
        
      CASE( 2 )  ! Visit new element
@@ -304,7 +326,16 @@
          
          Re_eigenf(1:m) = REAL( EigenVar % EigenVectors(EigenInd,EigenVar % Perm(DofInds(1:m))) )
          Im_eigenf(1:m) = AIMAG( EigenVar % EigenVectors(EigenInd,EigenVar % Perm(DofInds(1:m))) )         
-       ELSE
+       ELSE IF( PortTypeIndex == 4 ) THEN
+         Parent => Element % BoundaryInfo % Left
+         IF(.NOT. ASSOCIATED(Parent)) THEN
+           Parent => Element % BoundaryInfo % Right
+         END IF
+         IF(.NOT. ASSOCIATED(Parent)) THEN
+           CALL Fatal(Caller,'Port model "potential" requires parent element!')
+         END IF
+         n = Element % Type % NumberOfNodes
+       ELSE         
          CALL Fatal(Caller,'Uncoded port type: '//I2S(PortTypeIndex))        
        END IF
        PortPassive = ListGetElementLogical( PortPassive_h, Element = Element )
@@ -319,6 +350,17 @@
          B = -im * PortBeta
          DO p=1,nd
            L(:) = L(:) + CMPLX(Re_Eigenf(n+p) * WBasis(p,:), Im_Eigenf(n+p) * WBasis(p,:), kind=dp) 
+         END DO
+       ELSE IF( PortTypeIndex == 4 ) THEN
+         mur = ListGetElementComplex( MuCoeff_h, Basis, Element, Found )
+         IF(.NOT. Found) mur = ListGetElementComplex( MuCoeff_h, Basis, Parent, Found )
+         IF(.NOT. Found ) mur = 1.0_dp
+         epsr = ListGetElementComplex( EpsCoeff_h, Basis, Element, Found )
+         IF(.NOT. Found) epsr = ListGetElementComplex( EpsCoeff_h, Basis, Parent, Found )
+         IF(.NOT. Found ) epsr = 1.0_dp
+         B = -im * rob0 * SQRT( epsr / mur )          
+         DO i=1,3
+           L(i) = SUM(dBasisdx(1:n,i) * PotVar % Values(PotVar % Perm(Element % NodeIndexes(1:n))))
          END DO
        ELSE
          L(1:3) = 0.0_dp

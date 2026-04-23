@@ -307,8 +307,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   
   Found = .FALSE.
   IF( ASSOCIATED( Model % Constants ) ) THEN
-    IF (ListCheckPresent(Model % Constants, 'Permittivity of Vacuum')) &
-        eps0 = GetConstReal ( Model % Constants, 'Permittivity of Vacuum', Found )
+    eps0 = GetConstReal ( Model % Constants, 'Permittivity of Vacuum', Found )
   END IF
   IF(.NOT. Found ) eps0 = 8.854187817d-12
 
@@ -1019,7 +1018,7 @@ CONTAINS
         SurfImp = CMPLX(1.0_dp, -1.0_dp, KIND=dp) * SQRT(omega/(2.0_dp * Cond * muinv))
         B = im * (omega/muinv) / SurfImp
       ELSE IF(GotPort) THEN
-        CALL ElectricPortModel(3,Solver,Element,GotPort,WBasis,L,B)
+        CALL ElectricPortModel(3,Solver,Element,GotPort,Basis,dBasisdx,WBasis,L,B)
 
         !IF(t==1) PRINT *,'B11:',Element % ElementIndex,B,SUM(ABS(L)),Element % BoundaryInfo % Constraint
       ELSE
