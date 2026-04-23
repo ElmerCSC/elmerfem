@@ -61,9 +61,10 @@ SUBROUTINE EMPortSolver_Init0(Model, Solver, dt, Transient)
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
-  INTEGER :: i
-  TYPE(ValueList_t), POINTER :: Params, BC
+  INTEGER :: i,j,soln
+  TYPE(ValueList_t), POINTER :: Params, BC, PrimaryParams
   LOGICAL :: Found, PiolaVersion, SecondFamily, SecondOrder
+  CHARACTER(:), ALLOCATABLE :: sname
   CHARACTER(*), PARAMETER :: Caller = 'EMPortSolver_Init0'
   
   Params => GetSolverParams()
@@ -73,6 +74,27 @@ SUBROUTINE EMPortSolver_Init0(Model, Solver, dt, Transient)
   CALL ListAddNewLogical(Params, 'Eigen Analysis', .TRUE.)  
   CALL ListAddNewInteger(Params, 'Nonlinear System Max Iterations', 1)
 
+  soln = ListGetInteger( Params,'Primary Solver index', Found ) 
+  IF( soln == 0 ) THEN
+    DO i=1,Model % NumberOfSolvers
+      sname = GetString(Model % Solvers(i) % Values, 'Procedure', Found)
+      j = INDEX( sname,'VectorHelmholtzSolver')
+      IF( j > 0 ) THEN
+        soln = i 
+        EXIT
+      END IF
+    END DO
+  END IF
+  IF(soln > 0) THEN
+    CALL Info(Caller,'Copying edge element definitions from primary solver '//I2S(soln),Level=8)
+    PrimaryParams => Model % Solvers(soln) % Values
+    CALL ListCompareAndCopy(PrimaryParams, Params,'Use Piola Transform')
+    CALL ListCompareAndCopy(PrimaryParams, Params,'Quadratic Approximation')
+    CALL ListCompareAndCopy(PrimaryParams, Params,'Second Kind Basis')
+    CALL ListCompareAndCopy(PrimaryParams, Params,'Simplicial Mesh')
+  END IF
+ 
+  
   IF (.NOT. ListCheckPresent(Params, "Element") ) THEN
     CALL EdgeElementStyle(Params, PiolaVersion, SecondFamily, SecondOrder, Check = .TRUE.)
 
