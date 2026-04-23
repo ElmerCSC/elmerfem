@@ -27,6 +27,7 @@
 !------------------------------------------------------------------------------
    USE Types
    USE Lists
+   USE ElementUtils, ONLY : SetParentBasis
    USE ElementDescription
    USE ParallelUtils
    IMPLICIT NONE
@@ -226,7 +227,7 @@
      LOGICAL :: Found
      TYPE(Solver_t), POINTER :: EigenSolver
      TYPE(Variable_t), POINTER :: EigenVar, PotVar
-     REAL(KIND=dp), ALLOCATABLE :: Re_Eigenf(:), Im_Eigenf(:)     
+     REAL(KIND=dp), ALLOCATABLE :: Re_Eigenf(:), Im_Eigenf(:), ParentBasis(:)
      INTEGER :: EigenInd, PortDirection, PortTypeIndex, p, n, nd, m, i
      INTEGER, ALLOCATABLE :: DofInds(:)
      COMPLEX(KIND=dp) :: PortZ, PortBeta
@@ -243,7 +244,7 @@
      
      SAVE Omega, mu0inv, PortTypeIndex, EigenInd, Re_Eigenf, Im_Eigenf, EigenSolver, EigenVar, &
          PortBeta, PortZ, PortScale, PortDirection, PortLength, PortCenter, PortPassive, &
-         DofInds, m,  n, nd, eps0, rob0, Parent, PotVar
+         DofInds, ParentBasis, m,  n, nd, eps0, rob0, Parent, PotVar
           
      
      SELECT CASE ( Phase ) 
@@ -281,8 +282,9 @@
        
        n = Solver % Mesh % MaxElementDOFs
        IF(.NOT. ALLOCATED(DofInds)) THEN
-         ALLOCATE(DofInds(n))
+         ALLOCATE(DofInds(n),ParentBasis(n))
          DofInds = 0
+         ParentBasis = 0.0_dp
        END IF
        
        ! If we have eigenfunction BC's then this has been set.
@@ -352,12 +354,18 @@
            L(:) = L(:) + CMPLX(Re_Eigenf(n+p) * WBasis(p,:), Im_Eigenf(n+p) * WBasis(p,:), kind=dp) 
          END DO
        ELSE IF( PortTypeIndex == 4 ) THEN
-         mur = ListGetElementComplex( MuCoeff_h, Basis, Element, Found )
-         IF(.NOT. Found) mur = ListGetElementComplex( MuCoeff_h, Basis, Parent, Found )
-         IF(.NOT. Found ) mur = 1.0_dp
          epsr = ListGetElementComplex( EpsCoeff_h, Basis, Element, Found )
-         IF(.NOT. Found) epsr = ListGetElementComplex( EpsCoeff_h, Basis, Parent, Found )
+         IF(.NOT. Found) THEN
+           CALL SetParentBasis( Element, n, Basis, Parent, Parent % TYPE % NumberOfNodes, ParentBasis)
+           epsr = ListGetElementComplex( EpsCoeff_h, ParentBasis, Parent, Found )
+         END IF
          IF(.NOT. Found ) epsr = 1.0_dp
+         mur = ListGetElementComplex( MuCoeff_h, Basis, Element, Found )
+         IF(.NOT. Found) THEN
+           CALL SetParentBasis( Element, n, Basis, Parent, Parent % TYPE % NumberOfNodes, ParentBasis)
+           mur = ListGetElementComplex( MuCoeff_h, Basis, Parent, Found )
+         END IF
+         IF(.NOT. Found ) mur = 1.0_dp
          B = -im * rob0 * SQRT( epsr / mur )          
          DO i=1,3
            L(i) = SUM(dBasisdx(1:n,i) * PotVar % Values(PotVar % Perm(Element % NodeIndexes(1:n))))

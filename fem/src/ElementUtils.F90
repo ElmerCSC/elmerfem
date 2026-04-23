@@ -3511,6 +3511,7 @@ CONTAINS
           NodalParentU(i) = Parent % Type % NodeU(j)
           NodalParentV(i) = Parent % Type % NodeV(j)
           NodalParentW(i) = Parent % Type % NodeW(j)
+          EXIT
         END IF
       END DO
     END DO
@@ -3530,6 +3531,49 @@ CONTAINS
     W = SUM( Basis(1:n) * NodalParentW(1:n) )
 !------------------------------------------------------------------------------      
   END SUBROUTINE FindParentUVW
+!------------------------------------------------------------------------------      
+
+
+!-----------------------------------------------------------------------------   
+!> Given basis function values at surface element set the corresponding basis
+!> functions in the parent element.
+!------------------------------------------------------------------------------
+  SUBROUTINE SetParentBasis( Element, n, Basis, Parent, np, Basisp ) 
+!------------------------------------------------------------------------------
+     IMPLICIT NONE
+     TYPE( Element_t ), POINTER :: Element
+     TYPE( Element_t ), POINTER :: Parent
+     INTEGER :: n, np
+     REAL( KIND=dp ) :: Basis(:), Basisp(:)
+!------------------------------------------------------------------------------
+    INTEGER :: i, j, nParent, check 
+    REAL(KIND=dp) :: NodalParentU(n), NodalParentV(n), NodalParentW(n)
+!------------------------------------------------------------------------------
+
+    Basisp(1:np) = 0.0_dp        
+    Check = 0
+    DO i = 1,n
+      DO j = 1,np
+        IF( Element % NodeIndexes(i) == Parent % NodeIndexes(j) ) THEN
+          Check = Check + 1
+          Basisp(j) = Basis(i)
+          EXIT
+        END IF
+      END DO
+    END DO
+
+    IF( Check /= n ) THEN
+      IF(n /= Element % TYPE % NumberOfNodes ) THEN
+        CALL Warn('SetParentBasis','Inconsistent size for "n"!')
+      END IF
+      IF(np /= Parent % TYPE % NumberOfNodes ) THEN
+        CALL Warn('SetParentBasis','Inconsistent size for "np"!')
+      END IF
+      CALL Fatal('SetParentBasis','Could not find all nodes in parent!') 
+    END IF
+
+!------------------------------------------------------------------------------      
+  END SUBROUTINE SetParentBasis
 !------------------------------------------------------------------------------      
 
 

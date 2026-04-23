@@ -523,7 +523,6 @@ CONTAINS
   END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------
 
-
 !-----------------------------------------------------------------------------
 !> A postprocessing solver for EMPortSolver
 !> Create the mass matrix on-the-fly and computes one component at a time. 
@@ -753,5 +752,206 @@ END SUBROUTINE EMPortSolver
 !------------------------------------------------------------------------------
 
 
+
+!/******************************************************************************
+! *
+! *  Subroutine for computing 2D electrostatic equation for port.
+! *  It is assumed that the equation is real valued with real valued permittivity
+! *  as the only material parameter. The only special feature of the solver is that
+! *  it looks for the material parameter in the parent elements if it does not find
+! *  it in the boudary element. This is derived from thet StatElecSolverVec. 
+! * 
+! *  Authors: Peter Råback
+! *  Email:   peter.raback@csc.fi
+! *
+! *  Created: 23.4.2026
+! *
+! *****************************************************************************/
+
+!------------------------------------------------------------------------------
+!> Initialization of the primary solver, i.e. EMPortPotential.
+!> \ingroup Solvers
+!------------------------------------------------------------------------------
+SUBROUTINE EMPortPotential_init( Model,Solver,dt,Transient )
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER :: Params, BC
+  LOGICAL :: Found
+  INTEGER :: i
+  CHARACTER(:), ALLOCATABLE :: varname
+  CHARACTER(*), PARAMETER :: Caller = 'EMPortPotential_init'
+  
+  Params => GetSolverParams()
+  CALL ListAddNewString( Params,'Variable','Port Potential')
+  
+  ! Set the port field to zero at BCs which are defined as port ground
+  ! and to one where there is a port feed. 
+  varname = ListGetString( Params,'Variable', Found )  
+  DO i = 1,Model % NumberOfBCs
+    BC => Model % BCs(i) % Values
+    IF( ListGetLogical( BC,"Port Ground", Found ) ) THEN
+      CALL Info(Caller,'Setting "Port Potential" to zero where "Port Ground" is True',Level=10)
+      CALL ListAddConstReal( BC,TRIM(VarName),0.0_dp)
+    ELSE IF( ListGetLogical( BC,"Port Feed", Found ) ) THEN
+      CALL Info(Caller,'Setting "Port Potential" to one where "Port Feed" is True',Level=10)
+      CALL ListAddConstReal( BC,TRIM(VarName),1.0_dp)
+    END IF
+  END DO
+  
+END SUBROUTINE EMPortPotential_Init
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+SUBROUTINE EMPortPotential( Model,Solver,dt,Transient )
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+! Local variables
+!------------------------------------------------------------------------------
+  TYPE(Element_t),POINTER :: Element
+  REAL(KIND=dp) :: Norm
+  INTEGER :: n, nb, nd, t, active
+  LOGICAL :: Found, InitHandles
+  TYPE(ValueList_t), POINTER :: Params 
+  TYPE(Mesh_t), POINTER :: Mesh
+  CHARACTER(*), PARAMETER :: Caller = 'EMPortPotential'    
+!------------------------------------------------------------------------------
+
+  CALL Info(Caller,'------------------------------------------------',Level=7)
+  CALL Info(Caller,'Solving static electric field for port boundaries',Level=4)
+
+  Mesh => GetMesh()
+  Params => GetSolverParams()
+      
+  CALL DefaultStart()  
+  CALL DefaultInitialize()
+
+  InitHandles = .TRUE.
+  
+  Active = GetNOFActive(Solver)
+  DO t=1,Active
+    Element => GetActiveElement(t)
+    n  = GetElementNOFNodes(Element)
+    nd = GetElementNOFDOFs(Element)
+    nb = GetElementNOFBDOFs(Element)
+    CALL LocalMatrix(  Element, n, nd+nb, nb, InitHandles )
+  END DO
+  
+  CALL DefaultFinishBulkAssembly()
+  CALL DefaultFinishBoundaryAssembly()
+  CALL DefaultFinishAssembly()
+  CALL DefaultDirichletBCs()
+  
+  ! And finally, solve:
+  !--------------------
+  Norm = DefaultSolve()
+
+  CALL DefaultFinish()
+
+  CALL Info(Caller,'------------------------------------------------',Level=7)
+
+CONTAINS
+
+!------------------------------------------------------------------------------
+  SUBROUTINE LocalMatrix( Element, n, nd, nb, InitHandles )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    INTEGER, INTENT(IN) :: n, nd, nb
+    TYPE(Element_t), POINTER :: Element
+    LOGICAL, INTENT(INOUT) :: InitHandles
+!------------------------------------------------------------------------------
+    REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:),dBasisdx(:,:),ParentBasis(:)
+    REAL(KIND=dp), ALLOCATABLE, SAVE :: STIFF(:,:), FORCE(:)
+    TYPE(Element_t), POINTER :: Parent
+    REAL(KIND=dp) :: eps0, weight
+    REAL(KIND=dp) :: SourceAtIp, EpsAtIp, DetJ
+    LOGICAL :: Stat,Found
+    INTEGER :: i,j,t,m,allocstat
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(ValueHandle_t), SAVE :: SourceCoeff_h, EpsCoeff_h
+    SAVE Eps0
+!------------------------------------------------------------------------------
+
+    ! This InitHandles flag might be false on threaded 1st call
+    IF( InitHandles ) THEN
+      CALL ListInitElementKeyword( SourceCoeff_h,'Body Force','Charge Density')
+      CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity')
+      
+      Found = .FALSE.
+      IF( ASSOCIATED( Model % Constants ) ) THEN
+        Eps0 = ListGetCReal( Model % Constants,'Permittivity Of Vacuum',Found )
+      END IF
+      IF( .NOT. Found ) Eps0 = 8.854187817e-12
+      InitHandles = .FALSE.
+
+
+      ! Allocate storage if needed
+      IF (.NOT. ALLOCATED(Basis)) THEN
+        m = Mesh % MaxElementDofs
+        ALLOCATE(Basis(m), dBasisdx(m,3), ParentBasis(m), STIFF(m,m), FORCE(m), STAT=allocstat)      
+        IF (allocstat /= 0) CALL Fatal(Caller,'Local storage allocation failed')
+      END IF      
+    END IF
+    
+    IP = GaussPoints( Element )          
+    CALL GetElementNodes( Nodes, UElement=Element )
+
+    STIFF = 0._dp
+    FORCE = 0._dp
+    
+    Parent => NULL()
+    IF(ASSOCIATED(Element % BoundaryInfo)) THEN
+      Parent => Element % BoundaryInfo % Left
+      IF(.NOT. ASSOCIATED(Parent)) THEN
+        Parent => Element % BoundaryInfo % Right
+      END IF
+    END IF
+          
+    DO t=1,IP % n
+      ! Basis function values & derivatives at the integration point:
+      !--------------------------------------------------------------
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis, dBasisdx )
+      Weight = IP % s(t) * DetJ
+      
+      EpsAtIp = ListGetElementReal( EpsCoeff_h, Basis, Element, Found, GaussPoint = t )      
+      IF(.NOT. Found) THEN
+        CALL SetParentBasis( Element, n, Basis, Parent, Parent % TYPE % NumberOfNodes, ParentBasis)
+        EpsAtIp = ListGetElementReal( EpsCoeff_h, ParentBasis, Parent, Found )
+      END IF
+      
+      STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + Weight * &
+          Eps0 * EpsAtIp * MATMUL( dBasisdx(1:nd,:), TRANSPOSE( dBasisdx(1:nd,:) ) )
+      
+      SourceAtIP = ListGetElementReal( SourceCoeff_h, Basis, Element, Found ) 
+      IF( Found ) THEN
+        FORCE(1:nd) = FORCE(1:nd) + Weight * SourceAtIP * Basis(1:nd)
+      END IF
+    END DO
+    
+    CALL CondensateP( nd-nb, nb, STIFF, FORCE )
+    CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element)
+    
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalMatrix
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+END SUBROUTINE EMPortPotential
+!------------------------------------------------------------------------------
 
 
