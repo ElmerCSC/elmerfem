@@ -5,7 +5,7 @@ Previous release: **26.1**
 Period covered: **Jan 19, 2026 - April 24, 2026**  
 
 These release notes provide information only on the essential changes.
-Over the period there has been ~117 commits (merge commits excluded). 
+Over the period there have been ~117 commits (merge commits excluded). 
 Some small fixes, less relevant changes and plain code refactoring have been omitted.
 With this release we are back in pace where it is easier to summarize the recent changes. 
 You can get a complete listing of commit messages, for example, with the command git log --since="2026-19-1"  > log.txt
@@ -22,7 +22,7 @@ I. New solver modules
 ---------------------
 
 ### ADIOS2OutputSolver
-- Saves elmer nodal scalar and vector fields in ADIOS2/BP5 format and outputs Fides json file for Paraview.
+- Saves Elmer nodal scalar and vector fields in ADIOS2/BP5 format and outputs Fides json file for Paraview.
   This greatly reduces the number of files in parallel runs. 
  
 
@@ -31,7 +31,7 @@ I. Enhancements of existing solvers
  
 ### EMPort.F90
 - Create a separate routine for just solving the port potential that inherits the material parameters from the parent material.
-- Make element definitions to follow primary solver
+- Make element definitions to follow the primary solver
 - Have port conditions for vector Helmholtz equation only in one place.
 - Enable eigenmodes to be sorted after solution with "Eigen System Sorting = String". Same values available as for "Eigen System Select".
 - In EMPortSolver enable solution of several ports such that one port is solved at a time. Currently probably limitations in parallel.
@@ -41,7 +41,7 @@ I. Enhancements of existing solvers
 - In EMPortSolver enable automated shifting based on analytic limit of the propagation constant. Also save the propagation constant of each boundary for later use.
 
 ### MarchingODE.F90
-- subdivision of timestep in marching ode solver for improved accuracy
+- subdivision of timestep in marching ODE solver for improved accuracy
 - internal variables to be used in marching.
 - vector valued field in marching
 - Enable MarchingODESolver to have multiple components.
@@ -56,51 +56,20 @@ III. ElmerSolver library functionality
 
 ### Finite elements
 
-- Test 2nd-order prisms and p-multigrid preconditioning for H(curl)
--Alternate H(curl) basis functions of degree 2 for prisms
-
-Some changes related to the basis functions in H(curl) (#765)    
-- some restructuring to avoid code repetition
-- an alternative 2nd order quad added
-- some preparations to allow for the cubic approximation in the case of tetrahedra
-- a 24-point quadrature for tetrahedra added
-
- quadratic approximation in H(curl) (#798)
-    
-    This relates to cases where the mesh combines several element types. Some basis
-    functions associated with quad faces were not compatible over faces shared by
-    elements of different types.
-
-    Modernize calls to get the vector element basis functions
-
-    A revision of H(curl) finite elements (#750)
-    
-    * The original code for constructing the lowest-order H(curl) basis functions of the second kind is replaced by the construction where some of the basis functions are obtained as the gradients of scalar fields.
-    
-    * Alternate versions of the second-order Nedelec bases of the first kind for simplicial elements. The motivation is that better iterative solvers can be obtained for these H(curl) approximations. A special keyword "Simplicial Mesh = Logical True" must be given to activate their use, so the appropriate combination of keywords is then as follows
-    
-      Second Kind Basis = False
-      Quadratic Approximation = True
-      Simplicial Mesh = Logical True
-    
-    Analogous versions for other element shapes do not yet exist.
-    
-    * Some corrections for setting non-homogeneous Dirichlet constraints for H(curl) approximations. A new 3-D test case related to such BCs is added. A solver employed in the testing is also moved to the modules directory.
+- Alternative versions of the second-order Nedelec bases of the first kind for triangles, quads, tetrahedra and prisms. The motivation is that better iterative solvers can be obtained for these H(curl) approximations. A special keyword "Gradient Basis Functions = True" must be given to activate their use. Analogous versions for other element shapes do not yet exist.
+- The original code for constructing the lowest-order H(curl) basis functions of the second kind is also replaced by the alternative construction.
+- The third-order H(curl) basis for triangles (the Nedelec first family).
+- A 24-point quadrature for tetrahedra added.
+- Fixes for the 15-node prism (element type 715) and support added for the 18-node prism (the element type 718).
 
 
-- Fixes for elementtype 715 and added support for elementtype 718.
+### Miscellaneous
 
-
-
-
-
-### Miscallenous
-
-- Enable reading of binary mesh format written by ElmerGrid. The changes are implemented by adding a suffix 'bin' to express the binary nature. Also implements single precison saving of nodes with suffix 'sbin'. To activate these use flag '-bin' and '-sbin' in ElmerGrid. ElmerGUI not yet supported nor is the reading in ElmerGrid.
+- Enable reading of binary mesh format written by ElmerGrid. The changes are implemented by adding a suffix 'bin' to express the binary nature. Also implemented is single precision saving of nodes with suffix 'sbin'. To activate these use flags '-bin' and '-sbin' in ElmerGrid. ElmerGUI not yet supported nor is the reading in ElmerGrid.
 - Accurate integration over step functions using temporal splitting of elements, works only in 2D.
-- Enable Hcurl Dirichlet BC's such that even if it does not share the full boundary the values can still be set at the edges.
+- Enable Dirichlet BCs for H(curl) such that even if it does not share the full boundary the values can still be set at the edges.
 - Function for interpolating many curves at the same time.
-- Also add possibility for namespace for GaussPointsAdapt such that we can choose "bc gauss" or "bulk gauss" rules in assembly. Add test case with exact known solution.
+- Also add possibility for namespace for GaussPointsAdapt such that we can choose "bc gauss" or "bulk gauss" rules in assembly. Add a test case with exact known solution.
 - Display current branch in ElmerSolver
 - Set the default value of global bubbles to False thereby removing the strange problems when bubbles are inherited to solvers that do not need them.
 - ADIOS2Utils module with a class for simplified writing of parallel data.
@@ -114,28 +83,29 @@ IV. Bug Fixes
 - Eliminate empty space from timesteps in XML because VTK is more picky lately.
 - Fix in passive parallel interfaces that appears when passive interface and partition interface overlap.
 - Fix adaptive integration with temporal triangles.
-- Fix segfault in mortar projectors with discontinuous Galerkin-
-- Fix the restart when there is a combination of different permutation vectors and field that is not everywhere defined.
+- Fix segfault in mortar projectors with discontinuous Galerkin
+- Fix the restart when there is a combination of different permutation vectors and a field which is not everywhere defined.
 - Set locale "C" before formatting strings in MATC
 - Fix initialization of halo nodes/elements when working with halo meshes
 - Fix 1D weak projector in case of DG elements
+- A fix for quadratic approximation in H(curl) relating to cases where the mesh combines several element types. Some basis functions associated with quad faces were not compatible over faces shared by elements of different types.
  
 
 V. ElmerGrid
 -------------
 - Enable binary writing of the mesh (except for the header and names)
 - Display compilation date and current branch in ElmerGrid
-- Support for elementtype 718 (quadratic prism with centernodes). 
+- Support for the element type 718 (quadratic prism with center nodes). 
 
 
 VI. ElmerGUI
 -----------
-- Add tentative support also for elementtype 718.
+- Add tentative support also for element type 718.
 
 
 VI. Configuration & Compilation
 --------------------------------
-- Many improvements on continious integration and testing.
+- Many improvements on continuous integration and testing.
 
 
 VII. Elmer/Ice
