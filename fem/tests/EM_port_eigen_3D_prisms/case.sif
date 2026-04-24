@@ -44,9 +44,10 @@ Body 3
   Equation = 1
 End
 
-Body 4
-  Equation = 1
-End
+!Body 4
+!  Equation = 1
+!  Material = 2
+!End
 
 Material 1
   Name = "higher_eps"
@@ -261,8 +262,8 @@ End
 
 
 Boundary Condition 1
-  Name = "Sides"
-  Target Boundaries(6) = 1 2 3 4 5 6
+  Name = "Normal=Y"
+  Target Boundaries(4) = 1 2 4 5
   E re {e} = Real 0.0
   E im {e} = Real 0.0
 
@@ -274,6 +275,25 @@ Boundary Condition 1
   ps re = Real 0.0
   ps im = Real 0.0
 
+  Eport re = Real 0
+  Eport im = Real 0
+  Eport re {e} = Real 0.0
+  Eport im {e} = Real 0.0
+End
+
+Boundary Condition 2
+  Name = "Normal=X"
+  Target Boundaries(2) = 3 6
+  E re {e} = Real 0.0
+  E im {e} = Real 0.0
+
+  PEY re = Real 0
+  PEZ re = Real 0
+  PEY im = Real 0
+  PEZ im = Real 0
+
+  ps re = Real 0.0
+  ps im = Real 0.0
 
   Eport re = Real 0
   Eport im = Real 0
@@ -281,10 +301,7 @@ Boundary Condition 1
   Eport im {e} = Real 0.0
 End
 
-
-
-
-Boundary Condition 2
+Boundary Condition 3
   Target Boundaries(2) = 7 8
 
   Body Id = 3
@@ -292,18 +309,23 @@ Boundary Condition 2
 
   ! If we are doing lumping then "Constraint Mode" works also instead of "Port Index"
   Port Index = Integer 1
+  Eigenfunction Index = Integer 2
 
   Bscalar 1 = Real 0.0  
   Bscalar 2 = Real -2.9152713305134146
 End
 
-Boundary Condition 3
+Boundary Condition 4
   Target Boundaries(2) = 9 10
   
   Body Id = 3
   Port Type = "eigenmode"
   Port Index = Integer 2
   Port Passive = Logical True
+  Eigenfunction Index = Integer 2
+
+  Bscalar 1 = Real 0.0  
+  Bscalar 2 = Real -2.9152713305134146
 End
 
 Solver 2 :: Reference Norm = 2.52395370E-01
