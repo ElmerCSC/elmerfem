@@ -26,7 +26,7 @@ I. New solver modules
   This greatly reduces the number of files in parallel runs. 
  
 
-I. Enhancements of existing solvers
+II. Enhancements of existing solvers
 -----------------------------------
  
 ### EMPort.F90
@@ -103,12 +103,12 @@ VI. ElmerGUI
 - Add tentative support also for element type 718.
 
 
-VI. Configuration & Compilation
+VII. Configuration & Compilation
 --------------------------------
 - Many improvements on continuous integration and testing.
 
 
-VII. Elmer/Ice
+VIII. Elmer/Ice
 --------------
 - New features in Elmer/Ice are documented elsewhere
 
