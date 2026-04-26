@@ -1,6 +1,3 @@
-/* Simple test helper to print CRS row pointers from C
- * This function is called from Fortran for debugging.
- */
 #include <stdio.h>
 #include <stdint.h>
 #include <inttypes.h>
@@ -160,43 +157,7 @@ static PetscErrorCode permon_cache_pattern(PermonSolveCache *cache, PetscInt nro
     PetscFunctionReturn(0);
 }
 
-
-void mprgp_print_rows(void *cptr, intptr_t addr, int n)
-{
-    if (cptr == NULL) {
-        printf("mprgp_print_rows: received NULL pointer (addr=%" PRIdPTR ")\n", (intptr_t)cptr);
-        fflush(stdout);
-        return;
-    }
-
-    int *rows = (int*) cptr;
-    printf("mprgp_print_rows: C pointer address = %p (intptr=%" PRIdPTR ")\n", (void*)rows, (intptr_t)rows);
-    int toprint = n;
-    for (int i = 0; i < toprint; ++i) {
-        printf(" C row %3d: %12d\n", i+1, rows[i]);
-    }
-    fflush(stdout);
-}
-
-void mprgp_print_vector(void *cptr, int n, char *name)
-{
-    if (cptr == NULL) {
-        printf("mprgp_print_vector: received NULL pointer (addr=%" PRIdPTR ")\n", (intptr_t)cptr);
-        fflush(stdout);
-        return;
-    }
-
-    double *vec = (double*) cptr;
-    printf("mprgp_print_vector: %s: C pointer address = %p (intptr=%" PRIdPTR ")\n", name, (void*)vec, (intptr_t)vec);
-    int toprint = n;
-    for (int i = 0; i < toprint; ++i) {
-        printf(" %s row %3d: %12.5e\n", name, i+1, vec[i]);
-    }
-    fflush(stdout);
-}
-
 int permon_init(){
-    // permonrc - default name for solver options file
     return PermonInitialize(NULL, NULL, NULL, NULL);
 }
 
@@ -223,7 +184,6 @@ int permon_finalize(){
     return PermonFinalize();
 }
 
-// TODO check if the freeing of the arrays is correct
 int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows, void *b_ptr, void *c_ptr, void *x_ptr, int bound, int *globaldofs, int *owner, int fcomm) {
     Vec       b, c, x;
     Vec       lb = NULL, ub = NULL;
@@ -235,7 +195,6 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
     PetscBool debugInit = PETSC_FALSE, pinInitToBound = PETSC_FALSE, pinInitToBoundAtFirst = PETSC_FALSE;
     PetscBool debugBounds = PETSC_FALSE;
     PetscBool checkSymmetry = PETSC_FALSE, symmetryStrict = PETSC_FALSE, isSymmetric = PETSC_FALSE;
-    PetscBool symmetrizeOperator = PETSC_FALSE;
     PetscReal symmetryTol = 1e-12;
     PetscViewer viewer;
     static PetscInt solveCallCounter = 0;
@@ -250,19 +209,15 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
     // -----------------------------
     // 1. Compute local ownership range
     // -----------------------------
-    PetscInt ilower = PETSC_MAX_INT, iupper = -1;
     PetscInt nlocal = 0;
 
 
     // Find number of local rows owned by this rank
     for (i = 0; i < nrows; i++) {
         if (owner[i]) {
-            if (globaldofs[i] < ilower) ilower = globaldofs[i];
-            if (globaldofs[i] > iupper) iupper = globaldofs[i];
             nlocal++;
         }
     }
-    if (iupper == -1) { ilower = 0; iupper = -1; }
     
     if (!permon_same_layout(&g_cache, comm, fcomm, nrows, nlocal, globaldofs)) {
         PetscCall(permon_setup_cached_objects(&g_cache, comm, fcomm, nrows, nlocal, globaldofs));
@@ -291,18 +246,6 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
     PetscCall(MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY));
     PetscCall(MatAssemblyEnd(A, MAT_FINAL_ASSEMBLY));
 
-    /* Optional defect-correction style operator modification:
-       A <- 0.5 * (A + A^T). This enforces symmetry for PERMON while
-       keeping the RHS from the full assembled physics. */
-    PetscCall(PetscOptionsGetBool(NULL, NULL, "-permon_symmetrize_operator", &symmetrizeOperator, NULL));
-    if (symmetrizeOperator) {
-        PetscCall(MatTranspose(A, MAT_INITIAL_MATRIX, &AT));
-        PetscCall(MatAXPY(A, 1.0, AT, DIFFERENT_NONZERO_PATTERN));
-        PetscCall(MatScale(A, 0.5));
-        PetscCall(MatDestroy(&AT));
-        PetscCall(PetscPrintf(comm,
-            "[permon_solve] Using symmetrized operator A_sym = 0.5*(A + A^T).\n"));
-    }
 
     /* MPRGP/PERMON assumes a symmetric operator; this check verifies the
        assembled matrix and can optionally abort before solve. */

@@ -2101,7 +2101,7 @@ CONTAINS
       ! Local declarations (all here)
       ! ---------------------------
       REAL(KIND=dp), ALLOCATABLE :: g(:), gf(:), gc(:), gr(:), gp(:)
-      REAL(KIND=dp), ALLOCATABLE :: z(:), p(:), Ap(:), yy(:), D(:), Agr(:)
+      REAL(KIND=dp), ALLOCATABLE :: p(:), Ap(:), yy(:), D(:), Agr(:)
       LOGICAL, ALLOCATABLE :: J(:)
       LOGICAL, ALLOCATABLE :: p_mask(:)
       INTEGER :: bs
@@ -2120,7 +2120,7 @@ CONTAINS
       ! ---------------------------
       ! Allocate scratch vectors
       ! ---------------------------
-      ALLOCATE(g(n), gf(n), gc(n), gr(n), gp(n), z(n), p(n), Ap(n), yy(n), J(n), Agr(n), STAT=allocstat)
+      ALLOCATE(g(n), gf(n), gc(n), gr(n), gp(n), p(n), Ap(n), yy(n), J(n), Agr(n), STAT=allocstat)
       IF (allocstat /= 0) THEN
         CALL Fatal('itermethod_mprgp','Allocation failed for scratch vectors')
       END IF
@@ -2181,13 +2181,7 @@ CONTAINS
       END IF
 
       gp = gf + gc
-      ! preconditioning: z = M^{-1} * g on free set
-      z = g
-      CALL pcondrsubr( g, z, ipar )
-      WHERE (.NOT. J)
-        z = 0.0_dp
-      END WHERE
-      p = z
+      p = gf
 
       ! counters
       ncg = 0
@@ -2205,7 +2199,7 @@ CONTAINS
         IF ( dotprodfun(n, gc, 1, gc, 1) <= (Gamma**2) * dotprodfun(n, gr, 1, gf, 1) ) THEN
           ! CG step
           CALL matvecsubr( p, Ap, ipar )        
-          rtp = dotprodfun(n, z, 1, g, 1) ! residual * p
+          rtp = dotprodfun(n, p, 1, g, 1) ! residual * p
           pAp = dotprodfun(n, p, 1, Ap, 1)
 
           IF (ABS(pAp) < eps_local) THEN
@@ -2236,18 +2230,10 @@ CONTAINS
               J = (x < c - tol)
             END IF
 
-            ! precondition
-            z = g
-            CALL pcondrsubr( g, z, ipar )
-            WHERE (.NOT. J)
-              z = 0.0_dp
-            END WHERE
-
-            beta = dotprodfun(n, z, 1, Ap, 1) / pAp
-            p = z - beta * p
-
             ! update gf,gc,gr,gp
             gf = MERGE(g, 0.0_dp, J)
+            beta = dotprodfun(n, gf, 1, Ap, 1) / pAp
+            p = gf - beta * p
 
             IF (bs == 1) THEN
               gc = 0.0_dp
@@ -2287,7 +2273,7 @@ CONTAINS
               J = (x < c - tol)
             END IF
             g = g - a_f * Ap
-
+            gf = MERGE(g, 0.0_dp, J)
             ! adaptive alpha
             IF (adapt) THEN
               CALL matvecsubr( gr, Agr, ipar )        
@@ -2301,30 +2287,24 @@ CONTAINS
                 IF (alpha <= 0.0_dp .OR. alpha > 1.0_dp / lAl) alpha = 1.0_dp / lAl
               END IF
             END IF
+            
 
             IF (bs == 1) THEN
               WHERE (J)
-                x = MAX(x - alpha * g, c)
+                x = MAX(x - alpha * gf, c)
               END WHERE
             ELSE
               WHERE (J)
-                x = MIN(x - alpha * g, c)
+                x = MIN(x - alpha * gf, c)
               END WHERE
             END IF
 
             CALL matvecsubr( x, g, ipar )
             g = g - b
 
-            ! recompute z and p
-            z = g
-            CALL pcondrsubr( g, z, ipar )
-            WHERE (.NOT. J)
-              z = 0.0_dp
-            END WHERE
-            p = z
-
             ! update gf,gc,gr,gp
             gf = MERGE(g, 0.0_dp, J)
+            p = gf
 
             IF (bs == 1) THEN
               gc = 0.0_dp
@@ -2376,15 +2356,9 @@ CONTAINS
           END IF
           g = g - acg * Ap
           
-          z = g
-          CALL pcondrsubr( g, z, ipar )
-          WHERE (.NOT. J)
-            z = 0.0_dp
-          END WHERE
-          p = z
-
           ! update gf,gc,gr,gp
           gf = MERGE(g, 0.0_dp, J)
+          p = gf
 
           IF (bs == 1) THEN
             gc = 0.0_dp
@@ -2414,7 +2388,7 @@ CONTAINS
 
       ! cleanup
       IF (ALLOCATED(D)) DEALLOCATE(D)
-      DEALLOCATE(g, gf, gc, gr, gp, z, p, Ap, yy, J)
+      DEALLOCATE(g, gf, gc, gr, gp, p, Ap, yy, J)
 
     !----------------------------------------------------------
     END SUBROUTINE MPRGP
