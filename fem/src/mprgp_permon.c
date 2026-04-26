@@ -5,6 +5,7 @@
 #include <petscmat.h>
 #include <petscsys.h>
 
+// Cache is used as interface can be called mutliple times within Solver
 typedef struct {
     PetscBool initialized;
     MPI_Comm comm;
@@ -31,6 +32,7 @@ typedef struct {
 
 static PermonSolveCache g_cache = {0};
 
+// Destroy all cached PETSc/PERMON objects and mark cache as empty.
 static PetscErrorCode permon_cache_reset(PermonSolveCache *cache)
 {
     PetscFunctionBegin;
@@ -64,6 +66,7 @@ static PetscErrorCode permon_cache_reset(PermonSolveCache *cache)
     PetscFunctionReturn(0);
 }
 
+// Check if the cached objects remain the same and can be reused.
 static PetscBool permon_same_layout(const PermonSolveCache *cache, MPI_Comm comm, int fcomm, PetscInt nrows, PetscInt nlocal, const int *globaldofs)
 {
     PetscInt i;
@@ -87,6 +90,7 @@ static PetscErrorCode permon_setup_cached_objects(PermonSolveCache *cache, MPI_C
     PetscInt i;
 
     PetscFunctionBegin;
+    // Rebuild cache from scratch when communicator/layout changed.
     PetscCall(permon_cache_reset(cache));
 
     cache->comm = comm;
@@ -103,6 +107,7 @@ static PetscErrorCode permon_setup_cached_objects(PermonSolveCache *cache, MPI_C
     PetscCall(MatSetType(cache->A, MATMPIAIJ));
     PetscCall(MatSetSizes(cache->A, nlocal, nlocal, PETSC_DECIDE, PETSC_DECIDE));
     PetscCall(MatSetFromOptions(cache->A));
+    PetscCall(MatSetOption(cache->A, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE));
     PetscCall(MatSetUp(cache->A));
     PetscCall(MatSetLocalToGlobalMapping(cache->A, ltog, ltog));
     PetscCall(ISLocalToGlobalMappingDestroy(&ltog));
@@ -131,15 +136,21 @@ static PetscErrorCode permon_setup_cached_objects(PermonSolveCache *cache, MPI_C
     PetscFunctionReturn(0);
 }
 
+
+// Refresh cached CRS indices from Fortran row/col arrays.
 static PetscErrorCode permon_cache_pattern(PermonSolveCache *cache, PetscInt nrows, const int *rows_f, const int *cols_f)
 {
-    PetscInt i;
+    PetscInt i, nnz_total_new;
 
     PetscFunctionBegin;
-    if (cache->pattern_cached) PetscFunctionReturn(0);
+    nnz_total_new = (PetscInt)rows_f[nrows] - 1;
+    if (nnz_total_new < 0) SETERRQ(PETSC_COMM_SELF, PETSC_ERR_ARG_OUTOFRANGE, "Invalid CRS row pointer end value");
 
-    cache->nnz_total = (PetscInt)rows_f[nrows] - 1;
-    if (cache->nnz_total < 0) SETERRQ(PETSC_COMM_SELF, PETSC_ERR_ARG_OUTOFRANGE, "Invalid CRS row pointer end value");
+    if (!cache->pattern_cached || nnz_total_new != cache->nnz_total) {
+        PetscCall(PetscFree(cache->cols0));
+        PetscCall(PetscMalloc1(nnz_total_new, &cache->cols0));
+        cache->nnz_total = nnz_total_new;
+    }
 
     cache->maxnnz = 0;
     for (i = 0; i < nrows; ++i) {
@@ -147,9 +158,8 @@ static PetscErrorCode permon_cache_pattern(PermonSolveCache *cache, PetscInt nro
         cache->maxnnz = PetscMax(cache->maxnnz, rownnz);
     }
 
-    PetscCall(PetscMalloc1(cache->nnz_total, &cache->cols0));
     for (i = 0; i < cache->nnz_total; ++i) {
-        /* Convert Fortran 1-based local columns to C 0-based once per cached layout. */
+        /* Convert Fortran 1-based local columns to C 0-based for this solve. */
         cache->cols0[i] = (PetscInt)cols_f[i] - 1;
     }
 
@@ -170,10 +180,6 @@ int permon_set_options_file(const char *options_file, int fcomm){
 
     PetscErrorCode ierr;
     ierr = PetscOptionsInsertFile(comm, NULL, options_file, PETSC_TRUE);
-
-    /* If options were inserted after PetscInitialize, some options
-       (e.g. log viewing) expect a log handler to be active. Start
-       the default log handler.*/
     PetscCall(PetscLogDefaultBegin());
 
     return ierr;
@@ -192,10 +198,7 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
     QPS       qps;
     PetscInt  i, rstart, rend, nnz;
     PetscBool converged, viewSol = PETSC_FALSE;
-    PetscBool debugInit = PETSC_FALSE, pinInitToBound = PETSC_FALSE, pinInitToBoundAtFirst = PETSC_FALSE;
-    PetscBool debugBounds = PETSC_FALSE;
-    PetscBool checkSymmetry = PETSC_FALSE, symmetryStrict = PETSC_FALSE, isSymmetric = PETSC_FALSE;
-    PetscReal symmetryTol = 1e-12;
+    PetscBool pinInitToBound = PETSC_FALSE, pinInitToBoundAtFirst = PETSC_FALSE;
     PetscViewer viewer;
     static PetscInt solveCallCounter = 0;
     
@@ -207,7 +210,7 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
     double *vals = (double*)vals_local;
 
     // -----------------------------
-    // 1. Compute local ownership range
+    // Compute local ownership range
     // -----------------------------
     PetscInt nlocal = 0;
 
@@ -234,6 +237,7 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
 
     PetscCall(MatZeroEntries(A));
 
+    // Set Hessian values
     for (i = 0; i < nrows; i++) {
         nnz  = rows_f[i+1] - rows_f[i];
         PetscInt iloc = i; /* local row index */
@@ -247,25 +251,6 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
     PetscCall(MatAssemblyEnd(A, MAT_FINAL_ASSEMBLY));
 
 
-    /* MPRGP/PERMON assumes a symmetric operator; this check verifies the
-       assembled matrix and can optionally abort before solve. */
-    PetscCall(PetscOptionsGetBool(NULL, NULL, "-permon_check_symmetry", &checkSymmetry, NULL));
-    PetscCall(PetscOptionsGetReal(NULL, NULL, "-permon_check_symmetry_tol", &symmetryTol, NULL));
-    PetscCall(PetscOptionsGetBool(NULL, NULL, "-permon_check_symmetry_strict", &symmetryStrict, NULL));
-    if (checkSymmetry) {
-        PetscCall(MatIsSymmetric(A, symmetryTol, &isSymmetric));
-        if (!isSymmetric) {
-            PetscCall(PetscPrintf(comm,
-                "[permon_solve] WARNING: matrix is NOT symmetric within tol=%g.\n",
-                (double)symmetryTol));
-            if (symmetryStrict) {
-                PetscCall(PetscPrintf(comm,
-                    "[permon_solve] Aborting because -permon_check_symmetry_strict is enabled.\n"));
-                PetscCall(permon_cache_reset(&g_cache));
-                return PETSC_ERR_ARG_WRONGSTATE;
-            }
-        }
-    }
 
     PetscCall(VecSet(b, 0.0));
     PetscCall(VecSet(c, 0.0));
@@ -295,21 +280,10 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
 
 
     /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    * Setup QP: argmin 1/2 x'Ax -x'b s.t. c <= x
+    * Setup QP: argmin 1/2 x'Ax -x'b s.t. lb <= x <= ub 
     *  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */    
 
     solveCallCounter++;
-
-    PetscCall(PetscOptionsGetBool(NULL, NULL, "-permon_debug_initial_guess", &debugInit, NULL));
-    PetscCall(PetscOptionsGetBool(NULL, NULL, "-permon_debug_bounds", &debugBounds, NULL));
-    PetscCall(PetscOptionsGetBool(NULL, NULL, "-permon_initial_guess_at_bound", &pinInitToBound, NULL));
-    PetscCall(PetscOptionsGetBool(NULL, NULL, "-permon_initial_guess_at_bound_first", &pinInitToBoundAtFirst, NULL));
-
-    if (solveCallCounter == 1) {
-        PetscCall(PetscPrintf(comm,"permon_solve: Saving A and b"));
-        MatViewFromOptions(A,NULL,"-amat_view");
-        VecViewFromOptions(b,NULL,"-bvec_view");
-    }
 
     /* Re-attach updated matrix/rhs to reused QP objects. */
     PetscCall(QPSetOperator(qp, A));
@@ -328,70 +302,17 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
         return -1;
     }
 
-    if (solveCallCounter == 1) {
-        PetscCall(PetscPrintf(comm,"permon_solve: Saving c"));
-        VecViewFromOptions(c,NULL,"-cvec_view");
-    }
-
-    if (debugInit) {
-        PetscReal xNorm2 = 0.0, xMin = 0.0, xMax = 0.0;
-        PetscReal cNorm2 = 0.0, cMin = 0.0, cMax = 0.0;
-        PetscCall(VecNorm(x, NORM_2, &xNorm2));
-        PetscCall(VecMin(x, NULL, &xMin));
-        PetscCall(VecMax(x, NULL, &xMax));
-        PetscCall(VecNorm(c, NORM_2, &cNorm2));
-        PetscCall(VecMin(c, NULL, &cMin));
-        PetscCall(VecMax(c, NULL, &cMax));
-        PetscCall(PetscPrintf(comm,
-            "[permon_solve #%" PetscInt_FMT "] initial guess from Elmer: ||x||_2=%.6e min=%.6e max=%.6e; bound=%s ||c||_2=%.6e min=%.6e max=%.6e\n",
-            solveCallCounter,
-            (double)xNorm2, (double)xMin, (double)xMax,
-            (bound == 0) ? "lower" : "upper",
-            (double)cNorm2, (double)cMin, (double)cMax));
-    }
-
     if (pinInitToBound || (pinInitToBoundAtFirst && solveCallCounter == 1)) {
         /* Optional experiment: start exactly on active bound instead of Elmer's XVec. */
         PetscCall(PetscPrintf(comm,
             "[permon_solve #%" PetscInt_FMT "] pinning initial guess to bound\n",
             solveCallCounter));
         PetscCall(VecCopy(c, x));
-        if (debugInit) {
-            PetscReal xNorm2 = 0.0, xMin = 0.0, xMax = 0.0;
-            PetscReal cNorm2 = 0.0, cMin = 0.0, cMax = 0.0;
-            PetscCall(VecNorm(x, NORM_2, &xNorm2));
-            PetscCall(VecMin(x, NULL, &xMin));
-            PetscCall(VecMax(x, NULL, &xMax));
-            PetscCall(VecNorm(c, NORM_2, &cNorm2));
-            PetscCall(VecMin(c, NULL, &cMin));
-            PetscCall(VecMax(c, NULL, &cMax));
-            PetscCall(PetscPrintf(comm,
-                "[permon_solve #%" PetscInt_FMT "] x after pinning: ||x||_2=%.6e min=%.6e max=%.6e; bound=%s ||c||_2=%.6e min=%.6e max=%.6e\n",
-                solveCallCounter,
-                (double)xNorm2, (double)xMin, (double)xMax,
-                (bound == 0) ? "lower" : "upper",
-                (double)cNorm2, (double)cMin, (double)cMax));
-        }
-
     }
 
     /* Set initial guess.
     * THIS VECTOR WILL ALSO HOLD THE SOLUTION OF QP */
     PetscCall(QPSetInitialVector(qp, x));
-
-    /* Optional diagnostic: print min/max of lb, ub and c to catch NaN/Inf or inverted bounds. */
-    if (debugBounds) {
-        PetscReal lb_min = 0.0, lb_max = 0.0, ub_min = 0.0, ub_max = 0.0, c_min = 0.0, c_max = 0.0;
-        PetscCall(VecMin(lb, NULL, &lb_min));
-        PetscCall(VecMax(lb, NULL, &lb_max));
-        PetscCall(VecMin(ub, NULL, &ub_min));
-        PetscCall(VecMax(ub, NULL, &ub_max));
-        PetscCall(VecMin(c, NULL, &c_min));
-        PetscCall(VecMax(c, NULL, &c_max));
-        PetscCall(PetscPrintf(comm,
-            "[permon_solve] Bounds check: lb[min,max]=%.12g,%.12g ub[min,max]=%.12g,%.12g c[min,max]=%.12g,%.12g\n",
-            (double)lb_min, (double)lb_max, (double)ub_min, (double)ub_max, (double)c_min, (double)c_max));
-    }
 
     PetscCall(QPSetBox(qp, NULL, lb, ub));
      /* Apply runtime options after constraints are attached so QPS type
@@ -418,8 +339,7 @@ int permon_solve(void *rows_local, void *cols_local, void *vals_local, int nrows
     if (!converged) PetscCall(PetscPrintf(PETSC_COMM_WORLD, "QPS did not converge!\n"));
     if(converged) PetscCall(PetscPrintf(PETSC_COMM_WORLD, "QPS converged!\n"));
 
-    /* Copy solution back into Fortran array x_ptr (if provided) so Elmer
-       sees the computed solution for post-processing and norm checks. */
+    /* Copy solution back into Fortran array x_ptr */
     if (x_ptr) {
         PetscCall(VecScatterBegin(g_cache.scatter, x, g_cache.out, INSERT_VALUES, SCATTER_FORWARD));
         PetscCall(VecScatterEnd(g_cache.scatter, x, g_cache.out, INSERT_VALUES, SCATTER_FORWARD));
