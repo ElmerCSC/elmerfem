@@ -44,11 +44,6 @@ Body 3
   Equation = 1
 End
 
-!Body 4
-!  Equation = 1
-!  Material = 2
-!End
-
 Material 1
   Name = "higher_eps"
   Relative Reluctivity = 1.0
@@ -328,6 +323,6 @@ Boundary Condition 4
   Bscalar 2 = Real -2.9152713305134146
 End
 
-Solver 2 :: Reference Norm = 2.52395370E-01
-Solver 3 :: Reference Norm = 1.59199773E-01
+Solver 2 :: Reference Norm = 2.89473634E-02
+Solver 3 :: Reference Norm = 3.41524737E-02
 Solver 5 :: Reference Norm = 1.46409335E+01
