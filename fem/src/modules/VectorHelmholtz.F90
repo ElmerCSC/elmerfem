@@ -862,13 +862,12 @@ CONTAINS
     LOGICAL :: LineElement, DegenerateElement, Regularize, Consistent
     LOGICAL :: AllocationsDone = .FALSE.
     TYPE(GaussIntegrationPoints_t) :: IP
-    INTEGER :: t, i, j, m, np, p, q, ndofs, EigenInd
-    INTEGER :: nd_eigen
+    INTEGER :: t, i, j, m, np, p, q, ndofs
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(Element_t), POINTER :: Parent
     TYPE(ValueHandle_t), SAVE :: ElSurfCurr_h, MagLoad_h, ElRobin_h, MuCoeff_h, EpsCoeff_h, Absorb_h, TemRe_h, TemIm_h, ExtPot_h
     TYPE(ValueHandle_t), SAVE :: TransferCoeff_h, ElCurrent_h, Thickness_h, RelNu_h, CondCoeff_h
-    TYPE(ValueHandle_t), SAVE :: GoodConductor_h, ChargeConservation_h, EigenInd_h
+    TYPE(ValueHandle_t), SAVE :: GoodConductor_h, ChargeConservation_h
     LOGICAL :: GotPort
 
     
@@ -903,8 +902,6 @@ CONTAINS
       CALL ListInitElementKeyword( Thickness_h,'Boundary Condition','Layer Thickness')
       CALL ListInitElementKeyword( RelNu_h,'Boundary Condition','Layer Relative Reluctivity',InitIm=.TRUE.)
       CALL ListInitElementKeyword( CondCoeff_h,'Boundary Condition','Layer Electric Conductivity',InitIm=.TRUE.)
-
-      CALL ListInitElementKeyword( EigenInd_h,'Boundary Condition','Eigenfunction Index')
       
       ! Lumped ports
       CALL ElectricPortModel(1,Solver)
@@ -923,7 +920,6 @@ CONTAINS
     WithNdofs = ndofs > 0
     np = n * ndofs
     
-    ! Check whether BC should be created in terms of pre-computed eigenfunction:
     GoodConductor = ListGetElementLogical(GoodConductor_h, Element, Found)
     Absorb = ListGetElementLogical(Absorb_h, Element, Found)
     
@@ -1018,9 +1014,10 @@ CONTAINS
         SurfImp = CMPLX(1.0_dp, -1.0_dp, KIND=dp) * SQRT(omega/(2.0_dp * Cond * muinv))
         B = im * (omega/muinv) / SurfImp
       ELSE IF(GotPort) THEN
-        CALL ElectricPortModel(3,Solver,Element,GotPort,Basis,dBasisdx,WBasis,L,B)
+        CALL ElectricPortModel(3,Solver,Element,GotPort,B,L,Basis,dBasisdx,WBasis)
 
-        !IF(t==1) PRINT *,'B11:',Element % ElementIndex,B,SUM(ABS(L)),Element % BoundaryInfo % Constraint
+        !IF(t==1 .AND. MODULO(Element % ElementIndex,20) == 1) &
+        !    PRINT *,'B11:',Element % ElementIndex,B,SUM(L),Element % BoundaryInfo % Constraint
       ELSE
         B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
 
@@ -1032,7 +1029,8 @@ CONTAINS
 
         L = MagLoad + TemGrad - (0_dp, 1_dp)*omega/muinv*ElSurfCurr
 
-        !IF(t==1) PRINT *,'B22:',Element % ElementIndex,B,SUM(ABS(L)),Element % BoundaryInfo % Constraint
+        !IF(t==1 .AND. MODULO(Element % ElementIndex,20) == 1) &
+        !    PRINT *,'B22:',Element % ElementIndex,B,SUM(L),Element % BoundaryInfo % Constraint
       END IF
 
       IF (.NOT. WithNdofs) THEN

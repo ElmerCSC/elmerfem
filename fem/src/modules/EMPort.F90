@@ -169,7 +169,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(ValueList_t), POINTER :: Params, BC
   TYPE(Element_t), POINTER :: Element
-  LOGICAL :: PiolaVersion, EigenProblem, InitHandles, CalculateNodal, Found
+  LOGICAL :: PiolaVersion, EigenProblem, InitHandles, CalculateNodal, Found, MeActive
   INTEGER :: DOFs, EdgeBasisDegree, Active, i, j, k, t, m, n, nd, &
       EFamily, NoPorts, MaxPort, PortInd, t1, t2, ModeIndex
   COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
@@ -251,6 +251,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
   Active = GetNOFActive(Solver)
   InitHandles = .TRUE.
 
+  
   DO PortInd=1,MAX(MaxPort,1)
     CALL Info(Caller,'Solving for port: '//I2S(PortInd),Level=10)
     IF( MaxPort > 1 ) THEN
@@ -258,7 +259,23 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
       Solver % Matrix => CreateMatrix( Model, Solver, Solver % Mesh, EMVar % Perm, &
           EMVar % Dofs, MATRIX_CRS, .FALSE.,"Port Label "//I2S(PortInd), &
           GlobalBubbles = Solver % GlobalBubbles, BcMode = .TRUE.)     
+      i =  0
+      MeActive = .FALSE.
+      IF(ASSOCIATED(Solver % Matrix)) THEN
+        MeActive = ( Solver % Matrix % NumberOfRows > 0 )       
+      END IF
+        
+      PRINT *,'MeActive:',MeActive,ParEnv %  Mype, PortInd
+      call flush(6)
+
+      CALL ParallelActiveSubset(MeActive)
+
+
+      IF(.NOT. MeActive) CYCLE
+
       n = MAXVAL(EMVar % Perm) * EMVar % Dofs
+      PRINT *,'Mype',ParEnv % Mype, n
+      CALL FLUSH(6)
       ALLOCATE(Solver % Matrix % rhs(n))
       Solver % Matrix % rhs = 0.0_dp
     END IF
@@ -266,7 +283,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
     CALL DefaultInitialize()
 
     IF(MaxPort==0) THEN
-      ModeIndex = ListGetInteger(Params, 'Mode Index', Found)
+      ModeIndex = ListGetInteger(Params, 'Eigenfunction Index', Found)
       IF(.NOT. Found ) ModeIndex = 1            
     END IF
 
@@ -278,7 +295,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
       IF(MaxPort>0) THEN
         BC => GetBC(Element)
         IF(ListGetInteger(BC,'Port Index',Found ) /= PortInd) CYCLE
-        ModeIndex = ListGetInteger(BC, 'Mode Index', Found)
+        ModeIndex = ListGetInteger(BC, 'Eigenfunction Index', Found)
         IF(.NOT. Found ) ModeIndex = 1            
       END IF
       
@@ -361,6 +378,9 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
 
   END DO
 
+  CALL ParallelActive(.TRUE.)
+
+  
   CALL DefaultFinish()
 
   IF(MaxPort > 1) THEN
@@ -380,6 +400,94 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
   
 CONTAINS
 
+
+  SUBROUTINE ParallelActiveSubset(MeActive)
+
+    LOGICAL :: MeActive    
+    INTEGER :: n
+    INTEGER, ALLOCATABLE :: memb(:)
+    TYPE(Matrix_t), POINTER :: M
+    INTEGER :: comm_active, group_active, group_world, ierr
+
+
+    IF(ParEnv % PEs == 1 ) RETURN
+    
+    CALL ParallelActive(MeActive)
+    n = COUNT( ParEnv % Active ) 
+
+    M => Solver % Matrix
+    
+    PRINT *,'Active PEs',n
+    
+
+    IF ( n>0 .AND. n<ParEnv % PEs ) THEN
+      IF ( ASSOCIATED(Solver % Matrix) ) THEN
+        IF ( Solver % Matrix % Comm /= ELMER_COMM_WORLD .AND. Solver % Matrix % Comm /= MPI_COMM_NULL ) &
+            CALL MPI_Comm_Free( Solver % Matrix % Comm, ierr )
+      END IF
+
+      CALL MPI_Comm_group( ELMER_COMM_WORLD, group_world, ierr )
+      ALLOCATE(memb(n))
+      n = 0
+      DO i=1,ParEnv % PEs
+        IF ( ParEnv % Active(i) ) THEN
+          n=n+1
+          memb(n)=i-1
+        END IF
+      END DO
+      CALL MPI_Group_incl( group_world, n, memb, group_active, ierr)
+      DEALLOCATE(memb)
+      CALL MPI_Comm_create( ELMER_COMM_WORLD, group_active, &
+          comm_active, ierr)
+
+      M => Solver % Matrix
+      DO WHILE(ASSOCIATED(M))
+        M % Comm = comm_active
+        M => M % Parent
+      END DO
+
+      IF( ANY( ParEnv % Active(MinOutputPE+1:MIN(MaxOutputPE+1,ParEnv % PEs)) ) ) THEN
+        ! If any of the active output partitions in active just use it.
+        ! Typically the 1st one. Others are passive. 
+        IF( ParEnv % MyPe >= MinOutputPE .AND. ParEnv % MyPe <= MaxOutputPE ) THEN 
+          OutputPE = ParEnv % MyPE
+        ELSE
+          OutputPE = -1
+        END IF
+      ELSE         
+        ! Otherwise find the 1st active partition and if found use it.
+        ! Otherwise use the 0:th partition. 
+        DO i=1,ParEnv % PEs
+          IF ( ParEnv % Active(i) ) EXIT
+        END DO
+
+        OutputPE = -1
+        IF ( i-1 == ParEnv % MyPE ) THEN
+          OutputPE = i-1 
+        ELSE IF( i > ParEnv % PEs .AND. ParEnv % myPE == 0 ) THEN
+          OutputPE = 0
+        END IF
+      END IF
+    ELSE
+      M => Solver % Matrix
+      DO WHILE( ASSOCIATED(M) )
+        M % Comm = ELMER_COMM_WORLD
+        M => M % Parent
+      END DO
+
+      IF(.NOT.ASSOCIATED(Solver % Matrix)) ParEnv % Active = .TRUE.
+
+      ! Here set the default partitions active. 
+      IF( ParEnv % MyPe >= MinOutputPE .AND. &
+          ParEnv % MyPe <= MaxOutputPE ) THEN 
+        OutputPE = ParEnv % MyPE
+      ELSE
+        OutputPE = -1
+      END IF
+    END IF
+
+  END SUBROUTINE ParallelActiveSubset
+  
 
   ! Initialization of some parameters
   !--------------------------------------------------------------------

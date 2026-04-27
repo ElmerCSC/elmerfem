@@ -10,9 +10,9 @@ Some small fixes, less relevant changes and plain code refactoring have been omi
 With this release we are back in pace where it is easier to summarize the recent changes. 
 You can get a complete listing of commit messages, for example, with the command git log --since="2026-19-1"  > log.txt
 
-Apart from the core Elmer team at CSC (Juhani K., Mika M., Juha R., Peter R., Thomas Z.) git log shows contributions from Markus Mützel,
-Fabien G-C, Rupert G.,C. Bosbeux, K. Teenakul, B. Rodenberg, D. Bates and T. Mylläri (including changes to build system).  
-Additionally there are many ongoing developments in several branches
+Apart from the core Elmer team at CSC (Juhani K., Mika M., Juha R., Peter R., Thomas Z.) git log shows contributions from M. Mützel,
+Fabien G-C, Rupert G.,Cyrille M., Kavin T., Benjamin R., Daniel B. and T. Mylläri (including changes to build system).  
+Additionally there are many ongoing developments in several branches (e.g. on constraint solutions, radiation heat transfer)
 that have not been merged to this release and are not therefore covered here. 
 
 The contributions of all developers are gratefully acknowledged!

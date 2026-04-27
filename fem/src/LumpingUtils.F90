@@ -2071,7 +2071,7 @@ MODULE LumpingUtils
 
         L = (0_dp, 0_dp)          
         IF(GotPort) THEN
-          CALL ElectricPortModel(3,pSolver,Element,GotPort,Basis,dBasisdx,WBasis,L,B)
+          CALL ElectricPortModel(3,pSolver,Element,GotPort,B,L,Basis,dBasisdx,WBasis)
 
           !IF(t==1) PRINT *,'B1:',Element % ElementIndex,B,SUM(ABS(L)),Element % BoundaryInfo % Constraint
         ELSE IF( ListGetElementLogical( Absorb_h, Element, Found ) ) THEN

@@ -104,6 +104,9 @@
       CASE('potential')
         PortTypeInd = 4
 
+      CASE('beta')
+        PortTypeInd = 5
+
       CASE DEFAULT
         CALL Info(Caller,'Port Type "Port Type" defaulted to "rectangular"',Level=4)
         PortTypeInd = 1
@@ -215,14 +218,14 @@
    
 !------------------------------------------------------------------------------
   SUBROUTINE ElectricPortModel(Phase,Solver,Element,GotPort,&
-      Basis,dBasisdx,WBasis,L,B)
+      B,L,Basis,dBasisdx,WBasis)
 !------------------------------------------------------------------------------
      INTEGER :: Phase
      TYPE(Solver_t) :: Solver
      LOGICAL, OPTIONAL :: GotPort
      TYPE(Element_t), POINTER, OPTIONAL :: Element
+     COMPLEX(KIND=dp), OPTIONAL :: B, L(:)
      REAL(KIND=dp), OPTIONAL :: Basis(:), dBasisdx(:,:), WBasis(:,:)
-     COMPLEX(KIND=dp), OPTIONAL :: L(:), B
 
      LOGICAL :: Found
      TYPE(Solver_t), POINTER :: EigenSolver
@@ -337,6 +340,9 @@
            CALL Fatal(Caller,'Port model "potential" requires parent element!')
          END IF
          n = Element % Type % NumberOfNodes
+       ELSE IF( PortTypeIndex == 5 ) THEN  
+         PortBeta = ListGetElementReal( PortBeta_h, Element = Element, Found = Found )
+         IF(.NOT. Found) CALL Fatal(Caller,'"Port Beta" not found for port type "beta"')
        ELSE         
          CALL Fatal(Caller,'Uncoded port type: '//I2S(PortTypeIndex))        
        END IF
@@ -347,12 +353,16 @@
        
        IF( PortTypeIndex == 1 ) THEN
          B = im * ( omega / mu0inv ) / (PortScale * PortZ ) 
-         L(ABS(PortDirection)) = SIGN(1,PortDirection) / ( PortLength * SQRT(PortScale) )
+         IF(PRESENT(L)) THEN
+           L(ABS(PortDirection)) = SIGN(1,PortDirection) / ( PortLength * SQRT(PortScale) )
+         END IF
        ELSE IF( PortTypeIndex == 3 ) THEN
-         B = -im * PortBeta
-         DO p=1,nd
-           L(:) = L(:) + CMPLX(Re_Eigenf(n+p) * WBasis(p,:), Im_Eigenf(n+p) * WBasis(p,:), kind=dp) 
-         END DO
+         B = im * PortBeta
+         IF( PRESENT(L)) THEN
+           DO p=1,nd
+             L(:) = L(:) + CMPLX(Re_Eigenf(n+p) * WBasis(p,:), Im_Eigenf(n+p) * WBasis(p,:), kind=dp) 
+           END DO
+         END IF
        ELSE IF( PortTypeIndex == 4 ) THEN
          epsr = ListGetElementComplex( EpsCoeff_h, Basis, Element, Found )
          IF(.NOT. Found) THEN
@@ -367,17 +377,24 @@
          END IF
          IF(.NOT. Found ) mur = 1.0_dp
          B = -im * rob0 * SQRT( epsr / mur )          
-         DO i=1,3
-           L(i) = SUM(dBasisdx(1:n,i) * PotVar % Values(PotVar % Perm(Element % NodeIndexes(1:n))))
-         END DO
+         IF(PRESENT(L)) THEN
+           DO i=1,3
+             L(i) = SUM(dBasisdx(1:n,i) * PotVar % Values(PotVar % Perm(Element % NodeIndexes(1:n))))
+           END DO
+         END IF
+       ELSE IF( PortTypeIndex == 5 ) THEN
+         B = im * PortBeta
        ELSE
-         L(1:3) = 0.0_dp
+         IF(PRESENT(L)) L(1:3) = 0.0_dp
          B = 0.0_dp
          RETURN
        END IF
-       L = 2.0_dp * B * L 
-       IF( PortPassive) L = 0.0_dp              
 
+       IF( PRESENT(L)) THEN
+         L = 2.0_dp * B * L 
+         IF( PortPassive) L = 0.0_dp              
+       END IF
+         
      END SELECT
 
 
