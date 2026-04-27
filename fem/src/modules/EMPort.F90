@@ -101,8 +101,12 @@ SUBROUTINE EMPortSolver_Init0(Model, Solver, dt, Transient)
     ! Share the DOFs definition with the vector Helmholtz model so that the solution might be
     ! utilized by the vector Helmholtz model:
     IF (SecondOrder) THEN
-      CALL ListAddString(Params, "Element", &
-          "n:1 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2")
+      IF (SecondFamily) THEN
+        CALL ListAddString(Params, "Element", "n:1 e:3 -tri b:3 -tri_face b:3")
+      ELSE
+        CALL ListAddString(Params, "Element", &
+            "n:1 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2")
+      END IF
     ELSE IF( SecondFamily ) THEN
       CALL ListAddString(Params, "Element", "n:1 e:2" )
     ELSE IF (PiolaVersion) THEN
