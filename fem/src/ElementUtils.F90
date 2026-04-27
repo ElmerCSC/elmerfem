@@ -2046,7 +2046,7 @@ CONTAINS
          CALL Fatal(Caller,'Multithreaded startup only supports CRS matrix format')
        END IF
        
-       CALL Info(Caller,'Sparse atrix created',Level=14)
+       CALL Info(Caller,'Sparse matrix created',Level=14)
 
        CALL ListMatrixArray_Free( ListMatrixArray )       
      ELSE

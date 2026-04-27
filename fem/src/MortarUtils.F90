@@ -62,7 +62,7 @@ CONTAINS
   
 
 !------------------------------------------------------------------------------
-!> Create master and slave meshes for the interface in order to create projector 
+!> Create master and slave meshes for the interface in order to create a projector 
 !> matrix for implementing periodicity or mortar elements at a later stage.
 !> The idea is to use a reduced set of elements and thereby speed up the 
 !> mapping process. Also this gives more flexibility in transformation
@@ -72,9 +72,9 @@ CONTAINS
       Success ) 
 !------------------------------------------------------------------------------    
     TYPE(Model_t) :: Model
-    INTEGER :: This, Trgt
     TYPE(Mesh_t), TARGET :: Mesh
-    TYPE(Matrix_t), POINTER :: Projector
+    INTEGER :: This, Trgt
+    TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2
     LOGICAL :: Success
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,l,m,n,n1,n2,e1,e2,f1,f2,k1,k2,ind,Constraint,DIM,ii,jj,kk
@@ -82,7 +82,7 @@ CONTAINS
     LOGICAL :: ThisActive, TargetActive
     INTEGER, POINTER :: NodeIndexes(:), Perm1(:), Perm2(:), PPerm(:), &
               EPerm(:), EPerm1(:), EPerm2(:), BPerm(:), BPerm1(:), BPerm2(:)
-    TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
+    TYPE(Mesh_t), POINTER ::  PMesh
     LOGICAL :: OnTheFlyBC, CheckForHalo, NarrowHalo, NoHalo, SplitQuadratic, Found
 
     TYPE(Element_t), POINTER :: Parent,q
@@ -8644,7 +8644,7 @@ CONTAINS
     INTEGER, POINTER :: PerPerm(:)
     LOGICAL, POINTER :: PerFlip(:)
 !------------------------------------------------------------------------------
-   INTEGER :: i,j,k,n,dim
+    INTEGER :: i, edofs, fdofs, dim
     LOGICAL :: DoFaces, GradientVersion
     LOGICAL :: GotIt, Success, Rotational, AntiRotational, Sliding, AntiSliding, Repeating, &
         Radial, AntiRadial, DoNodes, DoEdges, Axial, AntiAxial, &
@@ -8653,6 +8653,7 @@ CONTAINS
     REAL(KIND=dp) :: Radius
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
     TYPE(ValueList_t), POINTER :: BC
+    TYPE(Solver_t), POINTER :: Solver
     CHARACTER(*), PARAMETER :: Caller="PeriodicPermutation"
 !------------------------------------------------------------------------------
     IF ( This <= 0  .OR. Trgt <= 0 ) RETURN    
@@ -8734,13 +8735,10 @@ CONTAINS
       DoEdges = ( Mesh % MaxEdgeDOFs > 0 .AND. Mesh % MeshDim == 3 .AND. Dim == 3 )
 
       ! Ensure that there is no p-elements that made us think that we have edges
-      ! Here we assume that if there is any p-element then also the 1st element is such
       IF( DoEdges ) THEN
-        IF(isActivePelement(Mesh % Elements(1))) THEN
+        IF (isActivePModel(Model)) THEN
           DoEdges = .FALSE.
           CALL Info(Caller,'Edge projector will not be created for p-element mesh',Level=10)
-        ELSE
-          GradientVersion = ListGetLogicalAnySolver(Model, 'Gradient Basis Functions')
         END IF
       END IF
     END IF
@@ -8749,10 +8747,10 @@ CONTAINS
     
     ! Make the two meshes to coincide using rotation, translation scaling.
     !---------------------------------------------------------------------------------
-    Radius = 1.0_dp
     EnforceOverlay = ListGetLogical( BC, 'Mortar BC enforce overlay', GotIt )
 
     IF( Rotational .OR. Cylindrical ) THEN
+      Radius = 1.0_dp      
       CALL RotationalInterfaceMeshes( BMesh1, BMesh2, BC, Cylindrical, &
           Radius, FullCircle )
       IF( FullCircle ) CALL Fatal(Caller,'Cannot deal full circle with permutation')
@@ -8774,10 +8772,41 @@ CONTAINS
     END IF
     
     IF( DoNodes ) CALL ConformingNodePerm(PMesh, BMesh1, BMesh2, PerPerm, PerFlip, AntiPeriodic )
-    IF( DoEdges ) CALL ConformingEdgePerm(PMesh, BMesh1, BMesh2, PerPerm, PerFlip, AntiPeriodic, GradientVersion )
-    IF( DoEdges .AND. DoFaces ) &
-        CALL ConformingFacePerm(PMesh, BMesh1, BMesh2, PerPerm, PerFlip, AntiPeriodic )
-    
+    IF( DoEdges ) THEN
+      !
+      ! Seek for a solver which needs the maximal number of non-nodal DOFs. When basis functions
+      ! are needed, we shall use the basis associated with that solver
+      Solver => NULL()
+      IF (DoFaces) THEN
+        fdofs = Mesh % MaxFaceDOFs
+        DO i=1, Model % NumberOfSolvers
+          Solver => Model % Solvers(i)
+          IF (ANY(Solver % Def_Dofs(9,:,5) == fdofs) .OR. &
+              ANY(Solver % Def_Dofs(10,:,5) == fdofs)) EXIT
+          IF (i == Model % NumberOfSolvers) Solver => NULL() 
+        END DO
+      ELSE
+        edofs = Mesh % MaxEdgeDOFs
+        DO i=1, Model % NumberOfSolvers
+          Solver => Model % Solvers(i)
+          IF (ANY(Solver % Def_Dofs(3,:,2) == edofs) .OR. &
+              ANY(Solver % Def_Dofs(4,:,2) == edofs)) EXIT
+          IF (i == Model % NumberOfSolvers) Solver => NULL() 
+        END DO
+      END IF
+      IF (.NOT. ASSOCIATED(Solver)) THEN
+        CALL Warn(Caller, 'Cannot indenfify solver needing the maximal number of edge/face DOFS')
+        GradientVersion = .FALSE.
+      ELSE
+        GradientVersion = ListGetLogical(ListGetSolverParams(Solver), 'Gradient Basis Functions', GotIt)
+        !print *, 'ASSOCIATED(Solver % Mesh, Mesh)', ASSOCIATED(Solver % Mesh, Mesh)
+      END IF
+
+      CALL ConformingEdgePerm(PMesh, BMesh1, BMesh2, PerPerm, PerFlip, AntiPeriodic, GradientVersion )
+      IF( DoFaces ) &
+          CALL ConformingFacePerm(PMesh, BMesh1, BMesh2, PerPerm, PerFlip, Solver, AntiPeriodic)
+    END IF
+      
     ! Deallocate mesh structures:
     !---------------------------------------------------------------
     CALL Info(Caller,'Releasing interface meshes!',Level=20)
@@ -8841,7 +8870,7 @@ CONTAINS
 
       IF( ASSOCIATED( Mesh % PeriodicPerm ) ) THEN
         IF( SIZE( Mesh % PeriodicPerm ) /= n ) THEN
-          CALL Info('GeneratePeriodicProjectors','Deallocating wrong size conforming data!',Level=20)
+          CALL Info('GeneratePeriodicProjectors','Deallocating conforming data of wrong size!',Level=20)
           DEALLOCATE( Mesh % PeriodicPerm )
           DEALLOCATE( Mesh % PeriodicFlip )
         END IF
@@ -9428,9 +9457,9 @@ CONTAINS
     IF (edofs > 1 .AND. .NOT. GradVersion) THEN
       CALL Fatal(Caller, 'Higher-order case needs Gradient Basis Functions = True')
     END IF
-    IF (edofs > 1) THEN
-      CALL Fatal(Caller, 'Implementation for higher-order is not yet available')
-    END IF
+!    IF (edofs > 1) THEN
+!      CALL Fatal(Caller, 'Implementation for higher-order is not yet available')
+!    END IF
     
     AntiPer = .FALSE.
     IF( PRESENT( AntiPeriodic ) ) AntiPer = AntiPeriodic
@@ -9716,31 +9745,40 @@ CONTAINS
 
 
   !---------------------------------------------------------------------------------
-  ! Create a permutation to eliminate faces in a conforming case.
+  ! Create a permutation to eliminate face DOFs in a conforming case.
   !---------------------------------------------------------------------------------
-  SUBROUTINE ConformingFacePerm( Mesh, BMesh1, BMesh2, PerPerm, PerFlip, AntiPeriodic )
+  SUBROUTINE ConformingFacePerm( Mesh, BMesh1, BMesh2, PerPerm, PerFlip, Solver, &
+      AntiPeriodic)
     TYPE(Mesh_t), POINTER :: Mesh, BMesh1, BMesh2
     INTEGER, POINTER :: PerPerm(:)
     LOGICAL, POINTER :: PerFlip(:)
+    TYPE(Solver_t), POINTER :: Solver
     LOGICAL, OPTIONAL :: AntiPeriodic 
     !---------------------------------------------------------------------------------      
-    INTEGER :: n, ind, indm, e, em, eind, eindm, k1, k2, km1, km2, i, i1, i2, &
+    INTEGER :: n, indm, e, em, eind, eindm, i, i1, i2, &
         nofaces, nofacesm, nf0, ne0, edofs, fdofs, j, cnts(4)
     TYPE(Element_t), POINTER :: Face, FaceM
     INTEGER, POINTER :: Indexes(:), IndexesM(:)
-    REAL(KIND=dp) :: xm1, xm2, ym1, ym2, x1, y1, x2, y2
+    REAL(KIND=dp) :: x1, y1, x2, y2
     INTEGER, ALLOCATABLE :: PeriodicFace(:)
     REAL(KIND=dp), ALLOCATABLE :: FaceX(:), FaceY(:), FaceMX(:), FaceMY(:)
     REAL(KIND=dp) :: ss, minss, maxminss
     INTEGER :: minuscount, samecount, mini, doubleusecount, swap(6)
-    LOGICAL :: Parallel, AntiPer, Radial, Piola
+!    LOGICAL :: Parallel
+    LOGICAL :: AntiPer, Radial, Piola, Given
     LOGICAL, ALLOCATABLE :: FaceUsed(:)
     CHARACTER(*), PARAMETER :: Caller = 'ConformingFacePerm'
   
-    CALL Info(Caller,'Creating permutation for elimination of conforming faces',Level=8)
-
+    CALL Info(Caller,'Creating permutation to eliminate conforming face DOFs',Level=8)
+    
     n = Mesh % NumberOfFaces
-    IF( n == 0 ) RETURN
+    fdofs = Mesh % MaxFaceDOFs
+    IF (n == 0 .OR. fdofs==0) RETURN
+    
+    nofaces = BMesh1 % NumberOfBulkElements
+    nofacesm = BMesh2 % NumberOfBulkElements
+
+    IF (nofaces == 0 .OR. nofaces == 0) RETURN
 
     AntiPer = .FALSE.
     IF( PRESENT( AntiPeriodic ) ) AntiPer = AntiPeriodic
@@ -9748,23 +9786,20 @@ CONTAINS
     Radial = ListGetLogicalAnyBC( CurrentModel,'Radial Projector' ) .OR. &
         ListGetLogicalAnyBC( CurrentModel,'Anti Radial Projector' )
 
-    Piola = .TRUE.
-    
-    CALL CreateFaceCenters( Mesh, BMesh1, nofaces, FaceX, FaceY ) 
+    Piola = ListGetLogical(ListGetSolverParams(Solver), 'Use Piola Transform', Given)
+
+    CALL CreateFaceCenters( Mesh, BMesh1, FaceX, FaceY ) 
     CALL Info(Caller,'Number of faces in slave mesh: '//I2S(nofaces),Level=10)
-
-    CALL CreateFaceCenters( Mesh, BMesh2, nofacesm, FaceMX, FaceMY )
+    
+    CALL CreateFaceCenters( Mesh, BMesh2, FaceMX, FaceMY )
     CALL Info(Caller,'Number of faces in master mesh: '//I2S(nofacesm),Level=10)
-
-    IF( nofaces == 0 ) RETURN
-    IF( nofacesm == 0 ) RETURN
     
     ALLOCATE( PeriodicFace(nofaces),FaceUsed(nofacesm))
     PeriodicFace = 0
     FaceUsed = .FALSE.
     maxminss = 0.0_dp
     
-    Parallel = ( ParEnv % PEs > 1 )
+!    Parallel = ( ParEnv % PEs > 1 )
     samecount = 0
     doubleusecount = 0
     
@@ -9779,6 +9814,7 @@ CONTAINS
         x2 = FaceMX(i2)
         y2 = FaceMY(i2)
 
+        ! TO DO: Consider the distance ss in 3D (?) 
         ss = (x1-x2)**2 + (y1-y2)**2
         IF( ss < minss ) THEN
           minss = ss
@@ -9818,15 +9854,13 @@ CONTAINS
     minuscount = 0
 
     ne0 = Mesh % NumberOfNodes
-    nf0 = Mesh % NumberOfNodes + Mesh % NumberOfEdges
+    nf0 = Mesh % NumberOfNodes + Mesh % NumberOfEdges * Mesh % MaxEdgeDOFs
 
     cnts = 0   
     
     DO e=1,nofaces
       em = PeriodicFace(e)
-      
-      !eind = FaceInds(e)
-      !eindm = FaceIndsM(em)
+      IF (em == 0) CYCLE
 
       eind = Bmesh1 % Elements(e) % ElementIndex
       eindM = Bmesh2 % Elements(em) % ElementIndex
@@ -9834,11 +9868,11 @@ CONTAINS
       Face => Mesh % Faces(eind)
       FaceM => Mesh % Faces(eindm)
 
-      eind = Face % ElementIndex
-      eindM = FaceM % ElementIndex
+!      eind = Face % ElementIndex
+!      eindM = FaceM % ElementIndex
       
       n = Face % TYPE % NumberOfNodes
-      edofs = n
+      edofs = n * Mesh % MaxEdgeDOFs
       fdofs = 0
       IF( n == 4 ) THEN
         IF(Piola) fdofs = 2
@@ -9886,7 +9920,7 @@ CONTAINS
     END IF
 
     
-    DEALLOCATE( FaceX, FaceY, FaceMX, FaceMY, PeriodicFace )
+    DEALLOCATE( FaceX, FaceY, FaceMX, FaceMY, PeriodicFace, FaceUsed )
 
     
   CONTAINS 
@@ -10048,17 +10082,16 @@ CONTAINS
     
     ! Create face centers for the mapping routines.
     !------------------------------------------------------------------------------
-    SUBROUTINE CreateFaceCenters( Mesh, FaceMesh, nofaces, FaceX, FaceY ) 
+    SUBROUTINE CreateFaceCenters( Mesh, FaceMesh, FaceX, FaceY ) 
 
       TYPE(Mesh_t), POINTER :: Mesh
       TYPE(Mesh_t), POINTER :: FaceMesh
-      INTEGER :: nofaces
       REAL(KIND=dp), ALLOCATABLE :: FaceX(:), FaceY(:)
 
-      INTEGER :: ind, n, i 
-      TYPE(Element_t), POINTER :: Face, Parent, Element
+      INTEGER :: nofaces
+      INTEGER :: ind, n
+      TYPE(Element_t), POINTER :: Face
       INTEGER, POINTER :: Indexes(:)
-
 
       nofaces = FaceMesh % NumberOfBulkElements
 
@@ -10067,7 +10100,7 @@ CONTAINS
       FaceX = 0.0_dp
       FaceY = 0.0_dp
 
-      DO ind=1,FaceMesh % NumberOfBulkElements
+      DO ind=1,nofaces
         Face => FaceMesh % Elements(ind)
         Indexes => Face % NodeIndexes
         n = Face % Type % NumberOfNodes
