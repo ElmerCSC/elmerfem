@@ -110,46 +110,18 @@ VII. Configuration & Compilation
 
 VIII. Elmer/Ice
 --------------
-- New features in Elmer/Ice are documented elsewhere
-
-
-
-   Merge pull request #801 from ElmerCSC/elmerice    
-    Elmerice
-
-
-    Author: fgillet <fabien.gillet-chaulet@univ-grenoble-alpes.fr>
-    ComputeGroundingLineFlux    
-    Add solver to compute grounding line flux in 3D extruded simulations
-
-       Author: RupertGladstone <rupertgladstone1972@gmail.com>
-    Minor bug fix to Flotation to allow it to run on the lower surface of a 3D body.
-
-    Cyrille:
-    Add initialization of GroundedMask for all active nodes    
-    Initialize GroundedMask for active DOFs to avoid default values in halo nodes, leaving wrong GroundedMask value at the partition interfaces with halo elements/nodes.
-
-
-    Author: Cyrille <91067824+cmosbeux@users.noreply.github.com>
-    Initialize LimitedSolution to false    
-    Fix uninitialized LimitedSolution on halo elements: LimitedSolution was only visited for active elements. It should be initialised to True in passive/halos elements to avoid limiter inconsistencies and free-surface artifacts at partition boundaries.
-
-
-
-
-
-
-Author: fgillet <fabien.gillet-chaulet@univ-grenoble-alpes.fr>
-    Fix Dirichlet for passive Elements
-    
+- Add solver to compute grounding line flux in 3D extruded simulations
+- Minor bug fix to Flotation to allow it to run on the lower surface of a 3D body
+- Add initialization of GroundedMask for all active nodes    
+- Initialize GroundedMask for active DOFs to avoid default values in halo nodes, leaving wrong GroundedMask value at the partition interfaces with halo elements/nodes
+- Initialize LimitedSolution to false    
+- Fix uninitialized LimitedSolution on halo elements: LimitedSolution was only visited for active elements. It should be initialised to True in passive/halos elements to avoid limiter inconsistencies and free-surface artifacts at partition boundaries
+- Fix Dirichlet for passive Elements
     - PassPerm was not allocated and initialised for cases where Variable % DOFs > 1; In this case the passive mechanism is set by "VarName Passive = Logical True" but Dirichlet conditions are set for each component individually.
     - Do not set Dirichlet conditions from halo elements. Correct dettection of the passive/active boundary requires halo elements; but might happen that it is not detected for halos at the border, resulting in wrong Dirichlet conditions.
-
-
-    Author: Juha Ruokolainen <jpr@keisarikotka.lnx.csc.fi>
-    - disable "ForceToStress_parallel" elmerice test if no parallel direct solvers
-    - fix uninitialized access in elmerice "ComputeNormal()" solver
-    - disable (very old) "EliminateDirichlet" in "contact" test, doesn't interact
+- disable "ForceToStress_parallel" elmerice test if no parallel direct solvers
+- fix uninitialized access in elmerice "ComputeNormal()" solver
+- disable (very old) "EliminateDirichlet" in "contact" test, doesn't interact
     well with "ComputeLoads"
 
 
