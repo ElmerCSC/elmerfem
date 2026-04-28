@@ -11,7 +11,7 @@ With this release we are back in pace where it is easier to summarize the recent
 You can get a complete listing of commit messages, for example, with the command git log --since="2026-19-1"  > log.txt
 
 Apart from the core Elmer team at CSC (Juhani K., Mika M., Juha R., Peter R., Thomas Z.) git log shows contributions from M. Mützel,
-Fabien G-C, Rupert G.,Cyrille M., Kavin T., Benjamin R., Daniel B. and T. Mylläri (including changes to build system).  
+Fabien G-C, Rupert G.,Cyrille M., Kavin T., Benjamin R., Daniel B. and Tuomas M. (including changes to build system).  
 You can check the authors related to this release, for example, with (note that squashes may destroy author contributions), 
 git shortlog --since="2026-19-1" -nes
 
@@ -119,7 +119,7 @@ VIII. Elmer/Ice
 - Fix uninitialized LimitedSolution on halo elements: LimitedSolution was only visited for active elements. It should be initialised to True in passive/halos elements to avoid limiter inconsistencies and free-surface artifacts at partition boundaries
 - Fix Dirichlet for passive Elements
     - PassPerm was not allocated and initialised for cases where Variable % DOFs > 1; In this case the passive mechanism is set by "VarName Passive = Logical True" but Dirichlet conditions are set for each component individually.
-    - Do not set Dirichlet conditions from halo elements. Correct dettection of the passive/active boundary requires halo elements; but might happen that it is not detected for halos at the border, resulting in wrong Dirichlet conditions.
+    - Do not set Dirichlet conditions from halo elements. Correct detection of the passive/active boundary requires halo elements; but might happen that it is not detected for halos at the border, resulting in wrong Dirichlet conditions.
 - disable "ForceToStress_parallel" elmerice test if no parallel direct solvers
 - fix uninitialized access in elmerice "ComputeNormal()" solver
 - disable (very old) "EliminateDirichlet" in "contact" test, doesn't interact
