@@ -4790,6 +4790,7 @@ SUBROUTINE SParActiveSUMComplex(tsum, oper)
    COMPLEX(KIND=dp) :: tsum
 !*********************************************************************
    INTEGER :: ierr, comm, nact
+   REAL(KIND=dp) :: mag_and_rank(2), mag_and_rank_global(2)
    COMPLEX(KIND=dp) :: ssum
 
    comm = ParEnv % ActiveComm
@@ -4800,18 +4801,45 @@ SUBROUTINE SParActiveSUMComplex(tsum, oper)
      nact = ParEnv % PEs
    END IF
      
-   ssum = tsum
    SELECT CASE(oper)
    CASE(0)
-     CALL MPI_ALLREDUCE( ssum, tsum, 1, MPI_DOUBLE_COMPLEX, &
-            MPI_SUM, comm, ierr )
+     ssum = tsum
+
    CASE(1)
-     CALL MPI_ALLREDUCE( ssum, tsum, 1, MPI_DOUBLE_COMPLEX, &
-            MPI_MIN, comm, ierr )
+     ! Prepare (magnitude, rank)
+     mag_and_rank(1) = ABS(tsum)
+     mag_and_rank(2) = 1.0_dp * ParEnv % MyPe
+
+     ! Find global minimum magnitude and owning rank
+     CALL MPI_ALLREDUCE( mag_and_rank, mag_and_rank_global, 1, &
+         MPI_2DOUBLE_PRECISION, MPI_MINLOC, comm, ierr)
+     
+     ! For complex numbers only MPI_SUM is available.
+     ! Hence set ssum to zero except for the minimum occurance. 
+     IF( NINT( mag_and_rank_global(2) ) == ParEnv % Mype ) THEN
+       ssum = tsum
+     ELSE
+       ssum = CMPLX( 0.0_dp, 0.0_dp )
+     END IF
+
    CASE(2)
-     CALL MPI_ALLREDUCE( ssum, tsum, 1, MPI_DOUBLE_COMPLEX, &
-            MPI_MAX, comm, ierr )
-  END SELECT
+     mag_and_rank(1) = ABS(tsum)
+     mag_and_rank(2) = 1.0_dp * ParEnv % MyPe
+
+     CALL MPI_ALLREDUCE( mag_and_rank, mag_and_rank_global, 1, &
+         MPI_2DOUBLE_PRECISION, MPI_MAXLOC, comm, ierr)
+
+     IF( NINT( mag_and_rank_global(2) ) == ParEnv % Mype ) THEN
+       ssum = tsum
+     ELSE
+       ssum = CMPLX( 0.0_dp, 0.0_dp )
+     END IF
+   END SELECT
+
+   ! We have defined "ssum" such that MPI_SUM gives the desired operation always.
+   CALL MPI_ALLREDUCE( ssum, tsum, 1, MPI_DOUBLE_COMPLEX, &
+       MPI_SUM, comm, ierr )
+     
 !*********************************************************************
 END SUBROUTINE SParActiveSUMComplex
 !*********************************************************************
