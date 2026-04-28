@@ -4790,7 +4790,8 @@ SUBROUTINE SParActiveSUMComplex(tsum, oper)
    COMPLEX(KIND=dp) :: tsum
 !*********************************************************************
    INTEGER :: ierr, comm, nact
-   REAL(KIND=dp) :: mag_and_rank(2), mag_and_rank_global(2)
+   REAL(KIND=dp) :: rser, rpar
+   INTEGER :: iser, ipar
    COMPLEX(KIND=dp) :: ssum
 
    comm = ParEnv % ActiveComm
@@ -4806,30 +4807,39 @@ SUBROUTINE SParActiveSUMComplex(tsum, oper)
      ssum = tsum
 
    CASE(1)
-     ! Prepare (magnitude, rank)
-     mag_and_rank(1) = ABS(tsum)
-     mag_and_rank(2) = 1.0_dp * ParEnv % MyPe
+     ! Find the minimum abs value
+     rser = ABS(tsum)
+     CALL MPI_ALLREDUCE( rser, rpar, 1, MPI_DOUBLE_PRECISION, &
+         MPI_MIN, comm, ierr )
 
-     ! Find global minimum magnitude and owning rank
-     CALL MPI_ALLREDUCE( mag_and_rank, mag_and_rank_global, 1, &
-         MPI_2DOUBLE_PRECISION, MPI_MINLOC, comm, ierr)
+     ! Find the owner of the minimum value
+     IF(ABS(rser-rpar) < TINY(rser) + EPSILON(rser) * rpar ) THEN
+       iser = ParEnv % MyPe
+     ELSE
+       iser = -1
+     END IF
+     CALL MPI_ALLREDUCE( iser, ipar, 1, MPI_INTEGER, MPI_MAX, comm, ierr )
      
-     ! For complex numbers only MPI_SUM is available.
-     ! Hence set ssum to zero except for the minimum occurance. 
-     IF( NINT( mag_and_rank_global(2) ) == ParEnv % Mype ) THEN
+     ! Set the ssum so that MPI_SUM gives the desired result
+     IF(iser == ipar ) THEN
        ssum = tsum
      ELSE
        ssum = CMPLX( 0.0_dp, 0.0_dp )
      END IF
 
    CASE(2)
-     mag_and_rank(1) = ABS(tsum)
-     mag_and_rank(2) = 1.0_dp * ParEnv % MyPe
+     rser = ABS(tsum)
+     CALL MPI_ALLREDUCE( rser, rpar, 1, MPI_DOUBLE_PRECISION, &
+         MPI_MAX, comm, ierr )
 
-     CALL MPI_ALLREDUCE( mag_and_rank, mag_and_rank_global, 1, &
-         MPI_2DOUBLE_PRECISION, MPI_MAXLOC, comm, ierr)
-
-     IF( NINT( mag_and_rank_global(2) ) == ParEnv % Mype ) THEN
+     IF(ABS(rser-rpar) < TINY(rser) + EPSILON(rser) * rpar ) THEN
+       iser = ParEnv % MyPe
+     ELSE
+       iser = -1
+     END IF
+     CALL MPI_ALLREDUCE( iser, ipar, 1, MPI_INTEGER, MPI_MAX, comm, ierr )
+     
+     IF(iser == ipar ) THEN
        ssum = tsum
      ELSE
        ssum = CMPLX( 0.0_dp, 0.0_dp )

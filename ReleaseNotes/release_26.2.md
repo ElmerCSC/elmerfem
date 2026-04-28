@@ -12,7 +12,10 @@ You can get a complete listing of commit messages, for example, with the command
 
 Apart from the core Elmer team at CSC (Juhani K., Mika M., Juha R., Peter R., Thomas Z.) git log shows contributions from M. Mützel,
 Fabien G-C, Rupert G.,Cyrille M., Kavin T., Benjamin R., Daniel B. and T. Mylläri (including changes to build system).  
-Additionally there are many ongoing developments in several branches (e.g. on constraint solutions, radiation heat transfer)
+You can check the authors related to this release, for example, with (note that squashes may destroy author contributions), 
+git shortlog --since="2026-19-1" -nes
+
+Beyond this release there are many ongoing developments in several branches (e.g. on constraint solutions, radiation heat transfer)
 that have not been merged to this release and are not therefore covered here. 
 
 The contributions of all developers are gratefully acknowledged!
@@ -43,7 +46,6 @@ II. Enhancements of existing solvers
 ### MarchingODE.F90
 - subdivision of timestep in marching ODE solver for improved accuracy
 - internal variables to be used in marching.
-- vector valued field in marching
 - Enable MarchingODESolver to have multiple components.
 
 ### CalcFields.F90
@@ -70,7 +72,7 @@ III. ElmerSolver library functionality
 - Enable Dirichlet BCs for H(curl) such that even if it does not share the full boundary the values can still be set at the edges.
 - Function for interpolating many curves at the same time.
 - Also add possibility for namespace for GaussPointsAdapt such that we can choose "bc gauss" or "bulk gauss" rules in assembly. Add a test case with exact known solution.
-- Display current branch in ElmerSolver
+- Display current branch in ElmerSolver (requires compilation from git repository). 
 - Set the default value of global bubbles to False thereby removing the strange problems when bubbles are inherited to solvers that do not need them.
 - ADIOS2Utils module with a class for simplified writing of parallel data.
 - First steps to implement generic Nitsche type of boundary conditions for nonconforming interfaces. This includes tentative implementation for 1D boundaries and a related test case.
@@ -83,11 +85,10 @@ IV. Bug Fixes
 - Eliminate empty space from timesteps in XML because VTK is more picky lately.
 - Fix in passive parallel interfaces that appears when passive interface and partition interface overlap.
 - Fix adaptive integration with temporal triangles.
-- Fix segfault in mortar projectors with discontinuous Galerkin
+- Fix segfault in mortar projectors in combination of discontinuous Galerkin
 - Fix the restart when there is a combination of different permutation vectors and a field which is not everywhere defined.
 - Set locale "C" before formatting strings in MATC
 - Fix initialization of halo nodes/elements when working with halo meshes
-- Fix 1D weak projector in case of DG elements
 - A fix for quadratic approximation in H(curl) relating to cases where the mesh combines several element types. Some basis functions associated with quad faces were not compatible over faces shared by elements of different types.
  
 
