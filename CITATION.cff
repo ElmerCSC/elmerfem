@@ -29,7 +29,7 @@ authors:
 identifiers:
   - type: url
     value: 'https://doi.org/10.5281/zenodo.7892181'
-    description: Zenodo Repository of Elmer Release 9.0
+    description: Zenodo Repository of Elmer Release 26.2
 repository-code: 'https://github.com/ElmerCSC/elmerfem'
 url: 'http://www.elmerfem.org'
 abstract: >-
