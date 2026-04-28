@@ -8634,13 +8634,14 @@ CONTAINS
   
 
 !------------------------------------------------------------------------------
-!> Create a permutation between two meshes such that we can solve a smaller system.
+!> Create a permutation between DOFs associated with two boundary meshes such
+!> that we can solve a smaller system.
 !------------------------------------------------------------------------------
   SUBROUTINE PeriodicPermutation( Model, Mesh, This, Trgt, PerPerm, PerFlip ) 
 !------------------------------------------------------------------------------   
     TYPE(Model_t) :: Model
-    INTEGER :: This, Trgt
     TYPE(Mesh_t), TARGET :: Mesh
+    INTEGER :: This, Trgt
     INTEGER, POINTER :: PerPerm(:)
     LOGICAL, POINTER :: PerFlip(:)
 !------------------------------------------------------------------------------
@@ -9423,7 +9424,6 @@ CONTAINS
   
   !---------------------------------------------------------------------------------
   ! Create a permutation to eliminate edge DOFs in a conforming case.
-  ! TO DO: Allow for higher-order case
   !---------------------------------------------------------------------------------
   SUBROUTINE ConformingEdgePerm( Mesh, BMesh1, BMesh2, PerPerm, PerFlip, AntiPeriodic, &
       GradientVersion)
@@ -9432,6 +9432,7 @@ CONTAINS
     LOGICAL, POINTER :: PerFlip(:)
     LOGICAL, OPTIONAL :: AntiPeriodic
     LOGICAL, OPTIONAL :: GradientVersion
+!    TYPE(Solver_t), POINTER, OPTIONAL :: Solver ! Solver would be needed to use mGetElementDOFs
     !---------------------------------------------------------------------------------      
     INTEGER :: n, e, em, eind, eindm, k1, k2, km1, km2, i1, i2, &
         noedges, noedgesm, n0, dim
@@ -9454,18 +9455,15 @@ CONTAINS
     edofs = Mesh % MaxEdgeDOFs
     IF( n == 0 .OR. edofs == 0) RETURN
 
+    GradVersion = .FALSE.
+    IF (PRESENT(GradientVersion)) GradVersion = GradientVersion
+      
     IF (edofs > 1 .AND. .NOT. GradVersion) THEN
       CALL Fatal(Caller, 'Higher-order case needs Gradient Basis Functions = True')
     END IF
-!    IF (edofs > 1) THEN
-!      CALL Fatal(Caller, 'Implementation for higher-order is not yet available')
-!    END IF
     
     AntiPer = .FALSE.
     IF( PRESENT( AntiPeriodic ) ) AntiPer = AntiPeriodic
-
-    GradVersion = .FALSE.
-    IF (PRESENT(GradientVersion)) GradVersion = GradientVersion
     
     dim = 2
     BLOCK
@@ -9551,19 +9549,19 @@ CONTAINS
 
       eind = EdgeInds(e)
       Edge => Mesh % Edges(eind)
-!      nd = mGetElementDOFs(Indexes, Edge, notDG = .TRUE.)
-      
+!      nd = mGetElementDOFs(Indexes, Edge, Solver, notDG = .TRUE.)
+
       eindm = EdgeIndsM(em)
       EdgeM => Mesh % Edges(eindm)
-!      nd_m = mGetElementDOFs(IndexesM, EdgeM, notDG = .TRUE.)
+!      nd_m = mGetElementDOFs(IndexesM, EdgeM, Solver, notDG = .TRUE.)
 
       DO i=1,edofs
-        Indexes(i) = edofs*(eind-1) + i
-        IndexesM(i) = edofs*(eindm-1) + i
+        Indexes(i) = n0 + edofs*(eind-1) + i
+        IndexesM(i) = n0 + edofs*(eindm-1) + i
       END DO
 
       ! Check whether this edge has already been set
-!      IF (PerPerm(Indexes(1)+n0) > 0) CYCLE
+!      IF (PerPerm(Indexes(1)) > 0) CYCLE
 
       ! Get the coordinates and indexes of the 1st edge
       k1 = Edge % NodeIndexes( 1 )
@@ -9611,18 +9609,25 @@ CONTAINS
       !
       IF( coordprod * indexprod < 0 ) THEN
         minuscount = minuscount + 1
-        PerFlip(Indexes(1)+n0) = .NOT. AntiPer
+        PerFlip(Indexes(1)) = .NOT. AntiPer
         !PRINT *,'prod:',coordprod,indexprod
         !PRINT *,'x:',x1,x2,xm1,xm2
         !PRINT *,'y:',y1,y2,ym1,ym2
         !PRINT *,'k:',k1,k2,km1,km2
       ELSE
-        PerFlip(Indexes(1)+n0) = AntiPer
+        PerFlip(Indexes(1)) = AntiPer
       END IF
 
+      ! Mark the antiperiodicity of other edge DOFs
+      IF (edofs > 1) THEN
+        DO i=2,edofs
+          PerFlip(Indexes(i)) = AntiPer
+        END DO
+      END IF
+      
       ! Mark all DOFs so that they need not be set again
       DO i=1,edofs
-        PerPerm(Indexes(i)+n0) = IndexesM(i) + n0
+        PerPerm(Indexes(i)) = IndexesM(i)
       END DO
     END DO
 
@@ -9764,8 +9769,9 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: FaceX(:), FaceY(:), FaceMX(:), FaceMY(:)
     REAL(KIND=dp) :: ss, minss, maxminss
     INTEGER :: minuscount, samecount, mini, doubleusecount, swap(6)
+    INTEGER :: BasisDegree
 !    LOGICAL :: Parallel
-    LOGICAL :: AntiPer, Radial, Piola, Given
+    LOGICAL :: AntiPer, Radial, Piola, SecondFamily, GradVersion, Given
     LOGICAL, ALLOCATABLE :: FaceUsed(:)
     CHARACTER(*), PARAMETER :: Caller = 'ConformingFacePerm'
   
@@ -9786,7 +9792,8 @@ CONTAINS
     Radial = ListGetLogicalAnyBC( CurrentModel,'Radial Projector' ) .OR. &
         ListGetLogicalAnyBC( CurrentModel,'Anti Radial Projector' )
 
-    Piola = ListGetLogical(ListGetSolverParams(Solver), 'Use Piola Transform', Given)
+    CALL EdgeElementStyle(ListGetSolverParams(Solver), Piola, SecondFamily, &
+        BasisDegree = BasisDegree, GradientVersion = GradVersion)
 
     CALL CreateFaceCenters( Mesh, BMesh1, FaceX, FaceY ) 
     CALL Info(Caller,'Number of faces in slave mesh: '//I2S(nofaces),Level=10)
@@ -9882,7 +9889,8 @@ CONTAINS
         CALL Fatal(Caller,'Invalid number of elements: '//I2S(n))
       END IF
         
-      CALL CheckFaceBasisDirections(Face, FaceM, edofs, fdofs, .FALSE., Radial, swap)
+      CALL CheckFaceBasisDirections(Face, FaceM, edofs, fdofs, BasisDegree, &
+          Radial, swap)
 
 #if 0
       ! We flip if the system is AntiPeriodic OR the edge basis are opposite, not both!
@@ -9929,31 +9937,27 @@ CONTAINS
     ! directions relate to each other. They depend on the numbering in a complex way
     ! use this routine to do the checking and return +/-1 and +/-2 hopefully. 
     !------------------------------------------------------------------------------
-    SUBROUTINE CheckFaceBasisDirections(Element, ElementB, edofs, fdofs, QuadraticApproximation, &
+    SUBROUTINE CheckFaceBasisDirections(Element, ElementB, edofs, fdofs, BasisDegree, &
         Radial, swap)
       !------------------------------------------------------------------------------
       TYPE(Element_t), TARGET :: Element  !< The boundary element handled
       TYPE(Element_t), TARGET :: ElementB  !< The boundary element handled
       INTEGER :: edofs, fdofs
-      LOGICAL :: QuadraticApproximation    !< Use second-order edge element basis
+      INTEGER :: BasisDegree    !< To pick the second-order edge element basis
       LOGICAL :: Radial 
       INTEGER :: Swap(:)
       !------------------------------------------------------------------------------
       TYPE(Nodes_t), SAVE :: Nodes
       LOGICAL :: Lstat
-      INTEGER :: i,j,p,n,DOFs,BasisDegree,elem,k,imax,jmax,kmin,kmax
+      INTEGER :: i,j,p,n,DOFs,elem,k,imax,jmax,kmin,kmax
       REAL(KIND=dp) :: Basis(6)
       REAL(KIND=dp), TARGET :: EdgeBasis(6,3),EdgeBasisB(6,3)
       REAL(KIND=dp) :: v,s,DetJ,uvw(3),phi,smax,r1(3),r2(3)
       REAL(KIND=dp), POINTER :: pEdgeBasis(:,:)
       TYPE(Element_t), POINTER :: pElement
       !------------------------------------------------------------------------------
-      
-      IF (QuadraticApproximation) THEN
-        BasisDegree = 2
-      ELSE
-        BasisDegree = 1
-      END IF
+      IF (BasisDegree > 1) CALL Fatal('CheckFaceBasisDirections', &
+          'Cannot yet handle higher-order basis') 
       
       n = edofs 
       kmax = edofs
