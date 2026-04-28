@@ -306,7 +306,7 @@ QString Matc::domatc(VtkPost* vtkPost)
 
   if ( n<=0 ) return res;
   
-  for( lst = listheaders[VARIABLES].next; lst; lst = NEXT(lst))
+  for( lst = LISTHEADERS[VARIABLES].next; lst; lst = NEXT(lst))
     {
       var = (VARIABLE *)lst;
       if ( !NAME(var) || (NCOL(var) % n)!=0 ) continue;
@@ -378,7 +378,7 @@ QString Matc::domatc(VtkPost* vtkPost)
       if ( ns<=0 ) ns=sf->name.indexOf("_z");
       if ( ns >0 ) vectorname=sf->name.mid(0,ns);
       
-      for( lst = listheaders[VARIABLES].next; lst; lst = NEXT(lst))
+      for( lst = LISTHEADERS[VARIABLES].next; lst; lst = NEXT(lst))
 	{
 	  var = (VARIABLE *)lst;
 	  if ( !NAME(var) || (NCOL(var) % n)!=0 ) continue;

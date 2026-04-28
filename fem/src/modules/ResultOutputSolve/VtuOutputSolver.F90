@@ -719,7 +719,7 @@ CONTAINS
     INTEGER, PARAMETER :: VtuUnit = 58
     INTEGER :: i,ii,j,jj,k,dofs,Rank,n,m,dim,vari,sdofs,dispdofs, dispBdofs, Offset, &
         NoFields, NoFields2, IndField, iField, iField0, NoModes, NoModes2, NoFieldsWritten, &
-        cumn, iostat
+        cumn, iostat, NoTooBig, nofs
     CHARACTER(LEN=1024) :: Txt, ScalarFieldName, VectorFieldName, TensorFieldName, &
         FieldName, FieldNameB, OutStr
     CHARACTER :: lf
@@ -1225,10 +1225,11 @@ CONTAINS
                   CALL Fatal(Caller,'InvFieldPerm not associated!')
                 END IF
               END IF
+              NoTooBig = 0
+              nofs = 0
               
               IF( BinaryOutput ) WRITE( VtuUnit ) k
-
-              vals = 0
+              
               DO ii = 1, NumberOfDofNodes
 
                 IF( NoPermutation ) THEN
@@ -1238,11 +1239,18 @@ CONTAINS
                 END IF
 
                 IF( ASSOCIATED( Perm ) .AND. LagN == 0 ) THEN
-                  j = Perm(i)
+                  j = 0
+                  IF(i<1 .OR. i>SIZE(Perm)) THEN
+                    NoTooBig = NoTooBig + 1
+                  ELSE
+                    j = Perm(i)
+                  END IF
                 ELSE
                   j = i
                 END IF
 
+                IF(j>0) nofs = nofs + 1
+                
                 Use2 = .FALSE.
                 IF( ComplementExists ) THEN
                   IF( j == 0 ) THEN
@@ -1250,8 +1258,8 @@ CONTAINS
                     j = PermB(i)
                   END IF
                 END IF
-
                 
+                vals = 0.0_dp
                 DO k=1,sdofs              
                   IF(j==0 .OR. k > dofs) THEN
                     vals(k) = 0.0_dp
@@ -1346,6 +1354,14 @@ CONTAINS
 
               CALL AscBinRealWrite( 0.0_dp, .TRUE. )
 
+              IF(NoTooBig > 0) THEN
+                CALL Fatal(Caller,'Too big index for Perm in '//I2S(NoTooBig)//' nodes for '//TRIM(FieldName))
+              END IF
+              IF(ASSOCIATED(Perm)) THEN
+                CALL Info(Caller,'Number of nonzeros for "'&
+                    //TRIM(FieldName)//'" is '//I2S(nofs)//' of '//I2S(NumberOfDofNodes),Level=15)
+              END IF
+                
             END IF
 
             IF( AsciiOutput ) THEN
@@ -2165,7 +2181,7 @@ CONTAINS
       WRITE( Str,'(A)') '<VTKFile type="Collection" version="0.1" byte_order="LittleEndian"><Collection>'
       n = LEN_TRIM( Str ) 
       
-      WRITE( Str,'(A,ES16.7,A,I0,A)') '<DataSet timestep="',time,&
+      WRITE( Str,'(A,G0,A,I0,A)') '<DataSet timestep="',time,&
         '" group="" part="',GroupId,'" file="'//TRIM(DataSetFile)//'"/>'
       n = MAX( LEN_TRIM( Str ), n ) 
 
@@ -2193,7 +2209,7 @@ CONTAINS
     END IF
 
     nLine = nLine + 1
-    WRITE( VtuUnit,'(A,ES12.3,A,I0,A)',REC=nLine) lf//'<DataSet timestep="',time,&
+    WRITE( VtuUnit,'(A,G0,A,I0,A)',REC=nLine) lf//'<DataSet timestep="',time,&
         '" group="" part="',GroupId,'" file="'//TRIM(DataSetFile)//'"/>'
     WRITE( VtuUnit,'(A)',REC=nLine+1) lf//'</Collection></VTKFile>'
 

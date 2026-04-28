@@ -43,6 +43,7 @@
 !------------------------------------------------------------------------------
 MODULE MainUtils
 !------------------------------------------------------------------------------
+  USE Messages
   USE BlockSolve
   USE IterSolve, ONLY : NumericalError
   USE LoadMod, ONLY : ExecLocalAssembly, ExecSolver
@@ -1099,6 +1100,63 @@ CONTAINS
      
    END SUBROUTINE PrintProblemSize
    
+
+   !-----------------------------------------------------------------------------
+   !> This routine tries to combine all historical and more recent logic how the
+   !> bubble degrees of freedom are treated in the code. By default the bubbles
+   !> are not active, but there are many exceptions. 
+   !-----------------------------------------------------------------------------
+   FUNCTION SetGlobalBubblesFlag(Solver) RESULT( GlobalBubbles ) 
+     TYPE(Solver_t) :: Solver
+     LOGICAL :: GlobalBubbles
+     
+     LOGICAL :: Found
+     INTEGER :: i,j,k
+     INTEGER, POINTER :: ActiveSolvers(:)
+     CHARACTER(:), ALLOCATABLE :: str
+
+     
+     GlobalBubbles = ListGetLogical( Solver % Values, 'Bubbles in Global System', Found )
+     IF(.NOT. Found) THEN            
+       str = ListGetString( Solver % Values,'Element',Found)
+       IF(Found) THEN
+         i = INDEX( str,'p:') + INDEX(str,'b:')
+         GlobalBubbles = (i>0)
+       END IF
+       IF(.NOT. Found) THEN
+         ! Element not given, check if there is something to inherit from Equation section. 
+         DO j=1,CurrentModel % NumberOFEquations
+           ActiveSolvers => ListGetIntegerArray( CurrentModel % Equations(j) % Values, &
+               'Active Solvers', Found )
+           IF(Found) THEN
+             IF(ANY(ActiveSolvers == Solver % SolverId)) THEN              
+               str = ListGetString( CurrentModel % Equations(j) % Values,'Element',Found)
+               IF(Found) THEN
+                 i = INDEX( str,'p:') + INDEX(str,'b:')
+                 IF(i>0) GlobalBubbles = .TRUE.
+               END IF
+             END IF
+           END IF
+         END DO
+       END IF
+       IF(.NOT. Found ) THEN
+         DO j=1,CurrentModel % NumberOFBodies 
+           str = ListGetString( CurrentModel % Bodies(j) % Values,&
+               'Solver '//I2S(Solver % SolverId)//': Element',Found)
+           IF(Found) THEN
+             i = INDEX( str,'p:') + INDEX(str,'b:')
+             IF(i>0) GlobalBubbles = .TRUE.
+           END IF
+         END DO
+       END IF
+     END IF
+     IF( GlobalBubbles .AND. .NOT. Solver % GlobalBubbles) THEN
+       CALL Info('SetGlobalBubblesFlag','Setting global bubbles to true because of element type chosen!',Level=7)
+       Solver % GlobalBubbles = GlobalBubbles
+     END IF
+   END FUNCTION SetGlobalBubblesFlag
+     
+
    
 !------------------------------------------------------------------------------
 !> Add the generic stuff related to each Solver. 
@@ -1112,9 +1170,7 @@ CONTAINS
     CHARACTER(LEN=*) :: Name
 !------------------------------------------------------------------------------
     REAL(KIND=dp), POINTER :: Solution(:)
-
     INTEGER, POINTER :: Perm(:)
-
     INTEGER(KIND=AddrInt) :: InitProc, AssProc
 
     INTEGER :: MaxDGDOFs, MaxNDOFs, MaxEDOFs, MaxFDOFs, MaxBDOFs, MaxDOFsPerNode
@@ -1593,7 +1649,7 @@ CONTAINS
                      ' < exists but it is not associated to any equation')
         END IF
         
-        ! Computate the size of the permutation vector
+        ! Compute the size of the permutation vector
         !-----------------------------------------------------------------------------------------
         CALL Info(Caller,'Computing size of permutation vector',Level=12)
         Ndeg = 0
@@ -1624,10 +1680,9 @@ CONTAINS
             CurrentElement => Solver % Mesh % Faces(i)
             MaxFDOFs  = MAX( MaxFDOFs,  CurrentElement % BDOFs )
           END DO
-          
-          GlobalBubbles = ListGetLogical( SolverParams, 'Bubbles in Global System', Found )
-          IF (.NOT.Found) GlobalBubbles = .TRUE.
 
+          GlobalBubbles = SetGlobalBubblesFlag( Solver ) 
+          
           Ndeg = Ndeg + MaxDOFsPerNode * Solver % Mesh % NumberOfNodes 
           IF ( GlobalBubbles ) THEN
             Ndeg = Ndeg + MaxBDOFs * Solver % Mesh % NumberOfBulkElements
@@ -1727,7 +1782,6 @@ CONTAINS
         Solver % Matrix => CreateMatrix( CurrentModel, Solver, Solver % Mesh, &
             Perm, DOFs, MatrixFormat, BandwidthOptimize, eq(1:LEN_TRIM(eq)), DG, &
             GlobalBubbles=GlobalBubbles, ThreadedStartup=ThreadedStartup )
-        Solver % GlobalBubbles = GlobalBubbles
 
         Nrows = DOFs * Ndeg
         IF (ASSOCIATED(Solver % Matrix)) THEN
@@ -2892,8 +2946,9 @@ CONTAINS
      Lvalue = ListGetLogical( Solver % Values,'Bubbles in Global System',Found )
      IF( Found ) THEN
        CALL ListAddNewLogical( ChildSolver % Values,'Bubbles in Global System',Lvalue )
+       Solver % GlobalBubbles = SetGlobalBubblesFlag( ChildSolver ) 
      END IF
-     
+          
      IF( ASSOCIATED( ParentSolver % ActiveElements ) ) THEN
        Solver % ActiveElements => ParentSolver % ActiveElements
        Solver % NumberOfActiveElements = ParentSolver % NumberOfActiveElements
@@ -5402,8 +5457,10 @@ END BLOCK
      
      ! Linear constraints from mortar BCs:
      ! -----------------------------------
-     CALL GenerateProjectors(Model,Solver,Nonlinear = .FALSE. )
-
+     IF(.NOT. ListGetLogical(Solver % Values,'Mortar BCs Fixed', Found ) ) THEN
+       CALL GenerateProjectors(Model,Solver,Nonlinear = .FALSE. )
+     END IF
+       
      CALL Info(Caller, "Attempting to call solver: "//I2S(Solver % SolverId), level=8)
      SolverParams => ListGetSolverParams(Solver)
      EquationName = GetString(SolverParams, 'Equation', GotIt)
@@ -5585,14 +5642,14 @@ END BLOCK
      LOGICAL :: stat, Found, TimeDerivativeActive, Timing, IsPassiveBC, &
          GotCoordTransform, NamespaceFound
      INTEGER :: i, j, k, n, BDOFs, timestep, timei, timei0, PassiveBcId, Execi
-     INTEGER, POINTER :: ExecIntervals(:),ExecIntervalsOffset(:)
+     INTEGER, POINTER :: ExecIntervals(:),ExecIntervalsOffset(:),ActiveSolvers(:)
      REAL(KIND=dp) :: tcond, t0, rt0, st, rst, ct
      TYPE(Variable_t), POINTER :: TimeVar, IterV
      TYPE(ValueList_t), POINTER :: Params
      INTEGER, POINTER :: UpdateComponents(:)
 
      INTEGER :: ScanningLoops, scan, sOutputPE
-     LOGICAL :: GotLoops
+     LOGICAL :: GotLoops, GlobalBubbles
      TYPE(Variable_t), POINTER :: ScanVar, Var
      CHARACTER(:), ALLOCATABLE :: str, CoordTransform
      TYPE(Mesh_t), POINTER :: Mesh, pMesh
@@ -5690,8 +5747,9 @@ END BLOCK
 ! Set solver parameters to avoid list operations during assembly
 !-------------------------------------------------------------------------------
      Solver % DG = ListGetLogical(Params, 'Discontinuous Galerkin', Found)
-     Solver % GlobalBubbles = ListGetLogical(Params, 'Bubbles in Global System', Found)
-     IF(.NOT. Found) Solver % GlobalBubbles = .TRUE.
+
+     GlobalBubbles = SetGlobalBubblesFlag( Solver ) 
+     
      IF(GetString(Params, 'Linear System Direct Method', Found) == 'permon') THEN
        Solver % DirectMethod = DIRECT_PERMON
      END IF

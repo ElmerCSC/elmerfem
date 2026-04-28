@@ -47,6 +47,7 @@
 MODULE SParIterComm
 
   USE LoadMod, ONLY : RealTime
+  USE Messages
   USE SParIterGlobals
 
 #ifdef HAVE_XIOS
@@ -4789,6 +4790,8 @@ SUBROUTINE SParActiveSUMComplex(tsum, oper)
    COMPLEX(KIND=dp) :: tsum
 !*********************************************************************
    INTEGER :: ierr, comm, nact
+   REAL(KIND=dp) :: rser, rpar
+   INTEGER :: iser, ipar
    COMPLEX(KIND=dp) :: ssum
 
    comm = ParEnv % ActiveComm
@@ -4799,18 +4802,54 @@ SUBROUTINE SParActiveSUMComplex(tsum, oper)
      nact = ParEnv % PEs
    END IF
      
-   ssum = tsum
    SELECT CASE(oper)
    CASE(0)
-     CALL MPI_ALLREDUCE( ssum, tsum, 1, MPI_DOUBLE_COMPLEX, &
-            MPI_SUM, comm, ierr )
+     ssum = tsum
+
    CASE(1)
-     CALL MPI_ALLREDUCE( ssum, tsum, 1, MPI_DOUBLE_COMPLEX, &
-            MPI_MIN, comm, ierr )
+     ! Find the minimum abs value
+     rser = ABS(tsum)
+     CALL MPI_ALLREDUCE( rser, rpar, 1, MPI_DOUBLE_PRECISION, &
+         MPI_MIN, comm, ierr )
+
+     ! Find the owner of the minimum value
+     IF(ABS(rser-rpar) < TINY(rser) + EPSILON(rser) * rpar ) THEN
+       iser = ParEnv % MyPe
+     ELSE
+       iser = -1
+     END IF
+     CALL MPI_ALLREDUCE( iser, ipar, 1, MPI_INTEGER, MPI_MAX, comm, ierr )
+     
+     ! Set the ssum so that MPI_SUM gives the desired result
+     IF(iser == ipar ) THEN
+       ssum = tsum
+     ELSE
+       ssum = CMPLX( 0.0_dp, 0.0_dp )
+     END IF
+
    CASE(2)
-     CALL MPI_ALLREDUCE( ssum, tsum, 1, MPI_DOUBLE_COMPLEX, &
-            MPI_MAX, comm, ierr )
-  END SELECT
+     rser = ABS(tsum)
+     CALL MPI_ALLREDUCE( rser, rpar, 1, MPI_DOUBLE_PRECISION, &
+         MPI_MAX, comm, ierr )
+
+     IF(ABS(rser-rpar) < TINY(rser) + EPSILON(rser) * rpar ) THEN
+       iser = ParEnv % MyPe
+     ELSE
+       iser = -1
+     END IF
+     CALL MPI_ALLREDUCE( iser, ipar, 1, MPI_INTEGER, MPI_MAX, comm, ierr )
+     
+     IF(iser == ipar ) THEN
+       ssum = tsum
+     ELSE
+       ssum = CMPLX( 0.0_dp, 0.0_dp )
+     END IF
+   END SELECT
+
+   ! We have defined "ssum" such that MPI_SUM gives the desired operation always.
+   CALL MPI_ALLREDUCE( ssum, tsum, 1, MPI_DOUBLE_COMPLEX, &
+       MPI_SUM, comm, ierr )
+     
 !*********************************************************************
 END SUBROUTINE SParActiveSUMComplex
 !*********************************************************************

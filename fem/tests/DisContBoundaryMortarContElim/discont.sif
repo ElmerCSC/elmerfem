@@ -17,7 +17,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 25
+  Max Output Level = 7
 
   Coordinate System = "Cartesian"
   Coordinate Mapping(3) = 1 2 3

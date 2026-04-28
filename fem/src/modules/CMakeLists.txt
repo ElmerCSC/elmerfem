@@ -8,6 +8,10 @@ if(INCLUDE_ELMER_MODULES)
   MAKE_SKIP_LIST(INCLUDE ${INCLUDE_ELMER_MODULES})
 endif()
 
+IF(NOT(HAVE_ADIOS2))
+  LIST(APPEND SKIP_LIST ADIOS2OutputSolver)
+ENDIF()
+
 LIST(APPEND SKIP_LIST contrib)
 ADD_ELMER_MODULES(SKIP ${SKIP_LIST})
 
@@ -22,6 +26,7 @@ endif()
 
 if(TARGET FourierLoss)
   ADD_DEPENDENCIES(FourierLoss MagnetoDynamics)
+  TARGET_LINK_LIBRARIES(FourierLoss MagnetoDynamics)
 endif()
 
 

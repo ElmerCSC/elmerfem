@@ -514,6 +514,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
         CALL Fatal(SolverName,'Memory allocation error 4, Aborting.')
       END IF
       ActiveNode = .FALSE.
+      LimitedSolution = .FALSE.
       ResidualVector = 0.0_dp
     END IF
 

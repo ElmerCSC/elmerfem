@@ -1745,7 +1745,7 @@ CONTAINS
    FUNCTION CreateMatrix( Model, Solver, Mesh, Perm, DOFs, MatrixFormat, &
           OptimizeBW, Equation, DGSolver, GlobalBubbles, &
           NodalDofsOnly, ProjectorDofs, ThreadedStartup, &
-          UseGivenPerm ) RESULT(Matrix)
+          UseGivenPerm, BCMode ) RESULT(Matrix)
 !------------------------------------------------------------------------------
      IMPLICIT NONE
      TYPE(Model_t) :: Model
@@ -1758,7 +1758,8 @@ CONTAINS
      LOGICAL, OPTIONAL :: NodalDofsOnly, ProjectorDofs
      LOGICAL, OPTIONAL :: ThreadedStartup
      LOGICAL, OPTIONAL :: USeGivenPerm
-
+     LOGICAL, OPTIONAL :: BCMode          ! optionally we can check the flag in BC section, instead of equation
+     
      CHARACTER(LEN=*), OPTIONAL :: Equation
 
      TYPE(Matrix_t),POINTER :: Matrix
@@ -1769,7 +1770,7 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element
      TYPE(ListMatrixEntry_t), POINTER :: CList
      CHARACTER(:), ALLOCATABLE :: Eq,str
-     LOGICAL :: GotIt, DG, GB, UseOptimized, Found, UseGiven
+     LOGICAL :: GotIt, DG, GB, UseOptimized, Found, UseGiven, DoBC
      INTEGER i,j,k,l,k1,t,n, p,m, minEdgeDOFs, maxEdgeDOFs, &
            minFaceDOFs, maxFaceDOFs, BDOFs, cols, istat, &
            NDOFs
@@ -1790,6 +1791,9 @@ CONTAINS
      GB = .FALSE.
      IF ( PRESENT(GlobalBubbles) ) GB = GlobalBubbles
 
+     DoBC = .FALSE.
+     IF(PRESENT(BcMode)) DoBC = BCMode
+     
      UseGiven = .FALSE.
      IF( PRESENT( UseGivenPerm ) ) THEN
        IF( UseGivenPerm ) THEN
@@ -1810,7 +1814,6 @@ CONTAINS
        END IF
      END IF
 
-     
      UseThreads = .FALSE.
      nthr = 1
      IF ( PRESENT(ThreadedStartup) ) THEN
@@ -1944,7 +1947,7 @@ CONTAINS
      Perm = 0
      IF ( PRESENT(Equation) ) THEN
        CALL Info(Caller,'Creating initial permutation',Level=14)
-       k = InitialPermutation( Perm,Model,Solver,Mesh,Eq,DG,GB )
+       k = InitialPermutation( Perm,Model,Solver,Mesh,Eq,DG,GB,BCMode=BCMode)
        IF ( k <= 0 ) THEN
          IF(ALLOCATED(InvInitialReorder)) DEALLOCATE(InvInitialReorder)
          RETURN
@@ -2050,7 +2053,7 @@ CONTAINS
        NULLIFY( ListMatrix )
        CALL Info(Caller,'Creating list matrix for equation: '//TRIM(Eq),Level=14)
 
-       IF ( PRESENT(Equation) ) THEN
+       IF ( PRESENT(Equation) .AND. .NOT. DoBC ) THEN
          CALL MakeListMatrix( Model, Solver, Mesh, ListMatrix, Perm, k, Eq, DG, GB,&
                NodalDofsOnly, ProjectorDofs, CalcNonZeros = .FALSE.)
          n = OptimizeBandwidth( ListMatrix, Perm, InvInitialReorder, &
@@ -2369,6 +2372,7 @@ CONTAINS
         R(DOFs*(i-1)+3,DOFs*(i-1)+3) = T2(3)
       END SELECT
 
+            
       DO j=1,n*DOFs
         DO k=1,n*DOFs
           s = 0.0D0
@@ -3507,6 +3511,7 @@ CONTAINS
           NodalParentU(i) = Parent % Type % NodeU(j)
           NodalParentV(i) = Parent % Type % NodeV(j)
           NodalParentW(i) = Parent % Type % NodeW(j)
+          EXIT
         END IF
       END DO
     END DO
@@ -3526,6 +3531,49 @@ CONTAINS
     W = SUM( Basis(1:n) * NodalParentW(1:n) )
 !------------------------------------------------------------------------------      
   END SUBROUTINE FindParentUVW
+!------------------------------------------------------------------------------      
+
+
+!-----------------------------------------------------------------------------   
+!> Given basis function values at surface element set the corresponding basis
+!> functions in the parent element.
+!------------------------------------------------------------------------------
+  SUBROUTINE SetParentBasis( Element, n, Basis, Parent, np, Basisp ) 
+!------------------------------------------------------------------------------
+     IMPLICIT NONE
+     TYPE( Element_t ), POINTER :: Element
+     TYPE( Element_t ), POINTER :: Parent
+     INTEGER :: n, np
+     REAL( KIND=dp ) :: Basis(:), Basisp(:)
+!------------------------------------------------------------------------------
+    INTEGER :: i, j, nParent, check 
+    REAL(KIND=dp) :: NodalParentU(n), NodalParentV(n), NodalParentW(n)
+!------------------------------------------------------------------------------
+
+    Basisp(1:np) = 0.0_dp        
+    Check = 0
+    DO i = 1,n
+      DO j = 1,np
+        IF( Element % NodeIndexes(i) == Parent % NodeIndexes(j) ) THEN
+          Check = Check + 1
+          Basisp(j) = Basis(i)
+          EXIT
+        END IF
+      END DO
+    END DO
+
+    IF( Check /= n ) THEN
+      IF(n /= Element % TYPE % NumberOfNodes ) THEN
+        CALL Warn('SetParentBasis','Inconsistent size for "n"!')
+      END IF
+      IF(np /= Parent % TYPE % NumberOfNodes ) THEN
+        CALL Warn('SetParentBasis','Inconsistent size for "np"!')
+      END IF
+      CALL Fatal('SetParentBasis','Could not find all nodes in parent!') 
+    END IF
+
+!------------------------------------------------------------------------------      
+  END SUBROUTINE SetParentBasis
 !------------------------------------------------------------------------------      
 
 
@@ -4137,6 +4185,56 @@ CONTAINS
    END SUBROUTINE mGetBoundaryIndexesFromParent
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+  FUNCTION Find_Edge(Mesh,Parent,Element) RESULT(ptr)
+!------------------------------------------------------------------------------
+    TYPE(Element_t), POINTER :: Ptr
+    TYPE(Mesh_t) :: Mesh
+    TYPE(Element_t) :: Parent, Element
+
+    INTEGER :: i,j,k,n
+
+    Ptr => NULL()
+    DO i=1,Parent % TYPE % NumberOfEdges
+      Ptr => Mesh % Edges(Parent % EdgeIndexes(i))
+      n=0
+      DO j=1,Ptr % TYPE % NumberOfNodes
+        DO k=1,Element % TYPE % NumberOfNodes
+          IF (Ptr % NodeIndexes(j) == Element % NodeIndexes(k)) n=n+1
+        END DO
+      END DO
+      IF (n==Ptr % TYPE % NumberOfNodes) EXIT
+    END DO
+!------------------------------------------------------------------------------
+  END FUNCTION Find_Edge
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  FUNCTION Find_Face(Mesh,Parent,Element) RESULT(ptr)
+!------------------------------------------------------------------------------
+    TYPE(Element_t), POINTER :: Ptr
+    TYPE(Mesh_t) :: Mesh
+    TYPE(Element_t) :: Parent, Element
+
+    INTEGER :: i,j,k,n
+
+    Ptr => NULL()
+    DO i=1,Parent % TYPE % NumberOfFaces
+      Ptr => Mesh % Faces(Parent % FaceIndexes(i))
+      n=0
+      DO j=1,Ptr % TYPE % NumberOfNodes
+        DO k=1,Element % TYPE % NumberOfNodes
+          IF (Ptr % NodeIndexes(j) == Element % NodeIndexes(k)) n=n+1
+        END DO
+      END DO
+      IF (n==Ptr % TYPE % NumberOfNodes) EXIT
+    END DO
+!------------------------------------------------------------------------------
+  END FUNCTION Find_Face
+!------------------------------------------------------------------------------
+
+
+   
 END MODULE ElementUtils
 
 !> \} ElmerLib

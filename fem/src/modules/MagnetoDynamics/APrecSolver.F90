@@ -76,13 +76,6 @@ SUBROUTINE APrecSolver_Init( Model,Solver,dt,Transient ) ! {{{
   CALL ListAddString( Params,&
       NextFreeKeyword('Exported Variable', Params),'-dofs 3 nodal A cum')
 
-  IF( ListGetLogicalAnySolver(Model,'Prec Matrix Cylindrical') ) THEN
-    CALL ListAddString( Params,&
-        NextFreeKeyword('Exported Variable', Params),'-dofs 3 nodal A cyl')
-  END IF
-
-
-  
 !------------------------------------------------------------------------------
 END SUBROUTINE APrecSolver_Init ! }}}
 !------------------------------------------------------------------------------
@@ -116,10 +109,10 @@ SUBROUTINE APrecSolver( Model,Solver,dt,Transient ) ! {{{
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Variable_t), POINTER :: Avar, Svar, NodeResVar, EdgeSolVar, EdgeResVar, pVar
   TYPE(Matrix_t), POINTER, SAVE :: Proj => NULL()
-  LOGICAL :: Monolithic, SecondFamily, SecondOrder, PiolaVersion
+  LOGICAL :: Monolithic, SecondFamily, SecondOrder, PiolaVersion, ExtrudedSol
   TYPE(ValueList_t), POINTER :: EdgeSolverParams
   CHARACTER(LEN=MAX_NAME_LEN) :: sname
-  LOGICAL, SAVE :: Visited = .FALSE., PrecMatCyl, PrecMatNt, SkipFaces
+  LOGICAL, SAVE :: Visited = .FALSE., PrecMatNt, SkipFaces
   REAL(KIND=dp), POINTER :: allrhs(:) => NULL(), BulkValues(:) => NULL()
   INTEGER :: comps, compi, dofs
   INTEGER :: NoVisited = 0
@@ -145,16 +138,15 @@ SUBROUTINE APrecSolver( Model,Solver,dt,Transient ) ! {{{
   NoVisited = NoVisited + 1
 
   NodeResVar => VariableGet( Mesh % Variables,'nodal a rhs')
+  allrhs => NodeResVar % Values
       
   IF(Monolithic) THEN
     ! Solve all 3 components at the same time!
     ! Note that the current assembly in AVSolver is not compatible with this!
     comps = 1
-    allrhs => Solver % Matrix % rhs
   ELSE   
     ! Solve one component at a time -> faster!
     comps = 3
-    allrhs => NodeResVar % Values
     IF(.NOT. ASSOCIATED(Solver % Matrix % BulkValues)) THEN
       ALLOCATE(Solver % Matrix % BulkValues(SIZE(Solver % Matrix % Values)))
     END IF
@@ -165,7 +157,6 @@ SUBROUTINE APrecSolver( Model,Solver,dt,Transient ) ! {{{
     
   IF(Monolithic) THEN
     AVar => SVar
-    PrecMatCyl = ListGetLogicalAnySolver(Model,'Prec Matrix Cylindrical')
   ELSE
     Avar => VariableGet( Mesh % Variables,'Nodal A')        
     IF(.NOT. ASSOCIATED(Avar)) THEN
@@ -174,7 +165,6 @@ SUBROUTINE APrecSolver( Model,Solver,dt,Transient ) ! {{{
     IF(SVar % dofs /= 1) THEN
       CALL Fatal(Caller,'Componentwise solver size should be 1!')
     END IF
-    PrecMatCyl = .FALSE.
     PrecMatNt = .FALSE.
   END IF
   IF(AVar % dofs /= 3) THEN
@@ -208,6 +198,9 @@ SUBROUTINE APrecSolver( Model,Solver,dt,Transient ) ! {{{
     CALL NodalToNedelecInterpolation_GlobalMatrix(Mesh, Avar, EdgeSolVar, Proj, cdim=3, SkipFaces = SkipFaces)
   END IF
 
+  ExtrudedSol = ListGetLogical( SolverParams,'Extruded Solution',Found ) 
+
+  
   ! Now EdgeResVar represents the residual with respect
   ! to the basis for H(curl). We need to apply a transformation so that
   ! we may solve the residual correction equation by using the nodal basis.
@@ -224,72 +217,72 @@ SUBROUTINE APrecSolver( Model,Solver,dt,Transient ) ! {{{
     n = COUNT(NodeSkip)
     IF(n==0) DEALLOCATE(NodeSkip)
   END IF
+
+  ! By construction do not apply any residual to the mortar boundary. 
+  IF(ASSOCIATED(NodeSkip)) THEN
+    DO i=1,SIZE(NodeSkip)
+      IF(NodeSkip(i)) THEN
+        allrhs(dofs*(i-1)+1:dofs*i) = 0.0_dp
+      END IF
+    END DO
+  END IF
+
   
   IF(Monolithic) THEN
     ! If we use N-T coordinate system to make periodic/rotational BC's easier than we must map the
     ! original residual vector into N-T system. 
     
     IF( Solver % NormalTangential % NormalTangentialNOFNodes > 0 ) THEN
+      CALL Info(Caller,'Mapping residual vector into normal-tangential system',Level=10)
       CALL RotateNtVector( allrhs, Solver )
     END IF
 
     IF(ListCheckPrefixAnyBodyForce( Model,'Test Load') ) THEN
       CALL SetTestRhs()    
       NodeResVar % Values = allrhs
-      PRINT *,'rhs 1:',MINVAL(allrhs(1::3)),MAXVAL(allrhs(1::3))
-      PRINT *,'rhs 2:',MINVAL(allrhs(2::3)),MAXVAL(allrhs(2::3))
-      PRINT *,'rhs 3:',MINVAL(allrhs(3::3)),MAXVAL(allrhs(3::3))
     END IF
+
+    Solver % Matrix % rhs = allrhs
     
-    ! By construction do not apply any residual to the mortar boundary. 
-    IF(ASSOCIATED(NodeSkip)) THEN
-      DO i=1,SIZE(NodeSkip)
-        IF(NodeSkip(i)) THEN
-          allrhs(dofs*(i-1)+1:dofs*i) = 0.0_dp
-        END IF
-      END DO
-    END IF
-      
     IF(ALLOCATED(Solver % Matrix % ConstrainedDOF ) ) &
         Solver % Matrix % ConstrainedDOF = .FALSE.
     CALL DefaultDirichletBCs()
+    
     Norm = DefaultSolve()    
   ELSE
-    DO compi = 1, comps      
+    DO compi = 1, comps
+      pVar => VariableGet( Model % Variables,TRIM(Avar % name)//' '//I2S(compi))      
+      IF(ExtrudedSol .AND. compi /= comps ) THEN
+        pVar % Values = 0.0_dp
+        CYCLE        
+      END IF
+            
       Solver % Matrix % Values = BulkValues
       Solver % Matrix % rhs = allrhs(compi::comps)
-
-      ! By construction do not apply any residual to the mortar boundary. 
-      IF(ASSOCIATED(NodeSkip)) THEN
-        WHERE(NodeSkip)
-          Solver % Matrix % rhs = 0.0_dp
-        END WHERE
-      END IF
 
       ! Different components will have different Dirichlet BC's!
       ! Note that Solver % Variable now points to correct component of Avar so there is no
       ! need to copy values to it!
-      Solver % Variable => VariableGet( Model % Variables,TRIM(Avar % name)//' '//I2S(compi))
       IF(.NOT. ASSOCIATED(Solver % Variable)) THEN
         CALL Fatal(Caller,'Could not find variable for component :'//I2S(compi))
       END IF
-      
+
+      ! Nullify the previous Dirichlet conditions to be on the safe side.
       IF(ALLOCATED(Solver % Matrix % ConstrainedDOF ) ) &
           Solver % Matrix % ConstrainedDOF = .FALSE.
-      CALL DefaultDirichletBCs()
+      CALL DefaultDirichletBCs(Ux=pVar)
       Norm = DefaultSolve()
+
+      pVar % Values = Solver % Variable % Values
     END DO
     Solver % Variable => SVar
   END IF
 
-  IF(PrecMatCyl) THEN
-    pVar => VariableGet( Mesh % Variables,'nodal a cyl')
-    IF(ASSOCIATED(pVar)) THEN
-      pVar % Values = pVar % Values + AVar % Values
-    END IF
-    CALL CylinderToCartesianProject(SVar % Values)
+  IF(Monolithic .OR. ExtrudedSol ) THEN
+    CALL ListAddLogical( SolverParams,'Linear System Refactorize',.FALSE.) 
   END IF
-    
+  CALL ListAddLogical( SolverParams,'Mortar BCs Fixed',.TRUE.)
+  
   pVar => VariableGet( Mesh % Variables,'nodal a cum')
   IF(ASSOCIATED(pVar)) THEN
     pVar % Values = pVar % Values + AVar % Values
@@ -309,35 +302,6 @@ SUBROUTINE APrecSolver( Model,Solver,dt,Transient ) ! {{{
   CALL Info(Caller,'Auxiliary space nodal solution finished!',Level=10)
 
 CONTAINS
-
-  SUBROUTINE CylinderToCartesianProject(b)    
-    REAL(KIND=dp) :: b(:)
-    REAL(KIND=dp) :: ar, aphi, x, y
-    INTEGER :: i,j
-    TYPE(Mesh_t), POINTER :: Mesh
-
-    CALL Info(Caller,'Mapping cylindrical vector potential to cartesian!',Level=10)
-    
-    Mesh => Solver % Mesh 
-    
-    DO i=1,Mesh % NumberOfNodes
-      j = Solver % Variable % Perm(i)
-      IF(j==0) CYCLE
-      IF(ASSOCIATED(Mesh % PeriodicPerm)) THEN
-        IF(Mesh % PeriodicPerm(i) > 0) CYCLE
-      END IF
-      ar = Solver % Variable % Values(3*j-2)
-      aphi = Solver % Variable % Values(3*j-1)
-      x = Solver % Mesh % Nodes % x(i)
-      y = Solver % Mesh % Nodes % y(i)
-      Solver % Variable % Values(3*j-2) = x * ar - y * aphi
-      Solver % Variable % Values(3*j-1) = y * ar + x * aphi        
-      ! r3d component remains the same!
-    END DO
-              
-  END SUBROUTINE CylinderToCartesianProject
-    
-
 
 !------------------------------------------------------------------------------
   SUBROUTINE RotateNtVector( Vector,Solver )
@@ -391,8 +355,6 @@ CONTAINS
         R(2,1:3) = T1(1:3)
         R(3,1:3) = T2(1:3)
       END SELECT
-
-      ! PRINT *,'NT:',i,j,k,N1,T1,T2
       
       ! Rotate the local vector to N-T coordinates. 
       Q = 0.0_dp

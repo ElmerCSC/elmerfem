@@ -43,7 +43,7 @@ jobs:
           Get-CIMInstance -Class Win32_Processor | Select-Object -Property Name
 
       - name: checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -142,7 +142,6 @@ jobs:
         timeout-minutes: 150
         env:
           CTEST_OUTPUT_ON_FAILURE: 1
-          OMP_NUM_THREADS: 1
         run: |
           cd ${GITHUB_WORKSPACE}/build
           ctest . \

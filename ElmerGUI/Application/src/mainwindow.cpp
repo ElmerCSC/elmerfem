@@ -2790,8 +2790,8 @@ void MainWindow::saveElmerMesh(QString dirName) {
 //-----------------------------------------------------------------------------
 void MainWindow::closeMainWindowSlot() {
   saveSlot();
-  QApplication::closeAllWindows();
-  // close();
+  close();
+  QApplication::quit();
 }
 
 // File -> Save picture as...
@@ -7787,7 +7787,13 @@ void MainWindow::updateSysTrayIcon(QString label, QString msg) {
 
 // Finalize system tray icon...
 //-----------------------------------------------------------------------------
-void MainWindow::finalizeSysTrayIcon() {}
+void MainWindow::finalizeSysTrayIcon() {
+  if (sysTrayIcon) {
+    sysTrayIcon->setVisible(false);
+    delete sysTrayIcon;
+    sysTrayIcon = NULL;
+  }
+}
 
 // Get default open/save directory
 //-----------------------------------------------------------------------------
@@ -8216,6 +8222,8 @@ void MainWindow::generateAndSaveAndRunSlot() { saveAndRun(true); }
 void MainWindow::closeEvent(QCloseEvent *event) {
   saveSettings();
   delete objectBrowser;
+  finalizeSysTrayIcon();
+  event->accept();
 }
 
 void MainWindow::showObjectBrowserSlot() {

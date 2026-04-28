@@ -13,6 +13,7 @@
        kstep, kinc)
 !------------------------------------------------------------------------------
     USE Types
+    USE Messages
     IMPLICIT NONE
 
     REAL(KIND=dp), INTENT(INOUT) :: STRESS(NTENS)

@@ -47,10 +47,12 @@ MODULE ModelDescription
     USE SParIterGlobals
     USE ParallelUtils, ONLY : ParallelReduction, ParallelIter, ParallelInitMatrix
     USE ElementUtils, ONLY : CreateMatrix, FreeMatrix
-    USE MeshUtils, ONLY : AllocateMesh, DetectMortarPairs, Graph_deallocate, &
+    USE MeshUtils, ONLY : Graph_deallocate, &
         Loadmesh2, MeshStabParams, PrepareMesh, ReleaseMesh, SetMeshDimension, &
         SetMeshMaxDOFs, SetMeshPartitionOffSet, SplitMeshEqual, SplitMeshLevelSet, &
         RadiationParallelMeshDistribute, GetDefs
+    USE MeshAllocations, ONLY : ReleaseMesh, AllocateMesh
+    USE MortarUtils, ONLY : DetectMortarPairs
     USE LoadMod
     USE BinIO
     USE ElementDescription
@@ -58,10 +60,8 @@ MODULE ModelDescription
     IMPLICIT NONE
 
     CHARACTER(LEN=MAX_PATH_LEN) :: IncludePath = ' ', OutputPath = ' ', SimulationId=' '
-
     INTEGER, PARAMETER :: PosUnit = 32, OutputUnit = 31, RestartUnit = 30,&
                           PostFileUnit = 29, InFileUnit = 28
-
     INTEGER, PARAMETER, PRIVATE :: MAX_OUTPUT_VARS = 1000, MAX_MESHES = 32
 
 CONTAINS
@@ -2795,11 +2795,6 @@ CONTAINS
           EXIT
         END IF
       END DO
-     
-      !Solver % GlobalBubbles = ListGetLogical(Solver % Values, &
-      !    'Bubbles in Global System', stat)
-      !IF(.NOT. stat) Solver % GlobalBubbles = .TRUE.
-      
       i = i + 1
     END DO
 
@@ -4145,7 +4140,7 @@ CONTAINS
     TYPE(Solver_t),   POINTER :: Solver
     TYPE(Variable_t), POINTER :: TimeVar, tStepVar
 
-    LOGICAL :: RestartFileOpen = .FALSE., Cont, Found, LoadThis, ThisIp, UsePerm
+    LOGICAL :: RestartFileOpen = .FALSE., Cont, Found, LoadThis, ThisIp, UsePerm, NewPerm
     LOGICAL, SAVE :: PosFile = .FALSE.
     LOGICAL, SAVE :: Binary, GotPerm, GotIt, CreateVariables
     INTEGER, SAVE, ALLOCATABLE :: FileVariableInfo(:,:)
@@ -4744,10 +4739,10 @@ CONTAINS
         ! Note that Var % Perm is the permutation associated with the current field
         ! while Perm will be the permutation associated with the saved field. 
         ! They could be different, even though the usually are not!
-        CALL Info(Caller,'Reading permutation order for: '//TRIM(Row),Level=12)
+        CALL Info(Caller,'Reading permutation order for: '//TRIM(Row),Level=20)
         CALL ReadPerm( RestartUnit, Perm, GotPerm )           
         IF( GotPerm ) THEN
-          CALL Info(Caller,'Succesfully read permutation order for: '//TRIM(Row),Level=20)
+          CALL Info(Caller,'Maximum value for permutation order for "'//TRIM(Row)//'" is '//I2S(MAXVAL(Perm)),Level=12)
         END IF
           
         IF( LoadThis ) THEN
@@ -4760,7 +4755,7 @@ CONTAINS
           ELSE
             n = FieldSize
           END IF
-          CALL Info(Caller,'Size of load loop is '//I2S(n),Level=15)
+          CALL Info(Caller,'Size of load loop is '//I2S(n),Level=20)
 
           ! If we are renaming the variable also then do it
           j = FileVariableInfo(i,4) 
@@ -4798,7 +4793,9 @@ CONTAINS
             END IF
           END IF
 
-
+          NewPerm = .FALSE.
+          IF(UsePerm) NewPerm = ALL(Var % Perm == 0)
+          
           DO j=1, n
             CALL GetValue( RestartUnit, Perm, UsePerm, j, k, Val )
 
@@ -4809,11 +4806,11 @@ CONTAINS
                                     
             IF ( .NOT. UsePerm ) THEN
               Var % Values(k) = Val
-            ELSE IF ( Var % Perm(j) > 0 ) THEN
-              Var % Values(Var % Perm(j)) = Val
-            ELSE 
+            ELSE IF(NewPerm) THEN
               Var % Perm(j) = k
               Var % Values(k) = Val
+            ELSE IF ( Var % Perm(j) > 0 ) THEN
+              Var % Values(Var % Perm(j)) = Val
             END IF
           END DO
 
@@ -4990,7 +4987,11 @@ CONTAINS
       REAL(dp), INTENT(OUT) :: Val
 
       IF ( UsePerm ) THEN
-        iPerm = Perm(iNode)
+        IF(iNode > SIZE(Perm)) THEN
+          iPerm = 0
+        ELSE
+          iPerm = Perm(iNode)
+        END IF
       ELSE
         iPerm = iNode
       END IF
@@ -5067,14 +5068,14 @@ CONTAINS
       END IF
 
       IF( ALLOCATED( Perm ) ) THEN
+        IF( SIZE( Perm ) > nPerm ) THEN
+          CALL Info(Caller,'Permutation vector too large: '&
+              //I2S(SIZE(Perm))//' vs. '//I2S(nPerm),Level=15)
+        END IF
         IF( SIZE( Perm ) < nPerm ) THEN
           CALL Warn(Caller,'Permutation vector too small: '&
               //I2S(SIZE(Perm))//' vs. '//I2S(nPerm))
           DEALLOCATE( Perm ) 
-        END IF
-        IF( SIZE( Perm ) > nPerm ) THEN
-          CALL Info(Caller,'Permutation vector too large: '&
-              //I2S(SIZE(Perm))//' vs. '//I2S(nPerm),Level=15)
         END IF
       END IF
       IF( .NOT. ALLOCATED( Perm ) ) THEN
@@ -6255,11 +6256,39 @@ END SUBROUTINE GetNodalElementSize
       CALL Graph_Deallocate(Solver % ColourIndexList)
       DEALLOCATE( Solver % ColourIndexList )
     END IF
-        
+
 !------------------------------------------------------------------------------
   END SUBROUTINE FreeSolver
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> Call <SolverName>_Finalize if exists
+!> TODO: Not tested
+!------------------------------------------------------------------------------
+SUBROUTINE FinalizeSolver(model, solver)
+!------------------------------------------------------------------------------
+
+  TYPE(Model_t) :: Model
+  TYPE(Solver_t) :: Solver
+  CHARACTER(:), ALLOCATABLE :: Name
+  LOGICAL :: Found, Transient
+  INTEGER(Kind=AddrInt) :: FinalProc
+!------------------------------------------------------------------------------
+
+  Name = ListGetString( Solver % values, 'Procedure', Found)
+  IF(Found) Then
+    FinalProc = GetProcAddr( Trim(Name)//'_Finalize', abort=.FALSE.)
+
+    IF (FinalProc /= 0) then 
+      Transient = ListGetString(Model % Simulation, 'Simulation Type',Found)=='transient'
+      CALL Info('FreeModel','Finalize Solver: > '//trim(Name) // ' <',Level=20)
+      CALL ExecSolver(FinalProc, Model, Solver, Solver% dt, Transient)
+    END IF
+  END IF
+
+!------------------------------------------------------------------------------
+END SUBROUTINE
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 !> Releases value list which includes all the sif definitions, for example.
@@ -6287,7 +6316,7 @@ END SUBROUTINE GetNodalElementSize
 !------------------------------------------------------------------------------
 !> Releases the whole model. 
 !------------------------------------------------------------------------------
- SUBROUTINE FreeModel(Model)
+  SUBROUTINE FreeModel(Model)
 !------------------------------------------------------------------------------
    TYPE(Model_t), POINTER :: Model
 !------------------------------------------------------------------------------
@@ -6326,6 +6355,7 @@ END SUBROUTINE GetNodalElementSize
    CALL Info('FreeModel','Freeing solvers',Level=15)  
    DO i=1,Model % NumberOfSolvers
      CALL Info('FreeModel','Solver: '//I2S(i),Level=20)
+     CALL FinalizeSolver(Model, Model % Solvers(i))
      CALL FreeSolver(Model % Solvers(i))
    END DO
    DEALLOCATE(Model % Solvers)

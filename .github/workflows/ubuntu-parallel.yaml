@@ -14,8 +14,9 @@ on:
 jobs:
 
   ubuntu:
+    if: ${{ github.repository == 'ElmerCSC/elmerfem' }}  # only run job for main repository (forks usually do not have self-hosted runners)
     runs-on: self-hosted
-    
+
     name: ubuntu-parallel (${{ matrix.compiler }})
 
     strategy:
@@ -40,7 +41,7 @@ jobs:
         run: lscpu
 
       - name: checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -67,7 +68,7 @@ jobs:
             -DHypre_INCLUDE_DIR="/usr/include/hypre" \
             -DWITH_ELMERGUI=ON \
             -DWITH_PARAVIEW=ON \
-            -DWITH_ELMERICE=ON \
+            -DWITH_ElmerIce=ON \
             -DCREATE_PKGCONFIG_FILE=ON \
             -DWITH_MPI=ON \
             -DMPI_TEST_MAXPROC=$(nproc) \

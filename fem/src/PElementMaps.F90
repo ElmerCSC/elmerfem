@@ -47,7 +47,7 @@
 
 MODULE PElementMaps
   USE Types
-  Use GeneralUtils, ONLY : I2S
+  Use GeneralUtils
 
   IMPLICIT NONE
 

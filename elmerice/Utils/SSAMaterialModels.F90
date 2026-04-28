@@ -259,14 +259,18 @@ MODULE SSAMaterialModels
 
   strbasemag=0._dp
   IF (SEP) THEN
+    IF( GLnIP == 0 ) THEN
+        IP = GaussPointsAdapt( Element, CurrentModel % Solver)
+    ELSE
      GMSol => VariableGet( CurrentModel % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
      CALL GetLocalSolution( NodalGM,UElement=Element,UVariable=GMSol)
      PartlyGroundedElement=(ANY(NodalGM(1:n).GE.0._dp).AND.ANY(NodalGM(1:n) < 0._dp))
-     IF (PartlyGroundedElement .AND. GLnIP > 0 ) THEN
+     IF (PartlyGroundedElement) THEN
         IP = GaussPoints( Element , np=GLnIP )
      ELSE
         IP = GaussPoints( Element )
      ENDIF
+    END IF
    ELSE
      IP = GaussPoints( Element )
    ENDIF

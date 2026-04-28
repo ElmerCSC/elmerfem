@@ -47,17 +47,20 @@
 
 MODULE LumpingUtils
 
-   USE Lists
-   USE ElementUtils
-   USE ElementDescription
-   USE ParallelUtils
+  USE Types
+  USE Lists
+  USE ElementUtils
+  USE Integration, ONLY : GaussIntegrationPoints_t, GaussPoints
+  USE ElementDescription, ONLY : mGetElementDOFs, EdgeElementStyle
+  USE ParallelUtils
+  USE VectorHelmholtzUtils, ONLY : ElectricPortModel
+  IMPLICIT NONE
+  
+  !COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)   
 
-   IMPLICIT NONE
-
-   
  CONTAINS
 
-
+      
 !------------------------------------------------------------------------------
 !> Compute reduction operators for a given component with given nodal vector field.
 !> Force is simple sum of nodal forces
@@ -69,6 +72,8 @@ MODULE LumpingUtils
    SUBROUTINE ComponentNodalForceReduction(Model, Mesh, CompParams, NF, &
        Force, Moment, Torque, SetPerm ) 
 !------------------------------------------------------------------------------
+     USE Interpolation, ONLY : CopyElementNodesFromMesh
+
      TYPE(Model_t) :: Model
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(ValueList_t), POINTER :: CompParams
@@ -1425,7 +1430,7 @@ MODULE LumpingUtils
         EdgeBasis = .TRUE.
         Params => avar % Solver % Values
         CALL EdgeElementStyle(avar % Solver % Values, PiolaVersion, BasisDegree = EdgeBasisDegree ) 
-      END IF      
+      END IF
 
       IF( BCMode ) THEN
         tmin = Mesh % NumberOfBulkElements + 1
@@ -1705,7 +1710,8 @@ MODULE LumpingUtils
       COMPLEX(KIND=dp) :: Aip(3)
       REAL(KIND=dp), POINTER, SAVE :: Basis(:), WBasis(:,:), dBasisdx(:,:), RotWBasis(:,:), &
           Aelem(:,:), Celem(:,:)    
-
+      INTEGER :: EdgeBasisDegree
+      
       IF(.NOT. AllocationsDone ) THEN
         n = 2*Model % MaxElementNodes
         ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n), &
@@ -1796,6 +1802,7 @@ MODULE LumpingUtils
   FUNCTION BoundaryWaveFlux(Model, Mesh, MasterEntities, Avar, InFlux, PortImp, PortBC ) &
       RESULT ( OutFlux ) 
 !------------------------------------------------------------------------------
+
     TYPE(Model_t) :: Model    
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER, POINTER :: MasterEntities(:) 
@@ -1814,11 +1821,12 @@ MODULE LumpingUtils
     TYPE(ValueList_t), POINTER :: BC
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     REAL(KIND=dp) :: area, omega
+    TYPE(Solver_t), POINTER :: pSolver
     COMPLEX(KIND=dp) :: int_norm, int_el, vol, curr, port_curr, trans, Zimp
     CHARACTER(*), PARAMETER :: Caller = 'BoundaryWaveFlux'
 
+    
     area = 0.0_dp
-
     int_norm = 0.0_dp
     int_el = 0.0_dp
 
@@ -1846,10 +1854,11 @@ MODULE LumpingUtils
     EdgeBasis = .FALSE.
     UseGaussLaw = .FALSE.
 
+    pSolver => avar % Solver
     IF(avar % dofs <= 2) THEN
       EdgeBasis = .TRUE.
-      CALL EdgeElementStyle(avar % Solver % Values, PiolaVersion, BasisDegree = EdgeBasisDegree ) 
-      UseGaussLaw = ListGetLogical(avar % solver % values, 'Use Gauss Law', Found)
+      CALL EdgeElementStyle(pSolver % Values, PiolaVersion, BasisDegree = EdgeBasisDegree ) 
+      UseGaussLaw = ListGetLogical(pSolver % values, 'Use Gauss Law', Found)
     END IF
     
     OutFlux = 0.0_dp
@@ -1977,12 +1986,7 @@ MODULE LumpingUtils
         CALL ListInitElementKeyword( CondCoeff_h,'Material','Electric Conductivity')
 
         ! Lumped ports
-        CALL ListInitElementKeyword( PortTypeIndex_h,'Boundary Condition','Port Type Index')
-        CALL ListInitElementKeyword( PortZ_h,'Boundary Condition','Port Impedance',InitIm=.TRUE.)
-        CALL ListInitElementKeyword( PortLength_h,'Boundary Condition','Port Length')
-        CALL ListInitElementKeyword( PortScale_h,'Boundary Condition','Port Scale')
-        CALL ListInitElementKeyword( PortDirection_h,'Boundary Condition','Port Direction',DefIValue=3)
-        CALL ListInitElementKeyword( PortCenter_h,'Boundary Condition','Port Center',InitVec3D=.TRUE.)
+        CALL ElectricPortModel(1,pSolver)
         
         Found = .FALSE.
         IF( ASSOCIATED( Model % Constants ) ) THEN
@@ -2018,24 +2022,11 @@ MODULE LumpingUtils
       END IF
       
       ! If the source of the incident field is not in the plane of the port we have to use the parent!
-#define doparent 0
       IF( EdgeBasis ) THEN
-#if doparent
-        np = Parent % TYPE % NumberOfNodes
-        ParentIndexes => Parent % NodeIndexes
-        ParentNodes % x(1:np) = Mesh % Nodes % x(ParentIndexes(1:np))
-        ParentNodes % y(1:np) = Mesh % Nodes % y(ParentIndexes(1:np))
-        ParentNodes % z(1:np) = Mesh % Nodes % z(ParentIndexes(1:np))
-
-        nd = mGetElementDofs( EdgeIndexes, Uelement = Parent, USolver = avar % Solver ) 
-        np = COUNT(EdgeIndexes(1:nd) <= Mesh % NumberOfNodes)
-        pIndexes => EdgeIndexes
-#else
         nd = mGetElementDofs( EdgeIndexes, Uelement = Element, USolver = avar % Solver ) 
         np = COUNT(EdgeIndexes(1:nd) <= Mesh % NumberOfNodes)
         pIndexes => EdgeIndexes
 
-#endif        
         IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
             EdgeBasisDegree=EdgeBasisDegree)
       ELSE
@@ -2053,23 +2044,7 @@ MODULE LumpingUtils
         e_local(i,1:nd) = avar % values(avar % dofs*(avar % Perm(pIndexes(1:nd))-1)+i)
       END DO
 
-      PortTypeIndex = ListGetElementInteger(PortTypeIndex_h, Element, GotPort)
-      IF(GotPort) THEN
-        PortTypeIndex = ListGetElementInteger( PortTypeIndex_h, Element ) 
-        PortZ = ListGetElementComplex( PortZ_h, Element = Element )
-        PortScale = ListGetElementReal( PortScale_h, Element = Element )
-        PortLength = ListGetElementReal( PortLength_h, Element = Element )
-        IF( PortTypeIndex == 1 ) THEN
-          PortDirection = ListGetElementInteger( PortDirection_h, Element )
-        ELSE
-          PortCenter = ListGetElementReal( PortCenter_h, Element = Element )
-        END IF
-      END IF     
-      
-#if doparent 
-      ! Normal is only needed if we integrate over parent element.
-      Normal = NormalVector(Element, ElementNodes, Check=.TRUE.)
-#endif
+      CALL ElectricPortModel(2,pSolver,Element,GotPort)
       
       ! Numerical integration:
       !-----------------------      
@@ -2086,19 +2061,24 @@ MODULE LumpingUtils
         muinv = mur * mu0inv
         
         Cond = ListGetElementReal( CondCoeff_h, Basis, Parent, Found, GaussPoint = t )
-        
-        L = (0_dp, 0_dp)
 
-        IF( ListGetElementLogical( Absorb_h, Element, Found ) ) THEN
+        ! If we need EdgeBasis get it already here since it is needed in evaluation of some port models
+        IF( EdgeBasis ) THEN
+          stat = ElementInfo( Element, ElementNodes, IP % U(t), IP % V(t), &
+              IP % W(t), detJ, Basis, dBasisdx, &
+              EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = avar % Solver )
+        END IF
+
+        L = (0_dp, 0_dp)          
+        IF(GotPort) THEN
+          CALL ElectricPortModel(3,pSolver,Element,GotPort,B,L,Basis,dBasisdx,WBasis)
+
+          !IF(t==1) PRINT *,'B1:',Element % ElementIndex,B,SUM(ABS(L)),Element % BoundaryInfo % Constraint
+        ELSE IF( ListGetElementLogical( Absorb_h, Element, Found ) ) THEN
           epsr = ListGetElementComplex( EpsCoeff_h, Basis, Parent, Found, GaussPoint = t )      
           IF( .NOT. Found ) epsr = 1.0_dp
           B = imu * rob0 * SQRT( epsr / mur ) 
 
-        ELSE IF(GotPort) THEN
-          IF( PortTypeIndex == 1 ) THEN
-            B = CMPLX(0_dp, 1_dp, KIND=dp) * ( omega / mu0inv ) / (PortScale * PortZ ) 
-            L(ABS(PortDirection)) = SIGN(1,PortDirection) / ( PortLength * SQRT( PortScale ) )
-          END IF
         ELSE        
           B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
                   
@@ -2108,28 +2088,16 @@ MODULE LumpingUtils
           TemGrad = CMPLX( ListGetElementRealGrad( TemRe_h,dBasisdx,Element,Found), &
               ListGetElementRealGrad( TemIm_h,dBasisdx,Element,Found), KIND=dp )
 
-          IF (ABS(B) > AEPS) THEN
-            L = ( MagLoad + TemGrad ) / ( 2*B) 
-          END IF
-          
-          ! We sum the components here, since continutation is a little cleaner then...
-          ElSurfCurr = L + (0_dp, 1_dp)*omega*ElSurfCurr
+          L = MagLoad + TemGrad - (0_dp, 1_dp)*omega/muinv*ElSurfCurr
+                   
+          !IF(t==1) PRINT *,'B2:',Element % ElementIndex,B,SUM(ABS(L)),Element % BoundaryInfo % Constraint
         END IF
-
-          
+        
+        IF (ABS(B) > AEPS) THEN
+          L = L / ( 2*B) 
+        END IF
+                
         IF( EdgeBasis ) THEN
-#if doparent
-          ! In order to get the normal component of the electric field we must operate on the
-          ! parent element. The surface element only has tangential components.                    
-          ! Note: the finding of parents does not work for piola/quadratic gauss points.
-          CALL FindParentUVW( Element, n, Parent, Parent % TYPE % NumberOfNodes, U, V, W, Basis ) 
-          stat = ElementInfo( Parent, ParentNodes, u, v, w, detJ, Basis, dBasisdx, &
-              EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = avar % Solver )
-#else          
-          stat = ElementInfo( Element, ElementNodes, IP % U(t), IP % V(t), &
-              IP % W(t), detJ, Basis, dBasisdx, &
-              EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = avar % Solver )
-#endif
           e_ip(1:3) = CMPLX(MATMUL(e_local(1,np+1:nd),WBasis(1:nd-np,1:3)), MATMUL(e_local(2,np+1:nd),WBasis(1:nd-np,1:3)), KIND=dp)
         ELSE
           DO i=1,3
@@ -2138,14 +2106,7 @@ MODULE LumpingUtils
         END IF
         
         ! Integral over electric field: This gives the phase
-#if doparent
-        ! e_ip is actually by construction on the plane if we do not use parent elements
-        e_ip_norm = SUM(e_ip*Normal)
-        e_ip_tan = e_ip - e_ip_norm * Normal
-        int_el = int_el + weight * SUM(e_ip_tan * CONJG(L) )         
-#else
         int_el = int_el + weight * SUM(e_ip * CONJG(L) )         
-#endif
         
         ! Norm of electric field used for normalization
         int_norm = int_norm + weight * ABS( SUM( L * CONJG(L) ) ) 
@@ -2293,167 +2254,8 @@ MODULE LumpingUtils
 
 
 
-!------------------------------------------------------------------------------
-!> This routine computes geometric quantities for lumped port making the setting
-!> of BCs a little easier.
-!------------------------------------------------------------------------------
-  SUBROUTINE DefinePortParameters(Model, Mesh)
-!------------------------------------------------------------------------------
-    IMPLICIT NONE 
-    TYPE(Model_t) :: Model 
-    TYPE(Mesh_t), POINTER :: Mesh
-!------------------------------------------------------------------------------
-    TYPE(Nodes_t) :: ElementNodes
-    TYPE(Element_t), POINTER :: Element
-    TYPE(GaussIntegrationPoints_t) :: IP
-    INTEGER ::i,j,k,n,t,t0,bc_id,ierr,PortDir,PortIndex,PortTypeInd
-    INTEGER, POINTER :: Indexes(:)
-    REAL(KIND=dp) :: s,detJ,Width,Area,Length,RadInner, RadOuter,CenterArray(3,1),Scale
-    REAL(KIND=dp), ALLOCATABLE :: Basis(:), LumpVec(:)
-    TYPE(ValueList_t), POINTER :: BC, BC0
-    CHARACTER(:), ALLOCATABLE :: PortType
-    LOGICAL :: Found, stat
-
-    CHARACTER(*), PARAMETER :: Caller = 'DefinePortParameters'
-
-    IF(.NOT. ASSOCIATED( Mesh ) ) THEN
-      CALL Fatal(Caller,'Mesh not associated!')
-    END IF
-
-    CALL Info(Caller,'Defining geometric port parameters',Level=8)
-
-    n = Mesh % MaxElementNodes    
-    t0 = Mesh % NumberOfBulkElements       
-    
-    ! Check the number of ports and add "port type index" keyword.
-    DO bc_id = 1,Model % NumberOfBCs
-      BC => Model % BCs(bc_id) % Values
-
-      ! This has already been defined!
-      IF( ListCheckPresent( BC,'Port Type Index')) CYCLE
-
-      IF(.NOT. ListCheckPresent(BC,'port impedance')) CYCLE
-      
-      PortType = ListGetString( BC,'port type',Found)
-
-      SELECT CASE(PortType)
-      CASE('rectangular')
-        PortTypeInd = 1
-
-      CASE('coaxial')
-        PortTypeInd = 2
-
-      CASE DEFAULT
-        CALL Info(Caller,'Port Type "Port Type" defaulted to "rectangular"',Level=4)
-        PortTypeInd = 1
-      END SELECT
-      
-      CALL Info(Caller,'Defining parameters for port on BC: '//I2S(bc_id),Level=8)
-      CALL ListAddInteger( BC,'Port Type Index',PortTypeInd)
-
-      IF(.NOT. ALLOCATED(Basis) ) THEN
-        ALLOCATE(Basis(n), ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n), LumpVec(7) )
-      END IF
-      
-      LumpVec(1:3) = HUGE(s)
-      LumpVec(4:6) = -HUGE(s)
-      LumpVec(7) = 0.0_dp
-
-      
-      DO t=1, Mesh % NumberOfBoundaryElements
-        Element => Mesh % Elements( t0 + t )               
-        IF( Element % BoundaryInfo % Constraint /= Model % BCs(bc_id) % Tag ) CYCLE
-
-        Indexes => Element % NodeIndexes
-        n = Element % TYPE % NumberOfNodes
-
-        ElementNodes % x = 0.0_dp
-        ElementNodes % y = 0.0_dp
-        ElementNodes % z = 0.0_dp
-
-        ElementNodes % x(1:n) = Mesh % Nodes % x(Indexes)
-        ElementNodes % y(1:n) = Mesh % Nodes % y(Indexes)
-        ElementNodes % z(1:n) = Mesh % Nodes % z(Indexes)
-
-        ! Get min/max range for each coordinate.
-        LumpVec(1) = MIN(LumpVec(1),MINVAL(ElementNodes % x(1:n)))
-        LumpVec(2) = MIN(LumpVec(2),MINVAL(ElementNodes % y(1:n)))
-        LumpVec(3) = MIN(LumpVec(3),MINVAL(ElementNodes % z(1:n)))
-        LumpVec(4) = MAX(LumpVec(4),MAXVAL(ElementNodes % x(1:n)))
-        LumpVec(5) = MAX(LumpVec(5),MAXVAL(ElementNodes % y(1:n)))
-        LumpVec(6) = MAX(LumpVec(6),MAXVAL(ElementNodes % z(1:n)))
-        
-        ! Integrate over the area.
-        IP = GaussPoints( Element, PReferenceElement = .FALSE.)
-        DO j=1,IP % n        
-          stat = ElementInfo( Element, ElementNodes, IP % U(j), IP % V(j), IP % W(j), detJ, Basis )
-          S = DetJ * IP % s(j)
-          LumpVec(7) = LumpVec(7) + s
-        END DO
-      END DO
-      
-      ! Do parallel communication, if needed.
-      IF( ParEnv % PEs > 1 ) THEN
-        CALL MPI_ALLREDUCE( MPI_IN_PLACE, LumpVec(1:3), 3, &
-            MPI_DOUBLE_PRECISION, MPI_MIN, ELMER_COMM_WORLD, ierr )
-        CALL MPI_ALLREDUCE( MPI_IN_PLACE, LumpVec(4:6), 3, &
-            MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD, ierr )
-        CALL MPI_ALLREDUCE( MPI_IN_PLACE, LumpVec(7:7), 1, &
-            MPI_DOUBLE_PRECISION, MPI_SUM, ELMER_COMM_WORLD, ierr )
-      END IF
-
-      ! Area is used in all port models. 
-      Area = LumpVec(7)
-      
-      SELECT CASE(PortTypeInd)
-      CASE(1)
-        PortDir = ABS( ListGetInteger( BC,'Port Direction',Found) )
-        IF(.NOT. Found) PortDir = 3
-                
-        Length = LumpVec(3+PortDir) - LumpVec(PortDir)        
-        Width = Area / Length
-        Scale = Width / Length
-
-        !PRINT *,'area:',area, length, width, scale
-        
-        CALL ListAddConstReal( BC,'Port Length',Length)
-        CALL ListAddConstReal( BC,'Port Scale',Scale)
-        IF(InfoActive(8)) THEN
-          PRINT *,'Setting rectangular port parameters:',Length,Scale
-        END IF
-
-      CASE(2)
-        RadOuter = 0.0_dp
-        DO i=1,3
-          RadOuter = MAX(RadOuter,(LumpVec(3+i)-LumpVec(i))/2)
-          CenterArray(i,1) = (LumpVec(3+i)+LumpVec(i))/2
-        END DO
-        RadInner = SQRT(RadOuter**2-Area/PI)        
-        Length = (RadInner+RadOuter)/2
-        Scale = 2*PI/LOG(RadOuter/RadInner)
-
-        ! PRINT *,'area:',area, radinner, radouter
-        
-        CALL ListAddConstReal( BC,'Port Length',Length) 
-        CALL ListAddConstReal( BC,'Port Scale',Scale)
-        CALL ListAddConstRealArray( BC,'Port Center',3,1,CenterArray)
-        IF(InfoActive(8)) THEN
-          PRINT *,'Setting coaxial port parameters:',Length,Scale,' and center ',CenterArray
-        END IF
-      END SELECT
-          
-    END DO
-
-    IF(ALLOCATED(Basis)) THEN
-      DEALLOCATE(Basis, ElementNodes % x, ElementNodes % y, ElementNodes % z, LumpVec )
-    END IF
-
-  END SUBROUTINE DefinePortParameters
-!------------------------------------------------------------------------------
-
 
   
-    
 END MODULE LumpingUtils
 !------------------------------------------------------------------------------
 

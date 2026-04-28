@@ -46,13 +46,23 @@ SUBROUTINE BestApproximationSolver_Init0(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: SolverParams
   LOGICAL :: Found, SecondOrder, PiolaVersion, SecondFamily, WithNDOFs, Check
+  INTEGER :: k
 !------------------------------------------------------------------------------  
   SolverParams => GetSolverParams()
 
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
-    CALL EdgeElementStyle(SolverParams, PiolaVersion, SecondFamily, SecondOrder, Check = .TRUE. )
+    CALL EdgeElementStyle(SolverParams, PiolaVersion, SecondFamily, BasisDegree = k, Check = .TRUE. )
 
-    IF ( SecondOrder ) THEN
+    SELECT CASE(k)
+    CASE(3)
+      IF (SecondFamily) THEN
+        CALL Fatal('BestApproximationSolver', 'No ready support for the cubic element of the second kind' )        
+      ELSE
+        CALL ListAddString( SolverParams, "Element", &
+            "n:0 e:3 -tri b:6 -tetra b:3 -tri_face b:6" )
+      END IF      
+      
+    CASE(2)
       IF (SecondFamily) THEN
         CALL ListAddString( SolverParams, "Element", &
             "n:0 e:3 -tri b:3 -tri_face b:3" )
@@ -60,13 +70,17 @@ SUBROUTINE BestApproximationSolver_Init0(Model, Solver, dt, Transient)
         CALL ListAddString( SolverParams, "Element", &
             "n:0 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )
       END IF
-    ELSE IF (SecondFamily) THEN
-      CALL ListAddString( SolverParams, "Element", "n:0 e:2" )
-    ELSE IF( PiolaVersion ) THEN
-      CALL ListAddString( SolverParams, "Element", "n:0 e:1 -quad b:2 -brick b:3 -quad_face b:2" )
-    ELSE
-      CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
-    END IF
+
+    CASE DEFAULT
+      
+      IF (SecondFamily) THEN
+        CALL ListAddString( SolverParams, "Element", "n:0 e:2" )
+      ELSE IF( PiolaVersion ) THEN
+        CALL ListAddString( SolverParams, "Element", "n:0 e:1 -quad b:2 -brick b:3 -quad_face b:2" )
+      ELSE
+        CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
+      END IF
+    END SELECT
   END IF
 !------------------------------------------------------------------------------
 END SUBROUTINE BestApproximationSolver_Init0
@@ -76,21 +90,24 @@ END SUBROUTINE BestApproximationSolver_Init0
 SUBROUTINE BestApproximationSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 !
-!  Solve the best approximation of the vector field
+!  This is a tool for code developers to check the consistency/accuracy of H(curl)
+!  approximations. It solves the best approximation of the vector field
 ! 
 !              U = (1,1,1), or              (Test Mode = Integer 1)   
 !              U = (1+z-y,1-z+x,1-x+y)      (Test Mode = Integer 2)
 !              U = (0,0,-1/2(yx^2+xy^2))    (Test Mode = Integer 3)
 !              U = (xy^2,x^2y,0)            (Test Mode = Integer 4)   
 !              U = (-xy^2,x^2y,0)           (Test Mode = Integer 5)
+!              U = (3/2 y^2,1/2 x^2,0)      (Test Mode = Integer 6)  
 !
 !  with respect to the L2 norm (the default) or an energy norm using 
 !  H(curl)-conforming basis functions. Here the energy norm corresponds to 
 !  the operator I + MatPar * curl curl, with MatPar a scalar field specified
 !  by the user. Additionally, compute the relative error of the solution or 
 !  of the curl field using the L2 norm. This solver can thus be used for checking 
-!  that the convergence rate is correct.
-!
+!  that the convergence rate is correct or that a simple solution lies in the
+!  FE space.
+!  
 !------------------------------------------------------------------------------
   USE DefUtils
 
@@ -122,20 +139,15 @@ SUBROUTINE BestApproximationSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Matrix_t), POINTER :: A
 
   LOGICAL :: stat, PiolaVersion, SecondFamily, ErrorEstimation
-  LOGICAL :: UseCurlNorm
+  LOGICAL :: UseCurlNorm, Simplicial
 
   INTEGER, ALLOCATABLE :: Indices(:)
 
   SAVE STIFF, LOAD, FORCE, Acoef, AllocationsDone, Nodes, Indices
 !------------------------------------------------------------------------------
-  PiolaVersion = GetLogical( GetSolverParams(), 'Optimal Family', Found) .OR. &
-      GetLogical( GetSolverParams(), 'Use Piola Transform', Found)
-  ElementOrder = 1
-  IF ( GetLogical(GetSolverParams(), 'Quadratic Approximation', Found) ) THEN
-    ElementOrder = 2
-    PiolaVersion = .TRUE.
-  END IF
-  SecondFamily = GetLogical( GetSolverParams(), 'Second Kind Basis', Found)
+  CALL EdgeElementStyle(GetSolverParams(), PiolaVersion, SecondFamily, BasisDegree = ElementOrder)
+  
+  Simplicial = GetLogical( GetSolverParams(), 'Simplicial Mesh', Found)
 
   ErrorEstimation = GetLogical( GetSolverParams(), 'Error Computation', Found)
   IF (.NOT. Found) ErrorEstimation = .TRUE.
@@ -248,22 +260,14 @@ CONTAINS
     !-------------------------------------
     ! Numerical integration over element:
     !-------------------------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
-         EdgeBasisDegree=ElementOrder)    
+    IP = GaussPoints(Element, PReferenceElement=PiolaVersion, EdgeBasisDegree=ElementOrder)    
     
     np = 0  ! Set np = n, if nodal dofs are employed; otherwise set np = 0
 
     DO t=1,IP % n
-      IF (PiolaVersion) THEN
-        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-            IP % W(t), detF=detJ, Basis=Basis, EdgeBasis=EBasis, &
-            RotBasis=CurlEBasis, ApplyPiolaTransform = .TRUE., &
-            SecondFamily=SecondFamily, BasisDegree = ElementOrder)
-      ELSE
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-            IP % W(t), detJ, Basis, dBasisdx )
-        CALL GetEdgeBasis(Element, EBasis, CurlEBasis, Basis, dBasisdx)
-      END IF
+
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), detJ, &
+          Basis, EdgeBasis = Ebasis, RotBasis = CurlEBasis)
 
       xq = SUM( Nodes % x(1:n) * Basis(1:n) )
       yq = SUM( Nodes % y(1:n) * Basis(1:n) )
@@ -300,7 +304,7 @@ CONTAINS
           j = np + q
           STIFF(i,j) = STIFF(i,j) + 1.0d0 * &
               SUM( EBasis(q,1:dim) * EBasis(p,1:dim) ) * detJ * IP % s(t) + &
-              MatPar * SUM( CurlEBasis(q,1:dim) * CurlEBasis(p,1:dim) ) * detJ * IP % s(t)
+              MatPar * SUM( CurlEBasis(q,1:3) * CurlEBasis(p,1:3) ) * detJ * IP % s(t)
         END DO
 
         !----------------------------------------
@@ -334,7 +338,12 @@ CONTAINS
               MatPar * (0.0d0) * CurlEBasis(p,1) * detJ * IP % s(t) + &
               MatPar * (0.0d0) * CurlEBasis(p,2) * detJ * IP % s(t) + &
               MatPar * (4.0d0*xq*yq) * CurlEBasis(p,3) * detJ * IP % s(t)
- 
+        CASE(6)
+          FORCE(i) = FORCE(i) +  (1.5d0*yq**2) * EBasis(p,1) * detJ * IP % s(t) + &
+              (0.5d0*xq**2)* EBasis(p,2) * detJ * IP % s(t) + &
+              MatPar * (0.0d0) * CurlEBasis(p,1) * detJ * IP % s(t) + &
+              MatPar * (0.0d0) * CurlEBasis(p,2) * detJ * IP % s(t) + &
+              MatPar * (xq - 3.0d0*yq) * CurlEBasis(p,3) * detJ * IP % s(t) 
         END SELECT
       END DO
     END DO
@@ -367,21 +376,14 @@ CONTAINS
     !-------------------------------------
     ! Numerical integration over element:
     !-------------------------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, EdgeBasisDegree=ElementOrder) 
+    IP = GaussPoints(Element, PReferenceElement=PiolaVersion, EdgeBasisDegree=ElementOrder) 
 
     np = 0  ! Set np = n, if nodal dofs are employed; otherwise set np = 0
 
     DO t=1,IP % n
 
-      IF (PiolaVersion) THEN
-        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-            IP % W(t), F, G, detJ, Basis, EBasis, CurlEBasis, ApplyPiolaTransform = .TRUE., &
-            SecondFamily=SecondFamily, BasisDegree=ElementOrder)
-      ELSE
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-            IP % W(t), detJ, Basis, dBasisdx )
-        CALL GetEdgeBasis(Element, EBasis, CurlEBasis, Basis, dBasisdx)
-      END IF
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), detJ, &
+          Basis, EdgeBasis = Ebasis, RotBasis = CurlEBasis)
 
       xq = SUM( Nodes % x(1:n) * Basis(1:n) )
       yq = SUM( Nodes % y(1:n) * Basis(1:n) )
@@ -425,6 +427,12 @@ CONTAINS
         sol(3) = 0.0d0
         rotsol(1:3) = 0.0d0
         rotsol(3) = 4.0d0*xq*yq
+      CASE(6)
+        sol(1) = 1.5d0*yq**2
+        sol(2) = 0.5d0*xq**2
+        sol(3) = 0.0d0
+        rotsol(1:3) = 0.0d0
+        rotsol(3) = xq - 3.0d0*yq        
       END SELECT
 
       e(:) = sol(:) - u(:)  
@@ -433,18 +441,18 @@ CONTAINS
       IF (UseCurlNorm) THEN
         ! Curl error in L2:
         !-------------------
-        SolNorm = SolNorm + SUM( rotsol(1:3) * rotsol(1:3) ) * detJ
-        EK = EK + SUM( rote(1:3) * rote(1:3) ) * detJ       
+        SolNorm = SolNorm + SUM( rotsol(1:3) * rotsol(1:3) ) * detJ * IP % s(t)
+        EK = EK + SUM( rote(1:3) * rote(1:3) ) * detJ * IP % s(t)
  
         ! Energy norm:
         !--------------
-        !SolNorm = SolNorm + (SUM( Sol(1:3) * Sol(1:3) ) + 1.0d0 * SUM( rotsol(1:3) * rotsol(1:3) )) * detJ
-        !EK = EK + (SUM( e(1:3) * e(1:3) ) + 1.0d0 * SUM( rote(1:3) * rote(1:3) )) * detJ
+        !SolNorm = SolNorm + (SUM( Sol(1:3) * Sol(1:3) ) + 1.0d0 * SUM( rotsol(1:3) * rotsol(1:3) )) * detJ * IP % s(t)
+        !EK = EK + (SUM( e(1:3) * e(1:3) ) + 1.0d0 * SUM( rote(1:3) * rote(1:3) )) * detJ * IP % s(t)
 
       ELSE
         ! L2 norm
-        SolNorm = SolNorm + SUM( Sol(1:3) * Sol(1:3) )* detJ
-        EK = EK + SUM( e(1:3) * e(1:3) )* detJ
+        SolNorm = SolNorm + SUM( Sol(1:3) * Sol(1:3) ) * detJ * IP % s(t)
+        EK = EK + SUM( e(1:3) * e(1:3) ) * detJ * IP % s(t)
       END IF
     END DO
 !------------------------------------------------------------------------------

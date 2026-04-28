@@ -1301,7 +1301,7 @@ CONTAINS
       
       bnorm = normfun(n, b, 1)
       rnorm = normfun(n, r, 1)
-      
+
       IF (UseStopCFun) THEN
         Residual = stopcfun(x,b,r,ipar,dpar)
       ELSE
@@ -1310,7 +1310,7 @@ CONTAINS
       Converged = (Residual < MinTolerance) .AND. ( MinIter <= 0 )
       Diverged = (Residual > MaxTolerance) .OR. (Residual /= Residual)
       IF( Converged .OR. Diverged) RETURN
-      
+
       DO k=1,Rounds
          !----------------------------------------------
          ! Check for restarting

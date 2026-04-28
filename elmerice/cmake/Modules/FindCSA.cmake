@@ -21,10 +21,10 @@ ENDIF()
 
 SET(CSA_FOUND FALSE)
 SET(CSAINCLUDE
-  "${CSAROOT}/"
-  "$ENV{CSAROOT}/"
-  "${CSA_ROOT}/"
-  "$ENV{CSA_ROOT}/"
+  "${CSAROOT}/include"
+  "$ENV{CSAROOT}/include"
+  "${CSA_ROOT}/include"
+  "$ENV{CSA_ROOT}/include"
   "${CMAKE_SOURCE_DIR}/csa-c/"
   INTERNAL
   )

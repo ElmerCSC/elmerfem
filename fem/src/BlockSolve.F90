@@ -42,7 +42,7 @@ MODULE BlockSolve
      BackScaleLinearSystem, AMGXMatrixVectorMultiply, AMGXSolver, DiagonalMatrixSumming, &
      StructureCouplingAssembly, FSICouplingAssembly, SaveLinearSystem, &
      MassMatrixAssembly, VectorValuesRange, LaplaceMatrixAssembly
- USE MeshUtils, ONLY : SaveProjector   
+ USE MortarUtils, ONLY : SaveProjector   
  USE DefUtils, ONLY : DefaultSolve, GetElementDOFs, GetElementNodes, GetLogical
  
  IMPLICIT NONE
@@ -193,8 +193,8 @@ CONTAINS
       MaxFDOFs  = MAX( MaxFDOFs,  Element % BDOFs )
     END DO
     
-    GlobalBubbles = ListGetLogical( Params, 'Bubbles in Global System', Found )
-    IF (.NOT.Found) GlobalBubbles = .TRUE.
+    ! Inherit the bubbles from primary solver
+    GlobalBubbles = Solver % GlobalBubbles
     
     Ndeg = Ndeg + Mesh % NumberOfNodes
     IF ( MaxEDOFs > 0 ) Ndeg = Ndeg + MaxEDOFs * Mesh % NumberOFEdges
@@ -4080,7 +4080,8 @@ CONTAINS
       
       ! If this was a special preconditioning matrix then update the solution in the scaled system. 
       IF( DoPrecScaling ) THEN
-        x(1:n) = x(1:n) / diagtmp(1:n)
+        ! This tentatively fixes the issues introduced scaling in May 2025 that made the outer iteration converge slower. 
+        x(1:n) = x(1:n) / ( diagtmp(1:n) * Solver % Matrix % RhsScaling )
         DEALLOCATE( btmp, diagtmp )
       ELSE IF( NoNestedScaling ) THEN
         CALL ListAddLogical( Params,'Linear System Skip Scaling',.FALSE.)

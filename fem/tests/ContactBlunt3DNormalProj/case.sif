@@ -88,7 +88,7 @@ Solver 1
 !  Optimize Bandwidth = False
 !  Linear System Scaling = False
 
-!  Debug Normals = Logical True
+  Debug Normals = Logical True
 
 !  Use Nodal Normal = Logical True
 End

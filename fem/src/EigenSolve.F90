@@ -57,10 +57,76 @@
 
 MODULE EigenSolve
 
+   USE Messages
    IMPLICIT NONE
 
 CONTAINS
 
+
+  SUBROUTINE EigenSystemSorting( Params, Neig, Perm, EigValues )
+
+    USE Types
+    USE GeneralUtils, ONLY : SortR 
+    USE Lists, ONLY : ListGetString
+    
+    TYPE(ValueList_t), POINTER :: Params
+    INTEGER :: Neig
+    INTEGER :: Perm(:)
+    COMPLEX(KIND=dp) :: EigValues(:)
+
+    REAL(KIND=dp) :: EigMeas(Neig)
+    LOGICAL :: Stat
+    CHARACTER(LEN=2) :: Which
+    INTEGER :: i
+    
+    ! Initial ordering 
+    Perm = [ (i, i=1,NEIG) ]
+
+    ! Choose how to sort the eigenvalues, the 1st one should be:
+    SELECT CASE ( ListGetString( Params,'Eigen System Sorting', Stat ) )
+    CASE( 'smallest magnitude' )
+      Which = 'LM'
+    CASE( 'largest magnitude')
+      Which = 'SM'
+    CASE( 'smallest real part')
+      Which = 'LR'
+    CASE( 'largest real part')
+      Which = 'SR'
+    CASE( 'smallest imag part' )
+      Which = 'LI'
+    CASE( 'largest imag part' )
+      Which = 'SI'
+    CASE DEFAULT
+      Which = 'LM'
+    END SELECT
+
+    ! Real, imaginary or complex value used as a measure
+    IF( Which(2:2) == 'R' ) THEN
+      EigMeas = REAL( EigValues )
+    ELSE IF( Which(2:2) == 'I') THEN
+      EigMeas = AIMAG( EigValues )
+    ELSE
+      EIgMeas = ABS( EigValues )
+    END IF
+
+    ! Largest or smallest first 
+    IF( Which(1:1) == 'L' ) THEN
+      EigMeas = -EigMeas
+    END IF
+
+    ! Sort eigenvalues by their measure
+    CALL SortR( NEIG, Perm, EigMeas )           
+    IF( MINVAL( Perm ) < 1 .OR. MAXVAL( Perm ) > NEIG ) THEN
+      CALL Fatal('EigenSystemSorting','Reordering of EigenValues failed')
+    END IF
+
+    ! Use the new sorting
+    EigValues = EigValues(Perm)
+
+  END SUBROUTINE EigenSystemSorting
+  
+
+  
 !------------------------------------------------------------------------------
 !> Solution of Eigen value problems using ARPACK library. 
 !------------------------------------------------------------------------------
@@ -275,7 +341,7 @@ CONTAINS
         IF ( SigmaR /= 0.0d0 ) THEN
           Matrix % Values = Matrix % Values - SigmaR * Matrix % MassValues
         END IF
-
+        
         Method = ListGetString( Params,'Linear System Solver', stat )         
         IF ( Method == 'direct' ) THEN
           DirectMethod = ListGetString( Params, &
@@ -506,16 +572,13 @@ CONTAINS
 !
 !        Sort the eigenvalues to ascending order:
 !        ----------------------------------------
-         ALLOCATE( Perm(NEIG) )
-         Perm = [ (i, i=1,NEIG) ]
          DO i=1,NEIG
-            EigValues(i) = CMPLX( D(i,1), D(i,2),KIND=dp )
+           EigValues(i) = CMPLX( D(i,1), D(i,2),KIND=dp )
          END DO
-         CALL SortC( NEIG, EigValues, Perm )
-         IF( MINVAL( Perm ) < 1 .OR. MAXVAL( Perm ) > NEIG ) THEN
-           CALL Fatal(Caller,'Reordering of EigenValues failed')
-         END IF
-
+         
+         ALLOCATE( Perm(NEIG) )
+         CALL EigenSystemSorting( Params, Neig, Perm, EigValues )
+         
 !
 !        Extract the values to Elmer structures:
 !        -----------------------------------------
@@ -523,7 +586,8 @@ CONTAINS
          CALL Info( Caller, 'Eigen system solution complete: ', Level=4 )
          CALL Info( Caller, ' ', Level=4 )
          WRITE( Message,'(A,ES12.3)') 'Convergence criterion is: ', TOL
-         CALL Info( Caller, Message, Level=7 )
+         CALL Info( Caller, Message, Level=7 )         
+         CALL Info( Caller,'Number of eigensystem iterations is: '//I2S(iter),Level=4)
          CALL Info( Caller,'Number of converged Ritz values is: '//I2S(IPARAM(5)),Level=4)
          CALL Info( Caller,'Number of update iterations taken: '//I2S(IPARAM(3)),Level=4)
          CALL Info( Caller,'Computed '//I2S(NEIG)//' Eigen Values',Level=4)
@@ -596,11 +660,9 @@ CONTAINS
       COMPLEX(KIND=dp) :: EigVectors(:,:)
       INTEGER :: n, NoEigen
       LOGICAL :: NormalizeToUnity
-
       INTEGER :: i,j,k,l, mk, mj
       REAL(KIND=dp) :: r
       COMPLEX(KIND=dp) :: s, s1, mx
-
       CHARACTER(*), PARAMETER :: Caller = 'ScaleEigenVectors'
 
       
@@ -621,34 +683,131 @@ CONTAINS
           s = 0.0_dp
           IF( NormalizeToUnity ) THEN
             DO j=1,n
-              s1 = EigVectors(i,j) * CONJG(EigVectors(i,j))
-              IF( ABS( s1 ) > ABS( s ) ) s = s1
+              s1 = EigVectors(i,j) 
+              IF( ABS( s1 ) > ABS( s ) ) THEN
+                s = s1                
+              END IF
             END DO
-          ELSE IF ( Matrix % Lumped ) THEN
-            DO j=1,n
-              s = s + ABS( EigVectors(i,j) )**2 * Matrix % MassValues( Matrix % Diag(2*j-1) )
-            END DO
+            s = ParallelReduction(s,2)
           ELSE
-            DO j=1,Matrix % NumberOfRows,2
-              DO l=Matrix % Rows(j),Matrix % Rows(j+1)-1,2
-                mx = CMPLX( Matrix % MassValues(l), -Matrix % MassValues(l+1), KIND=DP )
-                mj  = (j-1)/2 + 1
-                mk  = (Matrix % Cols(l)-1)/2 + 1
-                s = s + mx * CONJG( EigVectors(i,mj) ) * EigVectors(i,mk)
+            IF ( Matrix % Lumped ) THEN
+              DO j=1,n
+                s = s + ABS( EigVectors(i,j) )**2 * Matrix % MassValues( Matrix % Diag(2*j-1) )
               END DO
-            END DO
+            ELSE
+              DO j=1,Matrix % NumberOfRows,2
+                DO l=Matrix % Rows(j),Matrix % Rows(j+1)-1,2
+                  mx = CMPLX( Matrix % MassValues(l), -Matrix % MassValues(l+1), KIND=DP )
+                  mj  = (j-1)/2 + 1
+                  mk  = (Matrix % Cols(l)-1)/2 + 1
+                  s = s + mx * CONJG( EigVectors(i,mj) ) * EigVectors(i,mk)
+                END DO
+              END DO
+            END IF          
+            s = CMPLX( ParallelReduction( REAL(s) ), ParallelReduction( AIMAG(s) ), KIND=dp )
+            s = SQRT(s)
           END IF
-          
-          s = CMPLX( ParallelReduction( REAL(s) ), ParallelReduction( AIMAG(s) ), KIND=dp )
-                  
-          IF ( ABS(s) > 0 ) THEN
-            s = SQRT(s) 
+                        
+          IF( ABS(s - 1) < EPSILON( r ) ) THEN
+            CALL Info(Caller,'Eigenmode already normalized!',Level=12)              
+          ELSE IF ( ABS(s) > 0 ) THEN
+            s = 1.0_dp/s
             WRITE(Message,'(A,2ES12.3)') 'Normalizing Eigenvector with: ',REAL(s),AIMAG(s)
             CALL Info(Caller,Message,Level=12)
-            EigVectors(i,1:n) = EigVectors(i,1:n) / s
+            EigVectors(i,1:n) = EigVectors(i,1:n) * s
           ELSE
             CALL Warn(Caller,'Eigenmode has zero amplitude!')
           END IF
+        ELSE          
+          r = 0.0_dp
+          IF( NormalizeToUnity ) THEN
+            r = MAXVAL(ABS(EigVectors(i,1:n)))
+            r = ParallelReduction(r,2)
+          ELSE
+            IF ( Matrix % Lumped ) THEN
+              DO j=1,n
+                r = r + ABS(EigVectors(i,j))**2 * &
+                    Matrix % MassValues(Matrix % Diag(j))
+              END DO
+            ELSE
+              DO j=1,n
+                DO l=Matrix % Rows(j), Matrix % Rows(j+1)-1
+                  r = r +  CONJG(EigVectors(i,j)) * Matrix % MassValues(l) * EigVectors(i,Matrix % Cols(l))
+                END DO
+              END DO
+            END IF
+            r = ParallelReduction(r) 
+            r = SQRT( r ) 
+          END IF
+          
+          IF( ABS(r - 1) < EPSILON( r ) ) THEN
+            CALL Info(Caller,'Eigenmode already normalized!',Level=12)              
+          ELSE IF ( ABS(r) > 0 ) THEN
+            r = 1.0_dp/r
+            WRITE(Message,'(A,ES12.3)') 'Normalizing Eigenvector with: ',r
+            CALL Info(Caller,Message,Level=12)
+            EigVectors(i,:) = EigVectors(i,:) *  r
+          ELSE
+            CALL Warn(Caller,'Eigenmode has zero amplitude!')
+          END IF
+        END IF
+          
+      END DO
+
+    END SUBROUTINE ScaleEigenVectors
+!------------------------------------------------------------------------------
+
+#if 0
+!------------------------------------------------------------------------------
+!> Rotate complex valued eigenvectors such that real component is maximized.
+!------------------------------------------------------------------------------
+    SUBROUTINE RotateComplexEigenVectors( Matrix, EigVectors, NoEigen )
+
+      USE Multigrid
+
+      IMPLICIT NONE
+
+      TYPE(Matrix_t), TARGET :: Matrix
+      COMPLEX(KIND=dp) :: EigVectors(:,:)
+      INTEGER :: n, NoEigen
+      LOGICAL :: NormalizeToUnity
+      INTEGER :: i,j,k,l, mk, mj
+      REAL(KIND=dp) :: r
+      COMPLEX(KIND=dp) :: s, s1, mx
+      CHARACTER(*), PARAMETER :: Caller = 'RotateComplexEigenVectors'
+
+      
+      IF( .NOT. Matrix % COMPLEX ) RETURN
+
+      
+      CALL Info(Caller,'Rotating Eigenvectors to maximize normal component!',Level=10)
+      
+      n = Matrix % NumberOfRows
+      IF ( Matrix % Complex ) n = n / 2
+
+      DO i = 1, NoEigen
+
+        s = 0.0_dp
+        IF( NormalizeToUnity ) THEN
+          ReImSum = REAL(EigVectors(i,1:n)) * AIMAG(CONJG(EigVectors(i,j))
+            IF( ABS( s1 ) > ABS( s ) ) s = s1
+          END DO
+        END IF
+
+        s = CMPLX( ParallelReduction( REAL(s) ), ParallelReduction( AIMAG(s) ), KIND=dp )
+
+        IF ( ABS(s) > 0 ) THEN
+          s = SQRT(s) 
+          WRITE(Message,'(A,2ES12.3)') 'Normalizing Eigenvector with: ',REAL(s),AIMAG(s)
+          CALL Info(Caller,Message,Level=12)
+          EigVectors(i,1:n) = EigVectors(i,1:n) / s
+        ELSE
+          CALL Warn(Caller,'Eigenmode has zero amplitude!')
+        END IF
+
+
+
+
         ELSE          
           r = 0.0_dp
           IF( NormalizeToUnity ) THEN
@@ -687,7 +846,8 @@ CONTAINS
 
     END SUBROUTINE ScaleEigenVectors
 !------------------------------------------------------------------------------
-
+#endif
+    
 
 !------------------------------------------------------------------------------
 !> Expand complex valued eigenvector to a real that is actually the same vector ;-)
@@ -808,7 +968,8 @@ END SUBROUTINE CheckResiduals
       COMPLEX(KIND=dp) :: s
 !
       REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
-
+      TYPE(ValueList_t), POINTER :: Params
+      
       CHARACTER(*), PARAMETER :: Caller = 'StabEigenSolve'
 
       
@@ -843,9 +1004,10 @@ END SUBROUTINE CheckResiduals
       ALLOCATE( WORKL(lWORKL), D(NCV,2), V(N,NCV), CHOOSE(NCV), STAT=istat )
       IF ( istat /= 0 ) CALL Fatal(Caller, 'Memory allocation error.' )
 
-      TOL = ListGetConstReal( Solver % Values, 'Eigen System Convergence Tolerance', stat )
+      Params => Solver % Values
+      TOL = ListGetConstReal( Params, 'Eigen System Convergence Tolerance', stat )
       IF ( .NOT. stat ) THEN
-         TOL = 100 * ListGetConstReal( Solver % Values, 'Linear System Convergence Tolerance' )
+         TOL = 100 * ListGetConstReal( Params, 'Linear System Convergence Tolerance' )
       END IF
 !
 !     %---------------------------------------------------%
@@ -864,7 +1026,7 @@ END SUBROUTINE CheckResiduals
       BMAT  = 'G'
       Mode = 2
 
-      SELECT CASE( ListGetString( Solver % Values,'Eigen System Select', stat ) )
+      SELECT CASE( ListGetString( Params,'Eigen System Select', stat ) )
       CASE( 'smallest magnitude' )
          Which = 'LM'
       CASE( 'largest magnitude')
@@ -885,7 +1047,7 @@ END SUBROUTINE CheckResiduals
          Which = 'LM'
       END SELECT
 
-      Maxitr = ListGetInteger( Solver % Values, 'Eigen System Max Iterations', stat )
+      Maxitr = ListGetInteger( Params, 'Eigen System Max Iterations', stat )
       IF ( .NOT. stat ) Maxitr = 300
 
       IPARAM = 0
@@ -898,20 +1060,17 @@ END SUBROUTINE CheckResiduals
       V = 0.0d0
       D = 0.0d0
 
-      Factorize = ListGetLogical( Solver % Values, &
-            'Linear System Refactorize', FoundFactorize )
-      CALL ListAddLogical( Solver % Values, 'Linear System Refactorize',.TRUE. )
+      Factorize = ListGetLogical( Params, &
+          'Linear System Refactorize', FoundFactorize )
+      CALL ListAddLogical( Params, 'Linear System Refactorize',.TRUE. )
 
-      FreeFactorize = ListGetLogical( Solver % Values, &
-                'Linear System Refactorize', FoundFreeFactorize )
-      CALL ListAddLogical( Solver % Values,  &
-                     'Linear System Free Factorization',.FALSE. )
+      FreeFactorize = ListGetLogical( Params, &
+          'Linear System Refactorize', FoundFreeFactorize )
+      CALL ListAddLogical( Params,'Linear System Free Factorization',.FALSE. )
 
-      Direct = ListGetString( Solver % Values, &
-           'Linear System Solver', stat ) == 'direct'
+      Direct = ( ListGetString( Params,'Linear System Solver', stat ) == 'direct' )
       IF ( Direct ) THEN
-         DirectMethod = ListGetString( Solver % Values, &
-           'Linear System Direct Method', stat )
+         DirectMethod = ListGetString( Params,'Linear System Direct Method', stat )
 
          SELECT CASE( DirectMethod )
          CASE('umfpack', 'big umfpack','mumps', 'superlu', 'pardiso', 'cholmod' )
@@ -920,13 +1079,11 @@ END SUBROUTINE CheckResiduals
          END SELECT
       END IF
 
-      Iterative = ListGetString( Solver % Values, &
-               'Linear System Solver', stat ) == 'iterative'
+      Iterative = ( ListGetString( Params,'Linear System Solver', stat ) == 'iterative' )
 
-      stat = ListGetLogical( Solver % Values, 'No Precondition Recompute', stat  )
-
+      stat = ListGetLogical( Params, 'No Precondition Recompute', stat  )
       IF ( Iterative .AND. Stat ) THEN
-         CALL ListAddLogical( Solver % Values, 'No Precondition Recompute', .FALSE. )
+         CALL ListAddLogical( Params, 'No Precondition Recompute', .FALSE. )
       END IF
 !
 !     %-------------------------------------------%
@@ -994,15 +1151,15 @@ END SUBROUTINE CheckResiduals
       END DO  ! ido == 99
 
       IF ( FoundFactorize ) THEN
-        CALL ListAddLogical( Solver % Values, 'Linear System Refactorize', Factorize )
+        CALL ListAddLogical( Params, 'Linear System Refactorize', Factorize )
       ELSE
-        CALL ListRemove( Solver % Values, 'Linear System Refactorize' )
+        CALL ListRemove( Params, 'Linear System Refactorize' )
       END IF
 
       IF ( .NOT. FoundFreeFactorize ) THEN
-        CALL ListRemove( Solver % Values, 'Linear System Free Factorization' )
+        CALL ListRemove( Params, 'Linear System Free Factorization' )
       ELSE
-        CALL ListAddLogical( Solver % Values, 'Linear System Free Factorization', FreeFactorize )
+        CALL ListAddLogical( Params, 'Linear System Free Factorization', FreeFactorize )
       END IF
 !
 !     %-----------------------------------------%
@@ -1050,14 +1207,13 @@ END SUBROUTINE CheckResiduals
 !
 !        Sort the eigenvalues to ascending order:
 !        ----------------------------------------
-         ALLOCATE( Perm(NEIG) )
-         Perm = [ (i, i=1,NEIG) ]
          DO i=1,NEIG
-            EigValues(i) = CMPLX( 1.0d0 / D(i,1), D(i,2),KIND=dp )
+           EigValues(i) = CMPLX( 1.0d0 / D(i,1), D(i,2),KIND=dp )
          END DO
 
-         CALL SortC( NEIG, EigValues, Perm )
-!
+         ALLOCATE( Perm(NEIG) )
+         CALL EigenSystemSorting( Params, Neig, Perm, EigValues )
+
 !        Extract the values to ELMER structures:
 !        -----------------------------------------
          CALL Info( Caller, ' ', Level=4 )
@@ -1065,6 +1221,7 @@ END SUBROUTINE CheckResiduals
          CALL Info( Caller, ' ', Level=4 )
          WRITE( Message,'(A,ES12.3)') 'Convergence criterion is: ', TOL
          CALL Info( Caller, Message, Level=7 )
+         CALL Info( Caller,'Number of eigensystem iterations is: '//I2S(iter),Level=4)
          CALL Info( Caller,'Number of converged Ritz values is: '//I2S(IPARAM(5)),Level=4)
          CALL Info( Caller, ' ', Level=7 )
          CALL Info( Caller, 'Computed Eigen Values: ', Level=4 )
@@ -1222,9 +1379,9 @@ END SUBROUTINE CheckResiduals
 !     %--------------------------------------------------%
 !
 !
-      TOL = ListGetConstReal( Solver % Values, 'Eigen System Convergence Tolerance', stat )
+      TOL = ListGetConstReal( Params, 'Eigen System Convergence Tolerance', stat )
       IF ( .NOT. stat ) THEN
-         TOL = 100 * ListGetConstReal( Solver % Values, 'Linear System Convergence Tolerance' )
+         TOL = 100 * ListGetConstReal( Params, 'Linear System Convergence Tolerance' )
       END IF
 
       lWORKL = 3*NCV**2 + 6*NCV 
@@ -1245,7 +1402,7 @@ END SUBROUTINE CheckResiduals
       BMAT  = 'G'
       IF ( Matrix % Lumped ) THEN
          Mode  =  2
-         SELECT CASE(ListGetString( Solver % Values, 'Eigen System Select',stat) )
+         SELECT CASE(ListGetString( Params, 'Eigen System Select',stat) )
          CASE( 'smallest magnitude' )
               Which = 'SM'
          CASE( 'largest magnitude')
@@ -1263,7 +1420,7 @@ END SUBROUTINE CheckResiduals
          END SELECT
       ELSE
          Mode  = 3
-         SELECT CASE(ListGetString( Solver % Values, 'Eigen System Select',stat) )
+         SELECT CASE(ListGetString( Params, 'Eigen System Select',stat) )
          CASE( 'smallest magnitude' )
               Which = 'LM'
          CASE( 'largest magnitude')
@@ -1281,7 +1438,7 @@ END SUBROUTINE CheckResiduals
          END SELECT
       END IF
 !
-      Maxitr = ListGetInteger( Solver % Values, 'Eigen System Max Iterations', stat )
+      Maxitr = ListGetInteger( Params, 'Eigen System Max Iterations', stat )
       IF ( .NOT. stat ) Maxitr = 300
 
       IPARAM = 0
@@ -1309,7 +1466,7 @@ END SUBROUTINE CheckResiduals
         SigmaR = ListGetConstReal( Params,'Eigen System Shift', stat )
         SigmaI = ListGetConstReal( Params,'Eigen System Shift Im', stat )
         Sigma = CMPLX(SigmaR,SigmaI, KIND=dp)
-
+        
         IF ( Sigma /= 0._dp ) THEN
           Matrix % Values = Matrix % Values - Sigma * Matrix % MassValues
         END IF
@@ -1336,13 +1493,13 @@ END SUBROUTINE CheckResiduals
       iter = 1
       NewSystem = .TRUE.
 
-      Iterative = ListGetString( Solver % Values, &
+      Iterative = ListGetString( Params, &
         'Linear System Solver', stat ) == 'iterative'
 
-      stat = ListGetLogical( Solver % Values,  'No Precondition Recompute', stat  )
+      stat = ListGetLogical( Params,  'No Precondition Recompute', stat  )
 
       IF ( Iterative .AND. Stat ) THEN
-         CALL ListAddLogical( Solver % Values, 'No Precondition Recompute', .FALSE. )
+         CALL ListAddLogical( Params, 'No Precondition Recompute', .FALSE. )
       END IF
 
       A => Matrix
@@ -1437,16 +1594,16 @@ END SUBROUTINE CheckResiduals
 
          IF ( NewSystem .AND. ido /= 2 ) THEN
             IF ( Iterative ) THEN
-               CALL ListAddLogical( Solver % Values,  'No Precondition Recompute', .TRUE. )
+               CALL ListAddLogical( Params,  'No Precondition Recompute', .TRUE. )
             ELSE
-               CALL ListAddLogical( Solver % Values, 'Linear System Refactorize', .FALSE. )
+               CALL ListAddLogical( Params, 'Linear System Refactorize', .FALSE. )
             END IF
             NewSystem = .FALSE.
          END IF
        END DO
 
-       CALL ListAddLogical( Solver % Values, 'Linear System Refactorize', .TRUE. )
-       CALL ListAddLogical( Solver % Values, &
+       CALL ListAddLogical( Params, 'Linear System Refactorize', .TRUE. )
+       CALL ListAddLogical( Params, &
                            'Linear System Free Factorization', .TRUE. )
 !
 !     %-----------------------------------------%
@@ -1514,14 +1671,13 @@ END SUBROUTINE CheckResiduals
 !
 !        Sort the eigenvalues to ascending order:
 !        ----------------------------------------
-         ALLOCATE( Perm(NEIG) )
-         Perm = [ (i, i=1,NEIG) ]
          DO i=1,NEIG
-            EigValues(i) = D(i)
+           EigValues(i) = D(i)
          END DO
-         CALL SortC( NEIG, EigValues, Perm )
 
-!
+         ALLOCATE( Perm(NEIG) )
+         CALL EigenSystemSorting( Params, Neig, Perm, EigValues )
+         
 !        Extract the values to ELMER structures:
 !        -----------------------------------------
          CALL Info( Caller, ' ', Level=4 )
@@ -1529,6 +1685,7 @@ END SUBROUTINE CheckResiduals
          CALL Info( Caller, ' ', Level=4 )
          WRITE( Message,'(A,ES12.3)') 'Convergence criterion is: ', TOL
          CALL Info( Caller, Message, Level=7 )
+         CALL Info( Caller,'Number of eigensystem iterations is: '//I2S(iter),Level=4)                  
          CALL Info( Caller,'Number of converged Ritz values is: '//I2S(IPARAM(5)),Level=4)
          CALL Info( Caller, ' ', Level=7 )
          CALL Info( Caller, 'Computed Eigen Values: ', Level=4 )
@@ -1659,7 +1816,8 @@ END SUBROUTINE CheckResidualsComplex
                        NCONV, maxitr, ishfts, mode, istat, DampedMaxIter, ILU
       LOGICAL   ::     First, Stat, NewSystem, UseI = .FALSE.
       REAL(KIND=dp) :: SigmaR, SigmaI, TOL, DampedTOL, IScale
-
+      TYPE(ValueList_t), POINTER :: Params
+      
       CHARACTER(*), PARAMETER :: Caller = 'DampedEigenSolve'
 
       
@@ -1672,21 +1830,19 @@ END SUBROUTINE CheckResidualsComplex
          CALL Error( Caller, 'Lumped matrixes are not allowed' )
       END IF
 
-      IF (  ListGetString( Solver % Values, 'Linear System Solver', Stat ) &
-           == 'direct' ) THEN
-         CALL Error( Caller, 'Direct solver is not allowed' )
+      Params = Solver % Values
+      IF (  ListGetString( Params, 'Linear System Solver', Stat ) == 'direct' ) THEN
+        CALL Error( Caller, 'Direct solver is not allowed' )
       END IF
-
+      
       IF ( Solver % MultiGridSolver ) THEN
-         CALL Error( Caller, 'MultiGrid solver is not allowed' )
+        CALL Error( Caller, 'MultiGrid solver is not allowed' )
       END IF
-
-      Stat = ListGetLogical( Solver % Values, &
-           'No Precondition Recompute', Stat  )
-
+      
+      Stat = ListGetLogical( Params,'No Precondition Recompute', Stat  )
+      
       IF ( Stat ) THEN
-         CALL ListAddLogical( Solver % Values, &
-              'No Precondition Recompute', .FALSE. )
+        CALL ListAddLogical( Params,'No Precondition Recompute', .FALSE. )
       END IF
 
 
@@ -1735,25 +1891,25 @@ END SUBROUTINE CheckResidualsComplex
 !     | iteration.                                       |
 !     %--------------------------------------------------%
 
-      TOL = ListGetConstReal( Solver % Values, &
+      TOL = ListGetConstReal( Params, &
            'Eigen System Convergence Tolerance', Stat )
 
       IF ( .NOT. Stat ) THEN
-         TOL = 100 * ListGetConstReal( Solver % Values, &
+         TOL = 100 * ListGetConstReal( Params, &
               'Linear System Convergence Tolerance' )
       END IF
 
-      DampedMaxIter = ListGetInteger( Solver % Values, &
+      DampedMaxIter = ListGetInteger( Params, &
            'Linear System Max Iterations', Stat, 1 )
 
       IF ( .NOT. Stat ) DampedMaxIter = 100
 
-      DampedTOL = ListGetConstReal( Solver % Values, &
+      DampedTOL = ListGetConstReal( Params, &
            'Linear System Convergence Tolerance', Stat )
 
       IF ( .NOT. Stat ) DampedTOL = TOL / 100
 
-      UseI = ListGetLogical( Solver % Values, &
+      UseI = ListGetLogical( Params, &
                      'Eigen System Use Identity', Stat )
 
       IF ( .NOT. Stat ) UseI = .TRUE.
@@ -1776,7 +1932,7 @@ END SUBROUTINE CheckResidualsComplex
       BMAT  = 'G'
       Mode  = 3
       
-      SELECT CASE( ListGetString(Solver % Values, 'Eigen System Select',Stat) )
+      SELECT CASE( ListGetString(Params, 'Eigen System Select',Stat) )
          CASE( 'smallest magnitude' )
          Which = 'LM'
          
@@ -1799,7 +1955,7 @@ END SUBROUTINE CheckResidualsComplex
          Which = 'LM'
       END SELECT
 
-      Maxitr = ListGetInteger(Solver % Values,'Eigen System Max Iterations',Stat)
+      Maxitr = ListGetInteger(Params,'Eigen System Max Iterations',Stat)
       IF ( .NOT. Stat ) Maxitr = 300
 
       IPARAM = 0
@@ -1831,7 +1987,7 @@ END SUBROUTINE CheckResidualsComplex
 !------------------------------------------------------------------------------
 !     ILU Preconditioning
 !------------------------------------------------------------------------------
-      str = ListGetString( Solver % Values, 'Linear System Preconditioning', Stat )
+      str = ListGetString( Params, 'Linear System Preconditioning', Stat )
 
       ILU = 0
       IF ( .NOT. Stat ) THEN
@@ -1851,11 +2007,11 @@ END SUBROUTINE CheckResidualsComplex
          END IF
       END IF
 
-      KMatrix % Cholesky = ListGetLogical( Solver % Values,  &
+      KMatrix % Cholesky = ListGetLogical( Params,  &
               'Linear System Symmetric ILU', Stat )
 
-      Stat = CRS_IncompleteLU( KMatrix, ILU, Solver % Values )
-      IF ( .NOT. UseI ) Stat = CRS_IncompleteLU( MMatrix, ILU, Solver % Values )
+      Stat = CRS_IncompleteLU( KMatrix, ILU, Params )
+      IF ( .NOT. UseI ) Stat = CRS_IncompleteLU( MMatrix, ILU, Params )
 
 !     %-------------------------------------------%
 !     | M A I N   L O O P (Reverse communication) |
@@ -2002,8 +2158,8 @@ END SUBROUTINE CheckResidualsComplex
          END DO
 
          ALLOCATE( Perm( NEIG ) )
-         Perm = [ (i, i=1,NEIG) ]
-         CALL SortC( NEIG, EigTemp, Perm )
+         CALL EigenSystemSorting( Params, Neig, Perm, EigTemp )
+
          
 !        Extract the values to ELMER structures:
 !        -----------------------------------------
@@ -2012,7 +2168,8 @@ END SUBROUTINE CheckResidualsComplex
          CALL Info( Caller, ' ', Level=4 )
          WRITE( Message,'(A,ES12.3)') 'Convergence criterion is: ', TOL
          CALL Info( Caller, Message, Level=7 )
-         CALL Info(Caller,'Number of converged Ritz values is: '//I2S(IPARAM(5)),Level=4)
+         CALL Info( Caller,'Number of eigensystem iterations is: '//I2S(iter),Level=4)
+         CALL Info( Caller,'Number of converged Ritz values is: '//I2S(IPARAM(5)),Level=4)
          CALL Info( Caller, ' ', Level=7 )
          CALL Info( Caller, 'Computed Eigen Values: ', Level=4 )
          CALL Info( Caller, '--------------------------------', Level=7 )

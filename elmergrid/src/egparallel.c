@@ -3815,7 +3815,7 @@ int OptimizePartitioning(struct FemType *data,struct BoundaryType *bound,int noo
 
 
 int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
-			      char *prefix,int decimals,int *parthalo,int indirect,
+			      char *prefix,int decimals,int binary,int *parthalo,
 			      int parthypre,int subparts,int nooverwrite, int info)
 /* Saves the mesh in a form that may be used as input 
    in Elmer calculations in parallel platforms. 
@@ -3828,16 +3828,16 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
   int i,j,k,l,l2,l3,m,n,ind,ind2,sideind[MAXNODESD1],elemhit[MAXNODESD2];
   char filename[MAXFILESIZE],outstyle[MAXFILESIZE];
   char directoryname[MAXFILESIZE],subdirectoryname[MAXFILESIZE];
-  int *neededtimes,*elempart,*elementsinpart,*indirectinpart,*sidesinpart;
-  int maxneededtimes,indirecttype,bcneeded,trueparent,trueparent2,*ownerpart;
+  int *neededtimes,*elempart,*elementsinpart,*sidesinpart;
+  int maxneededtimes,bcneeded,trueparent,trueparent2,*ownerpart;
   int *sharednodes,*ownnodes,reorder,*order=NULL,*invorder=NULL;
   int *bcnode,*bcnodedummy,*elementhalo,*neededtimes2;
   int partstart,partfin,filesetsize,nofile,nofile2,nobcnodes,hasbcnodes,halomode;
   int halobulkelems,halobcs,savethis,fail=0,cdstat,immersed,halocopies,anyparthalo;
-  int totsides;
+  int totsides,singleprec;
   
   FILE *out,*outfiles[MAXPARTITIONS+1];
-  int sumelementsinpart,sumownnodes,sumsharednodes,sumsidesinpart,sumindirect;
+  int sumelementsinpart,sumownnodes,sumsharednodes,sumsidesinpart;
 
 
   
@@ -3870,6 +3870,8 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
     bigerror("No Elmer mesh files saved!");
   }
 
+  singleprec = FALSE;
+  if(binary == 2) singleprec = TRUE;
 
   elempart = data->elempart;
   ownerpart = data->nodepart;
@@ -3878,7 +3880,6 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 
   minelemtype = 101;
   maxelemtype = GetMaxElementType(data);
-  indirecttype = 0;
   halobulkelems = 0;
 
   needednodes = Ivector(1,partitions);
@@ -3990,11 +3991,10 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
     if(info) printf("Saving %d partitions in maximum sets of %d\n",partitions,filesetsize);
 
   elementsinpart = Ivector(1,partitions);
-  indirectinpart = Ivector(1,partitions);
   sidesinpart = Ivector(1,partitions);
   elementhalo = Ivector(1,partitions);
   for(i=1;i<=partitions;i++)
-    elementsinpart[i] = indirectinpart[i] = sidesinpart[i] = elementhalo[i] = 0;
+    elementsinpart[i] = sidesinpart[i] = elementhalo[i] = 0;
 
   for(j=1;j<=partitions;j++)
     for(i=minelemtype;i<=maxelemtype;i++)
@@ -4021,7 +4021,10 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
  next_elements_set:
 
   for(part=partstart;part<=partfin;part++) {
-    sprintf(filename,"%s.%d.%s","part",part,"elements");
+    if(binary) 
+      sprintf(filename,"%s.%d.%s","part",part,"elements.bin");
+    else
+      sprintf(filename,"%s.%d.%s","part",part,"elements");
     nofile = part - partstart + 1;
     outfiles[nofile] = fopen(filename,"w");
   }
@@ -4036,15 +4039,23 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
       nofile = part - partstart + 1;
       bulktypes[part][elemtype] += 1;
       elementsinpart[part] += 1;
-    
-      fprintf(outfiles[nofile],"%d %d %d ",i,data->material[i],elemtype);
 
-      for(j=0;j < nodesd2;j++) {
-	ind = data->topology[i][j];
-	if(reorder) ind = order[ind];
-	fprintf(outfiles[nofile],"%d ",ind);
+      if(binary) {
+	fwrite(&i,sizeof(int),1,outfiles[nofile]);
+	k=-1; fwrite(&k,sizeof(int),1,outfiles[nofile]);  
+	fwrite(&data->material[i],sizeof(int),1,outfiles[nofile]);
+	fwrite(&elemtype,sizeof(int),1,outfiles[nofile]);
+	fwrite(&data->topology[i][0],sizeof(int),nodesd2,outfiles[nofile]);
       }
-      fprintf(outfiles[nofile],"\n");    
+      else {       
+	fprintf(outfiles[nofile],"%d %d %d ",i,data->material[i],elemtype);	
+	for(j=0;j < nodesd2;j++) {
+	  ind = data->topology[i][j];
+	  if(reorder) ind = order[ind];
+	  fprintf(outfiles[nofile],"%d ",ind);
+	}
+	fprintf(outfiles[nofile],"\n");
+      }
     }
 
     
@@ -4205,15 +4216,28 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	if( elementhalo[part2] != i ) continue;
 
 	nofile2 = part2 - partstart + 1;
-	fprintf(outfiles[nofile2],"%d/%d %d %d ",i,part,data->material[i],elemtype);
-	      
-	for(j=0;j < nodesd2;j++) {
-	  ind = data->topology[i][j];
-	  if(reorder) ind = order[ind];
-	  fprintf(outfiles[nofile2],"%d ",ind);
+
+	if(binary) {
+	  fwrite(&i,sizeof(int),1,outfiles[nofile2]);
+	  fwrite(&part,sizeof(int),1,outfiles[nofile2]);  
+	  fwrite(&data->material[i],sizeof(int),1,outfiles[nofile2]);
+	  fwrite(&elemtype,sizeof(int),1,outfiles[nofile2]);
+	  for(j=0;j < nodesd2;j++) {
+	    ind = data->topology[i][j];
+	    if(reorder) ind = order[ind];
+	    fwrite(&ind,sizeof(int),1,outfiles[nofile2]);
+	  }
+	} else {
+	  fprintf(outfiles[nofile2],"%d/%d %d %d ",i,part,data->material[i],elemtype);	  
+	  for(j=0;j < nodesd2;j++) {
+	    ind = data->topology[i][j];
+	    if(reorder) ind = order[ind];
+	    fprintf(outfiles[nofile2],"%d ",ind);
+	  }
+	  fprintf(outfiles[nofile2],"\n");    	    
 	}
-	fprintf(outfiles[nofile2],"\n");    	    
-	
+
+	  
 	bulktypes[part2][elemtype] += 1;
 	elementsinpart[part2] += 1;	
 	
@@ -4292,17 +4316,6 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
     neededtimes2 = neededtimes;
   }
 
-  /* Define new BC numbers for indirect connections. These should not be mixed with
-     existing BCs as they only serve the purpose of automatically creating the matrix structure. */
-  if(indirect) {
-    indirecttype = 0;
-    for(j=0;j < MAXBOUNDARIES;j++) 
-      for(i=1; i <= bound[j].nosides; i++) 
-	if(bound[j].types[i] > indirecttype) indirecttype = bound[j].types[i];
-    indirecttype++;
-    if(info) printf("Indirect connections given index %d and elementtype 102.\n",indirecttype);
-  }
-
   /* The output format is the same for all partitions */
   if(data->dim == 2) 
     sprintf(outstyle,"%%d %%d %%.%dg %%.%dg 0.0\n",decimals,decimals);
@@ -4327,7 +4340,14 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
  next_nodes_set:
 
   for(part=partstart;part<=partfin;part++) {
-    sprintf(filename,"%s.%d.%s","part",part,"nodes");
+    if(binary) {
+      if(singleprec) 
+	sprintf(filename,"%s.%d.%s","part",part,"nodes.sbin");
+      else 
+	sprintf(filename,"%s.%d.%s","part",part,"nodes.bin");
+    } else {
+      sprintf(filename,"%s.%d.%s","part",part,"nodes");
+    }
     nofile = part - partstart + 1;
     outfiles[nofile] = fopen(filename,"w");
   }
@@ -4348,11 +4368,32 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
       ind = i;
       if(reorder) ind=order[i];
 
-      if(data->dim == 2)
-	fprintf(outfiles[nofile],outstyle,ind,-1,data->x[i],data->y[i]);
-      else if(data->dim == 3)
-	fprintf(outfiles[nofile],outstyle,ind,-1,data->x[i],data->y[i],data->z[i]);	  	    
       
+      if(binary) { 
+	double coords[3];
+	float scoords[3];
+	
+	fwrite(&ind,sizeof(int),1,out); 
+	/* Note that in binary format we don't save the obsolite "-1". */
+	if(singleprec) {
+	  /* We save the coordinates in single precidion format */
+	  scoords[0] = data->x[i];
+	  scoords[1] = data->y[i];
+	  scoords[2] = data->z[i];
+	  fwrite(scoords,sizeof(float),3,outfiles[nofile]); 
+	} else {
+	  coords[0] = data->x[i];
+	  coords[1] = data->y[i];
+	  coords[2] = data->z[i];
+	  fwrite(coords,sizeof(double),3,outfiles[nofile]);
+	}
+      } else { 
+	if(data->dim == 2)
+	  fprintf(outfiles[nofile],outstyle,ind,-1,data->x[i],data->y[i]);
+	else if(data->dim == 3)
+	  fprintf(outfiles[nofile],outstyle,ind,-1,data->x[i],data->y[i],data->z[i]);	  	    
+      }
+	
       needednodes[k] += 1;
       if(k == ownerpart[i]) 
 	ownnodes[k] += 1;
@@ -4447,7 +4488,10 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
   for(part=1;part<=partitions;part++) { 
     int bcneeded2,closeparent,closeparent2,haloelem,saveelem;
 
-    sprintf(filename,"%s.%d.%s","part",part,"boundary");
+    if(binary)
+      sprintf(filename,"%s.%d.%s","part",part,"boundary.bin");
+    else
+      sprintf(filename,"%s.%d.%s","part",part,"boundary");
     out = fopen(filename,"w");
    
     for(i=minelemtype;i<=maxelemtype;i++)
@@ -4540,20 +4584,37 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	   
 	sumsides++;	
 	sidetypes[sideelemtype] += 1;
-	    
-	if( part2 ) 
-	  fprintf(out,"%d/%d %d %d %d %d", totsides,part2,bctype,parent,parent2,sideelemtype);
-	else
-	  fprintf(out,"%d %d %d %d %d", totsides,bctype,parent,parent2,sideelemtype);
-	    
-	if(reorder) {
-	  for(l=0;l<nodesd1;l++)
-	    fprintf(out," %d",order[sideind[l]]);
+
+	if(binary) {
+	  k = part2;
+	  if(k==0) k=-1;
+
+	  fwrite(&totsides,sizeof(int),1,out);
+	  fwrite(&k,sizeof(int),1,out); 
+	  fwrite(&bctype,sizeof(int),1,out);
+	  fwrite(&parent,sizeof(int),1,out);
+	  fwrite(&parent2,sizeof(int),1,out);
+	  fwrite(&sideelemtype,sizeof(int),1,out);
+	  
+	  for(l=0;l<nodesd1;l++) {
+	    k = sideind[l];
+	    if(reorder) k = order[k];
+	    fwrite(&k,sizeof(int),1,out);
+	  }
+	  
 	} else {
-	  for(l=0;l<nodesd1;l++)
-	    fprintf(out," %d",sideind[l]);	  
+	  if( part2 ) 
+	    fprintf(out,"%d/%d %d %d %d %d", totsides,part2,bctype,parent,parent2,sideelemtype);
+	  else
+	    fprintf(out,"%d %d %d %d %d", totsides,bctype,parent,parent2,sideelemtype);
+
+	  for(l=0;l<nodesd1;l++) {
+	    k = sideind[l];
+	    if(reorder) k = order[k];
+	    fprintf(out," %d",k);
+	  } 
+	  fprintf(out,"\n");
 	}
-	fprintf(out,"\n");
       }
     }
 
@@ -4589,205 +4650,40 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	if(!trueparent) continue;
 	
 	sumsides++;
-	fprintf(out,"%d %d %d %d ",
-		totsides,bound[j].types[i],bound[j].parent2[i],bound[j].parent[i]);
-	
-	fprintf(out,"%d ",sideelemtype);
 	sidetypes[sideelemtype] += 1;
-	if(reorder) {
-	  for(l=0;l<nodesd1;l++)
-	    fprintf(out,"%d ",order[sideind[l]]);
-	} 
-	else {
-	  for(l=0;l<nodesd1;l++)
-	    fprintf(out,"%d ",sideind[l]);	  
-	} 
-	fprintf(out,"\n");
+
+
+	if(binary) {
+	  k = -1;
+
+	  fwrite(&totsides,sizeof(int),1,out);
+	  fwrite(&k,sizeof(int),1,out); 
+	  fwrite(&bound[j].types[i],sizeof(int),1,out);
+	  fwrite(&bound[j].parent2[i],sizeof(int),1,out);
+	  fwrite(&bound[j].parent[i],sizeof(int),1,out);
+	  fwrite(&sideelemtype,sizeof(int),1,out);
+	  
+	  for(l=0;l<nodesd1;l++) {
+	    k = sideind[l];
+	    if(reorder) k = order[k];
+	    fwrite(&k,sizeof(int),1,out);
+	  }
+	}
+	else  { 
+	  fprintf(out,"%d %d %d %d %d",
+		  totsides,bound[j].types[i],bound[j].parent2[i],bound[j].parent[i],sideelemtype);
+	  
+	  for(l=0;l<nodesd1;l++) {
+	    k = sideind[l];
+	    if(reorder) k = order[k];
+	    fprintf(out," %d",k);
+	  } 
+	  fprintf(out,"\n");
+	}	  
       }
     }
     sidesinpart[part] = sumsides;
         
-
-    /* Boundary nodes that express indirect couplings between different partitions.
-       This makes it possible for ElmerSolver to create a matrix connection that 
-       is known to exist. */
-
-    if (indirect) {
-      int maxsides,nodesides,maxnodeconnections,connectednodes,m;
-      int **nodepairs=NULL,*nodeconnections,**indpairs;      
-
-      nodeconnections = bcnodedummy;
-      l = 0;
-      maxsides = 0;
-      nodesides = 0;
-
-  findindirect:
-
-      /* First calculate the maximum number of additional sides */
-      for(i=1;i<=noelements;i++) {
-
-	/* owner partition cannot cause an indirect coupling */
-	if(elempart[i] == part) continue;
-	
-	elemtype = data->elementtypes[i];
-	nodesd2 = elemtype%100;
-	
-	/* Check how many nodes still belong to this partition, 
-	   if more than one there may be indirect coupling. */
-	for(j=0;j < nodesd2;j++) {
-	  elemhit[j] = FALSE;
-	  ind = data->topology[i][j];
-	  for(k=1;k<=neededtimes[ind];k++) 
-	    if(part == data->partitiontable[k][ind]) elemhit[j] = TRUE;
-	}
-	bcneeded = 0;
-	for(j=0;j < nodesd2;j++) 
-	  if(elemhit[j]) bcneeded++;
-	if(bcneeded <= 1) continue;
-	
-	if(l == 0) {
-	  maxsides += (bcneeded-1)*bcneeded/2;
-	} 
-	else {
-	  for(j=0;j < nodesd2;j++) {	  
-	    for(k=j+1;k < nodesd2;k++) {
-	      if(elemhit[j] && elemhit[k]) {
-		nodesides += 1;
-
-		/* The minimum index always first */
-		if(data->topology[i][j] <= data->topology[i][k]) {
-		  nodepairs[nodesides][1] = data->topology[i][j];
-		  nodepairs[nodesides][2] = data->topology[i][k];
-		}
-		else {
-		  nodepairs[nodesides][1] = data->topology[i][k];
-		  nodepairs[nodesides][2] = data->topology[i][j];		  
-		}
-	      }
-	    }
-	  }
-	}
-      }
-
-      /* After first round allocate enough space to memorize all indirect non-element couplings. */      
-      if(l == 0) {
-	nodepairs = Imatrix(1,maxsides,1,2);
-	for(i=1;i<=maxsides;i++)
-	  nodepairs[i][1] = nodepairs[i][2] = 0;
-	l++;
-	goto findindirect;
-      }
-      if(0) printf("Number of non-element connections is %d\n",nodesides);
-      
-      
-      for(i=1;i<=noknots;i++)
-	nodeconnections[i] = 0;
-      
-      for(i=1;i<=nodesides;i++)
-	nodeconnections[nodepairs[i][1]] += 1;
-      
-      maxnodeconnections = 0;
-      for(i=1;i<=noknots;i++)
-	maxnodeconnections = MAX(maxnodeconnections, nodeconnections[i]);     
-      if(0) printf("Maximum number of node-to-node connections %d\n",maxnodeconnections);
-
-      connectednodes = 0;
-      for(i=1;i<=noknots;i++) {
-	if(nodeconnections[i] > 0) {
-	  connectednodes++;
-	  nodeconnections[i] = connectednodes;
-	}
-      }
-      if(0) printf("Number of nodes with non-element connections %d\n",connectednodes);
-
-      indpairs = Imatrix(1,connectednodes,1,maxnodeconnections);
-      for(i=1;i<=connectednodes;i++)
-	for(j=1;j<=maxnodeconnections;j++)
-	  indpairs[i][j] = 0;
-      
-      for(i=1;i<=nodesides;i++) {
-	ind = nodeconnections[nodepairs[i][1]];
-	for(j=1;j<=maxnodeconnections;j++) {
-	  if(indpairs[ind][j] == 0) {
-	    indpairs[ind][j] = i;	    
-	    break;
-	  }
-	}
-      }
-
-      /* Remove duplicate connections */
-      l = 0;
-      for(i=1;i<=connectednodes;i++) {
-	for(j=1;j<=maxnodeconnections;j++)
-	  for(k=j+1;k<=maxnodeconnections;k++) {
-	    ind = indpairs[i][j];
-	    ind2 = indpairs[i][k];
-	    if(!ind || !ind2) continue;
-	    
-	    if(!nodepairs[ind][1] || !nodepairs[ind][2]) continue;
-
-	    if(nodepairs[ind][2] == nodepairs[ind2][2]) {
-	      nodepairs[ind2][1] = nodepairs[ind2][2] = 0;
-	      l++;
-	    }
-	  }
-      }
-      if(0) printf("Removed %d duplicate connections\n",l);
-
-      
-      /* Remove connections that already exist */
-      m = 0;
-      for(i=1;i<=noelements;i++) {
-	if(elempart[i] != part) continue;
-	
-	elemtype = data->elementtypes[i];
-	nodesd2 = elemtype%100;
-	
-	for(j=0;j < nodesd2;j++) {
-	  ind = nodeconnections[data->topology[i][j]];
-	  if(!ind) continue;
-	  
-	  for(k=0;k < nodesd2;k++) {
-	    if(j==k) continue;
-	    
-	    for(l=1;l<=maxnodeconnections;l++) {
-	      ind2 = indpairs[ind][l];
-	      if(!ind2) break;
-
-	      if(nodepairs[ind2][1] == data->topology[i][j] && nodepairs[ind2][2] == data->topology[i][k]) {
-		nodepairs[ind2][1] = nodepairs[ind2][2] = 0;	    
-		m++;
-	      }
-	    }
-	  }
-	}
-      }
-      if(0) printf("Removed %d connections that already exists in other elements\n",m);
-      
-      for(i=1; i <= nodesides; i++) {
-	ind = nodepairs[i][1]; 
-	ind2 = nodepairs[i][2];
-	if(!ind || !ind2) continue;	
-	sumsides++;
-
-	sideelemtype = 102;
-	if(reorder) {
-	  fprintf(out,"%d %d %d %d %d %d %d\n",
-		  sumsides,indirecttype,0,0,sideelemtype,order[ind],order[ind2]);
-	} else {
-	  fprintf(out,"%d %d %d %d %d %d %d\n",
-		  sumsides,indirecttype,0,0,sideelemtype,ind,ind2);	  
-	}
-	sidetypes[sideelemtype] += 1;
-	indirectinpart[part] += 1;	
-      }
-
-      /* Finally free some extra space that was allocated */
-      free_Imatrix(indpairs,1,connectednodes,1,maxnodeconnections);
-      free_Imatrix(nodepairs,1,maxsides,1,2);
-    }
-    /* End of indirect couplings */
-
 
     fclose(out);
     /*********** end of part.n.boundary *********************/
@@ -4820,83 +4716,34 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
     fclose(out);
 
     if(info) {
-      if( indirect ) {
-	if(part == 1) {
-	  printf("   %-5s %-10s %-10s %-8s %-8s %-8s\n",
-		 "part","elements","nodes","shared","bc elems","indirect");
-	}
-	printf("   %-5d %-10d %-10d %-8d %-8d %-8d\n",
-	       part,elementsinpart[part],ownnodes[part],sharednodes[part],sidesinpart[part],
-	       indirectinpart[part]);
+      if( part == 1 ) {
+	printf("   %-5s %-10s %-10s %-8s %-8s\n",
+	       "part","elements","nodes","shared","bc elems");
       }
-      else {
-	if( part == 1 ) {
-	  printf("   %-5s %-10s %-10s %-8s %-8s\n",
-		 "part","elements","nodes","shared","bc elems");
-	}
-	printf("   %-5d %-10d %-10d %-8d %-8d\n",
-	       part,elementsinpart[part],ownnodes[part],sharednodes[part],sidesinpart[part]);	
-      }
+      printf("   %-5d %-10d %-10d %-8d %-8d\n",
+	     part,elementsinpart[part],ownnodes[part],sharednodes[part],sidesinpart[part]);	
     }
   }
   /*********** end of part.n.header *********************/
 
   
-  sumelementsinpart = sumownnodes = sumsharednodes = sumsidesinpart = sumindirect = 0;
+  sumelementsinpart = sumownnodes = sumsharednodes = sumsidesinpart = 0;
   for(i=1;i<=partitions;i++) {
     sumelementsinpart += elementsinpart[i];
     sumownnodes += ownnodes[i];
     sumsharednodes += sharednodes[i];
     sumsidesinpart += sidesinpart[i];
-    sumindirect += indirectinpart[i];
   }
   n = partitions;
   printf("----------------------------------------------------------------------------------------------\n");
-  printf("   ave   %-10.1f %-10.1f %-8.1f %-8.1f %-8.1f\n",
+  printf("   ave   %-10.1f %-10.1f %-8.1f %-8.1f\n",
 	 1.0*sumelementsinpart/n,1.0*sumownnodes/n,1.0*sumsharednodes/n,
-	 1.0*sumsidesinpart/n,1.0*sumindirect/n);
+	 1.0*sumsidesinpart/n);
 
   if( info && halobcs ) {
     printf("Number of boundary elements associated with halo: %d\n",halobcs);
   }
  
-
-#if 0
-  {
-    int noparents[2][100];
-
-    for(j=0;j<2;j++)
-      for(i=0;i<100;i++)
-	noparents[j][i] = 0;
-
-    for(j=0;j < MAXBOUNDARIES;j++) {    
-      if(bound[j].nosides == 0 ) continue;   
-      for(i=1; i <= bound[j].nosides; i++) {      
-	GetBoundaryElement(i,&bound[j],data,sideind,&sideelemtype);       	  
-	parent = bound[j].parent[i];
-	parent2 = bound[j].parent2[i];
-	bctype = bound[j].types[i];
-
-	k = 0;
-	if(parent) k++;
-	if(parent2) k++;
-
-	noparents[k][bctype] += 1;
-      }
-    }
-
-    printf("Number of BC parents\n");
-    for(i=0;i<100;i++) {
-      k = 0;
-      for(j=0;j<2;j++)
-	k = k + noparents[j][i];
-      if( k ) {
-	printf("BC %d: %d %d %d\n",i,noparents[0][i],noparents[1][i],noparents[2][i]); 
-      }
-    }
-  }
-#endif
-  
 	
 
   if(splitsides && !anyparthalo) {

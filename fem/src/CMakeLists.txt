@@ -29,7 +29,8 @@ SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
   ElementUtils.F90 Radiation.F90 fft.c Load.c Differentials.F90
   FreeSurface.F90 
   Walls.F90 SolverUtils.F90 SolveSBand.F90 CPUTime.c Interpolation.F90
-  MainUtils.F90 Adaptive.F90 EigenSolve.F90 HashTable.F90
+  MainUtils.F90 Adaptive.F90 EigenSolve.F90 HashTable.F90 MortarUtils.F90
+  MeshAllocations.F90 GeometryFitting.F90
   MeshUtils.F90 SaveUtils.F90 SParIterGlobals.F90 SParIterComm.F90
   SParIterPrecond.F90 SParIterSolver.F90 Messages.F90 Multigrid.F90
   Smoothers.F90 ClusteringMethods.F90 ParallelUtils.F90
@@ -41,7 +42,7 @@ SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
   umf4_f77wrapper.c VankaCreate.F90 ParticleUtils.F90 Feti.F90
   cholmod.c InterpolateMeshToMesh.F90 InterpVarToVar.F90
   LinearForms.F90 H1Basis.F90 CircuitUtils.F90 BackwardError.F90
-  ElmerSolver.F90 MagnetoDynamicsUtils.F90 LumpingUtils.F90 
+  ElmerSolver.F90 MagnetoDynamicsUtils.F90 VectorHelmholtzUtils.F90 LumpingUtils.F90 
   ZirkaHysteresis.F90 SolidMechanicsUtils.F90 MatrixAssembly.F90 
   OptimizationUtils.F90 MeshGenerate.F90)
 
@@ -68,6 +69,10 @@ ENDIF()
 IF(HAVE_FETI4I)
   LIST(APPEND solverlib_SOURCES ${FETI4I_INTERFACE_SOURCE})
 ENDIF()
+
+IF(HAVE_ADIOS2)
+  LIST(APPEND solverlib_SOURCES ADIOS2Utils.F90)
+ENDIF(HAVE_ADIOS2)
 
 #FILE(GLOB SRC_FILES *.src)
 #FOREACH(FNAME ${SRC_FILES})
@@ -204,11 +209,22 @@ IF(WITH_LUA)
   LIST(APPEND ELMERSOLVER_LIBRARIES ${LUA_LIBRARIES})
 ENDIF()
 
+IF(HAVE_ADIOS2)
+  IF(WITH_MPI)
+    TARGET_LINK_LIBRARIES(elmersolver adios2::fortran_mpi adios2::fortran)
+  ELSE()
+    TARGET_LINK_LIBRARIES(elmersolver adios2::fortran)
+  ENDIF()
+ENDIF(HAVE_ADIOS2)
 
 ADD_EXECUTABLE(Solver_TGT Solver.F90)
 SET_TARGET_PROPERTIES(Solver_TGT PROPERTIES OUTPUT_NAME "${ELMERSOLVER_OUTPUT_NAME}")
 
-IF(NOT(WIN32))
+IF(WIN32)
+  # Increase stack size from the default 1 MB to 8 MB.
+  TARGET_LINK_OPTIONS(Solver_TGT PRIVATE
+    $<IF:$<Fortran_COMPILER_ID:MSVC>,/STACK:0x800000,-Wl$<COMMA>--stack$<COMMA>0x800000>)
+ELSE()
   MESSAGE(STATUS " ELMERSOLVER_RPATH_STRING_MOD " ${ELMERSOLVER_RPATH_STRING_MOD})
   MESSAGE(STATUS " ELMERLIB_RPATH_STRING " ${ELMERLIB_RPATH_STRING})
 

@@ -223,6 +223,12 @@ CONTAINS
        
       CASE( 'wjacobi' )                                     
         CALL SmoothedJacobi( n, A, M, Mx, Mb, Mr, Omega, Rounds )
+
+      CASE( 'masked jacobi' )
+        IF(.NOT. PRESENT(SkipMask)) THEN
+          CALL Fatal('MGSmooth','"masked jacobi" requires SkipMask to be present!')
+        END IF
+        CALL MaskedJacobi( n, A, M, Mx, Mb, Mr, Omega, SkipMask, Rounds)
         
       CASE( 'wgs' )                                   
         CALL SmoothedGS( n, A, M, Mx, Mb, Mr, Omega, Rounds )
@@ -243,7 +249,7 @@ CONTAINS
         IF(.NOT. PRESENT(SkipMask)) THEN
           CALL Fatal('MGSmooth','"masked sgs" requires SkipMask to be present!')
         END IF
-        CALL MaskedSGS( n, A, M, Mx, Mb, Mr, SkipMask, Rounds)
+        CALL MaskedSGS( n, A, M, Mx, Mb, Mr, Omega, SkipMask, Rounds)
 
       CASE( 'direct1d' )                                     
         ALLOCATE( dx(n) )
@@ -460,6 +466,31 @@ CONTAINS
         END DO
 !------------------------------------------------------------------------------
       END SUBROUTINE SmoothedJacobi
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+      SUBROUTINE MaskedJacobi( n, A, M, x, b, r, w, Mask, Rounds )
+!------------------------------------------------------------------------------
+        IMPLICIT NONE
+        TYPE(Matrix_t), POINTER :: A, M
+        INTEGER :: Rounds
+        REAL(KIND=dp) :: w
+        REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
+        LOGICAL, POINTER :: Mask(:)
+!------------------------------------------------------------------------------
+        INTEGER :: i,j,n
+!------------------------------------------------------------------------------
+        DO i=1,Rounds
+          CALL MGmv( A, x, r )
+          DO j=1,n
+            IF( Mask(i) ) CYCLE
+            r(j) = b(j) - r(j)
+            x(j) = x(j) + w * r(j) / Diag(j)
+          END DO
+        END DO
+!------------------------------------------------------------------------------
+      END SUBROUTINE MaskedJacobi
 !------------------------------------------------------------------------------
 
 
@@ -719,7 +750,7 @@ CONTAINS
         REAL(KIND=dp) :: w
         INTEGER, POINTER CONTIG :: Cols(:),Rows(:)
         REAL(KIND=dp), POINTER CONTIG :: Values(:)
-        COMPLEX(KIND=dp) CONTIG :: x(n/2),b(n/2),r(n/2)
+        COMPLEX(KIND=dp) :: x(n/2),b(n/2),r(n/2)
 
         DO i=1,n/2
           x(i) = CMPLX( rx(2*i-1), rx(2*i), KIND=dp )
@@ -835,14 +866,15 @@ CONTAINS
 !> Masked symmetric-gauss-seidel for cases where we don't want to change the
 !> interface values (at the rotating boundary).  
 !------------------------------------------------------------------------------
-      SUBROUTINE MaskedSGS( n, A, M, x, b, r, Mask, Rounds )
+      SUBROUTINE MaskedSGS( n, A, M, x, b, r, w, Mask, Rounds )
 !------------------------------------------------------------------------------
         IMPLICIT NONE
         TYPE(Matrix_t), POINTER :: A, M
+        REAL(KIND=dp) :: w
         INTEGER :: Rounds
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
         INTEGER :: i,j,k,n
-        REAL(KIND=dp) :: s
+        REAL(KIND=dp) :: s,dia
         INTEGER, POINTER CONTIG :: Cols(:),Rows(:)
         REAL(KIND=dp), POINTER CONTIG :: Values(:)
         LOGICAL, POINTER :: Mask(:)
@@ -855,24 +887,30 @@ CONTAINS
           DO i=1,A % NumberOFRows
             ! Skip the interface elements as the gauss-seidel cannot be used to update them
             IF( Mask(i) ) CYCLE
+            !IF(A % Diag(i) == 0) CYCLE
+            dia = A % Values(A % Diag(i))
+            !IF(ABS(dia) < 100*AEPS) CYCLE
+
             s = 0.0d0
             DO j=Rows(i),Rows(i+1)-1
-              !IF( Mask(Cols(j)) ) CYCLE
               s = s + x(Cols(j)) * Values(j)
             END DO
-            r(i) = (b(i)-s) / A % Values(A % Diag(i))
-            x(i) = x(i) + r(i)
+            r(i) = (b(i)-s) / dia
+            x(i) = x(i) + w * r(i)
           END DO
           
           DO i=A % NumberOfRows,1,-1
             IF(Mask(i)) CYCLE
+            !IF(A % Diag(i) == 0) CYCLE
+            dia = A % Values(A % Diag(i))
+            !IF(ABS(dia) < 100*AEPS) CYCLE
+
             s = 0.0d0
             DO j=Rows(i),Rows(i+1)-1
-              !IF( Mask(Cols(j)) ) CYCLE
               s = s + x(Cols(j)) * Values(j)
             END DO
-            r(i) = (b(i)-s) / (A % Values(A % Diag(i)))
-            x(i) = x(i) + r(i)
+            r(i) = (b(i)-s) / dia 
+            x(i) = x(i) + w * r(i)
           END DO
         END DO
       END SUBROUTINE MaskedSGS

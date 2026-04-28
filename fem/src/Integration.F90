@@ -43,6 +43,7 @@
 !-----------------------------------------------------------------------------
 MODULE Integration
    USE LoadMod
+   USE Messages
 
    IMPLICIT NONE
 
@@ -353,7 +354,53 @@ MODULE Integration
        0.1239234851349682D+00, 0.6832098141300300D-01, &
        0.3009586149124714D-01 /)
 !------------------------------------------------------------------------------
+! Tetrahedron - 24 point rule; exact integration of x^py^qz^r, p+q+r<=6
+! The 24-point rule is reproduced from datasets available at
+!   
+! https://people.sc.fsu.edu/~jburkardt/datasets/quadrature_rules_tet/quadrature_rules_tet.html
+!   
+!------------------------------------------------------------------------------
+   REAL(KIND=dp), DIMENSION(24), PRIVATE :: UTetra24P =  &
+    (/ 0.3561913862225449d0, 0.2146028712591517d0, 0.2146028712591517d0, &
+       0.2146028712591517d0, 0.8779781243961660d0, 0.406739585346113d-1, &
+       0.406739585346113d-1, 0.406739585346113d-1, 0.329863295731731d-1, &
+       0.3223378901422757d0, 0.3223378901422757d0, 0.3223378901422757d0, &
+       0.2696723314583159d0, 0.636610018750175d-1, 0.636610018750175d-1, &
+       0.6030056647916491d0, 0.636610018750175d-1, 0.636610018750175d-1, &
+       0.636610018750175d-1, 0.2696723314583159d0, 0.6030056647916491d0, &
+       0.636610018750175d-1, 0.2696723314583159d0, 0.6030056647916491d0 /)
 
+   REAL(KIND=dp), DIMENSION(24), PRIVATE :: VTetra24P =  &
+    (/ 0.2146028712591517d0, 0.2146028712591517d0, 0.2146028712591517d0, &
+       0.3561913862225449d0, 0.406739585346113d-1, 0.406739585346113d-1, &
+       0.406739585346113d-1, 0.8779781243961660d0, 0.3223378901422757d0, &
+       0.3223378901422757d0, 0.3223378901422757d0, 0.329863295731731d-1, &
+       0.636610018750175d-1, 0.2696723314583159d0, 0.636610018750175d-1, &
+       0.636610018750175d-1, 0.6030056647916491d0, 0.636610018750175d-1, &
+       0.2696723314583159d0, 0.6030056647916491d0, 0.636610018750175d-1, &
+       0.6030056647916491d0, 0.636610018750175d-1, 0.2696723314583159d0 /)
+
+   REAL(KIND=dp), DIMENSION(24), PRIVATE :: WTetra24P =  &
+    (/ 0.2146028712591517d0, 0.2146028712591517d0, 0.3561913862225449d0, &
+       0.2146028712591517d0, 0.406739585346113d-1, 0.406739585346113d-1, &
+       0.8779781243961660d0, 0.406739585346113d-1, 0.3223378901422757d0, &
+       0.3223378901422757d0, 0.329863295731731d-1, 0.3223378901422757d0, &
+       0.636610018750175d-1, 0.636610018750175d-1, 0.2696723314583159d0, &
+       0.636610018750175d-1, 0.636610018750175d-1, 0.6030056647916491d0, &
+       0.6030056647916491d0, 0.636610018750175d-1, 0.2696723314583159d0, &
+       0.2696723314583159d0, 0.6030056647916491d0, 0.636610018750175d-1 /)
+
+   REAL(KIND=dp), DIMENSION(24), PRIVATE :: STetra24P =  &
+    (/ 0.399227502581679d-1, 0.399227502581679d-1, 0.399227502581679d-1, &
+       0.399227502581679d-1, 0.100772110553207d-1, 0.100772110553207d-1, &
+       0.100772110553207d-1, 0.100772110553207d-1, 0.553571815436544d-1, &
+       0.553571815436544d-1, 0.553571815436544d-1, 0.553571815436544d-1, &
+       0.482142857142857d-1, 0.482142857142857d-1, 0.482142857142857d-1, &
+       0.482142857142857d-1, 0.482142857142857d-1, 0.482142857142857d-1, &
+       0.482142857142857d-1, 0.482142857142857d-1, 0.482142857142857d-1, &
+       0.482142857142857d-1, 0.482142857142857d-1, 0.482142857142857d-1 /)
+   
+   
 !------------------------------------------------------------------------------
 ! A SELECTION OF QUADRATURE RULES UP TO A HIGH ORDER DESIGNED FOR ECONOMIC
 ! INTEGRATION OF COMPLETE POLYNOMIALS
@@ -1874,6 +1921,12 @@ CONTAINS
          p % w(1:n) = WTetra11P
          p % s(1:n) = STetra11P / 6.0D0
          p % n = 11
+      CASE (24)
+         p % u(1:n) = UTetra24P
+         p % v(1:n) = VTetra24P
+         p % w(1:n) = WTetra24P
+         p % s(1:n) = STetra24P / 6.0D0
+         p % n = 24        
       CASE DEFAULT
 !        CALL Error( 'GaussPointsTetra', 'Invalid number of points requested.' )
 !        p % n = 0
@@ -2534,23 +2587,27 @@ CONTAINS
      INTEGER, OPTIONAL :: EdgeBasisDegree ! The degree of edge elements
      TYPE( GaussIntegrationPoints_t ) :: IntegStuff   !< Structure holding the integration points
 !------------------------------------------------------------------------------
-     LOGICAL :: pElement, UsePRefElement, Economic
+     LOGICAL :: pElement, UsePRefElement, Economic, Hcurl
      INTEGER :: n, eldim, p1d, ntri, nseg, necon
      TYPE(ElementType_t), POINTER :: elmt
 !------------------------------------------------------------------------------
      elmt => elm % TYPE
 
      IF (PRESENT(EdgeBasis)) THEN
-       IF (EdgeBasis) THEN
-         UsePRefElement = .TRUE.
-         IF (PRESENT(PReferenceElement)) UsePRefElement = PReferenceElement
-         IF (PRESENT(EdgeBasisDegree)) THEN
-           IntegStuff = EdgeElementGaussPoints(elmt % ElementCode/100, UsePRefElement, EdgeBasisDegree)
-         ELSE
-           IntegStuff = EdgeElementGaussPoints(elmt % ElementCode/100, UsePRefElement)
-         END IF
-         RETURN
+       Hcurl = EdgeBasis
+     ELSE
+       Hcurl = PRESENT(EdgeBasisDegree)
+     END IF
+     
+     IF (Hcurl) THEN
+       UsePRefElement = .TRUE.
+       IF (PRESENT(PReferenceElement)) UsePRefElement = PReferenceElement
+       IF (PRESENT(EdgeBasisDegree)) THEN
+         IntegStuff = EdgeElementGaussPoints(elmt % ElementCode/100, UsePRefElement, EdgeBasisDegree)
+       ELSE
+         IntegStuff = EdgeElementGaussPoints(elmt % ElementCode/100, UsePRefElement)
        END IF
+       RETURN
      END IF
 
      IF( PRESENT(PReferenceElement)) THEN
@@ -2902,28 +2959,48 @@ CONTAINS
 !>  reference element. This option may be useful when the edge basis functions are
 !>  obtained via calling the alternate subroutine GetEdgeBasis.
 !----------------------------------------------------------------------------------------
-   FUNCTION EdgeElementGaussPoints(ElementFamily, PiolaVersion, BasisDegree) RESULT(IP)
+   FUNCTION EdgeElementGaussPoints(ElementFamily, PiolaVersion, BasisDegree, &
+       SecondFamily) RESULT(IP)
 !---------------------------------------------------------------------------------------
      INTEGER :: ElementFamily
      LOGICAL, OPTIONAL :: PiolaVersion
      INTEGER, OPTIONAL :: BasisDegree
+     LOGICAL, OPTIONAL :: SecondFamily
      TYPE(GaussIntegrationPoints_t) :: IP
 !------------------------------------------------------------------------------
-     LOGICAL :: PRefElement, SecondOrder
+     LOGICAL :: PRefElement, SecondOrder, ThirdOrder, SecondKind
 !------------------------------------------------------------------------------
      PRefElement = .TRUE.
      SecondOrder = .FALSE.
+     ThirdOrder = .FALSE.
+     SecondKind = .FALSE.
      IF ( PRESENT(PiolaVersion) ) PRefElement = PiolaVersion
-     IF ( PRESENT(BasisDegree) ) SecondOrder = BasisDegree > 1
+     IF ( PRESENT(BasisDegree) ) THEN
+       SecondOrder = BasisDegree == 2
+       IF (.NOT. SecondOrder) ThirdOrder = BasisDegree == 3
+     END IF
+     IF ( PRESENT(SecondFamily) ) SecondKind = SecondFamily
 
      SELECT CASE(ElementFamily)
-     CASE (1)
+     CASE(1)
         IP = GaussPoints0D(1)
-     CASE (2)
-        IP = GaussPoints1D(2)
+     CASE(2)
+        IF (SecondOrder .OR. ThirdOrder) THEN
+          IF (SecondKind .AND. SecondOrder .OR. ThirdOrder) THEN
+            IP = GaussPoints1D(3)
+          ELSE
+            IP = GaussPoints1D(2)
+          END IF
+        ELSE
+          IP = GaussPoints1D(2)
+        END IF
      CASE(3)
-        IF (SecondOrder) THEN
-           IP = GaussPointsTriangle(6, PReferenceElement=PRefElement)
+        IF (SecondOrder .OR. ThirdOrder) THEN
+           IF (SecondOrder) THEN
+             IP = GaussPointsTriangle(6, PReferenceElement=PRefElement)
+           ELSE
+             IP = GaussPointsTriangle(11, PReferenceElement=PRefElement)
+           END IF
         ELSE
            IP = GaussPointsTriangle(3, PReferenceElement=PRefElement)
         END IF
@@ -2934,8 +3011,12 @@ CONTAINS
            IP = GaussPointsQuad(4)
         END IF
      CASE(5)
-        IF (SecondOrder) THEN
-           IP = GaussPointsTetra(11, PReferenceElement=PRefElement)
+        IF (SecondOrder .OR. ThirdOrder) THEN
+          IF (SecondOrder) THEN
+            IP = GaussPointsTetra(11, PReferenceElement=PRefElement)
+          ELSE
+            IP = GaussPointsTetra(24, PReferenceElement=PRefElement)
+          END IF
         ELSE
            IP = GaussPointsTetra(4, PReferenceElement=PRefElement)
         END IF

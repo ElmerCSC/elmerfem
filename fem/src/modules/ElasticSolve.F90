@@ -264,6 +264,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   USE DefUtils
   USE MaterialModels
   USE StressLocal
+  USE MainUtils, ONLY : SetGlobalBubblesFlag
   
   IMPLICIT NONE
 
@@ -3345,8 +3346,12 @@ CONTAINS
 
        OptimizeBW = GetLogical( StSolver % Values, 'Optimize Bandwidth', Found )
        IF ( .NOT. Found ) OptimizeBW = .TRUE.
-       GlobalBubbles = GetLogical( StSolver % Values, 'Bubbles in Global System', Found )
-       IF ( .NOT. Found ) GlobalBubbles = .TRUE.
+
+       GlobalBubbles = GetLogical( Solver % Values, 'Bubbles in Global System', Found )
+       IF(Found) THEN
+         CALL ListAddLogical( StSolver % Values, 'Bubbles in Global System', GlobalBubbles )
+       END IF
+       GlobalBubbles = SetGlobalBubblesFlag( stSolver )
 
        IF( ListGetLogicalAnyEquation( Model,'Calculate Strains' ) ) THEN
           UseMask = .TRUE.
@@ -3611,8 +3616,12 @@ CONTAINS
 
        OptimizeBW = GetLogical( StSolver % Values, 'Optimize Bandwidth', Found )
        IF ( .NOT. Found ) OptimizeBW = .TRUE.
-       GlobalBubbles = GetLogical( StSolver % Values, 'Bubbles in Global System', Found )
-       IF ( .NOT. Found ) GlobalBubbles = .TRUE.
+
+       GlobalBubbles = GetLogical( Solver % Values, 'Bubbles in Global System', Found )
+       IF(Found) THEN
+         CALL ListAddLogical( StSolver % Values, 'Bubbles in Global System', GlobalBubbles )
+       END IF
+       GlobalBubbles = SetGlobalBubblesFlag( stSolver )
 
        IF( ListGetLogicalAnyEquation( Model,'Calculate Stresses' ) ) THEN
           UseMask = .TRUE.
@@ -3898,8 +3907,12 @@ CONTAINS
 
        OptimizeBW = GetLogical( StSolver % Values, 'Optimize Bandwidth', Found )
        IF ( .NOT. Found ) OptimizeBW = .TRUE.
-       GlobalBubbles = GetLogical( StSolver % Values, 'Bubbles in Global System', Found )
-       IF ( .NOT. Found ) GlobalBubbles = .TRUE.
+
+       GlobalBubbles = GetLogical( Solver % Values, 'Bubbles in Global System', Found )
+       IF(Found) THEN
+         CALL ListAddLogical( StSolver % Values, 'Bubbles in Global System', GlobalBubbles )
+       END IF
+       GlobalBubbles = SetGlobalBubblesFlag( stSolver )
 
        IF( ListGetLogicalAnyEquation( Model,'Calculate Stresses' ) ) THEN
           UseMask = .TRUE.

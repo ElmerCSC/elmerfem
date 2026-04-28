@@ -5,13 +5,12 @@ Header
   CHECK KEYWORDS Warn
   Mesh DB "." "mortar"
   Include Path ""
-  Results Directory ""
+  Results Directory "results"
 End
   
 Simulation
   Max Output Level = 5
   Coordinate System = Cartesian
-  Coordinate Mapping(3) = 1 2 3
   Simulation Type = Transient
   Steady State Max Iterations = 1
   Output Intervals = 1
@@ -21,19 +20,11 @@ Simulation
   Timestep Sizes = 0.1
   Timestep Intervals = 10
   Output Intervals = 0
-!  Post File = mortar.ep
-!  Output File = case.result
+!  Post File = case.vtu
 
   Simulation Timing = Logical True
 End 
 
-Constants
-  Gravity(4) = 0 -1 0 9.82
-  Stefan Boltzmann = 5.67e-08
-  Permittivity of Vacuum = 8.8542e-12
-  Boltzmann Constant = 1.3807e-23
-  Unit Charge = 1.602e-19
-End
 
 Body 1
   Target Bodies(1) = 1
@@ -79,7 +70,6 @@ Solver 2
   Steady State Convergence Tolerance = 1.0e-5
 
   Nonlinear System Max Iterations = 1
-  Nonlinear System Relaxation Factor = 1.0  
   Nonlinear System Consistent Norm = True
 
   Linear System Solver = Iterative
@@ -128,15 +118,6 @@ Solver 3
   Parallel Operator 1 = String sum
 End 
  
-Solver 4
-!  Exec Solver = never
-  Exec Solver = after timestep
-  Equation = VtuOutput
-  Procedure = "ResultOutputSolve" "ResultOutputSolver"
-  Output File Name = case_a
-  Vtu Format = Logical True
-  Single Precision = Logical True
-End 
 
 Equation 1
   Name = "Heat"

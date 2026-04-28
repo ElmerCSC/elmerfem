@@ -105,6 +105,7 @@ SET(WITH_CONTRIB FALSE CACHE BOOL "Include contributed solvers")
 
 SET(WITH_LUA FALSE CACHE BOOL "Include LUA extensions.")
 SET(WITH_MMG FALSE CACHE BOOL "Compile with MMG library.")
+SET(WITH_PARMMG FALSE CACHE BOOL "Compile with PARMMG library.")
 SET(WITH_ROCALUTION FALSE CACHE BOOL "Compile with Rocalution library.")
 
 SET(WITH_Zoltan FALSE CACHE BOOL "Link in Zoltan mesh repartitioning library.")
@@ -131,7 +132,7 @@ MARK_AS_ADVANCED(ELMER_INSTALL_LIB_DIR)
 INCLUDE(CTest)
 
 SET(ELMER_FEM_MAJOR_VERSION 26)
-SET(ELMER_FEM_MINOR_VERSION 1)
+SET(ELMER_FEM_MINOR_VERSION 2)
 
 SET(ELMER_FEM_VERSION
   ${ELMER_FEM_MAJOR_VERSION}.${ELMER_FEM_MINOR_VERSION})
@@ -150,6 +151,25 @@ IF(RESET_ELMER_REVISION)
   IF(RUN_RETURN_VALUE EQUAL 0)
     SET(ELMER_FEM_REVISION ${ELMER_FEM_REVISION_} CACHE STRING "" FORCE)
     MARK_AS_ADVANCED(ELMER_FEM_REVISION)
+  ENDIF()
+ENDIF()
+
+IF(NOT(ELMER_FEM_BRANCH))
+  SET(RESET_ELMER_BRANCH TRUE CACHE BOOL "")
+  MARK_AS_ADVANCED(RESET_ELMER_BRANCH)
+ENDIF()
+
+
+IF(RESET_ELMER_BRANCH)
+  execute_process(
+    COMMAND "git" "branch" "--show-current"
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    OUTPUT_VARIABLE ELMER_FEM_BRANCH_
+    RESULT_VARIABLE RUN_RETURN_VALUE)
+  IF(RUN_RETURN_VALUE EQUAL 0)
+    SET(ELMER_FEM_BRANCH ${ELMER_FEM_BRANCH_} CACHE STRING "" FORCE)
+    MARK_AS_ADVANCED(ELMER_FEM_BRANCH)
   ENDIF()
 ENDIF()
 
@@ -443,6 +463,7 @@ IF(WITH_MMG)
     MESSAGE(STATUS "------------------------------------------------")
 
   ELSE()
+    SET(HAVE_MMG FALSE)
     MESSAGE(STATUS "  Library not found: >MMG_FOUND< ")
     MESSAGE(STATUS "    Missing: >MMG_INCLUDE_DIR< , >MMG_LIBRARY<, to compile MMG3DSolver")
   ENDIF(MMG_FOUND)
@@ -467,11 +488,13 @@ IF(WITH_MMG)
       INCLUDE_DIRECTORIES(${PARMMG_INCLUDE_DIR})
       MESSAGE(STATUS "------------------------------------------------")
     ELSE()
+      SET(HAVE_PARMMG FALSE)
       MESSAGE(STATUS "  Library not found: >PARMMG_FOUND< ")
       MESSAGE(STATUS "    Missing: >PARMMG_INCLUDE_DIR< , >PARMMG_LIBRARY<, to compile PARMMGSolver")
     ENDIF(PARMMG_FOUND)
   ELSE()
     SET(PARMMG_FOUND FALSE)
+    SET(HAVE_PARMMG FALSE)
     MESSAGE(STATUS "  Skipping ParMMG")
   # INCLUDE("cmake/Modules/FindParMMG.cmake")
   # INCLUDE_DIRECTORIES(${PARMMG_INCLUDE_DIR})
@@ -515,6 +538,23 @@ IF (WITH_XIOS)
   MESSAGE(STATUS "------------------------------------------------")
 ENDIF()
 
+# Set environment variable ADIOS2_ROOT to point installation directory of adios (e.g. "/opt/adios/2.11")
+IF(WITH_ADIOS2)
+  MESSAGE(STATUS "------------------------------------------------")
+  MESSAGE(STATUS "  Looking for ADIOS2")
+  FIND_PACKAGE(ADIOS2 REQUIRED Fortran)
+  IF(ADIOS2_FOUND)
+    GET_TARGET_PROPERTY(ADIOS2_MOD_DIR adios2::fortran INTERFACE_INCLUDE_DIRECTORIES)
+    INCLUDE_DIRECTORIES(${ADIOS2_MOD_DIR})
+    SET(HAVE_ADIOS2 TRUE)
+    MESSAGE(STATUS "------------------------------------------------")
+    MESSAGE(STATUS "  ADIOS2_FOUND: ${ADIOS2_FOUND}")
+    MESSAGE(STATUS "  ADIOS2_INCLUDE_DIR: ${ADIOS2_MOD_DIR}")
+    MESSAGE(STATUS "  ADIOS2_LIBRARIES: ${ADIOS2_LIBRARIES}")
+    MESSAGE(STATUS "------------------------------------------------")
+  ENDIF(ADIOS2_FOUND)
+
+ENDIF(WITH_ADIOS2)
 
 MESSAGE(STATUS "------------------------------------------------")
 
