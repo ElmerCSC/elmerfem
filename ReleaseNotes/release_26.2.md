@@ -2,10 +2,10 @@ Elmer Release Notes for version 26.2
 ====================================
 
 Previous release: **26.1**  
-Period covered: **Jan 19, 2026 - April 24, 2026**  
+Period covered: **Jan 19, 2026 - April 28, 2026**  
 
 These release notes provide information only on the essential changes.
-Over the period there have been ~117 commits (merge commits excluded). 
+Over the period there have been ~128 commits (merge commits excluded). 
 Some small fixes, less relevant changes and plain code refactoring have been omitted.
 With this release we are back in pace where it is easier to summarize the recent changes. 
 You can get a complete listing of commit messages, for example, with the command git log --since="2026-19-1"  > log.txt
