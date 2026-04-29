@@ -1482,7 +1482,8 @@ CONTAINS
  !> The ascii format is tried out first, if not success, binary is followed. 
  !> This is a Fortran replacement for the old C++ eio library. 
  !------------------------------------------------------------------------
- SUBROUTINE ElmerMeshReader(Step, PMesh, MeshNamePar, ThisPe, NumPEs, IsParallel )
+ SUBROUTINE ElmerMeshReader(Step, PMesh, MeshNamePar, ThisPe, NumPEs, &
+                 IsParallel, BoundariesOnly )
 
    IMPLICIT NONE
 
@@ -1491,6 +1492,7 @@ CONTAINS
    TYPE(Mesh_t), POINTER, OPTIONAL :: PMesh
    INTEGER, OPTIONAL :: ThisPe, NumPEs
    LOGICAL, OPTIONAL :: IsParallel
+   LOGICAL, OPTIONAL :: BoundariesOnly
 
    TYPE(Mesh_t), POINTER :: Mesh
    INTEGER :: PrevStep=0, iostat
@@ -1566,7 +1568,7 @@ CONTAINS
      CALL ReadElementsFile()
 
    CASE(4)
-     CALL ReadBoundaryFile()
+     CALL ReadBoundaryFile(BoundariesOnly)
      CALL PermuteNodeNumbering()
 
    CASE(5)
@@ -1871,13 +1873,17 @@ CONTAINS
    !------------------------------------------------------------------------------
    ! Read boundary elements file and remap the parents if needed.  
    !------------------------------------------------------------------------------
-   SUBROUTINE ReadBoundaryFile()
+   SUBROUTINE ReadBoundaryFile( BoundariesOnly )
+     LOGICAL, OPTIONAL :: BoundariesOnly
      INTEGER, POINTER :: LocalEPerm(:)
      INTEGER :: MinEIndex, MaxEIndex, ElemNodes, i
      INTEGER :: Left, Right, bndry, tag, ElemType, IVals(64), nread, ioffset, partn
      TYPE(Element_t), POINTER :: Element
      CHARACTER(256) :: str
-     LOGICAL :: halo, Binary
+     LOGICAL :: halo, Binary, BOnly
+
+     BOnly = .FALSE.
+     IF ( PRESENT(BoundariesOnly) ) BOnly=BoundariesOnly
 
      IF( Parallel ) THEN
        FileName = BaseName(1:BaseNameLen)//&
@@ -1984,7 +1990,7 @@ CONTAINS
          IF( ElementPermutation ) THEN
            Left  = LocalEPerm(Left - MinEIndex + 1)
          END IF
-       ELSE IF ( Left > 0 ) THEN
+       ELSE IF ( Left>0 .AND. .NOT. BOnly ) THEN
          WRITE( Message, * ) mype,'BOUNDARY PARENT out of range: ', Tag, Left
          CALL Error( 'ReadBoundaryFile', Message )
          Left = 0
@@ -1994,7 +2000,7 @@ CONTAINS
          IF( ElementPermutation ) THEN
            Right = LocalEPerm(Right - MinEIndex + 1)
          END IF
-       ELSE IF ( Right > 0 ) THEN
+       ELSE IF ( Right > 0 .AND. .NOT. BOnly ) THEN
          WRITE( Message, * ) mype,'BOUNDARY PARENT out of range: ', Tag,Right
          CALL Error( 'ReadBoundaryFile', Message )
          Right = 0
@@ -2222,7 +2228,8 @@ CONTAINS
 
  !> An interface over potential mesh loading strategies. 
  !----------------------------------------------------------------- 
- SUBROUTINE LoadMeshStep( Step, PMesh, MeshNamePar, ThisPe, NumPEs,IsParallel ) 
+ SUBROUTINE LoadMeshStep( Step, PMesh, MeshNamePar, ThisPe, NumPEs, &
+         IsParallel, BoundariesOnly ) 
    
    IMPLICIT NONE
 
@@ -2231,6 +2238,7 @@ CONTAINS
    TYPE(Mesh_t), POINTER, OPTIONAL :: PMesh
    INTEGER, OPTIONAL :: ThisPe, NumPEs
    LOGICAL, OPTIONAL :: IsParallel
+   LOGICAL, OPTIONAL :: BoundariesOnly
 
    ! Currently only one strategy to get the mesh is implemented 
    ! but there could be others.
@@ -2238,7 +2246,8 @@ CONTAINS
    ! This has not yet been tested in parallel and for sure
    ! it does not work for halo elements. 
    !-----------------------------------------------------------------
-   CALL ElmerMeshReader( Step, PMesh, MeshNamePar, ThisPe, NumPEs, IsParallel ) 
+   CALL ElmerMeshReader( Step, PMesh, MeshNamePar, ThisPe, NumPEs, &
+           IsParallel, BoundariesOnly ) 
 
  END SUBROUTINE LoadMeshStep
 
@@ -2723,7 +2732,7 @@ CONTAINS
 
    ! Get the boundary elements: boundary types, boundary index, parents, topology
    !------------------------------------------------------------------------------
-   CALL LoadMeshStep( 4 )
+   CALL LoadMeshStep( 4, BoundariesOnly=BoundariesOnly )
 
    ! Read elemental data - this is rarely used, parallel implementation lacking?
    !--------------------------------------------------------------------------

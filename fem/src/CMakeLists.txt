@@ -44,7 +44,7 @@ SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
   LinearForms.F90 H1Basis.F90 CircuitUtils.F90 BackwardError.F90
   ElmerSolver.F90 MagnetoDynamicsUtils.F90 VectorHelmholtzUtils.F90 LumpingUtils.F90 
   ZirkaHysteresis.F90 SolidMechanicsUtils.F90 MatrixAssembly.F90 
-  OptimizationUtils.F90 MeshGenerate.F90)
+  OptimizationUtils.F90 MeshGenerate.F90 ViewUtils.F90)
 
 #SET_PROPERTY(SOURCE MaxwellAxiS.F90 PROPERTY
 #	COMPILE_DEFINITIONS FULL_INDUCTION)
