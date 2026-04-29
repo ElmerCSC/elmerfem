@@ -307,6 +307,9 @@
 #ifdef HAVE_ROCALUTION
          CALL Info( 'MAIN', ' ROCALUTION library linked in.' )
 #endif
+#ifdef HAVE_ADIOS2
+         CALL Info( 'MAIN', ' ADIOS2 library linked in.' )
+#endif
          CALL Info( 'MAIN', '=============================================================')
        END IF
 
