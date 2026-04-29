@@ -26,7 +26,7 @@ I. New solver modules
 
 ### ADIOS2OutputSolver
 - Saves Elmer nodal scalar and vector fields in ADIOS2/BP5 format and outputs Fides json file for Paraview.
-  This greatly reduces the number of files in parallel runs. 
+  This greatly reduces the number of files in parallel and time-stepping runs.
  
 
 II. Enhancements of existing solvers
