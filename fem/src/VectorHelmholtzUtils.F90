@@ -373,9 +373,10 @@
          mur = ListGetElementComplex( MuCoeff_h, Basis, Element, Found )
          IF(.NOT. Found) THEN
            CALL SetParentBasis( Element, n, Basis, Parent, Parent % TYPE % NumberOfNodes, ParentBasis)
-           mur = ListGetElementComplex( MuCoeff_h, Basis, Parent, Found )
+           mur = ListGetElementComplex( MuCoeff_h, ParentBasis, Parent, Found )
          END IF
          IF(.NOT. Found ) mur = 1.0_dp
+         
          B = -im * rob0 * SQRT( epsr / mur )          
          IF(PRESENT(L)) THEN
            DO i=1,3

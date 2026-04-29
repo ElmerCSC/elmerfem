@@ -91,29 +91,30 @@ SUBROUTINE EMPortSolver_Init0(Model, Solver, dt, Transient)
     CALL ListCompareAndCopy(PrimaryParams, Params,'Use Piola Transform')
     CALL ListCompareAndCopy(PrimaryParams, Params,'Quadratic Approximation')
     CALL ListCompareAndCopy(PrimaryParams, Params,'Second Kind Basis')
-    CALL ListCompareAndCopy(PrimaryParams, Params,'Simplicial Mesh')
+    CALL ListCompareAndCopy(PrimaryParams, Params,'Gradient Basis Functions')    
   END IF
  
   
   IF (.NOT. ListCheckPresent(Params, "Element") ) THEN
     CALL EdgeElementStyle(Params, PiolaVersion, SecondFamily, SecondOrder, Check = .TRUE.)
-
+    
     ! Share the DOFs definition with the vector Helmholtz model so that the solution might be
     ! utilized by the vector Helmholtz model:
     IF (SecondOrder) THEN
       IF (SecondFamily) THEN
-        CALL ListAddString(Params, "Element", "n:1 e:3 -tri b:3 -tri_face b:3")
+        sname = "n:1 e:3 -tri b:3 -tri_face b:3"
       ELSE
-        CALL ListAddString(Params, "Element", &
-            "n:1 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2")
+        sname = "n:1 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2"
       END IF
     ELSE IF( SecondFamily ) THEN
-      CALL ListAddString(Params, "Element", "n:1 e:2" )
+      sname = "n:1 e:2" 
     ELSE IF (PiolaVersion) THEN
-      CALL ListAddString(Params, "Element", "n:1 e:1 -quad_face b:2 -quad b:2 -brick b:3")
+      sname = "n:1 e:1 -quad_face b:2 -quad b:2 -brick b:3"
     ELSE
-      CALL ListAddString(Params, "Element", "n:1 e:1" )
+      sname = "n:1 e:1"
     END IF
+    CALL Info( Caller,'Setting element type: '//TRIM(sname))
+    CALL ListAddString(Params, "Element", TRIM(sname) )      
   END IF
 
   ! Set the port field to zero at BCs which are defined as port ground
@@ -127,7 +128,6 @@ SUBROUTINE EMPortSolver_Init0(Model, Solver, dt, Transient)
       CALL ListAddConstReal( BC,'Eport im {e}',0.0_dp)
     END IF
   END DO
-
   
   CALL ListAddNewString(Params, 'Variable', 'Eport[Eport re:1 Eport im:1]')
   CALL ListAddLogical(Params, 'Linear System refactorize', .TRUE.)
@@ -171,7 +171,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
   TYPE(Element_t), POINTER :: Element
   LOGICAL :: PiolaVersion, EigenProblem, InitHandles, CalculateNodal, Found, MeActive
   INTEGER :: DOFs, EdgeBasisDegree, Active, i, j, k, t, m, n, nd, &
-      EFamily, NoPorts, MaxPort, PortInd, t1, t2, ModeIndex
+      EFamily, NoPorts, MaxPort, PortInd, t1, t2, ModeIndex, Ierr
   COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
   COMPLEX(KIND=dp) :: Beta
   COMPLEX(KIND=dp), POINTER :: SaveEigenVectors(:,:)
@@ -221,6 +221,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
     CALL Info(Caller,'Creating separate matrices for each '//I2S(MaxPort)//' port!')
     ! We cannot really use the original matrix that solves all ports together.
     CALL FreeMatrix(Solver % Matrix)
+    Solver % Matrix => Null()
 
     ! Let's store the original permutation matrix.
     ALLOCATE( SavePerm(SIZE(EMVar % Perm)))
@@ -259,27 +260,31 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
       Solver % Matrix => CreateMatrix( Model, Solver, Solver % Mesh, EMVar % Perm, &
           EMVar % Dofs, MATRIX_CRS, .FALSE.,"Port Label "//I2S(PortInd), &
           GlobalBubbles = Solver % GlobalBubbles, BcMode = .TRUE.)     
-      i =  0
-      MeActive = .FALSE.
-      IF(ASSOCIATED(Solver % Matrix)) THEN
-        MeActive = ( Solver % Matrix % NumberOfRows > 0 )       
-      END IF
+
+      IF(ParEnv % PEs > 1 ) THEN
+        MeActive = .FALSE.
+        IF(ASSOCIATED(Solver % Matrix)) THEN
+          MeActive = ( Solver % Matrix % NumberOfRows > 0 )       
+        END IF
+
+        IF ( MeActive ) THEN
+          ALLOCATE(Solver % Matrix % MassValues(SIZE(Solver % Matrix % Values)))
+          Solver % Matrix % MassValues = 0
+        END IF
         
-      PRINT *,'MeActive:',MeActive,ParEnv %  Mype, PortInd
-      call flush(6)
+        CALL ParallelActiveSubset(MeActive)
 
-      CALL ParallelActiveSubset(MeActive)
-
-
-      IF(.NOT. MeActive) CYCLE
+        IF(.NOT. MeActive) THEN
+           CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
+           CYCLE
+        END IF
+      END IF
 
       n = MAXVAL(EMVar % Perm) * EMVar % Dofs
-      PRINT *,'Mype',ParEnv % Mype, n
-      CALL FLUSH(6)
       ALLOCATE(Solver % Matrix % rhs(n))
       Solver % Matrix % rhs = 0.0_dp
     END IF
-          
+
     CALL DefaultInitialize()
 
     IF(MaxPort==0) THEN
@@ -304,9 +309,11 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
       
       n  = GetElementNOFNodes(Element)
       nd = GetElementNOFDOFs(Element)
-      
-!      IF (EdgeBasisDegree > 1) THEN
-      IF (.FALSE.) THEN
+
+#if 1
+      IF (EdgeBasisDegree == 1) THEN
+        IF (n /= EFamily) CALL Fatal(Caller, 'A background mesh must have linear elements!')
+      ELSE
         SELECT CASE(EFamily)    
         CASE(3)
           IF (n < 6) CALL Fatal(Caller, 'A background mesh needs 6-node triangles')
@@ -314,7 +321,8 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
           IF (n < 9) CALL Fatal(Caller, 'A background mesh needs 9-node quads')
         END SELECT
       END IF
-    
+#endif
+      
       CALL LocalMatrix(Element, n, nd, InitHandles)
     END DO
   
@@ -328,7 +336,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
       maxmu = ParallelReduction(maxmu)    
       betalim = Omega * SQRT(maxeps*maxmu)    
       CALL ListAddConstReal( Params,'Eigen System Shift', betalim**2 )
-      WRITE(Message,'(A,ES12.3)') 'Propagation constant beta upper limit: ',betalim
+      WRITE(Message,'(A,ES15.6)') 'Propagation constant beta upper limit: ',betalim
       CALL Info('EMPortSolver',Message,Level=7)
     END IF
 
@@ -336,7 +344,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
     Norm = DefaultSolve()
 
     Beta = SQRT(-Solver % Variable % EigenValues(ModeIndex))
-    WRITE(Message,'(A,2ES12.3)') 'Propagation constant beta: ',REAL(Beta),AIMAG(Beta)
+    WRITE(Message,'(A,2ES15.6)') 'Propagation constant beta: ',REAL(Beta),AIMAG(Beta)
     CALL Info(Caller,Message,Level=5)      
     CALL ListAddConstReal( Model % Simulation,'res: Port Beta '//I2S(PortInd),REAL(Beta))
     
@@ -364,8 +372,9 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
      CALL EMPortPost(PortInd, MaxPort)
    END IF
 
-    IF( MaxPort > 1 ) THEN
+   IF( MaxPort > 1 ) THEN
       CALL FreeMatrix(Solver % Matrix)      
+      Solver % Matrix => Null()
 
       ! Copy only the values that were actually computed for this port
       n = SIZE(EMVar % Perm)
@@ -376,9 +385,10 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
       END DO
     END IF
 
+     CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
   END DO
 
-  CALL ParallelActive(.TRUE.)
+  IF(ParEnv % PEs > 1) CALL ParallelActive(.TRUE.)
 
   
   CALL DefaultFinish()
@@ -409,7 +419,6 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: M
     INTEGER :: comm_active, group_active, group_world, ierr
 
-
     IF(ParEnv % PEs == 1 ) RETURN
     
     CALL ParallelActive(MeActive)
@@ -417,9 +426,6 @@ CONTAINS
 
     M => Solver % Matrix
     
-    PRINT *,'Active PEs',n
-    
-
     IF ( n>0 .AND. n<ParEnv % PEs ) THEN
       IF ( ASSOCIATED(Solver % Matrix) ) THEN
         IF ( Solver % Matrix % Comm /= ELMER_COMM_WORLD .AND. Solver % Matrix % Comm /= MPI_COMM_NULL ) &
@@ -437,14 +443,15 @@ CONTAINS
       END DO
       CALL MPI_Group_incl( group_world, n, memb, group_active, ierr)
       DEALLOCATE(memb)
-      CALL MPI_Comm_create( ELMER_COMM_WORLD, group_active, &
-          comm_active, ierr)
+      CALL MPI_Comm_create( ELMER_COMM_WORLD, group_active, comm_active, ierr)
 
       M => Solver % Matrix
       DO WHILE(ASSOCIATED(M))
         M % Comm = comm_active
         M => M % Parent
       END DO
+      ParEnv % ActiveComm = comm_active
+
 
       IF( ANY( ParEnv % Active(MinOutputPE+1:MIN(MaxOutputPE+1,ParEnv % PEs)) ) ) THEN
         ! If any of the active output partitions in active just use it.
@@ -485,6 +492,21 @@ CONTAINS
         OutputPE = -1
       END IF
     END IF
+
+    IF ( ASSOCIATED(Solver % Matrix) ) THEN
+       IF ( SOlver % Parallel .AND. MeActive ) THEN
+         IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % GInterface) ) THEN
+           ParEnv % ActiveComm = Solver % Matrix % Comm
+
+           IF (.NOT. ASSOCIATED(Solver % Matrix % ParMatrix) ) then
+             CALL ParallelInitMatrix(Solver, Solver % Matrix )
+          end if
+
+          ParEnv % ActiveComm = Solver % Matrix % Comm
+        END IF
+     END IF
+   END IF
+
 
   END SUBROUTINE ParallelActiveSubset
   
