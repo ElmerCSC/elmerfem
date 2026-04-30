@@ -6931,6 +6931,12 @@ END SUBROUTINE PickActiveFace
        !------------------------------------------------------------------------------------------
        Create2ndKindBasis = .FALSE.
        IF ( PRESENT(SecondFamily) ) Create2ndKindBasis = SecondFamily
+       IF (Create2ndKindBasis .AND. .NOT.(Element % TYPE % ElementCode / 100 == 2 .OR. &
+           Element % TYPE % ElementCode / 100 == 3 .OR. &
+           Element % TYPE % ElementCode / 100 == 5)) THEN
+         CALL Fatal('EdgeElementInfo', 'Second Kind Basis = True is not supported for the given element shape')
+       END IF
+       
        SecondOrder = .FALSE.
        ThirdOrder = .FALSE.
        IF ( PRESENT(BasisDegree) ) THEN
