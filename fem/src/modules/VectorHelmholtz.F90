@@ -156,6 +156,9 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
     !CALL ListAddLogical( Params,'Optimize Bandwidth',.FALSE.)
     !CALL Info('VectorHelmoltz_init','Suppressing bandwidth optimization in S-Matrix computation!')
   END IF
+
+
+
   
 !------------------------------------------------------------------------------
 END SUBROUTINE VectorHelmholtzSolver_Init0
@@ -165,6 +168,7 @@ END SUBROUTINE VectorHelmholtzSolver_Init0
 SUBROUTINE VectorHelmholtzSolver_Init(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
+  USE VectorHelmholtzUtils
 
   IMPLICIT NONE
 !------------------------------------------------------------------------------
@@ -215,6 +219,9 @@ SUBROUTINE VectorHelmholtzSolver_Init(Model,Solver,dt,Transient)
       CALL ListAddInteger(SolverParams, 'Eigensolver Index', soln)
     END IF
   END IF
+
+  CALL DefinePortParameters(Model, Solver % Mesh)
+
   
 !------------------------------------------------------------------------------
 END SUBROUTINE VectorHelmholtzSolver_Init

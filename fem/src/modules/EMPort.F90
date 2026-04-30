@@ -173,9 +173,9 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
   INTEGER :: DOFs, EdgeBasisDegree, Active, i, j, k, t, m, n, nd, &
       EFamily, NoPorts, MaxPort, PortInd, t1, t2, ModeIndex, Ierr
   COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
-  COMPLEX(KIND=dp) :: Beta
+  COMPLEX(KIND=dp) :: Beta, Zet
   COMPLEX(KIND=dp), POINTER :: SaveEigenVectors(:,:)
-  REAL(KIND=dp) :: mu0inv, eps0, omega, maxeps, maxmu, betalim, Norm, BetaSum
+  REAL(KIND=dp) :: mu0inv, eps0, omega, maxeps, maxmu, betalim, Norm, BetaSum, Scale
   TYPE(Variable_t), POINTER :: EMVar
   INTEGER, ALLOCATABLE :: SavePerm(:)
   CHARACTER(*), PARAMETER :: Caller = 'EMPortSolver'
@@ -347,6 +347,9 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
     WRITE(Message,'(A,2ES15.6)') 'Propagation constant beta: ',REAL(Beta),AIMAG(Beta)
     CALL Info(Caller,Message,Level=5)      
     CALL ListAddConstReal( Model % Simulation,'res: Port Beta '//I2S(PortInd),REAL(Beta))
+
+      
+
     
     ! Use the sum or propagation constant as a reference value for consistency
     BetaSum = BetaSum + REAL(Beta)
@@ -359,6 +362,13 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
         IF(j==PortInd .OR. MaxPort == 0) THEN
           CALL ListAddConstReal( BC,'Port Beta',REAL(Beta))
           CALL ListAddConstReal( BC,'Port Beta Im',AIMAG(Beta))
+
+          Scale = ListGetConstReal( BC,'Port Scale',Found) 
+          IF( Found ) THEN
+            Zet = (Omega / mu0inv ) / (Beta * Scale)
+            WRITE(Message,'(A,2ES15.6)') 'Estimated Port impedance: ',Zet
+            CALL Info(Caller,Message,Level=5)      
+          END IF        
         END IF
       END IF
       j = ListgetInteger( BC,"Port Beta Parent", Found )
