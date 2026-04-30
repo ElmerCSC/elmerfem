@@ -133,7 +133,7 @@
      
      REAL(KIND=dp) :: at, at0
 
-     TYPE(ValueHandle_t) :: Load_h
+     !TYPE(ValueHandle_t) :: Load_h
      
      SAVE &
           ElementNodes, EdgeNodes,      &
@@ -155,8 +155,8 @@
           CCw, lc, Lw, NoChannel, NodalNoChannel, &
           Channels, meltChannels, NeglectH, BDForder, &
           Vvar, ublr, hr2, Refq, Nel,&
-          Calving, Load_h, LimitEffPres, HaveMoulinMask
-
+          Calving, LimitEffPres, HaveMoulinMask
+        ! Load_h
       
      totst = 0.0_dp
      totat = 0.0_dp
@@ -167,7 +167,7 @@
      VariableName = TRIM(Solver % Variable % Name)
      SolverName = 'GlaDSCoupledsolver ('// VariableName // ')'
 
-     CALL ListInitElementKeyword( Load_h, 'Body Force', TRIM(Solver % Variable % Name) // ' Volume Source')
+    
 
      
      IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
@@ -303,7 +303,9 @@
      IF (FirstTime) THEN
         FirstTime = .FALSE.
         Constants => GetConstants()
-
+ 
+       !CALL ListInitElementKeyword( Load_h, 'Body Force', TRIM(Solver % Variable % Name) // ' Volume Source')
+ 
         WaterDensity = ListGetConstReal( Constants, 'Fresh Water Density', Found )
         IF (.NOT. Found) THEN           
            WaterDensity = ListGetConstReal( Constants, 'Water Density', Found )
@@ -720,11 +722,11 @@
               LOAD = 0.0_dp              
               
               BodyForce => GetBodyForce()
-              !IF ( ASSOCIATED( BodyForce ) ) THEN
-              !   bf_id = GetBodyForceId()
-              !   LOAD(1:N) = LOAD(1:N) + &
-              !     GetReal( BodyForce, TRIM(Solver % Variable % Name) // ' Volume Source', Found )
-              !END IF
+              IF ( ASSOCIATED( BodyForce ) ) THEN
+                 bf_id = GetBodyForceId()
+                 LOAD(1:N) = LOAD(1:N) + &
+                   GetReal( BodyForce, TRIM(Solver % Variable % Name) // ' Volume Source', Found )
+              END IF
               ! f = m - w + v
               ! v is not added here as it will be linearized for the assembly
               LOAD(1:N) = LOAD(1:N) - Wopen(1:N)
@@ -1800,7 +1802,7 @@ CONTAINS
 
        Force = SUM( LoadVector(1:n)*Basis(1:n) )
        ! contribution from volume source (using handle)
-       LoadAtIP = ListGetElementReal( Load_h, Basis, Element, Found, GaussPoint=t)
+       !LoadAtIP = ListGetElementReal( Load_h, Basis, Element, Found, GaussPoint=t)
        IF (Found) THEN
          Force = Force + LoadAtIP
        END IF
