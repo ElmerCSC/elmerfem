@@ -170,22 +170,27 @@
       Area = LumpVec(7)
       
       SELECT CASE(PortTypeInd)
-      CASE(1)
+      CASE(1,3)
+        ! The mode "3" is just for postprocessing, it is not used to set the values. 
         PortDir = ABS( ListGetInteger( BC,'Port Direction',Found) )
         IF(.NOT. Found) PortDir = 3
                 
         Length = LumpVec(3+PortDir) - LumpVec(PortDir)        
-        Width = Area / Length
-        Scale = Width / Length
-
-        !PRINT *,'area:',area, length, width, scale
-        
-        CALL ListAddConstReal( BC,'Port Length',Length)
-        CALL ListAddConstReal( BC,'Port Scale',Scale)
-        IF(InfoActive(8)) THEN
-          PRINT *,'Setting rectangular port parameters:',Length,Scale
+        IF(Length > EPSILON(Length) ) THEN
+          Width = Area / Length
+          Scale = Width / Length
+          !PRINT *,'area:',area, length, width, scale
+                    
+          CALL ListAddConstReal( BC,'Port Length',Length)
+          CALL ListAddConstReal( BC,'Port Scale',Scale)
+          IF(InfoActive(8)) THEN
+            PRINT *,'Setting rectangular port parameters:',Length,Scale
+          END IF
+        ELSE
+          CALL Info(Caller,'Could not define port parameters with zero length!',Level=4)
         END IF
 
+          
       CASE(2)
         RadOuter = 0.0_dp
         DO i=1,3
