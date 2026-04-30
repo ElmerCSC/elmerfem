@@ -711,7 +711,7 @@ CONTAINS
       
       n = Mesh % MaxElementDOFs   
       dofs = 6
-      ALLOCATE(MASS(DOFs,DOFs), LFORCE(n,DOFs), WBasis(n,3), &
+      ALLOCATE(MASS(n,n), LFORCE(n,DOFs), WBasis(n,3), &
           CurlWBasis(n,3), Basis(n), dBasisdx(n,3), PermIndexes(n), &
           Re_Local_field(n), Im_Local_field(n))
     END IF
