@@ -6552,7 +6552,14 @@ CONTAINS
        IF( ListId == 0 ) RETURN
      END IF
 
-     IF(ThisBC) ListId = -ListId     
+     IF(ThisBC) THEN
+       IF( ANY([SECTION_TYPE_BC, SECTION_TYPE_MATERIAL] == Handle % SectionType ) ) THEN
+         ListId = -ListId
+       ELSE 
+         ListId = Element % BodyId
+         IF(ListId == 0) RETURN
+       END IF
+     END IF
        
      ! Ok, we cannot use previous list, lets find the new list    
      SELECT CASE ( Handle % SectionType )
