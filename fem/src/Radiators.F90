@@ -53,7 +53,7 @@
 !------------------------------------------------------------------------------
       
   PROGRAM RadiatorFactors
-    INTEGER :: i,j
+    INTEGER :: i,j,k
     CHARACTER(LEN=256) :: s, t
 
      CALL GET_COMMAND_ARGUMENT(0,t)
@@ -63,7 +63,12 @@
 
      i = LEN_TRIM(t)
      j = LEN_TRIM(s)
-     t(i-8:) = 'ViewFactors'
+     DO k=i,1,-1
+       IF ( t(k:k) == '/' .OR. t(k:k) == '\' .OR. t(k:k) == ':' ) EXIT 
+     END DO
+     k = k + 1
+     t(k:k+10) = 'ViewFactors'
+     t(k+11:) = ''
 
      i = LEN_TRIM(t)
      t = t(1:i)//' -radiators '//s(1:j)
