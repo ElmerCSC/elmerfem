@@ -97,6 +97,10 @@ SUBROUTINE EMPortSolver_Init0(Model, Solver, dt, Transient)
   
   IF (.NOT. ListCheckPresent(Params, "Element") ) THEN
     CALL EdgeElementStyle(Params, PiolaVersion, SecondFamily, SecondOrder, Check = .TRUE.)
+
+    IF (SecondFamily) THEN
+      CALL Warn(Caller, 'The formulation for Second Kind Basis seems numerically unstable')
+    END IF
     
     ! Share the DOFs definition with the vector Helmholtz model so that the solution might be
     ! utilized by the vector Helmholtz model:
@@ -296,7 +300,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
     DO t=1,Active
       Element => GetActiveElement(t,Solver)
       
-      ! We we have several ports then only assembly the correct one. 
+      ! When we have several ports, then assemble only the correct one. 
       IF(MaxPort>0) THEN
         BC => GetBC(Element)
         IF(ListGetInteger(BC,'Port Index',Found ) /= PortInd) CYCLE
