@@ -2207,7 +2207,9 @@ CONTAINS
     StrandedCoil = .FALSE.
     LondonEquations = .TRUE.
     IF (ASSOCIATED(CompParams)) THEN
+!$OMP CRITICAL
       CoilType = GetString(CompParams, 'Coil Type', Found)
+!$OMP END CRITICAL
       IF (Found) THEN
         CoilBody = .TRUE.
         SELECT CASE (CoilType)
