@@ -441,7 +441,8 @@ CONTAINS
           END DO
 
           IF( Elm % DGDofs /= Elm % TYPE % NumberOfNodes ) THEN
-            CALL Fatal(Caller,'Mismatch in sizes in reduced basis DG!')
+            CALL Fatal(Caller,'Mismatch in sizes in reduced basis DG: '&
+                //I2S(Elm % DGDofs)//', '//I2S(Elm % TYPE % NumberOfNodes))
           END IF
 
           IF( PSA ) THEN

@@ -1876,8 +1876,8 @@ CONTAINS
    SUBROUTINE ReadBoundaryFile( BoundariesOnly )
      LOGICAL, OPTIONAL :: BoundariesOnly
      INTEGER, POINTER :: LocalEPerm(:)
-     INTEGER :: MinEIndex, MaxEIndex, ElemNodes, i
-     INTEGER :: Left, Right, bndry, tag, ElemType, IVals(64), nread, ioffset, partn
+     INTEGER :: MinEIndex, MaxEIndex, ElemNodes, i, j
+     INTEGER :: Left, Right, bndry, tag, ElemType, IVals(64), nread, ioffset, partn, nswap
      TYPE(Element_t), POINTER :: Element
      CHARACTER(256) :: str
      LOGICAL :: halo, Binary, BOnly
@@ -1930,7 +1930,8 @@ CONTAINS
        CALL Info('ReadBoundaryFile','Reading boundary elements from file: '//TRIM(FileName),Level=10)
      END IF
 
-
+     nswap = 0
+     
      DO j=Mesh % NumberOfBulkElements+1, &
          Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements
 
@@ -2006,6 +2007,13 @@ CONTAINS
          Right = 0
        END IF
 
+       ! We always want to have "Left" present.
+       IF( Right >= 1 .AND. Left == 0 ) THEN
+         Left = Right
+         Right = 0
+         nswap = nswap + 1
+       END IF
+       
        IF ( Left >= 1 ) THEN
          Element % BoundaryInfo % Left => Mesh % Elements(left)
        END IF
@@ -2028,7 +2036,11 @@ CONTAINS
      END DO
      CLOSE( FileUnit )
 
-
+     IF(nswap > 0) THEN
+       CALL Info('ReadBoundaryFile',&
+           'Swapped '//I2S(nswap)//' "right" owners to "left" to always have left parent existing!')
+     END IF
+            
      IF( ElementPermutation ) THEN
        DEALLOCATE( LocalEPerm ) 
      END IF
