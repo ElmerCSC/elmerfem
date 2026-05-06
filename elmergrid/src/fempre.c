@@ -473,7 +473,7 @@ int main(int argc, char *argv[])
 
   /* Make the discontinuous boundary needed, for example, in poor thermal conduction */
   for(k=0;k<nomeshes;k++) {
-    if(!eg.discont) {
+    if(!eg.discont && k<nogrids) {
       for(j=0;j<grids[k].noboundaries;j++)
 	if(grids[k].boundsolid[j] == 2) {
 	  eg.discontbounds[eg.discont] = grids[k].boundtype[j];
