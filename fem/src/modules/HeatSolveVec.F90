@@ -174,14 +174,14 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   INTEGER :: iter, maxiter, nColours, col, totelem, nthr
   LOGICAL :: Found, VecAsm, InitHandles, InitDiscontHandles, AxiSymmetric, &
       DG, DB, Newton, HaveFactors, DiffuseGray, Radiosity, Spectral, &
-      Converged, PostCalc = .FALSE.
+      HaveRadNewtonRelax, Converged, PostCalc = .FALSE.
   TYPE(Variable_t), POINTER :: PostWeight, PostFlux, PostAbs, PostEmis, PostTemp
   TYPE(ValueList_t), POINTER :: Params 
   TYPE(Mesh_t), POINTER :: Mesh
   REAL(KIND=dp), POINTER :: Temperature(:)
   INTEGER, POINTER :: TempPerm(:)
   REAL(KIND=dp), ALLOCATABLE :: Temps4(:), Emiss(:), Absorp(:), Reflect(:),RadiatorPowers(:)
-  REAL(KIND=dp) :: Norm, StefBoltz
+  REAL(KIND=dp) :: Norm, StefBoltz, RadNewtonRelax
   CHARACTER(LEN=MAX_NAME_LEN) :: EqName
   CHARACTER(*), PARAMETER :: Caller = 'HeatSolver'
 
@@ -231,6 +231,8 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   Radiosity = GetLogical( Params, 'Radiosity Model', Found )
   Spectral = GetLogical( Params,'Spectral Model',Found )
   IF( Spectral ) Radiosity = .TRUE. 
+  RadNewtonRelax = ListGetCReal( Params,&
+      'Radiosity Newton Relaxation Factor',HaveRadNewtonRelax)
   
   IF(.NOT.Radiosity) CALL RadiationFactors( Solver, .FALSE.,.FALSE.) 
 
@@ -1334,7 +1336,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: T0,Text, Fj, &
-        RadLoadAtIp, AngleFraction, Topen, Emis1, Abso1, Refl1, AssFrac
+        RadLoadAtIp, AngleFraction, Topen, Emis1, Abso1, Refl1, AssFrac, cNewton
     REAL(KIND=dp) :: Basis(nd),DetJ,Atext(12),Base(12),S,RadCoeffAtIP
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), TempAtIp
     REAL(KIND=dp), POINTER :: Fact(:) 
@@ -1428,9 +1430,14 @@ CONTAINS
         RadLoadAtIp =  (3 * Emis1 * TempAtIp**3 * StefBoltz - Fact(2)) * TempAtIp &
              + Fact(1) 
         RadCoeffAtIp = 4 * Emis1 * TempAtIp**3 * StefBoltz - Fact(2)
+        
+        IF( HaveRadNewtonRelax ) THEN
+          RadLoadAtIp = RadNewtonRelax * RadLoadAtIp + (1-RadNewtonRelax) * Fact(1)
+          RadCoeffAtIp = RadNewtonRelax * RadCoeffAtIp + (1-RadNewtonRelax) * Emis1 * StefBoltz * TempAtIp**3          
+        END IF
       ELSE
-        RadCoeffAtIp = Emis1 * StefBoltz * TempAtIp**3
         RadLoadAtIp = Fact(1)
+        RadCoeffAtIp = Emis1 * StefBoltz * TempAtIp**3
       END IF
       
       DO t=1,IP % n
