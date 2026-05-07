@@ -3565,10 +3565,10 @@ CONTAINS
        ELSE
          DG = .FALSE.
        END IF
+       DG = DG .OR. inDofs(el_id,4) == 0
        
-       IF ( inDofs(el_id,4) == 0 ) THEN
+       IF ( DG ) THEN
          inDOFs(el_id,4) = n
-         DG = .TRUE.
        END IF
 
        NULLIFY( Element % DGIndexes )

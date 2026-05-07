@@ -2539,6 +2539,7 @@ CONTAINS
     INTEGER :: i,j,k,s,nlen,eqn,MeshKeep,MeshLevels,nprocs,ModuloMesh,iostat,iLevel
     LOGICAL :: GotIt,GotMesh,found,OneMeshName, OpenFile, Transient
     LOGICAL :: stat, single, MeshGrading, Split
+    LOGICAL :: DG
     TYPE(Solver_t), POINTER :: Solver
     INTEGER(KIND=AddrInt) :: InitProc
     INTEGER, TARGET :: Def_Dofs(10,6)
@@ -2755,14 +2756,15 @@ CONTAINS
 
       ! Define what kind of element we are working with in this solver
       !-----------------------------------------------------------------
+      DG = ListGetLogical( Solver % Values, 'Discontinuous Galerkin', stat )
+      Solver % DG = DG
       ElementDef = ListGetString( Solver % Values, 'Element', stat )
    
       IF ( .NOT. stat ) THEN
-        IF ( ListGetLogical( Solver % Values, 'Discontinuous Galerkin', stat ) ) THEN
+        IF ( DG ) THEN
            Solver % Def_Dofs(:,:,4) = 0  ! The final value is set when calling LoadMesh2 
            IF ( .NOT. GotMesh ) Def_Dofs(:,4) = MAX(Def_Dofs(:,4),0 )
            i=i+1
-           Solver % DG = .TRUE.
            CYCLE
         ELSE
            ElementDef = "n:1"
