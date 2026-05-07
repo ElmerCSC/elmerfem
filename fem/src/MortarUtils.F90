@@ -9881,19 +9881,7 @@ CONTAINS
       n = Face % TYPE % NumberOfNodes
       edofs = n * Mesh % MaxEdgeDOFs
 
-! TO DO: get face dofs count via a subroutine call      
-!      nd = mGetElementDOFs(Indexes, Edge, Solver, notDG = .TRUE.)
-      
       fdofs = MAX(0, Face % BDOFs)
-!      fdofs = MAX(0, Bmesh1 % Elements(e) % bdofs)
-      
-!      IF( n == 4 ) THEN
-!        IF(Piola) fdofs = 2
-!      ELSE IF( n == 3 ) THEN
-!        CONTINUE
-!      ELSE
-!        CALL Fatal(Caller,'Invalid number of nodes: '//I2S(n))
-!      END IF
       
       CALL CheckFaceBasisDirections(Face, FaceM, edofs, fdofs, BasisDegree, &
           Radial, swap)
