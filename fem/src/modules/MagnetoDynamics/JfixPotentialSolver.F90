@@ -263,7 +263,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
       END IF
     END IF
   
-    IF ( ParEnv % PEs>1) ParEnv => A % ParMatrix % ParEnv
+    IF ( ParEnv % PEs>1) ParEnv => A % Solver % ParEnv
 
     CALL SolveSystem(A,ParMatrix,A % rhs,jfixpot % Values,jfixpot % Norm,1,Solver)
     
@@ -283,7 +283,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
       CALL Info('JfixPotentialSolver',Message,Level=8)
     END IF   
 
-    IF ( ParEnv % PEs>1) ParEnv => B % ParMatrix % ParEnv
+    IF ( ParEnv % PEs>1) ParEnv => B % Solver % ParEnv
     
     CALL ListPopNameSpace()
 

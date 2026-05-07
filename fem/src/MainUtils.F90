@@ -3305,7 +3305,8 @@ CONTAINS
     ParEnv_Common = ParEnv_Save
     ParEnv => ParEnv_Common
     IF(ParEnv % PEs>1) THEN
-      IF(.NOT.ASSOCIATED(ParEnv % Active)) ALLOCATE(ParEnv % Active(ParEnv % PEs))
+!     IF(.NOT.ASSOCIATED(ParEnv % Active)) ALLOCATE(ParEnv % Active(ParEnv % PEs))
+      ALLOCATE(ParEnv % Active(ParEnv % PEs))
       ParEnv % Active = .TRUE.
       ParEnv % ActiveComm = ELMER_COMM_WORLD
     END IF
@@ -4531,8 +4532,8 @@ CONTAINS
             Solver % Variable => TotMatrix % SubVector(ColVar) % Var
             CALL ParallelInitMatrix(Solver,Amat)
 
-            Amat % ParMatrix % ParEnv % ActiveComm = Amat % Comm
-            ParEnv => Amat % ParMatrix % ParEnv
+            Amat % Solver % ParEnv % ActiveComm = Amat % Comm
+            ParEnv => Amat % Solver % ParEnv
             CALL ParallelActive( .TRUE.)
           END DO
         END DO
@@ -5278,7 +5279,7 @@ CONTAINS
              IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % GInterface) ) THEN
                IF (.NOT. ASSOCIATED(Solver % Matrix % ParMatrix) ) &
                    CALL ParallelInitMatrix(Solver, Solver % Matrix )               
-               ParEnv => Solver % Matrix % ParMatrix % ParEnv
+               ParEnv => Solver % ParEnv
                ParEnv % ActiveComm = Solver % Matrix % Comm
              END IF
            END IF           
@@ -5327,7 +5328,7 @@ BLOCK
 
        IF ( ASSOCIATED(Solver  % Matrix) ) THEN
           IF ( ASSOCIATED(Solver  % Matrix % ParMatrix) ) THEN
-            ParEnv => Solver % Matrix % ParMatrix % ParEnv
+            ParEnv => Solver % ParEnv
           END IF
        END IF
 
@@ -5419,7 +5420,7 @@ END BLOCK
            IF (.NOT. ASSOCIATED(Solver % Matrix % ParMatrix) ) &
              CALL ParallelInitMatrix(Solver, Solver % Matrix )
 
-           ParEnv => Solver % Matrix % ParMatrix % ParEnv
+           ParEnv => Solver % ParEnv
            ParEnv % ActiveComm = Solver % Matrix % Comm
 
 #if 0

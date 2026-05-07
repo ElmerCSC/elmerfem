@@ -287,9 +287,9 @@ CONTAINS
     LOGICAL, OPTIONAL :: NeighboursOnly
 !-----------------------------------------------------------------------
     IF(PRESENT(NeighboursOnly)) THEN
-      CALL FindActivePEs( ParallelInfo, SourceMatrix, NeighboursOnly )
+      CALL FindActivePEs(ParallelInfo, SourceMatrix, NeighboursOnly)
     ELSE
-      CALL FindActivePEs( ParallelInfo, SourceMatrix )
+      CALL FindActivePEs(ParallelInfo, SourceMatrix)
     END IF
 !-----------------------------------------------------------------------
   END SUBROUTINE ParEnvInit
@@ -306,14 +306,16 @@ CONTAINS
 
     ALLOCATE( Active(ParEnv % PEs) )
 
-    IF ( .NOT. ASSOCIATED(ParEnv % Active) ) &
-       ALLOCATE( ParEnv % Active(ParEnv % PEs) )
+    IF ( .NOT. ASSOCIATED(ParEnv % Active) ) THEN
+      ALLOCATE( ParEnv % Active(ParEnv % PEs) )
+    END IF
 
     ParEnv % Active = .FALSE.
     Active = .FALSE.
     Active(ParEnv % MYPe+1) = L
     CALL MPI_ALLREDUCE(Active,ParEnv % Active,ParEnv % PEs, &
          MPI_LOGICAL,MPI_LOR,ELMER_COMM_WORLD,ierr)
+
     DEALLOCATE( Active )
 !-----------------------------------------------------------------------
   END SUBROUTINE SParIterActive
@@ -323,7 +325,7 @@ CONTAINS
 !-----------------------------------------------------------------------
 !> Find active PEs using ParallelInfo % NeighbourList
 !-----------------------------------------------------------------------
-  SUBROUTINE FindActivePEs( ParallelInfo, SourceMatrix, JustNeighbours )
+  SUBROUTINE FindActivePEs(ParallelInfo, SourceMatrix, JustNeighbours)
 !-----------------------------------------------------------------------
     LOGICAL, OPTIONAL :: JustNeighbours
     TYPE(Matrix_t) :: SourceMatrix
@@ -349,6 +351,7 @@ CONTAINS
     LOGICAL :: L, Interf
     REAL(KIND=dp) :: tstart, tend,s
     LOGICAL(KIND=1), ALLOCATABLE :: NeighAll(:,:)
+
     !******************************************************************
 
     IF ( .NOT. ASSOCIATED(ParEnv % Active) ) THEN
@@ -361,6 +364,7 @@ CONTAINS
     END IF
     ParEnv % IsNeighbour = .FALSE.
     ParEnv % NumOfNeighbours = 0
+
 
     !------------------------------------------------------------------
     ! Count the number of real neighbours for this partition
@@ -575,7 +579,6 @@ CONTAINS
       END DO
 #endif
 !   END IF
-
 
     DEALLOCATE( Active )
 

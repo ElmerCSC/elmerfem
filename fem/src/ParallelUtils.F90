@@ -87,7 +87,7 @@ CONTAINS
     SUBROUTINE ParallelInitMatrix( Solver, Matrix, inPerm )
 !-------------------------------------------------------------------------------
        INTEGER, POINTER, OPTIONAL :: inPerm(:)
-       TYPE(Solver_t) :: Solver
+       TYPE(Solver_t), TARGET :: Solver
        TYPE(Matrix_t), POINTER :: Matrix
 !-------------------------------------------------------------------------------
        TYPE(ParallelInfo_t), POINTER :: MatrixPI, MeshPI
@@ -113,14 +113,12 @@ CONTAINS
        INTEGER :: Ierr, status(MPI_STATUS_SIZE)
 
 !-------------------------------------------------------------------------------
-
-
 !tt = realtime()
 #ifdef PARALLEL_FOR_REAL
        IF ( ParEnv % PEs <= 1 .OR. .NOT. ASSOCIATED(Matrix) ) RETURN
 
        CALL Info('ParallelInitMatrix','Creating communication structures for matrix!',Level=5)
-       
+
        Mesh => Solver % Mesh
        DOFs = Solver % Variable % DOFs
 
@@ -569,6 +567,7 @@ CONTAINS
          IF(NeighboursGiven) NeighboursGiven = ASSOCIATED(Solver % Matrix % AddMatrix % ParallelInfo % &
                              NeighbourList)
 
+
          j=0
          DO i=Matrix % NumberOFRows-Matrix % ExtraDOFs+1,Matrix % NumberOfRows
            j=j+1
@@ -784,7 +783,8 @@ CONTAINS
            IF (ListGetString(CurrentModel % Bcs(i) % Values, 'Radiation',Found)=='diffuse gray' .OR. &
                 ListGetLogical( CurrentModel % Bcs(i) % Values, 'Radiator BC', Found)) SkipActiveCheck=.TRUE.
          END DO
-         Matrix % ParMatrix => ParInitMatrix( Matrix, Matrix % ParallelInfo, SkipActiveCheck)
+         Matrix % Solver => Solver
+         Matrix % ParMatrix => ParInitMatrix(Matrix, Matrix % ParallelInfo, SkipActiveCheck)
        END BLOCK
        
        ! We can make many routines quicker if we know there is nothing to share.
@@ -908,7 +908,7 @@ CONTAINS
        IF(.NOT. ASSOCIATED(Matrix % ParMatrix)) THEN
          CALL Fatal('ParallelInitSolve','ParMatrix not associated!')
        END IF
-       ParEnv => Matrix % ParMatrix % ParEnv
+       ParEnv => Matrix % Solver % ParEnv
        IF(.NOT. ASSOCIATED(ParEnv)) THEN
          CALL Fatal('ParallelInitSolve','ParEnv not associated!')
        END IF
@@ -932,7 +932,7 @@ CONTAINS
 !-------------------------------------------------------------------------------
        IF(Matrix % ParallelInfo % NothingShared ) RETURN
 
-       ParEnv => Matrix % ParMatrix % ParEnv
+       ParEnv => Matrix % Solver % ParEnv
        IF(.NOT.ASSOCIATED(Parenv % Active)) THEN
          ParEnv = ParEnv_Common
        END IF
@@ -954,7 +954,7 @@ CONTAINS
 !-------------------------------------------------------------------------------
        IF(Matrix % ParallelInfo % NothingShared ) RETURN
 
-       ParEnv => Matrix % ParMatrix % ParEnv
+       ParEnv => Matrix % Solver % ParEnv
        ParEnv % ActiveComm = Matrix % Comm
 
        CALL ExchangeSourceVecInt( Matrix, Matrix % ParMatrix % SplittedMatrix, &
@@ -978,7 +978,7 @@ CONTAINS
       ! We can inherit the ParEnv from the primary matrix even
       ! though the variable is not directly associated to it!
       IF( PRESENT( Matrix ) ) THEN
-        ParEnv => Matrix % ParMatrix % ParEnv
+        ParEnv => Matrix % Solver % ParEnv
         ParEnv % ActiveComm = Matrix % Comm
       END IF
 
@@ -1028,7 +1028,7 @@ CONTAINS
       GlobalData => Matrix % ParMatrix
       SaveMatrix  => GlobalMatrix
       GlobalMatrix => Matrix
-      ParEnv => GlobalData % ParEnv
+      ParEnv => GlobalMatrix % Solver % ParEnv
       ParEnv % ActiveComm = Matrix % Comm
 
       UpdateL = .FALSE.
@@ -1138,7 +1138,7 @@ CONTAINS
       GlobalData => Matrix % ParMatrix
       SaveMatrix  => GlobalMatrix
       GlobalMatrix => Matrix
-      ParEnv => GlobalData % ParEnv
+      ParEnv => GlobalMatrix % Solver % ParEnv
       ParEnv % ActiveComm = Matrix % Comm
       IF ( PRESENT( Update ) ) THEN
         CALL Fatal('ParallelMatrixVectorC','Cannot handle parameter > Update <')
@@ -1413,6 +1413,7 @@ CONTAINS
       INTEGER, OPTIONAL :: oper_arg
 !-------------------------------------------------------------------------------
       INTEGER :: oper
+      LOGICAL :: alloc
 !-------------------------------------------------------------------------------
       rsum = r
 #ifdef PARALLEL_FOR_REAL
@@ -1424,9 +1425,13 @@ CONTAINS
           oper = 0
         END IF
 
-        IF (.NOT.ASSOCIATED(ParEnv % Active)) &
-          CALL ParallelActive(.TRUE.)
+        alloc = ASSOCIATED(ParEnv % Active)
+        IF (.NOT.alloc) CALL ParallelActive(.TRUE.)
         CALL SparActiveSUM(rsum,oper)
+        IF(.NOT.alloc) THEN
+!         DEALLOCATE(ParEnv % active)
+!         PArEnv % Active => null()
+        END IF
       END IF
 #endif
 !-------------------------------------------------------------------------------
@@ -1443,6 +1448,7 @@ CONTAINS
       INTEGER, OPTIONAL :: oper_arg
 !-------------------------------------------------------------------------------
       INTEGER :: oper
+      LOGICAL :: alloc
 !-------------------------------------------------------------------------------
       isum = i
 #ifdef PARALLEL_FOR_REAL
@@ -1454,8 +1460,13 @@ CONTAINS
           oper = 0
         END IF
 
-        IF (.NOT.ASSOCIATED(ParEnv % Active)) CALL ParallelActive(.TRUE.)
+        alloc = ASSOCIATED(ParEnv % Active)
+        IF (.NOT.alloc) CALL ParallelActive(.TRUE.)
         CALL SparActiveSUMInt(isum,oper)
+        IF(.NOT.alloc) THEN
+!         DEALLOCATE(ParEnv % active)
+!         PArEnv % Active => null()
+        END IF
       END IF
 #endif
 !-------------------------------------------------------------------------------
@@ -1472,6 +1483,7 @@ CONTAINS
       INTEGER, OPTIONAL :: oper_arg
 !-------------------------------------------------------------------------------
       INTEGER :: oper
+      LOGICAL :: alloc
 !-------------------------------------------------------------------------------
       zsum = z
 #ifdef PARALLEL_FOR_REAL
@@ -1483,9 +1495,13 @@ CONTAINS
           oper = 0
         END IF
 
-        IF (.NOT.ASSOCIATED(ParEnv % Active)) &
-            CALL ParallelActive(.TRUE.)
+        alloc = ASSOCIATED(ParEnv % Active)
+        IF (.NOT.alloc) CALL ParallelActive(.TRUE.)
         CALL SparActiveSUMComplex(zsum,oper)
+        IF(.NOT.alloc) THEN
+!         DEALLOCATE(ParEnv % active)
+!         PArEnv % Active => null()
+        END IF
       END IF
 #endif
 !-------------------------------------------------------------------------------
@@ -1603,7 +1619,7 @@ CONTAINS
 !--------------------------------'-----------------------------------------------
     SUBROUTINE ParallelMergeMatrix( Solver, A, A1, A2 )
 !-------------------------------------------------------------------------------
-      TYPE(Solver_t) :: Solver
+      TYPE(Solver_t), TARGET :: Solver
       TYPE(Matrix_t), POINTER :: A, A1, A2
 !-------------------------------------------------------------------------------
       TYPE(Matrix_t), POINTER :: Ai
@@ -1719,6 +1735,7 @@ BLOCK
 END BLOCK
 
      ! Finalize creation of parallel structures
+     A % Solver => Solver
      A % ParMatrix => ParInitMatrix( A, A % ParallelInfo )
 #endif
 !-------------------------------------------------------------------------------

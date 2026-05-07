@@ -6087,9 +6087,9 @@ SUBROUTINE GetNodalElementSize(Model,expo,noweight,h)
 
       CALL ParallelInitMatrix(Solver, Solver % Matrix )
 
-      Solver % Matrix % ParMatrix % ParEnv % ActiveComm = &
+      Solver % ParEnv % ActiveComm = &
                  Solver % Matrix % Comm
-      ParEnv => Solver % Matrix % ParMatrix % ParEnv
+      ParEnv => Solver % ParEnv
     END IF
   END IF
 
@@ -6246,6 +6246,7 @@ END SUBROUTINE GetNodalElementSize
 !------------------------------------------------------------------------------
 
     CALL Info('FreeSolver','Free solver matrix',Level=20)
+    Solver % Matrix => Null() ! problems...
     CALL FreeMatrix(Solver % Matrix)
 
     CALL Info('FreeSolver','Free solver miscellaneous',Level=20)

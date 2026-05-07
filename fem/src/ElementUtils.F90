@@ -65,9 +65,10 @@ CONTAINS
 !------------------------------------------------------------------------------
      TYPE(Matrix_t), POINTER :: Matrix
 !------------------------------------------------------------------------------
-     TYPE(Solver_t) :: Solver
+     TYPE(Solver_t), POINTER :: Solver
      REAL(KIND=dp) :: x(1), b(1)
      INTEGER :: i
+     LOGICAL :: Active
 
      TYPE(SplittedMatrixT), POINTER :: s
      TYPE(BasicMatrix_t), POINTER :: m
@@ -92,6 +93,7 @@ CONTAINS
 
      IF ( .NOT. ASSOCIATED( Matrix ) ) RETURN
 
+     Solver => Matrix % Solver
      CALL DirectSolver( Matrix,x,b,Solver,Free_Fact=.TRUE.)
 
      IF ( ASSOCIATED( Matrix % Perm ) )        DEALLOCATE( Matrix % Perm )
@@ -295,12 +297,26 @@ CONTAINS
        END IF
        DEALLOCATE(s)
 
-       IF(ASSOCIATED(p % ParEnv % Active)) THEN
-         DEALLOCATE(p % ParEnv % Active)
+       IF(ASSOCIATED(Solver % ParEnv % Active)) THEN
+         active = .FALSE.
+         DO i=1,CurrentModel % NumberOfSolvers
+           IF  (ASSOCIATED(Solver,CurrentModel % Solvers(i))) CYCLE
+           IF ( ASSOCIATED(Solver  % ParEnv % Active, CurrentModel % Solvers(i) % ParEnv % Active) ) &
+                   active = .TRUE.
+         END DO
+         IF( .NOT. active ) DEALLOCATE(Solver % ParEnv % Active)
+         Solver % ParEnv % Active => Null()
        END IF
 
-       IF(ASSOCIATED(p % ParEnv % Isneighbour)) THEN
-         DEALLOCATE(p % ParEnv % Isneighbour)
+       IF(ASSOCIATED(Solver % ParEnv % Isneighbour)) THEN
+         active = .FALSE.
+         DO i=1,CurrentModel % NumberOfSolvers
+           IF  (ASSOCIATED(Solver,CurrentModel % Solvers(i))) CYCLE
+           IF ( ASSOCIATED(Solver  % ParEnv % IsNeighbour, CurrentModel % Solvers(i) % ParEnv % IsNeighbour) ) &
+                   Active = .TRUE.
+         END DO
+         IF ( .NOT. Active ) DEALLOCATE(Solver % ParEnv % Isneighbour)
+         Solver % ParEnv % IsNeighbour => Null()
        END IF
 
        DEALLOCATE(p)
@@ -1967,23 +1983,24 @@ CONTAINS
      END IF
 
      
-     IF( ParEnv % PEs > 1 .AND. &
-         ListGetLogical( Solver % Values,'Skip Pure Halo Nodes',Found ) ) THEN
-       CALL Info(Caller,'Skipping pure halo nodes',Level=14)
-       j = 0
-       DO i=1,Mesh % NumberOfNodes 
-         ! These are pure halo nodes that need not be communicated. They are created only 
-         ! for sufficient geometric information on the boundaries.
-         IF( .NOT. ANY( ParEnv % Mype == Mesh % ParallelInfo % NeighbourList(i) % Neighbours ) ) THEN
-           Perm(i) = 0
-         ELSE IF( Perm(i) > 0 ) THEN
-           j = j + 1
-           Perm(i) = j
-         END IF
-       END DO
-       PRINT *,'Eliminating '//I2S(k-j)//' halo nodes out of '&
-           //I2S(k)//' in partition '//I2S(ParEnv % MyPe)
-       k = j
+     IF( ParEnv % PEs > 1 ) THEN
+       IF (  ListGetLogical( Solver % Values,'Skip Pure Halo Nodes',Found ) ) THEN
+         CALL Info(Caller,'Skipping pure halo nodes',Level=14)
+         j = 0
+         DO i=1,Mesh % NumberOfNodes 
+           ! These are pure halo nodes that need not be communicated. They are created only 
+           ! for sufficient geometric information on the boundaries.
+           IF( .NOT. ANY( ParEnv % Mype == Mesh % ParallelInfo % NeighbourList(i) % Neighbours ) ) THEN
+             Perm(i) = 0
+           ELSE IF( Perm(i) > 0 ) THEN
+             j = j + 1
+             Perm(i) = j
+           END IF
+         END DO
+         PRINT *,'Eliminating '//I2S(k-j)//' halo nodes out of '&
+             //I2S(k)//' in partition '//I2S(ParEnv % MyPe)
+         k = j
+       END IF
      END IF
 
      

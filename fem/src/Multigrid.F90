@@ -5286,6 +5286,7 @@ CONTAINS
         CALL CRS_SortMatrix( Matrix2, .TRUE. ) 
         
         ! Finalize creation of parallel structures
+        Matrix2 % Solver => Solver
         Matrix2 % ParMatrix => ParInitMatrix( Matrix2, Matrix2 % ParallelInfo )        
       ELSE              
         !      CALL CRS_InspectMatrix( Matrix1 )         

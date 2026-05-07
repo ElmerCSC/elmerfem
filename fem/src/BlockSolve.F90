@@ -5258,8 +5258,8 @@ CONTAINS
               CALL ParallelInitMatrix(Solver,Amat)
             END IF
             IF(ASSOCIATED(Amat % ParMatrix )) THEN
-              Amat % ParMatrix % ParEnv % ActiveComm = Amat % Comm
-              ParEnv => Amat % ParMatrix % ParEnv
+              Amat % Solver % ParEnv % ActiveComm = Amat % Comm
+              ParEnv => Amat % Solver % ParEnv
             END IF
             !CALL SParIterActiveBarrier()
           ELSE

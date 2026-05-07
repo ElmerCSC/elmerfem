@@ -264,7 +264,7 @@ c     %---------------%
 c     | Local Scalars |
 c     %---------------%
 c
-      logical    first, orth1, orth2, rstart, step3, step4
+      logical    first0, first, orth1, orth2, rstart, step3, step4
       integer    ierr, i, infol, ipj, irj, ivj, iter, itry, j, msglvl,
      &           jj
       Real
@@ -316,6 +316,13 @@ c     %-----------------------%
 c     | Executable Statements |
 c     %-----------------------%
 c
+c
+c     needs to do the initialization (perhaps repeatedly), if some of the partners is new:
+c
+      first0 = first
+      call MPI_ALLREDUCE( first0, first, 1, MPI_LOGICAL,
+     &           MPI_LAND, comm, ierr )
+
       if (first) then
 c
 c        %-----------------------------------------%

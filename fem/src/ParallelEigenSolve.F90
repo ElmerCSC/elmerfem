@@ -153,6 +153,7 @@ CONTAINS
       Solution    = 0
       ForceVector = 0
       Residual    = 0
+      IPNTR = 0
 
       DOFs = Solver % Variable % DOFs
       CALL ParallelInitSolve( A, Solution, ForceVector, Residual )
@@ -730,6 +731,7 @@ CONTAINS
       Solution    = 0
       ForceVector = 1
       Residual    = 0
+      IPNTR = 0
 
       DOFs = Solver % Variable % DOFs
       CALL ParallelInitSolve( Matrix, Solution, ForceVector, Residual )
@@ -761,10 +763,19 @@ CONTAINS
 
       ALLOCATE( WORKL(3*NCV**2 + 6*NCV), D(NCV), &
          WORKEV(3*NCV), V(PN,NCV), CHOOSE(NCV), WORKD(3*pn), RESID(pn), xx(pn), STAT=istat )
-
       IF ( istat /= 0 ) THEN
          CALL Fatal( 'ParallelEigenSolve', 'Memory allocation error.' )
       END IF
+
+      WORKL = 0
+      D = 0
+      WORKEV = 0
+      V=0
+      CHOOSE=.FALSE.
+      WORKD=0
+      RESID = 0
+      xx = 0
+
 !
 !     %--------------------------------------------------%
 !     | The work array WORKL is used in DSAUPD as        |
@@ -900,7 +911,7 @@ CONTAINS
          END IF
       END IF
 
-      IF ( .NOT. Direct .OR. DirectMethod /= 'mumps' .AND. DirectMethod /= 'zmumps' )  THEN
+      IF ( .NOT. Direct .OR. (DirectMethod /= 'mumps' .AND. DirectMethod /= 'zmumps') )  THEN
         LinIter = ListGetInteger( Solver % Values, 'Linear System Max Iterations', stat )
         IF ( .NOT. Stat ) LinIter = 1000
         LinConv = ListGetConstReal( Solver % Values, 'Linear System Convergence Tolerance', stat )

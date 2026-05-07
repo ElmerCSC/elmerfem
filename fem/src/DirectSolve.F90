@@ -1486,7 +1486,6 @@ CONTAINS
 
     IF(ASSOCIATED(A % ParallelInfo)) THEN
       n = SIZE(A % ParallelInfo % GlobalDOFs)
-
       ALLOCATE( A % Gorder(n), Owner(n) )
       CALL ContinuousNumbering( A % ParallelInfo, A % Perm, A % Gorder, Owner )
       CALL MPI_ALLREDUCE( SUM(Owner)/2,A % ZMumpsID % n,1,MPI_INTEGER, MPI_SUM,A % ZMumpsID % Comm,ierr )

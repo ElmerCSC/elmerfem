@@ -133,7 +133,7 @@ SUBROUTINE Adjoint_GradientValidation ( Model,Solver,dt,TransientSimulation )
            ! Check we have a parallel run
            Parallel = .FALSE.
            IF(ASSOCIATED(Solver %  Matrix % ParMatrix)) Then
-             IF ( Solver %  Matrix % ParMatrix % ParEnv % PEs > 1 ) Parallel =.True.
+             IF ( Solver % ParEnv % PEs > 1 ) Parallel =.True.
              MyPe=ParEnv % MyPe
            End if
 

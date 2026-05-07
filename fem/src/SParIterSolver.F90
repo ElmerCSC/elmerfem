@@ -86,7 +86,7 @@ CONTAINS
   !
   ! Initialize the Matrix structures for parallel environment
   !
-  FUNCTION ParInitMatrix( SourceMatrix, ParallelInfo, SkipActiveCheck ) RESULT ( SParMatrixDesc )
+  FUNCTION ParInitMatrix(SourceMatrix, ParallelInfo, SkipActiveCheck) RESULT (SParMatrixDesc)
     TYPE (Matrix_t),TARGET :: SourceMatrix
     TYPE (ParallelInfo_t), TARGET :: ParallelInfo
     TYPE (SParIterSolverGlobalD_t), POINTER :: SParMatrixDesc
@@ -94,24 +94,32 @@ CONTAINS
 
     TYPE (ParEnv_t), POINTER :: ParallelEnv
     INTEGER :: pes
+    LOGICAL :: assoc
     !******************************************************************
+
 
     pes = ParEnv % PEs
     ALLOCATE( SParMatrixDesc )
-    SParMatrixDesc % ParEnv = ParEnv
-           
-    ALLOCATE(SParMatrixDesc % ParEnv % Active(ParEnv % PEs))
-    SParMatrixDesc % ParEnv % Active = ParEnv % Active
-    SParMatrixDesc % ParEnv % IsNeighbour => Null()
-    ParEnv => SParMatrixDesc % ParEnv
-    
+    SourceMatrix % Solver % ParEnv = ParEnv
+
+    IF ( .NOT. ASSOCIATED(ParEnv % active) ) THEN
+      ALLOCATE(ParEnv % Active(Parenv % PEs))
+      ParEnv % Active = .TRUE.
+    END IF
+
+    IF (.NOT.ASSOCIATED(SourceMatrix % Solver % ParEnv % Active) ) &
+      ALLOCATE(SourceMatrix % Solver % ParEnv % Active(ParEnv % PEs))
+
+    SourceMatrix % Solver % ParEnv % Active = ParEnv % Active
+    ParEnv => SourceMatrix % Solver % ParEnv
+    SourceMatrix % Solver % ParEnv % IsNeighbour => Null()
+
     IF( ParEnv % PEs /= pes ) THEN
       WRITE(Message,'(A,I0,A,I0)') '#np changed during simulation from ',pes,' to ',ParEnv % PEs
       CALL Fatal('ParInitMatrix',Message)
     END IF
     
-    CALL ParEnvInit(SParMatrixDesc, ParallelInfo, SourceMatrix, &
-        SkipActiveCheck )
+    CALL ParEnvInit(SParMatrixDesc, ParallelInfo, SourceMatrix,  SkipActiveCheck)
 
     SParMatrixDesc % Matrix => SourceMatrix
     SParMatrixDesc % DOFs = 1
@@ -119,8 +127,7 @@ CONTAINS
     
     ParEnv % ActiveComm = SourceMatrix % Comm
     
-    SParMatrixDesc % SplittedMatrix => &
-                        SplitMatrix( SourceMatrix, ParallelInfo )
+    SParMatrixDesc % SplittedMatrix => SplitMatrix( SourceMatrix, ParallelInfo )
 
     
   END FUNCTION ParInitMatrix
@@ -1220,7 +1227,7 @@ END SUBROUTINE ZeroSplittedMatrix
 !----------------------------------------------------------------------
 
     GlobalData     => SourceMatrix % ParMatrix
-    ParEnv         => GlobalData % ParEnv
+    ParEnv         => SourceMatrix % Solver % ParEnv
     ParEnv % ActiveComm = SourceMatrix % Comm
     SplittedMatrix => Globaldata % SplittedMatrix
 
@@ -1816,7 +1823,7 @@ SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
   !******************************************************************
   SaveGlobalData => GlobalData
   GlobalData     => SParMatrixDesc
-  ParEnv         => GlobalData % ParEnv
+  ParEnv         => SourceMatrix % Solver % ParEnv
   ParEnv % ActiveComm = SourceMatrix % Comm
   SplittedMatrix => SParMatrixDesc % SplittedMatrix
 

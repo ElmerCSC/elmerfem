@@ -186,7 +186,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
 
   SAVE :: SavePerm, SaveEigenVectors
-  
+ 
   CALL Info(Caller,'',Level=8)
   CALL Info(Caller,'------------------------------------------------',Level=6)
   CALL Info(Caller,'Solving electromagnetic port equations over a surface')
@@ -237,7 +237,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
     ALLOCATE(SaveEigenVectors(n,m))
     SaveEigenVectors = 0.0_dp
   END IF
-    
+
   DOFs = Solver % Variable % Dofs
   IF (DOFs /= 2) THEN
     CALL Fatal(Caller, 'Complex field, specify two DOFs instead of '//I2S(DOFs))
@@ -279,7 +279,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
         CALL ParallelActiveSubset(MeActive)
 
         IF(.NOT. MeActive) THEN
-           CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
+           !CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
            CYCLE
         END IF
       END IF
@@ -296,7 +296,6 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
       IF(.NOT. Found ) ModeIndex = 1            
     END IF
 
-    
     DO t=1,Active
       Element => GetActiveElement(t,Solver)
       
@@ -331,7 +330,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
     END DO
   
     CALL DefaultFinishBulkAssembly()
-    
+
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()
     
@@ -345,6 +344,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
     END IF
 
     ! Solve the eigenmodes
+
     Norm = DefaultSolve()
 
     Beta = SQRT(-Solver % Variable % EigenValues(ModeIndex))
@@ -399,7 +399,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
       END DO
     END IF
 
-     CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
+!    CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
   END DO
 
   IF(ParEnv % PEs > 1) CALL ParallelActive(.TRUE.)
@@ -508,14 +508,13 @@ CONTAINS
     END IF
 
     IF ( ASSOCIATED(Solver % Matrix) ) THEN
-       IF ( SOlver % Parallel .AND. MeActive ) THEN
-         IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % GInterface) ) THEN
-           ParEnv % ActiveComm = Solver % Matrix % Comm
+      IF ( Solver % Parallel .AND. MeActive ) THEN
+        IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % GInterface) ) THEN
+          ParEnv % ActiveComm = Solver % Matrix % Comm
 
-           IF (.NOT. ASSOCIATED(Solver % Matrix % ParMatrix) ) then
-             CALL ParallelInitMatrix(Solver, Solver % Matrix )
-          end if
-
+          IF (.NOT. ASSOCIATED(Solver % Matrix % ParMatrix) ) then
+            CALL ParallelInitMatrix(Solver, Solver % Matrix )
+          END IF 
           ParEnv % ActiveComm = Solver % Matrix % Comm
         END IF
      END IF
@@ -597,9 +596,6 @@ CONTAINS
     ! The number of DOFs for one vector FE field  
     vdofs = nd - n
 
-
-
-    
     DO t=1,IP % n
       !--------------------------------------------------------------
       ! Basis function values & derivatives at the integration point:
@@ -709,7 +705,7 @@ CONTAINS
     
     !------------------------------------------------------------------------------
 
-    IF(PortInd > 1) GOTO 10
+!   IF(PortInd > 1) GOTO 10
     
     IF(.NOT. AllocDone ) THEN
       ALLOCATE(PostSolver)
@@ -750,6 +746,7 @@ CONTAINS
     CALL ListAddString( PostSolver % Values,'Equation',TRIM(eqname)//'_post')
     PostSolver % Matrix => CreateMatrix( Model, PostSolver, Mesh, NodalPerm, &
         1, MATRIX_CRS,.FALSE., eqname, NodalDofsOnly = .TRUE.)
+
     PostSolver % Matrix % Values = 0.0_dp
 
     ! Temporal vector for solving one nodal component at a time.    

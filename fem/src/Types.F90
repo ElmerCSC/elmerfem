@@ -382,7 +382,6 @@ MODULE Types
      TYPE (SplittedMatrixT), POINTER :: SplittedMatrix=>NULL()
      TYPE (Matrix_t), POINTER :: Matrix=>NULL()
      INTEGER :: DOFs, RelaxIters
-     TYPE(ParEnv_t) :: ParEnv
      TYPE (ParallelInfo_t), POINTER :: ParallelInfo=>NULL()
   END TYPE SParIterSolverGlobalD_t
 
@@ -978,6 +977,7 @@ MODULE Types
       INTEGER :: LocalSystemMode = -1
       TYPE(LocalSystemStorage_t), POINTER :: LocalSystem(:) => NULL()
 
+      TYPE(ParEnv_t) :: ParEnv
       REAL(KIND=dp), POINTER :: CutInterp(:) => NULL()
     END TYPE Solver_t
 

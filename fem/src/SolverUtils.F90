@@ -6326,7 +6326,6 @@ CONTAINS
       END IF
     END IF
 
-    
     IF( InfoActive(12) )  THEN
       IF( Parallel ) THEN
         DirCount = ParallelReduction( DirCount ) 
@@ -6334,7 +6333,6 @@ CONTAINS
       CALL Info(Caller,'Number of dofs set for '//TRIM(Name)//': '&
           //I2S(DirCount),Level=12)
     END IF
-      
 !------------------------------------------------------------------------------
 
   CONTAINS
@@ -15206,6 +15204,7 @@ END FUNCTION SearchNodeL
     IF ( Parallel  ) THEN
       IF( .NOT. ASSOCIATED(A % ParMatrix) ) THEN
         CALL Info(Caller,'Creating parallel matrix structures',Level=8)
+        A % Solver => Solver
         CALL ParallelInitMatrix( Solver, A )
         IF(A % ParallelInfo % NothingShared ) THEN
           CALL Info(Caller,'No dofs shared in parallel matrix!',Level=6)
@@ -16048,7 +16047,7 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
   SUBROUTINE ROCSolver( A, x, b, Solver )
 !------------------------------------------------------------------------------
-    TYPE(Solver_t) :: Solver
+    TYPE(Solver_t), TARGET :: Solver
     TYPE(Matrix_t), POINTER :: A
     REAL(KIND=dp) :: x(:), b(:)
 
@@ -16177,9 +16176,13 @@ END FUNCTION SearchNodeL
       me    =  Parenv % MyPe
       xmpi_comm = ELMER_COMM_WORLD
 
-      IF (.NOT.ASSOCIATED(A % ParMatrix)) CALL ParallelInitMatrix(Solver,A)
+      IF (.NOT.ASSOCIATED(A % ParMatrix)) THEN
+        A % Solver => Solver
+        CALL ParallelInitMatrix(Solver,A)
+      END IF
 
-      ParEnv => A % ParMatrix % ParEnv
+      A % Solver => Solver
+      ParEnv => A % Solver % ParEnv
       ParEnv % ActiveComm = A % Comm
 
       ! Enforce continuous ascending numbering as required by ROCalution 
@@ -16832,7 +16835,7 @@ END FUNCTION SearchNodeL
             NULLIFY( Acoll % AddMatrix )         
 
             CALL FreeMatrix(Acoll)
-            ParEnv => A % ParMatrix % ParEnv
+            ParEnv => Solver % ParEnv
 
             Acoll => NULL()
           END BLOCK
@@ -17005,7 +17008,7 @@ SUBROUTINE SolveEigenSystem( StiffMatrix, NOFEigen, &
      FUNCTION GenerateStateEquationSystem(Solver,A,n) RESULT(B)
 
        TYPE(Matrix_t), POINTER :: A,B
-       TYPE(Solver_t):: Solver
+       TYPE(Solver_t), TARGET:: Solver
 
        INTEGER :: i,j,k,l,n, max_gdofs
 
@@ -17078,6 +17081,7 @@ SUBROUTINE SolveEigenSystem( StiffMatrix, NOFEigen, &
            B % Perm(i) = A % Perm(i)
            B % Perm(i+n) = A % Perm(i)+n
          END DO
+         B % Solver => Solver
          B % Parmatrix => ParInitMatrix(B, B % ParallelInfo)
        END IF
        n = 2*n
@@ -19984,6 +19988,16 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
     ELSE
       CALL Info( Caller,'Trying to keep previous collection matrix structures',Level=10)
     END IF
+  ELSE
+    IF(ASSOCIATED(Solver % ParEnv % Active)) THEN
+      DEALLOCATE(Solver % ParEnv % Active)
+      Solver % ParEnv % Active => Null()
+    END IF
+
+    IF(ASSOCIATED(Solver % ParEnv % IsNeighbour)) THEN
+      DEALLOCATE(Solver % ParEnv % IsNeighbour)
+      Solver % ParEnv % Isneighbour => Null()
+    END IF
   END IF
 
   IF(.NOT.ASSOCIATED(CollectionMatrix)) THEN
@@ -20446,6 +20460,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
 
   CALL Info(Caller,'Now solving the linear system with constraints!',Level=10)
   Collectionmatrix % DGMatrix = StiffMatrix %  DGMatrix
+
   CALL SolveLinearSystem( CollectionMatrix, CollectionVector, &
      CollectionSolution, Norm, DOFs, Solver, StiffMatrix )
 
