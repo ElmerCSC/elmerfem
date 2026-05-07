@@ -491,7 +491,7 @@ CONTAINS
           END IF
 
           q => Find_Face(Mesh,Parent,Element)                   
-          IF (q % BodyId < 1) q % BodyId = Parent % BodyId  
+          IF (q % BodyId < 1) q % BodyId = Parent % BodyId
           PMesh % Elements(ind) % NodeIndexes(1:n) = q % NodeIndexes(1:n)
           PMesh % Elements(ind) % BoundaryInfo % Left => Parent
           PMesh % Elements(ind) % BoundaryInfo % Right => NULL()
@@ -509,7 +509,9 @@ CONTAINS
           en = q % TYPE % NumberOfEdges
           ALLOCATE(PMesh % Elements(ind) % EdgeIndexes(en))
           Pmesh % Elements(ind) % EdgeIndexes(1:en) = q % EdgeIndexes(1:en)
+          Pmesh % Elements(ind) % BDOFs = q % BDOFs
           Pmesh % Elements(ind) % FaceIndexes => Null()
+          
           EPerm( q % EdgeIndexes(1:en) ) = 1
           PPerm( q % NodeIndexes(1:n) )  = 1
         ELSE
@@ -8805,7 +8807,7 @@ CONTAINS
 
       CALL ConformingEdgePerm(PMesh, BMesh1, BMesh2, PerPerm, PerFlip, AntiPeriodic, GradientVersion )
       IF( DoFaces ) &
-          CALL ConformingFacePerm(PMesh, BMesh1, BMesh2, PerPerm, PerFlip, Solver, AntiPeriodic)
+          CALL ConformingFacePerm(PMesh, BMesh1, BMesh2, PerPerm, PerFlip, Solver, Radial, AntiPeriodic)
     END IF
       
     ! Deallocate mesh structures:
@@ -9753,17 +9755,18 @@ CONTAINS
   ! Create a permutation to eliminate face DOFs in a conforming case.
   !---------------------------------------------------------------------------------
   SUBROUTINE ConformingFacePerm( Mesh, BMesh1, BMesh2, PerPerm, PerFlip, Solver, &
-      AntiPeriodic)
+      Radial, AntiPeriodic)
     TYPE(Mesh_t), POINTER :: Mesh, BMesh1, BMesh2
     INTEGER, POINTER :: PerPerm(:)
     LOGICAL, POINTER :: PerFlip(:)
     TYPE(Solver_t), POINTER :: Solver
+    LOGICAL :: Radial
     LOGICAL, OPTIONAL :: AntiPeriodic 
     !---------------------------------------------------------------------------------      
     INTEGER :: n, indm, e, em, eind, eindm, i, i1, i2, &
         nofaces, nofacesm, nf0, ne0, edofs, fdofs, j, cnts(4)
     TYPE(Element_t), POINTER :: Face, FaceM
-    INTEGER, POINTER :: Indexes(:), IndexesM(:)
+    INTEGER :: Indexes(Mesh % MaxElementDOFs), IndexesM(Mesh % MaxElementDOFs)
     REAL(KIND=dp) :: x1, y1, x2, y2
     INTEGER, ALLOCATABLE :: PeriodicFace(:)
     REAL(KIND=dp), ALLOCATABLE :: FaceX(:), FaceY(:), FaceMX(:), FaceMY(:)
@@ -9771,7 +9774,7 @@ CONTAINS
     INTEGER :: minuscount, samecount, mini, doubleusecount, swap(6)
     INTEGER :: BasisDegree
 !    LOGICAL :: Parallel
-    LOGICAL :: AntiPer, Radial, Piola, SecondFamily, GradVersion, Given
+    LOGICAL :: AntiPer, Piola, SecondFamily, GradVersion, Given
     LOGICAL, ALLOCATABLE :: FaceUsed(:)
     CHARACTER(*), PARAMETER :: Caller = 'ConformingFacePerm'
   
@@ -9788,9 +9791,6 @@ CONTAINS
 
     AntiPer = .FALSE.
     IF( PRESENT( AntiPeriodic ) ) AntiPer = AntiPeriodic
-
-    Radial = ListGetLogicalAnyBC( CurrentModel,'Radial Projector' ) .OR. &
-        ListGetLogicalAnyBC( CurrentModel,'Anti Radial Projector' )
 
     CALL EdgeElementStyle(ListGetSolverParams(Solver), Piola, SecondFamily, &
         BasisDegree = BasisDegree, GradientVersion = GradVersion)
@@ -9880,15 +9880,21 @@ CONTAINS
       
       n = Face % TYPE % NumberOfNodes
       edofs = n * Mesh % MaxEdgeDOFs
-      fdofs = 0
-      IF( n == 4 ) THEN
-        IF(Piola) fdofs = 2
-      ELSE IF( n == 3 ) THEN
-        CONTINUE
-      ELSE
-        CALL Fatal(Caller,'Invalid number of elements: '//I2S(n))
-      END IF
-        
+
+! TO DO: get face dofs count via a subroutine call      
+!      nd = mGetElementDOFs(Indexes, Edge, Solver, notDG = .TRUE.)
+      
+      fdofs = MAX(0, Face % BDOFs)
+!      fdofs = MAX(0, Bmesh1 % Elements(e) % bdofs)
+      
+!      IF( n == 4 ) THEN
+!        IF(Piola) fdofs = 2
+!      ELSE IF( n == 3 ) THEN
+!        CONTINUE
+!      ELSE
+!        CALL Fatal(Caller,'Invalid number of nodes: '//I2S(n))
+!      END IF
+      
       CALL CheckFaceBasisDirections(Face, FaceM, edofs, fdofs, BasisDegree, &
           Radial, swap)
 
