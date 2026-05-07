@@ -5,4 +5,4 @@ CONFIGURE_FILE( beamer3d.sif beamer3d.sif COPYONLY)
 
 file(COPY box.grd ELMERSOLVER_STARTINFO  DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(beamer3d_box LABELS slow radiator)
+ADD_ELMER_TEST(beamer3d_box2 LABELS radiator)

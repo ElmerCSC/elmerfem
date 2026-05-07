@@ -69,6 +69,7 @@ Solver 1
   Viewfactor area tolerance = 0.01
   Viewfactor factor tolerance = 0.001
   Viewfactor number Of Rays = 8
+  Viewfactor Binary Output = True
 
 !  Optimize Bandwidth = False
   Calculate Loads = True
