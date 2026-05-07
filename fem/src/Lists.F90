@@ -4377,10 +4377,11 @@ CONTAINS
 !------------------------------------------------------------------------------
      TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
-     S = ' '
+     S = ''
      IF(PRESENT(DefValue)) S = TRIM(DefValue)
 
      ptr => ListFind(List,Name,Found)
+     
      IF (.NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(UnfoundFatal)) THEN
          IF(UnfoundFatal) THEN

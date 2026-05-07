@@ -1782,15 +1782,12 @@ CONTAINS
 #  endif
 
     INTEGER :: i, j, n, nz, allocstat, icntlft, ptype, nzloc
-    LOGICAL :: matpd, matsym, nullpiv, stat
+    LOGICAL :: matspd, matsym, nullpiv, stat
 
     ! INTEGER :: myrank, ierr
     ! CHARACTER(len=32) :: buf
 
-    IF ( ASSOCIATED(A % mumpsIDL) ) THEN
-         CALL MumpsLocal_Free(A)
-    END IF
-
+    IF ( ASSOCIATED(A % mumpsIDL) ) CALL MumpsLocal_Free(A)
     ALLOCATE(A % mumpsIDL)
 
     ! INITIALIZATION PHASE
@@ -1802,14 +1799,13 @@ CONTAINS
     A % mumpsIDL % PAR = 1 ! Host (=self) takes part in factorization
 
     ! Check if matrix is symmetric or spd
-    matsym = ListGetLogical(Solver % Values, &
-                            'Linear System Symmetric', stat)
-    matpd = ListGetLogical(Solver % Values, &
-                           'Linear System Positive Definite', stat)
+    matsym = ListGetLogical(Solver % Values,'Linear System Symmetric',stat)
+    matspd = ListGetLogical(Solver % Values, &
+                                   'Linear System Positive Definite', stat)
 
     A % mumpsIDL % SYM = 0
     IF (matsym) THEN
-      IF (matpd) THEN
+      IF (matspd) THEN
         ! Matrix is symmetric positive definite
         A % mumpsIDL % SYM = 1
       ELSE
@@ -1826,10 +1822,11 @@ CONTAINS
     ! FACTORIZE PHASE
 
     ! Set stdio parameters
-    A % mumpsIDL % ICNTL(1)  = 6  ! Error messages to stdout
+
+    A % mumpsIDL % ICNTL(1)  =  6  ! Error messages to stdout
     A % mumpsIDL % ICNTL(2)  = -1 ! No diagnostic and warning messages
     A % mumpsIDL % ICNTL(3)  = -1 ! No statistic messages
-    A % mumpsIDL % ICNTL(4)  = 1  ! Print only error messages
+    A % mumpsIDL % ICNTL(4)  =  1  ! Print only error messages
 
     ! Set matrix format
     A % mumpsIDL % ICNTL(5)  = 0  ! Assembled matrix format
@@ -1838,12 +1835,11 @@ CONTAINS
 
     ! Check if solution of singular systems is ok
     A % mumpsIDL % ICNTL(24) = 0
-    nullpiv = ListGetLogical(Solver % Values, &
-                            'Mumps Solve Singular', stat)
+    nullpiv = ListGetLogical(Solver % Values, 'Mumps Solve Singular', stat)
     IF (nullpiv) THEN
       A % mumpsIDL % ICNTL(24) = 1
       A % mumpsIDL % CNTL(1) = 1D-2     ! Pivoting threshold
-      A % mumpsIDL % CNTL(3) = 1D-9     ! Null pivot detection threshold
+      A % mumpsIDL % CNTL(3) = 1D-9    ! Null pivot detection threshold
       A % mumpsIDL % CNTL(5) = 1D6      ! Fixation value for null pivots
       A % mumpsIDL % CNTL(13) = 1       ! Do not use ScaLAPACK on the root node
       ! TODO: if needed, here set CNTL(3) and CNTL(5) as parameters for
@@ -1851,8 +1847,7 @@ CONTAINS
     END IF
 
     ! Set permutation strategy for Mumps
-    ptype = ListGetInteger(Solver % Values, &
-                                'Mumps Permutation Type', stat)
+    ptype = ListGetInteger(Solver % Values, 'Mumps Permutation Type', stat)
     IF (stat) THEN
       A % mumpsIDL % ICNTL(6) = ptype
     END IF
@@ -1892,7 +1887,7 @@ CONTAINS
     ELSE
       ! Set matrix for Mumps (symmetric case)
       nzloc = 0
-      DO i=1,A % NumberOfRows
+      DO i=1,n
         DO j=A % Rows(i),A % Rows(i+1)-1
           ! Only output lower triangular part to Mumps
           IF (i<=A % Cols(j)) THEN
@@ -1962,7 +1957,7 @@ CONTAINS
 #  endif
 
     INTEGER :: i, j, k, n, nz, allocstat, icntlft, ptype, nzloc
-    LOGICAL :: matpd, matsym, nullpiv, stat
+    LOGICAL :: matspd, matsym, nullpiv, stat
 
     ! INTEGER :: myrank, ierr
     ! CHARACTER(len=32) :: buf
@@ -1982,12 +1977,12 @@ CONTAINS
     matsym = ListGetLogical(Solver % Values, &
         'Linear System Symmetric', stat)
  
-    matpd = ListGetLogical(Solver % Values, &
+    matspd = ListGetLogical(Solver % Values, &
         'Linear System Positive Definite', stat)
  
     A % ZmumpsIDL % SYM = 0
 !   IF (matsym) THEN
-!     IF (matpd) THEN
+!     IF (matspd) THEN
 !       ! Matrix is symmetric positive definite
 !       A % ZmumpsIDL % SYM = 1
 !     ELSE
@@ -2173,6 +2168,8 @@ CONTAINS
           RETURN
       END IF
 
+
+      print*,parenv % mype, n,nz; flush(6)
       ALLOCATE(nspace(n*nz), STAT=allocstat)
       IF (allocstat /= 0) THEN
          CALL Fatal( 'MumpsLocal_SolveNullSpace', &

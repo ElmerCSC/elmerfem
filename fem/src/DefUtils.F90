@@ -1310,7 +1310,7 @@ CONTAINS
      LOGICAL, OPTIONAL :: Found
      CHARACTER(:), ALLOCATABLE :: str
 
-     str = TRIM(ListGetString(List, Name, Found))
+     str = ListGetString(List, Name, Found)
   END FUNCTION GetString
 
 
