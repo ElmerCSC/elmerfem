@@ -3693,54 +3693,26 @@ CONTAINS
        ! by using the construct "-quad_face b: ..." and
        ! "-tri_face b: ..."
        !
-       IF ( ASSOCIATED(Element % BoundaryInfo % Left) ) THEN
-         IF( Element % BoundaryInfo % Left % NDOFs == 0 ) THEN
-           Element % NDOFs = 0
-         END IF
-
-         j = Element % BoundaryInfo % Left % ElementIndex
-         Element % BDOFs = 0
-
-         IF ( Element % TYPE % DIMENSION == 1 ) THEN
-           IF(j<1 .OR. j>SIZE(EdgeDOFs)) THEN
-             IF(ASSOCIATED(Element % BoundaryInfo % Left % BoundaryInfo)) THEN
-               IF(ASSOCIATED(Element % BoundaryInfo % Left % BoundaryInfo % Left)) THEN
-                 j = Element % BoundaryInfo % Left % BoundaryInfo % Left % ElementIndex
-                 IF(j<1 .OR. j>SIZE(EdgeDOFs)) THEN
-                   k2 = k2 + 1
-                 ELSE
-                   Element % BDOFs = EdgeDOFs(j)
-                 END IF
-               ELSE
-                 k2 = k2 + 1
-               END IF
-             ELSE
-               k2 = k2 + 1
-             END IF            
-           ELSE
-             Element % BDOFs = EdgeDOFs(j)
-           END IF
+       Element % BDOFs = 0
+       DO l=1,2        
+         IF (l==1) THEN
+           Parent => Element % BoundaryInfo % Left
          ELSE
-           IF(j<1 .OR. j>SIZE(FaceDofs)) THEN
-             k2 = k2 + 1
-           ELSE
-             Element % BDOFs = FaceDOFs(j)
-           END IF
-           Element % BDOFs = MAX(Element % BDOFs, MAX(0,InDOFs(el_id+6,5)))
+           Parent => Element % BoundaryInfo % Right
          END IF
-       END IF
+         IF (.NOT. ASSOCIATED(Parent)) CYCLE
 
-       IF ( ASSOCIATED(Element % BoundaryInfo % Right) ) THEN
-         IF ( Element % BoundaryInfo % Right % NDOFs == 0 ) THEN
+         IF (Parent % NDOFs == 0 ) THEN
            Element % NDOFs = 0
          END IF
 
-         j = Element % BoundaryInfo % Right % ElementIndex
-         IF ( Element % TYPE % DIMENSION == 1 ) THEN
-           IF(j<1 .OR. j>SIZE(EdgeDOFs)) THEN
-             IF(ASSOCIATED(Element % BoundaryInfo % Right % BoundaryInfo)) THEN
-               IF(ASSOCIATED(Element % BoundaryInfo % Right % BoundaryInfo % Left)) THEN
-                 j = Element % BoundaryInfo % Right % BoundaryInfo % Left % ElementIndex
+         j = Parent % ElementIndex
+
+         IF (Element % TYPE % DIMENSION == 1) THEN
+           IF (j<1 .OR. j>SIZE(EdgeDOFs)) THEN
+             IF (ASSOCIATED(Parent % BoundaryInfo)) THEN
+               IF (ASSOCIATED(Parent % BoundaryInfo % Left)) THEN
+                 j = Parent % BoundaryInfo % Left % ElementIndex
                  IF(j<1 .OR. j>SIZE(EdgeDOFs)) THEN
                    k2 = k2 + 1
                  ELSE
@@ -3763,9 +3735,8 @@ CONTAINS
            END IF
            Element % BDOFs = MAX(Element % BDOFs, MAX(0,InDOFs(el_id+6,5)))
          END IF
-       END IF
+       END DO
 
-       
        ! Optionally also set DG indexes for BCs
        ! It is easy for outside boundaries, but for internal boundaries
        ! we need a flag "DG Parent Material".
