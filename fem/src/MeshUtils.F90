@@ -3617,7 +3617,7 @@ CONTAINS
        ! Check if given element is a p element
        IF (FirstOrderElements .AND. inDOFs(el_id,6) > 0) THEN
          CALL AllocatePDefinitions(Element)
-         IF (.NOT. DG) NeedEdges = inDOFs(el_id,6) > 1
+         IF (.NOT. DG) NeedEdges = inDOFs(el_id,6) > 0
          
          ! Calculate element bubble dofs and set element p
 
