@@ -266,13 +266,13 @@ c     %---------------%
 c
       logical    first0, first, orth1, orth2, rstart, step3, step4
       integer    ierr, i, infol, ipj, irj, ivj, iter, itry, j, msglvl,
-     &           jj, rank
+     &           jj
       Double precision
      &           betaj, ovfl, temp1, rnorm1, smlnum, tst1, ulp, unfl,
      &           wnorm
       save       first, orth1, orth2, rstart, step3, step4,
      &           ierr, ipj, irj, ivj, iter, itry, j, msglvl, ovfl,
-     &           betaj, rnorm1, smlnum, ulp, unfl, wnorm, rank
+     &           betaj, rnorm1, smlnum, ulp, unfl, wnorm
 c
       Double precision
      &           rnorm_buf
