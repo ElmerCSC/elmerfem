@@ -3342,7 +3342,7 @@ CONTAINS
      LOGICAL :: NeedEdges, Found, FoundDef0, FoundDef, FoundEq, GotIt, MeshDeps, &
          FoundEqDefs, FoundSolverDefs(Model % NumberOfSolvers), &
          FirstOrderElements, InheritDG, Hit, Stat, &
-         UpdateDefDofs(Model % NumberOfSolvers)
+         UpdateDefDofs(Model % NumberOfSolvers), DG
      TYPE(Element_t), POINTER :: Element, Parent, pParent
      TYPE(Element_t) :: DummyElement
      TYPE(ValueList_t), POINTER :: Vlist
@@ -3581,7 +3581,14 @@ CONTAINS
        EdgeDOFs(i) = MAX(0,inDOFs(el_id,2))
        FaceDOFs(i) = MAX(0,inDOFs(el_id,3))
 
-       IF ( inDofs(el_id,4) == 0 ) THEN
+       IF (PRESENT(mySolver)) THEN
+         DG = Model % Solvers(mySolver) % DG
+       ELSE
+         DG = .FALSE.
+       END IF
+       DG = DG .OR. inDofs(el_id,4) == 0
+       
+       IF ( DG ) THEN
          inDOFs(el_id,4) = n
        END IF
 
@@ -3596,7 +3603,15 @@ CONTAINS
          END DO
        END IF
        Element % DGDOFs = MAX(0,inDOFs(el_id,4))
-       NeedEdges = NeedEdges .OR. ANY( inDOFs(el_id,2:4)>0 )
+
+       IF (DG) THEN
+         NeedEdges = .TRUE.
+       ELSE
+         ! In the case of a non-DG solver the discontinuous DOFs might be created without
+         ! creating edge/face information: 
+         NeedEdges = NeedEdges .OR. ANY( inDOFs(el_id,2:3)>0 )
+       END IF
+!       NeedEdges = NeedEdges .OR. ANY( inDOFs(el_id,2:4)>0 )
        
        
        ! Check if given element is a p element
@@ -3843,6 +3858,9 @@ CONTAINS
      IF( Mesh % MaxEdgeDofs > 0 ) THEN
        CALL Info('NonNodalElements','Edge dofs max: '//I2S(Mesh % MaxEdgeDofs),Level=12)
      END IF
+     IF( Mesh % MaxBDofs > 0 ) THEN
+       CALL Info('NonNodalElements','Elementwise (bubble) dofs max: '//I2S(Mesh % MaxBDofs),Level=12)
+     END IF     
      IF( Mesh % MaxElementDofs > 0 ) THEN
        CALL Info('NonNodalElements','Element dofs max: '//I2S(Mesh % MaxElementDofs),Level=12)
      END IF
