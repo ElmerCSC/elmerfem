@@ -4121,6 +4121,7 @@ CONTAINS
      Indexes = 0
      indSize = 0
 
+     IF ( .NOT. ASSOCIATED(Element % pDefs) ) RETURN
      Parent => Element % pDefs % localParent
      IF ( .NOT. ASSOCIATED(Parent) ) RETURN
              
