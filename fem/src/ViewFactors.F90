@@ -78,7 +78,7 @@
      INTEGER :: divide, LineFlag, LineInteg, TriInteg, QuadInteg
      REAL(KIND=dp) :: AreaEPS, RayEPS, FactEPS
      INTEGER :: NRays, CombineInt
-     LOGICAL :: Combine, Combine3D
+     LOGICAL :: Combine, Combine3D, ElimBB
      REAL(KIND=dp), POINTER :: Coord(:)
      INTEGER, POINTER :: Type(:)
      INTEGER, ALLOCATABLE, TARGET ::  Surf(:)
@@ -97,7 +97,7 @@
      INTEGER :: RadiationBody, MaxRadiationBody
      TYPE(Element_t), POINTER :: RadElements(:)
  
-     REAL(KIND=dp) :: at, rt
+     REAL(KIND=dp) :: at, rt, at2, rt2
      INTEGER :: i,j,k,l,t,n,Ni,istat
 
      ! Radiators on/off, coordinates
@@ -192,7 +192,7 @@
 
        NofRadiators = SIZE(Radiators,1)
        LineFlag = SIZE(Radiators,2) / 6
-       CALL Info( 'RadiatorFactors', 'Computing flux coefficients for ' // &
+       CALL Info(Caller, 'Computing flux coefficients for ' // &
                I2S(NofRadiators) // ' radiative sources', LEVEL=5 )
      END IF
 
@@ -227,7 +227,7 @@
      END IF
 
      IF ( istat /= 0 ) THEN
-       CALL Fatal('Viewfactors', 'Memory allocation error. Aborting' )
+       CALL Fatal(Caller, 'Memory allocation error. Aborting' )
      END IF
 
 !------------------------------------------------------------------------------
@@ -271,10 +271,12 @@
      RadiationBC = .FALSE.
 !------------------------------------------------------------------------------
 
-     DO RadiationBody = 1, MaxRadiationBody
-       Message = 'Computing view factors for radiation body' // I2S(RadiationBody)
-       CALL Info(Caller,Message,Level=3)
-
+     DO RadiationBody = 1, MaxRadiationBody      
+       IF( MaxRadiationBody > 1) THEN
+         CALL Info(Caller,'Computing view factors for radiation body' // I2S(RadiationBody), Level=3)
+       END IF
+       at2 = CPUTime(); rt2 = RealTime()
+         
        ! loop to get the surfaces participating in radiation, discard the rest
        ! of the elements...
        !------------------------------------------------------------------------------
@@ -282,11 +284,11 @@
                      RadiationBody,RadiationOpen)
 
        IF ( n==0 ) THEN
-         CALL Warn( 'Viewfactors', 'No surfaces participating in radiation?' )
+         CALL Warn( Caller, 'No surfaces participating in radiation?' )
          IF(RadiationBody < MaxRadiationBody) THEN
            CYCLE
          ELSE
-           CALL Warn( 'Viewfactors', 'Stopping cause nothing to be done...' )
+           CALL Warn( Caller, 'Stopping cause nothing to be done...' )
            STOP
          END IF
        END IF
@@ -304,7 +306,7 @@
          ALLOCATE( Normals(3*n), Factors(n*n), Surf(4*n), Type(n), STAT=istat )
        END IF
        IF ( istat /= 0 ) THEN
-         CALL Fatal( 'Viewfactors', 'Memory allocation error. Aborting' )
+         CALL Fatal( Caller, 'Memory allocation error. Aborting' )
        END IF
        
        ! go through all surfaces participating in radiation for normal direction:
@@ -342,7 +344,7 @@
        END DO
        ! --------------------
 
-       CALL Info( Caller, 'Computing viewfactors/Radiator factors...', Level=4 )
+       CALL Info( Caller, 'Computing viewfactors/radiator factors...', Level=4 )
        at = CPUTime(); rt = RealTime()
        
        ! Keyword common to cyl symm & cartesian 2d (handled by different codes)
@@ -355,6 +357,8 @@
          CombineInt = 0
        END IF
 
+       ElimBB = .NOT. GetLogical( Params,'Viewfactor BBox Shadow', GotIt)
+       
        IF ( CylindricSymmetry ) THEN
          ! axicymmetric case (radiators not implemeted)
          ! --------------------------------------------
@@ -397,8 +401,8 @@
            RT_Coord => Coord
 
            IF (Combine3D) THEN
-             ! Automatic planar area reduction
-             ! -------------------------------
+             ! Automatic planar area reduction for a coarser shadow mesh
+             ! ---------------------------------------------------------
              RT_Mesh => PlanarReduce(n, Normals, Coord, Mesh)
            ELSE
              ! Given surface OR volume shadow mesh from disk
@@ -408,16 +412,20 @@
 
            ! Extract possible shadowing surfaces
            ! -----------------------------------
-           CALL ExtractMeshInfo( RT_Mesh, RT_n, RT_Coord, RT_Surf, RT_Type, RT_Data, RT_Perm )
+           CALL ExtractMeshInfo( RT_Mesh, RT_n, RT_Coord, RT_Surf, RT_Type, RT_Data, RT_Perm, ElimBBox = ElimBB )
            IF ( RT_n > 0 ) THEN
-             WRITE(Message, *) 'Using separate mesh for shadowing, #elements=', RT_n
-             CALL Info('ViewFactors: ', Message, Level=5 )
+             CALL Info(Caller,'Using separate mesh for shadowing, #elements = '//I2S(RT_n),Level=5)
+             
+             WRITE (Message,'(A,2F8.2)') 'Shadow mesh defined time (s):',&
+                 CPUTime()-at2, Realtime()-rt2
+             CALL Info( Caller,Message, Level=3 )
+             at2 = CPUTime(); rt2 = RealTime()
            END IF
-
+             
            ! ... and finally the beef:
            ! -------------------------
            IF ( DoRadiators ) THEN
-             CALL RadiatorFactors3d( n, Surf, Type, Coord, Normals, RT_n, RT_Surf, &
+             CALL RadiatorFactors3d( n, Surf, TYPE, Coord, Normals, RT_n, RT_Surf, &
                   RT_Data, RT_Perm, RT_Type, RT_Coord, NofRadiators, Radiators, LineFlag, &
                        Factors, AreaEPS, FactEPS, RayEPS, Nrays, LineInteg, TriInteg, QuadInteg, CombineInt )
            ELSE
@@ -434,9 +442,10 @@
          END BLOCK
        END IF  ! CylindricSymmetry
        
-       WRITE (Message,'(A,F8.2,F8.2,F8.2)') 'View factors/Radiator factors computed in time (s):',&
-                              CPUTime()-at, Realtime()-rt
+       WRITE (Message,'(A,2F8.2)') 'View factors/radiator factors computed in time (s):',&
+           CPUTime()-at2, Realtime()-rt2
        CALL Info( Caller,Message, Level=3 )
+       at2 = CPUTime(); rt2 = RealTime()
 
        CALL SymmetryReduction(DoRadiators,NofRadiators,n,Ni,Factors)
 
@@ -444,16 +453,28 @@
        CALL NormalizeFactors(Model,DoRadiators,NofRadiators,n,Factors,RadiationOpen)
        CALL FindNormalizedMinMax(Ni,n,Factors)
 
-       IF(InfoActive(7)) CALL ViewFactorsLumping()
-
+       WRITE (Message,'(A,2F8.2)') 'View factors manipulated in time (s):',&
+           CPUTime()-at2, realtime()-rt2
+       CALL Info( Caller,Message, Level=3 )
+       at2 = CPUTime(); rt2 = RealTime()
+              
+       IF(InfoActive(12)) CALL ViewFactorsLumping()       
        CALL WriteOutputFile(DoRadiators,Ni,n,Factors,RadiationBody)
-         
+
+       WRITE (Message,'(A,2F8.2)') 'View factors saved in time (s):',&
+           CPUTime()-at2, realtime()-rt2
+       CALL Info( Caller,Message, Level=3 )
+       at2 = CPUTime(); rt2 = RealTime()
+
        DEALLOCATE( Surf, Factors, Areas )
        IF ( .NOT. CylindricSymmetry ) DEALLOCATE(Normals, Type)
        
      END DO  ! Of radiation RadiationBody
 
-     CALL Info( Caller, '*** ALL DONE ***' )
+     WRITE (Message,'(A,2F8.2)') 'View factors all done in time (s):',&
+         CPUTime()-at, realtime()-rt
+     CALL Info( Caller,Message, Level=3 )
+     
      CALL FLUSH(6)
 
 CONTAINS
@@ -1187,7 +1208,7 @@ CONTAINS
      REAL(KIND=dP) :: Factors(:)
 !------------------------------------------------------------------------------
      INTEGER :: i
-     REAL(KIND=dp) :: s, Fmin,Fmax, at, rt
+     REAL(KIND=dp) :: s, Fmin,Fmax 
 !------------------------------------------------------------------------------
 
      Fmin = HUGE(Fmin); Fmax = 0
@@ -1199,9 +1220,6 @@ CONTAINS
        Fmin = MIN(Fmin,s)
        Fmax = MAX(Fmax,s)
      END DO
-       
-     WRITE (Message,'(A,F8.2,F8.2)') 'View factors manipulated in time (s):',CPUTime()-at, realtime()-rt
-     CALL Info( Caller,Message, Level=3 )
        
      CALL Info( Caller, ' ', Level=3 )
      CALL info( Caller, 'Viewfactors/Radiator factors after manipulation: ')
@@ -1274,97 +1292,176 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   SUBROUTINE ExtractMeshInfo( Mesh, n, Coord, Surf, Type, Data, Perm  )
+   SUBROUTINE ExtractMeshInfo( Mesh, nActive, Coord, Surf, Type, Data, Perm, ElimBBox )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh
-    INTEGER :: n
+    INTEGER :: nActive
 
     REAL(KIND=dp), POINTER :: Coord(:)
     INTEGER, POINTER :: Type(:)
     INTEGER, ALLOCATABLE :: Surf(:)
     INTEGER, ALLOCATABLE, OPTIONAL :: Perm(:)
-    REAL(KIND=dp), ALLOCATABLE, OPTIONAL :: Data(:)
+    REAL(KIND=dp), ALLOCATABLE, OPTIONAL :: DATA(:)
+    LOGICAL, OPTIONAL :: ElimBBox
 !------------------------------------------------------------
     TYPE(Element_t), POINTER :: Element
-    INTEGER :: i,j,k,cnt,m
+    INTEGER :: n,i,j,k,cnt,m,mActive
     INTEGER, POINTER :: Ref(:)
     TYPE(ElementData_t), POINTER :: edata
+    REAL(KIND=dp) :: minx, maxx, xeps
+    LOGICAL :: SkipBBox
+    LOGICAL, ALLOCATABLE :: NodeAtBBox(:)
+    REAL(KIND=dp), POINTER :: pX(:)
 !------------------------------------------------------------
-    IF ( ASSOCIATED(Mesh) ) THEN
-      m = Mesh % NumberOfNodes
-      n = Mesh % NumberOfBulkElements
-      ALLOCATE( Type(n), Ref(m) )
-      IF ( .NOT.ALLOCATED(Surf) ) ALLOCATE(Surf(4*n))
+    IF ( .NOT. ASSOCIATED(Mesh) ) RETURN
+    
+    n = Mesh % NumberOfBulkElements
+    m = Mesh % NumberOfNodes
+    nActive = n
+    
+    ! Compact renumbering of nodes.
+    ALLOCATE( Ref(m) )
+    Ref = 0
+    
+    ! We can save some extra time in checks when we eliminate the extremum elements
+    ! that form the bounding box. They can never be shadowing elements. 
+    SkipBBox = .FALSE.
+    IF(PRESENT(ElimBBox)) SkipBBox = ElimBBox
+    IF(SkipBBox) THEN
+      ALLOCATE(NodeAtBBox(m))
+      NodeAtBBox = .FALSE.
 
-      Ref = 0
-      cnt = 0
+      ! Mark initial node list:
       DO i=1,n
         Element => Mesh % Elements(i)
-        Element % ElementIndex = i
-        Type(i) = Element % Type % ElementCode
-        IF ( Type(i) == 101 ) cnt=cnt+1
         Ref(Element % NodeIndexes) = Ref(Element % NodeIndexes)+1
       END DO
-
-      IF ( PRESENT(data) .AND. cnt>0 ) THEN
-        ! if planar circles found ....
-        ALLOCATE(data(8*cnt), Perm(n))
-        Data = 0
-        j = 0
-        DO i=1,n
-          IF ( Type(i)==101 ) THEN
-            j = j+1 
-            Perm(i) = j
-          END IF
-        END DO
-      END IF
-
-      ALLOCATE(Coord(3*COUNT(Ref>0)))
-
-      j = 0
-      DO i=1,m
-        IF ( Ref(i)>0 ) THEN
-          j = j + 1
-          Ref(i) = j
-          Coord(3*(j-1)+1) = Mesh % Nodes % x(i)
-          Coord(3*(j-1)+2) = Mesh % Nodes % y(i)
-          Coord(3*(j-1)+3) = Mesh % Nodes % z(i)
-
-          Mesh  % Nodes % x(j) = Mesh % Nodes % x(i)
-          Mesh  % Nodes % y(j) = Mesh % Nodes % y(i)
-          Mesh  % Nodes % z(j) = Mesh % Nodes % z(i)
-        END IF
+      
+      DO i=1,3
+        SELECT CASE(i)
+        CASE ( 1 )
+          pX => Mesh % Nodes % x
+        CASE ( 2 )
+          pX => Mesh % Nodes % y
+        CASE( 3 ) 
+          pX => Mesh % Nodes % z
+        END SELECT
+        minx = MINVAL(pX,Ref>0) 
+        maxx = MAXVAL(pX,Ref>0) 
+        xeps = EPSILON(xeps) +  1.0e-8 * ( maxx - minx )
+        
+        WHERE(ABS(pX - minx) < xeps .OR. ABS(pX - maxx) < xeps ) 
+          NodeAtBBox = .TRUE.
+        END WHERE
       END DO
+      j = COUNT(NodeAtBBox)
+      CALL Info(Caller,'Number of nodes at bounding box surface: '//I2S(j))
+      
 
+      ! We skip the elements an bounding box boundaries from the active set. 
+      nActive = 0
       DO i=1,n
         Element => Mesh % Elements(i)
-        Element % NodeIndexes = Ref(Element % NodeIndexes)
-        SELECT CASE(Type(i)/100)
-        CASE(1)
-          ! Circle code
-          IF ( PRESENT(Data) ) THEN
-            edata => Element % PropertyData
-            IF ( ASSOCIATED(edata) ) THEN
-              Surf(4*(i-1)+1:4*(i-1)+4) = 0
-              SELECT CASE(edata % Name)
-              CASE DEFAULT ! circle
-                ! inner radius (0), outer radius, center, normal = 8
-                j = 8*(Perm(i)-1)
-                Data(j+1:j+8) = edata % Values(1:8)
-              END SELECT
-            END IF
-          END IF
-        CASE(2)
-          Surf(2*(i-1)+1:2*(i-1)+2) = Element % NodeIndexes-1
-        CASE(3)
-          Surf(4*(i-1)+1:4*(i-1)+3) = Element % NodeIndexes-1
-        CASE(4)
-          Surf(4*(i-1)+1:4*(i-1)+4) = Element % NodeIndexes-1
-        END SELECT
+        IF(SkipBBox .AND. Element % TYPE % ElementCode > 200 ) THEN
+          IF(ALL(NodeAtBBox(Element % NodeIndexes))) CYCLE
+        END IF
+        nActive = nActive + 1
+      END DO
+      ! Set this to zero, next time the bounding box is not used. 
+      Ref = 0      
+      IF(nActive < n) THEN
+        CALL Info(Caller,'Number of shading elements: '//I2S(nActive)//' (vs. '//I2S(n)//')')
+      END IF
+    END IF
+    
+    ALLOCATE( TYPE(nActive) )
+    Type = 0
+    cnt = 0
+    j = 0
+    DO i=1,n
+      Element => Mesh % Elements(i)
+      IF ( SkipBBox .AND. Element % TYPE % ElementCode > 200 ) THEN
+        IF(ALL(NodeAtBBox(Element % NodeIndexes))) CYCLE
+      END IF
+      j = j+1
+      Element % ElementIndex = j
+      Type(j) = Element % Type % ElementCode
+      IF ( Type(j) == 101 ) cnt=cnt+1
+      Ref(Element % NodeIndexes) = Ref(Element % NodeIndexes)+1
+    END DO
+    mActive = COUNT(Ref>0)
+    IF(mActive < m) THEN
+      CALL Info(Caller,'Number of shading nodes: '//I2S(mActive)//' (vs. '//I2S(m)//')')
+    END IF
+
+    IF ( .NOT.ALLOCATED(Surf) ) ALLOCATE(Surf(4*nActive))
+    ALLOCATE(Coord(3*mActive))
+    
+    IF ( PRESENT(data) .AND. cnt>0 ) THEN
+      ! if planar circles found ....
+      ALLOCATE(data(8*cnt), Perm(n))
+      Data = 0
+      j = 0
+      DO i=1,n
+        IF ( Type(i)==101 ) THEN
+          j = j+1 
+          Perm(i) = j
+        END IF
       END DO
     END IF
+
+    j = 0
+    DO i=1,m
+      IF ( Ref(i)>0 ) THEN        
+        j = j + 1
+        Ref(i) = j
+        Coord(3*(j-1)+1) = Mesh % Nodes % x(i)
+        Coord(3*(j-1)+2) = Mesh % Nodes % y(i)
+        Coord(3*(j-1)+3) = Mesh % Nodes % z(i)
+
+        Mesh % Nodes % x(j) = Mesh % Nodes % x(i)
+        Mesh % Nodes % y(j) = Mesh % Nodes % y(i)
+        Mesh % Nodes % z(j) = Mesh % Nodes % z(i)
+      END IF
+    END DO
+
+    j = 0
+    DO i=1,n
+      Element => Mesh % Elements(i)
+      IF(SkipBBox .AND. Element % TYPE % ElementCode > 200) THEN
+        IF(ALL(NodeAtBBox(Element % NodeIndexes))) CYCLE
+      END IF
+      j = j+1
+      Element % NodeIndexes = Ref(Element % NodeIndexes)
+
+      SELECT CASE(TYPE(j)/100)
+      CASE(1)
+        ! Circle code
+        IF ( PRESENT(Data) ) THEN
+          edata => Element % PropertyData
+          IF ( ASSOCIATED(edata) ) THEN
+            Surf(4*(i-1)+1:4*(i-1)+4) = 0
+            SELECT CASE(edata % Name)
+            CASE DEFAULT ! circle
+              ! inner radius (0), outer radius, center, normal = 8
+              k = 8*(Perm(i)-1)
+              Data(k+1:k+8) = edata % Values(1:8)
+            END SELECT
+          END IF
+        END IF
+      CASE(2)
+        Surf(2*(j-1)+1:2*(j-1)+2) = Element % NodeIndexes-1
+      CASE(3)
+        Surf(4*(j-1)+1:4*(j-1)+3) = Element % NodeIndexes-1
+      CASE(4)
+        Surf(4*(j-1)+1:4*(j-1)+4) = Element % NodeIndexes-1
+      CASE DEFAULT
+        CALL Fatal(Caller,'Uknown Element!')
+      END SELECT
+    END DO
+    
 !------------------------------------------------------------------------------
    END SUBROUTINE ExtractMeshInfo
 !------------------------------------------------------------------------------
