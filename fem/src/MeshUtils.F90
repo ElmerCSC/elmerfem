@@ -3617,7 +3617,7 @@ CONTAINS
        ! Check if given element is a p element
        IF (FirstOrderElements .AND. inDOFs(el_id,6) > 0) THEN
          CALL AllocatePDefinitions(Element)
-         IF (.NOT. DG) NeedEdges = inDOFs(el_id,6) > 0
+         IF (.NOT. DG) NeedEdges = inDOFs(el_id,6) > 1
          
          ! Calculate element bubble dofs and set element p
 
@@ -3733,7 +3733,15 @@ CONTAINS
            ELSE
              Element % BDOFs = FaceDOFs(j)
            END IF
-           Element % BDOFs = MAX(Element % BDOFs, MAX(0,InDOFs(el_id+6,5)))
+           
+           IF (.NOT. NeedEdges .AND. InDOFs(el_id,5) > 0) THEN
+             IF (.NOT. ASSOCIATED(Element % PDefs)) CALL AllocatePDefinitions(Element)
+             Element % PDefs % isEdge = .TRUE.
+             Element % BDOFs = MAX(Element % BDOFs, MAX(0,InDOFs(el_id,5)))
+           ELSE
+             Element % BDOFs = MAX(Element % BDOFs, MAX(0,InDOFs(el_id+6,5)))
+           END IF
+
          END IF
        END DO
 
