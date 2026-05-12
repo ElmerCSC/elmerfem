@@ -402,7 +402,7 @@ void TriangleComputeViewFactors(Geometry_t *GA,Geometry_t *GB,
                    int LevelA,int LevelB)
 {
     double F,Fa,Fb,EA,PI=2*acos(0.0);
-    double FX,FY,FZ,DX,DY,DZ,U,V,Hit;
+    double FX,FY,FZ,DX,DY,DZ,U,V,Hit,W;
 
     double *AX = GA->Triangle->PolyFactors[0];
     double *AY = GA->Triangle->PolyFactors[1];
@@ -451,16 +451,16 @@ void TriangleComputeViewFactors(Geometry_t *GA,Geometry_t *GB,
         Hit = Nrays;
         for( i=0; i<Nrays; i++ )
         {
-            U = drand48(); V=drand48();
-            while( U+V>1.0 ) { U = drand48(); V = drand48(); }
+            U = vrand(); V=vrand();
+            while( U+V>1.0 ) { U = vrand(); V = vrand(); }
 
             FX = TriangleValue(U,V,AX);
             FY = TriangleValue(U,V,AY);
             FZ = TriangleValue(U,V,AZ);
 
-            U = drand48(); V=drand48();
+            W=U; U = 1-V; V=1-W;
             if ( GB->GeometryType == GEOMETRY_TRIANGLE )
-              while( U+V>1.0 ) { U = drand48(); V = drand48(); }
+              while( U+V>1.0 ) { U = vrand(); V = vrand(); }
 
             DX = FunctionValue(GB,U,V,0) - FX;
             DY = FunctionValue(GB,U,V,1) - FY;
@@ -649,9 +649,9 @@ TriangleComputeRadiatorFactors (Geometry_t * GA, int LineFlag, double dx, double
        Hit = Nrays;
        for( i=0; i<Nrays; i++ )
        {
-          U = drand48();
-          V = drand48();
-          while( U+V>1.0 ) { U = drand48(); V = drand48(); }
+          U = vrand();
+          V = vrand();
+          while( U+V>1.0 ) { U = vrand(); V = vrand(); }
 
           FX = TriangleValue(U,V,X);
           FY = TriangleValue(U,V,Y);
@@ -661,7 +661,7 @@ TriangleComputeRadiatorFactors (Geometry_t * GA, int LineFlag, double dx, double
           GY = dy - FY;
           GZ = dz - FZ;
           if ( Cyl ) {
-            U = drand48();
+            U = vrand();
             GX += U*nx;
             GY += U*ny;
             GZ += U*nz;

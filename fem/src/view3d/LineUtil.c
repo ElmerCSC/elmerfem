@@ -348,7 +348,7 @@ view between the elements is resolved by ray tracing.
 *******************************************************************************/
 void LinearComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int LevelA,int LevelB)
 {
-    double R,FX,FY,FZ,DX,DY,DZ,U,V,Hit;
+    double R,FX,FY,FZ,DX,DY,DZ,U,V,Hit,W;
     double F,Fa,Fb,EA,PI=2*acos(0.0);
 
     double *X  = GA->Linear->PolyFactors[0];
@@ -409,15 +409,16 @@ void LinearComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int LevelA,int Level
        Hit = Nrays;
        for( i=0; i<Nrays; i++ )
        {
-          U = drand48(); V = drand48();
+          U = vrand();
+          V = vrand();
 
           FX = LinearValue(U,X);
           FY = LinearValue(U,Y);
           FZ = 0.0;
 
-           U = drand48(); V = drand48();
+	   W = U; U = 1-V; V=1-W;
            if ( GB->GeometryType == GEOMETRY_TRIANGLE )
-               while( U+V>1 ) { U=drand48(); V=drand48(); }
+               while( U+V>1 ) { U=vrand(); V=vrand(); }
 
            DX = FunctionValue(GB,U,V,0)-FX;
            DY = FunctionValue(GB,U,V,1)-FY;
@@ -585,7 +586,7 @@ LinearComputeRadiatorFactors (Geometry_t * GA, int LineFlag, double dx, double d
        Hit = Nrays;
        for( i=0; i<Nrays; i++ )
        {
-          U = drand48();
+          U = vrand();
 
           FX = LinearValue(U,X);
           FY = LinearValue(U,Y);

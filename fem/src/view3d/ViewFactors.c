@@ -44,14 +44,63 @@ Juha Ruokolainen/CSC - 24 Aug 1995
 
 #include <ViewFactors.h>
 #include <Ipoints.h>
+#include <omp.h>
+#include <stdlib.h>
 #include "../../config.h"
 
-#if defined(WIN32) || defined(MINGW32) 
-double drand48()
+
+/* (somewhat modified) copilot code.... */
+
+#include <stdint.h>
+
+typedef struct {
+  uint64_t state;
+  uint64_t inc;
+} pcg32_rng_t;
+
+static pcg32_rng_t **rbuf = NULL;
+
+static inline uint32_t pcg32_random(pcg32_rng_t *rng)
 {
-    return rand()/(1.0*(1<<15));
+    uint64_t old = rng->state;
+
+    rng->state = old * 6364136223846793005ULL + (rng->inc | 1);
+    uint32_t x = ((old >> 18u) ^ old) >> 27u;
+    uint32_t r = old >> 59u;
+    return (x >> r) | (x << ((-r) & 31));
 }
+
+inline double vrand()
+{
+#ifdef _OPENMP
+    int tid  = omp_get_thread_num();
+#else
+    int tid  = 0;
 #endif
+    return pcg32_random(rbuf[tid]) / (double)UINT32_MAX;
+}
+
+void vrand_init()
+{
+#ifdef _OPENMP
+   int tid = omp_get_thread_num(), tidn = 1;
+#else
+   int tid = 0, tidn = 1;
+#endif
+
+#pragma omp critical
+{
+#ifdef _OPENMP
+   tidn = omp_get_num_threads();
+#endif
+   if ( !rbuf ) rbuf = malloc(sizeof(pcg32_rng_t*)*tidn);
+}
+
+   rbuf[tid] = malloc(sizeof(pcg32_rng_t));
+   rbuf[tid]->state = 0x853c49e6748fea9bULL+ tid;
+   rbuf[tid]->inc   = 0xda3e39cb94b95bdbULL + (tid << 1);
+}
+/* end copilot code */
 
 extern double ShapeFunctionMatrix2[2][2], ShapeFunctionMatrix3[3][3],ShapeFunctionMatrix4[4][4];
 
@@ -137,11 +186,13 @@ Compute viewfactors for elements of the model
 *******************************************************************************/
 static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int LineFlag, int N,double *Factors)
 {
-    double T,s,F,Fmin=DBL_MAX,Fmax=-DBL_MAX,Favg=0.0,*RowSums,Fact,rx,ry,rz,nx,ny,nz;
+    double T,s,F,Fmin=DBL_MAX,Fmax=-DBL_MAX,Favg=0.0,*RowSums,Fact,rx,ry,rz,nx,ny,nz,ct,realtime();
     int i,j,k,l,Imin,Imax,Ns;
 
     GeometryList_t *Link;
 
+
+    ct = realtime();
     for( i=0; i<N; i++ )
     {
         Elements[i].Area = (*AreaCompute[Elements[i].GeometryType])(&Elements[i]);
@@ -155,6 +206,8 @@ static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int 
       Geometry_t *lel;
       lel = (Geometry_t *)malloc(N*sizeof(Geometry_t));
       memcpy(lel,Elements,N*sizeof(Geometry_t));
+
+      vrand_init();
 
       #pragma omp for private(i,j,k,l,Fact) schedule(dynamic,10)
       for( i=0; i<N; i++ )
@@ -249,8 +302,8 @@ static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int 
          }
          Favg += s;
     }
-   fprintf( stdout, "surfs: %d, min(%d)=%-4.2f, max(%d)=%-4.2f, avg=%-4.2f\n", 
-                       N,Imin,Fmin,Imax,Fmax,Favg/Ns );
+   fprintf( stdout, "surfs: %d, min(%d)=%-4.2f, max(%d)=%-4.2f, avg=%-4.2f, cput=%-4.2f\n", 
+                       N,Imin,Fmin,Imax,Fmax,Favg/Ns, realtime()-ct );
 }
 
 

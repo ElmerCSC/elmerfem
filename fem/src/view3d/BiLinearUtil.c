@@ -375,7 +375,7 @@ view between the elements is resolved by ray tracing.
 *******************************************************************************/
 void BiLinearComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int LevelA,int LevelB)
 {
-    double R,FX,FY,FZ,DX,DY,DZ,U,V,Hit;
+    double R,FX,FY,FZ,DX,DY,DZ,U,V,W,Hit;
     double F,Fa,Fb,EA,PI=2*acos(0.0);
 
     double *X  = GA->BiLinear->PolyFactors[0];
@@ -436,19 +436,20 @@ void BiLinearComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int LevelA,int Lev
         Hit = Nrays;
         for( i=0; i<Nrays; i++ )
         {
-            U = drand48(); V = drand48();
-
+            U = vrand();
+	    V = vrand();
             FX = BiLinearValue(U,V,X);
             FY = BiLinearValue(U,V,Y);
             FZ = BiLinearValue(U,V,Z);
 
-            U = drand48(); V = drand48();
+	    W = U;
+	    U=1-V; V=1-W;
             if ( GB->GeometryType == GEOMETRY_TRIANGLE )
-                while( U+V>1 ) { U=drand48(); V=drand48(); }
+                while( U+V>1 ) { U=vrand(); V=vrand(); }
 
-            DX = FunctionValue( GB,U,V,0 ) - FX;
-            DY = FunctionValue( GB,U,V,1 ) - FY;
-            DZ = FunctionValue( GB,U,V,2 ) - FZ;
+            DX = FunctionValue(GB,U,V,0) - FX;
+            DY = FunctionValue(GB,U,V,1) - FY;
+            DZ = FunctionValue(GB,U,V,2) - FZ;
 
             Hit -= RayHitGeometry( FX,FY,FZ,DX,DY,DZ );
         }
@@ -636,8 +637,8 @@ BiLinearComputeRadiatorFactors (Geometry_t * GA, int LineFlag, double dx, double
        Hit = Nrays;
        for( i=0; i<Nrays; i++ )
        {
-          U = drand48();
-          V = drand48();
+          U = vrand();
+          V = vrand();
 
           FX = BiLinearValue(U,V,X);
           FY = BiLinearValue(U,V,Y);
@@ -647,7 +648,7 @@ BiLinearComputeRadiatorFactors (Geometry_t * GA, int LineFlag, double dx, double
           GY = dy - FY;
           GZ = dz - FZ;
 	  if ( Cyl ) {
-            U = drand48();
+            U = 1-V;
 	    GX += U*nx;
 	    GY += U*ny;
 	    GZ += U*nz;

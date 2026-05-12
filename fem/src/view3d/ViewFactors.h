@@ -40,9 +40,7 @@
 #include <limits.h>
 #include "../../config.h"
 
-#ifdef WIN32
-double drand48();
-#endif
+double vrand();
 
 #include <sys/types.h>
 
