@@ -244,6 +244,8 @@ static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int 
       lel = (Geometry_t *)malloc(N*sizeof(Geometry_t));
       memcpy(lel,Elements,N*sizeof(Geometry_t));
 
+      vrand_init();
+
       for( i=0; i<NofRadiators; i++ )
       {
 	 nx = ny = nz = 0;
