@@ -44,7 +44,9 @@ Juha Ruokolainen/CSC - 24 Aug 1995
 
 #include <ViewFactors.h>
 #include <Ipoints.h>
+#ifdef _OPENMP
 #include <omp.h>
+#endif
 #include <stdlib.h>
 #include "../../config.h"
 
