@@ -120,7 +120,7 @@ CONTAINS
         INTEGER, ALLOCATABLE :: Set2(:)
         REAL(KIND=dp), ALLOCATABLE :: DirVec2(:)
 
-        ALLOCATE(Set2(Setn), Used2(Setn), DirVec2(3*Setn))
+        ALLOCATE(Set2(2*Setn), Used2(2*Setn), DirVec2(2*3*Setn))
        
         ALLOCATE( Mesh2 % Elements(n) )
         DO j=1,Setn
