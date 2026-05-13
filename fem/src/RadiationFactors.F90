@@ -755,8 +755,9 @@
        REAL(KIND=dp), ALLOCATABLE :: Vals(:)
        INTEGER, ALLOCATABLE ::  Cols(:)
        INTEGER :: NofRadiators, i,j,t,n
-       LOGICAL :: BinaryMode, Found
+       LOGICAL :: BinaryMode, SinglePrec, Found
        REAL(KIND=dp), POINTER :: Radiators(:,:)
+       REAL :: sval
        TYPE(ValueList_t), POINTER :: RadList
        CHARACTER(:), ALLOCATABLE :: RadiatorFactorsFile, OutputName
 
@@ -768,9 +769,9 @@
        
        IF ( LEN_TRIM(Model % Mesh % Name) > 0 ) THEN
          OutputName = TRIM(OutputPath) // '/' // TRIM(Model % Mesh % Name) // &
-                 '/' // RadiatorFactorsFile
+             '/' // RadiatorFactorsFile
        ELSE
-            OutputName = RadiatorFactorsFile
+         OutputName = RadiatorFactorsFile
        END IF
 
        INQUIRE(FILE=OutputName,EXIST=Found)
@@ -782,6 +783,12 @@
 
        BinaryMode = ListGetLogical( Params,'Radiatorfactor Binary Output',Found ) 
        IF(.NOT. Found) BinaryMode = ListGetLogical( Params,'Viewfactor Binary Output',Found ) 
+
+       IF(BinaryMode) THEN
+         SinglePrec = ListGetLogical( Params,'Viewfactor Single Precision',Found ) 
+       ELSE
+         SinglePrec = .FALSE.
+       END IF
          
        IF( BinaryMode ) THEN
          CALL Info(Caller,'Loading radiator factors from binary file: '//OutputName,Level=5)
@@ -817,7 +824,10 @@
          Vals = 0; Cols = 0
 
          DO j=1,n
-           IF( BinaryMode ) THEN
+           IF( SinglePrec ) THEN
+             READ(VFUnit) Cols(j),sval
+             Vals(j) = sval
+           ELSE IF( BinaryMode ) THEN
              READ(VFUnit) Cols(j),Vals(j)         
            ELSE
              READ(VFUnit,*) t,Cols(j),Vals(j)         
@@ -845,10 +855,11 @@
        LOGICAL :: Success
        INTEGER :: RadiationBody
 
-       LOGICAL :: Found, BinaryMode
+       LOGICAL :: Found, BinaryMode, SinglePrec
        INTEGER :: i,j,t,n,n2
        INTEGER, POINTER :: Cols(:)
        REAL(KIND=dp), POINTER :: Vals(:)
+       REAL :: sval
        CHARACTER(:), ALLOCATABLE :: ViewFactorsFile, OutputName
 
        Success = .TRUE.
@@ -890,7 +901,12 @@
        END IF
 
        BinaryMode = ListGetLogical( Params,'Viewfactor Binary Output',Found ) 
-
+       IF(BinaryMode ) THEN
+         SinglePrec = ListGetLogical( Params,'Viewfactor Single Precision',Found ) 
+       ELSE
+         SinglePrec = .FALSE.
+       END IF
+         
        IF( BinaryMode ) THEN
          CALL Info(Caller,'Loading view factors from binary file: '//OutputName,Level=5)
 
@@ -936,7 +952,10 @@
          Vals = 0; Cols = 0
 
          DO j=1,n
-           IF( BinaryMode ) THEN
+           IF( SinglePrec ) THEN
+             READ(VFUnit) Cols(j),sval
+             Vals(j) = sval        
+           ELSE IF( BinaryMode ) THEN
              READ(VFUnit) Cols(j),Vals(j)         
            ELSE
              READ(VFUnit,*) t,Cols(j),Vals(j)         
