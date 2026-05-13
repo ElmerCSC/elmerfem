@@ -452,7 +452,7 @@ void TriangleComputeViewFactors(Geometry_t *GA,Geometry_t *GB,
         for( i=0; i<Nrays; i++ )
         {
             U = vrand(); V=vrand();
-            while( U+V>1.0 ) { U = vrand(); V = vrand(); }
+            while( U+V>1.0 ) { U=1-U; V =1-V; }
 
             FX = TriangleValue(U,V,AX);
             FY = TriangleValue(U,V,AY);
@@ -460,7 +460,7 @@ void TriangleComputeViewFactors(Geometry_t *GA,Geometry_t *GB,
 
             W=U; U = 1-V; V=1-W;
             if ( GB->GeometryType == GEOMETRY_TRIANGLE )
-              while( U+V>1.0 ) { U = vrand(); V = vrand(); }
+              while( U+V>1.0 ) { U =1-U; V=1-V; }
 
             DX = FunctionValue(GB,U,V,0) - FX;
             DY = FunctionValue(GB,U,V,1) - FY;
@@ -651,7 +651,7 @@ TriangleComputeRadiatorFactors (Geometry_t * GA, int LineFlag, double dx, double
        {
           U = vrand();
           V = vrand();
-          while( U+V>1.0 ) { U = vrand(); V = vrand(); }
+          while( U+V>1.0 ) { U=1-U; V=1-V; }
 
           FX = TriangleValue(U,V,X);
           FY = TriangleValue(U,V,Y);

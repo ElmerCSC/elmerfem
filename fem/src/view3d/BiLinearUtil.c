@@ -445,7 +445,7 @@ void BiLinearComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int LevelA,int Lev
 	    W = U;
 	    U=1-V; V=1-W;
             if ( GB->GeometryType == GEOMETRY_TRIANGLE )
-                while( U+V>1 ) { U=vrand(); V=vrand(); }
+                while( U+V>1 ) { U=1-U; V=1-V; }
 
             DX = FunctionValue(GB,U,V,0) - FX;
             DY = FunctionValue(GB,U,V,1) - FY;

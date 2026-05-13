@@ -92,10 +92,12 @@ void vrand_init()
 
 #pragma omp critical
 {
+   if ( !rbuf ) {
 #ifdef _OPENMP
-   tidn = omp_get_num_threads();
+     tidn = omp_get_num_threads();
 #endif
-   if ( !rbuf ) rbuf = malloc(sizeof(pcg32_rng_t*)*tidn);
+     rbuf = malloc(sizeof(pcg32_rng_t*)*tidn);
+   }
 }
 
    rbuf[tid] = malloc(sizeof(pcg32_rng_t));
