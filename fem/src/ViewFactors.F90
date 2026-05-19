@@ -47,6 +47,7 @@
    MODULE ViewFactorGlobals
      USE Types
      REAL(KIND=dp), ALLOCATABLE, TARGET :: Jdiag(:), Jacobian(:,:)
+     REAL, ALLOCATABLE, TARGET :: sJdiag(:), sJacobian(:,:)
    END MODULE ViewFactorGlobals
 
 !------------------------------------------------------------------------------
@@ -78,7 +79,7 @@
      INTEGER :: divide, LineFlag, LineInteg, TriInteg, QuadInteg
      REAL(KIND=dp) :: AreaEPS, RayEPS, FactEPS
      INTEGER :: NRays, CombineInt
-     LOGICAL :: Combine, Combine3D, ElimBB
+     LOGICAL :: Combine, Combine3D, ElimBB, SinglePrec
      REAL(KIND=dp), POINTER :: Coord(:)
      INTEGER, POINTER :: Type(:)
      INTEGER, ALLOCATABLE, TARGET ::  Surf(:)
@@ -195,6 +196,8 @@
        CALL Info(Caller, 'Computing flux coefficients for ' // &
                I2S(NofRadiators) // ' radiative sources', LEVEL=5 )
      END IF
+     
+     SinglePrec = GetLogical( Params,'Viewfactor single precision',GotIt)
 
 !------------------------------------------------------------------------------
      CALL SymmetryDuplication(Mesh)
@@ -739,7 +742,12 @@ CONTAINS
 !------------------------------------------------------------------------------
      IF(.NOT. RadiationOpen ) THEN
        
-       ALLOCATE( RHS(n),SOL(n),PSOL(n),Jdiag(n),Jacobian(n,n),STAT=istat )
+       IF(SinglePrec) THEN
+         ALLOCATE( sJdiag(n),sJacobian(n,n),STAT=istat )
+       ELSE
+         ALLOCATE( Jdiag(n),Jacobian(n,n),STAT=istat )
+       END IF
+       ALLOCATE( RHS(n),SOL(n),PSOL(n),STAT=istat )
        IF ( istat /= 0 ) THEN
          CALL Fatal( Caller,'Memory allocation error in NormalizeFactors for RHS etc.' )
        END IF
@@ -766,21 +774,35 @@ CONTAINS
          CALL Info( Caller,Message, Level=3 );
             
          IF ( cum <= eps ) EXIT
-         
-!$omp parallel do private(i,j)
-         DO i=1,n
-           DO j=1,n
-             Jacobian(i,j) = Factors((i-1)*n+j) * SOL(i)
-           END DO
-           DO j=1,n
-             Jacobian(i,i) = Jacobian(i,i) + Factors((i-1)*n+j) * SOL(j)
-           END DO
-           Jdiag(i) = 1._dp / Jacobian(i,i)
-         END DO
-!$omp end parallel do
 
+         IF( SinglePrec ) THEN
+!$omp parallel do private(i,j)         
+           DO i=1,n
+             DO j=1,n
+               sJacobian(i,j) = Factors((i-1)*n+j) * SOL(i)
+             END DO
+             DO j=1,n
+               sJacobian(i,i) = sJacobian(i,i) + Factors((i-1)*n+j) * SOL(j)
+             END DO
+             sJdiag(i) = 1._dp / sJacobian(i,i)
+           END DO
+!$omp end parallel do
+         ELSE
+!$omp parallel do private(i,j)         
+           DO i=1,n
+             DO j=1,n
+               Jacobian(i,j) = Factors((i-1)*n+j) * SOL(i)
+             END DO
+             DO j=1,n
+               Jacobian(i,i) = Jacobian(i,i) + Factors((i-1)*n+j) * SOL(j)
+             END DO
+             Jdiag(i) = 1._dp / Jacobian(i,i)
+           END DO
+!$omp end parallel do
+         END IF
+           
          PSOL = SOL
-         CALL IterSolv( n,SOL,RHS )
+         CALL IterSolv( n,SOL,RHS, SinglePrec )
          SOL = PSOL + SOL
        END DO
           
@@ -794,7 +816,12 @@ CONTAINS
          END DO
        END DO
 !$omp end parallel do
-       DEALLOCATE( SOL,RHS,PSOL,Jdiag,Jacobian )
+       IF(SinglePrec) THEN
+         DEALLOCATE( sJdiag,sJacobian )
+       ELSE
+         DEALLOCATE( Jdiag,Jacobian )
+       END IF
+       DEALLOCATE( SOL,RHS,PSOL )
      ELSE
 !$omp parallel do private(i,j)
        DO i=1,N
@@ -1569,7 +1596,7 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
      INTEGER :: Ni, n, RadiationBody
 !------------------------------------------------------------------------------
      CHARACTER(:), ALLOCATABLE :: ViewFactorsFile, OutputName, TempString
-     LOGICAL :: BinaryMode, SinglePrec
+     LOGICAL :: BinaryMode
      REAL :: sval
      INTEGER :: i,j,k
      LOGICAL, ALLOCATABLE :: SaveMask(:)
@@ -1601,12 +1628,6 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
      MinFactor = MinFactor / 10.0
          
      BinaryMode = ListGetLogical( Params,'Viewfactor Binary Output',Found ) 
-
-     IF( BinaryMode ) THEN
-       SinglePrec = getLogical( Params,'Viewfactor single precision',GotIt)
-     ELSE
-       SinglePrec = .FALSE.
-     END IF
      
      SaveMask = ( Factors > MinFactor )
      
@@ -1665,12 +1686,13 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
 
 !> Local handle to the iterative methods for linear systems. 
 !------------------------------------------------------------------------------
-    SUBROUTINE IterSolv( N,x,b )
-      IMPLICIT NONE
+    SUBROUTINE IterSolv( N,x,b,SinglePrec)
+      IMPLICIT NONE      
 
       INTEGER :: N
       REAL(KIND=dp), DIMENSION(n) :: x,b
-
+      LOGICAL :: SinglePrec
+      
       REAL(KIND=dp) :: dpar(50)
       INTEGER :: ipar(50),wsize
       REAL(KIND=dp), ALLOCATABLE :: work(:,:)
@@ -1703,11 +1725,18 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
       
       iterProc  = AddrFunc(HUTI_D_CG)
 
-      fm_G => Jacobian
-      mvProc    = AddrFunc(fm_MatVec)
-      fm_Diag => Jdiag
-      pcondProc = AddrFunc(fm_DiagPrec)
-
+      IF( SinglePrec ) THEN
+        fms_G => sJacobian
+        mvProc = AddrFunc(fms_MatVec)
+        fms_Diag => sJdiag
+        pcondProc = AddrFunc(fms_DiagPrec)
+      ELSE
+        fm_G => Jacobian
+        mvProc    = AddrFunc(fm_MatVec)
+        fm_Diag => Jdiag
+        pcondProc = AddrFunc(fm_DiagPrec)
+      END IF
+        
       CALL IterCall( iterProc,x,b,ipar,dpar,work,mvProc,pcondProc, &
                 dProc, dProc, dProc, dProc )
           
