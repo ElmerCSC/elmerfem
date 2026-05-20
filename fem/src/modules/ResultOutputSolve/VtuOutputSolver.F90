@@ -2145,6 +2145,33 @@ CONTAINS
       IF(ASSOCIATED(TmpSolDg2)) CALL ReleaseVariableList( TmpSolDg2 )
       IF(ASSOCIATED(TmpSolDg3)) CALL ReleaseVariableList( TmpSolDg3 )      
     END IF
+
+    BLOCK
+      INTERFACE
+        SUBROUTINE setlocale(category,locale) BIND(c,name="setlocale")
+          USE iso_c_binding
+          integer(c_int), value :: category
+          character(kind=c_char), dimension(*) :: locale
+        END SUBROUTINE  setlocale
+      END INTERFACE
+
+      LOGICAL :: reset_locale, Found
+
+      reset_locale=GetLogical(Solver % Values,'Reset locale after vtu-output',Found)
+      IF (.NOT. Found) &
+        reset_locale=GetLogical(Model % Simulation,'Reset locale after vtu-output',Found)
+
+      IF (.NOT.Found .OR. reset_locale) CALL setlocale(0,"en_US.UTF-8"//CHAR(0))
+    END BLOCK
+    
+    CALL Info(Caller,'Finished writing file',Level=15)
+    
+  END SUBROUTINE WriteVtuFile
+
+
+  ! Write collection file that may include timesteps and/or parts
+  !--------------------------------------------------------------
+  SUBROUTINE WritePvdFile( PvdFile, DataSetFile, nTime, Model )
     
     CALL Info(Caller,'Finished writing file',Level=15)
     
