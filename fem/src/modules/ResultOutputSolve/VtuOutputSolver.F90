@@ -2172,15 +2172,6 @@ CONTAINS
   ! Write collection file that may include timesteps and/or parts
   !--------------------------------------------------------------
   SUBROUTINE WritePvdFile( PvdFile, DataSetFile, nTime, Model )
-    
-    CALL Info(Caller,'Finished writing file',Level=15)
-    
-  END SUBROUTINE WriteVtuFile
-
-
-  ! Write collection file that may include timesteps and/or parts
-  !--------------------------------------------------------------
-  SUBROUTINE WritePvdFile( PvdFile, DataSetFile, nTime, Model )
     CHARACTER(LEN=*), INTENT(IN) :: PvdFile, DataSetFile
     INTEGER :: nTime, RecLen = 0
     TYPE(Model_t) :: Model     
