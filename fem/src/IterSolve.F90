@@ -228,24 +228,33 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+! Mixed precision matrix-vector product such that matrix is single precision
+! and vectors are double precision. The idea is to save memory compared to "fm_MatVec". 
+!------------------------------------------------------------------------------
   SUBROUTINE fms_MatVec( u,v,ipar )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 
     INTEGER :: ipar(*)
     REAL(KIND=dp) :: u(*),v(*), ct, rsum, cumt=0, s
-
+    REAL, ALLOCATABLE :: us(:), vs(:)
+    
     INTEGER :: i,j,n
 
     n = HUTI_NDIM
-#if 0
-!   We dont have matvec for mixed type!
-    CALL DGEMV('N',n,n,1.0_dp,fm_G,n,u,1,0.0_dp,v,1)
+#if 1
+!   We dont have matvec for mixed type, so make dp->sp transformation on-the-fly.
+    ALLOCATE(us(n),vs(n))
+    us = u(1:n)
+    vs = 0.0_dp 
+    CALL SGEMV('N',n,n,1.0,fms_G,n,us,1,0.0,vs,1)
+    v(1:n) = vs(1:n)
+    DEALLOCATE(us,vs)
 #else
     v(1:n) = 0
-!$omp parallel do private(i,j,s) shared(n,u,v,fM_G)
+!$omp parallel do private(i,j,ss,us) shared(n,u,v,fMs_G)
     DO i=1,n
-       s = 0._dp
+       s = 0.0_dp
        DO j=1,n
          s = s + fms_G(i,j) * u(j)
        END DO
