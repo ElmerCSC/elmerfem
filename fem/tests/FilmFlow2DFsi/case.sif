@@ -2,12 +2,18 @@
 ! For true use increase timesteps and coupled system iterations. 
 ! P.R. 28.11.2023 
 
+! NOTE:
+! For the time being, LUA runtime parameter evaluations replaceed by MATC
+! equivalents, as LUA evaluations seem somewhat unstable on Windows/Mingw(UCRT64).
+
 #rhoi=1000.0
 #rhow=1000.0
 #nu = 1.0
 #h0 = 0.1
 #gravity=0*9.81
 #k0=1.0e5
+ 
+$h0 = 0.1
 
 echo on
 
@@ -162,7 +168,8 @@ Material 2
   Artificial Compressibility = #1.5/k0
 
   Gap Height = Variable "Disp 3"
-    Real LUA "tx[0]+h0"
+    Real MATC "tx(0)+h0"
+!   Real LUA "tx[0]+h0"
 End
 
 
@@ -175,7 +182,8 @@ Body Force 2
   Fsi Velocity = Equals "Disp Velocity 3"
 
   Gap Height = Variable "Disp 3"
-    Real LUA "tx[0]+h0"
+    Real MATC "tx(0)+h0"
+!   Real LUA "tx[0]+h0"
 
 ! Additional force in direction of the strip
   FilmFlow Bodyforce 1 = Real 1.0
