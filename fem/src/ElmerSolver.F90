@@ -81,7 +81,7 @@
      USE MeshUtils, ONLY : MeshExtrude, MeshExtrudeSlices, &
          CoordinateTransformation, InitializeElementDescriptions, ReleaseMesh, &
          CalculateMeshPieces, SetActiveElementsTable, SetCurrentMesh, &
-         MarkSharpEdges, TagBodiesUsingCondition
+         MarkSharpEdges, TagBodiesUsingCondition, RigidMeshMapping
      USE MortarUtils, ONLY : PeriodicProjector
      USE MainUtils, ONLY : AddEquationBasics, AddEquationSolution, AddExecWhenFlag, &
          PredictorCorrectorControl, SingleSolver, SolveEquations, SolverActivate, &
@@ -450,6 +450,10 @@
                CurrentModel % Simulation, .TRUE. )
          END IF
 
+         IF( ListGetLogical( CurrentModel % Simulation,'Internal Rigid Mesh Mapping', Found ) ) THEN       
+           CALL RigidMeshMapping( CurrentModel, Mesh, .FALSE.)
+         END IF
+                  
          IF( ListGetLogical( CurrentModel % Simulation,'Mark Sharp Edges',GotIt) ) THEN
            BLOCK
              LOGICAL, ALLOCATABLE :: SharpEdge(:)

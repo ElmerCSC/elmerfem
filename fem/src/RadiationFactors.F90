@@ -261,6 +261,14 @@
        UpdateGeometry = ComputeViewFactors .OR. (ComputeRadiatorFactors.AND.RadiatorsFound) .OR. &
            (.NOT. FirstTime .AND. (UpdateViewFactors .OR. UpdateRadiatorFactors))       
      END IF
+
+     IF(UpdateGeometry) THEN
+       IF(GetLogical( Params,'Viewfactor Rigid Mesh Mapping', Found ) ) THEN 
+         CALL Info(Caller,'Viewfactor geometry will be changed by its own rigid mesh mapping!',Level=4)
+         UpdateGeometry = .FALSE.
+       END IF
+     END IF
+       
      CALL ComputeViewFactorsAndRadiators()
 
      IF(RadiatorsFound) THEN

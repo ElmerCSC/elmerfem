@@ -65,7 +65,7 @@ CONTAINS
     REAL(KIND=dp) :: t0,t1,t2
     TYPE(Mesh_t), POINTER :: Mesh2
 !------------------------------------------------------------------------------
-    t0 = cputime()
+    !t0 = cputime()
 
     CALL FindMeshEdges2D(Mesh)
 
@@ -399,8 +399,8 @@ CONTAINS
     MeshOut % NumberOfBulkElements = nn
     MeshOut % NumberOfBoundaryElements = 0
 
-    t0 = cputime() - t0
-    PRINT*,' Shadow elments,and time spent ', nn, t0
+    !t0 = cputime() - t0
+    !PRINT*,' Shadow elments,and time spent ', nn, t0
 
 CONTAINS
 

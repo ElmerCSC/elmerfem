@@ -2554,6 +2554,8 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: MeshNames(MAX_MESHES), ElementDef0
     INTEGER :: MeshCount, MeshI
     LOGICAL, ALLOCATABLE :: MeshSolvers(:,:)
+    CHARACTER(*), PARAMETER :: Caller = 'LoadModel'
+    
 !------------------------------------------------------------------------------
 
     ALLOCATE( Model )
@@ -2597,7 +2599,7 @@ CONTAINS
       !$OMP CRITICAL
       LuaState = lua_init()
       IF(.NOT. LuaState % Initialized) THEN
-        CALL Fatal('LoadModel', 'Failed to initialize Lua subsystem.')
+        CALL Fatal(Caller, 'Failed to initialize Lua subsystem.')
       END IF
 
       ! Store mpi task and omp thread ids in a table
@@ -2637,7 +2639,7 @@ CONTAINS
     INQUIRE( Unit=InFileUnit, OPENED=OpenFile )
     IF ( .NOT. OpenFile ) THEN
       OPEN( Unit=InFileUnit, File=Modelname, STATUS='OLD',IOSTAT=iostat)
-      IF(iostat /= 0) CALL Fatal('LoadModel','Failed to open Model file: '//TRIM(Modelname))
+      IF(iostat /= 0) CALL Fatal(Caller,'Failed to open Model file: '//TRIM(Modelname))
     END IF
     CALL LoadInputFile( Model,InFileUnit,ModelName,MeshDir,MeshName, .TRUE., .TRUE. )
     REWIND( InFileUnit )
@@ -2850,7 +2852,7 @@ CONTAINS
       Single = ListGetLogical( Model % Simulation,'Partition Mesh', GotIt ) 
       IF ( Single ) THEN
         IF( ParEnv % PEs == 1 ) THEN
-          CALL Warn('LoadModel','Why perform partitioning in serial case?')
+          CALL Warn(Caller,'Why perform partitioning in serial case?')
         END IF
         IF( ParEnv % MyPe == 0 ) THEN
           SerialMesh => LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,&
@@ -2863,7 +2865,7 @@ CONTAINS
         IF( ParEnv % PEs > 1) THEN
           Model % Meshes => ReDistributeMesh( Model, SerialMesh, .FALSE., .TRUE. )
         ELSE
-          CALL Info('LoadModel','Only one active partition, using the serial mesh as it is!')
+          CALL Info(Caller,'Only one active partition, using the serial mesh as it is!')
           
           !IF( MAXVAL( SerialMesh % RePartition ) <= 1 ) THEN
           !  DEALLOCATE( SerialMesh % RePartition ) 
@@ -2884,7 +2886,7 @@ CONTAINS
         
         IF( Single ) THEN
           IF( ParEnv % PEs > 1 ) THEN
-            CALL Info('LoadModel','Whole primary mesh will be read for each partition!',Level=7)
+            CALL Info(Caller,'Whole primary mesh will be read for each partition!',Level=7)
           END IF
           Model % Meshes => LoadMesh2( Model, MeshDir, MeshName, &
               BoundariesOnly, 1, mype, Def_Dofs )
@@ -2915,21 +2917,21 @@ CONTAINS
       IF ( .NOT. GotIt ) MeshLevels=1
 
       IF( MeshLevels > 1 ) THEN
-        CALL Info('LoadModel','Creating hierarchy of meshes by mesh multiplication: '&
+        CALL Info(Caller,'Creating hierarchy of meshes by mesh multiplication: '&
             //I2S(MeshLevels))
       END IF
       MeshKeep = ListGetInteger( Model % Simulation, 'Mesh keep',  GotIt )
       IF ( .NOT. GotIt ) MeshKeep = MeshLevels
 
       IF( MeshLevels > 1 ) THEN
-        CALL Info('LoadModel','Keeping number of meshes: '//I2S(MeshKeep),Level=8)
+        CALL Info(Caller,'Keeping number of meshes: '//I2S(MeshKeep),Level=8)
       END IF
       
       MeshPower   = ListGetConstReal( Model % Simulation, 'Mesh Grading Power',GotIt)
       MeshGrading = ListGetLogical( Model % Simulation, 'Mesh Keep Grading', GotIt)
 
       DO iLevel=2,MeshLevels
-        CALL Info('LoadModel','Performing splitting at level: '//I2S(iLevel))
+        CALL Info(Caller,'Performing splitting at level: '//I2S(iLevel))
 
         OldMesh => Model % Meshes
 
@@ -3048,7 +3050,7 @@ CONTAINS
 
       IF( GotIt ) THEN
         WRITE(Message,'(A,I0)') 'Loading solver specific mesh > '//TRIM(Name)// ' < for solver ',s
-        CALL Info('LoadModel',Message,Level=7)
+        CALL Info(Caller,Message,Level=7)
 
         single = .FALSE.     
         IF ( SEQL(Name, '-single ') ) THEN
@@ -3056,7 +3058,7 @@ CONTAINS
           str = Name(9:)
           Name = str
           IF( ParEnv % PEs > 1 ) THEN
-            CALL Info('LoadModel','Whole mesh will be read for each partition!',Level=7)
+            CALL Info(Caller,'Whole mesh will be read for each partition!',Level=7)
           END IF
         END IF
 
@@ -3064,7 +3066,7 @@ CONTAINS
         IF ( SEQL(Name, '-part ') ) THEN
           READ( Name(7:), * ) nprocs
           IF( ParEnv % PEs > 1 ) THEN
-            CALL Info('LoadModel','This mesh is only active at partitions: '&
+            CALL Info(Caller,'This mesh is only active at partitions: '&
                 //I2S(nprocs),Level=7)
           END IF 
           i = 7
@@ -3129,7 +3131,7 @@ CONTAINS
         ! whether the mesh is already loaded as the primary mesh, or as some
         ! other solver-specific mesh. 
         IF(ListGetLogical( Solver % Values,'Mesh Enforce Local Copy',Found ) ) THEN
-          CALL Info('LoadModel','Skipping tests whether the mesh with same name exists!',Level=7)
+          CALL Info(Caller,'Skipping tests whether the mesh with same name exists!',Level=7)
         ELSE
           Found = .FALSE.
           Mesh => Model % Meshes
@@ -3155,7 +3157,7 @@ CONTAINS
           END DO
 
           IF ( Found ) THEN
-            CALL Info('LoadModel','Mesh with the same name has already been loaded, cycling.',Level=7) 
+            CALL Info(Caller,'Mesh with the same name has already been loaded, cycling.',Level=7) 
             Solver % Mesh => Mesh
             CYCLE
           END IF
@@ -3324,7 +3326,7 @@ CONTAINS
         str = ListGetString( Params, 'Equation', Found )
         IF (.NOT. Found) CYCLE
         IF ( TRIM(str) == 'heat equation' ) THEN
-          CALL Info('LoadModel','Defined radition solver by Equation name "heat equation"',Level=10) 
+          CALL Info(Caller,'Defined radition solver by Equation name "heat equation"',Level=10) 
           CALL ListAddLogical( Params,'Radiation Solver',.TRUE.)
           RETURN
         ENDIF
@@ -3336,7 +3338,7 @@ CONTAINS
         IF(.NOT. Found) CYCLE
         j = INDEX( str,'HeatSolver')
         IF( j > 0 ) THEN
-          CALL Info('LoadModel','Defined radiation solver by Procedure containing "HeatSolver"',Level=10) 
+          CALL Info(Caller,'Defined radiation solver by Procedure containing "HeatSolver"',Level=10) 
           CALL ListAddLogical( Params,'Radiation Solver',.TRUE.)
           RETURN
         END IF

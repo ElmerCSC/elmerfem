@@ -60,7 +60,7 @@
      USE ViewUtils
      USE DefUtils
      USE ViewFactorGlobals
-
+          
      IMPLICIT NONE
 
 !------------------------------------------------------------------------------
@@ -494,7 +494,7 @@ CONTAINS
      CALL Info( Caller, 'Reading Model... ', Level=3 )
 !------------------------------------------------------------------------------
      Model => LoadModel( ModelName,.FALSE.,1,0 )
-     CurrentModel => Model
+     CurrentModel => Model     
 !------------------------------------------------------------------------------
           
      Mesh => Null()
@@ -502,6 +502,7 @@ CONTAINS
        Solver => Model % Solvers(i)
        Radiation = ListGetLogical( Solver % Values, 'Radiation Solver', Found )
        IF ( Radiation ) THEN
+         CALL Info(Caller,'Radiation treated by solver '//I2S(i))
          Mesh => Solver % Mesh
          Model % Solver => Solver
          EXIT
@@ -511,6 +512,12 @@ CONTAINS
      IF ( .NOT. ASSOCIATED(Mesh) ) THEN
        CALL Fatal(Caller,'No heat equation definition. Cannot compute factors.')
      END IF
+
+     ! Lets do mapping if requested. 
+     IF(GetLogical( Solver % Values,'Viewfactor Rigid Mesh Mapping', Found ) ) THEN
+       CALL RigidMeshMapping( Model, Mesh, .TRUE. )
+     END IF
+       
 !------------------------------------------------------------------------------
    END SUBROUTINE InitModel
 !------------------------------------------------------------------------------
@@ -1077,7 +1084,7 @@ CONTAINS
      TYPE(Mesh_t), POINTER :: RT_Mesh
 !------------------------------------------------------------------------------
      INTEGER :: j
-     LOGICAL  :: UseShadowMesh
+     LOGICAL :: UseShadowMesh
      CHARACTER(256) :: ShadowMeshName
 !------------------------------------------------------------------------------
      RT_Mesh => Null()
@@ -1102,7 +1109,15 @@ CONTAINS
        ! are loaded.
        ! -------------------------------------------------------------------------------
        IF ( UseShadowMesh ) THEN
-         RT_Mesh =>  LoadMesh2( Model, "./", ShadowMeshName, .TRUE., ParEnv % PEs, ParEnv % MyPE )
+         RT_Mesh => LoadMesh2( Model, "./", ShadowMeshName, .TRUE., ParEnv % PEs, ParEnv % MyPE )
+
+         ! For the shading mesh we will do rigid mesh mapping also if we use internal mapping         
+         ! since for this coarse mesh the mapping has not been performed. 
+         IF(GetLogical( Params,'Viewfactor Rigid Mesh Mapping', Found ) .OR. &
+             GetLogical( Model % Simulation,'Internal Rigid Mesh Mapping', Found ) ) THEN            
+           CALL RigidMeshMapping( Model, RT_Mesh, .TRUE. )
+         END IF
+           
          RT_Mesh % NumberOfBulkElements = RT_Mesh % NumberOfBoundaryElements
          j = 0
          DO i=1,RT_Mesh % NumberOfBoundaryElements

@@ -2829,7 +2829,7 @@ CONTAINS
    CALL PrepareMesh(Model,Mesh,Parallel,Def_Dofs,mySolver)
 
    CALL Info(Caller,'Preparing mesh done',Level=10)
-
+   
    IF( Parallel ) CALL RadiationParallelMeshDistribute(Mesh, NumProcs)
    
  CONTAINS
@@ -3269,6 +3269,9 @@ CONTAINS
 
    LOGICAL :: Found, DoIt
    CHARACTER(*),PARAMETER :: Caller='PrepareMesh'      
+
+   CALL Info(Caller,'Preparing mesh for the future' )
+
    
    IF( PRESENT( mySolver ) ) THEN     
      VList => Model % Solvers(mySolver) % Values
@@ -3294,7 +3297,7 @@ CONTAINS
      CALL FollowCurvedBoundary( Model, Mesh, .FALSE. ) 
      CALL IncreaseElementOrder( Model, Mesh )
    END IF
-
+   
    CALL NonNodalElements()
 
    IF( Parallel ) THEN
@@ -15984,6 +15987,358 @@ CONTAINS
   END SUBROUTINE CoordinateTransformation
 !---------------------------------------------------------------
 
+
+
+!---------------------------------------------------------------
+!> Perform rigid mesh mapping given by body force section translate,
+!> Rotate and scale. This is copy-pasted from RigidMeshMapper solver
+!> and intended use is when the solver cannot be used i.e. in
+!> conjunction of view factor computation. 
+!---------------------------------------------------------------
+  SUBROUTINE RigidMeshMapping( Model, Mesh, VFMode ) 
+
+    TYPE(Model_t) :: Model
+    TYPE(Mesh_t) :: Mesh
+    LOGICAL :: VFMode
+    !---------------------------------------------------------------
+    TYPE(ValueList_t),POINTER :: SolverParams
+    INTEGER :: i,j,k,n,m,t,dim,elem,bf_id,istat,node,nodei,RotateOrder(3)
+    INTEGER, TARGET :: CurrentNode(1)
+    INTEGER :: NonlinIter, MaxNonlinIter, NoNodes
+    INTEGER, POINTER :: NodeIndex(:), IntArray(:) => NULL()
+    REAL(KIND=dp) :: x0(4), x1(4), RotMatrix(4,4), TrsMatrix(4,4), SclMatrix(4,4), &
+        TrfMatrix(4,4), Identity(4,4), Origin(4), Angles(3), Scaling(3), alpha, Coord(3), &
+        dCoord(3), Norm, dx(3) 
+    REAL(KIND=dp) :: at0,at1,at2,Coeff,Source,relax(1),MaxDeform,AngleCoeff
+    REAL(KIND=dp), POINTER :: X(:),Y(:),Z(:),PArray(:,:) => NULL()
+    LOGICAL :: Found,GotMatrix,GotRotate,GotTranslate,GotScale,Visited=.FALSE.,&
+        TranslateBeforeRotate, WholeMode
+    LOGICAL :: AnyMeshMatrix,AnyMeshRotate,AnyMeshTranslate,AnyMeshScale,&
+        AnyMeshOrigin, AnyRelax, ConstantMap, GotMap
+    LOGICAL, POINTER :: NodeDone(:)
+    TYPE(Element_t), POINTER :: Element
+    TYPE(ValueList_t),POINTER :: ValueList, PrevValueList     
+    CHARACTER(LEN=MAX_NAME_LEN) :: sname
+    CHARACTER(*), PARAMETER :: Caller = 'RigidMeshMapping'
+
+
+    CALL Info( Caller,'---------------------------------------',Level=4 )
+    CALL Info( Caller,'Performing analytic mesh mapping ',Level=4 )
+    CALL Info( Caller,'---------------------------------------',Level=4 )
+
+    at0 = CPUTime()
+       
+    ! First check if this is called by view factors and we use the definitions from a solver. 
+    SolverParams => NULL()
+    IF( VFMode ) THEN
+      ! In view factor mode we usually expect the rigid mesh mapping to be given by a separate code
+      ! that holds definitions for how to perform the mapping. 
+      DO i=Model % NumberOfSolvers,1,-1
+        sname = ListGetString(Model % Solvers(i) % Values, 'Procedure', Found)      
+        j = INDEX( sname,'RigidMeshMapper') 
+        IF( j > 0 ) THEN
+          CALL Info(Caller,'Using rigid body mapping definitions from Solver '//I2S(i),Level=15)
+          SolverParams => Model % Solvers(i) % Values
+          EXIT
+        END IF
+      END DO
+    END IF
+      
+    ! Do we have rigid mesh mapping requested ins simulation section.
+    IF(.NOT. ASSOCIATED(SolverParams)) THEN
+      SolverParams => Model % Simulation
+      CALL Info(Caller,'Using rigid body mapping from Simulation section',Level=15)
+    END IF
+    
+    IF( ListGetLogical( Model % Simulation,'Rotate in Radians',Found ) ) THEN
+      AngleCoeff = 1.0_dp
+    ELSE
+      AngleCoeff = PI / 180.0_dp
+    END IF
+
+    TranslateBeforeRotate = ListGetLogical( SolverParams,&
+        'Translate Before Rotate',Found )
+
+    RotateOrder = (/1, 2, 3/)
+    IntArray => ListGetIntegerArray( SolverParams,'Mesh Rotation Axis Order', Found)
+    IF(Found) THEN
+      j = SIZE(IntArray)
+      IF(j /= dim) THEN
+        CALL Fatal(Caller,'Size of Mesh Rotation Axis Order must match dimension.')
+      END IF
+      DO i=1,j
+        RotateOrder(i) = IntArray(j+1-i) !reverse the order
+      END DO
+    END IF
+
+    WholeMode = ListGetLogical( SolverParams,'Whole Mesh Mode',Found ) 
+    IF( WholeMode ) THEN
+      CALL Info(Caller,'Moving the whole mesh with keywords from same section!')
+    END IF
+
+    IF( WholeMode ) THEN
+      ValueList => SolverParams      
+      AnyMeshMatrix = ListCheckPresent( ValueList,'Mesh Matrix')   
+      AnyMeshRotate = ListCheckPrefix( ValueList,'Mesh Rotate')
+      AnyMeshTranslate = ListCheckPrefix( ValueList,'Mesh Translate')
+      AnyMeshScale = ListCheckPrefix( ValueList,'Mesh Scale') 
+      AnyMeshOrigin = ListCheckPrefix( ValueList,'Mesh Origin')
+    ELSE
+      AnyMeshMatrix = ListCheckPresentAnyBodyForce( Model,'Mesh Matrix')   
+      AnyMeshRotate = ListCheckPrefixAnyBodyForce( Model,'Mesh Rotate')
+      AnyMeshTranslate = ListCheckPrefixAnyBodyForce( Model,'Mesh Translate')
+      AnyMeshScale = ListCheckPrefixAnyBodyForce( Model,'Mesh Scale') 
+      AnyMeshOrigin = ListCheckPrefixAnyBodyForce( Model,'Mesh Origin')
+    END IF
+
+    NoNodes = Mesh % NumberOfNodes
+    ALLOCATE( NodeDone(NoNodes) )
+    NodeDone = .FALSE.
+    NodeIndex => CurrentNode
+
+    Identity = 0.0d0
+    DO i=1,4
+      Identity(i,i) = 1.0d0
+    END DO    
+        
+    X => Mesh % Nodes % x
+    Y => Mesh % Nodes % y
+    Z => Mesh % Nodes % z
+
+    ! These are used to save time in creating the projection matrices.
+    PrevValueList => NULL()
+    GotMap = .FALSE.
+    ConstantMap = ListGetLogical( SolverParams,'Constant Mapping',Found ) 
+
+    GotRotate = .FALSE.
+    GotTranslate = .FALSE.
+    GotScale = .FALSE.
+    GotMatrix = .FALSE.
+
+    
+    DO elem = 1,Mesh % NumberOfBulkElements      
+
+      Element => Mesh % Elements(elem)
+      Model % CurrentElement => Element
+      n = Element % Type % NumberOfNodes
+
+      IF( WholeMode ) THEN
+        ! If we are doing the whole mesh then do all elements. 
+        CONTINUE
+      ELSE
+        bf_id = ListGetInteger( Model % Bodies(Element % BodyId) % Values,'Body Force',Found )
+        IF(.NOT. Found) CYCLE
+        ValueList => Model % BodyForces(bf_id) % Values
+        IF( ConstantMap ) THEN
+          GotMap = ASSOCIATED( ValueList, PrevValueList )
+          PrevValueList => ValueList
+        END IF
+      END IF
+
+      DO Node=1,n
+        NodeIndex(1) = Element % NodeIndexes(Node)
+        NodeI = NodeIndex(1)
+
+        IF(NodeDone(NodeI)) CYCLE
+        NodeDone(NodeI) = .TRUE.
+
+        ! This is to save time. If we have exactly same mapping as last time then
+        ! there is no use doing the same ListGet operation things again.
+        !-------------------------------------------------------------------------
+        IF( GotMap ) GOTO 100
+        IF( WholeMode ) GotMap = .TRUE.
+
+        ! Generic transformation matrix
+        !--------------------------------
+        GotMatrix = .FALSE.
+        IF( AnyMeshMatrix ) THEN
+          Parray => ListGetConstRealArray( ValueList,'Mesh Matrix', GotMatrix )
+          IF ( GotMatrix ) THEN
+            DO i=1,SIZE(Parray,1)
+              DO j=1,SIZE(Parray,2)
+                TrfMatrix(i,j) = Parray(j,i)
+              END DO
+            END DO
+          END IF
+        END IF
+
+        IF(.NOT. GotMatrix ) THEN
+          ! Rotations around main axis:
+          !----------------------------        
+          GotRotate = .FALSE.
+          Angles = 0.0_dp
+
+          IF( AnyMeshRotate ) THEN
+            Parray => ListGetConstRealArray( ValueList,'Mesh Rotate', GotRotate )                
+            IF ( GotRotate ) THEN
+              DO i=1,SIZE(Parray,1)
+                Angles(i) = Parray(i,1) 
+              END DO
+            ELSE 
+              Angles(1:1) = ListGetReal( ValueList,'Mesh Rotate 1', 1, NodeIndex, Found )
+              IF( Found ) GotRotate = .TRUE.
+              Angles(2:2) = ListGetReal( ValueList,'Mesh Rotate 2', 1, NodeIndex, Found )
+              IF( Found ) GotRotate = .TRUE.
+              Angles(3:3) = ListGetReal( ValueList,'Mesh Rotate 3', 1, NodeIndex, Found )
+              IF( Found ) GotRotate = .TRUE.
+            END IF
+            Angles = AngleCoeff * Angles
+          END IF
+
+          ! Scaling:
+          !---------
+          GotScale = .FALSE.
+          IF( AnyMeshScale ) THEN
+            Parray => ListGetConstRealArray( ValueList,'Mesh Scale', GotScale )
+            IF ( GotScale ) THEN
+              Scaling = 0.0_dp
+              DO i=1,SIZE(Parray,1)
+                Scaling(i) = Parray(i,1)
+              END DO
+            ELSE 
+              Scaling(1:1) = ListGetReal( ValueList,'Mesh Scale 1',1,NodeIndex,GotScale) 
+              IF(.NOT. GotScale ) Scaling(1) = 1.0_dp
+              Scaling(2:2) = ListGetReal( ValueList,'Mesh Scale 2',1,NodeIndex,Found) 
+              IF(.NOT. Found ) Scaling(2) = 1.0_dp
+              GotScale = GotScale .OR. Found
+              Scaling(3:3) = ListGetReal( ValueList,'Mesh Scale 3',1,NodeIndex,Found) 
+              IF(.NOT. Found ) Scaling(3) = 1.0_dp
+              GotScale = GotScale .OR. Found
+            END IF
+          END IF
+
+          ! Translations:
+          !---------------
+          GotTranslate = .FALSE.
+          IF( AnyMeshTranslate ) THEN
+            Parray => ListGetConstRealArray( ValueList,'Mesh Translate', GotTranslate )
+            IF ( GotTranslate ) THEN
+              dCoord = 0.0_dp
+              DO i=1,SIZE(Parray,1)
+                dCoord(i) = Parray(i,1)
+              END DO
+            ELSE 
+              dCoord(1:1) = ListGetReal( ValueList,'Mesh Translate 1', 1, NodeIndex, GotTranslate) 
+              dCoord(2:2) = ListGetReal( ValueList,'Mesh Translate 2', 1, NodeIndex, Found) 
+              GotTranslate = GotTranslate .OR. Found
+              dCoord(3:3) = ListGetReal( ValueList,'Mesh Translate 3', 1, NodeIndex, Found) 
+              GotTranslate = GotTranslate .OR. Found
+            END IF
+          END IF
+
+          GotMatrix = GotRotate .OR. GotScale
+
+          IF(GotMatrix) THEN
+            TrsMatrix = Identity
+            SclMatrix = Identity
+
+            ! Origin:
+            !---------
+            IF( GotRotate ) THEN
+              RotMatrix = Identity
+
+              DO i=1,3
+                j = RotateOrder(i)
+                Alpha = Angles(j) 
+
+                IF( ABS(Alpha) < TINY(Alpha) ) CYCLE
+                TrfMatrix = Identity
+
+                SELECT CASE(j)
+                CASE(1)
+                  TrfMatrix(2,2) =  COS(Alpha)
+                  TrfMatrix(2,3) = -SIN(Alpha)
+                  TrfMatrix(3,2) =  SIN(Alpha)
+                  TrfMatrix(3,3) =  COS(Alpha)
+                CASE(2)
+                  TrfMatrix(1,1) =  COS(Alpha)
+                  TrfMatrix(1,3) = -SIN(Alpha)
+                  TrfMatrix(3,1) =  SIN(Alpha)
+                  TrfMatrix(3,3) =  COS(Alpha)
+                CASE(3)
+                  TrfMatrix(1,1) =  COS(Alpha)
+                  TrfMatrix(1,2) = -SIN(Alpha)
+                  TrfMatrix(2,1) =  SIN(Alpha)
+                  TrfMatrix(2,2) =  COS(Alpha)
+                END SELECT
+                RotMatrix = MATMUL( RotMatrix, TrfMatrix )
+              END DO
+            END IF
+
+            IF( GotTranslate ) THEN
+              DO i=1,3
+                TrsMatrix(i,4) = dCoord(i)
+              END DO
+            END IF
+
+            ! It may be easier to first translate the matrix to origin 
+            ! and only the do the rotation than vice versa. 
+            IF( TranslateBeforeRotate ) THEN
+              TrfMatrix = MATMUL( RotMatrix, TrsMatrix )
+            ELSE
+              TrfMatrix = MATMUL( TrsMatrix, RotMatrix )
+            END IF
+
+            IF( GotScale ) THEN
+              DO i=1,3
+                SclMatrix(i,i) = Scaling(i)
+              END DO
+              TrsMatrix = TrfMatrix
+              TrfMatrix = MATMUL( SClMatrix, TrsMatrix )
+            END IF
+          END IF
+        END IF
+
+        ! Get mesh origin
+        !----------------------------------------------------
+        Origin = 0.0_dp
+        IF( GotMatrix .AND. AnyMeshOrigin ) THEN
+          Parray => ListGetConstRealArray( ValueList,'Mesh Origin', Found )
+          IF ( Found ) THEN
+            DO i=1,SIZE(Parray,1)
+              Origin(i) = Parray(i,1)
+            END DO
+          ELSE
+            Origin(1:1) = ListGetReal( ValueList,'Mesh Origin 1', 1, NodeIndex, Found) 
+            Origin(2:2) = ListGetReal( ValueList,'Mesh Origin 2', 1, NodeIndex, Found) 
+            Origin(3:3) = ListGetReal( ValueList,'Mesh Origin 3', 1, NodeIndex, Found) 
+          END IF
+        END IF
+
+100     IF( GotMatrix ) THEN                         
+          x0(1) = X(NodeI)
+          x0(2) = Y(NodeI)
+          x0(3) = Z(NodeI)
+          x0(4) = 1.0_dp
+          x1 = MATMUL( TrfMatrix, x0 - Origin ) + Origin          
+          dx(1:3) = x1(1:3) / x1(4) - x0(1:3)
+        ELSE IF( GotTranslate ) THEN        
+          dx(1:3) = dCoord(1:3)
+        ELSE
+          CYCLE
+        END IF
+        
+        ! Now do the actual mapping!
+        X(NodeI) = dx(1) + X(NodeI)
+        Y(NodeI) = dx(2) + Y(NodeI)
+        Z(NodeI) = dx(3) + Z(NodeI)
+
+        ! Mark the done so that we do not revisit it again. 
+        NodeDone(NodeI) = .TRUE.
+      END DO
+    END DO
+    
+    CALL Info(Caller,'Number of nodes mapped: '//I2S(COUNT(NodeDone)),Level=7)
+    at1 = CPUTime()
+    WRITE(Message,* ) 'Coordinate mapping time: ',at1-at0
+    CALL Info(Caller,Message,Level=7)
+
+    DEALLOCATE( NodeDone )
+
+    CALL Info(Caller,'Performed internal rigid mesh mapping!',Level=10)
+    
+  END SUBROUTINE RigidMeshMapping
+    
   
 
 !---------------------------------------------------------------
