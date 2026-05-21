@@ -1569,7 +1569,8 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
      INTEGER :: Ni, n, RadiationBody
 !------------------------------------------------------------------------------
      CHARACTER(:), ALLOCATABLE :: ViewFactorsFile, OutputName, TempString
-     LOGICAL :: BinaryMode
+     LOGICAL :: BinaryMode, SinglePrec
+     REAL :: sval
      INTEGER :: i,j,k
      LOGICAL, ALLOCATABLE :: SaveMask(:)
 !------------------------------------------------------------------------------
@@ -1581,7 +1582,7 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
        ViewFactorsFile = GetString( GetSimulation(),'View Factors',GotIt)
        IF ( .NOT.GotIt ) ViewFactorsFile = 'ViewFactors.dat'
      END IF
-
+     
      IF(RadiationBody > 1) THEN
        TempString = ViewFactorsFile
        ViewFactorsFile = TRIM(TempString)//I2S(RadiationBody)
@@ -1600,8 +1601,15 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
      MinFactor = MinFactor / 10.0
          
      BinaryMode = ListGetLogical( Params,'Viewfactor Binary Output',Found ) 
-     SaveMask = ( Factors > MinFactor )
 
+     IF( BinaryMode ) THEN
+       SinglePrec = getLogical( Params,'Viewfactor single precision',GotIt)
+     ELSE
+       SinglePrec = .FALSE.
+     END IF
+     
+     SaveMask = ( Factors > MinFactor )
+     
      IF( BinaryMode ) THEN
        CALL Info(Caller,'Saving view factors in binary mode',Level=5)
 
@@ -1610,15 +1618,28 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
        
        WRITE( VFUnit ) n
 
-       DO i=1,Ni
-         k = COUNT( SaveMask((i-1)*n+1:i*n) )
-         WRITE( VFUnit ) k 
-         DO j=1,n
-           IF( SaveMask((i-1)*N+j ) ) THEN
-             WRITE( VFUnit ) j,Factors((i-1)*N+j)
-           END IF
+       IF(SinglePrec) THEN
+         DO i=1,Ni
+           k = COUNT( SaveMask((i-1)*n+1:i*n) )
+           WRITE( VFUnit ) k 
+           DO j=1,n
+             IF( SaveMask((i-1)*N+j ) ) THEN
+               sval = Factors((i-1)*N+j)
+               WRITE( VFUnit ) j,sval
+             END IF
+           END DO
          END DO
-       END DO           
+       ELSE
+         DO i=1,Ni
+           k = COUNT( SaveMask((i-1)*n+1:i*n) )
+           WRITE( VFUnit ) k 
+           DO j=1,n
+             IF( SaveMask((i-1)*N+j ) ) THEN
+               WRITE( VFUnit ) j,Factors((i-1)*N+j)
+             END IF
+           END DO
+         END DO
+       END IF
      ELSE
        CALL Info(Caller,'Saving view factors in ascii mode',Level=5)
 

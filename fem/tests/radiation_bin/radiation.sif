@@ -75,6 +75,7 @@ Solver 1
   Nonlinear System Relaxation Factor = 0.7
 
   Viewfactor Binary Output  = Logical True
+  Viewfactor single precision = Logical True
 End
 
 Equation 1

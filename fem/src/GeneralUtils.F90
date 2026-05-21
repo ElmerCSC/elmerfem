@@ -1221,6 +1221,18 @@ CONTAINS
        character(kind=c_char, len=:), pointer :: lua_result
        integer :: result_len
        logical :: closed_region, first_bang
+
+        BLOCK
+          INTERFACE
+            SUBROUTINE setlocale(category,locale) BIND(c,name="setlocale")
+              USE iso_c_binding
+              integer(c_int), value :: category
+              character(kind=c_char), dimension(*) :: locale
+            END SUBROUTINE  setlocale
+          END INTERFACE
+          CALL setlocale(0,"en_US.UTF-8"//CHAR(0))
+        END BLOCK
+
        closed_region = .false.
        first_bang = .true.
        m = i
@@ -2759,12 +2771,11 @@ CONTAINS
     CHARACTER(LEN=1024) :: Str 
     INTEGER, PARAMETER :: VtuUnit = 58
     
-    WRITE( VtuUnit ) TRIM(Str)        
+    WRITE( VtuUnit ) TRIM(Str)
     IF( CalcSum ) THEN
       Scount = Scount + 1
       Ssum = Ssum + len_trim( Str ) 
     END IF
-    
     
   END SUBROUTINE AscBinStrWrite
   
