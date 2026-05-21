@@ -74,7 +74,7 @@ End
 Body Force 1
   Name = "Transverse load"
   Normal Pressure = Variable Coordinate
-     Real MATC "-t * 1.0e+5 * (1-2*tx*tx)"
+     Real MATC "-t * 1.0e+5 * (1-2*tx(0)*tx(0))"
 !    Real LUA "-t * 1.0e+5 * (1-2*tx[0]*tx[0])"
 End 
 
