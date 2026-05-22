@@ -3804,11 +3804,26 @@ CONTAINS
          REAL(KIND=dp), POINTER :: AdjSol(:)
          TYPE(Variable_t), POINTER :: aVar
          TYPE(Mesh_t), POINTER :: Mesh
+         LOGICAL :: LFact, FreeFact
          
          n = SIZE(Solver % Matrix % rhs)
-         CALL ListAddLogical(Params,'Skip Compute Nonlinear Change',.TRUE.)
 
+         LFact = ListGetLogical( Params,'Linear System Refacrtorize', Found )
+         IF(.NOT. Found) LFact = .TRUE.
+         FreeFact = ListGetLogical( Params,'Linear System Free Factorization', Found )
 
+         CALL ListAddLogical( Params,'Skip Compute Nonlinear Change',.TRUE.)
+         CALL ListAddLogical( Params,'Skip Advance Nonlinear iter',.TRUE.)
+         CALL ListAddLogical( Params, 'Linear System Constant Matrix', .TRUE.)
+         CALL ListAddLogical( Params, 'Linear System Refactorize', .FALSE. )
+
+         str = ListGetString( Params,'Adjoint Source Name', Found )
+         IF( Found ) THEN
+           CALL Info('DefaultFinish','Creating adjoint solution with source: '//TRIM(str))
+           CALL AssembleAdjointRhs( Solver, str )
+         END IF
+         
+         
          Mesh => Solver % Mesh
          aVar => VariableGet( Mesh % Variables,TRIM(Solver % Variable % Name)//' adjoint')
          IF(.NOT. ASSOCIATED(aVar)) THEN
@@ -3823,15 +3838,25 @@ CONTAINS
                  TRIM(Solver % Variable % Name)//' adjoint rhs',Solver % Variable % Dofs,&
                  Solver % Matrix % rhsAdjoint, Solver % Variable % Perm, &
                  Output = .TRUE., Secondary = .TRUE.)
+         ELSE
+           AdjSol => avar % Values
+           AdjSol = 0.0_dp           
          END IF
-         AdjSol => avar % Values
+           
+         ! Dirichlet conditions are not sensitive because they are constant
+         WHERE( Solver % Matrix % ConstrainedDOF )
+           Solver % Matrix % RhsAdjoint = 0.0_dp
+         END WHERE
 
-         
          CALL SolveSystem( Solver % Matrix, ParMatrix, Solver % Matrix % rhsAdjoint, &
              AdjSol, Norm, Solver % Variable % DOFs,Solver )
-
              
          CALL ListAddLogical(Params,'Skip Compute Nonlinear Change',.FALSE.)
+         CALL ListAddLogical( Params,'Skip Advance Nonlinear iter',.FALSE.)
+         CALL ListAddLogical( Params, 'Linear System Constant Matrix', .FALSE.)
+         CALL ListAddLogical( Params, 'Linear System Refactorize', LFact )
+         CALL ListAddLogical( Params, 'Linear System Free Factorization', FreeFact )
+
        END BLOCK
      END IF
        
@@ -4125,6 +4150,7 @@ CONTAINS
         CALL SaveLinearSystem( Solver ) 
       END IF
     END IF
+
 
     
     ! If flux corrected transport is used then apply the corrector to the system

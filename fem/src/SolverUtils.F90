@@ -16871,7 +16871,7 @@ END FUNCTION SearchNodeL
           CALL ListAddLogical( Solver % Values, 'Linear System Refactorize', LFact )
           CALL ListAddLogical( Solver % Values, 'Linear System Free Factorization', FreeFact )
         END IF
-      END IF
+      END IF         
     END BLOCK
     
     ! Even in the residual mode the system is reverted back to complete vectors 
@@ -21606,6 +21606,119 @@ CONTAINS
 
 
 
+!-----------------------------------------------------------------------------------
+!> Assemble a right-hand-side related to adjoint problem using library functioality.
+!-----------------------------------------------------------------------------------
+  SUBROUTINE AssembleAdjointRhs( Solver, AdjointRhsName )
+    
+    TYPE(Solver_t) :: Solver
+    CHARACTER(*) :: AdjointRhsName
+    !------------------------------------------------------------------------------
+    TYPE(Mesh_t), POINTER :: Mesh
+    INTEGER, POINTER :: Indexes(:)
+    INTEGER :: i,j,k,n,t,istat
+    TYPE(Element_t), POINTER :: Element
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Nodes_t) :: Nodes
+    REAL(KIND=dp), ALLOCATABLE :: FORCE(:), Load(:), Basis(:)
+    REAL(KIND=dp), POINTER :: rhs(:)
+    REAL(KIND=dp) :: detJ, val, s
+    LOGICAL :: Stat, Found
+    TYPE(ValueList_t), POINTER :: vList
+    INTEGER :: bf_id, bc_id, body_id, dofs
+
+    CALL Info('AssembleAdjointRhs','Integrating source by name: '//TRIM(AdjointRhsName),Level=10)
+
+    IF(.NOT. ( ListCheckPrefixAnyBC( CurrentModel, AdjointRhsName ) .OR. &
+        ListCheckPrefixAnyBodyForce( CurrentModel, AdjointRhsName ) ) ) THEN
+      CALL Fatal('AssembleAdjointRhs','Could not find any source with name: '//TRIM(AdjointRhsName))      
+    END IF
+        
+    
+    Mesh => Solver % Mesh
+
+    dofs = Solver % Variable % Dofs 
+    N = Mesh % MaxElementNodes 
+    ALLOCATE( Basis(n), FORCE(dofs*N), Load(dofs*N), &
+        Nodes % x(n), Nodes % y(n), Nodes % z(n), &
+        STAT=istat)
+
+    rhs => Solver % Matrix % rhsAdjoint
+    IF(.NOT. ASSOCIATED(rhs)) THEN
+      CALL Fatal('AssembleAdjointRhs','RhsAdjoint not allocated!')
+    END IF
+    rhs = 0.0_dp
+        
+    DO t=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements 
+      Element => Mesh % Elements(t)
+      CurrentModel % CurrentElement => Element
+      n = Element % TYPE % NumberOfNodes
+
+      vList => NULL()
+      body_id = Element % BodyId
+      IF( body_id > 0) THEN
+        bf_id = ListGetInteger( CurrentModel % Bodies(body_id) % Values, &
+            'Body Force', Found )
+        IF(bf_id > 0) THEN
+          vList => CurrentModel % BodyForces(bf_id) % Values
+        END IF
+      END IF
+      
+      IF(.NOT. ASSOCIATED(vList) ) THEN
+        IF( t > Mesh % NumberOfBulkElements + 1 ) THEN
+          DO bc_id=1,CurrentModel % NumberOfBCs
+            IF ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(bc_id) % Tag ) THEN
+              vList => CurrentModel % BCs(bc_id) % Values
+              EXIT
+            END IF
+          END DO
+        END IF
+        IF(.NOT. ASSOCIATED(vList)) CYCLE
+      END IF
+      
+      Indexes => Element % NodeIndexes
+      Nodes % x(1:n) = Mesh % Nodes % x(Indexes)
+      Nodes % y(1:n) = Mesh % Nodes % y(Indexes)
+      Nodes % z(1:n) = Mesh % Nodes % z(Indexes)
+      
+      Load = 0.0_dp
+      FORCE = 0.0_dp
+      
+      IF(dofs==1) THEN
+        Load(1:n) = ListGetReal( vList, AdjointRhsName, n, Indexes, Found ) 
+      ELSE
+        Found = .FALSE.
+        DO i=1,dofs
+          Load(i:dofs*n:dofs) = ListGetReal( vList, TRIM(AdjointRhsName)//' '//I2S(i), &
+              n, Indexes, Stat )
+          Found = Found .OR. Stat          
+        END DO        
+      END IF
+      IF(.NOT. Found) CYCLE
+                          
+      IP = GaussPoints( Element )
+
+      DO k=1,IP % n
+        stat = ElementInfo( Element, Nodes, IP % U(k), IP % V(k), &
+            IP % W(k),  detJ, Basis )        
+        s = IP % s(k) * DetJ 
+
+        DO i=1,dofs
+          val = SUM(Basis(1:n) * Load(i:dofs*n:dofs))
+          FORCE(i:dofs*n:dofs) = FORCE(i:dofs*n:dofs) + val * s * Basis(1:n) 
+        END DO
+      END DO
+      
+      CALL UpdateGlobalForce( Solver % Matrix % RhsAdjoint, &
+          Force, n, dofs, Solver % Variable % Perm(Indexes) )
+    END DO
+
+    DEALLOCATE( Basis, FORCE, Nodes % x, Nodes % y, Nodes % z)
+    
+  END SUBROUTINE AssembleAdjointRhs
+
+
+
 !------------------------------------------------------------------------------
 !> Create diagonal matrix from P (not square) by summing the entries together
 !> and multiplying with a constant.
@@ -21696,8 +21809,8 @@ CONTAINS
     LOGICAL, ALLOCATABLE :: NodeDone(:)
     REAL(KIND=dp) :: MultSF, MultFS, dt
     REAL(KIND=dp), POINTER :: A_fs_values(:), A_sf_values(:)
-    CHARACTER(*), PARAMETER :: Caller = 'FsiCouplingAssembly'
     TYPE(Variable_t), POINTER :: dtVar
+    CHARACTER(*), PARAMETER :: Caller = 'FsiCouplingAssembly'
     
     
     CALL Info(Caller,'Creating coupling matrix for FSI',Level=6)
