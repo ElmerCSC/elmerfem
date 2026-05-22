@@ -98,7 +98,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   USE elmer_coupling, ONLY: coupling_setup, is_root_rank
   USE elmer_ebfm_coupling, ONLY: elmer_ebfm_interface, t_ice_field, smb_field, &
                                  runoff_field, surface_height_field
-  ! USE elmer_icon_coupling, ONLY: elmer_icon_interface, clt_field, pr_field
+  USE elmer_icon_coupling, ONLY: elmer_icon_interface, t_oce_field, sal_oce_field
 
   IMPLICIT NONE
 
@@ -120,14 +120,14 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   CHARACTER(LEN=1024) ::  yac_calendar, yac_start_time, yac_end_time
   INTEGER :: i, t
   INTEGER, POINTER :: t_icePerm(:), smbPerm(:), runoffPerm(:)
+  INTEGER, POINTER :: t_ocePerm(:), sal_ocePerm(:)
   REAL(KIND=dp) :: central_meridian, latitude_of_origin
   REAL(KIND=dp) :: expected_central_meridian, expected_latitude_of_origin
   CHARACTER(LEN=16) :: expected_central_meridian_str, expected_latitude_of_origin_str
-  ! INTEGER, POINTER :: cltPerm(:), prPerm(:)  ! ICON is not supported at the moment
   LOGICAL :: Parallel, FirstTime=.TRUE., UnFoundFatal=.TRUE.
   TYPE(Mesh_t),POINTER :: Mesh
   TYPE(Variable_t), POINTER :: t_iceVar, smbVar, runoffVar, ZsSol
-  ! TYPE(Variable_t), POINTER :: cltVar, prVar  ! ICON is not supported at the moment
+  TYPE(Variable_t), POINTER :: t_oceVar, sal_oceVar
   REAL(KIND=dp), ALLOCATABLE :: lon_vertices(:), lat_vertices(:)
   REAL(KIND=dp), ALLOCATABLE :: lon_cells(:), lat_cells(:)
   INTEGER, ALLOCATABLE :: cell_to_vertex(:), num_vertices_per_cell(:)
@@ -322,13 +322,6 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
     )
   END IF
 
-  ! TODO: remove this check when ICON coupling is implemented
-  IF (couple_to_icon) THEN
-    CALL FATAL(SolverName, &
-      ">Couple To ICON< is currently not supported. Please set to FALSE" &
-    )
-  END IF
-
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   Mesh => Solver % Mesh
 
@@ -419,21 +412,14 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
     END IF
 
     IF (couple_to_icon) THEN
-      CALL FATAL(SolverName,'ICON coupling not yet implemented')
+      ALLOCATE(t_ocePerm(Mesh % NumberOfNodes), sal_ocePerm(Mesh % NumberOfNodes))
+      DO i=1,Mesh % NumberOfNodes
+        t_ocePerm(i) = i
+        sal_ocePerm(i) = i
+      END DO
+      CALL DefaultVariableAdd('temp_oce', dofs=1, Perm = t_ocePerm)
+      CALL DefaultVariableAdd('sal_oce', dofs=1, Perm = sal_ocePerm)
 
-      ! ALLOCATE(cltPerm(Mesh % NumberOfNodes), prPerm(GetNOFActive(Solver)))
-      ! DO i=1,Mesh % NumberOfNodes
-      !   cltPerm(i) = i
-      ! END DO
-
-      ! DO t=1,GetNOFActive(Solver)
-      !   prPerm(t) = t
-      ! END DO
-
-      ! CALL DefaultVariableAdd('tas', dofs=1, Perm = cltPerm)
-
-      ! ! element wise (cell) variable
-      ! CALL DefaultVariableAdd('pr_snow', dofs=1, VariableType = Variable_on_elements, Perm = prPerm)
     END IF
 
     FirstTime = .FALSE.
@@ -476,7 +462,20 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   END IF
 
   IF (couple_to_icon) THEN
-      CALL FATAL(SolverName,'ICON coupling not yet implemented')
+      CALL INFO(SolverName, 'BEFORE ELMER ICON-O INTERFACE', Level=3)
+      ! couple with ICON-O
+      CALL elmer_icon_interface(is_root_rank)
+      CALL INFO(SolverName, 'AFTER ELMER ICON-O INTERFACE', Level=3)
+      t_oceVar => VariableGet( Mesh % Variables, 'temp_oce' )
+      sal_oceVar => VariableGet( Mesh % Variables, 'sal_oce' )
+      IF ((.NOT.ASSOCIATED(t_oceVar)) .OR. (.NOT.ASSOCIATED(sal_oceVar))) THEN
+        CALL FATAL(SolverName,'Elmer variables not associated')
+      END IF
+       !write over values for nodes
+      DO i=1, Mesh % NumberOfNodes
+        t_oceVar % Values(t_oceVar % Perm(i)) = t_oce_field(i,1)
+        sal_oceVar % Values(sal_oceVar % Perm(i)) = sal_oce_field(i,1)
+      END DO
       ! TODO: stub implementation for ICON coupling
       ! CALL elmer_icon_interface(is_root_rank)
       ! cltVar => VariableGet( Mesh % Variables, 'tas' )

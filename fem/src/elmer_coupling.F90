@@ -449,15 +449,15 @@ MODULE elmer_icon_coupling
   PUBLIC :: destruct_elmer_icon_coupling
   PUBLIC :: elmer_icon_interface
 
-  INTEGER :: clt_field_id = -1
-  CHARACTER(LEN=*), PARAMETER :: clt_field_name = "tas"
-  INTEGER :: clt_collection_size = 1
-  DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: clt_field(:,:)
+  INTEGER :: t_oce_field_id = -1
+  CHARACTER(LEN=*), PARAMETER :: t_oce_field_name = "temp_oce"
+  INTEGER :: t_oce_collection_size = 1
+  DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: t_oce_field(:,:)
 
-  INTEGER :: pr_field_id = -1
-  CHARACTER(LEN=*), PARAMETER :: pr_field_name = "pr_snow"
-  INTEGER :: pr_collection_size = 1
-  DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: pr_field(:,:)
+  INTEGER :: sal_oce_field_id = -1
+  CHARACTER(LEN=*), PARAMETER :: sal_oce_field_name = "sal_oce"
+  INTEGER :: sal_oce_collection_size = 1
+  DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: sal_oce_field(:,:)
 
 CONTAINS
 
@@ -474,23 +474,23 @@ CONTAINS
     nbr_vertices = yac_fget_points_size(corner_point_id)
     nbr_cells = yac_fget_points_size(cell_point_id)
 
-    ! register total cloud cover field in YAC
+    ! register ocean temperature field in YAC
     CALL yac_fdef_field( &
-      clt_field_name, comp_id, (/corner_point_id/), 1, clt_collection_size, &
-      iso8601_timestep, YAC_TIME_UNIT_ISO_FORMAT, clt_field_id);
+      t_oce_field_name, comp_id, (/corner_point_id/), 1, t_oce_collection_size, &
+      iso8601_timestep, YAC_TIME_UNIT_ISO_FORMAT, t_oce_field_id);
 
-    ! allocate and initialise total cloud cover field buffer
-    ALLOCATE(clt_field(nbr_vertices, clt_collection_size))
-    clt_field = 0.0
+    ! allocate and initialise ocean temperature field buffer
+    ALLOCATE(t_oce_field(nbr_vertices, t_oce_collection_size))
+    !clt_field = 0.0
 
-    ! register precipitation flux field in YAC
+    ! register ocean salinity field in YAC
     CALL yac_fdef_field( &
-      pr_field_name, comp_id, (/cell_point_id/), 1, pr_collection_size, &
-      iso8601_timestep, YAC_TIME_UNIT_ISO_FORMAT, pr_field_id)
+      sal_oce_field_name, comp_id, (/corner_point_id/), 1, sal_oce_collection_size, &
+      iso8601_timestep, YAC_TIME_UNIT_ISO_FORMAT, sal_oce_field_id)
 
-    ! allocate and initialise precipitation flux field buffer
-    ALLOCATE(pr_field(nbr_cells, pr_collection_size))
-    pr_field = 0.0
+    ! allocate and initialise ocean salinity field buffer
+    ALLOCATE(sal_oce_field(nbr_vertices, sal_oce_collection_size))
+    !pr_field = 0.0
 
   END SUBROUTINE construct_elmer_icon_coupling
 
@@ -506,8 +506,8 @@ CONTAINS
 
     IF (.NOT. is_root_rank) RETURN
 
-    CALL print_field_info(elmer_comp_name, elmer_grid_name, pr_field_name)
-    CALL print_field_info(elmer_comp_name, elmer_grid_name, clt_field_name)
+    CALL print_field_info(elmer_comp_name, elmer_grid_name, t_oce_field_name)
+    CALL print_field_info(elmer_comp_name, elmer_grid_name, sal_oce_field_name)
 
   CONTAINS
 
@@ -539,11 +539,11 @@ CONTAINS
 
         IF (yac_fget_field_role( &
               elmer_comp_name, elmer_grid_name, field_name) == &
-              YAC_EXCHANGE_TYPE_SOURCE) THEN
+              YAC_EXCHANGE_TYPE_TARGET) THEN
 
           src_field_timestep = &
             yac_fget_field_timestep( &
-              src_comp_name, src_grid_name, src_field_name)
+              elmer_comp_name, elmer_grid_name, src_field_name)
 
           IF (yac_ffield_has_metadata( &
                 src_comp_name, src_grid_name, src_field_name)) THEN
@@ -554,12 +554,12 @@ CONTAINS
             src_field_metadata = "N/A"
           END IF
 
-          PRINT *, "field ", field_name, ":"
-          PRINT *, " - source:"
-          PRINT *, "   - component: ", src_comp_name
-          PRINT *, "   - grid:      ", src_grid_name
-          PRINT *, "   - timestep:  ", src_field_timestep
-          PRINT *, "   - metadata:  ", src_field_metadata
+          PRINT *, "ELMER: field ", field_name, ":"
+          PRINT *, "ELMER:  - source:"
+          PRINT *, "ELMER:    - component: ", src_comp_name
+          PRINT *, "ELMER:    - grid:      ", src_grid_name
+          PRINT *, "ELMER:    - timestep:  ", src_field_timestep
+          PRINT *, "ELMER:    - metadata:  ", src_field_metadata
 
         END IF
 
@@ -575,28 +575,28 @@ CONTAINS
 
     INTEGER :: info, err
 
-    ! checks whether the total cloud cover field is defined as a target
+    ! checks whether the ocean temperature field is defined as a target
     ! in a couple
-    IF (yac_fget_role_from_field_id(clt_field_id) == &
+    IF (yac_fget_role_from_field_id(t_oce_field_id) == &
         YAC_EXCHANGE_TYPE_TARGET) THEN
 
       IF (is_root_rank) THEN
 
         ! get the action executed by YAC in the next get operation called for
         ! the total cloud cover field and print out some information
-        CALL yac_fget_action(clt_field_id, info)
-        PRINT *, "call get for field: ", TRIM(clt_field_name), &
-                 " datatime: ", TRIM(yac_fget_field_datetime(clt_field_id)), &
+        CALL yac_fget_action(t_oce_field_id, info)
+        PRINT *, "call get for field: ", TRIM(t_oce_field_name), &
+                 " datatime: ", TRIM(yac_fget_field_datetime(t_oce_field_id)), &
                  " action: ", TRIM(yac_action_to_string(info))
       END IF
 
-      ! execute get operation for total cloud cover field
+      ! execute get operation for ocean temperature field
       ! * if this is a coupling timestep, this will block until the data has
       !   been received
-      ! * if this is not a coupling timestep, total cloud cover field buffer
+      ! * if this is not a coupling timestep, ocean temperature field buffer
       !   is left untouched and routine will return immediately
       CALL yac_fget( &
-        clt_field_id, SIZE(clt_field, 1), SIZE(clt_field, 2), clt_field, &
+        t_oce_field_id, SIZE(t_oce_field, 1), SIZE(t_oce_field, 2), t_oce_field, &
         info, err)
 
       ! if this was a coupling timestep
@@ -605,33 +605,33 @@ CONTAINS
 
         ! prepare received data for elmer
 
-        ! update elmer internal total cloud cover field
+        ! update elmer internal ocean temperature field
 
       END IF
     END IF
 
-    ! checks whether the precipitation flux field is defined as a target
+    ! checks whether the ocean salinity field is defined as a target
     ! in a couple
-    IF (yac_fget_role_from_field_id(pr_field_id) == &
+    IF (yac_fget_role_from_field_id(sal_oce_field_id) == &
         YAC_EXCHANGE_TYPE_TARGET) THEN
 
       IF (is_root_rank) THEN
 
         ! get the action executed by YAC in the next get operation called for
         ! the precipitation flux field and print out some information
-        CALL yac_fget_action(pr_field_id, info)
-        PRINT *, "call get for field: ", TRIM(pr_field_name), &
-                 " datatime: ", TRIM(yac_fget_field_datetime(pr_field_id)), &
+        CALL yac_fget_action(sal_oce_field_id, info)
+        PRINT *, "call get for field: ", TRIM(sal_oce_field_name), &
+                 " datatime: ", TRIM(yac_fget_field_datetime(sal_oce_field_id)), &
                  " action: ", TRIM(yac_action_to_string(info))
       END IF
 
-      ! execute get operation for precipitation flux field
+      ! execute get operation for ocean salinity field
       ! * if this is a coupling timestep, this will block until the data has
       !   been received
-      ! * if this is not a coupling timestep, precipitation flux field buffer
+      ! * if this is not a coupling timestep, ocean salinity field buffer
       !   is left untouched and routine will return immediately
       CALL yac_fget( &
-        pr_field_id, SIZE(pr_field, 1), SIZE(pr_field, 2), pr_field, &
+        sal_oce_field_id, SIZE(sal_oce_field, 1), SIZE(sal_oce_field, 2), sal_oce_field, &
         info, err)
 
       ! if this was a coupling timestep
@@ -640,7 +640,7 @@ CONTAINS
 
         ! prepare received data for elmer
 
-        ! update elmer internal precipitation flux field
+        ! update elmer internal ocean salinity field
 
       END IF
     END IF
@@ -650,7 +650,7 @@ CONTAINS
   SUBROUTINE destruct_elmer_icon_coupling()
 
     ! clean up
-    DEALLOCATE(pr_field, clt_field)
+    DEALLOCATE(t_oce_field, sal_oce_field)
 
   END SUBROUTINE destruct_elmer_icon_coupling
 
