@@ -5,4 +5,4 @@ CONFIGURE_FILE( recovery_adapt.sif recovery_adapt.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO strip.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(a-posteriori-recovery-2D LABELS quick amr)
+ADD_ELMER_TEST(a-posteriori-recovery-2D LABELS quick amr emwave)

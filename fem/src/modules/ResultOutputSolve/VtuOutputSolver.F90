@@ -4,23 +4,25 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
+
 MODULE VtuXMLFile
+
   USE DefUtils 
   USE MeshUtils
   USE SolverUtils
@@ -717,21 +719,21 @@ CONTAINS
     INTEGER, PARAMETER :: VtuUnit = 58
     INTEGER :: i,ii,j,jj,k,dofs,Rank,n,m,dim,vari,sdofs,dispdofs, dispBdofs, Offset, &
         NoFields, NoFields2, IndField, iField, iField0, NoModes, NoModes2, NoFieldsWritten, &
-        cumn, iostat
+        cumn, iostat, NoTooBig, nofs
     CHARACTER(LEN=1024) :: Txt, ScalarFieldName, VectorFieldName, TensorFieldName, &
         FieldName, FieldNameB, OutStr
     CHARACTER :: lf
     CHARACTER(*), PARAMETER :: Caller = 'WriteVtuFile'
     LOGICAL :: ScalarsExist, VectorsExist, Found, &
         ComponentVector, ComponentVectorB, ComplementExists, &
-        Use2, IsHarmonic, FlipActive
+        Use2, IsHarmonic, FlipActive, RotateActive
     INTEGER :: DoIm
     LOGICAL :: WriteData, WriteXML, L, Buffered
     TYPE(Variable_t), POINTER :: Solution, Solution2, Solution3, TmpSolDg, TmpSolDg2, TmpSolDg3
     INTEGER, POINTER :: Perm(:), PermB(:), DispPerm(:), DispBPerm(:)
     REAL(KIND=dp), POINTER :: Values(:), Values2(:), Values3(:), DispValues(:)
     REAL(KIND=dp), POINTER :: ValuesB(:), ValuesB2(:), ValuesB3(:), DispBValues(:)
-    REAL(KIND=dp) :: x,y,z, val,ElemVectVal(3)
+    REAL(KIND=dp) :: x,y,z, val,ElemVectVal(3), vals(50)
     INTEGER, ALLOCATABLE, TARGET :: ElemInd(:)
     INTEGER, PARAMETER :: MAX_LAGRANGE_NODES = 729
     INTEGER :: TmpIndexes(MAX_LAGRANGE_NODES), VarType
@@ -944,7 +946,7 @@ CONTAINS
             END IF
           END IF
 
-          CALL Info(Caller,'Saving variable: '//TRIM(FieldName),Level=10)
+          CALL Info(Caller,'Saving '//I2S(dofs)//'-component variable: '//TRIM(FieldName),Level=10)
           
           VarType = Solution % Type
 
@@ -1074,6 +1076,17 @@ CONTAINS
           
           Perm => Solution % Perm
           FlipActive = Solution % PeriodicFlipActive 
+
+          RotateActive = .FALSE.
+          IF(dofs==3) THEN
+            IF(ASSOCIATED(Model % Mesh % PeriodicPerm)) THEN
+              IF( Solution % Solver % NormalTangential % NormalTangentialNOFNodes > 0 ) THEN
+                RotateActive = ListGetLogical( Solution %  Solver % Values, &
+                    'Apply Conforming BCs',Found )
+                CALL Info(Caller,'Rotate active for variable: '//TRIM(Solution % Name))
+              END IF
+            END IF
+          END IF
           
           !---------------------------------------------------------------------
           ! There may be special complementary variables such as 
@@ -1212,9 +1225,11 @@ CONTAINS
                   CALL Fatal(Caller,'InvFieldPerm not associated!')
                 END IF
               END IF
+              NoTooBig = 0
+              nofs = 0
               
               IF( BinaryOutput ) WRITE( VtuUnit ) k
-
+              
               DO ii = 1, NumberOfDofNodes
 
                 IF( NoPermutation ) THEN
@@ -1224,11 +1239,18 @@ CONTAINS
                 END IF
 
                 IF( ASSOCIATED( Perm ) .AND. LagN == 0 ) THEN
-                  j = Perm(i)
+                  j = 0
+                  IF(i<1 .OR. i>SIZE(Perm)) THEN
+                    NoTooBig = NoTooBig + 1
+                  ELSE
+                    j = Perm(i)
+                  END IF
                 ELSE
                   j = i
                 END IF
 
+                IF(j>0) nofs = nofs + 1
+                
                 Use2 = .FALSE.
                 IF( ComplementExists ) THEN
                   IF( j == 0 ) THEN
@@ -1237,9 +1259,10 @@ CONTAINS
                   END IF
                 END IF
                 
+                vals = 0.0_dp
                 DO k=1,sdofs              
                   IF(j==0 .OR. k > dofs) THEN
-                    val = 0.0_dp
+                    vals(k) = 0.0_dp
                   ELSE IF( NoModes + NoModes2 == 0  .OR. iField == 0 ) THEN 
                     IF( Use2 ) THEN
                       IF( ComponentVectorB ) THEN
@@ -1247,19 +1270,19 @@ CONTAINS
                         IF( k == 2 ) val = ValuesB2(j)
                         IF( k == 3 ) val = ValuesB3(j)
                       ELSE
-                        val = ValuesB(dofs*(j-1)+k)              
+                        vals(k) = ValuesB(dofs*(j-1)+k)              
                       END IF
                     ELSE
                       IF( ComponentVector ) THEN
-                        IF( k == 1 ) val = Values(j)
-                        IF( k == 2 ) val = Values2(j)
-                        IF( k == 3 ) val = Values3(j)
+                        IF( k == 1 ) vals(k) = Values(j)
+                        IF( k == 2 ) vals(k) = Values2(j)
+                        IF( k == 3 ) vals(k) = Values3(j)
                       ELSE
                         IF(dofs*(j-1)+k > SIZE(Values) .OR. dofs*(j-1)+k < 1 ) THEN
                           PRINT *,'vtu:',dofs,j,k,SIZE(values),dofs*(j-1)+k
                           call flush(6)
                         END IF
-                        val = Values(dofs*(j-1)+k)              
+                        vals(k) = Values(dofs*(j-1)+k)              
                       END IF
                     END IF
                   ELSE IF( NoModes > 0 .AND. iField <= NoFields ) THEN
@@ -1280,22 +1303,65 @@ CONTAINS
                         zval = EigenVectors(IndField,dofs*(j-1)+k) 
                       END IF
                     END IF
-                    val = PickComplex(zval,EigenVectorMode+DoIm) 
-
+                    vals(k) = PickComplex(zval,EigenVectorMode+DoIm) 
+                    
                   ELSE IF( NoModes2 > 0 ) THEN
-                    val = ConstraintModes(IndField,dofs*(j-1)+k)
-                   END IF
+                    vals(k) = ConstraintModes(IndField,dofs*(j-1)+k)
+                  END IF
 
                   IF( FlipActive ) THEN
-                    IF( Model % Mesh % PeriodicFlip(i) ) val = -val
+                    IF( Model % Mesh % PeriodicFlip(i) ) vals(k) = -vals(k)
                   END IF
-                  
-                  CALL AscBinRealWrite( val )
                 END DO
+
+                IF(RotateActive) THEN
+                  BLOCK 
+                    TYPE(NormalTangential_t), POINTER :: NT                    
+                    REAL(KIND=dp) :: vals0(dofs), Rot1(dofs,dofs), Rot2(dofs,dofs), r1, r2, x1(dofs), x2(dofs)
+                    INTEGER :: kk,ll
+                    NT => Solution % Solver % NormalTangential
+                    jj = Model % Mesh % PeriodicPerm(i)
+                    IF(jj > 0) THEN
+                      kk = NT % BoundaryReOrder(i)
+                      ll = NT % BoundaryReorder(jj)
+
+                      IF(kk>0 .AND. ll>0) THEN
+                        vals0(1:dofs) = vals(1:dofs)
+                        
+                        Rot1(1:dofs,1) = NT % BoundaryNormals(kk,1:dofs)
+                        Rot1(1:dofs,2) = NT % BoundaryTangent1(kk,1:dofs)
+                        
+                        Rot2(1,1:dofs) = NT % BoundaryNormals(ll,1:dofs)
+                        Rot2(2,1:dofs) = NT % BoundaryTangent1(ll,1:dofs)
+
+                        IF(dofs==3) THEN
+                          Rot1(1:dofs,3) = NT % BoundaryTangent2(kk,1:dofs)                        
+                          Rot2(3,1:dofs) = NT % BoundaryTangent2(ll,1:dofs)
+                        END IF
+                          
+                        vals(1:dofs) = MATMUL(Rot1,MATMUL(Rot2,vals0))                        
+                      END IF
+
+                    END IF
+                  END BLOCK
+                END IF
+                
+                DO k=1,sdofs                              
+                  CALL AscBinRealWrite( vals(k) )
+                END DO
+                  
               END DO
 
               CALL AscBinRealWrite( 0.0_dp, .TRUE. )
 
+              IF(NoTooBig > 0) THEN
+                CALL Fatal(Caller,'Too big index for Perm in '//I2S(NoTooBig)//' nodes for '//TRIM(FieldName))
+              END IF
+              IF(ASSOCIATED(Perm)) THEN
+                CALL Info(Caller,'Number of nonzeros for "'&
+                    //TRIM(FieldName)//'" is '//I2S(nofs)//' of '//I2S(NumberOfDofNodes),Level=15)
+              END IF
+                
             END IF
 
             IF( AsciiOutput ) THEN
@@ -2079,6 +2145,24 @@ CONTAINS
       IF(ASSOCIATED(TmpSolDg2)) CALL ReleaseVariableList( TmpSolDg2 )
       IF(ASSOCIATED(TmpSolDg3)) CALL ReleaseVariableList( TmpSolDg3 )      
     END IF
+
+    BLOCK
+      INTERFACE
+        SUBROUTINE setlocale(category,locale) BIND(c,name="setlocale")
+          USE iso_c_binding
+          integer(c_int), value :: category
+          character(kind=c_char), dimension(*) :: locale
+        END SUBROUTINE  setlocale
+      END INTERFACE
+
+      LOGICAL :: reset_locale, Found
+
+      reset_locale=GetLogical(Solver % Values,'Reset locale after vtu-output',Found)
+      IF (.NOT. Found) &
+        reset_locale=GetLogical(Model % Simulation,'Reset locale after vtu-output',Found)
+
+      IF (.NOT.Found .OR. reset_locale) CALL setlocale(0,"en_US.UTF-8"//CHAR(0))
+    END BLOCK
     
     CALL Info(Caller,'Finished writing file',Level=15)
     
@@ -2115,7 +2199,7 @@ CONTAINS
       WRITE( Str,'(A)') '<VTKFile type="Collection" version="0.1" byte_order="LittleEndian"><Collection>'
       n = LEN_TRIM( Str ) 
       
-      WRITE( Str,'(A,ES16.7,A,I0,A)') '<DataSet timestep="',time,&
+      WRITE( Str,'(A,G0,A,I0,A)') '<DataSet timestep="',time,&
         '" group="" part="',GroupId,'" file="'//TRIM(DataSetFile)//'"/>'
       n = MAX( LEN_TRIM( Str ), n ) 
 
@@ -2143,7 +2227,7 @@ CONTAINS
     END IF
 
     nLine = nLine + 1
-    WRITE( VtuUnit,'(A,ES12.3,A,I0,A)',REC=nLine) lf//'<DataSet timestep="',time,&
+    WRITE( VtuUnit,'(A,G0,A,I0,A)',REC=nLine) lf//'<DataSet timestep="',time,&
         '" group="" part="',GroupId,'" file="'//TRIM(DataSetFile)//'"/>'
     WRITE( VtuUnit,'(A)',REC=nLine+1) lf//'</Collection></VTKFile>'
 

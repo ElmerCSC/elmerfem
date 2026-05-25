@@ -1371,7 +1371,7 @@ CONTAINS
 
         IF( ParEnv % MyPe == DoerPart ) THEN
 #if 0 
-          ! Save the gathered serial mesh for debugging porposes
+          ! Save the gathered serial mesh for debugging purposes
           CALL WriteMeshToDisk2(Model, GatheredMesh,'gathered')
 #endif
 
@@ -1397,7 +1397,7 @@ CONTAINS
           END IF
 
 #if 0 
-          ! Save the remeshed serial mesh for debugging porposes
+          ! Save the remeshed serial mesh for debugging purposes
           CALL WriteMeshToDisk2(Model, TmpMesh,'remeshed')
 #endif
         ELSE
@@ -1484,7 +1484,7 @@ CONTAINS
     IF( GmshFormat ) THEN
 
       GmshPosFormat = ListGetLogical( Params,'Adaptive Remesh Gmsh Use Pos Format', Found )
-      ! write the bacground mesh in .pos format if user requested it.
+      ! write the background mesh in .pos format if user requested it.
       IF( GmshPosFormat) THEN
       
         ! Get the coordinate scaling. This is used to scale the background mesh coordinates according to the original mesh.
@@ -2825,7 +2825,7 @@ SUBROUTINE FluxRecovery(Model, Solver, Mesh, ErrorIndicator, MaxError)
       AllocationsDone = .TRUE.
     ELSE
       IF (SIZE(Indices) < Mesh % MaxElementDOFs) THEN
-        CALL Fatal('FluxRecovery', 'Mesh changed, the maximun counts of element DOFs are different?')
+        CALL Fatal('FluxRecovery', 'Mesh changed, the maximum counts of element DOFs are different?')
       END IF
     END IF
   ELSE

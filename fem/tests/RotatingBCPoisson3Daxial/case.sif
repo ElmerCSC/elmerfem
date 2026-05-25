@@ -177,8 +177,9 @@ Boundary Condition 3
 !  Axial Projector Periods = Integer 4
 !  Rotational Projector Periods = Integer 4
 
-  Level Projector = Logical True
-  Level Projector Generic = Logical True
+  Level Projector = True
+  Level Projector Generic = True
+  Level Projector Strong = False
 ! Save Projector = Logical True
 ! Projector Debug Element Index = Integer 2
 

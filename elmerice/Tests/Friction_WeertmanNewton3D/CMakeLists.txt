@@ -5,4 +5,3 @@ CONFIGURE_FILE(case.sif case.sif COPYONLY)
 FILE(COPY ELMERSOLVER_STARTINFO rectangle.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMERICE_TEST(Friction_WeertmanNewton3D)
-ADD_ELMERICE_LABEL(Friction_WeertmanNewton3D elmerice-fast)

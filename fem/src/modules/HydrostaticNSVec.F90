@@ -4,23 +4,22 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-!
 !/******************************************************************************
 ! *
 ! *  Module for the solution of Stokes equation with hydrostatic 1st order assumption.
@@ -504,7 +503,7 @@ CONTAINS
 !DIR$ ATTRIBUTES ALIGN:64 :: STIFF, FORCE, weight_1, weight_2, weight_4
 !$OMP THREADPRIVATE(BasisVec, dBasisdxVec, DetJVec, rhoVec, loadAtIpVec, ElemDim )
 !$OMP THREADPRIVATE(ForcePart, weight_1, weight_2, weight_4)
-!$OMP THREADPRIVATE(tauVec, GradVec, Nodes)
+!$OMP THREADPRIVATE(tauVec, GradVec, GradHeight, Nodes)
 
     SAVE Nodes
 !------------------------------------------------------------------------------
@@ -521,7 +520,7 @@ CONTAINS
 
     ! Numerical integration:
     !-----------------------
-    IsPelem = isPElement(Element)
+    IsPelem = isActivePElement(Element, CurrentModel % Solver)
 
     IP = GaussPointsAdapt(Element, PReferenceElement = isPelem )
     ngp = IP % n

@@ -47,7 +47,7 @@
 
 MODULE PElementMaps
   USE Types
-  Use GeneralUtils, ONLY : I2S
+  Use GeneralUtils
 
   IMPLICIT NONE
 
@@ -936,7 +936,28 @@ CONTAINS
   END FUNCTION getBubbleDOFs
 !------------------------------------------------------------------------------
 
-
+!------------------------------------------------------------------------------
+!> Checks whether any solver of the given model has been associated with
+!> p-element definitions  
+!------------------------------------------------------------------------------
+  FUNCTION isActivePModel(Model) RESULT(Active)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Model_t) :: Model
+    LOGICAL :: Active
+!------------------------------------------------------------------------------
+    INTEGER :: i
+!------------------------------------------------------------------------------    
+    Active = .FALSE.
+    
+    DO i=1,Model % NumberOfSolvers
+      Active = isActivePSolver(Model % Solvers(i))
+      IF (Active) EXIT
+    END DO
+!------------------------------------------------------------------------------
+  END FUNCTION isActivePModel
+!------------------------------------------------------------------------------    
+    
 !------------------------------------------------------------------------------
 !> Checks if given element is a p-element active in a particular solver.   
 !------------------------------------------------------------------------------
@@ -953,7 +974,8 @@ CONTAINS
         
     retVal = isPelement(Element)
 
-    ! The solver can have active p-element only if we have p-elements!
+    ! The solver can have an active p-element only when p-element information
+    ! is associated
     IF(.NOT. retVal) RETURN
     
     IF( PRESENT( USolver ) ) THEN
@@ -1023,162 +1045,6 @@ CONTAINS
     END FUNCTION isPElement
 !------------------------------------------------------------------------------
     
-
-!------------------------------------------------------------------------------
-!>    Function checks if given element is p element triangle
-!------------------------------------------------------------------------------
-    FUNCTION isPTriangle( Element ) RESULT(retVal)
-!------------------------------------------------------------------------------
-!
-!  ARGUMENTS:
-!    Type(Element_t) :: Element
-!      INPUT: Element to check
-!
-!  FUNCTION VALUE:
-!    LOGICAL :: retVal
-!       .TRUE. if given element is a p triangle, .FALSE. otherwise
-!
-!------------------------------------------------------------------------------
-      IMPLICIT NONE
-
-      TYPE(Element_t), INTENT(IN) :: Element
-      LOGICAL :: retVal
-
-      ! Check elementcode and p element flag
-      retVal = Element % TYPE % ElementCode/100==3 .AND. isPElement(Element)
-!------------------------------------------------------------------------------
-    END FUNCTION isPTriangle
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-!>    Function checks if given element is p element quad
-!------------------------------------------------------------------------------
-    FUNCTION isPQuad( Element ) RESULT(retVal)
-!------------------------------------------------------------------------------
-!
-!  ARGUMENTS:
-!    Type(Element_t) :: Element
-!      INPUT: Element to check
-!
-!  FUNCTION VALUE:
-!    LOGICAL :: retVal
-!       .TRUE. if given element is a p quad, .FALSE. otherwise
-!    
-!------------------------------------------------------------------------------
-      IMPLICIT NONE
-
-      TYPE(Element_t), INTENT(IN) :: Element
-      LOGICAL :: retVal
-
-      ! Check elementcode and p element flag
-      retVal = Element % TYPE % ElementCode/100==4 .AND. isPElement(Element)
-!------------------------------------------------------------------------------
-    END FUNCTION isPQuad
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-!>    Function checks if given element is p element tetra
-!------------------------------------------------------------------------------
-    FUNCTION isPTetra( Element ) RESULT(retVal)
-!------------------------------------------------------------------------------
-!
-!  ARGUMENTS:
-!    Type(Element_t) :: Element
-!      INPUT: Element to check
-!
-!  FUNCTION VALUE:
-!    LOGICAL :: retVal
-!       .TRUE. if given element is a p tetra, .FALSE. otherwise
-!    
-!------------------------------------------------------------------------------
-      IMPLICIT NONE
-
-      TYPE(Element_t), INTENT(IN) :: Element
-      LOGICAL :: retVal
-
-      retVal = Element % TYPE % ElementCode/100==5 .AND. isPElement(Element)
-!------------------------------------------------------------------------------
-    END FUNCTION isPTetra
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-!>    Function checks if given element is p element wedge
-!------------------------------------------------------------------------------
-    FUNCTION isPWedge( Element ) RESULT(retVal)
-!------------------------------------------------------------------------------
-!
-!  ARGUMENTS:
-!    Type(Element_t) :: Element
-!      INPUT: Element to check
-!
-!  FUNCTION VALUE:
-!    LOGICAL :: retVal
-!       .TRUE. if given element is a p wedge, .FALSE. otherwise
-!    
-!------------------------------------------------------------------------------
-      IMPLICIT NONE
-
-      TYPE(Element_t), INTENT(IN) :: Element
-      LOGICAL :: retVal
-
-      retVal = Element % TYPE % ElementCode/100==7 .AND. isPElement(Element)
-!------------------------------------------------------------------------------
-    END FUNCTION isPWedge
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-!>    Function checks if given element is p element pyramid
-!------------------------------------------------------------------------------
-    FUNCTION isPPyramid( Element ) RESULT(retVal)
-!------------------------------------------------------------------------------
-!
-!  ARGUMENTS:
-!    Type(Element_t) :: Element
-!      INPUT: Element to check
-!
-!  FUNCTION VALUE:
-!    LOGICAL :: retVal
-!       .TRUE. if given element is a p pyramid, .FALSE. otherwise
-!    
-!------------------------------------------------------------------------------
-      IMPLICIT NONE
-
-      TYPE(Element_t), INTENT(IN) :: ELement
-      LOGICAL :: retVal
-
-      retVal = Element % TYPE % ElementCode/100==6 .AND. isPElement(Element)
-!------------------------------------------------------------------------------
-    END FUNCTION isPPyramid
-!------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
-!>    Function checks if given element is p element brick
-!------------------------------------------------------------------------------
-    FUNCTION isPBrick( Element ) RESULT(retVal)
-!------------------------------------------------------------------------------
-!
-!  ARGUMENTS:
-!    Type(Element_t) :: Element
-!      INPUT: Element to check
-!
-!  FUNCTION VALUE:
-!    LOGICAL :: retVal
-!       .TRUE. if given element is a p brick, .FALSE. otherwise
-!    
-!------------------------------------------------------------------------------
-      IMPLICIT NONE
-
-      TYPE(Element_t), INTENT(IN) :: ELement
-      LOGICAL :: retVal
-
-      retVal = Element % TYPE % ElementCode/100==8 .AND. isPElement(Element)
-!------------------------------------------------------------------------------
-    END FUNCTION isPBrick
-!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
   FUNCTION getEffectiveBubbleP(Element,set_p,bdofs) RESULT(p)
@@ -1404,57 +1270,59 @@ CONTAINS
 !>     Subroutine for getting reference p element nodes (because these are NOT
 !>     yet defined in element description files)
 !------------------------------------------------------------------------------
-  SUBROUTINE GetRefPElementNodes(Element, U, V, W)
-!------------------------------------------------------------------------------
-    IMPLICIT NONE
-    TYPE(ElementType_t) :: Element
-    REAL(KIND=dp) :: U(:), V(:), W(:)
-!--------------------------------------------------------------------------------
-    INTEGER :: n
-!--------------------------------------------------------------------------------    
-    ! Reserve space for element nodes
-    n = Element % NumberOfNodes
+SUBROUTINE GetRefPElementNodes(Element, U, V, W)
+        !------------------------------------------------------------------------------
+        IMPLICIT NONE
+        TYPE(ElementType_t) :: Element
+        REAL(KIND=dp) :: U(:), V(:), W(:)
+        !--------------------------------------------------------------------------------
+        INTEGER :: n
+        !--------------------------------------------------------------------------------    
+        ! Reserve space for element nodes
+        n = Element % NumberOfNodes
 
-    IF(.NOT.ALLOCATED(element % N_NodeU).AND.ALLOCATED(Element % NodeU) ) THEN
-      ALLOCATE(Element % N_NodeU(n), Element % N_NodeV(n), Element % N_NodeW(n))
-      element % N_NodeU = element % NodeU
-      element % N_NodeV = element % NodeV
-      element % N_NodeW = element % NOdeW
-    END IF
+!$OMP single
+        IF(.NOT.ALLOCATED(element % N_NodeU).AND.ALLOCATED(Element % NodeU) ) THEN
+                ALLOCATE(Element % N_NodeU(n), Element % N_NodeV(n), Element % N_NodeW(n))
+                element % N_NodeU = element % NodeU
+                element % N_NodeV = element % NodeV
+                element % N_NodeW = element % NOdeW
+        END IF
+!$OMP END single
 
     ! Select by element type given
     SELECT CASE(Element % ElementCode / 100)
     ! Line
     CASE(2)
-       U(1:n) = (/ -1d0,1d0 /)
+       U(1:2) = (/ -1d0,1d0 /)
     ! Triangle
     CASE(3)
-       U(1:n) = (/ -1d0,1d0,0d0 /)
-       V(1:n) = (/ 0d0,0d0,SQRT(3.0d0) /)
+       U(1:3) = (/ -1d0,1d0,0d0 /)
+       V(1:3) = (/ 0d0,0d0,SQRT(3.0d0) /)
     ! Quad
     CASE(4)
-       U(1:n) = (/ -1d0,1d0,1d0,-1d0 /)
-       V(1:n) = (/ -1d0,-1d0,1d0,1d0 /)
+       U(1:4) = (/ -1d0,1d0,1d0,-1d0 /)
+       V(1:4) = (/ -1d0,-1d0,1d0,1d0 /)
     ! Tetrahedron
     CASE(5)
-       U(1:n) = (/ -1d0,1d0,0d0,0d0 /)
-       V(1:n) = (/ 0d0,0d0,SQRT(3.0d0),1.0d0/SQRT(3.0d0) /)
-       W(1:n) = (/ 0d0,0d0,0d0,2*SQRT(2.0d0/3.0d0) /)
+       U(1:4) = (/ -1d0,1d0,0d0,0d0 /)
+       V(1:4) = (/ 0d0,0d0,SQRT(3.0d0),1.0d0/SQRT(3.0d0) /)
+       W(1:4) = (/ 0d0,0d0,0d0,2*SQRT(2.0d0/3.0d0) /)
     ! Pyramid
     CASE(6)
-       U(1:n) = (/ -1d0,1d0,1d0,-1d0,0d0 /)
-       V(1:n) = (/ -1d0,-1d0,1d0,1d0,0d0 /)
-       W(1:n) = (/ 0d0,0d0,0d0,0d0,SQRT(2.0d0) /)
+       U(1:5) = (/ -1d0,1d0,1d0,-1d0,0d0 /)
+       V(1:5) = (/ -1d0,-1d0,1d0,1d0,0d0 /)
+       W(1:5) = (/ 0d0,0d0,0d0,0d0,SQRT(2.0d0) /)
     ! Wedge
     CASE(7)
-       U(1:n) = (/ -1d0,1d0,0d0,-1d0,1d0,0d0 /)
-       V(1:n) = (/ 0d0,0d0,SQRT(3.0d0),0d0,0d0,SQRT(3.0d0) /)
-       W(1:n) = (/ -1d0,-1d0,-1d0,1d0,1d0,1d0 /)
+       U(1:6) = (/ -1d0,1d0,0d0,-1d0,1d0,0d0 /)
+       V(1:6) = (/ 0d0,0d0,SQRT(3.0d0),0d0,0d0,SQRT(3.0d0) /)
+       W(1:6) = (/ -1d0,-1d0,-1d0,1d0,1d0,1d0 /)
     ! Brick
     CASE(8)
-       U(1:n) = (/ -1d0,1d0,1d0,-1d0,-1d0,1d0,1d0,-1d0 /)
-       V(1:n) = (/ -1d0,-1d0,1d0,1d0,-1d0,-1d0,1d0,1d0 /)
-       W(1:n) = (/ -1d0,-1d0,-1d0,-1d0,1d0,1d0,1d0,1d0 /)
+       U(1:8) = (/ -1d0,1d0,1d0,-1d0,-1d0,1d0,1d0,-1d0 /)
+       V(1:8) = (/ -1d0,-1d0,1d0,1d0,-1d0,-1d0,1d0,1d0 /)
+       W(1:8) = (/ -1d0,-1d0,-1d0,-1d0,1d0,1d0,1d0,1d0 /)
     CASE DEFAULT
       WRITE(Message,'(A,I0)') 'Unknown element type: ',Element % ElementCode
       CALL Warn('PElementMaps::GetRefPElementNodes',Message)

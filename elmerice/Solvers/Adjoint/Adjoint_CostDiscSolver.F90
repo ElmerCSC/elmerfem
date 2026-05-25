@@ -174,7 +174,7 @@ SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
 !!!!!!! Check for parallel run 
     Parallel = .FALSE.
     IF ( ASSOCIATED( Solver % Matrix % ParMatrix ) ) THEN
-            IF ( Solver %  Matrix % ParMatrix % ParEnv % PEs > 1 )  THEN
+            IF ( Solver %  ParEnv % PEs > 1 )  THEN
                     Parallel = .TRUE.
             END IF
     END IF
@@ -728,7 +728,7 @@ SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
           IF (ASSOCIATED(CostVar)) THEN
                  CostVar % Values(1)=Cost_S
           END IF
-         IF (Solver % Matrix % ParMatrix % ParEnv % MyPE == 0) then
+         IF (Solver % ParEnv % MyPE == 0) then
                  OPEN (IO, FILE=CostFile,POSITION='APPEND')
                  IF (HaveSTD) THEN
                    write(IO,'(4(ES20.11E3))') TimeVar % Values(1),Cost_S,& 

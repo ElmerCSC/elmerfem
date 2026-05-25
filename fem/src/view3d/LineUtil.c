@@ -1,46 +1,34 @@
 /*****************************************************************************
- *
- *  Elmer, A Finite Element Software for Multiphysical Problems
- *
- *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
- * 
- *  This program is free software; you can redistribute it and/or
- *  modify it under the terms of the GNU General Public License
- *  as published by the Free Software Foundation; either version 2
- *  of the License, or (at your option) any later version.
- * 
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program (in file fem/GPL-2); if not, write to the 
- *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
- *  Boston, MA 02110-1301, USA.
- *
- *****************************************************************************/
-
+! *
+! *  Elmer, A Finite Element Software for Multiphysical Problems
+! *
+! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
+! * 
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
+! *
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
+! *
+! *****************************************************************************/
 /******************************************************************************
- *
- *
- *
- ******************************************************************************
  *
  *                     Author:       Juha Ruokolainen
  *
  *                    Address: CSC - IT Center for Science Ltd.
  *                                Keilaranta 14, P.O. BOX 405
- *                                  02
- *                                  Tel. +358 0 457 2723
- *                                Telefax: +358 0 457 2302
  *                              EMail: Juha.Ruokolainen@csc.fi
  *
  *                       Date: 02 Jun 1997
- *
- *                Modified by:
- *
- *       Date of modification:
  *
  *****************************************************************************/
 
@@ -221,7 +209,7 @@ direct numerical integration.
 24 Aug 1995
 
 *******************************************************************************/
-double LinearIntegrateDiffToArea( Geometry_t *GB,
+double LinearIntegrateDiffToArea( Geometry_t *GB, Cylinder_t *Cyl,
     double FX,double FY,double FZ, double NFX,double NFY,double NFZ )
 {
     double DX,DY,DZ,NTX,NTY,NTZ,U,V;
@@ -360,7 +348,7 @@ view between the elements is resolved by ray tracing.
 *******************************************************************************/
 void LinearComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int LevelA,int LevelB)
 {
-    double R,FX,FY,FZ,DX,DY,DZ,U,V,Hit;
+    double R,FX,FY,FZ,DX,DY,DZ,U,V,Hit,W;
     double F,Fa,Fb,EA,PI=2*acos(0.0);
 
     double *X  = GA->Linear->PolyFactors[0];
@@ -394,7 +382,7 @@ void LinearComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int LevelA,int Level
     DY = LinearValue( U,NY );
     DZ = 0.0;
 
-    Fa = Fb = (*IntegrateDiffToArea[GB->GeometryType])( GB,FX,FY,FZ,DX,DY,DZ );
+    Fa = Fb = (*IntegrateDiffToArea[GB->GeometryType])( GB,NULL,FX,FY,FZ,DX,DY,DZ );
 
     if ( GA != GB ) 
     {
@@ -409,7 +397,7 @@ void LinearComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int LevelA,int Level
        DY = FunctionValue( GB,U,V,4 );
        DZ = 0.0;
 
-       Fb = LinearIntegrateDiffToArea( GA,FX,FY,FZ,DX,DY,DZ );
+       Fb = LinearIntegrateDiffToArea( GA,NULL,FX,FY,FZ,DX,DY,DZ );
     }
 
     if ( Fa < 1.0e-10 && Fb < 1.0e-10 ) return;
@@ -421,15 +409,16 @@ void LinearComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int LevelA,int Level
        Hit = Nrays;
        for( i=0; i<Nrays; i++ )
        {
-          U = drand48(); V = drand48();
+          U = vrand();
+          V = vrand();
 
           FX = LinearValue(U,X);
           FY = LinearValue(U,Y);
           FZ = 0.0;
 
-           U = drand48(); V = drand48();
+	   W = U; U = 1-V; V=1-W;
            if ( GB->GeometryType == GEOMETRY_TRIANGLE )
-               while( U+V>1 ) { U=drand48(); V=drand48(); }
+               while( U+V>1 ) { U=1-U; V=1-V;}
 
            DX = FunctionValue(GB,U,V,0)-FX;
            DY = FunctionValue(GB,U,V,1)-FY;
@@ -567,8 +556,8 @@ view between the elements is resolved by ray tracing.
 
 *******************************************************************************/
 void
-LinearComputeRadiatorFactors (Geometry_t * GA, double dx, double dy,
-         double dz, int LevelA)
+LinearComputeRadiatorFactors (Geometry_t * GA, int LineFlag, double dx, double dy,
+         double dz, double nx, double ny, double nz, int LevelA)
 {
   double R, FX, FY, FZ, GX, GY, GZ, U, V, Hit;
   double F, Fa, Fb, EA, PI = 2 * acos (0.0);
@@ -586,7 +575,7 @@ LinearComputeRadiatorFactors (Geometry_t * GA, double dx, double dy,
         goto subdivide;
     }
 
-    Fa = Fb = LinearIntegrateDiffToArea( GA,dx,dy,dz,0.0,0.0,0.0);
+    Fa = Fb = LinearIntegrateDiffToArea( GA,NULL,dx,dy,dz,nx,ny,nz );
 
     if ( Fa < 1.0e-10 && Fb < 1.0e-10 ) return;
 
@@ -597,7 +586,7 @@ LinearComputeRadiatorFactors (Geometry_t * GA, double dx, double dy,
        Hit = Nrays;
        for( i=0; i<Nrays; i++ )
        {
-          U = drand48();
+          U = vrand();
 
           FX = LinearValue(U,X);
           FY = LinearValue(U,Y);
@@ -645,6 +634,6 @@ subdivide:
             }
         }
 
-        LinearComputeRadiatorFactors( GA->Left,dx,dy,dz,LevelA+1 );
-        LinearComputeRadiatorFactors( GA->Right,dx,dy,dz,LevelA+1 );
+        LinearComputeRadiatorFactors( GA->Left,LineFlag, dx,dy,dz,nx,ny,nz,LevelA+1 );
+        LinearComputeRadiatorFactors( GA->Right,LineFlag, dx,dy,dz,nx,ny,nz,LevelA+1 );
 }

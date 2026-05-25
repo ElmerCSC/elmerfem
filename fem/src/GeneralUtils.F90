@@ -44,6 +44,7 @@
 !-----------------------------------------------------------------------------
 MODULE GeneralUtils
 
+USE Messages
 USE LoadMod
 
 #ifdef HAVE_LUA
@@ -293,9 +294,17 @@ CONTAINS
   END FUNCTION str2ints
 !------------------------------------------------------------------------------
 
+  SUBROUTINE WaitSec(t)
+    REAL(KIND=dp) :: t,t0,t1
 
-
-
+    t0 = RealTime()
+    DO WHILE(.TRUE.)
+      t1 = RealTime()
+      IF(t1-t0 > t) EXIT
+    END DO
+    
+  END SUBROUTINE WaitSec
+    
 !------------------------------------------------------------------------------
   SUBROUTINE SystemCommand( cmd ) 
 !------------------------------------------------------------------------------
@@ -1212,6 +1221,18 @@ CONTAINS
        character(kind=c_char, len=:), pointer :: lua_result
        integer :: result_len
        logical :: closed_region, first_bang
+
+        BLOCK
+          INTERFACE
+            SUBROUTINE setlocale(category,locale) BIND(c,name="setlocale")
+              USE iso_c_binding
+              integer(c_int), value :: category
+              character(kind=c_char), dimension(*) :: locale
+            END SUBROUTINE  setlocale
+          END INTERFACE
+          CALL setlocale(0,"en_US.UTF-8"//CHAR(0))
+        END BLOCK
+
        closed_region = .false.
        first_bang = .true.
        m = i
@@ -1225,10 +1246,6 @@ CONTAINS
 
            ! Initialize variables for each copy of Lua interpreter separately
 
-           !$OMP PARALLEL DEFAULT(NONE) &
-           !$OMP SHARED(copystr, i, matcstr, ninlen, inlen, closed_region, first_bang, j) &
-           !$OMP PRIVATE(tcmdstr, tninlen, lstat, result_len, lua_result) 
-
            tninlen = ninlen
            tcmdstr = copystr(i+1:inlen)
 
@@ -1238,26 +1255,31 @@ CONTAINS
              closed_region = .FALSE.
            END IF
 
+           !$OMP PARALLEL DEFAULT(NONE) &
+           !$OMP FIRSTPRIVATE(tcmdstr, tninlen, lstat) &
+           !$OMP SHARED(lua_result, result_len, closed_region, i, j, inlen, first_bang)
            IF(closed_region) THEN
              lstat = lua_dostring( LuaState, &
                  'return tostring('// tcmdstr(1:tninlen-1) // ')'//c_null_char, 1)
            ELSE
              IF (i == 1 .and. first_bang .and. j == inlen) THEN  ! ' # <luacode>' case, do not do 'return tostring(..)'.
                ! Instead, just execute the line in the lua interpreter
-               lstat = lua_dostring( LuaState, tcmdstr(1:tninlen) // c_null_char, 1)
+
+             lstat = lua_dostring( LuaState, tcmdstr(1:tninlen) // c_null_char, 1)
+
              ELSE ! 'abc = # <luacode>' case, oneliners only
+
                lstat = lua_dostring( LuaState, &
                    'return tostring('// tcmdstr(1:tninlen) // ')'//c_null_char, 1)
              END IF
            END IF
+           !$OMP CRITICAL
            lua_result => lua_popstring(LuaState, result_len)
+           !$OMP END CRITICAL
+           !$OMP END PARALLEL
 
-           !$OMP SINGLE 
            matcstr(1:result_len) = lua_result(1:result_len)
            ninlen = result_len
-           !$OMP END SINGLE
-
-           !$OMP END PARALLEL
 
            DO k=1,ninlen
              readstr(m:m) = matcstr(k:k)
@@ -1472,7 +1494,7 @@ END FUNCTION ComponentNameVar
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-!> Evalulate a cubic spline.
+!> Evaluate a cubic spline.
 !------------------------------------------------------------------------------
    PURE FUNCTION CubicSplineVal(x,y,r,t) RESULT(s)
 !------------------------------------------------------------------------------
@@ -1495,7 +1517,7 @@ END FUNCTION ComponentNameVar
 
 
 !------------------------------------------------------------------------------
-!> Evalulate derivative of cubic spline.
+!> Evaluate derivative of cubic spline.
 !------------------------------------------------------------------------------
    PURE FUNCTION CubicSplinedVal(x,y,r,t) RESULT(s)
 !------------------------------------------------------------------------------
@@ -1630,6 +1652,52 @@ END FUNCTION ComponentNameVar
    END FUNCTION InterpolateCurve
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+!> Interpolate values in a curve given by linear table or splines.
+!------------------------------------------------------------------------------
+   PURE FUNCTION InterpolateCurves( TValues, FValues, m, T, CubicCoeff) RESULT( F )
+!------------------------------------------------------------------------------
+     REAL(KIND=dp), INTENT(iN) :: TValues(:),FValues(:,:),T
+     INTEGER, INTENT(IN) :: m
+     REAL(KIND=dp), OPTIONAL, POINTER, INTENT(in) :: CubicCoeff(:)
+     REAL(KIND=dp) :: F(m)
+!------------------------------------------------------------------------------
+     INTEGER :: i,j,n 
+     LOGICAL :: Cubic
+     REAL(KIND=dp) :: q
+!------------------------------------------------------------------------------
+
+     n = SIZE(TValues)
+
+     ! This is a misuse of the interpolation in case of standard dependency
+     ! of type y=a*x.  
+     IF( n == 1 ) THEN
+       F(1:m) = FValues(1:m,1) * T
+       RETURN
+     END IF
+
+     i = SearchInterval( Tvalues, t )
+     
+     Cubic = .FALSE.
+     IF( PRESENT(CubicCoeff) ) THEN
+       Cubic = ( T>=Tvalues(1) .AND. T<=Tvalues(n) .AND. ASSOCIATED(CubicCoeff) )
+     END IF
+
+     IF ( Cubic ) THEN
+       DO j=1,m
+         F(j) = CubicSplineVal(Tvalues(i:i+1),FValues(j,i:i+1),CubicCoeff(i:i+1),T)
+       END DO
+     ELSE
+       q = (T-TValues(i)) / (TValues(i+1)-TValues(i))
+       DO j=1,m
+         F(j) = (1-q)*FValues(j,i) + q*FValues(j,i+1)
+       END DO
+     END IF
+   END FUNCTION InterpolateCurves
+!------------------------------------------------------------------------------
+
+   
 
 !------------------------------------------------------------------------------
 !> Derivate a curve given by linear table or splines.
@@ -2606,8 +2674,8 @@ END MODULE GeneralUtils
 !---------------------------------------------------------
 MODULE AscBinOutputUtils
   
-  
   USE Types
+  USE Messages
   IMPLICIT NONE
   
   LOGICAL, PRIVATE :: AsciiOutput, SinglePrec, CalcSum = .FALSE.
@@ -2703,12 +2771,11 @@ CONTAINS
     CHARACTER(LEN=1024) :: Str 
     INTEGER, PARAMETER :: VtuUnit = 58
     
-    WRITE( VtuUnit ) TRIM(Str)        
+    WRITE( VtuUnit ) TRIM(Str)
     IF( CalcSum ) THEN
       Scount = Scount + 1
       Ssum = Ssum + len_trim( Str ) 
     END IF
-    
     
   END SUBROUTINE AscBinStrWrite
   
@@ -2879,7 +2946,9 @@ CONTAINS
     DO i=1,n
       IF( ABS(RefResults(i) ) > EPSILON(c) ) THEN
         c = ThisResults(i)/RefResults(i)
-        c = MAX( c, 1.0_dp /c ) 
+        IF( ABS(ThisResults(i) ) > EPSILON(c) ) THEN
+          c = MAX( c, 1.0_dp /c )
+        END IF
       ELSE
         c = 1.0_dp + ABS(ThisResults(i))
       END IF

@@ -2489,7 +2489,7 @@ inline void tetgenmesh::fnext(triface& t1, triface& t2) {
   (t).ver = facepivot2[t1ver][(t).ver]
 
 
-// The following primtives get or set the origin, destination, face apex,
+// The following primitives get or set the origin, destination, face apex,
 //   or face opposite of an ordered tetrahedron.
 
 inline tetgenmesh::point tetgenmesh::org(triface& t) {

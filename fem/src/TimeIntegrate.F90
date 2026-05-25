@@ -44,6 +44,7 @@
 MODULE TimeIntegrate
 
    USE Types
+   USE Messages
 
    IMPLICIT NONE
 

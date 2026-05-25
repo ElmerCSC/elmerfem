@@ -371,7 +371,7 @@ CONTAINS
      IF( PRESENT(activeind) ) THEN
        eind = activeind
      ELSE
-       IF(eind > Solver % NumberOfActiveElements ) RETURN
+       IF(elemind > Solver % NumberOfActiveElements ) RETURN
        eind = Solver % InvActiveElements(elemind)
        IF(eind==0) RETURN
      END IF

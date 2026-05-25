@@ -90,7 +90,7 @@ MODULE NavierStokesCylindrical
 !     INPUT: Nodal values of total pressure from previous iteration
 !
 !  LOGICAL :: Stabilize
-!     INPUT: Should stabilzation be used ?
+!     INPUT: Should stabilization be used ?
 !
 !  LOGICAL :: Compressible
 !     INPUT: Should compressible terms be added =

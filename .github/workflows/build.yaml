@@ -28,6 +28,7 @@ jobs:
       matrix:
         os: [ubuntu-24.04]
         compiler: [gcc]
+        fc: [gfortran]
         mpi: [with]
         openmp: [with]
         include:
@@ -71,6 +72,15 @@ jobs:
             mpi: with
             openmp: without
             openmp-cmake-flags: "-DWITH_OpenMP=OFF"
+          - os: ubuntu-24.04
+            compiler: flang
+            compiler-pkgs: "clang-20 flang-20"
+            cc: "clang-20"
+            cxx: "clang++-20"
+            fc: "flang-20"
+            mpi: without
+            openmp: without
+            openmp-cmake-flags: "-DWITH_OpenMP=OFF"
           # - compiler: clang
           #   compiler-pkgs: "clang libomp-dev"
           #   cc: "clang"
@@ -82,13 +92,14 @@ jobs:
     env:
       CC: ${{ matrix.cc }}
       CXX: ${{ matrix.cxx }}
+      FC: ${{ matrix.fc }}
 
     steps:
       - name: get CPU information
         run: lscpu
 
       - name: checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -125,6 +136,7 @@ jobs:
           cmake \
             -DCMAKE_BUILD_TYPE="Release" \
             -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/usr" \
+            $([ "${{ matrix.compiler }}" == "flang" ] && echo "-DHAVE_QP=OFF" || echo "-DHAVE_QP=ON") \
             $([ "${{ matrix.os }}" == "ubuntu-24.04-arm" ] && echo "-DBLA_VENDOR=Generic" || echo "-DBLA_VENDOR=OpenBLAS") \
             ${{ matrix.openmp-cmake-flags }} \
             -DWITH_LUA=ON \

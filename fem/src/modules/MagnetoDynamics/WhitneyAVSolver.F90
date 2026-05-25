@@ -4,23 +4,22 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-!
 !/******************************************************************************
 ! *
 ! *  Authors: Juha Ruokolainen
@@ -157,11 +156,7 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
 
     
     IF( GetString(SolverParams,'Linear System Solver',Found) == 'block' ) THEN
-      IF ( PiolaVersion ) THEN
-        CALL Fatal('WhitneyAVSolver_Init0','Block strategy not applicable to piola version!')
-      ELSE
-        CALL ListAddLogical( SolverParams, "Optimize Bandwidth", .FALSE.)
-      END IF
+      CALL ListAddLogical( SolverParams, "Optimize Bandwidth", .FALSE.)
     END IF
   END IF
 
@@ -180,6 +175,28 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
       ListCheckPrefixAnyBC( Model, "Mortar BC" ) ) THEN
     CALL Info("WhitneyAVSolver_Init0", "Gauge field is not projected across mortar boundaries.") 
   END IF  
+
+  BLOCK
+    LOGICAL :: FoundAMS
+
+    FoundAMS = ListGetString( SolverParams, 'Linear System Preconditioning', Found ) == 'ams' 
+    IF (.NOT.FoundAMS) THEN
+      DO i=1,4
+        FoundAMS = ListGetString( SolverParams, 'Block '//I2S(i)//I2S(i)//': Linear System Preconditioning', Found) == 'ams' 
+        IF (FoundAMS) EXIT
+      END DO
+      IF (.NOT.FoundAMS) THEN
+        FoundAMS = ListGetInteger( SolverParams, 'Linear System Method Hypre Index', Found) == 2
+      END IF
+    END IF
+
+    IF ( FoundAMS ) THEN
+      DO i=1,100
+        IF ( .NOT.ListCheckPresent( SolverParams, 'Exported Variable '//I2S(i) ) ) EXIT
+      END DO
+      CALL ListAddString( SolverParams, 'Exported Variable '//I2S(i), '-nodal -dofs 3 -nooutput ams nodal var' )
+    END IF
+  END BLOCK
   
   ! THIS ENFORCES THE NEW STRATEGY !!!!
   CALL ListAddLogical( SolverParams,'Generic Source Fixing',.TRUE.)
@@ -257,6 +274,9 @@ SUBROUTINE WhitneyAVSolver_Init(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   TYPE(Mesh_t), POINTER :: Mesh
   LOGICAL :: Found
+  INTEGER :: i
+  TYPE(ValueList_t), POINTER :: Params
+  CHARACTER(LEN=MAX_NAME_LEN):: sname
   
   Mesh => GetMesh()
   IF( Mesh % MeshDim /= 3 ) THEN
@@ -283,6 +303,20 @@ SUBROUTINE WhitneyAVSolver_Init(Model,Solver,dt,Transient)
       END IF
     END DO
   END BLOCK
+
+  Params => Solver % Values  
+  IF( ListGetString( Params,'Linear System Preconditioning') == "auxiliary space solver" ) THEN
+    IF(.NOT. ListCheckPresent(Params,'Prec Solvers') ) THEN
+      DO i=Model % NumberOfSolvers,1,-1
+        sname = GetString(Model % Solvers(i) % Values, 'Procedure', Found)      
+        IF( INDEX( sname,'APrecSolver') > 0 ) THEN
+          CALL ListAddInteger(Params,'Prec Solvers',i)
+          CALL Info('WhitneyAVSolver_init','Setting "Prec Solvers" to '//I2S(i))
+        END IF
+      END DO
+    END IF
+  END IF
+  
 !------------------------------------------------------------------------------
 END SUBROUTINE WhitneyAVSolver_Init
 !------------------------------------------------------------------------------
@@ -331,7 +365,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
                                 ThinLineCrossect(:),ThinLineCond(:)
 
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), DAMP(:,:), FORCE(:), &
-            JFixFORCE(:), JFixVec(:,:),PrevSol(:)
+            JFixFORCE(:), JFixVec(:,:),PrevSol(:),nSTIFF(:,:),nFORCE(:)
 
   CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
   LOGICAL :: LaminateStack, CoilBody, HasHBCurve, HasReluctivityFunction, &
@@ -375,11 +409,15 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   REAL(KIND=dp) :: TorqueTol
   LOGICAL :: UseTorqueTol
 
+  TYPE(Matrix_t), POINTER :: PrecMat
+  TYPE(Solver_t), POINTER :: PrecSolver
+  INTEGER :: PrecI
+  
   CHARACTER(*), PARAMETER :: Caller = 'WhitneyAVSolver'
   
   SAVE STIFF, LOAD, MASS, DAMP, FORCE, JFixFORCE, JFixVec, Tcoef, GapLength, AirGapMu, &
        Acoef, Cwrk, LamThick, LamCond, Wbase, RotM, AllocationsDone, &
-       Acoef_t, ThinLineCrossect, ThinLineCond
+       Acoef_t, ThinLineCrossect, ThinLineCond, nSTIFF, nFORCE
 !------------------------------------------------------------------------------
   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN	
 
@@ -407,6 +445,19 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   SteadyGauge = GetLogical(SolverParams, 'Use Lagrange Gauge', Found) .AND. .NOT. Transient
   TransientGauge = GetLogical(SolverParams, 'Use Lagrange Gauge', Found) .AND. Transient
 
+  NULLIFY(PrecMat)
+  NULLIFY(PrecSolver)
+  PrecI = ListGetInteger(SolverParams,'Prec Solvers',Found )
+  IF(PrecI > 0) THEN
+    PrecSolver => Model % Solvers(PrecI)
+    PrecMat => Model % Solvers(PrecI) % Matrix    
+    CALL ListAddLogical(PrecSolver % Values,'Linear System Refactorize',.TRUE.)
+    CALL ListAddLogical(PrecSolver % Values,'Mortar BCs Fixed',.FALSE.)
+  END IF
+  IF(ASSOCIATED(PrecMat)) THEN
+    CALL Info(Caller,'Using special nodal component-wise preconditioning matrix!')
+  END IF
+  
   CoilCurrentName = GetString( SolverParams,'Current Density Name',UseCoilCurrent ) 
   IF(.NOT. UseCoilCurrent ) THEN
     UseCoilCurrent = GetLogical(SolverParams,'Use Nodal CoilCurrent',Found )
@@ -434,7 +485,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   
   IF (SteadyGauge) THEN
     CALL Info("WhitneyAVSolver", "Utilizing Lagrange multipliers for gauge condition in steady state computation")
-    IF(.not. ListCheckPresent( SolverParams, 'Linear System Refactorize') ) THEN
+    IF(.NOT. ListCheckPresent( SolverParams, 'Linear System Refactorize') ) THEN
       CALL ListAddLogical( SolverParams, 'Linear System Refactorize', .TRUE. )
     END IF
   END IF
@@ -455,7 +506,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
            "Optimize bandwidth and use lagrange gauge in transient is known not to work. ")
     END IF
 
-    IF(.not. ListCheckPresent( SolverParams, 'Linear System Refactorize') ) THEN
+    IF(.NOT. ListCheckPresent( SolverParams, 'Linear System Refactorize') ) THEN
       CALL ListAddLogical( SolverParams, 'Linear System Refactorize', .TRUE. )
     END IF
     ! TODO: Check if there is mortar boundaries and report the above in that case only.
@@ -523,6 +574,9 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
      IF(ALLOCATED(FORCE)) THEN
        DEALLOCATE(FORCE, JFixFORCE, JFixVec, LOAD, STIFF, MASS, DAMP, TCoef, GapLength, AirGapMu, &
              Acoef, LamThick, LamCond, WBase, RotM, ThinLineCrossect, ThinLineCond )
+       IF(ASSOCIATED(PrecMat)) THEN
+         DEALLOCATE(nSTIFF, nFORCE)
+       END IF
      END IF
 
      ALLOCATE( FORCE(N), JFixFORCE(n), JFixVec(3,n), LOAD(7,N), STIFF(N,N), &
@@ -533,7 +587,14 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
      IF ( istat /= 0 ) THEN
         CALL Fatal( Caller, 'Memory allocation error.' )
      END IF
-
+     IF(ASSOCIATED(PrecMat)) THEN
+       IF(.NOT. ASSOCIATED(PrecSolver)) THEN
+         CALL Fatal(Caller,'PrecMat associated but not PrecSolver!')
+       END IF
+       i = PrecSolver % Variable % dofs
+       ALLOCATE(nSTIFF(i*n,i*n), nFORCE(i*n))
+     END IF
+            
      IF(GetString(SolverParams,'Linear System Solver',Found)=='block') THEN
        n = Mesh % NumberOfNodes
        n_n = COUNT(Perm(1:n)>0)
@@ -619,7 +680,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
       'Nonlinear System Newton After Tolerance',Found )
 
 
-! Not refactorizing seems to break things with gauges
+  ! Not refactorizing seems to break things with gauges
   ! IF (SteadyGauge) THEN
   !   IF(.not. ListCheckPresent( SolverParams, 'Linear System Refactorize') ) THEN
   !     CALL ListAddLogical( SolverParams, 'Linear System Refactorize', .TRUE. )
@@ -641,6 +702,10 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
       CALL Info(Caller,'Nonlinear iteration: '//I2S(i),Level=8 )
     END IF
 
+    IF(PrecI > 0) THEN
+      CALL ListAddLogical(PrecSolver % Values,'Linear System Refactorize',.TRUE.)
+    END IF
+      
     IF( DoSolve(i) ) THEN
       IF(i>=NoIterationsMin) EXIT
     END IF
@@ -694,8 +759,7 @@ CONTAINS
    REAL(KIND=dp),  POINTER CONTIG :: SaveValues(:), SaveRHS(:), ConstraintValues(:)
    REAL(KIND=dp) :: PrevTorque, TorqueErr, Torque
    
-   
-   SAVE TmpRHSVec, TmpRVec
+   SAVE TmpRHSVec, TmpRVec, Torque
   !-----------------
   !System assembly:
   !-----------------
@@ -719,6 +783,7 @@ CONTAINS
   ! Timing
   CALL ResetTimer('MGDynAssembly')
   CALL DefaultInitialize()
+  IF(ASSOCIATED(PrecMat)) PrecMat % Values = 0.0_dp
   Active = GetNOFActive()
   
   IF( ListCheckPresentAnyMaterial(Model,'Reluctivity Function') ) THEN
@@ -857,10 +922,10 @@ CONTAINS
 
      !Get element local matrix and rhs vector:
      !----------------------------------------
-       CALL LocalMatrix( MASS, DAMP, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
+     CALL LocalMatrix( MASS, DAMP, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
          Tcoef, Acoef, LaminateStack, LaminateStackModel, &
          LamThick, LamCond, CoilBody, CoilType, RotM, ConstraintActive, &
-         Element, n, nd+nb, PiolaVersion, SecondOrder)
+         Element, n, nd+nb, PiolaVersion, SecondOrder, nSTIFF )
        
      ! Update global matrix and rhs vector from local matrix & vector:
      !---------------------------------------------------------------
@@ -877,6 +942,13 @@ CONTAINS
 
      CALL DefaultUpdateEquations(STIFF,FORCE)
 
+     IF(ASSOCIATED(PrecMat)) THEN
+       nFORCE = 0.0_dp
+       CurrentModel % Solver => PrecSolver
+       CALL DefaultUpdateEquations(nSTIFF,nFORCE,UElement=Element,USolver=PrecSolver)       
+       CurrentModel % Solver => pSolver
+     END IF
+     
      ! Memorize stuff for the fixing potential
      ! 1) Divergence of the source term
      ! 2) The source terms at the surface to determine the direction
@@ -909,8 +981,7 @@ CONTAINS
     END IF
 
     CALL JFixPotentialSolver(Model,Solver,dt,Transient)
-   
-    
+       
     CALL Info(Caller,'Adding the fixing potential to the r.h.s. of AV equation',Level=10)   
     DO t=1,active
       Element => GetActiveElement(t)
@@ -1204,14 +1275,15 @@ END BLOCK
   Converged = ( Solver % Variable % NonlinConverged == 1 )
 
   IF( UseTorqueTol ) THEN
+    TorqueErr = 0.0_dp
     PrevTorque = Torque 
     CALL CalculateLumpedParameters(Torque)
     IF( iterNo >= 2 ) THEN
       TorqueErr = 2 * ABS(PrevTorque-Torque) / (ABS(PrevTorque)+ABS(Torque))
-      IF( TorqueErr > TorqueTol ) THEN
+!     IF( TorqueErr > TorqueTol ) THEN
         WRITE(Message,'(A,ES12.3)') 'Torque error at iteration '//I2S(iterNo)//':',TorqueErr
         CALL Info(Caller,Message,Level=6)
-      END IF
+!     END IF
     END IF
   END IF
     
@@ -1219,7 +1291,7 @@ END BLOCK
   IF( Converged ) THEN
     CALL Info(Caller,'System has converged to tolerances after '//I2S(iterNo)//' iterations!',Level=12)
     IF( UseTorqueTol ) THEN
-      IF( TorqueErr > TorqueTol ) THEN
+      IF( IterNo <= 1 .OR. TorqueErr > TorqueTol ) THEN
         CALL Info(Caller,'Nonlinear system tolerance ok after '&
             //I2S(iterNo)//' but torque still wobbly!',Level=7)
         Converged = .FALSE.
@@ -1291,7 +1363,6 @@ END BLOCK
 ! IF ( ALLOCATED(TreeEdges) ) DEALLOCATE(TreeEdges)
 
 ! CALL WriteResults  ! debugging helper
-
 
 !------------------------------------------------------------------------------
  END FUNCTION DoSolve
@@ -1949,7 +2020,7 @@ END SUBROUTINE LocalConstraintMatrix
   SUBROUTINE LocalMatrix( MASS, DAMP, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
             Tcoef, Acoef, LaminateStack, LaminateStackModel, &
             LamThick, LamCond, CoilBody, CoilType, RotM, ConstraintActive, &
-            Element, n, nd, PiolaVersion, SecondOrder )
+            Element, n, nd, PiolaVersion, SecondOrder, nSTIFF )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:), DAMP(:,:), JFixFORCE(:), JFixVec(:,:)
@@ -1961,6 +2032,8 @@ END SUBROUTINE LocalConstraintMatrix
     TYPE(Element_t), POINTER :: Element
     INTEGER :: n, nd
     LOGICAL :: PiolaVersion, SecondOrder
+    REAL(KIND=dp) :: nSTIFF(:,:)
+    
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Aloc(nd), JAC(nd,nd), mu, muder, B_ip(3), Babs
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), C(3,3), &
@@ -1990,7 +2063,8 @@ END SUBROUTINE LocalConstraintMatrix
     MASS  = 0.0_dp
     DAMP  = 0.0_dp
     JAC = 0.0_dp
-
+    IF(ASSOCIATED(PrecMat)) nSTIFF = 0.0_dp
+    
     IF( JFix ) THEN
       ! If we are solving for the JFix field we cannot yet use it!
       ! This happens on the first iteration
@@ -2001,7 +2075,7 @@ END SUBROUTINE LocalConstraintMatrix
         JFixPot(1:n) = JFixVar % Values(JFixVar % Perm(Element % NodeIndexes))
       END IF
     END IF
-      
+
     HasVelocity = .FALSE.
     LocalGauge = .FALSE.
     IF(ASSOCIATED(BodyForce)) THEN
@@ -2156,7 +2230,7 @@ END SUBROUTINE LocalConstraintMatrix
          ! so they have an effect on a conductor only.
          ! --------------------------------------------------------
          CONDUCTOR: IF ( SUM(ABS(C)) > AEPS .OR. ElectroDynamics .OR. Darwin) THEN
-           IF ( Transient.OR.EigenSystem ) THEN
+           IF ( Transient .OR. EigenSystem ) THEN
              DO p=1,np
                DO q=1,np
 
@@ -2372,8 +2446,36 @@ END SUBROUTINE LocalConstraintMatrix
         END DO
        END IF
 
-    END DO
+       ! Assembly of the special nodal preconditioning matrix
+       !-------------------------------------------------------
+       IF(ASSOCIATED(PrecMat)) THEN
+         BLOCK
+           REAL(KIND=dp) :: x,y,weight,Laplace
+           
+           weight = detJ * IP % s(t)
+           IF(PrecSolver % Variable % Dofs == 1 ) THEN 
+             DO p = 1,n
+               DO q = 1,n
+                 Laplace = SUM(dBasisdx(p,:)*dBasisdx(q,:)) * weight
+                 nSTIFF(p,q) = nSTIFF(p,q) + mu * Laplace 
+               END DO
+             END DO
+           ELSE
+             DO p = 1,n
+               DO q = 1,n
+                 Laplace = SUM(dBasisdx(p,:)*dBasisdx(q,:)) * weight
+                 nSTIFF(3*p-2,3*q-2) = nSTIFF(3*p-2,3*q-2) + mu * Laplace 
+                 nSTIFF(3*p-1,3*q-1) = nSTIFF(3*p-1,3*q-1) + mu * Laplace 
+                 nSTIFF(3*p,3*q) = nSTIFF(3*p,3*q) + mu * Laplace 
+               END DO
+             END DO
+           END IF
+         END BLOCK
+           
+       END IF
+     END DO
 
+     
     IF ( Newton ) THEN
       IF( HasHBCurve .OR. HasReluctivityFunction ) THEN
         STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + JAC

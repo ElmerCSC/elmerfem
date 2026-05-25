@@ -575,13 +575,13 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilWVecVarname, CoilType
 
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
-    INTEGER :: dim, ncdofs,q
+    INTEGER :: dim, ncdofs, q, EdgeBasisDegree
     TYPE(VariableHandle_t), SAVE :: Wvec_h
     TYPE(Variable_t), POINTER, SAVE :: Wpot
     
     LOGICAL :: PiolaVersion = .FALSE.
     
-    SAVE CSymmetry, dim, First, InitHandle
+    SAVE CSymmetry, dim, First, InitHandle, EdgeBasisDegree
 
     ASolver => CurrentModel % Asolver
     IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('Add_stranded','ASolver not found!')
@@ -625,8 +625,7 @@ CONTAINS
       IF(.NOT. Found) CoilWVecVarname = 'W Vector E'
       CALL ListInitElementVariable(Wvec_h, CoilWVecVarname)
 
-      PiolaVersion = GetLogical( ASolver % Values, 'Use Piola Transform', Found )
-
+      CALL EdgeElementStyle(ASolver % Values, PiolaVersion, BasisDegree = EdgeBasisDegree )
       CALL GetWPotentialVar(Wpot)
     END IF
 
@@ -669,7 +668,7 @@ CONTAINS
     ! Numerical integration:
     ! ----------------------
     IF(PiolaVersion) THEN
-      IP = GaussPoints(Element, EdgeBasis=.TRUE., EdgeBasisDegree=1, PReferenceElement=PiolaVersion)
+      IP = GaussPoints(Element, PReferenceElement=PiolaVersion, EdgeBasisDegree=EdgeBasisDegree)
     ELSE
       IP = GaussPoints(Element)
     END IF
@@ -691,15 +690,8 @@ CONTAINS
         circ_eq_coeff = GetCircuitModelDepth()
       CASE(3)
 
-        IF (PiolaVersion) THEN
-          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
-               DetF = DetJ, Basis = Basis, dBasisdx=dBasisdx, EdgeBasis = WBasis, RotBasis = RotWBasis, &
-               BasisDegree=1, ApplyPiolaTransform = .TRUE.)
-        ELSE
-          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-                    IP % W(t), detJ, Basis, dBasisdx )
-          CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
-        END IF
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+            detJ, Basis, dBasisdx, EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = ASolver ) 
 
         IF (CoilUseWvec) THEN
           w = ListGetElementVectorSolution( Wvec_h, Basis, Element, dofs = dim )
@@ -774,7 +766,7 @@ CONTAINS
     REAL(KIND=dp) :: localC, val, circ_eq_coeff, grads_coeff, localConductance !, localL
     INTEGER :: nn, nd, j, t, nm, Indexes(nd), &
                VvarId, dim
-    LOGICAL :: stat
+    LOGICAL :: stat, PiolaVersion
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
     LOGICAL :: CSymmetry, First=.TRUE.
@@ -782,7 +774,7 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: Material
 
     REAL(KIND=dp) :: wBase(nn), gradv(3), WBasis(nd,3), RotWBasis(nd,3)
-    INTEGER :: ncdofs,q
+    INTEGER :: ncdofs, q, EdgeBasisDegree
     TYPE(Variable_t), POINTER, SAVE :: Wpot
     
     SAVE CSymmetry, dim, First
@@ -798,6 +790,8 @@ CONTAINS
 
     ASolver => CurrentModel % Asolver
     IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('Add_massive','ASolver not found!')
+    CALL EdgeElementStyle(ASolver % Values, PiolaVersion, BasisDegree = EdgeBasisDegree)
+    
     PS => Asolver % Variable % Perm
 
     CM => CurrentModel % CircuitMatrix
@@ -853,17 +847,20 @@ CONTAINS
 
     ! Numerical integration:
     ! ----------------------
-    IP = GaussPoints(Element)
+    IF (PiolaVersion) THEN
+      IP = GaussPoints(Element, PReferenceElement=PiolaVersion, EdgeBasisDegree=EdgeBasisDegree)
+    ELSE
+      IP = GaussPoints(Element)
+    END IF
     DO t=1,IP % n
-      ! Basis function values & derivatives at the integration point:
-      !--------------------------------------------------------------
-      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-                IP % W(t), detJ, Basis,dBasisdx )
       
       grads_coeff = -1._dp
       circ_eq_coeff = 1._dp
       SELECT CASE(dim)
       CASE(2)
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+            IP % W(t), detJ, Basis, dBasisdx )
+        
         IF( CSymmetry ) THEN
           x = SUM( Basis(1:nn) * Nodes % x(1:nn) )
           detJ = detJ * x
@@ -872,7 +869,8 @@ CONTAINS
         circ_eq_coeff = GetCircuitModelDepth()
         grads_coeff = grads_coeff/circ_eq_coeff
       CASE(3)
-        CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+            detJ, Basis, dBasisdx, EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = ASolver )
         gradv = MATMUL( WBase(1:nn), dBasisdx(1:nn,:))
       END SELECT
 
@@ -989,14 +987,14 @@ CONTAINS
     INTEGER :: nm,p,j,t,Indexes(nd),vvarId,vpolord_tot, &
                vpolord, vpolordtest, dofId, dofIdtest, &
                dim
-    LOGICAL :: stat
+    LOGICAL :: stat, PiolaVersion
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
     LOGICAL :: CSymmetry, First=.TRUE.
 
     REAL(KIND=dp) :: wBase(nn), gradv(3), WBasis(nd,3), RotWBasis(nd,3), &
                      RotMLoc(3,3), RotM(3,3,nn)
-    INTEGER :: i,ncdofs,q
+    INTEGER :: i,ncdofs,q,EdgeBasisDegree
     TYPE(Variable_t), POINTER, SAVE :: Wpot
     
     SAVE CSymmetry, dim, First
@@ -1012,6 +1010,8 @@ CONTAINS
 
     ASolver => CurrentModel % Asolver
     IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('Add_foil_winding','ASolver not found!')
+    CALL EdgeElementStyle(ASolver % Values, PiolaVersion, BasisDegree = EdgeBasisDegree)
+    
     PS => Asolver % Variable % Perm
 
     CM => CurrentModel % CircuitMatrix
@@ -1044,17 +1044,19 @@ CONTAINS
 
     ! Numerical integration:
     ! ----------------------
-    IP = GaussPoints(Element)
-    DO t=1,IP % n
-      ! Basis function values & derivatives at the integration point:
-      !--------------------------------------------------------------
-      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-                IP % W(t), detJ, Basis,dBasisdx )
+    IF (PiolaVersion) THEN
+      IP = GaussPoints(Element, PReferenceElement=PiolaVersion, EdgeBasisDegree=EdgeBasisDegree)
+    ELSE
+      IP = GaussPoints(Element)
+    END IF
 
+    DO t=1,IP % n
       grads_coeff = -1._dp
       circ_eq_coeff = 1._dp
       SELECT CASE(dim)
       CASE(2)
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+            IP % W(t), detJ, Basis,dBasisdx )
         IF( CSymmetry ) THEN
           x = SUM( Basis(1:nn) * Nodes % x(1:nn) )
           detJ = detJ * x
@@ -1068,7 +1070,8 @@ CONTAINS
         ! ----------------------
         localR = Comp % N_j **2 * IP % s(t)*detJ/C(1,1)*circ_eq_coeff/Comp % VoltageFactor
       CASE(3)
-        CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+            detJ, Basis, dBasisdx, EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = ASolver )
         gradv = MATMUL( WBase(1:nn), dBasisdx(1:nn,:))
         ! Compute the conductivity tensor
         ! -------------------------------
@@ -1776,7 +1779,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     LOGICAL :: CSymmetry, First=.TRUE.
 
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
-    INTEGER :: dim, ncdofs,q
+    INTEGER :: dim, ncdofs, q, EdgeBasisDegree
     
     LOGICAL :: CoilUseWvec=.FALSE., CoilUseWvec0=.FALSE.,Found,Found2
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilWVecVarname, CoilType
@@ -1825,7 +1828,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
     ASolver => CurrentModel % Asolver
     IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('Add_stranded','ASolver not found!')
-    PiolaVersion = GetLogical( ASolver % Values, 'Use Piola Transform', Found )
+    CALL EdgeElementStyle(ASolver % Values, PiolaVersion, BasisDegree = EdgeBasisDegree )
 
     PS => Asolver % Variable % Perm
 
@@ -1858,17 +1861,12 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     ! Numerical integration:
     ! ----------------------
     IF(PiolaVersion) THEN
-      IP = GaussPoints(Element, EdgeBasis=.TRUE., EdgeBasisDegree=1, PReferenceElement=PiolaVersion)
+      IP = GaussPoints(Element, PReferenceElement=PiolaVersion, EdgeBasisDegree=EdgeBasisDegree)
     ELSE
       IP = GaussPoints(Element)
     END IF
 
     DO t=1,IP % n
-      ! Basis function values & derivatives at the integration point:
-      !--------------------------------------------------------------
-      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-                IP % W(t), detJ, Basis,dBasisdx )
-
  
       circ_eq_coeff = 1._dp
       SELECT CASE(dim)
@@ -1882,15 +1880,9 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         END IF
         circ_eq_coeff = GetCircuitModelDepth()
       CASE(3)
-        IF (PiolaVersion) THEN
-          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
-               DetF = DetJ, Basis = Basis, dBasisdx=dBasisdx, EdgeBasis = WBasis, RotBasis = RotWBasis, &
-               BasisDegree=1, ApplyPiolaTransform = .TRUE.)
-        ELSE
-          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-                    IP % W(t), detJ, Basis, dBasisdx )
-          CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
-        END IF
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+            detJ, Basis, dBasisdx, EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = ASolver)
+
         IF (CoilUseWvec) THEN
           w = ListGetElementVectorSolution( Wvec_h, Basis, Element, Found = Found, dofs = dim )
           IF(.NOT. Found ) THEN
@@ -1973,7 +1965,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     REAL(KIND=dp) :: localConductance !, localL
     INTEGER :: nn, nd, j, t, nm, Indexes(nd), &
                VvarId, dim
-    LOGICAL :: stat
+    LOGICAL :: stat, PiolaVersion
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
     COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
@@ -1982,7 +1974,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     TYPE(ValueList_t), POINTER :: Material
 
     REAL(KIND=dp) :: wBase(nn), gradv(3), WBasis(nd,3), RotWBasis(nd,3)
-    INTEGER :: ncdofs,q
+    INTEGER :: ncdofs,q,EdgeBasisDegree
     REAL(KIND=dp) :: ModelDepth
     COMPLEX(KIND=dp) :: Permittivity(nn), localP
     TYPE(Variable_t), POINTER, SAVE :: Wpot
@@ -2001,6 +1993,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
     ASolver => CurrentModel % Asolver
     IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('Add_massive','ASolver not found!')
+    CALL EdgeElementStyle(ASolver % Values, PiolaVersion, BasisDegree = EdgeBasisDegree)
+    
     PS => Asolver % Variable % Perm
 
     CM => CurrentModel % CircuitMatrix
@@ -2044,17 +2038,20 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
     ! Numerical integration:
     ! ----------------------
-    IP = GaussPoints(Element)
-    DO t=1,IP % n
-      ! Basis function values & derivatives at the integration point:
-      !--------------------------------------------------------------
-      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-                IP % W(t), detJ, Basis,dBasisdx )
+    IF (PiolaVersion) THEN
+      IP = GaussPoints(Element, PReferenceElement=PiolaVersion, EdgeBasisDegree=EdgeBasisDegree)
+    ELSE
+      IP = GaussPoints(Element)
+    END IF
 
+    DO t=1,IP % n
       grads_coeff = -1._dp
       circ_eq_coeff = 1._dp
       SELECT CASE(dim)
       CASE(2)
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+            IP % W(t), detJ, Basis,dBasisdx )
+
         IF( CSymmetry ) THEN
           x = SUM( Basis(1:nn) * Nodes % x(1:nn) )
           detJ = detJ * x
@@ -2064,10 +2061,10 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         circ_eq_coeff = ModelDepth
         grads_coeff = grads_coeff/ModelDepth
       CASE(3)
-        CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+            detJ, Basis, dBasisdx, EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = ASolver )
         gradv = MATMUL( WBase(1:nn), dBasisdx(1:nn,:))
       END SELECT
-
 
       localC = SUM(Tcoef(1,1,1:nn) * Basis(1:nn))
 
@@ -2218,7 +2215,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     INTEGER :: nm,p,j,t,Indexes(nd),vvarId,vpolord_tot, &
                vpolord, vpolordtest, dofId, dofIdtest, &
                dim
-    LOGICAL :: stat
+    LOGICAL :: stat, PiolaVersion
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
     COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
@@ -2234,7 +2231,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     REAL(KIND=dp) :: wBase(nn), gradv(3), WBasis(nd,3), RotWBasis(nd,3), &
                      RotMLoc(3,3), RotM(3,3,nn)
     REAL(KIND=dp) :: Jvec(3)
-    INTEGER :: i,ncdofs,q
+    INTEGER :: i,ncdofs,q,EdgeBasisDegree
     TYPE(Variable_t), POINTER, SAVE :: Wpot
 
     
@@ -2277,6 +2274,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
     ASolver => CurrentModel % Asolver
     IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('Add_foil_winding','ASolver not found!')
+    CALL EdgeElementStyle(ASolver % Values, PiolaVersion, BasisDegree = EdgeBasisDegree)
+    
     PS => Asolver % Variable % Perm
 
     CM => CurrentModel % CircuitMatrix
@@ -2326,17 +2325,20 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
     ! Numerical integration:
     ! ----------------------
-    IP = GaussPoints(Element)
-    DO t=1,IP % n
-      ! Basis function values & derivatives at the integration point:
-      !--------------------------------------------------------------
-      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-                IP % W(t), detJ, Basis,dBasisdx )
+    IF (PiolaVersion) THEN
+      IP = GaussPoints(Element, PReferenceElement=PiolaVersion, EdgeBasisDegree=EdgeBasisDegree)
+    ELSE
+      IP = GaussPoints(Element)
+    END IF
 
+    DO t=1,IP % n
       grads_coeff = -1._dp
       circ_eq_coeff = 1._dp
       SELECT CASE(dim)
       CASE(2)
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+            IP % W(t), detJ, Basis,dBasisdx )
+        
         IF( CSymmetry ) THEN
           x = SUM( Basis(1:nn) * Nodes % x(1:nn) )
           detJ = detJ * x
@@ -2350,7 +2352,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         ! ----------------------
         localR = Comp % N_j **2 * IP % s(t)*detJ/C(1,1)*circ_eq_coeff / Comp % VoltageFactor
       CASE(3)
-        CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+            detJ, Basis, dBasisdx, EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = ASolver )
 
         IF (CoilUseWvec) THEN
           gradv = ListGetElementVectorSolution( Wvec_h, Basis, Element, dofs = dim )
@@ -2457,7 +2460,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       NULLIFY( Cwrk, Cwrk_im )
     END IF
 
-    Tcoef = cmplx(0.0d0,0.0d0)
+    Tcoef = cmplx(0.0d0,0.0d0,KIND=dp)
     Material => GetMaterial( Element )
     IF (.NOT. ASSOCIATED(Material)) CALL Fatal('Circuits_apply','Material not found.')
 

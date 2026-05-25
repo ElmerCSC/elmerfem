@@ -1440,7 +1440,7 @@ CONTAINS
       RESULT ( Projector )
   !---------------------------------------------------------------------------
     USE DefUtils
-    USE MeshUtils, ONLY : PreRotationalProjector, PostRotationalProjector
+    USE MortarUtils, ONLY : PreRotationalProjector, PostRotationalProjector
     IMPLICIT NONE
 
     TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
@@ -2034,7 +2034,7 @@ CONTAINS
 
       DO j=4,MAX_TRIANGLE_DEGREE
         !
-        ! We can re-use the nodes of (j-3)th order triangle:
+        ! We can reuse the nodes of (j-3)th order triangle:
         !
         i_start = 3*j + 1
         SELECT CASE(j)

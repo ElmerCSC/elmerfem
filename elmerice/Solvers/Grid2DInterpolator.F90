@@ -322,6 +322,13 @@ SUBROUTINE InterpolateDEM (x, y, xb, yb, zb, Nbx, Nby, xb0, yb0, lbx, lby, Rmin,
 
   ix = INT((x-xb0)/dbx)+1
   iy = INT((y-yb0)/dby)+1
+
+  ! check results for sanity
+  IF ((ix < 1) .OR. (iy < 1)) THEN
+    WRITE(Message, *) "Invalid value computed for point indici (xi,xi):", ix, iy
+    CALL FATAL("Grid2DInterpolator(InterpolateDEM)",Message)
+  END IF
+  
   ib = Nbx * (iy - 1) + ix
 
   ! if we are already at the end of the domain then collapse the 2 by 2 interpolation 

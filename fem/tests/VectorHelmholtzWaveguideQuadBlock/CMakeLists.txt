@@ -6,5 +6,5 @@ IF(HAVE_UMFPACK OR HAVE_MUMPS)
 
   file(COPY block.sif ELMERSOLVER_STARTINFO shoebox_tets DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-  ADD_ELMER_TEST(VectorHelmholtzWaveguideQuadBlock LABELS whitney)
+  ADD_ELMER_TEST(VectorHelmholtzWaveguideQuadBlock LABELS whitney emwave)
 ENDIF()

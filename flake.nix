@@ -2,31 +2,10 @@
   description = "Elmer FEM";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11";
-
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
     flake-utils.url = "github:numtide/flake-utils";
-
     flake-compat.url = "https://flakehub.com/f/edolstra/flake-compat/1.tar.gz";
-
     nix-filter.url = "github:numtide/nix-filter";
-
-    mumps = {
-      url = "github:mk3z/mumps";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
-    mmg = {
-      url = "github:mk3z/mmg/develop";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
-    parmmg = {
-      url = "github:mk3z/parmmg/develop";
-      inputs = {
-        nixpkgs.follows = "nixpkgs";
-        mmg.follows = "mmg";
-      };
-    };
   };
 
   nixConfig = {
@@ -44,14 +23,10 @@
     flake-utils,
     nix-filter,
     ...
-  } @ inputs:
+  }:
     (flake-utils.lib.eachDefaultSystem (
       system: let
         pkgs = nixpkgs.legacyPackages.${system};
-
-        mumps = inputs.mumps.packages.${system}.default;
-        mmg = inputs.mmg.packages.${system}.default;
-        parmmg = inputs.parmmg.packages.${system}.default;
 
         basePkg = {
           name,
@@ -113,7 +88,7 @@
               [
                 mpi
                 blas
-                liblapack
+                (liblapack.override {blas64 = true;})
                 tbb
               ]
               ++ extraBuildInputs;
@@ -129,7 +104,7 @@
 
                 "-DWITH_ElmerIce:BOOL=TRUE"
 
-                "-DMPIEXEC_PREFLAGS=-oversubscribe"
+                "-DMPIEXEC_PREFLAGS=--oversubscribe"
 
                 "-Wno-dev"
               ]
@@ -190,15 +165,15 @@
             inherit doCheck;
             name = "elmer-full";
 
-            buildInputs = with pkgs;
-              [
-                libcsa
-                hdf5-mpi
-                hypre
-                nn
-                scalapack
-              ]
-              ++ [mumps];
+            buildInputs = with pkgs; [
+              libcsa
+              hdf5-mpi
+              hypre
+              metis
+              mumps-mpi
+              nn
+              scalapack
+            ];
 
             cmakeFlags = [
               "-DWITH_NETCDF:BOOL=TRUE"
@@ -220,12 +195,12 @@
               "-DNN_LIBRARY=${pkgs.nn}/lib/libnn.a"
 
               "-DWITH_MMG:BOOL=TRUE"
-              "-DMMG_INCLUDE_DIR=${mmg}/include"
-              "-DMMG_LIBRARY=${mmg}/lib/libmmg.so"
+              "-DMMG_INCLUDE_DIR=${pkgs.mmg}/include"
+              "-DMMG_LIBRARY=${pkgs.mmg}/lib/libmmg.so"
 
               "-DWITH_PARMMG:BOOL=TRUE"
-              "-DPARMMG_INCLUDE_DIR=${parmmg}/include"
-              "-DPARMMG_LIBRARY=${parmmg}/lib/libparmmg.so"
+              "-DPARMMG_INCLUDE_DIR=${pkgs.parmmg}/include"
+              "-DPARMMG_LIBRARY=${pkgs.parmmg}/lib/libparmmg.so"
 
               "-DWITH_GridDataReader:BOOL=TRUE"
 

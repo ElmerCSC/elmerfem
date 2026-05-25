@@ -1,3 +1,9 @@
+! This is a legacy test case for adaptive solution of static electric
+! conduction test case that utilizes the internal Mesh2D Delaynay mesh
+! generator of Elmer (by H. Hakula). There used to be a graphical user
+! interface to create the .mif files but it became obsolite.
+
+
 Header
   Mesh DB "." "kulma"
 End
@@ -12,7 +18,7 @@ Simulation
   Simulation Type = Steady State
   Steady State Max Iterations = 20
   Mesh Input File = "kulma.mif"
-! Post File = "kulma.ep"
+! Post File = "kulma.vtu"
 End
 
 Body 1

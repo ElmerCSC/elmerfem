@@ -411,79 +411,6 @@ void GetElementSide(int element,int side,int normal,
 
     break;
 
-  case 706: /* Linear wedge element */
-    if(side < 3) {
-      *sideelemtype = 404;
-      ind[0] = elemind[side];
-      ind[1] = elemind[(side+1)%3];
-      ind[2] = elemind[(side+1)%3+3];
-      ind[3] = elemind[side+3];  
-    }
-    else if (side < 5) {
-      *sideelemtype = 303;          
-      for(i=0;i<3;i++)
-	ind[i] = elemind[3*(side-3)+i];
-    }
-    else if(side < 14) {
-      *sideelemtype = 202;
-      if(side < 8) {
-	ind[0] = elemind[side-5];
-	ind[1] = elemind[(side-4)%3];
-      }
-      if(side < 11) {
-	ind[0] = elemind[3+side-8];
-	ind[1] = elemind[3+(side-7)%3];
-      }
-      else {
-	ind[0] = elemind[side-11];
-	ind[1] = elemind[3+side-11];	
-      }
-    }
-    else if (side < 20) {
-      *sideelemtype = 101;
-      ind[0] = elemind[side-14];      
-    }
-    break;
-
-  case 715: /* Quadratic wedge element */
-    if(side < 3) {
-      *sideelemtype = 408;
-      ind[0] = elemind[side];
-      ind[1] = elemind[(side+1)%3];
-      ind[2] = elemind[(side+1)%3+3];
-      ind[3] = elemind[side+3];  
-      ind[4] = elemind[6+side];
-      ind[5] = elemind[9+(side+1)%3];
-      ind[6] = elemind[12+side];
-      ind[7] = elemind[9+side];      
-    }
-    else if (side < 5) {
-      *sideelemtype = 306;          
-      for(i=0;i<3;i++) {
-	ind[i] = elemind[3*(side-3)+i];
-	ind[i+3] = elemind[3*(side-3)+6+i];
-      }      
-    }
-    else if(side < 14) {
-      *sideelemtype = 202;
-      if(side < 8) {
-	ind[0] = elemind[side-5];
-	ind[1] = elemind[(side-4)%3];
-      }
-      if(side < 11) {
-	ind[0] = elemind[3+side-8];
-	ind[1] = elemind[3+(side-7)%3];
-      }
-      else {
-	ind[0] = elemind[side-11];
-	ind[1] = elemind[3+side-11];	
-      }
-    }
-    else if (side < 20) {
-      *sideelemtype = 101;
-      ind[0] = elemind[side-14];      
-    }
-    break;
 
   case 605: /* Linear pyramid */
     if(side < 4) {
@@ -551,6 +478,122 @@ void GetElementSide(int element,int side,int normal,
     }
     break;
 
+  case 706: /* Linear wedge element */
+    if(side < 3) {
+      *sideelemtype = 404;
+      ind[0] = elemind[side];
+      ind[1] = elemind[(side+1)%3];
+      ind[2] = elemind[(side+1)%3+3];
+      ind[3] = elemind[side+3];  
+    }
+    else if (side < 5) {
+      *sideelemtype = 303;          
+      for(i=0;i<3;i++)
+	ind[i] = elemind[3*(side-3)+i];
+    }
+    else if(side < 14) {
+      *sideelemtype = 202;
+      if(side < 8) {
+	ind[0] = elemind[side-5];
+	ind[1] = elemind[(side-4)%3];
+      }
+      if(side < 11) {
+	ind[0] = elemind[3+side-8];
+	ind[1] = elemind[3+(side-7)%3];
+      }
+      else {
+	ind[0] = elemind[side-11];
+	ind[1] = elemind[3+side-11];	
+      }
+    }
+    else if (side < 20) {
+      *sideelemtype = 101;
+      ind[0] = elemind[side-14];      
+    }
+    break;
+ 
+  case 715: /* Quadratic wedge element */
+    if(side < 3) {
+      *sideelemtype = 408;
+      ind[0] = elemind[side];
+      ind[1] = elemind[(side+1)%3];
+      ind[2] = elemind[(side+1)%3+3];
+      ind[3] = elemind[side+3];  
+      ind[4] = elemind[6+side];        
+      ind[5] = elemind[12+(side+1)%3];   
+      ind[6] = elemind[9+side];      
+      ind[7] = elemind[12+side];
+    }
+    else if (side < 5) {
+      *sideelemtype = 306;          
+      for(i=0;i<3;i++) {
+	ind[i] = elemind[3*(side-3)+i];
+	ind[i+3] = elemind[3*(side-3)+6+i];
+      }      
+    }
+    else if(side < 14) {
+      *sideelemtype = 202;
+      if(side < 8) {
+	ind[0] = elemind[side-5];
+	ind[1] = elemind[(side-4)%3];
+      }
+      if(side < 11) {
+	ind[0] = elemind[3+side-8];
+	ind[1] = elemind[3+(side-7)%3];
+      }
+      else {
+	ind[0] = elemind[side-11];
+	ind[1] = elemind[3+side-11];	
+      }
+    }
+    else if (side < 20) {
+      *sideelemtype = 101;
+      ind[0] = elemind[side-14];      
+    }
+    break;
+    
+  case 718: /* Quadratic wedge element with centernodes */
+    if(side < 3) {
+      *sideelemtype = 409;
+      ind[0] = elemind[side];
+      ind[1] = elemind[(side+1)%3];
+      ind[2] = elemind[(side+1)%3+3];
+      ind[3] = elemind[side+3];  
+      ind[4] = elemind[6+side];        
+      ind[5] = elemind[12+(side+1)%3];   
+      ind[6] = elemind[9+side];      
+      ind[7] = elemind[12+side];
+
+      ind[8] = elemind[15+side];
+    }
+    else if (side < 5) {
+      *sideelemtype = 306;          
+      for(i=0;i<3;i++) {
+	ind[i] = elemind[3*(side-3)+i];
+	ind[i+3] = elemind[3*(side-3)+6+i];
+      }      
+    }
+    else if(side < 14) {
+      *sideelemtype = 202;
+      if(side < 8) {
+	ind[0] = elemind[side-5];
+	ind[1] = elemind[(side-4)%3];
+      }
+      if(side < 11) {
+	ind[0] = elemind[3+side-8];
+	ind[1] = elemind[3+(side-7)%3];
+      }
+      else {
+	ind[0] = elemind[side-11];
+	ind[1] = elemind[3+side-11];	
+      }
+    }
+    else if (side < 20) {
+      *sideelemtype = 101;
+      ind[0] = elemind[side-14];      
+    }
+    break;
+    
   case 808: /* Linear brick */
     if(side < 6) {
       *sideelemtype = 404;
@@ -6972,6 +7015,46 @@ void IsoparametricElements(struct FemType *data,struct BoundaryType *bound,
 
 
 
+void ModifyUnsupportedElements(struct FemType *data) {
+
+  int i,elementtype;  
+  int cnt718=0,cnt614=0,cnt409=0,cnt827=0;
+
+  for(i=1; i <= data->noelements; i++) {
+    elementtype = data->elementtypes[i];
+    if(elementtype == 718) {
+      break; /* Introducing support */
+      data->elementtypes[i] = 715;
+      cnt718++;
+    }
+    else if(elementtype == 614) {
+      data->elementtypes[i] = 613;
+      cnt614++;
+    }
+  }
+  
+  if(cnt718 || cnt614) {
+    printf("WARNING: ElmerSolver does not currently support all elements in mesh, dropping center nodes!\n");
+    for(i=1; i <= data->noelements; i++) {
+      elementtype = data->elementtypes[i];
+      if(elementtype == 409) {
+	data->elementtypes[i] = 408;
+	cnt409++;
+      }
+      else if(elementtype == 827) {
+	data->elementtypes[i] = 820;
+	cnt827++;
+      }
+    }    
+    if(cnt718) printf("Element type 718 not supported, dropping centernodes for %d elements\n",cnt718);
+    if(cnt614) printf("Element type 614 not supported, dropping centernodes for %d elements\n",cnt614);
+    if(cnt827) printf("Dropping centernodes in %d elements of type 827 as well!\n",cnt827);
+    if(cnt409) printf("Dropping centernodes in %d elements of type 409 as well!\n",cnt409);
+  }  
+}
+  
+
+
 void ElementsToBoundaryConditions(struct FemType *data,
 				  struct BoundaryType *bound,int retainorphans,int info)
 {
@@ -7293,8 +7376,15 @@ void ElementsToBoundaryConditions(struct FemType *data,
 		  sprintf(data->boundaryname[material],"body%d",material);
 	      }
 	    }
-	    if(!strncmp(data->boundaryname[material],"body",4)) {
-	      strncpy(data->boundaryname[material],"bnry",4);
+	    
+	    if(material < MAXBCS ) {
+	      if(!data->boundaryname[material]) data->boundaryname[material] = Cvector(0,MAXNAMESIZE);
+	      if(!strncmp(data->boundaryname[material],"body",4)) {
+		strncpy(data->boundaryname[material],"bnry",4);
+	      }
+	    }
+	    else {
+	      printf("Boundary index %d exceeds the maximum allocated space for names %d\n",material,MAXBCS);
 	    }
 	  }
 

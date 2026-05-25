@@ -15,7 +15,7 @@ Optional components:
 
 Please read the file LICENSES before using any of these software components.
 
-Tetgen should be installed as described in ../misc/tetgen_plugin/RAEDME
+Tetgen should be installed as described in ../misc/tetgen_plugin/README
 
 In order to compile ElmerGUI, edit the file ElmerGUI.pri and select the
 optional components to build. You should also define the directories where

@@ -115,7 +115,8 @@
 
   VeloSol => Solver % Variable 
   STDOFs = VeloSol % DOfs
-
+  VariableValues => VeloSol % Values
+  
   !------------------------------------------------------------------------------
   !    Get variables needed for solution
   !------------------------------------------------------------------------------
@@ -149,19 +150,31 @@
   ZsPerm => ZsSol % Perm
 
 !  Sub - element GL parameterisation
-  SEP=GetLogical( Solver % Values, 'Sub-Element GL parameterization',GotIt)
+  SEP=GetLogical( SolverParams , 'Sub-Element GL parameterization',GotIt)
   IF (SEP) THEN
-    GLnIP=ListGetInteger( Solver % Values, &
+    GLnIP=ListGetInteger(SolverParams, &
         'GL integration points number',Found)
+  END IF
+  IF (SEP) THEN
+     IF (GLnIP == 0) THEN
+       IF (.NOT. ListCheckPrefix(SolverParams,'Adaptive Integration') ) THEN
+          CALL ListAddString(SolverParams,'Adaptive Integration Variable','haf0')
+          CALL ListAddLogical(SolverParams,'Adaptive Integration Split', .True.)
+          CALL ListAddConstReal(SolverParams,'Adaptive Integration Split Limit',0._dp)
+       END IF
+       CALL INFO(SolverName,'Using Sub-Element GL parameterization: SEP2',level=4)
+     ELSE
+       CALL INFO(SolverName,'Using Sub-Element GL parameterization: SEP3 with nIP='//I2S(GLnIP),level=4)
+     END IF
+  ELSE
+       CALL INFO(SolverName,'No Sub-Element GL parameterization')     
   END IF
 
   sealevel = ListGetCReal( Model % Constants, 'Sea Level', Found )
-  If (.NOT.Found) Then
-      WRITE(Message,'(A)') 'Constant >Sea Level< not found. &
-           &Setting to 0.0'
-      CALL INFO(SolverName, Message, level=20)
-      sealevel=0.0_dp
-  End if
+  IF (.NOT.Found) THEN
+    WRITE(Message,'(A)') 'Constant >Sea Level< not found. Setting to zero.'
+    CALL INFO(SolverName, Message, level=20)
+  END IF
 
   !--------------------------------------------------------------
   !Allocate some permanent storage, this is done first time only:
@@ -171,10 +184,9 @@
     ! Get some constants
     rhow = ListGetConstReal( Model % Constants, 'Water Density', Found)
     If (.NOT.Found) Then
-      WRITE(Message,'(A)') 'Constant Water Density not found. &
-           &Setting to 1.03225e-18'
-      CALL INFO(SolverName, Message, level=20)
       rhow = 1.03225e-18_dp
+      WRITE(Message,*) 'Constant Water Density not found. Setting to: ',rhow
+      CALL INFO(SolverName, Message, level=20)
     End if
 
     ! Allocate
@@ -183,9 +195,8 @@
     M = Model % Mesh % NumberOfNodes
     IF (AllocationsDone) DEALLOCATE(FORCE, LOAD, STIFF, NodalGravity, &
          NodalViscosity, NodalDensity,  &
-         NodalZb, NodalZs,  NodalU, NodalV, &
-         ElementNodes % x, &
-         ElementNodes % y, ElementNodes % z ,Basis)
+         NodalZb, NodalZs, NodalU, NodalV, &
+         ElementNodes % x, ElementNodes % y, ElementNodes % z ,Basis)
 
     ALLOCATE( FORCE(STDOFs*N), LOAD(N), STIFF(STDOFs*N,STDOFs*N), &
          NodalGravity(N), NodalDensity(N), NodalViscosity(N), &
@@ -214,7 +225,6 @@
 
   NonlinearIter = GetInteger( Solver % Values, &
        'Nonlinear System Max Iterations',GotIt )
-
   IF ( .NOT.GotIt ) NonlinearIter = 1
 
   NewtonTol = ListGetConstReal( Solver % Values, &
@@ -356,7 +366,6 @@
       IF (.NOT.ASSOCIATED( BC ) ) CYCLE
 
       ! Find the nodes for which 'Calving Front' = True             
-      CalvingFront=.False. 
       CalvingFront = ListGetLogical( BC, 'Calving Front', GotIt )
       IF (CalvingFront) THEN
 
@@ -396,7 +405,7 @@
              UnFoundFatal=UnFoundFatal)
 
         MinH = ListGetConstReal( Material, 'SSA Critical Thickness',Found)
-        If (.NOT.Found) MinH=EPSILON(MinH)
+        If (.NOT.Found) MinH = EPSILON(MinH)
 
         NodalGravity = 0.0_dp
         IF ( ASSOCIATED( BodyForce ) ) THEN
@@ -470,12 +479,12 @@
 
   strbasemag => VariableGet( Solver % Mesh % Variables,"strbasemag")
   IF (ASSOCIATED(strbasemag)) THEN
-   ! sanity check
-   IF (strbasemag % TYPE /= Variable_on_elements) &
-           CALL FATAL(SolverName,"strbasemag type should be on_elements") 
-   IF (.NOT.ASSOCIATED(strbasemag % Perm)) &
-           CALL FATAL(SolverName,"strbasemag perm not associated")
-   strbasemag % Values=0._dp
+    ! sanity check
+    IF (strbasemag % TYPE /= Variable_on_elements) &
+        CALL FATAL(SolverName,"strbasemag type should be on_elements") 
+    IF (.NOT.ASSOCIATED(strbasemag % Perm)) &
+        CALL FATAL(SolverName,"strbasemag perm not associated")
+    strbasemag % Values = 0._dp
   END IF
 
   Ceff => VariableGet( Solver % Mesh % Variables,"Ceff")
@@ -503,7 +512,6 @@
              'It is not possible to compute SSA problems with DOFs=',&
              STDOFs, ' . Aborting'
         CALL Fatal( SolverName, Message)
-        STOP
       END IF
 
       Material => GetMaterial(Element)
@@ -524,49 +532,49 @@
 
       IF (ASSOCIATED(strbasemag)) THEN
         IF (strbasemag % Perm(Element % ElementIndex) > 0) &
-         strbasemag% Values(strbasemag % Perm(Element % ElementIndex))= &
-          ComputeMeanFriction(Element,n,ElementNodes,STDOFs,NodalU,NodalV,NodalZs,NodalZb,MinH,NodalDensity,SEP,GLnIP,sealevel,rhow)
+            strbasemag% Values(strbasemag % Perm(Element % ElementIndex))= &
+            ComputeMeanFriction(Element,n,ElementNodes,STDOFs,NodalU,NodalV,&
+            NodalZs,NodalZb,MinH,NodalDensity,SEP,GLnIP,sealevel,rhow)
       END IF
  
       IF (ASSOCIATED(Ceff)) THEN
         Do i=1,n
           stat = ElementInfo( Element, ElementNodes, Element % Type % NodeU(i) , Element % Type % NodeV(i),&
-                             Element % Type % NodeW(i),  detJ, Basis )
-          un=0._dp
+              Element % Type % NodeW(i),  detJ, Basis )
+          un = 0._dp
           Do j=1,STDOFs
-            un = un + VeloSol % Values(STDOFs*(VeloSol % Perm(NodeIndexes(i))-1)+j) &
-                *VeloSol % Values(STDOFs*(VeloSol % Perm(NodeIndexes(i))-1)+j)
+            un = un + VeloSol % Values(STDOFs*(VeloSol % Perm(NodeIndexes(i))-1)+j)**2
           End do
-          un=sqrt(un)
+          un = SQRT(un)
 
-          h=MAX(SUM(Basis(1:n)*(NodalZs(1:n)-NodalZb(1:n))),MinH)
+          h = MAX(SUM(Basis(1:n)*(NodalZs(1:n)-NodalZb(1:n))),MinH)
           Ceff%Values(Ceff%Perm(NodeIndexes(i)))=  &
-                  SSAEffectiveFriction(Element,n,Basis,un,SEP,.TRUE.,h,SUM(NodalDensity(1:n)*Basis(1:n)),rhow,sealevel)
+              SSAEffectiveFriction(Element,n,Basis,un,SEP,.TRUE.,h,SUM(NodalDensity(1:n)*Basis(1:n)),rhow,sealevel)
         End do
       End IF
 
-   END DO
+    END DO
   END IF
 
 
   ! scale the results if a given limit is given... use with care?
   UnLimit = ListGetConstReal(SolverParams,'velocity norm limit',GotIt)
   IF (GotIt) THEN
-    Do i=1,Solver%Mesh%NumberOfNodes
-       un=0._dp
-       Do j=1,STDOFs
-         un=un+VariableValues(STDOFs*(i-1)+j)*VariableValues(STDOFs*(i-1)+j)
-       End do
-       un=sqrt(un)
-       IF (un > 0._dp) THEN
-         un_max=UnLimit/un
-         IF (un_max < 1.0_dp) THEN
-           Do j=1,STDOFs
-             VariableValues(STDOFs*(i-1)+j)=VariableValues(STDOFs*(i-1)+j)*un_max
-           End do
-         END IF
-       END IF
-    End do
+    DO i=1,Solver%Mesh%NumberOfNodes
+      un=0._dp
+      DO j=1,STDOFs
+        un=un+VariableValues(STDOFs*(i-1)+j)**2
+      END DO
+      un=SQRT(un)
+      IF (un > 0._dp) THEN
+        un_max=UnLimit/un
+        IF (un_max < 1.0_dp) THEN
+          DO j=1,STDOFs
+            VariableValues(STDOFs*(i-1)+j)=VariableValues(STDOFs*(i-1)+j)*un_max
+          END DO
+        END IF
+      END IF
+    END DO
   END IF
 
   CALL DefaultFinish()
@@ -622,7 +630,7 @@ CONTAINS
       ELSE        
         GMSol => VariableGet( CurrentModel % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
         CALL GetLocalSolution( NodalGM,UElement=Element,UVariable=GMSol)
-        PartlyGroundedElement=(ANY(NodalGM(1:n) > 0._dp) .AND. ANY(NodalGM(1:n) < 0._dp))
+        PartlyGroundedElement=(ANY(NodalGM(1:n) >= 0._dp) .AND. ANY(NodalGM(1:n) < 0._dp))
         IF (PartlyGroundedElement) THEN
           IP = GaussPoints( Element , np=GLnIP )
         ELSE

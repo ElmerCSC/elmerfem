@@ -224,6 +224,7 @@ Boundary Condition 3
   Mortar BC =  Integer 2
   Rotational Projector = Logical True
   Level Projector = Logical True
+  Level Projector Generic = Logical True
   Level Projector Strong = Logical True
 End
 
@@ -234,6 +235,7 @@ Boundary Condition 4
   Mortar BC = 5
   Radial Projector = Logical True
   Level Projector = Logical True
+  Level Projector Generic = Logical True  
   Level Projector Strong = Logical True
 End
 
@@ -249,6 +251,7 @@ Boundary Condition 6
   Mortar BC = 7
   Radial Projector = Logical True
   Level Projector = Logical True
+  Level Projector Generic = Logical True  
   Level Projector Strong = Logical True
 End
 

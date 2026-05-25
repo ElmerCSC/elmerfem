@@ -28,18 +28,18 @@ The degree of approximation is defined by using a special keyword construct
 
 where the part "a_matc_function" is the name of a MATC function of a 4-tuple.
 The first argument is the identifier of the body while the remaining components
-are the coordinates of the element mid-point. At the time of writing, this
-seems to be the only functional way to get varying p within a single model.
+are the coordinates of the element mid-point. For another way to define a body-
+dependent element definition see the test p-FEM_two_solvers.
 
 The energy norm of the error for different p-element definitions (over the
 same 2 X 2 mesh, with p being fixed as p=8 in the boundary layer and p varying
 elsewhere) is found to be as follows (the shell thickness d=0.1): 
 
-p=1  Relative energy error =   0.85396972358657408
-p=2  Relative energy error =   0.23800207437997356
-p=3  Relative energy error =   0.14558431573734487
-p=4  Relative energy error =   2.8912002775000799E-002
-p=5  Relative energy error =   7.0313590547632018E-003
-p=6  Relative energy error =   2.3734217622063724E-003
-p=7  Relative energy error =   5.8687216090359958E-004
-p=8  Relative energy error =   1.3339512982768768E-004
+p=1  Relative energy error =   0.85066600418084093
+p=2  Relative energy error =   0.17236780148659830
+p=3  Relative energy error =   3.9435030074067401E-002
+p=4  Relative energy error =   1.4885490648253756E-002
+p=5  Relative energy error =   3.5024529545745033E-003
+p=6  Relative energy error =   5.2141450836123320E-004
+p=7  Relative energy error =   7.8597967223326273E-005
+p=8  Relative energy error =   6.9625114530649557E-005

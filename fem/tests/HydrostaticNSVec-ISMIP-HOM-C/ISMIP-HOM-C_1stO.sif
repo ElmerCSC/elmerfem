@@ -67,11 +67,11 @@ Initial Condition 1
   !Velocity 2 = Real 0.0
   !Velocity 3 = Real 0.0
   Pressure = Variable coordinate 1 
-      Real Procedure "ismip_c.so" "pSIAB"
+      Real Procedure "ismip_c" "pSIAB"
   Velocity 1 = Variable coordinate 1 
-      Real Procedure "ismip_c.so" "uSIAB"
+      Real Procedure "ismip_c" "uSIAB"
   Velocity 3 =  Variable coordinate 1 
-      Real Procedure "ismip_c.so" "wSIAB"
+      Real Procedure "ismip_c" "wSIAB"
   Height = Real 1000.0    
 End
 
@@ -203,9 +203,9 @@ Boundary Condition 1
   Bottom Surface = Real 0.0
   Velocity 3 = 0.0
   Slip Coefficient 1 = Variable Coordinate 1
-    Real Procedure "ismip_c.so" "Sliding"
+    Real Procedure "ismip_c" "Sliding"
   Slip Coefficient 2 = Variable Coordinate 1
-    Real Procedure "ismip_c.so" "Sliding"
+    Real Procedure "ismip_c" "Sliding"
     
 End
 

@@ -62,6 +62,7 @@ MODULE Lists
    INTEGER, PARAMETER :: LIST_TYPE_VARIABLE_TENSOR = 10
    INTEGER, PARAMETER :: LIST_TYPE_CONSTANT_TENSOR_STR = 11
    INTEGER, PARAMETER :: LIST_TYPE_VARIABLE_TENSOR_STR = 12
+   INTEGER, PARAMETER :: LIST_TYPE_ADDRINT = 13
 
    INTEGER, PARAMETER :: SECTION_TYPE_BODY = 1
    INTEGER, PARAMETER :: SECTION_TYPE_MATERIAL = 2
@@ -116,7 +117,7 @@ CONTAINS
      CHARACTER(*), OPTIONAL :: resul
 
      INTEGER :: i,j,l
-     CHARACTER(LEN=1024) :: pcmd,res
+     CHARACTER(LEN=MAX_STRING_LEN) :: pcmd,res
  
      IF(nparams==0) THEN
        pcmd = "tx=0"
@@ -153,7 +154,7 @@ CONTAINS
      REAL(KIND=dp), OPTIONAL :: params(:)
 
      INTEGER :: i,j,l
-     CHARACTER(LEN=MAX_NAME_LEN) :: res
+     CHARACTER(LEN=MAX_STRING_LEN) :: res
    
      IF (PRESENT(nparams).AND.PRESENT(params))THEN
        CALL SetGetMatcParams(nparams,params,resul)
@@ -191,7 +192,7 @@ CONTAINS
     CHARACTER(*), OPTIONAL :: resul
     REAL(KIND=dp), OPTIONAL :: params(:)
 
-    CHARACTER(LEN=MAX_NAME_LEN) :: pcmd, res
+    CHARACTER(LEN=MAX_STRING_LEN) :: pcmd, res
     INTEGER :: i,l
 
     IF (PRESENT(nparams).AND.PRESENT(params))THEN
@@ -206,7 +207,7 @@ CONTAINS
 !> Tag the active degrees of freedom and number them in order of appearance. 
 !------------------------------------------------------------------------------
   FUNCTION InitialPermutation( Perm,Model,Solver,Mesh, &
-                   Equation,DGSolver,GlobalBubbles ) RESULT(k)
+                   Equation,DGSolver,GlobalBubbles, BCMode) RESULT(k)
 !------------------------------------------------------------------------------
      USE PElementMaps
      USE SParIterGlobals
@@ -215,13 +216,13 @@ CONTAINS
      TYPE(Solver_t), TARGET :: Solver
      INTEGER :: Perm(:)
      CHARACTER(LEN=*) :: Equation
-     LOGICAL, OPTIONAL :: DGSolver, GlobalBubbles
+     LOGICAL, OPTIONAL :: DGSolver, GlobalBubbles, BCMode
 !------------------------------------------------------------------------------
      INTEGER i,j,l,t,n,m,e,k,k1, MaxNDOFs, MaxEDOFs, MaxFDOFs, BDOFs, ndofs, el_id
      INTEGER :: NodalIndexOffset, EdgeIndexOffset, FaceIndexOffset, Indexes(128)
      INTEGER, POINTER :: Def_Dofs(:)
      INTEGER, ALLOCATABLE :: EdgeDOFs(:), FaceDOFs(:)
-     LOGICAL :: FoundDG, DG, DB, GB, Bubbles, Found, Radiation, Parallel
+     LOGICAL :: FoundDG, DG, DB, GB, Bubbles, Found, Radiation, Parallel, DoBC
      TYPE(Element_t),POINTER :: Element, Edge, Face
      CHARACTER(*), PARAMETER :: Caller = 'InitialPermutation'
 !------------------------------------------------------------------------------
@@ -238,15 +239,16 @@ CONTAINS
      IF ( PRESENT(GlobalBubbles) ) GB=GlobalBubbles
 
      DG = .FALSE.
-     IF ( PRESENT(DGSolver) ) DG=DGSolver
+     IF ( PRESENT(DGSolver) ) DG = DGSolver
      FoundDG = .FALSE.
 
-     IF( DG ) THEN    
-       DB = ListGetLogical( Solver % Values,'DG Reduced Basis',Found ) 
-     ELSE
-       DB = .FALSE.
-     END IF
-       
+     DB = .FALSE.
+     IF( DG ) DB = ListGetLogical( Solver % Values,'DG Reduced Basis',Found ) 
+
+     DoBC = .FALSE.
+     IF(PRESENT(BCMode)) DoBC = BCMode
+
+     
      ! Discontinuous bodies need special body-wise numbering
      IF ( DB ) THEN
        BLOCK
@@ -478,12 +480,21 @@ CONTAINS
 
 
      n = Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
-     t = 1
+     IF(DoBC) THEN
+       t = Mesh % NumberOfBulkElements + 1
+     ELSE
+       t = 1
+     END IF             
+
      DO WHILE( t <= n )
 
        DO WHILE( t<=n )
          Element => Mesh % Elements(t)
-         IF ( CheckElementEquation( Model, Element, Equation ) ) EXIT
+         IF(DoBC) THEN
+           IF ( CheckElementBC( Model, Element, Equation ) ) EXIT
+         ELSE
+           IF ( CheckElementEquation( Model, Element, Equation ) ) EXIT
+         END IF
          t = t + 1
        END DO
 
@@ -647,21 +658,20 @@ CONTAINS
          IF(.NOT. ASSOCIATED( Mesh % PeriodicPerm ) ) THEN
            CALL Warn(Caller,'Conforming BC is requested but not generated!')
          ELSE       
-           Solver % PeriodicFlipActive = .FALSE.
            n = SIZE( Mesh % PeriodicPerm )
            m = SIZE( Perm )
            
            IF( n < m ) THEN
              CALL Info(Caller,'Increasing size of periodic tables from '&
-                 //I2S(n)//' to '//I2S(SIZE(Perm))//'!',Level=7)
-             ALLOCATE( TmpPerm(SIZE(Perm)) )
+                 //I2S(n)//' to '//I2S(m)//'!',Level=7)
+             ALLOCATE( TmpPerm(m) )
              TmpPerm = 0
              TmpPerm(1:n) = Mesh % PeriodicPerm(1:n)
              DEALLOCATE(Mesh % PeriodicPerm)
              Mesh % PeriodicPerm => TmpPerm
              
              IF(ASSOCIATED(Mesh % PeriodicFlip ) ) THEN
-               ALLOCATE( TmpFlip(SIZE(Perm)) )
+               ALLOCATE( TmpFlip(m) )
                TmpFlip = .FALSE.
                TmpFlip(1:n) = Mesh % PeriodicFlip(1:n)
                DEALLOCATE(Mesh % PeriodicFlip)
@@ -669,32 +679,32 @@ CONTAINS
              END IF
            END IF
            
+           ! Set the eliminated dofs to zero and renumber
+           WHERE( Mesh % PeriodicPerm(1:m) > 0 ) Perm = -Perm
+
+           k = 0                  
+           DO i=1,m
+             IF( Perm(i) > 0 ) THEN
+               k = k + 1
+               Perm(i) = k
+             END IF
+           END DO
+
            n = 0
-           IF( ASSOCIATED( Mesh % PeriodicPerm ) ) THEN
-             ! Set the eliminated dofs to zero and renumber
-             WHERE( Mesh % PeriodicPerm(1:m) > 0 ) Perm = -Perm
-             
-             k = 0                  
-             DO i=1,m
-               IF( Perm(i) > 0 ) THEN
-                 k = k + 1
-                 Perm(i) = k
-               END IF
-             END DO
-             
-             DO i=1,m
-               j = Mesh % PeriodicPerm(i)
-               IF( j > 0 ) THEN
-                 IF( Perm(i) /= 0 ) THEN             
-                   Perm(i) = Perm(j)
+           DO i=1,m
+             j = Mesh % PeriodicPerm(i)
+             IF( j > 0 ) THEN
+               IF( Perm(i) /= 0 ) THEN             
+                 Perm(i) = Perm(j)
+                 IF(ASSOCIATED(Mesh % PeriodicFlip)) THEN
                    IF(Mesh % PeriodicFlip(i)) n = n + 1
                  END IF
                END IF
-             END DO
+             END IF
+           END DO
 
-             Solver % PeriodicFlipActive = ( n > 0 )
-             CALL Info(Caller,'Number of periodic flips in the field: '//I2S(n),Level=8)
-           END IF
+           Solver % PeriodicFlipActive = ( n > 0 )
+           CALL Info(Caller,'Number of periodic flips in the field: '//I2S(n),Level=8)
          END IF
        END BLOCK
      END IF
@@ -777,6 +787,52 @@ CONTAINS
    END FUNCTION CheckElementEquation
 !---------------------------------------------------------------------------
 
+!---------------------------------------------------------------------------
+!>   Check if given element belongs to a bc for which given equation
+!>   should be solved.
+!---------------------------------------------------------------------------
+   FUNCTION CheckElementBC( Model,Element,Equation ) RESULT(Flag)
+     TYPE(Element_t), POINTER :: Element
+     TYPE(Model_t) :: Model
+     CHARACTER(LEN=*) :: Equation
+     CHARACTER(:), ALLOCATABLE :: PrevEquation
+
+     LOGICAL :: Flag,Found,PrevFlag
+     INTEGER :: k,cons_id,prev_cons_id = -1
+
+     SAVE Prev_cons_id, PrevEquation, PrevFlag
+     !$OMP THREADPRIVATE(Prev_cons_id, PrevEquation, PrevFlag)
+
+     Flag = .FALSE.
+     IF(.NOT. ASSOCIATED(Element % BoundaryInfo)) RETURN
+
+     cons_id = Element % BoundaryInfo % Constraint
+     IF( cons_id == prev_cons_id) THEN
+       IF (Equation == PrevEquation) THEN
+         Flag = PrevFlag
+         RETURN
+       END IF
+     END IF
+
+     prev_cons_id = cons_id
+     PrevEquation = Equation
+
+     DO k=1,Model % NumberOfBCs
+       IF ( Element % BoundaryInfo % Constraint == Model % BCs(k) % Tag ) THEN
+         Flag = ListGetLogical( Model % BCs(k) % Values,Equation,Found)
+         EXIT
+       END IF
+     END DO
+
+     PrevFlag = Flag
+
+!---------------------------------------------------------------------------
+   END FUNCTION CheckElementBC
+!---------------------------------------------------------------------------
+
+
+
+   
 
 !------------------------------------------------------------------------------
 !> Changes the string to all lower case to allow string comparison.
@@ -970,8 +1026,8 @@ CONTAINS
       IF ( PRESENT( TYPE ) ) THEN
         ptr % TYPE = TYPE
       ELSE
-        IF(.NOT. PRESENT(Perm)) THEN
-          IF(SIZE(Values) == DOFs ) ptr % Type = Variable_global
+        IF(.NOT. PRESENT(Perm) .AND. ASSOCIATED(Values)) THEN
+          IF(SIZE(Values) == DOFs) ptr % Type = Variable_global
         END IF
       END IF
         
@@ -1413,7 +1469,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 !> Find a variable by its name from the list of variables. 
-!> If it not to be found in the current mesh, interpolation between
+!> If it is not found in the current mesh, interpolation between
 !> meshes is automatically requested for.
 !------------------------------------------------------------------------------
     RECURSIVE FUNCTION VariableGet( Variables, Name, ThisOnly, MaskName, UnfoundFatal, &
@@ -1506,7 +1562,7 @@ CONTAINS
          RETURN
       END IF
 
-      ! If the variable is of type "global" do not do all the stupid hazzle to interpolate it. 
+      ! If the variable is of type "global" do not do all the stupid hassle to interpolate it. 
       IF( pVar % TYPE == Variable_global ) THEN
         IF(.NOT. ASSOCIATED(Var)) THEN
           ALLOCATE(Var)
@@ -3571,6 +3627,30 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+!> Adds an address integer to the list.
+!------------------------------------------------------------------------------
+    SUBROUTINE ListAddAddressInteger( List,Name,AValue )
+!------------------------------------------------------------------------------
+      TYPE(ValueList_t), POINTER :: List
+      CHARACTER(LEN=*) :: Name
+      INTEGER(kind=AddrInt) :: AValue
+!------------------------------------------------------------------------------
+      INTEGER :: n
+      TYPE(ValueListEntry_t), POINTER :: ptr
+!------------------------------------------------------------------------------
+      ptr => ListAdd( List, Name )
+      ptr % PROCEDURE = Avalue
+
+      ptr % TYPE = LIST_TYPE_ADDRINT
+
+      n = LEN_TRIM(Name)
+      IF(ALLOCATED(ptr % Name)) DEALLOCATE(ptr % Name)
+      ALLOCATE(CHARACTER(n)::ptr % Name)
+      ptr % NameLen = StringToLowerCase( ptr % Name,Name )
+    END SUBROUTINE ListAddAddressInteger
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
 !> Adds an integer to the list.
 !------------------------------------------------------------------------------
     SUBROUTINE ListAddInteger( List,Name,IValue,Proc )
@@ -3853,7 +3933,7 @@ CONTAINS
      LOGICAL, OPTIONAL :: CubicTable, Monotone
      
      TYPE(ValueListEntry_t), POINTER :: ptr
-     INTEGER :: n,m, l
+     INTEGER :: i,j,n,m, l
      REAL(KIND=dp), ALLOCATABLE :: TmpValues(:,:,:)
      
      ptr => ListFind( List, Name )
@@ -3873,23 +3953,25 @@ CONTAINS
 
      n = SIZE(ptr % FValues,1)
      m = SIZE(ptr % FValues,2)
-
-     IF( m /= 2 ) THEN
-       CALL Warn('ListRealArrayToDepArray','Number of columns must be 2!')
-       RETURN
+     l = SIZE(ptr % FValues,3)
+     
+     IF( m < 2 ) THEN
+       CALL Fatal('ListRealArrayToDepArray','Number of columns must be at least 2!')
      END IF
 
      ALLOCATE( TmpValues(n,m,1) )
      TmpValues = ptr % FValues
      DEALLOCATE( ptr % FValues )
 
-     ALLOCATE( ptr % FValues(1,1,n), ptr % TValues(n) )
-     ptr % FValues(1,1,1:n) = TmpValues(1:n,2,1)
+     ALLOCATE( ptr % FValues(1,m-1,n), ptr % TValues(n) )
+     DO j=2,m
+       ptr % FValues(1,j-1,1:n) = TmpValues(1:n,j,1)
+     END DO
      ptr % TValues(1:n) = TmpValues(1:n,1,1)
      DEALLOCATE( TmpValues ) 
           
      ! The (x,y) table should be such that values of x are increasing in size
-     IF( .NOT. CheckMonotone( n, ptr % FValues(1,1,:) ) ) THEN
+     IF( .NOT. CheckMonotone( n, ptr % TValues(1:n) ) ) THEN
        CALL Fatal('ListRealArrayToDepReal',&
            'Values x in > '//TRIM(Name)//' < not monotonically ordered!')
      END IF
@@ -3897,16 +3979,21 @@ CONTAINS
      ! Make it cubic if asked
      IF ( n>3 .AND. PRESENT(CubicTable)) THEN
        IF ( CubicTable ) THEN
+         IF( m > 2 ) THEN
+           CALL Fatal('ListRealArrayToDepArray','Cannot make cubic spline if there are more then 2 columns!')
+         END IF       
          ALLOCATE(ptr % CubicCoeff(n))
          CALL CubicSpline(n,ptr % TValues,Ptr % Fvalues(1,1,:), &
              Ptr % CubicCoeff, Monotone )
        END IF
      END IF
 
-     ALLOCATE(ptr % Cumulative(n))
-     CALL CumulativeIntegral(ptr % TValues, Ptr % FValues(1,1,:), &
-          Ptr % CubicCoeff, Ptr % Cumulative )
-     
+     IF(m==2) THEN
+       ALLOCATE(ptr % Cumulative(n))
+       CALL CumulativeIntegral(ptr % TValues, Ptr % FValues(1,1,:), &
+           Ptr % CubicCoeff, Ptr % Cumulative )
+     END IF
+       
      ! Copy the depname     
      l = LEN_TRIM(DepName)
      IF(ALLOCATED(ptr % DependName)) DEALLOCATE(ptr % DependName)
@@ -3914,10 +4001,14 @@ CONTAINS
      ptr % DepNameLen = StringToLowerCase( ptr % DependName,DepName )
 
      ! Finally, change the type 
-     ptr % TYPE = LIST_TYPE_VARIABLE_SCALAR
-
+     IF( m == 2 ) THEN
+       ptr % TYPE = LIST_TYPE_VARIABLE_SCALAR
+     ELSE
+       ptr % TYPE = LIST_TYPE_VARIABLE_TENSOR
+     END IF
+       
      CALL Info('ListRealArrayToDepReal',&
-         'Changed constant array to dependence table of size '//I2S(n)//'!')
+         'Changed constant array to dependence table of size '//I2S(n)//' x '//I2S(m-1)//'!')
      
    END SUBROUTINE ListRealArrayToDepReal
 
@@ -4001,6 +4092,45 @@ CONTAINS
     END SUBROUTINE ListAddNewString
 !------------------------------------------------------------------------------
       
+!------------------------------------------------------------------------------
+!> Gets an address integer value from the list.
+!------------------------------------------------------------------------------
+   RECURSIVE FUNCTION ListGetAddressInteger( List,Name,Found,UnfoundFatal,DefValue) RESULT(L)
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: Name
+     INTEGER(KIND=AddrInt), OPTIONAL :: DefValue
+     INTEGER(KIND=AddrInt) :: L
+     LOGICAL, OPTIONAL :: Found, UnfoundFatal
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr
+!------------------------------------------------------------------------------
+     IF(PRESENT(DefValue)) THEN
+       L = DefValue
+     ELSE
+       L = 0
+     END IF
+
+     ptr => ListFind(List,Name,Found)
+     IF (.NOT.ASSOCIATED(ptr) ) THEN
+       IF(PRESENT(UnfoundFatal)) THEN
+         IF(UnfoundFatal) THEN
+           WRITE(Message, '(A,A)') "Failed to find integer: ",Name
+           CALL Fatal("ListGetInteger", Message)
+         END IF
+       END IF
+       RETURN
+     END IF
+
+     IF( ptr % type /= LIST_TYPE_ADDRINT ) THEN
+       CALL Fatal('ListGetInteger','Invalid list type for: '//TRIM(Name))
+     END IF
+     
+     L = ptr % PROCEDURE
+
+!------------------------------------------------------------------------------
+   END FUNCTION ListGetAddressInteger
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 !> Gets a integer value from the list.
@@ -4247,10 +4377,11 @@ CONTAINS
 !------------------------------------------------------------------------------
      TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
-     S = ' '
+     S = ''
      IF(PRESENT(DefValue)) S = TRIM(DefValue)
 
      ptr => ListFind(List,Name,Found)
+     
      IF (.NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(UnfoundFatal)) THEN
          IF(UnfoundFatal) THEN
@@ -5549,6 +5680,44 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+!> Prepares real valued keyword such that parallel dependencies are treated.
+!> Just checks the dependence similarly as ListGetReal but does not actually
+!> fetch any values, only activate the interpolation when using VariableGet.
+!------------------------------------------------------------------------------
+   SUBROUTINE ListPrepareRealDependence( List,Name ) 
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*)  :: Name
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     TYPE(VariableTable_t) :: VarTable(MAX_FNC)
+     INTEGER :: VarCount
+     LOGICAL :: Found, AllGlobal, SomeAtIp, SomeAtNodes
+!------------------------------------------------------------------------------
+
+     ptr => ListFind(List,Name,Found)
+     IF (.NOT.ASSOCIATED(ptr) ) RETURN
+     
+     
+     SELECT CASE(ptr % TYPE)
+       
+     CASE( LIST_TYPE_VARIABLE_SCALAR, &
+         LIST_TYPE_VARIABLE_SCALAR_STR )
+       
+       CALL ListPushActiveName(Name)
+       
+       CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, Name, VarCount, VarTable, &
+           SomeAtIp, SomeAtNodes, AllGlobal, 0, List )
+       
+       CALL ListPopActiveName()
+     END SELECT
+      
+   END SUBROUTINE ListPrepareRealDependence
+!------------------------------------------------------------------------------
+
+   
+
+!------------------------------------------------------------------------------
 !> Gets a real valued parameter for one node. This is a special
 !> version of this routine only for keywords depending on keywords.
 !------------------------------------------------------------------------------
@@ -5950,7 +6119,7 @@ CONTAINS
 
      Handle % ValueType = -1
      Handle % SectionType = -1
-     Handle % ListId = -1
+     Handle % ListId = -9999
      Handle % Element => NULL()
      Handle % List => NULL()
      Handle % Ptr  => NULL()
@@ -6073,7 +6242,6 @@ CONTAINS
      CALL Info('ListInitElementKeyword','Treating keyword: '//TRIM(Name),Level=12)
 
      Model => CurrentModel
-     Handle % BulkElement = .TRUE.
      NULLIFY(ptr)
      
      SELECT CASE ( Section ) 
@@ -6092,7 +6260,6 @@ CONTAINS
 
      CASE('Boundary Condition')
        Handle % SectionType = SECTION_TYPE_BC
-       Handle % BulkElement = .FALSE.
        
      CASE('Component')
        Handle % SectionType = SECTION_TYPE_COMPONENT
@@ -6115,7 +6282,7 @@ CONTAINS
      Handle % GlobalEverywhere = .TRUE.
      Handle % SomeVarAtIp = .FALSE.
      Handle % Name = TRIM(Name)
-     Handle % ListId = -1
+     Handle % ListId = -9999
      Handle % EvaluateAtIp = .FALSE.       
      Handle % List => NULL()
      Handle % Element => NULL()
@@ -6232,7 +6399,7 @@ CONTAINS
            ValueType <= List_TYPE_CONSTANT_SCALAR_PROC ) THEN         
 
          IF( PRESENT( DummyCount ) ) THEN
-           ! If we feed internal variables then the eveluation cannot be global
+           ! If we feed internal variables then the evaluation cannot be global
            AllGlobal = .FALSE.
          ELSE
            ! If the matc depends on only global variable, like time, we know that the values
@@ -6351,7 +6518,7 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element     
      TYPE(ValueHandle_t) :: Handle
      TYPE(ValueList_t), POINTER :: List          
-     LOGICAL :: ListSame, ListFound
+     LOGICAL :: ListSame, ListFound, ThisBC
 !------------------------------------------------------------------------------     
      INTEGER :: ListId, id
      
@@ -6359,7 +6526,6 @@ CONTAINS
      
      ListSame = .FALSE.
      ListFound = .FALSE.
-
       
      ! We are looking for the same element as previous time
      IF( ASSOCIATED( Element, Handle % Element ) ) THEN
@@ -6367,15 +6533,14 @@ CONTAINS
        List => Handle % List
        RETURN
      END IF
-
+ 
      ! Ok, not the same element, get the index that determines the list
-     IF( Handle % BulkElement ) THEN     
-       ListId = Element % BodyId       
+     ThisBC = ASSOCIATED( Element % BoundaryInfo )
+     IF( ThisBC ) THEN
+       ! Different constraints can have the same body_id so we cannot use that as an indicator.
+       ListId = -Element % BoundaryInfo % Constraint 
      ELSE
-       ListId = 0
-       IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN
-         ListId = Element % BoundaryInfo % Constraint 
-       END IF
+       ListId = Element % BodyId              
      END IF
      
      ! We are looking at the same list as previous time
@@ -6385,9 +6550,18 @@ CONTAINS
        RETURN
      ELSE
        Handle % ListId = ListId
-       IF( ListId <= 0 ) RETURN
+       IF( ListId == 0 ) RETURN
      END IF
 
+     IF(ThisBC) THEN
+       IF( ANY([SECTION_TYPE_BC, SECTION_TYPE_MATERIAL] == Handle % SectionType ) ) THEN
+         ListId = -ListId
+       ELSE 
+         ListId = Element % BodyId
+         IF(ListId == 0) RETURN
+       END IF
+     END IF
+       
      ! Ok, we cannot use previous list, lets find the new list    
      SELECT CASE ( Handle % SectionType )
        
@@ -6406,20 +6580,23 @@ CONTAINS
        IF(ListFound) List => CurrentModel % ICs(id) % Values
        
      CASE( SECTION_TYPE_MATERIAL )
-       IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN
-         id = Element % BoundaryInfo % Constraint
-         IF(id >= 1 .AND. id <= CurrentModel % NumberOfBCs ) THEN 
-           id = ListGetInteger( CurrentModel % BCs(id) % Values, &
+       IF( ThisBC ) THEN
+         ! The user may give the material both in BC section and in Body Id section
+         id = 0
+         IF(ListId >= 1 .AND. ListId <= CurrentModel % NumberOfBCs ) THEN 
+           id = ListGetInteger( CurrentModel % BCs(ListId) % Values, &
                'Material', ListFound )
-         ELSE
-           id = 0
+         END IF
+         IF(id == 0 .AND. Element % BodyId > 0) THEN
+           id = ListGetInteger( CurrentModel % Bodies(Element % BodyId) % Values, &
+               'Material', ListFound )           
          END IF
        ELSE
          id = ListGetInteger( CurrentModel % Bodies(ListId) % Values, &
              'Material', ListFound )
        END IF
        IF(ListFound) List => CurrentModel % Materials(id) % Values
-
+       
      CASE( SECTION_TYPE_COMPONENT ) 
        id = ListGetInteger( CurrentModel % Bodies(ListId) % Values, &
            'Component', ListFound )         
@@ -6642,8 +6819,12 @@ CONTAINS
        Parent => PElement % BoundaryInfo % Right
      END IF
 
-     RValue = ListGetElementReal( Handle, Basis, Parent, IntFound, PElement % NodeIndexes )
-     
+     IF(ASSOCIATED(Parent)) THEN
+       RValue = ListGetElementReal( Handle, Basis, Parent, IntFound, PElement % NodeIndexes )
+     ELSE
+       Rvalue = 0.0_dp
+     END IF
+       
      ! If not found do the same thing with the other parent
      IF(.NOT. IntFound ) THEN
        IF( lefttest) THEN
@@ -6651,8 +6832,10 @@ CONTAINS
        ELSE
          Parent => PElement % BoundaryInfo % Left
        END IF
-       RValue = ListGetElementReal( Handle, Basis, Parent, IntFound, PElement % NodeIndexes )
-       
+       IF(ASSOCIATED(Parent)) THEN
+         RValue = ListGetElementReal( Handle, Basis, Parent, IntFound, PElement % NodeIndexes )
+       END IF
+         
        ! reverse the order in which left and right parent are tested
        IF( IntFound ) lefttest = .NOT. lefttest
      END IF
@@ -6859,16 +7042,17 @@ CONTAINS
      ! or first at nodes and then using basis functions at IP.
      ! The latter is the default. 
      !------------------------------------------------------------------
-     IF( Handle % EvaluateAtIp ) THEN       
-       IF(.NOT. PRESENT(Basis)) THEN
-         CALL Fatal('ListGetElementReal','Parameter > Basis < is required for: '//TRIM(Handle % Name))
-       END IF
+     IF( Handle % EvaluateAtIp ) THEN
+
+
+       IF( Handle % VarCount == Handle % IntVarCount ) THEN       
+         Handle % ParNo = Handle % VarCount
        
-       ! If we get back to the same element than last time use the data already 
-       ! retrieved. If the element is new then get the data in every node of the 
-       ! current element, or only in the 1st node if it is constant. 
-       
-       IF( ASSOCIATED( PElement, Handle % Element ) ) THEN
+       ELSE IF( ASSOCIATED( PElement, Handle % Element ) ) THEN
+         ! If we get back to the same element than last time use the data already 
+         ! retrieved. If the element is new then get the data in every node of the 
+         ! current element, or only in the 1st node if it is constant. 
+      
          IF( PRESENT( Indexes ) ) THEN
            ni = SIZE( Indexes )
            NodeIndexes => Indexes
@@ -6879,6 +7063,10 @@ CONTAINS
            
          ParF => Handle % ParValues
        ELSE
+         IF(.NOT. PRESENT(Basis)) THEN
+           CALL Fatal('ListGetElementReal','Parameter > Basis < is required (1) for: '//TRIM(Handle % Name))
+         END IF
+         
          IF( .NOT. Handle % AllocationsDone ) THEN
            ni = CurrentModel % Mesh % MaxElementNodes
            ALLOCATE( Handle % Values(ni) )
@@ -7347,7 +7535,7 @@ CONTAINS
            RValue = F(1)
          ELSE
            IF(.NOT. PRESENT(Basis)) THEN
-             CALL Fatal('ListGetElementReal','Parameter > Basis < is required for: '//TRIM(Handle % Name))
+             CALL Fatal('ListGetElementReal','Parameter > Basis < is required (2) for: '//TRIM(Handle % Name))
            ELSE
              RValue = SUM( Basis(1:ni) * F(1:ni) )
            END IF
@@ -7358,7 +7546,7 @@ CONTAINS
 
          IF( .NOT. Handle % GlobalInList ) THEN
            IF(.NOT. PRESENT(Basis)) THEN
-             CALL Fatal('ListGetElementReal','Parameter > Basis < is required for: '//TRIM(Handle % Name))
+             CALL Fatal('ListGetElementReal','Parameter > Basis < is required (3) for: '//TRIM(Handle % Name))
            ELSE
              DO j2=1,SIZE( Handle % RTensor, 1 )
                DO k2=1,SIZE( Handle % RTensor, 2 )               
@@ -7445,7 +7633,7 @@ CONTAINS
 
      IF( Handle % NotPresentAnywhere .AND. Handle % HandleIm % NotPresentAnywhere ) THEN
        IF(PRESENT(Found)) Found = .FALSE.
-       Zvalue = CMPLX( Handle % DefRValue, 0.0_dp )
+       Zvalue = CMPLX( Handle % DefRValue, 0.0_dp, KIND=dp )
        RETURN
      END IF
      
@@ -7455,7 +7643,7 @@ CONTAINS
      Ivalue = ListGetElementReal(Handle % HandleIm,Basis,Element,Found,Indexes,GaussPoint)
      IF( PRESENT( Found ) ) Found = Found .OR. RFound 
 
-     Zvalue = CMPLX( Rvalue, Ivalue ) 
+     Zvalue = CMPLX( Rvalue, Ivalue, KIND=dp ) 
           
    END FUNCTION ListGetElementComplex
        
@@ -7610,7 +7798,7 @@ CONTAINS
      Ivalue3D = ListGetElementReal3D(Handle % HandleIm,Basis,Element,Found,Indexes,GaussPoint)
      IF( PRESENT( Found ) ) Found = Found .OR. RFound
      
-     Zvalue3D = CMPLX( Rvalue3D, Ivalue3D )     
+     Zvalue3D = CMPLX( Rvalue3D, Ivalue3D, KIND=dp )
      
    END FUNCTION ListGetElementComplex3D
 
@@ -7653,7 +7841,7 @@ CONTAINS
          Handle % ValuesVec = Handle % DefRValue        
        END IF
        ! If size is increased we need to ensure that even constants will be rechecked. 
-       Handle % ListId = -1
+       Handle % ListId = -9999
        SizeSame = .FALSE.
      ELSE
        SizeSame = .TRUE.
@@ -7773,7 +7961,7 @@ CONTAINS
      IF( Handle % EvaluateAtIp ) THEN
 
        IF(.NOT. PRESENT(BasisVec)) THEN
-         CALL Fatal('ListGetElementRealVec','Parameter > Basis < is required for: '//TRIM(Handle % Name))
+         CALL Fatal('ListGetElementRealVec','Parameter > Basis < is required (4) for: '//TRIM(Handle % Name))
        END IF
 
        IF( .NOT. Handle % AllocationsDone ) THEN
@@ -8899,7 +9087,7 @@ CONTAINS
      IF ( .NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(UnfoundFatal)) THEN
          IF(UnfoundFatal) THEN
-           CALL Fatal("ListGetConstRealArray","Failed to find: "//TRIM(Name))
+           CALL Fatal("ListGetRealArray","Failed to find: "//TRIM(Name))
          END IF
        END IF
        RETURN
@@ -9227,7 +9415,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 !> Given the body of a keyword find the 1st free keyword in the list structure.
-!> The intended use for this is in Solver_init to decleare exported variables
+!> The intended use for this is in Solver_init to declare exported variables
 !> without the risk of running over some existing ones. 
 !------------------------------------------------------------------------------
   FUNCTION NextFreeKeyword(keyword0,List) RESULT (Keyword)
@@ -10387,7 +10575,7 @@ END SUBROUTINE ElmerEvalLuaS
      LOGICAL :: Unused, GotFile
 
      IF(ReportMode == 1 ) THEN
-       ! Just initialize the lists from -1 to 0 such that only orginal keywords will be
+       ! Just initialize the lists from -1 to 0 such that only original keywords will be
        ! reported in mode 2.
        GOTO 100
      END IF

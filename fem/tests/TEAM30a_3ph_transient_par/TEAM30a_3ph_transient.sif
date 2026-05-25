@@ -35,7 +35,7 @@ $stepsize=1/(freq*stepsPerPeriod)
 !SIMULATION CONFIGURATION 
 !---------------------------------------------------------
 Simulation
-  Max Output Level = 25
+  Max Output Level = 7
   Coordinate System = "Cartesian 2d"
   Simulation Type = "transient"
   TimeStep Intervals(1) = $nsteps

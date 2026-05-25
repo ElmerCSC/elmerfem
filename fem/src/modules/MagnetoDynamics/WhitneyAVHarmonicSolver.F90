@@ -4,23 +4,22 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-!
 !/******************************************************************************
 ! *
 ! *  Authors: Juha Ruokolainen
@@ -247,7 +246,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   TYPE(Solver_t), POINTER :: pSolver 
 
   
-  SAVE MASS, STIFF, LOAD, FORCE, Tcoef, JFixVec, JFixFORCE, Acoef, Acoef_t, &
+  SAVE MASS, STIFF, LOAD, ReLOAD, FORCE, Tcoef, JFixVec, JFixFORCE, Acoef, Acoef_t, &
      Cwrk, Cwrk_im, LamCond, LamThick, AllocationsDone, RotM, GapLength, MuParameter, SkinCond
 !------------------------------------------------------------------------------
   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
@@ -1033,7 +1032,7 @@ END BLOCK
     IF (r<r0.OR.r>r1) RETURN
 
     CALL GetLocalSolution(POT, UElement=Element)
-    POTC = CMPLX( POT(1,1:nd), POT(2,1:nd) )
+    POTC = CMPLX( POT(1,1:nd), POT(2,1:nd), KIND=dp )
   
     !Numerical integration:
     !----------------------
@@ -1056,7 +1055,7 @@ END BLOCK
       Br =  x/r*Bx + y/r*By
       Bp = -y/r*Bx + x/r*By
       U = U + IP % s(t) * detJ * r * &
-           CMPLX(REAL(Br)*REAL(Bp),AIMAG(Br)*AIMAG(Bp))/(PI*4.0d-7*(r1-r0))
+           CMPLX(REAL(Br)*REAL(Bp),AIMAG(Br)*AIMAG(Bp),KIND=dp)/(PI*4.0d-7*(r1-r0))
     END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE Torque
@@ -1092,7 +1091,7 @@ END BLOCK
     IF (r<r0.OR.r>r1) RETURN
 
     CALL GetLocalSolution(POT, UElement=Element)
-    POTC = CMPLX( POT(1,1:nd), POT(2,1:nd) )
+    POTC = CMPLX( POT(1,1:nd), POT(2,1:nd), KIND=dp )
   
     !Numerical integration:
     !----------------------
@@ -1115,7 +1114,7 @@ END BLOCK
       Bz =  SUM(POTC(n+1:nd) * RotWBasis(1:nd-n,3))
       U = U + IP % s(t) * detJ * 1 * &
            CMPLX((REAL(Bx)*REAL(Bz)*x + REAL(By)*REAL(Bz)*y), &
-                (AIMAG(Bx)*AIMAG(Bz)*x + AIMAG(By)*AIMAG(Bz)*y)) &
+                (AIMAG(Bx)*AIMAG(Bz)*x + AIMAG(By)*AIMAG(Bz)*y), KIND=dp) &
                /(PI*4.0d-7*(r1-r0))
     END DO
 !------------------------------------------------------------------------------
@@ -1146,7 +1145,7 @@ END BLOCK
     CALL GetElementNodes( PNodes, Parent )
 
     CALL GetLocalSolution(POT, UElement=Parent )
-    POTC = CMPLX( POT(1,1:nd), POT(2,1:nd) )
+    POTC = CMPLX( POT(1,1:nd), POT(2,1:nd),KIND=dp )
   
     !Numerical integration:
     !----------------------
@@ -1179,7 +1178,7 @@ END BLOCK
       Bz =  SUM(POTC(n+1:nd) * RotWBasis(1:nd-n,3))
       U = U + IP % s(t) * detJ * &
            CMPLX((REAL(Bx)*REAL(Bz)*x + REAL(By)*REAL(Bz)*y), &
-                (AIMAG(Bx)*AIMAG(Bz)*x + AIMAG(By)*AIMAG(Bz)*y)) /(PI*4.0d-7)
+                (AIMAG(Bx)*AIMAG(Bz)*x + AIMAG(By)*AIMAG(Bz)*y), KIND=dp) /(PI*4.0d-7)
     END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE AxialForceSurf
@@ -1208,7 +1207,7 @@ END BLOCK
 
     Omega = GetAngularFrequency(UElement=Element)
     CALL GetLocalSolution(POT,UElement=Element)
-    POTC = Omega*CMPLX( POT(2,1:nd), POT(1,1:nd) )
+    POTC = Omega*CMPLX( POT(2,1:nd), POT(1,1:nd), KIND=dp )
 
     CALL GetLocalSolution(Wpot,'W',UElement=Element)
     W = [0._dp, 0._dp, 1._dp]
@@ -1296,7 +1295,7 @@ END BLOCK
         JfixVec = 0.0_dp
       ELSE
         JfixPot(1:n) = CMPLX( JfixVar % Values( JfixVar % Perm( Element % NodeIndexes ) ), &
-            JfixVarIm % Values( JfixVarIm % Perm( Element % NodeIndexes ) ) )
+            JfixVarIm % Values( JfixVarIm % Perm( Element % NodeIndexes ) ), KIND=dp )
       END IF
     END IF
 
@@ -1336,20 +1335,20 @@ END BLOCK
         IF ( StrandedHomogenization ) THEN
           nu_11 = 0._dp
           nuim_11 = 0._dp
-          nu_11 = GetReal(CompParams, 'nu 11', Found)
-          nuim_11 = GetReal(CompParams, 'nu 11 im', FoundIm)
+          nu_11(1:n) = GetReal(CompParams, 'nu 11', Found)
+          nuim_11(1:n) = GetReal(CompParams, 'nu 11 im', FoundIm)
           IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 11 not found!')
 
           nu_22 = 0._dp
           nuim_22 = 0._dp
-          nu_22 = GetReal(CompParams, 'nu 22', Found)
-          nuim_22 = GetReal(CompParams, 'nu 22 im', FoundIm)
+          nu_22(1:n) = GetReal(CompParams, 'nu 22', Found)
+          nuim_22(1:n) = GetReal(CompParams, 'nu 22 im', FoundIm)
           IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 22 not found!')
 
           nu_33 = 0._dp
           nuim_33 = 0._dp
-          nu_33 = GetReal(CompParams, 'nu 33', Found)
-          nuim_33 = GetReal(CompParams, 'nu 33 im', FoundIm)
+          nu_33(1:n) = GetReal(CompParams, 'nu 33', Found)
+          nuim_33(1:n) = GetReal(CompParams, 'nu 33 im', FoundIm)
           IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 33 not found!')
 
           ! Sigma 33 is not needed in because it does not exist in stranded coil
@@ -1649,7 +1648,7 @@ END BLOCK
 
     FORCE = 0.0d0
     JfixPot(1:n) = CMPLX( JfixVar % Values(JfixVar % Perm(Element % NodeIndexes)), &
-        JfixVarIm % Values(JfixVarIm % Perm(Element % NodeIndexes)) )
+        JfixVarIm % Values(JfixVarIm % Perm(Element % NodeIndexes)), KIND=dp )
     
 !    IF( SUM( ABS( JfixPot(1:n) ) ) < TINY( DetJ ) ) RETURN
 

@@ -1,3 +1,8 @@
+! This is a legacy test case for adaptivity for linear elastivity equation
+! that utilizes splitting of quadrilateral elements and elimination of hanging
+! nodes as implemented by M. Lyly.
+
+
 Header
   CHECK KEYWORDS Warn
   Mesh DB "." "mesh"
@@ -6,12 +11,11 @@ End
 Simulation
   Max Output Level = 5
   Coordinate System = "Cartesian 2D"
-  Coordinate Mapping(3) = 1 2 3
   Simulation Type = "Steady State"
   Steady State Max Iterations = 20
   Output Intervals = 1
   Solver Input File = "mesh.sif"
-! Post File = "stress.ep"
+! Post File = "stress.vtu"
 ! Output File = "stress.dat"
 End
 
@@ -65,4 +69,3 @@ End
 
 Solver 1 :: Reference Norm = Real 0.161977494682E-03
 Solver 1 :: Reference Norm Tolerance = Real 0.05
-RUN

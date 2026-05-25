@@ -4,23 +4,22 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-!
 !/******************************************************************************
 ! *
 ! *  Module for static current conduction.
@@ -61,6 +60,11 @@ SUBROUTINE StatCurrentSolver_init( Model,Solver,dt,Transient )
   Params => GetSolverParams()
   dim = CoordinateSystemDimension()
   PostActive = .FALSE.
+
+  IF(ListGetLogical(Params,'Harmonic Mode',Found ) ) THEN
+    CALL ListAddLogical( Params,'Use Global Mass Matrix',.TRUE.)
+  END IF
+  CALL ListAddInteger( Params, 'Time derivative order', 1 )
   
   CALL ListAddNewString( Params,'Variable','Potential')
   
@@ -157,7 +161,7 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
   REAL(KIND=dp) :: Norm
   INTEGER :: n, nb, nd, t, active, dim, RelOrder
   INTEGER :: iter, maxiter, nColours, col, totelem, nthr
-  LOGICAL :: Found, VecAsm, InitHandles, AxiSymmetric
+  LOGICAL :: Found, VecAsm, InitHandles, AxiSymmetric, HarmonicMode
   TYPE(ValueList_t), POINTER :: Params 
   TYPE(Mesh_t), POINTER :: Mesh
   CHARACTER(*), PARAMETER :: Caller = 'StatCurrentSolver'
@@ -213,6 +217,8 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
 
   nColours = GetNOFColours(Solver)
 
+  HarmonicMode = ListGetLogical( Params,'Harmonic Mode', Found ) 
+  
   VecAsm = ListGetLogical( Params,'Vector Assembly',Found )
   IF(.NOT. Found ) THEN
     VecAsm = (nColours > 1) .OR. (nthr > 1)
@@ -243,10 +249,10 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
 
     CALL ResetTimer( Caller//'BulkAssembly' )
 
-    !$OMP PARALLEL &
-    !$OMP SHARED(Solver, Active, nColours, VecAsm) &
-    !$OMP PRIVATE(t, Element, n, nd, nb,col, InitHandles) &
-    !$OMP REDUCTION(+:totelem) DEFAULT(NONE)
+    !!OMP PARALLEL &
+    !!OMP SHARED(Solver, Active, nColours, VecAsm) &
+    !!OMP PRIVATE(t, Element, n, nd, nb,col, InitHandles) &
+    !!OMP REDUCTION(+:totelem) DEFAULT(NONE)
    
     DO col=1,nColours
       
@@ -256,7 +262,7 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
       !$OMP END SINGLE
 
       InitHandles = .TRUE.
-      !$OMP DO
+      !!OMP DO
       DO t=1,Active
         Element => GetActiveElement(t)
         totelem = totelem + 1
@@ -269,9 +275,9 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
           CALL LocalMatrix(  Element, n, nd+nb, nb, InitHandles )
         END IF
       END DO
-      !$OMP END DO
+      !!OMP END DO
     END DO
-    !$OMP END PARALLEL 
+    !!OMP END PARALLEL 
 
     CALL CheckTimer(Caller//'BulkAssembly',Delete=.TRUE.)
     totelem = 0
@@ -283,18 +289,18 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
     CALL Info(Caller,'Performing boundary element assembly',Level=12)
     CALL ResetTimer(Caller//'BCAssembly')
 
-    !$OMP PARALLEL &
-    !$OMP SHARED(Active, Solver, nColours, VecAsm) &
-    !$OMP PRIVATE(t, Element, n, nd, nb, col, InitHandles) & 
-    !$OMP REDUCTION(+:totelem) DEFAULT(NONE)
+    !!OMP PARALLEL &
+    !!OMP SHARED(Active, Solver, nColours, VecAsm) &
+    !!OMP PRIVATE(t, Element, n, nd, nb, col, InitHandles) & 
+    !!OMP REDUCTION(+:totelem) DEFAULT(NONE)
     DO col=1,nColours
-      !$OMP SINGLE
+      !!OMP SINGLE
       CALL Info(Caller,'Assembly of boundary colour: '//I2S(col),Level=10)
       Active = GetNOFBoundaryActive(Solver)
-      !$OMP END SINGLE
+      !!OMP END SINGLE
 
       InitHandles = .TRUE. 
-      !$OMP DO
+      !!OMP DO
       DO t=1,Active
         Element => GetBoundaryElement(t)
         !WRITE (*,*) Element % ElementIndex
@@ -306,9 +312,9 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
           CALL LocalMatrixBC(  Element, n, nd+nb, nb, VecAsm, InitHandles )
         END IF
       END DO
-      !$OMP END DO
+      !!OMP END DO
     END DO
-    !$OMP END PARALLEL
+    !!OMP END PARALLEL
 
     CALL CheckTimer(Caller//'BCAssembly',Delete=.TRUE.)
 
@@ -431,7 +437,7 @@ CONTAINS
     END IF
     
     ! time derivative of potential: MASS=MASS+(eps*grad(u),grad(v))
-    IF( Transient ) THEN
+    IF( Transient .OR. HarmonicMode ) THEN
       EpsAtIpVec => ListGetElementRealVec( EpsCoeff_h, ngp, Basis, Element, Found ) 
       IF( Found ) THEN
         CALL LinearForms_GradUdotGradU(ngp, nd, Element % TYPE % DIMENSION, dBasisdx, DetJVec, MASS, EpsAtIpVec )
@@ -445,7 +451,7 @@ CONTAINS
       CALL LinearForms_UdotF(ngp, nd, Basis, DetJVec, SourceAtIpVec, FORCE)
     END IF
       
-    IF(Transient) CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element)
+    IF(Transient .OR. HarmonicMode ) CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element)
     CALL CondensateP( nd-nb, nb, STIFF, FORCE )
 
     CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element, VecAssembly=VecAsm)
@@ -493,9 +499,9 @@ CONTAINS
       IF( .NOT. Found ) Eps0 = 8.854187817e-12
       InitHandles = .FALSE.
     END IF
-    
+       
     dim = CoordinateSystemDimension()
-
+    
     IF( RelOrder /= 0 ) THEN
       IP = GaussPoints( Element, RelOrder = RelOrder)
     ELSE
@@ -558,7 +564,7 @@ CONTAINS
         END DO
       END IF
 
-      IF( Transient ) THEN
+      IF( Transient .OR. HarmonicMode ) THEN
         EpsAtIp = Eps0 * ListGetElementReal( EpsCoeff_h, Basis, Element, Found )
         IF( Found ) THEN
           MASS(1:nd,1:nd) = MASS(1:nd,1:nd) + Weight * &
@@ -572,7 +578,7 @@ CONTAINS
       END IF
     END DO
     
-    IF(Transient) CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element)
+    IF(Transient .OR. HarmonicMode ) CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element)
     CALL CondensateP( nd-nb, nb, STIFF, FORCE )
     
     CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element, VecAssembly=VecAsm)
@@ -793,7 +799,6 @@ SUBROUTINE StatCurrentSolver_post( Model,Solver,dt,Transient )
   ALLOCATE( MASS(n,n), FORCE(8,n) ) ! 1+1+3+3 components for force
 
   CALL Info(Caller,'Calculating local field values',Level=12) 
-  InitHandles = .TRUE.
   HeatingTot = 0.0_dp
   VolTot = 0.0_dp
 
@@ -804,7 +809,8 @@ SUBROUTINE StatCurrentSolver_post( Model,Solver,dt,Transient )
   !$OMP SINGLE
   Active = GetNOFActive(Solver)
   !$OMP END SINGLE
-
+  InitHandles = .TRUE.
+  
   !$OMP DO
   DO t = 1, Active
     Element => GetActiveElement(t)
@@ -817,7 +823,7 @@ SUBROUTINE StatCurrentSolver_post( Model,Solver,dt,Transient )
   END DO
   !$OMP END DO 
   !$OMP END PARALLEL
-  
+
   IF( NeedScaling ) THEN
     CALL Info(Caller,'Scaling the field values with weights',Level=12)
     CALL GlobalPostScale()

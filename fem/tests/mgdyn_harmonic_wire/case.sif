@@ -112,6 +112,7 @@ Solver 3
   Vtu format = Logical True
   Discontinuous Bodies = Logical True
 !  Save Geometry IDs = Logical True
+
   Reference Values(6) = Real 59 13 206250 2064 402220888 4.178146196
 End
 
@@ -120,8 +121,9 @@ Solver 4
   Equation = "SaveLine"
   Procedure = "SaveData" "SaveLine"
 
-  FileName = f.dat
-  Polyline Coordinates(2,3) = -5.0e-3 0.0 5.0e-3 5.0e-3 0.0 5.0e-3
+  FileName = f.dat  
+  ! Have small offset to make the the choice of elements unique. 
+  Polyline Coordinates(2,3) = -5.0e-3 1.0e-6 5.1e-3 5.0e-3 1.0e-6 5.1e-3
   Polyline Divisions(1) = 200 
 
 ! The Joule heating 
@@ -226,7 +228,7 @@ End
 
 Solver 1 :: Reference Norm = 4.62227582E-06
 Solver 3 :: Reference Norm = 1.0
-Solver 4 :: Reference Norm = 1.60160403E+03
+Solver 4 :: Reference Norm = 1.57939283E+03
 Solver 4 :: Reference Norm Tolerance = 1e-4
 Solver 5 :: Reference Norm = 1.51593518E-06
 Solver 5 :: Reference Norm Tolerance = 1e-4

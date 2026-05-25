@@ -51,6 +51,7 @@
       TYPE(SplittedMatrixT), POINTER :: SP
       TYPE(Matrix_t), POINTER :: A
       INTEGER :: i
+      LOGICAL :: Parallel
       INTEGER, POINTER :: pCols(:), pRows(:)
       REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
       TYPE(BasicMatrix_t), POINTER :: SaveIF(:)
@@ -59,7 +60,10 @@
       SaveValues => A % Values
       A % Values => A % ILUValues
 
-      IF (ParEnv % Pes <= 1 .OR. A % ParallelInfo % NothingShared ) THEN
+      Parallel = ParEnv % Pes > 1
+      IF ( Parallel ) Parallel = Parallel .AND. .NOT. A % ParallelInfo % NothingShared
+
+      IF (.NOT. Parallel ) THEN
         IF( ASSOCIATED( A % ILUCols ) ) THEN
           pCols => A % Cols
           pRows => A % Rows
@@ -114,7 +118,7 @@
      INTEGER, POINTER :: Diag(:), Rows(:), Cols(:), Perm(:), Indexes(:), Ind(:)
      REAL(KIND=dp), POINTER CONTIG :: ILUValues(:), SValues(:), TotValues(:)
      REAL(KIND=dp), ALLOCATABLE :: al(:,:)
-     LOGICAL ::  found
+     LOGICAL ::  found, Parallel
      TYPE(Element_t), POINTER :: Element
      INTEGER :: status(MPI_STATUS_SIZE)
      INTEGER :: i,j,i2,j2,ierr,k,l,m,proc,rcnt,nn, dof, dofs, Active, Totcnt
@@ -150,14 +154,17 @@
        TotValues = A % Values
      END IF
 
-     IF ( ParEnv  % PEs>1 .AND. .NOT. A % ParallelInfo % NothingShared ) THEN
+     Parallel =  ParEnv % PEs > 1
+     IF ( Parallel ) Parallel = Parallel .AND. .NOT. A % ParallelInfo % NothingShared
+
+     IF ( Parallel ) THEN
        ALLOCATE(cnt(0:ParEnv % PEs))
        cnt = 0
        DO i=1,A % NumberOfRows
          DO j=Rows(i),Rows(i+1)-1
            IF ( A % ParallelInfo % GInterface(Cols(j)) ) THEN
-             DO l=1,SIZE(A % ParallelInfo % NeighbourList(Cols(j)) % Neighbours)
-               m = A % ParallelInfo % NeighbourList(Cols(j)) % Neighbours(l)
+              DO l=1,SIZE(A % ParallelInfo % NeighbourList(Cols(j)) % Neighbours)
+                m = A % ParallelInfo % NeighbourList(Cols(j)) % Neighbours(l)
                IF ( m==ParEnv % myPE ) CYCLE
                cnt(m) = cnt(m)+1
              END DO
@@ -343,7 +350,7 @@
          TYPE(Mesh_t), POINTER :: Mesh
          INTEGER :: n0
 
-         CALL Info('VankaCreate','Using agressive block created around edge')
+         CALL Info('VankaCreate','Using aggressive block created around edge')
          
          Mesh => Solver % Mesh
          IF(.NOT. ASSOCIATED(Mesh % Edges)) THEN
@@ -1088,11 +1095,11 @@
     TYPE(Matrix_t), POINTER :: Amat
     REAL(KIND=dp), POINTER :: b(:), x(:), r(:)
     REAL(KIND=dp) :: rnorm
-    LOGICAL :: Found, ScaleRHS
+    LOGICAL :: Found, ScaleRHS, DoMask
     CHARACTER(MAX_NAME_LEN) :: str   
     INTEGER :: n
 !-------------------------------------------------------------------------------
-
+    
     Solver => CurrentModel % Solver
     Params => Solver % Values
     Mesh => Solver % Mesh 
@@ -1117,9 +1124,13 @@
     
     CALL DefaultSlaveSolvers( Solver, 'Prec Solvers' )
 
+    IF(ListGetLogical( Solver % Values,'Linear System Refactorize First',Found ) ) THEN
+      CALL LIstAddLogical( Solver % Values,'Linear System Refactorize',.FALSE.)
+    END IF
+    
     str = ListGetString( Params,'Preconditioning Update',UnfoundFatal=.TRUE.)
     pVar => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE., UnfoundFatal=.TRUE. )
-
+       
     n = SIZE(pVar % Values)
     x => pVar % Values
 
@@ -1129,17 +1140,38 @@
       !
       CALL ScaleLinearSystemVectors(AMat, b, n, x)
     END IF
-    
+   
     IF( ListCheckPresent( Params,'MG Smoother') ) THEN
       ALLOCATE(r(n))
-      
-      CALL ExperimentalStuff()
 
+      ! This is just to test that the suggested search direction is a good one.
+      ! Ideally we need to multiply by "1" to get minimum norm. 
+      ! CALL ExperimentalStuff()
+            
       CALL CRS_MatrixVectorMultiply( Amat, x, r )
       !CALL MGmv( Amat, x, r, .TRUE. )
       r(1:n) = b(1:n) - r(1:n)
-      RNorm = MGSmooth( Solver, Amat, Mesh, x, b, r, &
-          1, pVar % dofs, PreSmooth = .FALSE.)
+
+      DoMask = .FALSE.
+      str = LIstGetString(Params,'MG Smoother')
+      IF(len_TRIM(str) >= 6 ) THEN
+        DoMask = (str(1:6) == 'masked')
+      END IF
+
+      IF(DoMask) THEN
+        BLOCK
+          LOGICAL, POINTER :: SkipMask(:)
+          ALLOCATE(SkipMask(n))
+          SkipMask = .FALSE.
+          CALL CreateEdgeSkipMask(SkipMask)
+          RNorm = MGSmooth( Solver, Amat, Mesh, x, b, r, &
+              1, pVar % dofs, PreSmooth = .FALSE., SkipMask = SkipMask )
+          DEALLOCATE(SkipMask)
+        END BLOCK
+      ELSE
+        RNorm = MGSmooth( Solver, Amat, Mesh, x, b, r, &
+            1, pVar % dofs, PreSmooth = .FALSE.)
+      END IF
     END IF
           
     u(1:n) = x(1:n) 
@@ -1295,7 +1327,7 @@
       DEALLOCATE(r, z)
     END IF
     
-    u(1:n/2) = CMPLX(dx(1:n:2), dx(2:n:2) ) 
+    u(1:n/2) = CMPLX(dx(1:n:2), dx(2:n:2),KIND=dp ) 
 
   CONTAINS
 
@@ -1322,7 +1354,7 @@
           dx(1:n) = dx(1:n) * bnre
 #endif
           WRITE( Message,'(A,2ES12.3)') 'Preconditioning Normalizing Factor: ',bnre,bnim
-          CALL Info('SlavePrec',Message,Level=6) 
+          CALL Info('SlavePrecComplex',Message,Level=6) 
         END IF
       END IF
 

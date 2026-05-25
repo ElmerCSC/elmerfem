@@ -45,7 +45,7 @@
 #ifdef HAVE_HYPRE
 #include <math.h>
 #include "_hypre_utilities.h"
-#include "krylov.h"
+#include "HYPRE_krylov.h"
 #include "HYPRE.h"
 #include "HYPRE_parcsr_ls.h"
 
@@ -63,7 +63,7 @@ typedef struct {
   HYPRE_Solver solver, precond;
 
   /* AMS specific stuff */
-  HYPRE_IJMatrix G;
+  HYPRE_IJMatrix G, Pi;
 
 } ElmerHypreContainer;
 
@@ -168,7 +168,6 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
    /* if the partition doesn't own any of the dofs, apply null range (with valid indices) */
    if ( iupper == -1 ) { ilower = 1; iupper = 0; }
 
-   
    /* Create the matrix.
       Note that this is a square matrix, so we indicate the row partition
       size twice (since number of rows = number of cols) */
@@ -318,7 +317,7 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
 
    
    /* Create preconditioner for Krylov methods. */
-   /* Some methods may act as preconditioners and solvers and are also intialized here
+   /* Some methods may act as preconditioners and solvers and are also initialized here
       and later changes the pointer to solvers. */
 
    if ( hypre_pre == 1 || hypre_sol == 1 )  {
@@ -448,7 +447,6 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
      exit(EXIT_FAILURE);
    }
 
-  
    /* Create Hypre solver */
 
    if ( hypre_sol == 1 ) { /* boomer AMG */     
@@ -995,18 +993,18 @@ void STDCALLBULL FC_FUNC(solvehypre4,SOLVEHYPRE4)
    hypre_pre = Container->hypre_method % 100;
 
    
-   if(myverb > 10 ) fprintf(stdout,"SolveHypre: Detroying Hypre solver structures!\n");
+   if(myverb > 10 ) fprintf(stdout,"SolveHypre: Destroying Hypre solver structures!\n");
 
    /* Destroy Hypre preconditioner */
    if ( hypre_pre == 1 ) {
-     if(myverb > 10) fprintf(stdout,"SolveHypre: Detroying BoomerAMG preconditioner\n");
+     if(myverb > 10) fprintf(stdout,"SolveHypre: Destroying BoomerAMG preconditioner\n");
      HYPRE_BoomerAMGDestroy(Container->precond);
    } 
    else if ( hypre_pre == 2 ) {
-     if(myverb > 10) fprintf(stdout,"SolveHypre: Detroying AMS preconditioner\n");
+     if(myverb > 10) fprintf(stdout,"SolveHypre: Destroying AMS preconditioner\n");
      HYPRE_AMSDestroy(Container->precond);
      if (Container->G) {
-       // This leas to core dump...
+       // This leads to core dump...
        // HYPRE_IJMatrixDestroy(Container->G);
      }
    }
@@ -1019,14 +1017,14 @@ void STDCALLBULL FC_FUNC(solvehypre4,SOLVEHYPRE4)
    
    /* Destroy Hypre solver */
    if ( hypre_sol == 1) { /* boomer AMG */
-     if(myverb > 10) fprintf(stdout,"SolveHypre: Detroying BoomerAMG solver\n");
+     if(myverb > 10) fprintf(stdout,"SolveHypre: Destroying BoomerAMG solver\n");
      HYPRE_BoomerAMGDestroy(Container->solver);
    }
    else if ( hypre_sol == 2 ) {
-     if(myverb > 10) fprintf(stdout,"SolveHypre: Detroying AMS solver\n");
+     if(myverb > 10) fprintf(stdout,"SolveHypre: Destroying AMS solver\n");
      HYPRE_AMSDestroy(Container->solver);
      if (Container->G) {
-       // This leas to core dump...
+       // This leads to core dump...
        // HYPRE_IJMatrixDestroy(Container->G);
      }
    }
@@ -1068,8 +1066,9 @@ void STDCALLBULL FC_FUNC(solvehypre4,SOLVEHYPRE4)
 void STDCALLBULL FC_FUNC(createhypreams,CREATEHYPREAMS)
  (
   int *nrows,int *rows, int *cols, double *vals, int *nnodes,
-  int *grows, int *gcols, double *gvals, int *perm,
-  int *invperm, int *globaldofs, int *owner,  int *globalnodes, 
+  int *grows, int *gcols, double *gvals,
+  int *pirows, int *picols, double *pivals, 
+  int *perm, int *invperm, int *globaldofs, int *owner,  int *globalnodes, 
   int *nodeowner, double *xvec,
   double *rhsvec, int *pe, int *ILUn, int *Rounds, double *TOL,
   double *xx_d, double *yy_d, double *zz_d, 
@@ -1089,8 +1088,8 @@ void STDCALLBULL FC_FUNC(createhypreams,CREATEHYPREAMS)
 
    double  *txvec, st, realtime_();
    ElmerHypreContainer *Container;
-   HYPRE_ParCSRMatrix parcsr_A,parcsr_G;
-   HYPRE_IJMatrix A,G;
+   HYPRE_ParCSRMatrix parcsr_A,parcsr_G, parcsr_Pi;
+   HYPRE_IJMatrix A,G, Pi;
    HYPRE_IJVector b;
    HYPRE_ParVector par_b;
    HYPRE_IJVector x;
@@ -1130,6 +1129,7 @@ void STDCALLBULL FC_FUNC(createhypreams,CREATEHYPREAMS)
        }
      }
 
+#if 0
    nlower=1000000000;
    nupper=0;
    for( i=0; i<local_nodes; i++ )
@@ -1139,14 +1139,25 @@ void STDCALLBULL FC_FUNC(createhypreams,CREATEHYPREAMS)
 	 if ( nlower > globalnodes[i] ) nlower=globalnodes[i];
        }
      }
+#else
+   nlower=1000000000;
+   nupper=0;
+   for( i=0; i<local_nodes; i++ )
+       if  (nodeowner[i])  {
+         k = 3*globalnodes[i]+2;
+         if ( nupper < k ) nupper = k;
+         k = 3*globalnodes[i];
+         if ( nlower > k ) nlower = k;
+       }
+#endif
+//   fprintf( stderr, "%d %d %d %d\n", ilower, iupper, nlower, nupper );
 
-   
    HYPRE_IJMatrixCreate(comm, ilower, iupper, nlower, nupper, &G);
    HYPRE_IJMatrixSetObjectType(G, HYPRE_PARCSR);
    HYPRE_IJMatrixInitialize(G);
    
    {
-      int nnz,irow,i,j,k,*rcols,csize=32;
+      int nnz,irow,i,j,k,l,p,q,*rcols,csize=32;
 
       rcols = (int *)malloc( csize*sizeof(int) );
       for (i = 0; i < local_size; i++)
@@ -1160,7 +1171,10 @@ void STDCALLBULL FC_FUNC(createhypreams,CREATEHYPREAMS)
          irow = globaldofs[i];
          for( k=0,j=grows[i]; j<grows[i+1]; j++,k++)
          {
-           rcols[k] = globalnodes[gcols[j-1]-1];
+           l = gcols[j-1]-1;
+           p = l % 3;
+           q = l / 3;
+           rcols[k] = 3*globalnodes[q]+p;
          }
          HYPRE_IJMatrixAddToValues(G, 1, &nnz, &irow, rcols, &gvals[grows[i]-1]);
       }
@@ -1169,6 +1183,52 @@ void STDCALLBULL FC_FUNC(createhypreams,CREATEHYPREAMS)
    
    HYPRE_IJMatrixAssemble(G);
    HYPRE_IJMatrixGetObject(G, (void**) &parcsr_G);
+
+
+   nlower=1000000000;
+   nupper=0;
+   for( i=0; i<local_nodes; i++ )
+     {
+       if  (nodeowner[i])  {
+         k = 3*globalnodes[i]+2;
+         if ( nupper < k ) nupper = k;
+         k = 3*globalnodes[i];
+         if ( nlower > k ) nlower = k;
+       }
+     }
+//   fprintf( stderr, "%d %d %d %d\n", ilower, iupper, nlower, nupper );
+   HYPRE_IJMatrixCreate(comm, ilower, iupper, nlower, nupper, &Pi);
+   HYPRE_IJMatrixSetObjectType(Pi, HYPRE_PARCSR);
+   HYPRE_IJMatrixInitialize(Pi);
+   
+   {
+      int nnz,irow,i,j,k,l,p,q,*rcols,csize=32;
+
+      rcols = (int *)malloc( csize*sizeof(int) );
+      for (i = 0; i < local_size; i++)
+      {
+         if( !owner[i] ) continue;
+         nnz =  pirows[i+1] - pirows[i];
+         if ( nnz>csize ) {
+           rcols = (int *)realloc( rcols, nnz*sizeof(int) );
+           csize = nnz;
+         }
+         irow = globaldofs[i];
+         for( k=0,j=pirows[i]; j<pirows[i+1]; j++,k++)
+         {
+           l = picols[j-1]-1;
+           p = l % 3;
+           q = l / 3;
+           rcols[k] = 3*globalnodes[q]+p;
+         }
+         HYPRE_IJMatrixAddToValues(Pi, 1, &nnz, &irow, rcols, &pivals[pirows[i]-1]);
+      }
+      free( rcols );
+   }
+   
+   HYPRE_IJMatrixAssemble(Pi);
+   HYPRE_IJMatrixGetObject(Pi, (void**) &parcsr_Pi);
+
    
 #if 0
    for( k=0,i=0; i<local_nodes; i++ ) rcols[k++] = globalnodes[i];
@@ -1218,8 +1278,9 @@ void STDCALLBULL FC_FUNC(createhypreams,CREATEHYPREAMS)
 
    HYPRE_AMSCreate(&precond); 
    HYPRE_AMSSetDiscreteGradient(precond,parcsr_G);
-   HYPRE_AMSSetEdgeConstantVectors(precond,par_xx,par_yy,par_zz);
-// HYPRE_AMSSetCoordinateVectors(precond,par_xx,par_yy,par_zz);
+   HYPRE_AMSSetInterpolations(precond, parcsr_Pi, NULL, NULL, NULL);
+//   HYPRE_AMSSetEdgeConstantVectors(precond,par_xx,par_yy,par_zz);
+//   HYPRE_AMSSetCoordinateVectors(precond,par_xx,par_yy,par_zz);
 
    // AMS Parameters
    HYPRE_AMSSetMaxIter(precond,hypre_intpara[0]);
@@ -1240,6 +1301,7 @@ void STDCALLBULL FC_FUNC(createhypreams,CREATEHYPREAMS)
    
    Container->precond = precond;
    Container->G = G; 
+   Container->Pi = Pi; 
    
    if(myverb>5) fprintf( stdout, "SolveHypre: AMS preconditioner setup time: %g\n", realtime_()-st );
 }

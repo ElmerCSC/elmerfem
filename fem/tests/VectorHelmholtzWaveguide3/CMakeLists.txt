@@ -5,4 +5,4 @@ CONFIGURE_FILE(waveguide.sif waveguide.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO shoebox_hexas.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(VectorHelmholtzWaveguide3 LABELS whitney)
+ADD_ELMER_TEST(VectorHelmholtzWaveguide3 LABELS whitney emwave)

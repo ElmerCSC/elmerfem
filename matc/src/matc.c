@@ -94,6 +94,8 @@ $  usage of the function and type of the parameters
  *
  */
 
+#include <locale.h>
+
 #define MODULE_MATC
 #include "elmer/matc.h"
 #include "str.h"
@@ -245,6 +247,8 @@ void mtc_init( FILE *input_file, FILE *output_file, FILE *error_file )
 
 char * mtc_domath( char *str )
 {
+  setlocale(LC_ALL, "C");
+
   VARIABLE *headsave;            /* this should not be here */
 
   jmp_buf jmp, *savejmp;         /* save program context */
@@ -305,6 +309,12 @@ char * mtc_domath( char *str )
 
   return math_out_str;
 }
+
+#ifdef _OPENMP
+  /* Data with thread-local storage cannot be reliably accessed across DLL
+     borders.  Use an accessor function instead.  */
+  LIST * mtc_get_listheaders(void) { return listheaders; }
+#endif /* _OPENMP */
 
 char *doread(void)
 /*======================================================================

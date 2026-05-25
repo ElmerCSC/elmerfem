@@ -52,6 +52,10 @@ Simulation
   Output File = "$namerun".result"
   Post File = "$namerun".vtu"
   max output level = 5
+
+! This test has issues not finding TEST.PASSED. Maybe addring
+! a small time delay will help...
+  Test Passed Delay = Real 0.1 
 End
 
 !---------------------------------------------------
@@ -272,7 +276,7 @@ Solver 8
   Exported Variable 2 DOFs = 1
 
   Procedure = "FreeSurfaceSolver" "FreeSurfaceSolver"
-  Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
+! Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
 
   Linear System Solver = Iterative
   Linear System Max Iterations = 100

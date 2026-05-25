@@ -9,15 +9,13 @@ jobs:
   tests:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - uses: nixbuild/nix-quick-install-action@v30
-      with:
-        nix_path: nixpkgs=channel:nixos-24.11
-    - uses: nix-community/cache-nix-action@v6
+    - uses: actions/checkout@v6
+    - uses: nixbuild/nix-quick-install-action@v34
+    - uses: nix-community/cache-nix-action@v7
       with:
         primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
         restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}
-    - uses: cachix/cachix-action@v14
+    - uses: cachix/cachix-action@v17
       with:
         name: elmerfem
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'

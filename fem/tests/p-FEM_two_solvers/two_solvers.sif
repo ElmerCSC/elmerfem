@@ -19,12 +19,16 @@ Body 1
   Equation = 1
   Material = 1
   Body Force = 1
+  Solver 1: Element = String "p:4"
+  Solver 2: Element = String "p:2"
 End
 
 Body 2
   Equation = 1
   Material = 1
   Body Force = 1
+  Solver 1: Element = String "p:8"
+  Solver 2: Element = String "p:2"  
 End
 
 Material 1
@@ -61,8 +65,6 @@ Solver 1
   Variable DOFs = 5
   Procedure = "BenchmarkShell" "ShellSolver"
 
-  Element = p:4
-
   Linear System Solver = "Iterative"
   Linear System Preconditioning = ILU2
   Linear System Max Iterations = 1000
@@ -77,7 +79,6 @@ Solver 2
   Equation = "ModelPDE"
   Variable = "Field"
   Procedure = "ModelPDE" "AdvDiffSolver"
-  Element = "p:2"
   Linear System Solver = Direct
   Steady State Convergence Tolerance = 1e-9
 End
@@ -118,7 +119,7 @@ Boundary Condition 4
   U 4 = Real 0
 End
 
-Solver 1 :: Reference Norm = Real 0.14521020E-01
+Solver 1 :: Reference Norm = Real 9.50681481E-03
 Solver 1 :: Reference Norm Tolerance = Real 1.0E-5
 
 Solver 2 :: Reference Norm = Real 1.95078332E-01

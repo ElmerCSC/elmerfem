@@ -1,9 +1,8 @@
 ! As the test case VectorHelmholtzWaveguide with two main changes:
-! 1) Uses a special version of block preconditioner utilizing
-!    vertical/horizontal edge division.
-! 2) Uses prisms instead of hexahedral elements. This gives a little worse
-!    performance. Note that the direction of the extruded direction of the
-!    mesh is changed since ElmerGrid likes to extrude triangles in Z. 
+! 1) Uses a special preconditioner (see include ... below)
+! 2) Uses prisms instead of tetrahedral/hexahedral elements. Note that
+!    the direction of the extrusion of the mesh is changed since ElmerGrid
+!    likes to extrude triangles in Z. 
 !
 ! P.R. 13.8.2018
 
@@ -21,6 +20,7 @@ Simulation
   Steady State Max Iterations = 1
 
   Post File = prisms.vtu
+  vtu: Ascii Output = True
   Output Intervals(1) = 1
 
   Mesh Levels = 1
@@ -32,7 +32,6 @@ End
 Body 1
   Equation = 1
   Material = 1
-  Initial Condition = 1
 End
 
 $ beta0=41.9332032192090
@@ -40,13 +39,6 @@ $ k0=52.3961255469564
 $ kc=31.4159265358979 
 $ w=2*pi*(2.5e9)
 $ mu0=4e-7*pi
-
-Initial Condition 1
-  ! Pre = Variable coordinate
-  ! Real MATC "rand(1)"
-  Eref_re 2 = Variable coordinate 1, coordinate 3
-  Real MATC "-1.66782047593233*sin(tx(0)*pi*10)*(sin(beta0*tx(1)) - sin(-beta0*tx(1) + 2 * beta0*0.2))"
-End
 
 Material 1
   Relative Permittivity = Real 1
@@ -60,59 +52,26 @@ End
 
 Solver 1
   Equation = "VectorHelmholtz"
-  Variable = E[E re:1 E im:1]
-  Use Piola Transform = Logical False
+
   Optimize Bandwidth = True
   Linear System Symmetric = False
   Procedure = "VectorHelmholtz" "VectorHelmholtzSolver"
 
-  linear system abort not converged = false
+  Linear System Abort not Converged = false
 
   Linear System Residual Output = 1
   Calculate Energy Inner Product = Logical True
 
-  ! linear system normwise backward error = logical true
-  linear system complex = true
+  Linear System Complex = true
 
-  Linear System Block Mode = Logical True
+  ! Including horver.sif creates a preconditioner utilizing
+  ! vertical/horizontal edge division. Instead we now load pmult.sif which
+  ! switches to the second-order basis functions and solves the resulting
+  ! system with a p-multigrid preconditioner.
 
-  Block Gauss-Seidel = Logical True
-  Block Hor-Ver System = Logical True
-  active coordinate = integer 3
-!  Block Cartesian System = Logical True
-  Block Matrix Reuse = Logical False
-  Block Preconditioner = Logical True
-  Block Scaling = Logical True
+  include pmult.sif
+!  include horver.sif
 
-! Linear system solver for outer loop
-!-----------------------------------------
-  Outer: Linear System Solver = "Iterative"
-  Outer: Linear System Convergence Tolerance = 1e-7
-  Outer: Linear System Iterative Method = gcr
-  Outer: Linear System GCR Restart =  250
-  Outer: Linear System Residual Output =  1
-  Outer: Linear System Max Iterations =  100
-  Outer: Linear System Pseudo Complex = logical True
-
-  $blocktol = 1.0e-4
-
-  block 11: Linear System Solver = "iterative"
-  block 11: Linear System Preconditioning = none 
-  block 11: Linear System Residual Output = 100
-  block 11: Linear System Max Iterations = 500
-  block 11: Linear System Iterative Method = idrs 
-  block 11: Linear System Convergence Tolerance = $blocktol
-  block 22: Idrs Parameter = 3
-  block 11: Linear System Complex = True
-
-  block 22: Linear System Solver = "Iterative"
-  block 22: Linear System Preconditioning = none 
-  block 22: Linear System Residual Output = 100
-  block 22: Linear System Max Iterations = 500
-  block 22: Linear System Iterative Method = idrs 
-  block 22: Linear System Convergence Tolerance = $blocktol
-  block 22: Idrs Parameter = 3
-  block 22: Linear System Complex = True
 End
 
 Solver 2
@@ -153,22 +112,18 @@ Solver 3
   Operator 4 = min
   Operator 5 = max
   Operator 6 = sum
+
+  Show Norm Index = 7
 End
 
 Boundary Condition 1
   Name = "Inlet" ! y == 0 
   Target Boundaries(1) = 3
-  !E re {e} 2 = Variable Coordinate 1
-  !Real MATC "10*tx"
 
   Electric Robin Coefficient im = Real $ beta0
-  !E re {e} 2 = Real 1
 
   Magnetic Boundary Load 3 = Variable Coordinate 1
-    Real MATC "-2*beta0*k0/kc*sin(pi*tx/100e-3)"
-  !Real MATC "-139.87*sin(pi*tx/100e-3)"
-  !Real MATC "-1.1131e8*sin(pi*tx/100e-3)"
-  !Real MATC "-2/mu0*beta0*k0/kc*sin(pi*tx/100e-3)"
+    Real MATC "-2*beta0*k0/kc*sin(kc*tx)"
 End
 
 Boundary Condition 2
@@ -182,7 +137,7 @@ Boundary Condition 2
   Electric Robin Coefficient im = Real $ 474315.9900340191  
 End
 
-Solver 1 :: Reference Norm = 5.51073090E-03
+Solver 1 :: Reference Norm = 2.18215267E-03
 Solver 1 :: Reference Norm Tolerance = 1.0E-6
-Solver 2 :: Reference Norm = 1.52591635E+00
-Solver 2 :: Reference Norm Tolerance = 1.0E-4
+Solver 3 :: Reference Norm = 398785.93137342826
+Solver 3 :: Reference Norm Tolerance = 1.0E-4

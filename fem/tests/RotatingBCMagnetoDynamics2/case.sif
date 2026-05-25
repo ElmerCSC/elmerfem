@@ -21,9 +21,8 @@ Header
 End
    
 Simulation
-  Max Output Level = 5
+  Max Output Level = 7
   Coordinate System = Cartesian
-  Coordinate Mapping(3) = 1 2 3
   Simulation Type = Transient
   Steady State Max Iterations = 1
   Output Intervals = 1
@@ -88,7 +87,7 @@ Solver 2
   Procedure = "MagnetoDynamics" "WhitneyAVSolver"
 
 ! Fix Input Current Density = Logical True
-!  Use Piola Transform = Logical True
+  Use Piola Transform = Logical True
 
   Linear System Solver = "Iterative"
   Linear System Preconditioning = ILU2
@@ -238,10 +237,9 @@ Boundary Condition 3
   Mortar BC =  Integer 2
   Rotational Projector = Logical True
 
-  Level Projector = Logical True
-  Level Projector Plane Edges Strong = Logical True
-  Level Projector Extruded Edges Strong = Logical True
-  Level Projector Skew Edges Strong = Logical False
+  Level Projector = True
+  Level Projector Generic = True
+  Level Projector Strong = False
 
 ! electric conductivity zero so we can skip this
   Projector Skip Nodes = Logical True
@@ -256,11 +254,9 @@ Boundary Condition 4
   Mortar BC = 5
   Radial Projector = Logical True
 
-  Level Projector = Logical True
-  Level Projector Nodes Strong = Logical True
-  Level Projector Plane Edges Strong = Logical True
-  Level Projector Extruded Edges Strong = Logical True
-  Level Projector Skew Edges Strong = Logical False
+  Level Projector = True
+  Level Projector Generic = True
+  Level Projector Strong = False
 
 !  Save Projector = Logical True
 End
@@ -277,10 +273,9 @@ Boundary Condition 6
   Mortar BC = 7
   Radial Projector = Logical True
 
-  Level Projector = Logical True
-  Level Projector Plane Edges Strong = Logical True
-  Level Projector Extruded Edges Strong = Logical True
-  Level Projector Skew Edges Strong = Logical False
+  Level Projector = True
+  Level Projector Generic = True
+  Level Projector Strong = False
 
   Projector Skip Nodes = Logical True
 !  Save Projector = Logical True
@@ -341,7 +336,7 @@ Boundary Condition 14
 End 
  
 
-Solver 2 :: Reference Norm = Real 4.12067301E-03
+Solver 2 :: Reference Norm = Real 5.26271080E-03
 Solver 2 :: Reference Norm Tolerance = Real 2e-4
 RUN
 

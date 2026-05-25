@@ -133,7 +133,7 @@ Solver 2
   Nonlinear System Newton After Tolerance =  1.0E-01
 
 ! If non-linearity introduced using deviatoric stress second invariant 
- Procedure = "AIFlowSolveS2" "AIFlowSolver_nlS2" 
+ Procedure = "ElmerIceSolvers" "AIFlowSolver_nlS2" 
 
 End
 

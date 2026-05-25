@@ -153,6 +153,7 @@ CONTAINS
       Solution    = 0
       ForceVector = 0
       Residual    = 0
+      IPNTR = 0
 
       DOFs = Solver % Variable % DOFs
       CALL ParallelInitSolve( A, Solution, ForceVector, Residual )
@@ -177,7 +178,7 @@ CONTAINS
       IF ( .NOT. stat ) NCV = 3*NEIG + 1
 
       IF ( NCV <=  NEIG ) THEN
-         CALL Fatal( 'EigenSolve', & 
+         CALL Fatal( 'ParallelEigenSolve', & 
                'Number of Lanczos vectors must exceed the number of eigenvalues.' )
       END IF
 
@@ -185,7 +186,7 @@ CONTAINS
          WORKEV(3*NCV), V(PN,NCV), CHOOSE(NCV), STAT=istat )
 
       IF ( istat /= 0 ) THEN
-         CALL Fatal( 'EigenSolve', 'Memory allocation error.' )
+         CALL Fatal( 'ParallelEigenSolve', 'Memory allocation error.' )
       END IF
 !
 !     %--------------------------------------------------%
@@ -368,8 +369,8 @@ CONTAINS
 !
          IF (ido == -1 .OR. ido == 1) THEN
 !           WRITE( Message, * ) ' Arnoldi iteration: ', Iter
-!           CALL Info( 'EigenSolve', Message, Level=5 )
-            CALL Info( 'EigenSolve', '.', .TRUE., Level=5 )
+!           CALL Info( 'ParallelEigenSolve', Message, Level=5 )
+            CALL Info( 'ParallelEigenSolve', '.', .TRUE., Level=5 )
             iter = iter + 1
 !---------------------------------------------------------------------
 !             Perform  y <--- OP*x = inv[M]*A*x   (lumped mass)
@@ -400,7 +401,7 @@ CONTAINS
                CASE ('direct')
                  CALL DirectSolver( A, x,b, Solver )
                CASE DEFAULT
-                 CALL Fatal('EigenSolve','Unknown linear system method: '//TRIM(Method))
+                 CALL Fatal('ParallelEigenSolve','Unknown linear system method: '//TRIM(Method))
                END SELECT
                CALL ParallelInitSolve( A, x, b, Residual )
 
@@ -438,7 +439,7 @@ CONTAINS
                CASE ('direct')
                  CALL DirectSolver( A, x, b, Solver )
                CASE DEFAULT
-                 CALL Fatal('EigenSolve','Unknown linear system method: '//TRIM(Method))
+                 CALL Fatal('ParallelEigenSolve','Unknown linear system method: '//TRIM(Method))
                END SELECT
                CALL ParallelInitSolve( A, x, b, Residual )
 
@@ -503,7 +504,7 @@ CONTAINS
 !        %--------------------------%
 !
          WRITE( Message, * ) 'Error with DNAUPD, info = ',kinfo
-         CALL Fatal( 'EigenSolve', Message )
+         CALL Fatal( 'ParallelEigenSolve', Message )
 !
       END IF
 !
@@ -548,7 +549,7 @@ CONTAINS
 !        %------------------------------------%
 !
          WRITE( Message, * ) ' Error with DNEUPD, info = ', IERR
-         CALL Fatal( 'EigenSolve', Message )
+         CALL Fatal( 'ParallelEigenSolve', Message )
       END IF
 !
 !     %------------------------------------------%
@@ -556,9 +557,9 @@ CONTAINS
 !     %------------------------------------------%
 !
       IF ( kinfo == 1 ) THEN
-         CALL Fatal( 'EigenSolve', 'Maximum number of iterations reached.' )
+         CALL Fatal( 'ParallelEigenSolve', 'Maximum number of iterations reached.' )
       ELSE IF ( kinfo == 3 ) THEN
-         CALL Fatal( 'EigenSolve', &
+         CALL Fatal( 'ParallelEigenSolve', &
             'No shifts could be applied during implicit Arnoldi update, try increasing NCV.' )
       END IF      
 !
@@ -573,16 +574,16 @@ CONTAINS
 !
 !     Extract the values to ELMER structures:
 !     -----------------------------------------
-      CALL Info( 'EigenSolve', ' ', Level=4 )
-      CALL Info( 'EigenSolve', 'EIGEN SYSTEM SOLUTION COMPLETE: ', Level=4 )
-      CALL Info( 'EigenSolve', ' ', Level=4 )
+      CALL Info( 'ParallelEigenSolve', ' ', Level=4 )
+      CALL Info( 'ParallelEigenSolve', 'EIGEN SYSTEM SOLUTION COMPLETE: ', Level=4 )
+      CALL Info( 'ParallelEigenSolve', ' ', Level=4 )
       WRITE( Message, * ) 'The convergence criterion is ', TOL
-      CALL Info( 'EigenSolve', Message, Level=4 )
+      CALL Info( 'ParallelEigenSolve', Message, Level=4 )
       WRITE( Message, * ) ' The number of converged Ritz values is ', IPARAM(5)
-      CALL Info( 'EigenSolve', Message, Level=4 )
-      CALL Info( 'EigenSolve', ' ', Level=4 )
-      CALL Info( 'EigenSolve', 'Computed Eigen Values: ', Level=3 )
-      CALL Info( 'EigenSolve', '--------------------------------', Level=3 )
+      CALL Info( 'ParallelEigenSolve', Message, Level=4 )
+      CALL Info( 'ParallelEigenSolve', ' ', Level=4 )
+      CALL Info( 'ParallelEigenSolve', 'Computed Eigen Values: ', Level=3 )
+      CALL Info( 'ParallelEigenSolve', '--------------------------------', Level=3 )
 
       ! Restore matrix values, if modified when using shift:
       ! ---------------------------------------------------
@@ -594,7 +595,7 @@ CONTAINS
       DO i=1,NEIG
         p = Perm(i)
         WRITE( Message, * ) i,EigValues(i)
-        CALL Info( 'EigenSolve', Message, Level=3 )
+        CALL Info( 'ParallelEigenSolve', Message, Level=3 )
 
         k = 1
         DO j=1,p-1
@@ -633,11 +634,11 @@ CONTAINS
         END DO
 
       END DO
-      CALL Info( 'EigenSolve', '--------------------------------',Level=3 )
+      CALL Info( 'ParallelEigenSolve', '--------------------------------',Level=3 )
 
       DEALLOCATE( WORKL, D, WORKEV, V, CHOOSE, Perm )
 #else
-      CALL Fatal( 'EigenSolve', 'Arpack Eigen System Solver not available.' )
+      CALL Fatal( 'ParallelEigenSolve', 'Arpack Eigen System Solver not available.' )
 #endif
 #endif
 !
@@ -726,16 +727,17 @@ CONTAINS
 !     %-----------------------%
 !     | Executable Statements |
 !     %-----------------------%
-!
+
       Solution    = 0
       ForceVector = 1
       Residual    = 0
+      IPNTR = 0
 
       DOFs = Solver % Variable % DOFs
       CALL ParallelInitSolve( Matrix, Solution, ForceVector, Residual )
 
       PMatrix => ParallelMatrix(Matrix)
-      PN = PMatrix % NumberOFRows/2
+      pn = PMatrix % NumberOFRows / 2
 
 !     %----------------------------------------------------%
 !     | The number N is the dimension of the matrix. A     |
@@ -755,16 +757,25 @@ CONTAINS
       NCV = ParallelReduction(NCV,1)
 
       IF ( NCV <=  NEIG ) THEN
-         CALL Fatal( 'EigenSolve', & 
+         CALL Fatal( 'ParallelEigenSolve', & 
                'Number of Lanczos vectors must exceed the number of eigenvalues.' )
       END IF
 
       ALLOCATE( WORKL(3*NCV**2 + 6*NCV), D(NCV), &
          WORKEV(3*NCV), V(PN,NCV), CHOOSE(NCV), WORKD(3*pn), RESID(pn), xx(pn), STAT=istat )
-
       IF ( istat /= 0 ) THEN
-         CALL Fatal( 'EigenSolve', 'Memory allocation error.' )
+         CALL Fatal( 'ParallelEigenSolve', 'Memory allocation error.' )
       END IF
+
+      WORKL = 0
+      D = 0
+      WORKEV = 0
+      V=0
+      CHOOSE=.FALSE.
+      WORKD=0
+      RESID = 0
+      xx = 0
+
 !
 !     %--------------------------------------------------%
 !     | The work array WORKL is used in DSAUPD as        |
@@ -893,14 +904,14 @@ CONTAINS
 
          IF ( Direct ) THEN
             SELECT CASE( DirectMethod )
-            CASE( 'mumps' )
+            CASE( 'mumps', 'zmumps' )
             CASE DEFAULT
                Stat = CRS_ComplexILUT(Matrix, 0._dp)
             END SELECT
          END IF
       END IF
 
-      IF ( .NOT. Direct .OR. DirectMethod /= 'mumps' )  THEN
+      IF ( .NOT. Direct .OR. (DirectMethod /= 'mumps' .AND. DirectMethod /= 'zmumps') )  THEN
         LinIter = ListGetInteger( Solver % Values, 'Linear System Max Iterations', stat )
         IF ( .NOT. Stat ) LinIter = 1000
         LinConv = ListGetConstReal( Solver % Values, 'Linear System Convergence Tolerance', stat )
@@ -957,8 +968,8 @@ CONTAINS
          IF (ido == -1 .OR. ido == 1) THEN
             iter = iter + 1
 !           WRITE( Message, * ) ' Arnoldi iteration: ', Iter
-!           CALL Info( 'EigenSolve', Message, Level=5 )
-            CALL Info( 'EigenSolve', '.', .TRUE., Level=5 )
+!           CALL Info( 'ParallelEigenSolve', Message, Level=5 )
+            CALL Info( 'ParallelEigenSolve', '.', .TRUE., Level=5 )
 !---------------------------------------------------------------------
 !             Perform  y <--- OP*x = inv[M]*A*x   (lumped mass)
 !                      ido =-1 inv(A-sigmaR*M)*M*x 
@@ -970,7 +981,7 @@ CONTAINS
 
                ForceVector = 0._dp
                Solution    = 0._dp
-               IF ( Direct .AND. DirectMethod == 'mumps' ) THEN
+               IF ( Direct .AND. (DirectMethod == 'mumps' .OR. DirectMethod == 'zmumps') ) THEN
                   j = 0
                   DO i=0,n-1
                      IF ( OwnerList(2*i+1) % Neighbours(1) == me ) THEN
@@ -1029,7 +1040,7 @@ CONTAINS
 
                ForceVector = 0._dp
                Solution    = 0._dp
-               IF ( Direct .AND. DirectMethod == 'mumps' ) THEN
+               IF ( Direct .AND. (DirectMethod == 'mumps' .OR. DirectMethod == 'zmumps') ) THEN
                   j = 0
                   DO i=0,n-1
                     IF ( OwnerList(2*i+1) % Neighbours(1) == me ) THEN
@@ -1137,7 +1148,7 @@ CONTAINS
 !        %--------------------------%
 !
          WRITE( Message, * ) 'Error with DNAUPD, info = ',kinfo
-         CALL Fatal( 'EigenSolve', Message )
+         CALL Fatal( 'ParallelEigenSolve', Message )
 !
       END IF
 !
@@ -1176,7 +1187,7 @@ CONTAINS
 !        %------------------------------------%
 !
          WRITE( Message, * ) ' Error with DNEUPD, info = ', IERR
-         CALL Fatal( 'EigenSolve', Message )
+         CALL Fatal( 'ParallelEigenSolve', Message )
       END IF
 !
 !     %------------------------------------------%
@@ -1184,9 +1195,9 @@ CONTAINS
 !     %------------------------------------------%
 !
       IF ( kinfo == 1 ) THEN
-         CALL Fatal( 'EigenSolve', 'Maximum number of iterations reached.' )
+         CALL Fatal( 'ParallelEigenSolve', 'Maximum number of iterations reached.' )
       ELSE IF ( kinfo == 3 ) THEN
-         CALL Fatal( 'EigenSolve', &
+         CALL Fatal( 'ParallelEigenSolve', &
             'No shifts could be applied during implicit Arnoldi update, try increasing NCV.' )
       END IF      
 !
@@ -1201,16 +1212,16 @@ CONTAINS
 !
 !     Extract the values to ELMER structures:
 !     -----------------------------------------
-      CALL Info( 'EigenSolve', ' ', Level=4 )
-      CALL Info( 'EigenSolve', 'EIGEN SYSTEM SOLUTION COMPLETE: ', Level=4 )
-      CALL Info( 'EigenSolve', ' ', Level=4 )
+      CALL Info( 'ParallelEigenSolve', ' ', Level=4 )
+      CALL Info( 'ParallelEigenSolve', 'EIGEN SYSTEM SOLUTION COMPLETE: ', Level=4 )
+      CALL Info( 'ParallelEigenSolve', ' ', Level=4 )
       WRITE( Message, * ) 'The convergence criterion is ', TOL
-      CALL Info( 'EigenSolve', Message, Level=4 )
+      CALL Info( 'ParallelEigenSolve', Message, Level=4 )
       WRITE( Message, * ) ' The number of converged Ritz values is ', IPARAM(5)
-      CALL Info( 'EigenSolve', Message, Level=4 )
-      CALL Info( 'EigenSolve', ' ', Level=4 )
-      CALL Info( 'EigenSolve', 'Computed Eigen Values: ', Level=3 )
-      CALL Info( 'EigenSolve', '--------------------------------', Level=3 )
+      CALL Info( 'ParallelEigenSolve', Message, Level=4 )
+      CALL Info( 'ParallelEigenSolve', ' ', Level=4 )
+      CALL Info( 'ParallelEigenSolve', 'Computed Eigen Values: ', Level=3 )
+      CALL Info( 'ParallelEigenSolve', '--------------------------------', Level=3 )
 
       ! Restore matrix values, if modified when using shift:
       ! ---------------------------------------------------
@@ -1239,7 +1250,7 @@ CONTAINS
       DO i=1,NEIG
         p = Perm(i)
         WRITE( Message, * ) i,EigValues(i)
-        CALL Info( 'EigenSolve', Message, Level=3 )
+        CALL Info( 'ParallelEigenSolve', Message, Level=3 )
 
         DO j=0,pn-1
           Matrix % ParMatrix % SplittedMatrix % TmpXVec(2*j+1) = REAL(V(j+1,p))
@@ -1253,11 +1264,11 @@ CONTAINS
         END DO
 
       END DO
-      CALL Info( 'EigenSolve', '--------------------------------',Level=3 )
+      CALL Info( 'ParallelEigenSolve', '--------------------------------',Level=3 )
 
       DEALLOCATE( WORKL, D, WORKEV, V, CHOOSE, Perm, WORKD, RESID, xx )
 #else
-      CALL Fatal( 'EigenSolve', 'Arpack Eigen System Solver not available.' )
+      CALL Fatal( 'ParallelEigenSolve', 'Arpack Eigen System Solver not available.' )
 #endif
 #endif
 !

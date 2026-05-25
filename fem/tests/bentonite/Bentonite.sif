@@ -1,3 +1,6 @@
+! This is a legacy test case related to the thesis work by Petri Jussila
+! on the behavior of bentonite. 
+
 Check Keywords "Warn"
 
 
@@ -12,9 +15,7 @@ Simulation
   Coordinate Mapping(3) = 1 2 3
 
 !  Simulation Type = "Transient"
-
   Simulation Type = "Stationary"
-
 !  Simulation Type = "Steady"
 
   BDF Order = 2
@@ -36,7 +37,6 @@ Simulation
 
   Steady State Max Iterations = 1
 
-!
 !  Adaptive Timestepping = True
 !  Adaptive Time Error = 1.0e-4
 !  Adaptive Keep Smallest = 1

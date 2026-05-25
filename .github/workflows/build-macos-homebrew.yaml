@@ -38,7 +38,7 @@ jobs:
         # FIXME: Consider building with OpenMP again when this (potentially
         # upstream) issue has been fixed.
         include:
-          - os: macos-13
+          - os: macos-15-intel
             openmp: with
 
     steps:
@@ -48,7 +48,7 @@ jobs:
           sysctl machdep
 
       - name: checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: install dependencies
 
@@ -67,20 +67,20 @@ jobs:
           brew install \
             cmake openblas open-mpi \
             ${{ matrix.openmp == 'with' && 'libomp suitesparse' || '' }} \
-            qwt vtk opencascade
+            qwt vtk opencascade expat
           echo "HOMEBREW_PREFIX=$(brew --prefix)" >> $GITHUB_ENV
 
       - name: configure
         env:
           LDFLAGS: ${{ matrix.openmp == 'with' && format('-L{0}/opt/libomp/lib -lomp', env.HOMEBREW_PREFIX) || '' }}
         # The tests `SD_H1BasisEvaluation` and `SD_LinearFormsAssembly` are
-        # failing on macos-13 (Intel CPU) at optimization level `-O3`.
+        # failing on macos-15-intel (Intel CPU) at optimization level `-O3`.
         # They are passing if ElmerFEM is built with optimization level `-O2`.
         run: |
           mkdir ${GITHUB_WORKSPACE}/build
           cd ${GITHUB_WORKSPACE}/build
           cmake \
-            -DCMAKE_BUILD_TYPE=${{ matrix.os == 'macos-13' && 'RelWithDebInfo' || 'Release' }} \
+            -DCMAKE_BUILD_TYPE=${{ matrix.os == 'macos-15-intel' && 'RelWithDebInfo' || 'Release' }} \
             -DCMAKE_C_COMPILER=clang \
             -DCMAKE_CXX_COMPILER=clang++ \
             -DCMAKE_Fortran_COMPILER=gfortran \
@@ -105,6 +105,7 @@ jobs:
             -DWITH_QT6=ON \
             -DQWT_INCLUDE_DIR="${HOMEBREW_PREFIX}/opt/qwt/lib/qwt.framework/Headers" \
             -DWITH_VTK=ON \
+            -DEXPAT_INCLUDE_DIR="${HOMEBREW_PREFIX}/opt/expat/include" \
             -DWITH_OCC=ON \
             -DWITH_MATC=ON \
             -DWITH_PARAVIEW=ON \
@@ -128,10 +129,11 @@ jobs:
           CTEST_OUTPUT_ON_FAILURE: 1
         run: |
           cd ${GITHUB_WORKSPACE}/build
-          ctest . \
+          export OMP_NUM_THREADS=1; ctest . \
             -LE slow \
-            -j$(sysctl -n hw.logicalcpu) \
             --timeout 300
+
+#           -j$(sysctl -n hw.logicalcpu) \
 
       - name: re-run tests
         if: always() && (steps.run-ctest.outcome == 'failure')

@@ -6,7 +6,7 @@
 
 
 /*
- * $Id: matc.h,v 1.2 2007/06/08 08:12:19 jpr Exp $ 
+ * $Id: matc.h,v 1.2 2007/06/08 08:12:19 jpr Exp $
  *
  * $Log: matc.h,v $
  * Revision 1.2  2007/06/08 08:12:19  jpr
@@ -24,7 +24,7 @@
  * Revision 1.2  1998/08/01 12:34:49  jpr
  *
  * Added Id, started Log.
- * 
+ *
  *
  */
 
@@ -91,6 +91,12 @@ typedef struct list {
 #endif /* _OPENMP */
 #endif /* MODULE_MATC */
 
+#ifdef _OPENMP
+  /* Data with thread-local storage cannot be reliably accessed across DLL
+     borders.  Use an accessor function instead.  */
+  LIST * mtc_get_listheaders(void);
+#endif /* _OPENMP */
+
 #define ALLOCATIONS 0
 #define CONSTANTS   1
 #define VARIABLES   2
@@ -99,11 +105,16 @@ typedef struct list {
 
 #define MAX_HEADERS 5
 
-#define ALLOC_HEAD listheaders[ALLOCATIONS].next
-#define CONST_HEAD listheaders[CONSTANTS].next
-#define VAR_HEAD   listheaders[VARIABLES].next
-#define COM_HEAD   listheaders[COMMANDS].next
-#define FUNC_HEAD  listheaders[FUNCTIONS].next
+#ifdef _OPENMP
+#define LISTHEADERS (mtc_get_listheaders())
+#else
+#define LISTHEADERS listheaders
+#endif /* _OPENMP */
+#define ALLOC_HEAD LISTHEADERS[ALLOCATIONS].next
+#define CONST_HEAD LISTHEADERS[CONSTANTS].next
+#define VAR_HEAD   LISTHEADERS[VARIABLES].next
+#define COM_HEAD   LISTHEADERS[COMMANDS].next
+#define FUNC_HEAD  LISTHEADERS[FUNCTIONS].next
 
 #define NEXT(lst) (lst)->next
 #define NAME(lst) (lst)->name
@@ -194,7 +205,7 @@ typedef struct command
 #define COMSIZE sizeof(COMMAND)
 
 #define CMDFLAG_PW 1           /* element by element operation    */
-#define CMDFLAG_CE 2           /* command can be executed when 
+#define CMDFLAG_CE 2           /* command can be executed when
                                   preprocessing if constant
                                   arguments.                      */
 
@@ -223,7 +234,7 @@ typedef struct function
 typedef enum symbols {
   nullsym,  leftpar,  rightpar, indopen, indclose, power, times, ptimes, divide,
   plus, minus, reduction,  transpose, eq, neq, lt, gt, le, ge, and, or, not,
-  assignsym, apply, resize, vector, statemend, argsep, name, number, string, 
+  assignsym, apply, resize, vector, statemend, argsep, name, number, string,
   funcsym, import, export, ifsym, thensym, elsesym, whilesym, forsym,
   beginsym, endsym, breaksym, comment, systemcall
 } SYMTYPE;
@@ -248,7 +259,7 @@ char csymbols[] = {
 /*--------------------------------------------------------------------*/
 
 char *reswords[] = {
-  "function", "import", "export", "if", "then", "else", "while", "for", 
+  "function", "import", "export", "if", "then", "else", "while", "for",
   "begin", "end", "break", NULL
 };
 
@@ -383,7 +394,7 @@ typedef struct clause
 
 EXT FILE *math_in, *math_out, *math_err;
 #pragma omp threadprivate(math_in, math_out, math_err)
-/* 
+/*
      see doread(), error() in matc.c
 */
 EXT jmp_buf *jmpbuf;
@@ -394,8 +405,8 @@ EXT int term;
 
 #ifdef VAX
 struct desc
-{ 
-  int length; 
+{
+  int length;
   char *addr;
 } ;
 #endif
@@ -426,7 +437,7 @@ void error_matc( char *format, ... )
     va_start( args, format );
 #ifdef STRING_OUTPUT
     if ( math_out_count+512 > math_out_allocated )
-    { 
+    {
         math_out_allocated += 512;
         math_out_str = (char *)realloc( math_out_str, math_out_allocated );
     }
@@ -450,7 +461,7 @@ void PrintOut( char *format, ... )
     va_start( args, format );
 #ifdef STRING_OUTPUT
     if ( math_out_count+512 > math_out_allocated )
-    { 
+    {
         math_out_allocated += 512;
         math_out_str = (char *)realloc( math_out_str, math_out_allocated );
     }
@@ -468,6 +479,6 @@ extern void PrintOut( char *format, ... );
 #define error error_matc
 
 /*******************************************************************
-                       function prototypes 
-*******************************************************************/ 
+                       function prototypes
+*******************************************************************/
 #include "fnames.h"

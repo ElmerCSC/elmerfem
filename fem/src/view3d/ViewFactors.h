@@ -1,46 +1,34 @@
 /*****************************************************************************
- *
- *  Elmer, A Finite Element Software for Multiphysical Problems
- *
- *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
- * 
- *  This program is free software; you can redistribute it and/or
- *  modify it under the terms of the GNU General Public License
- *  as published by the Free Software Foundation; either version 2
- *  of the License, or (at your option) any later version.
- * 
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program (in file fem/GPL-2); if not, write to the 
- *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
- *  Boston, MA 02110-1301, USA.
- *
- *****************************************************************************/
-
+! *
+! *  Elmer, A Finite Element Software for Multiphysical Problems
+! *
+! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
+! * 
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
+! *
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
+! *
+! *****************************************************************************/
 /******************************************************************************
- *
- *
- *
- ******************************************************************************
  *
  *                     Author:       Juha Ruokolainen
  *
  *                    Address: CSC - IT Center for Science Ltd.
  *                                Keilaranta 14, P.O. BOX 405
- *                                  02
- *                                  Tel. +358 0 457 2723
- *                                Telefax: +358 0 457 2302
  *                              EMail: Juha.Ruokolainen@csc.fi
  *
  *                       Date: 02 Jun 1997
- *
- *                Modified by:
- *
- *       Date of modification:
  *
  *****************************************************************************/
 
@@ -52,9 +40,7 @@
 #include <limits.h>
 #include "../../config.h"
 
-#ifdef WIN32
-double drand48();
-#endif
+double vrand();
 
 #include <sys/types.h>
 
@@ -84,13 +70,13 @@ double drand48();
 double Fvalue_4node( double *,double, double );
 double ElementOfArea_4node( double *,double *,double *,double, double );
 
-EXT double U_Integ1d[32],S_Integ1d[32],U_Integ[128],V_Integ[128],S_Integ[128];
+EXT double *U_Integ1d,*S_Integ1d,*U_Integ,*V_Integ,*S_Integ;
 EXT int N_Integ,N_Integ1d,N_Integ3;
 
 EXT double ShapeFunctionMatrix[16][16],ShapeFunctionMatrix4[4][4],
            ShapeFunctionMatrix3[3][3], ShapeFunctionMatrix2[2][2];
 
-EXT double U_Integ3[128],V_Integ3[128],S_Integ3[128];
+EXT double *U_Integ3,*V_Integ3,*S_Integ3;
 
 EXT double XMin,XMax,YMin,YMax,ZMin,ZMax; 
 EXT char str[512];
@@ -281,6 +267,7 @@ void InitVolumeBounds( int,int,Geometry_t * );
 
 void GetMatrixToRotateVectorToZAxis(double x,double y,double z,Matrix_t Matrix,int *Ident);
 void RotateVector(double *x,double *y,double *z,Matrix_t Matrix);
+void CylinderNormal(double,double,double,double,double,double,Cylinder_t *,double *,double *,double *);
 
 EXT Geometry_t *Geometry,*Elements,*RTElements;
 
@@ -302,7 +289,7 @@ void BiCubicBezierToMonomial(double *MonomialFactors,double *BezierFactors);
 double BiCubicEofA(double U,double V,double *X,double *Y,double *Z);
 double BiCubicArea(Geometry_t *);
 double BiCubicLength(Geometry_t *,int);
-double BiCubicIntegrateDiffToArea(Geometry_t *,double,double,double,double,double,double);
+double BiCubicIntegrateDiffToArea(Geometry_t *,Cylinder_t *,double,double,double,double,double,double);
 void BiCubicSubdivide(Geometry_t *,int,int);
 int BiCubicIsAPlane(double *,double *,double *);
 void BiCubicComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int Level,int );
@@ -317,7 +304,7 @@ void BiQuadraticBezierToMonomial(double *MonomialFactors,double *BezierFactors);
 double BiQuadraticEofA(double U,double V,double *X,double *Y,double *Z);
 double BiQuadraticArea(Geometry_t *);
 double BiQuadraticLength(Geometry_t *,int);
-double BiQuadraticIntegrateDiffToArea(Geometry_t *,double,double,double,double,double,double);
+double BiQuadraticIntegrateDiffToArea(Geometry_t *,Cylinder_t *,double,double,double,double,double,double);
 void BiQuadraticSubdivide(Geometry_t *,int,int);
 int BiQuadraticIsAPlane(double *,double *,double *);
 void BiQuadraticComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int Level,int );
@@ -329,7 +316,7 @@ void BiQuadraticComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int Level,int )
 double BiLinearEofA(double U,double V,double *X,double *Y,double *Z);
 double BiLinearArea(Geometry_t *);
 double BiLinearLength(Geometry_t *,int);
-double BiLinearIntegrateDiffToArea(Geometry_t *,double,double,double,double,double,double);
+double BiLinearIntegrateDiffToArea(Geometry_t *,Cylinder_t *,double,double,double,double,double,double);
 void BiLinearSubdivide(Geometry_t *,int,int);
 void BiLinearComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int,int );
 
@@ -340,7 +327,7 @@ void BiLinearComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int,int );
 double TriangleEofA(double U,double V,double *X,double *Y,double *Z);
 double TriangleArea(Geometry_t *);
 double TriangleLength(Geometry_t *,int);
-double TriangleIntegrateDiffToArea(Geometry_t *,double,double,double,double,double,double);
+double TriangleIntegrateDiffToArea(Geometry_t *,Cylinder_t *,double,double,double,double,double,double);
 void TriangleSubdivide(Geometry_t *,int,int);
 void TriangleComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int,int );
 
@@ -350,12 +337,12 @@ void TriangleComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int,int );
 double LinearEofA(double,double, double *,double *, double *);
 double LinearArea(Geometry_t *);
 double LinearLength(Geometry_t *,int);
-double LinearIntegrateDiffToArea(Geometry_t *,double,double,double,double,double,double);
+double LinearIntegrateDiffToArea(Geometry_t *,Cylinder_t *,double,double,double,double,double,double);
 void LinearSubdivide(Geometry_t *,int,int);
 void LinearComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int,int );
-void LinearComputeRadiatorFactors(Geometry_t *GA,double, double, double, int );
-void BiLinearComputeRadiatorFactors(Geometry_t *GA,double, double, double, int );
-void TriangleComputeRadiatorFactors(Geometry_t *GA,double, double, double, int );
+void LinearComputeRadiatorFactors(Geometry_t *GA,int,double, double, double, double, double, double, int );
+void BiLinearComputeRadiatorFactors(Geometry_t *GA,int,double, double, double, double, double, double, int );
+void TriangleComputeRadiatorFactors(Geometry_t *GA,int,double, double, double, double, double, double, int );
 
 void elm_4node_quad_shape_functions(double B[4][4]); 
 
@@ -385,9 +372,9 @@ static double FunctionValue( Geometry_t *Geom,double U,double V,int N )
 
 EXT double (*AreaCompute[MAX_GEOMETRY_TYPES])(Geometry_t *);
 EXT void (*ViewFactorCompute[MAX_GEOMETRY_TYPES])(Geometry_t *,Geometry_t *,int, int);
-EXT void (*RadiatorFactorsCompute[MAX_GEOMETRY_TYPES])(Geometry_t *,double,double,double,int);
+EXT void (*RadiatorFactorsCompute[MAX_GEOMETRY_TYPES])(Geometry_t *,int,double,double,double,double,double,double,int);
 EXT void (*Subdivide[MAX_GEOMETRY_TYPES])(Geometry_t *,int,int);
-EXT double (*IntegrateDiffToArea[MAX_GEOMETRY_TYPES])(Geometry_t *,double,double,double,double,double,double);
+EXT double (*IntegrateDiffToArea[MAX_GEOMETRY_TYPES])(Geometry_t *,Cylinder_t *,double,double,double,double,double,double);
 
 void OutputGeometry( Geometry_t *,int );
 void LinearSolveGaussSeidel( Geometry_t *,int,double *);

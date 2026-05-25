@@ -2031,7 +2031,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
          i = InvPermA(iC)
 
          iA = PermA(i)
-         IF(iA /= iC) CALL Fatal('CRS_MergeMatrix','This Should be True by consruction!')                 
+         IF(iA /= iC) CALL Fatal('CRS_MergeMatrix','This Should be True by construction!')                 
          iB = PermB(i)
          
          nA = 0
@@ -3845,7 +3845,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-!>    Buids an incomplete (ILU(n)) factorization for an iterative solver
+!>    Builds an incomplete (ILU(n)) factorization for an iterative solver
 !>    preconditioner. Complex matrix version.
 !------------------------------------------------------------------------------
   FUNCTION CRS_ComplexIncompleteLU(A,ILUn) RESULT(Status)
@@ -4184,7 +4184,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
 
 !------------------------------------------------------------------------------
-!>    Buids an incomplete (ILUT) factorization for an iterative solver
+!>    Builds an incomplete (ILUT) factorization for an iterative solver
 !>    preconditioner. Real matrix version.
 !------------------------------------------------------------------------------
   FUNCTION CRS_ILUT(A,TOL) RESULT(Status)
@@ -4282,7 +4282,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
          END DO
 !
 !        Check bandwidth for speed, bandwidth optimization
-!        helps here ALOT, use it!
+!        helps here A LOT, use it!
 !        -------------------------------------------------
          RowMin = Cols(Rows(i))
          RowMax = Cols(Rows(i+1)-1)
@@ -4384,7 +4384,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
 
 !------------------------------------------------------------------------------
-!>    Buids an incomplete (ILUT) factorization for an iterative solver
+!>    Builds an incomplete (ILUT) factorization for an iterative solver
 !>    preconditioner. Complex matrix version.
 !------------------------------------------------------------------------------
   FUNCTION CRS_ComplexILUT(A,TOL) RESULT(Status)
@@ -4486,7 +4486,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
          END DO
 !
 !        Check bandwidth for speed, bandwidth optimization
-!        helps here ALOT, use it!
+!        helps here A LOT, use it!
 !        -------------------------------------------------
          RowMin = (Cols(Rows(2*i-1)) + 1) / 2
          RowMax = (Cols(Rows(2*i)-1) + 1) / 2

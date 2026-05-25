@@ -1,46 +1,34 @@
 /*****************************************************************************
- *
- *  Elmer, A Finite Element Software for Multiphysical Problems
- *
- *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
- * 
- *  This program is free software; you can redistribute it and/or
- *  modify it under the terms of the GNU General Public License
- *  as published by the Free Software Foundation; either version 2
- *  of the License, or (at your option) any later version.
- * 
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program (in file fem/GPL-2); if not, write to the 
- *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
- *  Boston, MA 02110-1301, USA.
- *
- *****************************************************************************/
-
+! *
+! *  Elmer, A Finite Element Software for Multiphysical Problems
+! *
+! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
+! * 
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
+! *
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
+! *
+! *****************************************************************************/
 /******************************************************************************
- *
- *
- *
- ******************************************************************************
  *
  *                     Author:       Juha Ruokolainen
  *
  *                    Address: CSC - IT Center for Science Ltd.
  *                                Keilaranta 14, P.O. BOX 405
- *                                  02
- *                                  Tel. +358 0 457 2723
- *                                Telefax: +358 0 457 2302
  *                              EMail: Juha.Ruokolainen@csc.fi
  *
  *                       Date: 02 Jun 1997
- *
- *                Modified by:
- *
- *       Date of modification:
  *
  *****************************************************************************/
 
@@ -333,8 +321,8 @@ direct numerical integration.
 24 Aug 1995
 
 *******************************************************************************/
-double TriangleIntegrateDiffToArea( Geometry_t *GB,
-   double FX,double FY,double FZ,double NFX,double NFY,double NFZ)
+double TriangleIntegrateDiffToArea( Geometry_t *GB, Cylinder_t *Cyl, 
+  double FX,double FY,double FZ,double NFX,double NFY,double NFZ)
 {
     double DX,DY,DZ,NTX,NTY,NTZ,U,V;
     double F,R,Rs,cosA,cosB;
@@ -349,15 +337,16 @@ double TriangleIntegrateDiffToArea( Geometry_t *GB,
 
     int i,j;
 
-
-    Rs = NFX*NFX + NFY*NFY + NFZ*NFZ;
-    if ( Rs != 0 && ABS(1-R) > 1.0E-8 )
-    {
-        R = 1.0/sqrt(Rs);
-        NFX *= Rs;
-        NFY *= Rs;
-        NFZ *= Rs;
+    R = NFX*NFX + NFY*NFY + NFZ*NFZ;
+    if ( !Cyl ) {
+      if ( R != 0 ) {
+         R = 1.0/sqrt(R);
+         NFX *= R;
+         NFY *= R;
+         NFZ *= R;
+      }
     }
+    Rs = R;
 
     U = V = 1.0 / 3.0;
     NTX = TriangleValue(U,V,NBX);
@@ -365,13 +354,10 @@ double TriangleIntegrateDiffToArea( Geometry_t *GB,
     NTZ = TriangleValue(U,V,NBZ);
 
     R = NTX*NTX + NTY*NTY + NTZ*NTZ;
-    if ( ABS(1-R) > 1.0E-8 )
-    {
-        R = 1.0/sqrt(R);
-        NTX *= R;
-        NTY *= R;
-        NTZ *= R;
-    }
+    R = 1.0/sqrt(R);
+    NTX *= R;
+    NTY *= R;
+    NTZ *= R;
 
     F  = 0.0;
     cosA = 1;
@@ -385,13 +371,17 @@ double TriangleIntegrateDiffToArea( Geometry_t *GB,
        DZ  = TriangleValue(U,V,BZ) - FZ;
        R = sqrt(DX*DX + DY*DY + DZ*DZ);
 
+       if ( Cyl ) {
+         CylinderNormal(FX,FY,FZ,DX,DY,DZ,Cyl,&NFX,&NFY,&NFZ );
+       }
+
        if ( Rs != 0 ) {
          cosA = (DX*NFX + DY*NFY + DZ*NFZ) / R;
-         if ( cosA < 1.0E-8 ) continue;
+         if ( cosA < 1.0e-8 ) continue;
        }
 
        cosB = (-DX*NTX - DY*NTY - DZ*NTZ) / R;
-       if ( cosB < 1.0E-8 ) continue;
+       if ( cosB < 1.0e-8 ) continue;
 
        F += 2*GB->Area*cosA*cosB*S_Integ3[i] / (R*R);
     }
@@ -412,7 +402,7 @@ void TriangleComputeViewFactors(Geometry_t *GA,Geometry_t *GB,
                    int LevelA,int LevelB)
 {
     double F,Fa,Fb,EA,PI=2*acos(0.0);
-    double FX,FY,FZ,DX,DY,DZ,U,V,Hit;
+    double FX,FY,FZ,DX,DY,DZ,U,V,Hit,W;
 
     double *AX = GA->Triangle->PolyFactors[0];
     double *AY = GA->Triangle->PolyFactors[1];
@@ -434,7 +424,7 @@ void TriangleComputeViewFactors(Geometry_t *GA,Geometry_t *GB,
     DX = TriangleValue( U,V,NX );
     DY = TriangleValue( U,V,NY );
     DZ = TriangleValue( U,V,NZ );
-    Fa = Fb = (*IntegrateDiffToArea[GB->GeometryType])(GB,FX,FY,FZ,DX,DY,DZ);
+    Fa = Fb = (*IntegrateDiffToArea[GB->GeometryType])(GB,NULL,FX,FY,FZ,DX,DY,DZ);
 
     if ( GA != GB )
     {
@@ -449,7 +439,7 @@ void TriangleComputeViewFactors(Geometry_t *GA,Geometry_t *GB,
        DY = FunctionValue( GB,U,V,4 );
        DZ = FunctionValue( GB,U,V,5 );
 
-       Fb = TriangleIntegrateDiffToArea( GA,FX,FY,FZ,DX,DY,DZ );
+       Fb = TriangleIntegrateDiffToArea( GA,NULL,FX,FY,FZ,DX,DY,DZ );
     }
 
     if ( Fa < 1.0E-10 && Fb < 1.0E-10 ) return;
@@ -461,16 +451,16 @@ void TriangleComputeViewFactors(Geometry_t *GA,Geometry_t *GB,
         Hit = Nrays;
         for( i=0; i<Nrays; i++ )
         {
-            U = drand48(); V=drand48();
-            while( U+V>1.0 ) { U = drand48(); V = drand48(); }
+            U = vrand(); V=vrand();
+            while( U+V>1.0 ) { U=1-U; V =1-V; }
 
             FX = TriangleValue(U,V,AX);
             FY = TriangleValue(U,V,AY);
             FZ = TriangleValue(U,V,AZ);
 
-            U = drand48(); V=drand48();
+            W=U; U = 1-V; V=1-W;
             if ( GB->GeometryType == GEOMETRY_TRIANGLE )
-              while( U+V>1.0 ) { U = drand48(); V = drand48(); }
+              while( U+V>1.0 ) { U =1-U; V=1-V; }
 
             DX = FunctionValue(GB,U,V,0) - FX;
             DY = FunctionValue(GB,U,V,1) - FY;
@@ -502,7 +492,7 @@ void TriangleComputeViewFactors(Geometry_t *GA,Geometry_t *GB,
 
 
                 EA = 2*GA->Area;           
-                F += S_Integ3[i]*EA*(*IntegrateDiffToArea[GB->GeometryType])(GB,FX,FY,FZ,DX,DY,DZ);
+                F += S_Integ3[i]*EA*(*IntegrateDiffToArea[GB->GeometryType])(GB,NULL,FX,FY,FZ,DX,DY,DZ);
             }
 
             F = Hit*F / PI;
@@ -608,17 +598,19 @@ view between the elements is resolved by ray tracing.
 
 *******************************************************************************/
 void
-TriangleComputeRadiatorFactors (Geometry_t * GA, double dx, double dy,
-			      double dz, int LevelA)
+TriangleComputeRadiatorFactors (Geometry_t * GA, int LineFlag, double dx, double dy,
+        double dz, double nx, double ny, double nz, int LevelA)
 {
   double R, FX, FY, FZ, GX, GY, GZ, U, V, Hit;
-  double F, Fa, Fb, EA, PI = 2 * acos (0.0);
+  double F, Fa, Fb, EA, PI = 2 * acos (0.0), EPS=1e-12;
 
   double *X = GA->Triangle->PolyFactors[0];
   double *Y = GA->Triangle->PolyFactors[1];
   double *Z = GA->Triangle->PolyFactors[2];
 
-  int i, j;
+  int i, j,k, Ident;
+
+  Cylinder_t *Cyl=NULL, CylS;
 
   if (LevelA & 1)
     {
@@ -627,7 +619,27 @@ TriangleComputeRadiatorFactors (Geometry_t * GA, double dx, double dy,
       goto subdivide;
     }
 
-    Fa = Fb = TriangleIntegrateDiffToArea( GA,dx,dy,dz,0.0,0.0,0.0);
+    R = nx*nx + ny*ny + nz*nz;
+    if (LineFlag &&  R != 0) {
+      R = sqrt(R);
+      Cyl = &CylS;
+      Cyl->Radius = R/25;
+      Cyl->CenterPoint.x = (2*dx+nx)/2;
+      Cyl->CenterPoint.y = (2*dy+ny)/2;
+      Cyl->CenterPoint.z = (2*dz+nz)/2;
+      GetMatrixToRotateVectorToZAxis(nx/R,ny/R,nz/R,Cyl->RotationMatrix,&Ident);
+
+      Fa = 0;
+      for( i=0; i<N_Integ1d; i++ )
+      {
+	 U = U_Integ1d[i];
+         Fa += S_Integ1d[i]*TriangleIntegrateDiffToArea(GA,Cyl,dx+U*nx,dy+U*ny,dz+U*nz,nx,ny,nz);
+      }
+      Fb = Fa;
+    } else {
+       Fa = Fb =  TriangleIntegrateDiffToArea(GA,Cyl,dx,dy,dz,nx,ny,nz);
+    }
+
     if ( Fa < 1.0e-10 ) return;
 
     if ( Fa<FactorEPS || GA->Area<AreaEPS )
@@ -637,9 +649,9 @@ TriangleComputeRadiatorFactors (Geometry_t * GA, double dx, double dy,
        Hit = Nrays;
        for( i=0; i<Nrays; i++ )
        {
-          U = drand48();
-          V = drand48();
-          while( U+V>1.0 ) { U = drand48(); V = drand48(); }
+          U = vrand();
+          V = vrand();
+          while( U+V>1.0 ) { U=1-U; V=1-V; }
 
           FX = TriangleValue(U,V,X);
           FY = TriangleValue(U,V,Y);
@@ -648,6 +660,12 @@ TriangleComputeRadiatorFactors (Geometry_t * GA, double dx, double dy,
           GX = dx - FX;
           GY = dy - FY;
           GZ = dz - FZ;
+          if ( Cyl ) {
+            U = vrand();
+            GX += U*nx;
+            GY += U*ny;
+            GZ += U*nz;
+          }
 
            if ( RayHitGeometry( FX,FY,FZ,GX,GY,GZ ) ) Hit-=1.0;
         }
@@ -687,6 +705,6 @@ subdivide:
             }
         }
 
-        TriangleComputeRadiatorFactors( GA->Left,dx,dy,dz,LevelA+1 );
-        TriangleComputeRadiatorFactors( GA->Right,dx,dy,dz,LevelA+1 );
+        TriangleComputeRadiatorFactors( GA->Left,LineFlag,dx,dy,dz,nx,ny,nz,LevelA+1 );
+        TriangleComputeRadiatorFactors( GA->Right,LineFlag,dx,dy,dz,nx,ny,nz,LevelA+1 );
 }

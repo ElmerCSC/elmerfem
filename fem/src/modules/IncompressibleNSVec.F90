@@ -4,23 +4,22 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-!
 !/******************************************************************************
 ! *
 ! *  Module for the solution of incompressible Navier-Stokes equation.
@@ -1040,7 +1039,7 @@ CONTAINS
     REAL(KIND=dp), TARGET :: STIFF(nd*(dim+1),nd*(dim+1)), FORCE(nd*(dim+1))
     REAL(KIND=dp), ALLOCATABLE :: Basis(:)
     CHARACTER(LEN=MAX_NAME_LEN) :: str, FSSAFlag
-    INTEGER :: c,i,j,k,l,p,q,t,ngp,norm_comp
+    INTEGER :: c,i,j,k,l,p,q,t,ngp,norm_comp,no_slip_comp
     LOGICAL :: NormalTangential, HaveSlip, HaveForce, HavePres, HaveFrictionW, HaveFrictionU, &
         HaveFriction, HaveNormal, FrictionNormal, Found, Stat, HaveFSSA, &
         FoundLoad, GotRelax, LocalNewton, HaveNormalSlip
@@ -1156,8 +1155,9 @@ CONTAINS
     END IF
 
     FrictionNormal = .FALSE.
-    norm_comp = 0
-
+    TanFder=0._dp
+    no_slip_comp = 0
+    
     ! There is no elemental routine for this.
     ! So whereas this breaks the beuty it does not cost too much.
     FSSAFlag = GetString(BC, 'FSSA Flag', Found)
@@ -1226,13 +1226,31 @@ CONTAINS
       !---------------------------------
       IF(.NOT. (HaveForce .OR. HavePres .OR. HaveSlip .OR. HaveNormalSlip .OR. HaveFriction .OR. HaveFSSA)) RETURN
 
-      ! Calculate normal vector only if needed
+      ! Calculate normal vector only if needed, which is almost always...
       IF( HavePres .OR. NormalTangential .OR. HaveFriction  .OR. HaveFSSA .OR. HaveNormalSlip ) THEN
         Normal = ConsistentNormalVector( CurrentModel % Solver, NrmSol, Element, Found, Basis = Basis )
         IF(.NOT. Found) Normal = NormalVector( Element, Nodes, IP % u(t), IP % v(t),.TRUE. )
+
+        ! Define normal component so we can differentiate the treatment of normal and tangent directions
+        ! if needed. If n-t coordinates are not used we take the dominating direction assuming cartesian system.
+        norm_comp = 1
+        IF( .NOT. NormalTangential) THEN
+          DO i=2,dim
+            IF(ABS(Normal(i)) > ABS(Normal(norm_comp))) norm_comp = i
+          END DO
+        END IF
+
+        ! If we have normal slip given we now now to which component it affects.
+        ! This overwrites potential "slip coefficient" if given for this component!
+        IF(HaveNormalSlip) THEN
+          SlipCoeff(norm_comp) = NormalSlipCoeff
+        END IF
       END IF
-            
-      !-----------------------------------------------------------------
+
+      ! Create friction model if "slip coefficient" is not given.
+      ! Because of backward compatibility we cannot allow for both slip and
+      ! friction at the same time.
+      !---------------------------------------------------------------------
       IF( HaveFriction  .AND. .NOT. HaveSlip ) THEN
         ! Velocity at integration point for nonlinear friction laws
         Velo = ListGetElementVectorSolution( Velo_v, Basis, Element, dofs = dim )
@@ -1242,15 +1260,6 @@ CONTAINS
         IF(.NOT. FrictionNormal ) THEN
           un = SUM( Normal(1:dim) * Velo(1:dim) )
           velo(1:dim) = velo(1:dim)-un*normal(1:dim)
-
-          ! Define normal component to skip for Weertman friction law!
-          ! This is just the dominating direction that assumes rectangular directions.
-          norm_comp = 1
-          IF( .NOT. NormalTangential) THEN
-            DO i=2,dim
-              IF(ABS(Normal(i)) > ABS(Normal(norm_comp))) norm_comp = i
-            END DO
-          END IF
         END IF
         ut = MAX(wut0, SQRT(SUM(Velo(1:dim)**2)))
                      
@@ -1273,13 +1282,17 @@ CONTAINS
               GaussPoint = t, DummyVals = DummyVals )             
         END IF
 
+        ! We Do not set the slip in normal direction if given by friction model only. 
         DO i=1,dim
-          IF(i==norm_comp) THEN
-            SlipCoeff(i) = NormalSlipCoeff
-          ELSE
-            SlipCoeff(i) = TanFrictionCoeff
-          END IF
+          IF(i /= norm_comp) SlipCoeff(i) = TanFrictionCoeff
         END DO
+         
+        IF(.NOT. HaveNormalSlip) THEN
+          no_slip_comp = norm_comp
+        END IF
+
+        ! We initially have friction given and translate it to terms of slip coefficient.
+        ! The code is then continued as if we would have slip coefficients. 
         HaveSlip = .TRUE.
         
         IF(SaveSlipSpeed) THEN
@@ -1343,7 +1356,8 @@ CONTAINS
       IF( HaveSlip ) THEN               
         IF ( NormalTangential ) THEN
           DO i=1,dim
-            IF(i==norm_comp .AND. .NOT. HaveNormalSlip ) CYCLE
+            ! We know by construction that if only friction models are given there is no normal slip. 
+            IF(i==no_slip_comp) CYCLE
             SELECT CASE(i)
             CASE(1)
               Vect = Normal
@@ -1377,7 +1391,7 @@ CONTAINS
           DO p=1,nd
             DO q=1,nd
               DO i=1,dim
-                IF(i == norm_comp .AND. .NOT. HaveNormalSlip ) CYCLE
+                IF(i == no_slip_comp) CYCLE
                 STIFF( (p-1)*c+i,(q-1)*c+i ) = &
                     STIFF( (p-1)*c+i,(q-1)*c+i ) + &
                     s * SlipCoeff(i) * Basis(q) * Basis(p)

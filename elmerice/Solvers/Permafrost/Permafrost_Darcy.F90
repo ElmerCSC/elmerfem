@@ -149,7 +149,7 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
     ! start of the simulation
     InitializeSteadyState = GetLogical(Params,'Initialize Steady State',Found)
     ! inquire whether to include time-derivative terms in force vector
-    ComputeDt = GetLogical(Params,'Compute Time Derivatives',Found)
+    IF (TransientSimulation) ComputeDt = GetLogical(Params,'Compute Time Derivatives',Found)
     IF (ComputeDt) THEN
       CALL INFO(SolverName,"Computing time derivatives in force vector",Level=4)
     ELSE
@@ -166,16 +166,21 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
       IF (ComputeFreshwaterHead) &
            CALL INFO(SolverName,'Computing freshwater head',Level=4)
   END IF
-  
-  IF (InitializeSteadyState) THEN
-    IF (GetTimeStep() == 1) THEN
-      CALL INFO(SolverName,"Initializing with steady state (no mass matrix)",Level=4)
-      ActiveMassMatrix = .FALSE.
-    ELSE 
-      CALL INFO(SolverName,"Switching mass matrix to active after initializing with steady state",Level=4)
-      ActiveMassMatrix = .TRUE.
-      InitializeSteadyState = .FALSE.
+
+  IF (TransientSimulation) THEN
+    IF (InitializeSteadyState) THEN
+      IF (GetTimeStep() == 1) THEN
+        CALL INFO(SolverName,"Initializing with steady state (no mass matrix)",Level=5)
+        ActiveMassMatrix = .FALSE.
+      ELSE 
+        CALL INFO(SolverName,"Switching mass matrix to active after initializing with steady state",Level=5)
+        ActiveMassMatrix = .TRUE.
+        InitializeSteadyState = .FALSE.
+      END IF
     END IF
+  ELSE
+    CALL INFO(SolverName,"Running steady state simulation of the permafrost Darcy problem",Level=3)
+    ActiveMassMatrix = .FALSE.
   END IF
   
   
@@ -1078,7 +1083,7 @@ CONTAINS
       IF (.NOT.Found .OR. (MinKgw <= 0.0_dp)) MinKgw = 1.0D-14
       
       IF (ConstVal) &
-           CALL INFO(FunctionName,'"Constant Permafrost Properties" set to true',Level=9)
+           CALL INFO(FunctionName,'"Constant Permafrost Properties" set toPermafrost_HTEQ.F90: true',Level=9)
     END IF
 
     CALL GetElementNodes( Nodes )

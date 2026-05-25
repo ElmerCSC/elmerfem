@@ -4,23 +4,22 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-!
 !/******************************************************************************
 ! *
 ! *  Authors: Juha Ruokolainen, Peter Råback
@@ -203,7 +202,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
     A % Values = 0.0_dp
     A % rhs = 0.0_dp
     IF( ComplexSystem ) THEN
-      JfixRhsC = CMPLX( 0.0_dp, 0.0_dp )
+      JfixRhsC = CMPLX( 0.0_dp, 0.0_dp,KIND=dp )
     END IF
 
     CALL DefaultInitialize()
@@ -227,7 +226,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
       END IF
     END IF
     IF( ComplexSystem ) THEN
-      JfixSurfaceVecC = CMPLX( 0.0_dp, 0.0_dp ) 
+      JfixSurfaceVecC = CMPLX( 0.0_dp, 0.0_dp,KIND=dp ) 
     ELSE
       JfixSurfaceVec = 0.0_dp
     END IF
@@ -264,7 +263,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
       END IF
     END IF
   
-    IF ( ParEnv % PEs>1) ParEnv => A % ParMatrix % ParEnv
+    IF ( ParEnv % PEs>1) ParEnv => A % Solver % ParEnv
 
     CALL SolveSystem(A,ParMatrix,A % rhs,jfixpot % Values,jfixpot % Norm,1,Solver)
     
@@ -284,7 +283,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
       CALL Info('JfixPotentialSolver',Message,Level=8)
     END IF   
 
-    IF ( ParEnv % PEs>1) ParEnv => B % ParMatrix % ParEnv
+    IF ( ParEnv % PEs>1) ParEnv => B % Solver % ParEnv
     
     CALL ListPopNameSpace()
 

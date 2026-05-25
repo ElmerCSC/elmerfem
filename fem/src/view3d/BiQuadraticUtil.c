@@ -1,46 +1,34 @@
 /*****************************************************************************
- *
- *  Elmer, A Finite Element Software for Multiphysical Problems
- *
- *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
- * 
- *  This program is free software; you can redistribute it and/or
- *  modify it under the terms of the GNU General Public License
- *  as published by the Free Software Foundation; either version 2
- *  of the License, or (at your option) any later version.
- * 
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program (in file fem/GPL-2); if not, write to the 
- *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
- *  Boston, MA 02110-1301, USA.
- *
- *****************************************************************************/
-
+! *
+! *  Elmer, A Finite Element Software for Multiphysical Problems
+! *
+! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
+! * 
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
+! *
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
+! *
+! *****************************************************************************/
 /******************************************************************************
- *
- *
- *
- ******************************************************************************
  *
  *                     Author:       Juha Ruokolainen
  *
  *                    Address: CSC - IT Center for Science Ltd.
  *                                Keilaranta 14, P.O. BOX 405
- *                                  02
- *                                  Tel. +358 0 457 2723
- *                                Telefax: +358 0 457 2302
  *                              EMail: Juha.Ruokolainen@csc.fi
  *
  *                       Date: 02 Jun 1997
- *
- *                Modified by:
- *
- *       Date of modification:
  *
  *****************************************************************************/
 
@@ -486,7 +474,7 @@ direct numerical integration.
 24 Aug 1995
 
 *******************************************************************************/
-double BiQuadraticIntegrateDiffToArea( Geometry_t *GB,
+double BiQuadraticIntegrateDiffToArea( Geometry_t *GB, Cylinder_t *Cyl,
   double FX,double FY,double FZ,double NFX,double NFY,double NFZ)
 {
     double F,R,cosA,cosB,EA,EAF,EAT,PI=2*acos(0.0);
@@ -552,7 +540,7 @@ view between the elements is resolved by ray traceing.
 *******************************************************************************/
 void BiQuadraticComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int LevelA,int LevelB)
 {
-    double FX,FY,FZ,DX,DY,DZ,U,V,Hit;
+    double FX,FY,FZ,DX,DY,DZ,U,V,Hit,W;
     double F,Fa,Fb,EA,PI=2*acos(0.0);
 
     double *AX  = GA->BiQuadratic->PolyFactors[0];
@@ -580,13 +568,13 @@ void BiQuadraticComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int LevelA,int 
         Hit = 16.0;
         for( i=0; i<16; i++ )
         {
-            U = drand48(); V = drand48();
+            U = vrand(); V = vrand();
 
             FX = BiQuadraticValue(U,V,AX);
             FY = BiQuadraticValue(U,V,AY);
             FZ = BiQuadraticValue(U,V,AZ);
 
-            U = drand48(); V = drand48();
+	    W = U; U = 1-V; V = 1-W;
 
             DX = BiQuadraticValue(U,V,BX) - FX;
             DY = BiQuadraticValue(U,V,BY) - FY;

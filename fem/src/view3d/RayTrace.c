@@ -1,46 +1,34 @@
 /*****************************************************************************
- *
- *  Elmer, A Finite Element Software for Multiphysical Problems
- *
- *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
- * 
- *  This program is free software; you can redistribute it and/or
- *  modify it under the terms of the GNU General Public License
- *  as published by the Free Software Foundation; either version 2
- *  of the License, or (at your option) any later version.
- * 
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program (in file fem/GPL-2); if not, write to the 
- *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
- *  Boston, MA 02110-1301, USA.
- *
- *****************************************************************************/
-
+! *
+! *  Elmer, A Finite Element Software for Multiphysical Problems
+! *
+! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
+! * 
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
+! *
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
+! *
+! *****************************************************************************/
 /******************************************************************************
- *
- *
- *
- ******************************************************************************
  *
  *                     Author:       Juha Ruokolainen
  *
  *                    Address: CSC - IT Center for Science Ltd.
  *                                Keilaranta 14, P.O. BOX 405
- *                                  02
- *                                  Tel. +358 0 457 2723
- *                                Telefax: +358 0 457 2302
  *                              EMail: Juha.Ruokolainen@csc.fi
  *
  *                       Date: 02 Jun 1997
- *
- *                Modified by:
- *
- *       Date of modification:
  *
  *****************************************************************************/
 
@@ -1085,7 +1073,7 @@ void VolumeBBox( VolumeBounds_t *Volume,Geometry_t *RTElements )
     double xMin,yMin,zMin,xMax,yMax,zMax,x,y,z;
     int i,j,k,N, NC;
 
-    double U[] = {0.0,1.0,0.0,1.0}, V[] = {0.0,0.0,1.0,1.0};
+    double U[] = {0.0,1.0,0.0,1.0}, V[] = {0.0,0.0,1.0,1.0}, R;
  
     xMin = yMin = zMin =  1.0e20;
     xMax = yMax = zMax = -1.0e20;
@@ -1094,8 +1082,18 @@ void VolumeBBox( VolumeBounds_t *Volume,Geometry_t *RTElements )
     for( i=0; i<N; i++ )
     {
          k = Volume->Elements[i];
+	 R = RTElements[k].Circle->RMax;
          switch(RTElements[k].GeometryType)
          {
+            case GEOMETRY_CIRCLE:
+              NC = 0;
+	      xMin = RTElements[k].Circle->CenterPoint.x - R;
+	      xMax = RTElements[k].Circle->CenterPoint.x + R;
+	      yMin = RTElements[k].Circle->CenterPoint.y - R;
+	      yMax = RTElements[k].Circle->CenterPoint.y + R;
+	      zMin = RTElements[k].Circle->CenterPoint.z;
+	      zMax = RTElements[k].Circle->CenterPoint.z;
+            break;
             case GEOMETRY_LINE:
               NC = 2; break;
             case GEOMETRY_TRIANGLE:
@@ -1142,6 +1140,8 @@ void VolumeDivide( VolumeBounds_t *Volume,int NBounds,Geometry_t *RT_Elements,in
 
     double U[] = { 0.0,1.0,0.0,1.0 }, V[] = { 0.0,0.0,1.0,1.0 }, x,y,z;
 
+    double xmin,xmax,ymin,ymax,zmin,zmax,R;
+
     VolumeBounds_t *LeftVolume,*RightVolume;
 
     int i,j,k,n,N,left,right;
@@ -1177,6 +1177,20 @@ void VolumeDivide( VolumeBounds_t *Volume,int NBounds,Geometry_t *RT_Elements,in
 
         switch(RTElements[k].GeometryType)
         {
+          case GEOMETRY_CIRCLE:
+            NC = 0;
+	    x = RTElements[k].Circle->CenterPoint.x;
+	    y = RTElements[k].Circle->CenterPoint.y;
+	    z = RTElements[k].Circle->CenterPoint.z;
+
+            if ( (x >= LeftVolume->BBox.XMin) && (x <= LeftVolume->BBox.XMax) )
+            if ( (y >= LeftVolume->BBox.YMin) && (y <= LeftVolume->BBox.YMax) )
+            if ( (z >= LeftVolume->BBox.ZMin) && (z <= LeftVolume->BBox.ZMax) )  left = TRUE;
+
+            if ( (x >= RightVolume->BBox.XMin) && (x <= RightVolume->BBox.XMax) )
+            if ( (y >= RightVolume->BBox.YMin) && (y <= RightVolume->BBox.YMax) )
+            if ( (z >= RightVolume->BBox.ZMin) && (z <= RightVolume->BBox.ZMax) ) right = TRUE;
+	  break;
           case GEOMETRY_LINE:
               NC = 2; break;
           case GEOMETRY_TRIANGLE:
@@ -1215,6 +1229,20 @@ void VolumeDivide( VolumeBounds_t *Volume,int NBounds,Geometry_t *RT_Elements,in
 
         switch(RTElements[k].GeometryType)
         {
+          case GEOMETRY_CIRCLE:
+            NC = 0;
+	    x = RTElements[k].Circle->CenterPoint.x;
+	    y = RTElements[k].Circle->CenterPoint.y;
+	    z = RTElements[k].Circle->CenterPoint.z;
+		 
+            if ( (x >= LeftVolume->BBox.XMin) && (x <= LeftVolume->BBox.XMax) )
+            if ( (y >= LeftVolume->BBox.YMin) && (y <= LeftVolume->BBox.YMax) )
+            if ( (z >= LeftVolume->BBox.ZMin) && (z <= LeftVolume->BBox.ZMax) )  left = TRUE;
+
+            if ( (x >= RightVolume->BBox.XMin) && (x <= RightVolume->BBox.XMax) )
+            if ( (y >= RightVolume->BBox.YMin) && (y <= RightVolume->BBox.YMax) )
+            if ( (z >= RightVolume->BBox.ZMin) && (z <= RightVolume->BBox.ZMax) ) right = TRUE;
+          break;
           case GEOMETRY_LINE:
             NC = 2; break;
           case GEOMETRY_TRIANGLE:

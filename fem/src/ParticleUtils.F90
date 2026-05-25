@@ -1050,7 +1050,7 @@ RETURN
 
 
   !---------------------------------------------------------
-  !> Subroutine for releaseing initiated but waiting particles.
+  !> Subroutine for releasing initiated but waiting particles.
   !---------------------------------------------------------
   SUBROUTINE ReleaseWaitingParticles(Particles) 
     TYPE(Particle_t), POINTER :: Particles
@@ -1104,7 +1104,7 @@ RETURN
   
 
   !---------------------------------------------------------
-  !> Subroutine for chanching the partition of particles that
+  !> Subroutine for changing the partition of particles that
   !> cross the partition boundary.
   !---------------------------------------------------------
   FUNCTION ChangeParticlePartition(Particles) RESULT(nReceived)
@@ -2915,7 +2915,7 @@ RETURN
             MeanWeight = SUM( Weight(1:n) ) / n
             IF( MeanWeight <= 0.0_dp ) CYCLE
 
-            ! Do importance samping for the particles
+            ! Do importance sampling for the particles
             IF( EvenRandom() * MaxDetJ * MaxWeight > DetJ * MeanWeight ) CYCLE
           ELSE          
             IF( EvenRandom() * MaxDetJ > DetJ ) CYCLE
@@ -5790,7 +5790,8 @@ RETURN
       
     IF(TimeInteg) THEN
       CALL ListInitElementKeyword( TimeSource_h,'Body Force','Particle Time Integral Source',DummyCount=j)    
-    ELSE
+    END IF
+    IF(DistInteg) THEN
       CALL ListInitElementKeyword( DistSource_h,'Body Force','Particle Distance Integral Source',DummyCount=j)
     END IF
       

@@ -75,6 +75,8 @@ Equation 1
   Active Solvers(5) = 1 2 3 4 5
 End
 
+$piola="False"
+
 Solver 1
   Equation = "MGDynamics"
   Procedure = "MagnetoDynamics" "WhitneyAVSolver"
@@ -84,10 +86,10 @@ Solver 1
   Nonlinear System Convergence Tolerance = 1e-5
 
   Fix Input Current Density = Logical False
-  Use Piola Transform = Logical True
+  Use Piola Transform = $piola
 
   Linear System Solver = "Iterative"
-  Linear System Preconditioning = ILU2
+  Linear System Preconditioning = ILU4
   Linear System Row Equilibration = True
   Linear System Residual Output = 20
   Linear System Max Iterations = 3000
@@ -123,7 +125,7 @@ Solver 2
 End
 
 Solver 3
-!  Exec Solver = after timestep
+  Exec Solver = never 
   Equation = "result output"
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
   Output File Name = with_projection
@@ -139,7 +141,7 @@ Solver 4
   Procedure = "HelmholtzProjection" "HelmholtzProjector"
 !  Potential variable = "av"
   Variable = "phi"
-  Variable DOFs = 1
+  
   linear system solver = iterative
   linear system iterative method = CG
   linear system max iterations = 1000
@@ -158,8 +160,8 @@ Solver 5
   Procedure = "HelmholtzProjection" "RemoveKernelComponent"
   Kernel Variable = String "phi"
   Variable = "Kernel Component"
-  Variable DOFs = 1
-  Use Piola Transform = True
+  Use Piola Transform = $piola
+
   linear system solver = iterative
   linear system iterative method = CG
   linear system max iterations = 1000
@@ -235,7 +237,19 @@ End
 !  AV = 0
 !End
 
+!piola="True"
+!Solver 1 :: Reference Norm = 4.39425255E-02
+!Solver 1 :: Reference Norm Tolerance = 1e-4
+!Solver 4 :: Reference Norm = 3.40142250E-01
+!Solver 4 :: Reference Norm Tolerance = 1e-4
+!Solver 5 :: Reference Norm = 2.47864331E-06
+!Solver 5 :: Reference Norm Tolerance = 1e-4
 
-Solver 1 :: Reference Norm = Real 4.39413963E-02
-Solver 1 :: Reference Norm Tolerance = Real 1e-4
+!piola="False"
+Solver 1 :: Reference Norm = 5.67592091E-02
+Solver 1 :: Reference Norm Tolerance = 1e-4
+Solver 4 :: Reference Norm = 4.13144723E-01
+Solver 4 :: Reference Norm Tolerance = 1e-4
+Solver 5 :: Reference Norm = 8.78965487E-06
+Solver 5 :: Reference Norm Tolerance = 1e-4
 

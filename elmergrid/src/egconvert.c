@@ -3826,10 +3826,10 @@ static void GmshToElmerIndx(int elemtype,int *topology)
 
   int order510[]={0,1,2,3,4,5,6,7,9,8};
   int order614[]={0,1,2,3,4,5,8,10,6,7,9,11,12,13};
-  int order718[]={0,1,2,3,4,5,6,9,7,8,10,11,12,14,13,15,17,16};
+  int order715[]={0,1,2,3,4,5,6,9,7,12,14,13,8,10,11};
+  int order718[]={0,1,2,3,4,5,6,9,7,12,14,13,8,10,11,15,17,16};
   int order820[]={0,1,2,3,4,5,6,7,8,11,13,9,10,12,14,15,16,18,19,17};
   int order827[]={0,1,2,3,4,5,6,7,8,11,13,9,10,12,14,15,16,18,19,17,21,23,24,22,20,25,26};
-  /*             {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26}; */
   
 
   reorder = FALSE;
@@ -3848,6 +3848,10 @@ static void GmshToElmerIndx(int elemtype,int *topology)
     break;
 
   case 715:        
+    reorder = TRUE;
+    porder = &order715[0];
+    break;
+
   case 718:
     reorder = TRUE;
     porder = &order718[0];
@@ -4024,6 +4028,8 @@ allocate:
     free_Ivector(revindx,1,maxindx);
   }
 
+  ModifyUnsupportedElements(data);
+  
   ElementsToBoundaryConditions(data,bound,FALSE,info);
 
   printf("Successfully read the mesh from the Gmsh input file.\n");
@@ -4251,6 +4257,8 @@ omstart:
     free_Ivector(revindx,1,maxindx);
   }
 
+  ModifyUnsupportedElements(data);
+  
   ElementsToBoundaryConditions(data,bound,keeporphans,info);
 
   data->bodynamesexist = physvolexist;
@@ -4433,11 +4441,14 @@ omstart:
 	  for(;;) { 
 	    for(l=0;l<LONGLINESIZE;l++) {
 	      if( longline[l] == '\n') {
-		j = l;
+		j = l+1;
 	    	break;	    
 	      }
 	    }
-	    if(j) break;
+	    if(j) {
+	      j--;
+	      break;	      
+	    }
 	    k += LONGLINESIZE;
 	    GETLONGLINE;
 	  }	   	    	      
@@ -4687,6 +4698,8 @@ omstart:
     free_Ivector(revindx,1,maxindx);
   }
 
+  ModifyUnsupportedElements(data);
+  
   ElementsToBoundaryConditions(data,bound,keeporphans,info);
 
   data->bodynamesexist = physvolexist;
@@ -5077,14 +5090,18 @@ omstart:
             for(;;) {
               for(l=0; l<LONGLINESIZE; l++) {
                 if( longline[l] == '\n') {
-                  j = l;
+		  // we should have positive j even when the newline is the 0th entry!
+                  j = l+1;
                   break;
                 }
               }
-              if(j) break;
-              k += LONGLINESIZE;
+              if(j) {
+		j--;
+		break;
+	      }
+	      k += LONGLINESIZE;
               GETLONGLINE;
-              printf("extra getlongline: %s\n",longline);
+              if(0) printf("extra getlongline: %s\n",longline);
               fflush(stdout);
             }
             if( k > 0 && !allocated) printf("Entity line %d has length %d.\n",i,k+j);
@@ -5455,7 +5472,9 @@ omstart:
 
     free_Ivector(revindx,1,maxindx);
   }
-
+    
+  ModifyUnsupportedElements(data);
+  
   ElementsToBoundaryConditions(data,bound,keeporphans,info);
 
   data->bodynamesexist = physvolexist;

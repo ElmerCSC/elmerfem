@@ -47,10 +47,12 @@ MODULE ModelDescription
     USE SParIterGlobals
     USE ParallelUtils, ONLY : ParallelReduction, ParallelIter, ParallelInitMatrix
     USE ElementUtils, ONLY : CreateMatrix, FreeMatrix
-    USE MeshUtils, ONLY : AllocateMesh, DetectMortarPairs, Graph_deallocate, &
+    USE MeshUtils, ONLY : Graph_deallocate, &
         Loadmesh2, MeshStabParams, PrepareMesh, ReleaseMesh, SetMeshDimension, &
         SetMeshMaxDOFs, SetMeshPartitionOffSet, SplitMeshEqual, SplitMeshLevelSet, &
-         RadiationParallelMeshDistribute
+        RadiationParallelMeshDistribute, GetDefs
+    USE MeshAllocations, ONLY : ReleaseMesh, AllocateMesh
+    USE MortarUtils, ONLY : DetectMortarPairs
     USE LoadMod
     USE BinIO
     USE ElementDescription
@@ -58,10 +60,8 @@ MODULE ModelDescription
     IMPLICIT NONE
 
     CHARACTER(LEN=MAX_PATH_LEN) :: IncludePath = ' ', OutputPath = ' ', SimulationId=' '
-
     INTEGER, PARAMETER :: PosUnit = 32, OutputUnit = 31, RestartUnit = 30,&
                           PostFileUnit = 29, InFileUnit = 28
-
     INTEGER, PARAMETER, PRIVATE :: MAX_OUTPUT_VARS = 1000, MAX_MESHES = 32
 
 CONTAINS
@@ -1537,7 +1537,7 @@ CONTAINS
        END IF
 
        ! Ok, we didn't find the keyword. Test whether it ends to 1, 2 or 3 integers
-       ! preceeded with empty space. The replace the integers with "1" and try to find
+       ! preceded with empty space. The replace the integers with "1" and try to find
        ! the type again. This reduced the keywords needed to be listed in SOLVER.KEYWORDS.
        j = LEN_TRIM(str)
        IF(j>2) THEN
@@ -2337,13 +2337,9 @@ CONTAINS
 !------------------------------------------------------------------------------
         CHARACTER(LEN=*) :: Section, Name, LastString
 
-         CALL Error( 'LoadInputFile', ' ' )
-         WRITE( Message, * ) 'Unknown specifier: [',TRIM(LastString),']'
-         CALL Error( 'LoadInputFile', Message )
-         WRITE( Message, * ) 'In section: [', TRIM(Section), ']'
-         CALL Error( 'LoadInputFile', Message )
-         WRITE( Message, * ) 'For property name:[',TRIM(Name),']'
-         CALL Fatal( 'LoadInputFile', Message )
+         CALL Error( Caller, 'Unknown specifier:['//TRIM(LastString)//']')
+         CALL Error( Caller, '        section:  ['//TRIM(Section)//']')
+         CALL Error( Caller, '        keyword:  ['//TRIM(Name)//']')
 !------------------------------------------------------------------------------
       END SUBROUTINE SyntaxError
 !------------------------------------------------------------------------------
@@ -2543,6 +2539,7 @@ CONTAINS
     INTEGER :: i,j,k,s,nlen,eqn,MeshKeep,MeshLevels,nprocs,ModuloMesh,iostat,iLevel
     LOGICAL :: GotIt,GotMesh,found,OneMeshName, OpenFile, Transient
     LOGICAL :: stat, single, MeshGrading, Split
+    LOGICAL :: DG
     TYPE(Solver_t), POINTER :: Solver
     INTEGER(KIND=AddrInt) :: InitProc
     INTEGER, TARGET :: Def_Dofs(10,6)
@@ -2557,6 +2554,8 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: MeshNames(MAX_MESHES), ElementDef0
     INTEGER :: MeshCount, MeshI
     LOGICAL, ALLOCATABLE :: MeshSolvers(:,:)
+    CHARACTER(*), PARAMETER :: Caller = 'LoadModel'
+    
 !------------------------------------------------------------------------------
 
     ALLOCATE( Model )
@@ -2600,7 +2599,7 @@ CONTAINS
       !$OMP CRITICAL
       LuaState = lua_init()
       IF(.NOT. LuaState % Initialized) THEN
-        CALL Fatal('LoadModel', 'Failed to initialize Lua subsystem.')
+        CALL Fatal(Caller, 'Failed to initialize Lua subsystem.')
       END IF
 
       ! Store mpi task and omp thread ids in a table
@@ -2640,13 +2639,15 @@ CONTAINS
     INQUIRE( Unit=InFileUnit, OPENED=OpenFile )
     IF ( .NOT. OpenFile ) THEN
       OPEN( Unit=InFileUnit, File=Modelname, STATUS='OLD',IOSTAT=iostat)
-      IF(iostat /= 0) CALL Fatal('LoadModel','Failed to open Model file: '//TRIM(Modelname))
+      IF(iostat /= 0) CALL Fatal(Caller,'Failed to open Model file: '//TRIM(Modelname))
     END IF
     CALL LoadInputFile( Model,InFileUnit,ModelName,MeshDir,MeshName, .TRUE., .TRUE. )
     REWIND( InFileUnit )
     CALL LoadInputFile( Model,InFileUnit,ModelName,MeshDir,MeshName, .TRUE., .FALSE. )
     IF ( .NOT. OpenFile ) CLOSE( InFileUnit )
 
+    CALL InitializeOutputLevel( Model % Simulation )
+    
 #ifdef DEVEL_LISTUSAGE 
     ! Switch original keywords from -1 to 0 if in this mode.
     CALL ReportListCounters( Model, 1 )
@@ -2660,8 +2661,6 @@ CONTAINS
     CALL ListTagKeywords( Model,'normalize by volume',.TRUE., Found ) 
            
     CALL ListAddNewString( Model % Simulation,'Solver Input File',ModelName ) 
-
-    CALL InitializeOutputLevel( Model % Simulation )
 
     Transient=ListGetString(Model % Simulation, &
         'Simulation Type',Found)=='transient'
@@ -2759,14 +2758,15 @@ CONTAINS
 
       ! Define what kind of element we are working with in this solver
       !-----------------------------------------------------------------
+      DG = ListGetLogical( Solver % Values, 'Discontinuous Galerkin', stat )
+      Solver % DG = DG
       ElementDef = ListGetString( Solver % Values, 'Element', stat )
    
       IF ( .NOT. stat ) THEN
-        IF ( ListGetLogical( Solver % Values, 'Discontinuous Galerkin', stat ) ) THEN
+        IF ( DG ) THEN
            Solver % Def_Dofs(:,:,4) = 0  ! The final value is set when calling LoadMesh2 
            IF ( .NOT. GotMesh ) Def_Dofs(:,4) = MAX(Def_Dofs(:,4),0 )
            i=i+1
-           Solver % DG = .TRUE.
            CYCLE
         ELSE
            ElementDef = "n:1"
@@ -2776,6 +2776,11 @@ CONTAINS
       ElementDef0 = ElementDef
       DO WHILE(.TRUE.)
         j = INDEX( ElementDef0, '-' )
+        IF (j == 1) THEN
+          ElementDef0 = ElementDef0(2:)
+          j = INDEX( ElementDef0, '-' )
+        END IF
+        
         IF (j>0) THEN
           !
           ! Read the element definition up to the next flag which specifies the
@@ -2786,18 +2791,14 @@ CONTAINS
           ElementDef = ElementDef0
         END IF
         !  Calling GetDefs fills Def_Dofs arrays:
-        CALL GetDefs( ElementDef, Solver % Def_Dofs, Def_Dofs(:,:), .NOT. GotMesh )
+        CALL GetDefs( ElementDef, Solver % Def_Dofs, Def_Dofs(:,:), .NOT. GotMesh, &
+            Solver % DG)
         IF(j>0) THEN
           ElementDef0 = ElementDef0(j+1:)
         ELSE
           EXIT
         END IF
       END DO
-     
-      !Solver % GlobalBubbles = ListGetLogical(Solver % Values, &
-      !    'Bubbles in Global System', stat)
-      !IF(.NOT. stat) Solver % GlobalBubbles = .TRUE.
-      
       i = i + 1
     END DO
 
@@ -2851,7 +2852,7 @@ CONTAINS
       Single = ListGetLogical( Model % Simulation,'Partition Mesh', GotIt ) 
       IF ( Single ) THEN
         IF( ParEnv % PEs == 1 ) THEN
-          CALL Warn('LoadModel','Why perform partitioning in serial case?')
+          CALL Warn(Caller,'Why perform partitioning in serial case?')
         END IF
         IF( ParEnv % MyPe == 0 ) THEN
           SerialMesh => LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,&
@@ -2864,7 +2865,7 @@ CONTAINS
         IF( ParEnv % PEs > 1) THEN
           Model % Meshes => ReDistributeMesh( Model, SerialMesh, .FALSE., .TRUE. )
         ELSE
-          CALL Info('LoadModel','Only one active partition, using the serial mesh as it is!')
+          CALL Info(Caller,'Only one active partition, using the serial mesh as it is!')
           
           !IF( MAXVAL( SerialMesh % RePartition ) <= 1 ) THEN
           !  DEALLOCATE( SerialMesh % RePartition ) 
@@ -2885,7 +2886,7 @@ CONTAINS
         
         IF( Single ) THEN
           IF( ParEnv % PEs > 1 ) THEN
-            CALL Info('LoadModel','Whole primary mesh will be read for each partition!',Level=7)
+            CALL Info(Caller,'Whole primary mesh will be read for each partition!',Level=7)
           END IF
           Model % Meshes => LoadMesh2( Model, MeshDir, MeshName, &
               BoundariesOnly, 1, mype, Def_Dofs )
@@ -2916,21 +2917,21 @@ CONTAINS
       IF ( .NOT. GotIt ) MeshLevels=1
 
       IF( MeshLevels > 1 ) THEN
-        CALL Info('LoadModel','Creating hierarchy of meshes by mesh multiplication: '&
+        CALL Info(Caller,'Creating hierarchy of meshes by mesh multiplication: '&
             //I2S(MeshLevels))
       END IF
       MeshKeep = ListGetInteger( Model % Simulation, 'Mesh keep',  GotIt )
       IF ( .NOT. GotIt ) MeshKeep = MeshLevels
 
       IF( MeshLevels > 1 ) THEN
-        CALL Info('LoadModel','Keeping number of meshes: '//I2S(MeshKeep),Level=8)
+        CALL Info(Caller,'Keeping number of meshes: '//I2S(MeshKeep),Level=8)
       END IF
       
       MeshPower   = ListGetConstReal( Model % Simulation, 'Mesh Grading Power',GotIt)
       MeshGrading = ListGetLogical( Model % Simulation, 'Mesh Keep Grading', GotIt)
 
       DO iLevel=2,MeshLevels
-        CALL Info('LoadModel','Performing splitting at level: '//I2S(iLevel))
+        CALL Info(Caller,'Performing splitting at level: '//I2S(iLevel))
 
         OldMesh => Model % Meshes
 
@@ -3049,7 +3050,7 @@ CONTAINS
 
       IF( GotIt ) THEN
         WRITE(Message,'(A,I0)') 'Loading solver specific mesh > '//TRIM(Name)// ' < for solver ',s
-        CALL Info('LoadModel',Message,Level=7)
+        CALL Info(Caller,Message,Level=7)
 
         single = .FALSE.     
         IF ( SEQL(Name, '-single ') ) THEN
@@ -3057,7 +3058,7 @@ CONTAINS
           str = Name(9:)
           Name = str
           IF( ParEnv % PEs > 1 ) THEN
-            CALL Info('LoadModel','Whole mesh will be read for each partition!',Level=7)
+            CALL Info(Caller,'Whole mesh will be read for each partition!',Level=7)
           END IF
         END IF
 
@@ -3065,7 +3066,7 @@ CONTAINS
         IF ( SEQL(Name, '-part ') ) THEN
           READ( Name(7:), * ) nprocs
           IF( ParEnv % PEs > 1 ) THEN
-            CALL Info('LoadModel','This mesh is only active at partitions: '&
+            CALL Info(Caller,'This mesh is only active at partitions: '&
                 //I2S(nprocs),Level=7)
           END IF 
           i = 7
@@ -3130,7 +3131,7 @@ CONTAINS
         ! whether the mesh is already loaded as the primary mesh, or as some
         ! other solver-specific mesh. 
         IF(ListGetLogical( Solver % Values,'Mesh Enforce Local Copy',Found ) ) THEN
-          CALL Info('LoadModel','Skipping tests whether the mesh with same name exists!',Level=7)
+          CALL Info(Caller,'Skipping tests whether the mesh with same name exists!',Level=7)
         ELSE
           Found = .FALSE.
           Mesh => Model % Meshes
@@ -3156,7 +3157,7 @@ CONTAINS
           END DO
 
           IF ( Found ) THEN
-            CALL Info('LoadModel','Mesh with the same name has already been loaded, cycling.',Level=7) 
+            CALL Info(Caller,'Mesh with the same name has already been loaded, cycling.',Level=7) 
             Solver % Mesh => Mesh
             CYCLE
           END IF
@@ -3325,7 +3326,7 @@ CONTAINS
         str = ListGetString( Params, 'Equation', Found )
         IF (.NOT. Found) CYCLE
         IF ( TRIM(str) == 'heat equation' ) THEN
-          CALL Info('LoadModel','Defined radition solver by Equation name "heat equation"',Level=10) 
+          CALL Info(Caller,'Defined radition solver by Equation name "heat equation"',Level=10) 
           CALL ListAddLogical( Params,'Radiation Solver',.TRUE.)
           RETURN
         ENDIF
@@ -3337,131 +3338,20 @@ CONTAINS
         IF(.NOT. Found) CYCLE
         j = INDEX( str,'HeatSolver')
         IF( j > 0 ) THEN
-          CALL Info('LoadModel','Defined radiation solver by Procedure containing "HeatSolver"',Level=10) 
+          CALL Info(Caller,'Defined radiation solver by Procedure containing "HeatSolver"',Level=10) 
           CALL ListAddLogical( Params,'Radiation Solver',.TRUE.)
           RETURN
         END IF
       END DO
 
     END SUBROUTINE TagRadiationSolver
-
-    
-!------------------------------------------------------------------------------
-!> This subroutine is used to fill Def_Dofs array of the solver structure.
-!> Note that this subroutine makes no attempt to figure out the index of
-!> the body, so all bodies are assigned with the same element definition.
-!> A similar array of reduced dimension is also filled so as to figure out
-!> the maximal-complexity definition over all solvers which use the same
-!> global mesh.
-!------------------------------------------------------------------------------
-    SUBROUTINE GetDefs(ElementDef, Solver_Def_Dofs, Def_Dofs, Def_Dofs_Update)
-!------------------------------------------------------------------------------
-      CHARACTER(LEN=*), INTENT(IN) :: ElementDef     !< an element definition string
-      INTEGER, INTENT(OUT) :: Solver_Def_Dofs(:,:,:) !< Def_Dofs of the solver structure
-      INTEGER, INTENT(INOUT) :: Def_Dofs(:,:)        !< holds the maximal-complexity definition on global mesh
-      LOGICAL, INTENT(IN) :: Def_Dofs_Update         !< is .TRUE. when the definition refers to the global mesh
-!------------------------------------------------------------------------------
-      INTEGER, POINTER :: ind(:)
-      INTEGER, TARGET :: Family(10)
-      INTEGER :: i,j,l,n
-
-      Family = [1,2,3,4,5,6,7,8,9,10]
-
-      ! The default assumption is that the given element definition is applied 
-      ! to all basic element families (note that the element sets 9 and 10 are
-      ! not included since the explicit choice of the target family is 
-      ! a part of the element definition string when the target index is
-      ! deduced to be 9 or 10).
-      !
-      ind => Family(1:8)
-      !
-      ! If the element family is specified, change the target family 
-      !
-      IF (SEQL(ElementDef, 'point') )     ind => Family(1:1)
-      IF (SEQL(ElementDef, 'line') )      ind => Family(2:2)
-      IF (SEQL(ElementDef, 'tri') )       ind => Family(3:3)
-      IF (SEQL(ElementDef, 'quad') )      ind => Family(4:4)
-      IF (SEQL(ElementDef, 'tetra') )     ind => Family(5:5)
-      IF (SEQL(ElementDef, 'pyramid') )   ind => Family(6:6)
-      IF (SEQL(ElementDef, 'prism') )     ind => Family(7:7)
-      IF (SEQL(ElementDef, 'brick') )     ind => Family(8:8)
-      IF (SEQL(ElementDef, 'tri_face') )  ind => Family(9:9)
-      IF (SEQL(ElementDef, 'quad_face') ) ind => Family(10:10)
-
-      n = INDEX(ElementDef,'-')
-      IF (n<=0) n=LEN_TRIM(ElementDef)
-          
-      j = INDEX( ElementDef(1:n), 'n:' )
-      IF ( j>0 ) THEN
-        READ( ElementDef(j+2:), * ) l
-        Solver_Def_Dofs(ind,:,1) = l
-        IF ( Def_Dofs_Update ) Def_Dofs(ind,1) = MAX(Def_Dofs(ind,1), l)
-      END IF
-          
-      j = INDEX( ElementDef(1:n), 'e:' )
-      IF ( j>0 ) THEN
-        READ( ElementDef(j+2:), * ) l
-        Solver_Def_Dofs(ind,:,2) = l
-        IF ( Def_Dofs_Update ) Def_Dofs(ind,2) = MAX(Def_Dofs(ind,2), l )
-      END IF
-          
-      j = INDEX( ElementDef(1:n), 'f:' )
-      IF ( j>0 ) THEN
-        READ( ElementDef(j+2:), * ) l
-        Solver_Def_Dofs(ind,:,3) = l
-        IF ( Def_Dofs_Update ) Def_Dofs(ind,3) = MAX(Def_Dofs(ind,3), l )
-      END IF
-          
-      j = INDEX( ElementDef(1:n), 'd:' )
-      IF ( j>0 ) THEN
-        READ( ElementDef(j+2:), * ) l
-
-        ! Zero value triggers discontinuous approximation within LoadMesh2,
-        ! substitute the default negative initialization value to avoid troubles:
-        IF (l == 0) l = -1
-
-        Solver_Def_Dofs(ind,:,4) = l
-        IF ( Def_Dofs_Update ) Def_Dofs(ind,4) = MAX(Def_Dofs(ind,4), l )
-      ELSE 
-        IF ( ListGetLogical( Solver % Values, &
-            'Discontinuous Galerkin', stat ) ) THEN
-          Solver_Def_Dofs(ind,:,4) = 0
-          IF ( Def_Dofs_Update ) Def_Dofs(ind,4) = MAX(Def_Dofs(ind,4),0 )
-        END IF
-      END IF
-          
-      j = INDEX( ElementDef(1:n), 'b:' )
-      IF ( j>0 ) THEN
-        READ( ElementDef(j+2:), * ) l
-        Solver_Def_Dofs(ind,:,5) = l
-        IF ( Def_Dofs_Update ) Def_Dofs(ind,5) = MAX(Def_Dofs(ind,5), l )
-      END IF
-          
-      j = INDEX( ElementDef(1:n), 'p:' )
-      IF ( j>0 ) THEN
-        IF ( ElementDef(j+2:j+2)=='%' ) THEN
-          ! Seeing a p-element definition starting as p:% means that a 
-          ! a special keyword construct is used so that the degree of
-          ! approximation can be evaluated by calling a MATC function.
-          ! This special case is handled elsewhere and we now postpone
-          ! setting the right value.
-          Solver_Def_Dofs(ind,:,6) = 0
-        ELSE
-          READ( ElementDef(j+2:), * ) l
-          Solver_Def_Dofs(ind,:,6) = l
-          IF ( Def_Dofs_Update ) Def_Dofs(ind,6) = MAX(Def_Dofs(ind,6), l )
-         END IF
-      END IF
-
-!------------------------------------------------------------------------------
-    END SUBROUTINE GetDefs
-!------------------------------------------------------------------------------
-
     
 !------------------------------------------------------------------------------
   END FUNCTION LoadModel
 !------------------------------------------------------------------------------
 
+
+    
 !------------------------------------------------------------------------------
 !> Some keywords automatically require other keywords to be set
 !> We could complain on the missing keywords later on, but sometimes 
@@ -3587,7 +3477,7 @@ CONTAINS
 
     ! This is intended to simplify the setting up of command file for structure-structure
     ! coupling. In effect only one keyword should be needed for the coupling.
-    ! This hack is of course prone to errors if the underlaying assumptions change. 
+    ! This hack is of course prone to errors if the underlying assumptions change. 
     DO i=1,Model % NumberOfSolvers
       List => Model % Solvers(i) % Values
             
@@ -4254,7 +4144,7 @@ CONTAINS
     TYPE(Solver_t),   POINTER :: Solver
     TYPE(Variable_t), POINTER :: TimeVar, tStepVar
 
-    LOGICAL :: RestartFileOpen = .FALSE., Cont, Found, LoadThis, ThisIp, UsePerm
+    LOGICAL :: RestartFileOpen = .FALSE., Cont, Found, LoadThis, ThisIp, UsePerm, NewPerm
     LOGICAL, SAVE :: PosFile = .FALSE.
     LOGICAL, SAVE :: Binary, GotPerm, GotIt, CreateVariables
     INTEGER, SAVE, ALLOCATABLE :: FileVariableInfo(:,:)
@@ -4853,10 +4743,10 @@ CONTAINS
         ! Note that Var % Perm is the permutation associated with the current field
         ! while Perm will be the permutation associated with the saved field. 
         ! They could be different, even though the usually are not!
-        CALL Info(Caller,'Reading permutation order for: '//TRIM(Row),Level=12)
+        CALL Info(Caller,'Reading permutation order for: '//TRIM(Row),Level=20)
         CALL ReadPerm( RestartUnit, Perm, GotPerm )           
         IF( GotPerm ) THEN
-          CALL Info(Caller,'Succesfully read permutation order for: '//TRIM(Row),Level=20)
+          CALL Info(Caller,'Maximum value for permutation order for "'//TRIM(Row)//'" is '//I2S(MAXVAL(Perm)),Level=12)
         END IF
           
         IF( LoadThis ) THEN
@@ -4869,7 +4759,7 @@ CONTAINS
           ELSE
             n = FieldSize
           END IF
-          CALL Info(Caller,'Size of load loop is '//I2S(n),Level=15)
+          CALL Info(Caller,'Size of load loop is '//I2S(n),Level=20)
 
           ! If we are renaming the variable also then do it
           j = FileVariableInfo(i,4) 
@@ -4907,7 +4797,9 @@ CONTAINS
             END IF
           END IF
 
-
+          NewPerm = .FALSE.
+          IF(UsePerm) NewPerm = ALL(Var % Perm == 0)
+          
           DO j=1, n
             CALL GetValue( RestartUnit, Perm, UsePerm, j, k, Val )
 
@@ -4918,11 +4810,11 @@ CONTAINS
                                     
             IF ( .NOT. UsePerm ) THEN
               Var % Values(k) = Val
-            ELSE IF ( Var % Perm(j) > 0 ) THEN
-              Var % Values(Var % Perm(j)) = Val
-            ELSE 
+            ELSE IF(NewPerm) THEN
               Var % Perm(j) = k
               Var % Values(k) = Val
+            ELSE IF ( Var % Perm(j) > 0 ) THEN
+              Var % Values(Var % Perm(j)) = Val
             END IF
           END DO
 
@@ -5099,7 +4991,11 @@ CONTAINS
       REAL(dp), INTENT(OUT) :: Val
 
       IF ( UsePerm ) THEN
-        iPerm = Perm(iNode)
+        IF(iNode > SIZE(Perm)) THEN
+          iPerm = 0
+        ELSE
+          iPerm = Perm(iNode)
+        END IF
       ELSE
         iPerm = iNode
       END IF
@@ -5176,14 +5072,14 @@ CONTAINS
       END IF
 
       IF( ALLOCATED( Perm ) ) THEN
+        IF( SIZE( Perm ) > nPerm ) THEN
+          CALL Info(Caller,'Permutation vector too large: '&
+              //I2S(SIZE(Perm))//' vs. '//I2S(nPerm),Level=15)
+        END IF
         IF( SIZE( Perm ) < nPerm ) THEN
           CALL Warn(Caller,'Permutation vector too small: '&
               //I2S(SIZE(Perm))//' vs. '//I2S(nPerm))
           DEALLOCATE( Perm ) 
-        END IF
-        IF( SIZE( Perm ) > nPerm ) THEN
-          CALL Info(Caller,'Permutation vector too large: '&
-              //I2S(SIZE(Perm))//' vs. '//I2S(nPerm),Level=15)
         END IF
       END IF
       IF( .NOT. ALLOCATED( Perm ) ) THEN
@@ -6195,9 +6091,9 @@ SUBROUTINE GetNodalElementSize(Model,expo,noweight,h)
 
       CALL ParallelInitMatrix(Solver, Solver % Matrix )
 
-      Solver % Matrix % ParMatrix % ParEnv % ActiveComm = &
+      Solver % ParEnv % ActiveComm = &
                  Solver % Matrix % Comm
-      ParEnv => Solver % Matrix % ParMatrix % ParEnv
+      ParEnv => Solver % ParEnv
     END IF
   END IF
 
@@ -6354,6 +6250,7 @@ END SUBROUTINE GetNodalElementSize
 !------------------------------------------------------------------------------
 
     CALL Info('FreeSolver','Free solver matrix',Level=20)
+    Solver % Matrix => Null() ! problems...
     CALL FreeMatrix(Solver % Matrix)
 
     CALL Info('FreeSolver','Free solver miscellaneous',Level=20)
@@ -6364,11 +6261,39 @@ END SUBROUTINE GetNodalElementSize
       CALL Graph_Deallocate(Solver % ColourIndexList)
       DEALLOCATE( Solver % ColourIndexList )
     END IF
-        
+
 !------------------------------------------------------------------------------
   END SUBROUTINE FreeSolver
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> Call <SolverName>_Finalize if exists
+!> TODO: Not tested
+!------------------------------------------------------------------------------
+SUBROUTINE FinalizeSolver(model, solver)
+!------------------------------------------------------------------------------
+
+  TYPE(Model_t) :: Model
+  TYPE(Solver_t) :: Solver
+  CHARACTER(:), ALLOCATABLE :: Name
+  LOGICAL :: Found, Transient
+  INTEGER(Kind=AddrInt) :: FinalProc
+!------------------------------------------------------------------------------
+
+  Name = ListGetString( Solver % values, 'Procedure', Found)
+  IF(Found) Then
+    FinalProc = GetProcAddr( Trim(Name)//'_Finalize', abort=.FALSE.)
+
+    IF (FinalProc /= 0) then 
+      Transient = ListGetString(Model % Simulation, 'Simulation Type',Found)=='transient'
+      CALL Info('FreeModel','Finalize Solver: > '//trim(Name) // ' <',Level=20)
+      CALL ExecSolver(FinalProc, Model, Solver, Solver% dt, Transient)
+    END IF
+  END IF
+
+!------------------------------------------------------------------------------
+END SUBROUTINE
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 !> Releases value list which includes all the sif definitions, for example.
@@ -6396,7 +6321,7 @@ END SUBROUTINE GetNodalElementSize
 !------------------------------------------------------------------------------
 !> Releases the whole model. 
 !------------------------------------------------------------------------------
- SUBROUTINE FreeModel(Model)
+  SUBROUTINE FreeModel(Model)
 !------------------------------------------------------------------------------
    TYPE(Model_t), POINTER :: Model
 !------------------------------------------------------------------------------
@@ -6435,6 +6360,7 @@ END SUBROUTINE GetNodalElementSize
    CALL Info('FreeModel','Freeing solvers',Level=15)  
    DO i=1,Model % NumberOfSolvers
      CALL Info('FreeModel','Solver: '//I2S(i),Level=20)
+     CALL FinalizeSolver(Model, Model % Solvers(i))
      CALL FreeSolver(Model % Solvers(i))
    END DO
    DEALLOCATE(Model % Solvers)
@@ -6503,7 +6429,7 @@ END SUBROUTINE GetNodalElementSize
 
 
  !------------------------------------------------------------------------------
- !> This routine add ths parameters as coefficients for the keywords in the sif
+ !> This routine add this parameters as coefficients for the keywords in the sif
  !> file referred to as "-rpar 1", "-rpar 2", etc. 
  !-----------------------------------------------------------------------------
  SUBROUTINE SetRealParametersKeywordCoeff(NoParam,Param,count)

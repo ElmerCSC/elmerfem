@@ -56,7 +56,7 @@
       REAL(KIND=dp), OPTIONAL :: FillValue
 
       Type(Mesh_t), POINTER :: Mesh
-      Type(Variable_t), POINTER :: GMask,FlowVar,HVar,EFluxVar
+      Type(Variable_t), POINTER :: GMask,FlowVar,HVar,EFluxVar,FluxVar
       Type(Element_t), POINTER ::  Element,Edge
       TYPE(Nodes_t),SAVE :: EdgeNodes,ElementNodes
       INTEGER :: tt,ii,jj,kk
@@ -72,7 +72,7 @@
       TYPE(GaussIntegrationPoints_t) :: IntegStuff
       REAL(KIND=dp) :: U,V,W,detJ
       REAL(KIND=dp),DIMENSION(3) :: Normal,Flow
-      REAL(KIND=dp) :: Flux,area,H
+      REAL(KIND=dp) :: Flux,area,H,tendligroundf,ParVal
       INTEGER :: EIndex
       LOGICAL :: stat
 
@@ -109,6 +109,7 @@
         EFluxVar % Values = 0._dp
       END IF
 
+      tendligroundf=0._dp
       DO tt=1,Solver % NumberOfActiveElements
         Element => GetActiveElement(tt)
  
@@ -122,7 +123,7 @@
 
         ! we have an edge GL if at least 2 nodes are GL
         ! and we have a least one floating node
-        ngl=COUNT(NodalGM == 0)
+        ngl=COUNT(NodalGM(1:n) == 0)
         IF (ngl < 2) CYCLE
         IF (.NOT.ANY(NodalGM(1:n).LT.0._dp)) CYCLE
 
@@ -157,6 +158,7 @@
              Flux = Flux + detJ * IntegStuff % s(kk) * h * SUM(Normal(1:DIM)*Flow(1:DIM))
           END DO
         END DO
+        tendligroundf=tendligroundf + Flux
 
         CALL GetElementNodes(ElementNodes, Element)
         ! compute element area
@@ -176,6 +178,15 @@
         IF (EIndex > 0) EFluxVar % Values ( EIndex ) = Flux / area
 
       END DO
+
+      FluxVar => VariableGet(Solver%Mesh%Variables,'tendligroundf')
+      IF (ASSOCIATED(FluxVar)) THEN
+        IF (FluxVar % TYPE /= Variable_global) &
+            CALL FATAL(Caller,"tendligroundf type should be global")    
+        ParVal=ParallelReduction(tendligroundf,0)
+        FluxVar % Values = ParVal
+      END IF
+
               
       END SUBROUTINE ComputeGLFlux_2D
 
@@ -192,7 +203,7 @@
       TYPE(Solver_t) :: Solver
       REAL(KIND=dp), OPTIONAL :: FillValue
 
-      Type(Variable_t), POINTER :: FlowVar,HVar,CFluxVar
+      Type(Variable_t), POINTER :: FlowVar,HVar,CFluxVar,FluxVar
       TYPE(ValueList_t), POINTER :: BC
       TYPE(GaussIntegrationPoints_t) :: IntegStuff
       TYPE(Element_t), POINTER :: Element,Parent
@@ -201,7 +212,7 @@
       REAL(KIND=dp), ALLOCATABLE,SAVE :: Basis(:)
       REAL(KIND=dp) :: U,V,W,detJ
       REAL(KIND=dp) :: Normal(3),Flow(3)
-      REAL(KIND=dp) :: CalvingFlux,H
+      REAL(KIND=dp) :: CalvingFlux,H,ParVal,tendcff
       REAL(KIND=dp) :: area
 
       INTEGER,POINTER :: NodeIndexes(:)
@@ -250,7 +261,7 @@
       !! thickness
       HVar =>  VariableGet(Solver%Mesh%Variables,'H',UnfoundFatal=.TRUE.)
 
-
+      tendcff=0._dp
       DO t = 1,GetNOFBoundaryElements()
          Element => GetBoundaryElement(t)
          IF ( .NOT. ActiveBoundaryElement(Element,Solver) ) CYCLE
@@ -287,6 +298,7 @@
            CalvingFlux=CalvingFlux+&
                        H*SUM(Normal * Flow)*detJ*IntegStuff % s(i)
          END DO
+         tendcff=tendcff+CalvingFlux
 
          ! attribute the flux to the active parent
          Parent => Element % BoundaryInfo % Right
@@ -330,6 +342,14 @@
       END DO
 
       DEALLOCATE(VisitedParent)
+
+      FluxVar => VariableGet(Solver%Mesh%Variables,'tendcff')
+      IF (ASSOCIATED(FluxVar)) THEN
+        IF (FluxVar % TYPE /= Variable_global) &
+            CALL FATAL(Caller,"tendcff type should be global")    
+        ParVal=ParallelReduction(tendcff,0)
+        FluxVar % Values = ParVal
+      END IF
 
       End
 

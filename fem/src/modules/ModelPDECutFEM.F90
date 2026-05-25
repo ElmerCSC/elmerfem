@@ -54,7 +54,7 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
   IsMore = .FALSE.
 
   ! This is just for checking. "0" refers to the length of the line and others are for different
-  ! materials. We can check how well line lenght of sphere or area of spheare is maintained.   
+  ! materials. We can check how well line length of sphere or area of spheare is maintained.   
   MatVol = 0.0_dp
   
   

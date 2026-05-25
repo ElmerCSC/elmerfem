@@ -94,7 +94,7 @@ SET(ElmerIce_SRC ElmerIceUtils.F90 AIFlowSolve_nlD2.F90 AIFlowSolve_nlS2.F90
     GlaDSCoupledSolver.F90 GlaDSchannelSolver.F90 Flotation.F90
     BasalMelt3D.F90 CalvingHydroInterp.F90 HydroRestart.F90
     GMValid.F90 Scalar_OUTPUT_Glacier.F90 IcyMaskSolver.F90
-    Weertman2Coulomb.F90)
+    Weertman2Coulomb.F90 ComputeGroundingLineFlux.F90)
 
 SET(ElmerIce_SRC ${ElmerIce_SRC} ./Covarianceutils/CovarianceUtils.F90 ./Covarianceutils/BackgroundErrorCostSolver.F90 ./Covarianceutils/CovarianceVectorMultiplySolver.F90 ./Covarianceutils/GaussianSimulationSolver.F90)
 
@@ -136,16 +136,21 @@ IF(NOT(WIN32))
 ENDIF()
 TARGET_LINK_LIBRARIES(ElmerIceSolvers Elmer::MPI_Fortran elmersolver ElmerIceUtils)
 
-IF(HAVE_NETCDF)
-  TARGET_LINK_LIBRARIES(ElmerIceSolvers ${NETCDF_LIBRARIES})
-ENDIF()
-IF(HAVE_HDF5)
-TARGET_LINK_LIBRARIES(ElmerIceSolvers ${PHDF5_LIBRARIES})
-ENDIF()
+# XIOS depends on NetCDF and (optionally) HDF5 and has to be added first
 IF(HAVE_XIOS)
   INCLUDE_DIRECTORIES(${XIOS_INCLUDE_DIR})
   TARGET_LINK_LIBRARIES(ElmerIceSolvers ${XIOS_LIBRARIES})
 ENDIF()
+
+# NetCDF depends on HDF5 and has to be added before HDF5
+IF(HAVE_NETCDF)
+  TARGET_LINK_LIBRARIES(ElmerIceSolvers ${NETCDF_LIBRARIES})
+ENDIF()
+
+IF(HAVE_HDF5)
+  TARGET_LINK_LIBRARIES(ElmerIceSolvers ${PHDF5_LIBRARIES})
+ENDIF()
+
 # IF(HAVE_MMG)
 #   TARGET_LINK_LIBRARIES(ElmerIceSolvers ${MMG_LIBRARY})
 #   TARGET_LINK_LIBRARIES(ElmerIceSolvers ElmerIce_MeshAdapt3D)

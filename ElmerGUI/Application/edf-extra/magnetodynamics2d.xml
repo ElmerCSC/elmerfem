@@ -98,7 +98,7 @@
          <Parameter Widget="Label" > <Name> Neumann conditions </Name> </Parameter>
          <Parameter  Widget="Edit">
            <Name> Surface Current </Name>
-           <Whatis> Give surface current (per unit lenght) for this boundary. </Whatis>
+           <Whatis> Give surface current (per unit length) for this boundary. </Whatis>
          </Parameter>
 
 		 <Parameter Widget="CheckBox" >
@@ -246,11 +246,11 @@
          <Parameter Widget="Label" > <Name> Neumann conditions </Name> </Parameter>
          <Parameter  Widget="Edit">
            <Name> Surface Current </Name>
-           <Whatis> Give surface current (per unit lenght) for this boundary. </Whatis>
+           <Whatis> Give surface current (per unit length) for this boundary. </Whatis>
          </Parameter>
          <Parameter  Widget="Edit">
            <Name> Surface Current Im </Name>
-           <Whatis> Give imaginary surface current (per unit lenght) for this boundary. </Whatis>
+           <Whatis> Give imaginary surface current (per unit length) for this boundary. </Whatis>
          </Parameter>
 
 	 <Parameter Widget="CheckBox" >

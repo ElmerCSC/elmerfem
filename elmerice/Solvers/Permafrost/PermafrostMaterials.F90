@@ -1152,7 +1152,7 @@ CONTAINS
   !---------------------------------------------------------------------------------------------
   ! functions specific to heat transfer and phase change in InterFrost suite
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetXiInterfrost(T0,Temperature,Swres, deltaT) RESULT(XiInterfrost)
+  FUNCTION GetXiInterfrost(T0,Temperature,Swres, deltaT, TH1) RESULT(XiInterfrost)
     REAL(KIND=dp), INTENT(IN) ::T0,Temperature,Swres,deltaT
     REAL(KIND=dp) :: XiInterfrost
     XiInterfrost = (1.0_dp - Swres)*EXP(-((MIN(Temperature,T0) - T0)/deltaT)**2.0_dp) + Swres

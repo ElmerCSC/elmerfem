@@ -5,4 +5,4 @@ CONFIGURE_FILE(case.sif case.sif COPYONLY)
 
 file(COPY channel.grd ELMERSOLVER_STARTINFO DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(mydyn_wave_harmonic LABELS mgdyn harmonic)
+ADD_ELMER_TEST(mgdyn_wave_harmonic LABELS mgdyn harmonic)

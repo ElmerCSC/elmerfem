@@ -143,7 +143,7 @@ CONTAINS
 !   ----------------------
     t = RealTime()
 #ifdef HAVE_MMG
-    CALL Info(Caller,'Using MMG libary for mesh refinement',Level=5)
+    CALL Info(Caller,'Using MMG library for mesh refinement',Level=5)
     NewMesh => MMG_ReMesh( RefMesh )
 #else
     CALL Fatal( Caller,'Remeshing requested with MMG but not compiled with!')

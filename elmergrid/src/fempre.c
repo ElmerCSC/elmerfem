@@ -62,6 +62,7 @@
 #include "egconvert.h"
 #include "egexport.h"
 
+#include "../config.h"
 
 int main(int argc, char *argv[])
 {
@@ -77,9 +78,22 @@ int main(int argc, char *argv[])
   struct ElmergridType eg;
 
   showmem = TRUE;
-
-  printf("\nStarting program Elmergrid, compiled on %s\n", __DATE__ );
-
+  
+  printf("==================================================================\n");
+  printf("ElmerGrid mesh conversion and manipulation utility, Welcome!\n");
+#ifdef ELMER_FEM_VERSION
+  /* Branch might not exist even though Revision would exist when git is in detached head state.
+     Heance check the branch for existance. */
+#ifdef ELMER_FEM_BRANCH
+  printf("Version: %s-%s (Rev: %s, Compiled: %s)\n",ELMER_FEM_VERSION,ELMER_FEM_BRANCH,
+	 ELMER_FEM_REVISION,ELMER_FEM_COMPILATIONDATE);
+#else
+  printf("Version: %s (Rev: NA, Compiled: NA)\n",ELMER_FEM_VERSION);
+#endif
+#endif
+  printf("This program is free software licensed under GPL\n");
+  printf("==================================================================\n");
+  
   InitParameters(&eg);
 
   grids = (struct GridType*)malloc((size_t) (MAXCASES)*sizeof(struct GridType));     
@@ -459,7 +473,7 @@ int main(int argc, char *argv[])
 
   /* Make the discontinuous boundary needed, for example, in poor thermal conduction */
   for(k=0;k<nomeshes;k++) {
-    if(!eg.discont) {
+    if(!eg.discont && k<nogrids) {
       for(j=0;j<grids[k].noboundaries;j++)
 	if(grids[k].boundsolid[j] == 2) {
 	  eg.discontbounds[eg.discont] = grids[k].boundtype[j];
@@ -816,10 +830,11 @@ int main(int argc, char *argv[])
     for(k=0;k<nomeshes;k++) {
       if(data[k].nopartitions > 1) 
 	SaveElmerInputPartitioned(&data[k],boundaries[k],eg.filesout[k],eg.decimals,
-				  eg.parthalo,eg.partitionindirect,eg.parthypre,
+				  eg.binary,eg.parthalo,eg.parthypre,
 				  MAX(eg.partbcz,eg.partbcr),eg.nooverwrite,info);
       else
-	SaveElmerInput(&data[k],boundaries[k],eg.filesout[k],eg.decimals,eg.nooverwrite,info);
+	SaveElmerInput(&data[k],boundaries[k],eg.filesout[k],eg.decimals,eg.binary,
+		       eg.nooverwrite,info);
     }
     break;
 

@@ -11,6 +11,8 @@
   Linear System Direct Method = "MumpsLocal"
   Mumps Solve Singular = Logical True
 
+  Mumps percentage increase working space = 200
+
   Linear System Max Iterations = 1000
   Linear System Convergence Tolerance = 1.0e-8
   Linear System Abort Not Converged = True

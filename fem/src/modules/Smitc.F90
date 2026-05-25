@@ -2,25 +2,24 @@
 ! *
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
+! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-
-
-!------------------------------------------------------------------------------
 !> Initialization for the primary solver: SmitcSolver
 !------------------------------------------------------------------------------
   SUBROUTINE SmitcSolver_Init0( Model,Solver,dt,Transient )
@@ -37,7 +36,8 @@
     SolverParams => GetSolverParams()
     CALL ListAddNewString( SolverParams, 'Variable', '-dofs 3 Deflection' )
        
-    CALL ListAddInteger( SolverParams, 'Time derivative order', 2 )
+    CALL ListAddNewInteger( SolverParams, 'Time derivative order', 2 )
+    CALL ListAddNewLogical( SolverParams, 'Use Global Mass Matrix', .TRUE. )
 
     CALL ListAddNewLogical( SolverParams, 'Plate Solver', .TRUE. )
 
@@ -58,8 +58,7 @@
      IMPLICIT NONE
 !------------------------------------------------------------------------------
      TYPE(Solver_t):: Solver
-     TYPE(Model_t) :: Model
- 
+     TYPE(Model_t) :: Model 
      REAL(KIND=dp) :: dt
      LOGICAL :: TransientSimulation
 !------------------------------------------------------------------------------
@@ -84,10 +83,11 @@
          Poisson(:), Thickness(:), Young(:), Tension(:), &
          MASS(:,:), DAMP(:,:), Density(:), &
          DampingCoef(:), HoleFraction(:), HoleSize(:), SpringCoef(:)
-
+     REAL(KIND=dp), POINTER :: gWork(:,:)
+     
      CHARACTER(LEN=MAX_NAME_LEN) :: HoleType
-     LOGICAL :: GotIt, GotHoleType
-     REAL(KIND=dp) :: RelaxationAlpha, at, st
+     LOGICAL :: GotIt, GotHoleType, UseGravity
+     REAL(KIND=dp) :: RelaxationAlpha, grav, at, st
 
      SAVE STIFF, MASS, Load, Load2, FORCE, ElementNodes, &
           Poisson, Density, Young, Thickness, Tension, AllocationsDone, &
@@ -123,8 +123,9 @@
      CALL Info( 'SmitcSolver', 'Solving the Reissner-Mindlin equations for plates',Level=4 )     
      CALL Info( 'SmitcSolver', '--------------------------------------------------',Level=4 )
 
-     SolverParams => GetSolverParams()
      
+     SolverParams => GetSolverParams()
+
      RelaxationAlpha = ListGetCReal(SolverParams, 'Shear Relaxation Alpha', Found)
      IF (.NOT. Found) RelaxationAlpha = 1.0d0
 
@@ -136,6 +137,17 @@
      !
      KernelVersion = ListGetLogical(SolverParams, 'Kernel Interpolation', Found)
 
+     grav = 0.0_dp
+     IF( ListGetLogical(SolverParams,'Use Gravity', Found ) ) THEN
+       gWork => ListGetConstRealArray( CurrentModel % Constants,'Gravity',Found)
+       IF(Found) THEN
+         grav = ABS(gWork(SIZE(gWork,1),1)) 
+       ELSE
+         CALL Fatal('SmitcSolver','Gravity requested but not given as constant!')
+       END IF
+     END IF
+       
+         
      CALL DefaultStart()     
      
      MaxIter = GetInteger( SolverParams, &
@@ -428,7 +440,14 @@
 !        ------------
          DO p=1,n
             i = DOFs*(p-1)+1
-            Force(i) = Force(i) + Pressure * Basis(p) * s
+            Force(i) = Force(i) + Pressure * Basis(p) * s 
+         END DO
+
+!        Gravity in direction down:
+!        -------------------------
+         DO p=1,n
+            i = DOFs*(p-1)+1
+            Force(i) = Force(i) - grav * rho * h * Basis(p) * s 
          END DO
 !
 !        Mass matrix:

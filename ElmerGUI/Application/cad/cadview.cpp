@@ -687,7 +687,8 @@ TopoDS_Shape CadView::readBrep(QString fileName) {
 
 TopoDS_Shape CadView::readStep(QString fileName) {
   TopoDS_Shape shape;
-  Handle_TopTools_HSequenceOfShape shapes;
+  /* Handle_TopTools_HSequenceOfShape shapes; */
+  Handle(TopTools_HSequenceOfShape) shapes;
   STEPControl_Reader stepReader;
   IFSelect_ReturnStatus status;
 
