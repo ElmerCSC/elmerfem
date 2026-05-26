@@ -174,6 +174,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
   TYPE(ValueList_t), POINTER :: Params, BC
   TYPE(Element_t), POINTER :: Element
   LOGICAL :: PiolaVersion, EigenProblem, CalculateNodal, Found, MeActive
+  LOGICAL :: Output_Z
   INTEGER :: DOFs, EdgeBasisDegree, Active, i, j, k, t, m, n, nd, &
       EFamily, NoPorts, MaxPort, PortInd, t1, t2, ModeIndex, Ierr
   COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
@@ -392,6 +393,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
 
       E2 = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
       Power = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
+      Output_Z = .FALSE.
       DO t=1,Active
         Element => GetActiveElement(t,Solver)
         EFamily = GetElementFamily(Element)
@@ -413,14 +415,16 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
         nd = GetElementNOFDOFs(Element)
 
         CALL CalculatePortImpedance(Element, n, nd, ModeIndex, Beta, E2, Power)
+        IF (.NOT. Output_Z) Output_Z = .TRUE.
       END DO
-      
-      Y = REAL(Power)/REAL(E2)
-      Z_port = 1.0_dp/Y
 
-      WRITE(Message,'(A,2ES15.6)') 'Port impedance: ', Z_port
-      CALL Info(Caller, Message, Level=5)
-      
+      IF (Output_Z) THEN
+        Y = REAL(Power)/REAL(E2)
+        Z_port = 1.0_dp/Y
+
+        WRITE(Message,'(A,2ES15.6)') 'Port impedance: ', Z_port
+        CALL Info(Caller, Message, Level=5)
+      END IF
     END IF
     
     CalculateNodal = ListGetLogical( Params,'Calculate Nodal Field', Found )
