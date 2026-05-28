@@ -422,10 +422,11 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
         Y = REAL(Power)/REAL(E2)
         Z_port = 1.0_dp/Y
 
-        !WRITE(Message,'(A,2ES15.6)') 'Port impedance: ', Z_port
+        !WRITE(Message,'(A,2ES15.6)') 'Port (wave) impedance: ', Z_port
         WRITE(Message,'(A,2ES15.6)') 'Port power: ', 0.5_dp*REAL(Power)
         CALL Info(Caller, Message, Level=5)
-        CALL ListAddConstReal( Model % Simulation,'res: Port Power '//I2S(PortInd), 0.5_dp*REAL(Power))
+        CALL ListAddConstReal(Model % Simulation,'res: Port Power '//I2S(PortInd), 0.5_dp*REAL(Power))
+        CALL ListAddConstReal(Model % Simulation,'res: Port Impedance '//I2S(PortInd), Z_port)
       END IF
     END IF
     
