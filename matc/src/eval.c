@@ -486,7 +486,7 @@ VARIABLE *evalclause(CLAUSE *root)
          *   allocate mem for FUNCTION structure and add it
          *   to the the FUNCTIONS list
          */
-        if (fnc = fnc_check(name)) fnc_free_entry(fnc);
+        if ((fnc = fnc_check(name))) fnc_free_entry(fnc);
         fnc = (FUNCTION *)ALLOCMEM(sizeof(FUNCTION));
         NAME(fnc) = STRCOPY(name);
         lst_add(FUNCTIONS, (LIST *)fnc);

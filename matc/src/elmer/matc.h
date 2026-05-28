@@ -198,7 +198,7 @@ typedef struct command
   char *name;                  /* name of the item                */
   int flags,                   /* CMDFLAG_PW & CMDFLAG_CE         */
       minp, maxp;              /* min. and max. no. of parameters */
-   VARIABLE *(*sub)();         /* function to execute             */
+   VARIABLE *(*sub)(VARIABLE *);         /* function to execute             */
   char *help;                  /* help string... */
 } COMMAND;
 
