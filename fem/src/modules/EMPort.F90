@@ -173,31 +173,47 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(ValueList_t), POINTER :: Params, BC
   TYPE(Element_t), POINTER :: Element
-  LOGICAL :: PiolaVersion, EigenProblem, InitHandles, CalculateNodal, Found, MeActive
+  LOGICAL :: PiolaVersion, EigenProblem, CalculateNodal, Found, MeActive
+  LOGICAL :: Output_Z
   INTEGER :: DOFs, EdgeBasisDegree, Active, i, j, k, t, m, n, nd, &
       EFamily, NoPorts, MaxPort, PortInd, t1, t2, ModeIndex, Ierr
   COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
   COMPLEX(KIND=dp) :: Beta, Zet
   COMPLEX(KIND=dp), POINTER :: SaveEigenVectors(:,:)
   REAL(KIND=dp) :: mu0inv, eps0, omega, maxeps, maxmu, betalim, Norm, BetaSum, Scale
+  REAL(KIND=dp) :: Y, Z_port
+  COMPLEX(KIND=dp) :: E2, Power
+
   TYPE(Variable_t), POINTER :: EMVar
   INTEGER, ALLOCATABLE :: SavePerm(:)
   CHARACTER(*), PARAMETER :: Caller = 'EMPortSolver'
+
+  ! Let contained routines use the same handles for material parameters:
+  TYPE(ValueHandle_t), SAVE :: EpsCoeff_h, NuCoeff_h  
+  
+  SAVE :: SavePerm, SaveEigenVectors
 !------------------------------------------------------------------------------
 
-  SAVE :: SavePerm, SaveEigenVectors
  
   CALL Info(Caller,'',Level=8)
   CALL Info(Caller,'------------------------------------------------',Level=6)
   CALL Info(Caller,'Solving electromagnetic port equations over a surface')
   CALL Info(Caller,'------------------------------------------------',Level=6)
 
+  CALL ListInitElementKeyword(NuCoeff_h, 'Material', 'Relative Reluctivity', InitIm=.TRUE.)
+  CALL ListInitElementKeyword(EpsCoeff_h, 'Material', 'Relative Permittivity', InitIm=.TRUE.)
+  
   SolverPtr => Solver  
   Mesh => GetMesh()
   Params => GetSolverParams()
 
   IF ( CurrentCoordinateSystem() /= Cartesian ) THEN 
     CALL Fatal(Caller,'Implemented only for Cartesian problems!')
+  END IF
+  
+  DOFs = Solver % Variable % Dofs
+  IF (DOFs /= 2) THEN
+    CALL Fatal(Caller, 'Complex field, specify two DOFs instead of '//I2S(DOFs))
   END IF
 
   MaxPort = 0
@@ -217,12 +233,10 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
       MaxPort = MAX(MaxPort,j)
     END IF
   END DO
-
-  CalculateNodal = LIstGetLogical( Params,'Calculate Nodal Field', Found )
  
   EMVar => Solver % Variable
   IF( MaxPort > 1) THEN
-    CALL Info(Caller,'Creating separate matrices for each '//I2S(MaxPort)//' port!')
+    CALL Info(Caller,'Creating separate matrices for each of '//I2S(MaxPort)//' ports!')
     ! We cannot really use the original matrix that solves all ports together.
     CALL FreeMatrix(Solver % Matrix)
     Solver % Matrix => Null()
@@ -231,16 +245,11 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
     ALLOCATE( SavePerm(SIZE(EMVar % Perm)))
     SavePerm = EMVar % Perm     
 
-    ! Allocate a collector for the several BC's
+    ! Allocate a collector for the several BCs
     n = SIZE(EMVar % EigenVectors,1)
     m = SIZE(EMVar % EigenVectors,2)
     ALLOCATE(SaveEigenVectors(n,m))
     SaveEigenVectors = 0.0_dp
-  END IF
-
-  DOFs = Solver % Variable % Dofs
-  IF (DOFs /= 2) THEN
-    CALL Fatal(Caller, 'Complex field, specify two DOFs instead of '//I2S(DOFs))
   END IF
 
   CALL EdgeElementStyle(Params, PiolaVersion, BasisDegree = EdgeBasisDegree )
@@ -254,10 +263,8 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
   maxeps = 0.0_dp
 
   Active = GetNOFActive(Solver)
-  InitHandles = .TRUE.
-
   
-  DO PortInd=1,MAX(MaxPort,1)
+  PORTWISE_SOLUTION: DO PortInd=1,MAX(MaxPort,1)
     CALL Info(Caller,'Solving for port: '//I2S(PortInd),Level=10)
     IF( MaxPort > 1 ) THEN
       EMVar % Perm = 0 
@@ -326,7 +333,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
       END IF
 #endif
       
-      CALL LocalMatrix(Element, n, nd, InitHandles)
+      CALL LocalMatrix(Element, n, nd)
     END DO
   
     CALL DefaultFinishBulkAssembly()
@@ -351,14 +358,11 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
     WRITE(Message,'(A,2ES15.6)') 'Propagation constant beta: ',REAL(Beta),AIMAG(Beta)
     CALL Info(Caller,Message,Level=5)      
     CALL ListAddConstReal( Model % Simulation,'res: Port Beta '//I2S(PortInd),REAL(Beta))
-
-      
-
     
-    ! Use the sum or propagation constant as a reference value for consistency
+    ! Use the sum of all propagation constants as a reference value for consistency
     BetaSum = BetaSum + REAL(Beta)
     
-    ! Set the propagation constant to all those BC's associated to this port.
+    ! Set the propagation constant to all those BCs associated with this port.
     DO i = 1,Model % NumberOfBCs
       BC => Model % BCs(i) % Values
       IF(ListGetString( BC,'Port Type',Found) == 'eigenmode' ) THEN
@@ -381,12 +385,57 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
         CALL ListAddConstReal( BC,'Port Beta Im',AIMAG(Beta))
       END IF
     END DO
-      
-   IF(CalculateNodal) THEN
-     CALL EMPortPost(PortInd, MaxPort)
-   END IF
 
-   IF( MaxPort > 1 ) THEN
+    ! Integrations to evaluate the impedance:
+    !
+    IF (ListCheckPresentAnyBC(Model, 'Calculate Impedance') .OR. &
+        (CoordinateSystemDimension() == 2 .AND. ListGetLogical(Params, 'Calculate Impedance'))) THEN
+
+      E2 = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
+      Power = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
+      Output_Z = .FALSE.
+      DO t=1,Active
+        Element => GetActiveElement(t,Solver)
+        EFamily = GetElementFamily(Element)
+        IF (EFamily > 4) CYCLE
+        
+        IF (CoordinateSystemDimension() == 2) THEN
+          CONTINUE
+        ELSE
+          ! When we have several ports, then handle the correct one.  
+          BC => GetBC(Element)
+          IF(MaxPort>0) THEN
+            IF(ListGetInteger(BC,'Port Index',Found ) /= PortInd) CYCLE
+          END IF
+
+          IF (.NOT. ListGetLogical(BC, 'Calculate Impedance', Found)) CYCLE
+        END IF
+          
+        n  = GetElementNOFNodes(Element)
+        nd = GetElementNOFDOFs(Element)
+
+        CALL CalculatePortImpedance(Element, n, nd, ModeIndex, Beta, E2, Power)
+        IF (.NOT. Output_Z) Output_Z = .TRUE.
+      END DO
+
+      IF (Output_Z) THEN
+        Y = REAL(Power)/REAL(E2)
+        Z_port = 1.0_dp/Y
+
+        !WRITE(Message,'(A,2ES15.6)') 'Port (wave) impedance: ', Z_port
+        WRITE(Message,'(A,2ES15.6)') 'Port power: ', 0.5_dp*REAL(Power)
+        CALL Info(Caller, Message, Level=5)
+        CALL ListAddConstReal(Model % Simulation,'res: Port Power '//I2S(PortInd), 0.5_dp*REAL(Power))
+        CALL ListAddConstReal(Model % Simulation,'res: Port Impedance '//I2S(PortInd), Z_port)
+      END IF
+    END IF
+    
+    CalculateNodal = ListGetLogical( Params,'Calculate Nodal Field', Found )
+    IF(CalculateNodal) THEN
+      CALL EMPortPost(PortInd, MaxPort)
+    END IF
+
+    IF( MaxPort > 1 ) THEN
       CALL FreeMatrix(Solver % Matrix)      
       Solver % Matrix => Null()
 
@@ -400,7 +449,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
     END IF
 
 !    CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
-  END DO
+  END DO PORTWISE_SOLUTION
 
   IF(ParEnv % PEs > 1) CALL ParallelActive(.TRUE.)
 
@@ -551,14 +600,12 @@ CONTAINS
 !------------------------------------------------------------------------------
 ! Non-vectorized assembly of the matrix entries arising from the bulk elements
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrix(Element, n, nd, InitHandles)
+  SUBROUTINE LocalMatrix(Element, n, nd)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t), POINTER, INTENT(IN) :: Element
     INTEGER, INTENT(IN) :: n, nd
-    LOGICAL, INTENT(INOUT) :: InitHandles
 !------------------------------------------------------------------------------
-    TYPE(ValueHandle_t), SAVE :: EpsCoeff_h, NuCoeff_h
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP    
     INTEGER :: m, allocstat, t
@@ -569,12 +616,6 @@ CONTAINS
     REAL(KIND=dp) :: weight, DetJ, CondAtIp
     COMPLEX(KIND=dp) :: Nu, Eps
 !------------------------------------------------------------------------------
-
-    IF (InitHandles) THEN
-      CALL ListInitElementKeyword(NuCoeff_h, 'Material', 'Relative Reluctivity', InitIm=.TRUE.)
-      CALL ListInitElementKeyword(EpsCoeff_h, 'Material', 'Relative Permittivity', InitIm=.TRUE.)
-      InitHandles = .FALSE.
-    END IF
     
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
         EdgeBasisDegree = EdgeBasisDegree)
@@ -592,7 +633,9 @@ CONTAINS
     Stiff = CMPLX(0.0_dp, 0.0_dp, kind=dp)
     Mass = CMPLX(0.0_dp, 0.0_dp, kind=dp)
     Force = CMPLX(0.0_dp, 0.0_dp, kind=dp)
-
+    GotNu = .FALSE.
+    GotEps = .FALSE.
+    
     ! The number of DOFs for one vector FE field  
     vdofs = nd - n
 
@@ -667,6 +710,88 @@ CONTAINS
   END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+! Calculate integrals over an element on a port surface so that impedance
+! can be evaluated. 
+!------------------------------------------------------------------------------
+  SUBROUTINE CalculatePortImpedance(Element, n, nd, ModeIndex, Beta, E2, P) 
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Element_t), POINTER, INTENT(IN) :: Element
+    INTEGER, INTENT(IN) :: n, nd, ModeIndex
+    COMPLEX(KIND=dp), INTENT(IN) :: Beta
+    COMPLEX(KIND=dp), INTENT(INOUT) :: E2
+    COMPLEX(KIND=dp), INTENT(INOUT) :: P   ! The integral of -[E x conjg(H)].n
+!------------------------------------------------------------------------------
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Nodes_t), SAVE :: Nodes
+    LOGICAL :: Stat, Found, GotNu 
+    INTEGER :: m, allocstat, vdofs
+    INTEGER :: t, i
+    REAL(KIND=dp), ALLOCATABLE, SAVE :: WBasis(:,:), CurlWBasis(:,:), Basis(:), dBasisdx(:,:)
+    REAL(KIND=dp), ALLOCATABLE, SAVE :: Re_local_field(:), Im_local_field(:)
+    REAL(KIND=dp) :: weight, DetJ
+    COMPLEX(KIND=dp) :: Nu, EF(3), gradEz(3)
+!------------------------------------------------------------------------------    
+
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+        EdgeBasisDegree = EdgeBasisDegree)
+      
+    ! Allocate storage if needed
+    IF (.NOT. ALLOCATED(Basis)) THEN
+      m = Mesh % MaxElementDofs
+      ALLOCATE(WBasis(m,3), CurlWBasis(m,3), Basis(m), dBasisdx(m,3), &
+          Re_local_field(m), Im_local_field(m), STAT=allocstat)      
+      IF (allocstat /= 0) CALL Fatal(Caller, 'Local storage allocation failed')
+    END IF
+
+    CALL GetElementNodes(Nodes, Element)
+
+    ! The number of DOFs for one vector FE field  
+    vdofs = nd - n
+
+    CALL GetScalarLocalEigenmode(Re_local_field, UElement = Element, &
+          USolver = SolverPtr, NoEigen = ModeIndex, ComplexPart=.FALSE.)
+    CALL GetScalarLocalEigenmode(Im_local_field, UElement = Element, &
+        USolver = Solver, NoEigen = ModeIndex, ComplexPart=.TRUE.)
+    
+    GotNu = .FALSE.
+    
+    DO t=1,IP % n
+      !--------------------------------------------------------------
+      ! Basis function values & derivatives at the integration point:
+      !--------------------------------------------------------------
+      stat = ElementInfo(Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+          detJ, Basis, dBasisdx, EdgeBasis = Wbasis, RotBasis = CurlWBasis, USolver = SolverPtr)
+      Weight = IP % s(t) * DetJ
+
+      IF(t==1 .OR. GotNu) THEN
+        Nu = ListGetElementComplex(NuCoeff_h, Basis, Element, GotNu, GaussPoint = t)      
+      END IF
+      IF(.NOT. GotNu) Nu = ListGetElementRealParent(NuCoeff_h, Basis, Element, Found )
+      IF( GotNu .OR. Found ) THEN
+        Nu = mu0inv * Nu
+      ELSE
+        Nu = mu0inv
+      END IF
+
+      EF = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
+      DO i=1,vdofs
+        EF(:) = EF(:) + CMPLX(Re_local_field(n+i), Im_local_field(n+i), KIND=dp) * WBasis(i,:)
+      END DO
+
+      gradEz = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
+      DO i=1,n
+        gradEz(:) = gradEz(:) + CMPLX(Re_local_field(i), Im_local_field(i), KIND=dp) * dBasisdx(i,:)
+      END DO
+      
+      E2 = E2 + SUM(EF*CONJG(EF)) * weight
+      P = P + Nu*Beta/Omega * SUM(EF*CONJG(EF)) * weight + Nu/(im * omega) * SUM(EF*CONJG(gradEz)) * weight
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE CalculatePortImpedance
+!------------------------------------------------------------------------------
+    
 !-----------------------------------------------------------------------------
 !> A postprocessing solver for EMPortSolver
 !> Create the mass matrix on-the-fly and computes one component at a time. 
