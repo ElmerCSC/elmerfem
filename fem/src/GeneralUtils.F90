@@ -165,9 +165,11 @@ CONTAINS
      IF(ival>=0) THEN
        v = ival
        IF (v<10) THEN
+         ALLOCATE(CHARACTER(1)::s)
          s = DIGITS(v)
        ELSE IF (ival<100) THEN
          i = v/10
+         ALLOCATE(CHARACTER(2)::s)
          s = DIGITS(i)//DIGITS(v-10*i)
        ELSE
          n=3
@@ -188,8 +190,10 @@ CONTAINS
      ELSE
        v = -ival
        IF (v<10) THEN
+        ALLOCATE(CHARACTER(2)::s)
          s = '-'//DIGITS(v)
        ELSE IF (v<100) THEN
+         ALLOCATE(CHARACTER(3)::s)
          i = v/10
          s = '-'//DIGITS(i)//DIGITS(v-10*i)
        ELSE
