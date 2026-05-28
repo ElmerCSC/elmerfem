@@ -289,7 +289,7 @@ CONTAINS
     j = 0
 
     ! This is an add'hoc value that represents the maximum aspect ratio of elements in the mesh.
-    MaxRat = 2.0
+    MaxRat = 2.0_dp
     
     DO i=1, Mesh % NumberOfEdges
       NodeIndexes => Mesh % Edges(i) % NodeIndexes

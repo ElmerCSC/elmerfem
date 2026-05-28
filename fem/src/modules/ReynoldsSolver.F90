@@ -130,7 +130,7 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
   ManningModel = GetLogical( Params,'Manning Model',GotIt)
   IF( ManningModel ) THEN
     GravityCoeff = GetCReal( CurrentModel % Constants,'Gravity Coefficient',GotIt)
-    IF(.NOT. GotIt) GravityCoeff = 9.81
+    IF(.NOT. GotIt) GravityCoeff = 9.81_dp
   END IF
     
   AnyBC = ListGetLogicalAnyBC( Model,'Open Side') .OR. &

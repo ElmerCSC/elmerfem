@@ -932,7 +932,7 @@ CONTAINS
 
     
     DO i=1,RefMesh % NumberOfNodes      
-      IF ( NodalError(i) < 100*AEPS ) CYCLE 
+      IF ( NodalError(i) < 100_dp*AEPS ) CYCLE 
 
       Lambda = ( ErrorLimit / NodalError(i) ) ** ( 1.0d0 / hConvergence(i) )
 
@@ -1258,7 +1258,7 @@ CONTAINS
 
     A => CurrentModel % Solver % Matrix       
     WHERE( A % ParallelInfo % GInterface(1:n) ) 
-      AveTest(1:n) = -1000.0
+      AveTest(1:n) = -1000.0_dp
     END WHERE
       
     CALL VariableAdd( RefMesh % Variables, RefMesh, Solver, &
@@ -1448,7 +1448,7 @@ CONTAINS
     ALLOCATE(HvalueF(SIZE(HValue)))
     HValueF = -1.0_dp
     DO i=1,RefMesh % NumberOfNodes
-      IF ( NodalError(i) > 100*AEPS ) THEN
+      IF ( NodalError(i) > 100_dp*AEPS ) THEN
         Lambda = ( ErrorLimit / NodalError(i) ) ** ( 1.0d0 / hConvergence(i) )        
         IF ( RefMesh % AdaptiveDepth < 1 ) THEN
           Lambda = HValue(i) * MAX( MIN( Lambda, 1.33d0), 0.75d0)
@@ -1664,7 +1664,7 @@ CONTAINS
        END IF
 
        RefElement % Splitted = 0
-       IF( ErrorIndicator(i) > 100*AEPS ) THEN
+       IF( ErrorIndicator(i) > 100_dp*AEPS ) THEN
           Lambda = ( ErrorLimit / ErrorIndicator(i) ) ** ( 1.0d0 / EhConvergence )
           RefElement % Splitted = MIN( MaxChange, 1.0d0/Lambda )
        END IF

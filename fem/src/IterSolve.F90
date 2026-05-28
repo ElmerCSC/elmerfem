@@ -679,7 +679,7 @@ END FUNCTION MaskedNorm
       HUTI_WRKDIM = 1
       HUTI_SGSPARAM = ListGetConstReal( Params,'SGS Overrelaxation Factor',&
           GotIt,minv=0.0_dp,maxv=2.0_dp)
-      IF(.NOT. GotIt) HUTI_SGSPARAM = 1.8
+      IF(.NOT. GotIt) HUTI_SGSPARAM = 1.8_dp
       Internal = .TRUE.
       
     CASE (ITER_Jacobi, ITER_Richardson)

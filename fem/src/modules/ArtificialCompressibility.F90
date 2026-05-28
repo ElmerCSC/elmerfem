@@ -227,7 +227,7 @@ SUBROUTINE CompressibilityScale( Model,Solver,dt,Transient )
 
   TransitionVolume = ListGetConstReal( &
       Solver % Values, 'Artificial Compressibility Critical Volume',gotIt )
-  IF(.NOT. gotIt) TransitionVolume = 0.01;
+  IF(.NOT. gotIt) TransitionVolume = 0.01_dp
  
   ScaleCompressibility = ListGetLogical( &
       Solver % Values, 'Artificial Compressibility Scale',gotIt )
@@ -243,7 +243,7 @@ SUBROUTINE CompressibilityScale( Model,Solver,dt,Transient )
 
 
   Norm = CompressScale
-  IF(TimeStepVisited == 0) Norm = Norm * 2.0
+  IF(TimeStepVisited == 0) Norm = Norm * 2.0_dp
   Solver % Variable % Norm = Norm
 
   TimeStepVisited = TimeStepVisited + 1
