@@ -515,6 +515,7 @@ CONTAINS
 
      ! Lets do mapping if requested. 
      IF(GetLogical( Solver % Values,'Viewfactor Rigid Mesh Mapping', Found ) ) THEN
+       Model % Mesh => Mesh
        CALL RigidMeshMapping( Model, Mesh, .TRUE. )
      END IF
        
@@ -1083,8 +1084,8 @@ CONTAINS
 !------------------------------------------------------------------------------
      TYPE(Mesh_t), POINTER :: RT_Mesh
 !------------------------------------------------------------------------------
-     INTEGER :: j
-     LOGICAL :: UseShadowMesh
+     INTEGER :: j,i0
+     LOGICAL :: UseShadowMesh, BoundaryOnly, DoMapping 
      CHARACTER(256) :: ShadowMeshName
 !------------------------------------------------------------------------------
      RT_Mesh => Null()
@@ -1109,21 +1110,26 @@ CONTAINS
        ! are loaded.
        ! -------------------------------------------------------------------------------
        IF ( UseShadowMesh ) THEN
-         RT_Mesh => LoadMesh2( Model, "./", ShadowMeshName, .TRUE., ParEnv % PEs, ParEnv % MyPE )
-
          ! For the shading mesh we will do rigid mesh mapping also if we use internal mapping         
          ! since for this coarse mesh the mapping has not been performed. 
-         IF(GetLogical( Params,'Viewfactor Rigid Mesh Mapping', Found ) .OR. &
-             GetLogical( Model % Simulation,'Internal Rigid Mesh Mapping', Found ) ) THEN            
-           CALL RigidMeshMapping( Model, RT_Mesh, .TRUE. )
-         END IF
-           
-         RT_Mesh % NumberOfBulkElements = RT_Mesh % NumberOfBoundaryElements
+         DoMapping = GetLogical( Params,'Viewfactor Rigid Mesh Mapping', Found ) .OR. &
+             GetLogical( Model % Simulation,'Internal Rigid Mesh Mapping', Found )
+
+         BoundaryOnly = .NOT. DoMapping          
+         RT_Mesh => LoadMesh2( Model, "./", ShadowMeshName, BoundaryOnly, ParEnv % PEs, ParEnv % MyPE )
+
+         CALL SymmetryDuplication(RT_Mesh)
+         
+         Model % Mesh => RT_Mesh 
+         CALL RigidMeshMapping( Model, RT_Mesh, .TRUE. )
+         Model % Mesh => Mesh 
+
+         i0 = RT_Mesh % NumberOfBulkElements
          j = 0
          DO i=1,RT_Mesh % NumberOfBoundaryElements
-           IF ( RadiationBC(RT_Mesh % Elements(i) % BoundaryInfo % Constraint) ) THEN
+           IF ( RadiationBC(RT_Mesh % Elements(i0+i) % BoundaryInfo % Constraint) ) THEN
              j=j+1
-             RT_Mesh % Elements(j) = RT_Mesh % Elements(i)
+             RT_Mesh % Elements(j) = RT_Mesh % Elements(i0+i)
            END IF
          END DO
          RT_Mesh % NumberOfBulkElements = j
