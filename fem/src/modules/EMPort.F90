@@ -389,7 +389,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
     ! Integrations to evaluate the impedance:
     !
     IF (ListCheckPresentAnyBC(Model, 'Calculate Impedance') .OR. &
-        (CoordinateSystemDimension() == 2 .AND. ListGetLogical(Params, 'Calculate Impedance'))) THEN
+        (CoordinateSystemDimension() == 2 .AND. ListGetLogical(Params, 'Calculate Impedance', Found))) THEN
 
       E2 = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
       Power = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
