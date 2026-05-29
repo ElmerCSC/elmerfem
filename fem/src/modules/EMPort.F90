@@ -345,7 +345,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
       maxeps = ParallelReduction(maxeps)
       maxmu = ParallelReduction(maxmu)    
       betalim = Omega * SQRT(maxeps*maxmu)    
-      CALL ListAddConstReal( Params,'Eigen System Shift', betalim**2 )
+      CALL ListAddConstReal( Params,'Eigen System Shift', -betalim**2 )
       WRITE(Message,'(A,ES15.6)') 'Propagation constant beta upper limit: ',betalim
       CALL Info('EMPortSolver',Message,Level=7)
     END IF
