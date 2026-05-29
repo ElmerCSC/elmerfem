@@ -1245,13 +1245,13 @@ CONTAINS
 !-----------------------------------------------------------------------------
      TYPE(Model_t), POINTER :: Model
      TYPE(Mesh_t), POINTER :: Mesh    
-     TYPE(variable_t), POINTER :: Var !, LoadVar, IterV, LimitVar
+     TYPE(variable_t), POINTER :: Var 
      TYPE(Element_t), POINTER :: Element
      INTEGER :: i,j,k,n,t,ind,dofs,dof, bf, bc, Upper, ElemFirst, ElemLast, totsize
      REAL(KIND=dp), POINTER :: FieldValues(:), ElemLimit(:)
      REAL(KIND=dp) :: val, bigval 
      INTEGER, POINTER :: FieldPerm(:), NodeIndexes(:)
-     LOGICAL :: Found,AnyLimitBC, AnyLimitBF !, GotInit, GotActive
+     LOGICAL :: Found,AnyLimitBC, AnyLimitBF 
      TYPE(ValueList_t), POINTER :: Entity
      REAL(KIND=dp), POINTER :: LimitValues(:)
      CHARACTER(:), ALLOCATABLE :: Name, LimitName
@@ -1404,11 +1404,11 @@ CONTAINS
      INTEGER :: i,j,k,n,t,ind,dofs, dof, bf, bc, Upper, Removed, Added, &
          ElemFirst, ElemLast, totsize, i2, j2, ind2
      REAL(KIND=dp), POINTER :: FieldValues(:), LoadValues(:), &
-         ElemLimit(:),ElemInit(:), ElemActive(:)
+         ElemLimit(:), ElemActive(:), ElemWrk(:)
      REAL(KIND=dp) :: LimitSign, EqSign, ValEps, LoadEps, ValEps0, LoadEps0, &
          MaxValue, MaxLoad, val
      INTEGER, POINTER :: FieldPerm(:), NodeIndexes(:)
-     LOGICAL :: Found,AnyLimitBC, AnyLimitBF, GotInit, GotActive
+     LOGICAL :: Found,AnyLimitBC, AnyLimitBF, GotActive
      LOGICAL, ALLOCATABLE :: LimitDone(:)
      LOGICAL, POINTER :: LimitActive(:)
      TYPE(ValueList_t), POINTER :: Params, Entity
@@ -1458,8 +1458,17 @@ CONTAINS
      END IF
 
      FirstTime = (nonliniter <= 1) .AND. (coupledIter <= 1) .AND. (timeIter == 1)
-     LimitFreeze = (nonliniter <= 1) .AND. (coupledIter <= 1) .AND. (timeIter > 1)
 
+     ! Always freeze the contact set when going to new timestep since the residual values
+     ! on the new timestep are not reliable before a new timestep has been solved. 
+     LimitFreeze = (timeIter > 1) .AND. (nonliniter <= 1) .AND. (coupledIter <= 1)
+
+     ! Optionally freeze the contact set for the whole 1st timestep
+     IF(timeIter == 1 .AND. .NOT. FirstTime ) THEN
+       LimitFreeze = ListGetLogical( Params,'Limiter Passive First Timestep', Found )
+     END IF
+
+     ! We can turn optionally the contact set fully active/passive using a global condition.      
      AllActive = .FALSE.
      val = ListGetCReal( Params,'Limiter Global Active Condition',Found )
      IF(Found) AllActive = (val > 0.0_dp) 
@@ -1477,7 +1486,7 @@ CONTAINS
        CALL Info(Caller,'Initializing soft limiter for solver',Level=7)
      END IF
      IF( LimitFreeze ) THEN
-       CALL Info(Caller,'Keeping soft limiter fixed at start of timestep',Level=7)
+       CALL Info(Caller,'Keeping soft limiter fixed during this cycle!',Level=7)
      END IF
      
      ! Determine variable for computing the contact load used to determine the 
@@ -1608,7 +1617,7 @@ CONTAINS
 
          IF(.NOT. ALLOCATED( LimitDone) ) THEN
            n = Model % MaxElementNodes
-           ALLOCATE( LimitDone( totsize ), ElemLimit(n), ElemInit(n), ElemActive(n) )
+           ALLOCATE( LimitDone( totsize ), ElemLimit(n), ElemActive(n), ElemWrk(n) )
            LimitDone = .FALSE.
          END IF
 
@@ -1648,7 +1657,7 @@ CONTAINS
          Added = 0        
          IF(.NOT. ALLOCATED( LimitDone) ) THEN
            n = Model % MaxElementNodes
-           ALLOCATE( LimitDone( totsize ), ElemLimit(n), ElemInit(n), ElemActive(n) )
+           ALLOCATE( LimitDone( totsize ), ElemLimit(n), ElemActive(n), ElemWrk(n) )
            LimitDone = .FALSE.
          END IF
 
@@ -1701,18 +1710,40 @@ CONTAINS
                Entity => Model % BodyForces(bf) % Values               
              END IF
 
-             ElemLimit(1:n) = ListGetReal( Entity, &
-                 LimitName, n, NodeIndexes, Found)             
+             ElemLimit(1:n) = ListGetReal( Entity, LimitName, n, NodeIndexes, Found)             
              IF(.NOT. Found) CYCLE
 
-             ! For the 1st time we can use different limit, if given.
-             ElemInit(1:n) = ListGetReal( Entity, &
-                 InitName, n, NodeIndexes, GotInit)
-             IF(GotInit) ElemLimit(1:n) = ElemInit(1:n)
+             ElemActive(1:n) = ListGetReal( Entity, ActiveName, n, NodeIndexes, GotActive)
 
-             ElemActive(1:n) = ListGetReal( Entity, &
-                 ActiveName, n, NodeIndexes, GotActive)
+             ! For the 1st time we can use different limit and different active sets, if given.
+             IF(FirstTime) THEN
+               ElemWrk(1:n) = ListGetReal( Entity, InitName, n, NodeIndexes, Found)
+               IF(Found) ElemLimit(1:n) = ElemWrk(1:n)
 
+               ElemWrk(1:n) = ListGetReal( Entity, TRIM(ActiveName)//' Initial', n, NodeIndexes, Found)
+               IF(Found) THEN
+                 ElemActive(1:n) = ElemWrk(1:n)
+                 GotActive = .TRUE.
+               END IF
+
+               ! We can also give the initial state in a normal manner in initial condition section.
+               IF(Element % BodyId > 0 ) THEN
+                 bf = ListGetInteger( Model % Bodies(Element % bodyid) % Values, &
+                     'Initial Condition', Found)
+                 IF(bf>0) THEN
+                   Entity => Model % ICs(bf) % Values               
+                   ElemWrk(1:n) = ListGetReal( Entity, LimitName, n, NodeIndexes, Found)
+                   IF(Found) ElemLimit(1:n) = ElemWrk(1:n)                   
+                   ElemWrk(1:n) = ListGetReal( Entity, ActiveName, n, NodeIndexes, Found)
+                   IF(Found) THEN
+                     ElemActive(1:n) = ElemWrk(1:n)
+                     GotActive = .TRUE.
+                   END IF
+                 END IF
+               END IF
+             END IF
+               
+             
              DO i=1,n
                j = FieldPerm( NodeIndexes(i) )
                IF( j == 0 ) CYCLE
@@ -2059,7 +2090,7 @@ CONTAINS
      END IF
 
      IF( ALLOCATED( LimitDone ) ) THEN
-       DEALLOCATE( LimitDone, ElemLimit, ElemInit, ElemActive ) 
+       DEALLOCATE( LimitDone, ElemLimit, ElemActive, ElemWrk ) 
      END IF
      
      IF( ALLOCATED( InterfaceDof ) ) THEN
@@ -11010,9 +11041,15 @@ END FUNCTION SearchNodeL
     ELSE
       DoIt = ListGetLogical( SolverParams,'Nonlinear Calculate Velocity',Found )
     END IF
+
+    IF(DoIt) THEN
+      IF( LIstGetLogical( SolverParams,'Calculate Velocity Skip First Timestep',Found ) ) THEN
+        dtVar => VariableGet( Solver % Mesh % Variables, 'timestep' )
+        DoIt = (NINT(dtVar % Values(1)) > 1 )
+      END IF
+    END IF
     
     IF( DoIt ) THEN
-      CALL Info(Caller,'Updating variable velocity')
       IF( .NOT. ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
         CALL Warn(Caller,'Cannot calculate velocity without previous values!')
       ELSE IF( Solver % TimeOrder == 1) THEN
@@ -11026,6 +11063,7 @@ END FUNCTION SearchNodeL
         ELSE
           str = TRIM(pVar % Name)//' Velocity'
         END IF       
+        CALL Info(Caller,'Updating variable velocity: '//TRIM(str))
         VeloVar => VariableGet( Solver % Mesh % Variables, str )        
         VeloVar % Values = (pVar % Values - pVar % PrevValues(:,1)) / dt
       END IF
