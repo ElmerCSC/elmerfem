@@ -670,7 +670,7 @@ END SUBROUTINE InterpolateMeshToMesh
        INTEGER, ALLOCATABLE, TARGET :: RInd(:), Unitperm(:)
        LOGICAL :: Found, EpsAbsGiven,EpsRelGiven, MaskExists, CylProject, ProjectorAllocated
        INTEGER :: eps_tries, nrow, PassiveCoordinate
-       REAL(KIND=dp) :: eps1 = 0.1, eps2, eps_global, eps_local, eps_basis,eps_numeric
+       REAL(KIND=dp) :: eps1 = 0.1_dp, eps2, eps_global, eps_local, eps_basis,eps_numeric
        REAL(KIND=dp), POINTER CONTIG :: Values(:) 
        REAL(KIND=dp), POINTER :: LocalU(:), LocalV(:), LocalW(:)
 

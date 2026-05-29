@@ -1613,7 +1613,7 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
      IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for SaveMask.')
          
      ! Use loser constraint for MinFactor as the errors can't be renormalized any more 
-     MinFactor = MinFactor / 10.0
+     MinFactor = MinFactor / 10.0_dp
          
      BinaryMode = ListGetLogical( Params,'Viewfactor Binary Output',Found ) 
 

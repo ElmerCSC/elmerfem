@@ -1131,7 +1131,7 @@ CONTAINS
       REAL(KIND=dp) :: maxbond, diagbond, dirlim, meas
       
       StrongLim = ListGetConstReal(Solver % Values,'MG Strong Connection Limit',GotIt)
-      IF(.NOT. GotIt) StrongLim = 0.06
+      IF(.NOT. GotIt) StrongLim = 0.06_dp
       MaxConns = ListGetInteger(Solver % Values,'MG Strong Connection Maximum',GotIt)
       MinConns = ListGetInteger(Solver % Values,'MG Strong Connection Minimum',GotIt)
       

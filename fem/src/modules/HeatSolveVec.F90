@@ -1696,7 +1696,7 @@ CONTAINS
       END IF
 
       gamma = ListGetCReal( Params,'Dg Continuity Penalty',Found )
-      IF(.NOT. Found ) gamma = 0.001
+      IF(.NOT. Found ) gamma = 0.001_dp
 
       AllocationsDone = .TRUE.
     END IF

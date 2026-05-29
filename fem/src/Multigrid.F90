@@ -2191,7 +2191,7 @@ CONTAINS
     IF(debug) CALL Info('AMGBonds','Making a list of strong matrix connections')
 
     NegLim = ListGetConstReal(Params,'MG Strong Connection Limit',GotIt)
-    IF(.NOT. GotIt) NegLim = 0.06
+    IF(.NOT. GotIt) NegLim = 0.06_dp
 
     ! Negative connections are more useful for the interpolation, but also 
     ! positive strong connection may be taken into account
@@ -3342,7 +3342,7 @@ CONTAINS
        IF(Debug) CALL Info('InterpolateF2C','Starting interpolation')
        
        ProjLim = ListGetConstReal(Params,'MG Projection Limit',GotIt)
-       IF(.NOT. GotIt) ProjLim = 0.6
+       IF(.NOT. GotIt) ProjLim = 0.6_dp
 
        Lumping = ListGetLogical(Params,'MG Projection Lumping',GotIt)
 
@@ -3856,10 +3856,10 @@ CONTAINS
        IF(Debug) CALL Info('InterpolateF2CDistance','Starting interpolation')
        
        ProjLim = ListGetConstReal(Params,'MG Projection Limit',GotIt)
-       IF(.NOT. GotIt) ProjLim = 0.5
+       IF(.NOT. GotIt) ProjLim = 0.5_dp
 
        Pow = ListGetConstReal(Params,'MG Geometric Power',GotIt)
-       IF(.NOT. GotIt) Pow = 1.0d0
+       IF(.NOT. GotIt) Pow = 1.0_dp
 
        DirectInterpolate = ListGetLogical(Params,'MG Direct Interpolate',GotIt)
        DirectLimit = ListGetInteger(Params,'MG Direct Interpolate Limit',GotIt)      
@@ -4105,7 +4105,7 @@ CONTAINS
 
        
        ProjLim = ListGetConstReal(Params,'MG Projection Limit',GotIt)
-       IF(.NOT. GotIt) ProjLim = 0.5
+       IF(.NOT. GotIt) ProjLim = 0.5_dp
 
        Lumping = ListGetLogical(Params,'MG Projection Lumping',GotIt)
 

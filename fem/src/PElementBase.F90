@@ -8726,7 +8726,7 @@ MODULE PElementBase
       
       INTEGER, INTENT(IN) :: i
       REAL (KIND=dp), INTENT(IN) :: x
-      REAL (KIND=dp), PARAMETER :: dx = 0.001 !1E-10
+      REAL (KIND=dp), PARAMETER :: dx = 0.001_dp !1E-10
       REAL (KIND=dp) :: value, vp, vm
 
       ! 
@@ -8847,7 +8847,7 @@ MODULE PElementBase
       INTEGER, INTENT(IN) :: i
       REAL (KIND=dp), INTENT(IN) :: x
       REAL (KIND=dp) :: value, vp, vm
-      REAL (KIND=dp), PARAMETER :: dx = 0.001 !1E-10
+      REAL (KIND=dp), PARAMETER :: dx = 0.001_dp !1E-10
 
       ! 
       SELECT CASE(i)

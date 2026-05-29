@@ -256,7 +256,7 @@ SUBROUTINE ProjectToPlane( Model,Solver,dt,TransientSimulation )
     LimitRadius = ListGetLogical(Solver % Values,'Limit Radius',GotIt)
     IF(GotIt) THEN
       MaxRelativeRadius = ListGetConstReal( Solver % Values,'Max Relative Radius',GotIt)
-      IF(.NOT. GotIt) MaxRelativeRadius = 0.9999
+      IF(.NOT. GotIt) MaxRelativeRadius = 0.9999_dp
     END IF
 
     MinimumHits = ListGetInteger(Solver % Values,'Minimum Hits At Radius',GotIt) 

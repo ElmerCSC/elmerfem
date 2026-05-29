@@ -196,7 +196,7 @@ SUBROUTINE FilmCompressibility( Model,Solver,dt,Transient )
   dp0 = ListGetCReal( Params,'AC Pressure Epsilon',Found )
   IF(.NOT. Found) THEN
     val = ListGetCReal( Params,'AC Pressure Epsilon Relative',Found )
-    IF(.NOT. Found) val = 0.01    
+    IF(.NOT. Found) val = 0.01_dp
     dp0 = MAX(EPSILON(dp0),val*dpmax)
   END IF
   

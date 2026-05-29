@@ -665,10 +665,10 @@ CONTAINS
     ! maximum update of density
 
     move = ListGetCReal(Params,'Bisection search max change',Found )
-    IF(.NOT. Found) move = 0.2    
+    IF(.NOT. Found) move = 0.2_dp
     
     tol = ListGetCReal(Params,'Bisection search tolerance',Found )
-    IF(.NOT. Found) tol = 1.0e-6
+    IF(.NOT. Found) tol = 1.0d-6
 
     damp = ListGetCReal(Params,'Bisection search damping exponent',Found )
     IF(.NOT. Found) damp = 0.5_dp
@@ -681,7 +681,7 @@ CONTAINS
     xnew = 0.0_dp
         
     DO k=1,1000            
-      lmid = 0.5*(l2+l1)
+      lmid = 0.5_dp*(l2+l1)
       
       ! Note: xnew in [0,1]
       ! Suggested new density
