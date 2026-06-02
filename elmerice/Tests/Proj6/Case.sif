@@ -1,0 +1,115 @@
+Header
+  Mesh DB "." "rectangle"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 2D 
+
+  Simulation Type = Steady 
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+  max output level = 3
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Equation = 1
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1
+   Equation = "TEST"
+   Procedure = "PROJ_VALIDATION" "PROJ_VALIDATION"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Equation 1
+  Active Solvers(1) = 1
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+! NTF (Paris) / Lambert zone II : EPSG:27572
+$fprintf( stderr, " \n");
+$fprintf( stderr, " \n");
+$fprintf( stderr, "TEST CASE EPSG:27572:  NTF (Paris) / Lambert zone II \n");
+$fprintf( stderr, " \n");
+$fprintf( stderr, " \n");
+Simulation :: projection type = String "proj"
+Simulation :: CRS code = File "EPSG:27572"
+Solver 1 :: Reference Norm = Real 1.0
+Solver 1 :: Reference Norm Tolerance = Real 1E-06
+Solver 1 :: Input Filename = File "EPSG27572.txt"
+RUN
+$fprintf( stderr, "END TEST CASE: Target NRM=1.0,EPS:1E-06\n" );
+
+! UTM 32 N : EPSG:32632
+$fprintf( stderr, " \n");
+$fprintf( stderr, " \n");
+$fprintf( stderr, "TEST CASE EPSG:32632: UTM 32N  \n");
+$fprintf( stderr, " \n");
+$fprintf( stderr, " \n");
+Simulation :: projection type = String "proj"
+Simulation :: CRS code = File "EPSG:32632"
+Solver 1 :: Reference Norm = Real 1.0
+Solver 1 :: Reference Norm Tolerance = Real 1E-06
+Solver 1 :: Input Filename = File "EPSG32632.txt"
+RUN
+$fprintf( stderr, "END TEST CASE: Target NRM=1.0,EPS:1E-06\n" );
+
+! Antarctic EPSG:3031
+$fprintf( stderr, " \n");
+$fprintf( stderr, " \n");
+$fprintf( stderr, "TEST CASE EPSG:3031 - polar stereographic south - Using Proj Lib \n");
+$fprintf( stderr, " \n");
+$fprintf( stderr, " \n");
+Simulation :: projection type = String "proj"
+Simulation :: CRS code = File "EPSG:3031"
+Solver 1 :: Reference Norm = Real 1.0
+Solver 1 :: Reference Norm Tolerance = Real 1E-06
+Solver 1 :: Input Filename = File "EPSG3031.txt"
+RUN
+$fprintf( stderr, "END TEST CASE: Target NRM=1.0,EPS:1E-06\n" );
+
+$fprintf( stderr, " \n");
+$fprintf( stderr, "TEST CASE EPSG:3031 - polar stereographic south - Hard Coded \n");
+$fprintf( stderr, " \n");
+Simulation :: projection type = String "polar stereographic south"
+Simulation :: central_meridian = Real 0.0
+Simulation :: latitude_of_origin = Real -71.0
+Solver 1 :: Reference Norm = Real 1.0
+Solver 1 :: Reference Norm Tolerance = Real 1E-06
+Solver 1 :: Input Filename = File "EPSG3031.txt"
+RUN
+$fprintf( stderr, "END TEST CASE: Target NRM=1.0,EPS:1E-06\n" );
+
+! Greenland EPSG:3413
+$fprintf( stderr, " \n");
+$fprintf( stderr, " \n");
+$fprintf( stderr, "TEST CASE EPSG:3413 - polar stereographic north - Using Proj Lib \n");
+$fprintf( stderr, " \n");
+$fprintf( stderr, " \n");
+Simulation :: projection type = String "proj"
+Simulation :: CRS code = File "EPSG:3413"
+Solver 1 :: Reference Norm = Real 1.0
+Solver 1 :: Reference Norm Tolerance = Real 1E-06
+Solver 1 :: Input Filename = File "EPSG3413.txt"
+RUN
+$fprintf( stderr, "END TEST CASE: Target NRM=1.0,EPS:1E-06\n" );
+
+
+$fprintf( stderr, " \n");
+$fprintf( stderr, "TEST CASE EPSG:3413 - polar stereographic north - Hard Codes \n");
+$fprintf( stderr, " \n");
+Simulation :: projection type = String "polar stereographic north"
+Simulation :: central_meridian = Real -45.0
+Simulation :: latitude_of_origin = Real 70.0
+Solver 1 :: Reference Norm = Real 1.0
+Solver 1 :: Reference Norm Tolerance = Real 1E-06
+Solver 1 :: Input Filename = File "EPSG3413.txt"
+RUN
+$fprintf( stderr, "END TEST CASE: Target NRM=1.0,EPS:1E-06\n" );
+
+
+
+

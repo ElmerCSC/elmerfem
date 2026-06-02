@@ -31,27 +31,29 @@ ENDIF()
 
 INCLUDE_DIRECTORIES("${PROJECT_BINARY_DIR}")
 
-
 IF (WITH_PROJ4)
+	UNSET(WITH_PROJ4 CACHE)	
+ MESSAGE(FATAL_ERROR " DEPRECATED USE WITH_PROJ=TRUE.\n"
+                     " See elmerice/Utils/Documentation/ProjUtils.md" )
+ENDIF()
+
+IF (WITH_PROJ)
   FIND_PACKAGE(PROJ)
-  FIND_PACKAGE(FORTRANGIS)
 
-  IF(PROJ_FOUND AND FORTRANGIS_FOUND)
+  MESSAGE(STATUS "------------------------------------------------")
+  MESSAGE(STATUS "Elmer/Ice package: Looking for Proj library     ")
+  IF(PROJ_FOUND)
     SET(HAVE_PROJ TRUE)
-    SET(HAVE_FORTRANGIS TRUE)
-    MARK_AS_ADVANCED(HAVE_PROJ HAVE_FORTRANGIS)
+    MARK_AS_ADVANCED(HAVE_PROJ)
     ADD_DEFINITIONS(-DHAVE_PROJ)
-    MESSAGE(STATUS "  PROJ & FORTRANGIS: " "${PROJ_FOUND} & ${FORTRANGIS_FOUND}")
-    MESSAGE(STATUS "  PROJ_INC:   " "${PROJ_INCLUDE_DIR}")
-    MESSAGE(STATUS "  PROJ_LIB:   " "${PROJ_LIBRARY}")
-    MESSAGE(STATUS "  FORTRANGIS_INC:  " "${FORTRANGIS_INCLUDE_DIR}")
-    MESSAGE(STATUS "  FORTRANGIS_LIB:  " "${FORTRANGIS_LIBRARY}")
-
-    MESSAGE(STATUS "Compile ProjUtils with Proj4 support")
+    MESSAGE(STATUS "  PROJ LIBRARY FOUND=" " ${PROJ_FOUND} ")
+    MESSAGE(STATUS "  PROJ_LIBRARIES:   " "${PROJ_LIBRARIES}")
+    MESSAGE(STATUS "Compile ProjUtils with Proj support")
   ELSE()
-    MESSAGE(STATUS "Library not found: >PROJ_FOUND< = ${PROJ_FOUND} and/or >FORTRANGIS_FOUND< =  ${FORTRANGIS_FOUND}")
-    MESSAGE(WARNING "  \n Missing: >PROJ_INCLUDE_DIR< , >PROJ_LIBRARY< , >FORTRANGIS_INCLUDE_DIR< , >FORTRANGIS_LIBRARY< \n to compile ProjUtils support for Proj4")
+    MESSAGE(STATUS "Library not found: >PROJ_FOUND< = ${PROJ_FOUND}")
+    MESSAGE(WARNING "Missing: >PROJ_LIBRARIES< to compile ProjUtils support for Proj")
   ENDIF()
+  MESSAGE(STATUS "------------------------------------------------")
 ENDIF()
 
 ADD_SUBDIRECTORY(Utils)
