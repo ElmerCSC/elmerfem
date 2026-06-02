@@ -1166,15 +1166,17 @@ CONTAINS
   !---------------------------------------------------------------------------------------------
   FUNCTION GetXiLunardini(T0,Temperature,Swres, deltaT) RESULT(XiLunardini)
     REAL(KIND=dp), INTENT(IN) ::T0,Temperature,Swres,deltaT
-    REAL(KIND=dp) :: XiLunardini, mpar
-    mpar = (Swres - 1.0_dp)/deltaT
+    REAL(KIND=dp) :: XiLunardini, mpar, Xi0
+    Xi0 = 0.918_dp
+    mpar = (Swres - Xi0)/deltaT
     XiLunardini = MAX(mpar*(MIN(Temperature,T0) - T0),Swres)
   END FUNCTION GetXiLunardini
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION XiLunardiniT(T0,Temperature,Swres, deltaT)
     REAL(KIND=dp), INTENT(IN) ::T0,Temperature,Swres,deltaT
-    REAL(KIND=dp) ::  mpar
-    mpar = (Swres - 1.0_dp)/deltaT
+    REAL(KIND=dp) :: mpar, Xi0
+    Xi0 = 0.918_dp
+    mpar = (Swres - Xi0)/deltaT
     IF ((Temperature - T0 > -deltaT) .AND. (Temperature <= T0) )THEN 
       XiLunardiniT = mpar
     ELSE
@@ -2216,16 +2218,17 @@ CONTAINS
   FUNCTION GetCGTTLunardini(c1,c2,c3,Xi,Swres,XiT,rhoi,Porosity,hi,hw)RESULT(CGTT)
     IMPLICIT NONE
     REAL(KIND=dp), INTENT(IN) :: c1,c2,c3,Xi,Swres,XiT,rhoi,Porosity,hi,hw
-    REAL(KIND=dp) :: CGTT
+    REAL(KIND=dp) :: CGTT, Xi0
     !-------------------------
-    IF (Xi > 0.999_dp) THEN
+    Xi0 = 0.918_dp
+    IF (Xi >= Xi0) THEN
       CGTT = c3
     ELSE IF (Xi <= Swres) THEN
       CGTT = c1
     ELSE
-     CGTT  = c2
+      !CGTT = c2 - (hw - hi)*rhoi*Porosity*XiT
+      CGTT = c2 - (hw - hi)*1000_dp*Porosity*XiT
     END IF
-    CGTT = CGTT - (hw - hi)*rhoi*Porosity*XiT
   END FUNCTION GetCGTTLunardini
   !---------------------------------------------------------------------------------------------
   FUNCTION GetCGTp(rhoi,hi,hw,XiP,Porosity)RESULT(CGTp)! All state variables or derived values
@@ -2289,9 +2292,10 @@ CONTAINS
   FUNCTION GetKGTTLunardini(Xi,Swres,k1,k2,k3)RESULT(KGTT) ! All state variables or derived values
     IMPLICIT NONE
     REAL(KIND=dp), INTENT(IN) :: Xi, Swres, k1, k2, k3
-    REAL(KIND=dp) :: KGTT(3,3), unittensor(3,3)
+    REAL(KIND=dp) :: KGTT(3,3), unittensor(3,3), Xi0
     unittensor=RESHAPE([1.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,1.0], SHAPE(unittensor))
-    IF (Xi > 0.999_dp) THEN
+    Xi0 = 0.918_dp
+    IF (Xi >= Xi0) THEN
       KGTT = unittensor*k3
     ELSE IF (Xi <= Swres) THEN
       KGTT = unittensor*k1

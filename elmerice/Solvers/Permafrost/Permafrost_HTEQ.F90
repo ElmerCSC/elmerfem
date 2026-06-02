@@ -520,10 +520,10 @@ CONTAINS
       CASE('interfrost') ! simple Interfrost model
         IF (.NOT.Lunardini) THEN
           XiAtIP(IPPerm) = GetXiInterfrost(T0,TemperatureAtIP,Swres,IFdeltaT)
-          XiTAtIP = XiInterfrostT(T0,TemperatureAtIP,Swres,deltaT)
+          XiTAtIP = XiInterfrostT(T0,TemperatureAtIP,Swres,IFdeltaT)
         ELSE
           XiAtIP(IPPerm) = GetXiLunardini(T0,TemperatureAtIP,Swres,IFdeltaT)
-          XiTAtIP = XiLunardiniT(T0,TemperatureAtIP,Swres,deltaT)
+          XiTAtIP = XiLunardiniT(T0,TemperatureAtIP,Swres,IFdeltaT)
         END IF
         XiPAtIP = 0.0_dp
         InterFrost = .TRUE.
