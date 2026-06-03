@@ -316,7 +316,7 @@ CONTAINS
          ksthAtIP,kwthAtIP,kithAtIP,kcthAtIP,hiAtIP,hwAtIP  ! function values needed for C's and KGTT
     REAL(KIND=dp) :: B1AtIP,B2AtIP,DeltaGAtIP, bijAtIP(2,2), bijYcAtIP(2,2),&
          gwaAtIP,giaAtIP,gwaTAtIP,giaTAtIP,gwapAtIP,giapAtIP !needed by XI
-    REAL(KIND=dp) ::  gradTAtIP(3),gradPAtIP(3),JgwDAtIP(3),KgwAtIP(3,3),KgwpTAtIP(3,3),MinKgw,&
+    REAL(KIND=dp) ::  gradTAtIP(3),gradPAtIP(3),gradYcAtIP(3), JgwDAtIP(3),KgwAtIP(3,3),KgwpTAtIP(3,3),MinKgw,&
          KgwppAtIP(3,3),fwAtIP,mugwAtIP,DtdAtIP(3,3)!  JgwD stuff
     REAL(KIND=dp) :: deltaInElement,D1AtIP,D2AtIP
     REAL(KIND=dp) :: k1,k2,k3,c1,c2,c3
@@ -347,6 +347,7 @@ CONTAINS
     !------------------------------------------------------------------------------
     gradTAtIP = 0.0_dp
     gradPAtIP = 0.0_dp
+    gradYcAtIP = 0.0_dp
     Material => GetMaterial(Element)   ! Get stuff from SIF Material section
     IF(.NOT.ConstantsRead) THEN
       ConstantsRead = &
@@ -526,6 +527,7 @@ CONTAINS
           XiTAtIP = XiLunardiniT(T0,TemperatureAtIP,Swres,IFdeltaT)
         END IF
         XiPAtIP = 0.0_dp
+        XiYcAtIP = 0.0_dp
         InterFrost = .TRUE.
       CASE DEFAULT ! Hartikainen model
         CALL  GetXiHartikainen (RockMaterialID,&
@@ -569,7 +571,8 @@ CONTAINS
       IF (Lunardini) THEN
         !CGTTAtIP = 690360.0_dp - 334720.0_dp*rhoiAtIP*PorosityAtIp*XiTAtIP
         CGTTAtIP = GetCGTTLunardini(c1,c2,c3,XiAtIP(IPPerm),Swres,XiTAtIP,rhoiAtIP,PorosityAtIP,hiAtIP,hwAtIP)
-                   
+        cwAtIP   = 0.0_dp
+        ccAtIP   = 0.0_dp
       ELSE
         csAtIP   = cs(RockMaterialID,&
              T0,TemperatureAtIP,ConstVal)
@@ -679,7 +682,7 @@ CONTAINS
            Weight * CGTpAtIP*(PressureVeloAtIP + SUM(vstarAtIP(1:DIM)*gradPAtIP(1:DIM))) * Basis(1:nd)
       ! temperature force due to salinity change (CGTy * (dyc/dt + vstar grad yc),u)
       FORCE(1:nd) = FORCE(1:nd) - &
-           Weight * CGTycAtIP*(SalinityVeloAtIP + SUM(vstarAtIP(1:DIM)*gradPAtIP(1:DIM))) * Basis(1:nd)
+           Weight * CGTycAtIP*(SalinityVeloAtIP + SUM(vstarAtIP(1:DIM)*gradYcAtIP(1:DIM))) * Basis(1:nd)
     END DO
 
     IF(TransientSimulation) CALL Default1stOrderTime(MASS,STIFF,FORCE)
