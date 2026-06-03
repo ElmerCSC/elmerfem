@@ -1167,17 +1167,24 @@ CONTAINS
   FUNCTION GetXiLunardini(T0,Temperature,Swres, deltaT) RESULT(XiLunardini)
     REAL(KIND=dp), INTENT(IN) ::T0,Temperature,Swres,deltaT
     REAL(KIND=dp) :: XiLunardini, mpar, Xi0
-    Xi0 = 0.918_dp
-    mpar = (Swres - Xi0)/deltaT
-    XiLunardini = MAX(mpar*(MIN(Temperature,T0) - T0),Swres)
+    Xi0 = 0.200_dp
+    mpar = (Xi0 - Swres)/deltaT
+    !XiLunardini = MAX(mpar*(MIN(Temperature,T0) - T0),Swres)
+    IF (Temperature >= T0) THEN
+       XiLunardini = Xi0
+    ELSEIF (Temperature <= T0 - deltaT) THEN
+       XiLunardini = Swres
+    ELSE
+       XiLunardini = Swres + mpar * (Temperature - (T0 - deltaT))
+    ENDIF
   END FUNCTION GetXiLunardini
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION XiLunardiniT(T0,Temperature,Swres, deltaT)
     REAL(KIND=dp), INTENT(IN) ::T0,Temperature,Swres,deltaT
     REAL(KIND=dp) :: mpar, Xi0
-    Xi0 = 0.918_dp
-    mpar = (Swres - Xi0)/deltaT
-    IF ((Temperature - T0 > -deltaT) .AND. (Temperature <= T0) )THEN 
+    Xi0 = 0.200_dp
+    mpar = (Xi0 - Swres)/deltaT
+    IF ((Temperature - T0 > -deltaT) .AND. (Temperature < T0) )THEN 
       XiLunardiniT = mpar
     ELSE
       XiLunardiniT = 0.0_dp
@@ -2220,14 +2227,14 @@ CONTAINS
     REAL(KIND=dp), INTENT(IN) :: c1,c2,c3,Xi,Swres,XiT,rhoi,Porosity,hi,hw
     REAL(KIND=dp) :: CGTT, Xi0
     !-------------------------
-    Xi0 = 0.918_dp
+    Xi0 = 0.200_dp
     IF (Xi >= Xi0) THEN
       CGTT = c3
     ELSE IF (Xi <= Swres) THEN
       CGTT = c1
     ELSE
       !CGTT = c2 - (hw - hi)*rhoi*Porosity*XiT
-      CGTT = c2 - (hw - hi)*1000_dp*Porosity*XiT
+      CGTT = c2 + (hw - hi)*1680_dp*XiT
     END IF
   END FUNCTION GetCGTTLunardini
   !---------------------------------------------------------------------------------------------
@@ -2294,7 +2301,7 @@ CONTAINS
     REAL(KIND=dp), INTENT(IN) :: Xi, Swres, k1, k2, k3
     REAL(KIND=dp) :: KGTT(3,3), unittensor(3,3), Xi0
     unittensor=RESHAPE([1.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,1.0], SHAPE(unittensor))
-    Xi0 = 0.918_dp
+    Xi0 = 0.200_dp
     IF (Xi >= Xi0) THEN
       KGTT = unittensor*k3
     ELSE IF (Xi <= Swres) THEN
