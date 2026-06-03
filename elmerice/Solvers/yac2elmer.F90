@@ -471,7 +471,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
       IF ((.NOT.ASSOCIATED(t_oceVar)) .OR. (.NOT.ASSOCIATED(sal_oceVar))) THEN
         CALL FATAL(SolverName,'Elmer variables not associated')
       END IF
-       !write over values for nodes
+      ! write over values for nodes
       DO i=1, Mesh % NumberOfNodes
         t_oceVar % Values(t_oceVar % Perm(i)) = t_oce_field(i,1)
         sal_oceVar % Values(sal_oceVar % Perm(i)) = sal_oce_field(i,1)
