@@ -1,13 +1,21 @@
+MODULE mpi_stub
+  LOGICAL :: mpi_stub_init = .FALSE.
+END MODULE mpi_stub
+
+
 SUBROUTINE mpi_init(ierr)
+  USE mpi_stub
   INTEGER :: ierr
   ierr = 0
+  mpi_stub_init = .TRUE.
 END SUBROUTINE mpi_init
 
 SUBROUTINE mpi_initialized(init, ierr)
+  USE mpi_stub
   LOGICAL :: init
   INTEGER :: ierr
-  init = .FALSE.
   ierr = 0
+  init = mpi_stub_init
 END SUBROUTINE mpi_initialized
 
 SUBROUTINE mpi_init_thread(req, prov, ierr)
@@ -17,8 +25,10 @@ SUBROUTINE mpi_init_thread(req, prov, ierr)
 END SUBROUTINE mpi_init_thread
 
 SUBROUTINE mpi_finalize(ierr)
+  USE mpi_stub
   INTEGER :: ierr
   ierr = 0
+  mpi_stub_init = .FALSE.
 END SUBROUTINE mpi_finalize
 
 SUBROUTINE mpi_comm_size(comm, csize, ierr)
