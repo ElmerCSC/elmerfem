@@ -4,7 +4,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -14,10 +14,10 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -30,7 +30,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 01 Oct 1996
 ! *
@@ -661,7 +661,8 @@ MODULE elmer_coupling
   USE mpi, ONLY: MPI_Comm_rank, MPI_Comm_size
   USE yac, ONLY: yac_fmpi_handshake, yac_fget_mpi_handshake_group_name, &
     yac_finit_comm, yac_fread_config_yaml, yac_fdef_comp, yac_fdef_grid, &
-    yac_fset_global_index, yac_fdef_points, yac_fsync_def, yac_fenddef, &
+    yac_fset_global_index, yac_fdef_points, yac_fdef_mask_named, &
+    yac_fsync_def, yac_fenddef, &
     yac_ffinalize, YAC_LOCATION_CELL, YAC_LOCATION_CORNER, &
     yac_fdef_calendar, YAC_PROLEPTIC_GREGORIAN, YAC_YEAR_OF_360_DAYS, &
     YAC_YEAR_OF_365_DAYS
@@ -772,6 +773,7 @@ CONTAINS
   !> @param iso8601_timestep Timestep configuration string for YAC (e.g., "PT1H" for 1 hour)
   !> @param couple_to_ebfm_in Enable coupling to EBFM
   !> @param couple_to_icon_in Enable coupling to ICON
+  !> @param boundary_cell_mask Logical mask indicating boundary cells
   SUBROUTINE coupling_setup(lon_vertices, lat_vertices, lon_cells, lat_cells, &
                             cell_to_vertex, num_vertices_per_cell, &
                             cell_ids, vertex_ids, &
@@ -781,7 +783,8 @@ CONTAINS
                             iso8601_start_time, &
                             iso8601_end_time, &
                             iso8601_timestep, &
-                            couple_to_ebfm_in, couple_to_icon_in)
+                            couple_to_ebfm_in, couple_to_icon_in, &
+                            boundary_cell_mask)
 
     USE, INTRINSIC :: iso_c_binding, ONLY: C_INT, C_DOUBLE, C_CHAR
 
@@ -806,9 +809,10 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN) :: iso8601_timestep
 
     LOGICAL, INTENT(IN) :: couple_to_ebfm_in, couple_to_icon_in
+    LOGICAL, INTENT(IN) :: boundary_cell_mask(:)
 
     ! Local variables
-    INTEGER :: grid_id, corner_point_id, cell_point_id
+    INTEGER :: grid_id, corner_point_id, cell_point_id, boundary_cell_mask_id
     INTEGER(KIND=C_INT) :: nbr_vertices, nbr_cells
     INTEGER :: yac_calendar
 
@@ -865,6 +869,11 @@ CONTAINS
       corner_point_id)
     CALL yac_fdef_points( &
       grid_id, nbr_cells, YAC_LOCATION_CELL, lon_cells, lat_cells, cell_point_id)
+
+    ! register boundary cell mask in YAC
+    CALL yac_fdef_mask_named( &
+      grid_id, nbr_cells, YAC_LOCATION_CELL, boundary_cell_mask, &
+      "boundary_cell_mask", boundary_cell_mask_id)
 
     ! construct coupling between Elmer/Ice and ICON
     IF (couple_to_icon) THEN
