@@ -479,7 +479,10 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
       ! TODO: stub implementation for ICON coupling
       ! CALL elmer_icon_interface(is_root_rank)
       ! cltVar => VariableGet( Mesh % Variables, 'tas' )
-      ! prVar => VariableGet( Mesh % Variables, 'pr_snow' )
+! TODO: stub implementation for ICON-A coupling
+! CALL elmer_icon_interface(is_root_rank)
+! cltVar => VariableGet( Mesh % Variables, 'tas' )
+! prVar => VariableGet( Mesh % Variables, 'pr_snow' )
   END IF
 
   CALL INFO(SolverName,'Coupling step done', Level=1)
