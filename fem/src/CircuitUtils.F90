@@ -1513,20 +1513,61 @@ END FUNCTION isComponentName
     IMPLICIT NONE
     INTEGER :: nn, dim
     TYPE(Element_t) :: Element
-    LOGICAL :: support, First=.TRUE.
+    LOGICAL :: support
     REAL(KIND=dp) :: wBase(nn)
+    LOGICAL :: CSymmetry, First=.TRUE., InitHandle=.TRUE., &
+               CoilUseWvec=.FALSE., CoilUseWvec0=.FALSE.,Found,Found2
+    CHARACTER(LEN=MAX_NAME_LEN) :: CoilWVecVarname, CoilType
+    CHARACTER(LEN=MAX_NAME_LEN) :: FoilJVecVarname
+    REAL(KIND=dp) :: wvec(3,nn)
+    REAL(KIND=dp) :: wpot(nn)
     SAVE dim, First
 
-    IF (First) THEN
+    IF( First ) THEN
       First = .FALSE.
+      CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
+      CurrentCoordinateSystem() == CylindricSymmetric )
       dim = CoordinateSystemDimension()
+      
+      CoilUseWvec0 = GetLogical(CurrentModel % Solver % Values, 'Coil Use W Vector', Found2 ) 
+      BLOCK
+        INTEGER::i
+        DO i=1,CurrentModel % NumberOfComponents
+          CoilType = ListGetString(CurrentModel % Components(i) % Values, 'Coil Type',Found)
+          IF(.NOT. Found) CYCLE
+          IF(CoilType == 'foil winding') THEN  ! stranded, massive
+            CoilWVecVarName = GetString(CurrentModel % Components(i) % Values,'W Vector Variable Name', Found)
+            IF(Found) EXIT
+          END IF
+        END DO
+      END BLOCK
+      IF(.NOT. Found) THEN
+        CoilWVecVarName = GetString(CurrentModel % Solver % Values,'W Vector Variable Name', Found)
+        IF(.NOT. Found) THEN
+          IF( GetLogical(CurrentModel % Solver % Values,'Use Nodal CoilCurrent',Found ) ) &
+              CoilWVecVarname = 'CoilCurrent'
+        END IF
+        IF(.NOT. Found) THEN
+          IF( GetLogical(CurrentModel % Solver % Values,'Use Elemental CoilCurrent',Found ) ) &
+              CoilWVecVarname = 'CoilCurrent e'
+        END IF
+        IF(Found) CALL Info('Add_foil_winding','Setting coil current to: '//TRIM(CoilWVecVarname),Level=6)
+        ! If we did not find w vector named in any component it is fair to assume that it is globally used!
+        IF(.NOT. Found2) CoilUseWvec0 = Found 
+      END IF
+      IF(.NOT. Found) CoilWVecVarname = 'W Vector E'
+      CALL GetVectorLocalSolution(Wvec, CoilWVecVarname)
+      CALL GetScalarLocalSolution(Wpot, CoilWVecVarname)
     END IF
     
     support = .TRUE. 
     IF (dim == 3) THEN
       support = .FALSE.
-      CALL GetLocalSolution(Wbase,'W')
-      IF ( ANY(Wbase .ne. 0d0) ) support = .TRUE.
+      IF (CoilUseWvec) THEN
+        IF ( ANY(Wvec .ne. 0d0) ) support = .TRUE.
+      ELSE
+        IF ( ANY(Wpot .ne. 0d0) ) support = .TRUE.
+      END IF
     END IF
 !------------------------------------------------------------------------------
    END FUNCTION HasSupport
