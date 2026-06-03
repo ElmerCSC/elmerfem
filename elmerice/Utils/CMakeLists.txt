@@ -21,5 +21,7 @@ ENDIF()
 
 TARGET_LINK_LIBRARIES(ElmerIceUtils Elmer::MPI_Fortran elmersolver)
 
-INSTALL(TARGETS ElmerIceUtils LIBRARY DESTINATION "share/elmersolver/lib"
-        RUNTIME DESTINATION "share/elmersolver/lib")
+INSTALL(TARGETS ElmerIceUtils
+  RUNTIME DESTINATION "share/elmersolver/lib"
+  LIBRARY DESTINATION "share/elmersolver/lib"
+  ARCHIVE DESTINATION "share/elmersolver/lib")

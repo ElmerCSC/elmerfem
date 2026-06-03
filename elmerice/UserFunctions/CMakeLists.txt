@@ -27,5 +27,7 @@ SET_TARGET_PROPERTIES(ElmerIceUSF PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/fem/src/modules
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/fem/src/modules)
 TARGET_LINK_LIBRARIES(ElmerIceUSF elmersolver ElmerIceUtils)
-INSTALL(TARGETS ElmerIceUSF LIBRARY DESTINATION "share/elmersolver/lib"
-        RUNTIME DESTINATION "share/elmersolver/lib")
+INSTALL(TARGETS ElmerIceUSF
+  RUNTIME DESTINATION "share/elmersolver/lib"
+  LIBRARY DESTINATION "share/elmersolver/lib"
+  ARCHIVE DESTINATION "share/elmersolver/lib")

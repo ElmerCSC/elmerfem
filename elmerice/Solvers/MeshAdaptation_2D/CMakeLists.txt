@@ -32,6 +32,7 @@ ELSE()
   TARGET_LINK_LIBRARIES(ElmerIce_MeshAdapt2D elmersolver)
 ENDIF()
 
-INSTALL(TARGETS ElmerIce_MeshAdapt2D LIBRARY DESTINATION "share/elmersolver/lib"
-	    RUNTIME DESTINATION "share/elmersolver/lib")
-
+INSTALL(TARGETS ElmerIce_MeshAdapt2D
+  RUNTIME DESTINATION "share/elmersolver/lib"
+  LIBRARY DESTINATION "share/elmersolver/lib"
+  ARCHIVE DESTINATION "share/elmersolver/lib")
